@@ -1,7 +1,9 @@
 #include "cy86_internal.h"
 
 #include <algorithm>
+#include <array>
 #include <cerrno>
+#include <chrono>
 #include <cstring>
 #include <fstream>
 #include <stdexcept>
@@ -82,6 +84,10 @@ public:
 	std::vector<unsigned char>& Bytes() { return bytes_; }
 	const std::vector<unsigned char>& Bytes() const { return bytes_; }
 	const std::vector<AddressFixup>& Fixups() const { return fixups_; }
+	void ReleaseFixups()
+	{
+		std::vector<AddressFixup>().swap(fixups_);
+	}
 
 private:
 	std::vector<unsigned char> bytes_;
@@ -242,45 +248,70 @@ void EmitSetCondition(NativeBuffer& output, unsigned opcode, int destination)
 	EmitModRm(output, 3, 0, destination);
 }
 
-std::uint64_t RawLiteralBits(const Cy86Literal& literal, unsigned width)
+const unsigned char* LiteralData(const Cy86Literal& literal,
+	const std::vector<unsigned char>& bytes)
 {
-	if (Cy86LiteralIsIntegral(literal))
-		return ConvertCy86LiteralToUnsigned(literal, width);
-	if (literal.array)
-	{
-		const std::size_t byte_count = std::min<std::size_t>(width / 8,
-			literal.bytes.size());
-		std::uint64_t result = 0;
-		for (std::size_t i = 0; i < byte_count; ++i)
-			result |= static_cast<std::uint64_t>(literal.bytes[i]) << (i * 8);
-		return result;
-	}
-	if (!Cy86LiteralIsFloating(literal))
-		throw std::runtime_error("scalar literal required");
-	const std::size_t byte_count = width / 8;
-	if (byte_count > 8 || literal.bytes.size() < byte_count)
-		throw std::runtime_error("floating literal width mismatch");
+	if (literal.offset > bytes.size() || literal.size > bytes.size() - literal.offset)
+		throw std::logic_error("invalid CY86 literal storage range");
+	return literal.size == 0 ? 0 : &bytes[literal.offset];
+}
+
+std::uint64_t RawLiteralBits(const Cy86Literal& literal,
+	const std::vector<unsigned char>& bytes, unsigned width)
+{
+	if (width != 8 && width != 16 && width != 32 && width != 64)
+		throw std::logic_error("invalid raw literal width");
+	const std::size_t output_size = width / 8;
+	const unsigned char* data = LiteralData(literal, bytes);
+	const std::size_t byte_count = std::min<std::size_t>(output_size,
+		literal.size);
 	std::uint64_t result = 0;
 	for (std::size_t i = 0; i < byte_count; ++i)
-		result |= static_cast<std::uint64_t>(literal.bytes[i]) << (i * 8);
+		result |= static_cast<std::uint64_t>(data[i]) << (i * 8);
+	if (byte_count < output_size && Cy86LiteralIsIntegral(literal) &&
+		Cy86LiteralIsSigned(literal) && byte_count != 0 &&
+		(data[byte_count - 1] & 0x80) != 0)
+	{
+		for (std::size_t i = byte_count; i < output_size; ++i)
+			result |= static_cast<std::uint64_t>(0xff) << (i * 8);
+	}
 	return result;
 }
 
-std::uint64_t AdjustmentValue(const Cy86Literal& literal, int sign)
+std::array<unsigned char, 10> RawLiteral80(const Cy86Literal& literal,
+	const std::vector<unsigned char>& bytes)
+{
+	const unsigned char* data = LiteralData(literal, bytes);
+	const unsigned char extension = Cy86LiteralIsIntegral(literal) &&
+		Cy86LiteralIsSigned(literal) && literal.size != 0 &&
+		(data[literal.size - 1] & 0x80) != 0 ? 0xff : 0;
+	std::array<unsigned char, 10> result;
+	result.fill(extension);
+	if (literal.size != 0)
+		std::copy(data, data + std::min<std::size_t>(result.size(), literal.size),
+			result.begin());
+	return result;
+}
+
+std::uint64_t AdjustmentValue(const Cy86Literal& literal,
+	const std::vector<unsigned char>& bytes, int sign)
 {
 	if (sign == 0) return 0;
-	const std::uint64_t value = ConvertCy86LiteralToUnsigned(literal, 64);
+	const std::uint64_t value = ConvertCy86LiteralToUnsigned(literal, bytes, 64);
 	return sign > 0 ? value : 0 - value;
 }
 
 class InstructionEmitter
 {
 public:
-	explicit InstructionEmitter(NativeBuffer& output) : output_(output) {}
+	InstructionEmitter(NativeBuffer& output,
+		const std::vector<Cy86Opcode>& opcodes,
+		const std::vector<unsigned char>& literal_bytes)
+		: output_(output), opcodes_(opcodes), literal_bytes_(literal_bytes) {}
 
 	void Emit(const Cy86Statement& statement)
 	{
-		const Cy86Opcode& opcode = statement.opcode;
+		const Cy86Opcode& opcode = Opcode(statement);
 		switch (opcode.operation)
 		{
 		case CY86_DATA: EmitData(statement); break;
@@ -311,19 +342,26 @@ public:
 	}
 
 private:
+	const Cy86Opcode& Opcode(const Cy86Statement& statement) const
+	{
+		if (statement.opcode == 0 || statement.opcode >= opcodes_.size())
+			throw std::logic_error("invalid CY86 opcode identity in backend");
+		return opcodes_[statement.opcode];
+	}
+
 	void EmitAddress(const Cy86Address& address)
 	{
 		if (address.base == CY86_ADDRESS_REGISTER)
 			EmitMoveRegister(output_, R11, NativeRegister(address.reg), 64);
 		else if (address.base == CY86_ADDRESS_LITERAL)
 			EmitImmediate64(output_, R11,
-				ConvertCy86LiteralToUnsigned(address.literal, 64));
+				RawLiteralBits(address.literal, literal_bytes_, 64));
 		else
 			EmitLabel64(output_, R11, address.label, 0);
 		if (address.displacement_sign != 0)
 		{
 			EmitImmediate64(output_, RBX, AdjustmentValue(address.displacement,
-				address.displacement_sign));
+				literal_bytes_, address.displacement_sign));
 			EmitAluRegister(output_, 0x01, R11, RBX);
 		}
 	}
@@ -345,13 +383,13 @@ private:
 		else if (operand.immediate.kind == CY86_LITERAL_VALUE)
 		{
 			EmitImmediate64(output_, destination,
-				RawLiteralBits(operand.immediate.literal, width));
+				RawLiteralBits(operand.immediate.literal, literal_bytes_, width));
 		}
 		else
 		{
 			EmitLabel64(output_, destination, operand.immediate.label,
 				AdjustmentValue(operand.immediate.adjustment,
-					operand.immediate.adjustment_sign));
+					literal_bytes_, operand.immediate.adjustment_sign));
 		}
 	}
 
@@ -399,14 +437,14 @@ private:
 
 	void EmitLiteral80(const Cy86Literal& literal, std::int64_t displacement)
 	{
-		if (!Cy86LiteralIsFloating(literal) || literal.bytes.size() < 10)
-			throw std::runtime_error("80-bit floating literal required");
+		const std::array<unsigned char, 10> converted =
+			RawLiteral80(literal, literal_bytes_);
 		std::uint64_t low = 0;
 		std::uint16_t high = 0;
 		for (unsigned i = 0; i < 8; ++i)
-			low |= static_cast<std::uint64_t>(literal.bytes[i]) << (i * 8);
+			low |= static_cast<std::uint64_t>(converted[i]) << (i * 8);
 		for (unsigned i = 0; i < 2; ++i)
-			high |= static_cast<std::uint16_t>(literal.bytes[i + 8]) << (i * 8);
+			high |= static_cast<std::uint16_t>(converted[i + 8]) << (i * 8);
 		EmitImmediate64(output_, RAX, low);
 		EmitStoreScratch(RAX, 64, displacement);
 		EmitImmediate64(output_, RAX, high);
@@ -423,10 +461,19 @@ private:
 		}
 		if (width == 80)
 		{
-			if (operand.kind != CY86_IMMEDIATE_OPERAND ||
-				operand.immediate.kind != CY86_LITERAL_VALUE)
-				throw std::runtime_error("80-bit operand must be memory or literal");
-			EmitLiteral80(operand.immediate.literal, -32);
+			if (operand.kind != CY86_IMMEDIATE_OPERAND)
+				throw std::logic_error("invalid 80-bit operand");
+			if (operand.immediate.kind == CY86_LITERAL_VALUE)
+				EmitLiteral80(operand.immediate.literal, -32);
+			else
+			{
+				EmitLabel64(output_, RAX, operand.immediate.label,
+					AdjustmentValue(operand.immediate.adjustment,
+						literal_bytes_, operand.immediate.adjustment_sign));
+				EmitStoreScratch(RAX, 64, -32);
+				EmitImmediate64(output_, RAX, 0);
+				EmitStoreScratch(RAX, 16, -24);
+			}
 		}
 		else
 		{
@@ -480,33 +527,36 @@ private:
 
 	void NormalizeInput(const Cy86Statement& statement, int reg)
 	{
-		if (statement.opcode.signed_operation)
-			EmitSignExtend(output_, reg, statement.opcode.width);
+		const Cy86Opcode& opcode = Opcode(statement);
+		if (opcode.signed_operation)
+			EmitSignExtend(output_, reg, opcode.width);
 	}
 
 	void EmitData(const Cy86Statement& statement)
 	{
 		const Cy86Operand& operand = statement.operands[0];
-		const unsigned width = statement.opcode.width;
+		const unsigned width = Opcode(statement).width;
 		if (operand.immediate.kind == CY86_LABEL_VALUE)
 		{
 			output_.LabelImmediate(operand.immediate.label,
 				AdjustmentValue(operand.immediate.adjustment,
-					operand.immediate.adjustment_sign), width);
+					literal_bytes_, operand.immediate.adjustment_sign), width);
 			return;
 		}
-		output_.Little(RawLiteralBits(operand.immediate.literal, width), width / 8);
+		output_.Little(RawLiteralBits(operand.immediate.literal, literal_bytes_,
+			width), width / 8);
 	}
 
 	void EmitMove(const Cy86Statement& statement)
 	{
-		if (statement.opcode.width == 80)
+		const unsigned width = Opcode(statement).width;
+		if (width == 80)
 		{
 			EmitMove80(statement);
 			return;
 		}
-		EmitLoad(statement.operands[1], statement.opcode.width, RAX);
-		EmitStore(statement.operands[0], statement.opcode.width, RAX);
+		EmitLoad(statement.operands[1], width, RAX);
+		EmitStore(statement.operands[0], width, RAX);
 	}
 
 	void EmitMove80(const Cy86Statement& statement)
@@ -525,20 +575,13 @@ private:
 		{
 			EmitLabel64(output_, RAX, source.immediate.label,
 				AdjustmentValue(source.immediate.adjustment,
-					source.immediate.adjustment_sign));
+					literal_bytes_, source.immediate.adjustment_sign));
 			EmitImmediate64(output_, RCX, 0);
 		}
 		else if (source.kind == CY86_IMMEDIATE_OPERAND)
 		{
-			const Cy86Literal& literal = source.immediate.literal;
-			const unsigned char extension = Cy86LiteralIsIntegral(literal) &&
-				Cy86LiteralIsSigned(literal) && !literal.bytes.empty() &&
-				(literal.bytes.back() & 0x80) != 0 ? 0xff : 0;
-			std::array<unsigned char, 10> converted;
-			converted.fill(extension);
-			std::copy(literal.bytes.begin(), literal.bytes.begin() +
-				std::min<std::size_t>(converted.size(), literal.bytes.size()),
-				converted.begin());
+			const std::array<unsigned char, 10> converted =
+				RawLiteral80(source.immediate.literal, literal_bytes_);
 			std::uint64_t low = 0;
 			std::uint16_t high = 0;
 			for (std::size_t i = 0; i < 8; ++i)
@@ -583,74 +626,80 @@ private:
 
 	void EmitNot(const Cy86Statement& statement)
 	{
-		EmitLoad(statement.operands[1], statement.opcode.width, RAX);
+		const unsigned width = Opcode(statement).width;
+		EmitLoad(statement.operands[1], width, RAX);
 		EmitRex(output_, true, 2, RAX);
 		output_.Byte(0xf7);
 		EmitModRm(output_, 3, 2, RAX);
-		EmitStore(statement.operands[0], statement.opcode.width, RAX);
+		EmitStore(statement.operands[0], width, RAX);
 	}
 
 	void EmitSimpleBinary(const Cy86Statement& statement, unsigned opcode)
 	{
-		EmitLoad(statement.operands[1], statement.opcode.width, RAX);
-		EmitLoad(statement.operands[2], statement.opcode.width, RCX);
+		const unsigned width = Opcode(statement).width;
+		EmitLoad(statement.operands[1], width, RAX);
+		EmitLoad(statement.operands[2], width, RCX);
 		EmitAluRegister(output_, opcode, RAX, RCX);
-		EmitStore(statement.operands[0], statement.opcode.width, RAX);
+		EmitStore(statement.operands[0], width, RAX);
 	}
 
 	void EmitShift(const Cy86Statement& statement, unsigned extension)
 	{
-		EmitLoad(statement.operands[1], statement.opcode.width, RAX);
+		const unsigned width = Opcode(statement).width;
+		EmitLoad(statement.operands[1], width, RAX);
 		NormalizeInput(statement, RAX);
 		EmitLoad(statement.operands[2], 8, RCX);
 		EmitRex(output_, true, extension, RAX);
 		output_.Byte(0xd3);
 		EmitModRm(output_, 3, extension, RAX);
-		EmitStore(statement.operands[0], statement.opcode.width, RAX);
+		EmitStore(statement.operands[0], width, RAX);
 	}
 
 	void EmitMultiply(const Cy86Statement& statement)
 	{
-		EmitLoad(statement.operands[1], statement.opcode.width, RAX);
-		EmitLoad(statement.operands[2], statement.opcode.width, RCX);
+		const unsigned width = Opcode(statement).width;
+		EmitLoad(statement.operands[1], width, RAX);
+		EmitLoad(statement.operands[2], width, RCX);
 		EmitRex(output_, true, RAX, RCX);
 		output_.Byte(0x0f);
 		output_.Byte(0xaf);
 		EmitModRm(output_, 3, RAX, RCX);
-		EmitStore(statement.operands[0], statement.opcode.width, RAX);
+		EmitStore(statement.operands[0], width, RAX);
 	}
 
 	void EmitDivide(const Cy86Statement& statement, bool remainder)
 	{
-		EmitLoad(statement.operands[1], statement.opcode.width, RAX);
-		EmitLoad(statement.operands[2], statement.opcode.width, RCX);
+		const Cy86Opcode& opcode = Opcode(statement);
+		EmitLoad(statement.operands[1], opcode.width, RAX);
+		EmitLoad(statement.operands[2], opcode.width, RCX);
 		NormalizeInput(statement, RAX);
 		NormalizeInput(statement, RCX);
-		if (statement.opcode.signed_operation)
+		if (opcode.signed_operation)
 		{
 			output_.Byte(0x48);
 			output_.Byte(0x99);
 		}
 		else
 			EmitXor32(output_, RDX);
-		EmitRex(output_, true, statement.opcode.signed_operation ? 7 : 6, RCX);
+		EmitRex(output_, true, opcode.signed_operation ? 7 : 6, RCX);
 		output_.Byte(0xf7);
 		EmitModRm(output_, 3,
-			statement.opcode.signed_operation ? 7 : 6, RCX);
-		EmitStore(statement.operands[0], statement.opcode.width,
+			opcode.signed_operation ? 7 : 6, RCX);
+		EmitStore(statement.operands[0], opcode.width,
 			remainder ? RDX : RAX);
 	}
 
 	unsigned ComparisonCode(const Cy86Statement& statement) const
 	{
-		switch (statement.opcode.operation)
+		const Cy86Opcode& opcode = Opcode(statement);
+		switch (opcode.operation)
 		{
 		case CY86_EQ: return 0x94;
 		case CY86_NE: return 0x95;
-		case CY86_LT: return statement.opcode.signed_operation ? 0x9c : 0x92;
-		case CY86_GT: return statement.opcode.signed_operation ? 0x9f : 0x97;
-		case CY86_LE: return statement.opcode.signed_operation ? 0x9e : 0x96;
-		case CY86_GE: return statement.opcode.signed_operation ? 0x9d : 0x93;
+		case CY86_LT: return opcode.signed_operation ? 0x9c : 0x92;
+		case CY86_GT: return opcode.signed_operation ? 0x9f : 0x97;
+		case CY86_LE: return opcode.signed_operation ? 0x9e : 0x96;
+		case CY86_GE: return opcode.signed_operation ? 0x9d : 0x93;
 		default: break;
 		}
 		throw std::logic_error("invalid comparison opcode");
@@ -658,13 +707,14 @@ private:
 
 	void EmitComparison(const Cy86Statement& statement)
 	{
-		if (statement.opcode.floating_operation)
+		const Cy86Opcode& opcode = Opcode(statement);
+		if (opcode.floating_operation)
 		{
 			EmitFloatingComparison(statement);
 			return;
 		}
-		EmitLoad(statement.operands[1], statement.opcode.width, RAX);
-		EmitLoad(statement.operands[2], statement.opcode.width, RCX);
+		EmitLoad(statement.operands[1], opcode.width, RAX);
+		EmitLoad(statement.operands[2], opcode.width, RCX);
 		NormalizeInput(statement, RAX);
 		NormalizeInput(statement, RCX);
 		EmitAluRegister(output_, 0x39, RAX, RCX);
@@ -693,7 +743,8 @@ private:
 
 	void EmitIntegerToFloat(const Cy86Statement& statement)
 	{
-		const Cy86OperandConstraint& source_type = statement.opcode.operands[1];
+		const Cy86Opcode& opcode = Opcode(statement);
+		const Cy86OperandConstraint& source_type = opcode.operands[1];
 		if (source_type.value_class == CY86_VALUE_UNSIGNED &&
 			source_type.width == 64)
 		{
@@ -707,7 +758,7 @@ private:
 			EmitStoreScratch(RAX, 64, -32);
 			EmitFildScratch64();
 		}
-		EmitFloatStore(statement.operands[0], statement.opcode.operands[0].width);
+		EmitFloatStore(statement.operands[0], opcode.operands[0].width);
 	}
 
 	void EmitUnsigned64FromFloat(const Cy86Statement& statement)
@@ -740,14 +791,15 @@ private:
 
 	void EmitFloatToInteger(const Cy86Statement& statement)
 	{
-		const Cy86OperandConstraint& destination_type = statement.opcode.operands[0];
+		const Cy86Opcode& opcode = Opcode(statement);
+		const Cy86OperandConstraint& destination_type = opcode.operands[0];
 		if (destination_type.value_class == CY86_VALUE_UNSIGNED &&
 			destination_type.width == 64)
 		{
 			EmitUnsigned64FromFloat(statement);
 			return;
 		}
-		EmitFloatLoad(statement.operands[1], statement.opcode.operands[1].width);
+		EmitFloatLoad(statement.operands[1], opcode.operands[1].width);
 		EmitFistpScratch64();
 		EmitLoadScratch(RAX, 64, -32);
 		EmitStore(statement.operands[0], destination_type.width, RAX);
@@ -755,18 +807,19 @@ private:
 
 	void EmitConversion(const Cy86Statement& statement)
 	{
+		const Cy86Opcode& opcode = Opcode(statement);
 		const bool source_float =
-			statement.opcode.operands[1].value_class == CY86_VALUE_FLOAT;
+			opcode.operands[1].value_class == CY86_VALUE_FLOAT;
 		const bool destination_float =
-			statement.opcode.operands[0].value_class == CY86_VALUE_FLOAT;
+			opcode.operands[0].value_class == CY86_VALUE_FLOAT;
 		if (!source_float && destination_float)
 			EmitIntegerToFloat(statement);
 		else if (source_float && !destination_float)
 			EmitFloatToInteger(statement);
 		else if (source_float && destination_float)
 		{
-			EmitFloatLoad(statement.operands[1], statement.opcode.operands[1].width);
-			EmitFloatStore(statement.operands[0], statement.opcode.operands[0].width);
+			EmitFloatLoad(statement.operands[1], opcode.operands[1].width);
+			EmitFloatStore(statement.operands[0], opcode.operands[0].width);
 		}
 		else
 			throw std::logic_error("invalid CY86 conversion");
@@ -774,10 +827,11 @@ private:
 
 	void EmitFloatingArithmetic(const Cy86Statement& statement)
 	{
-		EmitFloatLoad(statement.operands[1], statement.opcode.width);
-		EmitFloatLoad(statement.operands[2], statement.opcode.width);
+		const Cy86Opcode& cy86_opcode = Opcode(statement);
+		EmitFloatLoad(statement.operands[1], cy86_opcode.width);
+		EmitFloatLoad(statement.operands[2], cy86_opcode.width);
 		unsigned opcode = 0;
-		switch (statement.opcode.operation)
+		switch (cy86_opcode.operation)
 		{
 		case CY86_FADD: opcode = 0xc1; break;
 		case CY86_FMUL: opcode = 0xc9; break;
@@ -787,20 +841,21 @@ private:
 		}
 		output_.Byte(0xde);
 		output_.Byte(opcode);
-		EmitFloatStore(statement.operands[0], statement.opcode.width);
+		EmitFloatStore(statement.operands[0], cy86_opcode.width);
 	}
 
 	void EmitFloatingComparison(const Cy86Statement& statement)
 	{
-		EmitFloatLoad(statement.operands[2], statement.opcode.width);
-		EmitFloatLoad(statement.operands[1], statement.opcode.width);
+		const Cy86Opcode& opcode = Opcode(statement);
+		EmitFloatLoad(statement.operands[2], opcode.width);
+		EmitFloatLoad(statement.operands[1], opcode.width);
 		// Compare st0 with st1, pop st0, then discard the remaining operand.
 		output_.Byte(0xdf);
 		output_.Byte(0xf1);
 		output_.Byte(0xdd);
 		output_.Byte(0xd8);
 		unsigned condition = 0;
-		switch (statement.opcode.operation)
+		switch (opcode.operation)
 		{
 		case CY86_EQ: condition = 0x94; break;
 		case CY86_NE: condition = 0x95; break;
@@ -811,14 +866,14 @@ private:
 		default: throw std::logic_error("invalid floating comparison operation");
 		}
 		EmitSetCondition(output_, condition, RAX);
-		if (statement.opcode.operation == CY86_NE)
+		if (opcode.operation == CY86_NE)
 		{
 			EmitSetCondition(output_, 0x9a, RCX);
 			output_.Byte(0x08);
 			output_.Byte(0xc8);
 		}
-		else if (statement.opcode.operation == CY86_LT ||
-			statement.opcode.operation == CY86_LE)
+		else if (opcode.operation == CY86_EQ ||
+			opcode.operation == CY86_LT || opcode.operation == CY86_LE)
 		{
 			EmitSetCondition(output_, 0x9b, RCX);
 			output_.Byte(0x20);
@@ -830,8 +885,9 @@ private:
 	void EmitSyscall(const Cy86Statement& statement)
 	{
 		static const int argument_registers[] = { RDI, RSI, RDX, R10, R8, R9 };
+		const Cy86Opcode& opcode = Opcode(statement);
 		EmitLoad(statement.operands[1], 64, RAX);
-		for (unsigned i = 0; i < statement.opcode.syscall_arguments; ++i)
+		for (unsigned i = 0; i < opcode.syscall_arguments; ++i)
 			EmitLoad(statement.operands[i + 2], 64, argument_registers[i]);
 		output_.Byte(0x0f);
 		output_.Byte(0x05);
@@ -839,14 +895,20 @@ private:
 	}
 
 	NativeBuffer& output_;
+	const std::vector<Cy86Opcode>& opcodes_;
+	const std::vector<unsigned char>& literal_bytes_;
 };
 
-std::size_t StatementAlignment(const Cy86Statement& statement)
+std::size_t StatementAlignment(const Cy86ProgramModel& program,
+	const Cy86Statement& statement)
 {
 	if (statement.kind == CY86_LITERAL_STATEMENT)
 		return Cy86LiteralAlignment(statement.literal);
-	if (statement.opcode.operation == CY86_DATA)
-		return statement.opcode.width / 8;
+	if (statement.opcode == 0 || statement.opcode >= program.opcodes.size())
+		throw std::logic_error("invalid CY86 opcode identity during layout");
+	const Cy86Opcode& opcode = program.opcodes[statement.opcode];
+	if (opcode.operation == CY86_DATA)
+		return opcode.width / 8;
 	return 1;
 }
 
@@ -860,17 +922,22 @@ void AlignStatement(NativeBuffer& output, std::size_t alignment)
 }
 
 void EmitLiteralStatement(NativeBuffer& output,
-	const Cy86Statement& statement)
+	const Cy86ProgramModel& program, const Cy86Statement& statement)
 {
-	output.Bytes().insert(output.Bytes().end(), statement.literal.bytes.begin(),
-		statement.literal.bytes.end());
+	const unsigned char* data = LiteralData(statement.literal,
+		program.literal_bytes);
+	if (statement.literal.size != 0)
+		output.Bytes().insert(output.Bytes().end(), data,
+			data + statement.literal.size);
 }
 
 struct NativeProgram
 {
 	NativeBuffer content;
 	std::uint64_t entry;
-	std::unordered_map<Cy86Identifier, std::uint64_t> labels;
+	std::size_t fixup_count;
+
+	NativeProgram() : entry(0), fixup_count(0) {}
 };
 
 NativeProgram LowerProgram(const Cy86ProgramModel& program)
@@ -881,19 +948,26 @@ NativeProgram LowerProgram(const Cy86ProgramModel& program)
 	native.content.Byte(0x90);
 	native.content.Byte(0x90);
 	native.content.Byte(0x90);
-	InstructionEmitter instructions(native.content);
+	InstructionEmitter instructions(native.content, program.opcodes,
+		program.literal_bytes);
+	std::vector<std::uint64_t> label_addresses(
+		program.identifiers.Size() + 1, 0);
 	std::uint64_t first_statement = 0;
 	for (std::size_t i = 0; i < program.statements.size(); ++i)
 	{
 		const Cy86Statement& statement = program.statements[i];
-		AlignStatement(native.content, StatementAlignment(statement));
+		AlignStatement(native.content, StatementAlignment(program, statement));
 		const std::uint64_t address = kLoadAddress + kContentOffset +
 			native.content.Bytes().size();
 		if (i == 0) first_statement = address;
 		for (std::size_t j = 0; j < statement.labels.size(); ++j)
-			native.labels.insert(std::make_pair(statement.labels[j], address));
+		{
+			if (statement.labels[j] >= label_addresses.size())
+				throw std::logic_error("invalid label identity in CY86 backend");
+			label_addresses[statement.labels[j]] = address;
+		}
 		if (statement.kind == CY86_LITERAL_STATEMENT)
-			EmitLiteralStatement(native.content, statement);
+			EmitLiteralStatement(native.content, program, statement);
 		else
 			instructions.Emit(statement);
 	}
@@ -910,22 +984,25 @@ NativeProgram LowerProgram(const Cy86ProgramModel& program)
 	}
 	else
 	{
-		Cy86Identifier start = 0;
-		if (program.identifiers.Find("start", &start) && native.labels.count(start))
-			native.entry = native.labels.find(start)->second;
+		if (program.start_label != 0 &&
+			program.start_label < label_addresses.size() &&
+			label_addresses[program.start_label] != 0)
+			native.entry = label_addresses[program.start_label];
 		else
 			native.entry = first_statement;
 	}
 	const std::vector<AddressFixup>& fixups = native.content.Fixups();
 	for (std::size_t i = 0; i < fixups.size(); ++i)
 	{
-		std::unordered_map<Cy86Identifier, std::uint64_t>::const_iterator found =
-			native.labels.find(fixups[i].label);
-		if (found == native.labels.end())
+		if (fixups[i].label >= label_addresses.size() ||
+			label_addresses[fixups[i].label] == 0)
 			throw std::logic_error("unresolved label reached CY86 backend");
 		native.content.PatchLittle(fixups[i].offset,
-			found->second + fixups[i].addend, fixups[i].width / 8);
+			label_addresses[fixups[i].label] + fixups[i].addend,
+			fixups[i].width / 8);
 	}
+	native.fixup_count = fixups.size();
+	native.content.ReleaseFixups();
 	return native;
 }
 
@@ -936,11 +1013,11 @@ void AppendLittle(std::vector<unsigned char>* output, std::uint64_t value,
 		output->push_back(static_cast<unsigned char>(value >> (i * 8)));
 }
 
-std::vector<unsigned char> BuildElfImage(const NativeProgram& program)
+std::vector<unsigned char> BuildElfHeader(const NativeProgram& program)
 {
 	const std::uint64_t file_size = kContentOffset + program.content.Bytes().size();
 	std::vector<unsigned char> image;
-	image.reserve(static_cast<std::size_t>(file_size));
+	image.reserve(kContentOffset);
 	const unsigned char ident[16] = {
 		0x7f, 'E', 'L', 'F', 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0
 	};
@@ -968,22 +1045,33 @@ std::vector<unsigned char> BuildElfImage(const NativeProgram& program)
 	AppendLittle(&image, 0x1000, 8);
 	if (image.size() != kContentOffset)
 		throw std::logic_error("invalid ELF header size");
-	image.insert(image.end(), program.content.Bytes().begin(),
-		program.content.Bytes().end());
 	return image;
 }
 
 }
 
-void WriteCy86Executable(const Cy86ProgramModel& program,
+void WriteCy86Executable(Cy86ProgramModel& program,
 	const std::string& path, Cy86Stats* stats)
 {
+	const std::chrono::steady_clock::time_point lowering_start = stats ?
+		std::chrono::steady_clock::now() :
+		std::chrono::steady_clock::time_point();
 	NativeProgram native = LowerProgram(program);
-	const std::vector<unsigned char> image = BuildElfImage(native);
+	program.Clear();
+	if (stats)
+		stats->lowering_nanoseconds = static_cast<std::uint64_t>(
+			std::chrono::duration_cast<std::chrono::nanoseconds>(
+				std::chrono::steady_clock::now() - lowering_start).count());
+	const std::chrono::steady_clock::time_point writing_start = stats ?
+		std::chrono::steady_clock::now() :
+		std::chrono::steady_clock::time_point();
+	const std::vector<unsigned char> header = BuildElfHeader(native);
 	std::ofstream output(path.c_str(), std::ios::out | std::ios::binary |
 		std::ios::trunc);
 	if (!output) throw std::runtime_error("unable to open output file: " + path);
-	output.write(reinterpret_cast<const char*>(image.data()), image.size());
+	output.write(reinterpret_cast<const char*>(header.data()), header.size());
+	output.write(reinterpret_cast<const char*>(native.content.Bytes().data()),
+		native.content.Bytes().size());
 	if (!output) throw std::runtime_error("unable to write output file: " + path);
 	output.close();
 	if (::chmod(path.c_str(), 0755) != 0)
@@ -991,9 +1079,12 @@ void WriteCy86Executable(const Cy86ProgramModel& program,
 			std::string(std::strerror(errno)));
 	if (stats)
 	{
-		stats->fixups = native.content.Fixups().size();
+		stats->fixups = native.fixup_count;
 		stats->instruction_bytes = native.content.Bytes().size();
-		stats->image_bytes = image.size();
+		stats->image_bytes = header.size() + native.content.Bytes().size();
+		stats->writing_nanoseconds = static_cast<std::uint64_t>(
+			std::chrono::duration_cast<std::chrono::nanoseconds>(
+				std::chrono::steady_clock::now() - writing_start).count());
 	}
 }
 

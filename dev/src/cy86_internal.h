@@ -20,14 +20,14 @@ class Cy86Identifiers
 public:
 	Cy86Identifiers();
 	Cy86Identifier Intern(const std::string& spelling);
-	bool Find(const std::string& spelling, Cy86Identifier* identifier) const;
 	const std::string& Spelling(Cy86Identifier identifier) const;
 	std::size_t Size() const;
 	std::size_t Bytes() const;
+	void Clear();
 
 private:
 	std::unordered_map<std::string, Cy86Identifier> index_;
-	std::vector<std::string> spellings_;
+	std::vector<const std::string*> spellings_;
 	std::size_t bytes_;
 };
 
@@ -53,8 +53,9 @@ struct Cy86Register
 struct Cy86Literal
 {
 	FundamentalType type;
-	std::vector<unsigned char> bytes;
-	std::size_t elements;
+	std::uint32_t offset;
+	std::uint32_t size;
+	std::uint32_t elements;
 	bool array;
 
 	Cy86Literal();
@@ -128,6 +129,8 @@ struct Cy86Opcode
 	Cy86Opcode();
 };
 
+typedef std::uint16_t Cy86OpcodeId;
+
 enum Cy86ValueKind
 {
 	CY86_LITERAL_VALUE,
@@ -191,7 +194,7 @@ struct Cy86Statement
 {
 	Cy86StatementKind kind;
 	std::vector<Cy86Identifier> labels;
-	Cy86Opcode opcode;
+	Cy86OpcodeId opcode;
 	std::vector<Cy86Operand> operands;
 	Cy86Literal literal;
 
@@ -200,9 +203,14 @@ struct Cy86Statement
 
 struct Cy86ProgramModel
 {
+	Cy86ProgramModel();
+	void Clear();
+
 	Cy86Identifiers identifiers;
+	std::vector<Cy86Opcode> opcodes;
+	std::vector<unsigned char> literal_bytes;
 	std::vector<Cy86Statement> statements;
-	std::unordered_map<Cy86Identifier, std::size_t> label_statements;
+	Cy86Identifier start_label;
 };
 
 bool LookupCy86Register(const std::string& spelling, Cy86Register* reg);
@@ -211,9 +219,10 @@ bool Cy86LiteralIsIntegral(const Cy86Literal& literal);
 bool Cy86LiteralIsSigned(const Cy86Literal& literal);
 bool Cy86LiteralIsFloating(const Cy86Literal& literal);
 std::size_t Cy86LiteralAlignment(const Cy86Literal& literal);
-Cy86Literal NegateCy86Literal(const Cy86Literal& literal);
+Cy86Literal NegateCy86Literal(Cy86ProgramModel& program,
+	Cy86Literal literal);
 std::uint64_t ConvertCy86LiteralToUnsigned(const Cy86Literal& literal,
-	unsigned width);
+	const std::vector<unsigned char>& bytes, unsigned width);
 
 struct Cy86ParserState;
 
@@ -224,7 +233,7 @@ void ParseCy86TranslationUnit(Cy86ParserState& parser,
 	const std::string& path, const std::string& source,
 	const PreprocessingOptions& options);
 void FinishCy86Program(Cy86ParserState& parser);
-void WriteCy86Executable(const Cy86ProgramModel& program,
+void WriteCy86Executable(Cy86ProgramModel& program,
 	const std::string& path, Cy86Stats* stats);
 
 }

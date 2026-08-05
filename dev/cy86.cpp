@@ -48,11 +48,18 @@ void ReportStats(const cppgm::Cy86Stats& stats)
 		<< " peak_statement_tokens=" << stats.peak_statement_tokens
 		<< " identifiers=" << stats.identifiers
 		<< " identifier_bytes=" << stats.identifier_bytes
+		<< " literal_bytes=" << stats.literal_bytes
+		<< " opcode_identities=" << stats.opcode_identities
 		<< " statements=" << stats.statements
+		<< " operands=" << stats.operands
 		<< " labels=" << stats.labels
 		<< " fixups=" << stats.fixups
 		<< " instruction_bytes=" << stats.instruction_bytes
 		<< " image_bytes=" << stats.image_bytes
+		<< " peak_live_source_bytes=" << stats.peak_live_source_bytes
+		<< " frontend_ns=" << stats.frontend_nanoseconds
+		<< " lowering_ns=" << stats.lowering_nanoseconds
+		<< " writing_ns=" << stats.writing_nanoseconds
 		<< " elapsed_ns=" << stats.elapsed_nanoseconds << '\n';
 }
 

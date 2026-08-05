@@ -1,0 +1,10 @@
+start: feq32 x8 0x7fc00000u 0.0f;
+move64 y64 60;
+move64 z64 0;
+move8 z8 x8;
+syscall1 t64 y64 z64;
+
+raw_data: data64 1.0f;
+raw_address: move8 x8 [1.0f];
+wide_float: f64convf80 [storage] 1.0f;
+storage: "0000000000000000";

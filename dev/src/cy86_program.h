@@ -16,11 +16,18 @@ struct Cy86Stats
 	std::size_t peak_statement_tokens;
 	std::size_t identifiers;
 	std::size_t identifier_bytes;
+	std::size_t literal_bytes;
+	std::size_t opcode_identities;
 	std::size_t statements;
+	std::size_t operands;
 	std::size_t labels;
 	std::size_t fixups;
 	std::size_t instruction_bytes;
 	std::size_t image_bytes;
+	std::size_t peak_live_source_bytes;
+	std::uint64_t frontend_nanoseconds;
+	std::uint64_t lowering_nanoseconds;
+	std::uint64_t writing_nanoseconds;
 	std::uint64_t elapsed_nanoseconds;
 
 	Cy86Stats();

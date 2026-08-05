@@ -4,13 +4,15 @@
 #include <cstring>
 #include <limits>
 #include <stdexcept>
+#include <unordered_set>
+#include <utility>
 
 namespace cppgm
 {
 
 Cy86Identifiers::Cy86Identifiers() : bytes_(0)
 {
-	spellings_.push_back(std::string());
+	spellings_.push_back(0);
 }
 
 Cy86Identifier Cy86Identifiers::Intern(const std::string& spelling)
@@ -22,27 +24,26 @@ Cy86Identifier Cy86Identifiers::Intern(const std::string& spelling)
 		throw std::runtime_error("too many CY86 identifiers");
 	const Cy86Identifier identifier =
 		static_cast<Cy86Identifier>(spellings_.size());
-	spellings_.push_back(spelling);
-	index_.insert(std::make_pair(spellings_.back(), identifier));
+	std::pair<std::unordered_map<std::string, Cy86Identifier>::iterator, bool>
+		inserted = index_.insert(std::make_pair(spelling, identifier));
+	try
+	{
+		spellings_.push_back(&inserted.first->first);
+	}
+	catch (...)
+	{
+		index_.erase(inserted.first);
+		throw;
+	}
 	bytes_ += spelling.size();
 	return identifier;
-}
-
-bool Cy86Identifiers::Find(const std::string& spelling,
-	Cy86Identifier* identifier) const
-{
-	std::unordered_map<std::string, Cy86Identifier>::const_iterator found =
-		index_.find(spelling);
-	if (found == index_.end()) return false;
-	*identifier = found->second;
-	return true;
 }
 
 const std::string& Cy86Identifiers::Spelling(Cy86Identifier identifier) const
 {
 	if (identifier >= spellings_.size())
 		throw std::logic_error("invalid CY86 identifier");
-	return spellings_[identifier];
+	return *spellings_[identifier];
 }
 
 std::size_t Cy86Identifiers::Size() const
@@ -55,8 +56,17 @@ std::size_t Cy86Identifiers::Bytes() const
 	return bytes_;
 }
 
+void Cy86Identifiers::Clear()
+{
+	std::unordered_map<std::string, Cy86Identifier>().swap(index_);
+	std::vector<const std::string*>().swap(spellings_);
+	spellings_.push_back(0);
+	bytes_ = 0;
+}
+
 Cy86Register::Cy86Register() : bank(CY86_REG_INVALID), width(0) {}
-Cy86Literal::Cy86Literal() : type(FT_VOID), elements(0), array(false) {}
+Cy86Literal::Cy86Literal()
+	: type(FT_VOID), offset(0), size(0), elements(0), array(false) {}
 Cy86OperandConstraint::Cy86OperandConstraint()
 	: width(0), value_class(CY86_VALUE_BITS), write(false),
 	  immediate_only(false) {}
@@ -69,7 +79,21 @@ Cy86Value::Cy86Value()
 Cy86Address::Cy86Address()
 	: base(CY86_ADDRESS_LITERAL), label(0), displacement_sign(0) {}
 Cy86Operand::Cy86Operand() : kind(CY86_IMMEDIATE_OPERAND) {}
-Cy86Statement::Cy86Statement() : kind(CY86_INSTRUCTION_STATEMENT) {}
+Cy86Statement::Cy86Statement()
+	: kind(CY86_INSTRUCTION_STATEMENT), opcode(0) {}
+Cy86ProgramModel::Cy86ProgramModel() : start_label(0)
+{
+	opcodes.push_back(Cy86Opcode());
+}
+
+void Cy86ProgramModel::Clear()
+{
+	identifiers.Clear();
+	std::vector<Cy86Opcode>().swap(opcodes);
+	std::vector<unsigned char>().swap(literal_bytes);
+	std::vector<Cy86Statement>().swap(statements);
+	start_label = 0;
+}
 
 namespace
 {
@@ -180,8 +204,16 @@ bool LookupConversion(const std::string& spelling, Cy86Opcode* opcode)
 		destination_width != 64 && destination_width != 80) return false;
 	if (source_stem != "f" && source_width == 80) return false;
 	if (destination_stem != "f" && destination_width == 80) return false;
-	if (source_stem == destination_stem && source_width == destination_width)
-		return false;
+	const bool to_extended = destination_stem == "f" &&
+		destination_width == 80 &&
+		((source_stem == "f" && (source_width == 32 || source_width == 64)) ||
+		 ((source_stem == "s" || source_stem == "u") && source_width != 80));
+	const bool from_extended = source_stem == "f" && source_width == 80 &&
+		((destination_stem == "f" &&
+		  (destination_width == 32 || destination_width == 64)) ||
+		 ((destination_stem == "s" || destination_stem == "u") &&
+		  destination_width != 80));
+	if (!to_extended && !from_extended) return false;
 	opcode->operation = CY86_CONVERT;
 	opcode->operand_count = 2;
 	opcode->width = destination_width;
@@ -333,22 +365,41 @@ struct ParsedToken
 	ParsedToken() : kind(TOKEN_SIMPLE), identifier(0), simple(OP_SEMICOLON) {}
 };
 
+struct Cy86NameFacts
+{
+	bool classified;
+	bool is_register;
+	bool is_start;
+	Cy86Register reg;
+	Cy86OpcodeId opcode;
+
+	Cy86NameFacts()
+		: classified(false), is_register(false), is_start(false), opcode(0) {}
+};
+
 class StatementCursor
 {
 public:
-	explicit StatementCursor(const std::vector<ParsedToken>& tokens)
+	explicit StatementCursor(std::vector<ParsedToken>& tokens)
 		: tokens_(tokens), position_(0) {}
 	bool End() const { return position_ == tokens_.size(); }
-	const ParsedToken& Peek() const
+	ParsedToken& Peek() const
 	{
 		if (End()) throw std::runtime_error("unexpected end of CY86 statement");
 		return tokens_[position_];
 	}
-	const ParsedToken& Take()
+	ParsedToken& Take()
 	{
-		const ParsedToken& result = Peek();
+		ParsedToken& result = Peek();
 		++position_;
 		return result;
+	}
+	std::size_t Position() const { return position_; }
+	void SetPosition(std::size_t position)
+	{
+		if (position > tokens_.size())
+			throw std::logic_error("invalid CY86 parser checkpoint");
+		position_ = position;
 	}
 	bool TakeSimple(SimpleTokenKind kind)
 	{
@@ -359,20 +410,38 @@ public:
 	}
 
 private:
-	const std::vector<ParsedToken>& tokens_;
+	std::vector<ParsedToken>& tokens_;
 	std::size_t position_;
 };
 
-Cy86Literal CopyLiteral(FundamentalType type, const void* data,
-	std::size_t size, bool array, std::size_t elements)
+Cy86Literal CopyLiteral(Cy86ProgramModel& program, FundamentalType type,
+	const void* data, std::size_t size, bool array, std::size_t elements)
 {
+	if (size > std::numeric_limits<std::uint32_t>::max() ||
+		elements > std::numeric_limits<std::uint32_t>::max() ||
+		program.literal_bytes.size() >
+			std::numeric_limits<std::uint32_t>::max() - size)
+		throw std::runtime_error("CY86 literal storage limit exceeded");
 	Cy86Literal result;
 	result.type = type;
-	result.elements = elements;
+	result.offset = static_cast<std::uint32_t>(program.literal_bytes.size());
+	result.size = static_cast<std::uint32_t>(size);
+	result.elements = static_cast<std::uint32_t>(elements);
 	result.array = array;
 	const unsigned char* begin = static_cast<const unsigned char*>(data);
-	result.bytes.assign(begin, begin + size);
+	if (size != 0)
+		program.literal_bytes.insert(program.literal_bytes.end(), begin,
+			begin + size);
 	return result;
+}
+
+unsigned char* LiteralData(Cy86ProgramModel& program,
+	const Cy86Literal& literal)
+{
+	if (literal.offset > program.literal_bytes.size() ||
+		literal.size > program.literal_bytes.size() - literal.offset)
+		throw std::logic_error("invalid CY86 literal storage range");
+	return literal.size == 0 ? 0 : &program.literal_bytes[literal.offset];
 }
 
 void Require(bool condition, const char* message)
@@ -451,51 +520,55 @@ std::size_t Cy86LiteralAlignment(const Cy86Literal& literal)
 {
 	if (literal.array)
 	{
-		Require(literal.elements != 0 && literal.bytes.size() % literal.elements == 0,
+		Require(literal.elements != 0 && literal.size % literal.elements == 0,
 			"invalid literal array representation");
-		return literal.bytes.size() / literal.elements;
+		return literal.size / literal.elements;
 	}
 	return ScalarTypeSize(literal.type);
 }
 
-Cy86Literal NegateCy86Literal(const Cy86Literal& literal)
+Cy86Literal NegateCy86Literal(Cy86ProgramModel& program,
+	Cy86Literal result)
 {
-	Require(!literal.array && (Cy86LiteralIsIntegral(literal) ||
-		Cy86LiteralIsFloating(literal)), "only arithmetic literals may be negated");
-	Cy86Literal result = literal;
+	Require(!result.array && (Cy86LiteralIsIntegral(result) ||
+		Cy86LiteralIsFloating(result)), "only arithmetic literals may be negated");
 	if (Cy86LiteralIsIntegral(result))
 	{
+		unsigned char* bytes = LiteralData(program, result);
 		unsigned carry = 1;
-		for (std::size_t i = 0; i < result.bytes.size(); ++i)
+		for (std::size_t i = 0; i < result.size; ++i)
 		{
-			const unsigned value = static_cast<unsigned>(~result.bytes[i] & 0xff) + carry;
-			result.bytes[i] = static_cast<unsigned char>(value);
+			const unsigned value = static_cast<unsigned>(~bytes[i] & 0xff) + carry;
+			bytes[i] = static_cast<unsigned char>(value);
 			carry = value >> 8;
 		}
 	}
 	else
 	{
+		unsigned char* bytes = LiteralData(program, result);
 		const std::size_t sign_byte = result.type == FT_FLOAT ? 3 :
 			(result.type == FT_DOUBLE ? 7 : 9);
-		Require(sign_byte < result.bytes.size(), "invalid floating representation");
-		result.bytes[sign_byte] ^= 0x80;
+		Require(sign_byte < result.size, "invalid floating representation");
+		bytes[sign_byte] ^= 0x80;
 	}
 	return result;
 }
 
 std::uint64_t ConvertCy86LiteralToUnsigned(const Cy86Literal& literal,
-	unsigned width)
+	const std::vector<unsigned char>& bytes, unsigned width)
 {
 	Require(Cy86LiteralIsIntegral(literal), "integral literal required");
 	Require(width == 8 || width == 16 || width == 32 || width == 64,
 		"unsupported integral width");
 	const std::size_t output_size = width / 8;
-	const std::size_t copied = std::min(output_size, literal.bytes.size());
+	if (literal.offset > bytes.size() || literal.size > bytes.size() - literal.offset)
+		throw std::logic_error("invalid CY86 literal storage range");
+	const std::size_t copied = std::min<std::size_t>(output_size, literal.size);
 	std::uint64_t result = 0;
 	for (std::size_t i = 0; i < copied; ++i)
-		result |= static_cast<std::uint64_t>(literal.bytes[i]) << (i * 8);
+		result |= static_cast<std::uint64_t>(bytes[literal.offset + i]) << (i * 8);
 	if (copied < output_size && Cy86LiteralIsSigned(literal) && copied != 0 &&
-		(literal.bytes[copied - 1] & 0x80) != 0)
+		(bytes[literal.offset + copied - 1] & 0x80) != 0)
 	{
 		for (std::size_t i = copied; i < output_size; ++i)
 			result |= static_cast<std::uint64_t>(0xff) << (i * 8);
@@ -539,12 +612,12 @@ public:
 	void EmitLiteral(const std::string&, FundamentalType type, const void* data,
 		std::size_t size)
 	{
-		AddLiteral(CopyLiteral(type, data, size, false, 0));
+		AddLiteral(CopyLiteral(program_, type, data, size, false, 0));
 	}
 	void EmitLiteralArray(const std::string&, std::size_t elements,
 		FundamentalType type, const void* data, std::size_t size)
 	{
-		AddLiteral(CopyLiteral(type, data, size, true, elements));
+		AddLiteral(CopyLiteral(program_, type, data, size, true, elements));
 	}
 	void EmitUserDefinedCharacter(const std::string&, const std::string&,
 		FundamentalType, const void*, std::size_t) { InvalidToken(); }
@@ -559,9 +632,7 @@ public:
 	void Finish()
 	{
 		Require(tokens_.empty(), "unterminated CY86 statement");
-		for (std::size_t i = 0; i < referenced_labels_.size(); ++i)
-			Require(program_.label_statements.count(referenced_labels_[i]) != 0,
-				"undefined CY86 label");
+		Require(unresolved_labels_.empty(), "undefined CY86 label");
 	}
 
 private:
@@ -578,14 +649,71 @@ private:
 		if (stats_) stats_->peak_statement_tokens = std::max(
 			stats_->peak_statement_tokens, tokens_.size());
 	}
-	void AddLiteral(const Cy86Literal& literal)
+	void AddLiteral(Cy86Literal literal)
 	{
 		CountToken();
 		ParsedToken token;
 		token.kind = TOKEN_LITERAL;
-		token.literal = literal;
-		tokens_.push_back(token);
+		token.literal = std::move(literal);
+		tokens_.push_back(std::move(token));
 		UpdatePeak();
+	}
+
+	bool LabelIsDefined(Cy86Identifier label) const
+	{
+		return label < defined_labels_.size() && defined_labels_[label] != 0;
+	}
+
+	void ReferenceLabel(Cy86Identifier label)
+	{
+		if (!LabelIsDefined(label)) unresolved_labels_.insert(label);
+	}
+
+	void DefineLabel(Cy86Identifier label)
+	{
+		if (label >= defined_labels_.size())
+			defined_labels_.resize(static_cast<std::size_t>(label) + 1, 0);
+		Require(defined_labels_[label] == 0, "duplicate CY86 label");
+		defined_labels_[label] = 1;
+		unresolved_labels_.erase(label);
+	}
+
+	const Cy86NameFacts& NameFacts(Cy86Identifier identifier)
+	{
+		if (identifier >= name_facts_.size())
+			name_facts_.resize(static_cast<std::size_t>(identifier) + 1);
+		Cy86NameFacts& facts = name_facts_[identifier];
+		if (facts.classified) return facts;
+		const std::string& spelling = program_.identifiers.Spelling(identifier);
+		facts.classified = true;
+		facts.is_register = LookupCy86Register(spelling, &facts.reg);
+		facts.is_start = spelling == "start";
+		Cy86Opcode opcode;
+		if (LookupCy86Opcode(spelling, &opcode))
+		{
+			if (program_.opcodes.size() >=
+				std::numeric_limits<Cy86OpcodeId>::max())
+				throw std::runtime_error("too many distinct CY86 opcodes");
+			facts.opcode = static_cast<Cy86OpcodeId>(program_.opcodes.size());
+			program_.opcodes.push_back(opcode);
+		}
+		return facts;
+	}
+
+	bool FindRegister(Cy86Identifier identifier, Cy86Register* reg)
+	{
+		const Cy86NameFacts& facts = NameFacts(identifier);
+		if (!facts.is_register) return false;
+		*reg = facts.reg;
+		return true;
+	}
+
+	bool FindOpcode(Cy86Identifier identifier, Cy86OpcodeId* opcode)
+	{
+		const Cy86NameFacts& facts = NameFacts(identifier);
+		if (facts.opcode == 0) return false;
+		*opcode = facts.opcode;
+		return true;
 	}
 
 	Cy86Value ParseParenthesizedValue(StatementCursor& cursor)
@@ -595,25 +723,26 @@ private:
 		{
 			Require(!cursor.End() && cursor.Peek().kind == TOKEN_LITERAL,
 				"literal required after minus");
-			value.literal = NegateCy86Literal(cursor.Take().literal);
+			value.literal = NegateCy86Literal(program_,
+				std::move(cursor.Take().literal));
 			Require(cursor.TakeSimple(OP_RPAREN), "missing closing parenthesis");
 			return value;
 		}
 		Require(!cursor.End(), "empty immediate expression");
-		const ParsedToken& first = cursor.Take();
+		ParsedToken& first = cursor.Take();
 		if (first.kind == TOKEN_LITERAL)
 		{
-			value.literal = first.literal;
+			value.literal = std::move(first.literal);
 		}
 		else
 		{
 			Require(first.kind == TOKEN_IDENTIFIER, "invalid immediate expression");
 			Cy86Register reg;
-			Require(!LookupCy86Register(program_.identifiers.Spelling(first.identifier),
-				&reg), "register cannot be used as an immediate label");
+			Require(!FindRegister(first.identifier, &reg),
+				"register cannot be used as an immediate label");
 			value.kind = CY86_LABEL_VALUE;
 			value.label = first.identifier;
-			referenced_labels_.push_back(value.label);
+			ReferenceLabel(value.label);
 			if (cursor.TakeSimple(OP_PLUS)) value.adjustment_sign = 1;
 			else if (cursor.TakeSimple(OP_MINUS)) value.adjustment_sign = -1;
 			if (value.adjustment_sign != 0)
@@ -621,7 +750,7 @@ private:
 				Require(!cursor.End() && cursor.Peek().kind == TOKEN_LITERAL &&
 					Cy86LiteralIsIntegral(cursor.Peek().literal),
 					"integral label adjustment required");
-				value.adjustment = cursor.Take().literal;
+				value.adjustment = std::move(cursor.Take().literal);
 			}
 		}
 		Require(cursor.TakeSimple(OP_RPAREN), "missing closing parenthesis");
@@ -632,19 +761,17 @@ private:
 	{
 		Cy86Address address;
 		Require(!cursor.End(), "empty memory expression");
-		const ParsedToken& base = cursor.Take();
+		ParsedToken& base = cursor.Take();
 		if (base.kind == TOKEN_LITERAL)
 		{
-			Require(Cy86LiteralIsIntegral(base.literal),
-				"integral memory address required");
 			address.base = CY86_ADDRESS_LITERAL;
-			address.literal = base.literal;
+			address.literal = std::move(base.literal);
 		}
 		else
 		{
 			Require(base.kind == TOKEN_IDENTIFIER, "invalid memory address");
 			Cy86Register reg;
-			if (LookupCy86Register(program_.identifiers.Spelling(base.identifier), &reg))
+			if (FindRegister(base.identifier, &reg))
 			{
 				Require(reg.width == 64, "memory address register must be 64-bit");
 				address.base = CY86_ADDRESS_REGISTER;
@@ -654,7 +781,7 @@ private:
 			{
 				address.base = CY86_ADDRESS_LABEL;
 				address.label = base.identifier;
-				referenced_labels_.push_back(address.label);
+				ReferenceLabel(address.label);
 			}
 			if (cursor.TakeSimple(OP_PLUS)) address.displacement_sign = 1;
 			else if (cursor.TakeSimple(OP_MINUS)) address.displacement_sign = -1;
@@ -663,7 +790,7 @@ private:
 				Require(!cursor.End() && cursor.Peek().kind == TOKEN_LITERAL &&
 					Cy86LiteralIsIntegral(cursor.Peek().literal),
 					"integral memory displacement required");
-				address.displacement = cursor.Take().literal;
+				address.displacement = std::move(cursor.Take().literal);
 			}
 		}
 		Require(cursor.TakeSimple(OP_RSQUARE), "missing closing square bracket");
@@ -686,16 +813,15 @@ private:
 			operand.immediate = ParseParenthesizedValue(cursor);
 			return operand;
 		}
-		const ParsedToken& token = cursor.Take();
+		ParsedToken& token = cursor.Take();
 		if (token.kind == TOKEN_LITERAL)
 		{
 			operand.kind = CY86_IMMEDIATE_OPERAND;
-			operand.immediate.literal = token.literal;
+			operand.immediate.literal = std::move(token.literal);
 			return operand;
 		}
 		Require(token.kind == TOKEN_IDENTIFIER, "invalid CY86 operand");
-		if (LookupCy86Register(program_.identifiers.Spelling(token.identifier),
-			&operand.reg))
+		if (FindRegister(token.identifier, &operand.reg))
 		{
 			operand.kind = CY86_REGISTER_OPERAND;
 		}
@@ -704,7 +830,7 @@ private:
 			operand.kind = CY86_IMMEDIATE_OPERAND;
 			operand.immediate.kind = CY86_LABEL_VALUE;
 			operand.immediate.label = token.identifier;
-			referenced_labels_.push_back(token.identifier);
+			ReferenceLabel(token.identifier);
 		}
 		return operand;
 	}
@@ -724,21 +850,6 @@ private:
 				"CY86 register width mismatch");
 			return;
 		}
-		if (operand.kind == CY86_MEMORY_OPERAND) return;
-		if (operand.immediate.kind == CY86_LABEL_VALUE)
-		{
-			Require(constraint.value_class != CY86_VALUE_FLOAT,
-				"label cannot be a floating operand");
-			return;
-		}
-		const Cy86Literal& literal = operand.immediate.literal;
-		if (constraint.value_class == CY86_VALUE_FLOAT)
-			Require(Cy86LiteralIsFloating(literal), "floating literal required");
-		else if (constraint.value_class == CY86_VALUE_ADDRESS)
-			Require(Cy86LiteralIsIntegral(literal), "integral address required");
-		else if (constraint.value_class != CY86_VALUE_BITS)
-			Require(Cy86LiteralIsIntegral(literal) || literal.array,
-				"integral or raw-byte literal required");
 	}
 
 	void ParseInstruction(StatementCursor& cursor, Cy86Statement* statement)
@@ -746,15 +857,15 @@ private:
 		Require(!cursor.End() && cursor.Peek().kind == TOKEN_IDENTIFIER,
 			"CY86 opcode required");
 		const Cy86Identifier opcode_id = cursor.Take().identifier;
-		const std::string& opcode_spelling =
-			program_.identifiers.Spelling(opcode_id);
-		if (!LookupCy86Opcode(opcode_spelling, &statement->opcode))
-			throw std::runtime_error("unknown CY86 opcode: " + opcode_spelling);
-		statement->operands.reserve(statement->opcode.operand_count);
-		for (unsigned i = 0; i < statement->opcode.operand_count; ++i)
+		if (!FindOpcode(opcode_id, &statement->opcode))
+			throw std::runtime_error("unknown CY86 opcode: " +
+				program_.identifiers.Spelling(opcode_id));
+		const Cy86Opcode& opcode = program_.opcodes[statement->opcode];
+		statement->operands.reserve(opcode.operand_count);
+		for (unsigned i = 0; i < opcode.operand_count; ++i)
 		{
 			statement->operands.push_back(ParseOperand(cursor));
-			ValidateOperand(statement->operands.back(), statement->opcode.operands[i]);
+			ValidateOperand(statement->operands.back(), opcode.operands[i]);
 		}
 		Require(cursor.End(), "too many tokens in CY86 instruction");
 	}
@@ -766,28 +877,20 @@ private:
 		Cy86Statement statement;
 		while (!cursor.End() && cursor.Peek().kind == TOKEN_IDENTIFIER)
 		{
+			const std::size_t checkpoint = cursor.Position();
 			const Cy86Identifier label = cursor.Peek().identifier;
-			const ParsedToken& ignored = cursor.Take();
+			ParsedToken& ignored = cursor.Take();
 			(void)ignored;
 			if (!cursor.TakeSimple(OP_COLON))
 			{
-				// The identifier belongs to the opcode. Reparse from the beginning of
-				// the non-label suffix using a compact temporary suffix.
-				std::vector<ParsedToken> suffix;
-				suffix.push_back(tokens_[statement.labels.size() * 2]);
-				const std::size_t begin = statement.labels.size() * 2 + 1;
-				suffix.insert(suffix.end(), tokens_.begin() + begin, tokens_.end());
-				StatementCursor instruction_cursor(suffix);
-				ParseInstruction(instruction_cursor, &statement);
-				CommitStatement(statement);
+				cursor.SetPosition(checkpoint);
+				ParseInstruction(cursor, &statement);
+				CommitStatement(std::move(statement));
 				tokens_.clear();
 				return;
 			}
-			Cy86Register reg;
-			Cy86Opcode opcode;
-			const std::string& spelling = program_.identifiers.Spelling(label);
-			Require(!LookupCy86Register(spelling, &reg) &&
-				!LookupCy86Opcode(spelling, &opcode),
+			const Cy86NameFacts& facts = NameFacts(label);
+			Require(!facts.is_register && facts.opcode == 0,
 				"label collides with a CY86 register or opcode");
 			statement.labels.push_back(label);
 		}
@@ -795,7 +898,7 @@ private:
 		if (cursor.Peek().kind == TOKEN_LITERAL)
 		{
 			statement.kind = CY86_LITERAL_STATEMENT;
-			statement.literal = cursor.Take().literal;
+			statement.literal = std::move(cursor.Take().literal);
 			Require(cursor.End(), "invalid literal statement");
 		}
 		else if (cursor.TakeSimple(OP_MINUS))
@@ -803,38 +906,43 @@ private:
 			Require(!cursor.End() && cursor.Peek().kind == TOKEN_LITERAL,
 				"literal required after minus");
 			statement.kind = CY86_LITERAL_STATEMENT;
-			statement.literal = NegateCy86Literal(cursor.Take().literal);
+			statement.literal = NegateCy86Literal(program_,
+				std::move(cursor.Take().literal));
 			Require(cursor.End(), "invalid negated literal statement");
 		}
 		else
 		{
 			ParseInstruction(cursor, &statement);
 		}
-		CommitStatement(statement);
+		CommitStatement(std::move(statement));
 		tokens_.clear();
 	}
 
-	void CommitStatement(const Cy86Statement& statement)
+	void CommitStatement(Cy86Statement&& statement)
 	{
-		const std::size_t statement_index = program_.statements.size();
+		const std::size_t label_count = statement.labels.size();
 		for (std::size_t i = 0; i < statement.labels.size(); ++i)
 		{
-			Require(program_.label_statements.insert(std::make_pair(
-				statement.labels[i], statement_index)).second,
-				"duplicate CY86 label");
+			DefineLabel(statement.labels[i]);
+			if (NameFacts(statement.labels[i]).is_start)
+				program_.start_label = statement.labels[i];
 		}
-		program_.statements.push_back(statement);
+		if (stats_ && statement.kind == CY86_INSTRUCTION_STATEMENT)
+			stats_->operands += statement.operands.size();
+		program_.statements.push_back(std::move(statement));
 		if (stats_)
 		{
 			++stats_->statements;
-			stats_->labels += statement.labels.size();
+			stats_->labels += label_count;
 		}
 	}
 
 	Cy86ProgramModel& program_;
 	Cy86Stats* stats_;
 	std::vector<ParsedToken> tokens_;
-	std::vector<Cy86Identifier> referenced_labels_;
+	std::vector<unsigned char> defined_labels_;
+	std::unordered_set<Cy86Identifier> unresolved_labels_;
+	std::vector<Cy86NameFacts> name_facts_;
 };
 
 }
@@ -842,8 +950,9 @@ private:
 struct Cy86ParserState
 {
 	explicit Cy86ParserState(Cy86ProgramModel& program, Cy86Stats* stats)
-		: tokens(program, stats) {}
+		: tokens(program, stats), stats(stats) {}
 	Cy86TokenParser tokens;
+	Cy86Stats* stats;
 };
 
 Cy86ParserState* CreateCy86Parser(Cy86ProgramModel& program, Cy86Stats* stats)
@@ -860,7 +969,13 @@ void ParseCy86TranslationUnit(Cy86ParserState& parser,
 	const std::string& path, const std::string& source,
 	const PreprocessingOptions& options)
 {
-	PreprocessFile(path, source, parser.tokens, options);
+	PreprocessingStats preprocessing;
+	PreprocessFile(path, source, parser.tokens, options,
+		parser.stats ? &preprocessing : 0);
+	if (parser.stats)
+		parser.stats->peak_live_source_bytes = std::max(
+			parser.stats->peak_live_source_bytes,
+			preprocessing.peak_live_source_bytes);
 }
 
 void FinishCy86Program(Cy86ParserState& parser)
