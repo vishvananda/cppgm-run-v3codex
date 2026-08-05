@@ -164,6 +164,8 @@ const char* SimpleTokenKindName(SimpleTokenKind kind);
 
 struct IPostTokenStream
 {
+	// Sources, suffixes, prefixes, and byte ranges are borrowed callback data.
+	// A consumer that needs them after return must retain its own typed facts.
 	virtual void EmitInvalid(const std::string& source) = 0;
 	virtual void EmitSimple(const std::string& source,
 		SimpleTokenKind kind) = 0;
@@ -194,7 +196,13 @@ struct PostTokenizationStats
 	std::size_t preprocessing_tokens;
 	std::size_t emitted_tokens;
 	std::size_t decoded_literal_units;
+	std::size_t string_sequences;
+	std::size_t max_pending_string_tokens;
+	// Source-spelling payload retained for the largest maximal sequence.
 	std::size_t peak_pending_string_bytes;
+	// Peak capacities owned by PA2 while a string sequence is analyzed.
+	std::size_t peak_literal_bytes;
+	std::size_t peak_phase_storage_bytes;
 	std::uint64_t elapsed_nanoseconds;
 
 	PostTokenizationStats();
@@ -202,7 +210,8 @@ struct PostTokenizationStats
 
 // Run phases 1-3 through the shared PA1 tokenizer, apply the PA2 phase-6 and
 // token recognition rules, and emit typed events without retaining a token
-// vector. Only a maximal adjacent string-literal sequence is delayed.
+// vector. Only one joined spelling plus compact ranges for the current maximal
+// adjacent string-literal sequence is delayed.
 void TokenizePostTokens(const std::string& source,
 	IPostTokenStream& output,
 	PostTokenizationStats* stats = 0);

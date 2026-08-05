@@ -196,6 +196,19 @@ void AppendLittleEndian(std::uint64_t value, std::size_t width,
 	}
 }
 
+template <std::size_t Size>
+void StoreLittleEndian(std::uint64_t value, std::size_t width,
+	unsigned char (&bytes)[Size])
+{
+	if (width > Size)
+		throw std::logic_error("scalar literal exceeds fixed storage");
+	for (std::size_t i = 0; i < width; ++i)
+	{
+		bytes[i] = static_cast<unsigned char>(value & 0xFF);
+		value >>= 8;
+	}
+}
+
 bool ParseUnsignedDigits(const std::string& text, std::size_t begin,
 	std::size_t end, int base, std::uint64_t* value)
 {
@@ -451,7 +464,7 @@ bool ParseFloatingSpelling(const std::string& text, bool allow_suffix,
 
 template <typename T>
 bool DecodeFloatingValue(const std::string& spelling,
-	std::vector<unsigned char>* bytes)
+	unsigned char* bytes, std::size_t* size)
 {
 	T value;
 	std::memset(&value, 0, sizeof(value));
@@ -460,9 +473,8 @@ bool DecodeFloatingValue(const std::string& spelling,
 	input >> value;
 	if (!input)
 		return false;
-	const unsigned char* first =
-		reinterpret_cast<const unsigned char*>(&value);
-	bytes->assign(first, first + sizeof(value));
+	std::memcpy(bytes, &value, sizeof(value));
+	*size = sizeof(value);
 	return true;
 }
 
@@ -486,7 +498,7 @@ bool DecodeSimpleEscape(char escaped, std::uint32_t* value)
 }
 
 bool DecodeEscape(const std::string& text, std::size_t end,
-	std::size_t* position, std::uint32_t* value, bool* numeric)
+	std::size_t* position, std::uint32_t* value)
 {
 	if (*position >= end || text[*position] != '\\')
 		return false;
@@ -496,7 +508,6 @@ bool DecodeEscape(const std::string& text, std::size_t end,
 	if (DecodeSimpleEscape(text[*position], value))
 	{
 		++*position;
-		*numeric = false;
 		return true;
 	}
 	if (text[*position] >= '0' && text[*position] <= '7')
@@ -511,7 +522,6 @@ bool DecodeEscape(const std::string& text, std::size_t end,
 			++digits;
 		}
 		*value = result;
-		*numeric = true;
 		return true;
 	}
 	if (text[*position] != 'x')
@@ -529,7 +539,6 @@ bool DecodeEscape(const std::string& text, std::size_t end,
 		++*position;
 	}
 	*value = static_cast<std::uint32_t>(result);
-	*numeric = true;
 	return true;
 }
 
@@ -594,9 +603,8 @@ bool DecodeCharacter(const std::string& spelling,
 		std::uint32_t current = 0;
 		if (spelling[position] == '\\')
 		{
-			bool numeric = false;
 			if (!DecodeEscape(spelling, syntax.content_end, &position,
-				&current, &numeric))
+				&current))
 				return false;
 		}
 		else if (!DecodeUTF8One(spelling, syntax.content_end,
@@ -620,17 +628,16 @@ enum StringEncoding
 
 struct StringPart
 {
-	const std::string* source;
 	StringEncoding encoding;
 	bool raw;
 	std::size_t content_begin;
 	std::size_t content_end;
-	std::string suffix;
+	std::size_t suffix_begin;
+	std::size_t suffix_end;
 };
 
 bool ParseStringPart(const std::string& spelling, StringPart* part)
 {
-	part->source = &spelling;
 	part->encoding = ENCODING_ORDINARY;
 	part->raw = false;
 	std::size_t position = 0;
@@ -663,15 +670,24 @@ bool ParseStringPart(const std::string& spelling, StringPart* part)
 		const std::size_t open = spelling.find('(', delimiter_begin);
 		if (open == std::string::npos)
 			return false;
-		const std::string delimiter =
-			spelling.substr(delimiter_begin, open - delimiter_begin);
-		const std::string terminator = ")" + delimiter + "\"";
-		const std::size_t close = spelling.rfind(terminator);
-		if (close == std::string::npos || close < open)
+		const std::size_t delimiter_size = open - delimiter_begin;
+		if (delimiter_size > 16)
+			return false;
+		std::size_t close = open + 1;
+		for (; close < spelling.size(); ++close)
+		{
+			if (spelling[close] == ')' &&
+				close + delimiter_size + 1 < spelling.size() &&
+				spelling.compare(close + 1, delimiter_size, spelling,
+					delimiter_begin, delimiter_size) == 0 &&
+				spelling[close + delimiter_size + 1] == '"')
+				break;
+		}
+		if (close == spelling.size())
 			return false;
 		part->content_begin = open + 1;
 		part->content_end = close;
-		part->suffix = spelling.substr(close + terminator.size());
+		part->suffix_begin = close + delimiter_size + 2;
 	}
 	else
 	{
@@ -692,9 +708,11 @@ bool ParseStringPart(const std::string& spelling, StringPart* part)
 		if (position >= spelling.size())
 			return false;
 		part->content_end = position;
-		part->suffix = spelling.substr(position + 1);
+		part->suffix_begin = position + 1;
 	}
-	return part->suffix.empty() || part->suffix[0] == '_';
+	part->suffix_end = spelling.size();
+	return part->suffix_begin == part->suffix_end ||
+		spelling[part->suffix_begin] == '_';
 }
 
 std::size_t EncodingWidth(StringEncoding encoding)
@@ -781,26 +799,25 @@ bool AppendStringCodePoint(std::uint32_t value, StringEncoding encoding,
 	return AppendStringUnit(value, encoding, bytes, units);
 }
 
-bool DecodeStringPart(const StringPart& part, StringEncoding encoding,
+bool DecodeStringPart(const std::string& text, std::size_t content_begin,
+	std::size_t content_end, bool raw, StringEncoding encoding,
 	std::vector<unsigned char>* bytes, std::size_t* units)
 {
-	const std::string& text = *part.source;
-	std::size_t position = part.content_begin;
-	while (position < part.content_end)
+	std::size_t position = content_begin;
+	while (position < content_end)
 	{
 		std::uint32_t value = 0;
-		if (!part.raw && text[position] == '\\')
+		if (!raw && text[position] == '\\')
 		{
-			bool numeric = false;
-			if (!DecodeEscape(text, part.content_end, &position,
-				&value, &numeric))
+			if (!DecodeEscape(text, content_end, &position,
+				&value))
 				return false;
 			if (!AppendStringUnit(value, encoding, bytes, units))
 				return false;
 		}
 		else
 		{
-			if (!DecodeUTF8One(text, part.content_end, &position, &value) ||
+			if (!DecodeUTF8One(text, content_end, &position, &value) ||
 				!AppendStringCodePoint(value, encoding, bytes, units))
 				return false;
 		}
@@ -808,11 +825,24 @@ bool DecodeStringPart(const StringPart& part, StringEncoding encoding,
 	return true;
 }
 
+// A maximal string-literal sequence needs to defer content encoding until its
+// final encoding prefix is known. Retain one joined source spelling and compact
+// ranges into it instead of one allocating string object per preprocessing
+// token and a second joined copy at flush time.
+struct PendingStringPart
+{
+	bool raw;
+	std::size_t content_begin;
+	std::size_t content_end;
+};
+
 class PostTokenAnalyzer : public IPPTokenStream
 {
 public:
 	PostTokenAnalyzer(IPostTokenStream& output, PostTokenizationStats* stats)
-		: output_(output), stats_(stats), pending_string_bytes_(0)
+		: output_(output), stats_(stats), pending_encoding_(ENCODING_ORDINARY),
+		  pending_valid_(true), pending_string_tokens_(0),
+		  pending_string_bytes_(0)
 	{}
 
 	void emit_whitespace_sequence() {}
@@ -963,33 +993,39 @@ private:
 				CountOutputToken();
 				return;
 			}
-			std::vector<unsigned char> bytes;
-			AppendLittleEndian(value, FundamentalWidth(type), &bytes);
-			output_.EmitLiteral(source, type, &bytes[0], bytes.size());
+			unsigned char bytes[sizeof(long double) > sizeof(std::uint64_t) ?
+				sizeof(long double) : sizeof(std::uint64_t)];
+			const std::size_t size = FundamentalWidth(type);
+			StoreLittleEndian(value, size, bytes);
+			output_.EmitLiteral(source, type, bytes, size);
 			CountOutputToken();
 			return;
 		}
 
 		FundamentalType type;
 		std::size_t numeric_end = 0;
-		std::vector<unsigned char> bytes;
+		unsigned char bytes[sizeof(long double) > sizeof(std::uint64_t) ?
+			sizeof(long double) : sizeof(std::uint64_t)];
+		std::size_t size = 0;
 		if (!ParseFloatingSpelling(source, true, &type, &numeric_end) ||
-			!DecodeFloating(source.substr(0, numeric_end), type, &bytes))
+			!DecodeFloating(source.substr(0, numeric_end), type, bytes, &size))
 			output_.EmitInvalid(source);
 		else
-			output_.EmitLiteral(source, type, &bytes[0], bytes.size());
+			output_.EmitLiteral(source, type, bytes, size);
 		CountOutputToken();
 	}
 
 	bool DecodeFloating(const std::string& spelling, FundamentalType type,
-		std::vector<unsigned char>* bytes)
+		unsigned char* bytes, std::size_t* size)
 	{
 		switch (type)
 		{
-		case FT_FLOAT: return DecodeFloatingValue<float>(spelling, bytes);
-		case FT_DOUBLE: return DecodeFloatingValue<double>(spelling, bytes);
+		case FT_FLOAT:
+			return DecodeFloatingValue<float>(spelling, bytes, size);
+		case FT_DOUBLE:
+			return DecodeFloatingValue<double>(spelling, bytes, size);
 		case FT_LONG_DOUBLE:
-			return DecodeFloatingValue<long double>(spelling, bytes);
+			return DecodeFloatingValue<long double>(spelling, bytes, size);
 		default: return false;
 		}
 	}
@@ -1010,13 +1046,15 @@ private:
 		FundamentalType type = syntax.type;
 		if (type == FT_CHAR && value > 0x7F)
 			type = FT_INT;
-		std::vector<unsigned char> bytes;
-		AppendLittleEndian(value, FundamentalWidth(type), &bytes);
+		unsigned char bytes[sizeof(long double) > sizeof(std::uint64_t) ?
+			sizeof(long double) : sizeof(std::uint64_t)];
+		const std::size_t size = FundamentalWidth(type);
+		StoreLittleEndian(value, size, bytes);
 		if (user_defined)
 			output_.EmitUserDefinedCharacter(source, syntax.suffix, type,
-				&bytes[0], bytes.size());
+				bytes, size);
 		else
-			output_.EmitLiteral(source, type, &bytes[0], bytes.size());
+			output_.EmitLiteral(source, type, bytes, size);
 		if (stats_)
 			++stats_->decoded_literal_units;
 		CountOutputToken();
@@ -1025,82 +1063,128 @@ private:
 	void QueueString(const std::string& source)
 	{
 		CountPreprocessingToken();
-		pending_strings_.push_back(source);
+		if (pending_string_tokens_ != 0)
+			pending_source_.push_back(' ');
+		const std::size_t source_begin = pending_source_.size();
+		pending_source_ += source;
+		++pending_string_tokens_;
 		pending_string_bytes_ += source.size();
+
+		if (pending_valid_)
+		{
+			StringPart parsed;
+			if (!ParseStringPart(source, &parsed))
+				pending_valid_ = false;
+			else
+			{
+				if (parsed.encoding != ENCODING_ORDINARY)
+				{
+					if (pending_encoding_ != ENCODING_ORDINARY &&
+						pending_encoding_ != parsed.encoding)
+						pending_valid_ = false;
+					else
+						pending_encoding_ = parsed.encoding;
+				}
+				const std::size_t suffix_size =
+					parsed.suffix_end - parsed.suffix_begin;
+				if (suffix_size != 0)
+				{
+					if (pending_suffix_.empty())
+						pending_suffix_.assign(source, parsed.suffix_begin,
+							suffix_size);
+					else if (pending_suffix_.size() != suffix_size ||
+						source.compare(parsed.suffix_begin, suffix_size,
+							pending_suffix_) != 0)
+						pending_valid_ = false;
+				}
+				if (pending_valid_ && parsed.content_begin != parsed.content_end)
+				{
+					PendingStringPart part;
+					part.raw = parsed.raw;
+					part.content_begin = source_begin + parsed.content_begin;
+					part.content_end = source_begin + parsed.content_end;
+					pending_parts_.push_back(part);
+				}
+			}
+			if (!pending_valid_)
+				pending_parts_.clear();
+		}
 		if (stats_)
+		{
+			stats_->max_pending_string_tokens = std::max(
+				stats_->max_pending_string_tokens, pending_string_tokens_);
 			stats_->peak_pending_string_bytes = std::max(
 				stats_->peak_pending_string_bytes, pending_string_bytes_);
+		}
+		ObserveStorage();
 	}
 
-	std::string JoinedStringSource() const
+	void ObserveStorage()
 	{
-		std::string source;
-		source.reserve(pending_string_bytes_ + pending_strings_.size() - 1);
-		for (std::size_t i = 0; i < pending_strings_.size(); ++i)
-		{
-			if (i != 0)
-				source.push_back(' ');
-			source += pending_strings_[i];
-		}
-		return source;
+		if (!stats_)
+			return;
+		stats_->peak_literal_bytes = std::max(stats_->peak_literal_bytes,
+			pending_bytes_.capacity());
+		const std::size_t phase_storage = pending_source_.capacity() +
+			pending_suffix_.capacity() +
+			pending_parts_.capacity() * sizeof(PendingStringPart) +
+			pending_bytes_.capacity();
+		stats_->peak_phase_storage_bytes = std::max(
+			stats_->peak_phase_storage_bytes, phase_storage);
 	}
 
 	void FlushStrings()
 	{
-		if (pending_strings_.empty())
+		if (pending_string_tokens_ == 0)
 			return;
-		const std::string source = JoinedStringSource();
-		std::vector<StringPart> parts(pending_strings_.size());
-		StringEncoding encoding = ENCODING_ORDINARY;
-		std::string suffix;
-		bool valid = true;
-		for (std::size_t i = 0; i < pending_strings_.size(); ++i)
-		{
-			if (!ParseStringPart(pending_strings_[i], &parts[i]))
-			{
-				valid = false;
-				break;
-			}
-			if (parts[i].encoding != ENCODING_ORDINARY)
-			{
-				if (encoding != ENCODING_ORDINARY &&
-					encoding != parts[i].encoding)
-					valid = false;
-				else
-					encoding = parts[i].encoding;
-			}
-			if (!parts[i].suffix.empty())
-			{
-				if (!suffix.empty() && suffix != parts[i].suffix)
-					valid = false;
-				else
-					suffix = parts[i].suffix;
-			}
-		}
-		std::vector<unsigned char> bytes;
+		if (stats_)
+			++stats_->string_sequences;
+		pending_bytes_.clear();
 		std::size_t units = 0;
-		for (std::size_t i = 0; valid && i < parts.size(); ++i)
-			valid = DecodeStringPart(parts[i], encoding, &bytes, &units);
+		bool valid = pending_valid_;
+		for (std::size_t i = 0; valid && i < pending_parts_.size(); ++i)
+		{
+			valid = DecodeStringPart(pending_source_,
+				pending_parts_[i].content_begin,
+				pending_parts_[i].content_end, pending_parts_[i].raw,
+				pending_encoding_, &pending_bytes_, &units);
+			ObserveStorage();
+		}
 		if (valid)
-			valid = AppendStringUnit(0, encoding, &bytes, &units);
+			valid = AppendStringUnit(0, pending_encoding_, &pending_bytes_, &units);
+		ObserveStorage();
 		if (!valid)
-			output_.EmitInvalid(source);
-		else if (suffix.empty())
-			output_.EmitLiteralArray(source, units, EncodingType(encoding),
-				&bytes[0], bytes.size());
+			output_.EmitInvalid(pending_source_);
+		else if (pending_suffix_.empty())
+			output_.EmitLiteralArray(pending_source_, units,
+				EncodingType(pending_encoding_),
+				&pending_bytes_[0], pending_bytes_.size());
 		else
-			output_.EmitUserDefinedString(source, suffix, units,
-				EncodingType(encoding), &bytes[0], bytes.size());
+			output_.EmitUserDefinedString(pending_source_, pending_suffix_,
+				units, EncodingType(pending_encoding_), &pending_bytes_[0],
+				pending_bytes_.size());
 		if (stats_ && valid)
 			stats_->decoded_literal_units += units;
 		CountOutputToken();
-		pending_strings_.clear();
+		pending_source_.clear();
+		pending_suffix_.clear();
+		pending_parts_.clear();
+		pending_bytes_.clear();
+		pending_encoding_ = ENCODING_ORDINARY;
+		pending_valid_ = true;
+		pending_string_tokens_ = 0;
 		pending_string_bytes_ = 0;
 	}
 
 	IPostTokenStream& output_;
 	PostTokenizationStats* stats_;
-	std::vector<std::string> pending_strings_;
+	std::string pending_source_;
+	std::string pending_suffix_;
+	std::vector<PendingStringPart> pending_parts_;
+	std::vector<unsigned char> pending_bytes_;
+	StringEncoding pending_encoding_;
+	bool pending_valid_;
+	std::size_t pending_string_tokens_;
 	std::size_t pending_string_bytes_;
 };
 
@@ -1156,7 +1240,9 @@ const char* SimpleTokenKindName(SimpleTokenKind kind)
 
 PostTokenizationStats::PostTokenizationStats()
 	: preprocessing_tokens(0), emitted_tokens(0), decoded_literal_units(0),
-	  peak_pending_string_bytes(0), elapsed_nanoseconds(0)
+	  string_sequences(0), max_pending_string_tokens(0),
+	  peak_pending_string_bytes(0), peak_literal_bytes(0),
+	  peak_phase_storage_bytes(0), elapsed_nanoseconds(0)
 {}
 
 void TokenizePostTokens(const std::string& source, IPostTokenStream& output,

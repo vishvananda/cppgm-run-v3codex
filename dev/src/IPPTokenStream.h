@@ -4,6 +4,8 @@
 
 struct IPPTokenStream
 {
+	// Spellings are borrowed callback data. A consumer that needs a token
+	// after its callback returns must copy or otherwise retain its own facts.
 	virtual void emit_whitespace_sequence() = 0;
 	virtual void emit_new_line() = 0;
 	virtual void emit_header_name(const std::string& data) = 0;
