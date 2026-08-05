@@ -116,6 +116,8 @@ int main(int argc, char** argv)
 				<< " source_bytes=" << source.size()
 				<< " pp_tokens=" << stats.tokenization.emitted_tokens
 				<< " source_tokens=" << stats.source_tokens
+				<< " identifiers=" << stats.interned_identifiers
+				<< " identifier_bytes=" << stats.interned_identifier_bytes
 				<< " lines=" << stats.logical_lines
 				<< " directives=" << stats.directive_lines
 				<< " definitions=" << stats.macro_definitions
@@ -131,6 +133,8 @@ int main(int argc, char** argv)
 				<< " peak_rescan_tokens=" << stats.peak_rescan_tokens
 				<< " peak_replacement_tokens="
 				<< stats.peak_retained_replacement_tokens
+				<< " peak_frames=" << stats.peak_expansion_frames
+				<< " peak_argument_bytes=" << stats.peak_argument_storage_bytes
 				<< " paint_roots=" << stats.paint_roots
 				<< " paint_nodes=" << stats.paint_nodes
 				<< " elapsed_ns=" << stats.elapsed_nanoseconds << '\n';

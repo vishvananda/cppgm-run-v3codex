@@ -16,6 +16,8 @@ struct MacroProcessingStats
 	std::size_t logical_lines;
 	std::size_t directive_lines;
 	std::size_t source_tokens;
+	std::size_t interned_identifiers;
+	std::size_t interned_identifier_bytes;
 	std::size_t macro_definitions;
 	std::size_t macro_undefinitions;
 	std::size_t macro_lookups;
@@ -27,6 +29,8 @@ struct MacroProcessingStats
 	std::size_t peak_line_tokens;
 	std::size_t peak_rescan_tokens;
 	std::size_t peak_retained_replacement_tokens;
+	std::size_t peak_expansion_frames;
+	std::size_t peak_argument_storage_bytes;
 	std::size_t paint_roots;
 	std::size_t paint_nodes;
 	std::uint64_t elapsed_nanoseconds;
