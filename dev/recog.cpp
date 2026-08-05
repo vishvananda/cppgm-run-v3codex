@@ -1,120 +1,103 @@
-// (C) 2013 CPPGM Foundation www.cppgm.org.  All rights reserved.
+// (C) 2013 CPPGM Foundation www.cppgm.org. All rights reserved.
 
-#include <vector>
-#include <string>
-#include <stdexcept>
+#include <cstdlib>
+#include <ctime>
 #include <fstream>
 #include <iostream>
+#include <iterator>
+#include <stdexcept>
+#include <string>
 
-#include "exceptions.h"
+#include "pa6_recognizer.h"
 
-using namespace std;
-
-bool PA6_IsClassName(const string& identifier)
+namespace
 {
-	return identifier.find('C') != string::npos;
+
+std::string ReadSource(const std::string& path)
+{
+	std::ifstream input(path.c_str(), std::ios::in | std::ios::binary);
+	if (!input) throw std::runtime_error("unable to open source file: " + path);
+	return std::string(std::istreambuf_iterator<char>(input),
+		std::istreambuf_iterator<char>());
 }
 
-bool PA6_IsTemplateName(const string& identifier)
+cppgm::PreprocessingOptions BuildOptions()
 {
-	return identifier.find('T') != string::npos;
+	const std::time_t now = std::time(0);
+	const std::tm* local = std::localtime(&now);
+	if (!local) throw std::runtime_error("unable to determine build time");
+	const char* text = std::asctime(local);
+	if (!text) throw std::runtime_error("unable to format build time");
+	const std::string formatted(text);
+	if (formatted.size() < 24) throw std::runtime_error("invalid asctime result");
+
+	cppgm::PreprocessingOptions options;
+	options.build_date = formatted.substr(4, 7) + formatted.substr(20, 4);
+	options.build_time = formatted.substr(11, 8);
+	options.author = "Vishvananda Abrams";
+	return options;
 }
 
-bool PA6_IsTypedefName(const string& identifier)
+void ReportStats(const std::string& path, const cppgm::RecognitionStats& stats,
+	bool accepted)
 {
-	return identifier.find('Y') != string::npos;
+	std::cerr << "recog_stats"
+		<< " file=" << path
+		<< " accepted=" << (accepted ? 1 : 0)
+		<< " source_bytes=" << stats.preprocessing.source_bytes
+		<< " pp_tokens=" << stats.preprocessing.macros.tokenization.emitted_tokens
+		<< " post_tokens=" << stats.tokens
+		<< " interned_ids=" << stats.interned_identifiers
+		<< " interned_bytes=" << stats.interned_identifier_bytes
+		<< " angle_opens=" << stats.angle_openings
+		<< " angle_closes=" << stats.angle_closings
+		<< " memo_queries=" << stats.memo_queries
+		<< " memo_hits=" << stats.memo_hits
+		<< " rule_evals=" << stats.rule_evaluations
+		<< " expression_evals=" << stats.expression_evaluations
+		<< " memo_entries=" << stats.memo_entries
+		<< " elapsed_ns=" << stats.elapsed_nanoseconds << '\n';
 }
 
-bool PA6_IsEnumName(const string& identifier)
-{
-	return identifier.find('E') != string::npos;
 }
-
-bool PA6_IsNamespaceName(const string& identifier)
-{
-	return identifier.find('N') != string::npos;
-}
-
-bool HasBatchStdinArg(int argc, char** argv)
-{
-	for (int i = 1; i < argc; i++)
-	{
-		if (string(argv[i]) == "--batch-stdin")
-			return true;
-	}
-	return false;
-}
-
-int RunNotImplementedBatchMode()
-{
-	string line;
-	while (getline(cin, line))
-	{
-		(void)line;
-		cout << "EXIT_NOT_IMPLEMENTED" << endl;
-	}
-	return EXIT_SUCCESS;
-}
-
-void DoRecog(istream& in)
-{
-	if (/* TODO: implement PA6 */ false)
-		return;
-	else
-		throw NotImplementedException();
-};
 
 int main(int argc, char** argv)
 {
 	try
 	{
-		if (HasBatchStdinArg(argc, argv))
-			return RunNotImplementedBatchMode();
+		std::ios_base::sync_with_stdio(false);
+		if (argc < 4 || std::string(argv[1]) != "-o")
+			throw std::logic_error("invalid usage");
+		std::ofstream output(argv[2], std::ios::out | std::ios::trunc);
+		if (!output) throw std::runtime_error("unable to open output file");
+		output << "recog " << argc - 3 << '\n';
+		const cppgm::PreprocessingOptions options = BuildOptions();
+		const bool report_stats = std::getenv("CPPGM_FRONTEND_STATS") != 0;
 
-		vector<string> args;
-
-		for (int i = 1; i < argc; i++)
-			args.emplace_back(argv[i]);
-
-		if (args.size() < 3 || args[0] != "-o")
-			throw logic_error("invalid usage");
-
-		string outfile = args[1];
-		size_t nsrcfiles = args.size() - 2;
-
-		ofstream out(outfile);
-
-		out << "recog " << nsrcfiles << endl;
-
-		for (size_t i = 0; i < nsrcfiles; i++)
+		for (int i = 3; i < argc; ++i)
 		{
-			string srcfile = args[i+2];
-
+			const std::string path(argv[i]);
+			bool accepted = false;
 			try
 			{
-				ifstream in(srcfile);
-				DoRecog(in);
-				out << srcfile << " OK" << endl;
+				const std::string source = ReadSource(path);
+				cppgm::RecognitionStats stats;
+				accepted = cppgm::RecognizeTranslationUnit(path, source,
+					options, report_stats ? &stats : 0);
+				if (report_stats) ReportStats(path, stats, accepted);
 			}
-			catch (const NotImplementedException& e)
+			catch (const std::exception& error)
 			{
-				throw;
+				std::cerr << path << ": " << error.what() << '\n';
 			}
-			catch (const exception& e)
-			{
-				cerr << e.what() << endl;
-				out << srcfile << " BAD" << endl;
-			}
+			output << path << (accepted ? " OK\n" : " BAD\n");
 		}
+		if (!output) throw std::runtime_error("unable to write output file");
+		return EXIT_SUCCESS;
 	}
-	catch (const NotImplementedException& e)
+	catch (const std::exception& error)
 	{
-		cerr << "ERROR: " << e.what() << endl;
-		return CPPGM_EXIT_NOT_IMPLEMENTED;
-	}
-	catch (exception& e)
-	{
-		cerr << "ERROR: " << e.what() << endl;
+		std::cerr << "ERROR: " << error.what() << '\n';
 		return EXIT_FAILURE;
 	}
 }
