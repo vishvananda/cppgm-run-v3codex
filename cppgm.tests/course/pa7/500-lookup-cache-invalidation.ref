@@ -1,0 +1,17 @@
+1 translation units
+start translation unit course/pa7/500-lookup-cache-invalidation.t
+start unnamed namespace
+start namespace A
+end namespace
+start namespace B
+end namespace
+start namespace C
+variable before_target_extension long int
+variable after_target_extension char
+end namespace
+start namespace D
+variable before_local_edge long int
+variable after_local_edge char
+end namespace
+end namespace
+end translation unit

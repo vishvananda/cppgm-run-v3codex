@@ -47,6 +47,13 @@ void ReportStats(const std::string& path,
 		<< " pp_tokens="
 		<< stats.preprocessing.macros.tokenization.emitted_tokens
 		<< " post_tokens=" << stats.tokens
+		<< " declarator_frames=" << stats.declarator_frames
+		<< " declarator_cache_hits=" << stats.declarator_cache_hits
+		<< " declarator_cache_misses=" << stats.declarator_cache_misses
+		<< " declarator_memo_entries=" << stats.declarator_memo_entries
+		<< " peak_parser_scratch_bytes=" << stats.peak_parser_scratch_bytes
+		<< " parser_memo_storage_bytes="
+		<< stats.parser_memo_storage_bytes
 		<< " interned_ids=" << stats.identifiers
 		<< " interned_bytes=" << stats.identifier_bytes
 		<< " canonical_types=" << stats.canonical_types
@@ -54,6 +61,11 @@ void ReportStats(const std::string& path,
 		<< " declarations=" << stats.declarations
 		<< " using_edges=" << stats.using_edges
 		<< " lookup_queries=" << stats.lookup_queries
+		<< " lookup_cache_hits=" << stats.lookup_cache_hits
+		<< " lookup_cache_misses=" << stats.lookup_cache_misses
+		<< " lookup_cache_invalidations="
+		<< stats.lookup_cache_invalidations
+		<< " lookup_cache_entries=" << stats.lookup_cache_entries
 		<< " lookup_scope_visits=" << stats.lookup_scope_visits
 		<< " lookup_edge_visits=" << stats.lookup_edge_visits
 		<< " token_storage_bytes=" << stats.token_storage_bytes

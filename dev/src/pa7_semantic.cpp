@@ -1,6 +1,7 @@
 #include "pa7_semantic.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstring>
 #include <limits>
@@ -19,9 +20,15 @@ typedef std::uint32_t NameId;
 typedef std::uint32_t TypeId;
 typedef std::uint32_t NamespaceId;
 typedef std::uint32_t EntityId;
+typedef std::uint32_t UsingEdgeId;
 
 const NamespaceId kNoNamespace = std::numeric_limits<NamespaceId>::max();
 const EntityId kNoEntity = std::numeric_limits<EntityId>::max();
+const UsingEdgeId kNoUsingEdge =
+	std::numeric_limits<UsingEdgeId>::max();
+// Parenthesized grouping uses an explicit stack. This bound applies only to
+// semantic function-parameter recursion and prevents native-stack exhaustion.
+const std::size_t kMaxDeclaratorCallDepth = 4096;
 const std::uint16_t kIdentifierToken =
 	static_cast<std::uint16_t>(OP_ARROW) + 1;
 const std::uint16_t kLiteralToken = kIdentifierToken + 1;
@@ -354,39 +361,88 @@ public:
 
 	void Render(std::ostream& output, TypeId type) const
 	{
-		const TypeRecord& record = Get(type);
-		switch (record.kind)
+		struct Frame
 		{
-		case TYPE_FUNDAMENTAL:
-			output << FundamentalTypeName(record.fundamental);
-			break;
-		case TYPE_QUALIFIED:
-			if ((record.cv & CV_CONST) != 0) output << "const ";
-			if ((record.cv & CV_VOLATILE) != 0) output << "volatile ";
-			Render(output, record.child);
-			break;
-		case TYPE_POINTER:
-			output << "pointer to ";
-			Render(output, record.child);
-			break;
-		case TYPE_LVALUE_REFERENCE:
-			output << "lvalue-reference to ";
-			Render(output, record.child);
-			break;
-		case TYPE_RVALUE_REFERENCE:
-			output << "rvalue-reference to ";
-			Render(output, record.child);
-			break;
-		case TYPE_ARRAY:
-			if (record.bound == 0) output << "array of unknown bound of ";
-			else output << "array of " << record.bound << ' ';
-			Render(output, record.child);
-			break;
-		case TYPE_FUNCTION:
-			RenderFunction(output, record);
-			break;
-		default:
-			throw std::logic_error("invalid canonical type");
+			TypeId type;
+			std::uint32_t next_parameter;
+			unsigned char state;
+
+			explicit Frame(TypeId frame_type)
+				: type(frame_type), next_parameter(0), state(0) {}
+		};
+		std::vector<Frame> stack;
+		stack.push_back(Frame(type));
+		while (!stack.empty())
+		{
+			Frame& frame = stack.back();
+			const TypeRecord& record = Get(frame.type);
+			if (frame.state == 1)
+			{
+				if (frame.next_parameter < record.parameter_count)
+				{
+					output << ", ";
+					stack.push_back(Frame(parameters_[record.parameter_offset +
+						frame.next_parameter++]));
+					continue;
+				}
+				if (record.variadic)
+				{
+					if (record.parameter_count != 0) output << ", ";
+					output << "...";
+				}
+				output << ") returning ";
+				frame.state = 2;
+				stack.push_back(Frame(record.child));
+				continue;
+			}
+			if (frame.state == 2)
+			{
+				stack.pop_back();
+				continue;
+			}
+			switch (record.kind)
+			{
+			case TYPE_FUNDAMENTAL:
+				output << FundamentalTypeName(record.fundamental);
+				stack.pop_back();
+				break;
+			case TYPE_QUALIFIED:
+				if ((record.cv & CV_CONST) != 0) output << "const ";
+				if ((record.cv & CV_VOLATILE) != 0) output << "volatile ";
+				frame.type = record.child;
+				break;
+			case TYPE_POINTER:
+				output << "pointer to ";
+				frame.type = record.child;
+				break;
+			case TYPE_LVALUE_REFERENCE:
+				output << "lvalue-reference to ";
+				frame.type = record.child;
+				break;
+			case TYPE_RVALUE_REFERENCE:
+				output << "rvalue-reference to ";
+				frame.type = record.child;
+				break;
+			case TYPE_ARRAY:
+				if (record.bound == 0)
+					output << "array of unknown bound of ";
+				else
+					output << "array of " << record.bound << ' ';
+				frame.type = record.child;
+				break;
+			case TYPE_FUNCTION:
+				output << "function of (";
+				frame.state = 1;
+				if (record.parameter_count != 0)
+				{
+					frame.next_parameter = 1;
+					stack.push_back(Frame(
+						parameters_[record.parameter_offset]));
+				}
+				break;
+			default:
+				throw std::logic_error("invalid canonical type");
+			}
 		}
 	}
 
@@ -475,23 +531,6 @@ private:
 		slots_.swap(replacement);
 	}
 
-	void RenderFunction(std::ostream& output, const TypeRecord& record) const
-	{
-		output << "function of (";
-		for (std::uint32_t i = 0; i < record.parameter_count; ++i)
-		{
-			if (i != 0) output << ", ";
-			Render(output, parameters_[record.parameter_offset + i]);
-		}
-		if (record.variadic)
-		{
-			if (record.parameter_count != 0) output << ", ";
-			output << "...";
-		}
-		output << ") returning ";
-		Render(output, record.child);
-	}
-
 	std::vector<TypeRecord> types_;
 	std::vector<TypeId> parameters_;
 	std::vector<TypeId> slots_;
@@ -499,48 +538,54 @@ private:
 
 struct Binding
 {
+	NamespaceId owner;
 	NameId name;
 	TypeId type;
 	NamespaceId name_space;
 	EntityId variable;
 	EntityId function;
 
-	explicit Binding(NameId binding_name = 0)
-		: name(binding_name), type(0), name_space(kNoNamespace),
+	Binding(NamespaceId binding_owner = 0, NameId binding_name = 0)
+		: owner(binding_owner), name(binding_name), type(0),
+		  name_space(kNoNamespace),
 		  variable(kNoEntity), function(kNoEntity) {}
 };
 
 class BindingIndex
 {
 public:
-	BindingIndex() : slots_(8, 0) {}
+	BindingIndex() : slots_(16, 0) {}
 
-	std::uint32_t Find(NameId name, const std::vector<Binding>& bindings) const
+	std::uint32_t Find(NamespaceId owner, NameId name,
+		const std::vector<Binding>& bindings) const
 	{
 		const std::size_t mask = slots_.size() - 1;
-		std::size_t slot = MixHash(0, name) & mask;
+		std::size_t slot = Hash(owner, name) & mask;
 		while (slots_[slot] != 0)
 		{
 			const std::uint32_t index = slots_[slot] - 1;
-			if (bindings[index].name == name) return index;
+			if (bindings[index].owner == owner &&
+				bindings[index].name == name) return index;
 			slot = (slot + 1) & mask;
 		}
 		return std::numeric_limits<std::uint32_t>::max();
 	}
 
-	std::uint32_t Ensure(NameId name, std::vector<Binding>* bindings)
+	std::uint32_t Ensure(NamespaceId owner, NameId name,
+		std::vector<Binding>* bindings)
 	{
 		if ((bindings->size() + 1) * 10 > slots_.size() * 7)
 			Rehash(slots_.size() * 2, *bindings);
 		const std::size_t mask = slots_.size() - 1;
-		std::size_t slot = MixHash(0, name) & mask;
+		std::size_t slot = Hash(owner, name) & mask;
 		while (slots_[slot] != 0)
 		{
 			const std::uint32_t index = slots_[slot] - 1;
-			if ((*bindings)[index].name == name) return index;
+			if ((*bindings)[index].owner == owner &&
+				(*bindings)[index].name == name) return index;
 			slot = (slot + 1) & mask;
 		}
-		bindings->push_back(Binding(name));
+		bindings->push_back(Binding(owner, name));
 		const std::uint32_t index =
 			static_cast<std::uint32_t>(bindings->size() - 1);
 		slots_[slot] = index + 1;
@@ -553,13 +598,19 @@ public:
 	}
 
 private:
+	std::size_t Hash(NamespaceId owner, NameId name) const
+	{
+		return MixHash(MixHash(0, owner), name);
+	}
+
 	void Rehash(std::size_t capacity, const std::vector<Binding>& bindings)
 	{
 		std::vector<std::uint32_t> replacement(capacity, 0);
 		const std::size_t mask = capacity - 1;
 		for (std::uint32_t i = 0; i < bindings.size(); ++i)
 		{
-			std::size_t slot = MixHash(0, bindings[i].name) & mask;
+			std::size_t slot = Hash(bindings[i].owner,
+				bindings[i].name) & mask;
 			while (replacement[slot] != 0) slot = (slot + 1) & mask;
 			replacement[slot] = i + 1;
 		}
@@ -574,18 +625,29 @@ struct NamespaceRecord
 	NameId name;
 	NamespaceId parent;
 	NamespaceId unnamed_child;
+	NamespaceId first_child;
+	NamespaceId last_child;
+	NamespaceId next_sibling;
+	EntityId first_variable;
+	EntityId last_variable;
+	EntityId first_function;
+	EntityId last_function;
+	UsingEdgeId first_using_edge;
+	UsingEdgeId last_using_edge;
+	UsingEdgeId first_using_predecessor;
+	UsingEdgeId last_using_predecessor;
 	bool is_inline;
-	std::vector<Binding> bindings;
-	BindingIndex binding_index;
-	std::vector<NamespaceId> using_edges;
-	std::vector<EntityId> variables;
-	std::vector<EntityId> functions;
-	std::vector<NamespaceId> children;
 
 	NamespaceRecord(NameId namespace_name = 0,
 		NamespaceId namespace_parent = kNoNamespace, bool inline_value = false)
 		: name(namespace_name), parent(namespace_parent),
-		  unnamed_child(kNoNamespace), is_inline(inline_value) {}
+		  unnamed_child(kNoNamespace), first_child(kNoNamespace),
+		  last_child(kNoNamespace), next_sibling(kNoNamespace),
+		  first_variable(kNoEntity), last_variable(kNoEntity),
+		  first_function(kNoEntity), last_function(kNoEntity),
+		  first_using_edge(kNoUsingEdge), last_using_edge(kNoUsingEdge),
+		  first_using_predecessor(kNoUsingEdge),
+		  last_using_predecessor(kNoUsingEdge), is_inline(inline_value) {}
 };
 
 struct EntityRecord
@@ -593,10 +655,24 @@ struct EntityRecord
 	NameId name;
 	TypeId type;
 	NamespaceId owner;
+	EntityId next_in_namespace;
 
 	EntityRecord(NameId entity_name, TypeId entity_type,
 		NamespaceId entity_owner)
-		: name(entity_name), type(entity_type), owner(entity_owner) {}
+		: name(entity_name), type(entity_type), owner(entity_owner),
+		  next_in_namespace(kNoEntity) {}
+};
+
+struct UsingEdgeRecord
+{
+	NamespaceId owner;
+	NamespaceId target;
+	UsingEdgeId next_from_owner;
+	UsingEdgeId next_to_target;
+
+	UsingEdgeRecord(NamespaceId edge_owner, NamespaceId edge_target)
+		: owner(edge_owner), target(edge_target),
+		  next_from_owner(kNoUsingEdge), next_to_target(kNoUsingEdge) {}
 };
 
 enum LookupKind
@@ -634,10 +710,151 @@ struct LookupResult
 	}
 };
 
+struct LookupCacheEntry
+{
+	NamespaceId start;
+	NameId name;
+	LookupKind kind;
+	std::uint32_t generation;
+	LookupResult result;
+
+	LookupCacheEntry(NamespaceId lookup_start, NameId lookup_name,
+		LookupKind lookup_kind, std::uint32_t lookup_generation,
+		const LookupResult& lookup_result)
+		: start(lookup_start), name(lookup_name), kind(lookup_kind),
+		  generation(lookup_generation), result(lookup_result) {}
+};
+
+class LookupCacheIndex
+{
+public:
+	LookupCacheIndex() : slots_(32, 0) {}
+
+	bool Find(NamespaceId start, NameId name, LookupKind kind,
+		std::uint32_t generation,
+		const std::vector<LookupCacheEntry>& entries,
+		LookupResult* result) const
+	{
+		const std::uint32_t index = FindIndex(start, name, kind, entries);
+		if (index == std::numeric_limits<std::uint32_t>::max() ||
+			entries[index].generation != generation) return false;
+		*result = entries[index].result;
+		return true;
+	}
+
+	void Store(NamespaceId start, NameId name, LookupKind kind,
+		std::uint32_t generation, const LookupResult& result,
+		std::vector<LookupCacheEntry>* entries)
+	{
+		if ((entries->size() + 1) * 10 > slots_.size() * 7)
+			Rehash(slots_.size() * 2, *entries);
+		const std::size_t mask = slots_.size() - 1;
+		std::size_t slot = Hash(start, name, kind) & mask;
+		while (slots_[slot] != 0)
+		{
+			LookupCacheEntry& entry = (*entries)[slots_[slot] - 1];
+			if (entry.start == start && entry.name == name &&
+				entry.kind == kind)
+			{
+				entry.generation = generation;
+				entry.result = result;
+				return;
+			}
+			slot = (slot + 1) & mask;
+		}
+		entries->push_back(LookupCacheEntry(start, name, kind, generation,
+			result));
+		slots_[slot] = static_cast<std::uint32_t>(entries->size());
+	}
+
+	bool Invalidate(NamespaceId start, NameId name, LookupKind kind,
+		std::uint32_t generation, std::vector<LookupCacheEntry>* entries)
+	{
+		const std::uint32_t index = FindIndex(start, name, kind, *entries);
+		if (index == std::numeric_limits<std::uint32_t>::max() ||
+			(*entries)[index].generation != generation) return false;
+		(*entries)[index].generation = 0;
+		return true;
+	}
+
+	std::size_t StorageBytes() const
+	{
+		return slots_.capacity() * sizeof(std::uint32_t);
+	}
+
+private:
+	std::size_t Hash(NamespaceId start, NameId name, LookupKind kind) const
+	{
+		return MixHash(MixHash(MixHash(0, start), name), kind);
+	}
+
+	std::uint32_t FindIndex(NamespaceId start, NameId name, LookupKind kind,
+		const std::vector<LookupCacheEntry>& entries) const
+	{
+		const std::size_t mask = slots_.size() - 1;
+		std::size_t slot = Hash(start, name, kind) & mask;
+		while (slots_[slot] != 0)
+		{
+			const std::uint32_t index = slots_[slot] - 1;
+			const LookupCacheEntry& entry = entries[index];
+			if (entry.start == start && entry.name == name &&
+				entry.kind == kind) return index;
+			slot = (slot + 1) & mask;
+		}
+		return std::numeric_limits<std::uint32_t>::max();
+	}
+
+	void Rehash(std::size_t capacity,
+		const std::vector<LookupCacheEntry>& entries)
+	{
+		std::vector<std::uint32_t> replacement(capacity, 0);
+		const std::size_t mask = capacity - 1;
+		for (std::uint32_t i = 0; i < entries.size(); ++i)
+		{
+			const LookupCacheEntry& entry = entries[i];
+			std::size_t slot = Hash(entry.start, entry.name, entry.kind) & mask;
+			while (replacement[slot] != 0) slot = (slot + 1) & mask;
+			replacement[slot] = i + 1;
+		}
+		slots_.swap(replacement);
+	}
+
+	std::vector<std::uint32_t> slots_;
+};
+
+class NameSequence
+{
+public:
+	NameSequence() : inline_names_(), size_(0) {}
+
+	void push_back(NameId name)
+	{
+		if (size_ < inline_names_.size()) inline_names_[size_] = name;
+		else overflow_names_.push_back(name);
+		++size_;
+	}
+
+	bool empty() const { return size_ == 0; }
+	std::size_t size() const { return size_; }
+
+	NameId operator[](std::size_t index) const
+	{
+		return index < inline_names_.size() ? inline_names_[index] :
+			overflow_names_[index - inline_names_.size()];
+	}
+
+	NameId back() const { return (*this)[size_ - 1]; }
+
+private:
+	std::array<NameId, 4> inline_names_;
+	std::vector<NameId> overflow_names_;
+	std::size_t size_;
+};
+
 struct QualifiedName
 {
 	bool absolute;
-	std::vector<NameId> segments;
+	NameSequence segments;
 
 	QualifiedName() : absolute(false) {}
 };
@@ -646,9 +863,10 @@ class SemanticModel
 {
 public:
 	explicit SemanticModel(SemanticAnalysisStats* stats)
-		: stats_(stats), lookup_generation_(0)
+		: stats_(stats), using_edge_slots_(16, 0), lookup_generation_(0)
 	{
 		namespaces_.push_back(NamespaceRecord());
+		scope_lookup_generations_.push_back(1);
 	}
 
 	IdentifierTable identifiers;
@@ -688,6 +906,7 @@ public:
 			throw std::runtime_error("namespace name conflicts with declaration");
 
 		const NamespaceId created = NewNamespace(parent, name, is_inline);
+		InvalidateLookupName(parent, name);
 		Binding& inserted = EnsureBinding(parent, name);
 		inserted.name_space = created;
 		if (is_inline) AddUsingEdge(parent, created);
@@ -703,6 +922,7 @@ public:
 			if (binding.type != 0 || binding.variable != kNoEntity ||
 				binding.function != kNoEntity)
 				throw std::runtime_error("namespace alias name conflict");
+			InvalidateLookupName(owner, name);
 			binding.name_space = target;
 			return;
 		}
@@ -712,18 +932,38 @@ public:
 
 	void AddUsingEdge(NamespaceId owner, NamespaceId target)
 	{
-		std::vector<NamespaceId>& edges = namespaces_[owner].using_edges;
-		if (std::find(edges.begin(), edges.end(), target) == edges.end())
+		if ((using_edges_.size() + 1) * 10 > using_edge_slots_.size() * 7)
+			RehashUsingEdges(using_edge_slots_.size() * 2);
+		const std::size_t mask = using_edge_slots_.size() - 1;
+		std::size_t slot = HashUsingEdge(owner, target) & mask;
+		while (using_edge_slots_[slot] != 0)
 		{
-			edges.push_back(target);
-			if (stats_) ++stats_->using_edges;
+			const UsingEdgeRecord& existing =
+				using_edges_[using_edge_slots_[slot] - 1];
+			if (existing.owner == owner && existing.target == target) return;
+			slot = (slot + 1) & mask;
 		}
+		if (using_edges_.size() >= kNoUsingEdge)
+			throw std::runtime_error("too many using-directive edges");
+		const UsingEdgeId id = static_cast<UsingEdgeId>(using_edges_.size());
+		using_edges_.push_back(UsingEdgeRecord(owner, target));
+		using_edge_slots_[slot] = id + 1;
+		AppendOutgoingEdge(owner, id);
+		AppendIncomingEdge(target, id);
+		InvalidateLookupGraph(owner);
+		if (stats_) ++stats_->using_edges;
 	}
 
 	void AddUsingDeclaration(NamespaceId owner, NameId name,
 		const LookupResult& target)
 	{
 		Binding& binding = EnsureBinding(owner, name);
+		const bool changed = (target.type != 0 && binding.type != target.type) ||
+			(target.variable != kNoEntity &&
+				binding.variable != target.variable) ||
+			(target.function != kNoEntity &&
+				binding.function != target.function);
+		if (changed) InvalidateLookupName(owner, name);
 		MergeImportedType(&binding.type, target.type);
 		MergeImportedEntity(&binding.variable, target.variable);
 		MergeImportedEntity(&binding.function, target.function);
@@ -736,6 +976,7 @@ public:
 			throw std::runtime_error("type alias redeclaration mismatch");
 		if (binding.variable != kNoEntity || binding.function != kNoEntity)
 			throw std::runtime_error("type alias name conflict");
+		if (binding.type != type) InvalidateLookupName(owner, name);
 		binding.type = type;
 	}
 
@@ -772,11 +1013,11 @@ public:
 		}
 		if (binding.type != 0)
 			throw std::runtime_error("declaration conflicts with type name");
+		InvalidateLookupName(owner, unqualified);
 		const EntityId entity = static_cast<EntityId>(entities_.size());
 		entities_.push_back(EntityRecord(unqualified, type, owner));
 		existing = entity;
-		if (function) namespaces_[owner].functions.push_back(entity);
-		else namespaces_[owner].variables.push_back(entity);
+		AppendEntity(owner, entity, function);
 		if (stats_) ++stats_->declarations;
 	}
 
@@ -862,28 +1103,61 @@ public:
 
 	const std::string& Name(NameId name) const { return identifiers.Get(name); }
 	std::size_t NamespaceCount() const { return namespaces_.size(); }
+	std::size_t LookupCacheEntryCount() const
+	{
+		return lookup_cache_entries_.size();
+	}
 
 	std::size_t StorageBytes() const
 	{
 		std::size_t result = identifiers.StorageBytes() + types.StorageBytes() +
 			namespaces_.capacity() * sizeof(NamespaceRecord) +
 			entities_.capacity() * sizeof(EntityRecord) +
+			bindings_.capacity() * sizeof(Binding) +
+			binding_index_.StorageBytes() +
+			using_edges_.capacity() * sizeof(UsingEdgeRecord) +
+			using_edge_slots_.capacity() * sizeof(std::uint32_t) +
+			lookup_cache_entries_.capacity() * sizeof(LookupCacheEntry) +
+			lookup_cache_index_.StorageBytes() +
+			scope_lookup_generations_.capacity() * sizeof(std::uint32_t) +
 			lookup_marks_.capacity() * sizeof(std::uint32_t) +
 			lookup_worklist_.capacity() * sizeof(NamespaceId);
-		for (std::size_t i = 0; i < namespaces_.size(); ++i)
-		{
-			const NamespaceRecord& item = namespaces_[i];
-			result += item.bindings.capacity() * sizeof(Binding) +
-				item.binding_index.StorageBytes() +
-				item.using_edges.capacity() * sizeof(NamespaceId) +
-				item.variables.capacity() * sizeof(EntityId) +
-				item.functions.capacity() * sizeof(EntityId) +
-				item.children.capacity() * sizeof(NamespaceId);
-		}
 		return result;
 	}
 
-	void Render(std::ostream& output) const { RenderNamespace(output, 0); }
+	void Render(std::ostream& output) const
+	{
+		struct Frame
+		{
+			NamespaceId id;
+			NamespaceId next_child;
+			bool entered;
+
+			explicit Frame(NamespaceId namespace_id)
+				: id(namespace_id), next_child(kNoNamespace), entered(false) {}
+		};
+		std::vector<Frame> stack;
+		stack.push_back(Frame(0));
+		while (!stack.empty())
+		{
+			Frame& frame = stack.back();
+			if (!frame.entered)
+			{
+				RenderNamespaceContents(output, frame.id);
+				frame.next_child = namespaces_[frame.id].first_child;
+				frame.entered = true;
+			}
+			if (frame.next_child != kNoNamespace)
+			{
+				const NamespaceId child = frame.next_child;
+				frame.next_child = namespaces_[child].next_sibling;
+				stack.push_back(Frame(child));
+				continue;
+			}
+			output << "end namespace\n";
+			stack.pop_back();
+		}
+	}
 
 private:
 	NamespaceId NewNamespace(NamespaceId parent, NameId name, bool is_inline)
@@ -892,34 +1166,154 @@ private:
 			throw std::runtime_error("too many namespaces");
 		const NamespaceId id = static_cast<NamespaceId>(namespaces_.size());
 		namespaces_.push_back(NamespaceRecord(name, parent, is_inline));
-		namespaces_[parent].children.push_back(id);
+		scope_lookup_generations_.push_back(1);
+		NamespaceRecord& enclosing = namespaces_[parent];
+		if (enclosing.last_child == kNoNamespace)
+			enclosing.first_child = id;
+		else
+			namespaces_[enclosing.last_child].next_sibling = id;
+		enclosing.last_child = id;
 		return id;
 	}
 
 	Binding* FindDirectBinding(NamespaceId owner, NameId name)
 	{
-		NamespaceRecord& scope = namespaces_[owner];
-		const std::uint32_t index = scope.binding_index.Find(name,
-			scope.bindings);
+		const std::uint32_t index = binding_index_.Find(owner, name, bindings_);
 		return index == std::numeric_limits<std::uint32_t>::max() ? 0 :
-			&scope.bindings[index];
+			&bindings_[index];
 	}
 
 	const Binding* FindDirectBinding(NamespaceId owner, NameId name) const
 	{
-		const NamespaceRecord& scope = namespaces_[owner];
-		const std::uint32_t index = scope.binding_index.Find(name,
-			scope.bindings);
+		const std::uint32_t index = binding_index_.Find(owner, name, bindings_);
 		return index == std::numeric_limits<std::uint32_t>::max() ? 0 :
-			&scope.bindings[index];
+			&bindings_[index];
 	}
 
 	Binding& EnsureBinding(NamespaceId owner, NameId name)
 	{
+		const std::uint32_t index = binding_index_.Ensure(owner, name,
+			&bindings_);
+		return bindings_[index];
+	}
+
+	std::size_t HashUsingEdge(NamespaceId owner, NamespaceId target) const
+	{
+		return MixHash(MixHash(0, owner), target);
+	}
+
+	void RehashUsingEdges(std::size_t capacity)
+	{
+		std::vector<std::uint32_t> replacement(capacity, 0);
+		const std::size_t mask = capacity - 1;
+		for (UsingEdgeId id = 0; id < using_edges_.size(); ++id)
+		{
+			const UsingEdgeRecord& edge = using_edges_[id];
+			std::size_t slot = HashUsingEdge(edge.owner, edge.target) & mask;
+			while (replacement[slot] != 0) slot = (slot + 1) & mask;
+			replacement[slot] = id + 1;
+		}
+		using_edge_slots_.swap(replacement);
+	}
+
+	void AppendOutgoingEdge(NamespaceId owner, UsingEdgeId id)
+	{
 		NamespaceRecord& scope = namespaces_[owner];
-		const std::uint32_t index = scope.binding_index.Ensure(name,
-			&scope.bindings);
-		return scope.bindings[index];
+		if (scope.last_using_edge == kNoUsingEdge)
+			scope.first_using_edge = id;
+		else
+			using_edges_[scope.last_using_edge].next_from_owner = id;
+		scope.last_using_edge = id;
+	}
+
+	void AppendIncomingEdge(NamespaceId target, UsingEdgeId id)
+	{
+		NamespaceRecord& scope = namespaces_[target];
+		if (scope.last_using_predecessor == kNoUsingEdge)
+			scope.first_using_predecessor = id;
+		else
+			using_edges_[scope.last_using_predecessor].next_to_target = id;
+		scope.last_using_predecessor = id;
+	}
+
+	void AppendEntity(NamespaceId owner, EntityId id, bool function)
+	{
+		NamespaceRecord& scope = namespaces_[owner];
+		EntityId& first = function ? scope.first_function : scope.first_variable;
+		EntityId& last = function ? scope.last_function : scope.last_variable;
+		if (last == kNoEntity) first = id;
+		else entities_[last].next_in_namespace = id;
+		last = id;
+	}
+
+	void BeginNamespaceWalk(NamespaceId start)
+	{
+		if (lookup_marks_.size() < namespaces_.size())
+			lookup_marks_.resize(namespaces_.size(), 0);
+		++lookup_generation_;
+		if (lookup_generation_ == 0)
+		{
+			std::fill(lookup_marks_.begin(), lookup_marks_.end(), 0);
+			++lookup_generation_;
+		}
+		lookup_worklist_.clear();
+		lookup_worklist_.push_back(start);
+		lookup_marks_[start] = lookup_generation_;
+	}
+
+	void AddWalkTarget(NamespaceId target)
+	{
+		if (lookup_marks_[target] == lookup_generation_) return;
+		lookup_marks_[target] = lookup_generation_;
+		lookup_worklist_.push_back(target);
+	}
+
+	void AdvanceScopeLookupGeneration(NamespaceId scope)
+	{
+		++scope_lookup_generations_[scope];
+		if (scope_lookup_generations_[scope] != 0) return;
+		for (std::size_t i = 0; i < lookup_cache_entries_.size(); ++i)
+			lookup_cache_entries_[i].generation = 0;
+		std::fill(scope_lookup_generations_.begin(),
+			scope_lookup_generations_.end(), 1);
+	}
+
+	void InvalidateLookupGraph(NamespaceId changed)
+	{
+		if (lookup_cache_entries_.empty()) return;
+		BeginNamespaceWalk(changed);
+		for (std::size_t head = 0; head < lookup_worklist_.size(); ++head)
+		{
+			const NamespaceId current = lookup_worklist_[head];
+			AdvanceScopeLookupGeneration(current);
+			if (stats_) ++stats_->lookup_cache_invalidations;
+			for (UsingEdgeId id =
+				namespaces_[current].first_using_predecessor;
+				id != kNoUsingEdge; id = using_edges_[id].next_to_target)
+				AddWalkTarget(using_edges_[id].owner);
+		}
+	}
+
+	void InvalidateLookupName(NamespaceId changed, NameId name)
+	{
+		if (lookup_cache_entries_.empty()) return;
+		BeginNamespaceWalk(changed);
+		for (std::size_t head = 0; head < lookup_worklist_.size(); ++head)
+		{
+			const NamespaceId current = lookup_worklist_[head];
+			for (int value = LOOKUP_TYPE; value <= LOOKUP_USING_TARGET; ++value)
+			{
+				if (lookup_cache_index_.Invalidate(current, name,
+					static_cast<LookupKind>(value),
+					scope_lookup_generations_[current],
+					&lookup_cache_entries_) && stats_)
+					++stats_->lookup_cache_invalidations;
+			}
+			for (UsingEdgeId id =
+				namespaces_[current].first_using_predecessor;
+				id != kNoUsingEdge; id = using_edges_[id].next_to_target)
+				AddWalkTarget(using_edges_[id].owner);
+		}
 	}
 
 	LookupResult DirectLookup(NamespaceId owner, NameId name,
@@ -946,35 +1340,72 @@ private:
 	LookupResult SearchGraph(NamespaceId start, NameId name, LookupKind kind)
 	{
 		if (stats_) ++stats_->lookup_queries;
-		if (lookup_marks_.size() < namespaces_.size())
-			lookup_marks_.resize(namespaces_.size(), 0);
-		++lookup_generation_;
-		if (lookup_generation_ == 0)
+		if (namespaces_[start].first_using_edge == kNoUsingEdge)
 		{
-			std::fill(lookup_marks_.begin(), lookup_marks_.end(), 0);
-			++lookup_generation_;
+			if (stats_) ++stats_->lookup_scope_visits;
+			return DirectLookup(start, name, kind);
 		}
-		lookup_worklist_.clear();
-		lookup_worklist_.push_back(start);
-		lookup_marks_[start] = lookup_generation_;
+		LookupResult result;
+		bool start_checked = false;
+		if (lookup_cache_entries_.empty())
+		{
+			if (stats_) ++stats_->lookup_scope_visits;
+			result = DirectLookup(start, name, kind);
+			if (result.Found(kind)) return result;
+			start_checked = true;
+		}
+		else if (lookup_cache_index_.Find(start, name, kind,
+			scope_lookup_generations_[start], lookup_cache_entries_, &result))
+		{
+			if (stats_) ++stats_->lookup_cache_hits;
+			return result;
+		}
+		else
+		{
+			if (stats_) ++stats_->lookup_scope_visits;
+			result = DirectLookup(start, name, kind);
+			if (result.Found(kind)) return result;
+			start_checked = true;
+		}
+		if (stats_) ++stats_->lookup_cache_misses;
+		BeginNamespaceWalk(start);
+		bool traversed_edge = false;
 		for (std::size_t head = 0; head < lookup_worklist_.size(); ++head)
 		{
 			const NamespaceId current = lookup_worklist_[head];
-			if (stats_) ++stats_->lookup_scope_visits;
-			const LookupResult direct = DirectLookup(current, name, kind);
-			if (direct.Found(kind)) return direct;
-			const std::vector<NamespaceId>& edges =
-				namespaces_[current].using_edges;
-			for (std::size_t i = 0; i < edges.size(); ++i)
+			LookupResult direct;
+			if (start_checked && current == start)
+				start_checked = false;
+			else
+			{
+				if (stats_) ++stats_->lookup_scope_visits;
+				direct = DirectLookup(current, name, kind);
+			}
+			if (direct.Found(kind))
+			{
+				if (traversed_edge)
+				{
+					lookup_cache_index_.Store(start, name, kind,
+						scope_lookup_generations_[start], direct,
+						&lookup_cache_entries_);
+				}
+				return direct;
+			}
+			for (UsingEdgeId id = namespaces_[current].first_using_edge;
+				id != kNoUsingEdge; id = using_edges_[id].next_from_owner)
 			{
 				if (stats_) ++stats_->lookup_edge_visits;
-				const NamespaceId target = edges[i];
-				if (lookup_marks_[target] == lookup_generation_) continue;
-				lookup_marks_[target] = lookup_generation_;
-				lookup_worklist_.push_back(target);
+				traversed_edge = true;
+				AddWalkTarget(using_edges_[id].target);
 			}
 		}
-		return LookupResult();
+		if (traversed_edge)
+		{
+			lookup_cache_index_.Store(start, name, kind,
+				scope_lookup_generations_[start], result,
+				&lookup_cache_entries_);
+		}
+		return result;
 	}
 
 	bool ResolvePrefix(NamespaceId current, const QualifiedName& name,
@@ -1028,34 +1459,40 @@ private:
 		*destination = source;
 	}
 
-	void RenderNamespace(std::ostream& output, NamespaceId id) const
+	void RenderNamespaceContents(std::ostream& output, NamespaceId id) const
 	{
 		const NamespaceRecord& scope = namespaces_[id];
 		if (scope.name == 0) output << "start unnamed namespace\n";
 		else output << "start namespace " << Name(scope.name) << '\n';
 		if (scope.is_inline) output << "inline namespace\n";
-		for (std::size_t i = 0; i < scope.variables.size(); ++i)
+		for (EntityId id = scope.first_variable; id != kNoEntity;
+			id = entities_[id].next_in_namespace)
 		{
-			const EntityRecord& entity = entities_[scope.variables[i]];
+			const EntityRecord& entity = entities_[id];
 			output << "variable " << Name(entity.name) << ' ';
 			types.Render(output, entity.type);
 			output << '\n';
 		}
-		for (std::size_t i = 0; i < scope.functions.size(); ++i)
+		for (EntityId id = scope.first_function; id != kNoEntity;
+			id = entities_[id].next_in_namespace)
 		{
-			const EntityRecord& entity = entities_[scope.functions[i]];
+			const EntityRecord& entity = entities_[id];
 			output << "function " << Name(entity.name) << ' ';
 			types.Render(output, entity.type);
 			output << '\n';
 		}
-		for (std::size_t i = 0; i < scope.children.size(); ++i)
-			RenderNamespace(output, scope.children[i]);
-		output << "end namespace\n";
 	}
 
 	SemanticAnalysisStats* stats_;
 	std::vector<NamespaceRecord> namespaces_;
 	std::vector<EntityRecord> entities_;
+	std::vector<Binding> bindings_;
+	BindingIndex binding_index_;
+	std::vector<UsingEdgeRecord> using_edges_;
+	std::vector<std::uint32_t> using_edge_slots_;
+	std::vector<LookupCacheEntry> lookup_cache_entries_;
+	LookupCacheIndex lookup_cache_index_;
+	std::vector<std::uint32_t> scope_lookup_generations_;
 	std::vector<std::uint32_t> lookup_marks_;
 	std::vector<NamespaceId> lookup_worklist_;
 	std::uint32_t lookup_generation_;
@@ -1097,6 +1534,37 @@ struct Declarator
 	std::vector<DeclaratorOperation> operations;
 
 	Declarator() : has_name(false) {}
+
+	std::size_t ChildStorageBytes() const
+	{
+		std::size_t result = operations.capacity() *
+			sizeof(DeclaratorOperation);
+		for (std::size_t i = 0; i < operations.size(); ++i)
+			result += operations[i].parameters.capacity() * sizeof(TypeId);
+		return result;
+	}
+};
+
+struct DeclaratorMemoEntry
+{
+	std::uint64_t key;
+	std::size_t end;
+	bool success;
+	Declarator declarator;
+
+	DeclaratorMemoEntry(std::uint64_t memo_key, std::size_t memo_end,
+		bool memo_success, Declarator&& memo_declarator)
+		: key(memo_key), end(memo_end), success(memo_success),
+		  declarator(std::move(memo_declarator)) {}
+};
+
+struct DeclaratorMemoSlot
+{
+	std::uint64_t key;
+	std::uint32_t entry;
+	std::uint32_t generation;
+
+	DeclaratorMemoSlot() : key(0), entry(0), generation(0) {}
 };
 
 enum DeclaratorMode
@@ -1140,16 +1608,166 @@ class SemanticParser
 {
 public:
 	SemanticParser(const std::vector<SemanticToken>& tokens,
-		SemanticModel& model)
-		: tokens_(tokens), model_(model), position_(0), current_namespace_(0) {}
+		SemanticModel& model, SemanticAnalysisStats* stats)
+		: tokens_(tokens), model_(model), stats_(stats), position_(0),
+		  current_namespace_(0), declarator_memo_generation_(0),
+		  declarator_call_depth_(0), memo_child_storage_bytes_(0),
+		  active_declarator_stack_bytes_(0) {}
 
 	void Parse()
 	{
-		ParseNamespaceBody(false);
-		if (!AtEof()) throw std::runtime_error("unexpected token after unit");
+		while (true)
+		{
+			if (AtEof())
+			{
+				if (!namespace_stack_.empty())
+					throw std::runtime_error("unterminated namespace");
+				return;
+			}
+			if (Match(OP_RBRACE))
+			{
+				if (namespace_stack_.empty())
+					throw std::runtime_error("unexpected namespace close");
+				current_namespace_ = namespace_stack_.back();
+				namespace_stack_.pop_back();
+				continue;
+			}
+			ParseDeclaration();
+		}
 	}
 
 private:
+	void RecordParserStack()
+	{
+		if (!stats_) return;
+		const std::size_t bytes = active_declarator_stack_bytes_ +
+			namespace_stack_.capacity() * sizeof(NamespaceId);
+		stats_->peak_parser_scratch_bytes = std::max(
+			stats_->peak_parser_scratch_bytes, bytes);
+	}
+
+	void RecordDeclaratorFrame(std::size_t capacity_bytes,
+		std::size_t* accounted_bytes)
+	{
+		if (!stats_) return;
+		++stats_->declarator_frames;
+		if (capacity_bytes > *accounted_bytes)
+		{
+			active_declarator_stack_bytes_ +=
+				capacity_bytes - *accounted_bytes;
+			*accounted_bytes = capacity_bytes;
+		}
+		RecordParserStack();
+	}
+
+	void BeginDeclaratorMemoSession()
+	{
+		if (declarator_call_depth_ != 0) return;
+		// No declaration is published while one top-level declarator is parsed,
+		// so position and mode are complete keys for this generation.
+		++declarator_memo_generation_;
+		if (declarator_memo_generation_ == 0)
+		{
+			for (std::size_t i = 0; i < declarator_memo_slots_.size(); ++i)
+				declarator_memo_slots_[i].generation = 0;
+			++declarator_memo_generation_;
+		}
+		declarator_memo_entries_.clear();
+		memo_child_storage_bytes_ = 0;
+	}
+
+	std::uint64_t DeclaratorMemoKey(std::size_t position,
+		DeclaratorMode mode) const
+	{
+		return (static_cast<std::uint64_t>(position) << 1) |
+			static_cast<std::uint64_t>(mode);
+	}
+
+	std::size_t HashDeclaratorMemo(std::uint64_t key) const
+	{
+		return MixHash(0, key);
+	}
+
+	void RehashDeclaratorMemo(std::size_t capacity)
+	{
+		std::vector<DeclaratorMemoSlot> replacement(capacity);
+		const std::size_t mask = capacity - 1;
+		for (std::uint32_t i = 0; i < declarator_memo_entries_.size(); ++i)
+		{
+			const std::uint64_t key = declarator_memo_entries_[i].key;
+			std::size_t slot = HashDeclaratorMemo(key) & mask;
+			while (replacement[slot].generation ==
+				declarator_memo_generation_)
+				slot = (slot + 1) & mask;
+			replacement[slot].key = key;
+			replacement[slot].entry = i;
+			replacement[slot].generation = declarator_memo_generation_;
+		}
+		declarator_memo_slots_.swap(replacement);
+	}
+
+	bool FindDeclaratorMemo(std::uint64_t key, bool* success,
+		Declarator* result)
+	{
+		if (declarator_memo_slots_.empty()) return false;
+		const std::size_t mask = declarator_memo_slots_.size() - 1;
+		std::size_t slot = HashDeclaratorMemo(key) & mask;
+		while (declarator_memo_slots_[slot].generation ==
+			declarator_memo_generation_)
+		{
+			const DeclaratorMemoSlot& item = declarator_memo_slots_[slot];
+			if (item.key == key)
+			{
+				const DeclaratorMemoEntry& entry =
+					declarator_memo_entries_[item.entry];
+				position_ = entry.end;
+				*success = entry.success;
+				if (entry.success) *result = entry.declarator;
+				return true;
+			}
+			slot = (slot + 1) & mask;
+		}
+		return false;
+	}
+
+	void StoreDeclaratorMemo(std::uint64_t key, std::size_t end,
+		bool success, Declarator&& declarator)
+	{
+		if (declarator_memo_slots_.empty())
+			declarator_memo_slots_.resize(32);
+		if ((declarator_memo_entries_.size() + 1) * 10 >
+			declarator_memo_slots_.size() * 7)
+			RehashDeclaratorMemo(declarator_memo_slots_.size() * 2);
+		if (declarator_memo_entries_.size() >=
+			std::numeric_limits<std::uint32_t>::max())
+			throw std::runtime_error("too many declarator memo entries");
+		const std::size_t mask = declarator_memo_slots_.size() - 1;
+		std::size_t slot = HashDeclaratorMemo(key) & mask;
+		while (declarator_memo_slots_[slot].generation ==
+			declarator_memo_generation_)
+			slot = (slot + 1) & mask;
+		const std::uint32_t index =
+			static_cast<std::uint32_t>(declarator_memo_entries_.size());
+		declarator_memo_entries_.push_back(DeclaratorMemoEntry(key, end,
+			success, std::move(declarator)));
+		declarator_memo_slots_[slot].key = key;
+		declarator_memo_slots_[slot].entry = index;
+		declarator_memo_slots_[slot].generation =
+			declarator_memo_generation_;
+		memo_child_storage_bytes_ +=
+			declarator_memo_entries_.back().declarator.ChildStorageBytes();
+		if (!stats_) return;
+		stats_->declarator_memo_entries = std::max(
+			stats_->declarator_memo_entries,
+			declarator_memo_entries_.size());
+		const std::size_t storage = declarator_memo_slots_.capacity() *
+				sizeof(DeclaratorMemoSlot) +
+			declarator_memo_entries_.capacity() *
+				sizeof(DeclaratorMemoEntry) + memo_child_storage_bytes_;
+		stats_->parser_memo_storage_bytes = std::max(
+			stats_->parser_memo_storage_bytes, storage);
+	}
+
 	bool At(SimpleTokenKind kind) const
 	{
 		return position_ < tokens_.size() &&
@@ -1478,70 +2096,154 @@ private:
 
 	bool ParseDeclarator(DeclaratorMode mode, Declarator* result)
 	{
+		BeginDeclaratorMemoSession();
+		if (declarator_call_depth_ >= kMaxDeclaratorCallDepth)
+			throw std::runtime_error("declarator nesting limit exceeded");
+		++declarator_call_depth_;
 		const std::size_t start = position_;
-		std::vector<DeclaratorOperation> prefixes;
+		if (declarator_call_depth_ == 1)
+		{
+			const bool success = ParseDeclaratorUncached(mode, result);
+			--declarator_call_depth_;
+			return success;
+		}
+		const std::uint64_t key = DeclaratorMemoKey(start, mode);
+		bool success = false;
+		if (FindDeclaratorMemo(key, &success, result))
+		{
+			if (stats_) ++stats_->declarator_cache_hits;
+			--declarator_call_depth_;
+			return success;
+		}
+		if (stats_) ++stats_->declarator_cache_misses;
+		Declarator parsed;
+		success = ParseDeclaratorUncached(mode, &parsed);
+		StoreDeclaratorMemo(key, position_, success, std::move(parsed));
+		if (success)
+			*result = declarator_memo_entries_.back().declarator;
+		--declarator_call_depth_;
+		return success;
+	}
+
+	bool ParseDeclaratorUncached(DeclaratorMode mode, Declarator* result)
+	{
+		enum FrameState
+		{
+			FRAME_START,
+			FRAME_WAITING_FOR_GROUP,
+			FRAME_SUFFIXES
+		};
+		struct Frame
+		{
+			std::size_t start;
+			std::size_t group_start;
+			FrameState state;
+			bool direct;
+			bool suffix;
+			bool failed;
+			Declarator parsed;
+			std::vector<DeclaratorOperation> prefixes;
+
+			explicit Frame(std::size_t frame_start)
+				: start(frame_start), group_start(frame_start),
+				  state(FRAME_START), direct(false), suffix(false),
+				  failed(false) {}
+		};
+
+		std::vector<Frame> frames;
+		frames.push_back(Frame(position_));
+		std::size_t accounted_frame_bytes = 0;
+		RecordDeclaratorFrame(frames.capacity() * sizeof(Frame),
+			&accounted_frame_bytes);
 		while (true)
 		{
-			DeclaratorOperation operation(DECL_POINTER);
-			if (!ParsePointerOperator(&operation)) break;
-			prefixes.push_back(std::move(operation));
-		}
-
-		Declarator parsed;
-		bool direct = false;
-		if (mode == DECLARATOR_NAMED &&
-			(AtIdentifier() || At(OP_COLON2)))
-		{
-			if (!ParseQualifiedName(&parsed.name))
+			Frame& frame = frames.back();
+			if (frame.state == FRAME_START)
 			{
-				position_ = start;
-				return false;
+				while (true)
+				{
+					DeclaratorOperation operation(DECL_POINTER);
+					if (!ParsePointerOperator(&operation)) break;
+					frame.prefixes.push_back(std::move(operation));
+				}
+				if (mode == DECLARATOR_NAMED &&
+					(AtIdentifier() || At(OP_COLON2)))
+				{
+					if (!ParseQualifiedName(&frame.parsed.name))
+					{
+						position_ = frame.start;
+						frame.failed = true;
+						frame.state = FRAME_SUFFIXES;
+						continue;
+					}
+					frame.parsed.has_name = true;
+					frame.direct = true;
+					frame.state = FRAME_SUFFIXES;
+					continue;
+				}
+				if (At(OP_LPAREN))
+				{
+					frame.group_start = position_++;
+					frame.state = FRAME_WAITING_FOR_GROUP;
+					frames.push_back(Frame(position_));
+					RecordDeclaratorFrame(frames.capacity() * sizeof(Frame),
+						&accounted_frame_bytes);
+					continue;
+				}
+				frame.state = FRAME_SUFFIXES;
+				continue;
 			}
-			parsed.has_name = true;
-			direct = true;
-		}
-		else if (At(OP_LPAREN))
-		{
-			const std::size_t group_start = position_;
-			++position_;
-			Declarator nested;
-			if (ParseDeclarator(mode, &nested) && Match(OP_RPAREN))
+			if (frame.state == FRAME_WAITING_FOR_GROUP)
+				throw std::logic_error("declarator frame did not resume");
+
+			while (!frame.failed)
 			{
-				parsed = std::move(nested);
-				direct = true;
+				DeclaratorOperation operation(DECL_ARRAY);
+				if (ParseArrayOperation(&operation) ||
+					ParseFunctionOperation(&operation))
+				{
+					frame.parsed.operations.push_back(std::move(operation));
+					frame.suffix = true;
+					continue;
+				}
+				break;
+			}
+			for (std::vector<DeclaratorOperation>::reverse_iterator i =
+				frame.prefixes.rbegin(); i != frame.prefixes.rend(); ++i)
+				frame.parsed.operations.push_back(std::move(*i));
+
+			const bool success = !frame.failed &&
+				(frame.direct || frame.suffix || !frame.prefixes.empty()) &&
+				(mode != DECLARATOR_NAMED || frame.parsed.has_name) &&
+				(mode != DECLARATOR_ABSTRACT || !frame.parsed.has_name);
+			const std::size_t frame_start = frame.start;
+			Declarator completed = std::move(frame.parsed);
+			frames.pop_back();
+			if (frames.empty())
+			{
+				active_declarator_stack_bytes_ -= accounted_frame_bytes;
+				if (!success)
+				{
+					position_ = frame_start;
+					return false;
+				}
+				*result = std::move(completed);
+				return true;
+			}
+			Frame& parent = frames.back();
+			if (parent.state != FRAME_WAITING_FOR_GROUP)
+				throw std::logic_error("invalid declarator frame state");
+			if (success && Match(OP_RPAREN))
+			{
+				parent.parsed = std::move(completed);
+				parent.direct = true;
 			}
 			else
 			{
-				position_ = group_start;
+				position_ = parent.group_start;
 			}
+			parent.state = FRAME_SUFFIXES;
 		}
-
-		bool suffix = false;
-		while (true)
-		{
-			DeclaratorOperation operation(DECL_ARRAY);
-			if (ParseArrayOperation(&operation) ||
-				ParseFunctionOperation(&operation))
-			{
-				parsed.operations.push_back(std::move(operation));
-				suffix = true;
-				continue;
-			}
-			break;
-		}
-		for (std::vector<DeclaratorOperation>::reverse_iterator i =
-			prefixes.rbegin(); i != prefixes.rend(); ++i)
-			parsed.operations.push_back(std::move(*i));
-
-		if ((!direct && !suffix && prefixes.empty()) ||
-			(mode == DECLARATOR_NAMED && !parsed.has_name) ||
-			(mode == DECLARATOR_ABSTRACT && parsed.has_name))
-		{
-			position_ = start;
-			return false;
-		}
-		*result = std::move(parsed);
-		return true;
 	}
 
 	TypeId ApplyDeclarator(TypeId base, const Declarator& declarator)
@@ -1571,21 +2273,6 @@ private:
 			}
 		}
 		return type;
-	}
-
-	void ParseNamespaceBody(bool stop_at_right_brace)
-	{
-		while (true)
-		{
-			if (stop_at_right_brace && At(OP_RBRACE)) return;
-			if (AtEof())
-			{
-				if (stop_at_right_brace)
-					throw std::runtime_error("unterminated namespace");
-				return;
-			}
-			ParseDeclaration();
-		}
 	}
 
 	void ParseDeclaration()
@@ -1627,11 +2314,10 @@ private:
 		NameId name = 0;
 		if (AtIdentifier()) name = ConsumeIdentifier();
 		Expect(OP_LBRACE);
-		const NamespaceId enclosing = current_namespace_;
-		current_namespace_ = model_.OpenNamespace(enclosing, name, is_inline);
-		ParseNamespaceBody(true);
-		Expect(OP_RBRACE);
-		current_namespace_ = enclosing;
+		namespace_stack_.push_back(current_namespace_);
+		RecordParserStack();
+		current_namespace_ = model_.OpenNamespace(current_namespace_, name,
+			is_inline);
 	}
 
 	void ParseUsingDeclaration()
@@ -1710,8 +2396,16 @@ private:
 
 	const std::vector<SemanticToken>& tokens_;
 	SemanticModel& model_;
+	SemanticAnalysisStats* stats_;
 	std::size_t position_;
 	NamespaceId current_namespace_;
+	std::vector<NamespaceId> namespace_stack_;
+	std::vector<DeclaratorMemoSlot> declarator_memo_slots_;
+	std::vector<DeclaratorMemoEntry> declarator_memo_entries_;
+	std::uint32_t declarator_memo_generation_;
+	std::size_t declarator_call_depth_;
+	std::size_t memo_child_storage_bytes_;
+	std::size_t active_declarator_stack_bytes_;
 };
 
 }
@@ -1724,9 +2418,15 @@ struct SemanticTranslationUnit::Impl
 };
 
 SemanticAnalysisStats::SemanticAnalysisStats()
-	: tokens(0), token_storage_bytes(0), identifiers(0), identifier_bytes(0),
+	: tokens(0), token_storage_bytes(0), declarator_frames(0),
+	  declarator_cache_hits(0), declarator_cache_misses(0),
+	  declarator_memo_entries(0), peak_parser_scratch_bytes(0),
+	  parser_memo_storage_bytes(0), identifiers(0), identifier_bytes(0),
 	  canonical_types(0), namespaces(0), declarations(0), using_edges(0),
-	  lookup_queries(0), lookup_scope_visits(0), lookup_edge_visits(0),
+	  lookup_queries(0), lookup_cache_hits(0), lookup_cache_misses(0),
+	  lookup_cache_invalidations(0), lookup_cache_entries(0),
+	  lookup_scope_visits(0),
+	  lookup_edge_visits(0),
 	  semantic_storage_bytes(0), peak_stage_storage_bytes(0),
 	  elapsed_nanoseconds(0)
 {
@@ -1751,7 +2451,7 @@ SemanticTranslationUnit::SemanticTranslationUnit(const std::string& path,
 		stats->tokens = sink.Tokens().size();
 		stats->token_storage_bytes = sink.StorageBytes();
 	}
-	SemanticParser parser(sink.Tokens(), impl_->model);
+	SemanticParser parser(sink.Tokens(), impl_->model, stats);
 	parser.Parse();
 	if (stats)
 	{
@@ -1759,9 +2459,13 @@ SemanticTranslationUnit::SemanticTranslationUnit(const std::string& path,
 		stats->identifier_bytes = impl_->model.identifiers.SpellingBytes();
 		stats->canonical_types = impl_->model.types.Size();
 		stats->namespaces = impl_->model.NamespaceCount();
+		stats->lookup_cache_entries =
+			impl_->model.LookupCacheEntryCount();
 		stats->semantic_storage_bytes = impl_->model.StorageBytes();
-		stats->peak_stage_storage_bytes = stats->token_storage_bytes +
-			stats->semantic_storage_bytes;
+		stats->peak_stage_storage_bytes = source.size() +
+			stats->token_storage_bytes + stats->semantic_storage_bytes +
+			stats->peak_parser_scratch_bytes +
+			stats->parser_memo_storage_bytes;
 		stats->elapsed_nanoseconds = static_cast<std::uint64_t>(
 			std::chrono::duration_cast<std::chrono::nanoseconds>(
 				std::chrono::steady_clock::now() - started).count());
