@@ -1,0 +1,849 @@
+#include "pp_tokenizer.h"
+
+#include <cstring>
+#include <deque>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+#include "IPPTokenStream.h"
+
+namespace cppgm
+{
+namespace
+{
+
+const int kEndOfFile = -1;
+
+struct CodePointRange
+{
+	int first;
+	int last;
+};
+
+const CodePointRange kAnnexE1Ranges[] = {
+	{0xA8, 0xA8}, {0xAA, 0xAA}, {0xAD, 0xAD}, {0xAF, 0xAF},
+	{0xB2, 0xB5}, {0xB7, 0xBA}, {0xBC, 0xBE}, {0xC0, 0xD6},
+	{0xD8, 0xF6}, {0xF8, 0xFF}, {0x100, 0x167F},
+	{0x1681, 0x180D}, {0x180F, 0x1FFF}, {0x200B, 0x200D},
+	{0x202A, 0x202E}, {0x203F, 0x2040}, {0x2054, 0x2054},
+	{0x2060, 0x206F}, {0x2070, 0x218F}, {0x2460, 0x24FF},
+	{0x2776, 0x2793}, {0x2C00, 0x2DFF}, {0x2E80, 0x2FFF},
+	{0x3004, 0x3007}, {0x3021, 0x302F}, {0x3031, 0x303F},
+	{0x3040, 0xD7FF}, {0xF900, 0xFD3D}, {0xFD40, 0xFDCF},
+	{0xFDF0, 0xFE44}, {0xFE47, 0xFFFD},
+	{0x10000, 0x1FFFD}, {0x20000, 0x2FFFD},
+	{0x30000, 0x3FFFD}, {0x40000, 0x4FFFD},
+	{0x50000, 0x5FFFD}, {0x60000, 0x6FFFD},
+	{0x70000, 0x7FFFD}, {0x80000, 0x8FFFD},
+	{0x90000, 0x9FFFD}, {0xA0000, 0xAFFFD},
+	{0xB0000, 0xBFFFD}, {0xC0000, 0xCFFFD},
+	{0xD0000, 0xDFFFD}, {0xE0000, 0xEFFFD}
+};
+
+const CodePointRange kAnnexE2Ranges[] = {
+	{0x300, 0x36F}, {0x1DC0, 0x1DFF},
+	{0x20D0, 0x20FF}, {0xFE20, 0xFE2F}
+};
+
+bool IsInRanges(int code_point, const CodePointRange* ranges,
+	std::size_t count)
+{
+	std::size_t first = 0;
+	while (first < count)
+	{
+		const std::size_t middle = first + (count - first) / 2;
+		if (code_point < ranges[middle].first)
+			count = middle;
+		else if (code_point > ranges[middle].last)
+			first = middle + 1;
+		else
+			return true;
+	}
+	return false;
+}
+
+bool IsAsciiDigit(int c)
+{
+	return c >= '0' && c <= '9';
+}
+
+bool IsHexDigit(int c)
+{
+	return IsAsciiDigit(c) || (c >= 'a' && c <= 'f') ||
+		(c >= 'A' && c <= 'F');
+}
+
+int HexValue(int c)
+{
+	if (c >= '0' && c <= '9')
+		return c - '0';
+	if (c >= 'a' && c <= 'f')
+		return c - 'a' + 10;
+	if (c >= 'A' && c <= 'F')
+		return c - 'A' + 10;
+	throw std::logic_error("hex value requested for non-hex character");
+}
+
+bool IsIdentifierNondigit(int c)
+{
+	if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_')
+		return true;
+	return IsInRanges(c, kAnnexE1Ranges,
+		sizeof(kAnnexE1Ranges) / sizeof(kAnnexE1Ranges[0]));
+}
+
+bool IsIdentifierInitial(int c)
+{
+	return IsIdentifierNondigit(c) &&
+		!IsInRanges(c, kAnnexE2Ranges,
+			sizeof(kAnnexE2Ranges) / sizeof(kAnnexE2Ranges[0]));
+}
+
+bool IsIdentifierBody(int c)
+{
+	return IsIdentifierNondigit(c) || IsAsciiDigit(c);
+}
+
+bool IsHorizontalWhitespace(int c)
+{
+	return c == ' ' || c == '\t' || c == '\v' || c == '\f' || c == '\r';
+}
+
+bool IsSimpleEscape(int c)
+{
+	const char* escapes = "'\"?\\abfnrtv";
+	return c >= 0 && c <= 0x7F && std::strchr(escapes, c) != 0;
+}
+
+void AppendUTF8(int code_point, std::string* output)
+{
+	if (code_point < 0 || code_point > 0x10FFFF ||
+		(code_point >= 0xD800 && code_point <= 0xDFFF))
+		throw std::runtime_error("invalid Unicode code point");
+	if (code_point <= 0x7F)
+		output->push_back(static_cast<char>(code_point));
+	else if (code_point <= 0x7FF)
+	{
+		output->push_back(static_cast<char>(0xC0 | (code_point >> 6)));
+		output->push_back(static_cast<char>(0x80 | (code_point & 0x3F)));
+	}
+	else if (code_point <= 0xFFFF)
+	{
+		output->push_back(static_cast<char>(0xE0 | (code_point >> 12)));
+		output->push_back(static_cast<char>(0x80 | ((code_point >> 6) & 0x3F)));
+		output->push_back(static_cast<char>(0x80 | (code_point & 0x3F)));
+	}
+	else
+	{
+		output->push_back(static_cast<char>(0xF0 | (code_point >> 18)));
+		output->push_back(static_cast<char>(0x80 | ((code_point >> 12) & 0x3F)));
+		output->push_back(static_cast<char>(0x80 | ((code_point >> 6) & 0x3F)));
+		output->push_back(static_cast<char>(0x80 | (code_point & 0x3F)));
+	}
+}
+
+class PhysicalCursor
+{
+public:
+	PhysicalCursor(const std::string& source, PPTokenizationStats* stats)
+		: source_(source), position_(0), saw_character_(false),
+		  last_code_point_(kEndOfFile), emitted_final_newline_(false),
+		  stats_(stats)
+	{
+		if (source_.size() >= 3 &&
+			static_cast<unsigned char>(source_[0]) == 0xEF &&
+			static_cast<unsigned char>(source_[1]) == 0xBB &&
+			static_cast<unsigned char>(source_[2]) == 0xBF)
+			position_ = 3;
+	}
+
+	int Next()
+	{
+		if (position_ < source_.size())
+		{
+			const int code_point = DecodeOne();
+			saw_character_ = true;
+			last_code_point_ = code_point;
+			if (stats_)
+				++stats_->decoded_code_points;
+			return code_point;
+		}
+		if (saw_character_ && last_code_point_ != '\n' &&
+			!emitted_final_newline_)
+		{
+			emitted_final_newline_ = true;
+			return '\n';
+		}
+		return kEndOfFile;
+	}
+
+private:
+	int Continuation(std::size_t offset) const
+	{
+		if (position_ + offset >= source_.size())
+			throw std::runtime_error("truncated UTF-8 character");
+		const int byte = static_cast<unsigned char>(source_[position_ + offset]);
+		if ((byte & 0xC0) != 0x80)
+			throw std::runtime_error("invalid UTF-8 continuation byte");
+		return byte & 0x3F;
+	}
+
+	int DecodeOne()
+	{
+		const int first = static_cast<unsigned char>(source_[position_]);
+		if (first <= 0x7F)
+		{
+			++position_;
+			return first;
+		}
+		if (first >= 0xC2 && first <= 0xDF)
+		{
+			const int value = ((first & 0x1F) << 6) | Continuation(1);
+			position_ += 2;
+			return value;
+		}
+		if (first >= 0xE0 && first <= 0xEF)
+		{
+			const int second = Continuation(1);
+			const int third = Continuation(2);
+			if ((first == 0xE0 && second < 0x20) ||
+				(first == 0xED && second >= 0x20))
+				throw std::runtime_error("invalid UTF-8 scalar value");
+			position_ += 3;
+			return ((first & 0x0F) << 12) | (second << 6) | third;
+		}
+		if (first >= 0xF0 && first <= 0xF4)
+		{
+			const int second = Continuation(1);
+			const int third = Continuation(2);
+			const int fourth = Continuation(3);
+			if ((first == 0xF0 && second < 0x10) ||
+				(first == 0xF4 && second >= 0x10))
+				throw std::runtime_error("invalid UTF-8 scalar value");
+			position_ += 4;
+			return ((first & 0x07) << 18) | (second << 12) |
+				(third << 6) | fourth;
+		}
+		throw std::runtime_error("invalid UTF-8 leading byte");
+	}
+
+	const std::string& source_;
+	std::size_t position_;
+	bool saw_character_;
+	int last_code_point_;
+	bool emitted_final_newline_;
+	PPTokenizationStats* stats_;
+};
+
+int TrigraphReplacement(int c)
+{
+	switch (c)
+	{
+	case '=': return '#';
+	case '/': return '\\';
+	case '\'': return '^';
+	case '(': return '[';
+	case ')': return ']';
+	case '!': return '|';
+	case '<': return '{';
+	case '>': return '}';
+	case '-': return '~';
+	default: return kEndOfFile;
+	}
+}
+
+class TranslationCursor
+{
+public:
+	TranslationCursor(const std::string& source, PPTokenizationStats* stats)
+		: physical_(source, stats), suppress_ucn_once_(false)
+	{}
+
+	int Next()
+	{
+		while (true)
+		{
+			const int current = TakeUCN();
+			if (current != '\\' || PeekUCN() != '\n')
+				return current;
+			TakeUCN();
+		}
+	}
+
+	int NextRawCodePoint()
+	{
+		if (!physical_pending_.empty() || !phase1_pending_.empty() ||
+			!ucn_pending_.empty())
+			throw std::logic_error("raw mode entered with translated lookahead");
+		return physical_.Next();
+	}
+
+private:
+	int TakePhysical()
+	{
+		if (physical_pending_.empty())
+			return physical_.Next();
+		const int result = physical_pending_.front();
+		physical_pending_.pop_front();
+		return result;
+	}
+
+	int PeekPhysical(std::size_t offset)
+	{
+		while (physical_pending_.size() <= offset)
+		{
+			if (!physical_pending_.empty() &&
+				physical_pending_.back() == kEndOfFile)
+				return kEndOfFile;
+			physical_pending_.push_back(physical_.Next());
+		}
+		return physical_pending_[offset];
+	}
+
+	int PullPhase1()
+	{
+		const int current = TakePhysical();
+		if (current != '?' || PeekPhysical(0) != '?')
+			return current;
+		const int replacement = TrigraphReplacement(PeekPhysical(1));
+		if (replacement == kEndOfFile)
+			return current;
+		TakePhysical();
+		TakePhysical();
+		return replacement;
+	}
+
+	int TakePhase1()
+	{
+		if (phase1_pending_.empty())
+			return PullPhase1();
+		const int result = phase1_pending_.front();
+		phase1_pending_.pop_front();
+		return result;
+	}
+
+	int PeekPhase1()
+	{
+		if (phase1_pending_.empty())
+			phase1_pending_.push_back(PullPhase1());
+		return phase1_pending_.front();
+	}
+
+	int PullUCN()
+	{
+		const int current = TakePhase1();
+		if (suppress_ucn_once_)
+		{
+			suppress_ucn_once_ = false;
+			return current;
+		}
+		if (current != '\\')
+			return current;
+		const int next = PeekPhase1();
+		if (next != 'u' && next != 'U')
+		{
+			suppress_ucn_once_ = next == '\\';
+			return current;
+		}
+		const int marker = TakePhase1();
+		const int digits = marker == 'u' ? 4 : 8;
+		int value = 0;
+		for (int i = 0; i < digits; ++i)
+		{
+			const int digit = TakePhase1();
+			if (!IsHexDigit(digit))
+				throw std::runtime_error("invalid universal character name");
+			value = (value << 4) | HexValue(digit);
+		}
+		if (value > 0x10FFFF || (value >= 0xD800 && value <= 0xDFFF) ||
+			(value < 0xA0 && value != '$' && value != '@' && value != '`'))
+			throw std::runtime_error("invalid universal character value");
+		return value;
+	}
+
+	int TakeUCN()
+	{
+		if (ucn_pending_.empty())
+			return PullUCN();
+		const int result = ucn_pending_.front();
+		ucn_pending_.pop_front();
+		return result;
+	}
+
+	int PeekUCN()
+	{
+		if (ucn_pending_.empty())
+			ucn_pending_.push_back(PullUCN());
+		return ucn_pending_.front();
+	}
+
+	PhysicalCursor physical_;
+	std::deque<int> physical_pending_;
+	std::deque<int> phase1_pending_;
+	std::deque<int> ucn_pending_;
+	bool suppress_ucn_once_;
+};
+
+bool IsNamedOperator(const std::string& spelling)
+{
+	const char* operators[] = {
+		"new", "delete", "and", "and_eq", "bitand", "bitor", "compl",
+		"not", "not_eq", "or", "or_eq", "xor", "xor_eq"
+	};
+	for (std::size_t i = 0; i < sizeof(operators) / sizeof(operators[0]); ++i)
+		if (spelling == operators[i])
+			return true;
+	return false;
+}
+
+class Lexer
+{
+public:
+	Lexer(const std::string& source, IPPTokenStream& output,
+		PPTokenizationStats* stats)
+		: translation_(source, stats), output_(output), stats_(stats),
+		  at_line_start_(true), header_context_(kNoHeaderContext)
+	{}
+
+	void Run()
+	{
+		while (Peek(0) != kEndOfFile)
+		{
+			if (Peek(0) == '\n')
+			{
+				Take();
+				EmitNewLine();
+			}
+			else if (ScanWhitespaceAndComments())
+			{}
+			else if (header_context_ == kAfterInclude && ScanHeaderName())
+			{}
+			else if (ScanLiteral())
+			{}
+			else if (IsIdentifierInitial(Peek(0)))
+				ScanIdentifier();
+			else if (IsAsciiDigit(Peek(0)) ||
+				(Peek(0) == '.' && IsAsciiDigit(Peek(1))))
+				ScanPPNumber();
+			else if (!ScanPunctuator())
+				ScanNonWhitespaceCharacter();
+		}
+		output_.emit_eof();
+	}
+
+private:
+	enum HeaderContext
+	{
+		kNoHeaderContext,
+		kAfterDirectiveMarker,
+		kAfterInclude
+	};
+
+	int Peek(std::size_t offset)
+	{
+		while (lookahead_.size() <= offset)
+		{
+			if (!lookahead_.empty() && lookahead_.back() == kEndOfFile)
+				return kEndOfFile;
+			lookahead_.push_back(translation_.Next());
+		}
+		return lookahead_[offset];
+	}
+
+	int Take()
+	{
+		if (lookahead_.empty())
+			return translation_.Next();
+		const int result = lookahead_.front();
+		lookahead_.pop_front();
+		return result;
+	}
+
+	void AppendTake(std::string* spelling)
+	{
+		AppendUTF8(Take(), spelling);
+	}
+
+	void CountToken()
+	{
+		if (stats_)
+			++stats_->emitted_tokens;
+	}
+
+	void EmitWhitespace()
+	{
+		output_.emit_whitespace_sequence();
+		CountToken();
+	}
+
+	void EmitNewLine()
+	{
+		output_.emit_new_line();
+		CountToken();
+		at_line_start_ = true;
+		header_context_ = kNoHeaderContext;
+	}
+
+	void EmitIdentifier(const std::string& spelling)
+	{
+		if (IsNamedOperator(spelling))
+		{
+			EmitPunctuator(spelling);
+			return;
+		}
+		output_.emit_identifier(spelling);
+		CountToken();
+		at_line_start_ = false;
+		header_context_ = header_context_ == kAfterDirectiveMarker &&
+			spelling == "include" ? kAfterInclude : kNoHeaderContext;
+	}
+
+	void EmitPunctuator(const std::string& spelling)
+	{
+		const bool was_at_line_start = at_line_start_;
+		output_.emit_preprocessing_op_or_punc(spelling);
+		CountToken();
+		at_line_start_ = false;
+		header_context_ = was_at_line_start &&
+			(spelling == "#" || spelling == "%:") ?
+			kAfterDirectiveMarker : kNoHeaderContext;
+	}
+
+	void ClearTokenContext()
+	{
+		at_line_start_ = false;
+		header_context_ = kNoHeaderContext;
+	}
+
+	bool ScanWhitespaceAndComments()
+	{
+		if (!IsHorizontalWhitespace(Peek(0)) &&
+			!(Peek(0) == '/' && (Peek(1) == '/' || Peek(1) == '*')))
+			return false;
+		while (true)
+		{
+			while (IsHorizontalWhitespace(Peek(0)))
+				Take();
+			if (Peek(0) == '/' && Peek(1) == '/')
+			{
+				Take();
+				Take();
+				while (Peek(0) != '\n' && Peek(0) != kEndOfFile)
+					Take();
+				break;
+			}
+			if (Peek(0) != '/' || Peek(1) != '*')
+				break;
+			Take();
+			Take();
+			while (!(Peek(0) == '*' && Peek(1) == '/'))
+			{
+				if (Peek(0) == kEndOfFile)
+					throw std::runtime_error("unterminated block comment");
+				Take();
+			}
+			Take();
+			Take();
+		}
+		EmitWhitespace();
+		return true;
+	}
+
+	bool ScanHeaderName()
+	{
+		const int opening = Peek(0);
+		if ((opening != '<' && opening != '"') || Peek(1) == '\n' ||
+			Peek(1) == kEndOfFile || Peek(1) == (opening == '<' ? '>' : '"'))
+			return false;
+		const int closing = opening == '<' ? '>' : '"';
+		std::string spelling;
+		AppendTake(&spelling);
+		while (Peek(0) != closing)
+		{
+			if (Peek(0) == '\n' || Peek(0) == kEndOfFile)
+				throw std::runtime_error("unterminated header name");
+			AppendTake(&spelling);
+		}
+		AppendTake(&spelling);
+		output_.emit_header_name(spelling);
+		CountToken();
+		ClearTokenContext();
+		return true;
+	}
+
+	bool MatchesAscii(const char* spelling)
+	{
+		for (std::size_t i = 0; spelling[i] != '\0'; ++i)
+			if (Peek(i) != static_cast<unsigned char>(spelling[i]))
+				return false;
+		return true;
+	}
+
+	void ConsumeAscii(std::size_t count, std::string* spelling)
+	{
+		for (std::size_t i = 0; i < count; ++i)
+			AppendTake(spelling);
+	}
+
+	bool ScanLiteral()
+	{
+		if (Peek(0) == 'R' && Peek(1) == '"')
+		{
+			ScanRawLiteral(2);
+			return true;
+		}
+		if (Peek(0) == 'u' && Peek(1) == '8' && Peek(2) == 'R' &&
+			Peek(3) == '"')
+		{
+			ScanRawLiteral(4);
+			return true;
+		}
+		if ((Peek(0) == 'u' || Peek(0) == 'U' || Peek(0) == 'L') &&
+			Peek(1) == 'R' && Peek(2) == '"')
+		{
+			ScanRawLiteral(3);
+			return true;
+		}
+		if (Peek(0) == '"')
+		{
+			ScanQuotedLiteral(1, '"');
+			return true;
+		}
+		if (Peek(0) == '\'')
+		{
+			ScanQuotedLiteral(1, '\'');
+			return true;
+		}
+		if (Peek(0) == 'u' && Peek(1) == '8' && Peek(2) == '"')
+		{
+			ScanQuotedLiteral(3, '"');
+			return true;
+		}
+		if ((Peek(0) == 'u' || Peek(0) == 'U' || Peek(0) == 'L') &&
+			(Peek(1) == '"' || Peek(1) == '\''))
+		{
+			ScanQuotedLiteral(2, Peek(1));
+			return true;
+		}
+		return false;
+	}
+
+	void ScanQuotedLiteral(std::size_t opener_length, int quote)
+	{
+		std::string spelling;
+		ConsumeAscii(opener_length, &spelling);
+		bool has_character = false;
+		while (Peek(0) != quote)
+		{
+			if (Peek(0) == '\n' || Peek(0) == kEndOfFile)
+				throw std::runtime_error("unterminated quoted literal");
+			if (Peek(0) == '\\')
+				ScanEscapeSequence(&spelling);
+			else
+				AppendTake(&spelling);
+			has_character = true;
+		}
+		if (quote == '\'' && !has_character)
+			throw std::runtime_error("empty character literal");
+		AppendTake(&spelling);
+		const bool has_suffix = ScanIdentifierSuffix(&spelling);
+		if (quote == '\'')
+		{
+			if (has_suffix)
+				output_.emit_user_defined_character_literal(spelling);
+			else
+				output_.emit_character_literal(spelling);
+		}
+		else if (has_suffix)
+			output_.emit_user_defined_string_literal(spelling);
+		else
+			output_.emit_string_literal(spelling);
+		CountToken();
+		ClearTokenContext();
+	}
+
+	void ScanEscapeSequence(std::string* spelling)
+	{
+		AppendTake(spelling);
+		const int escaped = Peek(0);
+		if (escaped == '\n' || escaped == kEndOfFile)
+			throw std::runtime_error("unterminated escape sequence");
+		AppendTake(spelling);
+		if (IsSimpleEscape(escaped))
+			return;
+		if (escaped >= '0' && escaped <= '7')
+		{
+			for (int i = 0; i < 2 && Peek(0) >= '0' && Peek(0) <= '7'; ++i)
+				AppendTake(spelling);
+			return;
+		}
+		if (escaped == 'x')
+		{
+			if (!IsHexDigit(Peek(0)))
+				throw std::runtime_error("hex escape has no digits");
+			while (IsHexDigit(Peek(0)))
+				AppendTake(spelling);
+			return;
+		}
+		throw std::runtime_error("invalid escape sequence");
+	}
+
+	bool ScanIdentifierSuffix(std::string* spelling)
+	{
+		if (!IsIdentifierInitial(Peek(0)))
+			return false;
+		do
+		{
+			AppendTake(spelling);
+		} while (IsIdentifierBody(Peek(0)));
+		return true;
+	}
+
+	bool IsRawDelimiterCharacter(int c)
+	{
+		return c != kEndOfFile && c != ' ' && c != '(' && c != ')' &&
+			c != '\\' && c != '\t' && c != '\v' && c != '\f' && c != '\n';
+	}
+
+	void ScanRawLiteral(std::size_t opener_length)
+	{
+		std::string spelling;
+		ConsumeAscii(opener_length, &spelling);
+		std::vector<int> delimiter;
+		while (true)
+		{
+			const int current = translation_.NextRawCodePoint();
+			if (current == '(')
+			{
+				AppendUTF8(current, &spelling);
+				break;
+			}
+			if (!IsRawDelimiterCharacter(current))
+				throw std::runtime_error("invalid raw string delimiter");
+			if (delimiter.size() == 16)
+				throw std::runtime_error("raw string delimiter is too long");
+			delimiter.push_back(current);
+			AppendUTF8(current, &spelling);
+		}
+		std::vector<int> terminator;
+		terminator.push_back(')');
+		terminator.insert(terminator.end(), delimiter.begin(), delimiter.end());
+		terminator.push_back('"');
+		std::size_t matched = 0;
+		while (matched != terminator.size())
+		{
+			const int current = translation_.NextRawCodePoint();
+			if (current == kEndOfFile)
+				throw std::runtime_error("unterminated raw string literal");
+			AppendUTF8(current, &spelling);
+			if (current == terminator[matched])
+				++matched;
+			else
+				matched = current == ')' ? 1 : 0;
+		}
+		const bool has_suffix = ScanIdentifierSuffix(&spelling);
+		if (has_suffix)
+			output_.emit_user_defined_string_literal(spelling);
+		else
+			output_.emit_string_literal(spelling);
+		CountToken();
+		ClearTokenContext();
+	}
+
+	void ScanIdentifier()
+	{
+		std::string spelling;
+		do
+		{
+			AppendTake(&spelling);
+		} while (IsIdentifierBody(Peek(0)));
+		EmitIdentifier(spelling);
+	}
+
+	void ScanPPNumber()
+	{
+		std::string spelling;
+		AppendTake(&spelling);
+		while (IsAsciiDigit(Peek(0)) || IsIdentifierNondigit(Peek(0)) ||
+			Peek(0) == '.')
+		{
+			const int current = Peek(0);
+			AppendTake(&spelling);
+			if ((current == 'e' || current == 'E') &&
+				(Peek(0) == '+' || Peek(0) == '-'))
+				AppendTake(&spelling);
+		}
+		output_.emit_pp_number(spelling);
+		CountToken();
+		ClearTokenContext();
+	}
+
+	bool ScanPunctuator()
+	{
+		if (Peek(0) == '<' && Peek(1) == ':' && Peek(2) == ':' &&
+			Peek(3) != ':' && Peek(3) != '>')
+		{
+			std::string spelling;
+			AppendTake(&spelling);
+			EmitPunctuator(spelling);
+			return true;
+		}
+		const char* punctuators[] = {
+			"%:%:", "...", "->*", "<<=", ">>=", "##", "<:", ":>",
+			"<%", "%>", "%:", "::", ".*", "+=", "-=", "*=", "/=",
+			"%=", "^=", "&=", "|=", "<<", ">>", "<=", ">=", "==",
+			"!=", "&&", "||", "++", "--", "->", "{", "}", "[", "]",
+			"#", "(", ")", ";", ":", "?", ".", "+", "-", "*", "/",
+			"%", "^", "&", "|", "~", "!", "=", "<", ">", ","
+		};
+		for (std::size_t i = 0; i < sizeof(punctuators) / sizeof(punctuators[0]); ++i)
+		{
+			if (!MatchesAscii(punctuators[i]))
+				continue;
+			std::string spelling;
+			ConsumeAscii(std::strlen(punctuators[i]), &spelling);
+			EmitPunctuator(spelling);
+			return true;
+		}
+		return false;
+	}
+
+	void ScanNonWhitespaceCharacter()
+	{
+		if (Peek(0) == '\'' || Peek(0) == '"')
+			throw std::runtime_error("unrecognized quote");
+		std::string spelling;
+		AppendTake(&spelling);
+		output_.emit_non_whitespace_char(spelling);
+		CountToken();
+		ClearTokenContext();
+	}
+
+	TranslationCursor translation_;
+	IPPTokenStream& output_;
+	PPTokenizationStats* stats_;
+	std::deque<int> lookahead_;
+	bool at_line_start_;
+	HeaderContext header_context_;
+};
+
+}
+
+PPTokenizationStats::PPTokenizationStats()
+	: source_bytes(0), decoded_code_points(0), emitted_tokens(0)
+{}
+
+void TokenizePreprocessingFile(const std::string& source,
+	IPPTokenStream& output, PPTokenizationStats* stats)
+{
+	if (stats)
+	{
+		*stats = PPTokenizationStats();
+		stats->source_bytes = source.size();
+	}
+	Lexer lexer(source, output, stats);
+	lexer.Run();
+}
+
+}
