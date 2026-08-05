@@ -129,6 +129,14 @@ public:
 
 	std::size_t Size() const { return identifiers_.size() - 1; }
 	std::size_t SpellingBytes() const { return spelling_bytes_; }
+	std::size_t StorageBytes() const
+	{
+		std::size_t bytes = identifiers_.capacity() * sizeof(IdentifierInfo) +
+			slots_.capacity() * sizeof(std::uint32_t);
+		for (std::size_t i = 1; i < identifiers_.size(); ++i)
+			bytes += identifiers_[i].spelling.capacity();
+		return bytes;
+	}
 
 private:
 	void Rehash(std::size_t capacity)
@@ -240,10 +248,14 @@ public:
 	}
 
 	void ClassifyAngles(std::size_t* opening_count,
-		std::size_t* closing_count);
+		std::size_t* closing_count, std::size_t* scratch_bytes);
 
 	const std::vector<RecognitionToken>& Tokens() const { return tokens_; }
 	const IdentifierTable& Identifiers() const { return identifiers_; }
+	std::size_t TokenStorageBytes() const
+	{
+		return tokens_.capacity() * sizeof(RecognitionToken);
+	}
 
 private:
 	void EmitOrdinaryLiteral(const std::string& source)
@@ -335,54 +347,91 @@ bool RecognitionTokenSink::BeginsAngle(std::size_t position) const
 	return EndsOperatorTemplateName(position - 1);
 }
 
-struct DelimiterDepth
+bool IsOpeningDelimiter(const RecognitionToken& token)
 {
-	std::size_t paren;
-	std::size_t square;
-	std::size_t brace;
+	return IsSimple(token, OP_LPAREN) || IsSimple(token, OP_LSQUARE) ||
+		IsSimple(token, OP_LBRACE);
+}
 
-	DelimiterDepth() : paren(0), square(0), brace(0) {}
-	bool operator==(const DelimiterDepth& other) const
-	{
-		return paren == other.paren && square == other.square &&
-			brace == other.brace;
-	}
-};
-
-void UpdateDelimiterDepth(const RecognitionToken& token,
-	DelimiterDepth* depth)
+bool ClosesDelimiter(const RecognitionToken& token,
+	SimpleTokenKind opening)
 {
-	if (IsSimple(token, OP_LPAREN)) ++depth->paren;
-	else if (IsSimple(token, OP_RPAREN) && depth->paren != 0) --depth->paren;
-	else if (IsSimple(token, OP_LSQUARE)) ++depth->square;
-	else if (IsSimple(token, OP_RSQUARE) && depth->square != 0) --depth->square;
-	else if (IsSimple(token, OP_LBRACE)) ++depth->brace;
-	else if (IsSimple(token, OP_RBRACE) && depth->brace != 0) --depth->brace;
+	return (opening == OP_LPAREN && IsSimple(token, OP_RPAREN)) ||
+		(opening == OP_LSQUARE && IsSimple(token, OP_RSQUARE)) ||
+		(opening == OP_LBRACE && IsSimple(token, OP_RBRACE));
 }
 
 void RecognitionTokenSink::ClassifyAngles(std::size_t* opening_count,
-	std::size_t* closing_count)
+	std::size_t* closing_count, std::size_t* scratch_bytes)
 {
-	DelimiterDepth depth;
-	std::vector<DelimiterDepth> angles;
+	// Give each non-angle delimiter region a stable identity. Equal numeric
+	// depths are insufficient: an unclosed angle in one sibling pair must not
+	// consume a greater-than token from a later sibling pair.
+	std::vector<std::uint32_t> contexts(tokens_.size(), 0);
+	std::vector<std::uint32_t> context_stack(1, 0);
+	std::vector<SimpleTokenKind> delimiters;
+	std::uint32_t next_context = 1;
+	for (std::size_t i = 0; i < tokens_.size(); ++i)
+	{
+		const RecognitionToken& token = tokens_[i];
+		contexts[i] = context_stack.back();
+		if (IsOpeningDelimiter(token))
+		{
+			delimiters.push_back(static_cast<SimpleTokenKind>(token.kind));
+			context_stack.push_back(next_context++);
+		}
+		else if (!delimiters.empty() &&
+			ClosesDelimiter(token, delimiters.back()))
+		{
+			delimiters.pop_back();
+			context_stack.pop_back();
+		}
+	}
+
+	// A possible template-name nested below an existing angle is committed
+	// only when that exact (), [], or {} region contains its own closing angle.
+	// Compute this predicate once so malformed and relational-heavy inputs stay
+	// linear rather than rescanning the suffix for every '<'.
+	std::vector<unsigned char> has_later_close(tokens_.size(), 0);
+	std::vector<unsigned char> context_has_close(next_context, 0);
+	for (std::size_t i = tokens_.size(); i-- != 0;)
+	{
+		has_later_close[i] = context_has_close[contexts[i]];
+		const RecognitionToken& token = tokens_[i];
+		if (IsSimple(token, OP_GT) || token.kind == kRShift1Token ||
+			token.kind == kRShift2Token)
+			context_has_close[contexts[i]] = 1;
+	}
+
+	std::vector<std::uint32_t> angles;
 	for (std::size_t i = 0; i < tokens_.size(); ++i)
 	{
 		RecognitionToken& token = tokens_[i];
 		const bool can_close = IsSimple(token, OP_GT) ||
 			token.kind == kRShift1Token || token.kind == kRShift2Token;
-		if (can_close && !angles.empty() && angles.back() == depth)
+		if (can_close && !angles.empty() && angles.back() == contexts[i])
 		{
 			token.role = AR_CLOSE;
 			angles.pop_back();
 			if (closing_count) ++*closing_count;
 		}
-		else if (BeginsAngle(i))
+		else if (BeginsAngle(i) &&
+			(angles.empty() || angles.back() == contexts[i] ||
+			 has_later_close[i]))
 		{
 			token.role = AR_OPEN;
-			angles.push_back(depth);
+			angles.push_back(contexts[i]);
 			if (opening_count) ++*opening_count;
 		}
-		UpdateDelimiterDepth(token, &depth);
+	}
+	if (scratch_bytes)
+	{
+		*scratch_bytes = contexts.capacity() * sizeof(std::uint32_t) +
+			context_stack.capacity() * sizeof(std::uint32_t) +
+			delimiters.capacity() * sizeof(SimpleTokenKind) +
+			has_later_close.capacity() * sizeof(unsigned char) +
+			context_has_close.capacity() * sizeof(unsigned char) +
+			angles.capacity() * sizeof(std::uint32_t);
 	}
 }
 
@@ -786,7 +835,16 @@ public:
 	{
 		if (tokens.size() >= kParseFailure)
 			throw std::runtime_error("too many recognition tokens");
-		if (stats_) stats_->memo_entries = memo_.size();
+		if (stats_)
+		{
+			stats_->memo_entries = memo_.size();
+			stats_->memo_storage_bytes =
+				memo_.capacity() * sizeof(std::uint32_t);
+			stats_->peak_stage_storage_bytes = std::max(
+				stats_->peak_stage_storage_bytes,
+				stats_->token_storage_bytes + stats_->identifier_storage_bytes +
+				stats_->memo_storage_bytes);
+		}
 	}
 
 	bool Recognize()
@@ -982,9 +1040,11 @@ std::uint32_t Parser::ParseNonterminal(std::uint32_t rule_id,
 
 RecognitionStats::RecognitionStats()
 	: tokens(0), interned_identifiers(0), interned_identifier_bytes(0),
-	  angle_openings(0), angle_closings(0), memo_queries(0), memo_hits(0),
-	  rule_evaluations(0), expression_evaluations(0), memo_entries(0),
-	  elapsed_nanoseconds(0)
+	  token_storage_bytes(0), identifier_storage_bytes(0),
+	  angle_scratch_bytes(0), angle_openings(0), angle_closings(0),
+	  memo_queries(0), memo_hits(0), rule_evaluations(0),
+	  expression_evaluations(0), memo_entries(0), memo_storage_bytes(0),
+	  peak_stage_storage_bytes(0), elapsed_nanoseconds(0)
 {
 }
 
@@ -993,17 +1053,26 @@ bool RecognizeTranslationUnit(const std::string& path,
 	RecognitionStats* stats)
 {
 	std::chrono::steady_clock::time_point started;
-	if (stats) started = std::chrono::steady_clock::now();
+	if (stats)
+	{
+		*stats = RecognitionStats();
+		started = std::chrono::steady_clock::now();
+	}
 	RecognitionTokenSink sink;
 	PreprocessFile(path, source, sink, options,
 		stats ? &stats->preprocessing : 0);
 	sink.ClassifyAngles(stats ? &stats->angle_openings : 0,
-		stats ? &stats->angle_closings : 0);
+		stats ? &stats->angle_closings : 0,
+		stats ? &stats->angle_scratch_bytes : 0);
 	if (stats)
 	{
 		stats->tokens = sink.Tokens().size();
 		stats->interned_identifiers = sink.Identifiers().Size();
 		stats->interned_identifier_bytes = sink.Identifiers().SpellingBytes();
+		stats->token_storage_bytes = sink.TokenStorageBytes();
+		stats->identifier_storage_bytes = sink.Identifiers().StorageBytes();
+		stats->peak_stage_storage_bytes = stats->token_storage_bytes +
+			stats->identifier_storage_bytes + stats->angle_scratch_bytes;
 	}
 	Parser parser(sink.Tokens(), sink.Identifiers(), stats);
 	const bool accepted = parser.Recognize();

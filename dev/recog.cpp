@@ -49,6 +49,9 @@ void ReportStats(const std::string& path, const cppgm::RecognitionStats& stats,
 		<< " post_tokens=" << stats.tokens
 		<< " interned_ids=" << stats.interned_identifiers
 		<< " interned_bytes=" << stats.interned_identifier_bytes
+		<< " token_storage_bytes=" << stats.token_storage_bytes
+		<< " identifier_storage_bytes=" << stats.identifier_storage_bytes
+		<< " angle_scratch_bytes=" << stats.angle_scratch_bytes
 		<< " angle_opens=" << stats.angle_openings
 		<< " angle_closes=" << stats.angle_closings
 		<< " memo_queries=" << stats.memo_queries
@@ -56,6 +59,8 @@ void ReportStats(const std::string& path, const cppgm::RecognitionStats& stats,
 		<< " rule_evals=" << stats.rule_evaluations
 		<< " expression_evals=" << stats.expression_evaluations
 		<< " memo_entries=" << stats.memo_entries
+		<< " memo_storage_bytes=" << stats.memo_storage_bytes
+		<< " peak_stage_storage_bytes=" << stats.peak_stage_storage_bytes
 		<< " elapsed_ns=" << stats.elapsed_nanoseconds << '\n';
 }
 

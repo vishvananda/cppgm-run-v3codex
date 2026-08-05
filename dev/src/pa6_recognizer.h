@@ -15,6 +15,11 @@ struct RecognitionStats
 	std::size_t tokens;
 	std::size_t interned_identifiers;
 	std::size_t interned_identifier_bytes;
+	// Capacity-accounted stage ownership. Identifier storage is a conservative
+	// upper bound because std::string may keep short spellings inline.
+	std::size_t token_storage_bytes;
+	std::size_t identifier_storage_bytes;
+	std::size_t angle_scratch_bytes;
 	std::size_t angle_openings;
 	std::size_t angle_closings;
 	std::size_t memo_queries;
@@ -22,6 +27,8 @@ struct RecognitionStats
 	std::size_t rule_evaluations;
 	std::size_t expression_evaluations;
 	std::size_t memo_entries;
+	std::size_t memo_storage_bytes;
+	std::size_t peak_stage_storage_bytes;
 	std::uint64_t elapsed_nanoseconds;
 
 	RecognitionStats();
