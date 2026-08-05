@@ -930,6 +930,11 @@ public:
 		output_.EmitEof();
 	}
 
+	void FlushPendingTokens()
+	{
+		FlushStrings();
+	}
+
 private:
 	void CountPreprocessingToken()
 	{
@@ -1188,6 +1193,94 @@ private:
 	std::size_t pending_string_bytes_;
 };
 
+}
+
+struct PostTokenizationSession::Impl
+{
+	Impl(IPostTokenStream& output, PostTokenizationStats* stats)
+		: analyzer(output, stats)
+	{}
+
+	PostTokenAnalyzer analyzer;
+};
+
+PostTokenizationSession::PostTokenizationSession(IPostTokenStream& output,
+	PostTokenizationStats* stats)
+	: impl_(new Impl(output, stats))
+{}
+
+PostTokenizationSession::~PostTokenizationSession()
+{
+	delete impl_;
+}
+
+void PostTokenizationSession::FlushPendingTokens()
+{
+	impl_->analyzer.FlushPendingTokens();
+}
+
+void PostTokenizationSession::emit_whitespace_sequence()
+{
+	impl_->analyzer.emit_whitespace_sequence();
+}
+
+void PostTokenizationSession::emit_new_line()
+{
+	impl_->analyzer.emit_new_line();
+}
+
+void PostTokenizationSession::emit_header_name(const std::string& data)
+{
+	impl_->analyzer.emit_header_name(data);
+}
+
+void PostTokenizationSession::emit_identifier(const std::string& data)
+{
+	impl_->analyzer.emit_identifier(data);
+}
+
+void PostTokenizationSession::emit_pp_number(const std::string& data)
+{
+	impl_->analyzer.emit_pp_number(data);
+}
+
+void PostTokenizationSession::emit_character_literal(const std::string& data)
+{
+	impl_->analyzer.emit_character_literal(data);
+}
+
+void PostTokenizationSession::emit_user_defined_character_literal(
+	const std::string& data)
+{
+	impl_->analyzer.emit_user_defined_character_literal(data);
+}
+
+void PostTokenizationSession::emit_string_literal(const std::string& data)
+{
+	impl_->analyzer.emit_string_literal(data);
+}
+
+void PostTokenizationSession::emit_user_defined_string_literal(
+	const std::string& data)
+{
+	impl_->analyzer.emit_user_defined_string_literal(data);
+}
+
+void PostTokenizationSession::emit_preprocessing_op_or_punc(
+	const std::string& data)
+{
+	impl_->analyzer.emit_preprocessing_op_or_punc(data);
+}
+
+void PostTokenizationSession::emit_non_whitespace_char(
+	const std::string& data)
+{
+	impl_->analyzer.emit_non_whitespace_char(data);
+}
+
+void PostTokenizationSession::emit_eof()
+{
+	impl_->analyzer.emit_eof();
 }
 
 const char* FundamentalTypeName(FundamentalType type)

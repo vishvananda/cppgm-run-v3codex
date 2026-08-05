@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <string>
 
+#include "IPPTokenStream.h"
 #include "pp_tokenizer.h"
 
 namespace cppgm
@@ -206,6 +207,41 @@ struct PostTokenizationStats
 	std::uint64_t elapsed_nanoseconds;
 
 	PostTokenizationStats();
+};
+
+// Reusable preprocessing-token -> post-token session.  The ordinary PA2 path
+// feeds one complete source file to this stream.  Consumers with a stronger
+// grammatical boundary, such as PA3 logical lines, may flush the one pending
+// string-literal sequence at that boundary without serializing and retokenizing
+// source text.
+class PostTokenizationSession : public IPPTokenStream
+{
+public:
+	PostTokenizationSession(IPostTokenStream& output,
+		PostTokenizationStats* stats = 0);
+	~PostTokenizationSession();
+
+	void FlushPendingTokens();
+
+	void emit_whitespace_sequence();
+	void emit_new_line();
+	void emit_header_name(const std::string& data);
+	void emit_identifier(const std::string& data);
+	void emit_pp_number(const std::string& data);
+	void emit_character_literal(const std::string& data);
+	void emit_user_defined_character_literal(const std::string& data);
+	void emit_string_literal(const std::string& data);
+	void emit_user_defined_string_literal(const std::string& data);
+	void emit_preprocessing_op_or_punc(const std::string& data);
+	void emit_non_whitespace_char(const std::string& data);
+	void emit_eof();
+
+private:
+	PostTokenizationSession(const PostTokenizationSession&);
+	PostTokenizationSession& operator=(const PostTokenizationSession&);
+
+	struct Impl;
+	Impl* impl_;
 };
 
 // Run phases 1-3 through the shared PA1 tokenizer, apply the PA2 phase-6 and
