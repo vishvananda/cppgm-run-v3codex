@@ -31,4 +31,10 @@ void TokenizePreprocessingFile(const std::string& source,
 	IPPTokenStream& output,
 	PPTokenizationStats* stats = 0);
 
+// Retokenize a phase-4 spelling produced by ##. The spelling has already
+// passed translation phases 1-2, so trigraph replacement, UCN conversion, and
+// line splicing must not be applied a second time.
+void TokenizeGeneratedPreprocessingToken(const std::string& spelling,
+	IPPTokenStream& output);
+
 }

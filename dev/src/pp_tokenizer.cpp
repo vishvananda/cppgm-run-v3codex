@@ -297,12 +297,20 @@ int TrigraphReplacement(int c)
 class TranslationCursor
 {
 public:
-	TranslationCursor(const std::string& source, PPTokenizationStats* stats)
-		: physical_(source, stats), suppress_ucn_once_(false), stats_(stats)
+	TranslationCursor(const std::string& source, PPTokenizationStats* stats,
+		bool apply_translation)
+		: physical_(source, stats), suppress_ucn_once_(false), stats_(stats),
+		  apply_translation_(apply_translation)
 	{}
 
 	int Next()
 	{
+		if (!apply_translation_)
+		{
+			const int current = physical_.Next();
+			CountTranslated(current);
+			return current;
+		}
 		while (true)
 		{
 			const int current = TakeUCN();
@@ -436,6 +444,7 @@ private:
 	FixedQueue<1> ucn_pending_;
 	bool suppress_ucn_once_;
 	PPTokenizationStats* stats_;
+	bool apply_translation_;
 };
 
 bool IsNamedOperator(const std::string& spelling)
@@ -454,8 +463,9 @@ class Lexer
 {
 public:
 	Lexer(const std::string& source, IPPTokenStream& output,
-		PPTokenizationStats* stats)
-		: translation_(source, stats), output_(output), stats_(stats),
+		PPTokenizationStats* stats, bool apply_translation)
+		: translation_(source, stats, apply_translation), output_(output),
+		  stats_(stats),
 		  at_line_start_(true), header_context_(kNoHeaderContext),
 		  last_token_was_operator_(false)
 	{}
@@ -921,12 +931,19 @@ void TokenizePreprocessingFile(const std::string& source,
 		*stats = PPTokenizationStats();
 		stats->source_bytes = source.size();
 	}
-	Lexer lexer(source, output, stats);
+	Lexer lexer(source, output, stats, true);
 	lexer.Run();
 	if (stats)
 		stats->elapsed_nanoseconds = static_cast<std::uint64_t>(
 			std::chrono::duration_cast<std::chrono::nanoseconds>(
 				std::chrono::steady_clock::now() - start).count());
+}
+
+void TokenizeGeneratedPreprocessingToken(const std::string& spelling,
+	IPPTokenStream& output)
+{
+	Lexer lexer(spelling, output, 0, false);
+	lexer.Run();
 }
 
 }
