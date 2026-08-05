@@ -11,12 +11,12 @@ struct DebugPPTokenStream : IPPTokenStream
 {
 	void emit_whitespace_sequence()
 	{
-		std::cout << "whitespace-sequence 0 " << std::endl;
+		std::cout << "whitespace-sequence 0 \n";
 	}
 
 	void emit_new_line()
 	{
-		std::cout << "new-line 0 " << std::endl;
+		std::cout << "new-line 0 \n";
 	}
 
 	void emit_header_name(const std::string& data)
@@ -66,7 +66,7 @@ struct DebugPPTokenStream : IPPTokenStream
 
 	void emit_eof()
 	{
-		std::cout << "eof" << std::endl;
+		std::cout << "eof\n";
 	}
 
 private:
@@ -75,6 +75,6 @@ private:
 	{
 		std::cout << type << " " << data.size() << " ";
 		std::cout.write(data.data(), data.size());
-		std::cout << std::endl;
+		std::cout << '\n';
 	}
 };

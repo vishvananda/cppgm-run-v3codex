@@ -13,6 +13,8 @@ int main(int argc, char** argv)
 	(void)argv;
 	try
 	{
+		std::ios_base::sync_with_stdio(false);
+		std::cin.tie(0);
 		const std::string source((std::istreambuf_iterator<char>(std::cin)),
 			std::istreambuf_iterator<char>());
 

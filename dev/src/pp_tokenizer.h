@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 
 struct IPPTokenStream;
@@ -10,9 +11,15 @@ namespace cppgm
 
 struct PPTokenizationStats
 {
+	// Optional low-overhead stage telemetry. The peak covers the reusable
+	// spelling buffer; the immutable source storage remains source_bytes.
 	std::size_t source_bytes;
 	std::size_t decoded_code_points;
+	std::size_t translated_code_points;
 	std::size_t emitted_tokens;
+	std::size_t emitted_token_bytes;
+	std::size_t peak_token_buffer_bytes;
+	std::uint64_t elapsed_nanoseconds;
 
 	PPTokenizationStats();
 };

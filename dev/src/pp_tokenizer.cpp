@@ -1,10 +1,10 @@
 #include "pp_tokenizer.h"
 
+#include <algorithm>
+#include <chrono>
 #include <cstring>
-#include <deque>
 #include <stdexcept>
 #include <string>
-#include <vector>
 
 #include "IPPTokenStream.h"
 
@@ -14,6 +14,47 @@ namespace
 {
 
 const int kEndOfFile = -1;
+
+template <std::size_t Capacity>
+class FixedQueue
+{
+public:
+	FixedQueue() : begin_(0), size_(0) {}
+
+	bool empty() const { return size_ == 0; }
+	std::size_t size() const { return size_; }
+
+	int front() const { return (*this)[0]; }
+	int back() const { return (*this)[size_ - 1]; }
+
+	int operator[](std::size_t offset) const
+	{
+		if (offset >= size_)
+			throw std::logic_error("fixed lookahead queue underflow");
+		return data_[(begin_ + offset) % Capacity];
+	}
+
+	void push_back(int value)
+	{
+		if (size_ == Capacity)
+			throw std::logic_error("fixed lookahead queue overflow");
+		data_[(begin_ + size_) % Capacity] = value;
+		++size_;
+	}
+
+	void pop_front()
+	{
+		if (empty())
+			throw std::logic_error("fixed lookahead queue underflow");
+		begin_ = (begin_ + 1) % Capacity;
+		--size_;
+	}
+
+private:
+	int data_[Capacity];
+	std::size_t begin_;
+	std::size_t size_;
+};
 
 struct CodePointRange
 {
@@ -257,7 +298,7 @@ class TranslationCursor
 {
 public:
 	TranslationCursor(const std::string& source, PPTokenizationStats* stats)
-		: physical_(source, stats), suppress_ucn_once_(false)
+		: physical_(source, stats), suppress_ucn_once_(false), stats_(stats)
 	{}
 
 	int Next()
@@ -266,7 +307,10 @@ public:
 		{
 			const int current = TakeUCN();
 			if (current != '\\' || PeekUCN() != '\n')
+			{
+				CountTranslated(current);
 				return current;
+			}
 			TakeUCN();
 		}
 	}
@@ -276,10 +320,18 @@ public:
 		if (!physical_pending_.empty() || !phase1_pending_.empty() ||
 			!ucn_pending_.empty())
 			throw std::logic_error("raw mode entered with translated lookahead");
-		return physical_.Next();
+		const int result = physical_.Next();
+		CountTranslated(result);
+		return result;
 	}
 
 private:
+	void CountTranslated(int code_point)
+	{
+		if (stats_ && code_point != kEndOfFile)
+			++stats_->translated_code_points;
+	}
+
 	int TakePhysical()
 	{
 		if (physical_pending_.empty())
@@ -348,7 +400,7 @@ private:
 		}
 		const int marker = TakePhase1();
 		const int digits = marker == 'u' ? 4 : 8;
-		int value = 0;
+		std::uint32_t value = 0;
 		for (int i = 0; i < digits; ++i)
 		{
 			const int digit = TakePhase1();
@@ -359,7 +411,7 @@ private:
 		if (value > 0x10FFFF || (value >= 0xD800 && value <= 0xDFFF) ||
 			(value < 0xA0 && value != '$' && value != '@' && value != '`'))
 			throw std::runtime_error("invalid universal character value");
-		return value;
+		return static_cast<int>(value);
 	}
 
 	int TakeUCN()
@@ -379,10 +431,11 @@ private:
 	}
 
 	PhysicalCursor physical_;
-	std::deque<int> physical_pending_;
-	std::deque<int> phase1_pending_;
-	std::deque<int> ucn_pending_;
+	FixedQueue<2> physical_pending_;
+	FixedQueue<1> phase1_pending_;
+	FixedQueue<1> ucn_pending_;
 	bool suppress_ucn_once_;
+	PPTokenizationStats* stats_;
 };
 
 bool IsNamedOperator(const std::string& spelling)
@@ -465,10 +518,21 @@ private:
 		AppendUTF8(Take(), spelling);
 	}
 
-	void CountToken()
+	std::string& StartTokenSpelling()
+	{
+		spelling_.clear();
+		return spelling_;
+	}
+
+	void CountToken(std::size_t token_bytes = 0)
 	{
 		if (stats_)
+		{
 			++stats_->emitted_tokens;
+			stats_->emitted_token_bytes += token_bytes;
+			stats_->peak_token_buffer_bytes = std::max(
+				stats_->peak_token_buffer_bytes, spelling_.capacity());
+		}
 	}
 
 	void EmitWhitespace()
@@ -493,7 +557,7 @@ private:
 			return;
 		}
 		output_.emit_identifier(spelling);
-		CountToken();
+		CountToken(spelling.size());
 		at_line_start_ = false;
 		header_context_ = header_context_ == kAfterDirectiveMarker &&
 			spelling == "include" ? kAfterInclude : kNoHeaderContext;
@@ -503,7 +567,7 @@ private:
 	{
 		const bool was_at_line_start = at_line_start_;
 		output_.emit_preprocessing_op_or_punc(spelling);
-		CountToken();
+		CountToken(spelling.size());
 		at_line_start_ = false;
 		header_context_ = was_at_line_start &&
 			(spelling == "#" || spelling == "%:") ?
@@ -557,7 +621,7 @@ private:
 			Peek(1) == kEndOfFile || Peek(1) == (opening == '<' ? '>' : '"'))
 			return false;
 		const int closing = opening == '<' ? '>' : '"';
-		std::string spelling;
+		std::string& spelling = StartTokenSpelling();
 		AppendTake(&spelling);
 		while (Peek(0) != closing)
 		{
@@ -567,7 +631,7 @@ private:
 		}
 		AppendTake(&spelling);
 		output_.emit_header_name(spelling);
-		CountToken();
+		CountToken(spelling.size());
 		ClearTokenContext();
 		return true;
 	}
@@ -631,7 +695,7 @@ private:
 
 	void ScanQuotedLiteral(std::size_t opener_length, int quote)
 	{
-		std::string spelling;
+		std::string& spelling = StartTokenSpelling();
 		ConsumeAscii(opener_length, &spelling);
 		bool has_character = false;
 		while (Peek(0) != quote)
@@ -659,7 +723,7 @@ private:
 			output_.emit_user_defined_string_literal(spelling);
 		else
 			output_.emit_string_literal(spelling);
-		CountToken();
+		CountToken(spelling.size());
 		ClearTokenContext();
 	}
 
@@ -708,9 +772,10 @@ private:
 
 	void ScanRawLiteral(std::size_t opener_length)
 	{
-		std::string spelling;
+		std::string& spelling = StartTokenSpelling();
 		ConsumeAscii(opener_length, &spelling);
-		std::vector<int> delimiter;
+		int delimiter[16];
+		std::size_t delimiter_size = 0;
 		while (true)
 		{
 			const int current = translation_.NextRawCodePoint();
@@ -721,23 +786,22 @@ private:
 			}
 			if (!IsRawDelimiterCharacter(current))
 				throw std::runtime_error("invalid raw string delimiter");
-			if (delimiter.size() == 16)
+			if (delimiter_size == 16)
 				throw std::runtime_error("raw string delimiter is too long");
-			delimiter.push_back(current);
+			delimiter[delimiter_size++] = current;
 			AppendUTF8(current, &spelling);
 		}
-		std::vector<int> terminator;
-		terminator.push_back(')');
-		terminator.insert(terminator.end(), delimiter.begin(), delimiter.end());
-		terminator.push_back('"');
 		std::size_t matched = 0;
-		while (matched != terminator.size())
+		const std::size_t terminator_size = delimiter_size + 2;
+		while (matched != terminator_size)
 		{
 			const int current = translation_.NextRawCodePoint();
 			if (current == kEndOfFile)
 				throw std::runtime_error("unterminated raw string literal");
 			AppendUTF8(current, &spelling);
-			if (current == terminator[matched])
+			const int expected = matched == 0 ? ')' :
+				(matched <= delimiter_size ? delimiter[matched - 1] : '"');
+			if (current == expected)
 				++matched;
 			else
 				matched = current == ')' ? 1 : 0;
@@ -747,13 +811,13 @@ private:
 			output_.emit_user_defined_string_literal(spelling);
 		else
 			output_.emit_string_literal(spelling);
-		CountToken();
+		CountToken(spelling.size());
 		ClearTokenContext();
 	}
 
 	void ScanIdentifier()
 	{
-		std::string spelling;
+		std::string& spelling = StartTokenSpelling();
 		do
 		{
 			AppendTake(&spelling);
@@ -763,7 +827,7 @@ private:
 
 	void ScanPPNumber()
 	{
-		std::string spelling;
+		std::string& spelling = StartTokenSpelling();
 		AppendTake(&spelling);
 		while (IsAsciiDigit(Peek(0)) || IsIdentifierNondigit(Peek(0)) ||
 			Peek(0) == '.')
@@ -775,7 +839,7 @@ private:
 				AppendTake(&spelling);
 		}
 		output_.emit_pp_number(spelling);
-		CountToken();
+		CountToken(spelling.size());
 		ClearTokenContext();
 	}
 
@@ -784,7 +848,7 @@ private:
 		if (Peek(0) == '<' && Peek(1) == ':' && Peek(2) == ':' &&
 			Peek(3) != ':' && Peek(3) != '>')
 		{
-			std::string spelling;
+			std::string& spelling = StartTokenSpelling();
 			AppendTake(&spelling);
 			EmitPunctuator(spelling);
 			return true;
@@ -801,7 +865,7 @@ private:
 		{
 			if (!MatchesAscii(punctuators[i]))
 				continue;
-			std::string spelling;
+			std::string& spelling = StartTokenSpelling();
 			ConsumeAscii(std::strlen(punctuators[i]), &spelling);
 			EmitPunctuator(spelling);
 			return true;
@@ -813,17 +877,18 @@ private:
 	{
 		if (Peek(0) == '\'' || Peek(0) == '"')
 			throw std::runtime_error("unrecognized quote");
-		std::string spelling;
+		std::string& spelling = StartTokenSpelling();
 		AppendTake(&spelling);
 		output_.emit_non_whitespace_char(spelling);
-		CountToken();
+		CountToken(spelling.size());
 		ClearTokenContext();
 	}
 
 	TranslationCursor translation_;
 	IPPTokenStream& output_;
 	PPTokenizationStats* stats_;
-	std::deque<int> lookahead_;
+	FixedQueue<4> lookahead_;
+	std::string spelling_;
 	bool at_line_start_;
 	HeaderContext header_context_;
 };
@@ -831,12 +896,17 @@ private:
 }
 
 PPTokenizationStats::PPTokenizationStats()
-	: source_bytes(0), decoded_code_points(0), emitted_tokens(0)
+	: source_bytes(0), decoded_code_points(0), translated_code_points(0),
+	  emitted_tokens(0), emitted_token_bytes(0), peak_token_buffer_bytes(0),
+	  elapsed_nanoseconds(0)
 {}
 
 void TokenizePreprocessingFile(const std::string& source,
 	IPPTokenStream& output, PPTokenizationStats* stats)
 {
+	const std::chrono::steady_clock::time_point start = stats ?
+		std::chrono::steady_clock::now() :
+		std::chrono::steady_clock::time_point();
 	if (stats)
 	{
 		*stats = PPTokenizationStats();
@@ -844,6 +914,10 @@ void TokenizePreprocessingFile(const std::string& source,
 	}
 	Lexer lexer(source, output, stats);
 	lexer.Run();
+	if (stats)
+		stats->elapsed_nanoseconds = static_cast<std::uint64_t>(
+			std::chrono::duration_cast<std::chrono::nanoseconds>(
+				std::chrono::steady_clock::now() - start).count());
 }
 
 }
