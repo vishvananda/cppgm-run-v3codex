@@ -49,6 +49,10 @@ int main(int argc, char** argv)
 				 << " skipped=" << stats.skipped_subexpressions
 				 << " peak_line_tokens=" << stats.peak_line_tokens
 				 << " peak_line_nodes=" << stats.peak_line_nodes
+				 << " peak_parser_operators="
+				 << stats.peak_parser_operators
+				 << " peak_parser_operands="
+				 << stats.peak_parser_operands
 				 << " peak_evaluation_frames="
 				 << stats.peak_evaluation_frames
 				 << " peak_line_storage_bytes="

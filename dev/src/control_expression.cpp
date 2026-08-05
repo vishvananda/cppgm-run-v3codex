@@ -174,42 +174,126 @@ int BinaryPrecedence(SimpleTokenKind kind)
 	}
 }
 
+enum ParserOperatorKind : unsigned char
+{
+	PARSER_LPAREN,
+	PARSER_QUESTION,
+	PARSER_UNARY,
+	PARSER_BINARY,
+	PARSER_CONDITIONAL
+};
+
+struct ParserOperator
+{
+	SimpleTokenKind operation;
+	ParserOperatorKind kind;
+
+	ParserOperator(SimpleTokenKind token_operation,
+		ParserOperatorKind token_kind)
+		: operation(token_operation), kind(token_kind)
+	{}
+};
+
 class Parser
 {
 public:
-	Parser(const std::vector<Token>& tokens, std::vector<Node>* nodes)
-		: tokens_(tokens), nodes_(*nodes), position_(0),
-		  valid_(tokens.size() < kNoNode)
+	Parser(const std::vector<Token>& tokens, std::vector<Node>* nodes,
+		std::vector<ParserOperator>* operators, std::vector<NodeId>* operands,
+		ControlExpressionStats* stats)
+		: tokens_(tokens), nodes_(*nodes), operators_(*operators),
+		  operands_(*operands), stats_(stats), valid_(tokens.size() < kNoNode)
 	{
 		nodes_.clear();
-		if (valid_ && nodes_.capacity() < tokens_.size())
-			nodes_.reserve(tokens_.size());
+		operators_.clear();
+		operands_.clear();
 	}
 
 	NodeId Parse()
 	{
-		const NodeId root = ParseConditional();
-		if (!valid_ || root == kNoNode || position_ != tokens_.size())
+		bool expect_operand = true;
+		std::size_t position = 0;
+		while (valid_ && position < tokens_.size())
+		{
+			const Token& token = tokens_[position];
+			if (expect_operand)
+			{
+				if (token.category == TOKEN_SIMPLE &&
+					IsUnaryOperator(token.simple))
+				{
+					PushOperator(ParserOperator(token.simple, PARSER_UNARY));
+					++position;
+					continue;
+				}
+				if (token.category == TOKEN_SIMPLE && token.simple == OP_LPAREN)
+				{
+					PushOperator(ParserOperator(OP_LPAREN, PARSER_LPAREN));
+					++position;
+					continue;
+				}
+				const NodeId operand = ParsePrimary(&position);
+				if (operand == kNoNode)
+					break;
+				PushOperand(operand);
+				ReducePrefixOperators();
+				expect_operand = false;
+				continue;
+			}
+
+			if (token.category != TOKEN_SIMPLE)
+			{
+				valid_ = false;
+				break;
+			}
+			if (token.simple == OP_RPAREN)
+			{
+				if (!CloseParenthesis())
+					break;
+				++position;
+				ReducePrefixOperators();
+				continue;
+			}
+			if (token.simple == OP_QMARK)
+			{
+				ReduceForIncoming(0, false);
+				if (!valid_)
+					break;
+				PushOperator(ParserOperator(OP_QMARK, PARSER_QUESTION));
+				++position;
+				expect_operand = true;
+				continue;
+			}
+			if (token.simple == OP_COLON)
+			{
+				if (!BeginConditionalFalseExpression())
+					break;
+				++position;
+				expect_operand = true;
+				continue;
+			}
+			const int precedence = BinaryPrecedence(token.simple);
+			if (precedence == 0)
+			{
+				valid_ = false;
+				break;
+			}
+			ReduceForIncoming(precedence, true);
+			if (!valid_)
+				break;
+			PushOperator(ParserOperator(token.simple, PARSER_BINARY));
+			++position;
+			expect_operand = true;
+		}
+
+		if (!valid_ || expect_operand)
 			return kNoNode;
-		return root;
+		while (valid_ && !operators_.empty())
+			ReduceTop();
+		if (!valid_ || operands_.size() != 1)
+			return kNoNode;
+		return operands_.back();
 	}
 
 private:
-	bool IsSimple(SimpleTokenKind kind) const
-	{
-		return position_ < tokens_.size() &&
-			tokens_[position_].category == TOKEN_SIMPLE &&
-			tokens_[position_].simple == kind;
-	}
-
-	bool Match(SimpleTokenKind kind)
-	{
-		if (!IsSimple(kind))
-			return false;
-		++position_;
-		return true;
-	}
-
 	NodeId StoreNode(const Node& node)
 	{
 		if (nodes_.size() >= kNoNode)
@@ -281,114 +365,208 @@ private:
 		return StoreNode(node);
 	}
 
-	NodeId ParseConditional()
+	bool IsSimple(std::size_t position, SimpleTokenKind kind) const
 	{
-		NodeId condition = ParseBinary(1);
-		if (condition == kNoNode || !Match(OP_QMARK))
-			return condition;
-		const NodeId true_expression = ParseConditional();
-		if (true_expression == kNoNode || !Match(OP_COLON))
+		return position < tokens_.size() &&
+			tokens_[position].category == TOKEN_SIMPLE &&
+			tokens_[position].simple == kind;
+	}
+
+	NodeId ParsePrimary(std::size_t* position)
+	{
+		if (*position >= tokens_.size())
 		{
 			valid_ = false;
 			return kNoNode;
 		}
-		const NodeId false_expression = ParseConditional();
-		return AddConditional(condition, true_expression, false_expression);
-	}
-
-	NodeId ParseBinary(int minimum_precedence)
-	{
-		NodeId left = ParseUnary();
-		while (left != kNoNode && position_ < tokens_.size() &&
-			tokens_[position_].category == TOKEN_SIMPLE)
-		{
-			const SimpleTokenKind operation = tokens_[position_].simple;
-			const int precedence = BinaryPrecedence(operation);
-			if (precedence < minimum_precedence)
-				break;
-			++position_;
-			const NodeId right = ParseBinary(precedence + 1);
-			if (right == kNoNode)
-			{
-				valid_ = false;
-				return kNoNode;
-			}
-			left = AddBinary(operation, left, right);
-		}
-		return left;
-	}
-
-	NodeId ParseUnary()
-	{
-		const std::size_t unary_begin = position_;
-		while (position_ < tokens_.size() &&
-			tokens_[position_].category == TOKEN_SIMPLE &&
-			IsUnaryOperator(tokens_[position_].simple))
-			++position_;
-		const std::size_t unary_end = position_;
-		NodeId operand = ParsePrimary();
-		for (std::size_t i = unary_end; operand != kNoNode && i > unary_begin;
-			--i)
-			operand = AddUnary(tokens_[i - 1].simple, operand);
-		return operand;
-	}
-
-	NodeId ParsePrimary()
-	{
-		if (position_ >= tokens_.size())
-		{
-			valid_ = false;
-			return kNoNode;
-		}
-		const Token token = tokens_[position_];
+		const Token token = tokens_[*position];
 		if (token.category == TOKEN_VALUE)
 		{
-			++position_;
+			++*position;
 			return AddLiteral(Value(token.bits, token.value_is_unsigned));
 		}
 		if (token.category == TOKEN_IDENTIFIER &&
 			!token.is_defined_operator)
 		{
-			++position_;
+			++*position;
 			return AddLiteral(Value(token.bits, token.value_is_unsigned));
 		}
 		if (token.category == TOKEN_IDENTIFIER && token.is_defined_operator)
 		{
-			++position_;
-			const bool parenthesized = Match(OP_LPAREN);
-			if (position_ >= tokens_.size() ||
-				tokens_[position_].category != TOKEN_IDENTIFIER)
+			++*position;
+			const bool parenthesized = IsSimple(*position, OP_LPAREN);
+			if (parenthesized)
+				++*position;
+			if (*position >= tokens_.size() ||
+				tokens_[*position].category != TOKEN_IDENTIFIER)
 			{
 				valid_ = false;
 				return kNoNode;
 			}
 			const bool definition_value =
-				tokens_[position_].definition_value;
-			++position_;
-			if (parenthesized && !Match(OP_RPAREN))
+				tokens_[*position].definition_value;
+			++*position;
+			if (parenthesized && !IsSimple(*position, OP_RPAREN))
 			{
 				valid_ = false;
 				return kNoNode;
 			}
+			if (parenthesized)
+				++*position;
 			return AddLiteral(Value(definition_value ? 1 : 0, false));
-		}
-		if (Match(OP_LPAREN))
-		{
-			const NodeId expression = ParseConditional();
-			if (expression == kNoNode || !Match(OP_RPAREN))
-			{
-				valid_ = false;
-				return kNoNode;
-			}
-			return expression;
 		}
 		valid_ = false;
 		return kNoNode;
 	}
 
+	void PushOperator(const ParserOperator& operation)
+	{
+		operators_.push_back(operation);
+		if (stats_)
+			stats_->peak_parser_operators = std::max(
+				stats_->peak_parser_operators, operators_.size());
+	}
+
+	void PushOperand(NodeId operand)
+	{
+		if (operand == kNoNode)
+		{
+			valid_ = false;
+			return;
+		}
+		operands_.push_back(operand);
+		if (stats_)
+			stats_->peak_parser_operands = std::max(
+				stats_->peak_parser_operands, operands_.size());
+	}
+
+	void ReduceTop()
+	{
+		if (operators_.empty())
+		{
+			valid_ = false;
+			return;
+		}
+		const ParserOperator operation = operators_.back();
+		operators_.pop_back();
+		if (operation.kind == PARSER_UNARY)
+		{
+			if (operands_.empty())
+			{
+				valid_ = false;
+				return;
+			}
+			const NodeId operand = operands_.back();
+			operands_.pop_back();
+			PushOperand(AddUnary(operation.operation, operand));
+			return;
+		}
+		if (operation.kind == PARSER_BINARY)
+		{
+			if (operands_.size() < 2)
+			{
+				valid_ = false;
+				return;
+			}
+			const NodeId right = operands_.back();
+			operands_.pop_back();
+			const NodeId left = operands_.back();
+			operands_.pop_back();
+			PushOperand(AddBinary(operation.operation, left, right));
+			return;
+		}
+		if (operation.kind == PARSER_CONDITIONAL)
+		{
+			if (operands_.size() < 3)
+			{
+				valid_ = false;
+				return;
+			}
+			const NodeId false_expression = operands_.back();
+			operands_.pop_back();
+			const NodeId true_expression = operands_.back();
+			operands_.pop_back();
+			const NodeId condition = operands_.back();
+			operands_.pop_back();
+			PushOperand(AddConditional(condition, true_expression,
+				false_expression));
+			return;
+		}
+		valid_ = false;
+	}
+
+	void ReducePrefixOperators()
+	{
+		while (valid_ && !operators_.empty() &&
+			operators_.back().kind == PARSER_UNARY)
+			ReduceTop();
+	}
+
+	void ReduceForIncoming(int precedence, bool reduce_equal)
+	{
+		while (valid_ && !operators_.empty())
+		{
+			const ParserOperator& top = operators_.back();
+			if (top.kind == PARSER_LPAREN || top.kind == PARSER_QUESTION)
+				return;
+			const int top_precedence = top.kind == PARSER_CONDITIONAL ? 0 :
+				(top.kind == PARSER_UNARY ? 11 :
+				 BinaryPrecedence(top.operation));
+			if (top_precedence < precedence ||
+				(top_precedence == precedence && !reduce_equal))
+				return;
+			ReduceTop();
+		}
+	}
+
+	bool CloseParenthesis()
+	{
+		while (valid_ && !operators_.empty() &&
+			operators_.back().kind != PARSER_LPAREN)
+		{
+			if (operators_.back().kind == PARSER_QUESTION)
+			{
+				valid_ = false;
+				return false;
+			}
+			ReduceTop();
+		}
+		if (!valid_ || operators_.empty())
+		{
+			valid_ = false;
+			return false;
+		}
+		operators_.pop_back();
+		return true;
+	}
+
+	bool BeginConditionalFalseExpression()
+	{
+		while (valid_ && !operators_.empty() &&
+			operators_.back().kind != PARSER_QUESTION)
+		{
+			if (operators_.back().kind == PARSER_LPAREN)
+			{
+				valid_ = false;
+				return false;
+			}
+			ReduceTop();
+		}
+		if (!valid_ || operators_.empty())
+		{
+			valid_ = false;
+			return false;
+		}
+		operators_.back().kind = PARSER_CONDITIONAL;
+		operators_.back().operation = OP_QMARK;
+		return true;
+	}
+
 	const std::vector<Token>& tokens_;
 	std::vector<Node>& nodes_;
-	std::size_t position_;
+	std::vector<ParserOperator>& operators_;
+	std::vector<NodeId>& operands_;
+	ControlExpressionStats* stats_;
 	bool valid_;
 };
 
@@ -878,7 +1056,8 @@ public:
 		bool error = line_invalid_;
 		if (!error)
 		{
-			Parser parser(tokens_, &nodes_);
+			Parser parser(tokens_, &nodes_, &parser_operators_,
+				&parser_operands_, stats_);
 			const NodeId root = parser.Parse();
 			if (stats_)
 				stats_->syntax_nodes += nodes_.size();
@@ -905,6 +1084,8 @@ public:
 		ObserveStorage();
 		tokens_.clear();
 		nodes_.clear();
+		parser_operators_.clear();
+		parser_operands_.clear();
 		evaluation_frames_.clear();
 		evaluation_values_.clear();
 		line_invalid_ = false;
@@ -941,6 +1122,8 @@ private:
 			nodes_.size());
 		const std::size_t storage = tokens_.capacity() * sizeof(Token) +
 			nodes_.capacity() * sizeof(Node) +
+			parser_operators_.capacity() * sizeof(ParserOperator) +
+			parser_operands_.capacity() * sizeof(NodeId) +
 			evaluation_frames_.capacity() * sizeof(EvaluationFrame) +
 			evaluation_values_.capacity() * sizeof(Value);
 		stats_->peak_line_storage_bytes = std::max(
@@ -952,6 +1135,8 @@ private:
 	ControlExpressionStats* stats_;
 	std::vector<Token> tokens_;
 	std::vector<Node> nodes_;
+	std::vector<ParserOperator> parser_operators_;
+	std::vector<NodeId> parser_operands_;
 	std::vector<EvaluationFrame> evaluation_frames_;
 	std::vector<Value> evaluation_values_;
 	bool line_invalid_;
@@ -1054,7 +1239,8 @@ private:
 ControlExpressionStats::ControlExpressionStats()
 	: logical_lines(0), nonempty_lines(0), error_lines(0), syntax_nodes(0),
 	  evaluation_visits(0), skipped_subexpressions(0), peak_line_tokens(0),
-	  peak_line_nodes(0), peak_evaluation_frames(0),
+	  peak_line_nodes(0), peak_parser_operators(0), peak_parser_operands(0),
+	  peak_evaluation_frames(0),
 	  peak_line_storage_bytes(0), elapsed_nanoseconds(0)
 {}
 

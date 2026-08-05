@@ -23,6 +23,8 @@ struct ControlExpressionStats
 	std::size_t skipped_subexpressions;
 	std::size_t peak_line_tokens;
 	std::size_t peak_line_nodes;
+	std::size_t peak_parser_operators;
+	std::size_t peak_parser_operands;
 	std::size_t peak_evaluation_frames;
 	std::size_t peak_line_storage_bytes;
 	std::uint64_t elapsed_nanoseconds;
