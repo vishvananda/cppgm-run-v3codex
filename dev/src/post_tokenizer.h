@@ -244,6 +244,13 @@ private:
 	Impl* impl_;
 };
 
+// Decode one non-prefixed, non-raw, non-user-defined string-literal with the
+// same escape and UTF-8 rules used by PA2. The returned value excludes the
+// terminating null code unit. This is the typed phase boundary used by
+// directives that consume a string value instead of emitting a phase-7 token.
+bool DecodeOrdinaryStringLiteral(const std::string& source,
+	std::string* value);
+
 // Run phases 1-3 through the shared PA1 tokenizer, apply the PA2 phase-6 and
 // token recognition rules, and emit typed events without retaining a token
 // vector. Only one joined spelling plus compact ranges for the current maximal

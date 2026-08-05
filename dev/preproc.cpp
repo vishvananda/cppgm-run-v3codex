@@ -145,18 +145,39 @@ void ReportStats(const std::string& path,
 		<< " file=" << path
 		<< " source_files=" << stats.source_files
 		<< " source_bytes=" << stats.source_bytes
+		<< " peak_source_bytes=" << stats.peak_live_source_bytes
 		<< " pp_tokens=" << stats.macros.tokenization.emitted_tokens
 		<< " source_tokens=" << stats.macros.source_tokens
+		<< " post_tokens=" << stats.macros.postprocessing.emitted_tokens
 		<< " directives=" << stats.macros.directive_lines
 		<< " conditions=" << stats.controlling_expressions
+		<< " condition_nodes=" << stats.condition_evaluation.syntax_nodes
+		<< " condition_visits=" << stats.condition_evaluation.evaluation_visits
+		<< " condition_skips=" << stats.condition_evaluation.skipped_subexpressions
+		<< " condition_peak_bytes=" <<
+			stats.condition_evaluation.peak_line_storage_bytes
+		<< " condition_ns=" << stats.condition_evaluation.elapsed_nanoseconds
 		<< " includes=" << stats.includes
 		<< " once_skips=" << stats.skipped_once_includes
+		<< " once_files=" << stats.pragma_once_files
 		<< " lookups=" << stats.macros.macro_lookups
 		<< " invocations=" << stats.macros.macro_invocations
 		<< " argument_prescans=" << stats.macros.argument_prescans
 		<< " expanded_tokens=" << stats.macros.expanded_tokens
+		<< " pasted_tokens=" << stats.macros.pasted_tokens
+		<< " interned_ids=" << stats.macros.interned_identifiers
+		<< " interned_bytes=" << stats.macros.interned_identifier_bytes
+		<< " retained_replacements=" <<
+			stats.macros.peak_retained_replacement_tokens
+		<< " paint_roots=" << stats.macros.paint_roots
+		<< " paint_singletons=" << stats.macros.paint_singletons
+		<< " paint_nodes=" << stats.macros.paint_nodes
 		<< " peak_line_tokens=" << stats.macros.peak_line_tokens
+		<< " peak_line_bytes=" << stats.macros.peak_line_storage_bytes
 		<< " peak_rescan_tokens=" << stats.macros.peak_rescan_tokens
+		<< " peak_argument_bytes=" << stats.macros.peak_argument_storage_bytes
+		<< " peak_posttoken_bytes=" <<
+			stats.macros.postprocessing.peak_phase_storage_bytes
 		<< " peak_frames=" << stats.macros.peak_expansion_frames
 		<< " peak_include_depth=" << stats.peak_include_depth
 		<< " peak_conditional_depth=" << stats.peak_conditional_depth

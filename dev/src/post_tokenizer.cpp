@@ -1283,6 +1283,25 @@ void PostTokenizationSession::emit_eof()
 	impl_->analyzer.emit_eof();
 }
 
+bool DecodeOrdinaryStringLiteral(const std::string& source,
+	std::string* value)
+{
+	if (!value)
+		throw std::logic_error("missing decoded string destination");
+	StringPart parsed;
+	if (!ParseStringPart(source, &parsed) ||
+		parsed.encoding != ENCODING_ORDINARY || parsed.raw ||
+		parsed.suffix_begin != parsed.suffix_end)
+		return false;
+	std::vector<unsigned char> bytes;
+	std::size_t units = 0;
+	if (!DecodeStringPart(source, parsed.content_begin, parsed.content_end,
+		parsed.raw, parsed.encoding, &bytes, &units))
+		return false;
+	value->assign(bytes.begin(), bytes.end());
+	return true;
+}
+
 const char* FundamentalTypeName(FundamentalType type)
 {
 	static const char* names[] = {

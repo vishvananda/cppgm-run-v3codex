@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <string>
 
-#include "post_tokenizer.h"
+#include "control_expression.h"
 
 namespace cppgm
 {
@@ -27,11 +27,13 @@ struct MacroProcessingStats
 	std::size_t pasted_tokens;
 	std::size_t pasted_spelling_bytes;
 	std::size_t peak_line_tokens;
+	std::size_t peak_line_storage_bytes;
 	std::size_t peak_rescan_tokens;
 	std::size_t peak_retained_replacement_tokens;
 	std::size_t peak_expansion_frames;
 	std::size_t peak_argument_storage_bytes;
 	std::size_t paint_roots;
+	std::size_t paint_singletons;
 	std::size_t paint_nodes;
 	std::uint64_t elapsed_nanoseconds;
 
@@ -48,12 +50,15 @@ struct PreprocessingOptions
 struct PreprocessingStats
 {
 	MacroProcessingStats macros;
+	ControlExpressionStats condition_evaluation;
 	std::size_t source_files;
 	std::size_t source_bytes;
+	std::size_t peak_live_source_bytes;
 	std::size_t conditional_directives;
 	std::size_t controlling_expressions;
 	std::size_t includes;
 	std::size_t skipped_once_includes;
+	std::size_t pragma_once_files;
 	std::size_t pragma_operators;
 	std::size_t peak_include_depth;
 	std::size_t peak_conditional_depth;
