@@ -1,0 +1,60 @@
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+#include <iosfwd>
+#include <memory>
+#include <string>
+
+#include "macro_processor.h"
+
+namespace cppgm
+{
+
+struct SemanticAnalysisStats
+{
+	PreprocessingStats preprocessing;
+	std::size_t tokens;
+	std::size_t token_storage_bytes;
+	std::size_t identifiers;
+	std::size_t identifier_bytes;
+	std::size_t canonical_types;
+	std::size_t namespaces;
+	std::size_t declarations;
+	std::size_t using_edges;
+	std::size_t lookup_queries;
+	std::size_t lookup_scope_visits;
+	std::size_t lookup_edge_visits;
+	std::size_t semantic_storage_bytes;
+	std::size_t peak_stage_storage_bytes;
+	std::uint64_t elapsed_nanoseconds;
+
+	SemanticAnalysisStats();
+};
+
+// Owns the canonical PA7 semantic graph for one translation unit. Parsing is
+// integrated with semantic construction; the phase-7 token buffer is released
+// when construction returns.
+class SemanticTranslationUnit
+{
+public:
+	SemanticTranslationUnit(const std::string& path,
+		const std::string& source, const PreprocessingOptions& options,
+		SemanticAnalysisStats* stats = 0);
+	~SemanticTranslationUnit();
+
+	SemanticTranslationUnit(SemanticTranslationUnit&& other) noexcept;
+	SemanticTranslationUnit& operator=(
+		SemanticTranslationUnit&& other) noexcept;
+
+	void Render(std::ostream& output) const;
+
+private:
+	struct Impl;
+	std::unique_ptr<Impl> impl_;
+
+	SemanticTranslationUnit(const SemanticTranslationUnit&);
+	SemanticTranslationUnit& operator=(const SemanticTranslationUnit&);
+};
+
+}
