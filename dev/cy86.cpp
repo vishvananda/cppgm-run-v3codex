@@ -1,212 +1,108 @@
-// (C) 2013 CPPGM Foundation www.cppgm.org.  All rights reserved.
+// (C) 2013 CPPGM Foundation www.cppgm.org. All rights reserved.
 
-#include <vector>
-#include <string>
-#include <stdexcept>
-#include <iostream>
+#include <cstdlib>
+#include <ctime>
 #include <fstream>
+#include <iostream>
+#include <iterator>
+#include <stdexcept>
+#include <string>
+#include <vector>
 
-using namespace std;
+#include "cy86_program.h"
 
-#include "exceptions.h"
-
-struct ElfHeader
+namespace
 {
-    unsigned char ident[16] =
-    {
-        0x7f, 'E', 'L', 'F', // magic bytes
-        2, // 64-bit architecture
-        1, // two's compliment, little-endian
-        1, // ELF specification version 1.0
-        0, // System V ABI
-        0, // ABI Version
-        0, 0, 0, 0, 0, 0, 0 // Unused padding
-    };
 
-    short int type = 2; // executable file type
-    short int machine = 0x3E; // x86-64 Architecture
-    int version = 1; // ELF specification version 1.0
-    long int entry; // entry point virtual memory address
-
-    long int phoff = 64; // start of program segment header array file offset
-    long int shoff = 0; // no sections
-
-    int processor_flags = 0; // no processor-specific flags
-    short int ehsize = 64; // ELF header is 64 bytes long
-    short int phentsize = 56; // program header table entry size
-    short int phnum = 1; // number of program headers       
-    short int shentsize = 0; // no section header table entry size
-    short int shnum = 0; // no sections
-    short int shstrndx = 0; // no section header string table index
-};
-
-struct ProgramSegmentHeader
+std::string ReadSource(const std::string& path)
 {
-    int type = 1; // PT_LOAD: loadable segment
-
-    static constexpr int executable = 1 << 0;
-    static constexpr int writable = 1 << 1;
-    static constexpr int readable = 1 << 2;
-
-    int flags = executable | writable | readable; // segment permissions
-
-    long int offset = 0; // source file offset
-    long int vaddr = 0x400000; // destination (virtual) memory address
-    long int paddr = 0; // unused, doesn't use physical memory
-    long int filesz; // source length
-    long int memsz; // destination length
-    long int align = 0; // unused, alignment of file/memory
-};
-
-// bootstrap system call interface, used by RABSetFileExecutable
-extern "C" long int syscall(long int n, ...) throw ();
-
-// PA9SetFileExecutable: sets file at `path` executable
-// returns true on success
-bool PA9SetFileExecutable(const string& path)
-{
-    int res = syscall(/* chmod */ 90, path.c_str(), 0755);
-
-    return res == 0;
+	std::ifstream input(path.c_str(), std::ios::in | std::ios::binary);
+	if (!input) throw std::runtime_error("unable to open source file: " + path);
+	return std::string(std::istreambuf_iterator<char>(input),
+		std::istreambuf_iterator<char>());
 }
 
-bool HasBatchStdinArg(int argc, char** argv)
+cppgm::PreprocessingOptions BuildOptions()
 {
-	for (int i = 1; i < argc; i++)
-	{
-		if (string(argv[i]) == "--batch-stdin")
-			return true;
-	}
-	return false;
+	const std::time_t now = std::time(0);
+	const std::tm* local = std::localtime(&now);
+	if (!local) throw std::runtime_error("unable to determine build time");
+	const char* text = std::asctime(local);
+	if (!text) throw std::runtime_error("unable to format build time");
+	const std::string formatted(text);
+	if (formatted.size() < 24)
+		throw std::runtime_error("invalid asctime result");
+
+	cppgm::PreprocessingOptions options;
+	options.build_date = formatted.substr(4, 7) + formatted.substr(20, 4);
+	options.build_time = formatted.substr(11, 8);
+	options.author = "Vishvananda Abrams";
+	return options;
 }
 
-int RunNotImplementedBatchMode()
+void ReportStats(const cppgm::Cy86Stats& stats)
 {
-	string line;
-	while (getline(cin, line))
-	{
-		(void)line;
-		cout << "EXIT_NOT_IMPLEMENTED" << endl;
-	}
-	return EXIT_SUCCESS;
+	std::cerr << "cy86_stats"
+		<< " source_bytes=" << stats.source_bytes
+		<< " tokens=" << stats.tokens
+		<< " peak_statement_tokens=" << stats.peak_statement_tokens
+		<< " identifiers=" << stats.identifiers
+		<< " identifier_bytes=" << stats.identifier_bytes
+		<< " statements=" << stats.statements
+		<< " labels=" << stats.labels
+		<< " fixups=" << stats.fixups
+		<< " instruction_bytes=" << stats.instruction_bytes
+		<< " image_bytes=" << stats.image_bytes
+		<< " elapsed_ns=" << stats.elapsed_nanoseconds << '\n';
+}
+
 }
 
 int main(int argc, char** argv)
 {
 	try
 	{
-		if (HasBatchStdinArg(argc, argv))
-			return RunNotImplementedBatchMode();
-
-		vector<string> args;
-
-		for (int i = 1; i < argc; i++)
-			args.emplace_back(argv[i]);
-
-		string output_target;
-		string outfile;
-		vector<string> srcfiles;
-
-		for (size_t i = 0; i < args.size(); i++)
+		std::ios_base::sync_with_stdio(false);
+		std::string output_path;
+		std::vector<std::string> source_paths;
+		for (int i = 1; i < argc; ++i)
 		{
-			if (args[i] == "--target")
+			const std::string argument(argv[i]);
+			if (argument == "-o")
 			{
-				if (i + 1 >= args.size())
-					throw logic_error("missing target after --target");
-				output_target = args[++i];
-				continue;
+				if (++i >= argc || !output_path.empty())
+					throw std::logic_error("invalid usage");
+				output_path = argv[i];
 			}
-
-			if (args[i] == "-o")
+			else if (argument == "--target")
 			{
-				if (i + 1 >= args.size())
-					throw logic_error("missing output file after -o");
-				outfile = args[++i];
-				continue;
+				if (++i >= argc) throw std::logic_error("invalid usage");
+				// PA9's optional target selector does not change the x86-64 ELF path.
 			}
-
-			srcfiles.push_back(args[i]);
+			else
+			{
+				source_paths.push_back(argument);
+			}
 		}
+		if (output_path.empty() || source_paths.empty())
+			throw std::logic_error("invalid usage");
 
-		if (outfile.empty() || srcfiles.empty())
-			throw logic_error("invalid usage");
-
-		(void)output_target;
-		size_t nsrcfiles = srcfiles.size();
-
-		throw NotImplementedException();
-
-		for (size_t i = 0; i < nsrcfiles; i++)
+		const bool report_stats = std::getenv("CPPGM_FRONTEND_STATS") != 0;
+		cppgm::Cy86Stats stats;
+		cppgm::Cy86Program program(report_stats ? &stats : 0);
+		const cppgm::PreprocessingOptions options = BuildOptions();
+		for (std::size_t i = 0; i < source_paths.size(); ++i)
 		{
-			string srcfile = srcfiles[i];
-
-			ifstream in(srcfile);
-
-			// TODO: parse / semantically analyze / generate code for srcfile
+			const std::string source = ReadSource(source_paths[i]);
+			program.AddTranslationUnit(source_paths[i], source, options);
 		}
-
-		ElfHeader elf_header;
-		ProgramSegmentHeader program_segment_header;
-
-		// TODO: Replace this with assembled x86 machine code / data from above
-
-		char data[] = "TODO\n"; // 6 bytes
-
-		unsigned char code[] =
-		{
-            // ==== write(stdout, "TODO\n") ====
-			// mov rax, 1 ... system call `write`
-			0x48, 0xc7, 0xc0, 0x01, 0x00, 0x00, 0x00,
-
-			// mov rdi, 1 ... stdout fd
-			0x48, 0xc7, 0xc7, 0x01, 0x00, 0x00, 0x00,
-			
-			// mov rsi, 0x400000 + 64 + 56 ... address of "TODO" string
-			0x48, 0xbe,
-			    0x78, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00,
-
-			// mov rdx, 5 ... num bytes to write
-			0x48, 0xc7, 0xc2, 0x05, 0x00, 0x00, 0x00,
-
-			// syscall
-			0x0f, 0x05,
-            // =====================
-
-
-            // ===== exit(0) =======
-			// mov rax, 60 ... system call `exit`
-			0x48, 0xc7, 0xc0, 0x3c, 0x00, 0x00, 0x00,
-
-			// mov rdi, 0 ... exit status 0
-			0x48, 0xc7, 0xc7, 0x00, 0x00, 0x00, 0x00,
-
-			// syscall
-			0x0f, 0x05
-            // =====================
-		};
-
-		elf_header.entry = 0x400000 + 64 + 56 + sizeof(data);
-		program_segment_header.filesz = 64 + 56 + 6 + sizeof(data) + sizeof(code);
-		program_segment_header.memsz = program_segment_header.filesz;
-
-		{
-			ofstream out(outfile);
-			out.write((char*) &elf_header, 64);
-			out.write((char*) &program_segment_header, 56);
-			out.write((char*) data, sizeof(data));
-			out.write((char*) code, sizeof(code));
-		}
-
-		PA9SetFileExecutable(outfile);
+		program.WriteExecutable(output_path);
+		if (report_stats) ReportStats(stats);
+		return EXIT_SUCCESS;
 	}
-	catch (const NotImplementedException& e)
+	catch (const std::exception& error)
 	{
-		cerr << "ERROR: " << e.what() << endl;
-		return CPPGM_EXIT_NOT_IMPLEMENTED;
-	}
-	catch (exception& e)
-	{
-		cerr << "ERROR: " << e.what() << endl;
+		std::cerr << "ERROR: " << error.what() << '\n';
 		return EXIT_FAILURE;
 	}
 }
