@@ -1,0 +1,210 @@
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+#include <string>
+
+#include "pp_tokenizer.h"
+
+namespace cppgm
+{
+
+enum FundamentalType
+{
+	FT_SIGNED_CHAR,
+	FT_SHORT_INT,
+	FT_INT,
+	FT_LONG_INT,
+	FT_LONG_LONG_INT,
+	FT_UNSIGNED_CHAR,
+	FT_UNSIGNED_SHORT_INT,
+	FT_UNSIGNED_INT,
+	FT_UNSIGNED_LONG_INT,
+	FT_UNSIGNED_LONG_LONG_INT,
+	FT_WCHAR_T,
+	FT_CHAR,
+	FT_CHAR16_T,
+	FT_CHAR32_T,
+	FT_BOOL,
+	FT_FLOAT,
+	FT_DOUBLE,
+	FT_LONG_DOUBLE,
+	FT_VOID,
+	FT_NULLPTR_T
+};
+
+enum SimpleTokenKind
+{
+	KW_ALIGNAS,
+	KW_ALIGNOF,
+	KW_ASM,
+	KW_AUTO,
+	KW_BOOL,
+	KW_BREAK,
+	KW_CASE,
+	KW_CATCH,
+	KW_CHAR,
+	KW_CHAR16_T,
+	KW_CHAR32_T,
+	KW_CLASS,
+	KW_CONST,
+	KW_CONSTEXPR,
+	KW_CONST_CAST,
+	KW_CONTINUE,
+	KW_DECLTYPE,
+	KW_DEFAULT,
+	KW_DELETE,
+	KW_DO,
+	KW_DOUBLE,
+	KW_DYNAMIC_CAST,
+	KW_ELSE,
+	KW_ENUM,
+	KW_EXPLICIT,
+	KW_EXPORT,
+	KW_EXTERN,
+	KW_FALSE,
+	KW_FLOAT,
+	KW_FOR,
+	KW_FRIEND,
+	KW_GOTO,
+	KW_IF,
+	KW_INLINE,
+	KW_INT,
+	KW_LONG,
+	KW_MUTABLE,
+	KW_NAMESPACE,
+	KW_NEW,
+	KW_NOEXCEPT,
+	KW_NULLPTR,
+	KW_OPERATOR,
+	KW_PRIVATE,
+	KW_PROTECTED,
+	KW_PUBLIC,
+	KW_REGISTER,
+	KW_REINTERPET_CAST,
+	KW_RETURN,
+	KW_SHORT,
+	KW_SIGNED,
+	KW_SIZEOF,
+	KW_STATIC,
+	KW_STATIC_ASSERT,
+	KW_STATIC_CAST,
+	KW_STRUCT,
+	KW_SWITCH,
+	KW_TEMPLATE,
+	KW_THIS,
+	KW_THREAD_LOCAL,
+	KW_THROW,
+	KW_TRUE,
+	KW_TRY,
+	KW_TYPEDEF,
+	KW_TYPEID,
+	KW_TYPENAME,
+	KW_UNION,
+	KW_UNSIGNED,
+	KW_USING,
+	KW_VIRTUAL,
+	KW_VOID,
+	KW_VOLATILE,
+	KW_WCHAR_T,
+	KW_WHILE,
+	OP_LBRACE,
+	OP_RBRACE,
+	OP_LSQUARE,
+	OP_RSQUARE,
+	OP_LPAREN,
+	OP_RPAREN,
+	OP_BOR,
+	OP_XOR,
+	OP_COMPL,
+	OP_AMP,
+	OP_LNOT,
+	OP_SEMICOLON,
+	OP_COLON,
+	OP_DOTS,
+	OP_QMARK,
+	OP_COLON2,
+	OP_DOT,
+	OP_DOTSTAR,
+	OP_PLUS,
+	OP_MINUS,
+	OP_STAR,
+	OP_DIV,
+	OP_MOD,
+	OP_ASS,
+	OP_LT,
+	OP_GT,
+	OP_PLUSASS,
+	OP_MINUSASS,
+	OP_STARASS,
+	OP_DIVASS,
+	OP_MODASS,
+	OP_XORASS,
+	OP_BANDASS,
+	OP_BORASS,
+	OP_LSHIFT,
+	OP_RSHIFT,
+	OP_RSHIFTASS,
+	OP_LSHIFTASS,
+	OP_EQ,
+	OP_NE,
+	OP_LE,
+	OP_GE,
+	OP_LAND,
+	OP_LOR,
+	OP_INC,
+	OP_DEC,
+	OP_COMMA,
+	OP_ARROWSTAR,
+	OP_ARROW
+};
+
+const char* FundamentalTypeName(FundamentalType type);
+const char* SimpleTokenKindName(SimpleTokenKind kind);
+
+struct IPostTokenStream
+{
+	virtual void EmitInvalid(const std::string& source) = 0;
+	virtual void EmitSimple(const std::string& source,
+		SimpleTokenKind kind) = 0;
+	virtual void EmitIdentifier(const std::string& source) = 0;
+	virtual void EmitLiteral(const std::string& source,
+		FundamentalType type, const void* data, std::size_t size) = 0;
+	virtual void EmitLiteralArray(const std::string& source,
+		std::size_t elements, FundamentalType type,
+		const void* data, std::size_t size) = 0;
+	virtual void EmitUserDefinedCharacter(const std::string& source,
+		const std::string& suffix, FundamentalType type,
+		const void* data, std::size_t size) = 0;
+	virtual void EmitUserDefinedString(const std::string& source,
+		const std::string& suffix, std::size_t elements,
+		FundamentalType type, const void* data, std::size_t size) = 0;
+	virtual void EmitUserDefinedInteger(const std::string& source,
+		const std::string& suffix, const std::string& prefix) = 0;
+	virtual void EmitUserDefinedFloating(const std::string& source,
+		const std::string& suffix, const std::string& prefix) = 0;
+	virtual void EmitEof() = 0;
+
+	virtual ~IPostTokenStream() {}
+};
+
+struct PostTokenizationStats
+{
+	PPTokenizationStats preprocessing;
+	std::size_t preprocessing_tokens;
+	std::size_t emitted_tokens;
+	std::size_t decoded_literal_units;
+	std::size_t peak_pending_string_bytes;
+	std::uint64_t elapsed_nanoseconds;
+
+	PostTokenizationStats();
+};
+
+// Run phases 1-3 through the shared PA1 tokenizer, apply the PA2 phase-6 and
+// token recognition rules, and emit typed events without retaining a token
+// vector. Only a maximal adjacent string-literal sequence is delayed.
+void TokenizePostTokens(const std::string& source,
+	IPostTokenStream& output,
+	PostTokenizationStats* stats = 0);
+
+}

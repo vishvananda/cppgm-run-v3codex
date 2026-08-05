@@ -1,0 +1,1179 @@
+#include "post_tokenizer.h"
+
+#include <algorithm>
+#include <chrono>
+#include <cstring>
+#include <limits>
+#include <locale>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+#include "IPPTokenStream.h"
+
+namespace cppgm
+{
+namespace
+{
+
+struct SimpleEntry
+{
+	const char* spelling;
+	SimpleTokenKind kind;
+};
+
+const SimpleEntry kSimpleEntries[] = {
+	{"!", OP_LNOT}, {"!=", OP_NE}, {"%", OP_MOD}, {"%=", OP_MODASS},
+	{"%>", OP_RBRACE}, {"&", OP_AMP}, {"&&", OP_LAND},
+	{"&=", OP_BANDASS}, {"(", OP_LPAREN}, {")", OP_RPAREN},
+	{"*", OP_STAR}, {"*=", OP_STARASS}, {"+", OP_PLUS},
+	{"++", OP_INC}, {"+=", OP_PLUSASS}, {",", OP_COMMA},
+	{"-", OP_MINUS}, {"--", OP_DEC}, {"-=", OP_MINUSASS},
+	{"->", OP_ARROW}, {"->*", OP_ARROWSTAR}, {".", OP_DOT},
+	{".*", OP_DOTSTAR}, {"...", OP_DOTS}, {"/", OP_DIV},
+	{"/=", OP_DIVASS}, {":", OP_COLON}, {"::", OP_COLON2},
+	{":>", OP_RSQUARE}, {";", OP_SEMICOLON}, {"<", OP_LT},
+	{"<%", OP_LBRACE}, {"<:", OP_LSQUARE}, {"<<", OP_LSHIFT},
+	{"<<=", OP_LSHIFTASS}, {"<=", OP_LE}, {"=", OP_ASS},
+	{"==", OP_EQ}, {">", OP_GT}, {">=", OP_GE},
+	{">>", OP_RSHIFT}, {">>=", OP_RSHIFTASS}, {"?", OP_QMARK},
+	{"[", OP_LSQUARE}, {"]", OP_RSQUARE}, {"^", OP_XOR},
+	{"^=", OP_XORASS}, {"alignas", KW_ALIGNAS},
+	{"alignof", KW_ALIGNOF}, {"and", OP_LAND},
+	{"and_eq", OP_BANDASS}, {"asm", KW_ASM}, {"auto", KW_AUTO},
+	{"bitand", OP_AMP}, {"bitor", OP_BOR}, {"bool", KW_BOOL},
+	{"break", KW_BREAK}, {"case", KW_CASE}, {"catch", KW_CATCH},
+	{"char", KW_CHAR}, {"char16_t", KW_CHAR16_T},
+	{"char32_t", KW_CHAR32_T}, {"class", KW_CLASS},
+	{"compl", OP_COMPL}, {"const", KW_CONST},
+	{"const_cast", KW_CONST_CAST}, {"constexpr", KW_CONSTEXPR},
+	{"continue", KW_CONTINUE}, {"decltype", KW_DECLTYPE},
+	{"default", KW_DEFAULT}, {"delete", KW_DELETE}, {"do", KW_DO},
+	{"double", KW_DOUBLE}, {"dynamic_cast", KW_DYNAMIC_CAST},
+	{"else", KW_ELSE}, {"enum", KW_ENUM}, {"explicit", KW_EXPLICIT},
+	{"export", KW_EXPORT}, {"extern", KW_EXTERN}, {"false", KW_FALSE},
+	{"float", KW_FLOAT}, {"for", KW_FOR}, {"friend", KW_FRIEND},
+	{"goto", KW_GOTO}, {"if", KW_IF}, {"inline", KW_INLINE},
+	{"int", KW_INT}, {"long", KW_LONG}, {"mutable", KW_MUTABLE},
+	{"namespace", KW_NAMESPACE}, {"new", KW_NEW},
+	{"noexcept", KW_NOEXCEPT}, {"not", OP_LNOT}, {"not_eq", OP_NE},
+	{"nullptr", KW_NULLPTR}, {"operator", KW_OPERATOR},
+	{"or", OP_LOR}, {"or_eq", OP_BORASS}, {"private", KW_PRIVATE},
+	{"protected", KW_PROTECTED}, {"public", KW_PUBLIC},
+	{"register", KW_REGISTER}, {"reinterpret_cast", KW_REINTERPET_CAST},
+	{"return", KW_RETURN}, {"short", KW_SHORT}, {"signed", KW_SIGNED},
+	{"sizeof", KW_SIZEOF}, {"static", KW_STATIC},
+	{"static_assert", KW_STATIC_ASSERT}, {"static_cast", KW_STATIC_CAST},
+	{"struct", KW_STRUCT}, {"switch", KW_SWITCH},
+	{"template", KW_TEMPLATE}, {"this", KW_THIS},
+	{"thread_local", KW_THREAD_LOCAL}, {"throw", KW_THROW},
+	{"true", KW_TRUE}, {"try", KW_TRY}, {"typedef", KW_TYPEDEF},
+	{"typeid", KW_TYPEID}, {"typename", KW_TYPENAME},
+	{"union", KW_UNION}, {"unsigned", KW_UNSIGNED},
+	{"using", KW_USING}, {"virtual", KW_VIRTUAL}, {"void", KW_VOID},
+	{"volatile", KW_VOLATILE}, {"wchar_t", KW_WCHAR_T},
+	{"while", KW_WHILE}, {"xor", OP_XOR}, {"xor_eq", OP_XORASS},
+	{"{", OP_LBRACE}, {"|", OP_BOR}, {"|=", OP_BORASS},
+	{"||", OP_LOR}, {"}", OP_RBRACE}, {"~", OP_COMPL}
+};
+
+bool FindSimple(const std::string& spelling, SimpleTokenKind* kind)
+{
+	std::size_t first = 0;
+	std::size_t count = sizeof(kSimpleEntries) / sizeof(kSimpleEntries[0]);
+	while (count != 0)
+	{
+		const std::size_t step = count / 2;
+		const std::size_t middle = first + step;
+		const int comparison = spelling.compare(kSimpleEntries[middle].spelling);
+		if (comparison > 0)
+		{
+			first = middle + 1;
+			count -= step + 1;
+		}
+		else
+			count = step;
+	}
+	if (first == sizeof(kSimpleEntries) / sizeof(kSimpleEntries[0]) ||
+		spelling != kSimpleEntries[first].spelling)
+		return false;
+	*kind = kSimpleEntries[first].kind;
+	return true;
+}
+
+bool IsDigit(char c)
+{
+	return c >= '0' && c <= '9';
+}
+
+bool IsValidUdSuffix(const std::string& suffix)
+{
+	if (suffix.empty() || suffix[0] != '_')
+		return false;
+	for (std::size_t i = 1; i < suffix.size(); ++i)
+	{
+		const unsigned char current =
+			static_cast<unsigned char>(suffix[i]);
+		if (current < 0x80 && !IsDigit(current) &&
+			!(current >= 'a' && current <= 'z') &&
+			!(current >= 'A' && current <= 'Z') && current != '_')
+			return false;
+	}
+	return true;
+}
+
+int HexDigitValue(char c)
+{
+	if (c >= '0' && c <= '9')
+		return c - '0';
+	if (c >= 'a' && c <= 'f')
+		return c - 'a' + 10;
+	if (c >= 'A' && c <= 'F')
+		return c - 'A' + 10;
+	return -1;
+}
+
+bool DecodeUTF8One(const std::string& text, std::size_t end,
+	std::size_t* position, std::uint32_t* value)
+{
+	if (*position >= end)
+		return false;
+	const unsigned char first =
+		static_cast<unsigned char>(text[(*position)++]);
+	if (first <= 0x7F)
+	{
+		*value = first;
+		return true;
+	}
+	int continuation_count = 0;
+	std::uint32_t result = 0;
+	std::uint32_t minimum = 0;
+	if (first >= 0xC2 && first <= 0xDF)
+	{
+		continuation_count = 1;
+		result = first & 0x1F;
+		minimum = 0x80;
+	}
+	else if (first >= 0xE0 && first <= 0xEF)
+	{
+		continuation_count = 2;
+		result = first & 0x0F;
+		minimum = 0x800;
+	}
+	else if (first >= 0xF0 && first <= 0xF4)
+	{
+		continuation_count = 3;
+		result = first & 0x07;
+		minimum = 0x10000;
+	}
+	else
+		return false;
+	for (int i = 0; i < continuation_count; ++i)
+	{
+		if (*position >= end)
+			return false;
+		const unsigned char next =
+			static_cast<unsigned char>(text[(*position)++]);
+		if ((next & 0xC0) != 0x80)
+			return false;
+		result = (result << 6) | (next & 0x3F);
+	}
+	if (result < minimum || result > 0x10FFFF ||
+		(result >= 0xD800 && result <= 0xDFFF))
+		return false;
+	*value = result;
+	return true;
+}
+
+void AppendLittleEndian(std::uint64_t value, std::size_t width,
+	std::vector<unsigned char>* bytes)
+{
+	for (std::size_t i = 0; i < width; ++i)
+	{
+		bytes->push_back(static_cast<unsigned char>(value & 0xFF));
+		value >>= 8;
+	}
+}
+
+bool ParseUnsignedDigits(const std::string& text, std::size_t begin,
+	std::size_t end, int base, std::uint64_t* value)
+{
+	std::uint64_t result = 0;
+	for (std::size_t i = begin; i < end; ++i)
+	{
+		const int digit = HexDigitValue(text[i]);
+		if (digit < 0 || digit >= base)
+			return false;
+		if (result > (std::numeric_limits<std::uint64_t>::max() - digit) /
+			static_cast<unsigned int>(base))
+			return false;
+		result = result * static_cast<unsigned int>(base) + digit;
+	}
+	*value = result;
+	return true;
+}
+
+struct IntegerSpelling
+{
+	int base;
+	std::size_t digits_begin;
+	std::size_t digits_end;
+	bool is_unsigned;
+	int long_rank;
+};
+
+bool ParseIntegerSuffix(const std::string& suffix,
+	bool* is_unsigned, int* long_rank)
+{
+	*is_unsigned = false;
+	*long_rank = 0;
+	std::size_t position = 0;
+	for (int component = 0; component < 2 && position < suffix.size();
+		++component)
+	{
+		const char current = suffix[position];
+		if ((current == 'u' || current == 'U') && !*is_unsigned)
+		{
+			*is_unsigned = true;
+			++position;
+			continue;
+		}
+		if ((current == 'l' || current == 'L') && *long_rank == 0)
+		{
+			const char letter = current;
+			++position;
+			*long_rank = 1;
+			if (position < suffix.size() && suffix[position] == letter)
+			{
+				++position;
+				*long_rank = 2;
+			}
+			continue;
+		}
+		return false;
+	}
+	return position == suffix.size();
+}
+
+bool ParseIntegerSpelling(const std::string& text, bool allow_suffix,
+	IntegerSpelling* result)
+{
+	if (text.empty() || !IsDigit(text[0]))
+		return false;
+	std::size_t position = 0;
+	result->base = 10;
+	if (text.size() >= 2 && text[0] == '0' &&
+		(text[1] == 'x' || text[1] == 'X'))
+	{
+		result->base = 16;
+		position = 2;
+		result->digits_begin = position;
+		while (position < text.size() && HexDigitValue(text[position]) >= 0)
+			++position;
+		if (position == result->digits_begin)
+			return false;
+	}
+	else
+	{
+		result->base = text[0] == '0' ? 8 : 10;
+		result->digits_begin = 0;
+		while (position < text.size() && IsDigit(text[position]))
+			++position;
+	}
+	result->digits_end = position;
+	if (!allow_suffix && position != text.size())
+		return false;
+	const std::string suffix = text.substr(position);
+	if (!ParseIntegerSuffix(suffix, &result->is_unsigned,
+		&result->long_rank))
+		return false;
+	if (!allow_suffix && (result->is_unsigned || result->long_rank != 0))
+		return false;
+	if (result->base == 8)
+	{
+		for (std::size_t i = result->digits_begin;
+			i < result->digits_end; ++i)
+			if (text[i] < '0' || text[i] > '7')
+				return false;
+	}
+	return true;
+}
+
+std::uint64_t FundamentalMaximum(FundamentalType type)
+{
+	switch (type)
+	{
+	case FT_INT: return 0x7FFFFFFFULL;
+	case FT_UNSIGNED_INT: return 0xFFFFFFFFULL;
+	case FT_LONG_INT:
+	case FT_LONG_LONG_INT: return 0x7FFFFFFFFFFFFFFFULL;
+	case FT_UNSIGNED_LONG_INT:
+	case FT_UNSIGNED_LONG_LONG_INT:
+		return std::numeric_limits<std::uint64_t>::max();
+	default: throw std::logic_error("non-integer candidate type");
+	}
+}
+
+std::size_t FundamentalWidth(FundamentalType type)
+{
+	switch (type)
+	{
+	case FT_CHAR:
+	case FT_SIGNED_CHAR:
+	case FT_UNSIGNED_CHAR: return 1;
+	case FT_CHAR16_T:
+	case FT_SHORT_INT:
+	case FT_UNSIGNED_SHORT_INT: return 2;
+	case FT_INT:
+	case FT_UNSIGNED_INT:
+	case FT_WCHAR_T:
+	case FT_CHAR32_T:
+	case FT_FLOAT: return 4;
+	case FT_LONG_INT:
+	case FT_LONG_LONG_INT:
+	case FT_UNSIGNED_LONG_INT:
+	case FT_UNSIGNED_LONG_LONG_INT:
+	case FT_DOUBLE: return 8;
+	case FT_LONG_DOUBLE: return sizeof(long double);
+	default: throw std::logic_error("type has no PA2 object width");
+	}
+}
+
+bool SelectIntegerType(const IntegerSpelling& spelling,
+	std::uint64_t value, FundamentalType* type)
+{
+	FundamentalType candidates[6];
+	std::size_t count = 0;
+	const bool decimal = spelling.base == 10;
+	if (spelling.long_rank == 0 && !spelling.is_unsigned)
+	{
+		candidates[count++] = FT_INT;
+		if (!decimal)
+			candidates[count++] = FT_UNSIGNED_INT;
+		candidates[count++] = FT_LONG_INT;
+		if (!decimal)
+			candidates[count++] = FT_UNSIGNED_LONG_INT;
+		candidates[count++] = FT_LONG_LONG_INT;
+		if (!decimal)
+			candidates[count++] = FT_UNSIGNED_LONG_LONG_INT;
+	}
+	else if (spelling.long_rank == 0)
+	{
+		candidates[count++] = FT_UNSIGNED_INT;
+		candidates[count++] = FT_UNSIGNED_LONG_INT;
+		candidates[count++] = FT_UNSIGNED_LONG_LONG_INT;
+	}
+	else if (spelling.long_rank == 1 && !spelling.is_unsigned)
+	{
+		candidates[count++] = FT_LONG_INT;
+		if (!decimal)
+			candidates[count++] = FT_UNSIGNED_LONG_INT;
+		candidates[count++] = FT_LONG_LONG_INT;
+		if (!decimal)
+			candidates[count++] = FT_UNSIGNED_LONG_LONG_INT;
+	}
+	else if (spelling.long_rank == 1)
+	{
+		candidates[count++] = FT_UNSIGNED_LONG_INT;
+		candidates[count++] = FT_UNSIGNED_LONG_LONG_INT;
+	}
+	else if (!spelling.is_unsigned)
+	{
+		candidates[count++] = FT_LONG_LONG_INT;
+		if (!decimal)
+			candidates[count++] = FT_UNSIGNED_LONG_LONG_INT;
+	}
+	else
+		candidates[count++] = FT_UNSIGNED_LONG_LONG_INT;
+	for (std::size_t i = 0; i < count; ++i)
+	{
+		if (value <= FundamentalMaximum(candidates[i]))
+		{
+			*type = candidates[i];
+			return true;
+		}
+	}
+	return false;
+}
+
+bool ParseFloatingSpelling(const std::string& text, bool allow_suffix,
+	FundamentalType* type, std::size_t* numeric_end)
+{
+	std::size_t position = 0;
+	while (position < text.size() && IsDigit(text[position]))
+		++position;
+	const bool had_leading_digits = position != 0;
+	bool had_dot = false;
+	if (position < text.size() && text[position] == '.')
+	{
+		had_dot = true;
+		++position;
+		const std::size_t fraction_begin = position;
+		while (position < text.size() && IsDigit(text[position]))
+			++position;
+		if (!had_leading_digits && position == fraction_begin)
+			return false;
+	}
+	bool had_exponent = false;
+	if (position < text.size() &&
+		(text[position] == 'e' || text[position] == 'E'))
+	{
+		had_exponent = true;
+		++position;
+		if (position < text.size() &&
+			(text[position] == '+' || text[position] == '-'))
+			++position;
+		const std::size_t exponent_begin = position;
+		while (position < text.size() && IsDigit(text[position]))
+			++position;
+		if (position == exponent_begin)
+			return false;
+	}
+	if ((!had_dot && !had_exponent) ||
+		(!had_leading_digits && !had_dot))
+		return false;
+	*numeric_end = position;
+	*type = FT_DOUBLE;
+	if (position == text.size())
+		return true;
+	if (!allow_suffix || position + 1 != text.size())
+		return false;
+	switch (text[position])
+	{
+	case 'f':
+	case 'F': *type = FT_FLOAT; return true;
+	case 'l':
+	case 'L': *type = FT_LONG_DOUBLE; return true;
+	default: return false;
+	}
+}
+
+template <typename T>
+bool DecodeFloatingValue(const std::string& spelling,
+	std::vector<unsigned char>* bytes)
+{
+	T value;
+	std::memset(&value, 0, sizeof(value));
+	std::istringstream input(spelling);
+	input.imbue(std::locale::classic());
+	input >> value;
+	if (!input)
+		return false;
+	const unsigned char* first =
+		reinterpret_cast<const unsigned char*>(&value);
+	bytes->assign(first, first + sizeof(value));
+	return true;
+}
+
+bool DecodeSimpleEscape(char escaped, std::uint32_t* value)
+{
+	switch (escaped)
+	{
+	case '\'': *value = '\''; return true;
+	case '"': *value = '"'; return true;
+	case '?': *value = '?'; return true;
+	case '\\': *value = '\\'; return true;
+	case 'a': *value = 7; return true;
+	case 'b': *value = 8; return true;
+	case 'f': *value = 12; return true;
+	case 'n': *value = 10; return true;
+	case 'r': *value = 13; return true;
+	case 't': *value = 9; return true;
+	case 'v': *value = 11; return true;
+	default: return false;
+	}
+}
+
+bool DecodeEscape(const std::string& text, std::size_t end,
+	std::size_t* position, std::uint32_t* value, bool* numeric)
+{
+	if (*position >= end || text[*position] != '\\')
+		return false;
+	++*position;
+	if (*position >= end)
+		return false;
+	if (DecodeSimpleEscape(text[*position], value))
+	{
+		++*position;
+		*numeric = false;
+		return true;
+	}
+	if (text[*position] >= '0' && text[*position] <= '7')
+	{
+		std::uint32_t result = 0;
+		int digits = 0;
+		while (*position < end && digits < 3 &&
+			text[*position] >= '0' && text[*position] <= '7')
+		{
+			result = result * 8 + (text[*position] - '0');
+			++*position;
+			++digits;
+		}
+		*value = result;
+		*numeric = true;
+		return true;
+	}
+	if (text[*position] != 'x')
+		return false;
+	++*position;
+	if (*position >= end || HexDigitValue(text[*position]) < 0)
+		return false;
+	std::uint64_t result = 0;
+	while (*position < end && HexDigitValue(text[*position]) >= 0)
+	{
+		const unsigned int digit = HexDigitValue(text[*position]);
+		if (result > (std::numeric_limits<std::uint32_t>::max() - digit) / 16)
+			return false;
+		result = result * 16 + digit;
+		++*position;
+	}
+	*value = static_cast<std::uint32_t>(result);
+	*numeric = true;
+	return true;
+}
+
+struct QuotedSyntax
+{
+	std::size_t content_begin;
+	std::size_t content_end;
+	std::string suffix;
+	FundamentalType type;
+};
+
+bool ParseCharacterSyntax(const std::string& spelling, QuotedSyntax* syntax)
+{
+	std::size_t quote = 0;
+	syntax->type = FT_CHAR;
+	if (spelling.size() >= 2 && spelling[0] == 'u' && spelling[1] == '\'')
+	{
+		quote = 1;
+		syntax->type = FT_CHAR16_T;
+	}
+	else if (spelling.size() >= 2 && spelling[0] == 'U' &&
+		spelling[1] == '\'')
+	{
+		quote = 1;
+		syntax->type = FT_CHAR32_T;
+	}
+	else if (spelling.size() >= 2 && spelling[0] == 'L' &&
+		spelling[1] == '\'')
+	{
+		quote = 1;
+		syntax->type = FT_WCHAR_T;
+	}
+	else if (spelling.empty() || spelling[0] != '\'')
+		return false;
+	syntax->content_begin = quote + 1;
+	std::size_t position = syntax->content_begin;
+	while (position < spelling.size())
+	{
+		if (spelling[position] == '\\')
+		{
+			position += 2;
+			continue;
+		}
+		if (spelling[position] == '\'')
+			break;
+		++position;
+	}
+	if (position >= spelling.size())
+		return false;
+	syntax->content_end = position;
+	syntax->suffix = spelling.substr(position + 1);
+	return syntax->suffix.empty() || syntax->suffix[0] == '_';
+}
+
+bool DecodeCharacter(const std::string& spelling,
+	const QuotedSyntax& syntax, std::uint32_t* value)
+{
+	std::size_t position = syntax.content_begin;
+	int units = 0;
+	while (position < syntax.content_end)
+	{
+		std::uint32_t current = 0;
+		if (spelling[position] == '\\')
+		{
+			bool numeric = false;
+			if (!DecodeEscape(spelling, syntax.content_end, &position,
+				&current, &numeric))
+				return false;
+		}
+		else if (!DecodeUTF8One(spelling, syntax.content_end,
+			&position, &current))
+			return false;
+		*value = current;
+		++units;
+	}
+	return units == 1 && *value <= 0x10FFFF &&
+		!(*value >= 0xD800 && *value <= 0xDFFF);
+}
+
+enum StringEncoding
+{
+	ENCODING_ORDINARY,
+	ENCODING_UTF8,
+	ENCODING_UTF16,
+	ENCODING_UTF32,
+	ENCODING_WIDE
+};
+
+struct StringPart
+{
+	const std::string* source;
+	StringEncoding encoding;
+	bool raw;
+	std::size_t content_begin;
+	std::size_t content_end;
+	std::string suffix;
+};
+
+bool ParseStringPart(const std::string& spelling, StringPart* part)
+{
+	part->source = &spelling;
+	part->encoding = ENCODING_ORDINARY;
+	part->raw = false;
+	std::size_t position = 0;
+	if (spelling.compare(0, 2, "u8") == 0)
+	{
+		part->encoding = ENCODING_UTF8;
+		position = 2;
+	}
+	else if (!spelling.empty() && spelling[0] == 'u')
+	{
+		part->encoding = ENCODING_UTF16;
+		position = 1;
+	}
+	else if (!spelling.empty() && spelling[0] == 'U')
+	{
+		part->encoding = ENCODING_UTF32;
+		position = 1;
+	}
+	else if (!spelling.empty() && spelling[0] == 'L')
+	{
+		part->encoding = ENCODING_WIDE;
+		position = 1;
+	}
+	if (position < spelling.size() && spelling[position] == 'R')
+	{
+		part->raw = true;
+		if (position + 1 >= spelling.size() || spelling[position + 1] != '"')
+			return false;
+		const std::size_t delimiter_begin = position + 2;
+		const std::size_t open = spelling.find('(', delimiter_begin);
+		if (open == std::string::npos)
+			return false;
+		const std::string delimiter =
+			spelling.substr(delimiter_begin, open - delimiter_begin);
+		const std::string terminator = ")" + delimiter + "\"";
+		const std::size_t close = spelling.rfind(terminator);
+		if (close == std::string::npos || close < open)
+			return false;
+		part->content_begin = open + 1;
+		part->content_end = close;
+		part->suffix = spelling.substr(close + terminator.size());
+	}
+	else
+	{
+		if (position >= spelling.size() || spelling[position] != '"')
+			return false;
+		part->content_begin = ++position;
+		while (position < spelling.size())
+		{
+			if (spelling[position] == '\\')
+			{
+				position += 2;
+				continue;
+			}
+			if (spelling[position] == '"')
+				break;
+			++position;
+		}
+		if (position >= spelling.size())
+			return false;
+		part->content_end = position;
+		part->suffix = spelling.substr(position + 1);
+	}
+	return part->suffix.empty() || part->suffix[0] == '_';
+}
+
+std::size_t EncodingWidth(StringEncoding encoding)
+{
+	switch (encoding)
+	{
+	case ENCODING_ORDINARY:
+	case ENCODING_UTF8: return 1;
+	case ENCODING_UTF16: return 2;
+	case ENCODING_UTF32:
+	case ENCODING_WIDE: return 4;
+	}
+	throw std::logic_error("unknown string encoding");
+}
+
+FundamentalType EncodingType(StringEncoding encoding)
+{
+	switch (encoding)
+	{
+	case ENCODING_ORDINARY:
+	case ENCODING_UTF8: return FT_CHAR;
+	case ENCODING_UTF16: return FT_CHAR16_T;
+	case ENCODING_UTF32: return FT_CHAR32_T;
+	case ENCODING_WIDE: return FT_WCHAR_T;
+	}
+	throw std::logic_error("unknown string encoding");
+}
+
+bool AppendStringUnit(std::uint32_t value, StringEncoding encoding,
+	std::vector<unsigned char>* bytes, std::size_t* units)
+{
+	const std::size_t width = EncodingWidth(encoding);
+	const std::uint64_t maximum = width == 1 ? 0xFFULL :
+		(width == 2 ? 0xFFFFULL : 0xFFFFFFFFULL);
+	if (value > maximum)
+		return false;
+	AppendLittleEndian(value, width, bytes);
+	++*units;
+	return true;
+}
+
+bool AppendStringCodePoint(std::uint32_t value, StringEncoding encoding,
+	std::vector<unsigned char>* bytes, std::size_t* units)
+{
+	if (value > 0x10FFFF || (value >= 0xD800 && value <= 0xDFFF))
+		return false;
+	if (encoding == ENCODING_ORDINARY || encoding == ENCODING_UTF8)
+	{
+		if (value <= 0x7F)
+			return AppendStringUnit(value, encoding, bytes, units);
+		if (value <= 0x7FF)
+		{
+			return AppendStringUnit(0xC0 | (value >> 6), encoding,
+				bytes, units) &&
+				AppendStringUnit(0x80 | (value & 0x3F), encoding,
+					bytes, units);
+		}
+		if (value <= 0xFFFF)
+		{
+			return AppendStringUnit(0xE0 | (value >> 12), encoding,
+				bytes, units) &&
+				AppendStringUnit(0x80 | ((value >> 6) & 0x3F), encoding,
+					bytes, units) &&
+				AppendStringUnit(0x80 | (value & 0x3F), encoding,
+					bytes, units);
+		}
+		return AppendStringUnit(0xF0 | (value >> 18), encoding,
+			bytes, units) &&
+			AppendStringUnit(0x80 | ((value >> 12) & 0x3F), encoding,
+				bytes, units) &&
+			AppendStringUnit(0x80 | ((value >> 6) & 0x3F), encoding,
+				bytes, units) &&
+			AppendStringUnit(0x80 | (value & 0x3F), encoding,
+				bytes, units);
+	}
+	if (encoding == ENCODING_UTF16 && value > 0xFFFF)
+	{
+		value -= 0x10000;
+		return AppendStringUnit(0xD800 | (value >> 10), encoding,
+			bytes, units) &&
+			AppendStringUnit(0xDC00 | (value & 0x3FF), encoding,
+				bytes, units);
+	}
+	return AppendStringUnit(value, encoding, bytes, units);
+}
+
+bool DecodeStringPart(const StringPart& part, StringEncoding encoding,
+	std::vector<unsigned char>* bytes, std::size_t* units)
+{
+	const std::string& text = *part.source;
+	std::size_t position = part.content_begin;
+	while (position < part.content_end)
+	{
+		std::uint32_t value = 0;
+		if (!part.raw && text[position] == '\\')
+		{
+			bool numeric = false;
+			if (!DecodeEscape(text, part.content_end, &position,
+				&value, &numeric))
+				return false;
+			if (!AppendStringUnit(value, encoding, bytes, units))
+				return false;
+		}
+		else
+		{
+			if (!DecodeUTF8One(text, part.content_end, &position, &value) ||
+				!AppendStringCodePoint(value, encoding, bytes, units))
+				return false;
+		}
+	}
+	return true;
+}
+
+class PostTokenAnalyzer : public IPPTokenStream
+{
+public:
+	PostTokenAnalyzer(IPostTokenStream& output, PostTokenizationStats* stats)
+		: output_(output), stats_(stats), pending_string_bytes_(0)
+	{}
+
+	void emit_whitespace_sequence() {}
+	void emit_new_line() {}
+
+	void emit_header_name(const std::string& data)
+	{
+		FlushStrings();
+		CountPreprocessingToken();
+		EmitInvalid(data);
+	}
+
+	void emit_identifier(const std::string& data)
+	{
+		FlushStrings();
+		CountPreprocessingToken();
+		SimpleTokenKind kind;
+		if (FindSimple(data, &kind))
+		{
+			output_.EmitSimple(data, kind);
+			CountOutputToken();
+		}
+		else
+		{
+			output_.EmitIdentifier(data);
+			CountOutputToken();
+		}
+	}
+
+	void emit_pp_number(const std::string& data)
+	{
+		FlushStrings();
+		CountPreprocessingToken();
+		EmitNumber(data);
+	}
+
+	void emit_character_literal(const std::string& data)
+	{
+		FlushStrings();
+		CountPreprocessingToken();
+		EmitCharacter(data, false);
+	}
+
+	void emit_user_defined_character_literal(const std::string& data)
+	{
+		FlushStrings();
+		CountPreprocessingToken();
+		EmitCharacter(data, true);
+	}
+
+	void emit_string_literal(const std::string& data)
+	{
+		QueueString(data);
+	}
+
+	void emit_user_defined_string_literal(const std::string& data)
+	{
+		QueueString(data);
+	}
+
+	void emit_preprocessing_op_or_punc(const std::string& data)
+	{
+		FlushStrings();
+		CountPreprocessingToken();
+		SimpleTokenKind kind;
+		if (FindSimple(data, &kind))
+		{
+			output_.EmitSimple(data, kind);
+			CountOutputToken();
+		}
+		else
+			EmitInvalid(data);
+	}
+
+	void emit_non_whitespace_char(const std::string& data)
+	{
+		FlushStrings();
+		CountPreprocessingToken();
+		EmitInvalid(data);
+	}
+
+	void emit_eof()
+	{
+		FlushStrings();
+		output_.EmitEof();
+	}
+
+private:
+	void CountPreprocessingToken()
+	{
+		if (stats_)
+			++stats_->preprocessing_tokens;
+	}
+
+	void CountOutputToken()
+	{
+		if (stats_)
+			++stats_->emitted_tokens;
+	}
+
+	void EmitInvalid(const std::string& source)
+	{
+		output_.EmitInvalid(source);
+		CountOutputToken();
+	}
+
+	void EmitNumber(const std::string& source)
+	{
+		const std::size_t ud_position = source.find('_');
+		if (ud_position != std::string::npos)
+		{
+			const std::string prefix = source.substr(0, ud_position);
+			const std::string suffix = source.substr(ud_position);
+			if (!IsValidUdSuffix(suffix))
+			{
+				output_.EmitInvalid(source);
+				CountOutputToken();
+				return;
+			}
+			IntegerSpelling integer;
+			FundamentalType floating_type;
+			std::size_t numeric_end = 0;
+			if (ParseIntegerSpelling(prefix, false, &integer))
+				output_.EmitUserDefinedInteger(source, suffix, prefix);
+			else if (ParseFloatingSpelling(prefix, false, &floating_type,
+				&numeric_end))
+				output_.EmitUserDefinedFloating(source, suffix, prefix);
+			else
+			{
+				output_.EmitInvalid(source);
+				CountOutputToken();
+				return;
+			}
+			CountOutputToken();
+			return;
+		}
+
+		IntegerSpelling integer;
+		if (ParseIntegerSpelling(source, true, &integer))
+		{
+			std::uint64_t value = 0;
+			FundamentalType type;
+			if (!ParseUnsignedDigits(source, integer.digits_begin,
+				integer.digits_end, integer.base, &value) ||
+				!SelectIntegerType(integer, value, &type))
+			{
+				output_.EmitInvalid(source);
+				CountOutputToken();
+				return;
+			}
+			std::vector<unsigned char> bytes;
+			AppendLittleEndian(value, FundamentalWidth(type), &bytes);
+			output_.EmitLiteral(source, type, &bytes[0], bytes.size());
+			CountOutputToken();
+			return;
+		}
+
+		FundamentalType type;
+		std::size_t numeric_end = 0;
+		std::vector<unsigned char> bytes;
+		if (!ParseFloatingSpelling(source, true, &type, &numeric_end) ||
+			!DecodeFloating(source.substr(0, numeric_end), type, &bytes))
+			output_.EmitInvalid(source);
+		else
+			output_.EmitLiteral(source, type, &bytes[0], bytes.size());
+		CountOutputToken();
+	}
+
+	bool DecodeFloating(const std::string& spelling, FundamentalType type,
+		std::vector<unsigned char>* bytes)
+	{
+		switch (type)
+		{
+		case FT_FLOAT: return DecodeFloatingValue<float>(spelling, bytes);
+		case FT_DOUBLE: return DecodeFloatingValue<double>(spelling, bytes);
+		case FT_LONG_DOUBLE:
+			return DecodeFloatingValue<long double>(spelling, bytes);
+		default: return false;
+		}
+	}
+
+	void EmitCharacter(const std::string& source, bool user_defined)
+	{
+		QuotedSyntax syntax;
+		std::uint32_t value = 0;
+		if (!ParseCharacterSyntax(source, &syntax) ||
+			!DecodeCharacter(source, syntax, &value) ||
+			(user_defined != !syntax.suffix.empty()) ||
+			(syntax.type == FT_CHAR16_T && value > 0xFFFF))
+		{
+			output_.EmitInvalid(source);
+			CountOutputToken();
+			return;
+		}
+		FundamentalType type = syntax.type;
+		if (type == FT_CHAR && value > 0x7F)
+			type = FT_INT;
+		std::vector<unsigned char> bytes;
+		AppendLittleEndian(value, FundamentalWidth(type), &bytes);
+		if (user_defined)
+			output_.EmitUserDefinedCharacter(source, syntax.suffix, type,
+				&bytes[0], bytes.size());
+		else
+			output_.EmitLiteral(source, type, &bytes[0], bytes.size());
+		if (stats_)
+			++stats_->decoded_literal_units;
+		CountOutputToken();
+	}
+
+	void QueueString(const std::string& source)
+	{
+		CountPreprocessingToken();
+		pending_strings_.push_back(source);
+		pending_string_bytes_ += source.size();
+		if (stats_)
+			stats_->peak_pending_string_bytes = std::max(
+				stats_->peak_pending_string_bytes, pending_string_bytes_);
+	}
+
+	std::string JoinedStringSource() const
+	{
+		std::string source;
+		source.reserve(pending_string_bytes_ + pending_strings_.size() - 1);
+		for (std::size_t i = 0; i < pending_strings_.size(); ++i)
+		{
+			if (i != 0)
+				source.push_back(' ');
+			source += pending_strings_[i];
+		}
+		return source;
+	}
+
+	void FlushStrings()
+	{
+		if (pending_strings_.empty())
+			return;
+		const std::string source = JoinedStringSource();
+		std::vector<StringPart> parts(pending_strings_.size());
+		StringEncoding encoding = ENCODING_ORDINARY;
+		std::string suffix;
+		bool valid = true;
+		for (std::size_t i = 0; i < pending_strings_.size(); ++i)
+		{
+			if (!ParseStringPart(pending_strings_[i], &parts[i]))
+			{
+				valid = false;
+				break;
+			}
+			if (parts[i].encoding != ENCODING_ORDINARY)
+			{
+				if (encoding != ENCODING_ORDINARY &&
+					encoding != parts[i].encoding)
+					valid = false;
+				else
+					encoding = parts[i].encoding;
+			}
+			if (!parts[i].suffix.empty())
+			{
+				if (!suffix.empty() && suffix != parts[i].suffix)
+					valid = false;
+				else
+					suffix = parts[i].suffix;
+			}
+		}
+		std::vector<unsigned char> bytes;
+		std::size_t units = 0;
+		for (std::size_t i = 0; valid && i < parts.size(); ++i)
+			valid = DecodeStringPart(parts[i], encoding, &bytes, &units);
+		if (valid)
+			valid = AppendStringUnit(0, encoding, &bytes, &units);
+		if (!valid)
+			output_.EmitInvalid(source);
+		else if (suffix.empty())
+			output_.EmitLiteralArray(source, units, EncodingType(encoding),
+				&bytes[0], bytes.size());
+		else
+			output_.EmitUserDefinedString(source, suffix, units,
+				EncodingType(encoding), &bytes[0], bytes.size());
+		if (stats_ && valid)
+			stats_->decoded_literal_units += units;
+		CountOutputToken();
+		pending_strings_.clear();
+		pending_string_bytes_ = 0;
+	}
+
+	IPostTokenStream& output_;
+	PostTokenizationStats* stats_;
+	std::vector<std::string> pending_strings_;
+	std::size_t pending_string_bytes_;
+};
+
+}
+
+const char* FundamentalTypeName(FundamentalType type)
+{
+	static const char* names[] = {
+		"signed char", "short int", "int", "long int", "long long int",
+		"unsigned char", "unsigned short int", "unsigned int",
+		"unsigned long int", "unsigned long long int", "wchar_t", "char",
+		"char16_t", "char32_t", "bool", "float", "double", "long double",
+		"void", "nullptr_t"
+	};
+	if (type < FT_SIGNED_CHAR || type > FT_NULLPTR_T)
+		throw std::logic_error("unknown fundamental type");
+	return names[type];
+}
+
+const char* SimpleTokenKindName(SimpleTokenKind kind)
+{
+	static const char* names[] = {
+		"KW_ALIGNAS", "KW_ALIGNOF", "KW_ASM", "KW_AUTO", "KW_BOOL",
+		"KW_BREAK", "KW_CASE", "KW_CATCH", "KW_CHAR", "KW_CHAR16_T",
+		"KW_CHAR32_T", "KW_CLASS", "KW_CONST", "KW_CONSTEXPR",
+		"KW_CONST_CAST", "KW_CONTINUE", "KW_DECLTYPE", "KW_DEFAULT",
+		"KW_DELETE", "KW_DO", "KW_DOUBLE", "KW_DYNAMIC_CAST", "KW_ELSE",
+		"KW_ENUM", "KW_EXPLICIT", "KW_EXPORT", "KW_EXTERN", "KW_FALSE",
+		"KW_FLOAT", "KW_FOR", "KW_FRIEND", "KW_GOTO", "KW_IF",
+		"KW_INLINE", "KW_INT", "KW_LONG", "KW_MUTABLE", "KW_NAMESPACE",
+		"KW_NEW", "KW_NOEXCEPT", "KW_NULLPTR", "KW_OPERATOR", "KW_PRIVATE",
+		"KW_PROTECTED", "KW_PUBLIC", "KW_REGISTER", "KW_REINTERPET_CAST",
+		"KW_RETURN", "KW_SHORT", "KW_SIGNED", "KW_SIZEOF", "KW_STATIC",
+		"KW_STATIC_ASSERT", "KW_STATIC_CAST", "KW_STRUCT", "KW_SWITCH",
+		"KW_TEMPLATE", "KW_THIS", "KW_THREAD_LOCAL", "KW_THROW", "KW_TRUE",
+		"KW_TRY", "KW_TYPEDEF", "KW_TYPEID", "KW_TYPENAME", "KW_UNION",
+		"KW_UNSIGNED", "KW_USING", "KW_VIRTUAL", "KW_VOID", "KW_VOLATILE",
+		"KW_WCHAR_T", "KW_WHILE", "OP_LBRACE", "OP_RBRACE", "OP_LSQUARE",
+		"OP_RSQUARE", "OP_LPAREN", "OP_RPAREN", "OP_BOR", "OP_XOR",
+		"OP_COMPL", "OP_AMP", "OP_LNOT", "OP_SEMICOLON", "OP_COLON",
+		"OP_DOTS", "OP_QMARK", "OP_COLON2", "OP_DOT", "OP_DOTSTAR",
+		"OP_PLUS", "OP_MINUS", "OP_STAR", "OP_DIV", "OP_MOD", "OP_ASS",
+		"OP_LT", "OP_GT", "OP_PLUSASS", "OP_MINUSASS", "OP_STARASS",
+		"OP_DIVASS", "OP_MODASS", "OP_XORASS", "OP_BANDASS", "OP_BORASS",
+		"OP_LSHIFT", "OP_RSHIFT", "OP_RSHIFTASS", "OP_LSHIFTASS", "OP_EQ",
+		"OP_NE", "OP_LE", "OP_GE", "OP_LAND", "OP_LOR", "OP_INC",
+		"OP_DEC", "OP_COMMA", "OP_ARROWSTAR", "OP_ARROW"
+	};
+	if (kind < KW_ALIGNAS || kind > OP_ARROW)
+		throw std::logic_error("unknown simple token kind");
+	return names[kind];
+}
+
+PostTokenizationStats::PostTokenizationStats()
+	: preprocessing_tokens(0), emitted_tokens(0), decoded_literal_units(0),
+	  peak_pending_string_bytes(0), elapsed_nanoseconds(0)
+{}
+
+void TokenizePostTokens(const std::string& source, IPostTokenStream& output,
+	PostTokenizationStats* stats)
+{
+	const std::chrono::steady_clock::time_point start = stats ?
+		std::chrono::steady_clock::now() :
+		std::chrono::steady_clock::time_point();
+	if (stats)
+		*stats = PostTokenizationStats();
+	PostTokenAnalyzer analyzer(output, stats);
+	TokenizePreprocessingFile(source, analyzer,
+		stats ? &stats->preprocessing : 0);
+	if (stats)
+		stats->elapsed_nanoseconds = static_cast<std::uint64_t>(
+			std::chrono::duration_cast<std::chrono::nanoseconds>(
+				std::chrono::steady_clock::now() - start).count());
+}
+
+}

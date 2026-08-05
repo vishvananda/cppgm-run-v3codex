@@ -456,7 +456,8 @@ public:
 	Lexer(const std::string& source, IPPTokenStream& output,
 		PPTokenizationStats* stats)
 		: translation_(source, stats), output_(output), stats_(stats),
-		  at_line_start_(true), header_context_(kNoHeaderContext)
+		  at_line_start_(true), header_context_(kNoHeaderContext),
+		  last_token_was_operator_(false)
 	{}
 
 	void Run()
@@ -561,6 +562,7 @@ private:
 		at_line_start_ = false;
 		header_context_ = header_context_ == kAfterDirectiveMarker &&
 			spelling == "include" ? kAfterInclude : kNoHeaderContext;
+		last_token_was_operator_ = spelling == "operator";
 	}
 
 	void EmitPunctuator(const std::string& spelling)
@@ -572,12 +574,14 @@ private:
 		header_context_ = was_at_line_start &&
 			(spelling == "#" || spelling == "%:") ?
 			kAfterDirectiveMarker : kNoHeaderContext;
+		last_token_was_operator_ = false;
 	}
 
 	void ClearTokenContext()
 	{
 		at_line_start_ = false;
 		header_context_ = kNoHeaderContext;
+		last_token_was_operator_ = false;
 	}
 
 	bool ScanWhitespaceAndComments()
@@ -708,10 +712,14 @@ private:
 				AppendTake(&spelling);
 			has_character = true;
 		}
-		if (quote == '\'' && !has_character)
-			throw std::runtime_error("empty character literal");
 		AppendTake(&spelling);
-		const bool has_suffix = ScanIdentifierSuffix(&spelling);
+		// The literal-operator-id max-munch exception tokenizes operator""x
+		// as operator, "", x. Other non-underscore suffixes stay attached so
+		// PA2 can diagnose them as invalid user-defined literals.
+		const bool split_literal_operator = quote == '"' &&
+			opener_length == 1 && !has_character && last_token_was_operator_;
+		const bool has_suffix = !split_literal_operator &&
+			ScanIdentifierSuffix(&spelling);
 		if (quote == '\'')
 		{
 			if (has_suffix)
@@ -891,6 +899,7 @@ private:
 	std::string spelling_;
 	bool at_line_start_;
 	HeaderContext header_context_;
+	bool last_token_was_operator_;
 };
 
 }
