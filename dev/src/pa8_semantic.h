@@ -15,17 +15,33 @@ struct InitializationStats
 {
 	std::size_t source_bytes;
 	std::size_t tokens;
+	std::size_t token_storage_bytes;
 	std::size_t literal_bytes;
 	std::size_t identifiers;
+	std::size_t identifier_bytes;
 	std::size_t canonical_types;
+	std::size_t canonical_type_bytes;
 	std::size_t scopes;
 	std::size_t declarations;
+	std::size_t using_edges;
 	std::size_t lookup_queries;
+	std::size_t lookup_cache_hits;
+	std::size_t lookup_cache_misses;
+	std::size_t lookup_cache_invalidations;
+	std::size_t lookup_cache_entries;
 	std::size_t lookup_scope_visits;
 	std::size_t lookup_edge_visits;
 	std::size_t linkage_candidates;
+	std::size_t declarator_frames;
+	std::size_t declarator_cache_hits;
+	std::size_t declarator_cache_misses;
+	std::size_t declarator_memo_entries;
+	std::size_t peak_parser_scratch_bytes;
+	std::size_t parser_memo_storage_bytes;
 	std::size_t temporaries;
 	std::size_t strings;
+	std::size_t semantic_storage_bytes;
+	std::size_t peak_stage_storage_bytes;
 	std::size_t image_bytes;
 	std::uint64_t elapsed_nanoseconds;
 

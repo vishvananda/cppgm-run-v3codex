@@ -43,17 +43,34 @@ void ReportStats(const cppgm::InitializationStats& stats)
 	std::cerr << "nsinit_stats"
 		<< " source_bytes=" << stats.source_bytes
 		<< " tokens=" << stats.tokens
+		<< " token_storage_bytes=" << stats.token_storage_bytes
 		<< " literal_bytes=" << stats.literal_bytes
 		<< " interned_ids=" << stats.identifiers
+		<< " identifier_bytes=" << stats.identifier_bytes
 		<< " canonical_types=" << stats.canonical_types
+		<< " canonical_type_bytes=" << stats.canonical_type_bytes
 		<< " scopes=" << stats.scopes
 		<< " declarations=" << stats.declarations
+		<< " using_edges=" << stats.using_edges
 		<< " lookup_queries=" << stats.lookup_queries
+		<< " lookup_cache_hits=" << stats.lookup_cache_hits
+		<< " lookup_cache_misses=" << stats.lookup_cache_misses
+		<< " lookup_cache_invalidations="
+		<< stats.lookup_cache_invalidations
+		<< " lookup_cache_entries=" << stats.lookup_cache_entries
 		<< " lookup_scope_visits=" << stats.lookup_scope_visits
 		<< " lookup_edge_visits=" << stats.lookup_edge_visits
 		<< " linkage_candidates=" << stats.linkage_candidates
+		<< " declarator_frames=" << stats.declarator_frames
+		<< " declarator_cache_hits=" << stats.declarator_cache_hits
+		<< " declarator_cache_misses=" << stats.declarator_cache_misses
+		<< " declarator_memo_entries=" << stats.declarator_memo_entries
+		<< " peak_parser_scratch_bytes=" << stats.peak_parser_scratch_bytes
+		<< " parser_memo_storage_bytes=" << stats.parser_memo_storage_bytes
 		<< " temporaries=" << stats.temporaries
 		<< " strings=" << stats.strings
+		<< " semantic_storage_bytes=" << stats.semantic_storage_bytes
+		<< " peak_stage_storage_bytes=" << stats.peak_stage_storage_bytes
 		<< " image_bytes=" << stats.image_bytes
 		<< " elapsed_ns=" << stats.elapsed_nanoseconds << '\n';
 }

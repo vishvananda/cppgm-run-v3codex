@@ -1,8 +1,9 @@
-#include "pa8_internal.h"
+#include "pa8_program.h"
 
 #include <algorithm>
 #include <cstring>
 #include <stdexcept>
+#include <utility>
 
 namespace cppgm
 {
@@ -21,6 +22,36 @@ enum DeclaratorMode
 {
 	DECLARATOR_NAMED,
 	DECLARATOR_ABSTRACT
+};
+
+// C++ permits implementation limits; this stays above the recommended minimum
+// while bounding the one remaining recursive grammar relationship under
+// sanitizer-inflated stack frames. Parenthesized declarators themselves use an
+// explicit frame stack and are not subject to this limit.
+const std::size_t kMaxDeclaratorCallDepth = 512;
+
+struct DeclaratorMemoEntry
+{
+	std::size_t start;
+	ScopeId scope;
+	DeclaratorMode mode;
+	std::size_t end;
+	bool success;
+	Declarator declarator;
+
+	DeclaratorMemoEntry(std::size_t start_value, ScopeId scope_value,
+		DeclaratorMode mode_value, std::size_t end_value, bool success_value,
+		Declarator&& declarator_value)
+		: start(start_value), scope(scope_value), mode(mode_value), end(end_value),
+		  success(success_value), declarator(std::move(declarator_value)) {}
+};
+
+struct DeclaratorMemoSlot
+{
+	std::uint32_t entry;
+	std::uint32_t generation;
+
+	DeclaratorMemoSlot() : entry(0), generation(0) {}
 };
 
 struct FundamentalSpecifiers
@@ -61,7 +92,9 @@ public:
 	Parser(const TokenBuffer& input, ProgramModel& model, ScopeId root,
 		std::uint32_t unit)
 		: input_(input), model_(model), position_(0), current_scope_(root),
-		  unit_(unit) {}
+		  unit_(unit), declarator_memo_generation_(0),
+		  declarator_call_depth_(0), memo_child_storage_bytes_(0),
+		  active_declarator_stack_bytes_(0) {}
 
 	void Parse()
 	{
@@ -86,6 +119,141 @@ public:
 	}
 
 private:
+	void RecordParserStack()
+	{
+		if (!model_.stats) return;
+		const std::size_t bytes = active_declarator_stack_bytes_ +
+			scope_stack_.capacity() * sizeof(ScopeId);
+		model_.stats->peak_parser_scratch_bytes = std::max(
+			model_.stats->peak_parser_scratch_bytes, bytes);
+	}
+
+	void RecordDeclaratorFrame(std::size_t capacity_bytes,
+		std::size_t* accounted_bytes)
+	{
+		if (!model_.stats) return;
+		++model_.stats->declarator_frames;
+		if (capacity_bytes > *accounted_bytes)
+		{
+			active_declarator_stack_bytes_ += capacity_bytes - *accounted_bytes;
+			*accounted_bytes = capacity_bytes;
+		}
+		RecordParserStack();
+	}
+
+	void BeginDeclaratorMemoSession()
+	{
+		if (declarator_call_depth_ != 0) return;
+		++declarator_memo_generation_;
+		if (declarator_memo_generation_ == 0)
+		{
+			for (std::size_t i = 0; i < declarator_memo_slots_.size(); ++i)
+				declarator_memo_slots_[i].generation = 0;
+			++declarator_memo_generation_;
+		}
+		declarator_memo_entries_.clear();
+		memo_child_storage_bytes_ = 0;
+	}
+
+	std::size_t HashDeclaratorMemo(std::size_t start, ScopeId scope,
+		DeclaratorMode mode) const
+	{
+		return MixHash(MixHash(MixHash(0, start), scope), mode);
+	}
+
+	bool SameDeclaratorMemoKey(const DeclaratorMemoEntry& entry,
+		std::size_t start, ScopeId scope, DeclaratorMode mode) const
+	{
+		return entry.start == start && entry.scope == scope && entry.mode == mode;
+	}
+
+	void RehashDeclaratorMemo(std::size_t capacity)
+	{
+		std::vector<DeclaratorMemoSlot> replacement(capacity);
+		const std::size_t mask = capacity - 1;
+		for (std::uint32_t i = 0; i < declarator_memo_entries_.size(); ++i)
+		{
+			const DeclaratorMemoEntry& entry = declarator_memo_entries_[i];
+			std::size_t slot = HashDeclaratorMemo(entry.start, entry.scope,
+				entry.mode) & mask;
+			while (replacement[slot].generation == declarator_memo_generation_)
+				slot = (slot + 1) & mask;
+			replacement[slot].entry = i;
+			replacement[slot].generation = declarator_memo_generation_;
+		}
+		declarator_memo_slots_.swap(replacement);
+	}
+
+	bool FindDeclaratorMemo(std::size_t start, ScopeId scope,
+		DeclaratorMode mode, bool* success, Declarator* result)
+	{
+		if (declarator_memo_slots_.empty()) return false;
+		const std::size_t mask = declarator_memo_slots_.size() - 1;
+		std::size_t slot = HashDeclaratorMemo(start, scope, mode) & mask;
+		while (declarator_memo_slots_[slot].generation ==
+			declarator_memo_generation_)
+		{
+			const DeclaratorMemoEntry& entry = declarator_memo_entries_[
+				declarator_memo_slots_[slot].entry];
+			if (SameDeclaratorMemoKey(entry, start, scope, mode))
+			{
+				position_ = entry.end;
+				*success = entry.success;
+				if (entry.success) *result = entry.declarator;
+				return true;
+			}
+			slot = (slot + 1) & mask;
+		}
+		return false;
+	}
+
+	std::size_t DeclaratorChildStorage(const Declarator& declarator) const
+	{
+		std::size_t bytes = declarator.name.segments.StorageBytes() +
+			declarator.operations.capacity() * sizeof(DeclaratorOperation);
+		for (std::size_t i = 0; i < declarator.operations.size(); ++i)
+			bytes += declarator.operations[i].parameters.capacity() * sizeof(TypeId);
+		return bytes;
+	}
+
+	void StoreDeclaratorMemo(std::size_t start, ScopeId scope,
+		DeclaratorMode mode, std::size_t end, bool success,
+		Declarator&& declarator)
+	{
+		if (declarator_memo_slots_.empty())
+			declarator_memo_slots_.resize(32);
+		if ((declarator_memo_entries_.size() + 1) * 10 >
+			declarator_memo_slots_.size() * 7)
+			RehashDeclaratorMemo(declarator_memo_slots_.size() * 2);
+		if (declarator_memo_entries_.size() >=
+			std::numeric_limits<std::uint32_t>::max())
+			throw std::runtime_error("too many declarator memo entries");
+		const std::size_t mask = declarator_memo_slots_.size() - 1;
+		std::size_t slot = HashDeclaratorMemo(start, scope, mode) & mask;
+		while (declarator_memo_slots_[slot].generation ==
+			declarator_memo_generation_)
+			slot = (slot + 1) & mask;
+		const std::uint32_t index =
+			static_cast<std::uint32_t>(declarator_memo_entries_.size());
+		declarator_memo_entries_.push_back(DeclaratorMemoEntry(start, scope,
+			mode, end, success, std::move(declarator)));
+		declarator_memo_slots_[slot].entry = index;
+		declarator_memo_slots_[slot].generation =
+			declarator_memo_generation_;
+		memo_child_storage_bytes_ += DeclaratorChildStorage(
+			declarator_memo_entries_.back().declarator);
+		if (!model_.stats) return;
+		model_.stats->declarator_memo_entries = std::max(
+			model_.stats->declarator_memo_entries,
+			declarator_memo_entries_.size());
+		const std::size_t storage = declarator_memo_slots_.capacity() *
+				sizeof(DeclaratorMemoSlot) +
+			declarator_memo_entries_.capacity() * sizeof(DeclaratorMemoEntry) +
+			memo_child_storage_bytes_;
+		model_.stats->parser_memo_storage_bytes = std::max(
+			model_.stats->parser_memo_storage_bytes, storage);
+	}
+
 	bool At(SimpleTokenKind kind) const
 	{
 		return position_ < input_.tokens.size() &&
@@ -273,10 +441,14 @@ private:
 			}
 			if (Match(KW_CONST))
 			{
+				if ((cv & CV_CONST) != 0)
+					throw std::runtime_error("duplicate const qualifier");
 				cv |= CV_CONST; consumed = true; continue;
 			}
 			if (Match(KW_VOLATILE))
 			{
+				if ((cv & CV_VOLATILE) != 0)
+					throw std::runtime_error("duplicate volatile qualifier");
 				cv |= CV_VOLATILE; consumed = true; continue;
 			}
 			if (named_type == 0 && ConsumeFundamental(&fundamental))
@@ -303,7 +475,8 @@ private:
 		}
 		if (result->is_static && result->is_extern)
 			throw std::runtime_error("static and extern cannot be combined");
-		if (result->is_typedef && (result->is_constexpr || result->is_inline ||
+		if (result->is_typedef && (result->is_static || result->is_extern ||
+			result->is_constexpr || result->is_inline ||
 			result->is_thread_local))
 			throw std::runtime_error("invalid typedef specifiers");
 		TypeId type = named_type == 0 ?
@@ -319,8 +492,18 @@ private:
 			*operation = DeclaratorOperation(TYPE_POINTER);
 			while (true)
 			{
-				if (Match(KW_CONST)) operation->cv |= CV_CONST;
-				else if (Match(KW_VOLATILE)) operation->cv |= CV_VOLATILE;
+				if (Match(KW_CONST))
+				{
+					if ((operation->cv & CV_CONST) != 0)
+						throw std::runtime_error("duplicate pointer const qualifier");
+					operation->cv |= CV_CONST;
+				}
+				else if (Match(KW_VOLATILE))
+				{
+					if ((operation->cv & CV_VOLATILE) != 0)
+						throw std::runtime_error("duplicate pointer volatile qualifier");
+					operation->cv |= CV_VOLATILE;
+				}
 				else break;
 			}
 			return true;
@@ -383,6 +566,7 @@ private:
 			return false;
 		}
 		if (specifiers.is_typedef || specifiers.is_static ||
+			specifiers.is_extern ||
 			specifiers.is_thread_local || specifiers.is_constexpr ||
 			specifiers.is_inline)
 			throw std::runtime_error("invalid parameter specifiers");
@@ -407,6 +591,8 @@ private:
 		}
 		TypeId type = ApplyDeclarator(specifiers.type, declarator);
 		*bare_void = !has_declarator && model_.types.IsVoid(type);
+		if (has_declarator && model_.types.IsVoid(type))
+			throw std::runtime_error("named parameter has void type");
 		*result = model_.types.AdjustParameter(type);
 		current_scope_ = saved;
 		return true;
@@ -471,6 +657,37 @@ private:
 
 	bool ParseDeclarator(DeclaratorMode mode, Declarator* result)
 	{
+		BeginDeclaratorMemoSession();
+		if (declarator_call_depth_ >= kMaxDeclaratorCallDepth)
+			throw std::runtime_error("declarator nesting limit exceeded");
+		++declarator_call_depth_;
+		const std::size_t start = position_;
+		const ScopeId scope = current_scope_;
+		if (declarator_call_depth_ == 1)
+		{
+			const bool success = ParseDeclaratorUncached(mode, result);
+			--declarator_call_depth_;
+			return success;
+		}
+		bool success = false;
+		if (FindDeclaratorMemo(start, scope, mode, &success, result))
+		{
+			if (model_.stats) ++model_.stats->declarator_cache_hits;
+			--declarator_call_depth_;
+			return success;
+		}
+		if (model_.stats) ++model_.stats->declarator_cache_misses;
+		Declarator parsed;
+		success = ParseDeclaratorUncached(mode, &parsed);
+		StoreDeclaratorMemo(start, scope, mode, position_, success,
+			std::move(parsed));
+		if (success) *result = declarator_memo_entries_.back().declarator;
+		--declarator_call_depth_;
+		return success;
+	}
+
+	bool ParseDeclaratorUncached(DeclaratorMode mode, Declarator* result)
+	{
 		enum FrameState { FRAME_START, FRAME_WAIT_GROUP, FRAME_SUFFIXES };
 		struct Frame
 		{
@@ -489,6 +706,9 @@ private:
 		};
 		std::vector<Frame> frames;
 		frames.push_back(Frame(position_));
+		std::size_t accounted_frame_bytes = 0;
+		RecordDeclaratorFrame(frames.capacity() * sizeof(Frame),
+			&accounted_frame_bytes);
 		while (true)
 		{
 			Frame& frame = frames.back();
@@ -519,6 +739,8 @@ private:
 					frame.group_start = position_++;
 					frame.state = FRAME_WAIT_GROUP;
 					frames.push_back(Frame(position_));
+					RecordDeclaratorFrame(frames.capacity() * sizeof(Frame),
+						&accounted_frame_bytes);
 					continue;
 				}
 				frame.state = FRAME_SUFFIXES;
@@ -533,7 +755,7 @@ private:
 				{
 					if (operation.kind == TYPE_FUNCTION)
 						frame.parsed.has_function_operation = true;
-					frame.parsed.operations.push_back(operation);
+					frame.parsed.operations.push_back(std::move(operation));
 					frame.suffix = true;
 					continue;
 				}
@@ -541,22 +763,24 @@ private:
 			}
 			for (std::vector<DeclaratorOperation>::reverse_iterator i =
 				frame.prefixes.rbegin(); i != frame.prefixes.rend(); ++i)
-				frame.parsed.operations.push_back(*i);
+				frame.parsed.operations.push_back(std::move(*i));
 			const bool success = !frame.failed &&
 				(frame.direct || frame.suffix || !frame.prefixes.empty()) &&
 				(mode != DECLARATOR_NAMED || frame.parsed.has_name) &&
 				(mode != DECLARATOR_ABSTRACT || !frame.parsed.has_name);
 			const std::size_t frame_start = frame.start;
-			Declarator completed = frame.parsed;
+			Declarator completed = std::move(frame.parsed);
 			frames.pop_back();
 			if (frames.empty())
 			{
+				if (model_.stats)
+					active_declarator_stack_bytes_ -= accounted_frame_bytes;
 				if (!success)
 				{
 					position_ = frame_start;
 					return false;
 				}
-				*result = completed;
+				*result = std::move(completed);
 				return true;
 			}
 			Frame& parent = frames.back();
@@ -564,7 +788,7 @@ private:
 				throw std::logic_error("invalid declarator frame state");
 			if (success && Match(OP_RPAREN))
 			{
-				parent.parsed = completed;
+				parent.parsed = std::move(completed);
 				parent.direct = true;
 			}
 			else position_ = parent.group_start;
@@ -609,6 +833,7 @@ private:
 		std::size_t parentheses = 0;
 		while (Match(OP_LPAREN)) ++parentheses;
 		Expression expression;
+		expression.translation_unit = unit_;
 		if (Match(KW_TRUE) || Match(KW_FALSE))
 		{
 			const bool value = input_.tokens[position_ - 1].kind ==
@@ -651,7 +876,7 @@ private:
 				std::memcpy(expression.value.bytes.data(),
 					&input_.bytes[token.byte_offset], token.byte_size);
 				expression.constant_expression = true;
-				if (IsIntegralFundamental(token.literal_type) &&
+				if (token.integer_literal &&
 					ReadArithmetic(expression.value) == 0)
 					expression.null_pointer_constant = true;
 			}
@@ -661,23 +886,17 @@ private:
 			QualifiedName name;
 			if (!ParseQualifiedName(&name))
 				throw std::runtime_error("expected expression");
-			const EntityId entity = model_.ResolveExpressionEntity(scope, name);
-			if (entity == kNoEntity)
+			LookupResult found;
+			const EntityId entity = model_.ResolveExpressionEntity(scope, name,
+				&found);
+			if (entity == kNoEntity && found.first_function == kNoCandidate)
 				throw std::runtime_error("id-expression lookup failed");
-			expression = model_.ExpressionForEntity(entity);
-			const TypeId plain = model_.types.RemoveTopCv(expression.type);
-			const TypeRecord& record = model_.types.Get(plain);
-			if (expression.constant_expression &&
-				record.kind == TYPE_FUNDAMENTAL &&
-				IsIntegralFundamental(record.fundamental))
+			if (entity == kNoEntity)
 			{
-				bool constant = true;
-				const InitialValue value = model_.LvalueToRvalue(expression,
-					&constant);
-				if (constant && value.kind == INITIAL_SCALAR &&
-					ReadArithmetic(value) == 0)
-					expression.null_pointer_constant = true;
+				expression.first_function = found.first_function;
+				expression.last_function = found.last_function;
 			}
+			else expression = model_.ExpressionForEntity(entity, unit_);
 		}
 		while (parentheses != 0)
 		{
@@ -709,6 +928,7 @@ private:
 		if (AtIdentifier()) name = ConsumeIdentifier();
 		Expect(OP_LBRACE);
 		scope_stack_.push_back(current_scope_);
+		RecordParserStack();
 		current_scope_ = model_.OpenNamespace(current_scope_, name, is_inline);
 	}
 
@@ -749,12 +969,12 @@ private:
 		QualifiedName target_name;
 		if (!ParseQualifiedName(&target_name))
 			throw std::runtime_error("expected using-declaration target");
-		const Binding* target = model_.ResolveUsingTarget(current_scope_,
-			target_name);
-		if (!target) throw std::runtime_error("using-declaration lookup failed");
+		LookupResult target;
+		if (!model_.ResolveUsingTarget(current_scope_, target_name, &target))
+			throw std::runtime_error("using-declaration lookup failed");
 		Expect(OP_SEMICOLON);
 		model_.AddUsingDeclaration(current_scope_, target_name.segments.back(),
-			*target);
+			target);
 	}
 
 	bool IsUsableIntegralConstant(TypeId type, bool initializer_constant) const
@@ -790,6 +1010,8 @@ private:
 			throw std::runtime_error("function cannot have an initializer");
 		if (specifiers.is_constexpr && !function && !has_initializer)
 			throw std::runtime_error("constexpr variable requires an initializer");
+		if (specifiers.is_constexpr && function_definition)
+			throw std::runtime_error("empty constexpr function body is invalid");
 		const bool definition = function ? function_definition :
 			(!specifiers.is_extern || has_initializer);
 		const EntityId entity = model_.Declare(current_scope_, declarator, type,
@@ -799,7 +1021,7 @@ private:
 			Expect(OP_LBRACE);
 			Expect(OP_RBRACE);
 			InitialValue value;
-			model_.Define(entity, type, value, false, unit_);
+			model_.Define(entity, type, value, false, false, unit_);
 			return true;
 		}
 		if (function || !definition) return false;
@@ -826,7 +1048,7 @@ private:
 		const bool usable = specifiers.is_constexpr ||
 			IsUsableIntegralConstant(type, initializer_constant) ||
 			(model_.types.IsReference(type) && initializer_constant);
-		model_.Define(entity, type, initial, usable, unit_);
+		model_.Define(entity, type, initial, initializer_constant, usable, unit_);
 		return false;
 	}
 
@@ -889,13 +1111,19 @@ private:
 	ScopeId current_scope_;
 	std::uint32_t unit_;
 	std::vector<ScopeId> scope_stack_;
+	std::vector<DeclaratorMemoSlot> declarator_memo_slots_;
+	std::vector<DeclaratorMemoEntry> declarator_memo_entries_;
+	std::uint32_t declarator_memo_generation_;
+	std::size_t declarator_call_depth_;
+	std::size_t memo_child_storage_bytes_;
+	std::size_t active_declarator_stack_bytes_;
 };
 
 }
 
 Token::Token(std::uint16_t kind_value)
 	: kind(kind_value), name(0), literal_type(FT_INT), byte_offset(0),
-	  byte_size(0), elements(0), literal_array(false)
+	  byte_size(0), elements(0), literal_array(false), integer_literal(false)
 {
 }
 

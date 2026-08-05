@@ -1,0 +1,1 @@
+ERROR: invalid initializer [target pointer to pointer to const char] [source pointer to pointer to char] [init source]

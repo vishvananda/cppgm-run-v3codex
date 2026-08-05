@@ -1,0 +1,1 @@
+ERROR: invalid initializer [target pointer to int] [source const int] [init zero]

@@ -1,0 +1,7 @@
+ERROR: unknown id-expression value [template-id no] [scope <global>] [bindings ]
+Diagnostic context:
+analyze_expression_for_target [value -> int] at course/pa8/320-using-directive-ambiguity-bad.t.1:5:14
+  semantic_expression::analyze_expression_for_target [value -> int] at course/pa8/320-using-directive-ambiguity-bad.t.1:5:14
+    analyze_expression [value] at course/pa8/320-using-directive-ambiguity-bad.t.1:5:14
+      semantic_expression::analyze_expression [value] at course/pa8/320-using-directive-ambiguity-bad.t.1:5:14
+        analyze_id_expression [value] at course/pa8/320-using-directive-ambiguity-bad.t.1:5:14
