@@ -926,8 +926,12 @@ class LineTokenCollector : public IPostTokenStream
 public:
 	LineTokenCollector(std::ostream& output, DefinedIdentifierQuery is_defined,
 		ControlExpressionStats* stats)
-		: output_(output), is_defined_(is_defined), stats_(stats),
+		: output_(&output), is_defined_(is_defined), stats_(stats),
 		  line_invalid_(false)
+	{}
+
+	explicit LineTokenCollector(ControlExpressionStats* stats)
+		: output_(0), is_defined_(0), stats_(stats), line_invalid_(false)
 	{}
 
 	void EmitInvalid(const std::string& source)
@@ -1039,7 +1043,25 @@ public:
 
 	void EmitEof()
 	{
-		output_ << "eof\n";
+		if (output_)
+			*output_ << "eof\n";
+	}
+
+	bool EvaluateExpression(bool* truth)
+	{
+		if (stats_)
+		{
+			++stats_->logical_lines;
+			++stats_->nonempty_lines;
+		}
+		Value result;
+		const bool ok = EvaluateTokens(&result);
+		if (truth)
+			*truth = ok && result.bits != 0;
+		ResetLine();
+		if (!ok && stats_)
+			++stats_->error_lines;
+		return ok;
 	}
 
 	void FinishLine()
@@ -1053,34 +1075,39 @@ public:
 		}
 		if (stats_)
 			++stats_->nonempty_lines;
-		bool error = line_invalid_;
+		Value result;
+		const bool error = !EvaluateTokens(&result);
 		if (!error)
-		{
-			Parser parser(tokens_, &nodes_, &parser_operators_,
-				&parser_operands_, stats_);
-			const NodeId root = parser.Parse();
-			if (stats_)
-				stats_->syntax_nodes += nodes_.size();
-			ObserveStorage();
-			if (root == kNoNode)
-				error = true;
-			else
-			{
-				Evaluator evaluator(nodes_, &evaluation_frames_,
-					&evaluation_values_, stats_);
-				Value result;
-				if (!evaluator.Evaluate(root, &result))
-					error = true;
-				else
-					WriteValue(output_, result);
-			}
-		}
+			WriteValue(*output_, result);
 		if (error)
 		{
-			output_ << "error\n";
+			*output_ << "error\n";
 			if (stats_)
 				++stats_->error_lines;
 		}
+		ResetLine();
+	}
+
+private:
+	bool EvaluateTokens(Value* result)
+	{
+		if (line_invalid_ || tokens_.empty())
+			return false;
+		Parser parser(tokens_, &nodes_, &parser_operators_,
+			&parser_operands_, stats_);
+		const NodeId root = parser.Parse();
+		if (stats_)
+			stats_->syntax_nodes += nodes_.size();
+		ObserveStorage();
+		if (root == kNoNode)
+			return false;
+		Evaluator evaluator(nodes_, &evaluation_frames_,
+			&evaluation_values_, stats_);
+		return evaluator.Evaluate(root, result);
+	}
+
+	void ResetLine()
+	{
 		ObserveStorage();
 		tokens_.clear();
 		nodes_.clear();
@@ -1091,7 +1118,6 @@ public:
 		line_invalid_ = false;
 	}
 
-private:
 	bool QueryDefinition(const std::string& source) const
 	{
 		return is_defined_ != 0 && is_defined_(source);
@@ -1130,7 +1156,7 @@ private:
 			stats_->peak_line_storage_bytes, storage);
 	}
 
-	std::ostream& output_;
+	std::ostream* output_;
 	DefinedIdentifierQuery is_defined_;
 	ControlExpressionStats* stats_;
 	std::vector<Token> tokens_;
@@ -1140,6 +1166,15 @@ private:
 	std::vector<EvaluationFrame> evaluation_frames_;
 	std::vector<Value> evaluation_values_;
 	bool line_invalid_;
+};
+
+struct ControllingExpressionEvaluatorImpl
+{
+	explicit ControllingExpressionEvaluatorImpl(ControlExpressionStats* stats)
+		: collector(stats)
+	{}
+
+	LineTokenCollector collector;
 };
 
 class LogicalLinePostTokenStream : public IPPTokenStream
@@ -1236,6 +1271,14 @@ private:
 
 }
 
+struct ControllingExpressionEvaluator::Impl
+	: ControllingExpressionEvaluatorImpl
+{
+	explicit Impl(ControlExpressionStats* stats)
+		: ControllingExpressionEvaluatorImpl(stats)
+	{}
+};
+
 ControlExpressionStats::ControlExpressionStats()
 	: logical_lines(0), nonempty_lines(0), error_lines(0), syntax_nodes(0),
 	  evaluation_visits(0), skipped_subexpressions(0), peak_line_tokens(0),
@@ -1261,5 +1304,54 @@ void EvaluateControllingExpressions(const std::string& source,
 			std::chrono::duration_cast<std::chrono::nanoseconds>(
 				std::chrono::steady_clock::now() - start).count());
 }
+
+ControllingExpressionEvaluator::ControllingExpressionEvaluator(
+	ControlExpressionStats* stats)
+	: impl_(new Impl(stats))
+{}
+
+ControllingExpressionEvaluator::~ControllingExpressionEvaluator()
+{
+	delete impl_;
+}
+
+bool ControllingExpressionEvaluator::Finish(bool* value)
+{
+	return impl_->collector.EvaluateExpression(value);
+}
+
+void ControllingExpressionEvaluator::EmitInvalid(const std::string& source)
+{ impl_->collector.EmitInvalid(source); }
+void ControllingExpressionEvaluator::EmitSimple(const std::string& source,
+	SimpleTokenKind kind)
+{ impl_->collector.EmitSimple(source, kind); }
+void ControllingExpressionEvaluator::EmitIdentifier(const std::string& source)
+{ impl_->collector.EmitIdentifier(source); }
+void ControllingExpressionEvaluator::EmitLiteral(const std::string& source,
+	FundamentalType type, const void* data, std::size_t size)
+{ impl_->collector.EmitLiteral(source, type, data, size); }
+void ControllingExpressionEvaluator::EmitLiteralArray(
+	const std::string& source, std::size_t elements, FundamentalType type,
+	const void* data, std::size_t size)
+{ impl_->collector.EmitLiteralArray(source, elements, type, data, size); }
+void ControllingExpressionEvaluator::EmitUserDefinedCharacter(
+	const std::string& source, const std::string& suffix,
+	FundamentalType type, const void* data, std::size_t size)
+{ impl_->collector.EmitUserDefinedCharacter(source, suffix, type, data, size); }
+void ControllingExpressionEvaluator::EmitUserDefinedString(
+	const std::string& source, const std::string& suffix,
+	std::size_t elements, FundamentalType type, const void* data,
+	std::size_t size)
+{ impl_->collector.EmitUserDefinedString(source, suffix, elements, type, data, size); }
+void ControllingExpressionEvaluator::EmitUserDefinedInteger(
+	const std::string& source, const std::string& suffix,
+	const std::string& prefix)
+{ impl_->collector.EmitUserDefinedInteger(source, suffix, prefix); }
+void ControllingExpressionEvaluator::EmitUserDefinedFloating(
+	const std::string& source, const std::string& suffix,
+	const std::string& prefix)
+{ impl_->collector.EmitUserDefinedFloating(source, suffix, prefix); }
+void ControllingExpressionEvaluator::EmitEof()
+{ impl_->collector.EmitEof(); }
 
 }

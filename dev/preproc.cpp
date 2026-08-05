@@ -1,122 +1,204 @@
-// (C) 2013 CPPGM Foundation www.cppgm.org.  All rights reserved.
+// (C) 2013 CPPGM Foundation www.cppgm.org. All rights reserved.
 
-#include <utility>
+#include <cstdlib>
+#include <ctime>
+#include <fstream>
 #include <iostream>
+#include <iterator>
+#include <stdexcept>
 #include <string>
 #include <vector>
-#include <stdexcept>
-#include <fstream>
 
-using namespace std;
+#include "macro_processor.h"
 
-#include "exceptions.h"
-
-// For pragma once implementation:
-// system-wide unique file id type `PA5FileId`
-typedef pair<unsigned long int, unsigned long int> PA5FileId;
-
-// bootstrap system call interface, used by PA5GetFileId
-extern "C" long int syscall(long int n, ...) throw ();
-
-// PA5GetFileId returns true iff file found at path `path`.
-// out parameter `out_fileid` is set to file id
-bool PA5GetFileId(const string& path, PA5FileId& out_fileid)
+namespace
 {
-	struct
-	{
-			unsigned long int dev;
-			unsigned long int ino;
-			long int unused[16];
-	} data;
 
-	int res = syscall(4, path.c_str(), &data);
-
-	out_fileid = make_pair(data.dev, data.ino);
-
-	return res == 0;
+char HexDigit(unsigned int value)
+{
+	return value < 10 ? static_cast<char>('0' + value) :
+		static_cast<char>('A' + value - 10);
 }
 
-// OPTIONAL: Also search `PA5StdIncPaths` on `--stdinc` command-line switch (not by default)
-vector<string> PA5StdIncPaths =
+std::string HexDump(const void* data, std::size_t size)
 {
-    "/usr/include/c++/4.7/",
-    "/usr/include/c++/4.7/x86_64-linux-gnu/",
-    "/usr/include/c++/4.7/backward/",
-    "/usr/lib/gcc/x86_64-linux-gnu/4.7/include/",
-    "/usr/local/include/",
-    "/usr/lib/gcc/x86_64-linux-gnu/4.7/include-fixed/",
-    "/usr/include/x86_64-linux-gnu/",
-    "/usr/include/"
+	const unsigned char* bytes = static_cast<const unsigned char*>(data);
+	std::string result(size * 2, '0');
+	for (std::size_t i = 0; i < size; ++i)
+	{
+		result[i * 2] = HexDigit(bytes[i] >> 4);
+		result[i * 2 + 1] = HexDigit(bytes[i] & 0xF);
+	}
+	return result;
+}
+
+class PreprocessorOutput : public cppgm::IPostTokenStream
+{
+public:
+	explicit PreprocessorOutput(std::ostream& output) : output_(output) {}
+
+	void EmitInvalid(const std::string& source)
+	{
+		(void)source;
+		throw std::runtime_error("invalid phase-7 token");
+	}
+
+	void EmitSimple(const std::string& source, cppgm::SimpleTokenKind kind)
+	{
+		output_ << "simple " << source << ' ' <<
+			cppgm::SimpleTokenKindName(kind) << '\n';
+	}
+
+	void EmitIdentifier(const std::string& source)
+	{
+		output_ << "identifier " << source << '\n';
+	}
+
+	void EmitLiteral(const std::string& source,
+		cppgm::FundamentalType type, const void* data, std::size_t size)
+	{
+		output_ << "literal " << source << ' ' <<
+			cppgm::FundamentalTypeName(type) << ' ' << HexDump(data, size) << '\n';
+	}
+
+	void EmitLiteralArray(const std::string& source, std::size_t elements,
+		cppgm::FundamentalType type, const void* data, std::size_t size)
+	{
+		output_ << "literal " << source << " array of " << elements << ' ' <<
+			cppgm::FundamentalTypeName(type) << ' ' << HexDump(data, size) << '\n';
+	}
+
+	void EmitUserDefinedCharacter(const std::string& source,
+		const std::string& suffix, cppgm::FundamentalType type,
+		const void* data, std::size_t size)
+	{
+		output_ << "user-defined-literal " << source << ' ' << suffix <<
+			" character " << cppgm::FundamentalTypeName(type) << ' ' <<
+			HexDump(data, size) << '\n';
+	}
+
+	void EmitUserDefinedString(const std::string& source,
+		const std::string& suffix, std::size_t elements,
+		cppgm::FundamentalType type, const void* data, std::size_t size)
+	{
+		output_ << "user-defined-literal " << source << ' ' << suffix <<
+			" string array of " << elements << ' ' <<
+			cppgm::FundamentalTypeName(type) << ' ' << HexDump(data, size) << '\n';
+	}
+
+	void EmitUserDefinedInteger(const std::string& source,
+		const std::string& suffix, const std::string& prefix)
+	{
+		output_ << "user-defined-literal " << source << ' ' << suffix <<
+			" integer " << prefix << '\n';
+	}
+
+	void EmitUserDefinedFloating(const std::string& source,
+		const std::string& suffix, const std::string& prefix)
+	{
+		output_ << "user-defined-literal " << source << ' ' << suffix <<
+			" floating " << prefix << '\n';
+	}
+
+	void EmitEof()
+	{
+		output_ << "eof\n";
+	}
+
+private:
+	std::ostream& output_;
 };
 
-bool HasBatchStdinArg(int argc, char** argv)
+std::string ReadSource(const std::string& path)
 {
-	for (int i = 1; i < argc; i++)
-	{
-		if (string(argv[i]) == "--batch-stdin")
-			return true;
-	}
-	return false;
+	std::ifstream input(path.c_str(), std::ios::in | std::ios::binary);
+	if (!input)
+		throw std::runtime_error("unable to open source file: " + path);
+	return std::string(std::istreambuf_iterator<char>(input),
+		std::istreambuf_iterator<char>());
 }
 
-int RunNotImplementedBatchMode()
+cppgm::PreprocessingOptions BuildOptions()
 {
-	string line;
-	while (getline(cin, line))
-	{
-		(void)line;
-		cout << "EXIT_NOT_IMPLEMENTED" << endl;
-	}
-	return EXIT_SUCCESS;
+	const std::time_t now = std::time(0);
+	const std::tm* local = std::localtime(&now);
+	if (!local)
+		throw std::runtime_error("unable to determine build time");
+	const char* text = std::asctime(local);
+	if (!text)
+		throw std::runtime_error("unable to format build time");
+	const std::string formatted(text);
+	if (formatted.size() < 24)
+		throw std::runtime_error("invalid asctime result");
+
+	cppgm::PreprocessingOptions options;
+	options.build_date = formatted.substr(4, 7) + formatted.substr(20, 4);
+	options.build_time = formatted.substr(11, 8);
+	options.author = "Vishvananda Abrams";
+	return options;
+}
+
+void ReportStats(const std::string& path,
+	const cppgm::PreprocessingStats& stats)
+{
+	std::cerr << "preproc_stats"
+		<< " file=" << path
+		<< " source_files=" << stats.source_files
+		<< " source_bytes=" << stats.source_bytes
+		<< " pp_tokens=" << stats.macros.tokenization.emitted_tokens
+		<< " source_tokens=" << stats.macros.source_tokens
+		<< " directives=" << stats.macros.directive_lines
+		<< " conditions=" << stats.controlling_expressions
+		<< " includes=" << stats.includes
+		<< " once_skips=" << stats.skipped_once_includes
+		<< " lookups=" << stats.macros.macro_lookups
+		<< " invocations=" << stats.macros.macro_invocations
+		<< " argument_prescans=" << stats.macros.argument_prescans
+		<< " expanded_tokens=" << stats.macros.expanded_tokens
+		<< " peak_line_tokens=" << stats.macros.peak_line_tokens
+		<< " peak_rescan_tokens=" << stats.macros.peak_rescan_tokens
+		<< " peak_frames=" << stats.macros.peak_expansion_frames
+		<< " peak_include_depth=" << stats.peak_include_depth
+		<< " peak_conditional_depth=" << stats.peak_conditional_depth
+		<< " elapsed_ns=" << stats.elapsed_nanoseconds << '\n';
+}
+
 }
 
 int main(int argc, char** argv)
 {
 	try
 	{
-		if (HasBatchStdinArg(argc, argv))
-			return RunNotImplementedBatchMode();
+		std::ios_base::sync_with_stdio(false);
+		if (argc < 4 || std::string(argv[1]) != "-o")
+			throw std::logic_error("invalid usage");
 
-		vector<string> args;
+		const cppgm::PreprocessingOptions options = BuildOptions();
+		std::ofstream output(argv[2], std::ios::out | std::ios::trunc);
+		if (!output)
+			throw std::runtime_error("unable to open output file");
+		output << "preproc " << argc - 3 << '\n';
+		PreprocessorOutput tokens(output);
+		const bool report_stats = std::getenv("CPPGM_FRONTEND_STATS") != 0;
 
-		for (int i = 1; i < argc; i++)
-			args.emplace_back(argv[i]);
-
-		if (args.size() < 3 || args[0] != "-o")
-			throw logic_error("invalid usage");
-
-		string outfile = args[1];
-		size_t nsrcfiles = args.size() - 2;
-
-		throw NotImplementedException();
-
-		ofstream out(outfile);
-
-		out << "preproc " << nsrcfiles << endl;
-
-		for (size_t i = 0; i < nsrcfiles; i++)
+		for (int i = 3; i < argc; ++i)
 		{
-			string srcfile = args[i+2];
-
-			out << "sof " << srcfile << endl;
-
-			ifstream in(srcfile);
-
-			// TODO: implement `preproc` as per PA5 description
-			out << "not yet implemented" << endl;
-	
-			out << "eof" << endl;
-
+			const std::string path(argv[i]);
+			const std::string source = ReadSource(path);
+			output << "sof " << path << '\n';
+			cppgm::PreprocessingStats stats;
+			cppgm::PreprocessFile(path, source, tokens, options,
+				report_stats ? &stats : 0);
+			if (report_stats)
+				ReportStats(path, stats);
 		}
+		if (!output)
+			throw std::runtime_error("unable to write output file");
+		return EXIT_SUCCESS;
 	}
-	catch (const NotImplementedException& e)
+	catch (const std::exception& error)
 	{
-		cerr << "ERROR: " << e.what() << endl;
-		return CPPGM_EXIT_NOT_IMPLEMENTED;
-	}
-	catch (exception& e)
-	{
-		cerr << "ERROR: " << e.what() << endl;
+		std::cerr << "ERROR: " << error.what() << '\n';
 		return EXIT_FAILURE;
 	}
 }

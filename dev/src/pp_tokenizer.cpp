@@ -15,7 +15,7 @@ namespace
 
 const int kEndOfFile = -1;
 
-template <std::size_t Capacity>
+template <typename T, std::size_t Capacity>
 class FixedQueue
 {
 public:
@@ -24,17 +24,17 @@ public:
 	bool empty() const { return size_ == 0; }
 	std::size_t size() const { return size_; }
 
-	int front() const { return (*this)[0]; }
-	int back() const { return (*this)[size_ - 1]; }
+	const T& front() const { return (*this)[0]; }
+	const T& back() const { return (*this)[size_ - 1]; }
 
-	int operator[](std::size_t offset) const
+	const T& operator[](std::size_t offset) const
 	{
 		if (offset >= size_)
 			throw std::logic_error("fixed lookahead queue underflow");
 		return data_[(begin_ + offset) % Capacity];
 	}
 
-	void push_back(int value)
+	void push_back(const T& value)
 	{
 		if (size_ == Capacity)
 			throw std::logic_error("fixed lookahead queue overflow");
@@ -51,7 +51,7 @@ public:
 	}
 
 private:
-	int data_[Capacity];
+	T data_[Capacity];
 	std::size_t begin_;
 	std::size_t size_;
 };
@@ -60,6 +60,17 @@ struct CodePointRange
 {
 	int first;
 	int last;
+};
+
+struct LocatedCodePoint
+{
+	int value;
+	std::size_t line;
+
+	LocatedCodePoint(int code_point = kEndOfFile,
+		std::size_t source_line = 1)
+		: value(code_point), line(source_line)
+	{}
 };
 
 const CodePointRange kAnnexE1Ranges[] = {
@@ -190,7 +201,7 @@ public:
 	PhysicalCursor(const std::string& source, PPTokenizationStats* stats)
 		: source_(source), position_(0), saw_character_(false),
 		  last_code_point_(kEndOfFile), emitted_final_newline_(false),
-		  stats_(stats)
+		  line_(1), stats_(stats)
 	{
 		if (source_.size() >= 3 &&
 			static_cast<unsigned char>(source_[0]) == 0xEF &&
@@ -199,24 +210,27 @@ public:
 			position_ = 3;
 	}
 
-	int Next()
+	LocatedCodePoint Next()
 	{
 		if (position_ < source_.size())
 		{
 			const int code_point = DecodeOne();
+			const std::size_t source_line = line_;
+			if (code_point == '\n')
+				++line_;
 			saw_character_ = true;
 			last_code_point_ = code_point;
 			if (stats_)
 				++stats_->decoded_code_points;
-			return code_point;
+			return LocatedCodePoint(code_point, source_line);
 		}
 		if (saw_character_ && last_code_point_ != '\n' &&
 			!emitted_final_newline_)
 		{
 			emitted_final_newline_ = true;
-			return '\n';
+			return LocatedCodePoint('\n', line_++);
 		}
-		return kEndOfFile;
+		return LocatedCodePoint(kEndOfFile, line_);
 	}
 
 private:
@@ -274,6 +288,7 @@ private:
 	bool saw_character_;
 	int last_code_point_;
 	bool emitted_final_newline_;
+	std::size_t line_;
 	PPTokenizationStats* stats_;
 };
 
@@ -300,37 +315,42 @@ public:
 	TranslationCursor(const std::string& source, PPTokenizationStats* stats,
 		bool apply_translation)
 		: physical_(source, stats), suppress_ucn_once_(false), stats_(stats),
-		  apply_translation_(apply_translation)
+		  apply_translation_(apply_translation), last_line_(1)
 	{}
 
 	int Next()
 	{
 		if (!apply_translation_)
 		{
-			const int current = physical_.Next();
-			CountTranslated(current);
-			return current;
+			const LocatedCodePoint current = physical_.Next();
+			last_line_ = current.line;
+			CountTranslated(current.value);
+			return current.value;
 		}
 		while (true)
 		{
-			const int current = TakeUCN();
-			if (current != '\\' || PeekUCN() != '\n')
+			const LocatedCodePoint current = TakeUCN();
+			if (current.value != '\\' || PeekUCN().value != '\n')
 			{
-				CountTranslated(current);
-				return current;
+				last_line_ = current.line;
+				CountTranslated(current.value);
+				return current.value;
 			}
 			TakeUCN();
 		}
 	}
+
+	std::size_t LastLine() const { return last_line_; }
 
 	int NextRawCodePoint()
 	{
 		if (!physical_pending_.empty() || !phase1_pending_.empty() ||
 			!ucn_pending_.empty())
 			throw std::logic_error("raw mode entered with translated lookahead");
-		const int result = physical_.Next();
-		CountTranslated(result);
-		return result;
+		const LocatedCodePoint result = physical_.Next();
+		last_line_ = result.line;
+		CountTranslated(result.value);
+		return result.value;
 	}
 
 private:
@@ -340,78 +360,78 @@ private:
 			++stats_->translated_code_points;
 	}
 
-	int TakePhysical()
+	LocatedCodePoint TakePhysical()
 	{
 		if (physical_pending_.empty())
 			return physical_.Next();
-		const int result = physical_pending_.front();
+		const LocatedCodePoint result = physical_pending_.front();
 		physical_pending_.pop_front();
 		return result;
 	}
 
-	int PeekPhysical(std::size_t offset)
+	const LocatedCodePoint& PeekPhysical(std::size_t offset)
 	{
 		while (physical_pending_.size() <= offset)
 		{
 			if (!physical_pending_.empty() &&
-				physical_pending_.back() == kEndOfFile)
-				return kEndOfFile;
+				physical_pending_.back().value == kEndOfFile)
+				return physical_pending_.back();
 			physical_pending_.push_back(physical_.Next());
 		}
 		return physical_pending_[offset];
 	}
 
-	int PullPhase1()
+	LocatedCodePoint PullPhase1()
 	{
-		const int current = TakePhysical();
-		if (current != '?' || PeekPhysical(0) != '?')
+		const LocatedCodePoint current = TakePhysical();
+		if (current.value != '?' || PeekPhysical(0).value != '?')
 			return current;
-		const int replacement = TrigraphReplacement(PeekPhysical(1));
+		const int replacement = TrigraphReplacement(PeekPhysical(1).value);
 		if (replacement == kEndOfFile)
 			return current;
 		TakePhysical();
 		TakePhysical();
-		return replacement;
+		return LocatedCodePoint(replacement, current.line);
 	}
 
-	int TakePhase1()
+	LocatedCodePoint TakePhase1()
 	{
 		if (phase1_pending_.empty())
 			return PullPhase1();
-		const int result = phase1_pending_.front();
+		const LocatedCodePoint result = phase1_pending_.front();
 		phase1_pending_.pop_front();
 		return result;
 	}
 
-	int PeekPhase1()
+	const LocatedCodePoint& PeekPhase1()
 	{
 		if (phase1_pending_.empty())
 			phase1_pending_.push_back(PullPhase1());
 		return phase1_pending_.front();
 	}
 
-	int PullUCN()
+	LocatedCodePoint PullUCN()
 	{
-		const int current = TakePhase1();
+		const LocatedCodePoint current = TakePhase1();
 		if (suppress_ucn_once_)
 		{
 			suppress_ucn_once_ = false;
 			return current;
 		}
-		if (current != '\\')
+		if (current.value != '\\')
 			return current;
-		const int next = PeekPhase1();
+		const int next = PeekPhase1().value;
 		if (next != 'u' && next != 'U')
 		{
 			suppress_ucn_once_ = next == '\\';
 			return current;
 		}
-		const int marker = TakePhase1();
+		const int marker = TakePhase1().value;
 		const int digits = marker == 'u' ? 4 : 8;
 		std::uint32_t value = 0;
 		for (int i = 0; i < digits; ++i)
 		{
-			const int digit = TakePhase1();
+			const int digit = TakePhase1().value;
 			if (!IsHexDigit(digit))
 				throw std::runtime_error("invalid universal character name");
 			value = (value << 4) | HexValue(digit);
@@ -419,19 +439,19 @@ private:
 		if (value > 0x10FFFF || (value >= 0xD800 && value <= 0xDFFF) ||
 			(value < 0xA0 && value != '$' && value != '@' && value != '`'))
 			throw std::runtime_error("invalid universal character value");
-		return static_cast<int>(value);
+		return LocatedCodePoint(static_cast<int>(value), current.line);
 	}
 
-	int TakeUCN()
+	LocatedCodePoint TakeUCN()
 	{
 		if (ucn_pending_.empty())
 			return PullUCN();
-		const int result = ucn_pending_.front();
+		const LocatedCodePoint result = ucn_pending_.front();
 		ucn_pending_.pop_front();
 		return result;
 	}
 
-	int PeekUCN()
+	const LocatedCodePoint& PeekUCN()
 	{
 		if (ucn_pending_.empty())
 			ucn_pending_.push_back(PullUCN());
@@ -439,12 +459,13 @@ private:
 	}
 
 	PhysicalCursor physical_;
-	FixedQueue<2> physical_pending_;
-	FixedQueue<1> phase1_pending_;
-	FixedQueue<1> ucn_pending_;
+	FixedQueue<LocatedCodePoint, 2> physical_pending_;
+	FixedQueue<LocatedCodePoint, 1> phase1_pending_;
+	FixedQueue<LocatedCodePoint, 1> ucn_pending_;
 	bool suppress_ucn_once_;
 	PPTokenizationStats* stats_;
 	bool apply_translation_;
+	std::size_t last_line_;
 };
 
 bool IsNamedOperator(const std::string& spelling)
@@ -476,7 +497,9 @@ public:
 		{
 			if (Peek(0) == '\n')
 			{
+				const std::size_t line = PeekLine(0);
 				Take();
+				output_.set_source_line(line);
 				EmitNewLine();
 			}
 			else if (ScanWhitespaceAndComments())
@@ -511,6 +534,7 @@ private:
 			if (!lookahead_.empty() && lookahead_.back() == kEndOfFile)
 				return kEndOfFile;
 			lookahead_.push_back(translation_.Next());
+			lookahead_lines_.push_back(translation_.LastLine());
 		}
 		return lookahead_[offset];
 	}
@@ -521,7 +545,14 @@ private:
 			return translation_.Next();
 		const int result = lookahead_.front();
 		lookahead_.pop_front();
+		lookahead_lines_.pop_front();
 		return result;
+	}
+
+	std::size_t PeekLine(std::size_t offset)
+	{
+		Peek(offset);
+		return lookahead_lines_[offset];
 	}
 
 	void AppendTake(std::string* spelling)
@@ -531,6 +562,7 @@ private:
 
 	std::string& StartTokenSpelling()
 	{
+		output_.set_source_line(PeekLine(0));
 		spelling_.clear();
 		return spelling_;
 	}
@@ -905,7 +937,8 @@ private:
 	TranslationCursor translation_;
 	IPPTokenStream& output_;
 	PPTokenizationStats* stats_;
-	FixedQueue<4> lookahead_;
+	FixedQueue<int, 4> lookahead_;
+	FixedQueue<std::size_t, 4> lookahead_lines_;
 	std::string spelling_;
 	bool at_line_start_;
 	HeaderContext header_context_;

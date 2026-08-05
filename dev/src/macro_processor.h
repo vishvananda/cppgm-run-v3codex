@@ -38,10 +38,40 @@ struct MacroProcessingStats
 	MacroProcessingStats();
 };
 
+struct PreprocessingOptions
+{
+	std::string build_date;
+	std::string build_time;
+	std::string author;
+};
+
+struct PreprocessingStats
+{
+	MacroProcessingStats macros;
+	std::size_t source_files;
+	std::size_t source_bytes;
+	std::size_t conditional_directives;
+	std::size_t controlling_expressions;
+	std::size_t includes;
+	std::size_t skipped_once_includes;
+	std::size_t pragma_operators;
+	std::size_t peak_include_depth;
+	std::size_t peak_conditional_depth;
+	std::uint64_t elapsed_nanoseconds;
+
+	PreprocessingStats();
+};
+
 // Execute PA4 preprocessing over one immutable source buffer and feed the
 // expanded preprocessing-token events directly into the reusable PA2 phase.
 void ProcessMacros(const std::string& source,
 	IPostTokenStream& output,
 	MacroProcessingStats* stats = 0);
+
+// Execute PA5 preprocessing for one primary source. Macro, conditional, and
+// pragma-once state is owned by this call and shared only with its includes.
+void PreprocessFile(const std::string& path, const std::string& source,
+	IPostTokenStream& output, const PreprocessingOptions& options,
+	PreprocessingStats* stats = 0);
 
 }

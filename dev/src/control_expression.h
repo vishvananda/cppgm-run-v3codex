@@ -39,4 +39,43 @@ void EvaluateControllingExpressions(const std::string& source,
 	std::ostream& output, DefinedIdentifierQuery is_defined,
 	ControlExpressionStats* stats = 0);
 
+// Typed PA3 adapter for clients that already own expanded preprocessing
+// tokens. Feed one expression through IPostTokenStream callbacks, then call
+// Finish. Identifiers that survive macro replacement evaluate as zero.
+class ControllingExpressionEvaluator : public IPostTokenStream
+{
+public:
+	explicit ControllingExpressionEvaluator(ControlExpressionStats* stats = 0);
+	~ControllingExpressionEvaluator();
+
+	bool Finish(bool* value);
+
+	void EmitInvalid(const std::string& source);
+	void EmitSimple(const std::string& source, SimpleTokenKind kind);
+	void EmitIdentifier(const std::string& source);
+	void EmitLiteral(const std::string& source,
+		FundamentalType type, const void* data, std::size_t size);
+	void EmitLiteralArray(const std::string& source, std::size_t elements,
+		FundamentalType type, const void* data, std::size_t size);
+	void EmitUserDefinedCharacter(const std::string& source,
+		const std::string& suffix, FundamentalType type,
+		const void* data, std::size_t size);
+	void EmitUserDefinedString(const std::string& source,
+		const std::string& suffix, std::size_t elements,
+		FundamentalType type, const void* data, std::size_t size);
+	void EmitUserDefinedInteger(const std::string& source,
+		const std::string& suffix, const std::string& prefix);
+	void EmitUserDefinedFloating(const std::string& source,
+		const std::string& suffix, const std::string& prefix);
+	void EmitEof();
+
+private:
+	ControllingExpressionEvaluator(const ControllingExpressionEvaluator&);
+	ControllingExpressionEvaluator& operator=(
+		const ControllingExpressionEvaluator&);
+
+	struct Impl;
+	Impl* impl_;
+};
+
 }

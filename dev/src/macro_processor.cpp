@@ -2,16 +2,23 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <cstdint>
+#include <cstring>
 #include <deque>
+#include <fstream>
 #include <functional>
 #include <iterator>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <string>
+#include <sys/stat.h>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
+#include "control_expression.h"
 #include "IPPTokenStream.h"
 #include "pp_tokenizer.h"
 
@@ -48,6 +55,9 @@ struct Token
 	PaintId paint;
 	PaintId blocked;
 	std::uint64_t origin;
+	SpellingId source_file;
+	SpellingId physical_file;
+	std::size_t source_line;
 	std::size_t matching_distance;
 	bool leading_space;
 	bool from_variadic;
@@ -56,14 +66,16 @@ struct Token
 
 	Token()
 		: kind(TK_PLACEMARKER), spelling(0), borrowed_spelling(0), paint(0),
-		  blocked(0), origin(0), matching_distance(0), leading_space(false),
+		  blocked(0), origin(0), source_file(0), physical_file(0),
+		  source_line(0), matching_distance(0), leading_space(false),
 		  from_variadic(false), parameter_origin(false), matching_comma(false)
 	{}
 
 	Token(TokenKind token_kind, SpellingId token_spelling,
 		bool has_leading_space)
 		: kind(token_kind), spelling(token_spelling), borrowed_spelling(0),
-		  paint(0), blocked(0), origin(0), matching_distance(0),
+		  paint(0), blocked(0), origin(0), source_file(0), physical_file(0),
+		  source_line(0), matching_distance(0),
 		  leading_space(has_leading_space), from_variadic(false),
 		  parameter_origin(false), matching_comma(false)
 	{}
@@ -72,7 +84,7 @@ struct Token
 		bool has_leading_space)
 		: kind(token_kind), spelling(0), owned_spelling(token_spelling),
 		  borrowed_spelling(0), paint(0), blocked(0), origin(0),
-		  matching_distance(0),
+		  source_file(0), physical_file(0), source_line(0), matching_distance(0),
 		  leading_space(has_leading_space), from_variadic(false),
 		  parameter_origin(false), matching_comma(false)
 	{}
@@ -467,6 +479,59 @@ struct Macro
 	Macro() : name(0), function_like(false), variadic(false) {}
 };
 
+struct FileIdentity
+{
+	std::uint64_t device;
+	std::uint64_t inode;
+
+	bool operator==(const FileIdentity& other) const
+	{
+		return device == other.device && inode == other.inode;
+	}
+};
+
+struct FileIdentityHash
+{
+	std::size_t operator()(const FileIdentity& id) const
+	{
+		return MixedHash(static_cast<std::size_t>(id.device)) ^
+			(MixedHash(static_cast<std::size_t>(id.inode)) << 1);
+	}
+};
+
+struct SourceFrame
+{
+	std::string physical_path;
+	SpellingId physical_file;
+	SpellingId presumed_file;
+	std::size_t physical_base;
+	std::size_t presumed_base;
+	std::size_t current_physical_line;
+	std::size_t conditional_base;
+	bool line_override;
+	std::size_t override_line;
+	SpellingId override_file;
+
+	SourceFrame()
+		: physical_file(0), presumed_file(0), physical_base(1),
+		  presumed_base(1), current_physical_line(1), conditional_base(0),
+		  line_override(false), override_line(1), override_file(0)
+	{}
+};
+
+struct ConditionalFrame
+{
+	bool parent_active;
+	bool active;
+	bool branch_taken;
+	bool saw_else;
+
+	ConditionalFrame(bool parent, bool current, bool taken)
+		: parent_active(parent), active(current), branch_taken(taken),
+		  saw_else(false)
+	{}
+};
+
 struct Argument
 {
 	std::size_t raw_begin;
@@ -566,11 +631,13 @@ class GeneratedTokenCollector : public IPPTokenStream
 public:
 	GeneratedTokenCollector(SpellingTable& spellings,
 		PaintId paint, PaintId blocked, std::uint64_t origin,
-		bool parameter_origin, bool leading_space)
+		bool parameter_origin, bool leading_space, SpellingId source_file,
+		SpellingId physical_file, std::size_t source_line)
 		: spellings_(spellings), paint_(paint),
 		  blocked_(blocked), origin_(origin),
 		  parameter_origin_(parameter_origin),
-		  leading_space_(leading_space), count_(0)
+		  leading_space_(leading_space), source_file_(source_file),
+		  physical_file_(physical_file), source_line_(source_line), count_(0)
 	{}
 
 	void emit_whitespace_sequence() {}
@@ -634,6 +701,9 @@ private:
 		result_.paint = paint_;
 		result_.blocked = blocked_;
 		result_.origin = origin_;
+		result_.source_file = source_file_;
+		result_.physical_file = physical_file_;
+		result_.source_line = source_line_;
 		result_.parameter_origin = parameter_origin_;
 	}
 
@@ -643,6 +713,9 @@ private:
 	std::uint64_t origin_;
 	bool parameter_origin_;
 	bool leading_space_;
+	SpellingId source_file_;
+	SpellingId physical_file_;
+	std::size_t source_line_;
 	std::size_t count_;
 	Token result_;
 };
@@ -654,11 +727,31 @@ public:
 		: stats_(stats), spellings_(stats), paints_(stats), post_tokens_(output,
 			stats ? &stats->postprocessing : 0), pending_space_(false),
 		  boundary_space_(false), retained_replacement_tokens_(0),
-		  next_origin_(1)
+		  next_origin_(1), full_preprocessing_(false), preprocessing_stats_(0),
+		  capture_(0), counter_(0)
 	{
-		id_define_ = spellings_.Intern("define");
-		id_undef_ = spellings_.Intern("undef");
-		id_va_args_ = spellings_.Intern("__VA_ARGS__");
+		InitializeNames();
+	}
+
+	MacroProcessor(IPostTokenStream& output,
+		const PreprocessingOptions& options, PreprocessingStats* stats)
+		: stats_(stats ? &stats->macros : 0),
+		  spellings_(stats ? &stats->macros : 0),
+		  paints_(stats ? &stats->macros : 0),
+		  post_tokens_(output, stats ? &stats->macros.postprocessing : 0),
+		  pending_space_(false), boundary_space_(false),
+		  retained_replacement_tokens_(0), next_origin_(1),
+		  full_preprocessing_(true), preprocessing_stats_(stats),
+		  options_(options), capture_(0), counter_(0)
+	{
+		InitializeNames();
+		InstallPredefinedMacros();
+	}
+
+	void set_source_line(std::size_t line)
+	{
+		if (full_preprocessing_ && !sources_.empty())
+			sources_.back().current_physical_line = line;
 	}
 
 	void emit_whitespace_sequence()
@@ -671,6 +764,8 @@ public:
 		ProcessLine();
 		line_.clear();
 		pending_space_ = false;
+		if (full_preprocessing_ && !sources_.empty())
+			ApplyLineTransition();
 		if (stats_)
 			++stats_->logical_lines;
 	}
@@ -716,7 +811,25 @@ public:
 	{
 		if (!line_.empty())
 			ProcessLine();
+		if (full_preprocessing_)
+		{
+			if (sources_.empty() ||
+				conditionals_.size() != sources_.back().conditional_base)
+				throw std::runtime_error("unterminated conditional inclusion");
+			line_.clear();
+			return;
+		}
 		Drain(rescan_, true, &pending_invocation_);
+		post_tokens_.emit_eof();
+	}
+
+	void ProcessPrimary(const std::string& path, const std::string& source)
+	{
+		if (!full_preprocessing_ || !sources_.empty())
+			throw std::logic_error("invalid primary preprocessing session");
+		ProcessSource(path, source);
+		Drain(rescan_, true, &pending_invocation_);
+		RequireCompletePragmaOperator();
 		post_tokens_.emit_eof();
 	}
 
@@ -728,11 +841,176 @@ private:
 		COMPLETE_INVOCATION
 	};
 
+	void InitializeNames()
+	{
+		id_define_ = spellings_.Intern("define");
+		id_undef_ = spellings_.Intern("undef");
+		id_if_ = spellings_.Intern("if");
+		id_ifdef_ = spellings_.Intern("ifdef");
+		id_ifndef_ = spellings_.Intern("ifndef");
+		id_elif_ = spellings_.Intern("elif");
+		id_else_ = spellings_.Intern("else");
+		id_endif_ = spellings_.Intern("endif");
+		id_include_ = spellings_.Intern("include");
+		id_line_ = spellings_.Intern("line");
+		id_error_ = spellings_.Intern("error");
+		id_pragma_ = spellings_.Intern("pragma");
+		id_once_ = spellings_.Intern("once");
+		id_defined_ = spellings_.Intern("defined");
+		id_va_args_ = spellings_.Intern("__VA_ARGS__");
+		id_file_macro_ = spellings_.Intern("__FILE__");
+		id_line_macro_ = spellings_.Intern("__LINE__");
+		id_counter_macro_ = spellings_.Intern("__COUNTER__");
+		id_pragma_operator_ = spellings_.Intern("_Pragma");
+	}
+
+	static std::string QuoteString(const std::string& value)
+	{
+		std::string result("\"");
+		for (std::size_t i = 0; i < value.size(); ++i)
+		{
+			if (value[i] == '\\' || value[i] == '"')
+				result.push_back('\\');
+			result.push_back(value[i]);
+		}
+		result.push_back('"');
+		return result;
+	}
+
+	void AddBuiltinObject(const char* name, TokenKind kind,
+		const std::string& replacement)
+	{
+		Macro macro;
+		macro.name = spellings_.Intern(name);
+		ReplacementToken token;
+		token.token = kind == TK_IDENTIFIER ?
+			Token(kind, spellings_.Intern(replacement), false) :
+			Token(kind, replacement, false);
+		macro.replacement.push_back(token);
+		retained_replacement_tokens_ += macro.replacement.size();
+		macros_.Insert(macro.name, std::move(macro));
+	}
+
+	void InstallPredefinedMacros()
+	{
+		AddBuiltinObject("__CPPGM__", TK_PP_NUMBER, "201303L");
+		AddBuiltinObject("__cplusplus", TK_PP_NUMBER, "201103L");
+		AddBuiltinObject("__STDC_HOSTED__", TK_PP_NUMBER, "1");
+		AddBuiltinObject("__CPPGM_AUTHOR__", TK_STRING,
+			QuoteString(options_.author));
+		AddBuiltinObject("__DATE__", TK_STRING,
+			QuoteString(options_.build_date));
+		AddBuiltinObject("__TIME__", TK_STRING,
+			QuoteString(options_.build_time));
+		if (stats_)
+			stats_->peak_retained_replacement_tokens = std::max(
+				stats_->peak_retained_replacement_tokens,
+				retained_replacement_tokens_);
+	}
+
+	static bool GetFileIdentity(const std::string& path, FileIdentity* result)
+	{
+		struct stat data;
+		if (stat(path.c_str(), &data) != 0)
+			return false;
+		result->device = static_cast<std::uint64_t>(data.st_dev);
+		result->inode = static_cast<std::uint64_t>(data.st_ino);
+		return true;
+	}
+
+	static std::string ReadSource(const std::string& path)
+	{
+		std::ifstream input(path.c_str(), std::ios::in | std::ios::binary);
+		if (!input)
+			throw std::runtime_error("unable to open source file: " + path);
+		return std::string(std::istreambuf_iterator<char>(input),
+			std::istreambuf_iterator<char>());
+	}
+
+	void AccumulateTokenization(const PPTokenizationStats& value)
+	{
+		if (!stats_)
+			return;
+		PPTokenizationStats& total = stats_->tokenization;
+		total.source_bytes += value.source_bytes;
+		total.decoded_code_points += value.decoded_code_points;
+		total.translated_code_points += value.translated_code_points;
+		total.emitted_tokens += value.emitted_tokens;
+		total.emitted_token_bytes += value.emitted_token_bytes;
+		total.peak_token_buffer_bytes = std::max(
+			total.peak_token_buffer_bytes, value.peak_token_buffer_bytes);
+		total.elapsed_nanoseconds += value.elapsed_nanoseconds;
+	}
+
+	void ProcessSource(const std::string& path, const std::string& source)
+	{
+		if (sources_.size() >= 256)
+			throw std::runtime_error("source inclusion depth exceeded");
+		SourceFrame frame;
+		frame.physical_path = path;
+		frame.physical_file = spellings_.Intern(path);
+		frame.presumed_file = frame.physical_file;
+		frame.conditional_base = conditionals_.size();
+		sources_.push_back(frame);
+		if (preprocessing_stats_)
+		{
+			++preprocessing_stats_->source_files;
+			preprocessing_stats_->source_bytes += source.size();
+			preprocessing_stats_->peak_include_depth = std::max(
+				preprocessing_stats_->peak_include_depth, sources_.size());
+		}
+		const bool saved_space = pending_space_;
+		pending_space_ = false;
+		PPTokenizationStats tokenization;
+		TokenizePreprocessingFile(source, *this, stats_ ? &tokenization : 0);
+		AccumulateTokenization(tokenization);
+		pending_space_ = saved_space;
+		if (!line_.empty())
+			throw std::logic_error("source line escaped tokenizer EOF");
+		sources_.pop_back();
+	}
+
+	void ApplyLineTransition()
+	{
+		SourceFrame& source = sources_.back();
+		if (!source.line_override)
+			return;
+		source.physical_base = source.current_physical_line + 1;
+		source.presumed_base = source.override_line;
+		if (source.override_file != 0)
+			source.presumed_file = source.override_file;
+		source.line_override = false;
+		source.override_file = 0;
+	}
+
+	std::size_t PresumedLine(const SourceFrame& source) const
+	{
+		if (source.current_physical_line < source.physical_base)
+			throw std::logic_error("physical source line moved backwards");
+		return source.presumed_base +
+			(source.current_physical_line - source.physical_base);
+	}
+
+	bool IsActive() const
+	{
+		return conditionals_.empty() || conditionals_.back().active;
+	}
+
 	void AddSourceToken(TokenKind kind, const std::string& spelling)
 	{
-		line_.push_back(kind == TK_IDENTIFIER ?
+		Token token = kind == TK_IDENTIFIER ?
 			Token(kind, spellings_.Intern(spelling), pending_space_) :
-			Token(kind, spelling, pending_space_));
+			Token(kind, spelling, pending_space_);
+		if (full_preprocessing_)
+		{
+			if (sources_.empty())
+				throw std::logic_error("source token outside a source frame");
+			const SourceFrame& source = sources_.back();
+			token.source_file = source.presumed_file;
+			token.physical_file = source.physical_file;
+			token.source_line = PresumedLine(source);
+		}
+		line_.push_back(std::move(token));
 		pending_space_ = false;
 		if (stats_)
 		{
@@ -761,6 +1039,9 @@ private:
 		result.paint = source.paint;
 		result.blocked = source.blocked;
 		result.origin = source.origin;
+		result.source_file = source.source_file;
+		result.physical_file = source.physical_file;
+		result.source_line = source.source_line;
 		result.matching_distance = source.matching_distance;
 		result.leading_space = source.leading_space;
 		result.from_variadic = source.from_variadic;
@@ -812,12 +1093,20 @@ private:
 		if (!line_.empty() && IsOperator(line_[0], "#"))
 		{
 			Drain(rescan_, true, &pending_invocation_);
+			RequireCompletePragmaOperator();
 			boundary_space_ = false;
-			ParseDirective();
+			std::vector<Token> directive;
+			directive.swap(line_);
+			if (full_preprocessing_)
+				ParsePreprocessingDirective(directive);
+			else
+				ParseDirective(directive);
 			if (stats_)
 				++stats_->directive_lines;
 			return;
 		}
+		if (full_preprocessing_ && !IsActive())
+			return;
 
 		for (std::size_t i = 0; i < line_.size(); ++i)
 			if (IsIdentifier(line_[i], id_va_args_))
@@ -832,52 +1121,408 @@ private:
 		boundary_space_ = true;
 	}
 
-	void ParseDirective()
+	void ParsePreprocessingDirective(const std::vector<Token>& directive)
 	{
-		if (line_.size() < 2 || line_[1].kind != TK_IDENTIFIER)
+		if (directive.size() == 1)
+			return;
+		if (directive[1].kind != TK_IDENTIFIER)
+		{
+			if (IsActive())
+				throw std::runtime_error("invalid preprocessing directive");
+			return;
+		}
+		const SpellingId name = directive[1].spelling;
+		if (name == id_if_ || name == id_ifdef_ || name == id_ifndef_)
+		{
+			ParseIfDirective(directive, name);
+			return;
+		}
+		if (name == id_elif_)
+		{
+			ParseElifDirective(directive);
+			return;
+		}
+		if (name == id_else_)
+		{
+			ParseElseDirective(directive);
+			return;
+		}
+		if (name == id_endif_)
+		{
+			ParseEndifDirective(directive);
+			return;
+		}
+		if (!IsActive())
+			return;
+		if (name == id_define_)
+			ParseDefine(directive);
+		else if (name == id_undef_)
+			ParseUndef(directive);
+		else if (name == id_include_)
+			ParseInclude(directive);
+		else if (name == id_line_)
+			ParseLineDirective(directive);
+		else if (name == id_error_)
+			throw std::runtime_error("#error directive");
+		else if (name == id_pragma_)
+			ParsePragmaDirective(directive);
+		else
 			throw std::runtime_error("invalid preprocessing directive");
-		if (line_[1].spelling == id_define_)
-			ParseDefine();
-		else if (line_[1].spelling == id_undef_)
-			ParseUndef();
+	}
+
+	bool IsIdentifierLike(const Token& token) const
+	{
+		if (token.kind == TK_IDENTIFIER)
+			return true;
+		if (token.kind != TK_OPERATOR)
+			return false;
+		const std::string& spelling = Spell(token);
+		return !spelling.empty() &&
+			((spelling[0] >= 'A' && spelling[0] <= 'Z') ||
+			 (spelling[0] >= 'a' && spelling[0] <= 'z') || spelling[0] == '_');
+	}
+
+	SpellingId IdentifierLikeSpelling(const Token& token)
+	{
+		return token.kind == TK_IDENTIFIER ? token.spelling :
+			spellings_.Intern(Spell(token));
+	}
+
+	void RewriteDefinedOperators(const std::vector<Token>& directive,
+		std::size_t begin, std::vector<Token>* expression)
+	{
+		for (std::size_t i = begin; i < directive.size(); ++i)
+		{
+			const Token& token = directive[i];
+			if (token.kind != TK_IDENTIFIER || token.spelling != id_defined_)
+			{
+				expression->push_back(token);
+				continue;
+			}
+			std::size_t operand = i + 1;
+			bool parenthesized = false;
+			if (operand < directive.size() &&
+				IsOperator(directive[operand], "("))
+			{
+				parenthesized = true;
+				++operand;
+			}
+			if (operand >= directive.size() ||
+				!IsIdentifierLike(directive[operand]))
+				throw std::runtime_error("invalid defined operator");
+			const SpellingId queried = IdentifierLikeSpelling(directive[operand]);
+			std::size_t next = operand + 1;
+			if (parenthesized)
+			{
+				if (next >= directive.size() ||
+					!IsOperator(directive[next], ")"))
+					throw std::runtime_error("invalid defined operator");
+				++next;
+			}
+			Token value(TK_PP_NUMBER, IsMacroDefined(queried) ? "1" : "0",
+				token.leading_space);
+			value.source_file = token.source_file;
+			value.physical_file = token.physical_file;
+			value.source_line = token.source_line;
+			expression->push_back(std::move(value));
+			i = next - 1;
+		}
+	}
+
+	void ExpandTokens(std::vector<Token>* tokens,
+		std::vector<Token>* expanded)
+	{
+		AnnotateParentheses(tokens);
+		std::deque<Token> input;
+		for (std::size_t i = 0; i < tokens->size(); ++i)
+			input.push_back(std::move((*tokens)[i]));
+		capture_ = expanded;
+		Drain(input, true, 0);
+		capture_ = 0;
+	}
+
+	void ExpandDirectiveTail(const std::vector<Token>& directive,
+		std::size_t begin, std::vector<Token>* expanded)
+	{
+		std::vector<Token> input;
+		input.reserve(directive.size() - begin);
+		for (std::size_t i = begin; i < directive.size(); ++i)
+			input.push_back(directive[i]);
+		ExpandTokens(&input, expanded);
+	}
+
+	bool EvaluateCondition(const std::vector<Token>& directive,
+		std::size_t begin)
+	{
+		std::vector<Token> input;
+		RewriteDefinedOperators(directive, begin, &input);
+		std::vector<Token> expanded;
+		ExpandTokens(&input, &expanded);
+		ControllingExpressionEvaluator evaluator;
+		PostTokenizationSession post_tokens(evaluator);
+		for (std::size_t i = 0; i < expanded.size(); ++i)
+			FeedPreprocessingToken(expanded[i], post_tokens);
+		post_tokens.FlushPendingTokens();
+		bool value = false;
+		if (!evaluator.Finish(&value))
+			throw std::runtime_error("invalid controlling expression");
+		if (preprocessing_stats_)
+			++preprocessing_stats_->controlling_expressions;
+		return value;
+	}
+
+	void ParseIfDirective(const std::vector<Token>& directive,
+		SpellingId directive_name)
+	{
+		const bool parent = IsActive();
+		bool condition = false;
+		if (parent)
+		{
+			if (directive_name == id_if_)
+				condition = EvaluateCondition(directive, 2);
+			else
+			{
+				if (directive.size() != 3 ||
+					directive[2].kind != TK_IDENTIFIER)
+					throw std::runtime_error("invalid conditional directive");
+				condition = IsMacroDefined(directive[2].spelling);
+				if (directive_name == id_ifndef_)
+					condition = !condition;
+			}
+		}
+		conditionals_.push_back(ConditionalFrame(parent,
+			parent && condition, parent && condition));
+		if (preprocessing_stats_)
+		{
+			++preprocessing_stats_->conditional_directives;
+			preprocessing_stats_->peak_conditional_depth = std::max(
+				preprocessing_stats_->peak_conditional_depth,
+				conditionals_.size());
+		}
+	}
+
+	ConditionalFrame& CurrentConditional()
+	{
+		if (sources_.empty() || conditionals_.size() <=
+			sources_.back().conditional_base)
+			throw std::runtime_error("unmatched conditional directive");
+		return conditionals_.back();
+	}
+
+	void ParseElifDirective(const std::vector<Token>& directive)
+	{
+		ConditionalFrame& frame = CurrentConditional();
+		if (frame.saw_else)
+			throw std::runtime_error("#elif after #else");
+		bool condition = false;
+		if (frame.parent_active && !frame.branch_taken)
+			condition = EvaluateCondition(directive, 2);
+		frame.active = frame.parent_active && !frame.branch_taken && condition;
+		frame.branch_taken = frame.branch_taken || frame.active;
+		if (preprocessing_stats_)
+			++preprocessing_stats_->conditional_directives;
+	}
+
+	void ParseElseDirective(const std::vector<Token>& directive)
+	{
+		ConditionalFrame& frame = CurrentConditional();
+		if (frame.saw_else)
+			throw std::runtime_error("duplicate #else");
+		if (frame.parent_active && directive.size() != 2)
+			throw std::runtime_error("tokens after #else");
+		frame.saw_else = true;
+		frame.active = frame.parent_active && !frame.branch_taken;
+		frame.branch_taken = frame.branch_taken || frame.active;
+		if (preprocessing_stats_)
+			++preprocessing_stats_->conditional_directives;
+	}
+
+	void ParseEndifDirective(const std::vector<Token>& directive)
+	{
+		ConditionalFrame& frame = CurrentConditional();
+		if (frame.parent_active && directive.size() != 2)
+			throw std::runtime_error("tokens after #endif");
+		conditionals_.pop_back();
+		if (preprocessing_stats_)
+			++preprocessing_stats_->conditional_directives;
+	}
+
+	static int HexDigitValue(char value)
+	{
+		if (value >= '0' && value <= '9') return value - '0';
+		if (value >= 'a' && value <= 'f') return value - 'a' + 10;
+		if (value >= 'A' && value <= 'F') return value - 'A' + 10;
+		return -1;
+	}
+
+	static std::string DecodeOrdinaryString(const std::string& spelling)
+	{
+		if (spelling.size() < 2 || spelling[0] != '"' ||
+			spelling[spelling.size() - 1] != '"')
+			throw std::runtime_error("expected ordinary string literal");
+		std::string result;
+		for (std::size_t i = 1; i + 1 < spelling.size(); ++i)
+		{
+			if (spelling[i] != '\\')
+			{
+				result.push_back(spelling[i]);
+				continue;
+			}
+			if (++i + 1 > spelling.size())
+				throw std::runtime_error("invalid string escape");
+			const char escaped = spelling[i];
+			const char* names = "'\"?\\abfnrtv";
+			const char values[] = {'\'', '"', '?', '\\', '\a', '\b', '\f',
+				'\n', '\r', '\t', '\v'};
+			const char* found = std::strchr(names, escaped);
+			if (found)
+			{
+				result.push_back(values[found - names]);
+				continue;
+			}
+			if (escaped >= '0' && escaped <= '7')
+			{
+				unsigned int value = escaped - '0';
+				for (int count = 1; count < 3 && i + 1 < spelling.size() - 1 &&
+					spelling[i + 1] >= '0' && spelling[i + 1] <= '7'; ++count)
+					value = value * 8 + (spelling[++i] - '0');
+				result.push_back(static_cast<char>(value));
+				continue;
+			}
+			if (escaped == 'x')
+			{
+				unsigned int value = 0;
+				bool any = false;
+				while (i + 1 < spelling.size() - 1 &&
+					HexDigitValue(spelling[i + 1]) >= 0)
+				{
+					any = true;
+					value = value * 16 + HexDigitValue(spelling[++i]);
+				}
+				if (!any)
+					throw std::runtime_error("invalid hexadecimal escape");
+				result.push_back(static_cast<char>(value));
+				continue;
+			}
+			throw std::runtime_error("unsupported string escape");
+		}
+		return result;
+	}
+
+	void ParseInclude(const std::vector<Token>& directive)
+	{
+		std::vector<Token> expanded;
+		ExpandDirectiveTail(directive, 2, &expanded);
+		if (expanded.size() != 1 ||
+			(expanded[0].kind != TK_HEADER && expanded[0].kind != TK_STRING))
+			throw std::runtime_error("invalid #include operand");
+		const std::string& spelling = Spell(expanded[0]);
+		const std::string next = expanded[0].kind == TK_HEADER ?
+			spelling.substr(1, spelling.size() - 2) :
+			DecodeOrdinaryString(spelling);
+		const std::string presumed =
+			spellings_.Get(sources_.back().presumed_file);
+		std::string selected;
+		const std::size_t slash = presumed.find_last_of('/');
+		FileIdentity identity = FileIdentity();
+		if (slash != std::string::npos)
+		{
+			const std::string relative = presumed.substr(0, slash + 1) + next;
+			if (GetFileIdentity(relative, &identity))
+				selected = relative;
+		}
+		if (selected.empty() && GetFileIdentity(next, &identity))
+			selected = next;
+		if (selected.empty())
+			throw std::runtime_error("included file not found: " + next);
+		if (once_files_.find(identity) != once_files_.end())
+		{
+			if (preprocessing_stats_)
+				++preprocessing_stats_->skipped_once_includes;
+			return;
+		}
+		if (preprocessing_stats_)
+			++preprocessing_stats_->includes;
+		const std::string source = ReadSource(selected);
+		ProcessSource(selected, source);
+	}
+
+	void ParseLineDirective(const std::vector<Token>& directive)
+	{
+		std::vector<Token> expanded;
+		ExpandDirectiveTail(directive, 2, &expanded);
+		if (expanded.empty() || expanded.size() > 2 ||
+			expanded[0].kind != TK_PP_NUMBER ||
+			(expanded.size() == 2 && expanded[1].kind != TK_STRING))
+			throw std::runtime_error("invalid #line directive");
+		const std::string& spelling = Spell(expanded[0]);
+		char* end = 0;
+		const unsigned long long parsed = std::strtoull(spelling.c_str(),
+			&end, 10);
+		if (!end || *end != '\0' || parsed == 0 ||
+			parsed > std::numeric_limits<std::size_t>::max())
+			throw std::runtime_error("invalid #line number");
+		SourceFrame& source = sources_.back();
+		source.line_override = true;
+		source.override_line = static_cast<std::size_t>(parsed);
+		if (expanded.size() == 2)
+			source.override_file = spellings_.Intern(
+				DecodeOrdinaryString(Spell(expanded[1])));
+	}
+
+	void ParsePragmaDirective(const std::vector<Token>& directive)
+	{
+		if (directive.size() == 3 && directive[2].kind == TK_IDENTIFIER &&
+			directive[2].spelling == id_once_)
+			MarkPragmaOnce(sources_.back().physical_path);
+	}
+
+	void ParseDirective(const std::vector<Token>& directive)
+	{
+		if (directive.size() < 2 || directive[1].kind != TK_IDENTIFIER)
+			throw std::runtime_error("invalid preprocessing directive");
+		if (directive[1].spelling == id_define_)
+			ParseDefine(directive);
+		else if (directive[1].spelling == id_undef_)
+			ParseUndef(directive);
 		else
 			throw std::runtime_error("unsupported preprocessing directive");
 	}
 
-	void ParseUndef()
+	void ParseUndef(const std::vector<Token>& directive)
 	{
-		if (line_.size() != 3 || line_[2].kind != TK_IDENTIFIER ||
-			line_[2].spelling == id_va_args_)
+		if (directive.size() != 3 || directive[2].kind != TK_IDENTIFIER ||
+			directive[2].spelling == id_va_args_)
 			throw std::runtime_error("invalid #undef directive");
-		Macro* found = macros_.Find(line_[2].spelling);
+		Macro* found = macros_.Find(directive[2].spelling);
 		if (found)
 		{
 			retained_replacement_tokens_ -= found->replacement.size();
-			macros_.Erase(line_[2].spelling);
+			macros_.Erase(directive[2].spelling);
 		}
 		if (stats_)
 			++stats_->macro_undefinitions;
 	}
 
-	void ParseDefine()
+	void ParseDefine(const std::vector<Token>& directive)
 	{
-		if (line_.size() < 3 || line_[2].kind != TK_IDENTIFIER ||
-			line_[2].spelling == id_va_args_)
+		if (directive.size() < 3 || directive[2].kind != TK_IDENTIFIER ||
+			directive[2].spelling == id_va_args_)
 			throw std::runtime_error("missing or invalid macro name");
 		Macro macro;
-		macro.name = line_[2].spelling;
+		macro.name = directive[2].spelling;
 		std::size_t replacement_begin = 3;
-		if (line_.size() > 3 && IsOperator(line_[3], "(") &&
-			!line_[3].leading_space)
+		if (directive.size() > 3 && IsOperator(directive[3], "(") &&
+			!directive[3].leading_space)
 		{
 			macro.function_like = true;
-			replacement_begin = ParseParameters(4, &macro);
+			replacement_begin = ParseParameters(directive, 4, &macro);
 		}
-		else if (line_.size() > 3 && !line_[3].leading_space)
+		else if (directive.size() > 3 && !directive[3].leading_space)
 			throw std::runtime_error(
 				"object-like macro replacement requires whitespace");
 
-		BuildReplacement(replacement_begin, &macro);
+		BuildReplacement(directive, replacement_begin, &macro);
 		Macro* old = macros_.Find(macro.name);
 		if (old)
 		{
@@ -898,54 +1543,57 @@ private:
 			++stats_->macro_definitions;
 	}
 
-	std::size_t ParseParameters(std::size_t position, Macro* macro)
+	std::size_t ParseParameters(const std::vector<Token>& directive,
+		std::size_t position, Macro* macro)
 	{
 		FlatHashMap<SpellingId, unsigned char> seen;
-		if (position >= line_.size())
+		if (position >= directive.size())
 			throw std::runtime_error("unterminated macro parameter list");
-		if (IsOperator(line_[position], ")"))
+		if (IsOperator(directive[position], ")"))
 			return position + 1;
-		if (IsOperator(line_[position], "..."))
+		if (IsOperator(directive[position], "..."))
 		{
 			macro->variadic = true;
 			++position;
-			if (position >= line_.size() || !IsOperator(line_[position], ")"))
+			if (position >= directive.size() ||
+				!IsOperator(directive[position], ")"))
 				throw std::runtime_error("invalid variadic parameter list");
 			return position + 1;
 		}
 
 		while (true)
 		{
-			if (position >= line_.size() ||
-				line_[position].kind != TK_IDENTIFIER ||
-				line_[position].spelling == id_va_args_ ||
-				seen.Find(line_[position].spelling))
+			if (position >= directive.size() ||
+				directive[position].kind != TK_IDENTIFIER ||
+				directive[position].spelling == id_va_args_ ||
+				seen.Find(directive[position].spelling))
 				throw std::runtime_error("invalid macro parameter");
-			seen.Insert(line_[position].spelling, 1);
-			macro->parameters.push_back(line_[position].spelling);
+			seen.Insert(directive[position].spelling, 1);
+			macro->parameters.push_back(directive[position].spelling);
 			++position;
-			if (position >= line_.size())
+			if (position >= directive.size())
 				throw std::runtime_error("unterminated macro parameter list");
-			if (IsOperator(line_[position], ")"))
+			if (IsOperator(directive[position], ")"))
 				return position + 1;
-			if (!IsOperator(line_[position], ","))
+			if (!IsOperator(directive[position], ","))
 				throw std::runtime_error("invalid macro parameter separator");
 			++position;
-			if (position >= line_.size())
+			if (position >= directive.size())
 				throw std::runtime_error("unterminated macro parameter list");
-			if (IsOperator(line_[position], "..."))
+			if (IsOperator(directive[position], "..."))
 			{
 				macro->variadic = true;
 				++position;
-				if (position >= line_.size() ||
-					!IsOperator(line_[position], ")"))
+				if (position >= directive.size() ||
+					!IsOperator(directive[position], ")"))
 					throw std::runtime_error("invalid variadic parameter list");
 				return position + 1;
 			}
 		}
 	}
 
-	void BuildReplacement(std::size_t begin, Macro* macro)
+	void BuildReplacement(const std::vector<Token>& directive,
+		std::size_t begin, Macro* macro)
 	{
 		FlatHashMap<SpellingId, std::size_t> parameter_index;
 		for (std::size_t i = 0; i < macro->parameters.size(); ++i)
@@ -953,10 +1601,10 @@ private:
 		if (macro->variadic)
 			parameter_index.Insert(id_va_args_, macro->parameters.size());
 
-		for (std::size_t i = begin; i < line_.size(); ++i)
+		for (std::size_t i = begin; i < directive.size(); ++i)
 		{
 			ReplacementToken replacement;
-			replacement.token = line_[i];
+			replacement.token = directive[i];
 			if (i == begin)
 				replacement.token.leading_space = false;
 			if (replacement.token.kind == TK_IDENTIFIER)
@@ -1236,7 +1884,9 @@ private:
 
 	Token Stringize(const Argument& argument,
 		const std::vector<Token>& raw_tokens, bool leading_space,
-		PaintId paint, PaintId blocked, std::uint64_t origin)
+		PaintId paint, PaintId blocked, std::uint64_t origin,
+		SpellingId source_file, SpellingId physical_file,
+		std::size_t source_line)
 	{
 		std::string spelling("\"");
 		for (std::size_t i = 0; i < argument.raw_size; ++i)
@@ -1260,6 +1910,9 @@ private:
 		result.paint = paint;
 		result.blocked = blocked;
 		result.origin = origin;
+		result.source_file = source_file;
+		result.physical_file = physical_file;
+		result.source_line = source_line;
 		return result;
 	}
 
@@ -1283,7 +1936,8 @@ private:
 				AppendReplacementToken(Stringize(
 					pending->arguments[parameter.parameter], pending->raw_tokens,
 					replacement.token.leading_space, direct_paint,
-					head.blocked, origin), &paste_pending, result);
+					head.blocked, origin, head.source_file, head.physical_file,
+					head.source_line), &paste_pending, result);
 				continue;
 			}
 			if (IsOperator(replacement.token, "##"))
@@ -1349,6 +2003,9 @@ private:
 			literal.paint = direct_paint;
 			literal.blocked = head.blocked;
 			literal.origin = origin;
+			literal.source_file = head.source_file;
+			literal.physical_file = head.physical_file;
+			literal.source_line = head.source_line;
 			literal.parameter_origin = false;
 			AppendReplacementToken(std::move(literal), &paste_pending, result);
 		}
@@ -1432,7 +2089,8 @@ private:
 			paints_.Merge(left.paint, right.paint),
 			paints_.Merge(left.blocked, right.blocked), left.origin,
 			left.parameter_origin && right.parameter_origin,
-			left.leading_space);
+			left.leading_space, left.source_file, left.physical_file,
+			left.source_line);
 		TokenizeGeneratedPreprocessingToken(spelling, collector);
 		if (stats_)
 		{
@@ -1519,6 +2177,58 @@ private:
 		ExpansionFrame child(false, true);
 		child.input.swap(frame->input);
 		return child;
+	}
+
+	bool IsDynamicMacro(SpellingId name) const
+	{
+		return full_preprocessing_ && (name == id_file_macro_ ||
+			name == id_line_macro_ || name == id_counter_macro_);
+	}
+
+	bool IsMacroDefined(SpellingId name) const
+	{
+		return IsDynamicMacro(name) || macros_.Find(name) != 0;
+	}
+
+	Token ExpandDynamicMacro(const Token& head)
+	{
+		Token result;
+		if (head.spelling == id_file_macro_)
+			result = Token(TK_STRING,
+				QuoteString(spellings_.Get(head.source_file)), head.leading_space);
+		else
+		{
+			const std::size_t value = head.spelling == id_line_macro_ ?
+				head.source_line : counter_++;
+			std::ostringstream spelling;
+			spelling << value;
+			result = Token(TK_PP_NUMBER, spelling.str(), head.leading_space);
+		}
+		result.paint = head.paint;
+		result.blocked = head.blocked;
+		result.origin = head.origin;
+		result.source_file = head.source_file;
+		result.physical_file = head.physical_file;
+		result.source_line = head.source_line;
+		return result;
+	}
+
+	bool TryExpandDynamicMacro(ExpansionFrame* frame)
+	{
+		const Token& head = frame->input.front();
+		if (!IsDynamicMacro(head.spelling) ||
+			paints_.Contains(head.paint, head.spelling) ||
+			paints_.Contains(head.blocked, head.spelling))
+			return false;
+		Token expanded = ExpandDynamicMacro(head);
+		frame->input.pop_front();
+		frame->input.push_front(std::move(expanded));
+		if (stats_)
+		{
+			++stats_->macro_invocations;
+			++stats_->expanded_tokens;
+		}
+		return true;
 	}
 
 	void Drain(std::deque<Token>& input, bool final, InvocationScan* scan)
@@ -1636,8 +2346,7 @@ private:
 				ReplaceLiveArgumentStorage(old_storage, new_storage,
 					&live_argument_storage);
 				UpdateArgumentStoragePeak(live_argument_storage);
-				if (stats_)
-					++stats_->argument_prescans;
+				if (stats_) ++stats_->argument_prescans;
 				continue;
 			}
 			const Token& head = frame.input.front();
@@ -1648,6 +2357,8 @@ private:
 						"__VA_ARGS__ outside a variadic replacement list");
 				if (stats_)
 					++stats_->macro_lookups;
+				if (TryExpandDynamicMacro(&frame))
+					continue;
 				const Macro* found = macros_.Find(head.spelling);
 				if (found &&
 					!paints_.Contains(head.paint, head.spelling) &&
@@ -1764,26 +2475,110 @@ private:
 
 	void EmitPostToken(const Token& token)
 	{
+		if (capture_)
+		{
+			Token retained = token;
+			if (retained.spelling == 0)
+			{
+				retained.owned_spelling = Spell(token);
+				retained.borrowed_spelling = 0;
+			}
+			capture_->push_back(std::move(retained));
+			return;
+		}
+		if (full_preprocessing_)
+		{
+			if (!pragma_operator_.empty())
+			{
+				pragma_operator_.push_back(token);
+				const std::size_t count = pragma_operator_.size();
+				if ((count == 2 && !IsOperator(token, "(")) ||
+					(count == 3 && token.kind != TK_STRING) ||
+					(count == 4 && !IsOperator(token, ")")) || count > 4)
+					throw std::runtime_error("invalid _Pragma operator");
+				if (count == 4)
+				{
+					ExecutePragmaLiteral(pragma_operator_[2],
+						pragma_operator_[0].physical_file);
+					pragma_operator_.clear();
+				}
+				return;
+			}
+			if (token.kind == TK_IDENTIFIER &&
+				token.spelling == id_pragma_operator_)
+			{
+				pragma_operator_.push_back(token);
+				return;
+			}
+		}
+		FeedPreprocessingToken(token, post_tokens_);
+	}
+
+	void FeedPreprocessingToken(const Token& token, IPPTokenStream& output)
+	{
 		const std::string& spelling = Spell(token);
 		switch (token.kind)
 		{
-		case TK_IDENTIFIER: post_tokens_.emit_identifier(spelling); break;
-		case TK_PP_NUMBER: post_tokens_.emit_pp_number(spelling); break;
+		case TK_IDENTIFIER: output.emit_identifier(spelling); break;
+		case TK_PP_NUMBER: output.emit_pp_number(spelling); break;
 		case TK_CHARACTER:
-			post_tokens_.emit_character_literal(spelling); break;
+			output.emit_character_literal(spelling); break;
 		case TK_USER_CHARACTER:
-			post_tokens_.emit_user_defined_character_literal(spelling); break;
-		case TK_STRING: post_tokens_.emit_string_literal(spelling); break;
+			output.emit_user_defined_character_literal(spelling); break;
+		case TK_STRING: output.emit_string_literal(spelling); break;
 		case TK_USER_STRING:
-			post_tokens_.emit_user_defined_string_literal(spelling); break;
+			output.emit_user_defined_string_literal(spelling); break;
 		case TK_OPERATOR:
-			post_tokens_.emit_preprocessing_op_or_punc(spelling); break;
+			output.emit_preprocessing_op_or_punc(spelling); break;
 		case TK_NON_WHITESPACE:
-			post_tokens_.emit_non_whitespace_char(spelling); break;
-		case TK_HEADER: post_tokens_.emit_header_name(spelling); break;
+			output.emit_non_whitespace_char(spelling); break;
+		case TK_HEADER: output.emit_header_name(spelling); break;
 		case TK_PLACEMARKER:
 			throw std::logic_error("placemarker escaped paste resolution");
 		}
+	}
+
+	static std::string DestringizePragma(const std::string& spelling)
+	{
+		std::size_t quote = spelling.find('"');
+		if (quote == std::string::npos || spelling.size() <= quote + 1 ||
+			spelling[spelling.size() - 1] != '"')
+			throw std::runtime_error("invalid _Pragma string literal");
+		std::string result;
+		for (std::size_t i = quote + 1; i + 1 < spelling.size(); ++i)
+		{
+			if (spelling[i] == '\\' && i + 2 < spelling.size() &&
+				(spelling[i + 1] == '\\' || spelling[i + 1] == '"'))
+				++i;
+			result.push_back(spelling[i]);
+		}
+		return result;
+	}
+
+	void ExecutePragmaLiteral(const Token& literal, SpellingId physical_file)
+	{
+		const std::string pragma = DestringizePragma(Spell(literal));
+		if (preprocessing_stats_)
+			++preprocessing_stats_->pragma_operators;
+		std::size_t begin = pragma.find_first_not_of(" \t\v\f\r\n");
+		std::size_t end = pragma.find_last_not_of(" \t\v\f\r\n");
+		if (begin != std::string::npos &&
+			pragma.substr(begin, end - begin + 1) == "once")
+			MarkPragmaOnce(spellings_.Get(physical_file));
+	}
+
+	void MarkPragmaOnce(const std::string& path)
+	{
+		FileIdentity identity;
+		if (!GetFileIdentity(path, &identity))
+			throw std::runtime_error("unable to identify pragma-once file");
+		once_files_.insert(identity);
+	}
+
+	void RequireCompletePragmaOperator() const
+	{
+		if (!pragma_operator_.empty())
+			throw std::runtime_error("incomplete _Pragma operator");
 	}
 
 	void UpdatePeakRescan(std::size_t size)
@@ -1805,9 +2600,34 @@ private:
 	bool boundary_space_;
 	std::size_t retained_replacement_tokens_;
 	std::uint64_t next_origin_;
+	bool full_preprocessing_;
+	PreprocessingStats* preprocessing_stats_;
+	PreprocessingOptions options_;
+	std::vector<SourceFrame> sources_;
+	std::vector<ConditionalFrame> conditionals_;
+	std::unordered_set<FileIdentity, FileIdentityHash> once_files_;
+	std::vector<Token>* capture_;
+	std::vector<Token> pragma_operator_;
+	std::size_t counter_;
 	SpellingId id_define_;
 	SpellingId id_undef_;
+	SpellingId id_if_;
+	SpellingId id_ifdef_;
+	SpellingId id_ifndef_;
+	SpellingId id_elif_;
+	SpellingId id_else_;
+	SpellingId id_endif_;
+	SpellingId id_include_;
+	SpellingId id_line_;
+	SpellingId id_error_;
+	SpellingId id_pragma_;
+	SpellingId id_once_;
+	SpellingId id_defined_;
 	SpellingId id_va_args_;
+	SpellingId id_file_macro_;
+	SpellingId id_line_macro_;
+	SpellingId id_counter_macro_;
+	SpellingId id_pragma_operator_;
 };
 
 }
@@ -1821,6 +2641,13 @@ MacroProcessingStats::MacroProcessingStats()
 	  peak_rescan_tokens(0), peak_retained_replacement_tokens(0),
 	  peak_expansion_frames(0), peak_argument_storage_bytes(0),
 	  paint_roots(0), paint_nodes(0), elapsed_nanoseconds(0)
+{}
+
+PreprocessingStats::PreprocessingStats()
+	: source_files(0), source_bytes(0), conditional_directives(0),
+	  controlling_expressions(0), includes(0), skipped_once_includes(0),
+	  pragma_operators(0), peak_include_depth(0),
+	  peak_conditional_depth(0), elapsed_nanoseconds(0)
 {}
 
 void ProcessMacros(const std::string& source, IPostTokenStream& output,
@@ -1838,6 +2665,26 @@ void ProcessMacros(const std::string& source, IPostTokenStream& output,
 		stats->elapsed_nanoseconds = static_cast<std::uint64_t>(
 			std::chrono::duration_cast<std::chrono::nanoseconds>(
 				std::chrono::steady_clock::now() - start).count());
+}
+
+void PreprocessFile(const std::string& path, const std::string& source,
+	IPostTokenStream& output, const PreprocessingOptions& options,
+	PreprocessingStats* stats)
+{
+	const std::chrono::steady_clock::time_point start = stats ?
+		std::chrono::steady_clock::now() :
+		std::chrono::steady_clock::time_point();
+	if (stats)
+		*stats = PreprocessingStats();
+	MacroProcessor processor(output, options, stats);
+	processor.ProcessPrimary(path, source);
+	if (stats)
+	{
+		stats->elapsed_nanoseconds = static_cast<std::uint64_t>(
+			std::chrono::duration_cast<std::chrono::nanoseconds>(
+				std::chrono::steady_clock::now() - start).count());
+		stats->macros.elapsed_nanoseconds = stats->elapsed_nanoseconds;
+	}
 }
 
 }
