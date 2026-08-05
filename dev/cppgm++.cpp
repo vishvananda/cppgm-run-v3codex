@@ -1,10 +1,14 @@
 // Student-facing scaffold for the PA10+ `cppgm++` binary.
 
 #include "exceptions.h"
+#include "pa10_syntax.h"
 #include "tool_help_text.h"
 
 #include <cstdlib>
+#include <ctime>
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -185,16 +189,22 @@ EmitMode parse_emit_mode(vector<string> & args)
   return mode;
 }
 
-void parse_source_output_invocation(const vector<string> & args,
+struct SourceOutputInvocation
+{
+  string output;
+  vector<string> inputs;
+};
+
+SourceOutputInvocation parse_source_output_invocation(
+                                    const vector<string> & args,
                                     bool allow_lowir_options)
 {
-  bool explicit_outfile = false;
-  vector<string> inputs;
+  SourceOutputInvocation invocation;
 
   for(size_t i = 0; i < args.size(); ++i) {
     if(args[i] == "-o") {
       consume_required_option_argument(args, i, "-o", "output file");
-      explicit_outfile = true;
+      invocation.output = args[i];
       continue;
     }
     if(allow_lowir_options &&
@@ -212,12 +222,13 @@ void parse_source_output_invocation(const vector<string> & args,
     if(starts_with(args[i], "-")) {
       throw logic_error("unsupported option in emit mode: " + args[i]);
     }
-    inputs.push_back(args[i]);
+    invocation.inputs.push_back(args[i]);
   }
 
-  if(!explicit_outfile || inputs.empty()) {
+  if(invocation.output.empty() || invocation.inputs.empty()) {
     throw logic_error("invalid usage");
   }
+  return invocation;
 }
 
 bool consume_preprocess_option(const vector<string> & args, size_t & i)
@@ -381,25 +392,77 @@ int run_unimplemented_mode(const char * feature,
 
 int run_emit_ast_mode(const vector<string> & args)
 {
-  parse_source_output_invocation(args, false);
-  return run_unimplemented_mode("--emit-ast", "PA10");
+  const SourceOutputInvocation invocation =
+      parse_source_output_invocation(args, false);
+  ofstream output(invocation.output.c_str(), ios::out | ios::trunc);
+  if(!output) {
+    throw runtime_error("unable to open output file: " + invocation.output);
+  }
+
+  const time_t now = time(0);
+  const tm * local = localtime(&now);
+  if(!local) {
+    throw runtime_error("unable to determine build time");
+  }
+  const char * text = asctime(local);
+  if(!text) {
+    throw runtime_error("unable to format build time");
+  }
+  const string formatted(text);
+  if(formatted.size() < 24) {
+    throw runtime_error("invalid asctime result");
+  }
+  cppgm::PreprocessingOptions options;
+  options.build_date = formatted.substr(4, 7) + formatted.substr(20, 4);
+  options.build_time = formatted.substr(11, 8);
+  options.author = "Vishvananda Abrams";
+
+  output << invocation.inputs.size() << " translation units\n";
+  for(size_t i = 0; i < invocation.inputs.size(); ++i) {
+    const string & path = invocation.inputs[i];
+    ifstream input(path.c_str(), ios::in | ios::binary);
+    if(!input) {
+      throw runtime_error("unable to open source file: " + path);
+    }
+    const string source((istreambuf_iterator<char>(input)),
+                        istreambuf_iterator<char>());
+    output << "start translation unit " << i + 1 << '\n';
+    cppgm::SyntaxStats stats;
+    cppgm::WriteSyntaxTranslationUnit(path, source, options, output,
+        getenv("CPPGM_FRONTEND_STATS") ? &stats : 0);
+    if(getenv("CPPGM_FRONTEND_STATS")) {
+      cerr << "pa10_stats file=" << path
+           << " tokens=" << stats.tokens
+           << " syntax_nodes=" << stats.syntax_nodes
+           << " syntax_edges=" << stats.syntax_edges
+           << " checkpoints=" << stats.parser_checkpoints
+           << " rollbacks=" << stats.parser_rollbacks
+           << " peak_stage_storage_bytes=" << stats.peak_stage_storage_bytes
+           << " elapsed_ns=" << stats.elapsed_nanoseconds << '\n';
+    }
+    output << "end translation unit\n";
+  }
+  if(!output) {
+    throw runtime_error("unable to write output file: " + invocation.output);
+  }
+  return EXIT_SUCCESS;
 }
 
 int run_emit_types_mode(const vector<string> & args)
 {
-  parse_source_output_invocation(args, false);
+  (void)parse_source_output_invocation(args, false);
   return run_unimplemented_mode("--emit-types", "PA11");
 }
 
 int run_emit_semantics_mode(const vector<string> & args)
 {
-  parse_source_output_invocation(args, false);
+  (void)parse_source_output_invocation(args, false);
   return run_unimplemented_mode("--emit-semantics", "PA12");
 }
 
 int run_emit_lowir_mode(const vector<string> & args)
 {
-  parse_source_output_invocation(args, true);
+  (void)parse_source_output_invocation(args, true);
   return run_unimplemented_mode("--emit-lowir", "PA14");
 }
 
