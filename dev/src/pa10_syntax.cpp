@@ -73,6 +73,7 @@ public:
 	{
 		if (tokens.size() >= std::numeric_limits<std::uint32_t>::max() - 1)
 			throw std::runtime_error("too many syntax tokens");
+		SetNameFact("nullptr_t", kKnownType);
 	}
 
 	NodeId ParseTranslationUnit()
@@ -1367,7 +1368,16 @@ NodeId Parser::ParsePrimaryExpression()
 		std::string name;
 		if (position_ < tokens_.size() &&
 			IsFundamentalKind(tokens_[position_].kind))
-			name = Spelling(position_++);
+		{
+			const std::size_t first = position_++;
+			while (position_ < tokens_.size() &&
+				IsFundamentalKind(tokens_[position_].kind)) ++position_;
+			for (std::size_t i = first; i < position_; ++i)
+			{
+				if (i != first) name += ' ';
+				name += Spelling(i);
+			}
+		}
 		else if (!ParseName(&name)) return kNoNode;
 		return arena_.Make("id-expression", name);
 	}
@@ -1741,6 +1751,7 @@ NodeId Parser::ParseCompoundStatement()
 		if (AtEof()) throw Error("unterminated compound statement");
 		NodeId item = kNoNode;
 		const bool declaration_start = At(KW_TEMPLATE) || At(KW_USING) ||
+			At(KW_NAMESPACE) ||
 			At(KW_TYPEDEF) || At(KW_CLASS) || At(KW_STRUCT) || At(KW_UNION) ||
 			At(KW_ENUM) || At(KW_STATIC_ASSERT) || At(KW_EXTERN) ||
 			(position_ < tokens_.size() &&
@@ -1960,6 +1971,22 @@ NodeId Parser::ParseStatement()
 		}
 		Expect(OP_SEMICOLON);
 		return statement;
+	}
+	const bool declaration_start = At(KW_USING) || At(KW_NAMESPACE) ||
+		At(KW_TYPEDEF) ||
+		At(KW_CLASS) || At(KW_STRUCT) || At(KW_UNION) || At(KW_ENUM) ||
+		At(KW_STATIC_ASSERT) || At(KW_EXTERN) ||
+		(position_ < tokens_.size() &&
+		 IsDeclSpecifierKeyword(tokens_[position_].kind)) ||
+		IsLikelyTypeIdentifier(position_) ||
+		(((AtIdentifier() && AtOffset(1, OP_COLON2)) || At(OP_COLON2)) &&
+		 QualifiedStartsType());
+	if (declaration_start)
+	{
+		const Mark declaration_mark = Checkpoint();
+		const NodeId declaration = ParseDeclaration(false);
+		if (declaration != kNoNode) return declaration;
+		Rollback(declaration_mark);
 	}
 	if (Match(OP_SEMICOLON)) return arena_.Make("expression-statement");
 	const NodeId expression = ParseExpression();
@@ -2544,7 +2571,27 @@ bool Parser::StartsStandaloneClassDeclaration()
 		if (!ParseName(&ignored, false)) Rollback(name_mark);
 	}
 	SkipAttributes();
-	const bool result = At(OP_LBRACE) || At(OP_COLON) || At(OP_SEMICOLON);
+	bool result = At(OP_COLON) || At(OP_SEMICOLON);
+	if (At(OP_LBRACE))
+	{
+		std::size_t scan = position_;
+		std::size_t depth = 0;
+		for (; scan < tokens_.size(); ++scan)
+		{
+			if (tokens_[scan].kind == static_cast<std::uint16_t>(OP_LBRACE))
+				++depth;
+			else if (tokens_[scan].kind == static_cast<std::uint16_t>(OP_RBRACE))
+			{
+				if (--depth == 0)
+				{
+					++scan;
+					break;
+				}
+			}
+		}
+		result = scan < tokens_.size() &&
+			tokens_[scan].kind == static_cast<std::uint16_t>(OP_SEMICOLON);
+	}
 	Rollback(mark);
 	return result;
 }

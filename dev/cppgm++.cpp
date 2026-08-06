@@ -3,6 +3,7 @@
 #include "exceptions.h"
 #include "pa10_syntax.h"
 #include "pa11_semantic.h"
+#include "pa12_semantic.h"
 #include "tool_help_text.h"
 
 #include <cstdlib>
@@ -528,8 +529,54 @@ int run_emit_types_mode(const vector<string> & args)
 
 int run_emit_semantics_mode(const vector<string> & args)
 {
-  (void)parse_source_output_invocation(args, false);
-  return run_unimplemented_mode("--emit-semantics", "PA12");
+  const SourceOutputInvocation invocation =
+      parse_source_output_invocation(args, false);
+  ofstream output(invocation.output.c_str(), ios::out | ios::trunc);
+  if(!output) {
+    throw runtime_error("unable to open output file: " + invocation.output);
+  }
+  const cppgm::PreprocessingOptions options = make_preprocessing_options();
+  output << invocation.inputs.size() << " translation units\n";
+  for(size_t i = 0; i < invocation.inputs.size(); ++i) {
+    const string & path = invocation.inputs[i];
+    ifstream input(path.c_str(), ios::in | ios::binary);
+    if(!input) {
+      throw runtime_error("unable to open source file: " + path);
+    }
+    const string source((istreambuf_iterator<char>(input)),
+                        istreambuf_iterator<char>());
+    output << "start translation unit " << i + 1 << '\n';
+    cppgm::SemanticAnalysisStats stats;
+    cppgm::WriteSemanticTranslationUnit(path, source, options, output,
+        getenv("CPPGM_FRONTEND_STATS") ? &stats : 0);
+    if(getenv("CPPGM_FRONTEND_STATS")) {
+      cerr << "pa12_stats file=" << path
+           << " tokens=" << stats.tokens
+           << " syntax_nodes=" << stats.syntax_nodes
+           << " semantic_nodes=" << stats.semantic_nodes
+           << " semantic_edges=" << stats.semantic_edges
+           << " names=" << stats.interned_names
+           << " canonical_types=" << stats.canonical_types
+           << " scopes=" << stats.scopes
+           << " declarations=" << stats.declarations
+           << " expressions=" << stats.expressions
+           << " lookup_queries=" << stats.lookup_queries
+           << " lookup_scope_visits=" << stats.lookup_scope_visits
+           << " lookup_edge_visits=" << stats.lookup_edge_visits
+           << " overload_candidates=" << stats.overload_candidates
+           << " conversion_checks=" << stats.conversion_checks
+           << " semantic_storage_bytes=" << stats.semantic_storage_bytes
+           << " peak_stage_storage_bytes=" << stats.peak_stage_storage_bytes
+           << " analysis_ns=" << stats.analysis_nanoseconds
+           << " render_ns=" << stats.render_nanoseconds
+           << " elapsed_ns=" << stats.elapsed_nanoseconds << '\n';
+    }
+    output << "end translation unit\n";
+  }
+  if(!output) {
+    throw runtime_error("unable to write output file: " + invocation.output);
+  }
+  return EXIT_SUCCESS;
 }
 
 int run_emit_lowir_mode(const vector<string> & args)

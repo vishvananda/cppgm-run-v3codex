@@ -31,6 +31,7 @@ const char* FundamentalName(FundamentalKind kind)
 	case FUND_DOUBLE: return "double";
 	case FUND_LONG_DOUBLE: return "long double";
 	case FUND_VOID: return "void";
+	case FUND_NULLPTR_T: return "nullptr_t";
 	case FUND_WCHAR_T: return "wchar_t";
 	case FUND_CHAR16_T: return "char16_t";
 	case FUND_CHAR32_T: return "char32_t";
@@ -265,6 +266,20 @@ TypeId TypeTable::Pointer(TypeId type)
 	return Unary(TYPE_POINTER, type);
 }
 
+TypeId TypeTable::MemberPointer(TypeId owner, TypeId member)
+{
+	owner = RemoveTopCv(owner);
+	const TypeRecord& class_type = Get(owner);
+	if (class_type.kind != TYPE_NAMED)
+		throw std::runtime_error("member pointer owner is not a class");
+	TypeRecord candidate;
+	candidate.kind = TYPE_MEMBER_POINTER;
+	candidate.child = member;
+	candidate.entity = class_type.entity;
+	candidate.bound = owner;
+	return Intern(candidate, 0, 0);
+}
+
 TypeId TypeTable::Reference(TypeKind kind, TypeId type)
 {
 	if (kind != TYPE_LVALUE_REFERENCE && kind != TYPE_RVALUE_REFERENCE)
@@ -296,7 +311,7 @@ TypeId TypeTable::Array(TypeId type, std::uint64_t bound)
 }
 
 TypeId TypeTable::Function(TypeId result,
-	const std::vector<TypeId>& parameters, bool variadic)
+	const std::vector<TypeId>& parameters, bool variadic, std::uint8_t cv)
 {
 	const TypeRecord& returned = Get(result);
 	if (returned.kind == TYPE_ARRAY || returned.kind == TYPE_FUNCTION)
@@ -309,6 +324,7 @@ TypeId TypeTable::Function(TypeId result,
 	candidate.parameter_count =
 		static_cast<std::uint32_t>(parameters.size());
 	candidate.variadic = variadic;
+	candidate.cv = cv;
 	return Intern(candidate, parameters.empty() ? 0 : &parameters[0],
 		parameters.size());
 }
@@ -945,6 +961,7 @@ std::size_t Program::FundamentalSize(FundamentalKind kind) const
 	case FUND_LONG_LONG_INT: case FUND_UNSIGNED_LONG_LONG_INT:
 	case FUND_DOUBLE: return 8;
 	case FUND_LONG_DOUBLE: return 16;
+	case FUND_NULLPTR_T: return 8;
 	case FUND_VOID: break;
 	}
 	throw std::runtime_error("incomplete fundamental type");
@@ -978,6 +995,7 @@ std::size_t Program::SizeOf(TypeId type) const
 		case TYPE_FUNDAMENTAL: size = FundamentalSize(record.fundamental); break;
 		case TYPE_POINTER: case TYPE_LVALUE_REFERENCE:
 		case TYPE_RVALUE_REFERENCE: size = 8; break;
+		case TYPE_MEMBER_POINTER: size = 8; break;
 		case TYPE_NAMED:
 		{
 			const EntityRecord& entity = entities[record.entity];
@@ -1076,7 +1094,10 @@ void Program::AppendType(std::string& output, TypeId type,
 			output += "function of (";
 			const TypeId* parameters = types.Parameters(task.type);
 			tasks.Push(Task(record.child, true));
-			tasks.Push(Task(") returning "));
+			tasks.Push(Task(record.cv == CV_CONST ? ") const returning " :
+				record.cv == CV_VOLATILE ? ") volatile returning " :
+				record.cv == (CV_CONST | CV_VOLATILE) ?
+				") const volatile returning " : ") returning "));
 			if (record.variadic) tasks.Push(Task("..."));
 			for (std::size_t i = record.parameter_count; i != 0; --i)
 			{
@@ -1086,6 +1107,12 @@ void Program::AppendType(std::string& output, TypeId type,
 			}
 			break;
 		}
+		case TYPE_MEMBER_POINTER:
+			output += "member-pointer of ";
+			tasks.Push(Task(record.child, true));
+			tasks.Push(Task(" to "));
+			tasks.Push(Task(static_cast<TypeId>(record.bound), true));
+			break;
 		case TYPE_INVALID:
 			throw std::logic_error("cannot render invalid type");
 		}

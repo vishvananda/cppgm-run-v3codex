@@ -81,6 +81,7 @@ enum FundamentalKind
 	FUND_DOUBLE,
 	FUND_LONG_DOUBLE,
 	FUND_VOID,
+	FUND_NULLPTR_T,
 	FUND_WCHAR_T,
 	FUND_CHAR16_T,
 	FUND_CHAR32_T
@@ -96,7 +97,8 @@ enum TypeKind
 	TYPE_LVALUE_REFERENCE,
 	TYPE_RVALUE_REFERENCE,
 	TYPE_ARRAY,
-	TYPE_FUNCTION
+	TYPE_FUNCTION,
+	TYPE_MEMBER_POINTER
 };
 
 enum CvFlags
@@ -129,10 +131,11 @@ public:
 	TypeId Named(EntityId entity);
 	TypeId Qualify(TypeId type, std::uint8_t cv);
 	TypeId Pointer(TypeId type);
+	TypeId MemberPointer(TypeId owner, TypeId member);
 	TypeId Reference(TypeKind kind, TypeId type);
 	TypeId Array(TypeId type, std::uint64_t bound);
 	TypeId Function(TypeId result, const std::vector<TypeId>& parameters,
-		bool variadic);
+		bool variadic, std::uint8_t cv = CV_NONE);
 	TypeId RemoveTopCv(TypeId type) const;
 	bool IsFunction(TypeId type) const;
 	bool IsReference(TypeId type) const;
