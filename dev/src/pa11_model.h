@@ -193,13 +193,17 @@ enum BindingKind
 	BIND_PARAMETER
 };
 
+enum LanguageLinkage { LANGUAGE_LINKAGE_CPP, LANGUAGE_LINKAGE_C };
+
+enum StorageClass { STORAGE_CLASS_NONE, STORAGE_CLASS_EXTERN,
+	STORAGE_CLASS_STATIC, STORAGE_CLASS_THREAD_LOCAL };
+
 struct EntityRecord
 {
-	NameId name;
+	NameId name, identity_name;
+	ScopeId owner, member_scope;
 	NamedFlavor flavor;
-	ScopeId member_scope;
-	TypeId type;
-	TypeId underlying;
+	TypeId type, underlying;
 	BindingId declaration;
 	bool complete;
 
@@ -209,8 +213,7 @@ struct EntityRecord
 struct BindingRecord
 {
 	ScopeId owner;
-	NameId name;
-	NameId qualified_name;
+	NameId name, qualified_name;
 	BindingKind kind;
 	TypeId type;
 	BindingId next;
@@ -218,7 +221,9 @@ struct BindingRecord
 	NameId display_type_name;
 	BindingId canonical;
 	std::int64_t value;
-	bool constant;
+	LanguageLinkage language_linkage;
+	StorageClass storage_class;
+	bool constant, nonthrowing;
 
 	BindingRecord();
 };
@@ -227,9 +232,7 @@ struct LookupResult
 {
 	ScopeId name_space;
 	TypeId type;
-	BindingId type_declaration;
-	BindingId ordinary;
-	BindingId ordinary_declaration;
+	BindingId type_declaration, ordinary, ordinary_declaration;
 
 	LookupResult();
 	bool Empty() const;
@@ -255,7 +258,8 @@ public:
 	void AddNamespaceAlias(ScopeId owner, NameId name, ScopeId target);
 	void AddUsingEdge(ScopeId owner, ScopeId target);
 	EntityId NewEntity(NameId name, NamedFlavor flavor, bool complete,
-		TypeId underlying = kNoType);
+		TypeId underlying = kNoType, ScopeId owner = kNoScope,
+		NameId identity_name = 0);
 	BindingId AddBinding(ScopeId owner, BindingKind kind, NameId name,
 		TypeId type, bool constant = false, std::int64_t value = 0,
 		NamedFlavor display = NAMED_NONE, NameId display_type_name = 0,
@@ -276,6 +280,8 @@ public:
 	std::size_t SizeOf(TypeId type) const;
 	std::size_t AlignOf(TypeId type) const;
 	std::string RenderType(TypeId type) const;
+	void BuildEmissionPath(ScopeId owner, NameId terminal,
+		std::vector<NameId>* path) const;
 	void Render(std::ostream& output, std::size_t* max_depth = 0,
 		std::size_t* stack_storage_bytes = 0,
 		std::size_t* rendered_type_nodes = 0) const;

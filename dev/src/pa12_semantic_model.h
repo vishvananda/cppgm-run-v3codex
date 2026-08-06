@@ -76,16 +76,20 @@ struct DumpNode
 {
 	DumpKind kind;
 	TypeId type;
+	TypeId operand_type;
 	ValueCategory category;
 	NameId text;
 	BindingId binding;
+	std::int64_t constant_value;
 	std::uint32_t first_edge;
 	std::uint32_t last_edge;
+	bool constant;
 
 	explicit DumpNode(DumpKind value)
-		: kind(value), type(kNoType), category(VALUE_NONE), text(0),
-		  binding(kNoBinding), first_edge(kNoDumpEdge),
-		  last_edge(kNoDumpEdge) {}
+		: kind(value), type(kNoType), operand_type(kNoType),
+		  category(VALUE_NONE), text(0), binding(kNoBinding),
+		  constant_value(0), first_edge(kNoDumpEdge),
+		  last_edge(kNoDumpEdge), constant(false) {}
 };
 
 struct DumpEdge
@@ -132,9 +136,11 @@ public:
 struct SpecInfo
 {
 	TypeId type;
+	StorageClass storage_class;
 	bool is_typedef;
 	bool is_constexpr;
-	SpecInfo() : type(kNoType), is_typedef(false), is_constexpr(false) {}
+	SpecInfo() : type(kNoType), storage_class(STORAGE_CLASS_NONE),
+		is_typedef(false), is_constexpr(false) {}
 };
 
 struct ParameterInfo

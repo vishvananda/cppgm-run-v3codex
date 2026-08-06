@@ -402,7 +402,8 @@ void TypeAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope)
 			const NamedFlavor flavor =
 				FindChild(parameter, "template-template-parameter") != kNoNode ?
 				NAMED_TEMPLATE_PARAMETER : NAMED_TYPENAME_PARAMETER;
-			const EntityId entity = program_->NewEntity(name, flavor, true);
+			const EntityId entity = program_->NewEntity(name, flavor, true,
+				kNoType, parameters);
 			program_->AddBinding(parameters, BIND_TYPE, name,
 				program_->entities[entity].type);
 		}
@@ -481,7 +482,8 @@ TypeId TypeAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	{
 		if (qualified)
 			throw std::runtime_error("qualified class was not declared");
-		entity = program_->NewEntity(name, flavor, definition);
+		entity = program_->NewEntity(name, flavor, definition,
+			kNoType, semantic_owner);
 		program_->SetTypeName(semantic_owner, name,
 			program_->entities[entity].type);
 	}
@@ -587,7 +589,8 @@ TypeId TypeAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope,
 	else
 	{
 		entity = program_->NewEntity(name, flavor,
-			definition || scoped || explicit_underlying, underlying);
+			definition || scoped || explicit_underlying, underlying,
+			semantic_owner);
 		program_->SetTypeName(semantic_owner, name,
 			program_->entities[entity].type);
 	}

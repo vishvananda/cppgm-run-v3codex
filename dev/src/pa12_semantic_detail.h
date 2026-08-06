@@ -26,7 +26,8 @@ public:
 		SemanticGraphConsumer* graph_consumer = 0, bool render_output = true)
 		: arena_(0), output_(output), stats_(stats), program_(0),
 		  graph_consumer_(graph_consumer), render_output_(render_output),
-		  root_(kNoDumpEdge), current_return_type_(kNoType),
+		  root_(kNoDumpEdge), current_language_linkage_(LANGUAGE_LINKAGE_CPP),
+		  current_return_type_(kNoType),
 		  loop_depth_(0), switch_depth_(0), expression_count_(0),
 		  overload_candidates_(0), overload_order_comparisons_(0),
 		  conversion_checks_(0), function_signature_lookups_(0),
@@ -93,7 +94,10 @@ private:
 
 	BindingId DeclareFunction(ScopeId owner, NameId name, TypeId type,
 		const std::vector<ParameterInfo>& parameters, bool definition,
-		bool template_specialization = false);
+		bool template_specialization = false,
+		StorageClass storage_class = STORAGE_CLASS_NONE,
+		LanguageLinkage language_linkage = LANGUAGE_LINKAGE_CPP,
+		bool nonthrowing = false);
 	std::vector<BindingId> FunctionCandidates(ScopeId scope,
 		const std::string& spelling);
 	std::vector<std::size_t> FindFunctionTemplates(ScopeId scope,
@@ -137,6 +141,8 @@ private:
 	EntityId EntityOf(TypeId type) const;
 	ExpressionInfo MakeLiteral(TypeId type, NameId text,
 		ValueCategory category = VALUE_PRVALUE);
+	bool IsNonthrowing(NodeId declarator, ScopeId scope);
+	void RecordExpressionFacts(const ExpressionInfo& value);
 	ExpressionInfo ApplyTarget(ExpressionInfo value, TypeId target);
 	ConversionRank Conversion(TypeId source, ValueCategory category,
 		bool integer_zero, TypeId target) const;
@@ -192,6 +198,7 @@ private:
 	std::vector<EntityId> demanded_default_constructor_entities_;
 	std::vector<std::uint8_t> default_constructor_demand_states_;
 	std::vector<BindingId> demanded_functions_;
+	LanguageLinkage current_language_linkage_;
 	TypeId current_return_type_;
 	std::size_t loop_depth_;
 	std::size_t switch_depth_;

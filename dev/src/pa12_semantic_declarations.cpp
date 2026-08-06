@@ -64,7 +64,8 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 		const NameId entity_name = ScopePrefix(owner).empty() ? name :
 			DisplayName(owner, name);
 		entity = program_->NewEntity(entity_name, flavor,
-			(arena_->Flags(node) & SYNTAX_FLAG_DEFINITION) != 0);
+			(arena_->Flags(node) & SYNTAX_FLAG_DEFINITION) != 0,
+			kNoType, owner, name);
 		program_->SetTypeName(owner, name, program_->entities[entity].type);
 	}
 	const TypeId type = program_->entities[entity].type;
@@ -195,7 +196,7 @@ TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope,
 	}
 	else
 	{
-		entity = program_->NewEntity(name, flavor, true, underlying);
+		entity = program_->NewEntity(name, flavor, true, underlying, owner);
 		program_->SetTypeName(owner, name, program_->entities[entity].type);
 		if (arena_->Payload(node).size() != 0)
 			program_->AddBinding(owner, BIND_TYPE, name,
@@ -294,6 +295,10 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 		const std::string spelling = PayloadSource(child);
 		if (spelling == "typedef") result.is_typedef = true;
 		else if (spelling == "constexpr") result.is_constexpr = true;
+		else if (spelling == "extern") result.storage_class = STORAGE_CLASS_EXTERN;
+		else if (spelling == "static") result.storage_class = STORAGE_CLASS_STATIC;
+		else if (spelling == "thread_local")
+			result.storage_class = STORAGE_CLASS_THREAD_LOCAL;
 		else if (spelling == "const") cv |= CV_CONST;
 		else if (spelling == "volatile") cv |= CV_VOLATILE;
 		else if (spelling == "unsigned") is_unsigned = true;
@@ -309,8 +314,7 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 		else if (spelling == "wchar_t") is_wchar = true;
 		else if (spelling == "char16_t") is_char16 = true;
 		else if (spelling == "char32_t") is_char32 = true;
-		else if (spelling != "extern" && spelling != "static" &&
-			spelling != "thread_local" && spelling != "inline" &&
+		else if (spelling != "inline" &&
 			spelling != "virtual" && spelling != "friend" &&
 			spelling != "explicit")
 		{
@@ -509,7 +513,8 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 
 BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 	TypeId type, const std::vector<ParameterInfo>& parameters, bool definition,
-	bool template_specialization)
+	bool template_specialization, StorageClass storage_class,
+	LanguageLinkage language_linkage, bool nonthrowing)
 {
 	const LookupResult occupied =
 		program_->LookupDirect(owner, name, LOOKUP_ORDINARY);
@@ -547,6 +552,10 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 	const BindingId declaration = program_->AddBinding(owner, BIND_FUNCTION,
 		name, type, false, 0, NAMED_NONE, 0, canonical,
 		!template_specialization);
+	BindingRecord& declaration_record = program_->bindings[declaration];
+	declaration_record.storage_class = storage_class;
+	declaration_record.language_linkage = language_linkage;
+	declaration_record.nonthrowing = nonthrowing;
 	if (canonical == kNoBinding)
 	{
 		FunctionInfo info;
@@ -570,6 +579,15 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 	}
 	else if (definition)
 		GetMutableFunction(canonical).defined = true;
+	BindingRecord& canonical_record = program_->bindings[canonical];
+	if (previous != kNoBinding &&
+		canonical_record.language_linkage == LANGUAGE_LINKAGE_C)
+		language_linkage = LANGUAGE_LINKAGE_C;
+	if (canonical_record.storage_class == STORAGE_CLASS_NONE ||
+		storage_class == STORAGE_CLASS_STATIC)
+		canonical_record.storage_class = storage_class;
+	canonical_record.language_linkage = language_linkage;
+	canonical_record.nonthrowing = canonical_record.nonthrowing || nonthrowing;
 	return canonical;
 }
 

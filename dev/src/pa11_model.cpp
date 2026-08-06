@@ -461,7 +461,8 @@ void TypeTable::Rehash(std::size_t capacity)
 }
 
 EntityRecord::EntityRecord()
-	: name(0), flavor(NAMED_NONE), member_scope(kNoScope), type(kNoType),
+	: name(0), identity_name(0), owner(kNoScope), member_scope(kNoScope),
+	  flavor(NAMED_NONE), type(kNoType),
 	  underlying(kNoType), declaration(kNoBinding), complete(false)
 {
 }
@@ -469,7 +470,8 @@ EntityRecord::EntityRecord()
 BindingRecord::BindingRecord()
 	: owner(kNoScope), name(0), qualified_name(0), kind(BIND_VARIABLE), type(kNoType),
 	  next(kNoBinding), display_flavor(NAMED_NONE), display_type_name(0),
-	  canonical(kNoBinding), value(0), constant(false)
+	  canonical(kNoBinding), value(0), language_linkage(LANGUAGE_LINKAGE_CPP),
+	  storage_class(STORAGE_CLASS_NONE), constant(false), nonthrowing(false)
 {
 }
 
@@ -643,7 +645,7 @@ void Program::RehashUsingEdges(std::size_t capacity)
 }
 
 EntityId Program::NewEntity(NameId name, NamedFlavor flavor, bool complete,
-	TypeId underlying)
+	TypeId underlying, ScopeId owner, NameId identity_name)
 {
 	if (entities.size() >= kNoEntity)
 		throw std::runtime_error("too many PA11 entities");
@@ -651,11 +653,29 @@ EntityId Program::NewEntity(NameId name, NamedFlavor flavor, bool complete,
 	entities.push_back(EntityRecord());
 	EntityRecord& record = entities.back();
 	record.name = name;
+	record.identity_name = identity_name == 0 ? name : identity_name;
+	record.owner = owner;
 	record.flavor = flavor;
 	record.complete = complete;
 	record.underlying = underlying;
 	record.type = types.Named(entity);
 	return entity;
+}
+
+void Program::BuildEmissionPath(ScopeId owner, NameId terminal,
+	std::vector<NameId>* path) const
+{
+	path->clear();
+	while (owner != kNoScope && owner != GlobalScope())
+	{
+		const ScopeRecord& scope = scopes_[owner];
+		if (scope.name != 0 && (scope.kind == SCOPE_NAMESPACE ||
+			scope.kind == SCOPE_CLASS || scope.kind == SCOPE_ENUM))
+			path->push_back(scope.name);
+		owner = scope.parent;
+	}
+	std::reverse(path->begin(), path->end());
+	path->push_back(terminal);
 }
 
 BindingId Program::AddBinding(ScopeId owner, BindingKind kind, NameId name,

@@ -872,12 +872,13 @@ private:
         return final_name(target.function.qualified_name);
       }
       output_ += "_Z";
-      encode_function(target.function, collect_function_facts(records));
+      encode_function(target.function, collect_function_facts(records),
+                      target.internal_linkage);
       return output_;
     }
     if(target.kind == ABI_TARGET_FACT_VARIABLE) {
       output_ += "_Z";
-      encode_object_name(target.qualified_name, false);
+      encode_object_name(target.qualified_name, target.internal_linkage);
       return output_;
     }
     if(target.kind == ABI_TARGET_FACT_TYPEINFO
@@ -1362,7 +1363,8 @@ private:
     output_ += source_name(graph_.strings.get(components.back())) + 'E';
   }
 
-  void encode_function(const AbiFunctionTarget & target, const FunctionFacts & facts)
+  void encode_function(const AbiFunctionTarget & target, const FunctionFacts & facts,
+                       bool internal = false)
   {
     if(target.kind != ABI_FUNCTION_TARGET_ENCODING) {
       require(facts.components.empty() && facts.local == nullptr
@@ -1381,10 +1383,11 @@ private:
       encode_namespace_lambda_function(target, facts);
       return;
     }
-    encode_path_function(target, facts);
+    encode_path_function(target, facts, internal);
   }
 
-  void encode_path_function(const AbiFunctionTarget & target, const FunctionFacts & facts)
+  void encode_path_function(const AbiFunctionTarget & target, const FunctionFacts & facts,
+                            bool internal)
   {
     const size_t path = graph_.paths.intern(target.qualified_name);
     vector<size_t> template_arguments;
@@ -1409,7 +1412,7 @@ private:
       parameters.push_back(graph_.resolve_type(type));
     }
     parameters.insert(parameters.end(), facts.parameters.begin(), facts.parameters.end());
-    encode_function_name_path(path, facts, template_arguments, parameters.size());
+    encode_function_name_path(path, facts, template_arguments, parameters.size(), internal);
     if(!template_arguments.empty() && !facts.result_types.empty()
        && !(facts.terminal && facts.terminal->kind == ABI_FUNCTION_RECORD_CONVERSION_TERMINAL)) {
       encode_type(facts.result_types.front());
@@ -1419,7 +1422,7 @@ private:
 
   void encode_function_name_path(size_t path, const FunctionFacts & facts,
                                  const vector<size_t> & template_arguments,
-                                 size_t parameter_count)
+                                 size_t parameter_count, bool internal)
   {
     const vector<size_t> components = graph_.paths.components(path);
     const vector<size_t> prefixes = graph_.paths.prefixes(path);
@@ -1428,6 +1431,7 @@ private:
                               && graph_.strings.get(components[0]) == "std";
     if(components.size() == 1 || std_unscoped) {
       if(std_unscoped) output_ += "St";
+      if(internal) output_ += 'L';
       emit_function_terminal(has_custom_terminal ? nullptr : &components.back(), facts,
                              components.size() > 1, parameter_count);
       encode_function_template_arguments(path, facts, template_arguments);
@@ -1435,6 +1439,7 @@ private:
       output_ += 'N';
       emit_qualifiers(facts.qualifiers);
       encode_path_prefix(components, prefixes, components.size() - 1);
+      if(internal) output_ += 'L';
       emit_function_terminal(has_custom_terminal ? nullptr : &components.back(), facts,
                              true, parameter_count);
       encode_function_template_arguments(path, facts, template_arguments);

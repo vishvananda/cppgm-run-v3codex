@@ -505,7 +505,11 @@ ConversionRank SemanticAnalyzer::Conversion(const ExpressionInfo& source,
 ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 	TypeId target)
 {
-	if (target == kNoType) return value;
+	if (target == kNoType)
+	{
+		RecordExpressionFacts(value);
+		return value;
+	}
 	if (Conversion(value, target) == CONVERSION_INVALID)
 		throw std::runtime_error("invalid standard conversion");
 	const TypeRecord& target_record = program_->types.Get(target);
@@ -531,7 +535,32 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 		value.category = VALUE_PRVALUE;
 		++expression_count_;
 	}
+	RecordExpressionFacts(value);
 	return value;
+}
+
+void SemanticAnalyzer::RecordExpressionFacts(const ExpressionInfo& value)
+{
+	if (value.node == kNoDumpEdge) return;
+	DumpNode& node = dump_.nodes[value.node];
+	node.constant = value.constant;
+	node.constant_value = value.value;
+}
+
+bool SemanticAnalyzer::IsNonthrowing(NodeId declarator, ScopeId scope)
+{
+	const NodeId qualifier = FindChild(declarator, "function-qualifier");
+	if (qualifier == kNoNode) return false;
+	const std::string spelling = PayloadSource(qualifier);
+	if (spelling == "noexcept" || spelling == "throw()") return true;
+	if (spelling.compare(0, 8, "noexcept") != 0) return false;
+	const NodeId expression_node = FirstSemanticChild(qualifier);
+	if (expression_node == kNoNode)
+		throw std::logic_error("missing noexcept expression");
+	const ExpressionInfo expression = AnalyzeExpression(expression_node, scope);
+	if (!expression.constant)
+		throw std::runtime_error("nonconstant noexcept expression");
+	return expression.value != 0;
 }
 
 bool SemanticAnalyzer::IsModifiableLvalue(const ExpressionInfo& value) const
@@ -1268,6 +1297,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBinary(NodeId node, ScopeId scope)
 	ExpressionInfo right = AnalyzeExpression(arena_->EdgeChild(second_edge), scope);
 	const std::string operation = PayloadSource(node);
 	TypeId result_type = kNoType;
+	TypeId operand_type = kNoType;
 	if (operation == "&&" || operation == "||")
 	{
 		if ((!IsArithmetic(left.type) && !IsPointer(left.type) &&
@@ -1281,7 +1311,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBinary(NodeId node, ScopeId scope)
 		operation == ">" || operation == "<=" || operation == ">=")
 	{
 		const bool equality = operation == "==" || operation == "!=";
-		if (IsArithmetic(left.type) && IsArithmetic(right.type)) {}
+		if (IsArithmetic(left.type) && IsArithmetic(right.type))
+			operand_type = CommonArithmeticType(left.type, right.type);
 		else if (IsNullptr(left.type) && IsNullptr(right.type) && equality) {}
 		else if (IsPointer(left.type) &&
 			(IsPointer(right.type) || (right.integer_literal_zero && equality) ||
@@ -1303,7 +1334,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBinary(NodeId node, ScopeId scope)
 			IsPointer(Decay(right.type)))
 			result_type = program_->types.Fundamental(FUND_LONG_INT);
 		else if (IsArithmetic(left.type) && IsArithmetic(right.type))
-			result_type = CommonArithmeticType(left.type, right.type);
+			result_type = operand_type = CommonArithmeticType(left.type, right.type);
 		else throw std::runtime_error("invalid additive operands");
 	}
 	else
@@ -1315,10 +1346,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBinary(NodeId node, ScopeId scope)
 			(!integral_only && (!IsArithmetic(left.type) ||
 			 !IsArithmetic(right.type))))
 			throw std::runtime_error("invalid binary arithmetic operands");
-		result_type = CommonArithmeticType(left.type, right.type);
+		result_type = operand_type = CommonArithmeticType(left.type, right.type);
 	}
 	const std::uint32_t expression = MakeDump(DUMP_BINARY_EXPRESSION,
 		result_type, VALUE_PRVALUE, program_->names.Intern(arena_->Payload(node)));
+	dump_.nodes[expression].operand_type = operand_type;
 	dump_.Add(expression, left.node);
 	dump_.Add(expression, right.node);
 	ExpressionInfo result;
@@ -1342,6 +1374,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 	if (!IsModifiableLvalue(left))
 		throw std::runtime_error("assignment requires modifiable lvalue");
 	const std::string operation = PayloadSource(node);
+	const bool pointer_add = IsPointer(left.type) &&
+		(operation == "+=" || operation == "-=") && IsIntegral(right.type);
 	if (operation == "=") right = ApplyTarget(right, EffectiveType(left.type));
 	else
 	{
@@ -1351,8 +1385,6 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 		const bool integral_operation = operation == "%=" ||
 			operation == "<<=" || operation == ">>=" || operation == "&=" ||
 			operation == "|=" || operation == "^=";
-		const bool pointer_add = IsPointer(left.type) && additive &&
-			IsIntegral(right.type);
 		const bool arithmetic = arithmetic_operation &&
 			IsArithmetic(left.type) && IsArithmetic(right.type);
 		const bool integral = integral_operation && IsIntegral(left.type) &&
@@ -1363,6 +1395,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 	const TypeId result_type = EffectiveType(left.type);
 	const std::uint32_t expression = MakeDump(DUMP_ASSIGNMENT_EXPRESSION,
 		result_type, VALUE_LVALUE, program_->names.Intern(arena_->Payload(node)));
+	if (operation != "=" && !pointer_add)
+		dump_.nodes[expression].operand_type =
+			CommonArithmeticType(left.type, right.type);
 	dump_.Add(expression, left.node);
 	dump_.Add(expression, right.node);
 	ExpressionInfo result;
@@ -1549,6 +1584,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 	result.node = MakeDump(DUMP_SIZEOF_EXPRESSION, result.type, VALUE_PRVALUE);
 	result.constant = true;
 	result.value = static_cast<std::int64_t>(program_->SizeOf(measured));
+	RecordExpressionFacts(result);
 	++expression_count_;
 	return result;
 }
@@ -1574,6 +1610,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 	result.node = list;
 	result.type = type;
 	result.category = VALUE_LVALUE;
+	RecordExpressionFacts(result);
 	++expression_count_;
 	return result;
 }
@@ -1876,6 +1913,9 @@ void SemanticAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 	}
 	if (arena_->IsTag(node, "linkage-specification"))
 	{
+		const LanguageLinkage previous_linkage = current_language_linkage_;
+		current_language_linkage_ = arena_->Payload(node) == "C" ?
+			LANGUAGE_LINKAGE_C : LANGUAGE_LINKAGE_CPP;
 		for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 			edge = arena_->NextEdge(edge))
 		{
@@ -1883,6 +1923,7 @@ void SemanticAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 			if (IsDeclaration(child))
 				AnalyzeDeclaration(child, scope, output_parent, local);
 		}
+		current_language_linkage_ = previous_linkage;
 		return;
 	}
 	throw std::runtime_error("unsupported PA12 declaration: " + arena_->Tag(node));
@@ -1935,7 +1976,8 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		if (program_->types.IsFunction(parsed.type))
 		{
 			const BindingId function = DeclareFunction(scope, parsed.name,
-				parsed.type, parsed.parameters, false);
+				parsed.type, parsed.parameters, false, false, spec.storage_class,
+				current_language_linkage_, IsNonthrowing(declarator, scope));
 			const std::uint32_t declaration = MakeDump(DUMP_FUNCTION_DECLARATION,
 				parsed.type, VALUE_NONE, GetFunction(function).display_name, function);
 			dump_.Add(owner, declaration);
@@ -1950,6 +1992,19 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			throw std::runtime_error("variable conflicts with function binding");
 		const BindingId binding = program_->AddBinding(scope, BIND_VARIABLE,
 			parsed.name, parsed.type);
+		BindingRecord& binding_record = program_->bindings[binding];
+		binding_record.language_linkage = current_language_linkage_;
+		binding_record.storage_class = spec.storage_class;
+		const TypeRecord& top_type = program_->types.Get(parsed.type);
+		if (!local && binding_record.storage_class == STORAGE_CLASS_NONE &&
+			top_type.kind == TYPE_QUALIFIED && (top_type.cv & CV_CONST) != 0)
+			binding_record.storage_class = STORAGE_CLASS_STATIC;
+		BindingRecord& canonical_record =
+			program_->bindings[binding_record.canonical];
+		canonical_record.language_linkage = binding_record.language_linkage;
+		if (canonical_record.storage_class == STORAGE_CLASS_NONE ||
+			binding_record.storage_class == STORAGE_CLASS_STATIC)
+			canonical_record.storage_class = binding_record.storage_class;
 		if (!local)
 			program_->bindings[binding].qualified_name =
 				DisplayName(scope, parsed.name);
@@ -2072,7 +2127,8 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	if (!program_->types.IsFunction(parsed.type))
 		throw std::runtime_error("function definition has non-function type");
 	const BindingId binding = DeclareFunction(owner, parsed.name,
-		parsed.type, parsed.parameters, true);
+		parsed.type, parsed.parameters, true, false, spec.storage_class,
+		current_language_linkage_, IsNonthrowing(declarator, owner));
 	const FunctionInfo& function = GetFunction(binding);
 	const std::uint32_t output_node = MakeDump(DUMP_FUNCTION_DEFINITION,
 		parsed.type, VALUE_NONE, function.display_name, binding);
