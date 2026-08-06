@@ -228,7 +228,8 @@ struct BindingRecord
 	std::int64_t value;
 	LanguageLinkage language_linkage;
 	StorageClass storage_class;
-	bool constant, nonthrowing, non_static_data_member, static_member_function;
+	bool constant, nonthrowing, non_static_data_member, static_member_function,
+		has_default_member_initializer;
 
 	BindingRecord();
 };

@@ -92,6 +92,8 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 		program_->AddBinding(owner, BIND_TYPE, name, type, false, 0, flavor);
 	if ((arena_->Flags(node) & SYNTAX_FLAG_DEFINITION) != 0)
 	{
+		if (program_->entities[entity].complete)
+			throw std::runtime_error("duplicate class definition");
 		ScopeId member_scope = program_->entities[entity].member_scope;
 		if (member_scope == kNoScope)
 		{
@@ -101,9 +103,8 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 				program_->names.Intern(prefix));
 			program_->SetEntityScope(entity, member_scope);
 		}
-		// Class member call semantics are outside this stage. The stable class
-		// scope owns indexed fields/functions even though class declarations are
-		// not part of the PA12 output view.
+		// The stable class scope owns indexed field/function identities even
+		// though class declarations are not part of the PA12 output view.
 		for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 			edge = arena_->NextEdge(edge))
 		{
@@ -146,6 +147,13 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 	std::size_t alignment = 1;
 	const bool is_union = owner.flavor == NAMED_UNION;
 	const std::vector<BindingId>& members = entity_data_members_[entity];
+	const bool implicit_default_constructor =
+		!owner.has_user_declared_constructor;
+	if (implicit_default_constructor)
+	{
+		owner.default_constructible = true;
+		owner.trivial_default_constructor = true;
+	}
 	for (std::size_t i = 0; i < members.size(); ++i)
 	{
 		++class_layout_member_visits_;
@@ -166,37 +174,55 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 				throw std::runtime_error("class layout is too large");
 			size += member_size;
 		}
+		if (!implicit_default_constructor) continue;
+		if (member.has_default_member_initializer)
+		{
+			owner.trivial_default_constructor = false;
+			continue;
+		}
+		TypeId member_type = member.type;
+		const TypeRecord* member_record = &program_->types.Get(member_type);
+		while (member_record->kind == TYPE_ARRAY)
+		{
+			member_type = member_record->child;
+			member_record = &program_->types.Get(member_type);
+		}
+		if (member_record->kind == TYPE_LVALUE_REFERENCE ||
+			member_record->kind == TYPE_RVALUE_REFERENCE)
+		{
+			owner.default_constructible = false;
+			continue;
+		}
+		const bool const_member = member_record->kind == TYPE_QUALIFIED &&
+			(member_record->cv & CV_CONST) != 0;
+		if (const_member)
+		{
+			member_type = member_record->child;
+			member_record = &program_->types.Get(member_type);
+		}
+		if (member_record->kind != TYPE_NAMED)
+		{
+			if (const_member) owner.default_constructible = false;
+			continue;
+		}
+		const EntityRecord& subobject =
+			program_->entities[member_record->entity];
+		if (subobject.flavor == NAMED_ENUM ||
+			subobject.flavor == NAMED_ENUM_CLASS)
+		{
+			if (const_member) owner.default_constructible = false;
+			continue;
+		}
+		if (!subobject.default_constructible)
+			owner.default_constructible = false;
+		if (!subobject.trivial_default_constructor)
+			owner.trivial_default_constructor = false;
 	}
 	if (size == 0) size = 1;
 	size = AlignUp(size, alignment);
 	owner.object_size = size;
 	owner.object_alignment = alignment;
 	owner.layout_complete = true;
-	if (!owner.has_user_declared_constructor)
-	{
-		owner.default_constructible = true;
-		owner.trivial_default_constructor = true;
-		for (std::size_t i = 0; i < members.size(); ++i)
-		{
-			TypeId member_type = program_->types.RemoveTopCv(
-				program_->bindings[members[i]].type);
-			const TypeRecord* member_record = &program_->types.Get(member_type);
-			while (member_record->kind == TYPE_ARRAY)
-			{
-				member_type = program_->types.RemoveTopCv(member_record->child);
-				member_record = &program_->types.Get(member_type);
-			}
-			if (member_record->kind != TYPE_NAMED) continue;
-			const EntityRecord& subobject =
-				program_->entities[member_record->entity];
-			if (subobject.flavor == NAMED_ENUM ||
-				subobject.flavor == NAMED_ENUM_CLASS) continue;
-			if (!subobject.default_constructible)
-				owner.default_constructible = false;
-			if (!subobject.trivial_default_constructor)
-				owner.trivial_default_constructor = false;
-		}
-	}
 }
 
 EntityId SemanticAnalyzer::EntityOf(TypeId type) const
@@ -252,13 +278,21 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		}
 		else
 		{
+			const LookupResult occupied =
+				program_->LookupDirect(scope, parsed.name, LOOKUP_ORDINARY);
+			if (parsed.name != 0 && occupied.ordinary != kNoBinding)
+				throw std::runtime_error("duplicate or conflicting class member");
 			const BindingId member = program_->AddBinding(scope, BIND_VARIABLE,
-				parsed.name, parsed.type);
+				parsed.name, parsed.type, false, 0, NAMED_NONE, 0, kNoBinding,
+				false);
 			BindingRecord& binding = program_->bindings[member];
 			binding.storage_class = spec.storage_class;
 			binding.member_owner = EntityOf(owner_type);
 			binding.non_static_data_member =
 				spec.storage_class != STORAGE_CLASS_STATIC;
+			binding.has_default_member_initializer =
+				binding.non_static_data_member &&
+				FindChild(item, "initializer") != kNoNode;
 			const EntityId entity = EntityOf(owner_type);
 			if (binding.non_static_data_member && entity_data_members_.size() <= entity)
 				entity_data_members_.resize(static_cast<std::size_t>(entity) + 1);
