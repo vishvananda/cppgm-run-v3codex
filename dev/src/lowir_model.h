@@ -7,6 +7,7 @@
 // adapt it, or replace it with your own equivalent model, but backend-visible
 // facts must still serialize to and parse back from LowIR text.
 
+#include <cstddef>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -23,10 +24,36 @@ struct ParseError : std::runtime_error
   {}
 };
 
+enum LowTypeKind
+{
+  LTK_INVALID,
+  LTK_VOID,
+  LTK_I1,
+  LTK_I8,
+  LTK_U8,
+  LTK_I16,
+  LTK_U16,
+  LTK_I32,
+  LTK_U32,
+  LTK_I64,
+  LTK_F32,
+  LTK_F64,
+  LTK_F80,
+  LTK_PTR,
+  LTK_OBJECT
+};
+
 struct LowType
 {
   std::string text;
+  LowTypeKind kind = LTK_INVALID;
+  std::size_t bit_width = 0;
+  std::size_t storage_size = 0;
+  std::size_t alignment = 1;
 };
+
+const LowType & builtin_lowir_type(LowTypeKind kind);
+bool same_lowir_type(const LowType & left, const LowType & right);
 
 struct Operand
 {

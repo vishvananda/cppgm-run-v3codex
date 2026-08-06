@@ -18,8 +18,6 @@ namespace {
 struct Token
 {
   std::string text;
-  std::string source;
-  std::size_t line;
 };
 
 bool is_punctuation(char c)
@@ -29,15 +27,12 @@ bool is_punctuation(char c)
          c == '-';
 }
 
-void lex_text(const std::string & text, const std::string & source,
-              std::vector<Token> & out)
+void lex_text(const std::string & text, std::vector<Token> & out)
 {
   std::size_t i = 0;
-  std::size_t line = 1;
   while(i < text.size()) {
     const char c = text[i];
     if(c == '\n') {
-      ++line;
       ++i;
       continue;
     }
@@ -50,12 +45,12 @@ void lex_text(const std::string & text, const std::string & source,
       continue;
     }
     if(c == '-' && i + 1 < text.size() && text[i + 1] == '>') {
-      out.push_back(Token{"->", source, line});
+      out.push_back(Token{"->"});
       i += 2;
       continue;
     }
     if(is_punctuation(c)) {
-      out.push_back(Token{std::string(1, c), source, line});
+      out.push_back(Token{std::string(1, c)});
       ++i;
       continue;
     }
@@ -66,7 +61,7 @@ void lex_text(const std::string & text, const std::string & source,
       ++i;
     }
     if(i == begin) ++i;
-    out.push_back(Token{text.substr(begin, i - begin), source, line});
+    out.push_back(Token{text.substr(begin, i - begin)});
   }
 }
 
@@ -82,7 +77,7 @@ bool is_power_of_two(std::size_t value)
 
 std::size_t parse_positive_size(const std::string & text)
 {
-  if(text.empty()) throw ParseError("expected positive integer");
+  if(text.empty() || text[0] == '-') throw ParseError("expected positive integer");
   char * end = 0;
   errno = 0;
   const unsigned long long value = std::strtoull(text.c_str(), &end, 0);
@@ -103,46 +98,54 @@ void parse_span_text(const std::string & text, std::size_t & bytes,
     throw ParseError("object alignment is not a power of two");
 }
 
-bool is_basic_type(const std::string & text)
+LowType make_builtin_type(const char * text, LowTypeKind kind,
+                          std::size_t bit_width, std::size_t storage_size,
+                          std::size_t alignment)
 {
-  static const char * const names[] = {
-    "void", "i1", "i8", "u8", "i16", "u16", "i32", "u32",
-    "i64", "f32", "f64", "f80", "ptr"
-  };
-  for(std::size_t i = 0; i < sizeof(names) / sizeof(names[0]); ++i)
-    if(text == names[i]) return true;
-  return false;
+  LowType result;
+  result.text = text;
+  result.kind = kind;
+  result.bit_width = bit_width;
+  result.storage_size = storage_size;
+  result.alignment = alignment;
+  return result;
 }
 
-void validate_type_text(const std::string & text)
+LowType parse_type_text(const std::string & text)
 {
-  if(is_basic_type(text)) return;
+  static const std::pair<const char *, LowTypeKind> names[] = {
+    {"void", LTK_VOID}, {"i1", LTK_I1}, {"i8", LTK_I8}, {"u8", LTK_U8},
+    {"i16", LTK_I16}, {"u16", LTK_U16}, {"i32", LTK_I32},
+    {"u32", LTK_U32}, {"i64", LTK_I64}, {"f32", LTK_F32},
+    {"f64", LTK_F64}, {"f80", LTK_F80}, {"ptr", LTK_PTR}
+  };
+  for(std::size_t i = 0; i < sizeof(names) / sizeof(names[0]); ++i) {
+    if(text == names[i].first) return builtin_lowir_type(names[i].second);
+  }
   if(text.size() > 6 && text.compare(0, 4, "obj<") == 0 && text.back() == '>') {
     std::size_t bytes = 0;
     std::size_t alignment = 0;
     parse_span_text(text.substr(4, text.size() - 5), bytes, alignment);
     if(alignment > bytes) throw ParseError("object alignment exceeds size");
-    return;
+    LowType result;
+    result.text = text;
+    result.kind = LTK_OBJECT;
+    result.storage_size = bytes;
+    result.alignment = alignment;
+    result.bit_width = bytes <= SIZE_MAX / 8 ? bytes * 8 : 0;
+    return result;
   }
   throw ParseError("unknown LowIR type: " + text);
 }
 
 std::size_t integer_width(const LowType & type)
 {
-  if(type.text == "i1") return 1;
-  if(type.text == "i8" || type.text == "u8") return 8;
-  if(type.text == "i16" || type.text == "u16") return 16;
-  if(type.text == "i32" || type.text == "u32") return 32;
-  if(type.text == "i64") return 64;
-  return 0;
+  return type.kind >= LTK_I1 && type.kind <= LTK_I64 ? type.bit_width : 0;
 }
 
 std::size_t float_width(const LowType & type)
 {
-  if(type.text == "f32") return 32;
-  if(type.text == "f64") return 64;
-  if(type.text == "f80") return 80;
-  return 0;
+  return type.kind >= LTK_F32 && type.kind <= LTK_F80 ? type.bit_width : 0;
 }
 
 typedef std::vector<std::pair<std::string, std::string> > Metadata;
@@ -201,10 +204,7 @@ private:
 
   LowType type()
   {
-    LowType result;
-    result.text = take();
-    validate_type_text(result.text);
-    return result;
+    return parse_type_text(take());
   }
 
   std::string signed_literal()
@@ -282,7 +282,7 @@ private:
         if(!storage) throw ParseError("storage metadata on non-global");
         *storage = parse_storage(value);
       } else {
-        apply_symbol_item(key, value, symbol);
+        apply_symbol_item(key, value, symbol, boundary != 0);
       }
     }
   }
@@ -312,7 +312,7 @@ private:
   }
 
   void apply_symbol_item(const std::string & key, const std::string & value,
-                         SymbolMetadata & out)
+                         SymbolMetadata & out, bool function_symbol)
   {
     if(key == "role") out.role = parse_role(value);
     else if(key == "linkage") {
@@ -325,11 +325,19 @@ private:
       else if(value == "weak") out.binding = SBM_WEAK;
       else throw ParseError("invalid binding metadata");
     } else if(key == "object") out.object_symbol = value;
-    else if(key == "tls_for") out.tls_for_symbol = value;
+    else if(key == "tls_for") {
+      if(!function_symbol) throw ParseError("tls_for metadata requires a function");
+      out.tls_for_symbol = value;
+    }
     else if(key == "keep_alias") out.keep_internal_alias = yes_no(value);
     else if(key == "prefer_local") out.prefer_local_object_binding = yes_no(value);
-    else if(key == "trivial_lifecycle") out.object_trivial_lifecycle = yes_no(value);
-    else if(key == "force_inline") out.force_inline = yes_no(value);
+    else if(key == "trivial_lifecycle") {
+      if(!function_symbol) throw ParseError("trivial_lifecycle metadata requires a function");
+      out.object_trivial_lifecycle = yes_no(value);
+    } else if(key == "force_inline") {
+      if(!function_symbol) throw ParseError("force_inline metadata requires a function");
+      out.force_inline = yes_no(value);
+    }
     else throw ParseError("unknown symbol metadata: " + key);
   }
 
@@ -342,7 +350,6 @@ private:
 
   GlobalStorageMode parse_storage(const std::string & value)
   {
-    if(value == "writable") return GSM_WRITABLE;
     if(value == "readonly") return GSM_READONLY;
     if(value == "thread_local") return GSM_THREAD_LOCAL;
     throw ParseError("invalid global storage metadata");
@@ -473,7 +480,7 @@ private:
         item.zero_bytes = parse_positive_size(signed_literal());
       } else {
         item.type = type();
-        if(item.type.text == "ptr" && accept("addr")) {
+        if(item.type.kind == LTK_PTR && accept("addr")) {
           item.kind = GlobalDefinition::DataItem::ITEM_ADDR;
           item.symbol = named('@', "address initializer symbol");
           item.addr_addend = address_addend();
@@ -488,7 +495,7 @@ private:
 
   void parse_scalar_global(GlobalDefinition & result)
   {
-    if(result.type.text.empty()) throw ParseError("scalar global requires type");
+    if(result.type.kind == LTK_INVALID) throw ParseError("scalar global requires type");
     if(accept("zero")) result.init_kind = GlobalDefinition::INIT_ZERO;
     else if(accept("addr")) {
       result.init_kind = GlobalDefinition::INIT_ADDR;
@@ -698,7 +705,7 @@ private:
   {
     out.kind = Instruction::IK_CALL;
     out.call_returns_void = returns_void;
-    out.type.text = returns_void ? "void" : type().text;
+    out.type = returns_void ? builtin_lowir_type(LTK_VOID) : type();
     out.first = operand();
     expect("(");
     if(!accept(")")) {
@@ -772,7 +779,7 @@ private:
   {
     out.kind = Instruction::IK_RETURN;
     out.type = type();
-    if(out.type.text != "void") out.first = operand();
+    if(out.type.kind != LTK_VOID) out.first = operand();
   }
 };
 
@@ -793,6 +800,7 @@ public:
     index_top_level();
     validate_global_initializers();
     validate_roles_and_tls();
+    validate_entry_definition();
     validate_aliases();
     for(std::size_t i = 0; i < program_.function_declarations.size(); ++i)
       validate_parameters(program_.function_declarations[i].params,
@@ -802,6 +810,8 @@ public:
   }
 
 private:
+  typedef std::unordered_map<std::string, const LowType *> TypeIndex;
+
   const Program & program_;
   std::unordered_set<std::string> top_symbols_;
   std::unordered_set<std::string> globals_;
@@ -866,6 +876,22 @@ private:
       validate_symbol_facts(program_.functions[i].metadata, roles, tls_targets);
   }
 
+  void validate_entry_definition()
+  {
+    for(std::size_t i = 0; i < program_.function_declarations.size(); ++i) {
+      if(program_.function_declarations[i].metadata.role == SR_ENTRY)
+        throw ParseError("entry role requires a function definition");
+    }
+    bool explicit_entry = false;
+    bool legacy_entry = false;
+    for(std::size_t i = 0; i < program_.functions.size(); ++i) {
+      const Function & function = program_.functions[i];
+      explicit_entry = explicit_entry || function.metadata.role == SR_ENTRY;
+      legacy_entry = legacy_entry || function.name == "@main";
+    }
+    if(!explicit_entry && !legacy_entry) throw ParseError("LowIR program has no entry definition");
+  }
+
   void validate_global_initializers()
   {
     for(std::size_t i = 0; i < program_.globals.size(); ++i) {
@@ -915,7 +941,7 @@ private:
     for(std::size_t i = 0; i < params.size(); ++i) {
       const Parameter & param = params[i];
       if(!names.insert(param.name).second) throw ParseError("duplicate parameter");
-      const bool pointer = param.type.text == "ptr";
+      const bool pointer = param.type.kind == LTK_PTR;
       if(param.metadata.passing != PPM_DIRECT && !pointer)
         throw ParseError("non-direct passing requires ptr");
       if(param.metadata.capture != PCM_DEFAULT && !pointer)
@@ -925,7 +951,7 @@ private:
       if(param.metadata.alias != PALM_DEFAULT && !pointer)
         throw ParseError("alias metadata requires ptr");
       if(param.metadata.passing == PPM_INDIRECT_RESULT &&
-         (i != 0 || result.text != "void"))
+         (i != 0 || result.kind != LTK_VOID))
         throw ParseError("invalid indirect result parameter");
     }
   }
@@ -934,13 +960,13 @@ private:
   {
     validate_parameters(function.params, function.return_type);
     if(function.blocks.empty()) throw ParseError("function has no blocks");
-    std::unordered_map<std::string, LowType> values;
-    std::unordered_map<std::string, LowType> slots;
+    TypeIndex values;
+    TypeIndex slots;
     std::unordered_set<std::string> blocks;
     for(std::size_t i = 0; i < function.params.size(); ++i)
-      values[function.params[i].name] = function.params[i].type;
+      values[function.params[i].name] = &function.params[i].type;
     for(std::size_t i = 0; i < function.slots.size(); ++i) {
-      if(!slots.emplace(function.slots[i].first, function.slots[i].second).second)
+      if(!slots.emplace(function.slots[i].first, &function.slots[i].second).second)
         throw ParseError("duplicate slot");
     }
     for(std::size_t i = 0; i < function.blocks.size(); ++i)
@@ -950,8 +976,8 @@ private:
   }
 
   void validate_block(const Function & function, const Block & block,
-                      std::unordered_map<std::string, LowType> & values,
-                      const std::unordered_map<std::string, LowType> & slots,
+                      TypeIndex & values,
+                      const TypeIndex & slots,
                       const std::unordered_set<std::string> & blocks)
   {
     if(block.instructions.empty()) throw ParseError("empty block");
@@ -960,14 +986,14 @@ private:
       validate_instruction(function, ins, values, slots, blocks);
       if(!ins.dest.empty()) {
         if(values.count(ins.dest)) throw ParseError("duplicate temporary definition");
-        values[ins.dest] = result_type(ins);
+        values[ins.dest] = &result_type(ins);
       }
     }
   }
 
   void validate_operand(const Operand & operand,
-                        const std::unordered_map<std::string, LowType> & values,
-                        const std::unordered_map<std::string, LowType> & slots,
+                        const TypeIndex & values,
+                        const TypeIndex & slots,
                         bool allow_label = false) const
   {
     if(operand.kind == Operand::OP_TEMP && !values.count(operand.text))
@@ -987,8 +1013,8 @@ private:
   }
 
   void validate_instruction(const Function & function, const Instruction & ins,
-                            const std::unordered_map<std::string, LowType> & values,
-                            const std::unordered_map<std::string, LowType> & slots,
+                            const TypeIndex & values,
+                            const TypeIndex & slots,
                             const std::unordered_set<std::string> & blocks)
   {
     const Instruction::Kind kind = ins.kind;
@@ -1006,15 +1032,15 @@ private:
       validate_general_operands(ins, values, slots);
       validate_operation_types(ins);
     }
-    if(kind == Instruction::IK_RETURN && ins.type.text != function.return_type.text)
+    if(kind == Instruction::IK_RETURN && !same_lowir_type(ins.type, function.return_type))
       throw ParseError("return type does not match function");
     if((kind == Instruction::IK_EH_TRY || kind == Instruction::IK_EH_CLEANUP))
       validate_target(ins.first, blocks);
   }
 
   void validate_general_operands(const Instruction & ins,
-                                 const std::unordered_map<std::string, LowType> & values,
-                                 const std::unordered_map<std::string, LowType> & slots)
+                                 const TypeIndex & values,
+                                 const TypeIndex & slots)
   {
     const Operand * operands[] = {&ins.first, &ins.second, &ins.third};
     for(std::size_t i = 0; i < 3; ++i)
@@ -1027,9 +1053,9 @@ private:
   void validate_operation_types(const Instruction & ins)
   {
     if(ins.kind == Instruction::IK_UNARY) {
-      if(ins.op == "decay" && ins.type.text != "ptr") throw ParseError("decay requires ptr");
-      if(ins.op == "bswap" && ins.type.text != "i16" && ins.type.text != "i32" &&
-         ins.type.text != "i64") throw ParseError("invalid bswap type");
+      if(ins.op == "decay" && ins.type.kind != LTK_PTR) throw ParseError("decay requires ptr");
+      if(ins.op == "bswap" && ins.type.kind != LTK_I16 && ins.type.kind != LTK_I32 &&
+         ins.type.kind != LTK_I64) throw ParseError("invalid bswap type");
     }
     if(ins.kind == Instruction::IK_CONVERT) validate_conversion(ins);
     if((ins.kind == Instruction::IK_COPYOBJ || ins.kind == Instruction::IK_ZEROINIT) &&
@@ -1053,8 +1079,8 @@ private:
   }
 
   void validate_call(const Instruction & ins,
-                     const std::unordered_map<std::string, LowType> & values,
-                     const std::unordered_map<std::string, LowType> & slots)
+                     const TypeIndex & values,
+                     const TypeIndex & slots)
   {
     validate_operand(ins.first, values, slots);
     for(std::size_t i = 0; i < ins.args.size(); ++i) validate_operand(ins.args[i], values, slots);
@@ -1064,10 +1090,12 @@ private:
     if(!direct && !ins.has_call_signature) throw ParseError("indirect call requires signature");
     if(ins.has_call_signature) {
       validate_parameters(ins.call_params, ins.call_return_type);
-      if(ins.call_return_type.text != ins.type.text) throw ParseError("call signature return mismatch");
+      if(!same_lowir_type(ins.call_return_type, ins.type))
+        throw ParseError("call signature return mismatch");
       validate_arity(ins.args.size(), ins.call_params.size(), ins.call_boundary.arity);
     } else {
-      if(found->second.result->text != ins.type.text) throw ParseError("direct call return mismatch");
+      if(!same_lowir_type(*found->second.result, ins.type))
+        throw ParseError("direct call return mismatch");
       validate_arity(ins.args.size(), found->second.params->size(), found->second.boundary->arity);
     }
   }
@@ -1078,13 +1106,13 @@ private:
       throw ParseError("call arity mismatch");
   }
 
-  LowType result_type(const Instruction & ins) const
+  const LowType & result_type(const Instruction & ins) const
   {
-    LowType result = ins.type;
-    if(ins.kind == Instruction::IK_ADDR || ins.kind == Instruction::IK_INDEX) result.text = "ptr";
+    if(ins.kind == Instruction::IK_ADDR || ins.kind == Instruction::IK_INDEX)
+      return builtin_lowir_type(LTK_PTR);
     if(ins.kind == Instruction::IK_CMP || ins.kind == Instruction::IK_ATOMIC_COMPARE_EXCHANGE ||
-       ins.kind == Instruction::IK_EXCEPTION_SELECTOR) result.text = "i64";
-    return result;
+       ins.kind == Instruction::IK_EXCEPTION_SELECTOR) return builtin_lowir_type(LTK_I64);
+    return ins.type;
   }
 };
 
@@ -1095,22 +1123,69 @@ std::string read_file(const std::string & path)
   return std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
 }
 
-Program parse_tokens(const std::vector<Token> & tokens)
+Program parse_tokens(std::vector<Token> & tokens)
 {
-  Parser parser(tokens);
-  Program program = parser.Parse();
+  Program program;
+  {
+    Parser parser(tokens);
+    program = parser.Parse();
+  }
+  const std::size_t token_count = tokens.size();
+  std::vector<Token>().swap(tokens);
   Validator(program).Validate();
-  program.token_count = tokens.size();
+  program.token_count = token_count;
   return program;
 }
 
 }  // namespace
 
+const LowType & builtin_lowir_type(LowTypeKind kind)
+{
+  static const LowType void_type = make_builtin_type("void", LTK_VOID, 0, 0, 1);
+  static const LowType i1_type = make_builtin_type("i1", LTK_I1, 1, 1, 1);
+  static const LowType i8_type = make_builtin_type("i8", LTK_I8, 8, 1, 1);
+  static const LowType u8_type = make_builtin_type("u8", LTK_U8, 8, 1, 1);
+  static const LowType i16_type = make_builtin_type("i16", LTK_I16, 16, 2, 2);
+  static const LowType u16_type = make_builtin_type("u16", LTK_U16, 16, 2, 2);
+  static const LowType i32_type = make_builtin_type("i32", LTK_I32, 32, 4, 4);
+  static const LowType u32_type = make_builtin_type("u32", LTK_U32, 32, 4, 4);
+  static const LowType i64_type = make_builtin_type("i64", LTK_I64, 64, 8, 8);
+  static const LowType f32_type = make_builtin_type("f32", LTK_F32, 32, 4, 4);
+  static const LowType f64_type = make_builtin_type("f64", LTK_F64, 64, 8, 8);
+  static const LowType f80_type = make_builtin_type("f80", LTK_F80, 80, 16, 16);
+  static const LowType ptr_type = make_builtin_type("ptr", LTK_PTR, 64, 8, 8);
+
+  switch(kind) {
+  case LTK_VOID: return void_type;
+  case LTK_I1: return i1_type;
+  case LTK_I8: return i8_type;
+  case LTK_U8: return u8_type;
+  case LTK_I16: return i16_type;
+  case LTK_U16: return u16_type;
+  case LTK_I32: return i32_type;
+  case LTK_U32: return u32_type;
+  case LTK_I64: return i64_type;
+  case LTK_F32: return f32_type;
+  case LTK_F64: return f64_type;
+  case LTK_F80: return f80_type;
+  case LTK_PTR: return ptr_type;
+  default: throw ParseError("invalid built-in LowIR type identity");
+  }
+}
+
+bool same_lowir_type(const LowType & left, const LowType & right)
+{
+  if(left.kind != right.kind) return false;
+  if(left.kind != LTK_OBJECT) return true;
+  return left.storage_size == right.storage_size && left.alignment == right.alignment;
+}
+
 LowirProgram parse_lowir_program_text(const std::string & text,
                                       const std::string & source_name)
 {
+  (void) source_name;
   std::vector<Token> tokens;
-  lex_text(text, source_name, tokens);
+  lex_text(text, tokens);
   Program program = parse_tokens(tokens);
   program.source_bytes = text.size();
   return program;
@@ -1124,7 +1199,7 @@ LowirProgram parse_lowir_program_files(const std::vector<std::string> & paths)
   for(std::size_t i = 0; i < paths.size(); ++i) {
     const std::string text = read_file(paths[i]);
     source_bytes += text.size();
-    lex_text(text, paths[i], tokens);
+    lex_text(text, tokens);
   }
   Program program = parse_tokens(tokens);
   program.source_bytes = source_bytes;
