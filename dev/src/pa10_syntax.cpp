@@ -287,6 +287,13 @@ private:
 			Spelling(position);
 	}
 
+	NodeId MakeTokenNode(const char* tag, std::size_t position)
+	{
+		const NodeId node = arena_.Make(tag, TokenDescription(position));
+		arena_.SetSemanticPayload(node, tokens_[position].spelling);
+		return node;
+	}
+
 	std::string JoinSpellings(std::size_t first, std::size_t last) const
 	{
 		std::string result;
@@ -710,9 +717,9 @@ NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id,
 		{
 			if (saw_user_type) break;
 			++position_;
-			arena_.Add(sequence, arena_.Make(for_type_id ?
+			arena_.Add(sequence, MakeTokenNode(for_type_id ?
 				"type-specifier" : "decl-specifier",
-				TokenDescription(token_position)));
+				token_position));
 			if (first_type && first_type->empty())
 				*first_type = Spelling(token_position);
 			consumed = true;
@@ -724,17 +731,17 @@ NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id,
 			 kind == static_cast<std::uint16_t>(KW_VOLATILE)))
 		{
 			++position_;
-			arena_.Add(sequence, arena_.Make(for_type_id ?
+			arena_.Add(sequence, MakeTokenNode(for_type_id ?
 				"cv-qualifier" : "decl-specifier",
-				TokenDescription(token_position)));
+				token_position));
 			consumed = true;
 			continue;
 		}
 		if (!for_type_id && IsDeclSpecifierKeyword(kind))
 		{
 			++position_;
-			arena_.Add(sequence, arena_.Make("decl-specifier",
-				TokenDescription(token_position)));
+			arena_.Add(sequence, MakeTokenNode("decl-specifier",
+				token_position));
 			consumed = true;
 			if (kind == static_cast<std::uint16_t>(KW_AUTO)) saw_type = true;
 			continue;
@@ -805,9 +812,11 @@ NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id,
 			const bool decorated = name.find("::") != std::string::npos ||
 				name.find('<') != std::string::npos ||
 				name.find("decltype") == 0;
-			arena_.Add(sequence, arena_.Make(for_type_id ? "type-name" :
+			const NodeId name_node = arena_.Make(for_type_id ? "type-name" :
 				"decl-specifier", for_type_id || decorated ? name :
-				"TT_IDENTIFIER:" + name));
+				"TT_IDENTIFIER:" + name);
+			arena_.SetSemanticPayload(name_node, strings_.Intern(name));
+			arena_.Add(sequence, name_node);
 			if (first_type && first_type->empty()) *first_type = name;
 			consumed = true;
 			saw_type = true;
@@ -878,8 +887,11 @@ NodeId Parser::ParseParameterClause()
 			const NodeId inner_clause = arena_.Make("parameter-clause");
 			const NodeId inner_parameter = arena_.Make("parameter-declaration");
 			const NodeId inner_specifiers = arena_.Make("decl-specifier-seq");
-			arena_.Add(inner_specifiers, arena_.Make("decl-specifier",
-				"TT_IDENTIFIER:" + inner_type));
+			const NodeId inner_specifier = arena_.Make("decl-specifier",
+				"TT_IDENTIFIER:" + inner_type);
+			arena_.SetSemanticPayload(inner_specifier,
+				strings_.Intern(inner_type));
+			arena_.Add(inner_specifiers, inner_specifier);
 			arena_.Add(inner_parameter, inner_specifiers);
 			arena_.Add(inner_clause, inner_parameter);
 			arena_.Add(declarator, inner_clause);
@@ -936,14 +948,13 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 		const std::size_t operator_position = position_;
 		if (Match(OP_STAR) || Match(OP_AMP) || Match(OP_LAND))
 		{
-			const NodeId pointer = arena_.Make("ptr-operator",
-				TokenDescription(operator_position));
+			const NodeId pointer = MakeTokenNode("ptr-operator",
+				operator_position);
 			arena_.Add(result, pointer);
 			while (At(KW_CONST) || At(KW_VOLATILE))
 			{
 				const std::size_t qualifier = position_++;
-				arena_.Add(result, arena_.Make("cv-qualifier",
-					TokenDescription(qualifier)));
+				arena_.Add(result, MakeTokenNode("cv-qualifier", qualifier));
 			}
 			consumed = true;
 			continue;
@@ -1048,15 +1059,13 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 				if (At(KW_CONST) || At(KW_VOLATILE))
 				{
 					const std::size_t qualifier = position_++;
-					arena_.Add(result, arena_.Make("cv-qualifier",
-						TokenDescription(qualifier)));
+					arena_.Add(result, MakeTokenNode("cv-qualifier", qualifier));
 					continue;
 				}
 				if (At(OP_AMP) || At(OP_LAND))
 				{
 					const std::size_t qualifier = position_++;
-					arena_.Add(result, arena_.Make("ref-qualifier",
-						TokenDescription(qualifier)));
+					arena_.Add(result, MakeTokenNode("ref-qualifier", qualifier));
 					continue;
 				}
 				if (Match(KW_NOEXCEPT))
@@ -1090,8 +1099,7 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 					 Spelling(position_) == "final"))
 				{
 					const std::size_t specifier = position_++;
-					arena_.Add(result, arena_.Make("virt-specifier",
-						TokenDescription(specifier)));
+					arena_.Add(result, MakeTokenNode("virt-specifier", specifier));
 					continue;
 				}
 				if (Match(OP_ARROW))
@@ -1209,6 +1217,8 @@ NodeId Parser::ParseExpression(int minimum_precedence)
 				Spelling(operator_position);
 		const NodeId expression = arena_.Make(right_associative ?
 			"assignment-expression" : "binary-expression", description);
+		arena_.SetSemanticPayload(expression, strings_.Intern(
+			kind == kRShiftFirstToken ? ">>" : Spelling(operator_position)));
 		arena_.Add(expression, left);
 		arena_.Add(expression, right);
 		left = expression;
@@ -1251,7 +1261,7 @@ NodeId Parser::ParsePrimaryExpression()
 	if (At(KW_TRUE) || At(KW_FALSE) || At(KW_NULLPTR) || At(KW_THIS))
 	{
 		const std::size_t token = position_++;
-		return arena_.Make("keyword-literal", TokenDescription(token));
+		return MakeTokenNode("keyword-literal", token);
 	}
 	if (At(OP_LBRACE)) return ParseBracedInitList();
 	if (At(OP_LSQUARE))
@@ -1379,7 +1389,7 @@ NodeId Parser::ParsePostfixSuffixes(NodeId value)
 		{
 			const NodeId call = arena_.Make("call-expression");
 			arena_.Add(call, value);
-			const std::string callee = arena_.Tag(value) == "id-expression" ?
+			const std::string callee = arena_.IsTag(value, "id-expression") ?
 				arena_.Payload(value) : std::string();
 			bool function_style = false;
 			for (std::uint16_t candidate = 0;
@@ -1444,8 +1454,7 @@ NodeId Parser::ParsePostfixSuffixes(NodeId value)
 				dependent_template || qualified_member))
 				throw Error("expected member name");
 			if (dependent_template) member = "template " + member;
-			const NodeId expression = arena_.Make("member-expression",
-				TokenDescription(operation));
+			const NodeId expression = MakeTokenNode("member-expression", operation);
 			arena_.Add(expression, value);
 			arena_.Add(expression, arena_.Make("identifier", member));
 			value = expression;
@@ -1454,8 +1463,7 @@ NodeId Parser::ParsePostfixSuffixes(NodeId value)
 		if (At(OP_INC) || At(OP_DEC))
 		{
 			const std::size_t operation = position_++;
-			const NodeId expression = arena_.Make("postfix-expression",
-				TokenDescription(operation));
+			const NodeId expression = MakeTokenNode("postfix-expression", operation);
 			arena_.Add(expression, value);
 			value = expression;
 			continue;
@@ -1473,8 +1481,7 @@ NodeId Parser::ParseUnaryExpression()
 		const std::size_t operation = position_++;
 		const NodeId operand = ParseUnaryExpression();
 		if (operand == kNoNode) throw Error("expected unary operand");
-		const NodeId unary = arena_.Make("unary-expression",
-			TokenDescription(operation));
+		const NodeId unary = MakeTokenNode("unary-expression", operation);
 		arena_.Add(unary, operand);
 		return unary;
 	}
@@ -1485,7 +1492,7 @@ NodeId Parser::ParseUnaryExpression()
 			tokens_[keyword].kind);
 		const NodeId trait = kind == KW_SIZEOF ?
 			arena_.Make("sizeof-expression") :
-			arena_.Make("type-trait-expression", TokenDescription(keyword));
+			MakeTokenNode("type-trait-expression", keyword);
 		if (kind == KW_SIZEOF && !At(OP_LPAREN))
 		{
 			const NodeId operand = ParseUnaryExpression();
@@ -1520,8 +1527,7 @@ NodeId Parser::ParseUnaryExpression()
 		At(KW_REINTERPET_CAST) || At(KW_CONST_CAST))
 	{
 		const std::size_t keyword = position_++;
-		const NodeId cast = arena_.Make("cast-expression",
-			TokenDescription(keyword));
+		const NodeId cast = MakeTokenNode("cast-expression", keyword);
 		Expect(OP_LT);
 		++angle_stop_depth_;
 		if (!ParseTypeId(cast)) throw Error("expected cast type-id");
@@ -2045,8 +2051,7 @@ NodeId Parser::ParseNestedTemplateParameterClause()
 				throw Error("expected nested type parameter");
 			const std::size_t key = position_++;
 			const NodeId parameter = arena_.Make("type-parameter");
-			arena_.Add(parameter, arena_.Make("parameter-key",
-				TokenDescription(key)));
+			arena_.Add(parameter, MakeTokenNode("parameter-key", key));
 			if (Match(OP_DOTS))
 				arena_.Add(parameter, arena_.Make("parameter-pack", "..."));
 			if (AtIdentifier())
@@ -2076,7 +2081,7 @@ NodeId Parser::ParseTypeTemplateParameter()
 			throw Error("expected template parameter key");
 	}
 	const std::size_t key = position_++;
-	arena_.Add(parameter, arena_.Make("parameter-key", TokenDescription(key)));
+	arena_.Add(parameter, MakeTokenNode("parameter-key", key));
 	if (Match(OP_DOTS))
 		arena_.Add(parameter, arena_.Make("parameter-pack", "..."));
 	if (AtIdentifier())
@@ -2310,10 +2315,13 @@ NodeId Parser::ParseSpecialMember(bool)
 	{
 		const NodeId set = arena_.Make("member-specifiers");
 		for (std::size_t i = 0; i < specifiers.size(); ++i)
-			arena_.Add(set, arena_.Make("specifier",
-				tokens_[specifiers[i]].kind ==
-				static_cast<std::uint16_t>(KW_EXPLICIT) ? "explicit" :
-				TokenDescription(specifiers[i])));
+		{
+			const std::size_t specifier = specifiers[i];
+			if (tokens_[specifier].kind ==
+				static_cast<std::uint16_t>(KW_EXPLICIT))
+				arena_.Add(set, arena_.Make("specifier", "explicit"));
+			else arena_.Add(set, MakeTokenNode("specifier", specifier));
+		}
 		arena_.Add(member, set);
 	}
 	arena_.Add(member, declarator);
@@ -2363,13 +2371,12 @@ NodeId Parser::ParseClass(bool require_semicolon)
 		last_declared_names_.clear();
 		if (!name.empty()) last_declared_names_.push_back(strings_.Intern(name));
 		const NodeId declaration = arena_.Make("class-forward-declaration", name);
-		arena_.Add(declaration, arena_.Make("class-key",
-			TokenDescription(key)));
+		arena_.Add(declaration, MakeTokenNode("class-key", key));
 		arena_.SetTokenRange(declaration, key, position_);
 		return declaration;
 	}
 	const NodeId declaration = arena_.Make("class-specifier", name);
-	arena_.Add(declaration, arena_.Make("class-key", TokenDescription(key)));
+	arena_.Add(declaration, MakeTokenNode("class-key", key));
 	if (Match(OP_COLON))
 	{
 		const NodeId clause = arena_.Make("base-clause");
@@ -2381,8 +2388,7 @@ NodeId Parser::ParseClass(bool require_semicolon)
 			if (At(KW_PUBLIC) || At(KW_PRIVATE) || At(KW_PROTECTED))
 			{
 				const std::size_t access = position_++;
-				arena_.Add(base, arena_.Make("access-specifier",
-					TokenDescription(access)));
+				arena_.Add(base, MakeTokenNode("access-specifier", access));
 			}
 			if (Match(KW_VIRTUAL))
 				arena_.Add(base, arena_.Make("virtual", "KW_VIRTUAL:virtual"));
@@ -2416,8 +2422,7 @@ NodeId Parser::ParseClass(bool require_semicolon)
 		{
 			const std::size_t access = position_++;
 			++position_;
-			arena_.Add(declaration, arena_.Make("access-specifier",
-				TokenDescription(access)));
+			arena_.Add(declaration, MakeTokenNode("access-specifier", access));
 			continue;
 		}
 		NodeId special_member = ParseSpecialMember(false);
@@ -2493,8 +2498,7 @@ NodeId Parser::ParseEnum(bool require_semicolon)
 	}
 	const NodeId declaration = arena_.Make("enum-specifier", name);
 	if (key != std::numeric_limits<std::size_t>::max())
-		arena_.Add(declaration, arena_.Make("enum-key",
-			TokenDescription(key)));
+		arena_.Add(declaration, MakeTokenNode("enum-key", key));
 	if (underlying != kNoNode) arena_.Add(declaration, underlying);
 	if (Match(OP_LBRACE))
 	{

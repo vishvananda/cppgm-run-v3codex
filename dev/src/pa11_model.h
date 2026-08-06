@@ -1,5 +1,7 @@
 #pragma once
 
+#include "frontend_intern.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <iosfwd>
@@ -28,16 +30,37 @@ std::size_t MixHash(std::size_t seed, std::uint64_t value);
 class NameTable
 {
 public:
-	NameTable();
+	explicit NameTable(InternedStringTable& strings);
 	NameId Intern(const std::string& spelling);
+	NameId InternRange(const std::string& spelling,
+		std::size_t first, std::size_t count);
 	const std::string& Get(NameId name) const;
 	std::size_t Size() const;
 	std::size_t StorageBytes() const;
 
 private:
-	void Rehash(std::size_t capacity);
-	std::vector<std::string> spellings_;
-	std::vector<NameId> slots_;
+	InternedStringTable& strings_;
+	std::vector<std::uint8_t> used_;
+	std::size_t size_;
+};
+
+struct NamePath
+{
+	bool global;
+
+	NamePath();
+	void Reserve(std::size_t count);
+	void Push(NameId name);
+	void Pop();
+	bool Empty() const;
+	std::size_t Size() const;
+	NameId operator[](std::size_t index) const;
+	NameId Last() const;
+
+private:
+	NameId inline_parts_[4];
+	std::vector<NameId> overflow_parts_;
+	std::size_t size_;
 };
 
 enum FundamentalKind
@@ -117,6 +140,7 @@ public:
 	const TypeRecord& Get(TypeId type) const;
 	const TypeId* Parameters(TypeId function) const;
 	std::size_t Size() const;
+	std::size_t IndexProbes() const;
 	std::size_t StorageBytes() const;
 
 private:
@@ -131,6 +155,7 @@ private:
 	std::vector<TypeRecord> types_;
 	std::vector<TypeId> parameters_;
 	std::vector<TypeId> slots_;
+	std::size_t index_probes_;
 };
 
 enum ScopeKind
@@ -172,6 +197,7 @@ struct EntityRecord
 	ScopeId member_scope;
 	TypeId type;
 	TypeId underlying;
+	BindingId declaration;
 	bool complete;
 
 	EntityRecord();
@@ -185,6 +211,8 @@ struct BindingRecord
 	TypeId type;
 	BindingId next;
 	NamedFlavor display_flavor;
+	NameId display_type_name;
+	BindingId canonical;
 	std::int64_t value;
 	bool constant;
 
@@ -195,7 +223,9 @@ struct LookupResult
 {
 	ScopeId name_space;
 	TypeId type;
+	BindingId type_declaration;
 	BindingId ordinary;
+	BindingId ordinary_declaration;
 
 	LookupResult();
 	bool Empty() const;
@@ -212,11 +242,11 @@ enum LookupKind
 class Program
 {
 public:
-	Program();
+	explicit Program(InternedStringTable& strings);
 	~Program();
 	ScopeId GlobalScope() const;
 	ScopeId NewScope(ScopeId parent, ScopeKind kind, NameId name,
-		EntityId entity = kNoEntity);
+		EntityId entity = kNoEntity, ScopeId output_parent = kNoScope);
 	ScopeId OpenNamespace(ScopeId parent, NameId name, bool is_inline);
 	void AddNamespaceAlias(ScopeId owner, NameId name, ScopeId target);
 	void AddUsingEdge(ScopeId owner, ScopeId target);
@@ -224,19 +254,25 @@ public:
 		TypeId underlying = kNoType);
 	BindingId AddBinding(ScopeId owner, BindingKind kind, NameId name,
 		TypeId type, bool constant = false, std::int64_t value = 0,
-		NamedFlavor display = NAMED_NONE);
+		NamedFlavor display = NAMED_NONE, NameId display_type_name = 0,
+		BindingId canonical = kNoBinding);
+	BindingId AddOutputTypeBinding(ScopeId owner, NameId display_name,
+		TypeId type, NamedFlavor display);
 	void SetTypeName(ScopeId owner, NameId name, TypeId type);
 	void SetEntityScope(EntityId entity, ScopeId scope);
-	LookupResult Lookup(ScopeId current, const std::string& spelling,
+	LookupResult Lookup(ScopeId current, const NamePath& name,
 		LookupKind kind);
-	LookupResult LookupDirect(ScopeId scope, const std::string& spelling,
+	LookupResult LookupName(ScopeId current, NameId name, LookupKind kind);
+	LookupResult LookupDirect(ScopeId scope, NameId name,
 		LookupKind kind);
-	ScopeId ResolveScope(ScopeId current, const std::string& spelling);
+	ScopeId ResolveScope(ScopeId current, const NamePath& name);
 	ScopeId ScopeForType(TypeId type) const;
 	std::size_t SizeOf(TypeId type) const;
 	std::size_t AlignOf(TypeId type) const;
 	std::string RenderType(TypeId type) const;
-	void Render(std::ostream& output) const;
+	void Render(std::ostream& output, std::size_t* max_depth = 0,
+		std::size_t* stack_storage_bytes = 0,
+		std::size_t* rendered_type_nodes = 0) const;
 	std::size_t ScopeCount() const;
 	std::size_t StorageBytes() const;
 
@@ -247,6 +283,8 @@ public:
 	std::size_t lookup_queries;
 	std::size_t lookup_scope_visits;
 	std::size_t lookup_edge_visits;
+	mutable std::size_t name_index_probes;
+	std::size_t using_index_probes;
 
 private:
 	struct ScopeRecord;
@@ -256,25 +294,34 @@ private:
 	NameEntry* EnsureEntry(ScopeId scope, NameId name);
 	const NameEntry* FindEntry(ScopeId scope, NameId name) const;
 	void RehashEntries(std::size_t capacity);
+	void RehashUsingEdges(std::size_t capacity);
 	LookupResult DirectLookup(ScopeId scope, NameId name,
 		LookupKind kind) const;
+	void MergeLookup(LookupResult* result,
+		const LookupResult& candidate) const;
 	LookupResult LookupGraph(ScopeId scope, NameId name, LookupKind kind);
 	LookupResult LookupUnqualified(ScopeId scope, NameId name,
 		LookupKind kind);
 	ScopeId CarrierScope(const LookupResult& result) const;
-	std::vector<NameId> SplitName(const std::string& spelling,
-		bool* global);
-	std::string RenderTypeInner(TypeId type) const;
-	void RenderScope(std::ostream& output, ScopeId scope,
-		std::size_t depth) const;
+	void AppendType(std::string& output, TypeId type,
+		std::size_t* rendered_type_nodes,
+		std::size_t* stack_storage_bytes) const;
+	void WriteType(std::ostream& output, TypeId type,
+		std::size_t* rendered_type_nodes,
+		std::size_t* stack_storage_bytes) const;
+	void WriteScope(std::ostream& output, ScopeId scope, std::size_t depth,
+		std::size_t* max_depth, std::size_t* stack_storage_bytes,
+		std::size_t* rendered_type_nodes) const;
 	std::size_t FundamentalSize(FundamentalKind kind) const;
 
 	std::vector<ScopeRecord> scopes_;
 	std::vector<ChildEdge> child_edges_;
 	std::vector<UsingEdge> using_edges_;
+	std::vector<std::uint32_t> using_edge_slots_;
 	std::vector<NameEntry> entries_;
 	std::vector<std::uint32_t> entry_slots_;
 	std::vector<std::uint32_t> lookup_marks_;
+	std::vector<ScopeId> lookup_worklist_;
 	std::uint32_t lookup_generation_;
 };
 

@@ -9,27 +9,6 @@ namespace cppgm
 {
 namespace pa10_syntax_detail
 {
-namespace
-{
-
-std::size_t HashText(const std::string& text)
-{
-	std::size_t value = sizeof(std::size_t) == 8 ?
-		static_cast<std::size_t>(1469598103934665603ULL) :
-		static_cast<std::size_t>(2166136261U);
-	const std::size_t prime = sizeof(std::size_t) == 8 ?
-		static_cast<std::size_t>(1099511628211ULL) :
-		static_cast<std::size_t>(16777619U);
-	for (std::size_t i = 0; i < text.size(); ++i)
-	{
-		value ^= static_cast<unsigned char>(text[i]);
-		value *= prime;
-	}
-	return value;
-}
-
-}
-
 const std::uint16_t kSimpleTokenCount =
 	static_cast<std::uint16_t>(OP_ARROW) + 1;
 const std::uint16_t kIdentifierToken = kSimpleTokenCount;
@@ -39,58 +18,6 @@ const std::uint16_t kRShiftFirstToken = kSimpleTokenCount + 3;
 const std::uint16_t kRShiftSecondToken = kSimpleTokenCount + 4;
 const NodeId kNoNode = std::numeric_limits<NodeId>::max();
 const std::uint32_t kNoEdge = std::numeric_limits<std::uint32_t>::max();
-
-StringTable::StringTable() : slots_(32, 0), spelling_bytes_(0)
-{
-	texts_.push_back(std::string());
-}
-
-TextId StringTable::Intern(const std::string& text)
-{
-	if ((texts_.size() + 1) * 10 > slots_.size() * 7)
-		Rehash(slots_.size() * 2);
-	const std::size_t mask = slots_.size() - 1;
-	std::size_t slot = HashText(text) & mask;
-	while (slots_[slot] != 0)
-	{
-		const TextId id = slots_[slot];
-		if (texts_[id] == text) return id;
-		slot = (slot + 1) & mask;
-	}
-	if (texts_.size() > std::numeric_limits<TextId>::max())
-		throw std::runtime_error("too many syntax spellings");
-	const TextId id = static_cast<TextId>(texts_.size());
-	texts_.push_back(text);
-	spelling_bytes_ += text.size();
-	slots_[slot] = id;
-	return id;
-}
-
-const std::string& StringTable::Get(TextId id) const { return texts_[id]; }
-std::size_t StringTable::Size() const { return texts_.size() - 1; }
-std::size_t StringTable::SpellingBytes() const { return spelling_bytes_; }
-
-std::size_t StringTable::StorageBytes() const
-{
-	std::size_t bytes = texts_.capacity() * sizeof(std::string) +
-		slots_.capacity() * sizeof(TextId);
-	for (std::size_t i = 1; i < texts_.size(); ++i)
-		bytes += texts_[i].capacity();
-	return bytes;
-}
-
-void StringTable::Rehash(std::size_t capacity)
-{
-	std::vector<TextId> replacement(capacity, 0);
-	const std::size_t mask = capacity - 1;
-	for (TextId id = 1; id < texts_.size(); ++id)
-	{
-		std::size_t slot = HashText(texts_[id]) & mask;
-		while (replacement[slot] != 0) slot = (slot + 1) & mask;
-		replacement[slot] = id;
-	}
-	slots_.swap(replacement);
-}
 
 SyntaxToken::SyntaxToken(std::uint16_t kind_value, TextId spelling_value)
 	: kind(kind_value), spelling(spelling_value)
@@ -181,7 +108,8 @@ void SyntaxTokenSink::EmitLiteralSpelling(const std::string& source)
 }
 
 SyntaxNode::SyntaxNode(TextId tag_value, TextId payload_value)
-	: tag(tag_value), payload(payload_value), first_edge(kNoEdge),
+	: tag(tag_value), payload(payload_value), semantic_payload(0),
+	  first_edge(kNoEdge),
 	  last_edge(kNoEdge), token_first(0), token_last(0), flags(0)
 {
 }
@@ -306,9 +234,26 @@ const std::string& SyntaxArena::Tag(NodeId node) const
 	return strings_.Get(nodes_[node].tag);
 }
 
+bool SyntaxArena::IsTag(NodeId node, const char* tag) const
+{
+	return nodes_[node].tag == strings_.Intern(tag);
+}
+
 const std::string& SyntaxArena::Payload(NodeId node) const
 {
 	return strings_.Get(nodes_[node].payload);
+}
+
+const std::string& SyntaxArena::SemanticPayload(NodeId node) const
+{
+	const SyntaxNode& record = nodes_[node];
+	return strings_.Get(record.semantic_payload == 0 ?
+		record.payload : record.semantic_payload);
+}
+
+void SyntaxArena::SetSemanticPayload(NodeId node, TextId payload)
+{
+	nodes_[node].semantic_payload = payload;
 }
 
 void SyntaxArena::SetPayload(NodeId node, const std::string& payload)
@@ -318,9 +263,10 @@ void SyntaxArena::SetPayload(NodeId node, const std::string& payload)
 
 bool SyntaxArena::HasDirectChildTag(NodeId node, const char* tag) const
 {
+	const TextId identity = strings_.Intern(tag);
 	for (std::uint32_t edge = nodes_[node].first_edge;
 		edge != kNoEdge; edge = edges_[edge].next)
-		if (Tag(edges_[edge].child) == tag) return true;
+		if (nodes_[edges_[edge].child].tag == identity) return true;
 	return false;
 }
 
@@ -367,6 +313,11 @@ void SyntaxArena::AddFlags(NodeId node, std::uint16_t flags)
 std::uint16_t SyntaxArena::Flags(NodeId node) const
 {
 	return nodes_[node].flags;
+}
+
+StringTable& SyntaxArena::SharedStrings() const
+{
+	return strings_;
 }
 
 std::size_t SyntaxArena::StorageBytes() const

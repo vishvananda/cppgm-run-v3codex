@@ -505,8 +505,17 @@ int run_emit_types_mode(const vector<string> & args)
            << " lookup_queries=" << stats.lookup_queries
            << " lookup_scope_visits=" << stats.lookup_scope_visits
            << " lookup_edge_visits=" << stats.lookup_edge_visits
+           << " name_index_probes=" << stats.name_index_probes
+           << " type_index_probes=" << stats.type_index_probes
+           << " using_index_probes=" << stats.using_index_probes
+           << " rendered_type_nodes=" << stats.rendered_type_nodes
+           << " max_scope_depth=" << stats.max_scope_depth
+           << " render_stack_storage_bytes="
+           << stats.render_stack_storage_bytes
            << " semantic_storage_bytes=" << stats.semantic_storage_bytes
            << " peak_stage_storage_bytes=" << stats.peak_stage_storage_bytes
+           << " analysis_ns=" << stats.analysis_nanoseconds
+           << " render_ns=" << stats.render_nanoseconds
            << " elapsed_ns=" << stats.elapsed_nanoseconds << '\n';
     }
     output << "end translation unit\n";

@@ -11,22 +11,6 @@ namespace pa11
 namespace
 {
 
-std::size_t HashText(const std::string& text)
-{
-	std::size_t value = sizeof(std::size_t) == 8 ?
-		static_cast<std::size_t>(1469598103934665603ULL) :
-		static_cast<std::size_t>(2166136261U);
-	const std::size_t prime = sizeof(std::size_t) == 8 ?
-		static_cast<std::size_t>(1099511628211ULL) :
-		static_cast<std::size_t>(16777619U);
-	for (std::size_t i = 0; i < text.size(); ++i)
-	{
-		value ^= static_cast<unsigned char>(text[i]);
-		value *= prime;
-	}
-	return value;
-}
-
 const char* FundamentalName(FundamentalKind kind)
 {
 	switch (kind)
@@ -70,70 +54,152 @@ const char* FlavorName(NamedFlavor flavor)
 	throw std::logic_error("invalid named type flavor");
 }
 
+template <typename T, std::size_t InlineCapacity>
+class SmallStack
+{
+public:
+	SmallStack() : size_(0), spilled_(false) {}
+	bool Empty() const { return size_ == 0; }
+	T& Back()
+	{
+		return spilled_ ? overflow_.back() : inline_[size_ - 1];
+	}
+	void Pop()
+	{
+		if (spilled_) overflow_.pop_back();
+		--size_;
+	}
+	void Push(const T& value)
+	{
+		if (!spilled_ && size_ < InlineCapacity)
+		{
+			inline_[size_++] = value;
+			return;
+		}
+		if (!spilled_)
+		{
+			overflow_.reserve(InlineCapacity * 2);
+			overflow_.insert(overflow_.end(), inline_,
+				inline_ + InlineCapacity);
+			spilled_ = true;
+		}
+		overflow_.push_back(value);
+		++size_;
+	}
+	std::size_t StorageBytes() const
+	{
+		return sizeof(inline_) + overflow_.capacity() * sizeof(T);
+	}
+
+private:
+	T inline_[InlineCapacity];
+	std::vector<T> overflow_;
+	std::size_t size_;
+	bool spilled_;
+};
+
 }
 
 std::size_t MixHash(std::size_t seed, std::uint64_t value)
 {
-	seed ^= static_cast<std::size_t>(value) +
-		static_cast<std::size_t>(0x9e3779b9U) + (seed << 6) + (seed >> 2);
-	return seed;
+	std::uint64_t mixed = static_cast<std::uint64_t>(seed);
+	mixed ^= value + 0x9e3779b97f4a7c15ULL + (mixed << 6) + (mixed >> 2);
+	mixed ^= mixed >> 30;
+	mixed *= 0xbf58476d1ce4e5b9ULL;
+	mixed ^= mixed >> 27;
+	mixed *= 0x94d049bb133111ebULL;
+	mixed ^= mixed >> 31;
+	return static_cast<std::size_t>(mixed);
 }
 
-NameTable::NameTable() : slots_(32, 0)
+NameTable::NameTable(InternedStringTable& strings)
+	: strings_(strings), size_(0)
 {
-	spellings_.push_back(std::string());
 }
 
 NameId NameTable::Intern(const std::string& spelling)
 {
-	if ((spellings_.size() + 1) * 10 > slots_.size() * 7)
-		Rehash(slots_.size() * 2);
-	const std::size_t mask = slots_.size() - 1;
-	std::size_t slot = HashText(spelling) & mask;
-	while (slots_[slot] != 0)
+	return InternRange(spelling, 0, spelling.size());
+}
+
+NameId NameTable::InternRange(const std::string& spelling,
+	std::size_t first, std::size_t count)
+{
+	const NameId id = strings_.InternRange(spelling, first, count);
+	if (used_.size() <= id) used_.resize(static_cast<std::size_t>(id) + 1, 0);
+	if (used_[id] == 0)
 	{
-		const NameId id = slots_[slot];
-		if (spellings_[id] == spelling) return id;
-		slot = (slot + 1) & mask;
+		used_[id] = 1;
+		++size_;
 	}
-	if (spellings_.size() > std::numeric_limits<NameId>::max())
-		throw std::runtime_error("too many PA11 names");
-	const NameId id = static_cast<NameId>(spellings_.size());
-	spellings_.push_back(spelling);
-	slots_[slot] = id;
 	return id;
 }
 
 const std::string& NameTable::Get(NameId name) const
 {
-	return spellings_[name];
+	return strings_.Get(name);
 }
 
 std::size_t NameTable::Size() const
 {
-	return spellings_.size() - 1;
+	return size_;
 }
 
 std::size_t NameTable::StorageBytes() const
 {
-	std::size_t bytes = spellings_.capacity() * sizeof(std::string) +
-		slots_.capacity() * sizeof(NameId);
-	for (std::size_t i = 1; i < spellings_.size(); ++i)
-		bytes += spellings_[i].capacity();
-	return bytes;
+	return used_.capacity() * sizeof(std::uint8_t);
 }
 
-void NameTable::Rehash(std::size_t capacity)
+NamePath::NamePath() : global(false), size_(0)
 {
-	std::vector<NameId> replacement(capacity, 0);
-	const std::size_t mask = capacity - 1;
-	for (NameId id = 1; id < spellings_.size(); ++id)
+	std::fill(inline_parts_, inline_parts_ + 4, 0);
+}
+
+void NamePath::Reserve(std::size_t count)
+{
+	if (count > 4) overflow_parts_.reserve(count);
+}
+
+void NamePath::Push(NameId name)
+{
+	if (size_ < 4 && overflow_parts_.empty())
+		inline_parts_[size_] = name;
+	else
 	{
-		std::size_t slot = HashText(spellings_[id]) & mask;
-		while (replacement[slot] != 0) slot = (slot + 1) & mask;
-		replacement[slot] = id;
+		if (overflow_parts_.empty())
+			overflow_parts_.insert(overflow_parts_.end(), inline_parts_,
+				inline_parts_ + 4);
+		overflow_parts_.push_back(name);
 	}
-	slots_.swap(replacement);
+	++size_;
+}
+
+void NamePath::Pop()
+{
+	if (size_ == 0) throw std::logic_error("empty qualified name");
+	if (!overflow_parts_.empty()) overflow_parts_.pop_back();
+	--size_;
+}
+
+bool NamePath::Empty() const
+{
+	return size_ == 0;
+}
+
+std::size_t NamePath::Size() const
+{
+	return size_;
+}
+
+NameId NamePath::operator[](std::size_t index) const
+{
+	return overflow_parts_.empty() ? inline_parts_[index] :
+		overflow_parts_[index];
+}
+
+NameId NamePath::Last() const
+{
+	return Empty() ? 0 : (*this)[size_ - 1];
 }
 
 TypeRecord::TypeRecord()
@@ -143,7 +209,7 @@ TypeRecord::TypeRecord()
 {
 }
 
-TypeTable::TypeTable() : slots_(64, 0)
+TypeTable::TypeTable() : slots_(64, 0), index_probes_(0)
 {
 	types_.push_back(TypeRecord());
 }
@@ -290,6 +356,11 @@ std::size_t TypeTable::Size() const
 	return types_.size() - 1;
 }
 
+std::size_t TypeTable::IndexProbes() const
+{
+	return index_probes_;
+}
+
 std::size_t TypeTable::StorageBytes() const
 {
 	return types_.capacity() * sizeof(TypeRecord) +
@@ -338,10 +409,12 @@ TypeId TypeTable::Intern(TypeRecord candidate, const TypeId* parameters,
 	std::size_t slot = Hash(candidate, parameters, count) & mask;
 	while (slots_[slot] != 0)
 	{
+		++index_probes_;
 		const TypeId type = slots_[slot];
 		if (Equal(types_[type], candidate, parameters, count)) return type;
 		slot = (slot + 1) & mask;
 	}
+	++index_probes_;
 	if (types_.size() > std::numeric_limits<TypeId>::max())
 		throw std::runtime_error("too many canonical types");
 	candidate.parameter_offset =
@@ -373,18 +446,20 @@ void TypeTable::Rehash(std::size_t capacity)
 
 EntityRecord::EntityRecord()
 	: name(0), flavor(NAMED_NONE), member_scope(kNoScope), type(kNoType),
-	  underlying(kNoType), complete(false)
+	  underlying(kNoType), declaration(kNoBinding), complete(false)
 {
 }
 
 BindingRecord::BindingRecord()
 	: owner(kNoScope), name(0), kind(BIND_VARIABLE), type(kNoType),
-	  next(kNoBinding), display_flavor(NAMED_NONE), value(0), constant(false)
+	  next(kNoBinding), display_flavor(NAMED_NONE), display_type_name(0),
+	  canonical(kNoBinding), value(0), constant(false)
 {
 }
 
 LookupResult::LookupResult()
-	: name_space(kNoScope), type(kNoType), ordinary(kNoBinding)
+	: name_space(kNoScope), type(kNoType), type_declaration(kNoBinding),
+	  ordinary(kNoBinding), ordinary_declaration(kNoBinding)
 {
 }
 
@@ -419,19 +494,22 @@ struct Program::NameEntry
 	NameId name;
 	ScopeId name_space;
 	TypeId type;
+	BindingId type_declaration;
 	BindingId ordinary;
 
 	NameEntry()
 		: scope(kNoScope), name(0), name_space(kNoScope), type(kNoType),
-		  ordinary(kNoBinding) {}
+		  type_declaration(kNoBinding), ordinary(kNoBinding) {}
 };
 
 struct Program::UsingEdge
 {
+	ScopeId owner;
 	ScopeId target;
 	std::uint32_t next;
-	UsingEdge(ScopeId target_value, std::uint32_t next_value)
-		: target(target_value), next(next_value) {}
+	UsingEdge(ScopeId owner_value, ScopeId target_value,
+		std::uint32_t next_value)
+		: owner(owner_value), target(target_value), next(next_value) {}
 };
 
 struct Program::ChildEdge
@@ -443,9 +521,10 @@ struct Program::ChildEdge
 		  next(std::numeric_limits<std::uint32_t>::max()) {}
 };
 
-Program::Program()
-	: lookup_queries(0), lookup_scope_visits(0), lookup_edge_visits(0),
-	  entry_slots_(64, 0), lookup_generation_(1)
+Program::Program(InternedStringTable& strings)
+	: names(strings), lookup_queries(0), lookup_scope_visits(0),
+	  lookup_edge_visits(0), name_index_probes(0), using_index_probes(0),
+	  using_edge_slots_(64, 0), entry_slots_(64, 0), lookup_generation_(1)
 {
 	NewScope(kNoScope, SCOPE_NAMESPACE, names.Intern("<global>"));
 }
@@ -460,7 +539,7 @@ ScopeId Program::GlobalScope() const
 }
 
 ScopeId Program::NewScope(ScopeId parent, ScopeKind kind, NameId name,
-	EntityId entity)
+	EntityId entity, ScopeId output_parent)
 {
 	if (scopes_.size() >= kNoScope)
 		throw std::runtime_error("too many PA11 scopes");
@@ -472,12 +551,13 @@ ScopeId Program::NewScope(ScopeId parent, ScopeKind kind, NameId name,
 	record.name = name;
 	record.entity = entity;
 	lookup_marks_.push_back(0);
-	if (parent != kNoScope)
+	const ScopeId tree_parent = output_parent == kNoScope ? parent : output_parent;
+	if (tree_parent != kNoScope)
 	{
 		const std::uint32_t edge =
 			static_cast<std::uint32_t>(child_edges_.size());
 		child_edges_.push_back(ChildEdge(scope));
-		ScopeRecord& owner = scopes_[parent];
+		ScopeRecord& owner = scopes_[tree_parent];
 		if (owner.first_child == std::numeric_limits<std::uint32_t>::max())
 			owner.first_child = edge;
 		else child_edges_[owner.last_child].next = edge;
@@ -508,14 +588,42 @@ void Program::AddNamespaceAlias(ScopeId owner, NameId name, ScopeId target)
 
 void Program::AddUsingEdge(ScopeId owner, ScopeId target)
 {
-	for (std::uint32_t edge = scopes_[owner].first_using;
-		edge != std::numeric_limits<std::uint32_t>::max();
-		edge = using_edges_[edge].next)
-		if (using_edges_[edge].target == target) return;
+	if ((using_edges_.size() + 1) * 10 > using_edge_slots_.size() * 7)
+		RehashUsingEdges(using_edge_slots_.size() * 2);
+	const std::size_t mask = using_edge_slots_.size() - 1;
+	std::size_t slot = MixHash(owner, target) & mask;
+	while (using_edge_slots_[slot] != 0)
+	{
+		++using_index_probes;
+		const UsingEdge& existing =
+			using_edges_[using_edge_slots_[slot] - 1];
+		if (existing.owner == owner && existing.target == target) return;
+		slot = (slot + 1) & mask;
+	}
+	++using_index_probes;
+	if (using_edges_.size() >=
+		std::numeric_limits<std::uint32_t>::max())
+		throw std::runtime_error("too many PA11 using edges");
 	const std::uint32_t edge =
 		static_cast<std::uint32_t>(using_edges_.size());
-	using_edges_.push_back(UsingEdge(target, scopes_[owner].first_using));
+	using_edges_.push_back(UsingEdge(owner, target,
+		scopes_[owner].first_using));
+	using_edge_slots_[slot] = edge + 1;
 	scopes_[owner].first_using = edge;
+}
+
+void Program::RehashUsingEdges(std::size_t capacity)
+{
+	std::vector<std::uint32_t> replacement(capacity, 0);
+	const std::size_t mask = capacity - 1;
+	for (std::size_t i = 0; i < using_edges_.size(); ++i)
+	{
+		const UsingEdge& edge = using_edges_[i];
+		std::size_t slot = MixHash(edge.owner, edge.target) & mask;
+		while (replacement[slot] != 0) slot = (slot + 1) & mask;
+		replacement[slot] = static_cast<std::uint32_t>(i + 1);
+	}
+	using_edge_slots_.swap(replacement);
 }
 
 EntityId Program::NewEntity(NameId name, NamedFlavor flavor, bool complete,
@@ -535,11 +643,19 @@ EntityId Program::NewEntity(NameId name, NamedFlavor flavor, bool complete,
 }
 
 BindingId Program::AddBinding(ScopeId owner, BindingKind kind, NameId name,
-	TypeId type, bool constant, std::int64_t value, NamedFlavor display)
+	TypeId type, bool constant, std::int64_t value, NamedFlavor display,
+	NameId display_type_name, BindingId canonical)
 {
 	NameEntry* entry = EnsureEntry(owner, name);
 	if (entry->name_space != kNoScope)
 		throw std::runtime_error("binding conflicts with namespace");
+	if (canonical == kNoBinding && entry->ordinary != kNoBinding &&
+		(kind == BIND_FUNCTION || kind == BIND_VARIABLE))
+	{
+		const BindingRecord& previous = bindings[entry->ordinary];
+		if (previous.kind == kind && previous.type == type)
+			canonical = previous.canonical;
+	}
 	if (bindings.size() >= kNoBinding)
 		throw std::runtime_error("too many PA11 bindings");
 	const BindingId binding = static_cast<BindingId>(bindings.size());
@@ -552,12 +668,46 @@ BindingId Program::AddBinding(ScopeId owner, BindingKind kind, NameId name,
 	record.constant = constant;
 	record.value = value;
 	record.display_flavor = display;
+	record.display_type_name = display_type_name;
+	if (canonical == kNoBinding && kind == BIND_TYPE && types.IsNamed(type))
+	{
+		const TypeRecord& named = types.Get(types.RemoveTopCv(type));
+		canonical = entities[named.entity].declaration;
+		if (canonical == kNoBinding)
+			entities[named.entity].declaration = binding;
+	}
+	record.canonical = canonical == kNoBinding ? binding : canonical;
 	ScopeRecord& scope = scopes_[owner];
 	if (scope.first_binding == kNoBinding) scope.first_binding = binding;
 	else bindings[scope.last_binding].next = binding;
 	scope.last_binding = binding;
-	if (kind == BIND_TYPE || kind == BIND_TYPE_ALIAS) entry->type = type;
+	if (kind == BIND_TYPE || kind == BIND_TYPE_ALIAS)
+	{
+		entry->type = type;
+		entry->type_declaration = binding;
+	}
 	else entry->ordinary = binding;
+	return binding;
+}
+
+BindingId Program::AddOutputTypeBinding(ScopeId owner, NameId display_name,
+	TypeId type, NamedFlavor display)
+{
+	if (bindings.size() >= kNoBinding)
+		throw std::runtime_error("too many PA11 bindings");
+	const BindingId binding = static_cast<BindingId>(bindings.size());
+	bindings.push_back(BindingRecord());
+	BindingRecord& record = bindings.back();
+	record.owner = owner;
+	record.kind = BIND_TYPE;
+	record.name = display_name;
+	record.type = type;
+	record.display_flavor = display;
+	record.canonical = binding;
+	ScopeRecord& scope = scopes_[owner];
+	if (scope.first_binding == kNoBinding) scope.first_binding = binding;
+	else bindings[scope.last_binding].next = binding;
+	scope.last_binding = binding;
 	return binding;
 }
 
@@ -582,10 +732,12 @@ Program::NameEntry* Program::EnsureEntry(ScopeId scope, NameId name)
 	std::size_t slot = MixHash(scope, name) & mask;
 	while (entry_slots_[slot] != 0)
 	{
+		++name_index_probes;
 		NameEntry& entry = entries_[entry_slots_[slot] - 1];
 		if (entry.scope == scope && entry.name == name) return &entry;
 		slot = (slot + 1) & mask;
 	}
+	++name_index_probes;
 	entries_.push_back(NameEntry());
 	NameEntry& entry = entries_.back();
 	entry.scope = scope;
@@ -601,10 +753,12 @@ const Program::NameEntry* Program::FindEntry(ScopeId scope,
 	std::size_t slot = MixHash(scope, name) & mask;
 	while (entry_slots_[slot] != 0)
 	{
+		++name_index_probes;
 		const NameEntry& entry = entries_[entry_slots_[slot] - 1];
 		if (entry.scope == scope && entry.name == name) return &entry;
 		slot = (slot + 1) & mask;
 	}
+	++name_index_probes;
 	return 0;
 }
 
@@ -630,9 +784,34 @@ LookupResult Program::DirectLookup(ScopeId scope, NameId name,
 	if (kind == LOOKUP_NAMESPACE || kind == LOOKUP_SCOPE_CARRIER)
 		result.name_space = entry->name_space;
 	if (kind == LOOKUP_TYPE || kind == LOOKUP_SCOPE_CARRIER)
+	{
 		result.type = entry->type;
-	if (kind == LOOKUP_ORDINARY) result.ordinary = entry->ordinary;
+		result.type_declaration = entry->type_declaration == kNoBinding ?
+			kNoBinding : bindings[entry->type_declaration].canonical;
+	}
+	if (kind == LOOKUP_ORDINARY)
+	{
+		result.ordinary = entry->ordinary;
+		result.ordinary_declaration = entry->ordinary == kNoBinding ?
+			kNoBinding : bindings[entry->ordinary].canonical;
+	}
 	return result;
+}
+
+void Program::MergeLookup(LookupResult* result,
+	const LookupResult& candidate) const
+{
+	if (candidate.Empty()) return;
+	if (result->Empty())
+	{
+		*result = candidate;
+		return;
+	}
+	if (result->name_space != candidate.name_space ||
+		result->type != candidate.type ||
+		result->type_declaration != candidate.type_declaration ||
+		result->ordinary_declaration != candidate.ordinary_declaration)
+		throw std::runtime_error("ambiguous PA11 lookup");
 }
 
 LookupResult Program::LookupGraph(ScopeId scope, NameId name,
@@ -644,14 +823,32 @@ LookupResult Program::LookupGraph(ScopeId scope, NameId name,
 		std::fill(lookup_marks_.begin(), lookup_marks_.end(), 0);
 		lookup_generation_ = 1;
 	}
-	std::vector<ScopeId> worklist(1, scope);
+	lookup_worklist_.clear();
 	lookup_marks_[scope] = lookup_generation_;
-	for (std::size_t i = 0; i < worklist.size(); ++i)
+	++lookup_scope_visits;
+	const LookupResult local = DirectLookup(scope, name, kind);
+	if (!local.Empty()) return local;
+	for (std::uint32_t edge = scopes_[scope].first_using;
+		edge != std::numeric_limits<std::uint32_t>::max();
+		edge = using_edges_[edge].next)
 	{
-		const ScopeId current = worklist[i];
+		++lookup_edge_visits;
+		const ScopeId target = using_edges_[edge].target;
+		if (lookup_marks_[target] == lookup_generation_) continue;
+		lookup_marks_[target] = lookup_generation_;
+		lookup_worklist_.push_back(target);
+	}
+	LookupResult result;
+	for (std::size_t i = 0; i < lookup_worklist_.size(); ++i)
+	{
+		const ScopeId current = lookup_worklist_[i];
 		++lookup_scope_visits;
 		const LookupResult direct = DirectLookup(current, name, kind);
-		if (!direct.Empty()) return direct;
+		if (!direct.Empty())
+		{
+			MergeLookup(&result, direct);
+			continue;
+		}
 		for (std::uint32_t edge = scopes_[current].first_using;
 			edge != std::numeric_limits<std::uint32_t>::max();
 			edge = using_edges_[edge].next)
@@ -660,10 +857,10 @@ LookupResult Program::LookupGraph(ScopeId scope, NameId name,
 			const ScopeId target = using_edges_[edge].target;
 			if (lookup_marks_[target] == lookup_generation_) continue;
 			lookup_marks_[target] = lookup_generation_;
-			worklist.push_back(target);
+			lookup_worklist_.push_back(target);
 		}
 	}
-	return LookupResult();
+	return result;
 }
 
 LookupResult Program::LookupUnqualified(ScopeId scope, NameId name,
@@ -685,60 +882,45 @@ ScopeId Program::CarrierScope(const LookupResult& result) const
 	return kNoScope;
 }
 
-std::vector<NameId> Program::SplitName(const std::string& spelling,
-	bool* global)
-{
-	std::vector<NameId> parts;
-	std::size_t first = 0;
-	*global = spelling.size() >= 2 && spelling[0] == ':' && spelling[1] == ':';
-	if (*global) first = 2;
-	while (first < spelling.size())
-	{
-		const std::size_t separator = spelling.find("::", first);
-		const std::size_t last = separator == std::string::npos ?
-			spelling.size() : separator;
-		if (last == first) throw std::runtime_error("invalid qualified name");
-		parts.push_back(names.Intern(spelling.substr(first, last - first)));
-		if (separator == std::string::npos) break;
-		first = separator + 2;
-	}
-	return parts;
-}
-
-LookupResult Program::Lookup(ScopeId current, const std::string& spelling,
+LookupResult Program::Lookup(ScopeId current, const NamePath& name,
 	LookupKind kind)
 {
 	++lookup_queries;
-	bool global = false;
-	const std::vector<NameId> parts = SplitName(spelling, &global);
-	if (parts.empty()) return LookupResult();
-	if (parts.size() == 1)
-		return global ? LookupGraph(GlobalScope(), parts[0], kind) :
-			LookupUnqualified(current, parts[0], kind);
-	LookupResult carrier = global ?
-		LookupGraph(GlobalScope(), parts[0], LOOKUP_SCOPE_CARRIER) :
-		LookupUnqualified(current, parts[0], LOOKUP_SCOPE_CARRIER);
+	if (name.Empty()) return LookupResult();
+	if (name.Size() == 1)
+		return name.global ? LookupGraph(GlobalScope(), name[0], kind) :
+			LookupUnqualified(current, name[0], kind);
+	LookupResult carrier = name.global ?
+		LookupGraph(GlobalScope(), name[0], LOOKUP_SCOPE_CARRIER) :
+		LookupUnqualified(current, name[0], LOOKUP_SCOPE_CARRIER);
 	ScopeId owner = CarrierScope(carrier);
 	if (owner == kNoScope) return LookupResult();
-	for (std::size_t i = 1; i + 1 < parts.size(); ++i)
+	for (std::size_t i = 1; i + 1 < name.Size(); ++i)
 	{
-		carrier = LookupGraph(owner, parts[i], LOOKUP_SCOPE_CARRIER);
+		carrier = LookupGraph(owner, name[i], LOOKUP_SCOPE_CARRIER);
 		owner = CarrierScope(carrier);
 		if (owner == kNoScope) return LookupResult();
 	}
-	return LookupGraph(owner, parts.back(), kind);
+	return LookupGraph(owner, name.Last(), kind);
 }
 
-LookupResult Program::LookupDirect(ScopeId scope,
-	const std::string& spelling, LookupKind kind)
+LookupResult Program::LookupName(ScopeId current, NameId name,
+	LookupKind kind)
 {
 	++lookup_queries;
-	return DirectLookup(scope, names.Intern(spelling), kind);
+	return LookupUnqualified(current, name, kind);
 }
 
-ScopeId Program::ResolveScope(ScopeId current, const std::string& spelling)
+LookupResult Program::LookupDirect(ScopeId scope, NameId name,
+	LookupKind kind)
 {
-	return CarrierScope(Lookup(current, spelling, LOOKUP_SCOPE_CARRIER));
+	++lookup_queries;
+	return DirectLookup(scope, name, kind);
+}
+
+ScopeId Program::ResolveScope(ScopeId current, const NamePath& name)
+{
+	return CarrierScope(Lookup(current, name, LOOKUP_SCOPE_CARRIER));
 }
 
 ScopeId Program::ScopeForType(TypeId type) const
@@ -825,107 +1007,222 @@ std::size_t Program::AlignOf(TypeId type) const
 	return SizeOf(type);
 }
 
-std::string Program::RenderTypeInner(TypeId type) const
+void Program::AppendType(std::string& output, TypeId type,
+	std::size_t* rendered_type_nodes,
+	std::size_t* stack_storage_bytes) const
 {
-	const TypeRecord& record = types.Get(type);
-	switch (record.kind)
+	struct Task
 	{
-	case TYPE_FUNDAMENTAL: return FundamentalName(record.fundamental);
-	case TYPE_NAMED:
+		TypeId type;
+		const char* text;
+		bool is_type;
+		Task() : type(kNoType), text(0), is_type(false) {}
+		Task(TypeId value, bool type_task)
+			: type(value), text(0), is_type(type_task) {}
+		explicit Task(const char* value)
+			: type(kNoType), text(value), is_type(false) {}
+	};
+	SmallStack<Task, 8> tasks;
+	tasks.Push(Task(type, true));
+	while (!tasks.Empty())
 	{
-		const EntityRecord& entity = entities[record.entity];
-		return std::string(FlavorName(entity.flavor)) + " " +
-			names.Get(entity.name);
-	}
-	case TYPE_QUALIFIED:
-	{
-		std::string prefix;
-		if ((record.cv & CV_CONST) != 0) prefix += "const ";
-		if ((record.cv & CV_VOLATILE) != 0) prefix += "volatile ";
-		return prefix + RenderTypeInner(record.child);
-	}
-	case TYPE_POINTER:
-		return "pointer to " + RenderTypeInner(record.child);
-	case TYPE_LVALUE_REFERENCE:
-		return "lvalue-reference to " + RenderTypeInner(record.child);
-	case TYPE_RVALUE_REFERENCE:
-		return "rvalue-reference to " + RenderTypeInner(record.child);
-	case TYPE_ARRAY:
-		return "array of " + std::to_string(record.bound) + " " +
-			RenderTypeInner(record.child);
-	case TYPE_FUNCTION:
-	{
-		std::string result = "function of (";
-		const TypeId* parameters = types.Parameters(type);
-		for (std::size_t i = 0; i < record.parameter_count; ++i)
+		const Task task = tasks.Back();
+		tasks.Pop();
+		if (!task.is_type)
 		{
-			if (i != 0) result += ", ";
-			result += RenderTypeInner(parameters[i]);
+			output += task.text;
+			continue;
 		}
-		if (record.variadic)
+		if (rendered_type_nodes) ++*rendered_type_nodes;
+		const TypeRecord& record = types.Get(task.type);
+		switch (record.kind)
 		{
-			if (record.parameter_count != 0) result += ", ";
-			result += "...";
+		case TYPE_FUNDAMENTAL:
+			output += FundamentalName(record.fundamental);
+			break;
+		case TYPE_NAMED:
+		{
+			const EntityRecord& entity = entities[record.entity];
+			output += FlavorName(entity.flavor);
+			output += ' ';
+			output += names.Get(entity.name);
+			break;
 		}
-		return result + ") returning " + RenderTypeInner(record.child);
+		case TYPE_QUALIFIED:
+			if ((record.cv & CV_CONST) != 0) output += "const ";
+			if ((record.cv & CV_VOLATILE) != 0) output += "volatile ";
+			tasks.Push(Task(record.child, true));
+			break;
+		case TYPE_POINTER:
+			output += "pointer to ";
+			tasks.Push(Task(record.child, true));
+			break;
+		case TYPE_LVALUE_REFERENCE:
+			output += "lvalue-reference to ";
+			tasks.Push(Task(record.child, true));
+			break;
+		case TYPE_RVALUE_REFERENCE:
+			output += "rvalue-reference to ";
+			tasks.Push(Task(record.child, true));
+			break;
+		case TYPE_ARRAY:
+			output += "array of ";
+			output += std::to_string(record.bound);
+			output += ' ';
+			tasks.Push(Task(record.child, true));
+			break;
+		case TYPE_FUNCTION:
+		{
+			output += "function of (";
+			const TypeId* parameters = types.Parameters(task.type);
+			tasks.Push(Task(record.child, true));
+			tasks.Push(Task(") returning "));
+			if (record.variadic) tasks.Push(Task("..."));
+			for (std::size_t i = record.parameter_count; i != 0; --i)
+			{
+				if (i != record.parameter_count || record.variadic)
+					tasks.Push(Task(", "));
+				tasks.Push(Task(parameters[i - 1], true));
+			}
+			break;
+		}
+		case TYPE_INVALID:
+			throw std::logic_error("cannot render invalid type");
+		}
 	}
-	case TYPE_INVALID: break;
-	}
-	throw std::logic_error("cannot render invalid type");
+	if (stack_storage_bytes)
+		*stack_storage_bytes = std::max(*stack_storage_bytes,
+			tasks.StorageBytes());
 }
 
 std::string Program::RenderType(TypeId type) const
 {
-	return RenderTypeInner(type);
+	std::string result;
+	result.reserve(64);
+	AppendType(result, type, 0, 0);
+	return result;
 }
 
-void Program::RenderScope(std::ostream& output, ScopeId scope,
-	std::size_t depth) const
+void Program::WriteType(std::ostream& output, TypeId type,
+	std::size_t* rendered_type_nodes,
+	std::size_t* stack_storage_bytes) const
 {
-	const ScopeRecord& record = scopes_[scope];
-	for (std::size_t i = 0; i < depth; ++i) output << "  ";
-	output << "scope ";
-	switch (record.kind)
+	std::string rendered;
+	rendered.reserve(64);
+	AppendType(rendered, type, rendered_type_nodes, stack_storage_bytes);
+	output << rendered;
+}
+
+void Program::WriteScope(std::ostream& output, ScopeId scope,
+	std::size_t depth, std::size_t* max_depth,
+	std::size_t* stack_storage_bytes,
+	std::size_t* rendered_type_nodes) const
+
+{
+	struct Frame
 	{
-	case SCOPE_NAMESPACE: output << "namespace " << names.Get(record.name); break;
-	case SCOPE_TEMPLATE_PARAMETERS: output << "template-parameters"; break;
-	case SCOPE_CLASS: output << "class " << names.Get(record.name); break;
-	case SCOPE_ENUM: output << "enum " << names.Get(record.name); break;
-	case SCOPE_FUNCTION: output << "function " << names.Get(record.name); break;
-	case SCOPE_BLOCK: output << "block"; break;
-	}
-	output << '\n';
-	for (BindingId binding = record.first_binding; binding != kNoBinding;
-		binding = bindings[binding].next)
+		ScopeId scope;
+		std::uint32_t edge;
+		std::size_t depth;
+		bool entered;
+		Frame()
+			: scope(kNoScope),
+			  edge(std::numeric_limits<std::uint32_t>::max()),
+			  depth(0), entered(false) {}
+		Frame(ScopeId scope_value, std::size_t depth_value)
+			: scope(scope_value),
+			  edge(std::numeric_limits<std::uint32_t>::max()),
+			  depth(depth_value), entered(false) {}
+	};
+	SmallStack<Frame, 8> stack;
+	stack.Push(Frame(scope, depth));
+	while (!stack.Empty())
 	{
-		const BindingRecord& item = bindings[binding];
-		for (std::size_t i = 0; i < depth + 1; ++i) output << "  ";
-		switch (item.kind)
+		Frame& frame = stack.Back();
+		const ScopeRecord& record = scopes_[frame.scope];
+		if (!frame.entered)
 		{
-		case BIND_TYPE: output << "type "; break;
-		case BIND_TYPE_ALIAS: output << "type-alias "; break;
-		case BIND_ENUMERATOR: output << "enumerator "; break;
-		case BIND_FUNCTION: output << "function "; break;
-		case BIND_VARIABLE: output << "variable "; break;
-		case BIND_PARAMETER: output << "parameter "; break;
+			if (max_depth) *max_depth = std::max(*max_depth, frame.depth);
+			for (std::size_t i = 0; i < frame.depth; ++i) output << "  ";
+			output << "scope ";
+			switch (record.kind)
+			{
+			case SCOPE_NAMESPACE:
+				output << "namespace " << names.Get(record.name); break;
+			case SCOPE_TEMPLATE_PARAMETERS:
+				output << "template-parameters"; break;
+			case SCOPE_CLASS:
+				output << "class " << names.Get(record.name); break;
+			case SCOPE_ENUM:
+				output << "enum " << names.Get(record.name); break;
+			case SCOPE_FUNCTION:
+				output << "function " << names.Get(record.name); break;
+			case SCOPE_BLOCK: output << "block"; break;
+			}
+			output << '\n';
+			for (BindingId binding = record.first_binding;
+				binding != kNoBinding; binding = bindings[binding].next)
+			{
+				const BindingRecord& item = bindings[binding];
+				for (std::size_t i = 0; i < frame.depth + 1; ++i)
+					output << "  ";
+				switch (item.kind)
+				{
+				case BIND_TYPE: output << "type "; break;
+				case BIND_TYPE_ALIAS: output << "type-alias "; break;
+				case BIND_ENUMERATOR: output << "enumerator "; break;
+				case BIND_FUNCTION: output << "function "; break;
+				case BIND_VARIABLE: output << "variable "; break;
+				case BIND_PARAMETER: output << "parameter "; break;
+				}
+				output << names.Get(item.name) << ' ';
+				if (item.kind == BIND_TYPE &&
+					item.display_flavor != NAMED_NONE)
+					output << FlavorName(item.display_flavor) << ' ' <<
+						names.Get(item.name);
+				else if (item.display_type_name != 0)
+					output << FlavorName(item.display_flavor) << ' ' <<
+						names.Get(item.display_type_name);
+				else
+				{
+					std::size_t type_stack_storage = 0;
+					WriteType(output, item.type, rendered_type_nodes,
+						&type_stack_storage);
+					if (stack_storage_bytes)
+						*stack_storage_bytes = std::max(*stack_storage_bytes,
+							stack.StorageBytes() + type_stack_storage);
+				}
+				if (item.kind == BIND_ENUMERATOR) output << ' ' << item.value;
+				output << '\n';
+			}
+			frame.entered = true;
+			frame.edge = record.first_child;
 		}
-		output << names.Get(item.name) << ' ';
-		if (item.kind == BIND_TYPE && item.display_flavor != NAMED_NONE)
-			output << FlavorName(item.display_flavor) << ' ' << names.Get(item.name);
-		else output << RenderTypeInner(item.type);
-		if (item.kind == BIND_ENUMERATOR) output << ' ' << item.value;
-		output << '\n';
+		if (frame.edge == std::numeric_limits<std::uint32_t>::max())
+		{
+			stack.Pop();
+			continue;
+		}
+		const std::uint32_t edge = frame.edge;
+		frame.edge = child_edges_[edge].next;
+		const std::size_t child_depth = frame.depth + 1;
+		stack.Push(Frame(child_edges_[edge].child, child_depth));
 	}
-	for (std::uint32_t edge = record.first_child;
-		edge != std::numeric_limits<std::uint32_t>::max();
-		edge = child_edges_[edge].next)
-		RenderScope(output, child_edges_[edge].child, depth + 1);
+	if (stack_storage_bytes)
+		*stack_storage_bytes = std::max(*stack_storage_bytes,
+			stack.StorageBytes());
 }
 
-void Program::Render(std::ostream& output) const
+void Program::Render(std::ostream& output, std::size_t* max_depth,
+	std::size_t* stack_storage_bytes,
+	std::size_t* rendered_type_nodes) const
 {
+	if (max_depth) *max_depth = 0;
+	if (stack_storage_bytes) *stack_storage_bytes = 0;
+	if (rendered_type_nodes) *rendered_type_nodes = 0;
 	output << "translation-unit\n";
-	RenderScope(output, GlobalScope(), 1);
+	WriteScope(output, GlobalScope(), 1, max_depth, stack_storage_bytes,
+		rendered_type_nodes);
 }
 
 std::size_t Program::ScopeCount() const
@@ -939,9 +1236,11 @@ std::size_t Program::StorageBytes() const
 		scopes_.capacity() * sizeof(ScopeRecord) +
 		child_edges_.capacity() * sizeof(ChildEdge) +
 		using_edges_.capacity() * sizeof(UsingEdge) +
+		using_edge_slots_.capacity() * sizeof(std::uint32_t) +
 		entries_.capacity() * sizeof(NameEntry) +
 		entry_slots_.capacity() * sizeof(std::uint32_t) +
 		lookup_marks_.capacity() * sizeof(std::uint32_t) +
+		lookup_worklist_.capacity() * sizeof(ScopeId) +
 		entities.capacity() * sizeof(EntityRecord) +
 		bindings.capacity() * sizeof(BindingRecord);
 }

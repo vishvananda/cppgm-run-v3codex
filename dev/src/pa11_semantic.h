@@ -22,8 +22,16 @@ struct TypeAnalysisStats
 	std::size_t lookup_queries;
 	std::size_t lookup_scope_visits;
 	std::size_t lookup_edge_visits;
+	std::size_t name_index_probes;
+	std::size_t type_index_probes;
+	std::size_t using_index_probes;
+	std::size_t rendered_type_nodes;
+	std::size_t max_scope_depth;
+	std::size_t render_stack_storage_bytes;
 	std::size_t semantic_storage_bytes;
 	std::size_t peak_stage_storage_bytes;
+	std::uint64_t analysis_nanoseconds;
+	std::uint64_t render_nanoseconds;
 	std::uint64_t elapsed_nanoseconds;
 
 	TypeAnalysisStats();

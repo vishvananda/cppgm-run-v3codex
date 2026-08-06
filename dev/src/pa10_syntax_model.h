@@ -1,5 +1,6 @@
 #pragma once
 
+#include "frontend_intern.h"
 #include "pa10_syntax.h"
 
 #include <cstddef>
@@ -13,7 +14,7 @@ namespace cppgm
 namespace pa10_syntax_detail
 {
 
-typedef std::uint32_t TextId;
+typedef InternedStringId TextId;
 typedef std::uint32_t NodeId;
 
 extern const std::uint16_t kSimpleTokenCount;
@@ -25,23 +26,7 @@ extern const std::uint16_t kRShiftSecondToken;
 extern const NodeId kNoNode;
 extern const std::uint32_t kNoEdge;
 
-class StringTable
-{
-public:
-	StringTable();
-	TextId Intern(const std::string& text);
-	const std::string& Get(TextId id) const;
-	std::size_t Size() const;
-	std::size_t SpellingBytes() const;
-	std::size_t StorageBytes() const;
-
-private:
-	void Rehash(std::size_t capacity);
-
-	std::vector<std::string> texts_;
-	std::vector<TextId> slots_;
-	std::size_t spelling_bytes_;
-};
+typedef InternedStringTable StringTable;
 
 struct SyntaxToken
 {
@@ -86,6 +71,7 @@ struct SyntaxNode
 {
 	TextId tag;
 	TextId payload;
+	TextId semantic_payload;
 	std::uint32_t first_edge;
 	std::uint32_t last_edge;
 	std::uint32_t token_first;
@@ -125,7 +111,10 @@ public:
 	std::size_t Nodes() const;
 	std::size_t Edges() const;
 	const std::string& Tag(NodeId node) const;
+	bool IsTag(NodeId node, const char* tag) const;
 	const std::string& Payload(NodeId node) const;
+	const std::string& SemanticPayload(NodeId node) const;
+	void SetSemanticPayload(NodeId node, TextId payload);
 	void SetPayload(NodeId node, const std::string& payload);
 	bool HasDirectChildTag(NodeId node, const char* tag) const;
 	std::uint32_t FirstEdge(NodeId node) const;
@@ -136,6 +125,7 @@ public:
 	std::size_t TokenLast(NodeId node) const;
 	void AddFlags(NodeId node, std::uint16_t flags);
 	std::uint16_t Flags(NodeId node) const;
+	StringTable& SharedStrings() const;
 	std::size_t StorageBytes() const;
 
 private:
