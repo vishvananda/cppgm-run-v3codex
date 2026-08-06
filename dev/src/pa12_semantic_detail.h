@@ -151,8 +151,22 @@ private:
 		TypeId target);
 	void AnalyzeClassMember(NodeId node, ScopeId scope, TypeId owner_type,
 		AccessKind access);
+	void AnalyzeSpecialMember(NodeId node, ScopeId scope, TypeId owner_type,
+		AccessKind access);
 	bool CanAccessMember(BindingId member) const;
 	void CompleteClassLayout(EntityId entity);
+	BindingId EnsureImplicitConstructor(EntityId entity);
+	std::vector<BindingId> ConstructorCandidates(EntityId entity) const;
+	BindingId SelectConstructor(ScopeId scope,
+		const std::vector<NodeId>& argument_syntax,
+		const std::vector<ExpressionInfo>& arguments,
+		const std::vector<BindingId>& candidates, bool copy_initialization);
+	std::uint32_t BuildConstructorAction(TypeId type, ScopeId scope,
+		const std::vector<NodeId>& argument_syntax, bool copy_initialization);
+	void AddConstructorMemberActions(const FunctionInfo& constructor,
+		ScopeId function_scope, std::uint32_t body);
+	void AddMemberInitializationAction(BindingId member, NodeId initializer,
+		ScopeId scope, std::uint32_t body);
 	void AddDefaultConstructor(std::uint32_t variable, BindingId binding,
 		TypeId type);
 	EntityId EntityOf(TypeId type) const;
@@ -210,6 +224,12 @@ private:
 	std::vector<std::uint32_t> function_fact_by_binding_;
 	std::vector<FunctionInfo> functions_;
 	std::vector<std::vector<BindingId> > entity_data_members_;
+	std::vector<std::vector<BindingId> > entity_constructors_;
+	std::vector<BindingId> implicit_constructor_by_entity_;
+	std::vector<NodeId> member_initializer_by_binding_;
+	std::vector<ScopeId> member_initializer_scope_by_binding_;
+	std::vector<NodeId> constructor_initializer_scratch_;
+	std::vector<BindingId> constructor_initializer_touched_;
 	std::vector<FunctionTemplatePattern> function_templates_;
 	IndexedSequenceTable template_function_sets_;
 	TemplateSpecializationTable template_instantiations_;

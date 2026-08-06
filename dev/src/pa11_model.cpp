@@ -481,7 +481,7 @@ BindingRecord::BindingRecord()
 	  storage_class(STORAGE_CLASS_NONE), access(ACCESS_PUBLIC),
 	  constant(false), nonthrowing(false),
 	  non_static_data_member(false), static_member_function(false),
-	  has_default_member_initializer(false)
+	  has_default_member_initializer(false), constructor(false)
 {
 }
 

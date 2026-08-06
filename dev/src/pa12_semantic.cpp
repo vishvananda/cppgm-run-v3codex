@@ -217,6 +217,12 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		function_fact_by_binding_.capacity() * sizeof(std::uint32_t) +
 		functions_.capacity() * sizeof(FunctionInfo) +
 		entity_data_members_.capacity() * sizeof(std::vector<BindingId>) +
+		entity_constructors_.capacity() * sizeof(std::vector<BindingId>) +
+		implicit_constructor_by_entity_.capacity() * sizeof(BindingId) +
+		member_initializer_by_binding_.capacity() * sizeof(NodeId) +
+		member_initializer_scope_by_binding_.capacity() * sizeof(ScopeId) +
+		constructor_initializer_scratch_.capacity() * sizeof(NodeId) +
+		constructor_initializer_touched_.capacity() * sizeof(BindingId) +
 		function_templates_.capacity() * sizeof(FunctionTemplatePattern) +
 		template_function_sets_.StorageBytes() +
 		template_instantiations_.StorageBytes() +
@@ -229,6 +235,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		bytes += functions_[i].parameters.capacity() * sizeof(ParameterInfo);
 	for (std::size_t i = 0; i < entity_data_members_.size(); ++i)
 		bytes += entity_data_members_[i].capacity() * sizeof(BindingId);
+	for (std::size_t i = 0; i < entity_constructors_.size(); ++i)
+		bytes += entity_constructors_[i].capacity() * sizeof(BindingId);
 	for (std::size_t i = 0; i < function_templates_.size(); ++i)
 		bytes += function_templates_[i].type_parameters.capacity() *
 			sizeof(NameId);
@@ -1860,6 +1868,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 		program_->entities[entity].member_scope, name, LOOKUP_ORDINARY);
 	if (found.ordinary == kNoBinding)
 		throw std::runtime_error("unknown class member");
+	if (!CanAccessMember(found.ordinary))
+		throw std::runtime_error("inaccessible class member");
 	TypeId type = program_->bindings[found.ordinary].type;
 	if (IsConst(owner_type)) type = program_->types.Qualify(type, CV_CONST);
 	std::string operation = arena_->Payload(node);
@@ -2251,9 +2261,69 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		if (initializer_node != kNoNode)
 		{
 			NodeId expression = FirstSemanticChild(initializer_node);
-			if (expression != kNoNode && arena_->IsTag(expression, "paren-initializer"))
-				expression = FirstSemanticChild(expression);
-			initializer = AnalyzeExpression(expression, scope, parsed.type);
+			const EntityId class_entity = EntityOf(parsed.type);
+			if (class_entity != kNoEntity &&
+				(program_->entities[class_entity].flavor == NAMED_STRUCT ||
+				 program_->entities[class_entity].flavor == NAMED_CLASS ||
+				 program_->entities[class_entity].flavor == NAMED_UNION))
+			{
+				std::vector<NodeId> arguments;
+				if (expression != kNoNode &&
+					arena_->IsTag(expression, "paren-initializer"))
+				{
+					for (std::uint32_t argument = arena_->FirstEdge(expression);
+						argument != kNoEdge; argument = arena_->NextEdge(argument))
+						arguments.push_back(arena_->EdgeChild(argument));
+					initializer.node = BuildConstructorAction(parsed.type, scope,
+						arguments, false);
+				}
+				else if (expression != kNoNode &&
+					arena_->IsTag(expression, "braced-init-list") &&
+					!program_->entities[class_entity].is_aggregate)
+				{
+					for (std::uint32_t argument = arena_->FirstEdge(expression);
+						argument != kNoEdge; argument = arena_->NextEdge(argument))
+						arguments.push_back(arena_->EdgeChild(argument));
+					initializer.node = BuildConstructorAction(parsed.type, scope,
+						arguments, PayloadSource(initializer_node) == "copy");
+				}
+				else if (expression != kNoNode &&
+					arena_->IsTag(expression, "call-expression") &&
+					!program_->entities[class_entity].is_aggregate)
+				{
+					const NodeId callee = FirstSemanticChild(expression);
+					const std::string expected = program_->names.Get(
+						program_->entities[class_entity].identity_name);
+					if (callee == kNoNode || !arena_->IsTag(callee, "id-expression") ||
+						arena_->Payload(callee) != expected)
+						throw std::runtime_error(
+							"unsupported class copy initializer");
+					const NodeId argument_list = FindChild(expression, "argument-list");
+					if (argument_list != kNoNode)
+						for (std::uint32_t argument = arena_->FirstEdge(argument_list);
+							argument != kNoEdge; argument = arena_->NextEdge(argument))
+							arguments.push_back(arena_->EdgeChild(argument));
+					initializer.node = BuildConstructorAction(parsed.type, scope,
+						arguments, false);
+				}
+				else if (expression != kNoNode &&
+					!program_->entities[class_entity].is_aggregate)
+				{
+					arguments.push_back(expression);
+					initializer.node = BuildConstructorAction(parsed.type, scope,
+						arguments, true);
+				}
+				else initializer = AnalyzeExpression(expression, scope, parsed.type);
+				initializer.type = parsed.type;
+				initializer.category = VALUE_NONE;
+			}
+			else
+			{
+				if (expression != kNoNode &&
+					arena_->IsTag(expression, "paren-initializer"))
+					expression = FirstSemanticChild(expression);
+				initializer = AnalyzeExpression(expression, scope, parsed.type);
+			}
 			has_initializer = true;
 			if (program_->types.Get(parsed.type).kind == TYPE_ARRAY &&
 				program_->types.Get(parsed.type).bound == 0)
@@ -2279,80 +2349,6 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 	}
 }
 
-void SemanticAnalyzer::AddDefaultConstructor(std::uint32_t variable,
-	BindingId binding, TypeId type)
-{
-	type = program_->types.RemoveTopCv(EffectiveType(type));
-	const EntityId entity = EntityOf(type);
-	if (entity == kNoEntity) return;
-	const NamedFlavor flavor = program_->entities[entity].flavor;
-	if (flavor != NAMED_STRUCT && flavor != NAMED_CLASS &&
-		flavor != NAMED_UNION) return;
-	const EntityRecord& class_record = program_->entities[entity];
-	if (!class_record.default_constructible)
-		throw std::runtime_error("class has no usable default constructor");
-	const std::string owner = program_->names.Get(program_->entities[entity].name);
-	const std::size_t separator = owner.rfind("::");
-	const std::string leaf = separator == std::string::npos ? owner :
-		owner.substr(separator + 2);
-	const NameId constructor_name = program_->names.Intern(owner + "::" + leaf);
-	const TypeId this_type = program_->types.Pointer(type);
-	std::vector<TypeId> parameters(1, this_type);
-	const TypeId function_type = program_->types.Function(
-		program_->types.Fundamental(FUND_VOID), parameters, false);
-	const std::uint32_t action = MakeDump(DUMP_CONSTRUCTOR_ACTION, kNoType,
-		VALUE_NONE, constructor_name);
-	const std::uint32_t call = MakeDump(DUMP_CALL_EXPRESSION,
-		program_->types.Fundamental(FUND_VOID), VALUE_PRVALUE);
-	const std::uint32_t callee = MakeDump(DUMP_CALLEE, function_type,
-		VALUE_NONE, constructor_name);
-	const BindingRecord& object = program_->bindings[binding];
-	const std::uint32_t identifier = MakeDump(DUMP_ID_EXPRESSION, type,
-		VALUE_LVALUE, object.name, binding);
-	const std::uint32_t address = MakeDump(DUMP_UNARY_EXPRESSION, this_type,
-		VALUE_PRVALUE, program_->names.Intern("OP_AMP:&"));
-	dump_.Add(address, identifier);
-	dump_.Add(call, callee);
-	dump_.Add(call, address);
-	dump_.Add(action, call);
-	dump_.Add(variable, action);
-	expression_count_ += 3;
-	if (default_constructor_demand_states_.size() <= entity)
-		default_constructor_demand_states_.resize(
-			static_cast<std::size_t>(entity) + 1, 0);
-	if (default_constructor_demand_states_[entity] == 0)
-	{
-		default_constructor_demand_states_[entity] = 1;
-		demanded_default_constructor_entities_.push_back(entity);
-		++demand_worklist_pushes_;
-	}
-}
-
-void SemanticAnalyzer::EmitDefaultConstructor(EntityId entity)
-{
-	if (entity >= default_constructor_demand_states_.size() ||
-		default_constructor_demand_states_[entity] != 1) return;
-	default_constructor_demand_states_[entity] = 2;
-	const TypeId type = program_->entities[entity].type;
-	const std::string owner = program_->names.Get(program_->entities[entity].name);
-	const std::size_t separator = owner.rfind("::");
-	const std::string leaf = separator == std::string::npos ? owner :
-		owner.substr(separator + 2);
-	const NameId name = program_->names.Intern(owner + "::" + leaf);
-	const TypeId this_type = program_->types.Pointer(type);
-	std::vector<TypeId> parameters(1, this_type);
-	const TypeId function_type = program_->types.Function(
-		program_->types.Fundamental(FUND_VOID), parameters, false);
-	const std::uint32_t function = MakeDump(DUMP_FUNCTION_DEFINITION,
-		function_type, VALUE_NONE, name);
-	const std::uint32_t parameter = MakeDump(DUMP_PARAMETER, this_type,
-		VALUE_NONE, program_->names.Intern("this"));
-	const std::uint32_t body = MakeDump(DUMP_COMPOUND_STATEMENT);
-	dump_.Add(function, parameter);
-	dump_.Add(function, body);
-	dump_.Add(root_, function);
-	++default_constructor_emissions_;
-}
 
 void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	std::uint32_t output_parent)

@@ -88,6 +88,11 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	const TypeId type = program_->entities[entity].type;
 	if (entity_data_members_.size() <= entity)
 		entity_data_members_.resize(static_cast<std::size_t>(entity) + 1);
+	if (entity_constructors_.size() <= entity)
+		entity_constructors_.resize(static_cast<std::size_t>(entity) + 1);
+	if (implicit_constructor_by_entity_.size() <= entity)
+		implicit_constructor_by_entity_.resize(
+			static_cast<std::size_t>(entity) + 1, kNoBinding);
 	if (old.type == kNoType && arena_->Payload(node).size() != 0)
 		program_->AddBinding(owner, BIND_TYPE, name, type, false, 0, flavor);
 	if ((arena_->Flags(node) & SYNTAX_FLAG_DEFINITION) != 0)
@@ -125,31 +130,12 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 				AnalyzeClassMember(member, member_scope, type, member_access);
 			else if (arena_->IsTag(member, "special-member-declaration") ||
 				arena_->IsTag(member, "special-member-definition"))
-			{
-				const std::string special_name = arena_->Payload(member);
-				const std::string class_name =
-					program_->names.Get(program_->entities[entity].identity_name);
-				if (special_name == class_name)
-				{
-					EntityRecord& record = program_->entities[entity];
-					record.has_user_declared_constructor = true;
-					const NodeId initializer = FindChild(member, "initializer");
-					const NodeId special = initializer == kNoNode ? kNoNode :
-						FindChild(initializer, "special-initializer");
-					record.has_user_provided_constructor =
-						record.has_user_provided_constructor ||
-						arena_->IsTag(member, "special-member-definition") ||
-						special == kNoNode;
-					const NodeId declarator = FindChild(member, "declarator");
-					const NodeId parameters = declarator == kNoNode ? kNoNode :
-						FindChild(declarator, "parameter-clause");
-					if (parameters != kNoNode &&
-						arena_->FirstEdge(parameters) == kNoEdge)
-						record.default_constructible = true;
-				}
-			}
+				AnalyzeSpecialMember(member, member_scope, type, member_access);
 		}
 		CompleteClassLayout(entity);
+		if (!program_->entities[entity].has_user_declared_constructor &&
+			program_->entities[entity].default_constructible)
+			EnsureImplicitConstructor(entity);
 		program_->entities[entity].complete = true;
 	}
 	(void)anonymous_source;
@@ -248,6 +234,45 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 	owner.layout_complete = true;
 }
 
+BindingId SemanticAnalyzer::EnsureImplicitConstructor(EntityId entity)
+{
+	if (entity >= implicit_constructor_by_entity_.size())
+		implicit_constructor_by_entity_.resize(
+			static_cast<std::size_t>(entity) + 1, kNoBinding);
+	if (implicit_constructor_by_entity_[entity] != kNoBinding)
+		return implicit_constructor_by_entity_[entity];
+	EntityRecord& owner = program_->entities[entity];
+	if (!owner.default_constructible)
+		throw std::runtime_error("class has no usable implicit constructor");
+	const NameId name = owner.identity_name;
+	const TypeId type = program_->types.Function(
+		program_->types.Fundamental(FUND_VOID), std::vector<TypeId>(), false);
+	const BindingId constructor = DeclareFunction(owner.member_scope, name,
+		type, std::vector<ParameterInfo>(), true, false, STORAGE_CLASS_NONE,
+		LANGUAGE_LINKAGE_CPP, true);
+	BindingRecord& binding = program_->bindings[constructor];
+	binding.member_owner = entity;
+	binding.constructor = true;
+	FunctionInfo& info = GetMutableFunction(constructor);
+	info.member_owner = owner.type;
+	info.constructor = true;
+	info.implicit_constructor = true;
+	info.deferred = true;
+	implicit_constructor_by_entity_[entity] = constructor;
+	if (entity_constructors_.size() <= entity)
+		entity_constructors_.resize(static_cast<std::size_t>(entity) + 1);
+	entity_constructors_[entity].push_back(constructor);
+	return constructor;
+}
+
+std::vector<BindingId> SemanticAnalyzer::ConstructorCandidates(
+	EntityId entity) const
+{
+	if (entity >= entity_constructors_.size())
+		return std::vector<BindingId>();
+	return entity_constructors_[entity];
+}
+
 EntityId SemanticAnalyzer::EntityOf(TypeId type) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
@@ -321,6 +346,19 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 			binding.has_default_member_initializer =
 				binding.non_static_data_member &&
 				FindChild(item, "initializer") != kNoNode;
+			if (member_initializer_by_binding_.size() <= member)
+			{
+				member_initializer_by_binding_.resize(
+					static_cast<std::size_t>(member) + 1, kNoNode);
+				member_initializer_scope_by_binding_.resize(
+					static_cast<std::size_t>(member) + 1, kNoScope);
+			}
+			if (binding.has_default_member_initializer)
+			{
+				member_initializer_by_binding_[member] =
+					FindChild(item, "initializer");
+				member_initializer_scope_by_binding_[member] = scope;
+			}
 			const EntityId entity = EntityOf(owner_type);
 			if (binding.non_static_data_member && entity_data_members_.size() <= entity)
 				entity_data_members_.resize(static_cast<std::size_t>(entity) + 1);
@@ -328,6 +366,71 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 				entity_data_members_[entity].push_back(member);
 		}
 	}
+}
+
+void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
+	TypeId owner_type, AccessKind access)
+{
+	const EntityId entity = EntityOf(owner_type);
+	if (entity == kNoEntity) throw std::logic_error("special member has no class");
+	const std::string special_name = arena_->Payload(node);
+	const std::string class_name =
+		program_->names.Get(program_->entities[entity].identity_name);
+	if (special_name != class_name) return;
+
+	EntityRecord& class_record = program_->entities[entity];
+	class_record.has_user_declared_constructor = true;
+	const NodeId declarator = FindChild(node, "declarator");
+	if (declarator == kNoNode)
+		throw std::runtime_error("constructor is missing its declarator");
+	const DeclaratorInfo parsed = BuildDeclarator(declarator,
+		program_->types.Fundamental(FUND_VOID), scope);
+	if (!program_->types.IsFunction(parsed.type))
+		throw std::runtime_error("constructor declarator is not a function");
+	const NodeId initializer = FindChild(node, "initializer");
+	const NodeId special = initializer == kNoNode ? kNoNode :
+		FindChild(initializer, "special-initializer");
+	const bool defaulted = special != kNoNode &&
+		arena_->Payload(special) == "default";
+	const bool deleted = special != kNoNode &&
+		arena_->Payload(special) == "delete";
+	const bool source_definition =
+		arena_->IsTag(node, "special-member-definition");
+	const bool definition = source_definition || defaulted;
+	const BindingId constructor = DeclareFunction(scope, parsed.name,
+		parsed.type, parsed.parameters, definition, false, STORAGE_CLASS_NONE,
+		current_language_linkage_, defaulted || IsNonthrowing(declarator, scope));
+	BindingRecord& binding = program_->bindings[constructor];
+	binding.member_owner = entity;
+	binding.access = access;
+	binding.constructor = true;
+	FunctionInfo& info = GetMutableFunction(constructor);
+	info.member_owner = owner_type;
+	info.constructor = true;
+	info.defaulted_constructor = info.defaulted_constructor || defaulted;
+	info.deleted_constructor = info.deleted_constructor || deleted;
+	info.explicit_constructor = info.explicit_constructor ||
+		FindChild(node, "member-specifiers") != kNoNode;
+	if (source_definition)
+	{
+		info.definition_body = FindChild(node, "compound-statement");
+		info.constructor_initializer = FindChild(node, "ctor-initializer");
+	}
+	info.deferred = !info.deleted_constructor;
+
+	if (entity_constructors_.size() <= entity)
+		entity_constructors_.resize(static_cast<std::size_t>(entity) + 1);
+	std::vector<BindingId>& constructors = entity_constructors_[entity];
+	if (std::find(constructors.begin(), constructors.end(), constructor) ==
+		constructors.end()) constructors.push_back(constructor);
+	std::size_t required = info.parameters.size();
+	while (required != 0 &&
+		info.parameters[required - 1].default_argument != kNoNode) --required;
+	if (!info.deleted_constructor && required == 0)
+		class_record.default_constructible = true;
+	class_record.has_user_provided_constructor =
+		class_record.has_user_provided_constructor ||
+		(source_definition || (!defaulted && !deleted));
 }
 
 TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope,
@@ -1131,6 +1234,12 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 		DUMP_FUNCTION_DEFINITION : DUMP_FUNCTION_DECLARATION,
 		output_type, VALUE_NONE, info.display_name, info.binding);
 	dump_.Add(root_, function);
+	if (!info.defined && member)
+	{
+		GetMutableFunction(binding).demand_state = 3;
+		++demanded_function_emissions_;
+		return;
+	}
 	const ScopeId function_scope = NewScope(info.owner, SCOPE_FUNCTION,
 		program_->bindings[info.binding].name, ScopePrefixId(info.owner));
 	if (member)
@@ -1150,6 +1259,12 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 		dump_.Add(function, MakeDump(DUMP_PARAMETER, parameter.function_type,
 			VALUE_NONE, parameter.name, parameter_binding));
 	}
+	if (!info.defined)
+	{
+		GetMutableFunction(binding).demand_state = 3;
+		++demanded_function_emissions_;
+		return;
+	}
 	if (info.defined)
 	{
 		const TypeId previous_return = current_return_type_;
@@ -1157,7 +1272,17 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 		current_return_type_ = program_->types.Get(info.type).child;
 		current_class_context_ =
 			program_->bindings[info.binding].member_owner;
-		if (info.definition_body != kNoNode)
+		if (info.constructor)
+		{
+			const std::uint32_t constructor_body =
+				MakeDump(DUMP_COMPOUND_STATEMENT);
+			dump_.Add(function, constructor_body);
+			AddConstructorMemberActions(info, function_scope, constructor_body);
+			if (info.definition_body != kNoNode)
+				AnalyzeCompound(info.definition_body, function_scope,
+					constructor_body);
+		}
+		else if (info.definition_body != kNoNode)
 			AnalyzeCompound(info.definition_body, function_scope, function);
 		else dump_.Add(function, MakeDump(DUMP_COMPOUND_STATEMENT));
 		current_return_type_ = previous_return;

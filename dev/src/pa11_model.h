@@ -235,7 +235,7 @@ struct BindingRecord
 	StorageClass storage_class;
 	AccessKind access;
 	bool constant, nonthrowing, non_static_data_member, static_member_function,
-		has_default_member_initializer;
+		has_default_member_initializer, constructor;
 
 	BindingRecord();
 };

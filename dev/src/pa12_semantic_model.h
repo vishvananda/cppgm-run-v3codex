@@ -202,16 +202,24 @@ struct FunctionInfo
 	NameId display_name;
 	TypeId member_owner;
 	std::vector<ParameterInfo> parameters;
-	NodeId definition_body;
+	NodeId definition_body, constructor_initializer;
 	bool defined;
 	bool deferred;
 	bool template_specialization;
+	bool constructor;
+	bool implicit_constructor;
+	bool defaulted_constructor;
+	bool deleted_constructor;
+	bool explicit_constructor;
 	std::uint8_t demand_state;
 	FunctionInfo()
 		: binding(kNoBinding), owner(kNoScope), type(kNoType), display_name(0),
 		  member_owner(kNoType),
-		  definition_body(kNoNode), defined(false), deferred(false),
-		  template_specialization(false),
+		  definition_body(kNoNode), constructor_initializer(kNoNode),
+		  defined(false), deferred(false), template_specialization(false),
+		  constructor(false), implicit_constructor(false),
+		  defaulted_constructor(false), deleted_constructor(false),
+		  explicit_constructor(false),
 		  demand_state(0) {}
 };
 

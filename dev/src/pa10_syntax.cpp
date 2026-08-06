@@ -1668,6 +1668,8 @@ NodeId Parser::ParseInitializer()
 	if (Match(OP_ASS))
 	{
 		const NodeId initializer = arena_.Make("initializer");
+		arena_.SetSemanticPayload(initializer,
+			arena_.SharedStrings().Intern("copy"));
 		if (Match(KW_DEFAULT))
 		{
 			arena_.Add(initializer,
@@ -1689,12 +1691,16 @@ NodeId Parser::ParseInitializer()
 	if (At(OP_LBRACE))
 	{
 		const NodeId initializer = arena_.Make("initializer");
+		arena_.SetSemanticPayload(initializer,
+			arena_.SharedStrings().Intern("direct-list"));
 		arena_.Add(initializer, ParseBracedInitList());
 		return initializer;
 	}
 	if (Match(OP_LPAREN))
 	{
 		const NodeId initializer = arena_.Make("initializer");
+		arena_.SetSemanticPayload(initializer,
+			arena_.SharedStrings().Intern("direct-paren"));
 		const NodeId values = arena_.Make("paren-initializer");
 		if (!At(OP_RPAREN))
 		{

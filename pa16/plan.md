@@ -19,31 +19,23 @@ borrowed by typed lowering.
 
 ## Current Failure Map
 
-Current state is 61/248 PA16 tests, up from the 58/247 turn baseline with one
-passing audit regression. The complete 187-failure set, assigned once by primary
-semantic owner, is: 22 member-function/call-boundary; 38 class lookup/access/
-inheritance; 63 initialization/lifetime; 42 operator/ADL/callable; 10 layout/
-object representation; and 12 procedural interaction/metadata failures. By
-result, 164 are expected-success exits, 4 are missing rejections, and 19 are
-LowIR differences.
+Current state is 84/248 PA16 tests, 23 gains from the 61/248 turn baseline with
+no PA16 losses. The complete 164-failure set, assigned once by primary semantic
+owner, is: 20 member-function/call-boundary; 38 class lookup/access/inheritance;
+43 initialization/lifetime; 42 operator/ADL/callable; 9 layout/object
+representation; and 12 procedural interaction/metadata failures.
 
-## Next Substantial Checkpoint
+## Active Checkpoint
 
-**Special-member initialization action spine.** PA12 will give constructors stable
-`BindingId` identity, select one constructor at each direct/copy/list/default-init
-site, and order explicit/default member actions by canonical subobject identity.
-Demand-owned helper emission remains keyed by entity/binding; PA15 consumes only
-selected calls and member actions, with no name lookup or constructor reselection.
-This applies `spec.md` sections 2, 3, 6, 8, and 9.
-
-Ownership/data flow is `EntityId special-member facts + constructor/member
-BindingIds -> resolved initialization actions -> typed calls/stores`. Selection is
-O(C + E), for C indexed candidates and E explicit expressions; action planning is
-O(M) for M initialized subobjects, demand deduplication is expected O(1), and
-lowering is O(A). Validate direct/default/list initialization, default member
-initializers and explicit overrides, nested class subobjects, overload/default-
-argument selection, PA16, through-PA15, file audit, and doubled candidate/member
-curves.
+**Next: base-subobject construction and destruction spine (queued).** Extend
+canonical class facts with ordered base subobjects and selected base constructor/
+destructor `BindingId`s, then lower explicit base initialization, implicit base
+initialization, and reverse-order destruction without semantic lookup. Ownership
+and flow are `EntityId base sequence -> selected special-member actions -> typed
+subobject calls`. Expected work is O(B + A) per special member with O(1) demand
+deduplication. Validate aliased/default-argument base initialization, derived
+field access, local/member/array lifetime ordering, through-PA15, audit, and
+doubled base/action curves. Implementation has not begun.
 
 ## Performance Evidence
 
@@ -54,6 +46,8 @@ curves.
 | Member overload selection | 1,001 / 2,001 candidates | 2,000 / 4,000 order comparisons; 2,006 / 4,006 conversion checks; 6.57 / 13.07 ms semantic; 8 instructions at both sizes |
 | Local aggregate actions | 1k / 2k members | 2,009 / 4,009 semantic nodes; 2,006 / 4,006 lowered nodes; 3,005 / 6,005 instructions; 1.96 / 3.93 ms semantic; 1.08 / 2.06 ms lowering |
 | Nested aggregate actions | 100x100 / 200x200 depth/leaves | After audit: 408 / 808 semantic nodes; 303 / 603 instructions; 63,066 / 124,506 typed bytes; pre-fix instructions were 10,302 / 40,602 |
+| Constructor candidates | 1,001 / 2,001 candidates | 1,001 / 2,001 candidate visits; 1,004 / 2,004 conversion checks; 5.45 / 12.26 ms semantic; 14 instructions at both sizes |
+| Constructor member actions | 1k / 2k initialized members | 1,000 / 2,000 member visits; 2,012 / 4,012 semantic nodes; 3,008 / 6,008 instructions; 2.45 / 4.88 ms semantic; 1.23 / 2.30 ms lowering |
 
 Exact counter scaling establishes work proportional to owned fields, indexed
 candidates, resolved actions, and emitted IR; the nested audit curve closes the
@@ -66,3 +60,4 @@ former depth-by-leaf projection product.
 | Direct-member object spine | Complete | Canonical size/alignment/offset and default-construction facts; typed `.`/`->` fields; duplicate rejection; 42/247 PA16 and 1,145/1,145 through PA15; linear field/use curves; audit pass |
 | Resolved member-call spine | Complete | Canonical method/access/cv facts, implicit-object ranking, out-of-class hidden `this`, stable overload/ABI IDs, typed calls, and LowIR counters; 9 product tests gained to 51/247 with no losses; 1,145/1,145 through PA15; linear candidate curve; audit pass |
 | Local aggregate-action spine | Pass after audit fixes | C++11 aggregate eligibility, one union active member, member-ID action trees, borrowed brace cursor, typed scalar/reference stores, and bounded projection reuse; 61/248 PA16 with no losses; 1,145/1,145 through PA15; flat and nested linear curves; file audit pass |
+| Special-member initialization action spine | Complete | Stable constructor bindings/candidate indexes, one-time selection, declaration-ordered DMI/member actions, and typed direct calls/stores; 23 gains to 84/248 with no PA16 losses; 1,145/1,145 through PA15; linear candidate/member curves; audit pass |

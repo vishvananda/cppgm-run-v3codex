@@ -7,6 +7,7 @@
 #include "pa11_model.h"
 #include "pa12_semantic.h"
 #include "pa12_semantic_model.h"
+#include "pa16_constructor_lowering.h"
 
 #include <algorithm>
 #include <chrono>
@@ -31,7 +32,8 @@ using namespace pa15_lowering_support;
 const std::size_t kAggregateProjectionReplayLimit = 8;
 typedef SmallSequence<BindingId, kAggregateProjectionReplayLimit> AggregatePath;
 
-class GraphLowerer
+class GraphLowerer :
+	private pa16_lowering_detail::ConstructorActionLowering<GraphLowerer>
 {
 public:
 	GraphLowerer(const SemanticGraphView& graph, TypedProgram& output,
@@ -40,7 +42,8 @@ public:
 		  output_(output), stats_(stats), function_(0), current_block_(0),
 		  current_result_(LowVoid()), current_result_reference_(false),
 		  temp_counter_(0), block_counter_(0), generated_slot_ordinal_(0),
-		  source_ordinal_(source_ordinal), needs_global_class_initializer_(false)
+		  source_ordinal_(source_ordinal), needs_global_class_initializer_(false),
+		  current_this_binding_(kNoBinding)
 	{
 		function_symbols_.resize(program_.bindings.size(), kNoLowId);
 		global_symbols_.resize(program_.bindings.size(), kNoLowId);
@@ -61,6 +64,8 @@ public:
 	}
 
 private:
+	friend class pa16_lowering_detail::ConstructorActionLowering<GraphLowerer>;
+
 	enum StatementTaskKind : std::uint8_t
 	{
 		STATEMENT_NODE,
@@ -351,6 +356,14 @@ private:
 					ABI_FUNCTION_QUALIFIER_VOLATILE);
 			if (!qualifier.function.qualifiers.empty())
 				file.cases[0].records.push_back(qualifier);
+		}
+		if (binding.constructor)
+		{
+			AbiFactRecord terminal;
+			terminal.set_kind(ABI_FACT_RECORD_FUNCTION);
+			terminal.function.kind = ABI_FUNCTION_RECORD_TERMINAL;
+			terminal.function.terminal = "constructor-complete";
+			file.cases[0].records.push_back(terminal);
 		}
 		const std::size_t first_parameter = member ? 1 : 0;
 		for (std::size_t i = first_parameter;
@@ -1033,6 +1046,7 @@ private:
 		slot_name_counts_.Clear();
 		generated_slot_ordinal_ = 0;
 		parameter_slot_index_ = 0;
+		current_this_binding_ = kNoBinding;
 		CollectSourceNames(node);
 		CollectSlots(node);
 		SelectBlock(AddBlock("entry"));
@@ -1045,6 +1059,9 @@ private:
 			const DumpNode& child = arena_.nodes[children[i]];
 			if (child.kind == DUMP_PARAMETER)
 			{
+				if (parameter_index == 0 && record.binding != kNoBinding &&
+					program_.bindings[record.binding].member_owner != kNoEntity)
+					current_this_binding_ = child.binding;
 				Instruction store(Instruction::STORE);
 				store.type = result.parameters[parameter_index].type;
 				store.first = Operand(static_cast<ParameterId>(parameter_index),
@@ -1076,6 +1093,7 @@ private:
 		}
 		function_ = 0;
 		current_result_reference_ = false;
+		current_this_binding_ = kNoBinding;
 		return result;
 	}
 
@@ -1543,7 +1561,10 @@ private:
 			LowerExpressionType(arena_.nodes[children[0]].type).kind == LOW_I64;
 		const bool canonicalize_immediates =
 			(!comparison && (op == "+" || op == "-")) ||
-			canonical_pointer_difference_compare;
+			canonical_pointer_difference_compare ||
+			(comparison &&
+			 (arena_.nodes[children[0]].kind == DUMP_MEMBER_EXPRESSION ||
+			  arena_.nodes[children[1]].kind == DUMP_MEMBER_EXPRESSION));
 		if (comparison && operand_type.kind == LOW_PTR &&
 			left.kind == Operand::INTEGER && left.integer_value == 0)
 			left.type = operand_type;
@@ -2219,6 +2240,15 @@ private:
 				(void)AddressOfStorage(StorageFor(record.binding, type));
 				return;
 			}
+			if (IsClassObjectType(record.type) && children.size() == 1 &&
+				arena_.nodes[children[0]].kind == DUMP_CONSTRUCTOR_ACTION)
+			{
+				const LowType type = LowerStorageType(record.type);
+				const Operand destination = AddressOfStorage(
+					StorageFor(record.binding, type));
+				LowerConstructorAction(children[0], destination);
+				return;
+			}
 			if (!children.empty())
 			{
 				if (IsArrayType(record.type))
@@ -2240,6 +2270,11 @@ private:
 				const LowType type = LowerStorageType(record.type);
 				(void)AddressOfStorage(StorageFor(record.binding, type));
 			}
+			return;
+		}
+		if (record.kind == DUMP_INITIALIZER_ACTION)
+		{
+			LowerMemberInitializationAction(record, children);
 			return;
 		}
 		if (record.kind == DUMP_RETURN_STATEMENT)
@@ -2434,6 +2469,17 @@ private:
 	{
 		if (values.size() > 1)
 			throw std::logic_error("aggregate leaf has multiple values");
+		if (IsArrayType(action.type))
+		{
+			if (values.size() != 1 ||
+				arena_.nodes[values[0]].kind != DUMP_BRACED_INIT_LIST)
+				throw std::runtime_error("array member requires a braced initializer");
+			const Operand array_destination =
+				retained_destination.kind == Operand::NONE ?
+				ProjectAggregatePath(root, path) : retained_destination;
+			LowerArrayValues(action.type, values[0], array_destination);
+			return;
+		}
 		Instruction store(Instruction::STORE);
 		if (IsReferenceType(action.type))
 		{
@@ -2459,37 +2505,6 @@ private:
 		store.second = retained_destination.kind == Operand::NONE ?
 			ProjectAggregatePath(root, path) : retained_destination;
 		Emit(store);
-	}
-
-	__attribute__((noinline)) void LowerArrayInitializer(const DumpNode& record,
-		const NodeChildren& variable_children)
-	{
-		if (variable_children.size() != 1)
-			throw std::runtime_error("invalid PA15 array initializer");
-		const NodeChildren values = Children(variable_children[0]);
-		const TypeRecord& array = program_.types.Get(ExpressionObjectType(record.type));
-		if (array.kind != TYPE_ARRAY || array.bound == 0 ||
-			values.size() > array.bound)
-			throw std::runtime_error("invalid PA15 bounded array initializer");
-		const LowType object_type = LowerStorageType(record.type);
-		const Operand storage = StorageFor(record.binding, object_type);
-		const Operand base = AddressOfStorage(storage);
-		const LowType element = LowerExpressionType(array.child);
-		const std::size_t element_size = program_.SizeOf(array.child);
-		for (std::size_t i = 0; i < static_cast<std::size_t>(array.bound); ++i)
-		{
-			Operand destination = base;
-			if (i != 0)
-				destination = IndexAddress(LowI8(), base,
-					Operand(static_cast<std::int64_t>(i * element_size), LowI64()),
-					false);
-			Instruction store(Instruction::STORE);
-			store.type = element;
-			store.first = i < values.size() ?
-				Convert(LowerValue(values[i]), element) : Operand(0, element);
-			store.second = destination;
-			Emit(store);
-		}
 	}
 
 	__attribute__((noinline)) Operand LowerControlCondition(
@@ -2868,6 +2883,7 @@ private:
 	std::size_t parameter_slot_index_;
 	std::size_t source_ordinal_;
 	bool needs_global_class_initializer_;
+	BindingId current_this_binding_;
 	std::vector<IdentityTypeId> identity_type_cache_;
 };
 
