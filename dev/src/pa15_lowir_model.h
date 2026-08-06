@@ -155,6 +155,7 @@ private:
 	void Rehash(std::size_t capacity);
 
 	std::vector<SymbolIdentity> keys_;
+	std::vector<SymbolId> symbols_;
 	std::vector<SymbolId> slots_;
 };
 

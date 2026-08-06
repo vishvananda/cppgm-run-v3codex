@@ -299,6 +299,8 @@ private:
 						pa15_lowering_abi::MangleVariable(program_, record));
 				}
 				global_symbols_[record.binding] = global_symbols_[canonical];
+				output_.symbols[global_symbols_[canonical]].thread_local_storage =
+					program_.bindings[record.binding].thread_local_storage;
 				const bool declaration_only = Children(current).empty() &&
 					program_.bindings[record.binding].storage_class ==
 						STORAGE_CLASS_EXTERN;
@@ -471,8 +473,7 @@ private:
 		const NamespaceObjectAction& action =
 			graph_.namespace_objects[action_index];
 		const bool thread_local_object =
-			program_.bindings[action.object].storage_class ==
-				STORAGE_CLASS_THREAD_LOCAL;
+			program_.bindings[action.object].thread_local_storage;
 		output_.symbols[global.symbol].thread_local_storage = thread_local_object;
 		if (thread_local_object)
 			thread_local_objects_.push_back(action_index);
@@ -487,8 +488,7 @@ private:
 			else dynamic_initializers_.push_back(action_index);
 		}
 		if (action.destructor != kNoDumpEdge &&
-			program_.bindings[action.object].storage_class !=
-				STORAGE_CLASS_THREAD_LOCAL)
+			!program_.bindings[action.object].thread_local_storage)
 			dynamic_finalizers_.push_back(action_index);
 		if (stats_) ++stats_->globals;
 		return global;

@@ -1,0 +1,8 @@
+declare global @value : i32 [storage=thread_local, binding=strong, object=_Z5value]
+
+global @address : ptr [binding=strong, object=_Z7address] = addr @value
+
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  block ^entry:
+    return i32 0
+}

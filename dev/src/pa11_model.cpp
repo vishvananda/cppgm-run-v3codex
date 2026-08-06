@@ -481,7 +481,7 @@ BindingRecord::BindingRecord()
 	  display_flavor(NAMED_NONE), display_type_name(0),
 	  canonical(kNoBinding), value(0), language_linkage(LANGUAGE_LINKAGE_CPP),
 	  storage_class(STORAGE_CLASS_NONE), access(ACCESS_PUBLIC),
-	  constant(false), nonthrowing(false),
+	  constant(false), nonthrowing(false), thread_local_storage(false),
 	  non_static_data_member(false), static_member_function(false),
 	  has_default_member_initializer(false), constructor(false),
 	  destructor(false)

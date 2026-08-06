@@ -41,7 +41,7 @@ private:
 	bool IsTrivialConstructorAction(pa11::TypeId type,
 		const pa15_lowering_support::NodeChildren& children) const;
 	bool SymbolForBinding(pa11::BindingId binding,
-		pa15_lowir_detail::SymbolId* symbol) const;
+		pa15_lowir_detail::SymbolId* symbol);
 	bool ResolveConstantAddress(std::uint32_t node,
 		pa15_lowir_detail::SymbolId* symbol, std::int64_t* offset);
 	bool RequiresDynamicAddress(std::uint32_t node) const;

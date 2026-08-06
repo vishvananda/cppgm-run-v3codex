@@ -71,6 +71,9 @@ private:
 	void AnalyzeTemplate(NodeId node, ScopeId scope);
 	void AnalyzeSimple(NodeId node, ScopeId scope,
 		std::uint32_t output_parent, bool local);
+	void PublishVariableDeclarationFacts(BindingId binding,
+		ScopeId declaration_scope, NameId name, TypeId type,
+		const SpecInfo& spec, bool local);
 	void AnalyzeFunction(NodeId node, ScopeId scope,
 		std::uint32_t output_parent);
 	void AnalyzeCompound(NodeId node, ScopeId scope,

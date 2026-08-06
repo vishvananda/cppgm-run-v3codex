@@ -39,13 +39,21 @@ source-ordered `NamespaceObjectAction` per definition, keyed by canonical
 `BindingId` and retaining the resolved initializer plus optional destructor.
 Static-data serialization, dynamic init/fini, static-member identity, and TLS
 wrapper/guard emission consume those facts directly; references remain storage
-bindings rather than lifetime owners. Static initializer serialization and
-source-type lowering have separate compiled owners, while the shared graph is
-still synchronously borrowed through the lowering driver.
+bindings rather than lifetime owners. TLS duration is a binding fact independent
+of `static`/`extern` linkage. The program driver coalesces typed per-TU lifecycle
+bodies into one forward-init/reverse-fini role pair, and the emission-identity
+index maps dense semantic identities to sparse symbols so synthetic units do not
+break later translation units. Static initializer serialization, declaration
+publication, and source-type lowering have separate compiled owners, while the
+shared graph is still synchronously borrowed through typed lowering. This
+applies `spec.md` sections 2, 5, 6, 7, 8, and 9: stable canonical facts, one
+lowering per emission unit, whole-program state only for lifecycle ordering,
+explicit ownership, and linear action/helper work.
 
 ## Current Failure Map
 
-Current state is 150/265 PA16 tests, +18 over checkpoint entry. The complete
+Current state is 154/269 PA16 tests: the original 150/265 checkpoint passes plus
+four audit regressions. The complete
 115-failure set, assigned once by primary owner, is: 16 member-function/call-
 boundary; 22 class lookup/access/inheritance; 20 initialization/lifetime; 41
 operator/ADL/callable; 8 layout/object representation; and 8 procedural
@@ -83,11 +91,12 @@ callable fields, operator fallback/rejection, through-PA15, file audit, and
 | Lexical cleanup exits | 1k / 2k locals plus normal/return exits | 2,000 / 4,000 cleanup-action visits; 3,007 / 6,007 instructions; 593,407 / 1,182,871 typed bytes; 17.24 / 33.25 ms semantic and 6.77 / 13.19 ms lowering |
 | Throwing array construction cleanup | 100 / 200 elements | Post-audit 1,505 / 3,005 instructions, 303 / 603 binding probes, 312,756 / 620,976 typed bytes, and 0.52 / 0.94 ms five-run median lowering; pre-fix was 21,007 / 82,007 instructions, 5,154 / 20,304 probes, and 3,977,181 / 15,535,017 bytes |
 | Destructor EH suffixes | 100 / 200 nontrivial members | Shared large-case cleanup chain: 100 / 200 subobject visits; 1,015 / 2,015 instructions; 198,924 / 391,392 typed bytes; 0.32 / 0.63 ms five-run median lowering; pre-fix was 15,961 / 61,911 instructions and 3,112,135 / 12,029,251 bytes |
-| Namespace dynamic actions | 1k / 2k objects | 1,000 / 2,000 actions; 2,004 / 4,004 instructions; 2,001 / 4,001 binding probes; 605,026 / 1,208,130 typed bytes; five-run median 3.79 / 7.62 ms semantic and 2.89 / 5.55 ms lowering |
+| Namespace dynamic lifetime | 1k / 2k objects | 1,000 / 2,000 actions; 4,016 / 8,016 instructions; 2,003 / 4,003 binding probes; 976,176 / 1,946,960 typed bytes; representative 3.56 / 7.02 ms semantic and 3.85 / 7.61 ms lowering |
+| Cross-TU lifecycle aggregation | 2 dynamic TUs | One init and one fini role; two forward init and two reverse fini helper calls; 3 actions, 36 instructions, 15,022 typed bytes; LowIR adapter pass |
 
 Exact counter scaling establishes work proportional to owned fields, indexed
-candidates, resolved actions, and emitted IR; the nested audit curve closes the
-former depth-by-leaf projection product.
+candidates, resolved actions, emitted IR, and lifecycle helpers; the nested
+audit curve closes the former depth-by-leaf projection product.
 
 ## Completed Checkpoints
 
@@ -99,4 +108,4 @@ former depth-by-leaf projection product.
 | Special-member initialization action spine | Pass after audit fixes | Init-mode-aware selection, declaration-ordinal member actions, conservative exception facts, typed reference/subobject lowering, and bounded projection reuse; 91/255 with seven audit regressions and no existing loss; 1,145/1,145 through PA15; candidate/member/nested curves and file audit pass |
 | Single-base construction spine | Pass after audit fixes | Canonical base/access edges, naming-class-aware lookup, selected base actions, conversion ranking, and recorded typed projection counts with no lowering lookup; 120/259 with four audit regressions and no existing loss; 1,145/1,145 through PA15; exact linear 250/500-edge curves; file audit pass |
 | Destruction and lexical-cleanup spine | Pass after audit fixes | Demand-correct user/implicit destructor facts, access/deletion checks, union/reverse nested-array lifetime, normal/return/break/continue cleanup, return preservation, and shared typed EH suffixes; 132/265 with no prior loss; 1,145/1,145 through PA15; exact linear array/destructor curves; file audit pass with no PA16 warning |
-| Namespace/static lifetime spine | Complete | Canonical ordered namespace actions; constant aggregate/string serialization; ordered init and reverse fini; reference/static-member identity; isolated TLS wrappers/guards; 150/265 (+18) with no baseline loss; 1,145/1,145 through PA15; 1k/2k linear counter/timing curves; file audit pass |
+| Namespace/static lifetime spine | Pass after audit fixes | Canonical ordered actions, independent TLS/linkage facts, static serialization, one cross-TU init/fini pair, sparse emission identity, and retained address targets; 154/269 with no baseline loss; 1,145/1,145 through PA15; linear namespace curves; file audit pass |

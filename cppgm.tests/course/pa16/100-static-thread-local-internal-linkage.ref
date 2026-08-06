@@ -1,0 +1,10 @@
+declare function @__cppgm_tls_wrapper__value() -> ptr [tls_for=@value, binding=internal, object=_ZTWL5value]
+
+global @value : i32 [storage=thread_local, binding=internal, object=_ZL5value] = 3
+
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  block ^entry:
+    %t1 = load i32 @value
+    %t2 = binary sub i32 %t1, 3
+    return i32 %t2
+}

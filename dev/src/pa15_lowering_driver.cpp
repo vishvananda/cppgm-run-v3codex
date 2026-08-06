@@ -6,9 +6,12 @@
 #include "pa15_lowir_render.h"
 #include "pa15_lowering_support.h"
 
+#include <algorithm>
 #include <chrono>
 #include <ostream>
 #include <stdexcept>
+#include <string>
+#include <vector>
 
 namespace cppgm
 {
@@ -44,6 +47,94 @@ private:
 	LowIRLoweringStats* stats_;
 	std::size_t source_ordinal_;
 };
+
+SymbolId AddLifecycleHelperSymbol(TypedProgram* program,
+	const std::string& proposed)
+{
+	std::size_t& count = program->symbol_name_counts[proposed];
+	const std::string name = count++ == 0 ? proposed :
+		proposed + "__sym" + std::to_string(count);
+	const SymbolId symbol = static_cast<SymbolId>(program->symbols.size());
+	program->symbols.push_back(Symbol(Symbol::FUNCTION_SYMBOL, name,
+		std::string(), false, true, false));
+	Symbol& record = program->symbols.back();
+	record.definition_emitted = true;
+	record.referenced = true;
+	return symbol;
+}
+
+void CoalesceLifecycleRole(TypedProgram* program, LowIRLoweringStats* stats,
+	bool initializer)
+{
+	std::vector<std::size_t> owners;
+	for (std::size_t i = 0; i < program->functions.size(); ++i)
+	{
+		const Function& function = program->functions[i];
+		if (initializer ? function.initializer : function.finalizer)
+			owners.push_back(i);
+	}
+	if (owners.size() <= 1) return;
+
+	const SymbolId role_symbol = program->functions[owners[0]].symbol;
+	std::vector<SymbolId> helpers;
+	helpers.reserve(owners.size());
+	for (std::size_t i = 0; i < owners.size(); ++i)
+	{
+		Function& function = program->functions[owners[i]];
+		if (i == 0)
+			function.symbol = AddLifecycleHelperSymbol(program,
+				initializer ? "__cppgm_tu_init" : "__cppgm_tu_fini");
+		function.initializer = false;
+		function.finalizer = false;
+		program->symbols[function.symbol].referenced = true;
+		helpers.push_back(function.symbol);
+	}
+
+	Function aggregate;
+	aggregate.symbol = role_symbol;
+	aggregate.result = LowVoid();
+	aggregate.initializer = initializer;
+	aggregate.finalizer = !initializer;
+	Block entry("entry");
+	entry.selected = true;
+	for (std::size_t i = 0; i < helpers.size(); ++i)
+	{
+		const std::size_t index = initializer ? i : helpers.size() - i - 1;
+		Instruction call(Instruction::CALL);
+		call.type = LowVoid();
+		call.first = Operand(Operand::FUNCTION, helpers[index], LowPtr());
+		entry.instructions.push_back(call);
+	}
+	entry.instructions.push_back(Instruction(Instruction::RETURN_VOID));
+	entry.terminated = true;
+	aggregate.blocks.push_back(entry);
+	aggregate.block_order.push_back(static_cast<BlockId>(0));
+	program->functions.push_back(aggregate);
+	if (stats)
+	{
+		++stats->functions;
+		++stats->blocks;
+		stats->instructions += helpers.size() + 1;
+	}
+}
+
+void CoalesceLifecycleFunctions(TypedProgram* program,
+	LowIRLoweringStats* stats)
+{
+	CoalesceLifecycleRole(program, stats, true);
+	CoalesceLifecycleRole(program, stats, false);
+	std::size_t initializer = program->functions.size();
+	std::size_t finalizer = program->functions.size();
+	for (std::size_t i = 0; i < program->functions.size(); ++i)
+	{
+		if (program->functions[i].initializer) initializer = i;
+		if (program->functions[i].finalizer) finalizer = i;
+	}
+	if (initializer < program->functions.size() && finalizer < initializer)
+		std::rotate(program->functions.begin() + finalizer,
+			program->functions.begin() + initializer,
+			program->functions.begin() + initializer + 1);
+}
 
 }
 
@@ -100,6 +191,13 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 			stats->semantic_nanoseconds += semantic_stats.analysis_nanoseconds;
 		}
 	}
+	std::chrono::steady_clock::time_point coalesce_started;
+	if (stats) coalesce_started = std::chrono::steady_clock::now();
+	CoalesceLifecycleFunctions(&program, stats);
+	if (stats)
+		stats->lowering_nanoseconds += static_cast<std::uint64_t>(
+			std::chrono::duration_cast<std::chrono::nanoseconds>(
+				std::chrono::steady_clock::now() - coalesce_started).count());
 	const std::chrono::steady_clock::time_point render_started =
 		std::chrono::steady_clock::now();
 	CountingStreamBuffer buffer(output.rdbuf());

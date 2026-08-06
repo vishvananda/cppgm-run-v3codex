@@ -460,6 +460,8 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 	const SpecInfo spec = BuildSpecifiers(specifiers, scope, std::string(), true);
 	if (arena_->IsTag(node, "function-definition"))
 	{
+		if (spec.thread_local_storage)
+			throw std::runtime_error("thread_local member function");
 		const NodeId declarator = FindChild(node, "declarator");
 		DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type, scope);
 		const BindingId function = DeclareFunction(scope, parsed.name,
@@ -497,6 +499,8 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		}
 		if (program_->types.IsFunction(parsed.type))
 		{
+			if (spec.thread_local_storage)
+				throw std::runtime_error("thread_local member function");
 			const BindingId function = DeclareFunction(scope, parsed.name,
 				parsed.type, parsed.parameters, false, false, STORAGE_CLASS_NONE,
 				current_language_linkage_, IsNonthrowing(declarator, scope));
@@ -510,36 +514,54 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		}
 		else
 		{
+			if (spec.thread_local_storage &&
+				spec.storage_class != STORAGE_CLASS_STATIC)
+				throw std::runtime_error(
+					"thread_local class member must be static");
+			if (spec.is_constexpr &&
+				spec.storage_class != STORAGE_CLASS_STATIC)
+				throw std::runtime_error(
+					"constexpr class data member must be static");
+			TypeId member_type = parsed.type;
+			if (spec.is_constexpr)
+				member_type = program_->types.Qualify(member_type, CV_CONST);
 			const LookupResult occupied =
 				program_->LookupDirect(scope, parsed.name, LOOKUP_ORDINARY);
 			if (parsed.name != 0 && occupied.ordinary != kNoBinding)
 				throw std::runtime_error("duplicate or conflicting class member");
 			const BindingId member = program_->AddBinding(scope, BIND_VARIABLE,
-				parsed.name, parsed.type, false, 0, NAMED_NONE, 0, kNoBinding,
+				parsed.name, member_type, false, 0, NAMED_NONE, 0, kNoBinding,
 				false);
 			BindingRecord& binding = program_->bindings[member];
 			binding.storage_class = spec.storage_class;
+			binding.thread_local_storage = spec.thread_local_storage;
 			binding.member_owner = EntityOf(owner_type);
 			binding.access = access;
 			binding.non_static_data_member =
-				spec.storage_class != STORAGE_CLASS_STATIC;
+				spec.storage_class == STORAGE_CLASS_NONE;
 			binding.has_default_member_initializer =
 				binding.non_static_data_member &&
 				FindChild(item, "initializer") != kNoNode;
 			if (!binding.non_static_data_member &&
 				FindChild(item, "initializer") != kNoNode)
 			{
+				if (!spec.is_constexpr &&
+					!(IsConst(binding.type) && IsIntegral(binding.type, true)))
+					throw std::runtime_error(
+						"invalid in-class static data member initializer");
 				const NodeId initializer = FirstSemanticChild(
 					FindChild(item, "initializer"));
 				const ExpressionInfo value = AnalyzeExpression(initializer,
 					scope, binding.type);
-				if (value.constant && (spec.is_constexpr ||
-					(IsConst(binding.type) && IsIntegral(binding.type, true))))
-				{
-					binding.constant = true;
-					binding.value = value.value;
-				}
+				if (!value.constant)
+					throw std::runtime_error(
+						"nonconstant in-class static data member initializer");
+				binding.constant = true;
+				binding.value = value.value;
 			}
+			else if (!binding.non_static_data_member && spec.is_constexpr)
+				throw std::runtime_error(
+					"constexpr static data member requires initializer");
 			if (member_initializer_by_binding_.size() <= member)
 				member_initializer_by_binding_.resize(
 					static_cast<std::size_t>(member) + 1, kNoNode);
@@ -557,6 +579,35 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 			}
 		}
 	}
+}
+
+void SemanticAnalyzer::PublishVariableDeclarationFacts(BindingId binding,
+	ScopeId declaration_scope, NameId name, TypeId type,
+	const SpecInfo& spec, bool local)
+{
+	BindingRecord& record = program_->bindings[binding];
+	record.language_linkage = current_language_linkage_;
+	record.storage_class = spec.storage_class;
+	record.thread_local_storage = spec.thread_local_storage;
+	const TypeRecord top_type = program_->types.Get(type);
+	if (!local && record.storage_class == STORAGE_CLASS_NONE &&
+		top_type.kind == TYPE_QUALIFIED && (top_type.cv & CV_CONST) != 0)
+		record.storage_class = STORAGE_CLASS_STATIC;
+	BindingRecord& canonical = program_->bindings[record.canonical];
+	canonical.language_linkage = record.language_linkage;
+	if (canonical.storage_class == STORAGE_CLASS_NONE ||
+		record.storage_class == STORAGE_CLASS_STATIC)
+		canonical.storage_class = record.storage_class;
+	if (record.canonical != binding && canonical.thread_local_storage !=
+		record.thread_local_storage)
+		throw std::runtime_error("thread_local redeclaration mismatch");
+	canonical.thread_local_storage = record.thread_local_storage;
+	if (record.canonical != binding && canonical.constant)
+	{
+		record.constant = true;
+		record.value = canonical.value;
+	}
+	if (!local) record.qualified_name = DisplayName(declaration_scope, name);
 }
 
 void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
@@ -844,7 +895,7 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 		else if (spelling == "extern") result.storage_class = STORAGE_CLASS_EXTERN;
 		else if (spelling == "static") result.storage_class = STORAGE_CLASS_STATIC;
 		else if (spelling == "thread_local")
-			result.storage_class = STORAGE_CLASS_THREAD_LOCAL;
+			result.thread_local_storage = true;
 		else if (spelling == "const") cv |= CV_CONST;
 		else if (spelling == "volatile") cv |= CV_VOLATILE;
 		else if (spelling == "unsigned") is_unsigned = true;

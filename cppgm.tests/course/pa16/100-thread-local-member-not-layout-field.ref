@@ -1,0 +1,11 @@
+declare function @__cppgm_tls_wrapper__Holder__value() -> ptr [tls_for=@Holder__value, binding=strong, object=_ZTWN6Holder5valueE]
+
+global @Holder__value : i32 [storage=thread_local, binding=strong, object=_ZN6Holder5valueE] = 3
+
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  block ^entry:
+    %t1 = const i64 1
+    %t2 = binary sub i64 %t1, 1
+    %t3 = convert trunc i32 i64 %t2
+    return i32 %t3
+}

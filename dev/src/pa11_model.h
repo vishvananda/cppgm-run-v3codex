@@ -197,7 +197,7 @@ enum BindingKind
 enum LanguageLinkage { LANGUAGE_LINKAGE_CPP, LANGUAGE_LINKAGE_C };
 
 enum StorageClass { STORAGE_CLASS_NONE, STORAGE_CLASS_EXTERN,
-	STORAGE_CLASS_STATIC, STORAGE_CLASS_THREAD_LOCAL };
+	STORAGE_CLASS_STATIC };
 
 enum AccessKind { ACCESS_PUBLIC, ACCESS_PROTECTED, ACCESS_PRIVATE };
 
@@ -237,8 +237,9 @@ struct BindingRecord
 	LanguageLinkage language_linkage;
 	StorageClass storage_class;
 	AccessKind access;
-	bool constant, nonthrowing, non_static_data_member, static_member_function,
-		has_default_member_initializer, constructor, destructor;
+	bool constant, nonthrowing, thread_local_storage, non_static_data_member,
+		static_member_function, has_default_member_initializer, constructor,
+		destructor;
 
 	BindingRecord();
 };

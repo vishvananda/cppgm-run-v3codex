@@ -49,12 +49,13 @@ bool StaticInitializerLowering::IsTrivialConstructorAction(TypeId type,
 }
 
 bool StaticInitializerLowering::SymbolForBinding(BindingId binding,
-	SymbolId* symbol) const
+	SymbolId* symbol)
 {
 	if (binding < function_symbols_.size() &&
 		function_symbols_[binding] != kNoLowId)
 	{
 		*symbol = function_symbols_[binding];
+		output_.symbols[*symbol].referenced = true;
 		return true;
 	}
 	if (binding >= program_.bindings.size()) return false;
@@ -63,6 +64,7 @@ bool StaticInitializerLowering::SymbolForBinding(BindingId binding,
 		global_symbols_[canonical] != kNoLowId)
 	{
 		*symbol = global_symbols_[canonical];
+		output_.symbols[*symbol].referenced = true;
 		return true;
 	}
 	return false;

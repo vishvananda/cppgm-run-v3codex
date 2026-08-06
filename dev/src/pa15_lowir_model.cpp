@@ -211,10 +211,10 @@ bool SymbolIdentityTable::Find(const SymbolIdentity& key, SymbolId* symbol) cons
 	std::size_t slot = SymbolIdentityHash()(key) & (slots_.size() - 1);
 	while (slots_[slot] != kNoLowId)
 	{
-		const SymbolId id = slots_[slot];
-		if (keys_[id] == key)
+		const SymbolId entry = slots_[slot];
+		if (keys_[entry] == key)
 		{
-			*symbol = id;
+			*symbol = symbols_[entry];
 			return true;
 		}
 		slot = (slot + 1) & (slots_.size() - 1);
@@ -224,20 +224,21 @@ bool SymbolIdentityTable::Find(const SymbolIdentity& key, SymbolId* symbol) cons
 
 void SymbolIdentityTable::Insert(const SymbolIdentity& key, SymbolId symbol)
 {
-	if (symbol != keys_.size())
-		throw std::logic_error("nonsequential PA15 symbol identity");
 	if ((keys_.size() + 1) * 10 > slots_.size() * 7)
 		Rehash(slots_.size() * 2);
 	std::size_t slot = SymbolIdentityHash()(key) & (slots_.size() - 1);
 	while (slots_[slot] != kNoLowId)
 		slot = (slot + 1) & (slots_.size() - 1);
+	const SymbolId entry = static_cast<SymbolId>(keys_.size());
 	keys_.push_back(key);
-	slots_[slot] = symbol;
+	symbols_.push_back(symbol);
+	slots_[slot] = entry;
 }
 
 std::size_t SymbolIdentityTable::StorageBytes() const
 {
 	return keys_.capacity() * sizeof(SymbolIdentity) +
+		symbols_.capacity() * sizeof(SymbolId) +
 		slots_.capacity() * sizeof(SymbolId);
 }
 
@@ -246,11 +247,11 @@ void SymbolIdentityTable::Rehash(std::size_t capacity)
 	std::vector<SymbolId> replacement(capacity, kNoLowId);
 	for (std::size_t index = 0; index < keys_.size(); ++index)
 	{
-		const SymbolId id = static_cast<SymbolId>(index);
-		std::size_t slot = SymbolIdentityHash()(keys_[id]) & (capacity - 1);
+		const SymbolId entry = static_cast<SymbolId>(index);
+		std::size_t slot = SymbolIdentityHash()(keys_[entry]) & (capacity - 1);
 		while (replacement[slot] != kNoLowId)
 			slot = (slot + 1) & (capacity - 1);
-		replacement[slot] = id;
+		replacement[slot] = entry;
 	}
 	slots_.swap(replacement);
 }

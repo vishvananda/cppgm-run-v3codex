@@ -148,8 +148,9 @@ struct SpecInfo
 	StorageClass storage_class;
 	bool is_typedef;
 	bool is_constexpr;
+	bool thread_local_storage;
 	SpecInfo() : type(kNoType), storage_class(STORAGE_CLASS_NONE),
-		is_typedef(false), is_constexpr(false) {}
+		is_typedef(false), is_constexpr(false), thread_local_storage(false) {}
 };
 
 struct ParameterInfo

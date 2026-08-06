@@ -1825,8 +1825,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	result.type = type;
 	result.category = VALUE_LVALUE;
 	result.binding = found.ordinary;
-	result.constant = program_->bindings[found.ordinary].constant;
-	result.value = program_->bindings[found.ordinary].value;
+	const BindingRecord& canonical = program_->bindings[
+		program_->bindings[found.ordinary].canonical];
+	result.constant = canonical.constant;
+	result.value = canonical.value;
 	dump_.nodes[expression].constant = result.constant;
 	dump_.nodes[expression].constant_value = result.value;
 	++expression_count_;
@@ -2185,6 +2187,8 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		}
 		if (program_->types.IsFunction(parsed.type))
 		{
+			if (spec.thread_local_storage)
+				throw std::runtime_error("thread_local function");
 			const BindingId function = DeclareFunction(declaration_scope, parsed.name,
 				parsed.type, parsed.parameters, false, false, spec.storage_class,
 				current_language_linkage_, IsNonthrowing(declarator, scope));
@@ -2208,24 +2212,11 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		const BindingId binding = program_->AddBinding(declaration_scope,
 			BIND_VARIABLE,
 			parsed.name, parsed.type);
-		BindingRecord& binding_record = program_->bindings[binding];
-		binding_record.language_linkage = current_language_linkage_;
-		binding_record.storage_class = spec.storage_class;
-		const TypeRecord top_type = program_->types.Get(parsed.type);
-		if (!local && binding_record.storage_class == STORAGE_CLASS_NONE &&
-			top_type.kind == TYPE_QUALIFIED && (top_type.cv & CV_CONST) != 0)
-			binding_record.storage_class = STORAGE_CLASS_STATIC;
-		BindingRecord& canonical_record =
-			program_->bindings[binding_record.canonical];
-		canonical_record.language_linkage = binding_record.language_linkage;
-		if (canonical_record.storage_class == STORAGE_CLASS_NONE ||
-			binding_record.storage_class == STORAGE_CLASS_STATIC ||
-			binding_record.storage_class == STORAGE_CLASS_THREAD_LOCAL)
-			canonical_record.storage_class = binding_record.storage_class;
-		if (!local)
-			program_->bindings[binding].qualified_name =
-				DisplayName(declaration_scope, parsed.name);
+		PublishVariableDeclarationFacts(binding, declaration_scope,
+			parsed.name, parsed.type, spec, local);
 		const NodeId initializer_node = FindChild(item, "initializer");
+		if (spec.is_constexpr && initializer_node == kNoNode)
+			throw std::runtime_error("constexpr variable requires initializer");
 		ExpressionInfo initializer;
 		bool has_initializer = false;
 		if (initializer_node != kNoNode)
@@ -2318,6 +2309,13 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 				if (spec.is_constexpr && !IsPointer(parsed.type))
 					dump_.nodes[initializer.node].type = parsed.type;
 			}
+		}
+		if (program_->bindings[binding].constant)
+		{
+			BindingRecord& canonical = program_->bindings[
+				program_->bindings[binding].canonical];
+			canonical.constant = true;
+			canonical.value = program_->bindings[binding].value;
 		}
 		const bool declaration_only = !local && !has_initializer &&
 			program_->bindings[binding].storage_class == STORAGE_CLASS_EXTERN;
