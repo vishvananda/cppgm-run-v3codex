@@ -121,19 +121,44 @@ ScopeId SemanticAnalyzer::ResolveOwner(ScopeId scope, const NamePath& name)
 		result.type != kNoType ? program_->ScopeForType(result.type) : kNoScope;
 }
 
-const std::string& SemanticAnalyzer::ScopePrefix(ScopeId scope) const
+const std::string& SemanticAnalyzer::ScopePrefix(ScopeId scope)
 {
 	return program_->names.Get(ScopePrefixId(scope));
 }
 
-NameId SemanticAnalyzer::ScopePrefixId(ScopeId scope) const
+NameId SemanticAnalyzer::ScopePrefixId(ScopeId scope)
 {
-	return scope < scope_prefixes_.size() ? scope_prefixes_[scope] : 0;
+	const NameId deferred = std::numeric_limits<NameId>::max();
+	if (scope >= scope_prefixes_.size() || scope_prefixes_[scope] != deferred)
+		return scope < scope_prefixes_.size() ? scope_prefixes_[scope] : 0;
+	scope_prefix_scratch_.clear();
+	ScopeId current = scope;
+	while (current != kNoScope && current < scope_prefixes_.size() &&
+		scope_prefixes_[current] == deferred)
+	{
+		if (scope_prefix_segments_[current] != 0)
+			scope_prefix_scratch_.push_back(scope_prefix_segments_[current]);
+		current = scope_parents_[current];
+	}
+	std::string rendered = current != kNoScope &&
+		current < scope_prefixes_.size() ?
+		program_->names.Get(scope_prefixes_[current]) : std::string();
+	for (std::size_t i = scope_prefix_scratch_.size(); i != 0; --i)
+	{
+		rendered += program_->names.Get(scope_prefix_scratch_[i - 1]);
+		rendered += "::";
+	}
+	scope_prefixes_[scope] = program_->names.Intern(rendered);
+	return scope_prefixes_[scope];
 }
 
 NameId SemanticAnalyzer::DisplayName(ScopeId owner, NameId name)
 {
-	return program_->names.Intern(ScopePrefix(owner) + program_->names.Get(name));
+	// ScopePrefix may materialize and intern a deferred prefix, invalidating
+	// references into the shared string table. Snapshot the terminal first.
+	const std::string terminal = program_->names.Get(name);
+	const std::string qualified = ScopePrefix(owner) + terminal;
+	return program_->names.Intern(qualified);
 }
 
 ScopeId SemanticAnalyzer::NewScope(ScopeId parent, ScopeKind kind,
@@ -143,6 +168,7 @@ ScopeId SemanticAnalyzer::NewScope(ScopeId parent, ScopeKind kind,
 	if (scope_prefixes_.size() <= scope)
 	{
 		scope_prefixes_.resize(static_cast<std::size_t>(scope) + 1, 0);
+		scope_prefix_segments_.resize(static_cast<std::size_t>(scope) + 1, 0);
 		scope_parents_.resize(static_cast<std::size_t>(scope) + 1, kNoScope);
 	}
 	scope_prefixes_[scope] = prefix;
@@ -183,7 +209,9 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 {
 	std::size_t bytes =
 		scope_prefixes_.capacity() * sizeof(NameId) +
+		scope_prefix_segments_.capacity() * sizeof(NameId) +
 		scope_parents_.capacity() * sizeof(ScopeId) +
+		scope_prefix_scratch_.capacity() * sizeof(NameId) +
 		function_sets_.StorageBytes() +
 		function_declarations_.StorageBytes() +
 		function_fact_by_binding_.capacity() * sizeof(std::uint32_t) +
@@ -209,7 +237,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 
 TypeId SemanticAnalyzer::EffectiveType(TypeId type) const
 {
-	const TypeRecord& record = program_->types.Get(type);
+	const TypeRecord record = program_->types.Get(type);
 	return record.kind == TYPE_LVALUE_REFERENCE ||
 		record.kind == TYPE_RVALUE_REFERENCE ? record.child : type;
 }
@@ -217,7 +245,7 @@ TypeId SemanticAnalyzer::EffectiveType(TypeId type) const
 bool SemanticAnalyzer::IsVoid(TypeId type) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
-	const TypeRecord& record = program_->types.Get(type);
+	const TypeRecord record = program_->types.Get(type);
 	return record.kind == TYPE_FUNDAMENTAL &&
 		record.fundamental == FUND_VOID;
 }
@@ -225,7 +253,7 @@ bool SemanticAnalyzer::IsVoid(TypeId type) const
 bool SemanticAnalyzer::IsNullptr(TypeId type) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
-	const TypeRecord& record = program_->types.Get(type);
+	const TypeRecord record = program_->types.Get(type);
 	return record.kind == TYPE_FUNDAMENTAL &&
 		record.fundamental == FUND_NULLPTR_T;
 }
@@ -233,14 +261,14 @@ bool SemanticAnalyzer::IsNullptr(TypeId type) const
 bool SemanticAnalyzer::IsConst(TypeId type) const
 {
 	type = EffectiveType(type);
-	const TypeRecord& record = program_->types.Get(type);
+	const TypeRecord record = program_->types.Get(type);
 	return record.kind == TYPE_QUALIFIED && (record.cv & CV_CONST) != 0;
 }
 
 FundamentalKind SemanticAnalyzer::FundamentalOf(TypeId type) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
-	const TypeRecord& record = program_->types.Get(type);
+	const TypeRecord record = program_->types.Get(type);
 	if (record.kind != TYPE_FUNDAMENTAL)
 		throw std::logic_error("fundamental kind requested for non-fundamental");
 	return record.fundamental;
@@ -249,7 +277,7 @@ FundamentalKind SemanticAnalyzer::FundamentalOf(TypeId type) const
 bool SemanticAnalyzer::IsIntegral(TypeId type, bool allow_scoped_enum) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
-	const TypeRecord& record = program_->types.Get(type);
+	const TypeRecord record = program_->types.Get(type);
 	if (record.kind == TYPE_FUNDAMENTAL)
 		return record.fundamental != FUND_VOID &&
 			record.fundamental != FUND_NULLPTR_T &&
@@ -265,7 +293,7 @@ bool SemanticAnalyzer::IsIntegral(TypeId type, bool allow_scoped_enum) const
 bool SemanticAnalyzer::IsFloating(TypeId type) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
-	const TypeRecord& record = program_->types.Get(type);
+	const TypeRecord record = program_->types.Get(type);
 	return record.kind == TYPE_FUNDAMENTAL &&
 		(record.fundamental == FUND_FLOAT ||
 		 record.fundamental == FUND_DOUBLE ||
@@ -286,7 +314,7 @@ bool SemanticAnalyzer::IsPointer(TypeId type) const
 int SemanticAnalyzer::IntegralRank(TypeId type) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
-	const TypeRecord& record = program_->types.Get(type);
+	const TypeRecord record = program_->types.Get(type);
 	if (record.kind == TYPE_NAMED)
 	{
 		const EntityRecord& entity = program_->entities[record.entity];
@@ -309,7 +337,7 @@ int SemanticAnalyzer::IntegralRank(TypeId type) const
 TypeId SemanticAnalyzer::IntegralPromotionType(TypeId type) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
-	const TypeRecord& record = program_->types.Get(type);
+	const TypeRecord record = program_->types.Get(type);
 	if (record.kind == TYPE_NAMED)
 	{
 		const EntityRecord& entity = program_->entities[record.entity];
@@ -353,7 +381,7 @@ TypeId SemanticAnalyzer::CommonArithmeticType(TypeId left, TypeId right) const
 TypeId SemanticAnalyzer::Decay(TypeId type) const
 {
 	type = EffectiveType(type);
-	const TypeRecord& record = program_->types.Get(type);
+	const TypeRecord record = program_->types.Get(type);
 	if (record.kind == TYPE_ARRAY) return program_->types.Pointer(record.child);
 	if (record.kind == TYPE_FUNCTION) return program_->types.Pointer(type);
 	return program_->types.RemoveTopCv(type);
@@ -361,7 +389,7 @@ TypeId SemanticAnalyzer::Decay(TypeId type) const
 
 TypeId SemanticAnalyzer::AdjustParameterType(TypeId type)
 {
-	const TypeRecord& record = program_->types.Get(type);
+	const TypeRecord record = program_->types.Get(type);
 	if (record.kind == TYPE_ARRAY) return program_->types.Pointer(record.child);
 	if (record.kind == TYPE_FUNCTION) return program_->types.Pointer(type);
 	return program_->types.RemoveTopCv(type);
@@ -372,8 +400,8 @@ bool SemanticAnalyzer::SimilarUnqualified(TypeId source, TypeId target) const
 	source = program_->types.RemoveTopCv(source);
 	target = program_->types.RemoveTopCv(target);
 	if (source == target) return true;
-	const TypeRecord& a = program_->types.Get(source);
-	const TypeRecord& b = program_->types.Get(target);
+	const TypeRecord a = program_->types.Get(source);
+	const TypeRecord b = program_->types.Get(target);
 	if (a.kind != b.kind) return false;
 	switch (a.kind)
 	{
@@ -403,8 +431,8 @@ bool SemanticAnalyzer::QualificationConversion(TypeId source,
 	TypeId b = target;
 	while (true)
 	{
-		const TypeRecord& ar = program_->types.Get(a);
-		const TypeRecord& br = program_->types.Get(b);
+		const TypeRecord ar = program_->types.Get(a);
+		const TypeRecord br = program_->types.Get(b);
 		if (ar.kind != TYPE_POINTER || br.kind != TYPE_POINTER) break;
 		a = ar.child;
 		b = br.child;
@@ -439,7 +467,7 @@ ConversionRank SemanticAnalyzer::Conversion(TypeId source,
 	ValueCategory category, bool integer_zero, TypeId target) const
 {
 	++conversion_checks_;
-	const TypeRecord& target_record = program_->types.Get(target);
+	const TypeRecord target_record = program_->types.Get(target);
 	if (target_record.kind == TYPE_LVALUE_REFERENCE ||
 		target_record.kind == TYPE_RVALUE_REFERENCE)
 	{
@@ -453,8 +481,8 @@ ConversionRank SemanticAnalyzer::Conversion(TypeId source,
 		{
 			if (!lvalue_reference && category == VALUE_LVALUE)
 				return CONVERSION_INVALID;
-			const TypeRecord& source_top = program_->types.Get(EffectiveType(source));
-			const TypeRecord& target_top = program_->types.Get(target_record.child);
+			const TypeRecord source_top = program_->types.Get(EffectiveType(source));
+			const TypeRecord target_top = program_->types.Get(target_record.child);
 			const std::uint8_t source_cv = source_top.kind == TYPE_QUALIFIED ?
 				source_top.cv : CV_NONE;
 			const std::uint8_t target_cv = target_top.kind == TYPE_QUALIFIED ?
@@ -480,15 +508,15 @@ ConversionRank SemanticAnalyzer::Conversion(TypeId source,
 		return CONVERSION_STANDARD;
 	if (IsPointer(from) && IsPointer(to))
 	{
-		const TypeRecord& source_pointer = program_->types.Get(from);
-		const TypeRecord& target_pointer = program_->types.Get(to);
+		const TypeRecord source_pointer = program_->types.Get(from);
+		const TypeRecord target_pointer = program_->types.Get(to);
 		TypeId target_pointee = program_->types.RemoveTopCv(target_pointer.child);
-		const TypeRecord& pointee = program_->types.Get(target_pointee);
+		const TypeRecord pointee = program_->types.Get(target_pointee);
 		if (pointee.kind == TYPE_FUNDAMENTAL &&
 			pointee.fundamental == FUND_VOID)
 		{
-			const TypeRecord& source_cv = program_->types.Get(source_pointer.child);
-			const TypeRecord& target_cv = program_->types.Get(target_pointer.child);
+			const TypeRecord source_cv = program_->types.Get(source_pointer.child);
+			const TypeRecord target_cv = program_->types.Get(target_pointer.child);
 			const std::uint8_t scv = source_cv.kind == TYPE_QUALIFIED ?
 				source_cv.cv : CV_NONE;
 			const std::uint8_t tcv = target_cv.kind == TYPE_QUALIFIED ?
@@ -529,7 +557,7 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 		throw std::runtime_error("invalid standard conversion from " +
 			program_->RenderType(value.type) + " to " +
 			program_->RenderType(target));
-	const TypeRecord& target_record = program_->types.Get(target);
+	const TypeRecord target_record = program_->types.Get(target);
 	const TypeId nonreference = target_record.kind == TYPE_LVALUE_REFERENCE ||
 		target_record.kind == TYPE_RVALUE_REFERENCE ? target_record.child : target;
 	if (value.integer_literal_zero &&
@@ -813,7 +841,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 			if (desired != kNoType)
 			{
 				desired = program_->types.RemoveTopCv(desired);
-				const TypeRecord& target_record = program_->types.Get(desired);
+				const TypeRecord target_record = program_->types.Get(desired);
 				if (target_record.kind == TYPE_LVALUE_REFERENCE ||
 					target_record.kind == TYPE_RVALUE_REFERENCE)
 					desired = target_record.child;
@@ -842,7 +870,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 			result.type = function.type;
 			if (function.member_owner != kNoType)
 			{
-				const TypeRecord& member_type = program_->types.Get(function.type);
+				const TypeRecord member_type = program_->types.Get(function.type);
 				TypeId object = function.member_owner;
 				if ((member_type.cv & CV_CONST) != 0)
 					object = program_->types.Qualify(object, CV_CONST);
@@ -950,7 +978,7 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 	{
 		++overload_candidates_;
 		const FunctionInfo& function = GetFunction(candidates[c]);
-		const TypeRecord& function_type = program_->types.Get(function.type);
+		const TypeRecord function_type = program_->types.Get(function.type);
 		std::size_t required_parameters = function_type.parameter_count;
 		while (required_parameters != 0 &&
 			required_parameters <= function.parameters.size() &&
@@ -963,7 +991,11 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 			viable[c] = false;
 			continue;
 		}
-		const TypeId* parameters = program_->types.Parameters(function.type);
+		const TypeId* parameter_data = program_->types.Parameters(function.type);
+		std::vector<TypeId> parameters;
+		if (function_type.parameter_count != 0)
+			parameters.assign(parameter_data,
+				parameter_data + function_type.parameter_count);
 		for (std::size_t a = 0; a < argument_syntax.size(); ++a)
 		{
 			ConversionRank rank = CONVERSION_ELLIPSIS;
@@ -1132,7 +1164,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 				return ApplyTarget(zero, target);
 			}
 			ExpressionInfo operand = AnalyzeExpression(argument_syntax[0], scope);
-			const TypeRecord& cast_record = program_->types.Get(cast_type);
+			const TypeRecord cast_record = program_->types.Get(cast_type);
 			const ValueCategory cast_category =
 				cast_record.kind == TYPE_LVALUE_REFERENCE ? VALUE_LVALUE :
 				cast_record.kind == TYPE_RVALUE_REFERENCE ? VALUE_XVALUE :
@@ -1169,11 +1201,15 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 						AnalyzeExpression(argument_syntax[i], scope));
 			const BindingId selected = SelectOverload(scope, argument_syntax,
 				arguments, candidates);
-			const FunctionInfo& function = GetFunction(selected);
-			const TypeRecord& function_type = program_->types.Get(function.type);
-			const TypeId* parameters = program_->types.Parameters(function.type);
+			const FunctionInfo function = GetFunction(selected);
+			const TypeRecord function_type = program_->types.Get(function.type);
+			const TypeId* parameter_data = program_->types.Parameters(function.type);
+			std::vector<TypeId> parameters;
+			if (function_type.parameter_count != 0)
+				parameters.assign(parameter_data,
+					parameter_data + function_type.parameter_count);
 			const TypeId result_type = function_type.child;
-			const TypeRecord& returned = program_->types.Get(result_type);
+			const TypeRecord returned = program_->types.Get(result_type);
 			const ValueCategory category = returned.kind == TYPE_LVALUE_REFERENCE ?
 				VALUE_LVALUE : returned.kind == TYPE_RVALUE_REFERENCE ?
 				VALUE_XVALUE : VALUE_PRVALUE;
@@ -1218,20 +1254,24 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 
 	ExpressionInfo callee = AnalyzeExpression(callee_syntax, scope);
 	TypeId function_type = EffectiveType(callee.type);
-	const TypeRecord* callable = &program_->types.Get(function_type);
-	if (callable->kind == TYPE_POINTER)
+	TypeRecord callable = program_->types.Get(function_type);
+	if (callable.kind == TYPE_POINTER)
 	{
-		function_type = callable->child;
-		callable = &program_->types.Get(function_type);
+		function_type = callable.child;
+		callable = program_->types.Get(function_type);
 	}
-	if (callable->kind != TYPE_FUNCTION)
+	if (callable.kind != TYPE_FUNCTION)
 		throw std::runtime_error("called object is not callable");
-	if (argument_syntax.size() < callable->parameter_count ||
-		(!callable->variadic && argument_syntax.size() != callable->parameter_count))
+	if (argument_syntax.size() < callable.parameter_count ||
+		(!callable.variadic && argument_syntax.size() != callable.parameter_count))
 		throw std::runtime_error("indirect call arity mismatch");
-	const TypeId* parameters = program_->types.Parameters(function_type);
-	const TypeId result_type = callable->child;
-	const TypeRecord& returned = program_->types.Get(result_type);
+	const TypeId* parameter_data = program_->types.Parameters(function_type);
+	std::vector<TypeId> parameters;
+	if (callable.parameter_count != 0)
+		parameters.assign(parameter_data,
+			parameter_data + callable.parameter_count);
+	const TypeId result_type = callable.child;
+	const TypeRecord returned = program_->types.Get(result_type);
 	const ValueCategory category = returned.kind == TYPE_LVALUE_REFERENCE ?
 		VALUE_LVALUE : returned.kind == TYPE_RVALUE_REFERENCE ?
 		VALUE_XVALUE : VALUE_PRVALUE;
@@ -1241,7 +1281,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 	for (std::size_t a = 0; a < argument_syntax.size(); ++a)
 	{
 		ExpressionInfo argument = AnalyzeExpression(argument_syntax[a], scope,
-			a < callable->parameter_count ? parameters[a] : kNoType);
+			a < callable.parameter_count ? parameters[a] : kNoType);
 		dump_.Add(call, argument.node);
 	}
 	ExpressionInfo result;
@@ -1261,7 +1301,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 	if (operation == "&" && target != kNoType)
 	{
 		TypeId desired = program_->types.RemoveTopCv(target);
-		const TypeRecord& target_record = program_->types.Get(desired);
+		const TypeRecord target_record = program_->types.Get(desired);
 		if ((target_record.kind == TYPE_POINTER &&
 			 program_->types.IsFunction(target_record.child)) ||
 			target_record.kind == TYPE_MEMBER_POINTER)
@@ -1287,7 +1327,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 	else if (operation == "*")
 	{
 		TypeId decayed = Decay(result_type);
-		const TypeRecord& pointer = program_->types.Get(decayed);
+		const TypeRecord pointer = program_->types.Get(decayed);
 		if (pointer.kind != TYPE_POINTER)
 			throw std::runtime_error("dereference requires pointer");
 		result_type = pointer.child;
@@ -1490,9 +1530,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
 		if (arena_->EdgeChild(edge) != type_id) operand_node = arena_->EdgeChild(edge);
-	const TypeRecord& target_record = program_->types.Get(target);
+	// Expression analysis can intern more types and reallocate TypeTable storage.
+	// Keep the cast shape by value across the recursive operand analysis.
+	const TypeRecord target_record = program_->types.Get(target);
 	const TypeId unqualified_target = program_->types.RemoveTopCv(target);
-	const TypeRecord& unqualified_target_record =
+	const TypeRecord unqualified_target_record =
 		program_->types.Get(unqualified_target);
 	const bool function_pointer_target =
 		unqualified_target_record.kind == TYPE_POINTER &&
@@ -1636,7 +1678,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSubscript(NodeId node, ScopeId scope)
 	if (!IsPointer(Decay(left.type)) && IsPointer(Decay(right.type)))
 		std::swap(left, right);
 	const TypeId pointer_type = Decay(left.type);
-	const TypeRecord& pointer = program_->types.Get(pointer_type);
+	const TypeRecord pointer = program_->types.Get(pointer_type);
 	if (pointer.kind != TYPE_POINTER || !IsIntegral(right.type))
 		throw std::runtime_error("invalid subscript operands");
 	const std::uint32_t expression = MakeDump(DUMP_SUBSCRIPT_EXPRESSION,
@@ -1674,7 +1716,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 {
 	if (target == kNoType) throw std::runtime_error("untyped braced-init-list");
 	TypeId type = target;
-	const TypeRecord& array = program_->types.Get(type);
+	const TypeRecord array = program_->types.Get(type);
 	TypeId element = type;
 	if (array.kind == TYPE_ARRAY) element = array.child;
 	std::vector<ExpressionInfo> values;
@@ -1895,9 +1937,11 @@ void SemanticAnalyzer::AnalyzeNamespace(NodeId node, ScopeId scope,
 	if (scope_prefixes_.size() <= child)
 	{
 		scope_prefixes_.resize(static_cast<std::size_t>(child) + 1, 0);
+		scope_prefix_segments_.resize(static_cast<std::size_t>(child) + 1, 0);
 		scope_parents_.resize(static_cast<std::size_t>(child) + 1, kNoScope);
 		scope_prefixes_[child] = unnamed ? ScopePrefixId(scope) :
-			program_->names.Intern(ScopePrefix(scope) + spelling + "::");
+			std::numeric_limits<NameId>::max();
+		scope_prefix_segments_[child] = unnamed ? 0 : name;
 		scope_parents_[child] = scope;
 	}
 	if (unnamed) program_->AddUsingEdge(scope, child);
@@ -2082,7 +2126,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		BindingRecord& binding_record = program_->bindings[binding];
 		binding_record.language_linkage = current_language_linkage_;
 		binding_record.storage_class = spec.storage_class;
-		const TypeRecord& top_type = program_->types.Get(parsed.type);
+		const TypeRecord top_type = program_->types.Get(parsed.type);
 		if (!local && binding_record.storage_class == STORAGE_CLASS_NONE &&
 			top_type.kind == TYPE_QUALIFIED && (top_type.cv & CV_CONST) != 0)
 			binding_record.storage_class = STORAGE_CLASS_STATIC;
@@ -2640,6 +2684,8 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 	Program program(arena.SharedStrings());
 	program_ = &program;
 	scope_prefixes_.resize(static_cast<std::size_t>(program.GlobalScope()) + 1, 0);
+	scope_prefix_segments_.resize(
+		static_cast<std::size_t>(program.GlobalScope()) + 1, 0);
 	scope_parents_.resize(static_cast<std::size_t>(program.GlobalScope()) + 1,
 		kNoScope);
 	program.AddBinding(program.GlobalScope(), BIND_TYPE_ALIAS,

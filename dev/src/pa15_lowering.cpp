@@ -1,5 +1,6 @@
 #include "pa15_lowering.h"
 #include "pa15_lowir_model.h"
+#include "pa15_lowir_render.h"
 
 #include "abi_mangle.h"
 #include "pa11_model.h"
@@ -54,31 +55,36 @@ std::string SanitizeSymbol(const std::string& name)
 	return result;
 }
 
-class NodeChildren
+template <typename Value, std::size_t InlineCount>
+class SmallSequence
 {
 public:
-	NodeChildren() : count_(0) {}
+	SmallSequence() : count_(0) {}
 
-	void Push(std::uint32_t child)
+	void Push(const Value& value)
 	{
-		if (count_ < kInlineCount) inline_[count_] = child;
-		else overflow_.push_back(child);
+		if (count_ < InlineCount) inline_[count_] = value;
+		else overflow_.push_back(value);
 		++count_;
 	}
 
 	std::size_t size() const { return count_; }
 	bool empty() const { return count_ == 0; }
-	std::uint32_t operator[](std::size_t index) const
+	const Value& operator[](std::size_t index) const
 	{
-		return index < kInlineCount ? inline_[index] : overflow_[index - kInlineCount];
+		return index < InlineCount ? inline_[index] : overflow_[index - InlineCount];
 	}
 
 private:
-	static const std::size_t kInlineCount = 8;
-	std::uint32_t inline_[kInlineCount];
-	std::vector<std::uint32_t> overflow_;
+	Value inline_[InlineCount];
+	std::vector<Value> overflow_;
 	std::size_t count_;
 };
+
+typedef SmallSequence<std::uint32_t, 8> NodeChildren;
+typedef SmallSequence<Operand, 8> CallArguments;
+typedef SmallSequence<std::uint8_t, 8> CallArgumentFlags;
+typedef SmallSequence<std::uint32_t, 8> SwitchCases;
 
 class GraphLowerer
 {
@@ -97,6 +103,9 @@ public:
 		function_definition_.resize(program_.bindings.size(), kNoDumpEdge);
 		function_declaration_.resize(program_.bindings.size(), kNoDumpEdge);
 		global_node_.resize(program_.bindings.size(), kNoDumpEdge);
+		binding_slots_.resize(program_.bindings.size(), kNoLowId);
+		generated_slots_.resize(arena_.nodes.size(), kNoLowId);
+		switch_case_blocks_.resize(arena_.nodes.size(), kNoLowId);
 	}
 
 	void Lower()
@@ -107,6 +116,38 @@ public:
 	}
 
 private:
+	enum StatementTaskKind : std::uint8_t
+	{
+		STATEMENT_NODE,
+		STATEMENT_SEQUENCE,
+		STATEMENT_FOR_COMPONENTS,
+		STATEMENT_IF_AFTER_THEN,
+		STATEMENT_IF_AFTER_ELSE,
+		STATEMENT_LOOP_AFTER_BODY,
+		STATEMENT_DO_AFTER_BODY,
+		STATEMENT_FOR_AFTER_INIT,
+		STATEMENT_FOR_AFTER_BODY,
+		STATEMENT_FOR_AFTER_ITERATION,
+		STATEMENT_SWITCH_AFTER_BODY
+	};
+
+	struct StatementTask
+	{
+		std::uint32_t node;
+		std::uint32_t auxiliary;
+		std::uint32_t last;
+		BlockId first;
+		BlockId second;
+		BlockId third;
+		StatementTaskKind kind;
+		bool flag;
+
+		explicit StatementTask(StatementTaskKind kind_value)
+			: node(kNoDumpEdge), auxiliary(kNoDumpEdge), last(kNoDumpEdge),
+			  first(kNoLowId), second(kNoLowId),
+			  third(kNoLowId), kind(kind_value), flag(false) {}
+	};
+
 	NodeChildren Children(std::uint32_t node) const
 	{
 		NodeChildren result;
@@ -434,107 +475,125 @@ private:
 
 	void ScanTop(std::uint32_t node)
 	{
-		const DumpNode& record = arena_.nodes[node];
-		if (record.kind == DUMP_FUNCTION_DEFINITION ||
-			record.kind == DUMP_FUNCTION_DECLARATION)
+		std::vector<std::uint32_t> pending(1, node);
+		while (!pending.empty())
 		{
-			RegisterFunction(node);
-			return;
-		}
-		if (record.kind == DUMP_VARIABLE && record.binding != kNoBinding)
-		{
-			const BindingId canonical =
-				program_.bindings[record.binding].canonical;
-			if (global_symbols_[canonical] == kNoLowId)
+			const std::uint32_t current = pending.back();
+			pending.pop_back();
+			const DumpNode& record = arena_.nodes[current];
+			if (record.kind == DUMP_FUNCTION_DEFINITION ||
+				record.kind == DUMP_FUNCTION_DECLARATION)
 			{
-				const std::string name = SanitizeSymbol(program_.names.Get(
-					program_.bindings[record.binding].qualified_name != 0 ?
-					program_.bindings[record.binding].qualified_name : record.text));
-				global_symbols_[canonical] = InternSymbol(record,
-					Symbol::GLOBAL_SYMBOL, name, MangleVariable(record));
+				RegisterFunction(current);
+				continue;
 			}
-			global_symbols_[record.binding] = global_symbols_[canonical];
-			const bool declaration_only = Children(node).empty() &&
-				program_.bindings[record.binding].storage_class == STORAGE_CLASS_EXTERN;
-			if (!declaration_only || global_node_[canonical] == kNoDumpEdge)
-				global_node_[canonical] = node;
-			return;
+			if (record.kind == DUMP_VARIABLE && record.binding != kNoBinding)
+			{
+				const BindingId canonical =
+					program_.bindings[record.binding].canonical;
+				if (global_symbols_[canonical] == kNoLowId)
+				{
+					const std::string name = SanitizeSymbol(program_.names.Get(
+						program_.bindings[record.binding].qualified_name != 0 ?
+						program_.bindings[record.binding].qualified_name : record.text));
+					global_symbols_[canonical] = InternSymbol(record,
+						Symbol::GLOBAL_SYMBOL, name, MangleVariable(record));
+				}
+				global_symbols_[record.binding] = global_symbols_[canonical];
+				const bool declaration_only = Children(current).empty() &&
+					program_.bindings[record.binding].storage_class ==
+						STORAGE_CLASS_EXTERN;
+				if (!declaration_only || global_node_[canonical] == kNoDumpEdge)
+					global_node_[canonical] = current;
+				continue;
+			}
+			if (record.kind != DUMP_TRANSLATION_UNIT &&
+				record.kind != DUMP_NAMESPACE)
+				continue;
+			const NodeChildren children = Children(current);
+			for (std::size_t i = children.size(); i != 0; --i)
+				pending.push_back(children[i - 1]);
 		}
-		if (record.kind != DUMP_TRANSLATION_UNIT && record.kind != DUMP_NAMESPACE)
-			return;
-		const NodeChildren children = Children(node);
-		for (std::size_t i = 0; i < children.size(); ++i) ScanTop(children[i]);
 	}
 
 	void EmitTop(std::uint32_t node)
 	{
-		const DumpNode& record = arena_.nodes[node];
-		if (record.kind == DUMP_FUNCTION_DECLARATION)
+		std::vector<std::uint32_t> pending(1, node);
+		while (!pending.empty())
 		{
-			if (record.binding != kNoBinding &&
-				function_definition_[record.binding] == kNoDumpEdge &&
-				function_declaration_[record.binding] == node)
+			const std::uint32_t current = pending.back();
+			pending.pop_back();
+			const DumpNode& record = arena_.nodes[current];
+			if (record.kind == DUMP_FUNCTION_DECLARATION)
 			{
-				Symbol& symbol = output_.symbols[function_symbols_[record.binding]];
-				if (!symbol.declaration_emitted)
+				if (record.binding != kNoBinding &&
+					function_definition_[record.binding] == kNoDumpEdge &&
+					function_declaration_[record.binding] == current)
 				{
-					output_.declarations.push_back(LowerDeclaration(node));
-					symbol.declaration_emitted = true;
-				}
-			}
-			return;
-		}
-		if (record.kind == DUMP_FUNCTION_DEFINITION)
-		{
-			if (record.binding != kNoBinding &&
-				function_definition_[record.binding] == node)
-			{
-				Symbol& symbol = output_.symbols[function_symbols_[record.binding]];
-				if (symbol.definition_emitted)
-					throw std::runtime_error("duplicate cross-source function definition");
-				output_.functions.push_back(LowerFunction(node));
-				symbol.definition_emitted = true;
-			}
-			return;
-		}
-		if (record.kind == DUMP_VARIABLE)
-		{
-			if (record.binding != kNoBinding)
-			{
-				const BindingId canonical =
-					program_.bindings[record.binding].canonical;
-				if (global_node_[canonical] == node)
-				{
-					const bool declaration_only = Children(node).empty() &&
-						program_.bindings[record.binding].storage_class ==
-							STORAGE_CLASS_EXTERN;
-					if (declaration_only)
-					{
-						Symbol& symbol = output_.symbols[global_symbols_[canonical]];
-						if (!symbol.declaration_emitted)
+						const SymbolId symbol = function_symbols_[record.binding];
+						if (!output_.symbols[symbol].declaration_emitted)
 						{
-							output_.global_declarations.push_back(
-								LowerGlobalDeclaration(node));
-							symbol.declaration_emitted = true;
+							output_.declarations.push_back(LowerDeclaration(current));
+							output_.symbols[symbol].declaration_emitted = true;
+						}
+				}
+				continue;
+			}
+			if (record.kind == DUMP_FUNCTION_DEFINITION)
+			{
+				if (record.binding != kNoBinding &&
+					function_definition_[record.binding] == current)
+				{
+						const SymbolId symbol = function_symbols_[record.binding];
+						if (output_.symbols[symbol].definition_emitted)
+							throw std::runtime_error(
+								"duplicate cross-source function definition");
+						output_.functions.push_back(LowerFunction(current));
+						output_.symbols[symbol].definition_emitted = true;
+				}
+				continue;
+			}
+			if (record.kind == DUMP_VARIABLE)
+			{
+				if (record.binding != kNoBinding)
+				{
+					const BindingId canonical =
+						program_.bindings[record.binding].canonical;
+					if (global_node_[canonical] == current)
+					{
+						const bool declaration_only = Children(current).empty() &&
+							program_.bindings[record.binding].storage_class ==
+								STORAGE_CLASS_EXTERN;
+						if (declaration_only)
+						{
+								const SymbolId symbol = global_symbols_[canonical];
+								if (!output_.symbols[symbol].declaration_emitted)
+								{
+									output_.global_declarations.push_back(
+										LowerGlobalDeclaration(current));
+									output_.symbols[symbol].declaration_emitted = true;
+								}
+						}
+						else
+						{
+								const SymbolId symbol = global_symbols_[canonical];
+								if (output_.symbols[symbol].definition_emitted)
+									throw std::runtime_error(
+										"duplicate cross-source global definition");
+								output_.globals.push_back(LowerGlobal(current));
+								output_.symbols[symbol].definition_emitted = true;
 						}
 					}
-					else
-					{
-						Symbol& symbol = output_.symbols[global_symbols_[canonical]];
-						if (symbol.definition_emitted)
-							throw std::runtime_error(
-								"duplicate cross-source global definition");
-						output_.globals.push_back(LowerGlobal(node));
-						symbol.definition_emitted = true;
-					}
 				}
+				continue;
 			}
-			return;
+			if (record.kind != DUMP_TRANSLATION_UNIT &&
+				record.kind != DUMP_NAMESPACE)
+				continue;
+			const NodeChildren children = Children(current);
+			for (std::size_t i = children.size(); i != 0; --i)
+				pending.push_back(children[i - 1]);
 		}
-		if (record.kind != DUMP_TRANSLATION_UNIT && record.kind != DUMP_NAMESPACE)
-			return;
-		const NodeChildren children = Children(node);
-		for (std::size_t i = 0; i < children.size(); ++i) EmitTop(children[i]);
 	}
 
 	void FillBoundary(std::uint32_t node, std::vector<Parameter>* parameters,
@@ -617,7 +676,8 @@ private:
 			if (IsFloating(global.type) && initializer.kind == DUMP_LITERAL)
 			{
 				global.initializer_kind = Global::FLOATING_VALUE;
-				global.floating_initializer = program_.names.Get(initializer.text);
+				global.floating_initializer = output_.literals.Intern(
+					program_.names.Get(initializer.text));
 			}
 			else if (initializer.constant)
 			{
@@ -670,9 +730,6 @@ private:
 		current_result_reference_ = false;
 		temp_counter_ = 0;
 		block_counter_ = 0;
-		binding_slots_.assign(program_.bindings.size(), kNoLowId);
-		generated_slots_.assign(arena_.nodes.size(), kNoLowId);
-		switch_case_blocks_.assign(arena_.nodes.size(), kNoLowId);
 		break_targets_.clear();
 		continue_targets_.clear();
 		label_blocks_.clear();
@@ -713,6 +770,11 @@ private:
 			return true;
 		}
 		return false;
+	}
+
+	Operand FloatingOperand(const std::string& spelling, const LowType& type)
+	{
+		return Operand::Floating(output_.literals.Intern(spelling), type);
 	}
 
 	static int HexDigit(char value)
@@ -875,7 +937,8 @@ private:
 			if (IsFloating(element) && value.kind == DUMP_LITERAL)
 			{
 				item.kind = Global::DataItem::FLOATING_ITEM;
-				item.floating_spelling = program_.names.Get(value.text);
+				item.floating_spelling = output_.literals.Intern(
+					program_.names.Get(value.text));
 			}
 			else if (value.constant)
 			{
@@ -953,39 +1016,53 @@ private:
 
 	void CollectSourceNames(std::uint32_t node)
 	{
-		const DumpNode& record = arena_.nodes[node];
-		if ((record.kind == DUMP_PARAMETER || record.kind == DUMP_VARIABLE) &&
-			record.text != 0)
-			used_names_[program_.names.Get(record.text)] = true;
-		const NodeChildren children = Children(node);
-		for (std::size_t i = 0; i < children.size(); ++i) CollectSourceNames(children[i]);
+		std::vector<std::uint32_t> pending(1, node);
+		while (!pending.empty())
+		{
+			const std::uint32_t current = pending.back();
+			pending.pop_back();
+			const DumpNode& record = arena_.nodes[current];
+			if ((record.kind == DUMP_PARAMETER || record.kind == DUMP_VARIABLE) &&
+				record.text != 0)
+				used_names_[program_.names.Get(record.text)] = true;
+			const NodeChildren children = Children(current);
+			for (std::size_t i = children.size(); i != 0; --i)
+				pending.push_back(children[i - 1]);
+		}
 	}
 
 	void CollectSlots(std::uint32_t node)
 	{
-		const DumpNode& record = arena_.nodes[node];
-		if ((record.kind == DUMP_PARAMETER || record.kind == DUMP_VARIABLE) &&
-			record.binding != kNoBinding)
+		std::vector<std::uint32_t> pending(1, node);
+		while (!pending.empty())
 		{
-			if (binding_slots_[record.binding] == kNoLowId)
+			const std::uint32_t current = pending.back();
+			pending.pop_back();
+			const DumpNode& record = arena_.nodes[current];
+			if ((record.kind == DUMP_PARAMETER || record.kind == DUMP_VARIABLE) &&
+				record.binding != kNoBinding)
 			{
-				std::string requested = record.text == 0 ? std::string() :
-					program_.names.Get(record.text);
-				if (record.kind == DUMP_PARAMETER && requested.empty())
-					requested = parameter_slot_index_ < function_->parameters.size() ?
-						function_->parameters[parameter_slot_index_].name : "__param";
-				const std::string name = UniqueSlotName(requested);
-				binding_slots_[record.binding] =
-					static_cast<SlotId>(function_->slots.size());
-				Slot slot;
-				slot.name = name;
-				slot.type = LowerStorageType(record.type);
-				function_->slots.push_back(slot);
+				if (binding_slots_[record.binding] == kNoLowId)
+				{
+					std::string requested = record.text == 0 ? std::string() :
+						program_.names.Get(record.text);
+					if (record.kind == DUMP_PARAMETER && requested.empty())
+						requested = parameter_slot_index_ < function_->parameters.size() ?
+							function_->parameters[parameter_slot_index_].name : "__param";
+					const std::string name = UniqueSlotName(requested);
+					binding_slots_[record.binding] =
+						static_cast<SlotId>(function_->slots.size());
+					Slot slot;
+					slot.name = name;
+					slot.type = LowerStorageType(record.type);
+					function_->slots.push_back(slot);
+				}
+				if (record.kind == DUMP_PARAMETER) ++parameter_slot_index_;
 			}
-			if (record.kind == DUMP_PARAMETER) ++parameter_slot_index_;
+			const NodeChildren children = Children(current);
+			for (std::size_t i = children.size(); i != 0; --i)
+				pending.push_back(children[i - 1]);
 		}
-		const NodeChildren children = Children(node);
-		for (std::size_t i = 0; i < children.size(); ++i) CollectSlots(children[i]);
 	}
 
 	Function LowerFunction(std::uint32_t node)
@@ -1001,9 +1078,6 @@ private:
 		current_result_reference_ = IsReferenceType(source_function.child);
 		temp_counter_ = 0;
 		block_counter_ = 0;
-		binding_slots_.assign(program_.bindings.size(), kNoLowId);
-		generated_slots_.assign(arena_.nodes.size(), kNoLowId);
-		switch_case_blocks_.assign(arena_.nodes.size(), kNoLowId);
 		break_targets_.clear();
 		continue_targets_.clear();
 		label_blocks_.clear();
@@ -1335,7 +1409,7 @@ private:
 		compare.op = LOW_OP_NE;
 		compare.type = value.type;
 		compare.first = value;
-		compare.second = IsFloating(value.type) ? Operand("0.0", value.type) :
+		compare.second = IsFloating(value.type) ? FloatingOperand("0.0", value.type) :
 			Operand(0, value.type);
 		Emit(compare);
 		return result;
@@ -1364,11 +1438,11 @@ private:
 				Instruction copy(Instruction::COPY);
 				copy.dest = result.id;
 				copy.type = type;
-				copy.first = Operand(std::string("nullptr"), type);
+				copy.first = Operand::NullPointer(type);
 				Emit(copy);
 			}
 			else if (IsFloating(type))
-				result = Operand(program_.names.Get(record.text), type);
+				result = FloatingOperand(program_.names.Get(record.text), type);
 			else
 			{
 				if (!record.constant)
@@ -1741,7 +1815,7 @@ private:
 			compare.op = LOW_OP_EQ;
 			compare.type = value.type;
 			compare.first = value;
-			compare.second = IsFloating(value.type) ? Operand("0.0", value.type) :
+			compare.second = IsFloating(value.type) ? FloatingOperand("0.0", value.type) :
 				Operand(0, value.type);
 			Emit(compare);
 			return result;
@@ -1816,6 +1890,8 @@ private:
 			throw std::runtime_error("invalid PA15 indirect callee type");
 		const TypeId* parameters = program_.types.Parameters(function_type_id);
 		Instruction call(Instruction::CALL);
+		CallArguments arguments;
+		CallArgumentFlags argument_references;
 		call.type = LowerType(record.type);
 		call.indirect = !direct;
 		if (direct)
@@ -1828,14 +1904,13 @@ private:
 		{
 			const bool reference = i - 1 < function_type.parameter_count &&
 				IsReferenceType(parameters[i - 1]);
-			call.argument_references.push_back(reference ? 1 : 0);
+			argument_references.Push(reference ? 1 : 0);
 			if (reference)
 			{
 				const DumpNode& argument = arena_.nodes[children[i]];
 				if (argument.category == VALUE_LVALUE ||
 					argument.category == VALUE_XVALUE)
-					call.arguments.push_back(
-						AddressOfStorage(LowerStorage(children[i])));
+					arguments.Push(AddressOfStorage(LowerStorage(children[i])));
 				else
 				{
 					const LowType type = LowerExpressionType(parameters[i - 1]);
@@ -1846,7 +1921,7 @@ private:
 					store.first = Convert(LowerValue(children[i]), type);
 					store.second = slot;
 					Emit(store);
-					call.arguments.push_back(AddressOfStorage(slot));
+					arguments.Push(AddressOfStorage(slot));
 				}
 			}
 			else
@@ -1860,10 +1935,11 @@ private:
 					else if (IsInteger(expected) && expected.width < 32)
 						expected = LowI32();
 				}
-				call.arguments.push_back(Convert(LowerValue(children[i]), expected));
+				arguments.Push(Convert(LowerValue(children[i]), expected));
 			}
 		}
 		if (!direct) call.first = LowerValue(children[0], LowPtr());
+		AttachCallArguments(&call, arguments, argument_references);
 		if (call.type.kind == LOW_VOID)
 		{
 			Emit(call);
@@ -1873,6 +1949,27 @@ private:
 		call.dest = result.id;
 		Emit(call);
 		return result;
+	}
+
+	void AttachCallArguments(Instruction* call, const CallArguments& arguments,
+		const CallArgumentFlags& references)
+	{
+		if (arguments.size() != references.size())
+			throw std::logic_error("PA15 call argument fact mismatch");
+		if (arguments.empty()) return;
+		if (arguments.size() >= kNoLowId ||
+			output_.call_arguments.size() > kNoLowId - arguments.size() ||
+			output_.call_arguments.size() !=
+				output_.call_argument_references.size())
+			throw std::runtime_error("too many PA15 call arguments");
+		call->extra_first = static_cast<std::uint32_t>(
+			output_.call_arguments.size());
+		call->extra_count = static_cast<std::uint32_t>(arguments.size());
+		for (std::size_t i = 0; i < arguments.size(); ++i)
+		{
+			output_.call_arguments.push_back(arguments[i]);
+			output_.call_argument_references.push_back(references[i]);
+		}
 	}
 
 	Operand LowerConditional(std::uint32_t node, const DumpNode& record,
@@ -1974,7 +2071,145 @@ private:
 		return LoadStorage(slot, LowPtr());
 	}
 
+	void PushStatementNode(std::uint32_t node)
+	{
+		StatementTask task(STATEMENT_NODE);
+		task.node = node;
+		statement_tasks_.push_back(task);
+	}
+
+	void PushStatementSequence(std::uint32_t edge,
+		StatementTaskKind kind = STATEMENT_SEQUENCE)
+	{
+		if (edge == kNoDumpEdge) return;
+		StatementTask task(kind);
+		task.node = edge;
+		statement_tasks_.push_back(task);
+	}
+
 	void LowerStatement(std::uint32_t node)
+	{
+		if (!statement_tasks_.empty())
+			throw std::logic_error("nested PA15 statement scheduler");
+		PushStatementNode(node);
+		while (!statement_tasks_.empty())
+		{
+			const StatementTask task = statement_tasks_.back();
+			statement_tasks_.pop_back();
+			RunStatementTask(task);
+		}
+	}
+
+	void RunStatementTask(const StatementTask& task)
+	{
+		if (task.kind == STATEMENT_NODE)
+		{
+			LowerStatementNode(task.node);
+			return;
+		}
+		if (task.kind == STATEMENT_SEQUENCE)
+		{
+			const std::uint32_t child = arena_.edges[task.node].child;
+			const DumpKind child_kind = arena_.nodes[child].kind;
+			if (CurrentBlock().terminated && child_kind != DUMP_CASE_STATEMENT &&
+				child_kind != DUMP_DEFAULT_STATEMENT &&
+				child_kind != DUMP_LABELED_STATEMENT)
+				return;
+			PushStatementSequence(arena_.edges[task.node].next);
+			PushStatementNode(child);
+			return;
+		}
+		if (task.kind == STATEMENT_FOR_COMPONENTS)
+		{
+			const std::uint32_t child = arena_.edges[task.node].child;
+			PushStatementSequence(arena_.edges[task.node].next,
+				STATEMENT_FOR_COMPONENTS);
+			const DumpKind child_kind = arena_.nodes[child].kind;
+			if (child_kind == DUMP_SIMPLE_DECLARATION ||
+				child_kind == DUMP_VARIABLE)
+				PushStatementNode(child);
+			else (void)LowerValue(child);
+			return;
+		}
+		if (task.kind == STATEMENT_IF_AFTER_THEN)
+		{
+			const bool then_terminated = CurrentBlock().terminated;
+			if (!then_terminated) EmitJump(task.second);
+			SelectBlock(task.first);
+			StatementTask after(STATEMENT_IF_AFTER_ELSE);
+			after.first = task.second;
+			after.flag = then_terminated;
+			statement_tasks_.push_back(after);
+			if (task.node != kNoDumpEdge) PushStatementNode(task.node);
+			return;
+		}
+		if (task.kind == STATEMENT_IF_AFTER_ELSE)
+		{
+			const bool else_terminated = CurrentBlock().terminated;
+			if (!else_terminated) EmitJump(task.first);
+			if (!task.flag || !else_terminated) SelectBlock(task.first);
+			return;
+		}
+		if (task.kind == STATEMENT_LOOP_AFTER_BODY)
+		{
+			PopLoopTargets();
+			if (!CurrentBlock().terminated) EmitJump(task.first);
+			SelectBlock(task.second);
+			return;
+		}
+		if (task.kind == STATEMENT_DO_AFTER_BODY)
+		{
+			PopLoopTargets();
+			if (!CurrentBlock().terminated) EmitJump(task.second);
+			SelectBlock(task.second);
+			EmitBranch(LowerControlCondition(task.node), task.first, task.third);
+			SelectBlock(task.third);
+			return;
+		}
+		if (task.kind == STATEMENT_FOR_AFTER_INIT)
+		{
+			StartForLoop(task.node, task.auxiliary, task.last);
+			return;
+		}
+		if (task.kind == STATEMENT_FOR_AFTER_BODY)
+		{
+			PopLoopTargets();
+			if (!CurrentBlock().terminated) EmitJump(task.first);
+			SelectBlock(task.first);
+			StatementTask after(STATEMENT_FOR_AFTER_ITERATION);
+			after.first = task.second;
+			after.second = task.third;
+			statement_tasks_.push_back(after);
+			if (task.node != kNoDumpEdge) PushStatementNode(task.node);
+			return;
+		}
+		if (task.kind == STATEMENT_FOR_AFTER_ITERATION)
+		{
+			if (!CurrentBlock().terminated) EmitJump(task.first);
+			SelectBlock(task.second);
+			return;
+		}
+		if (task.kind == STATEMENT_SWITCH_AFTER_BODY)
+		{
+			if (break_targets_.empty())
+				throw std::logic_error("missing PA15 switch target");
+			break_targets_.pop_back();
+			if (!CurrentBlock().terminated) EmitJump(task.first);
+			SelectBlock(task.first);
+			return;
+		}
+		throw std::logic_error("invalid PA15 statement task");
+	}
+
+	void PopLoopTargets()
+	{
+		if (break_targets_.empty() || continue_targets_.empty())
+			throw std::logic_error("missing PA15 loop target");
+		continue_targets_.pop_back();
+		break_targets_.pop_back();
+	}
+
+	void LowerStatementNode(std::uint32_t node)
 	{
 		if (stats_) ++stats_->lowered_nodes;
 		const DumpNode& record = arena_.nodes[node];
@@ -1985,15 +2220,7 @@ private:
 			record.kind == DUMP_CONDITION_DECLARATION ||
 			record.kind == DUMP_THEN || record.kind == DUMP_ELSE)
 		{
-			for (std::size_t i = 0; i < children.size(); ++i)
-			{
-				if (CurrentBlock().terminated &&
-					arena_.nodes[children[i]].kind != DUMP_CASE_STATEMENT &&
-					arena_.nodes[children[i]].kind != DUMP_DEFAULT_STATEMENT &&
-					arena_.nodes[children[i]].kind != DUMP_LABELED_STATEMENT)
-					break;
-				LowerStatement(children[i]);
-			}
+			PushStatementSequence(record.first_edge);
 			return;
 		}
 		if (record.kind == DUMP_VARIABLE)
@@ -2050,31 +2277,11 @@ private:
 			if (!children.empty()) (void)LowerValue(children[0]);
 			return;
 		}
-		if (record.kind == DUMP_IF_STATEMENT)
-		{
-			LowerIf(children);
-			return;
-		}
-		if (record.kind == DUMP_WHILE_STATEMENT)
-		{
-			LowerWhile(children);
-			return;
-		}
-		if (record.kind == DUMP_DO_STATEMENT)
-		{
-			LowerDo(children);
-			return;
-		}
-		if (record.kind == DUMP_FOR_STATEMENT)
-		{
-			LowerFor(children);
-			return;
-		}
-		if (record.kind == DUMP_SWITCH_STATEMENT)
-		{
-			LowerSwitch(children);
-			return;
-		}
+		if (record.kind == DUMP_IF_STATEMENT) { LowerIf(children); return; }
+		if (record.kind == DUMP_WHILE_STATEMENT) { LowerWhile(children); return; }
+		if (record.kind == DUMP_DO_STATEMENT) { LowerDo(children); return; }
+		if (record.kind == DUMP_FOR_STATEMENT) { LowerFor(children); return; }
+		if (record.kind == DUMP_SWITCH_STATEMENT) { LowerSwitch(children); return; }
 		if (record.kind == DUMP_CASE_STATEMENT ||
 			record.kind == DUMP_DEFAULT_STATEMENT)
 		{
@@ -2084,17 +2291,10 @@ private:
 			const BlockId target = switch_case_blocks_[node];
 			if (!CurrentBlock().terminated) EmitJump(target);
 			SelectBlock(target);
-			const std::size_t first_statement =
-				record.kind == DUMP_CASE_STATEMENT ? 1 : 0;
-			for (std::size_t i = first_statement; i < children.size(); ++i)
-			{
-				if (CurrentBlock().terminated &&
-					arena_.nodes[children[i]].kind != DUMP_CASE_STATEMENT &&
-					arena_.nodes[children[i]].kind != DUMP_DEFAULT_STATEMENT &&
-					arena_.nodes[children[i]].kind != DUMP_LABELED_STATEMENT)
-					break;
-				LowerStatement(children[i]);
-			}
+			std::uint32_t edge = record.first_edge;
+			if (record.kind == DUMP_CASE_STATEMENT && edge != kNoDumpEdge)
+				edge = arena_.edges[edge].next;
+			PushStatementSequence(edge);
 			return;
 		}
 		if (record.kind == DUMP_LABELED_STATEMENT)
@@ -2102,8 +2302,7 @@ private:
 			const BlockId target = LabelBlock(record.text);
 			if (!CurrentBlock().terminated) EmitJump(target);
 			SelectBlock(target);
-			for (std::size_t i = 0; i < children.size(); ++i)
-				LowerStatement(children[i]);
+			PushStatementSequence(record.first_edge);
 			return;
 		}
 		if (record.kind == DUMP_GOTO_STATEMENT)
@@ -2114,38 +2313,27 @@ private:
 		if (record.kind == DUMP_FOR_INIT_STATEMENT ||
 			record.kind == DUMP_ITERATION)
 		{
-			for (std::size_t i = 0; i < children.size(); ++i)
-			{
-				const DumpKind child_kind = arena_.nodes[children[i]].kind;
-				if (child_kind == DUMP_SIMPLE_DECLARATION ||
-					child_kind == DUMP_VARIABLE)
-					LowerStatement(children[i]);
-				else (void)LowerValue(children[i]);
-			}
+			PushStatementSequence(record.first_edge, STATEMENT_FOR_COMPONENTS);
 			return;
 		}
 		if (record.kind == DUMP_BREAK_STATEMENT)
 		{
 			if (break_targets_.empty())
 				throw std::runtime_error("PA15 break has no target");
-			Instruction jump(Instruction::JUMP);
-			jump.target = break_targets_.back();
-			Emit(jump);
+			EmitJump(break_targets_.back());
 			return;
 		}
 		if (record.kind == DUMP_CONTINUE_STATEMENT)
 		{
 			if (continue_targets_.empty())
 				throw std::runtime_error("PA15 continue has no target");
-			Instruction jump(Instruction::JUMP);
-			jump.target = continue_targets_.back();
-			Emit(jump);
+			EmitJump(continue_targets_.back());
 			return;
 		}
 		throw std::runtime_error("statement is outside the active PA15 checkpoint");
 	}
 
-	void LowerArrayInitializer(const DumpNode& record,
+	__attribute__((noinline)) void LowerArrayInitializer(const DumpNode& record,
 		const NodeChildren& variable_children)
 	{
 		if (variable_children.size() != 1)
@@ -2176,7 +2364,8 @@ private:
 		}
 	}
 
-	Operand LowerControlCondition(std::uint32_t condition_node)
+	__attribute__((noinline)) Operand LowerControlCondition(
+		std::uint32_t condition_node)
 	{
 		const NodeChildren condition_children = Children(condition_node);
 		if (condition_children.size() != 1)
@@ -2189,7 +2378,8 @@ private:
 			arena_.nodes[declaration_children[0]].kind != DUMP_VARIABLE)
 			throw std::runtime_error("invalid PA15 condition declaration");
 		const DumpNode& variable = arena_.nodes[declaration_children[0]];
-		LowerStatement(child);
+		if (stats_) ++stats_->lowered_nodes;
+		LowerStatementNode(declaration_children[0]);
 		Operand value = LoadStorage(StorageFor(variable.binding,
 			LowerStorageType(variable.type)), LowerExpressionType(variable.type));
 		if (IsFloating(value.type))
@@ -2200,14 +2390,15 @@ private:
 			compare.op = LOW_OP_NE;
 			compare.type = value.type;
 			compare.first = value;
-			compare.second = Operand("0.0", value.type);
+			compare.second = FloatingOperand("0.0", value.type);
 			Emit(compare);
 			return truth;
 		}
 		return value;
 	}
 
-	Operand LowerSwitchCondition(std::uint32_t condition_node)
+	__attribute__((noinline)) Operand LowerSwitchCondition(
+		std::uint32_t condition_node)
 	{
 		const NodeChildren condition_children = Children(condition_node);
 		if (condition_children.size() != 1)
@@ -2220,7 +2411,8 @@ private:
 			arena_.nodes[declaration_children[0]].kind != DUMP_VARIABLE)
 			throw std::runtime_error("invalid PA15 switch declaration");
 		const DumpNode& variable = arena_.nodes[declaration_children[0]];
-		LowerStatement(child);
+		if (stats_) ++stats_->lowered_nodes;
+		LowerStatementNode(declaration_children[0]);
 		return LoadStorage(StorageFor(variable.binding,
 			LowerStorageType(variable.type)), LowerExpressionType(variable.type));
 	}
@@ -2270,23 +2462,28 @@ private:
 		Emit(branch);
 	}
 
-	void CollectSwitchCases(std::uint32_t node,
-		std::vector<std::uint32_t>* cases) const
+	void CollectSwitchCases(std::uint32_t node, SwitchCases* cases) const
 	{
-		const DumpNode& record = arena_.nodes[node];
-		if (record.kind == DUMP_SWITCH_STATEMENT) return;
-		if (record.kind == DUMP_CASE_STATEMENT ||
-			record.kind == DUMP_DEFAULT_STATEMENT)
-			cases->push_back(node);
-		const NodeChildren children = Children(node);
-		for (std::size_t i = 0; i < children.size(); ++i)
+		std::vector<std::uint32_t> pending(1, node);
+		while (!pending.empty())
 		{
-			if (record.kind == DUMP_CASE_STATEMENT && i == 0) continue;
-			CollectSwitchCases(children[i], cases);
+			const std::uint32_t current = pending.back();
+			pending.pop_back();
+			const DumpNode& record = arena_.nodes[current];
+			if (record.kind == DUMP_SWITCH_STATEMENT) continue;
+			if (record.kind == DUMP_CASE_STATEMENT ||
+				record.kind == DUMP_DEFAULT_STATEMENT)
+				cases->Push(current);
+			const NodeChildren children = Children(current);
+			for (std::size_t i = children.size(); i != 0; --i)
+			{
+				if (record.kind == DUMP_CASE_STATEMENT && i == 1) continue;
+				pending.push_back(children[i - 1]);
+			}
 		}
 	}
 
-	void LowerSwitch(const NodeChildren& children)
+	__attribute__((noinline)) void LowerSwitch(const NodeChildren& children)
 	{
 		const std::uint32_t condition = FindChildKind(children, DUMP_CONDITION);
 		std::uint32_t body = kNoDumpEdge;
@@ -2295,7 +2492,7 @@ private:
 				body = children[i];
 		if (condition == kNoDumpEdge || body == kNoDumpEdge)
 			throw std::runtime_error("invalid PA15 switch statement");
-		std::vector<std::uint32_t> cases;
+		SwitchCases cases;
 		CollectSwitchCases(body, &cases);
 		const Operand value = LowerSwitchCondition(condition);
 		const BlockId dispatch = AddBlock(NewLabel("switch_dispatch"));
@@ -2315,25 +2512,49 @@ private:
 		Instruction instruction(Instruction::SWITCH);
 		instruction.first = value;
 		instruction.target = default_target;
+		SmallSequence<std::int64_t, 8> case_values;
+		SmallSequence<BlockId, 8> case_targets;
 		for (std::size_t i = 0; i < cases.size(); ++i)
 		{
 			if (arena_.nodes[cases[i]].kind != DUMP_CASE_STATEMENT) continue;
 			const NodeChildren case_children = Children(cases[i]);
 			if (case_children.empty() || !arena_.nodes[case_children[0]].constant)
 				throw std::runtime_error("PA15 case lacks constant value");
-			instruction.case_values.push_back(
-				arena_.nodes[case_children[0]].constant_value);
-			instruction.case_targets.push_back(switch_case_blocks_[cases[i]]);
+			case_values.Push(arena_.nodes[case_children[0]].constant_value);
+			case_targets.Push(switch_case_blocks_[cases[i]]);
 		}
+		AttachSwitchCases(&instruction, case_values, case_targets);
 		Emit(instruction);
 		break_targets_.push_back(end);
-		LowerStatement(body);
-		break_targets_.pop_back();
-		if (!CurrentBlock().terminated) EmitJump(end);
-		SelectBlock(end);
+		StatementTask after(STATEMENT_SWITCH_AFTER_BODY);
+		after.first = end;
+		statement_tasks_.push_back(after);
+		PushStatementNode(body);
 	}
 
-	void LowerWhile(const NodeChildren& children)
+	void AttachSwitchCases(Instruction* instruction,
+		const SmallSequence<std::int64_t, 8>& values,
+		const SmallSequence<BlockId, 8>& targets)
+	{
+		if (values.size() != targets.size())
+			throw std::logic_error("PA15 switch case fact mismatch");
+		if (values.empty()) return;
+		if (values.size() >= kNoLowId ||
+			output_.switch_case_values.size() > kNoLowId - values.size() ||
+			output_.switch_case_values.size() !=
+				output_.switch_case_targets.size())
+			throw std::runtime_error("too many PA15 switch cases");
+		instruction->extra_first = static_cast<std::uint32_t>(
+			output_.switch_case_values.size());
+		instruction->extra_count = static_cast<std::uint32_t>(values.size());
+		for (std::size_t i = 0; i < values.size(); ++i)
+		{
+			output_.switch_case_values.push_back(values[i]);
+			output_.switch_case_targets.push_back(targets[i]);
+		}
+	}
+
+	__attribute__((noinline)) void LowerWhile(const NodeChildren& children)
 	{
 		const std::uint32_t condition = FindChildKind(children, DUMP_CONDITION);
 		const std::uint32_t body = FindLoopBody(children);
@@ -2348,14 +2569,14 @@ private:
 		SelectBlock(body_block);
 		break_targets_.push_back(end_block);
 		continue_targets_.push_back(cond_block);
-		LowerStatement(body);
-		continue_targets_.pop_back();
-		break_targets_.pop_back();
-		if (!CurrentBlock().terminated) EmitJump(cond_block);
-		SelectBlock(end_block);
+		StatementTask after(STATEMENT_LOOP_AFTER_BODY);
+		after.first = cond_block;
+		after.second = end_block;
+		statement_tasks_.push_back(after);
+		PushStatementNode(body);
 	}
 
-	void LowerDo(const NodeChildren& children)
+	__attribute__((noinline)) void LowerDo(const NodeChildren& children)
 	{
 		const std::uint32_t condition = FindChildKind(children, DUMP_CONDITION);
 		const std::uint32_t body = FindLoopBody(children);
@@ -2368,16 +2589,16 @@ private:
 		SelectBlock(body_block);
 		break_targets_.push_back(end_block);
 		continue_targets_.push_back(cond_block);
-		LowerStatement(body);
-		continue_targets_.pop_back();
-		break_targets_.pop_back();
-		if (!CurrentBlock().terminated) EmitJump(cond_block);
-		SelectBlock(cond_block);
-		EmitBranch(LowerControlCondition(condition), body_block, end_block);
-		SelectBlock(end_block);
+		StatementTask after(STATEMENT_DO_AFTER_BODY);
+		after.node = condition;
+		after.first = body_block;
+		after.second = cond_block;
+		after.third = end_block;
+		statement_tasks_.push_back(after);
+		PushStatementNode(body);
 	}
 
-	void LowerFor(const NodeChildren& children)
+	__attribute__((noinline)) void LowerFor(const NodeChildren& children)
 	{
 		const std::uint32_t init = FindChildKind(children, DUMP_FOR_INIT_STATEMENT);
 		const std::uint32_t condition = FindChildKind(children, DUMP_CONDITION);
@@ -2385,7 +2606,22 @@ private:
 		const std::uint32_t body = FindLoopBody(children);
 		if (body == kNoDumpEdge)
 			throw std::runtime_error("invalid PA15 for statement");
-		if (init != kNoDumpEdge) LowerStatement(init);
+		if (init != kNoDumpEdge)
+		{
+			StatementTask after(STATEMENT_FOR_AFTER_INIT);
+			after.node = condition;
+			after.auxiliary = iteration;
+			after.last = body;
+			statement_tasks_.push_back(after);
+			PushStatementNode(init);
+			return;
+		}
+		StartForLoop(condition, iteration, body);
+	}
+
+	void StartForLoop(std::uint32_t condition, std::uint32_t iteration,
+		std::uint32_t body)
+	{
 		const BlockId cond_block = AddBlock(NewLabel("for_cond"));
 		const BlockId body_block = AddBlock(NewLabel("for_body"));
 		const BlockId iter_block = AddBlock(NewLabel("for_iter"));
@@ -2397,17 +2633,16 @@ private:
 		SelectBlock(body_block);
 		break_targets_.push_back(end_block);
 		continue_targets_.push_back(iter_block);
-		LowerStatement(body);
-		continue_targets_.pop_back();
-		break_targets_.pop_back();
-		if (!CurrentBlock().terminated) EmitJump(iter_block);
-		SelectBlock(iter_block);
-		if (iteration != kNoDumpEdge) LowerStatement(iteration);
-		if (!CurrentBlock().terminated) EmitJump(cond_block);
-		SelectBlock(end_block);
+		StatementTask after(STATEMENT_FOR_AFTER_BODY);
+		after.node = iteration;
+		after.first = iter_block;
+		after.second = cond_block;
+		after.third = end_block;
+		statement_tasks_.push_back(after);
+		PushStatementNode(body);
 	}
 
-	void LowerIf(const NodeChildren& children)
+	__attribute__((noinline)) void LowerIf(const NodeChildren& children)
 	{
 		std::uint32_t condition = kNoDumpEdge;
 		std::uint32_t then_node = kNoDumpEdge;
@@ -2432,29 +2667,12 @@ private:
 			EmitBranch(LowerControlCondition(condition), then_block, else_block);
 		else EmitConditionBranch(condition_children[0], then_block, else_block);
 		SelectBlock(then_block);
-		LowerStatement(then_node);
-		const BlockId then_exit = static_cast<BlockId>(current_block_);
-		SelectBlock(else_block);
-		if (else_node != kNoDumpEdge) LowerStatement(else_node);
-		const BlockId else_exit = static_cast<BlockId>(current_block_);
-		const bool then_terminated = function_->blocks[then_exit].terminated;
-		const bool else_terminated = function_->blocks[else_exit].terminated;
-		if (then_terminated && else_terminated) return;
-		if (!then_terminated)
-		{
-			Instruction then_jump(Instruction::JUMP);
-			then_jump.target = end_block;
-			current_block_ = then_exit;
-			Emit(then_jump);
-		}
-		if (!else_terminated)
-		{
-			Instruction else_jump(Instruction::JUMP);
-			else_jump.target = end_block;
-			current_block_ = else_exit;
-			Emit(else_jump);
-		}
-		SelectBlock(end_block);
+		StatementTask after(STATEMENT_IF_AFTER_THEN);
+		after.node = else_node;
+		after.first = else_block;
+		after.second = end_block;
+		statement_tasks_.push_back(after);
+		PushStatementNode(then_node);
 	}
 
 	void EmitConditionBranch(std::uint32_t node, BlockId true_block,
@@ -2515,6 +2733,7 @@ private:
 	std::vector<BlockId> switch_case_blocks_;
 	std::vector<BlockId> break_targets_;
 	std::vector<BlockId> continue_targets_;
+	std::vector<StatementTask> statement_tasks_;
 	std::unordered_map<NameId, BlockId> label_blocks_;
 	StringCounterTable used_names_;
 	StringCounterTable assigned_names_;
@@ -2523,368 +2742,6 @@ private:
 	std::size_t source_ordinal_;
 	std::vector<IdentityTypeId> identity_type_cache_;
 };
-
-void WriteParameter(std::ostream& output, const Parameter& parameter)
-{
-	output << '%' << parameter.name << " : " << parameter.type.text;
-	if (parameter.reference) output << " [pass=reference]";
-}
-
-void WriteBoundary(std::ostream& output,
-	const std::vector<Parameter>& parameters, const LowType& result,
-	bool variadic)
-{
-	output << '(';
-	for (std::size_t i = 0; i < parameters.size(); ++i)
-	{
-		if (i != 0) output << ", ";
-		WriteParameter(output, parameters[i]);
-	}
-	output << ") -> " << result.text;
-	if (variadic) output << " [arity=variadic]";
-}
-
-void WriteOperand(std::ostream& output, const Operand& operand,
-	const TypedProgram& program, const Function& function)
-{
-	switch (operand.kind)
-	{
-	case Operand::TEMP: output << "%t" << operand.id; break;
-	case Operand::PARAMETER:
-		if (operand.id >= function.parameters.size())
-			throw std::logic_error("invalid PA15 parameter reference");
-		output << '%' << function.parameters[operand.id].name;
-		break;
-	case Operand::SLOT:
-		if (operand.id >= function.slots.size())
-			throw std::logic_error("invalid PA15 slot reference");
-		output << '$' << function.slots[operand.id].name;
-		break;
-	case Operand::GLOBAL: case Operand::FUNCTION:
-		if (operand.id >= program.symbols.size())
-			throw std::logic_error("invalid PA15 symbol reference");
-		output << '@' << program.symbols[operand.id].name;
-		break;
-	case Operand::INTEGER: output << operand.integer_value; break;
-	case Operand::FLOATING: output << operand.floating_spelling; break;
-	case Operand::NONE: throw std::logic_error("missing PA15 LowIR operand");
-	}
-}
-
-const char* OperationText(LowOperation operation)
-{
-	switch (operation)
-	{
-	case LOW_OP_NEG: return "neg";
-	case LOW_OP_BITNOT: return "bitnot";
-	case LOW_OP_ADD: return "add";
-	case LOW_OP_SUB: return "sub";
-	case LOW_OP_MUL: return "mul";
-	case LOW_OP_DIV: return "div";
-	case LOW_OP_UDIV: return "udiv";
-	case LOW_OP_MOD: return "mod";
-	case LOW_OP_UMOD: return "umod";
-	case LOW_OP_AND: return "and";
-	case LOW_OP_OR: return "or";
-	case LOW_OP_XOR: return "xor";
-	case LOW_OP_SHL: return "shl";
-	case LOW_OP_SHR: return "shr";
-	case LOW_OP_USHR: return "ushr";
-	case LOW_OP_EQ: return "eq";
-	case LOW_OP_NE: return "ne";
-	case LOW_OP_LT: return "lt";
-	case LOW_OP_ULT: return "ult";
-	case LOW_OP_LE: return "le";
-	case LOW_OP_ULE: return "ule";
-	case LOW_OP_GT: return "gt";
-	case LOW_OP_UGT: return "ugt";
-	case LOW_OP_GE: return "ge";
-	case LOW_OP_UGE: return "uge";
-	case LOW_OP_TRUNC: return "trunc";
-	case LOW_OP_SEXT: return "sext";
-	case LOW_OP_ZEXT: return "zext";
-	case LOW_OP_SITOFP: return "sitofp";
-	case LOW_OP_UITOFP: return "uitofp";
-	case LOW_OP_FPTOSI: return "fptosi";
-	case LOW_OP_FPTOUI: return "fptoui";
-	case LOW_OP_FPTRUNC: return "fptrunc";
-	case LOW_OP_FPEXT: return "fpext";
-	case LOW_OP_DECAY: return "decay";
-	case LOW_OP_NONE: break;
-	}
-	throw std::logic_error("missing PA15 LowIR operation");
-}
-
-void WriteInstruction(std::ostream& output, const Instruction& instruction,
-	const TypedProgram& program, const Function& function)
-{
-	switch (instruction.kind)
-	{
-	case Instruction::CONST:
-		output << "%t" << instruction.dest << " = const "
-			<< instruction.type.text << ' ';
-		WriteOperand(output, instruction.first, program, function);
-		break;
-	case Instruction::COPY:
-		output << "%t" << instruction.dest << " = copy "
-			<< instruction.type.text << ' ';
-		WriteOperand(output, instruction.first, program, function);
-		break;
-	case Instruction::ADDR:
-		output << "%t" << instruction.dest << " = addr ";
-		WriteOperand(output, instruction.first, program, function);
-		break;
-	case Instruction::LOAD:
-		output << "%t" << instruction.dest << " = load " << instruction.type.text << ' ';
-		WriteOperand(output, instruction.first, program, function);
-		break;
-	case Instruction::STORE:
-		output << "store " << instruction.type.text << ' ';
-		WriteOperand(output, instruction.first, program, function);
-		output << ", ";
-		WriteOperand(output, instruction.second, program, function);
-		break;
-	case Instruction::INDEX:
-		output << "%t" << instruction.dest << " = index "
-			<< instruction.type.text;
-		if (instruction.indirect) output << " [projection=array_element]";
-		output << ' ';
-		WriteOperand(output, instruction.first, program, function);
-		output << ", ";
-		WriteOperand(output, instruction.second, program, function);
-		break;
-	case Instruction::UNARY:
-		output << "%t" << instruction.dest << " = unary "
-			<< OperationText(instruction.op) << ' '
-			<< instruction.type.text << ' ';
-		WriteOperand(output, instruction.first, program, function);
-		break;
-	case Instruction::BINARY:
-		output << "%t" << instruction.dest << " = binary "
-			<< OperationText(instruction.op) << ' '
-			<< instruction.type.text << ' ';
-		WriteOperand(output, instruction.first, program, function);
-		output << ", ";
-		WriteOperand(output, instruction.second, program, function);
-		break;
-	case Instruction::CMP:
-		output << "%t" << instruction.dest << " = cmp "
-			<< OperationText(instruction.op) << ' '
-			<< instruction.type.text << ' ';
-		WriteOperand(output, instruction.first, program, function);
-		output << ", ";
-		WriteOperand(output, instruction.second, program, function);
-		break;
-	case Instruction::CONVERT:
-		output << "%t" << instruction.dest << " = convert "
-			<< OperationText(instruction.op) << ' '
-			<< instruction.type.text << ' ' << instruction.source_type.text << ' '
-			;
-		WriteOperand(output, instruction.first, program, function);
-		break;
-	case Instruction::CALL:
-		if (instruction.dest != kNoLowId) output << "%t" << instruction.dest << " = ";
-		output << "call " << instruction.type.text << ' ';
-		WriteOperand(output, instruction.first, program, function);
-		output << '(';
-		for (std::size_t i = 0; i < instruction.arguments.size(); ++i)
-		{
-			if (i != 0) output << ", ";
-			WriteOperand(output, instruction.arguments[i], program, function);
-		}
-		output << ')';
-		if (instruction.indirect)
-		{
-			output << " as (";
-			for (std::size_t i = 0; i < instruction.arguments.size(); ++i)
-			{
-				if (i != 0) output << ", ";
-				output << "%arg" << i << " : " << instruction.arguments[i].type.text;
-				if (i < instruction.argument_references.size() &&
-					instruction.argument_references[i])
-					output << " [pass=reference]";
-			}
-			output << ") -> " << instruction.type.text;
-		}
-		break;
-	case Instruction::JUMP:
-		if (instruction.target >= function.blocks.size())
-			throw std::logic_error("invalid PA15 jump target");
-		output << "jump ^" << function.blocks[instruction.target].label;
-		break;
-	case Instruction::BRANCH:
-		if (instruction.target >= function.blocks.size() ||
-			instruction.alternate >= function.blocks.size())
-			throw std::logic_error("invalid PA15 branch target");
-		output << "branch ";
-		WriteOperand(output, instruction.first, program, function);
-		output << ", ^" << function.blocks[instruction.target].label << ", ^"
-			<< function.blocks[instruction.alternate].label;
-		break;
-	case Instruction::SWITCH:
-		if (instruction.target >= function.blocks.size())
-			throw std::logic_error("invalid PA15 switch default target");
-		output << "switch ";
-		WriteOperand(output, instruction.first, program, function);
-		output << ", ^" << function.blocks[instruction.target].label;
-		for (std::size_t i = 0; i < instruction.case_values.size(); ++i)
-		{
-			if (instruction.case_targets[i] >= function.blocks.size())
-				throw std::logic_error("invalid PA15 switch case target");
-			output << ", " << instruction.case_values[i] << ":^"
-				<< function.blocks[instruction.case_targets[i]].label;
-		}
-		break;
-	case Instruction::RETURN_VALUE:
-		output << "return " << instruction.type.text << ' ';
-		WriteOperand(output, instruction.first, program, function);
-		break;
-	case Instruction::RETURN_VOID: output << "return void"; break;
-	}
-}
-
-void WriteSymbolMetadata(std::ostream& output, const Symbol& symbol,
-	bool entry, bool function, bool initializer = false)
-{
-	output << " [";
-	bool separator = false;
-	if (function && symbol.nonthrowing)
-	{
-		output << "unwind=no";
-		separator = true;
-	}
-	if (entry)
-	{
-		if (separator) output << ", ";
-		output << "role=entry";
-		separator = true;
-	}
-	if (initializer)
-	{
-		if (separator) output << ", ";
-		output << "role=init";
-		separator = true;
-	}
-	if (symbol.c_linkage)
-	{
-		if (separator) output << ", ";
-		output << "linkage=c";
-		separator = true;
-	}
-	if (separator) output << ", ";
-	output << "binding=" << (symbol.internal_linkage ? "internal" : "strong");
-	if (!symbol.object_name.empty()) output << ", object=" << symbol.object_name;
-	if (entry) output << ", keep_alias=yes";
-	output << ']';
-}
-
-void RenderProgram(const TypedProgram& program, std::ostream& output)
-{
-	bool wrote = false;
-	for (std::size_t i = 0; i < program.global_declarations.size(); ++i)
-	{
-		const GlobalDeclaration& declaration = program.global_declarations[i];
-		const Symbol& symbol = program.symbols[declaration.symbol];
-		if (symbol.definition_emitted || !symbol.referenced) continue;
-		if (wrote) output << '\n';
-		output << "declare global @" << symbol.name;
-		if (declaration.typed) output << " : " << declaration.type.text;
-		WriteSymbolMetadata(output, symbol, false, false);
-		output << '\n';
-		wrote = true;
-	}
-	for (std::size_t i = 0; i < program.declarations.size(); ++i)
-	{
-		const FunctionDeclaration& declaration = program.declarations[i];
-		const Symbol& symbol = program.symbols[declaration.symbol];
-		if (symbol.definition_emitted || !symbol.referenced) continue;
-		if (wrote) output << '\n';
-		output << "declare function @" << symbol.name;
-		WriteBoundary(output, declaration.parameters, declaration.result,
-			declaration.variadic);
-		WriteSymbolMetadata(output, symbol, false, true);
-		output << '\n';
-		wrote = true;
-	}
-	for (std::size_t i = 0; i < program.globals.size(); ++i)
-	{
-		const Global& global = program.globals[i];
-		const Symbol& symbol = program.symbols[global.symbol];
-		if (wrote) output << '\n';
-		output << "global @" << symbol.name;
-		if (global.initializer_kind != Global::STRUCTURED_VALUE)
-			output << " : " << global.type.text;
-		WriteSymbolMetadata(output, symbol, false, false);
-		output << " = ";
-		if (global.initializer_kind == Global::ZERO) output << "zero\n";
-		else if (global.initializer_kind == Global::INTEGER_VALUE)
-			output << global.initializer << '\n';
-		else if (global.initializer_kind == Global::FLOATING_VALUE)
-			output << global.floating_initializer << '\n';
-		else if (global.initializer_kind == Global::ADDRESS_VALUE)
-		{
-			output << "addr @" << program.symbols[global.address_symbol].name;
-			if (global.address_offset > 0) output << " + " << global.address_offset;
-			else if (global.address_offset < 0)
-				output << " - " << -global.address_offset;
-			output << '\n';
-		}
-		else
-		{
-			output << "{\n";
-			for (std::size_t item_index = 0;
-				item_index < global.items.size(); ++item_index)
-			{
-				const Global::DataItem& item = global.items[item_index];
-				output << "  ";
-				if (item.kind == Global::DataItem::ZERO_ITEM)
-					output << "zero " << item.zero_bytes;
-				else if (item.kind == Global::DataItem::ADDRESS_ITEM)
-				{
-					output << "ptr addr @" << program.symbols[item.symbol].name;
-					if (item.offset > 0) output << " + " << item.offset;
-					else if (item.offset < 0) output << " - " << -item.offset;
-				}
-				else if (item.kind == Global::DataItem::FLOATING_ITEM)
-					output << item.type.text << ' ' << item.floating_spelling;
-				else output << item.type.text << ' ' << item.integer_value;
-				output << '\n';
-			}
-			output << "}\n";
-		}
-		wrote = true;
-	}
-	for (std::size_t i = 0; i < program.functions.size(); ++i)
-	{
-		const Function& function = program.functions[i];
-		const Symbol& symbol = program.symbols[function.symbol];
-		if (wrote) output << '\n';
-		output << "function @" << symbol.name;
-		WriteBoundary(output, function.parameters, function.result, function.variadic);
-		WriteSymbolMetadata(output, symbol, function.entry, true,
-			function.initializer);
-		output << " {\n";
-		for (std::size_t s = 0; s < function.slots.size(); ++s)
-			output << "  slot $" << function.slots[s].name << " : "
-				<< function.slots[s].type.text << '\n';
-		if (!function.slots.empty()) output << '\n';
-		for (std::size_t order = 0; order < function.block_order.size(); ++order)
-		{
-			const BlockId b = function.block_order[order];
-			if (order != 0) output << '\n';
-			output << "  block ^" << function.blocks[b].label << ":\n";
-			for (std::size_t j = 0; j < function.blocks[b].instructions.size(); ++j)
-			{
-				output << "    ";
-				WriteInstruction(output, function.blocks[b].instructions[j],
-					program, function);
-				output << '\n';
-			}
-		}
-		output << "}\n";
-		wrote = true;
-	}
-}
 
 
 class CountingStreamBuffer : public std::streambuf
@@ -2980,7 +2837,7 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 		std::chrono::steady_clock::now();
 	CountingStreamBuffer buffer(output.rdbuf());
 	std::ostream rendered(&buffer);
-	RenderProgram(program, rendered);
+	RenderLowIRProgram(program, rendered);
 	rendered.flush();
 	if (!rendered || !output)
 		throw std::runtime_error("unable to write LowIR output");

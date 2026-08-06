@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <iosfwd>
 #include <limits>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -292,17 +293,14 @@ public:
 	TypeTable types;
 	std::vector<EntityRecord> entities;
 	std::vector<BindingRecord> bindings;
-	std::size_t lookup_queries;
-	std::size_t lookup_scope_visits;
-	std::size_t lookup_edge_visits;
+	std::size_t lookup_queries, lookup_scope_visits, lookup_edge_visits;
 	mutable std::size_t name_index_probes;
 	std::size_t using_index_probes;
 
 private:
-	struct ScopeRecord;
-	struct NameEntry;
-	struct UsingEdge;
-	struct ChildEdge;
+	struct ScopeRecord; struct NameEntry;
+	struct UsingEdge; struct ChildEdge;
+	struct LookupCacheEntry; struct LookupCache;
 	NameEntry* EnsureEntry(ScopeId scope, NameId name);
 	const NameEntry* FindEntry(ScopeId scope, NameId name) const;
 	void RehashEntries(std::size_t capacity);
@@ -335,6 +333,7 @@ private:
 	std::vector<std::uint32_t> lookup_marks_;
 	std::vector<ScopeId> lookup_worklist_;
 	std::uint32_t lookup_generation_;
+	std::unique_ptr<LookupCache> lookup_cache_;
 };
 
 }

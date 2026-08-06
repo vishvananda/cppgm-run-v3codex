@@ -1,45 +1,65 @@
-# PA15 Checkpoint Audit
+# PA15 Final Audit
 
-## Current Checkpoint Review
+## Findings
 
-**Checkpoint:** Semantic handoff and scalar procedural spine (`1735bfbe`)
+All findings are closed:
 
-**Result:** Pass after audit fixes. The review was bounded to the landed PA15
-increment; PA1-PA14 remain 1,037/1,037 and PA15 remains at its 27/108 checkpoint
-baseline.
+1. Hot instructions embedded presentation strings and four vector owners, inflating
+   every scalar instruction to 448 bytes.
+2. Every function zero-filled three whole-translation-unit ID maps, producing a
+   quadratic many-function curve.
+3. Recursive PA15 top-level, statement/control, and switch walks overflowed on valid
+   deep inputs.
+4. PA15 retained `Symbol&` across nested lowering that could append string-literal
+   symbols; ASan proved a heap use-after-free.
+5. PA12 retained type-table references and parameter spans across recursive type
+   interning; ASan proved two independent heap use-after-frees.
+6. Repeated inherited name lookup across nested control scopes was quadratic; `perf`
+   attributed 97.5% of samples to `LookupName`/`FindEntry`.
+7. PA12 eagerly interned a full qualified prefix for every nested namespace, retaining
+   quadratic presentation data.
+8. Lowering, model implementation, and text rendering exceeded their appropriate file
+   ownership boundaries.
 
-The landed path had typed top-level records but still encoded operations and
-cross-links with interchangeable integers or strings, reconstructed constants and
-arithmetic operand types during lowering, keyed cross-source emission through
-rendered names, and rebuilt deep ABI modifier chains recursively. It also emitted
-incorrect truth tests for wide integers and floating point, treated `extern` objects
-as definitions, and could emit duplicate declaration/definition units across source
-files.
+## Changes
 
-The durable ownership boundary is now PA12 semantic facts -> PA15 typed LowIR ->
-PA14 typed ABI spelling. PA12 records constants, common operand types, storage,
-language linkage, exception state, and owner/name paths. PA15 consumes those facts by
-identity; strong symbol/parameter/slot/block/temp IDs and typed operations prevent
-cross-kind assignment, flat canonical tables own cross-source paths/types/symbols,
-and internal entities include their source owner. Definitions are emitted once,
-external-C declarations conflict by source type, and text is streamed only by the
-explicit LowIR output adapter. No mangled or qualified spelling is an emission key.
+- Compact LowIR records now store typed POD fields; floating/null literals are
+  interned, while call arguments and switch cases live in flat program-owned tables.
+- Function-wide ID maps are graph-owned and initialized once. Top-level emission,
+  control lowering, statement sequencing, and switch discovery use explicit worklists.
+- Symbol mutation is performed by stable ID after nested lowering. PA12 snapshots
+  compact type records and copies function parameter IDs before recursive analysis.
+- PA11 owns a revisioned derived lookup cache invalidated by bindings, namespaces,
+  aliases, using edges, and type-name mutations.
+- Namespace prefixes retain structural parent/segment facts and materialize a full
+  presentation spelling only when an emitted name requests it.
+- PA15 is divided into typed records, model/index implementation, graph lowering, and
+  text rendering, with each new source listed in `frontend_source_sets.mk`.
 
-Focused probes cover boolean constants, wide-integer and floating logical-not,
-negative-zero conditions, external object declarations, C/noexcept metadata,
-cross-source declaration/definition coalescing, duplicate-definition rejection, and
-source-local internal symbols. A 5,000/10,000-assignment profile produced
-15,003/30,003 instructions, 25,006/50,006 lowering visits, and 10,002/20,002 binding
-probes; typed storage was 5,039,080/10,076,600 bytes and median lowering time was
-12.58/24.97 ms. Flat ABI chains at 8,000/16,000/32,000 pointer levels completed in
-0.02/0.04/0.08 s with 9,024/13,240/22,112 KiB maximum RSS. ASan+UBSan passed all 25
-currently successful success-oracle fixtures and the 32,000-level stress case. The
-PA15 report remains 27/108, the through-PA14 report is 1,037/1,037, and the PA15 file
-audit is clean across 61 files. A process-only trace contains the compiler's initial
-`execve` and `exit_group(0)` with no child tool or host compiler.
+## Performance Evidence
+
+- Assignments, 5k -> 10k: instructions 15,003 -> 30,003; lowering 7.31 ->
+  15.58 ms; typed storage 1.97 -> 3.93 MB. Pre-audit storage was 7.79 -> 15.58 MB.
+- Functions, 4k -> 8k -> 16k: lowering 12.27 -> 24.84 -> 50.48 ms. The former
+  2k/4k/8k curve was approximately 11/34/103 ms and profiled in repeated zero-fill.
+- Nested `if`, 8k -> 16k: 0.07 -> 0.16 s total. Before lookup caching, the 16k
+  semantic phase alone took 6.27 s.
+- Nested namespaces, 4k/8k/12k: 0.02/0.05/0.07 s total after lazy prefixes. The
+  former semantic-only runs took 0.29/1.12/2.64 s.
+- 32k compound nesting and 32k pointer modifiers complete in 0.09 and 0.05 s.
+
+## Validation
+
+- `perl scripts/cppgm_file_audit.pl --stage pa15 --paths dev/src`:
+  pass, 66 files, zero findings.
+- Combined ASan+UBSan fixture runs: PA11 68+2, PA12 166+8, PA15 108; all pass.
+- Process-only `strace`: initial compiler `execve`, `exit_group(0)`, no child process.
+- `make test-report-through-pa15`: pass, 1,145/1,145 tests and 15/15 stages.
 
 ## Checkpoint Audit Ledger
 
-| Checkpoint | Audit result | Evidence |
+| Checkpoint | Audit result | Closure evidence |
 |---|---|---|
-| Semantic handoff and scalar procedural spine | Pass after ownership, identity, truth-conversion, linkage, and scaling fixes | PA1-PA14 1,037/1,037; PA15 27/108 baseline preserved; clean file audit; linear 5k/10k profile; sanitized 32k deep-type probe |
+| Scalar semantic handoff | Pass after audit fixes | Typed identity, correct linkage/truth handling, no text identity, linear scalar/declarator probes |
+| Procedural lowering | Pass after audit fixes | Complete PA15 contract, explicit CFG worklist, flat side tables, no recursive PA15 depth failure |
+| Full-stage final audit | Pass | UAFs removed across PA12/PA15 ownership boundaries; semantic quadratics removed; file audit, sanitizers, self-containment trace, and 1,145-test report clean |

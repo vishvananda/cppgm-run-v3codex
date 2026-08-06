@@ -50,8 +50,8 @@ private:
 		LookupKind kind);
 	ScopeId ResolveScopeSpelling(ScopeId scope, const std::string& spelling);
 	ScopeId ResolveOwner(ScopeId scope, const NamePath& name);
-	const std::string& ScopePrefix(ScopeId scope) const;
-	NameId ScopePrefixId(ScopeId scope) const;
+	const std::string& ScopePrefix(ScopeId scope);
+	NameId ScopePrefixId(ScopeId scope);
 	NameId DisplayName(ScopeId owner, NameId name);
 	ScopeId NewScope(ScopeId parent, ScopeKind kind, NameId name,
 		NameId prefix);
@@ -185,7 +185,9 @@ private:
 	DumpArena dump_;
 	std::uint32_t root_;
 	std::vector<NameId> scope_prefixes_;
+	std::vector<NameId> scope_prefix_segments_;
 	std::vector<ScopeId> scope_parents_;
+	std::vector<NameId> scope_prefix_scratch_;
 	IndexedSequenceTable function_sets_;
 	FunctionSignatureTable function_declarations_;
 	std::vector<std::uint32_t> function_fact_by_binding_;

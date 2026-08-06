@@ -47,7 +47,7 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	EntityId entity = kNoEntity;
 	if (old.type != kNoType)
 	{
-		const TypeRecord& named = program_->types.Get(
+		const TypeRecord named = program_->types.Get(
 			program_->types.RemoveTopCv(old.type));
 		if (named.kind != TYPE_NAMED)
 			throw std::runtime_error("class redeclared as non-class");
@@ -80,9 +80,10 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 		ScopeId member_scope = program_->entities[entity].member_scope;
 		if (member_scope == kNoScope)
 		{
+			const std::string prefix =
+				program_->names.Get(DisplayName(owner, name)) + "::";
 			member_scope = NewScope(owner, SCOPE_CLASS, name,
-				program_->names.Intern(ScopePrefix(owner) +
-					program_->names.Get(name) + "::"));
+				program_->names.Intern(prefix));
 			program_->SetEntityScope(entity, member_scope);
 		}
 		// Class member call semantics are outside this stage. The stable class
@@ -104,7 +105,7 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 EntityId SemanticAnalyzer::EntityOf(TypeId type) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
-	const TypeRecord& record = program_->types.Get(type);
+	const TypeRecord record = program_->types.Get(type);
 	return record.kind == TYPE_NAMED ? record.entity : kNoEntity;
 }
 
@@ -187,7 +188,7 @@ TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope,
 	EntityId entity = kNoEntity;
 	if (old.type != kNoType)
 	{
-		const TypeRecord& named = program_->types.Get(
+		const TypeRecord named = program_->types.Get(
 			program_->types.RemoveTopCv(old.type));
 		if (named.kind != TYPE_NAMED)
 			throw std::runtime_error("enum redeclared as non-enum");
@@ -210,9 +211,10 @@ TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope,
 		value_scope = program_->entities[entity].member_scope;
 		if (value_scope == kNoScope)
 		{
+			const std::string prefix =
+				program_->names.Get(DisplayName(owner, name)) + "::";
 			value_scope = NewScope(owner, SCOPE_ENUM, name,
-				program_->names.Intern(ScopePrefix(owner) +
-					program_->names.Get(name) + "::"));
+				program_->names.Intern(prefix));
 			program_->SetEntityScope(entity, value_scope);
 		}
 	}
@@ -552,7 +554,7 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 	if (occupied.ordinary != kNoBinding &&
 		program_->bindings[occupied.ordinary].kind != BIND_FUNCTION)
 		throw std::runtime_error("function conflicts with ordinary binding");
-	const TypeRecord& declared_type = program_->types.Get(type);
+	const TypeRecord declared_type = program_->types.Get(type);
 	if (declared_type.kind != TYPE_FUNCTION)
 		throw std::logic_error("function declaration has non-function type");
 	std::vector<TypeId> signature_parameters;
@@ -573,7 +575,7 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 	if (previous != kNoBinding)
 	{
 		const FunctionInfo& existing = GetFunction(previous);
-		const TypeRecord& old_type = program_->types.Get(existing.type);
+		const TypeRecord old_type = program_->types.Get(existing.type);
 		if (old_type.child != declared_type.child)
 			throw std::runtime_error("conflicting function return type");
 		canonical = existing.binding;
@@ -911,7 +913,7 @@ TypeId SemanticAnalyzer::AdaptMemberFunctionType(BindingId binding)
 {
 	const FunctionInfo& function = GetFunction(binding);
 	if (function.member_owner == kNoType) return function.type;
-	const TypeRecord& member_type = program_->types.Get(function.type);
+	const TypeRecord member_type = program_->types.Get(function.type);
 	TypeId object = function.member_owner;
 	if ((member_type.cv & CV_CONST) != 0)
 		object = program_->types.Qualify(object, CV_CONST);

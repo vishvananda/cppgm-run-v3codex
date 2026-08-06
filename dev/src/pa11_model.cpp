@@ -539,10 +539,46 @@ struct Program::ChildEdge
 		  next(std::numeric_limits<std::uint32_t>::max()) {}
 };
 
+struct Program::LookupCacheEntry
+{
+	ScopeId scope;
+	NameId name;
+	LookupKind kind;
+	std::uint64_t revision;
+	LookupResult result;
+
+	LookupCacheEntry(ScopeId scope_value, NameId name_value,
+		LookupKind kind_value, std::uint64_t revision_value,
+		const LookupResult& result_value)
+		: scope(scope_value), name(name_value), kind(kind_value),
+		  revision(revision_value), result(result_value) {}
+};
+
+struct Program::LookupCache
+{
+	std::vector<LookupCacheEntry> entries;
+	std::vector<std::uint32_t> slots;
+	std::uint64_t revision;
+
+	LookupCache() : slots(64, 0), revision(1) {}
+	bool Find(ScopeId scope, NameId name, LookupKind kind,
+		LookupResult* result) const;
+	void Store(ScopeId scope, NameId name, LookupKind kind,
+		const LookupResult& result);
+	void Rehash(std::size_t capacity);
+	void Invalidate();
+	std::size_t StorageBytes() const
+	{
+		return entries.capacity() * sizeof(LookupCacheEntry) +
+			slots.capacity() * sizeof(std::uint32_t);
+	}
+};
+
 Program::Program(InternedStringTable& strings)
 	: names(strings), lookup_queries(0), lookup_scope_visits(0),
 	  lookup_edge_visits(0), name_index_probes(0), using_index_probes(0),
-	  using_edge_slots_(64, 0), entry_slots_(64, 0), lookup_generation_(1)
+	  using_edge_slots_(64, 0), entry_slots_(64, 0), lookup_generation_(1),
+	  lookup_cache_(new LookupCache())
 {
 	NewScope(kNoScope, SCOPE_NAMESPACE, names.Intern("<global>"));
 }
@@ -590,7 +626,10 @@ ScopeId Program::OpenNamespace(ScopeId parent, NameId name, bool is_inline)
 	if (entry->ordinary != kNoBinding || entry->type != kNoType)
 		throw std::runtime_error("namespace conflicts with existing binding");
 	if (entry->name_space == kNoScope)
+	{
 		entry->name_space = NewScope(parent, SCOPE_NAMESPACE, name);
+		lookup_cache_->Invalidate();
+	}
 	if (is_inline) AddUsingEdge(parent, entry->name_space);
 	return entry->name_space;
 }
@@ -602,6 +641,7 @@ void Program::AddNamespaceAlias(ScopeId owner, NameId name, ScopeId target)
 		(entry->name_space != kNoScope && entry->name_space != target))
 		throw std::runtime_error("invalid namespace alias binding");
 	entry->name_space = target;
+	lookup_cache_->Invalidate();
 }
 
 void Program::AddUsingEdge(ScopeId owner, ScopeId target)
@@ -628,6 +668,7 @@ void Program::AddUsingEdge(ScopeId owner, ScopeId target)
 		scopes_[owner].first_using));
 	using_edge_slots_[slot] = edge + 1;
 	scopes_[owner].first_using = edge;
+	lookup_cache_->Invalidate();
 }
 
 void Program::RehashUsingEdges(std::size_t capacity)
@@ -724,6 +765,7 @@ BindingId Program::AddBinding(ScopeId owner, BindingKind kind, NameId name,
 		entry->type_declaration = binding;
 	}
 	else entry->ordinary = binding;
+	lookup_cache_->Invalidate();
 	return binding;
 }
 
@@ -754,6 +796,7 @@ void Program::SetTypeName(ScopeId owner, NameId name, TypeId type)
 	if (entry->name_space != kNoScope)
 		throw std::runtime_error("type conflicts with namespace");
 	entry->type = type;
+	lookup_cache_->Invalidate();
 }
 
 void Program::SetEntityScope(EntityId entity, ScopeId scope)
@@ -903,13 +946,94 @@ LookupResult Program::LookupGraph(ScopeId scope, NameId name,
 LookupResult Program::LookupUnqualified(ScopeId scope, NameId name,
 	LookupKind kind)
 {
+	const ScopeId requested = scope;
 	for (ScopeId current = scope; current != kNoScope;
 		current = scopes_[current].parent)
 	{
+		LookupResult cached;
+		if (lookup_cache_->Find(current, name, kind, &cached))
+		{
+			lookup_cache_->Store(requested, name, kind, cached);
+			return cached;
+		}
 		const LookupResult result = LookupGraph(current, name, kind);
-		if (!result.Empty()) return result;
+		if (!result.Empty())
+		{
+			lookup_cache_->Store(requested, name, kind, result);
+			return result;
+		}
 	}
-	return LookupResult();
+	const LookupResult missing;
+	lookup_cache_->Store(requested, name, kind, missing);
+	return missing;
+}
+
+bool Program::LookupCache::Find(ScopeId scope, NameId name, LookupKind kind,
+	LookupResult* result) const
+{
+	const std::size_t mask = slots.size() - 1;
+	std::size_t slot = (MixHash(scope, name) * 5U +
+		static_cast<std::size_t>(kind)) & mask;
+	while (slots[slot] != 0)
+	{
+		const LookupCacheEntry& entry =
+			entries[slots[slot] - 1];
+		if (entry.revision == revision && entry.scope == scope &&
+			entry.name == name && entry.kind == kind)
+		{
+			*result = entry.result;
+			return true;
+		}
+		slot = (slot + 1) & mask;
+	}
+	return false;
+}
+
+void Program::LookupCache::Store(ScopeId scope, NameId name, LookupKind kind,
+	const LookupResult& result)
+{
+	LookupResult ignored;
+	if (Find(scope, name, kind, &ignored)) return;
+	if ((entries.size() + 1) * 10 > slots.size() * 7)
+	{
+		Rehash(slots.size());
+		if ((entries.size() + 1) * 10 > slots.size() * 7)
+			Rehash(slots.size() * 2);
+	}
+	const std::size_t mask = slots.size() - 1;
+	std::size_t slot = (MixHash(scope, name) * 5U +
+		static_cast<std::size_t>(kind)) & mask;
+	while (slots[slot] != 0) slot = (slot + 1) & mask;
+	entries.push_back(LookupCacheEntry(scope, name, kind, revision, result));
+	slots[slot] = static_cast<std::uint32_t>(entries.size());
+}
+
+void Program::LookupCache::Rehash(std::size_t capacity)
+{
+	std::vector<LookupCacheEntry> current;
+	current.reserve(entries.size());
+	for (std::size_t i = 0; i < entries.size(); ++i)
+		if (entries[i].revision == revision) current.push_back(entries[i]);
+	entries.swap(current);
+	slots.assign(capacity, 0);
+	const std::size_t mask = capacity - 1;
+	for (std::size_t i = 0; i < entries.size(); ++i)
+	{
+		const LookupCacheEntry& entry = entries[i];
+		std::size_t slot = (MixHash(entry.scope, entry.name) * 5U +
+			static_cast<std::size_t>(entry.kind)) & mask;
+		while (slots[slot] != 0) slot = (slot + 1) & mask;
+		slots[slot] = static_cast<std::uint32_t>(i + 1);
+	}
+}
+
+void Program::LookupCache::Invalidate()
+{
+	++revision;
+	if (revision != 0) return;
+	entries.clear();
+	slots.assign(64, 0);
+	revision = 1;
 }
 
 ScopeId Program::CarrierScope(const LookupResult& result) const
@@ -1304,6 +1428,7 @@ std::size_t Program::StorageBytes() const
 		entry_slots_.capacity() * sizeof(std::uint32_t) +
 		lookup_marks_.capacity() * sizeof(std::uint32_t) +
 		lookup_worklist_.capacity() * sizeof(ScopeId) +
+		lookup_cache_->StorageBytes() +
 		entities.capacity() * sizeof(EntityRecord) +
 		bindings.capacity() * sizeof(BindingRecord);
 }
