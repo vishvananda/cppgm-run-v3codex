@@ -85,7 +85,8 @@ struct PathHash
 class PathPool
 {
 public:
-  explicit PathPool(StringPool & strings) : strings_(strings) {}
+  PathPool(StringPool & strings, AbiMangleStats * stats)
+    : strings_(strings), stats_(stats) {}
 
   size_t intern(const string & qualified)
   {
@@ -94,7 +95,10 @@ public:
     while(begin < qualified.size()) {
       const size_t separator = qualified.find("::", begin);
       const string component = qualified.substr(begin, separator - begin);
-      require(!component.empty(), "empty component in ABI name '" + qualified + "'");
+      if(component.empty()) {
+        throw std::logic_error("empty component in ABI name '" + qualified + "'");
+      }
+      if(stats_) ++stats_->path_components;
       path = intern(path, strings_.intern(component));
       if(separator == string::npos) break;
       begin = separator + 2;
@@ -142,6 +146,7 @@ public:
 
 private:
   StringPool & strings_;
+  AbiMangleStats * stats_;
   vector<PathNode> paths_;
   std::unordered_map<PathNode, size_t, PathHash> indexes_;
 };
@@ -321,16 +326,42 @@ bool is_builtin_name(const string & name)
 class FactGraph
 {
 public:
-  explicit FactGraph(const AbiFactCase & fact_case) : paths(strings)
+  FactGraph(const AbiFactCase & fact_case, AbiMangleStats * stats)
+    : paths(strings, stats), stats_(stats)
   {
     for(const AbiFactRecord & record : fact_case.records) {
       if(record.kind != ABI_FACT_RECORD_DEFINITION) continue;
       const AbiDefinitionRecord & definition = record.definition;
-      definitions.insert(std::make_pair(definition.id, &definition));
+      require(definitions.insert(std::make_pair(definition.id, &definition)).second,
+              "duplicate ABI definition id '" + definition.id + "'");
     }
   }
 
   size_t resolve_type(const AbiType & source)
+  {
+    size_t result = resolve_type_core(source);
+    for(auto modifier = source.modifiers.rbegin();
+        modifier != source.modifiers.rend(); ++modifier) {
+      TypeNode node;
+      node.kind = modifier->kind;
+      require(node.kind == ABI_TYPE_POINTER || node.kind == ABI_TYPE_LVALUE_REFERENCE
+              || node.kind == ABI_TYPE_RVALUE_REFERENCE
+              || node.kind == ABI_TYPE_PACK_EXPANSION || node.kind == ABI_TYPE_CV
+              || node.kind == ABI_TYPE_ARRAY,
+              "invalid flat ABI type modifier");
+      node.children.push_back(result);
+      node.bound_kind = modifier->array_bound.kind;
+      if(!modifier->array_bound.value.empty()) {
+        node.symbol = strings.intern(modifier->array_bound.value);
+      }
+      node.is_const = modifier->is_const;
+      node.is_volatile = modifier->is_volatile;
+      result = canonicalize_type(node);
+    }
+    return result;
+  }
+
+  size_t resolve_type_core(const AbiType & source)
   {
     if(source.kind == ABI_TYPE_NAME_OR_REFERENCE) {
       const auto definition = definitions.find(source.name);
@@ -375,6 +406,7 @@ public:
       std::sort(node.tags.begin(), node.tags.end(), [this](size_t a, size_t b) {
         return strings.get(a) < strings.get(b);
       });
+      node.tags.erase(std::unique(node.tags.begin(), node.tags.end()), node.tags.end());
     }
     return canonicalize_type(node);
   }
@@ -382,7 +414,10 @@ public:
   size_t resolve_argument_ref(const string & id)
   {
     const auto cached = argument_definitions.find(id);
-    if(cached != argument_definitions.end()) return cached->second;
+    if(cached != argument_definitions.end()) {
+      if(stats_) ++stats_->definition_cache_hits;
+      return cached->second;
+    }
     const auto found = definitions.find(id);
     require(found != definitions.end()
             && found->second->kind == ABI_DEFINITION_TEMPLATE_ARGUMENT,
@@ -398,7 +433,10 @@ public:
   size_t resolve_expression_ref(const string & id)
   {
     const auto cached = expression_definitions.find(id);
-    if(cached != expression_definitions.end()) return cached->second;
+    if(cached != expression_definitions.end()) {
+      if(stats_) ++stats_->definition_cache_hits;
+      return cached->second;
+    }
     const auto found = definitions.find(id);
     require(found != definitions.end() && found->second->kind == ABI_DEFINITION_EXPRESSION,
             "unknown ABI expression '" + id + "'");
@@ -435,7 +473,10 @@ private:
   size_t resolve_type_definition(const string & id, const AbiDefinitionRecord & definition)
   {
     const auto cached = type_definitions.find(id);
-    if(cached != type_definitions.end()) return cached->second;
+    if(cached != type_definitions.end()) {
+      if(stats_) ++stats_->definition_cache_hits;
+      return cached->second;
+    }
     require(resolving_types.insert(id).second, "recursive ABI type '" + id + "'");
     const size_t result = resolve_type(definition.type);
     resolving_types.erase(id);
@@ -467,10 +508,16 @@ private:
   {
     const size_t hash = type_hash(node);
     vector<size_t> & bucket = type_buckets[hash];
-    for(size_t id : bucket) if(types[id] == node) return id;
+    for(size_t id : bucket) {
+      if(types[id] == node) {
+        if(stats_) ++stats_->canonical_cache_hits;
+        return id;
+      }
+    }
     const size_t id = types.size();
     types.push_back(node);
     bucket.push_back(id);
+    if(stats_) ++stats_->canonical_types;
     return id;
   }
 
@@ -487,7 +534,7 @@ private:
     if(source.kind == ABI_TEMPLATE_ARGUMENT_DEPENDENT_VALUE) node.type = resolve_type(source.type);
     if(source.kind == ABI_TEMPLATE_ARGUMENT_MEMBER_TEMPLATE_ENTITY
        || source.kind == ABI_TEMPLATE_ARGUMENT_MEMBER_EXTERNAL_ENTITY) {
-      node.owner_type = resolve_type(source.owner_type);
+      node.owner_type = resolve_type(source.type);
     }
     if(source.kind == ABI_TEMPLATE_ARGUMENT_EXPRESSION) {
       node.expression = resolve_expression_ref(source.entity_ref);
@@ -510,10 +557,16 @@ private:
     for(const string & argument : source.argument_refs) node.arguments.push_back(resolve_argument_ref(argument));
     const size_t hash = argument_hash(node);
     vector<size_t> & bucket = argument_buckets[hash];
-    for(size_t id : bucket) if(arguments[id] == node) return id;
+    for(size_t id : bucket) {
+      if(arguments[id] == node) {
+        if(stats_) ++stats_->canonical_cache_hits;
+        return id;
+      }
+    }
     const size_t id = arguments.size();
     arguments.push_back(node);
     bucket.push_back(id);
+    if(stats_) ++stats_->canonical_arguments;
     return id;
   }
 
@@ -541,13 +594,20 @@ private:
     for(const AbiType & type : source.type_arguments) node.types.push_back(resolve_type(type));
     const size_t hash = expression_hash(node);
     vector<size_t> & bucket = expression_buckets[hash];
-    for(size_t id : bucket) if(expressions[id] == node) return id;
+    for(size_t id : bucket) {
+      if(expressions[id] == node) {
+        if(stats_) ++stats_->canonical_cache_hits;
+        return id;
+      }
+    }
     const size_t id = expressions.size();
     expressions.push_back(node);
     bucket.push_back(id);
+    if(stats_) ++stats_->canonical_expressions;
     return id;
   }
 
+  AbiMangleStats * stats_;
   std::unordered_map<string, const AbiDefinitionRecord *> definitions;
   std::unordered_map<string, size_t> type_definitions;
   std::unordered_map<string, size_t> argument_definitions;
@@ -567,6 +627,7 @@ enum SubstitutionKind
 {
   SUBSTITUTION_PATH,
   SUBSTITUTION_TYPE,
+  SUBSTITUTION_FUNCTION_TEMPLATE_PREFIX,
   SUBSTITUTION_EXPLICIT
 };
 
@@ -608,10 +669,14 @@ string base36(size_t value)
 class SubstitutionTable
 {
 public:
+  explicit SubstitutionTable(AbiMangleStats * stats = nullptr) : stats_(stats) {}
+
   bool emit_if_known(const SubstitutionKey & key, string & output) const
   {
+    if(stats_) ++stats_->substitution_lookups;
     const auto found = indexes_.find(key);
     if(found == indexes_.end()) return false;
+    if(stats_) ++stats_->substitution_hits;
     output += 'S';
     if(found->second != 0) output += base36(found->second - 1);
     output += '_';
@@ -622,9 +687,16 @@ public:
   {
     if(indexes_.find(key) != indexes_.end()) return;
     indexes_.insert(std::make_pair(key, indexes_.size()));
+    if(stats_) ++stats_->substitution_entries;
+  }
+
+  void swap(SubstitutionTable & other)
+  {
+    indexes_.swap(other.indexes_);
   }
 
 private:
+  AbiMangleStats * stats_;
   std::unordered_map<SubstitutionKey, size_t, SubstitutionHash> indexes_;
 };
 
@@ -645,8 +717,14 @@ string discriminator(const string & occurrence)
   if(occurrence.empty() || occurrence == "0") return string();
   size_t value = 0;
   for(char ch : occurrence) {
-    require(ch >= '0' && ch <= '9', "invalid local discriminator '" + occurrence + "'");
-    value = value * 10 + static_cast<size_t>(ch - '0');
+    if(ch < '0' || ch > '9') {
+      throw std::logic_error("invalid local discriminator '" + occurrence + "'");
+    }
+    const size_t digit = static_cast<size_t>(ch - '0');
+    if(value > (std::numeric_limits<size_t>::max() - digit) / 10) {
+      throw std::logic_error("local discriminator out of range '" + occurrence + "'");
+    }
+    value = value * 10 + digit;
   }
   require(value != 0, "invalid local discriminator");
   --value;
@@ -672,8 +750,8 @@ string builtin_code(const string & name)
 class Encoder
 {
 public:
-  Encoder(const AbiFactCase & fact_case, FactGraph & graph)
-    : fact_case_(fact_case), graph_(graph) {}
+  Encoder(const AbiFactCase & fact_case, FactGraph & graph, AbiMangleStats * stats)
+    : fact_case_(fact_case), graph_(graph), stats_(stats), substitutions_(stats) {}
 
   string mangle()
   {
@@ -722,11 +800,21 @@ private:
           facts.template_arguments.push_back(graph_.resolve_argument_ref(record->argument_refs.at(0)));
           break;
         case ABI_FUNCTION_RECORD_FUNCTION_TEMPLATE_PREFIX:
+          require(facts.template_prefix == NO_ID, "multiple ABI function-template prefixes");
           facts.template_prefix = graph_.strings.intern(record->substitution);
           break;
-        case ABI_FUNCTION_RECORD_LOCAL_CONTEXT: facts.local = record; break;
-        case ABI_FUNCTION_RECORD_LAMBDA_CONTEXT: facts.lambda = record; break;
-        case ABI_FUNCTION_RECORD_NAMESPACE_LAMBDA_CONTEXT: facts.namespace_lambda = record; break;
+        case ABI_FUNCTION_RECORD_LOCAL_CONTEXT:
+          require(facts.local == nullptr, "multiple ABI local contexts");
+          facts.local = record;
+          break;
+        case ABI_FUNCTION_RECORD_LAMBDA_CONTEXT:
+          require(facts.lambda == nullptr, "multiple ABI lambda contexts");
+          facts.lambda = record;
+          break;
+        case ABI_FUNCTION_RECORD_NAMESPACE_LAMBDA_CONTEXT:
+          require(facts.namespace_lambda == nullptr, "multiple ABI namespace-lambda contexts");
+          facts.namespace_lambda = record;
+          break;
         case ABI_FUNCTION_RECORD_TERMINAL_SOURCE:
         case ABI_FUNCTION_RECORD_TERMINAL:
         case ABI_FUNCTION_RECORD_OPERATOR_TERMINAL:
@@ -734,7 +822,10 @@ private:
           require(facts.terminal == nullptr, "multiple ABI function terminals");
           facts.terminal = record;
           break;
-        case ABI_FUNCTION_RECORD_VARIADIC: facts.variadic = true; break;
+        case ABI_FUNCTION_RECORD_VARIADIC:
+          require(!facts.variadic, "multiple ABI variadic markers");
+          facts.variadic = true;
+          break;
         case ABI_FUNCTION_RECORD_ABI_TAG: facts.tags.push_back(graph_.strings.intern(record->name)); break;
         case ABI_FUNCTION_RECORD_QUALIFIER:
           facts.qualifiers.insert(facts.qualifiers.end(), record->qualifiers.begin(), record->qualifiers.end());
@@ -746,18 +837,36 @@ private:
     std::sort(facts.tags.begin(), facts.tags.end(), [this](size_t a, size_t b) {
       return graph_.strings.get(a) < graph_.strings.get(b);
     });
+    facts.tags.erase(std::unique(facts.tags.begin(), facts.tags.end()), facts.tags.end());
+    const size_t local_contexts = (facts.local != nullptr) + (facts.lambda != nullptr)
+                                  + (facts.namespace_lambda != nullptr);
+    require(local_contexts <= 1, "multiple ABI function context kinds");
+    require(facts.result_types.size() <= 1, "multiple ABI function result types");
+    const bool lvalue = std::find(facts.qualifiers.begin(), facts.qualifiers.end(),
+                                  ABI_FUNCTION_QUALIFIER_LVALUE_REFERENCE)
+                        != facts.qualifiers.end();
+    const bool rvalue = std::find(facts.qualifiers.begin(), facts.qualifiers.end(),
+                                  ABI_FUNCTION_QUALIFIER_RVALUE_REFERENCE)
+                        != facts.qualifiers.end();
+    require(!(lvalue && rvalue), "conflicting ABI function reference qualifiers");
     return facts;
   }
 
   string mangle_target(const AbiTargetRecord & target,
                        const vector<const AbiFunctionRecord *> & records)
   {
+    const bool accepts_function_records = target.kind == ABI_TARGET_FACT_FUNCTION
+                                          || target.kind == ABI_TARGET_FACT_THUNK
+                                          || target.kind == ABI_TARGET_FACT_VIRTUAL_BASE_THUNK;
+    require(records.empty() || accepts_function_records,
+            "function records attached to a non-function ABI target");
     if(target.kind == ABI_TARGET_FACT_TYPE) {
       encode_type(graph_.resolve_type(target.type));
       return output_;
     }
     if(target.kind == ABI_TARGET_FACT_FUNCTION) {
       if(target.c_linkage) {
+        require(records.empty(), "C-linkage function cannot have ABI function records");
         require(target.function.kind == ABI_FUNCTION_TARGET_PATH,
                 "C-linkage target must be a function path");
         return final_name(target.function.qualified_name);
@@ -771,9 +880,11 @@ private:
       encode_object_name(target.qualified_name, false);
       return output_;
     }
-    if(target.kind == ABI_TARGET_FACT_TYPEINFO || target.kind == ABI_TARGET_FACT_VTABLE
-       || target.kind == ABI_TARGET_FACT_VTT) {
+    if(target.kind == ABI_TARGET_FACT_TYPEINFO
+       || target.kind == ABI_TARGET_FACT_TYPEINFO_NAME
+       || target.kind == ABI_TARGET_FACT_VTABLE || target.kind == ABI_TARGET_FACT_VTT) {
       output_ += target.kind == ABI_TARGET_FACT_TYPEINFO ? "_ZTI"
+                 : target.kind == ABI_TARGET_FACT_TYPEINFO_NAME ? "_ZTS"
                  : target.kind == ABI_TARGET_FACT_VTABLE ? "_ZTV" : "_ZTT";
       encode_type(graph_.resolve_type(target.type));
       return output_;
@@ -806,7 +917,7 @@ private:
       } else {
         encode_fixed_call_offset(target.this_adjust);
       }
-      encode_function(target.function, FunctionFacts());
+      encode_function(target.function, collect_function_facts(records));
       return output_;
     }
     throw std::logic_error("unsupported ABI target kind");
@@ -819,23 +930,56 @@ private:
 
   void encode_type(size_t id)
   {
-    const TypeNode & type = graph_.type(id);
-    if(type.kind == ABI_TYPE_BUILTIN) {
-      output_ += builtin_code(graph_.strings.get(type.symbol));
-      return;
+    vector<SubstitutionKey> pending;
+    for(;;) {
+      const TypeNode & type = graph_.type(id);
+      if(type.kind == ABI_TYPE_BUILTIN) {
+        output_ += builtin_code(graph_.strings.get(type.symbol));
+        break;
+      }
+      if(type.kind == ABI_TYPE_TEMPLATE_PARAMETER && !type.substitutable) {
+        output_ += template_parameter(type.index);
+        break;
+      }
+      const SubstitutionKey key = type.kind == ABI_TYPE_NAMED && type.tags.empty()
+                                    ? SubstitutionKey{SUBSTITUTION_PATH, type.path}
+                                    : SubstitutionKey{SUBSTITUTION_TYPE, id};
+      if(substitutions_.emit_if_known(key, output_)) break;
+
+      const bool unary = type.kind == ABI_TYPE_POINTER
+                         || type.kind == ABI_TYPE_LVALUE_REFERENCE
+                         || type.kind == ABI_TYPE_RVALUE_REFERENCE
+                         || type.kind == ABI_TYPE_PACK_EXPANSION
+                         || type.kind == ABI_TYPE_CV
+                         || type.kind == ABI_TYPE_VENDOR_QUALIFIED
+                         || type.kind == ABI_TYPE_ARRAY;
+      if(unary) {
+        if(type.kind == ABI_TYPE_POINTER) output_ += 'P';
+        else if(type.kind == ABI_TYPE_LVALUE_REFERENCE) output_ += 'R';
+        else if(type.kind == ABI_TYPE_RVALUE_REFERENCE) output_ += 'O';
+        else if(type.kind == ABI_TYPE_PACK_EXPANSION) output_ += "Dp";
+        else if(type.kind == ABI_TYPE_CV) {
+          if(type.is_volatile) output_ += 'V';
+          if(type.is_const) output_ += 'K';
+        } else if(type.kind == ABI_TYPE_VENDOR_QUALIFIED) {
+          output_ += 'U' + source_name(graph_.strings.get(type.symbol));
+        } else {
+          output_ += 'A' + graph_.strings.get(type.symbol) + '_';
+        }
+        pending.push_back(key);
+        id = type.children.at(0);
+        continue;
+      }
+
+      encode_new_type(id, type);
+      if(!(type.kind == ABI_TYPE_STD_TEMPLATE_SPECIALIZATION
+           && type.standard_includes_arguments)) {
+        substitutions_.add(key);
+      }
+      break;
     }
-    if(type.kind == ABI_TYPE_TEMPLATE_PARAMETER && !type.substitutable) {
-      output_ += template_parameter(type.index);
-      return;
-    }
-    const SubstitutionKey key = type.kind == ABI_TYPE_NAMED && type.tags.empty()
-                                  ? SubstitutionKey{SUBSTITUTION_PATH, type.path}
-                                  : SubstitutionKey{SUBSTITUTION_TYPE, id};
-    if(substitutions_.emit_if_known(key, output_)) return;
-    encode_new_type(id, type);
-    if(!(type.kind == ABI_TYPE_STD_TEMPLATE_SPECIALIZATION
-         && type.standard_includes_arguments)) {
-      substitutions_.add(key);
+    for(auto key = pending.rbegin(); key != pending.rend(); ++key) {
+      substitutions_.add(*key);
     }
   }
 
@@ -1010,18 +1154,14 @@ private:
                           const vector<size_t> & prefixes, size_t count)
   {
     size_t cursor = 0;
-    while(cursor < count) {
-      const size_t start = cursor;
-      size_t known = count;
-      while(known > cursor) {
-        if(substitutions_.emit_if_known(
-             SubstitutionKey{SUBSTITUTION_PATH, prefixes[known - 1]}, output_)) {
-          cursor = known;
-          break;
-        }
-        --known;
+    for(size_t known = count; known != 0; --known) {
+      if(substitutions_.emit_if_known(
+           SubstitutionKey{SUBSTITUTION_PATH, prefixes[known - 1]}, output_)) {
+        cursor = known;
+        break;
       }
-      if(cursor != start) continue;
+    }
+    while(cursor < count) {
       if(cursor == 0 && graph_.strings.get(components[0]) == "std") {
         output_ += "St";
         ++cursor;
@@ -1190,15 +1330,16 @@ private:
     if(definition.entity.kind == ABI_ENTITY_FACT_SYMBOL) {
       output_ += definition.entity.qualified_name;
     } else {
-      const SubstitutionTable outer_substitutions = substitutions_;
-      substitutions_ = SubstitutionTable();
+      SubstitutionTable outer_substitutions;
+      substitutions_.swap(outer_substitutions);
+      if(stats_) ++stats_->isolated_entity_encodings;
       output_ += "_Z";
       if(definition.entity.kind == ABI_ENTITY_FACT_FUNCTION) {
         encode_function(definition.entity.function, FunctionFacts());
       } else {
         encode_object_name(definition.entity.qualified_name, definition.entity.internal_linkage);
       }
-      substitutions_ = outer_substitutions;
+      substitutions_.swap(outer_substitutions);
     }
     output_ += 'E';
   }
@@ -1223,6 +1364,11 @@ private:
 
   void encode_function(const AbiFunctionTarget & target, const FunctionFacts & facts)
   {
+    if(target.kind != ABI_FUNCTION_TARGET_ENCODING) {
+      require(facts.components.empty() && facts.local == nullptr
+              && facts.lambda == nullptr && facts.namespace_lambda == nullptr,
+              "structured ABI name records require a function encoding target");
+    }
     if(target.kind == ABI_FUNCTION_TARGET_ENCODING) {
       encode_structured_function(facts);
       return;
@@ -1257,22 +1403,23 @@ private:
     }
     template_arguments.insert(template_arguments.end(), facts.template_arguments.begin(),
                               facts.template_arguments.end());
-    encode_function_name_path(path, facts, template_arguments);
-    if(!template_arguments.empty() && !facts.result_types.empty()
-       && !(facts.terminal && facts.terminal->kind == ABI_FUNCTION_RECORD_CONVERSION_TERMINAL)) {
-      encode_type(facts.result_types.front());
-    }
     vector<size_t> parameters;
     parameters.insert(parameters.end(), operand_parameters.begin(), operand_parameters.end());
     for(const AbiType & type : target.signature_parameter_types) {
       parameters.push_back(graph_.resolve_type(type));
     }
     parameters.insert(parameters.end(), facts.parameters.begin(), facts.parameters.end());
+    encode_function_name_path(path, facts, template_arguments, parameters.size());
+    if(!template_arguments.empty() && !facts.result_types.empty()
+       && !(facts.terminal && facts.terminal->kind == ABI_FUNCTION_RECORD_CONVERSION_TERMINAL)) {
+      encode_type(facts.result_types.front());
+    }
     encode_bare_parameters(parameters, facts.variadic);
   }
 
   void encode_function_name_path(size_t path, const FunctionFacts & facts,
-                                 const vector<size_t> & template_arguments)
+                                 const vector<size_t> & template_arguments,
+                                 size_t parameter_count)
   {
     const vector<size_t> components = graph_.paths.components(path);
     const vector<size_t> prefixes = graph_.paths.prefixes(path);
@@ -1282,13 +1429,14 @@ private:
     if(components.size() == 1 || std_unscoped) {
       if(std_unscoped) output_ += "St";
       emit_function_terminal(has_custom_terminal ? nullptr : &components.back(), facts,
-                             components.size() > 1);
+                             components.size() > 1, parameter_count);
       encode_function_template_arguments(path, facts, template_arguments);
     } else {
       output_ += 'N';
       emit_qualifiers(facts.qualifiers);
       encode_path_prefix(components, prefixes, components.size() - 1);
-      emit_function_terminal(has_custom_terminal ? nullptr : &components.back(), facts, true);
+      emit_function_terminal(has_custom_terminal ? nullptr : &components.back(), facts,
+                             true, parameter_count);
       encode_function_template_arguments(path, facts, template_arguments);
       output_ += 'E';
     }
@@ -1299,12 +1447,16 @@ private:
   {
     if(template_arguments.empty()) return;
     const size_t key_id = facts.template_prefix != NO_ID ? facts.template_prefix
-                                                          : graph_.strings.intern(path_key(path));
-    substitutions_.add(SubstitutionKey{SUBSTITUTION_EXPLICIT, key_id});
+                                                          : path;
+    const SubstitutionKind key_kind = facts.template_prefix != NO_ID
+                                        ? SUBSTITUTION_EXPLICIT
+                                        : SUBSTITUTION_FUNCTION_TEMPLATE_PREFIX;
+    substitutions_.add(SubstitutionKey{key_kind, key_id});
     output_ += 'I'; encode_arguments(template_arguments); output_ += 'E';
   }
 
-  void emit_function_terminal(const size_t * source, const FunctionFacts & facts, bool member)
+  void emit_function_terminal(const size_t * source, const FunctionFacts & facts, bool member,
+                              size_t parameter_count)
   {
     if(facts.terminal == nullptr) {
       require(source != nullptr, "missing ABI function terminal");
@@ -1316,7 +1468,7 @@ private:
       } else if(terminal.kind == ABI_FUNCTION_RECORD_TERMINAL) {
         output_ += semantic_terminal(terminal.terminal);
       } else if(terminal.kind == ABI_FUNCTION_RECORD_OPERATOR_TERMINAL) {
-        output_ += operator_terminal(terminal, member, facts.parameters.size());
+        output_ += operator_terminal(terminal, member, parameter_count);
       } else if(terminal.kind == ABI_FUNCTION_RECORD_CONVERSION_TERMINAL) {
         output_ += "cv";
         encode_type(graph_.resolve_type(terminal.type));
@@ -1377,7 +1529,8 @@ private:
       encode_structured_template_arguments(final, facts);
     }
     const bool is_template = !facts.template_arguments.empty()
-                             || (components.back()->kind == ABI_FUNCTION_RECORD_NAME_TEMPLATE
+                             || (!components.empty()
+                                 && components.back()->kind == ABI_FUNCTION_RECORD_NAME_TEMPLATE
                                  && !components.back()->argument_refs.empty());
     if(is_template && !facts.result_types.empty()
        && !(facts.terminal && facts.terminal->kind == ABI_FUNCTION_RECORD_CONVERSION_TERMINAL)) {
@@ -1445,7 +1598,7 @@ private:
       } else throw std::logic_error("invalid final structured ABI name component");
       emit_tags(facts.tags);
     } else {
-      emit_function_terminal(nullptr, facts, member);
+      emit_function_terminal(nullptr, facts, member, facts.parameters.size());
     }
   }
 
@@ -1481,7 +1634,9 @@ private:
     } else {
       output_ += source_name(local.name) + discriminator(local.discriminator);
     }
-    if(facts.terminal) emit_function_terminal(nullptr, facts, true);
+    if(facts.terminal) {
+      emit_function_terminal(nullptr, facts, true, facts.parameters.size());
+    }
     else {
       require(facts.local && local.name.compare(0, 2, "$_") == 0,
               "missing ABI function terminal");
@@ -1500,7 +1655,9 @@ private:
     output_ += 'N'; emit_qualifiers(facts.qualifiers);
     for(size_t i = 0; i + 1 < components.size(); ++i) output_ += source_name(graph_.strings.get(components[i]));
     output_ += source_name(graph_.strings.get(components.back()));
-    if(facts.terminal) emit_function_terminal(nullptr, facts, true);
+    if(facts.terminal) {
+      emit_function_terminal(nullptr, facts, true, facts.parameters.size());
+    }
     else output_ += operator_code(target.terminal, true, facts.parameters.size());
     output_ += 'E';
     encode_bare_parameters(facts.parameters, facts.variadic);
@@ -1625,18 +1782,9 @@ private:
   string final_name(const string & qualified) const
   {
     const size_t separator = qualified.rfind("::");
-    return separator == string::npos ? qualified : qualified.substr(separator + 2);
-  }
-
-  string path_key(size_t path) const
-  {
-    string key;
-    const vector<size_t> components = graph_.paths.components(path);
-    for(size_t i = 0; i < components.size(); ++i) {
-      if(i != 0) key += "::";
-      key += graph_.strings.get(components[i]);
-    }
-    return key;
+    const string result = separator == string::npos ? qualified : qualified.substr(separator + 2);
+    require(!result.empty(), "empty C-linkage ABI function name");
+    return result;
   }
 
   SubstitutionKey explicit_or_path_key(const string & key, const string & fallback)
@@ -1650,6 +1798,7 @@ private:
 
   const AbiFactCase & fact_case_;
   FactGraph & graph_;
+  AbiMangleStats * stats_;
   string output_;
   SubstitutionTable substitutions_;
 };
@@ -1659,11 +1808,25 @@ private:
 string mangle_fact_file(const AbiFactFile & file)
 {
   std::ostringstream output;
-  for(const AbiFactCase & fact_case : file.cases) {
-    FactGraph graph(fact_case);
-    output << Encoder(fact_case, graph).mangle() << '\n';
-  }
+  mangle_fact_file_to_stream(file, output);
   return output.str();
+}
+
+void mangle_fact_file_to_stream(const AbiFactFile & file, std::ostream & output,
+                                AbiMangleStats * stats)
+{
+  for(const AbiFactCase & fact_case : file.cases) {
+    if(stats) {
+      ++stats->cases;
+      stats->records += fact_case.records.size();
+    }
+    FactGraph graph(fact_case, stats);
+    const string name = Encoder(fact_case, graph, stats).mangle();
+    output.write(name.data(), static_cast<std::streamsize>(name.size()));
+    output.put('\n');
+    if(stats) stats->output_bytes += name.size() + 1;
+  }
+  if(!output) throw std::logic_error("unable to write mangled ABI output");
 }
 
 }  // namespace abi_mangle

@@ -10,6 +10,7 @@ GENERATED = ../obj/generated
 INC = -I$(SRC) -I$(GENERATED)
 OBJ = ../obj
 REF_TEST_ROOT = tests/abi
+COURSE_TEST_ROOT = $(wildcard ../cppgm.tests/course/pa14)
 VPATH = $(SRC)
 RDEPDIR = $(OBJ)/release/.d
 DDEPDIR = $(OBJ)/debug/.d
@@ -36,9 +37,17 @@ $(OBJ)/debug/%.o: %.cpp
 	$(CXX) $(CC_FLAGS) $(INC) -c -MT $@ -MMD -MP -MF $(DDEPDIR)/$*.Td -o $@ $<
 	mv -f $(DDEPDIR)/$*.Td $(DDEPDIR)/$*.d
 
+ifeq ($(COURSE_TEST_ROOT),)
 test: $(TEST_DEPS)
 	@scripts/run_all_tests.pl $(CPPGM_TEST_APP) my tests/abi
 	@scripts/compare_results.pl ref my tests/abi
+else
+test: $(TEST_DEPS)
+	@scripts/run_all_tests.pl $(CPPGM_TEST_APP) my tests/abi
+	@scripts/compare_results.pl ref my tests/abi
+	@scripts/run_all_tests.pl $(CPPGM_TEST_APP) my $(COURSE_TEST_ROOT)
+	@scripts/compare_results.pl ref my $(COURSE_TEST_ROOT)
+endif
 
 ref-test:
 	@$(REF_TEST_RUN)

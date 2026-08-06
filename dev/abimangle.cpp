@@ -66,7 +66,35 @@ int run_abimangle(int argc, char ** argv)
   if(!out) {
     throw logic_error("unable to open output file '" + invocation.outfile + "'");
   }
-  out << abi_mangle::mangle_fact_files(invocation.inputs);
+  abi_mangle::AbiMangleStats stats;
+  const bool collect_stats = getenv("CPPGM_ABIMANGLE_STATS") != nullptr;
+  abi_mangle::mangle_fact_files_to_stream(invocation.inputs, out,
+                                          collect_stats ? &stats : nullptr);
+  out.close();
+  if(!out) {
+    throw logic_error("unable to write output file '" + invocation.outfile + "'");
+  }
+  if(collect_stats) {
+    cerr << "abimangle_stats source_files=" << stats.source_files
+         << " source_bytes=" << stats.source_bytes
+         << " cases=" << stats.cases
+         << " records=" << stats.records
+         << " canonical_types=" << stats.canonical_types
+         << " canonical_arguments=" << stats.canonical_arguments
+         << " canonical_expressions=" << stats.canonical_expressions
+         << " canonical_cache_hits=" << stats.canonical_cache_hits
+         << " definition_cache_hits=" << stats.definition_cache_hits
+         << " path_components=" << stats.path_components
+         << " substitution_lookups=" << stats.substitution_lookups
+         << " substitution_hits=" << stats.substitution_hits
+         << " substitution_entries=" << stats.substitution_entries
+         << " isolated_entity_encodings=" << stats.isolated_entity_encodings
+         << " output_bytes=" << stats.output_bytes
+         << " peak_input_bytes=" << stats.peak_input_bytes
+         << " parse_ns=" << stats.parse_nanoseconds
+         << " encode_ns=" << stats.encode_nanoseconds
+         << '\n';
+  }
   return EXIT_SUCCESS;
 }
 
