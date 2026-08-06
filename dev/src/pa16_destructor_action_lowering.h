@@ -1,0 +1,158 @@
+#ifndef CPPGM_PA16_DESTRUCTOR_ACTION_LOWERING_H
+#define CPPGM_PA16_DESTRUCTOR_ACTION_LOWERING_H
+
+#include "pa15_lowering_support.h"
+#include "pa15_lowir_model.h"
+#include "pa12_semantic_model.h"
+
+#include <cstdint>
+#include <stdexcept>
+
+namespace cppgm
+{
+namespace pa16_lowering_detail
+{
+
+using namespace pa11;
+using namespace pa12_semantic_detail;
+using namespace pa15_lowir_detail;
+using namespace pa15_lowering_support;
+
+template <class Derived>
+class DestructorActionLowering
+{
+protected:
+	void EmitEhTarget(Instruction::Kind kind, BlockId target)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		Instruction instruction(kind);
+		instruction.target = target;
+		derived.Emit(instruction);
+	}
+
+	Operand ProjectBaseSubobjects(Operand object,
+		std::uint32_t projection_count)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		for (std::uint32_t i = 0; i < projection_count; ++i)
+			object = derived.ProjectBaseSubobject(object);
+		return object;
+	}
+
+	void EmitDestructorCall(BindingId destructor, const Operand& destination)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (destructor == kNoBinding ||
+			destructor >= derived.function_symbols_.size() ||
+			derived.function_symbols_[destructor] == kNoLowId)
+			throw std::runtime_error("destructor action has no emitted binding");
+		Instruction call(Instruction::CALL);
+		call.type = LowVoid();
+		call.first = Operand(Operand::FUNCTION,
+			derived.function_symbols_[destructor], LowPtr());
+		CallArguments arguments;
+		CallArgumentFlags references;
+		arguments.Push(destination);
+		references.Push(0);
+		derived.output_.symbols[
+			derived.function_symbols_[destructor]].referenced = true;
+		derived.AttachCallArguments(&call, arguments, references);
+		derived.Emit(call);
+	}
+
+	void LowerDestructorObject(TypeId type, const Operand& address,
+		BindingId destructor)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		type = derived.RemoveTopQualifiers(type);
+		const TypeRecord& record = derived.program_.types.Get(type);
+		if (record.kind != TYPE_ARRAY)
+		{
+			EmitDestructorCall(destructor, address);
+			return;
+		}
+		if (record.bound == 0)
+			throw std::runtime_error("destruction of an unbounded array");
+		const Operand base = derived.DecayAddress(address);
+		const std::size_t element_size = derived.program_.SizeOf(record.child);
+		for (std::size_t i = static_cast<std::size_t>(record.bound);
+			i != 0; --i)
+		{
+			const Operand element = derived.IndexAddress(LowI8(), base,
+				Operand(static_cast<std::int64_t>((i - 1) * element_size),
+					LowI64()), true);
+			LowerDestructorObject(record.child, element, destructor);
+		}
+	}
+
+	void LowerDestructorAction(const DumpNode& action)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (action.kind != DUMP_DESTRUCTOR_ACTION ||
+			action.binding == kNoBinding || action.operand_type == kNoType)
+			throw std::logic_error("invalid destructor action");
+		const TypeRecord& outer = derived.program_.types.Get(
+			derived.RemoveTopQualifiers(action.operand_type));
+		if (outer.kind == TYPE_ARRAY && action.object_binding != kNoBinding)
+		{
+			if (action.constant)
+			{
+				if (action.constant_value < 0 ||
+					static_cast<std::uint64_t>(action.constant_value) >=
+						outer.bound)
+					throw std::logic_error(
+						"invalid destructor array element identity");
+				const Operand element = derived.BoundArrayElementAddress(
+					action.object_binding, action.operand_type,
+					static_cast<std::size_t>(action.constant_value));
+				LowerDestructorObject(outer.child, element, action.binding);
+				return;
+			}
+			for (std::size_t ordinal = 0;
+				ordinal < static_cast<std::size_t>(outer.bound); ++ordinal)
+			{
+				const std::size_t index =
+					static_cast<std::size_t>(outer.bound) - ordinal - 1;
+				const Operand element = derived.BoundArrayElementAddress(
+					action.object_binding, action.operand_type, index);
+				LowerDestructorObject(outer.child, element, action.binding);
+			}
+			return;
+		}
+		Operand destination;
+		if (action.object_binding != kNoBinding)
+		{
+			const BindingRecord& object =
+				derived.program_.bindings[action.object_binding];
+			if (object.non_static_data_member)
+			{
+				if (derived.current_this_binding_ == kNoBinding)
+					throw std::logic_error(
+						"member destruction is outside a destructor");
+				destination = derived.LoadStorage(derived.StorageFor(
+					derived.current_this_binding_, LowPtr()), LowPtr());
+				destination = derived.ProjectAggregateMember(destination,
+					action.object_binding);
+			}
+			else destination = derived.AddressOfStorage(derived.StorageFor(
+				action.object_binding,
+				derived.LowerStorageType(action.operand_type)));
+		}
+		else
+		{
+			if (derived.current_this_binding_ == kNoBinding ||
+				action.base_projection_count == 0)
+				throw std::logic_error("base destruction has no object");
+			destination = derived.LoadStorage(derived.StorageFor(
+				derived.current_this_binding_, LowPtr()), LowPtr());
+			destination = derived.ProjectBaseSubobjects(destination,
+				action.base_projection_count);
+		}
+		LowerDestructorObject(action.operand_type, destination, action.binding);
+	}
+};
+
+}
+}
+
+#endif

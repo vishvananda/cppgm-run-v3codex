@@ -33,7 +33,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^if_then_1:
     %t12 = addr $elements
     %t13 = unary decay ptr %t12
-    %t14 = index i8 [projection=array_element] %t13, 0
+    %t14 = index i8 [projection=array_element] %t13, 2
     call void @Element___Element(%t14)
     %t15 = addr $elements
     %t16 = unary decay ptr %t15
@@ -41,7 +41,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     call void @Element___Element(%t17)
     %t18 = addr $elements
     %t19 = unary decay ptr %t18
-    %t20 = index i8 [projection=array_element] %t19, 2
+    %t20 = index i8 [projection=array_element] %t19, 0
     call void @Element___Element(%t20)
     return i32 1
 
@@ -51,7 +51,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^if_end_3:
     %t21 = addr $elements
     %t22 = unary decay ptr %t21
-    %t23 = index i8 [projection=array_element] %t22, 0
+    %t23 = index i8 [projection=array_element] %t22, 2
     call void @Element___Element(%t23)
     %t24 = addr $elements
     %t25 = unary decay ptr %t24
@@ -59,7 +59,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     call void @Element___Element(%t26)
     %t27 = addr $elements
     %t28 = unary decay ptr %t27
-    %t29 = index i8 [projection=array_element] %t28, 2
+    %t29 = index i8 [projection=array_element] %t28, 0
     call void @Element___Element(%t29)
     %t30 = call i32 @observed()
     %t31 = cmp eq i32 %t30, 33

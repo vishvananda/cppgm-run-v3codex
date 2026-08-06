@@ -1,0 +1,56 @@
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $values : obj<4x1>
+
+  block ^entry:
+    %t1 = addr $values
+    %t2 = unary decay ptr %t1
+    %t3 = index i8 [projection=array_element] %t2, 0
+    call void @Y__Y(%t3)
+    %t4 = addr $values
+    %t5 = unary decay ptr %t4
+    %t6 = index i8 [projection=array_element] %t5, 1
+    call void @Y__Y(%t6)
+    %t7 = addr $values
+    %t8 = unary decay ptr %t7
+    %t9 = index i8 [projection=array_element] %t8, 2
+    call void @Y__Y(%t9)
+    %t10 = addr $values
+    %t11 = unary decay ptr %t10
+    %t12 = index i8 [projection=array_element] %t11, 3
+    call void @Y__Y(%t12)
+    %t13 = addr $values
+    %t14 = unary decay ptr %t13
+    %t15 = binary mul i64 1, 2
+    %t16 = index i8 [projection=array_element] %t14, %t15
+    %t17 = unary decay ptr %t16
+    %t18 = index i8 [projection=array_element] %t17, 1
+    call void @Y___Y(%t18)
+    %t19 = index i8 [projection=array_element] %t17, 0
+    call void @Y___Y(%t19)
+    %t20 = addr $values
+    %t21 = unary decay ptr %t20
+    %t22 = binary mul i64 0, 2
+    %t23 = index i8 [projection=array_element] %t21, %t22
+    %t24 = unary decay ptr %t23
+    %t25 = index i8 [projection=array_element] %t24, 1
+    call void @Y___Y(%t25)
+    %t26 = index i8 [projection=array_element] %t24, 0
+    call void @Y___Y(%t26)
+    return i32 0
+}
+
+function @Y___Y(%this : ptr) -> void [unwind=no, binding=strong, object=_ZN1YD1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+
+function @Y__Y(%this : ptr) -> void [unwind=no, binding=strong, object=_ZN1YC1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}

@@ -575,7 +575,7 @@ void SemanticAnalyzer::AddDefaultConstructor(std::uint32_t variable,
 	BindingId binding, TypeId type)
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
-	const TypeRecord& object_type = program_->types.Get(type);
+	const TypeRecord object_type = program_->types.Get(type);
 	const EntityId entity = DestructedEntity(type);
 	if (entity == kNoEntity) return;
 	const NamedFlavor flavor = program_->entities[entity].flavor;
@@ -675,15 +675,15 @@ void SemanticAnalyzer::AddLifetimeObligation(ScopeId scope,
 	BindingId object, TypeId type)
 {
 	const EntityId entity = DestructedEntity(type);
-	if (entity == kNoEntity || program_->entities[entity].trivial_destructor)
-		return;
+	if (entity == kNoEntity) return;
 	if (!program_->entities[entity].destructible)
 		throw std::runtime_error("object type is not destructible");
 	const BindingId destructor = DestructorForType(type);
 	if (destructor == kNoBinding)
-		throw std::logic_error("nontrivial class has no destructor identity");
+		throw std::logic_error("class has no destructor identity");
 	if (!CanAccessMember(destructor, entity))
 		throw std::runtime_error("inaccessible destructor");
+	if (program_->entities[entity].trivial_destructor) return;
 	if (scope_lifetimes_.size() <= scope)
 		scope_lifetimes_.resize(static_cast<std::size_t>(scope) + 1);
 	scope_lifetimes_[scope].push_back(
@@ -714,6 +714,7 @@ void SemanticAnalyzer::AddDestructorSubobjectActions(EntityId entity,
 {
 	if (entity >= entity_data_members_.size())
 		throw std::logic_error("destructor is missing its member index");
+	if (program_->entities[entity].flavor == NAMED_UNION) return;
 	const std::vector<BindingId>& members = entity_data_members_[entity];
 	for (std::size_t i = members.size(); i != 0; --i)
 	{
@@ -725,6 +726,8 @@ void SemanticAnalyzer::AddDestructorSubobjectActions(EntityId entity,
 		const BindingId destructor = DestructorForType(type);
 		if (destructor == kNoBinding)
 			throw std::logic_error("member has no destructor identity");
+		if (!CanAccessMember(destructor, subobject))
+			throw std::runtime_error("inaccessible member destructor");
 		TypeId object = program_->types.RemoveTopCv(EffectiveType(type));
 		const TypeRecord& record = program_->types.Get(object);
 		if (record.kind == TYPE_ARRAY)
@@ -754,6 +757,8 @@ void SemanticAnalyzer::AddDestructorSubobjectActions(EntityId entity,
 			program_->entities[base].type);
 		if (destructor == kNoBinding)
 			throw std::logic_error("base has no destructor identity");
+		if (!CanAccessMember(destructor, base))
+			throw std::runtime_error("inaccessible base destructor");
 		dump_.Add(body, MakeDestructorAction(program_->entities[base].type,
 			destructor, kNoBinding, 1));
 		++destructor_subobject_action_visits_;

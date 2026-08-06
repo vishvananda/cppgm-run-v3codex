@@ -7,7 +7,9 @@
 #include "pa11_model.h"
 #include "pa12_semantic.h"
 #include "pa12_semantic_model.h"
+#include "pa16_array_lifetime_lowering.h"
 #include "pa16_constructor_lowering.h"
+#include "pa16_destructor_action_lowering.h"
 #include "pa16_lifetime_lowering.h"
 
 #include <algorithm>
@@ -35,6 +37,8 @@ typedef SmallSequence<BindingId, kAggregateProjectionReplayLimit> AggregatePath;
 
 class GraphLowerer :
 	private pa16_lowering_detail::ConstructorActionLowering<GraphLowerer>,
+	private pa16_lowering_detail::ArrayLifetimeLowering<GraphLowerer>,
+	private pa16_lowering_detail::DestructorActionLowering<GraphLowerer>,
 	private pa16_lowering_detail::LifetimeActionLowering<GraphLowerer>
 {
 public:
@@ -45,7 +49,9 @@ public:
 		  current_result_(LowVoid()), current_result_reference_(false),
 		  temp_counter_(0), block_counter_(0), generated_slot_ordinal_(0),
 		  source_ordinal_(source_ordinal), needs_global_class_initializer_(false),
-		  current_this_binding_(kNoBinding)
+		  current_this_binding_(kNoBinding),
+		  destructor_return_target_(kNoLowId),
+		  destructor_return_routes_to_epilogue_(false)
 	{
 		function_symbols_.resize(program_.bindings.size(), kNoLowId);
 		global_symbols_.resize(program_.bindings.size(), kNoLowId);
@@ -67,6 +73,8 @@ public:
 
 private:
 	friend class pa16_lowering_detail::ConstructorActionLowering<GraphLowerer>;
+	friend class pa16_lowering_detail::ArrayLifetimeLowering<GraphLowerer>;
+	friend class pa16_lowering_detail::DestructorActionLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::LifetimeActionLowering<GraphLowerer>;
 
 	enum StatementTaskKind : std::uint8_t
@@ -2175,47 +2183,7 @@ private:
 		}
 		if (record.kind == DUMP_RETURN_STATEMENT)
 		{
-			std::size_t first_cleanup = 0;
-			const bool has_value = !children.empty() &&
-				arena_.nodes[children[0]].kind != DUMP_DESTRUCTOR_ACTION;
-			Operand result_value;
-			if (has_value)
-			{
-				first_cleanup = 1;
-				if (current_result_.kind == LOW_VOID)
-					(void)LowerValue(children[0]);
-				else if (current_result_reference_)
-					result_value = AddressOfStorage(
-						LowerStorage(children[0]));
-				else
-				{
-					const Operand value = LowerValue(children[0]);
-					const bool preserve_unsigned_conversion =
-						value.kind == Operand::INTEGER && IsInteger(value.type) &&
-						IsInteger(current_result_) && value.type.is_signed &&
-						!current_result_.is_signed &&
-						value.type.width < current_result_.width;
-					result_value = Convert(value, current_result_,
-						!preserve_unsigned_conversion);
-				}
-			}
-			for (std::size_t i = first_cleanup; i < children.size(); ++i)
-			{
-				if (arena_.nodes[children[i]].kind != DUMP_DESTRUCTOR_ACTION)
-					throw std::logic_error("invalid return cleanup action");
-				LowerDestructorAction(arena_.nodes[children[i]]);
-			}
-			if (current_result_.kind == LOW_VOID)
-				Emit(Instruction(Instruction::RETURN_VOID));
-			else
-			{
-				if (!has_value)
-					throw std::runtime_error("non-void return has no value");
-				Instruction instruction(Instruction::RETURN_VALUE);
-				instruction.type = current_result_;
-				instruction.first = result_value;
-				Emit(instruction);
-			}
+			LowerReturn(children);
 			return;
 		}
 		if (record.kind == DUMP_EXPRESSION_STATEMENT)
@@ -2894,6 +2862,8 @@ private:
 	std::size_t source_ordinal_;
 	bool needs_global_class_initializer_;
 	BindingId current_this_binding_;
+	BlockId destructor_return_target_;
+	bool destructor_return_routes_to_epilogue_;
 	std::vector<IdentityTypeId> identity_type_cache_;
 };
 

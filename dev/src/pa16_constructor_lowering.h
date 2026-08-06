@@ -94,44 +94,21 @@ protected:
 		derived.Emit(call);
 	}
 
-	void LowerArrayValues(TypeId type, std::uint32_t list_node,
-		const Operand& array_address)
+	void LowerBaseInitializationAction(const DumpNode& action,
+		const NodeChildren& children)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		const TypeRecord& array = derived.program_.types.Get(
-			derived.ExpressionObjectType(type));
-		const NodeChildren values = derived.Children(list_node);
-		if (array.kind != TYPE_ARRAY || array.bound == 0 ||
-			values.size() > array.bound)
-			throw std::runtime_error("invalid bounded array initializer");
-		const LowType element = derived.LowerExpressionType(array.child);
-		const Operand base = derived.DecayAddress(array_address);
-		for (std::size_t i = 0; i < static_cast<std::size_t>(array.bound); ++i)
-		{
-			const Operand destination = derived.IndexAddress(element, base,
-				Operand(static_cast<std::int64_t>(i), LowI64()), true);
-			if (derived.IsArrayType(array.child))
-			{
-				if (i >= values.size() ||
-					derived.arena_.nodes[values[i]].kind != DUMP_BRACED_INIT_LIST)
-					throw std::runtime_error(
-						"nested array requires a braced initializer");
-				LowerArrayValues(array.child, values[i], destination);
-				continue;
-			}
-			Instruction store(Instruction::STORE);
-			store.type = element;
-			if (i < values.size())
-				store.first = derived.Convert(
-					derived.LowerValue(values[i]), element, false);
-			else if (element.kind == LOW_PTR)
-				store.first = Operand::NullPointer(element);
-			else if (IsFloating(element))
-				store.first = derived.FloatingOperand("0.0", element);
-			else store.first = Operand(0, element);
-			store.second = destination;
-			derived.Emit(store);
-		}
+		if (action.kind != DUMP_BASE_INITIALIZER_ACTION ||
+			derived.current_this_binding_ == kNoBinding || children.size() != 1 ||
+			derived.arena_.nodes[children[0]].kind != DUMP_CONSTRUCTOR_ACTION)
+			throw std::logic_error(
+				"base initialization is outside a constructor");
+		if (derived.IsTrivialConstructorAction(action.type, children)) return;
+		const Operand object = derived.LoadStorage(
+			derived.StorageFor(derived.current_this_binding_, LowPtr()), LowPtr());
+		const Operand destination = derived.ProjectBaseSubobjects(object,
+			action.base_projection_count);
+		derived.LowerConstructorAction(children[0], destination);
 	}
 
 	void LowerConstructorAggregateLeaf(const DumpNode& action,
@@ -151,7 +128,7 @@ protected:
 			if (retained_destination.kind == Operand::NONE)
 				derived.LowerConstructorArrayActions(
 					action.type, values[0], path);
-			else LowerArrayValues(
+			else derived.LowerArrayValues(
 				action.type, values[0], retained_destination);
 			return;
 		}

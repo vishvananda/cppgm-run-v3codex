@@ -181,13 +181,13 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 				arena_->IsTag(member, "special-member-definition"))
 				AnalyzeSpecialMember(member, member_scope, type, member_access);
 		}
-		current_class_context_ = previous_class_context;
 		CompleteClassLayout(entity);
 		if (!program_->entities[entity].has_user_declared_constructor &&
 			program_->entities[entity].default_constructible)
 			EnsureImplicitConstructor(entity);
 		if (!program_->entities[entity].has_user_declared_destructor)
 			EnsureImplicitDestructor(entity);
+		current_class_context_ = previous_class_context;
 		program_->entities[entity].complete = true;
 	}
 	(void)anonymous_source;
@@ -216,8 +216,19 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 		alignment = static_cast<std::size_t>(base->object_alignment);
 		if (!base->destructible) owner.destructible = false;
 		if (!base->trivial_destructor) owner.trivial_destructor = false;
+		const BindingId destructor = DestructorForType(base->type);
+		if (destructor == kNoBinding ||
+			!CanAccessMember(destructor, owner.direct_base))
+			owner.destructible = false;
 	}
 	const bool is_union = owner.flavor == NAMED_UNION;
+	bool defaulted_destructor = !owner.has_user_declared_destructor;
+	if (owner.has_user_declared_destructor)
+	{
+		const BindingId destructor = DestructorForType(owner.type);
+		defaulted_destructor = destructor != kNoBinding &&
+			GetFunction(destructor).defaulted_destructor;
+	}
 	const std::vector<BindingId>& members = entity_data_members_[entity];
 	const bool implicit_default_constructor =
 		!owner.has_user_declared_constructor;
@@ -318,8 +329,20 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 		if (subobject.flavor != NAMED_STRUCT &&
 			subobject.flavor != NAMED_CLASS &&
 			subobject.flavor != NAMED_UNION) continue;
+		if (is_union)
+		{
+			if (defaulted_destructor && !subobject.trivial_destructor)
+				owner.destructible = false;
+			if (!subobject.trivial_destructor)
+				owner.trivial_destructor = false;
+			continue;
+		}
 		if (!subobject.destructible) owner.destructible = false;
 		if (!subobject.trivial_destructor) owner.trivial_destructor = false;
+		const BindingId destructor = DestructorForType(member_type);
+		if (destructor == kNoBinding ||
+			!CanAccessMember(destructor, member_record->entity))
+			owner.destructible = false;
 	}
 	if (size == 0) size = 1;
 	size = AlignUp(size, alignment);
@@ -367,14 +390,13 @@ BindingId SemanticAnalyzer::EnsureImplicitDestructor(EntityId entity)
 	if (entity_destructor_by_entity_[entity] != kNoBinding)
 		return entity_destructor_by_entity_[entity];
 	EntityRecord& owner = program_->entities[entity];
-	if (!owner.destructible)
-		throw std::runtime_error("class has no usable implicit destructor");
 	const std::string leaf = program_->names.Get(owner.identity_name);
 	const NameId name = program_->names.Intern("~" + leaf);
 	const TypeId type = program_->types.Function(
 		program_->types.Fundamental(FUND_VOID), std::vector<TypeId>(), false);
 	const BindingId destructor = DeclareFunction(owner.member_scope, name,
-		type, std::vector<ParameterInfo>(), true, false, STORAGE_CLASS_NONE,
+		type, std::vector<ParameterInfo>(), owner.destructible, false,
+		STORAGE_CLASS_NONE,
 		LANGUAGE_LINKAGE_CPP, owner.trivial_destructor);
 	BindingRecord& binding = program_->bindings[destructor];
 	binding.member_owner = entity;
@@ -383,7 +405,8 @@ BindingId SemanticAnalyzer::EnsureImplicitDestructor(EntityId entity)
 	info.member_owner = owner.type;
 	info.destructor = true;
 	info.implicit_destructor = true;
-	info.deferred = true;
+	info.deleted_destructor = !owner.destructible;
+	info.deferred = owner.destructible;
 	entity_destructor_by_entity_[entity] = destructor;
 	return destructor;
 }

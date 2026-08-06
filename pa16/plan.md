@@ -23,15 +23,26 @@ owners rather than copied or sized by unrelated bindings. The semantic graph
 remains translation-unit-owned and synchronously borrowed by typed lowering;
 textual output is only the final view.
 
+Destruction uses the same identity path: each class owns one destructor binding
+and explicit destructible/trivial facts; scopes own compact automatic-object
+obligations; demanded destructor bodies own reverse member/base actions. Access,
+deletion, object identity, order, and projection are fixed semantically before
+typed lowering. Destructor returns share one subobject epilogue, and bounded
+arrays flatten to one leaf constructor fact with shared reverse exception
+suffixes after an eight-element inline case; union destructors never synthesize
+ordinary-member actions for inactive variants. This applies `spec.md` sections
+2, 3, 4, 5, 6, 8, and 9: stable identity, monotonic demand, no lowering lookup,
+cohesive phase-local ownership, and work linear in emitted actions.
+
 ## Current Failure Map
 
-Current state is 126/259 PA16 tests with no checkpoint-entry loss. The complete
+Current state is 132/265 PA16 tests with no checkpoint-entry loss. The complete
 133-failure set, assigned once by primary semantic owner, is: 16 member-function/
 call-boundary; 26 class lookup/access/inheritance; 34 initialization/lifetime;
 41 operator/ADL/callable; 8 layout/object representation; and 8 procedural
 interaction/metadata failures.
 
-## Active Checkpoint
+## Next Substantial Checkpoint
 
 **Next: namespace/static lifetime spine.** Namespace variables own typed constant
 or dynamic initialization facts plus an optional destructor identity; one
@@ -61,7 +72,8 @@ action curves.
 | Constructor isolation from unrelated declarations | 5k / 10k globals plus one member | 1 / 1 constructor-member action visits, 1 / 1 candidate visits, and 8 instructions at both sizes while required global/output work scales |
 | Single-base chain construction and lookup | 250 / 500 base edges | Post-audit: 250 / 500 base actions; 500 / 1,000 lookup-edge visits; 251 / 501 candidates; 1,511 / 3,011 instructions; 511,781 / 1,021,943 typed bytes; five-run median 2.11 / 4.58 ms semantic and 1.71 / 3.27 ms lowering |
 | Lexical cleanup exits | 1k / 2k locals plus normal/return exits | 2,000 / 4,000 cleanup-action visits; 3,007 / 6,007 instructions; 593,407 / 1,182,871 typed bytes; 17.24 / 33.25 ms semantic and 6.77 / 13.19 ms lowering |
-| Destructor EH suffixes | 100 / 200 nontrivial members | Shared large-case cleanup chain: 100 / 200 subobject visits; 1,015 / 2,015 instructions; 198,924 / 391,392 typed bytes; pre-fix was 15,961 / 61,911 instructions and 3,112,135 / 12,029,251 bytes |
+| Throwing array construction cleanup | 100 / 200 elements | Post-audit 1,505 / 3,005 instructions, 303 / 603 binding probes, 312,756 / 620,976 typed bytes, and 0.52 / 0.94 ms five-run median lowering; pre-fix was 21,007 / 82,007 instructions, 5,154 / 20,304 probes, and 3,977,181 / 15,535,017 bytes |
+| Destructor EH suffixes | 100 / 200 nontrivial members | Shared large-case cleanup chain: 100 / 200 subobject visits; 1,015 / 2,015 instructions; 198,924 / 391,392 typed bytes; 0.32 / 0.63 ms five-run median lowering; pre-fix was 15,961 / 61,911 instructions and 3,112,135 / 12,029,251 bytes |
 
 Exact counter scaling establishes work proportional to owned fields, indexed
 candidates, resolved actions, and emitted IR; the nested audit curve closes the
@@ -76,4 +88,4 @@ former depth-by-leaf projection product.
 | Local aggregate-action spine | Pass after audit fixes | C++11 aggregate eligibility, one union active member, member-ID action trees, borrowed brace cursor, typed scalar/reference stores, and bounded projection reuse; 61/248 PA16 with no losses; 1,145/1,145 through PA15; flat and nested linear curves; file audit pass |
 | Special-member initialization action spine | Pass after audit fixes | Init-mode-aware selection, declaration-ordinal member actions, conservative exception facts, typed reference/subobject lowering, and bounded projection reuse; 91/255 with seven audit regressions and no existing loss; 1,145/1,145 through PA15; candidate/member/nested curves and file audit pass |
 | Single-base construction spine | Pass after audit fixes | Canonical base/access edges, naming-class-aware lookup, selected base actions, conversion ranking, and recorded typed projection counts with no lowering lookup; 120/259 with four audit regressions and no existing loss; 1,145/1,145 through PA15; exact linear 250/500-edge curves; file audit pass |
-| Destruction and lexical-cleanup spine | Complete | Canonical user/implicit destructor facts, reverse member/base and bounded-array actions, normal/return/break/continue cleanup, return preservation, typed EH cleanup, and shared large suffix chains; 126/259 with no loss; 1,145/1,145 through PA15; linear exit/subobject curves; file audit pass |
+| Destruction and lexical-cleanup spine | Pass after audit fixes | Demand-correct user/implicit destructor facts, access/deletion checks, union/reverse nested-array lifetime, normal/return/break/continue cleanup, return preservation, and shared typed EH suffixes; 132/265 with no prior loss; 1,145/1,145 through PA15; exact linear array/destructor curves; file audit pass with no PA16 warning |
