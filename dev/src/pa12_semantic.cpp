@@ -220,7 +220,6 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		entity_constructors_.capacity() * sizeof(std::vector<BindingId>) +
 		implicit_constructor_by_entity_.capacity() * sizeof(BindingId) +
 		member_initializer_by_binding_.capacity() * sizeof(NodeId) +
-		member_initializer_scope_by_binding_.capacity() * sizeof(ScopeId) +
 		constructor_initializer_scratch_.capacity() * sizeof(NodeId) +
 		constructor_initializer_touched_.capacity() * sizeof(BindingId) +
 		function_templates_.capacity() * sizeof(FunctionTemplatePattern) +
@@ -2275,7 +2274,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 						argument != kNoEdge; argument = arena_->NextEdge(argument))
 						arguments.push_back(arena_->EdgeChild(argument));
 					initializer.node = BuildConstructorAction(parsed.type, scope,
-						arguments, false);
+						arguments, false, false);
 				}
 				else if (expression != kNoNode &&
 					arena_->IsTag(expression, "braced-init-list") &&
@@ -2285,7 +2284,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 						argument != kNoEdge; argument = arena_->NextEdge(argument))
 						arguments.push_back(arena_->EdgeChild(argument));
 					initializer.node = BuildConstructorAction(parsed.type, scope,
-						arguments, PayloadSource(initializer_node) == "copy");
+						arguments, PayloadSource(initializer_node) == "copy", true);
 				}
 				else if (expression != kNoNode &&
 					arena_->IsTag(expression, "call-expression") &&
@@ -2304,14 +2303,14 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 							argument != kNoEdge; argument = arena_->NextEdge(argument))
 							arguments.push_back(arena_->EdgeChild(argument));
 					initializer.node = BuildConstructorAction(parsed.type, scope,
-						arguments, false);
+						arguments, false, false);
 				}
 				else if (expression != kNoNode &&
 					!program_->entities[class_entity].is_aggregate)
 				{
 					arguments.push_back(expression);
 					initializer.node = BuildConstructorAction(parsed.type, scope,
-						arguments, true);
+						arguments, true, false);
 				}
 				else initializer = AnalyzeExpression(expression, scope, parsed.type);
 				initializer.type = parsed.type;
@@ -2849,6 +2848,8 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		stats_->expressions = expression_count_;
 		stats_->class_layouts = class_layouts_;
 		stats_->class_layout_member_visits = class_layout_member_visits_;
+		stats_->constructor_member_action_visits =
+			constructor_member_action_visits_;
 		stats_->lookup_queries = program.lookup_queries;
 		stats_->lookup_scope_visits = program.lookup_scope_visits;
 		stats_->lookup_edge_visits = program.lookup_edge_visits;
@@ -2888,6 +2889,7 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 	: tokens(0), syntax_nodes(0), semantic_nodes(0), semantic_edges(0),
 	  interned_names(0), canonical_types(0), scopes(0), declarations(0),
 	  expressions(0), class_layouts(0), class_layout_member_visits(0),
+	  constructor_member_action_visits(0),
 	  lookup_queries(0), lookup_scope_visits(0),
 	  lookup_edge_visits(0), overload_candidates(0),
 	  overload_order_comparisons(0), conversion_checks(0),

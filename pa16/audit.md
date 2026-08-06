@@ -2,54 +2,65 @@
 
 ## Current Checkpoint Review
 
-**Checkpoint:** `76cd7bd0` (`Implement PA16 aggregate initialization actions`)
+**Checkpoint:** `790bc91a` (`Implement PA16 constructor initialization spine`)
 
-**Result:** Pass after audit fixes. The landed increment is bounded to local
-aggregate eligibility and ordered initialization actions for direct scalar,
-reference, union, and recursively aggregate class members. Array-member/global
-aggregate lowering and non-aggregate special-member/lifetime actions remain in
-later PA16 checkpoints and account for known full-stage failures.
+**Result:** Pass after audit fixes. The landed increment is bounded to stable
+constructor declarations/candidate sets, direct/copy/list/default construction,
+declaration-ordered direct-member/default-member actions, and their typed calls
+and stores. Base construction, destruction, arrays of class objects, and global
+lifetime remain assigned to later checkpoints.
 
-The ownership path is source braced-list edges -> canonical class `EntityId`
-eligibility plus declaration-ordered member `BindingId`s -> PA12 initializer
-actions carrying those binding identities -> PA15 typed projections and stores.
-Brace elision now advances the borrowed syntax-edge cursor directly rather than
-copying initializer nodes. Shallow projection paths stay in an eight-entry inline
-sequence for stable LowIR presentation; deeper lowering retains the typed
-subobject address, so each remaining action projects once. Lowering performs no
-lookup, constructor reselection, name-based recovery, or text transport.
+The ownership path is initializer syntax with an interned initialization mode ->
+canonical class `EntityId`, constructor `BindingId` candidate sequence, and data-
+member declaration ordinal -> selected constructor/member action nodes -> typed
+subobject addresses, calls, and stores. Selection and target lookup occur once in
+semantic construction. Lowering consumes only typed IDs and recorded conversions;
+it does not rerun lookup, reconstruct from names, or serialize/reparse LowIR.
 
 Audit findings are closed:
 
-1. Aggregate eligibility used "no user-declared constructor" instead of the
-   C++11 "no user-provided constructor" rule. Canonical class facts now distinguish
-   the two monotonically, so first-declaration `= default` and `= delete`
-   constructors preserve aggregate eligibility while a body or ordinary
-   declaration does not.
-2. A union action list visited every variant, causing omitted zero-initialization
-   to overwrite the selected first member. Union planning now emits at most that
-   one active-member action and rejects remaining initializer elements normally.
-3. Every nested leaf replayed its complete root path and the path used a heap
-   vector. A representative 100-depth/100-leaf versus 200-depth/200-leaf pair
-   produced 10,302/40,602 instructions, 1,967,706/7,865,946 typed bytes, and
-   4.49/19.79 ms lowering. Inline bounded replay plus retained typed addresses
-   reduces this to 303/603 instructions, 63,066/124,506 typed bytes, and
-   0.22/0.31 ms; semantic nodes remain proportional at 408/808.
+1. Deleted constructors were discarded before overload resolution, every member
+   specifier was mistaken for `explicit`, and copy-list initialization did not
+   distinguish selection from the final explicit-constructor rejection. Deleted
+   candidates now participate, `explicit` is its own canonical fact, and the
+   recorded copy/list modes drive the required selection and rejection rules.
+2. User-provided constructors could leave reference or const-scalar members
+   uninitialized. Every demanded constructor now walks its owning member sequence
+   in declaration order and rejects those missing required actions. A compact
+   canonical member ordinal scopes reusable initializer scratch to the class;
+   candidate sequences are borrowed, so neither path copies or sizes work by
+   unrelated translation-unit declarations.
+3. Every defaulted constructor was labeled nonthrowing. Generated initialization
+   actions are now scanned by stable callee binding and only proven nonthrowing
+   bodies publish `unwind=no`; potentially throwing DMIs remain conservative.
+4. Nested constructor aggregate lowering stored reference values instead of
+   addresses and replayed each complete member path per leaf. Reference actions
+   now store typed identity. Eight-entry inline paths retain a typed address at
+   bounded depth, preserving shallow LowIR while reducing representative 40x40 /
+   80x80 cases from 1,765 / 6,725 to 127 / 247 instructions and from 248,820 /
+   986,100 to 18,420 / 33,780 typed bytes.
+5. The new implementation-heavy constructor header triggered the file-division
+   advisory. ABI-fact adaptation now has a normal `.cpp` owner, generic array
+   lowering returned to its PA15 owner, and the constructor header is below the
+   implementation-body threshold. The new source is in the `cppgm++` source set.
 
 Validation:
 
-- Focused aggregate/spec/audit set: 7/7 pass, including the checked union
-  regression and the existing defaulted/deleted-constructor cases.
+- Focused existing plus audit set: 14/14 pass. The seven audit regressions cover
+  deleted/explicit selection, required reference/const initialization, nested
+  reference identity, and generated exception metadata.
 - `make test-report ACTIVE_TEST_REPORT_PAS='pa16'`: expected full-stage failure,
-  61/248. Relative to the turn-start 58/247 baseline, exactly two existing tests
-  were repaired, one passing audit regression was added, and no prior pass was
-  lost.
+  91/255. All 84/248 checkpoint-entry passes remain and all seven added audit
+  regressions pass; the 164 previously mapped later-checkpoint failures remain.
 - `make test-report-through-pa15`: 1,145/1,145 and 15/15 stages pass.
-- `perl scripts/cppgm_file_audit.pl --stage pa16 --paths dev/src`: pass. The one
-  pre-existing declaration-weight warning names `pa11_model.h`; this increment
-  adds only a fact field there. Generic literal decoding moved to the existing
-  lowering-support owner, leaving `pa15_lowering.cpp` below the file-size gate.
-- Valgrind on the union regression reports zero errors and no live blocks.
+- `perl scripts/cppgm_file_audit.pl --stage pa16 --paths dev/src`: pass. The
+  checkpoint-owned header warning is closed; the one remaining advisory is the
+  pre-existing declaration-weight warning in `pa11_model.h`.
+- Constructor member-action counters are exactly 1,000/2,000 for 1k/2k members
+  and remain 1/1 beside 5k/10k unrelated globals. Constructor candidate visits
+  are exactly 1,001/2,001 with 1,004/2,004 conversion checks and constant 10-
+  instruction output.
+- Valgrind on the nested-reference regression reports no errors or leaks.
   Process tracing contains only the compiler `execve` and `exit_group(0)`.
 
 ## Checkpoint Audit Ledger
@@ -58,3 +69,4 @@ Validation:
 |---|---|---|
 | Direct-member object spine | Pass after audit fixes | One-shot class completion, non-mergeable member IDs, sound implicit-construction conditions, typed field projection, linear curves, and all checkpoint gates preserved |
 | Local aggregate-action spine | Pass after audit fixes | C++11 user-provided eligibility, one union active member, borrowed edge cursor, bounded typed projection reuse, 61/248 PA16 with no losses, and all audit gates preserved |
+| Special-member initialization action spine | Pass after audit fixes | Init-mode-correct constructor selection, canonical member ordinals/actions, truthful exception facts, typed nested references, bounded projections, 91/255 with no existing loss, and all audit gates preserved |

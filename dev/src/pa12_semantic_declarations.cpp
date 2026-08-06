@@ -249,7 +249,7 @@ BindingId SemanticAnalyzer::EnsureImplicitConstructor(EntityId entity)
 		program_->types.Fundamental(FUND_VOID), std::vector<TypeId>(), false);
 	const BindingId constructor = DeclareFunction(owner.member_scope, name,
 		type, std::vector<ParameterInfo>(), true, false, STORAGE_CLASS_NONE,
-		LANGUAGE_LINKAGE_CPP, true);
+		LANGUAGE_LINKAGE_CPP, owner.trivial_default_constructor);
 	BindingRecord& binding = program_->bindings[constructor];
 	binding.member_owner = entity;
 	binding.constructor = true;
@@ -265,11 +265,11 @@ BindingId SemanticAnalyzer::EnsureImplicitConstructor(EntityId entity)
 	return constructor;
 }
 
-std::vector<BindingId> SemanticAnalyzer::ConstructorCandidates(
+const std::vector<BindingId>& SemanticAnalyzer::ConstructorCandidates(
 	EntityId entity) const
 {
 	if (entity >= entity_constructors_.size())
-		return std::vector<BindingId>();
+		throw std::logic_error("class is missing its constructor index");
 	return entity_constructors_[entity];
 }
 
@@ -347,23 +347,20 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 				binding.non_static_data_member &&
 				FindChild(item, "initializer") != kNoNode;
 			if (member_initializer_by_binding_.size() <= member)
-			{
 				member_initializer_by_binding_.resize(
 					static_cast<std::size_t>(member) + 1, kNoNode);
-				member_initializer_scope_by_binding_.resize(
-					static_cast<std::size_t>(member) + 1, kNoScope);
-			}
 			if (binding.has_default_member_initializer)
-			{
 				member_initializer_by_binding_[member] =
 					FindChild(item, "initializer");
-				member_initializer_scope_by_binding_[member] = scope;
-			}
 			const EntityId entity = EntityOf(owner_type);
 			if (binding.non_static_data_member && entity_data_members_.size() <= entity)
 				entity_data_members_.resize(static_cast<std::size_t>(entity) + 1);
 			if (binding.non_static_data_member)
+			{
+				binding.member_ordinal = static_cast<std::uint32_t>(
+					entity_data_members_[entity].size());
 				entity_data_members_[entity].push_back(member);
+			}
 		}
 	}
 }
@@ -399,7 +396,7 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 	const bool definition = source_definition || defaulted;
 	const BindingId constructor = DeclareFunction(scope, parsed.name,
 		parsed.type, parsed.parameters, definition, false, STORAGE_CLASS_NONE,
-		current_language_linkage_, defaulted || IsNonthrowing(declarator, scope));
+		current_language_linkage_, IsNonthrowing(declarator, scope));
 	BindingRecord& binding = program_->bindings[constructor];
 	binding.member_owner = entity;
 	binding.access = access;
@@ -409,8 +406,12 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 	info.constructor = true;
 	info.defaulted_constructor = info.defaulted_constructor || defaulted;
 	info.deleted_constructor = info.deleted_constructor || deleted;
-	info.explicit_constructor = info.explicit_constructor ||
-		FindChild(node, "member-specifiers") != kNoNode;
+	const NodeId specifiers = FindChild(node, "member-specifiers");
+	if (specifiers != kNoNode)
+		for (std::uint32_t edge = arena_->FirstEdge(specifiers); edge != kNoEdge;
+			edge = arena_->NextEdge(edge))
+			if (PayloadSource(arena_->EdgeChild(edge)) == "explicit")
+				info.explicit_constructor = true;
 	if (source_definition)
 	{
 		info.definition_body = FindChild(node, "compound-statement");
@@ -1278,6 +1279,9 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 				MakeDump(DUMP_COMPOUND_STATEMENT);
 			dump_.Add(function, constructor_body);
 			AddConstructorMemberActions(info, function_scope, constructor_body);
+			if ((info.implicit_constructor || info.defaulted_constructor) &&
+				InitializationActionsAreNonthrowing(constructor_body))
+				program_->bindings[info.binding].nonthrowing = true;
 			if (info.definition_body != kNoNode)
 				AnalyzeCompound(info.definition_body, function_scope,
 					constructor_body);

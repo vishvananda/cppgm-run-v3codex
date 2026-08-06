@@ -1,9 +1,9 @@
 #include "pa15_lowering.h"
+#include "pa15_lowering_abi.h"
 #include "pa15_lowering_support.h"
 #include "pa15_lowir_model.h"
 #include "pa15_lowir_render.h"
 
-#include "abi_mangle.h"
 #include "pa11_model.h"
 #include "pa12_semantic.h"
 #include "pa12_semantic_model.h"
@@ -243,171 +243,6 @@ private:
 		return record.child;
 	}
 
-	abi_mangle::AbiType MakeAbiType(TypeId type) const
-	{
-		using namespace abi_mangle;
-		std::vector<AbiTypeModifier> modifiers;
-		const TypeRecord* record = &program_.types.Get(type);
-		while (record->kind == TYPE_QUALIFIED || record->kind == TYPE_POINTER ||
-			record->kind == TYPE_LVALUE_REFERENCE ||
-			record->kind == TYPE_RVALUE_REFERENCE || record->kind == TYPE_ARRAY)
-		{
-			AbiTypeModifier modifier;
-			if (record->kind == TYPE_QUALIFIED)
-			{
-				modifier.kind = ABI_TYPE_CV;
-				modifier.is_const = (record->cv & CV_CONST) != 0;
-				modifier.is_volatile = (record->cv & CV_VOLATILE) != 0;
-			}
-			else if (record->kind == TYPE_ARRAY)
-			{
-				modifier.kind = ABI_TYPE_ARRAY;
-				modifier.array_bound.kind = ABI_ARRAY_BOUND_VALUE;
-				modifier.array_bound.value = std::to_string(record->bound);
-			}
-			else modifier.kind = record->kind == TYPE_POINTER ? ABI_TYPE_POINTER :
-				record->kind == TYPE_LVALUE_REFERENCE ? ABI_TYPE_LVALUE_REFERENCE :
-				ABI_TYPE_RVALUE_REFERENCE;
-			modifiers.push_back(modifier);
-			type = record->child;
-			record = &program_.types.Get(type);
-		}
-		abi_mangle::AbiType result;
-		result.modifiers.swap(modifiers);
-		if (record->kind == TYPE_FUNCTION)
-		{
-			result.kind = ABI_TYPE_FUNCTION;
-			result.types.push_back(MakeAbiType(record->child));
-			const TypeId* parameters = program_.types.Parameters(type);
-			for (std::size_t i = 0; i < record->parameter_count; ++i)
-				result.types.push_back(MakeAbiType(parameters[i]));
-			result.variadic = record->variadic;
-			return result;
-		}
-		if (record->kind == TYPE_NAMED)
-		{
-			result.kind = ABI_TYPE_NAMED;
-			result.name = program_.names.Get(program_.entities[record->entity].name);
-			return result;
-		}
-		if (record->kind != TYPE_FUNDAMENTAL)
-			throw std::runtime_error("unsupported ABI type in PA15");
-		result.kind = ABI_TYPE_BUILTIN;
-		switch (record->fundamental)
-		{
-		case FUND_VOID: result.name = "void"; break;
-		case FUND_BOOL: result.name = "bool"; break;
-		case FUND_CHAR: result.name = "char"; break;
-		case FUND_SIGNED_CHAR: result.name = "schar"; break;
-		case FUND_UNSIGNED_CHAR: result.name = "uchar"; break;
-		case FUND_SHORT_INT: result.name = "short"; break;
-		case FUND_UNSIGNED_SHORT_INT: result.name = "ushort"; break;
-		case FUND_INT: result.name = "int"; break;
-		case FUND_UNSIGNED_INT: result.name = "uint"; break;
-		case FUND_LONG_INT: result.name = "long"; break;
-		case FUND_UNSIGNED_LONG_INT: result.name = "ulong"; break;
-		case FUND_LONG_LONG_INT: result.name = "longlong"; break;
-		case FUND_UNSIGNED_LONG_LONG_INT: result.name = "ulonglong"; break;
-		case FUND_FLOAT: result.name = "float"; break;
-		case FUND_DOUBLE: result.name = "double"; break;
-		case FUND_LONG_DOUBLE: result.name = "longdouble"; break;
-		case FUND_WCHAR_T: result.name = "wchar"; break;
-		case FUND_CHAR16_T: result.name = "char16"; break;
-		case FUND_CHAR32_T: result.name = "char32"; break;
-		case FUND_NULLPTR_T: result.name = "ulong"; break;
-		}
-		return result;
-	}
-
-	std::string MangleFunction(const DumpNode& node) const
-	{
-		using namespace abi_mangle;
-		const std::string qualified = program_.names.Get(node.text);
-		if (qualified == "main") return std::string();
-		const BindingRecord& binding = program_.bindings[node.binding];
-		if (binding.language_linkage == LANGUAGE_LINKAGE_C &&
-			binding.storage_class != STORAGE_CLASS_STATIC)
-			return program_.names.Get(binding.name);
-		AbiFactFile file;
-		file.cases.push_back(AbiFactCase());
-		AbiFactRecord target;
-		target.set_kind(ABI_FACT_RECORD_TARGET);
-		target.target.kind = ABI_TARGET_FACT_FUNCTION;
-		target.target.internal_linkage = binding.storage_class == STORAGE_CLASS_STATIC;
-		target.target.function.kind = ABI_FUNCTION_TARGET_PATH;
-		target.target.function.qualified_name = qualified;
-		file.cases[0].records.push_back(target);
-		const TypeRecord& function_type = program_.types.Get(node.type);
-		const TypeId* parameters = program_.types.Parameters(node.type);
-		const bool member = binding.member_owner != kNoEntity &&
-			!binding.static_member_function;
-		if (member)
-		{
-			const TypeRecord& declared_type =
-				program_.types.Get(binding.type);
-			AbiFactRecord qualifier;
-			qualifier.set_kind(ABI_FACT_RECORD_FUNCTION);
-			qualifier.function.kind = ABI_FUNCTION_RECORD_QUALIFIER;
-			if ((declared_type.cv & CV_CONST) != 0)
-				qualifier.function.qualifiers.push_back(
-					ABI_FUNCTION_QUALIFIER_CONST);
-			if ((declared_type.cv & CV_VOLATILE) != 0)
-				qualifier.function.qualifiers.push_back(
-					ABI_FUNCTION_QUALIFIER_VOLATILE);
-			if (!qualifier.function.qualifiers.empty())
-				file.cases[0].records.push_back(qualifier);
-		}
-		if (binding.constructor)
-		{
-			AbiFactRecord terminal;
-			terminal.set_kind(ABI_FACT_RECORD_FUNCTION);
-			terminal.function.kind = ABI_FUNCTION_RECORD_TERMINAL;
-			terminal.function.terminal = "constructor-complete";
-			file.cases[0].records.push_back(terminal);
-		}
-		const std::size_t first_parameter = member ? 1 : 0;
-		for (std::size_t i = first_parameter;
-			i < function_type.parameter_count; ++i)
-		{
-			AbiFactRecord parameter;
-			parameter.set_kind(ABI_FACT_RECORD_FUNCTION);
-			parameter.function.kind = ABI_FUNCTION_RECORD_PARAMETER;
-			parameter.function.type = MakeAbiType(parameters[i]);
-			file.cases[0].records.push_back(parameter);
-		}
-		if (function_type.variadic)
-		{
-			AbiFactRecord variadic;
-			variadic.set_kind(ABI_FACT_RECORD_FUNCTION);
-			variadic.function.kind = ABI_FUNCTION_RECORD_VARIADIC;
-			file.cases[0].records.push_back(variadic);
-		}
-		std::string result = mangle_fact_file(file);
-		if (!result.empty() && result[result.size() - 1] == '\n') result.resize(result.size() - 1);
-		return result;
-	}
-
-	std::string MangleVariable(const DumpNode& node) const
-	{
-		using namespace abi_mangle;
-		const BindingRecord& binding = program_.bindings[node.binding];
-		if (binding.language_linkage == LANGUAGE_LINKAGE_C &&
-			binding.storage_class != STORAGE_CLASS_STATIC)
-			return program_.names.Get(binding.name);
-		AbiFactFile file;
-		file.cases.push_back(AbiFactCase());
-		AbiFactRecord target;
-		target.set_kind(ABI_FACT_RECORD_TARGET);
-		target.target.kind = ABI_TARGET_FACT_VARIABLE;
-		target.target.internal_linkage = binding.storage_class == STORAGE_CLASS_STATIC;
-		target.target.qualified_name = program_.names.Get(
-			binding.qualified_name != 0 ? binding.qualified_name : node.text);
-		file.cases[0].records.push_back(target);
-		std::string result = mangle_fact_file(file);
-		if (!result.empty() && result[result.size() - 1] == '\n') result.resize(result.size() - 1);
-		return result;
-	}
-
 	SymbolId InternSymbol(const DumpNode& node, Symbol::Kind kind,
 		const std::string& proposed_name, const std::string& object_name)
 	{
@@ -463,7 +298,8 @@ private:
 			const std::string name = ordinal <= 1 ? base :
 				base + "__ov" + std::to_string(ordinal);
 			function_symbols_[record.binding] = InternSymbol(record,
-				Symbol::FUNCTION_SYMBOL, name, MangleFunction(record));
+				Symbol::FUNCTION_SYMBOL, name,
+				pa15_lowering_abi::MangleFunction(program_, record));
 		}
 		if (record.kind == DUMP_FUNCTION_DEFINITION)
 			function_definition_[record.binding] = node;
@@ -495,7 +331,8 @@ private:
 						program_.bindings[record.binding].qualified_name != 0 ?
 						program_.bindings[record.binding].qualified_name : record.text));
 					global_symbols_[canonical] = InternSymbol(record,
-						Symbol::GLOBAL_SYMBOL, name, MangleVariable(record));
+						Symbol::GLOBAL_SYMBOL, name,
+						pa15_lowering_abi::MangleVariable(program_, record));
 				}
 				global_symbols_[record.binding] = global_symbols_[canonical];
 				const bool declaration_only = Children(current).empty() &&
@@ -1060,7 +897,8 @@ private:
 			if (child.kind == DUMP_PARAMETER)
 			{
 				if (parameter_index == 0 && record.binding != kNoBinding &&
-					program_.bindings[record.binding].member_owner != kNoEntity)
+					program_.bindings[record.binding].member_owner != kNoEntity &&
+					!program_.bindings[record.binding].static_member_function)
 					current_this_binding_ = child.binding;
 				Instruction store(Instruction::STORE);
 				store.type = result.parameters[parameter_index].type;
@@ -2367,6 +2205,38 @@ private:
 		throw std::runtime_error("statement is outside the active PA15 checkpoint");
 	}
 
+	void LowerArrayInitializer(const DumpNode& record,
+		const NodeChildren& variable_children)
+	{
+		if (variable_children.size() != 1)
+			throw std::runtime_error("invalid PA15 array initializer");
+		const NodeChildren values = Children(variable_children[0]);
+		const TypeRecord& array = program_.types.Get(
+			ExpressionObjectType(record.type));
+		if (array.kind != TYPE_ARRAY || array.bound == 0 ||
+			values.size() > array.bound)
+			throw std::runtime_error("invalid PA15 bounded array initializer");
+		const LowType object_type = LowerStorageType(record.type);
+		const Operand storage = StorageFor(record.binding, object_type);
+		const Operand base = AddressOfStorage(storage);
+		const LowType element = LowerExpressionType(array.child);
+		const std::size_t element_size = program_.SizeOf(array.child);
+		for (std::size_t i = 0; i < static_cast<std::size_t>(array.bound); ++i)
+		{
+			Operand destination = base;
+			if (i != 0)
+				destination = IndexAddress(LowI8(), base,
+					Operand(static_cast<std::int64_t>(i * element_size), LowI64()),
+					false);
+			Instruction store(Instruction::STORE);
+			store.type = element;
+			store.first = i < values.size() ?
+				Convert(LowerValue(values[i]), element) : Operand(0, element);
+			store.second = destination;
+			Emit(store);
+		}
+	}
+
 	void LowerClassInitializer(const DumpNode& variable,
 		std::uint32_t initializer)
 	{
@@ -2452,6 +2322,47 @@ private:
 		index.projection = INDEX_PROJECTION_FIELD;
 		Emit(index);
 		return projected;
+	}
+
+	Operand ProjectConstructorMemberPath(
+		const pa16_lowering_detail::ConstructorMemberPath& path)
+	{
+		Operand destination = LoadStorage(
+			StorageFor(current_this_binding_, LowPtr()), LowPtr());
+		for (std::size_t i = 0; i < path.size(); ++i)
+			destination = ProjectAggregateMember(destination, path[i]);
+		return destination;
+	}
+
+	void LowerConstructorArrayActions(TypeId type, std::uint32_t list_node,
+		const pa16_lowering_detail::ConstructorMemberPath& path)
+	{
+		const TypeRecord& array = program_.types.Get(ExpressionObjectType(type));
+		const NodeChildren values = Children(list_node);
+		if (array.kind != TYPE_ARRAY || array.bound == 0 ||
+			values.size() > array.bound)
+			throw std::runtime_error("invalid constructor array initializer");
+		const LowType element = LowerExpressionType(array.child);
+		for (std::size_t i = 0; i < static_cast<std::size_t>(array.bound); ++i)
+		{
+			Operand value;
+			if (i < values.size())
+				value = Convert(LowerValue(values[i]), element);
+			else if (element.kind == LOW_PTR)
+				value = Operand::NullPointer(element);
+			else if (IsFloating(element))
+				value = FloatingOperand("0.0", element);
+			else value = Operand(0, element);
+			const Operand base = DecayAddress(
+				ProjectConstructorMemberPath(path));
+			const Operand destination = IndexAddress(element, base,
+				Operand(static_cast<std::int64_t>(i), LowI64()), true);
+			Instruction store(Instruction::STORE);
+			store.type = element;
+			store.first = value;
+			store.second = destination;
+			Emit(store);
+		}
 	}
 
 	Operand ProjectAggregatePath(const Operand& root,
@@ -2917,6 +2828,7 @@ private:
 LowIRLoweringStats::LowIRLoweringStats()
 	: source_bytes(0), tokens(0), semantic_nodes(0), semantic_edges(0),
 	  lowered_nodes(0), class_layouts(0), class_layout_member_visits(0),
+	  constructor_member_action_visits(0),
 	  overload_candidates(0), overload_order_comparisons(0),
 	  conversion_checks(0),
 	  functions(0), globals(0), blocks(0), instructions(0),
@@ -2947,6 +2859,8 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 			stats->class_layouts += semantic_stats.class_layouts;
 			stats->class_layout_member_visits +=
 				semantic_stats.class_layout_member_visits;
+			stats->constructor_member_action_visits +=
+				semantic_stats.constructor_member_action_visits;
 			stats->overload_candidates += semantic_stats.overload_candidates;
 			stats->overload_order_comparisons +=
 				semantic_stats.overload_order_comparisons;

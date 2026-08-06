@@ -561,6 +561,11 @@ int run_emit_semantics_mode(const vector<string> & args)
            << " scopes=" << stats.scopes
            << " declarations=" << stats.declarations
            << " expressions=" << stats.expressions
+           << " class_layouts=" << stats.class_layouts
+           << " class_layout_member_visits="
+           << stats.class_layout_member_visits
+           << " constructor_member_action_visits="
+           << stats.constructor_member_action_visits
            << " lookup_queries=" << stats.lookup_queries
            << " lookup_scope_visits=" << stats.lookup_scope_visits
            << " lookup_edge_visits=" << stats.lookup_edge_visits
@@ -623,6 +628,8 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << " class_layouts=" << stats.class_layouts
 			 << " class_layout_member_visits="
 			 << stats.class_layout_member_visits
+			 << " constructor_member_action_visits="
+			 << stats.constructor_member_action_visits
 			 << " overload_candidates=" << stats.overload_candidates
 			 << " overload_order_comparisons="
 			 << stats.overload_order_comparisons

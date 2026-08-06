@@ -475,7 +475,7 @@ EntityRecord::EntityRecord()
 BindingRecord::BindingRecord()
 	: owner(kNoScope), name(0), qualified_name(0), kind(BIND_VARIABLE), type(kNoType),
 	  next(kNoBinding), member_owner(kNoEntity), member_offset(0),
-	  overload_ordinal(0),
+	  overload_ordinal(0), member_ordinal(kNoBinding),
 	  display_flavor(NAMED_NONE), display_type_name(0),
 	  canonical(kNoBinding), value(0), language_linkage(LANGUAGE_LINKAGE_CPP),
 	  storage_class(STORAGE_CLASS_NONE), access(ACCESS_PUBLIC),

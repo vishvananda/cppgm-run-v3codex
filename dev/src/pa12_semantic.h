@@ -29,6 +29,7 @@ struct SemanticAnalysisStats
 	std::size_t expressions;
 	std::size_t class_layouts;
 	std::size_t class_layout_member_visits;
+	std::size_t constructor_member_action_visits;
 	std::size_t lookup_queries;
 	std::size_t lookup_scope_visits;
 	std::size_t lookup_edge_visits;

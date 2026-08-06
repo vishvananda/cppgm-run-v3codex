@@ -1,0 +1,44 @@
+global @g : i32 [binding=strong, object=_Z1g] = zero
+
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $object : obj<8x8>
+  slot $cond__1 : i32
+
+  block ^entry:
+    %t1 = addr $object
+    call void @YOuter__YOuter(%t1)
+    %t2 = addr $object
+    %t3 = index i8 [projection=field] %t2, 0
+    %t4 = index i8 [projection=field] %t3, 0
+    %t5 = index i8 [projection=field] %t4, 0
+    %t6 = load ptr %t5
+    %t7 = addr @g
+    %t8 = cmp eq ptr %t6, %t7
+    branch %t8, ^cond_then_1, ^cond_else_2
+
+  block ^cond_then_1:
+    store i32 0, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_else_2:
+    store i32 1, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_end_3:
+    %t9 = load i32 $cond__1
+    return i32 %t9
+}
+
+function @YOuter__YOuter(%this : ptr) -> void [binding=strong, object=_ZN6YOuterC1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=field] %t1, 0
+    %t3 = index i8 [projection=field] %t2, 0
+    %t4 = index i8 [projection=field] %t3, 0
+    %t5 = addr @g
+    store ptr %t5, %t4
+    return void
+}

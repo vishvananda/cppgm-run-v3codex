@@ -36,6 +36,7 @@ public:
 		  demand_worklist_pushes_(0), demanded_function_emissions_(0),
 		  default_constructor_emissions_(0),
 		  class_layouts_(0), class_layout_member_visits_(0),
+		  constructor_member_action_visits_(0),
 		  anonymous_enum_count_(0), local_type_count_(0) {}
 
 	void Consume(const SyntaxArena& arena, NodeId root);
@@ -156,17 +157,20 @@ private:
 	bool CanAccessMember(BindingId member) const;
 	void CompleteClassLayout(EntityId entity);
 	BindingId EnsureImplicitConstructor(EntityId entity);
-	std::vector<BindingId> ConstructorCandidates(EntityId entity) const;
+	const std::vector<BindingId>& ConstructorCandidates(EntityId entity) const;
 	BindingId SelectConstructor(ScopeId scope,
 		const std::vector<NodeId>& argument_syntax,
 		const std::vector<ExpressionInfo>& arguments,
-		const std::vector<BindingId>& candidates, bool copy_initialization);
+		const std::vector<BindingId>& candidates, bool copy_initialization,
+		bool list_initialization);
 	std::uint32_t BuildConstructorAction(TypeId type, ScopeId scope,
-		const std::vector<NodeId>& argument_syntax, bool copy_initialization);
+		const std::vector<NodeId>& argument_syntax, bool copy_initialization,
+		bool list_initialization);
 	void AddConstructorMemberActions(const FunctionInfo& constructor,
 		ScopeId function_scope, std::uint32_t body);
 	void AddMemberInitializationAction(BindingId member, NodeId initializer,
 		ScopeId scope, std::uint32_t body);
+	bool InitializationActionsAreNonthrowing(std::uint32_t body) const;
 	void AddDefaultConstructor(std::uint32_t variable, BindingId binding,
 		TypeId type);
 	EntityId EntityOf(TypeId type) const;
@@ -227,7 +231,6 @@ private:
 	std::vector<std::vector<BindingId> > entity_constructors_;
 	std::vector<BindingId> implicit_constructor_by_entity_;
 	std::vector<NodeId> member_initializer_by_binding_;
-	std::vector<ScopeId> member_initializer_scope_by_binding_;
 	std::vector<NodeId> constructor_initializer_scratch_;
 	std::vector<BindingId> constructor_initializer_touched_;
 	std::vector<FunctionTemplatePattern> function_templates_;
@@ -255,6 +258,7 @@ private:
 	std::size_t default_constructor_emissions_;
 	std::size_t class_layouts_;
 	std::size_t class_layout_member_visits_;
+	std::size_t constructor_member_action_visits_;
 	std::size_t anonymous_enum_count_;
 	std::size_t local_type_count_;
 };

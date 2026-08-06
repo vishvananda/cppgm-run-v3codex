@@ -19,6 +19,7 @@ using namespace pa15_lowir_detail;
 using namespace pa15_lowering_support;
 
 typedef SmallSequence<BindingId, 8> ConstructorMemberPath;
+const std::size_t kConstructorProjectionReplayLimit = 8;
 
 template <class Derived>
 class ConstructorActionLowering
@@ -93,49 +94,6 @@ protected:
 		derived.Emit(call);
 	}
 
-	Operand ProjectConstructorMemberPath(const ConstructorMemberPath& path)
-	{
-		Derived& derived = Self();
-		Operand destination = derived.LoadStorage(
-			derived.StorageFor(derived.current_this_binding_, LowPtr()), LowPtr());
-		for (std::size_t i = 0; i < path.size(); ++i)
-			destination = derived.ProjectAggregateMember(destination, path[i]);
-		return destination;
-	}
-
-	void LowerConstructorArrayActions(TypeId type, std::uint32_t list_node,
-		const ConstructorMemberPath& path)
-	{
-		Derived& derived = Self();
-		const TypeRecord& array = derived.program_.types.Get(
-			derived.ExpressionObjectType(type));
-		const NodeChildren values = derived.Children(list_node);
-		if (array.kind != TYPE_ARRAY || array.bound == 0 ||
-			values.size() > array.bound)
-			throw std::runtime_error("invalid constructor array initializer");
-		const LowType element = derived.LowerExpressionType(array.child);
-		for (std::size_t i = 0; i < static_cast<std::size_t>(array.bound); ++i)
-		{
-			Operand value;
-			if (i < values.size())
-				value = derived.Convert(derived.LowerValue(values[i]), element);
-			else if (element.kind == LOW_PTR)
-				value = Operand::NullPointer(element);
-			else if (IsFloating(element))
-				value = derived.FloatingOperand("0.0", element);
-			else value = Operand(0, element);
-			const Operand base = derived.DecayAddress(
-				ProjectConstructorMemberPath(path));
-			const Operand destination = derived.IndexAddress(element, base,
-				Operand(static_cast<std::int64_t>(i), LowI64()), true);
-			Instruction store(Instruction::STORE);
-			store.type = element;
-			store.first = value;
-			store.second = destination;
-			derived.Emit(store);
-		}
-	}
-
 	void LowerArrayValues(TypeId type, std::uint32_t list_node,
 		const Operand& array_address)
 	{
@@ -176,41 +134,63 @@ protected:
 		}
 	}
 
-	void LowerArrayInitializer(const DumpNode& record,
-		const NodeChildren& variable_children)
+	void LowerConstructorAggregateLeaf(const DumpNode& action,
+		const NodeChildren& values, const ConstructorMemberPath& path,
+		const Operand& retained_destination)
 	{
 		Derived& derived = Self();
-		if (variable_children.size() != 1)
-			throw std::runtime_error("invalid PA15 array initializer");
-		const NodeChildren values = derived.Children(variable_children[0]);
-		const TypeRecord& array = derived.program_.types.Get(
-			derived.ExpressionObjectType(record.type));
-		if (array.kind != TYPE_ARRAY || array.bound == 0 ||
-			values.size() > array.bound)
-			throw std::runtime_error("invalid PA15 bounded array initializer");
-		const LowType object_type = derived.LowerStorageType(record.type);
-		const Operand storage = derived.StorageFor(record.binding, object_type);
-		const Operand base = derived.AddressOfStorage(storage);
-		const LowType element = derived.LowerExpressionType(array.child);
-		const std::size_t element_size = derived.program_.SizeOf(array.child);
-		for (std::size_t i = 0; i < static_cast<std::size_t>(array.bound); ++i)
+		if (values.size() > 1)
+			throw std::logic_error(
+				"constructor aggregate leaf has multiple values");
+		if (derived.IsArrayType(action.type))
 		{
-			Operand destination = base;
-			if (i != 0)
-				destination = derived.IndexAddress(LowI8(), base,
-					Operand(static_cast<std::int64_t>(i * element_size), LowI64()),
-					false);
-			Instruction store(Instruction::STORE);
-			store.type = element;
-			store.first = i < values.size() ? derived.Convert(
-				derived.LowerValue(values[i]), element) : Operand(0, element);
-			store.second = destination;
-			derived.Emit(store);
+			if (values.size() != 1 ||
+				derived.arena_.nodes[values[0]].kind != DUMP_BRACED_INIT_LIST)
+				throw std::runtime_error(
+					"constructor array member requires braces");
+			if (retained_destination.kind == Operand::NONE)
+				derived.LowerConstructorArrayActions(
+					action.type, values[0], path);
+			else LowerArrayValues(
+				action.type, values[0], retained_destination);
+			return;
 		}
+		const Operand destination = retained_destination.kind == Operand::NONE ?
+			derived.ProjectConstructorMemberPath(path) : retained_destination;
+		if (values.size() == 1 &&
+			derived.arena_.nodes[values[0]].kind == DUMP_CONSTRUCTOR_ACTION)
+		{
+			LowerConstructorAction(values[0], destination);
+			return;
+		}
+		Instruction store(Instruction::STORE);
+		if (derived.IsReferenceType(action.type))
+		{
+			if (values.empty())
+				throw std::logic_error(
+					"constructor aggregate reference has no value");
+			store.type = LowPtr();
+			store.first = derived.AddressOfStorage(
+				derived.LowerStorage(values[0]));
+		}
+		else
+		{
+			store.type = derived.LowerExpressionType(action.type);
+			if (!values.empty())
+				store.first = derived.Convert(
+					derived.LowerValue(values[0]), store.type);
+			else if (store.type.kind == LOW_PTR)
+				store.first = Operand::NullPointer(store.type);
+			else if (IsFloating(store.type))
+				store.first = derived.FloatingOperand("0.0", store.type);
+			else store.first = Operand(0, store.type);
+		}
+		store.second = destination;
+		derived.Emit(store);
 	}
 
 	void LowerConstructorAggregateActions(std::uint32_t list_node,
-		ConstructorMemberPath* path)
+		ConstructorMemberPath* path, const Operand& retained_address)
 	{
 		Derived& derived = Self();
 		const NodeChildren actions = derived.Children(list_node);
@@ -221,33 +201,33 @@ protected:
 				action.binding == kNoBinding)
 				throw std::logic_error("invalid constructor aggregate action");
 			const NodeChildren values = derived.Children(actions[i]);
-			path->Push(action.binding);
-			if (values.size() == 1 &&
+			const bool nested = values.size() == 1 &&
 				derived.arena_.nodes[values[0]].kind == DUMP_BRACED_INIT_LIST &&
-				derived.IsClassObjectType(action.type))
-				LowerConstructorAggregateActions(values[0], path);
-			else if (values.size() == 1 &&
-				derived.arena_.nodes[values[0]].kind == DUMP_BRACED_INIT_LIST &&
-				derived.IsArrayType(action.type))
-				LowerConstructorArrayActions(action.type, values[0], *path);
-			else
+				derived.IsClassObjectType(action.type);
+			if (retained_address.kind != Operand::NONE)
 			{
-				if (values.size() > 1)
-					throw std::logic_error(
-						"constructor aggregate leaf has multiple values");
-				Instruction store(Instruction::STORE);
-				store.type = derived.LowerExpressionType(action.type);
-				if (!values.empty())
-					store.first = derived.Convert(
-						derived.LowerValue(values[0]), store.type);
-				else if (store.type.kind == LOW_PTR)
-					store.first = Operand::NullPointer(store.type);
-				else if (IsFloating(store.type))
-					store.first = derived.FloatingOperand("0.0", store.type);
-				else store.first = Operand(0, store.type);
-				store.second = ProjectConstructorMemberPath(*path);
-				derived.Emit(store);
+				const Operand destination = derived.ProjectAggregateMember(
+					retained_address, action.binding);
+				if (nested)
+					LowerConstructorAggregateActions(values[0], path, destination);
+				else LowerConstructorAggregateLeaf(
+					action, values, *path, destination);
+				continue;
 			}
+			path->Push(action.binding);
+			if (nested &&
+				path->size() == kConstructorProjectionReplayLimit)
+			{
+				const Operand destination =
+					derived.ProjectConstructorMemberPath(*path);
+				LowerConstructorAggregateActions(
+					values[0], path, destination);
+			}
+			else if (nested)
+				LowerConstructorAggregateActions(
+					values[0], path, Operand());
+			else LowerConstructorAggregateLeaf(
+				action, values, *path, Operand());
 			path->Pop();
 		}
 	}
@@ -280,7 +260,7 @@ protected:
 		{
 			ConstructorMemberPath path;
 			path.Push(action.binding);
-			LowerConstructorAggregateActions(value_node, &path);
+			LowerConstructorAggregateActions(value_node, &path, Operand());
 			return;
 		}
 		if (value.kind == DUMP_BRACED_INIT_LIST &&

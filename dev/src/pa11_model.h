@@ -226,7 +226,7 @@ struct BindingRecord
 	BindingId next;
 	EntityId member_owner;
 	std::uint64_t member_offset;
-	std::uint32_t overload_ordinal;
+	std::uint32_t overload_ordinal, member_ordinal;
 	NamedFlavor display_flavor;
 	NameId display_type_name;
 	BindingId canonical;

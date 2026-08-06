@@ -24,7 +24,8 @@ bool IsClassEntity(const Program& program, EntityId entity)
 BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 	const std::vector<NodeId>& argument_syntax,
 	const std::vector<ExpressionInfo>& arguments,
-	const std::vector<BindingId>& candidates, bool copy_initialization)
+	const std::vector<BindingId>& candidates, bool copy_initialization,
+	bool list_initialization)
 {
 	const std::size_t arity = argument_syntax.size();
 	if (arity != 0 && candidates.size() >
@@ -38,8 +39,9 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 		++overload_candidates_;
 		const FunctionInfo& constructor = GetFunction(candidates[c]);
 		const TypeRecord function_type = program_->types.Get(constructor.type);
-		if (!constructor.constructor || constructor.deleted_constructor ||
-			(copy_initialization && constructor.explicit_constructor))
+		if (!constructor.constructor ||
+			(copy_initialization && !list_initialization &&
+			 constructor.explicit_constructor))
 		{
 			viable[c] = false;
 			continue;
@@ -97,6 +99,12 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 			if (c != champion && viable[c] && !better(champion, c))
 				throw std::runtime_error("ambiguous constructor");
 	const BindingId selected = candidates[champion];
+	const FunctionInfo& constructor = GetFunction(selected);
+	if (constructor.deleted_constructor)
+		throw std::runtime_error("selected constructor is deleted");
+	if (copy_initialization && constructor.explicit_constructor)
+		throw std::runtime_error(
+			"copy initialization selected an explicit constructor");
 	if (!CanAccessMember(selected))
 		throw std::runtime_error("inaccessible constructor");
 	(void)scope;
@@ -105,7 +113,7 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 
 std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 	ScopeId scope, const std::vector<NodeId>& argument_syntax,
-	bool copy_initialization)
+	bool copy_initialization, bool list_initialization)
 {
 	const EntityId entity = EntityOf(type);
 	if (!IsClassEntity(*program_, entity))
@@ -118,9 +126,9 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 			arguments.push_back(ExpressionInfo());
 		else arguments.push_back(AnalyzeExpression(argument_syntax[i], scope));
 	}
-	const std::vector<BindingId> candidates = ConstructorCandidates(entity);
+	const std::vector<BindingId>& candidates = ConstructorCandidates(entity);
 	const BindingId selected = SelectConstructor(scope, argument_syntax,
-		arguments, candidates, copy_initialization);
+		arguments, candidates, copy_initialization, list_initialization);
 	const FunctionInfo constructor = GetFunction(selected);
 	const TypeRecord function_type = program_->types.Get(constructor.type);
 	const TypeId* parameter_data = program_->types.Parameters(constructor.type);
@@ -170,7 +178,20 @@ void SemanticAnalyzer::AddMemberInitializationAction(BindingId member_id,
 	const bool class_member = member_kind != TYPE_LVALUE_REFERENCE &&
 		member_kind != TYPE_RVALUE_REFERENCE &&
 		IsClassEntity(*program_, member_entity);
+	if (initializer == kNoNode && (member_kind == TYPE_LVALUE_REFERENCE ||
+		member_kind == TYPE_RVALUE_REFERENCE))
+		throw std::runtime_error("reference member is not initialized");
+	if (initializer == kNoNode && member_kind == TYPE_QUALIFIED)
+	{
+		const TypeRecord& qualified = program_->types.Get(member.type);
+		if ((qualified.cv & CV_CONST) != 0 &&
+			!IsClassEntity(*program_, EntityOf(qualified.child)))
+			throw std::runtime_error("const scalar member is not initialized");
+	}
 	if (initializer == kNoNode && !class_member) return;
+	const bool copy_initialization = initializer != kNoNode &&
+		arena_->IsTag(initializer, "initializer") &&
+		PayloadSource(initializer) == "copy";
 	while (initializer != kNoNode && arena_->IsTag(initializer, "initializer"))
 		initializer = FirstSemanticChild(initializer);
 	const std::uint32_t action = MakeDump(DUMP_INITIALIZER_ACTION,
@@ -185,10 +206,14 @@ void SemanticAnalyzer::AddMemberInitializationAction(BindingId member_id,
 		else
 		{
 			std::vector<NodeId> arguments;
+			bool constructor_copy = copy_initialization;
+			bool constructor_list = false;
 			if (initializer != kNoNode &&
 				(arena_->IsTag(initializer, "paren-argument-list") ||
 				 arena_->IsTag(initializer, "braced-init-list")))
 			{
+				constructor_list = arena_->IsTag(initializer,
+					"braced-init-list");
 				for (std::uint32_t edge = arena_->FirstEdge(initializer);
 					edge != kNoEdge; edge = arena_->NextEdge(edge))
 					arguments.push_back(arena_->EdgeChild(edge));
@@ -208,11 +233,12 @@ void SemanticAnalyzer::AddMemberInitializationAction(BindingId member_id,
 					for (std::uint32_t edge = arena_->FirstEdge(list);
 						edge != kNoEdge; edge = arena_->NextEdge(edge))
 						arguments.push_back(arena_->EdgeChild(edge));
+				constructor_copy = false;
 			}
 			else if (initializer != kNoNode)
-				throw std::runtime_error(
-					"class member initializer requires construction");
-			value = BuildConstructorAction(member.type, scope, arguments, false);
+				arguments.push_back(initializer);
+			value = BuildConstructorAction(member.type, scope, arguments,
+				constructor_copy, constructor_list);
 		}
 		dump_.Add(action, value);
 	}
@@ -254,8 +280,9 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 	const EntityId entity = program_->bindings[constructor.binding].member_owner;
 	if (entity == kNoEntity || entity >= entity_data_members_.size())
 		throw std::logic_error("constructor is missing its member index");
-	if (constructor_initializer_scratch_.size() < program_->bindings.size())
-		constructor_initializer_scratch_.resize(program_->bindings.size(), kNoNode);
+	const std::vector<BindingId>& members = entity_data_members_[entity];
+	if (constructor_initializer_scratch_.size() < members.size())
+		constructor_initializer_scratch_.resize(members.size(), kNoNode);
 	constructor_initializer_touched_.clear();
 	if (constructor.constructor_initializer != kNoNode)
 	{
@@ -275,7 +302,12 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 				!program_->bindings[found.ordinary].non_static_data_member)
 				throw std::runtime_error("unknown constructor member initializer");
 			const BindingId member = found.ordinary;
-			if (constructor_initializer_scratch_[member] != kNoNode)
+			const std::uint32_t ordinal =
+				program_->bindings[member].member_ordinal;
+			if (ordinal >= members.size() || members[ordinal] != member)
+				throw std::logic_error(
+					"constructor member has no canonical ordinal");
+			if (constructor_initializer_scratch_[ordinal] != kNoNode)
 				throw std::runtime_error("duplicate constructor member initializer");
 			NodeId value = kNoNode;
 			for (std::uint32_t child_edge = arena_->FirstEdge(initializer);
@@ -286,23 +318,61 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 			}
 			if (value == kNoNode)
 				throw std::runtime_error("member initializer has no value");
-			constructor_initializer_scratch_[member] = value;
+			constructor_initializer_scratch_[ordinal] = value;
 			constructor_initializer_touched_.push_back(member);
 		}
 	}
-	const std::vector<BindingId>& members = entity_data_members_[entity];
 	for (std::size_t i = 0; i < members.size(); ++i)
 	{
+		++constructor_member_action_visits_;
 		const BindingId member = members[i];
-		NodeId initializer = constructor_initializer_scratch_[member];
+		NodeId initializer = constructor_initializer_scratch_[i];
 		if (initializer == kNoNode &&
 			member < member_initializer_by_binding_.size())
 			initializer = member_initializer_by_binding_[member];
 		AddMemberInitializationAction(member, initializer, function_scope, body);
 	}
 	for (std::size_t i = 0; i < constructor_initializer_touched_.size(); ++i)
-		constructor_initializer_scratch_[constructor_initializer_touched_[i]] =
-			kNoNode;
+	{
+		const BindingId member = constructor_initializer_touched_[i];
+		constructor_initializer_scratch_[
+			program_->bindings[member].member_ordinal] = kNoNode;
+	}
+}
+
+bool SemanticAnalyzer::InitializationActionsAreNonthrowing(
+	std::uint32_t body) const
+{
+	std::vector<std::uint32_t> pending(1, body);
+	while (!pending.empty())
+	{
+		const std::uint32_t node = pending.back();
+		pending.pop_back();
+		const DumpNode& record = dump_.nodes[node];
+		if (record.kind == DUMP_CONSTRUCTOR_ACTION)
+		{
+			if (record.binding == kNoBinding ||
+				!program_->bindings[record.binding].nonthrowing)
+				return false;
+		}
+		else if (record.kind == DUMP_CALL_EXPRESSION)
+		{
+			bool known_nonthrowing = false;
+			for (std::uint32_t edge = record.first_edge; edge != kNoDumpEdge;
+				edge = dump_.edges[edge].next)
+			{
+				const DumpNode& child = dump_.nodes[dump_.edges[edge].child];
+				if (child.kind == DUMP_CALLEE && child.binding != kNoBinding &&
+					program_->bindings[child.binding].nonthrowing)
+					known_nonthrowing = true;
+			}
+			if (!known_nonthrowing) return false;
+		}
+		for (std::uint32_t edge = record.first_edge; edge != kNoDumpEdge;
+			edge = dump_.edges[edge].next)
+			pending.push_back(dump_.edges[edge].child);
+	}
+	return true;
 }
 
 ExpressionInfo SemanticAnalyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
@@ -431,7 +501,7 @@ void SemanticAnalyzer::AddDefaultConstructor(std::uint32_t variable,
 		throw std::runtime_error("class has no usable default constructor");
 	const std::vector<NodeId> arguments;
 	const std::uint32_t action = BuildConstructorAction(type,
-		program_->bindings[binding].owner, arguments, false);
+		program_->bindings[binding].owner, arguments, false, false);
 	const BindingId constructor = dump_.nodes[action].binding;
 	if (constructor != kNoBinding &&
 		GetFunction(constructor).implicit_constructor &&

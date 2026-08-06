@@ -1,0 +1,22 @@
+declare function @may_throw() -> i32 [binding=strong, object=_Z9may_throwv]
+
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $object : obj<4x4>
+
+  block ^entry:
+    %t1 = addr $object
+    call void @Y__Y(%t1)
+    return i32 0
+}
+
+function @Y__Y(%this : ptr) -> void [binding=strong, object=_ZN1YC1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = call i32 @may_throw()
+    %t2 = load ptr $this
+    %t3 = index i8 [projection=field] %t2, 0
+    store i32 %t1, %t3
+    return void
+}
