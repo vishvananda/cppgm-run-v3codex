@@ -509,7 +509,9 @@ private:
 	void EmitFistpScratch64()
 	{
 		EmitScratchAddress(-32);
-		EmitX87Memory(output_, 0xdf, 7, R11);
+		// Integer conversions have cast semantics: truncate toward zero rather
+		// than inheriting the caller's x87 rounding-control mode.
+		EmitX87Memory(output_, 0xdd, 1, R11);
 	}
 
 	std::size_t EmitNearCondition(unsigned opcode)

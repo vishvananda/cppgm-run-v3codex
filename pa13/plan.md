@@ -32,7 +32,10 @@ generated executable returns 7 without an over-copy.
 Templates, C++ lookup/demand, machine IR, ELF writing, and production
 source-to-object transport are not PA13 surfaces. The applicable `spec.md`
 checks are typed adapter ownership, bounded lookup, direct one-unit lowering,
-linear scaling, observability, and self-containment.
+linear scaling, observability, and self-containment. End-to-end execution also
+found one defect in the owned PA9 backend path: x87 float-to-integer conversion
+obeyed the ambient round-to-nearest mode instead of LowIR cast truncation. The
+backend now emits `FISTTP`, making conversion independent of x87 control state.
 
 ## Performance Evidence
 
@@ -79,20 +82,37 @@ remained to sample-profile.
 
 The audit removed all identified representation, type-identity, output-copy,
 metadata-domain, narrow-result, exact-object-copy, and indirect-call ownership
-defects while preserving all checked CY86 fixtures. Sanitizers, focused runtime
+defects while preserving all checked CY86 fixtures. The owned PA9 conversion
+path now also implements truncating cast semantics. Sanitizers, focused runtime
 probes, linear scaling, the file audit, and the through-stage report cover the
-applicable PA13 architecture.
+applicable architecture.
 
-One correctness conflict remains external to an implementation-only fix: the
-checked positive CY86 fixtures for `100-small-direct-object-argument` and
-`200-call-boundary-metadata` require argument-staging sequences that overwrite
-live argument registers. Both fixture-matching CY86 programs segfault when run
-through the passing PA9 `cy86` tool. Correct staging changes the required CY86
-text, while repository policy makes checked `.ref` text the grading oracle and
-forbids editing or regenerating it without the documented reference path (PA13
-has no reference binary). The textual PA13 gate passes, but semantic runnable
-equivalence cannot honestly be marked complete until the oracle is corrected or
-the fixture-defined behavior is explicitly accepted.
+One protected-oracle conflict remains external to an implementation-only fix.
+An isolated corrected adapter changes exactly 12 of the 67 checked-success
+outputs:
+
+- `100-small-direct-object-argument`, `200-call-boundary-metadata`, and
+  `200-f80-direct-call` need safe argument/hidden-result staging. Current
+  fixture-matching programs exit 139, 139, and 0; corrected programs exit 10,
+  5, and 1.
+- Eight outputs (`200-binary-int-ops`, `200-f80-global`,
+  `200-f80-unary-binary-cmp`, `200-integer-width-conversions`,
+  `200-integral-float-conversions`, `200-unary-ops`,
+  `200-unsigned-compare-predicates`, and `200-unsigned-int-ops`) require
+  parenthesized negative CY86 operands. Their current text is rejected by the
+  passing PA9 parser, consistently with PA9's checked negative-immediate test.
+- `200-bswap-unary` requires lowering to PA9 shift/mask/or instructions; the
+  checked text uses nonexistent `bswap16`, `bswap32`, and `bswap64` opcodes.
+
+With those adapter corrections isolated from the protected tree, all 67
+checked-success outputs compile through PA9 and terminate normally within two
+seconds (67 compiled, 67 normal, zero rejection, signal, or timeout). Applying
+them in the main tree makes exactly those 12 positive `.ref` comparisons fail.
+Repository policy makes checked `.ref` text the grading oracle and forbids
+editing or regenerating it without the documented reference path; PA13 supplies
+no reference binary. The textual gate passes, but semantic runnable equivalence
+cannot honestly be marked complete until the oracle is corrected or its
+fixture-defined behavior is explicitly accepted.
 
 ## Checkpoint Ledger
 
@@ -101,12 +121,12 @@ the fixture-defined behavior is explicitly accepted.
 | Contract, history, and full-stage reconstruction | Pass | `spec.md`, PA13 README/LowIR/grammar, tests, implementation commit, source, and prior plan reviewed |
 | Typed ownership and architecture | Pass | Typed type facts, released token phase, moved output, typed memory references, owner-bounded indexes |
 | Structural correctness hardening | Pass | 96/96 handout fixtures plus four new rejection regressions |
-| Representative runtime probes | Partial | Indirect five-argument=15, `obj<4x4>` return=7, narrow CAS failure=0; two required fixture programs segfault |
+| Representative runtime probes | Partial | Indirect five-argument=15, `obj<4x4>` return=7, narrow CAS failure=0, i1 conversion=1, float/integer conversion=4; 12 required outputs conflict with executable PA9 CY86 |
 | Scaling and observability | Pass | 2k/4k/8k counters, timings, RSS, and byte-identical output above |
 | Sanitizers and self-containment | Pass | ASan+UBSan 100/100; process trace has no child execution |
 | File audit | Pass | `perl scripts/cppgm_file_audit.pl --stage pa13 --paths dev/src` |
 | Through-stage validation | Pass | `make test-report-through-pa13`: 920/920 tests, 13/13 stages |
-| Semantic PA13 completion | Blocked by checked oracle | Correct direct object/five-argument staging cannot both match the current positive `.ref` files and run correctly |
+| Semantic PA13 completion | Blocked by checked oracle | Correct call staging, negative literals, and byte-swap lowering cannot both match the 12 current positive `.ref` files and form correct PA9 CY86 |
 
 ## Findings
 
@@ -117,8 +137,9 @@ and reparsed generated memory expressions. Validation admitted negative debug
 coordinates, `storage=writable`, function-only metadata on globals, and a
 declaration-only entry role. Narrow compare-exchange stored only the operand
 width into an `i64` result location; small object returns copied eight bytes at
-a time; indirect calls with stack arguments overwrote their saved callee.
-These implementation defects are fixed. The two fixture/runtime contradictions
+a time; indirect calls with stack arguments overwrote their saved callee. The
+PA9 backend used rounding-mode-sensitive `FISTP` for truncating casts. These
+implementation-owned defects are fixed. The 12 fixture/runtime contradictions
 described above remain the first completion blocker.
 
 ## Changes
@@ -131,12 +152,19 @@ positive locations, storage values, and entry definitions are enforced. Narrow
 atomic booleans are canonical `i64`; narrow object returns copy exact bytes; and
 indirect stack calls reserve separate callee storage and stage stack operands
 before register operands. Four focused rejection tests cover the new validation.
+The PA9 backend now emits x87 `FISTTP` for cast-to-integer conversion, so
+positive and negative fractional operands truncate toward zero without changing
+the global floating-point environment.
 
 ## Validation
 
 - PA13 checked text: 96/96 handout fixtures and 4/4 audit regressions pass.
 - ASan+UBSan: 100/100 PA13 fixtures pass.
 - Runtime probes: indirect five-argument exit 15, `obj<4x4>` return exit 7,
-  narrow compare-exchange failure exit 0.
+  narrow compare-exchange failure exit 0, i1 conversion exit 1, and the corrected
+  integral/float conversion suite exit 4.
+- Isolated corrected-adapter sweep: all 67 checked-success PA13 outputs compile
+  through PA9 and terminate normally; the correction changes exactly the 12
+  protected outputs listed above.
 - Required file audit: pass, 55 implementation files inspected through includes.
 - Required through-stage report: pass, 920/920 tests and 13/13 stages.
