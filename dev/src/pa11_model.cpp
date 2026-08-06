@@ -488,7 +488,8 @@ BindingRecord::BindingRecord()
 
 LookupResult::LookupResult()
 	: name_space(kNoScope), type(kNoType), type_declaration(kNoBinding),
-	  ordinary(kNoBinding), ordinary_declaration(kNoBinding)
+	  ordinary(kNoBinding), ordinary_declaration(kNoBinding),
+	  naming_class(kNoEntity)
 {
 }
 
@@ -816,7 +817,6 @@ void Program::SetEntityScope(EntityId entity, ScopeId scope)
 	if (scope >= scopes_.size())
 		throw std::logic_error("entity member scope is invalid");
 	scopes_[scope].entity = entity;
-	lookup_cache_->Invalidate();
 }
 
 void Program::SetDirectBase(EntityId derived, EntityId base, AccessKind access)
@@ -826,12 +826,14 @@ void Program::SetDirectBase(EntityId derived, EntityId base, AccessKind access)
 	if (entities[derived].direct_base != kNoEntity &&
 		entities[derived].direct_base != base)
 		throw std::runtime_error("multiple inheritance is outside PA16");
+	if (entities[derived].member_scope != kNoScope)
+		throw std::logic_error(
+			"direct base must be fixed before publishing the member scope");
 	if (IsBaseOf(derived, base))
 		throw std::runtime_error("cyclic class inheritance");
 	entities[derived].direct_base = base;
 	entities[derived].base_access = access;
 	entities[derived].has_direct_base = true;
-	lookup_cache_->Invalidate();
 }
 
 bool Program::IsBaseOf(EntityId base, EntityId derived) const
@@ -901,6 +903,14 @@ LookupResult Program::DirectLookup(ScopeId scope, NameId name,
 	LookupResult result;
 	const NameEntry* entry = FindEntry(scope, name);
 	if (!entry) return result;
+	const EntityId scope_entity = scopes_[scope].entity;
+	if (scope_entity != kNoEntity)
+	{
+		const NamedFlavor flavor = entities[scope_entity].flavor;
+		if (flavor == NAMED_STRUCT || flavor == NAMED_CLASS ||
+			flavor == NAMED_UNION)
+			result.naming_class = scope_entity;
+	}
 	if (kind == LOOKUP_NAMESPACE || kind == LOOKUP_SCOPE_CARRIER)
 		result.name_space = entry->name_space;
 	if (kind == LOOKUP_TYPE || kind == LOOKUP_SCOPE_CARRIER)
@@ -937,6 +947,12 @@ void Program::MergeLookup(LookupResult* result,
 LookupResult Program::LookupGraph(ScopeId scope, NameId name,
 	LookupKind kind)
 {
+	const EntityId scope_entity = scopes_[scope].entity;
+	const EntityId naming_class = scope_entity != kNoEntity &&
+		(entities[scope_entity].flavor == NAMED_STRUCT ||
+		 entities[scope_entity].flavor == NAMED_CLASS ||
+		 entities[scope_entity].flavor == NAMED_UNION) ?
+		scope_entity : kNoEntity;
 	++lookup_generation_;
 	if (lookup_generation_ == 0)
 	{
@@ -1007,6 +1023,8 @@ LookupResult Program::LookupGraph(ScopeId scope, NameId name,
 			lookup_worklist_.push_back(target);
 		}
 	}
+	if (!result.Empty() && naming_class != kNoEntity)
+		result.naming_class = naming_class;
 	return result;
 }
 

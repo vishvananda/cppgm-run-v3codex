@@ -102,7 +102,7 @@ private:
 		LanguageLinkage language_linkage = LANGUAGE_LINKAGE_CPP,
 		bool nonthrowing = false);
 	std::vector<BindingId> FunctionCandidates(ScopeId scope,
-		const std::string& spelling);
+		const std::string& spelling, EntityId* naming_class = 0);
 	std::vector<BindingId> FunctionSet(BindingId binding) const;
 	std::vector<std::size_t> FindFunctionTemplates(ScopeId scope,
 		const std::string& spelling);
@@ -132,7 +132,8 @@ private:
 	ExpressionInfo BuildResolvedCall(BindingId selected, ScopeId scope,
 		const std::vector<NodeId>& argument_syntax,
 		const std::vector<ExpressionInfo>& arguments,
-		const ExpressionInfo* object, TypeId target);
+		const ExpressionInfo* object, TypeId target,
+		EntityId naming_class = kNoEntity);
 	ExpressionInfo AnalyzeCall(NodeId node, ScopeId scope, TypeId target);
 	bool AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 		const std::vector<NodeId>& argument_syntax, TypeId target,
@@ -150,12 +151,13 @@ private:
 		std::uint32_t* element_edge);
 	ExpressionInfo AnalyzeMember(NodeId node, ScopeId scope);
 	ExpressionInfo AnalyzeImplicitDataMember(BindingId member, ScopeId scope,
-		TypeId target);
+		TypeId target, EntityId naming_class);
 	void AnalyzeClassMember(NodeId node, ScopeId scope, TypeId owner_type,
 		AccessKind access);
 	void AnalyzeSpecialMember(NodeId node, ScopeId scope, TypeId owner_type,
 		AccessKind access);
-	bool CanAccessMember(BindingId member) const;
+	bool CanAccessMember(BindingId member,
+		EntityId naming_class = kNoEntity) const;
 	bool BaseConversionAllowed(EntityId derived, EntityId base) const;
 	std::size_t BaseConversionDistance(TypeId source, TypeId target) const;
 	void CompleteClassLayout(EntityId entity);

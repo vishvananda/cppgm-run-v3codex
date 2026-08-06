@@ -87,13 +87,15 @@ struct DumpNode
 	std::int64_t constant_value;
 	std::uint32_t first_edge;
 	std::uint32_t last_edge;
+	std::uint32_t base_projection_count;
 	bool constant;
 
 	explicit DumpNode(DumpKind value)
 		: kind(value), type(kNoType), operand_type(kNoType),
 		  category(VALUE_NONE), text(0), binding(kNoBinding),
 		  constant_value(0), first_edge(kNoDumpEdge),
-		  last_edge(kNoDumpEdge), constant(false) {}
+		  last_edge(kNoDumpEdge), base_projection_count(0),
+		  constant(false) {}
 };
 
 struct DumpEdge

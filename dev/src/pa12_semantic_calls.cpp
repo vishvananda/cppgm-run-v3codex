@@ -44,12 +44,6 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 	if (found.ordinary == kNoBinding ||
 		program_->bindings[found.ordinary].kind != BIND_FUNCTION)
 		return false;
-	const EntityId member_owner =
-		program_->bindings[found.ordinary].member_owner;
-	if (member_owner != kNoEntity && member_owner != entity &&
-		!BaseConversionAllowed(entity, member_owner))
-		throw std::runtime_error("inaccessible inherited member function");
-
 	const std::vector<BindingId> candidates = FunctionSet(found.ordinary);
 	ExpressionInfo object_pointer = object;
 	if (!arrow)
@@ -74,7 +68,7 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 	const BindingId selected = SelectOverload(scope, argument_syntax,
 		arguments, candidates, &object_pointer);
 	*result = BuildResolvedCall(selected, scope, argument_syntax,
-		arguments, &object_pointer, target);
+		arguments, &object_pointer, target, found.naming_class);
 	return true;
 }
 

@@ -125,6 +125,10 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 				program_->entities[base].flavor == NAMED_UNION)
 				throw std::runtime_error(
 					"direct base must name a complete non-union class");
+			if (base_lookup.type_declaration != kNoBinding &&
+				!CanAccessMember(base_lookup.type_declaration,
+					base_lookup.naming_class))
+				throw std::runtime_error("inaccessible direct base type");
 			AccessKind base_access = flavor == NAMED_CLASS ?
 				ACCESS_PRIVATE : ACCESS_PUBLIC;
 			const NodeId access = FindChild(base_specifier, "access-specifier");
@@ -145,11 +149,15 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 				program_->names.Intern(prefix));
 			program_->SetEntityScope(entity, member_scope);
 			program_->SetTypeName(member_scope, name, type);
-			program_->AddBinding(member_scope, BIND_TYPE, name, type,
-				false, 0, flavor);
+			const BindingId injected = program_->AddBinding(member_scope,
+				BIND_TYPE, name, type, false, 0, flavor);
+			program_->bindings[injected].member_owner = entity;
+			program_->bindings[injected].access = ACCESS_PUBLIC;
 		}
 		// The stable class scope owns indexed field/function identities even
 		// though class declarations are not part of the PA12 output view.
+		const EntityId previous_class_context = current_class_context_;
+		current_class_context_ = entity;
 		AccessKind member_access = flavor == NAMED_CLASS ?
 			ACCESS_PRIVATE : ACCESS_PUBLIC;
 		for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
@@ -170,6 +178,7 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 				arena_->IsTag(member, "special-member-definition"))
 				AnalyzeSpecialMember(member, member_scope, type, member_access);
 		}
+		current_class_context_ = previous_class_context;
 		CompleteClassLayout(entity);
 		if (!program_->entities[entity].has_user_declared_constructor &&
 			program_->entities[entity].default_constructible)
@@ -686,7 +695,8 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 			if (found.type == kNoType)
 				throw std::runtime_error("unknown type name: " + spelling);
 			if (found.type_declaration != kNoBinding &&
-				!CanAccessMember(found.type_declaration))
+				!CanAccessMember(found.type_declaration,
+					found.naming_class))
 				throw std::runtime_error("inaccessible member type");
 			result.type = found.type;
 		}
@@ -1001,8 +1011,9 @@ FunctionInfo& SemanticAnalyzer::GetMutableFunction(BindingId binding)
 }
 
 std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
-	const std::string& spelling)
+	const std::string& spelling, EntityId* naming_class)
 {
+	if (naming_class) *naming_class = kNoEntity;
 	std::string lookup_name = spelling;
 	std::string explicit_base;
 	std::vector<TypeId> explicit_arguments;
@@ -1028,6 +1039,7 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 	}
 	const LookupResult found =
 		LookupSpelling(scope, lookup_name, LOOKUP_ORDINARY);
+	if (naming_class) *naming_class = found.naming_class;
 	if (found.ordinary == kNoBinding) return std::vector<BindingId>();
 	const BindingRecord& binding = program_->bindings[found.ordinary];
 	if (binding.kind != BIND_FUNCTION) return std::vector<BindingId>();

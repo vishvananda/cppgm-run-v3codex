@@ -9,16 +9,29 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
-bool SemanticAnalyzer::CanAccessMember(BindingId member) const
+bool SemanticAnalyzer::CanAccessMember(BindingId member,
+	EntityId naming_class) const
 {
 	if (member == kNoBinding || member >= program_->bindings.size()) return false;
 	const BindingRecord& binding = program_->bindings[member];
-	return binding.member_owner == kNoEntity ||
-		binding.access == ACCESS_PUBLIC ||
-		binding.member_owner == current_class_context_ ||
-		(binding.access == ACCESS_PROTECTED &&
-		 current_class_context_ != kNoEntity &&
-		 program_->IsBaseOf(binding.member_owner, current_class_context_));
+	const EntityId owner = binding.member_owner;
+	if (owner == kNoEntity) return true;
+	if (naming_class == kNoEntity) naming_class = owner;
+	if (!program_->IsBaseOf(owner, naming_class)) return false;
+	if (naming_class != owner)
+	{
+		const EntityId direct_base =
+			program_->entities[naming_class].direct_base;
+		return direct_base != kNoEntity &&
+			BaseConversionAllowed(naming_class, direct_base) &&
+			CanAccessMember(member, direct_base);
+	}
+	if (binding.access == ACCESS_PUBLIC) return true;
+	if (current_class_context_ == kNoEntity) return false;
+	if (binding.access == ACCESS_PRIVATE)
+		return current_class_context_ == naming_class;
+	return current_class_context_ == naming_class ||
+		program_->IsBaseOf(naming_class, current_class_context_);
 }
 
 bool SemanticAnalyzer::BaseConversionAllowed(EntityId derived,
@@ -67,14 +80,145 @@ std::size_t SemanticAnalyzer::BaseConversionDistance(TypeId source,
 	return std::numeric_limits<std::size_t>::max();
 }
 
+ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
+{
+	const NodeId type_id = FindChild(node, "type-id");
+	if (type_id == kNoNode) throw std::runtime_error("cast without type-id");
+	const TypeId target = BuildTypeId(type_id, scope);
+	NodeId operand_node = kNoNode;
+	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+		if (arena_->EdgeChild(edge) != type_id) operand_node = arena_->EdgeChild(edge);
+	// Expression analysis can intern more types and reallocate TypeTable storage.
+	// Keep the cast shape by value across the recursive operand analysis.
+	const TypeRecord target_record = program_->types.Get(target);
+	const TypeId unqualified_target = program_->types.RemoveTopCv(target);
+	const TypeRecord unqualified_target_record =
+		program_->types.Get(unqualified_target);
+	const bool function_pointer_target =
+		unqualified_target_record.kind == TYPE_POINTER &&
+		program_->types.IsFunction(unqualified_target_record.child);
+	ExpressionInfo operand = AnalyzeExpression(operand_node, scope,
+		program_->types.IsFunction(EffectiveType(target)) ||
+		function_pointer_target ||
+		unqualified_target_record.kind == TYPE_MEMBER_POINTER ?
+		target : kNoType);
+	if (!IsVoid(target) && !IsArithmetic(target) && !IsPointer(target) &&
+		!IsNullptr(target) && target_record.kind != TYPE_LVALUE_REFERENCE &&
+		target_record.kind != TYPE_RVALUE_REFERENCE &&
+		target_record.kind != TYPE_MEMBER_POINTER &&
+		program_->types.Get(program_->types.RemoveTopCv(target)).kind != TYPE_NAMED)
+		throw std::runtime_error("unsupported cast target");
+	const ValueCategory category = target_record.kind == TYPE_LVALUE_REFERENCE ?
+		VALUE_LVALUE : target_record.kind == TYPE_RVALUE_REFERENCE ?
+		VALUE_XVALUE : VALUE_PRVALUE;
+	const std::string cast_kind = arena_->Payload(node);
+	if (target_record.kind == TYPE_LVALUE_REFERENCE ||
+		target_record.kind == TYPE_RVALUE_REFERENCE)
+	{
+		const ConversionRank reference_conversion = Conversion(operand, target);
+		const bool explicit_rvalue = target_record.kind == TYPE_RVALUE_REFERENCE &&
+			SimilarUnqualified(EffectiveType(operand.type), target_record.child);
+		const bool explicit_cv_lvalue =
+			target_record.kind == TYPE_LVALUE_REFERENCE &&
+			operand.category == VALUE_LVALUE &&
+			SimilarUnqualified(EffectiveType(operand.type), target_record.child) &&
+			(cast_kind.find("CONST") != std::string::npos ||
+			 cast_kind.compare(0, 10, "OP_LPAREN:") == 0);
+		if (!explicit_rvalue && !explicit_cv_lvalue &&
+			reference_conversion == CONVERSION_INVALID)
+			throw std::runtime_error("invalid reference cast");
+		if (reference_conversion == CONVERSION_DERIVED_TO_BASE)
+			return ApplyTarget(operand, target);
+		operand.type = target;
+		operand.category = category;
+		dump_.nodes[operand.node].type = target;
+		dump_.nodes[operand.node].category = category;
+		return operand;
+	}
+	if (target_record.kind == TYPE_MEMBER_POINTER)
+	{
+		operand.type = target;
+		dump_.nodes[operand.node].type = target;
+		return operand;
+	}
+	const EntityId source_entity = EntityOf(operand.type);
+	const EntityId target_entity = EntityOf(target);
+	const bool source_enum = source_entity != kNoEntity &&
+		(program_->entities[source_entity].flavor == NAMED_ENUM ||
+		 program_->entities[source_entity].flavor == NAMED_ENUM_CLASS);
+	const bool target_enum = target_entity != kNoEntity &&
+		(program_->entities[target_entity].flavor == NAMED_ENUM ||
+		 program_->entities[target_entity].flavor == NAMED_ENUM_CLASS);
+	const bool permits_reinterpretation =
+		cast_kind.compare(0, 10, "OP_LPAREN:") == 0 ||
+		cast_kind.find("REINTER") != std::string::npos;
+	if (cast_kind.find("STATIC") != std::string::npos && IsPointer(target) &&
+		IsPointer(operand.type))
+	{
+		const TypeRecord source_pointer = program_->types.Get(Decay(operand.type));
+		const TypeRecord target_pointer = program_->types.Get(
+			program_->types.RemoveTopCv(target));
+		const EntityId derived = EntityOf(source_pointer.child);
+		const EntityId base = EntityOf(target_pointer.child);
+		if (derived != kNoEntity && base != kNoEntity &&
+			program_->IsBaseOf(base, derived) &&
+			!BaseConversionAllowed(derived, base))
+			throw std::runtime_error("inaccessible base conversion");
+	}
+	const bool valid = IsVoid(target) ||
+		(IsArithmetic(target) && IsArithmetic(operand.type)) ||
+		(target_enum && (IsIntegral(operand.type, true) ||
+			IsFloating(operand.type))) ||
+		(source_enum && (IsIntegral(target, true) || IsFloating(target))) ||
+		(IsPointer(target) && (IsPointer(operand.type) ||
+			IsNullptr(operand.type) || operand.integer_literal_zero)) ||
+		(target == program_->types.Fundamental(FUND_BOOL) &&
+			(IsPointer(operand.type) || IsNullptr(operand.type))) ||
+		(IsNullptr(target) && (IsNullptr(operand.type) ||
+			operand.integer_literal_zero)) ||
+		(permits_reinterpretation &&
+			((IsPointer(target) && IsIntegral(operand.type)) ||
+			 (IsIntegral(target) && IsPointer(operand.type))));
+	if (!valid) throw std::runtime_error("invalid explicit conversion");
+	const std::uint32_t cast = MakeDump(DUMP_CAST_EXPRESSION, target,
+		VALUE_PRVALUE, program_->names.Intern(arena_->Payload(node)));
+	if (cast_kind.find("REINTER") == std::string::npos && IsPointer(target) &&
+		IsPointer(operand.type))
+	{
+		const TypeRecord source_pointer = program_->types.Get(Decay(operand.type));
+		const TypeRecord target_pointer = program_->types.Get(
+			program_->types.RemoveTopCv(target));
+		const EntityId derived = EntityOf(source_pointer.child);
+		const EntityId base = EntityOf(target_pointer.child);
+		if (derived != kNoEntity && base != kNoEntity && derived != base &&
+			program_->IsBaseOf(base, derived))
+		{
+			const std::size_t projections =
+				BaseConversionDistance(operand.type, target);
+			if (projections == std::numeric_limits<std::size_t>::max() ||
+				projections > std::numeric_limits<std::uint32_t>::max())
+				throw std::logic_error("cast has no bounded base path");
+			dump_.nodes[cast].base_projection_count =
+				static_cast<std::uint32_t>(projections);
+		}
+	}
+	dump_.Add(cast, operand.node);
+	ExpressionInfo result;
+	result.node = cast;
+	result.type = target;
+	result.constant = operand.constant;
+	result.value = operand.value;
+	++expression_count_;
+	return result;
+}
+
 ExpressionInfo SemanticAnalyzer::AnalyzeImplicitDataMember(
-	BindingId member_binding, ScopeId scope, TypeId target)
+	BindingId member_binding, ScopeId scope, TypeId target,
+	EntityId naming_class)
 {
 	const BindingRecord& binding = program_->bindings[member_binding];
-	if (!CanAccessMember(member_binding) ||
-		(binding.member_owner != kNoEntity &&
-		 binding.member_owner != current_class_context_ &&
-		 !BaseConversionAllowed(current_class_context_, binding.member_owner)))
+	if (!CanAccessMember(member_binding, naming_class))
 		throw std::runtime_error("inaccessible implicit data member");
 	const NameId this_name = program_->names.Intern("this");
 	const LookupResult this_lookup =
@@ -97,6 +241,16 @@ ExpressionInfo SemanticAnalyzer::AnalyzeImplicitDataMember(
 		this_binding.type, VALUE_LVALUE, this_name, this_lookup.ordinary);
 	const std::uint32_t member = MakeDump(DUMP_MEMBER_EXPRESSION,
 		member_type, VALUE_LVALUE, binding.name, member_binding);
+	if (current_class_context_ == kNoEntity)
+		throw std::logic_error("implicit member has no class context");
+	const std::size_t projections = BaseConversionDistance(
+		program_->entities[current_class_context_].type,
+		program_->entities[binding.member_owner].type);
+	if (projections == std::numeric_limits<std::size_t>::max() ||
+		projections > std::numeric_limits<std::uint32_t>::max())
+		throw std::logic_error("implicit member has no bounded base path");
+	dump_.nodes[member].base_projection_count =
+		static_cast<std::uint32_t>(projections);
 	dump_.Add(member, object);
 	ExpressionInfo result;
 	result.node = member;

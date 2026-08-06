@@ -247,6 +247,7 @@ struct LookupResult
 	ScopeId name_space;
 	TypeId type;
 	BindingId type_declaration, ordinary, ordinary_declaration;
+	EntityId naming_class;
 
 	LookupResult();
 	bool Empty() const;

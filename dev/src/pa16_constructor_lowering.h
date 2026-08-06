@@ -28,7 +28,7 @@ protected:
 	void LowerConstructorAction(std::uint32_t node,
 		const Operand& destination)
 	{
-		Derived& derived = Self();
+		Derived& derived = static_cast<Derived&>(*this);
 		const DumpNode& action = derived.arena_.nodes[node];
 		if (action.kind != DUMP_CONSTRUCTOR_ACTION ||
 			action.binding == kNoBinding ||
@@ -97,7 +97,7 @@ protected:
 	void LowerArrayValues(TypeId type, std::uint32_t list_node,
 		const Operand& array_address)
 	{
-		Derived& derived = Self();
+		Derived& derived = static_cast<Derived&>(*this);
 		const TypeRecord& array = derived.program_.types.Get(
 			derived.ExpressionObjectType(type));
 		const NodeChildren values = derived.Children(list_node);
@@ -138,7 +138,7 @@ protected:
 		const NodeChildren& values, const ConstructorMemberPath& path,
 		const Operand& retained_destination)
 	{
-		Derived& derived = Self();
+		Derived& derived = static_cast<Derived&>(*this);
 		if (values.size() > 1)
 			throw std::logic_error(
 				"constructor aggregate leaf has multiple values");
@@ -192,7 +192,7 @@ protected:
 	void LowerConstructorAggregateActions(std::uint32_t list_node,
 		ConstructorMemberPath* path, const Operand& retained_address)
 	{
-		Derived& derived = Self();
+		Derived& derived = static_cast<Derived&>(*this);
 		const NodeChildren actions = derived.Children(list_node);
 		for (std::size_t i = 0; i < actions.size(); ++i)
 		{
@@ -235,7 +235,7 @@ protected:
 	void LowerMemberInitializationAction(const DumpNode& action,
 		const NodeChildren& children)
 	{
-		Derived& derived = Self();
+		Derived& derived = static_cast<Derived&>(*this);
 		if (action.binding == kNoBinding ||
 			derived.current_this_binding_ == kNoBinding)
 			throw std::logic_error(
@@ -317,24 +317,6 @@ protected:
 		derived.Emit(store);
 	}
 
-	void LowerBaseInitializationAction(const DumpNode& action,
-		const NodeChildren& children)
-	{
-		Derived& derived = Self();
-		if (action.kind != DUMP_BASE_INITIALIZER_ACTION ||
-			derived.current_this_binding_ == kNoBinding || children.size() != 1 ||
-			derived.arena_.nodes[children[0]].kind != DUMP_CONSTRUCTOR_ACTION)
-			throw std::logic_error(
-				"base initialization is outside a constructor");
-		if (derived.IsTrivialConstructorAction(action.type, children)) return;
-		const Operand object = derived.LoadStorage(
-			derived.StorageFor(derived.current_this_binding_, LowPtr()), LowPtr());
-		const Operand destination = derived.ProjectBaseSubobject(object);
-		LowerConstructorAction(children[0], destination);
-	}
-
-private:
-	Derived& Self() { return static_cast<Derived&>(*this); }
 };
 
 }

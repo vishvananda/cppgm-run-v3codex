@@ -2,66 +2,55 @@
 
 ## Current Checkpoint Review
 
-**Checkpoint:** `790bc91a` (`Implement PA16 constructor initialization spine`)
+**Checkpoint:** `76410798` (`Implement PA16 single-base construction spine`)
 
-**Result:** Pass after audit fixes. The landed increment is bounded to stable
-constructor declarations/candidate sets, direct/copy/list/default construction,
-declaration-ordered direct-member/default-member actions, and their typed calls
-and stores. Base construction, destruction, arrays of class objects, and global
-lifetime remain assigned to later checkpoints.
+**Result:** Pass after audit fixes. The landed increment is bounded to one
+canonical direct-base edge, inherited indexed lookup/access, base-at-zero layout,
+selected base-constructor actions, derived-to-base conversions, and typed base
+projection. Destruction, friends/using declarations, inheriting constructors,
+and broader layout remain assigned to later checkpoints.
 
-The ownership path is initializer syntax with an interned initialization mode ->
-canonical class `EntityId`, constructor `BindingId` candidate sequence, and data-
-member declaration ordinal -> selected constructor/member action nodes -> typed
-subobject addresses, calls, and stores. Selection and target lookup occur once in
-semantic construction. Lowering consumes only typed IDs and recorded conversions;
-it does not rerun lookup, reconstruct from names, or serialize/reparse LowIR.
+The ownership path is base syntax -> canonical derived/base `EntityId`s plus
+access -> lookup result with its compact naming-class identity -> selected
+constructor/conversion and explicit projection-count facts -> typed base/member
+addresses and calls. Semantic construction performs lookup and path validation;
+lowering consumes the recorded count and never walks inheritance edges, reruns
+lookup, or reconstructs a conversion from types or names.
 
 Audit findings are closed:
 
-1. Deleted constructors were discarded before overload resolution, every member
-   specifier was mistaken for `explicit`, and copy-list initialization did not
-   distinguish selection from the final explicit-constructor rejection. Deleted
-   candidates now participate, `explicit` is its own canonical fact, and the
-   recorded copy/list modes drive the required selection and rejection rules.
-2. User-provided constructors could leave reference or const-scalar members
-   uninitialized. Every demanded constructor now walks its owning member sequence
-   in declaration order and rejects those missing required actions. A compact
-   canonical member ordinal scopes reusable initializer scratch to the class;
-   candidate sequences are borrowed, so neither path copies or sizes work by
-   unrelated translation-unit declarations.
-3. Every defaulted constructor was labeled nonthrowing. Generated initialization
-   actions are now scanned by stable callee binding and only proven nonthrowing
-   bodies publish `unwind=no`; potentially throwing DMIs remain conservative.
-4. Nested constructor aggregate lowering stored reference values instead of
-   addresses and replayed each complete member path per leaf. Reference actions
-   now store typed identity. Eight-entry inline paths retain a typed address at
-   bounded depth, preserving shallow LowIR while reducing representative 40x40 /
-   80x80 cases from 1,765 / 6,725 to 127 / 247 instructions and from 248,820 /
-   986,100 to 18,420 / 33,780 typed bytes.
-5. The new implementation-heavy constructor header triggered the file-division
-   advisory. ABI-fact adaptation now has a normal `.cpp` owner, generic array
-   lowering returned to its PA15 owner, and the constructor header is below the
-   implementation-body threshold. The new source is in the `cppgm++` source set.
+1. Lookup discarded the naming class, allowing public types and static functions
+   inherited through a private base to bypass transformed access. Lookup results
+   now retain that `EntityId`; access follows the single-base chain in the source
+   context, including class member declarations and injected class names.
+2. A constructor mem-initializer fell back to base-type lookup after finding a
+   same-named static member. Any direct ordinary declaration now hides the base,
+   while aliases that genuinely denote the direct base remain valid.
+3. Lowering rediscovered base relationships with `IsBaseOf` and `direct_base`
+   walks. Derived conversions, inherited fields, explicit reference casts, and
+   base actions now record `base_projection_count`; lowering emits exactly that
+   typed fact and has no inheritance lookup path.
+4. Publishing a fresh member scope/base edge unnecessarily invalidated the whole
+   lookup cache, and the new base action pushed implementation weight back into
+   the constructor header. Base edges are fixed before scope publication, so no
+   invalidation is needed; the base action has a normal `.cpp` owner and the
+   affected header no longer triggers the file audit.
 
 Validation:
 
-- Focused existing plus audit set: 14/14 pass. The seven audit regressions cover
-  deleted/explicit selection, required reference/const initialization, nested
-  reference identity, and generated exception metadata.
+- Focused inherited construction/conversion set: 17/17 existing tests pass;
+  the four naming-class/hiding audit regressions also pass.
 - `make test-report ACTIVE_TEST_REPORT_PAS='pa16'`: expected full-stage failure,
-  91/255. All 84/248 checkpoint-entry passes remain and all seven added audit
-  regressions pass; the 164 previously mapped later-checkpoint failures remain.
-- `make test-report-through-pa15`: 1,145/1,145 and 15/15 stages pass.
-- `perl scripts/cppgm_file_audit.pl --stage pa16 --paths dev/src`: pass. The
-  checkpoint-owned header warning is closed; the one remaining advisory is the
-  pre-existing declaration-weight warning in `pa11_model.h`.
-- Constructor member-action counters are exactly 1,000/2,000 for 1k/2k members
-  and remain 1/1 beside 5k/10k unrelated globals. Constructor candidate visits
-  are exactly 1,001/2,001 with 1,004/2,004 conversion checks and constant 10-
-  instruction output.
-- Valgrind on the nested-reference regression reports no errors or leaks.
-  Process tracing contains only the compiler `execve` and `exit_group(0)`.
+  120/259. All 116/255 checkpoint-entry passes remain, the four audit cases pass,
+  and the same 139 mapped later-checkpoint failures remain.
+- Through PA15: 1,145/1,145 and 15/15 stages pass. File audit passes; its sole
+  advisory is the pre-existing declaration-weight warning in `pa11_model.h`.
+- A 250/500-edge constructor chain records 250/500 base actions, 500/1,000
+  lookup-edge visits, 251/501 candidates, 1,511/3,011 instructions, and
+  511,781/1,021,943 typed bytes. Five-run median semantic/lowering times are
+  2.11/4.58 ms and 1.71/3.27 ms.
+- Valgrind on the conditional derived/base reference path reports zero errors,
+  zero leaks, and 854/854 allocations freed.
 
 ## Checkpoint Audit Ledger
 
@@ -70,3 +59,4 @@ Validation:
 | Direct-member object spine | Pass after audit fixes | One-shot class completion, non-mergeable member IDs, sound implicit-construction conditions, typed field projection, linear curves, and all checkpoint gates preserved |
 | Local aggregate-action spine | Pass after audit fixes | C++11 user-provided eligibility, one union active member, borrowed edge cursor, bounded typed projection reuse, 61/248 PA16 with no losses, and all audit gates preserved |
 | Special-member initialization action spine | Pass after audit fixes | Init-mode-correct constructor selection, canonical member ordinals/actions, truthful exception facts, typed nested references, bounded projections, 91/255 with no existing loss, and all audit gates preserved |
+| Single-base construction spine | Pass after audit fixes | Naming-class access, hiding-correct base initializers, recorded projection counts, no lowering lookup, 120/259 with no existing loss, exact linear chain evidence, and all audit gates preserved |

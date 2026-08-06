@@ -326,12 +326,18 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 				constructor_initializer_touched_.push_back(member);
 				continue;
 			}
+			if (found.ordinary != kNoBinding)
+				throw std::runtime_error(
+					"constructor initializer target is not a data member");
 			const LookupResult type = LookupSpelling(function_scope,
 				arena_->Payload(id), LOOKUP_TYPE);
 			if (program_->entities[entity].direct_base == kNoEntity ||
 				EntityOf(type.type) != program_->entities[entity].direct_base)
 				throw std::runtime_error(
 					"unknown constructor member initializer");
+			if (type.type_declaration != kNoBinding &&
+				!CanAccessMember(type.type_declaration, type.naming_class))
+				throw std::runtime_error("inaccessible base initializer type");
 			if (base_initializer_seen)
 				throw std::runtime_error("duplicate base initializer");
 			base_initializer = value;
@@ -382,6 +388,7 @@ void SemanticAnalyzer::AddBaseInitializationAction(EntityId entity,
 	const TypeId base_type = program_->entities[base].type;
 	const std::uint32_t action = MakeDump(DUMP_BASE_INITIALIZER_ACTION,
 		base_type, VALUE_NONE, program_->entities[base].identity_name);
+	dump_.nodes[action].base_projection_count = 1;
 	const std::uint32_t constructor = BuildConstructorAction(base_type,
 		scope, arguments, false, list_initialization);
 	dump_.Add(action, constructor);

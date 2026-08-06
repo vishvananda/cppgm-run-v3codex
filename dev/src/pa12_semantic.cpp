@@ -605,6 +605,12 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 		target_record.kind == TYPE_RVALUE_REFERENCE ? target_record.child : target;
 	if (conversion == CONVERSION_DERIVED_TO_BASE)
 	{
+		const std::size_t projections =
+			BaseConversionDistance(value.type, nonreference);
+		if (projections == std::numeric_limits<std::size_t>::max() ||
+			projections > std::numeric_limits<std::uint32_t>::max())
+			throw std::logic_error(
+				"derived conversion has no bounded base path");
 		const bool binds_temporary =
 			target_record.kind == TYPE_LVALUE_REFERENCE &&
 			value.category != VALUE_LVALUE;
@@ -614,6 +620,8 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 			VALUE_XVALUE : VALUE_PRVALUE;
 		const std::uint32_t cast = MakeDump(DUMP_CAST_EXPRESSION,
 			nonreference, category);
+		dump_.nodes[cast].base_projection_count =
+			static_cast<std::uint32_t>(projections);
 		dump_.Add(cast, value.node);
 		value.node = cast;
 		value.type = nonreference;
@@ -895,7 +903,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 	if (arena_->IsTag(node, "id-expression"))
 	{
 		const std::string spelling = arena_->Payload(node);
-		std::vector<BindingId> candidates = FunctionCandidates(scope, spelling);
+		EntityId function_naming_class = kNoEntity;
+		std::vector<BindingId> candidates = FunctionCandidates(scope, spelling,
+			&function_naming_class);
 		if (!candidates.empty())
 		{
 			BindingId selected = kNoBinding;
@@ -927,6 +937,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 				}
 			if (selected == kNoBinding)
 				throw std::runtime_error("no target-matching overloaded function");
+			if (!CanAccessMember(selected, function_naming_class))
+				throw std::runtime_error("inaccessible member function");
 			const FunctionInfo& function = GetFunction(selected);
 			ExpressionInfo result;
 			result.type = function.type;
@@ -969,8 +981,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 		}
 		if (binding.kind != BIND_VARIABLE && binding.kind != BIND_PARAMETER)
 			throw std::runtime_error("name does not denote a value");
+		if (!CanAccessMember(found.ordinary, found.naming_class))
+			throw std::runtime_error("inaccessible member object");
 		if (binding.non_static_data_member)
-			return AnalyzeImplicitDataMember(found.ordinary, scope, target);
+			return AnalyzeImplicitDataMember(found.ordinary, scope, target,
+				found.naming_class);
 		const std::uint32_t injected_fact =
 			found.ordinary < injected_fact_by_binding_.size() ?
 			injected_fact_by_binding_[found.ordinary] : kNoDumpEdge;
@@ -1181,9 +1196,9 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	ScopeId scope, const std::vector<NodeId>& argument_syntax,
 	const std::vector<ExpressionInfo>& arguments,
-	const ExpressionInfo* object, TypeId target)
+	const ExpressionInfo* object, TypeId target, EntityId naming_class)
 {
-	if (!CanAccessMember(selected))
+	if (!CanAccessMember(selected, naming_class))
 		throw std::runtime_error("inaccessible member function");
 	const FunctionInfo function = GetFunction(selected);
 	const TypeRecord function_type = program_->types.Get(function.type);
@@ -1298,7 +1313,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 			return ApplyTarget(result, target);
 		}
 
-		std::vector<BindingId> candidates = FunctionCandidates(scope, spelling);
+		EntityId function_naming_class = kNoEntity;
+		std::vector<BindingId> candidates = FunctionCandidates(scope, spelling,
+			&function_naming_class);
 		std::vector<ExpressionInfo> arguments;
 		bool arguments_analyzed = false;
 		if (!FindFunctionTemplates(scope, spelling).empty())
@@ -1307,7 +1324,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 				arguments.push_back(AnalyzeExpression(argument_syntax[i], scope));
 			arguments_analyzed = true;
 			DeduceFunctionTemplates(scope, spelling, arguments);
-			candidates = FunctionCandidates(scope, spelling);
+			candidates = FunctionCandidates(scope, spelling,
+				&function_naming_class);
 		}
 		if (!candidates.empty())
 		{
@@ -1343,7 +1361,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 			const BindingId selected = SelectOverload(scope, argument_syntax,
 				arguments, candidates, object);
 			return BuildResolvedCall(selected, scope, argument_syntax,
-				arguments, object, target);
+				arguments, object, target, function_naming_class);
 		}
 
 		TypeId cast_type = kNoType;
@@ -1701,116 +1719,6 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 	return result;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
-{
-	const NodeId type_id = FindChild(node, "type-id");
-	if (type_id == kNoNode) throw std::runtime_error("cast without type-id");
-	const TypeId target = BuildTypeId(type_id, scope);
-	NodeId operand_node = kNoNode;
-	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
-		edge = arena_->NextEdge(edge))
-		if (arena_->EdgeChild(edge) != type_id) operand_node = arena_->EdgeChild(edge);
-	// Expression analysis can intern more types and reallocate TypeTable storage.
-	// Keep the cast shape by value across the recursive operand analysis.
-	const TypeRecord target_record = program_->types.Get(target);
-	const TypeId unqualified_target = program_->types.RemoveTopCv(target);
-	const TypeRecord unqualified_target_record =
-		program_->types.Get(unqualified_target);
-	const bool function_pointer_target =
-		unqualified_target_record.kind == TYPE_POINTER &&
-		program_->types.IsFunction(unqualified_target_record.child);
-	ExpressionInfo operand = AnalyzeExpression(operand_node, scope,
-		program_->types.IsFunction(EffectiveType(target)) ||
-		function_pointer_target ||
-		unqualified_target_record.kind == TYPE_MEMBER_POINTER ?
-		target : kNoType);
-	if (!IsVoid(target) && !IsArithmetic(target) && !IsPointer(target) &&
-		!IsNullptr(target) && target_record.kind != TYPE_LVALUE_REFERENCE &&
-		target_record.kind != TYPE_RVALUE_REFERENCE &&
-		target_record.kind != TYPE_MEMBER_POINTER &&
-		program_->types.Get(program_->types.RemoveTopCv(target)).kind != TYPE_NAMED)
-		throw std::runtime_error("unsupported cast target");
-	const ValueCategory category = target_record.kind == TYPE_LVALUE_REFERENCE ?
-		VALUE_LVALUE : target_record.kind == TYPE_RVALUE_REFERENCE ?
-		VALUE_XVALUE : VALUE_PRVALUE;
-	const std::string cast_kind = arena_->Payload(node);
-	if (target_record.kind == TYPE_LVALUE_REFERENCE ||
-		target_record.kind == TYPE_RVALUE_REFERENCE)
-	{
-		const bool explicit_rvalue = target_record.kind == TYPE_RVALUE_REFERENCE &&
-			SimilarUnqualified(EffectiveType(operand.type), target_record.child);
-		const bool explicit_cv_lvalue =
-			target_record.kind == TYPE_LVALUE_REFERENCE &&
-			operand.category == VALUE_LVALUE &&
-			SimilarUnqualified(EffectiveType(operand.type), target_record.child) &&
-			(cast_kind.find("CONST") != std::string::npos ||
-			 cast_kind.compare(0, 10, "OP_LPAREN:") == 0);
-		if (!explicit_rvalue && !explicit_cv_lvalue &&
-			Conversion(operand, target) == CONVERSION_INVALID)
-			throw std::runtime_error("invalid reference cast");
-		operand.type = target;
-		operand.category = category;
-		dump_.nodes[operand.node].type = target;
-		dump_.nodes[operand.node].category = category;
-		return operand;
-	}
-	if (target_record.kind == TYPE_MEMBER_POINTER)
-	{
-		operand.type = target;
-		dump_.nodes[operand.node].type = target;
-		return operand;
-	}
-	const EntityId source_entity = EntityOf(operand.type);
-	const EntityId target_entity = EntityOf(target);
-	const bool source_enum = source_entity != kNoEntity &&
-		(program_->entities[source_entity].flavor == NAMED_ENUM ||
-		 program_->entities[source_entity].flavor == NAMED_ENUM_CLASS);
-	const bool target_enum = target_entity != kNoEntity &&
-		(program_->entities[target_entity].flavor == NAMED_ENUM ||
-		 program_->entities[target_entity].flavor == NAMED_ENUM_CLASS);
-	const bool permits_reinterpretation =
-		cast_kind.compare(0, 10, "OP_LPAREN:") == 0 ||
-		cast_kind.find("REINTER") != std::string::npos;
-	if (cast_kind.find("STATIC") != std::string::npos && IsPointer(target) &&
-		IsPointer(operand.type))
-	{
-		const TypeRecord source_pointer = program_->types.Get(Decay(operand.type));
-		const TypeRecord target_pointer = program_->types.Get(
-			program_->types.RemoveTopCv(target));
-		const EntityId derived = EntityOf(source_pointer.child);
-		const EntityId base = EntityOf(target_pointer.child);
-		if (derived != kNoEntity && base != kNoEntity &&
-			program_->IsBaseOf(base, derived) &&
-			!BaseConversionAllowed(derived, base))
-			throw std::runtime_error("inaccessible base conversion");
-	}
-	const bool valid = IsVoid(target) ||
-		(IsArithmetic(target) && IsArithmetic(operand.type)) ||
-		(target_enum && (IsIntegral(operand.type, true) ||
-			IsFloating(operand.type))) ||
-		(source_enum && (IsIntegral(target, true) || IsFloating(target))) ||
-		(IsPointer(target) && (IsPointer(operand.type) ||
-			IsNullptr(operand.type) || operand.integer_literal_zero)) ||
-		(target == program_->types.Fundamental(FUND_BOOL) &&
-			(IsPointer(operand.type) || IsNullptr(operand.type))) ||
-		(IsNullptr(target) && (IsNullptr(operand.type) ||
-			operand.integer_literal_zero)) ||
-		(permits_reinterpretation &&
-			((IsPointer(target) && IsIntegral(operand.type)) ||
-			 (IsIntegral(target) && IsPointer(operand.type))));
-	if (!valid) throw std::runtime_error("invalid explicit conversion");
-	const std::uint32_t cast = MakeDump(DUMP_CAST_EXPRESSION, target,
-		VALUE_PRVALUE, program_->names.Intern(arena_->Payload(node)));
-	dump_.Add(cast, operand.node);
-	ExpressionInfo result;
-	result.node = cast;
-	result.type = target;
-	result.constant = operand.constant;
-	result.value = operand.value;
-	++expression_count_;
-	return result;
-}
-
 ExpressionInfo SemanticAnalyzer::AnalyzeSubscript(NodeId node, ScopeId scope)
 {
 	const std::uint32_t first = arena_->FirstEdge(node);
@@ -1881,13 +1789,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 		entity, name, LOOKUP_ORDINARY);
 	if (found.ordinary == kNoBinding)
 		throw std::runtime_error("unknown class member");
-	if (!CanAccessMember(found.ordinary))
+	if (!CanAccessMember(found.ordinary, found.naming_class))
 		throw std::runtime_error("inaccessible class member");
 	const EntityId member_owner =
 		program_->bindings[found.ordinary].member_owner;
-	if (member_owner != kNoEntity && member_owner != entity &&
-		!BaseConversionAllowed(entity, member_owner))
-		throw std::runtime_error("inaccessible inherited class member");
 	TypeId type = program_->bindings[found.ordinary].type;
 	if (IsConst(owner_type)) type = program_->types.Qualify(type, CV_CONST);
 	std::string operation = arena_->Payload(node);
@@ -1896,6 +1801,16 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	operation += program_->names.Get(name);
 	const std::uint32_t expression = MakeDump(DUMP_MEMBER_EXPRESSION,
 		type, VALUE_LVALUE, program_->names.Intern(operation), found.ordinary);
+	if (member_owner != kNoEntity)
+	{
+		const std::size_t projections = BaseConversionDistance(owner_type,
+			program_->entities[member_owner].type);
+		if (projections == std::numeric_limits<std::size_t>::max() ||
+			projections > std::numeric_limits<std::uint32_t>::max())
+			throw std::logic_error("member has no bounded base path");
+		dump_.nodes[expression].base_projection_count =
+			static_cast<std::uint32_t>(projections);
+	}
 	dump_.Add(expression, object.node);
 	ExpressionInfo result;
 	result.node = expression;

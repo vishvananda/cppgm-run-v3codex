@@ -176,26 +176,6 @@ private:
 		return RemoveTopQualifiers(RemoveReference(type));
 	}
 
-	EntityId ClassEntity(TypeId type) const
-	{
-		type = ExpressionObjectType(type);
-		const TypeRecord* record = &program_.types.Get(type);
-		if (record->kind == TYPE_POINTER)
-		{
-			type = RemoveTopQualifiers(record->child);
-			record = &program_.types.Get(type);
-		}
-		return record->kind == TYPE_NAMED ? record->entity : kNoEntity;
-	}
-
-	bool IsDerivedBaseConversion(TypeId source, TypeId target) const
-	{
-		const EntityId derived = ClassEntity(source);
-		const EntityId base = ClassEntity(target);
-		return derived != kNoEntity && base != kNoEntity && derived != base &&
-			program_.IsBaseOf(base, derived);
-	}
-
 	bool IsArrayType(TypeId type) const
 	{
 		return program_.types.Get(ExpressionObjectType(type)).kind == TYPE_ARRAY;
@@ -1099,9 +1079,7 @@ private:
 		Operand base = pointer_object ?
 			LowerValue(children[0], LowPtr()) :
 			AddressOfStorage(LowerStorage(children[0]));
-		if (member.member_owner != kNoEntity)
-			base = ProjectToBase(base, arena_.nodes[children[0]].type,
-				program_.entities[member.member_owner].type);
+		base = ProjectBaseSubobjects(base, record.base_projection_count);
 		const Operand result = Temp(LowPtr());
 		Instruction index(Instruction::INDEX);
 		index.dest = result.id;
@@ -1178,9 +1156,8 @@ private:
 			(record.category == VALUE_LVALUE || record.category == VALUE_XVALUE))
 		{
 			const Operand source = AddressOfStorage(LowerStorage(children[0]));
-			return IsDerivedBaseConversion(arena_.nodes[children[0]].type,
-				record.type) ? ProjectToBase(source,
-				arena_.nodes[children[0]].type, record.type) : source;
+			return ProjectBaseSubobjects(source,
+				record.base_projection_count);
 		}
 		throw std::runtime_error("expression does not designate scalar storage");
 	}
@@ -1380,10 +1357,10 @@ private:
 			else if (record.category == VALUE_LVALUE || record.category == VALUE_XVALUE)
 				result = LoadStorage(LowerStorage(node),
 					LowerExpressionType(record.type));
-			else if (IsDerivedBaseConversion(arena_.nodes[children[0]].type,
-				record.type))
-				result = ProjectToBase(LowerValue(children[0], LowPtr()),
-					arena_.nodes[children[0]].type, record.type);
+			else if (record.base_projection_count != 0)
+				result = ProjectBaseSubobjects(
+					LowerValue(children[0], LowPtr()),
+					record.base_projection_count);
 			else result = Convert(LowerValue(children[0]),
 				LowerExpressionType(record.type), false);
 		}
@@ -2378,20 +2355,28 @@ private:
 		return projected;
 	}
 
-	Operand ProjectToBase(Operand object, TypeId source, TypeId target)
+	Operand ProjectBaseSubobjects(Operand object,
+		std::uint32_t projection_count)
 	{
-		EntityId current = ClassEntity(source);
-		const EntityId base = ClassEntity(target);
-		if (current == kNoEntity || base == kNoEntity)
-			throw std::logic_error("base projection has non-class type");
-		while (current != base)
-		{
-			current = program_.entities[current].direct_base;
-			if (current == kNoEntity)
-				throw std::logic_error("base projection target is not an ancestor");
+		for (std::uint32_t i = 0; i < projection_count; ++i)
 			object = ProjectBaseSubobject(object);
-		}
 		return object;
+	}
+
+	void LowerBaseInitializationAction(const DumpNode& action,
+		const NodeChildren& children)
+	{
+		if (action.kind != DUMP_BASE_INITIALIZER_ACTION ||
+			current_this_binding_ == kNoBinding || children.size() != 1 ||
+			arena_.nodes[children[0]].kind != DUMP_CONSTRUCTOR_ACTION)
+			throw std::logic_error(
+				"base initialization is outside a constructor");
+		if (IsTrivialConstructorAction(action.type, children)) return;
+		const Operand object = LoadStorage(
+			StorageFor(current_this_binding_, LowPtr()), LowPtr());
+		const Operand destination = ProjectBaseSubobjects(object,
+			action.base_projection_count);
+		LowerConstructorAction(children[0], destination);
 	}
 
 	Operand ProjectConstructorMemberPath(
