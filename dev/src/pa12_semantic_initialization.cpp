@@ -1,7 +1,6 @@
 #include "pa12_semantic_detail.h"
 
 #include <stdexcept>
-#include <vector>
 
 namespace cppgm
 {
@@ -30,13 +29,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 	const EntityId class_entity = EntityOf(type);
 	if (IsClassEntity(*program_, class_entity))
 	{
-		std::vector<NodeId> elements;
-		for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
-			edge = arena_->NextEdge(edge))
-			elements.push_back(arena_->EdgeChild(edge));
-		std::size_t cursor = 0;
-		ExpressionInfo result = AnalyzeAggregateInit(type, scope, elements, &cursor);
-		if (cursor != elements.size())
+		std::uint32_t element_edge = arena_->FirstEdge(node);
+		ExpressionInfo result = AnalyzeAggregateInit(type, scope, &element_edge);
+		if (element_edge != kNoEdge)
 			throw std::runtime_error("excess aggregate initializer elements");
 		return result;
 	}
@@ -63,7 +58,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 }
 
 ExpressionInfo SemanticAnalyzer::AnalyzeAggregateInit(TypeId type,
-	ScopeId scope, const std::vector<NodeId>& elements, std::size_t* cursor)
+	ScopeId scope, std::uint32_t* element_edge)
 {
 	const EntityId entity = EntityOf(type);
 	if (entity == kNoEntity || !program_->entities[entity].is_aggregate)
@@ -73,7 +68,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAggregateInit(TypeId type,
 	const std::uint32_t list = MakeDump(DUMP_BRACED_INIT_LIST,
 		type, VALUE_LVALUE);
 	const std::vector<BindingId>& members = entity_data_members_[entity];
-	for (std::size_t i = 0; i < members.size(); ++i)
+	const std::size_t member_count =
+		program_->entities[entity].flavor == NAMED_UNION ?
+			(*element_edge == kNoEdge || members.empty() ? 0 : 1) :
+			members.size();
+	for (std::size_t i = 0; i < member_count; ++i)
 	{
 		const BindingId member_id = members[i];
 		const BindingRecord& member = program_->bindings[member_id];
@@ -81,25 +80,26 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAggregateInit(TypeId type,
 			member.type, VALUE_NONE, member.name, member_id);
 		const EntityId member_entity = EntityOf(member.type);
 		const bool class_member = IsClassEntity(*program_, member_entity);
-		if (*cursor < elements.size())
+		if (*element_edge != kNoEdge)
 		{
-			const NodeId source = elements[*cursor];
+			const std::uint32_t source_edge = *element_edge;
+			const NodeId source = arena_->EdgeChild(source_edge);
 			ExpressionInfo value;
 			if (class_member &&
 				program_->entities[member_entity].is_aggregate)
 			{
 				if (arena_->IsTag(source, "braced-init-list"))
 				{
-					++*cursor;
+					*element_edge = arena_->NextEdge(source_edge);
 					value = AnalyzeBracedInit(source, scope, member.type);
 				}
 				else
 					value = AnalyzeAggregateInit(member.type, scope,
-						elements, cursor);
+						element_edge);
 			}
 			else
 			{
-				++*cursor;
+				*element_edge = arena_->NextEdge(source_edge);
 				value = AnalyzeExpression(source, scope, member.type);
 			}
 			dump_.Add(action, value.node);
@@ -110,7 +110,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAggregateInit(TypeId type,
 				throw std::runtime_error(
 					"omitted aggregate member requires construction");
 			const ExpressionInfo value = AnalyzeAggregateInit(member.type,
-				scope, elements, cursor);
+				scope, element_edge);
 			dump_.Add(action, value.node);
 		}
 		else

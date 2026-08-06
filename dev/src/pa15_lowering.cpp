@@ -28,6 +28,9 @@ using namespace pa12_semantic_detail;
 using namespace pa15_lowir_detail;
 using namespace pa15_lowering_support;
 
+const std::size_t kAggregateProjectionReplayLimit = 8;
+typedef SmallSequence<BindingId, kAggregateProjectionReplayLimit> AggregatePath;
+
 class GraphLowerer
 {
 public:
@@ -768,55 +771,6 @@ private:
 	Operand FloatingOperand(const std::string& spelling, const LowType& type)
 	{
 		return Operand::Floating(output_.literals.Intern(spelling), type);
-	}
-
-	static int HexDigit(char value)
-	{
-		return value >= '0' && value <= '9' ? value - '0' :
-			value >= 'a' && value <= 'f' ? value - 'a' + 10 :
-			value >= 'A' && value <= 'F' ? value - 'A' + 10 : -1;
-	}
-
-	std::vector<unsigned char> DecodeStringLiteral(const std::string& spelling) const
-	{
-		std::vector<unsigned char> bytes;
-		const std::size_t first = spelling.find('"');
-		const std::size_t last = spelling.rfind('"');
-		if (first == std::string::npos || last <= first)
-			throw std::runtime_error("invalid PA15 string literal spelling");
-		for (std::size_t i = first + 1; i < last; ++i)
-		{
-			unsigned value = static_cast<unsigned char>(spelling[i]);
-			if (spelling[i] == '\\' && ++i < last)
-			{
-				const char escape = spelling[i];
-				if (escape == 'x')
-				{
-					value = 0;
-					int digit = -1;
-					while (i + 1 < last && (digit = HexDigit(spelling[i + 1])) >= 0)
-					{
-						value = value * 16 + static_cast<unsigned>(digit);
-						++i;
-					}
-				}
-				else if (escape >= '0' && escape <= '7')
-				{
-					value = static_cast<unsigned>(escape - '0');
-					for (int count = 1; count < 3 && i + 1 < last &&
-						spelling[i + 1] >= '0' && spelling[i + 1] <= '7'; ++count)
-						value = value * 8 +
-							static_cast<unsigned>(spelling[++i] - '0');
-				}
-				else value = escape == 'n' ? '\n' : escape == 'r' ? '\r' :
-					escape == 't' ? '\t' : escape == 'v' ? '\v' :
-					escape == 'b' ? '\b' : escape == 'f' ? '\f' :
-					escape == 'a' ? '\a' : static_cast<unsigned char>(escape);
-			}
-			bytes.push_back(static_cast<unsigned char>(value));
-		}
-		bytes.push_back(0);
-		return bytes;
 	}
 
 	SymbolId EnsureStringLiteral(std::uint32_t node)
@@ -2384,8 +2338,8 @@ private:
 		const Operand storage = StorageFor(variable.binding,
 			LowerStorageType(variable.type));
 		if (AggregateHasLeaf(initializer)) (void)AddressOfStorage(storage);
-		std::vector<BindingId> path;
-		LowerAggregateActions(initializer, storage, &path);
+		AggregatePath path;
+		LowerAggregateActions(initializer, storage, &path, Operand());
 	}
 
 	bool AggregateHasLeaf(std::uint32_t list_node) const
@@ -2406,7 +2360,8 @@ private:
 	}
 
 	void LowerAggregateActions(std::uint32_t list_node,
-		const Operand& root, std::vector<BindingId>* path)
+		const Operand& root, AggregatePath* path,
+		const Operand& retained_address)
 	{
 		if (stats_) ++stats_->lowered_nodes;
 		const DumpNode& list = arena_.nodes[list_node];
@@ -2421,21 +2376,61 @@ private:
 				action.binding >= program_.bindings.size())
 				throw std::logic_error("invalid aggregate initializer action");
 			if (stats_) ++stats_->lowered_nodes;
-			path->push_back(action.binding);
 			const NodeChildren values = Children(actions[i]);
-			if (values.size() == 1 &&
+			const bool nested = values.size() == 1 &&
 				arena_.nodes[values[0]].kind == DUMP_BRACED_INIT_LIST &&
-				IsClassObjectType(action.type))
-				LowerAggregateActions(values[0], root, path);
+				IsClassObjectType(action.type);
+			if (retained_address.kind != Operand::NONE)
+			{
+				const Operand destination = ProjectAggregateMember(
+					retained_address, action.binding);
+				if (nested)
+					LowerAggregateActions(values[0], root, path, destination);
+				else
+					LowerAggregateLeaf(action, values, root, *path, destination);
+				continue;
+			}
+			path->Push(action.binding);
+			if (nested && path->size() == kAggregateProjectionReplayLimit)
+			{
+				const Operand destination = ProjectAggregatePath(root, *path);
+				LowerAggregateActions(values[0], root, path, destination);
+			}
+			else if (nested)
+				LowerAggregateActions(values[0], root, path, Operand());
 			else
-				LowerAggregateLeaf(action, values, root, *path);
-			path->pop_back();
+				LowerAggregateLeaf(action, values, root, *path, Operand());
+			path->Pop();
 		}
+	}
+
+	Operand ProjectAggregateMember(const Operand& base, BindingId binding)
+	{
+		const BindingRecord& member = program_.bindings[binding];
+		const Operand projected = Temp(LowPtr());
+		Instruction index(Instruction::INDEX);
+		index.dest = projected.id;
+		index.type = LowI8();
+		index.first = base;
+		index.second = Operand(
+			static_cast<std::int64_t>(member.member_offset), LowI64());
+		index.projection = INDEX_PROJECTION_FIELD;
+		Emit(index);
+		return projected;
+	}
+
+	Operand ProjectAggregatePath(const Operand& root,
+		const AggregatePath& path)
+	{
+		Operand destination = AddressOfStorage(root);
+		for (std::size_t i = 0; i < path.size(); ++i)
+			destination = ProjectAggregateMember(destination, path[i]);
+		return destination;
 	}
 
 	void LowerAggregateLeaf(const DumpNode& action,
 		const NodeChildren& values, const Operand& root,
-		const std::vector<BindingId>& path)
+		const AggregatePath& path, const Operand& retained_destination)
 	{
 		if (values.size() > 1)
 			throw std::logic_error("aggregate leaf has multiple values");
@@ -2461,22 +2456,8 @@ private:
 			else throw std::runtime_error(
 				"aggregate leaf requires unsupported construction");
 		}
-		Operand destination = AddressOfStorage(root);
-		for (std::size_t i = 0; i < path.size(); ++i)
-		{
-			const BindingRecord& member = program_.bindings[path[i]];
-			const Operand projected = Temp(LowPtr());
-			Instruction index(Instruction::INDEX);
-			index.dest = projected.id;
-			index.type = LowI8();
-			index.first = destination;
-			index.second = Operand(
-				static_cast<std::int64_t>(member.member_offset), LowI64());
-			index.projection = INDEX_PROJECTION_FIELD;
-			Emit(index);
-			destination = projected;
-		}
-		store.second = destination;
+		store.second = retained_destination.kind == Operand::NONE ?
+			ProjectAggregatePath(root, path) : retained_destination;
 		Emit(store);
 	}
 

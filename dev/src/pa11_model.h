@@ -210,7 +210,8 @@ struct EntityRecord
 	BindingId declaration;
 	std::uint64_t object_size, object_alignment;
 	bool complete, layout_complete, has_user_declared_constructor,
-		default_constructible, trivial_default_constructor,
+		has_user_provided_constructor, default_constructible,
+		trivial_default_constructor,
 		has_direct_base, is_aggregate;
 
 	EntityRecord();

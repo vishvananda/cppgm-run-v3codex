@@ -133,6 +133,13 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 				{
 					EntityRecord& record = program_->entities[entity];
 					record.has_user_declared_constructor = true;
+					const NodeId initializer = FindChild(member, "initializer");
+					const NodeId special = initializer == kNoNode ? kNoNode :
+						FindChild(initializer, "special-initializer");
+					record.has_user_provided_constructor =
+						record.has_user_provided_constructor ||
+						arena_->IsTag(member, "special-member-definition") ||
+						special == kNoNode;
 					const NodeId declarator = FindChild(member, "declarator");
 					const NodeId parameters = declarator == kNoNode ? kNoNode :
 						FindChild(declarator, "parameter-clause");
@@ -160,7 +167,8 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 	const std::vector<BindingId>& members = entity_data_members_[entity];
 	const bool implicit_default_constructor =
 		!owner.has_user_declared_constructor;
-	owner.is_aggregate = implicit_default_constructor && !owner.has_direct_base;
+	owner.is_aggregate = !owner.has_user_provided_constructor &&
+		!owner.has_direct_base;
 	if (implicit_default_constructor)
 	{
 		owner.default_constructible = true;

@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <stdexcept>
 #include <streambuf>
 #include <string>
 #include <vector>
@@ -15,6 +16,7 @@ namespace pa15_lowering_support
 
 std::string StripOperationPrefix(const std::string& operation);
 std::string SanitizeSymbol(const std::string& name);
+std::vector<unsigned char> DecodeStringLiteral(const std::string& spelling);
 
 template <typename Value, std::size_t InlineCount>
 class SmallSequence
@@ -27,6 +29,13 @@ public:
 		if (count_ < InlineCount) inline_[count_] = value;
 		else overflow_.push_back(value);
 		++count_;
+	}
+	void Pop()
+	{
+		if (count_ == 0)
+			throw std::logic_error("cannot pop an empty small sequence");
+		if (count_ > InlineCount) overflow_.pop_back();
+		--count_;
 	}
 
 	std::size_t size() const { return count_; }
