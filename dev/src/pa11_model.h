@@ -210,6 +210,7 @@ struct BindingRecord
 {
 	ScopeId owner;
 	NameId name;
+	NameId qualified_name;
 	BindingKind kind;
 	TypeId type;
 	BindingId next;

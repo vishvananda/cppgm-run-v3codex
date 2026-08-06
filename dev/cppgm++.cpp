@@ -4,6 +4,7 @@
 #include "pa10_syntax.h"
 #include "pa11_semantic.h"
 #include "pa12_semantic.h"
+#include "pa15_lowering.h"
 #include "tool_help_text.h"
 
 #include <cstdlib>
@@ -594,8 +595,43 @@ int run_emit_semantics_mode(const vector<string> & args)
 
 int run_emit_lowir_mode(const vector<string> & args)
 {
-  (void)parse_source_output_invocation(args, true);
-  return run_unimplemented_mode("--emit-lowir", "PA14");
+	const SourceOutputInvocation invocation =
+		parse_source_output_invocation(args, true);
+	ofstream output(invocation.output.c_str(), ios::out | ios::trunc);
+	if(!output) {
+		throw runtime_error("unable to open output file: " + invocation.output);
+	}
+	const cppgm::PreprocessingOptions options = make_preprocessing_options();
+	vector<cppgm::LowIRSource> sources;
+	for(size_t i = 0; i < invocation.inputs.size(); ++i) {
+		const string & path = invocation.inputs[i];
+		ifstream input(path.c_str(), ios::in | ios::binary);
+		if(!input) throw runtime_error("unable to open source file: " + path);
+		sources.push_back(cppgm::LowIRSource(path,
+			string((istreambuf_iterator<char>(input)), istreambuf_iterator<char>())));
+	}
+	cppgm::LowIRLoweringStats stats;
+	cppgm::WriteLowIRProgram(sources, options, output,
+		getenv("CPPGM_FRONTEND_STATS") ? &stats : 0);
+	if(getenv("CPPGM_FRONTEND_STATS")) {
+		cerr << "pa15_stats"
+			 << " source_bytes=" << stats.source_bytes
+			 << " tokens=" << stats.tokens
+			 << " semantic_nodes=" << stats.semantic_nodes
+			 << " semantic_edges=" << stats.semantic_edges
+			 << " lowered_nodes=" << stats.lowered_nodes
+			 << " functions=" << stats.functions
+			 << " globals=" << stats.globals
+			 << " blocks=" << stats.blocks
+			 << " instructions=" << stats.instructions
+			 << " binding_index_probes=" << stats.binding_index_probes
+			 << " typed_storage_bytes=" << stats.typed_storage_bytes
+			 << " output_bytes=" << stats.output_bytes
+			 << " semantic_ns=" << stats.semantic_nanoseconds
+			 << " lowering_ns=" << stats.lowering_nanoseconds
+			 << " render_ns=" << stats.render_nanoseconds << '\n';
+	}
+	return EXIT_SUCCESS;
 }
 
 int run_driver_mode(const vector<string> & args)

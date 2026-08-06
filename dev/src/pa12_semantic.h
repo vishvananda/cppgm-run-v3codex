@@ -10,6 +10,11 @@
 namespace cppgm
 {
 
+namespace pa12_semantic_detail
+{
+class SemanticGraphConsumer;
+}
+
 struct SemanticAnalysisStats
 {
 	PreprocessingStats preprocessing;
@@ -50,5 +55,13 @@ struct SemanticAnalysisStats
 void WriteSemanticTranslationUnit(const std::string& path,
 	const std::string& source, const PreprocessingOptions& options,
 	std::ostream& output, SemanticAnalysisStats* stats = 0);
+
+// Parse and analyze once, then synchronously expose the canonical semantic
+// graph to a typed next-phase consumer. The graph view is borrowed and is no
+// longer valid when this function returns.
+void ConsumeSemanticTranslationUnit(const std::string& path,
+	const std::string& source, const PreprocessingOptions& options,
+	pa12_semantic_detail::SemanticGraphConsumer& consumer,
+	SemanticAnalysisStats* stats = 0);
 
 }

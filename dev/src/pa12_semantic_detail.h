@@ -22,8 +22,10 @@ using namespace pa11;
 class SemanticAnalyzer : public SyntaxTreeConsumer
 {
 public:
-	SemanticAnalyzer(std::ostream& output, SemanticAnalysisStats* stats)
+	SemanticAnalyzer(std::ostream& output, SemanticAnalysisStats* stats,
+		SemanticGraphConsumer* graph_consumer = 0, bool render_output = true)
 		: arena_(0), output_(output), stats_(stats), program_(0),
+		  graph_consumer_(graph_consumer), render_output_(render_output),
 		  root_(kNoDumpEdge), current_return_type_(kNoType),
 		  loop_depth_(0), switch_depth_(0), expression_count_(0),
 		  overload_candidates_(0), overload_order_comparisons_(0),
@@ -171,6 +173,8 @@ private:
 	std::ostream& output_;
 	SemanticAnalysisStats* stats_;
 	Program* program_;
+	SemanticGraphConsumer* graph_consumer_;
+	bool render_output_;
 	DumpArena dump_;
 	std::uint32_t root_;
 	std::vector<NameId> scope_prefixes_;

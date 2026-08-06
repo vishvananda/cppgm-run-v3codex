@@ -467,7 +467,7 @@ EntityRecord::EntityRecord()
 }
 
 BindingRecord::BindingRecord()
-	: owner(kNoScope), name(0), kind(BIND_VARIABLE), type(kNoType),
+	: owner(kNoScope), name(0), qualified_name(0), kind(BIND_VARIABLE), type(kNoType),
 	  next(kNoBinding), display_flavor(NAMED_NONE), display_type_name(0),
 	  canonical(kNoBinding), value(0), constant(false)
 {

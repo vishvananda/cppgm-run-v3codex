@@ -225,5 +225,26 @@ struct InjectedMemberInfo
 		: storage(storage_value), member(member_value) {}
 };
 
+// Borrowed, translation-unit-local view of the canonical PA12 graph.  The
+// owner invokes consumers synchronously before releasing Program and DumpArena;
+// consumers must copy only the typed facts needed by their next phase.
+struct SemanticGraphView
+{
+	const Program& program;
+	const DumpArena& arena;
+	std::uint32_t root;
+
+	SemanticGraphView(const Program& program_value,
+		const DumpArena& arena_value, std::uint32_t root_value)
+		: program(program_value), arena(arena_value), root(root_value) {}
+};
+
+class SemanticGraphConsumer
+{
+public:
+	virtual ~SemanticGraphConsumer() {}
+	virtual void Consume(const SemanticGraphView& graph) = 0;
+};
+
 }
 }
