@@ -298,6 +298,9 @@ public:
 		LookupKind kind);
 	ScopeId ResolveScope(ScopeId current, const NamePath& name);
 	ScopeId ScopeForType(TypeId type) const;
+	ScopeId ParentScope(ScopeId scope) const;
+	ScopeKind KindOfScope(ScopeId scope) const;
+	EntityId EntityForScope(ScopeId scope) const;
 	std::size_t SizeOf(TypeId type) const;
 	std::size_t AlignOf(TypeId type) const;
 	std::string RenderType(TypeId type) const;

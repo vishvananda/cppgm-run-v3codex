@@ -2,110 +2,77 @@
 
 ## Stage Design and Spec Alignment
 
-PA16 extends the shared PA11/PA12 graph and PA15 typed LowIR path in place:
-`class syntax -> canonical entity/binding facts -> resolved object expressions and
-initialization actions -> typed object/address LowIR`. Class entities own
-completion, layout, and separate user-declared/user-provided constructor facts;
-member/function bindings own declaration ordinals, offsets, static category,
-signatures, and object class. Resolved nodes retain selected bindings,
-initialization mode, conversions, and conservative exception facts, and lowering
-consumes them without name lookup, semantic reconstruction, or text transport.
+PA16 extends the shared PA11/PA12 semantic graph and PA15 typed LowIR path in
+place: syntax publishes canonical entities and bindings, semantic analysis
+resolves lookup, access, conversions, initialization, and lifetime, and lowering
+consumes those IDs and actions without repeating lookup or transporting text.
+Class entities own completion/layout/special-member facts; bindings own names,
+signatures, access, storage, and declaration identity; resolved expression nodes
+retain the selected binding, value category, conversion, and subobject path.
 
-This follows `spec.md` sections 2, 3, 6, 8, and 9. Aggregate planning walks the
-borrowed syntax-edge sequence and canonical member index once. Local lowering
-keeps shallow paths inline and retains typed subobject addresses after bounded
-depth, so action work is linear while existing shallow presentation stays
-stable. Inherited lookup results retain the compact naming-class `EntityId`, and
-derived conversions/member/base actions retain an explicit projection count, so
-access is decided once and lowering never walks inheritance edges. Constructor
-overload sets and class-local action scratch are borrowed from their canonical
-owners rather than copied or sized by unrelated bindings. The semantic graph
-remains translation-unit-owned and synchronously borrowed by typed lowering;
-textual output is only the final view.
+The operator spine follows `spec.md` sections 2-6, 8, and 9. Friend declarations
+retain lexical and granting-class identity, associated classes/scopes are
+canonical generation-marked IDs, and ordinary/member/ADL candidates are deduped
+before one non-throwing viability/ranking pass. The selected call uses the
+existing typed call ABI path; built-in analysis is fallback, not a competing
+textual rewrite. Work is O(S + C*A) for S associated scopes, C candidates, and A
+operands, with scratch owned by semantic analysis and reused across expressions.
 
-Destruction uses the same identity path: each class owns one destructor binding
-and explicit destructible/trivial facts; scopes own compact automatic-object
-obligations; demanded destructor bodies own reverse member/base actions. Access,
-deletion, object identity, order, and projection are fixed semantically before
-typed lowering. Destructor returns share one subobject epilogue, and bounded
-arrays flatten to one leaf constructor fact with shared reverse exception
-suffixes after an eight-element inline case; union destructors never synthesize
-ordinary-member actions for inactive variants. This applies `spec.md` sections
-2, 3, 4, 5, 6, 8, and 9: stable identity, monotonic demand, no lowering lookup,
-cohesive phase-local ownership, and work linear in emitted actions.
-
-Namespace objects now use the same action model. The translation unit owns one
-source-ordered `NamespaceObjectAction` per definition, keyed by canonical
-`BindingId` and retaining the resolved initializer plus optional destructor.
-Static-data serialization, dynamic init/fini, static-member identity, and TLS
-wrapper/guard emission consume those facts directly; references remain storage
-bindings rather than lifetime owners. TLS duration is a binding fact independent
-of `static`/`extern` linkage. The program driver coalesces typed per-TU lifecycle
-bodies into one forward-init/reverse-fini role pair, and the emission-identity
-index maps dense semantic identities to sparse symbols so synthetic units do not
-break later translation units. Static initializer serialization, declaration
-publication, and source-type lowering have separate compiled owners, while the
-shared graph is still synchronously borrowed through typed lowering. This
-applies `spec.md` sections 2, 5, 6, 7, 8, and 9: stable canonical facts, one
-lowering per emission unit, whole-program state only for lifecycle ordering,
-explicit ownership, and linear action/helper work.
+The next increments preserve that boundary: lookup/access adds canonical base
+paths and using/friend grants to semantic facts; initialization, layout, and
+metadata then consume those facts. Demand remains monotonic, whole-program state
+is restricted to emission/lifecycle ordering, and lowering stays lookup-free.
 
 ## Current Failure Map
 
-Current state is 154/269 PA16 tests: the original 150/265 checkpoint passes plus
-four audit regressions. The complete
-115-failure set, assigned once by primary owner, is: 16 member-function/call-
-boundary; 22 class lookup/access/inheritance; 20 initialization/lifetime; 41
-operator/ADL/callable; 8 layout/object representation; and 8 procedural
-interaction/metadata failures.
+Current state is **185/269 PA16 tests**, up from 154/269: 31 baseline failures
+are fixed, no baseline pass is lost, and PA1-PA15 remain 1,145/1,145. The complete
+84-failure remainder, assigned once by primary owner, is: 20 lookup/access/
+inheritance; 19 layout/bit-field/inheriting-constructor; 15 procedural cast and
+metadata; 14 initialization/temporary-lifetime; 12 call/declarator metadata; and
+4 residual operator/ADL/callable cases whose primary blockers are temporary
+materialization, user-defined conversion, or literal-operator publication.
 
 ## Active Checkpoint
 
-**Next: operator/ADL callable spine.** Semantic expression analysis will own one
-candidate union for member, ordinary, and argument-dependent lookup; each
-candidate retains canonical function identity, implicit-object mode, conversion
-sequence, access/deletion state, and selected operator token/result type. Data
-flow is `operator/call syntax -> associated-class/namespace IDs -> indexed
-candidate union -> ranked selected BindingId -> existing typed call lowering`.
-This applies `spec.md` sections 2, 3, 5, 6, and 9: stable IDs, monotonic demand,
-lookup completed before lowering, borrowed candidate storage, and
-O(associated scopes + candidates log candidates + conversions) selection.
-Validation will cover member/nonmember competition, hidden friends, enum ADL,
-callable fields, operator fallback/rejection, through-PA15, file audit, and
-1x/2x candidate/associated-scope counters.
+**Next: indexed access/friend/using closure.** Class and declaration analysis
+will own direct-base access, friend grants, using-declaration source/target, and
+out-of-class member ownership as canonical IDs. Lookup will return a selected
+binding plus naming class and bounded base path; access checking will consume
+that path and the current member/friend context exactly once. Data flow is
+`declaration -> canonical class/base/grant edges -> indexed lookup candidate ->
+access/path decision -> resolved expression or structured rejection -> typed
+lowering`. Expected work is O(B + C) over visited base edges and direct
+candidates, with generation marks preventing repeated traversal. Validation
+covers the 20-case lookup/access group, hidden-friend definition ownership,
+using-declaration hiding/re-exposure, nested/enclosing access, exact 1x/2x edge
+counters, through-PA15, the PA16 report, and file audit.
 
 ## Performance Evidence
 
-| Workload | Scale | Evidence |
-|---|---:|---|
-| Class layout | 5k / 10k fields | 5,000 / 10,000 visits; 7.91 / 16.49 ms semantic |
-| Repeated field use | 5k / 10k uses | 5,003 / 10,003 probes; 19.87 / 39.26 ms semantic; 10.73 / 23.48 ms lowering |
-| Member overload selection | 1,001 / 2,001 candidates | 2,000 / 4,000 order comparisons; 2,006 / 4,006 conversion checks; 6.57 / 13.07 ms semantic; 8 instructions at both sizes |
-| Local aggregate actions | 1k / 2k members | 2,009 / 4,009 semantic nodes; 2,006 / 4,006 lowered nodes; 3,005 / 6,005 instructions; 1.96 / 3.93 ms semantic; 1.08 / 2.06 ms lowering |
-| Nested aggregate actions | 100x100 / 200x200 depth/leaves | After audit: 408 / 808 semantic nodes; 303 / 603 instructions; 63,066 / 124,506 typed bytes; pre-fix instructions were 10,302 / 40,602 |
-| Constructor candidates | 1,001 / 2,001 candidates | 1,001 / 2,001 candidate visits; 1,004 / 2,004 conversion checks; 5.71 / 12.60 ms semantic; 10 instructions and 3 binding probes at both sizes |
-| Constructor member actions | 1k / 2k initialized members | 1,000 / 2,000 action visits; 2,012 / 4,012 semantic nodes; 2,007 / 4,007 lowered nodes; 3,005 / 6,005 instructions; 2.34 / 5.72 ms semantic; 1.84 / 2.22 ms lowering |
-| Nested constructor aggregate actions | 40x40 / 80x80 depth/leaves | Pre-audit 1,765 / 6,725 instructions, 248,820 / 986,100 typed bytes, 0.78 / 2.62 ms lowering; after bounded retention 127 / 247 instructions, 18,420 / 33,780 typed bytes, 0.13 / 0.15 ms lowering |
-| Constructor isolation from unrelated declarations | 5k / 10k globals plus one member | 1 / 1 constructor-member action visits, 1 / 1 candidate visits, and 8 instructions at both sizes while required global/output work scales |
-| Single-base chain construction and lookup | 250 / 500 base edges | Post-audit: 250 / 500 base actions; 500 / 1,000 lookup-edge visits; 251 / 501 candidates; 1,511 / 3,011 instructions; 511,781 / 1,021,943 typed bytes; five-run median 2.11 / 4.58 ms semantic and 1.71 / 3.27 ms lowering |
-| Lexical cleanup exits | 1k / 2k locals plus normal/return exits | 2,000 / 4,000 cleanup-action visits; 3,007 / 6,007 instructions; 593,407 / 1,182,871 typed bytes; 17.24 / 33.25 ms semantic and 6.77 / 13.19 ms lowering |
-| Throwing array construction cleanup | 100 / 200 elements | Post-audit 1,505 / 3,005 instructions, 303 / 603 binding probes, 312,756 / 620,976 typed bytes, and 0.52 / 0.94 ms five-run median lowering; pre-fix was 21,007 / 82,007 instructions, 5,154 / 20,304 probes, and 3,977,181 / 15,535,017 bytes |
-| Destructor EH suffixes | 100 / 200 nontrivial members | Shared large-case cleanup chain: 100 / 200 subobject visits; 1,015 / 2,015 instructions; 198,924 / 391,392 typed bytes; 0.32 / 0.63 ms five-run median lowering; pre-fix was 15,961 / 61,911 instructions and 3,112,135 / 12,029,251 bytes |
-| Namespace dynamic lifetime | 1k / 2k objects | 1,000 / 2,000 actions; 4,016 / 8,016 instructions; 2,003 / 4,003 binding probes; 976,176 / 1,946,960 typed bytes; representative 3.56 / 7.02 ms semantic and 3.85 / 7.61 ms lowering |
-| Cross-TU lifecycle aggregation | 2 dynamic TUs | One init and one fini role; two forward init and two reverse fini helper calls; 3 actions, 36 instructions, 15,022 typed bytes; LowIR adapter pass |
+| Boundary | Representative 1x / 2x evidence |
+|---|---|
+| Field/layout and use lookup | 5k/10k fields: 5,000/10,000 visits; 5k/10k uses: 5,003/10,003 probes; semantic and lowering times scale proportionally |
+| Member/constructor overloads | 1,001/2,001 candidates: 2,006/4,006 conversion checks for members and 1,004/2,004 for constructors; emitted instructions remain constant |
+| Aggregate/constructor actions | 1k/2k members: 1,000/2,000 owned actions and proportional semantic/lowered nodes; bounded nested retention removes the former depth-by-leaf product |
+| Base construction/lookup | 250/500 edges: 250/500 base actions, 500/1,000 lookup-edge visits, 2.11/4.58 ms semantic and 1.71/3.27 ms lowering medians |
+| Cleanup/destruction | 100/200 elements/members: proportional action visits and shared suffixes; 1,505/3,005 array and 1,015/2,015 destructor instructions |
+| Namespace lifetime | 1k/2k objects: 1,000/2,000 actions, 4,016/8,016 instructions, 2,003/4,003 probes; one ordered cross-TU init/fini pair |
+| Operator/ADL candidates | 128/256 associated classes: 128/256 scope visits, 258/514 candidates, 836/1,668 conversion checks, 0.544/1.000 ms semantic and 0.441/0.749 ms lowering five-run medians |
 
-Exact counter scaling establishes work proportional to owned fields, indexed
-candidates, resolved actions, emitted IR, and lifecycle helpers; the nested
-audit curve closes the former depth-by-leaf projection product.
+Exact counters establish proportional work at each scaling-sensitive owner; the
+operator probe also emitted 220/412 instructions and retained 47,373/86,541
+typed bytes.
 
 ## Completed Checkpoints
 
-| Checkpoint | Final state | Evidence |
+| Checkpoint | State | Closure evidence |
 |---|---|---|
-| Direct-member object spine | Complete | Canonical size/alignment/offset and default-construction facts; typed `.`/`->` fields; duplicate rejection; 42/247 PA16 and 1,145/1,145 through PA15; linear field/use curves; audit pass |
-| Resolved member-call spine | Complete | Canonical method/access/cv facts, implicit-object ranking, out-of-class hidden `this`, stable overload/ABI IDs, typed calls, and LowIR counters; 9 product tests gained to 51/247 with no losses; 1,145/1,145 through PA15; linear candidate curve; audit pass |
-| Local aggregate-action spine | Pass after audit fixes | C++11 aggregate eligibility, one union active member, member-ID action trees, borrowed brace cursor, typed scalar/reference stores, and bounded projection reuse; 61/248 PA16 with no losses; 1,145/1,145 through PA15; flat and nested linear curves; file audit pass |
-| Special-member initialization action spine | Pass after audit fixes | Init-mode-aware selection, declaration-ordinal member actions, conservative exception facts, typed reference/subobject lowering, and bounded projection reuse; 91/255 with seven audit regressions and no existing loss; 1,145/1,145 through PA15; candidate/member/nested curves and file audit pass |
-| Single-base construction spine | Pass after audit fixes | Canonical base/access edges, naming-class-aware lookup, selected base actions, conversion ranking, and recorded typed projection counts with no lowering lookup; 120/259 with four audit regressions and no existing loss; 1,145/1,145 through PA15; exact linear 250/500-edge curves; file audit pass |
-| Destruction and lexical-cleanup spine | Pass after audit fixes | Demand-correct user/implicit destructor facts, access/deletion checks, union/reverse nested-array lifetime, normal/return/break/continue cleanup, return preservation, and shared typed EH suffixes; 132/265 with no prior loss; 1,145/1,145 through PA15; exact linear array/destructor curves; file audit pass with no PA16 warning |
-| Namespace/static lifetime spine | Pass after audit fixes | Canonical ordered actions, independent TLS/linkage facts, static serialization, one cross-TU init/fini pair, sparse emission identity, and retained address targets; 154/269 with no baseline loss; 1,145/1,145 through PA15; linear namespace curves; file audit pass |
+| Direct-member object spine | Complete | Canonical layout/member facts and typed field projection; 42/247; linear field/use curves; gates clean |
+| Resolved member-call spine | Complete | Object-aware ranking, access/cv facts, hidden `this`, stable ABI IDs, typed calls; 51/247; linear candidate curve |
+| Local aggregate-action spine | Complete | C++11 aggregate/union rules, borrowed brace cursor, member-ID actions, bounded projections; 61/248; gates clean |
+| Special-member initialization spine | Complete | Init-mode selection, canonical ordered actions, exception facts, typed references/subobjects; 91/255; linear curves |
+| Single-base construction spine | Complete | Canonical base/access edges, naming-class lookup, selected actions, recorded projections; 120/259; linear edge curves |
+| Destruction and lexical-cleanup spine | Complete | Demand/access/deletion facts, reverse lifetime, lexical exits, shared EH suffixes; 132/265; linear cleanup curves |
+| Namespace/static lifetime spine | Complete | TLS/linkage facts, static serialization, sparse identity, one ordered program lifecycle pair; 154/269; linear curves |
+| Operator/ADL callable spine | Complete | Canonical associated scopes and hidden-friend edges, mixed member/free ranking, built-in fallback, callable/out-of-class operators, ABI terminals; 185/269 (+31, no losses); 1,145/1,145 through PA15; exact 128/256 scaling; audit pass |

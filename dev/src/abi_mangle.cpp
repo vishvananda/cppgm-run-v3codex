@@ -315,7 +315,7 @@ bool is_builtin_name(const string & name)
     "void", "bool", "char", "schar", "uchar", "wchar", "char16", "char32",
     "short", "ushort", "int", "uint", "long", "ulong", "longlong", "ulonglong",
     "float", "double", "longdouble", "float128", "complex-float",
-    "complex-double", "complex-longdouble"
+    "complex-double", "complex-longdouble", "nullptr"
   };
   for(const char * candidate : names) {
     if(name == candidate) return true;
@@ -741,7 +741,7 @@ string builtin_code(const string & name)
     {"long", "l"}, {"ulong", "m"}, {"longlong", "x"}, {"ulonglong", "y"},
     {"float", "f"}, {"double", "d"}, {"longdouble", "e"}, {"float128", "g"},
     {"complex-float", "Cf"}, {"complex-double", "Cd"},
-    {"complex-longdouble", "Ce"}
+    {"complex-longdouble", "Ce"}, {"nullptr", "Dn"}
   };
   for(const Entry & entry : entries) if(name == entry.name) return entry.code;
   throw std::logic_error("unknown ABI builtin type '" + name + "'");

@@ -577,6 +577,8 @@ int run_emit_semantics_mode(const vector<string> & args)
            << " lookup_queries=" << stats.lookup_queries
            << " lookup_scope_visits=" << stats.lookup_scope_visits
            << " lookup_edge_visits=" << stats.lookup_edge_visits
+		   << " associated_scope_visits="
+		   << stats.associated_scope_visits
            << " overload_candidates=" << stats.overload_candidates
            << " overload_order_comparisons="
            << stats.overload_order_comparisons
@@ -646,6 +648,8 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << stats.lexical_cleanup_action_visits
 			 << " namespace_object_actions="
 			 << stats.namespace_object_actions
+			 << " associated_scope_visits="
+			 << stats.associated_scope_visits
 			 << " overload_candidates=" << stats.overload_candidates
 			 << " overload_order_comparisons="
 			 << stats.overload_order_comparisons

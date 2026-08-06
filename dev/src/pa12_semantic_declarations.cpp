@@ -458,6 +458,11 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 	const NodeId specifiers = FindChild(node, "decl-specifier-seq");
 	if (specifiers == kNoNode) return;
 	const SpecInfo spec = BuildSpecifiers(specifiers, scope, std::string(), true);
+	if (spec.is_friend)
+	{
+		AnalyzeFriendFunction(node, scope, owner_type, spec);
+		return;
+	}
 	if (arena_->IsTag(node, "function-definition"))
 	{
 		if (spec.thread_local_storage)
@@ -892,6 +897,7 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 		const std::string spelling = PayloadSource(child);
 		if (spelling == "typedef") result.is_typedef = true;
 		else if (spelling == "constexpr") result.is_constexpr = true;
+		else if (spelling == "friend") result.is_friend = true;
 		else if (spelling == "extern") result.storage_class = STORAGE_CLASS_EXTERN;
 		else if (spelling == "static") result.storage_class = STORAGE_CLASS_STATIC;
 		else if (spelling == "thread_local")
@@ -912,7 +918,7 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 		else if (spelling == "char16_t") is_char16 = true;
 		else if (spelling == "char32_t") is_char32 = true;
 		else if (spelling != "inline" &&
-			spelling != "virtual" && spelling != "friend" &&
+			spelling != "virtual" &&
 			spelling != "explicit")
 		{
 			const LookupResult found = LookupSpelling(scope, spelling, LOOKUP_TYPE);
@@ -1125,7 +1131,8 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 	TypeId type, const std::vector<ParameterInfo>& parameters, bool definition,
 	bool template_specialization, StorageClass storage_class,
-	LanguageLinkage language_linkage, bool nonthrowing)
+	LanguageLinkage language_linkage, bool nonthrowing,
+	bool ordinary_visible)
 {
 	const LookupResult occupied =
 		program_->LookupDirect(owner, name, LOOKUP_ORDINARY);
@@ -1174,9 +1181,11 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 		info.owner = owner;
 		info.type = type;
 		info.display_name = DisplayName(owner, name);
+		info.lexical_scope = owner;
 		info.parameters = parameters;
 		info.defined = definition;
 		info.template_specialization = template_specialization;
+		info.ordinary_visible = ordinary_visible;
 		if (function_fact_by_binding_.size() <= declaration)
 			function_fact_by_binding_.resize(
 				static_cast<std::size_t>(declaration) + 1, kNoDumpEdge);
@@ -1195,6 +1204,7 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 	if (previous != kNoBinding)
 	{
 		FunctionInfo& merged = GetMutableFunction(canonical);
+		merged.ordinary_visible = merged.ordinary_visible || ordinary_visible;
 		if (merged.parameters.size() != parameters.size())
 			throw std::logic_error("PA12 function parameter fact mismatch");
 		for (std::size_t i = 0; i < parameters.size(); ++i)
@@ -1214,6 +1224,103 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 	canonical_record.language_linkage = language_linkage;
 	canonical_record.nonthrowing = canonical_record.nonthrowing || nonthrowing;
 	return canonical;
+}
+
+void SemanticAnalyzer::AnalyzeFriendFunction(NodeId node,
+	ScopeId class_scope, TypeId owner_type, const SpecInfo& spec)
+{
+	const EntityId owner_entity = EntityOf(owner_type);
+	if (owner_entity == kNoEntity)
+		throw std::logic_error("friend declaration has no class owner");
+	ScopeId friend_owner = program_->entities[owner_entity].owner;
+	while (friend_owner != kNoScope &&
+		program_->KindOfScope(friend_owner) != SCOPE_NAMESPACE)
+		friend_owner = program_->ParentScope(friend_owner);
+	if (friend_owner == kNoScope)
+		throw std::runtime_error("friend function has no namespace owner");
+
+	std::vector<NodeId> declarators;
+	if (arena_->IsTag(node, "function-definition"))
+	{
+		const NodeId declarator = FindChild(node, "declarator");
+		if (declarator != kNoNode) declarators.push_back(declarator);
+	}
+	else
+	{
+		const NodeId list = FindChild(node, "init-declarator-list");
+		if (list != kNoNode)
+			for (std::uint32_t edge = arena_->FirstEdge(list); edge != kNoEdge;
+				edge = arena_->NextEdge(edge))
+			{
+				const NodeId declarator =
+					FindChild(arena_->EdgeChild(edge), "declarator");
+				if (declarator != kNoNode) declarators.push_back(declarator);
+			}
+	}
+	if (declarators.empty())
+		throw std::runtime_error("friend declaration has no function declarator");
+	const bool definition = arena_->IsTag(node, "function-definition");
+	for (std::size_t i = 0; i < declarators.size(); ++i)
+	{
+		const DeclaratorInfo parsed = BuildDeclarator(
+			declarators[i], spec.type, class_scope);
+		if (!program_->types.IsFunction(parsed.type))
+			throw std::runtime_error("friend declaration is not a function");
+		const BindingId binding = DeclareFunction(friend_owner, parsed.name,
+			parsed.type, parsed.parameters, definition, false,
+			STORAGE_CLASS_NONE, current_language_linkage_,
+			IsNonthrowing(declarators[i], class_scope), false);
+		FunctionInfo& info = GetMutableFunction(binding);
+		if (info.friend_of == kNoEntity) info.friend_of = owner_entity;
+		info.lexical_scope = class_scope;
+		if (definition)
+		{
+			info.definition_body = FindChild(node, "compound-statement");
+			info.deferred = true;
+			DemandFunction(binding);
+		}
+		ValidateNonmemberOperator(binding);
+	}
+}
+
+void SemanticAnalyzer::ValidateNonmemberOperator(BindingId binding) const
+{
+	const BindingRecord& record = program_->bindings[binding];
+	const std::string& name = program_->names.Get(record.name);
+	const FunctionInfo& function = GetFunction(binding);
+	if (function.member_owner != kNoType) return;
+	if (name.compare(0, 8, "operator") != 0 || name.size() == 8 ||
+		name[8] == '_' ||
+		name.find("\"\"") != std::string::npos ||
+		name == "operator new" || name == "operatornew" ||
+		name == "operator new[]" || name == "operatornew[]" ||
+		name == "operator delete" || name == "operatordelete" ||
+		name == "operator delete[]" || name == "operatordelete[]") return;
+	const TypeRecord function_type = program_->types.Get(function.type);
+	const TypeId* parameters = program_->types.Parameters(function.type);
+	for (std::size_t i = 0; i < function_type.parameter_count; ++i)
+	{
+		TypeId type = parameters[i];
+		const TypeRecord* shape = &program_->types.Get(type);
+		if (shape->kind == TYPE_LVALUE_REFERENCE ||
+			shape->kind == TYPE_RVALUE_REFERENCE)
+		{
+			type = shape->child;
+			shape = &program_->types.Get(type);
+		}
+		if (shape->kind == TYPE_QUALIFIED)
+		{
+			type = shape->child;
+			shape = &program_->types.Get(type);
+		}
+		if (shape->kind != TYPE_NAMED) continue;
+		const NamedFlavor flavor = program_->entities[shape->entity].flavor;
+		if (flavor == NAMED_STRUCT || flavor == NAMED_CLASS ||
+			flavor == NAMED_UNION || flavor == NAMED_ENUM ||
+			flavor == NAMED_ENUM_CLASS) return;
+	}
+	throw std::runtime_error(
+		"nonmember operator requires a class or enumeration parameter");
 }
 
 const FunctionInfo& SemanticAnalyzer::GetFunction(BindingId binding) const
@@ -1280,11 +1387,17 @@ std::vector<BindingId> SemanticAnalyzer::FunctionSet(BindingId binding) const
 		record.name;
 	const CompactIndexSequence* set = function_sets_.Find(key);
 	if (!set)
-		return std::vector<BindingId>(1, record.canonical);
+		return GetFunction(record.canonical).ordinary_visible ?
+			std::vector<BindingId>(1, record.canonical) :
+			std::vector<BindingId>();
 	std::vector<BindingId> result;
 	result.reserve(set->Size());
 	for (std::size_t i = 0; i < set->Size(); ++i)
-		result.push_back(static_cast<BindingId>((*set)[i]));
+	{
+		const BindingId candidate = static_cast<BindingId>((*set)[i]);
+		if (GetFunction(candidate).ordinary_visible)
+			result.push_back(candidate);
+	}
 	return result;
 }
 
@@ -1542,7 +1655,7 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 		++demanded_function_emissions_;
 		return;
 	}
-	const ScopeId function_scope = NewScope(info.owner, SCOPE_FUNCTION,
+	const ScopeId function_scope = NewScope(info.lexical_scope, SCOPE_FUNCTION,
 		program_->bindings[info.binding].name, ScopePrefixId(info.owner));
 	if (member)
 	{
@@ -1572,7 +1685,7 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 		const TypeId previous_return = current_return_type_;
 		const EntityId previous_class = current_class_context_;
 		current_return_type_ = program_->types.Get(info.type).child;
-		current_class_context_ =
+		current_class_context_ = info.friend_of != kNoEntity ? info.friend_of :
 			program_->bindings[info.binding].member_owner;
 		if (info.constructor)
 		{

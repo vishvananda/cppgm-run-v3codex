@@ -86,9 +86,58 @@ abi_mangle::AbiType MakeAbiType(const pa11::Program& program,
 	case FUND_WCHAR_T: result.name = "wchar"; break;
 	case FUND_CHAR16_T: result.name = "char16"; break;
 	case FUND_CHAR32_T: result.name = "char32"; break;
-	case FUND_NULLPTR_T: result.name = "ulong"; break;
+	case FUND_NULLPTR_T: result.name = "nullptr"; break;
 	}
 	return result;
+}
+
+std::string OperatorTerminal(const std::string& name, bool member,
+	std::size_t parameter_count)
+{
+	if (name.compare(0, 8, "operator") != 0) return std::string();
+	const std::string operation = name.substr(8);
+	if (operation == "+") return "plus";
+	if (operation == "-") return "minus";
+	if (operation == "*")
+		return (member ? parameter_count == 0 : parameter_count == 1) ?
+			"deref" : "multiply";
+	if (operation == "&")
+		return (member ? parameter_count == 0 : parameter_count == 1) ?
+			"address-of" : "bit-and";
+	if (operation == "/") return "divide";
+	if (operation == "%") return "remainder";
+	if (operation == "|") return "bit-or";
+	if (operation == "^") return "bit-xor";
+	if (operation == "=") return "assign";
+	if (operation == "+=") return "plus-assign";
+	if (operation == "-=") return "minus-assign";
+	if (operation == "*=") return "multiply-assign";
+	if (operation == "/=") return "divide-assign";
+	if (operation == "%=") return "remainder-assign";
+	if (operation == "&=") return "and-assign";
+	if (operation == "|=") return "or-assign";
+	if (operation == "^=") return "xor-assign";
+	if (operation == "<<") return "left-shift";
+	if (operation == ">>") return "right-shift";
+	if (operation == "<<=") return "left-shift-assign";
+	if (operation == ">>=") return "right-shift-assign";
+	if (operation == "==") return "equal";
+	if (operation == "!=") return "not-equal";
+	if (operation == "<") return "less";
+	if (operation == ">") return "greater";
+	if (operation == "<=") return "less-equal";
+	if (operation == ">=") return "greater-equal";
+	if (operation == "!") return "logical-not";
+	if (operation == "&&") return "logical-and";
+	if (operation == "||") return "logical-or";
+	if (operation == "++") return "increment";
+	if (operation == "--") return "decrement";
+	if (operation == ",") return "comma";
+	if (operation == "->*") return "member-pointer";
+	if (operation == "->") return "arrow";
+	if (operation == "()") return "call";
+	if (operation == "[]") return "index";
+	return std::string();
 }
 
 }
@@ -132,7 +181,18 @@ std::string MangleFunction(const pa11::Program& program,
 		if (!qualifier.function.qualifiers.empty())
 			file.cases[0].records.push_back(qualifier);
 	}
-	if (binding.constructor)
+	const std::string operator_terminal = OperatorTerminal(
+		program.names.Get(binding.name), member,
+		program.types.Get(binding.type).parameter_count);
+	if (!operator_terminal.empty())
+	{
+		AbiFactRecord terminal;
+		terminal.set_kind(ABI_FACT_RECORD_FUNCTION);
+		terminal.function.kind = ABI_FUNCTION_RECORD_OPERATOR_TERMINAL;
+		terminal.function.terminal = operator_terminal;
+		file.cases[0].records.push_back(terminal);
+	}
+	else if (binding.constructor)
 	{
 		AbiFactRecord terminal;
 		terminal.set_kind(ABI_FACT_RECORD_FUNCTION);

@@ -148,9 +148,11 @@ struct SpecInfo
 	StorageClass storage_class;
 	bool is_typedef;
 	bool is_constexpr;
+	bool is_friend;
 	bool thread_local_storage;
 	SpecInfo() : type(kNoType), storage_class(STORAGE_CLASS_NONE),
-		is_typedef(false), is_constexpr(false), thread_local_storage(false) {}
+		is_typedef(false), is_constexpr(false), is_friend(false),
+		thread_local_storage(false) {}
 };
 
 struct ParameterInfo
@@ -209,6 +211,8 @@ struct FunctionInfo
 	TypeId type;
 	NameId display_name;
 	TypeId member_owner;
+	EntityId friend_of;
+	ScopeId lexical_scope;
 	std::vector<ParameterInfo> parameters;
 	NodeId definition_body, constructor_initializer;
 	bool defined;
@@ -223,17 +227,18 @@ struct FunctionInfo
 	bool implicit_destructor;
 	bool defaulted_destructor;
 	bool deleted_destructor;
+	bool ordinary_visible;
 	std::uint8_t demand_state;
 	FunctionInfo()
 		: binding(kNoBinding), owner(kNoScope), type(kNoType), display_name(0),
-		  member_owner(kNoType),
+		  member_owner(kNoType), friend_of(kNoEntity), lexical_scope(kNoScope),
 		  definition_body(kNoNode), constructor_initializer(kNoNode),
 		  defined(false), deferred(false), template_specialization(false),
 		  constructor(false), implicit_constructor(false),
 		  defaulted_constructor(false), deleted_constructor(false),
 		  explicit_constructor(false), destructor(false),
 		  implicit_destructor(false), defaulted_destructor(false),
-		  deleted_destructor(false),
+		  deleted_destructor(false), ordinary_visible(true),
 		  demand_state(0) {}
 };
 

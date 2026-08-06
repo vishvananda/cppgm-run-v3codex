@@ -29,6 +29,8 @@ public:
 		  root_(kNoDumpEdge), current_language_linkage_(LANGUAGE_LINKAGE_CPP),
 		  current_return_type_(kNoType), current_class_context_(kNoEntity),
 		  loop_depth_(0), switch_depth_(0), expression_count_(0),
+		  associated_generation_(0), candidate_generation_(0),
+		  associated_scope_visits_(0),
 		  overload_candidates_(0), overload_order_comparisons_(0),
 		  conversion_checks_(0), function_signature_lookups_(0),
 		  template_specialization_requests_(0),
@@ -105,7 +107,10 @@ private:
 		bool template_specialization = false,
 		StorageClass storage_class = STORAGE_CLASS_NONE,
 		LanguageLinkage language_linkage = LANGUAGE_LINKAGE_CPP,
-		bool nonthrowing = false);
+		bool nonthrowing = false, bool ordinary_visible = true);
+	void AnalyzeFriendFunction(NodeId node, ScopeId class_scope,
+		TypeId owner_type, const SpecInfo& spec);
+	void ValidateNonmemberOperator(BindingId binding) const;
 	std::vector<BindingId> FunctionCandidates(ScopeId scope,
 		const std::string& spelling, EntityId* naming_class = 0);
 	std::vector<BindingId> FunctionSet(BindingId binding) const;
@@ -143,6 +148,32 @@ private:
 	bool AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 		const std::vector<NodeId>& argument_syntax, TypeId target,
 		ExpressionInfo* result);
+	void AppendArgumentDependentCandidates(NameId name,
+		const std::vector<ExpressionInfo>& arguments,
+		std::vector<BindingId>* candidates);
+	bool TryAnalyzeOverloadedOperator(const std::string& operation,
+		ScopeId scope, const std::vector<NodeId>& operand_syntax,
+		const std::vector<ExpressionInfo>& operands, bool member_only,
+		TypeId target, ExpressionInfo* result);
+	bool TryAnalyzeCallOperator(ScopeId scope, const ExpressionInfo& callee,
+		const std::vector<NodeId>& argument_syntax,
+		const std::vector<ExpressionInfo>* analyzed_arguments, TypeId target,
+		ExpressionInfo* result);
+	BindingId SelectOperatorOverload(ScopeId scope,
+		const std::vector<NodeId>& operand_syntax,
+		const std::vector<ExpressionInfo>& operands,
+		const std::vector<BindingId>& candidates,
+		const ExpressionInfo& object, bool* selected_member);
+	ExpressionInfo MakeImplicitObjectPointer(const ExpressionInfo& object);
+	void BeginAssociatedLookup();
+	void AddAssociatedType(TypeId type);
+	void AddAssociatedEntity(EntityId entity);
+	void AddAssociatedScope(ScopeId scope);
+	void BeginCandidateCollection();
+	void AddCandidate(BindingId binding,
+		std::vector<BindingId>* candidates);
+	void AppendDirectFunctionCandidates(ScopeId owner, NameId name,
+		bool argument_dependent, std::vector<BindingId>* candidates);
 	ExpressionInfo AnalyzeUnary(NodeId node, ScopeId scope,
 		TypeId target = kNoType);
 	ExpressionInfo AnalyzeBinary(NodeId node, ScopeId scope);
@@ -200,6 +231,7 @@ private:
 	EntityId EntityOf(TypeId type) const;
 	ExpressionInfo MakeLiteral(TypeId type, NameId text,
 		ValueCategory category = VALUE_PRVALUE);
+	ExpressionInfo AnalyzeThisExpression(ScopeId scope);
 	bool IsNonthrowing(NodeId declarator, ScopeId scope);
 	void RecordExpressionFacts(const ExpressionInfo& value);
 	ExpressionInfo ApplyTarget(ExpressionInfo value, TypeId target);
@@ -270,12 +302,22 @@ private:
 	std::vector<EntityId> demanded_default_constructor_entities_;
 	std::vector<std::uint8_t> default_constructor_demand_states_;
 	std::vector<BindingId> demanded_functions_;
+	std::vector<EntityId> associated_entities_;
+	std::vector<ScopeId> associated_scopes_;
+	std::vector<TypeId> associated_type_scratch_;
+	std::vector<std::uint32_t> associated_entity_marks_;
+	std::vector<std::uint32_t> associated_scope_marks_;
+	std::vector<std::uint32_t> associated_type_marks_;
+	std::vector<std::uint32_t> candidate_marks_;
 	LanguageLinkage current_language_linkage_;
 	TypeId current_return_type_;
 	EntityId current_class_context_;
 	std::size_t loop_depth_;
 	std::size_t switch_depth_;
 	std::size_t expression_count_;
+	std::uint32_t associated_generation_;
+	std::uint32_t candidate_generation_;
+	std::size_t associated_scope_visits_;
 	std::size_t overload_candidates_;
 	std::size_t overload_order_comparisons_;
 	mutable std::size_t conversion_checks_;

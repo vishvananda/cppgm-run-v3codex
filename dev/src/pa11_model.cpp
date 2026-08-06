@@ -821,6 +821,25 @@ void Program::SetEntityScope(EntityId entity, ScopeId scope)
 	scopes_[scope].entity = entity;
 }
 
+ScopeId Program::ParentScope(ScopeId scope) const
+{
+	if (scope >= scopes_.size()) return kNoScope;
+	return scopes_[scope].parent;
+}
+
+ScopeKind Program::KindOfScope(ScopeId scope) const
+{
+	if (scope >= scopes_.size())
+		throw std::logic_error("invalid scope kind query");
+	return scopes_[scope].kind;
+}
+
+EntityId Program::EntityForScope(ScopeId scope) const
+{
+	if (scope >= scopes_.size()) return kNoEntity;
+	return scopes_[scope].entity;
+}
+
 void Program::SetDirectBase(EntityId derived, EntityId base, AccessKind access)
 {
 	if (derived >= entities.size() || base >= entities.size() || derived == base)

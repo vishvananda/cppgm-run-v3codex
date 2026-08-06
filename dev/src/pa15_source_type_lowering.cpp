@@ -55,7 +55,7 @@ LowType SourceTypeLowering::Lower(TypeId type) const
 	case FUND_DOUBLE: return LowF64();
 	case FUND_LONG_DOUBLE: return LowF80();
 	case FUND_VOID: return LowVoid();
-	case FUND_NULLPTR_T: return LowPtr();
+	case FUND_NULLPTR_T: return LowI64();
 	}
 	throw std::runtime_error("unsupported PA15 fundamental type");
 }

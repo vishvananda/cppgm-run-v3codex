@@ -1,10 +1,7 @@
 #include "pa12_semantic_detail.h"
 
 #include <algorithm>
-#include <cerrno>
 #include <chrono>
-#include <climits>
-#include <cstdlib>
 #include <iomanip>
 #include <limits>
 #include <ostream>
@@ -236,7 +233,14 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		continue_cleanup_stops_.capacity() * sizeof(ScopeId) +
 		demanded_default_constructor_entities_.capacity() * sizeof(EntityId) +
 		default_constructor_demand_states_.capacity() * sizeof(std::uint8_t) +
-		demanded_functions_.capacity() * sizeof(BindingId);
+		demanded_functions_.capacity() * sizeof(BindingId) +
+		associated_entities_.capacity() * sizeof(EntityId) +
+		associated_scopes_.capacity() * sizeof(ScopeId) +
+		associated_type_scratch_.capacity() * sizeof(TypeId) +
+		associated_entity_marks_.capacity() * sizeof(std::uint32_t) +
+		associated_scope_marks_.capacity() * sizeof(std::uint32_t) +
+		associated_type_marks_.capacity() * sizeof(std::uint32_t) +
+		candidate_marks_.capacity() * sizeof(std::uint32_t);
 	for (std::size_t i = 0; i < functions_.size(); ++i)
 		bytes += functions_[i].parameters.capacity() * sizeof(ParameterInfo);
 	for (std::size_t i = 0; i < entity_data_members_.size(); ++i)
@@ -693,131 +697,6 @@ bool SemanticAnalyzer::IsModifiableLvalue(const ExpressionInfo& value) const
 		!IsVoid(value.type);
 }
 
-std::int64_t SemanticAnalyzer::ParseInteger(const std::string& spelling) const
-{
-	const std::size_t quote = spelling.find('\'');
-	if (quote != std::string::npos)
-	{
-		const std::size_t close = spelling.rfind('\'');
-		if (close == quote || close + 1 != spelling.size())
-			throw std::runtime_error("invalid character literal");
-		unsigned long long value = 0;
-		std::size_t count = 0;
-		for (std::size_t i = quote + 1; i < close; ++i)
-		{
-			unsigned int character = static_cast<unsigned char>(spelling[i]);
-			if (spelling[i] == '\\')
-			{
-				if (++i >= close)
-					throw std::runtime_error("invalid character escape");
-				const char escaped = spelling[i];
-				if (escaped == 'a') character = 7;
-				else if (escaped == 'b') character = 8;
-				else if (escaped == 'f') character = 12;
-				else if (escaped == 'n') character = 10;
-				else if (escaped == 'r') character = 13;
-				else if (escaped == 't') character = 9;
-				else if (escaped == 'v') character = 11;
-				else if (escaped == 'x')
-				{
-					character = 0;
-					std::size_t digits = 0;
-					while (i + 1 < close)
-					{
-						const char digit = spelling[i + 1];
-						const int nibble = digit >= '0' && digit <= '9' ? digit - '0' :
-							digit >= 'a' && digit <= 'f' ? digit - 'a' + 10 :
-							digit >= 'A' && digit <= 'F' ? digit - 'A' + 10 : -1;
-						if (nibble < 0) break;
-						character = (character << 4) | static_cast<unsigned int>(nibble);
-						++i;
-						++digits;
-					}
-					if (digits == 0)
-						throw std::runtime_error("empty hexadecimal character escape");
-				}
-				else if (escaped >= '0' && escaped <= '7')
-				{
-					character = static_cast<unsigned int>(escaped - '0');
-					for (std::size_t digits = 1; digits < 3 && i + 1 < close &&
-						spelling[i + 1] >= '0' && spelling[i + 1] <= '7'; ++digits)
-					{
-						character = (character << 3) |
-							static_cast<unsigned int>(spelling[++i] - '0');
-					}
-				}
-				else character = static_cast<unsigned char>(escaped);
-			}
-			value = (value << 8) | (character & 0xffU);
-			++count;
-		}
-		if (count == 0 || value > static_cast<unsigned long long>(INT64_MAX))
-			throw std::runtime_error("character literal outside PA12 range");
-		return static_cast<std::int64_t>(value);
-	}
-	std::size_t last = spelling.size();
-	while (last != 0 && (spelling[last - 1] == 'u' ||
-		spelling[last - 1] == 'U' || spelling[last - 1] == 'l' ||
-		spelling[last - 1] == 'L')) --last;
-	const std::string digits = spelling.substr(0, last);
-	errno = 0;
-	char* end = 0;
-	const unsigned long long value = std::strtoull(digits.c_str(), &end, 0);
-	if (errno == ERANGE || end == digits.c_str() || *end != '\0' ||
-		value > static_cast<unsigned long long>(INT64_MAX))
-		throw std::runtime_error("integer literal outside PA12 range");
-	return static_cast<std::int64_t>(value);
-}
-
-NameId SemanticAnalyzer::InternNumber(std::int64_t value)
-{
-	return program_->names.Intern(std::to_string(value));
-}
-
-std::int64_t SemanticAnalyzer::ApplyConstantBinary(
-	const std::string& operation, std::int64_t left, std::int64_t right) const
-{
-	if (operation == "+") return left + right;
-	if (operation == "-") return left - right;
-	if (operation == "*") return left * right;
-	if (operation == "/")
-	{
-		if (right == 0) throw std::runtime_error("division by zero");
-		return left / right;
-	}
-	if (operation == "%")
-	{
-		if (right == 0) throw std::runtime_error("division by zero");
-		return left % right;
-	}
-	if (operation == "<<") return left << right;
-	if (operation == ">>") return left >> right;
-	if (operation == "&") return left & right;
-	if (operation == "|") return left | right;
-	if (operation == "^") return left ^ right;
-	if (operation == "==") return left == right;
-	if (operation == "!=") return left != right;
-	if (operation == "<") return left < right;
-	if (operation == ">") return left > right;
-	if (operation == "<=") return left <= right;
-	if (operation == ">=") return left >= right;
-	if (operation == "&&") return left && right;
-	if (operation == "||") return left || right;
-	if (operation == ",") return right;
-	throw std::runtime_error("unsupported constant binary operator");
-}
-
-ExpressionInfo SemanticAnalyzer::MakeLiteral(TypeId type, NameId text,
-	ValueCategory category)
-{
-	ExpressionInfo result;
-	result.type = type;
-	result.category = category;
-	result.node = MakeDump(DUMP_LITERAL, type, category, text);
-	++expression_count_;
-	return result;
-}
-
 ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 	TypeId target)
 {
@@ -891,7 +770,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 	{
 		const std::string spelling = PayloadSource(node);
 		ExpressionInfo result;
-		if (spelling == "nullptr")
+		if (spelling == "this")
+			result = AnalyzeThisExpression(scope);
+		else if (spelling == "nullptr")
 		{
 			result = MakeLiteral(program_->types.Fundamental(FUND_NULLPTR_T),
 				program_->names.Intern(arena_->Payload(node)));
@@ -1282,6 +1163,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 		for (std::uint32_t argument = arena_->FirstEdge(arguments_node);
 			argument != kNoEdge; argument = arena_->NextEdge(argument))
 			argument_syntax.push_back(arena_->EdgeChild(argument));
+	std::vector<ExpressionInfo> analyzed_arguments;
+	bool arguments_analyzed = false;
 
 	ExpressionInfo member_call;
 	if (AnalyzeDirectMemberCall(callee_syntax, scope, argument_syntax,
@@ -1324,23 +1207,34 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 		EntityId function_naming_class = kNoEntity;
 		std::vector<BindingId> candidates = FunctionCandidates(scope, spelling,
 			&function_naming_class);
-		std::vector<ExpressionInfo> arguments;
-		bool arguments_analyzed = false;
+		for (std::size_t i = 0; i < argument_syntax.size(); ++i)
+			analyzed_arguments.push_back(
+				AnalyzeExpression(argument_syntax[i], scope));
+		arguments_analyzed = true;
 		if (!FindFunctionTemplates(scope, spelling).empty())
 		{
-			for (std::size_t i = 0; i < argument_syntax.size(); ++i)
-				arguments.push_back(AnalyzeExpression(argument_syntax[i], scope));
-			arguments_analyzed = true;
-			DeduceFunctionTemplates(scope, spelling, arguments);
+			DeduceFunctionTemplates(scope, spelling, analyzed_arguments);
 			candidates = FunctionCandidates(scope, spelling,
 				&function_naming_class);
 		}
+		if (spelling.find("::") == std::string::npos)
+		{
+			BeginCandidateCollection();
+			std::vector<BindingId> combined;
+			bool suppress_adl = false;
+			for (std::size_t i = 0; i < candidates.size(); ++i)
+			{
+				AddCandidate(candidates[i], &combined);
+				if (GetFunction(candidates[i]).member_owner != kNoType)
+					suppress_adl = true;
+			}
+			if (!suppress_adl)
+				AppendArgumentDependentCandidates(program_->names.Intern(spelling),
+					analyzed_arguments, &combined);
+			candidates.swap(combined);
+		}
 		if (!candidates.empty())
 		{
-			if (!arguments_analyzed)
-				for (std::size_t i = 0; i < argument_syntax.size(); ++i)
-					arguments.push_back(
-						AnalyzeExpression(argument_syntax[i], scope));
 			bool has_member_candidate = false;
 			for (std::size_t i = 0; i < candidates.size(); ++i)
 				if (GetFunction(candidates[i]).member_owner != kNoType)
@@ -1367,9 +1261,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 				}
 			}
 			const BindingId selected = SelectOverload(scope, argument_syntax,
-				arguments, candidates, object);
+				analyzed_arguments, candidates, object);
 			return BuildResolvedCall(selected, scope, argument_syntax,
-				arguments, object, target, function_naming_class);
+				analyzed_arguments, object, target, function_naming_class);
 		}
 
 		TypeId cast_type = kNoType;
@@ -1418,7 +1312,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 				zero.value = 0;
 				return ApplyTarget(zero, target);
 			}
-			ExpressionInfo operand = AnalyzeExpression(argument_syntax[0], scope);
+			ExpressionInfo operand = analyzed_arguments[0];
 			const TypeRecord cast_record = program_->types.Get(cast_type);
 			const ValueCategory cast_category =
 				cast_record.kind == TYPE_LVALUE_REFERENCE ? VALUE_LVALUE :
@@ -1440,6 +1334,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 	}
 
 	ExpressionInfo callee = AnalyzeExpression(callee_syntax, scope);
+	ExpressionInfo call_operator;
+	if (TryAnalyzeCallOperator(scope, callee, argument_syntax,
+		arguments_analyzed ? &analyzed_arguments : 0, target, &call_operator))
+		return call_operator;
 	TypeId function_type = EffectiveType(callee.type);
 	TypeRecord callable = program_->types.Get(function_type);
 	if (callable.kind == TYPE_POINTER)
@@ -1467,8 +1365,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 	dump_.Add(call, callee.node);
 	for (std::size_t a = 0; a < argument_syntax.size(); ++a)
 	{
-		ExpressionInfo argument = AnalyzeExpression(argument_syntax[a], scope,
-			a < callable.parameter_count ? parameters[a] : kNoType);
+		ExpressionInfo argument = arguments_analyzed ? analyzed_arguments[a] :
+			AnalyzeExpression(argument_syntax[a], scope);
+		if (a < callable.parameter_count)
+			argument = ApplyTarget(argument, parameters[a]);
 		dump_.Add(call, argument.node);
 	}
 	ExpressionInfo result;
@@ -1494,8 +1394,24 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 			target_record.kind == TYPE_MEMBER_POINTER)
 			operand_target = target_record.child;
 	}
-	ExpressionInfo operand = AnalyzeExpression(FirstSemanticChild(node), scope,
+	const NodeId operand_syntax = FirstSemanticChild(node);
+	ExpressionInfo operand = AnalyzeExpression(operand_syntax, scope,
 		operand_target);
+	std::vector<NodeId> overloaded_syntax(1, operand_syntax);
+	std::vector<ExpressionInfo> overloaded_operands(1, operand);
+	if (postfix && (operation == "++" || operation == "--"))
+	{
+		ExpressionInfo dummy = MakeLiteral(
+			program_->types.Fundamental(FUND_INT), program_->names.Intern("0"));
+		dummy.constant = true;
+		dummy.value = 0;
+		dummy.integer_literal_zero = true;
+		overloaded_syntax.push_back(kNoNode);
+		overloaded_operands.push_back(dummy);
+	}
+	ExpressionInfo overloaded;
+	if (TryAnalyzeOverloadedOperator(operation, scope, overloaded_syntax,
+		overloaded_operands, false, target, &overloaded)) return overloaded;
 	TypeId result_type = EffectiveType(operand.type);
 	ValueCategory category = VALUE_PRVALUE;
 	bool constant = operand.constant;
@@ -1576,9 +1492,20 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBinary(NodeId node, ScopeId scope)
 	if (first_edge == kNoEdge) throw std::runtime_error("empty binary expression");
 	const std::uint32_t second_edge = arena_->NextEdge(first_edge);
 	if (second_edge == kNoEdge) throw std::runtime_error("unary binary expression");
-	ExpressionInfo left = AnalyzeExpression(arena_->EdgeChild(first_edge), scope);
-	ExpressionInfo right = AnalyzeExpression(arena_->EdgeChild(second_edge), scope);
+	const NodeId left_syntax = arena_->EdgeChild(first_edge);
+	const NodeId right_syntax = arena_->EdgeChild(second_edge);
+	ExpressionInfo left = AnalyzeExpression(left_syntax, scope);
+	ExpressionInfo right = AnalyzeExpression(right_syntax, scope);
 	const std::string operation = PayloadSource(node);
+	std::vector<NodeId> overloaded_syntax;
+	overloaded_syntax.push_back(left_syntax);
+	overloaded_syntax.push_back(right_syntax);
+	std::vector<ExpressionInfo> overloaded_operands;
+	overloaded_operands.push_back(left);
+	overloaded_operands.push_back(right);
+	ExpressionInfo overloaded;
+	if (TryAnalyzeOverloadedOperator(operation, scope, overloaded_syntax,
+		overloaded_operands, false, kNoType, &overloaded)) return overloaded;
 	TypeId result_type = kNoType;
 	TypeId operand_type = kNoType;
 	ValueCategory result_category = VALUE_PRVALUE;
@@ -1688,10 +1615,24 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 	const std::uint32_t second = first == kNoEdge ? kNoEdge :
 		arena_->NextEdge(first);
 	if (second == kNoEdge) throw std::runtime_error("invalid assignment");
-	ExpressionInfo left = AnalyzeExpression(arena_->EdgeChild(first), scope);
+	const NodeId left_syntax = arena_->EdgeChild(first);
+	const NodeId right_syntax = arena_->EdgeChild(second);
+	ExpressionInfo left = AnalyzeExpression(left_syntax, scope);
 	const std::string operation = PayloadSource(node);
-	ExpressionInfo right = AnalyzeExpression(arena_->EdgeChild(second), scope,
-		operation == "=" ? EffectiveType(left.type) : kNoType);
+	ExpressionInfo right = AnalyzeExpression(right_syntax, scope,
+		operation == "=" && arena_->IsTag(right_syntax, "braced-init-list") ?
+			EffectiveType(left.type) : kNoType);
+	std::vector<NodeId> overloaded_syntax;
+	overloaded_syntax.push_back(left_syntax);
+	overloaded_syntax.push_back(right_syntax);
+	std::vector<ExpressionInfo> overloaded_operands;
+	overloaded_operands.push_back(left);
+	overloaded_operands.push_back(right);
+	ExpressionInfo overloaded;
+	if (TryAnalyzeOverloadedOperator(operation, scope, overloaded_syntax,
+		overloaded_operands, operation == "=", kNoType, &overloaded))
+		return overloaded;
+	if (operation == "=") right = ApplyTarget(right, EffectiveType(left.type));
 	if (!IsModifiableLvalue(left))
 		throw std::runtime_error("assignment requires modifiable lvalue");
 	const bool pointer_add = IsPointer(left.type) &&
@@ -1733,8 +1674,19 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSubscript(NodeId node, ScopeId scope)
 	const std::uint32_t second = first == kNoEdge ? kNoEdge :
 		arena_->NextEdge(first);
 	if (second == kNoEdge) throw std::runtime_error("invalid subscript");
-	ExpressionInfo left = AnalyzeExpression(arena_->EdgeChild(first), scope);
-	ExpressionInfo right = AnalyzeExpression(arena_->EdgeChild(second), scope);
+	const NodeId left_syntax = arena_->EdgeChild(first);
+	const NodeId right_syntax = arena_->EdgeChild(second);
+	ExpressionInfo left = AnalyzeExpression(left_syntax, scope);
+	ExpressionInfo right = AnalyzeExpression(right_syntax, scope);
+	std::vector<NodeId> overloaded_syntax;
+	overloaded_syntax.push_back(left_syntax);
+	overloaded_syntax.push_back(right_syntax);
+	std::vector<ExpressionInfo> overloaded_operands;
+	overloaded_operands.push_back(left);
+	overloaded_operands.push_back(right);
+	ExpressionInfo overloaded;
+	if (TryAnalyzeOverloadedOperator("[]", scope, overloaded_syntax,
+		overloaded_operands, true, kNoType, &overloaded)) return overloaded;
 	if (!IsPointer(Decay(left.type)) && IsPointer(Decay(right.type)))
 		std::swap(left, right);
 	const TypeId pointer_type = Decay(left.type);
@@ -2192,6 +2144,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			const BindingId function = DeclareFunction(declaration_scope, parsed.name,
 				parsed.type, parsed.parameters, false, false, spec.storage_class,
 				current_language_linkage_, IsNonthrowing(declarator, scope));
+			ValidateNonmemberOperator(function);
 			const NodeId function_initializer = FindChild(item, "initializer");
 			const NodeId special = function_initializer == kNoNode ? kNoNode :
 				FindChild(function_initializer, "special-initializer");
@@ -2357,6 +2310,7 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	const BindingId binding = DeclareFunction(owner, parsed.name,
 		parsed.type, parsed.parameters, true, false, spec.storage_class,
 		current_language_linkage_, IsNonthrowing(declarator, owner));
+	ValidateNonmemberOperator(binding);
 	const FunctionInfo& function = GetFunction(binding);
 	const bool member = function.member_owner != kNoType;
 	const TypeId output_type = member ?
@@ -2387,7 +2341,8 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	const TypeId previous_return = current_return_type_;
 	const EntityId previous_class = current_class_context_;
 	current_return_type_ = program_->types.Get(parsed.type).child;
-	current_class_context_ = program_->bindings[binding].member_owner;
+	current_class_context_ = function.friend_of != kNoEntity ?
+		function.friend_of : program_->bindings[binding].member_owner;
 	const NodeId body = FindChild(node, "compound-statement");
 	if (body != kNoNode) AnalyzeCompound(body, function_scope, output_node);
 	current_return_type_ = previous_return;
@@ -2889,6 +2844,7 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		stats_->lookup_queries = program.lookup_queries;
 		stats_->lookup_scope_visits = program.lookup_scope_visits;
 		stats_->lookup_edge_visits = program.lookup_edge_visits;
+		stats_->associated_scope_visits = associated_scope_visits_;
 		stats_->overload_candidates = overload_candidates_;
 		stats_->overload_order_comparisons = overload_order_comparisons_;
 		stats_->conversion_checks = conversion_checks_;
@@ -2931,7 +2887,8 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 	  lexical_cleanup_action_visits(0),
 	  namespace_object_actions(0),
 	  lookup_queries(0), lookup_scope_visits(0),
-	  lookup_edge_visits(0), overload_candidates(0),
+	  lookup_edge_visits(0), associated_scope_visits(0),
+	  overload_candidates(0),
 	  overload_order_comparisons(0), conversion_checks(0),
 	  function_signature_lookups(0), template_specialization_requests(0),
 	  template_specialization_cache_hits(0), demand_worklist_pushes(0),

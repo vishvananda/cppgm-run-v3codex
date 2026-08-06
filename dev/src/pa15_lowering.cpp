@@ -1111,7 +1111,7 @@ private:
 		if (record.kind == DUMP_BINARY_EXPRESSION && children.size() == 2 &&
 			StripOperationPrefix(program_.names.Get(record.text)) == ",")
 		{
-			(void)LowerValue(children[0]);
+			LowerDiscardedValue(children[0]);
 			return LowerStorage(children[1]);
 		}
 		if (record.kind == DUMP_CONDITIONAL_EXPRESSION &&
@@ -1240,14 +1240,14 @@ private:
 		else if (record.kind == DUMP_LITERAL)
 		{
 			const LowType type = LowerType(record.type);
-			if (type.kind == LOW_PTR && record.text != 0 &&
+			if ((type.kind == LOW_PTR || expected.kind == LOW_PTR) &&
+				record.text != 0 &&
 				StripOperationPrefix(program_.names.Get(record.text)) == "nullptr")
 			{
-				result = Temp(type);
+				const LowType pointer_type = expected.kind == LOW_PTR ? expected : type; result = Temp(pointer_type);
 				Instruction copy(Instruction::COPY);
 				copy.dest = result.id;
-				copy.type = type;
-				copy.first = Operand::NullPointer(type);
+				copy.type = pointer_type; copy.first = Operand::NullPointer(pointer_type);
 				Emit(copy);
 			}
 			else if (IsFloating(type))
@@ -1348,7 +1348,9 @@ private:
 		else throw std::runtime_error("semantic expression is outside the active PA15 checkpoint");
 		return expected.kind == LOW_INVALID ? result : Convert(result, expected);
 	}
-
+	void LowerDiscardedValue(std::uint32_t node) { const DumpNode& record = arena_.nodes[node];
+		if ((record.category == VALUE_LVALUE || record.category == VALUE_XVALUE) && !IsFunctionType(RemoveReference(record.type))) (void)LowerStorage(node);
+		else (void)LowerValue(node); }
 	Operand LowerBinary(std::uint32_t node, const DumpNode& record,
 		const NodeChildren& children)
 	{
@@ -1358,7 +1360,7 @@ private:
 			return LowerLogical(node, children, op == "&&");
 		if (op == ",")
 		{
-			(void)LowerValue(children[0]);
+			LowerDiscardedValue(children[0]);
 			return LowerValue(children[1]);
 		}
 		const bool comparison = op == "==" || op == "!=" || op == "<" ||
@@ -1376,8 +1378,8 @@ private:
 			throw std::runtime_error("binary expression is missing its PA12 operand type");
 		const LowType operand_type = record.operand_type == kNoType ?
 			LowPtr() : LowerExpressionType(record.operand_type);
-		Operand left = LowerValue(children[0]);
-		Operand right = LowerValue(children[1]);
+		Operand left = LowerValue(children[0], comparison && operand_type.kind == LOW_PTR && arena_.nodes[children[0]].kind == DUMP_LITERAL && arena_.nodes[children[0]].text != 0 && StripOperationPrefix(program_.names.Get(arena_.nodes[children[0]].text)) == "nullptr" ? operand_type : LowType());
+		Operand right = LowerValue(children[1], comparison && operand_type.kind == LOW_PTR && arena_.nodes[children[1]].kind == DUMP_LITERAL && arena_.nodes[children[1]].text != 0 && StripOperationPrefix(program_.names.Get(arena_.nodes[children[1]].text)) == "nullptr" ? operand_type : LowType());
 		const bool canonical_pointer_difference_compare = comparison &&
 			arena_.nodes[children[0]].kind == DUMP_BINARY_EXPRESSION &&
 			arena_.nodes[children[0]].operand_type == kNoType &&
@@ -1954,7 +1956,7 @@ private:
 			if (child_kind == DUMP_SIMPLE_DECLARATION ||
 				child_kind == DUMP_VARIABLE)
 				PushStatementNode(child);
-			else (void)LowerValue(child);
+			else LowerDiscardedValue(child);
 			return;
 		}
 		if (task.kind == STATEMENT_IF_AFTER_THEN)
@@ -2091,7 +2093,7 @@ private:
 				store.type = type;
 				store.first = IsReferenceType(record.type) ?
 					AddressOfStorage(LowerStorage(children[0])) :
-					Convert(LowerValue(children[0]), type, false);
+					Convert(LowerValue(children[0], type.kind == LOW_PTR ? type : LowType()), type, false);
 				store.second = StorageFor(record.binding, type);
 				Emit(store);
 			}
@@ -2122,9 +2124,8 @@ private:
 			LowerReturn(children);
 			return;
 		}
-		if (record.kind == DUMP_EXPRESSION_STATEMENT)
-		{
-			if (!children.empty()) (void)LowerValue(children[0]);
+		if (record.kind == DUMP_EXPRESSION_STATEMENT) {
+			if (!children.empty()) LowerDiscardedValue(children[0]);
 			return;
 		}
 		if (record.kind == DUMP_IF_STATEMENT) { LowerIf(children); return; }

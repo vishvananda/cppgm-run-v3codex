@@ -34,6 +34,7 @@ struct LowIRLoweringStats
 	std::size_t destructor_subobject_action_visits;
 	std::size_t lexical_cleanup_action_visits;
 	std::size_t namespace_object_actions;
+	std::size_t associated_scope_visits;
 	std::size_t overload_candidates;
 	std::size_t overload_order_comparisons;
 	std::size_t conversion_checks;
