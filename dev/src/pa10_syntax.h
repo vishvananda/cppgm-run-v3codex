@@ -18,11 +18,24 @@ struct SyntaxStats
 	std::size_t spelling_bytes;
 	std::size_t syntax_nodes;
 	std::size_t syntax_edges;
+	std::size_t syntax_output_bytes;
+	std::size_t max_syntax_depth;
 	std::size_t parser_checkpoints;
 	std::size_t parser_rollbacks;
+	std::size_t template_argument_probes;
+	std::size_t template_argument_scans;
+	std::size_t template_argument_cache_hits;
+	std::size_t template_argument_scan_tokens;
+	std::size_t max_template_argument_scan_tokens;
+	std::size_t failed_template_argument_scans;
+	std::size_t parser_fact_changes;
 	std::size_t token_storage_bytes;
 	std::size_t syntax_storage_bytes;
+	std::size_t parser_storage_bytes;
+	std::size_t render_stack_storage_bytes;
 	std::size_t peak_stage_storage_bytes;
+	std::uint64_t parse_nanoseconds;
+	std::uint64_t render_nanoseconds;
 	std::uint64_t elapsed_nanoseconds;
 
 	SyntaxStats();

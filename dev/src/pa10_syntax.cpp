@@ -1,4 +1,5 @@
 #include "pa10_syntax.h"
+#include "pa10_syntax_model.h"
 
 #include <algorithm>
 #include <chrono>
@@ -8,7 +9,6 @@
 #include <ostream>
 #include <stdexcept>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -17,327 +17,7 @@ namespace cppgm
 namespace
 {
 
-typedef std::uint32_t TextId;
-typedef std::uint32_t NodeId;
-
-const std::uint16_t kSimpleTokenCount =
-	static_cast<std::uint16_t>(OP_ARROW) + 1;
-const std::uint16_t kIdentifierToken = kSimpleTokenCount;
-const std::uint16_t kLiteralToken = kSimpleTokenCount + 1;
-const std::uint16_t kEofToken = kSimpleTokenCount + 2;
-const std::uint16_t kRShiftFirstToken = kSimpleTokenCount + 3;
-const std::uint16_t kRShiftSecondToken = kSimpleTokenCount + 4;
-const NodeId kNoNode = std::numeric_limits<NodeId>::max();
-const std::uint32_t kNoEdge = std::numeric_limits<std::uint32_t>::max();
-
-std::size_t HashText(const std::string& text)
-{
-	std::size_t value = sizeof(std::size_t) == 8 ?
-		static_cast<std::size_t>(1469598103934665603ULL) :
-		static_cast<std::size_t>(2166136261U);
-	const std::size_t prime = sizeof(std::size_t) == 8 ?
-		static_cast<std::size_t>(1099511628211ULL) :
-		static_cast<std::size_t>(16777619U);
-	for (std::size_t i = 0; i < text.size(); ++i)
-	{
-		value ^= static_cast<unsigned char>(text[i]);
-		value *= prime;
-	}
-	return value;
-}
-
-class StringTable
-{
-public:
-	StringTable() : slots_(32, 0), spelling_bytes_(0)
-	{
-		texts_.push_back(std::string());
-	}
-
-	TextId Intern(const std::string& text)
-	{
-		if ((texts_.size() + 1) * 10 > slots_.size() * 7)
-			Rehash(slots_.size() * 2);
-		const std::size_t mask = slots_.size() - 1;
-		std::size_t slot = HashText(text) & mask;
-		while (slots_[slot] != 0)
-		{
-			const TextId id = slots_[slot];
-			if (texts_[id] == text) return id;
-			slot = (slot + 1) & mask;
-		}
-		if (texts_.size() > std::numeric_limits<TextId>::max())
-			throw std::runtime_error("too many syntax spellings");
-		const TextId id = static_cast<TextId>(texts_.size());
-		texts_.push_back(text);
-		spelling_bytes_ += text.size();
-		slots_[slot] = id;
-		return id;
-	}
-
-	const std::string& Get(TextId id) const { return texts_[id]; }
-	std::size_t Size() const { return texts_.size() - 1; }
-	std::size_t SpellingBytes() const { return spelling_bytes_; }
-	std::size_t StorageBytes() const
-	{
-		std::size_t bytes = texts_.capacity() * sizeof(std::string) +
-			slots_.capacity() * sizeof(TextId);
-		for (std::size_t i = 1; i < texts_.size(); ++i)
-			bytes += texts_[i].capacity();
-		return bytes;
-	}
-
-private:
-	void Rehash(std::size_t capacity)
-	{
-		std::vector<TextId> replacement(capacity, 0);
-		const std::size_t mask = capacity - 1;
-		for (TextId id = 1; id < texts_.size(); ++id)
-		{
-			std::size_t slot = HashText(texts_[id]) & mask;
-			while (replacement[slot] != 0) slot = (slot + 1) & mask;
-			replacement[slot] = id;
-		}
-		slots_.swap(replacement);
-	}
-
-	std::vector<std::string> texts_;
-	std::vector<TextId> slots_;
-	std::size_t spelling_bytes_;
-};
-
-struct SyntaxToken
-{
-	std::uint16_t kind;
-	TextId spelling;
-
-	SyntaxToken(std::uint16_t kind_value, TextId spelling_value)
-		: kind(kind_value), spelling(spelling_value) {}
-};
-
-class SyntaxTokenSink : public IPostTokenStream
-{
-public:
-	explicit SyntaxTokenSink(StringTable& strings) : strings_(strings) {}
-
-	void EmitInvalid(const std::string& source)
-	{
-		throw std::runtime_error("invalid phase-7 token: " + source);
-	}
-
-	void EmitSimple(const std::string& source, SimpleTokenKind kind)
-	{
-		if (kind == OP_RSHIFT)
-		{
-			const TextId close = strings_.Intern(">");
-			tokens_.push_back(SyntaxToken(kRShiftFirstToken, close));
-			tokens_.push_back(SyntaxToken(kRShiftSecondToken, close));
-			return;
-		}
-		tokens_.push_back(SyntaxToken(static_cast<std::uint16_t>(kind),
-			strings_.Intern(source)));
-	}
-
-	void EmitIdentifier(const std::string& source)
-	{
-		tokens_.push_back(SyntaxToken(kIdentifierToken,
-			strings_.Intern(source)));
-	}
-
-	void EmitLiteral(const std::string& source, FundamentalType,
-		const void*, std::size_t)
-	{
-		EmitLiteralSpelling(source);
-	}
-
-	void EmitLiteralArray(const std::string& source, std::size_t,
-		FundamentalType, const void*, std::size_t)
-	{
-		EmitLiteralSpelling(source);
-	}
-
-	void EmitUserDefinedCharacter(const std::string& source,
-		const std::string&, FundamentalType, const void*, std::size_t)
-	{
-		EmitLiteralSpelling(source);
-	}
-
-	void EmitUserDefinedString(const std::string& source,
-		const std::string&, std::size_t, FundamentalType,
-		const void*, std::size_t)
-	{
-		EmitLiteralSpelling(source);
-	}
-
-	void EmitUserDefinedInteger(const std::string& source,
-		const std::string&, const std::string&)
-	{
-		EmitLiteralSpelling(source);
-	}
-
-	void EmitUserDefinedFloating(const std::string& source,
-		const std::string&, const std::string&)
-	{
-		EmitLiteralSpelling(source);
-	}
-
-	void EmitEof()
-	{
-		tokens_.push_back(SyntaxToken(kEofToken,
-			strings_.Intern(std::string())));
-	}
-
-	const std::vector<SyntaxToken>& Tokens() const { return tokens_; }
-	std::size_t StorageBytes() const
-	{
-		return tokens_.capacity() * sizeof(SyntaxToken);
-	}
-
-private:
-	void EmitLiteralSpelling(const std::string& source)
-	{
-		tokens_.push_back(SyntaxToken(kLiteralToken,
-			strings_.Intern(source)));
-	}
-
-	StringTable& strings_;
-	std::vector<SyntaxToken> tokens_;
-};
-
-struct SyntaxNode
-{
-	TextId label;
-	std::uint32_t first_edge;
-	std::uint32_t last_edge;
-
-	explicit SyntaxNode(TextId label_value)
-		: label(label_value), first_edge(kNoEdge), last_edge(kNoEdge) {}
-};
-
-struct SyntaxEdge
-{
-	NodeId child;
-	std::uint32_t next;
-
-	explicit SyntaxEdge(NodeId child_value)
-		: child(child_value), next(kNoEdge) {}
-};
-
-class SyntaxArena
-{
-public:
-	explicit SyntaxArena(StringTable& strings) : strings_(strings) {}
-
-	NodeId Make(const std::string& label)
-	{
-		if (nodes_.size() >= kNoNode)
-			throw std::runtime_error("too many syntax nodes");
-		const NodeId id = static_cast<NodeId>(nodes_.size());
-		nodes_.push_back(SyntaxNode(strings_.Intern(label)));
-		return id;
-	}
-
-	void Add(NodeId parent, NodeId child)
-	{
-		if (parent == kNoNode || child == kNoNode) return;
-		if (edges_.size() >= kNoEdge)
-			throw std::runtime_error("too many syntax edges");
-		const std::uint32_t edge = static_cast<std::uint32_t>(edges_.size());
-		edges_.push_back(SyntaxEdge(child));
-		SyntaxNode& node = nodes_[parent];
-		if (node.first_edge == kNoEdge) node.first_edge = edge;
-		else edges_[node.last_edge].next = edge;
-		node.last_edge = edge;
-	}
-	void Prepend(NodeId parent, NodeId child)
-	{
-		if (parent == kNoNode || child == kNoNode) return;
-		if (edges_.size() >= kNoEdge)
-			throw std::runtime_error("too many syntax edges");
-		const std::uint32_t edge = static_cast<std::uint32_t>(edges_.size());
-		edges_.push_back(SyntaxEdge(child));
-		SyntaxNode& node = nodes_[parent];
-		edges_[edge].next = node.first_edge;
-		node.first_edge = edge;
-		if (node.last_edge == kNoEdge) node.last_edge = edge;
-	}
-
-	std::size_t NodeMark() const { return nodes_.size(); }
-	std::size_t EdgeMark() const { return edges_.size(); }
-
-	void Rollback(std::size_t node_mark, std::size_t edge_mark)
-	{
-		nodes_.erase(nodes_.begin() + node_mark, nodes_.end());
-		edges_.erase(edges_.begin() + edge_mark, edges_.end());
-		// Any surviving node can only have edges below edge_mark: callers mark
-		// before attaching speculative children to an existing parent.
-	}
-
-	void Write(std::ostream& output, NodeId root) const
-	{
-		struct Frame
-		{
-			NodeId node;
-			std::uint32_t edge;
-			std::size_t depth;
-			bool entered;
-			Frame(NodeId node_value, std::size_t depth_value)
-				: node(node_value), edge(kNoEdge), depth(depth_value),
-				  entered(false) {}
-		};
-		std::vector<Frame> stack;
-		stack.push_back(Frame(root, 0));
-		while (!stack.empty())
-		{
-			Frame& frame = stack.back();
-			const SyntaxNode& node = nodes_[frame.node];
-			if (!frame.entered)
-			{
-				for (std::size_t i = 0; i < frame.depth; ++i) output << "  ";
-				output << strings_.Get(node.label) << '\n';
-				frame.entered = true;
-				frame.edge = node.first_edge;
-			}
-			if (frame.edge == kNoEdge)
-			{
-				stack.pop_back();
-				continue;
-			}
-			const std::uint32_t edge = frame.edge;
-			frame.edge = edges_[edge].next;
-			stack.push_back(Frame(edges_[edge].child, frame.depth + 1));
-		}
-	}
-
-	std::size_t Nodes() const { return nodes_.size(); }
-	std::size_t Edges() const { return edges_.size(); }
-	const std::string& Label(NodeId node) const
-	{
-		return strings_.Get(nodes_[node].label);
-	}
-	void SetLabel(NodeId node, const std::string& label)
-	{
-		nodes_[node].label = strings_.Intern(label);
-	}
-	bool HasDirectChildPrefix(NodeId node, const std::string& prefix) const
-	{
-		for (std::uint32_t edge = nodes_[node].first_edge;
-			edge != kNoEdge; edge = edges_[edge].next)
-			if (Label(edges_[edge].child).compare(0, prefix.size(), prefix) == 0)
-				return true;
-		return false;
-	}
-	std::size_t StorageBytes() const
-	{
-		return nodes_.capacity() * sizeof(SyntaxNode) +
-			edges_.capacity() * sizeof(SyntaxEdge);
-	}
-
-private:
-	StringTable& strings_;
-	std::vector<SyntaxNode> nodes_;
-	std::vector<SyntaxEdge> edges_;
-};
+using namespace pa10_syntax_detail;
 
 bool IsFundamentalKind(std::uint16_t kind)
 {
@@ -388,8 +68,11 @@ public:
 	Parser(const std::vector<SyntaxToken>& tokens, StringTable& strings,
 		SyntaxArena& arena, SyntaxStats* stats)
 		: tokens_(tokens), strings_(strings), arena_(arena), stats_(stats),
-		  position_(0), angle_stop_depth_(0)
+		  position_(0), angle_stop_depth_(0), name_fact_revision_(1),
+		  angle_matches_(tokens.size())
 	{
+		if (tokens.size() >= std::numeric_limits<std::uint32_t>::max() - 1)
+			throw std::runtime_error("too many syntax tokens");
 	}
 
 	NodeId ParseTranslationUnit()
@@ -408,18 +91,68 @@ public:
 		return root;
 	}
 
+	std::size_t StorageBytes() const
+	{
+		std::size_t bytes =
+			name_facts_.capacity() * sizeof(std::uint8_t) +
+			name_fact_changes_.capacity() * sizeof(NameFactChange) +
+			angle_matches_.capacity() * sizeof(AngleMatch) +
+			last_declared_names_.capacity() * sizeof(TextId) +
+			current_classes_.capacity() * sizeof(std::string);
+		for (std::size_t i = 0; i < current_classes_.size(); ++i)
+			bytes += current_classes_[i].capacity();
+		return bytes;
+	}
+
 private:
 	struct Mark
 	{
 		std::size_t position;
 		std::size_t nodes;
 		std::size_t edges;
+		std::size_t fact_changes;
 	};
+
+	enum NameFact
+	{
+		kKnownType = 1,
+		kKnownTemplate = 2,
+		kKnownNonTemplate = 4
+	};
+
+	struct NameFactChange
+	{
+		TextId name;
+		std::uint8_t previous;
+
+		NameFactChange(TextId name_value, std::uint8_t previous_value)
+			: name(name_value), previous(previous_value) {}
+	};
+
+	struct AngleMatch
+	{
+		std::uint32_t close;
+		std::uint32_t fact_revision;
+
+		AngleMatch()
+			: close(std::numeric_limits<std::uint32_t>::max()),
+			  fact_revision(0) {}
+	};
+
+	void AdvanceNameFactRevision()
+	{
+		++name_fact_revision_;
+		if (name_fact_revision_ != 0) return;
+		name_fact_revision_ = 1;
+		for (std::size_t i = 0; i < angle_matches_.size(); ++i)
+			angle_matches_[i].fact_revision = 0;
+	}
 
 	Mark Checkpoint()
 	{
 		if (stats_) ++stats_->parser_checkpoints;
-		Mark mark = {position_, arena_.NodeMark(), arena_.EdgeMark()};
+		Mark mark = {position_, arena_.NodeMark(), arena_.EdgeMark(),
+			name_fact_changes_.size()};
 		return mark;
 	}
 
@@ -428,6 +161,40 @@ private:
 		if (stats_) ++stats_->parser_rollbacks;
 		position_ = mark.position;
 		arena_.Rollback(mark.nodes, mark.edges);
+		while (name_fact_changes_.size() > mark.fact_changes)
+		{
+			const NameFactChange change = name_fact_changes_.back();
+			name_fact_changes_.pop_back();
+			name_facts_[change.name] = change.previous;
+			AdvanceNameFactRevision();
+		}
+	}
+
+	bool HasNameFact(TextId name, NameFact fact) const
+	{
+		return name < name_facts_.size() &&
+			(name_facts_[name] & static_cast<std::uint8_t>(fact)) != 0;
+	}
+
+	void SetNameFact(TextId name, NameFact fact, bool enabled = true)
+	{
+		if (name >= name_facts_.size()) name_facts_.resize(name + 1, 0);
+		const std::uint8_t before = name_facts_[name];
+		const std::uint8_t bit = static_cast<std::uint8_t>(fact);
+		const std::uint8_t after = enabled ?
+			static_cast<std::uint8_t>(before | bit) :
+			static_cast<std::uint8_t>(before & ~bit);
+		if (before == after) return;
+		name_fact_changes_.push_back(NameFactChange(name, before));
+		name_facts_[name] = after;
+		AdvanceNameFactRevision();
+		if (stats_) ++stats_->parser_fact_changes;
+	}
+
+	void SetNameFact(const std::string& name, NameFact fact,
+		bool enabled = true)
+	{
+		SetNameFact(strings_.Intern(name), fact, enabled);
 	}
 
 	std::runtime_error Error(const std::string& message) const
@@ -597,7 +364,7 @@ private:
 		if (position >= tokens_.size() ||
 			tokens_[position].kind != kIdentifierToken) return false;
 		const std::string& name = Spelling(position);
-		if (known_types_.find(name) != known_types_.end()) return true;
+		if (HasNameFact(tokens_[position].spelling, kKnownType)) return true;
 		return name.find('C') != std::string::npos ||
 			name.find('T') != std::string::npos ||
 			name.find('Y') != std::string::npos ||
@@ -617,7 +384,7 @@ private:
 			++scan;
 		}
 		return last != tokens_.size() &&
-			(known_types_.find(Spelling(last)) != known_types_.end() ||
+			(HasNameFact(tokens_[last].spelling, kKnownType) ||
 			 IsLikelyTypeIdentifier(last));
 	}
 
@@ -723,25 +490,56 @@ private:
 	void TryConsumeTemplateArguments()
 	{
 		if (!At(OP_LT)) return;
+		if (stats_) ++stats_->template_argument_probes;
+		const std::size_t opener = position_;
+		const std::uint32_t no_match =
+			std::numeric_limits<std::uint32_t>::max() - 1;
+		if (opener >= no_match)
+			throw std::runtime_error("too many syntax tokens");
+		const AngleMatch& cached = angle_matches_[opener];
+		if (cached.fact_revision == name_fact_revision_)
+		{
+			if (stats_) ++stats_->template_argument_cache_hits;
+			if (cached.close != no_match)
+				position_ = static_cast<std::size_t>(cached.close) + 1;
+			return;
+		}
 		const std::string candidate = position_ == 0 ? std::string() :
 			Spelling(position_ - 1);
+		const TextId candidate_id = position_ == 0 ? 0 :
+			tokens_[position_ - 1].spelling;
 		const bool qualified_candidate = position_ >= 2 &&
 			tokens_[position_ - 2].kind ==
 				static_cast<std::uint16_t>(OP_COLON2);
 		const bool trusted =
-			(qualified_candidate || non_template_names_.find(candidate) ==
-			 non_template_names_.end()) &&
-			(known_templates_.find(candidate) != known_templates_.end() ||
+			(qualified_candidate ||
+			 !HasNameFact(candidate_id, kKnownNonTemplate)) &&
+			(HasNameFact(candidate_id, kKnownTemplate) ||
 			 candidate.find('T') != std::string::npos);
 		const Mark mark = Checkpoint();
 		++position_;
+		const std::size_t scan_start = position_;
+		if (stats_) ++stats_->template_argument_scans;
 		std::size_t paren = 0;
 		std::size_t square = 0;
 		std::size_t brace = 0;
 		std::size_t angle = 1;
+		std::vector<std::size_t> open_angles(1, opener);
 		bool saw_expression_operator = false;
+		bool hit_untrusted_limit = false;
+		// An unclassified identifier is an intentionally ambiguous PA10 case.
+		// Keep its speculative lookahead bounded; established and mock-template
+		// names may consume arbitrarily large argument lists.
+		const std::size_t untrusted_scan_limit = 256;
 		while (position_ < tokens_.size() && !AtEof())
 		{
+			if (paren == 0 && square == 0 && brace == 0 &&
+				(At(OP_SEMICOLON) || At(OP_LBRACE))) break;
+			if (!trusted && position_ - scan_start >= untrusted_scan_limit)
+			{
+				hit_untrusted_limit = true;
+				break;
+			}
 			if (At(OP_LPAREN)) ++paren;
 			else if (At(OP_RPAREN))
 			{
@@ -769,6 +567,8 @@ private:
 				{
 					const std::string nested_candidate = position_ == 0 ?
 						std::string() : Spelling(position_ - 1);
+					const TextId nested_candidate_id = position_ == 0 ? 0 :
+						tokens_[position_ - 1].spelling;
 					const bool explicitly_templated = position_ >= 2 &&
 						tokens_[position_ - 2].kind ==
 							static_cast<std::uint16_t>(KW_TEMPLATE);
@@ -776,24 +576,40 @@ private:
 						tokens_[position_ - 2].kind ==
 							static_cast<std::uint16_t>(OP_COLON2);
 					if (explicitly_templated ||
-						(qualified_nested && known_templates_.find(
-							nested_candidate) != known_templates_.end()) ||
-						non_template_names_.find(nested_candidate) ==
-							non_template_names_.end())
+						(qualified_nested && HasNameFact(nested_candidate_id,
+							kKnownTemplate)) ||
+						!HasNameFact(nested_candidate_id, kKnownNonTemplate))
+					{
 						++angle;
+						open_angles.push_back(position_);
+					}
 					else saw_expression_operator = true;
 				}
 				else if (AtCloseAngle())
 				{
+					if (open_angles.empty())
+						throw std::logic_error("invalid angle lookahead stack");
+					const std::size_t matched_opener = open_angles.back();
+					open_angles.pop_back();
 					--angle;
+					const std::size_t matched_close = position_;
 					++position_;
 					if (angle == 0)
 					{
 						if (!trusted && saw_expression_operator)
 						{
+							angle_matches_[matched_opener].close = no_match;
+							angle_matches_[matched_opener].fact_revision =
+								name_fact_revision_;
+							RecordTemplateArgumentScan(scan_start, true);
 							Rollback(mark);
 							return;
 						}
+						angle_matches_[matched_opener].close =
+							static_cast<std::uint32_t>(matched_close);
+						angle_matches_[matched_opener].fact_revision =
+							name_fact_revision_;
+						RecordTemplateArgumentScan(scan_start, false);
 						return;
 					}
 					continue;
@@ -801,13 +617,42 @@ private:
 			}
 			++position_;
 		}
+		if (hit_untrusted_limit)
+		{
+			angle_matches_[opener].close = no_match;
+			angle_matches_[opener].fact_revision = name_fact_revision_;
+		}
+		else
+		{
+			for (std::size_t i = 0; i < open_angles.size(); ++i)
+			{
+				angle_matches_[open_angles[i]].close = no_match;
+				angle_matches_[open_angles[i]].fact_revision =
+					name_fact_revision_;
+			}
+		}
+		RecordTemplateArgumentScan(scan_start, true);
 		Rollback(mark);
+	}
+
+	void RecordTemplateArgumentScan(std::size_t scan_start, bool failed)
+	{
+		if (!stats_) return;
+		const std::size_t scanned = position_ - scan_start;
+		stats_->template_argument_scan_tokens += scanned;
+		stats_->max_template_argument_scan_tokens = std::max(
+			stats_->max_template_argument_scan_tokens, scanned);
+		if (failed) ++stats_->failed_template_argument_scans;
 	}
 
 	NodeId ParseDeclaration(bool in_class);
 	NodeId ParseNamespace();
 	NodeId ParseUsing();
 	NodeId ParseTemplate(bool in_class);
+	NodeId ParseTemplateParameter();
+	NodeId ParseTypeTemplateParameter();
+	NodeId ParseNonTypeTemplateParameter();
+	NodeId ParseNestedTemplateParameterClause();
 	NodeId ParseClass(bool require_semicolon = true);
 	NodeId ParseEnum(bool require_semicolon = true);
 	NodeId ParseStaticAssert();
@@ -836,10 +681,11 @@ private:
 	SyntaxStats* stats_;
 	std::size_t position_;
 	std::size_t angle_stop_depth_;
-	std::unordered_map<std::string, bool> known_types_;
-	std::unordered_map<std::string, bool> known_templates_;
-	std::unordered_map<std::string, bool> non_template_names_;
-	std::vector<std::string> last_declared_names_;
+	std::uint32_t name_fact_revision_;
+	std::vector<std::uint8_t> name_facts_;
+	std::vector<NameFactChange> name_fact_changes_;
+	std::vector<AngleMatch> angle_matches_;
+	std::vector<TextId> last_declared_names_;
 	std::vector<std::string> current_classes_;
 };
 
@@ -862,8 +708,8 @@ NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id,
 		{
 			if (saw_user_type) break;
 			++position_;
-			arena_.Add(sequence, arena_.Make(std::string(for_type_id ?
-				"type-specifier " : "decl-specifier ") +
+			arena_.Add(sequence, arena_.Make(for_type_id ?
+				"type-specifier" : "decl-specifier",
 				TokenDescription(token_position)));
 			if (first_type && first_type->empty())
 				*first_type = Spelling(token_position);
@@ -876,8 +722,8 @@ NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id,
 			 kind == static_cast<std::uint16_t>(KW_VOLATILE)))
 		{
 			++position_;
-			arena_.Add(sequence, arena_.Make(std::string(for_type_id ?
-				"cv-qualifier " : "decl-specifier ") +
+			arena_.Add(sequence, arena_.Make(for_type_id ?
+				"cv-qualifier" : "decl-specifier",
 				TokenDescription(token_position)));
 			consumed = true;
 			continue;
@@ -885,7 +731,7 @@ NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id,
 		if (!for_type_id && IsDeclSpecifierKeyword(kind))
 		{
 			++position_;
-			arena_.Add(sequence, arena_.Make("decl-specifier " +
+			arena_.Add(sequence, arena_.Make("decl-specifier",
 				TokenDescription(token_position)));
 			consumed = true;
 			if (kind == static_cast<std::uint16_t>(KW_AUTO)) saw_type = true;
@@ -900,8 +746,7 @@ NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id,
 			Expect(OP_RPAREN);
 			const std::string rendered = JoinSpellings(first, position_);
 			const NodeId node = arena_.Make(for_type_id ?
-				"decltype-specifier " + rendered :
-				"decl-specifier " + rendered);
+				"decltype-specifier" : "decl-specifier", rendered);
 			arena_.Add(node, expression);
 			arena_.Add(sequence, node);
 			if (first_type && first_type->empty()) *first_type = rendered;
@@ -919,7 +764,7 @@ NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id,
 				return kNoNode;
 			}
 			arena_.Add(sequence, arena_.Make(for_type_id ?
-				"type-name " + name : "decl-specifier " + name));
+				"type-name" : "decl-specifier", name));
 			if (first_type && first_type->empty()) *first_type = name;
 			consumed = true;
 			saw_type = true;
@@ -958,10 +803,9 @@ NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id,
 			const bool decorated = name.find("::") != std::string::npos ||
 				name.find('<') != std::string::npos ||
 				name.find("decltype") == 0;
-			arena_.Add(sequence, arena_.Make(for_type_id ?
-				"type-name " + name : decorated ?
-				"decl-specifier " + name :
-				"decl-specifier TT_IDENTIFIER:" + name));
+			arena_.Add(sequence, arena_.Make(for_type_id ? "type-name" :
+				"decl-specifier", for_type_id || decorated ? name :
+				"TT_IDENTIFIER:" + name));
 			if (first_type && first_type->empty()) *first_type = name;
 			consumed = true;
 			saw_type = true;
@@ -1005,7 +849,7 @@ NodeId Parser::ParseParameterClause()
 	if (Match(OP_RPAREN)) return clause;
 	if (Match(OP_DOTS))
 	{
-		arena_.Add(clause, arena_.Make("parameter-pack ..."));
+		arena_.Add(clause, arena_.Make("parameter-pack", "..."));
 		Expect(OP_RPAREN);
 		return clause;
 	}
@@ -1032,8 +876,8 @@ NodeId Parser::ParseParameterClause()
 			const NodeId inner_clause = arena_.Make("parameter-clause");
 			const NodeId inner_parameter = arena_.Make("parameter-declaration");
 			const NodeId inner_specifiers = arena_.Make("decl-specifier-seq");
-			arena_.Add(inner_specifiers, arena_.Make(
-				"decl-specifier TT_IDENTIFIER:" + inner_type));
+			arena_.Add(inner_specifiers, arena_.Make("decl-specifier",
+				"TT_IDENTIFIER:" + inner_type));
 			arena_.Add(inner_parameter, inner_specifiers);
 			arena_.Add(inner_clause, inner_parameter);
 			arena_.Add(declarator, inner_clause);
@@ -1047,13 +891,13 @@ NodeId Parser::ParseParameterClause()
 		if (declarator != kNoNode)
 		{
 			if (pack_before_name)
-				arena_.Prepend(declarator, arena_.Make("parameter-pack ..."));
+				arena_.Prepend(declarator, arena_.Make("parameter-pack", "..."));
 			arena_.Add(parameter, declarator);
 		}
 		else if (pack_before_name)
 		{
 			const NodeId pack_declarator = arena_.Make("declarator");
-			arena_.Add(pack_declarator, arena_.Make("parameter-pack ..."));
+			arena_.Add(pack_declarator, arena_.Make("parameter-pack", "..."));
 			arena_.Add(parameter, pack_declarator);
 		}
 		SkipAttributes();
@@ -1071,7 +915,7 @@ NodeId Parser::ParseParameterClause()
 		if (!Match(OP_COMMA)) break;
 		if (Match(OP_DOTS))
 		{
-			arena_.Add(clause, arena_.Make("parameter-pack ..."));
+			arena_.Add(clause, arena_.Make("parameter-pack", "..."));
 			break;
 		}
 	}
@@ -1090,13 +934,13 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 		const std::size_t operator_position = position_;
 		if (Match(OP_STAR) || Match(OP_AMP) || Match(OP_LAND))
 		{
-			const NodeId pointer = arena_.Make("ptr-operator " +
+			const NodeId pointer = arena_.Make("ptr-operator",
 				TokenDescription(operator_position));
 			arena_.Add(result, pointer);
 			while (At(KW_CONST) || At(KW_VOLATILE))
 			{
 				const std::size_t qualifier = position_++;
-				arena_.Add(result, arena_.Make("cv-qualifier " +
+				arena_.Add(result, arena_.Make("cv-qualifier",
 					TokenDescription(qualifier)));
 			}
 			consumed = true;
@@ -1120,7 +964,7 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 			{
 				const std::string owner = JoinSpellings(owner_first,
 					position_ - 2);
-				arena_.Add(result, arena_.Make("ptr-operator " + owner + "::*"));
+				arena_.Add(result, arena_.Make("ptr-operator", owner + "::*"));
 				consumed = true;
 				continue;
 			}
@@ -1130,7 +974,7 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 	}
 	if (Match(OP_DOTS))
 	{
-		arena_.Add(result, arena_.Make("parameter-pack ..."));
+		arena_.Add(result, arena_.Make("parameter-pack", "..."));
 		consumed = true;
 	}
 	const bool abstract_function_suffix = abstract && At(OP_LPAREN) &&
@@ -1161,7 +1005,7 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 		if (ParseName(&parsed_name))
 		{
 			if (name) *name = parsed_name;
-			arena_.Add(result, arena_.Make("identifier " + parsed_name));
+			arena_.Add(result, arena_.Make("identifier", parsed_name));
 			consumed = true;
 		}
 		else Rollback(name_mark);
@@ -1202,14 +1046,14 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 				if (At(KW_CONST) || At(KW_VOLATILE))
 				{
 					const std::size_t qualifier = position_++;
-					arena_.Add(result, arena_.Make("cv-qualifier " +
+					arena_.Add(result, arena_.Make("cv-qualifier",
 						TokenDescription(qualifier)));
 					continue;
 				}
 				if (At(OP_AMP) || At(OP_LAND))
 				{
 					const std::size_t qualifier = position_++;
-					arena_.Add(result, arena_.Make("ref-qualifier " +
+					arena_.Add(result, arena_.Make("ref-qualifier",
 						TokenDescription(qualifier)));
 					continue;
 				}
@@ -1221,13 +1065,13 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 						const NodeId expression = ParseExpression();
 						Expect(OP_RPAREN);
 						const NodeId qualifier = arena_.Make(
-							"function-qualifier " +
+							"function-qualifier",
 							JoinSpellings(first, position_));
 						arena_.Add(qualifier, expression);
 						arena_.Add(result, qualifier);
 					}
 					else arena_.Add(result,
-						arena_.Make("function-qualifier noexcept"));
+						arena_.Make("function-qualifier", "noexcept"));
 					continue;
 				}
 				if (Match(KW_THROW))
@@ -1235,7 +1079,7 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 					const std::size_t first = position_ - 1;
 					if (!SkipBalanced(OP_LPAREN, OP_RPAREN))
 						throw Error("expected throw specification");
-					arena_.Add(result, arena_.Make("function-qualifier " +
+					arena_.Add(result, arena_.Make("function-qualifier",
 						JoinSpellings(first, position_)));
 					continue;
 				}
@@ -1244,7 +1088,7 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 					 Spelling(position_) == "final"))
 				{
 					const std::size_t specifier = position_++;
-					arena_.Add(result, arena_.Make("virt-specifier " +
+					arena_.Add(result, arena_.Make("virt-specifier",
 						TokenDescription(specifier)));
 					continue;
 				}
@@ -1254,7 +1098,7 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 					const NodeId trailing = arena_.Make("trailing-return-type");
 					if (!ParseTypeId(trailing))
 						throw Error("expected trailing return type");
-					arena_.SetLabel(trailing, "trailing-return-type " +
+					arena_.SetPayload(trailing,
 						JoinSpellings(type_first, position_));
 					arena_.Add(result, trailing);
 					continue;
@@ -1282,7 +1126,7 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 	}
 	if (Match(OP_DOTS))
 	{
-		arena_.Add(result, arena_.Make("parameter-pack ..."));
+		arena_.Add(result, arena_.Make("parameter-pack", "..."));
 		consumed = true;
 	}
 	if (!consumed)
@@ -1361,9 +1205,8 @@ NodeId Parser::ParseExpression(int minimum_precedence)
 			"OP_RSHIFT:>>" : std::string(SimpleTokenKindName(
 				static_cast<SimpleTokenKind>(kind))) + ":" +
 				Spelling(operator_position);
-		const NodeId expression = arena_.Make(std::string(
-			right_associative ? "assignment-expression " :
-			"binary-expression ") + description);
+		const NodeId expression = arena_.Make(right_associative ?
+			"assignment-expression" : "binary-expression", description);
 		arena_.Add(expression, left);
 		arena_.Add(expression, right);
 		left = expression;
@@ -1401,12 +1244,12 @@ NodeId Parser::ParsePrimaryExpression()
 	if (AtLiteral())
 	{
 		const std::string value = Spelling(position_++);
-		return arena_.Make("literal " + value);
+		return arena_.Make("literal", value);
 	}
 	if (At(KW_TRUE) || At(KW_FALSE) || At(KW_NULLPTR) || At(KW_THIS))
 	{
 		const std::size_t token = position_++;
-		return arena_.Make("keyword-literal " + TokenDescription(token));
+		return arena_.Make("keyword-literal", TokenDescription(token));
 	}
 	if (At(OP_LBRACE)) return ParseBracedInitList();
 	if (At(OP_LSQUARE))
@@ -1422,7 +1265,7 @@ NodeId Parser::ParsePrimaryExpression()
 		}
 		if (depth != 0) throw Error("unterminated lambda capture");
 		const NodeId lambda = arena_.Make("lambda-expression");
-		arena_.Add(lambda, arena_.Make("lambda-introducer " +
+		arena_.Add(lambda, arena_.Make("lambda-introducer",
 			JoinSpellings(capture_first, position_)));
 		if (At(OP_LPAREN))
 		{
@@ -1430,7 +1273,7 @@ NodeId Parser::ParsePrimaryExpression()
 			arena_.Add(declarator, ParseParameterClause());
 			if (Match(KW_MUTABLE))
 				arena_.Add(declarator,
-					arena_.Make("lambda-specifier KW_MUTABLE:mutable"));
+					arena_.Make("lambda-specifier", "KW_MUTABLE:mutable"));
 			if (Match(KW_NOEXCEPT))
 			{
 				const NodeId specification = arena_.Make(
@@ -1462,7 +1305,7 @@ NodeId Parser::ParsePrimaryExpression()
 	{
 		const Mark cast_mark = Checkpoint();
 		++position_;
-		const NodeId cast = arena_.Make("cast-expression OP_LPAREN:");
+		const NodeId cast = arena_.Make("cast-expression", "OP_LPAREN:");
 		const bool type_like = At(KW_CONST) || At(KW_VOLATILE) ||
 			At(KW_STRUCT) || At(KW_CLASS) || At(KW_UNION) ||
 			(position_ < tokens_.size() &&
@@ -1502,7 +1345,7 @@ NodeId Parser::ParsePrimaryExpression()
 			++position_;
 			TryConsumeTemplateArguments();
 		}
-		return arena_.Make("id-expression " +
+		return arena_.Make("id-expression",
 			JoinSpellings(first, position_));
 	}
 	if (AtIdentifier() || At(OP_COLON2) || At(KW_OPERATOR) ||
@@ -1514,7 +1357,7 @@ NodeId Parser::ParsePrimaryExpression()
 			IsFundamentalKind(tokens_[position_].kind))
 			name = Spelling(position_++);
 		else if (!ParseName(&name)) return kNoNode;
-		return arena_.Make("id-expression " + name);
+		return arena_.Make("id-expression", name);
 	}
 	return kNoNode;
 }
@@ -1534,9 +1377,8 @@ NodeId Parser::ParsePostfixSuffixes(NodeId value)
 		{
 			const NodeId call = arena_.Make("call-expression");
 			arena_.Add(call, value);
-			const std::string& callee_label = arena_.Label(value);
-			const std::string callee = callee_label.compare(0, 14,
-				"id-expression ") == 0 ? callee_label.substr(14) : std::string();
+			const std::string callee = arena_.Tag(value) == "id-expression" ?
+				arena_.Payload(value) : std::string();
 			bool function_style = false;
 			for (std::uint16_t candidate = 0;
 				candidate < kSimpleTokenCount; ++candidate)
@@ -1600,17 +1442,17 @@ NodeId Parser::ParsePostfixSuffixes(NodeId value)
 				dependent_template || qualified_member))
 				throw Error("expected member name");
 			if (dependent_template) member = "template " + member;
-			const NodeId expression = arena_.Make("member-expression " +
+			const NodeId expression = arena_.Make("member-expression",
 				TokenDescription(operation));
 			arena_.Add(expression, value);
-			arena_.Add(expression, arena_.Make("identifier " + member));
+			arena_.Add(expression, arena_.Make("identifier", member));
 			value = expression;
 			continue;
 		}
 		if (At(OP_INC) || At(OP_DEC))
 		{
 			const std::size_t operation = position_++;
-			const NodeId expression = arena_.Make("postfix-expression " +
+			const NodeId expression = arena_.Make("postfix-expression",
 				TokenDescription(operation));
 			arena_.Add(expression, value);
 			value = expression;
@@ -1629,7 +1471,7 @@ NodeId Parser::ParseUnaryExpression()
 		const std::size_t operation = position_++;
 		const NodeId operand = ParseUnaryExpression();
 		if (operand == kNoNode) throw Error("expected unary operand");
-		const NodeId unary = arena_.Make("unary-expression " +
+		const NodeId unary = arena_.Make("unary-expression",
 			TokenDescription(operation));
 		arena_.Add(unary, operand);
 		return unary;
@@ -1639,9 +1481,9 @@ NodeId Parser::ParseUnaryExpression()
 		const std::size_t keyword = position_++;
 		const SimpleTokenKind kind = static_cast<SimpleTokenKind>(
 			tokens_[keyword].kind);
-		const std::string label = kind == KW_SIZEOF ? "sizeof-expression" :
-			"type-trait-expression " + TokenDescription(keyword);
-		const NodeId trait = arena_.Make(label);
+		const NodeId trait = kind == KW_SIZEOF ?
+			arena_.Make("sizeof-expression") :
+			arena_.Make("type-trait-expression", TokenDescription(keyword));
 		if (kind == KW_SIZEOF && !At(OP_LPAREN))
 		{
 			const NodeId operand = ParseUnaryExpression();
@@ -1676,7 +1518,7 @@ NodeId Parser::ParseUnaryExpression()
 		At(KW_REINTERPET_CAST) || At(KW_CONST_CAST))
 	{
 		const std::size_t keyword = position_++;
-		const NodeId cast = arena_.Make("cast-expression " +
+		const NodeId cast = arena_.Make("cast-expression",
 			TokenDescription(keyword));
 		Expect(OP_LT);
 		++angle_stop_depth_;
@@ -1736,7 +1578,7 @@ NodeId Parser::ParseUnaryExpression()
 					if (!Match(OP_COMMA)) break;
 				}
 				Expect(OP_RPAREN);
-				const NodeId node = arena_.Make("placement " +
+				const NodeId node = arena_.Make("placement",
 					JoinSpellings(first, position_));
 				arena_.Add(node, arguments);
 				arena_.Add(expression, node);
@@ -1811,13 +1653,13 @@ NodeId Parser::ParseInitializer()
 		if (Match(KW_DEFAULT))
 		{
 			arena_.Add(initializer,
-				arena_.Make("special-initializer default"));
+				arena_.Make("special-initializer", "default"));
 			return initializer;
 		}
 		if (Match(KW_DELETE))
 		{
 			arena_.Add(initializer,
-				arena_.Make("special-initializer delete"));
+				arena_.Make("special-initializer", "delete"));
 			return initializer;
 		}
 		NodeId value = At(OP_LBRACE) ? ParseBracedInitList() :
@@ -1920,7 +1762,7 @@ NodeId Parser::ParseStatement()
 	{
 		const std::string name = Spelling(position_);
 		position_ += 2;
-		const NodeId statement = arena_.Make("labeled-statement " + name);
+		const NodeId statement = arena_.Make("labeled-statement", name);
 		const NodeId child = ParseStatement();
 		if (child == kNoNode) throw Error("expected labeled statement");
 		arena_.Add(statement, child);
@@ -2048,7 +1890,7 @@ NodeId Parser::ParseStatement()
 			Expect(OP_LPAREN);
 			const NodeId declaration = arena_.Make("exception-declaration");
 			if (Match(OP_DOTS)) arena_.Add(declaration,
-				arena_.Make("ellipsis ..."));
+				arena_.Make("ellipsis", "..."));
 			else
 			{
 				const NodeId specifiers = ParseDeclSpecifierSeq(false);
@@ -2084,7 +1926,7 @@ NodeId Parser::ParseStatement()
 		if (!AtIdentifier()) throw Error("expected goto label");
 		const std::string name = Spelling(position_++);
 		Expect(OP_SEMICOLON);
-		return arena_.Make("goto-statement " + name);
+		return arena_.Make("goto-statement", name);
 	}
 	if (Match(KW_RETURN))
 	{
@@ -2132,13 +1974,13 @@ NodeId Parser::ParseNamespace()
 		if (!ParseName(&target)) throw Error("expected namespace alias target");
 		Expect(OP_SEMICOLON);
 		const NodeId declaration = arena_.Make(
-			"namespace-alias-definition " + alias);
-		arena_.Add(declaration, arena_.Make("target " + target));
+			"namespace-alias-definition", alias);
+		arena_.Add(declaration, arena_.Make("target", target));
 		return declaration;
 	}
 	std::string name = "<unnamed>";
 	if (AtIdentifier()) name = Spelling(position_++);
-	const NodeId declaration = arena_.Make("namespace-definition " + name);
+	const NodeId declaration = arena_.Make("namespace-definition", name);
 	if (is_inline) arena_.Add(declaration, arena_.Make("inline"));
 	Expect(OP_LBRACE);
 	while (!At(OP_RBRACE))
@@ -2161,7 +2003,7 @@ NodeId Parser::ParseUsing()
 		if (!ParseName(&target)) throw Error("expected using namespace target");
 		Expect(OP_SEMICOLON);
 		const NodeId declaration = arena_.Make("using-directive");
-		arena_.Add(declaration, arena_.Make("target " + target));
+		arena_.Add(declaration, arena_.Make("target", target));
 		return declaration;
 	}
 	Match(KW_TYPENAME);
@@ -2171,12 +2013,12 @@ NodeId Parser::ParseUsing()
 	if (!ParseName(&first)) throw Error("expected using name");
 	if (Match(OP_ASS))
 	{
-		const NodeId declaration = arena_.Make("alias-declaration " + first);
+		const NodeId declaration = arena_.Make("alias-declaration", first);
 		if (!ParseTypeId(declaration)) throw Error("expected alias type-id");
 		Expect(OP_SEMICOLON);
-		known_types_[first] = true;
+		SetNameFact(first, kKnownType);
 		last_declared_names_.clear();
-		last_declared_names_.push_back(first);
+		last_declared_names_.push_back(strings_.Intern(first));
 		return declaration;
 	}
 	Rollback(alias_mark);
@@ -2184,8 +2026,111 @@ NodeId Parser::ParseUsing()
 	if (!ParseName(&target)) throw Error("expected using target");
 	Expect(OP_SEMICOLON);
 	const NodeId declaration = arena_.Make("using-declaration");
-	arena_.Add(declaration, arena_.Make("target " + target));
+	arena_.Add(declaration, arena_.Make("target", target));
 	return declaration;
+}
+
+NodeId Parser::ParseNestedTemplateParameterClause()
+{
+	const NodeId clause = arena_.Make("template-parameter-clause");
+	Expect(OP_LT);
+	if (!AtCloseAngle())
+	{
+		const NodeId list = arena_.Make("template-parameter-list");
+		while (true)
+		{
+			if (!At(KW_CLASS) && !At(KW_TYPENAME))
+				throw Error("expected nested type parameter");
+			const std::size_t key = position_++;
+			const NodeId parameter = arena_.Make("type-parameter");
+			arena_.Add(parameter, arena_.Make("parameter-key",
+				TokenDescription(key)));
+			if (Match(OP_DOTS))
+				arena_.Add(parameter, arena_.Make("parameter-pack", "..."));
+			if (AtIdentifier())
+			{
+				const std::string name = Spelling(position_++);
+				arena_.Add(parameter, arena_.Make("identifier", name));
+				SetNameFact(name, kKnownType);
+			}
+			arena_.Add(list, parameter);
+			if (!Match(OP_COMMA)) break;
+		}
+		arena_.Add(clause, list);
+	}
+	ExpectCloseAngle();
+	return clause;
+}
+
+NodeId Parser::ParseTypeTemplateParameter()
+{
+	const NodeId parameter = arena_.Make("type-parameter");
+	const bool template_template = Match(KW_TEMPLATE);
+	if (template_template)
+	{
+		arena_.Add(parameter, arena_.Make("template-template-parameter"));
+		arena_.Add(parameter, ParseNestedTemplateParameterClause());
+		if (!At(KW_CLASS) && !At(KW_TYPENAME))
+			throw Error("expected template parameter key");
+	}
+	const std::size_t key = position_++;
+	arena_.Add(parameter, arena_.Make("parameter-key", TokenDescription(key)));
+	if (Match(OP_DOTS))
+		arena_.Add(parameter, arena_.Make("parameter-pack", "..."));
+	if (AtIdentifier())
+	{
+		const std::string name = Spelling(position_++);
+		arena_.Add(parameter, arena_.Make("identifier", name));
+		SetNameFact(name, kKnownType);
+		if (template_template) SetNameFact(name, kKnownTemplate);
+	}
+	if (Match(OP_ASS))
+	{
+		const NodeId argument = arena_.Make("default-template-argument");
+		if (!ParseTypeId(argument))
+			throw Error("expected default template type");
+		arena_.Add(parameter, argument);
+	}
+	return parameter;
+}
+
+NodeId Parser::ParseNonTypeTemplateParameter()
+{
+	const NodeId parameter = arena_.Make("non-type-template-parameter");
+	const bool bare_int_parameter = At(KW_INT);
+	const NodeId specifiers = ParseDeclSpecifierSeq(false);
+	if (specifiers == kNoNode)
+		throw Error("expected non-type template parameter");
+	arena_.Add(parameter, specifiers);
+	if (Match(OP_DOTS))
+		arena_.Add(parameter, arena_.Make("parameter-pack", "..."));
+	const Mark declarator_mark = Checkpoint();
+	std::string parameter_name;
+	const NodeId declarator = ParseDeclarator(false, &parameter_name);
+	if (declarator != kNoNode) arena_.Add(parameter, declarator);
+	else Rollback(declarator_mark);
+	if (!parameter_name.empty())
+		SetNameFact(parameter_name, kKnownNonTemplate);
+	if (Match(OP_ASS))
+	{
+		const NodeId argument = arena_.Make("default-template-argument");
+		NodeId value;
+		if (bare_int_parameter && parameter_name.empty() && AtLiteral())
+			value = arena_.Make("literal", "TT_LITERAL:" +
+				Spelling(position_++));
+		else value = ParseExpression(2);
+		if (value == kNoNode) throw Error("expected non-type default");
+		arena_.Add(argument, value);
+		arena_.Add(parameter, argument);
+	}
+	return parameter;
+}
+
+NodeId Parser::ParseTemplateParameter()
+{
+	if (At(KW_CLASS) || At(KW_TYPENAME) || At(KW_TEMPLATE))
+		return ParseTypeTemplateParameter();
+	return ParseNonTypeTemplateParameter();
 }
 
 NodeId Parser::ParseTemplate(bool in_class)
@@ -2200,104 +2145,7 @@ NodeId Parser::ParseTemplate(bool in_class)
 		const NodeId list = arena_.Make("template-parameter-list");
 		while (true)
 		{
-			NodeId parameter;
-			if (At(KW_CLASS) || At(KW_TYPENAME) || At(KW_TEMPLATE))
-			{
-				parameter = arena_.Make("type-parameter");
-				if (Match(KW_TEMPLATE))
-				{
-					arena_.Add(parameter,
-						arena_.Make("template-template-parameter"));
-					const NodeId nested_clause = arena_.Make(
-						"template-parameter-clause");
-					Expect(OP_LT);
-					if (!AtCloseAngle())
-					{
-						const NodeId nested_list = arena_.Make(
-							"template-parameter-list");
-						while (true)
-						{
-							if (!At(KW_CLASS) && !At(KW_TYPENAME))
-								throw Error("expected nested type parameter");
-							const std::size_t key = position_++;
-							const NodeId nested_parameter = arena_.Make(
-								"type-parameter");
-							arena_.Add(nested_parameter, arena_.Make(
-								"parameter-key " + TokenDescription(key)));
-							if (Match(OP_DOTS)) arena_.Add(nested_parameter,
-								arena_.Make("parameter-pack ..."));
-							if (AtIdentifier())
-							{
-								const std::string name = Spelling(position_++);
-								arena_.Add(nested_parameter,
-									arena_.Make("identifier " + name));
-								known_types_[name] = true;
-							}
-							arena_.Add(nested_list, nested_parameter);
-							if (!Match(OP_COMMA)) break;
-						}
-						arena_.Add(nested_clause, nested_list);
-					}
-					ExpectCloseAngle();
-					arena_.Add(parameter, nested_clause);
-					if (!At(KW_CLASS) && !At(KW_TYPENAME))
-						throw Error("expected template parameter key");
-				}
-				const std::size_t key = position_++;
-				arena_.Add(parameter, arena_.Make("parameter-key " +
-					TokenDescription(key)));
-				if (Match(OP_DOTS))
-					arena_.Add(parameter, arena_.Make("parameter-pack ..."));
-				if (AtIdentifier())
-				{
-					const std::string name = Spelling(position_++);
-					arena_.Add(parameter, arena_.Make("identifier " + name));
-					known_types_[name] = true;
-					if (arena_.HasDirectChildPrefix(parameter,
-						"template-template-parameter"))
-						known_templates_[name] = true;
-				}
-				if (Match(OP_ASS))
-				{
-					const NodeId argument = arena_.Make(
-						"default-template-argument");
-					if (!ParseTypeId(argument))
-						throw Error("expected default template type");
-					arena_.Add(parameter, argument);
-				}
-			}
-			else
-			{
-				parameter = arena_.Make("non-type-template-parameter");
-				const bool bare_int_parameter = At(KW_INT);
-				const NodeId specifiers = ParseDeclSpecifierSeq(false);
-				if (specifiers == kNoNode)
-					throw Error("expected non-type template parameter");
-				arena_.Add(parameter, specifiers);
-				if (Match(OP_DOTS))
-					arena_.Add(parameter, arena_.Make("parameter-pack ..."));
-				const Mark declarator_mark = Checkpoint();
-				std::string parameter_name;
-				const NodeId declarator = ParseDeclarator(false, &parameter_name);
-				if (declarator != kNoNode) arena_.Add(parameter, declarator);
-				else Rollback(declarator_mark);
-				if (!parameter_name.empty())
-					non_template_names_[parameter_name] = true;
-				if (Match(OP_ASS))
-				{
-					const NodeId argument = arena_.Make(
-						"default-template-argument");
-					NodeId value;
-					if (bare_int_parameter && parameter_name.empty() && AtLiteral())
-						value = arena_.Make("literal TT_LITERAL:" +
-							Spelling(position_++));
-					else value = ParseExpression(2);
-					if (value == kNoNode)
-						throw Error("expected non-type default");
-					arena_.Add(argument, value);
-					arena_.Add(parameter, argument);
-				}
-			}
+			const NodeId parameter = ParseTemplateParameter();
 			arena_.Add(list, parameter);
 			if (!Match(OP_COMMA)) break;
 		}
@@ -2312,8 +2160,8 @@ NodeId Parser::ParseTemplate(bool in_class)
 	arena_.Add(declaration, target);
 	for (std::size_t i = 0; i < last_declared_names_.size(); ++i)
 	{
-		known_templates_[last_declared_names_[i]] = true;
-		non_template_names_.erase(last_declared_names_[i]);
+		SetNameFact(last_declared_names_[i], kKnownTemplate);
+		SetNameFact(last_declared_names_[i], kKnownNonTemplate, false);
 	}
 	return declaration;
 }
@@ -2337,7 +2185,7 @@ NodeId Parser::ParseCtorInitializer()
 		else if (!ParseName(&name))
 			throw Error("expected mem-initializer-id");
 		const NodeId member = arena_.Make("mem-initializer");
-		arena_.Add(member, arena_.Make("mem-initializer-id " + name));
+		arena_.Add(member, arena_.Make("mem-initializer-id", name));
 		if (Match(OP_LPAREN))
 		{
 			const NodeId arguments = arena_.Make("paren-argument-list");
@@ -2454,16 +2302,16 @@ NodeId Parser::ParseSpecialMember(bool)
 		Rollback(mark);
 		return kNoNode;
 	}
-	const NodeId member = arena_.Make(std::string(has_body ?
-		"special-member-definition " : "special-member-declaration ") + name);
+	const NodeId member = arena_.Make(has_body ?
+		"special-member-definition" : "special-member-declaration", name);
 	if (!specifiers.empty())
 	{
 		const NodeId set = arena_.Make("member-specifiers");
 		for (std::size_t i = 0; i < specifiers.size(); ++i)
-			arena_.Add(set, arena_.Make(tokens_[specifiers[i]].kind ==
-				static_cast<std::uint16_t>(KW_EXPLICIT) ?
-				"specifier explicit" :
-				"specifier " + TokenDescription(specifiers[i])));
+			arena_.Add(set, arena_.Make("specifier",
+				tokens_[specifiers[i]].kind ==
+				static_cast<std::uint16_t>(KW_EXPLICIT) ? "explicit" :
+				TokenDescription(specifiers[i])));
 		arena_.Add(member, set);
 	}
 	arena_.Add(member, declarator);
@@ -2472,9 +2320,11 @@ NodeId Parser::ParseSpecialMember(bool)
 	{
 		const NodeId initializer = arena_.Make("initializer");
 		if (Match(KW_DEFAULT))
-			arena_.Add(initializer, arena_.Make("special-initializer default"));
+			arena_.Add(initializer,
+				arena_.Make("special-initializer", "default"));
 		else if (Match(KW_DELETE))
-			arena_.Add(initializer, arena_.Make("special-initializer delete"));
+			arena_.Add(initializer,
+				arena_.Make("special-initializer", "delete"));
 		else throw Error("expected default or delete");
 		arena_.Add(member, initializer);
 		Expect(OP_SEMICOLON);
@@ -2503,22 +2353,20 @@ NodeId Parser::ParseClass(bool require_semicolon)
 	if (name.empty() && !At(OP_LBRACE)) throw Error("expected class name");
 	const std::string visible_name = name.empty() ? std::string() : name;
 	last_declared_names_.clear();
-	if (!name.empty()) last_declared_names_.push_back(name);
-	if (!name.empty()) known_types_[name] = true;
+	if (!name.empty()) last_declared_names_.push_back(strings_.Intern(name));
+	if (!name.empty()) SetNameFact(name, kKnownType);
 	if ((require_semicolon && Match(OP_SEMICOLON)) ||
 		(!require_semicolon && !At(OP_LBRACE)))
 	{
 		last_declared_names_.clear();
-		if (!name.empty()) last_declared_names_.push_back(name);
-		const NodeId declaration = arena_.Make("class-forward-declaration" +
-			(name.empty() ? std::string() : " " + name));
-		arena_.Add(declaration, arena_.Make("class-key " +
+		if (!name.empty()) last_declared_names_.push_back(strings_.Intern(name));
+		const NodeId declaration = arena_.Make("class-forward-declaration", name);
+		arena_.Add(declaration, arena_.Make("class-key",
 			TokenDescription(key)));
 		return declaration;
 	}
-	const NodeId declaration = arena_.Make("class-specifier" +
-		(name.empty() ? std::string() : " " + name));
-	arena_.Add(declaration, arena_.Make("class-key " + TokenDescription(key)));
+	const NodeId declaration = arena_.Make("class-specifier", name);
+	arena_.Add(declaration, arena_.Make("class-key", TokenDescription(key)));
 	if (Match(OP_COLON))
 	{
 		const NodeId clause = arena_.Make("base-clause");
@@ -2526,15 +2374,15 @@ NodeId Parser::ParseClass(bool require_semicolon)
 		{
 			const NodeId base = arena_.Make("base-specifier");
 			if (Match(KW_VIRTUAL))
-				arena_.Add(base, arena_.Make("virtual KW_VIRTUAL:virtual"));
+				arena_.Add(base, arena_.Make("virtual", "KW_VIRTUAL:virtual"));
 			if (At(KW_PUBLIC) || At(KW_PRIVATE) || At(KW_PROTECTED))
 			{
 				const std::size_t access = position_++;
-				arena_.Add(base, arena_.Make("access-specifier " +
+				arena_.Add(base, arena_.Make("access-specifier",
 					TokenDescription(access)));
 			}
 			if (Match(KW_VIRTUAL))
-				arena_.Add(base, arena_.Make("virtual KW_VIRTUAL:virtual"));
+				arena_.Add(base, arena_.Make("virtual", "KW_VIRTUAL:virtual"));
 			std::string base_name;
 			if (At(KW_DECLTYPE))
 			{
@@ -2547,7 +2395,7 @@ NodeId Parser::ParseClass(bool require_semicolon)
 				base_name = JoinSpellings(first, position_);
 			}
 			else if (!ParseName(&base_name)) throw Error("expected base name");
-			arena_.Add(base, arena_.Make("base-name " + base_name));
+			arena_.Add(base, arena_.Make("base-name", base_name));
 			Match(OP_DOTS);
 			arena_.Add(clause, base);
 			if (!Match(OP_COMMA)) break;
@@ -2565,7 +2413,7 @@ NodeId Parser::ParseClass(bool require_semicolon)
 		{
 			const std::size_t access = position_++;
 			++position_;
-			arena_.Add(declaration, arena_.Make("access-specifier " +
+			arena_.Add(declaration, arena_.Make("access-specifier",
 				TokenDescription(access)));
 			continue;
 		}
@@ -2615,7 +2463,7 @@ NodeId Parser::ParseClass(bool require_semicolon)
 	Expect(OP_RBRACE);
 	if (require_semicolon) Expect(OP_SEMICOLON);
 	last_declared_names_.clear();
-	if (!name.empty()) last_declared_names_.push_back(name);
+	if (!name.empty()) last_declared_names_.push_back(strings_.Intern(name));
 	return declaration;
 }
 
@@ -2634,10 +2482,9 @@ NodeId Parser::ParseEnum(bool require_semicolon)
 		if (specifiers == kNoNode) throw Error("expected enum underlying type");
 		arena_.Add(underlying, specifiers);
 	}
-	const NodeId declaration = arena_.Make("enum-specifier" +
-		(name.empty() ? std::string() : " " + name));
+	const NodeId declaration = arena_.Make("enum-specifier", name);
 	if (key != std::numeric_limits<std::size_t>::max())
-		arena_.Add(declaration, arena_.Make("enum-key " +
+		arena_.Add(declaration, arena_.Make("enum-key",
 			TokenDescription(key)));
 	if (underlying != kNoNode) arena_.Add(declaration, underlying);
 	if (Match(OP_LBRACE))
@@ -2648,7 +2495,7 @@ NodeId Parser::ParseEnum(bool require_semicolon)
 			{
 				if (!AtIdentifier()) throw Error("expected enumerator");
 				const std::string enumerator_name = Spelling(position_++);
-				const NodeId enumerator = arena_.Make("enumerator " +
+				const NodeId enumerator = arena_.Make("enumerator",
 					enumerator_name);
 				if (Match(OP_ASS))
 				{
@@ -2663,9 +2510,9 @@ NodeId Parser::ParseEnum(bool require_semicolon)
 		}
 		Expect(OP_RBRACE);
 	}
-	if (!name.empty()) known_types_[name] = true;
+	if (!name.empty()) SetNameFact(name, kKnownType);
 	last_declared_names_.clear();
-	if (!name.empty()) last_declared_names_.push_back(name);
+	if (!name.empty()) last_declared_names_.push_back(strings_.Intern(name));
 	if (require_semicolon) Expect(OP_SEMICOLON);
 	return declaration;
 }
@@ -2681,7 +2528,7 @@ NodeId Parser::ParseStaticAssert()
 	if (Match(OP_COMMA))
 	{
 		if (!AtLiteral()) throw Error("expected static assertion message");
-		arena_.Add(declaration, arena_.Make("message " +
+		arena_.Add(declaration, arena_.Make("message",
 			Spelling(position_++)));
 	}
 	Expect(OP_RPAREN);
@@ -2724,14 +2571,15 @@ NodeId Parser::ParseSimpleOrFunction(bool, bool)
 			return kNoNode;
 		}
 		if (At(OP_LBRACE) && names.empty() &&
-			arena_.HasDirectChildPrefix(declarator, "parameter-clause"))
+			arena_.HasDirectChildTag(declarator, "parameter-clause"))
 		{
 			const NodeId declaration = arena_.Make("function-definition");
 			arena_.Add(declaration, specifiers);
 			arena_.Add(declaration, declarator);
 			arena_.Add(declaration, ParseCompoundStatement());
 			last_declared_names_.clear();
-			if (!name.empty()) last_declared_names_.push_back(name);
+			if (!name.empty())
+				last_declared_names_.push_back(strings_.Intern(name));
 			return declaration;
 		}
 		names.push_back(name);
@@ -2750,19 +2598,23 @@ NodeId Parser::ParseSimpleOrFunction(bool, bool)
 	const NodeId declaration = arena_.Make("simple-declaration");
 	arena_.Add(declaration, specifiers);
 	arena_.Add(declaration, list);
-	last_declared_names_ = names;
+	last_declared_names_.clear();
+	last_declared_names_.reserve(names.size());
+	for (std::size_t i = 0; i < names.size(); ++i)
+		if (!names[i].empty())
+			last_declared_names_.push_back(strings_.Intern(names[i]));
 	if (is_typedef)
 	{
 		for (std::size_t i = 0; i < names.size(); ++i)
-			if (!names[i].empty()) known_types_[names[i]] = true;
+			if (!names[i].empty()) SetNameFact(names[i], kKnownType);
 	}
 	else
 	{
 		for (std::size_t i = 0; i < names.size(); ++i)
 			if (!names[i].empty())
 			{
-				known_types_.erase(names[i]);
-				non_template_names_[names[i]] = true;
+				SetNameFact(names[i], kKnownType, false);
+				SetNameFact(names[i], kKnownNonTemplate);
 			}
 	}
 	return declaration;
@@ -2796,7 +2648,7 @@ NodeId Parser::ParseDeclaration(bool in_class)
 			language[language.size() - 1] == '"')
 			language = language.substr(1, language.size() - 2);
 		const NodeId declaration = arena_.Make(
-			"linkage-specification " + language);
+			"linkage-specification", language);
 		if (Match(OP_LBRACE))
 		{
 			while (!At(OP_RBRACE))
@@ -2831,9 +2683,17 @@ NodeId Parser::ParseDeclaration(bool in_class)
 
 SyntaxStats::SyntaxStats()
 	: tokens(0), interned_spellings(0), spelling_bytes(0), syntax_nodes(0),
-	  syntax_edges(0), parser_checkpoints(0), parser_rollbacks(0),
+	  syntax_edges(0), syntax_output_bytes(0), max_syntax_depth(0),
+	  parser_checkpoints(0), parser_rollbacks(0),
+	  template_argument_probes(0), template_argument_scans(0),
+	  template_argument_cache_hits(0),
+	  template_argument_scan_tokens(0), max_template_argument_scan_tokens(0),
+	  failed_template_argument_scans(0), parser_fact_changes(0),
 	  token_storage_bytes(0), syntax_storage_bytes(0),
-	  peak_stage_storage_bytes(0), elapsed_nanoseconds(0)
+	  parser_storage_bytes(0), render_stack_storage_bytes(0),
+	  peak_stage_storage_bytes(0), parse_nanoseconds(0),
+	  render_nanoseconds(0),
+	  elapsed_nanoseconds(0)
 {
 }
 
@@ -2853,10 +2713,18 @@ void WriteSyntaxTranslationUnit(const std::string& path,
 		stats ? &stats->preprocessing : 0);
 	SyntaxArena arena(strings);
 	Parser parser(sink.Tokens(), strings, arena, stats);
+	std::chrono::steady_clock::time_point parse_started;
+	if (stats) parse_started = std::chrono::steady_clock::now();
 	const NodeId root = parser.ParseTranslationUnit();
-	arena.Write(output, root);
+	std::chrono::steady_clock::time_point render_started;
+	if (stats) render_started = std::chrono::steady_clock::now();
+	arena.Write(output, root, stats ? &stats->syntax_output_bytes : 0,
+		stats ? &stats->max_syntax_depth : 0,
+		stats ? &stats->render_stack_storage_bytes : 0);
 	if (stats)
 	{
+		const std::chrono::steady_clock::time_point finished =
+			std::chrono::steady_clock::now();
 		stats->tokens = sink.Tokens().size();
 		stats->interned_spellings = strings.Size();
 		stats->spelling_bytes = strings.SpellingBytes();
@@ -2865,11 +2733,19 @@ void WriteSyntaxTranslationUnit(const std::string& path,
 		stats->token_storage_bytes = sink.StorageBytes();
 		stats->syntax_storage_bytes = arena.StorageBytes() +
 			strings.StorageBytes();
-		stats->peak_stage_storage_bytes = stats->token_storage_bytes +
-			stats->syntax_storage_bytes;
+		stats->parser_storage_bytes = parser.StorageBytes();
+		stats->peak_stage_storage_bytes = source.size() +
+			stats->token_storage_bytes + stats->syntax_storage_bytes +
+			stats->parser_storage_bytes + stats->render_stack_storage_bytes;
+		stats->parse_nanoseconds = static_cast<std::uint64_t>(
+			std::chrono::duration_cast<std::chrono::nanoseconds>(
+				render_started - parse_started).count());
+		stats->render_nanoseconds = static_cast<std::uint64_t>(
+			std::chrono::duration_cast<std::chrono::nanoseconds>(
+				finished - render_started).count());
 		stats->elapsed_nanoseconds = static_cast<std::uint64_t>(
 			std::chrono::duration_cast<std::chrono::nanoseconds>(
-				std::chrono::steady_clock::now() - started).count());
+				finished - started).count());
 	}
 }
 

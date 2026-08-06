@@ -435,9 +435,26 @@ int run_emit_ast_mode(const vector<string> & args)
            << " tokens=" << stats.tokens
            << " syntax_nodes=" << stats.syntax_nodes
            << " syntax_edges=" << stats.syntax_edges
+           << " syntax_output_bytes=" << stats.syntax_output_bytes
+           << " max_syntax_depth=" << stats.max_syntax_depth
            << " checkpoints=" << stats.parser_checkpoints
            << " rollbacks=" << stats.parser_rollbacks
+           << " template_probes=" << stats.template_argument_probes
+           << " template_scans=" << stats.template_argument_scans
+           << " template_cache_hits="
+           << stats.template_argument_cache_hits
+           << " template_scan_tokens=" << stats.template_argument_scan_tokens
+           << " max_template_scan_tokens="
+           << stats.max_template_argument_scan_tokens
+           << " failed_template_scans="
+           << stats.failed_template_argument_scans
+           << " parser_fact_changes=" << stats.parser_fact_changes
+           << " parser_storage_bytes=" << stats.parser_storage_bytes
+           << " render_stack_storage_bytes="
+           << stats.render_stack_storage_bytes
            << " peak_stage_storage_bytes=" << stats.peak_stage_storage_bytes
+           << " parse_ns=" << stats.parse_nanoseconds
+           << " render_ns=" << stats.render_nanoseconds
            << " elapsed_ns=" << stats.elapsed_nanoseconds << '\n';
     }
     output << "end translation unit\n";
