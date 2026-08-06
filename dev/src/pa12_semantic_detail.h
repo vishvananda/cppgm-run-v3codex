@@ -27,7 +27,7 @@ public:
 		: arena_(0), output_(output), stats_(stats), program_(0),
 		  graph_consumer_(graph_consumer), render_output_(render_output),
 		  root_(kNoDumpEdge), current_language_linkage_(LANGUAGE_LINKAGE_CPP),
-		  current_return_type_(kNoType),
+		  current_return_type_(kNoType), current_class_context_(kNoEntity),
 		  loop_depth_(0), switch_depth_(0), expression_count_(0),
 		  overload_candidates_(0), overload_order_comparisons_(0),
 		  conversion_checks_(0), function_signature_lookups_(0),
@@ -101,6 +101,7 @@ private:
 		bool nonthrowing = false);
 	std::vector<BindingId> FunctionCandidates(ScopeId scope,
 		const std::string& spelling);
+	std::vector<BindingId> FunctionSet(BindingId binding) const;
 	std::vector<std::size_t> FindFunctionTemplates(ScopeId scope,
 		const std::string& spelling);
 	bool ParseExplicitTemplateArguments(ScopeId scope,
@@ -124,8 +125,16 @@ private:
 	BindingId SelectOverload(ScopeId scope,
 		const std::vector<NodeId>& argument_syntax,
 		const std::vector<ExpressionInfo>& arguments,
-		const std::vector<BindingId>& candidates);
+		const std::vector<BindingId>& candidates,
+		const ExpressionInfo* object = 0);
+	ExpressionInfo BuildResolvedCall(BindingId selected, ScopeId scope,
+		const std::vector<NodeId>& argument_syntax,
+		const std::vector<ExpressionInfo>& arguments,
+		const ExpressionInfo* object, TypeId target);
 	ExpressionInfo AnalyzeCall(NodeId node, ScopeId scope, TypeId target);
+	bool AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
+		const std::vector<NodeId>& argument_syntax, TypeId target,
+		ExpressionInfo* result);
 	ExpressionInfo AnalyzeUnary(NodeId node, ScopeId scope,
 		TypeId target = kNoType);
 	ExpressionInfo AnalyzeBinary(NodeId node, ScopeId scope);
@@ -138,7 +147,9 @@ private:
 	ExpressionInfo AnalyzeMember(NodeId node, ScopeId scope);
 	ExpressionInfo AnalyzeImplicitDataMember(BindingId member, ScopeId scope,
 		TypeId target);
-	void AnalyzeClassMember(NodeId node, ScopeId scope, TypeId owner_type);
+	void AnalyzeClassMember(NodeId node, ScopeId scope, TypeId owner_type,
+		AccessKind access);
+	bool CanAccessMember(BindingId member) const;
 	void CompleteClassLayout(EntityId entity);
 	void AddDefaultConstructor(std::uint32_t variable, BindingId binding,
 		TypeId type);
@@ -207,6 +218,7 @@ private:
 	std::vector<BindingId> demanded_functions_;
 	LanguageLinkage current_language_linkage_;
 	TypeId current_return_type_;
+	EntityId current_class_context_;
 	std::size_t loop_depth_;
 	std::size_t switch_depth_;
 	std::size_t expression_count_;

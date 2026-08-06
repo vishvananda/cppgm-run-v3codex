@@ -389,7 +389,27 @@ private:
 		file.cases[0].records.push_back(target);
 		const TypeRecord& function_type = program_.types.Get(node.type);
 		const TypeId* parameters = program_.types.Parameters(node.type);
-		for (std::size_t i = 0; i < function_type.parameter_count; ++i)
+		const bool member = binding.member_owner != kNoEntity &&
+			!binding.static_member_function;
+		if (member)
+		{
+			const TypeRecord& declared_type =
+				program_.types.Get(binding.type);
+			AbiFactRecord qualifier;
+			qualifier.set_kind(ABI_FACT_RECORD_FUNCTION);
+			qualifier.function.kind = ABI_FUNCTION_RECORD_QUALIFIER;
+			if ((declared_type.cv & CV_CONST) != 0)
+				qualifier.function.qualifiers.push_back(
+					ABI_FUNCTION_QUALIFIER_CONST);
+			if ((declared_type.cv & CV_VOLATILE) != 0)
+				qualifier.function.qualifiers.push_back(
+					ABI_FUNCTION_QUALIFIER_VOLATILE);
+			if (!qualifier.function.qualifiers.empty())
+				file.cases[0].records.push_back(qualifier);
+		}
+		const std::size_t first_parameter = member ? 1 : 0;
+		for (std::size_t i = first_parameter;
+			i < function_type.parameter_count; ++i)
 		{
 			AbiFactRecord parameter;
 			parameter.set_kind(ABI_FACT_RECORD_FUNCTION);
@@ -480,10 +500,10 @@ private:
 		if (function_symbols_[record.binding] == kNoLowId)
 		{
 			const std::string base = SanitizeSymbol(program_.names.Get(record.text));
-			std::size_t& count = overload_counts_[base];
-			++count;
-			const std::string name = count == 1 ? base :
-				base + "__ov" + std::to_string(count);
+			const std::uint32_t ordinal =
+				program_.bindings[record.binding].overload_ordinal;
+			const std::string name = ordinal <= 1 ? base :
+				base + "__ov" + std::to_string(ordinal);
 			function_symbols_[record.binding] = InternSymbol(record,
 				Symbol::FUNCTION_SYMBOL, name, MangleFunction(record));
 		}
@@ -2796,7 +2816,6 @@ private:
 	std::vector<std::uint32_t> function_definition_;
 	std::vector<std::uint32_t> function_declaration_;
 	std::vector<std::uint32_t> global_node_;
-	StringCounterTable overload_counts_;
 	Function* function_;
 	BlockId current_block_;
 	LowType current_result_;
@@ -2883,6 +2902,8 @@ private:
 LowIRLoweringStats::LowIRLoweringStats()
 	: source_bytes(0), tokens(0), semantic_nodes(0), semantic_edges(0),
 	  lowered_nodes(0), class_layouts(0), class_layout_member_visits(0),
+	  overload_candidates(0), overload_order_comparisons(0),
+	  conversion_checks(0),
 	  functions(0), globals(0), blocks(0), instructions(0),
 	  binding_index_probes(0), typed_storage_bytes(0), output_bytes(0),
 	  semantic_nanoseconds(0), lowering_nanoseconds(0), render_nanoseconds(0)
@@ -2911,6 +2932,10 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 			stats->class_layouts += semantic_stats.class_layouts;
 			stats->class_layout_member_visits +=
 				semantic_stats.class_layout_member_visits;
+			stats->overload_candidates += semantic_stats.overload_candidates;
+			stats->overload_order_comparisons +=
+				semantic_stats.overload_order_comparisons;
+			stats->conversion_checks += semantic_stats.conversion_checks;
 			stats->semantic_nanoseconds += semantic_stats.analysis_nanoseconds;
 		}
 	}

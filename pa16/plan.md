@@ -4,59 +4,53 @@
 
 PA16 extends the shared PA11/PA12 graph and PA15 typed LowIR path in place:
 `class syntax -> canonical entity/binding facts -> resolved object expressions ->
-typed object/address LowIR`. Canonical class entities own completion, size,
-alignment, and constructor facts; canonical member bindings own class identity,
-offset, static category, and default-member-initializer presence. Expression nodes
-retain the selected binding, and lowering consumes that identity without lookup,
-semantic reconstruction, or a text round trip.
-
-The direct-member checkpoint aligns with `spec.md` sections 2, 3, 6, 8, and 9:
-class/member equality is ID equality, class-scope lookup is indexed, layout is one
-monotonic pass over owned members, the PA12 graph is borrowed synchronously by
-typed lowering, and field projection is O(1) per resolved use. Audit fixes reject
-duplicate definitions/bindings before facts are published and keep default-
-construction conditions on their canonical semantic owners.
+typed object/address LowIR`. Class entities own completion and layout; member and
+function binding IDs own offsets, static category, signatures, and object class.
+Resolved expressions retain selected bindings and conversions, and lowering
+consumes those facts without name lookup, semantic reconstruction, or text
+transport. This follows `spec.md` sections 2, 3, 6, 8, and 9: canonical identity,
+indexed candidate sets, one selected-call fact, typed lowering, bounded temporary
+storage, and work proportional to relevant members/candidates.
 
 ## Current Failure Map
 
-The checked-in PA16 suite remains at its checkpoint baseline of 38/243. The full
-PA16 report is 42/247 after adding four passing audit regressions. The 205 product
-suite failures remain grouped by shared owner:
+Current state is 51/247 PA16 tests, up from the 42/247 turn baseline. The complete
+196-failure set, assigned once by primary semantic owner, is: 22 member-function/
+call-boundary; 38 class lookup/access/inheritance; 72 initialization/lifetime;
+42 operator/ADL/callable; 10 layout/object representation; and 12 procedural
+interaction/metadata failures. By result, 173 are expected-success exits, 3 are
+missing rejections, and 20 are LowIR differences.
 
-- 184 expected-success exit failures: incomplete PA16 class lookup, access,
-  inheritance, overload/ADL, initialization, and lifetime semantics.
-- 3 unexpected successes: missing access, overloaded-operator, and list-narrowing
-  rejection.
-- 18 LowIR differences: partial facts reach lowering, but advanced layout,
-  lifetime, operator selection, or metadata is not complete.
+## Active Checkpoint
+
+**Class initialization action spine.** PA12 will classify aggregate/default/direct
+class initialization once, select constructors from the class-owned overload set,
+and materialize an ordered typed action list for bases, fields, default member
+initializers, and explicit initializers. PA15 will consume object addresses,
+canonical offsets, and selected constructor IDs directly; helper demand remains a
+separate monotonic fact. This applies `spec.md` sections 2, 3, 4, 6, 8, and 9.
+
+Ownership/data flow is `EntityId layout + constructor/member BindingIds -> resolved
+initializer actions -> typed stores/calls`. Aggregate planning is O(M + E) for M
+members and E initializer elements; constructor selection is O(C * (A + 1)); each
+action lowers once. Validate scalar/class default member initializers, aggregate
+brace elision, direct/default construction and override precedence, then PA16,
+through-PA15, file audit, and doubled member/element curves.
 
 ## Performance Evidence
 
-| Workload | Scale | Representative evidence |
+| Workload | Scale | Evidence |
 |---|---:|---|
-| One class plus final-field use | 5k / 10k fields | 5,000 / 10,000 layout visits; 7.91 / 16.49 ms semantic; 7 instructions at both sizes; 0.03 / 0.06 s elapsed |
-| One field used repeatedly | 5k / 10k uses | 5,003 / 10,003 binding probes; 25,008 / 50,008 instructions; 19.87 / 39.26 ms semantic and 10.73 / 23.48 ms lowering; 0.07 / 0.13 s elapsed |
+| Class layout | 5k / 10k fields | 5,000 / 10,000 visits; 7.91 / 16.49 ms semantic |
+| Repeated field use | 5k / 10k uses | 5,003 / 10,003 probes; 19.87 / 39.26 ms semantic; 10.73 / 23.48 ms lowering |
+| Member overload selection | 1,001 / 2,001 candidates | 2,000 / 4,000 order comparisons; 2,006 / 4,006 conversion checks; 6.57 / 13.07 ms semantic; 8 instructions at both sizes |
 
-Exact work-counter scaling and near-2x time/output curves support O(fields) class
-completion and O(1) typed field projection per use; no class-wide scan occurs in
-lowering.
-
-## Next Substantial Checkpoint
-
-**Resolved member-call spine.** PA12 will make the object expression an explicit
-overload input, gather only the selected class scope's indexed method set, rank
-object cv plus explicit arguments, and retain the chosen binding and conversions
-on the call node. PA15 will consume that call fact, prepend the lowered object
-address only for non-static methods, and use the stored binding for emission.
-
-Ownership is class-scope/function binding IDs -> resolved PA12 call facts -> typed
-PA15 call operands. Expected cost is O(candidates in the member overload set plus
-explicit arguments) per call and O(1) lowering after selection. Validate explicit,
-parenthesized, implicit, and static calls; cv-overload and out-of-class cases; the
-full PA16 report; through-PA15; file audit; and a doubled overload-set curve.
+Exact counter doubling and near-2x semantic time establish work proportional to
+the indexed candidate set; unchanged lowering size shows no class-wide rescan.
 
 ## Completed Checkpoints
 
 | Checkpoint | Final state | Evidence |
 |---|---|---|
-| Direct-member object spine | Pass after checkpoint audit | Canonical size/alignment/offset and default-construction facts; typed `.`/`->` field projections; duplicate class/member rejection; 38/243 product baseline and 42/247 augmented report; 1,145/1,145 through PA15; linear field/use curves; file audit pass |
+| Direct-member object spine | Complete | Canonical size/alignment/offset and default-construction facts; typed `.`/`->` fields; duplicate rejection; 42/247 PA16 and 1,145/1,145 through PA15; linear field/use curves; audit pass |
+| Resolved member-call spine | Complete | Canonical method/access/cv facts, implicit-object ranking, out-of-class hidden `this`, stable overload/ABI IDs, typed calls, and LowIR counters; 9 product tests gained to 51/247 with no losses; 1,145/1,145 through PA15; linear candidate curve; audit pass |

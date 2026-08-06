@@ -105,13 +105,22 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 		}
 		// The stable class scope owns indexed field/function identities even
 		// though class declarations are not part of the PA12 output view.
+		AccessKind member_access = flavor == NAMED_CLASS ?
+			ACCESS_PRIVATE : ACCESS_PUBLIC;
 		for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 			edge = arena_->NextEdge(edge))
 		{
 			const NodeId member = arena_->EdgeChild(edge);
+			if (arena_->IsTag(member, "access-specifier"))
+			{
+				const std::string access = PayloadSource(member);
+				member_access = access == "private" ? ACCESS_PRIVATE :
+					access == "protected" ? ACCESS_PROTECTED : ACCESS_PUBLIC;
+				continue;
+			}
 			if (arena_->IsTag(member, "simple-declaration") ||
 				arena_->IsTag(member, "function-definition"))
-				AnalyzeClassMember(member, member_scope, type);
+				AnalyzeClassMember(member, member_scope, type, member_access);
 			else if (arena_->IsTag(member, "special-member-declaration") ||
 				arena_->IsTag(member, "special-member-definition"))
 			{
@@ -233,7 +242,7 @@ EntityId SemanticAnalyzer::EntityOf(TypeId type) const
 }
 
 void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
-	TypeId owner_type)
+	TypeId owner_type, AccessKind access)
 {
 	const NodeId specifiers = FindChild(node, "decl-specifier-seq");
 	if (specifiers == kNoNode) return;
@@ -243,11 +252,13 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		const NodeId declarator = FindChild(node, "declarator");
 		DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type, scope);
 		const BindingId function = DeclareFunction(scope, parsed.name,
-			parsed.type, parsed.parameters, true);
+			parsed.type, parsed.parameters, true, false, STORAGE_CLASS_NONE,
+			current_language_linkage_, IsNonthrowing(declarator, scope));
 		FunctionInfo& info = GetMutableFunction(function);
 		const EntityId owner_entity = EntityOf(owner_type);
 		BindingRecord& binding = program_->bindings[function];
 		binding.member_owner = owner_entity;
+		binding.access = access;
 		binding.static_member_function =
 			spec.storage_class == STORAGE_CLASS_STATIC;
 		if (!binding.static_member_function) info.member_owner = owner_type;
@@ -268,9 +279,11 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		if (program_->types.IsFunction(parsed.type))
 		{
 			const BindingId function = DeclareFunction(scope, parsed.name,
-				parsed.type, parsed.parameters, false, false, spec.storage_class);
+				parsed.type, parsed.parameters, false, false, STORAGE_CLASS_NONE,
+				current_language_linkage_, IsNonthrowing(declarator, scope));
 			BindingRecord& binding = program_->bindings[function];
 			binding.member_owner = EntityOf(owner_type);
+			binding.access = access;
 			binding.static_member_function =
 				spec.storage_class == STORAGE_CLASS_STATIC;
 			if (!binding.static_member_function)
@@ -288,6 +301,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 			BindingRecord& binding = program_->bindings[member];
 			binding.storage_class = spec.storage_class;
 			binding.member_owner = EntityOf(owner_type);
+			binding.access = access;
 			binding.non_static_data_member =
 				spec.storage_class != STORAGE_CLASS_STATIC;
 			binding.has_default_member_initializer =
@@ -753,6 +767,8 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 			static_cast<std::uint32_t>(functions_.size());
 		functions_.push_back(info);
 		overloads.Push(declaration);
+		program_->bindings[declaration].overload_ordinal =
+			static_cast<std::uint32_t>(overloads.Size());
 		if (!template_specialization)
 			function_declarations_.Insert(signature_key, declaration);
 		canonical = declaration;
@@ -832,11 +848,20 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 	if (found.ordinary == kNoBinding) return std::vector<BindingId>();
 	const BindingRecord& binding = program_->bindings[found.ordinary];
 	if (binding.kind != BIND_FUNCTION) return std::vector<BindingId>();
-	const std::uint64_t key = (static_cast<std::uint64_t>(binding.owner) << 32) |
-		binding.name;
+	return FunctionSet(found.ordinary);
+}
+
+std::vector<BindingId> SemanticAnalyzer::FunctionSet(BindingId binding) const
+{
+	if (binding == kNoBinding || binding >= program_->bindings.size() ||
+		program_->bindings[binding].kind != BIND_FUNCTION)
+		return std::vector<BindingId>();
+	const BindingRecord& record = program_->bindings[binding];
+	const std::uint64_t key = (static_cast<std::uint64_t>(record.owner) << 32) |
+		record.name;
 	const CompactIndexSequence* set = function_sets_.Find(key);
 	if (!set)
-		return std::vector<BindingId>(1, binding.canonical);
+		return std::vector<BindingId>(1, record.canonical);
 	std::vector<BindingId> result;
 	result.reserve(set->Size());
 	for (std::size_t i = 0; i < set->Size(); ++i)
@@ -1114,11 +1139,15 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 	if (info.defined)
 	{
 		const TypeId previous_return = current_return_type_;
+		const EntityId previous_class = current_class_context_;
 		current_return_type_ = program_->types.Get(info.type).child;
+		current_class_context_ =
+			program_->bindings[info.binding].member_owner;
 		if (info.definition_body != kNoNode)
 			AnalyzeCompound(info.definition_body, function_scope, function);
 		else dump_.Add(function, MakeDump(DUMP_COMPOUND_STATEMENT));
 		current_return_type_ = previous_return;
+		current_class_context_ = previous_class;
 	}
 	GetMutableFunction(binding).demand_state = 3;
 	++demanded_function_emissions_;

@@ -967,12 +967,14 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 	const std::vector<NodeId>& argument_syntax,
 	const std::vector<ExpressionInfo>& arguments,
-	const std::vector<BindingId>& candidates)
+	const std::vector<BindingId>& candidates,
+	const ExpressionInfo* object)
 {
-	if (!argument_syntax.empty() && candidates.size() >
-		std::numeric_limits<std::size_t>::max() / argument_syntax.size())
+	const std::size_t explicit_arity = argument_syntax.size();
+	const std::size_t arity = explicit_arity + (object ? 1 : 0);
+	if (arity != 0 && candidates.size() >
+		std::numeric_limits<std::size_t>::max() / arity)
 		throw std::runtime_error("overload conversion table is too large");
-	const std::size_t arity = argument_syntax.size();
 	std::vector<ConversionRank> ranks(candidates.size() * arity,
 		CONVERSION_ELLIPSIS);
 	std::vector<bool> viable(candidates.size(), true);
@@ -981,14 +983,38 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 		++overload_candidates_;
 		const FunctionInfo& function = GetFunction(candidates[c]);
 		const TypeRecord function_type = program_->types.Get(function.type);
+		const std::size_t explicit_offset = object ? 1 : 0;
+		if (function.member_owner != kNoType)
+		{
+			if (!object)
+			{
+				viable[c] = false;
+				continue;
+			}
+			TypeId object_type = function.member_owner;
+			if ((function_type.cv & CV_CONST) != 0)
+				object_type = program_->types.Qualify(object_type, CV_CONST);
+			if ((function_type.cv & CV_VOLATILE) != 0)
+				object_type = program_->types.Qualify(object_type, CV_VOLATILE);
+			const ConversionRank object_rank = Conversion(*object,
+				program_->types.Pointer(object_type));
+			ranks[c * arity] = object_rank;
+			if (object_rank == CONVERSION_INVALID)
+			{
+				viable[c] = false;
+				continue;
+			}
+		}
+		else if (object)
+			ranks[c * arity] = CONVERSION_EXACT;
 		std::size_t required_parameters = function_type.parameter_count;
 		while (required_parameters != 0 &&
 			required_parameters <= function.parameters.size() &&
 			function.parameters[required_parameters - 1].default_argument != kNoNode)
 			--required_parameters;
-		if (argument_syntax.size() < required_parameters ||
+		if (explicit_arity < required_parameters ||
 			(!function_type.variadic &&
-			 argument_syntax.size() > function_type.parameter_count))
+			 explicit_arity > function_type.parameter_count))
 		{
 			viable[c] = false;
 			continue;
@@ -998,7 +1024,7 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 		if (function_type.parameter_count != 0)
 			parameters.assign(parameter_data,
 				parameter_data + function_type.parameter_count);
-		for (std::size_t a = 0; a < argument_syntax.size(); ++a)
+		for (std::size_t a = 0; a < explicit_arity; ++a)
 		{
 			ConversionRank rank = CONVERSION_ELLIPSIS;
 			if (a < function_type.parameter_count)
@@ -1021,7 +1047,7 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 						CONVERSION_EXACT : CONVERSION_INVALID;
 				}
 			}
-			ranks[c * arity + a] = rank;
+			ranks[c * arity + explicit_offset + a] = rank;
 			if (rank == CONVERSION_INVALID) viable[c] = false;
 		}
 	}
@@ -1070,6 +1096,82 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 	return candidates[champion];
 }
 
+ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
+	ScopeId scope, const std::vector<NodeId>& argument_syntax,
+	const std::vector<ExpressionInfo>& arguments,
+	const ExpressionInfo* object, TypeId target)
+{
+	if (!CanAccessMember(selected))
+		throw std::runtime_error("inaccessible member function");
+	const FunctionInfo function = GetFunction(selected);
+	const TypeRecord function_type = program_->types.Get(function.type);
+	const TypeId* parameter_data = program_->types.Parameters(function.type);
+	std::vector<TypeId> parameters;
+	if (function_type.parameter_count != 0)
+		parameters.assign(parameter_data,
+			parameter_data + function_type.parameter_count);
+	const TypeId result_type = function_type.child;
+	const TypeRecord returned = program_->types.Get(result_type);
+	const ValueCategory category = returned.kind == TYPE_LVALUE_REFERENCE ?
+		VALUE_LVALUE : returned.kind == TYPE_RVALUE_REFERENCE ?
+			VALUE_XVALUE : VALUE_PRVALUE;
+	const TypeId callable_type = function.member_owner == kNoType ?
+		function.type : AdaptMemberFunctionType(selected);
+	const std::uint32_t call = MakeDump(DUMP_CALL_EXPRESSION,
+		result_type, category, 0, selected);
+	const std::uint32_t callee = MakeDump(DUMP_CALLEE, callable_type,
+		VALUE_NONE, function.display_name, selected);
+	dump_.Add(call, callee);
+	if (function.member_owner != kNoType)
+	{
+		if (!object) throw std::logic_error("selected member call has no object");
+		const TypeId object_parameter =
+			program_->types.Parameters(callable_type)[0];
+		const ExpressionInfo converted = ApplyTarget(*object, object_parameter);
+		dump_.Add(call, converted.node);
+	}
+	for (std::size_t a = 0; a < arguments.size(); ++a)
+	{
+		ExpressionInfo argument = arguments[a];
+		if (a < function_type.parameter_count)
+		{
+			if (argument.type == kNoType)
+				argument = AnalyzeExpression(argument_syntax[a], scope,
+					parameters[a]);
+			else argument = ApplyTarget(argument, parameters[a]);
+		}
+		dump_.Add(call, argument.node);
+	}
+	for (std::size_t a = arguments.size();
+		a < function_type.parameter_count; ++a)
+	{
+		if (a >= function.parameters.size() ||
+			function.parameters[a].default_argument == kNoNode)
+			throw std::runtime_error("missing default argument fact");
+		const ExpressionInfo argument = AnalyzeExpression(
+			function.parameters[a].default_argument,
+			function.parameters[a].default_scope, parameters[a]);
+		dump_.Add(call, argument.node);
+	}
+	ExpressionInfo result;
+	result.node = call;
+	result.type = result_type;
+	result.category = category;
+	result.binding = selected;
+	DemandFunction(selected);
+	++expression_count_;
+	return ApplyTarget(result, target);
+}
+
+bool SemanticAnalyzer::CanAccessMember(BindingId member) const
+{
+	if (member == kNoBinding || member >= program_->bindings.size()) return false;
+	const BindingRecord& binding = program_->bindings[member];
+	return binding.member_owner == kNoEntity ||
+		binding.access == ACCESS_PUBLIC ||
+		binding.member_owner == current_class_context_;
+}
+
 ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 	TypeId target)
 {
@@ -1084,6 +1186,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 		for (std::uint32_t argument = arena_->FirstEdge(arguments_node);
 			argument != kNoEdge; argument = arena_->NextEdge(argument))
 			argument_syntax.push_back(arena_->EdgeChild(argument));
+
+	ExpressionInfo member_call;
+	if (AnalyzeDirectMemberCall(callee_syntax, scope, argument_syntax,
+		target, &member_call)) return member_call;
 
 	if (arena_->IsTag(callee_syntax, "id-expression"))
 	{
@@ -1117,6 +1223,54 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 			result.type = program_->types.Fundamental(FUND_VOID);
 			++expression_count_;
 			return ApplyTarget(result, target);
+		}
+
+		std::vector<BindingId> candidates = FunctionCandidates(scope, spelling);
+		std::vector<ExpressionInfo> arguments;
+		bool arguments_analyzed = false;
+		if (!FindFunctionTemplates(scope, spelling).empty())
+		{
+			for (std::size_t i = 0; i < argument_syntax.size(); ++i)
+				arguments.push_back(AnalyzeExpression(argument_syntax[i], scope));
+			arguments_analyzed = true;
+			DeduceFunctionTemplates(scope, spelling, arguments);
+			candidates = FunctionCandidates(scope, spelling);
+		}
+		if (!candidates.empty())
+		{
+			if (!arguments_analyzed)
+				for (std::size_t i = 0; i < argument_syntax.size(); ++i)
+					arguments.push_back(
+						AnalyzeExpression(argument_syntax[i], scope));
+			bool has_member_candidate = false;
+			for (std::size_t i = 0; i < candidates.size(); ++i)
+				if (GetFunction(candidates[i]).member_owner != kNoType)
+					has_member_candidate = true;
+			ExpressionInfo implicit_object;
+			const ExpressionInfo* object = 0;
+			if (has_member_candidate)
+			{
+				const NameId this_name = program_->names.Intern("this");
+				const LookupResult found_this = program_->LookupName(
+					scope, this_name, LOOKUP_ORDINARY);
+				if (found_this.ordinary != kNoBinding)
+				{
+					const BindingRecord& this_binding =
+						program_->bindings[found_this.ordinary];
+					implicit_object.type = EffectiveType(this_binding.type);
+					implicit_object.category = VALUE_LVALUE;
+					implicit_object.binding = found_this.ordinary;
+					implicit_object.node = MakeDump(DUMP_ID_EXPRESSION,
+						implicit_object.type, VALUE_LVALUE, this_name,
+						found_this.ordinary);
+					object = &implicit_object;
+					++expression_count_;
+				}
+			}
+			const BindingId selected = SelectOverload(scope, argument_syntax,
+				arguments, candidates, object);
+			return BuildResolvedCall(selected, scope, argument_syntax,
+				arguments, object, target);
 		}
 
 		TypeId cast_type = kNoType;
@@ -1184,74 +1338,6 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 			return ApplyTarget(result, target);
 		}
 
-		std::vector<BindingId> candidates = FunctionCandidates(scope, spelling);
-		std::vector<ExpressionInfo> arguments;
-		bool arguments_analyzed = false;
-		if (!FindFunctionTemplates(scope, spelling).empty())
-		{
-			for (std::size_t i = 0; i < argument_syntax.size(); ++i)
-				arguments.push_back(AnalyzeExpression(argument_syntax[i], scope));
-			arguments_analyzed = true;
-			DeduceFunctionTemplates(scope, spelling, arguments);
-			candidates = FunctionCandidates(scope, spelling);
-		}
-		if (!candidates.empty())
-		{
-			if (!arguments_analyzed)
-				for (std::size_t i = 0; i < argument_syntax.size(); ++i)
-					arguments.push_back(
-						AnalyzeExpression(argument_syntax[i], scope));
-			const BindingId selected = SelectOverload(scope, argument_syntax,
-				arguments, candidates);
-			const FunctionInfo function = GetFunction(selected);
-			const TypeRecord function_type = program_->types.Get(function.type);
-			const TypeId* parameter_data = program_->types.Parameters(function.type);
-			std::vector<TypeId> parameters;
-			if (function_type.parameter_count != 0)
-				parameters.assign(parameter_data,
-					parameter_data + function_type.parameter_count);
-			const TypeId result_type = function_type.child;
-			const TypeRecord returned = program_->types.Get(result_type);
-			const ValueCategory category = returned.kind == TYPE_LVALUE_REFERENCE ?
-				VALUE_LVALUE : returned.kind == TYPE_RVALUE_REFERENCE ?
-				VALUE_XVALUE : VALUE_PRVALUE;
-			const std::uint32_t call = MakeDump(DUMP_CALL_EXPRESSION,
-				result_type, category);
-			const std::uint32_t callee = MakeDump(DUMP_CALLEE, function.type,
-				VALUE_NONE, function.display_name, selected);
-			dump_.Add(call, callee);
-			for (std::size_t a = 0; a < arguments.size(); ++a)
-			{
-				ExpressionInfo argument = arguments[a];
-				if (a < function_type.parameter_count)
-				{
-					if (argument.type == kNoType)
-						argument = AnalyzeExpression(argument_syntax[a], scope,
-							parameters[a]);
-					else argument = ApplyTarget(argument, parameters[a]);
-				}
-				dump_.Add(call, argument.node);
-			}
-			for (std::size_t a = arguments.size();
-				a < function_type.parameter_count; ++a)
-			{
-				if (a >= function.parameters.size() ||
-					function.parameters[a].default_argument == kNoNode)
-					throw std::runtime_error("missing default argument fact");
-				const ExpressionInfo argument = AnalyzeExpression(
-					function.parameters[a].default_argument,
-					function.parameters[a].default_scope, parameters[a]);
-				dump_.Add(call, argument.node);
-			}
-			ExpressionInfo result;
-			result.node = call;
-			result.type = result_type;
-			result.category = category;
-			result.binding = selected;
-			DemandFunction(selected);
-			++expression_count_;
-			return ApplyTarget(result, target);
-		}
 	}
 
 	ExpressionInfo callee = AnalyzeExpression(callee_syntax, scope);
@@ -1305,14 +1391,24 @@ ExpressionInfo SemanticAnalyzer::AnalyzeImplicitDataMember(BindingId member_bind
 		throw std::runtime_error("non-static member requires an object");
 	const BindingRecord& this_binding =
 		program_->bindings[this_lookup.ordinary];
+	TypeId member_type = binding.type;
+	TypeId object_type = EffectiveType(this_binding.type);
+	const TypeRecord object_pointer = program_->types.Get(
+		program_->types.RemoveTopCv(object_type));
+	if (object_pointer.kind == TYPE_POINTER)
+	{
+		const TypeRecord pointee = program_->types.Get(object_pointer.child);
+		if (pointee.kind == TYPE_QUALIFIED)
+			member_type = program_->types.Qualify(member_type, pointee.cv);
+	}
 	const std::uint32_t object = MakeDump(DUMP_ID_EXPRESSION,
 		this_binding.type, VALUE_LVALUE, this_name, this_lookup.ordinary);
 	const std::uint32_t member = MakeDump(DUMP_MEMBER_EXPRESSION,
-		binding.type, VALUE_LVALUE, binding.name, member_binding);
+		member_type, VALUE_LVALUE, binding.name, member_binding);
 	dump_.Add(member, object);
 	ExpressionInfo result;
 	result.node = member;
-	result.type = binding.type;
+	result.type = member_type;
 	result.category = VALUE_LVALUE;
 	result.binding = member_binding;
 	expression_count_ += 2;
@@ -2303,11 +2399,23 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 		parsed.type, parsed.parameters, true, false, spec.storage_class,
 		current_language_linkage_, IsNonthrowing(declarator, owner));
 	const FunctionInfo& function = GetFunction(binding);
+	const bool member = function.member_owner != kNoType;
+	const TypeId output_type = member ?
+		AdaptMemberFunctionType(binding) : parsed.type;
 	const std::uint32_t output_node = MakeDump(DUMP_FUNCTION_DEFINITION,
-		parsed.type, VALUE_NONE, function.display_name, binding);
+		output_type, VALUE_NONE, function.display_name, binding);
 	dump_.Add(output_parent, output_node);
 	const ScopeId function_scope = NewScope(owner, SCOPE_FUNCTION, parsed.name,
 		ScopePrefixId(owner));
+	if (member)
+	{
+		const TypeId this_type = program_->types.Parameters(output_type)[0];
+		const NameId this_name = program_->names.Intern("this");
+		const BindingId this_binding = program_->AddBinding(function_scope,
+			BIND_PARAMETER, this_name, this_type);
+		dump_.Add(output_node, MakeDump(DUMP_PARAMETER, this_type,
+			VALUE_NONE, this_name, this_binding));
+	}
 	for (std::size_t i = 0; i < parsed.parameters.size(); ++i)
 	{
 		const ParameterInfo& parameter = parsed.parameters[i];
@@ -2318,10 +2426,13 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 		dump_.Add(output_node, parameter_node);
 	}
 	const TypeId previous_return = current_return_type_;
+	const EntityId previous_class = current_class_context_;
 	current_return_type_ = program_->types.Get(parsed.type).child;
+	current_class_context_ = program_->bindings[binding].member_owner;
 	const NodeId body = FindChild(node, "compound-statement");
 	if (body != kNoNode) AnalyzeCompound(body, function_scope, output_node);
 	current_return_type_ = previous_return;
+	current_class_context_ = previous_class;
 }
 
 void SemanticAnalyzer::AnalyzeCompound(NodeId node, ScopeId scope,

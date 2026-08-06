@@ -199,6 +199,8 @@ enum LanguageLinkage { LANGUAGE_LINKAGE_CPP, LANGUAGE_LINKAGE_C };
 enum StorageClass { STORAGE_CLASS_NONE, STORAGE_CLASS_EXTERN,
 	STORAGE_CLASS_STATIC, STORAGE_CLASS_THREAD_LOCAL };
 
+enum AccessKind { ACCESS_PUBLIC, ACCESS_PROTECTED, ACCESS_PRIVATE };
+
 struct EntityRecord
 {
 	NameId name, identity_name;
@@ -222,12 +224,14 @@ struct BindingRecord
 	BindingId next;
 	EntityId member_owner;
 	std::uint64_t member_offset;
+	std::uint32_t overload_ordinal;
 	NamedFlavor display_flavor;
 	NameId display_type_name;
 	BindingId canonical;
 	std::int64_t value;
 	LanguageLinkage language_linkage;
 	StorageClass storage_class;
+	AccessKind access;
 	bool constant, nonthrowing, non_static_data_member, static_member_function,
 		has_default_member_initializer;
 

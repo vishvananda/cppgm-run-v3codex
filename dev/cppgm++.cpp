@@ -623,6 +623,10 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << " class_layouts=" << stats.class_layouts
 			 << " class_layout_member_visits="
 			 << stats.class_layout_member_visits
+			 << " overload_candidates=" << stats.overload_candidates
+			 << " overload_order_comparisons="
+			 << stats.overload_order_comparisons
+			 << " conversion_checks=" << stats.conversion_checks
 			 << " functions=" << stats.functions
 			 << " globals=" << stats.globals
 			 << " blocks=" << stats.blocks
