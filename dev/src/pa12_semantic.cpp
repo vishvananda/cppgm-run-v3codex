@@ -231,6 +231,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		injected_members_.capacity() * sizeof(InjectedMemberInfo) +
 		scope_lifetimes_.capacity() *
 			sizeof(std::vector<LifetimeObligation>) +
+		namespace_objects_.capacity() * sizeof(NamespaceObjectAction) +
 		break_cleanup_stops_.capacity() * sizeof(ScopeId) +
 		continue_cleanup_stops_.capacity() * sizeof(ScopeId) +
 		demanded_default_constructor_entities_.capacity() * sizeof(EntityId) +
@@ -1824,6 +1825,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	result.type = type;
 	result.category = VALUE_LVALUE;
 	result.binding = found.ordinary;
+	result.constant = program_->bindings[found.ordinary].constant;
+	result.value = program_->bindings[found.ordinary].value;
+	dump_.nodes[expression].constant = result.constant;
+	dump_.nodes[expression].constant_value = result.value;
 	++expression_count_;
 	return result;
 }
@@ -2117,6 +2122,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 	const NodeId specifiers = FindChild(node, "decl-specifier-seq");
 	const NodeId list = FindChild(node, "init-declarator-list");
 	std::string hint;
+	EntityId declaration_class_context = kNoEntity;
 	if (list != kNoNode)
 	{
 		const NodeId first = FirstSemanticChild(list);
@@ -2124,7 +2130,21 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			FindChild(first, "declarator");
 		if (declarator != kNoNode && DeclaratorName(declarator) != 0)
 			hint = program_->names.Get(DeclaratorName(declarator));
+		if (declarator != kNoNode)
+		{
+			NamePath owner_path = DeclaratorNamePath(declarator);
+			if (owner_path.global || owner_path.Size() > 1)
+			{
+				owner_path.Pop();
+				const LookupResult owner_type = LookupPath(scope, owner_path,
+					LOOKUP_TYPE);
+				declaration_class_context = EntityOf(owner_type.type);
+			}
+		}
 	}
+	const EntityId previous_class_context = current_class_context_;
+	if (declaration_class_context != kNoEntity)
+		current_class_context_ = declaration_class_context;
 	const SpecInfo spec = BuildSpecifiers(specifiers, scope, hint,
 		list != kNoNode);
 	if (list == kNoNode)
@@ -2134,6 +2154,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			const std::uint32_t empty = MakeDump(DUMP_SIMPLE_DECLARATION);
 			dump_.Add(output_parent, empty);
 		}
+		current_class_context_ = previous_class_context;
 		return;
 	}
 	const std::uint32_t owner = local ? MakeDump(DUMP_SIMPLE_DECLARATION) :
@@ -2145,7 +2166,14 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		const NodeId item = arena_->EdgeChild(edge);
 		const NodeId declarator = FindChild(item, "declarator");
 		if (declarator == kNoNode) throw std::runtime_error("missing declarator");
-		DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type, scope);
+		const NamePath declared_path = DeclaratorNamePath(declarator);
+		const ScopeId declaration_scope =
+			declared_path.global || declared_path.Size() > 1 ?
+				ResolveOwner(scope, declared_path) : scope;
+		if (declaration_scope == kNoScope)
+			throw std::runtime_error("variable owner not found");
+		DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type,
+			declaration_scope);
 		if (parsed.name == 0) throw std::runtime_error("unnamed declaration");
 		if (spec.is_typedef)
 		{
@@ -2157,7 +2185,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		}
 		if (program_->types.IsFunction(parsed.type))
 		{
-			const BindingId function = DeclareFunction(scope, parsed.name,
+			const BindingId function = DeclareFunction(declaration_scope, parsed.name,
 				parsed.type, parsed.parameters, false, false, spec.storage_class,
 				current_language_linkage_, IsNonthrowing(declarator, scope));
 			const NodeId function_initializer = FindChild(item, "initializer");
@@ -2173,11 +2201,12 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		if (spec.is_constexpr)
 			parsed.type = program_->types.Qualify(parsed.type, CV_CONST);
 		const LookupResult occupied =
-			program_->LookupDirect(scope, parsed.name, LOOKUP_ORDINARY);
+			program_->LookupDirect(declaration_scope, parsed.name, LOOKUP_ORDINARY);
 		if (occupied.ordinary != kNoBinding &&
 			program_->bindings[occupied.ordinary].kind == BIND_FUNCTION)
 			throw std::runtime_error("variable conflicts with function binding");
-		const BindingId binding = program_->AddBinding(scope, BIND_VARIABLE,
+		const BindingId binding = program_->AddBinding(declaration_scope,
+			BIND_VARIABLE,
 			parsed.name, parsed.type);
 		BindingRecord& binding_record = program_->bindings[binding];
 		binding_record.language_linkage = current_language_linkage_;
@@ -2190,11 +2219,12 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			program_->bindings[binding_record.canonical];
 		canonical_record.language_linkage = binding_record.language_linkage;
 		if (canonical_record.storage_class == STORAGE_CLASS_NONE ||
-			binding_record.storage_class == STORAGE_CLASS_STATIC)
+			binding_record.storage_class == STORAGE_CLASS_STATIC ||
+			binding_record.storage_class == STORAGE_CLASS_THREAD_LOCAL)
 			canonical_record.storage_class = binding_record.storage_class;
 		if (!local)
 			program_->bindings[binding].qualified_name =
-				DisplayName(scope, parsed.name);
+				DisplayName(declaration_scope, parsed.name);
 		const NodeId initializer_node = FindChild(item, "initializer");
 		ExpressionInfo initializer;
 		bool has_initializer = false;
@@ -2202,7 +2232,10 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		{
 			NodeId expression = FirstSemanticChild(initializer_node);
 			const EntityId class_entity = EntityOf(parsed.type);
-			if (class_entity != kNoEntity &&
+			const TypeKind declared_kind = program_->types.Get(parsed.type).kind;
+			if (declared_kind != TYPE_LVALUE_REFERENCE &&
+				declared_kind != TYPE_RVALUE_REFERENCE &&
+				class_entity != kNoEntity &&
 				(program_->entities[class_entity].flavor == NAMED_STRUCT ||
 				 program_->entities[class_entity].flavor == NAMED_CLASS ||
 				 program_->entities[class_entity].flavor == NAMED_UNION))
@@ -2214,7 +2247,8 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 					for (std::uint32_t argument = arena_->FirstEdge(expression);
 						argument != kNoEdge; argument = arena_->NextEdge(argument))
 						arguments.push_back(arena_->EdgeChild(argument));
-					initializer.node = BuildConstructorAction(parsed.type, scope,
+					initializer.node = BuildConstructorAction(parsed.type,
+						declaration_scope,
 						arguments, false, false);
 				}
 				else if (expression != kNoNode &&
@@ -2224,7 +2258,8 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 					for (std::uint32_t argument = arena_->FirstEdge(expression);
 						argument != kNoEdge; argument = arena_->NextEdge(argument))
 						arguments.push_back(arena_->EdgeChild(argument));
-					initializer.node = BuildConstructorAction(parsed.type, scope,
+					initializer.node = BuildConstructorAction(parsed.type,
+						declaration_scope,
 						arguments, PayloadSource(initializer_node) == "copy", true);
 				}
 				else if (expression != kNoNode &&
@@ -2243,17 +2278,20 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 						for (std::uint32_t argument = arena_->FirstEdge(argument_list);
 							argument != kNoEdge; argument = arena_->NextEdge(argument))
 							arguments.push_back(arena_->EdgeChild(argument));
-					initializer.node = BuildConstructorAction(parsed.type, scope,
+					initializer.node = BuildConstructorAction(parsed.type,
+						declaration_scope,
 						arguments, false, false);
 				}
 				else if (expression != kNoNode &&
 					!program_->entities[class_entity].is_aggregate)
 				{
 					arguments.push_back(expression);
-					initializer.node = BuildConstructorAction(parsed.type, scope,
+					initializer.node = BuildConstructorAction(parsed.type,
+						declaration_scope,
 						arguments, true, false);
 				}
-				else initializer = AnalyzeExpression(expression, scope, parsed.type);
+				else initializer = AnalyzeExpression(expression, declaration_scope,
+					parsed.type);
 				initializer.type = parsed.type;
 				initializer.category = VALUE_NONE;
 			}
@@ -2262,7 +2300,8 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 				if (expression != kNoNode &&
 					arena_->IsTag(expression, "paren-initializer"))
 					expression = FirstSemanticChild(expression);
-				initializer = AnalyzeExpression(expression, scope, parsed.type);
+				initializer = AnalyzeExpression(expression, declaration_scope,
+					parsed.type);
 			}
 			has_initializer = true;
 			if (program_->types.Get(parsed.type).kind == TYPE_ARRAY &&
@@ -2280,16 +2319,27 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 					dump_.nodes[initializer.node].type = parsed.type;
 			}
 		}
+		const bool declaration_only = !local && !has_initializer &&
+			program_->bindings[binding].storage_class == STORAGE_CLASS_EXTERN;
 		const std::uint32_t variable = MakeDump(DUMP_VARIABLE, parsed.type,
 			VALUE_NONE, parsed.name, binding);
 		if (has_initializer) dump_.Add(variable, initializer.node);
-		else if (DestructedEntity(parsed.type) != kNoEntity)
+		else if (!declaration_only && DestructedEntity(parsed.type) != kNoEntity)
 			AddDefaultConstructor(variable, binding, parsed.type);
 		dump_.Add(owner, variable);
 		if (local && program_->bindings[binding].storage_class ==
 			STORAGE_CLASS_NONE)
 			AddLifetimeObligation(scope, binding, parsed.type);
+		else if (!local && !declaration_only)
+		{
+			const std::uint32_t initializer_action =
+				dump_.nodes[variable].first_edge == kNoDumpEdge ? kNoDumpEdge :
+				dump_.edges[dump_.nodes[variable].first_edge].child;
+			AddNamespaceObjectAction(variable, binding, parsed.type,
+				initializer_action);
+		}
 	}
+	current_class_context_ = previous_class_context;
 }
 
 
@@ -2813,7 +2863,8 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 	const std::chrono::steady_clock::time_point render_started =
 		std::chrono::steady_clock::now();
 	if (graph_consumer_)
-		graph_consumer_->Consume(SemanticGraphView(program, dump_, root_));
+		graph_consumer_->Consume(SemanticGraphView(program, dump_,
+			namespace_objects_, root_));
 	if (render_output_) Render();
 	if (stats_)
 	{
@@ -2836,6 +2887,7 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 			destructor_subobject_action_visits_;
 		stats_->lexical_cleanup_action_visits =
 			lexical_cleanup_action_visits_;
+		stats_->namespace_object_actions = namespace_objects_.size();
 		stats_->lookup_queries = program.lookup_queries;
 		stats_->lookup_scope_visits = program.lookup_scope_visits;
 		stats_->lookup_edge_visits = program.lookup_edge_visits;
@@ -2879,6 +2931,7 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 	  constructor_base_action_visits(0),
 	  destructor_subobject_action_visits(0),
 	  lexical_cleanup_action_visits(0),
+	  namespace_object_actions(0),
 	  lookup_queries(0), lookup_scope_visits(0),
 	  lookup_edge_visits(0), overload_candidates(0),
 	  overload_order_comparisons(0), conversion_checks(0),

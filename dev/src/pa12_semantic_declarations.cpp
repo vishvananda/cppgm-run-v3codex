@@ -413,7 +413,10 @@ BindingId SemanticAnalyzer::EnsureImplicitDestructor(EntityId entity)
 
 EntityId SemanticAnalyzer::DestructedEntity(TypeId type) const
 {
-	type = EffectiveType(type);
+	const TypeRecord& initial = program_->types.Get(type);
+	if (initial.kind == TYPE_LVALUE_REFERENCE ||
+		initial.kind == TYPE_RVALUE_REFERENCE)
+		return kNoEntity;
 	const TypeRecord* record = &program_->types.Get(type);
 	while (record->kind == TYPE_ARRAY || record->kind == TYPE_QUALIFIED)
 	{
@@ -523,6 +526,20 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 			binding.has_default_member_initializer =
 				binding.non_static_data_member &&
 				FindChild(item, "initializer") != kNoNode;
+			if (!binding.non_static_data_member &&
+				FindChild(item, "initializer") != kNoNode)
+			{
+				const NodeId initializer = FirstSemanticChild(
+					FindChild(item, "initializer"));
+				const ExpressionInfo value = AnalyzeExpression(initializer,
+					scope, binding.type);
+				if (value.constant && (spec.is_constexpr ||
+					(IsConst(binding.type) && IsIntegral(binding.type, true))))
+				{
+					binding.constant = true;
+					binding.value = value.value;
+				}
+			}
 			if (member_initializer_by_binding_.size() <= member)
 				member_initializer_by_binding_.resize(
 					static_cast<std::size_t>(member) + 1, kNoNode);

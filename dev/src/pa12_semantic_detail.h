@@ -188,6 +188,8 @@ private:
 		TypeId type);
 	void AddDestructorSubobjectActions(EntityId entity, std::uint32_t body);
 	void AddLifetimeObligation(ScopeId scope, BindingId object, TypeId type);
+	void AddNamespaceObjectAction(std::uint32_t variable, BindingId object,
+		TypeId type, std::uint32_t initializer);
 	void AppendScopeDestructionActions(ScopeId scope,
 		std::uint32_t output_parent, ScopeId stop_exclusive = kNoScope);
 	std::uint32_t MakeDestructorAction(TypeId type, BindingId destructor,
@@ -259,6 +261,7 @@ private:
 	std::vector<std::uint32_t> injected_fact_by_binding_;
 	std::vector<InjectedMemberInfo> injected_members_;
 	std::vector<std::vector<LifetimeObligation> > scope_lifetimes_;
+	std::vector<NamespaceObjectAction> namespace_objects_;
 	std::vector<ScopeId> break_cleanup_stops_;
 	std::vector<ScopeId> continue_cleanup_stops_;
 	std::vector<EntityId> demanded_default_constructor_entities_;

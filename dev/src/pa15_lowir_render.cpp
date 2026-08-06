@@ -319,7 +319,9 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 }
 
 void WriteSymbolMetadata(std::ostream& output, const Symbol& symbol,
-	bool entry, bool function, bool initializer = false)
+	const TypedProgram& program,
+	bool entry, bool function, bool initializer = false,
+	bool finalizer = false)
 {
 	output << " [";
 	bool separator = false;
@@ -340,10 +342,30 @@ void WriteSymbolMetadata(std::ostream& output, const Symbol& symbol,
 		output << "role=init";
 		separator = true;
 	}
+	if (finalizer)
+	{
+		if (separator) output << ", ";
+		output << "role=fini";
+		separator = true;
+	}
 	if (symbol.c_linkage)
 	{
 		if (separator) output << ", ";
 		output << "linkage=c";
+		separator = true;
+	}
+	if (function && symbol.tls_for_symbol != kNoLowId)
+	{
+		if (symbol.tls_for_symbol >= program.symbols.size())
+			throw std::logic_error("invalid PA16 TLS wrapper target");
+		if (separator) output << ", ";
+		output << "tls_for=@" << program.symbols[symbol.tls_for_symbol].name;
+		separator = true;
+	}
+	if (!function && symbol.thread_local_storage)
+	{
+		if (separator) output << ", ";
+		output << "storage=thread_local";
 		separator = true;
 	}
 	if (separator) output << ", ";
@@ -368,7 +390,7 @@ void RenderProgram(const TypedProgram& program, std::ostream& output)
 			output << " : ";
 			WriteType(output, declaration.type);
 		}
-		WriteSymbolMetadata(output, symbol, false, false);
+		WriteSymbolMetadata(output, symbol, program, false, false);
 		output << '\n';
 		wrote = true;
 	}
@@ -381,7 +403,7 @@ void RenderProgram(const TypedProgram& program, std::ostream& output)
 		output << "declare function @" << symbol.name;
 		WriteBoundary(output, declaration.parameters, declaration.result,
 			declaration.variadic);
-		WriteSymbolMetadata(output, symbol, false, true);
+		WriteSymbolMetadata(output, symbol, program, false, true);
 		output << '\n';
 		wrote = true;
 	}
@@ -396,7 +418,7 @@ void RenderProgram(const TypedProgram& program, std::ostream& output)
 			output << " : ";
 			WriteType(output, global.type);
 		}
-		WriteSymbolMetadata(output, symbol, false, false);
+		WriteSymbolMetadata(output, symbol, program, false, false);
 		output << " = ";
 		if (global.initializer_kind == Global::ZERO) output << "zero\n";
 		else if (global.initializer_kind == Global::INTEGER_VALUE)
@@ -450,8 +472,8 @@ void RenderProgram(const TypedProgram& program, std::ostream& output)
 		if (wrote) output << '\n';
 		output << "function @" << symbol.name;
 		WriteBoundary(output, function.parameters, function.result, function.variadic);
-		WriteSymbolMetadata(output, symbol, function.entry, true,
-			function.initializer);
+		WriteSymbolMetadata(output, symbol, program, function.entry, true,
+			function.initializer, function.finalizer);
 		output << " {\n";
 		for (std::size_t s = 0; s < function.slots.size(); ++s)
 		{

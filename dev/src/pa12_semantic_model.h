@@ -267,6 +267,19 @@ struct LifetimeObligation
 		: object(object_value), destructor(destructor_value), type(type_value) {}
 };
 
+struct NamespaceObjectAction
+{
+	BindingId object;
+	TypeId type;
+	std::uint32_t variable, initializer, destructor;
+
+	NamespaceObjectAction(BindingId object_value, TypeId type_value,
+		std::uint32_t variable_value, std::uint32_t initializer_value,
+		std::uint32_t destructor_value)
+		: object(object_value), type(type_value), variable(variable_value),
+		  initializer(initializer_value), destructor(destructor_value) {}
+};
+
 // Borrowed, translation-unit-local view of the canonical PA12 graph.  The
 // owner invokes consumers synchronously before releasing Program and DumpArena;
 // consumers must copy only the typed facts needed by their next phase.
@@ -274,11 +287,15 @@ struct SemanticGraphView
 {
 	const Program& program;
 	const DumpArena& arena;
+	const std::vector<NamespaceObjectAction>& namespace_objects;
 	std::uint32_t root;
 
 	SemanticGraphView(const Program& program_value,
-		const DumpArena& arena_value, std::uint32_t root_value)
-		: program(program_value), arena(arena_value), root(root_value) {}
+		const DumpArena& arena_value,
+		const std::vector<NamespaceObjectAction>& namespace_objects_value,
+		std::uint32_t root_value)
+		: program(program_value), arena(arena_value),
+		  namespace_objects(namespace_objects_value), root(root_value) {}
 };
 
 class SemanticGraphConsumer

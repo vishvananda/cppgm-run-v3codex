@@ -303,9 +303,11 @@ struct Function
 	std::vector<BlockId> block_order;
 	bool entry;
 	bool initializer;
+	bool finalizer;
 	bool variadic;
 
-	Function() : symbol(kNoLowId), entry(false), initializer(false), variadic(false) {}
+	Function() : symbol(kNoLowId), entry(false), initializer(false),
+		finalizer(false), variadic(false) {}
 };
 
 struct FunctionDeclaration
@@ -375,6 +377,8 @@ struct Symbol
 	bool c_linkage;
 	bool internal_linkage;
 	bool nonthrowing;
+	bool thread_local_storage;
+	SymbolId tls_for_symbol;
 	std::uint32_t source_type;
 	bool declaration_emitted;
 	bool definition_emitted;
@@ -385,7 +389,8 @@ struct Symbol
 		bool internal_linkage_value, bool nonthrowing_value)
 		: kind(kind_value), name(name_value), object_name(object_name_value),
 		  c_linkage(c_linkage_value), internal_linkage(internal_linkage_value),
-		  nonthrowing(nonthrowing_value), source_type(kNoLowId),
+		  nonthrowing(nonthrowing_value), thread_local_storage(false),
+		  tls_for_symbol(kNoLowId), source_type(kNoLowId),
 		  declaration_emitted(false), definition_emitted(false), referenced(false) {}
 };
 

@@ -468,6 +468,19 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 	const EntityId class_entity = EntityOf(type);
 	if (IsClassEntity(*program_, class_entity))
 	{
+		if (!program_->entities[class_entity].is_aggregate)
+		{
+			std::vector<NodeId> arguments;
+			for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
+				edge = arena_->NextEdge(edge))
+				arguments.push_back(arena_->EdgeChild(edge));
+			ExpressionInfo result;
+			result.node = BuildConstructorAction(type, scope, arguments,
+				false, true);
+			result.type = type;
+			result.category = VALUE_NONE;
+			return result;
+		}
 		std::uint32_t element_edge = arena_->FirstEdge(node);
 		ExpressionInfo result = AnalyzeAggregateInit(type, scope, &element_edge);
 		if (element_edge != kNoEdge)
@@ -688,6 +701,27 @@ void SemanticAnalyzer::AddLifetimeObligation(ScopeId scope,
 		scope_lifetimes_.resize(static_cast<std::size_t>(scope) + 1);
 	scope_lifetimes_[scope].push_back(
 		LifetimeObligation(object, destructor, type));
+}
+
+void SemanticAnalyzer::AddNamespaceObjectAction(std::uint32_t variable,
+	BindingId object, TypeId type, std::uint32_t initializer)
+{
+	std::uint32_t destructor_action = kNoDumpEdge;
+	const EntityId entity = DestructedEntity(type);
+	if (entity != kNoEntity)
+	{
+		if (!program_->entities[entity].destructible)
+			throw std::runtime_error("namespace object type is not destructible");
+		const BindingId destructor = DestructorForType(type);
+		if (destructor == kNoBinding)
+			throw std::logic_error("namespace class has no destructor identity");
+		if (!CanAccessMember(destructor, entity))
+			throw std::runtime_error("inaccessible namespace object destructor");
+		if (!program_->entities[entity].trivial_destructor)
+			destructor_action = MakeDestructorAction(type, destructor, object);
+	}
+	namespace_objects_.push_back(NamespaceObjectAction(object, type, variable,
+		initializer, destructor_action));
 }
 
 void SemanticAnalyzer::AppendScopeDestructionActions(ScopeId scope,
