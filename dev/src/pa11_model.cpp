@@ -463,15 +463,20 @@ void TypeTable::Rehash(std::size_t capacity)
 EntityRecord::EntityRecord()
 	: name(0), identity_name(0), owner(kNoScope), member_scope(kNoScope),
 	  flavor(NAMED_NONE), type(kNoType),
-	  underlying(kNoType), declaration(kNoBinding), complete(false)
+	  underlying(kNoType), declaration(kNoBinding), object_size(0),
+	  object_alignment(0), complete(false), layout_complete(false),
+	  has_user_declared_constructor(false), default_constructible(false),
+	  trivial_default_constructor(false)
 {
 }
 
 BindingRecord::BindingRecord()
 	: owner(kNoScope), name(0), qualified_name(0), kind(BIND_VARIABLE), type(kNoType),
-	  next(kNoBinding), display_flavor(NAMED_NONE), display_type_name(0),
+	  next(kNoBinding), member_owner(kNoEntity), member_offset(0),
+	  display_flavor(NAMED_NONE), display_type_name(0),
 	  canonical(kNoBinding), value(0), language_linkage(LANGUAGE_LINKAGE_CPP),
-	  storage_class(STORAGE_CLASS_NONE), constant(false), nonthrowing(false)
+	  storage_class(STORAGE_CLASS_NONE), constant(false), nonthrowing(false),
+	  non_static_data_member(false), static_member_function(false)
 {
 }
 
@@ -1161,9 +1166,14 @@ std::size_t Program::SizeOf(TypeId type) const
 			const EntityRecord& entity = entities[record.entity];
 			if (!entity.complete)
 				throw std::runtime_error("incomplete named type");
-			size = entity.flavor == NAMED_ENUM ||
-				entity.flavor == NAMED_ENUM_CLASS ?
-				SizeOf(entity.underlying) : 1;
+			if (entity.flavor == NAMED_ENUM || entity.flavor == NAMED_ENUM_CLASS)
+				size = SizeOf(entity.underlying);
+			else
+			{
+				if (!entity.layout_complete || entity.object_size == 0)
+					throw std::runtime_error("class layout is incomplete");
+				size = static_cast<std::size_t>(entity.object_size);
+			}
 			break;
 		}
 		default: throw std::runtime_error("invalid sizeof operand type");
@@ -1182,7 +1192,23 @@ std::size_t Program::AlignOf(TypeId type) const
 		type = record->child;
 		record = &types.Get(type);
 	}
-	return SizeOf(type);
+	if (record->kind == TYPE_POINTER || record->kind == TYPE_LVALUE_REFERENCE ||
+		record->kind == TYPE_RVALUE_REFERENCE ||
+		record->kind == TYPE_MEMBER_POINTER) return 8;
+	if (record->kind == TYPE_FUNDAMENTAL)
+		return FundamentalSize(record->fundamental);
+	if (record->kind == TYPE_NAMED)
+	{
+		const EntityRecord& entity = entities[record->entity];
+		if (!entity.complete)
+			throw std::runtime_error("incomplete named type");
+		if (entity.flavor == NAMED_ENUM || entity.flavor == NAMED_ENUM_CLASS)
+			return AlignOf(entity.underlying);
+		if (!entity.layout_complete || entity.object_alignment == 0)
+			throw std::runtime_error("class layout is incomplete");
+		return static_cast<std::size_t>(entity.object_alignment);
+	}
+	throw std::runtime_error("invalid alignof operand type");
 }
 
 void Program::AppendType(std::string& output, TypeId type,

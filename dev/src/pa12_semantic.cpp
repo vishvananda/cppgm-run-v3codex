@@ -907,6 +907,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 		}
 		if (binding.kind != BIND_VARIABLE && binding.kind != BIND_PARAMETER)
 			throw std::runtime_error("name does not denote a value");
+		if (binding.non_static_data_member)
+			return AnalyzeImplicitDataMember(found.ordinary, scope, target);
 		const std::uint32_t injected_fact =
 			found.ordinary < injected_fact_by_binding_.size() ?
 			injected_fact_by_binding_[found.ordinary] : kNoDumpEdge;
@@ -1289,6 +1291,31 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 	result.type = result_type;
 	result.category = category;
 	++expression_count_;
+	return ApplyTarget(result, target);
+}
+
+ExpressionInfo SemanticAnalyzer::AnalyzeImplicitDataMember(BindingId member_binding,
+	ScopeId scope, TypeId target)
+{
+	const BindingRecord& binding = program_->bindings[member_binding];
+	const NameId this_name = program_->names.Intern("this");
+	const LookupResult this_lookup =
+		program_->LookupName(scope, this_name, LOOKUP_ORDINARY);
+	if (this_lookup.ordinary == kNoBinding)
+		throw std::runtime_error("non-static member requires an object");
+	const BindingRecord& this_binding =
+		program_->bindings[this_lookup.ordinary];
+	const std::uint32_t object = MakeDump(DUMP_ID_EXPRESSION,
+		this_binding.type, VALUE_LVALUE, this_name, this_lookup.ordinary);
+	const std::uint32_t member = MakeDump(DUMP_MEMBER_EXPRESSION,
+		binding.type, VALUE_LVALUE, binding.name, member_binding);
+	dump_.Add(member, object);
+	ExpressionInfo result;
+	result.node = member;
+	result.type = binding.type;
+	result.category = VALUE_LVALUE;
+	result.binding = member_binding;
+	expression_count_ += 2;
 	return ApplyTarget(result, target);
 }
 
@@ -1746,7 +1773,17 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 		arena_->NextEdge(first);
 	if (second == kNoEdge) throw std::runtime_error("invalid member expression");
 	ExpressionInfo object = AnalyzeExpression(arena_->EdgeChild(first), scope);
-	const EntityId entity = EntityOf(object.type);
+	const std::string source_operation = PayloadSource(node);
+	TypeId owner_type = EffectiveType(object.type);
+	if (source_operation == "->")
+	{
+		owner_type = program_->types.RemoveTopCv(owner_type);
+		const TypeRecord pointer = program_->types.Get(owner_type);
+		if (pointer.kind != TYPE_POINTER)
+			throw std::runtime_error("arrow operand is not a pointer");
+		owner_type = pointer.child;
+	}
+	const EntityId entity = EntityOf(owner_type);
 	if (entity == kNoEntity || program_->entities[entity].member_scope == kNoScope)
 		throw std::runtime_error("member access on non-class object");
 	const NodeId identifier = arena_->EdgeChild(second);
@@ -1756,7 +1793,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	if (found.ordinary == kNoBinding)
 		throw std::runtime_error("unknown class member");
 	TypeId type = program_->bindings[found.ordinary].type;
-	if (IsConst(object.type)) type = program_->types.Qualify(type, CV_CONST);
+	if (IsConst(owner_type)) type = program_->types.Qualify(type, CV_CONST);
 	std::string operation = arena_->Payload(node);
 	const std::size_t colon = operation.find(':');
 	if (colon != std::string::npos) operation.erase(colon + 1);
@@ -1768,6 +1805,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	result.node = expression;
 	result.type = type;
 	result.category = VALUE_LVALUE;
+	result.binding = found.ordinary;
 	++expression_count_;
 	return result;
 }
@@ -2182,6 +2220,9 @@ void SemanticAnalyzer::AddDefaultConstructor(std::uint32_t variable,
 	const NamedFlavor flavor = program_->entities[entity].flavor;
 	if (flavor != NAMED_STRUCT && flavor != NAMED_CLASS &&
 		flavor != NAMED_UNION) return;
+	const EntityRecord& class_record = program_->entities[entity];
+	if (!class_record.default_constructible)
+		throw std::runtime_error("class has no usable default constructor");
 	const std::string owner = program_->names.Get(program_->entities[entity].name);
 	const std::size_t separator = owner.rfind("::");
 	const std::string leaf = separator == std::string::npos ? owner :
@@ -2724,6 +2765,8 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		stats_->scopes = program.ScopeCount();
 		stats_->declarations = program.bindings.size() - 1;
 		stats_->expressions = expression_count_;
+		stats_->class_layouts = class_layouts_;
+		stats_->class_layout_member_visits = class_layout_member_visits_;
 		stats_->lookup_queries = program.lookup_queries;
 		stats_->lookup_scope_visits = program.lookup_scope_visits;
 		stats_->lookup_edge_visits = program.lookup_edge_visits;
@@ -2762,7 +2805,8 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 SemanticAnalysisStats::SemanticAnalysisStats()
 	: tokens(0), syntax_nodes(0), semantic_nodes(0), semantic_edges(0),
 	  interned_names(0), canonical_types(0), scopes(0), declarations(0),
-	  expressions(0), lookup_queries(0), lookup_scope_visits(0),
+	  expressions(0), class_layouts(0), class_layout_member_visits(0),
+	  lookup_queries(0), lookup_scope_visits(0),
 	  lookup_edge_visits(0), overload_candidates(0),
 	  overload_order_comparisons(0), conversion_checks(0),
 	  function_signature_lookups(0), template_specialization_requests(0),

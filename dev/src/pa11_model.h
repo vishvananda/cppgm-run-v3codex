@@ -206,7 +206,9 @@ struct EntityRecord
 	NamedFlavor flavor;
 	TypeId type, underlying;
 	BindingId declaration;
-	bool complete;
+	std::uint64_t object_size, object_alignment;
+	bool complete, layout_complete, has_user_declared_constructor,
+		default_constructible, trivial_default_constructor;
 
 	EntityRecord();
 };
@@ -218,13 +220,15 @@ struct BindingRecord
 	BindingKind kind;
 	TypeId type;
 	BindingId next;
+	EntityId member_owner;
+	std::uint64_t member_offset;
 	NamedFlavor display_flavor;
 	NameId display_type_name;
 	BindingId canonical;
 	std::int64_t value;
 	LanguageLinkage language_linkage;
 	StorageClass storage_class;
-	bool constant, nonthrowing;
+	bool constant, nonthrowing, non_static_data_member, static_member_function;
 
 	BindingRecord();
 };

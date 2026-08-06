@@ -620,6 +620,9 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << " semantic_nodes=" << stats.semantic_nodes
 			 << " semantic_edges=" << stats.semantic_edges
 			 << " lowered_nodes=" << stats.lowered_nodes
+			 << " class_layouts=" << stats.class_layouts
+			 << " class_layout_member_visits="
+			 << stats.class_layout_member_visits
 			 << " functions=" << stats.functions
 			 << " globals=" << stats.globals
 			 << " blocks=" << stats.blocks

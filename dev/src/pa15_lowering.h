@@ -27,6 +27,8 @@ struct LowIRLoweringStats
 	std::size_t semantic_nodes;
 	std::size_t semantic_edges;
 	std::size_t lowered_nodes;
+	std::size_t class_layouts;
+	std::size_t class_layout_member_visits;
 	std::size_t functions;
 	std::size_t globals;
 	std::size_t blocks;

@@ -206,6 +206,14 @@ enum LowOperation : std::uint8_t
 	LOW_OP_DECAY
 };
 
+enum IndexProjection : std::uint8_t
+{
+	INDEX_PROJECTION_NONE,
+	INDEX_PROJECTION_ARRAY_ELEMENT,
+	INDEX_PROJECTION_FIELD,
+	INDEX_PROJECTION_BASE_SUBOBJECT
+};
+
 struct Instruction
 {
 	enum Kind : std::uint8_t
@@ -238,12 +246,13 @@ struct Instruction
 	BlockId alternate;
 	Kind kind;
 	LowOperation op;
+	IndexProjection projection;
 	bool indirect;
 
 	explicit Instruction(Kind kind_value)
 		: dest(kNoLowId), extra_first(kNoLowId), extra_count(0),
 		  target(kNoLowId), alternate(kNoLowId), kind(kind_value),
-		  op(LOW_OP_NONE), indirect(false) {}
+		  op(LOW_OP_NONE), projection(INDEX_PROJECTION_NONE), indirect(false) {}
 };
 
 inline bool IsTerminator(const Instruction& instruction)

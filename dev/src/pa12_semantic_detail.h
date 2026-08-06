@@ -35,6 +35,7 @@ public:
 		  template_specialization_cache_hits_(0),
 		  demand_worklist_pushes_(0), demanded_function_emissions_(0),
 		  default_constructor_emissions_(0),
+		  class_layouts_(0), class_layout_member_visits_(0),
 		  anonymous_enum_count_(0), local_type_count_(0) {}
 
 	void Consume(const SyntaxArena& arena, NodeId root);
@@ -135,7 +136,10 @@ private:
 	ExpressionInfo AnalyzeSizeof(NodeId node, ScopeId scope);
 	ExpressionInfo AnalyzeBracedInit(NodeId node, ScopeId scope, TypeId target);
 	ExpressionInfo AnalyzeMember(NodeId node, ScopeId scope);
+	ExpressionInfo AnalyzeImplicitDataMember(BindingId member, ScopeId scope,
+		TypeId target);
 	void AnalyzeClassMember(NodeId node, ScopeId scope, TypeId owner_type);
+	void CompleteClassLayout(EntityId entity);
 	void AddDefaultConstructor(std::uint32_t variable, BindingId binding,
 		TypeId type);
 	EntityId EntityOf(TypeId type) const;
@@ -215,6 +219,8 @@ private:
 	std::size_t demand_worklist_pushes_;
 	std::size_t demanded_function_emissions_;
 	std::size_t default_constructor_emissions_;
+	std::size_t class_layouts_;
+	std::size_t class_layout_member_visits_;
 	std::size_t anonymous_enum_count_;
 	std::size_t local_type_count_;
 };

@@ -12,6 +12,23 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+namespace
+{
+
+std::size_t AlignUp(std::size_t value, std::size_t alignment)
+{
+	if (alignment == 0 || (alignment & (alignment - 1)) != 0)
+		throw std::runtime_error("invalid class member alignment");
+	const std::size_t remainder = value & (alignment - 1);
+	if (remainder == 0) return value;
+	const std::size_t addition = alignment - remainder;
+	if (value > std::numeric_limits<std::size_t>::max() - addition)
+		throw std::runtime_error("class layout is too large");
+	return value + addition;
+}
+
+}
+
 TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	const std::string& hint, bool elaborated)
 {
@@ -64,8 +81,7 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 			throw std::runtime_error("qualified class was not declared");
 		const NameId entity_name = ScopePrefix(owner).empty() ? name :
 			DisplayName(owner, name);
-		entity = program_->NewEntity(entity_name, flavor,
-			(arena_->Flags(node) & SYNTAX_FLAG_DEFINITION) != 0,
+		entity = program_->NewEntity(entity_name, flavor, false,
 			kNoType, owner, name);
 		program_->SetTypeName(owner, name, program_->entities[entity].type);
 	}
@@ -76,7 +92,6 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 		program_->AddBinding(owner, BIND_TYPE, name, type, false, 0, flavor);
 	if ((arena_->Flags(node) & SYNTAX_FLAG_DEFINITION) != 0)
 	{
-		program_->entities[entity].complete = true;
 		ScopeId member_scope = program_->entities[entity].member_scope;
 		if (member_scope == kNoScope)
 		{
@@ -96,10 +111,92 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 			if (arena_->IsTag(member, "simple-declaration") ||
 				arena_->IsTag(member, "function-definition"))
 				AnalyzeClassMember(member, member_scope, type);
+			else if (arena_->IsTag(member, "special-member-declaration") ||
+				arena_->IsTag(member, "special-member-definition"))
+			{
+				const std::string special_name = arena_->Payload(member);
+				const std::string class_name =
+					program_->names.Get(program_->entities[entity].identity_name);
+				if (special_name == class_name)
+				{
+					EntityRecord& record = program_->entities[entity];
+					record.has_user_declared_constructor = true;
+					const NodeId declarator = FindChild(member, "declarator");
+					const NodeId parameters = declarator == kNoNode ? kNoNode :
+						FindChild(declarator, "parameter-clause");
+					if (parameters != kNoNode &&
+						arena_->FirstEdge(parameters) == kNoEdge)
+						record.default_constructible = true;
+				}
+			}
 		}
+		CompleteClassLayout(entity);
+		program_->entities[entity].complete = true;
 	}
 	(void)anonymous_source;
 	return type;
+}
+
+void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
+{
+	EntityRecord& owner = program_->entities[entity];
+	if (owner.layout_complete) return;
+	++class_layouts_;
+	std::size_t size = 0;
+	std::size_t alignment = 1;
+	const bool is_union = owner.flavor == NAMED_UNION;
+	const std::vector<BindingId>& members = entity_data_members_[entity];
+	for (std::size_t i = 0; i < members.size(); ++i)
+	{
+		++class_layout_member_visits_;
+		BindingRecord& member = program_->bindings[members[i]];
+		const std::size_t member_size = program_->SizeOf(member.type);
+		const std::size_t member_alignment = program_->AlignOf(member.type);
+		alignment = std::max(alignment, member_alignment);
+		if (is_union)
+		{
+			member.member_offset = 0;
+			size = std::max(size, member_size);
+		}
+		else
+		{
+			size = AlignUp(size, member_alignment);
+			member.member_offset = size;
+			if (size > std::numeric_limits<std::size_t>::max() - member_size)
+				throw std::runtime_error("class layout is too large");
+			size += member_size;
+		}
+	}
+	if (size == 0) size = 1;
+	size = AlignUp(size, alignment);
+	owner.object_size = size;
+	owner.object_alignment = alignment;
+	owner.layout_complete = true;
+	if (!owner.has_user_declared_constructor)
+	{
+		owner.default_constructible = true;
+		owner.trivial_default_constructor = true;
+		for (std::size_t i = 0; i < members.size(); ++i)
+		{
+			TypeId member_type = program_->types.RemoveTopCv(
+				program_->bindings[members[i]].type);
+			const TypeRecord* member_record = &program_->types.Get(member_type);
+			while (member_record->kind == TYPE_ARRAY)
+			{
+				member_type = program_->types.RemoveTopCv(member_record->child);
+				member_record = &program_->types.Get(member_type);
+			}
+			if (member_record->kind != TYPE_NAMED) continue;
+			const EntityRecord& subobject =
+				program_->entities[member_record->entity];
+			if (subobject.flavor == NAMED_ENUM ||
+				subobject.flavor == NAMED_ENUM_CLASS) continue;
+			if (!subobject.default_constructible)
+				owner.default_constructible = false;
+			if (!subobject.trivial_default_constructor)
+				owner.trivial_default_constructor = false;
+		}
+	}
 }
 
 EntityId SemanticAnalyzer::EntityOf(TypeId type) const
@@ -122,7 +219,12 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		const BindingId function = DeclareFunction(scope, parsed.name,
 			parsed.type, parsed.parameters, true);
 		FunctionInfo& info = GetMutableFunction(function);
-		info.member_owner = owner_type;
+		const EntityId owner_entity = EntityOf(owner_type);
+		BindingRecord& binding = program_->bindings[function];
+		binding.member_owner = owner_entity;
+		binding.static_member_function =
+			spec.storage_class == STORAGE_CLASS_STATIC;
+		if (!binding.static_member_function) info.member_owner = owner_type;
 		info.definition_body =
 			FindChild(node, "compound-statement");
 		info.deferred = true;
@@ -140,17 +242,28 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		if (program_->types.IsFunction(parsed.type))
 		{
 			const BindingId function = DeclareFunction(scope, parsed.name,
-				parsed.type, parsed.parameters, false);
-			GetMutableFunction(function).member_owner = owner_type;
+				parsed.type, parsed.parameters, false, false, spec.storage_class);
+			BindingRecord& binding = program_->bindings[function];
+			binding.member_owner = EntityOf(owner_type);
+			binding.static_member_function =
+				spec.storage_class == STORAGE_CLASS_STATIC;
+			if (!binding.static_member_function)
+				GetMutableFunction(function).member_owner = owner_type;
 		}
 		else
 		{
 			const BindingId member = program_->AddBinding(scope, BIND_VARIABLE,
 				parsed.name, parsed.type);
+			BindingRecord& binding = program_->bindings[member];
+			binding.storage_class = spec.storage_class;
+			binding.member_owner = EntityOf(owner_type);
+			binding.non_static_data_member =
+				spec.storage_class != STORAGE_CLASS_STATIC;
 			const EntityId entity = EntityOf(owner_type);
-			if (entity_data_members_.size() <= entity)
+			if (binding.non_static_data_member && entity_data_members_.size() <= entity)
 				entity_data_members_.resize(static_cast<std::size_t>(entity) + 1);
-			entity_data_members_[entity].push_back(member);
+			if (binding.non_static_data_member)
+				entity_data_members_[entity].push_back(member);
 		}
 	}
 }

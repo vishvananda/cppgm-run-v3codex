@@ -95,7 +95,7 @@ public:
 		  output_(output), stats_(stats), function_(0), current_block_(0),
 		  current_result_(LowVoid()), current_result_reference_(false),
 		  temp_counter_(0), block_counter_(0), generated_slot_ordinal_(0),
-		  source_ordinal_(source_ordinal)
+		  source_ordinal_(source_ordinal), needs_global_class_initializer_(false)
 	{
 		function_symbols_.resize(program_.bindings.size(), kNoLowId);
 		global_symbols_.resize(program_.bindings.size(), kNoLowId);
@@ -174,7 +174,7 @@ private:
 			const EntityRecord& entity = program_.entities[record->entity];
 			if ((entity.flavor == NAMED_ENUM || entity.flavor == NAMED_ENUM_CLASS) &&
 				entity.underlying != kNoType) return LowerType(entity.underlying);
-			throw std::runtime_error("PA15 scalar checkpoint cannot lower class type");
+			return LowObject(program_.SizeOf(type), program_.AlignOf(type));
 		}
 		if (record->kind != TYPE_FUNDAMENTAL)
 			throw std::runtime_error("invalid PA15 scalar type");
@@ -234,6 +234,26 @@ private:
 	bool IsFunctionType(TypeId type) const
 	{
 		return program_.types.Get(ExpressionObjectType(type)).kind == TYPE_FUNCTION;
+	}
+
+	bool IsClassObjectType(TypeId type) const
+	{
+		type = ExpressionObjectType(type);
+		const TypeRecord& record = program_.types.Get(type);
+		if (record.kind != TYPE_NAMED) return false;
+		const NamedFlavor flavor = program_.entities[record.entity].flavor;
+		return flavor == NAMED_STRUCT || flavor == NAMED_CLASS ||
+			flavor == NAMED_UNION;
+	}
+
+	bool IsTrivialConstructorAction(TypeId type,
+		const NodeChildren& children) const
+	{
+		if (!IsClassObjectType(type) || children.size() != 1 ||
+			arena_.nodes[children[0]].kind != DUMP_CONSTRUCTOR_ACTION)
+			return false;
+		const TypeRecord& record = program_.types.Get(ExpressionObjectType(type));
+		return program_.entities[record.entity].trivial_default_constructor;
 	}
 
 	LowType LowerExpressionType(TypeId type) const
@@ -670,6 +690,16 @@ private:
 		{
 			LowerStructuredGlobal(record, children, source_type, &global);
 		}
+		else if (IsClassObjectType(record.type) &&
+			(children.empty() || IsTrivialConstructorAction(record.type, children)))
+		{
+			global.initializer_kind = Global::STRUCTURED_VALUE;
+			Global::DataItem zero;
+			zero.kind = Global::DataItem::ZERO_ITEM;
+			zero.zero_bytes = program_.SizeOf(record.type);
+			global.items.push_back(zero);
+			needs_global_class_initializer_ = true;
+		}
 		else if (!children.empty())
 		{
 			const DumpNode& initializer = arena_.nodes[children[0]];
@@ -711,7 +741,8 @@ private:
 
 	void EmitDynamicInitializer()
 	{
-		if (dynamic_initializers_.empty()) return;
+		if (dynamic_initializers_.empty() &&
+			!needs_global_class_initializer_) return;
 		const std::string proposed = "__cppgm_init";
 		std::size_t& count = output_.symbol_name_counts[proposed];
 		const std::string name = count++ == 0 ? proposed :
@@ -1254,7 +1285,36 @@ private:
 		index.type = element;
 		index.first = base;
 		index.second = offset;
-		index.indirect = array_projection;
+		index.projection = array_projection ? INDEX_PROJECTION_ARRAY_ELEMENT :
+			INDEX_PROJECTION_NONE;
+		Emit(index);
+		return result;
+	}
+
+	Operand MemberAddress(const DumpNode& record,
+		const NodeChildren& children)
+	{
+		if (children.size() != 1 || record.binding == kNoBinding ||
+			record.binding >= program_.bindings.size())
+			throw std::runtime_error("invalid resolved member expression");
+		const BindingRecord& member = program_.bindings[record.binding];
+		if (!member.non_static_data_member)
+			throw std::runtime_error("member expression is not a data-member lvalue");
+		const TypeId object_type = ExpressionObjectType(
+			arena_.nodes[children[0]].type);
+		const bool pointer_object =
+			program_.types.Get(object_type).kind == TYPE_POINTER;
+		const Operand base = pointer_object ?
+			LowerValue(children[0], LowPtr()) :
+			AddressOfStorage(LowerStorage(children[0]));
+		const Operand result = Temp(LowPtr());
+		Instruction index(Instruction::INDEX);
+		index.dest = result.id;
+		index.type = LowI8();
+		index.first = base;
+		index.second = Operand(
+			static_cast<std::int64_t>(member.member_offset), LowI64());
+		index.projection = INDEX_PROJECTION_FIELD;
 		Emit(index);
 		return result;
 	}
@@ -1303,6 +1363,8 @@ private:
 			const Operand offset = LowerValue(children[1]);
 			return IndexAddress(LowerExpressionType(record.type), base, offset, true);
 		}
+		if (record.kind == DUMP_MEMBER_EXPRESSION)
+			return MemberAddress(record, children);
 		if (record.kind == DUMP_BINARY_EXPRESSION && children.size() == 2 &&
 			StripOperationPrefix(program_.names.Get(record.text)) == ",")
 		{
@@ -1470,6 +1532,9 @@ private:
 			}
 		}
 		else if (record.kind == DUMP_SUBSCRIPT_EXPRESSION)
+			result = LoadStorage(LowerStorage(node),
+				LowerExpressionType(record.type));
+		else if (record.kind == DUMP_MEMBER_EXPRESSION)
 			result = LoadStorage(LowerStorage(node),
 				LowerExpressionType(record.type));
 		else if (record.kind == DUMP_SIZEOF_EXPRESSION)
@@ -2225,6 +2290,12 @@ private:
 		}
 		if (record.kind == DUMP_VARIABLE)
 		{
+			if (IsTrivialConstructorAction(record.type, children))
+			{
+				const LowType type = LowerStorageType(record.type);
+				(void)AddressOfStorage(StorageFor(record.binding, type));
+				return;
+			}
 			if (!children.empty())
 			{
 				if (IsArrayType(record.type))
@@ -2240,6 +2311,11 @@ private:
 					Convert(LowerValue(children[0]), type, false);
 				store.second = StorageFor(record.binding, type);
 				Emit(store);
+			}
+			else if (IsClassObjectType(record.type))
+			{
+				const LowType type = LowerStorageType(record.type);
+				(void)AddressOfStorage(StorageFor(record.binding, type));
 			}
 			return;
 		}
@@ -2740,6 +2816,7 @@ private:
 	StringCounterTable slot_name_counts_;
 	std::size_t parameter_slot_index_;
 	std::size_t source_ordinal_;
+	bool needs_global_class_initializer_;
 	std::vector<IdentityTypeId> identity_type_cache_;
 };
 
@@ -2805,7 +2882,8 @@ private:
 
 LowIRLoweringStats::LowIRLoweringStats()
 	: source_bytes(0), tokens(0), semantic_nodes(0), semantic_edges(0),
-	  lowered_nodes(0), functions(0), globals(0), blocks(0), instructions(0),
+	  lowered_nodes(0), class_layouts(0), class_layout_member_visits(0),
+	  functions(0), globals(0), blocks(0), instructions(0),
 	  binding_index_probes(0), typed_storage_bytes(0), output_bytes(0),
 	  semantic_nanoseconds(0), lowering_nanoseconds(0), render_nanoseconds(0)
 {
@@ -2830,6 +2908,9 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 			stats->tokens += semantic_stats.tokens;
 			stats->semantic_nodes += semantic_stats.semantic_nodes;
 			stats->semantic_edges += semantic_stats.semantic_edges;
+			stats->class_layouts += semantic_stats.class_layouts;
+			stats->class_layout_member_visits +=
+				semantic_stats.class_layout_member_visits;
 			stats->semantic_nanoseconds += semantic_stats.analysis_nanoseconds;
 		}
 	}

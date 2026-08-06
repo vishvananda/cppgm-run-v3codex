@@ -182,7 +182,12 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 	case Instruction::INDEX:
 		output << "%t" << instruction.dest << " = index ";
 		WriteType(output, instruction.type);
-		if (instruction.indirect) output << " [projection=array_element]";
+		if (instruction.projection == INDEX_PROJECTION_ARRAY_ELEMENT)
+			output << " [projection=array_element]";
+		else if (instruction.projection == INDEX_PROJECTION_FIELD)
+			output << " [projection=field]";
+		else if (instruction.projection == INDEX_PROJECTION_BASE_SUBOBJECT)
+			output << " [projection=base_subobject]";
 		output << ' ';
 		WriteOperand(output, instruction.first, program, function);
 		output << ", ";
