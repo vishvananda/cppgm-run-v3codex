@@ -1,7 +1,6 @@
 // Student-facing scaffold for the PA14 `abimangle` binary.
 
 #include "abi_mangle.h"
-#include "exceptions.h"
 
 #include <cstdlib>
 #include <fstream>
@@ -11,40 +10,6 @@
 #include <vector>
 
 using namespace std;
-
-namespace abi_mangle {
-
-AbiFactRecord parse_fact_record_words(const vector<string> & words)
-{
-  (void)words;
-  throw NotImplementedException();
-}
-
-AbiFactFile parse_fact_text(const string & text)
-{
-  (void)text;
-  throw NotImplementedException();
-}
-
-string serialize_fact_file(const AbiFactFile & file)
-{
-  (void)file;
-  throw NotImplementedException();
-}
-
-string mangle_fact_file(const AbiFactFile & file)
-{
-  (void)file;
-  throw NotImplementedException();
-}
-
-string mangle_fact_files(const vector<string> & input_paths)
-{
-  (void)input_paths;
-  throw NotImplementedException();
-}
-
-}  // namespace abi_mangle
 
 namespace {
 
@@ -111,9 +76,6 @@ int main(int argc, char ** argv)
 {
   try {
     return run_abimangle(argc, argv);
-  } catch(const NotImplementedException &) {
-    cerr << "abimangle: not implemented\n";
-    return EXIT_FAILURE;
   } catch(const exception & e) {
     cerr << "abimangle: " << e.what() << "\n";
     return EXIT_FAILURE;
