@@ -261,6 +261,18 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 			WriteType(output, instruction.type);
 		}
 		break;
+	case Instruction::EH_TRY:
+		if (instruction.target >= function.blocks.size())
+			throw std::logic_error("invalid PA16 eh_try target");
+		output << "eh_try ^" << function.blocks[instruction.target].label;
+		break;
+	case Instruction::EH_CLEANUP:
+		if (instruction.target >= function.blocks.size())
+			throw std::logic_error("invalid PA16 eh_cleanup target");
+		output << "eh_cleanup ^" << function.blocks[instruction.target].label;
+		break;
+	case Instruction::EH_END: output << "eh_end"; break;
+	case Instruction::RESUME: output << "resume"; break;
 	case Instruction::JUMP:
 		if (instruction.target >= function.blocks.size())
 			throw std::logic_error("invalid PA15 jump target");

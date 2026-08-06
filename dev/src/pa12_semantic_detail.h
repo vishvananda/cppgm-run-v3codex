@@ -38,6 +38,8 @@ public:
 		  class_layouts_(0), class_layout_member_visits_(0),
 		  constructor_member_action_visits_(0),
 		  constructor_base_action_visits_(0),
+		  destructor_subobject_action_visits_(0),
+		  lexical_cleanup_action_visits_(0),
 		  anonymous_enum_count_(0), local_type_count_(0) {}
 
 	void Consume(const SyntaxArena& arena, NodeId root);
@@ -162,7 +164,10 @@ private:
 	std::size_t BaseConversionDistance(TypeId source, TypeId target) const;
 	void CompleteClassLayout(EntityId entity);
 	BindingId EnsureImplicitConstructor(EntityId entity);
+	BindingId EnsureImplicitDestructor(EntityId entity);
 	const std::vector<BindingId>& ConstructorCandidates(EntityId entity) const;
+	BindingId DestructorForType(TypeId type) const;
+	EntityId DestructedEntity(TypeId type) const;
 	BindingId SelectConstructor(ScopeId scope,
 		const std::vector<NodeId>& argument_syntax,
 		const std::vector<ExpressionInfo>& arguments,
@@ -171,6 +176,7 @@ private:
 	std::uint32_t BuildConstructorAction(TypeId type, ScopeId scope,
 		const std::vector<NodeId>& argument_syntax, bool copy_initialization,
 		bool list_initialization);
+	std::uint32_t BuildDefaultConstructorAction(TypeId type, ScopeId scope);
 	void AddConstructorMemberActions(const FunctionInfo& constructor,
 		ScopeId function_scope, std::uint32_t body);
 	void AddBaseInitializationAction(EntityId entity, NodeId initializer,
@@ -180,6 +186,12 @@ private:
 	bool InitializationActionsAreNonthrowing(std::uint32_t body) const;
 	void AddDefaultConstructor(std::uint32_t variable, BindingId binding,
 		TypeId type);
+	void AddDestructorSubobjectActions(EntityId entity, std::uint32_t body);
+	void AddLifetimeObligation(ScopeId scope, BindingId object, TypeId type);
+	void AppendScopeDestructionActions(ScopeId scope,
+		std::uint32_t output_parent, ScopeId stop_exclusive = kNoScope);
+	std::uint32_t MakeDestructorAction(TypeId type, BindingId destructor,
+		BindingId object, std::uint32_t base_projections = 0);
 	EntityId EntityOf(TypeId type) const;
 	ExpressionInfo MakeLiteral(TypeId type, NameId text,
 		ValueCategory category = VALUE_PRVALUE);
@@ -237,6 +249,7 @@ private:
 	std::vector<std::vector<BindingId> > entity_data_members_;
 	std::vector<std::vector<BindingId> > entity_constructors_;
 	std::vector<BindingId> implicit_constructor_by_entity_;
+	std::vector<BindingId> entity_destructor_by_entity_;
 	std::vector<NodeId> member_initializer_by_binding_;
 	std::vector<NodeId> constructor_initializer_scratch_;
 	std::vector<BindingId> constructor_initializer_touched_;
@@ -245,6 +258,9 @@ private:
 	TemplateSpecializationTable template_instantiations_;
 	std::vector<std::uint32_t> injected_fact_by_binding_;
 	std::vector<InjectedMemberInfo> injected_members_;
+	std::vector<std::vector<LifetimeObligation> > scope_lifetimes_;
+	std::vector<ScopeId> break_cleanup_stops_;
+	std::vector<ScopeId> continue_cleanup_stops_;
 	std::vector<EntityId> demanded_default_constructor_entities_;
 	std::vector<std::uint8_t> default_constructor_demand_states_;
 	std::vector<BindingId> demanded_functions_;
@@ -267,6 +283,8 @@ private:
 	std::size_t class_layout_member_visits_;
 	std::size_t constructor_member_action_visits_;
 	std::size_t constructor_base_action_visits_;
+	std::size_t destructor_subobject_action_visits_;
+	std::size_t lexical_cleanup_action_visits_;
 	std::size_t anonymous_enum_count_;
 	std::size_t local_type_count_;
 };

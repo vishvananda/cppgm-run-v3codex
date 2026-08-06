@@ -8,6 +8,7 @@
 #include "pa12_semantic.h"
 #include "pa12_semantic_model.h"
 #include "pa16_constructor_lowering.h"
+#include "pa16_lifetime_lowering.h"
 
 #include <algorithm>
 #include <chrono>
@@ -33,7 +34,8 @@ const std::size_t kAggregateProjectionReplayLimit = 8;
 typedef SmallSequence<BindingId, kAggregateProjectionReplayLimit> AggregatePath;
 
 class GraphLowerer :
-	private pa16_lowering_detail::ConstructorActionLowering<GraphLowerer>
+	private pa16_lowering_detail::ConstructorActionLowering<GraphLowerer>,
+	private pa16_lowering_detail::LifetimeActionLowering<GraphLowerer>
 {
 public:
 	GraphLowerer(const SemanticGraphView& graph, TypedProgram& output,
@@ -65,6 +67,7 @@ public:
 
 private:
 	friend class pa16_lowering_detail::ConstructorActionLowering<GraphLowerer>;
+	friend class pa16_lowering_detail::LifetimeActionLowering<GraphLowerer>;
 
 	enum StatementTaskKind : std::uint8_t
 	{
@@ -910,7 +913,13 @@ private:
 			}
 			else if (child.kind == DUMP_COMPOUND_STATEMENT) body = children[i];
 		}
-		if (body != kNoDumpEdge) LowerStatement(body);
+		if (body != kNoDumpEdge)
+		{
+			if (record.binding != kNoBinding &&
+				program_.bindings[record.binding].destructor)
+				LowerDestructorBody(body);
+			else LowerStatement(body);
+		}
 		if (!CurrentBlock().terminated)
 		{
 			if (result.entry)
@@ -1134,7 +1143,26 @@ private:
 		if (record.kind == DUMP_SUBSCRIPT_EXPRESSION && children.size() == 2)
 		{
 			const Operand base = LowerArrayPointer(children[0]);
-			const Operand offset = LowerValue(children[1]);
+			Operand offset = LowerValue(children[1]);
+			if (IsClassObjectType(record.type))
+			{
+				offset = Convert(offset, LowI64());
+				const std::size_t element_size = program_.SizeOf(record.type);
+				if (element_size != 1)
+				{
+					const Operand scaled = Temp(LowI64());
+					Instruction multiply(Instruction::BINARY);
+					multiply.dest = scaled.id;
+					multiply.op = LOW_OP_MUL;
+					multiply.type = LowI64();
+					multiply.first = offset;
+					multiply.second = Operand(
+						static_cast<std::int64_t>(element_size), LowI64());
+					Emit(multiply);
+					offset = scaled;
+				}
+				return IndexAddress(LowI8(), base, offset, true);
+			}
 			return IndexAddress(LowerExpressionType(record.type), base, offset, true);
 		}
 		if (record.kind == DUMP_MEMBER_EXPRESSION)
@@ -2079,6 +2107,13 @@ private:
 		}
 		if (record.kind == DUMP_VARIABLE)
 		{
+			if (children.size() == 1 &&
+				arena_.nodes[children[0]].kind ==
+					DUMP_CONSTRUCTOR_ARRAY_ACTION)
+			{
+				LowerBoundConstructorArray(children[0], record.binding);
+				return;
+			}
 			if (IsClassObjectType(record.type) && children.size() == 1 &&
 				arena_.nodes[children[0]].kind == DUMP_BRACED_INIT_LIST)
 			{
@@ -2133,20 +2168,25 @@ private:
 			LowerBaseInitializationAction(record, children);
 			return;
 		}
+		if (record.kind == DUMP_DESTRUCTOR_ACTION)
+		{
+			LowerDestructorAction(record);
+			return;
+		}
 		if (record.kind == DUMP_RETURN_STATEMENT)
 		{
-			if (children.empty()) Emit(Instruction(Instruction::RETURN_VOID));
-			else if (current_result_.kind == LOW_VOID)
+			std::size_t first_cleanup = 0;
+			const bool has_value = !children.empty() &&
+				arena_.nodes[children[0]].kind != DUMP_DESTRUCTOR_ACTION;
+			Operand result_value;
+			if (has_value)
 			{
-				(void)LowerValue(children[0]);
-				Emit(Instruction(Instruction::RETURN_VOID));
-			}
-			else
-			{
-				Instruction instruction(Instruction::RETURN_VALUE);
-				instruction.type = current_result_;
-				if (current_result_reference_)
-					instruction.first = AddressOfStorage(LowerStorage(children[0]));
+				first_cleanup = 1;
+				if (current_result_.kind == LOW_VOID)
+					(void)LowerValue(children[0]);
+				else if (current_result_reference_)
+					result_value = AddressOfStorage(
+						LowerStorage(children[0]));
 				else
 				{
 					const Operand value = LowerValue(children[0]);
@@ -2155,9 +2195,25 @@ private:
 						IsInteger(current_result_) && value.type.is_signed &&
 						!current_result_.is_signed &&
 						value.type.width < current_result_.width;
-					instruction.first = Convert(value, current_result_,
+					result_value = Convert(value, current_result_,
 						!preserve_unsigned_conversion);
 				}
+			}
+			for (std::size_t i = first_cleanup; i < children.size(); ++i)
+			{
+				if (arena_.nodes[children[i]].kind != DUMP_DESTRUCTOR_ACTION)
+					throw std::logic_error("invalid return cleanup action");
+				LowerDestructorAction(arena_.nodes[children[i]]);
+			}
+			if (current_result_.kind == LOW_VOID)
+				Emit(Instruction(Instruction::RETURN_VOID));
+			else
+			{
+				if (!has_value)
+					throw std::runtime_error("non-void return has no value");
+				Instruction instruction(Instruction::RETURN_VALUE);
+				instruction.type = current_result_;
+				instruction.first = result_value;
 				Emit(instruction);
 			}
 			return;
@@ -2210,6 +2266,12 @@ private:
 		{
 			if (break_targets_.empty())
 				throw std::runtime_error("PA15 break has no target");
+			for (std::size_t i = 0; i < children.size(); ++i)
+			{
+				if (arena_.nodes[children[i]].kind != DUMP_DESTRUCTOR_ACTION)
+					throw std::logic_error("invalid break cleanup action");
+				LowerDestructorAction(arena_.nodes[children[i]]);
+			}
 			EmitJump(break_targets_.back());
 			return;
 		}
@@ -2217,6 +2279,12 @@ private:
 		{
 			if (continue_targets_.empty())
 				throw std::runtime_error("PA15 continue has no target");
+			for (std::size_t i = 0; i < children.size(); ++i)
+			{
+				if (arena_.nodes[children[i]].kind != DUMP_DESTRUCTOR_ACTION)
+					throw std::logic_error("invalid continue cleanup action");
+				LowerDestructorAction(arena_.nodes[children[i]]);
+			}
 			EmitJump(continue_targets_.back());
 			return;
 		}
@@ -2353,30 +2421,6 @@ private:
 		index.projection = INDEX_PROJECTION_BASE_SUBOBJECT;
 		Emit(index);
 		return projected;
-	}
-
-	Operand ProjectBaseSubobjects(Operand object,
-		std::uint32_t projection_count)
-	{
-		for (std::uint32_t i = 0; i < projection_count; ++i)
-			object = ProjectBaseSubobject(object);
-		return object;
-	}
-
-	void LowerBaseInitializationAction(const DumpNode& action,
-		const NodeChildren& children)
-	{
-		if (action.kind != DUMP_BASE_INITIALIZER_ACTION ||
-			current_this_binding_ == kNoBinding || children.size() != 1 ||
-			arena_.nodes[children[0]].kind != DUMP_CONSTRUCTOR_ACTION)
-			throw std::logic_error(
-				"base initialization is outside a constructor");
-		if (IsTrivialConstructorAction(action.type, children)) return;
-		const Operand object = LoadStorage(
-			StorageFor(current_this_binding_, LowPtr()), LowPtr());
-		const Operand destination = ProjectBaseSubobjects(object,
-			action.base_projection_count);
-		LowerConstructorAction(children[0], destination);
 	}
 
 	Operand ProjectConstructorMemberPath(
@@ -2885,6 +2929,8 @@ LowIRLoweringStats::LowIRLoweringStats()
 	  lowered_nodes(0), class_layouts(0), class_layout_member_visits(0),
 	  constructor_member_action_visits(0),
 	  constructor_base_action_visits(0),
+	  destructor_subobject_action_visits(0),
+	  lexical_cleanup_action_visits(0),
 	  overload_candidates(0), overload_order_comparisons(0),
 	  conversion_checks(0),
 	  functions(0), globals(0), blocks(0), instructions(0),
@@ -2919,6 +2965,10 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 				semantic_stats.constructor_member_action_visits;
 			stats->constructor_base_action_visits +=
 				semantic_stats.constructor_base_action_visits;
+			stats->destructor_subobject_action_visits +=
+				semantic_stats.destructor_subobject_action_visits;
+			stats->lexical_cleanup_action_visits +=
+				semantic_stats.lexical_cleanup_action_visits;
 			stats->overload_candidates += semantic_stats.overload_candidates;
 			stats->overload_order_comparisons +=
 				semantic_stats.overload_order_comparisons;

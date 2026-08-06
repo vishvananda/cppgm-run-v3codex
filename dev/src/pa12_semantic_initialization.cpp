@@ -169,11 +169,36 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 	return action;
 }
 
+std::uint32_t SemanticAnalyzer::BuildDefaultConstructorAction(TypeId type,
+	ScopeId scope)
+{
+	TypeId object = program_->types.RemoveTopCv(EffectiveType(type));
+	const TypeRecord& record = program_->types.Get(object);
+	if (record.kind != TYPE_ARRAY)
+	{
+		const std::vector<NodeId> arguments;
+		return BuildConstructorAction(type, scope, arguments, false, false);
+	}
+	if (record.bound == 0)
+		throw std::runtime_error("default construction of an unbounded array");
+	const std::uint32_t action = MakeDump(DUMP_CONSTRUCTOR_ARRAY_ACTION);
+	dump_.nodes[action].operand_type = object;
+	const BindingId destructor = DestructorForType(object);
+	if (destructor != kNoBinding &&
+		!program_->entities[DestructedEntity(object)].trivial_destructor)
+	{
+		dump_.nodes[action].binding = destructor;
+		DemandFunction(destructor);
+	}
+	dump_.Add(action, BuildDefaultConstructorAction(record.child, scope));
+	return action;
+}
+
 void SemanticAnalyzer::AddMemberInitializationAction(BindingId member_id,
 	NodeId initializer, ScopeId scope, std::uint32_t body)
 {
 	const BindingRecord& member = program_->bindings[member_id];
-	const EntityId member_entity = EntityOf(member.type);
+	const EntityId member_entity = DestructedEntity(member.type);
 	const TypeKind member_kind = program_->types.Get(member.type).kind;
 	const bool class_member = member_kind != TYPE_LVALUE_REFERENCE &&
 		member_kind != TYPE_RVALUE_REFERENCE &&
@@ -200,7 +225,9 @@ void SemanticAnalyzer::AddMemberInitializationAction(BindingId member_id,
 	if (class_member)
 	{
 		std::uint32_t value = kNoDumpEdge;
-		if (initializer != kNoNode && arena_->IsTag(initializer, "braced-init-list") &&
+		if (initializer == kNoNode)
+			value = BuildDefaultConstructorAction(member.type, scope);
+		else if (arena_->IsTag(initializer, "braced-init-list") &&
 			program_->entities[member_entity].is_aggregate)
 			value = AnalyzeBracedInit(initializer, scope, member.type).node;
 		else
@@ -548,7 +575,8 @@ void SemanticAnalyzer::AddDefaultConstructor(std::uint32_t variable,
 	BindingId binding, TypeId type)
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
-	const EntityId entity = EntityOf(type);
+	const TypeRecord& object_type = program_->types.Get(type);
+	const EntityId entity = DestructedEntity(type);
 	if (entity == kNoEntity) return;
 	const NamedFlavor flavor = program_->entities[entity].flavor;
 	if (flavor != NAMED_STRUCT && flavor != NAMED_CLASS &&
@@ -556,9 +584,14 @@ void SemanticAnalyzer::AddDefaultConstructor(std::uint32_t variable,
 	const EntityRecord& class_record = program_->entities[entity];
 	if (!class_record.default_constructible)
 		throw std::runtime_error("class has no usable default constructor");
-	const std::vector<NodeId> arguments;
-	const std::uint32_t action = BuildConstructorAction(type,
-		program_->bindings[binding].owner, arguments, false, false);
+	const std::uint32_t action = BuildDefaultConstructorAction(type,
+		program_->bindings[binding].owner);
+	if (object_type.kind == TYPE_ARRAY)
+	{
+		dump_.nodes[action].object_binding = binding;
+		dump_.Add(variable, action);
+		return;
+	}
 	const BindingId constructor = dump_.nodes[action].binding;
 	if (constructor != kNoBinding &&
 		GetFunction(constructor).implicit_constructor &&
@@ -617,6 +650,114 @@ void SemanticAnalyzer::EmitDefaultConstructor(EntityId entity)
 	dump_.Add(function, body);
 	dump_.Add(root_, function);
 	++default_constructor_emissions_;
+}
+
+std::uint32_t SemanticAnalyzer::MakeDestructorAction(TypeId type,
+	BindingId destructor, BindingId object, std::uint32_t base_projections)
+{
+	if (destructor == kNoBinding ||
+		!program_->bindings[destructor].destructor)
+		throw std::logic_error("destruction action has no destructor identity");
+	const FunctionInfo& info = GetFunction(destructor);
+	if (info.deleted_destructor)
+		throw std::runtime_error("deleted destructor is required");
+	const std::uint32_t action = MakeDump(DUMP_DESTRUCTOR_ACTION,
+		AdaptMemberFunctionType(destructor), VALUE_NONE,
+		info.display_name, destructor);
+	dump_.nodes[action].operand_type = type;
+	dump_.nodes[action].object_binding = object;
+	dump_.nodes[action].base_projection_count = base_projections;
+	DemandFunction(destructor);
+	return action;
+}
+
+void SemanticAnalyzer::AddLifetimeObligation(ScopeId scope,
+	BindingId object, TypeId type)
+{
+	const EntityId entity = DestructedEntity(type);
+	if (entity == kNoEntity || program_->entities[entity].trivial_destructor)
+		return;
+	if (!program_->entities[entity].destructible)
+		throw std::runtime_error("object type is not destructible");
+	const BindingId destructor = DestructorForType(type);
+	if (destructor == kNoBinding)
+		throw std::logic_error("nontrivial class has no destructor identity");
+	if (!CanAccessMember(destructor, entity))
+		throw std::runtime_error("inaccessible destructor");
+	if (scope_lifetimes_.size() <= scope)
+		scope_lifetimes_.resize(static_cast<std::size_t>(scope) + 1);
+	scope_lifetimes_[scope].push_back(
+		LifetimeObligation(object, destructor, type));
+}
+
+void SemanticAnalyzer::AppendScopeDestructionActions(ScopeId scope,
+	std::uint32_t output_parent, ScopeId stop_exclusive)
+{
+	for (ScopeId current = scope; current != kNoScope &&
+		current != stop_exclusive; current = scope_parents_[current])
+	{
+		if (current >= scope_lifetimes_.size()) continue;
+		const std::vector<LifetimeObligation>& obligations =
+			scope_lifetimes_[current];
+		for (std::size_t i = obligations.size(); i != 0; --i)
+		{
+			const LifetimeObligation& obligation = obligations[i - 1];
+			dump_.Add(output_parent, MakeDestructorAction(obligation.type,
+				obligation.destructor, obligation.object));
+			++lexical_cleanup_action_visits_;
+		}
+	}
+}
+
+void SemanticAnalyzer::AddDestructorSubobjectActions(EntityId entity,
+	std::uint32_t body)
+{
+	if (entity >= entity_data_members_.size())
+		throw std::logic_error("destructor is missing its member index");
+	const std::vector<BindingId>& members = entity_data_members_[entity];
+	for (std::size_t i = members.size(); i != 0; --i)
+	{
+		const BindingId member = members[i - 1];
+		const TypeId type = program_->bindings[member].type;
+		const EntityId subobject = DestructedEntity(type);
+		if (subobject == kNoEntity ||
+			program_->entities[subobject].trivial_destructor) continue;
+		const BindingId destructor = DestructorForType(type);
+		if (destructor == kNoBinding)
+			throw std::logic_error("member has no destructor identity");
+		TypeId object = program_->types.RemoveTopCv(EffectiveType(type));
+		const TypeRecord& record = program_->types.Get(object);
+		if (record.kind == TYPE_ARRAY)
+		{
+			for (std::size_t element =
+				static_cast<std::size_t>(record.bound); element != 0; --element)
+			{
+				const std::uint32_t action = MakeDestructorAction(
+					type, destructor, member);
+				dump_.nodes[action].constant = true;
+				dump_.nodes[action].constant_value =
+					static_cast<std::int64_t>(element - 1);
+				dump_.Add(body, action);
+				++destructor_subobject_action_visits_;
+			}
+		}
+		else
+		{
+			dump_.Add(body, MakeDestructorAction(type, destructor, member));
+			++destructor_subobject_action_visits_;
+		}
+	}
+	const EntityId base = program_->entities[entity].direct_base;
+	if (base != kNoEntity && !program_->entities[base].trivial_destructor)
+	{
+		const BindingId destructor = DestructorForType(
+			program_->entities[base].type);
+		if (destructor == kNoBinding)
+			throw std::logic_error("base has no destructor identity");
+		dump_.Add(body, MakeDestructorAction(program_->entities[base].type,
+			destructor, kNoBinding, 1));
+		++destructor_subobject_action_visits_;
+	}
 }
 
 }

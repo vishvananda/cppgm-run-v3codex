@@ -213,7 +213,8 @@ struct EntityRecord
 	AccessKind base_access;
 	bool complete, layout_complete, has_user_declared_constructor,
 		has_user_provided_constructor, default_constructible,
-		trivial_default_constructor,
+		trivial_default_constructor, has_user_declared_destructor,
+		destructible, trivial_destructor,
 		has_direct_base, is_aggregate;
 
 	EntityRecord();
@@ -237,7 +238,7 @@ struct BindingRecord
 	StorageClass storage_class;
 	AccessKind access;
 	bool constant, nonthrowing, non_static_data_member, static_member_function,
-		has_default_member_initializer, constructor;
+		has_default_member_initializer, constructor, destructor;
 
 	BindingRecord();
 };

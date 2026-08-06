@@ -468,7 +468,8 @@ EntityRecord::EntityRecord()
 	  layout_complete(false),
 	  has_user_declared_constructor(false),
 	  has_user_provided_constructor(false), default_constructible(false),
-	  trivial_default_constructor(false), has_direct_base(false),
+	  trivial_default_constructor(false), has_user_declared_destructor(false),
+	  destructible(true), trivial_destructor(true), has_direct_base(false),
 	  is_aggregate(false)
 {
 }
@@ -482,7 +483,8 @@ BindingRecord::BindingRecord()
 	  storage_class(STORAGE_CLASS_NONE), access(ACCESS_PUBLIC),
 	  constant(false), nonthrowing(false),
 	  non_static_data_member(false), static_member_function(false),
-	  has_default_member_initializer(false), constructor(false)
+	  has_default_member_initializer(false), constructor(false),
+	  destructor(false)
 {
 }
 

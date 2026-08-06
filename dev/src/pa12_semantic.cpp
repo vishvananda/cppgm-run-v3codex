@@ -220,6 +220,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		entity_data_members_.capacity() * sizeof(std::vector<BindingId>) +
 		entity_constructors_.capacity() * sizeof(std::vector<BindingId>) +
 		implicit_constructor_by_entity_.capacity() * sizeof(BindingId) +
+		entity_destructor_by_entity_.capacity() * sizeof(BindingId) +
 		member_initializer_by_binding_.capacity() * sizeof(NodeId) +
 		constructor_initializer_scratch_.capacity() * sizeof(NodeId) +
 		constructor_initializer_touched_.capacity() * sizeof(BindingId) +
@@ -228,6 +229,10 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		template_instantiations_.StorageBytes() +
 		injected_fact_by_binding_.capacity() * sizeof(std::uint32_t) +
 		injected_members_.capacity() * sizeof(InjectedMemberInfo) +
+		scope_lifetimes_.capacity() *
+			sizeof(std::vector<LifetimeObligation>) +
+		break_cleanup_stops_.capacity() * sizeof(ScopeId) +
+		continue_cleanup_stops_.capacity() * sizeof(ScopeId) +
 		demanded_default_constructor_entities_.capacity() * sizeof(EntityId) +
 		default_constructor_demand_states_.capacity() * sizeof(std::uint8_t) +
 		demanded_functions_.capacity() * sizeof(BindingId);
@@ -237,6 +242,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		bytes += entity_data_members_[i].capacity() * sizeof(BindingId);
 	for (std::size_t i = 0; i < entity_constructors_.size(); ++i)
 		bytes += entity_constructors_[i].capacity() * sizeof(BindingId);
+	for (std::size_t i = 0; i < scope_lifetimes_.size(); ++i)
+		bytes += scope_lifetimes_[i].capacity() * sizeof(LifetimeObligation);
 	for (std::size_t i = 0; i < function_templates_.size(); ++i)
 		bytes += function_templates_[i].type_parameters.capacity() *
 			sizeof(NameId);
@@ -2276,9 +2283,12 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		const std::uint32_t variable = MakeDump(DUMP_VARIABLE, parsed.type,
 			VALUE_NONE, parsed.name, binding);
 		if (has_initializer) dump_.Add(variable, initializer.node);
-		else if (EntityOf(parsed.type) != kNoEntity)
+		else if (DestructedEntity(parsed.type) != kNoEntity)
 			AddDefaultConstructor(variable, binding, parsed.type);
 		dump_.Add(owner, variable);
+		if (local && program_->bindings[binding].storage_class ==
+			STORAGE_CLASS_NONE)
+			AddLifetimeObligation(scope, binding, parsed.type);
 	}
 }
 
@@ -2350,6 +2360,7 @@ void SemanticAnalyzer::AnalyzeCompound(NodeId node, ScopeId scope,
 			AnalyzeDeclaration(child, block, compound, true);
 		else AnalyzeStatement(child, block, compound);
 	}
+	AppendScopeDestructionActions(block, compound, scope);
 }
 
 void SemanticAnalyzer::AnalyzeSubstatement(NodeId node, ScopeId scope,
@@ -2364,6 +2375,7 @@ void SemanticAnalyzer::AnalyzeSubstatement(NodeId node, ScopeId scope,
 		if (IsDeclaration(node))
 			AnalyzeDeclaration(node, child, output_parent, true);
 		else AnalyzeStatement(node, child, output_parent);
+		AppendScopeDestructionActions(child, output_parent, scope);
 	}
 }
 
@@ -2440,6 +2452,7 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 				throw std::runtime_error("void function returns a value");
 			dump_.Add(statement, value.node);
 		}
+		AppendScopeDestructionActions(scope, statement);
 		return;
 	}
 	if (arena_->IsTag(node, "expression-statement"))
@@ -2471,6 +2484,7 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 				AnalyzeSubstatement(FirstSemanticChild(child), control, branch);
 			}
 		}
+		AppendScopeDestructionActions(control, output_parent, scope);
 		return;
 	}
 	if (arena_->IsTag(node, "while-statement") ||
@@ -2483,6 +2497,8 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 			DUMP_DO_STATEMENT : DUMP_WHILE_STATEMENT);
 		dump_.Add(output_parent, statement);
 		++loop_depth_;
+		break_cleanup_stops_.push_back(control);
+		continue_cleanup_stops_.push_back(control);
 		for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 			edge = arena_->NextEdge(edge))
 		{
@@ -2491,7 +2507,10 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 				AnalyzeCondition(child, control, statement, false);
 			else AnalyzeSubstatement(child, control, statement);
 		}
+		continue_cleanup_stops_.pop_back();
+		break_cleanup_stops_.pop_back();
 		--loop_depth_;
+		AppendScopeDestructionActions(control, output_parent, scope);
 		return;
 	}
 	if (arena_->IsTag(node, "for-statement"))
@@ -2501,6 +2520,8 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 		const std::uint32_t statement = MakeDump(DUMP_FOR_STATEMENT);
 		dump_.Add(output_parent, statement);
 		++loop_depth_;
+		break_cleanup_stops_.push_back(control);
+		continue_cleanup_stops_.push_back(control);
 		for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 			edge = arena_->NextEdge(edge))
 		{
@@ -2528,7 +2549,10 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 			}
 			else AnalyzeSubstatement(child, control, statement);
 		}
+		continue_cleanup_stops_.pop_back();
+		break_cleanup_stops_.pop_back();
 		--loop_depth_;
+		AppendScopeDestructionActions(control, output_parent, scope);
 		return;
 	}
 	if (arena_->IsTag(node, "switch-statement"))
@@ -2538,6 +2562,7 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 		const std::uint32_t statement = MakeDump(DUMP_SWITCH_STATEMENT);
 		dump_.Add(output_parent, statement);
 		++switch_depth_;
+		break_cleanup_stops_.push_back(control);
 		for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 			edge = arena_->NextEdge(edge))
 		{
@@ -2546,20 +2571,32 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 				AnalyzeCondition(child, control, statement, true);
 			else AnalyzeSubstatement(child, control, statement);
 		}
+		break_cleanup_stops_.pop_back();
 		--switch_depth_;
+		AppendScopeDestructionActions(control, output_parent, scope);
 		return;
 	}
 	if (arena_->IsTag(node, "break-statement"))
 	{
 		if (loop_depth_ == 0 && switch_depth_ == 0)
 			throw std::runtime_error("break outside loop or switch");
-		dump_.Add(output_parent, MakeDump(DUMP_BREAK_STATEMENT));
+		const std::uint32_t statement = MakeDump(DUMP_BREAK_STATEMENT);
+		dump_.Add(output_parent, statement);
+		if (break_cleanup_stops_.empty())
+			throw std::logic_error("break has no cleanup boundary");
+		AppendScopeDestructionActions(scope, statement,
+			break_cleanup_stops_.back());
 		return;
 	}
 	if (arena_->IsTag(node, "continue-statement"))
 	{
 		if (loop_depth_ == 0) throw std::runtime_error("continue outside loop");
-		dump_.Add(output_parent, MakeDump(DUMP_CONTINUE_STATEMENT));
+		const std::uint32_t statement = MakeDump(DUMP_CONTINUE_STATEMENT);
+		dump_.Add(output_parent, statement);
+		if (continue_cleanup_stops_.empty())
+			throw std::logic_error("continue has no cleanup boundary");
+		AppendScopeDestructionActions(scope, statement,
+			continue_cleanup_stops_.back());
 		return;
 	}
 	if (arena_->IsTag(node, "case-statement") ||
@@ -2720,6 +2757,12 @@ void SemanticAnalyzer::RenderLine(const DumpNode& node, std::size_t depth)
 			<< program_->names.Get(node.text); break;
 	case DUMP_CONSTRUCTOR_ACTION:
 		output_ << "constructor-action " << program_->names.Get(node.text); break;
+	case DUMP_CONSTRUCTOR_ARRAY_ACTION:
+		output_ << "constructor-array-action "
+			<< program_->RenderType(node.operand_type); break;
+	case DUMP_DESTRUCTOR_ACTION:
+		output_ << "destructor-action " << program_->names.Get(node.text)
+			<< ' ' << program_->RenderType(node.operand_type); break;
 	}
 	output_ << '\n';
 }
@@ -2789,6 +2832,10 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 			constructor_member_action_visits_;
 		stats_->constructor_base_action_visits =
 			constructor_base_action_visits_;
+		stats_->destructor_subobject_action_visits =
+			destructor_subobject_action_visits_;
+		stats_->lexical_cleanup_action_visits =
+			lexical_cleanup_action_visits_;
 		stats_->lookup_queries = program.lookup_queries;
 		stats_->lookup_scope_visits = program.lookup_scope_visits;
 		stats_->lookup_edge_visits = program.lookup_edge_visits;
@@ -2830,6 +2877,8 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 	  expressions(0), class_layouts(0), class_layout_member_visits(0),
 	  constructor_member_action_visits(0),
 	  constructor_base_action_visits(0),
+	  destructor_subobject_action_visits(0),
+	  lexical_cleanup_action_visits(0),
 	  lookup_queries(0), lookup_scope_visits(0),
 	  lookup_edge_visits(0), overload_candidates(0),
 	  overload_order_comparisons(0), conversion_checks(0),

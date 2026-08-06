@@ -566,8 +566,12 @@ int run_emit_semantics_mode(const vector<string> & args)
            << stats.class_layout_member_visits
            << " constructor_member_action_visits="
            << stats.constructor_member_action_visits
-           << " constructor_base_action_visits="
-           << stats.constructor_base_action_visits
+		   << " constructor_base_action_visits="
+		   << stats.constructor_base_action_visits
+		   << " destructor_subobject_action_visits="
+		   << stats.destructor_subobject_action_visits
+		   << " lexical_cleanup_action_visits="
+		   << stats.lexical_cleanup_action_visits
            << " lookup_queries=" << stats.lookup_queries
            << " lookup_scope_visits=" << stats.lookup_scope_visits
            << " lookup_edge_visits=" << stats.lookup_edge_visits
@@ -634,6 +638,10 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << stats.constructor_member_action_visits
 			 << " constructor_base_action_visits="
 			 << stats.constructor_base_action_visits
+			 << " destructor_subobject_action_visits="
+			 << stats.destructor_subobject_action_visits
+			 << " lexical_cleanup_action_visits="
+			 << stats.lexical_cleanup_action_visits
 			 << " overload_candidates=" << stats.overload_candidates
 			 << " overload_order_comparisons="
 			 << stats.overload_order_comparisons

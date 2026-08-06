@@ -245,6 +245,11 @@ protected:
 			throw std::logic_error("member initialization has multiple values");
 		const std::uint32_t value_node = children[0];
 		const DumpNode& value = derived.arena_.nodes[value_node];
+		if (value.kind == DUMP_CONSTRUCTOR_ARRAY_ACTION)
+		{
+			derived.LowerBoundConstructorArray(value_node, action.binding);
+			return;
+		}
 		if (value.kind == DUMP_CONSTRUCTOR_ACTION)
 		{
 			if (derived.IsTrivialConstructorAction(action.type, children)) return;

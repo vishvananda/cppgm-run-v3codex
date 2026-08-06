@@ -93,6 +93,9 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	if (implicit_constructor_by_entity_.size() <= entity)
 		implicit_constructor_by_entity_.resize(
 			static_cast<std::size_t>(entity) + 1, kNoBinding);
+	if (entity_destructor_by_entity_.size() <= entity)
+		entity_destructor_by_entity_.resize(
+			static_cast<std::size_t>(entity) + 1, kNoBinding);
 	if (old.type == kNoType && arena_->Payload(node).size() != 0)
 		program_->AddBinding(owner, BIND_TYPE, name, type, false, 0, flavor);
 	if ((arena_->Flags(node) & SYNTAX_FLAG_DEFINITION) != 0)
@@ -183,6 +186,8 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 		if (!program_->entities[entity].has_user_declared_constructor &&
 			program_->entities[entity].default_constructible)
 			EnsureImplicitConstructor(entity);
+		if (!program_->entities[entity].has_user_declared_destructor)
+			EnsureImplicitDestructor(entity);
 		program_->entities[entity].complete = true;
 	}
 	(void)anonymous_source;
@@ -197,6 +202,11 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 	std::size_t size = 0;
 	std::size_t alignment = 1;
 	const EntityRecord* base = 0;
+	if (!owner.has_user_declared_destructor)
+	{
+		owner.destructible = true;
+		owner.trivial_destructor = true;
+	}
 	if (owner.direct_base != kNoEntity)
 	{
 		base = &program_->entities[owner.direct_base];
@@ -204,6 +214,8 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 			throw std::runtime_error("direct base layout is incomplete");
 		size = static_cast<std::size_t>(base->object_size);
 		alignment = static_cast<std::size_t>(base->object_alignment);
+		if (!base->destructible) owner.destructible = false;
+		if (!base->trivial_destructor) owner.trivial_destructor = false;
 	}
 	const bool is_union = owner.flavor == NAMED_UNION;
 	const std::vector<BindingId>& members = entity_data_members_[entity];
@@ -290,6 +302,25 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 		if (!subobject.trivial_default_constructor)
 			owner.trivial_default_constructor = false;
 	}
+	for (std::size_t i = 0; i < members.size(); ++i)
+	{
+		TypeId member_type = program_->bindings[members[i]].type;
+		const TypeRecord* member_record = &program_->types.Get(member_type);
+		while (member_record->kind == TYPE_ARRAY ||
+			member_record->kind == TYPE_QUALIFIED)
+		{
+			member_type = member_record->child;
+			member_record = &program_->types.Get(member_type);
+		}
+		if (member_record->kind != TYPE_NAMED) continue;
+		const EntityRecord& subobject =
+			program_->entities[member_record->entity];
+		if (subobject.flavor != NAMED_STRUCT &&
+			subobject.flavor != NAMED_CLASS &&
+			subobject.flavor != NAMED_UNION) continue;
+		if (!subobject.destructible) owner.destructible = false;
+		if (!subobject.trivial_destructor) owner.trivial_destructor = false;
+	}
 	if (size == 0) size = 1;
 	size = AlignUp(size, alignment);
 	owner.object_size = size;
@@ -326,6 +357,58 @@ BindingId SemanticAnalyzer::EnsureImplicitConstructor(EntityId entity)
 		entity_constructors_.resize(static_cast<std::size_t>(entity) + 1);
 	entity_constructors_[entity].push_back(constructor);
 	return constructor;
+}
+
+BindingId SemanticAnalyzer::EnsureImplicitDestructor(EntityId entity)
+{
+	if (entity_destructor_by_entity_.size() <= entity)
+		entity_destructor_by_entity_.resize(
+			static_cast<std::size_t>(entity) + 1, kNoBinding);
+	if (entity_destructor_by_entity_[entity] != kNoBinding)
+		return entity_destructor_by_entity_[entity];
+	EntityRecord& owner = program_->entities[entity];
+	if (!owner.destructible)
+		throw std::runtime_error("class has no usable implicit destructor");
+	const std::string leaf = program_->names.Get(owner.identity_name);
+	const NameId name = program_->names.Intern("~" + leaf);
+	const TypeId type = program_->types.Function(
+		program_->types.Fundamental(FUND_VOID), std::vector<TypeId>(), false);
+	const BindingId destructor = DeclareFunction(owner.member_scope, name,
+		type, std::vector<ParameterInfo>(), true, false, STORAGE_CLASS_NONE,
+		LANGUAGE_LINKAGE_CPP, owner.trivial_destructor);
+	BindingRecord& binding = program_->bindings[destructor];
+	binding.member_owner = entity;
+	binding.destructor = true;
+	FunctionInfo& info = GetMutableFunction(destructor);
+	info.member_owner = owner.type;
+	info.destructor = true;
+	info.implicit_destructor = true;
+	info.deferred = true;
+	entity_destructor_by_entity_[entity] = destructor;
+	return destructor;
+}
+
+EntityId SemanticAnalyzer::DestructedEntity(TypeId type) const
+{
+	type = EffectiveType(type);
+	const TypeRecord* record = &program_->types.Get(type);
+	while (record->kind == TYPE_ARRAY || record->kind == TYPE_QUALIFIED)
+	{
+		type = record->child;
+		record = &program_->types.Get(type);
+	}
+	if (record->kind != TYPE_NAMED) return kNoEntity;
+	const NamedFlavor flavor = program_->entities[record->entity].flavor;
+	return flavor == NAMED_STRUCT || flavor == NAMED_CLASS ||
+		flavor == NAMED_UNION ? record->entity : kNoEntity;
+}
+
+BindingId SemanticAnalyzer::DestructorForType(TypeId type) const
+{
+	const EntityId entity = DestructedEntity(type);
+	if (entity == kNoEntity || entity >= entity_destructor_by_entity_.size())
+		return kNoBinding;
+	return entity_destructor_by_entity_[entity];
 }
 
 const std::vector<BindingId>& SemanticAnalyzer::ConstructorCandidates(
@@ -444,6 +527,56 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 	const std::string special_name = arena_->Payload(node);
 	const std::string class_name =
 		program_->names.Get(program_->entities[entity].identity_name);
+	if (special_name == "~" + class_name)
+	{
+		EntityRecord& class_record = program_->entities[entity];
+		class_record.has_user_declared_destructor = true;
+		const NodeId declarator = FindChild(node, "declarator");
+		if (declarator == kNoNode)
+			throw std::runtime_error("destructor is missing its declarator");
+		const DeclaratorInfo parsed = BuildDeclarator(declarator,
+			program_->types.Fundamental(FUND_VOID), scope);
+		if (!program_->types.IsFunction(parsed.type) ||
+			!parsed.parameters.empty())
+			throw std::runtime_error("destructor must have no parameters");
+		const NodeId initializer = FindChild(node, "initializer");
+		const NodeId special = initializer == kNoNode ? kNoNode :
+			FindChild(initializer, "special-initializer");
+		const bool defaulted = special != kNoNode &&
+			arena_->Payload(special) == "default";
+		const bool deleted = special != kNoNode &&
+			arena_->Payload(special) == "delete";
+		const bool source_definition =
+			arena_->IsTag(node, "special-member-definition");
+		const BindingId destructor = DeclareFunction(scope, parsed.name,
+			parsed.type, parsed.parameters, source_definition || defaulted,
+			false, STORAGE_CLASS_NONE, current_language_linkage_,
+			IsNonthrowing(declarator, scope));
+		BindingRecord& binding = program_->bindings[destructor];
+		binding.member_owner = entity;
+		binding.access = access;
+		binding.destructor = true;
+		FunctionInfo& info = GetMutableFunction(destructor);
+		info.member_owner = owner_type;
+		info.destructor = true;
+		info.defaulted_destructor =
+			info.defaulted_destructor || defaulted;
+		info.deleted_destructor = info.deleted_destructor || deleted;
+		if (source_definition)
+			info.definition_body = FindChild(node, "compound-statement");
+		info.deferred = !info.deleted_destructor;
+		if (entity_destructor_by_entity_.size() <= entity)
+			entity_destructor_by_entity_.resize(
+				static_cast<std::size_t>(entity) + 1, kNoBinding);
+		if (entity_destructor_by_entity_[entity] != kNoBinding &&
+			program_->bindings[entity_destructor_by_entity_[entity]].canonical !=
+				binding.canonical)
+			throw std::runtime_error("class has multiple destructors");
+		entity_destructor_by_entity_[entity] = destructor;
+		class_record.destructible = !info.deleted_destructor;
+		class_record.trivial_destructor = defaulted && !deleted;
+		return;
+	}
 	if (special_name != class_name) return;
 
 	EntityRecord& class_record = program_->entities[entity];
@@ -1362,6 +1495,18 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 			if (info.definition_body != kNoNode)
 				AnalyzeCompound(info.definition_body, function_scope,
 					constructor_body);
+		}
+		else if (info.destructor)
+		{
+			const std::uint32_t destructor_body =
+				MakeDump(DUMP_COMPOUND_STATEMENT);
+			dump_.Add(function, destructor_body);
+			if (info.definition_body != kNoNode)
+				AnalyzeCompound(info.definition_body, function_scope,
+					destructor_body);
+			AddDestructorSubobjectActions(
+				program_->bindings[info.binding].member_owner,
+				destructor_body);
 		}
 		else if (info.definition_body != kNoNode)
 			AnalyzeCompound(info.definition_body, function_scope, function);

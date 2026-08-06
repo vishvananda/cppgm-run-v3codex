@@ -229,6 +229,10 @@ struct Instruction
 		CMP,
 		CONVERT,
 		CALL,
+		EH_TRY,
+		EH_CLEANUP,
+		EH_END,
+		RESUME,
 		JUMP,
 		BRANCH,
 		SWITCH,
@@ -261,7 +265,8 @@ inline bool IsTerminator(const Instruction& instruction)
 		instruction.kind == Instruction::BRANCH ||
 		instruction.kind == Instruction::SWITCH ||
 		instruction.kind == Instruction::RETURN_VALUE ||
-		instruction.kind == Instruction::RETURN_VOID;
+		instruction.kind == Instruction::RETURN_VOID ||
+		instruction.kind == Instruction::RESUME;
 }
 
 struct Block

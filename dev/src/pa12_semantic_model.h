@@ -70,7 +70,9 @@ enum DumpKind
 	DUMP_INITIALIZER_ACTION,
 	DUMP_BASE_INITIALIZER_ACTION,
 	DUMP_MEMBER_EXPRESSION,
-	DUMP_CONSTRUCTOR_ACTION
+	DUMP_CONSTRUCTOR_ACTION,
+	DUMP_CONSTRUCTOR_ARRAY_ACTION,
+	DUMP_DESTRUCTOR_ACTION
 };
 
 const std::uint32_t kNoDumpEdge =
@@ -83,7 +85,7 @@ struct DumpNode
 	TypeId operand_type;
 	ValueCategory category;
 	NameId text;
-	BindingId binding;
+	BindingId binding, object_binding;
 	std::int64_t constant_value;
 	std::uint32_t first_edge;
 	std::uint32_t last_edge;
@@ -93,6 +95,7 @@ struct DumpNode
 	explicit DumpNode(DumpKind value)
 		: kind(value), type(kNoType), operand_type(kNoType),
 		  category(VALUE_NONE), text(0), binding(kNoBinding),
+		  object_binding(kNoBinding),
 		  constant_value(0), first_edge(kNoDumpEdge),
 		  last_edge(kNoDumpEdge), base_projection_count(0),
 		  constant(false) {}
@@ -215,6 +218,10 @@ struct FunctionInfo
 	bool defaulted_constructor;
 	bool deleted_constructor;
 	bool explicit_constructor;
+	bool destructor;
+	bool implicit_destructor;
+	bool defaulted_destructor;
+	bool deleted_destructor;
 	std::uint8_t demand_state;
 	FunctionInfo()
 		: binding(kNoBinding), owner(kNoScope), type(kNoType), display_name(0),
@@ -223,7 +230,9 @@ struct FunctionInfo
 		  defined(false), deferred(false), template_specialization(false),
 		  constructor(false), implicit_constructor(false),
 		  defaulted_constructor(false), deleted_constructor(false),
-		  explicit_constructor(false),
+		  explicit_constructor(false), destructor(false),
+		  implicit_destructor(false), defaulted_destructor(false),
+		  deleted_destructor(false),
 		  demand_state(0) {}
 };
 
@@ -247,6 +256,15 @@ struct InjectedMemberInfo
 	InjectedMemberInfo() : storage(kNoBinding), member(0) {}
 	InjectedMemberInfo(BindingId storage_value, NameId member_value)
 		: storage(storage_value), member(member_value) {}
+};
+
+struct LifetimeObligation
+{
+	BindingId object, destructor;
+	TypeId type;
+	LifetimeObligation(BindingId object_value, BindingId destructor_value,
+		TypeId type_value)
+		: object(object_value), destructor(destructor_value), type(type_value) {}
 };
 
 // Borrowed, translation-unit-local view of the canonical PA12 graph.  The

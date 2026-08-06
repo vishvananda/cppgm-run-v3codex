@@ -140,6 +140,14 @@ std::string MangleFunction(const pa11::Program& program,
 		terminal.function.terminal = "constructor-complete";
 		file.cases[0].records.push_back(terminal);
 	}
+	else if (binding.destructor)
+	{
+		AbiFactRecord terminal;
+		terminal.set_kind(ABI_FACT_RECORD_FUNCTION);
+		terminal.function.kind = ABI_FUNCTION_RECORD_TERMINAL;
+		terminal.function.terminal = "destructor-complete";
+		file.cases[0].records.push_back(terminal);
+	}
 	const std::size_t first_parameter = member ? 1 : 0;
 	for (std::size_t i = first_parameter;
 		i < function_type.parameter_count; ++i)
