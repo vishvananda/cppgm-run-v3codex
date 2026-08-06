@@ -88,8 +88,17 @@ struct SyntaxNode
 	TextId payload;
 	std::uint32_t first_edge;
 	std::uint32_t last_edge;
+	std::uint32_t token_first;
+	std::uint32_t token_last;
+	std::uint16_t flags;
 
 	SyntaxNode(TextId tag_value, TextId payload_value);
+};
+
+enum SyntaxNodeFlags
+{
+	SYNTAX_FLAG_NONE = 0,
+	SYNTAX_FLAG_DEFINITION = 1
 };
 
 struct SyntaxEdge
@@ -119,12 +128,27 @@ public:
 	const std::string& Payload(NodeId node) const;
 	void SetPayload(NodeId node, const std::string& payload);
 	bool HasDirectChildTag(NodeId node, const char* tag) const;
+	std::uint32_t FirstEdge(NodeId node) const;
+	std::uint32_t NextEdge(std::uint32_t edge) const;
+	NodeId EdgeChild(std::uint32_t edge) const;
+	void SetTokenRange(NodeId node, std::size_t first, std::size_t last);
+	std::size_t TokenFirst(NodeId node) const;
+	std::size_t TokenLast(NodeId node) const;
+	void AddFlags(NodeId node, std::uint16_t flags);
+	std::uint16_t Flags(NodeId node) const;
 	std::size_t StorageBytes() const;
 
 private:
 	StringTable& strings_;
 	std::vector<SyntaxNode> nodes_;
 	std::vector<SyntaxEdge> edges_;
+};
+
+class SyntaxTreeConsumer
+{
+public:
+	virtual ~SyntaxTreeConsumer() {}
+	virtual void Consume(const SyntaxArena& arena, NodeId root) = 0;
 };
 
 }

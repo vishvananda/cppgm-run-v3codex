@@ -182,7 +182,7 @@ void SyntaxTokenSink::EmitLiteralSpelling(const std::string& source)
 
 SyntaxNode::SyntaxNode(TextId tag_value, TextId payload_value)
 	: tag(tag_value), payload(payload_value), first_edge(kNoEdge),
-	  last_edge(kNoEdge)
+	  last_edge(kNoEdge), token_first(0), token_last(0), flags(0)
 {
 }
 
@@ -322,6 +322,51 @@ bool SyntaxArena::HasDirectChildTag(NodeId node, const char* tag) const
 		edge != kNoEdge; edge = edges_[edge].next)
 		if (Tag(edges_[edge].child) == tag) return true;
 	return false;
+}
+
+std::uint32_t SyntaxArena::FirstEdge(NodeId node) const
+{
+	return nodes_[node].first_edge;
+}
+
+std::uint32_t SyntaxArena::NextEdge(std::uint32_t edge) const
+{
+	return edges_[edge].next;
+}
+
+NodeId SyntaxArena::EdgeChild(std::uint32_t edge) const
+{
+	return edges_[edge].child;
+}
+
+void SyntaxArena::SetTokenRange(NodeId node, std::size_t first,
+	std::size_t last)
+{
+	if (first > std::numeric_limits<std::uint32_t>::max() ||
+		last > std::numeric_limits<std::uint32_t>::max())
+		throw std::runtime_error("syntax token range is too large");
+	nodes_[node].token_first = static_cast<std::uint32_t>(first);
+	nodes_[node].token_last = static_cast<std::uint32_t>(last);
+}
+
+std::size_t SyntaxArena::TokenFirst(NodeId node) const
+{
+	return nodes_[node].token_first;
+}
+
+std::size_t SyntaxArena::TokenLast(NodeId node) const
+{
+	return nodes_[node].token_last;
+}
+
+void SyntaxArena::AddFlags(NodeId node, std::uint16_t flags)
+{
+	nodes_[node].flags = static_cast<std::uint16_t>(nodes_[node].flags | flags);
+}
+
+std::uint16_t SyntaxArena::Flags(NodeId node) const
+{
+	return nodes_[node].flags;
 }
 
 std::size_t SyntaxArena::StorageBytes() const

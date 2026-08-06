@@ -2,6 +2,7 @@
 
 #include "exceptions.h"
 #include "pa10_syntax.h"
+#include "pa11_semantic.h"
 #include "tool_help_text.h"
 
 #include <cstdlib>
@@ -390,15 +391,8 @@ int run_unimplemented_mode(const char * feature,
   throw NotImplementedException();
 }
 
-int run_emit_ast_mode(const vector<string> & args)
+cppgm::PreprocessingOptions make_preprocessing_options()
 {
-  const SourceOutputInvocation invocation =
-      parse_source_output_invocation(args, false);
-  ofstream output(invocation.output.c_str(), ios::out | ios::trunc);
-  if(!output) {
-    throw runtime_error("unable to open output file: " + invocation.output);
-  }
-
   const time_t now = time(0);
   const tm * local = localtime(&now);
   if(!local) {
@@ -416,6 +410,19 @@ int run_emit_ast_mode(const vector<string> & args)
   options.build_date = formatted.substr(4, 7) + formatted.substr(20, 4);
   options.build_time = formatted.substr(11, 8);
   options.author = "Vishvananda Abrams";
+  return options;
+}
+
+int run_emit_ast_mode(const vector<string> & args)
+{
+  const SourceOutputInvocation invocation =
+      parse_source_output_invocation(args, false);
+  ofstream output(invocation.output.c_str(), ios::out | ios::trunc);
+  if(!output) {
+    throw runtime_error("unable to open output file: " + invocation.output);
+  }
+
+  const cppgm::PreprocessingOptions options = make_preprocessing_options();
 
   output << invocation.inputs.size() << " translation units\n";
   for(size_t i = 0; i < invocation.inputs.size(); ++i) {
@@ -467,8 +474,47 @@ int run_emit_ast_mode(const vector<string> & args)
 
 int run_emit_types_mode(const vector<string> & args)
 {
-  (void)parse_source_output_invocation(args, false);
-  return run_unimplemented_mode("--emit-types", "PA11");
+  const SourceOutputInvocation invocation =
+      parse_source_output_invocation(args, false);
+  ofstream output(invocation.output.c_str(), ios::out | ios::trunc);
+  if(!output) {
+    throw runtime_error("unable to open output file: " + invocation.output);
+  }
+  const cppgm::PreprocessingOptions options = make_preprocessing_options();
+  output << invocation.inputs.size() << " translation units\n";
+  for(size_t i = 0; i < invocation.inputs.size(); ++i) {
+    const string & path = invocation.inputs[i];
+    ifstream input(path.c_str(), ios::in | ios::binary);
+    if(!input) {
+      throw runtime_error("unable to open source file: " + path);
+    }
+    const string source((istreambuf_iterator<char>(input)),
+                        istreambuf_iterator<char>());
+    output << "start translation unit " << i + 1 << '\n';
+    cppgm::TypeAnalysisStats stats;
+    cppgm::WriteTypeTranslationUnit(path, source, options, output,
+        getenv("CPPGM_FRONTEND_STATS") ? &stats : 0);
+    if(getenv("CPPGM_FRONTEND_STATS")) {
+      cerr << "pa11_stats file=" << path
+           << " tokens=" << stats.tokens
+           << " syntax_nodes=" << stats.syntax_nodes
+           << " names=" << stats.interned_names
+           << " canonical_types=" << stats.canonical_types
+           << " scopes=" << stats.scopes
+           << " declarations=" << stats.declarations
+           << " lookup_queries=" << stats.lookup_queries
+           << " lookup_scope_visits=" << stats.lookup_scope_visits
+           << " lookup_edge_visits=" << stats.lookup_edge_visits
+           << " semantic_storage_bytes=" << stats.semantic_storage_bytes
+           << " peak_stage_storage_bytes=" << stats.peak_stage_storage_bytes
+           << " elapsed_ns=" << stats.elapsed_nanoseconds << '\n';
+    }
+    output << "end translation unit\n";
+  }
+  if(!output) {
+    throw runtime_error("unable to write output file: " + invocation.output);
+  }
+  return EXIT_SUCCESS;
 }
 
 int run_emit_semantics_mode(const vector<string> & args)

@@ -1,0 +1,1128 @@
+#include "pa11_semantic.h"
+
+#include "pa10_syntax.h"
+#include "pa10_syntax_model.h"
+#include "pa11_model.h"
+
+#include <cerrno>
+#include <chrono>
+#include <climits>
+#include <cstdlib>
+#include <ostream>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+namespace cppgm
+{
+namespace
+{
+
+using namespace pa10_syntax_detail;
+using namespace pa11;
+
+struct SpecInfo
+{
+	TypeId type;
+	bool is_typedef;
+	bool is_constexpr;
+
+	SpecInfo() : type(kNoType), is_typedef(false), is_constexpr(false) {}
+};
+
+struct ParameterInfo
+{
+	NameId name;
+	TypeId type;
+	ParameterInfo(NameId name_value, TypeId type_value)
+		: name(name_value), type(type_value) {}
+};
+
+struct DeclaratorInfo
+{
+	NameId name;
+	TypeId type;
+	std::vector<ParameterInfo> parameters;
+	DeclaratorInfo() : name(0), type(kNoType) {}
+};
+
+struct ConstantValue
+{
+	std::int64_t value;
+	TypeId type;
+	bool lvalue;
+	BindingId binding;
+	ConstantValue()
+		: value(0), type(kNoType), lvalue(false), binding(kNoBinding) {}
+};
+
+class TypeAnalyzer : public SyntaxTreeConsumer
+{
+public:
+	TypeAnalyzer(std::ostream& output, TypeAnalysisStats* stats)
+		: arena_(0), output_(output), stats_(stats) {}
+
+	void Consume(const SyntaxArena& arena, NodeId root)
+	{
+		arena_ = &arena;
+		for (std::uint32_t edge = arena.FirstEdge(root); edge != kNoEdge;
+			edge = arena.NextEdge(edge))
+			AnalyzeDeclaration(arena.EdgeChild(edge), program_.GlobalScope());
+		program_.Render(output_);
+		if (stats_)
+		{
+			stats_->interned_names = program_.names.Size();
+			stats_->canonical_types = program_.types.Size();
+			stats_->scopes = program_.ScopeCount();
+			stats_->declarations = program_.bindings.size();
+			stats_->lookup_queries = program_.lookup_queries;
+			stats_->lookup_scope_visits = program_.lookup_scope_visits;
+			stats_->lookup_edge_visits = program_.lookup_edge_visits;
+			stats_->semantic_storage_bytes = program_.StorageBytes();
+		}
+	}
+
+private:
+	NodeId FindChild(NodeId node, const char* tag) const;
+	NodeId FirstSemanticChild(NodeId node) const;
+	std::string PayloadSource(NodeId node) const;
+	std::string FinalName(const std::string& name) const;
+	std::string OwnerName(const std::string& name) const;
+	bool IsDeclaration(NodeId node) const;
+	void AnalyzeDeclaration(NodeId node, ScopeId scope);
+	void AnalyzeNamespace(NodeId node, ScopeId scope);
+	void AnalyzeUsing(NodeId node, ScopeId scope);
+	void AnalyzeTemplate(NodeId node, ScopeId scope);
+	void AnalyzeSimple(NodeId node, ScopeId scope);
+	void AnalyzeFunction(NodeId node, ScopeId scope);
+	void AnalyzeCompound(NodeId node, ScopeId scope);
+	void WalkStatement(NodeId node, ScopeId scope);
+	TypeId AnalyzeClass(NodeId node, ScopeId scope,
+		const std::string& hint, bool elaborated);
+	TypeId AnalyzeEnum(NodeId node, ScopeId scope,
+		const std::string& hint, bool elaborated);
+	SpecInfo BuildSpecifiers(NodeId node, ScopeId scope,
+		const std::string& hint, bool has_declarators);
+	TypeId BuildTypeId(NodeId node, ScopeId scope);
+	DeclaratorInfo BuildDeclarator(NodeId node, TypeId base, ScopeId scope);
+	std::vector<ParameterInfo> BuildParameters(NodeId node, ScopeId scope,
+		bool* variadic);
+	NameId DeclaratorName(NodeId node);
+	ConstantValue Evaluate(NodeId node, ScopeId scope);
+	ConstantValue EvaluateBinary(NodeId node, ScopeId scope);
+	ConstantValue EvaluateUnary(NodeId node, ScopeId scope);
+	ConstantValue EvaluateTrait(NodeId node, ScopeId scope);
+	TypeId DecltypeType(NodeId node, ScopeId scope);
+	std::int64_t ParseInteger(const std::string& spelling) const;
+	std::int64_t ApplyBinary(const std::string& operation,
+		std::int64_t left, std::int64_t right) const;
+	NamedFlavor ClassFlavor(NodeId node) const;
+	EntityId NamedEntity(TypeId type) const;
+	bool IsClassFlavor(NamedFlavor flavor) const;
+
+	const SyntaxArena* arena_;
+	std::ostream& output_;
+	TypeAnalysisStats* stats_;
+	Program program_;
+};
+
+NodeId TypeAnalyzer::FindChild(NodeId node, const char* tag) const
+{
+	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId child = arena_->EdgeChild(edge);
+		if (arena_->Tag(child) == tag) return child;
+	}
+	return kNoNode;
+}
+
+NodeId TypeAnalyzer::FirstSemanticChild(NodeId node) const
+{
+	const std::uint32_t edge = arena_->FirstEdge(node);
+	return edge == kNoEdge ? kNoNode : arena_->EdgeChild(edge);
+}
+
+std::string TypeAnalyzer::PayloadSource(NodeId node) const
+{
+	const std::string& payload = arena_->Payload(node);
+	const std::size_t colon = payload.find(':');
+	const bool described_token = payload.find("KW_") == 0 ||
+		payload.find("TT_") == 0 || payload.find("OP_") == 0;
+	return colon == std::string::npos || !described_token ? payload :
+		payload.substr(colon + 1);
+}
+
+std::string TypeAnalyzer::FinalName(const std::string& name) const
+{
+	const std::size_t separator = name.rfind("::");
+	return separator == std::string::npos ? name : name.substr(separator + 2);
+}
+
+std::string TypeAnalyzer::OwnerName(const std::string& name) const
+{
+	const std::size_t separator = name.rfind("::");
+	return separator == std::string::npos ? std::string() :
+		name.substr(0, separator);
+}
+
+bool TypeAnalyzer::IsDeclaration(NodeId node) const
+{
+	const std::string& tag = arena_->Tag(node);
+	return tag == "simple-declaration" || tag == "function-definition" ||
+		tag == "alias-declaration" || tag == "using-declaration" ||
+		tag == "using-directive" || tag == "namespace-definition" ||
+		tag == "namespace-alias-definition" || tag == "template-declaration" ||
+		tag == "class-specifier" || tag == "class-forward-declaration" ||
+		tag == "enum-specifier" || tag == "static-assert-declaration" ||
+		tag == "empty-declaration" || tag == "linkage-specification";
+}
+
+void TypeAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope)
+{
+	const std::string& tag = arena_->Tag(node);
+	if (tag == "empty-declaration") return;
+	if (tag == "namespace-definition")
+	{
+		AnalyzeNamespace(node, scope);
+		return;
+	}
+	if (tag == "namespace-alias-definition" || tag == "using-directive" ||
+		tag == "using-declaration" || tag == "alias-declaration")
+	{
+		AnalyzeUsing(node, scope);
+		return;
+	}
+	if (tag == "template-declaration")
+	{
+		AnalyzeTemplate(node, scope);
+		return;
+	}
+	if (tag == "simple-declaration")
+	{
+		AnalyzeSimple(node, scope);
+		return;
+	}
+	if (tag == "function-definition")
+	{
+		AnalyzeFunction(node, scope);
+		return;
+	}
+	if (tag == "class-specifier" || tag == "class-forward-declaration")
+	{
+		AnalyzeClass(node, scope, std::string(), false);
+		return;
+	}
+	if (tag == "enum-specifier")
+	{
+		AnalyzeEnum(node, scope, std::string(), false);
+		return;
+	}
+	if (tag == "static-assert-declaration")
+	{
+		const ConstantValue value = Evaluate(FirstSemanticChild(node), scope);
+		if (value.value == 0) throw std::runtime_error("static assertion failed");
+		return;
+	}
+	if (tag == "linkage-specification")
+	{
+		for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
+			edge = arena_->NextEdge(edge))
+			AnalyzeDeclaration(arena_->EdgeChild(edge), scope);
+		return;
+	}
+	throw std::runtime_error("unsupported PA11 declaration: " + tag);
+}
+
+void TypeAnalyzer::AnalyzeNamespace(NodeId node, ScopeId scope)
+{
+	const NameId name = program_.names.Intern(arena_->Payload(node));
+	const ScopeId child = program_.OpenNamespace(scope, name,
+		FindChild(node, "inline") != kNoNode);
+	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId declaration = arena_->EdgeChild(edge);
+		if (IsDeclaration(declaration)) AnalyzeDeclaration(declaration, child);
+	}
+}
+
+void TypeAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope)
+{
+	const std::string& tag = arena_->Tag(node);
+	if (tag == "alias-declaration")
+	{
+		const NodeId type_id = FindChild(node, "type-id");
+		const TypeId type = BuildTypeId(type_id, scope);
+		const NameId name = program_.names.Intern(arena_->Payload(node));
+		program_.AddBinding(scope, BIND_TYPE_ALIAS, name, type);
+		return;
+	}
+	const NodeId target_node = FindChild(node, "target");
+	if (target_node == kNoNode) throw std::runtime_error("missing using target");
+	const std::string target = arena_->Payload(target_node);
+	if (tag == "namespace-alias-definition")
+	{
+		const ScopeId target_scope = program_.ResolveScope(scope, target);
+		if (target_scope == kNoScope)
+			throw std::runtime_error("namespace alias target is not a namespace");
+		program_.AddNamespaceAlias(scope,
+			program_.names.Intern(arena_->Payload(node)), target_scope);
+		return;
+	}
+	if (tag == "using-directive")
+	{
+		const ScopeId target_scope = program_.ResolveScope(scope, target);
+		if (target_scope == kNoScope)
+			throw std::runtime_error("using-directive target is not a namespace");
+		program_.AddUsingEdge(scope, target_scope);
+		return;
+	}
+	if (target.find('<') != std::string::npos)
+		throw std::runtime_error("using-declaration names a template-id");
+	const NameId name = program_.names.Intern(FinalName(target));
+	const LookupResult type = program_.Lookup(scope, target, LOOKUP_TYPE);
+	if (type.type != kNoType)
+	{
+		program_.AddBinding(scope,
+			program_.types.IsNamed(type.type) ? BIND_TYPE : BIND_TYPE_ALIAS,
+			name, type.type);
+		return;
+	}
+	const LookupResult value = program_.Lookup(scope, target, LOOKUP_ORDINARY);
+	if (value.ordinary == kNoBinding)
+		throw std::runtime_error("using-declaration target was not found");
+	const BindingRecord& source = program_.bindings[value.ordinary];
+	program_.AddBinding(scope, source.kind, name, source.type,
+		source.constant, source.value, source.display_flavor);
+}
+
+void TypeAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope)
+{
+	const ScopeId parameters = program_.NewScope(scope,
+		SCOPE_TEMPLATE_PARAMETERS, 0);
+	const NodeId clause = FindChild(node, "template-parameter-clause");
+	const NodeId list = clause == kNoNode ? kNoNode :
+		FindChild(clause, "template-parameter-list");
+	if (list != kNoNode)
+	{
+		for (std::uint32_t edge = arena_->FirstEdge(list); edge != kNoEdge;
+			edge = arena_->NextEdge(edge))
+		{
+			const NodeId parameter = arena_->EdgeChild(edge);
+			if (arena_->Tag(parameter) != "type-parameter")
+				throw std::runtime_error("non-type template parameter in PA11");
+			const NodeId identifier = FindChild(parameter, "identifier");
+			if (identifier == kNoNode) continue;
+			const NameId name = program_.names.Intern(arena_->Payload(identifier));
+			const NamedFlavor flavor =
+				FindChild(parameter, "template-template-parameter") != kNoNode ?
+				NAMED_TEMPLATE_PARAMETER : NAMED_TYPENAME_PARAMETER;
+			const EntityId entity = program_.NewEntity(name, flavor, true);
+			program_.AddBinding(parameters, BIND_TYPE, name,
+				program_.entities[entity].type);
+		}
+	}
+	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId child = arena_->EdgeChild(edge);
+		if (child != clause && IsDeclaration(child))
+			AnalyzeDeclaration(child, parameters);
+	}
+}
+
+NamedFlavor TypeAnalyzer::ClassFlavor(NodeId node) const
+{
+	const NodeId key = FindChild(node, "class-key");
+	if (key == kNoNode) throw std::runtime_error("class without class-key");
+	const std::string spelling = PayloadSource(key);
+	if (spelling == "struct") return NAMED_STRUCT;
+	if (spelling == "class") return NAMED_CLASS;
+	if (spelling == "union") return NAMED_UNION;
+	throw std::runtime_error("invalid class-key");
+}
+
+bool TypeAnalyzer::IsClassFlavor(NamedFlavor flavor) const
+{
+	return flavor == NAMED_STRUCT || flavor == NAMED_CLASS ||
+		flavor == NAMED_UNION;
+}
+
+EntityId TypeAnalyzer::NamedEntity(TypeId type) const
+{
+	type = program_.types.RemoveTopCv(type);
+	const TypeRecord& record = program_.types.Get(type);
+	return record.kind == TYPE_NAMED ? record.entity : kNoEntity;
+}
+
+TypeId TypeAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
+	const std::string& hint, bool elaborated)
+{
+	const NamedFlavor flavor = ClassFlavor(node);
+	std::string spelling = arena_->Payload(node);
+	if (spelling.empty()) spelling = hint;
+	const bool definition = arena_->Tag(node) == "class-specifier" &&
+		(arena_->Flags(node) & SYNTAX_FLAG_DEFINITION) != 0;
+	if (spelling.empty() && flavor == NAMED_UNION)
+	{
+		spelling = "__anonymous_union_type__" +
+			std::to_string(arena_->TokenFirst(node)) + "_" +
+			std::to_string(arena_->TokenLast(node));
+	}
+	if (spelling.empty()) throw std::runtime_error("unnamed class has no owner");
+	const NameId name = program_.names.Intern(spelling);
+	EntityId entity = kNoEntity;
+	const LookupResult existing = elaborated ?
+		program_.Lookup(scope, spelling, LOOKUP_TYPE) :
+		program_.LookupDirect(scope, spelling, LOOKUP_TYPE);
+	if (existing.type != kNoType)
+	{
+		entity = NamedEntity(existing.type);
+		if (entity == kNoEntity || !IsClassFlavor(program_.entities[entity].flavor))
+			throw std::runtime_error("class redeclared as a different type");
+		const bool old_union = program_.entities[entity].flavor == NAMED_UNION;
+		if (old_union != (flavor == NAMED_UNION))
+			throw std::runtime_error("union/non-union redeclaration mismatch");
+		if (definition) program_.entities[entity].complete = true;
+	}
+	else
+	{
+		entity = program_.NewEntity(name, flavor, definition);
+		program_.SetTypeName(scope, name, program_.entities[entity].type);
+	}
+	const TypeId type = program_.entities[entity].type;
+	const bool anonymous_union = arena_->Payload(node).empty() &&
+		hint.empty() && flavor == NAMED_UNION;
+	if (!elaborated && !anonymous_union)
+		program_.AddBinding(scope, BIND_TYPE, name, type, false, 0, flavor);
+	else if (existing.type == kNoType && !anonymous_union)
+		program_.AddBinding(scope, BIND_TYPE, name, type, false, 0, flavor);
+	if (definition)
+	{
+		ScopeId member_scope = program_.entities[entity].member_scope;
+		if (member_scope == kNoScope)
+		{
+			member_scope = program_.NewScope(scope, SCOPE_CLASS, name, entity);
+			program_.SetEntityScope(entity, member_scope);
+		}
+		for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
+			edge = arena_->NextEdge(edge))
+		{
+			const NodeId member = arena_->EdgeChild(edge);
+			if (IsDeclaration(member)) AnalyzeDeclaration(member, member_scope);
+		}
+		if (anonymous_union)
+		{
+			const std::size_t count = program_.bindings.size();
+			for (BindingId binding = 0; binding < count; ++binding)
+			{
+				const BindingRecord source = program_.bindings[binding];
+				if (source.owner != member_scope ||
+					source.kind != BIND_VARIABLE) continue;
+				program_.AddBinding(scope, source.kind, source.name, source.type,
+					source.constant, source.value);
+			}
+		}
+	}
+	return type;
+}
+
+TypeId TypeAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope,
+	const std::string& hint, bool elaborated)
+{
+	std::string spelling = arena_->Payload(node);
+	if (spelling.empty()) spelling = hint;
+	if (spelling.empty()) throw std::runtime_error("unnamed enum has no owner");
+	const bool scoped = FindChild(node, "enum-key") != kNoNode;
+	const NamedFlavor flavor = scoped ? NAMED_ENUM_CLASS : NAMED_ENUM;
+	const bool definition =
+		(arena_->Flags(node) & SYNTAX_FLAG_DEFINITION) != 0;
+	const NodeId underlying_node = FindChild(node, "type-id");
+	const bool explicit_underlying = underlying_node != kNoNode;
+	const TypeId underlying = explicit_underlying ?
+		BuildTypeId(underlying_node, scope) :
+		program_.types.Fundamental(FUND_INT);
+	const NameId name = program_.names.Intern(spelling);
+	const LookupResult existing = elaborated ?
+		program_.Lookup(scope, spelling, LOOKUP_TYPE) :
+		program_.LookupDirect(scope, spelling, LOOKUP_TYPE);
+	if (elaborated)
+	{
+		if (existing.type == kNoType)
+			throw std::runtime_error("elaborated enum was not declared");
+		const EntityId entity = NamedEntity(existing.type);
+		if (entity == kNoEntity ||
+			(program_.entities[entity].flavor != NAMED_ENUM &&
+			 program_.entities[entity].flavor != NAMED_ENUM_CLASS))
+			throw std::runtime_error("elaborated enum names a non-enum");
+		return existing.type;
+	}
+	if (!definition && !scoped && !explicit_underlying)
+		throw std::runtime_error("opaque unscoped enum without underlying type");
+	EntityId entity = kNoEntity;
+	if (existing.type != kNoType && spelling.find("::") == std::string::npos)
+	{
+		entity = NamedEntity(existing.type);
+		if (entity == kNoEntity ||
+			(program_.entities[entity].flavor != NAMED_ENUM &&
+			 program_.entities[entity].flavor != NAMED_ENUM_CLASS) ||
+			program_.entities[entity].flavor != flavor)
+			throw std::runtime_error("incompatible enum redeclaration");
+		if (explicit_underlying &&
+			program_.entities[entity].underlying != underlying)
+			throw std::runtime_error("enum underlying type changed");
+		if (definition) program_.entities[entity].complete = true;
+	}
+	else
+	{
+		entity = program_.NewEntity(name, flavor,
+			definition || scoped || explicit_underlying, underlying);
+		program_.SetTypeName(scope, name, program_.entities[entity].type);
+	}
+	const TypeId type = program_.entities[entity].type;
+	program_.AddBinding(scope, BIND_TYPE, name, type, false, 0, flavor);
+	ScopeId enum_scope = program_.entities[entity].member_scope;
+	if (scoped && enum_scope == kNoScope)
+	{
+		enum_scope = program_.NewScope(scope, SCOPE_ENUM, name, entity);
+		program_.SetEntityScope(entity, enum_scope);
+	}
+	std::int64_t next_value = 0;
+	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId enumerator = arena_->EdgeChild(edge);
+		if (arena_->Tag(enumerator) != "enumerator") continue;
+		const NodeId initializer = FirstSemanticChild(enumerator);
+		const ScopeId value_scope = scoped ? enum_scope : scope;
+		const std::int64_t value = initializer == kNoNode ? next_value :
+			Evaluate(initializer, value_scope).value;
+		const NameId enumerator_name =
+			program_.names.Intern(arena_->Payload(enumerator));
+		program_.AddBinding(value_scope, BIND_ENUMERATOR, enumerator_name,
+			type, true, value);
+		if (value == INT64_MAX)
+			throw std::runtime_error("enumerator value overflow");
+		next_value = value + 1;
+	}
+	return type;
+}
+
+SpecInfo TypeAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
+	const std::string& hint, bool has_declarators)
+{
+	SpecInfo result;
+	std::uint8_t cv = CV_NONE;
+	bool is_unsigned = false;
+	bool is_signed = false;
+	bool is_short = false;
+	int longs = 0;
+	bool is_char = false;
+	bool is_void = false;
+	bool is_bool = false;
+	bool is_float = false;
+	bool is_double = false;
+	bool is_wchar = false;
+	bool is_char16 = false;
+	bool is_char32 = false;
+	bool saw_int = false;
+	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId child = arena_->EdgeChild(edge);
+		const std::string& tag = arena_->Tag(child);
+		if (tag == "class-specifier" || tag == "class-forward-declaration")
+		{
+			result.type = AnalyzeClass(child, scope, hint,
+				has_declarators && tag == "class-forward-declaration");
+			continue;
+		}
+		if (tag == "enum-specifier")
+		{
+			const bool definition =
+				(arena_->Flags(child) & SYNTAX_FLAG_DEFINITION) != 0;
+			result.type = AnalyzeEnum(child, scope, hint,
+				has_declarators && !definition && arena_->Payload(child).size() != 0);
+			continue;
+		}
+		if (tag == "decltype-specifier" ||
+			(tag == "decl-specifier" &&
+			 arena_->Payload(child).find("decltype(") == 0))
+		{
+			result.type = DecltypeType(FirstSemanticChild(child), scope);
+			continue;
+		}
+		if (tag == "cv-qualifier" || tag == "decl-specifier" ||
+			tag == "type-specifier" || tag == "type-name")
+		{
+			const std::string spelling = PayloadSource(child);
+			if (spelling == "typedef") result.is_typedef = true;
+			else if (spelling == "constexpr") result.is_constexpr = true;
+			else if (spelling == "const") cv |= CV_CONST;
+			else if (spelling == "volatile") cv |= CV_VOLATILE;
+			else if (spelling == "unsigned") is_unsigned = true;
+			else if (spelling == "signed") is_signed = true;
+			else if (spelling == "short") is_short = true;
+			else if (spelling == "long") ++longs;
+			else if (spelling == "int") saw_int = true;
+			else if (spelling == "char") is_char = true;
+			else if (spelling == "void") is_void = true;
+			else if (spelling == "bool") is_bool = true;
+			else if (spelling == "float") is_float = true;
+			else if (spelling == "double") is_double = true;
+			else if (spelling == "wchar_t") is_wchar = true;
+			else if (spelling == "char16_t") is_char16 = true;
+			else if (spelling == "char32_t") is_char32 = true;
+			else if (spelling != "extern" && spelling != "static" &&
+				spelling != "thread_local" && spelling != "inline" &&
+				spelling != "virtual")
+			{
+				std::string type_name = spelling;
+				const std::string marker = "TT_IDENTIFIER:";
+				if (type_name.find(marker) == 0)
+					type_name = type_name.substr(marker.size());
+				const LookupResult found =
+					program_.Lookup(scope, type_name, LOOKUP_TYPE);
+				if (found.type == kNoType)
+					throw std::runtime_error("unknown type name: " + type_name);
+				result.type = found.type;
+			}
+		}
+	}
+	if (result.type == kNoType)
+	{
+		FundamentalKind fundamental = FUND_INT;
+		if (is_void) fundamental = FUND_VOID;
+		else if (is_bool) fundamental = FUND_BOOL;
+		else if (is_wchar) fundamental = FUND_WCHAR_T;
+		else if (is_char16) fundamental = FUND_CHAR16_T;
+		else if (is_char32) fundamental = FUND_CHAR32_T;
+		else if (is_float) fundamental = FUND_FLOAT;
+		else if (is_double && longs != 0) fundamental = FUND_LONG_DOUBLE;
+		else if (is_double) fundamental = FUND_DOUBLE;
+		else if (is_char && is_unsigned) fundamental = FUND_UNSIGNED_CHAR;
+		else if (is_char && is_signed) fundamental = FUND_SIGNED_CHAR;
+		else if (is_char) fundamental = FUND_CHAR;
+		else if (is_short && is_unsigned) fundamental = FUND_UNSIGNED_SHORT_INT;
+		else if (is_short) fundamental = FUND_SHORT_INT;
+		else if (longs > 1 && is_unsigned)
+			fundamental = FUND_UNSIGNED_LONG_LONG_INT;
+		else if (longs > 1) fundamental = FUND_LONG_LONG_INT;
+		else if (longs == 1 && is_unsigned) fundamental = FUND_UNSIGNED_LONG_INT;
+		else if (longs == 1) fundamental = FUND_LONG_INT;
+		else if (is_unsigned) fundamental = FUND_UNSIGNED_INT;
+		else if (saw_int || is_signed) fundamental = FUND_INT;
+		else throw std::runtime_error("declaration has no type specifier");
+		result.type = program_.types.Fundamental(fundamental);
+	}
+	result.type = program_.types.Qualify(result.type, cv);
+	return result;
+}
+
+TypeId TypeAnalyzer::BuildTypeId(NodeId node, ScopeId scope)
+{
+	if (node == kNoNode) throw std::runtime_error("missing type-id");
+	NodeId specifiers = FindChild(node, "type-specifier-seq");
+	if (specifiers == kNoNode)
+		specifiers = FindChild(node, "decl-specifier-seq");
+	if (specifiers == kNoNode) throw std::runtime_error("type-id has no type");
+	const SpecInfo spec = BuildSpecifiers(specifiers, scope, std::string(), false);
+	NodeId declarator = FindChild(node, "abstract-declarator");
+	if (declarator == kNoNode) declarator = FindChild(node, "declarator");
+	return declarator == kNoNode ? spec.type :
+		BuildDeclarator(declarator, spec.type, scope).type;
+}
+
+NameId TypeAnalyzer::DeclaratorName(NodeId node)
+{
+	const NodeId identifier = FindChild(node, "identifier");
+	if (identifier != kNoNode)
+		return program_.names.Intern(arena_->Payload(identifier));
+	const NodeId nested = FindChild(node, "nested-declarator");
+	return nested == kNoNode ? 0 : DeclaratorName(FirstSemanticChild(nested));
+}
+
+std::vector<ParameterInfo> TypeAnalyzer::BuildParameters(NodeId node,
+	ScopeId scope, bool* variadic)
+{
+	std::vector<ParameterInfo> result;
+	*variadic = false;
+	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId child = arena_->EdgeChild(edge);
+		if (arena_->Tag(child) == "parameter-pack")
+		{
+			*variadic = true;
+			continue;
+		}
+		if (arena_->Tag(child) != "parameter-declaration") continue;
+		const NodeId specifiers = FindChild(child, "decl-specifier-seq");
+		const NodeId declarator = FindChild(child, "declarator");
+		const SpecInfo spec = BuildSpecifiers(specifiers, scope,
+			std::string(), declarator != kNoNode);
+		if (declarator == kNoNode)
+			result.push_back(ParameterInfo(0, spec.type));
+		else
+		{
+			const DeclaratorInfo parsed =
+				BuildDeclarator(declarator, spec.type, scope);
+			result.push_back(ParameterInfo(parsed.name, parsed.type));
+		}
+	}
+	if (result.size() == 1 && result[0].name == 0)
+	{
+		const TypeRecord& type = program_.types.Get(result[0].type);
+		if (type.kind == TYPE_FUNDAMENTAL && type.fundamental == FUND_VOID)
+			result.clear();
+	}
+	return result;
+}
+
+DeclaratorInfo TypeAnalyzer::BuildDeclarator(NodeId node, TypeId base,
+	ScopeId scope)
+{
+	DeclaratorInfo result;
+	result.name = DeclaratorName(node);
+	TypeId type = base;
+	std::vector<NodeId> suffixes;
+	NodeId nested = kNoNode;
+	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId child = arena_->EdgeChild(edge);
+		const std::string& tag = arena_->Tag(child);
+		if (tag == "ptr-operator")
+		{
+			const std::string operation = PayloadSource(child);
+			if (operation == "*") type = program_.types.Pointer(type);
+			else if (operation == "&")
+				type = program_.types.Reference(TYPE_LVALUE_REFERENCE, type);
+			else if (operation == "&&")
+				type = program_.types.Reference(TYPE_RVALUE_REFERENCE, type);
+			else throw std::runtime_error("member pointer outside PA11");
+		}
+		else if (tag == "cv-qualifier")
+		{
+			const std::string qualifier = PayloadSource(child);
+			type = program_.types.Qualify(type,
+				qualifier == "const" ? CV_CONST : CV_VOLATILE);
+		}
+		else if (tag == "nested-declarator")
+			nested = FirstSemanticChild(child);
+		else if (tag == "array-suffix" || tag == "parameter-clause")
+			suffixes.push_back(child);
+	}
+	for (std::size_t i = suffixes.size(); i != 0; --i)
+	{
+		const NodeId suffix = suffixes[i - 1];
+		if (arena_->Tag(suffix) == "array-suffix")
+		{
+			const NodeId bound_node = FirstSemanticChild(suffix);
+			if (bound_node == kNoNode)
+				throw std::runtime_error("incomplete PA11 array type");
+			const std::int64_t bound = Evaluate(bound_node, scope).value;
+			if (bound <= 0) throw std::runtime_error("non-positive array bound");
+			type = program_.types.Array(type, static_cast<std::uint64_t>(bound));
+		}
+		else
+		{
+			bool variadic = false;
+			const std::vector<ParameterInfo> parameters =
+				BuildParameters(suffix, scope, &variadic);
+			std::vector<TypeId> parameter_types;
+			for (std::size_t p = 0; p < parameters.size(); ++p)
+				parameter_types.push_back(parameters[p].type);
+			type = program_.types.Function(type, parameter_types, variadic);
+			result.parameters = parameters;
+		}
+	}
+	if (nested != kNoNode)
+	{
+		DeclaratorInfo inner = BuildDeclarator(nested, type, scope);
+		if (!result.parameters.empty()) inner.parameters = result.parameters;
+		return inner;
+	}
+	result.type = type;
+	return result;
+}
+
+void TypeAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope)
+{
+	const NodeId specifiers = FindChild(node, "decl-specifier-seq");
+	const NodeId list = FindChild(node, "init-declarator-list");
+	std::string hint;
+	if (list != kNoNode)
+	{
+		const NodeId item = FirstSemanticChild(list);
+		const NodeId declarator = item == kNoNode ? kNoNode :
+			FindChild(item, "declarator");
+		if (declarator != kNoNode)
+			hint = program_.names.Get(DeclaratorName(declarator));
+	}
+	const SpecInfo spec = BuildSpecifiers(specifiers, scope, hint,
+		list != kNoNode);
+	if (list == kNoNode) return;
+	for (std::uint32_t edge = arena_->FirstEdge(list); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId item = arena_->EdgeChild(edge);
+		const NodeId declarator = FindChild(item, "declarator");
+		DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type, scope);
+		if (parsed.name == 0) throw std::runtime_error("unnamed declaration");
+		if (spec.is_typedef)
+		{
+			program_.AddBinding(scope, BIND_TYPE_ALIAS, parsed.name, parsed.type);
+			continue;
+		}
+		if (program_.types.IsFunction(parsed.type))
+		{
+			program_.AddBinding(scope, BIND_FUNCTION, parsed.name, parsed.type);
+			continue;
+		}
+		if (spec.is_constexpr)
+			parsed.type = program_.types.Qualify(parsed.type, CV_CONST);
+		const NodeId initializer = FindChild(item, "initializer");
+		bool constant = false;
+		std::int64_t value = 0;
+		const TypeRecord& top = program_.types.Get(parsed.type);
+		if (initializer != kNoNode &&
+			(spec.is_constexpr || top.kind == TYPE_QUALIFIED))
+		{
+			const NodeId expression = FirstSemanticChild(initializer);
+			if (expression != kNoNode)
+			{
+				value = Evaluate(expression, scope).value;
+				constant = true;
+			}
+		}
+		program_.AddBinding(scope, BIND_VARIABLE, parsed.name, parsed.type,
+			constant, value);
+	}
+}
+
+void TypeAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope)
+{
+	const NodeId specifiers = FindChild(node, "decl-specifier-seq");
+	const NodeId declarator = FindChild(node, "declarator");
+	const std::string full_name =
+		program_.names.Get(DeclaratorName(declarator));
+	const std::string owner_name = OwnerName(full_name);
+	ScopeId owner = scope;
+	if (!owner_name.empty())
+	{
+		owner = program_.ResolveScope(scope, owner_name);
+		if (owner == kNoScope)
+			throw std::runtime_error("qualified function owner was not found");
+	}
+	const SpecInfo spec = BuildSpecifiers(specifiers, owner,
+		std::string(), true);
+	DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type, owner);
+	parsed.name = program_.names.Intern(FinalName(full_name));
+	if (!program_.types.IsFunction(parsed.type))
+		throw std::runtime_error("function definition has non-function type");
+	program_.AddBinding(owner, BIND_FUNCTION, parsed.name, parsed.type);
+	const ScopeId function_scope = program_.NewScope(owner, SCOPE_FUNCTION,
+		parsed.name);
+	for (std::size_t i = 0; i < parsed.parameters.size(); ++i)
+		program_.AddBinding(function_scope, BIND_PARAMETER,
+			parsed.parameters[i].name, parsed.parameters[i].type);
+	const NodeId body = FindChild(node, "compound-statement");
+	if (body != kNoNode) AnalyzeCompound(body, function_scope);
+}
+
+void TypeAnalyzer::AnalyzeCompound(NodeId node, ScopeId scope)
+{
+	const ScopeId block = program_.NewScope(scope, SCOPE_BLOCK, 0);
+	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId child = arena_->EdgeChild(edge);
+		if (IsDeclaration(child)) AnalyzeDeclaration(child, block);
+		else if (arena_->Tag(child) == "compound-statement")
+			AnalyzeCompound(child, block);
+		else WalkStatement(child, block);
+	}
+}
+
+void TypeAnalyzer::WalkStatement(NodeId node, ScopeId scope)
+{
+	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId child = arena_->EdgeChild(edge);
+		if (arena_->Tag(child) == "compound-statement")
+			AnalyzeCompound(child, scope);
+		else if (IsDeclaration(child)) AnalyzeDeclaration(child, scope);
+		else WalkStatement(child, scope);
+	}
+}
+
+std::int64_t TypeAnalyzer::ParseInteger(const std::string& spelling) const
+{
+	std::size_t last = spelling.size();
+	while (last != 0 && (spelling[last - 1] == 'u' ||
+		spelling[last - 1] == 'U' || spelling[last - 1] == 'l' ||
+		spelling[last - 1] == 'L')) --last;
+	const std::string digits = spelling.substr(0, last);
+	errno = 0;
+	char* end = 0;
+	const unsigned long long value = std::strtoull(digits.c_str(), &end, 0);
+	if (errno == ERANGE || end == digits.c_str() || *end != '\0' ||
+		value > static_cast<unsigned long long>(INT64_MAX))
+		throw std::runtime_error("integer literal is outside PA11 range");
+	return static_cast<std::int64_t>(value);
+}
+
+std::int64_t TypeAnalyzer::ApplyBinary(const std::string& operation,
+	std::int64_t left, std::int64_t right) const
+{
+	if (operation == "+")
+	{
+		if ((right > 0 && left > INT64_MAX - right) ||
+			(right < 0 && left < INT64_MIN - right))
+			throw std::runtime_error("signed constant overflow");
+		return left + right;
+	}
+	if (operation == "-")
+	{
+		if ((right < 0 && left > INT64_MAX + right) ||
+			(right > 0 && left < INT64_MIN + right))
+			throw std::runtime_error("signed constant overflow");
+		return left - right;
+	}
+	if (operation == "*")
+	{
+		if (left != 0 && right != 0 &&
+			(left == INT64_MIN || right == INT64_MIN ||
+			 std::llabs(left) > INT64_MAX / std::llabs(right)))
+			throw std::runtime_error("signed constant overflow");
+		return left * right;
+	}
+	if (operation == "/" || operation == "%")
+	{
+		if (right == 0) throw std::runtime_error("division by zero");
+		if (left == INT64_MIN && right == -1)
+			throw std::runtime_error("signed constant overflow");
+		return operation == "/" ? left / right : left % right;
+	}
+	if (operation == "<<" || operation == ">>")
+	{
+		if (right < 0 || right >= 63) throw std::runtime_error("invalid shift");
+		if (operation == ">>") return left >> right;
+		if (left < 0 || left > (INT64_MAX >> right))
+			throw std::runtime_error("invalid left shift");
+		return left << right;
+	}
+	if (operation == "==") return left == right;
+	if (operation == "!=") return left != right;
+	if (operation == "<") return left < right;
+	if (operation == ">") return left > right;
+	if (operation == "<=") return left <= right;
+	if (operation == ">=") return left >= right;
+	if (operation == "&") return left & right;
+	if (operation == "|") return left | right;
+	if (operation == "^") return left ^ right;
+	throw std::runtime_error("unsupported constant binary operator");
+}
+
+ConstantValue TypeAnalyzer::EvaluateBinary(NodeId node, ScopeId scope)
+{
+	const std::uint32_t first_edge = arena_->FirstEdge(node);
+	if (first_edge == kNoEdge) throw std::runtime_error("binary expression empty");
+	const NodeId left_node = arena_->EdgeChild(first_edge);
+	const std::uint32_t second_edge = arena_->NextEdge(first_edge);
+	if (second_edge == kNoEdge) throw std::runtime_error("binary expression unary");
+	const NodeId right_node = arena_->EdgeChild(second_edge);
+	const std::string operation = PayloadSource(node);
+	ConstantValue result = Evaluate(left_node, scope);
+	if (operation == "&&")
+	{
+		if (result.value == 0) result.value = 0;
+		else result.value = Evaluate(right_node, scope).value != 0;
+		result.type = program_.types.Fundamental(FUND_BOOL);
+		return result;
+	}
+	if (operation == "||")
+	{
+		if (result.value != 0) result.value = 1;
+		else result.value = Evaluate(right_node, scope).value != 0;
+		result.type = program_.types.Fundamental(FUND_BOOL);
+		return result;
+	}
+	const ConstantValue right = Evaluate(right_node, scope);
+	result.value = ApplyBinary(operation, result.value, right.value);
+	result.type = program_.types.Fundamental(FUND_INT);
+	result.lvalue = false;
+	result.binding = kNoBinding;
+	return result;
+}
+
+ConstantValue TypeAnalyzer::EvaluateUnary(NodeId node, ScopeId scope)
+{
+	ConstantValue result = Evaluate(FirstSemanticChild(node), scope);
+	const std::string operation = PayloadSource(node);
+	if (operation == "+") return result;
+	if (operation == "-")
+	{
+		if (result.value == INT64_MIN)
+			throw std::runtime_error("signed constant overflow");
+		result.value = -result.value;
+	}
+	else if (operation == "!") result.value = !result.value;
+	else if (operation == "~") result.value = ~result.value;
+	else throw std::runtime_error("unsupported constant unary operator");
+	result.lvalue = false;
+	result.binding = kNoBinding;
+	return result;
+}
+
+ConstantValue TypeAnalyzer::EvaluateTrait(NodeId node, ScopeId scope)
+{
+	const NodeId operand = FirstSemanticChild(node);
+	if (operand == kNoNode) throw std::runtime_error("empty type trait");
+	TypeId type = kNoType;
+	if (arena_->Tag(operand) == "type-id") type = BuildTypeId(operand, scope);
+	else if (arena_->Tag(operand) == "id-expression")
+	{
+		const LookupResult named = program_.Lookup(scope,
+			arena_->Payload(operand), LOOKUP_TYPE);
+		if (named.type != kNoType) type = named.type;
+	}
+	if (type == kNoType) type = Evaluate(operand, scope).type;
+	ConstantValue result;
+	result.type = program_.types.Fundamental(FUND_UNSIGNED_LONG_INT);
+	result.value = arena_->Tag(node) == "sizeof-expression" ?
+		static_cast<std::int64_t>(program_.SizeOf(type)) :
+		static_cast<std::int64_t>(program_.AlignOf(type));
+	return result;
+}
+
+ConstantValue TypeAnalyzer::Evaluate(NodeId node, ScopeId scope)
+{
+	if (node == kNoNode) throw std::runtime_error("missing constant expression");
+	const std::string& tag = arena_->Tag(node);
+	if (tag == "literal")
+	{
+		ConstantValue result;
+		result.value = ParseInteger(arena_->Payload(node));
+		result.type = program_.types.Fundamental(FUND_INT);
+		return result;
+	}
+	if (tag == "keyword-literal")
+	{
+		ConstantValue result;
+		const std::string value = PayloadSource(node);
+		if (value != "true" && value != "false")
+			throw std::runtime_error("non-integral keyword literal");
+		result.value = value == "true";
+		result.type = program_.types.Fundamental(FUND_BOOL);
+		return result;
+	}
+	if (tag == "id-expression")
+	{
+		const LookupResult found = program_.Lookup(scope,
+			arena_->Payload(node), LOOKUP_ORDINARY);
+		if (found.ordinary == kNoBinding)
+			throw std::runtime_error("constant name was not found");
+		const BindingRecord& binding = program_.bindings[found.ordinary];
+		if (!binding.constant)
+			throw std::runtime_error("name is not a constant expression");
+		ConstantValue result;
+		result.value = binding.value;
+		result.type = binding.type;
+		result.lvalue = binding.kind != BIND_ENUMERATOR;
+		result.binding = found.ordinary;
+		return result;
+	}
+	if (tag == "parenthesized-expression")
+		return Evaluate(FirstSemanticChild(node), scope);
+	if (tag == "binary-expression" || tag == "assignment-expression")
+		return EvaluateBinary(node, scope);
+	if (tag == "unary-expression") return EvaluateUnary(node, scope);
+	if (tag == "sizeof-expression" || tag == "type-trait-expression")
+		return EvaluateTrait(node, scope);
+	if (tag == "cast-expression")
+	{
+		const NodeId type_id = FindChild(node, "type-id");
+		ConstantValue result;
+		for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
+			edge = arena_->NextEdge(edge))
+		{
+			const NodeId child = arena_->EdgeChild(edge);
+			if (child != type_id) result = Evaluate(child, scope);
+		}
+		result.type = BuildTypeId(type_id, scope);
+		const TypeRecord& target = program_.types.Get(
+			program_.types.RemoveTopCv(result.type));
+		if (target.kind == TYPE_FUNDAMENTAL &&
+			target.fundamental == FUND_UNSIGNED_CHAR)
+			result.value &= 0xff;
+		result.lvalue = false;
+		return result;
+	}
+	throw std::runtime_error("unsupported PA11 constant expression: " + tag);
+}
+
+TypeId TypeAnalyzer::DecltypeType(NodeId node, ScopeId scope)
+{
+	if (node == kNoNode) throw std::runtime_error("empty decltype");
+	bool parenthesized = false;
+	if (arena_->Tag(node) == "parenthesized-expression")
+	{
+		parenthesized = true;
+		node = FirstSemanticChild(node);
+	}
+	if (arena_->Tag(node) == "id-expression")
+	{
+		const LookupResult found = program_.Lookup(scope,
+			arena_->Payload(node), LOOKUP_ORDINARY);
+		if (found.ordinary == kNoBinding)
+			throw std::runtime_error("decltype name was not found");
+		const BindingRecord& binding = program_.bindings[found.ordinary];
+		if (!parenthesized || binding.kind == BIND_ENUMERATOR)
+			return binding.type;
+		return program_.types.Reference(TYPE_LVALUE_REFERENCE, binding.type);
+	}
+	const ConstantValue value = Evaluate(node, scope);
+	return value.lvalue ?
+		program_.types.Reference(TYPE_LVALUE_REFERENCE, value.type) : value.type;
+}
+
+}
+
+TypeAnalysisStats::TypeAnalysisStats()
+	: tokens(0), syntax_nodes(0), interned_names(0), canonical_types(0),
+	  scopes(0), declarations(0), lookup_queries(0), lookup_scope_visits(0),
+	  lookup_edge_visits(0), semantic_storage_bytes(0),
+	  peak_stage_storage_bytes(0), elapsed_nanoseconds(0)
+{
+}
+
+void WriteTypeTranslationUnit(const std::string& path,
+	const std::string& source, const PreprocessingOptions& options,
+	std::ostream& output, TypeAnalysisStats* stats)
+{
+	const std::chrono::steady_clock::time_point started =
+		std::chrono::steady_clock::now();
+	if (stats) *stats = TypeAnalysisStats();
+	SyntaxStats syntax_stats;
+	TypeAnalyzer analyzer(output, stats);
+	ConsumeSyntaxTranslationUnit(path, source, options, analyzer,
+		stats ? &syntax_stats : 0);
+	if (stats)
+	{
+		stats->preprocessing = syntax_stats.preprocessing;
+		stats->tokens = syntax_stats.tokens;
+		stats->syntax_nodes = syntax_stats.syntax_nodes;
+		stats->peak_stage_storage_bytes = source.size() +
+			syntax_stats.token_storage_bytes + syntax_stats.syntax_storage_bytes +
+			syntax_stats.parser_storage_bytes + stats->semantic_storage_bytes;
+		stats->elapsed_nanoseconds = static_cast<std::uint64_t>(
+			std::chrono::duration_cast<std::chrono::nanoseconds>(
+				std::chrono::steady_clock::now() - started).count());
+	}
+}
+
+}

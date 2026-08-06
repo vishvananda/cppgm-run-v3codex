@@ -674,6 +674,8 @@ private:
 	NodeId ParseCtorInitializer();
 	NodeId ParseCondition();
 	int BinaryPrecedence(std::uint16_t kind) const;
+	bool StartsStandaloneClassDeclaration();
+	bool StartsStandaloneEnumDeclaration() const;
 
 	const std::vector<SyntaxToken>& tokens_;
 	StringTable& strings_;
@@ -2363,6 +2365,7 @@ NodeId Parser::ParseClass(bool require_semicolon)
 		const NodeId declaration = arena_.Make("class-forward-declaration", name);
 		arena_.Add(declaration, arena_.Make("class-key",
 			TokenDescription(key)));
+		arena_.SetTokenRange(declaration, key, position_);
 		return declaration;
 	}
 	const NodeId declaration = arena_.Make("class-specifier", name);
@@ -2462,6 +2465,8 @@ NodeId Parser::ParseClass(bool require_semicolon)
 	current_classes_.pop_back();
 	Expect(OP_RBRACE);
 	if (require_semicolon) Expect(OP_SEMICOLON);
+	arena_.AddFlags(declaration, SYNTAX_FLAG_DEFINITION);
+	arena_.SetTokenRange(declaration, key, position_);
 	last_declared_names_.clear();
 	if (!name.empty()) last_declared_names_.push_back(strings_.Intern(name));
 	return declaration;
@@ -2469,11 +2474,15 @@ NodeId Parser::ParseClass(bool require_semicolon)
 
 NodeId Parser::ParseEnum(bool require_semicolon)
 {
-	if (!Match(KW_ENUM)) return kNoNode;
+	if (!At(KW_ENUM)) return kNoNode;
+	const std::size_t first = position_++;
 	std::size_t key = std::numeric_limits<std::size_t>::max();
 	if (At(KW_CLASS) || At(KW_STRUCT)) key = position_++;
 	std::string name;
-	if (AtIdentifier()) name = Spelling(position_++);
+	if (AtIdentifier())
+	{
+		if (!ParseName(&name, true, false)) throw Error("expected enum name");
+	}
 	NodeId underlying = kNoNode;
 	if (Match(OP_COLON))
 	{
@@ -2489,6 +2498,7 @@ NodeId Parser::ParseEnum(bool require_semicolon)
 	if (underlying != kNoNode) arena_.Add(declaration, underlying);
 	if (Match(OP_LBRACE))
 	{
+		arena_.AddFlags(declaration, SYNTAX_FLAG_DEFINITION);
 		if (!At(OP_RBRACE))
 		{
 			while (true)
@@ -2514,7 +2524,47 @@ NodeId Parser::ParseEnum(bool require_semicolon)
 	last_declared_names_.clear();
 	if (!name.empty()) last_declared_names_.push_back(strings_.Intern(name));
 	if (require_semicolon) Expect(OP_SEMICOLON);
+	arena_.SetTokenRange(declaration, first, position_);
 	return declaration;
+}
+
+bool Parser::StartsStandaloneClassDeclaration()
+{
+	const Mark mark = Checkpoint();
+	++position_;
+	SkipAttributes();
+	std::string ignored;
+	if (!At(OP_LBRACE))
+	{
+		const Mark name_mark = Checkpoint();
+		if (!ParseName(&ignored, false)) Rollback(name_mark);
+	}
+	SkipAttributes();
+	const bool result = At(OP_LBRACE) || At(OP_COLON) || At(OP_SEMICOLON);
+	Rollback(mark);
+	return result;
+}
+
+bool Parser::StartsStandaloneEnumDeclaration() const
+{
+	std::size_t scan = position_ + 1;
+	if (scan < tokens_.size() &&
+		(tokens_[scan].kind == static_cast<std::uint16_t>(KW_CLASS) ||
+		 tokens_[scan].kind == static_cast<std::uint16_t>(KW_STRUCT))) ++scan;
+	if (scan >= tokens_.size()) return false;
+	if (tokens_[scan].kind == static_cast<std::uint16_t>(OP_LBRACE))
+		return true;
+	if (tokens_[scan].kind != kIdentifierToken) return false;
+	++scan;
+	while (scan + 1 < tokens_.size() &&
+		tokens_[scan].kind == static_cast<std::uint16_t>(OP_COLON2) &&
+		tokens_[scan + 1].kind == kIdentifierToken)
+		scan += 2;
+	if (scan >= tokens_.size()) return false;
+	const std::uint16_t kind = tokens_[scan].kind;
+	return kind == static_cast<std::uint16_t>(OP_LBRACE) ||
+		kind == static_cast<std::uint16_t>(OP_COLON) ||
+		kind == static_cast<std::uint16_t>(OP_SEMICOLON);
 }
 
 NodeId Parser::ParseStaticAssert()
@@ -2668,9 +2718,12 @@ NodeId Parser::ParseDeclaration(bool in_class)
 		}
 		return declaration;
 	}
-	if (At(KW_CLASS) || At(KW_STRUCT) || At(KW_UNION)) return ParseClass();
+	if ((At(KW_CLASS) || At(KW_STRUCT) || At(KW_UNION)) &&
+		StartsStandaloneClassDeclaration()) return ParseClass();
 	if (At(KW_ENUM)) return in_class ?
-		ParseSimpleOrFunction(in_class) : ParseEnum();
+		ParseSimpleOrFunction(in_class) :
+		(StartsStandaloneEnumDeclaration() ? ParseEnum() :
+		 ParseSimpleOrFunction(in_class));
 	if (At(KW_STATIC_ASSERT)) return ParseStaticAssert();
 	const Mark special_mark = Checkpoint();
 	const NodeId special = ParseSpecialMember(true);
@@ -2743,6 +2796,56 @@ void WriteSyntaxTranslationUnit(const std::string& path,
 		stats->render_nanoseconds = static_cast<std::uint64_t>(
 			std::chrono::duration_cast<std::chrono::nanoseconds>(
 				finished - render_started).count());
+		stats->elapsed_nanoseconds = static_cast<std::uint64_t>(
+			std::chrono::duration_cast<std::chrono::nanoseconds>(
+				finished - started).count());
+	}
+}
+
+void ConsumeSyntaxTranslationUnit(const std::string& path,
+	const std::string& source, const PreprocessingOptions& options,
+	pa10_syntax_detail::SyntaxTreeConsumer& consumer, SyntaxStats* stats)
+{
+	std::chrono::steady_clock::time_point started;
+	if (stats)
+	{
+		*stats = SyntaxStats();
+		started = std::chrono::steady_clock::now();
+	}
+	StringTable strings;
+	SyntaxTokenSink sink(strings);
+	PreprocessFile(path, source, sink, options,
+		stats ? &stats->preprocessing : 0);
+	SyntaxArena arena(strings);
+	Parser parser(sink.Tokens(), strings, arena, stats);
+	const std::chrono::steady_clock::time_point parse_started =
+		std::chrono::steady_clock::now();
+	const NodeId root = parser.ParseTranslationUnit();
+	const std::chrono::steady_clock::time_point consume_started =
+		std::chrono::steady_clock::now();
+	consumer.Consume(arena, root);
+	if (stats)
+	{
+		const std::chrono::steady_clock::time_point finished =
+			std::chrono::steady_clock::now();
+		stats->tokens = sink.Tokens().size();
+		stats->interned_spellings = strings.Size();
+		stats->spelling_bytes = strings.SpellingBytes();
+		stats->syntax_nodes = arena.Nodes();
+		stats->syntax_edges = arena.Edges();
+		stats->token_storage_bytes = sink.StorageBytes();
+		stats->syntax_storage_bytes = arena.StorageBytes() +
+			strings.StorageBytes();
+		stats->parser_storage_bytes = parser.StorageBytes();
+		stats->peak_stage_storage_bytes = source.size() +
+			stats->token_storage_bytes + stats->syntax_storage_bytes +
+			stats->parser_storage_bytes;
+		stats->parse_nanoseconds = static_cast<std::uint64_t>(
+			std::chrono::duration_cast<std::chrono::nanoseconds>(
+				consume_started - parse_started).count());
+		stats->render_nanoseconds = static_cast<std::uint64_t>(
+			std::chrono::duration_cast<std::chrono::nanoseconds>(
+				finished - consume_started).count());
 		stats->elapsed_nanoseconds = static_cast<std::uint64_t>(
 			std::chrono::duration_cast<std::chrono::nanoseconds>(
 				finished - started).count());

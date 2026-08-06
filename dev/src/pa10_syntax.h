@@ -10,6 +10,11 @@
 namespace cppgm
 {
 
+namespace pa10_syntax_detail
+{
+class SyntaxTreeConsumer;
+}
+
 struct SyntaxStats
 {
 	PreprocessingStats preprocessing;
@@ -46,5 +51,13 @@ struct SyntaxStats
 void WriteSyntaxTranslationUnit(const std::string& path,
 	const std::string& source, const PreprocessingOptions& options,
 	std::ostream& output, SyntaxStats* stats = 0);
+
+// Parse one translation unit through the shared PA10 syntax boundary and give
+// a phase-local, read-only arena view to a semantic consumer. The arena and
+// retained tokens are released when this call returns.
+void ConsumeSyntaxTranslationUnit(const std::string& path,
+	const std::string& source, const PreprocessingOptions& options,
+	pa10_syntax_detail::SyntaxTreeConsumer& consumer,
+	SyntaxStats* stats = 0);
 
 }
