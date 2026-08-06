@@ -162,6 +162,7 @@ private:
 	bool IsModifiableLvalue(const ExpressionInfo& value) const;
 	FundamentalKind FundamentalOf(TypeId type) const;
 	int IntegralRank(TypeId type) const;
+	TypeId IntegralPromotionType(TypeId type) const;
 	std::int64_t ParseInteger(const std::string& spelling) const;
 	std::int64_t ApplyConstantBinary(const std::string& operation,
 		std::int64_t left, std::int64_t right) const;

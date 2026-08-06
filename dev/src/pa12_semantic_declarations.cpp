@@ -1,6 +1,7 @@
 #include "pa12_semantic_detail.h"
 
 #include <algorithm>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -171,7 +172,7 @@ TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope,
 	const ScopeId owner = ResolveOwner(scope, path);
 	if (owner == kNoScope) throw std::runtime_error("enum owner not found");
 	const NodeId underlying_node = FindChild(node, "type-id");
-	const TypeId underlying = underlying_node == kNoNode ?
+	TypeId underlying = underlying_node == kNoNode ?
 		program_->types.Fundamental(FUND_INT) :
 		BuildTypeId(underlying_node, owner);
 	const LookupResult old = path.global || path.Size() > 1 ?
@@ -216,6 +217,9 @@ TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope,
 		}
 	}
 	std::int64_t next = 0;
+	std::int64_t minimum = 0;
+	std::int64_t maximum = 0;
+	std::vector<BindingId> enumerators;
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
 	{
@@ -233,11 +237,28 @@ TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope,
 		}
 		const NameId enumerator_name =
 			program_->names.Intern(arena_->Payload(enumerator));
-		program_->AddBinding(value_scope, BIND_ENUMERATOR, enumerator_name,
-			type, true, value);
+		const BindingId binding = program_->AddBinding(value_scope,
+			BIND_ENUMERATOR, enumerator_name, underlying, true, value);
+		enumerators.push_back(binding);
+		if (value < minimum) minimum = value;
+		if (value > maximum) maximum = value;
 		if (value == INT64_MAX) throw std::runtime_error("enumerator overflow");
 		next = value + 1;
 	}
+	if (underlying_node == kNoNode && !scoped)
+	{
+		if (minimum >= std::numeric_limits<std::int32_t>::min() &&
+			maximum <= std::numeric_limits<std::int32_t>::max())
+			underlying = program_->types.Fundamental(FUND_INT);
+		else if (minimum >= 0 &&
+			static_cast<std::uint64_t>(maximum) <=
+				std::numeric_limits<std::uint32_t>::max())
+			underlying = program_->types.Fundamental(FUND_UNSIGNED_INT);
+		else underlying = program_->types.Fundamental(FUND_LONG_LONG_INT);
+		program_->entities[entity].underlying = underlying;
+	}
+	for (std::size_t i = 0; i < enumerators.size(); ++i)
+		program_->bindings[enumerators[i]].type = type;
 	return type;
 }
 
@@ -413,6 +434,16 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 		}
 		result.push_back(ParameterInfo(name, declared,
 			AdjustParameterType(declared)));
+		const NodeId default_node = FindChild(child, "default-argument");
+		if (default_node != kNoNode)
+		{
+			NodeId default_expression = FirstSemanticChild(default_node);
+			if (default_expression != kNoNode &&
+				arena_->IsTag(default_expression, "initializer"))
+				default_expression = FirstSemanticChild(default_expression);
+			result.back().default_argument = default_expression;
+			result.back().default_scope = scope;
+		}
 	}
 	if (result.size() == 1 && result[0].name == 0 &&
 		IsVoid(result[0].declared_type)) result.clear();
@@ -579,6 +610,18 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 	}
 	else if (definition)
 		GetMutableFunction(canonical).defined = true;
+	if (previous != kNoBinding)
+	{
+		FunctionInfo& merged = GetMutableFunction(canonical);
+		if (merged.parameters.size() != parameters.size())
+			throw std::logic_error("PA12 function parameter fact mismatch");
+		for (std::size_t i = 0; i < parameters.size(); ++i)
+			if (parameters[i].default_argument != kNoNode)
+			{
+				merged.parameters[i].default_argument = parameters[i].default_argument;
+				merged.parameters[i].default_scope = parameters[i].default_scope;
+			}
+	}
 	BindingRecord& canonical_record = program_->bindings[canonical];
 	if (previous != kNoBinding &&
 		canonical_record.language_linkage == LANGUAGE_LINKAGE_C)

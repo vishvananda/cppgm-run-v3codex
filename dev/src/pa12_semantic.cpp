@@ -287,7 +287,11 @@ int SemanticAnalyzer::IntegralRank(TypeId type) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
 	const TypeRecord& record = program_->types.Get(type);
-	if (record.kind == TYPE_NAMED) return 3;
+	if (record.kind == TYPE_NAMED)
+	{
+		const EntityRecord& entity = program_->entities[record.entity];
+		return entity.underlying == kNoType ? 3 : IntegralRank(entity.underlying);
+	}
 	switch (record.fundamental)
 	{
 	case FUND_BOOL: return 0;
@@ -300,6 +304,21 @@ int SemanticAnalyzer::IntegralRank(TypeId type) const
 	case FUND_LONG_LONG_INT: case FUND_UNSIGNED_LONG_LONG_INT: return 5;
 	default: return -1;
 	}
+}
+
+TypeId SemanticAnalyzer::IntegralPromotionType(TypeId type) const
+{
+	type = program_->types.RemoveTopCv(EffectiveType(type));
+	const TypeRecord& record = program_->types.Get(type);
+	if (record.kind == TYPE_NAMED)
+	{
+		const EntityRecord& entity = program_->entities[record.entity];
+		if (entity.flavor == NAMED_ENUM_CLASS) return type;
+		type = entity.underlying;
+	}
+	if (IntegralRank(type) < 3)
+		return program_->types.Fundamental(FUND_INT);
+	return type;
 }
 
 TypeId SemanticAnalyzer::CommonArithmeticType(TypeId left, TypeId right) const
@@ -316,17 +335,12 @@ TypeId SemanticAnalyzer::CommonArithmeticType(TypeId left, TypeId right) const
 			return program_->types.Fundamental(FUND_DOUBLE);
 		return program_->types.Fundamental(FUND_FLOAT);
 	}
+	left = IntegralPromotionType(left);
+	right = IntegralPromotionType(right);
 	const int left_rank = IntegralRank(left);
 	const int right_rank = IntegralRank(right);
-	if (left_rank < 3 && right_rank < 3)
-		return program_->types.Fundamental(FUND_INT);
 	if (left_rank > right_rank) return left;
 	if (right_rank > left_rank) return right;
-	if (program_->types.Get(left).kind == TYPE_NAMED &&
-		program_->types.Get(right).kind == TYPE_NAMED)
-		return program_->types.Fundamental(FUND_INT);
-	if (program_->types.Get(left).kind == TYPE_NAMED) return right;
-	if (program_->types.Get(right).kind == TYPE_NAMED) return left;
 	const FundamentalKind lk = FundamentalOf(left);
 	const FundamentalKind rk = FundamentalOf(right);
 	const bool left_unsigned = lk == FUND_UNSIGNED_INT ||
@@ -488,8 +502,9 @@ ConversionRank SemanticAnalyzer::Conversion(TypeId source,
 		return CONVERSION_BOOLEAN;
 	if (IsArithmetic(from) && IsArithmetic(to))
 	{
-		if (IsIntegral(from) && IsIntegral(to) && IntegralRank(from) < 3 &&
-			IntegralRank(to) == 3) return CONVERSION_PROMOTION;
+		if (IsIntegral(from) && IsIntegral(to) &&
+			IntegralPromotionType(from) == to)
+			return CONVERSION_PROMOTION;
 		return CONVERSION_STANDARD;
 	}
 	return CONVERSION_INVALID;
@@ -511,7 +526,9 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 		return value;
 	}
 	if (Conversion(value, target) == CONVERSION_INVALID)
-		throw std::runtime_error("invalid standard conversion");
+		throw std::runtime_error("invalid standard conversion from " +
+			program_->RenderType(value.type) + " to " +
+			program_->RenderType(target));
 	const TypeRecord& target_record = program_->types.Get(target);
 	const TypeId nonreference = target_record.kind == TYPE_LVALUE_REFERENCE ||
 		target_record.kind == TYPE_RVALUE_REFERENCE ? target_record.child : target;
@@ -710,7 +727,18 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 			std::size_t count = 1;
 			for (std::size_t i = 1; i + 1 < spelling.size(); ++i)
 			{
-				if (spelling[i] == '\\' && i + 2 < spelling.size()) ++i;
+				if (spelling[i] == '\\' && i + 2 < spelling.size())
+				{
+					++i;
+					if (spelling[i] == 'x')
+						while (i + 2 < spelling.size() &&
+							((spelling[i + 1] >= '0' && spelling[i + 1] <= '9') ||
+							 (spelling[i + 1] >= 'a' && spelling[i + 1] <= 'f') ||
+							 (spelling[i + 1] >= 'A' && spelling[i + 1] <= 'F'))) ++i;
+					else if (spelling[i] >= '0' && spelling[i] <= '7')
+						for (int digits = 1; digits < 3 && i + 2 < spelling.size() &&
+							spelling[i + 1] >= '0' && spelling[i + 1] <= '7'; ++digits) ++i;
+				}
 				++count;
 			}
 			const TypeId element = program_->types.Qualify(
@@ -923,9 +951,14 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 		++overload_candidates_;
 		const FunctionInfo& function = GetFunction(candidates[c]);
 		const TypeRecord& function_type = program_->types.Get(function.type);
-		if (argument_syntax.size() < function_type.parameter_count ||
+		std::size_t required_parameters = function_type.parameter_count;
+		while (required_parameters != 0 &&
+			required_parameters <= function.parameters.size() &&
+			function.parameters[required_parameters - 1].default_argument != kNoNode)
+			--required_parameters;
+		if (argument_syntax.size() < required_parameters ||
 			(!function_type.variadic &&
-			 argument_syntax.size() != function_type.parameter_count))
+			 argument_syntax.size() > function_type.parameter_count))
 		{
 			viable[c] = false;
 			continue;
@@ -1099,12 +1132,18 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 				return ApplyTarget(zero, target);
 			}
 			ExpressionInfo operand = AnalyzeExpression(argument_syntax[0], scope);
+			const TypeRecord& cast_record = program_->types.Get(cast_type);
+			const ValueCategory cast_category =
+				cast_record.kind == TYPE_LVALUE_REFERENCE ? VALUE_LVALUE :
+				cast_record.kind == TYPE_RVALUE_REFERENCE ? VALUE_XVALUE :
+				VALUE_PRVALUE;
 			const std::uint32_t cast = MakeDump(DUMP_CAST_EXPRESSION,
-				cast_type, VALUE_PRVALUE);
+				cast_type, cast_category);
 			dump_.Add(cast, operand.node);
 			ExpressionInfo result;
 			result.node = cast;
 			result.type = cast_type;
+			result.category = cast_category;
 			result.constant = operand.constant;
 			result.value = operand.value;
 			++expression_count_;
@@ -1153,6 +1192,17 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 							parameters[a]);
 					else argument = ApplyTarget(argument, parameters[a]);
 				}
+				dump_.Add(call, argument.node);
+			}
+			for (std::size_t a = arguments.size();
+				a < function_type.parameter_count; ++a)
+			{
+				if (a >= function.parameters.size() ||
+					function.parameters[a].default_argument == kNoNode)
+					throw std::runtime_error("missing default argument fact");
+				const ExpressionInfo argument = AnalyzeExpression(
+					function.parameters[a].default_argument,
+					function.parameters[a].default_scope, parameters[a]);
 				dump_.Add(call, argument.node);
 			}
 			ExpressionInfo result;
@@ -1212,7 +1262,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 	{
 		TypeId desired = program_->types.RemoveTopCv(target);
 		const TypeRecord& target_record = program_->types.Get(desired);
-		if (target_record.kind == TYPE_POINTER ||
+		if ((target_record.kind == TYPE_POINTER &&
+			 program_->types.IsFunction(target_record.child)) ||
 			target_record.kind == TYPE_MEMBER_POINTER)
 			operand_target = target_record.child;
 	}
@@ -1253,7 +1304,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 	}
 	else if (operation == "!")
 	{
-		if (!IsArithmetic(result_type) && !IsPointer(result_type) &&
+		if (!IsArithmetic(result_type) && !IsPointer(Decay(result_type)) &&
 			!IsNullptr(result_type))
 			throw std::runtime_error("invalid logical-not operand");
 		result_type = program_->types.Fundamental(FUND_BOOL);
@@ -1261,10 +1312,15 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 	}
 	else if (operation == "+" || operation == "-" || operation == "~")
 	{
-		if ((operation == "~" && !IsIntegral(result_type)) ||
+		if (operation == "+" && IsPointer(Decay(result_type)))
+		{
+			result_type = Decay(result_type);
+			constant = false;
+		}
+		else if ((operation == "~" && !IsIntegral(result_type)) ||
 			(operation != "~" && !IsArithmetic(result_type)))
 			throw std::runtime_error("invalid unary arithmetic operand");
-		if (IsIntegral(result_type) &&
+		else if (IsIntegral(result_type) &&
 			(IntegralRank(result_type) < 3 ||
 			 program_->types.Get(program_->types.RemoveTopCv(result_type)).kind ==
 				TYPE_NAMED))
@@ -1298,11 +1354,12 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBinary(NodeId node, ScopeId scope)
 	const std::string operation = PayloadSource(node);
 	TypeId result_type = kNoType;
 	TypeId operand_type = kNoType;
+	ValueCategory result_category = VALUE_PRVALUE;
 	if (operation == "&&" || operation == "||")
 	{
-		if ((!IsArithmetic(left.type) && !IsPointer(left.type) &&
+		if ((!IsArithmetic(left.type) && !IsPointer(Decay(left.type)) &&
 			 !IsNullptr(left.type)) ||
-			(!IsArithmetic(right.type) && !IsPointer(right.type) &&
+			(!IsArithmetic(right.type) && !IsPointer(Decay(right.type)) &&
 			 !IsNullptr(right.type)))
 			throw std::runtime_error("invalid logical operands");
 		result_type = program_->types.Fundamental(FUND_BOOL);
@@ -1311,18 +1368,32 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBinary(NodeId node, ScopeId scope)
 		operation == ">" || operation == "<=" || operation == ">=")
 	{
 		const bool equality = operation == "==" || operation == "!=";
-		if (IsArithmetic(left.type) && IsArithmetic(right.type))
+		const TypeId left_unqualified = program_->types.RemoveTopCv(
+			EffectiveType(left.type));
+		const TypeId right_unqualified = program_->types.RemoveTopCv(
+			EffectiveType(right.type));
+		const EntityId comparison_enum = left_unqualified == right_unqualified ?
+			EntityOf(left_unqualified) : kNoEntity;
+		if (comparison_enum != kNoEntity &&
+			(program_->entities[comparison_enum].flavor == NAMED_ENUM ||
+			 program_->entities[comparison_enum].flavor == NAMED_ENUM_CLASS))
+			operand_type = left_unqualified;
+		else if (IsArithmetic(left.type) && IsArithmetic(right.type))
 			operand_type = CommonArithmeticType(left.type, right.type);
 		else if (IsNullptr(left.type) && IsNullptr(right.type) && equality) {}
-		else if (IsPointer(left.type) &&
-			(IsPointer(right.type) || (right.integer_literal_zero && equality) ||
+		else if (IsPointer(Decay(left.type)) &&
+			(IsPointer(Decay(right.type)) || (right.integer_literal_zero && equality) ||
 			 IsNullptr(right.type))) {}
-		else if (IsPointer(right.type) &&
+		else if (IsPointer(Decay(right.type)) &&
 			((left.integer_literal_zero && equality) || IsNullptr(left.type))) {}
 		else throw std::runtime_error("invalid comparison operands");
 		result_type = program_->types.Fundamental(FUND_BOOL);
 	}
-	else if (operation == ",") result_type = EffectiveType(right.type);
+	else if (operation == ",")
+	{
+		result_type = EffectiveType(right.type);
+		result_category = right.category;
+	}
 	else if (operation == "+" || operation == "-")
 	{
 		if (IsPointer(Decay(left.type)) && IsIntegral(right.type))
@@ -1349,13 +1420,15 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBinary(NodeId node, ScopeId scope)
 		result_type = operand_type = CommonArithmeticType(left.type, right.type);
 	}
 	const std::uint32_t expression = MakeDump(DUMP_BINARY_EXPRESSION,
-		result_type, VALUE_PRVALUE, program_->names.Intern(arena_->Payload(node)));
+		result_type, result_category,
+		program_->names.Intern(arena_->Payload(node)));
 	dump_.nodes[expression].operand_type = operand_type;
 	dump_.Add(expression, left.node);
 	dump_.Add(expression, right.node);
 	ExpressionInfo result;
 	result.node = expression;
 	result.type = result_type;
+	result.category = result_category;
 	result.constant = left.constant && right.constant;
 	if (result.constant)
 		result.value = ApplyConstantBinary(operation, left.value, right.value);
@@ -1370,14 +1443,14 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 		arena_->NextEdge(first);
 	if (second == kNoEdge) throw std::runtime_error("invalid assignment");
 	ExpressionInfo left = AnalyzeExpression(arena_->EdgeChild(first), scope);
-	ExpressionInfo right = AnalyzeExpression(arena_->EdgeChild(second), scope);
+	const std::string operation = PayloadSource(node);
+	ExpressionInfo right = AnalyzeExpression(arena_->EdgeChild(second), scope,
+		operation == "=" ? EffectiveType(left.type) : kNoType);
 	if (!IsModifiableLvalue(left))
 		throw std::runtime_error("assignment requires modifiable lvalue");
-	const std::string operation = PayloadSource(node);
 	const bool pointer_add = IsPointer(left.type) &&
 		(operation == "+=" || operation == "-=") && IsIntegral(right.type);
-	if (operation == "=") right = ApplyTarget(right, EffectiveType(left.type));
-	else
+	if (operation != "=")
 	{
 		const bool additive = operation == "+=" || operation == "-=";
 		const bool arithmetic_operation = additive || operation == "*=" ||
@@ -1438,12 +1511,20 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 	const ValueCategory category = target_record.kind == TYPE_LVALUE_REFERENCE ?
 		VALUE_LVALUE : target_record.kind == TYPE_RVALUE_REFERENCE ?
 		VALUE_XVALUE : VALUE_PRVALUE;
+	const std::string cast_kind = arena_->Payload(node);
 	if (target_record.kind == TYPE_LVALUE_REFERENCE ||
 		target_record.kind == TYPE_RVALUE_REFERENCE)
 	{
 		const bool explicit_rvalue = target_record.kind == TYPE_RVALUE_REFERENCE &&
 			SimilarUnqualified(EffectiveType(operand.type), target_record.child);
-		if (!explicit_rvalue && Conversion(operand, target) == CONVERSION_INVALID)
+		const bool explicit_cv_lvalue =
+			target_record.kind == TYPE_LVALUE_REFERENCE &&
+			operand.category == VALUE_LVALUE &&
+			SimilarUnqualified(EffectiveType(operand.type), target_record.child) &&
+			(cast_kind.find("CONST") != std::string::npos ||
+			 cast_kind.compare(0, 10, "OP_LPAREN:") == 0);
+		if (!explicit_rvalue && !explicit_cv_lvalue &&
+			Conversion(operand, target) == CONVERSION_INVALID)
 			throw std::runtime_error("invalid reference cast");
 		operand.type = target;
 		operand.category = category;
@@ -1465,7 +1546,6 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 	const bool target_enum = target_entity != kNoEntity &&
 		(program_->entities[target_entity].flavor == NAMED_ENUM ||
 		 program_->entities[target_entity].flavor == NAMED_ENUM_CLASS);
-	const std::string cast_kind = arena_->Payload(node);
 	const bool permits_reinterpretation =
 		cast_kind.compare(0, 10, "OP_LPAREN:") == 0 ||
 		cast_kind.find("REINTER") != std::string::npos;
@@ -1503,7 +1583,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeConditional(NodeId node, ScopeId scope)
 		edge = arena_->NextEdge(edge)) children.push_back(arena_->EdgeChild(edge));
 	if (children.size() != 3) throw std::runtime_error("invalid conditional");
 	ExpressionInfo condition = AnalyzeExpression(children[0], scope);
-	if (!IsArithmetic(condition.type) && !IsPointer(condition.type) &&
+	if (!IsArithmetic(condition.type) && !IsPointer(Decay(condition.type)) &&
 		!IsNullptr(condition.type))
 		throw std::runtime_error("invalid conditional condition");
 	ExpressionInfo yes = AnalyzeExpression(children[1], scope);
@@ -1517,11 +1597,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeConditional(NodeId node, ScopeId scope)
 	}
 	else if (IsArithmetic(yes.type) && IsArithmetic(no.type))
 		type = CommonArithmeticType(yes.type, no.type);
-	else if (IsPointer(yes.type) &&
+	else if (IsPointer(Decay(yes.type)) &&
 		(IsNullptr(no.type) || no.integer_literal_zero)) type = Decay(yes.type);
-	else if (IsPointer(no.type) &&
+	else if (IsPointer(Decay(no.type)) &&
 		(IsNullptr(yes.type) || yes.integer_literal_zero)) type = Decay(no.type);
-	else if (IsPointer(yes.type) && IsPointer(no.type))
+	else if (IsPointer(Decay(yes.type)) && IsPointer(Decay(no.type)))
 	{
 		if (Conversion(yes, Decay(no.type)) != CONVERSION_INVALID)
 			type = Decay(no.type);
@@ -1601,6 +1681,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
 		values.push_back(AnalyzeExpression(arena_->EdgeChild(edge), scope, element));
+	if (array.kind == TYPE_ARRAY && array.bound != 0 && values.size() > array.bound)
+		throw std::runtime_error("excess array initializer elements");
 	if (array.kind == TYPE_ARRAY && array.bound == 0)
 		type = program_->types.Array(array.child, values.size());
 	const std::uint32_t list = MakeDump(DUMP_BRACED_INIT_LIST, type,
@@ -1978,6 +2060,11 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			const BindingId function = DeclareFunction(scope, parsed.name,
 				parsed.type, parsed.parameters, false, false, spec.storage_class,
 				current_language_linkage_, IsNonthrowing(declarator, scope));
+			const NodeId function_initializer = FindChild(item, "initializer");
+			const NodeId special = function_initializer == kNoNode ? kNoNode :
+				FindChild(function_initializer, "special-initializer");
+			if (special != kNoNode && arena_->Payload(special) == "delete")
+				continue;
 			const std::uint32_t declaration = MakeDump(DUMP_FUNCTION_DECLARATION,
 				parsed.type, VALUE_NONE, GetFunction(function).display_name, function);
 			dump_.Add(owner, declaration);
@@ -2024,11 +2111,12 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 				parsed.type = initializer.type;
 				program_->bindings[binding].type = parsed.type;
 			}
-			if (spec.is_constexpr && initializer.constant)
+			if (initializer.constant && (spec.is_constexpr ||
+				(IsConst(parsed.type) && IsIntegral(parsed.type, true))))
 			{
 				program_->bindings[binding].constant = true;
 				program_->bindings[binding].value = initializer.value;
-				if (!IsPointer(parsed.type))
+				if (spec.is_constexpr && !IsPointer(parsed.type))
 					dump_.nodes[initializer.node].type = parsed.type;
 			}
 		}
@@ -2249,10 +2337,10 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 		}
 		else
 		{
-			if (IsVoid(current_return_type_))
-				throw std::runtime_error("void function returns a value");
 			ExpressionInfo value = AnalyzeExpression(expression, scope,
-				current_return_type_);
+				IsVoid(current_return_type_) ? kNoType : current_return_type_);
+			if (IsVoid(current_return_type_) && !IsVoid(value.type))
+				throw std::runtime_error("void function returns a value");
 			dump_.Add(statement, value.node);
 		}
 		return;
@@ -2404,6 +2492,22 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 		}
 		return;
 	}
+	if (arena_->IsTag(node, "labeled-statement"))
+	{
+		const std::uint32_t statement = MakeDump(DUMP_LABELED_STATEMENT,
+			kNoType, VALUE_NONE, program_->names.Intern(arena_->Payload(node)));
+		dump_.Add(output_parent, statement);
+		const NodeId child = FirstSemanticChild(node);
+		if (child == kNoNode) throw std::runtime_error("label without statement");
+		AnalyzeStatement(child, scope, statement);
+		return;
+	}
+	if (arena_->IsTag(node, "goto-statement"))
+	{
+		dump_.Add(output_parent, MakeDump(DUMP_GOTO_STATEMENT,
+			kNoType, VALUE_NONE, program_->names.Intern(arena_->Payload(node))));
+		return;
+	}
 	if (IsDeclaration(node))
 	{
 		AnalyzeDeclaration(node, scope, output_parent, true);
@@ -2456,6 +2560,10 @@ void SemanticAnalyzer::RenderLine(const DumpNode& node, std::size_t depth)
 	case DUMP_ELSE: output_ << "else"; break;
 	case DUMP_CASE_STATEMENT: output_ << "case-statement"; break;
 	case DUMP_DEFAULT_STATEMENT: output_ << "default-statement"; break;
+	case DUMP_LABELED_STATEMENT:
+		output_ << "labeled-statement " << program_->names.Get(node.text); break;
+	case DUMP_GOTO_STATEMENT:
+		output_ << "goto-statement " << program_->names.Get(node.text); break;
 	case DUMP_CALL_EXPRESSION:
 		output_ << "call-expression " << category << ' '
 			<< program_->RenderType(node.type); break;

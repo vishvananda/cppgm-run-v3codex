@@ -2,43 +2,38 @@
 
 ## Stage Design and Spec Alignment
 
-PA12 owns canonical names/types/bindings plus the constants, common operand types,
-value categories, storage, language linkage, exception state, and owner/name paths
-needed by PA15. Its synchronous graph callback borrows one semantic arena only while
-building a PA15-owned LowIR program; no semantic pointer escapes the callback. PA15
-uses strong IDs for LowIR cross-links, typed operations, and flat canonical tables for
-cross-source paths, types, signatures, and emission units. Internal identity includes
-the source owner, while external-C identity is name-based and checked against the
-canonical source type.
+PA12 owns canonical names, types, bindings, constants, conversions, value categories,
+and control facts. Its synchronous graph callback lends one semantic arena while PA15
+builds a separately owned LowIR model; no semantic pointer escapes. PA15 lowers each
+expression directly through typed value/address results, uses strong IDs for LowIR
+cross-links, and keeps flat canonical indexes for cross-source identity. String and
+aggregate storage, static addresses, deferred initialization actions, function
+boundaries, blocks, labels, and generated slots each have one owner.
 
 This applies `spec.md` §§2 and 6: lowering consumes recorded facts by identity,
 coalesces each emission unit once, and neither parses a qualified/mangled spelling nor
 serializes and reparses LowIR. PA14's typed encoder supplies object spellings without
 its fact-text adapter. Small child collections stay inline, deep type modifiers are
-flat and iterative, dominant indexes use geometric open-addressed storage, and the
-explicit `--emit-lowir` adapter streams output directly, aligning with §§8-9.
+flat and iterative, dominant indexes use geometric storage, and output streams
+directly. The LowIR model is isolated from graph traversal in
+`pa15_lowir_model.h`, aligning with §§8-9 and the file-size audit.
 
 ## Current Failure Map
 
-The required report is 27/108 and both compile-fail oracles pass. Of 81 remaining
-success-oracle failures, 19 stop in PA12: comparison/conversion rules (8), overload
-selection (4), labels (2), and five enum/reference/conditional/braced-return cases.
-The other 62 reach PA15: unsupported statements (12), scalar conversions (11),
-aggregate globals (11), expression forms (10), short-circuit/comma control (6),
-indirect calls (3), increment/address unary forms (3), and six missing
-address/constant/operand facts. This inventory supersedes the pre-audit failure map.
+No PA15 failures remain: the required report passes 108/108, including both
+compile-fail oracles. The prior-stage report passes 1,037/1,037 and the file audit
+passes. The former groups—semantic conversions/overloads/enums/labels and lowering
+for storage, arrays, calls, globals, expressions, and control flow—are closed.
 
 ## Active Checkpoint
 
-**Addressable storage and lvalue boundary.** Add one typed address result that covers
-references, pointers, arrays, subscripts, decay, conditional/comma lvalues, and
-address-valued global constants. PA12 must record any missing pointer-comparison,
-compound-assignment, decay, and constant-address facts; PA15 must consume selected
-bindings and value categories once and emit `addr`/`load`/`store`/`index` without
-lookup or reevaluation. Per-binding/per-expression access remains average `O(1)` and
-array initialization remains `O(elements)`. Validate reference aliasing,
-array-init/subscript, pointer arithmetic, global addresses, and evaluate-LHS-once
-clusters plus all checkpoint gates.
+**Full-stage closure (complete).** The stable boundary is semantic expression ID ->
+typed value/address -> ordered LowIR action. PA12 records promotion, conversion,
+default-argument, label, extent, and constant facts; PA15 owns storage selection,
+addressing, lowering, deferred global actions, block formation, and rendering. Lookup
+is average `O(1)`, graph/block traversal is `O(nodes + edges)`, and array/string
+work is `O(elements)`. Validation covers all PA15 clusters, PA1-PA14 preservation,
+the file audit, and the representative linear probes below.
 
 ## Performance Evidence
 
@@ -55,4 +50,5 @@ qualified-name parsing, global retry, or complete output buffer remains.
 
 | Checkpoint | Result | Validation |
 |---|---|---|
-| Semantic handoff and scalar procedural spine | 0 -> 27/108 PA15; audit pass | scalar truth/conversion, ABI metadata, global declaration, cross-source identity/dedup, and 32k deep-type probes; ASan+UBSan current success set; through-PA14 1,037/1,037; clean file audit; linear 5k/10k counters |
+| Semantic handoff and scalar procedural spine | 0 -> 27/108 PA15 | scalar lowering, ABI metadata, identity/dedup, ASan+UBSan success set, 32k deep types, and linear 5k/10k counters |
+| Procedural value/address, control, calls, and globals | 27 -> 108/108 PA15 | references/arrays/pointers, enums/casts/defaults, calls, loops/switch/goto, strings/aggregate globals/deferred init; through-PA14 1,037/1,037; file audit pass |

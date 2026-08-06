@@ -52,6 +52,8 @@ enum DumpKind
 	DUMP_ELSE,
 	DUMP_CASE_STATEMENT,
 	DUMP_DEFAULT_STATEMENT,
+	DUMP_LABELED_STATEMENT,
+	DUMP_GOTO_STATEMENT,
 	DUMP_CALL_EXPRESSION,
 	DUMP_CALLEE,
 	DUMP_ID_EXPRESSION,
@@ -148,10 +150,13 @@ struct ParameterInfo
 	NameId name;
 	TypeId declared_type;
 	TypeId function_type;
+	NodeId default_argument;
+	ScopeId default_scope;
 	ParameterInfo(NameId name_value, TypeId declared_value,
 		TypeId function_value)
 		: name(name_value), declared_type(declared_value),
-		  function_type(function_value) {}
+		  function_type(function_value), default_argument(kNoNode),
+		  default_scope(kNoScope) {}
 };
 
 struct DeclaratorInfo
