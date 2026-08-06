@@ -68,6 +68,8 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 		program_->SetTypeName(owner, name, program_->entities[entity].type);
 	}
 	const TypeId type = program_->entities[entity].type;
+	if (entity_data_members_.size() <= entity)
+		entity_data_members_.resize(static_cast<std::size_t>(entity) + 1);
 	if (old.type == kNoType && arena_->Payload(node).size() != 0)
 		program_->AddBinding(owner, BIND_TYPE, name, type, false, 0, flavor);
 	if ((arena_->Flags(node) & SYNTAX_FLAG_DEFINITION) != 0)
@@ -77,7 +79,8 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 		if (member_scope == kNoScope)
 		{
 			member_scope = NewScope(owner, SCOPE_CLASS, name,
-				ScopePrefix(owner) + program_->names.Get(name) + "::");
+				program_->names.Intern(ScopePrefix(owner) +
+					program_->names.Get(name) + "::"));
 			program_->SetEntityScope(entity, member_scope);
 		}
 		// Class member call semantics are outside this stage. The stable class
@@ -115,10 +118,11 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type, scope);
 		const BindingId function = DeclareFunction(scope, parsed.name,
 			parsed.type, parsed.parameters, true);
-		member_function_owners_[function] = owner_type;
-		functions_[function].definition_body =
+		FunctionInfo& info = GetMutableFunction(function);
+		info.member_owner = owner_type;
+		info.definition_body =
 			FindChild(node, "compound-statement");
-		functions_[function].deferred = true;
+		info.deferred = true;
 		return;
 	}
 	const NodeId list = FindChild(node, "init-declarator-list");
@@ -134,9 +138,17 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		{
 			const BindingId function = DeclareFunction(scope, parsed.name,
 				parsed.type, parsed.parameters, false);
-			member_function_owners_[function] = owner_type;
+			GetMutableFunction(function).member_owner = owner_type;
 		}
-		else program_->AddBinding(scope, BIND_VARIABLE, parsed.name, parsed.type);
+		else
+		{
+			const BindingId member = program_->AddBinding(scope, BIND_VARIABLE,
+				parsed.name, parsed.type);
+			const EntityId entity = EntityOf(owner_type);
+			if (entity_data_members_.size() <= entity)
+				entity_data_members_.resize(static_cast<std::size_t>(entity) + 1);
+			entity_data_members_[entity].push_back(member);
+		}
 	}
 }
 
@@ -197,7 +209,8 @@ TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope,
 		if (value_scope == kNoScope)
 		{
 			value_scope = NewScope(owner, SCOPE_ENUM, name,
-				ScopePrefix(owner) + program_->names.Get(name) + "::");
+				program_->names.Intern(ScopePrefix(owner) +
+					program_->names.Get(name) + "::"));
 			program_->SetEntityScope(entity, value_scope);
 		}
 	}
@@ -494,41 +507,46 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 	return result;
 }
 
-bool SemanticAnalyzer::SameParameterTypes(TypeId left, TypeId right) const
-{
-	const TypeRecord& a = program_->types.Get(left);
-	const TypeRecord& b = program_->types.Get(right);
-	if (a.kind != TYPE_FUNCTION || b.kind != TYPE_FUNCTION ||
-		a.parameter_count != b.parameter_count || a.variadic != b.variadic)
-		return false;
-	const TypeId* ap = program_->types.Parameters(left);
-	const TypeId* bp = program_->types.Parameters(right);
-	for (std::size_t i = 0; i < a.parameter_count; ++i)
-		if (ap[i] != bp[i]) return false;
-	return true;
-}
-
 BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
-	TypeId type, const std::vector<ParameterInfo>& parameters, bool definition)
+	TypeId type, const std::vector<ParameterInfo>& parameters, bool definition,
+	bool template_specialization)
 {
+	const LookupResult occupied =
+		program_->LookupDirect(owner, name, LOOKUP_ORDINARY);
+	if (occupied.ordinary != kNoBinding &&
+		program_->bindings[occupied.ordinary].kind != BIND_FUNCTION)
+		throw std::runtime_error("function conflicts with ordinary binding");
+	const TypeRecord& declared_type = program_->types.Get(type);
+	if (declared_type.kind != TYPE_FUNCTION)
+		throw std::logic_error("function declaration has non-function type");
+	std::vector<TypeId> signature_parameters;
+	signature_parameters.reserve(declared_type.parameter_count);
+	const TypeId* declared_parameters = program_->types.Parameters(type);
+	for (std::size_t i = 0; i < declared_type.parameter_count; ++i)
+		signature_parameters.push_back(declared_parameters[i]);
+	const TypeId signature = program_->types.Function(
+		program_->types.Fundamental(FUND_VOID), signature_parameters,
+		declared_type.variadic, declared_type.cv);
+	const FunctionSignatureKey signature_key(owner, name, signature);
+	++function_signature_lookups_;
+	const BindingId previous = template_specialization ? kNoBinding :
+		function_declarations_.Find(signature_key);
 	const std::uint64_t key = (static_cast<std::uint64_t>(owner) << 32) | name;
-	std::vector<BindingId>& overloads = function_sets_[key];
+	CompactIndexSequence& overloads = function_sets_.Ensure(key);
 	BindingId canonical = kNoBinding;
-	for (std::size_t i = 0; i < overloads.size(); ++i)
+	if (previous != kNoBinding)
 	{
-		const FunctionInfo& existing = GetFunction(overloads[i]);
-		if (!SameParameterTypes(existing.type, type)) continue;
+		const FunctionInfo& existing = GetFunction(previous);
 		const TypeRecord& old_type = program_->types.Get(existing.type);
-		const TypeRecord& new_type = program_->types.Get(type);
-		if (old_type.child != new_type.child)
+		if (old_type.child != declared_type.child)
 			throw std::runtime_error("conflicting function return type");
 		canonical = existing.binding;
 		if (definition && existing.defined)
 			throw std::runtime_error("duplicate function definition");
-		break;
 	}
 	const BindingId declaration = program_->AddBinding(owner, BIND_FUNCTION,
-		name, type, false, 0, NAMED_NONE, 0, canonical);
+		name, type, false, 0, NAMED_NONE, 0, canonical,
+		!template_specialization);
 	if (canonical == kNoBinding)
 	{
 		FunctionInfo info;
@@ -538,23 +556,39 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 		info.display_name = DisplayName(owner, name);
 		info.parameters = parameters;
 		info.defined = definition;
-		functions_[declaration] = info;
-		overloads.push_back(declaration);
+		info.template_specialization = template_specialization;
+		if (function_fact_by_binding_.size() <= declaration)
+			function_fact_by_binding_.resize(
+				static_cast<std::size_t>(declaration) + 1, kNoDumpEdge);
+		function_fact_by_binding_[declaration] =
+			static_cast<std::uint32_t>(functions_.size());
+		functions_.push_back(info);
+		overloads.Push(declaration);
+		if (!template_specialization)
+			function_declarations_.Insert(signature_key, declaration);
 		canonical = declaration;
 	}
 	else if (definition)
-		functions_[canonical].defined = true;
+		GetMutableFunction(canonical).defined = true;
 	return canonical;
 }
 
 const FunctionInfo& SemanticAnalyzer::GetFunction(BindingId binding) const
 {
 	const BindingId canonical = program_->bindings[binding].canonical;
-	const std::unordered_map<BindingId, FunctionInfo>::const_iterator found =
-		functions_.find(canonical);
-	if (found == functions_.end())
+	if (canonical >= function_fact_by_binding_.size() ||
+		function_fact_by_binding_[canonical] == kNoDumpEdge)
 		throw std::logic_error("missing PA12 function fact");
-	return found->second;
+	return functions_[function_fact_by_binding_[canonical]];
+}
+
+FunctionInfo& SemanticAnalyzer::GetMutableFunction(BindingId binding)
+{
+	const BindingId canonical = program_->bindings[binding].canonical;
+	if (canonical >= function_fact_by_binding_.size() ||
+		function_fact_by_binding_[canonical] == kNoDumpEdge)
+		throw std::logic_error("missing PA12 function fact");
+	return functions_[function_fact_by_binding_[canonical]];
 }
 
 std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
@@ -566,13 +600,22 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 	if (ParseExplicitTemplateArguments(scope, spelling, &explicit_base,
 		&explicit_arguments))
 	{
-		lookup_name = explicit_base;
+		std::vector<BindingId> explicit_candidates;
 		const std::vector<std::size_t> patterns =
 			FindFunctionTemplates(scope, explicit_base);
 		for (std::size_t i = 0; i < patterns.size(); ++i)
 			if (function_templates_[patterns[i]].type_parameters.size() ==
 				explicit_arguments.size())
-				InstantiateFunctionTemplate(patterns[i], explicit_arguments);
+			{
+				const BindingId candidate = InstantiateFunctionTemplate(
+					patterns[i], explicit_arguments);
+				if (candidate != kNoBinding &&
+					std::find(explicit_candidates.begin(),
+						explicit_candidates.end(), candidate) ==
+						explicit_candidates.end())
+					explicit_candidates.push_back(candidate);
+			}
+		return explicit_candidates;
 	}
 	const LookupResult found =
 		LookupSpelling(scope, lookup_name, LOOKUP_ORDINARY);
@@ -581,11 +624,14 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 	if (binding.kind != BIND_FUNCTION) return std::vector<BindingId>();
 	const std::uint64_t key = (static_cast<std::uint64_t>(binding.owner) << 32) |
 		binding.name;
-	const std::unordered_map<std::uint64_t, std::vector<BindingId> >::const_iterator
-		set = function_sets_.find(key);
-	if (set == function_sets_.end())
+	const CompactIndexSequence* set = function_sets_.Find(key);
+	if (!set)
 		return std::vector<BindingId>(1, binding.canonical);
-	return set->second;
+	std::vector<BindingId> result;
+	result.reserve(set->Size());
+	for (std::size_t i = 0; i < set->Size(); ++i)
+		result.push_back(static_cast<BindingId>((*set)[i]));
+	return result;
 }
 
 std::vector<std::size_t> SemanticAnalyzer::FindFunctionTemplates(
@@ -603,23 +649,19 @@ std::vector<std::size_t> SemanticAnalyzer::FindFunctionTemplates(
 		if (owner == kNoScope) return std::vector<std::size_t>();
 		const std::uint64_t key =
 			(static_cast<std::uint64_t>(owner) << 32) | name;
-		const std::unordered_map<std::uint64_t,
-			std::vector<std::size_t> >::const_iterator found =
-			template_function_sets_.find(key);
-		return found == template_function_sets_.end() ?
-			std::vector<std::size_t>() : found->second;
+		const CompactIndexSequence* found =
+			template_function_sets_.Find(key);
+		return found ? found->Copy() : std::vector<std::size_t>();
 	}
 	for (ScopeId current = scope; current != kNoScope; )
 	{
 		const std::uint64_t key =
 			(static_cast<std::uint64_t>(current) << 32) | name;
-		const std::unordered_map<std::uint64_t,
-			std::vector<std::size_t> >::const_iterator found =
-			template_function_sets_.find(key);
-		if (found != template_function_sets_.end()) return found->second;
-		const std::unordered_map<ScopeId, ScopeId>::const_iterator parent =
-			scope_parents_.find(current);
-		current = parent == scope_parents_.end() ? kNoScope : parent->second;
+		const CompactIndexSequence* found =
+			template_function_sets_.Find(key);
+		if (found) return found->Copy();
+		current = current < scope_parents_.size() ?
+			scope_parents_[current] : kNoScope;
 	}
 	return std::vector<std::size_t>();
 }
@@ -713,16 +755,14 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 		throw std::logic_error("invalid PA12 function template pattern");
 	const FunctionTemplatePattern& pattern = function_templates_[index];
 	if (arguments.size() != pattern.type_parameters.size()) return kNoBinding;
-	std::ostringstream cache_key;
-	cache_key << index;
-	for (std::size_t i = 0; i < arguments.size(); ++i)
-		cache_key << ':' << arguments[i];
-	const std::unordered_map<std::string, BindingId>::const_iterator old =
-		template_instantiations_.find(cache_key.str());
-	if (old != template_instantiations_.end()) return old->second;
+	++template_specialization_requests_;
+	const TemplateSpecializationKey cache_key(index, arguments);
+	const BindingId old = template_instantiations_.Find(cache_key);
+	if (old != kNoBinding) ++template_specialization_cache_hits_;
+	if (old != kNoBinding) return old;
 
 	const ScopeId template_scope = NewScope(pattern.owner,
-		SCOPE_TEMPLATE_PARAMETERS, 0, ScopePrefix(pattern.owner));
+		SCOPE_TEMPLATE_PARAMETERS, 0, ScopePrefixId(pattern.owner));
 	for (std::size_t i = 0; i < arguments.size(); ++i)
 		program_->AddBinding(template_scope, BIND_TYPE_ALIAS,
 			pattern.type_parameters[i], arguments[i]);
@@ -731,9 +771,9 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	const DeclaratorInfo parsed = BuildDeclarator(pattern.declarator,
 		spec.type, template_scope);
 	const BindingId binding = DeclareFunction(pattern.owner, pattern.name,
-		parsed.type, parsed.parameters, false);
-	functions_[binding].deferred = true;
-	template_instantiations_[cache_key.str()] = binding;
+		parsed.type, parsed.parameters, false, true);
+	GetMutableFunction(binding).deferred = true;
+	template_instantiations_.Insert(cache_key, binding);
 	return binding;
 }
 
@@ -797,22 +837,21 @@ void SemanticAnalyzer::DemandFunction(BindingId binding)
 {
 	if (binding == kNoBinding) return;
 	binding = program_->bindings[binding].canonical;
-	const std::unordered_map<BindingId, FunctionInfo>::const_iterator function =
-		functions_.find(binding);
-	if (function == functions_.end() || !function->second.deferred) return;
-	if (std::find(demanded_functions_.begin(), demanded_functions_.end(),
-		binding) == demanded_functions_.end())
-		demanded_functions_.push_back(binding);
+	if (binding >= function_fact_by_binding_.size() ||
+		function_fact_by_binding_[binding] == kNoDumpEdge) return;
+	FunctionInfo& function = GetMutableFunction(binding);
+	if (!function.deferred || function.demand_state != 0) return;
+	function.demand_state = 1;
+	demanded_functions_.push_back(binding);
+	++demand_worklist_pushes_;
 }
 
 TypeId SemanticAnalyzer::AdaptMemberFunctionType(BindingId binding)
 {
 	const FunctionInfo& function = GetFunction(binding);
-	const std::unordered_map<BindingId, TypeId>::const_iterator member =
-		member_function_owners_.find(function.binding);
-	if (member == member_function_owners_.end()) return function.type;
+	if (function.member_owner == kNoType) return function.type;
 	const TypeRecord& member_type = program_->types.Get(function.type);
-	TypeId object = member->second;
+	TypeId object = function.member_owner;
 	if ((member_type.cv & CV_CONST) != 0)
 		object = program_->types.Qualify(object, CV_CONST);
 	if ((member_type.cv & CV_VOLATILE) != 0)
@@ -829,9 +868,14 @@ TypeId SemanticAnalyzer::AdaptMemberFunctionType(BindingId binding)
 
 void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 {
+	binding = program_->bindings[binding].canonical;
+	if (binding >= function_fact_by_binding_.size() ||
+		function_fact_by_binding_[binding] == kNoDumpEdge) return;
+	FunctionInfo& state = GetMutableFunction(binding);
+	if (state.demand_state >= 2) return;
+	state.demand_state = 2;
 	const FunctionInfo info = GetFunction(binding);
-	const bool member = member_function_owners_.find(info.binding) !=
-		member_function_owners_.end();
+	const bool member = info.member_owner != kNoType;
 	const TypeId output_type = member ?
 		AdaptMemberFunctionType(info.binding) : info.type;
 	const std::uint32_t function = MakeDump(info.defined ?
@@ -839,7 +883,7 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 		output_type, VALUE_NONE, info.display_name, info.binding);
 	dump_.Add(root_, function);
 	const ScopeId function_scope = NewScope(info.owner, SCOPE_FUNCTION,
-		program_->bindings[info.binding].name, ScopePrefix(info.owner));
+		program_->bindings[info.binding].name, ScopePrefixId(info.owner));
 	if (member)
 	{
 		const TypeId this_type = program_->types.Parameters(output_type)[0];
@@ -866,6 +910,8 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 		else dump_.Add(function, MakeDump(DUMP_COMPOUND_STATEMENT));
 		current_return_type_ = previous_return;
 	}
+	GetMutableFunction(binding).demand_state = 3;
+	++demanded_function_emissions_;
 }
 
 }

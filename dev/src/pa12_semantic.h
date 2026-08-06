@@ -26,7 +26,14 @@ struct SemanticAnalysisStats
 	std::size_t lookup_scope_visits;
 	std::size_t lookup_edge_visits;
 	std::size_t overload_candidates;
+	std::size_t overload_order_comparisons;
 	std::size_t conversion_checks;
+	std::size_t function_signature_lookups;
+	std::size_t template_specialization_requests;
+	std::size_t template_specialization_cache_hits;
+	std::size_t demand_worklist_pushes;
+	std::size_t demanded_function_emissions;
+	std::size_t default_constructor_emissions;
 	std::size_t semantic_storage_bytes;
 	std::size_t peak_stage_storage_bytes;
 	std::uint64_t analysis_nanoseconds;

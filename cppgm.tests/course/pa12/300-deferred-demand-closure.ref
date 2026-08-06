@@ -1,0 +1,23 @@
+1 translation units
+start translation unit 1
+translation-unit
+  type-alias member_function member-pointer of struct Owner to function of () returning void
+  function-definition take function of () returning member-pointer of struct Owner to function of () returning void
+    compound-statement
+      return-statement
+        unary-expression prvalue member-pointer of struct Owner to function of () returning void OP_AMP:&
+          id-expression lvalue function of (pointer to struct Owner) returning void Owner::selected
+  function-definition Owner::selected function of (pointer to struct Owner) returning void
+    parameter this pointer to struct Owner
+    compound-statement
+      simple-declaration
+        variable value struct Dependency
+          constructor-action Dependency::Dependency
+            call-expression prvalue void
+              callee Dependency::Dependency function of (pointer to struct Dependency) returning void
+              unary-expression prvalue pointer to struct Dependency OP_AMP:&
+                id-expression lvalue struct Dependency value
+  function-definition Dependency::Dependency function of (pointer to struct Dependency) returning void
+    parameter this pointer to struct Dependency
+    compound-statement
+end translation unit

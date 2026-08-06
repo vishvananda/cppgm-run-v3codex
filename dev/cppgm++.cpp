@@ -564,7 +564,20 @@ int run_emit_semantics_mode(const vector<string> & args)
            << " lookup_scope_visits=" << stats.lookup_scope_visits
            << " lookup_edge_visits=" << stats.lookup_edge_visits
            << " overload_candidates=" << stats.overload_candidates
+           << " overload_order_comparisons="
+           << stats.overload_order_comparisons
            << " conversion_checks=" << stats.conversion_checks
+           << " function_signature_lookups="
+           << stats.function_signature_lookups
+           << " template_specialization_requests="
+           << stats.template_specialization_requests
+           << " template_specialization_cache_hits="
+           << stats.template_specialization_cache_hits
+           << " demand_worklist_pushes=" << stats.demand_worklist_pushes
+           << " demanded_function_emissions="
+           << stats.demanded_function_emissions
+           << " default_constructor_emissions="
+           << stats.default_constructor_emissions
            << " semantic_storage_bytes=" << stats.semantic_storage_bytes
            << " peak_stage_storage_bytes=" << stats.peak_stage_storage_bytes
            << " analysis_ns=" << stats.analysis_nanoseconds

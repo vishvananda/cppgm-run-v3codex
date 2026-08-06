@@ -1,0 +1,10 @@
+1 translation units
+start translation unit 1
+translation-unit
+  type-alias const_member member-pointer of struct C to function of () const returning void
+  function-definition take function of () returning member-pointer of struct C to function of () const returning void
+    compound-statement
+      return-statement
+        unary-expression prvalue member-pointer of struct C to function of () const returning void OP_AMP:&
+          id-expression lvalue function of (pointer to const struct C) returning void C::select
+end translation unit

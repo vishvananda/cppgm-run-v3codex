@@ -63,12 +63,9 @@ NamePath SemanticAnalyzer::ParseNamePath(const std::string& spelling)
 	return result;
 }
 
-LookupResult SemanticAnalyzer::LookupSpelling(ScopeId scope,
-	const std::string& spelling, LookupKind kind)
+LookupResult SemanticAnalyzer::LookupPath(ScopeId scope,
+	const NamePath& path, LookupKind kind)
 {
-	if (spelling.find("::") == std::string::npos)
-		return program_->LookupName(scope, program_->names.Intern(spelling), kind);
-	const NamePath path = ParseNamePath(spelling);
 	if (!path.global && path.Size() > 1)
 	{
 		ScopeId carrier = kNoScope;
@@ -82,25 +79,35 @@ LookupResult SemanticAnalyzer::LookupSpelling(ScopeId scope,
 					program_->ScopeForType(direct.type);
 				break;
 			}
-			const std::unordered_map<ScopeId, ScopeId>::const_iterator parent =
-				scope_parents_.find(current);
-			current = parent == scope_parents_.end() ? kNoScope : parent->second;
+			current = current < scope_parents_.size() ?
+				scope_parents_[current] : kNoScope;
 		}
 		if (carrier != kNoScope)
 		{
 			NamePath remainder;
 			for (std::size_t i = 1; i < path.Size(); ++i)
 				remainder.Push(path[i]);
-			return program_->Lookup(carrier, remainder, kind);
+			return program_->LookupQualified(carrier, remainder, kind);
 		}
 	}
 	return program_->Lookup(scope, path, kind);
 }
 
+LookupResult SemanticAnalyzer::LookupSpelling(ScopeId scope,
+	const std::string& spelling, LookupKind kind)
+{
+	if (spelling.find("::") == std::string::npos)
+		return program_->LookupName(scope, program_->names.Intern(spelling), kind);
+	return LookupPath(scope, ParseNamePath(spelling), kind);
+}
+
 ScopeId SemanticAnalyzer::ResolveScopeSpelling(ScopeId scope,
 	const std::string& spelling)
 {
-	return program_->ResolveScope(scope, ParseNamePath(spelling));
+	const LookupResult result =
+		LookupSpelling(scope, spelling, LOOKUP_SCOPE_CARRIER);
+	return result.name_space != kNoScope ? result.name_space :
+		result.type != kNoType ? program_->ScopeForType(result.type) : kNoScope;
 }
 
 ScopeId SemanticAnalyzer::ResolveOwner(ScopeId scope, const NamePath& name)
@@ -109,14 +116,19 @@ ScopeId SemanticAnalyzer::ResolveOwner(ScopeId scope, const NamePath& name)
 	NamePath owner = name;
 	if (!owner.Empty()) owner.Pop();
 	if (owner.Empty()) return owner.global ? program_->GlobalScope() : scope;
-	return program_->ResolveScope(scope, owner);
+	const LookupResult result = LookupPath(scope, owner, LOOKUP_SCOPE_CARRIER);
+	return result.name_space != kNoScope ? result.name_space :
+		result.type != kNoType ? program_->ScopeForType(result.type) : kNoScope;
 }
 
-std::string SemanticAnalyzer::ScopePrefix(ScopeId scope) const
+const std::string& SemanticAnalyzer::ScopePrefix(ScopeId scope) const
 {
-	const std::unordered_map<ScopeId, std::string>::const_iterator found =
-		scope_prefixes_.find(scope);
-	return found == scope_prefixes_.end() ? std::string() : found->second;
+	return program_->names.Get(ScopePrefixId(scope));
+}
+
+NameId SemanticAnalyzer::ScopePrefixId(ScopeId scope) const
+{
+	return scope < scope_prefixes_.size() ? scope_prefixes_[scope] : 0;
 }
 
 NameId SemanticAnalyzer::DisplayName(ScopeId owner, NameId name)
@@ -125,9 +137,14 @@ NameId SemanticAnalyzer::DisplayName(ScopeId owner, NameId name)
 }
 
 ScopeId SemanticAnalyzer::NewScope(ScopeId parent, ScopeKind kind,
-	NameId name, const std::string& prefix)
+	NameId name, NameId prefix)
 {
 	const ScopeId scope = program_->NewScope(parent, kind, name);
+	if (scope_prefixes_.size() <= scope)
+	{
+		scope_prefixes_.resize(static_cast<std::size_t>(scope) + 1, 0);
+		scope_parents_.resize(static_cast<std::size_t>(scope) + 1, kNoScope);
+	}
 	scope_prefixes_[scope] = prefix;
 	scope_parents_[scope] = parent;
 	return scope;
@@ -160,6 +177,34 @@ std::uint32_t SemanticAnalyzer::MakeDump(DumpKind kind, TypeId type,
 	record.text = text;
 	record.binding = binding;
 	return node;
+}
+
+std::size_t SemanticAnalyzer::SideStorageBytes() const
+{
+	std::size_t bytes =
+		scope_prefixes_.capacity() * sizeof(NameId) +
+		scope_parents_.capacity() * sizeof(ScopeId) +
+		function_sets_.StorageBytes() +
+		function_declarations_.StorageBytes() +
+		function_fact_by_binding_.capacity() * sizeof(std::uint32_t) +
+		functions_.capacity() * sizeof(FunctionInfo) +
+		entity_data_members_.capacity() * sizeof(std::vector<BindingId>) +
+		function_templates_.capacity() * sizeof(FunctionTemplatePattern) +
+		template_function_sets_.StorageBytes() +
+		template_instantiations_.StorageBytes() +
+		injected_fact_by_binding_.capacity() * sizeof(std::uint32_t) +
+		injected_members_.capacity() * sizeof(InjectedMemberInfo) +
+		demanded_default_constructor_entities_.capacity() * sizeof(EntityId) +
+		default_constructor_demand_states_.capacity() * sizeof(std::uint8_t) +
+		demanded_functions_.capacity() * sizeof(BindingId);
+	for (std::size_t i = 0; i < functions_.size(); ++i)
+		bytes += functions_[i].parameters.capacity() * sizeof(ParameterInfo);
+	for (std::size_t i = 0; i < entity_data_members_.size(); ++i)
+		bytes += entity_data_members_[i].capacity() * sizeof(BindingId);
+	for (std::size_t i = 0; i < function_templates_.size(); ++i)
+		bytes += function_templates_[i].type_parameters.capacity() *
+			sizeof(NameId);
+	return bytes;
 }
 
 TypeId SemanticAnalyzer::EffectiveType(TypeId type) const
@@ -678,12 +723,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 			const FunctionInfo& function = GetFunction(selected);
 			ExpressionInfo result;
 			result.type = function.type;
-			const std::unordered_map<BindingId, TypeId>::const_iterator member =
-				member_function_owners_.find(function.binding);
-			if (member != member_function_owners_.end())
+			if (function.member_owner != kNoType)
 			{
 				const TypeRecord& member_type = program_->types.Get(function.type);
-				TypeId object = member->second;
+				TypeId object = function.member_owner;
 				if ((member_type.cv & CV_CONST) != 0)
 					object = program_->types.Qualify(object, CV_CONST);
 				if ((member_type.cv & CV_VOLATILE) != 0)
@@ -719,16 +762,18 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 		}
 		if (binding.kind != BIND_VARIABLE && binding.kind != BIND_PARAMETER)
 			throw std::runtime_error("name does not denote a value");
-		const std::unordered_map<BindingId, InjectedMemberInfo>::const_iterator
-			injected = injected_members_.find(found.ordinary);
-		if (injected != injected_members_.end())
+		const std::uint32_t injected_fact =
+			found.ordinary < injected_fact_by_binding_.size() ?
+			injected_fact_by_binding_[found.ordinary] : kNoDumpEdge;
+		if (injected_fact != kNoDumpEdge)
 		{
+			const InjectedMemberInfo& injected = injected_members_[injected_fact];
 			const BindingRecord& storage =
-				program_->bindings[injected->second.storage];
+				program_->bindings[injected.storage];
 			const std::uint32_t storage_node = MakeDump(DUMP_ID_EXPRESSION,
-				storage.type, VALUE_LVALUE, storage.name, injected->second.storage);
+				storage.type, VALUE_LVALUE, storage.name, injected.storage);
 			const std::uint32_t member_node = MakeDump(DUMP_MEMBER_EXPRESSION,
-				binding.type, VALUE_LVALUE, injected->second.member);
+				binding.type, VALUE_LVALUE, injected.member);
 			dump_.Add(member_node, storage_node);
 			ExpressionInfo result;
 			result.node = member_node;
@@ -777,7 +822,12 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 	const std::vector<ExpressionInfo>& arguments,
 	const std::vector<BindingId>& candidates)
 {
-	std::vector<std::vector<ConversionRank> > ranks(candidates.size());
+	if (!argument_syntax.empty() && candidates.size() >
+		std::numeric_limits<std::size_t>::max() / argument_syntax.size())
+		throw std::runtime_error("overload conversion table is too large");
+	const std::size_t arity = argument_syntax.size();
+	std::vector<ConversionRank> ranks(candidates.size() * arity,
+		CONVERSION_ELLIPSIS);
 	std::vector<bool> viable(candidates.size(), true);
 	for (std::size_t c = 0; c < candidates.size(); ++c)
 	{
@@ -815,47 +865,53 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 						CONVERSION_EXACT : CONVERSION_INVALID;
 				}
 			}
-			ranks[c].push_back(rank);
+			ranks[c * arity + a] = rank;
 			if (rank == CONVERSION_INVALID) viable[c] = false;
 		}
 	}
+	const auto better = [this, &ranks, &candidates, arity](
+		std::size_t left, std::size_t right) -> bool
+	{
+		++overload_order_comparisons_;
+		bool no_worse = true;
+		bool strictly_better = false;
+		for (std::size_t a = 0; a < arity; ++a)
+		{
+			if (ranks[left * arity + a] > ranks[right * arity + a])
+				no_worse = false;
+			if (ranks[left * arity + a] < ranks[right * arity + a])
+				strictly_better = true;
+		}
+		if (!no_worse) return false;
+		if (strictly_better) return true;
+		const FunctionInfo& left_function = GetFunction(candidates[left]);
+		const FunctionInfo& right_function = GetFunction(candidates[right]);
+		return !left_function.template_specialization &&
+			right_function.template_specialization;
+	};
 
-	BindingId selected = kNoBinding;
+	std::size_t viable_count = 0;
+	std::size_t champion = candidates.size();
 	for (std::size_t c = 0; c < candidates.size(); ++c)
 	{
 		if (!viable[c]) continue;
-		bool better_than_all = true;
-		for (std::size_t other = 0; other < candidates.size(); ++other)
+		++viable_count;
+		if (champion == candidates.size())
 		{
-			if (other == c || !viable[other]) continue;
-			bool no_worse = true;
-			bool strictly_better = false;
-			for (std::size_t a = 0; a < ranks[c].size(); ++a)
-			{
-				if (ranks[c][a] > ranks[other][a]) no_worse = false;
-				if (ranks[c][a] < ranks[other][a]) strictly_better = true;
-			}
-			if (!no_worse || !strictly_better) better_than_all = false;
+			champion = c;
+			continue;
 		}
-		if (better_than_all)
-		{
-			if (selected != kNoBinding)
-				throw std::runtime_error("ambiguous overload");
-			selected = candidates[c];
-		}
+		if (better(c, champion)) champion = c;
 	}
-	if (selected != kNoBinding) return selected;
-	std::size_t viable_count = 0;
-	for (std::size_t c = 0; c < viable.size(); ++c)
-		if (viable[c])
-		{
-			selected = candidates[c];
-			++viable_count;
-		}
-	if (viable_count != 1)
-		throw std::runtime_error(viable_count == 0 ?
-			"no viable overload" : "ambiguous overload");
-	return selected;
+	if (viable_count == 0) throw std::runtime_error("no viable overload");
+	if (viable_count == 1) return candidates[champion];
+	for (std::size_t other = 0; other < candidates.size(); ++other)
+	{
+		if (other == champion || !viable[other]) continue;
+		if (!better(champion, other))
+			throw std::runtime_error("ambiguous overload");
+	}
+	return candidates[champion];
 }
 
 ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
@@ -1229,16 +1285,20 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 	if (operation == "=") right = ApplyTarget(right, EffectiveType(left.type));
 	else
 	{
-		const bool pointer_add = IsPointer(left.type) &&
-			(operation == "+=" || operation == "-=") && IsIntegral(right.type);
-		const bool arithmetic = IsArithmetic(left.type) && IsArithmetic(right.type);
-		const bool integral = IsIntegral(left.type) && IsIntegral(right.type) &&
-			(operation == "%=" || operation == "<<=" || operation == ">>=" ||
-			 operation == "&=" || operation == "|=" || operation == "^=");
+		const bool additive = operation == "+=" || operation == "-=";
+		const bool arithmetic_operation = additive || operation == "*=" ||
+			operation == "/=";
+		const bool integral_operation = operation == "%=" ||
+			operation == "<<=" || operation == ">>=" || operation == "&=" ||
+			operation == "|=" || operation == "^=";
+		const bool pointer_add = IsPointer(left.type) && additive &&
+			IsIntegral(right.type);
+		const bool arithmetic = arithmetic_operation &&
+			IsArithmetic(left.type) && IsArithmetic(right.type);
+		const bool integral = integral_operation && IsIntegral(left.type) &&
+			IsIntegral(right.type);
 		if (!pointer_add && !arithmetic && !integral)
 			throw std::runtime_error("invalid compound assignment");
-		if (IsPointer(left.type) && !pointer_add)
-			throw std::runtime_error("invalid pointer compound assignment");
 	}
 	const TypeId result_type = EffectiveType(left.type);
 	const std::uint32_t expression = MakeDump(DUMP_ASSIGNMENT_EXPRESSION,
@@ -1262,12 +1322,18 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
 		if (arena_->EdgeChild(edge) != type_id) operand_node = arena_->EdgeChild(edge);
-	ExpressionInfo operand = AnalyzeExpression(operand_node, scope,
-		program_->types.IsFunction(EffectiveType(target)) || IsPointer(target) ||
-		program_->types.Get(program_->types.RemoveTopCv(target)).kind ==
-			TYPE_MEMBER_POINTER ?
-		target : kNoType);
 	const TypeRecord& target_record = program_->types.Get(target);
+	const TypeId unqualified_target = program_->types.RemoveTopCv(target);
+	const TypeRecord& unqualified_target_record =
+		program_->types.Get(unqualified_target);
+	const bool function_pointer_target =
+		unqualified_target_record.kind == TYPE_POINTER &&
+		program_->types.IsFunction(unqualified_target_record.child);
+	ExpressionInfo operand = AnalyzeExpression(operand_node, scope,
+		program_->types.IsFunction(EffectiveType(target)) ||
+		function_pointer_target ||
+		unqualified_target_record.kind == TYPE_MEMBER_POINTER ?
+		target : kNoType);
 	if (!IsVoid(target) && !IsArithmetic(target) && !IsPointer(target) &&
 		!IsNullptr(target) && target_record.kind != TYPE_LVALUE_REFERENCE &&
 		target_record.kind != TYPE_RVALUE_REFERENCE &&
@@ -1296,6 +1362,33 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		dump_.nodes[operand.node].type = target;
 		return operand;
 	}
+	const EntityId source_entity = EntityOf(operand.type);
+	const EntityId target_entity = EntityOf(target);
+	const bool source_enum = source_entity != kNoEntity &&
+		(program_->entities[source_entity].flavor == NAMED_ENUM ||
+		 program_->entities[source_entity].flavor == NAMED_ENUM_CLASS);
+	const bool target_enum = target_entity != kNoEntity &&
+		(program_->entities[target_entity].flavor == NAMED_ENUM ||
+		 program_->entities[target_entity].flavor == NAMED_ENUM_CLASS);
+	const std::string cast_kind = arena_->Payload(node);
+	const bool permits_reinterpretation =
+		cast_kind.compare(0, 10, "OP_LPAREN:") == 0 ||
+		cast_kind.find("REINTER") != std::string::npos;
+	const bool valid = IsVoid(target) ||
+		(IsArithmetic(target) && IsArithmetic(operand.type)) ||
+		(target_enum && (IsIntegral(operand.type, true) ||
+			IsFloating(operand.type))) ||
+		(source_enum && (IsIntegral(target, true) || IsFloating(target))) ||
+		(IsPointer(target) && (IsPointer(operand.type) ||
+			IsNullptr(operand.type) || operand.integer_literal_zero)) ||
+		(target == program_->types.Fundamental(FUND_BOOL) &&
+			(IsPointer(operand.type) || IsNullptr(operand.type))) ||
+		(IsNullptr(target) && (IsNullptr(operand.type) ||
+			operand.integer_literal_zero)) ||
+		(permits_reinterpretation &&
+			((IsPointer(target) && IsIntegral(operand.type)) ||
+			 (IsIntegral(target) && IsPointer(operand.type))));
+	if (!valid) throw std::runtime_error("invalid explicit conversion");
 	const std::uint32_t cast = MakeDump(DUMP_CAST_EXPRESSION, target,
 		VALUE_PRVALUE, program_->names.Intern(arena_->Payload(node)));
 	dump_.Add(cast, operand.node);
@@ -1535,14 +1628,13 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 	if (!functions.empty())
 	{
 		const std::uint64_t key = (static_cast<std::uint64_t>(scope) << 32) | name;
-		std::vector<BindingId>& aliases = function_sets_[key];
+		CompactIndexSequence& aliases = function_sets_.Ensure(key);
 		for (std::size_t i = 0; i < functions.size(); ++i)
 		{
 			const FunctionInfo& function = GetFunction(functions[i]);
 			program_->AddBinding(scope, BIND_FUNCTION, name, function.type,
 				false, 0, NAMED_NONE, 0, function.binding);
-			if (std::find(aliases.begin(), aliases.end(), function.binding) ==
-				aliases.end()) aliases.push_back(function.binding);
+			if (!aliases.Contains(function.binding)) aliases.Push(function.binding);
 		}
 		return;
 	}
@@ -1608,7 +1700,7 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope)
 		function_templates_.push_back(pattern);
 		const std::uint64_t key =
 			(static_cast<std::uint64_t>(scope) << 32) | pattern.name;
-		template_function_sets_[key].push_back(index);
+		template_function_sets_.Ensure(key).Push(index);
 	}
 }
 
@@ -1621,10 +1713,12 @@ void SemanticAnalyzer::AnalyzeNamespace(NodeId node, ScopeId scope,
 	const NameId name = program_->names.Intern(spelling);
 	const bool is_inline = FindChild(node, "inline") != kNoNode;
 	const ScopeId child = program_->OpenNamespace(scope, name, is_inline);
-	if (scope_prefixes_.find(child) == scope_prefixes_.end())
+	if (scope_prefixes_.size() <= child)
 	{
-		scope_prefixes_[child] = unnamed ? ScopePrefix(scope) :
-			ScopePrefix(scope) + spelling + "::";
+		scope_prefixes_.resize(static_cast<std::size_t>(child) + 1, 0);
+		scope_parents_.resize(static_cast<std::size_t>(child) + 1, kNoScope);
+		scope_prefixes_[child] = unnamed ? ScopePrefixId(scope) :
+			program_->names.Intern(ScopePrefix(scope) + spelling + "::");
 		scope_parents_[child] = scope;
 	}
 	if (unnamed) program_->AddUsingEdge(scope, child);
@@ -1692,17 +1786,20 @@ void SemanticAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 			AddDefaultConstructor(variable, storage, type);
 			dump_.Add(simple, variable);
 			dump_.Add(output_parent, simple);
-			const ScopeId members = program_->entities[entity].member_scope;
-			const std::size_t member_count = program_->bindings.size();
-			for (BindingId member = 0; member < member_count; ++member)
+			const std::vector<BindingId>& members = entity_data_members_[entity];
+			for (std::size_t i = 0; i < members.size(); ++i)
 			{
-				const BindingRecord source = program_->bindings[member];
-				if (source.owner != members || source.kind != BIND_VARIABLE) continue;
+				const BindingRecord source = program_->bindings[members[i]];
 				const BindingId injected = program_->AddBinding(scope, BIND_VARIABLE,
 					source.name, source.type, source.constant, source.value,
 					source.display_flavor, source.display_type_name, source.canonical);
-				injected_members_[injected] =
-					InjectedMemberInfo(storage, source.name);
+				if (injected_fact_by_binding_.size() <= injected)
+					injected_fact_by_binding_.resize(
+						static_cast<std::size_t>(injected) + 1, kNoDumpEdge);
+				injected_fact_by_binding_[injected] =
+					static_cast<std::uint32_t>(injected_members_.size());
+				injected_members_.push_back(
+					InjectedMemberInfo(storage, source.name));
 			}
 		}
 		return;
@@ -1786,6 +1883,11 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		}
 		if (spec.is_constexpr)
 			parsed.type = program_->types.Qualify(parsed.type, CV_CONST);
+		const LookupResult occupied =
+			program_->LookupDirect(scope, parsed.name, LOOKUP_ORDINARY);
+		if (occupied.ordinary != kNoBinding &&
+			program_->bindings[occupied.ordinary].kind == BIND_FUNCTION)
+			throw std::runtime_error("variable conflicts with function binding");
 		const BindingId binding = program_->AddBinding(scope, BIND_VARIABLE,
 			parsed.name, parsed.type);
 		const NodeId initializer_node = FindChild(item, "initializer");
@@ -1856,10 +1958,41 @@ void SemanticAnalyzer::AddDefaultConstructor(std::uint32_t variable,
 	dump_.Add(action, call);
 	dump_.Add(variable, action);
 	expression_count_ += 3;
-	if (std::find(demanded_default_constructors_.begin(),
-		demanded_default_constructors_.end(), type) ==
-		demanded_default_constructors_.end())
-		demanded_default_constructors_.push_back(type);
+	if (default_constructor_demand_states_.size() <= entity)
+		default_constructor_demand_states_.resize(
+			static_cast<std::size_t>(entity) + 1, 0);
+	if (default_constructor_demand_states_[entity] == 0)
+	{
+		default_constructor_demand_states_[entity] = 1;
+		demanded_default_constructor_entities_.push_back(entity);
+		++demand_worklist_pushes_;
+	}
+}
+
+void SemanticAnalyzer::EmitDefaultConstructor(EntityId entity)
+{
+	if (entity >= default_constructor_demand_states_.size() ||
+		default_constructor_demand_states_[entity] != 1) return;
+	default_constructor_demand_states_[entity] = 2;
+	const TypeId type = program_->entities[entity].type;
+	const std::string owner = program_->names.Get(program_->entities[entity].name);
+	const std::size_t separator = owner.rfind("::");
+	const std::string leaf = separator == std::string::npos ? owner :
+		owner.substr(separator + 2);
+	const NameId name = program_->names.Intern(owner + "::" + leaf);
+	const TypeId this_type = program_->types.Pointer(type);
+	std::vector<TypeId> parameters(1, this_type);
+	const TypeId function_type = program_->types.Function(
+		program_->types.Fundamental(FUND_VOID), parameters, false);
+	const std::uint32_t function = MakeDump(DUMP_FUNCTION_DEFINITION,
+		function_type, VALUE_NONE, name);
+	const std::uint32_t parameter = MakeDump(DUMP_PARAMETER, this_type,
+		VALUE_NONE, program_->names.Intern("this"));
+	const std::uint32_t body = MakeDump(DUMP_COMPOUND_STATEMENT);
+	dump_.Add(function, parameter);
+	dump_.Add(function, body);
+	dump_.Add(root_, function);
+	++default_constructor_emissions_;
 }
 
 void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
@@ -1882,7 +2015,7 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 		parsed.type, VALUE_NONE, function.display_name, binding);
 	dump_.Add(output_parent, output_node);
 	const ScopeId function_scope = NewScope(owner, SCOPE_FUNCTION, parsed.name,
-		ScopePrefix(owner));
+		ScopePrefixId(owner));
 	for (std::size_t i = 0; i < parsed.parameters.size(); ++i)
 	{
 		const ParameterInfo& parameter = parsed.parameters[i];
@@ -1902,7 +2035,7 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 void SemanticAnalyzer::AnalyzeCompound(NodeId node, ScopeId scope,
 	std::uint32_t output_parent)
 {
-	const ScopeId block = NewScope(scope, SCOPE_BLOCK, 0, ScopePrefix(scope));
+	const ScopeId block = NewScope(scope, SCOPE_BLOCK, 0, ScopePrefixId(scope));
 	const std::uint32_t compound = MakeDump(DUMP_COMPOUND_STATEMENT);
 	dump_.Add(output_parent, compound);
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
@@ -1922,7 +2055,8 @@ void SemanticAnalyzer::AnalyzeSubstatement(NodeId node, ScopeId scope,
 		AnalyzeCompound(node, scope, output_parent);
 	else
 	{
-		const ScopeId child = NewScope(scope, SCOPE_BLOCK, 0, ScopePrefix(scope));
+		const ScopeId child = NewScope(scope, SCOPE_BLOCK, 0,
+			ScopePrefixId(scope));
 		if (IsDeclaration(node))
 			AnalyzeDeclaration(node, child, output_parent, true);
 		else AnalyzeStatement(node, child, output_parent);
@@ -1956,8 +2090,13 @@ void SemanticAnalyzer::AnalyzeCondition(NodeId node, ScopeId scope,
 		dump_.Add(variable, value.node);
 		dump_.Add(declaration, variable);
 		dump_.Add(condition, declaration);
-		if (!switch_condition && !IsArithmetic(parsed.type) &&
-			!IsPointer(parsed.type)) throw std::runtime_error("invalid condition type");
+		if (switch_condition)
+		{
+			if (!IsIntegral(parsed.type, true))
+				throw std::runtime_error("invalid switch condition");
+		}
+		else if (!IsArithmetic(parsed.type) && !IsPointer(parsed.type))
+			throw std::runtime_error("invalid condition type");
 		return;
 	}
 	ExpressionInfo value = AnalyzeExpression(FirstSemanticChild(node), scope);
@@ -2010,7 +2149,8 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 	}
 	if (arena_->IsTag(node, "if-statement"))
 	{
-		const ScopeId control = NewScope(scope, SCOPE_BLOCK, 0, ScopePrefix(scope));
+		const ScopeId control = NewScope(scope, SCOPE_BLOCK, 0,
+			ScopePrefixId(scope));
 		const std::uint32_t statement = MakeDump(DUMP_IF_STATEMENT);
 		dump_.Add(output_parent, statement);
 		for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
@@ -2033,7 +2173,8 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 		arena_->IsTag(node, "do-statement"))
 	{
 		const bool is_do = arena_->IsTag(node, "do-statement");
-		const ScopeId control = NewScope(scope, SCOPE_BLOCK, 0, ScopePrefix(scope));
+		const ScopeId control = NewScope(scope, SCOPE_BLOCK, 0,
+			ScopePrefixId(scope));
 		const std::uint32_t statement = MakeDump(is_do ?
 			DUMP_DO_STATEMENT : DUMP_WHILE_STATEMENT);
 		dump_.Add(output_parent, statement);
@@ -2051,7 +2192,8 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 	}
 	if (arena_->IsTag(node, "for-statement"))
 	{
-		const ScopeId control = NewScope(scope, SCOPE_BLOCK, 0, ScopePrefix(scope));
+		const ScopeId control = NewScope(scope, SCOPE_BLOCK, 0,
+			ScopePrefixId(scope));
 		const std::uint32_t statement = MakeDump(DUMP_FOR_STATEMENT);
 		dump_.Add(output_parent, statement);
 		++loop_depth_;
@@ -2087,7 +2229,8 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 	}
 	if (arena_->IsTag(node, "switch-statement"))
 	{
-		const ScopeId control = NewScope(scope, SCOPE_BLOCK, 0, ScopePrefix(scope));
+		const ScopeId control = NewScope(scope, SCOPE_BLOCK, 0,
+			ScopePrefixId(scope));
 		const std::uint32_t statement = MakeDump(DUMP_SWITCH_STATEMENT);
 		dump_.Add(output_parent, statement);
 		++switch_depth_;
@@ -2269,8 +2412,9 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 	arena_ = &arena;
 	Program program(arena.SharedStrings());
 	program_ = &program;
-	scope_prefixes_[program.GlobalScope()] = std::string();
-	scope_parents_[program.GlobalScope()] = kNoScope;
+	scope_prefixes_.resize(static_cast<std::size_t>(program.GlobalScope()) + 1, 0);
+	scope_parents_.resize(static_cast<std::size_t>(program.GlobalScope()) + 1,
+		kNoScope);
 	program.AddBinding(program.GlobalScope(), BIND_TYPE_ALIAS,
 		program.names.Intern("nullptr_t"),
 		program.types.Fundamental(FUND_NULLPTR_T));
@@ -2280,30 +2424,17 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 	for (std::uint32_t edge = arena.FirstEdge(root); edge != kNoEdge;
 		edge = arena.NextEdge(edge))
 		AnalyzeDeclaration(arena.EdgeChild(edge), program.GlobalScope(), root_, false);
-	for (std::size_t i = 0; i < demanded_default_constructors_.size(); ++i)
+	std::size_t default_demand = 0;
+	std::size_t function_demand = 0;
+	while (default_demand < demanded_default_constructor_entities_.size() ||
+		function_demand < demanded_functions_.size())
 	{
-		const TypeId type = demanded_default_constructors_[i];
-		const EntityId entity = EntityOf(type);
-		const std::string owner = program.names.Get(program.entities[entity].name);
-		const std::size_t separator = owner.rfind("::");
-		const std::string leaf = separator == std::string::npos ? owner :
-			owner.substr(separator + 2);
-		const NameId name = program.names.Intern(owner + "::" + leaf);
-		const TypeId this_type = program.types.Pointer(type);
-		std::vector<TypeId> parameters(1, this_type);
-		const TypeId function_type = program.types.Function(
-			program.types.Fundamental(FUND_VOID), parameters, false);
-		const std::uint32_t function = MakeDump(DUMP_FUNCTION_DEFINITION,
-			function_type, VALUE_NONE, name);
-		const std::uint32_t parameter = MakeDump(DUMP_PARAMETER, this_type,
-			VALUE_NONE, program.names.Intern("this"));
-		const std::uint32_t body = MakeDump(DUMP_COMPOUND_STATEMENT);
-		dump_.Add(function, parameter);
-		dump_.Add(function, body);
-		dump_.Add(root_, function);
+		while (default_demand < demanded_default_constructor_entities_.size())
+			EmitDefaultConstructor(
+				demanded_default_constructor_entities_[default_demand++]);
+		while (function_demand < demanded_functions_.size())
+			EmitDemandedFunction(demanded_functions_[function_demand++]);
 	}
-	for (std::size_t i = 0; i < demanded_functions_.size(); ++i)
-		EmitDemandedFunction(demanded_functions_[i]);
 	const std::chrono::steady_clock::time_point render_started =
 		std::chrono::steady_clock::now();
 	Render();
@@ -2322,9 +2453,24 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		stats_->lookup_scope_visits = program.lookup_scope_visits;
 		stats_->lookup_edge_visits = program.lookup_edge_visits;
 		stats_->overload_candidates = overload_candidates_;
+		stats_->overload_order_comparisons = overload_order_comparisons_;
 		stats_->conversion_checks = conversion_checks_;
-		stats_->semantic_storage_bytes = program.StorageBytes() +
-			dump_.StorageBytes();
+		stats_->function_signature_lookups = function_signature_lookups_;
+		stats_->template_specialization_requests =
+			template_specialization_requests_;
+		stats_->template_specialization_cache_hits =
+			template_specialization_cache_hits_;
+		stats_->demand_worklist_pushes = demand_worklist_pushes_;
+		stats_->demanded_function_emissions = demanded_function_emissions_;
+		stats_->default_constructor_emissions =
+			default_constructor_emissions_;
+		const std::size_t shared_string_storage =
+			arena.SharedStrings().StorageBytes();
+		const std::size_t program_storage = program.StorageBytes();
+		stats_->semantic_storage_bytes =
+			(program_storage >= shared_string_storage ?
+			 program_storage - shared_string_storage : program_storage) +
+			dump_.StorageBytes() + SideStorageBytes();
 		stats_->analysis_nanoseconds = static_cast<std::uint64_t>(
 			std::chrono::duration_cast<std::chrono::nanoseconds>(
 				render_started - analysis_started).count());
@@ -2342,7 +2488,11 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 	: tokens(0), syntax_nodes(0), semantic_nodes(0), semantic_edges(0),
 	  interned_names(0), canonical_types(0), scopes(0), declarations(0),
 	  expressions(0), lookup_queries(0), lookup_scope_visits(0),
-	  lookup_edge_visits(0), overload_candidates(0), conversion_checks(0),
+	  lookup_edge_visits(0), overload_candidates(0),
+	  overload_order_comparisons(0), conversion_checks(0),
+	  function_signature_lookups(0), template_specialization_requests(0),
+	  template_specialization_cache_hits(0), demand_worklist_pushes(0),
+	  demanded_function_emissions(0), default_constructor_emissions(0),
 	  semantic_storage_bytes(0), peak_stage_storage_bytes(0),
 	  analysis_nanoseconds(0), render_nanoseconds(0), elapsed_nanoseconds(0)
 {

@@ -660,12 +660,13 @@ EntityId Program::NewEntity(NameId name, NamedFlavor flavor, bool complete,
 
 BindingId Program::AddBinding(ScopeId owner, BindingKind kind, NameId name,
 	TypeId type, bool constant, std::int64_t value, NamedFlavor display,
-	NameId display_type_name, BindingId canonical)
+	NameId display_type_name, BindingId canonical, bool merge_redeclaration)
 {
 	NameEntry* entry = EnsureEntry(owner, name);
 	if (entry->name_space != kNoScope)
 		throw std::runtime_error("binding conflicts with namespace");
-	if (canonical == kNoBinding && entry->ordinary != kNoBinding &&
+	if (merge_redeclaration && canonical == kNoBinding &&
+		entry->ordinary != kNoBinding &&
 		(kind == BIND_FUNCTION || kind == BIND_VARIABLE))
 	{
 		const BindingRecord& previous = bindings[entry->ordinary];
@@ -932,6 +933,21 @@ LookupResult Program::LookupDirect(ScopeId scope, NameId name,
 {
 	++lookup_queries;
 	return DirectLookup(scope, name, kind);
+}
+
+LookupResult Program::LookupQualified(ScopeId owner, const NamePath& name,
+	LookupKind kind)
+{
+	++lookup_queries;
+	if (name.Empty() || owner == kNoScope) return LookupResult();
+	for (std::size_t i = 0; i + 1 < name.Size(); ++i)
+	{
+		const LookupResult carrier =
+			LookupGraph(owner, name[i], LOOKUP_SCOPE_CARRIER);
+		owner = CarrierScope(carrier);
+		if (owner == kNoScope) return LookupResult();
+	}
+	return LookupGraph(owner, name.Last(), kind);
 }
 
 ScopeId Program::ResolveScope(ScopeId current, const NamePath& name)
