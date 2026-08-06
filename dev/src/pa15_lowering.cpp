@@ -1,4 +1,5 @@
 #include "pa15_lowering.h"
+#include "pa15_lowering_support.h"
 #include "pa15_lowir_model.h"
 #include "pa15_lowir_render.h"
 
@@ -11,7 +12,6 @@
 #include <chrono>
 #include <limits>
 #include <ostream>
-#include <streambuf>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -26,65 +26,7 @@ using namespace pa11;
 using namespace pa12_semantic_detail;
 
 using namespace pa15_lowir_detail;
-
-std::string StripOperationPrefix(const std::string& operation)
-{
-	const std::size_t colon = operation.rfind(':');
-	return colon == std::string::npos ? operation : operation.substr(colon + 1);
-}
-
-std::string SanitizeSymbol(const std::string& name)
-{
-	std::string result;
-	result.reserve(name.size() + 8);
-	for (std::size_t i = 0; i < name.size(); ++i)
-	{
-		if (i + 1 < name.size() && name[i] == ':' && name[i + 1] == ':')
-		{
-			result += "__";
-			++i;
-		}
-		else
-		{
-			const unsigned char c = static_cast<unsigned char>(name[i]);
-			result += (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-				(c >= '0' && c <= '9') || c == '_' ? static_cast<char>(c) : '_';
-		}
-	}
-	if (result.empty()) result = "anonymous";
-	return result;
-}
-
-template <typename Value, std::size_t InlineCount>
-class SmallSequence
-{
-public:
-	SmallSequence() : count_(0) {}
-
-	void Push(const Value& value)
-	{
-		if (count_ < InlineCount) inline_[count_] = value;
-		else overflow_.push_back(value);
-		++count_;
-	}
-
-	std::size_t size() const { return count_; }
-	bool empty() const { return count_ == 0; }
-	const Value& operator[](std::size_t index) const
-	{
-		return index < InlineCount ? inline_[index] : overflow_[index - InlineCount];
-	}
-
-private:
-	Value inline_[InlineCount];
-	std::vector<Value> overflow_;
-	std::size_t count_;
-};
-
-typedef SmallSequence<std::uint32_t, 8> NodeChildren;
-typedef SmallSequence<Operand, 8> CallArguments;
-typedef SmallSequence<std::uint8_t, 8> CallArgumentFlags;
-typedef SmallSequence<std::uint32_t, 8> SwitchCases;
+using namespace pa15_lowering_support;
 
 class GraphLowerer
 {
@@ -1336,7 +1278,8 @@ private:
 			static_cast<std::int64_t>(member.member_offset), LowI64());
 		index.projection = INDEX_PROJECTION_FIELD;
 		Emit(index);
-		return result;
+		return IsReferenceType(member.type) ?
+			LoadStorage(result, LowPtr()) : result;
 	}
 
 	Operand LowerArrayPointer(std::uint32_t node)
@@ -2310,6 +2253,12 @@ private:
 		}
 		if (record.kind == DUMP_VARIABLE)
 		{
+			if (IsClassObjectType(record.type) && children.size() == 1 &&
+				arena_.nodes[children[0]].kind == DUMP_BRACED_INIT_LIST)
+			{
+				LowerClassInitializer(record, children[0]);
+				return;
+			}
 			if (IsTrivialConstructorAction(record.type, children))
 			{
 				const LowType type = LowerStorageType(record.type);
@@ -2427,6 +2376,108 @@ private:
 			return;
 		}
 		throw std::runtime_error("statement is outside the active PA15 checkpoint");
+	}
+
+	void LowerClassInitializer(const DumpNode& variable,
+		std::uint32_t initializer)
+	{
+		const Operand storage = StorageFor(variable.binding,
+			LowerStorageType(variable.type));
+		if (AggregateHasLeaf(initializer)) (void)AddressOfStorage(storage);
+		std::vector<BindingId> path;
+		LowerAggregateActions(initializer, storage, &path);
+	}
+
+	bool AggregateHasLeaf(std::uint32_t list_node) const
+	{
+		const NodeChildren actions = Children(list_node);
+		for (std::size_t i = 0; i < actions.size(); ++i)
+		{
+			const NodeChildren values = Children(actions[i]);
+			if (values.size() == 1 &&
+				arena_.nodes[values[0]].kind == DUMP_BRACED_INIT_LIST &&
+				IsClassObjectType(arena_.nodes[actions[i]].type))
+			{
+				if (AggregateHasLeaf(values[0])) return true;
+			}
+			else return true;
+		}
+		return false;
+	}
+
+	void LowerAggregateActions(std::uint32_t list_node,
+		const Operand& root, std::vector<BindingId>* path)
+	{
+		if (stats_) ++stats_->lowered_nodes;
+		const DumpNode& list = arena_.nodes[list_node];
+		if (list.kind != DUMP_BRACED_INIT_LIST)
+			throw std::logic_error("class initializer is not an action list");
+		const NodeChildren actions = Children(list_node);
+		for (std::size_t i = 0; i < actions.size(); ++i)
+		{
+			const DumpNode& action = arena_.nodes[actions[i]];
+			if (action.kind != DUMP_INITIALIZER_ACTION ||
+				action.binding == kNoBinding ||
+				action.binding >= program_.bindings.size())
+				throw std::logic_error("invalid aggregate initializer action");
+			if (stats_) ++stats_->lowered_nodes;
+			path->push_back(action.binding);
+			const NodeChildren values = Children(actions[i]);
+			if (values.size() == 1 &&
+				arena_.nodes[values[0]].kind == DUMP_BRACED_INIT_LIST &&
+				IsClassObjectType(action.type))
+				LowerAggregateActions(values[0], root, path);
+			else
+				LowerAggregateLeaf(action, values, root, *path);
+			path->pop_back();
+		}
+	}
+
+	void LowerAggregateLeaf(const DumpNode& action,
+		const NodeChildren& values, const Operand& root,
+		const std::vector<BindingId>& path)
+	{
+		if (values.size() > 1)
+			throw std::logic_error("aggregate leaf has multiple values");
+		Instruction store(Instruction::STORE);
+		if (IsReferenceType(action.type))
+		{
+			if (values.empty())
+				throw std::logic_error("aggregate reference action has no value");
+			store.type = LowPtr();
+			store.first = AddressOfStorage(LowerStorage(values[0]));
+		}
+		else
+		{
+			store.type = LowerExpressionType(action.type);
+			if (!values.empty())
+				store.first = Convert(LowerValue(values[0]), store.type, false);
+			else if (store.type.kind == LOW_PTR)
+				store.first = Operand::NullPointer(store.type);
+			else if (IsFloating(store.type))
+				store.first = FloatingOperand("0.0", store.type);
+			else if (IsInteger(store.type))
+				store.first = Operand(0, store.type);
+			else throw std::runtime_error(
+				"aggregate leaf requires unsupported construction");
+		}
+		Operand destination = AddressOfStorage(root);
+		for (std::size_t i = 0; i < path.size(); ++i)
+		{
+			const BindingRecord& member = program_.bindings[path[i]];
+			const Operand projected = Temp(LowPtr());
+			Instruction index(Instruction::INDEX);
+			index.dest = projected.id;
+			index.type = LowI8();
+			index.first = destination;
+			index.second = Operand(
+				static_cast<std::int64_t>(member.member_offset), LowI64());
+			index.projection = INDEX_PROJECTION_FIELD;
+			Emit(index);
+			destination = projected;
+		}
+		store.second = destination;
+		Emit(store);
 	}
 
 	__attribute__((noinline)) void LowerArrayInitializer(const DumpNode& record,
@@ -2839,39 +2890,6 @@ private:
 	std::vector<IdentityTypeId> identity_type_cache_;
 };
 
-
-class CountingStreamBuffer : public std::streambuf
-{
-public:
-	explicit CountingStreamBuffer(std::streambuf* destination)
-		: destination_(destination), bytes_(0) {}
-
-	std::size_t Bytes() const { return bytes_; }
-
-protected:
-	int_type overflow(int_type character)
-	{
-		if (traits_type::eq_int_type(character, traits_type::eof()))
-			return traits_type::not_eof(character);
-		const int_type written = destination_->sputc(
-			traits_type::to_char_type(character));
-		if (!traits_type::eq_int_type(written, traits_type::eof())) ++bytes_;
-		return written;
-	}
-
-	std::streamsize xsputn(const char* data, std::streamsize size)
-	{
-		const std::streamsize written = destination_->sputn(data, size);
-		if (written > 0) bytes_ += static_cast<std::size_t>(written);
-		return written;
-	}
-
-	int sync() { return destination_->pubsync(); }
-
-private:
-	std::streambuf* destination_;
-	std::size_t bytes_;
-};
 
 class GraphConsumer : public SemanticGraphConsumer
 {

@@ -1834,34 +1834,6 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 	return result;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
-	TypeId target)
-{
-	if (target == kNoType) throw std::runtime_error("untyped braced-init-list");
-	TypeId type = target;
-	const TypeRecord array = program_->types.Get(type);
-	TypeId element = type;
-	if (array.kind == TYPE_ARRAY) element = array.child;
-	std::vector<ExpressionInfo> values;
-	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
-		edge = arena_->NextEdge(edge))
-		values.push_back(AnalyzeExpression(arena_->EdgeChild(edge), scope, element));
-	if (array.kind == TYPE_ARRAY && array.bound != 0 && values.size() > array.bound)
-		throw std::runtime_error("excess array initializer elements");
-	if (array.kind == TYPE_ARRAY && array.bound == 0)
-		type = program_->types.Array(array.child, values.size());
-	const std::uint32_t list = MakeDump(DUMP_BRACED_INIT_LIST, type,
-		VALUE_LVALUE);
-	for (std::size_t i = 0; i < values.size(); ++i) dump_.Add(list, values[i].node);
-	ExpressionInfo result;
-	result.node = list;
-	result.type = type;
-	result.category = VALUE_LVALUE;
-	RecordExpressionFacts(result);
-	++expression_count_;
-	return result;
-}
-
 ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 {
 	const std::uint32_t first = arena_->FirstEdge(node);
@@ -2807,6 +2779,9 @@ void SemanticAnalyzer::RenderLine(const DumpNode& node, std::size_t depth)
 	case DUMP_BRACED_INIT_LIST:
 		output_ << "braced-init-list " << category << ' '
 			<< program_->RenderType(node.type); break;
+	case DUMP_INITIALIZER_ACTION:
+		output_ << "initializer-action " << program_->names.Get(node.text)
+			<< ' ' << program_->RenderType(node.type); break;
 	case DUMP_MEMBER_EXPRESSION:
 		output_ << "member-expression " << category << ' '
 			<< program_->RenderType(node.type) << ' '

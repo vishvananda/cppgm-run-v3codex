@@ -144,6 +144,8 @@ private:
 	ExpressionInfo AnalyzeSubscript(NodeId node, ScopeId scope);
 	ExpressionInfo AnalyzeSizeof(NodeId node, ScopeId scope);
 	ExpressionInfo AnalyzeBracedInit(NodeId node, ScopeId scope, TypeId target);
+	ExpressionInfo AnalyzeAggregateInit(TypeId type, ScopeId scope,
+		const std::vector<NodeId>& elements, std::size_t* cursor);
 	ExpressionInfo AnalyzeMember(NodeId node, ScopeId scope);
 	ExpressionInfo AnalyzeImplicitDataMember(BindingId member, ScopeId scope,
 		TypeId target);

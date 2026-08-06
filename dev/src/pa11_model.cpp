@@ -466,7 +466,8 @@ EntityRecord::EntityRecord()
 	  underlying(kNoType), declaration(kNoBinding), object_size(0),
 	  object_alignment(0), complete(false), layout_complete(false),
 	  has_user_declared_constructor(false), default_constructible(false),
-	  trivial_default_constructor(false)
+	  trivial_default_constructor(false), has_direct_base(false),
+	  is_aggregate(false)
 {
 }
 

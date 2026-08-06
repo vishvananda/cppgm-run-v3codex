@@ -94,6 +94,8 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	{
 		if (program_->entities[entity].complete)
 			throw std::runtime_error("duplicate class definition");
+		program_->entities[entity].has_direct_base =
+			FindChild(node, "base-clause") != kNoNode;
 		ScopeId member_scope = program_->entities[entity].member_scope;
 		if (member_scope == kNoScope)
 		{
@@ -158,6 +160,7 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 	const std::vector<BindingId>& members = entity_data_members_[entity];
 	const bool implicit_default_constructor =
 		!owner.has_user_declared_constructor;
+	owner.is_aggregate = implicit_default_constructor && !owner.has_direct_base;
 	if (implicit_default_constructor)
 	{
 		owner.default_constructible = true;
@@ -167,6 +170,9 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 	{
 		++class_layout_member_visits_;
 		BindingRecord& member = program_->bindings[members[i]];
+		if (member.has_default_member_initializer ||
+			member.access != ACCESS_PUBLIC)
+			owner.is_aggregate = false;
 		const std::size_t member_size = program_->SizeOf(member.type);
 		const std::size_t member_alignment = program_->AlignOf(member.type);
 		alignment = std::max(alignment, member_alignment);

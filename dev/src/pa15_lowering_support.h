@@ -1,0 +1,67 @@
+#pragma once
+
+#include "pa15_lowir_model.h"
+
+#include <cstddef>
+#include <cstdint>
+#include <streambuf>
+#include <string>
+#include <vector>
+
+namespace cppgm
+{
+namespace pa15_lowering_support
+{
+
+std::string StripOperationPrefix(const std::string& operation);
+std::string SanitizeSymbol(const std::string& name);
+
+template <typename Value, std::size_t InlineCount>
+class SmallSequence
+{
+public:
+	SmallSequence() : count_(0) {}
+
+	void Push(const Value& value)
+	{
+		if (count_ < InlineCount) inline_[count_] = value;
+		else overflow_.push_back(value);
+		++count_;
+	}
+
+	std::size_t size() const { return count_; }
+	bool empty() const { return count_ == 0; }
+	const Value& operator[](std::size_t index) const
+	{
+		return index < InlineCount ? inline_[index] : overflow_[index - InlineCount];
+	}
+
+private:
+	Value inline_[InlineCount];
+	std::vector<Value> overflow_;
+	std::size_t count_;
+};
+
+typedef SmallSequence<std::uint32_t, 8> NodeChildren;
+typedef SmallSequence<pa15_lowir_detail::Operand, 8> CallArguments;
+typedef SmallSequence<std::uint8_t, 8> CallArgumentFlags;
+typedef SmallSequence<std::uint32_t, 8> SwitchCases;
+
+class CountingStreamBuffer : public std::streambuf
+{
+public:
+	explicit CountingStreamBuffer(std::streambuf* destination);
+	std::size_t Bytes() const;
+
+protected:
+	int_type overflow(int_type character);
+	std::streamsize xsputn(const char* data, std::streamsize size);
+	int sync();
+
+private:
+	std::streambuf* destination_;
+	std::size_t bytes_;
+};
+
+}
+}
