@@ -17,5 +17,5 @@ FRONTEND_OBJ_BASENAMES_nsinit := pp_tokenizer post_tokenizer control_expression 
 FRONTEND_OBJ_BASENAMES_cy86 := pp_tokenizer post_tokenizer control_expression macro_processor cy86_frontend cy86_backend cy86_program
 FRONTEND_OBJ_BASENAMES_cppgm++ := pp_tokenizer post_tokenizer control_expression macro_processor frontend_intern pa10_syntax_model pa10_syntax pa11_model pa11_semantic pa12_semantic pa12_semantic_declarations pa12_semantic_tables
 FRONTEND_OBJ_BASENAMES_lowiropt :=
-FRONTEND_OBJ_BASENAMES_lowir2cy86 :=
+FRONTEND_OBJ_BASENAMES_lowir2cy86 := lowir_parse lowir_cy86
 FRONTEND_OBJ_BASENAMES_lowir2native :=

@@ -359,6 +359,8 @@ struct Program
   std::vector<Function> functions;
   std::vector<ObjectAlias> object_aliases;
   std::vector<ir_model::ExportedSymbol> exported_symbols;
+  std::size_t source_bytes = 0;
+  std::size_t token_count = 0;
 };
 
 using LowirType = LowType;

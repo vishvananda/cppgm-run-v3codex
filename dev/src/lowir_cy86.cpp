@@ -1,0 +1,1106 @@
+#include "lowir_cy86.h"
+
+#include <algorithm>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <iomanip>
+#include <sstream>
+#include <stdexcept>
+#include <unordered_map>
+#include <unordered_set>
+
+namespace lowir_cy86 {
+namespace {
+
+using namespace lowir_model;
+
+struct TypeShape
+{
+  std::size_t width;
+  std::size_t size;
+  std::size_t alignment;
+  bool object;
+  bool floating;
+  bool signed_integer;
+};
+
+void parse_object_shape(const std::string & text, std::size_t & size,
+                        std::size_t & alignment)
+{
+  const std::size_t x = text.find('x', 4);
+  size = static_cast<std::size_t>(std::strtoull(text.substr(4, x - 4).c_str(), 0, 10));
+  alignment = static_cast<std::size_t>(
+    std::strtoull(text.substr(x + 1, text.size() - x - 2).c_str(), 0, 10));
+}
+
+TypeShape shape(const LowType & type)
+{
+  TypeShape result = {64, 8, 8, false, false, false};
+  const std::string & text = type.text;
+  if(text == "i1" || text == "i8") {
+    result.width = 8; result.size = 1; result.alignment = 1; result.signed_integer = true;
+  } else if(text == "u8") {
+    result.width = 8; result.size = 1; result.alignment = 1;
+  } else if(text == "i16") {
+    result.width = 16; result.size = 2; result.alignment = 2; result.signed_integer = true;
+  } else if(text == "u16") {
+    result.width = 16; result.size = 2; result.alignment = 2;
+  } else if(text == "i32") {
+    result.width = 32; result.size = 4; result.alignment = 4; result.signed_integer = true;
+  } else if(text == "u32") {
+    result.width = 32; result.size = 4; result.alignment = 4;
+  } else if(text == "i64") {
+    result.signed_integer = true;
+  } else if(text == "f32") {
+    result.width = 32; result.size = 4; result.alignment = 4; result.floating = true;
+  } else if(text == "f64") {
+    result.floating = true;
+  } else if(text == "f80") {
+    result.width = 80; result.size = 16; result.alignment = 16; result.floating = true;
+  } else if(text.compare(0, 4, "obj<") == 0) {
+    result.object = true;
+    parse_object_shape(text, result.size, result.alignment);
+    result.width = result.size * 8;
+  }
+  return result;
+}
+
+std::string strip_sigil(const std::string & name)
+{
+  return name.empty() ? name : name.substr(1);
+}
+
+std::string register_name(char bank, std::size_t width)
+{
+  std::ostringstream out;
+  out << bank << width;
+  return out.str();
+}
+
+std::string memory_bp(std::size_t offset)
+{
+  std::ostringstream out;
+  out << "[bp-" << offset << ']';
+  return out.str();
+}
+
+std::string memory_bp_plus(std::size_t offset)
+{
+  std::ostringstream out;
+  out << "[bp+" << offset << ']';
+  return out.str();
+}
+
+std::size_t align_up(std::size_t value, std::size_t alignment)
+{
+  return (value + alignment - 1) & ~(alignment - 1);
+}
+
+bool is_f80(const LowType & type) { return type.text == "f80"; }
+bool is_large_value(const LowType & type) { return is_f80(type) || shape(type).object; }
+
+LowType instruction_result_type(const Instruction & ins)
+{
+  LowType result = ins.type;
+  if(ins.kind == Instruction::IK_ADDR || ins.kind == Instruction::IK_INDEX) result.text = "ptr";
+  if(ins.kind == Instruction::IK_CMP || ins.kind == Instruction::IK_ATOMIC_COMPARE_EXCHANGE ||
+     ins.kind == Instruction::IK_EXCEPTION_SELECTOR) result.text = "i64";
+  return result;
+}
+
+class TextOutput
+{
+public:
+  void Label(const std::string & value) { out_ << value << ":\n"; }
+  void Instruction(const std::string & value) { out_ << '\t' << value << ";\n"; }
+  void Blank() { out_ << '\n'; }
+  std::string Str() const { return out_.str(); }
+
+private:
+  std::ostringstream out_;
+};
+
+struct Location
+{
+  LowType type;
+  std::size_t offset;
+  bool address_value;
+  bool object_parameter;
+};
+
+class ProgramEmitter;
+
+class FunctionEmitter
+{
+public:
+  FunctionEmitter(ProgramEmitter & owner, const Function & function, TextOutput & out);
+  void Emit();
+  std::size_t InstructionCount() const { return instruction_count_; }
+
+private:
+  ProgramEmitter & owner_;
+  const Function & function_;
+  TextOutput & out_;
+  std::unordered_map<std::string, Location> locations_;
+  std::size_t frame_size_;
+  std::size_t scratch_[4];
+  std::size_t instruction_count_;
+  bool has_f80_;
+  bool indirect_result_;
+
+  void BuildLayout();
+  void AddLocation(const std::string & name, const LowType & type, bool address_value,
+                   bool object_parameter, std::size_t & used);
+  void EmitPrologue();
+  void EmitParameterCopies();
+  void EmitBlock(const Block & block);
+  void EmitInstruction(const Instruction & ins);
+  void EmitConstOrCopy(const Instruction & ins);
+  void EmitAddress(const Instruction & ins);
+  void EmitLoad(const Instruction & ins, bool atomic);
+  void EmitStore(const Instruction & ins, bool atomic);
+  void EmitIndex(const Instruction & ins);
+  void EmitUnary(const Instruction & ins);
+  void EmitBinary(const Instruction & ins);
+  void EmitCompare(const Instruction & ins);
+  void EmitConvert(const Instruction & ins);
+  void EmitCall(const Instruction & ins);
+  void EmitBulk(const Instruction & ins);
+  void EmitAtomic(const Instruction & ins);
+  void EmitControl(const Instruction & ins);
+  void EmitException(const Instruction & ins);
+  void EmitResumeSequence();
+  void EmitReturn(const Instruction & ins);
+  void EmitScalarValue(const Operand & value, const LowType & type, char bank);
+  void EmitAddressValue(const Operand & value, char bank);
+  void EmitStorageLoad(const Operand & storage, const LowType & type, char bank);
+  void EmitStorageStore(const Operand & storage, const LowType & type, char bank);
+  void StoreScalarTemp(const std::string & name, const LowType & type, char bank);
+  void EmitSignExtend(char bank, std::size_t width);
+  void LoadF80(const Operand & value, std::size_t scratch_index);
+  void LoadF80FromAddress(char bank, std::size_t scratch_index);
+  void StoreF80Temp(const std::string & name, std::size_t scratch_index);
+  void ZeroF80Padding(std::size_t scratch_index);
+  void Copy16(const std::string & source, const std::string & dest);
+  std::string LocalMemory(const std::string & name) const;
+  std::string LocalAddress(const std::string & name) const;
+  std::string BlockLabel(const std::string & block) const;
+  std::string EpilogueLabel() const;
+};
+
+class ProgramEmitter
+{
+public:
+  ProgramEmitter(const Program & program, Stats * stats)
+    : program_(program), stats_(stats), uses_eh_(false), eh_label_counter_(0),
+      atomic_label_counter_(0)
+  {
+    for(std::size_t i = 0; i < program.function_declarations.size(); ++i)
+      functions_.insert(program.function_declarations[i].name);
+    for(std::size_t i = 0; i < program.functions.size(); ++i) {
+      functions_.insert(program.functions[i].name);
+      function_defs_[program.functions[i].name] = &program.functions[i];
+    }
+    for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
+      globals_.insert(program.global_declarations[i].name);
+    for(std::size_t i = 0; i < program.globals.size(); ++i)
+      globals_.insert(program.globals[i].name);
+    FindRoles();
+  }
+
+  std::string Emit()
+  {
+    DetectEh();
+    EmitStart();
+    for(std::size_t i = 0; i < program_.functions.size(); ++i) {
+      FunctionEmitter emitter(*this, program_.functions[i], out_);
+      emitter.Emit();
+      if(stats_) {
+        ++stats_->functions;
+        stats_->blocks += program_.functions[i].blocks.size();
+        stats_->instructions += emitter.InstructionCount();
+      }
+    }
+    if(uses_eh_ && eh_unhandled_.empty()) EmitDefaultUnhandled();
+    for(std::size_t i = 0; i < program_.globals.size(); ++i) EmitGlobal(program_.globals[i]);
+    if(uses_eh_) EmitDefaultEhGlobals();
+    std::string result = out_.Str();
+    if(stats_) stats_->output_bytes = result.size();
+    return result;
+  }
+
+  std::string SymbolLabel(const std::string & symbol) const
+  {
+    if(functions_.count(symbol)) return "fn__" + strip_sigil(symbol);
+    return "g__" + strip_sigil(symbol);
+  }
+
+  bool IsFunction(const std::string & symbol) const { return functions_.count(symbol) != 0; }
+  const Function * FindFunction(const std::string & symbol) const
+  {
+    const std::unordered_map<std::string, const Function *>::const_iterator found =
+      function_defs_.find(symbol);
+    return found == function_defs_.end() ? 0 : found->second;
+  }
+
+  std::string EhTopLabel() const
+  {
+    return eh_top_.empty() ? "g____cppgm_eh_top" : SymbolLabel(eh_top_);
+  }
+  std::string EhValueLabel() const
+  {
+    return eh_value_.empty() ? "g____cppgm_eh_value" : SymbolLabel(eh_value_);
+  }
+  std::string EhUnhandledLabel() const
+  {
+    return eh_unhandled_.empty() ? "fn____cppgm_eh_unhandled" : SymbolLabel(eh_unhandled_);
+  }
+
+private:
+  friend class FunctionEmitter;
+  const Program & program_;
+  Stats * stats_;
+  TextOutput out_;
+  std::unordered_set<std::string> functions_;
+  std::unordered_set<std::string> globals_;
+  std::unordered_map<std::string, const Function *> function_defs_;
+  std::string entry_;
+  std::string init_;
+  std::string fini_;
+  std::string eh_top_;
+  std::string eh_value_;
+  std::string eh_unhandled_;
+  bool uses_eh_;
+  std::size_t eh_label_counter_;
+  std::size_t atomic_label_counter_;
+
+  void FindRoles();
+  void RecordRole(const std::string & name, SymbolRole role);
+  void DetectEh();
+  void EmitStart();
+  void EmitGlobal(const GlobalDefinition & global);
+  void EmitDataItem(const GlobalDefinition::DataItem & item, std::size_t & offset);
+  void EmitPadding(std::size_t bytes, std::size_t & offset);
+  void EmitF80Data(const std::string & literal, std::size_t & offset);
+  void EmitDefaultUnhandled();
+  void EmitDefaultEhGlobals();
+};
+
+void ProgramEmitter::RecordRole(const std::string & name, SymbolRole role)
+{
+  if(role == SR_ENTRY) entry_ = name;
+  else if(role == SR_INIT) init_ = name;
+  else if(role == SR_FINI) fini_ = name;
+  else if(role == SR_EH_TOP) eh_top_ = name;
+  else if(role == SR_EH_VALUE) eh_value_ = name;
+  else if(role == SR_EH_UNHANDLED) eh_unhandled_ = name;
+}
+
+void ProgramEmitter::FindRoles()
+{
+  for(std::size_t i = 0; i < program_.global_declarations.size(); ++i)
+    RecordRole(program_.global_declarations[i].name, program_.global_declarations[i].metadata.role);
+  for(std::size_t i = 0; i < program_.globals.size(); ++i)
+    RecordRole(program_.globals[i].name, program_.globals[i].metadata.role);
+  for(std::size_t i = 0; i < program_.function_declarations.size(); ++i)
+    RecordRole(program_.function_declarations[i].name, program_.function_declarations[i].metadata.role);
+  for(std::size_t i = 0; i < program_.functions.size(); ++i)
+    RecordRole(program_.functions[i].name, program_.functions[i].metadata.role);
+  if(entry_.empty() && function_defs_.count("@main")) entry_ = "@main";
+  if(init_.empty() && function_defs_.count("@__cppgm_init")) init_ = "@__cppgm_init";
+  if(fini_.empty() && function_defs_.count("@__cppgm_fini")) fini_ = "@__cppgm_fini";
+  if(entry_.empty()) throw ParseError("LowIR program has no entry definition");
+}
+
+void ProgramEmitter::DetectEh()
+{
+  for(std::size_t i = 0; i < program_.functions.size(); ++i)
+    for(std::size_t j = 0; j < program_.functions[i].blocks.size(); ++j)
+      for(std::size_t k = 0; k < program_.functions[i].blocks[j].instructions.size(); ++k) {
+        const Instruction::Kind kind = program_.functions[i].blocks[j].instructions[k].kind;
+        if(kind >= Instruction::IK_EH_TRY && kind <= Instruction::IK_RESUME) uses_eh_ = true;
+      }
+}
+
+void ProgramEmitter::EmitStart()
+{
+  out_.Label("start");
+  out_.Instruction("move64 bp sp");
+  if(!init_.empty()) out_.Instruction("call " + SymbolLabel(init_));
+  out_.Instruction("call " + SymbolLabel(entry_));
+  if(!fini_.empty()) {
+    out_.Instruction("isub64 sp sp 8");
+    out_.Instruction("move64 [sp] x64");
+    out_.Instruction("call " + SymbolLabel(fini_));
+    out_.Instruction("move64 x64 [sp]");
+    out_.Instruction("iadd64 sp sp 8");
+  }
+  out_.Instruction("syscall1 t64 60 x64");
+  out_.Blank();
+}
+
+void ProgramEmitter::EmitPadding(std::size_t bytes, std::size_t & offset)
+{
+  for(std::size_t i = 0; i < bytes; ++i) out_.Instruction("data8 0");
+  offset += bytes;
+}
+
+void ProgramEmitter::EmitF80Data(const std::string & literal, std::size_t & offset)
+{
+  const long double value = std::strtold(literal.c_str(), 0);
+  std::int64_t low = 0;
+  std::uint16_t high = 0;
+  std::memcpy(&low, &value, sizeof(low));
+  std::memcpy(&high, reinterpret_cast<const char *>(&value) + 8, sizeof(high));
+  out_.Instruction("data64 " + std::to_string(low));
+  out_.Instruction("data16 " + std::to_string(high));
+  offset += 10;
+  EmitPadding(6, offset);
+}
+
+void ProgramEmitter::EmitDataItem(const GlobalDefinition::DataItem & item,
+                                  std::size_t & offset)
+{
+  if(item.kind == GlobalDefinition::DataItem::ITEM_ZERO) {
+    EmitPadding(item.zero_bytes, offset);
+    return;
+  }
+  const TypeShape item_shape = shape(item.type);
+  const std::size_t aligned = align_up(offset, item_shape.alignment);
+  EmitPadding(aligned - offset, offset);
+  if(item.kind == GlobalDefinition::DataItem::ITEM_ADDR) {
+    std::string value = SymbolLabel(item.symbol);
+    if(item.addr_addend > 0) value = '(' + value + '+' + std::to_string(item.addr_addend) + ')';
+    if(item.addr_addend < 0) value = '(' + value + std::to_string(item.addr_addend) + ')';
+    out_.Instruction("data64 " + value);
+    offset += 8;
+  } else if(item.type.text == "f80") EmitF80Data(item.literal_operand.text, offset);
+  else {
+    out_.Instruction("data" + std::to_string(item_shape.width) + " " + item.literal_operand.text);
+    offset += item_shape.size;
+  }
+}
+
+void ProgramEmitter::EmitGlobal(const GlobalDefinition & global)
+{
+  out_.Label(SymbolLabel(global.name));
+  std::size_t offset = 0;
+  if(global.structured) {
+    for(std::size_t i = 0; i < global.data_items.size(); ++i)
+      EmitDataItem(global.data_items[i], offset);
+  } else if(global.type.text == "f80") {
+    if(global.init_kind == GlobalDefinition::INIT_ZERO) EmitF80Data("0.0L", offset);
+    else EmitF80Data(global.init_operand.text, offset);
+  } else {
+    const TypeShape global_shape = shape(global.type);
+    std::string value = "0";
+    if(global.init_kind == GlobalDefinition::INIT_INTEGER) value = global.init_operand.text;
+    else if(global.init_kind == GlobalDefinition::INIT_ADDR) {
+      value = SymbolLabel(global.init_operand.text);
+      if(global.addr_addend > 0) value = '(' + value + '+' + std::to_string(global.addr_addend) + ')';
+      if(global.addr_addend < 0) value = '(' + value + std::to_string(global.addr_addend) + ')';
+    }
+    out_.Instruction("data" + std::to_string(global_shape.width) + " " + value);
+  }
+  out_.Blank();
+}
+
+void ProgramEmitter::EmitDefaultUnhandled()
+{
+  out_.Label("fn____cppgm_eh_unhandled");
+  out_.Instruction("syscall1 t64 60 x64");
+  out_.Blank();
+}
+
+void ProgramEmitter::EmitDefaultEhGlobals()
+{
+  if(eh_top_.empty() && !globals_.count("@__cppgm_eh_top")) {
+    out_.Label("g____cppgm_eh_top"); out_.Instruction("data64 0"); out_.Blank();
+  }
+  if(eh_value_.empty() && !globals_.count("@__cppgm_eh_value")) {
+    out_.Label("g____cppgm_eh_value"); out_.Instruction("data64 0"); out_.Blank();
+  }
+}
+
+FunctionEmitter::FunctionEmitter(ProgramEmitter & owner, const Function & function,
+                                 TextOutput & out)
+  : owner_(owner), function_(function), out_(out), frame_size_(0),
+    instruction_count_(0), has_f80_(false),
+    indirect_result_(is_large_value(function.return_type))
+{
+  std::fill(scratch_, scratch_ + 4, 0);
+  BuildLayout();
+}
+
+void FunctionEmitter::AddLocation(const std::string & name, const LowType & type,
+                                  bool address_value, bool object_parameter,
+                                  std::size_t & used)
+{
+  const TypeShape item = shape(type);
+  const std::size_t bytes = is_large_value(type) ? item.size : 8;
+  used = align_up(used, 8) + bytes;
+  locations_[name] = Location{type, used, address_value, object_parameter};
+  if(is_f80(type)) has_f80_ = true;
+}
+
+void FunctionEmitter::BuildLayout()
+{
+  std::size_t used = 0;
+  if(indirect_result_) {
+    LowType pointer; pointer.text = "ptr";
+    AddLocation("#return", pointer, false, false, used);
+  }
+  for(std::size_t i = 0; i < function_.params.size(); ++i) {
+    const Parameter & param = function_.params[i];
+    AddLocation(param.name, param.type, is_f80(param.type), shape(param.type).object, used);
+  }
+  for(std::size_t i = 0; i < function_.slots.size(); ++i)
+    AddLocation(function_.slots[i].first, function_.slots[i].second, true, false, used);
+  for(std::size_t b = 0; b < function_.blocks.size(); ++b)
+    for(std::size_t i = 0; i < function_.blocks[b].instructions.size(); ++i) {
+      const Instruction & ins = function_.blocks[b].instructions[i];
+      if(!ins.dest.empty())
+        AddLocation(ins.dest, instruction_result_type(ins), is_large_value(instruction_result_type(ins)),
+                    false, used);
+      if(is_f80(ins.type) || is_f80(ins.source_type) || ins.kind == Instruction::IK_CONVERT)
+        has_f80_ = true;
+    }
+  if(has_f80_) {
+    for(std::size_t i = 0; i < 4; ++i) {
+      used += 16;
+      scratch_[i] = used;
+    }
+  }
+  frame_size_ = used;
+}
+
+std::string FunctionEmitter::LocalMemory(const std::string & name) const
+{
+  const std::unordered_map<std::string, Location>::const_iterator found = locations_.find(name);
+  if(found == locations_.end()) throw ParseError("missing local layout: " + name);
+  return memory_bp(found->second.offset);
+}
+
+std::string FunctionEmitter::LocalAddress(const std::string & name) const
+{
+  const std::unordered_map<std::string, Location>::const_iterator found = locations_.find(name);
+  if(found == locations_.end()) throw ParseError("missing local layout: " + name);
+  return std::to_string(found->second.offset);
+}
+
+std::string FunctionEmitter::BlockLabel(const std::string & block) const
+{
+  return "fn__" + strip_sigil(function_.name) + "__" + strip_sigil(block);
+}
+
+std::string FunctionEmitter::EpilogueLabel() const
+{
+  return "fn__" + strip_sigil(function_.name) + "__epilogue";
+}
+
+void FunctionEmitter::Emit()
+{
+  EmitPrologue();
+  for(std::size_t i = 0; i < function_.blocks.size(); ++i) EmitBlock(function_.blocks[i]);
+  out_.Label(EpilogueLabel());
+  out_.Instruction("move64 sp bp");
+  out_.Instruction("move64 bp [sp]");
+  out_.Instruction("iadd64 sp sp 8");
+  out_.Instruction("ret");
+  out_.Blank();
+}
+
+void FunctionEmitter::EmitPrologue()
+{
+  out_.Label(owner_.SymbolLabel(function_.name));
+  out_.Instruction("isub64 sp sp 8");
+  out_.Instruction("move64 [sp] bp");
+  out_.Instruction("move64 bp sp");
+  if(frame_size_) out_.Instruction("isub64 sp sp " + std::to_string(frame_size_));
+  EmitParameterCopies();
+}
+
+void FunctionEmitter::EmitParameterCopies()
+{
+  static const char banks[] = {'x', 'y', 'z', 't'};
+  std::size_t abi_index = 0;
+  if(indirect_result_) {
+    out_.Instruction("move64 " + LocalMemory("#return") + " x64");
+    ++abi_index;
+  }
+  for(std::size_t i = 0; i < function_.params.size(); ++i, ++abi_index) {
+    const Parameter & param = function_.params[i];
+    const TypeShape item = shape(param.type);
+    const std::string dest = LocalMemory(param.name);
+    if(abi_index < 4) {
+      const char bank = banks[abi_index];
+      if(is_large_value(param.type)) {
+        out_.Instruction("move64 x64 " + register_name(bank, 64));
+        out_.Instruction("move64 z64 [x64]");
+        out_.Instruction("move64 " + dest + " z64");
+        if(item.size > 8) {
+          out_.Instruction("move64 z64 [x64+8]");
+          out_.Instruction("move64 " + memory_bp(locations_[param.name].offset - 8) + " z64");
+        }
+      } else {
+        out_.Instruction("move" + std::to_string(item.width) + " " + dest + " " +
+                         register_name(bank, item.width));
+      }
+    } else {
+      out_.Instruction("move64 x64 " + memory_bp_plus(16 + (abi_index - 4) * 8));
+      out_.Instruction("move64 " + dest + " x64");
+    }
+  }
+}
+
+void FunctionEmitter::EmitBlock(const Block & block)
+{
+  out_.Label(BlockLabel(block.label));
+  for(std::size_t i = 0; i < block.instructions.size(); ++i) {
+    EmitInstruction(block.instructions[i]);
+    ++instruction_count_;
+  }
+}
+
+void FunctionEmitter::EmitInstruction(const Instruction & ins)
+{
+  switch(ins.kind) {
+  case Instruction::IK_CONST: case Instruction::IK_COPY: EmitConstOrCopy(ins); break;
+  case Instruction::IK_ADDR: EmitAddress(ins); break;
+  case Instruction::IK_LOAD: EmitLoad(ins, false); break;
+  case Instruction::IK_ATOMIC_LOAD: EmitLoad(ins, true); break;
+  case Instruction::IK_STORE: EmitStore(ins, false); break;
+  case Instruction::IK_ATOMIC_STORE: EmitStore(ins, true); break;
+  case Instruction::IK_INDEX: EmitIndex(ins); break;
+  case Instruction::IK_UNARY: EmitUnary(ins); break;
+  case Instruction::IK_BINARY: EmitBinary(ins); break;
+  case Instruction::IK_CMP: EmitCompare(ins); break;
+  case Instruction::IK_CONVERT: EmitConvert(ins); break;
+  case Instruction::IK_CALL: EmitCall(ins); break;
+  case Instruction::IK_COPYOBJ: case Instruction::IK_ZEROINIT: EmitBulk(ins); break;
+  case Instruction::IK_ATOMIC_ADD_FETCH: case Instruction::IK_ATOMIC_EXCHANGE:
+  case Instruction::IK_ATOMIC_COMPARE_EXCHANGE: EmitAtomic(ins); break;
+  case Instruction::IK_ATOMIC_THREAD_FENCE: case Instruction::IK_ATOMIC_SIGNAL_FENCE: break;
+  case Instruction::IK_JUMP: case Instruction::IK_BRANCH: case Instruction::IK_SWITCH:
+    EmitControl(ins); break;
+  case Instruction::IK_EH_TRY: case Instruction::IK_EH_CLEANUP: case Instruction::IK_EH_END:
+  case Instruction::IK_THROW: case Instruction::IK_EXCEPTION: case Instruction::IK_RESUME:
+    EmitException(ins); break;
+  case Instruction::IK_RETURN: EmitReturn(ins); break;
+  default: throw ParseError("unsupported PA13 instruction in CY86 emitter");
+  }
+}
+
+void FunctionEmitter::EmitScalarValue(const Operand & value, const LowType & type, char bank)
+{
+  const TypeShape item = shape(type);
+  const std::string reg = register_name(bank, item.width);
+  const std::string reg64 = register_name(bank, 64);
+  std::string literal = value.text == "nullptr" ? "0" : value.text;
+  if(value.kind == Operand::OP_INTEGER || value.kind == Operand::OP_FLOAT) {
+    const std::size_t move_width = item.floating ? item.width : 64;
+    out_.Instruction("move" + std::to_string(move_width) + " " +
+                     register_name(bank, move_width) + " " + literal);
+  } else if(value.kind == Operand::OP_SLOT) {
+    out_.Instruction("isub64 " + reg64 + " bp " + LocalAddress(value.text));
+  } else if(value.kind == Operand::OP_GLOBAL) {
+    out_.Instruction("move64 " + reg64 + " " + owner_.SymbolLabel(value.text));
+  } else {
+    const Location & location = locations_.at(value.text);
+    if(location.address_value)
+      out_.Instruction("isub64 " + reg64 + " bp " + std::to_string(location.offset));
+    else {
+      if(item.width < 32) out_.Instruction("move64 " + reg64 + " 0");
+      out_.Instruction("move" + std::to_string(item.width) + " " + reg + " " +
+                       memory_bp(location.offset));
+    }
+  }
+}
+
+void FunctionEmitter::EmitAddressValue(const Operand & value, char bank)
+{
+  const std::string reg = register_name(bank, 64);
+  if(value.kind == Operand::OP_SLOT) {
+    out_.Instruction("isub64 " + reg + " bp " + LocalAddress(value.text));
+  } else if(value.kind == Operand::OP_GLOBAL) {
+    out_.Instruction("move64 " + reg + " " + owner_.SymbolLabel(value.text));
+  } else if(value.kind == Operand::OP_TEMP) {
+    const Location & location = locations_.at(value.text);
+    if(location.address_value)
+      out_.Instruction("isub64 " + reg + " bp " + std::to_string(location.offset));
+    else out_.Instruction("move64 " + reg + " " + memory_bp(location.offset));
+  } else {
+    out_.Instruction("move64 " + reg + " " + (value.text == "nullptr" ? "0" : value.text));
+  }
+}
+
+void FunctionEmitter::EmitStorageLoad(const Operand & storage, const LowType & type, char bank)
+{
+  const TypeShape item = shape(type);
+  const std::string reg = register_name(bank, item.width);
+  if(storage.kind == Operand::OP_SLOT)
+    out_.Instruction("move" + std::to_string(item.width) + " " + reg + " " + LocalMemory(storage.text));
+  else if(storage.kind == Operand::OP_GLOBAL)
+    out_.Instruction("move" + std::to_string(item.width) + " " + reg + " [" +
+                     owner_.SymbolLabel(storage.text) + "]");
+  else {
+    EmitAddressValue(storage, bank);
+    out_.Instruction("move" + std::to_string(item.width) + " " + reg + " [" +
+                     register_name(bank, 64) + "]");
+  }
+}
+
+void FunctionEmitter::EmitStorageStore(const Operand & storage, const LowType & type, char bank)
+{
+  const TypeShape item = shape(type);
+  const std::string reg = register_name(bank, item.width);
+  if(storage.kind == Operand::OP_SLOT)
+    out_.Instruction("move" + std::to_string(item.width) + " " + LocalMemory(storage.text) + " " + reg);
+  else if(storage.kind == Operand::OP_GLOBAL)
+    out_.Instruction("move" + std::to_string(item.width) + " [" + owner_.SymbolLabel(storage.text) +
+                     "] " + reg);
+  else {
+    EmitAddressValue(storage, 'y');
+    out_.Instruction("move" + std::to_string(item.width) + " [y64] " + reg);
+  }
+}
+
+void FunctionEmitter::StoreScalarTemp(const std::string & name, const LowType & type, char bank)
+{
+  const TypeShape item = shape(type);
+  out_.Instruction("move" + std::to_string(item.width) + " " + LocalMemory(name) + " " +
+                   register_name(bank, item.width));
+}
+
+void FunctionEmitter::EmitSignExtend(char bank, std::size_t width)
+{
+  if(width >= 64) return;
+  const std::size_t shift = 64 - width;
+  out_.Instruction("move8 t8 " + std::to_string(shift));
+  out_.Instruction("lshift64 " + register_name(bank, 64) + " " + register_name(bank, 64) + " t8");
+  out_.Instruction("srshift64 " + register_name(bank, 64) + " " + register_name(bank, 64) + " t8");
+}
+
+void FunctionEmitter::EmitConstOrCopy(const Instruction & ins)
+{
+  if(is_f80(ins.type)) {
+    LoadF80(ins.first, 0); StoreF80Temp(ins.dest, 0); return;
+  }
+  EmitScalarValue(ins.first, ins.type, 'x');
+  StoreScalarTemp(ins.dest, ins.type, 'x');
+}
+
+void FunctionEmitter::EmitAddress(const Instruction & ins)
+{
+  EmitAddressValue(ins.first, 'x');
+  StoreScalarTemp(ins.dest, instruction_result_type(ins), 'x');
+}
+
+void FunctionEmitter::EmitLoad(const Instruction & ins, bool atomic)
+{
+  if(is_f80(ins.type)) {
+    EmitAddressValue(ins.first, 'x'); LoadF80FromAddress('x', 0); StoreF80Temp(ins.dest, 0); return;
+  }
+  if(atomic) {
+    EmitAddressValue(ins.first, 'y');
+    const std::string width = std::to_string(shape(ins.type).width);
+    out_.Instruction("move" + width + " x" + width + " [y64]");
+  } else EmitStorageLoad(ins.first, ins.type, 'x');
+  const TypeShape item = shape(ins.type);
+  if(item.signed_integer) EmitSignExtend('x', item.width);
+  StoreScalarTemp(ins.dest, ins.type, 'x');
+}
+
+void FunctionEmitter::EmitStore(const Instruction & ins, bool atomic)
+{
+  if(is_f80(ins.type)) {
+    LoadF80(ins.first, 0); EmitAddressValue(ins.second, 'x');
+    Copy16(memory_bp(scratch_[0]), "[x64]"); return;
+  }
+  if(atomic) {
+    EmitAddressValue(ins.second, 'y');
+    EmitScalarValue(ins.first, ins.type, 'x');
+    const std::string width = std::to_string(shape(ins.type).width);
+    out_.Instruction("move" + width + " [y64] x" + width);
+  } else {
+    EmitScalarValue(ins.first, ins.type, 'x');
+    EmitStorageStore(ins.second, ins.type, 'x');
+  }
+}
+
+void FunctionEmitter::EmitIndex(const Instruction & ins)
+{
+  EmitAddressValue(ins.first, 'y');
+  LowType index_type; index_type.text = "i64";
+  EmitScalarValue(ins.second, index_type, 'x');
+  if(shape(ins.type).size != 1) {
+    out_.Instruction("move64 z64 " + std::to_string(shape(ins.type).size));
+    out_.Instruction("smul64 x64 x64 z64");
+  }
+  out_.Instruction("iadd64 x64 y64 x64");
+  StoreScalarTemp(ins.dest, instruction_result_type(ins), 'x');
+}
+
+void FunctionEmitter::EmitUnary(const Instruction & ins)
+{
+  if(is_f80(ins.type)) {
+    LoadF80(ins.first, 0);
+    if(ins.op != "neg") throw ParseError("unsupported f80 unary operation");
+    Operand zero; zero.kind = Operand::OP_FLOAT; zero.text = "0.0L";
+    LoadF80(zero, 1);
+    out_.Instruction("fsub80 " + memory_bp(scratch_[2]) + " " + memory_bp(scratch_[1]) +
+                     " " + memory_bp(scratch_[0]));
+    ZeroF80Padding(2); StoreF80Temp(ins.dest, 2); return;
+  }
+  EmitScalarValue(ins.first, ins.type, 'x');
+  const TypeShape item = shape(ins.type);
+  const std::string width = std::to_string(item.width);
+  if(ins.op == "neg") {
+    out_.Instruction("move" + width + " y" + width + " 0");
+    out_.Instruction((item.floating ? "fsub" : "isub") + width + " x" + width + " y" + width + " x" + width);
+  } else if(ins.op == "not") {
+    out_.Instruction("ieq" + width + " z8 x" + width + " 0");
+    out_.Instruction("move64 x64 0"); out_.Instruction("move8 x8 z8");
+  } else if(ins.op == "bitnot") out_.Instruction("not" + width + " x" + width + " x" + width);
+  else if(ins.op == "decay") {}
+  else if(ins.op == "bswap") out_.Instruction("bswap" + width + " x" + width + " x" + width);
+  else throw ParseError("unsupported unary operator");
+  StoreScalarTemp(ins.dest, instruction_result_type(ins), 'x');
+}
+
+void FunctionEmitter::EmitBinary(const Instruction & ins)
+{
+  if(is_f80(ins.type)) {
+    LoadF80(ins.first, 0); LoadF80(ins.second, 1);
+    const std::string opcode = "f" + ins.op + "80";
+    out_.Instruction(opcode + " " + memory_bp(scratch_[2]) + " " + memory_bp(scratch_[0]) +
+                     " " + memory_bp(scratch_[1]));
+    ZeroF80Padding(2); StoreF80Temp(ins.dest, 2); return;
+  }
+  const TypeShape item = shape(ins.type);
+  EmitScalarValue(ins.first, ins.type, 'y');
+  EmitScalarValue(ins.second, ins.type, 'x');
+  const std::string width = std::to_string(item.width);
+  std::string opcode;
+  if(item.floating) opcode = "f" + ins.op;
+  else if(ins.op == "add") opcode = "iadd";
+  else if(ins.op == "sub") opcode = "isub";
+  else if(ins.op == "mul") opcode = "smul";
+  else if(ins.op == "div") opcode = "sdiv";
+  else if(ins.op == "mod") opcode = "smod";
+  else if(ins.op == "udiv" || ins.op == "umod") opcode = ins.op;
+  else if(ins.op == "and" || ins.op == "or" || ins.op == "xor") opcode = ins.op;
+  else if(ins.op == "shl") opcode = "lshift";
+  else if(ins.op == "shr") opcode = "srshift";
+  else if(ins.op == "ushr") opcode = "urshift";
+  else throw ParseError("unsupported binary operator");
+  if(ins.op == "shl" || ins.op == "shr" || ins.op == "ushr") {
+    out_.Instruction("move64 z64 x64");
+    out_.Instruction("move8 x8 z8");
+    out_.Instruction(opcode + width + " x" + width + " y" + width + " x8");
+  } else out_.Instruction(opcode + width + " x" + width + " y" + width + " x" + width);
+  StoreScalarTemp(ins.dest, ins.type, 'x');
+}
+
+void FunctionEmitter::EmitCompare(const Instruction & ins)
+{
+  if(is_f80(ins.type)) {
+    LoadF80(ins.first, 0); LoadF80(ins.second, 1);
+    out_.Instruction("f" + ins.op + "80 z8 " + memory_bp(scratch_[0]) + " " + memory_bp(scratch_[1]));
+  } else {
+    const TypeShape item = shape(ins.type);
+    EmitScalarValue(ins.first, ins.type, 'y'); EmitScalarValue(ins.second, ins.type, 'x');
+    std::string prefix;
+    if(item.floating) prefix = "f";
+    else if(ins.op == "eq" || ins.op == "ne") prefix = "i";
+    else if(!ins.op.empty() && ins.op[0] == 'u') prefix = "";
+    else prefix = "s";
+    out_.Instruction(prefix + ins.op + std::to_string(item.width) + " z8 " +
+                     register_name('y', item.width) + " " + register_name('x', item.width));
+  }
+  out_.Instruction("move64 x64 0"); out_.Instruction("move8 x8 z8");
+  LowType result; result.text = "i64"; StoreScalarTemp(ins.dest, result, 'x');
+}
+
+void FunctionEmitter::ZeroF80Padding(std::size_t scratch_index)
+{
+  const std::size_t base = scratch_[scratch_index];
+  out_.Instruction("move64 z64 0");
+  out_.Instruction("move32 " + memory_bp(base - 10) + " z32");
+  out_.Instruction("move16 " + memory_bp(base - 14) + " z16");
+}
+
+void FunctionEmitter::Copy16(const std::string & source, const std::string & dest)
+{
+  out_.Instruction("move64 z64 " + source);
+  out_.Instruction("move64 " + dest + " z64");
+  std::string source2 = source;
+  std::string dest2 = dest;
+  if(source.size() > 2 && source[1] == 'b') {
+    const std::size_t offset = std::strtoull(source.substr(4).c_str(), 0, 10);
+    source2 = memory_bp(offset - 8);
+  } else source2.insert(source2.size() - 1, "+8");
+  if(dest.size() > 2 && dest[1] == 'b') {
+    const std::size_t offset = std::strtoull(dest.substr(4).c_str(), 0, 10);
+    dest2 = memory_bp(offset - 8);
+  } else dest2.insert(dest2.size() - 1, "+8");
+  out_.Instruction("move64 z64 " + source2);
+  out_.Instruction("move64 " + dest2 + " z64");
+}
+
+void FunctionEmitter::LoadF80FromAddress(char bank, std::size_t scratch_index)
+{
+  const std::string address = register_name(bank, 64);
+  out_.Instruction("move64 z64 [" + address + "]");
+  out_.Instruction("move64 " + memory_bp(scratch_[scratch_index]) + " z64");
+  out_.Instruction("move64 z64 [" + address + "+8]");
+  out_.Instruction("move64 " + memory_bp(scratch_[scratch_index] - 8) + " z64");
+}
+
+void FunctionEmitter::LoadF80(const Operand & value, std::size_t scratch_index)
+{
+  if(value.kind == Operand::OP_FLOAT || value.kind == Operand::OP_INTEGER) {
+    out_.Instruction("move80 " + memory_bp(scratch_[scratch_index]) + " " + value.text);
+    ZeroF80Padding(scratch_index);
+  } else {
+    EmitAddressValue(value, 'x');
+    LoadF80FromAddress('x', scratch_index);
+  }
+}
+
+void FunctionEmitter::StoreF80Temp(const std::string & name, std::size_t scratch_index)
+{
+  Copy16(memory_bp(scratch_[scratch_index]), LocalMemory(name));
+}
+
+void FunctionEmitter::EmitConvert(const Instruction & ins)
+{
+  const TypeShape source = shape(ins.source_type);
+  const TypeShape dest = shape(ins.type);
+  if((ins.op == "sext" || ins.op == "zext" || ins.op == "trunc") &&
+     !source.floating && !dest.floating) {
+    EmitScalarValue(ins.first, ins.source_type, 'x');
+    if(ins.op == "sext") EmitSignExtend('x', source.width);
+    StoreScalarTemp(ins.dest, ins.type, 'x');
+    return;
+  }
+  if(is_f80(ins.source_type)) LoadF80(ins.first, 0);
+  else {
+    EmitScalarValue(ins.first, ins.source_type, 'x');
+    std::string source_prefix;
+    if(source.floating) source_prefix = "f" + std::to_string(source.width);
+    else source_prefix = (ins.op == "uitofp" ? "u" : "s") + std::to_string(source.width);
+    out_.Instruction(source_prefix + "convf80 " + memory_bp(scratch_[0]) + " " +
+                     register_name('x', source.width));
+    ZeroF80Padding(0);
+  }
+  if(is_f80(ins.type)) StoreF80Temp(ins.dest, 0);
+  else {
+    std::string dest_prefix;
+    if(dest.floating) dest_prefix = "f" + std::to_string(dest.width);
+    else dest_prefix = (ins.op == "fptoui" ? "u" : "s") + std::to_string(dest.width);
+    out_.Instruction("f80conv" + dest_prefix + " " + LocalMemory(ins.dest) + " " + memory_bp(scratch_[0]));
+  }
+}
+
+void FunctionEmitter::EmitCall(const Instruction & ins)
+{
+  static const char banks[] = {'x', 'y', 'z', 't'};
+  const bool large_return = is_large_value(ins.type);
+  const bool direct = ins.first.kind == Operand::OP_GLOBAL && owner_.IsFunction(ins.first.text);
+  std::size_t abi_count = ins.args.size() + (large_return ? 1 : 0);
+  const std::size_t extras = abi_count > 4 ? abi_count - 4 : 0;
+  const std::size_t reserve = std::max<std::size_t>(extras * 8, direct ? 0 : 8);
+  if(!direct) EmitAddressValue(ins.first, 'x');
+  if(reserve) out_.Instruction("isub64 sp sp " + std::to_string(reserve));
+  if(!direct) out_.Instruction("move64 [sp] x64");
+  std::size_t abi_index = 0;
+  if(large_return) {
+    Operand result;
+    result.kind = Operand::OP_TEMP;
+    result.text = ins.dest;
+    EmitAddressValue(result, 'x');
+    out_.Instruction("move64 " + register_name(banks[abi_index], 64) + " x64");
+    ++abi_index;
+  }
+  for(std::size_t i = 0; i < ins.args.size(); ++i, ++abi_index) {
+    LowType arg_type;
+    if(ins.has_call_signature && i < ins.call_params.size()) arg_type = ins.call_params[i].type;
+    else {
+      const Function * function = direct ? owner_.FindFunction(ins.first.text) : 0;
+      if(function && i < function->params.size()) arg_type = function->params[i].type;
+      else arg_type.text = "i64";
+    }
+    if(abi_index < 4) {
+      if(is_large_value(arg_type) || ins.args[i].kind == Operand::OP_SLOT) {
+        EmitAddressValue(ins.args[i], 'x');
+        out_.Instruction("move64 " + register_name(banks[abi_index], 64) + " x64");
+      } else EmitScalarValue(ins.args[i], arg_type, banks[abi_index]);
+    } else {
+      if(is_large_value(arg_type)) EmitAddressValue(ins.args[i], 'x');
+      else EmitScalarValue(ins.args[i], arg_type, 'x');
+      const std::size_t stack_offset = (abi_index - 4) * 8;
+      const std::string target = stack_offset ? "[sp+" + std::to_string(stack_offset) + "]" : "[sp]";
+      out_.Instruction("move64 " + target + " 0");
+      out_.Instruction("move64 " + target + " x64");
+    }
+  }
+  out_.Instruction("call " + (direct ? owner_.SymbolLabel(ins.first.text) : "[sp]"));
+  if(reserve) out_.Instruction("iadd64 sp sp " + std::to_string(reserve));
+  if(!ins.call_returns_void && !large_return) StoreScalarTemp(ins.dest, ins.type, 'x');
+}
+
+void FunctionEmitter::EmitBulk(const Instruction & ins)
+{
+  const bool copy = ins.kind == Instruction::IK_COPYOBJ;
+  if(copy) {
+    EmitAddressValue(ins.second, 'x'); EmitAddressValue(ins.first, 'y');
+  } else {
+    EmitAddressValue(ins.first, 'x'); out_.Instruction("move64 z64 0");
+  }
+  std::size_t offset = 0;
+  std::size_t previous_width = 0;
+  while(offset < ins.byte_count) {
+    std::size_t width = 8;
+    while(width > 1 && (ins.byte_count - offset < width || offset % width)) width /= 2;
+    if(offset) {
+      out_.Instruction("iadd64 x64 x64 " + std::to_string(previous_width));
+      if(copy) out_.Instruction("iadd64 y64 y64 " + std::to_string(previous_width));
+    }
+    if(copy) out_.Instruction("move" + std::to_string(width * 8) + " z" +
+      std::to_string(width * 8) + " [y64]");
+    out_.Instruction("move" + std::to_string(width * 8) + " [x64] z" +
+                     std::to_string(width * 8));
+    offset += width;
+    previous_width = width;
+  }
+}
+
+void FunctionEmitter::EmitAtomic(const Instruction & ins)
+{
+  const std::string width = std::to_string(shape(ins.type).width);
+  if(ins.kind == Instruction::IK_ATOMIC_ADD_FETCH) {
+    EmitAddressValue(ins.first, 'y'); out_.Instruction("move" + width + " x" + width + " [y64]");
+    EmitScalarValue(ins.second, ins.type, 'z');
+    out_.Instruction("iadd" + width + " x" + width + " x" + width + " z" + width);
+    out_.Instruction("move" + width + " [y64] x" + width);
+    StoreScalarTemp(ins.dest, ins.type, 'x');
+  } else if(ins.kind == Instruction::IK_ATOMIC_EXCHANGE) {
+    EmitAddressValue(ins.first, 'y'); EmitScalarValue(ins.second, ins.type, 'x');
+    out_.Instruction("move" + width + " t" + width + " [y64]");
+    out_.Instruction("move" + width + " [y64] x" + width);
+    out_.Instruction("move64 x64 0"); out_.Instruction("move" + width + " x" + width + " t" + width);
+    StoreScalarTemp(ins.dest, ins.type, 'x');
+  } else {
+    const std::size_t success = owner_.atomic_label_counter_++;
+    const std::size_t end = owner_.atomic_label_counter_++;
+    EmitAddressValue(ins.first, 'y'); EmitAddressValue(ins.second, 'z');
+    out_.Instruction("move" + width + " t" + width + " [y64]");
+    out_.Instruction("move" + width + " x" + width + " [z64]");
+    out_.Instruction("ieq" + width + " x8 t" + width + " x" + width);
+    out_.Instruction("jumpif x8 __atomic_cmpxchg_success__" + std::to_string(success));
+    out_.Instruction("move" + width + " [z64] t" + width);
+    out_.Instruction("move64 x64 0"); StoreScalarTemp(ins.dest, ins.type, 'x');
+    out_.Instruction("jump __atomic_cmpxchg_end__" + std::to_string(end));
+    out_.Label("__atomic_cmpxchg_success__" + std::to_string(success));
+    EmitScalarValue(ins.third, ins.type, 'x'); out_.Instruction("move" + width + " [y64] x" + width);
+    out_.Instruction("move64 x64 1"); StoreScalarTemp(ins.dest, ins.type, 'x');
+    out_.Label("__atomic_cmpxchg_end__" + std::to_string(end));
+  }
+}
+
+void FunctionEmitter::EmitControl(const Instruction & ins)
+{
+  if(ins.kind == Instruction::IK_JUMP) out_.Instruction("jump " + BlockLabel(ins.first.text));
+  else if(ins.kind == Instruction::IK_BRANCH) {
+    LowType type; type.text = "i64"; EmitScalarValue(ins.first, type, 'x');
+    out_.Instruction("ieq64 z8 x64 0");
+    out_.Instruction("jumpif z8 " + BlockLabel(ins.third.text));
+    out_.Instruction("jump " + BlockLabel(ins.second.text));
+  } else {
+    LowType type; type.text = "i64"; EmitScalarValue(ins.first, type, 'x');
+    for(std::size_t i = 0; i < ins.args.size(); i += 2) {
+      EmitScalarValue(ins.args[i], type, 't');
+      out_.Instruction("ieq64 z8 x64 t64");
+      out_.Instruction("jumpif z8 " + BlockLabel(ins.args[i + 1].text));
+    }
+    out_.Instruction("jump " + BlockLabel(ins.second.text));
+  }
+}
+
+void FunctionEmitter::EmitException(const Instruction & ins)
+{
+  if(ins.kind == Instruction::IK_EH_TRY || ins.kind == Instruction::IK_EH_CLEANUP) {
+    out_.Instruction("isub64 sp sp 32");
+    out_.Instruction("move64 z64 [" + owner_.EhTopLabel() + "]");
+    out_.Instruction("move64 [sp] z64");
+    out_.Instruction("move64 z64 " + BlockLabel(ins.first.text));
+    out_.Instruction("move64 [sp+8] z64");
+    out_.Instruction("move64 [sp+16] bp");
+    out_.Instruction("move64 z64 sp"); out_.Instruction("iadd64 z64 z64 32");
+    out_.Instruction("move64 [sp+24] z64"); out_.Instruction("move64 z64 sp");
+    out_.Instruction("move64 [" + owner_.EhTopLabel() + "] z64");
+  } else if(ins.kind == Instruction::IK_EH_END) {
+    out_.Instruction("move64 x64 [" + owner_.EhTopLabel() + "]");
+    out_.Instruction("move64 y64 [x64]"); out_.Instruction("move64 [" + owner_.EhTopLabel() + "] y64");
+    out_.Instruction("move64 sp x64"); out_.Instruction("iadd64 sp sp 32");
+  } else if(ins.kind == Instruction::IK_EXCEPTION) {
+    out_.Instruction("move64 x64 [" + owner_.EhValueLabel() + "]");
+    StoreScalarTemp(ins.dest, ins.type, 'x');
+  } else if(ins.kind == Instruction::IK_THROW) {
+    EmitScalarValue(ins.first, ins.type, 'x');
+    out_.Instruction("move64 [" + owner_.EhValueLabel() + "] x64");
+    EmitResumeSequence();
+  } else if(ins.kind == Instruction::IK_RESUME) EmitResumeSequence();
+}
+
+void FunctionEmitter::EmitResumeSequence()
+{
+  const std::size_t handler = owner_.eh_label_counter_++;
+  const std::size_t unhandled = owner_.eh_label_counter_++;
+  out_.Instruction("move64 x64 [" + owner_.EhTopLabel() + "]");
+  out_.Instruction("ieq64 z8 x64 0");
+  out_.Instruction("jumpif z8 __eh_unhandled__" + std::to_string(unhandled));
+  out_.Label("__eh_handler__" + std::to_string(handler));
+  out_.Instruction("move64 y64 [x64]"); out_.Instruction("move64 [" + owner_.EhTopLabel() + "] y64");
+  out_.Instruction("move64 z64 [x64+8]"); out_.Instruction("move64 bp [x64+16]");
+  out_.Instruction("move64 sp [x64+24]"); out_.Instruction("jump z64");
+  out_.Label("__eh_unhandled__" + std::to_string(unhandled));
+  out_.Instruction("move64 x64 [" + owner_.EhValueLabel() + "]");
+  out_.Instruction("call " + owner_.EhUnhandledLabel());
+  out_.Instruction("syscall1 t64 60 x64");
+  out_.Blank();
+}
+
+void FunctionEmitter::EmitReturn(const Instruction & ins)
+{
+  if(ins.type.text != "void") {
+    if(is_large_value(ins.type)) {
+      if(is_f80(ins.type)) {
+        LoadF80(ins.first, 0);
+        out_.Instruction("move64 x64 " + LocalMemory("#return"));
+        Copy16(memory_bp(scratch_[0]), "[x64]");
+      } else {
+        EmitAddressValue(ins.first, 'x');
+        out_.Instruction("move64 y64 " + LocalMemory("#return"));
+        const std::size_t bytes = shape(ins.type).size;
+        for(std::size_t offset = 0; offset < bytes; offset += 8) {
+          const std::string suffix = offset ? "+" + std::to_string(offset) : "";
+          out_.Instruction("move64 z64 [x64" + suffix + "]");
+          out_.Instruction("move64 [y64" + suffix + "] z64");
+        }
+      }
+    } else EmitScalarValue(ins.first, ins.type, 'x');
+  }
+  out_.Instruction("jump " + EpilogueLabel());
+}
+
+}  // namespace
+
+std::string render_program(const lowir_model::LowirProgram & program, Stats * stats)
+{
+  return ProgramEmitter(program, stats).Emit();
+}
+
+}  // namespace lowir_cy86
