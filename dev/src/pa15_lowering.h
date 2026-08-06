@@ -30,6 +30,7 @@ struct LowIRLoweringStats
 	std::size_t class_layouts;
 	std::size_t class_layout_member_visits;
 	std::size_t constructor_member_action_visits;
+	std::size_t constructor_base_action_visits;
 	std::size_t overload_candidates;
 	std::size_t overload_order_comparisons;
 	std::size_t conversion_checks;

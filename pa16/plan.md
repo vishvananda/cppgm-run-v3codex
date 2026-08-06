@@ -22,25 +22,27 @@ typed lowering; textual output is only the final view.
 
 ## Current Failure Map
 
-Current state is 91/255 PA16 tests: all 84/248 checkpoint-entry passes remain and
-seven audit regressions pass. Relative to the pre-checkpoint 61/248 state this is
-30 passing gains with no existing loss. The complete 164-failure set, assigned
-once by primary semantic owner, remains: 20 member-function/call-boundary; 38
-class lookup/access/inheritance; 43 initialization/lifetime; 42
-operator/ADL/callable; 9 layout/object representation; and 12 procedural
+Current state is 116/255 PA16 tests: the 91/255 checkpoint-entry baseline remains
+and 25 inheritance/construction tests are newly passing. The complete 139-failure
+set, assigned once by primary semantic owner, is: 16 member-function/call-
+boundary; 26 class lookup/access/inheritance; 39 initialization/lifetime; 41
+operator/ADL/callable; 8 layout/object representation; and 9 procedural
 interaction/metadata failures.
 
-## Next Substantial Checkpoint
+## Active Checkpoint
 
-**Next: base-subobject construction and destruction spine (queued).** Extend
-canonical class facts with ordered base subobjects and selected base constructor/
-destructor `BindingId`s, then lower explicit base initialization, implicit base
-initialization, and reverse-order destruction without semantic lookup. Ownership
-and flow are `EntityId base sequence -> selected special-member actions -> typed
-subobject calls`. Expected work is O(B + A) per special member with O(1) demand
-deduplication. Validate aliased/default-argument base initialization, derived
-field access, local/member/array lifetime ordering, through-PA15, audit, and
-doubled base/action curves. Implementation has not begun.
+**Next: destruction and cleanup action spine (queued).** Give each class a
+canonical user or implicit destructor `BindingId`, derive ordered reverse member/
+base actions once, attach local-scope lifetime obligations to resolved variables,
+and lower normal/early-return cleanup plus demanded helper emission. Ownership
+and flow are `class EntityId -> destructor/subobject BindingIds -> lexical
+lifetime action sequence -> typed cleanup calls`. This applies `spec.md`
+sections 2, 4, 6, 8, and 9: stable lifetime facts, reasoned demand, no lowering
+lookup, phase-local action scratch, and work proportional to live objects and
+subobjects. Expected work is O(S + E) per scope exit and O(A) per demanded
+destructor, with one monotonic demand transition per helper. Validate direct and
+implicit destructors, reverse member/base order, block/return/loop exits,
+member/array recursion, through-PA15, audit, and doubled action curves.
 
 ## Performance Evidence
 
@@ -55,6 +57,7 @@ doubled base/action curves. Implementation has not begun.
 | Constructor member actions | 1k / 2k initialized members | 1,000 / 2,000 action visits; 2,012 / 4,012 semantic nodes; 2,007 / 4,007 lowered nodes; 3,005 / 6,005 instructions; 2.34 / 5.72 ms semantic; 1.84 / 2.22 ms lowering |
 | Nested constructor aggregate actions | 40x40 / 80x80 depth/leaves | Pre-audit 1,765 / 6,725 instructions, 248,820 / 986,100 typed bytes, 0.78 / 2.62 ms lowering; after bounded retention 127 / 247 instructions, 18,420 / 33,780 typed bytes, 0.13 / 0.15 ms lowering |
 | Constructor isolation from unrelated declarations | 5k / 10k globals plus one member | 1 / 1 constructor-member action visits, 1 / 1 candidate visits, and 8 instructions at both sizes while required global/output work scales |
+| Single-base chain construction and lookup | 250 / 500 base edges | 250 / 500 base actions; 500 / 1,000 lookup-edge visits; 251 / 501 constructor candidates; 1,764 / 3,514 instructions; 1.75 / 3.63 ms semantic and 1.88 / 3.99 ms lowering |
 
 Exact counter scaling establishes work proportional to owned fields, indexed
 candidates, resolved actions, and emitted IR; the nested audit curve closes the
@@ -68,3 +71,4 @@ former depth-by-leaf projection product.
 | Resolved member-call spine | Complete | Canonical method/access/cv facts, implicit-object ranking, out-of-class hidden `this`, stable overload/ABI IDs, typed calls, and LowIR counters; 9 product tests gained to 51/247 with no losses; 1,145/1,145 through PA15; linear candidate curve; audit pass |
 | Local aggregate-action spine | Pass after audit fixes | C++11 aggregate eligibility, one union active member, member-ID action trees, borrowed brace cursor, typed scalar/reference stores, and bounded projection reuse; 61/248 PA16 with no losses; 1,145/1,145 through PA15; flat and nested linear curves; file audit pass |
 | Special-member initialization action spine | Pass after audit fixes | Init-mode-aware selection, declaration-ordinal member actions, conservative exception facts, typed reference/subobject lowering, and bounded projection reuse; 91/255 with seven audit regressions and no existing loss; 1,145/1,145 through PA15; candidate/member/nested curves and file audit pass |
+| Single-base construction spine | Complete | Canonical direct-base/access edges, inherited indexed lookup and access, base-at-zero layout, selected base-constructor actions, derived conversion ranking, and typed projections; 116/255 with 25 gains and no losses; 1,145/1,145 through PA15; exact linear 250/500-edge curves; file audit pass |

@@ -462,9 +462,10 @@ void TypeTable::Rehash(std::size_t capacity)
 
 EntityRecord::EntityRecord()
 	: name(0), identity_name(0), owner(kNoScope), member_scope(kNoScope),
-	  flavor(NAMED_NONE), type(kNoType),
+	  direct_base(kNoEntity), flavor(NAMED_NONE), type(kNoType),
 	  underlying(kNoType), declaration(kNoBinding), object_size(0),
-	  object_alignment(0), complete(false), layout_complete(false),
+	  object_alignment(0), base_access(ACCESS_PUBLIC), complete(false),
+	  layout_complete(false),
 	  has_user_declared_constructor(false),
 	  has_user_provided_constructor(false), default_constructible(false),
 	  trivial_default_constructor(false), has_direct_base(false),
@@ -812,6 +813,35 @@ void Program::SetTypeName(ScopeId owner, NameId name, TypeId type)
 void Program::SetEntityScope(EntityId entity, ScopeId scope)
 {
 	entities[entity].member_scope = scope;
+	if (scope >= scopes_.size())
+		throw std::logic_error("entity member scope is invalid");
+	scopes_[scope].entity = entity;
+	lookup_cache_->Invalidate();
+}
+
+void Program::SetDirectBase(EntityId derived, EntityId base, AccessKind access)
+{
+	if (derived >= entities.size() || base >= entities.size() || derived == base)
+		throw std::runtime_error("invalid direct base relationship");
+	if (entities[derived].direct_base != kNoEntity &&
+		entities[derived].direct_base != base)
+		throw std::runtime_error("multiple inheritance is outside PA16");
+	if (IsBaseOf(derived, base))
+		throw std::runtime_error("cyclic class inheritance");
+	entities[derived].direct_base = base;
+	entities[derived].base_access = access;
+	entities[derived].has_direct_base = true;
+	lookup_cache_->Invalidate();
+}
+
+bool Program::IsBaseOf(EntityId base, EntityId derived) const
+{
+	if (base == kNoEntity || derived == kNoEntity ||
+		base >= entities.size() || derived >= entities.size()) return false;
+	for (EntityId current = derived; current != kNoEntity;
+		current = entities[current].direct_base)
+		if (current == base) return true;
+	return false;
 }
 
 Program::NameEntry* Program::EnsureEntry(ScopeId scope, NameId name)
@@ -918,6 +948,19 @@ LookupResult Program::LookupGraph(ScopeId scope, NameId name,
 	++lookup_scope_visits;
 	const LookupResult local = DirectLookup(scope, name, kind);
 	if (!local.Empty()) return local;
+	const EntityId owner_entity = scopes_[scope].entity;
+	if (owner_entity != kNoEntity &&
+		entities[owner_entity].direct_base != kNoEntity)
+	{
+		const ScopeId target =
+			entities[entities[owner_entity].direct_base].member_scope;
+		if (target != kNoScope && lookup_marks_[target] != lookup_generation_)
+		{
+			++lookup_edge_visits;
+			lookup_marks_[target] = lookup_generation_;
+			lookup_worklist_.push_back(target);
+		}
+	}
 	for (std::uint32_t edge = scopes_[scope].first_using;
 		edge != std::numeric_limits<std::uint32_t>::max();
 		edge = using_edges_[edge].next)
@@ -938,6 +981,20 @@ LookupResult Program::LookupGraph(ScopeId scope, NameId name,
 		{
 			MergeLookup(&result, direct);
 			continue;
+		}
+		const EntityId current_entity = scopes_[current].entity;
+		if (current_entity != kNoEntity &&
+			entities[current_entity].direct_base != kNoEntity)
+		{
+			const ScopeId target =
+				entities[entities[current_entity].direct_base].member_scope;
+			if (target != kNoScope &&
+				lookup_marks_[target] != lookup_generation_)
+			{
+				++lookup_edge_visits;
+				lookup_marks_[target] = lookup_generation_;
+				lookup_worklist_.push_back(target);
+			}
 		}
 		for (std::uint32_t edge = scopes_[current].first_using;
 			edge != std::numeric_limits<std::uint32_t>::max();
@@ -1087,6 +1144,15 @@ LookupResult Program::LookupDirect(ScopeId scope, NameId name,
 {
 	++lookup_queries;
 	return DirectLookup(scope, name, kind);
+}
+
+LookupResult Program::LookupMember(EntityId entity, NameId name,
+	LookupKind kind)
+{
+	++lookup_queries;
+	if (entity == kNoEntity || entity >= entities.size() ||
+		entities[entity].member_scope == kNoScope) return LookupResult();
+	return LookupGraph(entities[entity].member_scope, name, kind);
 }
 
 LookupResult Program::LookupQualified(ScopeId owner, const NamePath& name,

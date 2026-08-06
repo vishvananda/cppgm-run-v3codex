@@ -205,10 +205,12 @@ struct EntityRecord
 {
 	NameId name, identity_name;
 	ScopeId owner, member_scope;
+	EntityId direct_base;
 	NamedFlavor flavor;
 	TypeId type, underlying;
 	BindingId declaration;
 	std::uint64_t object_size, object_alignment;
+	AccessKind base_access;
 	bool complete, layout_complete, has_user_declared_constructor,
 		has_user_provided_constructor, default_constructible,
 		trivial_default_constructor,
@@ -280,10 +282,14 @@ public:
 		TypeId type, NamedFlavor display);
 	void SetTypeName(ScopeId owner, NameId name, TypeId type);
 	void SetEntityScope(EntityId entity, ScopeId scope);
+	void SetDirectBase(EntityId derived, EntityId base, AccessKind access);
+	bool IsBaseOf(EntityId base, EntityId derived) const;
 	LookupResult Lookup(ScopeId current, const NamePath& name,
 		LookupKind kind);
 	LookupResult LookupName(ScopeId current, NameId name, LookupKind kind);
 	LookupResult LookupDirect(ScopeId scope, NameId name,
+		LookupKind kind);
+	LookupResult LookupMember(EntityId entity, NameId name,
 		LookupKind kind);
 	LookupResult LookupQualified(ScopeId owner, const NamePath& name,
 		LookupKind kind);

@@ -39,11 +39,16 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 		throw std::runtime_error("member call on non-class object");
 	const NodeId identifier = arena_->EdgeChild(name_edge);
 	const NameId name = program_->names.Intern(arena_->Payload(identifier));
-	const LookupResult found = program_->LookupDirect(
-		program_->entities[entity].member_scope, name, LOOKUP_ORDINARY);
+	const LookupResult found = program_->LookupMember(
+		entity, name, LOOKUP_ORDINARY);
 	if (found.ordinary == kNoBinding ||
 		program_->bindings[found.ordinary].kind != BIND_FUNCTION)
 		return false;
+	const EntityId member_owner =
+		program_->bindings[found.ordinary].member_owner;
+	if (member_owner != kNoEntity && member_owner != entity &&
+		!BaseConversionAllowed(entity, member_owner))
+		throw std::runtime_error("inaccessible inherited member function");
 
 	const std::vector<BindingId> candidates = FunctionSet(found.ordinary);
 	ExpressionInfo object_pointer = object;

@@ -247,6 +247,7 @@ protected:
 		const DumpNode& value = derived.arena_.nodes[value_node];
 		if (value.kind == DUMP_CONSTRUCTOR_ACTION)
 		{
+			if (derived.IsTrivialConstructorAction(action.type, children)) return;
 			const Operand object = derived.LoadStorage(
 				derived.StorageFor(derived.current_this_binding_, LowPtr()), LowPtr());
 			const Operand destination =
@@ -314,6 +315,22 @@ protected:
 			derived.StorageFor(derived.current_this_binding_, LowPtr()), LowPtr());
 		store.second = derived.ProjectAggregateMember(object, action.binding);
 		derived.Emit(store);
+	}
+
+	void LowerBaseInitializationAction(const DumpNode& action,
+		const NodeChildren& children)
+	{
+		Derived& derived = Self();
+		if (action.kind != DUMP_BASE_INITIALIZER_ACTION ||
+			derived.current_this_binding_ == kNoBinding || children.size() != 1 ||
+			derived.arena_.nodes[children[0]].kind != DUMP_CONSTRUCTOR_ACTION)
+			throw std::logic_error(
+				"base initialization is outside a constructor");
+		if (derived.IsTrivialConstructorAction(action.type, children)) return;
+		const Operand object = derived.LoadStorage(
+			derived.StorageFor(derived.current_this_binding_, LowPtr()), LowPtr());
+		const Operand destination = derived.ProjectBaseSubobject(object);
+		LowerConstructorAction(children[0], destination);
 	}
 
 private:

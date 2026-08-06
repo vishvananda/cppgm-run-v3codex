@@ -176,6 +176,26 @@ private:
 		return RemoveTopQualifiers(RemoveReference(type));
 	}
 
+	EntityId ClassEntity(TypeId type) const
+	{
+		type = ExpressionObjectType(type);
+		const TypeRecord* record = &program_.types.Get(type);
+		if (record->kind == TYPE_POINTER)
+		{
+			type = RemoveTopQualifiers(record->child);
+			record = &program_.types.Get(type);
+		}
+		return record->kind == TYPE_NAMED ? record->entity : kNoEntity;
+	}
+
+	bool IsDerivedBaseConversion(TypeId source, TypeId target) const
+	{
+		const EntityId derived = ClassEntity(source);
+		const EntityId base = ClassEntity(target);
+		return derived != kNoEntity && base != kNoEntity && derived != base &&
+			program_.IsBaseOf(base, derived);
+	}
+
 	bool IsArrayType(TypeId type) const
 	{
 		return program_.types.Get(ExpressionObjectType(type)).kind == TYPE_ARRAY;
@@ -1076,9 +1096,12 @@ private:
 			arena_.nodes[children[0]].type);
 		const bool pointer_object =
 			program_.types.Get(object_type).kind == TYPE_POINTER;
-		const Operand base = pointer_object ?
+		Operand base = pointer_object ?
 			LowerValue(children[0], LowPtr()) :
 			AddressOfStorage(LowerStorage(children[0]));
+		if (member.member_owner != kNoEntity)
+			base = ProjectToBase(base, arena_.nodes[children[0]].type,
+				program_.entities[member.member_owner].type);
 		const Operand result = Temp(LowPtr());
 		Instruction index(Instruction::INDEX);
 		index.dest = result.id;
@@ -1153,7 +1176,12 @@ private:
 			return LowerCall(record, children);
 		if (record.kind == DUMP_CAST_EXPRESSION && children.size() == 1 &&
 			(record.category == VALUE_LVALUE || record.category == VALUE_XVALUE))
-			return LowerStorage(children[0]);
+		{
+			const Operand source = AddressOfStorage(LowerStorage(children[0]));
+			return IsDerivedBaseConversion(arena_.nodes[children[0]].type,
+				record.type) ? ProjectToBase(source,
+				arena_.nodes[children[0]].type, record.type) : source;
+		}
 		throw std::runtime_error("expression does not designate scalar storage");
 	}
 
@@ -1342,12 +1370,20 @@ private:
 			if (children.size() != 1) throw std::runtime_error("invalid semantic cast");
 			if (LowerExpressionType(record.type).kind == LOW_VOID)
 			{
-				(void)LowerValue(children[0]);
+				const DumpNode& source = arena_.nodes[children[0]];
+				if (source.category == VALUE_LVALUE &&
+					IsClassObjectType(source.type))
+					(void)AddressOfStorage(LowerStorage(children[0]));
+				else (void)LowerValue(children[0]);
 				result = Operand(0, LowVoid());
 			}
 			else if (record.category == VALUE_LVALUE || record.category == VALUE_XVALUE)
 				result = LoadStorage(LowerStorage(node),
 					LowerExpressionType(record.type));
+			else if (IsDerivedBaseConversion(arena_.nodes[children[0]].type,
+				record.type))
+				result = ProjectToBase(LowerValue(children[0], LowPtr()),
+					arena_.nodes[children[0]].type, record.type);
 			else result = Convert(LowerValue(children[0]),
 				LowerExpressionType(record.type), false);
 		}
@@ -2115,6 +2151,11 @@ private:
 			LowerMemberInitializationAction(record, children);
 			return;
 		}
+		if (record.kind == DUMP_BASE_INITIALIZER_ACTION)
+		{
+			LowerBaseInitializationAction(record, children);
+			return;
+		}
 		if (record.kind == DUMP_RETURN_STATEMENT)
 		{
 			if (children.empty()) Emit(Instruction(Instruction::RETURN_VOID));
@@ -2322,6 +2363,35 @@ private:
 		index.projection = INDEX_PROJECTION_FIELD;
 		Emit(index);
 		return projected;
+	}
+
+	Operand ProjectBaseSubobject(const Operand& object)
+	{
+		const Operand projected = Temp(LowPtr());
+		Instruction index(Instruction::INDEX);
+		index.dest = projected.id;
+		index.type = LowI8();
+		index.first = object;
+		index.second = Operand(0, LowI64());
+		index.projection = INDEX_PROJECTION_BASE_SUBOBJECT;
+		Emit(index);
+		return projected;
+	}
+
+	Operand ProjectToBase(Operand object, TypeId source, TypeId target)
+	{
+		EntityId current = ClassEntity(source);
+		const EntityId base = ClassEntity(target);
+		if (current == kNoEntity || base == kNoEntity)
+			throw std::logic_error("base projection has non-class type");
+		while (current != base)
+		{
+			current = program_.entities[current].direct_base;
+			if (current == kNoEntity)
+				throw std::logic_error("base projection target is not an ancestor");
+			object = ProjectBaseSubobject(object);
+		}
+		return object;
 	}
 
 	Operand ProjectConstructorMemberPath(
@@ -2829,6 +2899,7 @@ LowIRLoweringStats::LowIRLoweringStats()
 	: source_bytes(0), tokens(0), semantic_nodes(0), semantic_edges(0),
 	  lowered_nodes(0), class_layouts(0), class_layout_member_visits(0),
 	  constructor_member_action_visits(0),
+	  constructor_base_action_visits(0),
 	  overload_candidates(0), overload_order_comparisons(0),
 	  conversion_checks(0),
 	  functions(0), globals(0), blocks(0), instructions(0),
@@ -2861,6 +2932,8 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 				semantic_stats.class_layout_member_visits;
 			stats->constructor_member_action_visits +=
 				semantic_stats.constructor_member_action_visits;
+			stats->constructor_base_action_visits +=
+				semantic_stats.constructor_base_action_visits;
 			stats->overload_candidates += semantic_stats.overload_candidates;
 			stats->overload_order_comparisons +=
 				semantic_stats.overload_order_comparisons;

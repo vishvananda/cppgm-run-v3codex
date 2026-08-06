@@ -6,6 +6,7 @@
 #include <climits>
 #include <cstdlib>
 #include <iomanip>
+#include <limits>
 #include <ostream>
 #include <sstream>
 #include <stdexcept>
@@ -501,6 +502,27 @@ ConversionRank SemanticAnalyzer::Conversion(TypeId source,
 		if (QualificationConversion(EffectiveType(source), target_record.child))
 			return !lvalue_reference && category == VALUE_LVALUE ?
 				CONVERSION_INVALID : CONVERSION_EXACT;
+		if (lvalue_reference && category != VALUE_LVALUE &&
+			IsConst(target_record.child))
+		{
+			const ConversionRank temporary = Conversion(source, category,
+				integer_zero, target_record.child);
+			if (temporary != CONVERSION_INVALID) return temporary;
+		}
+		const EntityId derived = EntityOf(from);
+		const EntityId base = EntityOf(to);
+		if (derived != kNoEntity && base != kNoEntity &&
+			BaseConversionAllowed(derived, base))
+		{
+			const TypeRecord source_top = program_->types.Get(EffectiveType(source));
+			const TypeRecord target_top = program_->types.Get(target_record.child);
+			const std::uint8_t source_cv = source_top.kind == TYPE_QUALIFIED ?
+				source_top.cv : CV_NONE;
+			const std::uint8_t target_cv = target_top.kind == TYPE_QUALIFIED ?
+				target_top.cv : CV_NONE;
+			if ((source_cv & ~target_cv) == 0)
+				return CONVERSION_DERIVED_TO_BASE;
+		}
 		if (IsArithmetic(from) && IsArithmetic(to) &&
 			(IsConst(target_record.child) || !lvalue_reference))
 			return lvalue_reference ? CONVERSION_BOOLEAN : CONVERSION_STANDARD;
@@ -517,6 +539,19 @@ ConversionRank SemanticAnalyzer::Conversion(TypeId source,
 	{
 		const TypeRecord source_pointer = program_->types.Get(from);
 		const TypeRecord target_pointer = program_->types.Get(to);
+		const EntityId derived = EntityOf(source_pointer.child);
+		const EntityId base = EntityOf(target_pointer.child);
+		if (derived != kNoEntity && base != kNoEntity &&
+			BaseConversionAllowed(derived, base))
+		{
+			const TypeRecord source_cv = program_->types.Get(source_pointer.child);
+			const TypeRecord target_cv = program_->types.Get(target_pointer.child);
+			const std::uint8_t scv = source_cv.kind == TYPE_QUALIFIED ?
+				source_cv.cv : CV_NONE;
+			const std::uint8_t tcv = target_cv.kind == TYPE_QUALIFIED ?
+				target_cv.cv : CV_NONE;
+			if ((scv & ~tcv) == 0) return CONVERSION_DERIVED_TO_BASE;
+		}
 		TypeId target_pointee = program_->types.RemoveTopCv(target_pointer.child);
 		const TypeRecord pointee = program_->types.Get(target_pointee);
 		if (pointee.kind == TYPE_FUNDAMENTAL &&
@@ -560,13 +595,33 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 		RecordExpressionFacts(value);
 		return value;
 	}
-	if (Conversion(value, target) == CONVERSION_INVALID)
+	const ConversionRank conversion = Conversion(value, target);
+	if (conversion == CONVERSION_INVALID)
 		throw std::runtime_error("invalid standard conversion from " +
 			program_->RenderType(value.type) + " to " +
 			program_->RenderType(target));
 	const TypeRecord target_record = program_->types.Get(target);
 	const TypeId nonreference = target_record.kind == TYPE_LVALUE_REFERENCE ||
 		target_record.kind == TYPE_RVALUE_REFERENCE ? target_record.child : target;
+	if (conversion == CONVERSION_DERIVED_TO_BASE)
+	{
+		const bool binds_temporary =
+			target_record.kind == TYPE_LVALUE_REFERENCE &&
+			value.category != VALUE_LVALUE;
+		const ValueCategory category = binds_temporary ? VALUE_PRVALUE :
+			target_record.kind == TYPE_LVALUE_REFERENCE ? VALUE_LVALUE :
+			target_record.kind == TYPE_RVALUE_REFERENCE ?
+			VALUE_XVALUE : VALUE_PRVALUE;
+		const std::uint32_t cast = MakeDump(DUMP_CAST_EXPRESSION,
+			nonreference, category);
+		dump_.Add(cast, value.node);
+		value.node = cast;
+		value.type = nonreference;
+		value.category = category;
+		value.binding = kNoBinding;
+		value.constant = false;
+		++expression_count_;
+	}
 	if (value.integer_literal_zero &&
 		(IsPointer(nonreference) || IsNullptr(nonreference)))
 	{
@@ -984,6 +1039,8 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 		throw std::runtime_error("overload conversion table is too large");
 	std::vector<ConversionRank> ranks(candidates.size() * arity,
 		CONVERSION_ELLIPSIS);
+	std::vector<std::size_t> base_distances(candidates.size() * arity,
+		std::numeric_limits<std::size_t>::max());
 	std::vector<bool> viable(candidates.size(), true);
 	for (std::size_t c = 0; c < candidates.size(); ++c)
 	{
@@ -1006,6 +1063,9 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 			const ConversionRank object_rank = Conversion(*object,
 				program_->types.Pointer(object_type));
 			ranks[c * arity] = object_rank;
+			if (object_rank == CONVERSION_DERIVED_TO_BASE)
+				base_distances[c * arity] = BaseConversionDistance(
+					object->type, program_->types.Pointer(object_type));
 			if (object_rank == CONVERSION_INVALID)
 			{
 				viable[c] = false;
@@ -1055,10 +1115,13 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 				}
 			}
 			ranks[c * arity + explicit_offset + a] = rank;
+			if (rank == CONVERSION_DERIVED_TO_BASE)
+				base_distances[c * arity + explicit_offset + a] =
+					BaseConversionDistance(arguments[a].type, parameters[a]);
 			if (rank == CONVERSION_INVALID) viable[c] = false;
 		}
 	}
-	const auto better = [this, &ranks, &candidates, arity](
+	const auto better = [this, &ranks, &base_distances, &candidates, arity](
 		std::size_t left, std::size_t right) -> bool
 	{
 		++overload_order_comparisons_;
@@ -1066,9 +1129,21 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 		bool strictly_better = false;
 		for (std::size_t a = 0; a < arity; ++a)
 		{
-			if (ranks[left * arity + a] > ranks[right * arity + a])
+			const ConversionRank left_rank = ranks[left * arity + a];
+			const ConversionRank right_rank = ranks[right * arity + a];
+			const std::size_t left_distance =
+				base_distances[left * arity + a];
+			const std::size_t right_distance =
+				base_distances[right * arity + a];
+			if (left_rank > right_rank ||
+				(left_rank == right_rank &&
+				 left_rank == CONVERSION_DERIVED_TO_BASE &&
+				 left_distance > right_distance))
 				no_worse = false;
-			if (ranks[left * arity + a] < ranks[right * arity + a])
+			if (left_rank < right_rank ||
+				(left_rank == right_rank &&
+				 left_rank == CONVERSION_DERIVED_TO_BASE &&
+				 left_distance < right_distance))
 				strictly_better = true;
 		}
 		if (!no_worse) return false;
@@ -1168,15 +1243,6 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	DemandFunction(selected);
 	++expression_count_;
 	return ApplyTarget(result, target);
-}
-
-bool SemanticAnalyzer::CanAccessMember(BindingId member) const
-{
-	if (member == kNoBinding || member >= program_->bindings.size()) return false;
-	const BindingRecord& binding = program_->bindings[member];
-	return binding.member_owner == kNoEntity ||
-		binding.access == ACCESS_PUBLIC ||
-		binding.member_owner == current_class_context_;
 }
 
 ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
@@ -1387,41 +1453,6 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 	return ApplyTarget(result, target);
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeImplicitDataMember(BindingId member_binding,
-	ScopeId scope, TypeId target)
-{
-	const BindingRecord& binding = program_->bindings[member_binding];
-	const NameId this_name = program_->names.Intern("this");
-	const LookupResult this_lookup =
-		program_->LookupName(scope, this_name, LOOKUP_ORDINARY);
-	if (this_lookup.ordinary == kNoBinding)
-		throw std::runtime_error("non-static member requires an object");
-	const BindingRecord& this_binding =
-		program_->bindings[this_lookup.ordinary];
-	TypeId member_type = binding.type;
-	TypeId object_type = EffectiveType(this_binding.type);
-	const TypeRecord object_pointer = program_->types.Get(
-		program_->types.RemoveTopCv(object_type));
-	if (object_pointer.kind == TYPE_POINTER)
-	{
-		const TypeRecord pointee = program_->types.Get(object_pointer.child);
-		if (pointee.kind == TYPE_QUALIFIED)
-			member_type = program_->types.Qualify(member_type, pointee.cv);
-	}
-	const std::uint32_t object = MakeDump(DUMP_ID_EXPRESSION,
-		this_binding.type, VALUE_LVALUE, this_name, this_lookup.ordinary);
-	const std::uint32_t member = MakeDump(DUMP_MEMBER_EXPRESSION,
-		member_type, VALUE_LVALUE, binding.name, member_binding);
-	dump_.Add(member, object);
-	ExpressionInfo result;
-	result.node = member;
-	result.type = member_type;
-	result.category = VALUE_LVALUE;
-	result.binding = member_binding;
-	expression_count_ += 2;
-	return ApplyTarget(result, target);
-}
-
 ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 	TypeId target)
 {
@@ -1551,9 +1582,28 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBinary(NodeId node, ScopeId scope)
 		else if (IsArithmetic(left.type) && IsArithmetic(right.type))
 			operand_type = CommonArithmeticType(left.type, right.type);
 		else if (IsNullptr(left.type) && IsNullptr(right.type) && equality) {}
+		else if (IsPointer(Decay(left.type)) && IsPointer(Decay(right.type)))
+		{
+			const TypeId left_pointer = Decay(left.type);
+			const TypeId right_pointer = Decay(right.type);
+			const ConversionRank right_to_left = Conversion(right, left_pointer);
+			const ConversionRank left_to_right = Conversion(left, right_pointer);
+			if (right_to_left != CONVERSION_INVALID &&
+				(left_to_right == CONVERSION_INVALID ||
+				 right_to_left <= left_to_right))
+			{
+				operand_type = left_pointer;
+				right = ApplyTarget(right, left_pointer);
+			}
+			else if (left_to_right != CONVERSION_INVALID)
+			{
+				operand_type = right_pointer;
+				left = ApplyTarget(left, right_pointer);
+			}
+			else throw std::runtime_error("invalid pointer comparison operands");
+		}
 		else if (IsPointer(Decay(left.type)) &&
-			(IsPointer(Decay(right.type)) || (right.integer_literal_zero && equality) ||
-			 IsNullptr(right.type))) {}
+			((right.integer_literal_zero && equality) || IsNullptr(right.type))) {}
 		else if (IsPointer(Decay(right.type)) &&
 			((left.integer_literal_zero && equality) || IsNullptr(left.type))) {}
 		else throw std::runtime_error("invalid comparison operands");
@@ -1721,6 +1771,19 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 	const bool permits_reinterpretation =
 		cast_kind.compare(0, 10, "OP_LPAREN:") == 0 ||
 		cast_kind.find("REINTER") != std::string::npos;
+	if (cast_kind.find("STATIC") != std::string::npos && IsPointer(target) &&
+		IsPointer(operand.type))
+	{
+		const TypeRecord source_pointer = program_->types.Get(Decay(operand.type));
+		const TypeRecord target_pointer = program_->types.Get(
+			program_->types.RemoveTopCv(target));
+		const EntityId derived = EntityOf(source_pointer.child);
+		const EntityId base = EntityOf(target_pointer.child);
+		if (derived != kNoEntity && base != kNoEntity &&
+			program_->IsBaseOf(base, derived) &&
+			!BaseConversionAllowed(derived, base))
+			throw std::runtime_error("inaccessible base conversion");
+	}
 	const bool valid = IsVoid(target) ||
 		(IsArithmetic(target) && IsArithmetic(operand.type)) ||
 		(target_enum && (IsIntegral(operand.type, true) ||
@@ -1744,55 +1807,6 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 	result.type = target;
 	result.constant = operand.constant;
 	result.value = operand.value;
-	++expression_count_;
-	return result;
-}
-
-ExpressionInfo SemanticAnalyzer::AnalyzeConditional(NodeId node, ScopeId scope)
-{
-	std::vector<NodeId> children;
-	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
-		edge = arena_->NextEdge(edge)) children.push_back(arena_->EdgeChild(edge));
-	if (children.size() != 3) throw std::runtime_error("invalid conditional");
-	ExpressionInfo condition = AnalyzeExpression(children[0], scope);
-	if (!IsArithmetic(condition.type) && !IsPointer(Decay(condition.type)) &&
-		!IsNullptr(condition.type))
-		throw std::runtime_error("invalid conditional condition");
-	ExpressionInfo yes = AnalyzeExpression(children[1], scope);
-	ExpressionInfo no = AnalyzeExpression(children[2], scope);
-	TypeId type = kNoType;
-	ValueCategory category = VALUE_PRVALUE;
-	if (EffectiveType(yes.type) == EffectiveType(no.type))
-	{
-		type = EffectiveType(yes.type);
-		category = yes.category == no.category ? yes.category : VALUE_PRVALUE;
-	}
-	else if (IsArithmetic(yes.type) && IsArithmetic(no.type))
-		type = CommonArithmeticType(yes.type, no.type);
-	else if (IsPointer(Decay(yes.type)) &&
-		(IsNullptr(no.type) || no.integer_literal_zero)) type = Decay(yes.type);
-	else if (IsPointer(Decay(no.type)) &&
-		(IsNullptr(yes.type) || yes.integer_literal_zero)) type = Decay(no.type);
-	else if (IsPointer(Decay(yes.type)) && IsPointer(Decay(no.type)))
-	{
-		if (Conversion(yes, Decay(no.type)) != CONVERSION_INVALID)
-			type = Decay(no.type);
-		else if (Conversion(no, Decay(yes.type)) != CONVERSION_INVALID)
-			type = Decay(yes.type);
-	}
-	if (type == kNoType) throw std::runtime_error("incompatible conditional arms");
-	const std::uint32_t expression = MakeDump(DUMP_CONDITIONAL_EXPRESSION,
-		type, category);
-	dump_.Add(expression, condition.node);
-	dump_.Add(expression, yes.node);
-	dump_.Add(expression, no.node);
-	ExpressionInfo result;
-	result.node = expression;
-	result.type = type;
-	result.category = category;
-	result.constant = condition.constant &&
-		(condition.value ? yes.constant : no.constant);
-	if (result.constant) result.value = condition.value ? yes.value : no.value;
 	++expression_count_;
 	return result;
 }
@@ -1863,12 +1877,17 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 		throw std::runtime_error("member access on non-class object");
 	const NodeId identifier = arena_->EdgeChild(second);
 	const NameId name = program_->names.Intern(arena_->Payload(identifier));
-	const LookupResult found = program_->LookupDirect(
-		program_->entities[entity].member_scope, name, LOOKUP_ORDINARY);
+	const LookupResult found = program_->LookupMember(
+		entity, name, LOOKUP_ORDINARY);
 	if (found.ordinary == kNoBinding)
 		throw std::runtime_error("unknown class member");
 	if (!CanAccessMember(found.ordinary))
 		throw std::runtime_error("inaccessible class member");
+	const EntityId member_owner =
+		program_->bindings[found.ordinary].member_owner;
+	if (member_owner != kNoEntity && member_owner != entity &&
+		!BaseConversionAllowed(entity, member_owner))
+		throw std::runtime_error("inaccessible inherited class member");
 	TypeId type = program_->bindings[found.ordinary].type;
 	if (IsConst(owner_type)) type = program_->types.Qualify(type, CV_CONST);
 	std::string operation = arena_->Payload(node);
@@ -2777,6 +2796,9 @@ void SemanticAnalyzer::RenderLine(const DumpNode& node, std::size_t depth)
 	case DUMP_INITIALIZER_ACTION:
 		output_ << "initializer-action " << program_->names.Get(node.text)
 			<< ' ' << program_->RenderType(node.type); break;
+	case DUMP_BASE_INITIALIZER_ACTION:
+		output_ << "base-initializer-action "
+			<< program_->RenderType(node.type); break;
 	case DUMP_MEMBER_EXPRESSION:
 		output_ << "member-expression " << category << ' '
 			<< program_->RenderType(node.type) << ' '
@@ -2850,6 +2872,8 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		stats_->class_layout_member_visits = class_layout_member_visits_;
 		stats_->constructor_member_action_visits =
 			constructor_member_action_visits_;
+		stats_->constructor_base_action_visits =
+			constructor_base_action_visits_;
 		stats_->lookup_queries = program.lookup_queries;
 		stats_->lookup_scope_visits = program.lookup_scope_visits;
 		stats_->lookup_edge_visits = program.lookup_edge_visits;
@@ -2890,6 +2914,7 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 	  interned_names(0), canonical_types(0), scopes(0), declarations(0),
 	  expressions(0), class_layouts(0), class_layout_member_visits(0),
 	  constructor_member_action_visits(0),
+	  constructor_base_action_visits(0),
 	  lookup_queries(0), lookup_scope_visits(0),
 	  lookup_edge_visits(0), overload_candidates(0),
 	  overload_order_comparisons(0), conversion_checks(0),

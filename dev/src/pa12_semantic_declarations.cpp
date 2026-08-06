@@ -99,8 +99,43 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	{
 		if (program_->entities[entity].complete)
 			throw std::runtime_error("duplicate class definition");
-		program_->entities[entity].has_direct_base =
-			FindChild(node, "base-clause") != kNoNode;
+		const NodeId base_clause = FindChild(node, "base-clause");
+		if (base_clause != kNoNode)
+		{
+			NodeId base_specifier = kNoNode;
+			for (std::uint32_t edge = arena_->FirstEdge(base_clause);
+				edge != kNoEdge; edge = arena_->NextEdge(edge))
+			{
+				const NodeId candidate = arena_->EdgeChild(edge);
+				if (!arena_->IsTag(candidate, "base-specifier")) continue;
+				if (base_specifier != kNoNode)
+					throw std::runtime_error(
+						"multiple inheritance is outside PA16");
+				base_specifier = candidate;
+			}
+			if (base_specifier == kNoNode)
+				throw std::runtime_error("base clause has no base type");
+			const NodeId base_name = FindChild(base_specifier, "base-name");
+			if (base_name == kNoNode)
+				throw std::runtime_error("base specifier has no base name");
+			const LookupResult base_lookup = LookupSpelling(scope,
+				arena_->Payload(base_name), LOOKUP_TYPE);
+			const EntityId base = EntityOf(base_lookup.type);
+			if (base == kNoEntity || !program_->entities[base].complete ||
+				program_->entities[base].flavor == NAMED_UNION)
+				throw std::runtime_error(
+					"direct base must name a complete non-union class");
+			AccessKind base_access = flavor == NAMED_CLASS ?
+				ACCESS_PRIVATE : ACCESS_PUBLIC;
+			const NodeId access = FindChild(base_specifier, "access-specifier");
+			if (access != kNoNode)
+			{
+				const std::string access_text = PayloadSource(access);
+				base_access = access_text == "private" ? ACCESS_PRIVATE :
+					access_text == "protected" ? ACCESS_PROTECTED : ACCESS_PUBLIC;
+			}
+			program_->SetDirectBase(entity, base, base_access);
+		}
 		ScopeId member_scope = program_->entities[entity].member_scope;
 		if (member_scope == kNoScope)
 		{
@@ -109,6 +144,9 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 			member_scope = NewScope(owner, SCOPE_CLASS, name,
 				program_->names.Intern(prefix));
 			program_->SetEntityScope(entity, member_scope);
+			program_->SetTypeName(member_scope, name, type);
+			program_->AddBinding(member_scope, BIND_TYPE, name, type,
+				false, 0, flavor);
 		}
 		// The stable class scope owns indexed field/function identities even
 		// though class declarations are not part of the PA12 output view.
@@ -149,6 +187,15 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 	++class_layouts_;
 	std::size_t size = 0;
 	std::size_t alignment = 1;
+	const EntityRecord* base = 0;
+	if (owner.direct_base != kNoEntity)
+	{
+		base = &program_->entities[owner.direct_base];
+		if (!base->layout_complete)
+			throw std::runtime_error("direct base layout is incomplete");
+		size = static_cast<std::size_t>(base->object_size);
+		alignment = static_cast<std::size_t>(base->object_alignment);
+	}
 	const bool is_union = owner.flavor == NAMED_UNION;
 	const std::vector<BindingId>& members = entity_data_members_[entity];
 	const bool implicit_default_constructor =
@@ -159,6 +206,13 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 	{
 		owner.default_constructible = true;
 		owner.trivial_default_constructor = true;
+		if (base)
+		{
+			if (!base->default_constructible)
+				owner.default_constructible = false;
+			if (!base->trivial_default_constructor)
+				owner.trivial_default_constructor = false;
+		}
 	}
 	for (std::size_t i = 0; i < members.size(); ++i)
 	{
@@ -315,6 +369,14 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		const NodeId declarator = FindChild(item, "declarator");
 		if (declarator == kNoNode) continue;
 		const DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type, scope);
+		if (spec.is_typedef)
+		{
+			const BindingId alias = program_->AddBinding(scope, BIND_TYPE_ALIAS,
+				parsed.name, parsed.type);
+			program_->bindings[alias].member_owner = EntityOf(owner_type);
+			program_->bindings[alias].access = access;
+			continue;
+		}
 		if (program_->types.IsFunction(parsed.type))
 		{
 			const BindingId function = DeclareFunction(scope, parsed.name,
@@ -623,6 +685,9 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 			const LookupResult found = LookupSpelling(scope, spelling, LOOKUP_TYPE);
 			if (found.type == kNoType)
 				throw std::runtime_error("unknown type name: " + spelling);
+			if (found.type_declaration != kNoBinding &&
+				!CanAccessMember(found.type_declaration))
+				throw std::runtime_error("inaccessible member type");
 			result.type = found.type;
 		}
 	}

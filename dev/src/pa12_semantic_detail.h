@@ -37,6 +37,7 @@ public:
 		  default_constructor_emissions_(0),
 		  class_layouts_(0), class_layout_member_visits_(0),
 		  constructor_member_action_visits_(0),
+		  constructor_base_action_visits_(0),
 		  anonymous_enum_count_(0), local_type_count_(0) {}
 
 	void Consume(const SyntaxArena& arena, NodeId root);
@@ -155,6 +156,8 @@ private:
 	void AnalyzeSpecialMember(NodeId node, ScopeId scope, TypeId owner_type,
 		AccessKind access);
 	bool CanAccessMember(BindingId member) const;
+	bool BaseConversionAllowed(EntityId derived, EntityId base) const;
+	std::size_t BaseConversionDistance(TypeId source, TypeId target) const;
 	void CompleteClassLayout(EntityId entity);
 	BindingId EnsureImplicitConstructor(EntityId entity);
 	const std::vector<BindingId>& ConstructorCandidates(EntityId entity) const;
@@ -168,6 +171,8 @@ private:
 		bool list_initialization);
 	void AddConstructorMemberActions(const FunctionInfo& constructor,
 		ScopeId function_scope, std::uint32_t body);
+	void AddBaseInitializationAction(EntityId entity, NodeId initializer,
+		ScopeId scope, std::uint32_t body);
 	void AddMemberInitializationAction(BindingId member, NodeId initializer,
 		ScopeId scope, std::uint32_t body);
 	bool InitializationActionsAreNonthrowing(std::uint32_t body) const;
@@ -259,6 +264,7 @@ private:
 	std::size_t class_layouts_;
 	std::size_t class_layout_member_visits_;
 	std::size_t constructor_member_action_visits_;
+	std::size_t constructor_base_action_visits_;
 	std::size_t anonymous_enum_count_;
 	std::size_t local_type_count_;
 };
