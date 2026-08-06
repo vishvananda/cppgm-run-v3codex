@@ -104,6 +104,13 @@ outputs:
 - `200-bswap-unary` requires lowering to PA9 shift/mask/or instructions; the
   checked text uses nonexistent `bswap16`, `bswap32`, and `bswap64` opcodes.
 
+These defects cannot be repaired as PA9 extensions without violating the
+assignment contracts. PA13 explicitly requires generated text to follow PA9;
+PA9's grammar requires parentheses around a negative immediate, its opcode
+descriptors contain no byte-swap operation, and its `call` operation only pushes
+the return address and jumps. It cannot recover argument values overwritten by
+earlier instructions.
+
 With those adapter corrections isolated from the protected tree, all 67
 checked-success outputs compile through PA9 and terminate normally within two
 seconds (67 compiled, 67 normal, zero rejection, signal, or timeout). Applying
@@ -166,5 +173,9 @@ the global floating-point environment.
 - Isolated corrected-adapter sweep: all 67 checked-success PA13 outputs compile
   through PA9 and terminate normally; the correction changes exactly the 12
   protected outputs listed above.
+- Exact protected-reference replay through the current PA9 tool: the three call
+  cases compile and exit 139, 139, and 0; the eight negative-immediate cases are
+  rejected as invalid operands; the byte-swap case is rejected for unknown
+  opcode `bswap16`.
 - Required file audit: pass, 55 implementation files inspected through includes.
 - Required through-stage report: pass, 920/920 tests and 13/13 stages.
