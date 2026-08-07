@@ -68,6 +68,28 @@ protected:
 				(void)derived.EnsureGeneratedSlot(current, "arg",
 					derived.LowerStorageType(record.type));
 			const NodeChildren children = derived.Children(current);
+			if (record.kind == DUMP_NEW_EXPRESSION && record.array_action &&
+				!children.empty())
+			{
+				const NodeChildren call = derived.Children(children[0]);
+				const bool retain_size = !record.array_count_constant &&
+					(record.array_cookie || record.value_initialization ||
+					 children.size() == 2);
+				if (retain_size && call.size() > 1)
+					(void)derived.EnsureGeneratedSlot(call[1],
+						"array_new_size", pa15_lowir_detail::LowI64());
+				if (record.value_initialization)
+					(void)derived.EnsureGeneratedSlot(children[0],
+						"zeroinit_offset", pa15_lowir_detail::LowI64());
+				if (children.size() == 2)
+				{
+					(void)derived.EnsureGeneratedSlot(children[1],
+						"array_new_index", pa15_lowir_detail::LowI64());
+					if (record.selected_binding != kNoBinding)
+						(void)derived.EnsureGeneratedSlot(current,
+							"array_dtor_index", pa15_lowir_detail::LowI64());
+				}
+			}
 			for (std::size_t i = children.size(); i != 0; --i)
 			{
 				pending.push_back(children[i - 1]);

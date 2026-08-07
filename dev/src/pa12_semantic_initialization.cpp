@@ -214,7 +214,8 @@ bool SemanticAnalyzer::EmptyDefaultConstructorChain(BindingId constructor,
 
 std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 	ScopeId scope, const std::vector<NodeId>& argument_syntax,
-	bool copy_initialization, bool list_initialization, bool base_subobject)
+	bool copy_initialization, bool list_initialization, bool base_subobject,
+	bool demand)
 {
 	const EntityId entity = EntityOf(type);
 	if (!IsClassEntity(*program_, entity))
@@ -282,7 +283,7 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 			constructor.parameters[a].default_scope, parameters[a]);
 		dump_.Add(action, argument.node);
 	}
-	if (!dump_.nodes[action].elide_empty_constructor &&
+	if (demand && !dump_.nodes[action].elide_empty_constructor &&
 		!dump_.nodes[action].trivial_special_member_action &&
 		!(constructor.implicit_constructor &&
 		program_->entities[entity].trivial_default_constructor))
@@ -1346,12 +1347,274 @@ ExpressionInfo SemanticAnalyzer::BuildLocalAggregateArrayActions(
 	return initializer;
 }
 
+BindingId SemanticAnalyzer::SelectUsualDeallocation(ScopeId scope,
+	EntityId entity, bool explicit_global, bool array, TypeId object_type)
+{
+	const bool class_object = IsClassEntity(*program_, entity);
+	const char* spelling = array ? "operatordelete[]" : "operatordelete";
+	std::vector<BindingId> candidates;
+	EntityId naming_class = kNoEntity;
+	if (!explicit_global && class_object)
+	{
+		const LookupResult member = program_->LookupMember(entity,
+			program_->names.Intern(spelling), LOOKUP_ORDINARY);
+		if (member.ordinary != kNoBinding &&
+			program_->bindings[member.ordinary].kind == BIND_FUNCTION)
+		{
+			candidates = FunctionSet(member.ordinary);
+			naming_class = member.naming_class;
+		}
+	}
+	if (candidates.empty())
+	{
+		(void)EnsureBuiltinFunction(array ?
+			BUILTIN_FUNCTION_OPERATOR_DELETE_ARRAY :
+			BUILTIN_FUNCTION_OPERATOR_DELETE);
+		candidates = FunctionCandidates(program_->GlobalScope(), spelling);
+	}
+	std::vector<BindingId> unsized;
+	std::vector<BindingId> sized;
+	const TypeId size_type =
+		program_->types.Fundamental(FUND_UNSIGNED_LONG_INT);
+	for (std::size_t i = 0; i < candidates.size(); ++i)
+	{
+		const TypeId function_type = GetFunction(candidates[i]).type;
+		const TypeRecord& function = program_->types.Get(function_type);
+		const TypeId* parameters = program_->types.Parameters(function_type);
+		if (function.parameter_count == 1) unsized.push_back(candidates[i]);
+		else if (function.parameter_count == 2 &&
+			program_->types.RemoveTopCv(parameters[1]) == size_type)
+			sized.push_back(candidates[i]);
+	}
+	std::vector<BindingId>& usual = unsized.empty() ? sized : unsized;
+	if (usual.empty()) throw std::runtime_error("no usual deallocation function");
+	ExpressionInfo pointer_argument;
+	pointer_argument.type = program_->types.Pointer(
+		program_->types.Fundamental(FUND_VOID));
+	std::vector<NodeId> syntax(1, kNoNode);
+	std::vector<ExpressionInfo> arguments(1, pointer_argument);
+	if (unsized.empty())
+	{
+		ExpressionInfo size = MakeLiteral(size_type,
+			InternNumber(static_cast<std::int64_t>(program_->SizeOf(object_type))));
+		size.constant = true;
+		size.value = static_cast<std::int64_t>(program_->SizeOf(object_type));
+		dump_.nodes[size.node].constant = true;
+		dump_.nodes[size.node].constant_value = size.value;
+		syntax.push_back(kNoNode);
+		arguments.push_back(size);
+	}
+	const BindingId selected = SelectOverload(scope, syntax, arguments,
+		usual, 0, 0, 0);
+	if (!CanAccessMember(selected, naming_class, entity))
+		throw std::runtime_error("inaccessible deallocation function");
+	DemandFunction(selected);
+	return selected;
+}
+
+ExpressionInfo SemanticAnalyzer::AnalyzeArrayNewExpression(NodeId node,
+	NodeId type_node, ScopeId scope, TypeId target)
+{
+	const NodeId specifiers = FindChild(type_node, "type-specifier-seq");
+	const SpecInfo spec = BuildSpecifiers(
+		specifiers, scope, std::string(), false);
+	const NodeId declarator = FindChild(type_node, "abstract-declarator");
+	if (declarator == kNoNode)
+		throw std::logic_error("array new has no abstract declarator");
+	TypeId leaf_type = spec.type;
+	std::vector<NodeId> suffixes;
+	bool value_initialization = false;
+	for (std::uint32_t edge = arena_->FirstEdge(declarator); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId child = arena_->EdgeChild(edge);
+		if (arena_->IsTag(child, "array-suffix")) suffixes.push_back(child);
+		else if (arena_->IsTag(child, "parameter-clause"))
+		{
+			if (FirstSemanticChild(child) != kNoNode)
+				throw std::runtime_error("array new initializer has parameters");
+			value_initialization = true;
+		}
+		else if (arena_->IsTag(child, "ptr-operator"))
+		{
+			if (PayloadSource(child) != "*")
+				throw std::runtime_error("unsupported array new declarator");
+			leaf_type = program_->types.Pointer(leaf_type);
+		}
+		else if (arena_->IsTag(child, "cv-qualifier"))
+			leaf_type = program_->types.Qualify(leaf_type,
+				PayloadSource(child) == "const" ? CV_CONST : CV_VOLATILE);
+	}
+	if (suffixes.empty())
+		throw std::logic_error("array new has no array suffix");
+	TypeId result_element_type = leaf_type;
+	for (std::size_t i = suffixes.size(); i != 1; --i)
+	{
+		const NodeId bound_node = FirstSemanticChild(suffixes[i - 1]);
+		const ExpressionInfo bound = AnalyzeExpression(bound_node, scope);
+		if (!bound.constant || bound.value <= 0)
+			throw std::runtime_error("invalid inner array bound");
+		result_element_type = program_->types.Array(result_element_type,
+			static_cast<std::uint64_t>(bound.value));
+	}
+	const NodeId extent_syntax = FirstSemanticChild(suffixes[0]);
+	if (extent_syntax == kNoNode)
+		throw std::runtime_error("array new has no extent");
+	ExpressionInfo extent = AnalyzeExpression(extent_syntax, scope);
+	if (!IsIntegral(extent.type) || (extent.constant && extent.value < 0))
+		throw std::runtime_error("invalid array new extent");
+	const EntityId entity = EntityOf(leaf_type);
+	const bool class_elements = IsClassEntity(*program_, entity);
+	const std::uint64_t cookie_size = class_elements ? 8 : 0;
+	const std::uint64_t row_size = program_->SizeOf(result_element_type);
+	const std::uint64_t leaf_size = program_->SizeOf(leaf_type);
+	if (leaf_size == 0 || row_size % leaf_size != 0)
+		throw std::logic_error("invalid array element stride");
+	ExpressionInfo allocation_size = extent;
+	std::uint64_t flat_count = 0;
+	if (extent.constant)
+	{
+		const std::uint64_t count = static_cast<std::uint64_t>(extent.value);
+		if (count > (std::numeric_limits<std::uint64_t>::max() - cookie_size) /
+			row_size)
+			throw std::runtime_error("array allocation size overflow");
+		const std::uint64_t bytes = count * row_size + cookie_size;
+		const std::uint64_t inner_count = row_size / leaf_size;
+		if (bytes > static_cast<std::uint64_t>(
+			std::numeric_limits<std::int64_t>::max()) ||
+			count > std::numeric_limits<std::uint64_t>::max() / inner_count)
+			throw std::runtime_error("array allocation exceeds PA17 limits");
+		flat_count = count * inner_count;
+		allocation_size = MakeLiteral(extent.type,
+			InternNumber(static_cast<std::int64_t>(bytes)));
+		allocation_size.constant = true;
+		allocation_size.value = static_cast<std::int64_t>(bytes);
+		dump_.nodes[allocation_size.node].constant = true;
+		dump_.nodes[allocation_size.node].constant_value = allocation_size.value;
+	}
+	else
+	{
+		const auto combine = [this](const ExpressionInfo& left,
+			std::uint64_t right_value, const char* operation) -> ExpressionInfo
+		{
+			ExpressionInfo right = MakeLiteral(
+				program_->types.Fundamental(FUND_INT),
+				InternNumber(static_cast<std::int64_t>(right_value)));
+			right.constant = true;
+			right.value = static_cast<std::int64_t>(right_value);
+			dump_.nodes[right.node].constant = true;
+			dump_.nodes[right.node].constant_value = right.value;
+			const TypeId arithmetic = CommonArithmeticType(left.type, right.type);
+			const ExpressionInfo converted_left = ApplyTarget(left, arithmetic);
+			const ExpressionInfo converted_right = ApplyTarget(right, arithmetic);
+			const std::uint32_t expression = MakeDump(DUMP_BINARY_EXPRESSION,
+				arithmetic, VALUE_PRVALUE, program_->names.Intern(operation));
+			dump_.nodes[expression].operand_type = arithmetic;
+			dump_.Add(expression, converted_left.node);
+			dump_.Add(expression, converted_right.node);
+			ExpressionInfo result;
+			result.node = expression;
+			result.type = arithmetic;
+			result.category = VALUE_PRVALUE;
+			++expression_count_;
+			return result;
+		};
+		if (row_size != 1)
+			allocation_size = combine(allocation_size, row_size, "*");
+		if (cookie_size != 0)
+			allocation_size = combine(allocation_size, cookie_size, "+");
+	}
+	std::vector<NodeId> argument_syntax(1, kNoNode);
+	std::vector<ExpressionInfo> arguments(1, allocation_size);
+	const bool explicit_global = FindChild(node, "global-scope") != kNoNode;
+	std::vector<BindingId> candidates;
+	EntityId naming_class = kNoEntity;
+	if (!explicit_global && class_elements)
+	{
+		const LookupResult member = program_->LookupMember(entity,
+			program_->names.Intern("operatornew[]"), LOOKUP_ORDINARY);
+		if (member.ordinary != kNoBinding &&
+			program_->bindings[member.ordinary].kind == BIND_FUNCTION)
+		{
+			candidates = FunctionSet(member.ordinary);
+			naming_class = member.naming_class;
+		}
+	}
+	if (candidates.empty())
+	{
+		(void)EnsureBuiltinFunction(BUILTIN_FUNCTION_OPERATOR_NEW_ARRAY);
+		candidates = FunctionCandidates(
+			program_->GlobalScope(), "operatornew[]");
+	}
+	std::vector<CallConversionFact> conversions;
+	const BindingId selected = SelectOverload(scope, argument_syntax,
+		arguments, candidates, 0, 0, &conversions);
+	const ExpressionInfo allocation = BuildResolvedCall(selected, scope,
+		argument_syntax, arguments, 0, kNoType, naming_class, 0, &conversions);
+	std::uint32_t construction = kNoDumpEdge;
+	BindingId destructor = kNoBinding;
+	if (class_elements)
+	{
+		const std::vector<NodeId> no_arguments;
+		const std::uint32_t action = BuildConstructorAction(
+			leaf_type, scope, no_arguments, false, false, false, false);
+		const FunctionInfo& constructor = GetFunction(dump_.nodes[action].binding);
+		std::vector<BindingId> empty_base_entries;
+		const bool empty = EmptyDefaultConstructorChain(
+			dump_.nodes[action].binding, &empty_base_entries) &&
+			empty_base_entries.empty();
+		if (!empty && !dump_.nodes[action].elide_empty_constructor &&
+			!(constructor.implicit_constructor &&
+			 program_->entities[entity].trivial_default_constructor))
+		{
+			construction = action;
+			if (!dump_.nodes[action].trivial_special_member_action)
+				DemandFunction(dump_.nodes[action].binding);
+		}
+		if (!program_->entities[entity].trivial_destructor)
+		{
+			destructor = DestructorForType(leaf_type);
+			if (destructor == kNoBinding ||
+				GetFunction(destructor).deleted_destructor)
+				throw std::runtime_error("array element is not destructible");
+			DemandFunction(destructor);
+		}
+	}
+	const BindingId cleanup = construction == kNoDumpEdge ? kNoBinding :
+		SelectUsualDeallocation(
+			scope, entity, explicit_global, true, leaf_type);
+	const TypeId result_type = program_->types.Pointer(result_element_type);
+	const std::uint32_t result_node = MakeDump(DUMP_NEW_EXPRESSION,
+		result_type, VALUE_PRVALUE, 0, selected);
+	DumpNode& result_record = dump_.nodes[result_node];
+	result_record.operand_type = leaf_type;
+	result_record.array_action = true;
+	result_record.array_cookie = cookie_size != 0;
+	result_record.value_initialization = value_initialization;
+	result_record.selected_binding = destructor;
+	result_record.object_binding = cleanup;
+	result_record.array_count_constant = extent.constant;
+	result_record.array_count = flat_count;
+	dump_.Add(result_node, allocation.node);
+	if (construction != kNoDumpEdge) dump_.Add(result_node, construction);
+	ExpressionInfo result;
+	result.node = result_node;
+	result.type = result_type;
+	result.category = VALUE_PRVALUE;
+	++expression_count_;
+	return ApplyTarget(result, target);
+}
+
 ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
 	ScopeId scope, TypeId target)
 {
 	const NodeId type_node = FindChild(node, "type-id");
 	if (type_node == kNoNode)
 		throw std::runtime_error("new-expression has no allocated type");
+	const NodeId new_declarator = FindChild(type_node, "abstract-declarator");
+	if (new_declarator != kNoNode &&
+		FindChild(new_declarator, "array-suffix") != kNoNode)
+		return AnalyzeArrayNewExpression(node, type_node, scope, target);
 	TypeId object_type = BuildTypeId(type_node, scope);
 	bool parsed_empty_initializer = false;
 	const TypeRecord parsed_object = program_->types.Get(
@@ -1512,8 +1775,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
 ExpressionInfo SemanticAnalyzer::AnalyzeDeleteExpression(NodeId node,
 	ScopeId scope, TypeId target)
 {
-	if (FindChild(node, "array-delete") != kNoNode)
-		throw std::runtime_error("array delete is outside the scalar checkpoint");
+	const bool array = FindChild(node, "array-delete") != kNoNode;
 	NodeId operand_syntax = kNoNode;
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
@@ -1544,12 +1806,18 @@ ExpressionInfo SemanticAnalyzer::AnalyzeDeleteExpression(NodeId node,
 	if (pointer.kind != TYPE_POINTER)
 		throw std::runtime_error("delete operand is not a pointer");
 	const TypeId object_type = program_->types.RemoveTopCv(pointer.child);
-	const EntityId entity = EntityOf(object_type);
+	TypeId leaf_type = object_type;
+	while (array && program_->types.Get(
+		program_->types.RemoveTopCv(leaf_type)).kind == TYPE_ARRAY)
+		leaf_type = program_->types.Get(
+			program_->types.RemoveTopCv(leaf_type)).child;
+	leaf_type = program_->types.RemoveTopCv(leaf_type);
+	const EntityId entity = EntityOf(leaf_type);
 	const bool class_object = IsClassEntity(*program_, entity);
 	BindingId destructor = kNoBinding;
 	if (class_object)
 	{
-		const BindingId selected_destructor = DestructorForType(object_type);
+		const BindingId selected_destructor = DestructorForType(leaf_type);
 		if (selected_destructor == kNoBinding)
 			throw std::logic_error("deleted class has no destructor identity");
 		if (!CanAccessMember(selected_destructor, entity))
@@ -1563,66 +1831,15 @@ ExpressionInfo SemanticAnalyzer::AnalyzeDeleteExpression(NodeId node,
 		}
 	}
 	const bool explicit_global = FindChild(node, "global-scope") != kNoNode;
-	std::vector<BindingId> candidates;
-	EntityId naming_class = kNoEntity;
-	if (!explicit_global && class_object)
-	{
-		const LookupResult member = program_->LookupMember(entity,
-			program_->names.Intern("operatordelete"), LOOKUP_ORDINARY);
-		if (member.ordinary != kNoBinding &&
-			program_->bindings[member.ordinary].kind == BIND_FUNCTION)
-		{
-			candidates = FunctionSet(member.ordinary);
-			naming_class = member.naming_class;
-		}
-	}
-	if (candidates.empty())
-	{
-		(void)EnsureBuiltinFunction(BUILTIN_FUNCTION_OPERATOR_DELETE);
-		candidates = FunctionCandidates(
-			program_->GlobalScope(), "operatordelete");
-	}
-	std::vector<BindingId> unsized;
-	std::vector<BindingId> sized;
-	const TypeId size_type =
-		program_->types.Fundamental(FUND_UNSIGNED_LONG_INT);
-	for (std::size_t i = 0; i < candidates.size(); ++i)
-	{
-		const TypeId function_type = GetFunction(candidates[i]).type;
-		const TypeRecord& function = program_->types.Get(function_type);
-		const TypeId* parameters = program_->types.Parameters(function_type);
-		if (function.parameter_count == 1) unsized.push_back(candidates[i]);
-		else if (function.parameter_count == 2 &&
-			program_->types.RemoveTopCv(parameters[1]) == size_type)
-			sized.push_back(candidates[i]);
-	}
-	std::vector<BindingId>& usual = unsized.empty() ? sized : unsized;
-	if (usual.empty()) throw std::runtime_error("no usual deallocation function");
-	ExpressionInfo pointer_argument = operand;
-	pointer_argument.type = program_->types.Pointer(
-		program_->types.Fundamental(FUND_VOID));
-	pointer_argument.category = VALUE_PRVALUE;
-	std::vector<NodeId> syntax(1, operand_syntax);
-	std::vector<ExpressionInfo> arguments(1, pointer_argument);
-	if (unsized.empty())
-	{
-		ExpressionInfo size = MakeLiteral(size_type,
-			InternNumber(static_cast<std::int64_t>(program_->SizeOf(object_type))));
-		size.constant = true;
-		size.value = static_cast<std::int64_t>(program_->SizeOf(object_type));
-		syntax.push_back(kNoNode);
-		arguments.push_back(size);
-	}
-	const BindingId deallocation = SelectOverload(scope, syntax, arguments,
-		usual, 0, 0, 0);
-	if (!CanAccessMember(deallocation, naming_class, entity))
-		throw std::runtime_error("inaccessible deallocation function");
-	DemandFunction(deallocation);
+	const BindingId deallocation = SelectUsualDeallocation(
+		scope, entity, explicit_global, array, leaf_type);
 	const TypeId void_type = program_->types.Fundamental(FUND_VOID);
 	const std::uint32_t expression = MakeDump(DUMP_DELETE_EXPRESSION,
 		void_type, VALUE_PRVALUE, 0, deallocation);
-	dump_.nodes[expression].operand_type = object_type;
+	dump_.nodes[expression].operand_type = leaf_type;
 	dump_.nodes[expression].selected_binding = destructor;
+	dump_.nodes[expression].array_action = array;
+	dump_.nodes[expression].array_cookie = array && class_object;
 	dump_.Add(expression, operand.node);
 	ExpressionInfo result;
 	result.node = expression;

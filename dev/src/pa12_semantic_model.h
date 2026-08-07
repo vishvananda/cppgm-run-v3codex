@@ -95,6 +95,7 @@ struct DumpNode
 	NameId text;
 	BindingId binding, object_binding, selected_binding;
 	std::int64_t constant_value;
+	std::uint64_t array_count;
 	std::uint32_t first_edge;
 	std::uint32_t last_edge;
 	std::uint32_t base_projection_count;
@@ -104,6 +105,9 @@ struct DumpNode
 	bool boolean_conversion;
 	bool user_conversion_call;
 	bool allocation_may_return_null;
+	bool array_action;
+	bool array_cookie;
+	bool array_count_constant;
 	bool value_initialization;
 	bool elide_empty_constructor;
 	bool trivial_special_member_action;
@@ -116,12 +120,14 @@ struct DumpNode
 		: kind(value), type(kNoType), operand_type(kNoType),
 		  category(VALUE_NONE), text(0), binding(kNoBinding),
 		  object_binding(kNoBinding), selected_binding(kNoBinding),
-		  constant_value(0), first_edge(kNoDumpEdge),
+		  constant_value(0), array_count(0), first_edge(kNoDumpEdge),
 		  last_edge(kNoDumpEdge), base_projection_count(0),
 		  aggregate_helper(kNoDumpEdge),
 		  constant(false), integer_narrowing_conversion(false),
 		  boolean_conversion(false), user_conversion_call(false),
 		  allocation_may_return_null(false),
+		  array_action(false), array_cookie(false),
+		  array_count_constant(false),
 		  value_initialization(false), elide_empty_constructor(false),
 		  trivial_special_member_action(false),
 		  argument_materialization(false), class_argument_staging(false),

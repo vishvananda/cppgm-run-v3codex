@@ -272,8 +272,12 @@ private:
 		std::uint32_t aggregate_list);
 	ExpressionInfo AnalyzeNewExpression(NodeId node, ScopeId scope,
 		TypeId target);
+	ExpressionInfo AnalyzeArrayNewExpression(NodeId node, NodeId type_node,
+		ScopeId scope, TypeId target);
 	ExpressionInfo AnalyzeDeleteExpression(NodeId node, ScopeId scope,
 		TypeId target);
+	BindingId SelectUsualDeallocation(ScopeId scope, EntityId entity,
+		bool explicit_global, bool array, TypeId object_type);
 	ExpressionInfo MaterializeTemporary(const ExpressionInfo& initializer);
 	ExpressionInfo AnalyzeClassFunctionalCast(TypeId cast_type, ScopeId scope,
 		const std::vector<NodeId>& argument_syntax, NodeId arguments_node,
@@ -353,7 +357,8 @@ private:
 		std::vector<BindingId>* base_entries);
 	std::uint32_t BuildConstructorAction(TypeId type, ScopeId scope,
 		const std::vector<NodeId>& argument_syntax, bool copy_initialization,
-		bool list_initialization, bool base_subobject = false);
+		bool list_initialization, bool base_subobject = false,
+		bool demand = true);
 	std::uint32_t BuildClassValueConstructorAction(TypeId type,
 		const ExpressionInfo& source, bool copy_initialization = true,
 		bool demand = true);

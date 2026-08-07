@@ -161,10 +161,12 @@ protected:
 		else derived.LowerRuntimeObjectValue(record.operand_type, child, result);
 	}
 
-	Operand LowerNewExpression(const DumpNode& record,
+	Operand LowerNewExpression(std::uint32_t node, const DumpNode& record,
 		const NodeChildren& children)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
+		if (record.array_action)
+			return derived.LowerArrayNewExpression(node, record, children);
 		if (children.empty() || children.size() > 2)
 			throw std::runtime_error("invalid scalar new action");
 		const Operand result = derived.LowerValue(children[0], LowPtr());
@@ -224,10 +226,12 @@ protected:
 		derived.Emit(call);
 	}
 
-	Operand LowerDeleteExpression(const DumpNode& record,
+	Operand LowerDeleteExpression(std::uint32_t node, const DumpNode& record,
 		const NodeChildren& children)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
+		if (record.array_action)
+			return derived.LowerArrayDeleteExpression(node, record, children);
 		if (children.size() != 1)
 			throw std::runtime_error("invalid scalar delete action");
 		const Operand pointer = derived.LowerValue(children[0], LowPtr());

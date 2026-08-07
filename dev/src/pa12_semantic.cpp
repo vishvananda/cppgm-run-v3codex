@@ -2756,6 +2756,8 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 	root_ = MakeDump(DUMP_TRANSLATION_UNIT);
 	(void)EnsureBuiltinFunction(BUILTIN_FUNCTION_OPERATOR_NEW);
 	(void)EnsureBuiltinFunction(BUILTIN_FUNCTION_OPERATOR_DELETE);
+	(void)EnsureBuiltinFunction(BUILTIN_FUNCTION_OPERATOR_NEW_ARRAY);
+	(void)EnsureBuiltinFunction(BUILTIN_FUNCTION_OPERATOR_DELETE_ARRAY);
 	const std::chrono::steady_clock::time_point analysis_started =
 		std::chrono::steady_clock::now();
 	for (std::uint32_t edge = arena.FirstEdge(root); edge != kNoEdge;

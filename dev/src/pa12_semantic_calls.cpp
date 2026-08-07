@@ -97,6 +97,10 @@ bool SemanticAnalyzer::AnalyzeBuiltinCall(const std::string& spelling,
 		kind = BUILTIN_FUNCTION_OPERATOR_NEW;
 	else if (spelling == "::operator delete")
 		kind = BUILTIN_FUNCTION_OPERATOR_DELETE;
+	else if (spelling == "::operator new[]")
+		kind = BUILTIN_FUNCTION_OPERATOR_NEW_ARRAY;
+	else if (spelling == "::operator delete[]")
+		kind = BUILTIN_FUNCTION_OPERATOR_DELETE_ARRAY;
 	if (kind == BUILTIN_FUNCTION_NONE) return false;
 	const BindingId binding = EnsureBuiltinFunction(kind);
 	const TypeRecord& type = program_->types.Get(GetFunction(binding).type);

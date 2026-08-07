@@ -224,6 +224,473 @@ protected:
 			}
 		}
 	}
+
+	Operand EmitArrayAllocation(std::uint32_t call_node, bool retain_size,
+		Operand* retained_size)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const DumpNode& call_record = derived.arena_.nodes[call_node];
+		const NodeChildren children = derived.Children(call_node);
+		if (call_record.kind != DUMP_CALL_EXPRESSION ||
+			call_record.binding == kNoBinding || children.size() < 2)
+			throw std::logic_error("array allocation has no retained call");
+		const BindingId binding = call_record.binding;
+		if (binding >= derived.function_symbols_.size() ||
+			derived.function_symbols_[binding] == kNoLowId)
+			throw std::runtime_error("array allocation has no function symbol");
+		const TypeId function_type = derived.program_.bindings[binding].type;
+		const TypeRecord& function = derived.program_.types.Get(function_type);
+		const TypeId* parameters = derived.program_.types.Parameters(function_type);
+		CallArguments arguments;
+		CallArgumentFlags references;
+		Operand byte_size;
+		for (std::size_t i = 1; i < children.size(); ++i)
+		{
+			const std::size_t parameter = i - 1;
+			const LowType expected = parameter < function.parameter_count ?
+				derived.LowerType(parameters[parameter]) : LowType();
+			const Operand value = derived.LowerConvertedValue(children[i], expected,
+				derived.CanonicalizeImmediateConversion(children[i]));
+			if (i == 1)
+			{
+				byte_size = value;
+				byte_size.type = LowI64();
+			}
+			arguments.Push(value);
+			references.Push(parameter < function.parameter_count &&
+				derived.IsReferenceType(parameters[parameter]) ? 1 : 0);
+		}
+		Operand size_slot;
+		if (retain_size)
+		{
+			size_slot = Operand(derived.EnsureGeneratedSlot(children[1],
+				"array_new_size", LowI64()), LowI64());
+			Instruction store(Instruction::STORE);
+			store.type = LowI64();
+			store.first = byte_size;
+			store.second = size_slot;
+			derived.Emit(store);
+		}
+		const Operand result = derived.Temp(LowPtr());
+		Instruction call(Instruction::CALL);
+		call.dest = result.id;
+		call.type = LowPtr();
+		call.first = Operand(Operand::FUNCTION,
+			derived.function_symbols_[binding], LowPtr());
+		derived.output_.symbols[
+			derived.function_symbols_[binding]].referenced = true;
+		derived.AttachCallArguments(&call, arguments, references);
+		derived.Emit(call);
+		*retained_size = retain_size ?
+			derived.LoadStorage(size_slot, LowI64()) : byte_size;
+		return result;
+	}
+
+	Operand EmitArrayCount(const DumpNode& record, const Operand& byte_size)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (record.array_count_constant)
+		{
+			const Operand count = derived.Temp(LowI64());
+			Instruction constant(Instruction::CONST);
+			constant.dest = count.id;
+			constant.type = LowI64();
+			constant.first = Operand(static_cast<std::int64_t>(
+				record.array_count), LowI64());
+			derived.Emit(constant);
+			return count;
+		}
+		Operand data_size = byte_size;
+		if (record.array_cookie)
+		{
+			data_size = derived.Temp(LowI64());
+			Instruction subtract(Instruction::BINARY);
+			subtract.dest = data_size.id;
+			subtract.op = LOW_OP_SUB;
+			subtract.type = LowI64();
+			subtract.first = byte_size;
+			subtract.second = Operand(8, LowI64());
+			derived.Emit(subtract);
+		}
+		const std::size_t leaf_size =
+			derived.program_.SizeOf(record.operand_type);
+		if (leaf_size == 1) return data_size;
+		const Operand count = derived.Temp(LowI64());
+		Instruction divide(Instruction::BINARY);
+		divide.dest = count.id;
+		divide.op = LOW_OP_UDIV;
+		divide.type = LowI64();
+		divide.first = data_size;
+		divide.second = Operand(static_cast<std::int64_t>(leaf_size), LowI64());
+		derived.Emit(divide);
+		return count;
+	}
+
+	void EmitArrayDeallocation(BindingId binding, const DumpNode& record,
+		const Operand& allocation_pointer, const Operand& count)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (binding == kNoBinding || binding >= derived.function_symbols_.size() ||
+			derived.function_symbols_[binding] == kNoLowId)
+			throw std::runtime_error("array deallocation has no function symbol");
+		const TypeId function_type = derived.program_.bindings[binding].type;
+		const TypeRecord& function = derived.program_.types.Get(function_type);
+		const TypeId* parameters = derived.program_.types.Parameters(function_type);
+		CallArguments arguments;
+		CallArgumentFlags references;
+		arguments.Push(allocation_pointer);
+		references.Push(0);
+		if (function.parameter_count == 2)
+		{
+			const Operand scaled = derived.Temp(LowI64());
+			Instruction multiply(Instruction::BINARY);
+			multiply.dest = scaled.id;
+			multiply.op = LOW_OP_MUL;
+			multiply.type = LowI64();
+			multiply.first = count;
+			multiply.second = Operand(static_cast<std::int64_t>(
+				derived.program_.SizeOf(record.operand_type)), LowI64());
+			derived.Emit(multiply);
+			Operand size = scaled;
+			if (record.array_cookie)
+			{
+				size = derived.Temp(LowI64());
+				Instruction add(Instruction::BINARY);
+				add.dest = size.id;
+				add.op = LOW_OP_ADD;
+				add.type = LowI64();
+				add.first = scaled;
+				add.second = Operand(8, LowI64());
+				derived.Emit(add);
+			}
+			arguments.Push(derived.Convert(size,
+				derived.LowerType(parameters[1])));
+			references.Push(0);
+		}
+		Instruction call(Instruction::CALL);
+		call.type = LowVoid();
+		call.first = Operand(Operand::FUNCTION,
+			derived.function_symbols_[binding], LowPtr());
+		derived.output_.symbols[
+			derived.function_symbols_[binding]].referenced = true;
+		derived.AttachCallArguments(&call, arguments, references);
+		derived.Emit(call);
+	}
+
+	void EmitArrayZeroInitialization(std::uint32_t node,
+		const Operand& pointer, const Operand& byte_count)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const Operand offset(derived.EnsureGeneratedSlot(
+			node, "zeroinit_offset", LowI64()), LowI64());
+		const BlockId condition = derived.AddBlock(
+			derived.NewLabel("zeroinit_cond"));
+		const BlockId body = derived.AddBlock(derived.NewLabel("zeroinit_body"));
+		const BlockId end = derived.AddBlock(derived.NewLabel("zeroinit_end"));
+		Instruction initialize(Instruction::STORE);
+		initialize.type = LowI64();
+		initialize.first = Operand(0, LowI64());
+		initialize.second = offset;
+		derived.Emit(initialize);
+		derived.EmitJump(condition);
+		derived.SelectBlock(condition);
+		const Operand index = derived.LoadStorage(offset, LowI64());
+		const Operand more = derived.Temp(LowU8());
+		Instruction compare(Instruction::CMP);
+		compare.dest = more.id;
+		compare.op = LOW_OP_ULT;
+		compare.type = LowI64();
+		compare.first = index;
+		compare.second = byte_count;
+		derived.Emit(compare);
+		derived.EmitBranch(more, body, end);
+		derived.SelectBlock(body);
+		Instruction store(Instruction::STORE);
+		store.type = LowI8();
+		store.first = Operand(0, LowI8());
+		store.second = derived.IndexAddress(LowI8(), pointer, index, false);
+		derived.Emit(store);
+		const Operand next = derived.Temp(LowI64());
+		Instruction increment(Instruction::BINARY);
+		increment.dest = next.id;
+		increment.op = LOW_OP_ADD;
+		increment.type = LowI64();
+		increment.first = index;
+		increment.second = Operand(1, LowI64());
+		derived.Emit(increment);
+		Instruction save(Instruction::STORE);
+		save.type = LowI64();
+		save.first = next;
+		save.second = offset;
+		derived.Emit(save);
+		derived.EmitJump(condition);
+		derived.SelectBlock(end);
+	}
+
+	void EmitArrayConstructorLoop(std::uint32_t node,
+		const DumpNode& record, std::uint32_t action, const Operand& raw_pointer,
+		const Operand& user_pointer, const Operand& count)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const Operand index_slot(derived.EnsureGeneratedSlot(
+			action, "array_new_index", LowI64()), LowI64());
+		const BlockId condition = derived.AddBlock(
+			derived.NewLabel("array_new_ctor_cond"));
+		const BlockId body = derived.AddBlock(
+			derived.NewLabel("array_new_ctor_body"));
+		const BlockId end = derived.AddBlock(
+			derived.NewLabel("array_new_ctor_end"));
+		const BlockId cleanup = derived.AddBlock(
+			derived.NewLabel("array_new_ctor_cleanup"));
+		const BlockId continuation = derived.AddBlock(
+			derived.NewLabel("array_new_ctor_cont"));
+		Instruction initialize(Instruction::STORE);
+		initialize.type = LowI64();
+		initialize.first = Operand(0, LowI64());
+		initialize.second = index_slot;
+		derived.Emit(initialize);
+		derived.EmitJump(condition);
+		derived.SelectBlock(condition);
+		const Operand index = derived.LoadStorage(index_slot, LowI64());
+		const Operand more = derived.Temp(LowU8());
+		Instruction compare(Instruction::CMP);
+		compare.dest = more.id;
+		compare.op = LOW_OP_ULT;
+		compare.type = LowI64();
+		compare.first = index;
+		compare.second = count;
+		derived.Emit(compare);
+		derived.EmitBranch(more, body, end);
+		derived.SelectBlock(body);
+		const Operand displacement = derived.Temp(LowI64());
+		Instruction multiply(Instruction::BINARY);
+		multiply.dest = displacement.id;
+		multiply.op = LOW_OP_MUL;
+		multiply.type = LowI64();
+		multiply.first = index;
+		multiply.second = Operand(static_cast<std::int64_t>(
+			derived.program_.SizeOf(record.operand_type)), LowI64());
+		derived.Emit(multiply);
+		const Operand element = derived.IndexAddress(
+			LowI8(), user_pointer, displacement, false);
+		derived.EmitEhTarget(Instruction::EH_TRY, cleanup);
+		derived.LowerConstructorAction(action, element);
+		derived.Emit(Instruction(Instruction::EH_END));
+		const Operand next = derived.Temp(LowI64());
+		Instruction increment(Instruction::BINARY);
+		increment.dest = next.id;
+		increment.op = LOW_OP_ADD;
+		increment.type = LowI64();
+		increment.first = index;
+		increment.second = Operand(1, LowI64());
+		derived.Emit(increment);
+		Instruction save(Instruction::STORE);
+		save.type = LowI64();
+		save.first = next;
+		save.second = index_slot;
+		derived.Emit(save);
+		derived.EmitJump(condition);
+		derived.SelectBlock(end);
+		derived.EmitJump(continuation);
+		derived.SelectBlock(cleanup);
+		const Operand built = derived.LoadStorage(index_slot, LowI64());
+		if (record.selected_binding != kNoBinding)
+		{
+			const Operand cleanup_slot(derived.EnsureGeneratedSlot(
+				node, "array_dtor_index", LowI64()), LowI64());
+			Instruction retain(Instruction::STORE);
+			retain.type = LowI64();
+			retain.first = built;
+			retain.second = cleanup_slot;
+			derived.Emit(retain);
+			const BlockId dtor_condition = derived.AddBlock(
+				derived.NewLabel("array_dtor_cond"));
+			const BlockId dtor_body = derived.AddBlock(
+				derived.NewLabel("array_dtor_body"));
+			const BlockId dtor_end = derived.AddBlock(
+				derived.NewLabel("array_dtor_end"));
+			derived.EmitJump(dtor_condition);
+			derived.SelectBlock(dtor_condition);
+			const Operand remaining = derived.LoadStorage(cleanup_slot, LowI64());
+			const Operand any = derived.Temp(LowU8());
+			Instruction nonzero(Instruction::CMP);
+			nonzero.dest = any.id;
+			nonzero.op = LOW_OP_NE;
+			nonzero.type = LowI64();
+			nonzero.first = remaining;
+			nonzero.second = Operand(0, LowI64());
+			derived.Emit(nonzero);
+			derived.EmitBranch(any, dtor_body, dtor_end);
+			derived.SelectBlock(dtor_body);
+			const Operand previous = derived.Temp(LowI64());
+			Instruction decrement(Instruction::BINARY);
+			decrement.dest = previous.id;
+			decrement.op = LOW_OP_SUB;
+			decrement.type = LowI64();
+			decrement.first = remaining;
+			decrement.second = Operand(1, LowI64());
+			derived.Emit(decrement);
+			Instruction save_previous(Instruction::STORE);
+			save_previous.type = LowI64();
+			save_previous.first = previous;
+			save_previous.second = cleanup_slot;
+			derived.Emit(save_previous);
+			const Operand dtor_offset = derived.Temp(LowI64());
+			Instruction scale(Instruction::BINARY);
+			scale.dest = dtor_offset.id;
+			scale.op = LOW_OP_MUL;
+			scale.type = LowI64();
+			scale.first = previous;
+			scale.second = Operand(static_cast<std::int64_t>(
+				derived.program_.SizeOf(record.operand_type)), LowI64());
+			derived.Emit(scale);
+			derived.EmitDestructorCall(record.selected_binding,
+				derived.IndexAddress(LowI8(), user_pointer, dtor_offset, false));
+			derived.EmitJump(dtor_condition);
+			derived.SelectBlock(dtor_end);
+		}
+		EmitArrayDeallocation(record.object_binding, record,
+			raw_pointer, count);
+		derived.Emit(Instruction(Instruction::RESUME));
+		derived.SelectBlock(continuation);
+	}
+
+	Operand LowerArrayNewExpression(std::uint32_t node,
+		const DumpNode& record, const NodeChildren& children)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (children.empty() || children.size() > 2)
+			throw std::runtime_error("invalid array new action");
+		const bool retain_size = !record.array_count_constant &&
+			(record.array_cookie || record.value_initialization ||
+			 children.size() == 2);
+		Operand byte_size;
+		const Operand raw_pointer = EmitArrayAllocation(
+			children[0], retain_size, &byte_size);
+		Operand user_pointer = raw_pointer;
+		if (record.array_cookie)
+			user_pointer = derived.IndexAddress(LowI8(), raw_pointer,
+				Operand(8, LowI64()), false);
+		if (record.array_cookie)
+		{
+			Instruction cookie(Instruction::STORE);
+			cookie.type = LowI64();
+			cookie.first = EmitArrayCount(record, byte_size);
+			cookie.second = raw_pointer;
+			derived.Emit(cookie);
+		}
+		if (record.value_initialization)
+		{
+			Operand data_size = byte_size;
+			if (record.array_cookie)
+			{
+				data_size = derived.Temp(LowI64());
+				Instruction subtract(Instruction::BINARY);
+				subtract.dest = data_size.id;
+				subtract.op = LOW_OP_SUB;
+				subtract.type = LowI64();
+				subtract.first = byte_size;
+				subtract.second = Operand(8, LowI64());
+				derived.Emit(subtract);
+			}
+			EmitArrayZeroInitialization(children[0], user_pointer, data_size);
+		}
+		if (children.size() == 2)
+			EmitArrayConstructorLoop(node, record, children[1], raw_pointer,
+				user_pointer, EmitArrayCount(record, byte_size));
+		return user_pointer;
+	}
+
+	Operand LowerArrayDeleteExpression(std::uint32_t node,
+		const DumpNode& record, const NodeChildren& children)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (children.size() != 1)
+			throw std::runtime_error("invalid array delete action");
+		const Operand pointer = derived.LowerValue(children[0], LowPtr());
+		if (!record.array_cookie)
+		{
+			EmitArrayDeallocation(record.binding, record, pointer,
+				Operand(0, LowI64()));
+			return Operand(0, LowVoid());
+		}
+		const BlockId nonnull = derived.AddBlock(
+			derived.NewLabel("array_delete_nonnull"));
+		const BlockId end = derived.AddBlock(
+			derived.NewLabel("array_delete_end"));
+		const Operand condition = derived.Temp(LowU8());
+		Instruction compare(Instruction::CMP);
+		compare.dest = condition.id;
+		compare.op = LOW_OP_NE;
+		compare.type = LowPtr();
+		compare.first = pointer;
+		compare.second = Operand(0, LowPtr());
+		derived.Emit(compare);
+		derived.EmitBranch(condition, nonnull, end);
+		derived.SelectBlock(nonnull);
+		const Operand raw_pointer = derived.IndexAddress(LowI8(), pointer,
+			Operand(-8, LowI64()), false);
+		const Operand count = derived.LoadStorage(raw_pointer, LowI64());
+		if (record.selected_binding != kNoBinding)
+		{
+			const Operand index_slot(derived.EnsureGeneratedSlot(
+				node, "array_delete_index", LowI64()), LowI64());
+			Instruction retain(Instruction::STORE);
+			retain.type = LowI64();
+			retain.first = count;
+			retain.second = index_slot;
+			derived.Emit(retain);
+			const BlockId dtor_condition = derived.AddBlock(
+				derived.NewLabel("array_delete_dtor_cond"));
+			const BlockId dtor_body = derived.AddBlock(
+				derived.NewLabel("array_delete_dtor_body"));
+			const BlockId dtor_end = derived.AddBlock(
+				derived.NewLabel("array_delete_dtor_end"));
+			derived.EmitJump(dtor_condition);
+			derived.SelectBlock(dtor_condition);
+			const Operand remaining = derived.LoadStorage(index_slot, LowI64());
+			const Operand any = derived.Temp(LowU8());
+			Instruction nonzero(Instruction::CMP);
+			nonzero.dest = any.id;
+			nonzero.op = LOW_OP_NE;
+			nonzero.type = LowI64();
+			nonzero.first = remaining;
+			nonzero.second = Operand(0, LowI64());
+			derived.Emit(nonzero);
+			derived.EmitBranch(any, dtor_body, dtor_end);
+			derived.SelectBlock(dtor_body);
+			const Operand previous = derived.Temp(LowI64());
+			Instruction decrement(Instruction::BINARY);
+			decrement.dest = previous.id;
+			decrement.op = LOW_OP_SUB;
+			decrement.type = LowI64();
+			decrement.first = remaining;
+			decrement.second = Operand(1, LowI64());
+			derived.Emit(decrement);
+			Instruction save(Instruction::STORE);
+			save.type = LowI64();
+			save.first = previous;
+			save.second = index_slot;
+			derived.Emit(save);
+			const Operand offset = derived.Temp(LowI64());
+			Instruction scale(Instruction::BINARY);
+			scale.dest = offset.id;
+			scale.op = LOW_OP_MUL;
+			scale.type = LowI64();
+			scale.first = previous;
+			scale.second = Operand(static_cast<std::int64_t>(
+				derived.program_.SizeOf(record.operand_type)), LowI64());
+			derived.Emit(scale);
+			derived.EmitDestructorCall(record.selected_binding,
+				derived.IndexAddress(LowI8(), pointer, offset, false));
+			derived.EmitJump(dtor_condition);
+			derived.SelectBlock(dtor_end);
+		}
+		EmitArrayDeallocation(record.binding, record, raw_pointer, count);
+		derived.EmitJump(end);
+		derived.SelectBlock(end);
+		return Operand(0, LowVoid());
+	}
 };
 
 }

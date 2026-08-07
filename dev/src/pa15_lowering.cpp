@@ -1306,8 +1306,8 @@ private:
 				result = LoadStorage(result,
 					LowerExpressionType(RemoveReference(record.type)));
 		}
-		else if (record.kind == DUMP_NEW_EXPRESSION) result = LowerNewExpression(record, children);
-		else if (record.kind == DUMP_DELETE_EXPRESSION) result = LowerDeleteExpression(record, children);
+		else if (record.kind == DUMP_NEW_EXPRESSION) result = LowerNewExpression(node, record, children);
+		else if (record.kind == DUMP_DELETE_EXPRESSION) result = LowerDeleteExpression(node, record, children);
 		else if (record.kind == DUMP_SPECIAL_MEMBER_CONSTRUCTION_ACTION)
 			result = LowerSpecialMemberConstruction(node);
 		else if (record.kind == DUMP_CAST_EXPRESSION)
