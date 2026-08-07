@@ -41,7 +41,9 @@ protected:
 					derived.LowerStorage(children[0]));
 			else
 			{
-				const Operand value = derived.LowerValue(children[0]);
+				const Operand value = derived.LowerValue(children[0],
+					derived.current_result_.kind == LOW_PTR ?
+					derived.current_result_ : LowType());
 				const bool preserve_unsigned_conversion =
 					value.kind == Operand::INTEGER && IsInteger(value.type) &&
 					IsInteger(derived.current_result_) && value.type.is_signed &&

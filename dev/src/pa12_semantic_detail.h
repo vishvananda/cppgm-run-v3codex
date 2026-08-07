@@ -30,7 +30,7 @@ public:
 		  current_return_type_(kNoType), current_class_context_(kNoEntity),
 		  loop_depth_(0), switch_depth_(0), expression_count_(0),
 		  associated_generation_(0), candidate_generation_(0),
-		  associated_scope_visits_(0),
+		  associated_scope_visits_(0), associated_declaration_visits_(0),
 		  overload_candidates_(0), overload_order_comparisons_(0),
 		  conversion_checks_(0), function_signature_lookups_(0),
 		  template_specialization_requests_(0),
@@ -173,7 +173,9 @@ private:
 	void AddCandidate(BindingId binding,
 		std::vector<BindingId>* candidates);
 	void AppendDirectFunctionCandidates(ScopeId owner, NameId name,
-		bool argument_dependent, std::vector<BindingId>* candidates);
+		std::vector<BindingId>* candidates);
+	void AppendHiddenFriendCandidates(EntityId owner, NameId name,
+		std::vector<BindingId>* candidates);
 	ExpressionInfo AnalyzeUnary(NodeId node, ScopeId scope,
 		TypeId target = kNoType);
 	ExpressionInfo AnalyzeBinary(NodeId node, ScopeId scope);
@@ -231,6 +233,10 @@ private:
 	EntityId EntityOf(TypeId type) const;
 	ExpressionInfo MakeLiteral(TypeId type, NameId text,
 		ValueCategory category = VALUE_PRVALUE);
+	ExpressionInfo MakeStringLiteral(const std::string& spelling,
+		std::size_t* character_count = 0);
+	bool TryAnalyzeUserDefinedStringLiteral(const std::string& spelling,
+		ScopeId scope, TypeId target, ExpressionInfo* result);
 	ExpressionInfo AnalyzeThisExpression(ScopeId scope);
 	bool IsNonthrowing(NodeId declarator, ScopeId scope);
 	void RecordExpressionFacts(const ExpressionInfo& value);
@@ -280,6 +286,8 @@ private:
 	std::vector<ScopeId> scope_parents_;
 	std::vector<NameId> scope_prefix_scratch_;
 	IndexedSequenceTable function_sets_;
+	IndexedSequenceTable ordinary_function_sets_;
+	IndexedSequenceTable hidden_friend_sets_;
 	FunctionSignatureTable function_declarations_;
 	std::vector<std::uint32_t> function_fact_by_binding_;
 	std::vector<FunctionInfo> functions_;
@@ -318,6 +326,7 @@ private:
 	std::uint32_t associated_generation_;
 	std::uint32_t candidate_generation_;
 	std::size_t associated_scope_visits_;
+	std::size_t associated_declaration_visits_;
 	std::size_t overload_candidates_;
 	std::size_t overload_order_comparisons_;
 	mutable std::size_t conversion_checks_;

@@ -143,34 +143,22 @@ private:
 		{ return source_types_.IsReference(type); }
 
 	TypeId RemoveReference(TypeId type) const
-	{
-		return source_types_.RemoveReference(type);
-	}
+		{ return source_types_.RemoveReference(type); }
 
 	TypeId RemoveTopQualifiers(TypeId type) const
-	{
-		return source_types_.RemoveTopQualifiers(type);
-	}
+		{ return source_types_.RemoveTopQualifiers(type); }
 
 	TypeId ExpressionObjectType(TypeId type) const
-	{
-		return source_types_.ExpressionObject(type);
-	}
+		{ return source_types_.ExpressionObject(type); }
 
 	bool IsArrayType(TypeId type) const
-	{
-		return source_types_.IsArray(type);
-	}
+		{ return source_types_.IsArray(type); }
 
 	bool IsFunctionType(TypeId type) const
-	{
-		return source_types_.IsFunction(type);
-	}
+		{ return source_types_.IsFunction(type); }
 
 	bool IsClassObjectType(TypeId type) const
-	{
-		return source_types_.IsClassObject(type);
-	}
+		{ return source_types_.IsClassObject(type); }
 
 	bool IsTrivialConstructorAction(TypeId type,
 		const NodeChildren& children) const
@@ -183,29 +171,26 @@ private:
 	}
 
 	LowType LowerExpressionType(TypeId type) const
-	{
-		return source_types_.LowerExpression(type);
-	}
+		{ return source_types_.LowerExpression(type); }
 
 	LowType LowerStorageType(TypeId type) const
-	{
-		return source_types_.LowerStorage(type);
-	}
+		{ return source_types_.LowerStorage(type); }
 
 	TypeId ArrayElementType(TypeId type) const
-	{
-		return source_types_.ArrayElement(type);
-	}
+		{ return source_types_.ArrayElement(type); }
 
 	bool IsPointerLikeType(TypeId type) const
+		{ return source_types_.IsPointerLike(type); }
+
+	LowType NullPointerExpectation(std::uint32_t node,
+		const LowType& target) const
 	{
-		return source_types_.IsPointerLike(type);
+		return target.kind == LOW_PTR &&
+			source_types_.IsNullptr(arena_.nodes[node].type) ? target : LowType();
 	}
 
 	TypeId PointeeType(TypeId type) const
-	{
-		return source_types_.Pointee(type);
-	}
+		{ return source_types_.Pointee(type); }
 
 	SymbolId InternSymbol(const DumpNode& node, Symbol::Kind kind,
 		const std::string& proposed_name, const std::string& object_name)
@@ -1240,14 +1225,14 @@ private:
 		else if (record.kind == DUMP_LITERAL)
 		{
 			const LowType type = LowerType(record.type);
-			if ((type.kind == LOW_PTR || expected.kind == LOW_PTR) &&
-				record.text != 0 &&
-				StripOperationPrefix(program_.names.Get(record.text)) == "nullptr")
+			if (expected.kind == LOW_PTR &&
+				source_types_.IsNullptr(record.type))
 			{
-				const LowType pointer_type = expected.kind == LOW_PTR ? expected : type; result = Temp(pointer_type);
+				result = Temp(expected);
 				Instruction copy(Instruction::COPY);
 				copy.dest = result.id;
-				copy.type = pointer_type; copy.first = Operand::NullPointer(pointer_type);
+				copy.type = expected;
+				copy.first = Operand::NullPointer(expected);
 				Emit(copy);
 			}
 			else if (IsFloating(type))
@@ -1333,7 +1318,7 @@ private:
 				result = ProjectBaseSubobjects(
 					LowerValue(children[0], LowPtr()),
 					record.base_projection_count);
-			else result = Convert(LowerValue(children[0]),
+			else result = LowerConvertedValue(children[0],
 				LowerExpressionType(record.type), false);
 		}
 		else if (record.kind == DUMP_CONDITIONAL_EXPRESSION)
@@ -1348,6 +1333,14 @@ private:
 		else throw std::runtime_error("semantic expression is outside the active PA15 checkpoint");
 		return expected.kind == LOW_INVALID ? result : Convert(result, expected);
 	}
+
+	Operand LowerConvertedValue(std::uint32_t node, const LowType& target,
+		bool canonicalize_immediate = true)
+	{
+		return Convert(LowerValue(node, target.kind == LOW_PTR ?
+			target : LowType()), target, canonicalize_immediate);
+	}
+
 	void LowerDiscardedValue(std::uint32_t node) { const DumpNode& record = arena_.nodes[node];
 		if ((record.category == VALUE_LVALUE || record.category == VALUE_XVALUE) && !IsFunctionType(RemoveReference(record.type))) (void)LowerStorage(node);
 		else (void)LowerValue(node); }
@@ -1378,8 +1371,10 @@ private:
 			throw std::runtime_error("binary expression is missing its PA12 operand type");
 		const LowType operand_type = record.operand_type == kNoType ?
 			LowPtr() : LowerExpressionType(record.operand_type);
-		Operand left = LowerValue(children[0], comparison && operand_type.kind == LOW_PTR && arena_.nodes[children[0]].kind == DUMP_LITERAL && arena_.nodes[children[0]].text != 0 && StripOperationPrefix(program_.names.Get(arena_.nodes[children[0]].text)) == "nullptr" ? operand_type : LowType());
-		Operand right = LowerValue(children[1], comparison && operand_type.kind == LOW_PTR && arena_.nodes[children[1]].kind == DUMP_LITERAL && arena_.nodes[children[1]].text != 0 && StripOperationPrefix(program_.names.Get(arena_.nodes[children[1]].text)) == "nullptr" ? operand_type : LowType());
+		Operand left = LowerValue(children[0], comparison ?
+			NullPointerExpectation(children[0], operand_type) : LowType());
+		Operand right = LowerValue(children[1], comparison ?
+			NullPointerExpectation(children[1], operand_type) : LowType());
 		const bool canonical_pointer_difference_compare = comparison &&
 			arena_.nodes[children[0]].kind == DUMP_BINARY_EXPRESSION &&
 			arena_.nodes[children[0]].operand_type == kNoType &&
@@ -1570,7 +1565,7 @@ private:
 		Operand value;
 		if (op == "=")
 		{
-			value = Convert(LowerValue(children[1]), type, false);
+			value = LowerConvertedValue(children[1], type, false);
 			storage = LowerStorage(children[0]);
 		}
 		else if ((op == "+=" || op == "-=") &&
@@ -1595,7 +1590,8 @@ private:
 					"compound assignment is missing its PA12 operand type");
 			const LowType operation_type = LowerType(record.operand_type);
 			left = Convert(left, operation_type, false);
-			const Operand right = Convert(LowerValue(children[1]), operation_type, false);
+			const Operand right =
+				LowerConvertedValue(children[1], operation_type, false);
 			value = Temp(operation_type);
 			Instruction binary(Instruction::BINARY);
 			binary.dest = value.id;
@@ -1746,7 +1742,7 @@ private:
 						type);
 					Instruction store(Instruction::STORE);
 					store.type = type;
-					store.first = Convert(LowerValue(children[i]), type);
+					store.first = LowerConvertedValue(children[i], type);
 					store.second = slot;
 					Emit(store);
 					arguments.Push(AddressOfStorage(slot));
@@ -1763,7 +1759,7 @@ private:
 					else if (IsInteger(expected) && expected.width < 32)
 						expected = LowI32();
 				}
-				arguments.Push(Convert(LowerValue(children[i]), expected));
+				arguments.Push(LowerConvertedValue(children[i], expected));
 			}
 		}
 		if (!direct) call.first = LowerValue(children[0], LowPtr());
@@ -2093,7 +2089,7 @@ private:
 				store.type = type;
 				store.first = IsReferenceType(record.type) ?
 					AddressOfStorage(LowerStorage(children[0])) :
-					Convert(LowerValue(children[0], type.kind == LOW_PTR ? type : LowType()), type, false);
+					LowerConvertedValue(children[0], type, false);
 				store.second = StorageFor(record.binding, type);
 				Emit(store);
 			}
@@ -2222,7 +2218,7 @@ private:
 				Instruction store(Instruction::STORE);
 				store.type = element;
 				store.first = i < values.size() ?
-					Convert(LowerValue(values[i]), element) : Operand(0, element);
+					LowerConvertedValue(values[i], element) : Operand(0, element);
 				store.second = destination;
 				Emit(store);
 			}
@@ -2289,7 +2285,7 @@ private:
 						 IsFloating(store.type) ?
 							FloatingOperand("0.0", store.type) :
 							Operand(0, store.type)) :
-						Convert(LowerValue(values[0]), store.type, false);
+						LowerConvertedValue(values[0], store.type, false);
 				}
 				Operand destination = AddressOfStorage(StorageFor(object,
 					LowerStorageType(array_type)));
@@ -2380,7 +2376,7 @@ private:
 		}
 		Instruction store(Instruction::STORE);
 		store.type = LowerExpressionType(type);
-		store.first = Convert(LowerValue(node), store.type, false);
+		store.first = LowerConvertedValue(node, store.type, false);
 		store.second = destination;
 		Emit(store);
 	}
@@ -2523,7 +2519,7 @@ private:
 		{
 			Operand value;
 			if (i < values.size())
-				value = Convert(LowerValue(values[i]), element);
+				value = LowerConvertedValue(values[i], element);
 			else if (element.kind == LOW_PTR)
 				value = Operand::NullPointer(element);
 			else if (IsFloating(element))
@@ -2579,7 +2575,7 @@ private:
 		{
 			store.type = LowerExpressionType(action.type);
 			if (!values.empty())
-				store.first = Convert(LowerValue(values[0]), store.type, false);
+				store.first = LowerConvertedValue(values[0], store.type, false);
 			else if (store.type.kind == LOW_PTR)
 				store.first = Operand::NullPointer(store.type);
 			else if (IsFloating(store.type))

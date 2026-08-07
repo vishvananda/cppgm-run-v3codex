@@ -13,6 +13,8 @@ namespace pa15_lowering_abi
 namespace
 {
 
+using namespace pa11;
+
 abi_mangle::AbiType MakeAbiType(const pa11::Program& program,
 	pa11::TypeId type)
 {
@@ -91,53 +93,60 @@ abi_mangle::AbiType MakeAbiType(const pa11::Program& program,
 	return result;
 }
 
-std::string OperatorTerminal(const std::string& name, bool member,
+std::string OperatorTerminal(OperatorKind kind, bool member,
 	std::size_t parameter_count)
 {
-	if (name.compare(0, 8, "operator") != 0) return std::string();
-	const std::string operation = name.substr(8);
-	if (operation == "+") return "plus";
-	if (operation == "-") return "minus";
-	if (operation == "*")
+	switch (kind)
+	{
+	case OPERATOR_PLUS: return "plus";
+	case OPERATOR_MINUS: return "minus";
+	case OPERATOR_STAR:
 		return (member ? parameter_count == 0 : parameter_count == 1) ?
 			"deref" : "multiply";
-	if (operation == "&")
+	case OPERATOR_AMPERSAND:
 		return (member ? parameter_count == 0 : parameter_count == 1) ?
 			"address-of" : "bit-and";
-	if (operation == "/") return "divide";
-	if (operation == "%") return "remainder";
-	if (operation == "|") return "bit-or";
-	if (operation == "^") return "bit-xor";
-	if (operation == "=") return "assign";
-	if (operation == "+=") return "plus-assign";
-	if (operation == "-=") return "minus-assign";
-	if (operation == "*=") return "multiply-assign";
-	if (operation == "/=") return "divide-assign";
-	if (operation == "%=") return "remainder-assign";
-	if (operation == "&=") return "and-assign";
-	if (operation == "|=") return "or-assign";
-	if (operation == "^=") return "xor-assign";
-	if (operation == "<<") return "left-shift";
-	if (operation == ">>") return "right-shift";
-	if (operation == "<<=") return "left-shift-assign";
-	if (operation == ">>=") return "right-shift-assign";
-	if (operation == "==") return "equal";
-	if (operation == "!=") return "not-equal";
-	if (operation == "<") return "less";
-	if (operation == ">") return "greater";
-	if (operation == "<=") return "less-equal";
-	if (operation == ">=") return "greater-equal";
-	if (operation == "!") return "logical-not";
-	if (operation == "&&") return "logical-and";
-	if (operation == "||") return "logical-or";
-	if (operation == "++") return "increment";
-	if (operation == "--") return "decrement";
-	if (operation == ",") return "comma";
-	if (operation == "->*") return "member-pointer";
-	if (operation == "->") return "arrow";
-	if (operation == "()") return "call";
-	if (operation == "[]") return "index";
-	return std::string();
+	case OPERATOR_DIVIDE: return "divide";
+	case OPERATOR_REMAINDER: return "remainder";
+	case OPERATOR_BIT_OR: return "bit-or";
+	case OPERATOR_BIT_XOR: return "bit-xor";
+	case OPERATOR_ASSIGN: return "assign";
+	case OPERATOR_PLUS_ASSIGN: return "plus-assign";
+	case OPERATOR_MINUS_ASSIGN: return "minus-assign";
+	case OPERATOR_MULTIPLY_ASSIGN: return "multiply-assign";
+	case OPERATOR_DIVIDE_ASSIGN: return "divide-assign";
+	case OPERATOR_REMAINDER_ASSIGN: return "remainder-assign";
+	case OPERATOR_AND_ASSIGN: return "and-assign";
+	case OPERATOR_OR_ASSIGN: return "or-assign";
+	case OPERATOR_XOR_ASSIGN: return "xor-assign";
+	case OPERATOR_LEFT_SHIFT: return "left-shift";
+	case OPERATOR_RIGHT_SHIFT: return "right-shift";
+	case OPERATOR_LEFT_SHIFT_ASSIGN: return "left-shift-assign";
+	case OPERATOR_RIGHT_SHIFT_ASSIGN: return "right-shift-assign";
+	case OPERATOR_EQUAL: return "equal";
+	case OPERATOR_NOT_EQUAL: return "not-equal";
+	case OPERATOR_LESS: return "less";
+	case OPERATOR_GREATER: return "greater";
+	case OPERATOR_LESS_EQUAL: return "less-equal";
+	case OPERATOR_GREATER_EQUAL: return "greater-equal";
+	case OPERATOR_LOGICAL_NOT: return "logical-not";
+	case OPERATOR_LOGICAL_AND: return "logical-and";
+	case OPERATOR_LOGICAL_OR: return "logical-or";
+	case OPERATOR_INCREMENT: return "increment";
+	case OPERATOR_DECREMENT: return "decrement";
+	case OPERATOR_COMMA: return "comma";
+	case OPERATOR_MEMBER_POINTER: return "member-pointer";
+	case OPERATOR_ARROW: return "arrow";
+	case OPERATOR_CALL: return "call";
+	case OPERATOR_INDEX: return "index";
+	case OPERATOR_NEW: return "new";
+	case OPERATOR_NEW_ARRAY: return "new-array";
+	case OPERATOR_DELETE: return "delete";
+	case OPERATOR_DELETE_ARRAY: return "delete-array";
+	case OPERATOR_NONE:
+	case OPERATOR_LITERAL: return std::string();
+	}
+	throw std::logic_error("invalid typed operator terminal");
 }
 
 }
@@ -181,15 +190,22 @@ std::string MangleFunction(const pa11::Program& program,
 		if (!qualifier.function.qualifiers.empty())
 			file.cases[0].records.push_back(qualifier);
 	}
-	const std::string operator_terminal = OperatorTerminal(
-		program.names.Get(binding.name), member,
-		program.types.Get(binding.type).parameter_count);
-	if (!operator_terminal.empty())
+	const std::string operator_terminal =
+		OperatorTerminal(binding.operator_kind, member,
+			program.types.Get(binding.type).parameter_count);
+	if (binding.operator_kind == OPERATOR_LITERAL ||
+		!operator_terminal.empty())
 	{
 		AbiFactRecord terminal;
 		terminal.set_kind(ABI_FACT_RECORD_FUNCTION);
 		terminal.function.kind = ABI_FUNCTION_RECORD_OPERATOR_TERMINAL;
-		terminal.function.terminal = operator_terminal;
+		if (binding.operator_kind == OPERATOR_LITERAL)
+		{
+			terminal.function.terminal = "literal";
+			terminal.function.literal_suffix =
+				program.names.Get(binding.operator_literal_suffix);
+		}
+		else terminal.function.terminal = operator_terminal;
 		file.cases[0].records.push_back(terminal);
 	}
 	else if (binding.constructor)

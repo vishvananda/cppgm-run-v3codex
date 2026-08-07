@@ -134,6 +134,13 @@ bool SourceTypeLowering::IsPointerLike(TypeId type) const
 	return record.kind == TYPE_POINTER || record.kind == TYPE_ARRAY;
 }
 
+bool SourceTypeLowering::IsNullptr(TypeId type) const
+{
+	const TypeRecord& record = program_.types.Get(ExpressionObject(type));
+	return record.kind == TYPE_FUNDAMENTAL &&
+		record.fundamental == FUND_NULLPTR_T;
+}
+
 TypeId SourceTypeLowering::Pointee(TypeId type) const
 {
 	const TypeRecord& record = program_.types.Get(ExpressionObject(type));

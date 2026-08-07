@@ -211,6 +211,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		scope_parents_.capacity() * sizeof(ScopeId) +
 		scope_prefix_scratch_.capacity() * sizeof(NameId) +
 		function_sets_.StorageBytes() +
+		ordinary_function_sets_.StorageBytes() +
+		hidden_friend_sets_.StorageBytes() +
 		function_declarations_.StorageBytes() +
 		function_fact_by_binding_.capacity() * sizeof(std::uint32_t) +
 		functions_.capacity() * sizeof(FunctionInfo) +
@@ -709,27 +711,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 		ExpressionInfo result;
 		if (!spelling.empty() && spelling[0] == '"')
 		{
-			std::size_t count = 1;
-			for (std::size_t i = 1; i + 1 < spelling.size(); ++i)
-			{
-				if (spelling[i] == '\\' && i + 2 < spelling.size())
-				{
-					++i;
-					if (spelling[i] == 'x')
-						while (i + 2 < spelling.size() &&
-							((spelling[i + 1] >= '0' && spelling[i + 1] <= '9') ||
-							 (spelling[i + 1] >= 'a' && spelling[i + 1] <= 'f') ||
-							 (spelling[i + 1] >= 'A' && spelling[i + 1] <= 'F'))) ++i;
-					else if (spelling[i] >= '0' && spelling[i] <= '7')
-						for (int digits = 1; digits < 3 && i + 2 < spelling.size() &&
-							spelling[i + 1] >= '0' && spelling[i + 1] <= '7'; ++digits) ++i;
-				}
-				++count;
-			}
-			const TypeId element = program_->types.Qualify(
-				program_->types.Fundamental(FUND_CHAR), CV_CONST);
-			result = MakeLiteral(program_->types.Array(element, count),
-				program_->names.Intern(spelling), VALUE_LVALUE);
+			if (TryAnalyzeUserDefinedStringLiteral(
+				spelling, scope, target, &result)) return result;
+			result = MakeStringLiteral(spelling);
 		}
 		else if (spelling.find('.') != std::string::npos ||
 			spelling.find('p') != std::string::npos ||
@@ -1534,7 +1518,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBinary(NodeId node, ScopeId scope)
 			operand_type = left_unqualified;
 		else if (IsArithmetic(left.type) && IsArithmetic(right.type))
 			operand_type = CommonArithmeticType(left.type, right.type);
-		else if (IsNullptr(left.type) && IsNullptr(right.type) && equality) {}
+		else if (IsNullptr(left.type) && IsNullptr(right.type) && equality)
+			operand_type = left_unqualified;
 		else if (IsPointer(Decay(left.type)) && IsPointer(Decay(right.type)))
 		{
 			const TypeId left_pointer = Decay(left.type);
@@ -1865,12 +1850,16 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 	{
 		const std::uint64_t key = (static_cast<std::uint64_t>(scope) << 32) | name;
 		CompactIndexSequence& aliases = function_sets_.Ensure(key);
+		CompactIndexSequence& ordinary_aliases =
+			ordinary_function_sets_.Ensure(key);
 		for (std::size_t i = 0; i < functions.size(); ++i)
 		{
 			const FunctionInfo& function = GetFunction(functions[i]);
 			program_->AddBinding(scope, BIND_FUNCTION, name, function.type,
 				false, 0, NAMED_NONE, 0, function.binding);
 			if (!aliases.Contains(function.binding)) aliases.Push(function.binding);
+			if (!ordinary_aliases.Contains(function.binding))
+				ordinary_aliases.Push(function.binding);
 		}
 		return;
 	}
@@ -2845,6 +2834,8 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		stats_->lookup_scope_visits = program.lookup_scope_visits;
 		stats_->lookup_edge_visits = program.lookup_edge_visits;
 		stats_->associated_scope_visits = associated_scope_visits_;
+		stats_->associated_declaration_visits =
+			associated_declaration_visits_;
 		stats_->overload_candidates = overload_candidates_;
 		stats_->overload_order_comparisons = overload_order_comparisons_;
 		stats_->conversion_checks = conversion_checks_;
@@ -2888,6 +2879,7 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 	  namespace_object_actions(0),
 	  lookup_queries(0), lookup_scope_visits(0),
 	  lookup_edge_visits(0), associated_scope_visits(0),
+	  associated_declaration_visits(0),
 	  overload_candidates(0),
 	  overload_order_comparisons(0), conversion_checks(0),
 	  function_signature_lookups(0), template_specialization_requests(0),

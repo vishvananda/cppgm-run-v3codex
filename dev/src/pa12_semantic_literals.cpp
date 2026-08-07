@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace cppgm
 {
@@ -135,6 +136,96 @@ ExpressionInfo SemanticAnalyzer::MakeLiteral(TypeId type, NameId text,
 	result.node = MakeDump(DUMP_LITERAL, type, category, text);
 	++expression_count_;
 	return result;
+}
+
+ExpressionInfo SemanticAnalyzer::MakeStringLiteral(
+	const std::string& spelling, std::size_t* character_count)
+{
+	if (spelling.size() < 2 || spelling[0] != '"' ||
+		spelling[spelling.size() - 1] != '"')
+		throw std::runtime_error("invalid string literal spelling");
+	std::size_t count = 1;
+	for (std::size_t i = 1; i + 1 < spelling.size(); ++i)
+	{
+		if (spelling[i] == '\\' && i + 2 < spelling.size())
+		{
+			++i;
+			if (spelling[i] == 'x')
+				while (i + 2 < spelling.size() &&
+					((spelling[i + 1] >= '0' && spelling[i + 1] <= '9') ||
+					 (spelling[i + 1] >= 'a' && spelling[i + 1] <= 'f') ||
+					 (spelling[i + 1] >= 'A' && spelling[i + 1] <= 'F'))) ++i;
+			else if (spelling[i] >= '0' && spelling[i] <= '7')
+				for (int digits = 1; digits < 3 && i + 2 < spelling.size() &&
+					spelling[i + 1] >= '0' && spelling[i + 1] <= '7';
+					++digits) ++i;
+		}
+		++count;
+	}
+	if (character_count) *character_count = count - 1;
+	const TypeId element = program_->types.Qualify(
+		program_->types.Fundamental(FUND_CHAR), CV_CONST);
+	return MakeLiteral(program_->types.Array(element, count),
+		program_->names.Intern(spelling), VALUE_LVALUE);
+}
+
+bool SemanticAnalyzer::TryAnalyzeUserDefinedStringLiteral(
+	const std::string& spelling, ScopeId scope, TypeId target,
+	ExpressionInfo* result)
+{
+	if (spelling.empty() || spelling[0] != '"') return false;
+	std::size_t close = 1;
+	for (; close < spelling.size(); ++close)
+	{
+		if (spelling[close] == '\\')
+		{
+			if (++close >= spelling.size())
+				throw std::runtime_error("unterminated string literal escape");
+			continue;
+		}
+		if (spelling[close] == '"') break;
+	}
+	if (close >= spelling.size() || close + 1 == spelling.size()) return false;
+	const std::string suffix = spelling.substr(close + 1);
+	if (suffix.empty() || suffix[0] != '_')
+		throw std::runtime_error("invalid user-defined literal suffix");
+	const std::string function_name = "operator\"\"" + suffix;
+	const std::vector<BindingId> candidates =
+		FunctionCandidates(scope, function_name);
+	if (candidates.empty())
+		throw std::runtime_error("user-defined literal operator not found");
+	std::size_t character_count = 0;
+	std::vector<ExpressionInfo> arguments;
+	arguments.push_back(MakeStringLiteral(
+		spelling.substr(0, close + 1), &character_count));
+	ExpressionInfo count = MakeLiteral(
+		program_->types.Fundamental(FUND_INT),
+		InternNumber(static_cast<std::int64_t>(character_count)));
+	count.constant = true;
+	count.value = static_cast<std::int64_t>(character_count);
+	RecordExpressionFacts(count);
+	arguments.push_back(count);
+	const std::vector<NodeId> argument_syntax(2, kNoNode);
+	const BindingId selected = SelectOverload(scope, argument_syntax,
+		arguments, candidates, 0);
+	const FunctionInfo& function = GetFunction(selected);
+	const TypeRecord function_type = program_->types.Get(function.type);
+	if (function_type.parameter_count != 2)
+		throw std::runtime_error(
+			"string literal operator requires two parameters");
+	const TypeId size_type = program_->types.Parameters(function.type)[1];
+	if (arguments[1].type != size_type)
+	{
+		const std::uint32_t conversion = MakeDump(DUMP_CAST_EXPRESSION,
+			size_type, VALUE_PRVALUE);
+		dump_.Add(conversion, arguments[1].node);
+		arguments[1].node = conversion;
+		arguments[1].type = size_type;
+		++expression_count_;
+	}
+	*result = BuildResolvedCall(selected, scope, argument_syntax, arguments,
+		0, target, kNoEntity);
+	return true;
 }
 
 ExpressionInfo SemanticAnalyzer::AnalyzeThisExpression(ScopeId scope)

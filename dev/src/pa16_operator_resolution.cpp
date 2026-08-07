@@ -120,25 +120,28 @@ void SemanticAnalyzer::AddCandidate(BindingId binding,
 }
 
 void SemanticAnalyzer::AppendDirectFunctionCandidates(ScopeId owner,
-	NameId name, bool argument_dependent,
-	std::vector<BindingId>* candidates)
+	NameId name, std::vector<BindingId>* candidates)
 {
 	const std::uint64_t key = (static_cast<std::uint64_t>(owner) << 32) | name;
-	const CompactIndexSequence* functions = function_sets_.Find(key);
+	const CompactIndexSequence* functions = ordinary_function_sets_.Find(key);
 	if (!functions) return;
 	for (std::size_t i = 0; i < functions->Size(); ++i)
 	{
-		const BindingId candidate =
-			static_cast<BindingId>((*functions)[i]);
-		const FunctionInfo& function = GetFunction(candidate);
-		if (!function.ordinary_visible)
-		{
-			if (!argument_dependent || function.friend_of == kNoEntity ||
-				function.friend_of >= associated_entity_marks_.size() ||
-				associated_entity_marks_[function.friend_of] !=
-					associated_generation_) continue;
-		}
-		AddCandidate(candidate, candidates);
+		++associated_declaration_visits_;
+		AddCandidate(static_cast<BindingId>((*functions)[i]), candidates);
+	}
+}
+
+void SemanticAnalyzer::AppendHiddenFriendCandidates(EntityId owner,
+	NameId name, std::vector<BindingId>* candidates)
+{
+	const std::uint64_t key = (static_cast<std::uint64_t>(owner) << 32) | name;
+	const CompactIndexSequence* functions = hidden_friend_sets_.Find(key);
+	if (!functions) return;
+	for (std::size_t i = 0; i < functions->Size(); ++i)
+	{
+		++associated_declaration_visits_;
+		AddCandidate(static_cast<BindingId>((*functions)[i]), candidates);
 	}
 }
 
@@ -168,9 +171,10 @@ void SemanticAnalyzer::AppendArgumentDependentCandidates(NameId name,
 	for (std::size_t i = 0; i < associated_scopes_.size(); ++i)
 	{
 		++associated_scope_visits_;
-		AppendDirectFunctionCandidates(
-			associated_scopes_[i], name, true, candidates);
+		AppendDirectFunctionCandidates(associated_scopes_[i], name, candidates);
 	}
+	for (std::size_t i = 0; i < associated_entities_.size(); ++i)
+		AppendHiddenFriendCandidates(associated_entities_[i], name, candidates);
 }
 
 ExpressionInfo SemanticAnalyzer::MakeImplicitObjectPointer(

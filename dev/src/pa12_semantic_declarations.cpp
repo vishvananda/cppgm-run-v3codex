@@ -27,6 +27,63 @@ std::size_t AlignUp(std::size_t value, std::size_t alignment)
 	return value + addition;
 }
 
+OperatorKind ClassifyOperator(const std::string& name,
+	std::string* literal_suffix)
+{
+	if (name.compare(0, 8, "operator") != 0) return OPERATOR_NONE;
+	const std::string operation = name.substr(8);
+	if (operation == "+") return OPERATOR_PLUS;
+	if (operation == "-") return OPERATOR_MINUS;
+	if (operation == "*") return OPERATOR_STAR;
+	if (operation == "&") return OPERATOR_AMPERSAND;
+	if (operation == "/") return OPERATOR_DIVIDE;
+	if (operation == "%") return OPERATOR_REMAINDER;
+	if (operation == "|") return OPERATOR_BIT_OR;
+	if (operation == "^") return OPERATOR_BIT_XOR;
+	if (operation == "=") return OPERATOR_ASSIGN;
+	if (operation == "+=") return OPERATOR_PLUS_ASSIGN;
+	if (operation == "-=") return OPERATOR_MINUS_ASSIGN;
+	if (operation == "*=") return OPERATOR_MULTIPLY_ASSIGN;
+	if (operation == "/=") return OPERATOR_DIVIDE_ASSIGN;
+	if (operation == "%=") return OPERATOR_REMAINDER_ASSIGN;
+	if (operation == "&=") return OPERATOR_AND_ASSIGN;
+	if (operation == "|=") return OPERATOR_OR_ASSIGN;
+	if (operation == "^=") return OPERATOR_XOR_ASSIGN;
+	if (operation == "<<") return OPERATOR_LEFT_SHIFT;
+	if (operation == ">>") return OPERATOR_RIGHT_SHIFT;
+	if (operation == "<<=") return OPERATOR_LEFT_SHIFT_ASSIGN;
+	if (operation == ">>=") return OPERATOR_RIGHT_SHIFT_ASSIGN;
+	if (operation == "==") return OPERATOR_EQUAL;
+	if (operation == "!=") return OPERATOR_NOT_EQUAL;
+	if (operation == "<") return OPERATOR_LESS;
+	if (operation == ">") return OPERATOR_GREATER;
+	if (operation == "<=") return OPERATOR_LESS_EQUAL;
+	if (operation == ">=") return OPERATOR_GREATER_EQUAL;
+	if (operation == "!") return OPERATOR_LOGICAL_NOT;
+	if (operation == "&&") return OPERATOR_LOGICAL_AND;
+	if (operation == "||") return OPERATOR_LOGICAL_OR;
+	if (operation == "++") return OPERATOR_INCREMENT;
+	if (operation == "--") return OPERATOR_DECREMENT;
+	if (operation == ",") return OPERATOR_COMMA;
+	if (operation == "->*") return OPERATOR_MEMBER_POINTER;
+	if (operation == "->") return OPERATOR_ARROW;
+	if (operation == "()") return OPERATOR_CALL;
+	if (operation == "[]") return OPERATOR_INDEX;
+	if (operation == " new" || operation == "new") return OPERATOR_NEW;
+	if (operation == " new[]" || operation == "new[]")
+		return OPERATOR_NEW_ARRAY;
+	if (operation == " delete" || operation == "delete")
+		return OPERATOR_DELETE;
+	if (operation == " delete[]" || operation == "delete[]")
+		return OPERATOR_DELETE_ARRAY;
+	if (operation.compare(0, 2, "\"\"") == 0 && operation.size() > 2)
+	{
+		*literal_suffix = operation.substr(2);
+		return OPERATOR_LITERAL;
+	}
+	return OPERATOR_NONE;
+}
+
 }
 
 TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
@@ -1154,6 +1211,8 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 	++function_signature_lookups_;
 	const BindingId previous = template_specialization ? kNoBinding :
 		function_declarations_.Find(signature_key);
+	const bool was_ordinary_visible = previous != kNoBinding &&
+		GetFunction(previous).ordinary_visible;
 	const std::uint64_t key = (static_cast<std::uint64_t>(owner) << 32) | name;
 	CompactIndexSequence& overloads = function_sets_.Ensure(key);
 	BindingId canonical = kNoBinding;
@@ -1223,6 +1282,13 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 		canonical_record.storage_class = storage_class;
 	canonical_record.language_linkage = language_linkage;
 	canonical_record.nonthrowing = canonical_record.nonthrowing || nonthrowing;
+	std::string literal_suffix;
+	canonical_record.operator_kind = ClassifyOperator(
+		program_->names.Get(canonical_record.name), &literal_suffix);
+	canonical_record.operator_literal_suffix = literal_suffix.empty() ? 0 :
+		program_->names.Intern(literal_suffix);
+	if (GetFunction(canonical).ordinary_visible && !was_ordinary_visible)
+		ordinary_function_sets_.Ensure(key).Push(canonical);
 	return canonical;
 }
 
@@ -1272,6 +1338,10 @@ void SemanticAnalyzer::AnalyzeFriendFunction(NodeId node,
 			IsNonthrowing(declarators[i], class_scope), false);
 		FunctionInfo& info = GetMutableFunction(binding);
 		if (info.friend_of == kNoEntity) info.friend_of = owner_entity;
+		const std::uint64_t friend_key =
+			(static_cast<std::uint64_t>(owner_entity) << 32) | parsed.name;
+		CompactIndexSequence& hidden = hidden_friend_sets_.Ensure(friend_key);
+		if (!hidden.Contains(binding)) hidden.Push(binding);
 		info.lexical_scope = class_scope;
 		if (definition)
 		{
@@ -1286,16 +1356,14 @@ void SemanticAnalyzer::AnalyzeFriendFunction(NodeId node,
 void SemanticAnalyzer::ValidateNonmemberOperator(BindingId binding) const
 {
 	const BindingRecord& record = program_->bindings[binding];
-	const std::string& name = program_->names.Get(record.name);
 	const FunctionInfo& function = GetFunction(binding);
 	if (function.member_owner != kNoType) return;
-	if (name.compare(0, 8, "operator") != 0 || name.size() == 8 ||
-		name[8] == '_' ||
-		name.find("\"\"") != std::string::npos ||
-		name == "operator new" || name == "operatornew" ||
-		name == "operator new[]" || name == "operatornew[]" ||
-		name == "operator delete" || name == "operatordelete" ||
-		name == "operator delete[]" || name == "operatordelete[]") return;
+	if (record.operator_kind == OPERATOR_NONE ||
+		record.operator_kind == OPERATOR_LITERAL ||
+		record.operator_kind == OPERATOR_NEW ||
+		record.operator_kind == OPERATOR_NEW_ARRAY ||
+		record.operator_kind == OPERATOR_DELETE ||
+		record.operator_kind == OPERATOR_DELETE_ARRAY) return;
 	const TypeRecord function_type = program_->types.Get(function.type);
 	const TypeId* parameters = program_->types.Parameters(function.type);
 	for (std::size_t i = 0; i < function_type.parameter_count; ++i)
@@ -1385,19 +1453,12 @@ std::vector<BindingId> SemanticAnalyzer::FunctionSet(BindingId binding) const
 	const BindingRecord& record = program_->bindings[binding];
 	const std::uint64_t key = (static_cast<std::uint64_t>(record.owner) << 32) |
 		record.name;
-	const CompactIndexSequence* set = function_sets_.Find(key);
-	if (!set)
-		return GetFunction(record.canonical).ordinary_visible ?
-			std::vector<BindingId>(1, record.canonical) :
-			std::vector<BindingId>();
+	const CompactIndexSequence* set = ordinary_function_sets_.Find(key);
+	if (!set) return std::vector<BindingId>();
 	std::vector<BindingId> result;
 	result.reserve(set->Size());
 	for (std::size_t i = 0; i < set->Size(); ++i)
-	{
-		const BindingId candidate = static_cast<BindingId>((*set)[i]);
-		if (GetFunction(candidate).ordinary_visible)
-			result.push_back(candidate);
-	}
+		result.push_back(static_cast<BindingId>((*set)[i]));
 	return result;
 }
 
