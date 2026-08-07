@@ -17,6 +17,7 @@
 #include "pa16_lifetime_lowering.h"
 #include "pa16_static_initializer_lowering.h"
 #include "pa16_slot_planning.h"
+#include "pa17_value_boundary_lowering.h"
 
 #include <algorithm>
 #include <limits>
@@ -40,6 +41,7 @@ const std::size_t kAggregateProjectionReplayLimit = 8;
 typedef SmallSequence<BindingId, kAggregateProjectionReplayLimit> AggregatePath;
 
 class GraphLowerer :
+	private pa17_lowering_detail::ValueBoundaryLowering<GraphLowerer>,
 	private pa16_lowering_detail::AssignmentLowering<GraphLowerer>,
 	private pa16_lowering_detail::AggregateHelperLowering<GraphLowerer>,
 	private pa16_lowering_detail::ConstructorActionLowering<GraphLowerer>,
@@ -56,6 +58,7 @@ public:
 		: graph_(graph), program_(graph.program), arena_(graph.arena),
 		  output_(output), stats_(stats), function_(0), current_block_(0),
 		  current_result_(LowVoid()), current_result_reference_(false),
+		  current_indirect_result_(false),
 		  temp_counter_(0), block_counter_(0), generated_slot_ordinal_(0),
 		  initialized_bit_field_owner_(kNoEntity),
 		  initialized_bit_field_offset_(0),
@@ -109,6 +112,7 @@ public:
 	}
 
 private:
+	friend class pa17_lowering_detail::ValueBoundaryLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::AssignmentLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::AggregateHelperLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::ConstructorActionLowering<GraphLowerer>;
@@ -412,52 +416,6 @@ private:
 		}
 	}
 
-	void FillBoundary(std::uint32_t node, std::vector<Parameter>* parameters,
-		LowType* result, bool* variadic) const
-	{
-		const DumpNode& record = arena_.nodes[node];
-		const TypeRecord& function_type = program_.types.Get(record.type);
-		*result = LowerBoundaryResult(function_type.child);
-		*variadic = function_type.variadic;
-		const BuiltinFunctionKind builtin = record.binding == kNoBinding ?
-			BUILTIN_FUNCTION_NONE :
-			program_.bindings[record.binding].builtin_function;
-		const NodeChildren children = Children(node);
-		std::size_t parameter_index = 0;
-		for (std::size_t i = 0; i < children.size(); ++i)
-		{
-			const DumpNode& child = arena_.nodes[children[i]];
-			if (child.kind != DUMP_PARAMETER) continue;
-			Parameter parameter;
-			parameter.name = child.text == 0 ? std::string() : program_.names.Get(child.text);
-			if (parameter.name.empty()) parameter.name =
-				(record.kind == DUMP_FUNCTION_DECLARATION ? "arg" : "__param") +
-				std::to_string(parameter_index);
-			parameter.type = LowerType(child.type);
-			const TypeId* source_parameters = program_.types.Parameters(record.type);
-			parameter.reference = parameter_index < function_type.parameter_count &&
-				IsReferenceType(source_parameters[parameter_index]);
-			pa15_lowering_abi::ApplyBuiltinParameterMetadata(
-				&parameter, builtin, parameter_index);
-			parameters->push_back(parameter);
-			++parameter_index;
-		}
-		const TypeId* source_parameters = program_.types.Parameters(record.type);
-		while (parameter_index < function_type.parameter_count)
-		{
-			Parameter parameter;
-			parameter.name =
-				(record.kind == DUMP_FUNCTION_DECLARATION ? "arg" : "__param") +
-				std::to_string(parameter_index);
-			parameter.type = LowerType(source_parameters[parameter_index]);
-			parameter.reference = IsReferenceType(source_parameters[parameter_index]);
-			pa15_lowering_abi::ApplyBuiltinParameterMetadata(
-				&parameter, builtin, parameter_index);
-			parameters->push_back(parameter);
-			++parameter_index;
-		}
-	}
-
 	FunctionDeclaration LowerDeclaration(std::uint32_t node) const
 	{
 		const DumpNode& record = arena_.nodes[node];
@@ -714,6 +672,7 @@ private:
 		function_ = function;
 		current_result_ = LowVoid();
 		current_result_reference_ = false;
+		current_indirect_result_ = false;
 		temp_counter_ = 0;
 		block_counter_ = 0;
 		generated_slot_ordinal_ = 0;
@@ -737,6 +696,7 @@ private:
 		}
 		function_ = 0;
 		current_result_reference_ = false;
+		current_indirect_result_ = false;
 		current_this_binding_ = kNoBinding;
 	}
 
@@ -811,6 +771,7 @@ private:
 		function_ = &result;
 		current_result_ = result.result;
 		const TypeRecord& source_function = program_.types.Get(record.type);
+		current_indirect_result_ = UsesIndirectClassResult(source_function.child);
 		current_result_reference_ = IsReferenceType(source_function.child);
 		temp_counter_ = 0;
 		block_counter_ = 0;
@@ -822,7 +783,7 @@ private:
 		assigned_names_.Clear();
 		slot_name_counts_.Clear();
 		generated_slot_ordinal_ = 0;
-		parameter_slot_index_ = 0;
+		parameter_slot_index_ = current_indirect_result_ ? 1 : 0;
 		current_this_binding_ = kNoBinding;
 		CollectSourceNames(node);
 		CollectSlots(node);
@@ -836,15 +797,32 @@ private:
 			const DumpNode& child = arena_.nodes[children[i]];
 			if (child.kind == DUMP_PARAMETER)
 			{
+				const std::size_t boundary_parameter = parameter_index +
+					(current_indirect_result_ ? 1 : 0);
 				if (parameter_index == 0 && record.binding != kNoBinding &&
 					program_.bindings[record.binding].member_owner != kNoEntity &&
 					!program_.bindings[record.binding].static_member_function)
 					current_this_binding_ = child.binding;
-				if (!IsClassValueType(child.type))
+				if (IsClassValueType(child.type) &&
+					program_.entities[program_.types.Get(
+						ExpressionObjectType(child.type)).entity].is_aggregate &&
+					!program_.entities[program_.types.Get(
+						ExpressionObjectType(child.type)).entity].empty_class)
+				{
+					const Operand source(
+						static_cast<ParameterId>(boundary_parameter),
+						result.parameters[boundary_parameter].type);
+					const Operand destination = AddressOfStorage(Operand(
+						binding_slots_[child.binding],
+						LowerStorageType(child.type)));
+					EmitClassObjectCopy(child.type, source, destination);
+				}
+				else if (!IsClassValueType(child.type))
 				{
 					Instruction store(Instruction::STORE);
-					store.type = result.parameters[parameter_index].type;
-					store.first = Operand(static_cast<ParameterId>(parameter_index),
+					store.type = result.parameters[boundary_parameter].type;
+					store.first = Operand(
+						static_cast<ParameterId>(boundary_parameter),
 						store.type);
 					store.second = Operand(binding_slots_[child.binding], store.type);
 					Emit(store);
@@ -880,6 +858,7 @@ private:
 		}
 		function_ = 0;
 		current_result_reference_ = false;
+		current_indirect_result_ = false;
 		current_this_binding_ = kNoBinding;
 		return result;
 	}
@@ -1132,8 +1111,9 @@ private:
 			return LowerConditionalAddress(node, children);
 		if (record.kind == DUMP_ASSIGNMENT_EXPRESSION)
 			return LowerAssignmentCore(record, children, true);
-		if (record.kind == DUMP_CALL_EXPRESSION && IsReferenceType(record.type))
-			return LowerCall(record, children);
+		if (record.kind == DUMP_CALL_EXPRESSION &&
+			(IsReferenceType(record.type) || UsesIndirectClassResult(record.type)))
+			return LowerCall(node, record, children);
 		if (record.kind == DUMP_CAST_EXPRESSION && children.size() == 1 &&
 			(record.category == VALUE_LVALUE || record.category == VALUE_XVALUE))
 		{
@@ -1326,7 +1306,7 @@ private:
 			result = LowerUnary(record, children);
 		else if (record.kind == DUMP_CALL_EXPRESSION)
 		{
-			result = LowerCall(record, children);
+			result = LowerCall(node, record, children);
 			if (IsReferenceType(record.type) &&
 				!IsFunctionType(RemoveReference(record.type)))
 				result = LoadStorage(result,
@@ -1675,8 +1655,9 @@ private:
 		return record.kind == DUMP_POSTFIX_EXPRESSION ? old_value : new_value;
 	}
 
-	Operand LowerCall(const DumpNode& record,
-		const NodeChildren& children)
+	Operand LowerCall(std::uint32_t node, const DumpNode& record,
+		const NodeChildren& children,
+		const Operand& supplied_result = Operand())
 	{
 		if (children.empty()) throw std::runtime_error("semantic call has no callee");
 		const DumpNode& callee = arena_.nodes[children[0]];
@@ -1700,13 +1681,28 @@ private:
 		Instruction call(Instruction::CALL);
 		CallArguments arguments;
 		CallArgumentFlags argument_references;
-		call.type = LowerType(record.type);
+		const bool indirect_result = UsesIndirectClassResult(function_type.child);
+		call.type = indirect_result ? LowVoid() : LowerType(record.type);
 		call.indirect = !direct;
 		if (direct)
 		{
 			output_.symbols[function_symbols_[callee.binding]].referenced = true;
 			call.first = Operand(Operand::FUNCTION,
 				function_symbols_[callee.binding], LowPtr());
+		}
+		Operand result_storage;
+		if (indirect_result)
+		{
+			if (supplied_result.kind != Operand::NONE)
+				result_storage = supplied_result;
+			else
+			{
+				const LowType type = LowerStorageType(function_type.child);
+				const Operand slot(EnsureGeneratedSlot(node, "call", type), type);
+				result_storage = AddressOfStorage(slot);
+			}
+			arguments.Push(result_storage);
+			argument_references.Push(0);
 		}
 		for (std::size_t i = 1; i < children.size(); ++i)
 		{
@@ -1739,7 +1735,7 @@ private:
 		if (call.type.kind == LOW_VOID)
 		{
 			Emit(call);
-			return Operand(0, LowVoid());
+			return indirect_result ? result_storage : Operand(0, LowVoid());
 		}
 		const Operand result = Temp(call.type);
 		call.dest = result.id;
@@ -2021,6 +2017,14 @@ private:
 		}
 		if (record.kind == DUMP_VARIABLE)
 		{
+			if (IsClassObjectType(record.type) && children.size() == 1 &&
+				arena_.nodes[children[0]].kind == DUMP_CLASS_VALUE_TRANSFER)
+			{
+				const LowType type = LowerStorageType(record.type);
+				LowerClassValueTransfer(children[0], AddressOfStorage(
+					StorageFor(record.binding, type)));
+				return;
+			}
 			if (children.size() == 1 &&
 				arena_.nodes[children[0]].kind ==
 					DUMP_CONSTRUCTOR_ARRAY_ACTION)
@@ -2933,7 +2937,7 @@ private:
 	Function* function_;
 	BlockId current_block_;
 	LowType current_result_;
-	bool current_result_reference_;
+	bool current_result_reference_, current_indirect_result_;
 	std::size_t temp_counter_;
 	std::size_t block_counter_;
 	std::size_t generated_slot_ordinal_;

@@ -40,7 +40,8 @@ void WriteParameter(std::ostream& output, const Parameter& parameter)
 {
 	output << '%' << parameter.name << " : ";
 	WriteType(output, parameter.type);
-	if (parameter.reference || parameter.capture != Parameter::CAPTURE_DEFAULT ||
+	if (parameter.reference || parameter.indirect_result ||
+		parameter.capture != Parameter::CAPTURE_DEFAULT ||
 		parameter.access != Parameter::ACCESS_DEFAULT ||
 		parameter.alias != Parameter::ALIAS_DEFAULT)
 	{
@@ -49,6 +50,11 @@ void WriteParameter(std::ostream& output, const Parameter& parameter)
 		if (parameter.reference)
 		{
 			output << "pass=reference";
+			separator = true;
+		}
+		else if (parameter.indirect_result)
+		{
+			output << "pass=indirect_result";
 			separator = true;
 		}
 		if (parameter.capture == Parameter::CAPTURE_NOCAPTURE)
@@ -206,6 +212,15 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 		output << "store ";
 		WriteType(output, instruction.type);
 		output << ' ';
+		WriteOperand(output, instruction.first, program, function);
+		output << ", ";
+		WriteOperand(output, instruction.second, program, function);
+		break;
+	case Instruction::COPY_OBJECT:
+		if (instruction.type.kind != LOW_OBJECT)
+			throw std::logic_error("invalid PA17 copyobj span");
+		output << "copyobj " << instruction.type.width / 8 << 'x'
+			<< instruction.type.alignment << ' ';
 		WriteOperand(output, instruction.first, program, function);
 		output << ", ";
 		WriteOperand(output, instruction.second, program, function);

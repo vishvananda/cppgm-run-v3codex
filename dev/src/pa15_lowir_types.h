@@ -223,6 +223,7 @@ struct Instruction
 		ADDR,
 		LOAD,
 		STORE,
+		COPY_OBJECT,
 		INDEX,
 		UNARY,
 		BINARY,
@@ -288,10 +289,10 @@ struct Parameter
 	enum Alias : std::uint8_t { ALIAS_DEFAULT, ALIAS_NOALIAS } alias;
 	std::string name;
 	LowType type;
-	bool reference;
+	bool reference, indirect_result;
 
 	Parameter() : capture(CAPTURE_DEFAULT), access(ACCESS_DEFAULT),
-		alias(ALIAS_DEFAULT), reference(false) {}
+		alias(ALIAS_DEFAULT), reference(false), indirect_result(false) {}
 };
 
 struct Slot

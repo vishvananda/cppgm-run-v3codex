@@ -22,6 +22,49 @@ template <class Derived>
 class InitializationLowering
 {
 protected:
+	void EmitClassObjectCopy(TypeId type, const Operand& source,
+		const Operand& destination)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		Instruction copy(Instruction::COPY_OBJECT);
+		copy.type = derived.LowerStorageType(type);
+		copy.first = source;
+		copy.second = destination;
+		derived.Emit(copy);
+	}
+
+	Operand LowerClassTransferSource(std::uint32_t node)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const DumpNode& source = derived.arena_.nodes[node];
+		if (source.category == VALUE_LVALUE || source.category == VALUE_XVALUE ||
+			source.kind == DUMP_TEMPORARY_OBJECT)
+			return derived.AddressOfStorage(derived.LowerStorage(node));
+		return derived.LowerValue(node,
+			derived.LowerExpressionType(source.type));
+	}
+
+	void LowerClassValueTransfer(std::uint32_t node,
+		const Operand& destination)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const DumpNode& action = derived.arena_.nodes[node];
+		const NodeChildren children = derived.Children(node);
+		if (action.kind != DUMP_CLASS_VALUE_TRANSFER || children.size() != 1 ||
+			!derived.IsClassObjectType(action.type))
+			throw std::logic_error("invalid PA17 class-value transfer action");
+		const DumpNode& source = derived.arena_.nodes[children[0]];
+		if (source.kind == DUMP_CALL_EXPRESSION &&
+			derived.UsesIndirectClassResult(source.type))
+		{
+			(void)derived.LowerCall(children[0], source,
+				derived.Children(children[0]), destination);
+			return;
+		}
+		EmitClassObjectCopy(action.type,
+			LowerClassTransferSource(children[0]), destination);
+	}
+
 	bool IsTrivialConstructorAction(TypeId type,
 		const NodeChildren& children) const
 	{

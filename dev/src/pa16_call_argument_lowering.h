@@ -39,8 +39,10 @@ protected:
 		const LowType type = derived.LowerType(target);
 		const Operand slot(derived.EnsureGeneratedSlot(
 			node, "argobj", type), type);
-		(void)derived.AddressOfStorage(slot);
-		(void)derived.AddressOfStorage(derived.LowerStorage(node));
+		const Operand destination = derived.AddressOfStorage(slot);
+		if (derived.arena_.nodes[node].kind == DUMP_CLASS_VALUE_TRANSFER)
+			derived.LowerClassValueTransfer(node, destination);
+		else (void)derived.AddressOfStorage(derived.LowerStorage(node));
 		return slot;
 	}
 

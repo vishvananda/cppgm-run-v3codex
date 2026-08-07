@@ -34,7 +34,29 @@ protected:
 		if (has_value)
 		{
 			first_cleanup = 1;
-			if (derived.current_result_.kind == LOW_VOID)
+			if (derived.arena_.nodes[children[0]].kind ==
+				DUMP_CLASS_VALUE_TRANSFER)
+			{
+				if (derived.current_indirect_result_)
+				{
+					const Operand destination(
+						static_cast<ParameterId>(0), LowPtr());
+					derived.LowerClassValueTransfer(children[0], destination);
+				}
+				else if (derived.current_result_.kind != LOW_OBJECT)
+					throw std::logic_error(
+						"class-value return has a non-object boundary");
+				else
+				{
+					const Operand slot(derived.EnsureGeneratedSlot(
+						children[0], "retobj", derived.current_result_),
+						derived.current_result_);
+					derived.LowerClassValueTransfer(children[0],
+						derived.AddressOfStorage(slot));
+					result_value = slot;
+				}
+			}
+			else if (derived.current_result_.kind == LOW_VOID)
 				(void)derived.LowerValue(children[0]);
 			else if (derived.current_result_reference_)
 				result_value = derived.AddressOfStorage(

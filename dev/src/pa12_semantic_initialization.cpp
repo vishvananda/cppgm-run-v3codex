@@ -260,6 +260,39 @@ std::uint32_t SemanticAnalyzer::BuildDefaultConstructorAction(TypeId type,
 	return action;
 }
 
+bool SemanticAnalyzer::IsDirectTrivialClassValueType(TypeId type) const
+{
+	const TypeRecord& top = program_->types.Get(type);
+	if (top.kind == TYPE_LVALUE_REFERENCE || top.kind == TYPE_RVALUE_REFERENCE)
+		return false;
+	type = program_->types.RemoveTopCv(type);
+	const TypeRecord& record = program_->types.Get(type);
+	if (record.kind != TYPE_NAMED) return false;
+	const EntityRecord& entity = program_->entities[record.entity];
+	return (entity.flavor == NAMED_STRUCT || entity.flavor == NAMED_CLASS ||
+		entity.flavor == NAMED_UNION) && entity.is_aggregate &&
+		entity.trivial_destructor && !entity.empty_class;
+}
+
+ExpressionInfo SemanticAnalyzer::BuildDirectClassValueTransfer(
+	const ExpressionInfo& source, TypeId target)
+{
+	if (!graph_consumer_) return source;
+	if (!IsDirectTrivialClassValueType(target) ||
+		program_->types.RemoveTopCv(EffectiveType(source.type)) !=
+			program_->types.RemoveTopCv(EffectiveType(target)))
+		throw std::logic_error("invalid direct class-value transfer");
+	const std::uint32_t action = MakeDump(DUMP_CLASS_VALUE_TRANSFER,
+		program_->types.RemoveTopCv(EffectiveType(target)), VALUE_PRVALUE);
+	dump_.Add(action, source.node);
+	ExpressionInfo result;
+	result.node = action;
+	result.type = program_->types.RemoveTopCv(EffectiveType(target));
+	result.category = VALUE_PRVALUE;
+	++expression_count_;
+	return result;
+}
+
 void SemanticAnalyzer::AddMemberInitializationAction(BindingId member_id,
 	NodeId initializer, ScopeId scope, std::uint32_t body)
 {

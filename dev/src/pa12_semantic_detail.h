@@ -175,6 +175,9 @@ private:
 		const CallConversionFact* conversion = 0);
 	ExpressionInfo BuildConvertingArgument(const ExpressionInfo& source,
 		TypeId target, const CallConversionFact& conversion);
+	bool IsDirectTrivialClassValueType(TypeId type) const;
+	ExpressionInfo BuildDirectClassValueTransfer(
+		const ExpressionInfo& source, TypeId target);
 	ExpressionInfo AnalyzeCall(NodeId node, ScopeId scope, TypeId target);
 	BindingId EnsureBuiltinFunction(BuiltinFunctionKind kind);
 	bool AnalyzeBuiltinCall(const std::string& spelling, ScopeId scope,

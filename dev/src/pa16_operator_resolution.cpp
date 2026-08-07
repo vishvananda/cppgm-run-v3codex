@@ -340,8 +340,19 @@ ExpressionInfo SemanticAnalyzer::ApplyCallArgument(
 	{
 		return BuildConvertingArgument(value, target, resolved);
 	}
-	value = ApplyTarget(value, target, resolved.rank);
 	const TypeRecord target_top = program_->types.Get(target);
+	const bool class_value = target_top.kind != TYPE_LVALUE_REFERENCE &&
+		target_top.kind != TYPE_RVALUE_REFERENCE &&
+		IsDirectTrivialClassValueType(target) &&
+		program_->types.RemoveTopCv(EffectiveType(value.type)) ==
+			program_->types.RemoveTopCv(target);
+	value = ApplyTarget(value, target, resolved.rank);
+	if (class_value)
+	{
+		value = BuildDirectClassValueTransfer(value, target);
+		dump_.nodes[value.node].class_argument_staging = true;
+		return value;
+	}
 	if ((target_top.kind == TYPE_LVALUE_REFERENCE ||
 		target_top.kind == TYPE_RVALUE_REFERENCE) &&
 		dump_.nodes[value.node].kind == DUMP_TEMPORARY_OBJECT)
