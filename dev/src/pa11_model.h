@@ -252,7 +252,7 @@ struct EntityRecord
 {
 	NameId name, identity_name;
 	ScopeId owner, member_scope;
-	EntityId direct_base;
+	EntityId direct_base, enclosing_class;
 	NamedFlavor flavor;
 	TypeId type, underlying;
 	BindingId declaration;
@@ -274,7 +274,7 @@ struct BindingRecord
 	BindingKind kind;
 	TypeId type;
 	BindingId next;
-	EntityId member_owner;
+	EntityId member_owner, access_owner;
 	std::uint64_t member_offset;
 	std::uint32_t overload_ordinal, member_ordinal;
 	NamedFlavor display_flavor;

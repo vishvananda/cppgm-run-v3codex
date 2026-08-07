@@ -237,6 +237,26 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 			else if (arena_->IsTag(member, "special-member-declaration") ||
 				arena_->IsTag(member, "special-member-definition"))
 				AnalyzeSpecialMember(member, member_scope, type, member_access);
+			else if (arena_->IsTag(member, "class-specifier") ||
+				arena_->IsTag(member, "class-forward-declaration"))
+			{
+				const TypeId nested_type = AnalyzeClass(member, member_scope,
+					std::string(),
+					arena_->IsTag(member, "class-forward-declaration"));
+				const EntityId nested = EntityOf(nested_type);
+				if (nested == kNoEntity)
+					throw std::logic_error("nested class has no entity");
+				const BindingId declaration =
+					program_->entities[nested].declaration;
+				if (declaration != kNoBinding)
+				{
+					program_->bindings[declaration].member_owner = entity;
+					program_->bindings[declaration].access = member_access;
+				}
+			}
+			else if (arena_->IsTag(member, "using-declaration") ||
+				arena_->IsTag(member, "alias-declaration"))
+				AnalyzeUsing(member, member_scope, root_, false, member_access);
 		}
 		CompleteClassLayout(entity);
 		if (!program_->entities[entity].has_user_declared_constructor &&
@@ -514,6 +534,17 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 {
 	const NodeId specifiers = FindChild(node, "decl-specifier-seq");
 	if (specifiers == kNoNode) return;
+	bool friend_specifier = false;
+	for (std::uint32_t edge = arena_->FirstEdge(specifiers); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+		if (PayloadSource(arena_->EdgeChild(edge)) == "friend")
+			friend_specifier = true;
+	if (friend_specifier &&
+		FindChild(specifiers, "class-forward-declaration") != kNoNode)
+	{
+		AnalyzeFriendClass(node, scope, owner_type);
+		return;
+	}
 	const SpecInfo spec = BuildSpecifiers(specifiers, scope, std::string(), true);
 	if (spec.is_friend)
 	{
@@ -1292,6 +1323,148 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 	return canonical;
 }
 
+void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
+	std::uint32_t output_parent, bool local, AccessKind access)
+{
+	const EntityId class_owner = program_->EntityForScope(scope);
+	if (arena_->IsTag(node, "alias-declaration"))
+	{
+		const TypeId type = BuildTypeId(FindChild(node, "type-id"), scope);
+		const NameId name = program_->names.Intern(arena_->Payload(node));
+		const BindingId binding =
+			program_->AddBinding(scope, BIND_TYPE_ALIAS, name, type);
+		if (class_owner != kNoEntity)
+		{
+			program_->bindings[binding].member_owner = class_owner;
+			program_->bindings[binding].access = access;
+		}
+		const std::uint32_t alias = MakeDump(DUMP_TYPE_ALIAS, type,
+			VALUE_NONE, name);
+		dump_.Add(output_parent, alias);
+		return;
+	}
+	const NodeId target_node = FindChild(node, "target");
+	if (target_node == kNoNode) throw std::runtime_error("missing using target");
+	const std::string target = arena_->Payload(target_node);
+	if (arena_->IsTag(node, "namespace-alias-definition"))
+	{
+		const ScopeId target_scope = ResolveScopeSpelling(scope, target);
+		if (target_scope == kNoScope)
+			throw std::runtime_error("namespace alias target not found");
+		program_->AddNamespaceAlias(scope,
+			program_->names.Intern(arena_->Payload(node)), target_scope);
+		return;
+	}
+	if (arena_->IsTag(node, "using-directive"))
+	{
+		const ScopeId target_scope = ResolveScopeSpelling(scope, target);
+		if (target_scope == kNoScope)
+			throw std::runtime_error("using namespace target not found");
+		program_->AddUsingEdge(scope, target_scope);
+		return;
+	}
+	const NamePath path = ParseNamePath(target);
+	const NameId name = path.Last();
+	const LookupResult type = program_->Lookup(scope, path, LOOKUP_TYPE);
+	if (type.type != kNoType)
+	{
+		if (type.type_declaration != kNoBinding &&
+			!CanAccessMember(type.type_declaration, type.naming_class))
+			throw std::runtime_error("inaccessible using type");
+		const BindingId alias = program_->AddBinding(scope,
+			program_->types.IsNamed(type.type) ? BIND_TYPE : BIND_TYPE_ALIAS,
+			name, type.type, false, 0, NAMED_NONE, 0, type.type_declaration);
+		if (class_owner != kNoEntity)
+			PublishUsingAccess(alias, type.type_declaration, access);
+		return;
+	}
+	const LookupResult function_lookup =
+		program_->Lookup(scope, path, LOOKUP_ORDINARY);
+	const std::vector<BindingId> functions = FunctionCandidates(scope, target);
+	if (!functions.empty())
+	{
+		const std::uint64_t key =
+			(static_cast<std::uint64_t>(scope) << 32) | name;
+		CompactIndexSequence& aliases = function_sets_.Ensure(key);
+		CompactIndexSequence& ordinary_aliases =
+			ordinary_function_sets_.Ensure(key);
+		for (std::size_t i = 0; i < functions.size(); ++i)
+		{
+			const FunctionInfo& function = GetFunction(functions[i]);
+			if (!CanAccessMember(functions[i], function_lookup.naming_class))
+				throw std::runtime_error("inaccessible using function");
+			bool hidden_by_direct_member = false;
+			if (class_owner != kNoEntity)
+			{
+				const CompactIndexSequence* existing =
+					ordinary_function_sets_.Find(key);
+				for (std::size_t e = 0; existing && e < existing->Size(); ++e)
+				{
+					const BindingId candidate =
+						static_cast<BindingId>((*existing)[e]);
+					const FunctionInfo& prior = GetFunction(candidate);
+					if (program_->bindings[candidate].access_owner != kNoEntity ||
+						program_->bindings[candidate].member_owner != class_owner)
+						continue;
+					const TypeRecord left = program_->types.Get(prior.type);
+					const TypeRecord right = program_->types.Get(function.type);
+					if (left.parameter_count != right.parameter_count ||
+						left.variadic != right.variadic || left.cv != right.cv)
+						continue;
+					const TypeId* left_parameters =
+						program_->types.Parameters(prior.type);
+					const TypeId* right_parameters =
+						program_->types.Parameters(function.type);
+					hidden_by_direct_member = true;
+					for (std::size_t p = 0; p < left.parameter_count; ++p)
+						if (left_parameters[p] != right_parameters[p])
+							hidden_by_direct_member = false;
+					if (hidden_by_direct_member) break;
+				}
+			}
+			if (hidden_by_direct_member) continue;
+			const BindingId alias = program_->AddBinding(scope, BIND_FUNCTION,
+				name, function.type, false, 0, NAMED_NONE, 0, function.binding);
+			if (class_owner != kNoEntity)
+				PublishUsingAccess(alias, functions[i], access);
+			if (!aliases.Contains(alias)) aliases.Push(alias);
+			if (!ordinary_aliases.Contains(alias)) ordinary_aliases.Push(alias);
+		}
+		return;
+	}
+	const LookupResult value = program_->Lookup(scope, path, LOOKUP_ORDINARY);
+	if (value.ordinary == kNoBinding)
+		throw std::runtime_error("using-declaration target not found");
+	if (!CanAccessMember(value.ordinary, value.naming_class))
+		throw std::runtime_error("inaccessible using declaration");
+	const BindingRecord source = program_->bindings[value.ordinary];
+	const BindingId alias = program_->AddBinding(scope, source.kind, name,
+		source.type, source.constant, source.value, source.display_flavor,
+		source.display_type_name, source.canonical);
+	if (class_owner != kNoEntity)
+		PublishUsingAccess(alias, value.ordinary, access);
+	(void)local;
+}
+
+void SemanticAnalyzer::PublishUsingAccess(BindingId alias,
+	BindingId source, AccessKind access)
+{
+	if (alias == kNoBinding || source == kNoBinding)
+		throw std::logic_error("using declaration has no binding identity");
+	BindingRecord& target = program_->bindings[alias];
+	const BindingRecord original = program_->bindings[source];
+	target.member_owner = original.member_owner;
+	target.access_owner = program_->EntityForScope(target.owner);
+	target.member_offset = original.member_offset;
+	target.member_ordinal = original.member_ordinal;
+	target.access = access;
+	target.storage_class = original.storage_class;
+	target.non_static_data_member = original.non_static_data_member;
+	target.static_member_function = original.static_member_function;
+	target.constructor = original.constructor;
+	target.destructor = original.destructor;
+}
+
 void SemanticAnalyzer::AnalyzeFriendFunction(NodeId node,
 	ScopeId class_scope, TypeId owner_type, const SpecInfo& spec)
 {
@@ -1332,16 +1505,31 @@ void SemanticAnalyzer::AnalyzeFriendFunction(NodeId node,
 			declarators[i], spec.type, class_scope);
 		if (!program_->types.IsFunction(parsed.type))
 			throw std::runtime_error("friend declaration is not a function");
-		const BindingId binding = DeclareFunction(friend_owner, parsed.name,
+		const NamePath declared_name = DeclaratorNamePath(declarators[i]);
+		const bool qualified_friend = declared_name.global ||
+			declared_name.Size() > 1;
+		const ScopeId declared_owner = qualified_friend ?
+			ResolveOwner(class_scope, declared_name) : friend_owner;
+		if (declared_owner == kNoScope)
+			throw std::runtime_error("qualified friend owner not found");
+		const BindingId binding = DeclareFunction(declared_owner, parsed.name,
 			parsed.type, parsed.parameters, definition, false,
 			STORAGE_CLASS_NONE, current_language_linkage_,
 			IsNonthrowing(declarators[i], class_scope), false);
 		FunctionInfo& info = GetMutableFunction(binding);
 		if (info.friend_of == kNoEntity) info.friend_of = owner_entity;
-		const std::uint64_t friend_key =
-			(static_cast<std::uint64_t>(owner_entity) << 32) | parsed.name;
-		CompactIndexSequence& hidden = hidden_friend_sets_.Ensure(friend_key);
-		if (!hidden.Contains(binding)) hidden.Push(binding);
+		const std::uint64_t access_key =
+			(static_cast<std::uint64_t>(owner_entity) << 32) | binding;
+		CompactIndexSequence& grants =
+			friend_function_grants_.Ensure(access_key);
+		if (grants.Size() == 0) grants.Push(0);
+		if (!qualified_friend)
+		{
+			const std::uint64_t friend_key =
+				(static_cast<std::uint64_t>(owner_entity) << 32) | parsed.name;
+			CompactIndexSequence& hidden = hidden_friend_sets_.Ensure(friend_key);
+			if (!hidden.Contains(binding)) hidden.Push(binding);
+		}
 		info.lexical_scope = class_scope;
 		if (definition)
 		{
@@ -1351,6 +1539,42 @@ void SemanticAnalyzer::AnalyzeFriendFunction(NodeId node,
 		}
 		ValidateNonmemberOperator(binding);
 	}
+}
+
+void SemanticAnalyzer::AnalyzeFriendClass(NodeId node,
+	ScopeId class_scope, TypeId owner_type)
+{
+	const EntityId owner = EntityOf(owner_type);
+	if (owner == kNoEntity)
+		throw std::logic_error("friend class declaration has no owner");
+	const NodeId specifiers = FindChild(node, "decl-specifier-seq");
+	const NodeId declaration = specifiers == kNoNode ? kNoNode :
+		FindChild(specifiers, "class-forward-declaration");
+	if (declaration == kNoNode)
+		throw std::runtime_error("friend class declaration has no class");
+	const std::string spelling = arena_->Payload(declaration);
+	const LookupResult found = LookupSpelling(class_scope, spelling, LOOKUP_TYPE);
+	TypeId friend_type = found.type;
+	if (friend_type == kNoType)
+	{
+		ScopeId namespace_owner = program_->entities[owner].owner;
+		while (namespace_owner != kNoScope &&
+			program_->KindOfScope(namespace_owner) != SCOPE_NAMESPACE)
+			namespace_owner = program_->ParentScope(namespace_owner);
+		if (namespace_owner == kNoScope)
+			throw std::runtime_error("friend class has no namespace owner");
+		friend_type = AnalyzeClass(declaration,
+			spelling.find("::") == std::string::npos ?
+				namespace_owner : class_scope,
+			std::string(), true);
+	}
+	const EntityId friend_entity = EntityOf(friend_type);
+	if (friend_entity == kNoEntity)
+		throw std::runtime_error("friend declaration does not name a class");
+	const std::uint64_t key =
+		(static_cast<std::uint64_t>(owner) << 32) | friend_entity;
+	CompactIndexSequence& grants = friend_class_grants_.Ensure(key);
+	if (grants.Size() == 0) grants.Push(0);
 }
 
 void SemanticAnalyzer::ValidateNonmemberOperator(BindingId binding) const
@@ -1745,9 +1969,12 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 	{
 		const TypeId previous_return = current_return_type_;
 		const EntityId previous_class = current_class_context_;
+		const BindingId previous_function = current_function_context_;
 		current_return_type_ = program_->types.Get(info.type).child;
 		current_class_context_ = info.friend_of != kNoEntity ? info.friend_of :
 			program_->bindings[info.binding].member_owner;
+		current_function_context_ =
+			program_->bindings[info.binding].canonical;
 		if (info.constructor)
 		{
 			const std::uint32_t constructor_body =
@@ -1778,6 +2005,7 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 		else dump_.Add(function, MakeDump(DUMP_COMPOUND_STATEMENT));
 		current_return_type_ = previous_return;
 		current_class_context_ = previous_class;
+		current_function_context_ = previous_function;
 	}
 	GetMutableFunction(binding).demand_state = 3;
 	++demanded_function_emissions_;

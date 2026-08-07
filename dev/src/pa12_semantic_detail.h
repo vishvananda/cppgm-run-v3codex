@@ -28,6 +28,7 @@ public:
 		  graph_consumer_(graph_consumer), render_output_(render_output),
 		  root_(kNoDumpEdge), current_language_linkage_(LANGUAGE_LINKAGE_CPP),
 		  current_return_type_(kNoType), current_class_context_(kNoEntity),
+		  current_function_context_(kNoBinding),
 		  loop_depth_(0), switch_depth_(0), expression_count_(0),
 		  associated_generation_(0), candidate_generation_(0),
 		  associated_scope_visits_(0), associated_declaration_visits_(0),
@@ -69,7 +70,8 @@ private:
 	void AnalyzeNamespace(NodeId node, ScopeId scope,
 		std::uint32_t output_parent);
 	void AnalyzeUsing(NodeId node, ScopeId scope,
-		std::uint32_t output_parent, bool local);
+		std::uint32_t output_parent, bool local,
+		AccessKind access = ACCESS_PUBLIC);
 	void AnalyzeTemplate(NodeId node, ScopeId scope);
 	void AnalyzeSimple(NodeId node, ScopeId scope,
 		std::uint32_t output_parent, bool local);
@@ -110,6 +112,8 @@ private:
 		bool nonthrowing = false, bool ordinary_visible = true);
 	void AnalyzeFriendFunction(NodeId node, ScopeId class_scope,
 		TypeId owner_type, const SpecInfo& spec);
+	void AnalyzeFriendClass(NodeId node, ScopeId class_scope,
+		TypeId owner_type);
 	void ValidateNonmemberOperator(BindingId binding) const;
 	std::vector<BindingId> FunctionCandidates(ScopeId scope,
 		const std::string& spelling, EntityId* naming_class = 0);
@@ -196,6 +200,10 @@ private:
 		AccessKind access);
 	bool CanAccessMember(BindingId member,
 		EntityId naming_class = kNoEntity) const;
+	bool HasClassPrivilege(EntityId owner) const;
+	bool HasDerivedClassPrivilege(EntityId base) const;
+	void PublishUsingAccess(BindingId alias, BindingId source,
+		AccessKind access);
 	bool BaseConversionAllowed(EntityId derived, EntityId base) const;
 	std::size_t BaseConversionDistance(TypeId source, TypeId target) const;
 	void CompleteClassLayout(EntityId entity);
@@ -241,6 +249,10 @@ private:
 	bool IsNonthrowing(NodeId declarator, ScopeId scope);
 	void RecordExpressionFacts(const ExpressionInfo& value);
 	ExpressionInfo ApplyTarget(ExpressionInfo value, TypeId target);
+	ConversionRank MemberObjectConversion(const ExpressionInfo& source,
+		TypeId target, BindingId member) const;
+	ExpressionInfo ApplyMemberObjectTarget(ExpressionInfo value,
+		TypeId target, BindingId member);
 	ConversionRank Conversion(TypeId source, ValueCategory category,
 		bool integer_zero, TypeId target) const;
 	ConversionRank Conversion(const ExpressionInfo& source, TypeId target) const;
@@ -288,6 +300,8 @@ private:
 	IndexedSequenceTable function_sets_;
 	IndexedSequenceTable ordinary_function_sets_;
 	IndexedSequenceTable hidden_friend_sets_;
+	IndexedSequenceTable friend_class_grants_;
+	IndexedSequenceTable friend_function_grants_;
 	FunctionSignatureTable function_declarations_;
 	std::vector<std::uint32_t> function_fact_by_binding_;
 	std::vector<FunctionInfo> functions_;
@@ -320,6 +334,7 @@ private:
 	LanguageLinkage current_language_linkage_;
 	TypeId current_return_type_;
 	EntityId current_class_context_;
+	BindingId current_function_context_;
 	std::size_t loop_depth_;
 	std::size_t switch_depth_;
 	std::size_t expression_count_;

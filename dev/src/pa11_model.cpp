@@ -462,7 +462,8 @@ void TypeTable::Rehash(std::size_t capacity)
 
 EntityRecord::EntityRecord()
 	: name(0), identity_name(0), owner(kNoScope), member_scope(kNoScope),
-	  direct_base(kNoEntity), flavor(NAMED_NONE), type(kNoType),
+	  direct_base(kNoEntity), enclosing_class(kNoEntity),
+	  flavor(NAMED_NONE), type(kNoType),
 	  underlying(kNoType), declaration(kNoBinding), object_size(0),
 	  object_alignment(0), base_access(ACCESS_PUBLIC), complete(false),
 	  layout_complete(false),
@@ -476,7 +477,8 @@ EntityRecord::EntityRecord()
 
 BindingRecord::BindingRecord()
 	: owner(kNoScope), name(0), qualified_name(0), kind(BIND_VARIABLE), type(kNoType),
-	  next(kNoBinding), member_owner(kNoEntity), member_offset(0),
+	  next(kNoBinding), member_owner(kNoEntity), access_owner(kNoEntity),
+	  member_offset(0),
 	  overload_ordinal(0), member_ordinal(kNoBinding),
 	  display_flavor(NAMED_NONE), display_type_name(0),
 	  canonical(kNoBinding), value(0), operator_kind(OPERATOR_NONE),
@@ -711,6 +713,9 @@ EntityId Program::NewEntity(NameId name, NamedFlavor flavor, bool complete,
 	record.name = name;
 	record.identity_name = identity_name == 0 ? name : identity_name;
 	record.owner = owner;
+	if (owner != kNoScope && owner < scopes_.size() &&
+		scopes_[owner].kind == SCOPE_CLASS)
+		record.enclosing_class = scopes_[owner].entity;
 	record.flavor = flavor;
 	record.complete = complete;
 	record.underlying = underlying;

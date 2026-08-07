@@ -213,6 +213,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		function_sets_.StorageBytes() +
 		ordinary_function_sets_.StorageBytes() +
 		hidden_friend_sets_.StorageBytes() +
+		friend_class_grants_.StorageBytes() +
+		friend_function_grants_.StorageBytes() +
 		function_declarations_.StorageBytes() +
 		function_fact_by_binding_.capacity() * sizeof(std::uint32_t) +
 		functions_.capacity() * sizeof(FunctionInfo) +
@@ -813,6 +815,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 			if (!CanAccessMember(selected, function_naming_class))
 				throw std::runtime_error("inaccessible member function");
 			const FunctionInfo& function = GetFunction(selected);
+			const BindingId emission_binding =
+				program_->bindings[selected].canonical;
 			ExpressionInfo result;
 			result.type = function.type;
 			if (function.member_owner != kNoType)
@@ -833,9 +837,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 					parameters, member_type.variadic);
 			}
 			result.category = VALUE_LVALUE;
-			result.binding = selected;
+			result.binding = emission_binding;
 			result.node = MakeDump(DUMP_ID_EXPRESSION, result.type,
-				result.category, program_->names.Intern(spelling), selected);
+				result.category, program_->names.Intern(spelling),
+				emission_binding);
 			DemandFunction(selected);
 			++expression_count_;
 			return result;
@@ -948,8 +953,8 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 				object_type = program_->types.Qualify(object_type, CV_CONST);
 			if ((function_type.cv & CV_VOLATILE) != 0)
 				object_type = program_->types.Qualify(object_type, CV_VOLATILE);
-			const ConversionRank object_rank = Conversion(*object,
-				program_->types.Pointer(object_type));
+			const ConversionRank object_rank = MemberObjectConversion(*object,
+				program_->types.Pointer(object_type), candidates[c]);
 			ranks[c * arity] = object_rank;
 			if (object_rank == CONVERSION_DERIVED_TO_BASE)
 				base_distances[c * arity] = BaseConversionDistance(
@@ -1009,7 +1014,8 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 			if (rank == CONVERSION_INVALID) viable[c] = false;
 		}
 	}
-	const auto better = [this, &ranks, &base_distances, &candidates, arity](
+	const auto better = [this, &ranks, &base_distances, &candidates, arity,
+		object](
 		std::size_t left, std::size_t right) -> bool
 	{
 		++overload_order_comparisons_;
@@ -1038,6 +1044,18 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 		if (strictly_better) return true;
 		const FunctionInfo& left_function = GetFunction(candidates[left]);
 		const FunctionInfo& right_function = GetFunction(candidates[right]);
+		if (object && left_function.member_owner != kNoType &&
+			right_function.member_owner != kNoType)
+		{
+			const std::uint8_t left_cv =
+				program_->types.Get(left_function.type).cv;
+			const std::uint8_t right_cv =
+				program_->types.Get(right_function.type).cv;
+			if (left_cv != right_cv && (left_cv & ~right_cv) == 0)
+				return true;
+			if (left_cv != right_cv && (right_cv & ~left_cv) == 0)
+				return false;
+		}
 		return !left_function.template_specialization &&
 			right_function.template_specialization;
 	};
@@ -1087,17 +1105,19 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 			VALUE_XVALUE : VALUE_PRVALUE;
 	const TypeId callable_type = function.member_owner == kNoType ?
 		function.type : AdaptMemberFunctionType(selected);
+	const BindingId emission_binding = program_->bindings[selected].canonical;
 	const std::uint32_t call = MakeDump(DUMP_CALL_EXPRESSION,
-		result_type, category, 0, selected);
+		result_type, category, 0, emission_binding);
 	const std::uint32_t callee = MakeDump(DUMP_CALLEE, callable_type,
-		VALUE_NONE, function.display_name, selected);
+		VALUE_NONE, function.display_name, emission_binding);
 	dump_.Add(call, callee);
 	if (function.member_owner != kNoType)
 	{
 		if (!object) throw std::logic_error("selected member call has no object");
 		const TypeId object_parameter =
 			program_->types.Parameters(callable_type)[0];
-		const ExpressionInfo converted = ApplyTarget(*object, object_parameter);
+		const ExpressionInfo converted = ApplyMemberObjectTarget(
+			*object, object_parameter, selected);
 		dump_.Add(call, converted.node);
 	}
 	for (std::size_t a = 0; a < arguments.size(); ++a)
@@ -1802,77 +1822,6 @@ TypeId SemanticAnalyzer::DecltypeType(NodeId node, ScopeId scope)
 	return expression.type;
 }
 
-void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
-	std::uint32_t output_parent, bool local)
-{
-	if (arena_->IsTag(node, "alias-declaration"))
-	{
-		const TypeId type = BuildTypeId(FindChild(node, "type-id"), scope);
-		const NameId name = program_->names.Intern(arena_->Payload(node));
-		program_->AddBinding(scope, BIND_TYPE_ALIAS, name, type);
-		const std::uint32_t alias = MakeDump(DUMP_TYPE_ALIAS, type,
-			VALUE_NONE, name);
-		dump_.Add(output_parent, alias);
-		return;
-	}
-	const NodeId target_node = FindChild(node, "target");
-	if (target_node == kNoNode) throw std::runtime_error("missing using target");
-	const std::string target = arena_->Payload(target_node);
-	if (arena_->IsTag(node, "namespace-alias-definition"))
-	{
-		const ScopeId target_scope = ResolveScopeSpelling(scope, target);
-		if (target_scope == kNoScope)
-			throw std::runtime_error("namespace alias target not found");
-		program_->AddNamespaceAlias(scope,
-			program_->names.Intern(arena_->Payload(node)), target_scope);
-		return;
-	}
-	if (arena_->IsTag(node, "using-directive"))
-	{
-		const ScopeId target_scope = ResolveScopeSpelling(scope, target);
-		if (target_scope == kNoScope)
-			throw std::runtime_error("using namespace target not found");
-		program_->AddUsingEdge(scope, target_scope);
-		return;
-	}
-	const NamePath path = ParseNamePath(target);
-	const NameId name = path.Last();
-	const LookupResult type = program_->Lookup(scope, path, LOOKUP_TYPE);
-	if (type.type != kNoType)
-	{
-		program_->AddBinding(scope,
-			program_->types.IsNamed(type.type) ? BIND_TYPE : BIND_TYPE_ALIAS,
-			name, type.type, false, 0, NAMED_NONE, 0, type.type_declaration);
-		return;
-	}
-	const std::vector<BindingId> functions = FunctionCandidates(scope, target);
-	if (!functions.empty())
-	{
-		const std::uint64_t key = (static_cast<std::uint64_t>(scope) << 32) | name;
-		CompactIndexSequence& aliases = function_sets_.Ensure(key);
-		CompactIndexSequence& ordinary_aliases =
-			ordinary_function_sets_.Ensure(key);
-		for (std::size_t i = 0; i < functions.size(); ++i)
-		{
-			const FunctionInfo& function = GetFunction(functions[i]);
-			program_->AddBinding(scope, BIND_FUNCTION, name, function.type,
-				false, 0, NAMED_NONE, 0, function.binding);
-			if (!aliases.Contains(function.binding)) aliases.Push(function.binding);
-			if (!ordinary_aliases.Contains(function.binding))
-				ordinary_aliases.Push(function.binding);
-		}
-		return;
-	}
-	const LookupResult value = program_->Lookup(scope, path, LOOKUP_ORDINARY);
-	if (value.ordinary == kNoBinding)
-		throw std::runtime_error("using-declaration target not found");
-	const BindingRecord& source = program_->bindings[value.ordinary];
-	program_->AddBinding(scope, source.kind, name, source.type,
-		source.constant, source.value, source.display_flavor,
-		source.display_type_name, source.canonical);
-	(void)local;
-}
-
 void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope)
 {
 	const NodeId clause = FindChild(node, "template-parameter-clause");
@@ -2329,13 +2278,16 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	}
 	const TypeId previous_return = current_return_type_;
 	const EntityId previous_class = current_class_context_;
+	const BindingId previous_function = current_function_context_;
 	current_return_type_ = program_->types.Get(parsed.type).child;
 	current_class_context_ = function.friend_of != kNoEntity ?
 		function.friend_of : program_->bindings[binding].member_owner;
+	current_function_context_ = program_->bindings[binding].canonical;
 	const NodeId body = FindChild(node, "compound-statement");
 	if (body != kNoNode) AnalyzeCompound(body, function_scope, output_node);
 	current_return_type_ = previous_return;
 	current_class_context_ = previous_class;
+	current_function_context_ = previous_function;
 }
 
 void SemanticAnalyzer::AnalyzeCompound(NodeId node, ScopeId scope,

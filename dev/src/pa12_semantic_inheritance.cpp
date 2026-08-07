@@ -9,43 +9,105 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+bool SemanticAnalyzer::HasClassPrivilege(EntityId owner) const
+{
+	if (owner == kNoEntity) return false;
+	for (EntityId context = current_class_context_; context != kNoEntity;
+		context = program_->entities[context].enclosing_class)
+	{
+		if (context == owner) return true;
+		const std::uint64_t key =
+			(static_cast<std::uint64_t>(owner) << 32) | context;
+		if (friend_class_grants_.Find(key)) return true;
+	}
+	if (current_function_context_ != kNoBinding)
+	{
+		const BindingId function = program_->bindings[
+			current_function_context_].canonical;
+		const std::uint64_t key =
+			(static_cast<std::uint64_t>(owner) << 32) | function;
+		if (friend_function_grants_.Find(key)) return true;
+	}
+	return false;
+}
+
+bool SemanticAnalyzer::HasDerivedClassPrivilege(EntityId base) const
+{
+	for (EntityId context = current_class_context_; context != kNoEntity;
+		context = program_->entities[context].enclosing_class)
+		if (program_->IsBaseOf(base, context)) return true;
+	return false;
+}
+
 bool SemanticAnalyzer::CanAccessMember(BindingId member,
 	EntityId naming_class) const
 {
 	if (member == kNoBinding || member >= program_->bindings.size()) return false;
 	const BindingRecord& binding = program_->bindings[member];
+	if (binding.access_owner != kNoEntity)
+	{
+		if (binding.access == ACCESS_PUBLIC) return true;
+		if (binding.access == ACCESS_PRIVATE)
+			return HasClassPrivilege(binding.access_owner);
+		return HasClassPrivilege(binding.access_owner) ||
+			HasDerivedClassPrivilege(binding.access_owner);
+	}
 	const EntityId owner = binding.member_owner;
 	if (owner == kNoEntity) return true;
 	if (naming_class == kNoEntity) naming_class = owner;
 	if (!program_->IsBaseOf(owner, naming_class)) return false;
-	if (naming_class != owner)
+	EntityId privilege_anchor = kNoEntity;
+	for (EntityId context = current_class_context_; context != kNoEntity;
+		context = program_->entities[context].enclosing_class)
+		if (program_->IsBaseOf(naming_class, context))
+		{
+			privilege_anchor = context;
+			break;
+		}
+	for (EntityId current = naming_class; current != owner;
+		current = program_->entities[current].direct_base)
 	{
-		const EntityId direct_base =
-			program_->entities[naming_class].direct_base;
-		return direct_base != kNoEntity &&
-			BaseConversionAllowed(naming_class, direct_base) &&
-			CanAccessMember(member, direct_base);
+		if (HasClassPrivilege(current)) privilege_anchor = current;
+		const EntityRecord& derived = program_->entities[current];
+		if (derived.direct_base == kNoEntity) return false;
+		if (derived.base_access == ACCESS_PUBLIC) continue;
+		if (HasClassPrivilege(current)) continue;
+		if (derived.base_access == ACCESS_PROTECTED &&
+			privilege_anchor != kNoEntity &&
+			program_->IsBaseOf(current, privilege_anchor)) continue;
+		return false;
 	}
+	if (HasClassPrivilege(owner)) privilege_anchor = owner;
 	if (binding.access == ACCESS_PUBLIC) return true;
-	if (current_class_context_ == kNoEntity) return false;
 	if (binding.access == ACCESS_PRIVATE)
-		return current_class_context_ == naming_class;
-	return current_class_context_ == naming_class ||
-		program_->IsBaseOf(naming_class, current_class_context_);
+		return HasClassPrivilege(owner);
+	return HasClassPrivilege(owner) ||
+		(privilege_anchor != kNoEntity &&
+		 program_->IsBaseOf(owner, privilege_anchor)) ||
+		HasDerivedClassPrivilege(owner);
 }
 
 bool SemanticAnalyzer::BaseConversionAllowed(EntityId derived,
 	EntityId base) const
 {
 	if (!program_->IsBaseOf(base, derived) || base == derived) return false;
+	EntityId privilege_anchor = kNoEntity;
+	for (EntityId context = current_class_context_; context != kNoEntity;
+		context = program_->entities[context].enclosing_class)
+		if (program_->IsBaseOf(derived, context))
+		{
+			privilege_anchor = context;
+			break;
+		}
 	for (EntityId current = derived; current != base;
 		current = program_->entities[current].direct_base)
 	{
+		if (HasClassPrivilege(current)) privilege_anchor = current;
 		const AccessKind access = program_->entities[current].base_access;
 		if (access == ACCESS_PUBLIC) continue;
-		if (current_class_context_ == current) continue;
-		if (access == ACCESS_PROTECTED && current_class_context_ != kNoEntity &&
-			program_->IsBaseOf(current, current_class_context_)) continue;
+		if (HasClassPrivilege(current)) continue;
+		if (access == ACCESS_PROTECTED && privilege_anchor != kNoEntity &&
+			program_->IsBaseOf(current, privilege_anchor)) continue;
 		return false;
 	}
 	return true;
@@ -78,6 +140,60 @@ std::size_t SemanticAnalyzer::BaseConversionDistance(TypeId source,
 		current = program_->entities[current].direct_base, ++distance)
 		if (current == base) return distance;
 	return std::numeric_limits<std::size_t>::max();
+}
+
+ConversionRank SemanticAnalyzer::MemberObjectConversion(
+	const ExpressionInfo& source, TypeId target, BindingId member) const
+{
+	const ConversionRank ordinary = Conversion(source, target);
+	if (ordinary != CONVERSION_INVALID || member == kNoBinding ||
+		member >= program_->bindings.size() ||
+		program_->bindings[member].access_owner == kNoEntity)
+		return ordinary;
+	const TypeId from = Decay(source.type);
+	const TypeId to = program_->types.RemoveTopCv(target);
+	const TypeRecord source_pointer = program_->types.Get(from);
+	const TypeRecord target_pointer = program_->types.Get(to);
+	if (source_pointer.kind != TYPE_POINTER ||
+		target_pointer.kind != TYPE_POINTER) return CONVERSION_INVALID;
+	const EntityId derived = EntityOf(source_pointer.child);
+	const EntityId base = EntityOf(target_pointer.child);
+	if (derived == kNoEntity || base == kNoEntity || derived == base ||
+		!program_->IsBaseOf(base, derived)) return CONVERSION_INVALID;
+	const TypeRecord source_cv = program_->types.Get(source_pointer.child);
+	const TypeRecord target_cv = program_->types.Get(target_pointer.child);
+	const std::uint8_t scv = source_cv.kind == TYPE_QUALIFIED ?
+		source_cv.cv : CV_NONE;
+	const std::uint8_t tcv = target_cv.kind == TYPE_QUALIFIED ?
+		target_cv.cv : CV_NONE;
+	return (scv & ~tcv) == 0 ?
+		CONVERSION_DERIVED_TO_BASE : CONVERSION_INVALID;
+}
+
+ExpressionInfo SemanticAnalyzer::ApplyMemberObjectTarget(
+	ExpressionInfo value, TypeId target, BindingId member)
+{
+	const ConversionRank conversion =
+		MemberObjectConversion(value, target, member);
+	if (conversion != CONVERSION_DERIVED_TO_BASE)
+		return ApplyTarget(value, target);
+	const std::size_t projections = BaseConversionDistance(value.type, target);
+	if (projections == std::numeric_limits<std::size_t>::max() ||
+		projections > std::numeric_limits<std::uint32_t>::max())
+		throw std::logic_error("using member has no bounded base path");
+	const std::uint32_t cast = MakeDump(DUMP_CAST_EXPRESSION,
+		target, VALUE_PRVALUE);
+	dump_.nodes[cast].base_projection_count =
+		static_cast<std::uint32_t>(projections);
+	dump_.Add(cast, value.node);
+	value.node = cast;
+	value.type = target;
+	value.category = VALUE_PRVALUE;
+	value.binding = kNoBinding;
+	value.constant = false;
+	++expression_count_;
+	RecordExpressionFacts(value);
+	return value;
 }
 
 ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
