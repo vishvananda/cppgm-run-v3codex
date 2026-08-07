@@ -91,7 +91,8 @@ protected:
 		return destination;
 	}
 
-	Operand LowerNewExpression(const NodeChildren& children)
+	Operand LowerNewExpression(const DumpNode& record,
+		const NodeChildren& children)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (children.empty() || children.size() > 2)
@@ -99,10 +100,13 @@ protected:
 		const Operand result = derived.LowerValue(children[0], LowPtr());
 		if (children.size() == 2)
 		{
-			if (derived.arena_.nodes[children[1]].kind != DUMP_CONSTRUCTOR_ACTION)
-				throw std::runtime_error(
-					"placement new has unsupported initializer");
-			derived.LowerConstructorAction(children[1], result);
+			const DumpKind kind = derived.arena_.nodes[children[1]].kind;
+			if (kind == DUMP_CONSTRUCTOR_ACTION)
+				derived.LowerConstructorAction(children[1], result);
+			else if (kind == DUMP_AGGREGATE_CONSTRUCTION_ACTION)
+				derived.LowerAggregateConstructionAction(children[1], result);
+			else derived.LowerRuntimeObjectValue(
+				record.operand_type, children[1], result);
 		}
 		return result;
 	}
@@ -123,8 +127,11 @@ protected:
 				destination = derived.IndexAddress(LowI8(), base,
 					Operand(static_cast<std::int64_t>(i * element_size),
 						LowI64()), false);
-			if (derived.arena_.nodes[values[i]].kind == DUMP_CONSTRUCTOR_ACTION)
+			const DumpKind kind = derived.arena_.nodes[values[i]].kind;
+			if (kind == DUMP_CONSTRUCTOR_ACTION)
 				derived.LowerConstructorAction(values[i], destination);
+			else if (kind == DUMP_AGGREGATE_CONSTRUCTION_ACTION)
+				derived.LowerAggregateConstructionAction(values[i], destination);
 			else derived.LowerRuntimeObjectValue(
 				array.child, values[i], destination);
 		}

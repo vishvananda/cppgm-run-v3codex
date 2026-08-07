@@ -192,7 +192,6 @@ bool SemanticAnalyzer::IsDeclaration(NodeId node) const
 		arena_->IsTag(node, "layout-pack-pop") ||
 		arena_->IsTag(node, "linkage-specification");
 }
-
 std::uint32_t SemanticAnalyzer::MakeDump(DumpKind kind, TypeId type,
 	ValueCategory category, NameId text, BindingId binding)
 {
@@ -205,8 +204,7 @@ std::uint32_t SemanticAnalyzer::MakeDump(DumpKind kind, TypeId type,
 	return node;
 }
 
-std::size_t SemanticAnalyzer::SideStorageBytes() const
-{
+std::size_t SemanticAnalyzer::SideStorageBytes() const {
 	std::size_t bytes =
 		scope_prefixes_.capacity() * sizeof(NameId) +
 		scope_prefix_segments_.capacity() * sizeof(NameId) +
@@ -240,6 +238,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		scope_lifetimes_.capacity() *
 			sizeof(std::vector<LifetimeObligation>) +
 		namespace_objects_.capacity() * sizeof(NamespaceObjectAction) +
+		aggregate_helpers_.capacity() * sizeof(AggregateHelperInfo) + aggregate_helper_index_.StorageBytes() +
 		break_cleanup_stops_.capacity() * sizeof(ScopeId) +
 		continue_cleanup_stops_.capacity() * sizeof(ScopeId) +
 		demanded_default_constructor_entities_.capacity() * sizeof(EntityId) +
@@ -264,6 +263,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		bytes += entity_constructors_[i].capacity() * sizeof(BindingId);
 	for (std::size_t i = 0; i < scope_lifetimes_.size(); ++i)
 		bytes += scope_lifetimes_[i].capacity() * sizeof(LifetimeObligation);
+	for (std::size_t i = 0; i < aggregate_helpers_.size(); ++i) bytes += aggregate_helpers_[i].members.capacity() * sizeof(BindingId);
 	for (std::size_t i = 0; i < function_templates_.size(); ++i)
 		bytes += function_templates_[i].type_parameters.capacity() *
 			sizeof(NameId);
@@ -2274,8 +2274,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			}
 			has_initializer = true;
 			if (local)
-				initializer = BuildLocalAggregateArrayActions(
-					initializer, declaration_scope);
+				initializer = BuildLocalAggregateArrayActions(initializer);
 			if (program_->types.Get(parsed.type).kind == TYPE_ARRAY &&
 				program_->types.Get(parsed.type).bound == 0)
 			{
@@ -2796,6 +2795,8 @@ void SemanticAnalyzer::RenderLine(const DumpNode& node, std::size_t depth)
 			<< program_->RenderType(node.type); break;
 	case DUMP_TEMPORARY_OBJECT: output_ << "temporary-object " << category << ' '
 			<< program_->RenderType(node.type); break;
+	case DUMP_AGGREGATE_CONSTRUCTION_ACTION: output_ << "aggregate-construction-action "
+		<< program_->RenderType(node.type) << " helper=" << node.aggregate_helper; break;
 	case DUMP_CONSTRUCTOR_ACTION:
 		output_ << "constructor-action " << program_->names.Get(node.text); break;
 	case DUMP_CONSTRUCTOR_ARRAY_ACTION:
@@ -2853,9 +2854,8 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 	}
 	const std::chrono::steady_clock::time_point render_started =
 		std::chrono::steady_clock::now();
-	if (graph_consumer_)
-		graph_consumer_->Consume(SemanticGraphView(program, dump_,
-			namespace_objects_, root_));
+	if (graph_consumer_) graph_consumer_->Consume(SemanticGraphView(program,
+		dump_, namespace_objects_, aggregate_helpers_, root_));
 	if (render_output_) Render();
 	if (stats_)
 	{

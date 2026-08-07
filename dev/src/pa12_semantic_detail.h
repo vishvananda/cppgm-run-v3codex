@@ -207,8 +207,8 @@ private:
 	ExpressionInfo AnalyzeAggregateElement(TypeId type, ScopeId scope,
 		std::uint32_t* element_edge);
 	ExpressionInfo BuildLocalAggregateArrayActions(
-		const ExpressionInfo& initializer, ScopeId scope);
-	std::uint32_t BuildAggregateConstructorAction(TypeId type, ScopeId scope,
+		const ExpressionInfo& initializer);
+	std::uint32_t BuildAggregateConstructionAction(TypeId type,
 		std::uint32_t aggregate_list);
 	ExpressionInfo AnalyzeNewExpression(NodeId node, ScopeId scope,
 		TypeId target);
@@ -360,11 +360,12 @@ private:
 	std::vector<InjectedMemberInfo> injected_members_;
 	std::vector<std::vector<LifetimeObligation> > scope_lifetimes_;
 	std::vector<NamespaceObjectAction> namespace_objects_;
+	std::vector<AggregateHelperInfo> aggregate_helpers_;
+	FunctionSignatureTable aggregate_helper_index_;
 	std::vector<ScopeId> break_cleanup_stops_;
 	std::vector<ScopeId> continue_cleanup_stops_;
 	std::vector<EntityId> demanded_default_constructor_entities_;
 	std::vector<std::uint8_t> default_constructor_demand_states_;
-	std::vector<std::uint8_t> bound_default_constructor_emissions_;
 	std::vector<BindingId> demanded_functions_;
 	std::vector<EntityId> associated_entities_;
 	std::vector<ScopeId> associated_scopes_;

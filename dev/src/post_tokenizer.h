@@ -259,6 +259,11 @@ private:
 bool DecodeOrdinaryStringLiteral(const std::string& source,
 	std::string* value);
 
+// Decode one narrow ordinary or UTF-8 string literal, including raw forms,
+// while rejecting user-defined suffixes. The value excludes the null unit.
+bool DecodeNarrowStringLiteral(const std::string& source,
+	std::string* value);
+
 // Run phases 1-3 through the shared PA1 tokenizer, apply the PA2 phase-6 and
 // token recognition rules, and emit typed events without retaining a token
 // vector. Only one joined spelling plus compact ranges for the current maximal

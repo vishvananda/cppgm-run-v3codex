@@ -1,4 +1,5 @@
 #include "pa12_semantic_detail.h"
+#include "post_tokenizer.h"
 
 #include <limits>
 #include <stdexcept>
@@ -19,53 +20,13 @@ bool IsClassEntity(const Program& program, EntityId entity)
 		flavor == NAMED_UNION;
 }
 
-int HexDigit(char value)
-{
-	return value >= '0' && value <= '9' ? value - '0' :
-		value >= 'a' && value <= 'f' ? value - 'a' + 10 :
-		value >= 'A' && value <= 'F' ? value - 'A' + 10 : -1;
-}
-
 std::vector<unsigned char> DecodeStringInitializer(
 	const std::string& spelling)
 {
-	std::vector<unsigned char> bytes;
-	const std::size_t first = spelling.find('"');
-	const std::size_t last = spelling.rfind('"');
-	if (first == std::string::npos || last <= first)
+	std::string decoded;
+	if (!DecodeNarrowStringLiteral(spelling, &decoded))
 		throw std::runtime_error("invalid string array initializer");
-	for (std::size_t i = first + 1; i < last; ++i)
-	{
-		unsigned value = static_cast<unsigned char>(spelling[i]);
-		if (spelling[i] == '\\' && ++i < last)
-		{
-			const char escape = spelling[i];
-			if (escape == 'x')
-			{
-				value = 0;
-				int digit = -1;
-				while (i + 1 < last &&
-					(digit = HexDigit(spelling[i + 1])) >= 0)
-				{
-					value = value * 16 + static_cast<unsigned>(digit);
-					++i;
-				}
-			}
-			else if (escape >= '0' && escape <= '7')
-			{
-				value = static_cast<unsigned>(escape - '0');
-				for (int count = 1; count < 3 && i + 1 < last &&
-					spelling[i + 1] >= '0' && spelling[i + 1] <= '7';
-					++count)
-					value = value * 8 + static_cast<unsigned>(spelling[++i] - '0');
-			}
-			else value = escape == 'n' ? '\n' : escape == 'r' ? '\r' :
-				escape == 't' ? '\t' : escape == 'v' ? '\v' :
-				escape == 'b' ? '\b' : escape == 'f' ? '\f' :
-				escape == 'a' ? '\a' : static_cast<unsigned char>(escape);
-		}
-		bytes.push_back(static_cast<unsigned char>(value));
-	}
+	std::vector<unsigned char> bytes(decoded.begin(), decoded.end());
 	bytes.push_back(0);
 	return bytes;
 }
@@ -715,20 +676,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAggregateElement(TypeId type,
 		{
 			if (arena_->IsTag(source, "call-expression"))
 			{
-				ExpressionInfo constructed = AnalyzeExpression(source, scope);
-				if (dump_.nodes[constructed.node].kind ==
-					DUMP_TEMPORARY_OBJECT &&
-					dump_.nodes[constructed.node].first_edge != kNoDumpEdge)
-				{
-					const std::uint32_t initialization = dump_.edges[
-						dump_.nodes[constructed.node].first_edge].child;
-					if (dump_.edges[dump_.nodes[constructed.node].first_edge].next ==
-						kNoDumpEdge)
-					{
-						constructed.node = initialization;
-						constructed.category = VALUE_NONE;
-					}
-				}
+				ExpressionInfo constructed =
+					AnalyzeExpression(source, scope, type);
 				if (program_->types.RemoveTopCv(constructed.type) == object &&
 					(dump_.nodes[constructed.node].kind ==
 						DUMP_CONSTRUCTOR_ACTION ||
@@ -818,16 +767,15 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAggregateInit(TypeId type,
 	return result;
 }
 
-std::uint32_t SemanticAnalyzer::BuildAggregateConstructorAction(TypeId type,
-	ScopeId scope, std::uint32_t aggregate_list)
+std::uint32_t SemanticAnalyzer::BuildAggregateConstructionAction(TypeId type,
+	std::uint32_t aggregate_list)
 {
 	const EntityId entity = EntityOf(type);
 	if (!IsClassEntity(*program_, entity) ||
 		!program_->entities[entity].is_aggregate)
 		throw std::logic_error("aggregate helper has non-aggregate type");
-	std::vector<std::uint32_t> member_actions;
 	std::vector<std::uint32_t> values;
-	std::vector<ParameterInfo> parameters;
+	std::vector<BindingId> members;
 	std::vector<TypeId> parameter_types;
 	for (std::uint32_t edge = dump_.nodes[aggregate_list].first_edge;
 		edge != kNoDumpEdge; edge = dump_.edges[edge].next)
@@ -837,86 +785,55 @@ std::uint32_t SemanticAnalyzer::BuildAggregateConstructorAction(TypeId type,
 		if (action.kind != DUMP_INITIALIZER_ACTION ||
 			action.binding == kNoBinding)
 			throw std::logic_error("aggregate helper has invalid member action");
-		if (action.first_edge == kNoDumpEdge) continue;
+		if (action.first_edge == kNoDumpEdge) return aggregate_list;
 		if (dump_.edges[action.first_edge].next != kNoDumpEdge)
 			throw std::runtime_error(
 				"aggregate helper member has multiple values");
 		const std::uint32_t value = dump_.edges[action.first_edge].child;
-		if (program_->types.Get(program_->types.RemoveTopCv(action.type)).kind ==
-			TYPE_ARRAY || IsClassEntity(*program_, EntityOf(action.type)))
-			throw std::runtime_error(
-				"nested aggregate helper parameter is outside PA16");
-		member_actions.push_back(action_node);
+		const TypeKind kind = program_->types.Get(
+			program_->types.RemoveTopCv(action.type)).kind;
+		if (kind == TYPE_ARRAY || kind == TYPE_LVALUE_REFERENCE ||
+			kind == TYPE_RVALUE_REFERENCE ||
+			IsClassEntity(*program_, EntityOf(action.type)))
+			return aggregate_list;
 		values.push_back(value);
-		const BindingRecord& member = program_->bindings[action.binding];
+		members.push_back(action.binding);
 		const TypeId adjusted = AdjustParameterType(action.type);
-		parameters.push_back(ParameterInfo(member.name, action.type, adjusted));
 		parameter_types.push_back(adjusted);
 	}
-	if (parameters.empty()) return BuildDefaultConstructorAction(type, scope);
-	EntityRecord& owner = program_->entities[entity];
+	if (members.empty()) return aggregate_list;
+	const EntityRecord& owner = program_->entities[entity];
+	std::vector<TypeId> boundary_types;
+	boundary_types.reserve(parameter_types.size() + 1);
+	boundary_types.push_back(program_->types.Pointer(type));
+	boundary_types.insert(boundary_types.end(), parameter_types.begin(),
+		parameter_types.end());
 	const TypeId function_type = program_->types.Function(
-		program_->types.Fundamental(FUND_VOID), parameter_types, false);
+		program_->types.Fundamental(FUND_VOID), boundary_types, false);
 	const FunctionSignatureKey key(owner.member_scope, owner.identity_name,
 		function_type);
-	BindingId constructor = function_declarations_.Find(key);
-	if (constructor == kNoBinding)
+	BindingId encoded = aggregate_helper_index_.Find(key);
+	std::uint32_t helper = kNoDumpEdge;
+	if (encoded == kNoBinding)
 	{
-		constructor = DeclareFunction(owner.member_scope, owner.identity_name,
-			function_type, parameters, true, false, STORAGE_CLASS_NONE,
-			LANGUAGE_LINKAGE_CPP, true);
-		constructor = program_->bindings[constructor].canonical;
-		BindingRecord& binding = program_->bindings[constructor];
-		binding.member_owner = entity;
-		binding.constructor = true;
-		FunctionInfo& info = GetMutableFunction(constructor);
-		info.member_owner = owner.type;
-		info.constructor = true;
-		info.implicit_constructor = true;
-		info.deferred = false;
-
-		const TypeId output_type = AdaptMemberFunctionType(constructor);
-		const std::uint32_t function = MakeDump(DUMP_FUNCTION_DEFINITION,
-			output_type, VALUE_NONE, info.display_name, constructor);
-		const ScopeId function_scope = NewScope(owner.member_scope,
-			SCOPE_FUNCTION, owner.identity_name, ScopePrefixId(owner.member_scope));
-		const NameId this_name = program_->names.Intern("this");
-		const TypeId this_type = program_->types.Parameters(output_type)[0];
-		const BindingId this_binding = program_->AddBinding(function_scope,
-			BIND_PARAMETER, this_name, this_type);
-		dump_.Add(function, MakeDump(DUMP_PARAMETER, this_type,
-			VALUE_NONE, this_name, this_binding));
-		std::vector<BindingId> parameter_bindings;
-		for (std::size_t i = 0; i < parameters.size(); ++i)
-		{
-			const BindingId parameter = program_->AddBinding(function_scope,
-				BIND_PARAMETER, parameters[i].name, parameters[i].declared_type);
-			parameter_bindings.push_back(parameter);
-			dump_.Add(function, MakeDump(DUMP_PARAMETER,
-				parameters[i].function_type, VALUE_NONE,
-				parameters[i].name, parameter));
-		}
-		const std::uint32_t body = MakeDump(DUMP_COMPOUND_STATEMENT);
-		dump_.Add(function, body);
-		for (std::size_t i = 0; i < member_actions.size(); ++i)
-		{
-			const DumpNode& source = dump_.nodes[member_actions[i]];
-			const std::uint32_t action = MakeDump(DUMP_INITIALIZER_ACTION,
-				source.type, VALUE_NONE, source.text, source.binding);
-			const BindingRecord& parameter =
-				program_->bindings[parameter_bindings[i]];
-			dump_.Add(action, MakeDump(DUMP_ID_EXPRESSION,
-				parameters[i].function_type, VALUE_LVALUE,
-				parameter.name, parameter_bindings[i]));
-			dump_.Add(body, action);
-		}
-		dump_.Add(root_, function);
+		if (aggregate_helpers_.size() >= kNoDumpEdge)
+			throw std::runtime_error("too many aggregate helper identities");
+		helper = static_cast<std::uint32_t>(aggregate_helpers_.size());
+		aggregate_helpers_.push_back(AggregateHelperInfo(
+			entity, type, function_type, members));
+		aggregate_helper_index_.Insert(key,
+			static_cast<BindingId>(helper));
 	}
-	constructor = program_->bindings[constructor].canonical;
-	const FunctionInfo& info = GetFunction(constructor);
-	const std::uint32_t call = MakeDump(DUMP_CONSTRUCTOR_ACTION,
-		AdaptMemberFunctionType(constructor), VALUE_NONE,
-		info.display_name, constructor);
+	else
+	{
+		helper = static_cast<std::uint32_t>(encoded);
+		if (helper >= aggregate_helpers_.size() ||
+			aggregate_helpers_[helper].members != members)
+			throw std::logic_error("aggregate helper identity collision");
+	}
+	const std::uint32_t call = MakeDump(
+		DUMP_AGGREGATE_CONSTRUCTION_ACTION, type, VALUE_NONE);
+	dump_.nodes[call].aggregate_helper = helper;
 	for (std::size_t i = 0; i < values.size(); ++i)
 		dump_.Add(call, values[i]);
 	++expression_count_;
@@ -924,7 +841,7 @@ std::uint32_t SemanticAnalyzer::BuildAggregateConstructorAction(TypeId type,
 }
 
 ExpressionInfo SemanticAnalyzer::BuildLocalAggregateArrayActions(
-	const ExpressionInfo& initializer, ScopeId scope)
+	const ExpressionInfo& initializer)
 {
 	const TypeRecord array = program_->types.Get(
 		program_->types.RemoveTopCv(initializer.type));
@@ -934,8 +851,6 @@ ExpressionInfo SemanticAnalyzer::BuildLocalAggregateArrayActions(
 		!program_->entities[element].is_aggregate ||
 		dump_.nodes[initializer.node].kind != DUMP_BRACED_INIT_LIST)
 		return initializer;
-	const std::uint32_t list = MakeDump(DUMP_BRACED_INIT_LIST,
-		initializer.type, initializer.category);
 	for (std::uint32_t edge = dump_.nodes[initializer.node].first_edge;
 		edge != kNoDumpEdge; edge = dump_.edges[edge].next)
 	{
@@ -943,13 +858,11 @@ ExpressionInfo SemanticAnalyzer::BuildLocalAggregateArrayActions(
 		if (dump_.nodes[element_node].kind != DUMP_BRACED_INIT_LIST)
 			throw std::logic_error(
 				"aggregate array element has no action list");
-		dump_.Add(list, BuildAggregateConstructorAction(
-			array.child, scope, element_node));
+		const std::uint32_t replacement =
+			BuildAggregateConstructionAction(array.child, element_node);
+		dump_.edges[edge].child = replacement;
 	}
-	ExpressionInfo result = initializer;
-	result.node = list;
-	++expression_count_;
-	return result;
+	return initializer;
 }
 
 ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
@@ -1006,8 +919,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
 		{
 			const ExpressionInfo aggregate = AnalyzeBracedInit(
 				initializer, scope, object_type);
-			construction = BuildAggregateConstructorAction(
-				object_type, scope, aggregate.node);
+			construction = BuildAggregateConstructionAction(
+				object_type, aggregate.node);
 		}
 		else
 		{
@@ -1050,27 +963,7 @@ ExpressionInfo SemanticAnalyzer::MaterializeTemporary(
 	const DumpNode& action = dump_.nodes[initializer.node];
 	if (action.kind == DUMP_CONSTRUCTOR_ACTION &&
 		action.binding != kNoBinding)
-	{
-		const EntityId entity = EntityOf(initializer.type);
-		const FunctionInfo& constructor = GetFunction(action.binding);
-		if (constructor.implicit_constructor &&
-			program_->entities[entity].trivial_default_constructor)
-		{
-			if (default_constructor_demand_states_.size() <= entity)
-				default_constructor_demand_states_.resize(
-					static_cast<std::size_t>(entity) + 1, 0);
-			if (default_constructor_demand_states_[entity] == 0)
-			{
-				default_constructor_demand_states_[entity] = 1;
-				demanded_default_constructor_entities_.push_back(entity);
-				++demand_worklist_pushes_;
-			}
-			if (bound_default_constructor_emissions_.size() <= entity)
-				bound_default_constructor_emissions_.resize(
-					static_cast<std::size_t>(entity) + 1, 0);
-			bound_default_constructor_emissions_[entity] = 1;
-		}
-	}
+		DemandFunction(action.binding);
 	ExpressionInfo result = initializer;
 	result.node = temporary;
 	result.category = VALUE_XVALUE;
@@ -1083,6 +976,14 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 	NodeId arguments_node, TypeId target)
 {
 	const EntityId cast_entity = EntityOf(cast_type);
+	if (program_->entities[cast_entity].is_aggregate &&
+		arguments_node != kNoNode &&
+		arena_->IsTag(arguments_node, "braced-init-list"))
+	{
+		ExpressionInfo result = AnalyzeBracedInit(
+			arguments_node, scope, cast_type);
+		return target == kNoType ? MaterializeTemporary(result) : result;
+	}
 	if (program_->entities[cast_entity].is_aggregate && argument_syntax.empty())
 	{
 		if (target == kNoType)
@@ -1174,44 +1075,19 @@ void SemanticAnalyzer::EmitDefaultConstructor(EntityId entity)
 		default_constructor_demand_states_[entity] != 1) return;
 	default_constructor_demand_states_[entity] = 2;
 	const TypeId type = program_->entities[entity].type;
-	if (entity >= implicit_constructor_by_entity_.size() ||
-		implicit_constructor_by_entity_[entity] == kNoBinding)
-		throw std::logic_error("default constructor has no semantic binding");
-	const BindingId constructor =
-		implicit_constructor_by_entity_[entity];
 	const std::string owner = program_->names.Get(program_->entities[entity].name);
 	const std::size_t separator = owner.rfind("::");
 	const std::string leaf = separator == std::string::npos ? owner :
 		owner.substr(separator + 2);
 	const NameId name = program_->names.Intern(owner + "::" + leaf);
-	const bool bound = entity < bound_default_constructor_emissions_.size() &&
-		bound_default_constructor_emissions_[entity] != 0;
 	const TypeId this_type = program_->types.Pointer(type);
 	std::vector<TypeId> parameters(1, this_type);
 	const TypeId function_type = program_->types.Function(
 		program_->types.Fundamental(FUND_VOID), parameters, false);
 	const std::uint32_t function = MakeDump(DUMP_FUNCTION_DEFINITION,
-		function_type, VALUE_NONE, name, bound ? constructor : kNoBinding);
-	if (!bound)
-	{
-		const std::uint32_t parameter = MakeDump(DUMP_PARAMETER, this_type,
-			VALUE_NONE, program_->names.Intern("this"));
-		const std::uint32_t body = MakeDump(DUMP_COMPOUND_STATEMENT);
-		dump_.Add(function, parameter);
-		dump_.Add(function, body);
-		dump_.Add(root_, function);
-		++default_constructor_emissions_;
-		return;
-	}
-	const ScopeId function_scope = NewScope(
-		program_->entities[entity].member_scope, SCOPE_FUNCTION,
-		program_->entities[entity].identity_name,
-		ScopePrefixId(program_->entities[entity].member_scope));
-	const NameId this_name = program_->names.Intern("this");
-	const BindingId this_binding = program_->AddBinding(function_scope,
-		BIND_PARAMETER, this_name, this_type);
+		function_type, VALUE_NONE, name);
 	const std::uint32_t parameter = MakeDump(DUMP_PARAMETER, this_type,
-		VALUE_NONE, this_name, this_binding);
+		VALUE_NONE, program_->names.Intern("this"));
 	const std::uint32_t body = MakeDump(DUMP_COMPOUND_STATEMENT);
 	dump_.Add(function, parameter);
 	dump_.Add(function, body);

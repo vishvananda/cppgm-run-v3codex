@@ -1,0 +1,36 @@
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $values : obj<16x4>
+
+  block ^entry:
+    %t1 = addr $values
+    %t2 = index i8 [projection=field] %t1, 0
+    store i32 0, %t2
+    %t3 = index i8 [projection=field] %t1, 4
+    store i32 0, %t3
+    %t4 = index i8 %t1, 8
+    %t5 = index i8 [projection=field] %t4, 0
+    store i32 1, %t5
+    %t6 = index i8 [projection=field] %t4, 4
+    store i32 0, %t6
+    %t7 = addr $values
+    %t8 = unary decay ptr %t7
+    %t9 = binary mul i64 0, 8
+    %t10 = index i8 [projection=array_element] %t8, %t9
+    %t11 = index i8 [projection=field] %t10, 0
+    %t12 = load i32 %t11
+    %t13 = addr $values
+    %t14 = unary decay ptr %t13
+    %t15 = binary mul i64 0, 8
+    %t16 = index i8 [projection=array_element] %t14, %t15
+    %t17 = index i8 [projection=field] %t16, 4
+    %t18 = load i32 %t17
+    %t19 = binary add i32 %t12, %t18
+    %t20 = addr $values
+    %t21 = unary decay ptr %t20
+    %t22 = binary mul i64 1, 8
+    %t23 = index i8 [projection=array_element] %t21, %t22
+    %t24 = index i8 [projection=field] %t23, 4
+    %t25 = load i32 %t24
+    %t26 = binary add i32 %t19, %t25
+    return i32 %t26
+}

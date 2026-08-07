@@ -1315,6 +1315,26 @@ bool DecodeOrdinaryStringLiteral(const std::string& source,
 	return true;
 }
 
+bool DecodeNarrowStringLiteral(const std::string& source,
+	std::string* value)
+{
+	if (!value)
+		throw std::logic_error("missing decoded string destination");
+	StringPart parsed;
+	if (!ParseStringPart(source, &parsed) ||
+		(parsed.encoding != ENCODING_ORDINARY &&
+		 parsed.encoding != ENCODING_UTF8) ||
+		parsed.suffix_begin != parsed.suffix_end)
+		return false;
+	std::vector<unsigned char> bytes;
+	std::size_t units = 0;
+	if (!DecodeStringPart(source, parsed.content_begin, parsed.content_end,
+		parsed.raw, parsed.encoding, &bytes, &units))
+		return false;
+	value->assign(bytes.begin(), bytes.end());
+	return true;
+}
+
 const char* FundamentalTypeName(FundamentalType type)
 {
 	static const char* names[] = {

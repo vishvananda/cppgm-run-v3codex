@@ -8,6 +8,7 @@
 #include "pa12_semantic.h"
 #include "pa12_semantic_model.h"
 #include "pa16_array_lifetime_lowering.h"
+#include "pa16_aggregate_helper_lowering.h"
 #include "pa16_assignment_lowering.h"
 #include "pa16_constructor_lowering.h"
 #include "pa16_destructor_action_lowering.h"
@@ -39,6 +40,7 @@ typedef SmallSequence<BindingId, kAggregateProjectionReplayLimit> AggregatePath;
 
 class GraphLowerer :
 	private pa16_lowering_detail::AssignmentLowering<GraphLowerer>,
+	private pa16_lowering_detail::AggregateHelperLowering<GraphLowerer>,
 	private pa16_lowering_detail::ConstructorActionLowering<GraphLowerer>,
 	private pa16_lowering_detail::ArrayLifetimeLowering<GraphLowerer>,
 	private pa16_lowering_detail::DestructorActionLowering<GraphLowerer>,
@@ -87,12 +89,16 @@ public:
 		binding_slots_.resize(program_.bindings.size(), kNoLowId);
 		generated_slots_.resize(arena_.nodes.size(), kNoLowId);
 		switch_case_blocks_.resize(arena_.nodes.size(), kNoLowId);
+		aggregate_helper_symbols_.resize(
+			graph_.aggregate_helpers.size(), kNoLowId);
 	}
 
 	void Lower()
 	{
+		RegisterAggregateHelpers();
 		ScanTop(graph_.root);
 		EmitTop(graph_.root);
+		EmitAggregateHelpers();
 		EmitThreadLocalInitializers();
 		EmitDynamicInitializer();
 		EmitDynamicFinalizer();
@@ -100,6 +106,7 @@ public:
 
 private:
 	friend class pa16_lowering_detail::AssignmentLowering<GraphLowerer>;
+	friend class pa16_lowering_detail::AggregateHelperLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::ConstructorActionLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::ArrayLifetimeLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::DestructorActionLowering<GraphLowerer>;
@@ -1327,7 +1334,7 @@ private:
 					LowerExpressionType(RemoveReference(record.type)));
 		}
 		else if (record.kind == DUMP_NEW_EXPRESSION)
-			result = LowerNewExpression(children);
+			result = LowerNewExpression(record, children);
 		else if (record.kind == DUMP_CAST_EXPRESSION)
 		{
 			if (children.size() != 1) throw std::runtime_error("invalid semantic cast");
@@ -2947,6 +2954,7 @@ private:
 	std::vector<SlotId> binding_slots_;
 	std::vector<SlotId> generated_slots_;
 	std::vector<BlockId> switch_case_blocks_;
+	std::vector<SymbolId> aggregate_helper_symbols_;
 	std::vector<BlockId> break_targets_;
 	std::vector<BlockId> continue_targets_;
 	std::vector<StatementTask> statement_tasks_;

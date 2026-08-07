@@ -67,6 +67,7 @@ enum DumpKind
 	DUMP_ASSIGNMENT_EXPRESSION,
 	DUMP_CAST_EXPRESSION,
 	DUMP_BRACED_INIT_LIST,
+	DUMP_AGGREGATE_CONSTRUCTION_ACTION,
 	DUMP_INITIALIZER_ACTION,
 	DUMP_BASE_INITIALIZER_ACTION,
 	DUMP_MEMBER_EXPRESSION,
@@ -92,6 +93,7 @@ struct DumpNode
 	std::uint32_t first_edge;
 	std::uint32_t last_edge;
 	std::uint32_t base_projection_count;
+	std::uint32_t aggregate_helper;
 	bool constant;
 	bool integer_narrowing_conversion;
 	bool value_initialization;
@@ -103,6 +105,7 @@ struct DumpNode
 		  object_binding(kNoBinding),
 		  constant_value(0), first_edge(kNoDumpEdge),
 		  last_edge(kNoDumpEdge), base_projection_count(0),
+		  aggregate_helper(kNoDumpEdge),
 		  constant(false), integer_narrowing_conversion(false),
 		  value_initialization(false), elide_empty_constructor(false) {}
 };
@@ -318,6 +321,23 @@ struct NamespaceObjectAction
 		  initializer(initializer_value), destructor(destructor_value) {}
 };
 
+// A lowering-only aggregate helper has a canonical typed identity but is not a
+// C++ constructor declaration and therefore never participates in lookup.
+// The explicit parameters correspond one-for-one with members; the hidden
+// object parameter is already present in function_type.
+struct AggregateHelperInfo
+{
+	EntityId entity;
+	TypeId object_type;
+	TypeId function_type;
+	std::vector<BindingId> members;
+
+	AggregateHelperInfo(EntityId entity_value, TypeId object_type_value,
+		TypeId function_type_value, const std::vector<BindingId>& members_value)
+		: entity(entity_value), object_type(object_type_value),
+		  function_type(function_type_value), members(members_value) {}
+};
+
 // Borrowed, translation-unit-local view of the canonical PA12 graph.  The
 // owner invokes consumers synchronously before releasing Program and DumpArena;
 // consumers must copy only the typed facts needed by their next phase.
@@ -326,14 +346,17 @@ struct SemanticGraphView
 	const Program& program;
 	const DumpArena& arena;
 	const std::vector<NamespaceObjectAction>& namespace_objects;
+	const std::vector<AggregateHelperInfo>& aggregate_helpers;
 	std::uint32_t root;
 
 	SemanticGraphView(const Program& program_value,
 		const DumpArena& arena_value,
 		const std::vector<NamespaceObjectAction>& namespace_objects_value,
+		const std::vector<AggregateHelperInfo>& aggregate_helpers_value,
 		std::uint32_t root_value)
 		: program(program_value), arena(arena_value),
-		  namespace_objects(namespace_objects_value), root(root_value) {}
+		  namespace_objects(namespace_objects_value),
+		  aggregate_helpers(aggregate_helpers_value), root(root_value) {}
 };
 
 class SemanticGraphConsumer

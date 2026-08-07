@@ -1,21 +1,10 @@
 #include "pa15_lowering_support.h"
+#include "post_tokenizer.h"
 
 namespace cppgm
 {
 namespace pa15_lowering_support
 {
-
-namespace
-{
-
-int HexDigit(char value)
-{
-	return value >= '0' && value <= '9' ? value - '0' :
-		value >= 'a' && value <= 'f' ? value - 'a' + 10 :
-		value >= 'A' && value <= 'F' ? value - 'A' + 10 : -1;
-}
-
-}
 
 std::string StripOperationPrefix(const std::string& operation)
 {
@@ -59,42 +48,10 @@ std::int64_t CanonicalIntegerImmediate(std::int64_t value,
 
 std::vector<unsigned char> DecodeStringLiteral(const std::string& spelling)
 {
-	std::vector<unsigned char> bytes;
-	const std::size_t first = spelling.find('"');
-	const std::size_t last = spelling.rfind('"');
-	if (first == std::string::npos || last <= first)
+	std::string decoded;
+	if (!DecodeNarrowStringLiteral(spelling, &decoded))
 		throw std::runtime_error("invalid PA15 string literal spelling");
-	for (std::size_t i = first + 1; i < last; ++i)
-	{
-		unsigned value = static_cast<unsigned char>(spelling[i]);
-		if (spelling[i] == '\\' && ++i < last)
-		{
-			const char escape = spelling[i];
-			if (escape == 'x')
-			{
-				value = 0;
-				int digit = -1;
-				while (i + 1 < last && (digit = HexDigit(spelling[i + 1])) >= 0)
-				{
-					value = value * 16 + static_cast<unsigned>(digit);
-					++i;
-				}
-			}
-			else if (escape >= '0' && escape <= '7')
-			{
-				value = static_cast<unsigned>(escape - '0');
-				for (int count = 1; count < 3 && i + 1 < last &&
-					spelling[i + 1] >= '0' && spelling[i + 1] <= '7'; ++count)
-					value = value * 8 +
-						static_cast<unsigned>(spelling[++i] - '0');
-			}
-			else value = escape == 'n' ? '\n' : escape == 'r' ? '\r' :
-				escape == 't' ? '\t' : escape == 'v' ? '\v' :
-				escape == 'b' ? '\b' : escape == 'f' ? '\f' :
-				escape == 'a' ? '\a' : static_cast<unsigned char>(escape);
-		}
-		bytes.push_back(static_cast<unsigned char>(value));
-	}
+	std::vector<unsigned char> bytes(decoded.begin(), decoded.end());
 	bytes.push_back(0);
 	return bytes;
 }
