@@ -787,6 +787,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		binding.static_member_function =
 			spec.storage_class == STORAGE_CLASS_STATIC;
 		if (!binding.static_member_function) info.member_owner = owner_type;
+		ValidateFunctionRefQualifier(function);
 		info.definition_body =
 			FindChild(node, "compound-statement");
 		info.deferred = true;
@@ -823,6 +824,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 				spec.storage_class == STORAGE_CLASS_STATIC;
 			if (!binding.static_member_function)
 				GetMutableFunction(function).member_owner = owner_type;
+			ValidateFunctionRefQualifier(function);
 		}
 		else
 		{
@@ -1064,6 +1066,7 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 		FunctionInfo& info = GetMutableFunction(destructor);
 		info.member_owner = owner_type;
 		info.destructor = true;
+		ValidateFunctionRefQualifier(destructor);
 		info.defaulted_destructor =
 			info.defaulted_destructor || defaulted;
 		info.deleted_destructor = info.deleted_destructor || deleted;
@@ -1113,6 +1116,7 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 	FunctionInfo& info = GetMutableFunction(constructor);
 	info.member_owner = owner_type;
 	info.constructor = true;
+	ValidateFunctionRefQualifier(constructor);
 	info.defaulted_constructor = info.defaulted_constructor || defaulted;
 	info.deleted_constructor = info.deleted_constructor || deleted;
 	const NodeId specifiers = FindChild(node, "member-specifiers");
@@ -1181,6 +1185,7 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 		(destructor_definition && !info.destructor))
 		throw std::runtime_error(
 			"qualified special member definition has no matching declaration");
+	ValidateFunctionRefQualifier(special);
 	info.definition_body = FindChild(node, "compound-statement");
 	if (constructor_definition)
 		info.constructor_initializer = FindChild(node, "ctor-initializer");
@@ -1549,6 +1554,7 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 	std::vector<NodeId> suffixes;
 	NodeId nested = kNoNode;
 	std::uint8_t function_cv = CV_NONE;
+	std::uint8_t function_ref = FUNCTION_REF_NONE;
 	bool saw_function_suffix = false;
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
@@ -1582,6 +1588,13 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 				CV_CONST : CV_VOLATILE;
 			if (saw_function_suffix) function_cv |= flag;
 			else type = program_->types.Qualify(type, flag);
+		}
+		else if (arena_->IsTag(child, "ref-qualifier"))
+		{
+			if (function_ref != FUNCTION_REF_NONE)
+				throw std::runtime_error("duplicate function ref-qualifier");
+			function_ref = PayloadSource(child) == "&" ?
+				FUNCTION_REF_LVALUE : FUNCTION_REF_RVALUE;
 		}
 		else if (arena_->IsTag(child, "nested-declarator"))
 			nested = FirstSemanticChild(child);
@@ -1618,7 +1631,7 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 			for (std::size_t p = 0; p < parameters.size(); ++p)
 				function_parameters.push_back(parameters[p].function_type);
 			type = program_->types.Function(type, function_parameters, variadic,
-				function_cv);
+				function_cv, function_ref);
 			result.parameters = parameters;
 		}
 	}
@@ -1654,7 +1667,8 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 		signature_parameters.push_back(declared_parameters[i]);
 	const TypeId signature = program_->types.Function(
 		program_->types.Fundamental(FUND_VOID), signature_parameters,
-		declared_type.variadic, declared_type.cv);
+		declared_type.variadic, declared_type.cv,
+		declared_type.ref_qualifier);
 	const FunctionSignatureKey signature_key(owner, name, signature);
 	BindingId previous = kNoBinding;
 	BindingId imported = kNoBinding;
@@ -2138,7 +2152,8 @@ void SemanticAnalyzer::AnalyzeFriendFunction(NodeId node,
 					parameter_data + declared_type.parameter_count);
 			const TypeId signature = program_->types.Function(
 				program_->types.Fundamental(FUND_VOID), parameters,
-				declared_type.variadic, declared_type.cv);
+				declared_type.variadic, declared_type.cv,
+				declared_type.ref_qualifier);
 			++function_signature_lookups_;
 			const BindingId prior = function_declarations_.Find(
 				FunctionSignatureKey(declared_owner, parsed.name, signature));
@@ -2152,6 +2167,7 @@ void SemanticAnalyzer::AnalyzeFriendFunction(NodeId node,
 			IsNonthrowing(declarators[i], class_scope), false);
 		FunctionInfo& info = GetMutableFunction(binding);
 		if (info.friend_of == kNoEntity) info.friend_of = owner_entity;
+		ValidateFunctionRefQualifier(binding);
 		const std::uint64_t access_key =
 			(static_cast<std::uint64_t>(owner_entity) << 32) | binding;
 		CompactIndexSequence& grants =
@@ -2262,6 +2278,42 @@ void SemanticAnalyzer::ValidateNonmemberOperator(BindingId binding) const
 	}
 	throw std::runtime_error(
 		"nonmember operator requires a class or enumeration parameter");
+}
+
+void SemanticAnalyzer::ValidateFunctionRefQualifier(BindingId binding)
+{
+	const FunctionInfo& function = GetFunction(binding);
+	const BindingRecord& record = program_->bindings[function.binding];
+	const TypeRecord& type = program_->types.Get(function.type);
+	const bool member = function.member_owner != kNoType;
+	if (type.ref_qualifier != FUNCTION_REF_NONE &&
+		(!member || record.static_member_function || record.constructor ||
+		 record.destructor))
+		throw std::runtime_error(
+			"ref-qualifier requires an ordinary non-static member function");
+	if (!member) return;
+
+	const TypeId* parameters = program_->types.Parameters(function.type);
+	std::vector<TypeId> parameter_shape;
+	if (type.parameter_count != 0)
+		parameter_shape.assign(parameters, parameters + type.parameter_count);
+	const TypeId shape = program_->types.Function(
+		program_->types.Fundamental(FUND_VOID), parameter_shape,
+		type.variadic, type.cv, FUNCTION_REF_NONE);
+	const FunctionSignatureKey key(record.owner, record.name, shape);
+	++function_signature_lookups_;
+	const BindingId prior = member_ref_qualifier_shapes_.Find(key);
+	if (prior == kNoBinding)
+	{
+		member_ref_qualifier_shapes_.Insert(key, function.binding);
+		return;
+	}
+	const TypeRecord& prior_type =
+		program_->types.Get(GetFunction(prior).type);
+	if ((type.ref_qualifier == FUNCTION_REF_NONE) !=
+		(prior_type.ref_qualifier == FUNCTION_REF_NONE))
+		throw std::runtime_error(
+			"member overload set mixes ref-qualified and unqualified declarations");
 }
 
 const FunctionInfo& SemanticAnalyzer::GetFunction(BindingId binding) const

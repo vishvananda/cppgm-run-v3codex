@@ -367,7 +367,10 @@ ExpressionInfo SemanticAnalyzer::MakeImplicitObjectPointer(
 	ExpressionInfo result = object;
 	const TypeId object_type = EffectiveType(object.type);
 	result.type = program_->types.Pointer(object_type);
-	result.category = VALUE_PRVALUE;
+	// The LowIR address is a pointer prvalue, while overload resolution needs
+	// the value category of the source object expression.  Keep that semantic
+	// fact on the transient expression record; the dump node remains a prvalue.
+	result.category = object.category;
 	result.binding = kNoBinding;
 	result.constant = false;
 	result.node = MakeDump(DUMP_UNARY_EXPRESSION, result.type, VALUE_PRVALUE,
@@ -405,6 +408,11 @@ BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
 		const std::size_t argument_begin = member ? 1 : 0;
 		if (member)
 		{
+			if (!RefQualifierViable(object, function_type))
+			{
+				viable[c] = false;
+				continue;
+			}
 			TypeId object_type = function.member_owner;
 			if ((function_type.cv & CV_CONST) != 0)
 				object_type = program_->types.Qualify(object_type, CV_CONST);
@@ -475,7 +483,8 @@ BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
 		}
 	}
 
-	const auto better = [this, &ranks, &base_distances, &candidates, arity](
+	const auto better = [this, &ranks, &base_distances, &candidates, &object,
+		arity](
 		std::size_t left, std::size_t right) -> bool
 	{
 		++overload_order_comparisons_;
@@ -498,6 +507,14 @@ BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
 		if (strictly_better) return true;
 		const FunctionInfo& lfunction = GetFunction(candidates[left]);
 		const FunctionInfo& rfunction = GetFunction(candidates[right]);
+		if (lfunction.member_owner != kNoType &&
+			rfunction.member_owner != kNoType)
+		{
+			const int preference = CompareImplicitObjectBindings(
+				object.category, program_->types.Get(lfunction.type),
+				program_->types.Get(rfunction.type));
+			if (preference != 0) return preference > 0;
+		}
 		return !lfunction.template_specialization &&
 			rfunction.template_specialization;
 	};

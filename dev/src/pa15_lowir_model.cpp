@@ -63,6 +63,7 @@ IdentityTypeId EmissionIdentityTable::InternFunctionSignature(
 	key.kind = TYPE_FUNCTION;
 	key.variadic = source.variadic;
 	key.cv = source.cv;
+	key.ref_qualifier = source.ref_qualifier;
 	const TypeId* parameters = program.types.Parameters(type);
 	for (std::size_t i = 0; i < source.parameter_count; ++i)
 		key.parameters.push_back(InternType(program, parameters[i], cache));
@@ -123,6 +124,7 @@ IdentityTypeKey EmissionIdentityTable::MakeTypeKey(const Program& program,
 	key.fundamental = source.fundamental;
 	key.bound = source.kind == TYPE_MEMBER_POINTER ? 0 : source.bound;
 	key.cv = source.cv;
+	key.ref_qualifier = source.ref_qualifier;
 	key.variadic = source.variadic;
 	if (source.kind == TYPE_NAMED || source.kind == TYPE_MEMBER_POINTER)
 	{

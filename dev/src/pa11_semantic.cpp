@@ -818,6 +818,9 @@ DeclaratorInfo TypeAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 	TypeId type = base;
 	std::vector<NodeId> suffixes;
 	NodeId nested = kNoNode;
+	std::uint8_t function_cv = CV_NONE;
+	std::uint8_t function_ref = FUNCTION_REF_NONE;
+	bool saw_function_suffix = false;
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
 	{
@@ -835,14 +838,27 @@ DeclaratorInfo TypeAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 		else if (arena_->IsTag(child, "cv-qualifier"))
 		{
 			const std::string qualifier = PayloadSource(child);
-			type = program_->types.Qualify(type,
-				qualifier == "const" ? CV_CONST : CV_VOLATILE);
+			const std::uint8_t flag = qualifier == "const" ?
+				CV_CONST : CV_VOLATILE;
+			if (saw_function_suffix) function_cv |= flag;
+			else type = program_->types.Qualify(type, flag);
+		}
+		else if (arena_->IsTag(child, "ref-qualifier"))
+		{
+			if (function_ref != FUNCTION_REF_NONE)
+				throw std::runtime_error("duplicate function ref-qualifier");
+			function_ref = PayloadSource(child) == "&" ?
+				FUNCTION_REF_LVALUE : FUNCTION_REF_RVALUE;
 		}
 		else if (arena_->IsTag(child, "nested-declarator"))
 			nested = FirstSemanticChild(child);
 		else if (arena_->IsTag(child, "array-suffix") ||
 			arena_->IsTag(child, "parameter-clause"))
+		{
 			suffixes.push_back(child);
+			if (arena_->IsTag(child, "parameter-clause"))
+				saw_function_suffix = true;
+		}
 	}
 	for (std::size_t i = suffixes.size(); i != 0; --i)
 	{
@@ -864,7 +880,8 @@ DeclaratorInfo TypeAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 			std::vector<TypeId> parameter_types;
 			for (std::size_t p = 0; p < parameters.size(); ++p)
 				parameter_types.push_back(parameters[p].type);
-			type = program_->types.Function(type, parameter_types, variadic);
+			type = program_->types.Function(type, parameter_types, variadic,
+				function_cv, function_ref);
 			result.parameters = parameters;
 		}
 	}

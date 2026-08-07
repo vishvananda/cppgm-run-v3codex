@@ -109,6 +109,13 @@ enum CvFlags
 	CV_VOLATILE = 2
 };
 
+enum FunctionRefQualifier
+{
+	FUNCTION_REF_NONE,
+	FUNCTION_REF_LVALUE,
+	FUNCTION_REF_RVALUE
+};
+
 struct TypeRecord
 {
 	TypeKind kind;
@@ -118,6 +125,7 @@ struct TypeRecord
 	std::uint32_t parameter_offset;
 	std::uint32_t parameter_count;
 	std::uint8_t cv;
+	std::uint8_t ref_qualifier;
 	bool variadic;
 	FundamentalKind fundamental;
 
@@ -136,7 +144,8 @@ public:
 	TypeId Reference(TypeKind kind, TypeId type);
 	TypeId Array(TypeId type, std::uint64_t bound);
 	TypeId Function(TypeId result, const std::vector<TypeId>& parameters,
-		bool variadic, std::uint8_t cv = CV_NONE);
+		bool variadic, std::uint8_t cv = CV_NONE,
+		std::uint8_t ref_qualifier = FUNCTION_REF_NONE);
 	TypeId RemoveTopCv(TypeId type) const;
 	bool IsFunction(TypeId type) const;
 	bool IsReference(TypeId type) const;

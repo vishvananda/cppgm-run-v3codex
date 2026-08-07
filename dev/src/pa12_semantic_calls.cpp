@@ -121,20 +121,9 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 	ExpressionInfo object_pointer = object;
 	if (!arrow)
 	{
-		if (object.category != VALUE_LVALUE)
-			throw std::runtime_error(
-				"member call object is not an addressable lvalue");
-		object_pointer.type = program_->types.Pointer(owner_type);
-		object_pointer.category = VALUE_PRVALUE;
-		object_pointer.binding = kNoBinding;
-		const std::uint32_t address = MakeDump(DUMP_UNARY_EXPRESSION,
-			object_pointer.type, VALUE_PRVALUE,
-			program_->names.Intern("OP_AMP:&"));
-		dump_.Add(address, object.node);
-		object_pointer.node = address;
-		object_pointer.constant = false;
-		++expression_count_;
+		object_pointer = MakeImplicitObjectPointer(object);
 	}
+	else object_pointer.category = VALUE_LVALUE;
 	std::vector<ExpressionInfo> arguments;
 	for (std::size_t i = 0; i < argument_syntax.size(); ++i)
 		arguments.push_back(AnalyzeExpression(argument_syntax[i], scope));

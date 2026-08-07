@@ -163,6 +163,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const {
 		friend_function_grants_.StorageBytes() +
 		function_declarations_.StorageBytes() +
 		using_function_declarations_.StorageBytes() +
+		member_ref_qualifier_shapes_.StorageBytes() +
 		function_fact_by_binding_.capacity() * sizeof(std::uint32_t) +
 		functions_.capacity() * sizeof(FunctionInfo) +
 		builtin_functions_.capacity() * sizeof(BindingId) +
@@ -900,6 +901,30 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 		return ApplyTarget(AnalyzeMember(node, scope), target);
 	throw std::runtime_error("unsupported PA12 expression: " + arena_->Tag(node));
 }
+bool SemanticAnalyzer::RefQualifierViable(const ExpressionInfo& object,
+	const TypeRecord& function_type) const
+{
+	if (function_type.ref_qualifier == FUNCTION_REF_NONE) return true;
+	if (function_type.ref_qualifier == FUNCTION_REF_RVALUE)
+		return object.category != VALUE_LVALUE;
+	if (object.category == VALUE_LVALUE) return true;
+	return (function_type.cv & CV_CONST) != 0 &&
+		(function_type.cv & CV_VOLATILE) == 0;
+}
+
+int SemanticAnalyzer::CompareImplicitObjectBindings(ValueCategory category,
+	const TypeRecord& left, const TypeRecord& right) const
+{
+	if (left.cv != right.cv && (left.cv & ~right.cv) == 0) return 1;
+	if (left.cv != right.cv && (right.cv & ~left.cv) == 0) return -1;
+	if (category != VALUE_LVALUE &&
+		left.ref_qualifier != right.ref_qualifier)
+	{
+		if (left.ref_qualifier == FUNCTION_REF_RVALUE) return 1;
+		if (right.ref_qualifier == FUNCTION_REF_RVALUE) return -1;
+	}
+	return 0;
+}
 
 BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 	const std::vector<NodeId>& argument_syntax,
@@ -930,6 +955,11 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 		if (function.member_owner != kNoType)
 		{
 			if (!object)
+			{
+				viable[c] = false;
+				continue;
+			}
+			if (!RefQualifierViable(*object, function_type))
 			{
 				viable[c] = false;
 				continue;
@@ -1038,14 +1068,10 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 		if (object && left_function.member_owner != kNoType &&
 			right_function.member_owner != kNoType)
 		{
-			const std::uint8_t left_cv =
-				program_->types.Get(left_function.type).cv;
-			const std::uint8_t right_cv =
-				program_->types.Get(right_function.type).cv;
-			if (left_cv != right_cv && (left_cv & ~right_cv) == 0)
-				return true;
-			if (left_cv != right_cv && (right_cv & ~left_cv) == 0)
-				return false;
+			const int preference = CompareImplicitObjectBindings(
+				object->category, program_->types.Get(left_function.type),
+				program_->types.Get(right_function.type));
+			if (preference != 0) return preference > 0;
 		}
 		return !left_function.template_specialization &&
 			right_function.template_specialization;
@@ -1825,8 +1851,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	const std::size_t colon = operation.find(':');
 	if (colon != std::string::npos) operation.erase(colon + 1);
 	operation += program_->names.Get(name);
+	ValueCategory member_category = VALUE_LVALUE;
+	if (source_operation != "->" && member_binding.non_static_data_member &&
+		object.category != VALUE_LVALUE &&
+		!program_->types.IsReference(member_binding.type))
+		member_category = VALUE_XVALUE;
 	const std::uint32_t expression = MakeDump(DUMP_MEMBER_EXPRESSION,
-		type, VALUE_LVALUE, program_->names.Intern(operation), found.ordinary);
+		type, member_category, program_->names.Intern(operation), found.ordinary);
 	if (member_owner != kNoEntity)
 	{
 		const std::size_t projections = BaseProjectionCount(owner_type,
@@ -1841,7 +1872,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	ExpressionInfo result;
 	result.node = expression;
 	result.type = type;
-	result.category = VALUE_LVALUE;
+	result.category = member_category;
 	result.binding = found.ordinary;
 	const BindingRecord& canonical = program_->bindings[
 		program_->bindings[found.ordinary].canonical];
@@ -2171,6 +2202,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			const BindingId function = DeclareFunction(declaration_scope, parsed.name,
 				parsed.type, parsed.parameters, false, false, spec.storage_class,
 				current_language_linkage_, IsNonthrowing(declarator, scope));
+			ValidateFunctionRefQualifier(function);
 			ValidateNonmemberOperator(function);
 			const NodeId function_initializer = FindChild(item, "initializer");
 			const NodeId special = function_initializer == kNoNode ? kNoNode :
@@ -2343,6 +2375,7 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	const BindingId binding = DeclareFunction(owner, parsed.name,
 		parsed.type, parsed.parameters, true, false, spec.storage_class,
 		current_language_linkage_, IsNonthrowing(declarator, owner));
+	ValidateFunctionRefQualifier(binding);
 	ValidateNonmemberOperator(binding);
 	const FunctionInfo& function = GetFunction(binding);
 	const bool member = function.member_owner != kNoType;

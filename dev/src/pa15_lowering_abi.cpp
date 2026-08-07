@@ -233,6 +233,12 @@ std::string MangleFunction(const pa11::Program& program,
 		if ((declared_type.cv & CV_VOLATILE) != 0)
 			qualifier.function.qualifiers.push_back(
 				ABI_FUNCTION_QUALIFIER_VOLATILE);
+		if (declared_type.ref_qualifier == FUNCTION_REF_LVALUE)
+			qualifier.function.qualifiers.push_back(
+				ABI_FUNCTION_QUALIFIER_LVALUE_REFERENCE);
+		else if (declared_type.ref_qualifier == FUNCTION_REF_RVALUE)
+			qualifier.function.qualifiers.push_back(
+				ABI_FUNCTION_QUALIFIER_RVALUE_REFERENCE);
 		if (!qualifier.function.qualifiers.empty())
 			file.cases[0].records.push_back(qualifier);
 	}

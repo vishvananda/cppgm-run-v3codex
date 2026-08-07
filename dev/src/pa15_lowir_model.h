@@ -40,18 +40,21 @@ struct IdentityTypeKey
 	IdentityPathId named;
 	std::uint64_t bound;
 	std::uint8_t cv;
+	std::uint8_t ref_qualifier;
 	bool variadic;
 	std::vector<IdentityTypeId> parameters;
 
 	IdentityTypeKey()
 		: kind(TYPE_FUNDAMENTAL), fundamental(FUND_VOID), child(kNoLowId),
-		  named(kNoLowId), bound(0), cv(0), variadic(false) {}
+		  named(kNoLowId), bound(0), cv(0),
+		  ref_qualifier(FUNCTION_REF_NONE), variadic(false) {}
 
 	bool operator==(const IdentityTypeKey& other) const
 	{
 		return kind == other.kind && fundamental == other.fundamental &&
 			child == other.child && named == other.named && bound == other.bound &&
-			cv == other.cv && variadic == other.variadic &&
+			cv == other.cv && ref_qualifier == other.ref_qualifier &&
+			variadic == other.variadic &&
 			parameters == other.parameters;
 	}
 };
@@ -66,6 +69,7 @@ struct IdentityTypeHash
 		hash = hash * 16777619U ^ key.named;
 		hash = hash * 16777619U ^ static_cast<std::size_t>(key.bound);
 		hash = hash * 16777619U ^ key.cv;
+		hash = hash * 16777619U ^ key.ref_qualifier;
 		hash = hash * 16777619U ^ key.variadic;
 		for (std::size_t i = 0; i < key.parameters.size(); ++i)
 			hash = hash * 16777619U ^ key.parameters[i];

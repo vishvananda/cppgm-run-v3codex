@@ -125,6 +125,11 @@ private:
 	void AnalyzeFriendClass(NodeId node, ScopeId class_scope,
 		TypeId owner_type);
 	void ValidateNonmemberOperator(BindingId binding) const;
+	void ValidateFunctionRefQualifier(BindingId binding);
+	bool RefQualifierViable(const ExpressionInfo& object,
+		const TypeRecord& function_type) const;
+	int CompareImplicitObjectBindings(ValueCategory category,
+		const TypeRecord& left, const TypeRecord& right) const;
 	std::vector<BindingId> FunctionCandidates(ScopeId scope,
 		const std::string& spelling, EntityId* naming_class = 0);
 	std::vector<BindingId> FunctionSet(BindingId binding);
@@ -372,6 +377,7 @@ private:
 	IndexedSequenceTable friend_function_grants_;
 	FunctionSignatureTable function_declarations_;
 	FunctionSignatureTable using_function_declarations_;
+	FunctionSignatureTable member_ref_qualifier_shapes_;
 	std::vector<std::uint32_t> function_fact_by_binding_;
 	std::vector<FunctionInfo> functions_;
 	std::vector<BindingId> builtin_functions_;

@@ -55,6 +55,32 @@ const char* FlavorName(NamedFlavor flavor)
 	throw std::logic_error("invalid named type flavor");
 }
 
+const char* FunctionReturnText(std::uint8_t cv,
+	std::uint8_t ref_qualifier)
+{
+	if (ref_qualifier == FUNCTION_REF_LVALUE)
+	{
+		if (cv == CV_CONST) return ") const & returning ";
+		if (cv == CV_VOLATILE) return ") volatile & returning ";
+		if (cv == (CV_CONST | CV_VOLATILE))
+			return ") const volatile & returning ";
+		return ") & returning ";
+	}
+	if (ref_qualifier == FUNCTION_REF_RVALUE)
+	{
+		if (cv == CV_CONST) return ") const && returning ";
+		if (cv == CV_VOLATILE) return ") volatile && returning ";
+		if (cv == (CV_CONST | CV_VOLATILE))
+			return ") const volatile && returning ";
+		return ") && returning ";
+	}
+	if (cv == CV_CONST) return ") const returning ";
+	if (cv == CV_VOLATILE) return ") volatile returning ";
+	if (cv == (CV_CONST | CV_VOLATILE))
+		return ") const volatile returning ";
+	return ") returning ";
+}
+
 template <typename T, std::size_t InlineCapacity>
 class SmallStack
 {
@@ -247,7 +273,8 @@ NameId NamePath::Last() const
 
 TypeRecord::TypeRecord()
 	: kind(TYPE_INVALID), child(kNoType), entity(kNoEntity), bound(0),
-	  parameter_offset(0), parameter_count(0), cv(CV_NONE), variadic(false),
+	  parameter_offset(0), parameter_count(0), cv(CV_NONE),
+	  ref_qualifier(FUNCTION_REF_NONE), variadic(false),
 	  fundamental(FUND_INT)
 {
 }
@@ -353,7 +380,8 @@ TypeId TypeTable::Array(TypeId type, std::uint64_t bound)
 }
 
 TypeId TypeTable::Function(TypeId result,
-	const std::vector<TypeId>& parameters, bool variadic, std::uint8_t cv)
+	const std::vector<TypeId>& parameters, bool variadic, std::uint8_t cv,
+	std::uint8_t ref_qualifier)
 {
 	const TypeRecord& returned = Get(result);
 	if (returned.kind == TYPE_ARRAY || returned.kind == TYPE_FUNCTION)
@@ -367,6 +395,7 @@ TypeId TypeTable::Function(TypeId result,
 		static_cast<std::uint32_t>(parameters.size());
 	candidate.variadic = variadic;
 	candidate.cv = cv;
+	candidate.ref_qualifier = ref_qualifier;
 	return Intern(candidate, parameters.empty() ? 0 : &parameters[0],
 		parameters.size());
 }
@@ -434,6 +463,7 @@ std::size_t TypeTable::Hash(const TypeRecord& record,
 	hash = MixHash(hash, record.entity);
 	hash = MixHash(hash, record.bound);
 	hash = MixHash(hash, record.cv);
+	hash = MixHash(hash, record.ref_qualifier);
 	hash = MixHash(hash, record.variadic ? 1 : 0);
 	hash = MixHash(hash, record.fundamental);
 	for (std::size_t i = 0; i < count; ++i)
@@ -447,7 +477,9 @@ bool TypeTable::Equal(const TypeRecord& existing,
 {
 	if (existing.kind != candidate.kind || existing.child != candidate.child ||
 		existing.entity != candidate.entity || existing.bound != candidate.bound ||
-		existing.cv != candidate.cv || existing.variadic != candidate.variadic ||
+		existing.cv != candidate.cv ||
+		existing.ref_qualifier != candidate.ref_qualifier ||
+		existing.variadic != candidate.variadic ||
 		existing.fundamental != candidate.fundamental ||
 		existing.parameter_count != count) return false;
 	for (std::size_t i = 0; i < count; ++i)
@@ -1862,10 +1894,8 @@ void Program::AppendType(std::string& output, TypeId type,
 			output += "function of (";
 			const TypeId* parameters = types.Parameters(task.type);
 			tasks.Push(Task(record.child, true));
-			tasks.Push(Task(record.cv == CV_CONST ? ") const returning " :
-				record.cv == CV_VOLATILE ? ") volatile returning " :
-				record.cv == (CV_CONST | CV_VOLATILE) ?
-				") const volatile returning " : ") returning "));
+			tasks.Push(Task(FunctionReturnText(record.cv,
+				record.ref_qualifier)));
 			if (record.variadic) tasks.Push(Task("..."));
 			for (std::size_t i = record.parameter_count; i != 0; --i)
 			{
