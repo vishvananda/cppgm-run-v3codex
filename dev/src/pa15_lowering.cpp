@@ -19,6 +19,7 @@
 #include "pa16_slot_planning.h"
 #include "pa17_value_boundary_lowering.h"
 #include "pa17_special_member_lowering.h"
+#include "pa17_temporary_lifetime_lowering.h"
 
 #include <algorithm>
 #include <limits>
@@ -26,21 +27,16 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
-
 namespace cppgm
 {
 namespace
 {
-
 using namespace pa11;
 using namespace pa12_semantic_detail;
-
 using namespace pa15_lowir_detail;
 using namespace pa15_lowering_support;
-
 const std::size_t kAggregateProjectionReplayLimit = 8;
 typedef SmallSequence<BindingId, kAggregateProjectionReplayLimit> AggregatePath;
-
 class GraphLowerer :
 	private pa17_lowering_detail::ValueBoundaryLowering<GraphLowerer>,
 	private pa17_lowering_detail::SpecialMemberLowering<GraphLowerer>,
@@ -52,7 +48,8 @@ class GraphLowerer :
 	private pa16_lowering_detail::CallArgumentLowering<GraphLowerer>,
 	private pa16_lowering_detail::InitializationLowering<GraphLowerer>,
 	private pa16_lowering_detail::LifetimeActionLowering<GraphLowerer>,
-	private pa16_lowering_detail::SlotPlanning<GraphLowerer>
+	private pa16_lowering_detail::SlotPlanning<GraphLowerer>,
+	private pa17_lowering_detail::TemporaryLifetimeLowering<GraphLowerer>
 {
 public:
 	GraphLowerer(const SemanticGraphView& graph, TypedProgram& output,
@@ -70,6 +67,9 @@ public:
 		  current_this_binding_(kNoBinding),
 		  destructor_return_target_(kNoLowId),
 		  destructor_return_routes_to_epilogue_(false),
+		  full_expression_cleanup_active_(false),
+		  full_expression_cleanup_dispatch_(kNoLowId),
+		  full_expression_cleanup_end_(kNoLowId),
 		  source_types_(program_),
 		  static_initializers_(program_, arena_, output_, stats_,
 			function_symbols_, global_symbols_, literal_symbols_,
@@ -79,6 +79,7 @@ public:
 		global_symbols_.resize(program_.bindings.size(), kNoLowId);
 		literal_symbols_.resize(arena_.nodes.size(), kNoLowId);
 		temporary_initialized_.resize(arena_.nodes.size(), 0);
+		temporary_addresses_.resize(arena_.nodes.size());
 		function_definition_.resize(program_.bindings.size(), kNoDumpEdge);
 		function_declaration_.resize(program_.bindings.size(), kNoDumpEdge);
 		global_node_.resize(program_.bindings.size(), kNoDumpEdge);
@@ -126,6 +127,7 @@ private:
 	friend class pa16_lowering_detail::InitializationLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::LifetimeActionLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::SlotPlanning<GraphLowerer>;
+	friend class pa17_lowering_detail::TemporaryLifetimeLowering<GraphLowerer>;
 
 	enum StatementTaskKind : std::uint8_t
 	{
@@ -1316,7 +1318,8 @@ private:
 			if (LowerExpressionType(record.type).kind == LOW_VOID)
 			{
 				const DumpNode& source = arena_.nodes[children[0]];
-				if (source.category == VALUE_LVALUE &&
+				if ((source.category == VALUE_LVALUE ||
+					 source.category == VALUE_XVALUE) &&
 					IsClassObjectType(source.type))
 					(void)AddressOfStorage(LowerStorage(children[0]));
 				else (void)LowerValue(children[0]);
@@ -1919,11 +1922,7 @@ private:
 			const std::uint32_t child = arena_.edges[task.node].child;
 			PushStatementSequence(arena_.edges[task.node].next,
 				STATEMENT_FOR_COMPONENTS);
-			const DumpKind child_kind = arena_.nodes[child].kind;
-			if (child_kind == DUMP_SIMPLE_DECLARATION ||
-				child_kind == DUMP_VARIABLE)
-				PushStatementNode(child);
-			else LowerDiscardedValue(child);
+			LowerForComponent(child);
 			return;
 		}
 		if (task.kind == STATEMENT_IF_AFTER_THEN)
@@ -2087,7 +2086,7 @@ private:
 			return;
 		}
 		if (record.kind == DUMP_EXPRESSION_STATEMENT) {
-			if (!children.empty()) LowerDiscardedValue(children[0]);
+			LowerFullExpressionStatement(children);
 			return;
 		}
 		if (record.kind == DUMP_IF_STATEMENT) { LowerIf(children); return; }
@@ -2934,6 +2933,7 @@ private:
 	std::vector<SymbolId> global_symbols_;
 	std::vector<SymbolId> literal_symbols_;
 	std::vector<std::uint8_t> temporary_initialized_;
+	std::vector<Operand> temporary_addresses_;
 	std::vector<std::uint32_t> dynamic_initializers_;
 	std::vector<std::uint32_t> dynamic_finalizers_;
 	std::vector<std::uint32_t> thread_local_objects_;
@@ -2959,13 +2959,10 @@ private:
 	std::vector<BlockId> continue_targets_;
 	std::vector<StatementTask> statement_tasks_;
 	FlatIdMap label_blocks_;
-	void ResetInitializedBitFieldUnit()
-	{
+	void ResetInitializedBitFieldUnit() {
 		initialized_bit_field_unit_valid_ = false;
 		initialized_bit_field_owner_ = kNoEntity;
-		initialized_bit_field_offset_ = 0;
-	}
-
+		initialized_bit_field_offset_ = 0; }
 	EntityId initialized_bit_field_owner_;
 	std::uint64_t initialized_bit_field_offset_;
 	bool initialized_bit_field_unit_valid_;
@@ -2979,13 +2976,16 @@ private:
 	BindingId current_this_binding_;
 	BlockId destructor_return_target_;
 	bool destructor_return_routes_to_epilogue_;
+	bool full_expression_cleanup_active_;
+	BlockId full_expression_cleanup_dispatch_, full_expression_cleanup_end_;
+	std::vector<std::uint32_t> full_expression_cleanup_actions_;
+	std::vector<std::uint32_t> full_expression_segment_actions_;
 	std::vector<IdentityTypeId> identity_type_cache_;
 	pa15_lowering_detail::SourceTypeLowering source_types_;
 	pa16_lowering_detail::StaticInitializerLowering static_initializers_;
 };
 
 }
-
 namespace pa15_lowering_detail
 {
 

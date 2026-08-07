@@ -120,15 +120,18 @@ protected:
 		if (children.size() != 1)
 			throw std::runtime_error("invalid temporary object action");
 		const bool initialize = derived.temporary_initialized_[node] == 0;
+		if (!initialize) return derived.temporary_addresses_[node];
 		const LowType type = derived.LowerStorageType(
 			derived.arena_.nodes[node].type);
 		const Operand slot(derived.EnsureGeneratedSlot(node,
-			derived.arena_.nodes[node].argument_materialization ?
-				"arg" : "tmpobj", type), type);
+			derived.arena_.nodes[node].reference_call_materialization ? "refcall" :
+			derived.arena_.nodes[node].argument_materialization ? "arg" :
+			derived.arena_.nodes[node].discarded_materialization ?
+				"discard" : "tmpobj", type), type);
 		const Operand destination = derived.AddressOfStorage(slot);
+		derived.temporary_addresses_[node] = destination;
 		if (initialize)
 		{
-			derived.temporary_initialized_[node] = 1;
 			if (derived.arena_.nodes[children[0]].kind == DUMP_CONSTRUCTOR_ACTION)
 				derived.LowerConstructorAction(children[0], destination);
 			else if (derived.arena_.nodes[children[0]].kind == DUMP_BRACED_INIT_LIST)
@@ -145,6 +148,9 @@ protected:
 			}
 			else throw std::runtime_error(
 				"unsupported temporary object initializer");
+			derived.temporary_initialized_[node] = 1;
+			if (derived.full_expression_cleanup_active_)
+				derived.TransitionFullExpressionCleanup();
 		}
 		return destination;
 	}

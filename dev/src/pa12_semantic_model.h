@@ -100,6 +100,7 @@ struct DumpNode
 	std::uint32_t last_edge;
 	std::uint32_t base_projection_count;
 	std::uint32_t aggregate_helper;
+	std::uint32_t lifetime_object;
 	bool constant;
 	bool integer_narrowing_conversion;
 	bool boolean_conversion;
@@ -112,6 +113,8 @@ struct DumpNode
 	bool elide_empty_constructor;
 	bool trivial_special_member_action;
 	bool argument_materialization;
+	bool discarded_materialization;
+	bool reference_call_materialization;
 	bool class_argument_staging;
 	bool direct_return_slot;
 	bool declaration_only;
@@ -122,7 +125,7 @@ struct DumpNode
 		  object_binding(kNoBinding), selected_binding(kNoBinding),
 		  constant_value(0), array_count(0), first_edge(kNoDumpEdge),
 		  last_edge(kNoDumpEdge), base_projection_count(0),
-		  aggregate_helper(kNoDumpEdge),
+		  aggregate_helper(kNoDumpEdge), lifetime_object(kNoDumpEdge),
 		  constant(false), integer_narrowing_conversion(false),
 		  boolean_conversion(false), user_conversion_call(false),
 		  allocation_may_return_null(false),
@@ -130,7 +133,8 @@ struct DumpNode
 		  array_count_constant(false),
 		  value_initialization(false), elide_empty_constructor(false),
 		  trivial_special_member_action(false),
-		  argument_materialization(false), class_argument_staging(false),
+		  argument_materialization(false), discarded_materialization(false),
+		  reference_call_materialization(false), class_argument_staging(false),
 		  direct_return_slot(false), declaration_only(false) {}
 };
 
@@ -383,9 +387,11 @@ struct LifetimeObligation
 {
 	BindingId object, destructor;
 	TypeId type;
+	std::uint32_t temporary;
 	LifetimeObligation(BindingId object_value, BindingId destructor_value,
-		TypeId type_value)
-		: object(object_value), destructor(destructor_value), type(type_value) {}
+		TypeId type_value, std::uint32_t temporary_value = kNoDumpEdge)
+		: object(object_value), destructor(destructor_value), type(type_value),
+		  temporary(temporary_value) {}
 };
 
 struct NamespaceObjectAction

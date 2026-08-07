@@ -322,8 +322,17 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 			return ApplyTarget(operand, target);
 		operand.type = target;
 		operand.category = category;
-		dump_.nodes[operand.node].type = target;
-		dump_.nodes[operand.node].category = category;
+		if (dump_.nodes[operand.node].kind == DUMP_TEMPORARY_OBJECT)
+		{
+			// A reference cast changes the expression type, not the storage type
+			// of the already materialized object.
+			dump_.nodes[operand.node].reference_call_materialization = true;
+		}
+		else
+		{
+			dump_.nodes[operand.node].type = target;
+			dump_.nodes[operand.node].category = category;
+		}
 		return operand;
 	}
 	if (target_record.kind == TYPE_MEMBER_POINTER)

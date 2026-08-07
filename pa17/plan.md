@@ -13,12 +13,12 @@ synthesis, and O(emitted IR) lowering.
 
 ## Current Failure Map
 
-Current result: **151/231**, up from the **124/231** checkpoint baseline. The
+Current result: **157/231**, up from the **124/231** checkpoint baseline. The
 non-overlapping remaining-failure map is:
 
 | Failures | Shared behavior | Primary owner |
 | ---: | --- | --- |
-| 24 | temporary lifetime and cleanup across control flow | PA12 lifetime facts + PA16 lowering |
+| 18 | temporary cleanup across conditional and loop control flow | PA12 lifetime facts + PA16 lowering |
 | 1 | namespace class-array copy initialization | PA12 class-value initialization + static lowering |
 | 21 | residual operators, conversions, lookup, and ref qualification | PA12 calls/operator resolution |
 | 32 | class-value construction, initialization, copy/move, and ABI shapes | PA12 initialization + PA15-PA17 lowering |
@@ -26,17 +26,15 @@ non-overlapping remaining-failure map is:
 
 ## Active Checkpoint
 
-**Active: temporary lifetime regions across control flow.** Apply `spec.md`
-sections 2, 6, 8, and 9 at the PA12 expression/statement boundary. PA12 owns
-stable temporary identity, lifetime-extension scope, destructor identity, and
-the full-expression or statement region that triggers cleanup; PA16 consumes
-those obligations on selected conditional, short-circuit, loop, return, and
-scope-exit edges without lookup or reconstructed names. Analysis is O(syntax +
-lifetime obligations), and lowering is O(CFG + emitted cleanup IR), including
-the copies inherently required on distinct exits. Validate the 24 lifetime
-failures across branch containment, reference extension, condition
-declarations, loop phases, and shadowed early returns, then full PA17, through
-PA16, audit, and nested-region/obligation scaling.
+**Active: CFG-aware temporary cleanup regions.** Apply `spec.md` sections 2,
+6, 8, and 9 to conditional, short-circuit, loop, return, and condition
+declaration boundaries. PA12 owns branch-specific construction and ordered
+full-expression/lexical obligations; PA16 carries the completed-prefix fact
+through normal and unwind edges, then lowers selected temporary storage and
+enclosing lexical cleanup without lookup. Analysis remains O(syntax +
+obligations); lowering is O(CFG + emitted cleanup IR). Validate the remaining
+18 lifetime failures, then full PA17, through PA16, audit, and nested-region
+scaling.
 
 ## Performance Evidence
 
@@ -69,6 +67,9 @@ PA16, audit, and nested-region/obligation scaling.
   128/256/512 special-member subobject visits. Semantic medians were
   0.165/0.229/0.374 ms, while whole-storage copy kept lowering fixed at 21
   instructions and 6,197 typed bytes rather than emitting per-variant IR.
+- Full expressions with 16/32/64 materialized temporaries emitted
+  97/161/289 LowIR lines (3,013/5,333/9,973 bytes). Five 500-compile batch
+  medians were 1.60/1.76/2.06 s, confirming proportional analysis and output.
 
 ## Completed Checkpoints
 
@@ -83,3 +84,4 @@ PA16, audit, and nested-region/obligation scaling.
 | Scalar allocation/deallocation typed actions | 124/231 -> 136/231 | Ordinary/class-specific/placement/nothrow/global new and destructor/usual/global delete focus 12/12; through PA16 1,436/1,436; proportional candidate probe and audit pass |
 | Dynamic array allocation/deallocation typed actions | 136/231 -> 145/231 | Scalar/class/multidimensional arrays and direct array allocation calls 9/9; scalar compatibility 15/15; through PA16 1,436/1,436; constant-size extent probe and audit pass |
 | Union declaration and object actions | 145/231 -> 151/231 | Anonymous injection, active/default variant validation, constructor precedence, empty inactive lifetime, and whole-storage copy 6/6; through PA16 1,436/1,436; linear member probe and audit pass |
+| Typed temporary identity and linear lifetime regions | 151/231 -> 157/231 | Discarded direct/indirect class results, noexcept argument and throwing base-init suffixes, local reference extension, and rvalue-reference materialization 6/6; proportional 16/32/64-temporary probe |

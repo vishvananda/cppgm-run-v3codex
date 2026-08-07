@@ -124,16 +124,22 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (action.kind != DUMP_BASE_INITIALIZER_ACTION ||
-			derived.current_this_binding_ == kNoBinding || children.size() != 1 ||
+			derived.current_this_binding_ == kNoBinding || children.empty() ||
 			derived.arena_.nodes[children[0]].kind != DUMP_CONSTRUCTOR_ACTION)
 			throw std::logic_error(
 				"base initialization is outside a constructor");
-		if (derived.IsTrivialConstructorAction(action.type, children)) return;
+		NodeChildren constructor;
+		constructor.Push(children[0]);
+		if (derived.IsTrivialConstructorAction(action.type, constructor)) return;
+		if (children.size() > 1)
+			derived.BeginFullExpressionCleanup(children, 1);
 		const Operand object = derived.LoadStorage(
 			derived.StorageFor(derived.current_this_binding_, LowPtr()), LowPtr());
 		const Operand destination = derived.ProjectBaseSubobjects(object,
 			action.base_projection_count);
 		derived.LowerConstructorAction(children[0], destination);
+		if (children.size() > 1)
+			derived.CompleteFullExpressionCleanup();
 	}
 
 	void LowerConstructorAggregateLeaf(const DumpNode& action,

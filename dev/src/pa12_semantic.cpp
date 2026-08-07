@@ -2358,6 +2358,28 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			AddNamespaceObjectAction(variable, binding, parsed.type,
 				initializer_action);
 		}
+		if (local && has_initializer)
+		{
+			const TypeKind declared_kind = program_->types.Get(parsed.type).kind;
+			if ((declared_kind == TYPE_LVALUE_REFERENCE ||
+				 declared_kind == TYPE_RVALUE_REFERENCE) &&
+				!HasControlDependentTemporary(initializer.node))
+			{
+				std::vector<std::uint32_t> temporaries;
+				CollectTemporaryObjects(initializer.node, &temporaries);
+				if (!temporaries.empty())
+				{
+					AddTemporaryLifetimeObligation(scope, temporaries.back());
+					for (std::size_t i = temporaries.size() - 1; i != 0; --i)
+					{
+						const std::uint32_t action =
+							MakeTemporaryDestructorAction(temporaries[i - 1]);
+						if (action != kNoDumpEdge) dump_.Add(owner, action);
+					}
+				}
+			}
+			else AppendFullExpressionDestructionActions(initializer.node, owner);
+		}
 	}
 	current_class_context_ = previous_class_context;
 }
@@ -2544,7 +2566,12 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 		dump_.Add(output_parent, statement);
 		const NodeId expression = FirstSemanticChild(node);
 		if (expression != kNoNode)
-			dump_.Add(statement, AnalyzeExpression(expression, scope).node);
+		{
+			ExpressionInfo value = MaterializeDiscardedClassResult(
+				AnalyzeExpression(expression, scope));
+			dump_.Add(statement, value.node);
+			AppendFullExpressionDestructionActions(value.node, statement);
+		}
 		return;
 	}
 	if (arena_->IsTag(node, "if-statement"))
@@ -2619,6 +2646,11 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 					if (IsDeclaration(value))
 						AnalyzeDeclaration(value, control, init, true);
 					else dump_.Add(init, AnalyzeExpression(value, control).node);
+					if (!IsDeclaration(value) &&
+						dump_.nodes[init].first_edge != kNoDumpEdge)
+						AppendFullExpressionDestructionActions(
+							dump_.edges[dump_.nodes[init].first_edge].child,
+							init);
 				}
 			}
 			else if (arena_->IsTag(child, "condition"))
@@ -2627,8 +2659,10 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 			{
 				const std::uint32_t iteration = MakeDump(DUMP_ITERATION);
 				dump_.Add(statement, iteration);
-				dump_.Add(iteration,
-					AnalyzeExpression(FirstSemanticChild(child), control).node);
+				const ExpressionInfo value = AnalyzeExpression(
+					FirstSemanticChild(child), control);
+				dump_.Add(iteration, value.node);
+				AppendFullExpressionDestructionActions(value.node, iteration);
 			}
 			else AnalyzeSubstatement(child, control, statement);
 		}

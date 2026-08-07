@@ -279,6 +279,7 @@ private:
 	BindingId SelectUsualDeallocation(ScopeId scope, EntityId entity,
 		bool explicit_global, bool array, TypeId object_type);
 	ExpressionInfo MaterializeTemporary(const ExpressionInfo& initializer);
+	ExpressionInfo MaterializeDiscardedClassResult(ExpressionInfo value);
 	ExpressionInfo AnalyzeClassFunctionalCast(TypeId cast_type, ScopeId scope,
 		const std::vector<NodeId>& argument_syntax, NodeId arguments_node,
 		TypeId target);
@@ -379,12 +380,21 @@ private:
 		TypeId type);
 	void AddDestructorSubobjectActions(EntityId entity, std::uint32_t body);
 	void AddLifetimeObligation(ScopeId scope, BindingId object, TypeId type);
+	void AddTemporaryLifetimeObligation(ScopeId scope,
+		std::uint32_t temporary);
+	void CollectTemporaryObjects(std::uint32_t node,
+		std::vector<std::uint32_t>* temporaries) const;
+	bool HasControlDependentTemporary(std::uint32_t node) const;
+	void AppendFullExpressionDestructionActions(std::uint32_t expression,
+		std::uint32_t output_parent);
 	void AddNamespaceObjectAction(std::uint32_t variable, BindingId object,
 		TypeId type, std::uint32_t initializer);
 	void AppendScopeDestructionActions(ScopeId scope,
 		std::uint32_t output_parent, ScopeId stop_exclusive = kNoScope);
 	std::uint32_t MakeDestructorAction(TypeId type, BindingId destructor,
 		BindingId object, std::uint32_t base_projections = 0);
+	std::uint32_t MakeTemporaryDestructorAction(std::uint32_t temporary,
+		BindingId destructor = kNoBinding);
 	EntityId EntityOf(TypeId type) const;
 	ExpressionInfo MakeLiteral(TypeId type, NameId text,
 		ValueCategory category = VALUE_PRVALUE);

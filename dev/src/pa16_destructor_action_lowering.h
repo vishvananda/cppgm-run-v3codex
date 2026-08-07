@@ -120,7 +120,10 @@ protected:
 			return;
 		}
 		Operand destination;
-		if (action.object_binding != kNoBinding)
+		if (action.lifetime_object != kNoDumpEdge)
+			destination = derived.AddressOfStorage(
+				derived.LowerStorage(action.lifetime_object));
+		else if (action.object_binding != kNoBinding)
 		{
 			const BindingRecord& object =
 				derived.program_.bindings[action.object_binding];
