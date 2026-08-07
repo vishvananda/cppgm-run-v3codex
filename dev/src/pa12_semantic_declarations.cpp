@@ -1221,6 +1221,7 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 		else if (spelling == "static") result.storage_class = STORAGE_CLASS_STATIC;
 		else if (spelling == "thread_local")
 			result.thread_local_storage = true;
+		else if (spelling == "auto") result.placeholder_auto = true;
 		else if (spelling == "mutable") {}
 		else if (spelling == "const") cv |= CV_CONST;
 		else if (spelling == "volatile") cv |= CV_VOLATILE;
@@ -1253,6 +1254,11 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 	}
 	if (result.type == kNoType)
 	{
+		if (result.placeholder_auto)
+		{
+			result.type = program_->types.Fundamental(FUND_VOID);
+			return result;
+		}
 		FundamentalKind kind = FUND_INT;
 		if (is_void) kind = FUND_VOID;
 		else if (is_bool) kind = FUND_BOOL;
@@ -1290,7 +1296,8 @@ TypeId SemanticAnalyzer::BuildTypeId(NodeId node, ScopeId scope)
 	NodeId declarator = FindChild(node, "abstract-declarator");
 	if (declarator == kNoNode) declarator = FindChild(node, "declarator");
 	return declarator == kNoNode ? spec.type :
-		BuildDeclarator(declarator, spec.type, scope).type;
+		BuildDeclarator(declarator, spec.type, scope,
+			spec.placeholder_auto).type;
 }
 
 NamePath SemanticAnalyzer::DeclaratorNamePath(NodeId node)
@@ -1332,7 +1339,8 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 		if (declarator != kNoNode)
 		{
 			const DeclaratorInfo parsed =
-				BuildDeclarator(declarator, spec.type, scope);
+				BuildDeclarator(declarator, spec.type, scope,
+					spec.placeholder_auto);
 			name = parsed.name;
 			declared = parsed.type;
 			if (FindChild(declarator, "parameter-pack") != kNoNode)
@@ -1357,11 +1365,21 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 }
 
 DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
-	ScopeId scope)
+	ScopeId scope, bool placeholder_auto)
 {
 	DeclaratorInfo result;
 	result.name = DeclaratorName(node);
 	TypeId type = base;
+	const NodeId trailing = FindChild(node, "trailing-return-type");
+	if (trailing != kNoNode)
+	{
+		const NodeId return_type = FindChild(trailing, "type-id");
+		if (return_type == kNoNode)
+			throw std::runtime_error("trailing return type is missing its type-id");
+		type = BuildTypeId(return_type, scope);
+	}
+	else if (placeholder_auto)
+		throw std::runtime_error("auto requires a trailing return type in PA16");
 	std::vector<NodeId> suffixes;
 	NodeId nested = kNoNode;
 	std::uint8_t function_cv = CV_NONE;

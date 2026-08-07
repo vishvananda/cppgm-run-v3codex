@@ -221,6 +221,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		using_function_declarations_.StorageBytes() +
 		function_fact_by_binding_.capacity() * sizeof(std::uint32_t) +
 		functions_.capacity() * sizeof(FunctionInfo) +
+		builtin_functions_.capacity() * sizeof(BindingId) +
 		entity_data_members_.capacity() * sizeof(std::vector<BindingId>) +
 		entity_layout_members_.capacity() *
 			sizeof(std::vector<ClassLayoutMember>) +
@@ -1214,6 +1215,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 	if (arena_->IsTag(callee_syntax, "id-expression"))
 	{
 		const std::string spelling = arena_->Payload(callee_syntax);
+		ExpressionInfo builtin;
+		if (AnalyzeBuiltinCall(spelling, scope, argument_syntax, target, &builtin))
+			return builtin;
 		if (spelling == "__builtin_constant_p")
 		{
 			if (argument_syntax.size() != 1)
@@ -2305,6 +2309,10 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	const NamePath path = DeclaratorNamePath(declarator);
 	const ScopeId owner = ResolveOwner(scope, path);
 	if (owner == kNoScope) throw std::runtime_error("function owner not found");
+	const EntityId previous_class = current_class_context_;
+	const EntityId declaration_class = program_->EntityForScope(owner);
+	if (declaration_class != kNoEntity)
+		current_class_context_ = declaration_class;
 	const SpecInfo spec = BuildSpecifiers(FindChild(node, "decl-specifier-seq"),
 		owner, std::string(), true);
 	DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type, owner);
@@ -2343,7 +2351,6 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 		dump_.Add(output_node, parameter_node);
 	}
 	const TypeId previous_return = current_return_type_;
-	const EntityId previous_class = current_class_context_;
 	const BindingId previous_function = current_function_context_;
 	current_return_type_ = program_->types.Get(parsed.type).child;
 	current_class_context_ = function.friend_of != kNoEntity ?

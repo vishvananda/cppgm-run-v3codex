@@ -40,7 +40,38 @@ void WriteParameter(std::ostream& output, const Parameter& parameter)
 {
 	output << '%' << parameter.name << " : ";
 	WriteType(output, parameter.type);
-	if (parameter.reference) output << " [pass=reference]";
+	if (parameter.reference || parameter.capture != Parameter::CAPTURE_DEFAULT ||
+		parameter.access != Parameter::ACCESS_DEFAULT ||
+		parameter.alias != Parameter::ALIAS_DEFAULT)
+	{
+		output << " [";
+		bool separator = false;
+		if (parameter.reference)
+		{
+			output << "pass=reference";
+			separator = true;
+		}
+		if (parameter.capture == Parameter::CAPTURE_NOCAPTURE)
+		{
+			if (separator) output << ", ";
+			output << "capture=nocapture";
+			separator = true;
+		}
+		if (parameter.access != Parameter::ACCESS_DEFAULT)
+		{
+			if (separator) output << ", ";
+			output << "access=" << (parameter.access == Parameter::ACCESS_READ ?
+				"read" : parameter.access == Parameter::ACCESS_WRITE ?
+				"write" : "readwrite");
+			separator = true;
+		}
+		if (parameter.alias == Parameter::ALIAS_NOALIAS)
+		{
+			if (separator) output << ", ";
+			output << "alias=noalias";
+		}
+		output << ']';
+	}
 }
 
 void WriteBoundary(std::ostream& output,
@@ -325,9 +356,23 @@ void WriteSymbolMetadata(std::ostream& output, const Symbol& symbol,
 {
 	output << " [";
 	bool separator = false;
+	if (function && symbol.effects != Symbol::EFFECTS_DEFAULT)
+	{
+		output << "effects=" << (symbol.effects == Symbol::EFFECTS_READNONE ?
+			"readnone" : symbol.effects == Symbol::EFFECTS_READONLY ?
+			"readonly" : "readwrite");
+		separator = true;
+	}
 	if (function && symbol.nonthrowing)
 	{
+		if (separator) output << ", ";
 		output << "unwind=no";
+		separator = true;
+	}
+	if (function && symbol.noreturn)
+	{
+		if (separator) output << ", ";
+		output << "return=noreturn";
 		separator = true;
 	}
 	if (entry)

@@ -149,9 +149,11 @@ struct SpecInfo
 	bool is_typedef;
 	bool is_constexpr;
 	bool is_friend;
+	bool placeholder_auto;
 	bool thread_local_storage;
 	SpecInfo() : type(kNoType), storage_class(STORAGE_CLASS_NONE),
 		is_typedef(false), is_constexpr(false), is_friend(false),
+		placeholder_auto(false),
 		thread_local_storage(false) {}
 };
 

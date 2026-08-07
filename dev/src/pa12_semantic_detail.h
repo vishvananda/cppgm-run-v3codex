@@ -99,7 +99,8 @@ private:
 	SpecInfo BuildSpecifiers(NodeId node, ScopeId scope,
 		const std::string& hint, bool has_declarators);
 	TypeId BuildTypeId(NodeId node, ScopeId scope);
-	DeclaratorInfo BuildDeclarator(NodeId node, TypeId base, ScopeId scope);
+	DeclaratorInfo BuildDeclarator(NodeId node, TypeId base, ScopeId scope,
+		bool placeholder_auto = false);
 	std::vector<ParameterInfo> BuildParameters(NodeId node, ScopeId scope,
 		bool* variadic);
 	NameId DeclaratorName(NodeId node);
@@ -154,6 +155,10 @@ private:
 		EntityId naming_class = kNoEntity,
 		const ObjectConversionFact* object_conversion = 0);
 	ExpressionInfo AnalyzeCall(NodeId node, ScopeId scope, TypeId target);
+	BindingId EnsureBuiltinFunction(BuiltinFunctionKind kind);
+	bool AnalyzeBuiltinCall(const std::string& spelling, ScopeId scope,
+		const std::vector<NodeId>& argument_syntax, TypeId target,
+		ExpressionInfo* result);
 	bool AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 		const std::vector<NodeId>& argument_syntax, TypeId target,
 		ExpressionInfo* result);
@@ -324,6 +329,7 @@ private:
 	FunctionSignatureTable using_function_declarations_;
 	std::vector<std::uint32_t> function_fact_by_binding_;
 	std::vector<FunctionInfo> functions_;
+	std::vector<BindingId> builtin_functions_;
 	std::vector<std::vector<BindingId> > entity_data_members_;
 	std::vector<std::vector<ClassLayoutMember> > entity_layout_members_;
 	std::vector<std::vector<BindingId> > entity_constructors_;

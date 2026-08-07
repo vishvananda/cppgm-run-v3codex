@@ -197,6 +197,17 @@ private:
 	{
 		SetNameFact(strings_.Intern(name), fact, enabled);
 	}
+	void RestoreNameFacts(std::size_t mark) {
+		while (name_fact_changes_.size() > mark)
+		{
+			const NameFactChange change = name_fact_changes_.back(); name_fact_changes_.pop_back();
+			name_facts_[change.name] = change.previous; AdvanceNameFactRevision(); } }
+	void ApplyFunctionParameterFacts(NodeId declarator) {
+		const std::vector<std::string> names =
+			ImmediateParameterNames(arena_, declarator);
+		for (std::size_t i = 0; i < names.size(); ++i)
+		{ SetNameFact(names[i], kKnownType, false);
+			SetNameFact(names[i], kKnownNonTemplate); } }
 
 	std::runtime_error Error(const std::string& message) const
 	{
@@ -425,6 +436,9 @@ private:
 				static_cast<std::uint16_t>(OP_COLON2)) break;
 			++scan;
 		}
+		if (last != tokens_.size() && HasNameFact(tokens_[last].spelling,
+			kKnownNonTemplate))
+			return false;
 		return last != tokens_.size() &&
 			(HasNameFact(tokens_[last].spelling, kKnownType) ||
 			 IsLikelyTypeIdentifier(last));
@@ -942,6 +956,8 @@ NodeId Parser::ParseParameterClause()
 			if (pack_before_name)
 				arena_.Prepend(declarator, arena_.Make("parameter-pack", "..."));
 			arena_.Add(parameter, declarator);
+			if (!name.empty()) arena_.SetSemanticPayload(
+				parameter, strings_.Intern(name));
 		}
 		else if (pack_before_name)
 		{
@@ -1785,6 +1801,7 @@ NodeId Parser::ParseCondition()
 NodeId Parser::ParseCompoundStatement()
 {
 	if (!Match(OP_LBRACE)) return kNoNode;
+	const std::size_t fact_mark = name_fact_changes_.size();
 	const NodeId compound = arena_.Make("compound-statement");
 	while (!At(OP_RBRACE))
 	{
@@ -1796,7 +1813,7 @@ NodeId Parser::ParseCompoundStatement()
 			At(KW_ENUM) || At(KW_STATIC_ASSERT) || At(KW_EXTERN) ||
 			(position_ < tokens_.size() &&
 			 IsDeclSpecifierKeyword(tokens_[position_].kind)) ||
-			IsLikelyTypeIdentifier(position_) ||
+			(IsLikelyTypeIdentifier(position_) && !AtOffset(1, OP_COLON2)) ||
 			(((AtIdentifier() && AtOffset(1, OP_COLON2)) || At(OP_COLON2)) &&
 			 QualifiedStartsType());
 		if (declaration_start)
@@ -1810,6 +1827,7 @@ NodeId Parser::ParseCompoundStatement()
 		arena_.Add(compound, item);
 	}
 	Expect(OP_RBRACE);
+	RestoreNameFacts(fact_mark);
 	return compound;
 }
 
@@ -2018,7 +2036,7 @@ NodeId Parser::ParseStatement()
 		At(KW_STATIC_ASSERT) || At(KW_EXTERN) ||
 		(position_ < tokens_.size() &&
 		 IsDeclSpecifierKeyword(tokens_[position_].kind)) ||
-		IsLikelyTypeIdentifier(position_) ||
+		(IsLikelyTypeIdentifier(position_) && !AtOffset(1, OP_COLON2)) ||
 		(((AtIdentifier() && AtOffset(1, OP_COLON2)) || At(OP_COLON2)) &&
 		 QualifiedStartsType());
 	if (declaration_start)
@@ -2408,7 +2426,10 @@ NodeId Parser::ParseSpecialMember(bool)
 		return member;
 	}
 	if (Match(OP_SEMICOLON)) return member;
+	const std::size_t parameter_fact_mark = name_fact_changes_.size();
+	ApplyFunctionParameterFacts(declarator);
 	const NodeId body = ParseCompoundStatement();
+	RestoreNameFacts(parameter_fact_mark);
 	if (body == kNoNode) throw Error("expected special member body");
 	arena_.Add(member, body);
 	return member;
@@ -2729,7 +2750,12 @@ NodeId Parser::ParseSimpleOrFunction(bool, bool)
 			const NodeId declaration = arena_.Make("function-definition");
 			arena_.Add(declaration, specifiers);
 			arena_.Add(declaration, declarator);
+			if (!name.empty()) { SetNameFact(name, kKnownType, false);
+				SetNameFact(name, kKnownNonTemplate); }
+			const std::size_t parameter_fact_mark = name_fact_changes_.size();
+			ApplyFunctionParameterFacts(declarator);
 			arena_.Add(declaration, ParseCompoundStatement());
+			RestoreNameFacts(parameter_fact_mark);
 			last_declared_names_.clear();
 			if (!name.empty())
 				last_declared_names_.push_back(strings_.Intern(name));

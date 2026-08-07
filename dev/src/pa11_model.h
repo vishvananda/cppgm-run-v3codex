@@ -248,6 +248,15 @@ enum OperatorKind
 	OPERATOR_LITERAL
 };
 
+enum BuiltinFunctionKind
+{
+	BUILTIN_FUNCTION_NONE,
+	BUILTIN_FUNCTION_STRLEN,
+	BUILTIN_FUNCTION_UNREACHABLE,
+	BUILTIN_FUNCTION_MEMCPY,
+	BUILTIN_FUNCTION_MEMMOVE
+};
+
 struct EntityRecord
 {
 	NameId name, identity_name;
@@ -284,6 +293,7 @@ struct BindingRecord
 	BindingId canonical;
 	std::int64_t value;
 	OperatorKind operator_kind;
+	BuiltinFunctionKind builtin_function;
 	NameId operator_literal_suffix;
 	LanguageLinkage language_linkage;
 	StorageClass storage_class;

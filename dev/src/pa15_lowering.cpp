@@ -197,6 +197,11 @@ private:
 
 	TypeId PointeeType(TypeId type) const
 		{ return source_types_.Pointee(type); }
+	LowType LowerBoundaryResult(TypeId type) const {
+		const TypeId unqualified = program_.types.RemoveTopCv(type);
+		const TypeRecord& record = program_.types.Get(unqualified);
+		return record.kind == TYPE_NAMED &&
+			!program_.entities[record.entity].complete ? LowVoid() : LowerType(type); }
 
 	SymbolId InternSymbol(const DumpNode& node, Symbol::Kind kind,
 		const std::string& proposed_name, const std::string& object_name)
@@ -211,7 +216,7 @@ private:
 			c_linkage && !internal ? program_.GlobalScope() : binding.owner,
 			binding.name);
 		identity.signature = kind == Symbol::FUNCTION_SYMBOL && !c_linkage ?
-			output_.identities.InternFunctionSignature(program_, node.type,
+			output_.identities.InternFunctionSignature(program_, binding.type,
 				identity_type_cache_) : kNoLowId;
 		identity.internal_owner = internal ? source_ordinal_ + 1 : 0;
 		const IdentityTypeId source_type = output_.identities.InternType(
@@ -226,6 +231,8 @@ private:
 				symbol.object_name != object_name)
 				throw std::logic_error("conflicting PA15 ABI object identity");
 			symbol.nonthrowing = symbol.nonthrowing || binding.nonthrowing;
+			pa15_lowering_abi::ApplyBuiltinSymbolMetadata(
+				&symbol, binding.builtin_function);
 			return found;
 		}
 		if (output_.symbols.size() >= kNoLowId)
@@ -236,6 +243,8 @@ private:
 		const SymbolId symbol = static_cast<SymbolId>(output_.symbols.size());
 		output_.symbols.push_back(Symbol(kind, name, object_name, c_linkage,
 			internal, binding.nonthrowing));
+		pa15_lowering_abi::ApplyBuiltinSymbolMetadata(&output_.symbols.back(),
+			binding.builtin_function);
 		output_.symbols.back().source_type = source_type;
 		output_.symbol_index.Insert(identity, symbol);
 		return symbol;
@@ -393,8 +402,11 @@ private:
 	{
 		const DumpNode& record = arena_.nodes[node];
 		const TypeRecord& function_type = program_.types.Get(record.type);
-		*result = LowerType(function_type.child);
+		*result = LowerBoundaryResult(function_type.child);
 		*variadic = function_type.variadic;
+		const BuiltinFunctionKind builtin = record.binding == kNoBinding ?
+			BUILTIN_FUNCTION_NONE :
+			program_.bindings[record.binding].builtin_function;
 		const NodeChildren children = Children(node);
 		std::size_t parameter_index = 0;
 		for (std::size_t i = 0; i < children.size(); ++i)
@@ -410,6 +422,8 @@ private:
 			const TypeId* source_parameters = program_.types.Parameters(record.type);
 			parameter.reference = parameter_index < function_type.parameter_count &&
 				IsReferenceType(source_parameters[parameter_index]);
+			pa15_lowering_abi::ApplyBuiltinParameterMetadata(
+				&parameter, builtin, parameter_index);
 			parameters->push_back(parameter);
 			++parameter_index;
 		}
@@ -422,6 +436,8 @@ private:
 				std::to_string(parameter_index);
 			parameter.type = LowerType(source_parameters[parameter_index]);
 			parameter.reference = IsReferenceType(source_parameters[parameter_index]);
+			pa15_lowering_abi::ApplyBuiltinParameterMetadata(
+				&parameter, builtin, parameter_index);
 			parameters->push_back(parameter);
 			++parameter_index;
 		}
@@ -1353,6 +1369,10 @@ private:
 			target : LowType()), target, canonicalize_immediate);
 	}
 
+	bool CanonicalizeImmediateNarrowing(std::uint32_t node, const LowType& target) const {
+		const LowType source = LowerExpressionType(arena_.nodes[node].type);
+		return IsInteger(source) && IsInteger(target) && target.width < source.width; }
+
 	void LowerDiscardedValue(std::uint32_t node) { const DumpNode& record = arena_.nodes[node];
 		if ((record.category == VALUE_LVALUE || record.category == VALUE_XVALUE) && !IsFunctionType(RemoveReference(record.type))) (void)LowerStorage(node);
 		else (void)LowerValue(node); }
@@ -1717,7 +1737,8 @@ private:
 					else if (IsInteger(expected) && expected.width < 32)
 						expected = LowI32();
 				}
-				arguments.Push(LowerConvertedValue(children[i], expected));
+				arguments.Push(LowerConvertedValue(children[i], expected,
+					CanonicalizeImmediateNarrowing(children[i], expected)));
 			}
 		}
 		if (!direct) call.first = LowerValue(children[0], LowPtr());
@@ -2047,7 +2068,8 @@ private:
 				store.type = type;
 				store.first = IsReferenceType(record.type) ?
 					AddressOfStorage(LowerStorage(children[0])) :
-					LowerConvertedValue(children[0], type, false);
+					LowerConvertedValue(children[0], type,
+						CanonicalizeImmediateNarrowing(children[0], type));
 				store.second = StorageFor(record.binding, type);
 				Emit(store);
 			}

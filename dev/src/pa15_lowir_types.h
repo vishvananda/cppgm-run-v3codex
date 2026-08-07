@@ -282,9 +282,16 @@ struct Block
 
 struct Parameter
 {
+	enum Capture : std::uint8_t { CAPTURE_DEFAULT, CAPTURE_NOCAPTURE } capture;
+	enum Access : std::uint8_t { ACCESS_DEFAULT, ACCESS_READ, ACCESS_WRITE,
+		ACCESS_READWRITE } access;
+	enum Alias : std::uint8_t { ALIAS_DEFAULT, ALIAS_NOALIAS } alias;
 	std::string name;
 	LowType type;
 	bool reference;
+
+	Parameter() : capture(CAPTURE_DEFAULT), access(ACCESS_DEFAULT),
+		alias(ALIAS_DEFAULT), reference(false) {}
 };
 
 struct Slot
@@ -372,11 +379,14 @@ struct DynamicInitializer
 struct Symbol
 {
 	enum Kind { FUNCTION_SYMBOL, GLOBAL_SYMBOL } kind;
+	enum Effects : std::uint8_t { EFFECTS_DEFAULT, EFFECTS_READNONE,
+		EFFECTS_READONLY, EFFECTS_READWRITE } effects;
 	std::string name;
 	std::string object_name;
 	bool c_linkage;
 	bool internal_linkage;
 	bool nonthrowing;
+	bool noreturn;
 	bool thread_local_storage;
 	SymbolId tls_for_symbol;
 	std::uint32_t source_type;
@@ -387,9 +397,11 @@ struct Symbol
 	Symbol(Kind kind_value, const std::string& name_value,
 		const std::string& object_name_value, bool c_linkage_value,
 		bool internal_linkage_value, bool nonthrowing_value)
-		: kind(kind_value), name(name_value), object_name(object_name_value),
+		: kind(kind_value), effects(EFFECTS_DEFAULT), name(name_value),
+		  object_name(object_name_value),
 		  c_linkage(c_linkage_value), internal_linkage(internal_linkage_value),
-		  nonthrowing(nonthrowing_value), thread_local_storage(false),
+		  nonthrowing(nonthrowing_value), noreturn(false),
+		  thread_local_storage(false),
 		  tls_for_symbol(kNoLowId), source_type(kNoLowId),
 		  declaration_emitted(false), definition_emitted(false), referenced(false) {}
 };

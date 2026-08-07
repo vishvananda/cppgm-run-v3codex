@@ -151,6 +151,47 @@ std::string OperatorTerminal(OperatorKind kind, bool member,
 
 }
 
+void ApplyBuiltinSymbolMetadata(pa15_lowir_detail::Symbol* symbol,
+	pa11::BuiltinFunctionKind kind)
+{
+	using namespace pa11;
+	using pa15_lowir_detail::Symbol;
+	switch (kind)
+	{
+	case BUILTIN_FUNCTION_STRLEN: symbol->effects = Symbol::EFFECTS_READONLY; break;
+	case BUILTIN_FUNCTION_UNREACHABLE:
+		symbol->effects = Symbol::EFFECTS_READNONE; symbol->noreturn = true; break;
+	case BUILTIN_FUNCTION_MEMCPY:
+	case BUILTIN_FUNCTION_MEMMOVE: symbol->effects = Symbol::EFFECTS_READWRITE; break;
+	case BUILTIN_FUNCTION_NONE: break;
+	}
+}
+
+void ApplyBuiltinParameterMetadata(pa15_lowir_detail::Parameter* parameter,
+	pa11::BuiltinFunctionKind kind, std::size_t index)
+{
+	using namespace pa11;
+	using pa15_lowir_detail::Parameter;
+	if (kind == BUILTIN_FUNCTION_STRLEN && index == 0)
+	{
+		parameter->capture = Parameter::CAPTURE_NOCAPTURE;
+		parameter->access = Parameter::ACCESS_READ;
+	}
+	else if (kind == BUILTIN_FUNCTION_MEMCPY && index < 2)
+	{
+		parameter->capture = Parameter::CAPTURE_NOCAPTURE;
+		parameter->access = index == 0 ? Parameter::ACCESS_WRITE :
+			Parameter::ACCESS_READ;
+		parameter->alias = Parameter::ALIAS_NOALIAS;
+	}
+	else if (kind == BUILTIN_FUNCTION_MEMMOVE && index < 2)
+	{
+		parameter->capture = Parameter::CAPTURE_NOCAPTURE;
+		parameter->access = index == 0 ? Parameter::ACCESS_READWRITE :
+			Parameter::ACCESS_READ;
+	}
+}
+
 std::string MangleFunction(const pa11::Program& program,
 	const pa12_semantic_detail::DumpNode& node)
 {
@@ -159,6 +200,8 @@ std::string MangleFunction(const pa11::Program& program,
 	const std::string qualified = program.names.Get(node.text);
 	if (qualified == "main") return std::string();
 	const BindingRecord& binding = program.bindings[node.binding];
+	if (binding.builtin_function != BUILTIN_FUNCTION_NONE)
+		return "cppgm_builtin_" + program.names.Get(binding.name).substr(10);
 	if (binding.language_linkage == LANGUAGE_LINKAGE_C &&
 		binding.storage_class != STORAGE_CLASS_STATIC)
 		return program.names.Get(binding.name);

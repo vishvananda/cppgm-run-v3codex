@@ -21,6 +21,28 @@ const std::uint16_t kPragmaPackPopToken = kSimpleTokenCount + 6;
 const NodeId kNoNode = std::numeric_limits<NodeId>::max();
 const std::uint32_t kNoEdge = std::numeric_limits<std::uint32_t>::max();
 
+std::vector<std::string> ImmediateParameterNames(
+	const SyntaxArena& arena, NodeId declarator)
+{
+	std::vector<std::string> result;
+	for (std::uint32_t edge = arena.FirstEdge(declarator); edge != kNoEdge;
+		edge = arena.NextEdge(edge))
+	{
+		const NodeId clause = arena.EdgeChild(edge);
+		if (!arena.IsTag(clause, "parameter-clause")) continue;
+		for (std::uint32_t item = arena.FirstEdge(clause); item != kNoEdge;
+			item = arena.NextEdge(item))
+		{
+			const NodeId parameter = arena.EdgeChild(item);
+			if (!arena.IsTag(parameter, "parameter-declaration")) continue;
+			const std::string& name = arena.SemanticPayload(parameter);
+			if (!name.empty()) result.push_back(name);
+		}
+		break;
+	}
+	return result;
+}
+
 SyntaxToken::SyntaxToken(std::uint16_t kind_value, TextId spelling_value)
 	: kind(kind_value), spelling(spelling_value)
 {

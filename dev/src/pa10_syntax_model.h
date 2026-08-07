@@ -146,5 +146,8 @@ public:
 	virtual void Consume(const SyntaxArena& arena, NodeId root) = 0;
 };
 
+std::vector<std::string> ImmediateParameterNames(
+	const SyntaxArena& arena, NodeId declarator);
+
 }
 }

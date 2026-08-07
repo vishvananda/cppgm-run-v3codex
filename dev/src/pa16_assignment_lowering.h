@@ -328,7 +328,8 @@ public:
 		Operand value;
 		if (op == "=")
 		{
-			value = derived.LowerConvertedValue(children[1], type, false);
+			value = derived.LowerConvertedValue(children[1], type,
+				derived.CanonicalizeImmediateNarrowing(children[1], type));
 			storage = derived.LowerStorage(children[0]);
 		}
 		else if ((op == "+=" || op == "-=") &&
