@@ -587,6 +587,9 @@ int run_emit_semantics_mode(const vector<string> & args)
            << " conversion_checks=" << stats.conversion_checks
            << " function_signature_lookups="
            << stats.function_signature_lookups
+           << " access_checks=" << stats.access_checks
+           << " access_path_visits=" << stats.access_path_visits
+           << " access_grant_probes=" << stats.access_grant_probes
            << " template_specialization_requests="
            << stats.template_specialization_requests
            << " template_specialization_cache_hits="
@@ -658,6 +661,11 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << " overload_order_comparisons="
 			 << stats.overload_order_comparisons
 			 << " conversion_checks=" << stats.conversion_checks
+			 << " function_signature_lookups="
+			 << stats.function_signature_lookups
+			 << " access_checks=" << stats.access_checks
+			 << " access_path_visits=" << stats.access_path_visits
+			 << " access_grant_probes=" << stats.access_grant_probes
 			 << " functions=" << stats.functions
 			 << " globals=" << stats.globals
 			 << " blocks=" << stats.blocks

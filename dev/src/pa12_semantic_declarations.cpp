@@ -1239,9 +1239,19 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 		program_->types.Fundamental(FUND_VOID), signature_parameters,
 		declared_type.variadic, declared_type.cv);
 	const FunctionSignatureKey signature_key(owner, name, signature);
-	++function_signature_lookups_;
-	const BindingId previous = template_specialization ? kNoBinding :
-		function_declarations_.Find(signature_key);
+	BindingId previous = kNoBinding;
+	BindingId imported = kNoBinding;
+	if (!template_specialization)
+	{
+		++function_signature_lookups_;
+		previous = function_declarations_.Find(signature_key);
+		++function_signature_lookups_;
+		imported = using_function_declarations_.Find(signature_key);
+	}
+	if (previous == kNoBinding && imported != kNoBinding &&
+		program_->KindOfScope(owner) != SCOPE_CLASS)
+		throw std::runtime_error(
+			"function conflicts with using-declaration");
 	const bool was_ordinary_visible = previous != kNoBinding &&
 		GetFunction(previous).ordinary_visible;
 	const std::uint64_t key = (static_cast<std::uint64_t>(owner) << 32) | name;
@@ -1259,7 +1269,7 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 	}
 	const BindingId declaration = program_->AddBinding(owner, BIND_FUNCTION,
 		name, type, false, 0, NAMED_NONE, 0, canonical,
-		!template_specialization);
+		false);
 	BindingRecord& declaration_record = program_->bindings[declaration];
 	declaration_record.storage_class = storage_class;
 	declaration_record.language_linkage = language_linkage;
@@ -1270,6 +1280,7 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 		info.binding = declaration;
 		info.owner = owner;
 		info.type = type;
+		info.signature = signature;
 		info.display_name = DisplayName(owner, name);
 		info.lexical_scope = owner;
 		info.parameters = parameters;
@@ -1365,21 +1376,23 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 	}
 	const NamePath path = ParseNamePath(target);
 	const NameId name = path.Last();
-	const LookupResult type = program_->Lookup(scope, path, LOOKUP_TYPE);
-	if (type.type != kNoType)
+	const LookupResult ordinary =
+		program_->Lookup(scope, path, LOOKUP_ORDINARY);
+	const LookupResult type = ordinary.ordinary == kNoBinding ?
+		program_->Lookup(scope, path, LOOKUP_TYPE) : LookupResult();
+	if (ordinary.ordinary == kNoBinding && type.type != kNoType)
 	{
 		if (type.type_declaration != kNoBinding &&
 			!CanAccessMember(type.type_declaration, type.naming_class))
 			throw std::runtime_error("inaccessible using type");
 		const BindingId alias = program_->AddBinding(scope,
 			program_->types.IsNamed(type.type) ? BIND_TYPE : BIND_TYPE_ALIAS,
-			name, type.type, false, 0, NAMED_NONE, 0, type.type_declaration);
+			name, type.type, false, 0, NAMED_NONE, 0,
+			type.type_declaration_canonical);
 		if (class_owner != kNoEntity)
 			PublishUsingAccess(alias, type.type_declaration, access);
 		return;
 	}
-	const LookupResult function_lookup =
-		program_->Lookup(scope, path, LOOKUP_ORDINARY);
 	const std::vector<BindingId> functions = FunctionCandidates(scope, target);
 	if (!functions.empty())
 	{
@@ -1391,58 +1404,40 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 		for (std::size_t i = 0; i < functions.size(); ++i)
 		{
 			const FunctionInfo& function = GetFunction(functions[i]);
-			if (!CanAccessMember(functions[i], function_lookup.naming_class))
+			if (!CanAccessMember(functions[i], ordinary.naming_class))
 				throw std::runtime_error("inaccessible using function");
-			bool hidden_by_direct_member = false;
-			if (class_owner != kNoEntity)
+			const FunctionSignatureKey signature_key(scope, name,
+				function.signature);
+			++function_signature_lookups_;
+			if (function_declarations_.Find(signature_key) != kNoBinding)
 			{
-				const CompactIndexSequence* existing =
-					ordinary_function_sets_.Find(key);
-				for (std::size_t e = 0; existing && e < existing->Size(); ++e)
-				{
-					const BindingId candidate =
-						static_cast<BindingId>((*existing)[e]);
-					const FunctionInfo& prior = GetFunction(candidate);
-					if (program_->bindings[candidate].access_owner != kNoEntity ||
-						program_->bindings[candidate].member_owner != class_owner)
-						continue;
-					const TypeRecord left = program_->types.Get(prior.type);
-					const TypeRecord right = program_->types.Get(function.type);
-					if (left.parameter_count != right.parameter_count ||
-						left.variadic != right.variadic || left.cv != right.cv)
-						continue;
-					const TypeId* left_parameters =
-						program_->types.Parameters(prior.type);
-					const TypeId* right_parameters =
-						program_->types.Parameters(function.type);
-					hidden_by_direct_member = true;
-					for (std::size_t p = 0; p < left.parameter_count; ++p)
-						if (left_parameters[p] != right_parameters[p])
-							hidden_by_direct_member = false;
-					if (hidden_by_direct_member) break;
-				}
+				if (class_owner != kNoEntity) continue;
+				throw std::runtime_error(
+					"using function conflicts with declaration");
 			}
-			if (hidden_by_direct_member) continue;
+			++function_signature_lookups_;
+			if (using_function_declarations_.Find(signature_key) != kNoBinding)
+				throw std::runtime_error("duplicate using function");
 			const BindingId alias = program_->AddBinding(scope, BIND_FUNCTION,
 				name, function.type, false, 0, NAMED_NONE, 0, function.binding);
 			if (class_owner != kNoEntity)
 				PublishUsingAccess(alias, functions[i], access);
 			if (!aliases.Contains(alias)) aliases.Push(alias);
 			if (!ordinary_aliases.Contains(alias)) ordinary_aliases.Push(alias);
+			using_function_declarations_.Insert(signature_key, alias);
 		}
 		return;
 	}
-	const LookupResult value = program_->Lookup(scope, path, LOOKUP_ORDINARY);
-	if (value.ordinary == kNoBinding)
+	if (ordinary.ordinary == kNoBinding)
 		throw std::runtime_error("using-declaration target not found");
-	if (!CanAccessMember(value.ordinary, value.naming_class))
+	if (!CanAccessMember(ordinary.ordinary, ordinary.naming_class))
 		throw std::runtime_error("inaccessible using declaration");
-	const BindingRecord source = program_->bindings[value.ordinary];
+	const BindingRecord source = program_->bindings[ordinary.ordinary];
 	const BindingId alias = program_->AddBinding(scope, source.kind, name,
 		source.type, source.constant, source.value, source.display_flavor,
 		source.display_type_name, source.canonical);
 	if (class_owner != kNoEntity)
-		PublishUsingAccess(alias, value.ordinary, access);
+		PublishUsingAccess(alias, ordinary.ordinary, access);
 	(void)local;
 }
 
@@ -1512,6 +1507,25 @@ void SemanticAnalyzer::AnalyzeFriendFunction(NodeId node,
 			ResolveOwner(class_scope, declared_name) : friend_owner;
 		if (declared_owner == kNoScope)
 			throw std::runtime_error("qualified friend owner not found");
+		if (qualified_friend)
+		{
+			const TypeRecord declared_type = program_->types.Get(parsed.type);
+			std::vector<TypeId> parameters;
+			const TypeId* parameter_data =
+				program_->types.Parameters(parsed.type);
+			if (declared_type.parameter_count != 0)
+				parameters.assign(parameter_data,
+					parameter_data + declared_type.parameter_count);
+			const TypeId signature = program_->types.Function(
+				program_->types.Fundamental(FUND_VOID), parameters,
+				declared_type.variadic, declared_type.cv);
+			++function_signature_lookups_;
+			const BindingId prior = function_declarations_.Find(
+				FunctionSignatureKey(declared_owner, parsed.name, signature));
+			if (prior == kNoBinding || !GetFunction(prior).ordinary_visible)
+				throw std::runtime_error(
+					"qualified friend function was not declared");
+		}
 		const BindingId binding = DeclareFunction(declared_owner, parsed.name,
 			parsed.type, parsed.parameters, definition, false,
 			STORAGE_CLASS_NONE, current_language_linkage_,
@@ -1553,8 +1567,12 @@ void SemanticAnalyzer::AnalyzeFriendClass(NodeId node,
 	if (declaration == kNoNode)
 		throw std::runtime_error("friend class declaration has no class");
 	const std::string spelling = arena_->Payload(declaration);
+	const NamePath path = ParseNamePath(spelling);
 	const LookupResult found = LookupSpelling(class_scope, spelling, LOOKUP_TYPE);
 	TypeId friend_type = found.type;
+	if (friend_type != kNoType && found.type_declaration != kNoBinding &&
+		!CanAccessMember(found.type_declaration, found.naming_class))
+		throw std::runtime_error("inaccessible friend class");
 	if (friend_type == kNoType)
 	{
 		ScopeId namespace_owner = program_->entities[owner].owner;
@@ -1564,7 +1582,7 @@ void SemanticAnalyzer::AnalyzeFriendClass(NodeId node,
 		if (namespace_owner == kNoScope)
 			throw std::runtime_error("friend class has no namespace owner");
 		friend_type = AnalyzeClass(declaration,
-			spelling.find("::") == std::string::npos ?
+			!path.global && path.Size() == 1 ?
 				namespace_owner : class_scope,
 			std::string(), true);
 	}
@@ -1669,7 +1687,7 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 	return FunctionSet(found.ordinary);
 }
 
-std::vector<BindingId> SemanticAnalyzer::FunctionSet(BindingId binding) const
+std::vector<BindingId> SemanticAnalyzer::FunctionSet(BindingId binding)
 {
 	if (binding == kNoBinding || binding >= program_->bindings.size() ||
 		program_->bindings[binding].kind != BIND_FUNCTION)
@@ -1682,7 +1700,20 @@ std::vector<BindingId> SemanticAnalyzer::FunctionSet(BindingId binding) const
 	std::vector<BindingId> result;
 	result.reserve(set->Size());
 	for (std::size_t i = 0; i < set->Size(); ++i)
-		result.push_back(static_cast<BindingId>((*set)[i]));
+	{
+		const BindingId candidate = static_cast<BindingId>((*set)[i]);
+		const BindingRecord& candidate_record = program_->bindings[candidate];
+		if (candidate_record.access_owner != kNoEntity)
+		{
+			const FunctionInfo& function = GetFunction(candidate);
+			const FunctionSignatureKey signature_key(record.owner, record.name,
+				function.signature);
+			++function_signature_lookups_;
+			if (function_declarations_.Find(signature_key) != kNoBinding)
+				continue;
+		}
+		result.push_back(candidate);
+	}
 	return result;
 }
 

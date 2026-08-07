@@ -297,7 +297,8 @@ struct LookupResult
 {
 	ScopeId name_space;
 	TypeId type;
-	BindingId type_declaration, ordinary, ordinary_declaration;
+	BindingId type_declaration, type_declaration_canonical;
+	BindingId ordinary, ordinary_declaration;
 	EntityId naming_class;
 
 	LookupResult();

@@ -1,0 +1,33 @@
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $object : obj<1x1>
+  slot $cond__1 : i32
+
+  block ^entry:
+    %t1 = addr $object
+    %t2 = addr $object
+    %t3 = call i32 @YUsingOrderDerived__select__ov2(%t2, 0)
+    %t4 = cmp eq i32 %t3, 2
+    branch %t4, ^cond_then_1, ^cond_else_2
+
+  block ^cond_then_1:
+    store i32 0, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_else_2:
+    store i32 1, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_end_3:
+    %t5 = load i32 $cond__1
+    return i32 %t5
+}
+
+function @YUsingOrderDerived__select__ov2(%this : ptr, %__param1 : i32) -> i32 [binding=strong, object=_ZN18YUsingOrderDerived6selectEi] {
+  slot $this : ptr
+  slot $__param1 : i32
+
+  block ^entry:
+    store ptr %this, $this
+    store i32 %__param1, $__param1
+    return i32 2
+}

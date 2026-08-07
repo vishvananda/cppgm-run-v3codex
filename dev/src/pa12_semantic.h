@@ -43,6 +43,9 @@ struct SemanticAnalysisStats
 	std::size_t overload_order_comparisons;
 	std::size_t conversion_checks;
 	std::size_t function_signature_lookups;
+	std::size_t access_checks;
+	std::size_t access_path_visits;
+	std::size_t access_grant_probes;
 	std::size_t template_specialization_requests;
 	std::size_t template_specialization_cache_hits;
 	std::size_t demand_worklist_pushes;

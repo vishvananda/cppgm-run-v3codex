@@ -204,11 +204,20 @@ enum ConversionRank
 	CONVERSION_INVALID = 100
 };
 
+struct ObjectConversionFact
+{
+	ConversionRank rank;
+	std::uint32_t base_projection_count;
+
+	ObjectConversionFact()
+		: rank(CONVERSION_INVALID), base_projection_count(0) {}
+};
+
 struct FunctionInfo
 {
 	BindingId binding;
 	ScopeId owner;
-	TypeId type;
+	TypeId type, signature;
 	NameId display_name;
 	TypeId member_owner;
 	EntityId friend_of;
@@ -230,7 +239,7 @@ struct FunctionInfo
 	bool ordinary_visible;
 	std::uint8_t demand_state;
 	FunctionInfo()
-		: binding(kNoBinding), owner(kNoScope), type(kNoType), display_name(0),
+		: binding(kNoBinding), owner(kNoScope), type(kNoType), signature(kNoType),
 		  member_owner(kNoType), friend_of(kNoEntity), lexical_scope(kNoScope),
 		  definition_body(kNoNode), constructor_initializer(kNoNode),
 		  defined(false), deferred(false), template_specialization(false),

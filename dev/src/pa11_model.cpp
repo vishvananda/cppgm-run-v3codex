@@ -493,6 +493,7 @@ BindingRecord::BindingRecord()
 
 LookupResult::LookupResult()
 	: name_space(kNoScope), type(kNoType), type_declaration(kNoBinding),
+	  type_declaration_canonical(kNoBinding),
 	  ordinary(kNoBinding), ordinary_declaration(kNoBinding),
 	  naming_class(kNoEntity)
 {
@@ -943,7 +944,9 @@ LookupResult Program::DirectLookup(ScopeId scope, NameId name,
 	if (kind == LOOKUP_TYPE || kind == LOOKUP_SCOPE_CARRIER)
 	{
 		result.type = entry->type;
-		result.type_declaration = entry->type_declaration == kNoBinding ?
+		result.type_declaration = entry->type_declaration;
+		result.type_declaration_canonical =
+			entry->type_declaration == kNoBinding ?
 			kNoBinding : bindings[entry->type_declaration].canonical;
 	}
 	if (kind == LOOKUP_ORDINARY)
@@ -966,7 +969,8 @@ void Program::MergeLookup(LookupResult* result,
 	}
 	if (result->name_space != candidate.name_space ||
 		result->type != candidate.type ||
-		result->type_declaration != candidate.type_declaration ||
+		result->type_declaration_canonical !=
+			candidate.type_declaration_canonical ||
 		result->ordinary_declaration != candidate.ordinary_declaration)
 		throw std::runtime_error("ambiguous PA11 lookup");
 }

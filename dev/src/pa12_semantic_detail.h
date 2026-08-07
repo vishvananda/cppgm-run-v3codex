@@ -34,6 +34,8 @@ public:
 		  associated_scope_visits_(0), associated_declaration_visits_(0),
 		  overload_candidates_(0), overload_order_comparisons_(0),
 		  conversion_checks_(0), function_signature_lookups_(0),
+		  access_checks_(0), access_path_visits_(0),
+		  access_grant_probes_(0),
 		  template_specialization_requests_(0),
 		  template_specialization_cache_hits_(0),
 		  demand_worklist_pushes_(0), demanded_function_emissions_(0),
@@ -117,7 +119,7 @@ private:
 	void ValidateNonmemberOperator(BindingId binding) const;
 	std::vector<BindingId> FunctionCandidates(ScopeId scope,
 		const std::string& spelling, EntityId* naming_class = 0);
-	std::vector<BindingId> FunctionSet(BindingId binding) const;
+	std::vector<BindingId> FunctionSet(BindingId binding);
 	std::vector<std::size_t> FindFunctionTemplates(ScopeId scope,
 		const std::string& spelling);
 	bool ParseExplicitTemplateArguments(ScopeId scope,
@@ -142,12 +144,14 @@ private:
 		const std::vector<NodeId>& argument_syntax,
 		const std::vector<ExpressionInfo>& arguments,
 		const std::vector<BindingId>& candidates,
-		const ExpressionInfo* object = 0);
+		const ExpressionInfo* object = 0,
+		ObjectConversionFact* object_conversion = 0);
 	ExpressionInfo BuildResolvedCall(BindingId selected, ScopeId scope,
 		const std::vector<NodeId>& argument_syntax,
 		const std::vector<ExpressionInfo>& arguments,
 		const ExpressionInfo* object, TypeId target,
-		EntityId naming_class = kNoEntity);
+		EntityId naming_class = kNoEntity,
+		const ObjectConversionFact* object_conversion = 0);
 	ExpressionInfo AnalyzeCall(NodeId node, ScopeId scope, TypeId target);
 	bool AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 		const std::vector<NodeId>& argument_syntax, TypeId target,
@@ -167,7 +171,8 @@ private:
 		const std::vector<NodeId>& operand_syntax,
 		const std::vector<ExpressionInfo>& operands,
 		const std::vector<BindingId>& candidates,
-		const ExpressionInfo& object, bool* selected_member);
+		const ExpressionInfo& object, bool* selected_member,
+		ObjectConversionFact* object_conversion);
 	ExpressionInfo MakeImplicitObjectPointer(const ExpressionInfo& object);
 	void BeginAssociatedLookup();
 	void AddAssociatedType(TypeId type);
@@ -199,9 +204,13 @@ private:
 	void AnalyzeSpecialMember(NodeId node, ScopeId scope, TypeId owner_type,
 		AccessKind access);
 	bool CanAccessMember(BindingId member,
-		EntityId naming_class = kNoEntity) const;
+		EntityId naming_class = kNoEntity,
+		EntityId object_class = kNoEntity) const;
 	bool HasClassPrivilege(EntityId owner) const;
 	bool HasDerivedClassPrivilege(EntityId base) const;
+	bool HasProtectedObjectPrivilege(EntityId owner,
+		EntityId object_class) const;
+	bool AccessIsBaseOf(EntityId base, EntityId derived) const;
 	void PublishUsingAccess(BindingId alias, BindingId source,
 		AccessKind access);
 	bool BaseConversionAllowed(EntityId derived, EntityId base) const;
@@ -252,7 +261,8 @@ private:
 	ConversionRank MemberObjectConversion(const ExpressionInfo& source,
 		TypeId target, BindingId member) const;
 	ExpressionInfo ApplyMemberObjectTarget(ExpressionInfo value,
-		TypeId target, BindingId member);
+		TypeId target, BindingId member,
+		const ObjectConversionFact* conversion_fact = 0);
 	ConversionRank Conversion(TypeId source, ValueCategory category,
 		bool integer_zero, TypeId target) const;
 	ConversionRank Conversion(const ExpressionInfo& source, TypeId target) const;
@@ -303,6 +313,7 @@ private:
 	IndexedSequenceTable friend_class_grants_;
 	IndexedSequenceTable friend_function_grants_;
 	FunctionSignatureTable function_declarations_;
+	FunctionSignatureTable using_function_declarations_;
 	std::vector<std::uint32_t> function_fact_by_binding_;
 	std::vector<FunctionInfo> functions_;
 	std::vector<std::vector<BindingId> > entity_data_members_;
@@ -346,6 +357,9 @@ private:
 	std::size_t overload_order_comparisons_;
 	mutable std::size_t conversion_checks_;
 	std::size_t function_signature_lookups_;
+	mutable std::size_t access_checks_;
+	mutable std::size_t access_path_visits_;
+	mutable std::size_t access_grant_probes_;
 	std::size_t template_specialization_requests_;
 	std::size_t template_specialization_cache_hits_;
 	std::size_t demand_worklist_pushes_;

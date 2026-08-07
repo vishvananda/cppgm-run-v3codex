@@ -216,6 +216,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		friend_class_grants_.StorageBytes() +
 		friend_function_grants_.StorageBytes() +
 		function_declarations_.StorageBytes() +
+		using_function_declarations_.StorageBytes() +
 		function_fact_by_binding_.capacity() * sizeof(std::uint32_t) +
 		functions_.capacity() * sizeof(FunctionInfo) +
 		entity_data_members_.capacity() * sizeof(std::vector<BindingId>) +
@@ -923,7 +924,7 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 	const std::vector<NodeId>& argument_syntax,
 	const std::vector<ExpressionInfo>& arguments,
 	const std::vector<BindingId>& candidates,
-	const ExpressionInfo* object)
+	const ExpressionInfo* object, ObjectConversionFact* object_conversion)
 {
 	const std::size_t explicit_arity = argument_syntax.size();
 	const std::size_t arity = explicit_arity + (object ? 1 : 0);
@@ -1074,12 +1075,26 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 		if (better(c, champion)) champion = c;
 	}
 	if (viable_count == 0) throw std::runtime_error("no viable overload");
-	if (viable_count == 1) return candidates[champion];
-	for (std::size_t other = 0; other < candidates.size(); ++other)
+	if (viable_count != 1)
+		for (std::size_t other = 0; other < candidates.size(); ++other)
+		{
+			if (other == champion || !viable[other]) continue;
+			if (!better(champion, other))
+				throw std::runtime_error("ambiguous overload");
+		}
+	if (object_conversion && object)
 	{
-		if (other == champion || !viable[other]) continue;
-		if (!better(champion, other))
-			throw std::runtime_error("ambiguous overload");
+		object_conversion->rank = ranks[champion * arity];
+		if (object_conversion->rank == CONVERSION_DERIVED_TO_BASE)
+		{
+			const std::size_t projections = base_distances[champion * arity];
+			if (projections == std::numeric_limits<std::size_t>::max() ||
+				projections > std::numeric_limits<std::uint32_t>::max())
+				throw std::logic_error(
+					"selected object conversion has no bounded base path");
+			object_conversion->base_projection_count =
+				static_cast<std::uint32_t>(projections);
+		}
 	}
 	return candidates[champion];
 }
@@ -1087,9 +1102,19 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	ScopeId scope, const std::vector<NodeId>& argument_syntax,
 	const std::vector<ExpressionInfo>& arguments,
-	const ExpressionInfo* object, TypeId target, EntityId naming_class)
+	const ExpressionInfo* object, TypeId target, EntityId naming_class,
+	const ObjectConversionFact* object_conversion)
 {
-	if (!CanAccessMember(selected, naming_class))
+	EntityId object_class = kNoEntity;
+	if (object)
+	{
+		TypeId object_type = program_->types.RemoveTopCv(
+			EffectiveType(object->type));
+		const TypeRecord object_shape = program_->types.Get(object_type);
+		if (object_shape.kind == TYPE_POINTER) object_type = object_shape.child;
+		object_class = EntityOf(object_type);
+	}
+	if (!CanAccessMember(selected, naming_class, object_class))
 		throw std::runtime_error("inaccessible member function");
 	const FunctionInfo function = GetFunction(selected);
 	const TypeRecord function_type = program_->types.Get(function.type);
@@ -1117,7 +1142,7 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 		const TypeId object_parameter =
 			program_->types.Parameters(callable_type)[0];
 		const ExpressionInfo converted = ApplyMemberObjectTarget(
-			*object, object_parameter, selected);
+			*object, object_parameter, selected, object_conversion);
 		dump_.Add(call, converted.node);
 	}
 	for (std::size_t a = 0; a < arguments.size(); ++a)
@@ -1264,10 +1289,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 					++expression_count_;
 				}
 			}
+			ObjectConversionFact object_conversion;
 			const BindingId selected = SelectOverload(scope, argument_syntax,
-				analyzed_arguments, candidates, object);
+				analyzed_arguments, candidates, object,
+				object ? &object_conversion : 0);
 			return BuildResolvedCall(selected, scope, argument_syntax,
-				analyzed_arguments, object, target, function_naming_class);
+				analyzed_arguments, object, target, function_naming_class,
+				object ? &object_conversion : 0);
 		}
 
 		TypeId cast_type = kNoType;
@@ -1754,7 +1782,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 		entity, name, LOOKUP_ORDINARY);
 	if (found.ordinary == kNoBinding)
 		throw std::runtime_error("unknown class member");
-	if (!CanAccessMember(found.ordinary, found.naming_class))
+	if (!CanAccessMember(found.ordinary, found.naming_class, entity))
 		throw std::runtime_error("inaccessible class member");
 	const EntityId member_owner =
 		program_->bindings[found.ordinary].member_owner;
@@ -2792,6 +2820,9 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		stats_->overload_order_comparisons = overload_order_comparisons_;
 		stats_->conversion_checks = conversion_checks_;
 		stats_->function_signature_lookups = function_signature_lookups_;
+		stats_->access_checks = access_checks_;
+		stats_->access_path_visits = access_path_visits_;
+		stats_->access_grant_probes = access_grant_probes_;
 		stats_->template_specialization_requests =
 			template_specialization_requests_;
 		stats_->template_specialization_cache_hits =
@@ -2834,7 +2865,9 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 	  associated_declaration_visits(0),
 	  overload_candidates(0),
 	  overload_order_comparisons(0), conversion_checks(0),
-	  function_signature_lookups(0), template_specialization_requests(0),
+	  function_signature_lookups(0), access_checks(0),
+	  access_path_visits(0), access_grant_probes(0),
+	  template_specialization_requests(0),
 	  template_specialization_cache_hits(0), demand_worklist_pushes(0),
 	  demanded_function_emissions(0), default_constructor_emissions(0),
 	  semantic_storage_bytes(0), peak_stage_storage_bytes(0),

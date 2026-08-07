@@ -65,10 +65,12 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 	std::vector<ExpressionInfo> arguments;
 	for (std::size_t i = 0; i < argument_syntax.size(); ++i)
 		arguments.push_back(AnalyzeExpression(argument_syntax[i], scope));
+	ObjectConversionFact object_conversion;
 	const BindingId selected = SelectOverload(scope, argument_syntax,
-		arguments, candidates, &object_pointer);
+		arguments, candidates, &object_pointer, &object_conversion);
 	*result = BuildResolvedCall(selected, scope, argument_syntax,
-		arguments, &object_pointer, target, found.naming_class);
+		arguments, &object_pointer, target, found.naming_class,
+		&object_conversion);
 	return true;
 }
 

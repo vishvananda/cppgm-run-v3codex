@@ -39,6 +39,10 @@ struct LowIRLoweringStats
 	std::size_t overload_candidates;
 	std::size_t overload_order_comparisons;
 	std::size_t conversion_checks;
+	std::size_t function_signature_lookups;
+	std::size_t access_checks;
+	std::size_t access_path_visits;
+	std::size_t access_grant_probes;
 	std::size_t functions;
 	std::size_t globals;
 	std::size_t blocks;

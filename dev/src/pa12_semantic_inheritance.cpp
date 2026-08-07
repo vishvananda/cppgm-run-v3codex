@@ -9,6 +9,20 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+bool SemanticAnalyzer::AccessIsBaseOf(EntityId base, EntityId derived) const
+{
+	if (base == kNoEntity || derived == kNoEntity ||
+		base >= program_->entities.size() || derived >= program_->entities.size())
+		return false;
+	for (EntityId current = derived; current != kNoEntity;
+		current = program_->entities[current].direct_base)
+	{
+		++access_path_visits_;
+		if (current == base) return true;
+	}
+	return false;
+}
+
 bool SemanticAnalyzer::HasClassPrivilege(EntityId owner) const
 {
 	if (owner == kNoEntity) return false;
@@ -18,6 +32,7 @@ bool SemanticAnalyzer::HasClassPrivilege(EntityId owner) const
 		if (context == owner) return true;
 		const std::uint64_t key =
 			(static_cast<std::uint64_t>(owner) << 32) | context;
+		++access_grant_probes_;
 		if (friend_class_grants_.Find(key)) return true;
 	}
 	if (current_function_context_ != kNoBinding)
@@ -26,6 +41,7 @@ bool SemanticAnalyzer::HasClassPrivilege(EntityId owner) const
 			current_function_context_].canonical;
 		const std::uint64_t key =
 			(static_cast<std::uint64_t>(owner) << 32) | function;
+		++access_grant_probes_;
 		if (friend_function_grants_.Find(key)) return true;
 	}
 	return false;
@@ -35,31 +51,54 @@ bool SemanticAnalyzer::HasDerivedClassPrivilege(EntityId base) const
 {
 	for (EntityId context = current_class_context_; context != kNoEntity;
 		context = program_->entities[context].enclosing_class)
-		if (program_->IsBaseOf(base, context)) return true;
+		if (AccessIsBaseOf(base, context)) return true;
+	return false;
+}
+
+bool SemanticAnalyzer::HasProtectedObjectPrivilege(EntityId owner,
+	EntityId object_class) const
+{
+	if (owner == kNoEntity || object_class == kNoEntity) return false;
+	bool privileged = false;
+	for (EntityId current = object_class; current != kNoEntity;
+		current = program_->entities[current].direct_base)
+	{
+		++access_path_visits_;
+		if (HasClassPrivilege(current)) privileged = true;
+		if (current == owner) return privileged;
+	}
 	return false;
 }
 
 bool SemanticAnalyzer::CanAccessMember(BindingId member,
-	EntityId naming_class) const
+	EntityId naming_class, EntityId object_class) const
 {
+	++access_checks_;
 	if (member == kNoBinding || member >= program_->bindings.size()) return false;
 	const BindingRecord& binding = program_->bindings[member];
+	const BindingRecord& declaration =
+		program_->bindings[binding.canonical];
+	const bool object_member = declaration.non_static_data_member ||
+		(declaration.kind == BIND_FUNCTION &&
+		 declaration.member_owner != kNoEntity &&
+		 !declaration.static_member_function);
 	if (binding.access_owner != kNoEntity)
 	{
 		if (binding.access == ACCESS_PUBLIC) return true;
 		if (binding.access == ACCESS_PRIVATE)
 			return HasClassPrivilege(binding.access_owner);
-		return HasClassPrivilege(binding.access_owner) ||
+		const bool permitted = HasClassPrivilege(binding.access_owner) ||
 			HasDerivedClassPrivilege(binding.access_owner);
+		return permitted && (!object_member || object_class == kNoEntity ||
+			HasProtectedObjectPrivilege(binding.access_owner, object_class));
 	}
 	const EntityId owner = binding.member_owner;
 	if (owner == kNoEntity) return true;
 	if (naming_class == kNoEntity) naming_class = owner;
-	if (!program_->IsBaseOf(owner, naming_class)) return false;
 	EntityId privilege_anchor = kNoEntity;
 	for (EntityId context = current_class_context_; context != kNoEntity;
 		context = program_->entities[context].enclosing_class)
-		if (program_->IsBaseOf(naming_class, context))
+		if (AccessIsBaseOf(naming_class, context))
 		{
 			privilege_anchor = context;
 			break;
@@ -67,6 +106,8 @@ bool SemanticAnalyzer::CanAccessMember(BindingId member,
 	for (EntityId current = naming_class; current != owner;
 		current = program_->entities[current].direct_base)
 	{
+		if (current == kNoEntity) return false;
+		++access_path_visits_;
 		if (HasClassPrivilege(current)) privilege_anchor = current;
 		const EntityRecord& derived = program_->entities[current];
 		if (derived.direct_base == kNoEntity) return false;
@@ -74,27 +115,30 @@ bool SemanticAnalyzer::CanAccessMember(BindingId member,
 		if (HasClassPrivilege(current)) continue;
 		if (derived.base_access == ACCESS_PROTECTED &&
 			privilege_anchor != kNoEntity &&
-			program_->IsBaseOf(current, privilege_anchor)) continue;
+			AccessIsBaseOf(current, privilege_anchor)) continue;
 		return false;
 	}
 	if (HasClassPrivilege(owner)) privilege_anchor = owner;
 	if (binding.access == ACCESS_PUBLIC) return true;
 	if (binding.access == ACCESS_PRIVATE)
 		return HasClassPrivilege(owner);
-	return HasClassPrivilege(owner) ||
+	const bool permitted = HasClassPrivilege(owner) ||
 		(privilege_anchor != kNoEntity &&
-		 program_->IsBaseOf(owner, privilege_anchor)) ||
+		 AccessIsBaseOf(owner, privilege_anchor)) ||
 		HasDerivedClassPrivilege(owner);
+	return permitted && (!object_member || object_class == kNoEntity ||
+		HasProtectedObjectPrivilege(owner, object_class));
 }
 
 bool SemanticAnalyzer::BaseConversionAllowed(EntityId derived,
 	EntityId base) const
 {
-	if (!program_->IsBaseOf(base, derived) || base == derived) return false;
+	++access_checks_;
+	if (base == derived) return false;
 	EntityId privilege_anchor = kNoEntity;
 	for (EntityId context = current_class_context_; context != kNoEntity;
 		context = program_->entities[context].enclosing_class)
-		if (program_->IsBaseOf(derived, context))
+		if (AccessIsBaseOf(derived, context))
 		{
 			privilege_anchor = context;
 			break;
@@ -102,12 +146,14 @@ bool SemanticAnalyzer::BaseConversionAllowed(EntityId derived,
 	for (EntityId current = derived; current != base;
 		current = program_->entities[current].direct_base)
 	{
+		if (current == kNoEntity) return false;
+		++access_path_visits_;
 		if (HasClassPrivilege(current)) privilege_anchor = current;
 		const AccessKind access = program_->entities[current].base_access;
 		if (access == ACCESS_PUBLIC) continue;
 		if (HasClassPrivilege(current)) continue;
 		if (access == ACCESS_PROTECTED && privilege_anchor != kNoEntity &&
-			program_->IsBaseOf(current, privilege_anchor)) continue;
+			AccessIsBaseOf(current, privilege_anchor)) continue;
 		return false;
 	}
 	return true;
@@ -138,7 +184,10 @@ std::size_t SemanticAnalyzer::BaseConversionDistance(TypeId source,
 	std::size_t distance = 0;
 	for (EntityId current = derived; current != kNoEntity;
 		current = program_->entities[current].direct_base, ++distance)
+	{
+		++access_path_visits_;
 		if (current == base) return distance;
+	}
 	return std::numeric_limits<std::size_t>::max();
 }
 
@@ -159,7 +208,7 @@ ConversionRank SemanticAnalyzer::MemberObjectConversion(
 	const EntityId derived = EntityOf(source_pointer.child);
 	const EntityId base = EntityOf(target_pointer.child);
 	if (derived == kNoEntity || base == kNoEntity || derived == base ||
-		!program_->IsBaseOf(base, derived)) return CONVERSION_INVALID;
+		!AccessIsBaseOf(base, derived)) return CONVERSION_INVALID;
 	const TypeRecord source_cv = program_->types.Get(source_pointer.child);
 	const TypeRecord target_cv = program_->types.Get(target_pointer.child);
 	const std::uint8_t scv = source_cv.kind == TYPE_QUALIFIED ?
@@ -171,13 +220,16 @@ ConversionRank SemanticAnalyzer::MemberObjectConversion(
 }
 
 ExpressionInfo SemanticAnalyzer::ApplyMemberObjectTarget(
-	ExpressionInfo value, TypeId target, BindingId member)
+	ExpressionInfo value, TypeId target, BindingId member,
+	const ObjectConversionFact* conversion_fact)
 {
-	const ConversionRank conversion =
+	const ConversionRank conversion = conversion_fact ? conversion_fact->rank :
 		MemberObjectConversion(value, target, member);
 	if (conversion != CONVERSION_DERIVED_TO_BASE)
 		return ApplyTarget(value, target);
-	const std::size_t projections = BaseConversionDistance(value.type, target);
+	const std::size_t projections = conversion_fact ?
+		conversion_fact->base_projection_count :
+		BaseConversionDistance(value.type, target);
 	if (projections == std::numeric_limits<std::size_t>::max() ||
 		projections > std::numeric_limits<std::uint32_t>::max())
 		throw std::logic_error("using member has no bounded base path");
@@ -334,8 +386,6 @@ ExpressionInfo SemanticAnalyzer::AnalyzeImplicitDataMember(
 	EntityId naming_class)
 {
 	const BindingRecord& binding = program_->bindings[member_binding];
-	if (!CanAccessMember(member_binding, naming_class))
-		throw std::runtime_error("inaccessible implicit data member");
 	const NameId this_name = program_->names.Intern("this");
 	const LookupResult this_lookup =
 		program_->LookupName(scope, this_name, LOOKUP_ORDINARY);
@@ -347,6 +397,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeImplicitDataMember(
 	TypeId object_type = EffectiveType(this_binding.type);
 	const TypeRecord object_pointer = program_->types.Get(
 		program_->types.RemoveTopCv(object_type));
+	const EntityId object_class = object_pointer.kind == TYPE_POINTER ?
+		EntityOf(object_pointer.child) : kNoEntity;
+	if (!CanAccessMember(member_binding, naming_class, object_class))
+		throw std::runtime_error("inaccessible implicit data member");
 	if (object_pointer.kind == TYPE_POINTER)
 	{
 		const TypeRecord pointee = program_->types.Get(object_pointer.child);

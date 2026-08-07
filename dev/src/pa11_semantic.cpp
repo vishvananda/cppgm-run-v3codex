@@ -368,7 +368,7 @@ void TypeAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope)
 		program_->AddBinding(scope,
 			program_->types.IsNamed(type.type) ? BIND_TYPE : BIND_TYPE_ALIAS,
 			name, type.type, false, 0, NAMED_NONE, 0,
-			type.type_declaration);
+			type.type_declaration_canonical);
 		return;
 	}
 	const LookupResult value =

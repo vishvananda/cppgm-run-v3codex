@@ -111,11 +111,11 @@ void SemanticAnalyzer::AddCandidate(BindingId binding,
 	std::vector<BindingId>* candidates)
 {
 	if (binding == kNoBinding || binding >= program_->bindings.size()) return;
-	binding = program_->bindings[binding].canonical;
-	if (candidate_marks_.size() <= binding)
-		candidate_marks_.resize(static_cast<std::size_t>(binding) + 1, 0);
-	if (candidate_marks_[binding] == candidate_generation_) return;
-	candidate_marks_[binding] = candidate_generation_;
+	const BindingId canonical = program_->bindings[binding].canonical;
+	if (candidate_marks_.size() <= canonical)
+		candidate_marks_.resize(static_cast<std::size_t>(canonical) + 1, 0);
+	if (candidate_marks_[canonical] == candidate_generation_) return;
+	candidate_marks_[canonical] = candidate_generation_;
 	candidates->push_back(binding);
 }
 
@@ -197,7 +197,8 @@ BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
 	const std::vector<NodeId>& operand_syntax,
 	const std::vector<ExpressionInfo>& operands,
 	const std::vector<BindingId>& candidates,
-	const ExpressionInfo& object, bool* selected_member)
+	const ExpressionInfo& object, bool* selected_member,
+	ObjectConversionFact* object_conversion)
 {
 	const std::size_t arity = operands.size();
 	if (arity != 0 && candidates.size() >
@@ -223,7 +224,8 @@ BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
 			if ((function_type.cv & CV_VOLATILE) != 0)
 				object_type = program_->types.Qualify(object_type, CV_VOLATILE);
 			const TypeId target = program_->types.Pointer(object_type);
-			const ConversionRank rank = Conversion(object, target);
+			const ConversionRank rank = MemberObjectConversion(object, target,
+				candidates[c]);
 			ranks[c * arity] = rank;
 			if (rank == CONVERSION_DERIVED_TO_BASE)
 				base_distances[c * arity] =
@@ -320,6 +322,20 @@ BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
 		if (other != champion && viable[other] && !better(champion, other))
 			throw std::runtime_error("ambiguous overloaded operator");
 	*selected_member = GetFunction(candidates[champion]).member_owner != kNoType;
+	if (*selected_member && object_conversion)
+	{
+		object_conversion->rank = ranks[champion * arity];
+		if (object_conversion->rank == CONVERSION_DERIVED_TO_BASE)
+		{
+			const std::size_t projections = base_distances[champion * arity];
+			if (projections == std::numeric_limits<std::size_t>::max() ||
+				projections > std::numeric_limits<std::uint32_t>::max())
+				throw std::logic_error(
+					"selected operator object has no bounded base path");
+			object_conversion->base_projection_count =
+				static_cast<std::uint32_t>(projections);
+		}
+	}
 	return candidates[champion];
 }
 
@@ -373,8 +389,9 @@ bool SemanticAnalyzer::TryAnalyzeOverloadedOperator(
 	if (candidates.empty()) return false;
 	const ExpressionInfo object = MakeImplicitObjectPointer(operands[0]);
 	bool selected_member = false;
+	ObjectConversionFact object_conversion;
 	const BindingId selected = SelectOperatorOverload(scope, operand_syntax,
-		operands, candidates, object, &selected_member);
+		operands, candidates, object, &selected_member, &object_conversion);
 	if (selected == kNoBinding) return false;
 	std::vector<NodeId> arguments_syntax;
 	std::vector<ExpressionInfo> arguments;
@@ -387,7 +404,8 @@ bool SemanticAnalyzer::TryAnalyzeOverloadedOperator(
 	}
 	*result = BuildResolvedCall(selected, scope, arguments_syntax, arguments,
 		selected_member ? &object : 0, target,
-		selected_member ? naming_class : kNoEntity);
+		selected_member ? naming_class : kNoEntity,
+		selected_member ? &object_conversion : 0);
 	return true;
 }
 
