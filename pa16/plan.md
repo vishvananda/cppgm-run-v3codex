@@ -16,13 +16,18 @@ helpers have canonical typed identities and one emission owner, while literal,
 scope/emission-path, and call-argument lowering each have one bounded owner. ABI
 effects derive from binding/type identity and bounded enum tables; no spelling-
 keyed lowering, textual reconstruction, whole-program retry, or external tool
-enters the path.
+enters the path. Completed class records also retain canonical empty-layout
+facts. PA12 separates nested same-type zero-offset subobjects through direct
+`EntityId` edges with generation-marked, phase-local traversal state; semantic
+base distance remains distinct from the selected one-step physical LowIR
+projection.
 
 ## Current Failure Map
 
-PA16 is **275/290**, up from this checkpoint's **273/290** start; PA1-PA15 are
-**1,145/1,145**. The remaining 15-test failure set is assigned by primary owner
-after inspecting the sources, diagnostics, and canonical LowIR diffs:
+PA16 is **276/291**, preserving the **275/290** turn-start baseline and adding
+one audit regression; PA1-PA15 are **1,145/1,145**. The remaining 15-test
+failure set is assigned by primary owner after inspecting source diagnostics
+and canonical LowIR diffs:
 
 - Constructor access/demand (1): `friend-derived-private-base-defaulted-constructor`.
 - Member candidate/name selection (2): `using-base-static-same-signature-derived-preferred`, `late-member-subscript-shadows-type`.
@@ -56,11 +61,13 @@ through-PA15, and file audit.
 | Nested aggregate initialization | 32/64 members: 333/653 semantic nodes, 35/67 layout visits, 65/129 conversions, 328/648 instructions, 63,078/124,518 typed bytes; 0.291/0.422 ms semantic and 0.165/0.288 ms lowering medians |
 | Aggregate helper demand/deduplication | 64/128 explicit elements: one helper definition and 6/6 signature lookups; 398/782 semantic nodes, 460/908 edges, 148/276 instructions, 43,120/82,288 typed bytes; 0.224/0.374 ms semantic and 0.102/0.141 ms lowering medians |
 | Friend/ADL converting-call boundary | Adversarial 32/64 overloads plus shared target constructors: 64/128 candidates, 162/322 conversions, 31/63 cache hits, 32/64 misses, 129/257 access checks, 104/200 instructions, 69,590/136,790 typed bytes; 1.017/1.980 ms median semantic time |
-| Physical single-base layout/projection | 256/512 members over an empty base: 256/512 layout visits and 0.557/1.028 ms median semantic time. A 64/128-edge empty-base chain: 65/129 layouts, 322/642 path visits, 0.643/1.152 ms semantic time, and one projection/five LowIR instructions at both sizes |
+| Physical single-base layout/projection | 256/512 members over an empty base: 256/512 layout visits and 0.557/1.028 ms median semantic time. A 64/128-edge chain with a nested zero-offset collision: 67/131 layouts, 67/131 collision visits, 394/778 path visits, 0.701/1.317 ms semantic medians, and one projection/11 LowIR instructions at both sizes |
 
 The deterministic counters establish proportional work at each scaling-sensitive
-owner. The audited shared-target path is 1.98-2.00x in work counters for 2x
-input, replacing the pre-audit Cartesian constructor rescans.
+owner. The audited nested-collision path is 1.96x in zero-offset visits and
+1.97x in base-path visits for 2x depth while physical output stays constant.
+The shared-target call path remains 1.98-2.00x in work counters, replacing the
+pre-audit Cartesian constructor rescans.
 
 ## Completed Checkpoints
 
@@ -79,4 +86,4 @@ input, replacing the pre-audit Cartesian constructor rescans.
 | Typed declarator/call/boundary closure | Pass after audit fixes: interned scoped parameter facts, exception/builtin ABI ownership, and retained narrowing conversions; focused 15/15; **249/286** with original 246/283 preserved; prior 1,145/1,145; file audit passes |
 | Aggregate/value-init/materialization closure | Pass after audit fixes: typed lowering-only helper identities, shared literal decoding, complete omitted-member actions, and ordinary demand ownership; all 11 landed gains plus 2/2 audit regressions; **262/288** with the original **260/286** preserved; proportional 1x/2x probes; prior 1,145/1,145; file audit passes |
 | Friend/ADL call-boundary closure | Pass after audit fixes: canonical internal ABI identity, indexed friendship/ADL, retained conversion/constructor facts, complete-key local cache, and typed argument lowering; focused 11/11; **273/290** with the original **271/288** preserved and the same 17 failures; prior 1,145/1,145; file audit and proportional probe pass |
-| Physical single-base layout/projection closure | Canonical empty-class layout reuses zero-offset base storage while separating same-type subobjects; ranking retains semantic distance and lowering consumes one physical projection; focused 6/6; **275/290** from **273/290**; prior 1,145/1,145; audit and proportional 1x/2x probes pass |
+| Physical single-base layout/projection closure | Pass after audit fixes: canonical empty-layout facts, identity-indexed nested zero-offset separation, retained semantic distance, and one typed physical projection; focused 7/7; **276/291** with **275/290** preserved; prior 1,145/1,145; file audit and proportional probes pass |

@@ -141,6 +141,7 @@ void CoalesceLifecycleFunctions(TypedProgram* program,
 LowIRLoweringStats::LowIRLoweringStats()
 	: source_bytes(0), tokens(0), semantic_nodes(0), semantic_edges(0),
 	  lowered_nodes(0), class_layouts(0), class_layout_member_visits(0),
+	  class_zero_offset_subobject_visits(0),
 	  constructor_member_action_visits(0),
 	  constructor_base_action_visits(0),
 	  destructor_subobject_action_visits(0),
@@ -180,6 +181,8 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 			stats->class_layouts += semantic_stats.class_layouts;
 			stats->class_layout_member_visits +=
 				semantic_stats.class_layout_member_visits;
+			stats->class_zero_offset_subobject_visits +=
+				semantic_stats.class_zero_offset_subobject_visits;
 			stats->constructor_member_action_visits +=
 				semantic_stats.constructor_member_action_visits;
 			stats->constructor_base_action_visits +=

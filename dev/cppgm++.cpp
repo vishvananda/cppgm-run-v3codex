@@ -564,6 +564,8 @@ int run_emit_semantics_mode(const vector<string> & args)
            << " class_layouts=" << stats.class_layouts
            << " class_layout_member_visits="
            << stats.class_layout_member_visits
+           << " class_zero_offset_subobject_visits="
+           << stats.class_zero_offset_subobject_visits
            << " constructor_member_action_visits="
            << stats.constructor_member_action_visits
 		   << " constructor_base_action_visits="
@@ -647,6 +649,8 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << " class_layouts=" << stats.class_layouts
 			 << " class_layout_member_visits="
 			 << stats.class_layout_member_visits
+			 << " class_zero_offset_subobject_visits="
+			 << stats.class_zero_offset_subobject_visits
 			 << " constructor_member_action_visits="
 			 << stats.constructor_member_action_visits
 			 << " constructor_base_action_visits="

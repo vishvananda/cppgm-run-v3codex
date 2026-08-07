@@ -310,6 +310,73 @@ std::size_t SemanticAnalyzer::RequestedAlignment(NodeId node, ScopeId scope)
 	return result;
 }
 
+EntityId SemanticAnalyzer::ZeroOffsetClassEntity(TypeId type) const
+{
+	const TypeRecord* record = &program_->types.Get(type);
+	while (record->kind == TYPE_ARRAY || record->kind == TYPE_QUALIFIED)
+	{
+		type = record->child;
+		record = &program_->types.Get(type);
+	}
+	if (record->kind != TYPE_NAMED) return kNoEntity;
+	const NamedFlavor flavor = program_->entities[record->entity].flavor;
+	return flavor == NAMED_STRUCT || flavor == NAMED_CLASS ||
+		flavor == NAMED_UNION ? record->entity : kNoEntity;
+}
+
+bool SemanticAnalyzer::VisitZeroOffsetSubobjects(EntityId root,
+	std::uint32_t marker, std::uint32_t conflict_marker)
+{
+	zero_offset_subobject_scratch_.clear();
+	zero_offset_subobject_scratch_.push_back(root);
+	while (!zero_offset_subobject_scratch_.empty())
+	{
+		const EntityId entity = zero_offset_subobject_scratch_.back();
+		zero_offset_subobject_scratch_.pop_back();
+		++class_zero_offset_subobject_visits_;
+		if (zero_offset_subobject_marks_[entity] == marker) continue;
+		if (zero_offset_subobject_marks_[entity] == conflict_marker) return true;
+		zero_offset_subobject_marks_[entity] = marker;
+		const EntityRecord& record = program_->entities[entity];
+		if (record.direct_base != kNoEntity)
+			zero_offset_subobject_scratch_.push_back(record.direct_base);
+		if (entity >= entity_layout_members_.size()) continue;
+		const std::vector<ClassLayoutMember>& members =
+			entity_layout_members_[entity];
+		for (std::size_t i = 0; i < members.size(); ++i)
+		{
+			const ClassLayoutMember& member = members[i];
+			if (member.bit_field || member.binding == kNoBinding ||
+				program_->bindings[member.binding].member_offset != 0)
+				continue;
+			const EntityId child = ZeroOffsetClassEntity(member.type);
+			if (child != kNoEntity)
+				zero_offset_subobject_scratch_.push_back(child);
+		}
+	}
+	return false;
+}
+
+bool SemanticAnalyzer::ZeroOffsetSubobjectConflict(EntityId base,
+	TypeId member_type)
+{
+	const EntityId member = ZeroOffsetClassEntity(member_type);
+	if (base == kNoEntity || member == kNoEntity) return false;
+	if (zero_offset_subobject_marks_.size() < program_->entities.size())
+		zero_offset_subobject_marks_.resize(program_->entities.size(), 0);
+	if (zero_offset_subobject_generation_ >
+		std::numeric_limits<std::uint32_t>::max() - 2)
+	{
+		std::fill(zero_offset_subobject_marks_.begin(),
+			zero_offset_subobject_marks_.end(), 0);
+		zero_offset_subobject_generation_ = 0;
+	}
+	const std::uint32_t base_marker = ++zero_offset_subobject_generation_;
+	const std::uint32_t member_marker = ++zero_offset_subobject_generation_;
+	(void)VisitZeroOffsetSubobjects(base, base_marker, base_marker);
+	return VisitZeroOffsetSubobjects(member, member_marker, base_marker);
+}
+
 void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 {
 	EntityRecord& owner = program_->entities[entity];
@@ -480,24 +547,9 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 		}
 		else
 		{
-			TypeId member_object_type = layout.type;
-			const TypeRecord* member_object =
-				&program_->types.Get(member_object_type);
-			while (member_object->kind == TYPE_ARRAY ||
-				member_object->kind == TYPE_QUALIFIED)
-			{
-				member_object_type = member_object->child;
-				member_object = &program_->types.Get(member_object_type);
-			}
-			if (size == 0 && member_object->kind == TYPE_NAMED)
-				for (EntityId current = owner.direct_base;
-					current != kNoEntity;
-					current = program_->entities[current].direct_base)
-					if (current == member_object->entity)
-					{
-						size = 1;
-						break;
-					}
+			if (size == 0 && ZeroOffsetSubobjectConflict(
+				owner.direct_base, layout.type))
+				size = 1;
 			size = AlignUp(size, member_alignment);
 			member->member_offset = size;
 			if (size > std::numeric_limits<std::size_t>::max() - member_size)

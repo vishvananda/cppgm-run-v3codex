@@ -43,6 +43,8 @@ public:
 		  demand_worklist_pushes_(0), demanded_function_emissions_(0),
 		  default_constructor_emissions_(0),
 		  class_layouts_(0), class_layout_member_visits_(0),
+		  class_zero_offset_subobject_visits_(0),
+		  zero_offset_subobject_generation_(0),
 		  constructor_member_action_visits_(0),
 		  constructor_base_action_visits_(0),
 		  destructor_subobject_action_visits_(0),
@@ -252,6 +254,10 @@ private:
 	bool BaseConversionAllowed(EntityId derived, EntityId base) const;
 	std::size_t BaseConversionDistance(TypeId source, TypeId target) const;
 	std::size_t BaseProjectionCount(TypeId source, TypeId target) const;
+	EntityId ZeroOffsetClassEntity(TypeId type) const;
+	bool VisitZeroOffsetSubobjects(EntityId root, std::uint32_t marker,
+		std::uint32_t conflict_marker);
+	bool ZeroOffsetSubobjectConflict(EntityId base, TypeId member_type);
 	void CompleteClassLayout(EntityId entity);
 	std::size_t RequestedAlignment(NodeId node, ScopeId scope);
 	void InheritConstructors(EntityId entity,
@@ -362,6 +368,8 @@ private:
 	std::vector<BindingId> builtin_functions_;
 	std::vector<std::vector<BindingId> > entity_data_members_;
 	std::vector<std::vector<ClassLayoutMember> > entity_layout_members_;
+	std::vector<std::uint32_t> zero_offset_subobject_marks_;
+	std::vector<EntityId> zero_offset_subobject_scratch_;
 	std::vector<std::vector<BindingId> > entity_constructors_;
 	std::vector<BindingId> implicit_constructor_by_entity_;
 	std::vector<BindingId> constructor_base_entry_by_binding_;
@@ -420,6 +428,8 @@ private:
 	std::size_t default_constructor_emissions_;
 	std::size_t class_layouts_;
 	std::size_t class_layout_member_visits_;
+	std::size_t class_zero_offset_subobject_visits_;
+	std::uint32_t zero_offset_subobject_generation_;
 	std::size_t constructor_member_action_visits_;
 	std::size_t constructor_base_action_visits_;
 	std::size_t destructor_subobject_action_visits_;

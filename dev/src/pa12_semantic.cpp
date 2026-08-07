@@ -168,6 +168,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const {
 		entity_data_members_.capacity() * sizeof(std::vector<BindingId>) +
 		entity_layout_members_.capacity() *
 			sizeof(std::vector<ClassLayoutMember>) +
+		zero_offset_subobject_marks_.capacity() * sizeof(std::uint32_t) +
+		zero_offset_subobject_scratch_.capacity() * sizeof(EntityId) +
 		entity_constructors_.capacity() * sizeof(std::vector<BindingId>) +
 		implicit_constructor_by_entity_.capacity() * sizeof(BindingId) +
 		constructor_base_entry_by_binding_.capacity() * sizeof(BindingId) +
@@ -2839,6 +2841,8 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		stats_->expressions = expression_count_;
 		stats_->class_layouts = class_layouts_;
 		stats_->class_layout_member_visits = class_layout_member_visits_;
+		stats_->class_zero_offset_subobject_visits =
+			class_zero_offset_subobject_visits_;
 		stats_->constructor_member_action_visits =
 			constructor_member_action_visits_;
 		stats_->constructor_base_action_visits =
@@ -2895,6 +2899,7 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 	: tokens(0), syntax_nodes(0), semantic_nodes(0), semantic_edges(0),
 	  interned_names(0), canonical_types(0), scopes(0), declarations(0),
 	  expressions(0), class_layouts(0), class_layout_member_visits(0),
+	  class_zero_offset_subobject_visits(0),
 	  constructor_member_action_visits(0),
 	  constructor_base_action_visits(0),
 	  destructor_subobject_action_visits(0),
