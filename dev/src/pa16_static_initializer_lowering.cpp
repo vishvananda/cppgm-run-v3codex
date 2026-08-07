@@ -403,7 +403,9 @@ bool StaticInitializerLowering::Lower(const NamespaceObjectAction& action,
 		IsTrivialConstructorAction(action.type, variable_children))
 	{
 		SetZero(action.type, global);
-		if (!thread_local_object) *needs_global_class_initializer = true;
+		if (!thread_local_object &&
+			!program_.bindings[action.object].unnamed_namespace_linkage)
+			*needs_global_class_initializer = true;
 		return true;
 	}
 	if (initializer.kind == DUMP_CONSTRUCTOR_ACTION ||

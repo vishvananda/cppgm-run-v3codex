@@ -64,8 +64,10 @@ private:
 	const std::string& ScopePrefix(ScopeId scope);
 	NameId ScopePrefixId(ScopeId scope);
 	NameId DisplayName(ScopeId owner, NameId name);
+	NameId EmissionName(ScopeId owner, NameId name);
 	ScopeId NewScope(ScopeId parent, ScopeKind kind, NameId name,
 		NameId prefix);
+	bool HasInternalLinkageScope(ScopeId scope) const;
 	bool IsDeclaration(NodeId node) const;
 
 	void AnalyzeDeclaration(NodeId node, ScopeId scope,
@@ -154,6 +156,13 @@ private:
 		const ExpressionInfo* object, TypeId target,
 		EntityId naming_class = kNoEntity,
 		const ObjectConversionFact* object_conversion = 0);
+	ConversionRank CallConversion(const ExpressionInfo& source,
+		TypeId target) const;
+	BindingId ConvertingConstructor(const ExpressionInfo& source,
+		TypeId target) const;
+	ExpressionInfo ApplyCallArgument(ExpressionInfo value, TypeId target);
+	ExpressionInfo BuildConvertingArgument(const ExpressionInfo& source,
+		TypeId target, BindingId constructor);
 	ExpressionInfo AnalyzeCall(NodeId node, ScopeId scope, TypeId target);
 	BindingId EnsureBuiltinFunction(BuiltinFunctionKind kind);
 	bool AnalyzeBuiltinCall(const std::string& spelling, ScopeId scope,
@@ -350,6 +359,7 @@ private:
 	std::vector<BindingId> implicit_constructor_by_entity_;
 	std::vector<BindingId> constructor_base_entry_by_binding_;
 	std::vector<BindingId> entity_destructor_by_entity_;
+	std::vector<BindingId> hidden_friend_anchor_by_entity_;
 	std::vector<NodeId> member_initializer_by_binding_;
 	std::vector<NodeId> constructor_initializer_scratch_;
 	std::vector<BindingId> constructor_initializer_touched_;

@@ -18,26 +18,25 @@ or external tool enters the path.
 
 ## Current Failure Map
 
-The checkpoint's original suite remains **260/286 PA16 tests**; two audit
-regressions pass for a current report of **262/288**. PA1-PA15 remain
-**1,145/1,145**. The same 26 original failures are assigned once by primary
-owner:
+PA16 is **271/288** after closing the 9-test friend/ADL boundary; PA1-PA15
+remain **1,145/1,145**. The 17 remaining failures are assigned once by primary
+owner after tracing their semantic graphs and canonical LowIR diffs:
 
-- Friend/access/ADL/inherited overload (13): `friend-derived-private-base-defaulted-constructor`, `friend-function-member-access`, `friend-intermediate-derived-protected-base-method`, `qualified-friend-function-member-access`, `unnamed-namespace-hidden-friend-single-definition`, `adl-associated-namespace-does-not-climb-parents`, `adl-using-declaration-source-point`, `callable-field-hides-private-base-method`, `friend-function-definition-skip`, `hidden-friend-definition-adl-call`, `hidden-friend-operator-nullptr-compare`, `prvalue-derived-base-friend-operator`, `using-base-static-same-signature-derived-preferred`.
+- Constructor/base/layout/static-overload edges (4): `friend-derived-private-base-defaulted-constructor`, `friend-intermediate-derived-protected-base-method`, `callable-field-hides-private-base-method`, `using-base-static-same-signature-derived-preferred`.
 - Member/destructor/declarator/parser (11): `mutable-member-const-method`, `nested-out-of-class-constructor-enclosing-type`, `reference-indexed-pointer-member-access`, `static-thread-local-member-object-call`, `const-pointer-explicit-destructor-call`, `explicit-destructor-call-enclosing-namespace-type`, `late-member-subscript-shadows-type`, `member-function-pointer-field-call`, `reference-member-same-name-as-class`, `scalar-pseudo-destructor-call`, `decltype-qualified-nested-type-local`.
 - Conversion constraints (2): `string-literal-does-not-convert-to-mutable-void-pointer`, `list-init-narrowing-bad`.
 
 ## Active Checkpoint
 
-**Next: friend/access/ADL/inherited-overload closure (13 tests).** Apply
-`spec.md` sections 5 and 6: declarations publish canonical friendship, using,
-and base/access edges; semantic lookup unions indexed ordinary and associated
-candidates, then performs object-aware access and overload ranking once. Data
-flow is `declaration facts -> scope/entity indexes -> candidate IDs -> access and
-conversion facts -> selected binding -> lowering`. Expected work is O(C + B)
-per lookup, for candidates C and traversed base edges B, with no namespace-wide
-rescans. Validate the 13 owned failures, sparse/dense 1x/2x lookup probes, full
-PA16, through-PA15, and file audit.
+**Next: constructor/base/layout/static-overload closure (4 tests).** Apply
+`spec.md` sections 2, 3, 5, 6, and 9: canonical class records own defaulted
+base construction demand, zero-offset base projections, empty-base layout, and
+derived-versus-imported member preference. The owner/data flow is `class
+declarations and syntax -> canonical base/layout and function indexes ->
+selected constructor/member facts -> lowering`. Work is O(M + B + C), for
+members M, traversed base edges B, and bounded candidates C, with no semantic
+retry. Validate the 4 owned failures, representative 1x/2x base/member cases,
+full PA16, through-PA15, and file audit.
 
 ## Performance Evidence
 
@@ -51,10 +50,11 @@ PA16, through-PA15, and file audit.
 | Composed declarators/calls | 32/64 methods: 1,318/2,598 tokens, 1,654/3,254 syntax nodes, 104/200 fact changes, 291/579 conversions, 261/517 access checks, 112,179/222,099 typed bytes, 455/903 instructions; 0.521/0.986 ms parse, 0.908/1.678 ms semantic, 0.532/1.040 ms lowering medians |
 | Nested aggregate initialization | 32/64 members: 333/653 semantic nodes, 35/67 layout visits, 65/129 conversions, 328/648 instructions, 63,078/124,518 typed bytes; 0.291/0.422 ms semantic and 0.165/0.288 ms lowering medians |
 | Aggregate helper demand/deduplication | 64/128 explicit elements: one helper definition and 6/6 signature lookups; 398/782 semantic nodes, 460/908 edges, 148/276 instructions, 43,120/82,288 typed bytes; 0.224/0.374 ms semantic and 0.102/0.141 ms lowering medians |
+| Friend/ADL converting-call boundary | 64/128 target constructors: 68/132 candidates, 276/532 conversions, 396/780 signature lookups, 206/398 access checks; output stays at 23 instructions and 9,582 typed bytes; 1.134/1.949 ms median semantic time |
 
 The deterministic counters establish proportional work at each scaling-sensitive
-owner. Current aggregate work, storage, and output ratios are 1.86-1.99 for 2x
-input, while helper identity and declaration-index work stay constant.
+owner, generally 1.86-1.99x for 2x input; helper identity and selected-call
+output stay constant where the added declarations are nonviable.
 
 ## Completed Checkpoints
 
@@ -72,3 +72,4 @@ input, while helper identity and declaration-index work stay constant.
 | Layout/bit-field/inherited-ctor closure | Focused 29/29; 231/283; prior 1,145/1,145; audit pass |
 | Typed declarator/call/boundary closure | Pass after audit fixes: interned scoped parameter facts, exception/builtin ABI ownership, and retained narrowing conversions; focused 15/15; **249/286** with original 246/283 preserved; prior 1,145/1,145; file audit passes |
 | Aggregate/value-init/materialization closure | Pass after audit fixes: typed lowering-only helper identities, shared literal decoding, complete omitted-member actions, and ordinary demand ownership; all 11 landed gains plus 2/2 audit regressions; **262/288** with the original **260/286** preserved; proportional 1x/2x probes; prior 1,145/1,145; file audit passes |
+| Friend/ADL call-boundary closure | Canonical anonymous-namespace emission identity, demand-indexed hidden friends, bounded converting-constructor selection, and typed argument staging/base projection; focused 9/9; **271/288** (+9); prior 1,145/1,145; audit pass; proportional 64/128 probe |

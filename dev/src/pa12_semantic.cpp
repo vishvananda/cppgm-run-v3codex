@@ -149,7 +149,6 @@ NameId SemanticAnalyzer::ScopePrefixId(ScopeId scope)
 	scope_prefixes_[scope] = program_->names.Intern(rendered);
 	return scope_prefixes_[scope];
 }
-
 NameId SemanticAnalyzer::DisplayName(ScopeId owner, NameId name)
 {
 	// ScopePrefix may materialize and intern a deferred prefix, invalidating
@@ -158,7 +157,6 @@ NameId SemanticAnalyzer::DisplayName(ScopeId owner, NameId name)
 	const std::string qualified = ScopePrefix(owner) + terminal;
 	return program_->names.Intern(qualified);
 }
-
 ScopeId SemanticAnalyzer::NewScope(ScopeId parent, ScopeKind kind,
 	NameId name, NameId prefix)
 {
@@ -227,6 +225,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const {
 		implicit_constructor_by_entity_.capacity() * sizeof(BindingId) +
 		constructor_base_entry_by_binding_.capacity() * sizeof(BindingId) +
 		entity_destructor_by_entity_.capacity() * sizeof(BindingId) +
+		hidden_friend_anchor_by_entity_.capacity() * sizeof(BindingId) +
 		member_initializer_by_binding_.capacity() * sizeof(NodeId) +
 		constructor_initializer_scratch_.capacity() * sizeof(NodeId) +
 		constructor_initializer_touched_.capacity() * sizeof(BindingId) +
@@ -1018,7 +1017,7 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 			if (a < function_type.parameter_count)
 			{
 				if (arguments[a].type != kNoType)
-					rank = Conversion(arguments[a], parameters[a]);
+					rank = CallConversion(arguments[a], parameters[a]);
 				else
 				{
 					const std::vector<BindingId> argument_functions =
@@ -1180,7 +1179,7 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 			if (argument.type == kNoType)
 				argument = AnalyzeExpression(argument_syntax[a], scope,
 					parameters[a]);
-			else argument = ApplyTarget(argument, parameters[a]);
+			else argument = ApplyCallArgument(argument, parameters[a]);
 		}
 		dump_.Add(call, argument.node);
 	}
@@ -1953,6 +1952,8 @@ void SemanticAnalyzer::AnalyzeNamespace(NodeId node, ScopeId scope,
 	const NameId name = program_->names.Intern(spelling);
 	const bool is_inline = FindChild(node, "inline") != kNoNode;
 	const ScopeId child = program_->OpenNamespace(scope, name, is_inline);
+	program_->SetScopeEmissionName(child, unnamed ?
+		program_->names.Intern("_GLOBAL__N_1") : name);
 	if (scope_prefixes_.size() <= child)
 	{
 		scope_prefixes_.resize(static_cast<std::size_t>(child) + 1, 0);
@@ -2996,5 +2997,4 @@ void ConsumeSemanticTranslationUnit(const std::string& path,
 				std::chrono::steady_clock::now() - started).count());
 	}
 }
-
 }

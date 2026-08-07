@@ -298,7 +298,8 @@ struct BindingRecord
 	LanguageLinkage language_linkage;
 	StorageClass storage_class;
 	AccessKind access;
-	bool constant, nonthrowing, thread_local_storage, non_static_data_member,
+	bool constant, nonthrowing, unnamed_namespace_linkage,
+		thread_local_storage, non_static_data_member,
 		bit_field,
 		static_member_function, has_default_member_initializer, constructor,
 		constructor_base_entry, destructor;
@@ -335,6 +336,7 @@ public:
 	ScopeId NewScope(ScopeId parent, ScopeKind kind, NameId name,
 		EntityId entity = kNoEntity, ScopeId output_parent = kNoScope);
 	ScopeId OpenNamespace(ScopeId parent, NameId name, bool is_inline);
+	void SetScopeEmissionName(ScopeId scope, NameId name);
 	void AddNamespaceAlias(ScopeId owner, NameId name, ScopeId target);
 	void AddUsingEdge(ScopeId owner, ScopeId target);
 	EntityId NewEntity(NameId name, NamedFlavor flavor, bool complete,
@@ -363,6 +365,7 @@ public:
 	ScopeId ScopeForType(TypeId type) const;
 	ScopeId ParentScope(ScopeId scope) const;
 	ScopeKind KindOfScope(ScopeId scope) const;
+	NameId NameOfScope(ScopeId scope) const;
 	EntityId EntityForScope(ScopeId scope) const;
 	std::size_t SizeOf(TypeId type) const;
 	std::size_t AlignOf(TypeId type) const;

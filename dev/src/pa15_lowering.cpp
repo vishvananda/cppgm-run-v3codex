@@ -256,7 +256,9 @@ private:
 		if (record.binding == kNoBinding) return;
 		if (function_symbols_[record.binding] == kNoLowId)
 		{
-			const std::string base = SanitizeSymbol(program_.names.Get(record.text));
+			const BindingRecord& binding = program_.bindings[record.binding];
+			const std::string base = SanitizeSymbol(program_.names.Get(
+				binding.qualified_name != 0 ? binding.qualified_name : record.text));
 			const std::uint32_t ordinal =
 				program_.bindings[record.binding].overload_ordinal;
 			const std::string name = ordinal <= 1 ? base :
@@ -843,12 +845,15 @@ private:
 					program_.bindings[record.binding].member_owner != kNoEntity &&
 					!program_.bindings[record.binding].static_member_function)
 					current_this_binding_ = child.binding;
-				Instruction store(Instruction::STORE);
-				store.type = result.parameters[parameter_index].type;
-				store.first = Operand(static_cast<ParameterId>(parameter_index),
-					store.type);
-				store.second = Operand(binding_slots_[child.binding], store.type);
-				Emit(store);
+				if (!IsClassValueType(child.type))
+				{
+					Instruction store(Instruction::STORE);
+					store.type = result.parameters[parameter_index].type;
+					store.first = Operand(static_cast<ParameterId>(parameter_index),
+						store.type);
+					store.second = Operand(binding_slots_[child.binding], store.type);
+					Emit(store);
+				}
 				++parameter_index;
 			}
 			else if (child.kind == DUMP_COMPOUND_STATEMENT) body = children[i];
@@ -1351,9 +1356,8 @@ private:
 				result = LoadStorage(LowerStorage(node),
 					LowerExpressionType(record.type));
 			else if (record.base_projection_count != 0)
-				result = ProjectBaseSubobjects(
-					LowerValue(children[0], LowPtr()),
-					record.base_projection_count);
+				result = LowerProjectedClassPointer(
+					children[0], record.base_projection_count);
 			else result = LowerConvertedValue(children[0],
 				LowerExpressionType(record.type), false);
 		}
@@ -1714,25 +1718,12 @@ private:
 			const bool reference = i - 1 < function_type.parameter_count &&
 				IsReferenceType(parameters[i - 1]);
 			argument_references.Push(reference ? 1 : 0);
-			if (reference)
-			{
-				const DumpNode& argument = arena_.nodes[children[i]];
-				if (argument.category == VALUE_LVALUE ||
-					argument.category == VALUE_XVALUE)
-					arguments.Push(AddressOfStorage(LowerStorage(children[i])));
-				else
-				{
-					const LowType type = LowerExpressionType(parameters[i - 1]);
-					const Operand slot(EnsureGeneratedSlot(children[i], "refarg", type),
-						type);
-					Instruction store(Instruction::STORE);
-					store.type = type;
-					store.first = LowerConvertedValue(children[i], type);
-					store.second = slot;
-					Emit(store);
-					arguments.Push(AddressOfStorage(slot));
-				}
-			}
+			if (!reference && arena_.nodes[children[i]].class_argument_staging)
+				arguments.Push(LowerClassArgumentStaging(
+					children[i], parameters[i - 1]));
+			else if (reference)
+				arguments.Push(LowerReferenceCallArgument(
+					children[i], parameters[i - 1]));
 			else
 			{
 				LowType expected = i - 1 < function_type.parameter_count ?

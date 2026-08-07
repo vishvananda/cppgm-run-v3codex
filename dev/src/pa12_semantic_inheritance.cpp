@@ -195,6 +195,17 @@ ConversionRank SemanticAnalyzer::MemberObjectConversion(
 	const ExpressionInfo& source, TypeId target, BindingId member) const
 {
 	const ConversionRank ordinary = Conversion(source, target);
+	if (ordinary == CONVERSION_STANDARD)
+	{
+		const TypeId from = Decay(source.type);
+		const TypeId to = program_->types.RemoveTopCv(target);
+		const TypeRecord source_pointer = program_->types.Get(from);
+		const TypeRecord target_pointer = program_->types.Get(to);
+		if (source_pointer.kind == TYPE_POINTER &&
+			target_pointer.kind == TYPE_POINTER &&
+			SimilarUnqualified(source_pointer.child, target_pointer.child))
+			return CONVERSION_EXACT;
+	}
 	if (ordinary != CONVERSION_INVALID || member == kNoBinding ||
 		member >= program_->bindings.size() ||
 		program_->bindings[member].access_owner == kNoEntity)

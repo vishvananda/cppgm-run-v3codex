@@ -487,7 +487,8 @@ BindingRecord::BindingRecord()
 		  builtin_function(BUILTIN_FUNCTION_NONE),
 		  operator_literal_suffix(0), language_linkage(LANGUAGE_LINKAGE_CPP),
 	  storage_class(STORAGE_CLASS_NONE), access(ACCESS_PUBLIC),
-	  constant(false), nonthrowing(false), thread_local_storage(false),
+	  constant(false), nonthrowing(false), unnamed_namespace_linkage(false),
+	  thread_local_storage(false),
 	  non_static_data_member(false), bit_field(false),
 	  static_member_function(false),
 	  has_default_member_initializer(false), constructor(false),
@@ -513,7 +514,7 @@ struct Program::ScopeRecord
 {
 	ScopeId parent;
 	ScopeKind kind;
-	NameId name;
+	NameId name, emission_name;
 	EntityId entity;
 	BindingId first_binding;
 	BindingId last_binding;
@@ -522,7 +523,7 @@ struct Program::ScopeRecord
 	std::uint32_t first_using;
 
 	ScopeRecord()
-		: parent(kNoScope), kind(SCOPE_NAMESPACE), name(0), entity(kNoEntity),
+		: parent(kNoScope), kind(SCOPE_NAMESPACE), name(0), emission_name(0),
 		  first_binding(kNoBinding), last_binding(kNoBinding),
 		  first_child(std::numeric_limits<std::uint32_t>::max()),
 		  last_child(std::numeric_limits<std::uint32_t>::max()),
@@ -626,6 +627,7 @@ ScopeId Program::NewScope(ScopeId parent, ScopeKind kind, NameId name,
 	record.parent = parent;
 	record.kind = kind;
 	record.name = name;
+	record.emission_name = name;
 	record.entity = entity;
 	lookup_marks_.push_back(0);
 	const ScopeId tree_parent = output_parent == kNoScope ? parent : output_parent;
@@ -655,6 +657,13 @@ ScopeId Program::OpenNamespace(ScopeId parent, NameId name, bool is_inline)
 	}
 	if (is_inline) AddUsingEdge(parent, entry->name_space);
 	return entry->name_space;
+}
+
+void Program::SetScopeEmissionName(ScopeId scope, NameId name)
+{
+	if (scope >= scopes_.size())
+		throw std::logic_error("invalid emission scope identity");
+	scopes_[scope].emission_name = name;
 }
 
 void Program::AddNamespaceAlias(ScopeId owner, NameId name, ScopeId target)
@@ -736,9 +745,9 @@ void Program::BuildEmissionPath(ScopeId owner, NameId terminal,
 	while (owner != kNoScope && owner != GlobalScope())
 	{
 		const ScopeRecord& scope = scopes_[owner];
-		if (scope.name != 0 && (scope.kind == SCOPE_NAMESPACE ||
+		if (scope.emission_name != 0 && (scope.kind == SCOPE_NAMESPACE ||
 			scope.kind == SCOPE_CLASS || scope.kind == SCOPE_ENUM))
-			path->push_back(scope.name);
+			path->push_back(scope.emission_name);
 		owner = scope.parent;
 	}
 	std::reverse(path->begin(), path->end());
@@ -844,6 +853,12 @@ ScopeKind Program::KindOfScope(ScopeId scope) const
 	if (scope >= scopes_.size())
 		throw std::logic_error("invalid scope kind query");
 	return scopes_[scope].kind;
+}
+
+NameId Program::NameOfScope(ScopeId scope) const
+{
+	if (scope >= scopes_.size()) return 0;
+	return scopes_[scope].name;
 }
 
 EntityId Program::EntityForScope(ScopeId scope) const

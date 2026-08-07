@@ -197,9 +197,10 @@ std::string MangleFunction(const pa11::Program& program,
 {
 	using namespace abi_mangle;
 	using namespace pa11;
-	const std::string qualified = program.names.Get(node.text);
-	if (qualified == "main") return std::string();
 	const BindingRecord& binding = program.bindings[node.binding];
+	const std::string qualified = program.names.Get(
+		binding.qualified_name != 0 ? binding.qualified_name : node.text);
+	if (qualified == "main") return std::string();
 	if (binding.builtin_function != BUILTIN_FUNCTION_NONE)
 		return "cppgm_builtin_" + program.names.Get(binding.name).substr(10);
 	if (binding.language_linkage == LANGUAGE_LINKAGE_C &&
@@ -210,7 +211,9 @@ std::string MangleFunction(const pa11::Program& program,
 	AbiFactRecord target;
 	target.set_kind(ABI_FACT_RECORD_TARGET);
 	target.target.kind = ABI_TARGET_FACT_FUNCTION;
-	target.target.internal_linkage = binding.storage_class == STORAGE_CLASS_STATIC;
+	target.target.internal_linkage =
+		binding.storage_class == STORAGE_CLASS_STATIC &&
+		!binding.unnamed_namespace_linkage;
 	target.target.function.kind = ABI_FUNCTION_TARGET_PATH;
 	target.target.function.qualified_name = qualified;
 	file.cases[0].records.push_back(target);
@@ -305,7 +308,9 @@ std::string MangleVariable(const pa11::Program& program,
 	AbiFactRecord target;
 	target.set_kind(ABI_FACT_RECORD_TARGET);
 	target.target.kind = ABI_TARGET_FACT_VARIABLE;
-	target.target.internal_linkage = binding.storage_class == STORAGE_CLASS_STATIC;
+	target.target.internal_linkage =
+		binding.storage_class == STORAGE_CLASS_STATIC &&
+		!binding.unnamed_namespace_linkage;
 	target.target.qualified_name = program.names.Get(
 		binding.qualified_name != 0 ? binding.qualified_name : node.text);
 	file.cases[0].records.push_back(target);

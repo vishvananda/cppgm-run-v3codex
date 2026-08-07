@@ -98,6 +98,8 @@ struct DumpNode
 	bool integer_narrowing_conversion;
 	bool value_initialization;
 	bool elide_empty_constructor;
+	bool argument_materialization;
+	bool class_argument_staging;
 
 	explicit DumpNode(DumpKind value)
 		: kind(value), type(kNoType), operand_type(kNoType),
@@ -107,7 +109,8 @@ struct DumpNode
 		  last_edge(kNoDumpEdge), base_projection_count(0),
 		  aggregate_helper(kNoDumpEdge),
 		  constant(false), integer_narrowing_conversion(false),
-		  value_initialization(false), elide_empty_constructor(false) {}
+		  value_initialization(false), elide_empty_constructor(false),
+		  argument_materialization(false), class_argument_staging(false) {}
 };
 
 struct DumpEdge
@@ -211,7 +214,8 @@ enum ConversionRank
 	CONVERSION_DERIVED_TO_BASE = 2,
 	CONVERSION_STANDARD = 3,
 	CONVERSION_BOOLEAN = 4,
-	CONVERSION_ELLIPSIS = 5,
+	CONVERSION_USER_DEFINED = 5,
+	CONVERSION_ELLIPSIS = 6,
 	CONVERSION_INVALID = 100
 };
 

@@ -1140,6 +1140,14 @@ void SemanticAnalyzer::AddNamespaceObjectAction(std::uint32_t variable,
 	const EntityId entity = DestructedEntity(type);
 	if (entity != kNoEntity)
 	{
+		if (program_->bindings[object].unnamed_namespace_linkage &&
+			initializer != kNoDumpEdge &&
+			dump_.nodes[initializer].kind == DUMP_CONSTRUCTOR_ACTION)
+		{
+			const BindingId constructor = dump_.nodes[initializer].binding;
+			DemandFunction(EnsureConstructorBaseEntry(constructor));
+			DemandFunction(constructor);
+		}
 		if (!program_->entities[entity].destructible)
 			throw std::runtime_error("namespace object type is not destructible");
 		const BindingId destructor = DestructorForType(type);

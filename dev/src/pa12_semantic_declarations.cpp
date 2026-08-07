@@ -86,6 +86,29 @@ OperatorKind ClassifyOperator(const std::string& name,
 
 }
 
+bool SemanticAnalyzer::HasInternalLinkageScope(ScopeId scope) const
+{
+	const NameId unnamed = program_->names.Intern("<unnamed>");
+	for (ScopeId current = scope; current != kNoScope;
+		current = program_->ParentScope(current))
+		if (program_->KindOfScope(current) == SCOPE_NAMESPACE &&
+			program_->NameOfScope(current) == unnamed)
+			return true;
+	return false;
+}
+
+NameId SemanticAnalyzer::EmissionName(ScopeId owner, NameId name)
+{
+	program_->BuildEmissionPath(owner, name, &scope_prefix_scratch_);
+	std::string rendered;
+	for (std::size_t i = 0; i < scope_prefix_scratch_.size(); ++i)
+	{
+		if (i != 0) rendered += "::";
+		rendered += program_->names.Get(scope_prefix_scratch_[i]);
+	}
+	return program_->names.Intern(rendered);
+}
+
 TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	const std::string& hint, bool elaborated)
 {
@@ -136,8 +159,7 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	{
 		if ((path.global || path.Size() > 1) && elaborated)
 			throw std::runtime_error("qualified class was not declared");
-		const NameId entity_name = ScopePrefix(owner).empty() ? name :
-			DisplayName(owner, name);
+		const NameId entity_name = EmissionName(owner, name);
 		entity = program_->NewEntity(entity_name, flavor, false,
 			kNoType, owner, name);
 		program_->SetTypeName(owner, name, program_->entities[entity].type);
@@ -912,12 +934,19 @@ void SemanticAnalyzer::PublishVariableDeclarationFacts(BindingId binding,
 	BindingRecord& record = program_->bindings[binding];
 	record.language_linkage = current_language_linkage_;
 	record.storage_class = spec.storage_class;
+	if (!local && HasInternalLinkageScope(declaration_scope))
+	{
+		record.storage_class = STORAGE_CLASS_STATIC;
+		record.unnamed_namespace_linkage = true;
+	}
 	record.thread_local_storage = spec.thread_local_storage;
 	const TypeRecord top_type = program_->types.Get(type);
 	if (!local && record.storage_class == STORAGE_CLASS_NONE &&
 		top_type.kind == TYPE_QUALIFIED && (top_type.cv & CV_CONST) != 0)
 		record.storage_class = STORAGE_CLASS_STATIC;
 	BindingRecord& canonical = program_->bindings[record.canonical];
+	canonical.unnamed_namespace_linkage =
+		canonical.unnamed_namespace_linkage || record.unnamed_namespace_linkage;
 	canonical.language_linkage = record.language_linkage;
 	if (canonical.storage_class == STORAGE_CLASS_NONE ||
 		record.storage_class == STORAGE_CLASS_STATIC)
@@ -931,7 +960,7 @@ void SemanticAnalyzer::PublishVariableDeclarationFacts(BindingId binding,
 		record.constant = true;
 		record.value = canonical.value;
 	}
-	if (!local) record.qualified_name = DisplayName(declaration_scope, name);
+	if (!local) record.qualified_name = EmissionName(declaration_scope, name);
 }
 
 void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
@@ -1472,6 +1501,7 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 	LanguageLinkage language_linkage, bool nonthrowing,
 	bool ordinary_visible)
 {
+	if (HasInternalLinkageScope(owner)) storage_class = STORAGE_CLASS_STATIC;
 	const LookupResult occupied =
 		program_->LookupDirect(owner, name, LOOKUP_ORDINARY);
 	if (occupied.ordinary != kNoBinding &&
@@ -1527,6 +1557,9 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 	declaration_record.storage_class = storage_class;
 	declaration_record.language_linkage = language_linkage;
 	declaration_record.nonthrowing = nonthrowing;
+	declaration_record.unnamed_namespace_linkage =
+		HasInternalLinkageScope(owner);
+	declaration_record.qualified_name = EmissionName(owner, name);
 	if (canonical == kNoBinding)
 	{
 		FunctionInfo info;
@@ -1569,6 +1602,10 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 			}
 	}
 	BindingRecord& canonical_record = program_->bindings[canonical];
+	canonical_record.unnamed_namespace_linkage =
+		canonical_record.unnamed_namespace_linkage ||
+		declaration_record.unnamed_namespace_linkage;
+	canonical_record.qualified_name = declaration_record.qualified_name;
 	if (previous != kNoBinding &&
 		canonical_record.language_linkage == LANGUAGE_LINKAGE_C)
 		language_linkage = LANGUAGE_LINKAGE_C;
@@ -1919,7 +1956,18 @@ void SemanticAnalyzer::AnalyzeFriendFunction(NodeId node,
 		{
 			info.definition_body = FindChild(node, "compound-statement");
 			info.deferred = true;
-			DemandFunction(binding);
+			if (!qualified_friend)
+			{
+				if (hidden_friend_anchor_by_entity_.size() <= owner_entity)
+					hidden_friend_anchor_by_entity_.resize(
+						static_cast<std::size_t>(owner_entity) + 1, kNoBinding);
+				if (hidden_friend_anchor_by_entity_[owner_entity] == kNoBinding)
+				{
+					hidden_friend_anchor_by_entity_[owner_entity] =
+						program_->bindings[binding].canonical;
+					DemandFunction(binding);
+				}
+			}
 		}
 		ValidateNonmemberOperator(binding);
 	}
