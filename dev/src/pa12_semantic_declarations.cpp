@@ -2285,13 +2285,14 @@ void SemanticAnalyzer::ValidateFunctionRefQualifier(BindingId binding)
 	const FunctionInfo& function = GetFunction(binding);
 	const BindingRecord& record = program_->bindings[function.binding];
 	const TypeRecord& type = program_->types.Get(function.type);
-	const bool member = function.member_owner != kNoType;
+	const bool class_member = record.member_owner != kNoEntity;
+	const bool nonstatic_member = function.member_owner != kNoType;
 	if (type.ref_qualifier != FUNCTION_REF_NONE &&
-		(!member || record.static_member_function || record.constructor ||
-		 record.destructor))
+		(!nonstatic_member || record.static_member_function ||
+		 record.constructor || record.destructor))
 		throw std::runtime_error(
 			"ref-qualifier requires an ordinary non-static member function");
-	if (!member) return;
+	if (!class_member) return;
 
 	const TypeId* parameters = program_->types.Parameters(function.type);
 	std::vector<TypeId> parameter_shape;
@@ -2299,7 +2300,7 @@ void SemanticAnalyzer::ValidateFunctionRefQualifier(BindingId binding)
 		parameter_shape.assign(parameters, parameters + type.parameter_count);
 	const TypeId shape = program_->types.Function(
 		program_->types.Fundamental(FUND_VOID), parameter_shape,
-		type.variadic, type.cv, FUNCTION_REF_NONE);
+		type.variadic, CV_NONE, FUNCTION_REF_NONE);
 	const FunctionSignatureKey key(record.owner, record.name, shape);
 	++function_signature_lookups_;
 	const BindingId prior = member_ref_qualifier_shapes_.Find(key);

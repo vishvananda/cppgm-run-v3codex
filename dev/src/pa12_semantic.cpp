@@ -915,14 +915,14 @@ bool SemanticAnalyzer::RefQualifierViable(const ExpressionInfo& object,
 int SemanticAnalyzer::CompareImplicitObjectBindings(ValueCategory category,
 	const TypeRecord& left, const TypeRecord& right) const
 {
-	if (left.cv != right.cv && (left.cv & ~right.cv) == 0) return 1;
-	if (left.cv != right.cv && (right.cv & ~left.cv) == 0) return -1;
 	if (category != VALUE_LVALUE &&
 		left.ref_qualifier != right.ref_qualifier)
 	{
 		if (left.ref_qualifier == FUNCTION_REF_RVALUE) return 1;
 		if (right.ref_qualifier == FUNCTION_REF_RVALUE) return -1;
 	}
+	if (left.cv != right.cv && (left.cv & ~right.cv) == 0) return 1;
+	if (left.cv != right.cv && (right.cv & ~left.cv) == 0) return -1;
 	return 0;
 }
 
