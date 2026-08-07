@@ -213,7 +213,8 @@ std::string MangleFunction(const pa11::Program& program,
 		AbiFactRecord terminal;
 		terminal.set_kind(ABI_FACT_RECORD_FUNCTION);
 		terminal.function.kind = ABI_FUNCTION_RECORD_TERMINAL;
-		terminal.function.terminal = "constructor-complete";
+		terminal.function.terminal = binding.constructor_base_entry ?
+			"constructor-base" : "constructor-complete";
 		file.cases[0].records.push_back(terminal);
 	}
 	else if (binding.destructor)

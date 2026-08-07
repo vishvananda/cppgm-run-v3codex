@@ -29,6 +29,7 @@ public:
 		  root_(kNoDumpEdge), current_language_linkage_(LANGUAGE_LINKAGE_CPP),
 		  current_return_type_(kNoType), current_class_context_(kNoEntity),
 		  current_function_context_(kNoBinding),
+		  current_pack_alignment_(0),
 		  loop_depth_(0), switch_depth_(0), expression_count_(0),
 		  associated_generation_(0), candidate_generation_(0),
 		  associated_scope_visits_(0), associated_declaration_visits_(0),
@@ -201,6 +202,8 @@ private:
 		TypeId target, EntityId naming_class);
 	void AnalyzeClassMember(NodeId node, ScopeId scope, TypeId owner_type,
 		AccessKind access);
+	void AnalyzeBitField(NodeId node, ScopeId scope, TypeId owner_type,
+		AccessKind access);
 	void AnalyzeSpecialMember(NodeId node, ScopeId scope, TypeId owner_type,
 		AccessKind access);
 	bool CanAccessMember(BindingId member,
@@ -216,6 +219,10 @@ private:
 	bool BaseConversionAllowed(EntityId derived, EntityId base) const;
 	std::size_t BaseConversionDistance(TypeId source, TypeId target) const;
 	void CompleteClassLayout(EntityId entity);
+	std::size_t RequestedAlignment(NodeId node, ScopeId scope);
+	void InheritConstructors(EntityId entity,
+		const std::vector<BindingId>& constructors);
+	BindingId EnsureConstructorBaseEntry(BindingId constructor);
 	BindingId EnsureImplicitConstructor(EntityId entity);
 	BindingId EnsureImplicitDestructor(EntityId entity);
 	const std::vector<BindingId>& ConstructorCandidates(EntityId entity) const;
@@ -231,7 +238,8 @@ private:
 		bool list_initialization);
 	std::uint32_t BuildDefaultConstructorAction(TypeId type, ScopeId scope);
 	void AddConstructorMemberActions(const FunctionInfo& constructor,
-		ScopeId function_scope, std::uint32_t body);
+		ScopeId function_scope, const std::vector<BindingId>& parameters,
+		std::uint32_t body);
 	void AddBaseInitializationAction(EntityId entity, NodeId initializer,
 		ScopeId scope, std::uint32_t body);
 	void AddMemberInitializationAction(BindingId member, NodeId initializer,
@@ -317,8 +325,10 @@ private:
 	std::vector<std::uint32_t> function_fact_by_binding_;
 	std::vector<FunctionInfo> functions_;
 	std::vector<std::vector<BindingId> > entity_data_members_;
+	std::vector<std::vector<ClassLayoutMember> > entity_layout_members_;
 	std::vector<std::vector<BindingId> > entity_constructors_;
 	std::vector<BindingId> implicit_constructor_by_entity_;
+	std::vector<BindingId> constructor_base_entry_by_binding_;
 	std::vector<BindingId> entity_destructor_by_entity_;
 	std::vector<NodeId> member_initializer_by_binding_;
 	std::vector<NodeId> constructor_initializer_scratch_;
@@ -346,6 +356,8 @@ private:
 	TypeId current_return_type_;
 	EntityId current_class_context_;
 	BindingId current_function_context_;
+	std::size_t current_pack_alignment_;
+	std::vector<std::size_t> pack_alignment_stack_;
 	std::size_t loop_depth_;
 	std::size_t switch_depth_;
 	std::size_t expression_count_;

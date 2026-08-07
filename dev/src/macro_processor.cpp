@@ -1531,7 +1531,30 @@ private:
 	{
 		if (directive.size() == 3 && directive[2].kind == TK_IDENTIFIER &&
 			directive[2].spelling == id_once_)
+		{
 			MarkPragmaOnce(spellings_.Get(sources_.back().physical_file));
+			return;
+		}
+		if (directive.size() < 6 || Spell(directive[2]) != "pack" ||
+			Spell(directive[3]) != "(" || Spell(directive.back()) != ")")
+			return;
+		if (directive.size() == 6 && Spell(directive[4]) == "pop")
+		{
+			post_tokens_.EmitPragmaPackPop();
+			return;
+		}
+		if (directive.size() == 8 && Spell(directive[4]) == "push" &&
+			Spell(directive[5]) == "," && directive[6].kind == TK_PP_NUMBER)
+		{
+			const std::string& text = Spell(directive[6]);
+			char* end = 0;
+			const unsigned long long parsed = std::strtoull(text.c_str(), &end, 10);
+			if (!end || *end != '\0' || parsed == 0 ||
+				parsed > std::numeric_limits<std::size_t>::max() ||
+				(parsed & (parsed - 1)) != 0)
+				throw std::runtime_error("invalid #pragma pack alignment");
+			post_tokens_.EmitPragmaPackPush(static_cast<std::size_t>(parsed));
+		}
 	}
 
 	void ParseDirective(const std::vector<Token>& directive)

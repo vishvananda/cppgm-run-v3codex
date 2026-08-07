@@ -293,10 +293,51 @@ protected:
 			else store.first = derived.Convert(
 				derived.LowerValue(value_node), store.type, false);
 		}
-		const Operand object = derived.LoadStorage(
-			derived.StorageFor(derived.current_this_binding_, LowPtr()), LowPtr());
-		store.second = derived.ProjectAggregateMember(object, action.binding);
-		derived.Emit(store);
+		if (derived.program_.bindings[action.binding].bit_field)
+		{
+			const LowType field_type = derived.LowerExpressionType(action.type);
+			const bool preserve =
+				derived.PreserveInitializedBitField(action.binding);
+			Operand cleared;
+			if (preserve)
+			{
+				const Operand object = derived.LoadStorage(
+					derived.StorageFor(
+						derived.current_this_binding_, LowPtr()), LowPtr());
+				store.second = derived.ProjectAggregateMember(
+					object, action.binding);
+				cleared = derived.ClearBitFieldStorage(
+					action.binding, store.second, field_type);
+			}
+			const Operand positioned = derived.PrepareBitFieldValue(
+				action.binding, store.first, field_type);
+			if (!preserve)
+			{
+				const Operand object = derived.LoadStorage(
+					derived.StorageFor(
+						derived.current_this_binding_, LowPtr()), LowPtr());
+				store.second = derived.ProjectAggregateMember(
+					object, action.binding);
+			}
+			const Operand stored = preserve ? derived.CombineBitFieldValue(
+				cleared, positioned, field_type) : positioned;
+			if (preserve)
+			{
+				const Operand store_object = derived.LoadStorage(
+					derived.StorageFor(
+						derived.current_this_binding_, LowPtr()), LowPtr());
+				store.second = derived.ProjectAggregateMember(
+					store_object, action.binding);
+			}
+			derived.EmitBitFieldStore(field_type, stored, store.second);
+		}
+		else
+		{
+			const Operand object = derived.LoadStorage(
+				derived.StorageFor(derived.current_this_binding_, LowPtr()), LowPtr());
+			store.second = derived.ProjectAggregateMember(object, action.binding);
+			derived.Emit(store);
+		}
 	}
 
 };

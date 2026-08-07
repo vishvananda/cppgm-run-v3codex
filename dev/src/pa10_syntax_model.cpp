@@ -16,6 +16,8 @@ const std::uint16_t kLiteralToken = kSimpleTokenCount + 1;
 const std::uint16_t kEofToken = kSimpleTokenCount + 2;
 const std::uint16_t kRShiftFirstToken = kSimpleTokenCount + 3;
 const std::uint16_t kRShiftSecondToken = kSimpleTokenCount + 4;
+const std::uint16_t kPragmaPackPushToken = kSimpleTokenCount + 5;
+const std::uint16_t kPragmaPackPopToken = kSimpleTokenCount + 6;
 const NodeId kNoNode = std::numeric_limits<NodeId>::max();
 const std::uint32_t kNoEdge = std::numeric_limits<std::uint32_t>::max();
 
@@ -85,6 +87,17 @@ void SyntaxTokenSink::EmitUserDefinedFloating(const std::string& source,
 	const std::string&, const std::string&)
 {
 	EmitLiteralSpelling(source);
+}
+
+void SyntaxTokenSink::EmitPragmaPackPush(std::size_t alignment)
+{
+	tokens_.push_back(SyntaxToken(kPragmaPackPushToken,
+		strings_.Intern(std::to_string(alignment))));
+}
+
+void SyntaxTokenSink::EmitPragmaPackPop()
+{
+	tokens_.push_back(SyntaxToken(kPragmaPackPopToken, 0));
 }
 
 void SyntaxTokenSink::EmitEof()
@@ -195,6 +208,12 @@ void SyntaxArena::Write(std::ostream& output, NodeId root,
 	{
 		Frame& frame = stack.back();
 		const SyntaxNode& node = nodes_[frame.node];
+		if (!frame.entered &&
+			(node.flags & SYNTAX_FLAG_SEMANTIC_ONLY) != 0)
+		{
+			stack.pop_back();
+			continue;
+		}
 		if (!frame.entered)
 		{
 			if (measure) deepest = std::max(deepest, frame.depth);

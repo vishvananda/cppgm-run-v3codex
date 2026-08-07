@@ -302,6 +302,7 @@ void SemanticAnalyzer::AddMemberInitializationAction(BindingId member_id,
 
 void SemanticAnalyzer::AddConstructorMemberActions(
 	const FunctionInfo& constructor, ScopeId function_scope,
+	const std::vector<BindingId>& parameters,
 	std::uint32_t body)
 {
 	const EntityId entity = program_->bindings[constructor.binding].member_owner;
@@ -313,7 +314,39 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 	constructor_initializer_touched_.clear();
 	NodeId base_initializer = kNoNode;
 	bool base_initializer_seen = false;
-	if (constructor.constructor_initializer != kNoNode)
+	if (constructor.inherited_constructor_source != kNoBinding)
+	{
+		const EntityId base = program_->entities[entity].direct_base;
+		if (base == kNoEntity)
+			throw std::logic_error("inherited constructor has no direct base");
+		const BindingId source = constructor.inherited_constructor_source;
+		const FunctionInfo& source_info = GetFunction(source);
+		const std::uint32_t base_action = MakeDump(
+			DUMP_BASE_INITIALIZER_ACTION, program_->entities[base].type,
+			VALUE_NONE, program_->entities[base].identity_name);
+		dump_.nodes[base_action].base_projection_count = 1;
+		const std::uint32_t call = MakeDump(DUMP_CONSTRUCTOR_ACTION,
+			AdaptMemberFunctionType(source), VALUE_NONE,
+			source_info.display_name, source);
+		if (parameters.size() != source_info.parameters.size())
+			throw std::logic_error(
+				"inherited constructor parameter fact mismatch");
+		for (std::size_t i = 0; i < parameters.size(); ++i)
+		{
+			const BindingRecord& parameter = program_->bindings[parameters[i]];
+			const TypeId type = EffectiveType(parameter.type);
+			dump_.Add(call, MakeDump(DUMP_ID_EXPRESSION, type,
+				VALUE_LVALUE, parameter.name, parameters[i]));
+			++expression_count_;
+		}
+		DemandFunction(source);
+		dump_.Add(base_action, call);
+		dump_.Add(body, base_action);
+		base_initializer_seen = true;
+		++constructor_base_action_visits_;
+		++expression_count_;
+	}
+	else if (constructor.constructor_initializer != kNoNode)
 	{
 		for (std::uint32_t edge = arena_->FirstEdge(
 			constructor.constructor_initializer); edge != kNoEdge;
@@ -371,7 +404,8 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 			base_initializer_seen = true;
 		}
 	}
-	if (program_->entities[entity].direct_base != kNoEntity)
+	if (program_->entities[entity].direct_base != kNoEntity &&
+		constructor.inherited_constructor_source == kNoBinding)
 		AddBaseInitializationAction(entity, base_initializer,
 			function_scope, body);
 	for (std::size_t i = 0; i < members.size(); ++i)

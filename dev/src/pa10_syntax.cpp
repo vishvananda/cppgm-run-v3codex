@@ -367,6 +367,40 @@ private:
 		while (SkipAttribute()) {}
 	}
 
+	NodeId ParseAlignmentSpecifier()
+	{
+		if (!At(KW_ALIGNAS)) return kNoNode;
+		++position_;
+		Expect(OP_LPAREN);
+		const NodeId alignment = arena_.Make("alignment-specifier");
+		arena_.AddFlags(alignment, SYNTAX_FLAG_SEMANTIC_ONLY);
+		const Mark type_mark = Checkpoint();
+		if (!ParseTypeId(alignment) || !At(OP_RPAREN))
+		{
+			Rollback(type_mark);
+			const NodeId value = ParseExpression(2);
+			if (value == kNoNode)
+				throw Error("expected alignment type or expression");
+			arena_.Add(alignment, value);
+		}
+		Expect(OP_RPAREN);
+		Match(OP_DOTS);
+		return alignment;
+	}
+
+	void ParseSemanticAttributes(std::vector<NodeId>* alignments)
+	{
+		while (true)
+		{
+			if (At(KW_ALIGNAS))
+			{
+				alignments->push_back(ParseAlignmentSpecifier());
+				continue;
+			}
+			if (!SkipAttribute()) break;
+		}
+	}
+
 	bool IsLikelyTypeIdentifier(std::size_t position) const
 	{
 		if (position >= tokens_.size() ||
@@ -2384,15 +2418,16 @@ NodeId Parser::ParseClass(bool require_semicolon)
 {
 	if (!At(KW_CLASS) && !At(KW_STRUCT) && !At(KW_UNION)) return kNoNode;
 	const std::size_t key = position_++;
-	SkipAttributes();
+	std::vector<NodeId> alignments;
+	ParseSemanticAttributes(&alignments);
 	std::string name;
 	const Mark name_mark = Checkpoint();
-	if (!ParseName(&name, false))
+	if (!ParseName(&name, true))
 	{
 		Rollback(name_mark);
 		name.clear();
 	}
-	SkipAttributes();
+	ParseSemanticAttributes(&alignments);
 	if (name.empty() && !At(OP_LBRACE)) throw Error("expected class name");
 	const std::string visible_name = name.empty() ? std::string() : name;
 	last_declared_names_.clear();
@@ -2405,11 +2440,15 @@ NodeId Parser::ParseClass(bool require_semicolon)
 		if (!name.empty()) last_declared_names_.push_back(strings_.Intern(name));
 		const NodeId declaration = arena_.Make("class-forward-declaration", name);
 		arena_.Add(declaration, MakeTokenNode("class-key", key));
+		for (std::size_t i = 0; i < alignments.size(); ++i)
+			arena_.Add(declaration, alignments[i]);
 		arena_.SetTokenRange(declaration, key, position_);
 		return declaration;
 	}
 	const NodeId declaration = arena_.Make("class-specifier", name);
 	arena_.Add(declaration, MakeTokenNode("class-key", key));
+	for (std::size_t i = 0; i < alignments.size(); ++i)
+		arena_.Add(declaration, alignments[i]);
 	if (Match(OP_COLON))
 	{
 		const NodeId clause = arena_.Make("base-clause");
@@ -2449,7 +2488,8 @@ NodeId Parser::ParseClass(bool require_semicolon)
 	while (!At(OP_RBRACE))
 	{
 		if (AtEof()) throw Error("unterminated class");
-		SkipAttributes();
+		std::vector<NodeId> member_alignments;
+		ParseSemanticAttributes(&member_alignments);
 		if ((At(KW_PUBLIC) || At(KW_PRIVATE) || At(KW_PROTECTED)) &&
 			AtOffset(1, OP_COLON))
 		{
@@ -2461,6 +2501,8 @@ NodeId Parser::ParseClass(bool require_semicolon)
 		NodeId special_member = ParseSpecialMember(false);
 		if (special_member != kNoNode)
 		{
+			for (std::size_t i = 0; i < member_alignments.size(); ++i)
+				arena_.Add(special_member, member_alignments[i]);
 			arena_.Add(declaration, special_member);
 			continue;
 		}
@@ -2490,6 +2532,8 @@ NodeId Parser::ParseClass(bool require_semicolon)
 				arena_.Add(bit_field, bit_specifiers);
 				for (std::size_t i = 0; i < fields.size(); ++i)
 					arena_.Add(bit_field, fields[i]);
+				for (std::size_t i = 0; i < member_alignments.size(); ++i)
+					arena_.Add(bit_field, member_alignments[i]);
 				arena_.Add(declaration, bit_field);
 				parsed_bit_field = true;
 			}
@@ -2498,6 +2542,8 @@ NodeId Parser::ParseClass(bool require_semicolon)
 		Rollback(bit_field_mark);
 		NodeId member = ParseDeclaration(true);
 		if (member == kNoNode) throw Error("expected class member");
+		for (std::size_t i = 0; i < member_alignments.size(); ++i)
+			arena_.Add(member, member_alignments[i]);
 		arena_.Add(declaration, member);
 	}
 	current_classes_.pop_back();
@@ -2574,7 +2620,7 @@ bool Parser::StartsStandaloneClassDeclaration()
 	if (!At(OP_LBRACE))
 	{
 		const Mark name_mark = Checkpoint();
-		if (!ParseName(&ignored, false)) Rollback(name_mark);
+		if (!ParseName(&ignored, true)) Rollback(name_mark);
 	}
 	SkipAttributes();
 	bool result = At(OP_COLON) || At(OP_SEMICOLON);
@@ -2729,6 +2775,22 @@ NodeId Parser::ParseSimpleOrFunction(bool, bool)
 
 NodeId Parser::ParseDeclaration(bool in_class)
 {
+	if (position_ < tokens_.size() &&
+		tokens_[position_].kind == kPragmaPackPushToken)
+	{
+		const NodeId directive = arena_.Make("layout-pack-push",
+			Spelling(position_++));
+		arena_.AddFlags(directive, SYNTAX_FLAG_SEMANTIC_ONLY);
+		return directive;
+	}
+	if (position_ < tokens_.size() &&
+		tokens_[position_].kind == kPragmaPackPopToken)
+	{
+		++position_;
+		const NodeId directive = arena_.Make("layout-pack-pop");
+		arena_.AddFlags(directive, SYNTAX_FLAG_SEMANTIC_ONLY);
+		return directive;
+	}
 	SkipAttributes();
 	if (Match(OP_SEMICOLON)) return arena_.Make("empty-declaration");
 	if ((At(KW_INLINE) && AtOffset(1, KW_NAMESPACE)) || At(KW_NAMESPACE))

@@ -256,7 +256,8 @@ struct EntityRecord
 	NamedFlavor flavor;
 	TypeId type, underlying;
 	BindingId declaration;
-	std::uint64_t object_size, object_alignment;
+	std::uint64_t object_size, object_alignment, natural_alignment,
+		requested_alignment, packing_alignment;
 	AccessKind base_access;
 	bool complete, layout_complete, has_user_declared_constructor,
 		has_user_provided_constructor, default_constructible,
@@ -275,7 +276,8 @@ struct BindingRecord
 	TypeId type;
 	BindingId next;
 	EntityId member_owner, access_owner;
-	std::uint64_t member_offset;
+	std::uint64_t member_offset, requested_alignment;
+	std::uint32_t bit_offset, bit_width, bit_storage_bits;
 	std::uint32_t overload_ordinal, member_ordinal;
 	NamedFlavor display_flavor;
 	NameId display_type_name;
@@ -287,8 +289,9 @@ struct BindingRecord
 	StorageClass storage_class;
 	AccessKind access;
 	bool constant, nonthrowing, thread_local_storage, non_static_data_member,
+		bit_field,
 		static_member_function, has_default_member_initializer, constructor,
-		destructor;
+		constructor_base_entry, destructor;
 
 	BindingRecord();
 };

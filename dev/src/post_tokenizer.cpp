@@ -1198,10 +1198,11 @@ private:
 struct PostTokenizationSession::Impl
 {
 	Impl(IPostTokenStream& output, PostTokenizationStats* stats)
-		: analyzer(output, stats)
+		: analyzer(output, stats), output_stream(output)
 	{}
 
 	PostTokenAnalyzer analyzer;
+	IPostTokenStream& output_stream;
 };
 
 PostTokenizationSession::PostTokenizationSession(IPostTokenStream& output,
@@ -1281,6 +1282,18 @@ void PostTokenizationSession::emit_non_whitespace_char(
 void PostTokenizationSession::emit_eof()
 {
 	impl_->analyzer.emit_eof();
+}
+
+void PostTokenizationSession::EmitPragmaPackPush(std::size_t alignment)
+{
+	impl_->analyzer.FlushPendingTokens();
+	impl_->output_stream.EmitPragmaPackPush(alignment);
+}
+
+void PostTokenizationSession::EmitPragmaPackPop()
+{
+	impl_->analyzer.FlushPendingTokens();
+	impl_->output_stream.EmitPragmaPackPop();
 }
 
 bool DecodeOrdinaryStringLiteral(const std::string& source,

@@ -465,7 +465,8 @@ EntityRecord::EntityRecord()
 	  direct_base(kNoEntity), enclosing_class(kNoEntity),
 	  flavor(NAMED_NONE), type(kNoType),
 	  underlying(kNoType), declaration(kNoBinding), object_size(0),
-	  object_alignment(0), base_access(ACCESS_PUBLIC), complete(false),
+	  object_alignment(0), natural_alignment(0), requested_alignment(0),
+	  packing_alignment(0), base_access(ACCESS_PUBLIC), complete(false),
 	  layout_complete(false),
 	  has_user_declared_constructor(false),
 	  has_user_provided_constructor(false), default_constructible(false),
@@ -478,15 +479,18 @@ EntityRecord::EntityRecord()
 BindingRecord::BindingRecord()
 	: owner(kNoScope), name(0), qualified_name(0), kind(BIND_VARIABLE), type(kNoType),
 	  next(kNoBinding), member_owner(kNoEntity), access_owner(kNoEntity),
-	  member_offset(0),
+	  member_offset(0), requested_alignment(0), bit_offset(0), bit_width(0),
+	  bit_storage_bits(0),
 	  overload_ordinal(0), member_ordinal(kNoBinding),
 	  display_flavor(NAMED_NONE), display_type_name(0),
 	  canonical(kNoBinding), value(0), operator_kind(OPERATOR_NONE),
 	  operator_literal_suffix(0), language_linkage(LANGUAGE_LINKAGE_CPP),
 	  storage_class(STORAGE_CLASS_NONE), access(ACCESS_PUBLIC),
 	  constant(false), nonthrowing(false), thread_local_storage(false),
-	  non_static_data_member(false), static_member_function(false),
+	  non_static_data_member(false), bit_field(false),
+	  static_member_function(false),
 	  has_default_member_initializer(false), constructor(false),
+	  constructor_base_entry(false),
 	  destructor(false)
 {
 }

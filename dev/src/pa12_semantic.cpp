@@ -188,6 +188,8 @@ bool SemanticAnalyzer::IsDeclaration(NodeId node) const
 		arena_->IsTag(node, "class-forward-declaration") ||
 		arena_->IsTag(node, "enum-specifier") ||
 		arena_->IsTag(node, "empty-declaration") ||
+		arena_->IsTag(node, "layout-pack-push") ||
+		arena_->IsTag(node, "layout-pack-pop") ||
 		arena_->IsTag(node, "linkage-specification");
 }
 
@@ -220,8 +222,11 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		function_fact_by_binding_.capacity() * sizeof(std::uint32_t) +
 		functions_.capacity() * sizeof(FunctionInfo) +
 		entity_data_members_.capacity() * sizeof(std::vector<BindingId>) +
+		entity_layout_members_.capacity() *
+			sizeof(std::vector<ClassLayoutMember>) +
 		entity_constructors_.capacity() * sizeof(std::vector<BindingId>) +
 		implicit_constructor_by_entity_.capacity() * sizeof(BindingId) +
+		constructor_base_entry_by_binding_.capacity() * sizeof(BindingId) +
 		entity_destructor_by_entity_.capacity() * sizeof(BindingId) +
 		member_initializer_by_binding_.capacity() * sizeof(NodeId) +
 		constructor_initializer_scratch_.capacity() * sizeof(NodeId) +
@@ -245,11 +250,15 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		associated_entity_marks_.capacity() * sizeof(std::uint32_t) +
 		associated_scope_marks_.capacity() * sizeof(std::uint32_t) +
 		associated_type_marks_.capacity() * sizeof(std::uint32_t) +
-		candidate_marks_.capacity() * sizeof(std::uint32_t);
+		candidate_marks_.capacity() * sizeof(std::uint32_t) +
+		pack_alignment_stack_.capacity() * sizeof(std::size_t);
 	for (std::size_t i = 0; i < functions_.size(); ++i)
 		bytes += functions_[i].parameters.capacity() * sizeof(ParameterInfo);
 	for (std::size_t i = 0; i < entity_data_members_.size(); ++i)
 		bytes += entity_data_members_[i].capacity() * sizeof(BindingId);
+	for (std::size_t i = 0; i < entity_layout_members_.size(); ++i)
+		bytes += entity_layout_members_[i].capacity() *
+			sizeof(ClassLayoutMember);
 	for (std::size_t i = 0; i < entity_constructors_.size(); ++i)
 		bytes += entity_constructors_[i].capacity() * sizeof(BindingId);
 	for (std::size_t i = 0; i < scope_lifetimes_.size(); ++i)
@@ -913,6 +922,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 		return ApplyTarget(AnalyzeSubscript(node, scope), target);
 	if (arena_->IsTag(node, "sizeof-expression"))
 		return ApplyTarget(AnalyzeSizeof(node, scope), target);
+	if (arena_->IsTag(node, "type-trait-expression") &&
+		PayloadSource(node) == "alignof")
+		return ApplyTarget(AnalyzeSizeof(node, scope), target);
 	if (arena_->IsTag(node, "braced-init-list"))
 		return AnalyzeBracedInit(node, scope, target);
 	if (arena_->IsTag(node, "member-expression"))
@@ -1444,6 +1456,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 	ExpressionInfo overloaded;
 	if (TryAnalyzeOverloadedOperator(operation, scope, overloaded_syntax,
 		overloaded_operands, false, target, &overloaded)) return overloaded;
+	if (operation == "&" && operand.binding != kNoBinding &&
+		program_->bindings[operand.binding].bit_field)
+		throw std::runtime_error("address-of bit-field unsupported");
 	TypeId result_type = EffectiveType(operand.type);
 	ValueCategory category = VALUE_PRVALUE;
 	bool constant = operand.constant;
@@ -1745,12 +1760,14 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 	TypeId measured = kNoType;
 	if (arena_->IsTag(operand, "type-id")) measured = BuildTypeId(operand, scope);
 	else measured = AnalyzeExpression(operand, scope).type;
-	(void)program_->SizeOf(measured);
+	const bool alignment_query = arena_->IsTag(node, "type-trait-expression");
+	const std::size_t value = alignment_query ? program_->AlignOf(measured) :
+		program_->SizeOf(measured);
 	ExpressionInfo result;
 	result.type = program_->types.Fundamental(FUND_UNSIGNED_LONG_INT);
 	result.node = MakeDump(DUMP_SIZEOF_EXPRESSION, result.type, VALUE_PRVALUE);
 	result.constant = true;
-	result.value = static_cast<std::int64_t>(program_->SizeOf(measured));
+	result.value = static_cast<std::int64_t>(value);
 	RecordExpressionFacts(result);
 	++expression_count_;
 	return result;
@@ -1942,6 +1959,27 @@ void SemanticAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 	std::uint32_t output_parent, bool local)
 {
 	if (arena_->IsTag(node, "empty-declaration")) return;
+	if (arena_->IsTag(node, "layout-pack-push"))
+	{
+		const std::int64_t parsed = ParseInteger(arena_->Payload(node));
+		if (parsed <= 0 ||
+			(static_cast<std::uint64_t>(parsed) &
+			 (static_cast<std::uint64_t>(parsed) - 1)) != 0)
+			throw std::runtime_error("invalid layout packing alignment");
+		pack_alignment_stack_.push_back(current_pack_alignment_);
+		current_pack_alignment_ = static_cast<std::size_t>(parsed);
+		return;
+	}
+	if (arena_->IsTag(node, "layout-pack-pop"))
+	{
+		if (pack_alignment_stack_.empty()) current_pack_alignment_ = 0;
+		else
+		{
+			current_pack_alignment_ = pack_alignment_stack_.back();
+			pack_alignment_stack_.pop_back();
+		}
+		return;
+	}
 	if (arena_->IsTag(node, "template-declaration"))
 	{
 		AnalyzeTemplate(node, scope);

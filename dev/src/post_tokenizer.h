@@ -186,6 +186,12 @@ struct IPostTokenStream
 		const std::string& suffix, const std::string& prefix) = 0;
 	virtual void EmitUserDefinedFloating(const std::string& source,
 		const std::string& suffix, const std::string& prefix) = 0;
+	// Active preprocessing pragmas that alter object layout cross the phase
+	// boundary as typed events.  Earlier token-only consumers intentionally
+	// ignore them; the integrated syntax/semantic path retains them.
+	virtual void EmitPragmaPackPush(std::size_t alignment)
+		{ (void)alignment; }
+	virtual void EmitPragmaPackPop() {}
 	virtual void EmitEof() = 0;
 
 	virtual ~IPostTokenStream() {}
@@ -235,6 +241,8 @@ public:
 	void emit_preprocessing_op_or_punc(const std::string& data);
 	void emit_non_whitespace_char(const std::string& data);
 	void emit_eof();
+	void EmitPragmaPackPush(std::size_t alignment);
+	void EmitPragmaPackPop();
 
 private:
 	PostTokenizationSession(const PostTokenizationSession&);

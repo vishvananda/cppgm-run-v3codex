@@ -23,6 +23,8 @@ extern const std::uint16_t kLiteralToken;
 extern const std::uint16_t kEofToken;
 extern const std::uint16_t kRShiftFirstToken;
 extern const std::uint16_t kRShiftSecondToken;
+extern const std::uint16_t kPragmaPackPushToken;
+extern const std::uint16_t kPragmaPackPopToken;
 extern const NodeId kNoNode;
 extern const std::uint32_t kNoEdge;
 
@@ -56,6 +58,8 @@ public:
 		const std::string&, const std::string&);
 	void EmitUserDefinedFloating(const std::string& source,
 		const std::string&, const std::string&);
+	void EmitPragmaPackPush(std::size_t alignment);
+	void EmitPragmaPackPop();
 	void EmitEof();
 	const std::vector<SyntaxToken>& Tokens() const;
 	std::size_t StorageBytes() const;
@@ -84,7 +88,8 @@ struct SyntaxNode
 enum SyntaxNodeFlags
 {
 	SYNTAX_FLAG_NONE = 0,
-	SYNTAX_FLAG_DEFINITION = 1
+	SYNTAX_FLAG_DEFINITION = 1,
+	SYNTAX_FLAG_SEMANTIC_ONLY = 2
 };
 
 struct SyntaxEdge

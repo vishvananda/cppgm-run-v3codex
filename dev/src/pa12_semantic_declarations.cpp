@@ -145,6 +145,8 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	const TypeId type = program_->entities[entity].type;
 	if (entity_data_members_.size() <= entity)
 		entity_data_members_.resize(static_cast<std::size_t>(entity) + 1);
+	if (entity_layout_members_.size() <= entity)
+		entity_layout_members_.resize(static_cast<std::size_t>(entity) + 1);
 	if (entity_constructors_.size() <= entity)
 		entity_constructors_.resize(static_cast<std::size_t>(entity) + 1);
 	if (implicit_constructor_by_entity_.size() <= entity)
@@ -155,10 +157,16 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 			static_cast<std::size_t>(entity) + 1, kNoBinding);
 	if (old.type == kNoType && arena_->Payload(node).size() != 0)
 		program_->AddBinding(owner, BIND_TYPE, name, type, false, 0, flavor);
+	const std::size_t requested_alignment = RequestedAlignment(node, scope);
+	if (requested_alignment != 0)
+		program_->entities[entity].requested_alignment = std::max(
+			program_->entities[entity].requested_alignment,
+			static_cast<std::uint64_t>(requested_alignment));
 	if ((arena_->Flags(node) & SYNTAX_FLAG_DEFINITION) != 0)
 	{
 		if (program_->entities[entity].complete)
 			throw std::runtime_error("duplicate class definition");
+		program_->entities[entity].packing_alignment = current_pack_alignment_;
 		const NodeId base_clause = FindChild(node, "base-clause");
 		if (base_clause != kNoNode)
 		{
@@ -234,6 +242,8 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 			if (arena_->IsTag(member, "simple-declaration") ||
 				arena_->IsTag(member, "function-definition"))
 				AnalyzeClassMember(member, member_scope, type, member_access);
+			else if (arena_->IsTag(member, "bit-field-declaration"))
+				AnalyzeBitField(member, member_scope, type, member_access);
 			else if (arena_->IsTag(member, "special-member-declaration") ||
 				arena_->IsTag(member, "special-member-definition"))
 				AnalyzeSpecialMember(member, member_scope, type, member_access);
@@ -271,6 +281,36 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	return type;
 }
 
+std::size_t SemanticAnalyzer::RequestedAlignment(NodeId node, ScopeId scope)
+{
+	std::size_t result = 0;
+	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId alignment = arena_->EdgeChild(edge);
+		if (!arena_->IsTag(alignment, "alignment-specifier")) continue;
+		const NodeId operand = FirstSemanticChild(alignment);
+		if (operand == kNoNode)
+			throw std::runtime_error("empty alignment specifier");
+		std::uint64_t value = 0;
+		if (arena_->IsTag(operand, "type-id"))
+			value = program_->AlignOf(BuildTypeId(operand, scope));
+		else
+		{
+			const ExpressionInfo expression = AnalyzeExpression(operand, scope);
+			if (!expression.constant || expression.value < 0)
+				throw std::runtime_error("nonconstant alignment specifier");
+			value = static_cast<std::uint64_t>(expression.value);
+		}
+		if (value == 0) continue;
+		if ((value & (value - 1)) != 0 ||
+			value > std::numeric_limits<std::size_t>::max())
+			throw std::runtime_error("invalid requested alignment");
+		result = std::max(result, static_cast<std::size_t>(value));
+	}
+	return result;
+}
+
 void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 {
 	EntityRecord& owner = program_->entities[entity];
@@ -278,6 +318,9 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 	++class_layouts_;
 	std::size_t size = 0;
 	std::size_t alignment = 1;
+	std::size_t natural_alignment = 1;
+	const std::size_t packing_alignment =
+		static_cast<std::size_t>(owner.packing_alignment);
 	const EntityRecord* base = 0;
 	if (!owner.has_user_declared_destructor)
 	{
@@ -290,7 +333,11 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 		if (!base->layout_complete)
 			throw std::runtime_error("direct base layout is incomplete");
 		size = static_cast<std::size_t>(base->object_size);
-		alignment = static_cast<std::size_t>(base->object_alignment);
+		const std::size_t base_alignment =
+			static_cast<std::size_t>(base->object_alignment);
+		natural_alignment = std::max(natural_alignment, base_alignment);
+		alignment = packing_alignment == 0 ? base_alignment :
+			std::min(base_alignment, packing_alignment);
 		if (!base->destructible) owner.destructible = false;
 		if (!base->trivial_destructor) owner.trivial_destructor = false;
 		const BindingId destructor = DestructorForType(base->type);
@@ -307,6 +354,8 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 			GetFunction(destructor).defaulted_destructor;
 	}
 	const std::vector<BindingId>& members = entity_data_members_[entity];
+	const std::vector<ClassLayoutMember>& layout_members =
+		entity_layout_members_[entity];
 	const bool implicit_default_constructor =
 		!owner.has_user_declared_constructor;
 	owner.is_aggregate = !owner.has_user_provided_constructor &&
@@ -323,36 +372,103 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 				owner.trivial_default_constructor = false;
 		}
 	}
-	for (std::size_t i = 0; i < members.size(); ++i)
+	bool active_bit_unit = false;
+	std::size_t active_bit_offset = 0;
+	std::size_t active_bit_size = 0;
+	std::size_t active_bit_alignment = 0;
+	std::size_t active_bit_used = 0;
+	for (std::size_t i = 0; i < layout_members.size(); ++i)
 	{
 		++class_layout_member_visits_;
-		BindingRecord& member = program_->bindings[members[i]];
-		if (member.has_default_member_initializer ||
-			member.access != ACCESS_PUBLIC)
+		const ClassLayoutMember& layout = layout_members[i];
+		BindingRecord* member = layout.binding == kNoBinding ? 0 :
+			&program_->bindings[layout.binding];
+		if (member && (member->has_default_member_initializer ||
+			member->access != ACCESS_PUBLIC))
 			owner.is_aggregate = false;
-		const std::size_t member_size = program_->SizeOf(member.type);
-		const std::size_t member_alignment = program_->AlignOf(member.type);
+		const std::size_t member_size = program_->SizeOf(layout.type);
+		const std::size_t type_alignment = program_->AlignOf(layout.type);
+		const std::size_t requested_member_alignment = member ?
+			static_cast<std::size_t>(member->requested_alignment) : 0;
+		const std::size_t required_alignment = std::max(type_alignment,
+			requested_member_alignment);
+		natural_alignment = std::max(natural_alignment, required_alignment);
+		std::size_t member_alignment = packing_alignment == 0 ? type_alignment :
+			std::min(type_alignment, packing_alignment);
+		member_alignment = std::max(member_alignment,
+			requested_member_alignment);
 		alignment = std::max(alignment, member_alignment);
+		if (layout.bit_field)
+		{
+			const std::size_t unit_bits = member_size * 8;
+			if (layout.bit_width > unit_bits)
+				throw std::runtime_error("bit-field width exceeds its storage type");
+			if (layout.bit_width == 0)
+			{
+				active_bit_unit = false;
+				if (!is_union) size = AlignUp(size, member_alignment);
+				continue;
+			}
+			if (is_union)
+			{
+				if (member)
+				{
+					member->member_offset = 0;
+					member->bit_offset = 0;
+					member->bit_storage_bits =
+						static_cast<std::uint32_t>(unit_bits);
+				}
+				size = std::max(size, member_size);
+				continue;
+			}
+			const bool reuse = active_bit_unit &&
+				active_bit_size == member_size &&
+				active_bit_alignment == member_alignment &&
+				active_bit_used + layout.bit_width <= unit_bits;
+			if (!reuse)
+			{
+				active_bit_offset = AlignUp(size, member_alignment);
+				if (active_bit_offset >
+					std::numeric_limits<std::size_t>::max() - member_size)
+					throw std::runtime_error("class layout is too large");
+				size = active_bit_offset + member_size;
+				active_bit_size = member_size;
+				active_bit_alignment = member_alignment;
+				active_bit_used = 0;
+				active_bit_unit = true;
+			}
+			if (member)
+			{
+				member->member_offset = active_bit_offset;
+				member->bit_offset = static_cast<std::uint32_t>(active_bit_used);
+				member->bit_storage_bits = static_cast<std::uint32_t>(unit_bits);
+			}
+			active_bit_used += layout.bit_width;
+			continue;
+		}
+		active_bit_unit = false;
+		if (!member)
+			throw std::logic_error("ordinary layout member has no binding");
 		if (is_union)
 		{
-			member.member_offset = 0;
+			member->member_offset = 0;
 			size = std::max(size, member_size);
 		}
 		else
 		{
 			size = AlignUp(size, member_alignment);
-			member.member_offset = size;
+			member->member_offset = size;
 			if (size > std::numeric_limits<std::size_t>::max() - member_size)
 				throw std::runtime_error("class layout is too large");
 			size += member_size;
 		}
 		if (!implicit_default_constructor) continue;
-		if (member.has_default_member_initializer)
+		if (member->has_default_member_initializer)
 		{
 			owner.trivial_default_constructor = false;
 			continue;
 		}
-		TypeId member_type = member.type;
+		TypeId member_type = member->type;
 		const TypeRecord* member_record = &program_->types.Get(member_type);
 		while (member_record->kind == TYPE_ARRAY)
 		{
@@ -421,10 +537,17 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 			!CanAccessMember(destructor, member_record->entity))
 			owner.destructible = false;
 	}
+	if (owner.requested_alignment != 0 &&
+		owner.requested_alignment < natural_alignment)
+		throw std::runtime_error(
+			"requested alignment is weaker than the natural class alignment");
+	alignment = std::max(alignment,
+		static_cast<std::size_t>(owner.requested_alignment));
 	if (size == 0) size = 1;
 	size = AlignUp(size, alignment);
 	owner.object_size = size;
 	owner.object_alignment = alignment;
+	owner.natural_alignment = natural_alignment;
 	owner.layout_complete = true;
 }
 
@@ -630,6 +753,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 			binding.thread_local_storage = spec.thread_local_storage;
 			binding.member_owner = EntityOf(owner_type);
 			binding.access = access;
+			binding.requested_alignment = RequestedAlignment(node, scope);
 			binding.non_static_data_member =
 				spec.storage_class == STORAGE_CLASS_NONE;
 			binding.has_default_member_initializer =
@@ -669,8 +793,87 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 				binding.member_ordinal = static_cast<std::uint32_t>(
 					entity_data_members_[entity].size());
 				entity_data_members_[entity].push_back(member);
+				if (entity_layout_members_.size() <= entity)
+					entity_layout_members_.resize(
+						static_cast<std::size_t>(entity) + 1);
+				entity_layout_members_[entity].push_back(
+					ClassLayoutMember(member, binding.type));
 			}
 		}
+	}
+}
+
+void SemanticAnalyzer::AnalyzeBitField(NodeId node, ScopeId scope,
+	TypeId owner_type, AccessKind access)
+{
+	const NodeId specifiers = FindChild(node, "decl-specifier-seq");
+	const SpecInfo spec = BuildSpecifiers(specifiers, scope, std::string(), true);
+	if (!IsIntegral(spec.type, true) || spec.storage_class != STORAGE_CLASS_NONE)
+		throw std::runtime_error("invalid bit-field type or storage class");
+	const EntityId entity = EntityOf(owner_type);
+	if (entity == kNoEntity)
+		throw std::logic_error("bit-field has no class owner");
+	if (entity_layout_members_.size() <= entity)
+		entity_layout_members_.resize(static_cast<std::size_t>(entity) + 1);
+	if (entity_data_members_.size() <= entity)
+		entity_data_members_.resize(static_cast<std::size_t>(entity) + 1);
+	const std::size_t requested_alignment = RequestedAlignment(node, scope);
+	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId field = arena_->EdgeChild(edge);
+		if (!arena_->IsTag(field, "bit-field-declarator")) continue;
+		const NodeId declarator = FindChild(field, "declarator");
+		NodeId width_node = kNoNode;
+		for (std::uint32_t child_edge = arena_->FirstEdge(field);
+			child_edge != kNoEdge; child_edge = arena_->NextEdge(child_edge))
+		{
+			const NodeId child = arena_->EdgeChild(child_edge);
+			if (child != declarator) width_node = child;
+		}
+		if (width_node == kNoNode)
+			throw std::runtime_error("bit-field has no width");
+		const ExpressionInfo width_expression =
+			AnalyzeExpression(width_node, scope);
+		if (!width_expression.constant || width_expression.value < 0 ||
+			static_cast<std::uint64_t>(width_expression.value) >
+				std::numeric_limits<std::uint32_t>::max())
+			throw std::runtime_error("invalid bit-field width");
+		const std::uint32_t width =
+			static_cast<std::uint32_t>(width_expression.value);
+		BindingId binding_id = kNoBinding;
+		NameId name = 0;
+		if (declarator != kNoNode)
+		{
+			const DeclaratorInfo parsed =
+				BuildDeclarator(declarator, spec.type, scope);
+			name = parsed.name;
+			if (name == 0 || parsed.type != spec.type)
+				throw std::runtime_error("invalid bit-field declarator");
+		}
+		if (name != 0)
+		{
+			if (width == 0)
+				throw std::runtime_error("named zero-width bit-field");
+			const LookupResult occupied =
+				program_->LookupDirect(scope, name, LOOKUP_ORDINARY);
+			if (occupied.ordinary != kNoBinding)
+				throw std::runtime_error("duplicate or conflicting class member");
+			binding_id = program_->AddBinding(scope, BIND_VARIABLE, name,
+				spec.type, false, 0, NAMED_NONE, 0, kNoBinding, false);
+			BindingRecord& binding = program_->bindings[binding_id];
+			binding.member_owner = entity;
+			binding.access = access;
+			binding.non_static_data_member = true;
+			binding.bit_field = true;
+			binding.bit_width = width;
+			binding.requested_alignment = requested_alignment;
+			binding.member_ordinal = static_cast<std::uint32_t>(
+				entity_data_members_[entity].size());
+			entity_data_members_[entity].push_back(binding_id);
+		}
+		entity_layout_members_[entity].push_back(
+			ClassLayoutMember(binding_id, spec.type, width, true));
 	}
 }
 
@@ -990,6 +1193,7 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 		else if (spelling == "static") result.storage_class = STORAGE_CLASS_STATIC;
 		else if (spelling == "thread_local")
 			result.thread_local_storage = true;
+		else if (spelling == "mutable") {}
 		else if (spelling == "const") cv |= CV_CONST;
 		else if (spelling == "volatile") cv |= CV_VOLATILE;
 		else if (spelling == "unsigned") is_unsigned = true;
@@ -1396,6 +1600,23 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 	const std::vector<BindingId> functions = FunctionCandidates(scope, target);
 	if (!functions.empty())
 	{
+		if (class_owner != kNoEntity &&
+			program_->entities[class_owner].direct_base != kNoEntity)
+		{
+			const EntityId base = program_->entities[class_owner].direct_base;
+			const ScopeId target_owner = ResolveOwner(scope, path);
+			bool constructor_set = target_owner ==
+				program_->entities[base].member_scope &&
+				name == program_->entities[base].identity_name;
+			for (std::size_t i = 0; i < functions.size(); ++i)
+				constructor_set = constructor_set &&
+					GetFunction(functions[i]).constructor;
+			if (constructor_set)
+			{
+				InheritConstructors(class_owner, functions);
+				return;
+			}
+		}
 		const std::uint64_t key =
 			(static_cast<std::uint64_t>(scope) << 32) | name;
 		CompactIndexSequence& aliases = function_sets_.Ensure(key);
@@ -1441,6 +1662,95 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 	(void)local;
 }
 
+void SemanticAnalyzer::InheritConstructors(EntityId entity,
+	const std::vector<BindingId>& constructors)
+{
+	EntityRecord& derived = program_->entities[entity];
+	derived.has_user_declared_constructor = true;
+	derived.has_user_provided_constructor = true;
+	derived.is_aggregate = false;
+	if (entity_constructors_.size() <= entity)
+		entity_constructors_.resize(static_cast<std::size_t>(entity) + 1);
+	for (std::size_t i = 0; i < constructors.size(); ++i)
+	{
+		const FunctionInfo source = GetFunction(constructors[i]);
+		if (!source.constructor) continue;
+		const BindingRecord source_binding =
+			program_->bindings[source.binding];
+		const BindingId source_base_entry =
+			EnsureConstructorBaseEntry(source.binding);
+		const BindingId inherited = DeclareFunction(derived.member_scope,
+			derived.identity_name, source.type, source.parameters, true, false,
+			STORAGE_CLASS_NONE, source_binding.language_linkage,
+			source_binding.nonthrowing);
+		BindingRecord& binding = program_->bindings[inherited];
+		binding.member_owner = entity;
+		binding.access = source_binding.access;
+		binding.constructor = true;
+		FunctionInfo& info = GetMutableFunction(inherited);
+		info.member_owner = derived.type;
+		info.constructor = true;
+		info.explicit_constructor = source.explicit_constructor;
+		info.deleted_constructor = source.deleted_constructor;
+		info.inherited_constructor_source = source_base_entry;
+		info.deferred = !info.deleted_constructor;
+		std::vector<BindingId>& index = entity_constructors_[entity];
+		if (std::find(index.begin(), index.end(), inherited) == index.end())
+			index.push_back(inherited);
+		std::size_t required = info.parameters.size();
+		while (required != 0 &&
+			info.parameters[required - 1].default_argument != kNoNode) --required;
+		if (!info.deleted_constructor && required == 0)
+			derived.default_constructible = true;
+	}
+}
+
+BindingId SemanticAnalyzer::EnsureConstructorBaseEntry(BindingId constructor)
+{
+	constructor = program_->bindings[constructor].canonical;
+	if (program_->bindings[constructor].constructor_base_entry)
+		return constructor;
+	if (constructor_base_entry_by_binding_.size() <= constructor)
+		constructor_base_entry_by_binding_.resize(
+			static_cast<std::size_t>(constructor) + 1, kNoBinding);
+	if (constructor_base_entry_by_binding_[constructor] != kNoBinding)
+		return constructor_base_entry_by_binding_[constructor];
+
+	const BindingRecord source_binding = program_->bindings[constructor];
+	const FunctionInfo source_info = GetFunction(constructor);
+	if (!source_binding.constructor || !source_info.constructor)
+		throw std::logic_error("constructor base entry requested for non-constructor");
+	const NameId generated_name = program_->names.Intern(
+		"__cppgm_constructor_base_" + std::to_string(constructor));
+	const BindingId base_entry = program_->AddBinding(source_binding.owner,
+		BIND_FUNCTION, generated_name, source_binding.type, false, 0,
+		NAMED_NONE, 0, kNoBinding, false);
+	BindingRecord& binding = program_->bindings[base_entry];
+	binding.member_owner = source_binding.member_owner;
+	binding.access_owner = source_binding.access_owner;
+	binding.overload_ordinal = source_binding.overload_ordinal;
+	binding.language_linkage = source_binding.language_linkage;
+	binding.storage_class = source_binding.storage_class;
+	binding.access = source_binding.access;
+	binding.nonthrowing = source_binding.nonthrowing;
+	binding.static_member_function = source_binding.static_member_function;
+	binding.constructor = true;
+	binding.constructor_base_entry = true;
+
+	FunctionInfo info = source_info;
+	info.binding = base_entry;
+	info.ordinary_visible = false;
+	info.demand_state = 0;
+	if (function_fact_by_binding_.size() <= base_entry)
+		function_fact_by_binding_.resize(
+			static_cast<std::size_t>(base_entry) + 1, kNoDumpEdge);
+	function_fact_by_binding_[base_entry] =
+		static_cast<std::uint32_t>(functions_.size());
+	functions_.push_back(info);
+	constructor_base_entry_by_binding_[constructor] = base_entry;
+	return base_entry;
+}
+
 void SemanticAnalyzer::PublishUsingAccess(BindingId alias,
 	BindingId source, AccessKind access)
 {
@@ -1451,12 +1761,18 @@ void SemanticAnalyzer::PublishUsingAccess(BindingId alias,
 	target.member_owner = original.member_owner;
 	target.access_owner = program_->EntityForScope(target.owner);
 	target.member_offset = original.member_offset;
+	target.requested_alignment = original.requested_alignment;
+	target.bit_offset = original.bit_offset;
+	target.bit_width = original.bit_width;
+	target.bit_storage_bits = original.bit_storage_bits;
 	target.member_ordinal = original.member_ordinal;
 	target.access = access;
 	target.storage_class = original.storage_class;
 	target.non_static_data_member = original.non_static_data_member;
+	target.bit_field = original.bit_field;
 	target.static_member_function = original.static_member_function;
 	target.constructor = original.constructor;
+	target.constructor_base_entry = original.constructor_base_entry;
 	target.destructor = original.destructor;
 }
 
@@ -1973,6 +2289,7 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 	}
 	const ScopeId function_scope = NewScope(info.lexical_scope, SCOPE_FUNCTION,
 		program_->bindings[info.binding].name, ScopePrefixId(info.owner));
+	std::vector<BindingId> parameter_bindings;
 	if (member)
 	{
 		const TypeId this_type = program_->types.Parameters(output_type)[0];
@@ -1987,6 +2304,7 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 		const ParameterInfo& parameter = info.parameters[i];
 		const BindingId parameter_binding = program_->AddBinding(function_scope,
 			BIND_PARAMETER, parameter.name, parameter.declared_type);
+		parameter_bindings.push_back(parameter_binding);
 		dump_.Add(function, MakeDump(DUMP_PARAMETER, parameter.function_type,
 			VALUE_NONE, parameter.name, parameter_binding));
 	}
@@ -2011,7 +2329,8 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 			const std::uint32_t constructor_body =
 				MakeDump(DUMP_COMPOUND_STATEMENT);
 			dump_.Add(function, constructor_body);
-			AddConstructorMemberActions(info, function_scope, constructor_body);
+			AddConstructorMemberActions(info, function_scope,
+				parameter_bindings, constructor_body);
 			if ((info.implicit_constructor || info.defaulted_constructor) &&
 				InitializationActionsAreNonthrowing(constructor_body))
 				program_->bindings[info.binding].nonthrowing = true;

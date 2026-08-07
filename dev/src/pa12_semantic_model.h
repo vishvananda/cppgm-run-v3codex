@@ -216,6 +216,7 @@ struct ObjectConversionFact
 struct FunctionInfo
 {
 	BindingId binding;
+	BindingId inherited_constructor_source;
 	ScopeId owner;
 	TypeId type, signature;
 	NameId display_name;
@@ -239,7 +240,8 @@ struct FunctionInfo
 	bool ordinary_visible;
 	std::uint8_t demand_state;
 	FunctionInfo()
-		: binding(kNoBinding), owner(kNoScope), type(kNoType), signature(kNoType),
+		: binding(kNoBinding), inherited_constructor_source(kNoBinding),
+		  owner(kNoScope), type(kNoType), signature(kNoType),
 		  member_owner(kNoType), friend_of(kNoEntity), lexical_scope(kNoScope),
 		  definition_body(kNoNode), constructor_initializer(kNoNode),
 		  defined(false), deferred(false), template_specialization(false),
@@ -249,6 +251,19 @@ struct FunctionInfo
 		  implicit_destructor(false), defaulted_destructor(false),
 		  deleted_destructor(false), ordinary_visible(true),
 		  demand_state(0) {}
+};
+
+struct ClassLayoutMember
+{
+	BindingId binding;
+	TypeId type;
+	std::uint32_t bit_width;
+	bool bit_field;
+
+	ClassLayoutMember(BindingId binding_value, TypeId type_value,
+		std::uint32_t bit_width_value = 0, bool bit_field_value = false)
+		: binding(binding_value), type(type_value), bit_width(bit_width_value),
+		  bit_field(bit_field_value) {}
 };
 
 struct FunctionTemplatePattern

@@ -8,6 +8,7 @@
 #include "pa12_semantic.h"
 #include "pa12_semantic_model.h"
 #include "pa16_array_lifetime_lowering.h"
+#include "pa16_assignment_lowering.h"
 #include "pa16_constructor_lowering.h"
 #include "pa16_destructor_action_lowering.h"
 #include "pa16_lifetime_lowering.h"
@@ -19,6 +20,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace cppgm
@@ -36,6 +38,7 @@ const std::size_t kAggregateProjectionReplayLimit = 8;
 typedef SmallSequence<BindingId, kAggregateProjectionReplayLimit> AggregatePath;
 
 class GraphLowerer :
+	private pa16_lowering_detail::AssignmentLowering<GraphLowerer>,
 	private pa16_lowering_detail::ConstructorActionLowering<GraphLowerer>,
 	private pa16_lowering_detail::ArrayLifetimeLowering<GraphLowerer>,
 	private pa16_lowering_detail::DestructorActionLowering<GraphLowerer>,
@@ -92,6 +95,7 @@ public:
 	}
 
 private:
+	friend class pa16_lowering_detail::AssignmentLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::ConstructorActionLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::ArrayLifetimeLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::DestructorActionLowering<GraphLowerer>;
@@ -667,6 +671,7 @@ private:
 		break_targets_.clear();
 		continue_targets_.clear();
 		label_blocks_.clear();
+		initialized_bit_field_units_.clear();
 		used_names_.Clear();
 		assigned_names_.Clear();
 		slot_name_counts_.Clear();
@@ -797,6 +802,7 @@ private:
 		break_targets_.clear();
 		continue_targets_.clear();
 		label_blocks_.clear();
+		initialized_bit_field_units_.clear();
 		used_names_.Clear();
 		assigned_names_.Clear();
 		slot_name_counts_.Clear();
@@ -1209,6 +1215,7 @@ private:
 		return result;
 	}
 
+
 	Operand LowerValue(std::uint32_t node, const LowType& expected = LowType())
 	{
 		if (stats_) ++stats_->lowered_nodes;
@@ -1270,7 +1277,10 @@ private:
 		{
 			const LowType type = LowerExpressionType(record.type);
 			result = record.constant ? Operand(record.constant_value, type) :
-				LoadStorage(LowerStorage(node), type);
+				(record.binding != kNoBinding &&
+				 program_.bindings[record.binding].bit_field ?
+					LoadBitField(record.binding, LowerStorage(node)) :
+					LoadStorage(LowerStorage(node), type));
 		}
 		else if (record.kind == DUMP_SIZEOF_EXPRESSION)
 		{
@@ -1429,7 +1439,7 @@ private:
 		bool conjunction)
 	{
 		const DumpNode& left_record = arena_.nodes[children[0]];
-		if (left_record.constant)
+		if (left_record.kind == DUMP_LITERAL && left_record.constant)
 		{
 			const bool left_truth = left_record.constant_value != 0;
 			if ((conjunction && !left_truth) || (!conjunction && left_truth))
@@ -1549,75 +1559,6 @@ private:
 		return IndexAddress(LowI8(), base, displacement, false);
 	}
 
-	Operand LowerAssignment(const DumpNode& record,
-		const NodeChildren& children)
-	{
-		return LowerAssignmentCore(record, children, false);
-	}
-
-	Operand LowerAssignmentCore(const DumpNode& record,
-		const NodeChildren& children, bool return_storage)
-	{
-		if (children.size() != 2) throw std::runtime_error("invalid semantic assignment");
-		const std::string op = StripOperationPrefix(program_.names.Get(record.text));
-		const LowType type = LowerExpressionType(record.type);
-		Operand storage;
-		Operand value;
-		if (op == "=")
-		{
-			value = LowerConvertedValue(children[1], type, false);
-			storage = LowerStorage(children[0]);
-		}
-		else if ((op == "+=" || op == "-=") &&
-			IsPointerLikeType(arena_.nodes[children[0]].type))
-		{
-			storage = LowerStorage(children[0]);
-			const Operand left = LoadStorage(storage, LowPtr());
-			value = ApplyPointerOffset(left, LowerValue(children[1]),
-				PointeeType(arena_.nodes[children[0]].type), op == "-=");
-		}
-		else
-		{
-			storage = LowerStorage(children[0]);
-			Operand left = Temp(type);
-			Instruction load(Instruction::LOAD);
-			load.dest = left.id;
-			load.type = type;
-			load.first = storage;
-			Emit(load);
-			if (record.operand_type == kNoType)
-				throw std::runtime_error(
-					"compound assignment is missing its PA12 operand type");
-			const LowType operation_type = LowerType(record.operand_type);
-			left = Convert(left, operation_type, false);
-			const Operand right =
-				LowerConvertedValue(children[1], operation_type, false);
-			value = Temp(operation_type);
-			Instruction binary(Instruction::BINARY);
-			binary.dest = value.id;
-			binary.type = operation_type;
-			binary.first = left;
-			binary.second = right;
-			binary.op = op == "+=" ? LOW_OP_ADD : op == "-=" ? LOW_OP_SUB :
-				op == "*=" ? LOW_OP_MUL : op == "/=" ?
-					(operation_type.is_signed || IsFloating(operation_type) ?
-						LOW_OP_DIV : LOW_OP_UDIV) :
-				op == "%=" ? (operation_type.is_signed ? LOW_OP_MOD : LOW_OP_UMOD) :
-				op == "&=" ? LOW_OP_AND : op == "|=" ? LOW_OP_OR :
-				op == "^=" ? LOW_OP_XOR : op == "<<=" ? LOW_OP_SHL : op == ">>=" ?
-					(operation_type.is_signed ? LOW_OP_SHR : LOW_OP_USHR) : LOW_OP_NONE;
-			if (binary.op == LOW_OP_NONE)
-				throw std::runtime_error("unsupported PA15 compound assignment");
-			Emit(binary);
-			value = Convert(value, type, false);
-		}
-		Instruction store(Instruction::STORE);
-		store.type = type;
-		store.first = value;
-		store.second = storage;
-		Emit(store);
-		return return_storage ? storage : value;
-	}
 
 	Operand LowerUnary(const DumpNode& record,
 		const NodeChildren& children)
@@ -1665,8 +1606,13 @@ private:
 	{
 		const std::string op = StripOperationPrefix(program_.names.Get(record.text));
 		const Operand storage = LowerStorage(operand_node);
-		const LowType type = LowerExpressionType(arena_.nodes[operand_node].type);
-		const Operand old_value = LoadStorage(storage, type);
+		const BindingId bit_field = BitFieldBinding(operand_node);
+		const LowType type = bit_field == kNoBinding ?
+			LowerExpressionType(arena_.nodes[operand_node].type) :
+			BitFieldAccessType(program_.bindings[bit_field]);
+		Operand old_value = bit_field == kNoBinding ?
+			LoadStorage(storage, type) : LoadBitField(bit_field, storage);
+		if (bit_field != kNoBinding) old_value.type = type;
 		Operand new_value;
 		if (IsPointerLikeType(arena_.nodes[operand_node].type))
 			new_value = ApplyPointerOffset(old_value, Operand(1, LowI32()),
@@ -1682,11 +1628,21 @@ private:
 			binary.second = Operand(1, type);
 			Emit(binary);
 		}
-		Instruction store(Instruction::STORE);
-		store.type = type;
-		store.first = new_value;
-		store.second = storage;
-		Emit(store);
+		if (bit_field == kNoBinding)
+		{
+			Instruction store(Instruction::STORE);
+			store.type = type;
+			store.first = new_value;
+			store.second = storage;
+			Emit(store);
+		}
+		else
+		{
+			const Operand write_storage = return_storage ?
+				LowerStorage(operand_node) : storage;
+			new_value = StoreBitField(
+				bit_field, write_storage, new_value, true);
+		}
 		if (return_storage) return storage;
 		return record.kind == DUMP_POSTFIX_EXPRESSION ? old_value : new_value;
 	}
@@ -2399,6 +2355,7 @@ private:
 	void LowerClassInitializer(const DumpNode& variable,
 		std::uint32_t initializer)
 	{
+		initialized_bit_field_units_.clear();
 		const Operand storage = StorageFor(variable.binding,
 			LowerStorageType(variable.type));
 		if (AggregateHasLeaf(initializer)) (void)AddressOfStorage(storage);
@@ -2585,9 +2542,36 @@ private:
 			else throw std::runtime_error(
 				"aggregate leaf requires unsupported construction");
 		}
-		store.second = retained_destination.kind == Operand::NONE ?
-			ProjectAggregatePath(root, path) : retained_destination;
-		Emit(store);
+		if (action.binding != kNoBinding &&
+			program_.bindings[action.binding].bit_field)
+		{
+			const LowType field_type = LowerExpressionType(action.type);
+			const bool preserve = PreserveInitializedBitField(action.binding);
+			Operand cleared;
+			if (preserve)
+			{
+				store.second = retained_destination.kind == Operand::NONE ?
+					ProjectAggregatePath(root, path) : retained_destination;
+				cleared = ClearBitFieldStorage(
+					action.binding, store.second, field_type);
+			}
+			const Operand positioned = PrepareBitFieldValue(
+				action.binding, store.first, field_type);
+			if (!preserve)
+				store.second = retained_destination.kind == Operand::NONE ?
+					ProjectAggregatePath(root, path) : retained_destination;
+			const Operand stored = preserve ? CombineBitFieldValue(
+				cleared, positioned, field_type) : positioned;
+			if (preserve && retained_destination.kind == Operand::NONE)
+				store.second = ProjectAggregatePath(root, path);
+			EmitBitFieldStore(field_type, stored, store.second);
+		}
+		else
+		{
+			store.second = retained_destination.kind == Operand::NONE ?
+				ProjectAggregatePath(root, path) : retained_destination;
+			Emit(store);
+		}
 	}
 
 	__attribute__((noinline)) Operand LowerControlCondition(
@@ -2965,6 +2949,7 @@ private:
 	std::vector<BlockId> continue_targets_;
 	std::vector<StatementTask> statement_tasks_;
 	std::unordered_map<NameId, BlockId> label_blocks_;
+	std::unordered_set<std::uint64_t> initialized_bit_field_units_;
 	StringCounterTable used_names_;
 	StringCounterTable assigned_names_;
 	StringCounterTable slot_name_counts_;
