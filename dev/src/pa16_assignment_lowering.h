@@ -47,17 +47,74 @@ public:
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
 		const LowType declared = derived.LowerExpressionType(field.type);
-		if (!declared.is_signed && declared.width <= 32 &&
-			field.bit_width < declared.width)
+		if (declared.width < 32 ||
+			(!declared.is_signed && declared.width == 32 &&
+			 field.bit_width < declared.width))
 			return LowI32();
 		return declared;
+	}
+
+	LowType BitFieldMemoryType(const BindingRecord& field) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		const LowType storage = derived.LowerExpressionType(field.type);
+		const LowType access = BitFieldAccessType(field);
+		return storage.width == access.width ? access : storage;
+	}
+
+	Operand FinishBitFieldValue(BindingId binding, Operand value,
+		const LowType& type)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const BindingRecord& field = derived.program_.bindings[binding];
+		Operand normalized = value;
+		const LowType declared = derived.LowerExpressionType(field.type);
+		if (declared.is_signed && field.bit_width < type.width)
+		{
+			const std::size_t shift_count = type.width - field.bit_width;
+			const Operand shifted = derived.Temp(type);
+			Instruction shift_left(Instruction::BINARY);
+			shift_left.dest = shifted.id;
+			shift_left.op = LOW_OP_SHL;
+			shift_left.type = type;
+			shift_left.first = normalized;
+			shift_left.second = Operand(shift_count, type);
+			derived.Emit(shift_left);
+			normalized = derived.Temp(type);
+			Instruction shift_right(Instruction::BINARY);
+			shift_right.dest = normalized.id;
+			shift_right.op = LOW_OP_SHR;
+			shift_right.type = type;
+			shift_right.first = shifted;
+			shift_right.second = Operand(shift_count, type);
+			derived.Emit(shift_right);
+		}
+		normalized.type = declared;
+		return normalized;
+	}
+
+	Operand NormalizeBitFieldValue(BindingId binding, Operand value,
+		const LowType& type)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const BindingRecord& field = derived.program_.bindings[binding];
+		const Operand masked = derived.Temp(type);
+		Instruction mask(Instruction::BINARY);
+		mask.dest = masked.id;
+		mask.op = LOW_OP_AND;
+		mask.type = type;
+		mask.first = value;
+		mask.second = Operand(
+			static_cast<std::int64_t>(BitFieldMask(field)), type);
+		derived.Emit(mask);
+		return FinishBitFieldValue(binding, masked, type);
 	}
 
 	Operand LoadBitField(BindingId binding, const Operand& storage)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		const BindingRecord& field = derived.program_.bindings[binding];
-		const LowType type = BitFieldAccessType(field);
+		const LowType type = BitFieldMemoryType(field);
 		Operand value = derived.LoadStorage(storage, type);
 		if (field.bit_offset != 0)
 		{
@@ -71,22 +128,12 @@ public:
 			derived.Emit(shift);
 			value = shifted;
 		}
-		const Operand masked = derived.Temp(type);
-		Instruction mask(Instruction::BINARY);
-		mask.dest = masked.id;
-		mask.op = LOW_OP_AND;
-		mask.type = type;
-		mask.first = value;
-		mask.second = Operand(
-			static_cast<std::int64_t>(BitFieldMask(field)), type);
-		derived.Emit(mask);
-		Operand result = masked;
-		result.type = derived.LowerExpressionType(field.type);
-		return result;
+		return NormalizeBitFieldValue(binding, value, type);
 	}
 
 	Operand PrepareBitFieldValue(BindingId binding, Operand value,
-		const LowType& type, bool mask_first = true)
+		const LowType& type, bool mask_first = true,
+		Operand* normalized_value = 0)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		const BindingRecord& field = derived.program_.bindings[binding];
@@ -101,6 +148,8 @@ public:
 		mask.second = mask_first ? value : Operand(
 			static_cast<std::int64_t>(BitFieldMask(field)), type);
 		derived.Emit(mask);
+		if (normalized_value)
+			*normalized_value = FinishBitFieldValue(binding, masked, type);
 		Operand positioned = masked;
 		if (field.bit_offset != 0)
 		{
@@ -185,22 +234,37 @@ public:
 		Operand value, bool preserve)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		const LowType type = BitFieldAccessType(
+		const LowType type = BitFieldMemoryType(
 			derived.program_.bindings[binding]);
+		Operand normalized;
 		const Operand positioned = PrepareBitFieldValue(
-			binding, value, type, false);
-		return CommitBitFieldStore(
-			binding, storage, positioned, type, preserve);
+			binding, value, type, false, &normalized);
+		CommitBitFieldStore(binding, storage, positioned, type, preserve);
+		return normalized;
 	}
 
 	bool PreserveInitializedBitField(BindingId binding)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		const BindingRecord& member = derived.program_.bindings[binding];
-		const std::uint64_t key =
-			(static_cast<std::uint64_t>(member.member_owner) << 32) ^
-			member.member_offset;
-		return !derived.initialized_bit_field_units_.insert(key).second;
+		const bool preserve = derived.initialized_bit_field_unit_valid_ &&
+			derived.initialized_bit_field_owner_ == member.member_owner &&
+			derived.initialized_bit_field_offset_ == member.member_offset;
+		derived.initialized_bit_field_unit_valid_ = true;
+		derived.initialized_bit_field_owner_ = member.member_owner;
+		derived.initialized_bit_field_offset_ = member.member_offset;
+		return preserve;
+	}
+
+	void InitializeBitField(BindingId binding, const Operand& value,
+		const Operand& destination, const LowType& type)
+	{
+		const bool preserve = PreserveInitializedBitField(binding);
+		const Operand positioned = PrepareBitFieldValue(binding, value, type);
+		const Operand stored = preserve ? CombineBitFieldValue(
+			ClearBitFieldStorage(binding, destination, type),
+			positioned, type) : positioned;
+		EmitBitFieldStore(type, stored, destination);
 	}
 
 	Operand LowerAssignment(const DumpNode& record,

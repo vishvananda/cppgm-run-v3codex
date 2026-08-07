@@ -1,0 +1,51 @@
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $bits : obj<2x1>
+
+  block ^entry:
+    %t1 = addr $bits
+    %t2 = convert trunc u8 i32 1
+    %t3 = addr $bits
+    %t4 = index i8 [projection=field] %t3, 0
+    %t5 = binary and u8 7, %t2
+    store u8 %t5, %t4
+    %t6 = convert trunc u8 i32 2
+    %t7 = addr $bits
+    %t8 = index i8 [projection=field] %t7, 0
+    %t9 = binary and u8 7, %t6
+    %t10 = binary shl u8 %t9, 3
+    %t11 = load u8 %t8
+    %t12 = binary and u8 %t11, 199
+    %t13 = binary or u8 %t12, %t10
+    store u8 %t13, %t8
+    %t14 = convert trunc u8 i32 9
+    %t15 = addr $bits
+    %t16 = index i8 [projection=field] %t15, 1
+    store u8 %t14, %t16
+    %t17 = addr $bits
+    %t18 = index i8 [projection=field] %t17, 0
+    %t19 = convert trunc u8 i32 3
+    %t20 = binary and u8 %t19, 7
+    %t21 = binary shl u8 %t20, 3
+    %t22 = load u8 %t18
+    %t23 = binary and u8 %t22, 199
+    %t24 = binary or u8 %t23, %t21
+    store u8 %t24, %t18
+    %t25 = addr $bits
+    %t26 = index i8 [projection=field] %t25, 0
+    %t27 = load u8 %t26
+    %t28 = binary and u8 %t27, 7
+    %t29 = addr $bits
+    %t30 = index i8 [projection=field] %t29, 0
+    %t31 = load u8 %t30
+    %t32 = binary ushr u8 %t31, 3
+    %t33 = binary and u8 %t32, 7
+    %t34 = convert zext i32 u8 %t28
+    %t35 = convert zext i32 u8 %t33
+    %t36 = binary add i32 %t34, %t35
+    %t37 = addr $bits
+    %t38 = index i8 [projection=field] %t37, 1
+    %t39 = load u8 %t38
+    %t40 = convert zext i32 u8 %t39
+    %t41 = binary add i32 %t36, %t40
+    return i32 %t41
+}

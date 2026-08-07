@@ -235,7 +235,7 @@ private:
 		bool list_initialization);
 	std::uint32_t BuildConstructorAction(TypeId type, ScopeId scope,
 		const std::vector<NodeId>& argument_syntax, bool copy_initialization,
-		bool list_initialization);
+		bool list_initialization, bool base_subobject = false);
 	std::uint32_t BuildDefaultConstructorAction(TypeId type, ScopeId scope);
 	void AddConstructorMemberActions(const FunctionInfo& constructor,
 		ScopeId function_scope, const std::vector<BindingId>& parameters,

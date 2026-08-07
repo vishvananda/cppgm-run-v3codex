@@ -163,13 +163,17 @@ protected:
 			else store.first = Operand(0, store.type);
 		}
 		store.second = destination;
-		derived.Emit(store);
+		if (derived.program_.bindings[action.binding].bit_field)
+			derived.InitializeBitField(
+				action.binding, store.first, destination, store.type);
+		else derived.Emit(store);
 	}
 
 	void LowerConstructorAggregateActions(std::uint32_t list_node,
 		ConstructorMemberPath* path, const Operand& retained_address)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
+		derived.ResetInitializedBitFieldUnit();
 		const NodeChildren actions = derived.Children(list_node);
 		for (std::size_t i = 0; i < actions.size(); ++i)
 		{
@@ -295,41 +299,13 @@ protected:
 		}
 		if (derived.program_.bindings[action.binding].bit_field)
 		{
-			const LowType field_type = derived.LowerExpressionType(action.type);
-			const bool preserve =
-				derived.PreserveInitializedBitField(action.binding);
-			Operand cleared;
-			if (preserve)
-			{
-				const Operand object = derived.LoadStorage(
-					derived.StorageFor(
-						derived.current_this_binding_, LowPtr()), LowPtr());
-				store.second = derived.ProjectAggregateMember(
-					object, action.binding);
-				cleared = derived.ClearBitFieldStorage(
-					action.binding, store.second, field_type);
-			}
-			const Operand positioned = derived.PrepareBitFieldValue(
-				action.binding, store.first, field_type);
-			if (!preserve)
-			{
-				const Operand object = derived.LoadStorage(
-					derived.StorageFor(
-						derived.current_this_binding_, LowPtr()), LowPtr());
-				store.second = derived.ProjectAggregateMember(
-					object, action.binding);
-			}
-			const Operand stored = preserve ? derived.CombineBitFieldValue(
-				cleared, positioned, field_type) : positioned;
-			if (preserve)
-			{
-				const Operand store_object = derived.LoadStorage(
-					derived.StorageFor(
-						derived.current_this_binding_, LowPtr()), LowPtr());
-				store.second = derived.ProjectAggregateMember(
-					store_object, action.binding);
-			}
-			derived.EmitBitFieldStore(field_type, stored, store.second);
+			const Operand object = derived.LoadStorage(
+				derived.StorageFor(
+					derived.current_this_binding_, LowPtr()), LowPtr());
+			store.second = derived.ProjectAggregateMember(
+				object, action.binding);
+			derived.InitializeBitField(action.binding, store.first,
+				store.second, derived.LowerExpressionType(action.type));
 		}
 		else
 		{

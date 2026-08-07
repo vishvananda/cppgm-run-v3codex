@@ -1,0 +1,48 @@
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $pair : obj<8x4>
+
+  block ^entry:
+    %t1 = addr $pair
+    %t2 = addr $pair
+    %t3 = index i8 [projection=field] %t2, 0
+    %t4 = index i8 [projection=field] %t3, 0
+    %t5 = binary and u32 1, 1
+    store u32 %t5, %t4
+    %t6 = addr $pair
+    %t7 = index i8 [projection=field] %t6, 0
+    %t8 = index i8 [projection=field] %t7, 0
+    %t9 = binary and u32 3, 2
+    %t10 = binary shl u32 %t9, 1
+    %t11 = load u32 %t8
+    %t12 = binary and u32 %t11, 4294967289
+    %t13 = binary or u32 %t12, %t10
+    store u32 %t13, %t8
+    %t14 = addr $pair
+    %t15 = index i8 [projection=field] %t14, 4
+    %t16 = index i8 [projection=field] %t15, 0
+    %t17 = binary and u32 1, 0
+    store u32 %t17, %t16
+    %t18 = addr $pair
+    %t19 = index i8 [projection=field] %t18, 4
+    %t20 = index i8 [projection=field] %t19, 0
+    %t21 = binary and u32 3, 3
+    %t22 = binary shl u32 %t21, 1
+    %t23 = load u32 %t20
+    %t24 = binary and u32 %t23, 4294967289
+    %t25 = binary or u32 %t24, %t22
+    store u32 %t25, %t20
+    %t26 = addr $pair
+    %t27 = index i8 [projection=field] %t26, 4
+    %t28 = index i8 [projection=field] %t27, 0
+    %t29 = load i32 %t28
+    %t30 = binary and i32 %t29, 1
+    %t31 = addr $pair
+    %t32 = index i8 [projection=field] %t31, 4
+    %t33 = index i8 [projection=field] %t32, 0
+    %t34 = load i32 %t33
+    %t35 = binary shr i32 %t34, 1
+    %t36 = binary and i32 %t35, 3
+    %t37 = binary add u32 %t30, %t36
+    %t38 = copy i32 %t37
+    return i32 %t38
+}

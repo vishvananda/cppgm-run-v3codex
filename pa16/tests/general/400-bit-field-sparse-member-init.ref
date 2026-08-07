@@ -6,16 +6,16 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     call void @Bits__Bits(%t1)
     return i32 0
 }
-function @Bits__Bits(%this : ptr) -> void [binding=weak, object=_ZN4BitsC1Ev] {
+
+function @Bits__Bits(%this : ptr) -> void [binding=strong, object=_ZN4BitsC1Ev] {
   slot $this : ptr
 
   block ^entry:
     store ptr %this, $this
-    %t1 = binary and u32 3, 2
-    %t2 = binary shl u32 %t1, 1
-    %t3 = load ptr $this
-    %t4 = index i8 [projection=field] %t3, 0
-    store u32 %t2, %t4
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=field] %t1, 0
+    %t3 = binary and u32 3, 2
+    %t4 = binary shl u32 %t3, 1
+    store u32 %t4, %t2
     return void
 }
-alias object _ZN4BitsC2Ev = @Bits__Bits

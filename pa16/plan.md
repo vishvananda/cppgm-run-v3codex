@@ -12,21 +12,24 @@ resolved nodes retain selected bindings, value categories, conversions, and
 subobject paths. Indexes and generation marks bound work to relevant entities,
 members, grants, and candidates.
 
-The completed layout slice carries pack directives and `alignas` as typed syntax
+The audited layout slice carries pack directives and `alignas` as typed syntax
 facts into one monotonic class-completion pass. That pass records natural,
-requested, and effective alignment, direct-base/member offsets, and canonical
-bit-field storage slices. Inherited constructors derive typed forwarding C1/C2
-bindings and actions while preserving the selected base constructor's access.
+requested, and effective alignment, direct-base/member offsets, and separate
+declared-width, value-width, and storage-slice bit-field facts. Per-object
+initialization retains only the current storage identity, and inherited
+constructors use indexed derived signatures, source access ownership, and
+distinct typed C1/C2 bindings. No lowering lookup, textual reconstruction,
+per-unit hash allocation, or candidate-vector retry remains on this path.
 
 ## Current Failure Map
 
-Current state is **223/275 PA16 tests**, up from the 202/275 turn baseline, with
-PA1-PA15 at **1,145/1,145**. The complete 52-test remainder is assigned once by
-primary owner: 13 procedural cast/function-boundary metadata; 14 aggregate,
-value-initialization, and temporary-lifetime cases; 12 call/declarator and
-parameter-type metadata cases; 10 lookup-shaped cross-feature cases blocked in
-call conversion, parsing, or presentation; and 3 residual operator cases blocked
-by materialization or user-defined conversion.
+Current state is **231/283 PA16 tests**: every original 223/275 pass plus eight
+audit regressions, with PA1-PA15 at **1,145/1,145**. The unchanged 52-test
+remainder is assigned once by primary owner: 13 procedural cast/function-boundary
+metadata; 14 aggregate, value-initialization, and temporary-lifetime cases; 12
+call/declarator and parameter-type metadata cases; 10 lookup-shaped cross-feature
+cases blocked in call conversion, parsing, or presentation; and 3 residual
+operator cases blocked by materialization or user-defined conversion.
 
 ## Active Checkpoint
 
@@ -45,8 +48,8 @@ counters, full PA16, through-PA15, and file audit.
 
 | Boundary | Representative 1x / 2x evidence |
 |---|---|
-| Bit-field layout | 512/1,024 fields: 512/1,024 member visits, 1.182/2.375 ms semantic time, and constant 5-instruction output |
-| Inherited constructors | 64/128 overloads: 518/1,030 signature lookups, 66/130 access-path visits, 0.839/1.618 ms semantic time, and constant 5-instruction output |
+| Bit-field layout | 512/1,024 fields: 512/1,024 member visits, 1.166/2.446 ms median semantic time, and constant 3-instruction output |
+| Inherited constructors | 64/128 overloads: 582/1,158 indexed signature lookups, 67/131 access checks, 0.861/1.596 ms median semantic time, and constant 3-instruction output |
 | Members/calls/initialization | 5k/10k fields: 5,000/10,000 visits; 1,001/2,001 candidates: 2,006/4,006 conversion checks; 1k/2k aggregate actions: 1,000/2,000 visits |
 | Inheritance/lifetime | 250/500 base edges: 250/500 actions and 500/1,000 edge visits; 1k/2k namespace objects: 1,000/2,000 actions and 4,016/8,016 instructions |
 | Operator/access indexes | Dense 128/256 ADL classes: 258/514 candidates; sparse 512/1,024 unrelated friends: 2/2 candidates; 50/100 friend classes: 250/500 grant probes |
@@ -67,4 +70,4 @@ new layout and inherited-constructor probes also keep emitted LowIR constant.
 | Namespace/static lifetime | TLS/linkage/static facts and one ordered lifecycle pair; 154/269 |
 | Operator/ADL callable spine | Indexed ordinary/hidden-friend union and typed ranking; 186/269 |
 | Access/base-path closure | Indexed grants/signatures and object-correct protected access; 202/275 |
-| Layout/bit-field/inherited-ctor closure | Typed pack/alignment facts, linear storage-unit layout, bit-slice lowering, and distinct forwarding C1/C2 entries; focused 21/21; **223/275 (+21)**; prior 1,145/1,145; audit clean |
+| Layout/bit-field/inherited-ctor closure | Pass after audit fixes: physical/value-width split, scalar per-object init identity, indexed inheritance/access, and C2 demand; focused 29/29; **231/283** with original 223/275 preserved; prior 1,145/1,145; file audit passes |

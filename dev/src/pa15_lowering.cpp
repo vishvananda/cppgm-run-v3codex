@@ -20,7 +20,6 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 namespace cppgm
@@ -51,6 +50,9 @@ public:
 		  output_(output), stats_(stats), function_(0), current_block_(0),
 		  current_result_(LowVoid()), current_result_reference_(false),
 		  temp_counter_(0), block_counter_(0), generated_slot_ordinal_(0),
+		  initialized_bit_field_owner_(kNoEntity),
+		  initialized_bit_field_offset_(0),
+		  initialized_bit_field_unit_valid_(false),
 		  source_ordinal_(source_ordinal), needs_global_class_initializer_(false),
 		  lowering_namespace_object_(false),
 		  current_this_binding_(kNoBinding),
@@ -671,7 +673,7 @@ private:
 		break_targets_.clear();
 		continue_targets_.clear();
 		label_blocks_.clear();
-		initialized_bit_field_units_.clear();
+		ResetInitializedBitFieldUnit();
 		used_names_.Clear();
 		assigned_names_.Clear();
 		slot_name_counts_.Clear();
@@ -802,7 +804,7 @@ private:
 		break_targets_.clear();
 		continue_targets_.clear();
 		label_blocks_.clear();
-		initialized_bit_field_units_.clear();
+		ResetInitializedBitFieldUnit();
 		used_names_.Clear();
 		assigned_names_.Clear();
 		slot_name_counts_.Clear();
@@ -2355,7 +2357,7 @@ private:
 	void LowerClassInitializer(const DumpNode& variable,
 		std::uint32_t initializer)
 	{
-		initialized_bit_field_units_.clear();
+		ResetInitializedBitFieldUnit();
 		const Operand storage = StorageFor(variable.binding,
 			LowerStorageType(variable.type));
 		if (AggregateHasLeaf(initializer)) (void)AddressOfStorage(storage);
@@ -2384,6 +2386,7 @@ private:
 		const Operand& root, AggregatePath* path,
 		const Operand& retained_address)
 	{
+		ResetInitializedBitFieldUnit();
 		if (stats_) ++stats_->lowered_nodes;
 		const DumpNode& list = arena_.nodes[list_node];
 		if (list.kind != DUMP_BRACED_INIT_LIST)
@@ -2546,25 +2549,10 @@ private:
 			program_.bindings[action.binding].bit_field)
 		{
 			const LowType field_type = LowerExpressionType(action.type);
-			const bool preserve = PreserveInitializedBitField(action.binding);
-			Operand cleared;
-			if (preserve)
-			{
-				store.second = retained_destination.kind == Operand::NONE ?
-					ProjectAggregatePath(root, path) : retained_destination;
-				cleared = ClearBitFieldStorage(
-					action.binding, store.second, field_type);
-			}
-			const Operand positioned = PrepareBitFieldValue(
-				action.binding, store.first, field_type);
-			if (!preserve)
-				store.second = retained_destination.kind == Operand::NONE ?
-					ProjectAggregatePath(root, path) : retained_destination;
-			const Operand stored = preserve ? CombineBitFieldValue(
-				cleared, positioned, field_type) : positioned;
-			if (preserve && retained_destination.kind == Operand::NONE)
-				store.second = ProjectAggregatePath(root, path);
-			EmitBitFieldStore(field_type, stored, store.second);
+			store.second = retained_destination.kind == Operand::NONE ?
+				ProjectAggregatePath(root, path) : retained_destination;
+			InitializeBitField(
+				action.binding, store.first, store.second, field_type);
 		}
 		else
 		{
@@ -2949,7 +2937,16 @@ private:
 	std::vector<BlockId> continue_targets_;
 	std::vector<StatementTask> statement_tasks_;
 	std::unordered_map<NameId, BlockId> label_blocks_;
-	std::unordered_set<std::uint64_t> initialized_bit_field_units_;
+	void ResetInitializedBitFieldUnit()
+	{
+		initialized_bit_field_unit_valid_ = false;
+		initialized_bit_field_owner_ = kNoEntity;
+		initialized_bit_field_offset_ = 0;
+	}
+
+	EntityId initialized_bit_field_owner_;
+	std::uint64_t initialized_bit_field_offset_;
+	bool initialized_bit_field_unit_valid_;
 	StringCounterTable used_names_;
 	StringCounterTable assigned_names_;
 	StringCounterTable slot_name_counts_;

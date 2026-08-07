@@ -1,0 +1,28 @@
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $bits : obj<4x4>
+
+  block ^entry:
+    %t1 = addr $bits
+    %t2 = addr $bits
+    %t3 = index i8 [projection=field] %t2, 0
+    %t4 = binary and u32 1, 0
+    store u32 %t4, %t3
+    %t5 = addr $bits
+    %t6 = index i8 [projection=field] %t5, 0
+    %t7 = binary and u32 3, 0
+    %t8 = binary shl u32 %t7, 1
+    %t9 = load u32 %t6
+    %t10 = binary and u32 %t9, 4294967289
+    %t11 = binary or u32 %t10, %t8
+    store u32 %t11, %t6
+    %t12 = addr $bits
+    %t13 = index i8 [projection=field] %t12, 0
+    %t14 = binary and i32 1, 3
+    %t15 = binary shl i32 %t14, 1
+    %t16 = load i32 %t13
+    %t17 = binary and i32 %t16, 4294967289
+    %t18 = binary or i32 %t17, %t15
+    store i32 %t18, %t13
+    %t19 = copy i32 %t14
+    return i32 %t19
+}

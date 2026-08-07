@@ -3,13 +3,15 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^entry:
     %t1 = addr $bits
-    %t2 = binary and i32 3, -1
-    %t3 = addr $bits
-    %t4 = index i8 [projection=field] %t3, 0
-    store i32 %t2, %t4
+    %t2 = addr $bits
+    %t3 = index i8 [projection=field] %t2, 0
+    %t4 = binary and i32 3, -1
+    store i32 %t4, %t3
     %t5 = addr $bits
     %t6 = index i8 [projection=field] %t5, 0
     %t7 = load i32 %t6
     %t8 = binary and i32 %t7, 3
-    return i32 %t8
+    %t9 = binary shl i32 %t8, 30
+    %t10 = binary shr i32 %t9, 30
+    return i32 %t10
 }

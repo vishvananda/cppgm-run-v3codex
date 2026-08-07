@@ -1,0 +1,6 @@
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  block ^entry:
+    %t1 = const i64 3
+    %t2 = convert trunc i32 i64 %t1
+    return i32 %t2
+}

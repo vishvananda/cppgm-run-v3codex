@@ -1,0 +1,39 @@
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $value : obj<4x4>
+
+  block ^entry:
+    %t1 = addr $value
+    call void @Derived__Derived(%t1, 3)
+    %t2 = addr $value
+    %t3 = index i8 [projection=base_subobject] %t2, 0
+    %t4 = index i8 [projection=field] %t3, 0
+    %t5 = load i32 %t4
+    return i32 %t5
+}
+
+function @Derived__Derived(%this : ptr, %input : i32) -> void [binding=strong, object=_ZN7DerivedC1Ei] {
+  slot $this : ptr
+  slot $input : i32
+
+  block ^entry:
+    store ptr %this, $this
+    store i32 %input, $input
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=base_subobject] %t1, 0
+    call void @Base__Base(%t2, 7)
+    return void
+}
+
+function @Base__Base(%this : ptr, %input : i32) -> void [binding=strong, object=_ZN4BaseC2Ei] {
+  slot $this : ptr
+  slot $input : i32
+
+  block ^entry:
+    store ptr %this, $this
+    store i32 %input, $input
+    %t1 = load i32 $input
+    %t2 = load ptr $this
+    %t3 = index i8 [projection=field] %t2, 0
+    store i32 %t1, %t3
+    return void
+}

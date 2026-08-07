@@ -113,7 +113,7 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 
 std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 	ScopeId scope, const std::vector<NodeId>& argument_syntax,
-	bool copy_initialization, bool list_initialization)
+	bool copy_initialization, bool list_initialization, bool base_subobject)
 {
 	const EntityId entity = EntityOf(type);
 	if (!IsClassEntity(*program_, entity))
@@ -127,8 +127,9 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 		else arguments.push_back(AnalyzeExpression(argument_syntax[i], scope));
 	}
 	const std::vector<BindingId>& candidates = ConstructorCandidates(entity);
-	const BindingId selected = SelectConstructor(scope, argument_syntax,
+	BindingId selected = SelectConstructor(scope, argument_syntax,
 		arguments, candidates, copy_initialization, list_initialization);
+	if (base_subobject) selected = EnsureConstructorBaseEntry(selected);
 	const FunctionInfo constructor = GetFunction(selected);
 	const TypeRecord function_type = program_->types.Get(constructor.type);
 	const TypeId* parameter_data = program_->types.Parameters(constructor.type);
@@ -451,7 +452,7 @@ void SemanticAnalyzer::AddBaseInitializationAction(EntityId entity,
 		base_type, VALUE_NONE, program_->entities[base].identity_name);
 	dump_.nodes[action].base_projection_count = 1;
 	const std::uint32_t constructor = BuildConstructorAction(base_type,
-		scope, arguments, false, list_initialization);
+		scope, arguments, false, list_initialization, true);
 	dump_.Add(action, constructor);
 	dump_.Add(body, action);
 	++constructor_base_action_visits_;
