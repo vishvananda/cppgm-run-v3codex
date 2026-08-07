@@ -323,10 +323,22 @@ std::uint32_t SemanticAnalyzer::BuildClassValueConstructorAction(TypeId type,
 	const std::uint32_t action = MakeDump(DUMP_CONSTRUCTOR_ACTION,
 		AdaptMemberFunctionType(selected), VALUE_NONE,
 		constructor.display_name, selected);
+	bool conversion_result_materialization = false;
+	if (dump_.nodes[source.node].kind == DUMP_TEMPORARY_OBJECT &&
+		dump_.nodes[source.node].first_edge != kNoDumpEdge)
+	{
+		const std::uint32_t child =
+			dump_.edges[dump_.nodes[source.node].first_edge].child;
+		conversion_result_materialization =
+			dump_.nodes[child].kind == DUMP_CALL_EXPRESSION &&
+			dump_.nodes[child].binding != kNoBinding &&
+			program_->bindings[dump_.nodes[child].binding].conversion_function;
+	}
 	dump_.nodes[action].operand_type =
 		program_->types.RemoveTopCv(EffectiveType(type));
 	dump_.nodes[action].trivial_special_member_action =
-		constructor.trivial_special_member;
+		constructor.trivial_special_member &&
+		!conversion_result_materialization;
 	dump_.Add(action, ApplyCallArgument(
 		source, parameters[0]).node);
 	for (std::size_t a = 1; a < function_type.parameter_count; ++a)
@@ -340,7 +352,8 @@ std::uint32_t SemanticAnalyzer::BuildClassValueConstructorAction(TypeId type,
 			constructor.parameters[a].default_scope, parameters[a]);
 		dump_.Add(action, argument.node);
 	}
-	if (demand && !dump_.nodes[action].trivial_special_member_action)
+	if ((demand || conversion_result_materialization) &&
+		!dump_.nodes[action].trivial_special_member_action)
 		DemandFunction(selected);
 	++expression_count_;
 	return action;
@@ -651,10 +664,19 @@ ExpressionInfo SemanticAnalyzer::AnalyzeVariableInitializer(
 	}
 	else
 	{
+		const bool direct_initialization = expression != kNoNode &&
+			arena_->IsTag(expression, "paren-initializer");
 		if (expression != kNoNode &&
 			arena_->IsTag(expression, "paren-initializer"))
 			expression = FirstSemanticChild(expression);
-		initializer = AnalyzeExpression(expression, scope, type);
+		if (direct_initialization)
+		{
+			initializer = AnalyzeExpression(expression, scope);
+			initializer = EntityOf(initializer.type) != kNoEntity ?
+				ApplyExplicitConversion(initializer, type) :
+				ApplyTarget(initializer, type);
+		}
+		else initializer = AnalyzeExpression(expression, scope, type);
 	}
 	return local ? BuildLocalAggregateArrayActions(initializer) : initializer;
 }
@@ -1437,6 +1459,20 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 	NodeId arguments_node, TypeId target)
 {
 	const EntityId cast_entity = EntityOf(cast_type);
+	if (argument_syntax.size() == 1)
+	{
+		const ExpressionInfo operand =
+			AnalyzeExpression(argument_syntax[0], scope);
+		if (EntityOf(operand.type) != kNoEntity &&
+			ConvertingFunction(operand, cast_type, true).rank !=
+				CONVERSION_INVALID)
+		{
+			ExpressionInfo converted =
+				ApplyExplicitConversion(operand, cast_type);
+			converted = MaterializeTemporary(converted);
+			return target == kNoType ? converted : ApplyTarget(converted, target);
+		}
+	}
 	if (program_->entities[cast_entity].is_aggregate &&
 		arguments_node != kNoNode &&
 		arena_->IsTag(arguments_node, "braced-init-list"))
@@ -1469,7 +1505,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 		arena_->IsTag(arguments_node, "braced-init-list"));
 	result.type = cast_type;
 	result.category = VALUE_PRVALUE;
-	if (argument_syntax.empty())
+	if (argument_syntax.empty() &&
+		!program_->entities[cast_entity].has_user_provided_constructor)
 		dump_.nodes[result.node].value_initialization = true;
 	return target == kNoType ? MaterializeTemporary(result) :
 		ApplyTarget(result, target);

@@ -198,8 +198,14 @@ std::string MangleFunction(const pa11::Program& program,
 	using namespace abi_mangle;
 	using namespace pa11;
 	const BindingRecord& binding = program.bindings[node.binding];
-	const std::string qualified = program.names.Get(
+	std::string qualified = program.names.Get(
 		binding.qualified_name != 0 ? binding.qualified_name : node.text);
+	if (binding.conversion_function)
+	{
+		const std::size_t terminal = qualified.find("::operator");
+		if (terminal != std::string::npos)
+			qualified.erase(terminal + std::string("::operator").size());
+	}
 	if (qualified == "main") return std::string();
 	if (binding.builtin_function != BUILTIN_FUNCTION_NONE)
 		return "cppgm_builtin_" + program.names.Get(binding.name).substr(10);
@@ -258,6 +264,14 @@ std::string MangleFunction(const pa11::Program& program,
 				program.names.Get(binding.operator_literal_suffix);
 		}
 		else terminal.function.terminal = operator_terminal;
+		file.cases[0].records.push_back(terminal);
+	}
+	else if (binding.conversion_function)
+	{
+		AbiFactRecord terminal;
+		terminal.set_kind(ABI_FACT_RECORD_FUNCTION);
+		terminal.function.kind = ABI_FUNCTION_RECORD_CONVERSION_TERMINAL;
+		terminal.function.type = MakeAbiType(program, binding.conversion_target);
 		file.cases[0].records.push_back(terminal);
 	}
 	else if (binding.constructor)

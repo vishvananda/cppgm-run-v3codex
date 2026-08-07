@@ -175,10 +175,17 @@ private:
 		const std::vector<CallConversionFact>* argument_conversions = 0);
 	CallConversionFact CallConversion(const ExpressionInfo& source,
 		TypeId target, CallConversionTable* cache, std::size_t source_ordinal);
+	int CompareCallConversions(const CallConversionFact& left,
+		const CallConversionFact& right) const;
 	CallConversionFact ConvertingConstructor(const ExpressionInfo& source,
 		TypeId target);
+	CallConversionFact ConvertingFunction(const ExpressionInfo& source,
+		TypeId target, bool allow_explicit = false);
+	void AppendConversionFunctions(EntityId entity,
+		std::vector<BindingId>* candidates) const;
 	ExpressionInfo ApplyCallArgument(ExpressionInfo value, TypeId target,
 		const CallConversionFact* conversion = 0);
+	ExpressionInfo ApplyExplicitConversion(ExpressionInfo value, TypeId target);
 	ExpressionInfo BuildConvertingArgument(const ExpressionInfo& source,
 		TypeId target, const CallConversionFact& conversion);
 	bool IsDirectTrivialClassValueType(TypeId type) const;
@@ -187,6 +194,8 @@ private:
 	ExpressionInfo AnalyzeVariableInitializer(NodeId initializer,
 		ScopeId scope, TypeId type, bool local);
 	ExpressionInfo AnalyzeCall(NodeId node, ScopeId scope, TypeId target);
+	TypeId ResolveFunctionalCastType(ScopeId scope,
+		const std::string& spelling);
 	BindingId EnsureBuiltinFunction(BuiltinFunctionKind kind);
 	bool AnalyzeBuiltinCall(const std::string& spelling, ScopeId scope,
 		const std::vector<NodeId>& argument_syntax, TypeId target,
@@ -261,6 +270,8 @@ private:
 		AccessKind access);
 	void AnalyzeSpecialMember(NodeId node, ScopeId scope, TypeId owner_type,
 		AccessKind access);
+	void AnalyzeConversionFunction(NodeId node, ScopeId scope,
+		TypeId owner_type, AccessKind access);
 	void AnalyzeOutOfClassSpecialMember(NodeId node, ScopeId scope);
 	void RegisterClassSpecialMember(BindingId binding);
 	void ConfigureAssignmentSpecialMember(BindingId binding,
@@ -428,6 +439,7 @@ private:
 	std::vector<std::uint32_t> zero_offset_subobject_marks_;
 	std::vector<EntityId> zero_offset_subobject_scratch_;
 	std::vector<std::vector<BindingId> > entity_constructors_;
+	std::vector<std::vector<BindingId> > entity_conversion_functions_;
 	std::vector<std::uint32_t> variable_node_by_binding_;
 	std::vector<ClassSpecialMemberFacts> class_special_members_;
 	std::vector<BindingId> implicit_constructor_by_entity_;

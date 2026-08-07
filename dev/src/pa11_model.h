@@ -292,7 +292,7 @@ struct BindingRecord
 	ScopeId owner;
 	NameId name, qualified_name;
 	BindingKind kind;
-	TypeId type;
+	TypeId type, conversion_target;
 	BindingId next;
 	EntityId member_owner, access_owner;
 	std::uint64_t member_offset, requested_alignment;
@@ -311,7 +311,8 @@ struct BindingRecord
 	bool constant, nonthrowing, unnamed_namespace_linkage,
 		thread_local_storage, non_static_data_member,
 		mutable_member, bit_field,
-		static_member_function, has_default_member_initializer, constructor,
+		static_member_function, has_default_member_initializer,
+		conversion_function, constructor,
 		constructor_base_entry, destructor, destructor_base_entry,
 		inline_function;
 

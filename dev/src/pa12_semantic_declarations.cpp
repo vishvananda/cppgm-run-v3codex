@@ -1030,6 +1030,13 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 {
 	const EntityId entity = EntityOf(owner_type);
 	if (entity == kNoEntity) throw std::logic_error("special member has no class");
+	const NodeId declarator = FindChild(node, "declarator");
+	if (declarator != kNoNode &&
+		FindChild(declarator, "conversion-type-id") != kNoNode)
+	{
+		AnalyzeConversionFunction(node, scope, owner_type, access);
+		return;
+	}
 	const std::string special_name = arena_->Payload(node);
 	const std::string class_name =
 		program_->names.Get(program_->entities[entity].identity_name);
@@ -1037,7 +1044,6 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 	{
 		EntityRecord& class_record = program_->entities[entity];
 		class_record.has_user_declared_destructor = true;
-		const NodeId declarator = FindChild(node, "declarator");
 		if (declarator == kNoNode)
 			throw std::runtime_error("destructor is missing its declarator");
 		const DeclaratorInfo parsed = BuildDeclarator(declarator,
@@ -1095,7 +1101,6 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 
 	EntityRecord& class_record = program_->entities[entity];
 	class_record.has_user_declared_constructor = true;
-	const NodeId declarator = FindChild(node, "declarator");
 	if (declarator == kNoNode)
 		throw std::runtime_error("constructor is missing its declarator");
 	const DeclaratorInfo parsed = BuildDeclarator(declarator,
@@ -1154,6 +1159,65 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 	RegisterClassSpecialMember(constructor);
 }
 
+void SemanticAnalyzer::AnalyzeConversionFunction(NodeId node, ScopeId scope,
+	TypeId owner_type, AccessKind access)
+{
+	const NodeId declarator = FindChild(node, "declarator");
+	const NodeId target_node = declarator == kNoNode ? kNoNode :
+		FindChild(declarator, "conversion-type-id");
+	if (target_node == kNoNode)
+		throw std::logic_error("conversion function has no target type");
+	const TypeId target = BuildTypeId(target_node, scope);
+	const DeclaratorInfo parsed = BuildDeclarator(declarator, target, scope);
+	if (!program_->types.IsFunction(parsed.type) || !parsed.parameters.empty() ||
+		program_->types.Get(parsed.type).child != target)
+		throw std::runtime_error("invalid conversion function declarator");
+	const NodeId initializer = FindChild(node, "initializer");
+	const NodeId special = initializer == kNoNode ? kNoNode :
+		FindChild(initializer, "special-initializer");
+	if (special != kNoNode && arena_->Payload(special) == "default")
+		throw std::runtime_error("conversion function cannot be defaulted");
+	const bool deleted = special != kNoNode &&
+		arena_->Payload(special) == "delete";
+	const bool definition = arena_->IsTag(node, "special-member-definition");
+	const NameId conversion_name = DeclaratorNamePath(declarator).Last();
+	const BindingId function = DeclareFunction(scope, conversion_name,
+		parsed.type, parsed.parameters, definition, false, STORAGE_CLASS_NONE,
+		current_language_linkage_, IsNonthrowing(declarator, scope));
+	const EntityId entity = EntityOf(owner_type);
+	BindingRecord& binding = program_->bindings[function];
+	binding.member_owner = entity;
+	binding.access = access;
+	binding.inline_function = definition;
+	binding.conversion_function = true;
+	binding.conversion_target = target;
+	FunctionInfo& info = GetMutableFunction(function);
+	info.member_owner = owner_type;
+	info.conversion_function = true;
+	info.conversion_target = target;
+	info.deleted_special_member = info.deleted_special_member || deleted;
+	info.deferred = !info.deleted_special_member;
+	if (definition) info.definition_body = FindChild(node, "compound-statement");
+	const NodeId specifiers = FindChild(node, "member-specifiers");
+	if (specifiers != kNoNode)
+		for (std::uint32_t edge = arena_->FirstEdge(specifiers);
+			edge != kNoEdge; edge = arena_->NextEdge(edge))
+		{
+			const std::string value = PayloadSource(arena_->EdgeChild(edge));
+			if (value == "explicit") info.explicit_conversion = true;
+			if (value == "static")
+				throw std::runtime_error("conversion function cannot be static");
+			if (value == "inline") binding.inline_function = true;
+		}
+	ValidateFunctionRefQualifier(function);
+	if (entity_conversion_functions_.size() <= entity)
+		entity_conversion_functions_.resize(
+			static_cast<std::size_t>(entity) + 1);
+	std::vector<BindingId>& functions = entity_conversion_functions_[entity];
+	if (std::find(functions.begin(), functions.end(), function) ==
+		functions.end()) functions.push_back(function);
+}
+
 void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 	ScopeId scope)
 {
@@ -1173,25 +1237,61 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 	const std::string terminal = program_->names.Get(path.Last());
 	const std::string class_name = program_->names.Get(
 		program_->entities[entity].identity_name);
+	const NodeId conversion_type = FindChild(declarator, "conversion-type-id");
+	const bool conversion_definition = conversion_type != kNoNode;
 	const bool constructor_definition = terminal == class_name;
 	const bool destructor_definition = terminal == "~" + class_name;
-	if (!constructor_definition && !destructor_definition)
+	if (!constructor_definition && !destructor_definition &&
+		!conversion_definition)
 		throw std::runtime_error(
 			"qualified special member definition has an invalid name");
 
 	const EntityId previous_class = current_class_context_;
 	current_class_context_ = entity;
+	const TypeId conversion_target = conversion_definition ?
+		BuildTypeId(conversion_type, owner) :
+		program_->types.Fundamental(FUND_VOID);
 	const DeclaratorInfo parsed = BuildDeclarator(declarator,
-		program_->types.Fundamental(FUND_VOID), owner);
-	const BindingId special = DeclareFunction(owner, path.Last(),
+		conversion_target, owner);
+	BindingId special = kNoBinding;
+	if (conversion_definition && entity < entity_conversion_functions_.size())
+		for (std::size_t i = 0;
+			i < entity_conversion_functions_[entity].size(); ++i)
+		{
+			const BindingId candidate =
+				entity_conversion_functions_[entity][i];
+			const FunctionInfo& candidate_info = GetFunction(candidate);
+			if (candidate_info.conversion_target == conversion_target &&
+				candidate_info.type == parsed.type)
+			{
+				special = candidate;
+				break;
+			}
+		}
+	if (conversion_definition)
+	{
+		if (special == kNoBinding)
+			throw std::runtime_error(
+				"qualified conversion definition has no declaration");
+		if (GetFunction(special).defined)
+			throw std::runtime_error("duplicate function definition");
+		GetMutableFunction(special).defined = true;
+	}
+	else special = DeclareFunction(owner, path.Last(),
 		parsed.type, parsed.parameters, true, false, STORAGE_CLASS_NONE,
 		current_language_linkage_, IsNonthrowing(declarator, owner));
 	FunctionInfo& info = GetMutableFunction(special);
-	if (info.member_owner != program_->entities[entity].type ||
-		(constructor_definition && !info.constructor) ||
-		(destructor_definition && !info.destructor))
+	if (info.member_owner != program_->entities[entity].type)
 		throw std::runtime_error(
-			"qualified special member definition has no matching declaration");
+			"qualified special member definition has no member declaration");
+	if ((constructor_definition && !info.constructor) ||
+		(destructor_definition && !info.destructor) ||
+		(conversion_definition && !info.conversion_function))
+		throw std::runtime_error(
+			"qualified special member definition has no matching kind");
+	if (conversion_definition && info.conversion_target != conversion_target)
+		throw std::runtime_error(
+			"qualified conversion definition has a mismatched target");
 	ValidateFunctionRefQualifier(special);
 	const NodeId initializer = FindChild(node, "initializer");
 	const NodeId special_initializer = initializer == kNoNode ? kNoNode :
@@ -1201,6 +1301,19 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 	const bool deleted = special_initializer != kNoNode &&
 		arena_->Payload(special_initializer) == "delete";
 	info.definition_body = FindChild(node, "compound-statement");
+	if (conversion_definition)
+	{
+		if (defaulted)
+			throw std::runtime_error("conversion function cannot be defaulted");
+		BindingRecord& binding = program_->bindings[special];
+		binding.conversion_function = true;
+		binding.conversion_target = conversion_target;
+		info.deleted_special_member =
+			info.deleted_special_member || deleted;
+		info.deferred = !info.deleted_special_member;
+		current_class_context_ = previous_class;
+		return;
+	}
 	if (constructor_definition)
 	{
 		info.constructor_initializer = FindChild(node, "ctor-initializer");

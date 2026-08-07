@@ -552,6 +552,7 @@ EntityRecord::EntityRecord()
 
 BindingRecord::BindingRecord()
 	: owner(kNoScope), name(0), qualified_name(0), kind(BIND_VARIABLE), type(kNoType),
+	  conversion_target(kNoType),
 	  next(kNoBinding), member_owner(kNoEntity), access_owner(kNoEntity),
 	  member_offset(0), requested_alignment(0), bit_offset(0), bit_width(0),
 	  bit_storage_bits(0),
@@ -565,7 +566,8 @@ BindingRecord::BindingRecord()
 	  thread_local_storage(false),
 	  non_static_data_member(false), mutable_member(false), bit_field(false),
 	  static_member_function(false),
-	  has_default_member_initializer(false), constructor(false),
+	  has_default_member_initializer(false), conversion_function(false),
+	  constructor(false),
 	  constructor_base_entry(false),
 	  destructor(false), destructor_base_entry(false), inline_function(false)
 {

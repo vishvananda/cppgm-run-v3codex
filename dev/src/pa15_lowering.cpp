@@ -1346,6 +1346,8 @@ private:
 	Operand LowerConvertedValue(std::uint32_t node, const LowType& target,
 		bool canonicalize_immediate = true)
 	{
+		if (arena_.nodes[node].boolean_conversion)
+			return LowerBooleanConversion(node, target);
 		return Convert(LowerValue(node, target.kind == LOW_PTR ?
 			target : LowType()), target, canonicalize_immediate);
 	}
@@ -2572,11 +2574,15 @@ private:
 		std::uint32_t condition_node)
 	{
 		const NodeChildren condition_children = Children(condition_node);
-		if (condition_children.size() != 1)
+		if (condition_children.empty() || condition_children.size() > 2)
 			throw std::runtime_error("invalid PA15 control condition");
 		const std::uint32_t child = condition_children[0];
 		if (arena_.nodes[child].kind != DUMP_CONDITION_DECLARATION)
+		{
+			if (condition_children.size() != 1)
+				throw std::runtime_error("invalid PA15 control condition");
 			return LowerCondition(child);
+		}
 		const NodeChildren declaration_children = Children(child);
 		if (declaration_children.size() != 1 ||
 			arena_.nodes[declaration_children[0]].kind != DUMP_VARIABLE)
@@ -2584,6 +2590,8 @@ private:
 		const DumpNode& variable = arena_.nodes[declaration_children[0]];
 		if (stats_) ++stats_->lowered_nodes;
 		LowerStatementNode(declaration_children[0]);
+		if (condition_children.size() == 2)
+			return LowerCondition(condition_children[1]);
 		Operand value = LoadStorage(StorageFor(variable.binding,
 			LowerStorageType(variable.type)), LowerExpressionType(variable.type));
 		if (IsFloating(value.type))
@@ -2860,7 +2868,7 @@ private:
 		if (condition == kNoDumpEdge || then_node == kNoDumpEdge)
 			throw std::runtime_error("invalid semantic if statement");
 		const NodeChildren condition_children = Children(condition);
-		if (condition_children.size() != 1)
+		if (condition_children.empty() || condition_children.size() > 2)
 			throw std::runtime_error("condition declarations are outside the active checkpoint");
 		const BlockId then_block = AddBlock(NewLabel("if_then"));
 		const BlockId else_block = AddBlock(NewLabel("if_else"));

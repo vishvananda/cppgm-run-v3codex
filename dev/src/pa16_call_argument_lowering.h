@@ -21,6 +21,28 @@ template <class Derived>
 class CallArgumentLowering
 {
 protected:
+	Operand LowerBooleanConversion(std::uint32_t node, const LowType& target)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const Operand value = derived.LowerValue(node);
+		const Operand boolean = derived.Temp(LowU8());
+		Instruction compare(Instruction::CMP);
+		compare.dest = boolean.id;
+		compare.op = LOW_OP_NE;
+		compare.type = value.type;
+		compare.first = value;
+		compare.second = IsFloating(value.type) ?
+			derived.FloatingOperand("0.0", value.type) : Operand(0, value.type);
+		derived.Emit(compare);
+		const Operand result = derived.Temp(target);
+		Instruction copy(Instruction::COPY);
+		copy.dest = result.id;
+		copy.type = target;
+		copy.first = boolean;
+		derived.Emit(copy);
+		return result;
+	}
+
 	bool IsClassValueType(TypeId type) const
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);

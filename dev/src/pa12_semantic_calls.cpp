@@ -82,6 +82,37 @@ bool SemanticAnalyzer::AnalyzeBuiltinCall(const std::string& spelling,
 	return true;
 }
 
+TypeId SemanticAnalyzer::ResolveFunctionalCastType(ScopeId scope,
+	const std::string& spelling)
+{
+	const LookupResult named = LookupSpelling(scope, spelling, LOOKUP_TYPE);
+	if (named.type != kNoType) return named.type;
+	if (spelling.size() > 10 && spelling.compare(0, 9, "decltype(") == 0 &&
+		spelling[spelling.size() - 1] == ')')
+	{
+		const LookupResult operand = LookupSpelling(scope,
+			spelling.substr(9, spelling.size() - 10), LOOKUP_ORDINARY);
+		if (operand.ordinary != kNoBinding)
+			return program_->bindings[operand.ordinary].type;
+	}
+	FundamentalKind kind = FUND_INT;
+	if (spelling == "bool") kind = FUND_BOOL;
+	else if (spelling == "char") kind = FUND_CHAR;
+	else if (spelling == "short" || spelling == "short int")
+		kind = FUND_SHORT_INT;
+	else if (spelling == "int") kind = FUND_INT;
+	else if (spelling == "long" || spelling == "long int")
+		kind = FUND_LONG_INT;
+	else if (spelling == "unsigned" || spelling == "unsigned int")
+		kind = FUND_UNSIGNED_INT;
+	else if (spelling == "unsigned long") kind = FUND_UNSIGNED_LONG_INT;
+	else if (spelling == "float") kind = FUND_FLOAT;
+	else if (spelling == "double") kind = FUND_DOUBLE;
+	else if (spelling == "long double") kind = FUND_LONG_DOUBLE;
+	else return kNoType;
+	return program_->types.Fundamental(kind);
+}
+
 bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 	const std::vector<NodeId>& argument_syntax, TypeId target,
 	ExpressionInfo* result)
@@ -111,12 +142,35 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 		program_->entities[entity].member_scope == kNoScope)
 		throw std::runtime_error("member call on non-class object");
 	const NodeId identifier = arena_->EdgeChild(name_edge);
-	const NameId name = program_->names.Intern(arena_->Payload(identifier));
-	const LookupResult found = program_->LookupMember(
+	const std::string member_spelling = arena_->Payload(identifier);
+	const NameId name = ParseNamePath(member_spelling).Last();
+	LookupResult found = program_->LookupMember(
 		entity, name, LOOKUP_ORDINARY);
+	if (found.ordinary == kNoBinding &&
+		member_spelling.compare(0, 8, "operator") == 0)
+	{
+		std::size_t target_first = 8;
+		while (target_first < member_spelling.size() &&
+			member_spelling[target_first] == ' ') ++target_first;
+		const LookupResult requested = LookupSpelling(scope,
+			member_spelling.substr(target_first), LOOKUP_TYPE);
+		std::vector<BindingId> conversions;
+		AppendConversionFunctions(entity, &conversions);
+		for (std::size_t i = 0; requested.type != kNoType &&
+			i < conversions.size(); ++i)
+			if (GetFunction(conversions[i]).conversion_target == requested.type)
+			{
+				found.ordinary = conversions[i];
+				found.naming_class = program_->bindings[conversions[i]].member_owner;
+				break;
+			}
+	}
 	if (found.ordinary == kNoBinding ||
 		program_->bindings[found.ordinary].kind != BIND_FUNCTION)
 		return false;
+	if (!arrow && object.category != VALUE_LVALUE &&
+		dump_.nodes[object.node].kind != DUMP_TEMPORARY_OBJECT)
+		object = MaterializeTemporary(object);
 	const std::vector<BindingId> candidates = FunctionSet(found.ordinary);
 	ExpressionInfo object_pointer = object;
 	if (!arrow)

@@ -1,7 +1,7 @@
 #include "pa10_syntax.h"
 #include "pa10_syntax_model.h"
 #include "pa10_parser_name_facts.h"
-
+#include "pa10_parser_token_classification.h"
 #include <algorithm>
 #include <chrono>
 #include <cctype>
@@ -12,57 +12,11 @@
 #include <string>
 #include <utility>
 #include <vector>
-
 namespace cppgm
 {
 namespace
 {
-
 using namespace pa10_syntax_detail;
-
-bool IsFundamentalKind(std::uint16_t kind)
-{
-	switch (static_cast<SimpleTokenKind>(kind))
-	{
-	case KW_BOOL: case KW_CHAR: case KW_CHAR16_T: case KW_CHAR32_T:
-	case KW_DOUBLE: case KW_FLOAT: case KW_INT: case KW_LONG: case KW_SHORT:
-	case KW_SIGNED: case KW_UNSIGNED: case KW_VOID: case KW_WCHAR_T:
-		return true;
-	default:
-		return false;
-	}
-}
-
-bool IsDeclSpecifierKeyword(std::uint16_t kind)
-{
-	if (kind < kSimpleTokenCount && IsFundamentalKind(kind)) return true;
-	if (kind >= kSimpleTokenCount) return false;
-	switch (static_cast<SimpleTokenKind>(kind))
-	{
-	case KW_CONST: case KW_VOLATILE: case KW_TYPEDEF: case KW_EXTERN:
-	case KW_STATIC: case KW_INLINE: case KW_VIRTUAL: case KW_CONSTEXPR:
-	case KW_THREAD_LOCAL: case KW_AUTO: case KW_FRIEND: case KW_MUTABLE:
-	case KW_REGISTER:
-		return true;
-	default:
-		return false;
-	}
-}
-
-bool IsAssignmentOperator(std::uint16_t kind)
-{
-	if (kind >= kSimpleTokenCount) return false;
-	switch (static_cast<SimpleTokenKind>(kind))
-	{
-	case OP_ASS: case OP_PLUSASS: case OP_MINUSASS: case OP_STARASS:
-	case OP_DIVASS: case OP_MODASS: case OP_XORASS: case OP_BANDASS:
-	case OP_BORASS: case OP_LSHIFTASS: case OP_RSHIFTASS:
-		return true;
-	default:
-		return false;
-	}
-}
-
 class Parser : private ParserNameFacts<Parser>
 {
 friend class ParserNameFacts<Parser>;
@@ -415,16 +369,28 @@ private:
 	}
 
 	bool IsLikelyTypeIdentifier(std::size_t position) const
-	{
-		if (position >= tokens_.size() ||
-			tokens_[position].kind != kIdentifierToken) return false;
+	{ if (position >= tokens_.size() ||
+		tokens_[position].kind != kIdentifierToken) return false;
 		const std::string& name = Spelling(position);
 		if (HasNameFact(tokens_[position].spelling, kKnownType)) return true;
 		return name.find('C') != std::string::npos ||
 			name.find('T') != std::string::npos ||
 			name.find('Y') != std::string::npos ||
-			name.find('E') != std::string::npos;
-	}
+			name.find('E') != std::string::npos; }
+	bool ParseConversionTypeName()
+	{ while (At(KW_CONST) || At(KW_VOLATILE)) ++position_;
+		if (position_ < tokens_.size() &&
+			IsFundamentalKind(tokens_[position_].kind))
+		{ do ++position_;
+			while (position_ < tokens_.size() &&
+				IsFundamentalKind(tokens_[position_].kind)); }
+		else
+		{ std::string ignored;
+			if (!ParseName(&ignored, true, false, true)) return false; }
+		while (At(KW_CONST) || At(KW_VOLATILE)) ++position_;
+		while (Match(OP_STAR) || Match(OP_AMP) || Match(OP_LAND))
+			while (At(KW_CONST) || At(KW_VOLATILE)) ++position_;
+		return true; }
 	bool ParseName(std::string* text, bool allow_qualified = true,
 		bool allow_operator = true, bool allow_template_arguments = true)
 	{
@@ -452,24 +418,15 @@ private:
 			else if (Match(OP_LPAREN)) Expect(OP_RPAREN);
 			else if (Match(OP_LSQUARE)) Expect(OP_RSQUARE);
 			else if (position_ < tokens_.size() &&
-				tokens_[position_].kind < kSimpleTokenCount &&
-				tokens_[position_].kind !=
-					static_cast<std::uint16_t>(OP_COLON2))
+				IsOperatorNameToken(tokens_[position_].kind))
 				++position_;
 			else
 			{
-				while (At(KW_CONST) || At(KW_VOLATILE)) ++position_;
-				std::string conversion_type;
-				if (position_ < tokens_.size() &&
-					IsFundamentalKind(tokens_[position_].kind))
-					++position_;
-				else if (!ParseName(&conversion_type, true, false, true))
+				if (!ParseConversionTypeName())
 				{
 					Rollback(mark);
 					return false;
 				}
-				while (Match(OP_STAR) || Match(OP_AMP) || Match(OP_LAND))
-					while (At(KW_CONST) || At(KW_VOLATILE)) ++position_;
 			}
 		}
 		else
@@ -492,11 +449,11 @@ private:
 				if (At(KW_OPERATOR) && allow_operator)
 				{
 					++position_;
-					if (AtIdentifier() || At(KW_NEW) || At(KW_DELETE) ||
+					if (At(KW_NEW) || At(KW_DELETE) ||
 						(position_ < tokens_.size() &&
-						 tokens_[position_].kind < kSimpleTokenCount))
+						 IsOperatorNameToken(tokens_[position_].kind)))
 						++position_;
-					else
+					else if (!ParseConversionTypeName())
 					{
 						Rollback(mark);
 						return false;
@@ -517,8 +474,9 @@ private:
 		{
 			const std::size_t after = conversion +
 				std::string("::operator").size();
-			if (after < text->size() &&
-				std::isalnum(static_cast<unsigned char>((*text)[after])))
+			if (after < text->size() && (*text)[after] != ' ' &&
+				(std::isalnum(static_cast<unsigned char>((*text)[after])) ||
+				 (*text)[after] == '_'))
 				text->insert(after, " ");
 		}
 		return true;
@@ -1058,9 +1016,66 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 	else if (!abstract)
 	{
 		const Mark name_mark = Checkpoint();
+		const std::size_t name_first = position_;
 		std::string parsed_name;
 		if (ParseName(&parsed_name))
 		{
+			const std::size_t name_last = position_;
+			std::size_t conversion = name_last;
+			for (std::size_t i = name_first; i < name_last; ++i)
+				if (tokens_[i].kind ==
+					static_cast<std::uint16_t>(KW_OPERATOR)) conversion = i;
+			const bool conversion_name = conversion + 1 < name_last &&
+				!IsOperatorNameToken(tokens_[conversion + 1].kind) &&
+				tokens_[conversion + 1].kind !=
+					static_cast<std::uint16_t>(OP_LPAREN) &&
+				tokens_[conversion + 1].kind !=
+					static_cast<std::uint16_t>(OP_LSQUARE) &&
+				tokens_[conversion + 1].kind !=
+					static_cast<std::uint16_t>(KW_NEW) &&
+				tokens_[conversion + 1].kind !=
+					static_cast<std::uint16_t>(KW_DELETE) &&
+				tokens_[conversion + 1].kind != kLiteralToken;
+			if (conversion_name)
+			{
+				position_ = conversion + 1;
+				const NodeId conversion_type =
+					arena_.Make("conversion-type-id");
+				arena_.AddFlags(conversion_type, SYNTAX_FLAG_SEMANTIC_ONLY);
+				const NodeId specifiers = ParseDeclSpecifierSeq(false);
+				if (specifiers == kNoNode)
+				{
+					Rollback(mark);
+					return kNoNode;
+				}
+				arena_.Add(conversion_type, specifiers);
+				const NodeId conversion_declarator =
+					arena_.Make("abstract-declarator");
+				bool has_declarator = false;
+				while (position_ < name_last)
+				{
+					const std::size_t operation = position_;
+					if (!Match(OP_STAR) && !Match(OP_AMP) && !Match(OP_LAND))
+					{
+						Rollback(mark);
+						return kNoNode;
+					}
+					arena_.Add(conversion_declarator,
+						MakeTokenNode("ptr-operator", operation));
+					has_declarator = true;
+					while (position_ < name_last &&
+						(At(KW_CONST) || At(KW_VOLATILE)))
+					{
+						const std::size_t qualifier = position_++;
+						arena_.Add(conversion_declarator,
+							MakeTokenNode("cv-qualifier", qualifier));
+					}
+				}
+				if (has_declarator)
+					arena_.Add(conversion_type, conversion_declarator);
+				arena_.Add(result, conversion_type);
+				position_ = name_last;
+			}
 			if (name) *name = parsed_name;
 			arena_.Add(result, arena_.Make("identifier", parsed_name));
 			consumed = true;
@@ -2370,6 +2385,8 @@ NodeId Parser::ParseSpecialMember(bool)
 		Rollback(mark);
 		return kNoNode;
 	}
+	if (declarator_name.find("operator ") != std::string::npos)
+		name = declarator_name;
 	if (qualified)
 	{
 		const std::size_t op = declarator_name.rfind("::operator");
@@ -2876,22 +2893,6 @@ NodeId Parser::ParseDeclaration(bool in_class)
 	return ParseSimpleOrFunction(in_class);
 }
 
-}
-
-SyntaxStats::SyntaxStats()
-	: tokens(0), interned_spellings(0), spelling_bytes(0), syntax_nodes(0),
-	  syntax_edges(0), syntax_output_bytes(0), max_syntax_depth(0),
-	  parser_checkpoints(0), parser_rollbacks(0),
-	  template_argument_probes(0), template_argument_scans(0),
-	  template_argument_cache_hits(0),
-	  template_argument_scan_tokens(0), max_template_argument_scan_tokens(0),
-	  failed_template_argument_scans(0), parser_fact_changes(0),
-	  token_storage_bytes(0), syntax_storage_bytes(0),
-	  parser_storage_bytes(0), render_stack_storage_bytes(0),
-	  peak_stage_storage_bytes(0), parse_nanoseconds(0),
-	  render_nanoseconds(0),
-	  elapsed_nanoseconds(0)
-{
 }
 
 void WriteSyntaxTranslationUnit(const std::string& path,

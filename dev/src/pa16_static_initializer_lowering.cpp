@@ -398,6 +398,7 @@ bool StaticInitializerLowering::Lower(const NamespaceObjectAction& action,
 	bool thread_local_object, Global* global,
 	bool* needs_global_class_initializer)
 {
+	(void)needs_global_class_initializer;
 	if (types_.IsReference(action.type)) return false;
 	if (action.initializer == kNoDumpEdge)
 	{
@@ -410,7 +411,12 @@ bool StaticInitializerLowering::Lower(const NamespaceObjectAction& action,
 		IsTrivialConstructorAction(action.type, variable_children))
 	{
 		SetZero(action.type, global);
-		if (!thread_local_object &&
+		const TypeRecord& object = program_.types.Get(
+			types_.ExpressionObject(action.type));
+		const EntityId entity = object.kind == TYPE_NAMED ?
+			object.entity : kNoEntity;
+		if (!thread_local_object && entity != kNoEntity &&
+			!program_.entities[entity].empty_class &&
 			!program_.bindings[action.object].unnamed_namespace_linkage)
 			*needs_global_class_initializer = true;
 		return true;

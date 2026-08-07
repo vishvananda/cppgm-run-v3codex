@@ -100,6 +100,7 @@ struct DumpNode
 	std::uint32_t aggregate_helper;
 	bool constant;
 	bool integer_narrowing_conversion;
+	bool boolean_conversion;
 	bool value_initialization;
 	bool elide_empty_constructor;
 	bool trivial_special_member_action;
@@ -116,6 +117,7 @@ struct DumpNode
 		  last_edge(kNoDumpEdge), base_projection_count(0),
 		  aggregate_helper(kNoDumpEdge),
 		  constant(false), integer_narrowing_conversion(false),
+		  boolean_conversion(false),
 		  value_initialization(false), elide_empty_constructor(false),
 		  trivial_special_member_action(false),
 		  argument_materialization(false), class_argument_staging(false),
@@ -242,11 +244,19 @@ struct CallConversionFact
 {
 	ConversionRank rank;
 	BindingId constructor;
+	BindingId conversion_function;
 	ConversionRank constructor_argument_rank;
+	ConversionRank conversion_result_rank;
+	ConversionRank conversion_object_rank;
+	std::uint32_t conversion_base_projection_count;
 
 	CallConversionFact()
 		: rank(CONVERSION_INVALID), constructor(kNoBinding),
-		  constructor_argument_rank(CONVERSION_INVALID) {}
+		  conversion_function(kNoBinding),
+		  constructor_argument_rank(CONVERSION_INVALID),
+		  conversion_result_rank(CONVERSION_INVALID),
+		  conversion_object_rank(CONVERSION_INVALID),
+		  conversion_base_projection_count(0) {}
 };
 
 enum SpecialMemberKind
@@ -264,6 +274,7 @@ struct FunctionInfo
 	BindingId inherited_constructor_source;
 	ScopeId owner;
 	TypeId type, signature;
+	TypeId conversion_target;
 	NameId display_name;
 	TypeId member_owner;
 	EntityId friend_of;
@@ -278,6 +289,8 @@ struct FunctionInfo
 	bool defaulted_constructor;
 	bool deleted_constructor;
 	bool explicit_constructor;
+	bool conversion_function;
+	bool explicit_conversion;
 	bool destructor;
 	bool implicit_destructor;
 	bool defaulted_destructor;
@@ -292,12 +305,14 @@ struct FunctionInfo
 	FunctionInfo()
 		: binding(kNoBinding), inherited_constructor_source(kNoBinding),
 		  owner(kNoScope), type(kNoType), signature(kNoType),
-		  member_owner(kNoType), friend_of(kNoEntity), lexical_scope(kNoScope),
+		  conversion_target(kNoType), member_owner(kNoType),
+		  friend_of(kNoEntity), lexical_scope(kNoScope),
 		  definition_body(kNoNode), constructor_initializer(kNoNode),
 		  defined(false), deferred(false), template_specialization(false),
 		  constructor(false), implicit_constructor(false),
 		  defaulted_constructor(false), deleted_constructor(false),
-		  explicit_constructor(false), destructor(false),
+		  explicit_constructor(false), conversion_function(false),
+		  explicit_conversion(false), destructor(false),
 		  implicit_destructor(false), defaulted_destructor(false),
 		  deleted_destructor(false), special_member(SPECIAL_MEMBER_NONE),
 		  implicit_special_member(false), defaulted_special_member(false),

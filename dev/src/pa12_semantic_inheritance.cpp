@@ -290,6 +290,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		function_pointer_target ||
 		unqualified_target_record.kind == TYPE_MEMBER_POINTER ?
 		target : kNoType);
+	if (EntityOf(operand.type) != kNoEntity &&
+		ConvertingFunction(operand, target, true).rank != CONVERSION_INVALID)
+		return ApplyExplicitConversion(operand, target);
 	if (!IsVoid(target) && !IsArithmetic(target) && !IsPointer(target) &&
 		!IsNullptr(target) && target_record.kind != TYPE_LVALUE_REFERENCE &&
 		target_record.kind != TYPE_RVALUE_REFERENCE &&

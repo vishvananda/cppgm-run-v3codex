@@ -1,6 +1,7 @@
 #include "pa12_semantic_detail.h"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <iomanip>
 #include <limits>
@@ -44,17 +45,38 @@ NamePath SemanticAnalyzer::ParseNamePath(const std::string& spelling)
 	result.global = spelling.size() >= 2 && spelling[0] == ':' &&
 		spelling[1] == ':';
 	if (result.global) first = 2;
+	std::size_t conversion_terminal = std::string::npos;
+	if (spelling.compare(first, 9, "operator ") == 0)
+		conversion_terminal = first;
+	else
+	{
+		const std::size_t separator = spelling.find("::operator ", first);
+		if (separator != std::string::npos)
+			conversion_terminal = separator + 2;
+	}
 	std::size_t count = 1;
-	for (std::size_t scan = first; (scan = spelling.find("::", scan)) !=
-		std::string::npos; scan += 2) ++count;
+	for (std::size_t scan = first; scan != conversion_terminal &&
+		(scan = spelling.find("::", scan)) != std::string::npos;
+		scan += 2) ++count;
 	result.Reserve(count);
 	while (first < spelling.size())
 	{
-		const std::size_t separator = spelling.find("::", first);
+		const std::size_t separator = first == conversion_terminal ?
+			std::string::npos : spelling.find("::", first);
 		const std::size_t last = separator == std::string::npos ?
 			spelling.size() : separator;
 		if (last == first) throw std::runtime_error("invalid qualified name");
-		result.Push(program_->names.InternRange(spelling, first, last - first));
+		if (first == conversion_terminal)
+		{
+			std::string terminal;
+			terminal.reserve(last - first);
+			for (std::size_t i = first; i < last; ++i)
+				if (!std::isspace(static_cast<unsigned char>(spelling[i])))
+					terminal += spelling[i];
+			result.Push(program_->names.Intern(terminal));
+		}
+		else result.Push(
+			program_->names.InternRange(spelling, first, last - first));
 		if (separator == std::string::npos) break;
 		first = separator + 2;
 	}
@@ -181,6 +203,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const {
 		zero_offset_subobject_marks_.capacity() * sizeof(std::uint32_t) +
 		zero_offset_subobject_scratch_.capacity() * sizeof(EntityId) +
 		entity_constructors_.capacity() * sizeof(std::vector<BindingId>) +
+		entity_conversion_functions_.capacity() *
+			sizeof(std::vector<BindingId>) +
 		class_special_members_.capacity() * sizeof(ClassSpecialMemberFacts) +
 		implicit_constructor_by_entity_.capacity() * sizeof(BindingId) +
 		constructor_base_entry_by_binding_.capacity() * sizeof(BindingId) +
@@ -222,6 +246,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const {
 			sizeof(ClassLayoutMember);
 	for (std::size_t i = 0; i < entity_constructors_.size(); ++i)
 		bytes += entity_constructors_[i].capacity() * sizeof(BindingId);
+	for (std::size_t i = 0; i < entity_conversion_functions_.size(); ++i)
+		bytes += entity_conversion_functions_[i].capacity() * sizeof(BindingId);
 	for (std::size_t i = 0; i < scope_lifetimes_.size(); ++i)
 		bytes += scope_lifetimes_[i].capacity() * sizeof(LifetimeObligation);
 	for (std::size_t i = 0; i < aggregate_helpers_.size(); ++i) bytes += aggregate_helpers_[i].members.capacity() * sizeof(BindingId);
@@ -601,6 +627,13 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 	const bool target_is_bool =
 		conversion_target_record.kind == TYPE_FUNDAMENTAL &&
 		conversion_target_record.fundamental == FUND_BOOL;
+	const TypeRecord& conversion_source_record =
+		program_->types.Get(conversion_source);
+	const bool source_is_bool =
+		conversion_source_record.kind == TYPE_FUNDAMENTAL &&
+		conversion_source_record.fundamental == FUND_BOOL;
+	if (target_is_bool && !source_is_bool)
+		dump_.nodes[value.node].boolean_conversion = true;
 	if (!target_is_bool && IsIntegral(conversion_source, true) &&
 		IsIntegral(conversion_target, true) &&
 		program_->SizeOf(conversion_target) < program_->SizeOf(conversion_source))
@@ -1059,8 +1092,8 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 			if (rank == CONVERSION_INVALID) viable[c] = false;
 		}
 	}
-	const auto better = [this, &ranks, &base_distances, &candidates,
-		&arguments, arity, explicit_arity, object](
+	const auto better = [this, &ranks, &base_distances, &conversions,
+		&candidates, &arguments, arity, explicit_arity, object](
 		std::size_t left, std::size_t right) -> bool
 	{
 		++overload_order_comparisons_;
@@ -1084,6 +1117,17 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 				 left_rank == CONVERSION_DERIVED_TO_BASE &&
 				 left_distance < right_distance))
 				strictly_better = true;
+			if (left_rank == CONVERSION_USER_DEFINED &&
+				right_rank == CONVERSION_USER_DEFINED &&
+				a >= (object ? 1u : 0u))
+			{
+				const std::size_t argument = a - (object ? 1u : 0u);
+				const int preference = CompareCallConversions(
+					conversions[left * explicit_arity + argument],
+					conversions[right * explicit_arity + argument]);
+				if (preference < 0) no_worse = false;
+				if (preference > 0) strictly_better = true;
+			}
 		}
 		if (!no_worse) return false;
 		if (strictly_better) return true;
@@ -1373,40 +1417,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 				object ? &object_conversion : 0, &argument_conversions);
 		}
 
-		TypeId cast_type = kNoType;
-		const LookupResult named = LookupSpelling(scope, spelling, LOOKUP_TYPE);
-		if (named.type != kNoType) cast_type = named.type;
-		else if (spelling.size() > 10 &&
-			spelling.compare(0, 9, "decltype(") == 0 &&
-			spelling[spelling.size() - 1] == ')')
-		{
-			const std::string operand_name =
-				spelling.substr(9, spelling.size() - 10);
-			const LookupResult operand = LookupSpelling(scope, operand_name,
-				LOOKUP_ORDINARY);
-			if (operand.ordinary != kNoBinding)
-				cast_type = program_->bindings[operand.ordinary].type;
-		}
-		else
-		{
-			FundamentalKind kind = FUND_INT;
-			bool fundamental = true;
-			if (spelling == "bool") kind = FUND_BOOL;
-			else if (spelling == "char") kind = FUND_CHAR;
-			else if (spelling == "short" || spelling == "short int")
-				kind = FUND_SHORT_INT;
-			else if (spelling == "int") kind = FUND_INT;
-			else if (spelling == "long" || spelling == "long int")
-				kind = FUND_LONG_INT;
-			else if (spelling == "unsigned" || spelling == "unsigned int")
-				kind = FUND_UNSIGNED_INT;
-			else if (spelling == "unsigned long") kind = FUND_UNSIGNED_LONG_INT;
-			else if (spelling == "float") kind = FUND_FLOAT;
-			else if (spelling == "double") kind = FUND_DOUBLE;
-			else if (spelling == "long double") kind = FUND_LONG_DOUBLE;
-			else fundamental = false;
-			if (fundamental) cast_type = program_->types.Fundamental(kind);
-		}
+		const TypeId cast_type = ResolveFunctionalCastType(scope, spelling);
 		if (cast_type != kNoType)
 		{
 			if (DestructedEntity(cast_type) != kNoEntity)
@@ -1423,6 +1434,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 				return ApplyTarget(zero, target);
 			}
 			ExpressionInfo operand = analyzed_arguments[0];
+			if (EntityOf(operand.type) != kNoEntity &&
+				ConvertingFunction(operand, cast_type, true).rank !=
+					CONVERSION_INVALID)
+				return ApplyTarget(
+					ApplyExplicitConversion(operand, cast_type), target);
 			const TypeRecord cast_record = program_->types.Get(cast_type);
 			const ValueCategory cast_category =
 				cast_record.kind == TYPE_LVALUE_REFERENCE ? VALUE_LVALUE :
@@ -1874,7 +1890,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	if (entity == kNoEntity || program_->entities[entity].member_scope == kNoScope)
 		throw std::runtime_error("member access on non-class object");
 	const NodeId identifier = arena_->EdgeChild(second);
-	const NameId name = program_->names.Intern(arena_->Payload(identifier));
+	const NameId name = ParseNamePath(arena_->Payload(identifier)).Last();
 	const LookupResult found = program_->LookupMember(
 		entity, name, LOOKUP_ORDINARY);
 	if (found.ordinary == kNoBinding)
@@ -2460,7 +2476,18 @@ void SemanticAnalyzer::AnalyzeCondition(NodeId node, ScopeId scope,
 				throw std::runtime_error("invalid switch condition");
 		}
 		else if (!IsArithmetic(parsed.type) && !IsPointer(parsed.type))
-			throw std::runtime_error("invalid condition type");
+		{
+			ExpressionInfo declared;
+			declared.node = MakeDump(DUMP_ID_EXPRESSION, parsed.type,
+				VALUE_LVALUE, parsed.name, binding);
+			declared.type = parsed.type;
+			declared.category = VALUE_LVALUE;
+			declared.binding = binding;
+			++expression_count_;
+			const ExpressionInfo converted = ApplyExplicitConversion(declared,
+				program_->types.Fundamental(FUND_BOOL));
+			dump_.Add(condition, converted.node);
+		}
 		return;
 	}
 	ExpressionInfo value = AnalyzeExpression(FirstSemanticChild(node), scope);
@@ -2470,7 +2497,9 @@ void SemanticAnalyzer::AnalyzeCondition(NodeId node, ScopeId scope,
 			throw std::runtime_error("invalid switch condition");
 	}
 	else if (!IsArithmetic(value.type) && !IsPointer(value.type) &&
-		!IsNullptr(value.type)) throw std::runtime_error("invalid condition type");
+		!IsNullptr(value.type))
+		value = ApplyExplicitConversion(value,
+			program_->types.Fundamental(FUND_BOOL));
 	dump_.Add(condition, value.node);
 }
 

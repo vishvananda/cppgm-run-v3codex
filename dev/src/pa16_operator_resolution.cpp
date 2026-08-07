@@ -245,6 +245,147 @@ CallConversionFact SemanticAnalyzer::ConvertingConstructor(
 	return result;
 }
 
+void SemanticAnalyzer::AppendConversionFunctions(EntityId entity,
+	std::vector<BindingId>* candidates) const
+{
+	while (entity != kNoEntity)
+	{
+		if (entity < entity_conversion_functions_.size())
+			candidates->insert(candidates->end(),
+				entity_conversion_functions_[entity].begin(),
+				entity_conversion_functions_[entity].end());
+		entity = program_->entities[entity].direct_base;
+	}
+}
+
+CallConversionFact SemanticAnalyzer::ConvertingFunction(
+	const ExpressionInfo& source, TypeId target, bool allow_explicit)
+{
+	CallConversionFact result;
+	const EntityId entity = EntityOf(source.type);
+	if (entity == kNoEntity) return result;
+	std::vector<BindingId> candidates;
+	AppendConversionFunctions(entity, &candidates);
+	BindingId selected = kNoBinding;
+	ConversionRank best_result = CONVERSION_INVALID;
+	ConversionRank best_object = CONVERSION_INVALID;
+	std::uint32_t best_projections = 0;
+	bool ambiguous = false;
+	for (std::size_t i = 0; i < candidates.size(); ++i)
+	{
+		++overload_candidates_;
+		const FunctionInfo& function = GetFunction(candidates[i]);
+		if (!function.conversion_function ||
+			(function.explicit_conversion && !allow_explicit)) continue;
+		const TypeRecord& function_type = program_->types.Get(function.type);
+		if (!RefQualifierViable(source, function_type)) continue;
+		TypeId object_type = function.member_owner;
+		if ((function_type.cv & CV_CONST) != 0)
+			object_type = program_->types.Qualify(object_type, CV_CONST);
+		if ((function_type.cv & CV_VOLATILE) != 0)
+			object_type = program_->types.Qualify(object_type, CV_VOLATILE);
+		ExpressionInfo object = source;
+		object.type = program_->types.Pointer(EffectiveType(source.type));
+		const ConversionRank object_rank = MemberObjectConversion(object,
+			program_->types.Pointer(object_type), candidates[i]);
+		if (object_rank == CONVERSION_INVALID) continue;
+		ExpressionInfo converted;
+		converted.type = function.conversion_target;
+		const TypeRecord& converted_type =
+			program_->types.Get(function.conversion_target);
+		converted.category = converted_type.kind == TYPE_LVALUE_REFERENCE ?
+			VALUE_LVALUE : converted_type.kind == TYPE_RVALUE_REFERENCE ?
+			VALUE_XVALUE : VALUE_PRVALUE;
+		const ConversionRank result_rank = Conversion(converted, target);
+		if (result_rank == CONVERSION_INVALID) continue;
+		if (function.explicit_conversion &&
+			program_->types.RemoveTopCv(EffectiveType(function.conversion_target)) !=
+			program_->types.RemoveTopCv(EffectiveType(target))) continue;
+		std::uint32_t projections = 0;
+		if (object_rank == CONVERSION_DERIVED_TO_BASE)
+		{
+			const std::size_t count = BaseProjectionCount(source.type, object_type);
+			if (count == std::numeric_limits<std::size_t>::max() ||
+				count > std::numeric_limits<std::uint32_t>::max())
+				throw std::logic_error(
+					"conversion function has no bounded object path");
+			projections = static_cast<std::uint32_t>(count);
+		}
+		bool better = selected == kNoBinding || result_rank < best_result ||
+			(result_rank == best_result && object_rank < best_object);
+		if (!better && selected != kNoBinding && result_rank == best_result &&
+			object_rank == best_object)
+		{
+			const int preference = CompareImplicitObjectBindings(source.category,
+				function_type, program_->types.Get(GetFunction(selected).type));
+			better = preference > 0;
+			if (preference == 0) ambiguous = true;
+		}
+		if (better)
+		{
+			selected = candidates[i];
+			best_result = result_rank;
+			best_object = object_rank;
+			best_projections = projections;
+			ambiguous = false;
+		}
+	}
+	if (selected == kNoBinding || ambiguous) return result;
+	result.rank = CONVERSION_USER_DEFINED;
+	result.conversion_function = selected;
+	result.conversion_result_rank = best_result;
+	result.conversion_object_rank = best_object;
+	result.conversion_base_projection_count = best_projections;
+	return result;
+}
+
+int SemanticAnalyzer::CompareCallConversions(
+	const CallConversionFact& left, const CallConversionFact& right) const
+{
+	if (left.rank != CONVERSION_USER_DEFINED ||
+		right.rank != CONVERSION_USER_DEFINED) return 0;
+	if (left.conversion_function != kNoBinding &&
+		left.conversion_function == right.conversion_function)
+	{
+		if (left.conversion_result_rank < right.conversion_result_rank) return 1;
+		if (left.conversion_result_rank > right.conversion_result_rank) return -1;
+		if (left.conversion_object_rank < right.conversion_object_rank) return 1;
+		if (left.conversion_object_rank > right.conversion_object_rank) return -1;
+	}
+	if (left.constructor != kNoBinding &&
+		left.constructor == right.constructor)
+	{
+		if (left.constructor_argument_rank < right.constructor_argument_rank)
+			return 1;
+		if (left.constructor_argument_rank > right.constructor_argument_rank)
+			return -1;
+	}
+	return 0;
+}
+
+ExpressionInfo SemanticAnalyzer::ApplyExplicitConversion(
+	ExpressionInfo value, TypeId target)
+{
+	const ConversionRank standard = Conversion(value, target);
+	if (standard != CONVERSION_INVALID)
+		return ApplyTarget(value, target, standard);
+	const CallConversionFact conversion =
+		ConvertingFunction(value, target, true);
+	if (conversion.rank == CONVERSION_INVALID ||
+		conversion.conversion_function == kNoBinding)
+		throw std::runtime_error("invalid explicit conversion");
+	ObjectConversionFact object_conversion;
+	object_conversion.rank = conversion.conversion_object_rank;
+	object_conversion.base_projection_count =
+		conversion.conversion_base_projection_count;
+	const ExpressionInfo object = MakeImplicitObjectPointer(value);
+	const std::vector<NodeId> syntax;
+	const std::vector<ExpressionInfo> arguments;
+	return BuildResolvedCall(conversion.conversion_function, kNoScope,
+		syntax, arguments, &object, target, kNoEntity,
+		&object_conversion, 0);
+}
+
 CallConversionFact SemanticAnalyzer::CallConversion(
 	const ExpressionInfo& source, TypeId target,
 	CallConversionTable* cache, std::size_t source_ordinal)
@@ -270,7 +411,19 @@ CallConversionFact SemanticAnalyzer::CallConversion(
 		}
 		++call_conversion_cache_misses_;
 	}
-	result = ConvertingConstructor(source, target);
+	const CallConversionFact constructor = ConvertingConstructor(source, target);
+	const CallConversionFact conversion =
+		ConvertingFunction(source, target, false);
+	if (constructor.rank == CONVERSION_INVALID) result = conversion;
+	else if (conversion.rank == CONVERSION_INVALID) result = constructor;
+	else
+	{
+		const TypeRecord& target_type = program_->types.Get(target);
+		result = (target_type.kind == TYPE_LVALUE_REFERENCE ||
+			target_type.kind == TYPE_RVALUE_REFERENCE) &&
+			conversion.conversion_result_rank == CONVERSION_EXACT ?
+			conversion : constructor;
+	}
 	if (cache) cache->Insert(key, result);
 	return result;
 }
@@ -334,11 +487,26 @@ ExpressionInfo SemanticAnalyzer::ApplyCallArgument(
 {
 	const CallConversionFact resolved = conversion ? *conversion :
 		CallConversion(value, target, 0, 0);
+	bool converted_by_function = false;
 	if (resolved.rank == CONVERSION_INVALID)
 		throw std::runtime_error("invalid implicit call conversion");
 	if (resolved.rank == CONVERSION_USER_DEFINED)
 	{
-		return BuildConvertingArgument(value, target, resolved);
+		if (resolved.conversion_function != kNoBinding)
+		{
+			const std::vector<NodeId> syntax;
+			const std::vector<ExpressionInfo> arguments;
+			ObjectConversionFact object_conversion;
+			object_conversion.rank = resolved.conversion_object_rank;
+			object_conversion.base_projection_count =
+				resolved.conversion_base_projection_count;
+			const ExpressionInfo object = MakeImplicitObjectPointer(value);
+			value = BuildResolvedCall(resolved.conversion_function, kNoScope,
+				syntax, arguments, &object, target, kNoEntity,
+				&object_conversion, 0);
+			converted_by_function = true;
+		}
+		else return BuildConvertingArgument(value, target, resolved);
 	}
 	const TypeRecord target_top = program_->types.Get(target);
 	const TypeId target_object = program_->types.RemoveTopCv(target);
@@ -350,16 +518,46 @@ ExpressionInfo SemanticAnalyzer::ApplyCallArgument(
 		 program_->entities[target_record.entity].flavor == NAMED_CLASS ||
 		 program_->entities[target_record.entity].flavor == NAMED_UNION) &&
 		program_->types.RemoveTopCv(EffectiveType(value.type)) == target_object;
-	value = ApplyTarget(value, target, resolved.rank);
+	if (!converted_by_function)
+		value = ApplyTarget(value, target, resolved.rank);
 	if (class_value)
 	{
+		while (dump_.nodes[value.node].kind == DUMP_TEMPORARY_OBJECT &&
+			dump_.nodes[value.node].first_edge != kNoDumpEdge &&
+			dump_.edges[dump_.nodes[value.node].first_edge].next == kNoDumpEdge)
+		{
+			const std::uint32_t edge = dump_.nodes[value.node].first_edge;
+			const std::uint32_t child = dump_.edges[edge].child;
+			if (dump_.nodes[child].kind == DUMP_CONSTRUCTOR_ACTION ||
+				dump_.nodes[child].kind == DUMP_TEMPORARY_OBJECT)
+			{
+				value.node = child;
+				value.category = VALUE_PRVALUE;
+			}
+			else break;
+		}
+		while (dump_.nodes[value.node].kind == DUMP_CONSTRUCTOR_ACTION &&
+			dump_.nodes[value.node].first_edge != kNoDumpEdge &&
+			dump_.edges[dump_.nodes[value.node].first_edge].next == kNoDumpEdge)
+		{
+			std::uint32_t child =
+				dump_.edges[dump_.nodes[value.node].first_edge].child;
+			if (dump_.nodes[child].kind == DUMP_TEMPORARY_OBJECT &&
+				dump_.nodes[child].first_edge != kNoDumpEdge &&
+				dump_.edges[dump_.nodes[child].first_edge].next == kNoDumpEdge)
+				child = dump_.edges[dump_.nodes[child].first_edge].child;
+			if (dump_.nodes[child].kind != DUMP_CONSTRUCTOR_ACTION) break;
+			value.node = child;
+			value.category = VALUE_PRVALUE;
+		}
 		if (value.category == VALUE_PRVALUE &&
 			dump_.nodes[value.node].kind == DUMP_CALL_EXPRESSION)
 		{
 			ValidateClassValueConstruction(target, value);
 			value = BuildDirectClassValueTransfer(value, target);
 		}
-		else value.node = BuildClassValueConstructorAction(target, value);
+		else if (dump_.nodes[value.node].kind != DUMP_CONSTRUCTOR_ACTION)
+			value.node = BuildClassValueConstructorAction(target, value);
 		value.type = target_object;
 		value.category = VALUE_PRVALUE;
 		dump_.nodes[value.node].class_argument_staging = true;
@@ -506,8 +704,8 @@ BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
 		}
 	}
 
-	const auto better = [this, &ranks, &base_distances, &candidates, &object,
-		&operands, arity](
+	const auto better = [this, &ranks, &base_distances, &conversions,
+		&candidates, &object, &operands, arity](
 		std::size_t left, std::size_t right) -> bool
 	{
 		++overload_order_comparisons_;
@@ -525,6 +723,15 @@ BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
 			if (lrank < rrank ||
 				(lrank == rrank && lrank == CONVERSION_DERIVED_TO_BASE &&
 				 ldistance < rdistance)) strictly_better = true;
+			if (lrank == CONVERSION_USER_DEFINED &&
+				rrank == CONVERSION_USER_DEFINED)
+			{
+				const int preference = CompareCallConversions(
+					conversions[left * arity + a],
+					conversions[right * arity + a]);
+				if (preference < 0) no_worse = false;
+				if (preference > 0) strictly_better = true;
+			}
 		}
 		if (!no_worse) return false;
 		if (strictly_better) return true;

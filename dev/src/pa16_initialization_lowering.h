@@ -133,6 +133,16 @@ protected:
 				derived.LowerConstructorAction(children[0], destination);
 			else if (derived.arena_.nodes[children[0]].kind == DUMP_BRACED_INIT_LIST)
 				derived.LowerAggregateActions(children[0], slot, path, Operand());
+			else if (derived.arena_.nodes[children[0]].kind == DUMP_CALL_EXPRESSION)
+			{
+				const DumpNode& call = derived.arena_.nodes[children[0]];
+				if (derived.UsesIndirectClassResult(call.type))
+					(void)derived.LowerCall(children[0], call,
+						derived.Children(children[0]), destination);
+				else EmitClassObjectCopy(call.type,
+					derived.LowerValue(children[0],
+						derived.LowerExpressionType(call.type)), destination);
+			}
 			else throw std::runtime_error(
 				"unsupported temporary object initializer");
 		}
