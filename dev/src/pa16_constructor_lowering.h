@@ -233,11 +233,15 @@ protected:
 		}
 		if (value.kind == DUMP_CONSTRUCTOR_ACTION)
 		{
-			if (derived.IsTrivialConstructorAction(action.type, children)) return;
+			if (!value.value_initialization &&
+				derived.IsTrivialConstructorAction(action.type, children)) return;
 			const Operand object = derived.LoadStorage(
 				derived.StorageFor(derived.current_this_binding_, LowPtr()), LowPtr());
 			const Operand destination =
 				derived.ProjectAggregateMember(object, action.binding);
+			if (value.value_initialization)
+				derived.EmitZeroInitialization(action.type, destination);
+			if (derived.IsTrivialConstructorAction(action.type, children)) return;
 			LowerConstructorAction(value_node, destination);
 			return;
 		}
@@ -253,11 +257,9 @@ protected:
 		if (value.kind == DUMP_BRACED_INIT_LIST &&
 			derived.IsArrayType(action.type))
 		{
-			const Operand object = derived.LoadStorage(
-				derived.StorageFor(derived.current_this_binding_, LowPtr()), LowPtr());
-			const Operand destination =
-				derived.ProjectAggregateMember(object, action.binding);
-			derived.LowerArrayValues(action.type, value_node, destination);
+			ConstructorMemberPath path;
+			path.Push(action.binding);
+			derived.LowerConstructorArrayActions(action.type, value_node, path);
 			return;
 		}
 		Instruction store(Instruction::STORE);

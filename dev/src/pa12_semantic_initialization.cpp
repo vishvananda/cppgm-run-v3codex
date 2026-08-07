@@ -19,6 +19,57 @@ bool IsClassEntity(const Program& program, EntityId entity)
 		flavor == NAMED_UNION;
 }
 
+int HexDigit(char value)
+{
+	return value >= '0' && value <= '9' ? value - '0' :
+		value >= 'a' && value <= 'f' ? value - 'a' + 10 :
+		value >= 'A' && value <= 'F' ? value - 'A' + 10 : -1;
+}
+
+std::vector<unsigned char> DecodeStringInitializer(
+	const std::string& spelling)
+{
+	std::vector<unsigned char> bytes;
+	const std::size_t first = spelling.find('"');
+	const std::size_t last = spelling.rfind('"');
+	if (first == std::string::npos || last <= first)
+		throw std::runtime_error("invalid string array initializer");
+	for (std::size_t i = first + 1; i < last; ++i)
+	{
+		unsigned value = static_cast<unsigned char>(spelling[i]);
+		if (spelling[i] == '\\' && ++i < last)
+		{
+			const char escape = spelling[i];
+			if (escape == 'x')
+			{
+				value = 0;
+				int digit = -1;
+				while (i + 1 < last &&
+					(digit = HexDigit(spelling[i + 1])) >= 0)
+				{
+					value = value * 16 + static_cast<unsigned>(digit);
+					++i;
+				}
+			}
+			else if (escape >= '0' && escape <= '7')
+			{
+				value = static_cast<unsigned>(escape - '0');
+				for (int count = 1; count < 3 && i + 1 < last &&
+					spelling[i + 1] >= '0' && spelling[i + 1] <= '7';
+					++count)
+					value = value * 8 + static_cast<unsigned>(spelling[++i] - '0');
+			}
+			else value = escape == 'n' ? '\n' : escape == 'r' ? '\r' :
+				escape == 't' ? '\t' : escape == 'v' ? '\v' :
+				escape == 'b' ? '\b' : escape == 'f' ? '\f' :
+				escape == 'a' ? '\a' : static_cast<unsigned char>(escape);
+		}
+		bytes.push_back(static_cast<unsigned char>(value));
+	}
+	bytes.push_back(0);
+	return bytes;
+}
+
 }
 
 BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
@@ -267,6 +318,11 @@ void SemanticAnalyzer::AddMemberInitializationAction(BindingId member_id,
 				arguments.push_back(initializer);
 			value = BuildConstructorAction(member.type, scope, arguments,
 				constructor_copy, constructor_list);
+			if (initializer != kNoNode &&
+				arena_->IsTag(initializer, "paren-argument-list") &&
+				arguments.empty() && dump_.nodes[value].binding != kNoBinding &&
+				GetFunction(dump_.nodes[value].binding).implicit_constructor)
+				dump_.nodes[value].value_initialization = true;
 		}
 		dump_.Add(action, value);
 	}
@@ -499,7 +555,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 {
 	if (target == kNoType) throw std::runtime_error("untyped braced-init-list");
 	TypeId type = target;
-	const TypeRecord array = program_->types.Get(type);
+	const TypeRecord array = program_->types.Get(
+		program_->types.RemoveTopCv(type));
 	const EntityId class_entity = EntityOf(type);
 	if (IsClassEntity(*program_, class_entity))
 	{
@@ -522,16 +579,20 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 			throw std::runtime_error("excess aggregate initializer elements");
 		return result;
 	}
+	if (array.kind == TYPE_ARRAY)
+	{
+		std::uint32_t element_edge = arena_->FirstEdge(node);
+		ExpressionInfo result = AnalyzeArrayAggregateInit(type, scope,
+			&element_edge);
+		if (element_edge != kNoEdge)
+			throw std::runtime_error("excess array initializer elements");
+		return result;
+	}
 	TypeId element = type;
-	if (array.kind == TYPE_ARRAY) element = array.child;
 	std::vector<ExpressionInfo> values;
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
 		values.push_back(AnalyzeExpression(arena_->EdgeChild(edge), scope, element));
-	if (array.kind == TYPE_ARRAY && array.bound != 0 && values.size() > array.bound)
-		throw std::runtime_error("excess array initializer elements");
-	if (array.kind == TYPE_ARRAY && array.bound == 0)
-		type = program_->types.Array(array.child, values.size());
 	const std::uint32_t list = MakeDump(DUMP_BRACED_INIT_LIST, type,
 		VALUE_LVALUE);
 	for (std::size_t i = 0; i < values.size(); ++i) dump_.Add(list, values[i].node);
@@ -542,6 +603,184 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 	RecordExpressionFacts(result);
 	++expression_count_;
 	return result;
+}
+
+ExpressionInfo SemanticAnalyzer::AnalyzeArrayAggregateInit(TypeId type,
+	ScopeId scope, std::uint32_t* element_edge)
+{
+	const TypeRecord array = program_->types.Get(
+		program_->types.RemoveTopCv(type));
+	if (array.kind != TYPE_ARRAY)
+		throw std::logic_error("array initialization has non-array type");
+	const std::uint32_t list = MakeDump(DUMP_BRACED_INIT_LIST,
+		type, VALUE_LVALUE);
+	std::size_t count = 0;
+	while (*element_edge != kNoEdge &&
+		(array.bound == 0 || count < array.bound))
+	{
+		const std::uint32_t before = *element_edge;
+		const ExpressionInfo value = AnalyzeAggregateElement(
+			array.child, scope, element_edge);
+		if (value.node == kNoDumpEdge || *element_edge == before)
+			throw std::logic_error("array initializer made no progress");
+		dump_.Add(list, value.node);
+		++count;
+	}
+	if (array.bound != 0)
+	{
+		while (count < array.bound)
+		{
+			std::uint32_t omitted = kNoEdge;
+			const ExpressionInfo value = AnalyzeAggregateElement(
+				array.child, scope, &omitted);
+			if (value.node != kNoDumpEdge) dump_.Add(list, value.node);
+			++count;
+		}
+	}
+	else
+	{
+		type = program_->types.Array(array.child, count);
+		dump_.nodes[list].type = type;
+	}
+	ExpressionInfo result;
+	result.node = list;
+	result.type = type;
+	result.category = VALUE_LVALUE;
+	RecordExpressionFacts(result);
+	++expression_count_;
+	return result;
+}
+
+ExpressionInfo SemanticAnalyzer::AnalyzeAggregateElement(TypeId type,
+	ScopeId scope, std::uint32_t* element_edge)
+{
+	const TypeId object = program_->types.RemoveTopCv(type);
+	const TypeRecord record = program_->types.Get(object);
+	const EntityId entity = EntityOf(type);
+	const bool class_type = IsClassEntity(*program_, entity);
+	const bool class_aggregate = class_type &&
+		program_->entities[entity].is_aggregate;
+	if (*element_edge != kNoEdge)
+	{
+		const std::uint32_t source_edge = *element_edge;
+		const NodeId source = arena_->EdgeChild(source_edge);
+		if (record.kind == TYPE_ARRAY && arena_->IsTag(source, "literal") &&
+			!arena_->Payload(source).empty() &&
+			arena_->Payload(source).find('"') != std::string::npos)
+		{
+			const TypeId element = program_->types.RemoveTopCv(record.child);
+			const TypeRecord element_record = program_->types.Get(element);
+			if (element_record.kind != TYPE_FUNDAMENTAL ||
+				element_record.fundamental != FUND_CHAR)
+				throw std::runtime_error(
+					"string literal initializes a non-character array");
+			const std::vector<unsigned char> bytes =
+				DecodeStringInitializer(arena_->Payload(source));
+			if (record.bound != 0 && bytes.size() > record.bound)
+				throw std::runtime_error("string literal is too long for array");
+			TypeId initialized_type = type;
+			if (record.bound == 0)
+				initialized_type = program_->types.Array(record.child, bytes.size());
+			const std::uint32_t list = MakeDump(DUMP_BRACED_INIT_LIST,
+				initialized_type, VALUE_LVALUE);
+			for (std::size_t i = 0; i < bytes.size(); ++i)
+			{
+				ExpressionInfo value = MakeLiteral(record.child,
+					InternNumber(bytes[i]));
+				value.constant = true;
+				value.value = bytes[i];
+				dump_.nodes[value.node].constant = true;
+				dump_.nodes[value.node].constant_value = bytes[i];
+				dump_.Add(list, value.node);
+			}
+			*element_edge = arena_->NextEdge(source_edge);
+			ExpressionInfo result;
+			result.node = list;
+			result.type = initialized_type;
+			result.category = VALUE_LVALUE;
+			++expression_count_;
+			return result;
+		}
+		if (arena_->IsTag(source, "braced-init-list"))
+		{
+			*element_edge = arena_->NextEdge(source_edge);
+			return AnalyzeBracedInit(source, scope, type);
+		}
+		if (record.kind == TYPE_ARRAY)
+			return AnalyzeArrayAggregateInit(type, scope, element_edge);
+		if (class_aggregate)
+			return AnalyzeAggregateInit(type, scope, element_edge);
+		*element_edge = arena_->NextEdge(source_edge);
+		if (class_type)
+		{
+			if (arena_->IsTag(source, "call-expression"))
+			{
+				ExpressionInfo constructed = AnalyzeExpression(source, scope);
+				if (dump_.nodes[constructed.node].kind ==
+					DUMP_TEMPORARY_OBJECT &&
+					dump_.nodes[constructed.node].first_edge != kNoDumpEdge)
+				{
+					const std::uint32_t initialization = dump_.edges[
+						dump_.nodes[constructed.node].first_edge].child;
+					if (dump_.edges[dump_.nodes[constructed.node].first_edge].next ==
+						kNoDumpEdge)
+					{
+						constructed.node = initialization;
+						constructed.category = VALUE_NONE;
+					}
+				}
+				if (program_->types.RemoveTopCv(constructed.type) == object &&
+					(dump_.nodes[constructed.node].kind ==
+						DUMP_CONSTRUCTOR_ACTION ||
+					 dump_.nodes[constructed.node].kind ==
+						DUMP_BRACED_INIT_LIST))
+				{
+					if (dump_.nodes[constructed.node].kind ==
+						DUMP_CONSTRUCTOR_ACTION &&
+						dump_.nodes[constructed.node].binding != kNoBinding)
+					{
+						const FunctionInfo& constructor = GetFunction(
+							dump_.nodes[constructed.node].binding);
+						if (program_->entities[entity].direct_base == kNoEntity &&
+							entity < entity_data_members_.size() &&
+							entity_data_members_[entity].empty() &&
+							constructor.constructor_initializer == kNoNode &&
+							constructor.definition_body != kNoNode &&
+							FirstSemanticChild(constructor.definition_body) == kNoNode)
+							dump_.nodes[constructed.node].elide_empty_constructor = true;
+					}
+					return constructed;
+				}
+			}
+			std::vector<NodeId> arguments(1, source);
+			ExpressionInfo result;
+			result.node = BuildConstructorAction(type, scope, arguments,
+				true, false);
+			result.type = type;
+			result.category = VALUE_NONE;
+			return result;
+		}
+		return AnalyzeExpression(source, scope, type);
+	}
+	if (record.kind == TYPE_ARRAY)
+		return AnalyzeArrayAggregateInit(type, scope, element_edge);
+	if (class_type)
+	{
+		if (class_aggregate)
+			return AnalyzeAggregateInit(type, scope, element_edge);
+		ExpressionInfo result;
+		result.node = BuildDefaultConstructorAction(type, scope);
+		result.type = type;
+		result.category = VALUE_NONE;
+		return result;
+	}
+	if (record.kind == TYPE_LVALUE_REFERENCE ||
+		record.kind == TYPE_RVALUE_REFERENCE)
+		throw std::runtime_error("omitted aggregate reference member");
+	ExpressionInfo omitted;
+	omitted.type = type;
+	omitted.category = VALUE_NONE;
+	return omitted;
 }
 
 ExpressionInfo SemanticAnalyzer::AnalyzeAggregateInit(TypeId type,
@@ -565,49 +804,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAggregateInit(TypeId type,
 		const BindingRecord& member = program_->bindings[member_id];
 		const std::uint32_t action = MakeDump(DUMP_INITIALIZER_ACTION,
 			member.type, VALUE_NONE, member.name, member_id);
-		const EntityId member_entity = EntityOf(member.type);
-		const bool class_member = IsClassEntity(*program_, member_entity);
-		if (*element_edge != kNoEdge)
-		{
-			const std::uint32_t source_edge = *element_edge;
-			const NodeId source = arena_->EdgeChild(source_edge);
-			ExpressionInfo value;
-			if (class_member &&
-				program_->entities[member_entity].is_aggregate)
-			{
-				if (arena_->IsTag(source, "braced-init-list"))
-				{
-					*element_edge = arena_->NextEdge(source_edge);
-					value = AnalyzeBracedInit(source, scope, member.type);
-				}
-				else
-					value = AnalyzeAggregateInit(member.type, scope,
-						element_edge);
-			}
-			else
-			{
-				*element_edge = arena_->NextEdge(source_edge);
-				value = AnalyzeExpression(source, scope, member.type);
-			}
-			dump_.Add(action, value.node);
-		}
-		else if (class_member)
-		{
-			if (!program_->entities[member_entity].is_aggregate)
-				throw std::runtime_error(
-					"omitted aggregate member requires construction");
-			const ExpressionInfo value = AnalyzeAggregateInit(member.type,
-				scope, element_edge);
-			dump_.Add(action, value.node);
-		}
-		else
-		{
-			const TypeRecord member_type = program_->types.Get(member.type);
-			if (member_type.kind == TYPE_LVALUE_REFERENCE ||
-				member_type.kind == TYPE_RVALUE_REFERENCE)
-				throw std::runtime_error(
-					"omitted aggregate reference member");
-		}
+		const ExpressionInfo value = AnalyzeAggregateElement(
+			member.type, scope, element_edge);
+		if (value.node != kNoDumpEdge) dump_.Add(action, value.node);
 		dump_.Add(list, action);
 		++expression_count_;
 	}
@@ -617,6 +816,301 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAggregateInit(TypeId type,
 	result.category = VALUE_LVALUE;
 	++expression_count_;
 	return result;
+}
+
+std::uint32_t SemanticAnalyzer::BuildAggregateConstructorAction(TypeId type,
+	ScopeId scope, std::uint32_t aggregate_list)
+{
+	const EntityId entity = EntityOf(type);
+	if (!IsClassEntity(*program_, entity) ||
+		!program_->entities[entity].is_aggregate)
+		throw std::logic_error("aggregate helper has non-aggregate type");
+	std::vector<std::uint32_t> member_actions;
+	std::vector<std::uint32_t> values;
+	std::vector<ParameterInfo> parameters;
+	std::vector<TypeId> parameter_types;
+	for (std::uint32_t edge = dump_.nodes[aggregate_list].first_edge;
+		edge != kNoDumpEdge; edge = dump_.edges[edge].next)
+	{
+		const std::uint32_t action_node = dump_.edges[edge].child;
+		const DumpNode& action = dump_.nodes[action_node];
+		if (action.kind != DUMP_INITIALIZER_ACTION ||
+			action.binding == kNoBinding)
+			throw std::logic_error("aggregate helper has invalid member action");
+		if (action.first_edge == kNoDumpEdge) continue;
+		if (dump_.edges[action.first_edge].next != kNoDumpEdge)
+			throw std::runtime_error(
+				"aggregate helper member has multiple values");
+		const std::uint32_t value = dump_.edges[action.first_edge].child;
+		if (program_->types.Get(program_->types.RemoveTopCv(action.type)).kind ==
+			TYPE_ARRAY || IsClassEntity(*program_, EntityOf(action.type)))
+			throw std::runtime_error(
+				"nested aggregate helper parameter is outside PA16");
+		member_actions.push_back(action_node);
+		values.push_back(value);
+		const BindingRecord& member = program_->bindings[action.binding];
+		const TypeId adjusted = AdjustParameterType(action.type);
+		parameters.push_back(ParameterInfo(member.name, action.type, adjusted));
+		parameter_types.push_back(adjusted);
+	}
+	if (parameters.empty()) return BuildDefaultConstructorAction(type, scope);
+	EntityRecord& owner = program_->entities[entity];
+	const TypeId function_type = program_->types.Function(
+		program_->types.Fundamental(FUND_VOID), parameter_types, false);
+	const FunctionSignatureKey key(owner.member_scope, owner.identity_name,
+		function_type);
+	BindingId constructor = function_declarations_.Find(key);
+	if (constructor == kNoBinding)
+	{
+		constructor = DeclareFunction(owner.member_scope, owner.identity_name,
+			function_type, parameters, true, false, STORAGE_CLASS_NONE,
+			LANGUAGE_LINKAGE_CPP, true);
+		constructor = program_->bindings[constructor].canonical;
+		BindingRecord& binding = program_->bindings[constructor];
+		binding.member_owner = entity;
+		binding.constructor = true;
+		FunctionInfo& info = GetMutableFunction(constructor);
+		info.member_owner = owner.type;
+		info.constructor = true;
+		info.implicit_constructor = true;
+		info.deferred = false;
+
+		const TypeId output_type = AdaptMemberFunctionType(constructor);
+		const std::uint32_t function = MakeDump(DUMP_FUNCTION_DEFINITION,
+			output_type, VALUE_NONE, info.display_name, constructor);
+		const ScopeId function_scope = NewScope(owner.member_scope,
+			SCOPE_FUNCTION, owner.identity_name, ScopePrefixId(owner.member_scope));
+		const NameId this_name = program_->names.Intern("this");
+		const TypeId this_type = program_->types.Parameters(output_type)[0];
+		const BindingId this_binding = program_->AddBinding(function_scope,
+			BIND_PARAMETER, this_name, this_type);
+		dump_.Add(function, MakeDump(DUMP_PARAMETER, this_type,
+			VALUE_NONE, this_name, this_binding));
+		std::vector<BindingId> parameter_bindings;
+		for (std::size_t i = 0; i < parameters.size(); ++i)
+		{
+			const BindingId parameter = program_->AddBinding(function_scope,
+				BIND_PARAMETER, parameters[i].name, parameters[i].declared_type);
+			parameter_bindings.push_back(parameter);
+			dump_.Add(function, MakeDump(DUMP_PARAMETER,
+				parameters[i].function_type, VALUE_NONE,
+				parameters[i].name, parameter));
+		}
+		const std::uint32_t body = MakeDump(DUMP_COMPOUND_STATEMENT);
+		dump_.Add(function, body);
+		for (std::size_t i = 0; i < member_actions.size(); ++i)
+		{
+			const DumpNode& source = dump_.nodes[member_actions[i]];
+			const std::uint32_t action = MakeDump(DUMP_INITIALIZER_ACTION,
+				source.type, VALUE_NONE, source.text, source.binding);
+			const BindingRecord& parameter =
+				program_->bindings[parameter_bindings[i]];
+			dump_.Add(action, MakeDump(DUMP_ID_EXPRESSION,
+				parameters[i].function_type, VALUE_LVALUE,
+				parameter.name, parameter_bindings[i]));
+			dump_.Add(body, action);
+		}
+		dump_.Add(root_, function);
+	}
+	constructor = program_->bindings[constructor].canonical;
+	const FunctionInfo& info = GetFunction(constructor);
+	const std::uint32_t call = MakeDump(DUMP_CONSTRUCTOR_ACTION,
+		AdaptMemberFunctionType(constructor), VALUE_NONE,
+		info.display_name, constructor);
+	for (std::size_t i = 0; i < values.size(); ++i)
+		dump_.Add(call, values[i]);
+	++expression_count_;
+	return call;
+}
+
+ExpressionInfo SemanticAnalyzer::BuildLocalAggregateArrayActions(
+	const ExpressionInfo& initializer, ScopeId scope)
+{
+	const TypeRecord array = program_->types.Get(
+		program_->types.RemoveTopCv(initializer.type));
+	const EntityId element = array.kind == TYPE_ARRAY ?
+		EntityOf(array.child) : kNoEntity;
+	if (array.kind != TYPE_ARRAY || !IsClassEntity(*program_, element) ||
+		!program_->entities[element].is_aggregate ||
+		dump_.nodes[initializer.node].kind != DUMP_BRACED_INIT_LIST)
+		return initializer;
+	const std::uint32_t list = MakeDump(DUMP_BRACED_INIT_LIST,
+		initializer.type, initializer.category);
+	for (std::uint32_t edge = dump_.nodes[initializer.node].first_edge;
+		edge != kNoDumpEdge; edge = dump_.edges[edge].next)
+	{
+		const std::uint32_t element_node = dump_.edges[edge].child;
+		if (dump_.nodes[element_node].kind != DUMP_BRACED_INIT_LIST)
+			throw std::logic_error(
+				"aggregate array element has no action list");
+		dump_.Add(list, BuildAggregateConstructorAction(
+			array.child, scope, element_node));
+	}
+	ExpressionInfo result = initializer;
+	result.node = list;
+	++expression_count_;
+	return result;
+}
+
+ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
+	ScopeId scope, TypeId target)
+{
+	const NodeId type_node = FindChild(node, "type-id");
+	if (type_node == kNoNode)
+		throw std::runtime_error("new-expression has no allocated type");
+	const TypeId object_type = BuildTypeId(type_node, scope);
+	if (program_->types.Get(program_->types.RemoveTopCv(object_type)).kind ==
+		TYPE_ARRAY)
+		throw std::runtime_error("array new is outside PA16");
+	const NodeId placement = FindChild(node, "placement");
+	if (placement == kNoNode)
+		throw std::runtime_error("ordinary new is outside PA16");
+	const NodeId placement_arguments = FindChild(placement,
+		"paren-argument-list");
+	std::vector<NodeId> argument_syntax;
+	std::vector<ExpressionInfo> arguments;
+	ExpressionInfo size = MakeLiteral(program_->types.Fundamental(FUND_INT),
+		InternNumber(static_cast<std::int64_t>(program_->SizeOf(object_type))));
+	size.constant = true;
+	size.value = static_cast<std::int64_t>(program_->SizeOf(object_type));
+	dump_.nodes[size.node].constant = true;
+	dump_.nodes[size.node].constant_value = size.value;
+	argument_syntax.push_back(kNoNode);
+	arguments.push_back(size);
+	if (placement_arguments != kNoNode)
+		for (std::uint32_t edge = arena_->FirstEdge(placement_arguments);
+			edge != kNoEdge; edge = arena_->NextEdge(edge))
+		{
+			const NodeId argument = arena_->EdgeChild(edge);
+			argument_syntax.push_back(argument);
+			arguments.push_back(AnalyzeExpression(argument, scope));
+		}
+	std::vector<BindingId> candidates = FunctionCandidates(scope,
+		"operatornew");
+	if (candidates.empty())
+		throw std::runtime_error("placement operator new was not declared");
+	const BindingId selected = SelectOverload(scope, argument_syntax,
+		arguments, candidates);
+	ExpressionInfo allocation = BuildResolvedCall(selected, scope,
+		argument_syntax, arguments, 0, kNoType);
+	const NodeId initializer_node = FindChild(node, "initializer");
+	NodeId initializer = initializer_node == kNoNode ? kNoNode :
+		FirstSemanticChild(initializer_node);
+	std::uint32_t construction = kNoDumpEdge;
+	const EntityId entity = EntityOf(object_type);
+	if (IsClassEntity(*program_, entity))
+	{
+		if (initializer != kNoNode &&
+			arena_->IsTag(initializer, "braced-init-list") &&
+			program_->entities[entity].is_aggregate)
+		{
+			const ExpressionInfo aggregate = AnalyzeBracedInit(
+				initializer, scope, object_type);
+			construction = BuildAggregateConstructorAction(
+				object_type, scope, aggregate.node);
+		}
+		else
+		{
+			std::vector<NodeId> constructor_arguments;
+			const bool list = initializer != kNoNode &&
+				arena_->IsTag(initializer, "braced-init-list");
+			if (initializer != kNoNode &&
+				(arena_->IsTag(initializer, "paren-initializer") || list))
+				for (std::uint32_t edge = arena_->FirstEdge(initializer);
+					edge != kNoEdge; edge = arena_->NextEdge(edge))
+					constructor_arguments.push_back(arena_->EdgeChild(edge));
+			construction = BuildConstructorAction(object_type, scope,
+				constructor_arguments, false, list);
+		}
+	}
+	else if (initializer != kNoNode)
+		construction = AnalyzeExpression(initializer, scope, object_type).node;
+	const TypeId result_type = program_->types.Pointer(object_type);
+	const std::uint32_t result_node = MakeDump(DUMP_NEW_EXPRESSION,
+		result_type, VALUE_PRVALUE);
+	dump_.nodes[result_node].operand_type = object_type;
+	dump_.Add(result_node, allocation.node);
+	if (construction != kNoDumpEdge) dump_.Add(result_node, construction);
+	ExpressionInfo result;
+	result.node = result_node;
+	result.type = result_type;
+	result.category = VALUE_PRVALUE;
+	++expression_count_;
+	return ApplyTarget(result, target);
+}
+
+ExpressionInfo SemanticAnalyzer::MaterializeTemporary(
+	const ExpressionInfo& initializer)
+{
+	if (!IsClassEntity(*program_, EntityOf(initializer.type)))
+		return initializer;
+	const std::uint32_t temporary = MakeDump(DUMP_TEMPORARY_OBJECT,
+		initializer.type, VALUE_XVALUE);
+	dump_.Add(temporary, initializer.node);
+	const DumpNode& action = dump_.nodes[initializer.node];
+	if (action.kind == DUMP_CONSTRUCTOR_ACTION &&
+		action.binding != kNoBinding)
+	{
+		const EntityId entity = EntityOf(initializer.type);
+		const FunctionInfo& constructor = GetFunction(action.binding);
+		if (constructor.implicit_constructor &&
+			program_->entities[entity].trivial_default_constructor)
+		{
+			if (default_constructor_demand_states_.size() <= entity)
+				default_constructor_demand_states_.resize(
+					static_cast<std::size_t>(entity) + 1, 0);
+			if (default_constructor_demand_states_[entity] == 0)
+			{
+				default_constructor_demand_states_[entity] = 1;
+				demanded_default_constructor_entities_.push_back(entity);
+				++demand_worklist_pushes_;
+			}
+			if (bound_default_constructor_emissions_.size() <= entity)
+				bound_default_constructor_emissions_.resize(
+					static_cast<std::size_t>(entity) + 1, 0);
+			bound_default_constructor_emissions_[entity] = 1;
+		}
+	}
+	ExpressionInfo result = initializer;
+	result.node = temporary;
+	result.category = VALUE_XVALUE;
+	++expression_count_;
+	return result;
+}
+
+ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
+	ScopeId scope, const std::vector<NodeId>& argument_syntax,
+	NodeId arguments_node, TypeId target)
+{
+	const EntityId cast_entity = EntityOf(cast_type);
+	if (program_->entities[cast_entity].is_aggregate && argument_syntax.empty())
+	{
+		if (target == kNoType)
+		{
+			const std::vector<NodeId> no_arguments;
+			ExpressionInfo initialized;
+			initialized.node = BuildConstructorAction(
+				cast_type, scope, no_arguments, false, false);
+			initialized.type = cast_type;
+			initialized.category = VALUE_PRVALUE;
+			dump_.nodes[initialized.node].value_initialization = true;
+			return MaterializeTemporary(initialized);
+		}
+		std::uint32_t empty = kNoEdge;
+		ExpressionInfo result = AnalyzeAggregateInit(cast_type, scope, &empty);
+		dump_.nodes[result.node].value_initialization = true;
+		return result;
+	}
+	ExpressionInfo result;
+	result.node = BuildConstructorAction(cast_type, scope, argument_syntax,
+		false, arguments_node != kNoNode &&
+		arena_->IsTag(arguments_node, "braced-init-list"));
+	result.type = cast_type;
+	result.category = VALUE_PRVALUE;
+	if (argument_syntax.empty())
+		dump_.nodes[result.node].value_initialization = true;
+	return target == kNoType ? MaterializeTemporary(result) :
+		ApplyTarget(result, target);
 }
 
 void SemanticAnalyzer::AddDefaultConstructor(std::uint32_t variable,
@@ -680,19 +1174,44 @@ void SemanticAnalyzer::EmitDefaultConstructor(EntityId entity)
 		default_constructor_demand_states_[entity] != 1) return;
 	default_constructor_demand_states_[entity] = 2;
 	const TypeId type = program_->entities[entity].type;
+	if (entity >= implicit_constructor_by_entity_.size() ||
+		implicit_constructor_by_entity_[entity] == kNoBinding)
+		throw std::logic_error("default constructor has no semantic binding");
+	const BindingId constructor =
+		implicit_constructor_by_entity_[entity];
 	const std::string owner = program_->names.Get(program_->entities[entity].name);
 	const std::size_t separator = owner.rfind("::");
 	const std::string leaf = separator == std::string::npos ? owner :
 		owner.substr(separator + 2);
 	const NameId name = program_->names.Intern(owner + "::" + leaf);
+	const bool bound = entity < bound_default_constructor_emissions_.size() &&
+		bound_default_constructor_emissions_[entity] != 0;
 	const TypeId this_type = program_->types.Pointer(type);
 	std::vector<TypeId> parameters(1, this_type);
 	const TypeId function_type = program_->types.Function(
 		program_->types.Fundamental(FUND_VOID), parameters, false);
 	const std::uint32_t function = MakeDump(DUMP_FUNCTION_DEFINITION,
-		function_type, VALUE_NONE, name);
+		function_type, VALUE_NONE, name, bound ? constructor : kNoBinding);
+	if (!bound)
+	{
+		const std::uint32_t parameter = MakeDump(DUMP_PARAMETER, this_type,
+			VALUE_NONE, program_->names.Intern("this"));
+		const std::uint32_t body = MakeDump(DUMP_COMPOUND_STATEMENT);
+		dump_.Add(function, parameter);
+		dump_.Add(function, body);
+		dump_.Add(root_, function);
+		++default_constructor_emissions_;
+		return;
+	}
+	const ScopeId function_scope = NewScope(
+		program_->entities[entity].member_scope, SCOPE_FUNCTION,
+		program_->entities[entity].identity_name,
+		ScopePrefixId(program_->entities[entity].member_scope));
+	const NameId this_name = program_->names.Intern("this");
+	const BindingId this_binding = program_->AddBinding(function_scope,
+		BIND_PARAMETER, this_name, this_type);
 	const std::uint32_t parameter = MakeDump(DUMP_PARAMETER, this_type,
-		VALUE_NONE, program_->names.Intern("this"));
+		VALUE_NONE, this_name, this_binding);
 	const std::uint32_t body = MakeDump(DUMP_COMPOUND_STATEMENT);
 	dump_.Add(function, parameter);
 	dump_.Add(function, body);

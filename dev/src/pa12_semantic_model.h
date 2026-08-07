@@ -70,6 +70,8 @@ enum DumpKind
 	DUMP_INITIALIZER_ACTION,
 	DUMP_BASE_INITIALIZER_ACTION,
 	DUMP_MEMBER_EXPRESSION,
+	DUMP_NEW_EXPRESSION,
+	DUMP_TEMPORARY_OBJECT,
 	DUMP_CONSTRUCTOR_ACTION,
 	DUMP_CONSTRUCTOR_ARRAY_ACTION,
 	DUMP_DESTRUCTOR_ACTION
@@ -92,6 +94,8 @@ struct DumpNode
 	std::uint32_t base_projection_count;
 	bool constant;
 	bool integer_narrowing_conversion;
+	bool value_initialization;
+	bool elide_empty_constructor;
 
 	explicit DumpNode(DumpKind value)
 		: kind(value), type(kNoType), operand_type(kNoType),
@@ -99,7 +103,8 @@ struct DumpNode
 		  object_binding(kNoBinding),
 		  constant_value(0), first_edge(kNoDumpEdge),
 		  last_edge(kNoDumpEdge), base_projection_count(0),
-		  constant(false), integer_narrowing_conversion(false) {}
+		  constant(false), integer_narrowing_conversion(false),
+		  value_initialization(false), elide_empty_constructor(false) {}
 };
 
 struct DumpEdge

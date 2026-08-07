@@ -15,24 +15,24 @@ the path.
 
 ## Current Failure Map
 
-Current state is **249/286 PA16 tests**: every original 246/283 pass plus three
-audit regressions, with PA1-PA15 at **1,145/1,145**. The unchanged 37-test
-remainder is assigned once by primary owner:
-11 aggregate/value-initialization/temporary-materialization cases; 13 friend,
-access, ADL, and inherited-overload cases; 11 member-expression, destructor,
-declarator, or parser cases; and 2 conversion-constraint cases.
+Current state is **260/286 PA16 tests** (+11), with PA1-PA15 at
+**1,145/1,145**. The remaining failures are assigned once by primary owner:
+
+- Friend/access/ADL/inherited overload (13): `friend-derived-private-base-defaulted-constructor`, `friend-function-member-access`, `friend-intermediate-derived-protected-base-method`, `qualified-friend-function-member-access`, `unnamed-namespace-hidden-friend-single-definition`, `adl-associated-namespace-does-not-climb-parents`, `adl-using-declaration-source-point`, `callable-field-hides-private-base-method`, `friend-function-definition-skip`, `hidden-friend-definition-adl-call`, `hidden-friend-operator-nullptr-compare`, `prvalue-derived-base-friend-operator`, `using-base-static-same-signature-derived-preferred`.
+- Member/destructor/declarator/parser (11): `mutable-member-const-method`, `nested-out-of-class-constructor-enclosing-type`, `reference-indexed-pointer-member-access`, `static-thread-local-member-object-call`, `const-pointer-explicit-destructor-call`, `explicit-destructor-call-enclosing-namespace-type`, `late-member-subscript-shadows-type`, `member-function-pointer-field-call`, `reference-member-same-name-as-class`, `scalar-pseudo-destructor-call`, `decltype-qualified-nested-type-local`.
+- Conversion constraints (2): `string-literal-does-not-convert-to-mutable-void-pointer`, `list-init-narrowing-bad`.
 
 ## Active Checkpoint
 
-**Aggregate/value-initialization and temporary materialization closure (11
-tests).** Apply `spec.md` sections 5, 6, and 8: semantic initialization owns the
-destination identity, ordered subobject actions, omitted-member value-init, and
-temporary lifetime; lowering only replays typed actions. Data flow is `braces/new/
-call syntax -> typed initialization target -> ordered base/member/array actions ->
-materialized storage and cleanup -> LowIR`. Expected work is O(E + A), for
-initializer elements E and emitted actions A, with one monotonic traversal and no
-aggregate-prefix replay. Validate the owned failures, 1x/2x nested aggregate
-probes, full PA16, through-PA15, and file audit.
+**Next: friend/access/ADL/inherited-overload closure (13 tests).** Apply
+`spec.md` sections 5 and 6: declarations publish canonical friendship, using,
+and base/access edges; semantic lookup unions indexed ordinary and associated
+candidates, then performs object-aware access and overload ranking once. Data
+flow is `declaration facts -> scope/entity indexes -> candidate IDs -> access and
+conversion facts -> selected binding -> lowering`. Expected work is O(C + B)
+per lookup, for candidates C and traversed base edges B, with no namespace-wide
+rescans. Validate the 13 owned failures, sparse/dense 1x/2x lookup probes, full
+PA16, through-PA15, and file audit.
 
 ## Performance Evidence
 
@@ -44,6 +44,7 @@ probes, full PA16, through-PA15, and file audit.
 | Inheritance/lifetime | 250/500 base edges: 250/500 actions; 1k/2k namespace objects: 1k/2k actions |
 | Operator/access indexes | Dense 128/256 ADL: 258/514 candidates; sparse 512/1,024 friends: 2/2 candidates |
 | Composed declarators/calls | 32/64 methods: 1,318/2,598 tokens, 1,654/3,254 syntax nodes, 104/200 fact changes, 291/579 conversions, 261/517 access checks, 112,179/222,099 typed bytes, 455/903 instructions; 0.521/0.986 ms parse, 0.908/1.678 ms semantic, 0.532/1.040 ms lowering medians |
+| Nested aggregate initialization | 32/64 members: 333/653 semantic nodes, 35/67 layout visits, 65/129 conversions, 328/648 instructions, 63,078/124,518 typed bytes; 0.253/0.399 ms semantic and 0.159/0.264 ms lowering medians |
 
 The deterministic counters establish proportional work at each scaling-sensitive
 owner; current composed-declarator work, storage, and output ratios are
@@ -64,3 +65,4 @@ owner; current composed-declarator work, storage, and output ratios are
 | Access/base-path closure | Indexed grants/signatures and object-correct protected access; 202/275 |
 | Layout/bit-field/inherited-ctor closure | Focused 29/29; 231/283; prior 1,145/1,145; audit pass |
 | Typed declarator/call/boundary closure | Pass after audit fixes: interned scoped parameter facts, exception/builtin ABI ownership, and retained narrowing conversions; focused 15/15; **249/286** with original 246/283 preserved; prior 1,145/1,145; file audit passes |
+| Aggregate/value-init/materialization closure | Focused 11/11; **260/286 (+11)**; recursive typed actions, bounded temporaries, and placement construction; 32/64 work/storage ratios 1.91-1.99; prior 1,145/1,145; audit pass |

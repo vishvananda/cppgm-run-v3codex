@@ -1434,19 +1434,21 @@ NodeId Parser::ParsePrimaryExpression()
 	return kNoNode;
 }
 
-NodeId Parser::ParsePostfixExpression()
-{
+NodeId Parser::ParsePostfixExpression() {
 	NodeId value = ParsePrimaryExpression();
 	if (value == kNoNode) return kNoNode;
 	return ParsePostfixSuffixes(value);
 }
 
-NodeId Parser::ParsePostfixSuffixes(NodeId value)
-{
-	while (true)
-	{
-		if (Match(OP_LPAREN))
-		{
+NodeId Parser::ParsePostfixSuffixes(NodeId value) {
+	while (true) {
+		if (At(OP_LBRACE) && arena_.IsTag(value, "id-expression") &&
+			HasNameFact(strings_.Intern(arena_.Payload(value)), kKnownType)) {
+			const NodeId call = arena_.Make("call-expression");
+			arena_.Add(call, value); arena_.Add(call, ParseBracedInitList());
+			value = call; continue;
+		}
+		if (Match(OP_LPAREN)) {
 			const NodeId call = arena_.Make("call-expression");
 			arena_.Add(call, value);
 			const std::string callee = arena_.IsTag(value, "id-expression") ?
@@ -1469,10 +1471,8 @@ NodeId Parser::ParsePostfixSuffixes(NodeId value)
 				if (callee == fundamental_names[i]) function_style = true;
 			const NodeId arguments = arena_.Make(function_style ?
 				"paren-argument-list" : "argument-list");
-			if (!At(OP_RPAREN))
-			{
-				while (true)
-				{
+			if (!At(OP_RPAREN)) {
+				while (true) {
 					NodeId argument = At(OP_LBRACE) ?
 						ParseBracedInitList() : ParseExpression(2);
 					if (argument == kNoNode)

@@ -11,6 +11,7 @@
 #include "pa16_assignment_lowering.h"
 #include "pa16_constructor_lowering.h"
 #include "pa16_destructor_action_lowering.h"
+#include "pa16_initialization_lowering.h"
 #include "pa16_lifetime_lowering.h"
 #include "pa16_static_initializer_lowering.h"
 
@@ -41,6 +42,7 @@ class GraphLowerer :
 	private pa16_lowering_detail::ConstructorActionLowering<GraphLowerer>,
 	private pa16_lowering_detail::ArrayLifetimeLowering<GraphLowerer>,
 	private pa16_lowering_detail::DestructorActionLowering<GraphLowerer>,
+	private pa16_lowering_detail::InitializationLowering<GraphLowerer>,
 	private pa16_lowering_detail::LifetimeActionLowering<GraphLowerer>
 {
 public:
@@ -101,6 +103,7 @@ private:
 	friend class pa16_lowering_detail::ConstructorActionLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::ArrayLifetimeLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::DestructorActionLowering<GraphLowerer>;
+	friend class pa16_lowering_detail::InitializationLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::LifetimeActionLowering<GraphLowerer>;
 
 	enum StatementTaskKind : std::uint8_t
@@ -165,16 +168,6 @@ private:
 
 	bool IsClassObjectType(TypeId type) const
 		{ return source_types_.IsClassObject(type); }
-
-	bool IsTrivialConstructorAction(TypeId type,
-		const NodeChildren& children) const
-	{
-		if (!IsClassObjectType(type) || children.size() != 1 ||
-			arena_.nodes[children[0]].kind != DUMP_CONSTRUCTOR_ACTION)
-			return false;
-		const TypeRecord& record = program_.types.Get(ExpressionObjectType(type));
-		return program_.entities[record.entity].trivial_default_constructor;
-	}
 
 	LowType LowerExpressionType(TypeId type) const
 		{ return source_types_.LowerExpression(type); }
@@ -1083,6 +1076,11 @@ private:
 			return Operand(Operand::GLOBAL,
 				static_initializers_.EnsureStringLiteral(node), LowPtr());
 		const NodeChildren children = Children(node);
+		if (record.kind == DUMP_TEMPORARY_OBJECT)
+		{
+			AggregatePath path;
+			return LowerTemporaryObjectStorage(node, children, &path);
+		}
 		if (record.kind == DUMP_UNARY_EXPRESSION && children.size() == 1 &&
 			StripOperationPrefix(program_.names.Get(record.text)) == "*")
 			return LowerValue(children[0], LowPtr());
@@ -1328,6 +1326,8 @@ private:
 				result = LoadStorage(result,
 					LowerExpressionType(RemoveReference(record.type)));
 		}
+		else if (record.kind == DUMP_NEW_EXPRESSION)
+			result = LowerNewExpression(children);
 		else if (record.kind == DUMP_CAST_EXPRESSION)
 		{
 			if (children.size() != 1) throw std::runtime_error("invalid semantic cast");
@@ -2041,21 +2041,7 @@ private:
 				LowerClassInitializer(record, children[0]);
 				return;
 			}
-			if (IsTrivialConstructorAction(record.type, children))
-			{
-				const LowType type = LowerStorageType(record.type);
-				(void)AddressOfStorage(StorageFor(record.binding, type));
-				return;
-			}
-			if (IsClassObjectType(record.type) && children.size() == 1 &&
-				arena_.nodes[children[0]].kind == DUMP_CONSTRUCTOR_ACTION)
-			{
-				const LowType type = LowerStorageType(record.type);
-				const Operand destination = AddressOfStorage(
-					StorageFor(record.binding, type));
-				LowerConstructorAction(children[0], destination);
-				return;
-			}
+			if (LowerVariableConstructor(record, children)) return;
 			if (!children.empty())
 			{
 				if (IsArrayType(record.type))
@@ -2183,7 +2169,8 @@ private:
 		if (array.kind != TYPE_ARRAY || array.bound == 0 ||
 			values.size() > array.bound)
 			throw std::runtime_error("invalid PA15 bounded array initializer");
-		if (!lowering_namespace_object_)
+		if (!lowering_namespace_object_ &&
+			!IsClassObjectType(array.child) && !IsArrayType(array.child))
 		{
 			const Operand base = AddressOfStorage(StorageFor(record.binding,
 				LowerStorageType(record.type)));
@@ -2206,6 +2193,11 @@ private:
 		}
 		if (IsClassObjectType(array.child))
 		{
+			if (!lowering_namespace_object_)
+			{
+				LowerLocalClassArrayInitializer(record, values);
+				return;
+			}
 			AggregatePath path;
 			for (std::size_t i = 0; i < values.size(); ++i)
 			{
@@ -2348,6 +2340,7 @@ private:
 		}
 		if (IsClassObjectType(type))
 		{
+			if (LowerRuntimeConstructorValue(type, node, destination)) return;
 			if (arena_.nodes[node].kind != DUMP_BRACED_INIT_LIST)
 				throw std::runtime_error("runtime aggregate element requires braces");
 			AggregatePath path;
@@ -2382,6 +2375,7 @@ private:
 		ResetInitializedBitFieldUnit();
 		const Operand storage = StorageFor(variable.binding,
 			LowerStorageType(variable.type));
+		if (LowerClassValueInitialization(variable, initializer, storage)) return;
 		if (AggregateHasLeaf(initializer)) (void)AddressOfStorage(storage);
 		AggregatePath path;
 		LowerAggregateActions(initializer, storage, &path, Operand());
@@ -2536,15 +2530,12 @@ private:
 			throw std::logic_error("aggregate leaf has multiple values");
 		if (IsArrayType(action.type))
 		{
-			if (values.size() != 1 ||
-				arena_.nodes[values[0]].kind != DUMP_BRACED_INIT_LIST)
-				throw std::runtime_error("array member requires a braced initializer");
-			const Operand array_destination =
-				retained_destination.kind == Operand::NONE ?
-				ProjectAggregatePath(root, path) : retained_destination;
-			LowerArrayValues(action.type, values[0], array_destination);
+			LowerAggregateArrayLeaf(
+				action, values, root, path, retained_destination);
 			return;
 		}
+		if (LowerAggregateConstructorLeaf(
+			action, values, root, path, retained_destination)) return;
 		Instruction store(Instruction::STORE);
 		if (IsReferenceType(action.type))
 		{
@@ -2567,19 +2558,20 @@ private:
 			else throw std::runtime_error(
 				"aggregate leaf requires unsupported construction");
 		}
+		const Operand destination =
+			retained_destination.kind == Operand::NONE ?
+				ProjectAggregatePath(root, path) : retained_destination;
 		if (action.binding != kNoBinding &&
 			program_.bindings[action.binding].bit_field)
 		{
 			const LowType field_type = LowerExpressionType(action.type);
-			store.second = retained_destination.kind == Operand::NONE ?
-				ProjectAggregatePath(root, path) : retained_destination;
+			store.second = destination;
 			InitializeBitField(
 				action.binding, store.first, store.second, field_type);
 		}
 		else
 		{
-			store.second = retained_destination.kind == Operand::NONE ?
-				ProjectAggregatePath(root, path) : retained_destination;
+			store.second = destination;
 			Emit(store);
 		}
 	}

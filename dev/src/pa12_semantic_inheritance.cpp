@@ -321,8 +321,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 	const bool permits_reinterpretation =
 		cast_kind.compare(0, 10, "OP_LPAREN:") == 0 ||
 		cast_kind.find("REINTER") != std::string::npos;
+	const TypeId decayed_operand_type = Decay(operand.type);
 	if (cast_kind.find("STATIC") != std::string::npos && IsPointer(target) &&
-		IsPointer(operand.type))
+		IsPointer(decayed_operand_type))
 	{
 		const TypeRecord source_pointer = program_->types.Get(Decay(operand.type));
 		const TypeRecord target_pointer = program_->types.Get(
@@ -339,20 +340,20 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		(target_enum && (IsIntegral(operand.type, true) ||
 			IsFloating(operand.type))) ||
 		(source_enum && (IsIntegral(target, true) || IsFloating(target))) ||
-		(IsPointer(target) && (IsPointer(operand.type) ||
+		(IsPointer(target) && (IsPointer(decayed_operand_type) ||
 			IsNullptr(operand.type) || operand.integer_literal_zero)) ||
 		(target == program_->types.Fundamental(FUND_BOOL) &&
-			(IsPointer(operand.type) || IsNullptr(operand.type))) ||
+			(IsPointer(decayed_operand_type) || IsNullptr(operand.type))) ||
 		(IsNullptr(target) && (IsNullptr(operand.type) ||
 			operand.integer_literal_zero)) ||
 		(permits_reinterpretation &&
 			((IsPointer(target) && IsIntegral(operand.type)) ||
-			 (IsIntegral(target) && IsPointer(operand.type))));
+			 (IsIntegral(target) && IsPointer(decayed_operand_type))));
 	if (!valid) throw std::runtime_error("invalid explicit conversion");
 	const std::uint32_t cast = MakeDump(DUMP_CAST_EXPRESSION, target,
 		VALUE_PRVALUE, program_->names.Intern(arena_->Payload(node)));
 	if (cast_kind.find("REINTER") == std::string::npos && IsPointer(target) &&
-		IsPointer(operand.type))
+		IsPointer(decayed_operand_type))
 	{
 		const TypeRecord source_pointer = program_->types.Get(Decay(operand.type));
 		const TypeRecord target_pointer = program_->types.Get(

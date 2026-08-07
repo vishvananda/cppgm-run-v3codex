@@ -941,6 +941,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 		return ApplyTarget(AnalyzeSizeof(node, scope), target);
 	if (arena_->IsTag(node, "braced-init-list"))
 		return AnalyzeBracedInit(node, scope, target);
+	if (arena_->IsTag(node, "new-expression")) return AnalyzeNewExpression(node, scope, target);
 	if (arena_->IsTag(node, "member-expression"))
 		return ApplyTarget(AnalyzeMember(node, scope), target);
 	throw std::runtime_error("unsupported PA12 expression: " + arena_->Tag(node));
@@ -1363,6 +1364,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 		}
 		if (cast_type != kNoType)
 		{
+			if (DestructedEntity(cast_type) != kNoEntity)
+				return AnalyzeClassFunctionalCast(cast_type, scope,
+					argument_syntax, arguments_node, target);
 			if (argument_syntax.size() > 1)
 				throw std::runtime_error("too many functional cast arguments");
 			if (argument_syntax.empty())
@@ -2269,6 +2273,9 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 					parsed.type);
 			}
 			has_initializer = true;
+			if (local)
+				initializer = BuildLocalAggregateArrayActions(
+					initializer, declaration_scope);
 			if (program_->types.Get(parsed.type).kind == TYPE_ARRAY &&
 				program_->types.Get(parsed.type).bound == 0)
 			{
@@ -2785,6 +2792,10 @@ void SemanticAnalyzer::RenderLine(const DumpNode& node, std::size_t depth)
 		output_ << "member-expression " << category << ' '
 			<< program_->RenderType(node.type) << ' '
 			<< program_->names.Get(node.text); break;
+	case DUMP_NEW_EXPRESSION: output_ << "new-expression " << category << ' '
+			<< program_->RenderType(node.type); break;
+	case DUMP_TEMPORARY_OBJECT: output_ << "temporary-object " << category << ' '
+			<< program_->RenderType(node.type); break;
 	case DUMP_CONSTRUCTOR_ACTION:
 		output_ << "constructor-action " << program_->names.Get(node.text); break;
 	case DUMP_CONSTRUCTOR_ARRAY_ACTION:
