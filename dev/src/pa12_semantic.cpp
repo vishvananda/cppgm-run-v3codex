@@ -640,15 +640,18 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 		dump_.nodes[value.node].integer_narrowing_conversion = true;
 	if (conversion == CONVERSION_DERIVED_TO_BASE)
 	{
+		const bool binds_temporary =
+			target_record.kind == TYPE_LVALUE_REFERENCE &&
+			value.category != VALUE_LVALUE;
+		if (binds_temporary && EntityOf(value.type) != kNoEntity &&
+			dump_.nodes[value.node].kind != DUMP_TEMPORARY_OBJECT)
+			value = MaterializeTemporary(value);
 		const std::size_t projections =
 			BaseProjectionCount(value.type, nonreference);
 		if (projections == std::numeric_limits<std::size_t>::max() ||
 			projections > std::numeric_limits<std::uint32_t>::max())
 			throw std::logic_error(
 				"derived conversion has no bounded base path");
-		const bool binds_temporary =
-			target_record.kind == TYPE_LVALUE_REFERENCE &&
-			value.category != VALUE_LVALUE;
 		const ValueCategory category = binds_temporary ? VALUE_PRVALUE :
 			target_record.kind == TYPE_LVALUE_REFERENCE ? VALUE_LVALUE :
 			target_record.kind == TYPE_RVALUE_REFERENCE ?
@@ -2506,8 +2509,8 @@ void SemanticAnalyzer::AnalyzeCondition(NodeId node, ScopeId scope,
 		const BindingId binding = program_->AddBinding(scope, BIND_VARIABLE,
 			parsed.name, parsed.type);
 		const NodeId initializer = FindChild(declaration_node, "initializer");
-		ExpressionInfo value = AnalyzeExpression(FirstSemanticChild(initializer),
-			scope, parsed.type);
+		ExpressionInfo value = AnalyzeVariableInitializer(initializer,
+			scope, parsed.type, true);
 		const std::uint32_t declaration = MakeDump(DUMP_CONDITION_DECLARATION);
 		const std::uint32_t variable = MakeDump(DUMP_VARIABLE, parsed.type,
 			VALUE_NONE, parsed.name, binding);
@@ -2516,8 +2519,22 @@ void SemanticAnalyzer::AnalyzeCondition(NodeId node, ScopeId scope,
 		dump_.Add(condition, declaration);
 		if (switch_condition)
 		{
-			if (!IsIntegral(parsed.type, true))
+			if (!IsIntegral(parsed.type, true) &&
+				EntityOf(parsed.type) == kNoEntity)
 				throw std::runtime_error("invalid switch condition");
+			if (!IsIntegral(parsed.type, true))
+			{
+				ExpressionInfo declared;
+				declared.node = MakeDump(DUMP_ID_EXPRESSION, parsed.type,
+					VALUE_LVALUE, parsed.name, binding);
+				declared.type = parsed.type;
+				declared.category = VALUE_LVALUE;
+				declared.binding = binding;
+				++expression_count_;
+				const ExpressionInfo converted = ApplyExplicitConversion(declared,
+					program_->types.Fundamental(FUND_INT));
+				dump_.Add(condition, converted.node);
+			}
 		}
 		else if (!IsArithmetic(parsed.type) && !IsPointer(parsed.type))
 		{
@@ -2532,6 +2549,7 @@ void SemanticAnalyzer::AnalyzeCondition(NodeId node, ScopeId scope,
 				program_->types.Fundamental(FUND_BOOL));
 			dump_.Add(condition, converted.node);
 		}
+		RegisterConditionLifetime(scope, binding, parsed.type, value, condition);
 		return;
 	}
 	ExpressionInfo value = AnalyzeExpression(FirstSemanticChild(node), scope);

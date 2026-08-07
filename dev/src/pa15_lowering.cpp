@@ -1110,7 +1110,8 @@ private:
 			(IsReferenceType(record.type) || UsesIndirectClassResult(record.type)))
 			return LowerCall(node, record, children);
 		if (record.kind == DUMP_CAST_EXPRESSION && children.size() == 1 &&
-			(record.category == VALUE_LVALUE || record.category == VALUE_XVALUE))
+			(record.category == VALUE_LVALUE || record.category == VALUE_XVALUE ||
+			 arena_.nodes[children[0]].kind == DUMP_TEMPORARY_OBJECT))
 		{
 			const Operand source = AddressOfStorage(LowerStorage(children[0]));
 			return ProjectBaseSubobjects(source,
@@ -2579,7 +2580,7 @@ private:
 		std::uint32_t condition_node)
 	{
 		const NodeChildren condition_children = Children(condition_node);
-		if (condition_children.empty() || condition_children.size() > 2)
+		if (condition_children.empty())
 			throw std::runtime_error("invalid PA15 control condition");
 		const std::uint32_t child = condition_children[0];
 		if (arena_.nodes[child].kind != DUMP_CONDITION_DECLARATION)
@@ -2588,50 +2589,19 @@ private:
 				throw std::runtime_error("invalid PA15 control condition");
 			return LowerCondition(child);
 		}
-		const NodeChildren declaration_children = Children(child);
-		if (declaration_children.size() != 1 ||
-			arena_.nodes[declaration_children[0]].kind != DUMP_VARIABLE)
-			throw std::runtime_error("invalid PA15 condition declaration");
-		const DumpNode& variable = arena_.nodes[declaration_children[0]];
-		if (stats_) ++stats_->lowered_nodes;
-		LowerStatementNode(declaration_children[0]);
-		if (condition_children.size() == 2)
-			return LowerCondition(condition_children[1]);
-		Operand value = LoadStorage(StorageFor(variable.binding,
-			LowerStorageType(variable.type)), LowerExpressionType(variable.type));
-		if (IsFloating(value.type))
-		{
-			const Operand truth = Temp(LowU8());
-			Instruction compare(Instruction::CMP);
-			compare.dest = truth.id;
-			compare.op = LOW_OP_NE;
-			compare.type = value.type;
-			compare.first = value;
-			compare.second = FloatingOperand("0.0", value.type);
-			Emit(compare);
-			return truth;
-		}
-		return value;
+		return LowerDeclaredCondition(condition_children, true);
 	}
 
 	__attribute__((noinline)) Operand LowerSwitchCondition(
 		std::uint32_t condition_node)
 	{
 		const NodeChildren condition_children = Children(condition_node);
-		if (condition_children.size() != 1)
+		if (condition_children.empty())
 			throw std::runtime_error("invalid PA15 switch condition");
 		const std::uint32_t child = condition_children[0];
 		if (arena_.nodes[child].kind != DUMP_CONDITION_DECLARATION)
 			return LowerValue(child);
-		const NodeChildren declaration_children = Children(child);
-		if (declaration_children.size() != 1 ||
-			arena_.nodes[declaration_children[0]].kind != DUMP_VARIABLE)
-			throw std::runtime_error("invalid PA15 switch declaration");
-		const DumpNode& variable = arena_.nodes[declaration_children[0]];
-		if (stats_) ++stats_->lowered_nodes;
-		LowerStatementNode(declaration_children[0]);
-		return LoadStorage(StorageFor(variable.binding,
-			LowerStorageType(variable.type)), LowerExpressionType(variable.type));
+		return LowerDeclaredCondition(condition_children, false);
 	}
 
 	std::uint32_t FindChildKind(const NodeChildren& children, DumpKind kind) const
@@ -2873,7 +2843,7 @@ private:
 		if (condition == kNoDumpEdge || then_node == kNoDumpEdge)
 			throw std::runtime_error("invalid semantic if statement");
 		const NodeChildren condition_children = Children(condition);
-		if (condition_children.empty() || condition_children.size() > 2)
+		if (condition_children.empty())
 			throw std::runtime_error("condition declarations are outside the active checkpoint");
 		const BlockId then_block = AddBlock(NewLabel("if_then"));
 		const BlockId else_block = AddBlock(NewLabel("if_else"));

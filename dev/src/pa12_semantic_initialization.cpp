@@ -2235,6 +2235,50 @@ void SemanticAnalyzer::AddTemporaryLifetimeObligation(ScopeId scope,
 		cleanup.binding, cleanup.operand_type, temporary));
 }
 
+void SemanticAnalyzer::RegisterConditionLifetime(ScopeId scope,
+	BindingId object, TypeId type, const ExpressionInfo& initializer,
+	std::uint32_t condition)
+{
+	const std::size_t first = scope < scope_lifetimes_.size() ?
+		scope_lifetimes_[scope].size() : 0;
+	const TypeKind kind = program_->types.Get(type).kind;
+	std::uint32_t temporary = kNoDumpEdge;
+	if (kind == TYPE_LVALUE_REFERENCE || kind == TYPE_RVALUE_REFERENCE)
+	{
+		std::vector<std::uint32_t> temporaries;
+		CollectTemporaryObjects(initializer.node, &temporaries);
+		if (!temporaries.empty()) temporary = temporaries.back();
+	}
+	const TypeId lifetime_type = temporary == kNoDumpEdge ? type :
+		dump_.nodes[temporary].type;
+	const BindingId destructor = DestructorForType(lifetime_type);
+	if (destructor != kNoBinding)
+	{
+		const FunctionInfo& info = GetFunction(destructor);
+		if (info.definition_body != kNoNode &&
+			FirstSemanticChild(info.definition_body) == kNoNode)
+			return;
+	}
+	if (temporary != kNoDumpEdge)
+		AddTemporaryLifetimeObligation(scope, temporary);
+	else if (kind != TYPE_LVALUE_REFERENCE && kind != TYPE_RVALUE_REFERENCE)
+		AddLifetimeObligation(scope, object, type);
+	if (scope >= scope_lifetimes_.size()) return;
+	const std::vector<LifetimeObligation>& obligations = scope_lifetimes_[scope];
+	for (std::size_t i = first; i < obligations.size(); ++i)
+	{
+		const LifetimeObligation& obligation = obligations[i];
+		std::uint32_t action = obligation.temporary == kNoDumpEdge ?
+			MakeDestructorAction(obligation.type, obligation.destructor,
+				obligation.object) :
+			MakeTemporaryDestructorAction(obligation.temporary,
+				obligation.destructor);
+		if (action == kNoDumpEdge) continue;
+		dump_.nodes[action].unwind_only = true;
+		dump_.Add(condition, action);
+	}
+}
+
 void SemanticAnalyzer::AddNamespaceObjectAction(std::uint32_t variable,
 	BindingId object, TypeId type, std::uint32_t initializer)
 {

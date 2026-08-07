@@ -101,6 +101,9 @@ private:
 		std::uint32_t output_parent);
 	void AnalyzeCondition(NodeId node, ScopeId scope,
 		std::uint32_t output_parent, bool switch_condition);
+	void RegisterConditionLifetime(ScopeId scope, BindingId object,
+		TypeId type, const ExpressionInfo& initializer,
+		std::uint32_t condition);
 
 	TypeId AnalyzeClass(NodeId node, ScopeId scope,
 		const std::string& hint, bool elaborated);

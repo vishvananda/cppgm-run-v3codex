@@ -130,6 +130,83 @@ protected:
 			derived.LowerDestructorAction(derived.arena_.nodes[child]);
 		else derived.LowerDiscardedValue(child);
 	}
+
+	Operand LowerValueWithUnwind(std::uint32_t node,
+		const NodeChildren& actions, bool boolean_condition)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const BlockId dispatch = derived.AddBlock(
+			derived.NewLabel("call_unwind_dispatch"));
+		const BlockId end = derived.AddBlock(
+			derived.NewLabel("call_unwind_end"));
+		derived.EmitEhTarget(Instruction::EH_TRY, dispatch);
+		const Operand value = boolean_condition ? derived.LowerCondition(node) :
+			derived.LowerValue(node);
+		const Operand slot(derived.EnsureGeneratedSlot(
+			node, "call", value.type), value.type);
+		Instruction store(Instruction::STORE);
+		store.type = value.type;
+		store.first = value;
+		store.second = slot;
+		derived.Emit(store);
+		const Operand retained = derived.LoadStorage(slot, value.type);
+		derived.Emit(Instruction(Instruction::EH_END));
+		derived.EmitJump(end);
+		derived.SelectBlock(dispatch);
+		for (std::size_t i = 0; i < actions.size(); ++i)
+			derived.LowerDestructorAction(derived.arena_.nodes[actions[i]]);
+		derived.Emit(Instruction(Instruction::RESUME));
+		derived.SelectBlock(end);
+		return retained;
+	}
+
+	Operand LowerDeclaredCondition(const NodeChildren& condition_children,
+		bool boolean_condition)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const std::uint32_t declaration = condition_children[0];
+		const NodeChildren declaration_children = derived.Children(declaration);
+		if (declaration_children.size() != 1 ||
+			derived.arena_.nodes[declaration_children[0]].kind != DUMP_VARIABLE)
+			throw std::runtime_error("invalid PA17 condition declaration");
+		const DumpNode& variable =
+			derived.arena_.nodes[declaration_children[0]];
+		if (derived.stats_) ++derived.stats_->lowered_nodes;
+		derived.LowerStatementNode(declaration_children[0]);
+		std::uint32_t value_node = kNoDumpEdge;
+		NodeChildren unwind_actions;
+		for (std::size_t i = 1; i < condition_children.size(); ++i)
+		{
+			const DumpNode& candidate =
+				derived.arena_.nodes[condition_children[i]];
+			if (candidate.kind == DUMP_DESTRUCTOR_ACTION && candidate.unwind_only)
+				unwind_actions.Push(condition_children[i]);
+			else if (value_node == kNoDumpEdge)
+				value_node = condition_children[i];
+			else throw std::runtime_error("invalid PA17 condition suffix");
+		}
+		if (value_node != kNoDumpEdge)
+		{
+			if (!unwind_actions.empty())
+				return LowerValueWithUnwind(
+					value_node, unwind_actions, boolean_condition);
+			return boolean_condition ? derived.LowerCondition(value_node) :
+				derived.LowerValue(value_node);
+		}
+		Operand value = derived.LoadStorage(derived.StorageFor(variable.binding,
+			derived.LowerStorageType(variable.type)),
+			derived.LowerExpressionType(variable.type));
+		if (!boolean_condition || !IsFloating(value.type)) return value;
+		const Operand truth = derived.Temp(LowU8());
+		Instruction compare(Instruction::CMP);
+		compare.dest = truth.id;
+		compare.op = LOW_OP_NE;
+		compare.type = value.type;
+		compare.first = value;
+		compare.second = derived.FloatingOperand("0.0", value.type);
+		derived.Emit(compare);
+		return truth;
+	}
 };
 
 }

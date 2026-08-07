@@ -13,28 +13,30 @@ synthesis, and O(emitted IR) lowering.
 
 ## Current Failure Map
 
-Current result: **157/231**, up from the **124/231** checkpoint baseline. The
+Current result: **160/231**, up from the **124/231** checkpoint baseline. The
 non-overlapping remaining-failure map is:
 
 | Failures | Shared behavior | Primary owner |
 | ---: | --- | --- |
-| 18 | temporary cleanup across conditional and loop control flow | PA12 lifetime facts + PA16 lowering |
+| 16 | temporary cleanup across conditional and loop control flow | PA12 lifetime facts + PA16 lowering |
 | 1 | namespace class-array copy initialization | PA12 class-value initialization + static lowering |
 | 21 | residual operators, conversions, lookup, and ref qualification | PA12 calls/operator resolution |
 | 32 | class-value construction, initialization, copy/move, and ABI shapes | PA12 initialization + PA15-PA17 lowering |
-| 2 | residual namespace/control interactions | PA12 lookup and statement analysis |
+| 1 | residual namespace/control interaction | PA12 lookup and statement analysis |
 
 ## Active Checkpoint
 
-**Active: CFG-aware temporary cleanup regions.** Apply `spec.md` sections 2,
-6, 8, and 9 to conditional, short-circuit, loop, return, and condition
-declaration boundaries. PA12 owns branch-specific construction and ordered
-full-expression/lexical obligations; PA16 carries the completed-prefix fact
-through normal and unwind edges, then lowers selected temporary storage and
-enclosing lexical cleanup without lookup. Analysis remains O(syntax +
-obligations); lowering is O(CFG + emitted cleanup IR). Validate the remaining
-18 lifetime failures, then full PA17, through PA16, audit, and nested-region
-scaling.
+**Active: branch-local full-expression cleanup.** Apply `spec.md` sections 2,
+6, 8, and 9 at conditional-expression and short-circuit CFG boundaries. PA12
+owns construction order, branch membership, result materialization, and the
+ordered destructor suffix; PA16 carries the completed-prefix fact across each
+selected branch and unwind edge, preserving enclosing temporaries until the
+full-expression merge without lookup. Analysis is O(expression syntax +
+obligations), and lowering is O(CFG + emitted cleanup IR). Validate enclosing
+temporary preservation, selected conditional prvalues/member access, return
+branches, and both logical short-circuit paths; then run full PA17, through
+PA16, audit, and branch-depth scaling. Loop full-expression regions remain the
+following CFG checkpoint.
 
 ## Performance Evidence
 
@@ -70,6 +72,9 @@ scaling.
 - Full expressions with 16/32/64 materialized temporaries emitted
   97/161/289 LowIR lines (3,013/5,333/9,973 bytes). Five 500-compile batch
   medians were 1.60/1.76/2.06 s, confirming proportional analysis and output.
+- Nested condition declarations at depth 16/32/64 emitted 560/1,056/2,048
+  LowIR lines (12,473/23,950/46,990 bytes). Five 300-compile batch medians were
+  1.10/1.28/1.65 s, proportional to reached scopes and emitted cleanup edges.
 
 ## Completed Checkpoints
 
@@ -85,3 +90,4 @@ scaling.
 | Dynamic array allocation/deallocation typed actions | 136/231 -> 145/231 | Scalar/class/multidimensional arrays and direct array allocation calls 9/9; scalar compatibility 15/15; through PA16 1,436/1,436; constant-size extent probe and audit pass |
 | Union declaration and object actions | 145/231 -> 151/231 | Anonymous injection, active/default variant validation, constructor precedence, empty inactive lifetime, and whole-storage copy 6/6; through PA16 1,436/1,436; linear member probe and audit pass |
 | Typed temporary identity and linear lifetime regions | 151/231 -> 157/231 | Discarded direct/indirect class results, noexcept argument and throwing base-init suffixes, local reference extension, and rvalue-reference materialization 6/6; proportional 16/32/64-temporary probe |
+| Condition-declaration lifetime regions | 157/231 -> 160/231 | Nested false-path containment, reference-extended temporary, class-to-bool and switch-to-int conversion 4/4; through PA16 1,436/1,436; audit and proportional depth probe pass |

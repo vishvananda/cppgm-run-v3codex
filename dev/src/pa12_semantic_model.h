@@ -118,6 +118,7 @@ struct DumpNode
 	bool class_argument_staging;
 	bool direct_return_slot;
 	bool declaration_only;
+	bool unwind_only;
 
 	explicit DumpNode(DumpKind value)
 		: kind(value), type(kNoType), operand_type(kNoType),
@@ -135,7 +136,8 @@ struct DumpNode
 		  trivial_special_member_action(false),
 		  argument_materialization(false), discarded_materialization(false),
 		  reference_call_materialization(false), class_argument_staging(false),
-		  direct_return_slot(false), declaration_only(false) {}
+		  direct_return_slot(false), declaration_only(false),
+		  unwind_only(false) {}
 };
 
 struct DumpEdge
