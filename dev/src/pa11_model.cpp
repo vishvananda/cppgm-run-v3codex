@@ -472,7 +472,7 @@ EntityRecord::EntityRecord()
 	  has_user_provided_constructor(false), default_constructible(false),
 	  trivial_default_constructor(false), has_user_declared_destructor(false),
 	  destructible(true), trivial_destructor(true), has_direct_base(false),
-	  is_aggregate(false)
+	  is_aggregate(false), empty_class(false)
 {
 }
 

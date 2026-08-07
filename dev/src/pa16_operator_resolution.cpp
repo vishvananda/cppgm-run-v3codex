@@ -525,8 +525,7 @@ BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
 				projections > std::numeric_limits<std::uint32_t>::max())
 				throw std::logic_error(
 					"selected operator object has no bounded base path");
-			object_conversion->base_projection_count =
-				static_cast<std::uint32_t>(projections);
+			object_conversion->base_projection_count = projections == 0 ? 0 : 1;
 		}
 	}
 	if (argument_conversions)

@@ -191,6 +191,14 @@ std::size_t SemanticAnalyzer::BaseConversionDistance(TypeId source,
 	return std::numeric_limits<std::size_t>::max();
 }
 
+std::size_t SemanticAnalyzer::BaseProjectionCount(TypeId source,
+	TypeId target) const
+{
+	const std::size_t distance = BaseConversionDistance(source, target);
+	return distance == std::numeric_limits<std::size_t>::max() ? distance :
+		distance == 0 ? 0 : 1;
+}
+
 ConversionRank SemanticAnalyzer::MemberObjectConversion(
 	const ExpressionInfo& source, TypeId target, BindingId member) const
 {
@@ -240,7 +248,7 @@ ExpressionInfo SemanticAnalyzer::ApplyMemberObjectTarget(
 		return ApplyTarget(value, target);
 	const std::size_t projections = conversion_fact ?
 		conversion_fact->base_projection_count :
-		BaseConversionDistance(value.type, target);
+		BaseProjectionCount(value.type, target);
 	if (projections == std::numeric_limits<std::size_t>::max() ||
 		projections > std::numeric_limits<std::uint32_t>::max())
 		throw std::logic_error("using member has no bounded base path");
@@ -375,7 +383,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 			program_->IsBaseOf(base, derived))
 		{
 			const std::size_t projections =
-				BaseConversionDistance(operand.type, target);
+				BaseProjectionCount(operand.type, target);
 			if (projections == std::numeric_limits<std::size_t>::max() ||
 				projections > std::numeric_limits<std::uint32_t>::max())
 				throw std::logic_error("cast has no bounded base path");
@@ -425,7 +433,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeImplicitDataMember(
 		member_type, VALUE_LVALUE, binding.name, member_binding);
 	if (current_class_context_ == kNoEntity)
 		throw std::logic_error("implicit member has no class context");
-	const std::size_t projections = BaseConversionDistance(
+	const std::size_t projections = BaseProjectionCount(
 		program_->entities[current_class_context_].type,
 		program_->entities[binding.member_owner].type);
 	if (projections == std::numeric_limits<std::size_t>::max() ||

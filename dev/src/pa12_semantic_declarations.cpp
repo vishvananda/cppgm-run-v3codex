@@ -331,7 +331,8 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 		base = &program_->entities[owner.direct_base];
 		if (!base->layout_complete)
 			throw std::runtime_error("direct base layout is incomplete");
-		size = static_cast<std::size_t>(base->object_size);
+		size = base->empty_class ? 0 :
+			static_cast<std::size_t>(base->object_size);
 		const std::size_t base_alignment =
 			static_cast<std::size_t>(base->object_alignment);
 		natural_alignment = std::max(natural_alignment, base_alignment);
@@ -345,6 +346,7 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 			owner.destructible = false;
 	}
 	const bool is_union = owner.flavor == NAMED_UNION;
+	bool empty_class = base == 0 || base->empty_class;
 	bool defaulted_destructor = !owner.has_user_declared_destructor;
 	if (owner.has_user_declared_destructor)
 	{
@@ -404,6 +406,7 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 				if (!is_union) size = AlignUp(size, member_alignment);
 				continue;
 			}
+			empty_class = false;
 			natural_alignment = std::max(natural_alignment,
 				required_alignment);
 			alignment = std::max(alignment, member_alignment);
@@ -469,6 +472,7 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 		active_bit_unit = false;
 		if (!member)
 			throw std::logic_error("ordinary layout member has no binding");
+		empty_class = false;
 		if (is_union)
 		{
 			member->member_offset = 0;
@@ -476,6 +480,24 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 		}
 		else
 		{
+			TypeId member_object_type = layout.type;
+			const TypeRecord* member_object =
+				&program_->types.Get(member_object_type);
+			while (member_object->kind == TYPE_ARRAY ||
+				member_object->kind == TYPE_QUALIFIED)
+			{
+				member_object_type = member_object->child;
+				member_object = &program_->types.Get(member_object_type);
+			}
+			if (size == 0 && member_object->kind == TYPE_NAMED)
+				for (EntityId current = owner.direct_base;
+					current != kNoEntity;
+					current = program_->entities[current].direct_base)
+					if (current == member_object->entity)
+					{
+						size = 1;
+						break;
+					}
 			size = AlignUp(size, member_alignment);
 			member->member_offset = size;
 			if (size > std::numeric_limits<std::size_t>::max() - member_size)
@@ -568,6 +590,7 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 	owner.object_size = size;
 	owner.object_alignment = alignment;
 	owner.natural_alignment = natural_alignment;
+	owner.empty_class = empty_class;
 	owner.layout_complete = true;
 }
 

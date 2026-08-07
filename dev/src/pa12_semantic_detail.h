@@ -251,6 +251,7 @@ private:
 		AccessKind access);
 	bool BaseConversionAllowed(EntityId derived, EntityId base) const;
 	std::size_t BaseConversionDistance(TypeId source, TypeId target) const;
+	std::size_t BaseProjectionCount(TypeId source, TypeId target) const;
 	void CompleteClassLayout(EntityId entity);
 	std::size_t RequestedAlignment(NodeId node, ScopeId scope);
 	void InheritConstructors(EntityId entity,

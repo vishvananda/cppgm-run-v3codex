@@ -593,7 +593,7 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 	if (conversion == CONVERSION_DERIVED_TO_BASE)
 	{
 		const std::size_t projections =
-			BaseConversionDistance(value.type, nonreference);
+			BaseProjectionCount(value.type, nonreference);
 		if (projections == std::numeric_limits<std::size_t>::max() ||
 			projections > std::numeric_limits<std::uint32_t>::max())
 			throw std::logic_error(
@@ -1075,8 +1075,7 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 				projections > std::numeric_limits<std::uint32_t>::max())
 				throw std::logic_error(
 					"selected object conversion has no bounded base path");
-			object_conversion->base_projection_count =
-				static_cast<std::uint32_t>(projections);
+			object_conversion->base_projection_count = projections == 0 ? 0 : 1;
 		}
 	}
 	if (argument_conversions)
@@ -1802,7 +1801,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 		type, VALUE_LVALUE, program_->names.Intern(operation), found.ordinary);
 	if (member_owner != kNoEntity)
 	{
-		const std::size_t projections = BaseConversionDistance(owner_type,
+		const std::size_t projections = BaseProjectionCount(owner_type,
 			program_->entities[member_owner].type);
 		if (projections == std::numeric_limits<std::size_t>::max() ||
 			projections > std::numeric_limits<std::uint32_t>::max())
