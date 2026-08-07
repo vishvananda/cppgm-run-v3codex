@@ -2,20 +2,22 @@
 
 ## Stage Design and Spec Alignment
 
-PA16 extends the shared compiler in place: PA10 publishes scoped syntax facts;
-PA11 owns canonical entities, types, bindings, and ABI identity; PA12 resolves
-lookup, access, declarators, conversions, initialization, lifetime, and demand;
-PA15/PA16 lowering consumes those typed facts without repeating lookup. This
-matches `spec.md` sections 2, 3, 5, 6, 8, and 9. Function bindings now retain
-composed/trailing-return shape and builtin kind, resolved calls retain converted
-arguments, and LowIR boundaries derive identity/effects from the selected binding.
-Work is indexed by canonical IDs or bounded enum tables; no textual reconstruction,
-whole-program retry, or lowering-time overload search is introduced.
+PA16 extends the shared compiler in place: PA10 publishes scoped interned syntax
+facts; PA11 owns canonical entities, types, bindings, and ABI identity; PA12
+resolves lookup, access, declarators, conversions, initialization, lifetime, and
+demand; PA15/PA16 lowering consumes those typed facts without repeating lookup.
+This matches `spec.md` sections 2, 3, 5, 6, 8, and 9. Composed/trailing-return
+types, exception compatibility, builtin kind, selected calls, and integer-
+narrowing conversions cross boundaries as compact facts. ABI identity/effects
+derive from the selected binding or bounded enum tables; no spelling-keyed
+lowering, textual reconstruction, whole-program retry, or external tool enters
+the path.
 
 ## Current Failure Map
 
-Current state is **246/283 PA16 tests**, up 15 from 231/283, with PA1-PA15 at
-**1,145/1,145**. The 37-test remainder is assigned once by primary owner:
+Current state is **249/286 PA16 tests**: every original 246/283 pass plus three
+audit regressions, with PA1-PA15 at **1,145/1,145**. The unchanged 37-test
+remainder is assigned once by primary owner:
 11 aggregate/value-initialization/temporary-materialization cases; 13 friend,
 access, ADL, and inherited-overload cases; 11 member-expression, destructor,
 declarator, or parser cases; and 2 conversion-constraint cases.
@@ -41,11 +43,11 @@ probes, full PA16, through-PA15, and file audit.
 | Members/calls/initialization | 5k/10k fields: 5k/10k visits; 1,001/2,001 candidates: 2,006/4,006 checks |
 | Inheritance/lifetime | 250/500 base edges: 250/500 actions; 1k/2k namespace objects: 1k/2k actions |
 | Operator/access indexes | Dense 128/256 ADL: 258/514 candidates; sparse 512/1,024 friends: 2/2 candidates |
-| Composed declarators | 32/64 declarations: 1,009/2,001 tokens, 1,395/2,771 syntax nodes, 68/132 signature lookups, 128/256 access checks, 21,958/42,150 semantic bytes, 0.630/1.044 ms analysis |
+| Composed declarators/calls | 32/64 methods: 1,318/2,598 tokens, 1,654/3,254 syntax nodes, 104/200 fact changes, 291/579 conversions, 261/517 access checks, 112,179/222,099 typed bytes, 455/903 instructions; 0.521/0.986 ms parse, 0.908/1.678 ms semantic, 0.532/1.040 ms lowering medians |
 
 The deterministic counters establish proportional work at each scaling-sensitive
-owner; the composed-declarator 2x ratios are 1.94-2.00 for owned operations and
-1.92 for semantic storage.
+owner; current composed-declarator work, storage, and output ratios are
+1.89-1.99 for 2x input.
 
 ## Completed Checkpoints
 
@@ -61,4 +63,4 @@ owner; the composed-declarator 2x ratios are 1.94-2.00 for owned operations and
 | Operator/ADL callable spine | Indexed ordinary/hidden-friend union and typed ranking; 186/269 |
 | Access/base-path closure | Indexed grants/signatures and object-correct protected access; 202/275 |
 | Layout/bit-field/inherited-ctor closure | Focused 29/29; 231/283; prior 1,145/1,145; audit pass |
-| Typed declarator/call/boundary closure | Focused 12/12; trailing/access/shadowing, canonical ABI identity, builtin effects, and immediate conversion policy; **246/283 (+15)**; prior 1,145/1,145; audit pass |
+| Typed declarator/call/boundary closure | Pass after audit fixes: interned scoped parameter facts, exception/builtin ABI ownership, and retained narrowing conversions; focused 15/15; **249/286** with original 246/283 preserved; prior 1,145/1,145; file audit passes |

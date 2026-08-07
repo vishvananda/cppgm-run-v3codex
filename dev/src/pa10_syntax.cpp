@@ -98,7 +98,7 @@ public:
 			name_facts_.capacity() * sizeof(std::uint8_t) +
 			name_fact_changes_.capacity() * sizeof(NameFactChange) +
 			angle_matches_.capacity() * sizeof(AngleMatch) +
-			last_declared_names_.capacity() * sizeof(TextId) +
+			(last_declared_names_.capacity() + parameter_names_.capacity()) * sizeof(TextId) +
 			current_classes_.capacity() * sizeof(std::string);
 		for (std::size_t i = 0; i < current_classes_.size(); ++i)
 			bytes += current_classes_[i].capacity();
@@ -203,11 +203,11 @@ private:
 			const NameFactChange change = name_fact_changes_.back(); name_fact_changes_.pop_back();
 			name_facts_[change.name] = change.previous; AdvanceNameFactRevision(); } }
 	void ApplyFunctionParameterFacts(NodeId declarator) {
-		const std::vector<std::string> names =
-			ImmediateParameterNames(arena_, declarator);
-		for (std::size_t i = 0; i < names.size(); ++i)
-		{ SetNameFact(names[i], kKnownType, false);
-			SetNameFact(names[i], kKnownNonTemplate); } }
+		parameter_names_.clear();
+		arena_.AppendImmediateParameterNames(declarator, &parameter_names_);
+		for (std::size_t i = 0; i < parameter_names_.size(); ++i)
+		{ SetNameFact(parameter_names_[i], kKnownType, false);
+			SetNameFact(parameter_names_[i], kKnownNonTemplate); } }
 
 	std::runtime_error Error(const std::string& message) const
 	{
@@ -743,7 +743,7 @@ private:
 	std::vector<std::uint8_t> name_facts_;
 	std::vector<NameFactChange> name_fact_changes_;
 	std::vector<AngleMatch> angle_matches_;
-	std::vector<TextId> last_declared_names_;
+	std::vector<TextId> last_declared_names_, parameter_names_;
 	std::vector<std::string> current_classes_;
 };
 

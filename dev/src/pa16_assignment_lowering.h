@@ -329,7 +329,7 @@ public:
 		if (op == "=")
 		{
 			value = derived.LowerConvertedValue(children[1], type,
-				derived.CanonicalizeImmediateNarrowing(children[1], type));
+				derived.CanonicalizeImmediateConversion(children[1]));
 			storage = derived.LowerStorage(children[0]);
 		}
 		else if ((op == "+=" || op == "-=") &&

@@ -2,50 +2,47 @@
 
 ## Current Checkpoint Review
 
-**Checkpoint:** `f77bcbf8` (layout, bit-field, and inherited-constructor
+**Checkpoint:** `7727472a` (typed declarator, call, and function-boundary
 closure).
 
-**Result:** Pass after audit fixes. Typed pack/alignment events and member/base
-IDs feed one monotonic class-layout fact containing natural/requested/effective
-alignment, offsets, declared bit widths, value widths, and storage slices.
-Resolved field actions consume those slices directly. Inherited constructors
-are keyed by the derived signature, retain the source constructor's access
-owner, and forward to a distinct canonical base-subobject entry.
+**Result:** Pass after audit fixes. Parameter and trailing-return syntax now
+publish interned IDs and canonical types; function bindings own redeclaration,
+exception, builtin, and ABI identity; resolved expressions retain selected
+bindings and implicit narrowing facts; typed lowering consumes those IDs and
+facts into LowIR boundary records. Rendering is the only textual step.
 
 The complete affected path is closed:
 
-1. Bit-field lowering had conflated promoted expression type with physical
-   storage width, zero-extended signed values, returned positioned assignment
-   bits, and used a per-unit hash whose key aliased repeated subobjects. Reads
-   and writes now use the canonical storage width, signed fields normalize by
-   their value width, assignment returns the unpositioned stored value, and
-   per-object initialization uses constant scalar state and one projected
-   destination. Constructor aggregate leaves use the same typed helper.
-2. Layout rejected legal over-width fields, let an alignment-only unnamed
-   zero-width separator strengthen the containing class, and accepted
-   `alignas` on bit-fields. Declared allocation width is now separate from the
-   representable value width, zero-width separators affect only the next
-   offset, and forbidden bit-field alignment is rejected.
-3. Constructor inheritance could replace a same-signature derived constructor,
-   re-anchor private/protected access on the derived class, hide transitive
-   inherited constructors as aliases, and scan the growing derived candidate
-   vector. An indexed signature precheck suppresses collisions, source access
-   ownership survives transitively, self-owned inherited bindings remain in
-   the callable index, and each new candidate is appended once. All base
-   initialization, inherited or ordinary, selects the C2 entry before demand.
+1. Function-parameter shadowing collected copied strings and re-interned them
+   while entering a body. The parser now traverses the immediate parameter
+   clause once into a reusable, measured `TextId` scratch sequence, applies
+   scoped name facts, and restores them at the body boundary.
+2. Call, variable, and assignment lowering inferred immediate narrowing again
+   from LowIR widths and merely retagged out-of-range values. PA12 now records
+   the selected integer-narrowing conversion; lowering consumes that fact and a
+   typed helper canonicalizes the represented value exactly once.
+3. The builtin memory bindings used `char*` signatures, rejecting valid
+   `void*` calls, and function redeclarations merged incompatible direct
+   `noexcept` facts with boolean OR. Builtins now retain their real
+   `void*`/`const void*` semantic types, and conflicting exception
+   specifications fail before canonical binding merge. Builtin effects and
+   parameter attributes remain keyed by the bounded builtin enum, not names.
+4. Canonical function ABI identity comes from the selected binding type,
+   including member adaptation and the deliberate PA16 incomplete-result view;
+   no lowered name, rendered signature, lookup retry, or external tool is used.
 
-Validation is 29/29 focused cases: the 21 landed cases plus eight audit
-regressions. The required full-stage report is 231/283, preserving every one of
-the original 223/275 passes and leaving the same 52 pre-existing failures;
-PA1-PA15 remain 1,145/1,145. File audit passes with four warnings: the three
-pre-existing shared-header warnings and the reviewed cohesive CRTP lowering
-header. Signed-field fixtures were corrected to the README's explicit
-negative-value contract.
+Validation is 15/15 focused cases: all 12 landed cases plus three audit
+regressions. The required full-stage report is 249/286, preserving every one of
+the original 246/283 passes and the same 37 original failures; PA1-PA15 remain
+1,145/1,145. File audit passes with the four reviewed shared/CRTP-header
+warnings.
 
-Five-run 512/1,024-field probes record 512/1,024 layout visits, 1.166/2.446 ms
-median semantic time, and constant three-instruction output. Five-run 64/128
-inherited-overload probes record 582/1,158 indexed signature lookups, 67/131
-access checks, 0.861/1.596 ms medians, and constant three-instruction output.
+Five-run 32/64-method composed-declarator probes record 104/200 parser fact
+changes, 1,654/3,254 syntax nodes, 291/579 conversion checks, 261/517 access
+checks, 112,179/222,099 typed bytes, and 455/903 LowIR instructions. Median
+parse/semantic/lowering times are 0.521/0.986 ms, 0.908/1.678 ms, and
+0.532/1.040 ms; all deterministic work/storage ratios are 1.89-1.99 for 2x
+input.
 
 ## Checkpoint Audit Ledger
 
@@ -60,3 +57,4 @@ access checks, 0.861/1.596 ms medians, and constant three-instruction output.
 | Operator/ADL callable spine | Pass after audit fixes | Typed operator/null/UDL facts, direct ordinary/hidden-friend indexes, 186/269 with no losses, dense-linear and sparse-constant candidate evidence, gates preserved |
 | Access/base-path closure | Pass after audit fixes | Exact/canonical lookup identities, indexed grants/signatures, object-correct protected access, retained projections; 202/275 with no losses; linear counters; gates preserved |
 | Layout/bit-field/inherited-ctor closure | Pass after audit fixes | Physical/value-width split, per-object scalar init state, indexed signature/access ownership, C2 demand; focused 29/29; original 223/275 preserved; linear probes; gates preserved |
+| Typed declarator/call/boundary closure | Pass after audit fixes | Interned scoped parameter facts, canonical binding/ABI and builtin metadata, retained narrowing conversions; focused 15/15; original 246/283 preserved; proportional 1x/2x probes; gates preserved |

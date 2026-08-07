@@ -17,6 +17,8 @@ namespace pa15_lowering_support
 std::string StripOperationPrefix(const std::string& operation);
 std::string SanitizeSymbol(const std::string& name);
 std::vector<unsigned char> DecodeStringLiteral(const std::string& spelling);
+std::int64_t CanonicalIntegerImmediate(std::int64_t value,
+	std::uint8_t width, bool is_signed);
 
 template <typename Value, std::size_t InlineCount>
 class SmallSequence

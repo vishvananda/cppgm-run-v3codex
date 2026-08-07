@@ -1513,6 +1513,9 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 		const TypeRecord old_type = program_->types.Get(existing.type);
 		if (old_type.child != declared_type.child)
 			throw std::runtime_error("conflicting function return type");
+		if (program_->bindings[existing.binding].nonthrowing != nonthrowing)
+			throw std::runtime_error(
+				"conflicting function exception specification");
 		canonical = existing.binding;
 		if (definition && existing.defined)
 			throw std::runtime_error("duplicate function definition");

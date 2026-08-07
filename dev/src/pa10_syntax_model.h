@@ -120,6 +120,8 @@ public:
 	const std::string& Payload(NodeId node) const;
 	const std::string& SemanticPayload(NodeId node) const;
 	void SetSemanticPayload(NodeId node, TextId payload);
+	void AppendImmediateParameterNames(NodeId declarator,
+		std::vector<TextId>* result) const;
 	void SetPayload(NodeId node, const std::string& payload);
 	bool HasDirectChildTag(NodeId node, const char* tag) const;
 	std::uint32_t FirstEdge(NodeId node) const;
@@ -145,9 +147,6 @@ public:
 	virtual ~SyntaxTreeConsumer() {}
 	virtual void Consume(const SyntaxArena& arena, NodeId root) = 0;
 };
-
-std::vector<std::string> ImmediateParameterNames(
-	const SyntaxArena& arena, NodeId declarator);
 
 }
 }

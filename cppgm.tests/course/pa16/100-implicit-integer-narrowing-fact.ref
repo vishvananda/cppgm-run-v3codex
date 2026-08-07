@@ -1,0 +1,27 @@
+global @value : u8 [binding=strong, object=_Z5value] = zero
+
+function @sink(%input : u8) -> i32 [binding=strong, object=_Z4sinkh] {
+  slot $input : u8
+
+  block ^entry:
+    store u8 %input, $input
+    %t1 = load u8 $input
+    %t2 = convert zext i32 u8 %t1
+    return i32 %t2
+}
+
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $local : u8
+
+  block ^entry:
+    store u8 2, @value
+    store u8 3, $local
+    %t1 = call i32 @sink(4)
+    %t2 = load u8 @value
+    %t3 = convert zext i32 u8 %t2
+    %t4 = binary add i32 %t1, %t3
+    %t5 = load u8 $local
+    %t6 = convert zext i32 u8 %t5
+    %t7 = binary add i32 %t4, %t6
+    return i32 %t7
+}

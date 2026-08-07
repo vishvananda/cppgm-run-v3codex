@@ -45,6 +45,18 @@ std::string SanitizeSymbol(const std::string& name)
 	return result;
 }
 
+std::int64_t CanonicalIntegerImmediate(std::int64_t value,
+	std::uint8_t width, bool is_signed)
+{
+	if (width >= 64) return value;
+	const std::uint64_t mask = (std::uint64_t(1) << width) - 1;
+	std::uint64_t narrowed = static_cast<std::uint64_t>(value) & mask;
+	if (is_signed &&
+		(narrowed & (std::uint64_t(1) << (width - 1))) != 0)
+		narrowed |= ~mask;
+	return static_cast<std::int64_t>(narrowed);
+}
+
 std::vector<unsigned char> DecodeStringLiteral(const std::string& spelling)
 {
 	std::vector<unsigned char> bytes;

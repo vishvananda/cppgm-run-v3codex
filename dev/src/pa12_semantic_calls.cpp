@@ -17,9 +17,12 @@ BindingId SemanticAnalyzer::EnsureBuiltinFunction(BuiltinFunctionKind kind)
 		builtin_functions_.resize(static_cast<std::size_t>(kind) + 1, kNoBinding);
 	if (builtin_functions_[kind] != kNoBinding) return builtin_functions_[kind];
 	const TypeId character = program_->types.Fundamental(FUND_CHAR);
-	const TypeId pointer = program_->types.Pointer(character);
-	const TypeId const_pointer = program_->types.Pointer(
+	const TypeId const_character_pointer = program_->types.Pointer(
 		program_->types.Qualify(character, CV_CONST));
+	const TypeId void_type = program_->types.Fundamental(FUND_VOID);
+	const TypeId pointer = program_->types.Pointer(void_type);
+	const TypeId const_pointer = program_->types.Pointer(
+		program_->types.Qualify(void_type, CV_CONST));
 	const TypeId size = program_->types.Fundamental(FUND_UNSIGNED_LONG_INT);
 	TypeId result = program_->types.Fundamental(FUND_VOID);
 	const char* spelling = 0;
@@ -28,7 +31,7 @@ BindingId SemanticAnalyzer::EnsureBuiltinFunction(BuiltinFunctionKind kind)
 	{
 	case BUILTIN_FUNCTION_STRLEN:
 		spelling = "__builtin_strlen"; result = size;
-		parameter_types.push_back(const_pointer); break;
+		parameter_types.push_back(const_character_pointer); break;
 	case BUILTIN_FUNCTION_UNREACHABLE:
 		spelling = "__builtin_unreachable"; break;
 	case BUILTIN_FUNCTION_MEMCPY:

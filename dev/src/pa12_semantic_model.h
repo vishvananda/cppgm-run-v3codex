@@ -91,6 +91,7 @@ struct DumpNode
 	std::uint32_t last_edge;
 	std::uint32_t base_projection_count;
 	bool constant;
+	bool integer_narrowing_conversion;
 
 	explicit DumpNode(DumpKind value)
 		: kind(value), type(kNoType), operand_type(kNoType),
@@ -98,7 +99,7 @@ struct DumpNode
 		  object_binding(kNoBinding),
 		  constant_value(0), first_edge(kNoDumpEdge),
 		  last_edge(kNoDumpEdge), base_projection_count(0),
-		  constant(false) {}
+		  constant(false), integer_narrowing_conversion(false) {}
 };
 
 struct DumpEdge

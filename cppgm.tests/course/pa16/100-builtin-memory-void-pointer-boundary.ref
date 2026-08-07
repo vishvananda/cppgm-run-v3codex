@@ -1,0 +1,21 @@
+declare function @__builtin_memcpy(%arg0 : ptr [capture=nocapture, access=write, alias=noalias], %arg1 : ptr [capture=nocapture, access=read, alias=noalias], %arg2 : i64) -> ptr [effects=readwrite, unwind=no, binding=strong, object=cppgm_builtin_memcpy]
+
+declare function @__builtin_memmove(%arg0 : ptr [capture=nocapture, access=readwrite], %arg1 : ptr [capture=nocapture, access=read], %arg2 : i64) -> ptr [effects=readwrite, unwind=no, binding=strong, object=cppgm_builtin_memmove]
+
+function @copy(%dst : ptr, %src : ptr) -> void [binding=strong, object=_Z4copyPvPKv] {
+  slot $dst : ptr
+  slot $src : ptr
+
+  block ^entry:
+    store ptr %dst, $dst
+    store ptr %src, $src
+    %t1 = load ptr $dst
+    %t2 = load ptr $src
+    %t3 = convert sext i64 i32 258
+    %t4 = call ptr @__builtin_memcpy(%t1, %t2, %t3)
+    %t5 = load ptr $dst
+    %t6 = load ptr $src
+    %t7 = convert sext i64 i32 258
+    %t8 = call ptr @__builtin_memmove(%t5, %t6, %t7)
+    return void
+}

@@ -1139,7 +1139,6 @@ private:
 		}
 		throw std::runtime_error("expression does not designate scalar storage");
 	}
-
 	Operand Convert(Operand value, const LowType& target,
 		bool canonicalize_immediate = true)
 	{
@@ -1167,6 +1166,8 @@ private:
 		if (canonicalize_immediate && value.kind == Operand::INTEGER &&
 			IsInteger(value.type) && IsInteger(target))
 		{
+			value.integer_value = CanonicalIntegerImmediate(
+				value.integer_value, target.width, target.is_signed);
 			value.type = target;
 			return value;
 		}
@@ -1369,9 +1370,8 @@ private:
 			target : LowType()), target, canonicalize_immediate);
 	}
 
-	bool CanonicalizeImmediateNarrowing(std::uint32_t node, const LowType& target) const {
-		const LowType source = LowerExpressionType(arena_.nodes[node].type);
-		return IsInteger(source) && IsInteger(target) && target.width < source.width; }
+	bool CanonicalizeImmediateConversion(std::uint32_t node) const {
+		return arena_.nodes[node].integer_narrowing_conversion; }
 
 	void LowerDiscardedValue(std::uint32_t node) { const DumpNode& record = arena_.nodes[node];
 		if ((record.category == VALUE_LVALUE || record.category == VALUE_XVALUE) && !IsFunctionType(RemoveReference(record.type))) (void)LowerStorage(node);
@@ -1738,7 +1738,7 @@ private:
 						expected = LowI32();
 				}
 				arguments.Push(LowerConvertedValue(children[i], expected,
-					CanonicalizeImmediateNarrowing(children[i], expected)));
+					CanonicalizeImmediateConversion(children[i])));
 			}
 		}
 		if (!direct) call.first = LowerValue(children[0], LowPtr());
@@ -2069,7 +2069,7 @@ private:
 				store.first = IsReferenceType(record.type) ?
 					AddressOfStorage(LowerStorage(children[0])) :
 					LowerConvertedValue(children[0], type,
-						CanonicalizeImmediateNarrowing(children[0], type));
+						CanonicalizeImmediateConversion(children[0]));
 				store.second = StorageFor(record.binding, type);
 				Emit(store);
 			}

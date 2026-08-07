@@ -630,6 +630,19 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 	const TypeRecord target_record = program_->types.Get(target);
 	const TypeId nonreference = target_record.kind == TYPE_LVALUE_REFERENCE ||
 		target_record.kind == TYPE_RVALUE_REFERENCE ? target_record.child : target;
+	const TypeId conversion_target =
+		program_->types.RemoveTopCv(nonreference);
+	const TypeId conversion_source =
+		program_->types.RemoveTopCv(EffectiveType(value.type));
+	const TypeRecord& conversion_target_record =
+		program_->types.Get(conversion_target);
+	const bool target_is_bool =
+		conversion_target_record.kind == TYPE_FUNDAMENTAL &&
+		conversion_target_record.fundamental == FUND_BOOL;
+	if (!target_is_bool && IsIntegral(conversion_source, true) &&
+		IsIntegral(conversion_target, true) &&
+		program_->SizeOf(conversion_target) < program_->SizeOf(conversion_source))
+		dump_.nodes[value.node].integer_narrowing_conversion = true;
 	if (conversion == CONVERSION_DERIVED_TO_BASE)
 	{
 		const std::size_t projections =
