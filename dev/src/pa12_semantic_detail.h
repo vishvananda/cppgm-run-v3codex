@@ -95,6 +95,8 @@ private:
 		std::uint32_t output_parent);
 	void AnalyzeStatement(NodeId node, ScopeId scope,
 		std::uint32_t output_parent);
+	void AnalyzeReturnStatement(NodeId node, ScopeId scope,
+		std::uint32_t output_parent);
 	void AnalyzeSubstatement(NodeId node, ScopeId scope,
 		std::uint32_t output_parent);
 	void AnalyzeCondition(NodeId node, ScopeId scope,
@@ -182,6 +184,8 @@ private:
 	bool IsDirectTrivialClassValueType(TypeId type) const;
 	ExpressionInfo BuildDirectClassValueTransfer(
 		const ExpressionInfo& source, TypeId target);
+	ExpressionInfo AnalyzeVariableInitializer(NodeId initializer,
+		ScopeId scope, TypeId type, bool local);
 	ExpressionInfo AnalyzeCall(NodeId node, ScopeId scope, TypeId target);
 	BindingId EnsureBuiltinFunction(BuiltinFunctionKind kind);
 	bool AnalyzeBuiltinCall(const std::string& spelling, ScopeId scope,
@@ -266,13 +270,23 @@ private:
 	void CompleteClassSpecialMembers(EntityId entity);
 	BindingId AssignmentForSubobject(TypeId type,
 		SpecialMemberKind kind) const;
+	BindingId ConstructorForSubobject(TypeId type,
+		SpecialMemberKind kind) const;
 	void EvaluateSynthesizedAssignment(EntityId entity,
+		SpecialMemberKind kind, bool* deleted, bool* trivial,
+		bool* nonthrowing) const;
+	void EvaluateSynthesizedConstructor(EntityId entity,
 		SpecialMemberKind kind, bool* deleted, bool* trivial,
 		bool* nonthrowing) const;
 	BindingId DeclareImplicitAssignment(EntityId entity,
 		SpecialMemberKind kind);
+	BindingId DeclareImplicitCopyMoveConstructor(EntityId entity,
+		SpecialMemberKind kind);
 	void AddSynthesizedAssignmentBody(const FunctionInfo& function,
 		const std::vector<BindingId>& parameters, std::uint32_t body);
+	void AddSynthesizedConstructorBody(const FunctionInfo& function,
+		const std::vector<BindingId>& parameters, std::uint32_t body);
+	void DemandSynthesizedConstructorDependencies(BindingId constructor);
 	bool CanAccessMember(BindingId member,
 		EntityId naming_class = kNoEntity,
 		EntityId object_class = kNoEntity) const;
@@ -312,6 +326,12 @@ private:
 	std::uint32_t BuildConstructorAction(TypeId type, ScopeId scope,
 		const std::vector<NodeId>& argument_syntax, bool copy_initialization,
 		bool list_initialization, bool base_subobject = false);
+	std::uint32_t BuildClassValueConstructorAction(TypeId type,
+		const ExpressionInfo& source, bool copy_initialization = true,
+		bool demand = true);
+	void ValidateClassValueConstruction(TypeId type,
+		const ExpressionInfo& source, bool copy_initialization = true);
+	void FinalizeNamedReturnSlot(std::uint32_t function);
 	std::uint32_t BuildDefaultConstructorAction(TypeId type, ScopeId scope);
 	void AddConstructorMemberActions(const FunctionInfo& constructor,
 		ScopeId function_scope, const std::vector<BindingId>& parameters,
@@ -408,6 +428,7 @@ private:
 	std::vector<std::uint32_t> zero_offset_subobject_marks_;
 	std::vector<EntityId> zero_offset_subobject_scratch_;
 	std::vector<std::vector<BindingId> > entity_constructors_;
+	std::vector<std::uint32_t> variable_node_by_binding_;
 	std::vector<ClassSpecialMemberFacts> class_special_members_;
 	std::vector<BindingId> implicit_constructor_by_entity_;
 	std::vector<BindingId> constructor_base_entry_by_binding_;

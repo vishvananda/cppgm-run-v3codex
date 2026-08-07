@@ -123,6 +123,9 @@ void SemanticAnalyzer::RenderLine(const DumpNode& node, std::size_t depth)
 	case DUMP_CLASS_VALUE_TRANSFER:
 		output_ << "class-value-transfer " << category << ' '
 			<< program_->RenderType(node.type); break;
+	case DUMP_SPECIAL_MEMBER_CONSTRUCTION_ACTION:
+		output_ << "special-member-construction "
+			<< program_->RenderType(node.type); break;
 	case DUMP_SPECIAL_MEMBER_ASSIGNMENT_ACTION:
 		output_ << "special-member-assignment " << category << ' '
 			<< program_->RenderType(node.type); break;

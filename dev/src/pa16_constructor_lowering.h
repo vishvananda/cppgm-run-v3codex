@@ -32,8 +32,25 @@ protected:
 		const DumpNode& action = derived.arena_.nodes[node];
 		if (action.elide_empty_constructor) return;
 		if (action.kind != DUMP_CONSTRUCTOR_ACTION ||
-			action.binding == kNoBinding ||
-			action.binding >= derived.function_symbols_.size() ||
+			action.binding == kNoBinding)
+			throw std::runtime_error("invalid constructor action");
+		const NodeChildren children = derived.Children(node);
+		if (action.trivial_special_member_action)
+		{
+			if (children.size() != 1 ||
+				!derived.IsClassObjectType(action.operand_type))
+				throw std::logic_error(
+					"invalid trivial special-member construction");
+			const TypeRecord& object = derived.program_.types.Get(
+				derived.ExpressionObjectType(action.operand_type));
+			const Operand source =
+				derived.LowerClassTransferSource(children[0]);
+			if (derived.program_.entities[object.entity].empty_class) return;
+			derived.EmitClassObjectCopy(action.operand_type,
+				source, destination);
+			return;
+		}
+		if (action.binding >= derived.function_symbols_.size() ||
 			derived.function_symbols_[action.binding] == kNoLowId)
 			throw std::runtime_error("constructor action has no emitted binding");
 		const TypeRecord& function_type =
@@ -42,7 +59,6 @@ protected:
 			function_type.parameter_count == 0)
 			throw std::logic_error("constructor action has invalid function type");
 		const TypeId* parameters = derived.program_.types.Parameters(action.type);
-		const NodeChildren children = derived.Children(node);
 		Instruction call(Instruction::CALL);
 		call.type = LowVoid();
 		call.first = Operand(Operand::FUNCTION,
@@ -61,7 +77,8 @@ protected:
 			{
 				const DumpNode& argument = derived.arena_.nodes[children[i]];
 				if (argument.category == VALUE_LVALUE ||
-					argument.category == VALUE_XVALUE)
+					argument.category == VALUE_XVALUE ||
+					derived.IsClassObjectType(argument.type))
 					arguments.Push(derived.AddressOfStorage(
 						derived.LowerStorage(children[i])));
 				else

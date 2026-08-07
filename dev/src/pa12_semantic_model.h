@@ -69,6 +69,7 @@ enum DumpKind
 	DUMP_BRACED_INIT_LIST,
 	DUMP_AGGREGATE_CONSTRUCTION_ACTION,
 	DUMP_CLASS_VALUE_TRANSFER,
+	DUMP_SPECIAL_MEMBER_CONSTRUCTION_ACTION,
 	DUMP_SPECIAL_MEMBER_ASSIGNMENT_ACTION,
 	DUMP_SPECIAL_MEMBER_SUBOBJECT_ACTION,
 	DUMP_INITIALIZER_ACTION,
@@ -101,8 +102,10 @@ struct DumpNode
 	bool integer_narrowing_conversion;
 	bool value_initialization;
 	bool elide_empty_constructor;
+	bool trivial_special_member_action;
 	bool argument_materialization;
 	bool class_argument_staging;
+	bool direct_return_slot;
 	bool declaration_only;
 
 	explicit DumpNode(DumpKind value)
@@ -114,8 +117,9 @@ struct DumpNode
 		  aggregate_helper(kNoDumpEdge),
 		  constant(false), integer_narrowing_conversion(false),
 		  value_initialization(false), elide_empty_constructor(false),
+		  trivial_special_member_action(false),
 		  argument_materialization(false), class_argument_staging(false),
-		  declaration_only(false) {}
+		  direct_return_slot(false), declaration_only(false) {}
 };
 
 struct DumpEdge

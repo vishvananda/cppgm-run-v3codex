@@ -34,7 +34,13 @@ protected:
 		if (has_value)
 		{
 			first_cleanup = 1;
-			if (derived.arena_.nodes[children[0]].kind ==
+			if (derived.arena_.nodes[children[0]].direct_return_slot)
+			{
+				if (!derived.current_indirect_result_)
+					throw std::logic_error(
+						"direct return slot has a direct result boundary");
+			}
+			else if (derived.arena_.nodes[children[0]].kind ==
 				DUMP_CLASS_VALUE_TRANSFER)
 			{
 				if (derived.current_indirect_result_)
@@ -55,6 +61,28 @@ protected:
 						derived.AddressOfStorage(slot));
 					result_value = slot;
 				}
+			}
+			else if (derived.arena_.nodes[children[0]].kind ==
+				DUMP_CONSTRUCTOR_ACTION)
+			{
+				if (derived.current_indirect_result_)
+				{
+					const Operand destination(
+						static_cast<ParameterId>(0), LowPtr());
+					derived.LowerConstructorAction(
+						children[0], destination);
+				}
+				else if (derived.current_result_.kind == LOW_OBJECT)
+				{
+					const Operand slot(derived.EnsureGeneratedSlot(
+						children[0], "retobj", derived.current_result_),
+						derived.current_result_);
+					derived.LowerConstructorAction(children[0],
+						derived.AddressOfStorage(slot));
+					result_value = slot;
+				}
+				else throw std::logic_error(
+					"class construction return has a non-object boundary");
 			}
 			else if (derived.current_result_.kind == LOW_VOID)
 				(void)derived.LowerValue(children[0]);
@@ -79,6 +107,11 @@ protected:
 		{
 			if (derived.arena_.nodes[children[i]].kind != DUMP_DESTRUCTOR_ACTION)
 				throw std::logic_error("invalid return cleanup action");
+			if (has_value &&
+				derived.arena_.nodes[children[0]].direct_return_slot &&
+				derived.arena_.nodes[children[i]].object_binding ==
+					derived.arena_.nodes[children[0]].binding)
+				continue;
 			derived.LowerDestructorAction(derived.arena_.nodes[children[i]]);
 		}
 		if (derived.destructor_return_routes_to_epilogue_)

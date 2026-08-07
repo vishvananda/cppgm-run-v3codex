@@ -72,6 +72,8 @@ protected:
 		if (!derived.IsClassObjectType(type) || children.size() != 1 ||
 			derived.arena_.nodes[children[0]].kind != DUMP_CONSTRUCTOR_ACTION)
 			return false;
+		if (derived.arena_.nodes[children[0]].trivial_special_member_action)
+			return false;
 		const TypeRecord& record = derived.program_.types.Get(
 			derived.ExpressionObjectType(type));
 		return derived.program_.entities[record.entity].trivial_default_constructor;

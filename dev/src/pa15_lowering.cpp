@@ -96,6 +96,7 @@ public:
 			namespace_action_[action.object] = static_cast<std::uint32_t>(i);
 		}
 		binding_slots_.resize(program_.bindings.size(), kNoLowId);
+		binding_indirect_parameters_.resize(program_.bindings.size());
 		generated_slots_.resize(arena_.nodes.size(), kNoLowId);
 		switch_case_blocks_.resize(arena_.nodes.size(), kNoLowId);
 		aggregate_helper_symbols_.resize(
@@ -806,30 +807,7 @@ private:
 					program_.bindings[record.binding].member_owner != kNoEntity &&
 					!program_.bindings[record.binding].static_member_function)
 					current_this_binding_ = child.binding;
-				if (IsClassValueType(child.type) &&
-					program_.entities[program_.types.Get(
-						ExpressionObjectType(child.type)).entity].is_aggregate &&
-					!program_.entities[program_.types.Get(
-						ExpressionObjectType(child.type)).entity].empty_class)
-				{
-					const Operand source(
-						static_cast<ParameterId>(boundary_parameter),
-						result.parameters[boundary_parameter].type);
-					const Operand destination = AddressOfStorage(Operand(
-						binding_slots_[child.binding],
-						LowerStorageType(child.type)));
-					EmitClassObjectCopy(child.type, source, destination);
-				}
-				else if (!IsClassValueType(child.type))
-				{
-					Instruction store(Instruction::STORE);
-					store.type = result.parameters[boundary_parameter].type;
-					store.first = Operand(
-						static_cast<ParameterId>(boundary_parameter),
-						store.type);
-					store.second = Operand(binding_slots_[child.binding], store.type);
-					Emit(store);
-				}
+				MaterializeBoundaryParameter(child, boundary_parameter);
 				++parameter_index;
 			}
 			else if (child.kind == DUMP_COMPOUND_STATEMENT) body = children[i];
@@ -920,6 +898,9 @@ private:
 	Operand StorageFor(BindingId binding, const LowType& type)
 	{
 		if (stats_) ++stats_->binding_index_probes;
+		if (binding < binding_indirect_parameters_.size() &&
+			binding_indirect_parameters_[binding] != kNoLowId)
+			return Operand(binding_indirect_parameters_[binding], LowPtr());
 		if (binding < binding_slots_.size() && binding_slots_[binding] != kNoLowId)
 			return Operand(binding_slots_[binding], type);
 		if (binding < program_.bindings.size())
@@ -952,7 +933,8 @@ private:
 
 	Operand AddressOfStorage(const Operand& storage)
 	{
-		if (storage.kind == Operand::TEMP)
+		if (storage.kind == Operand::TEMP ||
+			(storage.kind == Operand::PARAMETER && storage.type.kind == LOW_PTR))
 		{
 			if (storage.type.kind != LOW_PTR)
 				throw std::logic_error("PA15 indirect storage is not a pointer");
@@ -1050,6 +1032,8 @@ private:
 	Operand LowerStorage(std::uint32_t node)
 	{
 		const DumpNode& record = arena_.nodes[node];
+		if (record.kind == DUMP_SPECIAL_MEMBER_CONSTRUCTION_ACTION)
+			return LowerSpecialMemberConstruction(node);
 		if (record.kind == DUMP_SPECIAL_MEMBER_ASSIGNMENT_ACTION)
 			return LowerSpecialMemberAssignment(node);
 		if (record.kind == DUMP_ID_EXPRESSION && record.binding != kNoBinding)
@@ -1058,6 +1042,10 @@ private:
 				function_symbols_[record.binding] != kNoLowId)
 				return Operand(Operand::FUNCTION,
 					function_symbols_[record.binding], LowPtr());
+			if (record.binding < binding_indirect_parameters_.size() &&
+				binding_indirect_parameters_[record.binding] != kNoLowId)
+				return Operand(
+					binding_indirect_parameters_[record.binding], LowPtr());
 			const Operand storage = StorageFor(record.binding,
 				LowerStorageType(program_.bindings[record.binding].type));
 			return BindingIsReference(record.binding) ?
@@ -1319,6 +1307,8 @@ private:
 		}
 		else if (record.kind == DUMP_NEW_EXPRESSION)
 			result = LowerNewExpression(record, children);
+		else if (record.kind == DUMP_SPECIAL_MEMBER_CONSTRUCTION_ACTION)
+			result = LowerSpecialMemberConstruction(node);
 		else if (record.kind == DUMP_CAST_EXPRESSION)
 		{
 			if (children.size() != 1) throw std::runtime_error("invalid semantic cast");
@@ -2947,6 +2937,7 @@ private:
 	std::size_t block_counter_;
 	std::size_t generated_slot_ordinal_;
 	std::vector<SlotId> binding_slots_;
+	std::vector<ParameterId> binding_indirect_parameters_;
 	std::vector<SlotId> generated_slots_;
 	std::vector<BlockId> switch_case_blocks_;
 	std::vector<SymbolId> aggregate_helper_symbols_;

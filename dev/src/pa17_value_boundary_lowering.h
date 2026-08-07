@@ -30,9 +30,14 @@ protected:
 			return false;
 		const pa11::TypeId object_type = derived.ExpressionObjectType(type);
 		const pa11::TypeRecord& object = derived.program_.types.Get(object_type);
-		return object.kind == pa11::TYPE_NAMED &&
-			derived.program_.entities[object.entity].complete &&
-			derived.program_.SizeOf(object_type) > 16;
+		if (object.kind != pa11::TYPE_NAMED ||
+			!derived.program_.entities[object.entity].complete)
+			return false;
+		const pa11::EntityRecord& entity =
+			derived.program_.entities[object.entity];
+		const std::size_t size = derived.program_.SizeOf(object_type);
+		return size > 16 ||
+			(size < 16 && entity.indirect_class_value_abi);
 	}
 
 	void FillBoundary(std::uint32_t node,
@@ -75,11 +80,16 @@ protected:
 			if (parameter.name.empty()) parameter.name =
 				(record.kind == pa12_semantic_detail::DUMP_FUNCTION_DECLARATION ?
 					"arg" : "__param") + std::to_string(parameter_index);
-			parameter.type = derived.LowerType(child.type);
 			const pa11::TypeId* source_parameters =
 				derived.program_.types.Parameters(record.type);
+			const bool by_address =
+				parameter_index < function_type.parameter_count &&
+				UsesIndirectClassResult(source_parameters[parameter_index]);
+			parameter.type = by_address ? pa15_lowir_detail::LowPtr() :
+				derived.LowerType(child.type);
 			parameter.reference = parameter_index < function_type.parameter_count &&
 				derived.IsReferenceType(source_parameters[parameter_index]);
+			parameter.by_address = by_address;
 			pa15_lowering_abi::ApplyBuiltinParameterMetadata(
 				&parameter, builtin, parameter_index);
 			parameters->push_back(parameter);
@@ -93,14 +103,55 @@ protected:
 			parameter.name =
 				(record.kind == pa12_semantic_detail::DUMP_FUNCTION_DECLARATION ?
 					"arg" : "__param") + std::to_string(parameter_index);
-			parameter.type = derived.LowerType(source_parameters[parameter_index]);
+			const bool by_address =
+				UsesIndirectClassResult(source_parameters[parameter_index]);
+			parameter.type = by_address ? pa15_lowir_detail::LowPtr() :
+				derived.LowerType(source_parameters[parameter_index]);
 			parameter.reference =
 				derived.IsReferenceType(source_parameters[parameter_index]);
+			parameter.by_address = by_address;
 			pa15_lowering_abi::ApplyBuiltinParameterMetadata(
 				&parameter, builtin, parameter_index);
 			parameters->push_back(parameter);
 			++parameter_index;
 		}
+	}
+
+	void MaterializeBoundaryParameter(
+		const pa12_semantic_detail::DumpNode& source,
+		std::size_t parameter_index)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const pa15_lowir_detail::Parameter& parameter =
+			derived.function_->parameters[parameter_index];
+		if (parameter.by_address)
+		{
+			derived.binding_indirect_parameters_[source.binding] =
+				pa15_lowir_detail::ParameterId(parameter_index);
+			return;
+		}
+		if (derived.IsClassValueType(source.type))
+		{
+			const pa11::TypeRecord& object = derived.program_.types.Get(
+				derived.ExpressionObjectType(source.type));
+			if (derived.program_.entities[object.entity].empty_class) return;
+			const pa15_lowir_detail::Operand value(
+				pa15_lowir_detail::ParameterId(parameter_index), parameter.type);
+			const pa15_lowir_detail::Operand destination =
+				derived.AddressOfStorage(pa15_lowir_detail::Operand(
+					derived.binding_slots_[source.binding],
+					derived.LowerStorageType(source.type)));
+			derived.EmitClassObjectCopy(source.type, value, destination);
+			return;
+		}
+		pa15_lowir_detail::Instruction store(
+			pa15_lowir_detail::Instruction::STORE);
+		store.type = parameter.type;
+		store.first = pa15_lowir_detail::Operand(
+			pa15_lowir_detail::ParameterId(parameter_index), store.type);
+		store.second = pa15_lowir_detail::Operand(
+			derived.binding_slots_[source.binding], store.type);
+		derived.Emit(store);
 	}
 };
 

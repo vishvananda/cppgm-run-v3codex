@@ -1193,10 +1193,44 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 		throw std::runtime_error(
 			"qualified special member definition has no matching declaration");
 	ValidateFunctionRefQualifier(special);
+	const NodeId initializer = FindChild(node, "initializer");
+	const NodeId special_initializer = initializer == kNoNode ? kNoNode :
+		FindChild(initializer, "special-initializer");
+	const bool defaulted = special_initializer != kNoNode &&
+		arena_->Payload(special_initializer) == "default";
+	const bool deleted = special_initializer != kNoNode &&
+		arena_->Payload(special_initializer) == "delete";
 	info.definition_body = FindChild(node, "compound-statement");
 	if (constructor_definition)
+	{
 		info.constructor_initializer = FindChild(node, "ctor-initializer");
-	info.deferred = true;
+		info.defaulted_constructor = info.defaulted_constructor || defaulted;
+		info.deleted_constructor = info.deleted_constructor || deleted;
+		info.defaulted_special_member =
+			info.defaulted_special_member || defaulted;
+		info.deleted_special_member =
+			info.deleted_special_member || deleted;
+		if (defaulted && info.special_member != SPECIAL_MEMBER_NONE)
+		{
+			bool implicitly_deleted = false;
+			bool trivial = false;
+			bool nonthrowing = false;
+			EvaluateSynthesizedConstructor(entity, info.special_member,
+				&implicitly_deleted, &trivial, &nonthrowing);
+			info.deleted_constructor = implicitly_deleted;
+			info.deleted_special_member = implicitly_deleted;
+			info.trivial_special_member = false;
+			program_->bindings[special].nonthrowing = nonthrowing;
+		}
+	}
+	else
+	{
+		info.defaulted_destructor = info.defaulted_destructor || defaulted;
+		info.deleted_destructor = info.deleted_destructor || deleted;
+		if (defaulted) program_->bindings[special].nonthrowing = true;
+	}
+	info.deferred = !(constructor_definition ? info.deleted_constructor :
+		info.deleted_destructor);
 	if (constructor_definition)
 	{
 		program_->entities[entity].has_user_provided_constructor = true;
@@ -2719,9 +2753,15 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 			const std::uint32_t constructor_body =
 				MakeDump(DUMP_COMPOUND_STATEMENT);
 			dump_.Add(function, constructor_body);
-			AddConstructorMemberActions(info, function_scope,
+			if ((info.special_member == SPECIAL_MEMBER_COPY_CONSTRUCTOR ||
+				 info.special_member == SPECIAL_MEMBER_MOVE_CONSTRUCTOR) &&
+				(info.implicit_special_member || info.defaulted_special_member))
+				AddSynthesizedConstructorBody(info, parameter_bindings,
+					constructor_body);
+			else AddConstructorMemberActions(info, function_scope,
 				parameter_bindings, constructor_body);
-			if ((info.implicit_constructor || info.defaulted_constructor) &&
+			if (info.special_member == SPECIAL_MEMBER_NONE &&
+				(info.implicit_constructor || info.defaulted_constructor) &&
 				InitializationActionsAreNonthrowing(constructor_body))
 				program_->bindings[info.binding].nonthrowing = true;
 			if (info.definition_body != kNoNode)

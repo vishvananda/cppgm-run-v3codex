@@ -62,6 +62,112 @@ protected:
 			derived.StorageFor(binding, LowPtr()), LowPtr());
 	}
 
+	void LowerConstructionSubobject(TypeId type, BindingId selected,
+		const Operand& destination, const Operand& source)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const TypeId object_type = derived.program_.types.RemoveTopCv(type);
+		const TypeRecord& record = derived.program_.types.Get(object_type);
+		if (record.kind == TYPE_ARRAY)
+		{
+			if (record.bound == 0)
+				throw std::logic_error(
+					"synthesized constructor has an unbounded array");
+			if (selected == kNoBinding)
+			{
+				derived.EmitClassObjectCopy(type, source, destination);
+				return;
+			}
+			const std::size_t element_size =
+				derived.program_.SizeOf(record.child);
+			for (std::size_t i = 0;
+				i < static_cast<std::size_t>(record.bound); ++i)
+			{
+				const Operand offset(static_cast<std::int64_t>(
+					i * element_size), LowI64());
+				const Operand destination_element = derived.IndexAddress(
+					LowI8(), destination, offset, true);
+				const Operand source_element = derived.IndexAddress(
+					LowI8(), source, offset, true);
+				LowerConstructionSubobject(record.child, selected,
+					destination_element, source_element);
+			}
+			return;
+		}
+		if (selected != kNoBinding)
+		{
+			DumpNode call(DUMP_SPECIAL_MEMBER_SUBOBJECT_ACTION);
+			call.selected_binding = selected;
+			LowerAssignmentCall(call, destination, source);
+			return;
+		}
+		if (derived.IsClassObjectType(type))
+		{
+			derived.EmitClassObjectCopy(type, source, destination);
+			return;
+		}
+		const LowType storage_type = derived.IsReferenceType(type) ?
+			LowPtr() : derived.LowerExpressionType(type);
+		const Operand value = derived.LoadStorage(source, storage_type);
+		Instruction store(Instruction::STORE);
+		store.type = storage_type;
+		store.first = value;
+		store.second = destination;
+		derived.Emit(store);
+	}
+
+	void LowerConstructionStep(const DumpNode& construction,
+		const DumpNode& step)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (step.kind != DUMP_SPECIAL_MEMBER_SUBOBJECT_ACTION)
+			throw std::logic_error("invalid synthesized construction step");
+		Operand destination = LoadAssignmentObject(
+			derived.current_this_binding_);
+		if (step.binding != kNoBinding)
+			destination = derived.ProjectAggregateMember(
+				destination, step.binding);
+		else if (step.base_projection_count != 0)
+			destination = derived.ProjectBaseSubobjects(
+				destination, step.base_projection_count);
+		Operand source = LoadAssignmentObject(construction.object_binding);
+		if (step.binding != kNoBinding)
+			source = derived.ProjectAggregateMember(source, step.binding);
+		else if (step.base_projection_count != 0)
+			source = derived.ProjectBaseSubobjects(
+				source, step.base_projection_count);
+		if (step.binding != kNoBinding &&
+			derived.program_.bindings[step.binding].bit_field)
+		{
+			const Operand value = derived.LoadBitField(step.binding, source);
+			(void)derived.StoreBitField(
+				step.binding, destination, value, true);
+			return;
+		}
+		LowerConstructionSubobject(step.type, step.selected_binding,
+			destination, source);
+	}
+
+	Operand LowerSpecialMemberConstruction(std::uint32_t node)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const DumpNode& construction = derived.arena_.nodes[node];
+		if (construction.kind !=
+				DUMP_SPECIAL_MEMBER_CONSTRUCTION_ACTION ||
+			construction.object_binding == kNoBinding ||
+			derived.current_this_binding_ == kNoBinding)
+			throw std::logic_error(
+				"invalid synthesized construction action");
+		const NodeChildren steps = derived.Children(node);
+		for (std::size_t i = 0; i < steps.size(); ++i)
+		{
+			if (derived.stats_) ++derived.stats_->lowered_nodes;
+			LowerConstructionStep(
+				construction, derived.arena_.nodes[steps[i]]);
+		}
+		return Operand(0, LowVoid());
+	}
+
 	void LowerAssignmentStep(const DumpNode& assignment,
 		const DumpNode& step)
 	{

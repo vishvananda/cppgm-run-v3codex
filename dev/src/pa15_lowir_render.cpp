@@ -41,6 +41,7 @@ void WriteParameter(std::ostream& output, const Parameter& parameter)
 	output << '%' << parameter.name << " : ";
 	WriteType(output, parameter.type);
 	if (parameter.reference || parameter.indirect_result ||
+		parameter.by_address ||
 		parameter.capture != Parameter::CAPTURE_DEFAULT ||
 		parameter.access != Parameter::ACCESS_DEFAULT ||
 		parameter.alias != Parameter::ALIAS_DEFAULT)
@@ -55,6 +56,11 @@ void WriteParameter(std::ostream& output, const Parameter& parameter)
 		else if (parameter.indirect_result)
 		{
 			output << "pass=indirect_result";
+			separator = true;
+		}
+		else if (parameter.by_address)
+		{
+			output << "pass=by_address";
 			separator = true;
 		}
 		if (parameter.capture == Parameter::CAPTURE_NOCAPTURE)

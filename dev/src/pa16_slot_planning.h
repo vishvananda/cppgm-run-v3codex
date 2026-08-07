@@ -36,7 +36,13 @@ protected:
 			if ((record.kind == DUMP_PARAMETER || record.kind == DUMP_VARIABLE) &&
 				record.binding != kNoBinding)
 			{
-				if (derived.binding_slots_[record.binding] == kNoLowId)
+				if (record.kind == DUMP_VARIABLE && record.direct_return_slot &&
+					derived.current_indirect_result_)
+				{
+					derived.binding_indirect_parameters_[record.binding] =
+						pa15_lowir_detail::ParameterId(0);
+				}
+				else if (derived.binding_slots_[record.binding] == kNoLowId)
 				{
 					std::string requested = record.text == 0 ? std::string() :
 						derived.program_.names.Get(record.text);

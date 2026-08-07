@@ -147,6 +147,13 @@ std::uint32_t SemanticAnalyzer::MakeDump(DumpKind kind, TypeId type,
 	record.category = category;
 	record.text = text;
 	record.binding = binding;
+	if (kind == DUMP_VARIABLE && binding != kNoBinding)
+	{
+		if (variable_node_by_binding_.size() <= binding)
+			variable_node_by_binding_.resize(
+				static_cast<std::size_t>(binding) + 1, kNoDumpEdge);
+		variable_node_by_binding_[binding] = node;
+	}
 	return node;
 }
 
@@ -166,6 +173,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const {
 		member_ref_qualifier_shapes_.StorageBytes() +
 		function_fact_by_binding_.capacity() * sizeof(std::uint32_t) +
 		functions_.capacity() * sizeof(FunctionInfo) +
+		variable_node_by_binding_.capacity() * sizeof(std::uint32_t) +
 		builtin_functions_.capacity() * sizeof(BindingId) +
 		entity_data_members_.capacity() * sizeof(std::vector<BindingId>) +
 		entity_layout_members_.capacity() *
@@ -2243,6 +2251,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			ValidateFunctionRefQualifier(function);
 			ValidateNonmemberOperator(function);
 			const NodeId function_initializer = FindChild(item, "initializer");
+			ConfigureAssignmentSpecialMember(function, function_initializer);
 			const NodeId special = function_initializer == kNoNode ? kNoNode :
 				FindChild(function_initializer, "special-initializer");
 			if (special != kNoNode && arena_->Payload(special) == "delete")
@@ -2268,94 +2277,11 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		if (spec.is_constexpr && initializer_node == kNoNode)
 			throw std::runtime_error("constexpr variable requires initializer");
 		ExpressionInfo initializer;
-		bool has_initializer = false;
+		const bool has_initializer = initializer_node != kNoNode;
 		if (initializer_node != kNoNode)
 		{
-			NodeId expression = FirstSemanticChild(initializer_node);
-			const EntityId class_entity = EntityOf(parsed.type);
-			const TypeKind declared_kind = program_->types.Get(parsed.type).kind;
-			if (declared_kind != TYPE_LVALUE_REFERENCE &&
-				declared_kind != TYPE_RVALUE_REFERENCE &&
-				class_entity != kNoEntity &&
-				(program_->entities[class_entity].flavor == NAMED_STRUCT ||
-				 program_->entities[class_entity].flavor == NAMED_CLASS ||
-				 program_->entities[class_entity].flavor == NAMED_UNION))
-			{
-				std::vector<NodeId> arguments;
-				if (expression != kNoNode &&
-					arena_->IsTag(expression, "paren-initializer"))
-				{
-					for (std::uint32_t argument = arena_->FirstEdge(expression);
-						argument != kNoEdge; argument = arena_->NextEdge(argument))
-						arguments.push_back(arena_->EdgeChild(argument));
-					initializer.node = BuildConstructorAction(parsed.type,
-						declaration_scope,
-						arguments, false, false);
-				}
-				else if (expression != kNoNode &&
-					arena_->IsTag(expression, "braced-init-list") &&
-					!program_->entities[class_entity].is_aggregate)
-				{
-					for (std::uint32_t argument = arena_->FirstEdge(expression);
-						argument != kNoEdge; argument = arena_->NextEdge(argument))
-						arguments.push_back(arena_->EdgeChild(argument));
-					initializer.node = BuildConstructorAction(parsed.type,
-						declaration_scope,
-						arguments, PayloadSource(initializer_node) == "copy", true);
-				}
-				else if (expression != kNoNode &&
-					arena_->IsTag(expression, "call-expression") &&
-					!program_->entities[class_entity].is_aggregate)
-				{
-					const NodeId callee = FirstSemanticChild(expression);
-					const std::string expected = program_->names.Get(
-						program_->entities[class_entity].identity_name);
-					if (callee == kNoNode || !arena_->IsTag(callee, "id-expression") ||
-						arena_->Payload(callee) != expected)
-						throw std::runtime_error(
-							"unsupported class copy initializer");
-					const NodeId argument_list = FindChild(expression, "argument-list");
-					if (argument_list != kNoNode)
-						for (std::uint32_t argument = arena_->FirstEdge(argument_list);
-							argument != kNoEdge; argument = arena_->NextEdge(argument))
-							arguments.push_back(arena_->EdgeChild(argument));
-					initializer.node = BuildConstructorAction(parsed.type,
-						declaration_scope,
-						arguments, false, false);
-				}
-				else if (expression != kNoNode &&
-					!program_->entities[class_entity].is_aggregate)
-				{
-					arguments.push_back(expression);
-					initializer.node = BuildConstructorAction(parsed.type,
-						declaration_scope,
-						arguments, true, false);
-				}
-				else
-				{
-					initializer = AnalyzeExpression(expression, declaration_scope,
-						parsed.type);
-					if (IsDirectTrivialClassValueType(parsed.type) &&
-						dump_.nodes[initializer.node].kind != DUMP_BRACED_INIT_LIST &&
-						dump_.nodes[initializer.node].kind !=
-							DUMP_CLASS_VALUE_TRANSFER)
-						initializer = BuildDirectClassValueTransfer(
-							initializer, parsed.type);
-				}
-				initializer.type = parsed.type;
-				initializer.category = VALUE_NONE;
-			}
-			else
-			{
-				if (expression != kNoNode &&
-					arena_->IsTag(expression, "paren-initializer"))
-					expression = FirstSemanticChild(expression);
-				initializer = AnalyzeExpression(expression, declaration_scope,
-					parsed.type);
-			}
-			has_initializer = true;
-			if (local)
-				initializer = BuildLocalAggregateArrayActions(initializer);
+			initializer = AnalyzeVariableInitializer(initializer_node,
+				declaration_scope, parsed.type, local);
 			if (program_->types.Get(parsed.type).kind == TYPE_ARRAY &&
 				program_->types.Get(parsed.type).bound == 0)
 			{
@@ -2458,7 +2384,11 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 		function.friend_of : program_->bindings[binding].member_owner;
 	current_function_context_ = program_->bindings[binding].canonical;
 	const NodeId body = FindChild(node, "compound-statement");
-	if (body != kNoNode) AnalyzeCompound(body, function_scope, output_node);
+	if (body != kNoNode)
+	{
+		AnalyzeCompound(body, function_scope, output_node);
+		FinalizeNamedReturnSlot(output_node);
+	}
 	current_return_type_ = previous_return;
 	current_class_context_ = previous_class;
 	current_function_context_ = previous_function;
@@ -2554,29 +2484,7 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 	}
 	if (arena_->IsTag(node, "return-statement"))
 	{
-		const std::uint32_t statement = MakeDump(DUMP_RETURN_STATEMENT);
-		dump_.Add(output_parent, statement);
-		const NodeId expression = FirstSemanticChild(node);
-		if (expression == kNoNode)
-		{
-			if (!IsVoid(current_return_type_))
-				throw std::runtime_error("missing return value");
-		}
-		else
-		{
-			ExpressionInfo value = AnalyzeExpression(expression, scope,
-				IsVoid(current_return_type_) ? kNoType : current_return_type_);
-			if (IsVoid(current_return_type_) && !IsVoid(value.type))
-				throw std::runtime_error("void function returns a value");
-			if (!IsVoid(current_return_type_) &&
-				IsDirectTrivialClassValueType(current_return_type_) &&
-				dump_.nodes[value.node].kind != DUMP_CLASS_VALUE_TRANSFER &&
-				dump_.nodes[value.node].kind != DUMP_BRACED_INIT_LIST)
-				value = BuildDirectClassValueTransfer(value,
-					current_return_type_);
-			dump_.Add(statement, value.node);
-		}
-		AppendScopeDestructionActions(scope, statement);
+		AnalyzeReturnStatement(node, scope, output_parent);
 		return;
 	}
 	if (arena_->IsTag(node, "expression-statement"))

@@ -84,8 +84,8 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 			if (rank == CONVERSION_INVALID) viable[c] = false;
 		}
 	}
-	const auto better = [this, &ranks, arity](std::size_t left,
-		std::size_t right) -> bool
+	const auto better = [this, &ranks, &arguments, &candidates, arity](
+		std::size_t left, std::size_t right) -> bool
 	{
 		++overload_order_comparisons_;
 		bool no_worse = true;
@@ -97,7 +97,26 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 			if (ranks[left * arity + a] < ranks[right * arity + a])
 				strictly_better = true;
 		}
-		return no_worse && strictly_better;
+		if (!no_worse) return false;
+		if (strictly_better) return true;
+		const TypeRecord& left_type =
+			program_->types.Get(GetFunction(candidates[left]).type);
+		const TypeRecord& right_type =
+			program_->types.Get(GetFunction(candidates[right]).type);
+		const TypeId* left_parameters =
+			program_->types.Parameters(GetFunction(candidates[left]).type);
+		const TypeId* right_parameters =
+			program_->types.Parameters(GetFunction(candidates[right]).type);
+		for (std::size_t a = 0; a < arity; ++a)
+		{
+			if (a >= left_type.parameter_count ||
+				a >= right_type.parameter_count)
+				continue;
+			const int preference = CompareReferenceBindings(
+				arguments[a], left_parameters[a], right_parameters[a]);
+			if (preference != 0) return preference > 0;
+		}
+		return false;
 	};
 	std::size_t champion = candidates.size();
 	std::size_t viable_count = 0;
@@ -114,7 +133,7 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 				throw std::runtime_error("ambiguous constructor");
 	const BindingId selected = candidates[champion];
 	const FunctionInfo& constructor = GetFunction(selected);
-	if (constructor.deleted_constructor)
+	if (constructor.deleted_constructor || constructor.deleted_special_member)
 		throw std::runtime_error("selected constructor is deleted");
 	if (copy_initialization && constructor.explicit_constructor)
 		throw std::runtime_error(
@@ -222,6 +241,10 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 	const std::uint32_t action = MakeDump(DUMP_CONSTRUCTOR_ACTION,
 		AdaptMemberFunctionType(selected), VALUE_NONE,
 		constructor.display_name, selected);
+	dump_.nodes[action].operand_type =
+		program_->types.RemoveTopCv(EffectiveType(type));
+	dump_.nodes[action].trivial_special_member_action =
+		constructor.trivial_special_member;
 	std::vector<BindingId> empty_base_entries;
 	if (((constructor.defaulted_constructor &&
 		  program_->entities[entity].empty_class) ||
@@ -260,11 +283,153 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 		dump_.Add(action, argument.node);
 	}
 	if (!dump_.nodes[action].elide_empty_constructor &&
+		!dump_.nodes[action].trivial_special_member_action &&
 		!(constructor.implicit_constructor &&
 		program_->entities[entity].trivial_default_constructor))
 		DemandFunction(selected);
 	++expression_count_;
 	return action;
+}
+
+void SemanticAnalyzer::ValidateClassValueConstruction(TypeId type,
+	const ExpressionInfo& source, bool copy_initialization)
+{
+	const EntityId entity = EntityOf(type);
+	if (!IsClassEntity(*program_, entity))
+		throw std::logic_error("class-value construction has non-class type");
+	std::vector<NodeId> argument_syntax(1, kNoNode);
+	std::vector<ExpressionInfo> arguments(1, source);
+	(void)SelectConstructor(kNoScope, argument_syntax,
+		arguments, ConstructorCandidates(entity), copy_initialization, false);
+}
+
+std::uint32_t SemanticAnalyzer::BuildClassValueConstructorAction(TypeId type,
+	const ExpressionInfo& source, bool copy_initialization, bool demand)
+{
+	const EntityId entity = EntityOf(type);
+	if (!IsClassEntity(*program_, entity))
+		throw std::logic_error("class-value construction has non-class type");
+	std::vector<NodeId> argument_syntax(1, kNoNode);
+	std::vector<ExpressionInfo> arguments(1, source);
+	const BindingId selected = SelectConstructor(kNoScope, argument_syntax,
+		arguments, ConstructorCandidates(entity), copy_initialization, false);
+	const FunctionInfo constructor = GetFunction(selected);
+	const TypeRecord function_type = program_->types.Get(constructor.type);
+	const TypeId* parameter_data = program_->types.Parameters(constructor.type);
+	if (function_type.parameter_count == 0)
+		throw std::logic_error("class-value constructor has no source parameter");
+	const std::vector<TypeId> parameters(parameter_data,
+		parameter_data + function_type.parameter_count);
+	const std::uint32_t action = MakeDump(DUMP_CONSTRUCTOR_ACTION,
+		AdaptMemberFunctionType(selected), VALUE_NONE,
+		constructor.display_name, selected);
+	dump_.nodes[action].operand_type =
+		program_->types.RemoveTopCv(EffectiveType(type));
+	dump_.nodes[action].trivial_special_member_action =
+		constructor.trivial_special_member;
+	dump_.Add(action, ApplyCallArgument(
+		source, parameters[0]).node);
+	for (std::size_t a = 1; a < function_type.parameter_count; ++a)
+	{
+		if (a >= constructor.parameters.size() ||
+			constructor.parameters[a].default_argument == kNoNode)
+			throw std::logic_error(
+				"selected class-value constructor lacks a default argument");
+		const ExpressionInfo argument = AnalyzeExpression(
+			constructor.parameters[a].default_argument,
+			constructor.parameters[a].default_scope, parameters[a]);
+		dump_.Add(action, argument.node);
+	}
+	if (demand && !dump_.nodes[action].trivial_special_member_action)
+		DemandFunction(selected);
+	++expression_count_;
+	return action;
+}
+
+void SemanticAnalyzer::FinalizeNamedReturnSlot(std::uint32_t function)
+{
+	const TypeId result = program_->types.Get(dump_.nodes[function].type).child;
+	const EntityId entity = EntityOf(result);
+	if (!IsClassEntity(*program_, entity)) return;
+	const EntityRecord& class_record = program_->entities[entity];
+	const std::size_t size = program_->SizeOf(result);
+	const bool indirect = size > 16 ||
+		(size < 16 && class_record.indirect_class_value_abi);
+
+	std::vector<std::uint32_t> pending(1, function);
+	std::vector<std::uint32_t> return_edges;
+	std::vector<std::uint32_t> sources;
+	std::vector<BindingId> deferred_constructors;
+	BindingId candidate = kNoBinding;
+	bool eligible = true;
+	while (!pending.empty())
+	{
+		const std::uint32_t node = pending.back();
+		pending.pop_back();
+		const DumpNode& record = dump_.nodes[node];
+		if (record.kind == DUMP_RETURN_STATEMENT)
+		{
+			const std::uint32_t edge = record.first_edge;
+			if (edge == kNoDumpEdge) { eligible = false; continue; }
+			const std::uint32_t action_node = dump_.edges[edge].child;
+			const DumpNode& action = dump_.nodes[action_node];
+			if (action.kind != DUMP_CONSTRUCTOR_ACTION)
+			{
+				eligible = false;
+				continue;
+			}
+			if (!action.trivial_special_member_action)
+				deferred_constructors.push_back(action.binding);
+			if (action.first_edge == kNoDumpEdge)
+			{
+				eligible = false;
+				continue;
+			}
+			const std::uint32_t source = dump_.edges[action.first_edge].child;
+			const DumpNode& source_record = dump_.nodes[source];
+			const BindingId binding = source_record.binding;
+			if (source_record.kind != DUMP_ID_EXPRESSION ||
+				binding == kNoBinding || binding >= program_->bindings.size())
+			{
+				eligible = false;
+				continue;
+			}
+			const BindingRecord& declaration = program_->bindings[binding];
+			if (declaration.kind != BIND_VARIABLE ||
+				declaration.storage_class != STORAGE_CLASS_NONE ||
+				program_->KindOfScope(declaration.owner) != SCOPE_BLOCK ||
+				(candidate != kNoBinding && candidate != binding))
+			{
+				eligible = false;
+				continue;
+			}
+			candidate = binding;
+			return_edges.push_back(edge);
+			sources.push_back(source);
+			continue;
+		}
+		for (std::uint32_t edge = record.first_edge; edge != kNoDumpEdge;
+			edge = dump_.edges[edge].next)
+			pending.push_back(dump_.edges[edge].child);
+	}
+	if (!indirect || !eligible || candidate == kNoBinding ||
+		return_edges.empty() ||
+		candidate >= variable_node_by_binding_.size() ||
+		variable_node_by_binding_[candidate] == kNoDumpEdge)
+	{
+		for (std::size_t i = 0; i < deferred_constructors.size(); ++i)
+			DemandFunction(deferred_constructors[i]);
+		return;
+	}
+	DumpNode& variable = dump_.nodes[variable_node_by_binding_[candidate]];
+	variable.direct_return_slot = true;
+	for (std::size_t i = 0; i < deferred_constructors.size(); ++i)
+		DemandSynthesizedConstructorDependencies(deferred_constructors[i]);
+	for (std::size_t i = 0; i < return_edges.size(); ++i)
+	{
+		dump_.edges[return_edges[i]].child = sources[i];
+		dump_.nodes[sources[i]].direct_return_slot = true;
+	}
 }
 
 std::uint32_t SemanticAnalyzer::BuildDefaultConstructorAction(TypeId type,
@@ -310,7 +475,8 @@ ExpressionInfo SemanticAnalyzer::BuildDirectClassValueTransfer(
 	const ExpressionInfo& source, TypeId target)
 {
 	if (!graph_consumer_) return source;
-	if (!IsDirectTrivialClassValueType(target) ||
+	if ((!IsDirectTrivialClassValueType(target) &&
+		 dump_.nodes[source.node].kind != DUMP_CALL_EXPRESSION) ||
 		program_->types.RemoveTopCv(EffectiveType(source.type)) !=
 			program_->types.RemoveTopCv(EffectiveType(target)))
 		throw std::logic_error("invalid direct class-value transfer");
@@ -323,6 +489,174 @@ ExpressionInfo SemanticAnalyzer::BuildDirectClassValueTransfer(
 	result.category = VALUE_PRVALUE;
 	++expression_count_;
 	return result;
+}
+
+void SemanticAnalyzer::AnalyzeReturnStatement(NodeId node, ScopeId scope,
+	std::uint32_t output_parent)
+{
+	const std::uint32_t statement = MakeDump(DUMP_RETURN_STATEMENT);
+	dump_.Add(output_parent, statement);
+	const NodeId expression = FirstSemanticChild(node);
+	if (expression == kNoNode)
+	{
+		if (!IsVoid(current_return_type_))
+			throw std::runtime_error("missing return value");
+	}
+	else
+	{
+		ExpressionInfo value = AnalyzeExpression(expression, scope,
+			IsVoid(current_return_type_) ? kNoType : current_return_type_);
+		if (IsVoid(current_return_type_) && !IsVoid(value.type))
+			throw std::runtime_error("void function returns a value");
+		const TypeId returned_object = program_->types.RemoveTopCv(
+			EffectiveType(current_return_type_));
+		const TypeRecord& returned_record = program_->types.Get(returned_object);
+		const TypeRecord& returned_top = program_->types.Get(current_return_type_);
+		const bool class_return = !IsVoid(current_return_type_) &&
+			returned_top.kind != TYPE_LVALUE_REFERENCE &&
+			returned_top.kind != TYPE_RVALUE_REFERENCE &&
+			returned_record.kind == TYPE_NAMED &&
+			(program_->entities[returned_record.entity].flavor == NAMED_STRUCT ||
+			 program_->entities[returned_record.entity].flavor == NAMED_CLASS ||
+			 program_->entities[returned_record.entity].flavor == NAMED_UNION);
+		if (class_return &&
+			program_->types.RemoveTopCv(EffectiveType(value.type)) ==
+				returned_object &&
+			dump_.nodes[value.node].kind != DUMP_CONSTRUCTOR_ACTION &&
+			dump_.nodes[value.node].kind != DUMP_BRACED_INIT_LIST)
+		{
+			if (value.category == VALUE_PRVALUE &&
+				dump_.nodes[value.node].kind == DUMP_CALL_EXPRESSION)
+			{
+				ValidateClassValueConstruction(current_return_type_, value);
+				value = BuildDirectClassValueTransfer(
+					value, current_return_type_);
+			}
+			else
+			{
+				ExpressionInfo source = value;
+				if (source.category == VALUE_LVALUE &&
+					source.binding != kNoBinding)
+				{
+					const BindingRecord& declaration =
+						program_->bindings[source.binding];
+					if ((declaration.kind == BIND_VARIABLE ||
+						 declaration.kind == BIND_PARAMETER) &&
+						program_->KindOfScope(declaration.owner) != SCOPE_NAMESPACE)
+						source.category = VALUE_XVALUE;
+				}
+				value.node = BuildClassValueConstructorAction(
+					current_return_type_, source, true, false);
+			}
+			value.type = returned_object;
+			value.category = VALUE_PRVALUE;
+		}
+		dump_.Add(statement, value.node);
+	}
+	AppendScopeDestructionActions(scope, statement);
+}
+
+ExpressionInfo SemanticAnalyzer::AnalyzeVariableInitializer(
+	NodeId initializer_node, ScopeId scope, TypeId type, bool local)
+{
+	NodeId expression = FirstSemanticChild(initializer_node);
+	const EntityId class_entity = EntityOf(type);
+	const TypeKind declared_kind = program_->types.Get(type).kind;
+	ExpressionInfo initializer;
+	if (declared_kind != TYPE_LVALUE_REFERENCE &&
+		declared_kind != TYPE_RVALUE_REFERENCE &&
+		IsClassEntity(*program_, class_entity))
+	{
+		std::vector<NodeId> arguments;
+		if (expression != kNoNode &&
+			arena_->IsTag(expression, "paren-initializer"))
+		{
+			for (std::uint32_t argument = arena_->FirstEdge(expression);
+				argument != kNoEdge; argument = arena_->NextEdge(argument))
+				arguments.push_back(arena_->EdgeChild(argument));
+			initializer.node = BuildConstructorAction(
+				type, scope, arguments, false, false);
+		}
+		else if (expression != kNoNode &&
+			arena_->IsTag(expression, "braced-init-list") &&
+			!program_->entities[class_entity].is_aggregate)
+		{
+			for (std::uint32_t argument = arena_->FirstEdge(expression);
+				argument != kNoEdge; argument = arena_->NextEdge(argument))
+				arguments.push_back(arena_->EdgeChild(argument));
+			initializer.node = BuildConstructorAction(type, scope, arguments,
+				PayloadSource(initializer_node) == "copy", true);
+		}
+		else if (expression != kNoNode &&
+			arena_->IsTag(expression, "call-expression") &&
+			!program_->entities[class_entity].is_aggregate)
+		{
+			const NodeId callee = FirstSemanticChild(expression);
+			const std::string expected = program_->names.Get(
+				program_->entities[class_entity].identity_name);
+			if (callee == kNoNode || !arena_->IsTag(callee, "id-expression") ||
+				arena_->Payload(callee) != expected)
+			{
+				initializer = AnalyzeExpression(expression, scope);
+				if (program_->types.RemoveTopCv(EffectiveType(initializer.type)) !=
+					program_->types.RemoveTopCv(type))
+					throw std::runtime_error("invalid class copy initializer");
+				if (initializer.category == VALUE_PRVALUE &&
+					dump_.nodes[initializer.node].kind == DUMP_CALL_EXPRESSION)
+				{
+					ValidateClassValueConstruction(type, initializer);
+					initializer = BuildDirectClassValueTransfer(initializer, type);
+				}
+				else initializer.node =
+					BuildClassValueConstructorAction(type, initializer);
+			}
+			else
+			{
+				const NodeId argument_list = FindChild(expression, "argument-list");
+				if (argument_list != kNoNode)
+					for (std::uint32_t argument = arena_->FirstEdge(argument_list);
+						argument != kNoEdge; argument = arena_->NextEdge(argument))
+						arguments.push_back(arena_->EdgeChild(argument));
+				initializer.node = BuildConstructorAction(
+					type, scope, arguments, false, false);
+			}
+		}
+		else if (expression != kNoNode &&
+			!program_->entities[class_entity].is_aggregate)
+		{
+			arguments.push_back(expression);
+			initializer.node = BuildConstructorAction(
+				type, scope, arguments, true, false);
+		}
+		else
+		{
+			initializer = AnalyzeExpression(expression, scope, type);
+			if (program_->types.RemoveTopCv(EffectiveType(initializer.type)) ==
+				program_->types.RemoveTopCv(type) &&
+				dump_.nodes[initializer.node].kind != DUMP_BRACED_INIT_LIST)
+			{
+				if (initializer.category == VALUE_PRVALUE &&
+					dump_.nodes[initializer.node].kind == DUMP_CALL_EXPRESSION)
+				{
+					ValidateClassValueConstruction(type, initializer);
+					initializer = BuildDirectClassValueTransfer(initializer, type);
+				}
+				else initializer.node =
+					BuildClassValueConstructorAction(type, initializer);
+			}
+			else initializer = ApplyTarget(initializer, type);
+		}
+		initializer.type = type;
+		initializer.category = VALUE_NONE;
+	}
+	else
+	{
+		if (expression != kNoNode &&
+			arena_->IsTag(expression, "paren-initializer"))
+			expression = FirstSemanticChild(expression);
+		initializer = AnalyzeExpression(expression, scope, type);
+	}
+	return local ? BuildLocalAggregateArrayActions(initializer) : initializer;
 }
 
 void SemanticAnalyzer::AddMemberInitializationAction(BindingId member_id,

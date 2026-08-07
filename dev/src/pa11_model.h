@@ -281,7 +281,8 @@ struct EntityRecord
 		has_user_provided_constructor, default_constructible,
 		trivial_default_constructor, has_user_declared_destructor,
 		destructible, trivial_destructor,
-		has_direct_base, is_aggregate, empty_class;
+		has_direct_base, is_aggregate, empty_class,
+		indirect_class_value_abi;
 
 	EntityRecord();
 };

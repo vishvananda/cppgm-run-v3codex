@@ -341,15 +341,27 @@ ExpressionInfo SemanticAnalyzer::ApplyCallArgument(
 		return BuildConvertingArgument(value, target, resolved);
 	}
 	const TypeRecord target_top = program_->types.Get(target);
+	const TypeId target_object = program_->types.RemoveTopCv(target);
+	const TypeRecord& target_record = program_->types.Get(target_object);
 	const bool class_value = target_top.kind != TYPE_LVALUE_REFERENCE &&
 		target_top.kind != TYPE_RVALUE_REFERENCE &&
-		IsDirectTrivialClassValueType(target) &&
-		program_->types.RemoveTopCv(EffectiveType(value.type)) ==
-			program_->types.RemoveTopCv(target);
+		target_record.kind == TYPE_NAMED &&
+		(program_->entities[target_record.entity].flavor == NAMED_STRUCT ||
+		 program_->entities[target_record.entity].flavor == NAMED_CLASS ||
+		 program_->entities[target_record.entity].flavor == NAMED_UNION) &&
+		program_->types.RemoveTopCv(EffectiveType(value.type)) == target_object;
 	value = ApplyTarget(value, target, resolved.rank);
 	if (class_value)
 	{
-		value = BuildDirectClassValueTransfer(value, target);
+		if (value.category == VALUE_PRVALUE &&
+			dump_.nodes[value.node].kind == DUMP_CALL_EXPRESSION)
+		{
+			ValidateClassValueConstruction(target, value);
+			value = BuildDirectClassValueTransfer(value, target);
+		}
+		else value.node = BuildClassValueConstructorAction(target, value);
+		value.type = target_object;
+		value.category = VALUE_PRVALUE;
 		dump_.nodes[value.node].class_argument_staging = true;
 		return value;
 	}
