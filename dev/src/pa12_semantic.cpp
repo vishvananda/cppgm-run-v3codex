@@ -1244,6 +1244,7 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	const BindingId emission_binding = program_->bindings[selected].canonical;
 	const std::uint32_t call = MakeDump(DUMP_CALL_EXPRESSION,
 		result_type, category, 0, emission_binding);
+	dump_.nodes[call].user_conversion_call = function.conversion_function;
 	const std::uint32_t callee = MakeDump(DUMP_CALLEE, callable_type,
 		VALUE_NONE, function.display_name, emission_binding);
 	dump_.Add(call, callee);
@@ -1539,6 +1540,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 	ExpressionInfo overloaded;
 	if (TryAnalyzeOverloadedOperator(operation, scope, overloaded_syntax,
 		overloaded_operands, false, target, &overloaded)) return overloaded;
+	(void)ApplyBuiltinUnaryConversion(operation, &operand);
 	if (operation == "&" && operand.binding != kNoBinding &&
 		program_->bindings[operand.binding].bit_field)
 		throw std::runtime_error("address-of bit-field unsupported");
@@ -1633,9 +1635,14 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBinary(NodeId node, ScopeId scope)
 	std::vector<ExpressionInfo> overloaded_operands;
 	overloaded_operands.push_back(left);
 	overloaded_operands.push_back(right);
+	std::vector<ConversionRank> builtin_ranks;
+	const bool builtin_viable = ApplyBuiltinBinaryConversions(operation,
+		&left, &right, &builtin_ranks, false);
 	ExpressionInfo overloaded;
 	if (TryAnalyzeOverloadedOperator(operation, scope, overloaded_syntax,
-		overloaded_operands, false, kNoType, &overloaded)) return overloaded;
+		overloaded_operands, false, kNoType, &overloaded,
+		builtin_viable ? &builtin_ranks : 0)) return overloaded;
+	(void)ApplyBuiltinBinaryConversions(operation, &left, &right);
 	TypeId result_type = kNoType;
 	TypeId operand_type = kNoType;
 	ValueCategory result_category = VALUE_PRVALUE;
@@ -1763,6 +1770,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 	if (TryAnalyzeOverloadedOperator(operation, scope, overloaded_syntax,
 		overloaded_operands, operation == "=", kNoType, &overloaded))
 		return overloaded;
+	(void)ApplyBuiltinAssignmentConversion(operation, left, &right);
 	if (operation == "=") right = ApplyTarget(right, EffectiveType(left.type));
 	if (!IsModifiableLvalue(left))
 		throw std::runtime_error("assignment requires modifiable lvalue");
@@ -1818,6 +1826,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSubscript(NodeId node, ScopeId scope)
 	ExpressionInfo overloaded;
 	if (TryAnalyzeOverloadedOperator("[]", scope, overloaded_syntax,
 		overloaded_operands, true, kNoType, &overloaded)) return overloaded;
+	(void)ApplyBuiltinBinaryConversions("[]", &left, &right);
 	if (!IsPointer(Decay(left.type)) && IsPointer(Decay(right.type)))
 		std::swap(left, right);
 	const TypeId pointer_type = Decay(left.type);

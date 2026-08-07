@@ -1196,6 +1196,7 @@ private:
 
 	Operand LowerCondition(std::uint32_t node)
 	{
+		if (arena_.nodes[node].boolean_conversion) return LowerBooleanConversion(node, LowU8());
 		Operand value = LowerValue(node);
 		if (IsBooleanType(arena_.nodes[node].type) || !IsFloating(value.type))
 			return value;
@@ -1377,7 +1378,10 @@ private:
 		if ((op == "+" || op == "-") && left_pointer && !right_pointer)
 			return LowerPointerOffset(children[0], children[1], op == "-");
 		if (op == "+" && !left_pointer && right_pointer)
-			return LowerPointerOffset(children[1], children[0], false);
+		{
+			const Operand offset = LowerValue(children[0]), base = LowerArrayPointer(children[1]);
+			return ApplyPointerOffset(base, offset, PointeeType(arena_.nodes[children[1]].type), false);
+		}
 		if (op == "-" && left_pointer && right_pointer)
 			return LowerPointerDifference(children[0], children[1]);
 		if (record.operand_type == kNoType &&
@@ -1398,15 +1402,18 @@ private:
 			canonical_pointer_difference_compare ||
 			(comparison &&
 			 (arena_.nodes[children[0]].kind == DUMP_MEMBER_EXPRESSION ||
-			  arena_.nodes[children[1]].kind == DUMP_MEMBER_EXPRESSION));
+			  arena_.nodes[children[1]].kind == DUMP_MEMBER_EXPRESSION ||
+			  arena_.nodes[children[0]].user_conversion_call || arena_.nodes[children[1]].user_conversion_call));
 		if (comparison && operand_type.kind == LOW_PTR &&
 			left.kind == Operand::INTEGER && left.integer_value == 0)
 			left.type = operand_type;
-		else left = Convert(left, operand_type, canonicalize_immediates);
+		else left = Convert(left, operand_type, canonicalize_immediates && !(comparison &&
+			left.kind == Operand::INTEGER && IsInteger(left.type) && IsInteger(operand_type) && left.type.is_signed != operand_type.is_signed));
 		if (comparison && operand_type.kind == LOW_PTR &&
 			right.kind == Operand::INTEGER && right.integer_value == 0)
 			right.type = operand_type;
-		else right = Convert(right, operand_type, canonicalize_immediates);
+		else right = Convert(right, operand_type, canonicalize_immediates && !(comparison &&
+			right.kind == Operand::INTEGER && IsInteger(right.type) && IsInteger(operand_type) && right.type.is_signed != operand_type.is_signed));
 		const LowType result_type = LowerType(record.type);
 		const Operand result = Temp(result_type);
 		Instruction instruction(comparison ? Instruction::CMP : Instruction::BINARY);
@@ -1503,9 +1510,8 @@ private:
 	Operand LowerPointerOffset(std::uint32_t base_node,
 		std::uint32_t offset_node, bool subtract)
 	{
-		return ApplyPointerOffset(LowerArrayPointer(base_node),
-			LowerValue(offset_node), PointeeType(arena_.nodes[base_node].type),
-			subtract);
+		const Operand base = LowerArrayPointer(base_node), offset = LowerValue(offset_node);
+		return ApplyPointerOffset(base, offset, PointeeType(arena_.nodes[base_node].type), subtract);
 	}
 
 	Operand LowerPointerDifference(std::uint32_t left_node,

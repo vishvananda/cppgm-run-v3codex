@@ -258,6 +258,336 @@ void SemanticAnalyzer::AppendConversionFunctions(EntityId entity,
 	}
 }
 
+void SemanticAnalyzer::AppendBuiltinConversionTargets(
+	const ExpressionInfo& source, std::vector<TypeId>* targets) const
+{
+	std::vector<BindingId> functions;
+	AppendConversionFunctions(EntityOf(source.type), &functions);
+	for (std::size_t i = 0; i < functions.size(); ++i)
+	{
+		const FunctionInfo& function = GetFunction(functions[i]);
+		if (!function.conversion_function || function.explicit_conversion)
+			continue;
+		const TypeId target = Decay(function.conversion_target);
+		if (std::find(targets->begin(), targets->end(), target) == targets->end())
+			targets->push_back(target);
+	}
+}
+
+bool SemanticAnalyzer::BuiltinBinaryParameterTypes(
+	const std::string& operation, const ExpressionInfo& left,
+	TypeId left_type, const ExpressionInfo& right, TypeId right_type,
+	TypeId* left_target, TypeId* right_target)
+{
+	left_type = Decay(left_type);
+	right_type = Decay(right_type);
+	*left_target = left_type;
+	*right_target = right_type;
+	if (operation == "&&" || operation == "||")
+	{
+		if ((!IsArithmetic(left_type) && !IsPointer(left_type) &&
+			 !IsNullptr(left_type)) ||
+			(!IsArithmetic(right_type) && !IsPointer(right_type) &&
+			 !IsNullptr(right_type))) return false;
+		*left_target = *right_target =
+			program_->types.Fundamental(FUND_BOOL);
+		return true;
+	}
+	const bool comparison = operation == "==" || operation == "!=" ||
+		operation == "<" || operation == ">" || operation == "<=" ||
+		operation == ">=";
+	if (comparison)
+	{
+		const bool equality = operation == "==" || operation == "!=";
+		if (IsArithmetic(left_type) && IsArithmetic(right_type))
+		{
+			*left_target = *right_target =
+				CommonArithmeticType(left_type, right_type);
+			return true;
+		}
+		if (IsPointer(left_type) && IsPointer(right_type))
+		{
+			const ConversionRank right_to_left = Conversion(right_type,
+				VALUE_PRVALUE, false, left_type);
+			const ConversionRank left_to_right = Conversion(left_type,
+				VALUE_PRVALUE, false, right_type);
+			if (right_to_left != CONVERSION_INVALID &&
+				(left_to_right == CONVERSION_INVALID ||
+				 right_to_left <= left_to_right))
+				*left_target = *right_target = left_type;
+			else if (left_to_right != CONVERSION_INVALID)
+				*left_target = *right_target = right_type;
+			else return false;
+			return true;
+		}
+		if (IsPointer(left_type) && equality &&
+			(IsNullptr(right_type) || right.integer_literal_zero))
+		{
+			*right_target = left_type;
+			return true;
+		}
+		if (IsPointer(right_type) && equality &&
+			(IsNullptr(left_type) || left.integer_literal_zero))
+		{
+			*left_target = right_type;
+			return true;
+		}
+		return false;
+	}
+	if (operation == "+" || operation == "-" || operation == "[]")
+	{
+		if (IsPointer(left_type) && IsIntegral(right_type))
+		{
+			*right_target = IntegralPromotionType(right_type);
+			return true;
+		}
+		if ((operation == "+" || operation == "[]") &&
+			IsIntegral(left_type) && IsPointer(right_type))
+		{
+			*left_target = IntegralPromotionType(left_type);
+			return true;
+		}
+		if (operation == "-" && IsPointer(left_type) &&
+			IsPointer(right_type))
+		{
+			const ConversionRank right_to_left = Conversion(right_type,
+				VALUE_PRVALUE, false, left_type);
+			const ConversionRank left_to_right = Conversion(left_type,
+				VALUE_PRVALUE, false, right_type);
+			if (right_to_left != CONVERSION_INVALID)
+				*right_target = left_type;
+			else if (left_to_right != CONVERSION_INVALID)
+				*left_target = right_type;
+			else return false;
+			return true;
+		}
+		if (!IsArithmetic(left_type) || !IsArithmetic(right_type)) return false;
+		*left_target = *right_target =
+			CommonArithmeticType(left_type, right_type);
+		return true;
+	}
+	const bool integral_only = operation == "%" || operation == "<<" ||
+		operation == ">>" || operation == "&" || operation == "|" ||
+		operation == "^";
+	if (integral_only && (!IsIntegral(left_type) || !IsIntegral(right_type)))
+		return false;
+	if (!integral_only &&
+		(!IsArithmetic(left_type) || !IsArithmetic(right_type))) return false;
+	if (operation == "<<" || operation == ">>")
+	{
+		*left_target = IntegralPromotionType(left_type);
+		*right_target = IntegralPromotionType(right_type);
+	}
+	else *left_target = *right_target =
+		CommonArithmeticType(left_type, right_type);
+	return true;
+}
+
+bool SemanticAnalyzer::ApplyBuiltinUnaryConversion(
+	const std::string& operation, ExpressionInfo* operand)
+{
+	if (EntityOf(operand->type) == kNoEntity) return true;
+	if (operation == "!")
+	{
+		const TypeId boolean = program_->types.Fundamental(FUND_BOOL);
+		const CallConversionFact conversion =
+			ConvertingFunction(*operand, boolean, true);
+		if (conversion.rank == CONVERSION_INVALID) return false;
+		*operand = ApplyCallArgument(*operand, boolean, &conversion);
+		return true;
+	}
+	std::vector<TypeId> results;
+	AppendBuiltinConversionTargets(*operand, &results);
+	std::vector<TypeId> targets;
+	for (std::size_t i = 0; i < results.size(); ++i)
+	{
+		TypeId target = results[i];
+		const bool viable = operation == "*" ? IsPointer(target) :
+			operation == "~" ? IsIntegral(target) :
+			(operation == "+" || operation == "-") ?
+				(IsArithmetic(target) ||
+				 (operation == "+" && IsPointer(target))) : false;
+		if (!viable) continue;
+		if (IsIntegral(target)) target = IntegralPromotionType(target);
+		if (std::find(targets.begin(), targets.end(), target) == targets.end())
+			targets.push_back(target);
+	}
+	if (targets.size() != 1) return false;
+	const CallConversionFact conversion =
+		ConvertingFunction(*operand, targets[0], false);
+	if (conversion.rank == CONVERSION_INVALID) return false;
+	*operand = ApplyCallArgument(*operand, targets[0], &conversion);
+	return true;
+}
+
+bool SemanticAnalyzer::ApplyBuiltinBinaryConversions(
+	const std::string& operation, ExpressionInfo* left,
+	ExpressionInfo* right, std::vector<ConversionRank>* selected_ranks,
+	bool apply)
+{
+	const EntityId left_entity = EntityOf(left->type);
+	const EntityId right_entity = EntityOf(right->type);
+	const bool left_class = left_entity != kNoEntity &&
+		(program_->entities[left_entity].flavor == NAMED_STRUCT ||
+		 program_->entities[left_entity].flavor == NAMED_CLASS ||
+		 program_->entities[left_entity].flavor == NAMED_UNION);
+	const bool right_class = right_entity != kNoEntity &&
+		(program_->entities[right_entity].flavor == NAMED_STRUCT ||
+		 program_->entities[right_entity].flavor == NAMED_CLASS ||
+		 program_->entities[right_entity].flavor == NAMED_UNION);
+	if (!left_class && !right_class) return true;
+	if (operation == "&&" || operation == "||")
+	{
+		const TypeId boolean = program_->types.Fundamental(FUND_BOOL);
+		CallConversionFact left_conversion;
+		CallConversionFact right_conversion;
+		if (left_class)
+		{
+			left_conversion = ConvertingFunction(*left, boolean, true);
+			if (left_conversion.rank == CONVERSION_INVALID) return false;
+		}
+		else if (Conversion(*left, boolean) == CONVERSION_INVALID) return false;
+		if (right_class)
+		{
+			right_conversion = ConvertingFunction(*right, boolean, true);
+			if (right_conversion.rank == CONVERSION_INVALID) return false;
+		}
+		else if (Conversion(*right, boolean) == CONVERSION_INVALID) return false;
+		if (selected_ranks)
+		{
+			selected_ranks->clear();
+			selected_ranks->push_back(left_class ? left_conversion.rank :
+				Conversion(*left, boolean));
+			selected_ranks->push_back(right_class ? right_conversion.rank :
+				Conversion(*right, boolean));
+		}
+		if (apply && left_class)
+			*left = ApplyCallArgument(*left, boolean, &left_conversion);
+		if (apply && right_class)
+			*right = ApplyCallArgument(*right, boolean, &right_conversion);
+		return true;
+	}
+	std::vector<TypeId> left_results;
+	std::vector<TypeId> right_results;
+	if (left_class) AppendBuiltinConversionTargets(*left, &left_results);
+	else left_results.push_back(Decay(left->type));
+	if (right_class) AppendBuiltinConversionTargets(*right, &right_results);
+	else right_results.push_back(Decay(right->type));
+	std::vector<TypeId> left_targets;
+	std::vector<TypeId> right_targets;
+	std::vector<CallConversionFact> left_facts;
+	std::vector<CallConversionFact> right_facts;
+	std::vector<ConversionRank> left_ranks;
+	std::vector<ConversionRank> right_ranks;
+	for (std::size_t l = 0; l < left_results.size(); ++l)
+		for (std::size_t r = 0; r < right_results.size(); ++r)
+		{
+			TypeId left_target = kNoType;
+			TypeId right_target = kNoType;
+			if (!BuiltinBinaryParameterTypes(operation, *left, left_results[l],
+				*right, right_results[r], &left_target, &right_target)) continue;
+			bool duplicate = false;
+			for (std::size_t i = 0; i < left_targets.size(); ++i)
+				if (left_targets[i] == left_target &&
+					right_targets[i] == right_target) duplicate = true;
+			if (duplicate) continue;
+			const CallConversionFact left_fact = left_class ?
+				ConvertingFunction(*left, left_target, false) :
+				CallConversionFact();
+			const CallConversionFact right_fact = right_class ?
+				ConvertingFunction(*right, right_target, false) :
+				CallConversionFact();
+			const ConversionRank left_rank = left_class ? left_fact.rank :
+				Conversion(*left, left_target);
+			const ConversionRank right_rank = right_class ? right_fact.rank :
+				Conversion(*right, right_target);
+			if (left_rank == CONVERSION_INVALID ||
+				right_rank == CONVERSION_INVALID) continue;
+			left_targets.push_back(left_target);
+			right_targets.push_back(right_target);
+			left_facts.push_back(left_fact);
+			right_facts.push_back(right_fact);
+			left_ranks.push_back(left_rank);
+			right_ranks.push_back(right_rank);
+		}
+	if (left_targets.empty()) return false;
+	const auto better = [this, left, right, &left_facts, &right_facts,
+		&left_ranks, &right_ranks](std::size_t a, std::size_t b) -> bool
+	{
+		bool no_worse = true;
+		bool strict = false;
+		const ConversionRank aranks[2] = {left_ranks[a], right_ranks[a]};
+		const ConversionRank branks[2] = {left_ranks[b], right_ranks[b]};
+		const CallConversionFact afacts[2] = {left_facts[a], right_facts[a]};
+		const CallConversionFact bfacts[2] = {left_facts[b], right_facts[b]};
+		for (std::size_t i = 0; i < 2; ++i)
+		{
+			if (aranks[i] > branks[i]) no_worse = false;
+			else if (aranks[i] < branks[i]) strict = true;
+			else if (aranks[i] == CONVERSION_USER_DEFINED)
+			{
+				int preference =
+					CompareCallConversions(afacts[i], bfacts[i]);
+				if (preference == 0 &&
+					afacts[i].conversion_function != kNoBinding &&
+					bfacts[i].conversion_function != kNoBinding)
+				{
+					if (afacts[i].conversion_object_rank <
+						bfacts[i].conversion_object_rank) preference = 1;
+					else if (afacts[i].conversion_object_rank >
+						bfacts[i].conversion_object_rank) preference = -1;
+					else preference = CompareImplicitObjectBindings(
+						i == 0 ? left->category : right->category,
+						program_->types.Get(GetFunction(
+							afacts[i].conversion_function).type),
+						program_->types.Get(GetFunction(
+							bfacts[i].conversion_function).type));
+				}
+				if (preference < 0) no_worse = false;
+				else if (preference > 0) strict = true;
+			}
+		}
+		return no_worse && strict;
+	};
+	std::size_t selected = 0;
+	for (std::size_t i = 1; i < left_targets.size(); ++i)
+		if (better(i, selected)) selected = i;
+	for (std::size_t i = 0; i < left_targets.size(); ++i)
+		if (i != selected && !better(selected, i)) return false;
+	if (selected_ranks)
+	{
+		selected_ranks->clear();
+		selected_ranks->push_back(left_ranks[selected]);
+		selected_ranks->push_back(right_ranks[selected]);
+	}
+	if (apply && left_class)
+		*left = ApplyCallArgument(*left, left_targets[selected],
+			&left_facts[selected]);
+	if (apply && right_class)
+		*right = ApplyCallArgument(*right, right_targets[selected],
+			&right_facts[selected]);
+	return true;
+}
+
+bool SemanticAnalyzer::ApplyBuiltinAssignmentConversion(
+	const std::string& operation, const ExpressionInfo& left,
+	ExpressionInfo* right)
+{
+	if (EntityOf(right->type) == kNoEntity) return true;
+	if (operation == "=")
+	{
+		const TypeId target = EffectiveType(left.type);
+		const CallConversionFact conversion =
+			ConvertingFunction(*right, target, false);
+		if (conversion.rank == CONVERSION_INVALID) return false;
+		*right = ApplyCallArgument(*right, target, &conversion);
+		return true;
+	}
+	ExpressionInfo left_copy = left;
+	return ApplyBuiltinBinaryConversions(
+		operation.substr(0, operation.size() - 1), &left_copy, right);
+}
+
 CallConversionFact SemanticAnalyzer::ConvertingFunction(
 	const ExpressionInfo& source, TypeId target, bool allow_explicit)
 {
@@ -811,7 +1141,8 @@ bool SemanticAnalyzer::TryAnalyzeOverloadedOperator(
 	const std::string& operation, ScopeId scope,
 	const std::vector<NodeId>& operand_syntax,
 	const std::vector<ExpressionInfo>& operands, bool member_only,
-	TypeId target, ExpressionInfo* result)
+	TypeId target, ExpressionInfo* result,
+	const std::vector<ConversionRank>* competing_builtin_ranks)
 {
 	bool overloadable_operand = false;
 	for (std::size_t i = 0; i < operands.size(); ++i)
@@ -863,6 +1194,22 @@ bool SemanticAnalyzer::TryAnalyzeOverloadedOperator(
 		operands, candidates, object, &selected_member, &object_conversion,
 		&argument_conversions);
 	if (selected == kNoBinding) return false;
+	if (competing_builtin_ranks &&
+		competing_builtin_ranks->size() == operands.size())
+	{
+		bool no_worse = true;
+		bool strictly_better = false;
+		for (std::size_t i = 0; i < operands.size(); ++i)
+		{
+			const ConversionRank overloaded_rank = selected_member && i == 0 ?
+				object_conversion.rank :
+				argument_conversions[i - (selected_member ? 1 : 0)].rank;
+			const ConversionRank builtin_rank = (*competing_builtin_ranks)[i];
+			if (builtin_rank > overloaded_rank) no_worse = false;
+			if (builtin_rank < overloaded_rank) strictly_better = true;
+		}
+		if (no_worse && strictly_better) return false;
+	}
 	if (GetFunction(selected).deleted_special_member)
 		throw std::runtime_error("selected special member is deleted");
 	std::vector<NodeId> arguments_syntax;

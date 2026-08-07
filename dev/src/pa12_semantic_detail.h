@@ -183,6 +183,20 @@ private:
 		TypeId target, bool allow_explicit = false);
 	void AppendConversionFunctions(EntityId entity,
 		std::vector<BindingId>* candidates) const;
+	void AppendBuiltinConversionTargets(const ExpressionInfo& source,
+		std::vector<TypeId>* targets) const;
+	bool BuiltinBinaryParameterTypes(const std::string& operation,
+		const ExpressionInfo& left, TypeId left_type,
+		const ExpressionInfo& right, TypeId right_type,
+		TypeId* left_target, TypeId* right_target);
+	bool ApplyBuiltinUnaryConversion(const std::string& operation,
+		ExpressionInfo* operand);
+	bool ApplyBuiltinBinaryConversions(const std::string& operation,
+		ExpressionInfo* left, ExpressionInfo* right,
+		std::vector<ConversionRank>* selected_ranks = 0,
+		bool apply = true);
+	bool ApplyBuiltinAssignmentConversion(const std::string& operation,
+		const ExpressionInfo& left, ExpressionInfo* right);
 	ExpressionInfo ApplyCallArgument(ExpressionInfo value, TypeId target,
 		const CallConversionFact* conversion = 0);
 	ExpressionInfo ApplyExplicitConversion(ExpressionInfo value, TypeId target);
@@ -212,7 +226,8 @@ private:
 	bool TryAnalyzeOverloadedOperator(const std::string& operation,
 		ScopeId scope, const std::vector<NodeId>& operand_syntax,
 		const std::vector<ExpressionInfo>& operands, bool member_only,
-		TypeId target, ExpressionInfo* result);
+		TypeId target, ExpressionInfo* result,
+		const std::vector<ConversionRank>* competing_builtin_ranks = 0);
 	bool TryAnalyzeCallOperator(ScopeId scope, const ExpressionInfo& callee,
 		const std::vector<NodeId>& argument_syntax,
 		const std::vector<ExpressionInfo>* analyzed_arguments, TypeId target,

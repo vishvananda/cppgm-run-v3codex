@@ -318,11 +318,26 @@ protected:
 						IsFloating(store.type) ?
 						derived.FloatingOperand("0.0", store.type) :
 						Operand(0, store.type);
-				else store.first = derived.Convert(
-					derived.LowerValue(values[0]), store.type, false);
+				else
+				{
+					const Operand initial = derived.LowerValue(values[0]);
+					const bool fold_immediate =
+						initial.kind == Operand::INTEGER &&
+						IsInteger(initial.type) && IsInteger(store.type) &&
+						initial.type.is_signed == store.type.is_signed;
+					store.first = derived.Convert(
+						initial, store.type, fold_immediate);
+				}
 			}
-			else store.first = derived.Convert(
-				derived.LowerValue(value_node), store.type, false);
+			else
+			{
+				const Operand initial = derived.LowerValue(value_node);
+				const bool fold_immediate = initial.kind == Operand::INTEGER &&
+					IsInteger(initial.type) && IsInteger(store.type) &&
+					initial.type.is_signed == store.type.is_signed;
+				store.first = derived.Convert(
+					initial, store.type, fold_immediate);
+			}
 		}
 		if (derived.program_.bindings[action.binding].bit_field)
 		{

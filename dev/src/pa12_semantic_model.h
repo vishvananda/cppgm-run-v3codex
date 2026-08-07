@@ -101,6 +101,7 @@ struct DumpNode
 	bool constant;
 	bool integer_narrowing_conversion;
 	bool boolean_conversion;
+	bool user_conversion_call;
 	bool value_initialization;
 	bool elide_empty_constructor;
 	bool trivial_special_member_action;
@@ -117,7 +118,7 @@ struct DumpNode
 		  last_edge(kNoDumpEdge), base_projection_count(0),
 		  aggregate_helper(kNoDumpEdge),
 		  constant(false), integer_narrowing_conversion(false),
-		  boolean_conversion(false),
+		  boolean_conversion(false), user_conversion_call(false),
 		  value_initialization(false), elide_empty_constructor(false),
 		  trivial_special_member_action(false),
 		  argument_materialization(false), class_argument_staging(false),
