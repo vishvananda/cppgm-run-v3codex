@@ -867,6 +867,10 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 				program_->bindings[found.ordinary].member_owner == entity)
 			{
 				const BindingId member = found.ordinary;
+				if (program_->entities[entity].flavor == NAMED_UNION &&
+					!constructor_initializer_touched_.empty())
+					throw std::runtime_error(
+						"union constructor initializes multiple variants");
 				const std::uint32_t ordinal =
 					program_->bindings[member].member_ordinal;
 				if (ordinal >= members.size() || members[ordinal] != member)
@@ -901,15 +905,39 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 		constructor.inherited_constructor_source == kNoBinding)
 		AddBaseInitializationAction(entity, base_initializer,
 			function_scope, body);
-	for (std::size_t i = 0; i < members.size(); ++i)
+	if (program_->entities[entity].flavor == NAMED_UNION)
 	{
-		++constructor_member_action_visits_;
-		const BindingId member = members[i];
-		NodeId initializer = constructor_initializer_scratch_[i];
-		if (initializer == kNoNode &&
-			member < member_initializer_by_binding_.size())
-			initializer = member_initializer_by_binding_[member];
-		AddMemberInitializationAction(member, initializer, function_scope, body);
+		const BindingId active = constructor_initializer_touched_.empty() ?
+			program_->entities[entity].union_default_member :
+			constructor_initializer_touched_[0];
+		if (active != kNoBinding)
+		{
+			const std::uint32_t ordinal =
+				program_->bindings[active].member_ordinal;
+			if (ordinal >= members.size() || members[ordinal] != active)
+				throw std::logic_error("union active member has no canonical ordinal");
+			NodeId initializer = constructor_initializer_scratch_[ordinal];
+			if (initializer == kNoNode &&
+				active < member_initializer_by_binding_.size())
+				initializer = member_initializer_by_binding_[active];
+			AddMemberInitializationAction(
+				active, initializer, function_scope, body);
+			++constructor_member_action_visits_;
+		}
+	}
+	else
+	{
+		for (std::size_t i = 0; i < members.size(); ++i)
+		{
+			++constructor_member_action_visits_;
+			const BindingId member = members[i];
+			NodeId initializer = constructor_initializer_scratch_[i];
+			if (initializer == kNoNode &&
+				member < member_initializer_by_binding_.size())
+				initializer = member_initializer_by_binding_[member];
+			AddMemberInitializationAction(
+				member, initializer, function_scope, body);
+		}
 	}
 	for (std::size_t i = 0; i < constructor_initializer_touched_.size(); ++i)
 	{
@@ -1227,7 +1255,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAggregateInit(TypeId type,
 	const std::vector<BindingId>& members = entity_data_members_[entity];
 	const std::size_t member_count =
 		program_->entities[entity].flavor == NAMED_UNION ?
-			(*element_edge == kNoEdge || members.empty() ? 0 : 1) :
+			(members.empty() ? 0 : 1) :
 			members.size();
 	for (std::size_t i = 0; i < member_count; ++i)
 	{
@@ -2026,6 +2054,32 @@ std::uint32_t SemanticAnalyzer::MakeDestructorAction(TypeId type,
 	return action;
 }
 
+bool SemanticAnalyzer::IsEmptyUnionDestructor(BindingId destructor) const
+{
+	if (destructor == kNoBinding || destructor >= program_->bindings.size())
+		return false;
+	const BindingRecord& binding = program_->bindings[destructor];
+	if (binding.member_owner == kNoEntity ||
+		program_->entities[binding.member_owner].flavor != NAMED_UNION)
+		return false;
+	const FunctionInfo& info = GetFunction(destructor);
+	if (info.definition_body == kNoNode ||
+		FirstSemanticChild(info.definition_body) != kNoNode)
+		return false;
+	const EntityId entity = binding.member_owner;
+	if (entity >= entity_data_members_.size()) return true;
+	const std::vector<BindingId>& variants = entity_data_members_[entity];
+	for (std::size_t i = 0; i < variants.size(); ++i)
+	{
+		const EntityId variant =
+			DestructedEntity(program_->bindings[variants[i]].type);
+		if (variant != kNoEntity &&
+			!program_->entities[variant].trivial_destructor)
+			return false;
+	}
+	return true;
+}
+
 void SemanticAnalyzer::AddLifetimeObligation(ScopeId scope,
 	BindingId object, TypeId type)
 {
@@ -2038,7 +2092,8 @@ void SemanticAnalyzer::AddLifetimeObligation(ScopeId scope,
 		throw std::logic_error("class has no destructor identity");
 	if (!CanAccessMember(destructor, entity))
 		throw std::runtime_error("inaccessible destructor");
-	if (program_->entities[entity].trivial_destructor) return;
+	if (program_->entities[entity].trivial_destructor ||
+		IsEmptyUnionDestructor(destructor)) return;
 	if (scope_lifetimes_.size() <= scope)
 		scope_lifetimes_.resize(static_cast<std::size_t>(scope) + 1);
 	scope_lifetimes_[scope].push_back(

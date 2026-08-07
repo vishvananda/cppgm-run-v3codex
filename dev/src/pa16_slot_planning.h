@@ -62,8 +62,16 @@ protected:
 				if (record.kind == DUMP_PARAMETER)
 					++derived.parameter_slot_index_;
 			}
+			const TypeId temporary_type = record.kind == DUMP_TEMPORARY_OBJECT ?
+				derived.program_.types.RemoveTopCv(record.type) : kNoType;
+			const EntityId temporary_entity = temporary_type != kNoType &&
+				derived.program_.types.Get(temporary_type).kind == TYPE_NAMED ?
+				derived.program_.types.Get(temporary_type).entity : kNoEntity;
+			const bool union_argument = temporary_entity != kNoEntity &&
+				derived.program_.entities[temporary_entity].flavor == NAMED_UNION;
 			if (record.kind == DUMP_TEMPORARY_OBJECT &&
-				record.argument_materialization && variable_initializer &&
+				record.argument_materialization &&
+				(variable_initializer || union_argument) &&
 				derived.generated_slots_[current] == kNoLowId)
 				(void)derived.EnsureGeneratedSlot(current, "arg",
 					derived.LowerStorageType(record.type));

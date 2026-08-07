@@ -347,6 +347,7 @@ private:
 	BindingId EnsureImplicitDestructor(EntityId entity);
 	const std::vector<BindingId>& ConstructorCandidates(EntityId entity) const;
 	BindingId DestructorForType(TypeId type) const;
+	bool IsEmptyUnionDestructor(BindingId destructor) const;
 	EntityId DestructedEntity(TypeId type) const;
 	BindingId SelectConstructor(ScopeId scope,
 		const std::vector<NodeId>& argument_syntax,

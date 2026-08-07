@@ -893,10 +893,12 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 			const InjectedMemberInfo& injected = injected_members_[injected_fact];
 			const BindingRecord& storage =
 				program_->bindings[injected.storage];
+			const BindingRecord& member =
+				program_->bindings[injected.member];
 			const std::uint32_t storage_node = MakeDump(DUMP_ID_EXPRESSION,
 				storage.type, VALUE_LVALUE, storage.name, injected.storage);
 			const std::uint32_t member_node = MakeDump(DUMP_MEMBER_EXPRESSION,
-				binding.type, VALUE_LVALUE, injected.member);
+				binding.type, VALUE_LVALUE, member.name, injected.member);
 			dump_.Add(member_node, storage_node);
 			ExpressionInfo result;
 			result.node = member_node;
@@ -2156,16 +2158,20 @@ void SemanticAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 			for (std::size_t i = 0; i < members.size(); ++i)
 			{
 				const BindingRecord source = program_->bindings[members[i]];
+				if (program_->LookupDirect(scope, source.name,
+					LOOKUP_ORDINARY).ordinary != kNoBinding)
+					throw std::runtime_error(
+						"anonymous union member conflicts in block scope");
 				const BindingId injected = program_->AddBinding(scope, BIND_VARIABLE,
 					source.name, source.type, source.constant, source.value,
-					source.display_flavor, source.display_type_name, source.canonical);
+					source.display_flavor, source.display_type_name);
 				if (injected_fact_by_binding_.size() <= injected)
 					injected_fact_by_binding_.resize(
 						static_cast<std::size_t>(injected) + 1, kNoDumpEdge);
 				injected_fact_by_binding_[injected] =
 					static_cast<std::uint32_t>(injected_members_.size());
 				injected_members_.push_back(
-					InjectedMemberInfo(storage, source.name));
+					InjectedMemberInfo(storage, members[i]));
 			}
 		}
 		return;

@@ -273,7 +273,9 @@ void SemanticAnalyzer::EvaluateSynthesizedConstructor(EntityId entity,
 	*trivial = true;
 	*nonthrowing = true;
 	const EntityRecord& owner = program_->entities[entity];
-	const auto visit = [this, entity, kind, deleted, trivial, nonthrowing](
+	const bool union_object = owner.flavor == NAMED_UNION;
+	const auto visit = [this, entity, kind, deleted, trivial, nonthrowing,
+		union_object](
 		TypeId type)
 	{
 		++special_member_subobject_visits_;
@@ -295,7 +297,11 @@ void SemanticAnalyzer::EvaluateSynthesizedConstructor(EntityId entity,
 			function.deleted_special_member ||
 			!CanAccessMember(selected, subobject, entity))
 			*deleted = true;
-		if (!function.trivial_special_member) *trivial = false;
+		if (!function.trivial_special_member)
+		{
+			*trivial = false;
+			if (union_object) *deleted = true;
+		}
 		if (!program_->bindings[selected].nonthrowing) *nonthrowing = false;
 	};
 	if (owner.direct_base != kNoEntity)
@@ -315,7 +321,9 @@ void SemanticAnalyzer::EvaluateSynthesizedAssignment(EntityId entity,
 	*trivial = true;
 	*nonthrowing = true;
 	const EntityRecord& owner = program_->entities[entity];
-	const auto visit = [this, entity, kind, deleted, trivial, nonthrowing](
+	const bool union_object = owner.flavor == NAMED_UNION;
+	const auto visit = [this, entity, kind, deleted, trivial, nonthrowing,
+		union_object](
 		TypeId type)
 	{
 		++special_member_subobject_visits_;
@@ -339,7 +347,11 @@ void SemanticAnalyzer::EvaluateSynthesizedAssignment(EntityId entity,
 		if (function.deleted_special_member ||
 			!CanAccessMember(selected, subobject, entity))
 			*deleted = true;
-		if (!function.trivial_special_member) *trivial = false;
+		if (!function.trivial_special_member)
+		{
+			*trivial = false;
+			if (union_object) *deleted = true;
+		}
 		if (!program_->bindings[selected].nonthrowing) *nonthrowing = false;
 	};
 	if (owner.direct_base != kNoEntity)

@@ -277,7 +277,7 @@ struct EntityRecord
 	EntityId direct_base, enclosing_class;
 	NamedFlavor flavor;
 	TypeId type, underlying;
-	BindingId declaration;
+	BindingId declaration, union_default_member;
 	std::uint64_t object_size, object_alignment, natural_alignment,
 		requested_alignment, packing_alignment;
 	AccessKind base_access;

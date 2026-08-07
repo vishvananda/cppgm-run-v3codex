@@ -373,10 +373,9 @@ struct FunctionTemplatePattern
 
 struct InjectedMemberInfo
 {
-	BindingId storage;
-	NameId member;
-	InjectedMemberInfo() : storage(kNoBinding), member(0) {}
-	InjectedMemberInfo(BindingId storage_value, NameId member_value)
+	BindingId storage, member;
+	InjectedMemberInfo() : storage(kNoBinding), member(kNoBinding) {}
+	InjectedMemberInfo(BindingId storage_value, BindingId member_value)
 		: storage(storage_value), member(member_value) {}
 };
 

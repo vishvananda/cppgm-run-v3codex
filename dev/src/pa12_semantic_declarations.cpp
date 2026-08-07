@@ -5,6 +5,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace cppgm
@@ -229,6 +230,7 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 		current_class_context_ = entity;
 		AccessKind member_access = flavor == NAMED_CLASS ?
 			ACCESS_PRIVATE : ACCESS_PUBLIC;
+		std::vector<std::pair<BindingId, BindingId> > anonymous_alias_storage;
 		for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 			edge = arena_->NextEdge(edge))
 		{
@@ -264,12 +266,68 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 					program_->bindings[declaration].member_owner = entity;
 					program_->bindings[declaration].access = member_access;
 				}
+				if (arena_->Payload(member).empty() &&
+					program_->entities[nested].flavor == NAMED_UNION)
+				{
+					std::ostringstream generated;
+					generated << "__anonymous_union_storage__"
+						<< arena_->TokenFirst(member) << '_'
+						<< arena_->TokenLast(member);
+					const NameId storage_name =
+						program_->names.Intern(generated.str());
+					const BindingId storage = program_->AddBinding(member_scope,
+						BIND_VARIABLE, storage_name, nested_type);
+					BindingRecord& storage_record = program_->bindings[storage];
+					storage_record.member_owner = entity;
+					storage_record.access = member_access;
+					storage_record.non_static_data_member = true;
+					storage_record.member_ordinal = static_cast<std::uint32_t>(
+						entity_data_members_[entity].size());
+					entity_data_members_[entity].push_back(storage);
+					entity_layout_members_[entity].push_back(
+						ClassLayoutMember(storage, nested_type));
+					const std::vector<BindingId>& variants =
+						entity_data_members_[nested];
+					for (std::size_t i = 0; i < variants.size(); ++i)
+					{
+						const BindingRecord source =
+							program_->bindings[variants[i]];
+						if (program_->LookupDirect(member_scope, source.name,
+							LOOKUP_ORDINARY).ordinary != kNoBinding)
+							throw std::runtime_error(
+								"anonymous union member conflicts in class scope");
+						const BindingId alias = program_->AddBinding(member_scope,
+							BIND_VARIABLE, source.name, source.type,
+							source.constant, source.value, source.display_flavor,
+							source.display_type_name);
+						BindingRecord& alias_record = program_->bindings[alias];
+						alias_record.member_owner = entity;
+						alias_record.access = member_access;
+						alias_record.non_static_data_member = true;
+						alias_record.mutable_member = source.mutable_member;
+						alias_record.bit_field = source.bit_field;
+						alias_record.member_offset = source.member_offset;
+						alias_record.bit_offset = source.bit_offset;
+						alias_record.bit_width = source.bit_width;
+						alias_record.bit_storage_bits = source.bit_storage_bits;
+						anonymous_alias_storage.push_back(
+							std::make_pair(alias, storage));
+					}
+				}
 			}
 			else if (arena_->IsTag(member, "using-declaration") ||
 				arena_->IsTag(member, "alias-declaration"))
 				AnalyzeUsing(member, member_scope, root_, false, member_access);
 		}
 		CompleteClassLayout(entity);
+		for (std::size_t i = 0; i < anonymous_alias_storage.size(); ++i)
+		{
+			BindingRecord& alias =
+				program_->bindings[anonymous_alias_storage[i].first];
+			const BindingRecord& storage =
+				program_->bindings[anonymous_alias_storage[i].second];
+			alias.member_offset += storage.member_offset;
+		}
 		CompleteClassSpecialMembers(entity);
 		if (!program_->entities[entity].has_user_declared_constructor &&
 			program_->entities[entity].default_constructible)
@@ -454,6 +512,14 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 		const ClassLayoutMember& layout = layout_members[i];
 		BindingRecord* member = layout.binding == kNoBinding ? 0 :
 			&program_->bindings[layout.binding];
+		if (is_union && member && member->has_default_member_initializer)
+		{
+			if (owner.union_default_member != kNoBinding &&
+				owner.union_default_member != layout.binding)
+				throw std::runtime_error(
+					"union has multiple default member initializers");
+			owner.union_default_member = layout.binding;
+		}
 		if (member && (member->has_default_member_initializer ||
 			member->access != ACCESS_PUBLIC))
 			owner.is_aggregate = false;

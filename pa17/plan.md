@@ -13,31 +13,30 @@ synthesis, and O(emitted IR) lowering.
 
 ## Current Failure Map
 
-Current result: **145/231**, up from the **124/231** checkpoint baseline. The
+Current result: **151/231**, up from the **124/231** checkpoint baseline. The
 non-overlapping remaining-failure map is:
 
 | Failures | Shared behavior | Primary owner |
 | ---: | --- | --- |
 | 24 | temporary lifetime and cleanup across control flow | PA12 lifetime facts + PA16 lowering |
 | 1 | namespace class-array copy initialization | PA12 class-value initialization + static lowering |
-| 6 | union lookup, initialization, and active-member lifetime | PA12 declaration/object facts + PA16 lifetime lowering |
 | 21 | residual operators, conversions, lookup, and ref qualification | PA12 calls/operator resolution |
 | 32 | class-value construction, initialization, copy/move, and ABI shapes | PA12 initialization + PA15-PA17 lowering |
 | 2 | residual namespace/control interactions | PA12 lookup and statement analysis |
 
 ## Active Checkpoint
 
-**Active: union declaration and object actions.** Apply `spec.md` sections 2,
-3, 4, 6, 8, and 9 at class completion and the PA12 object-action boundary.
-Declaration completion owns anonymous-member injection, the selected/default
-active member, and union special-member facts; initialization retains the
-chosen member action or whole-storage copy, and PA16 lowering consumes those
-typed facts without lookup or name reconstruction. Completion is O(member
-count), lookup is O(1)-average by indexed identity, and lowering is O(retained
-actions + emitted IR). Validate the six union cases covering namespace/block
-anonymous members, default-member selection and rejection, inactive class
-members, explicit-initializer override, and special-member storage copy, then
-full PA17, through PA16, audit, and member-count scaling.
+**Active: temporary lifetime regions across control flow.** Apply `spec.md`
+sections 2, 6, 8, and 9 at the PA12 expression/statement boundary. PA12 owns
+stable temporary identity, lifetime-extension scope, destructor identity, and
+the full-expression or statement region that triggers cleanup; PA16 consumes
+those obligations on selected conditional, short-circuit, loop, return, and
+scope-exit edges without lookup or reconstructed names. Analysis is O(syntax +
+lifetime obligations), and lowering is O(CFG + emitted cleanup IR), including
+the copies inherently required on distinct exits. Validate the 24 lifetime
+failures across branch containment, reference extension, condition
+declarations, loop phases, and shadowed early returns, then full PA17, through
+PA16, audit, and nested-region/obligation scaling.
 
 ## Performance Evidence
 
@@ -66,6 +65,10 @@ full PA17, through PA16, audit, and member-count scaling.
   fixed loop-shaped LowIR: 16 blocks, 65 instructions, and 16,444 typed bytes.
   Five-run semantic medians were 0.118/0.117/0.119 ms and lowering medians were
   0.113/0.111/0.115 ms; compile work is independent of runtime element count.
+- Unions with 32/64/128 variants recorded 32/64/128 layout visits and
+  128/256/512 special-member subobject visits. Semantic medians were
+  0.165/0.229/0.374 ms, while whole-storage copy kept lowering fixed at 21
+  instructions and 6,197 typed bytes rather than emitting per-variant IR.
 
 ## Completed Checkpoints
 
@@ -79,3 +82,4 @@ full PA17, through PA16, audit, and member-count scaling.
 | Built-in operators after class conversion | 110/231 -> 124/231 | Unary/arithmetic/pointer/comparison/logical/subscript/compound focus 14/15; rank-based overloaded-vs-built-in choice; through PA16 1,436/1,436; proportional probes and audit pass |
 | Scalar allocation/deallocation typed actions | 124/231 -> 136/231 | Ordinary/class-specific/placement/nothrow/global new and destructor/usual/global delete focus 12/12; through PA16 1,436/1,436; proportional candidate probe and audit pass |
 | Dynamic array allocation/deallocation typed actions | 136/231 -> 145/231 | Scalar/class/multidimensional arrays and direct array allocation calls 9/9; scalar compatibility 15/15; through PA16 1,436/1,436; constant-size extent probe and audit pass |
+| Union declaration and object actions | 145/231 -> 151/231 | Anonymous injection, active/default variant validation, constructor precedence, empty inactive lifetime, and whole-storage copy 6/6; through PA16 1,436/1,436; linear member probe and audit pass |

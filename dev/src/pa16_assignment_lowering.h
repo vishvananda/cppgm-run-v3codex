@@ -328,7 +328,18 @@ public:
 		Operand value;
 		if (op == "=")
 		{
+			bool union_member = false;
+			const DumpNode& destination = derived.arena_.nodes[children[0]];
+			if (destination.kind == DUMP_MEMBER_EXPRESSION &&
+				destination.binding != kNoBinding)
+			{
+				const EntityId owner = derived.program_.bindings[
+					destination.binding].member_owner;
+				union_member = owner != kNoEntity &&
+					derived.program_.entities[owner].flavor == NAMED_UNION;
+			}
 			value = derived.LowerConvertedValue(children[1], type,
+				union_member ||
 				derived.CanonicalizeImmediateConversion(children[1]));
 			storage = derived.LowerStorage(children[0]);
 		}
