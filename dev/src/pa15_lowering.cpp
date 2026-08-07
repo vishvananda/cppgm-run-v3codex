@@ -1119,7 +1119,7 @@ private:
 	Operand Convert(Operand value, const LowType& target,
 		bool canonicalize_immediate = true)
 	{
-		if (SameType(value.type, target))
+		if (SameType(value.type, target) && (!IsInteger(value.type) || value.type.is_signed == target.is_signed))
 		{
 			value.type = target;
 			return value;
@@ -1306,8 +1306,8 @@ private:
 				result = LoadStorage(result,
 					LowerExpressionType(RemoveReference(record.type)));
 		}
-		else if (record.kind == DUMP_NEW_EXPRESSION)
-			result = LowerNewExpression(record, children);
+		else if (record.kind == DUMP_NEW_EXPRESSION) result = LowerNewExpression(record, children);
+		else if (record.kind == DUMP_DELETE_EXPRESSION) result = LowerDeleteExpression(record, children);
 		else if (record.kind == DUMP_SPECIAL_MEMBER_CONSTRUCTION_ACTION)
 			result = LowerSpecialMemberConstruction(node);
 		else if (record.kind == DUMP_CAST_EXPRESSION)
@@ -1546,15 +1546,16 @@ private:
 		const std::size_t element_size = program_.SizeOf(element_type);
 		if (element_size == 1 && !subtract)
 			return IndexAddress(LowI8(), base, offset, false);
-		const Operand scaled = Temp(LowI64());
-		Instruction multiply(Instruction::BINARY);
-		multiply.dest = scaled.id;
-		multiply.op = LOW_OP_MUL;
-		multiply.type = LowI64();
-		multiply.first = offset;
-		multiply.second = Operand(static_cast<std::int64_t>(
-			element_size), LowI64());
-		Emit(multiply);
+		const Operand scaled = element_size == 1 ? offset : Temp(LowI64());
+		if (element_size != 1) {
+			Instruction multiply(Instruction::BINARY);
+			multiply.dest = scaled.id;
+			multiply.op = LOW_OP_MUL;
+			multiply.type = LowI64();
+			multiply.first = offset;
+			multiply.second = Operand(static_cast<std::int64_t>(element_size), LowI64());
+			Emit(multiply);
+		}
 		Operand displacement = scaled;
 		if (subtract)
 		{
@@ -1569,7 +1570,6 @@ private:
 		}
 		return IndexAddress(LowI8(), base, displacement, false);
 	}
-
 
 	Operand LowerUnary(const DumpNode& record,
 		const NodeChildren& children)

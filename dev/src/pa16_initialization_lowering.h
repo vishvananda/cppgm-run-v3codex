@@ -149,24 +149,112 @@ protected:
 		return destination;
 	}
 
+	void LowerNewInitialization(const DumpNode& record,
+		std::uint32_t child, const Operand& result)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const DumpKind kind = derived.arena_.nodes[child].kind;
+		if (kind == DUMP_CONSTRUCTOR_ACTION)
+			derived.LowerConstructorAction(child, result);
+		else if (kind == DUMP_AGGREGATE_CONSTRUCTION_ACTION)
+			derived.LowerAggregateConstructionAction(child, result);
+		else derived.LowerRuntimeObjectValue(record.operand_type, child, result);
+	}
+
 	Operand LowerNewExpression(const DumpNode& record,
 		const NodeChildren& children)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (children.empty() || children.size() > 2)
-			throw std::runtime_error("invalid placement new action");
+			throw std::runtime_error("invalid scalar new action");
 		const Operand result = derived.LowerValue(children[0], LowPtr());
-		if (children.size() == 2)
+		if (children.size() != 2) return result;
+		if (!record.allocation_may_return_null)
 		{
-			const DumpKind kind = derived.arena_.nodes[children[1]].kind;
-			if (kind == DUMP_CONSTRUCTOR_ACTION)
-				derived.LowerConstructorAction(children[1], result);
-			else if (kind == DUMP_AGGREGATE_CONSTRUCTION_ACTION)
-				derived.LowerAggregateConstructionAction(children[1], result);
-			else derived.LowerRuntimeObjectValue(
-				record.operand_type, children[1], result);
+			LowerNewInitialization(record, children[1], result);
+			return result;
 		}
+		const BlockId initialize = derived.AddBlock(derived.NewLabel("new_init"));
+		const BlockId done = derived.AddBlock(derived.NewLabel("new_end"));
+		const Operand nonnull = derived.Temp(LowU8());
+		Instruction compare(Instruction::CMP);
+		compare.dest = nonnull.id;
+		compare.op = LOW_OP_NE;
+		compare.type = LowPtr();
+		compare.first = result;
+		compare.second = Operand(0, LowPtr());
+		derived.Emit(compare);
+		derived.EmitBranch(nonnull, initialize, done);
+		derived.SelectBlock(initialize);
+		LowerNewInitialization(record, children[1], result);
+		derived.EmitJump(done);
+		derived.SelectBlock(done);
 		return result;
+	}
+
+	void EmitSelectedDeallocation(const DumpNode& record,
+		const Operand& pointer)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const BindingId binding = record.binding;
+		if (binding == kNoBinding || binding >= derived.function_symbols_.size() ||
+			derived.function_symbols_[binding] == kNoLowId)
+			throw std::runtime_error("delete action has no deallocation symbol");
+		const TypeId function_type = derived.program_.bindings[binding].type;
+		const TypeRecord& function = derived.program_.types.Get(function_type);
+		const TypeId* parameters = derived.program_.types.Parameters(function_type);
+		Instruction call(Instruction::CALL);
+		call.type = LowVoid();
+		call.first = Operand(Operand::FUNCTION,
+			derived.function_symbols_[binding], LowPtr());
+		CallArguments arguments;
+		CallArgumentFlags references;
+		arguments.Push(pointer);
+		references.Push(0);
+		if (function.parameter_count == 2)
+		{
+			arguments.Push(Operand(static_cast<std::int64_t>(
+				derived.program_.SizeOf(record.operand_type)),
+				derived.LowerType(parameters[1])));
+			references.Push(0);
+		}
+		derived.output_.symbols[
+			derived.function_symbols_[binding]].referenced = true;
+		derived.AttachCallArguments(&call, arguments, references);
+		derived.Emit(call);
+	}
+
+	Operand LowerDeleteExpression(const DumpNode& record,
+		const NodeChildren& children)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (children.size() != 1)
+			throw std::runtime_error("invalid scalar delete action");
+		const Operand pointer = derived.LowerValue(children[0], LowPtr());
+		if (!derived.IsClassObjectType(record.operand_type))
+		{
+			EmitSelectedDeallocation(record, pointer);
+			return Operand(0, LowVoid());
+		}
+		const BlockId nonnull = derived.AddBlock(
+			derived.NewLabel("delete_nonnull"));
+		const BlockId done = derived.AddBlock(derived.NewLabel("delete_end"));
+		const Operand condition = derived.Temp(LowU8());
+		Instruction compare(Instruction::CMP);
+		compare.dest = condition.id;
+		compare.op = LOW_OP_NE;
+		compare.type = LowPtr();
+		compare.first = pointer;
+		compare.second = Operand(0, LowPtr());
+		derived.Emit(compare);
+		derived.EmitBranch(condition, nonnull, done);
+		derived.SelectBlock(nonnull);
+		if (record.selected_binding != kNoBinding)
+			derived.EmitDestructorCall(record.selected_binding, pointer);
+		EmitSelectedDeallocation(record, pointer);
+		derived.EmitJump(done);
+		derived.SelectBlock(done);
+		return Operand(0, LowVoid());
 	}
 
 	void LowerLocalClassArrayInitializer(const DumpNode& record,

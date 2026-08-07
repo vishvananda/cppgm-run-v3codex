@@ -272,6 +272,8 @@ private:
 		std::uint32_t aggregate_list);
 	ExpressionInfo AnalyzeNewExpression(NodeId node, ScopeId scope,
 		TypeId target);
+	ExpressionInfo AnalyzeDeleteExpression(NodeId node, ScopeId scope,
+		TypeId target);
 	ExpressionInfo MaterializeTemporary(const ExpressionInfo& initializer);
 	ExpressionInfo AnalyzeClassFunctionalCast(TypeId cast_type, ScopeId scope,
 		const std::vector<NodeId>& argument_syntax, NodeId arguments_node,

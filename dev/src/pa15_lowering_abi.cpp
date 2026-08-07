@@ -163,6 +163,11 @@ void ApplyBuiltinSymbolMetadata(pa15_lowir_detail::Symbol* symbol,
 		symbol->effects = Symbol::EFFECTS_READNONE; symbol->noreturn = true; break;
 	case BUILTIN_FUNCTION_MEMCPY:
 	case BUILTIN_FUNCTION_MEMMOVE: symbol->effects = Symbol::EFFECTS_READWRITE; break;
+	case BUILTIN_FUNCTION_OPERATOR_NEW:
+	case BUILTIN_FUNCTION_OPERATOR_DELETE:
+	case BUILTIN_FUNCTION_OPERATOR_NEW_ARRAY:
+	case BUILTIN_FUNCTION_OPERATOR_DELETE_ARRAY:
+		symbol->effects = Symbol::EFFECTS_READWRITE; break;
 	case BUILTIN_FUNCTION_NONE: break;
 	}
 }
@@ -208,7 +213,17 @@ std::string MangleFunction(const pa11::Program& program,
 	}
 	if (qualified == "main") return std::string();
 	if (binding.builtin_function != BUILTIN_FUNCTION_NONE)
+	{
+		if (binding.builtin_function == BUILTIN_FUNCTION_OPERATOR_NEW)
+			return "cppgm_builtin_operator_new";
+		if (binding.builtin_function == BUILTIN_FUNCTION_OPERATOR_DELETE)
+			return "cppgm_builtin_operator_delete";
+		if (binding.builtin_function == BUILTIN_FUNCTION_OPERATOR_NEW_ARRAY)
+			return "cppgm_builtin_operator_new_array";
+		if (binding.builtin_function == BUILTIN_FUNCTION_OPERATOR_DELETE_ARRAY)
+			return "cppgm_builtin_operator_delete_array";
 		return "cppgm_builtin_" + program.names.Get(binding.name).substr(10);
+	}
 	if (binding.language_linkage == LANGUAGE_LINKAGE_C &&
 		binding.storage_class != STORAGE_CLASS_STATIC)
 		return program.names.Get(binding.name);

@@ -788,7 +788,11 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		binding.member_owner = owner_entity;
 		binding.access = access;
 		binding.static_member_function =
-			spec.storage_class == STORAGE_CLASS_STATIC;
+			spec.storage_class == STORAGE_CLASS_STATIC ||
+			binding.operator_kind == OPERATOR_NEW ||
+			binding.operator_kind == OPERATOR_NEW_ARRAY ||
+			binding.operator_kind == OPERATOR_DELETE ||
+			binding.operator_kind == OPERATOR_DELETE_ARRAY;
 		if (!binding.static_member_function) info.member_owner = owner_type;
 		ValidateFunctionRefQualifier(function);
 		info.definition_body =
@@ -825,7 +829,11 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 			binding.member_owner = EntityOf(owner_type);
 			binding.access = access;
 			binding.static_member_function =
-				spec.storage_class == STORAGE_CLASS_STATIC;
+				spec.storage_class == STORAGE_CLASS_STATIC ||
+				binding.operator_kind == OPERATOR_NEW ||
+				binding.operator_kind == OPERATOR_NEW_ARRAY ||
+				binding.operator_kind == OPERATOR_DELETE ||
+				binding.operator_kind == OPERATOR_DELETE_ARRAY;
 			if (!binding.static_member_function)
 				GetMutableFunction(function).member_owner = owner_type;
 			ValidateFunctionRefQualifier(function);

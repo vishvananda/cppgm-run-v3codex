@@ -113,7 +113,9 @@ void SemanticAnalyzer::RenderLine(const DumpNode& node, std::size_t depth)
 			<< program_->RenderType(node.type) << ' '
 			<< program_->names.Get(node.text); break;
 	case DUMP_NEW_EXPRESSION: output_ << "new-expression " << category << ' '
-			<< program_->RenderType(node.type); break;
+		<< program_->RenderType(node.type); break;
+	case DUMP_DELETE_EXPRESSION: output_ << "delete-expression " << category
+		<< ' ' << program_->RenderType(node.type); break;
 	case DUMP_TEMPORARY_OBJECT: output_ << "temporary-object " << category << ' '
 			<< program_->RenderType(node.type); break;
 	case DUMP_AGGREGATE_CONSTRUCTION_ACTION:

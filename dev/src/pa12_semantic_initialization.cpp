@@ -1352,15 +1352,22 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
 	const NodeId type_node = FindChild(node, "type-id");
 	if (type_node == kNoNode)
 		throw std::runtime_error("new-expression has no allocated type");
-	const TypeId object_type = BuildTypeId(type_node, scope);
+	TypeId object_type = BuildTypeId(type_node, scope);
+	bool parsed_empty_initializer = false;
+	const TypeRecord parsed_object = program_->types.Get(
+		program_->types.RemoveTopCv(object_type));
+	if (parsed_object.kind == TYPE_FUNCTION &&
+		parsed_object.parameter_count == 0)
+	{
+		object_type = parsed_object.child;
+		parsed_empty_initializer = true;
+	}
 	if (program_->types.Get(program_->types.RemoveTopCv(object_type)).kind ==
 		TYPE_ARRAY)
 		throw std::runtime_error("array new is outside PA16");
 	const NodeId placement = FindChild(node, "placement");
-	if (placement == kNoNode)
-		throw std::runtime_error("ordinary new is outside PA16");
-	const NodeId placement_arguments = FindChild(placement,
-		"paren-argument-list");
+	const NodeId placement_arguments = placement == kNoNode ? kNoNode :
+		FindChild(placement, "paren-argument-list");
 	std::vector<NodeId> argument_syntax;
 	std::vector<ExpressionInfo> arguments;
 	ExpressionInfo size = MakeLiteral(program_->types.Fundamental(FUND_INT),
@@ -1379,21 +1386,38 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
 			argument_syntax.push_back(argument);
 			arguments.push_back(AnalyzeExpression(argument, scope));
 		}
-	std::vector<BindingId> candidates = FunctionCandidates(scope,
-		"operatornew");
+	const EntityId entity = EntityOf(object_type);
+	const bool explicit_global = FindChild(node, "global-scope") != kNoNode;
+	std::vector<BindingId> candidates;
+	EntityId naming_class = kNoEntity;
+	if (!explicit_global && IsClassEntity(*program_, entity))
+	{
+		const LookupResult member = program_->LookupMember(entity,
+			program_->names.Intern("operatornew"), LOOKUP_ORDINARY);
+		if (member.ordinary != kNoBinding &&
+			program_->bindings[member.ordinary].kind == BIND_FUNCTION)
+		{
+			candidates = FunctionSet(member.ordinary);
+			naming_class = member.naming_class;
+		}
+	}
 	if (candidates.empty())
-		throw std::runtime_error("placement operator new was not declared");
+	{
+		(void)EnsureBuiltinFunction(BUILTIN_FUNCTION_OPERATOR_NEW);
+		candidates = FunctionCandidates(program_->GlobalScope(), "operatornew");
+	}
+	if (candidates.empty())
+		throw std::runtime_error("operator new was not declared");
 	std::vector<CallConversionFact> argument_conversions;
 	const BindingId selected = SelectOverload(scope, argument_syntax,
 		arguments, candidates, 0, 0, &argument_conversions);
 	ExpressionInfo allocation = BuildResolvedCall(selected, scope,
-		argument_syntax, arguments, 0, kNoType, kNoEntity, 0,
+		argument_syntax, arguments, 0, kNoType, naming_class, 0,
 		&argument_conversions);
 	const NodeId initializer_node = FindChild(node, "initializer");
 	NodeId initializer = initializer_node == kNoNode ? kNoNode :
 		FirstSemanticChild(initializer_node);
 	std::uint32_t construction = kNoDumpEdge;
-	const EntityId entity = EntityOf(object_type);
 	if (IsClassEntity(*program_, entity))
 	{
 		if (initializer != kNoNode &&
@@ -1417,19 +1441,192 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
 					constructor_arguments.push_back(arena_->EdgeChild(edge));
 			construction = BuildConstructorAction(object_type, scope,
 				constructor_arguments, false, list);
+			const DumpNode& action = dump_.nodes[construction];
+			if (action.binding != kNoBinding &&
+				GetFunction(action.binding).implicit_constructor &&
+				program_->entities[entity].trivial_default_constructor)
+				DemandFunction(action.binding);
 		}
 	}
-	else if (initializer != kNoNode)
-		construction = AnalyzeExpression(initializer, scope, object_type).node;
+	else if (initializer != kNoNode || parsed_empty_initializer)
+	{
+		if (initializer == kNoNode)
+		{
+			ExpressionInfo zero = MakeLiteral(object_type,
+				program_->names.Intern("0"));
+			zero.constant = true;
+			zero.value = 0;
+			construction = zero.node;
+		}
+		else if (arena_->IsTag(initializer, "paren-initializer"))
+		{
+			const std::uint32_t first = arena_->FirstEdge(initializer);
+			if (first == kNoEdge)
+			{
+				ExpressionInfo zero = MakeLiteral(object_type,
+					program_->names.Intern("0"));
+				zero.constant = true;
+				zero.value = 0;
+				construction = zero.node;
+			}
+			else
+			{
+				if (arena_->NextEdge(first) != kNoEdge)
+					throw std::runtime_error(
+						"scalar new has multiple initializers");
+				construction = AnalyzeExpression(arena_->EdgeChild(first),
+					scope, object_type).node;
+			}
+		}
+		else construction = AnalyzeExpression(
+			initializer, scope, object_type).node;
+	}
 	const TypeId result_type = program_->types.Pointer(object_type);
 	const std::uint32_t result_node = MakeDump(DUMP_NEW_EXPRESSION,
-		result_type, VALUE_PRVALUE);
+		result_type, VALUE_PRVALUE, 0, selected);
 	dump_.nodes[result_node].operand_type = object_type;
+	const FunctionInfo& allocation_function = GetFunction(selected);
+	const TypeRecord& allocation_type =
+		program_->types.Get(allocation_function.type);
+	bool nonallocating_placement = false;
+	if (allocation_type.parameter_count == 2)
+	{
+		const TypeId placement_type = program_->types.RemoveTopCv(EffectiveType(
+			program_->types.Parameters(allocation_function.type)[1]));
+		const TypeRecord& placement = program_->types.Get(placement_type);
+		nonallocating_placement = placement.kind == TYPE_POINTER &&
+			IsVoid(placement.child);
+	}
+	dump_.nodes[result_node].allocation_may_return_null =
+		program_->bindings[selected].nonthrowing && !nonallocating_placement;
 	dump_.Add(result_node, allocation.node);
 	if (construction != kNoDumpEdge) dump_.Add(result_node, construction);
 	ExpressionInfo result;
 	result.node = result_node;
 	result.type = result_type;
+	result.category = VALUE_PRVALUE;
+	++expression_count_;
+	return ApplyTarget(result, target);
+}
+
+ExpressionInfo SemanticAnalyzer::AnalyzeDeleteExpression(NodeId node,
+	ScopeId scope, TypeId target)
+{
+	if (FindChild(node, "array-delete") != kNoNode)
+		throw std::runtime_error("array delete is outside the scalar checkpoint");
+	NodeId operand_syntax = kNoNode;
+	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId child = arena_->EdgeChild(edge);
+		if (!arena_->IsTag(child, "global-scope") &&
+			!arena_->IsTag(child, "array-delete")) operand_syntax = child;
+	}
+	if (operand_syntax == kNoNode)
+		throw std::runtime_error("delete-expression has no operand");
+	ExpressionInfo operand = AnalyzeExpression(operand_syntax, scope);
+	if (!IsPointer(Decay(operand.type)))
+	{
+		std::vector<TypeId> results;
+		AppendBuiltinConversionTargets(operand, &results);
+		std::vector<TypeId> pointers;
+		for (std::size_t i = 0; i < results.size(); ++i)
+			if (IsPointer(results[i])) pointers.push_back(results[i]);
+		if (pointers.size() != 1)
+			throw std::runtime_error("delete operand is not a unique pointer");
+		const CallConversionFact conversion =
+			ConvertingFunction(operand, pointers[0], false);
+		if (conversion.rank == CONVERSION_INVALID)
+			throw std::runtime_error("invalid delete pointer conversion");
+		operand = ApplyCallArgument(operand, pointers[0], &conversion);
+	}
+	const TypeRecord pointer = program_->types.Get(Decay(operand.type));
+	if (pointer.kind != TYPE_POINTER)
+		throw std::runtime_error("delete operand is not a pointer");
+	const TypeId object_type = program_->types.RemoveTopCv(pointer.child);
+	const EntityId entity = EntityOf(object_type);
+	const bool class_object = IsClassEntity(*program_, entity);
+	BindingId destructor = kNoBinding;
+	if (class_object)
+	{
+		const BindingId selected_destructor = DestructorForType(object_type);
+		if (selected_destructor == kNoBinding)
+			throw std::logic_error("deleted class has no destructor identity");
+		if (!CanAccessMember(selected_destructor, entity))
+			throw std::runtime_error("inaccessible delete destructor");
+		if (GetFunction(selected_destructor).deleted_destructor)
+			throw std::runtime_error("deleted destructor is required");
+		if (!program_->entities[entity].trivial_destructor)
+		{
+			destructor = selected_destructor;
+			DemandFunction(destructor);
+		}
+	}
+	const bool explicit_global = FindChild(node, "global-scope") != kNoNode;
+	std::vector<BindingId> candidates;
+	EntityId naming_class = kNoEntity;
+	if (!explicit_global && class_object)
+	{
+		const LookupResult member = program_->LookupMember(entity,
+			program_->names.Intern("operatordelete"), LOOKUP_ORDINARY);
+		if (member.ordinary != kNoBinding &&
+			program_->bindings[member.ordinary].kind == BIND_FUNCTION)
+		{
+			candidates = FunctionSet(member.ordinary);
+			naming_class = member.naming_class;
+		}
+	}
+	if (candidates.empty())
+	{
+		(void)EnsureBuiltinFunction(BUILTIN_FUNCTION_OPERATOR_DELETE);
+		candidates = FunctionCandidates(
+			program_->GlobalScope(), "operatordelete");
+	}
+	std::vector<BindingId> unsized;
+	std::vector<BindingId> sized;
+	const TypeId size_type =
+		program_->types.Fundamental(FUND_UNSIGNED_LONG_INT);
+	for (std::size_t i = 0; i < candidates.size(); ++i)
+	{
+		const TypeId function_type = GetFunction(candidates[i]).type;
+		const TypeRecord& function = program_->types.Get(function_type);
+		const TypeId* parameters = program_->types.Parameters(function_type);
+		if (function.parameter_count == 1) unsized.push_back(candidates[i]);
+		else if (function.parameter_count == 2 &&
+			program_->types.RemoveTopCv(parameters[1]) == size_type)
+			sized.push_back(candidates[i]);
+	}
+	std::vector<BindingId>& usual = unsized.empty() ? sized : unsized;
+	if (usual.empty()) throw std::runtime_error("no usual deallocation function");
+	ExpressionInfo pointer_argument = operand;
+	pointer_argument.type = program_->types.Pointer(
+		program_->types.Fundamental(FUND_VOID));
+	pointer_argument.category = VALUE_PRVALUE;
+	std::vector<NodeId> syntax(1, operand_syntax);
+	std::vector<ExpressionInfo> arguments(1, pointer_argument);
+	if (unsized.empty())
+	{
+		ExpressionInfo size = MakeLiteral(size_type,
+			InternNumber(static_cast<std::int64_t>(program_->SizeOf(object_type))));
+		size.constant = true;
+		size.value = static_cast<std::int64_t>(program_->SizeOf(object_type));
+		syntax.push_back(kNoNode);
+		arguments.push_back(size);
+	}
+	const BindingId deallocation = SelectOverload(scope, syntax, arguments,
+		usual, 0, 0, 0);
+	if (!CanAccessMember(deallocation, naming_class, entity))
+		throw std::runtime_error("inaccessible deallocation function");
+	DemandFunction(deallocation);
+	const TypeId void_type = program_->types.Fundamental(FUND_VOID);
+	const std::uint32_t expression = MakeDump(DUMP_DELETE_EXPRESSION,
+		void_type, VALUE_PRVALUE, 0, deallocation);
+	dump_.nodes[expression].operand_type = object_type;
+	dump_.nodes[expression].selected_binding = destructor;
+	dump_.Add(expression, operand.node);
+	ExpressionInfo result;
+	result.node = expression;
+	result.type = void_type;
 	result.category = VALUE_PRVALUE;
 	++expression_count_;
 	return ApplyTarget(result, target);

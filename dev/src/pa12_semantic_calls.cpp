@@ -26,6 +26,9 @@ BindingId SemanticAnalyzer::EnsureBuiltinFunction(BuiltinFunctionKind kind)
 	const TypeId size = program_->types.Fundamental(FUND_UNSIGNED_LONG_INT);
 	TypeId result = program_->types.Fundamental(FUND_VOID);
 	const char* spelling = 0;
+	const char* display = 0;
+	bool nonthrowing = true;
+	bool ordinary_visible = false;
 	std::vector<TypeId> parameter_types;
 	switch (kind)
 	{
@@ -42,19 +45,40 @@ BindingId SemanticAnalyzer::EnsureBuiltinFunction(BuiltinFunctionKind kind)
 		parameter_types.push_back(pointer);
 		parameter_types.push_back(const_pointer);
 		parameter_types.push_back(size); break;
+	case BUILTIN_FUNCTION_OPERATOR_NEW:
+	case BUILTIN_FUNCTION_OPERATOR_NEW_ARRAY:
+		spelling = kind == BUILTIN_FUNCTION_OPERATOR_NEW ?
+			"operatornew" : "operatornew[]";
+		display = kind == BUILTIN_FUNCTION_OPERATOR_NEW ?
+			"operator_new" : "operator_new__";
+		result = pointer;
+		nonthrowing = false;
+		ordinary_visible = true;
+		parameter_types.push_back(size); break;
+	case BUILTIN_FUNCTION_OPERATOR_DELETE:
+	case BUILTIN_FUNCTION_OPERATOR_DELETE_ARRAY:
+		spelling = kind == BUILTIN_FUNCTION_OPERATOR_DELETE ?
+			"operatordelete" : "operatordelete[]";
+		display = kind == BUILTIN_FUNCTION_OPERATOR_DELETE ?
+			"operator_delete" : "operator_delete__";
+		parameter_types.push_back(pointer);
+		ordinary_visible = true; break;
 	case BUILTIN_FUNCTION_NONE: break;
 	}
 	if (!spelling) throw std::logic_error("unknown builtin function kind");
 	std::vector<ParameterInfo> parameters;
 	for (std::size_t i = 0; i < parameter_types.size(); ++i)
-		parameters.push_back(ParameterInfo(0, parameter_types[i],
+		parameters.push_back(ParameterInfo(display ? program_->names.Intern(
+			"arg" + std::to_string(i)) : 0, parameter_types[i],
 			parameter_types[i]));
 	const TypeId type = program_->types.Function(result, parameter_types, false);
 	const BindingId binding = DeclareFunction(program_->GlobalScope(),
 		program_->names.Intern(spelling), type, parameters, false, false,
-		STORAGE_CLASS_NONE, LANGUAGE_LINKAGE_CPP, true, false);
+		STORAGE_CLASS_NONE, LANGUAGE_LINKAGE_CPP, nonthrowing, ordinary_visible);
 	program_->bindings[binding].builtin_function = kind;
-	GetMutableFunction(binding).deferred = true;
+	if (display)
+		GetMutableFunction(binding).display_name = program_->names.Intern(display);
+	GetMutableFunction(binding).deferred = !GetFunction(binding).defined;
 	builtin_functions_[kind] = binding;
 	return binding;
 }
@@ -69,6 +93,10 @@ bool SemanticAnalyzer::AnalyzeBuiltinCall(const std::string& spelling,
 		kind = BUILTIN_FUNCTION_UNREACHABLE;
 	else if (spelling == "__builtin_memcpy") kind = BUILTIN_FUNCTION_MEMCPY;
 	else if (spelling == "__builtin_memmove") kind = BUILTIN_FUNCTION_MEMMOVE;
+	else if (spelling == "::operator new")
+		kind = BUILTIN_FUNCTION_OPERATOR_NEW;
+	else if (spelling == "::operator delete")
+		kind = BUILTIN_FUNCTION_OPERATOR_DELETE;
 	if (kind == BUILTIN_FUNCTION_NONE) return false;
 	const BindingId binding = EnsureBuiltinFunction(kind);
 	const TypeRecord& type = program_->types.Get(GetFunction(binding).type);

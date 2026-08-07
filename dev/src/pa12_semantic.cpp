@@ -939,6 +939,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 	if (arena_->IsTag(node, "braced-init-list"))
 		return AnalyzeBracedInit(node, scope, target);
 	if (arena_->IsTag(node, "new-expression")) return AnalyzeNewExpression(node, scope, target);
+	if (arena_->IsTag(node, "delete-expression"))
+		return AnalyzeDeleteExpression(node, scope, target);
 	if (arena_->IsTag(node, "member-expression"))
 		return ApplyTarget(AnalyzeMember(node, scope), target);
 	throw std::runtime_error("unsupported PA12 expression: " + arena_->Tag(node));
@@ -2221,7 +2223,8 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 				owner_path.Pop();
 				const LookupResult owner_type = LookupPath(scope, owner_path,
 					LOOKUP_TYPE);
-				declaration_class_context = EntityOf(owner_type.type);
+				if (owner_type.type != kNoType)
+					declaration_class_context = EntityOf(owner_type.type);
 			}
 		}
 	}
@@ -2257,6 +2260,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			throw std::runtime_error("variable owner not found");
 		DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type,
 			declaration_scope);
+		parsed.name = declared_path.Last();
 		if (parsed.name == 0) throw std::runtime_error("unnamed declaration");
 		if (spec.is_typedef)
 		{
@@ -2375,7 +2379,8 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 		current_language_linkage_, IsNonthrowing(declarator, owner));
 	ValidateFunctionRefQualifier(binding);
 	ValidateNonmemberOperator(binding);
-	const FunctionInfo& function = GetFunction(binding);
+	FunctionInfo& function = GetMutableFunction(binding);
+	function.deferred = false;
 	const bool member = function.member_owner != kNoType;
 	const TypeId output_type = member ?
 		AdaptMemberFunctionType(binding) : parsed.type;
@@ -2395,7 +2400,9 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	}
 	for (std::size_t i = 0; i < parsed.parameters.size(); ++i)
 	{
-		const ParameterInfo& parameter = parsed.parameters[i];
+		ParameterInfo parameter = parsed.parameters[i];
+		if (parameter.name == 0 && i < function.parameters.size())
+			parameter.name = function.parameters[i].name;
 		const BindingId parameter_binding = program_->AddBinding(function_scope,
 			BIND_PARAMETER, parameter.name, parameter.declared_type);
 		const std::uint32_t parameter_node = MakeDump(DUMP_PARAMETER,
@@ -2747,6 +2754,8 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		program.names.Intern("nullptr_t"),
 		program.types.Fundamental(FUND_NULLPTR_T));
 	root_ = MakeDump(DUMP_TRANSLATION_UNIT);
+	(void)EnsureBuiltinFunction(BUILTIN_FUNCTION_OPERATOR_NEW);
+	(void)EnsureBuiltinFunction(BUILTIN_FUNCTION_OPERATOR_DELETE);
 	const std::chrono::steady_clock::time_point analysis_started =
 		std::chrono::steady_clock::now();
 	for (std::uint32_t edge = arena.FirstEdge(root); edge != kNoEdge;

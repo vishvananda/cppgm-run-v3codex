@@ -76,6 +76,7 @@ enum DumpKind
 	DUMP_BASE_INITIALIZER_ACTION,
 	DUMP_MEMBER_EXPRESSION,
 	DUMP_NEW_EXPRESSION,
+	DUMP_DELETE_EXPRESSION,
 	DUMP_TEMPORARY_OBJECT,
 	DUMP_CONSTRUCTOR_ACTION,
 	DUMP_CONSTRUCTOR_ARRAY_ACTION,
@@ -102,6 +103,7 @@ struct DumpNode
 	bool integer_narrowing_conversion;
 	bool boolean_conversion;
 	bool user_conversion_call;
+	bool allocation_may_return_null;
 	bool value_initialization;
 	bool elide_empty_constructor;
 	bool trivial_special_member_action;
@@ -119,6 +121,7 @@ struct DumpNode
 		  aggregate_helper(kNoDumpEdge),
 		  constant(false), integer_narrowing_conversion(false),
 		  boolean_conversion(false), user_conversion_call(false),
+		  allocation_may_return_null(false),
 		  value_initialization(false), elide_empty_constructor(false),
 		  trivial_special_member_action(false),
 		  argument_materialization(false), class_argument_staging(false),
