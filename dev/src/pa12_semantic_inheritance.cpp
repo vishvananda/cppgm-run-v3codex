@@ -477,7 +477,34 @@ ExpressionInfo SemanticAnalyzer::AnalyzeConditional(NodeId node, ScopeId scope)
 	ExpressionInfo no = AnalyzeExpression(children[2], scope);
 	TypeId type = kNoType;
 	ValueCategory category = VALUE_PRVALUE;
-	if (EffectiveType(yes.type) == EffectiveType(no.type))
+	const TypeId yes_object = program_->types.RemoveTopCv(
+		EffectiveType(yes.type));
+	const TypeId no_object = program_->types.RemoveTopCv(
+		EffectiveType(no.type));
+	const EntityId conditional_entity = EntityOf(yes_object);
+	const bool class_conditional = conditional_entity != kNoEntity &&
+		(program_->entities[conditional_entity].flavor == NAMED_STRUCT ||
+		 program_->entities[conditional_entity].flavor == NAMED_CLASS ||
+		 program_->entities[conditional_entity].flavor == NAMED_UNION);
+	if (yes_object == no_object && class_conditional)
+	{
+		const bool same_glvalue = yes.category == no.category &&
+			(yes.category == VALUE_LVALUE || yes.category == VALUE_XVALUE) &&
+			!(yes.category == VALUE_XVALUE &&
+			  dump_.nodes[yes.node].kind == DUMP_TEMPORARY_OBJECT &&
+			  dump_.nodes[no.node].kind == DUMP_TEMPORARY_OBJECT);
+		if (!same_glvalue)
+			return BuildClassConditional(
+				condition.node, yes, no, yes_object, false);
+		std::uint8_t cv = CV_NONE;
+		const TypeRecord& yes_top = program_->types.Get(EffectiveType(yes.type));
+		const TypeRecord& no_top = program_->types.Get(EffectiveType(no.type));
+		if (yes_top.kind == TYPE_QUALIFIED) cv |= yes_top.cv;
+		if (no_top.kind == TYPE_QUALIFIED) cv |= no_top.cv;
+		type = cv == CV_NONE ? yes_object : program_->types.Qualify(yes_object, cv);
+		category = yes.category;
+	}
+	else if (EffectiveType(yes.type) == EffectiveType(no.type))
 	{
 		type = EffectiveType(yes.type);
 		category = yes.category == no.category ? yes.category : VALUE_PRVALUE;

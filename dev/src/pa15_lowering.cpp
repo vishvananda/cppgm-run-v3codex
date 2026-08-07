@@ -70,6 +70,7 @@ public:
 		  full_expression_cleanup_active_(false),
 		  full_expression_cleanup_dispatch_(kNoLowId),
 		  full_expression_cleanup_end_(kNoLowId),
+		  full_expression_cleanup_dispatch_reused_(false),
 		  source_types_(program_),
 		  static_initializers_(program_, arena_, output_, stats_,
 			function_symbols_, global_symbols_, literal_symbols_,
@@ -682,6 +683,7 @@ private:
 		temp_counter_ = 0;
 		block_counter_ = 0;
 		generated_slot_ordinal_ = 0;
+		full_expression_cleanup_dispatches_.clear();
 		break_targets_.clear();
 		continue_targets_.clear();
 		label_blocks_.Clear();
@@ -789,6 +791,7 @@ private:
 		assigned_names_.Clear();
 		slot_name_counts_.Clear();
 		generated_slot_ordinal_ = 0;
+		full_expression_cleanup_dispatches_.clear();
 		parameter_slot_index_ = current_indirect_result_ ? 1 : 0;
 		current_this_binding_ = kNoBinding;
 		CollectSourceNames(node);
@@ -1344,7 +1347,9 @@ private:
 				LowerExpressionType(record.type));
 			else throw std::runtime_error("scalar initializer has excess elements");
 		}
-		else throw std::runtime_error("semantic expression is outside the active PA15 checkpoint");
+		else throw std::runtime_error("semantic expression kind " +
+			std::to_string(static_cast<unsigned>(record.kind)) +
+			" is outside the active PA15 checkpoint");
 		return expected.kind == LOW_INVALID ? result : Convert(result, expected);
 	}
 
@@ -1468,6 +1473,8 @@ private:
 		const BlockId short_block = AddBlock(NewLabel(std::string(prefix) + "_short"));
 		const BlockId end_block = AddBlock(NewLabel(std::string(prefix) + "_end"));
 		const Operand left = LowerCondition(children[0]);
+		if (full_expression_cleanup_active_)
+			PauseFullExpressionCleanupSegment();
 		Instruction branch(Instruction::BRANCH);
 		branch.first = left;
 		branch.target = conjunction ? rhs_block : short_block;
@@ -1489,6 +1496,8 @@ private:
 		rhs_store.first = truth;
 		rhs_store.second = slot;
 		Emit(rhs_store);
+		if (full_expression_cleanup_active_)
+			PauseFullExpressionCleanupSegment();
 		Instruction rhs_jump(Instruction::JUMP);
 		rhs_jump.target = end_block;
 		Emit(rhs_jump);
@@ -1667,6 +1676,8 @@ private:
 		const Operand& supplied_result = Operand())
 	{
 		if (children.empty()) throw std::runtime_error("semantic call has no callee");
+		if (full_expression_cleanup_active_)
+			EnsureFullExpressionCleanupSegment();
 		const DumpNode& callee = arena_.nodes[children[0]];
 		if (stats_) ++stats_->binding_index_probes;
 		const bool direct = callee.kind == DUMP_CALLEE &&
@@ -1747,7 +1758,7 @@ private:
 		const Operand result = Temp(call.type);
 		call.dest = result.id;
 		Emit(call);
-		return result;
+		return RetainFullExpressionCallResult(node, record, result);
 	}
 
 	void AttachCallArguments(Instruction* call, const CallArguments& arguments,
@@ -2011,15 +2022,30 @@ private:
 		const NodeChildren children = Children(node);
 		if (record.kind == DUMP_TYPE_ALIAS) return;
 		if (record.kind == DUMP_COMPOUND_STATEMENT ||
-			record.kind == DUMP_SIMPLE_DECLARATION ||
 			record.kind == DUMP_CONDITION_DECLARATION ||
 			record.kind == DUMP_THEN || record.kind == DUMP_ELSE)
 		{
 			PushStatementSequence(record.first_edge);
 			return;
 		}
+		if (record.kind == DUMP_SIMPLE_DECLARATION)
+		{
+			if (!record.full_expression_staging ||
+				!TryLowerFullExpressionDeclaration(children))
+				PushStatementSequence(record.first_edge);
+			return;
+		}
 		if (record.kind == DUMP_VARIABLE)
 		{
+			if (!IsReferenceType(record.type) &&
+				IsClassObjectType(record.type) && children.size() == 1 &&
+				arena_.nodes[children[0]].kind == DUMP_CONDITIONAL_EXPRESSION)
+			{
+				const LowType type = LowerStorageType(record.type);
+				LowerClassConditionalResult(children[0], AddressOfStorage(
+					StorageFor(record.binding, type)));
+				return;
+			}
 			if (IsClassObjectType(record.type) && children.size() == 1 &&
 				arena_.nodes[children[0]].kind == DUMP_CLASS_VALUE_TRANSFER)
 			{
@@ -2585,9 +2611,7 @@ private:
 		const std::uint32_t child = condition_children[0];
 		if (arena_.nodes[child].kind != DUMP_CONDITION_DECLARATION)
 		{
-			if (condition_children.size() != 1)
-				throw std::runtime_error("invalid PA15 control condition");
-			return LowerCondition(child);
+			return LowerFullExpressionCondition(condition_children);
 		}
 		return LowerDeclaredCondition(condition_children, true);
 	}
@@ -2851,6 +2875,9 @@ private:
 		if (arena_.nodes[condition_children[0]].kind ==
 			DUMP_CONDITION_DECLARATION)
 			EmitBranch(LowerControlCondition(condition), then_block, else_block);
+		else if (condition_children.size() != 1)
+			EmitFullExpressionConditionBranch(
+				condition_children, then_block, else_block);
 		else EmitConditionBranch(condition_children[0], then_block, else_block);
 		SelectBlock(then_block);
 		StatementTask after(STATEMENT_IF_AFTER_THEN);
@@ -2948,8 +2975,10 @@ private:
 	bool destructor_return_routes_to_epilogue_;
 	bool full_expression_cleanup_active_;
 	BlockId full_expression_cleanup_dispatch_, full_expression_cleanup_end_;
+	bool full_expression_cleanup_dispatch_reused_;
 	std::vector<std::uint32_t> full_expression_cleanup_actions_;
 	std::vector<std::uint32_t> full_expression_segment_actions_;
+	pa17_lowering_detail::CleanupDispatchMap full_expression_cleanup_dispatches_;
 	std::vector<IdentityTypeId> identity_type_cache_;
 	pa15_lowering_detail::SourceTypeLowering source_types_;
 	pa16_lowering_detail::StaticInitializerLowering static_initializers_;

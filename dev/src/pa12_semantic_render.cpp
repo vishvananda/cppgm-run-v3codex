@@ -87,6 +87,8 @@ void SemanticAnalyzer::RenderLine(const DumpNode& node, std::size_t depth)
 	case DUMP_CONDITIONAL_EXPRESSION:
 		output_ << "conditional-expression " << category << ' '
 			<< program_->RenderType(node.type); break;
+	case DUMP_CONDITIONAL_ARM:
+		output_ << "conditional-arm " << program_->RenderType(node.type); break;
 	case DUMP_SIZEOF_EXPRESSION:
 		output_ << "sizeof-expression " << category << ' '
 			<< program_->RenderType(node.type); break;

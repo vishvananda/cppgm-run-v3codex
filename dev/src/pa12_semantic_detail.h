@@ -260,6 +260,11 @@ private:
 	ExpressionInfo AnalyzeAssignment(NodeId node, ScopeId scope);
 	ExpressionInfo AnalyzeCast(NodeId node, ScopeId scope);
 	ExpressionInfo AnalyzeConditional(NodeId node, ScopeId scope);
+	ExpressionInfo BuildClassConditional(std::uint32_t condition,
+		const ExpressionInfo& yes, const ExpressionInfo& no, TypeId type,
+		bool preserve_xvalue);
+	ExpressionInfo RetargetClassConditional(const ExpressionInfo& value,
+		TypeId type);
 	ExpressionInfo AnalyzeSubscript(NodeId node, ScopeId scope);
 	ExpressionInfo AnalyzeSizeof(NodeId node, ScopeId scope);
 	ExpressionInfo AnalyzeBracedInit(NodeId node, ScopeId scope, TypeId target);
@@ -387,8 +392,11 @@ private:
 		std::uint32_t temporary);
 	void CollectTemporaryObjects(std::uint32_t node,
 		std::vector<std::uint32_t>* temporaries) const;
+	void MarkFullExpressionCalls(std::uint32_t node);
 	bool HasControlDependentTemporary(std::uint32_t node) const;
 	void AppendFullExpressionDestructionActions(std::uint32_t expression,
+		std::uint32_t output_parent);
+	void AppendUnwindDestructionActions(ScopeId scope,
 		std::uint32_t output_parent);
 	void AddNamespaceObjectAction(std::uint32_t variable, BindingId object,
 		TypeId type, std::uint32_t initializer);

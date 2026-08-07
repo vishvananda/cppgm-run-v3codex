@@ -41,6 +41,54 @@ protected:
 						"direct return slot has a direct result boundary");
 			}
 			else if (derived.arena_.nodes[children[0]].kind ==
+				DUMP_BRACED_INIT_LIST &&
+				derived.IsClassObjectType(derived.arena_.nodes[children[0]].type))
+			{
+				if (derived.current_indirect_result_)
+				{
+					const Operand destination(
+						static_cast<ParameterId>(0), LowPtr());
+					derived.LowerRuntimeObjectValue(
+						derived.arena_.nodes[children[0]].type,
+						children[0], destination);
+				}
+				else if (derived.current_result_.kind == LOW_OBJECT)
+				{
+					const Operand slot(derived.EnsureGeneratedSlot(
+						children[0], "retobj", derived.current_result_),
+						derived.current_result_);
+					derived.LowerRuntimeObjectValue(
+						derived.arena_.nodes[children[0]].type,
+						children[0], derived.AddressOfStorage(slot));
+					result_value = slot;
+				}
+				else throw std::logic_error(
+					"class aggregate return has a non-object boundary");
+			}
+			else if (derived.arena_.nodes[children[0]].kind ==
+				DUMP_CONDITIONAL_EXPRESSION &&
+				derived.IsClassObjectType(derived.arena_.nodes[children[0]].type))
+			{
+				if (derived.current_indirect_result_)
+				{
+					const Operand destination(
+						static_cast<ParameterId>(0), LowPtr());
+					derived.LowerClassConditionalResult(
+						children[0], destination);
+				}
+				else if (derived.current_result_.kind == LOW_OBJECT)
+				{
+					const Operand slot(derived.EnsureGeneratedSlot(
+						children[0], "retobj", derived.current_result_),
+						derived.current_result_);
+					derived.LowerClassConditionalResult(children[0],
+						derived.AddressOfStorage(slot));
+					result_value = slot;
+				}
+				else throw std::logic_error(
+					"class conditional return has a non-object boundary");
+			}
+			else if (derived.arena_.nodes[children[0]].kind ==
 				DUMP_CLASS_VALUE_TRANSFER)
 			{
 				if (derived.current_indirect_result_)

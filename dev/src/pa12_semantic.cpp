@@ -1893,6 +1893,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	if (second == kNoEdge) throw std::runtime_error("invalid member expression");
 	ExpressionInfo object = AnalyzeExpression(arena_->EdgeChild(first), scope);
 	const std::string source_operation = PayloadSource(node);
+	if (source_operation == "." && object.category == VALUE_PRVALUE &&
+		EntityOf(object.type) != kNoEntity &&
+		dump_.nodes[object.node].kind != DUMP_TEMPORARY_OBJECT)
+		object = MaterializeTemporary(object);
 	TypeId owner_type = EffectiveType(object.type);
 	if (source_operation == "->")
 	{
@@ -2364,9 +2368,11 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		if (local && has_initializer)
 		{
 			const TypeKind declared_kind = program_->types.Get(parsed.type).kind;
+			const bool control_dependent =
+				HasControlDependentTemporary(initializer.node);
 			if ((declared_kind == TYPE_LVALUE_REFERENCE ||
-				 declared_kind == TYPE_RVALUE_REFERENCE) &&
-				!HasControlDependentTemporary(initializer.node))
+					 declared_kind == TYPE_RVALUE_REFERENCE) &&
+				!control_dependent)
 			{
 				std::vector<std::uint32_t> temporaries;
 				CollectTemporaryObjects(initializer.node, &temporaries);
@@ -2381,7 +2387,16 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 					}
 				}
 			}
-			else AppendFullExpressionDestructionActions(initializer.node, owner);
+			else
+			{
+				const std::size_t edge_count = dump_.edges.size();
+				AppendFullExpressionDestructionActions(initializer.node, owner);
+				if (control_dependent && dump_.edges.size() != edge_count)
+				{
+					dump_.nodes[owner].full_expression_staging = true;
+					MarkFullExpressionCalls(initializer.node);
+				}
+			}
 		}
 	}
 	current_class_context_ = previous_class_context;
@@ -2563,6 +2578,13 @@ void SemanticAnalyzer::AnalyzeCondition(NodeId node, ScopeId scope,
 		value = ApplyExplicitConversion(value,
 			program_->types.Fundamental(FUND_BOOL));
 	dump_.Add(condition, value.node);
+	AppendFullExpressionDestructionActions(value.node, condition);
+	const std::uint32_t first = dump_.nodes[condition].first_edge;
+	if (first != kNoDumpEdge && dump_.edges[first].next != kNoDumpEdge)
+	{
+		MarkFullExpressionCalls(value.node);
+		AppendUnwindDestructionActions(scope, condition);
+	}
 }
 
 void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,

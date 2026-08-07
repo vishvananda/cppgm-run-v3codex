@@ -360,6 +360,101 @@ std::uint32_t SemanticAnalyzer::BuildClassValueConstructorAction(TypeId type,
 	return action;
 }
 
+ExpressionInfo SemanticAnalyzer::BuildClassConditional(
+	std::uint32_t condition, const ExpressionInfo& yes,
+	const ExpressionInfo& no, TypeId type, bool preserve_xvalue)
+{
+	const TypeId object = program_->types.RemoveTopCv(EffectiveType(type));
+	if (!IsClassEntity(*program_, EntityOf(object)))
+		throw std::logic_error("class conditional has non-class result");
+	const ExpressionInfo operands[2] = {yes, no};
+	std::uint32_t arms[2] = {kNoDumpEdge, kNoDumpEdge};
+	for (std::size_t i = 0; i < 2; ++i)
+	{
+		ExpressionInfo source = operands[i];
+		std::uint32_t recipe = source.node;
+		const DumpNode& source_node = dump_.nodes[recipe];
+		if (source_node.kind == DUMP_TEMPORARY_OBJECT &&
+			program_->types.RemoveTopCv(EffectiveType(source_node.type)) == object &&
+			source_node.first_edge != kNoDumpEdge &&
+			dump_.edges[source_node.first_edge].next == kNoDumpEdge)
+		{
+			const std::uint32_t child = dump_.edges[source_node.first_edge].child;
+			const DumpKind kind = dump_.nodes[child].kind;
+			if (kind == DUMP_CONSTRUCTOR_ACTION ||
+				kind == DUMP_CALL_EXPRESSION || kind == DUMP_BRACED_INIT_LIST ||
+				kind == DUMP_CLASS_VALUE_TRANSFER)
+				recipe = child;
+		}
+		const DumpKind recipe_kind = dump_.nodes[recipe].kind;
+		const bool direct = recipe != source.node ||
+			(source.category == VALUE_PRVALUE &&
+			 (recipe_kind == DUMP_CALL_EXPRESSION ||
+			  recipe_kind == DUMP_CONSTRUCTOR_ACTION ||
+			  recipe_kind == DUMP_BRACED_INIT_LIST ||
+			  recipe_kind == DUMP_CLASS_VALUE_TRANSFER));
+		if (!direct)
+		{
+			if (!preserve_xvalue && source.category == VALUE_XVALUE)
+				source.category = VALUE_LVALUE;
+			recipe = BuildClassValueConstructorAction(
+				object, source, true, true);
+		}
+		const std::uint32_t arm = MakeDump(
+			DUMP_CONDITIONAL_ARM, object, VALUE_NONE);
+		dump_.Add(arm, recipe);
+		std::vector<std::uint32_t> temporaries;
+		CollectTemporaryObjects(recipe, &temporaries);
+		if (!temporaries.empty()) MarkFullExpressionCalls(recipe);
+		for (std::size_t t = temporaries.size(); t != 0; --t)
+		{
+			const std::uint32_t action =
+				MakeTemporaryDestructorAction(temporaries[t - 1]);
+			if (action != kNoDumpEdge) dump_.Add(arm, action);
+		}
+		arms[i] = arm;
+	}
+	const std::uint32_t expression = MakeDump(
+		DUMP_CONDITIONAL_EXPRESSION, object, VALUE_PRVALUE);
+	dump_.Add(expression, condition);
+	dump_.Add(expression, arms[0]);
+	dump_.Add(expression, arms[1]);
+	ExpressionInfo result;
+	result.node = expression;
+	result.type = object;
+	result.category = VALUE_PRVALUE;
+	expression_count_ += 3;
+	return result;
+}
+
+ExpressionInfo SemanticAnalyzer::RetargetClassConditional(
+	const ExpressionInfo& value, TypeId type)
+{
+	if (dump_.nodes[value.node].kind != DUMP_CONDITIONAL_EXPRESSION)
+		throw std::logic_error("retargeted class value is not conditional");
+	std::vector<std::uint32_t> children;
+	for (std::uint32_t edge = dump_.nodes[value.node].first_edge;
+		edge != kNoDumpEdge; edge = dump_.edges[edge].next)
+		children.push_back(dump_.edges[edge].child);
+	if (children.size() != 3)
+		throw std::logic_error("invalid class conditional shape");
+	if (value.category == VALUE_PRVALUE &&
+		dump_.nodes[children[1]].kind == DUMP_CONDITIONAL_ARM &&
+		dump_.nodes[children[2]].kind == DUMP_CONDITIONAL_ARM)
+		return value;
+	ExpressionInfo yes;
+	yes.node = children[1];
+	yes.type = dump_.nodes[children[1]].type;
+	yes.category = dump_.nodes[children[1]].category;
+	yes.binding = dump_.nodes[children[1]].binding;
+	ExpressionInfo no;
+	no.node = children[2];
+	no.type = dump_.nodes[children[2]].type;
+	no.category = dump_.nodes[children[2]].category;
+	no.binding = dump_.nodes[children[2]].binding;
+	return BuildClassConditional(children[0], yes, no, type, true);
+}
+
 void SemanticAnalyzer::FinalizeNamedReturnSlot(std::uint32_t function)
 {
 	const TypeId result = program_->types.Get(dump_.nodes[function].type).child;
@@ -533,7 +628,32 @@ void SemanticAnalyzer::AnalyzeReturnStatement(NodeId node, ScopeId scope,
 			(program_->entities[returned_record.entity].flavor == NAMED_STRUCT ||
 			 program_->entities[returned_record.entity].flavor == NAMED_CLASS ||
 			 program_->entities[returned_record.entity].flavor == NAMED_UNION);
-		if (class_return &&
+		if (class_return && dump_.nodes[value.node].kind ==
+			DUMP_BRACED_INIT_LIST && dump_.nodes[value.node].value_initialization)
+		{
+			value.node = BuildDefaultConstructorAction(returned_object, scope);
+			value.type = returned_object;
+			value.category = VALUE_PRVALUE;
+		}
+		if (class_return && dump_.nodes[value.node].kind ==
+			DUMP_CONDITIONAL_EXPRESSION &&
+			program_->types.RemoveTopCv(EffectiveType(value.type)) ==
+				returned_object)
+		{
+			value = RetargetClassConditional(value, current_return_type_);
+			const std::uint32_t first = dump_.nodes[value.node].first_edge;
+			std::uint32_t arm = first == kNoDumpEdge ? kNoDumpEdge :
+				dump_.edges[first].next;
+			for (std::size_t i = 0; i < 2 && arm != kNoDumpEdge; ++i)
+			{
+				const std::uint32_t arm_node = dump_.edges[arm].child;
+				const std::uint32_t recipe = dump_.nodes[arm_node].first_edge;
+				if (recipe != kNoDumpEdge && dump_.edges[recipe].next != kNoDumpEdge)
+					AppendUnwindDestructionActions(scope, arm_node);
+				arm = dump_.edges[arm].next;
+			}
+		}
+		else if (class_return &&
 			program_->types.RemoveTopCv(EffectiveType(value.type)) ==
 				returned_object &&
 			dump_.nodes[value.node].kind != DUMP_CONSTRUCTOR_ACTION &&
@@ -650,7 +770,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeVariableInitializer(
 				program_->types.RemoveTopCv(type) &&
 				dump_.nodes[initializer.node].kind != DUMP_BRACED_INIT_LIST)
 			{
-				if (initializer.category == VALUE_PRVALUE &&
+				if (dump_.nodes[initializer.node].kind ==
+					DUMP_CONDITIONAL_EXPRESSION &&
+					IsDirectTrivialClassValueType(type)) {}
+				else if (initializer.category == VALUE_PRVALUE &&
 					dump_.nodes[initializer.node].kind == DUMP_CALL_EXPRESSION)
 				{
 					ValidateClassValueConstruction(type, initializer);
@@ -2135,11 +2258,26 @@ void SemanticAnalyzer::CollectTemporaryObjects(std::uint32_t node,
 	std::vector<std::uint32_t>* temporaries) const
 {
 	if (node == kNoDumpEdge || node >= dump_.nodes.size()) return;
+	if (dump_.nodes[node].kind == DUMP_CONDITIONAL_ARM) return;
 	for (std::uint32_t edge = dump_.nodes[node].first_edge;
 		edge != kNoDumpEdge; edge = dump_.edges[edge].next)
 		CollectTemporaryObjects(dump_.edges[edge].child, temporaries);
 	if (dump_.nodes[node].kind == DUMP_TEMPORARY_OBJECT)
 		temporaries->push_back(node);
+}
+
+void SemanticAnalyzer::MarkFullExpressionCalls(std::uint32_t node)
+{
+	if (node == kNoDumpEdge || node >= dump_.nodes.size()) return;
+	DumpNode& record = dump_.nodes[node];
+	record.full_expression_staging = true;
+	if (record.kind == DUMP_CALL_EXPRESSION)
+		record.full_expression_staging = true;
+	if (record.kind == DUMP_TEMPORARY_OBJECT)
+		record.full_expression_staging = true;
+	for (std::uint32_t edge = record.first_edge; edge != kNoDumpEdge;
+		edge = dump_.edges[edge].next)
+		MarkFullExpressionCalls(dump_.edges[edge].child);
 }
 
 bool SemanticAnalyzer::HasControlDependentTemporary(std::uint32_t node) const
@@ -2163,10 +2301,6 @@ bool SemanticAnalyzer::HasControlDependentTemporary(std::uint32_t node) const
 void SemanticAnalyzer::AppendFullExpressionDestructionActions(
 	std::uint32_t expression, std::uint32_t output_parent)
 {
-	// Branch-local construction needs CFG-aware cleanup regions. Keep the
-	// whole expression for that checkpoint rather than emitting an unsafe
-	// unconditional destructor for an unselected arm.
-	if (HasControlDependentTemporary(expression)) return;
 	std::vector<std::uint32_t> temporaries;
 	CollectTemporaryObjects(expression, &temporaries);
 	for (std::size_t i = temporaries.size(); i != 0; --i)
@@ -2174,6 +2308,30 @@ void SemanticAnalyzer::AppendFullExpressionDestructionActions(
 		const std::uint32_t action =
 			MakeTemporaryDestructorAction(temporaries[i - 1]);
 		if (action != kNoDumpEdge) dump_.Add(output_parent, action);
+	}
+}
+
+void SemanticAnalyzer::AppendUnwindDestructionActions(ScopeId scope,
+	std::uint32_t output_parent)
+{
+	for (ScopeId current = scope; current != kNoScope;
+		current = scope_parents_[current])
+	{
+		if (current >= scope_lifetimes_.size()) continue;
+		const std::vector<LifetimeObligation>& obligations =
+			scope_lifetimes_[current];
+		for (std::size_t i = obligations.size(); i != 0; --i)
+		{
+			const LifetimeObligation& obligation = obligations[i - 1];
+			std::uint32_t action = obligation.temporary == kNoDumpEdge ?
+				MakeDestructorAction(obligation.type, obligation.destructor,
+					obligation.object) :
+				MakeTemporaryDestructorAction(obligation.temporary,
+					obligation.destructor);
+			if (action == kNoDumpEdge) continue;
+			dump_.nodes[action].unwind_only = true;
+			dump_.Add(output_parent, action);
+		}
 	}
 }
 

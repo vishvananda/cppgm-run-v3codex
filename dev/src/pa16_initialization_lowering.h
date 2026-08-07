@@ -22,6 +22,22 @@ template <class Derived>
 class InitializationLowering
 {
 protected:
+	Operand PrepareTemporaryObjectStorage(std::uint32_t node)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (derived.temporary_addresses_[node].kind != Operand::NONE)
+			return derived.temporary_addresses_[node];
+		const LowType type = derived.LowerStorageType(
+			derived.arena_.nodes[node].type);
+		const Operand slot(derived.EnsureGeneratedSlot(node,
+			derived.arena_.nodes[node].reference_call_materialization ? "refcall" :
+			derived.arena_.nodes[node].argument_materialization ? "arg" :
+			derived.arena_.nodes[node].discarded_materialization ?
+				"discard" : "tmpobj", type), type);
+		derived.temporary_addresses_[node] = derived.AddressOfStorage(slot);
+		return derived.temporary_addresses_[node];
+	}
+
 	void EmitClassObjectCopy(TypeId type, const Operand& source,
 		const Operand& destination)
 	{
@@ -121,21 +137,17 @@ protected:
 			throw std::runtime_error("invalid temporary object action");
 		const bool initialize = derived.temporary_initialized_[node] == 0;
 		if (!initialize) return derived.temporary_addresses_[node];
-		const LowType type = derived.LowerStorageType(
-			derived.arena_.nodes[node].type);
-		const Operand slot(derived.EnsureGeneratedSlot(node,
-			derived.arena_.nodes[node].reference_call_materialization ? "refcall" :
-			derived.arena_.nodes[node].argument_materialization ? "arg" :
-			derived.arena_.nodes[node].discarded_materialization ?
-				"discard" : "tmpobj", type), type);
-		const Operand destination = derived.AddressOfStorage(slot);
-		derived.temporary_addresses_[node] = destination;
+		if (initialize && derived.temporary_addresses_[node].kind == Operand::NONE)
+			derived.EnsureFullExpressionCleanupSegment();
+		const Operand destination = PrepareTemporaryObjectStorage(node);
 		if (initialize)
 		{
+			derived.EnsureFullExpressionCleanupSegment();
 			if (derived.arena_.nodes[children[0]].kind == DUMP_CONSTRUCTOR_ACTION)
 				derived.LowerConstructorAction(children[0], destination);
 			else if (derived.arena_.nodes[children[0]].kind == DUMP_BRACED_INIT_LIST)
-				derived.LowerAggregateActions(children[0], slot, path, Operand());
+				derived.LowerAggregateActions(children[0], destination, path,
+					destination);
 			else if (derived.arena_.nodes[children[0]].kind == DUMP_CALL_EXPRESSION)
 			{
 				const DumpNode& call = derived.arena_.nodes[children[0]];
@@ -146,6 +158,9 @@ protected:
 					derived.LowerValue(children[0],
 						derived.LowerExpressionType(call.type)), destination);
 			}
+			else if (derived.arena_.nodes[children[0]].kind ==
+				DUMP_CONDITIONAL_EXPRESSION)
+				derived.LowerClassConditionalResult(children[0], destination);
 			else throw std::runtime_error(
 				"unsupported temporary object initializer");
 			derived.temporary_initialized_[node] = 1;

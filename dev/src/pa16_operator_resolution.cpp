@@ -911,6 +911,22 @@ ExpressionInfo SemanticAnalyzer::ApplyCallArgument(
 			++expression_count_;
 		}
 	}
+	const EntityId materialized_entity = EntityOf(value.type);
+	const TypeRecord& materialized_top = program_->types.Get(value.type);
+	const bool materialized_class = materialized_entity != kNoEntity &&
+		(program_->entities[materialized_entity].flavor == NAMED_STRUCT ||
+		 program_->entities[materialized_entity].flavor == NAMED_CLASS ||
+		 program_->entities[materialized_entity].flavor == NAMED_UNION);
+	if ((target_top.kind == TYPE_LVALUE_REFERENCE ||
+		target_top.kind == TYPE_RVALUE_REFERENCE) &&
+		value.category != VALUE_LVALUE &&
+		materialized_top.kind != TYPE_LVALUE_REFERENCE &&
+		materialized_top.kind != TYPE_RVALUE_REFERENCE &&
+		materialized_class &&
+		dump_.nodes[value.node].kind != DUMP_TEMPORARY_OBJECT &&
+		(dump_.nodes[value.node].kind == DUMP_CALL_EXPRESSION ||
+		 dump_.nodes[value.node].kind == DUMP_CONDITIONAL_EXPRESSION))
+		value = MaterializeTemporary(value);
 	if ((target_top.kind == TYPE_LVALUE_REFERENCE ||
 		target_top.kind == TYPE_RVALUE_REFERENCE) &&
 		dump_.nodes[value.node].kind == DUMP_TEMPORARY_OBJECT)
@@ -1232,6 +1248,18 @@ bool SemanticAnalyzer::TryAnalyzeOverloadedOperator(
 		throw std::runtime_error("selected special member is deleted");
 	std::vector<NodeId> arguments_syntax;
 	std::vector<ExpressionInfo> arguments;
+	ExpressionInfo selected_object = object;
+	if (selected_member && operands[0].category != VALUE_LVALUE &&
+		dump_.nodes[operands[0].node].kind != DUMP_TEMPORARY_OBJECT)
+	{
+		const EntityId entity = EntityOf(operands[0].type);
+		if (entity != kNoEntity &&
+			(program_->entities[entity].flavor == NAMED_STRUCT ||
+			 program_->entities[entity].flavor == NAMED_CLASS ||
+			 program_->entities[entity].flavor == NAMED_UNION))
+			selected_object = MakeImplicitObjectPointer(
+				MaterializeTemporary(operands[0]));
+	}
 	const std::size_t first = selected_member ? 1 : 0;
 	for (std::size_t i = first; i < operands.size(); ++i)
 	{
@@ -1240,7 +1268,7 @@ bool SemanticAnalyzer::TryAnalyzeOverloadedOperator(
 			operand_syntax[i] : kNoNode);
 	}
 	*result = BuildResolvedCall(selected, scope, arguments_syntax, arguments,
-		selected_member ? &object : 0, target,
+		selected_member ? &selected_object : 0, target,
 		selected_member ? naming_class : kNoEntity,
 		selected_member ? &object_conversion : 0, &argument_conversions);
 	return true;

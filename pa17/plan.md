@@ -13,30 +13,31 @@ synthesis, and O(emitted IR) lowering.
 
 ## Current Failure Map
 
-Current result: **160/231**, up from the **124/231** checkpoint baseline. The
+Current result: **173/231**, up from the **124/231** checkpoint baseline and
+**13** tests during the branch-cleanup checkpoint. The
 non-overlapping remaining-failure map is:
 
 | Failures | Shared behavior | Primary owner |
 | ---: | --- | --- |
-| 16 | temporary cleanup across conditional and loop control flow | PA12 lifetime facts + PA16 lowering |
+| 12 | temporary cleanup across loop and residual control flow | PA12 lifetime facts + PA17 lowering |
 | 1 | namespace class-array copy initialization | PA12 class-value initialization + static lowering |
-| 21 | residual operators, conversions, lookup, and ref qualification | PA12 calls/operator resolution |
-| 32 | class-value construction, initialization, copy/move, and ABI shapes | PA12 initialization + PA15-PA17 lowering |
+| 19 | residual operators, conversions, lookup, and ref qualification | PA12 calls/operator resolution |
+| 25 | class-value construction, initialization, copy/move, and ABI shapes | PA12 initialization + PA15-PA17 lowering |
 | 1 | residual namespace/control interaction | PA12 lookup and statement analysis |
 
 ## Active Checkpoint
 
-**Active: branch-local full-expression cleanup.** Apply `spec.md` sections 2,
-6, 8, and 9 at conditional-expression and short-circuit CFG boundaries. PA12
-owns construction order, branch membership, result materialization, and the
-ordered destructor suffix; PA16 carries the completed-prefix fact across each
-selected branch and unwind edge, preserving enclosing temporaries until the
-full-expression merge without lookup. Analysis is O(expression syntax +
-obligations), and lowering is O(CFG + emitted cleanup IR). Validate enclosing
-temporary preservation, selected conditional prvalues/member access, return
-branches, and both logical short-circuit paths; then run full PA17, through
-PA16, audit, and branch-depth scaling. Loop full-expression regions remain the
-following CFG checkpoint.
+**Active: loop full-expression regions.** Apply `spec.md` sections 2, 6, 8,
+and 9 at `for` condition/iteration boundaries. PA12 owns each loop component's
+typed expression and ordered temporary-destruction suffix; PA17 must lower one
+fresh cleanup region per runtime evaluation and route continue/back edges only
+after normal destruction, while unwind edges destroy exactly the constructed
+prefix. Data flows from temporary identity and selected destructor action IDs
+to typed CFG edges and LowIR, without lookup during lowering. Analysis remains
+O(loop syntax + obligations), lowering O(CFG + emitted cleanup IR), and retained
+state O(active obligations). Validate the iteration-temporary case together
+with for-init lifetime and condition-declaration regressions, then full PA17,
+through PA16, audit, and loop-depth scaling.
 
 ## Performance Evidence
 
@@ -75,6 +76,10 @@ following CFG checkpoint.
 - Nested condition declarations at depth 16/32/64 emitted 560/1,056/2,048
   LowIR lines (12,473/23,950/46,990 bytes). Five 300-compile batch medians were
   1.10/1.28/1.65 s, proportional to reached scopes and emitted cleanup edges.
+- Short-circuit temporary chains at depth 16/32/64 emitted 301/605/1,213
+  LowIR lines, 46/94/190 blocks, and 7,225/14,555/29,669 bytes. Thirty-compile
+  batches took 0.09/0.10/0.13 s with 5,536/5,796/6,072 KiB peak RSS, consistent
+  with linear CFG and cleanup output.
 
 ## Completed Checkpoints
 
@@ -91,3 +96,4 @@ following CFG checkpoint.
 | Union declaration and object actions | 145/231 -> 151/231 | Anonymous injection, active/default variant validation, constructor precedence, empty inactive lifetime, and whole-storage copy 6/6; through PA16 1,436/1,436; linear member probe and audit pass |
 | Typed temporary identity and linear lifetime regions | 151/231 -> 157/231 | Discarded direct/indirect class results, noexcept argument and throwing base-init suffixes, local reference extension, and rvalue-reference materialization 6/6; proportional 16/32/64-temporary probe |
 | Condition-declaration lifetime regions | 157/231 -> 160/231 | Nested false-path containment, reference-extended temporary, class-to-bool and switch-to-int conversion 4/4; through PA16 1,436/1,436; audit and proportional depth probe pass |
+| Branch-local class values and full-expression cleanup | 160/231 -> 173/231 | Branch lifetime 4/4 and class-conditional compatibility 5/6; zero regressions; through PA16 1,436/1,436; audit and linear 16/32/64 branch probe pass |

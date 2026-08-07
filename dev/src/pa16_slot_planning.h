@@ -69,9 +69,28 @@ protected:
 				derived.program_.types.Get(temporary_type).entity : kNoEntity;
 			const bool union_argument = temporary_entity != kNoEntity &&
 				derived.program_.entities[temporary_entity].flavor == NAMED_UNION;
+			if (record.kind == DUMP_BINARY_EXPRESSION && record.text != 0 &&
+				record.full_expression_staging)
+			{
+				const std::string operation = StripOperationPrefix(
+					derived.program_.names.Get(record.text));
+				if (operation == "&&" || operation == "||")
+					(void)derived.EnsureGeneratedSlot(current,
+						operation == "&&" ? "land" : "lor",
+						pa15_lowir_detail::LowI64());
+			}
+			if (record.kind == DUMP_CALL_EXPRESSION &&
+				record.full_expression_staging &&
+				!derived.UsesIndirectClassResult(record.type))
+			{
+				const LowType result = derived.LowerType(record.type);
+				if (result.kind != LOW_VOID)
+					(void)derived.EnsureGeneratedSlot(current, "call", result);
+			}
 			if (record.kind == DUMP_TEMPORARY_OBJECT &&
 				record.argument_materialization &&
-				(variable_initializer || union_argument) &&
+				(variable_initializer || union_argument ||
+				 record.full_expression_staging) &&
 				derived.generated_slots_[current] == kNoLowId)
 				(void)derived.EnsureGeneratedSlot(current, "arg",
 					derived.LowerStorageType(record.type));
