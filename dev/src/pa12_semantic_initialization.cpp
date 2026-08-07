@@ -45,6 +45,7 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 		throw std::runtime_error("constructor conversion table is too large");
 	std::vector<ConversionRank> ranks(candidates.size() * arity,
 		CONVERSION_ELLIPSIS);
+	CallConversionTable conversion_cache;
 	std::vector<bool> viable(candidates.size(), true);
 	for (std::size_t c = 0; c < candidates.size(); ++c)
 	{
@@ -76,7 +77,8 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 			{
 				if (arguments[a].type == kNoType)
 					rank = CONVERSION_INVALID;
-				else rank = Conversion(arguments[a], parameters[a]);
+				else rank = CallConversion(arguments[a], parameters[a],
+					&conversion_cache, a).rank;
 			}
 			ranks[c * arity + a] = rank;
 			if (rank == CONVERSION_INVALID) viable[c] = false;
@@ -123,6 +125,47 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 	return selected;
 }
 
+bool SemanticAnalyzer::EmptyDefaultConstructorChain(BindingId constructor,
+	std::vector<BindingId>* base_entries)
+{
+	for (std::size_t depth = 0; depth <= program_->entities.size(); ++depth)
+	{
+		const FunctionInfo& info = GetFunction(constructor);
+		const BindingRecord& binding = program_->bindings[constructor];
+		if (!info.constructor || !info.parameters.empty() ||
+			info.constructor_initializer != kNoNode ||
+			(info.definition_body != kNoNode &&
+			 FirstSemanticChild(info.definition_body) != kNoNode))
+			return false;
+		const EntityId entity = binding.member_owner;
+		if (entity == kNoEntity || entity >= entity_data_members_.size() ||
+			!entity_data_members_[entity].empty())
+			return false;
+		const EntityId base = program_->entities[entity].direct_base;
+		if (base == kNoEntity) return true;
+		if (base >= entity_constructors_.size()) return false;
+		BindingId next = kNoBinding;
+		const std::vector<BindingId>& candidates = entity_constructors_[base];
+		for (std::size_t i = 0; i < candidates.size(); ++i)
+		{
+			const FunctionInfo& candidate = GetFunction(candidates[i]);
+			std::size_t required = candidate.parameters.size();
+			while (required != 0 &&
+				candidate.parameters[required - 1].default_argument != kNoNode)
+				--required;
+			if (!candidate.constructor || candidate.deleted_constructor ||
+				required != 0)
+				continue;
+			if (next != kNoBinding) return false;
+			next = candidates[i];
+		}
+		if (next == kNoBinding) return false;
+		base_entries->push_back(EnsureConstructorBaseEntry(next));
+		constructor = next;
+	}
+	throw std::logic_error("cyclic default-constructor chain");
+}
+
 std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 	ScopeId scope, const std::vector<NodeId>& argument_syntax,
 	bool copy_initialization, bool list_initialization, bool base_subobject)
@@ -152,6 +195,15 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 	const std::uint32_t action = MakeDump(DUMP_CONSTRUCTOR_ACTION,
 		AdaptMemberFunctionType(selected), VALUE_NONE,
 		constructor.display_name, selected);
+	std::vector<BindingId> empty_base_entries;
+	if (constructor.defaulted_constructor && argument_syntax.empty() &&
+		program_->entities[entity].empty_class &&
+		EmptyDefaultConstructorChain(selected, &empty_base_entries))
+	{
+		dump_.nodes[action].elide_empty_constructor = true;
+		for (std::size_t i = 0; i < empty_base_entries.size(); ++i)
+			DemandFunction(empty_base_entries[i]);
+	}
 	for (std::size_t a = 0; a < argument_syntax.size(); ++a)
 	{
 		ExpressionInfo argument = arguments[a];
@@ -160,7 +212,7 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 			if (argument.type == kNoType)
 				argument = AnalyzeExpression(argument_syntax[a], scope,
 					parameters[a]);
-			else argument = ApplyTarget(argument, parameters[a]);
+			else argument = ApplyCallArgument(argument, parameters[a]);
 		}
 		dump_.Add(action, argument.node);
 	}
@@ -175,7 +227,8 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 			constructor.parameters[a].default_scope, parameters[a]);
 		dump_.Add(action, argument.node);
 	}
-	if (!(constructor.implicit_constructor &&
+	if (!dump_.nodes[action].elide_empty_constructor &&
+		!(constructor.implicit_constructor &&
 		program_->entities[entity].trivial_default_constructor))
 		DemandFunction(selected);
 	++expression_count_;
@@ -553,7 +606,14 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 	std::vector<ExpressionInfo> values;
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
-		values.push_back(AnalyzeExpression(arena_->EdgeChild(edge), scope, element));
+	{
+		ExpressionInfo value = AnalyzeExpression(arena_->EdgeChild(edge), scope,
+			element);
+		if (IsIntegral(element, true) && IsArithmetic(value.type) &&
+			!IsIntegral(value.type, true))
+			throw std::runtime_error("narrowing list-initialization conversion");
+		values.push_back(value);
+	}
 	const std::uint32_t list = MakeDump(DUMP_BRACED_INIT_LIST, type,
 		VALUE_LVALUE);
 	for (std::size_t i = 0; i < values.size(); ++i) dump_.Add(list, values[i].node);

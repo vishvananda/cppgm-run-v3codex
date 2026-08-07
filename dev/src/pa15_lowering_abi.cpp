@@ -268,7 +268,8 @@ std::string MangleFunction(const pa11::Program& program,
 		AbiFactRecord terminal;
 		terminal.set_kind(ABI_FACT_RECORD_FUNCTION);
 		terminal.function.kind = ABI_FUNCTION_RECORD_TERMINAL;
-		terminal.function.terminal = "destructor-complete";
+		terminal.function.terminal = binding.destructor_base_entry ?
+			"destructor-base" : "destructor-complete";
 		file.cases[0].records.push_back(terminal);
 	}
 	const std::size_t first_parameter = member ? 1 : 0;
@@ -310,6 +311,7 @@ std::string MangleVariable(const pa11::Program& program,
 	target.target.kind = ABI_TARGET_FACT_VARIABLE;
 	target.target.internal_linkage =
 		binding.storage_class == STORAGE_CLASS_STATIC &&
+		binding.member_owner == kNoEntity &&
 		!binding.unnamed_namespace_linkage;
 	target.target.qualified_name = program.names.Get(
 		binding.qualified_name != 0 ? binding.qualified_name : node.text);

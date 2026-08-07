@@ -300,9 +300,10 @@ struct BindingRecord
 	AccessKind access;
 	bool constant, nonthrowing, unnamed_namespace_linkage,
 		thread_local_storage, non_static_data_member,
-		bit_field,
+		mutable_member, bit_field,
 		static_member_function, has_default_member_initializer, constructor,
-		constructor_base_entry, destructor;
+		constructor_base_entry, destructor, destructor_base_entry,
+		inline_function;
 
 	BindingRecord();
 };

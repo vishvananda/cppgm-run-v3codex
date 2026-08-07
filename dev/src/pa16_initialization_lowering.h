@@ -74,7 +74,7 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		if (children.size() != 1)
 			throw std::runtime_error("invalid temporary object action");
-		const bool initialize = derived.generated_slots_[node] == kNoLowId;
+		const bool initialize = derived.temporary_initialized_[node] == 0;
 		const LowType type = derived.LowerStorageType(
 			derived.arena_.nodes[node].type);
 		const Operand slot(derived.EnsureGeneratedSlot(node,
@@ -83,6 +83,7 @@ protected:
 		const Operand destination = derived.AddressOfStorage(slot);
 		if (initialize)
 		{
+			derived.temporary_initialized_[node] = 1;
 			if (derived.arena_.nodes[children[0]].kind == DUMP_CONSTRUCTOR_ACTION)
 				derived.LowerConstructorAction(children[0], destination);
 			else if (derived.arena_.nodes[children[0]].kind == DUMP_BRACED_INIT_LIST)

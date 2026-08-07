@@ -149,5 +149,91 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 	return true;
 }
 
+bool SemanticAnalyzer::AnalyzeExplicitDestructorCall(NodeId callee,
+	ScopeId scope, const std::vector<NodeId>& argument_syntax, TypeId target,
+	ExpressionInfo* result)
+{
+	while (arena_->IsTag(callee, "parenthesized-expression"))
+		callee = FirstSemanticChild(callee);
+	if (callee == kNoNode || !arena_->IsTag(callee, "member-expression"))
+		return false;
+	const std::uint32_t object_edge = arena_->FirstEdge(callee);
+	const std::uint32_t name_edge = object_edge == kNoEdge ? kNoEdge :
+		arena_->NextEdge(object_edge);
+	if (name_edge == kNoEdge)
+		throw std::runtime_error("invalid explicit destructor expression");
+	const NodeId identifier = arena_->EdgeChild(name_edge);
+	const std::string spelling = arena_->Payload(identifier);
+	if (spelling.empty() || spelling[0] != '~') return false;
+	if (!argument_syntax.empty())
+		throw std::runtime_error("explicit destructor call has arguments");
+
+	ExpressionInfo object = AnalyzeExpression(arena_->EdgeChild(object_edge), scope);
+	const bool arrow = PayloadSource(callee) == "->";
+	TypeId destroyed_type = EffectiveType(object.type);
+	if (arrow)
+	{
+		destroyed_type = program_->types.RemoveTopCv(destroyed_type);
+		const TypeRecord pointer = program_->types.Get(destroyed_type);
+		if (pointer.kind != TYPE_POINTER)
+			throw std::runtime_error(
+				"explicit destructor arrow operand is not a pointer");
+		destroyed_type = pointer.child;
+	}
+	destroyed_type = program_->types.RemoveTopCv(EffectiveType(destroyed_type));
+	const EntityId entity = EntityOf(destroyed_type);
+	if (entity == kNoEntity)
+	{
+		const LookupResult named = LookupSpelling(scope, spelling.substr(1),
+			LOOKUP_TYPE);
+		if (named.type == kNoType ||
+			program_->types.RemoveTopCv(EffectiveType(named.type)) != destroyed_type)
+			throw std::runtime_error("pseudo-destructor type mismatch");
+		const TypeId void_type =
+			program_->types.Fundamental(FUND_VOID);
+		const std::uint32_t discarded = MakeDump(DUMP_CAST_EXPRESSION,
+			void_type, VALUE_PRVALUE);
+		dump_.Add(discarded, object.node);
+		result->node = discarded;
+		result->type = void_type;
+		result->category = VALUE_PRVALUE;
+		++expression_count_;
+		*result = ApplyTarget(*result, target);
+		return true;
+	}
+
+	const BindingId destructor = DestructorForType(destroyed_type);
+	if (destructor == kNoBinding ||
+		program_->names.Get(program_->bindings[destructor].name) != spelling)
+		throw std::runtime_error("class has no matching destructor");
+	ExpressionInfo object_pointer = object;
+	if (arrow)
+	{
+		object_pointer.type = program_->types.Pointer(destroyed_type);
+		object_pointer.category = VALUE_PRVALUE;
+	}
+	else
+	{
+		if (object.category != VALUE_LVALUE)
+			throw std::runtime_error(
+				"explicit destructor object is not an addressable lvalue");
+		object_pointer.type = program_->types.Pointer(destroyed_type);
+		object_pointer.category = VALUE_PRVALUE;
+		object_pointer.binding = kNoBinding;
+		const std::uint32_t address = MakeDump(DUMP_UNARY_EXPRESSION,
+			object_pointer.type, VALUE_PRVALUE,
+			program_->names.Intern("OP_AMP:&"));
+		dump_.Add(address, object.node);
+		object_pointer.node = address;
+		object_pointer.constant = false;
+		++expression_count_;
+	}
+	const std::vector<NodeId> no_syntax;
+	const std::vector<ExpressionInfo> no_arguments;
+	*result = BuildResolvedCall(destructor, scope, no_syntax,
+		no_arguments, &object_pointer, target, entity);
+	return true;
+}
+
 }
 }

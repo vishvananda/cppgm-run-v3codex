@@ -696,6 +696,7 @@ BindingId SemanticAnalyzer::EnsureImplicitDestructor(EntityId entity)
 	BindingRecord& binding = program_->bindings[destructor];
 	binding.member_owner = entity;
 	binding.destructor = true;
+	binding.inline_function = true;
 	FunctionInfo& info = GetMutableFunction(destructor);
 	info.member_owner = owner.type;
 	info.destructor = true;
@@ -846,6 +847,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 			BindingRecord& binding = program_->bindings[member];
 			binding.storage_class = spec.storage_class;
 			binding.thread_local_storage = spec.thread_local_storage;
+			binding.mutable_member = spec.mutable_member;
 			binding.member_owner = EntityOf(owner_type);
 			binding.access = access;
 			binding.requested_alignment = RequestedAlignment(node, scope);
@@ -1052,6 +1054,13 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 		binding.member_owner = entity;
 		binding.access = access;
 		binding.destructor = true;
+		binding.inline_function = source_definition || defaulted;
+		const NodeId specifiers = FindChild(node, "member-specifiers");
+		if (specifiers != kNoNode)
+			for (std::uint32_t edge = arena_->FirstEdge(specifiers);
+				edge != kNoEdge; edge = arena_->NextEdge(edge))
+				if (PayloadSource(arena_->EdgeChild(edge)) == "inline")
+					binding.inline_function = true;
 		FunctionInfo& info = GetMutableFunction(destructor);
 		info.member_owner = owner_type;
 		info.destructor = true;
@@ -1132,6 +1141,62 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 	class_record.has_user_provided_constructor =
 		class_record.has_user_provided_constructor ||
 		(source_definition || (!defaulted && !deleted));
+}
+
+void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
+	ScopeId scope)
+{
+	const NodeId declarator = FindChild(node, "declarator");
+	if (declarator == kNoNode)
+		throw std::runtime_error(
+			"out-of-class special member is missing its declarator");
+	const NamePath path = DeclaratorNamePath(declarator);
+	if (!path.global && path.Size() <= 1)
+		throw std::runtime_error(
+			"unqualified special member definition outside a class");
+	const ScopeId owner = ResolveOwner(scope, path);
+	const EntityId entity = owner == kNoScope ? kNoEntity :
+		program_->EntityForScope(owner);
+	if (entity == kNoEntity)
+		throw std::runtime_error("special member owner is not a class");
+	const std::string terminal = program_->names.Get(path.Last());
+	const std::string class_name = program_->names.Get(
+		program_->entities[entity].identity_name);
+	const bool constructor_definition = terminal == class_name;
+	const bool destructor_definition = terminal == "~" + class_name;
+	if (!constructor_definition && !destructor_definition)
+		throw std::runtime_error(
+			"qualified special member definition has an invalid name");
+
+	const EntityId previous_class = current_class_context_;
+	current_class_context_ = entity;
+	const DeclaratorInfo parsed = BuildDeclarator(declarator,
+		program_->types.Fundamental(FUND_VOID), owner);
+	const BindingId special = DeclareFunction(owner, path.Last(),
+		parsed.type, parsed.parameters, true, false, STORAGE_CLASS_NONE,
+		current_language_linkage_, IsNonthrowing(declarator, owner));
+	FunctionInfo& info = GetMutableFunction(special);
+	if (info.member_owner != program_->entities[entity].type ||
+		(constructor_definition && !info.constructor) ||
+		(destructor_definition && !info.destructor))
+		throw std::runtime_error(
+			"qualified special member definition has no matching declaration");
+	info.definition_body = FindChild(node, "compound-statement");
+	if (constructor_definition)
+		info.constructor_initializer = FindChild(node, "ctor-initializer");
+	info.deferred = true;
+	if (constructor_definition)
+	{
+		program_->entities[entity].has_user_provided_constructor = true;
+		(void)EnsureConstructorBaseEntry(special);
+	}
+	else
+	{
+		program_->entities[entity].has_user_declared_destructor = true;
+		program_->entities[entity].trivial_destructor = false;
+		(void)EnsureDestructorBaseEntry(special);
+	}
+	current_class_context_ = previous_class;
 }
 
 TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope,
@@ -1288,6 +1353,26 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 			 FirstSemanticChild(child) != kNoNode))
 		{
 			result.type = DecltypeType(FirstSemanticChild(child), scope);
+			const NodeId qualified = FindChild(child, "qualified-type-name");
+			if (qualified != kNoNode)
+			{
+				const ScopeId carrier = program_->ScopeForType(
+					EffectiveType(result.type));
+				if (carrier == kNoScope)
+					throw std::runtime_error(
+						"decltype qualifier does not name a class type");
+				const LookupResult found = program_->LookupQualified(carrier,
+					ParseNamePath(arena_->Payload(qualified)), LOOKUP_TYPE);
+				if (found.type == kNoType)
+					throw std::runtime_error(
+						"qualified decltype type was not found");
+				if (found.type_declaration != kNoBinding &&
+					!CanAccessMember(found.type_declaration,
+						found.naming_class))
+					throw std::runtime_error(
+						"inaccessible qualified decltype type");
+				result.type = found.type;
+			}
 			continue;
 		}
 		if (!arena_->IsTag(child, "cv-qualifier") &&
@@ -1303,7 +1388,7 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 		else if (spelling == "thread_local")
 			result.thread_local_storage = true;
 		else if (spelling == "auto") result.placeholder_auto = true;
-		else if (spelling == "mutable") {}
+		else if (spelling == "mutable") result.mutable_member = true;
 		else if (spelling == "const") cv |= CV_CONST;
 		else if (spelling == "volatile") cv |= CV_VOLATILE;
 		else if (spelling == "unsigned") is_unsigned = true;
@@ -1894,6 +1979,79 @@ BindingId SemanticAnalyzer::EnsureConstructorBaseEntry(BindingId constructor)
 	return base_entry;
 }
 
+BindingId SemanticAnalyzer::EnsureDestructorBaseEntry(BindingId destructor)
+{
+	destructor = program_->bindings[destructor].canonical;
+	if (program_->bindings[destructor].destructor_base_entry)
+		return destructor;
+	if (destructor_base_entry_by_binding_.size() <= destructor)
+		destructor_base_entry_by_binding_.resize(
+			static_cast<std::size_t>(destructor) + 1, kNoBinding);
+	if (destructor_base_entry_by_binding_[destructor] != kNoBinding)
+		return destructor_base_entry_by_binding_[destructor];
+	if (program_->bindings[destructor].inline_function)
+	{
+		destructor_base_entry_by_binding_[destructor] = destructor;
+		return destructor;
+	}
+
+	const BindingRecord source_binding = program_->bindings[destructor];
+	const FunctionInfo source_info = GetFunction(destructor);
+	if (!source_binding.destructor || !source_info.destructor)
+		throw std::logic_error(
+			"destructor base entry requested for non-destructor");
+	const NameId generated_name = program_->names.Intern(
+		program_->names.Get(source_binding.name) + "__base_entry");
+	const BindingId base_entry = program_->AddBinding(source_binding.owner,
+		BIND_FUNCTION, generated_name, source_binding.type, false, 0,
+		NAMED_NONE, 0, kNoBinding, false);
+	BindingRecord& binding = program_->bindings[base_entry];
+	binding.member_owner = source_binding.member_owner;
+	binding.access_owner = source_binding.access_owner;
+	binding.overload_ordinal = source_binding.overload_ordinal;
+	binding.language_linkage = source_binding.language_linkage;
+	binding.storage_class = source_binding.storage_class;
+	binding.access = source_binding.access;
+	binding.nonthrowing = source_binding.nonthrowing;
+	binding.destructor = true;
+	binding.destructor_base_entry = true;
+
+	FunctionInfo info = source_info;
+	info.binding = base_entry;
+	info.ordinary_visible = false;
+	info.demand_state = 0;
+	if (function_fact_by_binding_.size() <= base_entry)
+		function_fact_by_binding_.resize(
+			static_cast<std::size_t>(base_entry) + 1, kNoDumpEdge);
+	function_fact_by_binding_[base_entry] =
+		static_cast<std::uint32_t>(functions_.size());
+	functions_.push_back(info);
+	destructor_base_entry_by_binding_[destructor] = base_entry;
+	return base_entry;
+}
+
+void SemanticAnalyzer::EnsureStaticMemberStorage(BindingId member)
+{
+	member = program_->bindings[member].canonical;
+	BindingRecord& binding = program_->bindings[member];
+	if (binding.kind != BIND_VARIABLE ||
+		binding.member_owner == kNoEntity || binding.non_static_data_member)
+		return;
+	if (static_member_storage_by_binding_.size() <= member)
+		static_member_storage_by_binding_.resize(
+			static_cast<std::size_t>(member) + 1, kNoDumpEdge);
+	if (static_member_storage_by_binding_[member] != kNoDumpEdge) return;
+	if (root_ == kNoDumpEdge)
+		throw std::logic_error("static member storage has no translation unit");
+	if (binding.qualified_name == 0)
+		binding.qualified_name = EmissionName(binding.owner, binding.name);
+	const std::uint32_t declaration = MakeDump(DUMP_VARIABLE, binding.type,
+		VALUE_NONE, binding.name, member);
+	dump_.nodes[declaration].declaration_only = true;
+	dump_.Add(root_, declaration);
+	static_member_storage_by_binding_[member] = declaration;
+}
+
 void SemanticAnalyzer::PublishUsingAccess(BindingId alias,
 	BindingId source, AccessKind access)
 {
@@ -1912,11 +2070,14 @@ void SemanticAnalyzer::PublishUsingAccess(BindingId alias,
 	target.access = access;
 	target.storage_class = original.storage_class;
 	target.non_static_data_member = original.non_static_data_member;
+	target.mutable_member = original.mutable_member;
 	target.bit_field = original.bit_field;
 	target.static_member_function = original.static_member_function;
 	target.constructor = original.constructor;
 	target.constructor_base_entry = original.constructor_base_entry;
 	target.destructor = original.destructor;
+	target.destructor_base_entry = original.destructor_base_entry;
+	target.inline_function = original.inline_function;
 }
 
 void SemanticAnalyzer::AnalyzeFriendFunction(NodeId node,
@@ -2389,8 +2550,22 @@ void SemanticAnalyzer::DeduceFunctionTemplates(ScopeId scope,
 
 void SemanticAnalyzer::DemandFunction(BindingId binding)
 {
-	if (binding == kNoBinding) return;
+	if (binding == kNoBinding || unevaluated_depth_ != 0) return;
 	binding = program_->bindings[binding].canonical;
+	if (binding < constructor_base_entry_by_binding_.size())
+	{
+		const BindingId base_entry =
+			constructor_base_entry_by_binding_[binding];
+		if (base_entry != kNoBinding && base_entry != binding)
+			DemandFunction(base_entry);
+	}
+	if (binding < destructor_base_entry_by_binding_.size())
+	{
+		const BindingId base_entry =
+			destructor_base_entry_by_binding_[binding];
+		if (base_entry != kNoBinding && base_entry != binding)
+			DemandFunction(base_entry);
+	}
 	if (binding >= function_fact_by_binding_.size() ||
 		function_fact_by_binding_[binding] == kNoDumpEdge) return;
 	FunctionInfo& function = GetMutableFunction(binding);

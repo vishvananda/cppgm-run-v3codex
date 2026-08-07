@@ -489,11 +489,11 @@ BindingRecord::BindingRecord()
 	  storage_class(STORAGE_CLASS_NONE), access(ACCESS_PUBLIC),
 	  constant(false), nonthrowing(false), unnamed_namespace_linkage(false),
 	  thread_local_storage(false),
-	  non_static_data_member(false), bit_field(false),
+	  non_static_data_member(false), mutable_member(false), bit_field(false),
 	  static_member_function(false),
 	  has_default_member_initializer(false), constructor(false),
 	  constructor_base_entry(false),
-	  destructor(false)
+	  destructor(false), destructor_base_entry(false), inline_function(false)
 {
 }
 

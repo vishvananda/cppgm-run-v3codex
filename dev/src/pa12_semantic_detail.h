@@ -30,7 +30,8 @@ public:
 		  current_return_type_(kNoType), current_class_context_(kNoEntity),
 		  current_function_context_(kNoBinding),
 		  current_pack_alignment_(0),
-		  loop_depth_(0), switch_depth_(0), expression_count_(0),
+		  loop_depth_(0), switch_depth_(0), unevaluated_depth_(0),
+		  expression_count_(0),
 		  associated_generation_(0), candidate_generation_(0),
 		  associated_scope_visits_(0), associated_declaration_visits_(0),
 		  overload_candidates_(0), overload_order_comparisons_(0),
@@ -177,6 +178,9 @@ private:
 	bool AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 		const std::vector<NodeId>& argument_syntax, TypeId target,
 		ExpressionInfo* result);
+	bool AnalyzeExplicitDestructorCall(NodeId callee, ScopeId scope,
+		const std::vector<NodeId>& argument_syntax, TypeId target,
+		ExpressionInfo* result);
 	void AppendArgumentDependentCandidates(NameId name,
 		const std::vector<ExpressionInfo>& arguments,
 		std::vector<BindingId>* candidates);
@@ -241,6 +245,7 @@ private:
 		AccessKind access);
 	void AnalyzeSpecialMember(NodeId node, ScopeId scope, TypeId owner_type,
 		AccessKind access);
+	void AnalyzeOutOfClassSpecialMember(NodeId node, ScopeId scope);
 	bool CanAccessMember(BindingId member,
 		EntityId naming_class = kNoEntity,
 		EntityId object_class = kNoEntity) const;
@@ -263,6 +268,8 @@ private:
 	void InheritConstructors(EntityId entity,
 		const std::vector<BindingId>& constructors);
 	BindingId EnsureConstructorBaseEntry(BindingId constructor);
+	BindingId EnsureDestructorBaseEntry(BindingId destructor);
+	void EnsureStaticMemberStorage(BindingId member);
 	BindingId EnsureImplicitConstructor(EntityId entity);
 	BindingId EnsureImplicitDestructor(EntityId entity);
 	const std::vector<BindingId>& ConstructorCandidates(EntityId entity) const;
@@ -273,6 +280,8 @@ private:
 		const std::vector<ExpressionInfo>& arguments,
 		const std::vector<BindingId>& candidates, bool copy_initialization,
 		bool list_initialization);
+	bool EmptyDefaultConstructorChain(BindingId constructor,
+		std::vector<BindingId>* base_entries);
 	std::uint32_t BuildConstructorAction(TypeId type, ScopeId scope,
 		const std::vector<NodeId>& argument_syntax, bool copy_initialization,
 		bool list_initialization, bool base_subobject = false);
@@ -373,6 +382,8 @@ private:
 	std::vector<std::vector<BindingId> > entity_constructors_;
 	std::vector<BindingId> implicit_constructor_by_entity_;
 	std::vector<BindingId> constructor_base_entry_by_binding_;
+	std::vector<BindingId> destructor_base_entry_by_binding_;
+	std::vector<std::uint32_t> static_member_storage_by_binding_;
 	std::vector<BindingId> entity_destructor_by_entity_;
 	std::vector<BindingId> hidden_friend_anchor_by_entity_;
 	std::vector<NodeId> member_initializer_by_binding_;
@@ -407,6 +418,7 @@ private:
 	std::vector<std::size_t> pack_alignment_stack_;
 	std::size_t loop_depth_;
 	std::size_t switch_depth_;
+	std::size_t unevaluated_depth_;
 	std::size_t expression_count_;
 	std::uint32_t associated_generation_;
 	std::uint32_t candidate_generation_;

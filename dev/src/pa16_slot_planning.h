@@ -1,0 +1,78 @@
+#ifndef CPPGM_PA16_SLOT_PLANNING_H
+#define CPPGM_PA16_SLOT_PLANNING_H
+
+#include "pa12_semantic_model.h"
+#include "pa15_lowering_support.h"
+
+#include <cstdint>
+#include <string>
+#include <vector>
+
+namespace cppgm
+{
+namespace pa16_lowering_detail
+{
+
+using namespace pa11;
+using namespace pa12_semantic_detail;
+using namespace pa15_lowering_detail;
+
+template <class Derived>
+class SlotPlanning
+{
+protected:
+	void CollectSlots(std::uint32_t node)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		std::vector<std::uint32_t> pending(1, node);
+		std::vector<std::uint8_t> under_variable(1, 0);
+		while (!pending.empty())
+		{
+			const std::uint32_t current = pending.back();
+			pending.pop_back();
+			const bool variable_initializer = under_variable.back() != 0;
+			under_variable.pop_back();
+			const DumpNode& record = derived.arena_.nodes[current];
+			if ((record.kind == DUMP_PARAMETER || record.kind == DUMP_VARIABLE) &&
+				record.binding != kNoBinding)
+			{
+				if (derived.binding_slots_[record.binding] == kNoLowId)
+				{
+					std::string requested = record.text == 0 ? std::string() :
+						derived.program_.names.Get(record.text);
+					if (record.kind == DUMP_PARAMETER && requested.empty())
+						requested = derived.parameter_slot_index_ <
+							derived.function_->parameters.size() ?
+							derived.function_->parameters[
+								derived.parameter_slot_index_].name : "__param";
+					const std::string name = derived.UniqueSlotName(requested);
+					derived.binding_slots_[record.binding] =
+						static_cast<SlotId>(derived.function_->slots.size());
+					Slot slot;
+					slot.name = name;
+					slot.type = derived.LowerStorageType(record.type);
+					derived.function_->slots.push_back(slot);
+				}
+				if (record.kind == DUMP_PARAMETER)
+					++derived.parameter_slot_index_;
+			}
+			if (record.kind == DUMP_TEMPORARY_OBJECT &&
+				record.argument_materialization && variable_initializer &&
+				derived.generated_slots_[current] == kNoLowId)
+				(void)derived.EnsureGeneratedSlot(current, "arg",
+					derived.LowerStorageType(record.type));
+			const NodeChildren children = derived.Children(current);
+			for (std::size_t i = children.size(); i != 0; --i)
+			{
+				pending.push_back(children[i - 1]);
+				under_variable.push_back(variable_initializer ||
+					record.kind == DUMP_VARIABLE ? 1 : 0);
+			}
+		}
+	}
+};
+
+}
+}
+
+#endif

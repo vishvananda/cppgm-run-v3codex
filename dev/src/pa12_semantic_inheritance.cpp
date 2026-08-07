@@ -424,7 +424,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeImplicitDataMember(
 	if (object_pointer.kind == TYPE_POINTER)
 	{
 		const TypeRecord pointee = program_->types.Get(object_pointer.child);
-		if (pointee.kind == TYPE_QUALIFIED)
+		if (pointee.kind == TYPE_QUALIFIED && !binding.mutable_member)
 			member_type = program_->types.Qualify(member_type, pointee.cv);
 	}
 	const std::uint32_t object = MakeDump(DUMP_ID_EXPRESSION,

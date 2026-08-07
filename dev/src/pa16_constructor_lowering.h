@@ -30,6 +30,7 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		const DumpNode& action = derived.arena_.nodes[node];
+		if (action.elide_empty_constructor) return;
 		if (action.kind != DUMP_CONSTRUCTOR_ACTION ||
 			action.binding == kNoBinding ||
 			action.binding >= derived.function_symbols_.size() ||
@@ -80,6 +81,13 @@ protected:
 			}
 			else
 			{
+				if (parameter < function_type.parameter_count &&
+					derived.arena_.nodes[children[i]].class_argument_staging)
+				{
+					arguments.Push(derived.LowerClassArgumentStaging(
+						children[i], parameters[parameter]));
+					continue;
+				}
 				const LowType expected = parameter < function_type.parameter_count ?
 					derived.LowerType(parameters[parameter]) :
 					derived.LowerExpressionType(

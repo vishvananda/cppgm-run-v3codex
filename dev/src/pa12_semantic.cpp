@@ -129,6 +129,7 @@ bool SemanticAnalyzer::IsDeclaration(NodeId node) const
 		arena_->IsTag(node, "namespace-definition") ||
 		arena_->IsTag(node, "namespace-alias-definition") ||
 		arena_->IsTag(node, "template-declaration") ||
+		arena_->IsTag(node, "special-member-definition") ||
 		arena_->IsTag(node, "class-specifier") ||
 		arena_->IsTag(node, "class-forward-declaration") ||
 		arena_->IsTag(node, "enum-specifier") ||
@@ -173,6 +174,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const {
 		entity_constructors_.capacity() * sizeof(std::vector<BindingId>) +
 		implicit_constructor_by_entity_.capacity() * sizeof(BindingId) +
 		constructor_base_entry_by_binding_.capacity() * sizeof(BindingId) +
+		destructor_base_entry_by_binding_.capacity() * sizeof(BindingId) +
+		static_member_storage_by_binding_.capacity() * sizeof(std::uint32_t) +
 		entity_destructor_by_entity_.capacity() * sizeof(BindingId) +
 		hidden_friend_anchor_by_entity_.capacity() * sizeof(BindingId) +
 		member_initializer_by_binding_.capacity() * sizeof(NodeId) +
@@ -837,6 +840,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 		if (binding.non_static_data_member)
 			return AnalyzeImplicitDataMember(found.ordinary, scope, target,
 				found.naming_class);
+		if (binding.member_owner != kNoEntity)
+			EnsureStaticMemberStorage(found.ordinary);
 		const std::uint32_t injected_fact =
 			found.ordinary < injected_fact_by_binding_.size() ?
 			injected_fact_by_binding_[found.ordinary] : kNoDumpEdge;
@@ -1191,6 +1196,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 	bool arguments_analyzed = false;
 
 	ExpressionInfo member_call;
+	if (AnalyzeExplicitDestructorCall(callee_syntax, scope, argument_syntax,
+		target, &member_call)) return member_call;
 	if (AnalyzeDirectMemberCall(callee_syntax, scope, argument_syntax,
 		target, &member_call)) return member_call;
 
@@ -1372,7 +1379,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 	if (TryAnalyzeCallOperator(scope, callee, argument_syntax,
 		arguments_analyzed ? &analyzed_arguments : 0, target, &call_operator))
 		return call_operator;
-	TypeId function_type = EffectiveType(callee.type);
+	TypeId function_type = program_->types.RemoveTopCv(
+		EffectiveType(callee.type));
 	TypeRecord callable = program_->types.Get(function_type);
 	if (callable.kind == TYPE_POINTER)
 	{
@@ -1749,7 +1757,20 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 	if (operand == kNoNode) throw std::runtime_error("empty sizeof");
 	TypeId measured = kNoType;
 	if (arena_->IsTag(operand, "type-id")) measured = BuildTypeId(operand, scope);
-	else measured = AnalyzeExpression(operand, scope).type;
+	else
+	{
+		++unevaluated_depth_;
+		try
+		{
+			measured = AnalyzeExpression(operand, scope).type;
+		}
+		catch (...)
+		{
+			--unevaluated_depth_;
+			throw;
+		}
+		--unevaluated_depth_;
+	}
 	const bool alignment_query = arena_->IsTag(node, "type-trait-expression");
 	const std::size_t value = alignment_query ? program_->AlignOf(measured) :
 		program_->SizeOf(measured);
@@ -1793,8 +1814,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 		throw std::runtime_error("inaccessible class member");
 	const EntityId member_owner =
 		program_->bindings[found.ordinary].member_owner;
-	TypeId type = program_->bindings[found.ordinary].type;
-	if (IsConst(owner_type)) type = program_->types.Qualify(type, CV_CONST);
+	const BindingRecord& member_binding =
+		program_->bindings[found.ordinary];
+	TypeId type = member_binding.type;
+	if (IsConst(owner_type) && !member_binding.mutable_member)
+		type = program_->types.Qualify(type, CV_CONST);
+	if (!member_binding.non_static_data_member)
+		EnsureStaticMemberStorage(found.ordinary);
 	std::string operation = arena_->Payload(node);
 	const std::size_t colon = operation.find(':');
 	if (colon != std::string::npos) operation.erase(colon + 1);
@@ -1998,6 +2024,11 @@ void SemanticAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 	if (arena_->IsTag(node, "function-definition"))
 	{
 		AnalyzeFunction(node, scope, output_parent);
+		return;
+	}
+	if (arena_->IsTag(node, "special-member-definition"))
+	{
+		AnalyzeOutOfClassSpecialMember(node, scope);
 		return;
 	}
 	if (arena_->IsTag(node, "class-specifier") ||
@@ -2921,56 +2952,4 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 {
 }
 
-void WriteSemanticTranslationUnit(const std::string& path,
-	const std::string& source, const PreprocessingOptions& options,
-	std::ostream& output, SemanticAnalysisStats* stats)
-{
-	const std::chrono::steady_clock::time_point started =
-		std::chrono::steady_clock::now();
-	if (stats) *stats = SemanticAnalysisStats();
-	SyntaxStats syntax_stats;
-	pa12_semantic_detail::SemanticAnalyzer analyzer(output, stats);
-	ConsumeSyntaxTranslationUnit(path, source, options, analyzer,
-		stats ? &syntax_stats : 0);
-	if (stats)
-	{
-		stats->preprocessing = syntax_stats.preprocessing;
-		stats->tokens = syntax_stats.tokens;
-		stats->syntax_nodes = syntax_stats.syntax_nodes;
-		stats->peak_stage_storage_bytes = source.size() +
-			syntax_stats.token_storage_bytes + syntax_stats.syntax_storage_bytes +
-			syntax_stats.parser_storage_bytes + stats->semantic_storage_bytes;
-		stats->elapsed_nanoseconds = static_cast<std::uint64_t>(
-			std::chrono::duration_cast<std::chrono::nanoseconds>(
-				std::chrono::steady_clock::now() - started).count());
-	}
-}
-
-void ConsumeSemanticTranslationUnit(const std::string& path,
-	const std::string& source, const PreprocessingOptions& options,
-	pa12_semantic_detail::SemanticGraphConsumer& consumer,
-	SemanticAnalysisStats* stats)
-{
-	const std::chrono::steady_clock::time_point started =
-		std::chrono::steady_clock::now();
-	if (stats) *stats = SemanticAnalysisStats();
-	SyntaxStats syntax_stats;
-	std::ostringstream unused_output;
-	pa12_semantic_detail::SemanticAnalyzer analyzer(unused_output, stats,
-		&consumer, false);
-	ConsumeSyntaxTranslationUnit(path, source, options, analyzer,
-		stats ? &syntax_stats : 0);
-	if (stats)
-	{
-		stats->preprocessing = syntax_stats.preprocessing;
-		stats->tokens = syntax_stats.tokens;
-		stats->syntax_nodes = syntax_stats.syntax_nodes;
-		stats->peak_stage_storage_bytes = source.size() +
-			syntax_stats.token_storage_bytes + syntax_stats.syntax_storage_bytes +
-			syntax_stats.parser_storage_bytes + stats->semantic_storage_bytes;
-		stats->elapsed_nanoseconds = static_cast<std::uint64_t>(
-			std::chrono::duration_cast<std::chrono::nanoseconds>(
-				std::chrono::steady_clock::now() - started).count());
-	}
-}
 }

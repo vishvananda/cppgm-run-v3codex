@@ -100,6 +100,7 @@ struct DumpNode
 	bool elide_empty_constructor;
 	bool argument_materialization;
 	bool class_argument_staging;
+	bool declaration_only;
 
 	explicit DumpNode(DumpKind value)
 		: kind(value), type(kNoType), operand_type(kNoType),
@@ -110,7 +111,8 @@ struct DumpNode
 		  aggregate_helper(kNoDumpEdge),
 		  constant(false), integer_narrowing_conversion(false),
 		  value_initialization(false), elide_empty_constructor(false),
-		  argument_materialization(false), class_argument_staging(false) {}
+		  argument_materialization(false), class_argument_staging(false),
+		  declaration_only(false) {}
 };
 
 struct DumpEdge
@@ -163,10 +165,11 @@ struct SpecInfo
 	bool is_friend;
 	bool placeholder_auto;
 	bool thread_local_storage;
+	bool mutable_member;
 	SpecInfo() : type(kNoType), storage_class(STORAGE_CLASS_NONE),
 		is_typedef(false), is_constexpr(false), is_friend(false),
 		placeholder_auto(false),
-		thread_local_storage(false) {}
+		thread_local_storage(false), mutable_member(false) {}
 };
 
 struct ParameterInfo

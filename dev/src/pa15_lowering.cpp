@@ -16,6 +16,7 @@
 #include "pa16_initialization_lowering.h"
 #include "pa16_lifetime_lowering.h"
 #include "pa16_static_initializer_lowering.h"
+#include "pa16_slot_planning.h"
 
 #include <algorithm>
 #include <limits>
@@ -47,7 +48,8 @@ class GraphLowerer :
 	private pa16_lowering_detail::DestructorActionLowering<GraphLowerer>,
 	private pa16_lowering_detail::CallArgumentLowering<GraphLowerer>,
 	private pa16_lowering_detail::InitializationLowering<GraphLowerer>,
-	private pa16_lowering_detail::LifetimeActionLowering<GraphLowerer>
+	private pa16_lowering_detail::LifetimeActionLowering<GraphLowerer>,
+	private pa16_lowering_detail::SlotPlanning<GraphLowerer>
 {
 public:
 	GraphLowerer(const SemanticGraphView& graph, TypedProgram& output,
@@ -72,6 +74,7 @@ public:
 		function_symbols_.resize(program_.bindings.size(), kNoLowId);
 		global_symbols_.resize(program_.bindings.size(), kNoLowId);
 		literal_symbols_.resize(arena_.nodes.size(), kNoLowId);
+		temporary_initialized_.resize(arena_.nodes.size(), 0);
 		function_definition_.resize(program_.bindings.size(), kNoDumpEdge);
 		function_declaration_.resize(program_.bindings.size(), kNoDumpEdge);
 		global_node_.resize(program_.bindings.size(), kNoDumpEdge);
@@ -115,6 +118,7 @@ private:
 	friend class pa16_lowering_detail::CallArgumentLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::InitializationLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::LifetimeActionLowering<GraphLowerer>;
+	friend class pa16_lowering_detail::SlotPlanning<GraphLowerer>;
 
 	enum StatementTaskKind : std::uint8_t
 	{
@@ -210,7 +214,8 @@ private:
 		const std::string& proposed_name, const std::string& object_name)
 	{
 		const BindingRecord& binding = program_.bindings[node.binding];
-		const bool internal = binding.storage_class == STORAGE_CLASS_STATIC;
+		const bool internal = binding.storage_class == STORAGE_CLASS_STATIC &&
+			binding.member_owner == kNoEntity;
 		const bool c_linkage =
 			binding.language_linkage == LANGUAGE_LINKAGE_C;
 		SymbolIdentity identity;
@@ -306,9 +311,10 @@ private:
 				global_symbols_[record.binding] = global_symbols_[canonical];
 				output_.symbols[global_symbols_[canonical]].thread_local_storage =
 					program_.bindings[record.binding].thread_local_storage;
-				const bool declaration_only = Children(current).empty() &&
-					program_.bindings[record.binding].storage_class ==
-						STORAGE_CLASS_EXTERN;
+				const bool declaration_only = record.declaration_only ||
+					(Children(current).empty() &&
+					 program_.bindings[record.binding].storage_class ==
+						STORAGE_CLASS_EXTERN);
 				if (!declaration_only || global_node_[canonical] == kNoDumpEdge)
 					global_node_[canonical] = current;
 				continue;
@@ -367,9 +373,10 @@ private:
 						program_.bindings[record.binding].canonical;
 					if (global_node_[canonical] == current)
 					{
-						const bool declaration_only = Children(current).empty() &&
-							program_.bindings[record.binding].storage_class ==
-								STORAGE_CLASS_EXTERN;
+						const bool declaration_only = record.declaration_only ||
+							(Children(current).empty() &&
+							 program_.bindings[record.binding].storage_class ==
+								STORAGE_CLASS_EXTERN);
 						if (declaration_only)
 						{
 								const SymbolId symbol = global_symbols_[canonical];
@@ -378,6 +385,10 @@ private:
 									output_.global_declarations.push_back(
 										LowerGlobalDeclaration(current));
 									output_.symbols[symbol].declaration_emitted = true;
+									if (record.declaration_only &&
+										program_.bindings[record.binding].
+											thread_local_storage)
+										thread_local_declarations_.push_back(symbol);
 								}
 						}
 						else
@@ -465,7 +476,8 @@ private:
 		declaration.symbol = global_symbols_[record.binding];
 		const TypeRecord& type = program_.types.Get(
 			RemoveTopQualifiers(record.type));
-		declaration.typed = type.kind != TYPE_ARRAY || type.bound != 0;
+		declaration.typed = !record.declaration_only &&
+			(type.kind != TYPE_ARRAY || type.bound != 0);
 		if (declaration.typed) declaration.type = LowerStorageType(record.type);
 		return declaration;
 	}
@@ -591,6 +603,21 @@ private:
 
 	void EmitThreadLocalInitializers()
 	{
+		for (std::size_t i = 0; i < thread_local_declarations_.size(); ++i)
+		{
+			const SymbolId object_symbol = thread_local_declarations_[i];
+			const std::string& object_internal =
+				output_.symbols[object_symbol].name;
+			std::string wrapper_object;
+			const std::string& object_name =
+				output_.symbols[object_symbol].object_name;
+			if (object_name.size() >= 2 && object_name[0] == '_' &&
+				object_name[1] == 'Z')
+				wrapper_object = "_ZTW" + object_name.substr(2);
+			AddThreadLocalWrapper("__cppgm_tls_wrapper__" + object_internal,
+				wrapper_object, object_symbol,
+				output_.symbols[object_symbol].internal_linkage);
+		}
 		for (std::size_t i = 0; i < thread_local_objects_.size(); ++i)
 		{
 			const std::uint32_t action_index = thread_local_objects_[i];
@@ -769,40 +796,6 @@ private:
 			if ((record.kind == DUMP_PARAMETER || record.kind == DUMP_VARIABLE) &&
 				record.text != 0)
 				used_names_[program_.names.Get(record.text)] = true;
-			const NodeChildren children = Children(current);
-			for (std::size_t i = children.size(); i != 0; --i)
-				pending.push_back(children[i - 1]);
-		}
-	}
-
-	void CollectSlots(std::uint32_t node)
-	{
-		std::vector<std::uint32_t> pending(1, node);
-		while (!pending.empty())
-		{
-			const std::uint32_t current = pending.back();
-			pending.pop_back();
-			const DumpNode& record = arena_.nodes[current];
-			if ((record.kind == DUMP_PARAMETER || record.kind == DUMP_VARIABLE) &&
-				record.binding != kNoBinding)
-			{
-				if (binding_slots_[record.binding] == kNoLowId)
-				{
-					std::string requested = record.text == 0 ? std::string() :
-						program_.names.Get(record.text);
-					if (record.kind == DUMP_PARAMETER && requested.empty())
-						requested = parameter_slot_index_ < function_->parameters.size() ?
-							function_->parameters[parameter_slot_index_].name : "__param";
-					const std::string name = UniqueSlotName(requested);
-					binding_slots_[record.binding] =
-						static_cast<SlotId>(function_->slots.size());
-					Slot slot;
-					slot.name = name;
-					slot.type = LowerStorageType(record.type);
-					function_->slots.push_back(slot);
-				}
-				if (record.kind == DUMP_PARAMETER) ++parameter_slot_index_;
-			}
 			const NodeChildren children = Children(current);
 			for (std::size_t i = children.size(); i != 0; --i)
 				pending.push_back(children[i - 1]);
@@ -1109,7 +1102,6 @@ private:
 			Operand offset = LowerValue(children[1]);
 			if (IsClassObjectType(record.type))
 			{
-				offset = Convert(offset, LowI64());
 				const std::size_t element_size = program_.SizeOf(record.type);
 				if (element_size != 1)
 				{
@@ -1500,9 +1492,10 @@ private:
 		Instruction compare(Instruction::CMP);
 		compare.dest = truth.id;
 		compare.op = LOW_OP_NE;
-		compare.type = LowI64();
+		compare.type = right.type.kind == LOW_PTR ? right.type : LowI64();
 		compare.first = right;
-		compare.second = Operand(0, LowI64());
+		compare.second = right.type.kind == LOW_PTR ?
+			Operand(0, right.type) : Operand(0, LowI64());
 		Emit(compare);
 		Instruction rhs_store(Instruction::STORE);
 		rhs_store.type = LowI64();
@@ -2929,10 +2922,12 @@ private:
 	std::vector<SymbolId> function_symbols_;
 	std::vector<SymbolId> global_symbols_;
 	std::vector<SymbolId> literal_symbols_;
+	std::vector<std::uint8_t> temporary_initialized_;
 	std::unordered_map<std::string, SymbolId> string_literal_symbols_;
 	std::vector<std::uint32_t> dynamic_initializers_;
 	std::vector<std::uint32_t> dynamic_finalizers_;
 	std::vector<std::uint32_t> thread_local_objects_;
+	std::vector<SymbolId> thread_local_declarations_;
 	std::vector<std::uint8_t> thread_local_dynamic_;
 	std::vector<std::uint32_t> function_definition_;
 	std::vector<std::uint32_t> function_declaration_;

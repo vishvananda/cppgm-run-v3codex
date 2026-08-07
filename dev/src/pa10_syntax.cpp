@@ -1,5 +1,6 @@
 #include "pa10_syntax.h"
 #include "pa10_syntax_model.h"
+#include "pa10_parser_name_facts.h"
 
 #include <algorithm>
 #include <chrono>
@@ -62,8 +63,9 @@ bool IsAssignmentOperator(std::uint16_t kind)
 	}
 }
 
-class Parser
+class Parser : private ParserNameFacts<Parser>
 {
+friend class ParserNameFacts<Parser>;
 public:
 	Parser(const std::vector<SyntaxToken>& tokens, StringTable& strings,
 		SyntaxArena& arena, SyntaxStats* stats)
@@ -423,27 +425,6 @@ private:
 			name.find('Y') != std::string::npos ||
 			name.find('E') != std::string::npos;
 	}
-	bool QualifiedStartsType() const
-	{
-		std::size_t scan = position_;
-		if (scan < tokens_.size() && tokens_[scan].kind ==
-			static_cast<std::uint16_t>(OP_COLON2)) ++scan;
-		std::size_t last = tokens_.size();
-		while (scan < tokens_.size() && tokens_[scan].kind == kIdentifierToken)
-		{
-			last = scan++;
-			if (scan >= tokens_.size() || tokens_[scan].kind !=
-				static_cast<std::uint16_t>(OP_COLON2)) break;
-			++scan;
-		}
-		if (last != tokens_.size() && HasNameFact(tokens_[last].spelling,
-			kKnownNonTemplate))
-			return false;
-		return last != tokens_.size() &&
-			(HasNameFact(tokens_[last].spelling, kKnownType) ||
-			 IsLikelyTypeIdentifier(last));
-	}
-
 	bool ParseName(std::string* text, bool allow_qualified = true,
 		bool allow_operator = true, bool allow_template_arguments = true)
 	{
@@ -802,10 +783,22 @@ NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id,
 			const NodeId expression = ParseExpression();
 			if (expression == kNoNode) throw Error("expected decltype expression");
 			Expect(OP_RPAREN);
+			const std::size_t qualifier_first = position_;
+			while (Match(OP_COLON2))
+			{
+				Match(KW_TEMPLATE);
+				if (!AtIdentifier())
+					throw Error("expected qualified decltype type name");
+				++position_;
+				TryConsumeTemplateArguments();
+			}
 			const std::string rendered = JoinSpellings(first, position_);
 			const NodeId node = arena_.Make(for_type_id ?
 				"decltype-specifier" : "decl-specifier", rendered);
 			arena_.Add(node, expression);
+			if (position_ != qualifier_first)
+				arena_.Add(node, arena_.Make("qualified-type-name",
+					JoinSpellings(qualifier_first + 1, position_)));
 			arena_.Add(sequence, node);
 			if (first_type && first_type->empty()) *first_type = rendered;
 			consumed = true;
@@ -1568,7 +1561,9 @@ NodeId Parser::ParseUnaryExpression()
 			(position_ < tokens_.size() &&
 			 IsFundamentalKind(tokens_[position_].kind))) prefer_type = true;
 		if (AtIdentifier() && IsLikelyTypeIdentifier(position_) &&
-			!AtOffset(1, OP_LPAREN)) prefer_type = true;
+			!AtOffset(1, OP_LPAREN) &&
+			(!AtOffset(1, OP_COLON2) || QualifiedStartsType()))
+			prefer_type = true;
 		if (kind == KW_NOEXCEPT) prefer_type = false;
 		if (prefer_type)
 		{
@@ -1810,10 +1805,11 @@ NodeId Parser::ParseCompoundStatement()
 		const bool declaration_start = At(KW_TEMPLATE) || At(KW_USING) ||
 			At(KW_NAMESPACE) ||
 			At(KW_TYPEDEF) || At(KW_CLASS) || At(KW_STRUCT) || At(KW_UNION) ||
-			At(KW_ENUM) || At(KW_STATIC_ASSERT) || At(KW_EXTERN) ||
+			At(KW_ENUM) || At(KW_DECLTYPE) || At(KW_STATIC_ASSERT) || At(KW_EXTERN) ||
 			(position_ < tokens_.size() &&
 			 IsDeclSpecifierKeyword(tokens_[position_].kind)) ||
-			(IsLikelyTypeIdentifier(position_) && !AtOffset(1, OP_COLON2)) ||
+			(IsLikelyTypeIdentifier(position_) && !AtOffset(1, OP_COLON2) &&
+			 !AtOffset(1, OP_LSQUARE)) ||
 			(((AtIdentifier() && AtOffset(1, OP_COLON2)) || At(OP_COLON2)) &&
 			 QualifiedStartsType());
 		if (declaration_start)
@@ -2033,10 +2029,11 @@ NodeId Parser::ParseStatement()
 	const bool declaration_start = At(KW_USING) || At(KW_NAMESPACE) ||
 		At(KW_TYPEDEF) ||
 		At(KW_CLASS) || At(KW_STRUCT) || At(KW_UNION) || At(KW_ENUM) ||
-		At(KW_STATIC_ASSERT) || At(KW_EXTERN) ||
+		At(KW_DECLTYPE) || At(KW_STATIC_ASSERT) || At(KW_EXTERN) ||
 		(position_ < tokens_.size() &&
 		 IsDeclSpecifierKeyword(tokens_[position_].kind)) ||
-		(IsLikelyTypeIdentifier(position_) && !AtOffset(1, OP_COLON2)) ||
+		(IsLikelyTypeIdentifier(position_) && !AtOffset(1, OP_COLON2) &&
+		 !AtOffset(1, OP_LSQUARE)) ||
 		(((AtIdentifier() && AtOffset(1, OP_COLON2)) || At(OP_COLON2)) &&
 		 QualifiedStartsType());
 	if (declaration_start)
@@ -2467,6 +2464,7 @@ NodeId Parser::ParseClass(bool require_semicolon)
 		return declaration;
 	}
 	const NodeId declaration = arena_.Make("class-specifier", name);
+	const std::size_t class_fact_mark = name_fact_changes_.size();
 	arena_.Add(declaration, MakeTokenNode("class-key", key));
 	for (std::size_t i = 0; i < alignments.size(); ++i)
 		arena_.Add(declaration, alignments[i]);
@@ -2570,6 +2568,7 @@ NodeId Parser::ParseClass(bool require_semicolon)
 	current_classes_.pop_back();
 	Expect(OP_RBRACE);
 	if (require_semicolon) Expect(OP_SEMICOLON);
+	PublishClassNameFacts(class_fact_mark);
 	arena_.AddFlags(declaration, SYNTAX_FLAG_DEFINITION);
 	arena_.SetTokenRange(declaration, key, position_);
 	last_declared_names_.clear();
