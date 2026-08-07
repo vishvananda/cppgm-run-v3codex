@@ -384,6 +384,9 @@ public:
 	std::vector<EntityRecord> entities;
 	std::vector<BindingRecord> bindings;
 	std::size_t lookup_queries, lookup_scope_visits, lookup_edge_visits;
+	std::size_t lookup_cache_hits, lookup_cache_misses;
+	std::size_t lookup_cache_invalidations, lookup_cache_dependency_edges;
+	std::size_t lookup_cache_invalidation_pushes;
 	mutable std::size_t name_index_probes;
 	std::size_t using_index_probes;
 
@@ -395,6 +398,10 @@ private:
 	const NameEntry* FindEntry(ScopeId scope, NameId name) const;
 	void RehashEntries(std::size_t capacity);
 	void RehashUsingEdges(std::size_t capacity);
+	void BeginLookupDependencies();
+	void RecordLookupDependency(ScopeId scope);
+	void InvalidateLookupName(ScopeId scope, NameId name);
+	void InvalidateLookupScope(ScopeId scope);
 	LookupResult DirectLookup(ScopeId scope, NameId name,
 		LookupKind kind) const;
 	void MergeLookup(LookupResult* result,
@@ -423,6 +430,10 @@ private:
 	std::vector<std::uint32_t> lookup_marks_;
 	std::vector<ScopeId> lookup_worklist_;
 	std::uint32_t lookup_generation_;
+	std::vector<std::uint32_t> lookup_dependency_marks_;
+	std::vector<ScopeId> lookup_dependencies_;
+	std::uint32_t lookup_dependency_generation_;
+	bool collecting_lookup_dependencies_;
 	std::unique_ptr<LookupCache> lookup_cache_;
 };
 

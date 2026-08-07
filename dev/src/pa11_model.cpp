@@ -99,6 +99,48 @@ private:
 	bool spilled_;
 };
 
+class CompactIdList
+{
+public:
+	CompactIdList() : inline_(), overflow_(), size_(0), spilled_(false) {}
+	void Assign(const std::vector<ScopeId>& values)
+	{
+		size_ = 0;
+		overflow_.clear();
+		spilled_ = false;
+		for (std::size_t i = 0; i < values.size(); ++i) Push(values[i]);
+	}
+	void Push(std::uint32_t value)
+	{
+		if (size_ < 2 && !spilled_) inline_[size_] = value;
+		else
+		{
+			if (!spilled_)
+			{
+				overflow_.insert(overflow_.end(), inline_, inline_ + 2);
+				spilled_ = true;
+			}
+			overflow_.push_back(value);
+		}
+		++size_;
+	}
+	std::size_t Size() const { return size_; }
+	std::uint32_t operator[](std::size_t index) const
+	{
+		return spilled_ ? overflow_[index] : inline_[index];
+	}
+	std::size_t StorageBytes() const
+	{
+		return overflow_.capacity() * sizeof(ScopeId);
+	}
+
+private:
+	std::uint32_t inline_[2];
+	std::vector<std::uint32_t> overflow_;
+	std::size_t size_;
+	bool spilled_;
+};
+
 }
 
 std::size_t MixHash(std::size_t seed, std::uint64_t value)
@@ -568,40 +610,132 @@ struct Program::LookupCacheEntry
 	ScopeId scope;
 	NameId name;
 	LookupKind kind;
-	std::uint64_t revision;
 	LookupResult result;
+	CompactIdList scope_dependencies;
+	std::uint32_t cache_dependency;
+	std::uint64_t generation;
+	bool valid;
 
 	LookupCacheEntry(ScopeId scope_value, NameId name_value,
-		LookupKind kind_value, std::uint64_t revision_value,
+		LookupKind kind_value,
 		const LookupResult& result_value)
 		: scope(scope_value), name(name_value), kind(kind_value),
-		  revision(revision_value), result(result_value) {}
+		  result(result_value),
+		  cache_dependency(std::numeric_limits<std::uint32_t>::max()),
+		  generation(1), valid(true) {}
 };
 
 struct Program::LookupCache
 {
+	// Reverse links are generation-qualified so invalidated links can remain in
+	// compact append-only lists until local density justifies compaction.
+	struct Dependent
+	{
+		std::uint32_t entry;
+		std::uint64_t generation;
+		Dependent() : entry(0), generation(0) {}
+		Dependent(std::uint32_t entry_value, std::uint64_t generation_value)
+			: entry(entry_value), generation(generation_value) {}
+	};
+	class DependentList
+	{
+	public:
+		DependentList()
+			: inline_(), overflow_(), size_(0), spilled_(false) {}
+		std::size_t Size() const { return size_; }
+		const Dependent& operator[](std::size_t index) const
+			{ return spilled_ ? overflow_[index] : inline_[index]; }
+		void Set(std::size_t index, const Dependent& value)
+		{
+			if (spilled_) overflow_[index] = value;
+			else inline_[index] = value;
+		}
+		void Push(const Dependent& value)
+		{
+			if (size_ < 2 && !spilled_) inline_[size_] = value;
+			else
+			{
+				if (!spilled_)
+				{
+					overflow_.insert(overflow_.end(), inline_, inline_ + 2);
+					spilled_ = true;
+				}
+				overflow_.push_back(value);
+			}
+			++size_;
+		}
+		void Resize(std::size_t size)
+		{
+			if (spilled_) overflow_.resize(size);
+			size_ = size;
+		}
+		void Clear()
+		{
+			if (spilled_) overflow_.clear();
+			size_ = 0;
+		}
+		std::size_t StorageBytes() const
+			{ return overflow_.capacity() * sizeof(Dependent); }
+
+	private:
+		Dependent inline_[2];
+		std::vector<Dependent> overflow_;
+		std::size_t size_;
+		bool spilled_;
+	};
+	struct ScopeDependencyBucket
+	{
+		// A declaration insertion affects one interned name. Using-edge insertion
+		// deliberately walks every bucket owned by the affected scope.
+		ScopeId scope;
+		NameId name;
+		DependentList dependents;
+		std::size_t active;
+		ScopeDependencyBucket(ScopeId scope_value, NameId name_value)
+			: scope(scope_value), name(name_value), active(0) {}
+	};
+
 	std::vector<LookupCacheEntry> entries;
 	std::vector<std::uint32_t> slots;
-	std::uint64_t revision;
+	std::vector<ScopeDependencyBucket> scope_dependency_buckets;
+	std::vector<std::uint32_t> scope_dependency_slots;
+	std::vector<CompactIdList> scope_dependency_buckets_by_scope;
+	std::vector<DependentList> cache_dependents;
+	std::vector<std::size_t> active_cache_dependents;
+	std::vector<std::uint32_t> invalidation_worklist;
 
-	LookupCache() : slots(64, 0), revision(1) {}
+	LookupCache() : slots(64, 0), scope_dependency_slots(64, 0) {}
+	void AddScope();
 	bool Find(ScopeId scope, NameId name, LookupKind kind,
-		LookupResult* result) const;
-	void Store(ScopeId scope, NameId name, LookupKind kind,
-		const LookupResult& result);
+		LookupResult* result, std::uint32_t* entry) const;
+	std::uint32_t Store(ScopeId scope, NameId name, LookupKind kind,
+		const LookupResult& result, const std::vector<ScopeId>& dependencies,
+		std::uint32_t cache_dependency, std::size_t* dependency_edges);
+	std::size_t InvalidateName(ScopeId scope, NameId name,
+		std::size_t* worklist_pushes);
+	std::size_t InvalidateScope(ScopeId scope, std::size_t* worklist_pushes);
 	void Rehash(std::size_t capacity);
-	void Invalidate();
-	std::size_t StorageBytes() const
-	{
-		return entries.capacity() * sizeof(LookupCacheEntry) +
-			slots.capacity() * sizeof(std::uint32_t);
-	}
+	void RehashScopeDependencies(std::size_t capacity);
+	std::uint32_t FindScopeDependency(ScopeId scope, NameId name) const;
+	std::uint32_t EnsureScopeDependency(ScopeId scope, NameId name);
+	void CollectScopeDependents(std::uint32_t bucket,
+		std::size_t* worklist_pushes);
+	std::size_t DrainInvalidationWorklist(std::size_t* worklist_pushes);
+	void Register(std::uint32_t entry, std::size_t* dependency_edges);
+	void Deactivate(std::uint32_t entry);
+	void CompactScopeDependents(std::uint32_t bucket);
+	void CompactCacheDependents(std::uint32_t entry);
+	std::size_t StorageBytes() const;
 };
 
 Program::Program(InternedStringTable& strings)
 	: names(strings), lookup_queries(0), lookup_scope_visits(0),
-	  lookup_edge_visits(0), name_index_probes(0), using_index_probes(0),
+	  lookup_edge_visits(0), lookup_cache_hits(0), lookup_cache_misses(0),
+	  lookup_cache_invalidations(0), lookup_cache_dependency_edges(0),
+	  lookup_cache_invalidation_pushes(0),
+	  name_index_probes(0), using_index_probes(0),
 	  using_edge_slots_(64, 0), entry_slots_(64, 0), lookup_generation_(1),
+	  lookup_dependency_generation_(0), collecting_lookup_dependencies_(false),
 	  lookup_cache_(new LookupCache())
 {
 	NewScope(kNoScope, SCOPE_NAMESPACE, names.Intern("<global>"));
@@ -630,6 +764,8 @@ ScopeId Program::NewScope(ScopeId parent, ScopeKind kind, NameId name,
 	record.emission_name = name;
 	record.entity = entity;
 	lookup_marks_.push_back(0);
+	lookup_dependency_marks_.push_back(0);
+	lookup_cache_->AddScope();
 	const ScopeId tree_parent = output_parent == kNoScope ? parent : output_parent;
 	if (tree_parent != kNoScope)
 	{
@@ -653,7 +789,7 @@ ScopeId Program::OpenNamespace(ScopeId parent, NameId name, bool is_inline)
 	if (entry->name_space == kNoScope)
 	{
 		entry->name_space = NewScope(parent, SCOPE_NAMESPACE, name);
-		lookup_cache_->Invalidate();
+		InvalidateLookupName(parent, name);
 	}
 	if (is_inline) AddUsingEdge(parent, entry->name_space);
 	return entry->name_space;
@@ -673,7 +809,7 @@ void Program::AddNamespaceAlias(ScopeId owner, NameId name, ScopeId target)
 		(entry->name_space != kNoScope && entry->name_space != target))
 		throw std::runtime_error("invalid namespace alias binding");
 	entry->name_space = target;
-	lookup_cache_->Invalidate();
+	InvalidateLookupName(owner, name);
 }
 
 void Program::AddUsingEdge(ScopeId owner, ScopeId target)
@@ -700,7 +836,7 @@ void Program::AddUsingEdge(ScopeId owner, ScopeId target)
 		scopes_[owner].first_using));
 	using_edge_slots_[slot] = edge + 1;
 	scopes_[owner].first_using = edge;
-	lookup_cache_->Invalidate();
+	InvalidateLookupScope(owner);
 }
 
 void Program::RehashUsingEdges(std::size_t capacity)
@@ -800,7 +936,7 @@ BindingId Program::AddBinding(ScopeId owner, BindingKind kind, NameId name,
 		entry->type_declaration = binding;
 	}
 	else entry->ordinary = binding;
-	lookup_cache_->Invalidate();
+	InvalidateLookupName(owner, name);
 	return binding;
 }
 
@@ -831,7 +967,7 @@ void Program::SetTypeName(ScopeId owner, NameId name, TypeId type)
 	if (entry->name_space != kNoScope)
 		throw std::runtime_error("type conflicts with namespace");
 	entry->type = type;
-	lookup_cache_->Invalidate();
+	InvalidateLookupName(owner, name);
 }
 
 void Program::SetEntityScope(EntityId entity, ScopeId scope)
@@ -945,6 +1081,43 @@ void Program::RehashEntries(std::size_t capacity)
 	entry_slots_.swap(replacement);
 }
 
+void Program::BeginLookupDependencies()
+{
+	collecting_lookup_dependencies_ = true;
+	lookup_dependencies_.clear();
+	++lookup_dependency_generation_;
+	if (lookup_dependency_generation_ == 0)
+	{
+		std::fill(lookup_dependency_marks_.begin(),
+			lookup_dependency_marks_.end(), 0);
+		lookup_dependency_generation_ = 1;
+	}
+}
+
+void Program::RecordLookupDependency(ScopeId scope)
+{
+	if (!collecting_lookup_dependencies_ || scope >= scopes_.size()) return;
+	if (lookup_dependency_marks_[scope] == lookup_dependency_generation_) return;
+	lookup_dependency_marks_[scope] = lookup_dependency_generation_;
+	lookup_dependencies_.push_back(scope);
+}
+
+void Program::InvalidateLookupScope(ScopeId scope)
+{
+	std::size_t worklist_pushes = 0;
+	lookup_cache_invalidations +=
+		lookup_cache_->InvalidateScope(scope, &worklist_pushes);
+	lookup_cache_invalidation_pushes += worklist_pushes;
+}
+
+void Program::InvalidateLookupName(ScopeId scope, NameId name)
+{
+	std::size_t worklist_pushes = 0;
+	lookup_cache_invalidations +=
+		lookup_cache_->InvalidateName(scope, name, &worklist_pushes);
+	lookup_cache_invalidation_pushes += worklist_pushes;
+}
+
 LookupResult Program::DirectLookup(ScopeId scope, NameId name,
 	LookupKind kind) const
 {
@@ -998,6 +1171,7 @@ void Program::MergeLookup(LookupResult* result,
 LookupResult Program::LookupGraph(ScopeId scope, NameId name,
 	LookupKind kind)
 {
+	RecordLookupDependency(scope);
 	const EntityId scope_entity = scopes_[scope].entity;
 	const EntityId naming_class = scope_entity != kNoEntity &&
 		(entities[scope_entity].flavor == NAMED_STRUCT ||
@@ -1042,6 +1216,7 @@ LookupResult Program::LookupGraph(ScopeId scope, NameId name,
 	for (std::size_t i = 0; i < lookup_worklist_.size(); ++i)
 	{
 		const ScopeId current = lookup_worklist_[i];
+		RecordLookupDependency(current);
 		++lookup_scope_visits;
 		const LookupResult direct = DirectLookup(current, name, kind);
 		if (!direct.Empty())
@@ -1083,41 +1258,126 @@ LookupResult Program::LookupUnqualified(ScopeId scope, NameId name,
 	LookupKind kind)
 {
 	const ScopeId requested = scope;
+	BeginLookupDependencies();
 	for (ScopeId current = scope; current != kNoScope;
 		current = scopes_[current].parent)
 	{
 		LookupResult cached;
-		if (lookup_cache_->Find(current, name, kind, &cached))
+		std::uint32_t cache_entry = std::numeric_limits<std::uint32_t>::max();
+		if (lookup_cache_->Find(current, name, kind, &cached, &cache_entry))
 		{
-			lookup_cache_->Store(requested, name, kind, cached);
+			++lookup_cache_hits;
+			if (current != requested)
+			{
+				// Preserve the lexical shortcut as one cache-fact edge instead of
+				// copying the parent's transitive scope dependency set.
+				std::size_t dependency_edges = 0;
+				lookup_cache_->Store(requested, name, kind, cached,
+					lookup_dependencies_, cache_entry, &dependency_edges);
+				lookup_cache_dependency_edges += dependency_edges;
+			}
+			collecting_lookup_dependencies_ = false;
 			return cached;
 		}
+		++lookup_cache_misses;
 		const LookupResult result = LookupGraph(current, name, kind);
 		if (!result.Empty())
 		{
-			lookup_cache_->Store(requested, name, kind, result);
+			std::size_t dependency_edges = 0;
+			lookup_cache_->Store(requested, name, kind, result,
+				lookup_dependencies_, std::numeric_limits<std::uint32_t>::max(),
+				&dependency_edges);
+			lookup_cache_dependency_edges += dependency_edges;
+			collecting_lookup_dependencies_ = false;
 			return result;
 		}
 	}
 	const LookupResult missing;
-	lookup_cache_->Store(requested, name, kind, missing);
+	std::size_t dependency_edges = 0;
+	lookup_cache_->Store(requested, name, kind, missing,
+		lookup_dependencies_, std::numeric_limits<std::uint32_t>::max(),
+		&dependency_edges);
+	lookup_cache_dependency_edges += dependency_edges;
+	collecting_lookup_dependencies_ = false;
 	return missing;
 }
 
+void Program::LookupCache::AddScope()
+{
+	scope_dependency_buckets_by_scope.push_back(CompactIdList());
+}
+
+std::uint32_t Program::LookupCache::FindScopeDependency(ScopeId scope,
+	NameId name) const
+{
+	const std::size_t mask = scope_dependency_slots.size() - 1;
+	std::size_t slot = MixHash(scope, name) & mask;
+	while (scope_dependency_slots[slot] != 0)
+	{
+		const std::uint32_t id = scope_dependency_slots[slot] - 1;
+		const ScopeDependencyBucket& bucket = scope_dependency_buckets[id];
+		if (bucket.scope == scope && bucket.name == name) return id;
+		slot = (slot + 1) & mask;
+	}
+	return std::numeric_limits<std::uint32_t>::max();
+}
+
+void Program::LookupCache::RehashScopeDependencies(std::size_t capacity)
+{
+	scope_dependency_slots.assign(capacity, 0);
+	const std::size_t mask = capacity - 1;
+	for (std::size_t i = 0; i < scope_dependency_buckets.size(); ++i)
+	{
+		const ScopeDependencyBucket& bucket = scope_dependency_buckets[i];
+		std::size_t slot = MixHash(bucket.scope, bucket.name) & mask;
+		while (scope_dependency_slots[slot] != 0) slot = (slot + 1) & mask;
+		scope_dependency_slots[slot] = static_cast<std::uint32_t>(i + 1);
+	}
+}
+
+std::uint32_t Program::LookupCache::EnsureScopeDependency(ScopeId scope,
+	NameId name)
+{
+	if (scope >= scope_dependency_buckets_by_scope.size())
+		throw std::logic_error("lookup cache dependency has invalid scope");
+	if ((scope_dependency_buckets.size() + 1) * 10 >
+		scope_dependency_slots.size() * 7)
+		RehashScopeDependencies(scope_dependency_slots.size() * 2);
+	const std::size_t mask = scope_dependency_slots.size() - 1;
+	std::size_t slot = MixHash(scope, name) & mask;
+	while (scope_dependency_slots[slot] != 0)
+	{
+		const std::uint32_t id = scope_dependency_slots[slot] - 1;
+		const ScopeDependencyBucket& bucket = scope_dependency_buckets[id];
+		if (bucket.scope == scope && bucket.name == name) return id;
+		slot = (slot + 1) & mask;
+	}
+	if (scope_dependency_buckets.size() >=
+		std::numeric_limits<std::uint32_t>::max())
+		throw std::runtime_error("too many lookup dependency owners");
+	const std::uint32_t id =
+		static_cast<std::uint32_t>(scope_dependency_buckets.size());
+	scope_dependency_buckets.push_back(ScopeDependencyBucket(scope, name));
+	scope_dependency_slots[slot] = id + 1;
+	scope_dependency_buckets_by_scope[scope].Push(id);
+	return id;
+}
+
 bool Program::LookupCache::Find(ScopeId scope, NameId name, LookupKind kind,
-	LookupResult* result) const
+	LookupResult* result, std::uint32_t* entry_id) const
 {
 	const std::size_t mask = slots.size() - 1;
 	std::size_t slot = (MixHash(scope, name) * 5U +
 		static_cast<std::size_t>(kind)) & mask;
 	while (slots[slot] != 0)
 	{
-		const LookupCacheEntry& entry =
-			entries[slots[slot] - 1];
-		if (entry.revision == revision && entry.scope == scope &&
-			entry.name == name && entry.kind == kind)
+		const std::uint32_t id = slots[slot] - 1;
+		const LookupCacheEntry& entry = entries[id];
+		if (entry.scope == scope && entry.name == name && entry.kind == kind)
 		{
+			if (!entry.valid) return false;
 			*result = entry.result;
+			*entry_id = id;
 			return true;
 		}
 		slot = (slot + 1) & mask;
@@ -1125,32 +1385,113 @@ bool Program::LookupCache::Find(ScopeId scope, NameId name, LookupKind kind,
 	return false;
 }
 
-void Program::LookupCache::Store(ScopeId scope, NameId name, LookupKind kind,
-	const LookupResult& result)
+void Program::LookupCache::CompactScopeDependents(std::uint32_t bucket_id)
 {
-	LookupResult ignored;
-	if (Find(scope, name, kind, &ignored)) return;
-	if ((entries.size() + 1) * 10 > slots.size() * 7)
+	ScopeDependencyBucket& bucket = scope_dependency_buckets[bucket_id];
+	DependentList& dependents = bucket.dependents;
+	const std::size_t active = bucket.active;
+	if (dependents.Size() <= active * 2 + 16) return;
+	std::size_t output = 0;
+	for (std::size_t i = 0; i < dependents.Size(); ++i)
 	{
-		Rehash(slots.size());
-		if ((entries.size() + 1) * 10 > slots.size() * 7)
-			Rehash(slots.size() * 2);
+		const Dependent link = dependents[i];
+		if (link.entry >= entries.size()) continue;
+		const LookupCacheEntry& entry = entries[link.entry];
+		if (!entry.valid || entry.generation != link.generation) continue;
+		dependents.Set(output++, link);
 	}
+	dependents.Resize(output);
+	bucket.active = output;
+}
+
+void Program::LookupCache::CompactCacheDependents(std::uint32_t owner)
+{
+	DependentList& dependents = cache_dependents[owner];
+	const std::size_t active = active_cache_dependents[owner];
+	if (dependents.Size() <= active * 2 + 16) return;
+	std::size_t output = 0;
+	for (std::size_t i = 0; i < dependents.Size(); ++i)
+	{
+		const Dependent link = dependents[i];
+		if (link.entry >= entries.size()) continue;
+		const LookupCacheEntry& entry = entries[link.entry];
+		if (!entry.valid || entry.generation != link.generation ||
+			entry.cache_dependency != owner) continue;
+		dependents.Set(output++, link);
+	}
+	dependents.Resize(output);
+	active_cache_dependents[owner] = output;
+}
+
+void Program::LookupCache::Register(std::uint32_t id,
+	std::size_t* dependency_edges)
+{
+	const LookupCacheEntry& entry = entries[id];
+	for (std::size_t i = 0; i < entry.scope_dependencies.Size(); ++i)
+	{
+		const ScopeId scope = entry.scope_dependencies[i];
+		const std::uint32_t bucket_id =
+			EnsureScopeDependency(scope, entry.name);
+		CompactScopeDependents(bucket_id);
+		ScopeDependencyBucket& bucket = scope_dependency_buckets[bucket_id];
+		bucket.dependents.Push(Dependent(id, entry.generation));
+		++bucket.active;
+		++*dependency_edges;
+	}
+	if (entry.cache_dependency == std::numeric_limits<std::uint32_t>::max())
+		return;
+	if (entry.cache_dependency >= entries.size())
+		throw std::logic_error("lookup cache dependency has invalid entry");
+	CompactCacheDependents(entry.cache_dependency);
+	cache_dependents[entry.cache_dependency].Push(
+		Dependent(id, entry.generation));
+	++active_cache_dependents[entry.cache_dependency];
+	++*dependency_edges;
+}
+
+std::uint32_t Program::LookupCache::Store(ScopeId scope, NameId name,
+	LookupKind kind, const LookupResult& result,
+	const std::vector<ScopeId>& dependencies, std::uint32_t cache_dependency,
+	std::size_t* dependency_edges)
+{
+	if ((entries.size() + 1) * 10 > slots.size() * 7)
+		Rehash(slots.size() * 2);
 	const std::size_t mask = slots.size() - 1;
 	std::size_t slot = (MixHash(scope, name) * 5U +
 		static_cast<std::size_t>(kind)) & mask;
-	while (slots[slot] != 0) slot = (slot + 1) & mask;
-	entries.push_back(LookupCacheEntry(scope, name, kind, revision, result));
-	slots[slot] = static_cast<std::uint32_t>(entries.size());
+	while (slots[slot] != 0)
+	{
+		const std::uint32_t id = slots[slot] - 1;
+		LookupCacheEntry& entry = entries[id];
+		if (entry.scope == scope && entry.name == name && entry.kind == kind)
+		{
+			if (entry.valid) return id;
+			entry.result = result;
+			entry.scope_dependencies.Assign(dependencies);
+			entry.cache_dependency = cache_dependency;
+			++entry.generation;
+			if (entry.generation == 0) entry.generation = 1;
+			entry.valid = true;
+			Register(id, dependency_edges);
+			return id;
+		}
+		slot = (slot + 1) & mask;
+	}
+	if (entries.size() >= std::numeric_limits<std::uint32_t>::max())
+		throw std::runtime_error("too many lookup cache entries");
+	const std::uint32_t id = static_cast<std::uint32_t>(entries.size());
+	entries.push_back(LookupCacheEntry(scope, name, kind, result));
+	entries.back().scope_dependencies.Assign(dependencies);
+	entries.back().cache_dependency = cache_dependency;
+	cache_dependents.push_back(DependentList());
+	active_cache_dependents.push_back(0);
+	slots[slot] = id + 1;
+	Register(id, dependency_edges);
+	return id;
 }
 
 void Program::LookupCache::Rehash(std::size_t capacity)
 {
-	std::vector<LookupCacheEntry> current;
-	current.reserve(entries.size());
-	for (std::size_t i = 0; i < entries.size(); ++i)
-		if (entries[i].revision == revision) current.push_back(entries[i]);
-	entries.swap(current);
 	slots.assign(capacity, 0);
 	const std::size_t mask = capacity - 1;
 	for (std::size_t i = 0; i < entries.size(); ++i)
@@ -1163,13 +1504,114 @@ void Program::LookupCache::Rehash(std::size_t capacity)
 	}
 }
 
-void Program::LookupCache::Invalidate()
+void Program::LookupCache::Deactivate(std::uint32_t id)
 {
-	++revision;
-	if (revision != 0) return;
-	entries.clear();
-	slots.assign(64, 0);
-	revision = 1;
+	LookupCacheEntry& entry = entries[id];
+	if (!entry.valid) return;
+	entry.valid = false;
+	for (std::size_t i = 0; i < entry.scope_dependencies.Size(); ++i)
+	{
+		const std::uint32_t bucket_id = FindScopeDependency(
+			entry.scope_dependencies[i], entry.name);
+		if (bucket_id < scope_dependency_buckets.size() &&
+			scope_dependency_buckets[bucket_id].active != 0)
+			--scope_dependency_buckets[bucket_id].active;
+	}
+	if (entry.cache_dependency < active_cache_dependents.size() &&
+		active_cache_dependents[entry.cache_dependency] != 0)
+		--active_cache_dependents[entry.cache_dependency];
+}
+
+void Program::LookupCache::CollectScopeDependents(std::uint32_t bucket_id,
+	std::size_t* worklist_pushes)
+{
+	if (bucket_id >= scope_dependency_buckets.size()) return;
+	ScopeDependencyBucket& bucket = scope_dependency_buckets[bucket_id];
+	const DependentList& direct = bucket.dependents;
+	for (std::size_t i = 0; i < direct.Size(); ++i)
+	{
+		const Dependent link = direct[i];
+		if (link.entry >= entries.size()) continue;
+		const LookupCacheEntry& entry = entries[link.entry];
+		if (!entry.valid || entry.generation != link.generation) continue;
+		invalidation_worklist.push_back(link.entry);
+		++*worklist_pushes;
+	}
+	bucket.dependents.Clear();
+	bucket.active = 0;
+}
+
+std::size_t Program::LookupCache::DrainInvalidationWorklist(
+	std::size_t* worklist_pushes)
+{
+	std::size_t invalidated = 0;
+	while (!invalidation_worklist.empty())
+	{
+		const std::uint32_t id = invalidation_worklist.back();
+		invalidation_worklist.pop_back();
+		if (id >= entries.size() || !entries[id].valid) continue;
+		Deactivate(id);
+		++invalidated;
+		const DependentList& children = cache_dependents[id];
+		for (std::size_t i = 0; i < children.Size(); ++i)
+		{
+			const Dependent link = children[i];
+			if (link.entry >= entries.size()) continue;
+			const LookupCacheEntry& child = entries[link.entry];
+			if (!child.valid || child.generation != link.generation ||
+				child.cache_dependency != id) continue;
+			invalidation_worklist.push_back(link.entry);
+			++*worklist_pushes;
+		}
+		cache_dependents[id].Clear();
+		active_cache_dependents[id] = 0;
+	}
+	return invalidated;
+}
+
+std::size_t Program::LookupCache::InvalidateName(ScopeId scope, NameId name,
+	std::size_t* worklist_pushes)
+{
+	invalidation_worklist.clear();
+	const std::uint32_t bucket = FindScopeDependency(scope, name);
+	if (bucket < scope_dependency_buckets.size())
+		CollectScopeDependents(bucket, worklist_pushes);
+	return DrainInvalidationWorklist(worklist_pushes);
+}
+
+std::size_t Program::LookupCache::InvalidateScope(ScopeId scope,
+	std::size_t* worklist_pushes)
+{
+	invalidation_worklist.clear();
+	if (scope >= scope_dependency_buckets_by_scope.size()) return 0;
+	const CompactIdList& buckets =
+		scope_dependency_buckets_by_scope[scope];
+	for (std::size_t i = 0; i < buckets.Size(); ++i)
+		CollectScopeDependents(buckets[i], worklist_pushes);
+	return DrainInvalidationWorklist(worklist_pushes);
+}
+
+std::size_t Program::LookupCache::StorageBytes() const
+{
+	std::size_t bytes = entries.capacity() * sizeof(LookupCacheEntry) +
+		slots.capacity() * sizeof(std::uint32_t) +
+		scope_dependency_buckets.capacity() * sizeof(ScopeDependencyBucket) +
+		scope_dependency_slots.capacity() * sizeof(std::uint32_t) +
+		scope_dependency_buckets_by_scope.capacity() *
+			sizeof(CompactIdList) +
+		cache_dependents.capacity() * sizeof(DependentList) +
+		active_cache_dependents.capacity() * sizeof(std::size_t) +
+		invalidation_worklist.capacity() * sizeof(std::uint32_t);
+	for (std::size_t i = 0; i < entries.size(); ++i)
+		bytes += entries[i].scope_dependencies.StorageBytes();
+	for (std::size_t i = 0; i < scope_dependency_buckets.size(); ++i)
+		bytes += scope_dependency_buckets[i].dependents.StorageBytes();
+	for (std::size_t i = 0;
+		i < scope_dependency_buckets_by_scope.size(); ++i)
+		bytes += scope_dependency_buckets_by_scope[i].StorageBytes();
+	for (std::size_t i = 0; i < cache_dependents.size(); ++i)
+		bytes += cache_dependents[i].StorageBytes();
+	return bytes;
 }
 
 ScopeId Program::CarrierScope(const LookupResult& result) const
@@ -1594,6 +2036,8 @@ std::size_t Program::StorageBytes() const
 		entry_slots_.capacity() * sizeof(std::uint32_t) +
 		lookup_marks_.capacity() * sizeof(std::uint32_t) +
 		lookup_worklist_.capacity() * sizeof(ScopeId) +
+		lookup_dependency_marks_.capacity() * sizeof(std::uint32_t) +
+		lookup_dependencies_.capacity() * sizeof(ScopeId) +
 		lookup_cache_->StorageBytes() +
 		entities.capacity() * sizeof(EntityRecord) +
 		bindings.capacity() * sizeof(BindingRecord);

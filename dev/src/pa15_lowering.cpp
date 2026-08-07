@@ -23,7 +23,6 @@
 #include <ostream>
 #include <stdexcept>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace cppgm
@@ -69,7 +68,7 @@ public:
 		  source_types_(program_),
 		  static_initializers_(program_, arena_, output_, stats_,
 			function_symbols_, global_symbols_, literal_symbols_,
-			string_literal_symbols_, function_definition_)
+			function_definition_)
 	{
 		function_symbols_.resize(program_.bindings.size(), kNoLowId);
 		global_symbols_.resize(program_.bindings.size(), kNoLowId);
@@ -720,7 +719,7 @@ private:
 		generated_slot_ordinal_ = 0;
 		break_targets_.clear();
 		continue_targets_.clear();
-		label_blocks_.clear();
+		label_blocks_.Clear();
 		ResetInitializedBitFieldUnit();
 		used_names_.Clear();
 		assigned_names_.Clear();
@@ -817,7 +816,7 @@ private:
 		block_counter_ = 0;
 		break_targets_.clear();
 		continue_targets_.clear();
-		label_blocks_.clear();
+		label_blocks_.Clear();
 		ResetInitializedBitFieldUnit();
 		used_names_.Clear();
 		assigned_names_.Clear();
@@ -2651,11 +2650,10 @@ private:
 
 	BlockId LabelBlock(NameId name)
 	{
-		const std::unordered_map<NameId, BlockId>::const_iterator found =
-			label_blocks_.find(name);
-		if (found != label_blocks_.end()) return found->second;
+		std::uint32_t found = kNoLowId;
+		if (label_blocks_.Find(name, &found)) return found;
 		const BlockId block = AddBlock(NewLabel("goto"));
-		label_blocks_.insert(std::make_pair(name, block));
+		label_blocks_.Insert(name, block);
 		return block;
 	}
 
@@ -2923,7 +2921,6 @@ private:
 	std::vector<SymbolId> global_symbols_;
 	std::vector<SymbolId> literal_symbols_;
 	std::vector<std::uint8_t> temporary_initialized_;
-	std::unordered_map<std::string, SymbolId> string_literal_symbols_;
 	std::vector<std::uint32_t> dynamic_initializers_;
 	std::vector<std::uint32_t> dynamic_finalizers_;
 	std::vector<std::uint32_t> thread_local_objects_;
@@ -2947,7 +2944,7 @@ private:
 	std::vector<BlockId> break_targets_;
 	std::vector<BlockId> continue_targets_;
 	std::vector<StatementTask> statement_tasks_;
-	std::unordered_map<NameId, BlockId> label_blocks_;
+	FlatIdMap label_blocks_;
 	void ResetInitializedBitFieldUnit()
 	{
 		initialized_bit_field_unit_valid_ = false;

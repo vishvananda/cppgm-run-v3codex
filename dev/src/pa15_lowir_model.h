@@ -185,6 +185,7 @@ struct TypedProgram
 	std::vector<std::int64_t> switch_case_values;
 	std::vector<BlockId> switch_case_targets;
 	InternedStringTable literals;
+	std::vector<SymbolId> string_literal_symbols;
 	EmissionIdentityTable identities;
 	SymbolIdentityTable symbol_index;
 	StringCounterTable symbol_name_counts;

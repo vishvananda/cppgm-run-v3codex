@@ -2886,6 +2886,14 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		stats_->lookup_queries = program.lookup_queries;
 		stats_->lookup_scope_visits = program.lookup_scope_visits;
 		stats_->lookup_edge_visits = program.lookup_edge_visits;
+		stats_->lookup_cache_hits = program.lookup_cache_hits;
+		stats_->lookup_cache_misses = program.lookup_cache_misses;
+		stats_->lookup_cache_invalidations =
+			program.lookup_cache_invalidations;
+		stats_->lookup_cache_dependency_edges =
+			program.lookup_cache_dependency_edges;
+		stats_->lookup_cache_invalidation_pushes =
+			program.lookup_cache_invalidation_pushes;
 		stats_->associated_scope_visits = associated_scope_visits_;
 		stats_->associated_declaration_visits =
 			associated_declaration_visits_;
@@ -2937,7 +2945,9 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 	  lexical_cleanup_action_visits(0),
 	  namespace_object_actions(0),
 	  lookup_queries(0), lookup_scope_visits(0),
-	  lookup_edge_visits(0), associated_scope_visits(0),
+	  lookup_edge_visits(0), lookup_cache_hits(0), lookup_cache_misses(0),
+	  lookup_cache_invalidations(0), lookup_cache_dependency_edges(0),
+	  lookup_cache_invalidation_pushes(0), associated_scope_visits(0),
 	  associated_declaration_visits(0),
 	  overload_candidates(0),
 	  overload_order_comparisons(0), conversion_checks(0),

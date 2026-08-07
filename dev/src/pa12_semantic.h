@@ -38,6 +38,11 @@ struct SemanticAnalysisStats
 	std::size_t lookup_queries;
 	std::size_t lookup_scope_visits;
 	std::size_t lookup_edge_visits;
+	std::size_t lookup_cache_hits;
+	std::size_t lookup_cache_misses;
+	std::size_t lookup_cache_invalidations;
+	std::size_t lookup_cache_dependency_edges;
+	std::size_t lookup_cache_invalidation_pushes;
 	std::size_t associated_scope_visits;
 	std::size_t associated_declaration_visits;
 	std::size_t overload_candidates;

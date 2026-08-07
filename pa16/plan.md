@@ -2,67 +2,103 @@
 
 ## Stage Design and Spec Alignment
 
-PA16 extends the shared compiler in place. PA10 retains scoped syntax/name
-classifications; PA11 owns canonical entities, bindings, types, storage, and ABI
-identity; PA12 owns lookup, access, conversions, initialization, lifetime, and
-demand; PA15/PA16 lowering consumes typed facts and plans storage without
-repeating semantic lookup. This follows `spec.md` sections 2, 3, 5, 6, 8, and
-9 and the PA16 object-model contract.
+PA16 full-stage is complete. The current path is:
 
-Qualified `decltype`, special-member definitions, mutable/static-member facts,
-user-defined conversions, destructor variants, unevaluated demand, and
-declaration-only TLS storage cross boundaries as compact canonical records.
-Lookup and demand remain indexed; constructor/destructor work follows the
-single-base/member graph; slot allocation is a bounded preorder; lowering is
-O(nodes + emitted instructions), without whole-program retry or textual type
-reconstruction.
+```text
+source buffer -> streaming preprocessing / compact tokens -> PA10 SyntaxArena
+  -> PA11 canonical Program + PA12 DumpArena -> borrowed SemanticGraphView
+  -> PA15/PA16 TypedProgram -> one final LowIR render
+```
 
-## Current Failure Map
+The PA10 tree is the assignment-mandated syntax boundary; adapting `spec.md` to
+this staged surface, it is consumed once and never serialized between phases.
+PA11 owns interned `NameId`, `TypeId`, `ScopeId`, `EntityId`, and `BindingId`
+identity plus flat name/base/using indexes. PA12 records selected declarations,
+conversions, layouts, access paths, initialization/lifetime actions, and
+deduplicated demand states. PA15/PA16 lowering receives a synchronous borrowed
+view, constructs typed LowIR directly, and retains no semantic pointers after
+the callback. Textual LowIR is only the required terminal PA16 view.
 
-No current failures. PA16 is **291/291**, PA1-PA15 are **1,145/1,145**, and the
-PA16 file audit passes. The turn-start groups are closed at their owning
-boundaries: constructor access/demand (1), member/name selection (2),
-declarator/qualified type use (4), cv/static storage/lifetime (6), and
-conversion constraints (2).
+Name lookup now has stable `(scope, name, kind)` cache entries. Direct
+dependencies are owned by flat `(scope, name)` buckets; lexical reuse records a
+cache-fact edge. Declaration insertion invalidates only the matching name and
+its reverse dependency cone, while a using-edge insertion invalidates the
+affected scope because any name can change. Reverse lists keep two entries
+inline and spill geometrically. There is no TU-wide revision or global retry.
 
-## Active Checkpoint
-
-**Complete: PA16 full-stage closure.** Validation is the required PA16 report,
-the through-PA15 report, and the PA16 `dev/src` audit. The completed flow is
-`PA10 expression/declaration shape -> PA12 canonical member, conversion,
-storage, demand, and lifetime facts -> PA15/PA16 typed call/address/lifetime
-lowering`. No later-assignment behavior was introduced.
+Current failures: none. PA16 is 291/291, PA1-PA15 are 1,145/1,145, and all 16
+tracked stages pass (1,436/1,436 total).
 
 ## Performance Evidence
 
-| Boundary | Representative 1x / 2x evidence |
+Five-run medians use the release compiler with `CPPGM_FRONTEND_STATS=1`.
+
+| Boundary | 1x / 2x evidence |
 |---|---|
-| Friend/ADL converting calls | 32/64 overloads: 64/128 candidates, 162/322 conversions, 31/63 cache hits, 32/64 misses; 1.017/1.980 ms semantic medians |
-| Physical single-base projection | 64/128 edges: 67/131 layouts, 394/778 path visits, one projection at both sizes; 0.701/1.317 ms semantic medians |
-| Scoped declarator/type use | 1x/2x classes: 49/88 syntax nodes, 6/12 access checks, 4/8 instructions; 0.031/0.048 ms parse and 0.090/0.143 ms semantic medians |
-| Cv/member/lifetime closure | 64/128 mutable-member updates plus fixed TLS/explicit-dtor demand: 551/1,063 semantic nodes, 71/135 conversions, 269/525 access checks, 385/769 path visits, 470/918 instructions, 69,123/130,563 typed bytes; 0.509/0.842 ms semantic and 0.311/0.439 ms lowering medians |
+| Nested lookup and unrelated mutation | 2,000/4,000 scopes: 4,007/8,007 queries, 2,006/4,006 scope visits, 4,002/8,002 hits, 4,005/8,005 dependency edges, **0/0 invalidations**; 1,902,379/3,801,195 semantic peak bytes; 6.697/13.835 ms semantic and 0.494/0.935 ms lowering medians |
+| Cv/member/lifetime closure | 64/128 mutable members with fixed TLS and explicit destructor demand: 561/1,073 semantic nodes, 64/128 layout-member visits, 271/527 access checks, 384/768 path visits, 471/919 instructions, 72,163/133,603 typed bytes; 0.745/1.408 ms semantic, 0.411/0.729 ms lowering, and 0.192/0.342 ms render medians |
+| Template declaration demand | Two calls to one deduced specialization: 2 specialization requests, 1 cache hit, 1 demand push, 1 declaration emission, and one typed external declaration |
+| Inheritance projection | 64/128 single-base edges retain linear lookup/access visits and one physical zero-offset projection; prior checkpoint probe recorded 0.701/1.317 ms semantic medians |
+| Instruction profile | The 2,000/4,000 lookup probe executes 80,111,465/157,901,321 Callgrind instructions (1.97x). Token interning is the largest named self-cost at 25.76%; lookup-cache routines are below the 0.01% self-cost threshold |
 
-The final probe keeps fixed TLS/destructor demand constant while doubled member
-work scales 1.90-2.00x in deterministic counters; median semantic and lowering
-times remain sublinear relative to the doubled variable work.
+The same-name shadow probe invalidates exactly one entry and emits the first
+store through `@g` and the second through local `$g`. Counter growth is
+proportional to semantic input, dependency edges, or emitted IR; no unexplained
+slow path remains.
 
-## Completed Checkpoints
+## Architecture Review
 
-| Checkpoint | Closure evidence |
-|---|---|
-| Direct-member object spine | Canonical layout/projection; 42/247; linear field/use curves |
-| Resolved member-call spine | Object-aware ranking, hidden `this`, stable ABI IDs; 51/247 |
-| Local aggregate-action spine | C++11 aggregate/union rules and bounded projections; 61/248 |
-| Special-member initialization spine | Ordered typed init actions and exception/reference facts; 91/255 |
-| Single-base construction spine | Canonical base/access edges and retained projections; 120/259 |
-| Destruction and lexical cleanup | Reverse lifetime, lexical exits, shared cleanup suffixes; 132/265 |
-| Namespace/static lifetime | TLS/linkage facts and one ordered lifecycle pair; 154/269 |
-| Operator/ADL callable spine | Indexed ordinary/hidden-friend union and typed ranking; 186/269 |
-| Access/base-path closure | Indexed grants/signatures and object-correct protected access; 202/275 |
-| Layout/bit-field/inherited-ctor closure | Focused 29/29; 231/283; prior and audit pass |
-| Typed declarator/call/boundary closure | Focused 15/15; 249/286; prior and audit pass |
-| Aggregate/value-init/materialization closure | Landed gains plus audit regressions; 262/288; proportional probes |
-| Friend/ADL call-boundary closure | Focused 11/11; 273/290; complete-key cache and proportional probe |
-| Physical single-base layout/projection closure | Focused 7/7; 276/291; proportional probes |
-| Scoped declarator/type-use closure | Focused 7/7; 280/291 from 276/291 without regressions; proportional probe |
-| Cv/member/lifetime and full-stage closure | Mutable cv, indexed-reference lowering, on-demand TLS, explicit/pseudo destruction, parser selection, converting construction, narrowing, and unevaluated demand; **291/291** from **280/291**; prior **1,145/1,145**; audit and proportional probe pass |
+- Representation/ownership: source, syntax, semantic, and typed output have
+  explicit call/TU/program owners. Only boundary-conversion overlap exists;
+  semantic storage is released before LowIR rendering. The lowering path uses
+  a null stream sink and never renders semantics for reparsing.
+- Identity/lookup: hot equality and keys use compact IDs. Name, using, ADL,
+  hidden-friend, base, access-grant, signature, specialization, and symbol
+  relationships are indexed. Strings are confined to source interpretation,
+  diagnostics, literals, and output spelling.
+- Templates/demand: the PA16 contract excludes template-backed object-model
+  behavior. The supported function-template declaration path uses pattern ID +
+  canonical `TypeId` arguments, memoizes specialization identity, and emits a
+  deferred declaration once. Constructor/destructor/function demand uses
+  monotonic states and deduplicated worklists.
+- Lowering: selected bindings, conversions, projections, layouts, ABI roles,
+  and lifetime actions cross the borrowed graph directly. Lowering performs no
+  semantic lookup, type-string parsing, LowIR reparse, or whole-program retry.
+- Allocation/scaling: semantic and typed nodes use vector/arena storage; hot
+  indexes are flat. Lookup reverse lists are inline-first. PA16 label,
+  constructor-substitution, and literal-pooling maps use flat or direct-ID
+  storage rather than node-based maps. Traversals use bounded local sequences
+  or iterative worklists.
+- Self-containment: the implementation has no reference-binary, host-compiler,
+  filename, source-text, test, or expected-output path. Native machine IR and
+  ELF checks are not applicable until the later backend assignments; PA16's
+  normative terminal artifact is textual LowIR.
+
+## Final Architecture Review
+
+No correctness, architecture, performance, self-containment, or file-audit
+blocker remains for the PA16 surface. The required file audit passes with six
+non-blocking header-division advisories; no duplicate implementation,
+misplaced source, or new source-set entry is involved. The required through
+report passes all 1,436 tests.
+
+## Checkpoint Ledger
+
+| Checkpoint | Stage commit | Final result |
+|---|---:|---|
+| Direct-member object spine | `9651d43c` | Pass: canonical layout/member facts and typed fields |
+| Resolved member-call spine | `f7be4cf7` | Pass: object-aware ranking, hidden `this`, stable ABI IDs |
+| Local aggregate-action spine | `76cd7bd0` | Pass: C++11 aggregate/union rules and bounded projections |
+| Special-member initialization | `790bc91a` | Pass: ordered typed actions and exception/reference facts |
+| Single-base construction | `76410798` | Pass: canonical base/access edges and retained projections |
+| Destruction and cleanup | `79e34477` | Pass: reverse lifetime, lexical exits, shared cleanup suffixes |
+| Namespace/static lifetime | `3a19722e` | Pass: TLS/linkage identity and ordered lifecycle functions |
+| Operator/ADL callable spine | `f905d52f` | Pass: indexed ordinary/hidden-friend union and typed ranking |
+| Access/base-path closure | `0d60dc0e` | Pass: indexed grants/signatures and protected-object rules |
+| Layout/bit-field/inherited ctor | `f77bcbf8` | Pass: physical widths, scalar state, indexed ownership |
+| Typed declarator/call boundary | `7727472a` | Pass: scoped parameter facts, canonical ABI/builtin metadata |
+| Aggregate/value materialization | `ac6acf41` | Pass: complete omitted-member actions and ordinary demand |
+| Friend/ADL call boundary | `3f6d32d5` | Pass: indexed friends, complete conversion keys, constructor checks |
+| Empty-base projection | `53c686fd` | Pass: identity-indexed zero-offset separation and one projection |
+| Cv/member/lifetime full stage | `74123da2` | Pass: 291/291 PA16 tests and proportional probes |
+| Final PA-wide architecture audit | this commit | Pass: precise cache invalidation, flat hot maps, full telemetry and gates |

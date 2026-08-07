@@ -6,8 +6,7 @@
 #include "pa15_source_type_lowering.h"
 
 #include <cstdint>
-#include <string>
-#include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace cppgm
@@ -26,8 +25,6 @@ public:
 		const std::vector<pa15_lowir_detail::SymbolId>& function_symbols,
 		const std::vector<pa15_lowir_detail::SymbolId>& global_symbols,
 		std::vector<pa15_lowir_detail::SymbolId>& literal_symbols,
-		std::unordered_map<std::string, pa15_lowir_detail::SymbolId>&
-			string_literal_symbols,
 		const std::vector<std::uint32_t>& function_definitions);
 
 	bool Lower(const pa12_semantic_detail::NamespaceObjectAction& action,
@@ -49,7 +46,7 @@ private:
 		std::vector<pa15_lowir_detail::Global::DataItem>* items);
 	bool AppendValue(pa11::TypeId type, std::uint32_t node,
 		std::vector<pa15_lowir_detail::Global::DataItem>* items,
-		const std::unordered_map<pa11::BindingId, std::uint32_t>*
+		const std::vector<std::pair<pa11::BindingId, std::uint32_t> >*
 			substitutions = 0);
 	bool AppendConstructorValue(pa11::TypeId type, std::uint32_t action_node,
 		std::vector<pa15_lowir_detail::Global::DataItem>* items);
@@ -61,8 +58,6 @@ private:
 	const std::vector<pa15_lowir_detail::SymbolId>& function_symbols_;
 	const std::vector<pa15_lowir_detail::SymbolId>& global_symbols_;
 	std::vector<pa15_lowir_detail::SymbolId>& literal_symbols_;
-	std::unordered_map<std::string, pa15_lowir_detail::SymbolId>&
-		string_literal_symbols_;
 	const std::vector<std::uint32_t>& function_definitions_;
 	pa15_lowering_detail::SourceTypeLowering types_;
 };

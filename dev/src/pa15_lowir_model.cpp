@@ -289,6 +289,7 @@ std::size_t TypedStorageBytes(const TypedProgram& program)
 		program.switch_case_values.capacity() * sizeof(std::int64_t) +
 		program.switch_case_targets.capacity() * sizeof(BlockId) +
 		program.literals.StorageBytes() +
+		program.string_literal_symbols.capacity() * sizeof(SymbolId) +
 		program.identities.StorageBytes() + program.symbol_index.StorageBytes() +
 		program.symbol_name_counts.StorageBytes();
 	for (std::size_t i = 0; i < program.symbols.size(); ++i)

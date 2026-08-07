@@ -1,10 +1,89 @@
 #include "pa15_lowering_support.h"
 #include "post_tokenizer.h"
 
+#include <algorithm>
+
 namespace cppgm
 {
 namespace pa15_lowering_support
 {
+
+FlatIdMap::FlatIdMap() : slots_(16, 0) {}
+
+std::size_t FlatIdMap::Hash(std::uint32_t key)
+{
+	std::uint64_t value = key;
+	value ^= value >> 16;
+	value *= UINT64_C(0x7feb352d);
+	value ^= value >> 15;
+	return static_cast<std::size_t>(value);
+}
+
+bool FlatIdMap::Find(std::uint32_t key, std::uint32_t* value) const
+{
+	const std::size_t mask = slots_.size() - 1;
+	std::size_t slot = Hash(key) & mask;
+	while (slots_[slot] != 0)
+	{
+		const std::uint32_t entry = slots_[slot] - 1;
+		if (keys_[entry] == key)
+		{
+			*value = values_[entry];
+			return true;
+		}
+		slot = (slot + 1) & mask;
+	}
+	return false;
+}
+
+void FlatIdMap::Insert(std::uint32_t key, std::uint32_t value)
+{
+	if ((keys_.size() + 1) * 10 > slots_.size() * 7)
+		Rehash(slots_.size() * 2);
+	const std::size_t mask = slots_.size() - 1;
+	std::size_t slot = Hash(key) & mask;
+	while (slots_[slot] != 0)
+	{
+		const std::uint32_t entry = slots_[slot] - 1;
+		if (keys_[entry] == key)
+		{
+			values_[entry] = value;
+			return;
+		}
+		slot = (slot + 1) & mask;
+	}
+	if (keys_.size() >= UINT32_MAX)
+		throw std::runtime_error("too many flat identity map entries");
+	keys_.push_back(key);
+	values_.push_back(value);
+	slots_[slot] = static_cast<std::uint32_t>(keys_.size());
+}
+
+void FlatIdMap::Clear()
+{
+	keys_.clear();
+	values_.clear();
+	std::fill(slots_.begin(), slots_.end(), 0);
+}
+
+void FlatIdMap::Rehash(std::size_t capacity)
+{
+	slots_.assign(capacity, 0);
+	const std::size_t mask = capacity - 1;
+	for (std::size_t i = 0; i < keys_.size(); ++i)
+	{
+		std::size_t slot = Hash(keys_[i]) & mask;
+		while (slots_[slot] != 0) slot = (slot + 1) & mask;
+		slots_[slot] = static_cast<std::uint32_t>(i + 1);
+	}
+}
+
+std::size_t FlatIdMap::StorageBytes() const
+{
+	return keys_.capacity() * sizeof(std::uint32_t) +
+		values_.capacity() * sizeof(std::uint32_t) +
+		slots_.capacity() * sizeof(std::uint32_t);
+}
 
 std::string StripOperationPrefix(const std::string& operation)
 {

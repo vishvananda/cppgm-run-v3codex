@@ -1,6 +1,6 @@
 #pragma once
 
-#include "macro_processor.h"
+#include "pa12_semantic.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -23,29 +23,8 @@ struct LowIRSource
 struct LowIRLoweringStats
 {
 	std::size_t source_bytes;
-	std::size_t tokens;
-	std::size_t semantic_nodes;
-	std::size_t semantic_edges;
+	SemanticAnalysisStats semantic;
 	std::size_t lowered_nodes;
-	std::size_t class_layouts;
-	std::size_t class_layout_member_visits;
-	std::size_t class_zero_offset_subobject_visits;
-	std::size_t constructor_member_action_visits;
-	std::size_t constructor_base_action_visits;
-	std::size_t destructor_subobject_action_visits;
-	std::size_t lexical_cleanup_action_visits;
-	std::size_t namespace_object_actions;
-	std::size_t associated_scope_visits;
-	std::size_t associated_declaration_visits;
-	std::size_t overload_candidates;
-	std::size_t overload_order_comparisons;
-	std::size_t conversion_checks;
-	std::size_t call_conversion_cache_hits;
-	std::size_t call_conversion_cache_misses;
-	std::size_t function_signature_lookups;
-	std::size_t access_checks;
-	std::size_t access_path_visits;
-	std::size_t access_grant_probes;
 	std::size_t functions;
 	std::size_t globals;
 	std::size_t blocks;
@@ -53,7 +32,6 @@ struct LowIRLoweringStats
 	std::size_t binding_index_probes;
 	std::size_t typed_storage_bytes;
 	std::size_t output_bytes;
-	std::uint64_t semantic_nanoseconds;
 	std::uint64_t lowering_nanoseconds;
 	std::uint64_t render_nanoseconds;
 

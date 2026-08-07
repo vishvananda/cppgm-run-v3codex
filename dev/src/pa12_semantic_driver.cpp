@@ -1,13 +1,21 @@
 #include "pa12_semantic_detail.h"
 
 #include <chrono>
-#include <sstream>
+#include <ostream>
+#include <streambuf>
 
 namespace cppgm
 {
 
 namespace
 {
+
+class NullStreamBuffer : public std::streambuf
+{
+protected:
+	int_type overflow(int_type value)
+		{ return traits_type::not_eof(value); }
+};
 
 void PublishDriverStats(const std::string& source,
 	const SyntaxStats& syntax, const std::chrono::steady_clock::time_point& start,
@@ -50,8 +58,9 @@ void ConsumeSemanticTranslationUnit(const std::string& path,
 		std::chrono::steady_clock::now();
 	if (stats) *stats = SemanticAnalysisStats();
 	SyntaxStats syntax;
-	std::ostringstream output;
-	pa12_semantic_detail::SemanticAnalyzer analyzer(output, stats,
+	NullStreamBuffer sink_buffer;
+	std::ostream sink(&sink_buffer);
+	pa12_semantic_detail::SemanticAnalyzer analyzer(sink, stats,
 		&consumer, false);
 	ConsumeSyntaxTranslationUnit(path, source, options, analyzer,
 		stats ? &syntax : 0);

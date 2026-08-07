@@ -2,6 +2,7 @@
 
 #include "pa15_lowering_support.h"
 
+#include <algorithm>
 #include <stdexcept>
 
 namespace cppgm
@@ -19,12 +20,10 @@ StaticInitializerLowering::StaticInitializerLowering(
 	LowIRLoweringStats* stats, const std::vector<SymbolId>& function_symbols,
 	const std::vector<SymbolId>& global_symbols,
 	std::vector<SymbolId>& literal_symbols,
-	std::unordered_map<std::string, SymbolId>& string_literal_symbols,
 	const std::vector<std::uint32_t>& function_definitions)
 	: program_(program), arena_(arena), output_(output), stats_(stats),
 	  function_symbols_(function_symbols), global_symbols_(global_symbols),
 	  literal_symbols_(literal_symbols),
-	  string_literal_symbols_(string_literal_symbols),
 	  function_definitions_(function_definitions), types_(program)
 {
 }
@@ -76,12 +75,14 @@ SymbolId StaticInitializerLowering::EnsureStringLiteral(std::uint32_t node)
 		throw std::logic_error("invalid PA15 literal node");
 	if (literal_symbols_[node] != kNoLowId) return literal_symbols_[node];
 	const std::string spelling = program_.names.Get(arena_.nodes[node].text);
-	const std::unordered_map<std::string, SymbolId>::const_iterator old =
-		string_literal_symbols_.find(spelling);
-	if (old != string_literal_symbols_.end())
+	const InternedStringId literal = output_.literals.Intern(spelling);
+	if (output_.string_literal_symbols.size() <= literal)
+		output_.string_literal_symbols.resize(
+			static_cast<std::size_t>(literal) + 1, kNoLowId);
+	if (output_.string_literal_symbols[literal] != kNoLowId)
 	{
-		literal_symbols_[node] = old->second;
-		return old->second;
+		literal_symbols_[node] = output_.string_literal_symbols[literal];
+		return literal_symbols_[node];
 	}
 	const std::string name = "__strlit__" +
 		std::to_string(++output_.string_literal_count);
@@ -91,7 +92,7 @@ SymbolId StaticInitializerLowering::EnsureStringLiteral(std::uint32_t node)
 	output_.symbols.back().definition_emitted = true;
 	output_.symbols.back().referenced = true;
 	literal_symbols_[node] = symbol;
-	string_literal_symbols_[spelling] = symbol;
+	output_.string_literal_symbols[literal] = symbol;
 	const std::vector<unsigned char> bytes = DecodeStringLiteral(spelling);
 	Global global;
 	global.symbol = symbol;
@@ -188,7 +189,7 @@ void StaticInitializerLowering::AppendZero(std::size_t bytes,
 
 bool StaticInitializerLowering::AppendValue(TypeId type, std::uint32_t node,
 	std::vector<Global::DataItem>* items,
-	const std::unordered_map<BindingId, std::uint32_t>* substitutions)
+	const std::vector<std::pair<BindingId, std::uint32_t> >* substitutions)
 {
 	type = types_.RemoveTopQualifiers(type);
 	const TypeRecord& type_record = program_.types.Get(type);
@@ -276,9 +277,12 @@ bool StaticInitializerLowering::AppendValue(TypeId type, std::uint32_t node,
 	if (node == kNoDumpEdge) return false;
 	if (substitutions && arena_.nodes[node].kind == DUMP_ID_EXPRESSION)
 	{
-		const std::unordered_map<BindingId, std::uint32_t>::const_iterator found =
-			substitutions->find(arena_.nodes[node].binding);
-		if (found != substitutions->end()) node = found->second;
+		const BindingId binding = arena_.nodes[node].binding;
+		const std::vector<std::pair<BindingId, std::uint32_t> >::const_iterator
+			found = std::lower_bound(substitutions->begin(), substitutions->end(),
+				std::make_pair(binding, std::uint32_t(0)));
+		if (found != substitutions->end() && found->first == binding)
+			node = found->second;
 	}
 	const DumpNode& value = arena_.nodes[node];
 	const LowType low_type = types_.LowerExpression(type);
@@ -335,9 +339,12 @@ bool StaticInitializerLowering::AppendConstructorValue(TypeId type,
 	}
 	if (body == kNoDumpEdge || parameters.size() != arguments.size() + 1)
 		return false;
-	std::unordered_map<BindingId, std::uint32_t> substitutions;
+	std::vector<std::pair<BindingId, std::uint32_t> > substitutions;
+	substitutions.reserve(arguments.size());
 	for (std::size_t i = 0; i < arguments.size(); ++i)
-		substitutions[arena_.nodes[parameters[i + 1]].binding] = arguments[i];
+		substitutions.push_back(std::make_pair(
+			arena_.nodes[parameters[i + 1]].binding, arguments[i]));
+	std::sort(substitutions.begin(), substitutions.end());
 
 	const NodeChildren actions = Children(body);
 	std::size_t cursor = 0;

@@ -20,6 +20,24 @@ std::vector<unsigned char> DecodeStringLiteral(const std::string& spelling);
 std::int64_t CanonicalIntegerImmediate(std::int64_t value,
 	std::uint8_t width, bool is_signed);
 
+class FlatIdMap
+{
+public:
+	FlatIdMap();
+	bool Find(std::uint32_t key, std::uint32_t* value) const;
+	void Insert(std::uint32_t key, std::uint32_t value);
+	void Clear();
+	std::size_t StorageBytes() const;
+
+private:
+	void Rehash(std::size_t capacity);
+	static std::size_t Hash(std::uint32_t key);
+
+	std::vector<std::uint32_t> keys_;
+	std::vector<std::uint32_t> values_;
+	std::vector<std::uint32_t> slots_;
+};
+
 template <typename Value, std::size_t InlineCount>
 class SmallSequence
 {

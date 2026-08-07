@@ -139,23 +139,10 @@ void CoalesceLifecycleFunctions(TypedProgram* program,
 }
 
 LowIRLoweringStats::LowIRLoweringStats()
-	: source_bytes(0), tokens(0), semantic_nodes(0), semantic_edges(0),
-	  lowered_nodes(0), class_layouts(0), class_layout_member_visits(0),
-	  class_zero_offset_subobject_visits(0),
-	  constructor_member_action_visits(0),
-	  constructor_base_action_visits(0),
-	  destructor_subobject_action_visits(0),
-	  lexical_cleanup_action_visits(0), namespace_object_actions(0),
-	  associated_scope_visits(0), associated_declaration_visits(0),
-	  overload_candidates(0),
-	  overload_order_comparisons(0),
-	  conversion_checks(0), call_conversion_cache_hits(0),
-	  call_conversion_cache_misses(0), function_signature_lookups(0),
-	  access_checks(0),
-	  access_path_visits(0), access_grant_probes(0),
-	  functions(0), globals(0), blocks(0), instructions(0),
-	  binding_index_probes(0), typed_storage_bytes(0), output_bytes(0),
-	  semantic_nanoseconds(0), lowering_nanoseconds(0), render_nanoseconds(0)
+	: source_bytes(0), semantic(), lowered_nodes(0), functions(0), globals(0),
+	  blocks(0), instructions(0), binding_index_probes(0),
+	  typed_storage_bytes(0), output_bytes(0), lowering_nanoseconds(0),
+	  render_nanoseconds(0)
 {
 }
 
@@ -174,43 +161,77 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 			options, consumer, stats ? &semantic_stats : 0);
 		if (stats)
 		{
+			SemanticAnalysisStats& semantic = stats->semantic;
 			stats->source_bytes += sources[i].source.size();
-			stats->tokens += semantic_stats.tokens;
-			stats->semantic_nodes += semantic_stats.semantic_nodes;
-			stats->semantic_edges += semantic_stats.semantic_edges;
-			stats->class_layouts += semantic_stats.class_layouts;
-			stats->class_layout_member_visits +=
+			semantic.tokens += semantic_stats.tokens;
+			semantic.syntax_nodes += semantic_stats.syntax_nodes;
+			semantic.semantic_nodes += semantic_stats.semantic_nodes;
+			semantic.semantic_edges += semantic_stats.semantic_edges;
+			semantic.interned_names += semantic_stats.interned_names;
+			semantic.canonical_types += semantic_stats.canonical_types;
+			semantic.scopes += semantic_stats.scopes;
+			semantic.declarations += semantic_stats.declarations;
+			semantic.expressions += semantic_stats.expressions;
+			semantic.class_layouts += semantic_stats.class_layouts;
+			semantic.class_layout_member_visits +=
 				semantic_stats.class_layout_member_visits;
-			stats->class_zero_offset_subobject_visits +=
+			semantic.class_zero_offset_subobject_visits +=
 				semantic_stats.class_zero_offset_subobject_visits;
-			stats->constructor_member_action_visits +=
+			semantic.constructor_member_action_visits +=
 				semantic_stats.constructor_member_action_visits;
-			stats->constructor_base_action_visits +=
+			semantic.constructor_base_action_visits +=
 				semantic_stats.constructor_base_action_visits;
-			stats->destructor_subobject_action_visits +=
+			semantic.destructor_subobject_action_visits +=
 				semantic_stats.destructor_subobject_action_visits;
-			stats->lexical_cleanup_action_visits +=
+			semantic.lexical_cleanup_action_visits +=
 				semantic_stats.lexical_cleanup_action_visits;
-			stats->namespace_object_actions +=
+			semantic.namespace_object_actions +=
 				semantic_stats.namespace_object_actions;
-			stats->associated_scope_visits +=
+			semantic.lookup_queries += semantic_stats.lookup_queries;
+			semantic.lookup_scope_visits += semantic_stats.lookup_scope_visits;
+			semantic.lookup_edge_visits += semantic_stats.lookup_edge_visits;
+			semantic.lookup_cache_hits += semantic_stats.lookup_cache_hits;
+			semantic.lookup_cache_misses += semantic_stats.lookup_cache_misses;
+			semantic.lookup_cache_invalidations +=
+				semantic_stats.lookup_cache_invalidations;
+			semantic.lookup_cache_dependency_edges +=
+				semantic_stats.lookup_cache_dependency_edges;
+			semantic.lookup_cache_invalidation_pushes +=
+				semantic_stats.lookup_cache_invalidation_pushes;
+			semantic.associated_scope_visits +=
 				semantic_stats.associated_scope_visits;
-			stats->associated_declaration_visits +=
+			semantic.associated_declaration_visits +=
 				semantic_stats.associated_declaration_visits;
-			stats->overload_candidates += semantic_stats.overload_candidates;
-			stats->overload_order_comparisons +=
+			semantic.overload_candidates += semantic_stats.overload_candidates;
+			semantic.overload_order_comparisons +=
 				semantic_stats.overload_order_comparisons;
-			stats->conversion_checks += semantic_stats.conversion_checks;
-			stats->call_conversion_cache_hits +=
+			semantic.conversion_checks += semantic_stats.conversion_checks;
+			semantic.call_conversion_cache_hits +=
 				semantic_stats.call_conversion_cache_hits;
-			stats->call_conversion_cache_misses +=
+			semantic.call_conversion_cache_misses +=
 				semantic_stats.call_conversion_cache_misses;
-			stats->function_signature_lookups +=
+			semantic.function_signature_lookups +=
 				semantic_stats.function_signature_lookups;
-			stats->access_checks += semantic_stats.access_checks;
-			stats->access_path_visits += semantic_stats.access_path_visits;
-			stats->access_grant_probes += semantic_stats.access_grant_probes;
-			stats->semantic_nanoseconds += semantic_stats.analysis_nanoseconds;
+			semantic.access_checks += semantic_stats.access_checks;
+			semantic.access_path_visits += semantic_stats.access_path_visits;
+			semantic.access_grant_probes += semantic_stats.access_grant_probes;
+			semantic.template_specialization_requests +=
+				semantic_stats.template_specialization_requests;
+			semantic.template_specialization_cache_hits +=
+				semantic_stats.template_specialization_cache_hits;
+			semantic.demand_worklist_pushes +=
+				semantic_stats.demand_worklist_pushes;
+			semantic.demanded_function_emissions +=
+				semantic_stats.demanded_function_emissions;
+			semantic.default_constructor_emissions +=
+				semantic_stats.default_constructor_emissions;
+			semantic.semantic_storage_bytes +=
+				semantic_stats.semantic_storage_bytes;
+			semantic.peak_stage_storage_bytes = std::max(
+				semantic.peak_stage_storage_bytes,
+				semantic_stats.peak_stage_storage_bytes);
+			semantic.analysis_nanoseconds += semantic_stats.analysis_nanoseconds;
+			semantic.elapsed_nanoseconds += semantic_stats.elapsed_nanoseconds;
 		}
 	}
 	std::chrono::steady_clock::time_point coalesce_started;

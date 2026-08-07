@@ -579,10 +579,18 @@ int run_emit_semantics_mode(const vector<string> & args)
            << " lookup_queries=" << stats.lookup_queries
            << " lookup_scope_visits=" << stats.lookup_scope_visits
            << " lookup_edge_visits=" << stats.lookup_edge_visits
-		   << " associated_scope_visits="
-		   << stats.associated_scope_visits
-		   << " associated_declaration_visits="
-		   << stats.associated_declaration_visits
+           << " lookup_cache_hits=" << stats.lookup_cache_hits
+           << " lookup_cache_misses=" << stats.lookup_cache_misses
+           << " lookup_cache_invalidations="
+           << stats.lookup_cache_invalidations
+           << " lookup_cache_dependency_edges="
+           << stats.lookup_cache_dependency_edges
+           << " lookup_cache_invalidation_pushes="
+           << stats.lookup_cache_invalidation_pushes
+           << " associated_scope_visits="
+           << stats.associated_scope_visits
+           << " associated_declaration_visits="
+           << stats.associated_declaration_visits
            << " overload_candidates=" << stats.overload_candidates
            << " overload_order_comparisons="
            << stats.overload_order_comparisons
@@ -640,52 +648,75 @@ int run_emit_lowir_mode(const vector<string> & args)
 	cppgm::WriteLowIRProgram(sources, options, output,
 		getenv("CPPGM_FRONTEND_STATS") ? &stats : 0);
 	if(getenv("CPPGM_FRONTEND_STATS")) {
+		const cppgm::SemanticAnalysisStats & semantic = stats.semantic;
 		cerr << "pa15_stats"
 			 << " source_bytes=" << stats.source_bytes
-			 << " tokens=" << stats.tokens
-			 << " semantic_nodes=" << stats.semantic_nodes
-			 << " semantic_edges=" << stats.semantic_edges
+			 << " tokens=" << semantic.tokens
+			 << " semantic_nodes=" << semantic.semantic_nodes
+			 << " semantic_edges=" << semantic.semantic_edges
 			 << " lowered_nodes=" << stats.lowered_nodes
-			 << " class_layouts=" << stats.class_layouts
+			 << " class_layouts=" << semantic.class_layouts
 			 << " class_layout_member_visits="
-			 << stats.class_layout_member_visits
+			 << semantic.class_layout_member_visits
 			 << " class_zero_offset_subobject_visits="
-			 << stats.class_zero_offset_subobject_visits
+			 << semantic.class_zero_offset_subobject_visits
 			 << " constructor_member_action_visits="
-			 << stats.constructor_member_action_visits
+			 << semantic.constructor_member_action_visits
 			 << " constructor_base_action_visits="
-			 << stats.constructor_base_action_visits
+			 << semantic.constructor_base_action_visits
 			 << " destructor_subobject_action_visits="
-			 << stats.destructor_subobject_action_visits
+			 << semantic.destructor_subobject_action_visits
 			 << " lexical_cleanup_action_visits="
-			 << stats.lexical_cleanup_action_visits
+			 << semantic.lexical_cleanup_action_visits
 			 << " namespace_object_actions="
-			 << stats.namespace_object_actions
+			 << semantic.namespace_object_actions
+			 << " lookup_queries=" << semantic.lookup_queries
+			 << " lookup_scope_visits=" << semantic.lookup_scope_visits
+			 << " lookup_edge_visits=" << semantic.lookup_edge_visits
+			 << " lookup_cache_hits=" << semantic.lookup_cache_hits
+			 << " lookup_cache_misses=" << semantic.lookup_cache_misses
+			 << " lookup_cache_invalidations="
+			 << semantic.lookup_cache_invalidations
+			 << " lookup_cache_dependency_edges="
+			 << semantic.lookup_cache_dependency_edges
+			 << " lookup_cache_invalidation_pushes="
+			 << semantic.lookup_cache_invalidation_pushes
 			 << " associated_scope_visits="
-			 << stats.associated_scope_visits
+			 << semantic.associated_scope_visits
 			 << " associated_declaration_visits="
-			 << stats.associated_declaration_visits
-			 << " overload_candidates=" << stats.overload_candidates
+			 << semantic.associated_declaration_visits
+			 << " overload_candidates=" << semantic.overload_candidates
 			 << " overload_order_comparisons="
-			 << stats.overload_order_comparisons
-			 << " conversion_checks=" << stats.conversion_checks
+			 << semantic.overload_order_comparisons
+			 << " conversion_checks=" << semantic.conversion_checks
 			 << " call_conversion_cache_hits="
-			 << stats.call_conversion_cache_hits
+			 << semantic.call_conversion_cache_hits
 			 << " call_conversion_cache_misses="
-			 << stats.call_conversion_cache_misses
+			 << semantic.call_conversion_cache_misses
 			 << " function_signature_lookups="
-			 << stats.function_signature_lookups
-			 << " access_checks=" << stats.access_checks
-			 << " access_path_visits=" << stats.access_path_visits
-			 << " access_grant_probes=" << stats.access_grant_probes
+			 << semantic.function_signature_lookups
+			 << " access_checks=" << semantic.access_checks
+			 << " access_path_visits=" << semantic.access_path_visits
+			 << " access_grant_probes=" << semantic.access_grant_probes
+			 << " template_specialization_requests="
+			 << semantic.template_specialization_requests
+			 << " template_specialization_cache_hits="
+			 << semantic.template_specialization_cache_hits
+			 << " demand_worklist_pushes=" << semantic.demand_worklist_pushes
+			 << " demanded_function_emissions="
+			 << semantic.demanded_function_emissions
+			 << " default_constructor_emissions="
+			 << semantic.default_constructor_emissions
 			 << " functions=" << stats.functions
 			 << " globals=" << stats.globals
 			 << " blocks=" << stats.blocks
 			 << " instructions=" << stats.instructions
 			 << " binding_index_probes=" << stats.binding_index_probes
 			 << " typed_storage_bytes=" << stats.typed_storage_bytes
+			 << " semantic_peak_stage_bytes="
+			 << semantic.peak_stage_storage_bytes
 			 << " output_bytes=" << stats.output_bytes
-			 << " semantic_ns=" << stats.semantic_nanoseconds
+			 << " semantic_ns=" << semantic.analysis_nanoseconds
 			 << " lowering_ns=" << stats.lowering_nanoseconds
 			 << " render_ns=" << stats.render_nanoseconds << '\n';
 	}
