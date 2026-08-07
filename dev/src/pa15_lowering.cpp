@@ -18,6 +18,7 @@
 #include "pa16_static_initializer_lowering.h"
 #include "pa16_slot_planning.h"
 #include "pa17_value_boundary_lowering.h"
+#include "pa17_special_member_lowering.h"
 
 #include <algorithm>
 #include <limits>
@@ -42,6 +43,7 @@ typedef SmallSequence<BindingId, kAggregateProjectionReplayLimit> AggregatePath;
 
 class GraphLowerer :
 	private pa17_lowering_detail::ValueBoundaryLowering<GraphLowerer>,
+	private pa17_lowering_detail::SpecialMemberLowering<GraphLowerer>,
 	private pa16_lowering_detail::AssignmentLowering<GraphLowerer>,
 	private pa16_lowering_detail::AggregateHelperLowering<GraphLowerer>,
 	private pa16_lowering_detail::ConstructorActionLowering<GraphLowerer>,
@@ -113,6 +115,7 @@ public:
 
 private:
 	friend class pa17_lowering_detail::ValueBoundaryLowering<GraphLowerer>;
+	friend class pa17_lowering_detail::SpecialMemberLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::AssignmentLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::AggregateHelperLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::ConstructorActionLowering<GraphLowerer>;
@@ -1047,6 +1050,8 @@ private:
 	Operand LowerStorage(std::uint32_t node)
 	{
 		const DumpNode& record = arena_.nodes[node];
+		if (record.kind == DUMP_SPECIAL_MEMBER_ASSIGNMENT_ACTION)
+			return LowerSpecialMemberAssignment(node);
 		if (record.kind == DUMP_ID_EXPRESSION && record.binding != kNoBinding)
 		{
 			if (record.binding < function_symbols_.size() &&

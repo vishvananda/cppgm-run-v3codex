@@ -138,9 +138,33 @@ bool SemanticAnalyzer::EmptyDefaultConstructorChain(BindingId constructor,
 			 FirstSemanticChild(info.definition_body) != kNoNode))
 			return false;
 		const EntityId entity = binding.member_owner;
-		if (entity == kNoEntity || entity >= entity_data_members_.size() ||
-			!entity_data_members_[entity].empty())
+		if (entity == kNoEntity || entity >= entity_data_members_.size())
 			return false;
+		const std::vector<BindingId>& members = entity_data_members_[entity];
+		for (std::size_t i = 0; i < members.size(); ++i)
+		{
+			const BindingRecord& member = program_->bindings[members[i]];
+			if (member.has_default_member_initializer) return false;
+			TypeId member_type = member.type;
+			const TypeRecord* member_record =
+				&program_->types.Get(member_type);
+			while (member_record->kind == TYPE_ARRAY ||
+				member_record->kind == TYPE_QUALIFIED)
+			{
+				member_type = member_record->child;
+				member_record = &program_->types.Get(member_type);
+			}
+			if (member_record->kind == TYPE_NAMED)
+			{
+				const EntityRecord& subobject =
+					program_->entities[member_record->entity];
+				if ((subobject.flavor == NAMED_STRUCT ||
+					subobject.flavor == NAMED_CLASS ||
+					subobject.flavor == NAMED_UNION) &&
+					!subobject.trivial_default_constructor)
+					return false;
+			}
+		}
 		const EntityId base = program_->entities[entity].direct_base;
 		if (base == kNoEntity) return true;
 		if (base >= entity_constructors_.size()) return false;
@@ -160,7 +184,10 @@ bool SemanticAnalyzer::EmptyDefaultConstructorChain(BindingId constructor,
 			next = candidates[i];
 		}
 		if (next == kNoBinding) return false;
-		base_entries->push_back(EnsureConstructorBaseEntry(next));
+		const FunctionInfo& next_info = GetFunction(next);
+		if (!(next_info.implicit_constructor &&
+			program_->entities[base].trivial_default_constructor))
+			base_entries->push_back(EnsureConstructorBaseEntry(next));
 		constructor = next;
 	}
 	throw std::logic_error("cyclic default-constructor chain");
@@ -196,8 +223,13 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 		AdaptMemberFunctionType(selected), VALUE_NONE,
 		constructor.display_name, selected);
 	std::vector<BindingId> empty_base_entries;
-	if (constructor.defaulted_constructor && argument_syntax.empty() &&
-		program_->entities[entity].empty_class &&
+	if (((constructor.defaulted_constructor &&
+		  program_->entities[entity].empty_class) ||
+		 (constructor.implicit_constructor &&
+		  program_->entities[entity].direct_base != kNoEntity &&
+		  !program_->entities[
+			program_->entities[entity].direct_base].trivial_default_constructor)) &&
+		argument_syntax.empty() &&
 		EmptyDefaultConstructorChain(selected, &empty_base_entries))
 	{
 		dump_.nodes[action].elide_empty_constructor = true;

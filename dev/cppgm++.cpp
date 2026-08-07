@@ -566,6 +566,10 @@ int run_emit_semantics_mode(const vector<string> & args)
            << stats.class_layout_member_visits
            << " class_zero_offset_subobject_visits="
            << stats.class_zero_offset_subobject_visits
+           << " special_member_fact_lookups="
+           << stats.special_member_fact_lookups
+           << " special_member_subobject_visits="
+           << stats.special_member_subobject_visits
            << " constructor_member_action_visits="
            << stats.constructor_member_action_visits
 		   << " constructor_base_action_visits="
@@ -660,6 +664,10 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << semantic.class_layout_member_visits
 			 << " class_zero_offset_subobject_visits="
 			 << semantic.class_zero_offset_subobject_visits
+			 << " special_member_fact_lookups="
+			 << semantic.special_member_fact_lookups
+			 << " special_member_subobject_visits="
+			 << semantic.special_member_subobject_visits
 			 << " constructor_member_action_visits="
 			 << semantic.constructor_member_action_visits
 			 << " constructor_base_action_visits="

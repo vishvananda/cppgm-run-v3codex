@@ -45,6 +45,8 @@ public:
 		  default_constructor_emissions_(0),
 		  class_layouts_(0), class_layout_member_visits_(0),
 		  class_zero_offset_subobject_visits_(0),
+		  special_member_fact_lookups_(0),
+		  special_member_subobject_visits_(0),
 		  zero_offset_subobject_generation_(0),
 		  constructor_member_action_visits_(0),
 		  constructor_base_action_visits_(0),
@@ -130,6 +132,8 @@ private:
 		const TypeRecord& function_type) const;
 	int CompareImplicitObjectBindings(ValueCategory category,
 		const TypeRecord& left, const TypeRecord& right) const;
+	int CompareReferenceBindings(const ExpressionInfo& argument,
+		TypeId left, TypeId right) const;
 	std::vector<BindingId> FunctionCandidates(ScopeId scope,
 		const std::string& spelling, EntityId* naming_class = 0);
 	std::vector<BindingId> FunctionSet(BindingId binding);
@@ -254,6 +258,21 @@ private:
 	void AnalyzeSpecialMember(NodeId node, ScopeId scope, TypeId owner_type,
 		AccessKind access);
 	void AnalyzeOutOfClassSpecialMember(NodeId node, ScopeId scope);
+	void RegisterClassSpecialMember(BindingId binding);
+	void ConfigureAssignmentSpecialMember(BindingId binding,
+		NodeId initializer);
+	bool AnalyzeQualifiedAssignmentStatement(NodeId node, ScopeId scope,
+		std::uint32_t output_parent);
+	void CompleteClassSpecialMembers(EntityId entity);
+	BindingId AssignmentForSubobject(TypeId type,
+		SpecialMemberKind kind) const;
+	void EvaluateSynthesizedAssignment(EntityId entity,
+		SpecialMemberKind kind, bool* deleted, bool* trivial,
+		bool* nonthrowing) const;
+	BindingId DeclareImplicitAssignment(EntityId entity,
+		SpecialMemberKind kind);
+	void AddSynthesizedAssignmentBody(const FunctionInfo& function,
+		const std::vector<BindingId>& parameters, std::uint32_t body);
 	bool CanAccessMember(BindingId member,
 		EntityId naming_class = kNoEntity,
 		EntityId object_class = kNoEntity) const;
@@ -389,6 +408,7 @@ private:
 	std::vector<std::uint32_t> zero_offset_subobject_marks_;
 	std::vector<EntityId> zero_offset_subobject_scratch_;
 	std::vector<std::vector<BindingId> > entity_constructors_;
+	std::vector<ClassSpecialMemberFacts> class_special_members_;
 	std::vector<BindingId> implicit_constructor_by_entity_;
 	std::vector<BindingId> constructor_base_entry_by_binding_;
 	std::vector<BindingId> destructor_base_entry_by_binding_;
@@ -450,6 +470,8 @@ private:
 	std::size_t class_layouts_;
 	std::size_t class_layout_member_visits_;
 	std::size_t class_zero_offset_subobject_visits_;
+	mutable std::size_t special_member_fact_lookups_;
+	mutable std::size_t special_member_subobject_visits_;
 	std::uint32_t zero_offset_subobject_generation_;
 	std::size_t constructor_member_action_visits_;
 	std::size_t constructor_base_action_visits_;

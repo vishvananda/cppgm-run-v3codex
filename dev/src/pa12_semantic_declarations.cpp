@@ -148,6 +148,8 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 		entity_layout_members_.resize(static_cast<std::size_t>(entity) + 1);
 	if (entity_constructors_.size() <= entity)
 		entity_constructors_.resize(static_cast<std::size_t>(entity) + 1);
+	if (class_special_members_.size() <= entity)
+		class_special_members_.resize(static_cast<std::size_t>(entity) + 1);
 	if (implicit_constructor_by_entity_.size() <= entity)
 		implicit_constructor_by_entity_.resize(
 			static_cast<std::size_t>(entity) + 1, kNoBinding);
@@ -268,6 +270,7 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 				AnalyzeUsing(member, member_scope, root_, false, member_access);
 		}
 		CompleteClassLayout(entity);
+		CompleteClassSpecialMembers(entity);
 		if (!program_->entities[entity].has_user_declared_constructor &&
 			program_->entities[entity].default_constructible)
 			EnsureImplicitConstructor(entity);
@@ -791,6 +794,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		info.definition_body =
 			FindChild(node, "compound-statement");
 		info.deferred = true;
+		ConfigureAssignmentSpecialMember(function, kNoNode);
 		return;
 	}
 	const NodeId list = FindChild(node, "init-declarator-list");
@@ -825,6 +829,8 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 			if (!binding.static_member_function)
 				GetMutableFunction(function).member_owner = owner_type;
 			ValidateFunctionRefQualifier(function);
+			ConfigureAssignmentSpecialMember(
+				function, FindChild(item, "initializer"));
 		}
 		else
 		{
@@ -1145,6 +1151,7 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 	class_record.has_user_provided_constructor =
 		class_record.has_user_provided_constructor ||
 		(source_definition || (!defaulted && !deleted));
+	RegisterClassSpecialMember(constructor);
 }
 
 void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
@@ -2720,6 +2727,16 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 			if (info.definition_body != kNoNode)
 				AnalyzeCompound(info.definition_body, function_scope,
 					constructor_body);
+		}
+		else if ((info.special_member == SPECIAL_MEMBER_COPY_ASSIGNMENT ||
+			info.special_member == SPECIAL_MEMBER_MOVE_ASSIGNMENT) &&
+			(info.implicit_special_member || info.defaulted_special_member))
+		{
+			const std::uint32_t assignment_body =
+				MakeDump(DUMP_COMPOUND_STATEMENT);
+			dump_.Add(function, assignment_body);
+			AddSynthesizedAssignmentBody(info, parameter_bindings,
+				assignment_body);
 		}
 		else if (info.destructor)
 		{

@@ -69,6 +69,8 @@ enum DumpKind
 	DUMP_BRACED_INIT_LIST,
 	DUMP_AGGREGATE_CONSTRUCTION_ACTION,
 	DUMP_CLASS_VALUE_TRANSFER,
+	DUMP_SPECIAL_MEMBER_ASSIGNMENT_ACTION,
+	DUMP_SPECIAL_MEMBER_SUBOBJECT_ACTION,
 	DUMP_INITIALIZER_ACTION,
 	DUMP_BASE_INITIALIZER_ACTION,
 	DUMP_MEMBER_EXPRESSION,
@@ -89,7 +91,7 @@ struct DumpNode
 	TypeId operand_type;
 	ValueCategory category;
 	NameId text;
-	BindingId binding, object_binding;
+	BindingId binding, object_binding, selected_binding;
 	std::int64_t constant_value;
 	std::uint32_t first_edge;
 	std::uint32_t last_edge;
@@ -106,7 +108,7 @@ struct DumpNode
 	explicit DumpNode(DumpKind value)
 		: kind(value), type(kNoType), operand_type(kNoType),
 		  category(VALUE_NONE), text(0), binding(kNoBinding),
-		  object_binding(kNoBinding),
+		  object_binding(kNoBinding), selected_binding(kNoBinding),
 		  constant_value(0), first_edge(kNoDumpEdge),
 		  last_edge(kNoDumpEdge), base_projection_count(0),
 		  aggregate_helper(kNoDumpEdge),
@@ -243,6 +245,15 @@ struct CallConversionFact
 		  constructor_argument_rank(CONVERSION_INVALID) {}
 };
 
+enum SpecialMemberKind
+{
+	SPECIAL_MEMBER_NONE,
+	SPECIAL_MEMBER_COPY_CONSTRUCTOR,
+	SPECIAL_MEMBER_MOVE_CONSTRUCTOR,
+	SPECIAL_MEMBER_COPY_ASSIGNMENT,
+	SPECIAL_MEMBER_MOVE_ASSIGNMENT
+};
+
 struct FunctionInfo
 {
 	BindingId binding;
@@ -267,6 +278,11 @@ struct FunctionInfo
 	bool implicit_destructor;
 	bool defaulted_destructor;
 	bool deleted_destructor;
+	SpecialMemberKind special_member;
+	bool implicit_special_member;
+	bool defaulted_special_member;
+	bool deleted_special_member;
+	bool trivial_special_member;
 	bool ordinary_visible;
 	std::uint8_t demand_state;
 	FunctionInfo()
@@ -279,8 +295,25 @@ struct FunctionInfo
 		  defaulted_constructor(false), deleted_constructor(false),
 		  explicit_constructor(false), destructor(false),
 		  implicit_destructor(false), defaulted_destructor(false),
-		  deleted_destructor(false), ordinary_visible(true),
+		  deleted_destructor(false), special_member(SPECIAL_MEMBER_NONE),
+		  implicit_special_member(false), defaulted_special_member(false),
+		  deleted_special_member(false), trivial_special_member(false),
+		  ordinary_visible(true),
 		  demand_state(0) {}
+};
+
+struct ClassSpecialMemberFacts
+{
+	BindingId copy_constructor, move_constructor;
+	BindingId copy_assignment, move_assignment;
+	bool user_copy_constructor, user_move_constructor;
+	bool user_copy_assignment, user_move_assignment;
+
+	ClassSpecialMemberFacts()
+		: copy_constructor(kNoBinding), move_constructor(kNoBinding),
+		  copy_assignment(kNoBinding), move_assignment(kNoBinding),
+		  user_copy_constructor(false), user_move_constructor(false),
+		  user_copy_assignment(false), user_move_assignment(false) {}
 };
 
 struct ClassLayoutMember

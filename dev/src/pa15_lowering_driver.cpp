@@ -177,6 +177,10 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 				semantic_stats.class_layout_member_visits;
 			semantic.class_zero_offset_subobject_visits +=
 				semantic_stats.class_zero_offset_subobject_visits;
+			semantic.special_member_fact_lookups +=
+				semantic_stats.special_member_fact_lookups;
+			semantic.special_member_subobject_visits +=
+				semantic_stats.special_member_subobject_visits;
 			semantic.constructor_member_action_visits +=
 				semantic_stats.constructor_member_action_visits;
 			semantic.constructor_base_action_visits +=

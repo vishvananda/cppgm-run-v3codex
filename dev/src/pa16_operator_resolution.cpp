@@ -495,7 +495,7 @@ BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
 	}
 
 	const auto better = [this, &ranks, &base_distances, &candidates, &object,
-		arity](
+		&operands, arity](
 		std::size_t left, std::size_t right) -> bool
 	{
 		++overload_order_comparisons_;
@@ -518,6 +518,26 @@ BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
 		if (strictly_better) return true;
 		const FunctionInfo& lfunction = GetFunction(candidates[left]);
 		const FunctionInfo& rfunction = GetFunction(candidates[right]);
+		const TypeRecord& ltype = program_->types.Get(lfunction.type);
+		const TypeRecord& rtype = program_->types.Get(rfunction.type);
+		const bool lmember = lfunction.member_owner != kNoType;
+		const bool rmember = rfunction.member_owner != kNoType;
+		const TypeId* lparameters =
+			program_->types.Parameters(lfunction.type);
+		const TypeId* rparameters =
+			program_->types.Parameters(rfunction.type);
+		for (std::size_t a = 0; a < arity; ++a)
+		{
+			if ((lmember && a == 0) || (rmember && a == 0))
+				continue;
+			const std::size_t lp = a - (lmember ? 1 : 0);
+			const std::size_t rp = a - (rmember ? 1 : 0);
+			if (lp >= ltype.parameter_count || rp >= rtype.parameter_count)
+				continue;
+			const int preference = CompareReferenceBindings(
+				operands[a], lparameters[lp], rparameters[rp]);
+			if (preference != 0) return preference > 0;
+		}
 		if (lfunction.member_owner != kNoType &&
 			rfunction.member_owner != kNoType)
 		{
@@ -624,6 +644,8 @@ bool SemanticAnalyzer::TryAnalyzeOverloadedOperator(
 		operands, candidates, object, &selected_member, &object_conversion,
 		&argument_conversions);
 	if (selected == kNoBinding) return false;
+	if (GetFunction(selected).deleted_special_member)
+		throw std::runtime_error("selected special member is deleted");
 	std::vector<NodeId> arguments_syntax;
 	std::vector<ExpressionInfo> arguments;
 	const std::size_t first = selected_member ? 1 : 0;

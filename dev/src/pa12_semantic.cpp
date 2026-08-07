@@ -173,6 +173,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const {
 		zero_offset_subobject_marks_.capacity() * sizeof(std::uint32_t) +
 		zero_offset_subobject_scratch_.capacity() * sizeof(EntityId) +
 		entity_constructors_.capacity() * sizeof(std::vector<BindingId>) +
+		class_special_members_.capacity() * sizeof(ClassSpecialMemberFacts) +
 		implicit_constructor_by_entity_.capacity() * sizeof(BindingId) +
 		constructor_base_entry_by_binding_.capacity() * sizeof(BindingId) +
 		destructor_base_entry_by_binding_.capacity() * sizeof(BindingId) +
@@ -926,6 +927,21 @@ int SemanticAnalyzer::CompareImplicitObjectBindings(ValueCategory category,
 	return 0;
 }
 
+int SemanticAnalyzer::CompareReferenceBindings(
+	const ExpressionInfo& argument, TypeId left, TypeId right) const
+{
+	if (argument.category == VALUE_LVALUE) return 0;
+	const TypeKind left_kind = program_->types.Get(left).kind;
+	const TypeKind right_kind = program_->types.Get(right).kind;
+	if (left_kind == TYPE_RVALUE_REFERENCE &&
+		right_kind == TYPE_LVALUE_REFERENCE)
+		return 1;
+	if (left_kind == TYPE_LVALUE_REFERENCE &&
+		right_kind == TYPE_RVALUE_REFERENCE)
+		return -1;
+	return 0;
+}
+
 BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 	const std::vector<NodeId>& argument_syntax,
 	const std::vector<ExpressionInfo>& arguments,
@@ -1035,8 +1051,8 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 			if (rank == CONVERSION_INVALID) viable[c] = false;
 		}
 	}
-	const auto better = [this, &ranks, &base_distances, &candidates, arity,
-		object](
+	const auto better = [this, &ranks, &base_distances, &candidates,
+		&arguments, arity, explicit_arity, object](
 		std::size_t left, std::size_t right) -> bool
 	{
 		++overload_order_comparisons_;
@@ -1065,6 +1081,23 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 		if (strictly_better) return true;
 		const FunctionInfo& left_function = GetFunction(candidates[left]);
 		const FunctionInfo& right_function = GetFunction(candidates[right]);
+		const TypeRecord& left_type =
+			program_->types.Get(left_function.type);
+		const TypeRecord& right_type =
+			program_->types.Get(right_function.type);
+		const TypeId* left_parameters =
+			program_->types.Parameters(left_function.type);
+		const TypeId* right_parameters =
+			program_->types.Parameters(right_function.type);
+		for (std::size_t a = 0; a < explicit_arity; ++a)
+		{
+			if (a >= left_type.parameter_count ||
+				a >= right_type.parameter_count)
+				continue;
+			const int preference = CompareReferenceBindings(
+				arguments[a], left_parameters[a], right_parameters[a]);
+			if (preference != 0) return preference > 0;
+		}
 		if (object && left_function.member_owner != kNoType &&
 			right_function.member_owner != kNoType)
 		{
@@ -1129,6 +1162,8 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	const ObjectConversionFact* object_conversion,
 	const std::vector<CallConversionFact>* argument_conversions)
 {
+	if (GetFunction(selected).deleted_special_member)
+		throw std::runtime_error("selected special member is deleted");
 	EntityId object_class = kNoEntity;
 	if (object)
 	{
@@ -2131,6 +2166,9 @@ void SemanticAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 	std::uint32_t output_parent, bool local)
 {
+	if (local && AnalyzeQualifiedAssignmentStatement(
+		node, scope, output_parent))
+		return;
 	const NodeId specifiers = FindChild(node, "decl-specifier-seq");
 	const NodeId list = FindChild(node, "init-declarator-list");
 	std::string hint;
@@ -2799,6 +2837,10 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		stats_->class_layout_member_visits = class_layout_member_visits_;
 		stats_->class_zero_offset_subobject_visits =
 			class_zero_offset_subobject_visits_;
+		stats_->special_member_fact_lookups =
+			special_member_fact_lookups_;
+		stats_->special_member_subobject_visits =
+			special_member_subobject_visits_;
 		stats_->constructor_member_action_visits =
 			constructor_member_action_visits_;
 		stats_->constructor_base_action_visits =
@@ -2864,6 +2906,7 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 	  interned_names(0), canonical_types(0), scopes(0), declarations(0),
 	  expressions(0), class_layouts(0), class_layout_member_visits(0),
 	  class_zero_offset_subobject_visits(0),
+	  special_member_fact_lookups(0), special_member_subobject_visits(0),
 	  constructor_member_action_visits(0),
 	  constructor_base_action_visits(0),
 	  destructor_subobject_action_visits(0),
