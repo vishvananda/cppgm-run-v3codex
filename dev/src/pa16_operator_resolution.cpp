@@ -177,18 +177,37 @@ void SemanticAnalyzer::AppendArgumentDependentCandidates(NameId name,
 		AppendHiddenFriendCandidates(associated_entities_[i], name, candidates);
 }
 
-BindingId SemanticAnalyzer::ConvertingConstructor(
-	const ExpressionInfo& source, TypeId target) const
+CallConversionFact SemanticAnalyzer::ConvertingConstructor(
+	const ExpressionInfo& source, TypeId target)
 {
+	CallConversionFact result;
 	const TypeRecord top = program_->types.Get(target);
 	if (top.kind == TYPE_LVALUE_REFERENCE || top.kind == TYPE_RVALUE_REFERENCE)
+	{
+		if (top.kind == TYPE_LVALUE_REFERENCE)
+		{
+			const TypeRecord referred = program_->types.Get(top.child);
+			const std::uint8_t cv = referred.kind == TYPE_QUALIFIED ?
+				referred.cv : CV_NONE;
+			if ((cv & CV_CONST) == 0 || (cv & CV_VOLATILE) != 0)
+				return result;
+		}
+		const TypeId source_type = program_->types.RemoveTopCv(
+			EffectiveType(source.type));
+		const TypeId referred_type =
+			program_->types.RemoveTopCv(top.child);
+		if (source_type == referred_type ||
+			BaseConversionDistance(source_type, referred_type) !=
+				std::numeric_limits<std::size_t>::max())
+			return result;
 		target = top.child;
+	}
 	target = program_->types.RemoveTopCv(target);
 	const TypeRecord object = program_->types.Get(target);
-	if (object.kind != TYPE_NAMED) return kNoBinding;
+	if (object.kind != TYPE_NAMED) return result;
 	const NamedFlavor flavor = program_->entities[object.entity].flavor;
 	if (flavor != NAMED_STRUCT && flavor != NAMED_CLASS &&
-		flavor != NAMED_UNION) return kNoBinding;
+		flavor != NAMED_UNION) return result;
 
 	const std::vector<BindingId>& candidates =
 		ConstructorCandidates(object.entity);
@@ -197,16 +216,17 @@ BindingId SemanticAnalyzer::ConvertingConstructor(
 	bool ambiguous = false;
 	for (std::size_t i = 0; i < candidates.size(); ++i)
 	{
+		++overload_candidates_;
 		const FunctionInfo& constructor = GetFunction(candidates[i]);
 		const TypeRecord function = program_->types.Get(constructor.type);
 		if (!constructor.constructor || constructor.explicit_constructor ||
-			constructor.deleted_constructor || function.parameter_count == 0)
+			function.parameter_count == 0)
 			continue;
 		std::size_t required = function.parameter_count;
 		while (required != 0 && required <= constructor.parameters.size() &&
 			constructor.parameters[required - 1].default_argument != kNoNode)
 			--required;
-		if (required > 1 || !CanAccessMember(candidates[i])) continue;
+		if (required > 1) continue;
 		const ConversionRank rank = Conversion(
 			source, program_->types.Parameters(constructor.type)[0]);
 		if (rank == CONVERSION_INVALID) continue;
@@ -218,21 +238,50 @@ BindingId SemanticAnalyzer::ConvertingConstructor(
 		}
 		else if (rank == best) ambiguous = true;
 	}
-	return ambiguous ? kNoBinding : selected;
+	if (ambiguous || selected == kNoBinding) return result;
+	result.rank = CONVERSION_USER_DEFINED;
+	result.constructor = selected;
+	result.constructor_argument_rank = best;
+	return result;
 }
 
-ConversionRank SemanticAnalyzer::CallConversion(
-	const ExpressionInfo& source, TypeId target) const
+CallConversionFact SemanticAnalyzer::CallConversion(
+	const ExpressionInfo& source, TypeId target,
+	CallConversionTable* cache, std::size_t source_ordinal)
 {
+	CallConversionFact result;
 	const ConversionRank standard = Conversion(source, target);
-	if (standard != CONVERSION_INVALID) return standard;
-	return ConvertingConstructor(source, target) == kNoBinding ?
-		CONVERSION_INVALID : CONVERSION_USER_DEFINED;
+	if (standard != CONVERSION_INVALID)
+	{
+		result.rank = standard;
+		return result;
+	}
+	if (source_ordinal > std::numeric_limits<std::uint32_t>::max())
+		throw std::runtime_error("call conversion source ordinal is too large");
+	const std::uint64_t key =
+		(static_cast<std::uint64_t>(source_ordinal) << 32) | target;
+	if (cache)
+	{
+		const CallConversionFact* existing = cache->Find(key);
+		if (existing)
+		{
+			++call_conversion_cache_hits_;
+			return *existing;
+		}
+		++call_conversion_cache_misses_;
+	}
+	result = ConvertingConstructor(source, target);
+	if (cache) cache->Insert(key, result);
+	return result;
 }
 
 ExpressionInfo SemanticAnalyzer::BuildConvertingArgument(
-	const ExpressionInfo& source, TypeId target, BindingId constructor_binding)
+	const ExpressionInfo& source, TypeId target,
+	const CallConversionFact& conversion)
 {
+	const BindingId constructor_binding = conversion.constructor;
+	if (constructor_binding == kNoBinding)
+		throw std::logic_error("missing selected converting constructor");
 	const TypeRecord target_top = program_->types.Get(target);
 	TypeId object_type = target;
 	if (target_top.kind == TYPE_LVALUE_REFERENCE ||
@@ -240,6 +289,10 @@ ExpressionInfo SemanticAnalyzer::BuildConvertingArgument(
 		object_type = target_top.child;
 	object_type = program_->types.RemoveTopCv(object_type);
 	const FunctionInfo constructor = GetFunction(constructor_binding);
+	if (constructor.deleted_constructor)
+		throw std::runtime_error("selected converting constructor is deleted");
+	if (!CanAccessMember(constructor_binding))
+		throw std::runtime_error("selected converting constructor is inaccessible");
 	const TypeRecord function = program_->types.Get(constructor.type);
 	if (function.parameter_count == 0)
 		throw std::logic_error("converting constructor has no source parameter");
@@ -249,7 +302,8 @@ ExpressionInfo SemanticAnalyzer::BuildConvertingArgument(
 	const std::uint32_t action = MakeDump(DUMP_CONSTRUCTOR_ACTION,
 		AdaptMemberFunctionType(constructor_binding), VALUE_NONE,
 		constructor.display_name, constructor_binding);
-	ExpressionInfo converted = ApplyTarget(source, parameters[0]);
+	ExpressionInfo converted = ApplyTarget(source, parameters[0],
+		conversion.constructor_argument_rank);
 	dump_.Add(action, converted.node);
 	for (std::size_t i = 1; i < function.parameter_count; ++i)
 	{
@@ -276,16 +330,17 @@ ExpressionInfo SemanticAnalyzer::BuildConvertingArgument(
 }
 
 ExpressionInfo SemanticAnalyzer::ApplyCallArgument(
-	ExpressionInfo value, TypeId target)
+	ExpressionInfo value, TypeId target, const CallConversionFact* conversion)
 {
-	if (Conversion(value, target) == CONVERSION_INVALID)
+	const CallConversionFact resolved = conversion ? *conversion :
+		CallConversion(value, target, 0, 0);
+	if (resolved.rank == CONVERSION_INVALID)
+		throw std::runtime_error("invalid implicit call conversion");
+	if (resolved.rank == CONVERSION_USER_DEFINED)
 	{
-		const BindingId constructor = ConvertingConstructor(value, target);
-		if (constructor == kNoBinding)
-			throw std::runtime_error("invalid implicit call conversion");
-		return BuildConvertingArgument(value, target, constructor);
+		return BuildConvertingArgument(value, target, resolved);
 	}
-	value = ApplyTarget(value, target);
+	value = ApplyTarget(value, target, resolved.rank);
 	const TypeRecord target_top = program_->types.Get(target);
 	if ((target_top.kind == TYPE_LVALUE_REFERENCE ||
 		target_top.kind == TYPE_RVALUE_REFERENCE) &&
@@ -327,7 +382,8 @@ BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
 	const std::vector<ExpressionInfo>& operands,
 	const std::vector<BindingId>& candidates,
 	const ExpressionInfo& object, bool* selected_member,
-	ObjectConversionFact* object_conversion)
+	ObjectConversionFact* object_conversion,
+	std::vector<CallConversionFact>* argument_conversions)
 {
 	const std::size_t arity = operands.size();
 	if (arity != 0 && candidates.size() >
@@ -337,6 +393,8 @@ BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
 		CONVERSION_ELLIPSIS);
 	std::vector<std::size_t> base_distances(candidates.size() * arity,
 		std::numeric_limits<std::size_t>::max());
+	std::vector<CallConversionFact> conversions(candidates.size() * arity);
+	CallConversionTable conversion_cache;
 	std::vector<bool> viable(candidates.size(), true);
 	for (std::size_t c = 0; c < candidates.size(); ++c)
 	{
@@ -385,7 +443,13 @@ BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
 			if (parameter < function_type.parameter_count)
 			{
 				if (operands[a].type != kNoType)
-					rank = CallConversion(operands[a], parameters[parameter]);
+				{
+					const CallConversionFact conversion = CallConversion(
+						operands[a], parameters[parameter],
+						&conversion_cache, a);
+					conversions[c * arity + a] = conversion;
+					rank = conversion.rank;
+				}
 				else if (a < operand_syntax.size() &&
 					operand_syntax[a] != kNoNode)
 				{
@@ -465,6 +529,15 @@ BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
 				static_cast<std::uint32_t>(projections);
 		}
 	}
+	if (argument_conversions)
+	{
+		argument_conversions->clear();
+		const std::size_t first = *selected_member ? 1 : 0;
+		argument_conversions->reserve(arity - first);
+		for (std::size_t a = first; a < arity; ++a)
+			argument_conversions->push_back(
+				conversions[champion * arity + a]);
+	}
 	return candidates[champion];
 }
 
@@ -519,8 +592,10 @@ bool SemanticAnalyzer::TryAnalyzeOverloadedOperator(
 	const ExpressionInfo object = MakeImplicitObjectPointer(operands[0]);
 	bool selected_member = false;
 	ObjectConversionFact object_conversion;
+	std::vector<CallConversionFact> argument_conversions;
 	const BindingId selected = SelectOperatorOverload(scope, operand_syntax,
-		operands, candidates, object, &selected_member, &object_conversion);
+		operands, candidates, object, &selected_member, &object_conversion,
+		&argument_conversions);
 	if (selected == kNoBinding) return false;
 	std::vector<NodeId> arguments_syntax;
 	std::vector<ExpressionInfo> arguments;
@@ -534,7 +609,7 @@ bool SemanticAnalyzer::TryAnalyzeOverloadedOperator(
 	*result = BuildResolvedCall(selected, scope, arguments_syntax, arguments,
 		selected_member ? &object : 0, target,
 		selected_member ? naming_class : kNoEntity,
-		selected_member ? &object_conversion : 0);
+		selected_member ? &object_conversion : 0, &argument_conversions);
 	return true;
 }
 

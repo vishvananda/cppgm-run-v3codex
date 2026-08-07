@@ -34,7 +34,8 @@ public:
 		  associated_generation_(0), candidate_generation_(0),
 		  associated_scope_visits_(0), associated_declaration_visits_(0),
 		  overload_candidates_(0), overload_order_comparisons_(0),
-		  conversion_checks_(0), function_signature_lookups_(0),
+		  conversion_checks_(0), call_conversion_cache_hits_(0),
+		  call_conversion_cache_misses_(0), function_signature_lookups_(0),
 		  access_checks_(0), access_path_visits_(0),
 		  access_grant_probes_(0),
 		  template_specialization_requests_(0),
@@ -149,20 +150,23 @@ private:
 		const std::vector<ExpressionInfo>& arguments,
 		const std::vector<BindingId>& candidates,
 		const ExpressionInfo* object = 0,
-		ObjectConversionFact* object_conversion = 0);
+		ObjectConversionFact* object_conversion = 0,
+		std::vector<CallConversionFact>* argument_conversions = 0);
 	ExpressionInfo BuildResolvedCall(BindingId selected, ScopeId scope,
 		const std::vector<NodeId>& argument_syntax,
 		const std::vector<ExpressionInfo>& arguments,
 		const ExpressionInfo* object, TypeId target,
 		EntityId naming_class = kNoEntity,
-		const ObjectConversionFact* object_conversion = 0);
-	ConversionRank CallConversion(const ExpressionInfo& source,
-		TypeId target) const;
-	BindingId ConvertingConstructor(const ExpressionInfo& source,
-		TypeId target) const;
-	ExpressionInfo ApplyCallArgument(ExpressionInfo value, TypeId target);
+		const ObjectConversionFact* object_conversion = 0,
+		const std::vector<CallConversionFact>* argument_conversions = 0);
+	CallConversionFact CallConversion(const ExpressionInfo& source,
+		TypeId target, CallConversionTable* cache, std::size_t source_ordinal);
+	CallConversionFact ConvertingConstructor(const ExpressionInfo& source,
+		TypeId target);
+	ExpressionInfo ApplyCallArgument(ExpressionInfo value, TypeId target,
+		const CallConversionFact* conversion = 0);
 	ExpressionInfo BuildConvertingArgument(const ExpressionInfo& source,
-		TypeId target, BindingId constructor);
+		TypeId target, const CallConversionFact& conversion);
 	ExpressionInfo AnalyzeCall(NodeId node, ScopeId scope, TypeId target);
 	BindingId EnsureBuiltinFunction(BuiltinFunctionKind kind);
 	bool AnalyzeBuiltinCall(const std::string& spelling, ScopeId scope,
@@ -187,7 +191,8 @@ private:
 		const std::vector<ExpressionInfo>& operands,
 		const std::vector<BindingId>& candidates,
 		const ExpressionInfo& object, bool* selected_member,
-		ObjectConversionFact* object_conversion);
+		ObjectConversionFact* object_conversion,
+		std::vector<CallConversionFact>* argument_conversions);
 	ExpressionInfo MakeImplicitObjectPointer(const ExpressionInfo& object);
 	void BeginAssociatedLookup();
 	void AddAssociatedType(TypeId type);
@@ -293,7 +298,8 @@ private:
 	ExpressionInfo AnalyzeThisExpression(ScopeId scope);
 	bool IsNonthrowing(NodeId declarator, ScopeId scope);
 	void RecordExpressionFacts(const ExpressionInfo& value);
-	ExpressionInfo ApplyTarget(ExpressionInfo value, TypeId target);
+	ExpressionInfo ApplyTarget(ExpressionInfo value, TypeId target,
+		ConversionRank known_conversion = CONVERSION_INVALID);
 	ConversionRank MemberObjectConversion(const ExpressionInfo& source,
 		TypeId target, BindingId member) const;
 	ExpressionInfo ApplyMemberObjectTarget(ExpressionInfo value,
@@ -400,6 +406,8 @@ private:
 	std::size_t overload_candidates_;
 	std::size_t overload_order_comparisons_;
 	mutable std::size_t conversion_checks_;
+	std::size_t call_conversion_cache_hits_;
+	std::size_t call_conversion_cache_misses_;
 	std::size_t function_signature_lookups_;
 	mutable std::size_t access_checks_;
 	mutable std::size_t access_path_visits_;

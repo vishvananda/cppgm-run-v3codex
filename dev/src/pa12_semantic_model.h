@@ -228,6 +228,17 @@ struct ObjectConversionFact
 		: rank(CONVERSION_INVALID), base_projection_count(0) {}
 };
 
+struct CallConversionFact
+{
+	ConversionRank rank;
+	BindingId constructor;
+	ConversionRank constructor_argument_rank;
+
+	CallConversionFact()
+		: rank(CONVERSION_INVALID), constructor(kNoBinding),
+		  constructor_argument_rank(CONVERSION_INVALID) {}
+};
+
 struct FunctionInfo
 {
 	BindingId binding;

@@ -206,8 +206,9 @@ bool SemanticAnalyzer::TryAnalyzeUserDefinedStringLiteral(
 	RecordExpressionFacts(count);
 	arguments.push_back(count);
 	const std::vector<NodeId> argument_syntax(2, kNoNode);
+	std::vector<CallConversionFact> argument_conversions;
 	const BindingId selected = SelectOverload(scope, argument_syntax,
-		arguments, candidates, 0);
+		arguments, candidates, 0, 0, &argument_conversions);
 	const FunctionInfo& function = GetFunction(selected);
 	const TypeRecord function_type = program_->types.Get(function.type);
 	if (function_type.parameter_count != 2)
@@ -221,10 +222,11 @@ bool SemanticAnalyzer::TryAnalyzeUserDefinedStringLiteral(
 		dump_.Add(conversion, arguments[1].node);
 		arguments[1].node = conversion;
 		arguments[1].type = size_type;
+		argument_conversions[1].rank = CONVERSION_EXACT;
 		++expression_count_;
 	}
 	*result = BuildResolvedCall(selected, scope, argument_syntax, arguments,
-		0, target, kNoEntity);
+		0, target, kNoEntity, 0, &argument_conversions);
 	return true;
 }
 

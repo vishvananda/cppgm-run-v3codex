@@ -10,6 +10,7 @@
 #include "pa16_array_lifetime_lowering.h"
 #include "pa16_aggregate_helper_lowering.h"
 #include "pa16_assignment_lowering.h"
+#include "pa16_call_argument_lowering.h"
 #include "pa16_constructor_lowering.h"
 #include "pa16_destructor_action_lowering.h"
 #include "pa16_initialization_lowering.h"
@@ -44,6 +45,7 @@ class GraphLowerer :
 	private pa16_lowering_detail::ConstructorActionLowering<GraphLowerer>,
 	private pa16_lowering_detail::ArrayLifetimeLowering<GraphLowerer>,
 	private pa16_lowering_detail::DestructorActionLowering<GraphLowerer>,
+	private pa16_lowering_detail::CallArgumentLowering<GraphLowerer>,
 	private pa16_lowering_detail::InitializationLowering<GraphLowerer>,
 	private pa16_lowering_detail::LifetimeActionLowering<GraphLowerer>
 {
@@ -110,6 +112,7 @@ private:
 	friend class pa16_lowering_detail::ConstructorActionLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::ArrayLifetimeLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::DestructorActionLowering<GraphLowerer>;
+	friend class pa16_lowering_detail::CallArgumentLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::InitializationLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::LifetimeActionLowering<GraphLowerer>;
 

@@ -119,59 +119,6 @@ ScopeId SemanticAnalyzer::ResolveOwner(ScopeId scope, const NamePath& name)
 		result.type != kNoType ? program_->ScopeForType(result.type) : kNoScope;
 }
 
-const std::string& SemanticAnalyzer::ScopePrefix(ScopeId scope)
-{
-	return program_->names.Get(ScopePrefixId(scope));
-}
-
-NameId SemanticAnalyzer::ScopePrefixId(ScopeId scope)
-{
-	const NameId deferred = std::numeric_limits<NameId>::max();
-	if (scope >= scope_prefixes_.size() || scope_prefixes_[scope] != deferred)
-		return scope < scope_prefixes_.size() ? scope_prefixes_[scope] : 0;
-	scope_prefix_scratch_.clear();
-	ScopeId current = scope;
-	while (current != kNoScope && current < scope_prefixes_.size() &&
-		scope_prefixes_[current] == deferred)
-	{
-		if (scope_prefix_segments_[current] != 0)
-			scope_prefix_scratch_.push_back(scope_prefix_segments_[current]);
-		current = scope_parents_[current];
-	}
-	std::string rendered = current != kNoScope &&
-		current < scope_prefixes_.size() ?
-		program_->names.Get(scope_prefixes_[current]) : std::string();
-	for (std::size_t i = scope_prefix_scratch_.size(); i != 0; --i)
-	{
-		rendered += program_->names.Get(scope_prefix_scratch_[i - 1]);
-		rendered += "::";
-	}
-	scope_prefixes_[scope] = program_->names.Intern(rendered);
-	return scope_prefixes_[scope];
-}
-NameId SemanticAnalyzer::DisplayName(ScopeId owner, NameId name)
-{
-	// ScopePrefix may materialize and intern a deferred prefix, invalidating
-	// references into the shared string table. Snapshot the terminal first.
-	const std::string terminal = program_->names.Get(name);
-	const std::string qualified = ScopePrefix(owner) + terminal;
-	return program_->names.Intern(qualified);
-}
-ScopeId SemanticAnalyzer::NewScope(ScopeId parent, ScopeKind kind,
-	NameId name, NameId prefix)
-{
-	const ScopeId scope = program_->NewScope(parent, kind, name);
-	if (scope_prefixes_.size() <= scope)
-	{
-		scope_prefixes_.resize(static_cast<std::size_t>(scope) + 1, 0);
-		scope_prefix_segments_.resize(static_cast<std::size_t>(scope) + 1, 0);
-		scope_parents_.resize(static_cast<std::size_t>(scope) + 1, kNoScope);
-	}
-	scope_prefixes_[scope] = prefix;
-	scope_parents_[scope] = parent;
-	return scope;
-}
-
 bool SemanticAnalyzer::IsDeclaration(NodeId node) const
 {
 	return arena_->IsTag(node, "simple-declaration") ||
@@ -614,14 +561,15 @@ ConversionRank SemanticAnalyzer::Conversion(const ExpressionInfo& source,
 }
 
 ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
-	TypeId target)
+	TypeId target, ConversionRank known_conversion)
 {
 	if (target == kNoType)
 	{
 		RecordExpressionFacts(value);
 		return value;
 	}
-	const ConversionRank conversion = Conversion(value, target);
+	const ConversionRank conversion = known_conversion == CONVERSION_INVALID ?
+		Conversion(value, target) : known_conversion;
 	if (conversion == CONVERSION_INVALID)
 		throw std::runtime_error("invalid standard conversion from " +
 			program_->RenderType(value.type) + " to " +
@@ -950,7 +898,8 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 	const std::vector<NodeId>& argument_syntax,
 	const std::vector<ExpressionInfo>& arguments,
 	const std::vector<BindingId>& candidates,
-	const ExpressionInfo* object, ObjectConversionFact* object_conversion)
+	const ExpressionInfo* object, ObjectConversionFact* object_conversion,
+	std::vector<CallConversionFact>* argument_conversions)
 {
 	const std::size_t explicit_arity = argument_syntax.size();
 	const std::size_t arity = explicit_arity + (object ? 1 : 0);
@@ -961,6 +910,9 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 		CONVERSION_ELLIPSIS);
 	std::vector<std::size_t> base_distances(candidates.size() * arity,
 		std::numeric_limits<std::size_t>::max());
+	std::vector<CallConversionFact> conversions(
+		candidates.size() * explicit_arity);
+	CallConversionTable conversion_cache;
 	std::vector<bool> viable(candidates.size(), true);
 	for (std::size_t c = 0; c < candidates.size(); ++c)
 	{
@@ -1017,7 +969,12 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 			if (a < function_type.parameter_count)
 			{
 				if (arguments[a].type != kNoType)
-					rank = CallConversion(arguments[a], parameters[a]);
+				{
+					const CallConversionFact conversion = CallConversion(
+						arguments[a], parameters[a], &conversion_cache, a);
+					conversions[c * explicit_arity + a] = conversion;
+					rank = conversion.rank;
+				}
 				else
 				{
 					const std::vector<BindingId> argument_functions =
@@ -1122,6 +1079,14 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 				static_cast<std::uint32_t>(projections);
 		}
 	}
+	if (argument_conversions)
+	{
+		argument_conversions->clear();
+		argument_conversions->reserve(explicit_arity);
+		for (std::size_t a = 0; a < explicit_arity; ++a)
+			argument_conversions->push_back(
+				conversions[champion * explicit_arity + a]);
+	}
 	return candidates[champion];
 }
 
@@ -1129,7 +1094,8 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	ScopeId scope, const std::vector<NodeId>& argument_syntax,
 	const std::vector<ExpressionInfo>& arguments,
 	const ExpressionInfo* object, TypeId target, EntityId naming_class,
-	const ObjectConversionFact* object_conversion)
+	const ObjectConversionFact* object_conversion,
+	const std::vector<CallConversionFact>* argument_conversions)
 {
 	EntityId object_class = kNoEntity;
 	if (object)
@@ -1179,7 +1145,9 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 			if (argument.type == kNoType)
 				argument = AnalyzeExpression(argument_syntax[a], scope,
 					parameters[a]);
-			else argument = ApplyCallArgument(argument, parameters[a]);
+			else argument = ApplyCallArgument(argument, parameters[a],
+				argument_conversions && a < argument_conversions->size() ?
+				&(*argument_conversions)[a] : 0);
 		}
 		dump_.Add(call, argument.node);
 	}
@@ -1319,12 +1287,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 				}
 			}
 			ObjectConversionFact object_conversion;
+			std::vector<CallConversionFact> argument_conversions;
 			const BindingId selected = SelectOverload(scope, argument_syntax,
 				analyzed_arguments, candidates, object,
-				object ? &object_conversion : 0);
+				object ? &object_conversion : 0, &argument_conversions);
 			return BuildResolvedCall(selected, scope, argument_syntax,
 				analyzed_arguments, object, target, function_naming_class,
-				object ? &object_conversion : 0);
+				object ? &object_conversion : 0, &argument_conversions);
 		}
 
 		TypeId cast_type = kNoType;
@@ -2889,6 +2858,8 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		stats_->overload_candidates = overload_candidates_;
 		stats_->overload_order_comparisons = overload_order_comparisons_;
 		stats_->conversion_checks = conversion_checks_;
+		stats_->call_conversion_cache_hits = call_conversion_cache_hits_;
+		stats_->call_conversion_cache_misses = call_conversion_cache_misses_;
 		stats_->function_signature_lookups = function_signature_lookups_;
 		stats_->access_checks = access_checks_;
 		stats_->access_path_visits = access_path_visits_;
@@ -2935,6 +2906,7 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 	  associated_declaration_visits(0),
 	  overload_candidates(0),
 	  overload_order_comparisons(0), conversion_checks(0),
+	  call_conversion_cache_hits(0), call_conversion_cache_misses(0),
 	  function_signature_lookups(0), access_checks(0),
 	  access_path_visits(0), access_grant_probes(0),
 	  template_specialization_requests(0),

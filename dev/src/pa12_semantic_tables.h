@@ -1,6 +1,6 @@
 #pragma once
 
-#include "pa11_model.h"
+#include "pa12_semantic_model.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -70,6 +70,27 @@ private:
 		std::uint64_t key;
 		CompactIndexSequence values;
 		explicit Entry(std::uint64_t key_value);
+	};
+	static std::size_t Hash(std::uint64_t key);
+	void Rehash(std::size_t capacity);
+
+	std::vector<Entry> entries_;
+	std::vector<std::uint32_t> slots_;
+};
+
+class CallConversionTable
+{
+public:
+	CallConversionTable();
+	const CallConversionFact* Find(std::uint64_t key) const;
+	void Insert(std::uint64_t key, const CallConversionFact& fact);
+
+private:
+	struct Entry
+	{
+		std::uint64_t key;
+		CallConversionFact fact;
+		Entry(std::uint64_t key_value, const CallConversionFact& fact_value);
 	};
 	static std::size_t Hash(std::uint64_t key);
 	void Rehash(std::size_t capacity);

@@ -902,10 +902,12 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
 		"operatornew");
 	if (candidates.empty())
 		throw std::runtime_error("placement operator new was not declared");
+	std::vector<CallConversionFact> argument_conversions;
 	const BindingId selected = SelectOverload(scope, argument_syntax,
-		arguments, candidates);
+		arguments, candidates, 0, 0, &argument_conversions);
 	ExpressionInfo allocation = BuildResolvedCall(selected, scope,
-		argument_syntax, arguments, 0, kNoType);
+		argument_syntax, arguments, 0, kNoType, kNoEntity, 0,
+		&argument_conversions);
 	const NodeId initializer_node = FindChild(node, "initializer");
 	NodeId initializer = initializer_node == kNoNode ? kNoNode :
 		FirstSemanticChild(initializer_node);

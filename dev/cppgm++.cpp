@@ -585,6 +585,10 @@ int run_emit_semantics_mode(const vector<string> & args)
            << " overload_order_comparisons="
            << stats.overload_order_comparisons
            << " conversion_checks=" << stats.conversion_checks
+           << " call_conversion_cache_hits="
+           << stats.call_conversion_cache_hits
+           << " call_conversion_cache_misses="
+           << stats.call_conversion_cache_misses
            << " function_signature_lookups="
            << stats.function_signature_lookups
            << " access_checks=" << stats.access_checks
@@ -661,6 +665,10 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << " overload_order_comparisons="
 			 << stats.overload_order_comparisons
 			 << " conversion_checks=" << stats.conversion_checks
+			 << " call_conversion_cache_hits="
+			 << stats.call_conversion_cache_hits
+			 << " call_conversion_cache_misses="
+			 << stats.call_conversion_cache_misses
 			 << " function_signature_lookups="
 			 << stats.function_signature_lookups
 			 << " access_checks=" << stats.access_checks

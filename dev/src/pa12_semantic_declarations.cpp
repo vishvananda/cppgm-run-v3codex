@@ -86,29 +86,6 @@ OperatorKind ClassifyOperator(const std::string& name,
 
 }
 
-bool SemanticAnalyzer::HasInternalLinkageScope(ScopeId scope) const
-{
-	const NameId unnamed = program_->names.Intern("<unnamed>");
-	for (ScopeId current = scope; current != kNoScope;
-		current = program_->ParentScope(current))
-		if (program_->KindOfScope(current) == SCOPE_NAMESPACE &&
-			program_->NameOfScope(current) == unnamed)
-			return true;
-	return false;
-}
-
-NameId SemanticAnalyzer::EmissionName(ScopeId owner, NameId name)
-{
-	program_->BuildEmissionPath(owner, name, &scope_prefix_scratch_);
-	std::string rendered;
-	for (std::size_t i = 0; i < scope_prefix_scratch_.size(); ++i)
-	{
-		if (i != 0) rendered += "::";
-		rendered += program_->names.Get(scope_prefix_scratch_[i]);
-	}
-	return program_->names.Intern(rendered);
-}
-
 TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	const std::string& hint, bool elaborated)
 {

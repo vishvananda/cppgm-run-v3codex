@@ -121,6 +121,72 @@ std::size_t IndexedSequenceTable::StorageBytes() const
 	return bytes;
 }
 
+CallConversionTable::Entry::Entry(std::uint64_t key_value,
+	const CallConversionFact& fact_value)
+	: key(key_value), fact(fact_value)
+{
+}
+
+CallConversionTable::CallConversionTable()
+	: slots_(32, 0)
+{
+}
+
+std::size_t CallConversionTable::Hash(std::uint64_t key)
+{
+	return MixHash(static_cast<std::size_t>(key >> 32),
+		static_cast<std::uint32_t>(key));
+}
+
+void CallConversionTable::Rehash(std::size_t capacity)
+{
+	std::vector<std::uint32_t> replacement(capacity, 0);
+	const std::size_t mask = capacity - 1;
+	for (std::size_t i = 0; i < entries_.size(); ++i)
+	{
+		std::size_t slot = Hash(entries_[i].key) & mask;
+		while (replacement[slot] != 0) slot = (slot + 1) & mask;
+		replacement[slot] = static_cast<std::uint32_t>(i + 1);
+	}
+	slots_.swap(replacement);
+}
+
+const CallConversionFact* CallConversionTable::Find(std::uint64_t key) const
+{
+	const std::size_t mask = slots_.size() - 1;
+	std::size_t slot = Hash(key) & mask;
+	while (slots_[slot] != 0)
+	{
+		const Entry& entry = entries_[slots_[slot] - 1];
+		if (entry.key == key) return &entry.fact;
+		slot = (slot + 1) & mask;
+	}
+	return 0;
+}
+
+void CallConversionTable::Insert(std::uint64_t key,
+	const CallConversionFact& fact)
+{
+	if ((entries_.size() + 1) * 10 > slots_.size() * 7)
+		Rehash(slots_.size() * 2);
+	const std::size_t mask = slots_.size() - 1;
+	std::size_t slot = Hash(key) & mask;
+	while (slots_[slot] != 0)
+	{
+		Entry& entry = entries_[slots_[slot] - 1];
+		if (entry.key == key)
+		{
+			entry.fact = fact;
+			return;
+		}
+		slot = (slot + 1) & mask;
+	}
+	if (entries_.size() >= std::numeric_limits<std::uint32_t>::max())
+		throw std::runtime_error("too many call conversion facts");
+	entries_.push_back(Entry(key, fact));
+	slots_[slot] = static_cast<std::uint32_t>(entries_.size());
+}
+
 FunctionSignatureTable::Entry::Entry(const FunctionSignatureKey& key_value,
 	BindingId binding_value)
 	: key(key_value), binding(binding_value)

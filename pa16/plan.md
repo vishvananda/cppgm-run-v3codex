@@ -8,18 +8,21 @@ resolves lookup, access, declarators, conversions, initialization, lifetime, and
 demand; PA15/PA16 lowering consumes those typed facts without repeating lookup.
 This matches `spec.md` sections 2, 3, 5, 6, 8, and 9. Composed/trailing-return
 types, exception compatibility, builtin kind, selected calls, and integer-
-narrowing conversions cross boundaries as compact facts. Aggregate construction
-helpers likewise have canonical typed identities indexed by object and boundary
-type; they are lowering records, never C++ declarations or lookup candidates,
-and each is registered and emitted once. Literal decoding has one shared typed
-owner. ABI identity/effects derive from selected bindings or bounded enum
-tables; no spelling-keyed lowering, textual reconstruction, whole-program retry,
-or external tool enters the path.
+narrowing conversions cross boundaries as compact facts. Selected calls retain
+their standard/user-defined conversion rank and converting-constructor binding;
+a selection-local flat cache has the complete argument-ordinal/target-type key,
+and lowering sees only typed materialization and projection records. Aggregate
+helpers have canonical typed identities and one emission owner, while literal,
+scope/emission-path, and call-argument lowering each have one bounded owner. ABI
+effects derive from binding/type identity and bounded enum tables; no spelling-
+keyed lowering, textual reconstruction, whole-program retry, or external tool
+enters the path.
 
 ## Current Failure Map
 
-PA16 is **271/288** after closing the 9-test friend/ADL boundary; PA1-PA15
-remain **1,145/1,145**. The 17 remaining failures are assigned once by primary
+PA16 is **273/290** after the friend/ADL audit added two passing regressions;
+the turn-start **271/288** baseline and the same 17 failures are preserved.
+PA1-PA15 remain **1,145/1,145**. The failures are assigned once by primary
 owner after tracing their semantic graphs and canonical LowIR diffs:
 
 - Constructor/base/layout/static-overload edges (4): `friend-derived-private-base-defaulted-constructor`, `friend-intermediate-derived-protected-base-method`, `callable-field-hides-private-base-method`, `using-base-static-same-signature-derived-preferred`.
@@ -50,11 +53,11 @@ full PA16, through-PA15, and file audit.
 | Composed declarators/calls | 32/64 methods: 1,318/2,598 tokens, 1,654/3,254 syntax nodes, 104/200 fact changes, 291/579 conversions, 261/517 access checks, 112,179/222,099 typed bytes, 455/903 instructions; 0.521/0.986 ms parse, 0.908/1.678 ms semantic, 0.532/1.040 ms lowering medians |
 | Nested aggregate initialization | 32/64 members: 333/653 semantic nodes, 35/67 layout visits, 65/129 conversions, 328/648 instructions, 63,078/124,518 typed bytes; 0.291/0.422 ms semantic and 0.165/0.288 ms lowering medians |
 | Aggregate helper demand/deduplication | 64/128 explicit elements: one helper definition and 6/6 signature lookups; 398/782 semantic nodes, 460/908 edges, 148/276 instructions, 43,120/82,288 typed bytes; 0.224/0.374 ms semantic and 0.102/0.141 ms lowering medians |
-| Friend/ADL converting-call boundary | 64/128 target constructors: 68/132 candidates, 276/532 conversions, 396/780 signature lookups, 206/398 access checks; output stays at 23 instructions and 9,582 typed bytes; 1.134/1.949 ms median semantic time |
+| Friend/ADL converting-call boundary | Adversarial 32/64 overloads plus shared target constructors: 64/128 candidates, 162/322 conversions, 31/63 cache hits, 32/64 misses, 129/257 access checks, 104/200 instructions, 69,590/136,790 typed bytes; 1.017/1.980 ms median semantic time |
 
 The deterministic counters establish proportional work at each scaling-sensitive
-owner, generally 1.86-1.99x for 2x input; helper identity and selected-call
-output stay constant where the added declarations are nonviable.
+owner. The audited shared-target path is 1.98-2.00x in work counters for 2x
+input, replacing the pre-audit Cartesian constructor rescans.
 
 ## Completed Checkpoints
 
@@ -72,4 +75,4 @@ output stay constant where the added declarations are nonviable.
 | Layout/bit-field/inherited-ctor closure | Focused 29/29; 231/283; prior 1,145/1,145; audit pass |
 | Typed declarator/call/boundary closure | Pass after audit fixes: interned scoped parameter facts, exception/builtin ABI ownership, and retained narrowing conversions; focused 15/15; **249/286** with original 246/283 preserved; prior 1,145/1,145; file audit passes |
 | Aggregate/value-init/materialization closure | Pass after audit fixes: typed lowering-only helper identities, shared literal decoding, complete omitted-member actions, and ordinary demand ownership; all 11 landed gains plus 2/2 audit regressions; **262/288** with the original **260/286** preserved; proportional 1x/2x probes; prior 1,145/1,145; file audit passes |
-| Friend/ADL call-boundary closure | Canonical anonymous-namespace emission identity, demand-indexed hidden friends, bounded converting-constructor selection, and typed argument staging/base projection; focused 9/9; **271/288** (+9); prior 1,145/1,145; audit pass; proportional 64/128 probe |
+| Friend/ADL call-boundary closure | Pass after audit fixes: canonical internal ABI identity, indexed friendship/ADL, retained conversion/constructor facts, complete-key local cache, and typed argument lowering; focused 11/11; **273/290** with the original **271/288** preserved and the same 17 failures; prior 1,145/1,145; file audit and proportional probe pass |

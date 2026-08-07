@@ -148,7 +148,9 @@ LowIRLoweringStats::LowIRLoweringStats()
 	  associated_scope_visits(0), associated_declaration_visits(0),
 	  overload_candidates(0),
 	  overload_order_comparisons(0),
-	  conversion_checks(0), function_signature_lookups(0), access_checks(0),
+	  conversion_checks(0), call_conversion_cache_hits(0),
+	  call_conversion_cache_misses(0), function_signature_lookups(0),
+	  access_checks(0),
 	  access_path_visits(0), access_grant_probes(0),
 	  functions(0), globals(0), blocks(0), instructions(0),
 	  binding_index_probes(0), typed_storage_bytes(0), output_bytes(0),
@@ -196,6 +198,10 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 			stats->overload_order_comparisons +=
 				semantic_stats.overload_order_comparisons;
 			stats->conversion_checks += semantic_stats.conversion_checks;
+			stats->call_conversion_cache_hits +=
+				semantic_stats.call_conversion_cache_hits;
+			stats->call_conversion_cache_misses +=
+				semantic_stats.call_conversion_cache_misses;
 			stats->function_signature_lookups +=
 				semantic_stats.function_signature_lookups;
 			stats->access_checks += semantic_stats.access_checks;
