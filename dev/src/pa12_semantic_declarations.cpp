@@ -901,7 +901,8 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		if (spec.thread_local_storage)
 			throw std::runtime_error("thread_local member function");
 		const NodeId declarator = FindChild(node, "declarator");
-		DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type, scope);
+		DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type, scope,
+			false, spec.storage_class != STORAGE_CLASS_STATIC);
 		const BindingId function = DeclareFunction(scope, parsed.name,
 			parsed.type, parsed.parameters, true, false, STORAGE_CLASS_NONE,
 			current_language_linkage_, IsNonthrowing(declarator, scope));
@@ -933,7 +934,9 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		const NodeId item = arena_->EdgeChild(edge);
 		const NodeId declarator = FindChild(item, "declarator");
 		if (declarator == kNoNode) continue;
-		const DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type, scope);
+		const DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type, scope,
+			false, spec.storage_class != STORAGE_CLASS_STATIC &&
+				FindChild(declarator, "parameter-clause") != kNoNode);
 		if (spec.is_typedef)
 		{
 			const BindingId alias = program_->AddBinding(scope, BIND_TYPE_ALIAS,
@@ -1509,9 +1512,13 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 		if (arena_->IsTag(child, "class-specifier") ||
 			arena_->IsTag(child, "class-forward-declaration"))
 		{
-			result.type = AnalyzeClass(child, scope, hint,
-				(has_declarators || type_id_context) &&
-				arena_->IsTag(child, "class-forward-declaration"));
+			if (arena_->IsTag(child, "class-forward-declaration"))
+				result.type = ResolveClassTemplateSpecialization(
+					scope, arena_->Payload(child));
+			if (result.type == kNoType)
+				result.type = AnalyzeClass(child, scope, hint,
+					(has_declarators || type_id_context) &&
+						arena_->IsTag(child, "class-forward-declaration"));
 			continue;
 		}
 		if (arena_->IsTag(child, "enum-specifier"))
@@ -1678,6 +1685,8 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 {
 	std::vector<ParameterInfo> result;
 	*variadic = false;
+	const ScopeId parameter_scope = NewScope(scope, SCOPE_FUNCTION, 0,
+		ScopePrefixId(scope));
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
 	{
@@ -1690,7 +1699,7 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 		if (!arena_->IsTag(child, "parameter-declaration")) continue;
 		const NodeId specifiers = FindChild(child, "decl-specifier-seq");
 		const NodeId declarator = FindChild(child, "declarator");
-		const SpecInfo spec = BuildSpecifiers(specifiers, scope,
+		const SpecInfo spec = BuildSpecifiers(specifiers, parameter_scope,
 			std::string(), declarator != kNoNode);
 		NameId name = 0;
 		TypeId declared = spec.type;
@@ -1724,7 +1733,7 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 							(std::isalpha(static_cast<unsigned char>(spelling[0])) ||
 							 spelling[0] == '_');
 						const LookupResult type_name = identifier ?
-							LookupSpelling(scope, spelling, LOOKUP_TYPE) :
+							LookupSpelling(parameter_scope, spelling, LOOKUP_TYPE) :
 							LookupResult();
 						if (identifier && type_name.type == kNoType)
 						{
@@ -1737,7 +1746,7 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 			if (!parenthesized_parameter_name)
 			{
 				const DeclaratorInfo parsed =
-					BuildDeclarator(declarator, spec.type, scope,
+					BuildDeclarator(declarator, spec.type, parameter_scope,
 						spec.placeholder_auto);
 				name = parsed.name;
 				declared = parsed.type;
@@ -1747,6 +1756,9 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 		}
 		result.push_back(ParameterInfo(name, declared,
 			AdjustParameterType(declared)));
+		if (name != 0)
+			program_->AddBinding(parameter_scope, BIND_PARAMETER,
+				name, declared);
 		const NodeId default_node = FindChild(child, "default-argument");
 		if (default_node != kNoNode)
 		{
@@ -1755,7 +1767,7 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 				arena_->IsTag(default_expression, "initializer"))
 				default_expression = FirstSemanticChild(default_expression);
 			result.back().default_argument = default_expression;
-			result.back().default_scope = scope;
+			result.back().default_scope = parameter_scope;
 		}
 	}
 	if (result.size() == 1 && result[0].name == 0 &&
@@ -1764,7 +1776,8 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 }
 
 DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
-	ScopeId scope, bool placeholder_auto)
+	ScopeId scope, bool placeholder_auto, bool member_implicit_object,
+	bool defer_trailing_return)
 {
 	DeclaratorInfo result;
 	result.name = DeclaratorName(node);
@@ -1848,11 +1861,25 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 					program_->AddBinding(return_scope, BIND_PARAMETER,
 						trailing_parameters[i].name,
 						trailing_parameters[i].declared_type);
+			if (member_implicit_object && current_class_context_ != kNoEntity)
+			{
+				TypeId object =
+					program_->entities[current_class_context_].type;
+				if (function_cv != CV_NONE)
+					object = program_->types.Qualify(object, function_cv);
+				program_->AddBinding(return_scope, BIND_PARAMETER,
+					program_->names.Intern("this"),
+					program_->types.Pointer(object));
+			}
 		}
-		const NodeId return_type = FindChild(trailing, "type-id");
-		if (return_type == kNoNode)
-			throw std::runtime_error("trailing return type is missing its type-id");
-		type = BuildTypeId(return_type, return_scope);
+		if (!defer_trailing_return)
+		{
+			const NodeId return_type = FindChild(trailing, "type-id");
+			if (return_type == kNoNode)
+				throw std::runtime_error(
+					"trailing return type is missing its type-id");
+			type = BuildTypeId(return_type, return_scope);
+		}
 	}
 	else if (placeholder_auto)
 		throw std::runtime_error("auto requires a trailing return type in PA16");
@@ -1892,7 +1919,8 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 	}
 	if (nested != kNoNode)
 	{
-		DeclaratorInfo inner = BuildDeclarator(nested, type, scope);
+		DeclaratorInfo inner = BuildDeclarator(nested, type, scope,
+			false, member_implicit_object, defer_trailing_return);
 		if (!result.parameters.empty()) inner.parameters = result.parameters;
 		return inner;
 	}
@@ -2665,53 +2693,6 @@ std::vector<ScopeId> SemanticAnalyzer::FindFunctionTemplateOwners(
 	for (std::size_t i = 0; i < found.FunctionTemplateOwnerCount(); ++i)
 		result.push_back(found.FunctionTemplateOwnerAt(i));
 	return result;
-}
-
-bool SemanticAnalyzer::ParseExplicitTemplateArguments(ScopeId scope,
-	const std::string& spelling, std::string* base,
-	std::vector<TypeId>* arguments)
-{
-	const std::size_t open = spelling.find('<');
-	if (open == std::string::npos || spelling.empty() ||
-		spelling[spelling.size() - 1] != '>') return false;
-	*base = spelling.substr(0, open);
-	arguments->clear();
-	std::size_t first = open + 1;
-	std::size_t depth = 0;
-	std::size_t paren_depth = 0;
-	std::size_t bracket_depth = 0;
-	for (std::size_t i = first; i < spelling.size() - 1; ++i)
-	{
-		if (spelling[i] == '<') ++depth;
-		else if (spelling[i] == '>')
-		{
-			if (depth == 0) return false;
-			--depth;
-		}
-		else if (spelling[i] == '(') ++paren_depth;
-		else if (spelling[i] == ')' && paren_depth != 0) --paren_depth;
-		else if (spelling[i] == '[') ++bracket_depth;
-		else if (spelling[i] == ']' && bracket_depth != 0) --bracket_depth;
-		else if (spelling[i] == ',' && depth == 0 && paren_depth == 0 &&
-			bracket_depth == 0)
-		{
-			const TypeId type = ResolveTemplateTypeArgument(scope,
-				spelling.substr(first, i - first));
-			if (type == kNoType)
-				throw std::runtime_error("unknown explicit template type argument");
-			arguments->push_back(type);
-			first = i + 1;
-		}
-	}
-	if (first < spelling.size() - 1)
-	{
-		const TypeId type = ResolveTemplateTypeArgument(scope,
-			spelling.substr(first, spelling.size() - first - 1));
-		if (type == kNoType)
-			throw std::runtime_error("unknown explicit template type argument");
-		arguments->push_back(type);
-	}
-	return true;
 }
 
 ScopeId SemanticAnalyzer::BindFunctionTemplateArguments(

@@ -14,28 +14,27 @@ Native IR and ELF remain later-stage boundaries.
 
 ## Current Failure Map
 
-Indexed semantic ambiguity reclassification raised PA19 from 195 to 202/293.
-The complete remaining 91-test set is:
+Structural dependent-type replay raised PA19 from 202 to 208/293. The complete
+remaining 85-test set is:
 
 | Failures | Shared behavior | Owner |
 |---:|---|---|
-| 20 rejected valid inputs | Complex parameter/result deduction, function-template return forms, and operator candidate ranking. | PA19 function-template deduction and PA12 overload selection |
-| 28 rejected valid inputs | Dependent type/member spelling, qualified/local replay, and retained completion. | PA12 retained scopes, lookup provenance, and completion |
-| 3 rejected valid inputs | Explicit demand, defaults, variable templates, and declaration forms. | PA19 template declaration and demand owners |
+| 15 rejected valid inputs | Function-template deduction/returns, enum or member operators, and target candidate ranking. | PA19 function-template deduction and PA12 overload selection |
+| 24 rejected valid inputs | Dependent/local type and member lookup, incomplete/nested completion, and retained replay. | PA12 retained scopes and lookup provenance; PA19 completion |
+| 5 rejected valid inputs | Explicit instantiation demand, defaults, variable templates, and declaration forms. | PA19 template declaration and demand owners |
 | 11 accepted invalid inputs | Definition-time template parameter/name/redeclaration and exception-spec diagnostics. | PA12 retained-definition validation |
-| 29 LowIR mismatches | Selected instantiated facts diverge in special members/lifetimes, static storage, null constants, or overload/control-flow lowering. | PA12 selected facts and PA15-PA19 typed lowering |
+| 30 LowIR mismatches | Selected instantiated facts diverge in special members/lifetimes, static storage, null constants, or overload/control-flow lowering. | PA12 selected facts and PA15-PA19 typed lowering |
 
 ## Active Checkpoint
 
-Normalize dependent type spelling into structural `TypeId` replay. PA10 retains
-the original `decltype`, elaborated, template-id, and qualified alias nodes;
-PA12 owns lookup of the carrier and terminal type, while PA19 substitution owns
-template arguments and current-specialization aliases. Selected canonical types
-flow to deduction and lowering without rendered-name recovery. Expected work is
-O(type shape plus qualified path/relation visits), with O(1)-average canonical
-type/template probes and no declaration scans. Validate qualified `decltype`,
-elaborated and incomplete template arguments, trailing returns, current-member
-aliases, PA1-PA18, file audit, and type-shape/path scaling.
+Separate canonical class-specialization identity from completion demand for
+incomplete and nested arguments. PA19 owns specialization shells plus reverse
+dependencies keyed by canonical argument/entity identity; PA12 layout or odr-use
+records demand, class completion wakes only indexed dependents, and PA15 consumes
+only completed layouts. Expected work is O(1)-average shell/cache/dependency
+insertion and O(newly unblocked dependents), without specialization rescans.
+Validate incomplete return arguments, unused nested instantiation, direct-member
+completion, explicit instantiation forms, PA1-PA18, file audit, and wakeup scaling.
 
 ## Performance Evidence
 
@@ -49,6 +48,7 @@ aliases, PA1-PA18, file audit, and type-shape/path scaling.
 | Namespace-qualified class template with use-site argument, 128/256/512 uses | Scope visits 139/267/523, zero using-edge visits, requests 128/256/512 with 127/255/511 cache hits; semantic nodes 911/1,807/3,599, typed bytes 47,487/92,415/182,271, semantic time 1.19/2.01/3.79 ms. |
 | One function template through 128/256/512 nested using-directives | Scope visits 781/1,549/3,085 and relation visits 512/1,024/2,048; exactly one specialization request, semantic nodes 141/269/525, constant 3,284 typed bytes, semantic time 1.68/3.07/3.74 ms. |
 | 128/256/512 retained direct initializers with one qualified template call each | Semantic nodes 795/1,563/3,099, lookup scope visits 690/1,330/2,610, requests 515/1,027/2,051 with 513/1,025/2,049 cache hits, typed bytes 160,143/314,127/622,095, semantic time 6.51/12.41/26.73 ms. |
+| 128/256/512 qualified `decltype` class-template arguments | Semantic nodes 914/1,810/3,602, lookup scope visits 278/534/1,046, requests 128/256/512 with 127/255/511 cache hits and one specialization; typed bytes 46,518/91,446/181,302. |
 
 ## Completed Checkpoints
 
@@ -63,3 +63,4 @@ aliases, PA1-PA18, file audit, and type-shape/path scaling.
 | Structured qualified specialization replay | Pass | Indexed using/member lookup, separate template-owner and use-site argument scopes, canonical replay through dependent bases and namespace owners; PA19 183 to 190, linear qualified probe, prior 1713/1713, audit pass |
 | Namespace-visible function-template replay | Pass | Template-owner provenance in ordinary lookup, name-specific using/inline traversal and hiding, owner-local deduction aliases, parenthesized call reclassification, scalar reference-return slot; PA19 190 to 195, linear relation probe, prior 1713/1713, audit pass |
 | Indexed retained-syntax reclassification | Pass | Lexical type/callable hiding, retained direct calls and constructor initialization, parenthesized value operators and parameter names; PA19 195 to 202, six focused cases, linear shape probe, prior 1713/1713, audit pass |
+| Structural dependent-type replay | Pass | Qualified `decltype`, parameter-visible array references, deferred template shape returns, member trailing-return object context, elaborated template-ids and keyword boundaries; PA19 202 to 208, linear type/path probe, prior 1713/1713, audit pass |

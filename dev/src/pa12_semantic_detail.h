@@ -142,7 +142,9 @@ private:
 		bool type_id_context = false);
 	TypeId BuildTypeId(NodeId node, ScopeId scope);
 	DeclaratorInfo BuildDeclarator(NodeId node, TypeId base, ScopeId scope,
-		bool placeholder_auto = false);
+		bool placeholder_auto = false,
+		bool member_implicit_object = false,
+		bool defer_trailing_return = false);
 	std::vector<ParameterInfo> BuildParameters(NodeId node, ScopeId scope,
 		bool* variadic);
 	NameId DeclaratorName(NodeId node);

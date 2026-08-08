@@ -1708,7 +1708,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 		++unevaluated_depth_;
 		try
 		{
-			measured = AnalyzeExpression(operand, scope).type;
+			measured = EffectiveType(AnalyzeExpression(operand, scope).type);
 		}
 		catch (...)
 		{
@@ -1918,8 +1918,13 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope)
 				function_template_shape_parameters_[p]);
 		const SpecInfo shape_spec = BuildSpecifiers(specifiers, shape_scope,
 			std::string(), true);
+		const NodeId trailing_return =
+			FindChild(declarator, "trailing-return-type");
+		const bool defer_trailing_return = trailing_return != kNoNode &&
+			PayloadSource(trailing_return).compare(0, 8, "decltype") == 0;
 		const DeclaratorInfo shape_declarator = BuildDeclarator(declarator,
-			shape_spec.type, shape_scope);
+			shape_spec.type, shape_scope, false, false,
+			defer_trailing_return);
 		if (!program_->types.IsFunction(shape_declarator.type))
 			throw std::runtime_error(
 				"function template has non-function declaration");

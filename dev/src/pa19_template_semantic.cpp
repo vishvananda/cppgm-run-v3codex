@@ -174,7 +174,8 @@ LookupResult SemanticAnalyzer::LookupPath(ScopeId scope,
 			const LookupResult first = program_->LookupName(
 				scope, path[0], LOOKUP_SCOPE_CARRIER);
 			carrier = first.name_space != kNoScope ? first.name_space :
-				program_->ScopeForType(first.type);
+				first.type != kNoType ? program_->ScopeForType(first.type) :
+				kNoScope;
 		}
 		component = 1;
 	}
@@ -192,7 +193,8 @@ LookupResult SemanticAnalyzer::LookupPath(ScopeId scope,
 		const LookupResult next = program_->LookupQualified(
 			carrier, one, LOOKUP_SCOPE_CARRIER);
 		carrier = next.name_space != kNoScope ? next.name_space :
-			program_->ScopeForType(next.type);
+			next.type != kNoType ? program_->ScopeForType(next.type) :
+			kNoScope;
 	}
 	if (carrier == kNoScope) return LookupResult();
 	if (kind == LOOKUP_TYPE || kind == LOOKUP_SCOPE_CARRIER)
@@ -254,9 +256,12 @@ TypeId SemanticAnalyzer::ResolveTemplateTypeArgument(ScopeId scope,
 {
 	std::string spelling = TrimTypeSpelling(source);
 	if (spelling.empty()) return kNoType;
-	while (RemoveLeadingTypeWord(&spelling, "typename") ||
-		RemoveLeadingTypeWord(&spelling, "class") ||
-		RemoveLeadingTypeWord(&spelling, "struct")) {}
+	while (RemoveLeadingTypeWord(&spelling, "typename")) {}
+	NamedFlavor elaborated_flavor = NAMED_NONE;
+	if (RemoveLeadingTypeWord(&spelling, "class"))
+		elaborated_flavor = NAMED_CLASS;
+	else if (RemoveLeadingTypeWord(&spelling, "struct"))
+		elaborated_flavor = NAMED_STRUCT;
 	std::uint8_t outer_cv = CV_NONE;
 	bool removed = true;
 	while (removed)
@@ -274,7 +279,42 @@ TypeId SemanticAnalyzer::ResolveTemplateTypeArgument(ScopeId scope,
 		}
 	}
 	TypeId result = kNoType;
-	if (!spelling.empty() && spelling[spelling.size() - 1] == ')')
+	if (spelling.compare(0, 9, "decltype(") == 0)
+	{
+		std::size_t close = std::string::npos;
+		std::size_t depth = 1;
+		for (std::size_t i = 9; i < spelling.size(); ++i)
+		{
+			if (spelling[i] == '(') ++depth;
+			else if (spelling[i] == ')' && --depth == 0)
+			{
+				close = i;
+				break;
+			}
+		}
+		if (close != std::string::npos && close + 2 < spelling.size() &&
+			spelling.compare(close + 1, 2, "::") == 0)
+		{
+			const std::string operand = TrimTypeSpelling(
+				spelling.substr(9, close - 9));
+			const LookupResult declaration =
+				LookupSpelling(scope, operand, LOOKUP_ORDINARY);
+			if (declaration.ordinary != kNoBinding)
+			{
+				const TypeId carrier_type = EffectiveType(
+					program_->bindings[declaration.ordinary].type);
+				const ScopeId carrier = program_->ScopeForType(carrier_type);
+				if (carrier != kNoScope)
+				{
+					const NamePath terminal = ParseNamePath(
+						spelling.substr(close + 3));
+					result = program_->LookupQualified(
+						carrier, terminal, LOOKUP_TYPE).type;
+				}
+			}
+		}
+	}
+	else if (!spelling.empty() && spelling[spelling.size() - 1] == ')')
 	{
 		std::size_t open = std::string::npos;
 		std::size_t angle_depth = 0;
@@ -426,6 +466,22 @@ TypeId SemanticAnalyzer::ResolveTemplateTypeArgument(ScopeId scope,
 				const LookupResult found =
 					LookupSpelling(scope, spelling, LOOKUP_TYPE);
 				result = found.type;
+				if (result == kNoType && elaborated_flavor != NAMED_NONE &&
+					spelling.find("::") == std::string::npos &&
+					spelling.find('<') == std::string::npos)
+				{
+					ScopeId owner = scope;
+					while (program_->KindOfScope(owner) ==
+						SCOPE_TEMPLATE_PARAMETERS)
+						owner = program_->ParentScope(owner);
+					const NameId name = program_->names.Intern(spelling);
+					const EntityId entity = program_->NewEntity(name,
+						elaborated_flavor, false, kNoType, owner, name);
+					result = program_->entities[entity].type;
+					program_->SetTypeName(owner, name, result);
+					program_->AddBinding(owner, BIND_TYPE, name, result,
+						false, 0, elaborated_flavor);
+				}
 				if (result != kNoType)
 				{
 					const TypeRecord& named = program_->types.Get(
@@ -445,6 +501,53 @@ TypeId SemanticAnalyzer::ResolveTemplateTypeArgument(ScopeId scope,
 		!program_->types.IsFunction(result))
 		result = program_->types.Qualify(result, outer_cv);
 	return result;
+}
+
+bool SemanticAnalyzer::ParseExplicitTemplateArguments(ScopeId scope,
+	const std::string& spelling, std::string* base,
+	std::vector<TypeId>* arguments)
+{
+	const std::size_t open = spelling.find('<');
+	if (open == std::string::npos || spelling.empty() ||
+		spelling[spelling.size() - 1] != '>') return false;
+	*base = spelling.substr(0, open);
+	arguments->clear();
+	std::size_t first = open + 1;
+	std::size_t depth = 0;
+	std::size_t paren_depth = 0;
+	std::size_t bracket_depth = 0;
+	for (std::size_t i = first; i < spelling.size() - 1; ++i)
+	{
+		if (spelling[i] == '<') ++depth;
+		else if (spelling[i] == '>')
+		{
+			if (depth == 0) return false;
+			--depth;
+		}
+		else if (spelling[i] == '(') ++paren_depth;
+		else if (spelling[i] == ')' && paren_depth != 0) --paren_depth;
+		else if (spelling[i] == '[') ++bracket_depth;
+		else if (spelling[i] == ']' && bracket_depth != 0) --bracket_depth;
+		else if (spelling[i] == ',' && depth == 0 && paren_depth == 0 &&
+			bracket_depth == 0)
+		{
+			const TypeId type = ResolveTemplateTypeArgument(scope,
+				spelling.substr(first, i - first));
+			if (type == kNoType)
+				throw std::runtime_error("unknown explicit template type argument");
+			arguments->push_back(type);
+			first = i + 1;
+		}
+	}
+	if (first < spelling.size() - 1)
+	{
+		const TypeId type = ResolveTemplateTypeArgument(scope,
+			spelling.substr(first, spelling.size() - first - 1));
+		if (type == kNoType)
+			throw std::runtime_error("unknown explicit template type argument");
+		arguments->push_back(type);
+	}
+	return true;
 }
 
 bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,

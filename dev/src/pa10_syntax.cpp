@@ -251,7 +251,11 @@ private:
 				if (previous == static_cast<std::uint16_t>(KW_CONST) ||
 					previous == static_cast<std::uint16_t>(KW_VOLATILE) ||
 					previous == static_cast<std::uint16_t>(KW_TYPENAME) ||
-					previous == static_cast<std::uint16_t>(KW_TEMPLATE))
+					previous == static_cast<std::uint16_t>(KW_TEMPLATE) ||
+					previous == static_cast<std::uint16_t>(KW_CLASS) ||
+					previous == static_cast<std::uint16_t>(KW_STRUCT) ||
+					previous == static_cast<std::uint16_t>(KW_UNION) ||
+					previous == static_cast<std::uint16_t>(KW_ENUM))
 					result += ' ';
 			}
 			result += Spelling(i);
