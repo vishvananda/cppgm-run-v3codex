@@ -164,6 +164,9 @@ void EmissionIdentityTable::PushTypeDependencies(const Program& program,
 	if (source.kind == TYPE_NAMED || source.kind == TYPE_MEMBER_POINTER)
 	{
 		const EntityRecord& entity = program.entities[source.entity];
+		if (entity.local_context != kNoBinding)
+			PushDependency(program.bindings[entity.local_context].type,
+				cache, pending);
 		const std::size_t first = entity.template_argument_begin;
 		const std::size_t count = entity.template_argument_count;
 		if (count != 0 &&
@@ -196,6 +199,13 @@ IdentityTypeKey EmissionIdentityTable::MakeTypeKey(const Program& program,
 	{
 		const EntityRecord& entity = program.entities[source.entity];
 		key.named = InternPath(program, entity.owner, entity.identity_name);
+		if (entity.local_context != kNoBinding)
+		{
+			const BindingRecord& context =
+				program.bindings[entity.local_context];
+			key.local_context = InternPath(program, context.owner, context.name);
+			key.local_context_signature = cache[context.type];
+		}
 		const std::size_t first = entity.template_argument_begin;
 		for (std::size_t i = 0; i < entity.template_argument_count; ++i)
 			key.parameters.push_back(cache[program.template_arguments[first + i]]);

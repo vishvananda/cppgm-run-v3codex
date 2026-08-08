@@ -71,6 +71,16 @@ std::string TemplateArgumentName(const std::string& source)
 	return result.empty() ? "type" : result;
 }
 
+std::string ClassTemplateSpecializationScopeName(std::size_t pattern,
+	const std::vector<TypeId>& arguments)
+{
+	std::ostringstream result;
+	result << "__cppgm_class_template_" << pattern;
+	for (std::size_t i = 0; i < arguments.size(); ++i)
+		result << '_' << arguments[i];
+	return result.str();
+}
+
 std::string TrimTypeSpelling(const std::string& source)
 {
 	const std::size_t first = source.find_first_not_of(" \t\r\n");
@@ -1070,7 +1080,7 @@ void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
 		BindClassTemplateArguments(pattern, arguments);
 	(void)AnalyzeClass(pattern.declaration, template_scope,
 		std::string(), false, specialization_name, pattern.owner,
-		pattern.name, true);
+		pattern.name, true, program_->bindings[binding].name);
 	class_template_specialization_states_[binding] = 2;
 	ApplyClassTemplateMemberDefinitions(index, binding, arguments);
 }
@@ -1225,9 +1235,15 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 	specialization_name += "_";
 	const ScopeId template_scope =
 		BindClassTemplateArguments(pattern, arguments);
+	NameId specialization_lookup_name =
+		program_->names.Intern(specialization_name);
+	if (program_->LookupDirect(pattern.owner, specialization_lookup_name,
+		LOOKUP_TYPE).type != kNoType)
+		specialization_lookup_name = program_->names.Intern(
+			ClassTemplateSpecializationScopeName(index, arguments));
 	const TypeId shell = AnalyzeClass(pattern.declaration, template_scope,
 		std::string(), false, specialization_name, pattern.owner,
-		pattern.name, false);
+		pattern.name, false, specialization_lookup_name);
 	const EntityId entity = EntityOf(shell);
 	if (entity == kNoEntity || program_->entities[entity].declaration == kNoBinding)
 		throw std::logic_error("class template shell has no declaration");

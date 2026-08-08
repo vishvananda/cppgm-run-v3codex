@@ -42,6 +42,35 @@ public:
 		return id;
 	}
 
+	std::string AddLocalContext(pa11::BindingId binding)
+	{
+		using namespace abi_mangle;
+		using namespace pa11;
+		if (binding == kNoBinding || binding >= program_.bindings.size())
+			throw std::logic_error("local ABI type has no function context");
+		const BindingRecord& function = program_.bindings[binding];
+		const TypeRecord& type = program_.types.Get(function.type);
+		if (type.kind != TYPE_FUNCTION)
+			throw std::logic_error("local ABI context is not a function");
+		const std::string id = "__cppgm_abi_local_context_" +
+			std::to_string(next_argument_++);
+		AbiFactRecord definition;
+		definition.set_kind(ABI_FACT_RECORD_DEFINITION);
+		definition.definition.id = id;
+		definition.definition.set_kind(ABI_DEFINITION_CONTEXT);
+		definition.definition.context.kind = ABI_CONTEXT_FUNCTION;
+		AbiFunctionTarget& target = definition.definition.context.function;
+		target.kind = ABI_FUNCTION_TARGET_PATH;
+		target.qualified_name = program_.names.Get(
+			function.qualified_name != 0 ?
+				function.qualified_name : function.name);
+		const TypeId* parameters = program_.types.Parameters(function.type);
+		for (std::size_t i = 0; i < type.parameter_count; ++i)
+			target.signature_parameter_types.push_back(MakeType(parameters[i]));
+		facts_.records.push_back(definition);
+		return id;
+	}
+
 	abi_mangle::AbiType MakeType(pa11::TypeId type)
 	{
 		using namespace abi_mangle;
@@ -87,7 +116,14 @@ public:
 		if (record->kind == TYPE_NAMED)
 		{
 			const EntityRecord& entity = program_.entities[record->entity];
-			if (entity.template_argument_count == 0)
+			if (entity.local_context != kNoBinding)
+			{
+				result.kind = ABI_TYPE_LOCAL_TYPE;
+				result.context_ref = AddLocalContext(entity.local_context);
+				result.name = program_.names.Get(entity.identity_name);
+				result.discriminator = "0";
+			}
+			else if (entity.template_argument_count == 0)
 			{
 				result.kind = ABI_TYPE_NAMED;
 				result.name = program_.names.Get(entity.name);

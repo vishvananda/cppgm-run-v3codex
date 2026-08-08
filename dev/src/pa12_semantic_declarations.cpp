@@ -80,11 +80,27 @@ OperatorKind ClassifyOperator(const std::string& name,
 	}
 	return OPERATOR_NONE;
 }
+
+BindingId LocalTypeContext(const Program& program, ScopeId owner,
+	BindingId current_function)
+{
+	if (current_function == kNoBinding) return kNoBinding;
+	for (ScopeId scope = owner; scope != kNoScope;
+		scope = program.ParentScope(scope))
+	{
+		if (program.KindOfScope(scope) == SCOPE_FUNCTION)
+			return current_function;
+		if (program.KindOfScope(scope) == SCOPE_NAMESPACE)
+			return kNoBinding;
+	}
+	return kNoBinding;
+}
 }
 TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	const std::string& hint, bool elaborated,
 	const std::string& specialization_name, ScopeId specialization_owner,
-	NameId specialization_identity, bool complete_definition)
+	NameId specialization_identity, bool complete_definition,
+	NameId specialization_lookup_name)
 {
 	const NodeId key = FindChild(node, "class-key");
 	if (key == kNoNode) throw std::runtime_error("class without class-key");
@@ -95,7 +111,6 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	if (flavor == NAMED_NONE) throw std::runtime_error("invalid class-key");
 	std::string spelling = specialization_name.empty() ?
 		arena_->Payload(node) : specialization_name;
-	const bool anonymous_source = spelling.empty();
 	if (spelling.empty() && !hint.empty())
 	{
 		++local_type_count_;
@@ -110,13 +125,16 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	}
 	const NamePath path = ParseNamePath(spelling);
 	const NameId name = path.Last();
+	const NameId lookup_name = specialization_lookup_name == 0 ?
+		name : specialization_lookup_name;
 	const ScopeId owner = specialization_owner == kNoScope ?
 		ResolveOwner(scope, path) : specialization_owner;
 	if (owner == kNoScope) throw std::runtime_error("class owner not found");
 	const LookupResult old = path.global || path.Size() > 1 ?
-		program_->LookupDirect(owner, name, LOOKUP_TYPE) :
-		(elaborated ? program_->LookupName(scope, name, LOOKUP_TYPE) :
-		 program_->LookupDirect(owner, name, LOOKUP_TYPE));
+		program_->LookupDirect(owner, lookup_name, LOOKUP_TYPE) :
+		(elaborated && specialization_lookup_name == 0 ?
+		 program_->LookupName(scope, lookup_name, LOOKUP_TYPE) :
+		 program_->LookupDirect(owner, lookup_name, LOOKUP_TYPE));
 	EntityId entity = kNoEntity;
 	if (old.type != kNoType)
 	{
@@ -139,7 +157,10 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 		entity = program_->NewEntity(entity_name, flavor, false,
 			kNoType, owner, specialization_identity == 0 ?
 				name : specialization_identity);
-		program_->SetTypeName(owner, name, program_->entities[entity].type);
+		program_->entities[entity].local_context = LocalTypeContext(
+			*program_, owner, current_function_context_);
+		program_->SetTypeName(owner, lookup_name,
+			program_->entities[entity].type);
 	}
 	const TypeId type = program_->entities[entity].type;
 	if (entity_data_members_.size() <= entity)
@@ -161,7 +182,8 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 		entity_destructor_by_entity_.resize(
 			static_cast<std::size_t>(entity) + 1, kNoBinding);
 	if (old.type == kNoType && arena_->Payload(node).size() != 0)
-		program_->AddBinding(owner, BIND_TYPE, name, type, false, 0, flavor);
+		program_->AddBinding(owner, BIND_TYPE, lookup_name, type,
+			false, 0, flavor);
 	const std::size_t requested_alignment = RequestedAlignment(node, scope);
 	if (requested_alignment != 0)
 		program_->entities[entity].requested_alignment = std::max(
@@ -169,7 +191,17 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 			static_cast<std::uint64_t>(requested_alignment));
 	if (complete_definition &&
 		(arena_->Flags(node) & SYNTAX_FLAG_DEFINITION) != 0)
-	{
+		CompleteClassDefinition(node, scope, type, entity, flavor, owner,
+			name, lookup_name, specialization_owner,
+			specialization_identity);
+	return type;
+}
+
+void SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
+	TypeId type, EntityId entity, NamedFlavor flavor, ScopeId owner,
+	NameId name, NameId lookup_name, ScopeId specialization_owner,
+	NameId specialization_identity)
+{
 		if (program_->entities[entity].complete)
 			throw std::runtime_error("duplicate class definition");
 		program_->entities[entity].packing_alignment = current_pack_alignment_;
@@ -226,7 +258,7 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 				program_->names.Get(DisplayName(owner, name)) + "::";
 			const ScopeId lexical_owner = specialization_owner == kNoScope ?
 				owner : scope;
-			member_scope = NewScope(lexical_owner, SCOPE_CLASS, name,
+			member_scope = NewScope(lexical_owner, SCOPE_CLASS, lookup_name,
 				program_->names.Intern(prefix));
 			program_->SetEntityScope(entity, member_scope);
 			program_->SetTypeName(member_scope, name, type);
@@ -392,9 +424,6 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 			EnsureImplicitDestructor(entity);
 		current_class_context_ = previous_class_context;
 		program_->entities[entity].complete = true;
-	}
-	(void)anonymous_source;
-	return type;
 }
 
 std::size_t SemanticAnalyzer::RequestedAlignment(NodeId node, ScopeId scope)
@@ -494,6 +523,86 @@ bool SemanticAnalyzer::ZeroOffsetSubobjectConflict(EntityId base,
 	return VisitZeroOffsetSubobjects(member, member_marker, base_marker);
 }
 
+const EntityRecord* SemanticAnalyzer::InitializeClassBaseLayout(
+	EntityId entity, std::size_t packing_alignment, std::size_t* size,
+	std::size_t* alignment, std::size_t* natural_alignment)
+{
+	EntityRecord& owner = program_->entities[entity];
+	if (!owner.has_user_declared_destructor)
+	{
+		owner.destructible = true;
+		owner.trivial_destructor = true;
+	}
+	if (owner.direct_base == kNoEntity) return 0;
+	const EntityRecord* base = &program_->entities[owner.direct_base];
+	if (!base->layout_complete)
+		throw std::runtime_error("direct base layout is incomplete");
+	const std::size_t base_alignment =
+		static_cast<std::size_t>(base->object_alignment);
+	const std::size_t effective_base_alignment = packing_alignment == 0 ?
+		base_alignment : std::min(base_alignment, packing_alignment);
+	if (owner.polymorphic_class && !base->polymorphic_class &&
+		!base->empty_class)
+	{
+		owner.direct_base_offset = AlignUp(8, effective_base_alignment);
+		*size = static_cast<std::size_t>(owner.direct_base_offset) +
+			static_cast<std::size_t>(base->object_size);
+	}
+	else
+	{
+		owner.direct_base_offset = 0;
+		*size = base->empty_class ? 0 :
+			static_cast<std::size_t>(base->object_size);
+	}
+	*natural_alignment = std::max(*natural_alignment, base_alignment);
+	*alignment = effective_base_alignment;
+	if (!base->destructible) owner.destructible = false;
+	if (!base->trivial_destructor) owner.trivial_destructor = false;
+	const BindingId destructor = DestructorForType(base->type);
+	if (destructor == kNoBinding ||
+		!CanAccessMember(destructor, owner.direct_base))
+		owner.destructible = false;
+	return base;
+}
+
+void SemanticAnalyzer::CompleteClassMemberDestructionFacts(EntityId entity,
+	bool is_union, bool defaulted_destructor)
+{
+	EntityRecord& owner = program_->entities[entity];
+	const std::vector<BindingId>& members = entity_data_members_[entity];
+	for (std::size_t i = 0; i < members.size(); ++i)
+	{
+		TypeId member_type = program_->bindings[members[i]].type;
+		const TypeRecord* member_record = &program_->types.Get(member_type);
+		while (member_record->kind == TYPE_ARRAY ||
+			member_record->kind == TYPE_QUALIFIED)
+		{
+			member_type = member_record->child;
+			member_record = &program_->types.Get(member_type);
+		}
+		if (member_record->kind != TYPE_NAMED) continue;
+		const EntityRecord& subobject =
+			program_->entities[member_record->entity];
+		if (subobject.flavor != NAMED_STRUCT &&
+			subobject.flavor != NAMED_CLASS &&
+			subobject.flavor != NAMED_UNION) continue;
+		if (is_union)
+		{
+			if (defaulted_destructor && !subobject.trivial_destructor)
+				owner.destructible = false;
+			if (!subobject.trivial_destructor)
+				owner.trivial_destructor = false;
+			continue;
+		}
+		if (!subobject.destructible) owner.destructible = false;
+		if (!subobject.trivial_destructor) owner.trivial_destructor = false;
+		const BindingId destructor = DestructorForType(member_type);
+		if (destructor == kNoBinding ||
+			!CanAccessMember(destructor, member_record->entity))
+			owner.destructible = false;
+	}
+}
+
 void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 {
 	EntityRecord& owner = program_->entities[entity];
@@ -504,43 +613,8 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 	std::size_t natural_alignment = 1;
 	const std::size_t packing_alignment =
 		static_cast<std::size_t>(owner.packing_alignment);
-	const EntityRecord* base = 0;
-	if (!owner.has_user_declared_destructor)
-	{
-		owner.destructible = true;
-		owner.trivial_destructor = true;
-	}
-	if (owner.direct_base != kNoEntity)
-	{
-		base = &program_->entities[owner.direct_base];
-		if (!base->layout_complete)
-			throw std::runtime_error("direct base layout is incomplete");
-		const std::size_t base_alignment =
-			static_cast<std::size_t>(base->object_alignment);
-		const std::size_t effective_base_alignment = packing_alignment == 0 ?
-			base_alignment : std::min(base_alignment, packing_alignment);
-		if (owner.polymorphic_class && !base->polymorphic_class &&
-			!base->empty_class)
-		{
-			owner.direct_base_offset = AlignUp(8, effective_base_alignment);
-			size = static_cast<std::size_t>(owner.direct_base_offset) +
-				static_cast<std::size_t>(base->object_size);
-		}
-		else
-		{
-			owner.direct_base_offset = 0;
-			size = base->empty_class ? 0 :
-				static_cast<std::size_t>(base->object_size);
-		}
-		natural_alignment = std::max(natural_alignment, base_alignment);
-		alignment = effective_base_alignment;
-		if (!base->destructible) owner.destructible = false;
-		if (!base->trivial_destructor) owner.trivial_destructor = false;
-		const BindingId destructor = DestructorForType(base->type);
-		if (destructor == kNoBinding ||
-			!CanAccessMember(destructor, owner.direct_base))
-			owner.destructible = false;
-	}
+	const EntityRecord* base = InitializeClassBaseLayout(entity,
+		packing_alignment, &size, &alignment, &natural_alignment);
 	const bool is_union = owner.flavor == NAMED_UNION;
 	bool empty_class = base == 0 || base->empty_class;
 	if (owner.polymorphic_class)
@@ -559,7 +633,6 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 		defaulted_destructor = destructor != kNoBinding &&
 			GetFunction(destructor).defaulted_destructor;
 	}
-	const std::vector<BindingId>& members = entity_data_members_[entity];
 	const std::vector<ClassLayoutMember>& layout_members =
 		entity_layout_members_[entity];
 	const bool implicit_default_constructor =
@@ -749,37 +822,8 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 		if (!subobject.trivial_default_constructor)
 			owner.trivial_default_constructor = false;
 	}
-	for (std::size_t i = 0; i < members.size(); ++i)
-	{
-		TypeId member_type = program_->bindings[members[i]].type;
-		const TypeRecord* member_record = &program_->types.Get(member_type);
-		while (member_record->kind == TYPE_ARRAY ||
-			member_record->kind == TYPE_QUALIFIED)
-		{
-			member_type = member_record->child;
-			member_record = &program_->types.Get(member_type);
-		}
-		if (member_record->kind != TYPE_NAMED) continue;
-		const EntityRecord& subobject =
-			program_->entities[member_record->entity];
-		if (subobject.flavor != NAMED_STRUCT &&
-			subobject.flavor != NAMED_CLASS &&
-			subobject.flavor != NAMED_UNION) continue;
-		if (is_union)
-		{
-			if (defaulted_destructor && !subobject.trivial_destructor)
-				owner.destructible = false;
-			if (!subobject.trivial_destructor)
-				owner.trivial_destructor = false;
-			continue;
-		}
-		if (!subobject.destructible) owner.destructible = false;
-		if (!subobject.trivial_destructor) owner.trivial_destructor = false;
-		const BindingId destructor = DestructorForType(member_type);
-		if (destructor == kNoBinding ||
-			!CanAccessMember(destructor, member_record->entity))
-			owner.destructible = false;
-	}
+	CompleteClassMemberDestructionFacts(entity, is_union,
+		defaulted_destructor);
 	if (owner.requested_alignment != 0 &&
 		owner.requested_alignment < natural_alignment)
 		throw std::runtime_error(
@@ -1446,6 +1490,8 @@ TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::stri
 	else
 	{
 		entity = program_->NewEntity(name, flavor, true, underlying, owner);
+		program_->entities[entity].local_context = LocalTypeContext(
+			*program_, owner, current_function_context_);
 		program_->SetTypeName(owner, name, program_->entities[entity].type);
 		if (arena_->Payload(node).size() != 0)
 			program_->AddBinding(owner, BIND_TYPE, name,

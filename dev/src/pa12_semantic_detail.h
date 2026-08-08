@@ -146,7 +146,12 @@ private:
 		const std::string& specialization_name = std::string(),
 		ScopeId specialization_owner = kNoScope,
 		NameId specialization_identity = 0,
-		bool complete_definition = true);
+		bool complete_definition = true,
+		NameId specialization_lookup_name = 0);
+	void CompleteClassDefinition(NodeId node, ScopeId scope, TypeId type,
+		EntityId entity, NamedFlavor flavor, ScopeId owner, NameId name,
+		NameId lookup_name, ScopeId specialization_owner,
+		NameId specialization_identity);
 	TypeId AnalyzeEnum(NodeId node, ScopeId scope,
 		const std::string& hint, bool elaborated);
 	SpecInfo BuildSpecifiers(NodeId node, ScopeId scope,
@@ -506,6 +511,11 @@ private:
 	bool VisitZeroOffsetSubobjects(EntityId root, std::uint32_t marker,
 		std::uint32_t conflict_marker);
 	bool ZeroOffsetSubobjectConflict(EntityId base, TypeId member_type);
+	const EntityRecord* InitializeClassBaseLayout(EntityId entity,
+		std::size_t packing_alignment, std::size_t* size,
+		std::size_t* alignment, std::size_t* natural_alignment);
+	void CompleteClassMemberDestructionFacts(EntityId entity,
+		bool is_union, bool defaulted_destructor);
 	void CompleteClassLayout(EntityId entity);
 	std::size_t RequestedAlignment(NodeId node, ScopeId scope);
 	void InheritConstructors(EntityId entity,

@@ -543,6 +543,7 @@ void TypeTable::Rehash(std::size_t capacity)
 EntityRecord::EntityRecord()
 	: name(0), identity_name(0), owner(kNoScope), member_scope(kNoScope),
 	  direct_base(kNoEntity), enclosing_class(kNoEntity),
+	  local_context(kNoBinding),
 	  template_argument_begin(kNoBinding), template_argument_count(0),
 	  flavor(NAMED_NONE), type(kNoType),
 	  underlying(kNoType), declaration(kNoBinding),
