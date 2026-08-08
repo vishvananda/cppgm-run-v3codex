@@ -6,6 +6,8 @@
 #include "pa12_semantic_model.h"
 
 #include <cstdint>
+#include <stdexcept>
+#include <string>
 
 namespace cppgm
 {
@@ -193,6 +195,35 @@ protected:
 		store.second = slot;
 		derived.Emit(store);
 		return derived.AddressOfStorage(slot);
+	}
+
+	Operand LowerMemberValue(std::uint32_t node, const DumpNode& record,
+		const NodeChildren& children)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const BindingId binding = record.binding;
+		if (binding != kNoBinding &&
+			derived.program_.bindings[binding].kind == BIND_FUNCTION)
+		{
+			if (children.size() != 1 ||
+				binding >= derived.function_symbols_.size() ||
+				derived.function_symbols_[binding] == kNoLowId)
+				throw std::runtime_error(
+					"invalid static member function expression");
+			const std::string spelling =
+				derived.program_.names.Get(record.text);
+			if (spelling.compare(0, 8, "OP_ARROW") == 0)
+				(void)derived.LowerValue(children[0], LowPtr());
+			else derived.LowerDiscardedValue(children[0]);
+			return derived.DecayAddress(derived.AddressOfStorage(Operand(
+				Operand::FUNCTION, derived.function_symbols_[binding], LowPtr())));
+		}
+		const LowType type = derived.LowerExpressionType(record.type);
+		if (record.constant) return Operand(record.constant_value, type);
+		if (binding != kNoBinding &&
+			derived.program_.bindings[binding].bit_field)
+			return derived.LoadBitField(binding, derived.LowerStorage(node));
+		return derived.LoadStorage(derived.LowerStorage(node), type);
 	}
 };
 

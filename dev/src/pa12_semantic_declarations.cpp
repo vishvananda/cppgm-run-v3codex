@@ -299,6 +299,8 @@ void SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 			if (arena_->IsTag(member, "simple-declaration") ||
 				arena_->IsTag(member, "function-definition"))
 				AnalyzeClassMember(member, member_scope, type, member_access);
+			else if (arena_->IsTag(member, "template-declaration"))
+				AnalyzeTemplate(member, member_scope, member_access);
 			else if (arena_->IsTag(member, "bit-field-declaration"))
 				AnalyzeBitField(member, member_scope, type, member_access);
 			else if (arena_->IsTag(member, "special-member-declaration") ||
@@ -1558,7 +1560,8 @@ TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::stri
 }
 
 SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
-	const std::string& hint, bool has_declarators, bool type_id_context)
+	const std::string& hint, bool has_declarators, bool type_id_context,
+	TypeId deferred_type)
 {
 	if (node == kNoNode) throw std::runtime_error("missing type specifiers");
 	SpecInfo result;
@@ -1614,6 +1617,8 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 			(arena_->IsTag(child, "decl-specifier") &&
 			 FirstSemanticChild(child) != kNoNode))
 		{
+			if (deferred_type != kNoType)
+			{ result.type = deferred_type; continue; }
 			result.type = DecltypeType(FirstSemanticChild(child), scope);
 			const NodeId qualified = FindChild(child, "qualified-type-name");
 			if (qualified != kNoNode)
@@ -1669,6 +1674,8 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 		else if (spelling == "char32_t") is_char32 = true;
 		else if (spelling != "inline" && spelling != "explicit")
 		{
+			if (deferred_type != kNoType)
+			{ result.type = deferred_type; continue; }
 			const TypeId specialization =
 				ResolveClassTemplateSpecialization(scope, spelling);
 			if (specialization != kNoType)
@@ -1940,7 +1947,7 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 				if (trailing_parameters[i].name != 0)
 					program_->AddBinding(return_scope, BIND_PARAMETER,
 						trailing_parameters[i].name,
-						trailing_parameters[i].declared_type);
+						ParameterBindingType(trailing_parameters[i]));
 			if (member_implicit_object && current_class_context_ != kNoEntity)
 			{
 				TypeId object =
@@ -2718,8 +2725,14 @@ void SemanticAnalyzer::UpgradeFunctionTemplateSpecializations(
 			BindFunctionTemplateArguments(pattern, arguments);
 		const SpecInfo spec = BuildSpecifiers(pattern.specifiers, template_scope,
 			std::string(), true);
+		const EntityId member_owner = program_->EntityForScope(pattern.owner);
+		const EntityId previous_class = current_class_context_;
+		if (member_owner != kNoEntity) current_class_context_ = member_owner;
 		const DeclaratorInfo parsed = BuildDeclarator(pattern.declarator,
-			spec.type, template_scope);
+			spec.type, template_scope, false,
+			member_owner != kNoEntity &&
+				spec.storage_class != STORAGE_CLASS_STATIC);
+		current_class_context_ = previous_class;
 		FunctionInfo& function = GetMutableFunction(
 			pattern.specialization_bindings[specialization]);
 		if (function.type != parsed.type)
@@ -2750,12 +2763,35 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 		BindFunctionTemplateArguments(pattern, arguments);
 	const SpecInfo spec = BuildSpecifiers(pattern.specifiers, template_scope,
 		std::string(), true);
+	const EntityId member_owner = program_->EntityForScope(pattern.owner);
+	const EntityId previous_class = current_class_context_;
+	if (member_owner != kNoEntity) current_class_context_ = member_owner;
 	const DeclaratorInfo parsed = BuildDeclarator(pattern.declarator,
-		spec.type, template_scope);
+		spec.type, template_scope, false,
+		member_owner != kNoEntity &&
+			spec.storage_class != STORAGE_CLASS_STATIC);
+	current_class_context_ = previous_class;
 	const BindingId binding = DeclareFunction(pattern.owner, pattern.name,
 		parsed.type, parsed.parameters, pattern.defined, true,
-		spec.storage_class, pattern.language_linkage, pattern.nonthrowing);
+		member_owner == kNoEntity ? spec.storage_class : STORAGE_CLASS_NONE,
+		pattern.language_linkage, pattern.nonthrowing);
 	BindingRecord& binding_record = program_->bindings[binding];
+	if (member_owner != kNoEntity)
+	{
+		binding_record.member_owner = member_owner;
+		binding_record.access = pattern.member_access;
+		binding_record.static_member_function =
+			spec.storage_class == STORAGE_CLASS_STATIC ||
+			binding_record.operator_kind == OPERATOR_NEW ||
+			binding_record.operator_kind == OPERATOR_NEW_ARRAY ||
+			binding_record.operator_kind == OPERATOR_DELETE ||
+			binding_record.operator_kind == OPERATOR_DELETE_ARRAY;
+		FunctionInfo& member_function = GetMutableFunction(binding);
+		if (!binding_record.static_member_function)
+			member_function.member_owner =
+				program_->entities[member_owner].type;
+		RegisterClassMemberFunction(member_owner, binding);
+	}
 	if (binding_record.template_argument_count == 0)
 	{
 		if (program_->template_arguments.size() >
@@ -2772,6 +2808,7 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	ValidateFunctionRefQualifier(binding);
 	ValidateNonmemberOperator(binding);
 	FunctionInfo& function = GetMutableFunction(binding);
+	function.template_pattern = static_cast<std::uint32_t>(index);
 	function.deferred = true;
 	function.lexical_scope = template_scope;
 	if (pattern.defined) function.definition_body = pattern.definition_body;
@@ -2875,7 +2912,7 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 	{
 		const ParameterInfo& parameter = info.parameters[i];
 		const BindingId parameter_binding = program_->AddBinding(function_scope,
-			BIND_PARAMETER, parameter.name, parameter.declared_type);
+			BIND_PARAMETER, parameter.name, ParameterBindingType(parameter));
 		parameter_bindings.push_back(parameter_binding);
 		dump_.Add(function, MakeDump(DUMP_PARAMETER, parameter.function_type,
 			VALUE_NONE, parameter.name, parameter_binding));

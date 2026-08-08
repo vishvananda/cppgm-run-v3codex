@@ -1316,14 +1316,7 @@ private:
 			result = LoadStorage(LowerStorage(node),
 				LowerExpressionType(record.type));
 		else if (record.kind == DUMP_MEMBER_EXPRESSION)
-		{
-			const LowType type = LowerExpressionType(record.type);
-			result = record.constant ? Operand(record.constant_value, type) :
-				(record.binding != kNoBinding &&
-				 program_.bindings[record.binding].bit_field ?
-					LoadBitField(record.binding, LowerStorage(node)) :
-					LoadStorage(LowerStorage(node), type));
-		}
+			result = LowerMemberValue(node, record, children);
 		else if (record.kind == DUMP_SIZEOF_EXPRESSION)
 		{
 			if (!record.constant)

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -543,6 +544,100 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCallCandidates(
 		[this](BindingId candidate) {
 			return GetFunction(candidate).constructor;
 		}), result.end());
+	return result;
+}
+TypeId SemanticAnalyzer::ParameterBindingType(
+	const ParameterInfo& parameter) const
+{
+	const TypeKind kind = program_->types.Get(parameter.declared_type).kind;
+	return kind == TYPE_ARRAY || kind == TYPE_FUNCTION ?
+		parameter.function_type : parameter.declared_type;
+}
+
+ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
+{
+	const std::uint32_t first = arena_->FirstEdge(node);
+	const std::uint32_t second = first == kNoEdge ? kNoEdge :
+		arena_->NextEdge(first);
+	if (second == kNoEdge) throw std::runtime_error("invalid member expression");
+	ExpressionInfo object = AnalyzeExpression(arena_->EdgeChild(first), scope);
+	const std::string source_operation = PayloadSource(node);
+	if (source_operation == "." && object.category == VALUE_PRVALUE &&
+		EntityOf(object.type) != kNoEntity &&
+		dump_.nodes[object.node].kind != DUMP_TEMPORARY_OBJECT)
+		object = MaterializeTemporary(object);
+	TypeId owner_type = EffectiveType(object.type);
+	if (source_operation == "->")
+	{
+		owner_type = program_->types.RemoveTopCv(owner_type);
+		const TypeRecord pointer = program_->types.Get(owner_type);
+		if (pointer.kind != TYPE_POINTER)
+			throw std::runtime_error("arrow operand is not a pointer");
+		owner_type = pointer.child;
+	}
+	const EntityId entity = EntityOf(owner_type);
+	if (entity == kNoEntity || program_->entities[entity].member_scope == kNoScope)
+		throw std::runtime_error("member access on non-class object");
+	const NodeId identifier = arena_->EdgeChild(second);
+	const NameId name = ParseNamePath(arena_->Payload(identifier)).Last();
+	const LookupResult found = program_->LookupMember(
+		entity, name, LOOKUP_ORDINARY);
+	if (found.ordinary == kNoBinding)
+		throw std::runtime_error("unknown class member");
+	if (!CanAccessMember(found.ordinary, found.naming_class, entity))
+		throw std::runtime_error("inaccessible class member");
+	const EntityId member_owner =
+		program_->bindings[found.ordinary].member_owner;
+	const bool member_function =
+		program_->bindings[found.ordinary].kind == BIND_FUNCTION;
+	if (member_function)
+	{
+		if (!program_->bindings[found.ordinary].static_member_function)
+			throw std::runtime_error(
+				"non-static member function requires a call expression");
+		DemandFunction(found.ordinary);
+	}
+	const BindingRecord& member_binding =
+		program_->bindings[found.ordinary];
+	TypeId type = member_binding.type;
+	if (IsConst(owner_type) && !member_binding.mutable_member)
+		type = program_->types.Qualify(type, CV_CONST);
+	if (!member_binding.non_static_data_member && !member_function)
+		EnsureStaticMemberStorage(found.ordinary);
+	std::string operation = arena_->Payload(node);
+	const std::size_t colon = operation.find(':');
+	if (colon != std::string::npos) operation.erase(colon + 1);
+	operation += program_->names.Get(name);
+	ValueCategory member_category = VALUE_LVALUE;
+	if (source_operation != "->" && member_binding.non_static_data_member &&
+		object.category != VALUE_LVALUE &&
+		!program_->types.IsReference(member_binding.type))
+		member_category = VALUE_XVALUE;
+	const std::uint32_t expression = MakeDump(DUMP_MEMBER_EXPRESSION,
+		type, member_category, program_->names.Intern(operation), found.ordinary);
+	if (member_owner != kNoEntity)
+	{
+		const std::size_t projections = BaseProjectionCount(owner_type,
+			program_->entities[member_owner].type);
+		if (projections == std::numeric_limits<std::size_t>::max() ||
+			projections > std::numeric_limits<std::uint32_t>::max())
+			throw std::logic_error("member has no bounded base path");
+		dump_.nodes[expression].base_projection_count =
+			static_cast<std::uint32_t>(projections);
+	}
+	dump_.Add(expression, object.node);
+	ExpressionInfo result;
+	result.node = expression;
+	result.type = type;
+	result.category = member_category;
+	result.binding = found.ordinary;
+	const BindingRecord& canonical = program_->bindings[
+		program_->bindings[found.ordinary].canonical];
+	result.constant = canonical.constant;
+	result.value = canonical.value;
+	dump_.nodes[expression].constant = result.constant;
+	dump_.nodes[expression].constant_value = result.value;
+	++expression_count_;
 	return result;
 }
 

@@ -1357,6 +1357,9 @@ BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
 				program_->types.Get(rfunction.type));
 			if (preference != 0) return preference > 0;
 		}
+		const int template_preference = CompareFunctionTemplateConstraints(
+			lfunction, rfunction);
+		if (template_preference != 0) return template_preference > 0;
 		return !lfunction.template_specialization &&
 			rfunction.template_specialization;
 	};
@@ -1444,6 +1447,36 @@ bool SemanticAnalyzer::TryAnalyzeOverloadedOperator(
 			for (std::size_t i = 0; i < functions.size(); ++i)
 				if (GetFunction(functions[i]).member_owner != kNoType)
 					AddCandidate(functions[i], &candidates);
+		}
+		const LookupResult member_templates = program_->LookupMember(
+			left_entity, name, LOOKUP_FUNCTION_TEMPLATE);
+		std::vector<std::size_t> patterns;
+		for (std::size_t owner = 0;
+			owner < member_templates.FunctionTemplateOwnerCount(); ++owner)
+		{
+			const ScopeId template_owner =
+				member_templates.FunctionTemplateOwnerAt(owner);
+			const std::uint64_t key =
+				(static_cast<std::uint64_t>(template_owner) << 32) | name;
+			const CompactIndexSequence* indexed =
+				template_function_sets_.Find(key);
+			if (!indexed) continue;
+			for (std::size_t i = 0; i < indexed->Size(); ++i)
+				patterns.push_back((*indexed)[i]);
+		}
+		if (!patterns.empty())
+		{
+			associated_declaration_visits_ += patterns.size();
+			std::vector<ExpressionInfo> arguments(
+				operands.begin() + 1, operands.end());
+			std::vector<BindingId> specializations;
+			DeduceFunctionTemplatePatterns(
+				patterns, arguments, &specializations);
+			for (std::size_t i = 0; i < specializations.size(); ++i)
+				if (GetFunction(specializations[i]).member_owner != kNoType)
+					AddCandidate(specializations[i], &candidates);
+			if (naming_class == kNoEntity)
+				naming_class = member_templates.naming_class;
 		}
 	}
 	if (!member_only)

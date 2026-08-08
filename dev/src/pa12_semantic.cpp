@@ -8,11 +8,37 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 #include <vector>
 namespace cppgm
 {
 namespace pa12_semantic_detail
 {
+namespace
+{
+bool SpellingUsesAnyIdentifier(const std::string& spelling,
+	const std::unordered_set<std::string>& identifiers)
+{
+	std::size_t first = 0;
+	while (first < spelling.size())
+	{
+		const unsigned char initial = static_cast<unsigned char>(spelling[first]);
+		if (!std::isalpha(initial) && spelling[first] != '_') { ++first; continue; }
+		std::size_t last = first + 1;
+		while (last < spelling.size())
+		{
+			const unsigned char next = static_cast<unsigned char>(spelling[last]);
+			if (!std::isalnum(next) && spelling[last] != '_') break;
+			++last;
+		}
+		if (identifiers.count(spelling.substr(first, last - first)) != 0)
+			return true;
+		first = last;
+	}
+	return false;
+}
+}
+
 NodeId SemanticAnalyzer::FindChild(NodeId node, const char* tag) const
 {
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
@@ -981,6 +1007,9 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 				program_->types.Get(right_function.type));
 			if (preference != 0) return preference > 0;
 		}
+		const int template_preference = CompareFunctionTemplateConstraints(
+			left_function, right_function);
+		if (template_preference != 0) return template_preference > 0;
 		return !left_function.template_specialization &&
 			right_function.template_specialization;
 	};
@@ -1762,85 +1791,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 	return result;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
-{
-	const std::uint32_t first = arena_->FirstEdge(node);
-	const std::uint32_t second = first == kNoEdge ? kNoEdge :
-		arena_->NextEdge(first);
-	if (second == kNoEdge) throw std::runtime_error("invalid member expression");
-	ExpressionInfo object = AnalyzeExpression(arena_->EdgeChild(first), scope);
-	const std::string source_operation = PayloadSource(node);
-	if (source_operation == "." && object.category == VALUE_PRVALUE &&
-		EntityOf(object.type) != kNoEntity &&
-		dump_.nodes[object.node].kind != DUMP_TEMPORARY_OBJECT)
-		object = MaterializeTemporary(object);
-	TypeId owner_type = EffectiveType(object.type);
-	if (source_operation == "->")
-	{
-		owner_type = program_->types.RemoveTopCv(owner_type);
-		const TypeRecord pointer = program_->types.Get(owner_type);
-		if (pointer.kind != TYPE_POINTER)
-			throw std::runtime_error("arrow operand is not a pointer");
-		owner_type = pointer.child;
-	}
-	const EntityId entity = EntityOf(owner_type);
-	if (entity == kNoEntity || program_->entities[entity].member_scope == kNoScope)
-		throw std::runtime_error("member access on non-class object");
-	const NodeId identifier = arena_->EdgeChild(second);
-	const NameId name = ParseNamePath(arena_->Payload(identifier)).Last();
-	const LookupResult found = program_->LookupMember(
-		entity, name, LOOKUP_ORDINARY);
-	if (found.ordinary == kNoBinding)
-		throw std::runtime_error("unknown class member");
-	if (!CanAccessMember(found.ordinary, found.naming_class, entity))
-		throw std::runtime_error("inaccessible class member");
-	const EntityId member_owner =
-		program_->bindings[found.ordinary].member_owner;
-	const BindingRecord& member_binding =
-		program_->bindings[found.ordinary];
-	TypeId type = member_binding.type;
-	if (IsConst(owner_type) && !member_binding.mutable_member)
-		type = program_->types.Qualify(type, CV_CONST);
-	if (!member_binding.non_static_data_member)
-		EnsureStaticMemberStorage(found.ordinary);
-	std::string operation = arena_->Payload(node);
-	const std::size_t colon = operation.find(':');
-	if (colon != std::string::npos) operation.erase(colon + 1);
-	operation += program_->names.Get(name);
-	ValueCategory member_category = VALUE_LVALUE;
-	if (source_operation != "->" && member_binding.non_static_data_member &&
-		object.category != VALUE_LVALUE &&
-		!program_->types.IsReference(member_binding.type))
-		member_category = VALUE_XVALUE;
-	const std::uint32_t expression = MakeDump(DUMP_MEMBER_EXPRESSION,
-		type, member_category, program_->names.Intern(operation), found.ordinary);
-	if (member_owner != kNoEntity)
-	{
-		const std::size_t projections = BaseProjectionCount(owner_type,
-			program_->entities[member_owner].type);
-		if (projections == std::numeric_limits<std::size_t>::max() ||
-			projections > std::numeric_limits<std::uint32_t>::max())
-			throw std::logic_error("member has no bounded base path");
-		dump_.nodes[expression].base_projection_count =
-			static_cast<std::uint32_t>(projections);
-	}
-	dump_.Add(expression, object.node);
-	ExpressionInfo result;
-	result.node = expression;
-	result.type = type;
-	result.category = member_category;
-	result.binding = found.ordinary;
-	const BindingRecord& canonical = program_->bindings[
-		program_->bindings[found.ordinary].canonical];
-	result.constant = canonical.constant;
-	result.value = canonical.value;
-	dump_.nodes[expression].constant = result.constant;
-	dump_.nodes[expression].constant_value = result.value;
-	++expression_count_;
-	return result;
-}
-
-void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope)
+void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
+	AccessKind member_access)
 {
 	const NodeId clause = FindChild(node, "template-parameter-clause");
 	const NodeId list = clause == kNoNode ? kNoNode :
@@ -1927,6 +1879,40 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope)
 		function_template_shape_parameters_.push_back(
 			program_->types.Named(entity));
 	}
+	std::unordered_set<std::string> parameter_spellings;
+	for (std::size_t i = 0; i < parameters.size(); ++i)
+		parameter_spellings.insert(program_->names.Get(parameters[i]));
+	bool deferred_dependent_result = false;
+	for (std::uint32_t edge = arena_->FirstEdge(specifiers);
+		edge != kNoEdge && !deferred_dependent_result;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId specifier = arena_->EdgeChild(edge);
+		const std::string spelling = PayloadSource(specifier);
+		const bool deferred_shape =
+			arena_->IsTag(specifier, "decltype-specifier") ||
+			(arena_->IsTag(specifier, "decl-specifier") &&
+			 FirstSemanticChild(specifier) != kNoNode) ||
+			spelling.find("::") != std::string::npos;
+		if (deferred_shape &&
+			SpellingUsesAnyIdentifier(spelling, parameter_spellings))
+			deferred_dependent_result = true;
+	}
+	TypeId dependent_result_shape = kNoType;
+	if (deferred_dependent_result)
+	{
+		if (function_template_dependent_result_shape_ == kNoType)
+		{
+			const NameId shape_name = program_->names.Intern(
+				"__function_template_dependent_result_shape");
+			const EntityId shape = program_->NewEntity(shape_name,
+				NAMED_TYPENAME_PARAMETER, false, kNoType,
+				program_->GlobalScope(), shape_name);
+			function_template_dependent_result_shape_ =
+				program_->types.Named(shape);
+		}
+		dependent_result_shape = function_template_dependent_result_shape_;
+	}
 	for (std::size_t i = 0; i < pattern_declarators.size(); ++i)
 	{
 		const NodeId declarator = pattern_declarators[i];
@@ -1943,6 +1929,7 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope)
 			FindChild(target, "compound-statement") : kNoNode;
 		pattern.type_parameters = parameters;
 		pattern.language_linkage = current_language_linkage_;
+		pattern.member_access = member_access;
 		pattern.defined = definition;
 		pattern.nonthrowing = IsNonthrowing(declarator, pattern.owner);
 		const ScopeId shape_scope = NewScope(scope, SCOPE_TEMPLATE_PARAMETERS,
@@ -1951,14 +1938,21 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope)
 			program_->AddBinding(shape_scope, BIND_TYPE_ALIAS, parameters[p],
 				function_template_shape_parameters_[p]);
 		const SpecInfo shape_spec = BuildSpecifiers(specifiers, shape_scope,
-			std::string(), true);
+			std::string(), true, false, dependent_result_shape);
 		const NodeId trailing_return =
 			FindChild(declarator, "trailing-return-type");
 		const bool defer_trailing_return = trailing_return != kNoNode &&
 			PayloadSource(trailing_return).compare(0, 8, "decltype") == 0;
+		const EntityId member_owner =
+			program_->EntityForScope(pattern.owner);
+		const bool nonstatic_member = member_owner != kNoEntity &&
+			shape_spec.storage_class != STORAGE_CLASS_STATIC;
+		const EntityId previous_class = current_class_context_;
+		if (member_owner != kNoEntity) current_class_context_ = member_owner;
 		const DeclaratorInfo shape_declarator = BuildDeclarator(declarator,
-			shape_spec.type, shape_scope, false, false,
+			shape_spec.type, shape_scope, false, nonstatic_member,
 			defer_trailing_return);
+		current_class_context_ = previous_class;
 		if (!program_->types.IsFunction(shape_declarator.type))
 			throw std::runtime_error(
 				"function template has non-function declaration");
@@ -1998,6 +1992,7 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope)
 				prior.definition_body = pattern.definition_body;
 				prior.type_parameters = pattern.type_parameters;
 				prior.language_linkage = pattern.language_linkage;
+				prior.member_access = pattern.member_access;
 				prior.defined = true;
 				UpgradeFunctionTemplateSpecializations(prior_index);
 			}
@@ -2477,7 +2472,7 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 		if (parameter.name == 0 && i < function.parameters.size())
 			parameter.name = function.parameters[i].name;
 		const BindingId parameter_binding = program_->AddBinding(function_scope,
-			BIND_PARAMETER, parameter.name, parameter.declared_type);
+			BIND_PARAMETER, parameter.name, ParameterBindingType(parameter));
 		const std::uint32_t parameter_node = MakeDump(DUMP_PARAMETER,
 			parameter.function_type, VALUE_NONE, parameter.name, parameter_binding);
 		dump_.Add(output_node, parameter_node);

@@ -12,6 +12,15 @@ namespace pa12_semantic_detail
 
 bool SemanticAnalyzer::FunctionTemplateTypeIsDependent(TypeId type) const
 {
+	if (type == function_template_dependent_result_shape_ &&
+		type != kNoType)
+	{
+		if (function_template_dependency_cache_.size() <= type)
+			function_template_dependency_cache_.resize(
+				static_cast<std::size_t>(type) + 1, 0);
+		function_template_dependency_cache_[type] = 2;
+		return true;
+	}
 	for (std::size_t i = 0; i < function_template_shape_parameters_.size(); ++i)
 		if (type == function_template_shape_parameters_[i])
 		{
@@ -80,6 +89,26 @@ bool SemanticAnalyzer::FunctionTemplateTypeIsDependent(TypeId type) const
 	}
 	function_template_dependency_cache_[type] = dependent ? 2 : 1;
 	return dependent;
+}
+
+int SemanticAnalyzer::CompareFunctionTemplateConstraints(
+	const FunctionInfo& left, const FunctionInfo& right) const
+{
+	if (!left.template_specialization || !right.template_specialization ||
+		left.type != right.type || left.template_pattern == kNoDumpEdge ||
+		right.template_pattern == kNoDumpEdge ||
+		left.template_pattern >= function_templates_.size() ||
+		right.template_pattern >= function_templates_.size())
+		return 0;
+	const std::size_t left_parameters = function_templates_[
+		left.template_pattern].type_parameters.size();
+	const std::size_t right_parameters = function_templates_[
+		right.template_pattern].type_parameters.size();
+	if (left_parameters == right_parameters) return 0;
+	// Equal instantiated signatures expose equality constraints in the pattern:
+	// fewer independent type parameters means the pattern accepted a strict
+	// subset of the argument combinations accepted by the other candidate.
+	return left_parameters < right_parameters ? 1 : -1;
 }
 
 bool SemanticAnalyzer::DeduceFunctionTemplateType(TypeId pattern,
@@ -222,7 +251,22 @@ void SemanticAnalyzer::DeduceFunctionTemplatePatterns(
 				program_->types.Get(parameter);
 			if (parameter_record.kind == TYPE_LVALUE_REFERENCE ||
 				parameter_record.kind == TYPE_RVALUE_REFERENCE)
+			{
+				if (parameter_record.kind == TYPE_RVALUE_REFERENCE &&
+					arguments[a].category == VALUE_LVALUE)
+				{
+					bool forwarding_reference = false;
+					for (std::size_t t = 0;
+						t < pattern.type_parameters.size(); ++t)
+						if (parameter_record.child ==
+							function_template_shape_parameters_[t])
+							forwarding_reference = true;
+					if (forwarding_reference)
+						argument = program_->types.Reference(
+							TYPE_LVALUE_REFERENCE, argument);
+				}
 				parameter = parameter_record.child;
+			}
 			else
 			{
 				parameter = program_->types.RemoveTopCv(parameter);
@@ -372,7 +416,22 @@ bool SemanticAnalyzer::AnalyzeFunctionId(NodeId node, ScopeId scope,
 		if (desired == kNoType || GetFunction(candidates[i]).type == desired)
 		{
 			if (selected != kNoBinding && desired != kNoType)
+			{
+				const FunctionInfo& prior = GetFunction(selected);
+				const FunctionInfo& candidate = GetFunction(candidates[i]);
+				if (prior.template_specialization !=
+					candidate.template_specialization)
+				{
+					if (prior.template_specialization)
+						selected = candidates[i];
+					continue;
+				}
+				const int preference =
+					CompareFunctionTemplateConstraints(candidate, prior);
+				if (preference > 0) { selected = candidates[i]; continue; }
+				if (preference < 0) continue;
 				throw std::runtime_error("ambiguous overloaded function id");
+			}
 			selected = candidates[i];
 			if (desired == kNoType && candidates.size() != 1)
 			{

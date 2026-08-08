@@ -322,6 +322,7 @@ struct FunctionInfo
 	ScopeId lexical_scope;
 	std::vector<ParameterInfo> parameters;
 	NodeId definition_body, constructor_initializer;
+	std::uint32_t template_pattern;
 	bool defined;
 	bool deferred;
 	bool template_specialization;
@@ -355,6 +356,7 @@ struct FunctionInfo
 		  conversion_target(kNoType), member_owner(kNoType),
 		  friend_of(kNoEntity), lexical_scope(kNoScope),
 		  definition_body(kNoNode), constructor_initializer(kNoNode),
+		  template_pattern(kNoDumpEdge),
 		  defined(false), deferred(false), template_specialization(false),
 		  constructor(false), implicit_constructor(false),
 		  defaulted_constructor(false), deleted_constructor(false),
@@ -430,6 +432,7 @@ struct FunctionTemplatePattern
 	std::vector<BindingId> specialization_bindings;
 	std::vector<TypeId> specialization_arguments;
 	LanguageLinkage language_linkage;
+	AccessKind member_access;
 	bool defined;
 	bool nonthrowing;
 
@@ -438,7 +441,8 @@ struct FunctionTemplatePattern
 		  specifiers(kNoNode),
 		  declarator(kNoNode), definition_body(kNoNode),
 		  shape_type(kNoType),
-		  language_linkage(LANGUAGE_LINKAGE_CPP), defined(false),
+		  language_linkage(LANGUAGE_LINKAGE_CPP), member_access(ACCESS_PUBLIC),
+		  defined(false),
 		  nonthrowing(false) {}
 };
 

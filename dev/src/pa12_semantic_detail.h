@@ -29,7 +29,9 @@ public:
 		SemanticGraphConsumer* graph_consumer = 0, bool render_output = true)
 		: arena_(0), output_(output), stats_(stats), program_(0),
 		  graph_consumer_(graph_consumer), render_output_(render_output),
-		  root_(kNoDumpEdge), current_language_linkage_(LANGUAGE_LINKAGE_CPP),
+		  root_(kNoDumpEdge),
+		  function_template_dependent_result_shape_(kNoType),
+		  current_language_linkage_(LANGUAGE_LINKAGE_CPP),
 		  current_return_type_(kNoType), current_class_context_(kNoEntity),
 		  current_function_context_(kNoBinding),
 		  braced_initialization_context_(0),
@@ -98,7 +100,8 @@ private:
 	void AnalyzeUsing(NodeId node, ScopeId scope,
 		std::uint32_t output_parent, bool local,
 		AccessKind access = ACCESS_PUBLIC);
-	void AnalyzeTemplate(NodeId node, ScopeId scope);
+	void AnalyzeTemplate(NodeId node, ScopeId scope,
+		AccessKind member_access = ACCESS_PUBLIC);
 	void AnalyzeExplicitInstantiation(NodeId node, ScopeId scope,
 		bool definition);
 	void ValidateRetainedTemplateDefinition(NodeId target, ScopeId scope,
@@ -156,7 +159,8 @@ private:
 		const std::string& hint, bool elaborated);
 	SpecInfo BuildSpecifiers(NodeId node, ScopeId scope,
 		const std::string& hint, bool has_declarators,
-		bool type_id_context = false);
+		bool type_id_context = false,
+		TypeId deferred_type = kNoType);
 	TypeId BuildTypeId(NodeId node, ScopeId scope);
 	DeclaratorInfo BuildDeclarator(NodeId node, TypeId base, ScopeId scope,
 		bool placeholder_auto = false,
@@ -167,6 +171,7 @@ private:
 	NameId DeclaratorName(NodeId node);
 	NamePath DeclaratorNamePath(NodeId node);
 	TypeId AdjustParameterType(TypeId type);
+	TypeId ParameterBindingType(const ParameterInfo& parameter) const;
 	TypeId DecltypeType(NodeId node, ScopeId scope);
 
 	BindingId DeclareFunction(ScopeId owner, NameId name, TypeId type,
@@ -252,6 +257,8 @@ private:
 	bool FunctionTemplateTypeIsDependent(TypeId type) const;
 	bool DeduceFunctionTemplateType(TypeId pattern, TypeId argument,
 		std::vector<TypeId>* deduced) const;
+	int CompareFunctionTemplateConstraints(
+		const FunctionInfo& left, const FunctionInfo& right) const;
 	void DeduceFunctionTemplatePatterns(
 		const std::vector<std::size_t>& patterns,
 		const std::vector<ExpressionInfo>& arguments,
@@ -695,6 +702,7 @@ private:
 	std::vector<BindingId> constructor_initializer_touched_;
 	std::vector<FunctionTemplatePattern> function_templates_;
 	std::vector<TypeId> function_template_shape_parameters_;
+	TypeId function_template_dependent_result_shape_;
 	mutable std::vector<std::uint8_t> function_template_dependency_cache_;
 	IndexedSequenceTable template_function_sets_;
 	IndexedSequenceTable retained_call_function_sets_;

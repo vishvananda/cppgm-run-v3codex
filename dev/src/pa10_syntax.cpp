@@ -255,6 +255,39 @@ private:
 		}
 		return result;
 	}
+	bool ParseOperatorFunctionSuffix()
+	{
+		if (At(KW_NEW) || At(KW_DELETE))
+		{
+			++position_;
+			if (Match(OP_LSQUARE)) Expect(OP_RSQUARE);
+			return true;
+		}
+		if (Match(OP_LPAREN))
+		{
+			Expect(OP_RPAREN);
+			return true;
+		}
+		if (Match(OP_LSQUARE))
+		{
+			Expect(OP_RSQUARE);
+			return true;
+		}
+		if (position_ + 1 < tokens_.size() &&
+			tokens_[position_].kind == kRShiftFirstToken &&
+			tokens_[position_ + 1].kind == kRShiftSecondToken)
+		{
+			position_ += 2;
+			return true;
+		}
+		if (position_ < tokens_.size() &&
+			IsOperatorNameToken(tokens_[position_].kind))
+		{
+			++position_;
+			return true;
+		}
+		return false;
+	}
 	bool SkipBalanced(SimpleTokenKind open, SimpleTokenKind close)
 	{
 		if (!Match(open)) return false;
@@ -385,17 +418,7 @@ private:
 				}
 				++position_;
 			}
-			else if (At(KW_NEW) || At(KW_DELETE))
-			{
-				++position_;
-				if (Match(OP_LSQUARE)) Expect(OP_RSQUARE);
-			}
-			else if (Match(OP_LPAREN)) Expect(OP_RPAREN);
-			else if (Match(OP_LSQUARE)) Expect(OP_RSQUARE);
-			else if (position_ < tokens_.size() &&
-				IsOperatorNameToken(tokens_[position_].kind))
-				++position_;
-			else
+			else if (!ParseOperatorFunctionSuffix())
 			{
 				if (!ParseConversionTypeName())
 				{
@@ -438,11 +461,8 @@ private:
 				if (At(KW_OPERATOR) && allow_operator)
 				{
 					++position_;
-					if (At(KW_NEW) || At(KW_DELETE) ||
-						(position_ < tokens_.size() &&
-						 IsOperatorNameToken(tokens_[position_].kind)))
-						++position_;
-					else if (!ParseConversionTypeName())
+					if (!ParseOperatorFunctionSuffix() &&
+						!ParseConversionTypeName())
 					{
 						Rollback(mark);
 						return false;
@@ -961,6 +981,9 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 					static_cast<std::uint16_t>(KW_OPERATOR)) conversion = i;
 			const bool conversion_name = conversion + 1 < name_last &&
 				!IsOperatorNameToken(tokens_[conversion + 1].kind) &&
+				!(tokens_[conversion + 1].kind == kRShiftFirstToken &&
+				  conversion + 2 < name_last &&
+				  tokens_[conversion + 2].kind == kRShiftSecondToken) &&
 				tokens_[conversion + 1].kind !=
 					static_cast<std::uint16_t>(OP_LPAREN) &&
 				tokens_[conversion + 1].kind !=

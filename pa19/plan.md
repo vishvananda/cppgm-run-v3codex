@@ -13,7 +13,10 @@ names never drive specialization, while semantic-only serialization preserves
 the PA10 public dump contract. Class-specialization entities and
 function-specialization bindings own slices in one canonical `TypeId` argument
 pool. Function-local named types retain their enclosing canonical function
-binding for specialization, emission, and ABI identity. Enum-only operator
+binding for specialization, emission, and ABI identity. Canonical operator-ids
+survive split close-angle tokens; member-function patterns retain class owner
+and access; dependent function results use one non-deduced shape until replay.
+Enum-only operator
 candidates use a compact index keyed by `(ScopeId,
 NameId, enum TypeId, operand)`; visibility and associated-scope edges choose
 index owners before exact candidates are ranked. Selected enum conversions and
@@ -28,30 +31,29 @@ stages.
 
 ## Current Failure Map
 
-Canonical local specialization identity raises the combined PA19 result to
-274/298. The exact remaining 24-test set groups as follows:
+Retained callable/member replay raises the combined PA19 result to 280/298.
+The exact remaining 18-test set groups as follows:
 
 | Failures | Shared behavior | Owner |
 |---:|---|---|
 | 7 scalar LowIR mismatches | Integral/null literals lose the selected conversion materialization policy after template replay. | PA12 conversion facts and PA15 typed scalar lowering |
 | 3 demand/lifetime mismatches | Empty namespace initialization, template vptr initialization, and unused enum-ADL body emission. | PA19 demand states and PA16-PA18 lifetime lowering |
 | 3 body/ABI mismatches | Replayed constructor body, constant-condition presentation, and qualified RTTI spelling. | PA12 replay facts and PA15/PA18 lowering |
-| 6 callable/member exits | Retained member templates, operator sets, static function access, dependent call shapes, and member aliases. | PA10 retention and PA12/PA16 selected-call facts |
 | 2 default-demand exits | Class defaults in base initialization and function default arguments. | PA19 argument environments and demand owners |
 | 2 unsupported-declaration exits | Dependent alignment and variable-template partial syntax. | PA10/PA19 declaration patterns |
 | 1 allocation exit | Inherited class `operator new` reaches an unlowered semantic node. | PA12 selection and PA16 allocation lowering |
 
 ## Active Checkpoint
 
-Complete retained callable/member replay for the six remaining exit failures.
-PA10 retained call/member nodes supply source identity; PA19 indexed ordinary,
-using, ADL, and template sets supply only eligible bindings; PA12/PA16 selection
-owns the chosen function, object category, and conversion facts consumed by
-PA15. This targets `spec.md` sections 2-6 and 9: no global candidate scan or
-lowering-time lookup, one memoized specialization per complete key, and
-O(required candidates plus argument conversions) selection. Validate the six
-callable/member failures, the complete PA19 report, PA1-PA18, file audit, and a
-candidate-count scaling probe.
+Unify selected scalar-conversion replay for the seven remaining scalar LowIR
+mismatches. PA12 owns canonical selected conversion and value-category facts;
+PA19 specialization replay transfers those node/binding facts; PA15 consumes
+them for literal, null, reference, and contextual-bool lowering. The data flow
+is `retained expression -> specialization environment -> selected conversion ->
+typed operand`, targeting `spec.md` sections 3-6 and 9 with no lowering-time
+lookup and O(replayed nodes plus selected conversions) work. Validate all seven
+mismatches, the complete PA19 report, PA1-PA18, file audit, and a repeated-scalar
+replay scaling probe.
 
 ## Performance Evidence
 
@@ -60,6 +62,7 @@ candidate-count scaling probe.
 | 128/256/512 paired local-relational and qualified-shadow uses | Tokens 3,911/7,751/15,431; syntax nodes 4,942/9,806/19,534; scans 128/256/512 at exactly two tokens with none failed; parser storage 33,640/66,664/132,712 bytes; median parse time 1.176/2.336/4.716 ms. |
 | 128/256/512 structural `result_traits<F, F (*)()>::type` uses | Requests 128/256/512 with 127/255/511 hits; canonical types stay at 36, layouts at two, member visits at one, and lookup misses at three; semantic nodes 133/261/517, storage 125,486/236,974/464,046 bytes, and median semantic time 1.246/2.329/4.531 ms. |
 | 64/128/256 same-spelling function-local type specializations | Requests and demand pushes 64/128/256 with no duplicate completions; semantic nodes 837/1,669/3,333, typed storage 217,243/434,323/868,627 bytes, and semantic time 4.484/10.485/17.659 ms. |
+| 32/64/128 indexed member-template candidates | Candidate visits are exactly 32/64/128 with one viable overload and four conversions; specialization requests 35/67/131, peak semantic storage 336,615/659,683/1,305,887 bytes, and median semantic time 1.425/4.274/8.103 ms. |
 
 ## Completed Checkpoints
 
@@ -86,3 +89,4 @@ candidate-count scaling probe.
 | Canonical enum builtin competition and class default arguments | Pass after audit fix | Exact enum-parameter index and filtering, comma fallback, typed conversion and source-selected constructor facts; PA19 261 to 264 plus 2 audit regressions, constant unrelated-candidate work, linear required work, prior 1713/1713 |
 | Declaration-owned local and qualified type replay | Pass after audit fix | Scoped parser facts, retained type-argument trees, interned qualified/current-class identity, canonical function-pointer specialization, contextual bool conversion, and alias-inherited constructors; PA19 266 to 272 across six cases, bounded parser scans, one-completion specialization probe, prior 1713/1713 |
 | Canonical local-type specialization and emission identity | Pass | Collision-free compact specialization scope keys, function-owned local type identity, typed emission keys and structured local-type ABI facts; PA19 272 to 274, two focused cases, linear specialization probe, prior 1713/1713, audit pass |
+| Canonical retained callable/member replay | Pass | Canonical `>>`/qualified `[]` ids, indexed member-template owner/access replay, adjusted parameter bindings, static callable lowering, deferred dependent results, forwarding-reference deduction and constrained tie-breaking; PA19 274 to 280, six focused cases, linear candidate probe, prior 1713/1713, audit pass |
