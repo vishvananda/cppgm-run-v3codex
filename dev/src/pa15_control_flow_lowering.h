@@ -1,0 +1,89 @@
+#pragma once
+
+#include "pa15_lowir_model.h"
+
+#include <limits>
+#include <stdexcept>
+#include <string>
+
+namespace cppgm
+{
+namespace pa15_lowering_detail
+{
+
+using namespace pa15_lowir_detail;
+
+template <class Derived>
+class ControlFlowLowering
+{
+protected:
+	void ResetControlFlowReachability()
+	{
+		static_cast<Derived&>(*this).block_incoming_.clear();
+	}
+
+	BlockId AddBlock(const std::string& label)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (derived.function_->blocks.size() >= kNoLowId)
+			throw std::runtime_error("too many PA15 LowIR blocks");
+		const BlockId block = static_cast<BlockId>(
+			derived.function_->blocks.size());
+		derived.function_->blocks.push_back(Block(label));
+		derived.block_incoming_.push_back(0);
+		return block;
+	}
+
+	void SelectBlock(BlockId block)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		derived.current_block_ = block;
+		if (!derived.function_->blocks[block].selected)
+		{
+			derived.function_->blocks[block].selected = true;
+			derived.function_->block_order.push_back(block);
+		}
+	}
+
+	void RecordBlockIncoming(BlockId block)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (block >= derived.block_incoming_.size())
+			throw std::logic_error("CFG edge has no target block");
+		if (derived.block_incoming_[block] ==
+			std::numeric_limits<std::uint32_t>::max())
+			throw std::runtime_error("too many incoming CFG edges");
+		++derived.block_incoming_[block];
+	}
+
+	bool HasBlockIncoming(BlockId block) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		return block < derived.block_incoming_.size() &&
+			derived.block_incoming_[block] != 0;
+	}
+
+	void EmitJump(BlockId target)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		Instruction jump(Instruction::JUMP);
+		jump.target = target;
+		derived.Emit(jump);
+		RecordBlockIncoming(target);
+	}
+
+	void EmitBranch(const Operand& condition, BlockId yes, BlockId no)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		Instruction branch(Instruction::BRANCH);
+		branch.first = condition;
+		branch.target = yes;
+		branch.alternate = no;
+		derived.Emit(branch);
+		RecordBlockIncoming(yes);
+		RecordBlockIncoming(no);
+	}
+};
+
+}
+}

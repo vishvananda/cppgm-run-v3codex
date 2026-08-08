@@ -17,32 +17,34 @@ remains demand-driven and leaves virtual dispatch to PA18.
 
 ## Current Failure Map
 
-Latest audit: **235/241** PA17 tests pass, up from this turn's **230/241**
-baseline; all earlier stages and file audit pass. The complete current
-6-test failure set is grouped without overlap:
+Latest audit: **237/241** PA17 tests pass, up from this turn's **230/241**
+baseline; PA1-PA16 are 1436/1436 and file audit passes. The complete current
+4-test failure set is grouped without overlap:
 
 | Failures | Shared behavior | Primary owner |
 | ---: | --- | --- |
 | 1 | bit-field constructor read/modify/write presentation order | PA16 constructor storage lowering |
-| 2 | shadowed local identity and cleanup rebinding across control flow | PA12 scope facts + PA17 lifetime lowering |
-| 1 | converting-constructor staging for a selected by-value parameter | PA12 call conversion + PA17 argument lowering |
-| 1 | redundant integer-immediate conversion after class-pointer subtraction | PA15 scalar lowering |
+| 2 | redundant integer-immediate conversion in widened comparisons | PA15 scalar lowering |
 | 1 | functional class cast used as the current member-call object | PA12 expression analysis |
 
 ## Active Checkpoint
 
-**Shadowed automatic-object identity and cleanup closure (2 failures).** Apply
-`spec.md` sections 2, 8, and 9: PA12 scope facts assign each declaration a
-stable binding; PA17 storage and lifetime lowering must index slots and cleanup
-obligations by that binding across nested control flow. Data flows `lexical
-declaration -> binding-owned storage/lifetime fact -> branch/return cleanup ->
-LowIR`. Expected work is O(declarations + traversed cleanup edges + emitted
-actions), with direct binding lookups and no name-based rescan.
+**Typed scalar and bit-field emission normalization (3 failures).** Apply
+`spec.md` sections 3, 6, and 9: PA12-retained conversion facts determine the
+typed operands once; PA15 scalar lowering must fold representable integer
+immediates directly to the selected common type, while PA16 bit-field lowering
+must preserve source-value evaluation before destination read/modify/write.
+Data flows `selected conversion -> typed operand -> comparison` and
+`initializer value -> masked value -> destination address/RMW -> LowIR`.
+Owners are scalar conversion lowering and constructor storage lowering;
+expected work is O(expression nodes + initialized bit-fields + emitted
+instructions), with no candidate, type, or instruction rescans.
 
-Validate both shadowing failures plus nested condition, early-return,
-non-shadowed class-local, and loop cleanup controls; then full PA17, through
-PA16, and file audit. Measure 16/32/64 nested scopes; binding probes, cleanup
-visits, retained storage, and emitted actions must scale linearly.
+Validate all three failures plus signed/unsigned width, nonconstant conversion,
+multi-bit-field, assignment, and constructor controls; then full PA17, through
+PA16, and file audit. Measure 16/32/64 widened constant comparisons and
+bit-field initializers; conversion probes, lowering nodes, storage, and emitted
+instructions must remain linear.
 
 ## Performance Evidence
 
@@ -64,6 +66,12 @@ visits, retained storage, and emitted actions must scale linearly.
   35,113/67,609/132,601 typed bytes. Nine-run semantic/lowering/render medians
   were 0.422/0.186/0.065, 0.655/0.259/0.118, and 1.080/0.418/0.193 ms;
   conversion, graph, storage, emission, and phase time remain linear.
+- Function-exit ownership at 16/32/64 by-value parameters plus independent
+  switch arms recorded 32/64/128 cleanup visits, 18/34/66 binding probes and
+  CFG edges, 23/39/71 blocks, 46/78/142 instructions, and
+  17,507/29,363/53,075 typed bytes. Nine-run semantic/lowering/render medians
+  were 0.321/0.244/0.057, 0.456/0.331/0.079, and 0.706/0.492/0.119 ms; owned
+  cleanup, reachability facts, storage, emission, and phase time are linear.
 
 ## Completed Checkpoints
 
@@ -90,3 +98,4 @@ visits, retained storage, and emitted actions must scale linearly.
 | Class-prvalue destination propagation | 224/241 -> 230/241 | Focus 6/6 plus controls; direct/indirect and cleanup audit fixes; through PA16; linear forwarding probe |
 | Synthesized construction and move classification | 230/241 -> 233/241 | Focus 3/3 plus six controls; through PA16; file audit; linear subobject probe |
 | Non-braced aggregate appertainment and namespace copies | 233/241 -> 235/241 | Focus 6/6 plus four PA16 controls; linear 16/32/64 probe |
+| Function-exit identity and reachability closure | 235/241 -> 237/241 | Focus 6/6; binding/CFG 16/32/64 probe |

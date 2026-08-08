@@ -2490,6 +2490,7 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 		const std::uint32_t parameter_node = MakeDump(DUMP_PARAMETER,
 			parameter.function_type, VALUE_NONE, parameter.name, parameter_binding);
 		dump_.Add(output_node, parameter_node);
+		AddLifetimeObligation(function_scope, parameter_binding, parameter.function_type, false);
 	}
 	const TypeId previous_return = current_return_type_;
 	const BindingId previous_function = current_function_context_;
@@ -2522,7 +2523,7 @@ void SemanticAnalyzer::AnalyzeCompound(NodeId node, ScopeId scope,
 			AnalyzeDeclaration(child, block, compound, true);
 		else AnalyzeStatement(child, block, compound);
 	}
-	AppendScopeDestructionActions(block, compound, scope);
+	AppendScopeDestructionActions(block, compound, CompoundCleanupStop(scope));
 }
 
 void SemanticAnalyzer::AnalyzeSubstatement(NodeId node, ScopeId scope,

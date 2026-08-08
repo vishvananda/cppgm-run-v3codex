@@ -397,6 +397,9 @@ protected:
 			values.Push(static_cast<std::int64_t>(i));
 		derived.AttachSwitchCases(&dispatch, values, cleanup_blocks);
 		derived.Emit(dispatch);
+		derived.RecordBlockIncoming(dispatch.target);
+		for (std::size_t i = 0; i < cleanup_blocks.size(); ++i)
+			derived.RecordBlockIncoming(cleanup_blocks[i]);
 		for (std::size_t i = 0; i < action_count; ++i)
 		{
 			derived.SelectBlock(cleanup_blocks[i]);

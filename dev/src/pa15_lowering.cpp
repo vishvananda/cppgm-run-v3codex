@@ -1,5 +1,6 @@
 #include "pa15_lowering.h"
 #include "pa15_graph_lowering.h"
+#include "pa15_control_flow_lowering.h"
 #include "pa15_lowering_abi.h"
 #include "pa15_lowering_support.h"
 #include "pa15_source_type_lowering.h"
@@ -38,6 +39,7 @@ using namespace pa15_lowering_support;
 const std::size_t kAggregateProjectionReplayLimit = 8;
 typedef SmallSequence<BindingId, kAggregateProjectionReplayLimit> AggregatePath;
 class GraphLowerer :
+	private pa15_lowering_detail::ControlFlowLowering<GraphLowerer>,
 	private pa17_lowering_detail::ValueBoundaryLowering<GraphLowerer>,
 	private pa17_lowering_detail::SpecialMemberLowering<GraphLowerer>,
 	private pa16_lowering_detail::AssignmentLowering<GraphLowerer>,
@@ -116,6 +118,7 @@ public:
 	}
 
 private:
+	friend class pa15_lowering_detail::ControlFlowLowering<GraphLowerer>;
 	friend class pa17_lowering_detail::ValueBoundaryLowering<GraphLowerer>;
 	friend class pa17_lowering_detail::SpecialMemberLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::AssignmentLowering<GraphLowerer>;
@@ -646,11 +649,7 @@ private:
 			compare.first = guard_value;
 			compare.second = Operand(0, LowI64());
 			Emit(compare);
-			Instruction branch(Instruction::BRANCH);
-			branch.first = initialized;
-			branch.target = done;
-			branch.alternate = run;
-			Emit(branch);
+			EmitBranch(initialized, done, run);
 			SelectBlock(run);
 			lowering_namespace_object_ = true;
 			LowerStatementNode(action.variable);
@@ -682,6 +681,7 @@ private:
 		temp_counter_ = 0;
 		block_counter_ = 0;
 		generated_slot_ordinal_ = 0;
+		ResetControlFlowReachability();
 		ResetFullExpressionFunctionState();
 		break_targets_.clear();
 		continue_targets_.clear();
@@ -790,6 +790,7 @@ private:
 		assigned_names_.Clear();
 		slot_name_counts_.Clear();
 		generated_slot_ordinal_ = 0;
+		ResetControlFlowReachability();
 		ResetLifetimeFunctionState();
 		ResetFullExpressionFunctionState();
 		parameter_slot_index_ = current_indirect_result_ ? 1 : 0;
@@ -835,6 +836,13 @@ private:
 			}
 			else if (result.result.kind == LOW_VOID)
 				Emit(Instruction(Instruction::RETURN_VOID));
+			else if (!HasBlockIncoming(current_block_))
+			{
+				Instruction instruction(Instruction::RETURN_VALUE);
+				instruction.type = result.result;
+				instruction.first = Operand(0, result.result);
+				Emit(instruction);
+			}
 			else throw std::runtime_error("non-void function has no return");
 		}
 		if (stats_)
@@ -850,25 +858,6 @@ private:
 	}
 
 	Block& CurrentBlock() { return function_->blocks[current_block_]; }
-
-	BlockId AddBlock(const std::string& label)
-	{
-		if (function_->blocks.size() >= kNoLowId)
-			throw std::runtime_error("too many PA15 LowIR blocks");
-		const BlockId block = static_cast<BlockId>(function_->blocks.size());
-		function_->blocks.push_back(Block(label));
-		return block;
-	}
-
-	void SelectBlock(BlockId block)
-	{
-		current_block_ = block;
-		if (!function_->blocks[block].selected)
-		{
-			function_->blocks[block].selected = true;
-			function_->block_order.push_back(block);
-		}
-	}
 
 	std::string NewLabel(const std::string& prefix)
 	{
@@ -1474,11 +1463,8 @@ private:
 		const Operand left = LowerCondition(children[0]);
 		if (full_expression_cleanup_active_)
 			PauseFullExpressionCleanupSegment();
-		Instruction branch(Instruction::BRANCH);
-		branch.first = left;
-		branch.target = conjunction ? rhs_block : short_block;
-		branch.alternate = conjunction ? short_block : rhs_block;
-		Emit(branch);
+		EmitBranch(left, conjunction ? rhs_block : short_block,
+			conjunction ? short_block : rhs_block);
 		SelectBlock(rhs_block);
 		const Operand right = LowerCondition(children[1]);
 		const Operand truth = Temp(LowI64());
@@ -1497,18 +1483,14 @@ private:
 		Emit(rhs_store);
 		if (full_expression_cleanup_active_)
 			PauseFullExpressionCleanupSegment();
-		Instruction rhs_jump(Instruction::JUMP);
-		rhs_jump.target = end_block;
-		Emit(rhs_jump);
+		EmitJump(end_block);
 		SelectBlock(short_block);
 		Instruction short_store(Instruction::STORE);
 		short_store.type = LowI64();
 		short_store.first = Operand(conjunction ? 0 : 1, LowI64());
 		short_store.second = slot;
 		Emit(short_store);
-		Instruction short_jump(Instruction::JUMP);
-		short_jump.target = end_block;
-		Emit(short_jump);
+		EmitJump(end_block);
 		SelectBlock(end_block);
 		const Operand result = Temp(LowU8());
 		Instruction load(Instruction::LOAD);
@@ -1792,30 +1774,21 @@ private:
 		const BlockId then_block = AddBlock(NewLabel("cond_then"));
 		const BlockId else_block = AddBlock(NewLabel("cond_else"));
 		const BlockId end_block = AddBlock(NewLabel("cond_end"));
-		const Operand condition = LowerCondition(children[0]);
-		Instruction branch(Instruction::BRANCH);
-		branch.first = condition;
-		branch.target = then_block;
-		branch.alternate = else_block;
-		Emit(branch);
+		EmitBranch(LowerCondition(children[0]), then_block, else_block);
 		SelectBlock(then_block);
 		Instruction yes_store(Instruction::STORE);
 		yes_store.type = type;
 		yes_store.first = LowerValue(children[1], type);
 		yes_store.second = slot;
 		Emit(yes_store);
-		Instruction yes_jump(Instruction::JUMP);
-		yes_jump.target = end_block;
-		Emit(yes_jump);
+		EmitJump(end_block);
 		SelectBlock(else_block);
 		Instruction no_store(Instruction::STORE);
 		no_store.type = type;
 		no_store.first = LowerValue(children[2], type);
 		no_store.second = slot;
 		Emit(no_store);
-		Instruction no_jump(Instruction::JUMP);
-		no_jump.target = end_block;
-		Emit(no_jump);
+		EmitJump(end_block);
 		SelectBlock(end_block);
 		const Operand result = Temp(type);
 		Instruction load(Instruction::LOAD);
@@ -1852,30 +1825,21 @@ private:
 		const BlockId then_block = AddBlock(NewLabel("condaddr_then"));
 		const BlockId else_block = AddBlock(NewLabel("condaddr_else"));
 		const BlockId end_block = AddBlock(NewLabel("condaddr_end"));
-		const Operand condition = LowerCondition(children[0]);
-		Instruction branch(Instruction::BRANCH);
-		branch.first = condition;
-		branch.target = then_block;
-		branch.alternate = else_block;
-		Emit(branch);
+		EmitBranch(LowerCondition(children[0]), then_block, else_block);
 		SelectBlock(then_block);
 		Instruction yes_store(Instruction::STORE);
 		yes_store.type = LowPtr();
 		yes_store.first = AddressOfStorage(LowerStorage(children[1]));
 		yes_store.second = slot;
 		Emit(yes_store);
-		Instruction yes_jump(Instruction::JUMP);
-		yes_jump.target = end_block;
-		Emit(yes_jump);
+		EmitJump(end_block);
 		SelectBlock(else_block);
 		Instruction no_store(Instruction::STORE);
 		no_store.type = LowPtr();
 		no_store.first = AddressOfStorage(LowerStorage(children[2]));
 		no_store.second = slot;
 		Emit(no_store);
-		Instruction no_jump(Instruction::JUMP);
-		no_jump.target = end_block;
-		Emit(no_jump);
+		EmitJump(end_block);
 		SelectBlock(end_block);
 		return LoadStorage(slot, LowPtr());
 	}
@@ -2640,13 +2604,6 @@ private:
 		return kNoDumpEdge;
 	}
 
-	void EmitJump(BlockId target)
-	{
-		Instruction jump(Instruction::JUMP);
-		jump.target = target;
-		Emit(jump);
-	}
-
 	BlockId LabelBlock(NameId name)
 	{
 		std::uint32_t found = kNoLowId;
@@ -2654,15 +2611,6 @@ private:
 		const BlockId block = AddBlock(NewLabel("goto"));
 		label_blocks_.Insert(name, block);
 		return block;
-	}
-
-	void EmitBranch(const Operand& condition, BlockId yes, BlockId no)
-	{
-		Instruction branch(Instruction::BRANCH);
-		branch.first = condition;
-		branch.target = yes;
-		branch.alternate = no;
-		Emit(branch);
 	}
 
 	void CollectSwitchCases(std::uint32_t node, SwitchCases* cases) const
@@ -2728,6 +2676,9 @@ private:
 		}
 		AttachSwitchCases(&instruction, case_values, case_targets);
 		Emit(instruction);
+		RecordBlockIncoming(default_target);
+		for (std::size_t i = 0; i < case_targets.size(); ++i)
+			RecordBlockIncoming(case_targets[i]);
 		break_targets_.push_back(end);
 		StatementTask after(STATEMENT_SWITCH_AFTER_BODY);
 		after.first = end;
@@ -2907,11 +2858,7 @@ private:
 				return;
 			}
 		}
-		Instruction branch(Instruction::BRANCH);
-		branch.first = LowerCondition(node);
-		branch.target = true_block;
-		branch.alternate = false_block;
-		Emit(branch);
+		EmitBranch(LowerCondition(node), true_block, false_block);
 	}
 
 	const SemanticGraphView& graph_;
@@ -2945,6 +2892,7 @@ private:
 	std::vector<SlotId> generated_slots_;
 	FlatIdMap temporary_lifetime_slots_;
 	std::vector<BlockId> switch_case_blocks_;
+	std::vector<std::uint32_t> block_incoming_;
 	std::vector<SymbolId> aggregate_helper_symbols_;
 	std::vector<BlockId> break_targets_;
 	std::vector<BlockId> continue_targets_;

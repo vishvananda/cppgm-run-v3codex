@@ -436,7 +436,9 @@ private:
 	void AddDefaultConstructor(std::uint32_t variable, BindingId binding,
 		TypeId type);
 	void AddDestructorSubobjectActions(EntityId entity, std::uint32_t body);
-	void AddLifetimeObligation(ScopeId scope, BindingId object, TypeId type);
+	ScopeId CompoundCleanupStop(ScopeId scope) const;
+	void AddLifetimeObligation(ScopeId scope, BindingId object, TypeId type,
+		bool allow_elision = true);
 	void AddTemporaryLifetimeObligation(ScopeId scope,
 		std::uint32_t temporary);
 	bool CollectTemporaryObjects(std::uint32_t node,

@@ -2561,8 +2561,14 @@ bool SemanticAnalyzer::IsElidableAutomaticDestructor(
 	return IsEmptyDestructorChain(destructor);
 }
 
+ScopeId SemanticAnalyzer::CompoundCleanupStop(ScopeId scope) const
+{
+	return program_->KindOfScope(scope) == SCOPE_FUNCTION ?
+		scope_parents_[scope] : scope;
+}
+
 void SemanticAnalyzer::AddLifetimeObligation(ScopeId scope,
-	BindingId object, TypeId type)
+	BindingId object, TypeId type, bool allow_elision)
 {
 	const EntityId entity = DestructedEntity(type);
 	if (entity == kNoEntity) return;
@@ -2576,7 +2582,7 @@ void SemanticAnalyzer::AddLifetimeObligation(ScopeId scope,
 	const TypeKind object_kind = program_->types.Get(
 		program_->types.RemoveTopCv(type)).kind;
 	if (program_->entities[entity].trivial_destructor ||
-		(object_kind != TYPE_ARRAY &&
+		(allow_elision && object_kind != TYPE_ARRAY &&
 		 IsElidableAutomaticDestructor(destructor))) return;
 	if (scope_lifetimes_.size() <= scope)
 		scope_lifetimes_.resize(static_cast<std::size_t>(scope) + 1);
