@@ -28,9 +28,12 @@ struct RetainedScope
 	std::size_t parent;
 	std::unordered_map<NameId, std::uint8_t> names;
 	bool defer_unknown_members;
+	bool unmodeled_fixed_base;
 
-	RetainedScope(ScopeId semantic, std::size_t owner, bool defer)
-		: semantic_scope(semantic), parent(owner), defer_unknown_members(defer) {}
+	RetainedScope(ScopeId semantic, std::size_t owner, bool defer,
+		bool fixed_base)
+		: semantic_scope(semantic), parent(owner), defer_unknown_members(defer),
+		  unmodeled_fixed_base(fixed_base) {}
 };
 
 }
@@ -47,7 +50,7 @@ public:
 
 private:
 	std::size_t AddScope(ScopeId semantic_scope, std::size_t parent,
-		bool defer_unknown_members);
+		bool defer_unknown_members, bool unmodeled_fixed_base = false);
 	std::size_t AddChildScope(std::size_t parent, ScopeKind kind,
 		bool defer_unknown_members = false);
 	void DeclareParameter(std::size_t scope, NameId name);
@@ -55,6 +58,7 @@ private:
 		bool allow_existing = false);
 	std::uint8_t LookupLocal(std::size_t scope, NameId name) const;
 	bool DefersUnknownMembers(std::size_t scope) const;
+	bool HasUnmodeledFixedBase(std::size_t scope) const;
 	bool IsQualifiedMemberDefinition(NodeId node) const;
 	bool IsTypedef(NodeId specifiers) const;
 	bool HasBaseClass(NodeId node) const;
@@ -85,11 +89,11 @@ private:
 };
 
 std::size_t RetainedTemplateValidator::AddScope(ScopeId semantic_scope,
-	std::size_t parent, bool defer_unknown_members)
+	std::size_t parent, bool defer_unknown_members, bool unmodeled_fixed_base)
 {
 	const std::size_t index = scopes_.size();
 	scopes_.push_back(RetainedScope(semantic_scope, parent,
-		defer_unknown_members));
+		defer_unknown_members, unmodeled_fixed_base));
 	return index;
 }
 
@@ -141,6 +145,17 @@ bool RetainedTemplateValidator::DefersUnknownMembers(std::size_t scope) const
 	while (scope != std::numeric_limits<std::size_t>::max())
 	{
 		if (scopes_[scope].defer_unknown_members) return true;
+		scope = scopes_[scope].parent;
+	}
+	return false;
+}
+
+bool RetainedTemplateValidator::HasUnmodeledFixedBase(
+	std::size_t scope) const
+{
+	while (scope != std::numeric_limits<std::size_t>::max())
+	{
+		if (scopes_[scope].unmodeled_fixed_base) return true;
 		scope = scopes_[scope].parent;
 	}
 	return false;
@@ -358,8 +373,23 @@ void RetainedTemplateValidator::PredeclareClassMembers(NodeId node,
 
 void RetainedTemplateValidator::VisitClass(NodeId node, std::size_t scope)
 {
+	bool dependent_base = false;
+	const NodeId base_clause = analyzer_.FindChild(node, "base-clause");
+	if (base_clause != kNoNode)
+		for (std::uint32_t edge = analyzer_.arena_->FirstEdge(base_clause);
+			edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+		{
+			const NodeId base = analyzer_.arena_->EdgeChild(edge);
+			if (!analyzer_.arena_->IsTag(base, "base-specifier")) continue;
+			const NodeId name = analyzer_.FindChild(base, "base-name");
+			if (name != kNoNode && SpellingUsesTemplateParameter(
+				analyzer_.PayloadSource(name)))
+				dependent_base = true;
+		}
 	const std::size_t class_scope = AddChildScope(
 		scope, SCOPE_CLASS, HasBaseClass(node));
+	if (HasBaseClass(node) && !dependent_base)
+		scopes_[class_scope].unmodeled_fixed_base = true;
 	PredeclareClassMembers(node, class_scope);
 	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
 		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
@@ -505,7 +535,13 @@ void RetainedTemplateValidator::VisitIdExpression(NodeId node,
 	}
 	const LookupResult ordinary = analyzer_.program_->LookupName(
 		scopes_[scope].semantic_scope, name, LOOKUP_ORDINARY);
-	if (ordinary.ordinary != kNoBinding) return;
+	if (ordinary.ordinary != kNoBinding)
+	{
+		if (unknown_callee && !HasUnmodeledFixedBase(scope))
+			analyzer_.RecordRetainedCallLookup(node,
+				scopes_[scope].semantic_scope, spelling);
+		return;
+	}
 	const LookupResult type = analyzer_.program_->LookupName(
 		scopes_[scope].semantic_scope, name, LOOKUP_TYPE);
 	if (type.type != kNoType)
@@ -651,6 +687,55 @@ void SemanticAnalyzer::ValidateRetainedTemplateDefinition(NodeId target,
 	ScopeId scope, const std::vector<NameId>& parameters)
 {
 	RetainedTemplateValidator(*this, target, scope, parameters).Run();
+}
+
+void SemanticAnalyzer::RecordRetainedCallLookup(NodeId callee, ScopeId scope,
+	const std::string& spelling)
+{
+	EntityId naming_class = kNoEntity;
+	const std::vector<BindingId> functions =
+		FunctionCallCandidates(scope, spelling, &naming_class);
+	const std::vector<std::size_t> templates =
+		FindFunctionTemplates(scope, spelling);
+	// A mixed ordinary/template set needs template-parameter scope provenance
+	// as well as binding provenance. Leave that call on the existing replay
+	// path until both facts can be published atomically.
+	if (functions.empty() || !templates.empty()) return;
+	if (retained_call_lookup_states_.size() <= callee)
+	{
+		retained_call_lookup_states_.resize(
+			static_cast<std::size_t>(callee) + 1, 0);
+		retained_call_naming_classes_.resize(
+			static_cast<std::size_t>(callee) + 1, kNoEntity);
+	}
+	retained_call_lookup_states_[callee] = 1;
+	retained_call_naming_classes_[callee] = naming_class;
+	CompactIndexSequence& function_set =
+		retained_call_function_sets_.Ensure(callee);
+	for (std::size_t i = 0; i < functions.size(); ++i)
+		if (!function_set.Contains(functions[i]))
+			function_set.Push(functions[i]);
+}
+
+std::vector<BindingId> SemanticAnalyzer::RetainedFunctionCallCandidates(
+	NodeId callee, ScopeId scope, const std::string& spelling,
+	EntityId* naming_class, bool* retained_lookup)
+{
+	*retained_lookup = callee < retained_call_lookup_states_.size() &&
+		retained_call_lookup_states_[callee] != 0;
+	if (!*retained_lookup)
+		return FunctionCallCandidates(scope, spelling, naming_class);
+	*naming_class = retained_call_naming_classes_[callee];
+	std::vector<BindingId> result;
+	const CompactIndexSequence* retained_functions =
+		retained_call_function_sets_.Find(callee);
+	if (retained_functions)
+	{
+		result.reserve(retained_functions->Size());
+		for (std::size_t i = 0; i < retained_functions->Size(); ++i)
+			result.push_back(static_cast<BindingId>((*retained_functions)[i]));
+	}
+	return result;
 }
 
 }

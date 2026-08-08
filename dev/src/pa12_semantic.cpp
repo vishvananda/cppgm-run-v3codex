@@ -1182,8 +1182,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 			return ApplyTarget(result, target);
 		}
 		EntityId function_naming_class = kNoEntity;
-		std::vector<BindingId> candidates = FunctionCallCandidates(scope, spelling,
-			&function_naming_class);
+		bool retained_lookup = false;
+		std::vector<BindingId> candidates = RetainedFunctionCallCandidates(
+			direct_callee_syntax, scope, spelling, &function_naming_class, &retained_lookup);
 		for (std::size_t i = 0; i < argument_syntax.size(); ++i)
 			analyzed_arguments.push_back(
 				AnalyzeExpression(argument_syntax[i], scope));
@@ -1192,7 +1193,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 		const bool type_precedes_functions =
 			FunctionalCastPrecedesFunctions(
 				spelling, scope, cast_type, candidates);
-		if (!type_precedes_functions &&
+		if (!type_precedes_functions && !retained_lookup &&
 			!FindFunctionTemplates(scope, spelling).empty())
 		{
 			DeduceFunctionTemplates(scope, spelling, analyzed_arguments);
