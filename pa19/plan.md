@@ -36,26 +36,25 @@ stages.
 
 ## Current Failure Map
 
-Canonical default/base replay raises PA19 to 297/300 while preserving
-PA1-PA18. The exact remaining three-test set groups as follows:
+Indexed extension declaration retention raises PA19 to 299/300 while
+preserving PA1-PA18. The final failure is:
 
 | Failures | Shared behavior | Owner |
 |---:|---|---|
-| 2 extension declarations | Dependent GNU alignment and variable-template partial syntax. | PA10/PA19 declaration patterns |
 | 1 allocation lowering | Inherited class `operator new` reaches an unlowered semantic node. | PA12 selection and PA16 allocation lowering |
 
 ## Active Checkpoint
 
-Retain the remaining extension declaration shapes: dependent GNU `__alignof`
-inside class-template alignment and variable-template declarations with a
-defaulted parameter and partial specialization. PA10 owns lossless syntax;
-PA19 owns retained declaration patterns and specialization-time type/alignment
-facts. The flow is `one syntax region -> declaration classification -> retained
-pattern/default frame -> demanded semantic fact`, aligned with `spec.md`
-sections 1-4: parsing remains iterative, source is not reparsed, and lookup is
-canonical rather than spelling-driven. Expected work is O(declaration syntax
-plus demanded specialization facts). Validate both failures, PA19, PA1-PA18,
-file audit, and repeated extension-declaration scaling.
+Complete inherited allocation selection and lowering for a structured nested
+class-template type. PA19 owns specialization completion and canonical nested
+type identity; PA12 owns inherited static `operator new` lookup and the selected
+new-expression fact; PA16 owns typed allocation-call/object lowering. The flow
+is `nested specialization -> completed base relation -> selected allocation
+binding -> DUMP_NEW_EXPRESSION -> typed LowIR`, aligned with `spec.md` sections
+2-6: lookup precedes lowering, selected bindings are canonical, and lowering
+does not reconstruct qualified source names. Expected work is O(base depth plus
+selected allocation arguments), with indexed member lookup. Validate the final
+failure, all PA19 tests, PA1-PA18, file audit, and an inheritance-depth probe.
 
 ## Performance Evidence
 
@@ -68,6 +67,7 @@ file audit, and repeated extension-declaration scaling.
 | 128/256/512 mixed scalar/control replay operations, audit rerun | Semantic nodes 2,069/4,117/8,213; lowered nodes 1,421/2,829/5,645; conversion checks 1,288/2,568/5,128; peak storage 1,165,394/2,318,866/4,625,810 bytes; five-run median semantic-plus-lowering time 6.515/12.769/25.157 ms. |
 | 16/32/64 polymorphic specializations, static objects, and unused inline definitions | Requests 16/32/64; demand pushes 33/65/129; semantic nodes 279/551/1,095; lowered nodes 83/163/323; emitted functions 50/98/194 (the 16/32/64 unused inline bodies stay absent); globals 64/128/256; typed storage 165,813/331,285/662,229 bytes; five-run median semantic-plus-lowering time 2.469/4.452/8.442 ms. |
 | 32/64/128 nested class-default/base-constructor levels | Requests and base-action visits are 32/64/128; demand pushes are 33/65/129; semantic nodes 335/655/1,295 and instructions 265/521/1,033. Output grows 26,223/77,599/257,151 bytes with required nested ABI spellings; five-run median semantic/lowering time is 2.634/4.473, 5.868/14.832, and 15.068/54.327 ms, while canonical replay work remains linear. |
+| 32/64/128 GNU-aligned specializations plus primary/partial variable-template pairs | Tokens 2,058/4,106/8,202; layouts and specialization requests 32/64/128; lookup-scope visits 96/192/384; semantic nodes 357/709/1,413; typed storage 29,571/58,211/115,491 bytes. Five-run median semantic/lowering time is 2.528/0.256, 5.032/0.372, and 9.736/0.568 ms. |
 
 ## Completed Checkpoints
 
@@ -98,3 +98,4 @@ file audit, and repeated extension-declaration scaling.
 | Selected scalar/control replay | Pass after audit fix | Local source/target, constant, and template-layout conversion keys; literal-owned pointer null provenance; bool/narrowing and direct constant branches; PA19 280 to 288 plus two audit controls, linear mixed replay evidence, prior 1713/1713 |
 | Demand-owned inline and polymorphic static/ABI lowering | Pass | Explicit inline emission demand, deferred-completion fact, canonical RTTI type encoding, and typed static vptr data; PA19 290 to 294 across four cases, linear demand/ABI probe, prior 1713/1713, audit pass |
 | Canonical default and base-constructor replay | Pass | Pattern-owned required arity, structured template-id base resolution, direct derived/base reference casts, selected constructor ABI-pair demand, and empty-base copy lowering; PA19 294 to 297 across three cases, nested replay probe, prior 1713/1713, audit pass |
+| Indexed extension declaration retention | Pass | GNU `__alignof` token/trait replay and indexed opaque variable-template primary/partial patterns with declarator-owner classification; PA19 297 to 299 across two cases plus one classifier regression, linear declaration probe, prior 1713/1713, audit pass |

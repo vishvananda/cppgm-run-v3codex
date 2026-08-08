@@ -742,7 +742,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 	if (arena_->IsTag(node, "sizeof-expression"))
 		return ApplyTarget(AnalyzeSizeof(node, scope), target);
 	if (arena_->IsTag(node, "type-trait-expression") &&
-		PayloadSource(node) == "alignof")
+		(PayloadSource(node) == "alignof" || PayloadSource(node) == "__alignof"))
 		return ApplyTarget(AnalyzeSizeof(node, scope), target);
 	if (arena_->IsTag(node, "braced-init-list"))
 		return AnalyzeBracedInit(node, scope, target);
@@ -1817,7 +1817,6 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 				FindChild(parameter, "default-template-argument"));
 		}
 	}
-
 	NodeId target = kNoNode;
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
@@ -1836,6 +1835,7 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 		AnalyzeClassTemplate(target, scope, parameters, defaults);
 		return;
 	}
+	if (target != kNoNode && RetainVariableTemplate(target, scope, parameters, defaults)) return;
 	for (std::size_t i = 0; i < parameters.size(); ++i)
 		if (parameters[i] == 0)
 			throw std::runtime_error("unnamed function template parameter");

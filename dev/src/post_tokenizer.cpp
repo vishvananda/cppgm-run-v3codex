@@ -39,7 +39,7 @@ const SimpleEntry kSimpleEntries[] = {
 	{"==", OP_EQ}, {">", OP_GT}, {">=", OP_GE},
 	{">>", OP_RSHIFT}, {">>=", OP_RSHIFTASS}, {"?", OP_QMARK},
 	{"[", OP_LSQUARE}, {"]", OP_RSQUARE}, {"^", OP_XOR},
-	{"^=", OP_XORASS}, {"alignas", KW_ALIGNAS},
+	{"^=", OP_XORASS}, {"__alignof", KW_ALIGNOF}, {"alignas", KW_ALIGNAS},
 	{"alignof", KW_ALIGNOF}, {"and", OP_LAND},
 	{"and_eq", OP_BANDASS}, {"asm", KW_ASM}, {"auto", KW_AUTO},
 	{"bitand", OP_AMP}, {"bitor", OP_BOR}, {"bool", KW_BOOL},

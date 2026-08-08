@@ -750,6 +750,77 @@ bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,
 	return true;
 }
 
+bool SemanticAnalyzer::RetainVariableTemplate(NodeId declaration,
+	ScopeId scope, const std::vector<NameId>& parameters,
+	const std::vector<NodeId>& defaults)
+{
+	if (!arena_->IsTag(declaration, "simple-declaration")) return false;
+	const NodeId list = FindChild(declaration, "init-declarator-list");
+	if (list == kNoNode) return false;
+	NodeId item = kNoNode;
+	for (std::uint32_t edge = arena_->FirstEdge(list); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		if (item != kNoNode)
+			throw std::runtime_error(
+				"variable template must declare one variable");
+		item = arena_->EdgeChild(edge);
+	}
+	const NodeId declarator = item == kNoNode ? kNoNode :
+		FindChild(item, "declarator");
+	if (declarator == kNoNode) return false;
+	NodeId named_declarator = declarator;
+	while (FindChild(named_declarator, "identifier") == kNoNode)
+	{
+		const NodeId nested = FindChild(named_declarator, "nested-declarator");
+		named_declarator = nested == kNoNode ? kNoNode :
+			FindChild(nested, "declarator");
+		if (named_declarator == kNoNode) break;
+	}
+	if (named_declarator != kNoNode &&
+		FindChild(named_declarator, "parameter-clause") != kNoNode) return false;
+	const NamePath path = DeclaratorNamePath(declarator);
+	if (path.Empty()) throw std::runtime_error("unnamed variable template");
+	const ScopeId owner = ResolveOwner(scope, path);
+	if (owner == kNoScope)
+		throw std::runtime_error("variable template owner not found");
+	std::string terminal = program_->names.Get(path.Last());
+	const std::size_t angle = terminal.find('<');
+	const bool partial = angle != std::string::npos;
+	if (partial) terminal.erase(angle);
+	if (terminal.empty())
+		throw std::runtime_error("invalid variable template name");
+	const NameId name = program_->names.Intern(terminal);
+	const std::uint64_t key =
+		(static_cast<std::uint64_t>(owner) << 32) | name;
+	const CompactIndexSequence* related = variable_template_sets_.Find(key);
+	bool has_primary = false;
+	if (related)
+		for (std::size_t i = 0; i < related->Size(); ++i)
+			if (!variable_templates_[(*related)[i]].partial_specialization)
+				has_primary = true;
+	if (partial && !has_primary)
+		throw std::runtime_error(
+			"variable template partial specialization has no primary");
+	VariableTemplatePattern pattern;
+	pattern.owner = owner;
+	pattern.lexical_scope = scope;
+	pattern.name = name;
+	pattern.declaration = declaration;
+	pattern.specifiers = FindChild(declaration, "decl-specifier-seq");
+	pattern.declarator = declarator;
+	pattern.initializer = FindChild(item, "initializer");
+	pattern.type_parameters = parameters;
+	pattern.default_arguments = defaults;
+	pattern.partial_specialization = partial;
+	const std::size_t index = variable_templates_.size();
+	if (index > std::numeric_limits<std::uint32_t>::max())
+		throw std::runtime_error("too many variable templates");
+	variable_templates_.push_back(pattern);
+	variable_template_sets_.Ensure(key).Push(index);
+	return true;
+}
+
 void SemanticAnalyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 	const std::vector<NameId>& parameters,
 	const std::vector<NodeId>& defaults)

@@ -115,6 +115,9 @@ private:
 	void AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 		const std::vector<NameId>& parameters,
 		const std::vector<NodeId>& defaults);
+	bool RetainVariableTemplate(NodeId declaration, ScopeId scope,
+		const std::vector<NameId>& parameters,
+		const std::vector<NodeId>& defaults);
 	bool AnalyzeClassTemplateMember(NodeId declaration, ScopeId scope,
 		const std::vector<NameId>& parameters);
 	void AnalyzeSimple(NodeId node, ScopeId scope,
@@ -714,6 +717,8 @@ private:
 	std::vector<EntityId> retained_call_naming_classes_;
 	TemplateSpecializationTable template_instantiations_;
 	std::vector<ClassTemplatePattern> class_templates_;
+	std::vector<VariableTemplatePattern> variable_templates_;
+	IndexedSequenceTable variable_template_sets_;
 	std::vector<std::uint32_t> class_template_pattern_by_entity_;
 	TemplateSpecializationTable class_template_instantiations_;
 	std::vector<std::uint8_t> class_template_specialization_states_;

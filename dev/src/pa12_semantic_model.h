@@ -465,6 +465,21 @@ struct ClassTemplateMemberPattern
 		: lexical_scope(kNoScope), declaration(kNoNode) {}
 };
 
+struct VariableTemplatePattern
+{
+	ScopeId owner, lexical_scope;
+	NameId name;
+	NodeId declaration, specifiers, declarator, initializer;
+	std::vector<NameId> type_parameters;
+	std::vector<NodeId> default_arguments;
+	bool partial_specialization;
+
+	VariableTemplatePattern()
+		: owner(kNoScope), lexical_scope(kNoScope), name(0),
+		  declaration(kNoNode), specifiers(kNoNode), declarator(kNoNode),
+		  initializer(kNoNode), partial_specialization(false) {}
+};
+
 struct ClassTemplatePattern
 {
 	ScopeId owner;

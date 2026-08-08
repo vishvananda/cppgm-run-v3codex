@@ -56,6 +56,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		retained_call_naming_classes_.capacity() * sizeof(EntityId) +
 		template_instantiations_.StorageBytes() +
 		class_templates_.capacity() * sizeof(ClassTemplatePattern) +
+		variable_templates_.capacity() * sizeof(VariableTemplatePattern) +
+		variable_template_sets_.StorageBytes() +
 		class_template_pattern_by_entity_.capacity() * sizeof(std::uint32_t) +
 		class_template_instantiations_.StorageBytes() +
 		class_template_specialization_states_.capacity() * sizeof(std::uint8_t) +
@@ -139,6 +141,10 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 				definition.nested_owner_path.capacity() * sizeof(NameId);
 		}
 	}
+	for (std::size_t i = 0; i < variable_templates_.size(); ++i)
+		bytes += variable_templates_[i].type_parameters.capacity() *
+				sizeof(NameId) +
+			variable_templates_[i].default_arguments.capacity() * sizeof(NodeId);
 	return bytes;
 }
 
