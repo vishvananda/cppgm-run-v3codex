@@ -189,7 +189,8 @@ void StaticInitializerLowering::AppendZero(std::size_t bytes,
 
 bool StaticInitializerLowering::AppendValue(TypeId type, std::uint32_t node,
 	std::vector<Global::DataItem>* items,
-	const std::vector<std::pair<BindingId, std::uint32_t> >* substitutions)
+	const std::vector<std::pair<BindingId, std::uint32_t> >* substitutions,
+	bool allow_constructor)
 {
 	type = types_.RemoveTopQualifiers(type);
 	const TypeRecord& type_record = program_.types.Get(type);
@@ -206,7 +207,7 @@ bool StaticInitializerLowering::AppendValue(TypeId type, std::uint32_t node,
 			if (i < values.size())
 			{
 				if (!AppendValue(type_record.child, values[i], items,
-					substitutions)) return false;
+					substitutions, allow_constructor)) return false;
 			}
 			else
 			{
@@ -232,7 +233,7 @@ bool StaticInitializerLowering::AppendValue(TypeId type, std::uint32_t node,
 	{
 		if (node != kNoDumpEdge &&
 			arena_.nodes[node].kind == DUMP_CONSTRUCTOR_ACTION)
-			return AppendConstructorValue(type, node, items);
+			return allow_constructor && AppendConstructorValue(type, node, items);
 		if (node == kNoDumpEdge ||
 			arena_.nodes[node].kind != DUMP_BRACED_INIT_LIST)
 			return false;
@@ -251,7 +252,7 @@ bool StaticInitializerLowering::AppendValue(TypeId type, std::uint32_t node,
 			const NodeChildren values = Children(actions[i]);
 			if (values.empty()) AppendZero(program_.SizeOf(action.type), items);
 			else if (values.size() != 1 ||
-				!AppendValue(action.type, values[0], items, substitutions))
+				!AppendValue(action.type, values[0], items, substitutions, false))
 				return false;
 			cursor = static_cast<std::size_t>(member.member_offset) +
 				program_.SizeOf(action.type);

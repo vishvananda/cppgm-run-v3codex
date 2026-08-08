@@ -143,6 +143,55 @@ bool SemanticAnalyzer::ReusePreparedBracedExpression(
 	return true;
 }
 
+ExpressionInfo SemanticAnalyzer::AnalyzePreparedAggregateElement(TypeId type,
+	ScopeId scope, std::uint32_t* element_edge)
+{
+	if (!element_edge)
+		throw std::logic_error("aggregate element has no initializer cursor");
+	if (braced_initialization_context_ || *element_edge == kNoEdge)
+		return AnalyzeAggregateElement(type, scope, element_edge);
+	BracedInitializationContext context;
+	ScopedBracedInitializationContext braced_scope(
+		braced_initialization_context_, &context);
+	const NodeId source = arena_->EdgeChild(*element_edge);
+	const ExpressionInfo expression = AnalyzeExpression(source, scope);
+	context.prepared_expressions.push_back(expression);
+	context.prepared_expression_index.Ensure(source).Push(0);
+	return AnalyzeAggregateElement(type, scope, element_edge);
+}
+
+ExpressionInfo SemanticAnalyzer::AnalyzeAggregateDescent(TypeId type,
+	ScopeId scope, std::uint32_t* element_edge)
+{
+	ScopedBracedInitializationContext braced_scope(
+		braced_initialization_context_, 0);
+	return AnalyzeAggregateInit(type, scope, element_edge);
+}
+
+CallConversionFact SemanticAnalyzer::PreparedAggregateElementConversion(
+	NodeId source, TypeId target, const ExpressionInfo& expression)
+{
+	const std::uint64_t key = BracedFactKey(source, target);
+	CallConversionTable* cache = braced_initialization_context_ ?
+		&braced_initialization_context_->leaf_conversions : 0;
+	if (cache)
+	{
+		const CallConversionFact* existing = cache->Find(key);
+		if (existing)
+		{
+			++call_conversion_cache_hits_;
+			return *existing;
+		}
+		++call_conversion_cache_misses_;
+	}
+	CallConversionFact result;
+	result.rank = Conversion(expression, target);
+	if (result.rank == CONVERSION_INVALID)
+		result = ConvertingFunction(expression, target, false);
+	if (cache) cache->Insert(key, result);
+	return result;
+}
+
 bool SemanticAnalyzer::IsBracedNarrowing(
 	const ExpressionInfo& source, TypeId target,
 	const CallConversionFact* conversion) const

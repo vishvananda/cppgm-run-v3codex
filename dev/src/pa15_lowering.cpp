@@ -2220,14 +2220,7 @@ private:
 				return;
 			}
 			AggregatePath path;
-			for (std::size_t i = 0; i < values.size(); ++i)
-			{
-				if (arena_.nodes[values[i]].kind != DUMP_BRACED_INIT_LIST)
-					throw std::runtime_error(
-						"class array element requires aggregate actions");
-				LowerBoundAggregateArrayActions(record.binding, record.type, i,
-					values[i], &path);
-			}
+			LowerNamespaceClassArrayInitializer(record, array, values, &path);
 			return;
 		}
 		const Operand storage = StorageFor(
@@ -2397,7 +2390,8 @@ private:
 		const Operand storage = StorageFor(variable.binding,
 			LowerStorageType(variable.type));
 		if (LowerClassValueInitialization(variable, initializer, storage)) return;
-		if (AggregateHasLeaf(initializer)) (void)AddressOfStorage(storage);
+		if (!lowering_namespace_object_ && AggregateHasLeaf(initializer))
+			(void)AddressOfStorage(storage);
 		AggregatePath path;
 		LowerAggregateActions(initializer, storage, &path, Operand());
 	}
@@ -2572,7 +2566,7 @@ private:
 			{
 				const LowType source = LowerExpressionType(arena_.nodes[values[0]].type);
 				store.first = LowerConvertedValue(values[0], store.type, IsInteger(source) &&
-					IsInteger(store.type) && source.is_signed == store.type.is_signed && source.width <= store.type.width);
+					IsInteger(store.type) && source.is_signed == store.type.is_signed);
 			}
 			else if (store.type.kind == LOW_PTR)
 				store.first = Operand::NullPointer(store.type);

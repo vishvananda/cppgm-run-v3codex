@@ -47,7 +47,7 @@ private:
 	bool AppendValue(pa11::TypeId type, std::uint32_t node,
 		std::vector<pa15_lowir_detail::Global::DataItem>* items,
 		const std::vector<std::pair<pa11::BindingId, std::uint32_t> >*
-			substitutions = 0);
+			substitutions = 0, bool allow_constructor = true);
 	bool AppendConstructorValue(pa11::TypeId type, std::uint32_t action_node,
 		std::vector<pa15_lowir_detail::Global::DataItem>* items);
 

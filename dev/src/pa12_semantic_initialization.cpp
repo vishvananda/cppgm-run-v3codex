@@ -1347,7 +1347,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAggregateElement(TypeId type,
 	const TypeId object = program_->types.RemoveTopCv(type);
 	const TypeRecord record = program_->types.Get(object);
 	const EntityId entity = EntityOf(type);
-	const bool class_type = IsClassEntity(*program_, entity);
+	const bool class_type = record.kind == TYPE_NAMED &&
+		IsClassEntity(*program_, entity);
 	const bool class_aggregate = class_type &&
 		program_->entities[entity].is_aggregate;
 	if (*element_edge != kNoEdge)
@@ -1399,7 +1400,18 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAggregateElement(TypeId type,
 		if (record.kind == TYPE_ARRAY)
 			return AnalyzeArrayAggregateInit(type, scope, element_edge);
 		if (class_aggregate)
-			return AnalyzeAggregateInit(type, scope, element_edge);
+		{
+			if (!braced_initialization_context_)
+				return AnalyzePreparedAggregateElement(
+					type, scope, element_edge);
+			const ExpressionInfo expression = AnalyzeExpression(source, scope);
+			const CallConversionFact conversion =
+				PreparedAggregateElementConversion(source, type, expression);
+			const bool has_elements = entity < entity_data_members_.size() &&
+				!entity_data_members_[entity].empty();
+			if (conversion.rank == CONVERSION_INVALID && has_elements)
+				return AnalyzeAggregateDescent(type, scope, element_edge);
+		}
 		*element_edge = arena_->NextEdge(source_edge);
 		if (class_type)
 		{

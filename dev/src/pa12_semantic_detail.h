@@ -292,6 +292,12 @@ private:
 		std::uint32_t* element_edge);
 	ExpressionInfo AnalyzeAggregateElement(TypeId type, ScopeId scope,
 		std::uint32_t* element_edge);
+	ExpressionInfo AnalyzePreparedAggregateElement(TypeId type, ScopeId scope,
+		std::uint32_t* element_edge);
+	ExpressionInfo AnalyzeAggregateDescent(TypeId type, ScopeId scope,
+		std::uint32_t* element_edge);
+	CallConversionFact PreparedAggregateElementConversion(NodeId source,
+		TypeId target, const ExpressionInfo& expression);
 	ExpressionInfo BuildLocalAggregateArrayActions(
 		const ExpressionInfo& initializer);
 	std::uint32_t BuildAggregateConstructionAction(TypeId type,

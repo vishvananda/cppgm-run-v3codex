@@ -339,6 +339,53 @@ protected:
 		}
 	}
 
+	void LowerNamespaceClassArrayConstructor(const DumpNode& record,
+		TypeId element_type, std::size_t element_index, std::uint32_t value)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (derived.arena_.nodes[value].kind != DUMP_CONSTRUCTOR_ACTION)
+			throw std::runtime_error(
+				"class array element has no construction recipe");
+		Operand destination = derived.AddressOfStorage(derived.StorageFor(
+			record.binding, derived.LowerStorageType(record.type)));
+		destination = derived.DecayAddress(destination);
+		Operand displacement(
+			static_cast<std::int64_t>(element_index), LowI64());
+		const std::size_t element_size = derived.program_.SizeOf(element_type);
+		if (element_size != 1)
+		{
+			const Operand scaled = derived.Temp(LowI64());
+			Instruction multiply(Instruction::BINARY);
+			multiply.dest = scaled.id;
+			multiply.op = LOW_OP_MUL;
+			multiply.type = LowI64();
+			multiply.first = displacement;
+			multiply.second = Operand(
+				static_cast<std::int64_t>(element_size), LowI64());
+			derived.Emit(multiply);
+			displacement = scaled;
+		}
+		destination = derived.IndexAddress(
+			LowI8(), destination, displacement, true);
+		derived.LowerConstructorAction(value, destination);
+	}
+
+	template <class AggregatePath>
+	void LowerNamespaceClassArrayInitializer(const DumpNode& record,
+		const TypeRecord& array, const NodeChildren& values,
+		AggregatePath* path)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		for (std::size_t i = 0; i < values.size(); ++i)
+		{
+			if (derived.arena_.nodes[values[i]].kind == DUMP_BRACED_INIT_LIST)
+				derived.LowerBoundAggregateArrayActions(record.binding, record.type,
+					i, values[i], path);
+			else LowerNamespaceClassArrayConstructor(
+				record, array.child, i, values[i]);
+		}
+	}
+
 	bool LowerVariableConstructor(const DumpNode& variable,
 		const NodeChildren& children)
 	{
