@@ -2915,6 +2915,7 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 		else if (info.definition_body != kNoNode)
 			AnalyzeCompound(info.definition_body, function_scope, function);
 		else dump_.Add(function, MakeDump(DUMP_COMPOUND_STATEMENT));
+		FinalizeNamedReturnSlot(function);
 		current_return_type_ = previous_return;
 		current_class_context_ = previous_class;
 		current_function_context_ = previous_function;

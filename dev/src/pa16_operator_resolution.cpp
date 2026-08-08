@@ -891,10 +891,12 @@ ExpressionInfo SemanticAnalyzer::ApplyCallArgument(
 			value.category = VALUE_PRVALUE;
 		}
 		if (value.category == VALUE_PRVALUE &&
-			dump_.nodes[value.node].kind == DUMP_CALL_EXPRESSION)
+			dump_.nodes[value.node].kind == DUMP_CALL_EXPRESSION &&
+			!dump_.nodes[value.node].explicit_user_conversion_call)
 		{
-			ValidateClassValueConstruction(target, value);
-			value = BuildDirectClassValueTransfer(value, target);
+			const BindingId selected =
+				ValidateClassValueConstruction(target, value);
+			value = BuildDirectClassValueTransfer(value, target, selected);
 		}
 		else if (dump_.nodes[value.node].kind != DUMP_CONSTRUCTOR_ACTION)
 			value.node = BuildClassValueConstructorAction(target, value);

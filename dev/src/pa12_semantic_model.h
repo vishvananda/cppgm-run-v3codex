@@ -109,6 +109,7 @@ struct DumpNode
 	bool integer_narrowing_conversion;
 	bool boolean_conversion;
 	bool user_conversion_call;
+	bool explicit_user_conversion_call;
 	bool allocation_may_return_null;
 	bool array_action;
 	bool array_cookie;
@@ -138,6 +139,7 @@ struct DumpNode
 		  storage_transfer_alignment(0),
 		  constant(false), integer_narrowing_conversion(false),
 		  boolean_conversion(false), user_conversion_call(false),
+		  explicit_user_conversion_call(false),
 		  allocation_may_return_null(false),
 		  array_action(false), array_cookie(false),
 		  array_count_constant(false),

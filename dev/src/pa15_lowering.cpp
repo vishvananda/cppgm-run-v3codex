@@ -1669,10 +1669,8 @@ private:
 		if (return_storage) return storage;
 		return record.kind == DUMP_POSTFIX_EXPRESSION ? old_value : new_value;
 	}
-
 	Operand LowerCall(std::uint32_t node, const DumpNode& record,
-		const NodeChildren& children,
-		const Operand& supplied_result = Operand())
+		const NodeChildren& children, const Operand& supplied_result = Operand())
 	{
 		if (children.empty()) throw std::runtime_error("semantic call has no callee");
 		if (full_expression_cleanup_active_)
@@ -1715,7 +1713,8 @@ private:
 			else
 			{
 				const LowType type = LowerStorageType(function_type.child);
-				const Operand slot(EnsureGeneratedSlot(node, "call", type), type);
+				const char* purpose = record.reference_call_materialization ? "refcall" : "call";
+				const Operand slot(EnsureGeneratedSlot(node, purpose, type), type);
 				result_storage = AddressOfStorage(slot);
 			}
 			arguments.Push(result_storage);
@@ -1744,7 +1743,8 @@ private:
 						expected = LowI32();
 				}
 				arguments.Push(LowerConvertedValue(children[i], expected,
-					CanonicalizeImmediateConversion(children[i])));
+					CanonicalizeImmediateConversion(children[i]) || (supplied_result.kind != Operand::NONE &&
+					arena_.nodes[children[i]].kind == DUMP_LITERAL)));
 			}
 		}
 		if (!direct) call.first = LowerValue(children[0], LowPtr());

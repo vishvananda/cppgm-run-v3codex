@@ -1256,6 +1256,8 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	const std::uint32_t call = MakeDump(DUMP_CALL_EXPRESSION,
 		result_type, category, 0, emission_binding);
 	dump_.nodes[call].user_conversion_call = function.conversion_function;
+	dump_.nodes[call].explicit_user_conversion_call =
+		function.conversion_function && function.explicit_conversion;
 	const std::uint32_t callee = MakeDump(DUMP_CALLEE, callable_type,
 		VALUE_NONE, function.display_name, emission_binding);
 	dump_.Add(call, callee);
@@ -2424,7 +2426,8 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			{
 				const std::size_t edge_count = dump_.edges.size();
 				AppendFullExpressionDestructionActions(initializer.node, owner);
-				if (control_dependent && dump_.edges.size() != edge_count)
+				if (control_dependent && dump_.edges.size() != edge_count &&
+					!InitializationActionsAreNonthrowing(initializer.node))
 				{
 					dump_.nodes[owner].full_expression_staging = true;
 					MarkFullExpressionCalls(initializer.node);

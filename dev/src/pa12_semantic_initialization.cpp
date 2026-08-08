@@ -101,7 +101,7 @@ bool SemanticAnalyzer::EmptyDefaultConstructorChain(BindingId constructor,
 	throw std::logic_error("cyclic default-constructor chain");
 }
 
-void SemanticAnalyzer::ValidateClassValueConstruction(TypeId type,
+BindingId SemanticAnalyzer::ValidateClassValueConstruction(TypeId type,
 	const ExpressionInfo& source, bool copy_initialization)
 {
 	const EntityId entity = EntityOf(type);
@@ -109,8 +109,40 @@ void SemanticAnalyzer::ValidateClassValueConstruction(TypeId type,
 		throw std::logic_error("class-value construction has non-class type");
 	std::vector<NodeId> argument_syntax(1, kNoNode);
 	std::vector<ExpressionInfo> arguments(1, source);
-	(void)SelectConstructor(kNoScope, argument_syntax,
+	return SelectConstructor(kNoScope, argument_syntax,
 		arguments, ConstructorCandidates(entity), copy_initialization, false);
+}
+
+bool SemanticAnalyzer::TryBuildElidedClassValueTransfer(TypeId type,
+	const ExpressionInfo& source, BindingId selected_constructor,
+	ExpressionInfo* result)
+{
+	if (!graph_consumer_ || result == 0 || source.node >= dump_.nodes.size() ||
+		selected_constructor == kNoBinding)
+		return false;
+	const FunctionInfo& constructor = GetFunction(selected_constructor);
+	if (constructor.special_member != SPECIAL_MEMBER_COPY_CONSTRUCTOR &&
+		constructor.special_member != SPECIAL_MEMBER_MOVE_CONSTRUCTOR)
+		return false;
+	const DumpNode& materialized = dump_.nodes[source.node];
+	if (materialized.kind != DUMP_TEMPORARY_OBJECT ||
+		materialized.first_edge == kNoDumpEdge ||
+		dump_.edges[materialized.first_edge].next != kNoDumpEdge)
+		return false;
+	const std::uint32_t recipe_node =
+		dump_.edges[materialized.first_edge].child;
+	const DumpNode& recipe_record = dump_.nodes[recipe_node];
+	if (recipe_record.explicit_user_conversion_call) return false;
+	const bool conversion_result = recipe_record.user_conversion_call &&
+		!recipe_record.explicit_user_conversion_call;
+	if (!constructor.trivial_special_member && !conversion_result) return false;
+	ExpressionInfo recipe;
+	recipe.node = recipe_node;
+	recipe.type = recipe_record.type;
+	recipe.category = VALUE_PRVALUE;
+	*result = BuildDirectClassValueTransfer(
+		recipe, type, selected_constructor);
+	return true;
 }
 
 std::uint32_t SemanticAnalyzer::BuildClassValueConstructorAction(TypeId type,
@@ -132,27 +164,32 @@ std::uint32_t SemanticAnalyzer::BuildClassValueConstructorAction(TypeId type,
 		throw std::logic_error("class-value constructor has no source parameter");
 	const std::vector<TypeId> parameters(parameter_data,
 		parameter_data + function_type.parameter_count);
+	const ExpressionInfo converted_source = ApplyCallArgument(
+		source, parameters[0],
+		selected_conversions.empty() ? 0 : &selected_conversions[0]);
+	ExpressionInfo direct;
+	if (TryBuildElidedClassValueTransfer(
+		type, converted_source, selected, &direct))
+		return direct.node;
+	bool materialized_conversion_result = false;
+	if (dump_.nodes[converted_source.node].kind == DUMP_TEMPORARY_OBJECT &&
+		dump_.nodes[converted_source.node].first_edge != kNoDumpEdge &&
+		dump_.edges[dump_.nodes[converted_source.node].first_edge].next ==
+			kNoDumpEdge)
+	{
+		const DumpNode& recipe = dump_.nodes[dump_.edges[
+			dump_.nodes[converted_source.node].first_edge].child];
+		materialized_conversion_result =
+			recipe.kind == DUMP_CALL_EXPRESSION && recipe.user_conversion_call;
+	}
 	const std::uint32_t action = MakeDump(DUMP_CONSTRUCTOR_ACTION,
 		AdaptMemberFunctionType(selected), VALUE_NONE,
 		constructor.display_name, selected);
-	bool conversion_result_materialization = false;
-	if (dump_.nodes[source.node].kind == DUMP_TEMPORARY_OBJECT &&
-		dump_.nodes[source.node].first_edge != kNoDumpEdge)
-	{
-		const std::uint32_t child =
-			dump_.edges[dump_.nodes[source.node].first_edge].child;
-		conversion_result_materialization =
-			dump_.nodes[child].kind == DUMP_CALL_EXPRESSION &&
-			dump_.nodes[child].binding != kNoBinding &&
-			program_->bindings[dump_.nodes[child].binding].conversion_function;
-	}
 	dump_.nodes[action].operand_type =
 		program_->types.RemoveTopCv(EffectiveType(type));
 	dump_.nodes[action].trivial_special_member_action =
-		constructor.trivial_special_member &&
-		!conversion_result_materialization;
-	dump_.Add(action, ApplyCallArgument(source, parameters[0],
-		selected_conversions.empty() ? 0 : &selected_conversions[0]).node);
+		constructor.trivial_special_member && !materialized_conversion_result;
+	dump_.Add(action, converted_source.node);
 	for (std::size_t a = 1; a < function_type.parameter_count; ++a)
 	{
 		if (a >= constructor.parameters.size() ||
@@ -165,7 +202,7 @@ std::uint32_t SemanticAnalyzer::BuildClassValueConstructorAction(TypeId type,
 		argument = ApplyCallArgument(argument, parameters[a]);
 		dump_.Add(action, argument.node);
 	}
-	if ((demand || conversion_result_materialization) &&
+	if ((demand || materialized_conversion_result) &&
 		!dump_.nodes[action].trivial_special_member_action)
 		DemandFunction(selected);
 	++expression_count_;
@@ -397,16 +434,27 @@ bool SemanticAnalyzer::IsDirectTrivialClassValueType(TypeId type) const
 }
 
 ExpressionInfo SemanticAnalyzer::BuildDirectClassValueTransfer(
-	const ExpressionInfo& source, TypeId target)
+	const ExpressionInfo& source, TypeId target,
+	BindingId selected_constructor)
 {
 	if (!graph_consumer_) return source;
+	bool validated_special_member = false;
+	if (selected_constructor != kNoBinding)
+	{
+		const FunctionInfo& selected = GetFunction(selected_constructor);
+		validated_special_member =
+			selected.special_member == SPECIAL_MEMBER_COPY_CONSTRUCTOR ||
+			selected.special_member == SPECIAL_MEMBER_MOVE_CONSTRUCTOR;
+	}
 	if ((!IsDirectTrivialClassValueType(target) &&
-		 dump_.nodes[source.node].kind != DUMP_CALL_EXPRESSION) ||
+		 dump_.nodes[source.node].kind != DUMP_CALL_EXPRESSION &&
+		 !validated_special_member) ||
 		program_->types.RemoveTopCv(EffectiveType(source.type)) !=
 			program_->types.RemoveTopCv(EffectiveType(target)))
 		throw std::logic_error("invalid direct class-value transfer");
 	const std::uint32_t action = MakeDump(DUMP_CLASS_VALUE_TRANSFER,
 		program_->types.RemoveTopCv(EffectiveType(target)), VALUE_PRVALUE);
+	dump_.nodes[action].selected_binding = selected_constructor;
 	dump_.Add(action, source.node);
 	ExpressionInfo result;
 	result.node = action;
@@ -547,11 +595,13 @@ void SemanticAnalyzer::AnalyzeReturnStatement(NodeId node, ScopeId scope,
 				DUMP_AGGREGATE_CONSTRUCTION_ACTION)
 		{
 			if (value.category == VALUE_PRVALUE &&
-				dump_.nodes[value.node].kind == DUMP_CALL_EXPRESSION)
+				dump_.nodes[value.node].kind == DUMP_CALL_EXPRESSION &&
+				!dump_.nodes[value.node].explicit_user_conversion_call)
 			{
-				ValidateClassValueConstruction(current_return_type_, value);
+				const BindingId selected = ValidateClassValueConstruction(
+					current_return_type_, value);
 				value = BuildDirectClassValueTransfer(
-					value, current_return_type_);
+					value, current_return_type_, selected);
 			}
 			else
 			{
@@ -634,10 +684,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeVariableInitializer(
 					program_->types.RemoveTopCv(type))
 					throw std::runtime_error("invalid class copy initializer");
 				if (initializer.category == VALUE_PRVALUE &&
-					dump_.nodes[initializer.node].kind == DUMP_CALL_EXPRESSION)
+					dump_.nodes[initializer.node].kind == DUMP_CALL_EXPRESSION &&
+					!dump_.nodes[initializer.node].explicit_user_conversion_call)
 				{
-					ValidateClassValueConstruction(type, initializer);
-					initializer = BuildDirectClassValueTransfer(initializer, type);
+					const BindingId selected =
+						ValidateClassValueConstruction(type, initializer);
+					initializer = BuildDirectClassValueTransfer(
+						initializer, type, selected);
 				}
 				else initializer.node =
 					BuildClassValueConstructorAction(type, initializer);
@@ -695,10 +748,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeVariableInitializer(
 					DUMP_CONDITIONAL_EXPRESSION &&
 					IsDirectTrivialClassValueType(type)) {}
 				else if (initializer.category == VALUE_PRVALUE &&
-					dump_.nodes[initializer.node].kind == DUMP_CALL_EXPRESSION)
+					dump_.nodes[initializer.node].kind == DUMP_CALL_EXPRESSION &&
+					!dump_.nodes[initializer.node].explicit_user_conversion_call)
 				{
-					ValidateClassValueConstruction(type, initializer);
-					initializer = BuildDirectClassValueTransfer(initializer, type);
+					const BindingId selected =
+						ValidateClassValueConstruction(type, initializer);
+					initializer = BuildDirectClassValueTransfer(
+						initializer, type, selected);
 				}
 				else initializer.node =
 					BuildClassValueConstructorAction(type, initializer);
@@ -804,11 +860,13 @@ void SemanticAnalyzer::AddMemberInitializationAction(BindingId member_id,
 						throw std::runtime_error(
 							"invalid class default member initializer");
 					if (initialized.category == VALUE_PRVALUE &&
-						dump_.nodes[initialized.node].kind == DUMP_CALL_EXPRESSION)
+						dump_.nodes[initialized.node].kind == DUMP_CALL_EXPRESSION &&
+						!dump_.nodes[initialized.node].explicit_user_conversion_call)
 					{
-						ValidateClassValueConstruction(member.type, initialized);
+						const BindingId selected = ValidateClassValueConstruction(
+							member.type, initialized);
 						initialized = BuildDirectClassValueTransfer(
-							initialized, member.type);
+							initialized, member.type, selected);
 					}
 					value = initialized.node;
 				}
@@ -2307,8 +2365,9 @@ std::uint32_t SemanticAnalyzer::MakeTemporaryDestructorAction(
 		throw std::logic_error("temporary class has no destructor identity");
 	if (!CanAccessMember(destructor, entity))
 		throw std::runtime_error("inaccessible temporary destructor");
-	if (program_->entities[entity].trivial_destructor ||
-		IsElidableAutomaticDestructor(destructor))
+	if (program_->entities[entity].trivial_destructor) return kNoDumpEdge;
+	if (IsElidableAutomaticDestructor(destructor) &&
+		!HasControlDependentTemporary(temporary))
 		return kNoDumpEdge;
 	const std::uint32_t action = MakeDestructorAction(
 		type, destructor, kNoBinding);

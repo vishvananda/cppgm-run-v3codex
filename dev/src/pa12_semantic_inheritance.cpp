@@ -360,6 +360,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		{
 			dump_.nodes[operand.node].type = target;
 			dump_.nodes[operand.node].category = category;
+			if (dump_.nodes[operand.node].kind == DUMP_CALL_EXPRESSION)
+				dump_.nodes[operand.node].reference_call_materialization = true;
 		}
 		return operand;
 	}

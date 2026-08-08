@@ -682,13 +682,37 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 	if (function_type.parameter_count != 0)
 		parameters.assign(parameter_data,
 			parameter_data + function_type.parameter_count);
+	bool first_argument_converted = false;
+	bool materialized_conversion_result = false;
+	if (argument_syntax.size() == 1 && !parameters.empty() &&
+		arguments[0].type != kNoType)
+	{
+		arguments[0] = ApplyCallArgument(arguments[0], parameters[0],
+			selected_conversions.empty() ? 0 : &selected_conversions[0]);
+		first_argument_converted = true;
+		ExpressionInfo direct;
+		if (TryBuildElidedClassValueTransfer(
+			type, arguments[0], selected, &direct))
+			return direct.node;
+		const DumpNode& materialized = dump_.nodes[arguments[0].node];
+		if (materialized.kind == DUMP_TEMPORARY_OBJECT &&
+			materialized.first_edge != kNoDumpEdge &&
+			dump_.edges[materialized.first_edge].next == kNoDumpEdge)
+		{
+			const DumpNode& recipe = dump_.nodes[
+				dump_.edges[materialized.first_edge].child];
+			materialized_conversion_result =
+				recipe.kind == DUMP_CALL_EXPRESSION &&
+				recipe.user_conversion_call;
+		}
+	}
 	const std::uint32_t action = MakeDump(DUMP_CONSTRUCTOR_ACTION,
 		AdaptMemberFunctionType(selected), VALUE_NONE,
 		constructor.display_name, selected);
 	dump_.nodes[action].operand_type =
 		program_->types.RemoveTopCv(EffectiveType(type));
 	dump_.nodes[action].trivial_special_member_action =
-		constructor.trivial_special_member;
+		constructor.trivial_special_member && !materialized_conversion_result;
 	std::vector<BindingId> empty_base_entries;
 	if (((constructor.defaulted_constructor &&
 		  program_->entities[entity].empty_class) ||
@@ -726,9 +750,10 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 						list_target, argument.node);
 				argument = ApplyCallArgument(argument, parameters[a]);
 			}
-			else argument = ApplyCallArgument(argument, parameters[a],
-				a < selected_conversions.size() ?
-					&selected_conversions[a] : 0);
+			else if (!(a == 0 && first_argument_converted))
+				argument = ApplyCallArgument(argument, parameters[a],
+					a < selected_conversions.size() ?
+						&selected_conversions[a] : 0);
 		}
 		dump_.Add(action, argument.node);
 	}

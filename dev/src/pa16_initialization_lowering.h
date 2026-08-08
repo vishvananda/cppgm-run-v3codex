@@ -80,11 +80,17 @@ protected:
 			!derived.IsClassObjectType(action.type))
 			throw std::logic_error("invalid PA17 class-value transfer action");
 		const DumpNode& source = derived.arena_.nodes[children[0]];
-		if (source.kind == DUMP_CALL_EXPRESSION &&
-			derived.UsesIndirectClassResult(source.type))
+		if (source.kind == DUMP_CONDITIONAL_EXPRESSION)
 		{
-			(void)derived.LowerCall(children[0], source,
+			derived.LowerClassConditionalResult(children[0], destination);
+			return;
+		}
+		if (source.kind == DUMP_CALL_EXPRESSION)
+		{
+			const Operand result = derived.LowerCall(children[0], source,
 				derived.Children(children[0]), destination);
+			if (!derived.UsesIndirectClassResult(source.type))
+				EmitClassObjectCopy(action.type, result, destination);
 			return;
 		}
 		EmitClassObjectCopy(action.type,
@@ -191,6 +197,10 @@ protected:
 		const DumpKind kind = derived.arena_.nodes[child].kind;
 		if (kind == DUMP_CONSTRUCTOR_ACTION)
 			derived.LowerConstructorAction(child, result);
+		else if (kind == DUMP_CLASS_VALUE_TRANSFER)
+			derived.LowerClassValueTransfer(child, result);
+		else if (kind == DUMP_CONDITIONAL_EXPRESSION)
+			derived.LowerClassConditionalResult(child, result);
 		else if (kind == DUMP_AGGREGATE_CONSTRUCTION_ACTION)
 			derived.LowerAggregateConstructionAction(child, result);
 		else derived.LowerRuntimeObjectValue(record.operand_type, child, result);

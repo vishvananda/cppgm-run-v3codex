@@ -220,7 +220,8 @@ private:
 		TypeId target, const CallConversionFact& conversion);
 	bool IsDirectTrivialClassValueType(TypeId type) const;
 	ExpressionInfo BuildDirectClassValueTransfer(
-		const ExpressionInfo& source, TypeId target);
+		const ExpressionInfo& source, TypeId target,
+		BindingId selected_constructor = kNoBinding);
 	ExpressionInfo AnalyzeVariableInitializer(NodeId initializer,
 		ScopeId scope, TypeId type, bool local);
 	ExpressionInfo AnalyzeCall(NodeId node, ScopeId scope, TypeId target);
@@ -409,7 +410,10 @@ private:
 	std::uint32_t BuildClassValueConstructorAction(TypeId type,
 		const ExpressionInfo& source, bool copy_initialization = true,
 		bool demand = true);
-	void ValidateClassValueConstruction(TypeId type,
+	bool TryBuildElidedClassValueTransfer(TypeId type,
+		const ExpressionInfo& source, BindingId selected_constructor,
+		ExpressionInfo* result);
+	BindingId ValidateClassValueConstruction(TypeId type,
 		const ExpressionInfo& source, bool copy_initialization = true);
 	void FinalizeNamedReturnSlot(std::uint32_t function);
 	std::uint32_t BuildDefaultConstructorAction(TypeId type, ScopeId scope);
