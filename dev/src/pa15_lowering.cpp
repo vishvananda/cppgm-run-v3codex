@@ -1367,8 +1367,8 @@ private:
 			else if (record.base_projection_count != 0)
 				result = LowerProjectedClassPointer(
 					children[0], record.base_projection_count);
-			else result = LowerConvertedValue(children[0],
-				LowerExpressionType(record.type), false);
+			else result = LowerInitializerConvertedValue(children[0],
+				LowerExpressionType(record.type));
 		}
 		else if (record.kind == DUMP_CONDITIONAL_EXPRESSION)
 			result = LowerConditional(node, record, children);
@@ -1457,13 +1457,13 @@ private:
 		if (comparison && operand_type.kind == LOW_PTR &&
 			left.kind == Operand::INTEGER && left.integer_value == 0)
 			left.type = operand_type;
-		else left = Convert(left, operand_type, canonicalize_immediates && !(comparison &&
-			left.kind == Operand::INTEGER && IsInteger(left.type) && IsInteger(operand_type) && left.type.is_signed != operand_type.is_signed));
+		else left = Convert(left, operand_type, CanonicalizeBinaryImmediate(
+			children[0], operand_type, canonicalize_immediates, comparison));
 		if (comparison && operand_type.kind == LOW_PTR &&
 			right.kind == Operand::INTEGER && right.integer_value == 0)
 			right.type = operand_type;
-		else right = Convert(right, operand_type, canonicalize_immediates && !(comparison &&
-			right.kind == Operand::INTEGER && IsInteger(right.type) && IsInteger(operand_type) && right.type.is_signed != operand_type.is_signed));
+		else right = Convert(right, operand_type, CanonicalizeBinaryImmediate(
+			children[1], operand_type, canonicalize_immediates, comparison));
 		const LowType result_type = LowerType(record.type);
 		const Operand result = Temp(result_type);
 		Instruction instruction(comparison ? Instruction::CMP : Instruction::BINARY);
@@ -1778,7 +1778,9 @@ private:
 					else if (IsInteger(expected) && expected.width < 32)
 						expected = LowI32();
 				}
-				arguments.Push(LowerConvertedValue(children[i], expected,
+				if (IsTypedNullPointerLiteral(children[i], expected))
+					arguments.Push(Operand::NullPointer(expected));
+				else arguments.Push(LowerConvertedValue(children[i], expected,
 					CanonicalizeImmediateConversion(children[i]) ||
 					CanonicalizeOperatorLiteral(children[i], callee)));
 			}
@@ -2106,8 +2108,7 @@ private:
 				store.type = type;
 				store.first = IsReferenceType(record.type) ?
 					AddressOfStorage(LowerStorage(children[0])) :
-					LowerConvertedValue(children[0], type,
-						CanonicalizeImmediateConversion(children[0]));
+					LowerInitializerConvertedValue(children[0], type);
 				store.second = StorageFor(record.binding, type);
 				Emit(store);
 			}
@@ -2883,6 +2884,8 @@ private:
 	{
 		const DumpNode& record = arena_.nodes[node];
 		const NodeChildren children = Children(node);
+		if (record.kind == DUMP_LITERAL && record.constant)
+		{ EmitJump(record.constant_value ? true_block : false_block); return; }
 		if (record.kind == DUMP_BINARY_EXPRESSION && children.size() == 2)
 		{
 			const std::string operation =

@@ -1311,8 +1311,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 			{
 				ExpressionInfo zero = MakeLiteral(cast_type,
 					program_->names.Intern("0"));
-				zero.constant = true;
-				zero.value = 0;
+				zero.constant = true; zero.value = 0;
+				dump_.nodes[zero.node].value_initialization = true;
 				return ApplyTarget(zero, target);
 			}
 			ExpressionInfo operand = analyzed_arguments[0];

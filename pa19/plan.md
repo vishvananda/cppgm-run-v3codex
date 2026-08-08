@@ -16,12 +16,13 @@ pool. Function-local named types retain their enclosing canonical function
 binding for specialization, emission, and ABI identity. Canonical operator-ids
 survive split close-angle tokens; member-function patterns retain class owner
 and access; dependent function results use one non-deduced shape until replay.
-Enum-only operator
-candidates use a compact index keyed by `(ScopeId,
+Enum-only operator candidates use a compact index keyed by `(ScopeId,
 NameId, enum TypeId, operand)`; visibility and associated-scope edges choose
 index owners before exact candidates are ranked. Selected enum conversions and
 empty class-value constructors are semantic facts consumed by call staging and
-typed lowering. Explicit-instantiation demand, weak ODR linkage, object roots,
+typed lowering. Scalar functional value-initialization retains provenance;
+typed lowering applies selected immediate-conversion and constant-control facts
+without lookup. Explicit-instantiation demand, weak ODR linkage, object roots,
 and structured ABI identity remain binding/entity-owned. This follows
 `spec.md` sections 1-6 and 9: source regions are parsed once, hot identity/cache
 access is O(1) average, completion is monotonic, retained syntax is shared,
@@ -31,29 +32,28 @@ stages.
 
 ## Current Failure Map
 
-Retained callable/member replay raises the combined PA19 result to 280/298.
-The exact remaining 18-test set groups as follows:
+Selected scalar/control replay raises the combined PA19 result to 288/298.
+The exact remaining 10-test set groups as follows:
 
 | Failures | Shared behavior | Owner |
 |---:|---|---|
-| 7 scalar LowIR mismatches | Integral/null literals lose the selected conversion materialization policy after template replay. | PA12 conversion facts and PA15 typed scalar lowering |
 | 3 demand/lifetime mismatches | Empty namespace initialization, template vptr initialization, and unused enum-ADL body emission. | PA19 demand states and PA16-PA18 lifetime lowering |
-| 3 body/ABI mismatches | Replayed constructor body, constant-condition presentation, and qualified RTTI spelling. | PA12 replay facts and PA15/PA18 lowering |
+| 2 body/ABI mismatches | Replayed base-constructor body/identity and qualified RTTI spelling. | PA12 specialization facts and PA15/PA18 ABI lowering |
 | 2 default-demand exits | Class defaults in base initialization and function default arguments. | PA19 argument environments and demand owners |
 | 2 unsupported-declaration exits | Dependent alignment and variable-template partial syntax. | PA10/PA19 declaration patterns |
 | 1 allocation exit | Inherited class `operator new` reaches an unlowered semantic node. | PA12 selection and PA16 allocation lowering |
 
 ## Active Checkpoint
 
-Unify selected scalar-conversion replay for the seven remaining scalar LowIR
-mismatches. PA12 owns canonical selected conversion and value-category facts;
-PA19 specialization replay transfers those node/binding facts; PA15 consumes
-them for literal, null, reference, and contextual-bool lowering. The data flow
-is `retained expression -> specialization environment -> selected conversion ->
-typed operand`, targeting `spec.md` sections 3-6 and 9 with no lowering-time
-lookup and O(replayed nodes plus selected conversions) work. Validate all seven
-mismatches, the complete PA19 report, PA1-PA18, file audit, and a repeated-scalar
-replay scaling probe.
+Unify the three remaining template demand/lifetime mismatches. PA12 owns object,
+initializer, destructor, vptr, and body dependencies; PA19 specialization state
+transfers only language-required roots; PA16-PA18 consume the resulting typed
+actions. The flow is `specialization key -> monotonic demand state -> required
+initializer/body/support objects -> typed lowering`, targeting `spec.md`
+sections 2 and 4-6: unused bodies stay undemanded, class completion does not
+imply emission, and each dependency is visited once. Expected work is O(demand
+roots plus reachable dependencies). Validate the three failures, the complete
+PA19 report, PA1-PA18, file audit, and a demand-fanout scaling probe.
 
 ## Performance Evidence
 
@@ -63,6 +63,7 @@ replay scaling probe.
 | 128/256/512 structural `result_traits<F, F (*)()>::type` uses | Requests 128/256/512 with 127/255/511 hits; canonical types stay at 36, layouts at two, member visits at one, and lookup misses at three; semantic nodes 133/261/517, storage 125,486/236,974/464,046 bytes, and median semantic time 1.246/2.329/4.531 ms. |
 | 64/128/256 same-spelling function-local type specializations | Requests and demand pushes 64/128/256 with no duplicate completions; semantic nodes 837/1,669/3,333, typed storage 217,243/434,323/868,627 bytes, and semantic time 4.484/10.485/17.659 ms. |
 | 32/64/128 indexed member-template candidates | Candidate visits are exactly 32/64/128 with one viable overload and four conversions; specialization requests 35/67/131, peak semantic storage 336,615/659,683/1,305,887 bytes, and median semantic time 1.425/4.274/8.103 ms. |
+| 128/256/512 mixed scalar/control replay operations | Semantic nodes 2,069/4,117/8,213; lowered nodes 1,293/2,573/5,133; conversion checks 1,288/2,568/5,128; peak storage 1,165,394/2,318,866/4,625,810 bytes; median semantic-plus-lowering time 6.596/13.340/25.155 ms. |
 
 ## Completed Checkpoints
 
@@ -90,3 +91,4 @@ replay scaling probe.
 | Declaration-owned local and qualified type replay | Pass after audit fix | Scoped parser facts, retained type-argument trees, interned qualified/current-class identity, canonical function-pointer specialization, contextual bool conversion, and alias-inherited constructors; PA19 266 to 272 across six cases, bounded parser scans, one-completion specialization probe, prior 1713/1713 |
 | Canonical local-type specialization and emission identity | Pass | Collision-free compact specialization scope keys, function-owned local type identity, typed emission keys and structured local-type ABI facts; PA19 272 to 274, two focused cases, linear specialization probe, prior 1713/1713, audit pass |
 | Canonical retained callable/member replay | Pass | Canonical `>>`/qualified `[]` ids, indexed member-template owner/access replay, adjusted parameter bindings, static callable lowering, deferred dependent results, forwarding-reference deduction and constrained tie-breaking; PA19 274 to 280, six focused cases, linear candidate probe, prior 1713/1713, audit pass |
+| Selected scalar/control replay | Pass | Value-initialized pointer provenance, signedness-aware immediate policy, bool promotions, narrowing casts, and direct constant branches consumed from typed semantic facts; PA19 280 to 288 across eight cases, linear mixed replay evidence, prior 1713/1713, audit pass |
