@@ -1598,7 +1598,10 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 			throw std::runtime_error("declaration has no type specifier");
 		result.type = program_->types.Fundamental(kind);
 	}
-	result.type = program_->types.Qualify(result.type, cv);
+	// Cv-qualifiers applied through a typedef-name (including a bound template
+	// type parameter) do not create a cv-qualified function type.
+	if (!program_->types.IsFunction(result.type))
+		result.type = program_->types.Qualify(result.type, cv);
 	return result;
 }
 
@@ -2605,6 +2608,52 @@ bool SemanticAnalyzer::ParseExplicitTemplateArguments(ScopeId scope,
 	return true;
 }
 
+ScopeId SemanticAnalyzer::BindFunctionTemplateArguments(
+	const FunctionTemplatePattern& pattern,
+	const std::vector<TypeId>& arguments)
+{
+	const ScopeId template_scope = NewScope(pattern.lexical_scope,
+		SCOPE_TEMPLATE_PARAMETERS, 0, ScopePrefixId(pattern.lexical_scope));
+	for (std::size_t i = 0; i < arguments.size(); ++i)
+		program_->AddBinding(template_scope, BIND_TYPE_ALIAS,
+			pattern.type_parameters[i], arguments[i]);
+	return template_scope;
+}
+
+void SemanticAnalyzer::UpgradeFunctionTemplateSpecializations(
+	std::size_t index)
+{
+	if (index >= function_templates_.size())
+		throw std::logic_error("invalid function template upgrade");
+	FunctionTemplatePattern& pattern = function_templates_[index];
+	const std::size_t parameter_count = pattern.type_parameters.size();
+	for (std::size_t specialization = 0;
+		specialization < pattern.specialization_bindings.size(); ++specialization)
+	{
+		std::vector<TypeId> arguments;
+		arguments.reserve(parameter_count);
+		for (std::size_t p = 0; p < parameter_count; ++p)
+			arguments.push_back(pattern.specialization_arguments[
+				specialization * parameter_count + p]);
+		const ScopeId template_scope =
+			BindFunctionTemplateArguments(pattern, arguments);
+		const SpecInfo spec = BuildSpecifiers(pattern.specifiers, template_scope,
+			std::string(), true);
+		const DeclaratorInfo parsed = BuildDeclarator(pattern.declarator,
+			spec.type, template_scope);
+		FunctionInfo& function = GetMutableFunction(
+			pattern.specialization_bindings[specialization]);
+		if (function.type != parsed.type)
+			throw std::runtime_error(
+				"function template definition does not match declaration");
+		function.parameters = parsed.parameters;
+		function.defined = true;
+		function.deferred = true;
+		function.definition_body = pattern.definition_body;
+		function.lexical_scope = template_scope;
+	}
+}
+
 BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	const std::vector<TypeId>& arguments)
 {
@@ -2618,20 +2667,88 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	if (old != kNoBinding) ++template_specialization_cache_hits_;
 	if (old != kNoBinding) return old;
 
-	const ScopeId template_scope = NewScope(pattern.owner,
-		SCOPE_TEMPLATE_PARAMETERS, 0, ScopePrefixId(pattern.owner));
-	for (std::size_t i = 0; i < arguments.size(); ++i)
-		program_->AddBinding(template_scope, BIND_TYPE_ALIAS,
-			pattern.type_parameters[i], arguments[i]);
+	const ScopeId template_scope =
+		BindFunctionTemplateArguments(pattern, arguments);
 	const SpecInfo spec = BuildSpecifiers(pattern.specifiers, template_scope,
 		std::string(), true);
 	const DeclaratorInfo parsed = BuildDeclarator(pattern.declarator,
 		spec.type, template_scope);
 	const BindingId binding = DeclareFunction(pattern.owner, pattern.name,
-		parsed.type, parsed.parameters, false, true);
-	GetMutableFunction(binding).deferred = true;
+		parsed.type, parsed.parameters, pattern.defined, true,
+		spec.storage_class, pattern.language_linkage, pattern.nonthrowing);
+	ValidateFunctionRefQualifier(binding);
+	ValidateNonmemberOperator(binding);
+	FunctionInfo& function = GetMutableFunction(binding);
+	function.deferred = true;
+	function.lexical_scope = template_scope;
+	if (pattern.defined) function.definition_body = pattern.definition_body;
 	template_instantiations_.Insert(cache_key, binding);
+	FunctionTemplatePattern& mutable_pattern = function_templates_[index];
+	mutable_pattern.specialization_bindings.push_back(binding);
+	mutable_pattern.specialization_arguments.insert(
+		mutable_pattern.specialization_arguments.end(),
+		arguments.begin(), arguments.end());
 	return binding;
+}
+
+bool SemanticAnalyzer::DeduceFunctionTemplateType(TypeId pattern,
+	TypeId argument, std::vector<TypeId>* deduced) const
+{
+	for (std::size_t i = 0;
+		i < function_template_shape_parameters_.size() && i < deduced->size(); ++i)
+		if (pattern == function_template_shape_parameters_[i])
+		{
+			argument = program_->types.RemoveTopCv(argument);
+			if ((*deduced)[i] != kNoType && (*deduced)[i] != argument)
+				return false;
+			(*deduced)[i] = argument;
+			return true;
+		}
+	const TypeRecord& pattern_record = program_->types.Get(pattern);
+	if (pattern_record.kind == TYPE_QUALIFIED)
+		return DeduceFunctionTemplateType(pattern_record.child,
+			program_->types.RemoveTopCv(argument), deduced);
+	const TypeRecord& argument_record = program_->types.Get(argument);
+	if (pattern_record.kind != argument_record.kind) return false;
+	switch (pattern_record.kind)
+	{
+	case TYPE_POINTER:
+	case TYPE_LVALUE_REFERENCE:
+	case TYPE_RVALUE_REFERENCE:
+		return DeduceFunctionTemplateType(pattern_record.child,
+			argument_record.child, deduced);
+	case TYPE_ARRAY:
+		return (pattern_record.bound == 0 ||
+			pattern_record.bound == argument_record.bound) &&
+			DeduceFunctionTemplateType(pattern_record.child,
+				argument_record.child, deduced);
+	case TYPE_FUNCTION:
+	{
+		if (pattern_record.parameter_count != argument_record.parameter_count ||
+			pattern_record.variadic != argument_record.variadic ||
+			pattern_record.cv != argument_record.cv ||
+			pattern_record.ref_qualifier != argument_record.ref_qualifier ||
+			!DeduceFunctionTemplateType(pattern_record.child,
+				argument_record.child, deduced))
+			return false;
+		const TypeId* pattern_parameters = program_->types.Parameters(pattern);
+		const TypeId* argument_parameters = program_->types.Parameters(argument);
+		for (std::size_t i = 0; i < pattern_record.parameter_count; ++i)
+			if (!DeduceFunctionTemplateType(pattern_parameters[i],
+				argument_parameters[i], deduced)) return false;
+		return true;
+	}
+	case TYPE_MEMBER_POINTER:
+		return pattern_record.entity == argument_record.entity &&
+			DeduceFunctionTemplateType(pattern_record.child,
+				argument_record.child, deduced);
+	case TYPE_FUNDAMENTAL:
+	case TYPE_NAMED:
+	case TYPE_INVALID:
+	case TYPE_QUALIFIED:
+		return pattern == argument;
+	}
+	return false;
 }
 
 void SemanticAnalyzer::DeduceFunctionTemplates(ScopeId scope,
@@ -2645,44 +2762,34 @@ void SemanticAnalyzer::DeduceFunctionTemplates(ScopeId scope,
 	{
 		const FunctionTemplatePattern& pattern =
 			function_templates_[patterns[p]];
-		const NodeId clause = FindChild(pattern.declarator, "parameter-clause");
-		if (clause == kNoNode) continue;
-		std::vector<NodeId> parameters;
-		for (std::uint32_t edge = arena_->FirstEdge(clause); edge != kNoEdge;
-			edge = arena_->NextEdge(edge))
-		{
-			const NodeId child = arena_->EdgeChild(edge);
-			if (arena_->IsTag(child, "parameter-declaration"))
-				parameters.push_back(child);
-		}
-		if (parameters.size() != arguments.size()) continue;
+		const TypeRecord& function_type =
+			program_->types.Get(pattern.shape_type);
+		if (function_type.kind != TYPE_FUNCTION ||
+			function_type.parameter_count != arguments.size()) continue;
+		const TypeId* parameters =
+			program_->types.Parameters(pattern.shape_type);
 		std::vector<TypeId> deduced(pattern.type_parameters.size(), kNoType);
 		bool valid = true;
-		for (std::size_t a = 0; a < parameters.size() && valid; ++a)
+		for (std::size_t a = 0; a < arguments.size() && valid; ++a)
 		{
-			const NodeId specifiers =
-				FindChild(parameters[a], "decl-specifier-seq");
-			if (specifiers == kNoNode || arguments[a].type == kNoType) continue;
-			NameId dependent = 0;
-			for (std::uint32_t edge = arena_->FirstEdge(specifiers);
-				edge != kNoEdge; edge = arena_->NextEdge(edge))
+			if (arguments[a].type == kNoType)
 			{
-				const std::string type_name =
-					PayloadSource(arena_->EdgeChild(edge));
-				for (std::size_t t = 0; t < pattern.type_parameters.size(); ++t)
-					if (type_name ==
-						program_->names.Get(pattern.type_parameters[t]))
-						dependent = pattern.type_parameters[t];
+				valid = false;
+				continue;
 			}
-			if (dependent == 0) continue;
-			TypeId argument = Decay(EffectiveType(arguments[a].type));
-			argument = program_->types.RemoveTopCv(argument);
-			for (std::size_t t = 0; t < pattern.type_parameters.size(); ++t)
+			TypeId parameter = parameters[a];
+			TypeId argument = EffectiveType(arguments[a].type);
+			const TypeRecord& parameter_record =
+				program_->types.Get(parameter);
+			if (parameter_record.kind == TYPE_LVALUE_REFERENCE ||
+				parameter_record.kind == TYPE_RVALUE_REFERENCE)
+				parameter = parameter_record.child;
+			else
 			{
-				if (pattern.type_parameters[t] != dependent) continue;
-				if (deduced[t] != kNoType && deduced[t] != argument) valid = false;
-				else deduced[t] = argument;
+				parameter = program_->types.RemoveTopCv(parameter);
+				argument = program_->types.RemoveTopCv(Decay(argument));
 			}
+			valid = DeduceFunctionTemplateType(parameter, argument, &deduced);
 		}
 		for (std::size_t t = 0; t < deduced.size(); ++t)
 			if (deduced[t] == kNoType) valid = false;
@@ -2785,6 +2892,8 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 		parameter_bindings.push_back(parameter_binding);
 		dump_.Add(function, MakeDump(DUMP_PARAMETER, parameter.function_type,
 			VALUE_NONE, parameter.name, parameter_binding));
+		AddLifetimeObligation(function_scope, parameter_binding,
+			parameter.function_type, false);
 	}
 	if (!info.defined)
 	{

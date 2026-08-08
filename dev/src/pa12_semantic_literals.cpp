@@ -248,5 +248,36 @@ ExpressionInfo SemanticAnalyzer::AnalyzeThisExpression(ScopeId scope)
 	return result;
 }
 
+TypeId SemanticAnalyzer::DecltypeType(NodeId node, ScopeId scope)
+{
+	if (node == kNoNode) throw std::runtime_error("empty decltype");
+	bool parenthesized = false;
+	if (arena_->IsTag(node, "parenthesized-expression"))
+	{
+		parenthesized = true;
+		node = FirstSemanticChild(node);
+	}
+	if (arena_->IsTag(node, "id-expression"))
+	{
+		const LookupResult found = LookupSpelling(scope,
+			arena_->Payload(node), LOOKUP_ORDINARY);
+		if (found.ordinary == kNoBinding)
+			throw std::runtime_error("decltype name not found");
+		const BindingRecord& binding = program_->bindings[found.ordinary];
+		if (!parenthesized || binding.kind == BIND_ENUMERATOR)
+			return binding.type;
+		return program_->types.Reference(TYPE_LVALUE_REFERENCE,
+			EffectiveType(binding.type));
+	}
+	const ExpressionInfo expression = AnalyzeExpression(node, scope);
+	if (expression.category == VALUE_LVALUE)
+		return program_->types.Reference(TYPE_LVALUE_REFERENCE,
+			EffectiveType(expression.type));
+	if (expression.category == VALUE_XVALUE)
+		return program_->types.Reference(TYPE_RVALUE_REFERENCE,
+			EffectiveType(expression.type));
+	return expression.type;
+}
+
 }
 }

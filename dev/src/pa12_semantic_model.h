@@ -414,14 +414,26 @@ struct ClassPolymorphismFacts
 struct FunctionTemplatePattern
 {
 	ScopeId owner;
+	ScopeId lexical_scope;
 	NameId name;
 	NodeId specifiers;
 	NodeId declarator;
+	NodeId definition_body;
+	TypeId shape_type;
 	std::vector<NameId> type_parameters;
+	std::vector<BindingId> specialization_bindings;
+	std::vector<TypeId> specialization_arguments;
+	LanguageLinkage language_linkage;
+	bool defined;
+	bool nonthrowing;
 
 	FunctionTemplatePattern()
-		: owner(kNoScope), name(0), specifiers(kNoNode),
-		  declarator(kNoNode) {}
+		: owner(kNoScope), lexical_scope(kNoScope), name(0),
+		  specifiers(kNoNode),
+		  declarator(kNoNode), definition_body(kNoNode),
+		  shape_type(kNoType),
+		  language_linkage(LANGUAGE_LINKAGE_CPP), defined(false),
+		  nonthrowing(false) {}
 };
 
 struct InjectedMemberInfo

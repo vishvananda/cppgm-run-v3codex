@@ -172,6 +172,12 @@ private:
 		const std::string& spelling);
 	BindingId InstantiateFunctionTemplate(std::size_t pattern,
 		const std::vector<TypeId>& arguments);
+	ScopeId BindFunctionTemplateArguments(
+		const FunctionTemplatePattern& pattern,
+		const std::vector<TypeId>& arguments);
+	void UpgradeFunctionTemplateSpecializations(std::size_t pattern);
+	bool DeduceFunctionTemplateType(TypeId pattern, TypeId argument,
+		std::vector<TypeId>* deduced) const;
 	void DeduceFunctionTemplates(ScopeId scope, const std::string& spelling,
 		const std::vector<ExpressionInfo>& arguments);
 	void DemandFunction(BindingId binding);
@@ -570,6 +576,7 @@ private:
 	std::vector<NodeId> constructor_initializer_scratch_;
 	std::vector<BindingId> constructor_initializer_touched_;
 	std::vector<FunctionTemplatePattern> function_templates_;
+	std::vector<TypeId> function_template_shape_parameters_;
 	IndexedSequenceTable template_function_sets_;
 	TemplateSpecializationTable template_instantiations_;
 	std::vector<std::uint32_t> injected_fact_by_binding_;

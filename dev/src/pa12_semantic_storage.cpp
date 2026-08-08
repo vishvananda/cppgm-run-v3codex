@@ -47,6 +47,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		constructor_initializer_scratch_.capacity() * sizeof(NodeId) +
 		constructor_initializer_touched_.capacity() * sizeof(BindingId) +
 		function_templates_.capacity() * sizeof(FunctionTemplatePattern) +
+		function_template_shape_parameters_.capacity() * sizeof(TypeId) +
 		template_function_sets_.StorageBytes() +
 		template_instantiations_.StorageBytes() +
 		injected_fact_by_binding_.capacity() * sizeof(std::uint32_t) +
@@ -97,7 +98,11 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 				sizeof(std::uint8_t);
 	for (std::size_t i = 0; i < function_templates_.size(); ++i)
 		bytes += function_templates_[i].type_parameters.capacity() *
-			sizeof(NameId);
+				sizeof(NameId) +
+			function_templates_[i].specialization_bindings.capacity() *
+				sizeof(BindingId) +
+			function_templates_[i].specialization_arguments.capacity() *
+				sizeof(TypeId);
 	return bytes;
 }
 

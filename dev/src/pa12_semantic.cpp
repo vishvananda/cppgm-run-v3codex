@@ -1913,36 +1913,6 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	return result;
 }
 
-TypeId SemanticAnalyzer::DecltypeType(NodeId node, ScopeId scope)
-{
-	if (node == kNoNode) throw std::runtime_error("empty decltype");
-	bool parenthesized = false;
-	if (arena_->IsTag(node, "parenthesized-expression"))
-	{
-		parenthesized = true;
-		node = FirstSemanticChild(node);
-	}
-	if (arena_->IsTag(node, "id-expression"))
-	{
-		const LookupResult found = LookupSpelling(scope,
-			arena_->Payload(node), LOOKUP_ORDINARY);
-		if (found.ordinary == kNoBinding)
-			throw std::runtime_error("decltype name not found");
-		const BindingRecord& binding = program_->bindings[found.ordinary];
-		if (!parenthesized || binding.kind == BIND_ENUMERATOR) return binding.type;
-		return program_->types.Reference(TYPE_LVALUE_REFERENCE,
-			EffectiveType(binding.type));
-	}
-	const ExpressionInfo expression = AnalyzeExpression(node, scope);
-	if (expression.category == VALUE_LVALUE)
-		return program_->types.Reference(TYPE_LVALUE_REFERENCE,
-			EffectiveType(expression.type));
-	if (expression.category == VALUE_XVALUE)
-		return program_->types.Reference(TYPE_RVALUE_REFERENCE,
-			EffectiveType(expression.type));
-	return expression.type;
-}
-
 void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope)
 {
 	const NodeId clause = FindChild(node, "template-parameter-clause");
@@ -1973,28 +1943,121 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope)
 		const NodeId child = arena_->EdgeChild(edge);
 		if (child != clause) target = child;
 	}
-	if (target == kNoNode || !arena_->IsTag(target, "simple-declaration"))
+	if (target == kNoNode ||
+		(!arena_->IsTag(target, "simple-declaration") &&
+		 !arena_->IsTag(target, "function-definition")))
 		throw std::runtime_error("unsupported PA12 templated declaration");
 	const NodeId specifiers = FindChild(target, "decl-specifier-seq");
-	const NodeId declarators = FindChild(target, "init-declarator-list");
-	if (specifiers == kNoNode || declarators == kNoNode)
+	if (specifiers == kNoNode)
 		throw std::runtime_error("invalid PA12 function template");
-	for (std::uint32_t edge = arena_->FirstEdge(declarators); edge != kNoEdge;
-		edge = arena_->NextEdge(edge))
+	const bool definition = arena_->IsTag(target, "function-definition");
+	const NodeId declarators = definition ? kNoNode :
+		FindChild(target, "init-declarator-list");
+	if (!definition && declarators == kNoNode)
+		throw std::runtime_error("invalid PA12 function template");
+	std::vector<NodeId> pattern_declarators;
+	if (definition)
 	{
-		const NodeId item = arena_->EdgeChild(edge);
-		const NodeId declarator = FindChild(item, "declarator");
-		if (declarator == kNoNode) continue;
+		const NodeId declarator = FindChild(target, "declarator");
+		if (declarator == kNoNode)
+			throw std::runtime_error("invalid PA12 function template definition");
+		pattern_declarators.push_back(declarator);
+	}
+	else
+	{
+		for (std::uint32_t edge = arena_->FirstEdge(declarators); edge != kNoEdge;
+			edge = arena_->NextEdge(edge))
+		{
+			const NodeId declarator =
+				FindChild(arena_->EdgeChild(edge), "declarator");
+			if (declarator != kNoNode) pattern_declarators.push_back(declarator);
+		}
+	}
+	while (function_template_shape_parameters_.size() < parameters.size())
+	{
+		std::ostringstream generated;
+		generated << "__function_template_parameter_shape_"
+			<< function_template_shape_parameters_.size();
+		const NameId name = program_->names.Intern(generated.str());
+		const EntityId entity = program_->NewEntity(name,
+			NAMED_TYPENAME_PARAMETER, false, kNoType,
+			program_->GlobalScope(), name);
+		function_template_shape_parameters_.push_back(
+			program_->types.Named(entity));
+	}
+	for (std::size_t i = 0; i < pattern_declarators.size(); ++i)
+	{
+		const NodeId declarator = pattern_declarators[i];
+		const NamePath path = DeclaratorNamePath(declarator);
 		FunctionTemplatePattern pattern;
-		pattern.owner = scope;
-		pattern.name = DeclaratorName(declarator);
+		pattern.owner = ResolveOwner(scope, path);
+		if (pattern.owner == kNoScope)
+			throw std::runtime_error("function template owner not found");
+		pattern.lexical_scope = scope;
+		pattern.name = path.Last();
 		pattern.specifiers = specifiers;
 		pattern.declarator = declarator;
+		pattern.definition_body = definition ?
+			FindChild(target, "compound-statement") : kNoNode;
 		pattern.type_parameters = parameters;
+		pattern.language_linkage = current_language_linkage_;
+		pattern.defined = definition;
+		pattern.nonthrowing = IsNonthrowing(declarator, pattern.owner);
+		const ScopeId shape_scope = NewScope(scope, SCOPE_TEMPLATE_PARAMETERS,
+			0, ScopePrefixId(scope));
+		for (std::size_t p = 0; p < parameters.size(); ++p)
+			program_->AddBinding(shape_scope, BIND_TYPE_ALIAS, parameters[p],
+				function_template_shape_parameters_[p]);
+		const SpecInfo shape_spec = BuildSpecifiers(specifiers, shape_scope,
+			std::string(), true);
+		const DeclaratorInfo shape_declarator = BuildDeclarator(declarator,
+			shape_spec.type, shape_scope);
+		if (!program_->types.IsFunction(shape_declarator.type))
+			throw std::runtime_error(
+				"function template has non-function declaration");
+		pattern.shape_type = shape_declarator.type;
+		const std::uint64_t key =
+			(static_cast<std::uint64_t>(pattern.owner) << 32) | pattern.name;
+		const CompactIndexSequence* prior_patterns =
+			template_function_sets_.Find(key);
+		std::size_t prior_index = function_templates_.size();
+		if (prior_patterns)
+			for (std::size_t p = 0; p < prior_patterns->Size(); ++p)
+			{
+				const std::size_t candidate = (*prior_patterns)[p];
+				const FunctionTemplatePattern& prior =
+					function_templates_[candidate];
+				if (prior.type_parameters.size() == parameters.size() &&
+					prior.shape_type == pattern.shape_type)
+				{
+					prior_index = candidate;
+					break;
+				}
+			}
+		if (prior_index != function_templates_.size())
+		{
+			FunctionTemplatePattern& prior = function_templates_[prior_index];
+			if (prior.nonthrowing != pattern.nonthrowing)
+				throw std::runtime_error(
+					"conflicting function template exception specification");
+			if (definition)
+			{
+				if (prior.defined)
+					throw std::runtime_error(
+						"duplicate function template definition");
+				prior.lexical_scope = pattern.lexical_scope;
+				prior.specifiers = pattern.specifiers;
+				prior.declarator = pattern.declarator;
+				prior.definition_body = pattern.definition_body;
+				prior.type_parameters = pattern.type_parameters;
+				prior.language_linkage = pattern.language_linkage;
+				prior.defined = true;
+				UpgradeFunctionTemplateSpecializations(prior_index);
+			}
+			continue;
+		}
 		const std::size_t index = function_templates_.size();
 		function_templates_.push_back(pattern);
-		const std::uint64_t key =
-			(static_cast<std::uint64_t>(scope) << 32) | pattern.name;
 		template_function_sets_.Ensure(key).Push(index);
 	}
 }
