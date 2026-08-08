@@ -2,66 +2,69 @@
 
 ## Current Checkpoint Review
 
-**Checkpoint:** `f28a83f9` (`Implement PA17 constructor delegation`)
+**Checkpoint:** `d3f28efd` (`pa17: lower composite subobject transfers`)
 
 **Result:** Pass after audit fixes. The landed increment is bounded to
-delegating constructors, out-of-class constructor/destructor definitions, and
-qualified default completion. Composite copy/move subobject transfer remains
-the next checkpoint.
+synthesized composite copy/move recipes, leading trivial storage spans,
+class-array element transfers, empty/reference/bit-field storage handling,
+aggregate return helpers, and the corresponding class-value parameter shape.
+Lookup and reference-binding closure remains the next checkpoint.
 
-The ownership path is source special-member syntax -> the class declaration's
-canonical `BindingId` and completed `FunctionInfo` -> selected constructor and
-conversion facts -> one normalized complete-constructor delegation edge and
-typed delegation action -> demand-keyed complete/base ABI entries -> the
-existing `%this` destination -> typed LowIR. Default completion uses canonical
-member/layout/destructor identities at the same declaration owner. Lowering
-does no lookup, signature rendering, semantic reconstruction, or text round
-trip.
+The ownership path is class source and canonical layout -> completed
+`FunctionInfo` special-member facts -> an ordered recipe carrying canonical
+`TypeId`, member `BindingId`, selected special-member `BindingId`, and optional
+storage span -> demand-keyed helper/ABI emission -> existing source and `%this`
+storage -> typed LowIR. Aggregate return helpers likewise retain member and
+selected-constructor identities. Lowering consumes those identities directly;
+PA17 introduces no template or ELF owner and stops at the assignment's typed
+LowIR boundary.
 
 Audit findings are closed:
 
-1. A qualified `= default` definition could be accepted when it was not a
-   valid special-member signature or when completion made it deleted. The
-   deleted fact disabled demand, so an unused ill-formed constructor or
-   assignment escaped; defaulted union destructors also skipped member
-   destruction and escaped. Qualified constructor/assignment definitions now
-   validate the implicit signature and reject a deleted completion
-   immediately. Defaulted destructor completion visits canonical base/member
-   destructor facts once and records deletion, destructibility, and the
-   conservative nonthrowing fact. Six focused regressions cover wrong
-   signatures and deleted default constructor, move constructor, move
-   assignment, and union-destructor definitions.
-2. Delegation normalizes complete/base ABI identities before recording one
-   selected edge, rejects mixed initializers and direct/indirect cycles, and
-   lowers the retained typed action into existing storage. The graph walk is
-   bounded by the indexed constructor set, demand states suppress duplicate
-   emission, and no retry, global invalidation, or fallback path is present.
-3. The dedicated PA17 completion source remains registered in the compiler
-   source set and below the file-audit limit. The changed path contains no
-   test-name, reference-binary, host-compiler, subprocess, timeout, or cached
-   output shortcut.
+1. Nontrivial array-member copy and assignment expanded the retained array
+   bound into one typed call sequence per element. A 65,536-element transfer
+   therefore created hundreds of thousands of instructions despite one
+   semantic subobject action. Arrays now flatten to their canonical leaf type,
+   use the exact inline path through eight elements, and otherwise emit one
+   counted loop keyed by the action node. Nested arrays use the same loop over
+   the flattened contiguous leaf range; exception-aware transfer cleanup is
+   outside PA17's stated boundary.
+2. The original lowering helper created a temporary `DumpNode` merely to pass
+   a selected binding to shared call code, contrary to `spec.md` section 6.
+   The call path now accepts the retained canonical `BindingId` directly. No
+   lookup, rendered signature, semantic reconstruction, text round trip,
+   whole-program retry, or fallback remains on the affected path.
+3. Prefix spans remain one `copyobj`; later nontrivial members and array leaves
+   use their selected helpers; empty subobjects invent no scalar payload; and
+   bit-field assignment copies one canonical storage unit. The PA17 bit-field
+   case remains outside the 207 pass set only because its constructor fixture
+   requires the opposite instruction presentation from the identical passing
+   PA16 fixture. Preserving PA16's checked output and the README's monotonic
+   extension rule takes precedence over demand-sensitive presentation. The
+   transfer function itself matches the PA17 oracle.
+4. The changed source contains no test-name, source-spelling, reference-binary,
+   host-compiler, subprocess, timeout, or cached-output shortcut. All files
+   remain registered and within the audit limit.
 
-Representative 32/64/128-link delegation probes recorded 32/64/128 actions,
-66/130/258 demand pushes, 296/584/1,160 instructions, and
-130,531/258,787/515,504 typed bytes. Five-run semantic medians were
-3.073/8.948/29.744 ms. Candidate visits (6,732/25,740/100,620) and conversions
-(9,770/37,962/149,642) grow roughly fourfold because each same-arity link must
-inspect the full overload set; actions, demand, IR, storage, and output remain
-linear. Defaulted-destructor probes at 32/64/128 nontrivial members recorded
-64/128/256 complete/base actions, 224/448/896 access checks, and semantic
-medians of 0.228/0.363/0.572 ms, with proportional storage.
+Representative nontrivial array-member copy/assignment probes at extents
+32/1,024/65,536 each recorded 6 subobject visits and 22 lowered nodes, with a
+fixed 12 blocks, 74 instructions, and 21,183 typed bytes. Five-run semantic
+medians were 0.246/0.222/0.250 ms and lowering medians were
+0.253/0.222/0.251 ms; output was 3,781/3,785/3,787 bytes. A nested 32x32 array
+retained the same shape with one 1,024-element loop, and the largest probe
+passes the LowIR sanity validator. The landed mixed-prefix probe remains
+linear in declared members while lowering stays fixed at one prefix transfer
+plus the nontrivial tail.
 
 Validation:
 
 - `make test-report ACTIVE_TEST_REPORT_PAS='pa17'`: expected incomplete-stage
-  failure, 199/239. The landed 193/233 pass set and all six audit regressions
-  pass; the same 40 residual PA17 tests fail.
+  failure, 207/239; the turn-start pass set is unchanged.
 - Required through-stage command: PA1-PA16 pass 1,436/1,436.
 - `perl scripts/cppgm_file_audit.pl --stage pa17 --paths dev/src`: pass with
-  the same ten header-division warnings and no fatal issue.
-- Focused landed and audit coverage passes 15/15; source/ownership audit finds
-  canonical compact keys, typed demand/action facts, and no semantic or textual
-  fallback.
+  11 header-division warnings and no fatal issue.
+- Landed focus passes 8/8; five PA16 bit-field compatibility cases pass; source
+  and ownership searches find compact typed keys and no shortcut or fallback.
 
 ## Checkpoint Audit Ledger
 
@@ -72,3 +75,4 @@ Validation:
 | Loop full-expression regions | Pass after audit fixes | Typed discarded materialization; bounded-inline and linked-suffix cleanup; 174/231 baseline, linear probes, and required gates pass |
 | Class direct-initialization recipes | Pass after audit fixes | Canonical list conversions and selected constructor are reused; original pass set, audit regressions, proportional probes, and required gates pass |
 | Typed constructor delegation and qualified default completion | Pass after audit fixes | Canonical declaration/complete-constructor identities and typed action reuse; invalid/deleted defaults rejected; 193/233 baseline, six regressions, proportional probes, and required gates pass |
+| Composite subobject copy/move storage transfer | Pass after audit fixes | Canonical recipe and direct selected-binding lowering; bounded array loops; 207/239 baseline, focused/through-stage gates, file audit, and fixed-shape extent probes pass |

@@ -5,6 +5,7 @@
 #include "pa15_lowir_model.h"
 
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
 
 namespace cppgm
@@ -17,15 +18,17 @@ using namespace pa12_semantic_detail;
 using namespace pa15_lowering_support;
 using namespace pa15_lowir_detail;
 
+const std::size_t kSpecialMemberArrayInlineLimit = 8;
+
 template <typename Derived>
 class SpecialMemberLowering
 {
 protected:
 	Operand ArrayElementAddress(TypeId element_type,
-		const Operand& base, std::size_t index)
+		const Operand& base, const Operand& index)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		Operand displacement(static_cast<std::int64_t>(index), LowI64());
+		Operand displacement = index;
 		const std::size_t element_size =
 			derived.program_.SizeOf(element_type);
 		if (element_size != 1)
@@ -45,21 +48,28 @@ protected:
 			LowI8(), base, displacement, true);
 	}
 
-	void LowerAssignmentCall(const DumpNode& step,
+	Operand ArrayElementAddress(TypeId element_type,
+		const Operand& base, std::size_t index)
+	{
+		return ArrayElementAddress(element_type, base,
+			Operand(static_cast<std::int64_t>(index), LowI64()));
+	}
+
+	void LowerSpecialMemberCall(BindingId selected,
 		const Operand& destination, const Operand& source)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		if (step.selected_binding == kNoBinding ||
-			step.selected_binding >= derived.function_symbols_.size() ||
-			derived.function_symbols_[step.selected_binding] == kNoLowId)
+		if (selected == kNoBinding ||
+			selected >= derived.function_symbols_.size() ||
+			derived.function_symbols_[selected] == kNoLowId)
 			throw std::logic_error(
-				"selected assignment helper has no lowering identity");
+				"selected special-member helper has no lowering identity");
 		const TypeRecord& function = derived.program_.types.Get(
-			derived.program_.bindings[step.selected_binding].type);
+			derived.program_.bindings[selected].type);
 		Instruction call(Instruction::CALL);
 		call.type = derived.LowerBoundaryResult(function.child);
 		call.first = Operand(Operand::FUNCTION,
-			derived.function_symbols_[step.selected_binding], LowPtr());
+			derived.function_symbols_[selected], LowPtr());
 		CallArguments arguments;
 		CallArgumentFlags references;
 		arguments.Push(destination);
@@ -67,7 +77,7 @@ protected:
 		arguments.Push(source);
 		references.Push(1);
 		derived.output_.symbols[
-			derived.function_symbols_[step.selected_binding]].referenced = true;
+			derived.function_symbols_[selected]].referenced = true;
 		derived.AttachCallArguments(&call, arguments, references);
 		if (call.type.kind == LOW_VOID)
 			derived.Emit(call);
@@ -93,35 +103,11 @@ protected:
 		const TypeId object_type = derived.program_.types.RemoveTopCv(type);
 		const TypeRecord& record = derived.program_.types.Get(object_type);
 		if (record.kind == TYPE_ARRAY)
-		{
-			if (record.bound == 0)
-				throw std::logic_error(
-					"synthesized constructor has an unbounded array");
-			if (selected == kNoBinding)
-			{
-				derived.EmitClassObjectCopy(type, source, destination);
-				return;
-			}
-			const Operand destination_base =
-				derived.DecayAddress(destination);
-			const Operand source_base = derived.DecayAddress(source);
-			for (std::size_t i = 0;
-				i < static_cast<std::size_t>(record.bound); ++i)
-			{
-				const Operand destination_element = ArrayElementAddress(
-					record.child, destination_base, i);
-				const Operand source_element = ArrayElementAddress(
-					record.child, source_base, i);
-				LowerConstructionSubobject(record.child, selected,
-					destination_element, source_element);
-			}
-			return;
-		}
+			throw std::logic_error(
+				"array construction bypassed its retained loop recipe");
 		if (selected != kNoBinding)
 		{
-			DumpNode call(DUMP_SPECIAL_MEMBER_SUBOBJECT_ACTION);
-			call.selected_binding = selected;
-			LowerAssignmentCall(call, destination, source);
+			LowerSpecialMemberCall(selected, destination, source);
 			return;
 		}
 		if (derived.IsClassObjectType(type))
@@ -146,35 +132,11 @@ protected:
 		const TypeId object_type = derived.program_.types.RemoveTopCv(type);
 		const TypeRecord& record = derived.program_.types.Get(object_type);
 		if (record.kind == TYPE_ARRAY)
-		{
-			if (record.bound == 0)
-				throw std::logic_error(
-					"synthesized assignment has an unbounded array");
-			if (selected == kNoBinding)
-			{
-				derived.EmitClassObjectCopy(type, source, destination);
-				return;
-			}
-			const Operand destination_base =
-				derived.DecayAddress(destination);
-			const Operand source_base = derived.DecayAddress(source);
-			for (std::size_t i = 0;
-				i < static_cast<std::size_t>(record.bound); ++i)
-			{
-				const Operand destination_element = ArrayElementAddress(
-					record.child, destination_base, i);
-				const Operand source_element = ArrayElementAddress(
-					record.child, source_base, i);
-				LowerAssignmentSubobject(record.child, selected,
-					destination_element, source_element);
-			}
-			return;
-		}
+			throw std::logic_error(
+				"array assignment bypassed its retained loop recipe");
 		if (selected != kNoBinding)
 		{
-			DumpNode call(DUMP_SPECIAL_MEMBER_SUBOBJECT_ACTION);
-			call.selected_binding = selected;
-			LowerAssignmentCall(call, destination, source);
+			LowerSpecialMemberCall(selected, destination, source);
 			return;
 		}
 		if (derived.IsClassObjectType(type))
@@ -192,68 +154,126 @@ protected:
 		derived.Emit(store);
 	}
 
-	void LowerConstructionArrayStep(const DumpNode& construction,
-		const DumpNode& step, const Operand& destination)
+	TypeId FlattenArrayType(TypeId type, std::size_t* count)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		const TypeRecord& array = derived.program_.types.Get(
-			derived.program_.types.RemoveTopCv(step.type));
-		if (array.kind != TYPE_ARRAY || array.bound == 0 ||
-			step.selected_binding == kNoBinding)
-			throw std::logic_error("invalid synthesized array construction step");
-		const Operand destination_base = derived.DecayAddress(destination);
-		Operand source_base;
-		for (std::size_t i = 0;
-			i < static_cast<std::size_t>(array.bound); ++i)
+		*count = 1;
+		for (;;)
 		{
-			const Operand destination_element = ArrayElementAddress(
-				array.child, destination_base, i);
-			if (i == 0)
-			{
-				Operand source = LoadAssignmentObject(
-					construction.object_binding);
-				if (step.binding != kNoBinding)
-					source = derived.ProjectAggregateMember(source, step.binding);
-				source_base = derived.DecayAddress(source);
-			}
-			const Operand source_element = ArrayElementAddress(
-				array.child, source_base, i);
-			LowerConstructionSubobject(array.child, step.selected_binding,
-				destination_element, source_element);
+			const TypeRecord& array = derived.program_.types.Get(
+				derived.program_.types.RemoveTopCv(type));
+			if (array.kind != TYPE_ARRAY) return type;
+			if (array.bound == 0 || array.bound >
+				std::numeric_limits<std::size_t>::max() / *count)
+				throw std::logic_error("invalid synthesized array extent");
+			*count *= static_cast<std::size_t>(array.bound);
+			type = array.child;
 		}
 	}
 
-	void LowerAssignmentArrayStep(const DumpNode& assignment,
-		const DumpNode& step, const Operand& destination)
+	void LowerArraySubobjectStep(std::uint32_t step_node,
+		TypeId type, BindingId selected, const Operand& destination,
+		BindingId source_object, BindingId source_member, bool assignment)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		const TypeRecord& array = derived.program_.types.Get(
-			derived.program_.types.RemoveTopCv(step.type));
-		if (array.kind != TYPE_ARRAY || array.bound == 0 ||
-			step.selected_binding == kNoBinding)
-			throw std::logic_error("invalid synthesized array assignment step");
+		std::size_t count = 0;
+		const TypeId element = FlattenArrayType(type, &count);
+		if (selected == kNoBinding)
+		{
+			Operand source = LoadAssignmentObject(source_object);
+			if (source_member != kNoBinding)
+				source = derived.ProjectAggregateMember(source, source_member);
+			derived.EmitClassObjectCopy(type, source, destination);
+			return;
+		}
 		const Operand destination_base = derived.DecayAddress(destination);
 		Operand source_base;
-		for (std::size_t i = 0;
-			i < static_cast<std::size_t>(array.bound); ++i)
+		if (count <= kSpecialMemberArrayInlineLimit)
 		{
-			const Operand destination_element = ArrayElementAddress(
-				array.child, destination_base, i);
-			if (i == 0)
+			for (std::size_t i = 0; i < count; ++i)
 			{
-				Operand source = LoadAssignmentObject(assignment.object_binding);
-				if (step.binding != kNoBinding)
-					source = derived.ProjectAggregateMember(source, step.binding);
-				source_base = derived.DecayAddress(source);
+				const Operand destination_element = ArrayElementAddress(
+					element, destination_base, i);
+				if (i == 0)
+				{
+					Operand source = LoadAssignmentObject(source_object);
+					if (source_member != kNoBinding)
+						source = derived.ProjectAggregateMember(
+							source, source_member);
+					source_base = derived.DecayAddress(source);
+				}
+				const Operand source_element = ArrayElementAddress(
+					element, source_base, i);
+				if (assignment)
+					LowerAssignmentSubobject(element, selected,
+						destination_element, source_element);
+				else LowerConstructionSubobject(element, selected,
+					destination_element, source_element);
 			}
-			const Operand source_element = ArrayElementAddress(
-				array.child, source_base, i);
-			LowerAssignmentSubobject(array.child, step.selected_binding,
-				destination_element, source_element);
+			return;
 		}
+		if (count > static_cast<std::size_t>(
+			std::numeric_limits<std::int64_t>::max()))
+			throw std::logic_error("synthesized array extent exceeds LowIR");
+		Operand source = LoadAssignmentObject(source_object);
+		if (source_member != kNoBinding)
+			source = derived.ProjectAggregateMember(source, source_member);
+		source_base = derived.DecayAddress(source);
+		const Operand index_slot(derived.EnsureGeneratedSlot(step_node,
+			assignment ? "assign_array_index" : "copy_array_index", LowI64()),
+			LowI64());
+		const BlockId condition = derived.AddBlock(derived.NewLabel(
+			assignment ? "assign_array_cond" : "copy_array_cond"));
+		const BlockId body = derived.AddBlock(derived.NewLabel(
+			assignment ? "assign_array_body" : "copy_array_body"));
+		const BlockId end = derived.AddBlock(derived.NewLabel(
+			assignment ? "assign_array_end" : "copy_array_end"));
+		Instruction initialize(Instruction::STORE);
+		initialize.type = LowI64();
+		initialize.first = Operand(0, LowI64());
+		initialize.second = index_slot;
+		derived.Emit(initialize);
+		derived.EmitJump(condition);
+		derived.SelectBlock(condition);
+		const Operand index = derived.LoadStorage(index_slot, LowI64());
+		const Operand more = derived.Temp(LowU8());
+		Instruction compare(Instruction::CMP);
+		compare.dest = more.id;
+		compare.op = LOW_OP_ULT;
+		compare.type = LowI64();
+		compare.first = index;
+		compare.second = Operand(static_cast<std::int64_t>(count), LowI64());
+		derived.Emit(compare);
+		derived.EmitBranch(more, body, end);
+		derived.SelectBlock(body);
+		const Operand destination_element = ArrayElementAddress(
+			element, destination_base, index);
+		const Operand source_element = ArrayElementAddress(
+			element, source_base, index);
+		if (assignment)
+			LowerAssignmentSubobject(element, selected,
+				destination_element, source_element);
+		else LowerConstructionSubobject(element, selected,
+			destination_element, source_element);
+		const Operand next = derived.Temp(LowI64());
+		Instruction increment(Instruction::BINARY);
+		increment.dest = next.id;
+		increment.op = LOW_OP_ADD;
+		increment.type = LowI64();
+		increment.first = index;
+		increment.second = Operand(1, LowI64());
+		derived.Emit(increment);
+		Instruction save(Instruction::STORE);
+		save.type = LowI64();
+		save.first = next;
+		save.second = index_slot;
+		derived.Emit(save);
+		derived.EmitJump(condition);
+		derived.SelectBlock(end);
 	}
 
-	void LowerConstructionStep(const DumpNode& construction,
+	void LowerConstructionStep(std::uint32_t step_node,
+		const DumpNode& construction,
 		const DumpNode& step)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
@@ -284,10 +304,11 @@ protected:
 				destination, step.base_projection_count);
 		const TypeRecord& step_type = derived.program_.types.Get(
 			derived.program_.types.RemoveTopCv(step.type));
-		if (step_type.kind == TYPE_ARRAY &&
-			step.selected_binding != kNoBinding)
+		if (step_type.kind == TYPE_ARRAY)
 		{
-			LowerConstructionArrayStep(construction, step, destination);
+			LowerArraySubobjectStep(step_node, step.type,
+				step.selected_binding, destination,
+				construction.object_binding, step.binding, false);
 			return;
 		}
 		Operand source = LoadAssignmentObject(construction.object_binding);
@@ -322,13 +343,14 @@ protected:
 		for (std::size_t i = 0; i < steps.size(); ++i)
 		{
 			if (derived.stats_) ++derived.stats_->lowered_nodes;
-			LowerConstructionStep(
-				construction, derived.arena_.nodes[steps[i]]);
+			LowerConstructionStep(steps[i], construction,
+				derived.arena_.nodes[steps[i]]);
 		}
 		return Operand(0, LowVoid());
 	}
 
-	void LowerAssignmentStep(const DumpNode& assignment,
+	void LowerAssignmentStep(std::uint32_t step_node,
+		const DumpNode& assignment,
 		const DumpNode& step)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
@@ -395,7 +417,9 @@ protected:
 				derived.program_.types.RemoveTopCv(step.type));
 			if (step_type.kind == TYPE_ARRAY)
 			{
-				LowerAssignmentArrayStep(assignment, step, destination);
+				LowerArraySubobjectStep(step_node, step.type,
+					step.selected_binding, destination,
+					assignment.object_binding, step.binding, true);
 				return;
 			}
 			Operand source = LoadAssignmentObject(assignment.object_binding);
@@ -460,7 +484,8 @@ protected:
 		for (std::size_t i = 0; i < steps.size(); ++i)
 		{
 			if (derived.stats_) ++derived.stats_->lowered_nodes;
-			LowerAssignmentStep(assignment, derived.arena_.nodes[steps[i]]);
+			LowerAssignmentStep(steps[i], assignment,
+				derived.arena_.nodes[steps[i]]);
 		}
 		return derived.LoadStorage(
 			derived.StorageFor(derived.current_this_binding_, LowPtr()), LowPtr());

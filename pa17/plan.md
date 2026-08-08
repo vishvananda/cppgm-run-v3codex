@@ -24,12 +24,19 @@ definitions reuse the class declaration's canonical binding. Explicitly
 defaulted definitions validate their implicit signature and deleted state at
 that owner; defaulted destructor completion visits each canonical base/member
 destructor fact once. Delegation records one selected complete-constructor
-identity and lowers one typed action into the existing destination.
+identity and lowers one typed action into the existing destination. Synthesized
+composite transfers retain a canonical member/type/selected-special-member
+recipe plus an optional leading storage span. Lowering consumes those facts
+directly: spans become one `copyobj`, arrays of up to eight leaf subobjects use
+the exact inline path, and larger or nested arrays become one counted loop.
+No lowering-only semantic node is synthesized. Compile work is therefore
+O(owned subobjects + emitted loop IR), independent of a retained array extent;
+runtime transfer work remains O(array elements).
 
 ## Current Failure Map
 
 Audited result: **207/239**. The complete non-overlapping failure map contains
-32 tests; the original pass set and all earlier stages remain intact:
+32 tests; the landed pass set and all earlier stages remain intact:
 
 | Failures | Shared behavior | Primary owner |
 | ---: | --- | --- |
@@ -128,6 +135,12 @@ binding; then full PA17, through PA16, audit, and 32/64/128 candidate scaling.
   0.438/0.479/0.630 ms; lowering stayed at 57 nodes, 109 instructions, and
   32,343 typed bytes, confirming linear recipe construction and one retained
   whole-prefix transfer.
+- Nontrivial array-member copy and assignment at extents 32/1,024/65,536 each
+  recorded 6 subobject visits and 22 lowered nodes, and emitted 12 blocks,
+  74 instructions, and 21,183 typed bytes. Five-run semantic medians were
+  0.246/0.222/0.250 ms and lowering medians were 0.253/0.222/0.251 ms; output
+  was 3,781/3,785/3,787 bytes (only the bound spelling changes). A nested
+  32x32 array retained the same counts with one 1,024-element loop.
 
 ## Completed Checkpoints
 
@@ -148,4 +161,4 @@ binding; then full PA17, through PA16, audit, and 32/64/128 candidate scaling.
 | Loop full-expression regions | 173/231 -> 174/231 | Direct/cast/comma/conditional discarded materialization; exact normal/unwind cleanup; focused 17/17; through PA16 1,436/1,436; file audit and linear nested/width probes pass |
 | Class direct-initialization recipes | 174/231 -> 186/231; audit 188/233 | Landed pass set gains 12 tests; scalar-list rank and narrowing regressions pass without changing the original set; through PA16 1,436/1,436; file audit and proportional list/candidate probes pass |
 | Typed constructor delegation and qualified default completion | 188/233 -> 193/233; audit 199/239 | Positive delegation/qualified definitions 5/5; cycle/mixed rejection 3/3; six defaulted-definition regressions; through PA16 1,436/1,436; file audit and proportional 32/64/128 probes pass |
-| Composite subobject copy/move storage transfer | 199/239 -> 207/239 | Prefix, array, empty, reference, move-only aggregate, implicit-move, and trivial ABI cases gained 8/8; original set intact; through PA16 1,436/1,436; linear recipe/fixed-lowering probe pass |
+| Composite subobject copy/move storage transfer | 199/239 -> 207/239; audit 207/239 | Prefix, array, empty, reference, move-only aggregate, implicit-move, and trivial ABI gains remain 8/8; direct typed lowering and bounded array loops audited; through PA16 1,436/1,436; fixed-shape extent probes and file audit pass |
