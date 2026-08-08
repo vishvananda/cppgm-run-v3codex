@@ -14,27 +14,26 @@ Native IR and ELF remain later-stage boundaries.
 
 ## Current Failure Map
 
-Indexed specialization completion raised PA19 from 208 to 214/293. The complete
-remaining 79-test set is:
+Retained-definition validation raised PA19 from 214 to 225/293. The complete
+remaining 68-test set is:
 
 | Failures | Shared behavior | Owner |
 |---:|---|---|
 | 15 rejected valid inputs | Function-template deduction/returns, enum or member operators, and target candidate ranking. | PA19 function-template deduction and PA12 overload selection |
 | 16 rejected valid inputs | Dependent/local type and member lookup, nested completion, and retained replay. | PA12 retained scopes and lookup provenance; PA19 completion |
 | 5 rejected valid inputs | Explicit instantiation demand, defaults, variable templates, and declaration forms. | PA19 template declaration and demand owners |
-| 11 accepted invalid inputs | Definition-time template parameter/name/redeclaration and exception-spec diagnostics. | PA12 retained-definition validation |
 | 32 LowIR mismatches | Selected instantiated facts diverge in special members/lifetimes, static storage, null constants, or overload/control-flow lowering. | PA12 selected facts and PA15-PA19 typed lowering |
 
 ## Active Checkpoint
 
-Validate retained template definitions before specialization demand. PA12 owns
-one lexical shape scope per PA10 pattern and must classify nondependent names,
-reject template-parameter redeclarations in nested declaration/condition scopes,
-and compare out-of-class exception specifications; PA19 retains only definitions
-that pass this gate. This applies `spec.md` sections 2-4 and 9 once per pattern in
-O(body syntax plus indexed lookup relations), with no per-specialization repeat.
-Validate the complete 11-test accepted-invalid group, valid unused dependent
-bodies, PA1-PA18, file audit, and 128/256/512 retained-body scaling.
+Normalize function-template deduction and selected result shapes. PA19 owns
+top-level cv adjustment, reference/array matching, target/member candidates and
+return substitution; PA12 overload selection ranks the canonical candidates,
+and PA15 materializes the selected class result. This applies `spec.md` sections
+2-4 and 9 in O(pattern type nodes plus viable candidates), with O(1)-average
+specialization probes and no pattern-set rescans. Validate by-value const,
+cv/reference/array parameters, pair-vs-range ordering, target member templates,
+class returns, private-base ADL, PA1-PA18, file audit, and candidate scaling.
 
 ## Performance Evidence
 
@@ -50,6 +49,7 @@ bodies, PA1-PA18, file audit, and 128/256/512 retained-body scaling.
 | 128/256/512 retained direct initializers with one qualified template call each | Semantic nodes 795/1,563/3,099, lookup scope visits 690/1,330/2,610, requests 515/1,027/2,051 with 513/1,025/2,049 cache hits, typed bytes 160,143/314,127/622,095, semantic time 6.51/12.41/26.73 ms. |
 | 128/256/512 qualified `decltype` class-template arguments | Semantic nodes 914/1,810/3,602, lookup scope visits 278/534/1,046, requests 128/256/512 with 127/255/511 cache hits and one specialization; typed bytes 46,518/91,446/181,302. |
 | 128/256/512 incomplete shells followed by object-definition demand | Requests 256/512/1,024 with 128/256/512 cache hits, layout member visits 128/256/512, semantic nodes 1,285/2,565/5,125, typed bytes 153,074/304,626/607,730, semantic time 19.5/40.6/74.9 ms. |
+| One retained function body with 128/256/512 local declarations | Constant six lookup queries and no specialization requests; semantic peak bytes 126,695/236,775/458,983 and semantic time 1.64/3.15/5.79 ms. |
 
 ## Completed Checkpoints
 
@@ -66,3 +66,4 @@ bodies, PA1-PA18, file audit, and 128/256/512 retained-body scaling.
 | Indexed retained-syntax reclassification | Pass | Lexical type/callable hiding, retained direct calls and constructor initialization, parenthesized value operators and parameter names; PA19 195 to 202, six focused cases, linear shape probe, prior 1713/1713, audit pass |
 | Structural dependent-type replay | Pass | Qualified `decltype`, parameter-visible array references, deferred template shape returns, member trailing-return object context, elaborated template-ids and keyword boundaries; PA19 202 to 208, linear type/path probe, prior 1713/1713, audit pass |
 | Indexed specialization completion demand | Pass | Canonical incomplete shells, O(1) entity-to-pattern/argument recovery, layout/member demand, incomplete-cycle nested retention, and rebound out-of-class nested definitions; PA19 208 to 214, six focused cases, linear demand probe, prior 1713/1713, audit pass |
+| One-pass retained-definition validation | Pass | Indexed lexical scopes, nondependent value/type classification, parameter and member redeclaration checks, dependent-name deferral, and retained special-member exception matching; PA19 214 to 225, all 11 accepted-invalid cases, linear body probe, prior 1713/1713, audit pass |

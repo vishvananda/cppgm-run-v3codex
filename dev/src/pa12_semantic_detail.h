@@ -20,6 +20,7 @@ using namespace pa10_syntax_detail;
 using namespace pa11;
 
 struct BracedInitializationContext;
+class RetainedTemplateValidator;
 
 class SemanticAnalyzer : public SyntaxTreeConsumer
 {
@@ -70,6 +71,7 @@ public:
 	void Consume(const SyntaxArena& arena, NodeId root);
 
 private:
+	friend class RetainedTemplateValidator;
 	NodeId FindChild(NodeId node, const char* tag) const;
 	NodeId FirstSemanticChild(NodeId node) const;
 	std::string PayloadSource(NodeId node) const;
@@ -97,6 +99,8 @@ private:
 		std::uint32_t output_parent, bool local,
 		AccessKind access = ACCESS_PUBLIC);
 	void AnalyzeTemplate(NodeId node, ScopeId scope);
+	void ValidateRetainedTemplateDefinition(NodeId target, ScopeId scope,
+		const std::vector<NameId>& parameters);
 	void AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 		const std::vector<NameId>& parameters,
 		const std::vector<NodeId>& defaults);

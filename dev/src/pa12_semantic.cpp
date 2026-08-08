@@ -1839,6 +1839,8 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope)
 		const NodeId child = arena_->EdgeChild(edge);
 		if (child != clause) target = child;
 	}
+	if (target != kNoNode)
+		ValidateRetainedTemplateDefinition(target, scope, parameters);
 	if (target != kNoNode &&
 		AnalyzeClassTemplateMember(target, scope, parameters)) return;
 	if (target != kNoNode &&
