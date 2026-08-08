@@ -55,6 +55,18 @@ protected:
 			flavor == NAMED_UNION;
 	}
 
+	bool CanonicalizeOperatorLiteral(
+		std::uint32_t node, const DumpNode& callee) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		if (derived.arena_.nodes[node].kind != DUMP_LITERAL ||
+			callee.kind != DUMP_CALLEE || callee.binding == kNoBinding ||
+			callee.binding >= derived.program_.bindings.size()) return false;
+		const OperatorKind kind =
+			derived.program_.bindings[callee.binding].operator_kind;
+		return kind > OPERATOR_NONE && kind < OPERATOR_NEW;
+	}
+
 	Operand LowerClassArgumentStaging(std::uint32_t node, TypeId target)
 	{
 		Derived& derived = static_cast<Derived&>(*this);

@@ -79,6 +79,11 @@ protected:
 		if (action.kind != DUMP_CLASS_VALUE_TRANSFER || children.size() != 1 ||
 			!derived.IsClassObjectType(action.type))
 			throw std::logic_error("invalid PA17 class-value transfer action");
+		if (action.selected_binding == kNoBinding ||
+			action.selected_binding >= derived.program_.bindings.size() ||
+			!derived.program_.bindings[action.selected_binding].constructor)
+			throw std::logic_error(
+				"class-value transfer has no selected constructor fact");
 		const DumpNode& source = derived.arena_.nodes[children[0]];
 		if (source.kind == DUMP_CONDITIONAL_EXPRESSION)
 		{
@@ -87,10 +92,12 @@ protected:
 		}
 		if (source.kind == DUMP_CALL_EXPRESSION)
 		{
-			const Operand result = derived.LowerCall(children[0], source,
-				derived.Children(children[0]), destination);
-			if (!derived.UsesIndirectClassResult(source.type))
-				EmitClassObjectCopy(action.type, result, destination);
+			if (derived.UsesIndirectClassResult(source.type))
+				(void)derived.LowerCall(children[0], source,
+					derived.Children(children[0]), destination);
+			else EmitClassObjectCopy(action.type,
+				derived.LowerCall(children[0], source,
+					derived.Children(children[0])), destination);
 			return;
 		}
 		EmitClassObjectCopy(action.type,

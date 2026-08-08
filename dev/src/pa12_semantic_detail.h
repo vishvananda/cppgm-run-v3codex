@@ -59,6 +59,7 @@ public:
 		  lexical_cleanup_action_visits_(0),
 		  unwind_cleanup_scope_visits_(0),
 		  unwind_cleanup_action_visits_(0),
+		  temporary_dependency_visits_(0),
 		  anonymous_enum_count_(0), local_type_count_(0) {}
 
 	void Consume(const SyntaxArena& arena, NodeId root);
@@ -432,11 +433,11 @@ private:
 	void AddLifetimeObligation(ScopeId scope, BindingId object, TypeId type);
 	void AddTemporaryLifetimeObligation(ScopeId scope,
 		std::uint32_t temporary);
-	void CollectTemporaryObjects(std::uint32_t node,
+	bool CollectTemporaryObjects(std::uint32_t node,
 		std::vector<std::uint32_t>* temporaries,
 		bool conditionally_evaluated = false);
 	void MarkFullExpressionCalls(std::uint32_t node);
-	bool HasControlDependentTemporary(std::uint32_t node) const;
+	bool HasControlDependentTemporary(std::uint32_t node);
 	void AppendFullExpressionDestructionActions(std::uint32_t expression,
 		std::uint32_t output_parent);
 	void AppendUnwindDestructionActions(ScopeId scope,
@@ -604,6 +605,7 @@ private:
 	std::size_t lexical_cleanup_action_visits_;
 	std::size_t unwind_cleanup_scope_visits_;
 	std::size_t unwind_cleanup_action_visits_;
+	std::size_t temporary_dependency_visits_;
 	std::size_t anonymous_enum_count_;
 	std::size_t local_type_count_;
 };

@@ -2944,6 +2944,7 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 			unwind_cleanup_scope_visits_;
 		stats_->unwind_cleanup_action_visits =
 			unwind_cleanup_action_visits_;
+		stats_->temporary_dependency_visits = temporary_dependency_visits_;
 		stats_->namespace_object_actions = namespace_objects_.size();
 		stats_->lookup_queries = program.lookup_queries;
 		stats_->lookup_scope_visits = program.lookup_scope_visits;

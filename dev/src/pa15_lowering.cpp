@@ -1743,8 +1743,8 @@ private:
 						expected = LowI32();
 				}
 				arguments.Push(LowerConvertedValue(children[i], expected,
-					CanonicalizeImmediateConversion(children[i]) || (supplied_result.kind != Operand::NONE &&
-					arena_.nodes[children[i]].kind == DUMP_LITERAL)));
+					CanonicalizeImmediateConversion(children[i]) ||
+					CanonicalizeOperatorLiteral(children[i], callee)));
 			}
 		}
 		if (!direct) call.first = LowerValue(children[0], LowPtr());

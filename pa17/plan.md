@@ -5,15 +5,15 @@
 PA17 extends the PA16 semantic graph and typed LowIR with non-polymorphic class
 value semantics. PA12 owns canonical class types, selected special members,
 conversion facts, class-prvalue recipes, temporary identities, and destructor
-actions. PA15-PA17 lowering consumes those facts once and writes directly into
-the ABI result, parameter, local, member, or allocation destination. It does
-not repeat lookup or serialize IR. Class completion owns synthesized
-copy/move/assignment recipes; function-local lowering owns storage and cleanup
-state. This applies `spec.md` sections 2, 3, 6, 8, and 9: stable identities,
-retained overload results, typed one-way lowering, phase-local storage, and
-work proportional to selected candidates, owned subobjects, lifetime actions,
-and emitted IR. PA17 remains demand-driven and leaves virtual dispatch to
-PA18.
+actions. `DUMP_CLASS_VALUE_TRANSFER` retains the selected constructor;
+PA15-PA17 lowering sends only indirect results a destination and copies direct
+typed results once. Temporary collection retains control dependency once for
+O(1) cleanup decisions. Class completion owns synthesized recipes, while
+function-local lowering owns storage and cleanup state. This applies `spec.md`
+sections 2, 3, 6, 8, and 9: stable identities, retained overload results,
+one-way typed lowering, phase-local ownership, and work proportional to
+selected candidates, owned subobjects, lifetime actions, and emitted IR. PA17
+remains demand-driven and leaves virtual dispatch to PA18.
 
 ## Current Failure Map
 
@@ -48,19 +48,16 @@ storage must scale linearly.
 
 ## Performance Evidence
 
-- Existing 16/32/64 conditional-temporary probes retain 16/32/64 lifetime
-  slots and marks and 619/1,211/2,395 instructions; semantic medians were
-  0.43/0.50/0.65 ms per 100-compile batch unit, demonstrating linear cleanup
-  ownership before this checkpoint.
-- Existing nontrivial array transfer probes at extents 32/1,024/65,536 emit a
-  fixed 12 blocks and 74 instructions, so compile work is independent of the
-  runtime element count.
-- Destination-forwarding chain at 16/32/64 functions produced semantic nodes
-  251/475/923, lowered nodes 96/176/336, instructions 175/335/655, typed
-  storage 53,478/101,238/197,270 bytes, and peak stage storage
-  122,241/236,465/465,553 bytes. Nine-run median semantic/lowering/render
-  times were 0.541/0.381/0.094, 0.924/0.520/0.156, and
-  1.600/0.904/0.270 ms: all retained work and phase time remain proportional.
+- Audited destination-forwarding chains at 16/32/64 functions recorded
+  158/318/638 temporary-dependency visits, 251/475/923 semantic nodes,
+  96/176/336 lowered nodes, 175/335/655 instructions, and
+  53,478/101,238/197,270 typed bytes. Nine-run median semantic/lowering/render
+  times were 0.545/0.357/0.093, 0.922/0.536/0.156, and
+  1.614/0.891/0.267 ms; all work, storage, and phase time remain proportional.
+- Existing synthesized construction at 32/64/128 members recorded
+  160/320/640 special-member fact lookups, 161/321/641 subobject visits, and
+  271/527/1,039 instructions. This is the linear baseline for the next
+  copy/move-classification checkpoint.
 
 ## Completed Checkpoints
 
@@ -84,4 +81,4 @@ storage must scale linearly.
 | Composite subobject copy/move transfer | 199/239 -> 207/239 | Focus 8/8; bounded array-loop probes |
 | Value-category and reference-binding closure | 207/239 -> 216/239 | Focus plus adjacent gains; ancestry probes |
 | Canonical lookup and candidate identity | 216/239 -> 224/241 | Focus plus audits; through PA16; lookup probes |
-| Class-prvalue destination propagation | 224/241 -> 230/241 | Focus 6/6; no new failures; linear 16/32/64 forwarding probe |
+| Class-prvalue destination propagation | 224/241 -> 230/241 | Focus 6/6 plus controls; direct/indirect and cleanup audit fixes; through PA16; linear forwarding probe |
