@@ -459,8 +459,12 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 		const std::vector<std::size_t> patterns =
 			FindFunctionTemplates(scope, explicit_base);
 		for (std::size_t i = 0; i < patterns.size(); ++i)
-			if (function_templates_[patterns[i]].type_parameters.size() ==
-				explicit_arguments.size())
+		{
+			const FunctionTemplatePattern& pattern =
+				function_templates_[patterns[i]];
+			if (explicit_arguments.size() > pattern.type_parameters.size())
+				continue;
+			if (pattern.type_parameters.size() == explicit_arguments.size())
 			{
 				const BindingId candidate = InstantiateFunctionTemplate(
 					patterns[i], explicit_arguments);
@@ -470,6 +474,34 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 						explicit_candidates.end())
 					explicit_candidates.push_back(candidate);
 			}
+			else
+			{
+				const std::size_t width = pattern.type_parameters.size();
+				if (pattern.specialization_bindings.size() >
+					pattern.specialization_arguments.size() / width)
+					throw std::logic_error(
+						"function template specialization argument range is invalid");
+				for (std::size_t specialization = 0;
+					specialization < pattern.specialization_bindings.size();
+					++specialization)
+				{
+					bool matches = true;
+					for (std::size_t argument = 0;
+						argument < explicit_arguments.size(); ++argument)
+						if (pattern.specialization_arguments[
+							specialization * width + argument] !=
+							explicit_arguments[argument])
+							matches = false;
+					if (!matches) continue;
+					const BindingId candidate =
+						pattern.specialization_bindings[specialization];
+					if (std::find(explicit_candidates.begin(),
+						explicit_candidates.end(), candidate) ==
+						explicit_candidates.end())
+						explicit_candidates.push_back(candidate);
+				}
+			}
+		}
 		return explicit_candidates;
 	}
 	const LookupResult found =

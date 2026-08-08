@@ -560,6 +560,7 @@ BindingRecord::BindingRecord()
 	  member_offset(0), requested_alignment(0), bit_offset(0), bit_width(0),
 	  bit_storage_bits(0),
 	  overload_ordinal(0), member_ordinal(kNoBinding),
+	  template_argument_begin(0), template_argument_count(0),
 	  display_flavor(NAMED_NONE), display_type_name(0),
 		  canonical(kNoBinding), value(0), operator_kind(OPERATOR_NONE),
 		  builtin_function(BUILTIN_FUNCTION_NONE),
@@ -2504,7 +2505,8 @@ std::size_t Program::StorageBytes() const
 		deepest_nonpublic_base_depths_.capacity() * sizeof(std::uint32_t) +
 		lookup_cache_->StorageBytes() +
 		entities.capacity() * sizeof(EntityRecord) +
-		bindings.capacity() * sizeof(BindingRecord);
+		bindings.capacity() * sizeof(BindingRecord) +
+		binding_template_arguments.capacity() * sizeof(TypeId);
 	return bytes;
 }
 

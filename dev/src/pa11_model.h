@@ -302,6 +302,7 @@ struct BindingRecord
 	std::uint64_t member_offset, requested_alignment;
 	std::uint32_t bit_offset, bit_width, bit_storage_bits;
 	std::uint32_t overload_ordinal, member_ordinal;
+	std::uint32_t template_argument_begin, template_argument_count;
 	NamedFlavor display_flavor;
 	NameId display_type_name;
 	BindingId canonical;
@@ -410,6 +411,7 @@ public:
 	TypeTable types;
 	std::vector<EntityRecord> entities;
 	std::vector<BindingRecord> bindings;
+	std::vector<TypeId> binding_template_arguments;
 	std::size_t lookup_queries, lookup_scope_visits, lookup_edge_visits;
 	std::size_t lookup_cache_hits, lookup_cache_misses;
 	std::size_t lookup_cache_invalidations, lookup_cache_dependency_edges;

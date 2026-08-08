@@ -255,6 +255,9 @@ private:
 		identity.signature = kind == Symbol::FUNCTION_SYMBOL && !c_linkage ?
 			output_.identities.InternFunctionSignature(program_, binding.type,
 				identity_type_cache_) : kNoLowId;
+		identity.template_arguments = kind == Symbol::FUNCTION_SYMBOL ?
+			output_.identities.InternBindingTemplateArguments(program_, binding,
+				identity_type_cache_) : kNoLowId;
 		identity.internal_owner = local_member ?
 			((source_ordinal_ + 1) << 32) |
 				(static_cast<std::size_t>(binding.member_owner) + 1) :

@@ -1728,15 +1728,6 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 	result.name = DeclaratorName(node);
 	TypeId type = base;
 	const NodeId trailing = FindChild(node, "trailing-return-type");
-	if (trailing != kNoNode)
-	{
-		const NodeId return_type = FindChild(trailing, "type-id");
-		if (return_type == kNoNode)
-			throw std::runtime_error("trailing return type is missing its type-id");
-		type = BuildTypeId(return_type, scope);
-	}
-	else if (placeholder_auto)
-		throw std::runtime_error("auto requires a trailing return type in PA16");
 	std::vector<NodeId> suffixes;
 	NodeId nested = kNoNode;
 	std::uint8_t function_cv = CV_NONE;
@@ -1792,6 +1783,37 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 				saw_function_suffix = true;
 		}
 	}
+	NodeId trailing_parameter_clause = kNoNode;
+	std::vector<ParameterInfo> trailing_parameters;
+	bool trailing_variadic = false;
+	if (trailing != kNoNode)
+	{
+		for (std::size_t i = 0; i < suffixes.size(); ++i)
+			if (arena_->IsTag(suffixes[i], "parameter-clause"))
+			{
+				trailing_parameter_clause = suffixes[i];
+				trailing_parameters = BuildParameters(suffixes[i], scope,
+					&trailing_variadic);
+				break;
+			}
+		ScopeId return_scope = scope;
+		if (trailing_parameter_clause != kNoNode)
+		{
+			return_scope = NewScope(scope, SCOPE_FUNCTION, result.name,
+				ScopePrefixId(scope));
+			for (std::size_t i = 0; i < trailing_parameters.size(); ++i)
+				if (trailing_parameters[i].name != 0)
+					program_->AddBinding(return_scope, BIND_PARAMETER,
+						trailing_parameters[i].name,
+						trailing_parameters[i].declared_type);
+		}
+		const NodeId return_type = FindChild(trailing, "type-id");
+		if (return_type == kNoNode)
+			throw std::runtime_error("trailing return type is missing its type-id");
+		type = BuildTypeId(return_type, return_scope);
+	}
+	else if (placeholder_auto)
+		throw std::runtime_error("auto requires a trailing return type in PA16");
 	for (std::size_t i = suffixes.size(); i != 0; --i)
 	{
 		const NodeId suffix = suffixes[i - 1];
@@ -1811,8 +1833,13 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 		else
 		{
 			bool variadic = false;
-			const std::vector<ParameterInfo> parameters =
-				BuildParameters(suffix, scope, &variadic);
+			std::vector<ParameterInfo> parameters;
+			if (suffix == trailing_parameter_clause)
+			{
+				parameters = trailing_parameters;
+				variadic = trailing_variadic;
+			}
+			else parameters = BuildParameters(suffix, scope, &variadic);
 			std::vector<TypeId> function_parameters;
 			for (std::size_t p = 0; p < parameters.size(); ++p)
 				function_parameters.push_back(parameters[p].function_type);
@@ -2688,6 +2715,20 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	const BindingId binding = DeclareFunction(pattern.owner, pattern.name,
 		parsed.type, parsed.parameters, pattern.defined, true,
 		spec.storage_class, pattern.language_linkage, pattern.nonthrowing);
+	BindingRecord& binding_record = program_->bindings[binding];
+	if (binding_record.template_argument_count == 0)
+	{
+		if (program_->binding_template_arguments.size() >
+			std::numeric_limits<std::uint32_t>::max() - arguments.size())
+			throw std::runtime_error("too many function template arguments");
+		binding_record.template_argument_begin = static_cast<std::uint32_t>(
+			program_->binding_template_arguments.size());
+		binding_record.template_argument_count =
+			static_cast<std::uint32_t>(arguments.size());
+		program_->binding_template_arguments.insert(
+			program_->binding_template_arguments.end(),
+			arguments.begin(), arguments.end());
+	}
 	ValidateFunctionRefQualifier(binding);
 	ValidateNonmemberOperator(binding);
 	FunctionInfo& function = GetMutableFunction(binding);

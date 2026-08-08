@@ -3,6 +3,7 @@
 #include "abi_mangle.h"
 
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace cppgm
@@ -240,6 +241,40 @@ std::string MangleFunction(const pa11::Program& program,
 	file.cases[0].records.push_back(target);
 	const TypeRecord& function_type = program.types.Get(node.type);
 	const TypeId* parameters = program.types.Parameters(node.type);
+	if (binding.template_argument_count != 0)
+	{
+		const std::size_t first = binding.template_argument_begin;
+		const std::size_t count = binding.template_argument_count;
+		if (first > program.binding_template_arguments.size() ||
+			count > program.binding_template_arguments.size() - first)
+			throw std::logic_error(
+				"function template argument range is invalid during mangling");
+		for (std::size_t i = 0; i < count; ++i)
+		{
+			const std::string argument_id =
+				"__cppgm_function_template_argument_" + std::to_string(i);
+			AbiFactRecord definition;
+			definition.set_kind(ABI_FACT_RECORD_DEFINITION);
+			definition.definition.id = argument_id;
+			definition.definition.set_kind(ABI_DEFINITION_TEMPLATE_ARGUMENT);
+			definition.definition.template_argument.kind =
+				ABI_TEMPLATE_ARGUMENT_TYPE;
+			definition.definition.template_argument.type = MakeAbiType(program,
+				program.binding_template_arguments[first + i]);
+			file.cases[0].records.push_back(definition);
+			AbiFactRecord argument;
+			argument.set_kind(ABI_FACT_RECORD_FUNCTION);
+			argument.function.kind =
+				ABI_FUNCTION_RECORD_FUNCTION_TEMPLATE_ARGUMENT;
+			argument.function.argument_refs.push_back(argument_id);
+			file.cases[0].records.push_back(argument);
+		}
+		AbiFactRecord result;
+		result.set_kind(ABI_FACT_RECORD_FUNCTION);
+		result.function.kind = ABI_FUNCTION_RECORD_RESULT;
+		result.function.type = MakeAbiType(program, function_type.child);
+		file.cases[0].records.push_back(result);
+	}
 	const bool member = binding.member_owner != kNoEntity &&
 		!binding.static_member_function;
 	if (member)

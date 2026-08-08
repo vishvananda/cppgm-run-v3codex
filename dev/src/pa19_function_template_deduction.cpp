@@ -1,5 +1,6 @@
 #include "pa12_semantic_detail.h"
 
+#include <algorithm>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -106,7 +107,8 @@ bool SemanticAnalyzer::DeduceFunctionTemplateType(TypeId pattern,
 void SemanticAnalyzer::DeduceFunctionTemplatePatterns(
 	const std::vector<std::size_t>& patterns,
 	const std::vector<ExpressionInfo>& arguments,
-	std::vector<BindingId>* specializations)
+	std::vector<BindingId>* specializations,
+	const std::vector<TypeId>* explicit_arguments)
 {
 	for (std::size_t p = 0; p < patterns.size(); ++p)
 	{
@@ -120,15 +122,17 @@ void SemanticAnalyzer::DeduceFunctionTemplatePatterns(
 			function_type.parameter_count != arguments.size()) continue;
 		const TypeId* parameters =
 			program_->types.Parameters(pattern.shape_type);
+		if (explicit_arguments &&
+			explicit_arguments->size() > pattern.type_parameters.size())
+			continue;
 		std::vector<TypeId> deduced(pattern.type_parameters.size(), kNoType);
+		if (explicit_arguments)
+			std::copy(explicit_arguments->begin(), explicit_arguments->end(),
+				deduced.begin());
 		bool valid = true;
 		for (std::size_t a = 0; a < arguments.size() && valid; ++a)
 		{
-			if (arguments[a].type == kNoType)
-			{
-				valid = false;
-				continue;
-			}
+			if (arguments[a].type == kNoType) continue;
 			TypeId parameter = parameters[a];
 			TypeId argument = EffectiveType(arguments[a].type);
 			const TypeRecord& parameter_record =
@@ -159,8 +163,11 @@ void SemanticAnalyzer::DeduceFunctionTemplates(ScopeId scope,
 	const std::string& spelling,
 	const std::vector<ExpressionInfo>& arguments)
 {
-	if (spelling.find('<') != std::string::npos) return;
-	const NamePath path = ParseNamePath(spelling);
+	std::string base = spelling;
+	std::vector<TypeId> explicit_arguments;
+	const bool explicit_id = ParseExplicitTemplateArguments(scope, spelling,
+		&base, &explicit_arguments);
+	const NamePath path = ParseNamePath(base);
 	const NameId name = path.Last();
 	if (name == 0) return;
 	ScopeId visible_owner = kNoScope;
@@ -187,7 +194,8 @@ void SemanticAnalyzer::DeduceFunctionTemplates(ScopeId scope,
 	if (!found) return;
 	const std::vector<std::size_t> patterns = found->Copy();
 	std::vector<BindingId> specializations;
-	DeduceFunctionTemplatePatterns(patterns, arguments, &specializations);
+	DeduceFunctionTemplatePatterns(patterns, arguments, &specializations,
+		explicit_id ? &explicit_arguments : 0);
 	for (std::size_t i = 0; i < specializations.size(); ++i)
 	{
 		const BindingId source = specializations[i];
@@ -211,6 +219,125 @@ void SemanticAnalyzer::DeduceFunctionTemplates(ScopeId scope,
 		ordinary_aliases.Push(alias);
 		using_function_declarations_.Insert(signature_key, alias);
 	}
+}
+
+std::vector<BindingId> SemanticAnalyzer::FunctionTemplateTargetCandidates(
+	ScopeId scope, const std::string& spelling, TypeId target)
+{
+	std::string base = spelling;
+	std::vector<TypeId> explicit_arguments;
+	const bool explicit_id = ParseExplicitTemplateArguments(scope, spelling,
+		&base, &explicit_arguments);
+	const std::vector<std::size_t> patterns =
+		FindFunctionTemplates(scope, base);
+	std::vector<BindingId> result;
+	for (std::size_t i = 0; i < patterns.size(); ++i)
+	{
+		if (patterns[i] >= function_templates_.size())
+			throw std::logic_error("invalid target function template candidate");
+		const FunctionTemplatePattern& pattern = function_templates_[patterns[i]];
+		if (explicit_id &&
+			explicit_arguments.size() > pattern.type_parameters.size())
+			continue;
+		std::vector<TypeId> deduced(pattern.type_parameters.size(), kNoType);
+		if (explicit_id)
+			std::copy(explicit_arguments.begin(), explicit_arguments.end(),
+				deduced.begin());
+		if (!DeduceFunctionTemplateType(pattern.shape_type, target, &deduced))
+			continue;
+		bool complete = true;
+		for (std::size_t argument = 0; argument < deduced.size(); ++argument)
+			if (deduced[argument] == kNoType) complete = false;
+		if (!complete) continue;
+		const BindingId candidate =
+			InstantiateFunctionTemplate(patterns[i], deduced);
+		if (candidate != kNoBinding &&
+			std::find(result.begin(), result.end(), candidate) == result.end())
+			result.push_back(candidate);
+	}
+	return result;
+}
+
+bool SemanticAnalyzer::AnalyzeFunctionId(NodeId node, ScopeId scope,
+	TypeId target, ExpressionInfo* result)
+{
+	const std::string spelling = arena_->Payload(node);
+	EntityId naming_class = kNoEntity;
+	std::vector<BindingId> candidates =
+		FunctionCandidates(scope, spelling, &naming_class);
+	const std::vector<std::size_t> template_patterns =
+		FindFunctionTemplates(scope, spelling);
+	TypeId desired = target;
+	if (desired != kNoType)
+	{
+		desired = program_->types.RemoveTopCv(desired);
+		const TypeRecord target_record = program_->types.Get(desired);
+		if (target_record.kind == TYPE_LVALUE_REFERENCE ||
+			target_record.kind == TYPE_RVALUE_REFERENCE)
+			desired = target_record.child;
+		if (program_->types.Get(desired).kind == TYPE_POINTER)
+			desired = program_->types.Get(desired).child;
+		else if (program_->types.Get(desired).kind == TYPE_MEMBER_POINTER)
+			desired = program_->types.Get(desired).child;
+		const std::vector<BindingId> target_templates =
+			FunctionTemplateTargetCandidates(scope, spelling, desired);
+		for (std::size_t i = 0; i < target_templates.size(); ++i)
+			if (std::find(candidates.begin(), candidates.end(),
+				target_templates[i]) == candidates.end())
+				candidates.push_back(target_templates[i]);
+	}
+	if (desired == kNoType && !template_patterns.empty() &&
+		spelling.find('<') == std::string::npos)
+	{
+		result->binding = candidates.empty() ? kNoBinding : candidates[0];
+		return true;
+	}
+	if (candidates.empty()) return false;
+	BindingId selected = kNoBinding;
+	for (std::size_t i = 0; i < candidates.size(); ++i)
+		if (desired == kNoType || GetFunction(candidates[i]).type == desired)
+		{
+			if (selected != kNoBinding && desired != kNoType)
+				throw std::runtime_error("ambiguous overloaded function id");
+			selected = candidates[i];
+			if (desired == kNoType && candidates.size() != 1)
+			{
+				result->binding = candidates[0];
+				return true;
+			}
+		}
+	if (selected == kNoBinding)
+		throw std::runtime_error("no target-matching overloaded function");
+	if (!CanAccessMember(selected, naming_class))
+		throw std::runtime_error("inaccessible member function");
+	const FunctionInfo& function = GetFunction(selected);
+	const BindingId emission_binding =
+		program_->bindings[selected].canonical;
+	result->type = function.type;
+	if (function.member_owner != kNoType)
+	{
+		const TypeRecord member_type = program_->types.Get(function.type);
+		TypeId object = function.member_owner;
+		if ((member_type.cv & CV_CONST) != 0)
+			object = program_->types.Qualify(object, CV_CONST);
+		if ((member_type.cv & CV_VOLATILE) != 0)
+			object = program_->types.Qualify(object, CV_VOLATILE);
+		std::vector<TypeId> parameters;
+		parameters.push_back(program_->types.Pointer(object));
+		const TypeId* explicit_parameters =
+			program_->types.Parameters(function.type);
+		for (std::size_t i = 0; i < member_type.parameter_count; ++i)
+			parameters.push_back(explicit_parameters[i]);
+		result->type = program_->types.Function(member_type.child,
+			parameters, member_type.variadic);
+	}
+	result->category = VALUE_LVALUE;
+	result->binding = emission_binding;
+	result->node = MakeDump(DUMP_ID_EXPRESSION, result->type,
+		result->category, program_->names.Intern(spelling), emission_binding);
+	DemandFunction(selected);
+	++expression_count_;
+	return true;
 }
 
 }

@@ -176,6 +176,10 @@ private:
 		std::vector<BindingId>* result);
 	std::vector<std::size_t> FindFunctionTemplates(ScopeId scope,
 		const std::string& spelling);
+	std::vector<BindingId> FunctionTemplateTargetCandidates(
+		ScopeId scope, const std::string& spelling, TypeId target);
+	bool AnalyzeFunctionId(NodeId node, ScopeId scope, TypeId target,
+		ExpressionInfo* result);
 	bool ParseExplicitTemplateArguments(ScopeId scope,
 		const std::string& spelling, std::string* base,
 		std::vector<TypeId>* arguments);
@@ -203,7 +207,8 @@ private:
 	void DeduceFunctionTemplatePatterns(
 		const std::vector<std::size_t>& patterns,
 		const std::vector<ExpressionInfo>& arguments,
-		std::vector<BindingId>* specializations = 0);
+		std::vector<BindingId>* specializations = 0,
+		const std::vector<TypeId>* explicit_arguments = 0);
 	void DeduceFunctionTemplates(ScopeId scope, const std::string& spelling,
 		const std::vector<ExpressionInfo>& arguments);
 	void DemandFunction(BindingId binding);

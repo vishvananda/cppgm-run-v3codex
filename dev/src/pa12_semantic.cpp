@@ -674,73 +674,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 	if (arena_->IsTag(node, "id-expression"))
 	{
 		const std::string spelling = arena_->Payload(node);
-		EntityId function_naming_class = kNoEntity;
-		std::vector<BindingId> candidates = FunctionCandidates(scope, spelling,
-			&function_naming_class);
-		if (!candidates.empty())
-		{
-			BindingId selected = kNoBinding;
-			TypeId desired = target;
-			if (desired != kNoType)
-			{
-				desired = program_->types.RemoveTopCv(desired);
-				const TypeRecord target_record = program_->types.Get(desired);
-				if (target_record.kind == TYPE_LVALUE_REFERENCE ||
-					target_record.kind == TYPE_RVALUE_REFERENCE)
-					desired = target_record.child;
-				if (program_->types.Get(desired).kind == TYPE_POINTER)
-					desired = program_->types.Get(desired).child;
-				else if (program_->types.Get(desired).kind == TYPE_MEMBER_POINTER)
-					desired = program_->types.Get(desired).child;
-			}
-			for (std::size_t i = 0; i < candidates.size(); ++i)
-				if (desired == kNoType || GetFunction(candidates[i]).type == desired)
-				{
-					if (selected != kNoBinding && desired != kNoType)
-						throw std::runtime_error("ambiguous overloaded function id");
-					selected = candidates[i];
-					if (desired == kNoType && candidates.size() != 1)
-					{
-						ExpressionInfo unresolved;
-						unresolved.binding = candidates[0];
-						return unresolved;
-					}
-				}
-			if (selected == kNoBinding)
-				throw std::runtime_error("no target-matching overloaded function");
-			if (!CanAccessMember(selected, function_naming_class))
-				throw std::runtime_error("inaccessible member function");
-			const FunctionInfo& function = GetFunction(selected);
-			const BindingId emission_binding =
-				program_->bindings[selected].canonical;
-			ExpressionInfo result;
-			result.type = function.type;
-			if (function.member_owner != kNoType)
-			{
-				const TypeRecord member_type = program_->types.Get(function.type);
-				TypeId object = function.member_owner;
-				if ((member_type.cv & CV_CONST) != 0)
-					object = program_->types.Qualify(object, CV_CONST);
-				if ((member_type.cv & CV_VOLATILE) != 0)
-					object = program_->types.Qualify(object, CV_VOLATILE);
-				std::vector<TypeId> parameters;
-				parameters.push_back(program_->types.Pointer(object));
-				const TypeId* explicit_parameters =
-					program_->types.Parameters(function.type);
-				for (std::size_t i = 0; i < member_type.parameter_count; ++i)
-					parameters.push_back(explicit_parameters[i]);
-				result.type = program_->types.Function(member_type.child,
-					parameters, member_type.variadic);
-			}
-			result.category = VALUE_LVALUE;
-			result.binding = emission_binding;
-			result.node = MakeDump(DUMP_ID_EXPRESSION, result.type,
-				result.category, program_->names.Intern(spelling),
-				emission_binding);
-			DemandFunction(selected);
-			++expression_count_;
-			return result;
-		}
+		ExpressionInfo function_id;
+		if (AnalyzeFunctionId(node, scope, target, &function_id))
+			return function_id;
 		const LookupResult found = LookupSpelling(scope, spelling, LOOKUP_ORDINARY);
 		if (found.ordinary == kNoBinding)
 			throw std::runtime_error("unknown expression name: " + spelling);
@@ -925,12 +861,20 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 				}
 				else
 				{
-					const std::vector<BindingId> argument_functions =
+					std::vector<BindingId> argument_functions =
 						FunctionCandidates(scope,
 							arena_->Payload(argument_syntax[a]));
 					TypeId desired = program_->types.RemoveTopCv(parameters[a]);
 					if (program_->types.Get(desired).kind == TYPE_POINTER)
 						desired = program_->types.Get(desired).child;
+					const std::vector<BindingId> target_templates =
+						FunctionTemplateTargetCandidates(scope,
+							arena_->Payload(argument_syntax[a]), desired);
+					for (std::size_t f = 0; f < target_templates.size(); ++f)
+						if (std::find(argument_functions.begin(),
+							argument_functions.end(), target_templates[f]) ==
+							argument_functions.end())
+							argument_functions.push_back(target_templates[f]);
 					std::size_t matches = 0;
 					for (std::size_t f = 0; f < argument_functions.size(); ++f)
 						if (GetFunction(argument_functions[f]).type == desired)

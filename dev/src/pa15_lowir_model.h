@@ -97,6 +97,11 @@ public:
 		std::vector<IdentityTypeId>& cache);
 	IdentityTypeId InternFunctionSignature(const Program& program, TypeId type,
 		std::vector<IdentityTypeId>& cache);
+	IdentityTypeId InternTypeSequence(const Program& program,
+		const TypeId* types, std::size_t count,
+		std::vector<IdentityTypeId>& cache);
+	IdentityTypeId InternBindingTemplateArguments(const Program& program,
+		const BindingRecord& binding, std::vector<IdentityTypeId>& cache);
 	std::size_t StorageBytes() const;
 
 private:
@@ -128,12 +133,15 @@ struct SymbolIdentity
 	Symbol::Kind kind;
 	IdentityPathId path;
 	IdentityTypeId signature;
+	IdentityTypeId template_arguments;
 	std::size_t internal_owner;
 
 	bool operator==(const SymbolIdentity& other) const
 	{
 		return kind == other.kind && path == other.path &&
-			signature == other.signature && internal_owner == other.internal_owner;
+			signature == other.signature &&
+			template_arguments == other.template_arguments &&
+			internal_owner == other.internal_owner;
 	}
 };
 
@@ -142,7 +150,8 @@ struct SymbolIdentityHash
 	std::size_t operator()(const SymbolIdentity& key) const
 	{
 		return static_cast<std::size_t>(key.kind) * 16777619U ^
-			key.path * 257U ^ key.signature * 17U ^ key.internal_owner;
+			key.path * 257U ^ key.signature * 17U ^
+			key.template_arguments * 65537U ^ key.internal_owner;
 	}
 };
 

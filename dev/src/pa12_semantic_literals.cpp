@@ -269,7 +269,18 @@ TypeId SemanticAnalyzer::DecltypeType(NodeId node, ScopeId scope)
 		return program_->types.Reference(TYPE_LVALUE_REFERENCE,
 			EffectiveType(binding.type));
 	}
-	const ExpressionInfo expression = AnalyzeExpression(node, scope);
+	++unevaluated_depth_;
+	ExpressionInfo expression;
+	try
+	{
+		expression = AnalyzeExpression(node, scope);
+	}
+	catch (...)
+	{
+		--unevaluated_depth_;
+		throw;
+	}
+	--unevaluated_depth_;
 	if (expression.category == VALUE_LVALUE)
 		return program_->types.Reference(TYPE_LVALUE_REFERENCE,
 			EffectiveType(expression.type));

@@ -70,6 +70,33 @@ IdentityTypeId EmissionIdentityTable::InternFunctionSignature(
 	return InternTypeKey(key);
 }
 
+IdentityTypeId EmissionIdentityTable::InternTypeSequence(
+	const Program& program, const TypeId* types, std::size_t count,
+	std::vector<IdentityTypeId>& cache)
+{
+	IdentityTypeKey key;
+	key.kind = TYPE_FUNCTION;
+	key.parameters.reserve(count);
+	for (std::size_t i = 0; i < count; ++i)
+		key.parameters.push_back(InternType(program, types[i], cache));
+	return InternTypeKey(key);
+}
+
+IdentityTypeId EmissionIdentityTable::InternBindingTemplateArguments(
+	const Program& program, const BindingRecord& binding,
+	std::vector<IdentityTypeId>& cache)
+{
+	if (binding.template_argument_count == 0) return kNoLowId;
+	const std::size_t first = binding.template_argument_begin;
+	const std::size_t count = binding.template_argument_count;
+	if (first > program.binding_template_arguments.size() ||
+		count > program.binding_template_arguments.size() - first)
+		throw std::logic_error(
+			"function template identity argument range is invalid");
+	return InternTypeSequence(program,
+		&program.binding_template_arguments[first], count, cache);
+}
+
 std::size_t EmissionIdentityTable::StorageBytes() const
 {
 	std::size_t bytes = names_.StorageBytes() +
