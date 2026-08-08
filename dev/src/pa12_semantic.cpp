@@ -2248,6 +2248,10 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		}
 		if (spec.is_constexpr)
 			parsed.type = program_->types.Qualify(parsed.type, CV_CONST);
+		const NodeId initializer_node = FindChild(item, "initializer");
+		if (spec.storage_class != STORAGE_CLASS_EXTERN ||
+			initializer_node != kNoNode)
+			EnsureClassDefinition(parsed.type);
 		const LookupResult occupied =
 			program_->LookupDirect(declaration_scope, parsed.name, LOOKUP_ORDINARY);
 		if (occupied.ordinary != kNoBinding &&
@@ -2258,7 +2262,6 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			parsed.name, parsed.type);
 		PublishVariableDeclarationFacts(binding, declaration_scope,
 			parsed.name, parsed.type, spec, local);
-		const NodeId initializer_node = FindChild(item, "initializer");
 		if (spec.is_constexpr && initializer_node == kNoNode)
 			throw std::runtime_error("constexpr variable requires initializer");
 		ExpressionInfo initializer;

@@ -19,6 +19,20 @@ std::size_t NoTemplatePattern()
 	return std::numeric_limits<std::size_t>::max();
 }
 
+bool ClassTemplateArgumentsAreComplete(const Program& program,
+	const std::vector<TypeId>& arguments)
+{
+	for (std::size_t i = 0; i < arguments.size(); ++i)
+	{
+		const TypeId argument = program.types.RemoveTopCv(arguments[i]);
+		const TypeRecord& record = program.types.Get(argument);
+		if (record.kind == TYPE_NAMED &&
+			!program.entities[record.entity].complete)
+			return false;
+	}
+	return true;
+}
+
 std::string TemplateArgumentName(const std::string& source)
 {
 	std::string spelling = source;
@@ -168,11 +182,15 @@ LookupResult SemanticAnalyzer::LookupPath(ScopeId scope,
 		const TypeId specialization = ResolveClassTemplateSpecialization(
 			scope, program_->names.Get(path[0]));
 		if (specialization != kNoType)
+		{
+			EnsureClassDefinition(specialization);
 			carrier = program_->ScopeForType(specialization);
+		}
 		else
 		{
 			const LookupResult first = program_->LookupName(
 				scope, path[0], LOOKUP_SCOPE_CARRIER);
+			if (first.type != kNoType) EnsureClassDefinition(first.type);
 			carrier = first.name_space != kNoScope ? first.name_space :
 				first.type != kNoType ? program_->ScopeForType(first.type) :
 				kNoScope;
@@ -185,6 +203,7 @@ LookupResult SemanticAnalyzer::LookupPath(ScopeId scope,
 			carrier, scope, program_->names.Get(path[component]));
 		if (specialization != kNoType)
 		{
+			EnsureClassDefinition(specialization);
 			carrier = program_->ScopeForType(specialization);
 			continue;
 		}
@@ -192,6 +211,7 @@ LookupResult SemanticAnalyzer::LookupPath(ScopeId scope,
 		one.Push(path[component]);
 		const LookupResult next = program_->LookupQualified(
 			carrier, one, LOOKUP_SCOPE_CARRIER);
+		if (next.type != kNoType) EnsureClassDefinition(next.type);
 		carrier = next.name_space != kNoScope ? next.name_space :
 			next.type != kNoType ? program_->ScopeForType(next.type) :
 			kNoScope;
@@ -226,6 +246,7 @@ ScopeId SemanticAnalyzer::ResolveScopeSpelling(ScopeId scope,
 {
 	const LookupResult result =
 		LookupSpelling(scope, spelling, LOOKUP_SCOPE_CARRIER);
+	if (result.type != kNoType) EnsureClassDefinition(result.type);
 	return result.name_space != kNoScope ? result.name_space :
 		result.type != kNoType ? program_->ScopeForType(result.type) : kNoScope;
 }
@@ -303,6 +324,7 @@ TypeId SemanticAnalyzer::ResolveTemplateTypeArgument(ScopeId scope,
 			{
 				const TypeId carrier_type = EffectiveType(
 					program_->bindings[declaration.ordinary].type);
+				EnsureClassDefinition(carrier_type);
 				const ScopeId carrier = program_->ScopeForType(carrier_type);
 				if (carrier != kNoScope)
 				{
@@ -878,12 +900,118 @@ void SemanticAnalyzer::ApplyClassTemplateMemberDefinitions(
 				ParseNamePath(arena_->Payload(node));
 			const std::string terminal =
 				program_->names.Get(nested_name.Last());
-			(void)AnalyzeClass(node, actual_owner, std::string(), false,
+			(void)AnalyzeClass(node, definition_scope, std::string(), false,
 				terminal, actual_owner, 0, true);
 		}
 		else throw std::runtime_error(
 			"unsupported class template member definition");
 	}
+}
+
+void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
+	BindingId binding, const std::vector<TypeId>& arguments)
+{
+	if (index >= class_templates_.size())
+		throw std::logic_error("invalid class template completion pattern");
+	if (!class_templates_[index].defined) return;
+	if (class_template_specialization_states_.size() <= binding)
+		class_template_specialization_states_.resize(
+			static_cast<std::size_t>(binding) + 1, 0);
+	if (class_template_specialization_states_[binding] != 0) return;
+
+	// Completing a body may register nested templates, so retain a stable
+	// pattern snapshot across replay while identity remains index-owned.
+	const ClassTemplatePattern pattern = class_templates_[index];
+	if (arguments.size() != pattern.type_parameters.size())
+		throw std::logic_error("class template completion argument mismatch");
+	class_template_specialization_states_[binding] = 1;
+	std::string specialization_name = program_->names.Get(pattern.name);
+	for (std::size_t i = 0; i < arguments.size(); ++i)
+		specialization_name += "_" +
+			TemplateArgumentName(program_->RenderType(arguments[i]));
+	specialization_name += "_";
+	const ScopeId template_scope =
+		BindClassTemplateArguments(pattern, arguments);
+	(void)AnalyzeClass(pattern.declaration, template_scope,
+		std::string(), false, specialization_name, pattern.owner,
+		pattern.name, true);
+	class_template_specialization_states_[binding] = 2;
+	ApplyClassTemplateMemberDefinitions(index, binding, arguments);
+}
+
+void SemanticAnalyzer::EnsureClassDefinition(TypeId type)
+{
+	if (type == kNoType) return;
+	const TypeRecord* record = &program_->types.Get(type);
+	while (record->kind == TYPE_QUALIFIED || record->kind == TYPE_ARRAY)
+	{
+		type = record->child;
+		record = &program_->types.Get(type);
+	}
+	if (record->kind != TYPE_NAMED) return;
+	const EntityId entity = record->entity;
+	if (program_->entities[entity].complete) return;
+
+	if (entity < class_template_pattern_by_entity_.size() &&
+		class_template_pattern_by_entity_[entity] != kNoDumpEdge)
+	{
+		const std::size_t index = class_template_pattern_by_entity_[entity];
+		if (index >= class_templates_.size())
+			throw std::logic_error("invalid class specialization owner index");
+		const ClassTemplatePattern pattern = class_templates_[index];
+		if (entity == pattern.marker_entity) return;
+		if (entity >= class_template_argument_begin_by_entity_.size() ||
+			class_template_argument_begin_by_entity_[entity] == kNoDumpEdge)
+			throw std::logic_error("class specialization has no arguments");
+		const std::size_t first =
+			class_template_argument_begin_by_entity_[entity];
+		if (first + pattern.type_parameters.size() >
+			class_template_entity_arguments_.size())
+			throw std::logic_error("class specialization arguments are truncated");
+		const std::vector<TypeId> arguments(
+			class_template_entity_arguments_.begin() + first,
+			class_template_entity_arguments_.begin() + first +
+				pattern.type_parameters.size());
+		CompleteClassTemplateSpecialization(index,
+			program_->entities[entity].declaration, arguments);
+		return;
+	}
+
+	if (entity < deferred_class_definition_by_entity_.size() &&
+		deferred_class_definition_by_entity_[entity] != kNoNode)
+	{
+		const NodeId definition = deferred_class_definition_by_entity_[entity];
+		const ScopeId scope = deferred_class_scope_by_entity_[entity];
+		deferred_class_definition_by_entity_[entity] = kNoNode;
+		(void)AnalyzeClass(definition, scope, std::string(), false);
+	}
+}
+
+bool SemanticAnalyzer::ClassTemplateSpecializationArgumentsComplete(
+	EntityId entity) const
+{
+	if (entity >= class_template_pattern_by_entity_.size() ||
+		class_template_pattern_by_entity_[entity] == kNoDumpEdge ||
+		entity >= class_template_argument_begin_by_entity_.size() ||
+		class_template_argument_begin_by_entity_[entity] == kNoDumpEdge)
+		return true;
+	const std::size_t index = class_template_pattern_by_entity_[entity];
+	if (index >= class_templates_.size())
+		throw std::logic_error("invalid class specialization owner index");
+	const std::size_t first = class_template_argument_begin_by_entity_[entity];
+	const std::size_t count = class_templates_[index].type_parameters.size();
+	if (first + count > class_template_entity_arguments_.size())
+		throw std::logic_error("class specialization arguments are truncated");
+	for (std::size_t i = 0; i < count; ++i)
+	{
+		const TypeId argument = program_->types.RemoveTopCv(
+			class_template_entity_arguments_[first + i]);
+		const TypeRecord& record = program_->types.Get(argument);
+		if (record.kind == TYPE_NAMED &&
+			!program_->entities[record.entity].complete)
+			return false;
+	}
+	return true;
 }
 
 BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
@@ -922,26 +1050,12 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 		++template_specialization_cache_hits_;
 		if (pattern.defined &&
 			(old >= class_template_specialization_states_.size() ||
-			 class_template_specialization_states_[old] == 0))
-		{
-			if (class_template_specialization_states_.size() <= old)
-				class_template_specialization_states_.resize(
-					static_cast<std::size_t>(old) + 1, 0);
-			class_template_specialization_states_[old] = 1;
-			std::string specialization_name =
-				program_->names.Get(pattern.name);
-			for (std::size_t i = 0; i < arguments.size(); ++i)
-				specialization_name += "_" +
-					TemplateArgumentName(program_->RenderType(arguments[i]));
-			specialization_name += "_";
-			const ScopeId template_scope =
-				BindClassTemplateArguments(pattern, arguments);
-			(void)AnalyzeClass(pattern.declaration, template_scope,
-				std::string(), false, specialization_name, pattern.owner,
-				pattern.name, true);
-			class_template_specialization_states_[old] = 2;
-		}
-		ApplyClassTemplateMemberDefinitions(index, old, arguments);
+			 class_template_specialization_states_[old] == 0) &&
+			ClassTemplateArgumentsAreComplete(*program_, arguments))
+			CompleteClassTemplateSpecialization(index, old, arguments);
+		if (old < class_template_specialization_states_.size() &&
+			class_template_specialization_states_[old] == 2)
+			ApplyClassTemplateMemberDefinitions(index, old, arguments);
 		return old;
 	}
 
@@ -985,15 +1099,9 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 	if (class_template_specialization_states_.size() <= binding)
 		class_template_specialization_states_.resize(
 			static_cast<std::size_t>(binding) + 1, 0);
-	if (pattern.defined)
-	{
-		class_template_specialization_states_[binding] = 1;
-		(void)AnalyzeClass(pattern.declaration, template_scope,
-			std::string(), false, specialization_name, pattern.owner,
-			pattern.name, true);
-		class_template_specialization_states_[binding] = 2;
-		ApplyClassTemplateMemberDefinitions(index, binding, arguments);
-	}
+	if (pattern.defined &&
+		ClassTemplateArgumentsAreComplete(*program_, arguments))
+		CompleteClassTemplateSpecialization(index, binding, arguments);
 	return binding;
 }
 
@@ -1016,19 +1124,8 @@ void SemanticAnalyzer::UpgradeClassTemplateSpecializations(std::size_t index)
 		for (std::size_t p = 0; p < parameter_count; ++p)
 			arguments.push_back(pattern.specialization_arguments[
 				i * parameter_count + p]);
-		const ScopeId template_scope =
-			BindClassTemplateArguments(pattern, arguments);
-		std::string specialization_name = program_->names.Get(pattern.name);
-		for (std::size_t p = 0; p < arguments.size(); ++p)
-			specialization_name += "_" +
-				TemplateArgumentName(program_->RenderType(arguments[p]));
-		specialization_name += "_";
-		class_template_specialization_states_[binding] = 1;
-		(void)AnalyzeClass(pattern.declaration, template_scope,
-			std::string(), false, specialization_name, pattern.owner,
-			pattern.name, true);
-		class_template_specialization_states_[binding] = 2;
-		ApplyClassTemplateMemberDefinitions(index, binding, arguments);
+		if (ClassTemplateArgumentsAreComplete(*program_, arguments))
+			CompleteClassTemplateSpecialization(index, binding, arguments);
 	}
 }
 

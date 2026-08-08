@@ -198,6 +198,7 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 			if (base_lookup.type == kNoType)
 				base_lookup = LookupSpelling(scope,
 					arena_->Payload(base_name), LOOKUP_TYPE);
+			EnsureClassDefinition(base_lookup.type);
 			const EntityId base = EntityOf(base_lookup.type);
 			if (base == kNoEntity || !program_->entities[base].complete ||
 				program_->entities[base].flavor == NAMED_UNION)
@@ -274,12 +275,33 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 			else if (arena_->IsTag(member, "class-specifier") ||
 				arena_->IsTag(member, "class-forward-declaration"))
 			{
+				const bool deferred_definition =
+					arena_->IsTag(member, "class-specifier") &&
+					current_class_context_ <
+						class_template_pattern_by_entity_.size() &&
+					class_template_pattern_by_entity_[current_class_context_] !=
+						kNoDumpEdge &&
+					!ClassTemplateSpecializationArgumentsComplete(
+						current_class_context_);
 				const TypeId nested_type = AnalyzeClass(member, member_scope,
 					std::string(),
-					arena_->IsTag(member, "class-forward-declaration"));
+					arena_->IsTag(member, "class-forward-declaration"),
+					std::string(), kNoScope, 0, !deferred_definition);
 				const EntityId nested = EntityOf(nested_type);
 				if (nested == kNoEntity)
 					throw std::logic_error("nested class has no entity");
+				if (deferred_definition)
+				{
+					if (deferred_class_definition_by_entity_.size() <= nested)
+					{
+						deferred_class_definition_by_entity_.resize(
+							static_cast<std::size_t>(nested) + 1, kNoNode);
+						deferred_class_scope_by_entity_.resize(
+							static_cast<std::size_t>(nested) + 1, kNoScope);
+					}
+					deferred_class_definition_by_entity_[nested] = member;
+					deferred_class_scope_by_entity_[nested] = member_scope;
+				}
 				const BindingId declaration =
 					program_->entities[nested].declaration;
 				if (declaration != kNoBinding)
@@ -567,6 +589,7 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 	{
 		++class_layout_member_visits_;
 		const ClassLayoutMember& layout = layout_members[i];
+		EnsureClassDefinition(layout.type);
 		BindingRecord* member = layout.binding == kNoBinding ? 0 :
 			&program_->bindings[layout.binding];
 		if (is_union && member && member->has_default_member_initializer)

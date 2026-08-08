@@ -201,6 +201,10 @@ private:
 		const std::string& spelling);
 	BindingId InstantiateClassTemplate(std::size_t pattern,
 		const std::vector<TypeId>& arguments);
+	void CompleteClassTemplateSpecialization(std::size_t pattern,
+		BindingId specialization, const std::vector<TypeId>& arguments);
+	void EnsureClassDefinition(TypeId type);
+	bool ClassTemplateSpecializationArgumentsComplete(EntityId entity) const;
 	ScopeId BindClassTemplateArguments(const ClassTemplatePattern& pattern,
 		const std::vector<TypeId>& arguments);
 	void UpgradeClassTemplateSpecializations(std::size_t pattern);
@@ -648,6 +652,8 @@ private:
 	TemplateSpecializationTable class_template_instantiations_;
 	std::vector<std::uint8_t> class_template_specialization_states_;
 	std::vector<std::uint32_t> class_template_member_definition_counts_;
+	std::vector<NodeId> deferred_class_definition_by_entity_;
+	std::vector<ScopeId> deferred_class_scope_by_entity_;
 	std::vector<std::uint32_t> injected_fact_by_binding_;
 	std::vector<InjectedMemberInfo> injected_members_;
 	std::vector<std::vector<LifetimeObligation> > scope_lifetimes_;

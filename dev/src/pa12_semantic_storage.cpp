@@ -59,6 +59,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		class_template_specialization_states_.capacity() * sizeof(std::uint8_t) +
 		class_template_member_definition_counts_.capacity() *
 			sizeof(std::uint32_t) +
+		deferred_class_definition_by_entity_.capacity() * sizeof(NodeId) +
+		deferred_class_scope_by_entity_.capacity() * sizeof(ScopeId) +
 		injected_fact_by_binding_.capacity() * sizeof(std::uint32_t) +
 		injected_members_.capacity() * sizeof(InjectedMemberInfo) +
 		scope_lifetimes_.capacity() *

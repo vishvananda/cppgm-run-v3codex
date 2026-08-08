@@ -14,27 +14,27 @@ Native IR and ELF remain later-stage boundaries.
 
 ## Current Failure Map
 
-Structural dependent-type replay raised PA19 from 202 to 208/293. The complete
-remaining 85-test set is:
+Indexed specialization completion raised PA19 from 208 to 214/293. The complete
+remaining 79-test set is:
 
 | Failures | Shared behavior | Owner |
 |---:|---|---|
 | 15 rejected valid inputs | Function-template deduction/returns, enum or member operators, and target candidate ranking. | PA19 function-template deduction and PA12 overload selection |
-| 24 rejected valid inputs | Dependent/local type and member lookup, incomplete/nested completion, and retained replay. | PA12 retained scopes and lookup provenance; PA19 completion |
+| 16 rejected valid inputs | Dependent/local type and member lookup, nested completion, and retained replay. | PA12 retained scopes and lookup provenance; PA19 completion |
 | 5 rejected valid inputs | Explicit instantiation demand, defaults, variable templates, and declaration forms. | PA19 template declaration and demand owners |
 | 11 accepted invalid inputs | Definition-time template parameter/name/redeclaration and exception-spec diagnostics. | PA12 retained-definition validation |
-| 30 LowIR mismatches | Selected instantiated facts diverge in special members/lifetimes, static storage, null constants, or overload/control-flow lowering. | PA12 selected facts and PA15-PA19 typed lowering |
+| 32 LowIR mismatches | Selected instantiated facts diverge in special members/lifetimes, static storage, null constants, or overload/control-flow lowering. | PA12 selected facts and PA15-PA19 typed lowering |
 
 ## Active Checkpoint
 
-Separate canonical class-specialization identity from completion demand for
-incomplete and nested arguments. PA19 owns specialization shells plus reverse
-dependencies keyed by canonical argument/entity identity; PA12 layout or odr-use
-records demand, class completion wakes only indexed dependents, and PA15 consumes
-only completed layouts. Expected work is O(1)-average shell/cache/dependency
-insertion and O(newly unblocked dependents), without specialization rescans.
-Validate incomplete return arguments, unused nested instantiation, direct-member
-completion, explicit instantiation forms, PA1-PA18, file audit, and wakeup scaling.
+Validate retained template definitions before specialization demand. PA12 owns
+one lexical shape scope per PA10 pattern and must classify nondependent names,
+reject template-parameter redeclarations in nested declaration/condition scopes,
+and compare out-of-class exception specifications; PA19 retains only definitions
+that pass this gate. This applies `spec.md` sections 2-4 and 9 once per pattern in
+O(body syntax plus indexed lookup relations), with no per-specialization repeat.
+Validate the complete 11-test accepted-invalid group, valid unused dependent
+bodies, PA1-PA18, file audit, and 128/256/512 retained-body scaling.
 
 ## Performance Evidence
 
@@ -49,6 +49,7 @@ completion, explicit instantiation forms, PA1-PA18, file audit, and wakeup scali
 | One function template through 128/256/512 nested using-directives | Scope visits 781/1,549/3,085 and relation visits 512/1,024/2,048; exactly one specialization request, semantic nodes 141/269/525, constant 3,284 typed bytes, semantic time 1.68/3.07/3.74 ms. |
 | 128/256/512 retained direct initializers with one qualified template call each | Semantic nodes 795/1,563/3,099, lookup scope visits 690/1,330/2,610, requests 515/1,027/2,051 with 513/1,025/2,049 cache hits, typed bytes 160,143/314,127/622,095, semantic time 6.51/12.41/26.73 ms. |
 | 128/256/512 qualified `decltype` class-template arguments | Semantic nodes 914/1,810/3,602, lookup scope visits 278/534/1,046, requests 128/256/512 with 127/255/511 cache hits and one specialization; typed bytes 46,518/91,446/181,302. |
+| 128/256/512 incomplete shells followed by object-definition demand | Requests 256/512/1,024 with 128/256/512 cache hits, layout member visits 128/256/512, semantic nodes 1,285/2,565/5,125, typed bytes 153,074/304,626/607,730, semantic time 19.5/40.6/74.9 ms. |
 
 ## Completed Checkpoints
 
@@ -64,3 +65,4 @@ completion, explicit instantiation forms, PA1-PA18, file audit, and wakeup scali
 | Namespace-visible function-template replay | Pass | Template-owner provenance in ordinary lookup, name-specific using/inline traversal and hiding, owner-local deduction aliases, parenthesized call reclassification, scalar reference-return slot; PA19 190 to 195, linear relation probe, prior 1713/1713, audit pass |
 | Indexed retained-syntax reclassification | Pass | Lexical type/callable hiding, retained direct calls and constructor initialization, parenthesized value operators and parameter names; PA19 195 to 202, six focused cases, linear shape probe, prior 1713/1713, audit pass |
 | Structural dependent-type replay | Pass | Qualified `decltype`, parameter-visible array references, deferred template shape returns, member trailing-return object context, elaborated template-ids and keyword boundaries; PA19 202 to 208, linear type/path probe, prior 1713/1713, audit pass |
+| Indexed specialization completion demand | Pass | Canonical incomplete shells, O(1) entity-to-pattern/argument recovery, layout/member demand, incomplete-cycle nested retention, and rebound out-of-class nested definitions; PA19 208 to 214, six focused cases, linear demand probe, prior 1713/1713, audit pass |
