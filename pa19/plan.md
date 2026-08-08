@@ -14,28 +14,27 @@ Native IR and ELF remain later-stage boundaries.
 
 ## Current Failure Map
 
-Definition-time non-template call provenance raised PA19 from 247 to 250/293.
-The complete remaining 43-test set is:
+Complete retained call provenance and selected-only hidden-friend demand raised
+PA19 from 250 to 255/293. The complete remaining 38-test set is:
 
 | Failures | Shared behavior | Owner |
 |---:|---|---|
-| 8 rejected valid inputs | Function-template ordering, enum/member operators, target function references, and associated-class ADL. | PA19 candidate materialization and PA12/PA16 overload selection |
-| 9 rejected valid inputs | Dependent/local type and member lookup, nested completion, and retained replay. | PA12 retained scopes and lookup provenance; PA19 completion |
+| 6 rejected valid inputs | Enum/member operators, target function references, and associated-class overloads. | PA19 candidate materialization and PA12/PA16 overload selection |
+| 8 rejected valid inputs | Dependent/local type and member lookup, nested completion, and retained replay. | PA12 retained scopes and lookup provenance; PA19 completion |
 | 9 rejected valid inputs | Explicit instantiation demand, defaults, variable templates, and declaration forms. | PA19 template declaration and demand owners |
-| 17 LowIR mismatches | Selected instantiated facts diverge in emission/lifetimes, overload provenance, or scalar/control-flow lowering. | PA12 selected facts and PA15-PA19 typed lowering |
+| 15 LowIR mismatches | Selected instantiated facts diverge in emission/lifetimes, overload provenance, or scalar/control-flow lowering. | PA12 selected facts and PA15-PA19 typed lowering |
 
 ## Active Checkpoint
 
-Complete two-phase candidate provenance for empty ordinary sets and visible
-function-template patterns. The retained call fact owns `{ordinary bindings,
-template patterns, naming class, ADL eligibility}` in its definition parameter
-scope; substitution resolves explicit arguments, deduces only stored patterns,
-and adds only associated candidates. PA12 selection/lowering consume those
-facts without base lookup replay. This follows `spec.md` sections 2-5 and 9 in
-O(definition lookup edges + actual candidates) publication and O(stored
-candidates + associated edges) replay. Validate partial explicit IDs, deferred
-ADL/private bases, member distractors, empty ordinary sets, prior/audit, and
-candidate/base-depth scaling.
+Make explicit class-instantiation declarations drive canonical completion and
+member demand. The PA19 template declaration owner resolves one specialization
+key, the specialization state machine completes layout once, and an explicit
+definition enqueues each required non-template member through the ordinary
+demand owner; lowering sees only completed selected facts. This applies
+`spec.md` sections 2-5 and 9 in O(1) average specialization lookup plus
+O(declared members) monotonic demand. Validate qualified/unqualified explicit
+forms, static and nonstatic members, defaults, duplicate demand, prior/audit,
+and member-count scaling.
 
 ## Performance Evidence
 
@@ -57,6 +56,7 @@ candidate/base-depth scaling.
 | Reference-move specialization with 128/256/512 scalar-prefix members | Layout visits 129/257/513, special-member fact lookups 129/257/513, and subobject visits 388/772/1,540; three functions and 32 instructions stay constant through one prefix transfer plus one reference action; semantic time 3.16/5.80/11.80 ms. |
 | Indirect class-value call with 32/64/128 arguments | Conversion checks 136/264/520, instructions 190/350/670, requests 35/67/131 with 33/65/129 hits, and constant three demand pushes; semantic time 2.40/3.80/6.66 ms and lowering 1.19/1.49/2.35 ms. |
 | Retained global call over substituted base depth 64/128/256 | Overload candidates and conversion checks stay constant at 5, with 3 functions and 8 instructions; total lookup scope visits 158/286/542 and semantic time 1.88/3.48/6.90 ms grow linearly with declarations/layout, not a replayed call lookup. |
+| Retained call with 64/128/256 visible template patterns and one viable candidate | Overload candidates stay 2, conversion checks 5, specialization requests 2, functions 3, and instructions 11; semantic time 2.34/4.62/8.95 ms and lookup visits 364/684/1,324 scale linearly with the published pattern set. |
 
 ## Completed Checkpoints
 
@@ -78,3 +78,4 @@ candidate/base-depth scaling.
 | Canonical static-member constant/storage demand | Pass | PA15 consumes canonical constant `id-expression` facts; PA12 suppresses synthetic globals for non-odr constant uses while explicit out-of-class definitions remain ordinary storage; PA19 233 to 241 across eight cases, prior 1713/1713, audit pass |
 | Canonical class-value call and construction boundaries | Pass | Direct, indirect, and converting calls share selected argument staging; typed call-passing facts, aggregate helpers, reference-move actions, and retained defaulted definitions reuse ordinary lowering; PA19 241 to 247 across six cases, linear argument/member probes, prior 1713/1713, audit pass |
 | Definition-time non-template call provenance | Pass | Node-indexed candidate/naming-class facts bypass concrete dependent bases while fixed-base replay remains intact; PA19 247 to 250, constant call-candidate probe across base depth, prior 1713/1713, audit pass |
+| Complete retained call provenance and demand | Pass | Node-indexed function/template/empty sets, naming class and ADL bit replay; local using sets, cv-reference ordering, value-aware `sizeof` ambiguity, and selected demand in template units with PA18-compatible ordinary anchors; PA19 250 to 255, linear pattern-set probe, prior 1713/1713, audit pass |

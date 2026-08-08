@@ -50,6 +50,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		function_template_shape_parameters_.capacity() * sizeof(TypeId) +
 		template_function_sets_.StorageBytes() +
 		retained_call_function_sets_.StorageBytes() +
+		retained_call_template_sets_.StorageBytes() +
 		retained_call_lookup_states_.capacity() * sizeof(std::uint8_t) +
 		retained_call_naming_classes_.capacity() * sizeof(EntityId) +
 		template_instantiations_.StorageBytes() +

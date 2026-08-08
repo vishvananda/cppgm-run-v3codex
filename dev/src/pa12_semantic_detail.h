@@ -102,7 +102,11 @@ private:
 	void ValidateRetainedTemplateDefinition(NodeId target, ScopeId scope,
 		const std::vector<NameId>& parameters);
 	void RecordRetainedCallLookup(NodeId callee, ScopeId scope,
-		const std::string& spelling);
+		const std::string& spelling, bool adl_eligible);
+	void PublishRetainedCallLookup(NodeId callee,
+		const std::vector<BindingId>& functions,
+		const std::vector<std::size_t>& templates, EntityId naming_class,
+		bool adl_eligible);
 	void AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 		const std::vector<NameId>& parameters,
 		const std::vector<NodeId>& defaults);
@@ -186,6 +190,11 @@ private:
 	std::vector<BindingId> RetainedFunctionCallCandidates(NodeId callee,
 		ScopeId scope, const std::string& spelling, EntityId* naming_class,
 		bool* retained_lookup);
+	void CompleteFunctionCallTemplateCandidates(NodeId callee, ScopeId scope,
+		const std::string& spelling,
+		const std::vector<ExpressionInfo>& arguments, bool retained_lookup,
+		std::vector<BindingId>* candidates, EntityId* naming_class);
+	bool RetainedCallAllowsArgumentDependentLookup(NodeId callee) const;
 	std::vector<BindingId> FunctionSet(BindingId binding);
 	void AppendFunctionSet(BindingId binding,
 		std::vector<BindingId>* result);
@@ -658,6 +667,7 @@ private:
 	mutable std::vector<std::uint8_t> function_template_dependency_cache_;
 	IndexedSequenceTable template_function_sets_;
 	IndexedSequenceTable retained_call_function_sets_;
+	IndexedSequenceTable retained_call_template_sets_;
 	std::vector<std::uint8_t> retained_call_lookup_states_;
 	std::vector<EntityId> retained_call_naming_classes_;
 	TemplateSpecializationTable template_instantiations_;

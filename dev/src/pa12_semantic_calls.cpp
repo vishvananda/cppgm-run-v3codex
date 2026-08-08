@@ -119,8 +119,20 @@ int SemanticAnalyzer::CompareReferenceBindings(
 		const TypeId right_target = right_kind == TYPE_LVALUE_REFERENCE ||
 			right_kind == TYPE_RVALUE_REFERENCE ?
 			program_->types.Get(right).child : right;
-		if (SimilarUnqualified(source, left_target) ||
-			SimilarUnqualified(source, right_target)) return 0;
+		const bool left_similar = SimilarUnqualified(source, left_target);
+		const bool right_similar = SimilarUnqualified(source, right_target);
+		if (left_similar && right_similar)
+		{
+			const TypeRecord& left_record = program_->types.Get(left_target);
+			const TypeRecord& right_record = program_->types.Get(right_target);
+			const std::uint8_t left_cv = left_record.kind == TYPE_QUALIFIED ?
+				left_record.cv : CV_NONE;
+			const std::uint8_t right_cv = right_record.kind == TYPE_QUALIFIED ?
+				right_record.cv : CV_NONE;
+			if (left_cv != right_cv && (left_cv & ~right_cv) == 0) return 1;
+			if (left_cv != right_cv && (right_cv & ~left_cv) == 0) return -1;
+		}
+		if (left_similar || right_similar) return 0;
 	}
 	if (left_kind == TYPE_RVALUE_REFERENCE &&
 		right_kind == TYPE_LVALUE_REFERENCE)

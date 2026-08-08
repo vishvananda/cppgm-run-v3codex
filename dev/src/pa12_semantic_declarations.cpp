@@ -2523,11 +2523,8 @@ void SemanticAnalyzer::AnalyzeFriendFunction(NodeId node,
 					hidden_friend_anchor_by_entity_.resize(
 						static_cast<std::size_t>(owner_entity) + 1, kNoBinding);
 				if (hidden_friend_anchor_by_entity_[owner_entity] == kNoBinding)
-				{
 					hidden_friend_anchor_by_entity_[owner_entity] =
 						program_->bindings[binding].canonical;
-					DemandFunction(binding);
-				}
 			}
 		}
 		ValidateNonmemberOperator(binding);

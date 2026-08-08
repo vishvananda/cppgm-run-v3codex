@@ -1193,19 +1193,17 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 		const bool type_precedes_functions =
 			FunctionalCastPrecedesFunctions(
 				spelling, scope, cast_type, candidates);
-		if (!type_precedes_functions && !retained_lookup &&
-			!FindFunctionTemplates(scope, spelling).empty())
-		{
-			DeduceFunctionTemplates(scope, spelling, analyzed_arguments);
-			candidates = FunctionCallCandidates(scope, spelling,
+		if (!type_precedes_functions)
+			CompleteFunctionCallTemplateCandidates(direct_callee_syntax, scope,
+				spelling, analyzed_arguments, retained_lookup, &candidates,
 				&function_naming_class);
-		}
 		if (!type_precedes_functions &&
 			!parenthesized_callee && !qualified_callee)
 		{
 			BeginCandidateCollection();
 			std::vector<BindingId> combined;
-			bool suppress_adl = false;
+			bool suppress_adl = retained_lookup &&
+				!RetainedCallAllowsArgumentDependentLookup(direct_callee_syntax);
 			for (std::size_t i = 0; i < candidates.size(); ++i)
 			{
 				AddCandidate(candidates[i], &combined);
@@ -1292,6 +1290,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 			++expression_count_;
 			return ApplyTarget(result, target);
 		}
+		if (retained_lookup)
+			throw std::runtime_error("retained call has no viable function");
 	}
 	ExpressionInfo callee = AnalyzeExpression(callee_syntax, scope);
 	if (!arguments_analyzed)
@@ -1704,7 +1704,18 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 	if (operand == kNoNode) throw std::runtime_error("empty sizeof");
 	TypeId measured = kNoType;
 	if (arena_->IsTag(operand, "type-id")) measured = BuildTypeId(operand, scope);
-	else
+	else if (arena_->IsTag(operand, "id-expression"))
+	{
+		const std::string spelling = arena_->Payload(operand);
+		const LookupResult ordinary = LookupSpelling(
+			scope, spelling, LOOKUP_ORDINARY);
+		if (ordinary.ordinary == kNoBinding)
+		{
+			const LookupResult type = LookupSpelling(scope, spelling, LOOKUP_TYPE);
+			if (type.type != kNoType) measured = type.type;
+		}
+	}
+	if (measured == kNoType)
 	{
 		++unevaluated_depth_;
 		try
@@ -2849,6 +2860,9 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 	for (std::uint32_t edge = arena.FirstEdge(root); edge != kNoEdge;
 		edge = arena.NextEdge(edge))
 		AnalyzeDeclaration(arena.EdgeChild(edge), program.GlobalScope(), root_, false);
+	if (function_templates_.empty() && class_templates_.empty())
+		for (std::size_t i = 0; i < hidden_friend_anchor_by_entity_.size(); ++i)
+			DemandFunction(hidden_friend_anchor_by_entity_[i]);
 	std::size_t default_demand = 0;
 	std::size_t function_demand = 0;
 	while (default_demand < demanded_default_constructor_entities_.size() ||

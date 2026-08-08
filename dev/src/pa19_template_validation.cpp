@@ -22,18 +22,29 @@ enum RetainedNameKind
 	RETAINED_VALUE_NAME = 2
 };
 
+enum RetainedCallLookupState
+{
+	RETAINED_CALL_LOOKUP_PUBLISHED = 1,
+	RETAINED_CALL_ADL_ELIGIBLE = 2
+};
+
 struct RetainedScope
 {
 	ScopeId semantic_scope;
 	std::size_t parent;
 	std::unordered_map<NameId, std::uint8_t> names;
+	std::unordered_map<NameId, std::vector<BindingId> > call_functions;
+	std::unordered_map<NameId, std::vector<std::size_t> > call_templates;
+	std::unordered_map<NameId, EntityId> call_naming_classes;
 	bool defer_unknown_members;
 	bool unmodeled_fixed_base;
+	bool unmodeled_current_class;
 
 	RetainedScope(ScopeId semantic, std::size_t owner, bool defer,
-		bool fixed_base)
+		bool fixed_base, bool current_class)
 		: semantic_scope(semantic), parent(owner), defer_unknown_members(defer),
-		  unmodeled_fixed_base(fixed_base) {}
+		  unmodeled_fixed_base(fixed_base),
+		  unmodeled_current_class(current_class) {}
 };
 
 }
@@ -50,15 +61,20 @@ public:
 
 private:
 	std::size_t AddScope(ScopeId semantic_scope, std::size_t parent,
-		bool defer_unknown_members, bool unmodeled_fixed_base = false);
+		bool defer_unknown_members, bool unmodeled_fixed_base = false,
+		bool unmodeled_current_class = false);
 	std::size_t AddChildScope(std::size_t parent, ScopeKind kind,
 		bool defer_unknown_members = false);
 	void DeclareParameter(std::size_t scope, NameId name);
 	void Declare(std::size_t scope, NameId name, RetainedNameKind kind,
 		bool allow_existing = false);
 	std::uint8_t LookupLocal(std::size_t scope, NameId name) const;
+	bool LookupLocalCallSets(std::size_t scope, NameId name,
+		std::vector<BindingId>* functions,
+		std::vector<std::size_t>* templates, EntityId* naming_class) const;
 	bool DefersUnknownMembers(std::size_t scope) const;
 	bool HasUnmodeledFixedBase(std::size_t scope) const;
+	bool HasUnmodeledCurrentClass(std::size_t scope) const;
 	bool IsQualifiedMemberDefinition(NodeId node) const;
 	bool IsTypedef(NodeId specifiers) const;
 	bool HasBaseClass(NodeId node) const;
@@ -74,6 +90,7 @@ private:
 	void BindFunctionParameters(NodeId declarator, std::size_t scope);
 	void VisitSimple(NodeId node, std::size_t scope, bool predeclared);
 	void VisitUsing(NodeId node, std::size_t scope);
+	void VisitSizeof(NodeId node, std::size_t scope);
 	void VisitIdExpression(NodeId node, std::size_t scope,
 		bool unknown_callee);
 	void ValidateSpecialMemberExceptionSpecification();
@@ -89,11 +106,13 @@ private:
 };
 
 std::size_t RetainedTemplateValidator::AddScope(ScopeId semantic_scope,
-	std::size_t parent, bool defer_unknown_members, bool unmodeled_fixed_base)
+	std::size_t parent, bool defer_unknown_members, bool unmodeled_fixed_base,
+	bool unmodeled_current_class)
 {
 	const std::size_t index = scopes_.size();
 	scopes_.push_back(RetainedScope(semantic_scope, parent,
-		defer_unknown_members, unmodeled_fixed_base));
+		defer_unknown_members, unmodeled_fixed_base,
+		unmodeled_current_class));
 	return index;
 }
 
@@ -140,6 +159,35 @@ std::uint8_t RetainedTemplateValidator::LookupLocal(std::size_t scope,
 	return 0;
 }
 
+bool RetainedTemplateValidator::LookupLocalCallSets(std::size_t scope,
+	NameId name, std::vector<BindingId>* functions,
+	std::vector<std::size_t>* templates, EntityId* naming_class) const
+{
+	while (scope != std::numeric_limits<std::size_t>::max())
+	{
+		if (scopes_[scope].names.find(name) != scopes_[scope].names.end())
+		{
+			const std::unordered_map<NameId,
+				std::vector<BindingId> >::const_iterator function_set =
+				scopes_[scope].call_functions.find(name);
+			if (function_set != scopes_[scope].call_functions.end())
+				*functions = function_set->second;
+			const std::unordered_map<NameId,
+				std::vector<std::size_t> >::const_iterator template_set =
+				scopes_[scope].call_templates.find(name);
+			if (template_set != scopes_[scope].call_templates.end())
+				*templates = template_set->second;
+			const std::unordered_map<NameId, EntityId>::const_iterator naming =
+				scopes_[scope].call_naming_classes.find(name);
+			if (naming != scopes_[scope].call_naming_classes.end())
+				*naming_class = naming->second;
+			return true;
+		}
+		scope = scopes_[scope].parent;
+	}
+	return false;
+}
+
 bool RetainedTemplateValidator::DefersUnknownMembers(std::size_t scope) const
 {
 	while (scope != std::numeric_limits<std::size_t>::max())
@@ -156,6 +204,17 @@ bool RetainedTemplateValidator::HasUnmodeledFixedBase(
 	while (scope != std::numeric_limits<std::size_t>::max())
 	{
 		if (scopes_[scope].unmodeled_fixed_base) return true;
+		scope = scopes_[scope].parent;
+	}
+	return false;
+}
+
+bool RetainedTemplateValidator::HasUnmodeledCurrentClass(
+	std::size_t scope) const
+{
+	while (scope != std::numeric_limits<std::size_t>::max())
+	{
+		if (scopes_[scope].unmodeled_current_class) return true;
 		scope = scopes_[scope].parent;
 	}
 	return false;
@@ -481,10 +540,19 @@ void RetainedTemplateValidator::VisitUsing(NodeId node, std::size_t scope)
 		Declare(scope, name, RETAINED_VALUE_NAME, true);
 		return;
 	}
-	if (!analyzer_.FindFunctionTemplates(
-		scopes_[scope].semantic_scope, target).empty())
+	EntityId naming_class = kNoEntity;
+	const std::vector<BindingId> functions =
+		analyzer_.FunctionCallCandidates(
+			scopes_[scope].semantic_scope, target, &naming_class);
+	const std::vector<std::size_t> templates =
+		analyzer_.FindFunctionTemplates(
+			scopes_[scope].semantic_scope, target);
+	if (!functions.empty() || !templates.empty())
 	{
 		Declare(scope, name, RETAINED_VALUE_NAME, true);
+		scopes_[scope].call_functions[name] = functions;
+		scopes_[scope].call_templates[name] = templates;
+		scopes_[scope].call_naming_classes[name] = naming_class;
 		return;
 	}
 	const LookupResult ordinary = analyzer_.LookupPath(
@@ -515,7 +583,15 @@ void RetainedTemplateValidator::VisitIdExpression(NodeId node,
 			return;
 		const LookupResult ordinary = analyzer_.LookupSpelling(
 			scopes_[scope].semantic_scope, spelling, LOOKUP_ORDINARY);
-		if (ordinary.ordinary != kNoBinding) return;
+		if (ordinary.ordinary != kNoBinding)
+		{
+			if (unknown_callee &&
+				analyzer_.program_->bindings[ordinary.ordinary].kind ==
+					BIND_FUNCTION)
+				analyzer_.RecordRetainedCallLookup(node,
+					scopes_[scope].semantic_scope, spelling, false);
+			return;
+		}
 		const LookupResult type = analyzer_.LookupSpelling(
 			scopes_[scope].semantic_scope, spelling, LOOKUP_TYPE);
 		if (type.type != kNoType)
@@ -523,11 +599,29 @@ void RetainedTemplateValidator::VisitIdExpression(NodeId node,
 			if (unknown_callee) return;
 			throw std::runtime_error("type name used as retained value");
 		}
+		if (unknown_callee && !analyzer_.FindFunctionTemplates(
+			scopes_[scope].semantic_scope, spelling).empty())
+			analyzer_.RecordRetainedCallLookup(node,
+				scopes_[scope].semantic_scope, spelling, false);
 		return;
 	}
 	const NameId name = path.Last();
 	const std::uint8_t local = LookupLocal(scope, name);
-	if ((local & RETAINED_VALUE_NAME) != 0) return;
+	if ((local & RETAINED_VALUE_NAME) != 0)
+	{
+		if (unknown_callee)
+		{
+			std::vector<BindingId> functions;
+			std::vector<std::size_t> templates;
+			EntityId naming_class = kNoEntity;
+			(void)LookupLocalCallSets(scope, name, &functions, &templates,
+				&naming_class);
+			if (!functions.empty() || !templates.empty())
+				analyzer_.PublishRetainedCallLookup(node, functions, templates,
+					naming_class, true);
+		}
+		return;
+	}
 	if ((local & RETAINED_TYPE_NAME) != 0)
 	{
 		if (unknown_callee) return;
@@ -537,9 +631,10 @@ void RetainedTemplateValidator::VisitIdExpression(NodeId node,
 		scopes_[scope].semantic_scope, name, LOOKUP_ORDINARY);
 	if (ordinary.ordinary != kNoBinding)
 	{
-		if (unknown_callee && !HasUnmodeledFixedBase(scope))
+		if (unknown_callee && !HasUnmodeledFixedBase(scope) &&
+			analyzer_.program_->bindings[ordinary.ordinary].kind == BIND_FUNCTION)
 			analyzer_.RecordRetainedCallLookup(node,
-				scopes_[scope].semantic_scope, spelling);
+				scopes_[scope].semantic_scope, spelling, true);
 		return;
 	}
 	const LookupResult type = analyzer_.program_->LookupName(
@@ -549,8 +644,48 @@ void RetainedTemplateValidator::VisitIdExpression(NodeId node,
 		if (unknown_callee) return;
 		throw std::runtime_error("type name used as retained value");
 	}
-	if (unknown_callee || DefersUnknownMembers(scope)) return;
+	if (unknown_callee)
+	{
+		if (!HasUnmodeledFixedBase(scope) &&
+			!HasUnmodeledCurrentClass(scope))
+			analyzer_.RecordRetainedCallLookup(node,
+				scopes_[scope].semantic_scope, spelling, true);
+		return;
+	}
+	if (DefersUnknownMembers(scope)) return;
 	throw std::runtime_error("unknown nondependent name in template definition");
+}
+
+void RetainedTemplateValidator::VisitSizeof(NodeId node, std::size_t scope)
+{
+	const NodeId operand = analyzer_.FirstSemanticChild(node);
+	if (operand == kNoNode || analyzer_.arena_->IsTag(operand, "type-id"))
+		return;
+	if (analyzer_.arena_->IsTag(operand, "id-expression"))
+	{
+		const std::string spelling = analyzer_.PayloadSource(operand);
+		const NamePath path = analyzer_.ParseNamePath(spelling);
+		if (SpellingUsesTemplateParameter(spelling)) return;
+		if (!path.Empty() && !path.global && path.Size() == 1)
+		{
+			const std::uint8_t local = LookupLocal(scope, path.Last());
+			if ((local & RETAINED_VALUE_NAME) != 0)
+			{
+				Visit(operand, scope);
+				return;
+			}
+			if ((local & RETAINED_TYPE_NAME) != 0) return;
+		}
+		const LookupResult ordinary = analyzer_.LookupSpelling(
+			scopes_[scope].semantic_scope, spelling, LOOKUP_ORDINARY);
+		if (ordinary.ordinary == kNoBinding)
+		{
+			const LookupResult type = analyzer_.LookupSpelling(
+				scopes_[scope].semantic_scope, spelling, LOOKUP_TYPE);
+			if (type.type != kNoType) return;
+		}
+	}
+	Visit(operand, scope);
 }
 
 void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
@@ -570,6 +705,11 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 		for (std::uint32_t edge = analyzer_.arena_->NextEdge(first);
 			edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
 			Visit(analyzer_.arena_->EdgeChild(edge), scope);
+		return;
+	}
+	if (analyzer_.arena_->IsTag(node, "sizeof-expression"))
+	{
+		VisitSizeof(node, scope);
 		return;
 	}
 	if (analyzer_.arena_->IsTag(node, "compound-statement"))
@@ -677,6 +817,7 @@ void RetainedTemplateValidator::Run()
 		analyzer_.ScopePrefixId(lexical_scope_));
 	const std::size_t root = AddScope(semantic,
 		std::numeric_limits<std::size_t>::max(),
+		IsQualifiedMemberDefinition(target_), false,
 		IsQualifiedMemberDefinition(target_));
 	for (std::size_t i = 0; i < parameters_.size(); ++i)
 		DeclareParameter(root, parameters_[i]);
@@ -689,18 +830,11 @@ void SemanticAnalyzer::ValidateRetainedTemplateDefinition(NodeId target,
 	RetainedTemplateValidator(*this, target, scope, parameters).Run();
 }
 
-void SemanticAnalyzer::RecordRetainedCallLookup(NodeId callee, ScopeId scope,
-	const std::string& spelling)
+void SemanticAnalyzer::PublishRetainedCallLookup(NodeId callee,
+	const std::vector<BindingId>& functions,
+	const std::vector<std::size_t>& templates, EntityId naming_class,
+	bool adl_eligible)
 {
-	EntityId naming_class = kNoEntity;
-	const std::vector<BindingId> functions =
-		FunctionCallCandidates(scope, spelling, &naming_class);
-	const std::vector<std::size_t> templates =
-		FindFunctionTemplates(scope, spelling);
-	// A mixed ordinary/template set needs template-parameter scope provenance
-	// as well as binding provenance. Leave that call on the existing replay
-	// path until both facts can be published atomically.
-	if (functions.empty() || !templates.empty()) return;
 	if (retained_call_lookup_states_.size() <= callee)
 	{
 		retained_call_lookup_states_.resize(
@@ -708,13 +842,41 @@ void SemanticAnalyzer::RecordRetainedCallLookup(NodeId callee, ScopeId scope,
 		retained_call_naming_classes_.resize(
 			static_cast<std::size_t>(callee) + 1, kNoEntity);
 	}
-	retained_call_lookup_states_[callee] = 1;
+	retained_call_lookup_states_[callee] =
+		RETAINED_CALL_LOOKUP_PUBLISHED |
+		(adl_eligible ? RETAINED_CALL_ADL_ELIGIBLE : 0);
 	retained_call_naming_classes_[callee] = naming_class;
-	CompactIndexSequence& function_set =
-		retained_call_function_sets_.Ensure(callee);
-	for (std::size_t i = 0; i < functions.size(); ++i)
-		if (!function_set.Contains(functions[i]))
-			function_set.Push(functions[i]);
+	if (!functions.empty())
+	{
+		CompactIndexSequence& function_set =
+			retained_call_function_sets_.Ensure(callee);
+		for (std::size_t i = 0; i < functions.size(); ++i)
+			if (!function_set.Contains(functions[i]))
+				function_set.Push(functions[i]);
+	}
+	if (!templates.empty())
+	{
+		CompactIndexSequence& template_set =
+			retained_call_template_sets_.Ensure(callee);
+		for (std::size_t i = 0; i < templates.size(); ++i)
+			if (!template_set.Contains(templates[i]))
+				template_set.Push(templates[i]);
+	}
+}
+
+void SemanticAnalyzer::RecordRetainedCallLookup(NodeId callee, ScopeId scope,
+	const std::string& spelling, bool adl_eligible)
+{
+	EntityId naming_class = kNoEntity;
+	std::vector<BindingId> functions;
+	const bool explicit_template_id = spelling.find('<') != std::string::npos &&
+		!spelling.empty() && spelling[spelling.size() - 1] == '>';
+	if (!explicit_template_id)
+		functions = FunctionCallCandidates(scope, spelling, &naming_class);
+	const std::vector<std::size_t> templates =
+		FindFunctionTemplates(scope, spelling);
+	PublishRetainedCallLookup(callee, functions, templates, naming_class,
+		adl_eligible);
 }
 
 std::vector<BindingId> SemanticAnalyzer::RetainedFunctionCallCandidates(
@@ -722,7 +884,8 @@ std::vector<BindingId> SemanticAnalyzer::RetainedFunctionCallCandidates(
 	EntityId* naming_class, bool* retained_lookup)
 {
 	*retained_lookup = callee < retained_call_lookup_states_.size() &&
-		retained_call_lookup_states_[callee] != 0;
+		(retained_call_lookup_states_[callee] &
+			RETAINED_CALL_LOOKUP_PUBLISHED) != 0;
 	if (!*retained_lookup)
 		return FunctionCallCandidates(scope, spelling, naming_class);
 	*naming_class = retained_call_naming_classes_[callee];
@@ -736,6 +899,49 @@ std::vector<BindingId> SemanticAnalyzer::RetainedFunctionCallCandidates(
 			result.push_back(static_cast<BindingId>((*retained_functions)[i]));
 	}
 	return result;
+}
+
+void SemanticAnalyzer::CompleteFunctionCallTemplateCandidates(NodeId callee,
+	ScopeId scope, const std::string& spelling,
+	const std::vector<ExpressionInfo>& arguments, bool retained_lookup,
+	std::vector<BindingId>* candidates, EntityId* naming_class)
+{
+	if (!retained_lookup)
+	{
+		if (FindFunctionTemplates(scope, spelling).empty()) return;
+		DeduceFunctionTemplates(scope, spelling, arguments);
+		*candidates = FunctionCallCandidates(scope, spelling, naming_class);
+		return;
+	}
+	const CompactIndexSequence* retained_templates =
+		retained_call_template_sets_.Find(callee);
+	if (!retained_templates || retained_templates->Size() == 0) return;
+	const std::vector<std::size_t> patterns = retained_templates->Copy();
+	std::string base;
+	std::vector<TypeId> explicit_arguments;
+	const bool explicit_id = ParseExplicitTemplateArguments(scope, spelling,
+		&base, &explicit_arguments);
+	std::vector<BindingId> specializations;
+	DeduceFunctionTemplatePatterns(patterns, arguments, &specializations,
+		explicit_id ? &explicit_arguments : 0);
+	for (std::size_t i = 0; i < specializations.size(); ++i)
+	{
+		const BindingId canonical =
+			program_->bindings[specializations[i]].canonical;
+		bool present = false;
+		for (std::size_t existing = 0; existing < candidates->size(); ++existing)
+			if (program_->bindings[(*candidates)[existing]].canonical == canonical)
+				present = true;
+		if (!present) candidates->push_back(specializations[i]);
+	}
+}
+
+bool SemanticAnalyzer::RetainedCallAllowsArgumentDependentLookup(
+	NodeId callee) const
+{
+	return callee < retained_call_lookup_states_.size() &&
+		(retained_call_lookup_states_[callee] &
+			RETAINED_CALL_ADL_ELIGIBLE) != 0;
 }
 
 }
