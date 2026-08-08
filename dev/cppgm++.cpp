@@ -617,6 +617,13 @@ int run_emit_semantics_mode(const vector<string> & args)
            << " braced_fact_cache_misses=" << stats.braced_fact_cache_misses
            << " function_signature_lookups="
            << stats.function_signature_lookups
+           << " polymorphic_classes=" << stats.polymorphic_classes
+           << " virtual_slots=" << stats.virtual_slots
+           << " virtual_signature_lookups="
+           << stats.virtual_signature_lookups
+           << " virtual_overrides=" << stats.virtual_overrides
+           << " virtual_slot_lookups=" << stats.virtual_slot_lookups
+           << " vtable_demands=" << stats.vtable_demands
            << " access_checks=" << stats.access_checks
            << " access_path_visits=" << stats.access_path_visits
            << " access_grant_probes=" << stats.access_grant_probes
@@ -729,6 +736,14 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << " braced_fact_cache_misses=" << semantic.braced_fact_cache_misses
 			 << " function_signature_lookups="
 			 << semantic.function_signature_lookups
+			 << " polymorphic_classes=" << semantic.polymorphic_classes
+			 << " virtual_slots=" << semantic.virtual_slots
+			 << " virtual_signature_lookups="
+			 << semantic.virtual_signature_lookups
+			 << " virtual_overrides=" << semantic.virtual_overrides
+			 << " virtual_slot_lookups="
+			 << semantic.virtual_slot_lookups
+			 << " vtable_demands=" << semantic.vtable_demands
 			 << " access_checks=" << semantic.access_checks
 			 << " access_path_visits=" << semantic.access_path_visits
 			 << " access_grant_probes=" << semantic.access_grant_probes
@@ -746,6 +761,10 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << " blocks=" << stats.blocks
 			 << " instructions=" << stats.instructions
 			 << " binding_index_probes=" << stats.binding_index_probes
+			 << " virtual_calls=" << stats.virtual_calls
+			 << " vptr_stores=" << stats.vptr_stores
+			 << " vtable_slots=" << stats.vtable_slots
+			 << " deleting_destructors=" << stats.deleting_destructors
 			 << " cleanup_dispatch_probes="
 			 << stats.cleanup_dispatch_probes
 			 << " cleanup_dispatch_cache_hits="

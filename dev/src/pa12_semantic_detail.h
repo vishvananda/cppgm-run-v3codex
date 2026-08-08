@@ -41,6 +41,9 @@ public:
 		  conversion_checks_(0), call_conversion_cache_hits_(0),
 		  call_conversion_cache_misses_(0), braced_fact_cache_hits_(0),
 		  braced_fact_cache_misses_(0), function_signature_lookups_(0),
+		  polymorphic_classes_(0), virtual_slots_(0),
+		  virtual_signature_lookups_(0), virtual_overrides_(0),
+		  virtual_slot_lookups_(0), vtable_demands_(0),
 		  access_checks_(0), access_path_visits_(0),
 		  access_grant_probes_(0),
 		  template_specialization_requests_(0),
@@ -338,6 +341,7 @@ private:
 	void CompleteClassPolymorphism(EntityId entity);
 	void MarkVtableDemand(EntityId entity);
 	bool CovariantVirtualReturn(TypeId derived, TypeId base) const;
+	FunctionSignatureKey VirtualSignatureKey(BindingId binding) const;
 	bool VirtualSignatureMatches(BindingId derived, BindingId base) const;
 	std::uint32_t VirtualSlotFor(BindingId binding) const;
 	void CompleteOutOfClassDefaultedConstructor(EntityId entity,
@@ -553,6 +557,7 @@ private:
 	std::vector<std::vector<BindingId> > entity_conversion_functions_;
 	std::vector<std::vector<BindingId> > entity_member_functions_;
 	std::vector<ClassPolymorphismFacts> class_polymorphism_;
+	std::vector<std::uint32_t> virtual_slot_by_binding_;
 	std::vector<std::uint32_t> variable_node_by_binding_;
 	std::vector<ClassSpecialMemberFacts> class_special_members_;
 	std::vector<BindingId> implicit_constructor_by_entity_;
@@ -610,6 +615,12 @@ private:
 	std::size_t braced_fact_cache_hits_;
 	std::size_t braced_fact_cache_misses_;
 	std::size_t function_signature_lookups_;
+	std::size_t polymorphic_classes_;
+	std::size_t virtual_slots_;
+	std::size_t virtual_signature_lookups_;
+	std::size_t virtual_overrides_;
+	mutable std::size_t virtual_slot_lookups_;
+	std::size_t vtable_demands_;
 	mutable std::size_t access_checks_;
 	mutable std::size_t access_path_visits_;
 	mutable std::size_t access_grant_probes_;

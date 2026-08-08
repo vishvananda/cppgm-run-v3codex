@@ -297,7 +297,10 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 		throw std::runtime_error("member call on non-class object");
 	const NodeId identifier = arena_->EdgeChild(name_edge);
 	const std::string member_spelling = arena_->Payload(identifier);
-	const NameId name = ParseNamePath(member_spelling).Last();
+	const NamePath member_path = ParseNamePath(member_spelling);
+	const NameId name = member_path.Last();
+	const bool explicitly_qualified =
+		member_path.global || member_path.Size() > 1;
 	LookupResult found = program_->LookupMember(
 		entity, name, LOOKUP_ORDINARY);
 	if (found.ordinary == kNoBinding &&
@@ -343,7 +346,7 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 	*result = BuildResolvedCall(selected, scope, argument_syntax,
 		arguments, &object_pointer, target, found.naming_class,
 		&object_conversion, &argument_conversions,
-		member_spelling.find("::") != std::string::npos);
+		explicitly_qualified);
 	return true;
 }
 

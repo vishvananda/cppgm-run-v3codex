@@ -1,0 +1,103 @@
+declare global @__external_rtti_vtable____class_type_info [binding=strong]
+
+declare function @operatordelete(%arg0 : ptr) -> void [effects=readwrite, unwind=no, binding=strong, object=cppgm_builtin_operator_delete]
+
+global @__typeinfo_name__struct_base [binding=strong] = {
+  i8 52
+  i8 98
+  i8 97
+  i8 115
+  i8 101
+  i8 0
+}
+
+global @__rtti_struct_base [binding=strong] = {
+  ptr addr @__external_rtti_vtable____class_type_info + 16
+  ptr addr @__typeinfo_name__struct_base
+}
+
+global @base__vtable [binding=strong] = {
+  i64 0
+  ptr addr @__rtti_struct_base
+  ptr addr @base___base
+  ptr addr @base___base__deleting_entry
+}
+
+global @observed : i32 [binding=strong, object=_Z8observed] = zero
+
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  block ^entry:
+    %t1 = cmp ne ptr 0, 0
+    branch %t1, ^delete_nonnull_1, ^delete_end_2
+
+  block ^delete_nonnull_1:
+    %t2 = load ptr 0
+    %t3 = index i8 %t2, 8
+    %t4 = load ptr %t3
+    call void %t4(0) as (%arg0 : ptr) -> void
+    jump ^delete_end_2
+
+  block ^delete_end_2:
+    %t5 = load i32 @observed
+    return i32 %t5
+}
+
+function @base___base__deleting_entry(%this : ptr) -> void [binding=strong, object=_ZN4baseD0Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    eh_cleanup ^destructor_cleanup_1
+    %t1 = load ptr $this
+    call void @base___base(%t1)
+    eh_end
+    %t2 = load ptr $this
+    call void @operatordelete(%t2)
+    jump ^destructor_end_2
+
+  block ^destructor_cleanup_1:
+    %t3 = load ptr $this
+    call void @operatordelete(%t3)
+    eh_end
+    resume
+
+  block ^destructor_end_2:
+    return void
+}
+
+function @base___base(%this : ptr) -> void [binding=strong, object=_ZN4baseD1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    eh_cleanup ^destructor_cleanup_1
+    %t1 = load ptr $this
+    %t2 = addr @base__vtable
+    %t3 = index i8 %t2, 16
+    store ptr %t3, %t1
+    store i32 2, @observed
+    eh_end
+    %t4 = load ptr $this
+    %t5 = index i8 [projection=field] %t4, 8
+    call void @member___member(%t5)
+    jump ^destructor_end_2
+
+  block ^destructor_cleanup_1:
+    %t6 = load ptr $this
+    %t7 = index i8 [projection=field] %t6, 8
+    call void @member___member(%t7)
+    eh_end
+    resume
+
+  block ^destructor_end_2:
+    return void
+}
+
+function @member___member(%this : ptr) -> void [binding=strong, object=_ZN6memberD1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    store i32 1, @observed
+    return void
+}

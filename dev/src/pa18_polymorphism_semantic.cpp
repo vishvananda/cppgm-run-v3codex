@@ -17,8 +17,6 @@ void SemanticAnalyzer::ConfigureVirtualFunction(BindingId binding,
 	BindingRecord& declaration = program_->bindings[binding];
 	const BindingId canonical_id = declaration.canonical;
 	BindingRecord& canonical = program_->bindings[canonical_id];
-	if (declaration.static_member_function && spec.virtual_specifier)
-		throw std::runtime_error("static member function cannot be virtual");
 
 	bool override_specifier = false;
 	bool final_specifier = false;
@@ -39,6 +37,10 @@ void SemanticAnalyzer::ConfigureVirtualFunction(BindingId binding,
 		pure = value != kNoNode && arena_->IsTag(value, "literal") &&
 			arena_->Payload(value) == "0";
 	}
+	if (declaration.static_member_function &&
+		(spec.virtual_specifier || override_specifier || final_specifier || pure))
+		throw std::runtime_error(
+			"static member function cannot have a virtual specifier");
 
 	declaration.virtual_function = declaration.virtual_function ||
 		spec.virtual_specifier;
@@ -73,13 +75,40 @@ bool SemanticAnalyzer::CovariantVirtualReturn(TypeId derived,
 		 derived_shape.kind != TYPE_LVALUE_REFERENCE &&
 		 derived_shape.kind != TYPE_RVALUE_REFERENCE))
 		return false;
-	TypeId derived_class = program_->types.RemoveTopCv(derived_shape.child);
-	TypeId base_class = program_->types.RemoveTopCv(base_shape.child);
+	TypeId derived_class = derived_shape.child;
+	TypeId base_class = base_shape.child;
+	std::uint8_t derived_cv = CV_NONE;
+	std::uint8_t base_cv = CV_NONE;
+	const TypeRecord& derived_target = program_->types.Get(derived_class);
+	if (derived_target.kind == TYPE_QUALIFIED)
+	{
+		derived_cv = derived_target.cv;
+		derived_class = derived_target.child;
+	}
+	const TypeRecord& base_target = program_->types.Get(base_class);
+	if (base_target.kind == TYPE_QUALIFIED)
+	{
+		base_cv = base_target.cv;
+		base_class = base_target.child;
+	}
+	if ((derived_cv & static_cast<std::uint8_t>(~base_cv)) != 0)
+		return false;
 	const TypeRecord& derived_named = program_->types.Get(derived_class);
 	const TypeRecord& base_named = program_->types.Get(base_class);
 	if (derived_named.kind != TYPE_NAMED || base_named.kind != TYPE_NAMED)
 		return false;
-	return program_->IsBaseOf(base_named.entity, derived_named.entity);
+	return BaseConversionAllowed(derived_named.entity, base_named.entity);
+}
+
+FunctionSignatureKey SemanticAnalyzer::VirtualSignatureKey(
+	BindingId binding) const
+{
+	binding = program_->bindings[binding].canonical;
+	const BindingRecord& record = program_->bindings[binding];
+	return record.destructor ?
+		FunctionSignatureKey(kNoScope, 0, kNoType) :
+		FunctionSignatureKey(kNoScope, record.name,
+			GetFunction(binding).signature);
 }
 
 bool SemanticAnalyzer::VirtualSignatureMatches(BindingId derived,
@@ -87,14 +116,11 @@ bool SemanticAnalyzer::VirtualSignatureMatches(BindingId derived,
 {
 	derived = program_->bindings[derived].canonical;
 	base = program_->bindings[base].canonical;
-	const BindingRecord& derived_binding = program_->bindings[derived];
-	const BindingRecord& base_binding = program_->bindings[base];
-	if (derived_binding.destructor || base_binding.destructor)
-		return derived_binding.destructor && base_binding.destructor;
-	if (derived_binding.name != base_binding.name) return false;
+	if (!(VirtualSignatureKey(derived) == VirtualSignatureKey(base)))
+		return false;
+	if (program_->bindings[derived].destructor) return true;
 	const FunctionInfo& derived_function = GetFunction(derived);
 	const FunctionInfo& base_function = GetFunction(base);
-	if (derived_function.signature != base_function.signature) return false;
 	const TypeId derived_result =
 		program_->types.Get(derived_function.type).child;
 	const TypeId base_result = program_->types.Get(base_function.type).child;
@@ -114,6 +140,14 @@ void SemanticAnalyzer::CompleteClassPolymorphism(EntityId entity)
 			!class_polymorphism_[base].complete)
 			throw std::logic_error("base polymorphism facts are incomplete");
 		facts.slots = class_polymorphism_[base].slots;
+	}
+	FunctionSignatureTable slot_index;
+	for (std::size_t slot = 0; slot < facts.slots.size(); ++slot)
+	{
+		if (slot >= kNoBinding)
+			throw std::runtime_error("too many virtual slots");
+		slot_index.Insert(VirtualSignatureKey(facts.slots[slot].root),
+			static_cast<BindingId>(slot));
 	}
 	bool inherits_virtual_destructor = false;
 	for (std::size_t slot = 0; slot < facts.slots.size(); ++slot)
@@ -137,21 +171,22 @@ void SemanticAnalyzer::CompleteClassPolymorphism(EntityId entity)
 		const BindingId member = program_->bindings[members[member_index]].canonical;
 		BindingRecord& binding = program_->bindings[member];
 		if (binding.static_member_function || binding.constructor) continue;
-		std::size_t matched = facts.slots.size();
-		for (std::size_t slot = 0; slot < facts.slots.size(); ++slot)
-			if (VirtualSignatureMatches(member, facts.slots[slot].root))
-			{
-				matched = slot;
-				break;
-			}
+		++virtual_signature_lookups_;
+		const BindingId indexed = slot_index.Find(VirtualSignatureKey(member));
+		const std::size_t matched = indexed == kNoBinding ?
+			facts.slots.size() : static_cast<std::size_t>(indexed);
 		const bool requires_override = binding.override_specifier;
 		if (matched != facts.slots.size())
 		{
+			if (!VirtualSignatureMatches(member, facts.slots[matched].root))
+				throw std::runtime_error(
+					"invalid covariant virtual return type");
 			const BindingId previous = facts.slots[matched].function;
 			if (program_->bindings[previous].final_virtual)
 				throw std::runtime_error("virtual function overrides final function");
 			binding.virtual_function = true;
 			facts.slots[matched].function = member;
+			++virtual_overrides_;
 		}
 		else
 		{
@@ -162,12 +197,20 @@ void SemanticAnalyzer::CompleteClassPolymorphism(EntityId entity)
 			if (binding.final_virtual && !binding.virtual_function)
 				throw std::runtime_error("final function is not virtual");
 			if (binding.virtual_function)
+			{
 				facts.slots.push_back(VirtualSlotFact(member, member));
+				if (facts.slots.size() > kNoBinding)
+					throw std::runtime_error("too many virtual slots");
+				slot_index.Insert(VirtualSignatureKey(member),
+					static_cast<BindingId>(facts.slots.size() - 1));
+			}
 		}
 	}
 
 	EntityRecord& owner = program_->entities[entity];
 	owner.polymorphic_class = !facts.slots.empty();
+	if (owner.polymorphic_class) ++polymorphic_classes_;
+	virtual_slots_ += facts.slots.size();
 	owner.abstract_class = false;
 	for (std::size_t slot = 0; slot < facts.slots.size(); ++slot)
 	{
@@ -175,6 +218,23 @@ void SemanticAnalyzer::CompleteClassPolymorphism(EntityId entity)
 			owner.abstract_class = true;
 		if (program_->bindings[facts.slots[slot].function].destructor)
 			owner.trivial_destructor = false;
+	}
+	if (virtual_slot_by_binding_.size() < program_->bindings.size())
+		virtual_slot_by_binding_.resize(program_->bindings.size(), kNoDumpEdge);
+	std::uint32_t physical_slot = 0;
+	for (std::size_t slot = 0; slot < facts.slots.size(); ++slot)
+	{
+		const BindingId root =
+			program_->bindings[facts.slots[slot].root].canonical;
+		const BindingId function =
+			program_->bindings[facts.slots[slot].function].canonical;
+		virtual_slot_by_binding_[root] = physical_slot;
+		virtual_slot_by_binding_[function] = physical_slot;
+		const std::uint32_t width =
+			program_->bindings[root].destructor ? 2 : 1;
+		if (physical_slot > std::numeric_limits<std::uint32_t>::max() - width)
+			throw std::runtime_error("too many virtual slots");
+		physical_slot += width;
 	}
 	facts.complete = true;
 	for (std::size_t member_index = 0; member_index < members.size();
@@ -202,6 +262,7 @@ void SemanticAnalyzer::MarkVtableDemand(EntityId entity)
 		if (!facts.vtable_demanded)
 		{
 			facts.vtable_demanded = true;
+			++vtable_demands_;
 			for (std::size_t slot = 0; slot < facts.slots.size(); ++slot)
 				if (!program_->bindings[facts.slots[slot].function].pure_virtual)
 					DemandFunction(facts.slots[slot].function);
@@ -242,28 +303,12 @@ void SemanticAnalyzer::MarkVtableDemand(EntityId entity)
 
 std::uint32_t SemanticAnalyzer::VirtualSlotFor(BindingId binding) const
 {
+	++virtual_slot_lookups_;
 	if (binding == kNoBinding || binding >= program_->bindings.size())
 		return kNoDumpEdge;
 	binding = program_->bindings[binding].canonical;
-	const EntityId owner = program_->bindings[binding].member_owner;
-	if (owner == kNoEntity || owner >= class_polymorphism_.size())
-		return kNoDumpEdge;
-	const std::vector<VirtualSlotFact>& slots = class_polymorphism_[owner].slots;
-	std::uint32_t physical_slot = 0;
-	for (std::size_t slot = 0; slot < slots.size(); ++slot)
-	{
-		if (program_->bindings[slots[slot].root].canonical == binding ||
-			program_->bindings[slots[slot].function].canonical == binding)
-		{
-			return physical_slot;
-		}
-		const std::uint32_t width =
-			program_->bindings[slots[slot].root].destructor ? 2 : 1;
-		if (physical_slot > std::numeric_limits<std::uint32_t>::max() - width)
-			throw std::runtime_error("too many virtual slots");
-		physical_slot += width;
-	}
-	return kNoDumpEdge;
+	return binding < virtual_slot_by_binding_.size() ?
+		virtual_slot_by_binding_[binding] : kNoDumpEdge;
 }
 
 }

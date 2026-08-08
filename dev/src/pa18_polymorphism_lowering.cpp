@@ -3,8 +3,10 @@
 #include "pa15_lowering_support.h"
 #include "pa15_source_type_lowering.h"
 
+#include <limits>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 namespace cppgm
 {
@@ -18,7 +20,8 @@ using namespace pa15_lowering_support;
 
 PolymorphismLoweringState::PolymorphismLoweringState()
 	: pure_virtual_symbol(kNoLowId), rtti_class_symbol(kNoLowId),
-	  rtti_si_symbol(kNoLowId), rtti_vmi_symbol(kNoLowId)
+	  rtti_si_symbol(kNoLowId), rtti_vmi_symbol(kNoLowId),
+	  source_function_first(0)
 {
 }
 
@@ -60,6 +63,7 @@ public:
 private:
 	void InitializeState()
 	{
+		state_.source_function_first = output_.functions.size();
 		const std::size_t count = program_.entities.size();
 		state_.class_vtable_symbols.assign(count, kNoLowId);
 		state_.class_rtti_symbols.assign(count, kNoLowId);
@@ -69,6 +73,7 @@ private:
 		state_.deallocation_bindings.assign(count, kNoBinding);
 		state_.complete_destructor_bindings.assign(count, kNoBinding);
 		state_.base_destructor_bindings.assign(count, kNoBinding);
+		state_.deleting_destructor_calls_complete.assign(count, 0);
 		for (BindingId binding = 0; binding < program_.bindings.size(); ++binding)
 		{
 			const BindingRecord& candidate = program_.bindings[binding];
@@ -91,6 +96,50 @@ private:
 			if (selected == kNoBinding || type.parameter_count == 1)
 				selected = candidate.canonical;
 		}
+		for (std::uint32_t node = 0; node < graph_.arena.nodes.size(); ++node)
+		{
+			const DumpNode& function = graph_.arena.nodes[node];
+			if (function.kind != DUMP_FUNCTION_DEFINITION ||
+				function.binding == kNoBinding ||
+				function.binding >= program_.bindings.size()) continue;
+			const BindingRecord& binding =
+				program_.bindings[function.binding];
+			const EntityId entity = binding.member_owner;
+			if (!binding.destructor || binding.destructor_base_entry ||
+				entity == kNoEntity || entity >= count ||
+				state_.complete_destructor_bindings[entity] !=
+					binding.canonical) continue;
+			for (std::uint32_t edge = function.first_edge;
+				edge != kNoDumpEdge; edge = graph_.arena.edges[edge].next)
+			{
+				const std::uint32_t child = graph_.arena.edges[edge].child;
+				if (graph_.arena.nodes[child].kind == DUMP_COMPOUND_STATEMENT &&
+					HasUninlinedDestructorWork(child))
+					state_.deleting_destructor_calls_complete[entity] = 1;
+			}
+		}
+	}
+
+	bool HasUninlinedDestructorWork(std::uint32_t root) const
+	{
+		std::vector<std::uint32_t> pending(1, root);
+		while (!pending.empty())
+		{
+			const std::uint32_t node = pending.back();
+			pending.pop_back();
+			const DumpNode& record = graph_.arena.nodes[node];
+			if (record.kind == DUMP_VPTR_INITIALIZATION_ACTION) continue;
+			if (record.kind == DUMP_DESTRUCTOR_ACTION &&
+				record.base_projection_count == 1 &&
+				record.object_binding == kNoBinding &&
+				record.lifetime_object == kNoDumpEdge &&
+				!record.array_action) continue;
+			if (record.kind != DUMP_COMPOUND_STATEMENT) return true;
+			for (std::uint32_t edge = record.first_edge;
+				edge != kNoDumpEdge; edge = graph_.arena.edges[edge].next)
+				pending.push_back(graph_.arena.edges[edge].child);
+		}
+		return false;
 	}
 
 	SymbolId AddSyntheticSymbol(Symbol::Kind kind, const std::string& proposed,
@@ -374,6 +423,8 @@ private:
 				if (program_.bindings[function].destructor)
 					AddAddressItem(&vtable,
 						state_.deleting_destructor_symbols[entity]);
+				if (stats_) stats_->vtable_slots +=
+					program_.bindings[function].destructor ? 2 : 1;
 			}
 			output_.globals.push_back(vtable);
 			if (stats_) ++stats_->globals;
@@ -423,6 +474,7 @@ public:
 					"deleting destructor dependencies are not emitted");
 			EmitOne(entity, symbol, deallocation_binding, deallocation);
 		}
+		MergeDeletingDestructors();
 	}
 
 private:
@@ -539,6 +591,7 @@ private:
 
 	void EmitVptrStore(EntityId entity, const Operand& object)
 	{
+		if (stats_) ++stats_->vptr_stores;
 		const SymbolId symbol = state_.class_vtable_symbols[entity];
 		output_.symbols[symbol].referenced = true;
 		const Operand table = Temp(LowPtr());
@@ -611,8 +664,24 @@ private:
 		Emit(save);
 		const BlockId cleanup = AddBlock(NewLabel("destructor_cleanup"));
 		const BlockId end = AddBlock(NewLabel("destructor_end"));
+		const bool call_complete =
+			entity < state_.deleting_destructor_calls_complete.size() &&
+			state_.deleting_destructor_calls_complete[entity] != 0;
+		SymbolId complete_destructor = kNoLowId;
+		if (call_complete)
+		{
+			const BindingId complete =
+				state_.complete_destructor_bindings[entity];
+			if (complete != kNoBinding && complete < function_symbols_.size())
+				complete_destructor = function_symbols_[complete];
+			if (complete_destructor == kNoLowId)
+				throw std::logic_error(
+					"deleting destructor has no complete entry");
+		}
 		EmitEhTarget(Instruction::EH_CLEANUP, cleanup);
-		EmitVptrStore(entity, Load(this_slot));
+		if (call_complete)
+			EmitVoidCall(complete_destructor, Load(this_slot));
+		else EmitVptrStore(entity, Load(this_slot));
 		Emit(Instruction(Instruction::EH_END));
 
 		const EntityId base = program_.entities[entity].direct_base;
@@ -626,7 +695,7 @@ private:
 				base_binding < function_symbols_.size())
 				base_destructor = function_symbols_[base_binding];
 		}
-		if (base_destructor != kNoLowId)
+		if (!call_complete && base_destructor != kNoLowId)
 		{
 			const BlockId suffix_cleanup = AddBlock(
 				NewLabel("destructor_suffix_cleanup"));
@@ -647,7 +716,7 @@ private:
 			entity, Load(this_slot));
 		EmitJump(end);
 		SelectBlock(cleanup);
-		if (base_destructor != kNoLowId)
+		if (!call_complete && base_destructor != kNoLowId)
 			EmitVoidCall(base_destructor,
 				ProjectBase(Load(this_slot), entity));
 		EmitDeallocation(deallocation, deallocation_binding,
@@ -659,11 +728,58 @@ private:
 		if (stats_)
 		{
 			++stats_->functions;
+			++stats_->deleting_destructors;
 			stats_->blocks += result.block_order.size();
 		}
 		function_ = 0;
 		output_.symbols[symbol].definition_emitted = true;
-		output_.functions.push_back(result);
+		deleting_functions_.push_back(std::move(result));
+		const BindingId complete =
+			state_.complete_destructor_bindings[entity];
+		SymbolId complete_symbol = kNoLowId;
+		if (complete != kNoBinding && complete < function_symbols_.size())
+			complete_symbol = function_symbols_[complete];
+		deleting_complete_symbols_.push_back(complete_symbol);
+	}
+
+	void MergeDeletingDestructors()
+	{
+		if (deleting_functions_.empty()) return;
+		const std::size_t first = state_.source_function_first;
+		if (first > output_.functions.size())
+			throw std::logic_error("invalid PA18 function ordering boundary");
+		const std::size_t missing =
+			std::numeric_limits<std::size_t>::max();
+		std::vector<std::size_t> pending_by_symbol(
+			output_.symbols.size(), missing);
+		for (std::size_t i = 0; i < deleting_complete_symbols_.size(); ++i)
+		{
+			const SymbolId symbol = deleting_complete_symbols_[i];
+			if (symbol != kNoLowId && symbol < pending_by_symbol.size())
+				pending_by_symbol[symbol] = i;
+		}
+		std::vector<std::uint8_t> emitted(deleting_functions_.size(), 0);
+		std::vector<Function> ordered;
+		ordered.reserve(output_.functions.size() - first +
+			deleting_functions_.size());
+		for (std::size_t i = first; i < output_.functions.size(); ++i)
+		{
+			const SymbolId symbol = output_.functions[i].symbol;
+			const std::size_t pending = symbol < pending_by_symbol.size() ?
+				pending_by_symbol[symbol] : missing;
+			if (pending != missing)
+			{
+				ordered.push_back(std::move(deleting_functions_[pending]));
+				emitted[pending] = 1;
+			}
+			ordered.push_back(std::move(output_.functions[i]));
+		}
+		for (std::size_t i = 0; i < deleting_functions_.size(); ++i)
+			if (!emitted[i])
+				ordered.push_back(std::move(deleting_functions_[i]));
+		output_.functions.resize(first + ordered.size());
+		for (std::size_t i = 0; i < ordered.size(); ++i)
+			output_.functions[first + i] = std::move(ordered[i]);
 	}
 
 	const Program& program_;
@@ -676,6 +792,8 @@ private:
 	std::size_t temp_counter_;
 	std::size_t block_counter_;
 	pa15_lowering_detail::SourceTypeLowering source_types_;
+	std::vector<Function> deleting_functions_;
+	std::vector<SymbolId> deleting_complete_symbols_;
 };
 
 }

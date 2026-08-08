@@ -168,90 +168,6 @@ std::uint32_t SemanticAnalyzer::MakeDump(DumpKind kind, TypeId type,
 	}
 	return node;
 }
-std::size_t SemanticAnalyzer::SideStorageBytes() const {
-	std::size_t bytes =
-		scope_prefixes_.capacity() * sizeof(NameId) +
-		scope_prefix_segments_.capacity() * sizeof(NameId) +
-		scope_parents_.capacity() * sizeof(ScopeId) +
-		scope_prefix_scratch_.capacity() * sizeof(NameId) +
-		function_sets_.StorageBytes() +
-		ordinary_function_sets_.StorageBytes() +
-		hidden_friend_sets_.StorageBytes() +
-		friend_class_grants_.StorageBytes() +
-		friend_function_grants_.StorageBytes() +
-		function_declarations_.StorageBytes() +
-		using_function_declarations_.StorageBytes() +
-		member_ref_qualifier_shapes_.StorageBytes() +
-		function_fact_by_binding_.capacity() * sizeof(std::uint32_t) +
-		functions_.capacity() * sizeof(FunctionInfo) +
-		variable_node_by_binding_.capacity() * sizeof(std::uint32_t) +
-		builtin_functions_.capacity() * sizeof(BindingId) +
-		entity_data_members_.capacity() * sizeof(std::vector<BindingId>) +
-		entity_layout_members_.capacity() *
-			sizeof(std::vector<ClassLayoutMember>) +
-		zero_offset_subobject_marks_.capacity() * sizeof(std::uint32_t) +
-		zero_offset_subobject_scratch_.capacity() * sizeof(EntityId) +
-		entity_constructors_.capacity() * sizeof(std::vector<BindingId>) +
-		entity_conversion_functions_.capacity() *
-			sizeof(std::vector<BindingId>) +
-		class_special_members_.capacity() * sizeof(ClassSpecialMemberFacts) +
-		implicit_constructor_by_entity_.capacity() * sizeof(BindingId) +
-		constructor_base_entry_by_binding_.capacity() * sizeof(BindingId) +
-		destructor_base_entry_by_binding_.capacity() * sizeof(BindingId) +
-		static_member_storage_by_binding_.capacity() * sizeof(std::uint32_t) +
-		entity_destructor_by_entity_.capacity() * sizeof(BindingId) +
-		hidden_friend_anchor_by_entity_.capacity() * sizeof(BindingId) +
-		member_initializer_by_binding_.capacity() * sizeof(NodeId) +
-		constructor_initializer_scratch_.capacity() * sizeof(NodeId) +
-		constructor_initializer_touched_.capacity() * sizeof(BindingId) +
-		function_templates_.capacity() * sizeof(FunctionTemplatePattern) +
-		template_function_sets_.StorageBytes() +
-		template_instantiations_.StorageBytes() +
-		injected_fact_by_binding_.capacity() * sizeof(std::uint32_t) +
-		injected_members_.capacity() * sizeof(InjectedMemberInfo) +
-		scope_lifetimes_.capacity() *
-			sizeof(std::vector<LifetimeObligation>) +
-		nearest_lifetime_scopes_.capacity() * sizeof(ScopeId) +
-		namespace_objects_.capacity() * sizeof(NamespaceObjectAction) +
-		aggregate_helpers_.capacity() * sizeof(AggregateHelperInfo) + aggregate_helper_index_.StorageBytes() +
-		break_cleanup_stops_.capacity() * sizeof(ScopeId) +
-		continue_cleanup_stops_.capacity() * sizeof(ScopeId) +
-		demanded_default_constructor_entities_.capacity() * sizeof(EntityId) +
-		default_constructor_demand_states_.capacity() * sizeof(std::uint8_t) +
-		demanded_functions_.capacity() * sizeof(BindingId) +
-		associated_entities_.capacity() * sizeof(EntityId) +
-		associated_scopes_.capacity() * sizeof(ScopeId) +
-		associated_type_scratch_.capacity() * sizeof(TypeId) +
-		associated_entity_marks_.capacity() * sizeof(std::uint32_t) +
-		associated_scope_marks_.capacity() * sizeof(std::uint32_t) +
-		associated_type_marks_.capacity() * sizeof(std::uint32_t) +
-		candidate_marks_.capacity() * sizeof(std::uint32_t) +
-		empty_destructor_chain_cache_.capacity() * sizeof(std::uint8_t) +
-		pack_alignment_stack_.capacity() * sizeof(std::size_t);
-	for (std::size_t i = 0; i < functions_.size(); ++i)
-		bytes += functions_[i].parameters.capacity() * sizeof(ParameterInfo);
-	for (std::size_t i = 0; i < entity_data_members_.size(); ++i)
-		bytes += entity_data_members_[i].capacity() * sizeof(BindingId);
-	for (std::size_t i = 0; i < entity_layout_members_.size(); ++i)
-		bytes += entity_layout_members_[i].capacity() *
-			sizeof(ClassLayoutMember);
-	for (std::size_t i = 0; i < entity_constructors_.size(); ++i)
-		bytes += entity_constructors_[i].capacity() * sizeof(BindingId);
-	for (std::size_t i = 0; i < entity_conversion_functions_.size(); ++i)
-		bytes += entity_conversion_functions_[i].capacity() * sizeof(BindingId);
-	for (std::size_t i = 0; i < scope_lifetimes_.size(); ++i)
-		bytes += scope_lifetimes_[i].capacity() * sizeof(LifetimeObligation);
-	for (std::size_t i = 0; i < aggregate_helpers_.size(); ++i)
-		bytes += aggregate_helpers_[i].members.capacity() * sizeof(BindingId) +
-			aggregate_helpers_[i].member_constructors.capacity() *
-				sizeof(BindingId) +
-			aggregate_helpers_[i].trivial_member_constructors.capacity() *
-				sizeof(std::uint8_t);
-	for (std::size_t i = 0; i < function_templates_.size(); ++i)
-		bytes += function_templates_[i].type_parameters.capacity() *
-			sizeof(NameId);
-	return bytes;
-}
 TypeId SemanticAnalyzer::EffectiveType(TypeId type) const
 {
 	const TypeRecord record = program_->types.Get(type);
@@ -1344,6 +1260,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 	if (arena_->IsTag(direct_callee_syntax, "id-expression"))
 	{
 		const std::string spelling = arena_->Payload(direct_callee_syntax);
+		const NamePath callee_path = ParseNamePath(spelling);
+		const bool qualified_callee =
+			callee_path.global || callee_path.Size() > 1;
 		ExpressionInfo builtin;
 		if (AnalyzeBuiltinCall(spelling, scope, argument_syntax, target, &builtin))
 			return builtin;
@@ -1391,8 +1310,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 			candidates = FunctionCallCandidates(scope, spelling,
 				&function_naming_class);
 		}
-		if (!parenthesized_callee &&
-			spelling.find("::") == std::string::npos)
+		if (!parenthesized_callee && !qualified_callee)
 		{
 			BeginCandidateCollection();
 			std::vector<BindingId> combined;
@@ -1443,7 +1361,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 			return BuildResolvedCall(selected, scope, argument_syntax,
 				analyzed_arguments, object, target, function_naming_class,
 				object ? &object_conversion : 0, &argument_conversions,
-				spelling.find("::") != std::string::npos);
+				qualified_callee);
 		}
 
 		const TypeId cast_type = ResolveFunctionalCastType(scope, spelling);
@@ -2279,6 +2197,9 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		current_class_context_ = declaration_class_context;
 	const SpecInfo spec = BuildSpecifiers(specifiers, scope, hint,
 		list != kNoNode);
+	if (spec.virtual_specifier)
+		throw std::runtime_error(
+			"virtual specifier is only allowed in a class definition");
 	if (list == kNoNode)
 	{
 		if (local)
@@ -2318,6 +2239,9 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		}
 		if (program_->types.IsFunction(parsed.type))
 		{
+			if (FindChild(declarator, "virt-specifier") != kNoNode)
+				throw std::runtime_error(
+					"virt-specifier is only allowed in a class definition");
 			if (spec.thread_local_storage)
 				throw std::runtime_error("thread_local function");
 			const BindingId function = DeclareFunction(declaration_scope, parsed.name,
@@ -2450,6 +2374,10 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 		current_class_context_ = declaration_class;
 	const SpecInfo spec = BuildSpecifiers(FindChild(node, "decl-specifier-seq"),
 		owner, std::string(), true);
+	if (spec.virtual_specifier ||
+		FindChild(declarator, "virt-specifier") != kNoNode)
+		throw std::runtime_error(
+			"virtual specifier is only allowed in a class definition");
 	DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type, owner);
 	parsed.name = path.Last();
 	if (!program_->types.IsFunction(parsed.type))
@@ -2970,6 +2898,12 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		stats_->braced_fact_cache_hits = braced_fact_cache_hits_;
 		stats_->braced_fact_cache_misses = braced_fact_cache_misses_;
 		stats_->function_signature_lookups = function_signature_lookups_;
+		stats_->polymorphic_classes = polymorphic_classes_;
+		stats_->virtual_slots = virtual_slots_;
+		stats_->virtual_signature_lookups = virtual_signature_lookups_;
+		stats_->virtual_overrides = virtual_overrides_;
+		stats_->virtual_slot_lookups = virtual_slot_lookups_;
+		stats_->vtable_demands = vtable_demands_;
 		stats_->access_checks = access_checks_;
 		stats_->access_path_visits = access_path_visits_;
 		stats_->access_grant_probes = access_grant_probes_;

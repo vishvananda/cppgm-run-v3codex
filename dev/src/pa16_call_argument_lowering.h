@@ -110,8 +110,7 @@ protected:
 			derived.program_.types.Get(source_shape).kind == TYPE_POINTER;
 		const bool nonnull_this = source.kind == DUMP_ID_EXPRESSION &&
 			source.binding != kNoBinding &&
-			derived.program_.names.Get(
-				derived.program_.bindings[source.binding].name) == "this";
+			source.binding == derived.current_this_binding_;
 		EntityId entity = derived.BaseEntityForType(source.type);
 		bool adjusted = false;
 		for (std::uint32_t i = 0; i < projection_count &&

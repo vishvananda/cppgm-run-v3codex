@@ -25,10 +25,12 @@ struct PolymorphismLoweringState
 	std::vector<pa11::BindingId> deallocation_bindings;
 	std::vector<pa11::BindingId> complete_destructor_bindings;
 	std::vector<pa11::BindingId> base_destructor_bindings;
+	std::vector<std::uint8_t> deleting_destructor_calls_complete;
 	pa15_lowir_detail::SymbolId pure_virtual_symbol;
 	pa15_lowir_detail::SymbolId rtti_class_symbol;
 	pa15_lowir_detail::SymbolId rtti_si_symbol;
 	pa15_lowir_detail::SymbolId rtti_vmi_symbol;
+	std::size_t source_function_first;
 
 	PolymorphismLoweringState();
 };
@@ -59,6 +61,7 @@ protected:
 	{
 		using namespace pa15_lowir_detail;
 		Derived& derived = static_cast<Derived&>(*this);
+		if (derived.stats_) ++derived.stats_->virtual_calls;
 		const Operand table = derived.LoadStorage(object, LowPtr());
 		Operand slot = table;
 		if (record.virtual_slot != 0)
@@ -74,6 +77,7 @@ protected:
 		using namespace pa11;
 		using namespace pa15_lowir_detail;
 		Derived& derived = static_cast<Derived&>(*this);
+		if (derived.stats_) ++derived.stats_->vptr_stores;
 		const EntityId entity = derived.ClassEntity(action.type);
 		if (entity == kNoEntity ||
 			entity >= derived.polymorphism_.class_vtable_symbols.size() ||

@@ -30,6 +30,10 @@ struct LowIRLoweringStats
 	std::size_t blocks;
 	std::size_t instructions;
 	std::size_t binding_index_probes;
+	std::size_t virtual_calls;
+	std::size_t vptr_stores;
+	std::size_t vtable_slots;
+	std::size_t deleting_destructors;
 	std::size_t cleanup_dispatch_probes;
 	std::size_t cleanup_dispatch_cache_hits;
 	std::size_t cleanup_dispatch_entries;

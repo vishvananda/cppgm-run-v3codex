@@ -901,5 +901,155 @@ void SemanticAnalyzer::AddSynthesizedAssignmentBody(
 	++expression_count_;
 }
 
+void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
+	ScopeId scope)
+{
+	const NodeId declarator = FindChild(node, "declarator");
+	if (declarator == kNoNode)
+		throw std::runtime_error(
+			"out-of-class special member is missing its declarator");
+	const NodeId member_specifiers = FindChild(node, "member-specifiers");
+	if (FindChild(declarator, "virt-specifier") != kNoNode)
+		throw std::runtime_error(
+			"virt-specifier is only allowed in a class definition");
+	if (member_specifiers != kNoNode)
+		for (std::uint32_t edge = arena_->FirstEdge(member_specifiers);
+			edge != kNoEdge; edge = arena_->NextEdge(edge))
+			if (PayloadSource(arena_->EdgeChild(edge)) == "virtual")
+				throw std::runtime_error(
+					"virtual specifier is only allowed in a class definition");
+	const NamePath path = DeclaratorNamePath(declarator);
+	if (!path.global && path.Size() <= 1)
+		throw std::runtime_error(
+			"unqualified special member definition outside a class");
+	const ScopeId owner = ResolveOwner(scope, path);
+	const EntityId entity = owner == kNoScope ? kNoEntity :
+		program_->EntityForScope(owner);
+	if (entity == kNoEntity)
+		throw std::runtime_error("special member owner is not a class");
+	const std::string terminal = program_->names.Get(path.Last());
+	const std::string class_name = program_->names.Get(
+		program_->entities[entity].identity_name);
+	const NodeId conversion_type = FindChild(declarator, "conversion-type-id");
+	const bool conversion_definition = conversion_type != kNoNode;
+	const bool constructor_definition = terminal == class_name;
+	const bool destructor_definition = terminal == "~" + class_name;
+	if (!constructor_definition && !destructor_definition &&
+		!conversion_definition)
+		throw std::runtime_error(
+			"qualified special member definition has an invalid name");
+
+	const EntityId previous_class = current_class_context_;
+	current_class_context_ = entity;
+	const TypeId conversion_target = conversion_definition ?
+		BuildTypeId(conversion_type, owner) :
+		program_->types.Fundamental(FUND_VOID);
+	const DeclaratorInfo parsed = BuildDeclarator(declarator,
+		conversion_target, owner);
+	BindingId special = kNoBinding;
+	if (conversion_definition && entity < entity_conversion_functions_.size())
+		for (std::size_t i = 0;
+			i < entity_conversion_functions_[entity].size(); ++i)
+		{
+			const BindingId candidate =
+				entity_conversion_functions_[entity][i];
+			const FunctionInfo& candidate_info = GetFunction(candidate);
+			if (candidate_info.conversion_target == conversion_target &&
+				candidate_info.type == parsed.type)
+			{
+				special = candidate;
+				break;
+			}
+		}
+	if (conversion_definition)
+	{
+		if (special == kNoBinding)
+			throw std::runtime_error(
+				"qualified conversion definition has no declaration");
+		if (GetFunction(special).defined)
+			throw std::runtime_error("duplicate function definition");
+		GetMutableFunction(special).defined = true;
+	}
+	else special = DeclareFunction(owner, path.Last(),
+		parsed.type, parsed.parameters, true, false, STORAGE_CLASS_NONE,
+		current_language_linkage_, IsNonthrowing(declarator, owner));
+	FunctionInfo& info = GetMutableFunction(special);
+	if (info.member_owner != program_->entities[entity].type)
+		throw std::runtime_error(
+			"qualified special member definition has no member declaration");
+	if ((constructor_definition && !info.constructor) ||
+		(destructor_definition && !info.destructor) ||
+		(conversion_definition && !info.conversion_function))
+		throw std::runtime_error(
+			"qualified special member definition has no matching kind");
+	if (conversion_definition && info.conversion_target != conversion_target)
+		throw std::runtime_error(
+			"qualified conversion definition has a mismatched target");
+	ValidateFunctionRefQualifier(special);
+	const NodeId initializer = FindChild(node, "initializer");
+	const NodeId special_initializer = initializer == kNoNode ? kNoNode :
+		FindChild(initializer, "special-initializer");
+	const bool defaulted = special_initializer != kNoNode &&
+		arena_->Payload(special_initializer) == "default";
+	const bool deleted = special_initializer != kNoNode &&
+		arena_->Payload(special_initializer) == "delete";
+	info.definition_body = FindChild(node, "compound-statement");
+	if (conversion_definition)
+	{
+		if (defaulted)
+			throw std::runtime_error("conversion function cannot be defaulted");
+		BindingRecord& binding = program_->bindings[special];
+		binding.conversion_function = true;
+		binding.conversion_target = conversion_target;
+		info.deleted_special_member =
+			info.deleted_special_member || deleted;
+		info.deferred = !info.deleted_special_member;
+		DemandFunction(special);
+		current_class_context_ = previous_class;
+		return;
+	}
+	if (constructor_definition)
+	{
+		if (info.complete_constructor == kNoBinding)
+			info.complete_constructor = info.binding;
+		info.constructor_initializer = FindChild(node, "ctor-initializer");
+		info.defaulted_constructor = info.defaulted_constructor || defaulted;
+		info.deleted_constructor = info.deleted_constructor || deleted;
+		info.defaulted_special_member =
+			info.defaulted_special_member || defaulted;
+		info.deleted_special_member =
+			info.deleted_special_member || deleted;
+		if (defaulted)
+			CompleteOutOfClassDefaultedConstructor(entity, special);
+	}
+	else
+	{
+		info.defaulted_destructor = info.defaulted_destructor || defaulted;
+		info.deleted_destructor = info.deleted_destructor || deleted;
+		if (defaulted)
+		{
+			CompleteDefaultedDestructor(entity, special);
+			if (info.deleted_destructor)
+				throw std::runtime_error(
+					"out-of-class defaulted destructor is deleted");
+		}
+	}
+	info.deferred = !(constructor_definition ? info.deleted_constructor :
+		info.deleted_destructor);
+	if (constructor_definition)
+	{
+		program_->entities[entity].has_user_provided_constructor = true;
+		(void)EnsureConstructorBaseEntry(special);
+	}
+	else
+	{
+		program_->entities[entity].has_user_declared_destructor = true;
+		program_->entities[entity].trivial_destructor = false;
+		(void)EnsureDestructorBaseEntry(special);
+	}
+	DemandFunction(special);
+	current_class_context_ = previous_class;
+}
+
 }
 }

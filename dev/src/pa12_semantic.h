@@ -61,6 +61,12 @@ struct SemanticAnalysisStats
 	std::size_t braced_fact_cache_hits;
 	std::size_t braced_fact_cache_misses;
 	std::size_t function_signature_lookups;
+	std::size_t polymorphic_classes;
+	std::size_t virtual_slots;
+	std::size_t virtual_signature_lookups;
+	std::size_t virtual_overrides;
+	std::size_t virtual_slot_lookups;
+	std::size_t vtable_demands;
 	std::size_t access_checks;
 	std::size_t access_path_visits;
 	std::size_t access_grant_probes;
