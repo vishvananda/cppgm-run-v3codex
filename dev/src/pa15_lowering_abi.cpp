@@ -16,82 +16,172 @@ namespace
 
 using namespace pa11;
 
-abi_mangle::AbiType MakeAbiType(const pa11::Program& program,
-	pa11::TypeId type)
+class AbiFactBuilder
+{
+	const pa11::Program& program_;
+	abi_mangle::AbiFactCase& facts_;
+	std::size_t next_argument_;
+
+public:
+	AbiFactBuilder(const pa11::Program& program,
+		abi_mangle::AbiFactCase& facts)
+		: program_(program), facts_(facts), next_argument_(0) {}
+
+	std::string AddTypeArgument(pa11::TypeId type)
+	{
+		using namespace abi_mangle;
+		const std::string id = "__cppgm_abi_type_argument_" +
+			std::to_string(next_argument_++);
+		AbiFactRecord definition;
+		definition.set_kind(ABI_FACT_RECORD_DEFINITION);
+		definition.definition.id = id;
+		definition.definition.set_kind(ABI_DEFINITION_TEMPLATE_ARGUMENT);
+		definition.definition.template_argument.kind = ABI_TEMPLATE_ARGUMENT_TYPE;
+		definition.definition.template_argument.type = MakeType(type);
+		facts_.records.push_back(definition);
+		return id;
+	}
+
+	abi_mangle::AbiType MakeType(pa11::TypeId type)
+	{
+		using namespace abi_mangle;
+		using namespace pa11;
+		std::vector<AbiTypeModifier> modifiers;
+		const TypeRecord* record = &program_.types.Get(type);
+		while (record->kind == TYPE_QUALIFIED || record->kind == TYPE_POINTER ||
+			record->kind == TYPE_LVALUE_REFERENCE ||
+			record->kind == TYPE_RVALUE_REFERENCE || record->kind == TYPE_ARRAY)
+		{
+			AbiTypeModifier modifier;
+			if (record->kind == TYPE_QUALIFIED)
+			{
+				modifier.kind = ABI_TYPE_CV;
+				modifier.is_const = (record->cv & CV_CONST) != 0;
+				modifier.is_volatile = (record->cv & CV_VOLATILE) != 0;
+			}
+			else if (record->kind == TYPE_ARRAY)
+			{
+				modifier.kind = ABI_TYPE_ARRAY;
+				modifier.array_bound.kind = ABI_ARRAY_BOUND_VALUE;
+				modifier.array_bound.value = std::to_string(record->bound);
+			}
+			else modifier.kind = record->kind == TYPE_POINTER ? ABI_TYPE_POINTER :
+				record->kind == TYPE_LVALUE_REFERENCE ? ABI_TYPE_LVALUE_REFERENCE :
+				ABI_TYPE_RVALUE_REFERENCE;
+			modifiers.push_back(modifier);
+			type = record->child;
+			record = &program_.types.Get(type);
+		}
+		AbiType result;
+		result.modifiers.swap(modifiers);
+		if (record->kind == TYPE_FUNCTION)
+		{
+			result.kind = ABI_TYPE_FUNCTION;
+			result.types.push_back(MakeType(record->child));
+			const TypeId* parameters = program_.types.Parameters(type);
+			for (std::size_t i = 0; i < record->parameter_count; ++i)
+				result.types.push_back(MakeType(parameters[i]));
+			result.variadic = record->variadic;
+			return result;
+		}
+		if (record->kind == TYPE_NAMED)
+		{
+			const EntityRecord& entity = program_.entities[record->entity];
+			if (entity.template_argument_count == 0)
+			{
+				result.kind = ABI_TYPE_NAMED;
+				result.name = program_.names.Get(entity.name);
+			}
+			else
+			{
+				result.kind = ABI_TYPE_TEMPLATE_SPECIALIZATION;
+				std::vector<NameId> path;
+				program_.BuildEmissionPath(entity.owner, entity.identity_name, &path);
+				for (std::size_t i = 0; i < path.size(); ++i)
+				{
+					if (i != 0) result.name += "::";
+					result.name += program_.names.Get(path[i]);
+				}
+				const std::size_t first = entity.template_argument_begin;
+				if (first > program_.template_arguments.size() ||
+					entity.template_argument_count >
+						program_.template_arguments.size() - first)
+					throw std::logic_error(
+						"class template ABI argument range is invalid");
+				for (std::size_t i = 0; i < entity.template_argument_count; ++i)
+					result.argument_refs.push_back(AddTypeArgument(
+						program_.template_arguments[first + i]));
+			}
+			return result;
+		}
+		if (record->kind != TYPE_FUNDAMENTAL)
+			throw std::runtime_error("unsupported ABI type in PA15");
+		result.kind = ABI_TYPE_BUILTIN;
+		switch (record->fundamental)
+		{
+		case FUND_VOID: result.name = "void"; break;
+		case FUND_BOOL: result.name = "bool"; break;
+		case FUND_CHAR: result.name = "char"; break;
+		case FUND_SIGNED_CHAR: result.name = "schar"; break;
+		case FUND_UNSIGNED_CHAR: result.name = "uchar"; break;
+		case FUND_SHORT_INT: result.name = "short"; break;
+		case FUND_UNSIGNED_SHORT_INT: result.name = "ushort"; break;
+		case FUND_INT: result.name = "int"; break;
+		case FUND_UNSIGNED_INT: result.name = "uint"; break;
+		case FUND_LONG_INT: result.name = "long"; break;
+		case FUND_UNSIGNED_LONG_INT: result.name = "ulong"; break;
+		case FUND_LONG_LONG_INT: result.name = "longlong"; break;
+		case FUND_UNSIGNED_LONG_LONG_INT: result.name = "ulonglong"; break;
+		case FUND_FLOAT: result.name = "float"; break;
+		case FUND_DOUBLE: result.name = "double"; break;
+		case FUND_LONG_DOUBLE: result.name = "longdouble"; break;
+		case FUND_WCHAR_T: result.name = "wchar"; break;
+		case FUND_CHAR16_T: result.name = "char16"; break;
+		case FUND_CHAR32_T: result.name = "char32"; break;
+		case FUND_NULLPTR_T: result.name = "nullptr"; break;
+		}
+		return result;
+	}
+};
+
+bool AppendClassTemplateOwner(const pa11::Program& program,
+	const pa11::BindingRecord& binding, AbiFactBuilder* builder,
+	abi_mangle::AbiFactCase* facts)
 {
 	using namespace abi_mangle;
 	using namespace pa11;
-	std::vector<AbiTypeModifier> modifiers;
-	const TypeRecord* record = &program.types.Get(type);
-	while (record->kind == TYPE_QUALIFIED || record->kind == TYPE_POINTER ||
-		record->kind == TYPE_LVALUE_REFERENCE ||
-		record->kind == TYPE_RVALUE_REFERENCE || record->kind == TYPE_ARRAY)
+	if (binding.member_owner == kNoEntity) return false;
+	const EntityRecord& entity = program.entities[binding.member_owner];
+	if (entity.template_argument_count == 0) return false;
+	const std::size_t first = entity.template_argument_begin;
+	if (first > program.template_arguments.size() ||
+		entity.template_argument_count > program.template_arguments.size() - first)
+		throw std::logic_error("class template ABI owner arguments are invalid");
+	std::vector<NameId> path;
+	program.BuildEmissionPath(entity.owner, entity.identity_name, &path);
+	std::string prefix;
+	for (std::size_t i = 0; i < path.size(); ++i)
 	{
-		AbiTypeModifier modifier;
-		if (record->kind == TYPE_QUALIFIED)
+		AbiFactRecord component;
+		component.set_kind(ABI_FACT_RECORD_FUNCTION);
+		component.function.name = program.names.Get(path[i]);
+		if (!prefix.empty()) prefix += "::";
+		prefix += component.function.name;
+		component.function.substitution = prefix;
+		if (i + 1 == path.size())
 		{
-			modifier.kind = ABI_TYPE_CV;
-			modifier.is_const = (record->cv & CV_CONST) != 0;
-			modifier.is_volatile = (record->cv & CV_VOLATILE) != 0;
+			component.function.kind = ABI_FUNCTION_RECORD_NAME_TEMPLATE;
+			component.function.complete_substitution = "-";
+			component.function.standard_substitution = "-";
+			for (std::size_t argument = 0;
+				argument < entity.template_argument_count; ++argument)
+				component.function.argument_refs.push_back(builder->AddTypeArgument(
+					program.template_arguments[first + argument]));
 		}
-		else if (record->kind == TYPE_ARRAY)
-		{
-			modifier.kind = ABI_TYPE_ARRAY;
-			modifier.array_bound.kind = ABI_ARRAY_BOUND_VALUE;
-			modifier.array_bound.value = std::to_string(record->bound);
-		}
-		else modifier.kind = record->kind == TYPE_POINTER ? ABI_TYPE_POINTER :
-			record->kind == TYPE_LVALUE_REFERENCE ? ABI_TYPE_LVALUE_REFERENCE :
-			ABI_TYPE_RVALUE_REFERENCE;
-		modifiers.push_back(modifier);
-		type = record->child;
-		record = &program.types.Get(type);
+		else component.function.kind = ABI_FUNCTION_RECORD_NAME_SOURCE;
+		facts->records.push_back(component);
 	}
-	AbiType result;
-	result.modifiers.swap(modifiers);
-	if (record->kind == TYPE_FUNCTION)
-	{
-		result.kind = ABI_TYPE_FUNCTION;
-		result.types.push_back(MakeAbiType(program, record->child));
-		const TypeId* parameters = program.types.Parameters(type);
-		for (std::size_t i = 0; i < record->parameter_count; ++i)
-			result.types.push_back(MakeAbiType(program, parameters[i]));
-		result.variadic = record->variadic;
-		return result;
-	}
-	if (record->kind == TYPE_NAMED)
-	{
-		result.kind = ABI_TYPE_NAMED;
-		result.name = program.names.Get(program.entities[record->entity].name);
-		return result;
-	}
-	if (record->kind != TYPE_FUNDAMENTAL)
-		throw std::runtime_error("unsupported ABI type in PA15");
-	result.kind = ABI_TYPE_BUILTIN;
-	switch (record->fundamental)
-	{
-	case FUND_VOID: result.name = "void"; break;
-	case FUND_BOOL: result.name = "bool"; break;
-	case FUND_CHAR: result.name = "char"; break;
-	case FUND_SIGNED_CHAR: result.name = "schar"; break;
-	case FUND_UNSIGNED_CHAR: result.name = "uchar"; break;
-	case FUND_SHORT_INT: result.name = "short"; break;
-	case FUND_UNSIGNED_SHORT_INT: result.name = "ushort"; break;
-	case FUND_INT: result.name = "int"; break;
-	case FUND_UNSIGNED_INT: result.name = "uint"; break;
-	case FUND_LONG_INT: result.name = "long"; break;
-	case FUND_UNSIGNED_LONG_INT: result.name = "ulong"; break;
-	case FUND_LONG_LONG_INT: result.name = "longlong"; break;
-	case FUND_UNSIGNED_LONG_LONG_INT: result.name = "ulonglong"; break;
-	case FUND_FLOAT: result.name = "float"; break;
-	case FUND_DOUBLE: result.name = "double"; break;
-	case FUND_LONG_DOUBLE: result.name = "longdouble"; break;
-	case FUND_WCHAR_T: result.name = "wchar"; break;
-	case FUND_CHAR16_T: result.name = "char16"; break;
-	case FUND_CHAR32_T: result.name = "char32"; break;
-	case FUND_NULLPTR_T: result.name = "nullptr"; break;
-	}
-	return result;
+	return true;
 }
 
 std::string OperatorTerminal(OperatorKind kind, bool member,
@@ -230,38 +320,37 @@ std::string MangleFunction(const pa11::Program& program,
 		return program.names.Get(binding.name);
 	AbiFactFile file;
 	file.cases.push_back(AbiFactCase());
+	AbiFactBuilder facts(program, file.cases[0]);
+	const bool structured_class_owner = binding.member_owner != kNoEntity &&
+		program.entities[binding.member_owner].template_argument_count != 0;
 	AbiFactRecord target;
 	target.set_kind(ABI_FACT_RECORD_TARGET);
 	target.target.kind = ABI_TARGET_FACT_FUNCTION;
 	target.target.internal_linkage =
 		binding.storage_class == STORAGE_CLASS_STATIC &&
 		!binding.unnamed_namespace_linkage;
-	target.target.function.kind = ABI_FUNCTION_TARGET_PATH;
-	target.target.function.qualified_name = qualified;
+	target.target.function.kind = structured_class_owner ?
+		ABI_FUNCTION_TARGET_ENCODING : ABI_FUNCTION_TARGET_PATH;
+	if (!structured_class_owner)
+		target.target.function.qualified_name = qualified;
 	file.cases[0].records.push_back(target);
+	if (structured_class_owner &&
+		!AppendClassTemplateOwner(program, binding, &facts, &file.cases[0]))
+		throw std::logic_error("class template ABI owner was lost");
 	const TypeRecord& function_type = program.types.Get(node.type);
 	const TypeId* parameters = program.types.Parameters(node.type);
 	if (binding.template_argument_count != 0)
 	{
 		const std::size_t first = binding.template_argument_begin;
 		const std::size_t count = binding.template_argument_count;
-		if (first > program.binding_template_arguments.size() ||
-			count > program.binding_template_arguments.size() - first)
+		if (first > program.template_arguments.size() ||
+			count > program.template_arguments.size() - first)
 			throw std::logic_error(
 				"function template argument range is invalid during mangling");
 		for (std::size_t i = 0; i < count; ++i)
 		{
-			const std::string argument_id =
-				"__cppgm_function_template_argument_" + std::to_string(i);
-			AbiFactRecord definition;
-			definition.set_kind(ABI_FACT_RECORD_DEFINITION);
-			definition.definition.id = argument_id;
-			definition.definition.set_kind(ABI_DEFINITION_TEMPLATE_ARGUMENT);
-			definition.definition.template_argument.kind =
-				ABI_TEMPLATE_ARGUMENT_TYPE;
-			definition.definition.template_argument.type = MakeAbiType(program,
-				program.binding_template_arguments[first + i]);
-			file.cases[0].records.push_back(definition);
+			const std::string argument_id = facts.AddTypeArgument(
+				program.template_arguments[first + i]);
 			AbiFactRecord argument;
 			argument.set_kind(ABI_FACT_RECORD_FUNCTION);
 			argument.function.kind =
@@ -272,7 +361,7 @@ std::string MangleFunction(const pa11::Program& program,
 		AbiFactRecord result;
 		result.set_kind(ABI_FACT_RECORD_FUNCTION);
 		result.function.kind = ABI_FUNCTION_RECORD_RESULT;
-		result.function.type = MakeAbiType(program, function_type.child);
+		result.function.type = facts.MakeType(function_type.child);
 		file.cases[0].records.push_back(result);
 	}
 	const bool member = binding.member_owner != kNoEntity &&
@@ -301,6 +390,15 @@ std::string MangleFunction(const pa11::Program& program,
 	const std::string operator_terminal =
 		OperatorTerminal(binding.operator_kind, member,
 			program.types.Get(binding.type).parameter_count);
+	if (structured_class_owner && binding.operator_kind == OPERATOR_NONE &&
+		!binding.conversion_function && !binding.constructor && !binding.destructor)
+	{
+		AbiFactRecord terminal;
+		terminal.set_kind(ABI_FACT_RECORD_FUNCTION);
+		terminal.function.kind = ABI_FUNCTION_RECORD_NAME_SOURCE;
+		terminal.function.name = program.names.Get(binding.name);
+		file.cases[0].records.push_back(terminal);
+	}
 	if (binding.operator_kind == OPERATOR_LITERAL ||
 		!operator_terminal.empty())
 	{
@@ -321,7 +419,7 @@ std::string MangleFunction(const pa11::Program& program,
 		AbiFactRecord terminal;
 		terminal.set_kind(ABI_FACT_RECORD_FUNCTION);
 		terminal.function.kind = ABI_FUNCTION_RECORD_CONVERSION_TERMINAL;
-		terminal.function.type = MakeAbiType(program, binding.conversion_target);
+		terminal.function.type = facts.MakeType(binding.conversion_target);
 		file.cases[0].records.push_back(terminal);
 	}
 	else if (binding.constructor)
@@ -349,7 +447,7 @@ std::string MangleFunction(const pa11::Program& program,
 		AbiFactRecord parameter;
 		parameter.set_kind(ABI_FACT_RECORD_FUNCTION);
 		parameter.function.kind = ABI_FUNCTION_RECORD_PARAMETER;
-		parameter.function.type = MakeAbiType(program, parameters[i]);
+		parameter.function.type = facts.MakeType(parameters[i]);
 		file.cases[0].records.push_back(parameter);
 	}
 	if (function_type.variadic)

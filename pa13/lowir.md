@@ -184,7 +184,7 @@ function @boot() -> void [role=init, binding=strong] {
 ```
 
 The currently defined top-level metadata keys are `role`, `linkage`, `binding`, `object`,
-`tls_for` (functions only), `keep_alias`, `prefer_local`, `trivial_lifecycle`
+`tls_for` (functions only), `keep_alias`, `prefer_local`, `object_root`, `trivial_lifecycle`
 (functions only), `force_inline` (functions only), and `storage` (globals only).
 
 The currently defined global `storage` values are:
@@ -253,6 +253,10 @@ spells a different exported/backend name.
 The `prefer_local` metadata key is a `yes`/`no` flag. `prefer_local=yes` records that later
 object emission should prefer a local/private binding when that is legal, even if an explicit
 `object=...` spelling is also present.
+
+The `object_root` metadata key is a `yes`/`no` flag. `object_root=yes` records that the
+definition is a language-required object-emission root even when no LowIR instruction refers
+to it, as for a member emitted by an explicit template-instantiation definition.
 
 The `trivial_lifecycle` metadata key is a `yes`/`no` flag for top-level
 function declarations and definitions. `trivial_lifecycle=yes` records that the
@@ -359,7 +363,7 @@ normally.
 
 Call signatures only accept call-boundary metadata such as `arity=...`, `effects=...`,
 `unwind=...`, and `return=...`. Top-level symbol metadata such as `role=...`, `linkage=...`,
-`binding=...`, `object=...`, `keep_alias=...`, `prefer_local=...`, and
+`binding=...`, `object=...`, `keep_alias=...`, `prefer_local=...`, `object_root=...`, and
 `trivial_lifecycle=...` and `force_inline=...` are not valid on `as (...) -> ...`
 call signatures.
 

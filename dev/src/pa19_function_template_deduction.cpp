@@ -53,24 +53,25 @@ bool SemanticAnalyzer::FunctionTemplateTypeIsDependent(TypeId type) const
 		break;
 	case TYPE_NAMED:
 	{
+		const EntityRecord& entity = program_->entities[record.entity];
 		if (record.entity >= class_template_pattern_by_entity_.size() ||
 			class_template_pattern_by_entity_[record.entity] == kNoDumpEdge ||
-			record.entity >= class_template_argument_begin_by_entity_.size())
+			entity.template_argument_begin == kNoBinding)
 			break;
 		const std::uint32_t template_index =
 			class_template_pattern_by_entity_[record.entity];
 		if (template_index >= class_templates_.size()) break;
-		const std::size_t first =
-			class_template_argument_begin_by_entity_[record.entity];
+		const std::size_t first = entity.template_argument_begin;
 		const std::size_t count =
 			class_templates_[template_index].type_parameters.size();
-		if (first > class_template_entity_arguments_.size() ||
-			count > class_template_entity_arguments_.size() - first)
+		if (entity.template_argument_count != count ||
+			first > program_->template_arguments.size() ||
+			count > program_->template_arguments.size() - first)
 			throw std::logic_error(
 				"invalid dependent class template argument range");
 		for (std::size_t i = 0; i < count && !dependent; ++i)
 			if (FunctionTemplateTypeIsDependent(
-				class_template_entity_arguments_[first + i])) dependent = true;
+				program_->template_arguments[first + i])) dependent = true;
 		break;
 	}
 	case TYPE_FUNDAMENTAL:
@@ -155,26 +156,26 @@ bool SemanticAnalyzer::DeduceFunctionTemplateType(TypeId pattern,
 			class_template_pattern_by_entity_[pattern_entity];
 		if (pattern_template == kNoDumpEdge ||
 			pattern_template != class_template_pattern_by_entity_[argument_entity] ||
-			pattern_template >= class_templates_.size() ||
-			pattern_entity >= class_template_argument_begin_by_entity_.size() ||
-			argument_entity >= class_template_argument_begin_by_entity_.size())
+			pattern_template >= class_templates_.size())
 			return false;
-		const std::size_t pattern_first =
-			class_template_argument_begin_by_entity_[pattern_entity];
-		const std::size_t argument_first =
-			class_template_argument_begin_by_entity_[argument_entity];
+		const EntityRecord& pattern_owner = program_->entities[pattern_entity];
+		const EntityRecord& argument_owner = program_->entities[argument_entity];
+		const std::size_t pattern_first = pattern_owner.template_argument_begin;
+		const std::size_t argument_first = argument_owner.template_argument_begin;
 		const std::size_t count =
 			class_templates_[pattern_template].type_parameters.size();
-		if (pattern_first > class_template_entity_arguments_.size() ||
-			argument_first > class_template_entity_arguments_.size() ||
-			count > class_template_entity_arguments_.size() - pattern_first ||
-			count > class_template_entity_arguments_.size() - argument_first)
+		if (pattern_owner.template_argument_count != count ||
+			argument_owner.template_argument_count != count ||
+			pattern_first > program_->template_arguments.size() ||
+			argument_first > program_->template_arguments.size() ||
+			count > program_->template_arguments.size() - pattern_first ||
+			count > program_->template_arguments.size() - argument_first)
 			throw std::logic_error(
 				"invalid class template deduction argument range");
 		for (std::size_t i = 0; i < count; ++i)
 			if (!DeduceFunctionTemplateType(
-				class_template_entity_arguments_[pattern_first + i],
-				class_template_entity_arguments_[argument_first + i], deduced))
+				program_->template_arguments[pattern_first + i],
+				program_->template_arguments[argument_first + i], deduced))
 				return false;
 		return true;
 	}

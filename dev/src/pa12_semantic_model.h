@@ -460,7 +460,6 @@ struct ClassTemplatePattern
 	std::vector<NameId> type_parameters;
 	std::vector<NodeId> default_arguments;
 	std::vector<BindingId> specialization_bindings;
-	std::vector<TypeId> specialization_arguments;
 	std::vector<ClassTemplateMemberPattern> member_definitions;
 	EntityId marker_entity;
 	bool defined;

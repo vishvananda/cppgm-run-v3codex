@@ -537,6 +537,7 @@ void TypeTable::Rehash(std::size_t capacity)
 EntityRecord::EntityRecord()
 	: name(0), identity_name(0), owner(kNoScope), member_scope(kNoScope),
 	  direct_base(kNoEntity), enclosing_class(kNoEntity),
+	  template_argument_begin(kNoBinding), template_argument_count(0),
 	  flavor(NAMED_NONE), type(kNoType),
 	  underlying(kNoType), declaration(kNoBinding),
 	  union_default_member(kNoBinding), object_size(0),
@@ -575,7 +576,7 @@ BindingRecord::BindingRecord()
 	  constructor_base_entry(false),
 	  destructor(false), destructor_base_entry(false), inline_function(false),
 	  virtual_function(false), pure_virtual(false), final_virtual(false),
-	  override_specifier(false), object_output_root(false)
+	  override_specifier(false), weak_odr(false), object_output_root(false)
 {
 }
 
@@ -717,6 +718,7 @@ struct Program::ScopeRecord
 	std::uint32_t last_child;
 	std::uint32_t first_incoming_using;
 	std::uint32_t first_visible_name;
+	bool inline_namespace;
 
 	ScopeRecord()
 		: parent(kNoScope), kind(SCOPE_NAMESPACE), name(0), emission_name(0),
@@ -725,7 +727,8 @@ struct Program::ScopeRecord
 		  first_child(std::numeric_limits<std::uint32_t>::max()),
 		  last_child(std::numeric_limits<std::uint32_t>::max()),
 		  first_incoming_using(std::numeric_limits<std::uint32_t>::max()),
-		  first_visible_name(std::numeric_limits<std::uint32_t>::max()) {}
+		  first_visible_name(std::numeric_limits<std::uint32_t>::max()),
+		  inline_namespace(false) {}
 };
 
 struct Program::NameEntry
@@ -984,7 +987,11 @@ ScopeId Program::OpenNamespace(ScopeId parent, NameId name, bool is_inline)
 		entry->name_space = NewScope(parent, SCOPE_NAMESPACE, name);
 		InvalidateLookupName(parent, name);
 	}
-	if (is_inline) AddUsingEdge(parent, entry->name_space);
+	if (is_inline)
+	{
+		scopes_[entry->name_space].inline_namespace = true;
+		AddUsingEdge(parent, entry->name_space);
+	}
 	return entry->name_space;
 }
 
@@ -1376,6 +1383,11 @@ ScopeKind Program::KindOfScope(ScopeId scope) const
 	if (scope >= scopes_.size())
 		throw std::logic_error("invalid scope kind query");
 	return scopes_[scope].kind;
+}
+
+bool Program::IsInlineNamespace(ScopeId scope) const
+{
+	return scope < scopes_.size() && scopes_[scope].inline_namespace;
 }
 
 NameId Program::NameOfScope(ScopeId scope) const
@@ -2612,7 +2624,7 @@ std::size_t Program::StorageBytes() const
 		lookup_cache_->StorageBytes() +
 		entities.capacity() * sizeof(EntityRecord) +
 		bindings.capacity() * sizeof(BindingRecord) +
-		binding_template_arguments.capacity() * sizeof(TypeId);
+		template_arguments.capacity() * sizeof(TypeId);
 	return bytes;
 }
 

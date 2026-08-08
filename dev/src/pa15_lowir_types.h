@@ -394,6 +394,7 @@ struct Symbol
 	std::string object_name;
 	bool c_linkage;
 	bool internal_linkage;
+	bool weak_linkage;
 	bool nonthrowing;
 	bool noreturn;
 	bool thread_local_storage;
@@ -410,6 +411,7 @@ struct Symbol
 		: kind(kind_value), effects(EFFECTS_DEFAULT), name(name_value),
 		  object_name(object_name_value),
 		  c_linkage(c_linkage_value), internal_linkage(internal_linkage_value),
+		  weak_linkage(false),
 		  nonthrowing(nonthrowing_value), noreturn(false),
 		  thread_local_storage(false),
 		  tls_for_symbol(kNoLowId), source_type(kNoLowId),

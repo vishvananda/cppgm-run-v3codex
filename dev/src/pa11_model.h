@@ -275,6 +275,7 @@ struct EntityRecord
 	NameId name, identity_name;
 	ScopeId owner, member_scope;
 	EntityId direct_base, enclosing_class;
+	std::uint32_t template_argument_begin, template_argument_count;
 	NamedFlavor flavor;
 	TypeId type, underlying;
 	BindingId declaration, union_default_member;
@@ -320,7 +321,7 @@ struct BindingRecord
 		conversion_function, constructor,
 		constructor_base_entry, destructor, destructor_base_entry,
 		inline_function, virtual_function, pure_virtual, final_virtual,
-		override_specifier, object_output_root;
+		override_specifier, weak_odr, object_output_root;
 
 	BindingRecord();
 };
@@ -407,6 +408,7 @@ public:
 	ScopeId ScopeForType(TypeId type) const;
 	ScopeId ParentScope(ScopeId scope) const;
 	ScopeKind KindOfScope(ScopeId scope) const;
+	bool IsInlineNamespace(ScopeId scope) const;
 	NameId NameOfScope(ScopeId scope) const;
 	EntityId EntityForScope(ScopeId scope) const;
 	std::size_t SizeOf(TypeId type) const;
@@ -424,7 +426,7 @@ public:
 	TypeTable types;
 	std::vector<EntityRecord> entities;
 	std::vector<BindingRecord> bindings;
-	std::vector<TypeId> binding_template_arguments;
+	std::vector<TypeId> template_arguments;
 	std::size_t lookup_queries, lookup_scope_visits, lookup_edge_visits;
 	std::size_t lookup_cache_hits, lookup_cache_misses;
 	std::size_t lookup_cache_invalidations, lookup_cache_dependency_edges;

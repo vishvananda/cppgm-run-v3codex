@@ -328,9 +328,9 @@ private:
     else if(key == "tls_for") {
       if(!function_symbol) throw ParseError("tls_for metadata requires a function");
       out.tls_for_symbol = value;
-    }
-    else if(key == "keep_alias") out.keep_internal_alias = yes_no(value);
+    } else if(key == "keep_alias") out.keep_internal_alias = yes_no(value);
     else if(key == "prefer_local") out.prefer_local_object_binding = yes_no(value);
+    else if(key == "object_root") out.object_output_root = yes_no(value);
     else if(key == "trivial_lifecycle") {
       if(!function_symbol) throw ParseError("trivial_lifecycle metadata requires a function");
       out.object_trivial_lifecycle = yes_no(value);

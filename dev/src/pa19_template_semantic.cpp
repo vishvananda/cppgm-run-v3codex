@@ -703,15 +703,21 @@ bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,
 	class_templates_[pattern_index].member_definitions.push_back(member);
 	const std::vector<BindingId> specializations =
 		class_templates_[pattern_index].specialization_bindings;
-	const std::vector<TypeId> flattened_arguments =
-		class_templates_[pattern_index].specialization_arguments;
 	const std::size_t parameter_count = owner_pattern.type_parameters.size();
 	for (std::size_t i = 0; i < specializations.size(); ++i)
 	{
-		std::vector<TypeId> arguments;
-		arguments.reserve(parameter_count);
-		for (std::size_t p = 0; p < parameter_count; ++p)
-			arguments.push_back(flattened_arguments[i * parameter_count + p]);
+		const EntityId entity = EntityOf(
+			program_->bindings[specializations[i]].type);
+		if (entity == kNoEntity)
+			throw std::logic_error("class specialization has no entity");
+		const EntityRecord& record = program_->entities[entity];
+		const std::size_t first = record.template_argument_begin;
+		if (record.template_argument_count != parameter_count ||
+			first > program_->template_arguments.size() || parameter_count >
+				program_->template_arguments.size() - first)
+			throw std::logic_error("class specialization arguments are invalid");
+		const std::vector<TypeId> arguments(program_->template_arguments.begin() +
+			first, program_->template_arguments.begin() + first + parameter_count);
 		ApplyClassTemplateMemberDefinitions(
 			pattern_index, specializations[i], arguments);
 	}
@@ -999,17 +1005,19 @@ void SemanticAnalyzer::EnsureClassDefinition(TypeId type)
 			throw std::logic_error("invalid class specialization owner index");
 		const ClassTemplatePattern pattern = class_templates_[index];
 		if (entity == pattern.marker_entity) return;
-		if (entity >= class_template_argument_begin_by_entity_.size() ||
-			class_template_argument_begin_by_entity_[entity] == kNoDumpEdge)
+		const EntityRecord& specialization = program_->entities[entity];
+		if (specialization.template_argument_begin == kNoBinding)
 			throw std::logic_error("class specialization has no arguments");
-		const std::size_t first =
-			class_template_argument_begin_by_entity_[entity];
-		if (first + pattern.type_parameters.size() >
-			class_template_entity_arguments_.size())
+		const std::size_t first = specialization.template_argument_begin;
+		if (specialization.template_argument_count !=
+			pattern.type_parameters.size() ||
+			first > program_->template_arguments.size() ||
+			pattern.type_parameters.size() >
+				program_->template_arguments.size() - first)
 			throw std::logic_error("class specialization arguments are truncated");
 		const std::vector<TypeId> arguments(
-			class_template_entity_arguments_.begin() + first,
-			class_template_entity_arguments_.begin() + first +
+			program_->template_arguments.begin() + first,
+			program_->template_arguments.begin() + first +
 				pattern.type_parameters.size());
 		CompleteClassTemplateSpecialization(index,
 			program_->entities[entity].declaration, arguments);
@@ -1031,20 +1039,22 @@ bool SemanticAnalyzer::ClassTemplateSpecializationArgumentsComplete(
 {
 	if (entity >= class_template_pattern_by_entity_.size() ||
 		class_template_pattern_by_entity_[entity] == kNoDumpEdge ||
-		entity >= class_template_argument_begin_by_entity_.size() ||
-		class_template_argument_begin_by_entity_[entity] == kNoDumpEdge)
+		program_->entities[entity].template_argument_begin == kNoBinding)
 		return true;
 	const std::size_t index = class_template_pattern_by_entity_[entity];
 	if (index >= class_templates_.size())
 		throw std::logic_error("invalid class specialization owner index");
-	const std::size_t first = class_template_argument_begin_by_entity_[entity];
+	const EntityRecord& specialization = program_->entities[entity];
+	const std::size_t first = specialization.template_argument_begin;
 	const std::size_t count = class_templates_[index].type_parameters.size();
-	if (first + count > class_template_entity_arguments_.size())
+	if (specialization.template_argument_count != count ||
+		first > program_->template_arguments.size() ||
+		count > program_->template_arguments.size() - first)
 		throw std::logic_error("class specialization arguments are truncated");
 	for (std::size_t i = 0; i < count; ++i)
 	{
 		const TypeId argument = program_->types.RemoveTopCv(
-			class_template_entity_arguments_[first + i]);
+			program_->template_arguments[first + i]);
 		const TypeRecord& record = program_->types.Get(argument);
 		if (record.kind == TYPE_NAMED &&
 			!program_->entities[record.entity].complete)
@@ -1057,8 +1067,7 @@ bool SemanticAnalyzer::IsClassTemplateSpecializationEntity(
 	EntityId entity) const
 {
 	return entity != kNoEntity &&
-		entity < class_template_argument_begin_by_entity_.size() &&
-		class_template_argument_begin_by_entity_[entity] != kNoDumpEdge;
+		program_->entities[entity].template_argument_begin != kNoBinding;
 }
 
 bool SemanticAnalyzer::IsClassTemplateSpecializationContext(
@@ -1136,25 +1145,22 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 			static_cast<std::size_t>(entity) + 1, kNoDumpEdge);
 	class_template_pattern_by_entity_[entity] =
 		static_cast<std::uint32_t>(index);
-	if (class_template_argument_begin_by_entity_.size() <= entity)
-		class_template_argument_begin_by_entity_.resize(
-			static_cast<std::size_t>(entity) + 1, kNoDumpEdge);
-	if (class_template_argument_begin_by_entity_[entity] == kNoDumpEdge)
+	EntityRecord& specialization = program_->entities[entity];
+	if (specialization.template_argument_begin == kNoBinding)
 	{
-		if (class_template_entity_arguments_.size() >= kNoDumpEdge)
+		if (program_->template_arguments.size() >
+			std::numeric_limits<std::uint32_t>::max() - arguments.size())
 			throw std::runtime_error("too many class template entity arguments");
-		class_template_argument_begin_by_entity_[entity] =
-			static_cast<std::uint32_t>(
-				class_template_entity_arguments_.size());
-		class_template_entity_arguments_.insert(
-			class_template_entity_arguments_.end(),
+		specialization.template_argument_begin = static_cast<std::uint32_t>(
+			program_->template_arguments.size());
+		specialization.template_argument_count =
+			static_cast<std::uint32_t>(arguments.size());
+		program_->template_arguments.insert(program_->template_arguments.end(),
 			arguments.begin(), arguments.end());
 	}
 	const BindingId binding = program_->entities[entity].declaration;
 	class_template_instantiations_.Insert(key, binding);
 	pattern.specialization_bindings.push_back(binding);
-	pattern.specialization_arguments.insert(
-		pattern.specialization_arguments.end(), arguments.begin(), arguments.end());
 	if (class_template_specialization_states_.size() <= binding)
 		class_template_specialization_states_.resize(
 			static_cast<std::size_t>(binding) + 1, 0);
@@ -1179,10 +1185,17 @@ void SemanticAnalyzer::UpgradeClassTemplateSpecializations(std::size_t index)
 			class_template_specialization_states_[binding] != 0)
 			continue;
 		std::vector<TypeId> arguments;
-		arguments.reserve(parameter_count);
-		for (std::size_t p = 0; p < parameter_count; ++p)
-			arguments.push_back(pattern.specialization_arguments[
-				i * parameter_count + p]);
+		const EntityId entity = EntityOf(program_->bindings[binding].type);
+		if (entity == kNoEntity)
+			throw std::logic_error("class specialization has no entity");
+		const EntityRecord& record = program_->entities[entity];
+		const std::size_t first = record.template_argument_begin;
+		if (record.template_argument_count != parameter_count ||
+			first > program_->template_arguments.size() || parameter_count >
+				program_->template_arguments.size() - first)
+			throw std::logic_error("class specialization arguments are invalid");
+		arguments.assign(program_->template_arguments.begin() + first,
+			program_->template_arguments.begin() + first + parameter_count);
 		if (ClassTemplateArgumentsAreComplete(*program_, arguments))
 			CompleteClassTemplateSpecialization(index, binding, arguments);
 	}
@@ -1219,11 +1232,55 @@ void SemanticAnalyzer::AnalyzeExplicitInstantiation(NodeId node,
 		 !arena_->IsTag(target, "class-specifier")))
 		throw std::runtime_error(
 			"PA19 explicit instantiation requires a class template-id");
-	const TypeId type = ResolveClassTemplateSpecialization(
-		scope, arena_->Payload(target));
-	if (type == kNoType)
+	std::string base;
+	std::vector<TypeId> arguments;
+	if (!ParseExplicitTemplateArguments(scope, arena_->Payload(target),
+		&base, &arguments))
 		throw std::runtime_error(
-			"explicit class instantiation target was not found");
+			"explicit class instantiation requires a simple-template-id");
+	const std::size_t pattern_index = FindClassTemplate(scope, base);
+	if (pattern_index == NoTemplatePattern())
+		throw std::runtime_error("explicit class instantiation target was not found");
+	const ClassTemplatePattern& pattern = class_templates_[pattern_index];
+	const ScopeKind scope_kind = program_->KindOfScope(scope);
+	if (scope_kind != SCOPE_NAMESPACE)
+		throw std::runtime_error(
+			"explicit class instantiation must appear at namespace scope");
+	const NamePath target_path = ParseNamePath(base);
+	if (!target_path.global && target_path.Size() == 1)
+	{
+		ScopeId permitted = pattern.owner;
+		while (permitted != scope && program_->IsInlineNamespace(permitted))
+			permitted = program_->ParentScope(permitted);
+		if (permitted != scope)
+			throw std::runtime_error(
+				"unqualified explicit instantiation is in the wrong namespace");
+	}
+	else
+	{
+		bool enclosing = false;
+		for (ScopeId owner = pattern.owner; owner != kNoScope;
+			owner = program_->ParentScope(owner))
+			if (owner == scope)
+			{
+				enclosing = true;
+				break;
+			}
+		if (!enclosing)
+			throw std::runtime_error(
+				"qualified explicit instantiation is outside its namespace");
+	}
+	const NodeId target_key = FindChild(target, "class-key");
+	const NodeId pattern_key = FindChild(pattern.declaration, "class-key");
+	if (target_key == kNoNode || pattern_key == kNoNode ||
+		(PayloadSource(target_key) == "union") !=
+			(PayloadSource(pattern_key) == "union"))
+		throw std::runtime_error("explicit instantiation class-key mismatch");
+	const BindingId instantiated = InstantiateClassTemplate(pattern_index, arguments);
+	const TypeId type = instantiated == kNoBinding ? kNoType :
+		program_->bindings[instantiated].type;
+	if (type == kNoType)
+		throw std::runtime_error("invalid explicit class template arguments");
 	EnsureClassDefinition(type);
 	const EntityId entity = EntityOf(type);
 	if (entity == kNoEntity || !program_->entities[entity].complete)
@@ -1238,6 +1295,9 @@ void SemanticAnalyzer::AnalyzeExplicitInstantiation(NodeId node,
 		class_template_explicit_instantiation_states_[specialization];
 	if (!definition)
 	{
+		if ((state & 2) != 0)
+			throw std::runtime_error(
+				"explicit instantiation declaration follows its definition");
 		state |= 1;
 		return;
 	}
@@ -1254,6 +1314,7 @@ void SemanticAnalyzer::AnalyzeExplicitInstantiation(NodeId node,
 			function.deleted_constructor || function.deleted_destructor ||
 			function.deleted_special_member)
 			return;
+		program_->bindings[binding].weak_odr = true;
 		program_->bindings[binding].object_output_root = true;
 		DemandFunction(binding);
 	};

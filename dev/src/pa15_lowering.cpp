@@ -245,17 +245,23 @@ private:
 			(binding.storage_class == STORAGE_CLASS_STATIC &&
 			 binding.member_owner == kNoEntity);
 		const bool c_linkage = binding.language_linkage == LANGUAGE_LINKAGE_C;
+		const bool class_template_member = binding.member_owner != kNoEntity &&
+			program_.entities[binding.member_owner].template_argument_count;
 		SymbolIdentity identity;
 		identity.kind = kind;
-		identity.path = output_.identities.InternPath(program_,
-			c_linkage && !internal ? program_.GlobalScope() : binding.owner,
-			binding.name);
+		identity.path = class_template_member ? output_.identities.InternClassMemberPath(
+			program_, binding.member_owner, binding.name) :
+			output_.identities.InternPath(program_, c_linkage && !internal ?
+				program_.GlobalScope() : binding.owner, binding.name);
 		identity.signature = kind == Symbol::FUNCTION_SYMBOL && !c_linkage ?
 			output_.identities.InternFunctionSignature(program_, binding.type,
 				identity_type_cache_) : kNoLowId;
 		identity.template_arguments = kind == Symbol::FUNCTION_SYMBOL ?
 			output_.identities.InternBindingTemplateArguments(program_, binding,
 				identity_type_cache_) : kNoLowId;
+		identity.owner_template_arguments = class_template_member ?
+			output_.identities.InternEntityTemplateArguments(program_, program_.entities[
+				binding.member_owner], identity_type_cache_) : kNoLowId;
 		identity.internal_owner = local_member ?
 			((source_ordinal_ + 1) << 32) |
 				(static_cast<std::size_t>(binding.member_owner) + 1) :
@@ -272,6 +278,7 @@ private:
 				symbol.object_name != object_name)
 				throw std::logic_error("conflicting PA15 ABI object identity");
 			symbol.nonthrowing = symbol.nonthrowing || binding.nonthrowing;
+			symbol.weak_linkage |= binding.weak_odr;
 			symbol.object_output_root |= binding.object_output_root;
 			pa15_lowering_abi::ApplyBuiltinSymbolMetadata(
 				&symbol, binding.builtin_function);
@@ -289,6 +296,7 @@ private:
 		pa15_lowering_abi::ApplyBuiltinSymbolMetadata(&output_.symbols.back(),
 			binding.builtin_function);
 		output_.symbols.back().source_type = source_type;
+		output_.symbols.back().weak_linkage = binding.weak_odr;
 		output_.symbols.back().object_output_root = binding.object_output_root;
 		output_.symbol_index.Insert(identity, symbol);
 		return symbol;
@@ -2335,7 +2343,6 @@ private:
 			path->Pop();
 		}
 	}
-
 	void LowerRuntimeArrayValues(TypeId type, std::uint32_t list_node,
 		const Operand& array_address)
 	{
@@ -2370,7 +2377,6 @@ private:
 			else LowerRuntimeZeroValue(array.child, destination);
 		}
 	}
-
 	void LowerRuntimeObjectValue(TypeId type, std::uint32_t node,
 		const Operand& destination)
 	{
@@ -2397,7 +2403,6 @@ private:
 		store.second = destination;
 		Emit(store);
 	}
-
 	void LowerRuntimeZeroValue(TypeId type, const Operand& destination)
 	{
 		const TypeRecord& record = program_.types.Get(ExpressionObjectType(type));
@@ -2412,7 +2417,6 @@ private:
 		store.second = destination;
 		Emit(store);
 	}
-
 	void LowerClassInitializer(const DumpNode& variable,
 		std::uint32_t initializer)
 	{
@@ -2425,7 +2429,6 @@ private:
 		AggregatePath path;
 		LowerAggregateActions(initializer, storage, &path, Operand());
 	}
-
 	bool AggregateHasLeaf(std::uint32_t list_node) const
 	{
 		const NodeChildren actions = Children(list_node);
@@ -2442,7 +2445,6 @@ private:
 		}
 		return false;
 	}
-
 	void LowerAggregateActions(std::uint32_t list_node,
 		const Operand& root, AggregatePath* path,
 		const Operand& retained_address)
@@ -2488,7 +2490,6 @@ private:
 			path->Pop();
 		}
 	}
-
 	Operand ProjectAggregateMember(const Operand& base, BindingId binding)
 	{
 		const BindingRecord& member = program_.bindings[binding];
@@ -2503,7 +2504,6 @@ private:
 		Emit(index);
 		return projected;
 	}
-
 	Operand ProjectConstructorMemberPath(
 		const pa16_lowering_detail::ConstructorMemberPath& path)
 	{
@@ -2513,7 +2513,6 @@ private:
 			destination = ProjectAggregateMember(destination, path[i]);
 		return destination;
 	}
-
 	void LowerConstructorArrayActions(TypeId type, std::uint32_t list_node,
 		const pa16_lowering_detail::ConstructorMemberPath& path)
 	{

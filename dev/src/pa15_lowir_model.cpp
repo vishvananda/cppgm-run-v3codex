@@ -23,6 +23,17 @@ IdentityPathId EmissionIdentityTable::InternPath(const Program& program,
 	return path;
 }
 
+IdentityPathId EmissionIdentityTable::InternClassMemberPath(
+	const Program& program, EntityId owner, NameId terminal)
+{
+	const EntityRecord& entity = program.entities[owner];
+	const IdentityPathId parent = InternPath(program, entity.owner,
+		entity.identity_name);
+	const IdentityPathKey key = { parent,
+		InternName(program.names.Get(terminal)) };
+	return InternPathKey(key);
+}
+
 IdentityTypeId EmissionIdentityTable::InternType(const Program& program,
 	TypeId type, std::vector<IdentityTypeId>& cache)
 {
@@ -89,12 +100,26 @@ IdentityTypeId EmissionIdentityTable::InternBindingTemplateArguments(
 	if (binding.template_argument_count == 0) return kNoLowId;
 	const std::size_t first = binding.template_argument_begin;
 	const std::size_t count = binding.template_argument_count;
-	if (first > program.binding_template_arguments.size() ||
-		count > program.binding_template_arguments.size() - first)
+	if (first > program.template_arguments.size() ||
+		count > program.template_arguments.size() - first)
 		throw std::logic_error(
 			"function template identity argument range is invalid");
 	return InternTypeSequence(program,
-		&program.binding_template_arguments[first], count, cache);
+		&program.template_arguments[first], count, cache);
+}
+
+IdentityTypeId EmissionIdentityTable::InternEntityTemplateArguments(
+	const Program& program, const EntityRecord& entity,
+	std::vector<IdentityTypeId>& cache)
+{
+	if (entity.template_argument_count == 0) return kNoLowId;
+	const std::size_t first = entity.template_argument_begin;
+	const std::size_t count = entity.template_argument_count;
+	if (first > program.template_arguments.size() ||
+		count > program.template_arguments.size() - first)
+		throw std::logic_error("class template identity argument range is invalid");
+	return InternTypeSequence(program,
+		&program.template_arguments[first], count, cache);
 }
 
 std::size_t EmissionIdentityTable::StorageBytes() const
@@ -136,10 +161,24 @@ void EmissionIdentityTable::PushTypeDependencies(const Program& program,
 	std::vector<IdentityTypeId>& cache, std::vector<PendingType>& pending)
 {
 	if (HasChild(source.kind)) PushDependency(source.child, cache, pending);
-	if (source.kind != TYPE_FUNCTION) return;
-	const TypeId* parameters = program.types.Parameters(type);
-	for (std::size_t i = 0; i < source.parameter_count; ++i)
-		PushDependency(parameters[i], cache, pending);
+	if (source.kind == TYPE_NAMED || source.kind == TYPE_MEMBER_POINTER)
+	{
+		const EntityRecord& entity = program.entities[source.entity];
+		const std::size_t first = entity.template_argument_begin;
+		const std::size_t count = entity.template_argument_count;
+		if (count != 0 &&
+			(first > program.template_arguments.size() ||
+			 count > program.template_arguments.size() - first))
+			throw std::logic_error("class template type argument range is invalid");
+		for (std::size_t i = 0; i < count; ++i)
+			PushDependency(program.template_arguments[first + i], cache, pending);
+	}
+	if (source.kind == TYPE_FUNCTION)
+	{
+		const TypeId* parameters = program.types.Parameters(type);
+		for (std::size_t i = 0; i < source.parameter_count; ++i)
+			PushDependency(parameters[i], cache, pending);
+	}
 }
 
 IdentityTypeKey EmissionIdentityTable::MakeTypeKey(const Program& program,
@@ -157,6 +196,9 @@ IdentityTypeKey EmissionIdentityTable::MakeTypeKey(const Program& program,
 	{
 		const EntityRecord& entity = program.entities[source.entity];
 		key.named = InternPath(program, entity.owner, entity.identity_name);
+		const std::size_t first = entity.template_argument_begin;
+		for (std::size_t i = 0; i < entity.template_argument_count; ++i)
+			key.parameters.push_back(cache[program.template_arguments[first + i]]);
 	}
 	if (HasChild(source.kind)) key.child = cache[source.child];
 	if (source.kind == TYPE_FUNCTION)

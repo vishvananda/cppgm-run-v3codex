@@ -2792,15 +2792,15 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	BindingRecord& binding_record = program_->bindings[binding];
 	if (binding_record.template_argument_count == 0)
 	{
-		if (program_->binding_template_arguments.size() >
+		if (program_->template_arguments.size() >
 			std::numeric_limits<std::uint32_t>::max() - arguments.size())
 			throw std::runtime_error("too many function template arguments");
 		binding_record.template_argument_begin = static_cast<std::uint32_t>(
-			program_->binding_template_arguments.size());
+		program_->template_arguments.size());
 		binding_record.template_argument_count =
 			static_cast<std::uint32_t>(arguments.size());
-		program_->binding_template_arguments.insert(
-			program_->binding_template_arguments.end(),
+		program_->template_arguments.insert(
+			program_->template_arguments.end(),
 			arguments.begin(), arguments.end());
 	}
 	ValidateFunctionRefQualifier(binding);

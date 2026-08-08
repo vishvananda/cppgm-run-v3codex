@@ -56,9 +56,6 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		template_instantiations_.StorageBytes() +
 		class_templates_.capacity() * sizeof(ClassTemplatePattern) +
 		class_template_pattern_by_entity_.capacity() * sizeof(std::uint32_t) +
-		class_template_argument_begin_by_entity_.capacity() *
-			sizeof(std::uint32_t) +
-		class_template_entity_arguments_.capacity() * sizeof(TypeId) +
 		class_template_instantiations_.StorageBytes() +
 		class_template_specialization_states_.capacity() * sizeof(std::uint8_t) +
 		class_template_explicit_instantiation_states_.capacity() *
@@ -127,8 +124,6 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 			class_templates_[i].default_arguments.capacity() * sizeof(NodeId) +
 			class_templates_[i].specialization_bindings.capacity() *
 				sizeof(BindingId) +
-			class_templates_[i].specialization_arguments.capacity() *
-				sizeof(TypeId) +
 			class_templates_[i].member_definitions.capacity() *
 				sizeof(ClassTemplateMemberPattern);
 		for (std::size_t member = 0;

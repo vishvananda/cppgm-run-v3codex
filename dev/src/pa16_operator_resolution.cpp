@@ -158,25 +158,23 @@ void SemanticAnalyzer::AppendArgumentDependentCandidates(NameId name,
 		const EntityRecord& record = program_->entities[entity];
 		if (entity < class_template_pattern_by_entity_.size() &&
 			class_template_pattern_by_entity_[entity] != kNoDumpEdge &&
-			entity < class_template_argument_begin_by_entity_.size() &&
-			class_template_argument_begin_by_entity_[entity] != kNoDumpEdge)
+			record.template_argument_begin != kNoBinding)
 		{
 			const std::size_t pattern =
 				class_template_pattern_by_entity_[entity];
 			if (pattern >= class_templates_.size())
 				throw std::logic_error(
 					"associated class template pattern is invalid");
-			const std::size_t first =
-				class_template_argument_begin_by_entity_[entity];
+			const std::size_t first = record.template_argument_begin;
 			const std::size_t count =
 				class_templates_[pattern].type_parameters.size();
-			if (first > class_template_entity_arguments_.size() ||
-				count > class_template_entity_arguments_.size() - first)
+			if (record.template_argument_count != count ||
+				first > program_->template_arguments.size() ||
+				count > program_->template_arguments.size() - first)
 				throw std::logic_error(
 					"associated class template argument range is invalid");
 			for (std::size_t argument = 0; argument < count; ++argument)
-				AddAssociatedType(
-					class_template_entity_arguments_[first + argument]);
+				AddAssociatedType(program_->template_arguments[first + argument]);
 		}
 		if (record.direct_base != kNoEntity)
 			AddAssociatedEntity(record.direct_base);
