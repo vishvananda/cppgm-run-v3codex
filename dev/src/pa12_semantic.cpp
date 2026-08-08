@@ -1710,6 +1710,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBinary(NodeId node, ScopeId scope)
 	}
 	else if (operation == ",")
 	{
+		left = MaterializeDiscardedClassResult(left);
 		result_type = EffectiveType(right.type);
 		result_category = right.category;
 	}
@@ -2686,7 +2687,8 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 				{
 					if (IsDeclaration(value))
 						AnalyzeDeclaration(value, control, init, true);
-					else dump_.Add(init, AnalyzeExpression(value, control).node);
+					else dump_.Add(init, MaterializeDiscardedClassResult(
+						AnalyzeExpression(value, control)).node);
 					if (!IsDeclaration(value) &&
 						dump_.nodes[init].first_edge != kNoDumpEdge)
 					{
@@ -2709,8 +2711,8 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 			{
 				const std::uint32_t iteration = MakeDump(DUMP_ITERATION);
 				dump_.Add(statement, iteration);
-				const ExpressionInfo value = AnalyzeExpression(
-					FirstSemanticChild(child), control);
+				const ExpressionInfo value = MaterializeDiscardedClassResult(
+					AnalyzeExpression(FirstSemanticChild(child), control));
 				dump_.Add(iteration, value.node);
 				const std::size_t edge_count = dump_.edges.size();
 				AppendFullExpressionDestructionActions(value.node, iteration);

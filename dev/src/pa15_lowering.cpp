@@ -68,9 +68,9 @@ public:
 		  destructor_return_target_(kNoLowId),
 		  destructor_return_routes_to_epilogue_(false),
 		  full_expression_cleanup_active_(false), full_expression_cleanup_dispatch_(kNoLowId),
-		  full_expression_cleanup_end_(kNoLowId), full_expression_cleanup_dispatch_reused_(false),
-		  full_expression_tracks_lifetime_state_(false), runtime_lifetime_cleanup_dispatch_(kNoLowId),
-		  conditional_cleanup_resume_(kNoLowId),
+		  full_expression_cleanup_end_(kNoLowId), full_expression_linked_cleanup_dispatch_(kNoLowId),
+		  full_expression_cleanup_dispatch_reused_(false), full_expression_tracks_lifetime_state_(false),
+		  full_expression_uses_linked_dispatch_(false), full_expression_linked_action_cursor_(0), runtime_lifetime_cleanup_dispatch_(kNoLowId), conditional_cleanup_resume_(kNoLowId),
 		  source_types_(program_),
 		  static_initializers_(program_, arena_, output_, stats_,
 			function_symbols_, global_symbols_, literal_symbols_,
@@ -1351,7 +1351,6 @@ private:
 			" is outside the active PA15 checkpoint");
 		return expected.kind == LOW_INVALID ? result : Convert(result, expected);
 	}
-
 	Operand LowerConvertedValue(std::uint32_t node, const LowType& target,
 		bool canonicalize_immediate = true)
 	{
@@ -1360,15 +1359,15 @@ private:
 		return Convert(LowerValue(node, target.kind == LOW_PTR ?
 			target : LowType()), target, canonicalize_immediate);
 	}
-
 	bool CanonicalizeImmediateConversion(std::uint32_t node) const {
 		return arena_.nodes[node].integer_narrowing_conversion; }
 
 	void LowerDiscardedValue(std::uint32_t node) { const DumpNode& record = arena_.nodes[node];
+		if (record.kind == DUMP_BINARY_EXPRESSION) { (void)LowerBinary(node, record, Children(node), true); return; }
 		if ((record.category == VALUE_LVALUE || record.category == VALUE_XVALUE) && !IsFunctionType(RemoveReference(record.type))) (void)LowerStorage(node);
 		else (void)LowerValue(node); }
 	Operand LowerBinary(std::uint32_t node, const DumpNode& record,
-		const NodeChildren& children)
+		const NodeChildren& children, bool discarded = false)
 	{
 		if (children.size() != 2) throw std::runtime_error("invalid semantic binary");
 		const std::string op = StripOperationPrefix(program_.names.Get(record.text));
@@ -1377,6 +1376,7 @@ private:
 		if (op == ",")
 		{
 			LowerDiscardedValue(children[0]);
+			if (discarded) { LowerDiscardedValue(children[1]); return Operand(0, LowVoid()); }
 			return LowerValue(children[1]);
 		}
 		const bool comparison = op == "==" || op == "!=" || op == "<" ||
@@ -1453,7 +1453,6 @@ private:
 		Emit(instruction);
 		return result;
 	}
-
 	Operand LowerLogical(std::uint32_t node, const NodeChildren& children,
 		bool conjunction)
 	{
@@ -2973,8 +2972,9 @@ private:
 	BindingId current_this_binding_;
 	BlockId destructor_return_target_;
 	bool destructor_return_routes_to_epilogue_, full_expression_cleanup_active_;
-	BlockId full_expression_cleanup_dispatch_, full_expression_cleanup_end_;
-	bool full_expression_cleanup_dispatch_reused_, full_expression_tracks_lifetime_state_;
+	BlockId full_expression_cleanup_dispatch_, full_expression_cleanup_end_, full_expression_linked_cleanup_dispatch_;
+	bool full_expression_cleanup_dispatch_reused_, full_expression_tracks_lifetime_state_, full_expression_uses_linked_dispatch_;
+	std::size_t full_expression_linked_action_cursor_;
 	BlockId runtime_lifetime_cleanup_dispatch_, conditional_cleanup_resume_;
 	std::vector<std::uint32_t> full_expression_cleanup_actions_, full_expression_segment_actions_;
 	pa17_lowering_detail::CleanupDispatchCache full_expression_cleanup_dispatches_;

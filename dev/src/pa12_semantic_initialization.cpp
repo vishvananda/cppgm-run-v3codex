@@ -2048,29 +2048,31 @@ ExpressionInfo SemanticAnalyzer::MaterializeTemporary(
 ExpressionInfo SemanticAnalyzer::MaterializeDiscardedClassResult(
 	ExpressionInfo value)
 {
+	const DumpKind kind = dump_.nodes[value.node].kind;
 	if (value.category == VALUE_PRVALUE &&
 		IsClassEntity(*program_, EntityOf(value.type)) &&
-		dump_.nodes[value.node].kind == DUMP_CALL_EXPRESSION)
+		(kind == DUMP_CALL_EXPRESSION ||
+		 kind == DUMP_CONDITIONAL_EXPRESSION))
 	{
 		value = MaterializeTemporary(value);
 		dump_.nodes[value.node].discarded_materialization = true;
 		return value;
 	}
-	if (dump_.nodes[value.node].kind != DUMP_CAST_EXPRESSION ||
-		dump_.nodes[value.node].first_edge == kNoDumpEdge)
+	const bool value_wrapper = kind == DUMP_CAST_EXPRESSION ||
+		(kind == DUMP_BINARY_EXPRESSION &&
+		 IsClassEntity(*program_, EntityOf(value.type)));
+	if (!value_wrapper || dump_.nodes[value.node].first_edge == kNoDumpEdge)
 		return value;
-	const std::uint32_t edge = dump_.nodes[value.node].first_edge;
+	std::uint32_t edge = dump_.nodes[value.node].first_edge;
+	while (dump_.edges[edge].next != kNoDumpEdge)
+		edge = dump_.edges[edge].next;
 	const std::uint32_t child = dump_.edges[edge].child;
-	if (dump_.nodes[child].category != VALUE_PRVALUE ||
-		!IsClassEntity(*program_, EntityOf(dump_.nodes[child].type)) ||
-		dump_.nodes[child].kind != DUMP_CALL_EXPRESSION)
-		return value;
 	ExpressionInfo discarded;
 	discarded.node = child;
 	discarded.type = dump_.nodes[child].type;
-	discarded.category = VALUE_PRVALUE;
-	discarded = MaterializeTemporary(discarded);
-	dump_.nodes[discarded.node].discarded_materialization = true;
+	discarded.category = dump_.nodes[child].category;
+	discarded.binding = dump_.nodes[child].binding;
+	discarded = MaterializeDiscardedClassResult(discarded);
 	dump_.edges[edge].child = discarded.node;
 	return value;
 }

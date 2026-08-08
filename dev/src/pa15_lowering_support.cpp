@@ -57,24 +57,29 @@ void FlatIdMap::Insert(std::uint32_t key, std::uint32_t value)
 	keys_.push_back(key);
 	values_.push_back(value);
 	slots_[slot] = static_cast<std::uint32_t>(keys_.size());
+	occupied_slots_.push_back(slot);
 }
 
 void FlatIdMap::Clear()
 {
 	keys_.clear();
 	values_.clear();
-	std::fill(slots_.begin(), slots_.end(), 0);
+	for (std::size_t i = 0; i < occupied_slots_.size(); ++i)
+		slots_[occupied_slots_[i]] = 0;
+	occupied_slots_.clear();
 }
 
 void FlatIdMap::Rehash(std::size_t capacity)
 {
 	slots_.assign(capacity, 0);
+	occupied_slots_.clear();
 	const std::size_t mask = capacity - 1;
 	for (std::size_t i = 0; i < keys_.size(); ++i)
 	{
 		std::size_t slot = Hash(keys_[i]) & mask;
 		while (slots_[slot] != 0) slot = (slot + 1) & mask;
 		slots_[slot] = static_cast<std::uint32_t>(i + 1);
+		occupied_slots_.push_back(slot);
 	}
 }
 
@@ -82,7 +87,8 @@ std::size_t FlatIdMap::StorageBytes() const
 {
 	return keys_.capacity() * sizeof(std::uint32_t) +
 		values_.capacity() * sizeof(std::uint32_t) +
-		slots_.capacity() * sizeof(std::uint32_t);
+		slots_.capacity() * sizeof(std::uint32_t) +
+		occupied_slots_.capacity() * sizeof(std::size_t);
 }
 
 std::string StripOperationPrefix(const std::string& operation)

@@ -148,6 +148,8 @@ template <class Derived>
 class TemporaryLifetimeLowering
 {
 protected:
+	static const std::size_t kInlineCleanupActionBudget = 8;
+
 	SlotId EnsureTemporaryLifetimeSlot(std::uint32_t node)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
@@ -176,64 +178,68 @@ protected:
 		derived.conditional_cleanup_resume_ = kNoLowId;
 	}
 
-	BlockId InternConditionalCleanupDispatch()
+	BlockId InternCleanupAction(std::uint32_t action, BlockId tail)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		const BlockId original = derived.current_block_;
+		const BlockId previous_dispatch =
+			derived.full_expression_cleanup_dispatch_;
+		std::uint32_t cached_value = kNoLowId;
+		if (derived.stats_) ++derived.stats_->cleanup_dispatch_probes;
+		if (derived.conditional_cleanup_dispatches_.Find(action, &cached_value))
+		{
+			if (derived.stats_) ++derived.stats_->cleanup_dispatch_cache_hits;
+			std::uint32_t cached_tail = kNoLowId;
+			if (!derived.conditional_cleanup_tails_.Find(action, &cached_tail) ||
+				cached_tail != tail)
+				throw std::logic_error(
+					"cleanup action acquired a second ordered suffix");
+			return BlockId(cached_value);
+		}
+		const BlockId block = derived.AddBlock(
+			derived.NewLabel("conditional_cleanup_dispatch"));
+		if (derived.stats_) ++derived.stats_->cleanup_dispatch_entries;
+		derived.conditional_cleanup_dispatches_.Insert(action, block);
+		derived.conditional_cleanup_tails_.Insert(action, tail);
+		derived.full_expression_cleanup_dispatch_ = tail;
+		derived.SelectBlock(block);
+		LowerFullExpressionDestructorAction(action);
+		derived.EmitJump(tail);
+		derived.full_expression_cleanup_dispatch_ = previous_dispatch;
+		derived.SelectBlock(original);
+		return block;
+	}
+
+	BlockId InternConditionalCleanupDispatch()
+	{
+		Derived& derived = static_cast<Derived&>(*this);
 		if (derived.conditional_cleanup_resume_ == kNoLowId)
 		{
+			const BlockId original = derived.current_block_;
 			derived.conditional_cleanup_resume_ = derived.AddBlock(
 				derived.NewLabel("conditional_cleanup_resume"));
 			derived.SelectBlock(derived.conditional_cleanup_resume_);
 			derived.Emit(Instruction(Instruction::RESUME));
+			derived.SelectBlock(original);
 		}
-		const BlockId previous_dispatch =
-			derived.full_expression_cleanup_dispatch_;
-		derived.full_expression_cleanup_dispatch_ =
-			derived.conditional_cleanup_resume_;
 		BlockId tail = derived.conditional_cleanup_resume_;
 		for (std::size_t i = derived.full_expression_segment_actions_.size();
 			i != 0; --i)
-		{
-			const std::uint32_t action =
-				derived.full_expression_segment_actions_[i - 1];
-			std::uint32_t cached_value = kNoLowId;
-			if (derived.stats_) ++derived.stats_->cleanup_dispatch_probes;
-			if (derived.conditional_cleanup_dispatches_.Find(
-				action, &cached_value))
-			{
-				if (derived.stats_)
-					++derived.stats_->cleanup_dispatch_cache_hits;
-				std::uint32_t cached_tail = kNoLowId;
-				if (!derived.conditional_cleanup_tails_.Find(
-					action, &cached_tail) || cached_tail != tail)
-					throw std::logic_error(
-						"cleanup action acquired a second ordered suffix");
-				tail = BlockId(cached_value);
-				continue;
-			}
-			const BlockId block = derived.AddBlock(
-				derived.NewLabel("conditional_cleanup_dispatch"));
-			if (derived.stats_) ++derived.stats_->cleanup_dispatch_entries;
-			derived.conditional_cleanup_dispatches_.Insert(action, block);
-			derived.conditional_cleanup_tails_.Insert(action, tail);
-			derived.SelectBlock(block);
-			LowerFullExpressionDestructorAction(action);
-			derived.EmitJump(tail);
-			tail = block;
-		}
-		derived.full_expression_cleanup_dispatch_ = previous_dispatch;
-		derived.SelectBlock(original);
+			tail = InternCleanupAction(
+				derived.full_expression_segment_actions_[i - 1], tail);
 		return tail;
 	}
 
 	void StartFullExpressionCleanupSegment()
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		if (derived.full_expression_tracks_lifetime_state_)
+		if (derived.full_expression_tracks_lifetime_state_ ||
+			derived.full_expression_uses_linked_dispatch_)
 		{
 			derived.full_expression_cleanup_dispatch_ =
-				derived.runtime_lifetime_cleanup_dispatch_;
+				derived.full_expression_tracks_lifetime_state_ ?
+				derived.runtime_lifetime_cleanup_dispatch_ :
+				derived.full_expression_linked_cleanup_dispatch_;
 			derived.full_expression_cleanup_dispatch_reused_ = true;
 			derived.full_expression_cleanup_end_ = kNoLowId;
 			derived.EmitEhTarget(Instruction::EH_TRY,
@@ -250,8 +256,7 @@ protected:
 				derived.arena_.nodes[action].lifetime_object;
 			if (derived.arena_.nodes[action].unwind_only ||
 				(temporary != kNoDumpEdge &&
-				derived.temporary_initialized_[temporary])
-				)
+				 derived.temporary_initialized_[temporary]))
 				derived.full_expression_segment_actions_.push_back(action);
 		}
 		BlockId cached;
@@ -315,11 +320,17 @@ protected:
 			if (IsConditionalTemporaryAction(
 				derived.full_expression_cleanup_actions_[i]))
 				derived.full_expression_tracks_lifetime_state_ = true;
-		if (!derived.full_expression_tracks_lifetime_state_)
+		if (derived.full_expression_tracks_lifetime_state_)
+			derived.full_expression_uses_linked_dispatch_ = false;
+		if (!derived.full_expression_tracks_lifetime_state_ &&
+			!derived.full_expression_uses_linked_dispatch_)
 		{
 			derived.runtime_lifetime_cleanup_dispatch_ = kNoLowId;
 			return;
 		}
+		derived.full_expression_linked_action_cursor_ =
+			derived.full_expression_cleanup_actions_.size();
+		derived.full_expression_segment_actions_.clear();
 		for (std::size_t i = 0;
 			i < derived.full_expression_cleanup_actions_.size(); ++i)
 		{
@@ -327,6 +338,15 @@ protected:
 				derived.full_expression_cleanup_actions_[i];
 			const std::uint32_t temporary =
 				derived.arena_.nodes[action].lifetime_object;
+			if (derived.full_expression_uses_linked_dispatch_)
+			{
+				if (derived.arena_.nodes[action].unwind_only ||
+					(temporary != kNoDumpEdge &&
+					 derived.temporary_initialized_[temporary]))
+					derived.full_expression_segment_actions_.push_back(action);
+				continue;
+			}
+			derived.full_expression_segment_actions_.push_back(action);
 			if (temporary == kNoDumpEdge) continue;
 			derived.runtime_lifetime_temporaries_.Insert(temporary, 1);
 			Instruction reset(Instruction::STORE);
@@ -336,10 +356,13 @@ protected:
 				derived.EnsureTemporaryLifetimeSlot(temporary), LowU8());
 			derived.Emit(reset);
 		}
-		derived.full_expression_segment_actions_ =
-			derived.full_expression_cleanup_actions_;
-		derived.runtime_lifetime_cleanup_dispatch_ =
-			InternConditionalCleanupDispatch();
+		if (derived.full_expression_uses_linked_dispatch_)
+			derived.full_expression_linked_action_cursor_ -=
+				derived.full_expression_segment_actions_.size();
+		const BlockId dispatch = InternConditionalCleanupDispatch();
+		if (derived.full_expression_uses_linked_dispatch_)
+			derived.full_expression_linked_cleanup_dispatch_ = dispatch;
+		else derived.runtime_lifetime_cleanup_dispatch_ = dispatch;
 	}
 
 	void MarkConditionalTemporaryConstructed(std::uint32_t temporary)
@@ -405,9 +428,9 @@ protected:
 	void CloseFullExpressionCleanupSegment()
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		const BlockId dispatch = derived.full_expression_cleanup_dispatch_;
 		derived.Emit(Instruction(Instruction::EH_END));
 		if (derived.full_expression_cleanup_dispatch_reused_) return;
+		const BlockId dispatch = derived.full_expression_cleanup_dispatch_;
 		const BlockId end = derived.AddBlock(
 			derived.NewLabel("call_unwind_end"));
 		derived.full_expression_cleanup_end_ = end;
@@ -441,11 +464,15 @@ protected:
 		derived.full_expression_cleanup_dispatch_ = kNoLowId;
 		derived.full_expression_cleanup_end_ = kNoLowId;
 		derived.full_expression_cleanup_dispatch_reused_ = false;
+		derived.full_expression_linked_cleanup_dispatch_ = kNoLowId;
+		derived.full_expression_uses_linked_dispatch_ =
+			derived.full_expression_cleanup_actions_.size() >
+				kInlineCleanupActionBudget;
 		PrepareRuntimeLifetimeState();
 		if (!defer_segment) StartFullExpressionCleanupSegment();
 	}
 
-	void TransitionFullExpressionCleanup()
+	void TransitionFullExpressionCleanup(std::uint32_t temporary)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (!derived.full_expression_cleanup_active_)
@@ -453,6 +480,23 @@ protected:
 				"temporary transition outside full expression");
 		if (derived.full_expression_cleanup_dispatch_ != kNoLowId)
 			CloseFullExpressionCleanupSegment();
+		if (derived.full_expression_uses_linked_dispatch_)
+		{
+			if (derived.full_expression_linked_action_cursor_ != 0)
+			{
+				const std::uint32_t action =
+					derived.full_expression_cleanup_actions_[
+						derived.full_expression_linked_action_cursor_ - 1];
+				if (derived.arena_.nodes[action].lifetime_object == temporary)
+				{
+					--derived.full_expression_linked_action_cursor_;
+					derived.full_expression_linked_cleanup_dispatch_ =
+						InternCleanupAction(action,
+							derived.full_expression_linked_cleanup_dispatch_);
+				}
+			}
+		}
+		derived.full_expression_cleanup_dispatch_ = kNoLowId;
 		StartFullExpressionCleanupSegment();
 	}
 
@@ -461,6 +505,9 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		if (!derived.full_expression_cleanup_active_)
 			throw std::logic_error("missing full-expression cleanup region");
+		if (derived.full_expression_uses_linked_dispatch_ &&
+			derived.full_expression_linked_action_cursor_ != 0)
+			throw std::logic_error("linked cleanup left an unconstructed action");
 		EnsureFullExpressionCleanupSegment();
 		for (std::size_t i = 0;
 			i < derived.full_expression_cleanup_actions_.size(); ++i)
@@ -475,9 +522,12 @@ protected:
 		derived.full_expression_cleanup_dispatch_ = kNoLowId;
 		derived.full_expression_cleanup_end_ = kNoLowId;
 		derived.full_expression_cleanup_dispatch_reused_ = false;
+		derived.full_expression_linked_cleanup_dispatch_ = kNoLowId;
 		derived.full_expression_tracks_lifetime_state_ = false;
+		derived.full_expression_uses_linked_dispatch_ = false;
 		derived.runtime_lifetime_cleanup_dispatch_ = kNoLowId;
 		derived.runtime_lifetime_temporaries_.Clear();
+		derived.full_expression_linked_action_cursor_ = 0;
 	}
 
 	Operand RetainFullExpressionCallResult(std::uint32_t node,
@@ -533,9 +583,12 @@ protected:
 		derived.full_expression_cleanup_dispatch_ = kNoLowId;
 		derived.full_expression_cleanup_end_ = kNoLowId;
 		derived.full_expression_cleanup_dispatch_reused_ = false;
+		derived.full_expression_linked_cleanup_dispatch_ = kNoLowId;
 		derived.full_expression_tracks_lifetime_state_ = false;
+		derived.full_expression_uses_linked_dispatch_ = false;
 		derived.runtime_lifetime_cleanup_dispatch_ = kNoLowId;
 		derived.runtime_lifetime_temporaries_.Clear();
+		derived.full_expression_linked_action_cursor_ = 0;
 	}
 
 	void LowerFullExpressionStatement(const NodeChildren& children)

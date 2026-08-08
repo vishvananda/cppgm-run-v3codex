@@ -2,63 +2,59 @@
 
 ## Current Checkpoint Review
 
-**Checkpoint:** `2e42c865` (`Implement PA17 branch-local temporary cleanup`)
+**Checkpoint:** `b181f7d2` (`Implement pa17 loop full-expression cleanup`)
 
-**Result:** Pass after audit fixes. The landed increment is bounded to typed
-class-conditional arms, temporary materialization across conditional and
-short-circuit CFG, full-expression destruction, and return/member destinations.
-Loop condition and iteration re-evaluation remain the next checkpoint; their
-existing failure is not hidden by this closure.
+**Result:** Pass after audit fixes. The landed increment is bounded to loop
+initializer and iteration full-expression cleanup, enclosing-scope unwind
+actions, and the function-local index used to find those scopes. The next
+checkpoint remains class direct-initialization; unrelated PA17 failures are not
+attributed to this closure.
 
-The ownership path is source expression -> PA12 typed expression and stable
-temporary node identity -> ordered destructor actions carrying selected binding
-and canonical `TypeId` -> PA17 function-local cleanup state and CFG -> typed
-LowIR. PA12 now records whether a temporary is conditionally constructed while
-walking only the relevant expression subtree. Lowering uses compact IDs and
-flat function-local tables to reset and mark construction, and all normal and
-unwind exits consume the same typed action chain. It performs no name lookup,
+The complete ownership path is loop syntax -> PA12 typed expression and stable
+temporary identity -> ordered normal and unwind destructor actions carrying
+canonical type and selected destructor facts -> PA17 full-expression region,
+compact action IDs, and cleanup CFG -> typed LowIR. Discarded class calls,
+conditionals, casts, and comma value wrappers are materialized at the semantic
+boundary. Lowering consumes those facts directly and does no lookup,
 rendered-signature recovery, or text round trip.
 
 Audit findings are closed:
 
-1. Normal completion destroyed the entire semantic suffix, although the
-   constructed-prefix filter was applied only to unwind dispatch. A temporary
-   in the right operand of `&&` was therefore destroyed on the short path.
-   Region-owned runtime state now guards each potentially path-dependent
-   temporary and is cleared before its destructor call.
-2. Expression statements and scalar returns bypassed the cleanup region and
-   had the same unconditional-destruction defect. They now use the same
-   action-owned region as declarations and control conditions; class arm-local
-   destinations remain branch-local.
-3. Cleanup reuse used heap-owned vector keys and repeatedly walked every
-   constructed prefix. A 64-temporary probe exposed 4,098 dispatch probes for
-   65 entries. Ordinary semantic-action sequences now use an exact flat cache
-   with contiguous key slices, while path-dependent regions intern one linked
-   dispatch node per action. The final probe records 64 probes and 64 entries.
-4. Audit instrumentation initially pushed `pa15_lowering.cpp` over its file
-   limit. Lifetime-slot and reset ownership moved into the PA17 lowering mixin;
-   the implementation file is 2,999 lines and the stage file audit passes.
+1. A direct class prvalue in a nondeclaration `for` initializer or iteration
+   expression could bypass materialization; nested comma and class-conditional
+   values exposed the same ownership gap. PA12 now materializes the discarded
+   class result while preserving the expression tree's selected call and type,
+   and PA15 propagates discarded context through comma operands.
+2. Exact cleanup-sequence reuse rebuilt every constructed prefix for wide
+   temporary chains, producing superlinear CFG and storage. Regions retain the
+   exact path for at most eight actions and then intern one linked suffix node
+   per newly constructed nontrivial temporary. Normal destruction remains in
+   reverse construction order, and each unwind edge reaches exactly the live
+   suffix.
+3. `FlatIdMap::Clear` scanned retained peak capacity even when a later region
+   contained few live IDs. The map now records occupied slots and clears only
+   those entries; rehashing rebuilds the same sparse ownership list.
 
-Representative release probes with 16/32/64 conditionally evaluated right-hand
-temporaries recorded 16/32/64 lifetime slots, marks, dispatch probes, and
-entries; 171/331/651 blocks; 619/1,211/2,395 instructions; and
-30,359/59,815/119,238 output bytes. Five 100-compile batch medians were
-0.43/0.50/0.65 seconds, with 7.2-7.9 MiB peak RSS. Work, storage, CFG, and output
-are proportional to obligations rather than constructed-prefix products.
+Representative 16/32/64-direct-temporary iteration probes recorded 17/33/65
+cleanup probes and entries, 26/42/74 blocks, 139/251/475 instructions, and
+32,560/58,320/109,840 typed bytes. Five-run semantic medians were
+0.330/0.389/0.577 ms and lowering medians were 0.247/0.357/0.399 ms. Work,
+storage, and emitted CFG are proportional to owned cleanup obligations.
 
 Validation:
 
-- Focused checked-in branch-lifetime set: 4/4 pass. Skipped and constructed
-  right-hand temporary probes at condition, discarded-expression, and scalar
-  return boundaries compile successfully and emit guarded cleanup.
+- Focused checked-in loop/temporary coverage: 17/17 pass (7 PA15 loop-control
+  tests and 10 PA17 lifetime/conditional tests). Direct call, nested comma,
+  short-circuit, conditional, normal-exit, and unwind probes emit the expected
+  construction and reverse-destruction paths.
 - `make test-report ACTIVE_TEST_REPORT_PAS='pa17'`: expected full-stage
-  failure, 173/231. The checkpoint pass set is intact.
+  failure, 174/231, exactly preserving the turn-start checkpoint baseline with
+  no timeout.
 - `make test-report-through-pa16`: 1,436/1,436 and 16/16 stages pass.
 - `perl scripts/cppgm_file_audit.pl --stage pa17 --paths dev/src`: pass with
-  the same ten turn-start header-division warnings and no fatal issue.
-- Valgrind reports no errors or definite/indirect leaks on the right-hand
-  temporary probe. A process-only trace contains the compiler
-  `execve` and `exit_group(0)` only, with no child process or external tool.
+  the same ten header-division warnings and no fatal issue.
+- Source audit across the changed ownership path finds no reference-binary,
+  host-compiler, subprocess, test-path, or timeout shortcut.
 
 ## Checkpoint Audit Ledger
 
@@ -66,3 +62,4 @@ Validation:
 |---|---|---|
 | Ref-qualified member identity and selection | Pass after audit fixes | Canonical declaration/call/ABI path; complete mixed-set key; correct object ranking; focused, baseline, scaling, and required gates pass |
 | Branch-local class values and full-expression cleanup | Pass after audit fixes | Typed construction state on normal/unwind exits; exact flat and linked cleanup reuse; 173/231 baseline intact; linear probes and required gates pass |
+| Loop full-expression regions | Pass after audit fixes | Typed discarded materialization; bounded-inline and linked-suffix cleanup; 174/231 baseline, linear probes, and required gates pass |

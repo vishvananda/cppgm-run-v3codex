@@ -36,6 +36,7 @@ private:
 	std::vector<std::uint32_t> keys_;
 	std::vector<std::uint32_t> values_;
 	std::vector<std::uint32_t> slots_;
+	std::vector<std::size_t> occupied_slots_;
 };
 
 template <typename Value, std::size_t InlineCount>

@@ -172,7 +172,7 @@ protected:
 			derived.temporary_initialized_[node] = 1;
 			derived.MarkConditionalTemporaryConstructed(node);
 			if (derived.full_expression_cleanup_active_)
-				derived.TransitionFullExpressionCleanup();
+				derived.TransitionFullExpressionCleanup(node);
 		}
 		return destination;
 	}
