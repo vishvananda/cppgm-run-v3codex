@@ -290,6 +290,7 @@ struct EntityRecord
 		destructible, trivial_destructor,
 		has_direct_base, is_aggregate, empty_class,
 		indirect_class_value_abi, polymorphic_class, abstract_class;
+	bool deferred_template_completion;
 
 	EntityRecord();
 };
@@ -323,7 +324,7 @@ struct BindingRecord
 		conversion_function, constructor,
 		constructor_base_entry, destructor, destructor_base_entry,
 		inline_function, virtual_function, pure_virtual, final_virtual,
-		override_specifier, weak_odr, object_output_root;
+		override_specifier, weak_odr, object_output_root, emission_demanded;
 
 	BindingRecord();
 };

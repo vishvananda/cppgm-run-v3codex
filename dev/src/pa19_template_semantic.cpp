@@ -1253,6 +1253,8 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 	class_template_pattern_by_entity_[entity] =
 		static_cast<std::uint32_t>(index);
 	EntityRecord& specialization = program_->entities[entity];
+	specialization.deferred_template_completion =
+		!ClassTemplateArgumentsAreComplete(*program_, arguments);
 	if (specialization.template_argument_begin == kNoBinding)
 	{
 		if (program_->template_arguments.size() >

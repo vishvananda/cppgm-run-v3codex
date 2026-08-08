@@ -278,6 +278,33 @@ std::string OperatorTerminal(OperatorKind kind, bool member,
 
 }
 
+std::string MangleType(const pa11::Program& program, pa11::TypeId type)
+{
+	using namespace abi_mangle;
+	AbiFactFile file;
+	file.cases.push_back(AbiFactCase());
+	AbiFactBuilder facts(program, file.cases[0]);
+	AbiFactRecord target;
+	target.set_kind(ABI_FACT_RECORD_TARGET);
+	target.target.kind = ABI_TARGET_FACT_TYPE;
+	target.target.type = facts.MakeType(type);
+	file.cases[0].records.push_back(target);
+	std::string result = mangle_fact_file(file);
+	if (!result.empty() && result[result.size() - 1] == '\n')
+		result.resize(result.size() - 1);
+	return result;
+}
+
+bool IsFunctionEmissionDemanded(const pa11::Program& program,
+	const pa12_semantic_detail::DumpNode& node)
+{
+	using namespace pa11;
+	if (node.binding == kNoBinding) return false;
+	const BindingId binding = program.bindings[node.binding].canonical;
+	return !program.bindings[binding].inline_function ||
+		program.bindings[binding].emission_demanded;
+}
+
 void ApplyBuiltinSymbolMetadata(pa15_lowir_detail::Symbol* symbol,
 	pa11::BuiltinFunctionKind kind)
 {

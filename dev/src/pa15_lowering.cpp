@@ -80,7 +80,7 @@ public:
 		  source_types_(program_),
 		  static_initializers_(program_, arena_, output_, stats_,
 			function_symbols_, global_symbols_, literal_symbols_,
-			function_definition_)
+			function_definition_, polymorphism_.class_vtable_symbols)
 	{
 		function_symbols_.resize(program_.bindings.size(), kNoLowId);
 		global_symbols_.resize(program_.bindings.size(), kNoLowId);
@@ -330,7 +330,6 @@ private:
 		else if (function_declaration_[record.binding] == kNoDumpEdge)
 			function_declaration_[record.binding] = node;
 	}
-
 	void ScanTop(std::uint32_t node)
 	{
 		std::vector<std::uint32_t> pending(1, node);
@@ -342,7 +341,7 @@ private:
 			if (record.kind == DUMP_FUNCTION_DEFINITION ||
 				record.kind == DUMP_FUNCTION_DECLARATION)
 			{
-				RegisterFunction(current);
+				if (pa15_lowering_abi::IsFunctionEmissionDemanded(program_, record)) RegisterFunction(current);
 				continue;
 			}
 			if (record.kind == DUMP_VARIABLE && record.binding != kNoBinding)
@@ -388,6 +387,7 @@ private:
 			const DumpNode& record = arena_.nodes[current];
 			if (record.kind == DUMP_FUNCTION_DECLARATION)
 			{
+				if (!pa15_lowering_abi::IsFunctionEmissionDemanded(program_, record)) continue;
 				if (record.binding != kNoBinding &&
 					function_definition_[record.binding] == kNoDumpEdge &&
 					function_declaration_[record.binding] == current)
@@ -403,6 +403,7 @@ private:
 			}
 			if (record.kind == DUMP_FUNCTION_DEFINITION)
 			{
+				if (!pa15_lowering_abi::IsFunctionEmissionDemanded(program_, record)) continue;
 				if (record.binding != kNoBinding &&
 					function_definition_[record.binding] == current)
 				{

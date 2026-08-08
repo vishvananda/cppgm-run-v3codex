@@ -25,7 +25,8 @@ public:
 		const std::vector<pa15_lowir_detail::SymbolId>& function_symbols,
 		const std::vector<pa15_lowir_detail::SymbolId>& global_symbols,
 		std::vector<pa15_lowir_detail::SymbolId>& literal_symbols,
-		const std::vector<std::uint32_t>& function_definitions);
+		const std::vector<std::uint32_t>& function_definitions,
+		const std::vector<pa15_lowir_detail::SymbolId>& class_vtable_symbols);
 
 	bool Lower(const pa12_semantic_detail::NamespaceObjectAction& action,
 		bool thread_local_object, pa15_lowir_detail::Global* global,
@@ -49,7 +50,8 @@ private:
 		const std::vector<std::pair<pa11::BindingId, std::uint32_t> >*
 			substitutions = 0, bool allow_constructor = true);
 	bool AppendConstructorValue(pa11::TypeId type, std::uint32_t action_node,
-		std::vector<pa15_lowir_detail::Global::DataItem>* items);
+		std::vector<pa15_lowir_detail::Global::DataItem>* items,
+		bool require_vptr = false);
 
 	const pa12_semantic_detail::Program& program_;
 	const pa12_semantic_detail::DumpArena& arena_;
@@ -59,6 +61,7 @@ private:
 	const std::vector<pa15_lowir_detail::SymbolId>& global_symbols_;
 	std::vector<pa15_lowir_detail::SymbolId>& literal_symbols_;
 	const std::vector<std::uint32_t>& function_definitions_;
+	const std::vector<pa15_lowir_detail::SymbolId>& class_vtable_symbols_;
 	pa15_lowering_detail::SourceTypeLowering types_;
 };
 

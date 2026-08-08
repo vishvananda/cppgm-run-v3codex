@@ -1,5 +1,6 @@
 #include "pa18_polymorphism_lowering.h"
 
+#include "pa15_lowering_abi.h"
 #include "pa15_lowering_support.h"
 #include "pa15_source_type_lowering.h"
 
@@ -190,15 +191,8 @@ private:
 
 	std::string TypeInfoEncoding(EntityId entity) const
 	{
-		const EntityRecord& record = program_.entities[entity];
-		const std::string local = LocalTypeEncoding(entity);
-		if (!local.empty()) return local;
-		const std::string leaf = program_.names.Get(record.identity_name);
-		if (record.owner != kNoScope &&
-			program_.KindOfScope(record.owner) == SCOPE_NAMESPACE &&
-			program_.names.Get(program_.NameOfScope(record.owner)) == "std")
-			return "St" + std::to_string(leaf.size()) + leaf;
-		return std::to_string(leaf.size()) + leaf;
+		return pa15_lowering_abi::MangleType(
+			program_, program_.entities[entity].type);
 	}
 
 	SymbolId AddPolymorphicGlobal(const std::string& name)

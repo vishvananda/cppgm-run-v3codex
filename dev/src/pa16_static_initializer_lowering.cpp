@@ -20,11 +20,13 @@ StaticInitializerLowering::StaticInitializerLowering(
 	LowIRLoweringStats* stats, const std::vector<SymbolId>& function_symbols,
 	const std::vector<SymbolId>& global_symbols,
 	std::vector<SymbolId>& literal_symbols,
-	const std::vector<std::uint32_t>& function_definitions)
+	const std::vector<std::uint32_t>& function_definitions,
+	const std::vector<SymbolId>& class_vtable_symbols)
 	: program_(program), arena_(arena), output_(output), stats_(stats),
 	  function_symbols_(function_symbols), global_symbols_(global_symbols),
 	  literal_symbols_(literal_symbols),
-	  function_definitions_(function_definitions), types_(program)
+	  function_definitions_(function_definitions),
+	  class_vtable_symbols_(class_vtable_symbols), types_(program)
 {
 }
 
@@ -320,7 +322,8 @@ bool StaticInitializerLowering::AppendValue(TypeId type, std::uint32_t node,
 }
 
 bool StaticInitializerLowering::AppendConstructorValue(TypeId type,
-	std::uint32_t action_node, std::vector<Global::DataItem>* items)
+	std::uint32_t action_node, std::vector<Global::DataItem>* items,
+	bool require_vptr)
 {
 	const DumpNode& action = arena_.nodes[action_node];
 	if (action.binding == kNoBinding ||
@@ -349,9 +352,31 @@ bool StaticInitializerLowering::AppendConstructorValue(TypeId type,
 
 	const NodeChildren actions = Children(body);
 	std::size_t cursor = 0;
+	bool saw_vptr = false;
 	for (std::size_t i = 0; i < actions.size(); ++i)
 	{
 		const DumpNode& member_action = arena_.nodes[actions[i]];
+		if (member_action.kind == DUMP_VPTR_INITIALIZATION_ACTION)
+		{
+			const TypeRecord& object = program_.types.Get(
+				types_.ExpressionObject(member_action.type));
+			const EntityId entity = object.kind == TYPE_NAMED ?
+				object.entity : kNoEntity;
+			if (cursor != 0 || entity == kNoEntity ||
+				entity >= class_vtable_symbols_.size() ||
+				class_vtable_symbols_[entity] == kNoLowId)
+				return false;
+			Global::DataItem vptr;
+			vptr.kind = Global::DataItem::ADDRESS_ITEM;
+			vptr.type = LowPtr();
+			vptr.symbol = class_vtable_symbols_[entity];
+			vptr.offset = 16;
+			items->push_back(vptr);
+			output_.symbols[vptr.symbol].referenced = true;
+			cursor = 8;
+			saw_vptr = true;
+			continue;
+		}
 		if (member_action.kind == DUMP_COMPOUND_STATEMENT)
 		{
 			if (!Children(actions[i]).empty()) return false;
@@ -371,6 +396,7 @@ bool StaticInitializerLowering::AppendConstructorValue(TypeId type,
 		cursor = static_cast<std::size_t>(member.member_offset) +
 			program_.SizeOf(member_action.type);
 	}
+	if (require_vptr && !saw_vptr) return false;
 	const std::size_t object_size = program_.SizeOf(type);
 	if (cursor > object_size) return false;
 	AppendZero(object_size - cursor, items);
@@ -418,14 +444,25 @@ bool StaticInitializerLowering::Lower(const NamespaceObjectAction& action,
 			object.entity : kNoEntity;
 		if (!thread_local_object && entity != kNoEntity &&
 			!program_.entities[entity].empty_class &&
+			!program_.entities[entity].deferred_template_completion &&
 			!program_.bindings[action.object].unnamed_namespace_linkage)
 			*needs_global_class_initializer = true;
 		return true;
 	}
-	if (initializer.kind == DUMP_CONSTRUCTOR_ACTION ||
-		initializer.kind == DUMP_CONSTRUCTOR_ARRAY_ACTION) return false;
 	const TypeRecord& source_type = program_.types.Get(
 		types_.ExpressionObject(action.type));
+	if (types_.IsClassObject(action.type) &&
+		initializer.kind == DUMP_CONSTRUCTOR_ACTION)
+	{
+		global->initializer_kind = Global::STRUCTURED_VALUE;
+		const std::size_t old_size = global->items.size();
+		if (AppendConstructorValue(action.type, action.initializer,
+			&global->items, true)) return true;
+		global->items.resize(old_size);
+		return false;
+	}
+	if (initializer.kind == DUMP_CONSTRUCTOR_ACTION ||
+		initializer.kind == DUMP_CONSTRUCTOR_ARRAY_ACTION) return false;
 	if (source_type.kind == TYPE_ARRAY || types_.IsClassObject(action.type))
 	{
 		global->initializer_kind = Global::STRUCTURED_VALUE;

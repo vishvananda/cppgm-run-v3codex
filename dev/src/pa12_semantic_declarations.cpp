@@ -1650,6 +1650,7 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 		if (spelling == "typedef") result.is_typedef = true;
 		else if (spelling == "constexpr") result.is_constexpr = true;
 		else if (spelling == "friend") result.is_friend = true;
+		else if (spelling == "inline") result.inline_specifier = true;
 		else if (spelling == "extern") result.storage_class = STORAGE_CLASS_EXTERN;
 		else if (spelling == "static") result.storage_class = STORAGE_CLASS_STATIC;
 		else if (spelling == "thread_local")
@@ -1672,7 +1673,7 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 		else if (spelling == "wchar_t") is_wchar = true;
 		else if (spelling == "char16_t") is_char16 = true;
 		else if (spelling == "char32_t") is_char32 = true;
-		else if (spelling != "inline" && spelling != "explicit")
+		else if (spelling != "explicit")
 		{
 			if (deferred_type != kNoType)
 			{ result.type = deferred_type; continue; }
@@ -2820,11 +2821,11 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 		arguments.begin(), arguments.end());
 	return binding;
 }
-
 void SemanticAnalyzer::DemandFunction(BindingId binding)
 {
 	if (binding == kNoBinding || unevaluated_depth_ != 0) return;
 	binding = program_->bindings[binding].canonical;
+	program_->bindings[binding].emission_demanded |= program_->bindings[binding].inline_function;
 	if ((program_->bindings[binding].constructor ||
 		 program_->bindings[binding].destructor) &&
 		program_->bindings[binding].member_owner != kNoEntity &&
@@ -2853,7 +2854,6 @@ void SemanticAnalyzer::DemandFunction(BindingId binding)
 	demanded_functions_.push_back(binding);
 	++demand_worklist_pushes_;
 }
-
 TypeId SemanticAnalyzer::AdaptMemberFunctionType(BindingId binding)
 {
 	const FunctionInfo& function = GetFunction(binding);

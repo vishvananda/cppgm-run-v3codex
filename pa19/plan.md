@@ -36,29 +36,28 @@ stages.
 
 ## Current Failure Map
 
-Selected scalar/control replay plus two audit controls raises the combined PA19
-result to 290/300 while preserving the original 288/298 pass set.
-The exact remaining 10-test set groups as follows:
+Demand-owned inline emission plus canonical polymorphic static/ABI lowering
+raises PA19 to 294/300 while preserving PA1-PA18. The exact remaining six-test
+set groups as follows:
 
 | Failures | Shared behavior | Owner |
 |---:|---|---|
-| 3 demand/lifetime mismatches | Empty namespace initialization, template vptr initialization, and unused enum-ADL body emission. | PA19 demand states and PA16-PA18 lifetime lowering |
-| 2 body/ABI mismatches | Replayed base-constructor body/identity and qualified RTTI spelling. | PA12 specialization facts and PA15/PA18 ABI lowering |
-| 2 default-demand exits | Class defaults in base initialization and function default arguments. | PA19 argument environments and demand owners |
-| 2 unsupported-declaration exits | Dependent alignment and variable-template partial syntax. | PA10/PA19 declaration patterns |
-| 1 allocation exit | Inherited class `operator new` reaches an unlowered semantic node. | PA12 selection and PA16 allocation lowering |
+| 3 default/base replay | Class defaults in base initializers, nested base-reference constructor identity, and function default arguments. | PA19 argument environments and PA12 constructor/call owners |
+| 2 extension declarations | Dependent GNU alignment and variable-template partial syntax. | PA10/PA19 declaration patterns |
+| 1 allocation lowering | Inherited class `operator new` reaches an unlowered semantic node. | PA12 selection and PA16 allocation lowering |
 
 ## Active Checkpoint
 
-Unify the three remaining template demand/lifetime mismatches. PA12 owns object,
-initializer, destructor, vptr, and body dependencies; PA19 specialization state
-transfers only language-required roots; PA16-PA18 consume the resulting typed
-actions. The flow is `specialization key -> monotonic demand state -> required
-initializer/body/support objects -> typed lowering`, targeting `spec.md`
-sections 2 and 4-6: unused bodies stay undemanded, class completion does not
-imply emission, and each dependency is visited once. Expected work is O(demand
-roots plus reachable dependencies). Validate the three failures, the complete
-PA19 report, PA1-PA18, file audit, and a demand-fanout scaling probe.
+Unify canonical default-type replay across class base initializers, nested
+base-reference construction, and function call defaults. PA19 owns immutable
+argument frames and completed specialization keys; PA12 owns selected base
+constructors, parameter defaults, and typed conversion actions. The flow is
+`pattern default -> canonical argument frame -> selected constructor/call fact
+-> typed LowIR`, targeting `spec.md` sections 2-6: defaults are completed once
+per owner/key, do not rebuild rendered types, and demand only selected bodies.
+Expected work is O(default arguments plus selected base/call edges), with O(1)
+average specialization lookup. Validate all three failures, PA19, PA1-PA18,
+file audit, and a nested-default-depth scaling probe.
 
 ## Performance Evidence
 
@@ -69,6 +68,7 @@ PA19 report, PA1-PA18, file audit, and a demand-fanout scaling probe.
 | 64/128/256 same-spelling function-local type specializations | Requests and demand pushes 64/128/256 with no duplicate completions; semantic nodes 837/1,669/3,333, typed storage 217,243/434,323/868,627 bytes, and semantic time 4.484/10.485/17.659 ms. |
 | 32/64/128 indexed member-template candidates | Candidate visits are exactly 32/64/128 with one viable overload and four conversions; specialization requests 35/67/131, peak semantic storage 336,615/659,683/1,305,887 bytes, and median semantic time 1.425/4.274/8.103 ms. |
 | 128/256/512 mixed scalar/control replay operations, audit rerun | Semantic nodes 2,069/4,117/8,213; lowered nodes 1,421/2,829/5,645; conversion checks 1,288/2,568/5,128; peak storage 1,165,394/2,318,866/4,625,810 bytes; five-run median semantic-plus-lowering time 6.515/12.769/25.157 ms. |
+| 16/32/64 polymorphic specializations, static objects, and unused inline definitions | Requests 16/32/64; demand pushes 33/65/129; semantic nodes 279/551/1,095; lowered nodes 83/163/323; emitted functions 50/98/194 (the 16/32/64 unused inline bodies stay absent); globals 64/128/256; typed storage 165,813/331,285/662,229 bytes; five-run median semantic-plus-lowering time 2.469/4.452/8.442 ms. |
 
 ## Completed Checkpoints
 
@@ -97,3 +97,4 @@ PA19 report, PA1-PA18, file audit, and a demand-fanout scaling probe.
 | Canonical local-type specialization and emission identity | Pass | Collision-free compact specialization scope keys, function-owned local type identity, typed emission keys and structured local-type ABI facts; PA19 272 to 274, two focused cases, linear specialization probe, prior 1713/1713, audit pass |
 | Canonical retained callable/member replay | Pass | Canonical `>>`/qualified `[]` ids, indexed member-template owner/access replay, adjusted parameter bindings, static callable lowering, deferred dependent results, forwarding-reference deduction and constrained tie-breaking; PA19 274 to 280, six focused cases, linear candidate probe, prior 1713/1713, audit pass |
 | Selected scalar/control replay | Pass after audit fix | Local source/target, constant, and template-layout conversion keys; literal-owned pointer null provenance; bool/narrowing and direct constant branches; PA19 280 to 288 plus two audit controls, linear mixed replay evidence, prior 1713/1713 |
+| Demand-owned inline and polymorphic static/ABI lowering | Pass | Explicit inline emission demand, deferred-completion fact, canonical RTTI type encoding, and typed static vptr data; PA19 290 to 294 across four cases, linear demand/ABI probe, prior 1713/1713, audit pass |

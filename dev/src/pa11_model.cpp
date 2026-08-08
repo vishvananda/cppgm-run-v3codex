@@ -557,7 +557,8 @@ EntityRecord::EntityRecord()
 	  trivial_default_constructor(false), has_user_declared_destructor(false),
 	  destructible(true), trivial_destructor(true), has_direct_base(false),
 	  is_aggregate(false), empty_class(false), indirect_class_value_abi(false),
-	  polymorphic_class(false), abstract_class(false)
+	  polymorphic_class(false), abstract_class(false),
+	  deferred_template_completion(false)
 {
 }
 
@@ -583,7 +584,8 @@ BindingRecord::BindingRecord()
 	  constructor_base_entry(false),
 	  destructor(false), destructor_base_entry(false), inline_function(false),
 	  virtual_function(false), pure_virtual(false), final_virtual(false),
-	  override_specifier(false), weak_odr(false), object_output_root(false)
+	  override_specifier(false), weak_odr(false), object_output_root(false),
+	  emission_demanded(false)
 {
 }
 

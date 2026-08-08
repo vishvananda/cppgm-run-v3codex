@@ -90,5 +90,14 @@ bool SemanticAnalyzer::HasInternalLinkageScope(ScopeId scope) const
 	return false;
 }
 
+void SemanticAnalyzer::PublishInlineFunctionFacts(BindingId binding,
+	bool inline_specifier)
+{
+	if (!inline_specifier) return;
+	binding = program_->bindings[binding].canonical;
+	program_->bindings[binding].inline_function = true;
+	program_->bindings[binding].weak_odr = true;
+}
+
 }
 }

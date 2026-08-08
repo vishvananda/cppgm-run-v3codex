@@ -267,6 +267,7 @@ private:
 	void DeduceFunctionTemplates(ScopeId scope, const std::string& spelling,
 		const std::vector<ExpressionInfo>& arguments);
 	void DemandFunction(BindingId binding);
+	void PublishInlineFunctionFacts(BindingId binding, bool inline_specifier);
 	TypeId AdaptMemberFunctionType(BindingId binding);
 	void EmitDefaultConstructor(EntityId entity);
 	void EmitDemandedFunction(BindingId binding);

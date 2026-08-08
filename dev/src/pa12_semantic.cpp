@@ -2270,6 +2270,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			const BindingId function = DeclareFunction(declaration_scope, parsed.name,
 				parsed.type, parsed.parameters, false, false, spec.storage_class,
 				current_language_linkage_, IsNonthrowing(declarator, scope));
+			PublishInlineFunctionFacts(function, spec.inline_specifier);
 			ValidateFunctionRefQualifier(function);
 			ValidateNonmemberOperator(function);
 			const NodeId function_initializer = FindChild(item, "initializer");
@@ -2433,6 +2434,7 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	const BindingId binding = DeclareFunction(owner, parsed.name,
 		parsed.type, parsed.parameters, true, false, spec.storage_class,
 		current_language_linkage_, IsNonthrowing(declarator, semantic_scope));
+	PublishInlineFunctionFacts(binding, spec.inline_specifier);
 	ValidateFunctionRefQualifier(binding);
 	ValidateNonmemberOperator(binding);
 	FunctionInfo& function = GetMutableFunction(binding);
