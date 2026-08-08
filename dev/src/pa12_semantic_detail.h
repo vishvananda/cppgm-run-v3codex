@@ -97,6 +97,9 @@ private:
 		std::uint32_t output_parent, bool local,
 		AccessKind access = ACCESS_PUBLIC);
 	void AnalyzeTemplate(NodeId node, ScopeId scope);
+	void AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
+		const std::vector<NameId>& parameters,
+		const std::vector<NodeId>& defaults);
 	void AnalyzeSimple(NodeId node, ScopeId scope,
 		std::uint32_t output_parent, bool local);
 	void PublishVariableDeclarationFacts(BindingId binding,
@@ -119,7 +122,11 @@ private:
 		std::uint32_t condition);
 
 	TypeId AnalyzeClass(NodeId node, ScopeId scope,
-		const std::string& hint, bool elaborated);
+		const std::string& hint, bool elaborated,
+		const std::string& specialization_name = std::string(),
+		ScopeId specialization_owner = kNoScope,
+		NameId specialization_identity = 0,
+		bool complete_definition = true);
 	TypeId AnalyzeEnum(NodeId node, ScopeId scope,
 		const std::string& hint, bool elaborated);
 	SpecInfo BuildSpecifiers(NodeId node, ScopeId scope,
@@ -170,6 +177,15 @@ private:
 		std::vector<TypeId>* arguments);
 	TypeId ResolveTemplateTypeArgument(ScopeId scope,
 		const std::string& spelling);
+	TypeId ResolveClassTemplateSpecialization(ScopeId scope,
+		const std::string& spelling);
+	std::size_t FindClassTemplate(ScopeId scope,
+		const std::string& spelling);
+	BindingId InstantiateClassTemplate(std::size_t pattern,
+		const std::vector<TypeId>& arguments);
+	ScopeId BindClassTemplateArguments(const ClassTemplatePattern& pattern,
+		const std::vector<TypeId>& arguments);
+	void UpgradeClassTemplateSpecializations(std::size_t pattern);
 	BindingId InstantiateFunctionTemplate(std::size_t pattern,
 		const std::vector<TypeId>& arguments);
 	ScopeId BindFunctionTemplateArguments(
@@ -579,6 +595,10 @@ private:
 	std::vector<TypeId> function_template_shape_parameters_;
 	IndexedSequenceTable template_function_sets_;
 	TemplateSpecializationTable template_instantiations_;
+	std::vector<ClassTemplatePattern> class_templates_;
+	std::vector<std::uint32_t> class_template_pattern_by_entity_;
+	TemplateSpecializationTable class_template_instantiations_;
+	std::vector<std::uint8_t> class_template_specialization_states_;
 	std::vector<std::uint32_t> injected_fact_by_binding_;
 	std::vector<InjectedMemberInfo> injected_members_;
 	std::vector<std::vector<LifetimeObligation> > scope_lifetimes_;

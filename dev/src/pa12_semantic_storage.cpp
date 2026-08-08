@@ -50,6 +50,10 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		function_template_shape_parameters_.capacity() * sizeof(TypeId) +
 		template_function_sets_.StorageBytes() +
 		template_instantiations_.StorageBytes() +
+		class_templates_.capacity() * sizeof(ClassTemplatePattern) +
+		class_template_pattern_by_entity_.capacity() * sizeof(std::uint32_t) +
+		class_template_instantiations_.StorageBytes() +
+		class_template_specialization_states_.capacity() * sizeof(std::uint8_t) +
 		injected_fact_by_binding_.capacity() * sizeof(std::uint32_t) +
 		injected_members_.capacity() * sizeof(InjectedMemberInfo) +
 		scope_lifetimes_.capacity() *
@@ -102,6 +106,14 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 			function_templates_[i].specialization_bindings.capacity() *
 				sizeof(BindingId) +
 			function_templates_[i].specialization_arguments.capacity() *
+				sizeof(TypeId);
+	for (std::size_t i = 0; i < class_templates_.size(); ++i)
+		bytes += class_templates_[i].type_parameters.capacity() *
+				sizeof(NameId) +
+			class_templates_[i].default_arguments.capacity() * sizeof(NodeId) +
+			class_templates_[i].specialization_bindings.capacity() *
+				sizeof(BindingId) +
+			class_templates_[i].specialization_arguments.capacity() *
 				sizeof(TypeId);
 	return bytes;
 }

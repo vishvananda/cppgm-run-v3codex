@@ -436,6 +436,24 @@ struct FunctionTemplatePattern
 		  nonthrowing(false) {}
 };
 
+struct ClassTemplatePattern
+{
+	ScopeId owner;
+	ScopeId lexical_scope;
+	NameId name;
+	NodeId declaration;
+	std::vector<NameId> type_parameters;
+	std::vector<NodeId> default_arguments;
+	std::vector<BindingId> specialization_bindings;
+	std::vector<TypeId> specialization_arguments;
+	EntityId marker_entity;
+	bool defined;
+
+	ClassTemplatePattern()
+		: owner(kNoScope), lexical_scope(kNoScope), name(0),
+		  declaration(kNoNode), marker_entity(kNoEntity), defined(false) {}
+};
+
 struct InjectedMemberInfo
 {
 	BindingId storage, member;

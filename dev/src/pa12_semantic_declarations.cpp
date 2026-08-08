@@ -81,7 +81,9 @@ OperatorKind ClassifyOperator(const std::string& name,
 }
 }
 TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
-	const std::string& hint, bool elaborated)
+	const std::string& hint, bool elaborated,
+	const std::string& specialization_name, ScopeId specialization_owner,
+	NameId specialization_identity, bool complete_definition)
 {
 	const NodeId key = FindChild(node, "class-key");
 	if (key == kNoNode) throw std::runtime_error("class without class-key");
@@ -90,7 +92,8 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 		key_text == "class" ? NAMED_CLASS :
 		key_text == "union" ? NAMED_UNION : NAMED_NONE;
 	if (flavor == NAMED_NONE) throw std::runtime_error("invalid class-key");
-	std::string spelling = arena_->Payload(node);
+	std::string spelling = specialization_name.empty() ?
+		arena_->Payload(node) : specialization_name;
 	const bool anonymous_source = spelling.empty();
 	if (spelling.empty() && !hint.empty())
 	{
@@ -106,7 +109,8 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	}
 	const NamePath path = ParseNamePath(spelling);
 	const NameId name = path.Last();
-	const ScopeId owner = ResolveOwner(scope, path);
+	const ScopeId owner = specialization_owner == kNoScope ?
+		ResolveOwner(scope, path) : specialization_owner;
 	if (owner == kNoScope) throw std::runtime_error("class owner not found");
 	const LookupResult old = path.global || path.Size() > 1 ?
 		program_->LookupDirect(owner, name, LOOKUP_TYPE) :
@@ -132,7 +136,8 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 			throw std::runtime_error("qualified class was not declared");
 		const NameId entity_name = EmissionName(owner, name);
 		entity = program_->NewEntity(entity_name, flavor, false,
-			kNoType, owner, name);
+			kNoType, owner, specialization_identity == 0 ?
+				name : specialization_identity);
 		program_->SetTypeName(owner, name, program_->entities[entity].type);
 	}
 	const TypeId type = program_->entities[entity].type;
@@ -161,7 +166,8 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 		program_->entities[entity].requested_alignment = std::max(
 			program_->entities[entity].requested_alignment,
 			static_cast<std::uint64_t>(requested_alignment));
-	if ((arena_->Flags(node) & SYNTAX_FLAG_DEFINITION) != 0)
+	if (complete_definition &&
+		(arena_->Flags(node) & SYNTAX_FLAG_DEFINITION) != 0)
 	{
 		if (program_->entities[entity].complete)
 			throw std::runtime_error("duplicate class definition");
@@ -185,8 +191,12 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 			const NodeId base_name = FindChild(base_specifier, "base-name");
 			if (base_name == kNoNode)
 				throw std::runtime_error("base specifier has no base name");
-			const LookupResult base_lookup = LookupSpelling(scope,
-				arena_->Payload(base_name), LOOKUP_TYPE);
+			LookupResult base_lookup;
+			base_lookup.type = ResolveClassTemplateSpecialization(scope,
+				arena_->Payload(base_name));
+			if (base_lookup.type == kNoType)
+				base_lookup = LookupSpelling(scope,
+					arena_->Payload(base_name), LOOKUP_TYPE);
 			const EntityId base = EntityOf(base_lookup.type);
 			if (base == kNoEntity || !program_->entities[base].complete ||
 				program_->entities[base].flavor == NAMED_UNION)
@@ -212,7 +222,9 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 		{
 			const std::string prefix =
 				program_->names.Get(DisplayName(owner, name)) + "::";
-			member_scope = NewScope(owner, SCOPE_CLASS, name,
+			const ScopeId lexical_owner = specialization_owner == kNoScope ?
+				owner : scope;
+			member_scope = NewScope(lexical_owner, SCOPE_CLASS, name,
 				program_->names.Intern(prefix));
 			program_->SetEntityScope(entity, member_scope);
 			program_->SetTypeName(member_scope, name, type);
@@ -220,6 +232,17 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 				BIND_TYPE, name, type, false, 0, flavor);
 			program_->bindings[injected].member_owner = entity;
 			program_->bindings[injected].access = ACCESS_PUBLIC;
+			if (specialization_identity != 0 &&
+				specialization_identity != name)
+			{
+				program_->SetTypeName(member_scope,
+					specialization_identity, type);
+				const BindingId primary_injected = program_->AddBinding(
+					member_scope, BIND_TYPE, specialization_identity, type,
+					false, 0, flavor);
+				program_->bindings[primary_injected].member_owner = entity;
+				program_->bindings[primary_injected].access = ACCESS_PUBLIC;
+			}
 		}
 		// The stable class scope owns indexed field/function identities even
 		// though class declarations are not part of the PA12 output view.
@@ -1558,9 +1581,23 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 		else if (spelling == "char32_t") is_char32 = true;
 		else if (spelling != "inline" && spelling != "explicit")
 		{
+			const TypeId specialization =
+				ResolveClassTemplateSpecialization(scope, spelling);
+			if (specialization != kNoType)
+			{
+				result.type = specialization;
+				continue;
+			}
 			const LookupResult found = LookupSpelling(scope, spelling, LOOKUP_TYPE);
 			if (found.type == kNoType)
 				throw std::runtime_error("unknown type name: " + spelling);
+			const TypeRecord& named = program_->types.Get(
+				program_->types.RemoveTopCv(found.type));
+			if (named.kind == TYPE_NAMED &&
+				program_->entities[named.entity].flavor ==
+					NAMED_TEMPLATE_PARAMETER)
+				throw std::runtime_error(
+					"class template name requires template arguments");
 			if (found.type_declaration != kNoBinding &&
 				!CanAccessMember(found.type_declaration,
 					found.naming_class))
@@ -2526,48 +2563,6 @@ std::vector<std::size_t> SemanticAnalyzer::FindFunctionTemplates(
 	return std::vector<std::size_t>();
 }
 
-TypeId SemanticAnalyzer::ResolveTemplateTypeArgument(ScopeId scope,
-	const std::string& untrimmed)
-{
-	const std::size_t first = untrimmed.find_first_not_of(" \t\r\n");
-	const std::size_t last = untrimmed.find_last_not_of(" \t\r\n");
-	if (first == std::string::npos) return kNoType;
-	const std::string spelling = untrimmed.substr(first, last - first + 1);
-	FundamentalKind fundamental = FUND_INT;
-	bool known_fundamental = true;
-	if (spelling == "bool") fundamental = FUND_BOOL;
-	else if (spelling == "char") fundamental = FUND_CHAR;
-	else if (spelling == "signed char") fundamental = FUND_SIGNED_CHAR;
-	else if (spelling == "unsigned char") fundamental = FUND_UNSIGNED_CHAR;
-	else if (spelling == "short" || spelling == "short int")
-		fundamental = FUND_SHORT_INT;
-	else if (spelling == "unsigned short" ||
-		spelling == "unsigned short int") fundamental = FUND_UNSIGNED_SHORT_INT;
-	else if (spelling == "int") fundamental = FUND_INT;
-	else if (spelling == "unsigned" || spelling == "unsigned int")
-		fundamental = FUND_UNSIGNED_INT;
-	else if (spelling == "long" || spelling == "long int")
-		fundamental = FUND_LONG_INT;
-	else if (spelling == "unsigned long" ||
-		spelling == "unsigned long int") fundamental = FUND_UNSIGNED_LONG_INT;
-	else if (spelling == "long long" || spelling == "long long int")
-		fundamental = FUND_LONG_LONG_INT;
-	else if (spelling == "unsigned long long" ||
-		spelling == "unsigned long long int")
-		fundamental = FUND_UNSIGNED_LONG_LONG_INT;
-	else if (spelling == "float") fundamental = FUND_FLOAT;
-	else if (spelling == "double") fundamental = FUND_DOUBLE;
-	else if (spelling == "long double") fundamental = FUND_LONG_DOUBLE;
-	else if (spelling == "void") fundamental = FUND_VOID;
-	else if (spelling == "wchar_t") fundamental = FUND_WCHAR_T;
-	else if (spelling == "char16_t") fundamental = FUND_CHAR16_T;
-	else if (spelling == "char32_t") fundamental = FUND_CHAR32_T;
-	else known_fundamental = false;
-	if (known_fundamental) return program_->types.Fundamental(fundamental);
-	const LookupResult found = LookupSpelling(scope, spelling, LOOKUP_TYPE);
-	return found.type;
-}
-
 bool SemanticAnalyzer::ParseExplicitTemplateArguments(ScopeId scope,
 	const std::string& spelling, std::string* base,
 	std::vector<TypeId>* arguments)
@@ -2579,6 +2574,8 @@ bool SemanticAnalyzer::ParseExplicitTemplateArguments(ScopeId scope,
 	arguments->clear();
 	std::size_t first = open + 1;
 	std::size_t depth = 0;
+	std::size_t paren_depth = 0;
+	std::size_t bracket_depth = 0;
 	for (std::size_t i = first; i < spelling.size() - 1; ++i)
 	{
 		if (spelling[i] == '<') ++depth;
@@ -2587,7 +2584,12 @@ bool SemanticAnalyzer::ParseExplicitTemplateArguments(ScopeId scope,
 			if (depth == 0) return false;
 			--depth;
 		}
-		else if (spelling[i] == ',' && depth == 0)
+		else if (spelling[i] == '(') ++paren_depth;
+		else if (spelling[i] == ')' && paren_depth != 0) --paren_depth;
+		else if (spelling[i] == '[') ++bracket_depth;
+		else if (spelling[i] == ']' && bracket_depth != 0) --bracket_depth;
+		else if (spelling[i] == ',' && depth == 0 && paren_depth == 0 &&
+			bracket_depth == 0)
 		{
 			const TypeId type = ResolveTemplateTypeArgument(scope,
 				spelling.substr(first, i - first));

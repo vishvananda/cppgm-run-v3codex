@@ -48,15 +48,24 @@ NamePath SemanticAnalyzer::ParseNamePath(const std::string& spelling)
 		if (separator != std::string::npos)
 			conversion_terminal = separator + 2;
 	}
-	std::size_t count = 1;
-	for (std::size_t scan = first; scan != conversion_terminal &&
-		(scan = spelling.find("::", scan)) != std::string::npos;
-		scan += 2) ++count;
-	result.Reserve(count);
 	while (first < spelling.size())
 	{
-		const std::size_t separator = first == conversion_terminal ?
-			std::string::npos : spelling.find("::", first);
+		std::size_t separator = std::string::npos;
+		if (first != conversion_terminal)
+		{
+			std::size_t angle_depth = 0;
+			for (std::size_t scan = first; scan + 1 < spelling.size(); ++scan)
+			{
+				if (spelling[scan] == '<') ++angle_depth;
+				else if (spelling[scan] == '>' && angle_depth != 0) --angle_depth;
+				else if (spelling[scan] == ':' && spelling[scan + 1] == ':' &&
+					angle_depth == 0)
+				{
+					separator = scan;
+					break;
+				}
+			}
+		}
 		const std::size_t last = separator == std::string::npos ?
 			spelling.size() : separator;
 		if (last == first) throw std::runtime_error("invalid qualified name");
@@ -84,6 +93,13 @@ LookupResult SemanticAnalyzer::LookupPath(ScopeId scope,
 		ScopeId carrier = kNoScope;
 		for (ScopeId current = scope; current != kNoScope; )
 		{
+			const TypeId specialization = ResolveClassTemplateSpecialization(
+				current, program_->names.Get(path[0]));
+			if (specialization != kNoType)
+			{
+				carrier = program_->ScopeForType(specialization);
+				break;
+			}
 			const LookupResult direct = program_->LookupDirect(current, path[0],
 				LOOKUP_SCOPE_CARRIER);
 			if (!direct.Empty())
@@ -119,36 +135,6 @@ ScopeId SemanticAnalyzer::ResolveScopeSpelling(ScopeId scope,
 		LookupSpelling(scope, spelling, LOOKUP_SCOPE_CARRIER);
 	return result.name_space != kNoScope ? result.name_space :
 		result.type != kNoType ? program_->ScopeForType(result.type) : kNoScope;
-}
-ScopeId SemanticAnalyzer::ResolveOwner(ScopeId scope, const NamePath& name)
-{
-	if (!name.global && name.Size() <= 1) return scope;
-	NamePath owner = name;
-	if (!owner.Empty()) owner.Pop();
-	if (owner.Empty()) return owner.global ? program_->GlobalScope() : scope;
-	const LookupResult result = LookupPath(scope, owner, LOOKUP_SCOPE_CARRIER);
-	return result.name_space != kNoScope ? result.name_space :
-		result.type != kNoType ? program_->ScopeForType(result.type) : kNoScope;
-}
-bool SemanticAnalyzer::IsDeclaration(NodeId node) const
-{
-	return arena_->IsTag(node, "simple-declaration") ||
-		arena_->IsTag(node, "function-definition") ||
-		arena_->IsTag(node, "alias-declaration") ||
-		arena_->IsTag(node, "using-declaration") ||
-		arena_->IsTag(node, "using-directive") ||
-		arena_->IsTag(node, "namespace-definition") ||
-		arena_->IsTag(node, "namespace-alias-definition") ||
-		arena_->IsTag(node, "template-declaration") ||
-		arena_->IsTag(node, "special-member-declaration") ||
-		arena_->IsTag(node, "special-member-definition") ||
-		arena_->IsTag(node, "class-specifier") ||
-		arena_->IsTag(node, "class-forward-declaration") ||
-		arena_->IsTag(node, "enum-specifier") ||
-		arena_->IsTag(node, "empty-declaration") ||
-		arena_->IsTag(node, "layout-pack-push") ||
-		arena_->IsTag(node, "layout-pack-pop") ||
-		arena_->IsTag(node, "linkage-specification");
 }
 std::uint32_t SemanticAnalyzer::MakeDump(DumpKind kind, TypeId type,
 	ValueCategory category, NameId text, BindingId binding)
@@ -1919,6 +1905,7 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope)
 	const NodeId list = clause == kNoNode ? kNoNode :
 		FindChild(clause, "template-parameter-list");
 	std::vector<NameId> parameters;
+	std::vector<NodeId> defaults;
 	if (list != kNoNode)
 	{
 		for (std::uint32_t edge = arena_->FirstEdge(list); edge != kNoEdge;
@@ -1927,12 +1914,12 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope)
 			const NodeId parameter = arena_->EdgeChild(edge);
 			if (!arena_->IsTag(parameter, "type-parameter"))
 				throw std::runtime_error(
-					"PA12 function templates require type parameters");
+					"PA19 templates require type parameters");
 			const NodeId identifier = FindChild(parameter, "identifier");
-			if (identifier == kNoNode)
-				throw std::runtime_error("unnamed function template parameter");
-			parameters.push_back(
+			parameters.push_back(identifier == kNoNode ? 0 :
 				program_->names.Intern(arena_->Payload(identifier)));
+			defaults.push_back(
+				FindChild(parameter, "default-template-argument"));
 		}
 	}
 
@@ -1943,6 +1930,16 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope)
 		const NodeId child = arena_->EdgeChild(edge);
 		if (child != clause) target = child;
 	}
+	if (target != kNoNode &&
+		(arena_->IsTag(target, "class-specifier") ||
+		 arena_->IsTag(target, "class-forward-declaration")))
+	{
+		AnalyzeClassTemplate(target, scope, parameters, defaults);
+		return;
+	}
+	for (std::size_t i = 0; i < parameters.size(); ++i)
+		if (parameters[i] == 0)
+			throw std::runtime_error("unnamed function template parameter");
 	if (target == kNoNode ||
 		(!arena_->IsTag(target, "simple-declaration") &&
 		 !arena_->IsTag(target, "function-definition")))

@@ -3,63 +3,47 @@
 ## Stage Design and Spec Alignment
 
 PA19 extends the PA11/PA12 canonical semantic graph and PA15-PA18 typed LowIR
-path with template patterns and demanded specializations. A pattern retains the
-single PA10 syntax body plus canonical parameter identities; a specialization
-is keyed by pattern identity and canonical `TypeId` arguments, binds those
-arguments in a parent-linked template scope, and reuses ordinary declaration,
-overload, class, lifetime, and lowering owners.
-
-```text
-PA10 SyntaxArena -> PA11 Program IDs + PA12 template pattern/demand facts
-                 -> borrowed SemanticGraphView -> PA15-PA19 TypedProgram
-                 -> terminal LowIR text
-```
-
-This matches `spec.md` sections 2-4 and 9: identity comparisons and completed
-fact lookup are O(1) average; definitions, bodies, and emission have distinct
-monotonic demand; non-dependent retained syntax is shared; lowering consumes
-the selected binding and typed body facts without lookup or text replay. The
-retained PA10 tree and textual LowIR endpoint remain staged assignment
-boundaries; native machine IR and ELF are later PAs.
+path with retained template patterns and demanded specializations. Patterns own
+one PA10 syntax body; specializations use canonical `(pattern, TypeId...)` keys,
+parent-linked argument scopes, and the ordinary class/function, lifetime, and
+lowering owners. This follows `spec.md` sections 2-4 and 9: identity and cached
+fact lookup are O(1) average, completion is monotonic, retained syntax is shared,
+and lowering consumes selected bindings and typed facts without lookup replay.
+Native IR and ELF remain later-stage boundaries.
 
 ## Current Failure Map
 
-Turn-start baseline was 14/293; the completed function-template checkpoint is
-32/293. The complete remaining 261-test failure set has two shared groups:
+The class-template checkpoint raised PA19 from 32 to 129/293. The complete
+remaining 164-test set is:
 
 | Failures | Shared behavior | Owner |
 |---:|---|---|
-| 257 exit mismatches | Class patterns and their dependent names/layout are absent; the remaining function cases need structured complex type arguments, target-context deduction, ADL/using replay, or definition-time dependent checking. | PA12 template declaration, type, scope, lookup, and demand owners |
-| 4 LowIR mismatches | Enum/operator fallback, hidden-friend visibility, template-local control flow, and member-call distractor paths select or lower the wrong retained fact. | PA12 overload/control-flow facts and typed lowering |
-
-These failures divide architecturally into class-template identity/layout;
-dependent/current-instantiation lookup and out-of-class definitions;
-ADL/using/operator participation; remaining function deduction/type syntax;
-and instantiated PA17-PA18 value/lifetime behavior. They are sequenced at
-those stable owners, not treated as individual output cases.
+| 143 exit mismatches | Dependent/current-instantiation lookup, out-of-class and nested definitions, complex function deduction/type forms, ADL/using/operator replay, variable templates, and definition-time diagnostics are incomplete. | PA12 template scope, lookup, declaration, and demand facts |
+| 21 LowIR mismatches | Selected instantiated facts still diverge for special members/lifetimes/polymorphism or overload/ADL/control-flow cases. | PA12 selected semantic facts and PA15-PA19 typed lowering |
 
 ## Active Checkpoint
 
-Add class-template identity and on-demand layout for supported type parameters
-and defaults. A class pattern owns its retained class syntax and declaration
-scope; type lookup resolves a template-id to a specialization keyed by canonical
-pattern/argument IDs; class completion substitutes into the existing
-`AnalyzeClass` owner and then reuses PA16-PA18 layout, member, lifetime, and
-lowering facts. Collection is O(parameters + class syntax), specialization
-lookup is O(1) average, and each declaration/layout fact is monotonic and
-computed once. Validate scalar fields/methods, namespace qualification,
-forward-definition parameter renaming, default arguments, cache reuse,
-PA1-PA18 preservation, file audit, and specialization-count scaling.
+Add current-instantiation/dependent owner resolution and out-of-class class
+template member definitions. A retained member definition resolves its
+structured template-id owner through the canonical class-specialization cache,
+rebinds declaration parameter names in a parent-linked scope, and attaches to
+the existing member binding before body demand. Owner lookup is O(path length),
+specialization lookup is O(1) average, and each member definition/body remains
+single-owner and monotonic. Validate renamed/swapped parameters, nested owners,
+constructors/destructors, static data/function members, inherited/member aliases,
+PA1-PA18 preservation, file audit, and specialization reuse scaling.
 
 ## Performance Evidence
 
-| Probe | Baseline | Checkpoint result |
-|---|---|---|
-| Repeated calls to one function-template specialization | Existing declaration-only PA18 probe showed one demand push after cache reuse | 128/256/512 calls produce 128/256/512 requests, 127/255/511 cache hits, and exactly one demand push/emission. Semantic nodes are 783/1,551/3,087; instructions 519/1,031/2,055; semantic time 1.11/1.99/3.96 ms and lowering time 0.40/0.71/1.49 ms. |
+| Probe | Result |
+|---|---|
+| One demanded function-template specialization, 128/256/512 calls | Requests 128/256/512, hits 127/255/511, one demand push; semantic nodes 783/1,551/3,087 and instructions 519/1,031/2,055. |
+| One class-template specialization, 128/256/512 object uses | Requests 128/256/512, hits 127/255/511, exactly one class layout/member visit; semantic nodes 1,544/3,080/6,152, typed bytes 132,519/263,463/525,351, semantic time 1.82/3.62/7.16 ms. |
 
 ## Completed Checkpoints
 
 | Checkpoint | Final result | Principal evidence |
 |---|---|---|
-| PA18 handoff | Pass | Required PA1-PA18 through report at turn start |
-| Demanded function-template definitions | Pass | Canonical shape merge, recursive direct deduction, cached specialization upgrade/emission; PA19 improved 14 to 32 and PA1-PA18 remained 1713/1713 |
+| PA18 handoff | Pass | PA1-PA18 through report clean |
+| Demanded function-template definitions | Pass | Canonical merge/deduction/cache; PA19 14 to 32, prior 1713/1713 |
+| Canonical class-template identity/layout | Pass | Retained patterns, defaults, forward upgrade, canonical specialization shells and one-time layout; PA19 32 to 129, 13/13 focused, prior 1713/1713, audit pass |
