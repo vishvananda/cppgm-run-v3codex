@@ -433,6 +433,7 @@ struct FunctionTemplatePattern
 	NodeId declarator;
 	NodeId definition_body;
 	TypeId shape_type;
+	std::size_t required_parameter_count;
 	std::vector<NameId> type_parameters;
 	std::vector<BindingId> specialization_bindings;
 	std::vector<TypeId> specialization_arguments;
@@ -445,7 +446,7 @@ struct FunctionTemplatePattern
 		: owner(kNoScope), lexical_scope(kNoScope), name(0),
 		  specifiers(kNoNode),
 		  declarator(kNoNode), definition_body(kNoNode),
-		  shape_type(kNoType),
+		  shape_type(kNoType), required_parameter_count(0),
 		  language_linkage(LANGUAGE_LINKAGE_CPP), member_access(ACCESS_PUBLIC),
 		  defined(false),
 		  nonthrowing(false) {}

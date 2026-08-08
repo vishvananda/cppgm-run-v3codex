@@ -257,6 +257,8 @@ private:
 	bool FunctionTemplateTypeIsDependent(TypeId type) const;
 	bool DeduceFunctionTemplateType(TypeId pattern, TypeId argument,
 		std::vector<TypeId>* deduced) const;
+	std::size_t RequiredFunctionParameterCount(
+		const std::vector<ParameterInfo>& parameters) const;
 	int CompareFunctionTemplateConstraints(
 		const FunctionInfo& left, const FunctionInfo& right) const;
 	void DeduceFunctionTemplatePatterns(

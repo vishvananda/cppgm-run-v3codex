@@ -304,12 +304,17 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		constructed_target = target_record.child;
 	constructed_target = program_->types.RemoveTopCv(constructed_target);
 	const EntityId constructed_entity = EntityOf(constructed_target);
+	const bool direct_reference_cast =
+		(target_record.kind == TYPE_LVALUE_REFERENCE ||
+		 target_record.kind == TYPE_RVALUE_REFERENCE) &&
+		Conversion(operand, target) != CONVERSION_INVALID;
 	const bool constructor_cast = constructed_entity != kNoEntity &&
 		(program_->entities[constructed_entity].flavor == NAMED_STRUCT ||
 		 program_->entities[constructed_entity].flavor == NAMED_CLASS ||
 		 program_->entities[constructed_entity].flavor == NAMED_UNION) &&
 		(cast_kind.find("STATIC") != std::string::npos ||
 		 cast_kind.compare(0, 10, "OP_LPAREN:") == 0) &&
+		!direct_reference_cast &&
 		program_->types.RemoveTopCv(EffectiveType(operand.type)) !=
 			constructed_target;
 	if (constructor_cast)

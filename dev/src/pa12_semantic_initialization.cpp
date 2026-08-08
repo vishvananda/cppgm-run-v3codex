@@ -1063,8 +1063,11 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 			}
 			if (value == kNoNode)
 				throw std::runtime_error("member initializer has no value");
-			const LookupResult target_type = LookupSpelling(function_scope,
+			LookupResult target_type = LookupSpelling(function_scope,
 				arena_->Payload(id), LOOKUP_TYPE);
+			if (target_type.type == kNoType)
+				target_type.type = ResolveClassTemplateSpecialization(
+					function_scope, arena_->Payload(id));
 			if (target_type.type != kNoType &&
 				EntityOf(target_type.type) == entity)
 			{
@@ -1124,14 +1127,13 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 			if (found.ordinary != kNoBinding)
 				throw std::runtime_error(
 					"constructor initializer target is not a data member");
-			const LookupResult type = LookupSpelling(function_scope,
-				arena_->Payload(id), LOOKUP_TYPE);
 			if (program_->entities[entity].direct_base == kNoEntity ||
-				EntityOf(type.type) != program_->entities[entity].direct_base)
+				EntityOf(target_type.type) != program_->entities[entity].direct_base)
 				throw std::runtime_error(
 					"unknown constructor member initializer");
-			if (type.type_declaration != kNoBinding &&
-				!CanAccessMember(type.type_declaration, type.naming_class))
+			if (target_type.type_declaration != kNoBinding &&
+				!CanAccessMember(target_type.type_declaration,
+					target_type.naming_class))
 				throw std::runtime_error("inaccessible base initializer type");
 			if (base_initializer_seen)
 				throw std::runtime_error("duplicate base initializer");
@@ -1215,6 +1217,18 @@ void SemanticAnalyzer::AddBaseInitializationAction(EntityId entity,
 	const std::uint32_t constructor = BuildConstructorAction(base_type,
 		scope, arguments, false, list_initialization, true, true,
 		list_initialization ? initializer : kNoNode);
+	if (initializer != kNoNode && !arguments.empty() &&
+		dump_.nodes[constructor].kind == DUMP_CONSTRUCTOR_ACTION &&
+		dump_.nodes[constructor].binding != kNoBinding)
+	{
+		const FunctionInfo& selected =
+			GetFunction(dump_.nodes[constructor].binding);
+		const EntityId selected_owner =
+			program_->bindings[selected.binding].member_owner;
+		if (IsClassTemplateSpecializationEntity(selected_owner) &&
+			!selected.implicit_constructor && !selected.defaulted_constructor)
+			DemandFunction(selected.complete_constructor);
+	}
 	dump_.Add(action, constructor);
 	dump_.Add(body, action);
 	AppendFullExpressionDestructionActions(constructor, action);

@@ -1959,6 +1959,7 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 			throw std::runtime_error(
 				"function template has non-function declaration");
 		pattern.shape_type = shape_declarator.type;
+		pattern.required_parameter_count = RequiredFunctionParameterCount(shape_declarator.parameters);
 		const std::uint64_t key =
 			(static_cast<std::uint64_t>(pattern.owner) << 32) | pattern.name;
 		const CompactIndexSequence* prior_patterns =
@@ -1980,6 +1981,7 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 		if (prior_index != function_templates_.size())
 		{
 			FunctionTemplatePattern& prior = function_templates_[prior_index];
+			prior.required_parameter_count = std::min(prior.required_parameter_count, pattern.required_parameter_count);
 			if (prior.nonthrowing != pattern.nonthrowing)
 				throw std::runtime_error(
 					"conflicting function template exception specification");
@@ -2006,7 +2008,6 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 		program_->PublishFunctionTemplateName(pattern.owner, pattern.name);
 	}
 }
-
 void SemanticAnalyzer::AnalyzeNamespace(NodeId node, ScopeId scope,
 	std::uint32_t output_parent)
 {

@@ -43,9 +43,18 @@ protected:
 					"invalid trivial special-member construction");
 			const TypeRecord& object = derived.program_.types.Get(
 				derived.ExpressionObjectType(action.operand_type));
+			if (derived.program_.entities[object.entity].empty_class)
+			{
+				const DumpNode& source = derived.arena_.nodes[children[0]];
+				const NodeChildren source_children = derived.Children(children[0]);
+				if (source.kind != DUMP_CAST_EXPRESSION ||
+					source.base_projection_count == 0 || source_children.size() != 1 ||
+					derived.arena_.nodes[source_children[0]].kind != DUMP_ID_EXPRESSION)
+					(void)derived.LowerClassTransferSource(children[0]);
+				return;
+			}
 			const Operand source =
 				derived.LowerClassTransferSource(children[0]);
-			if (derived.program_.entities[object.entity].empty_class) return;
 			derived.EmitClassObjectCopy(action.operand_type,
 				source, destination);
 			return;

@@ -216,6 +216,15 @@ bool SemanticAnalyzer::DeduceFunctionTemplateType(TypeId pattern,
 	return false;
 }
 
+std::size_t SemanticAnalyzer::RequiredFunctionParameterCount(
+	const std::vector<ParameterInfo>& parameters) const
+{
+	std::size_t required = parameters.size();
+	while (required != 0 &&
+		parameters[required - 1].default_argument != kNoNode) --required;
+	return required;
+}
+
 void SemanticAnalyzer::DeduceFunctionTemplatePatterns(
 	const std::vector<std::size_t>& patterns,
 	const std::vector<ExpressionInfo>& arguments,
@@ -231,7 +240,8 @@ void SemanticAnalyzer::DeduceFunctionTemplatePatterns(
 		const TypeRecord& function_type =
 			program_->types.Get(pattern.shape_type);
 		if (function_type.kind != TYPE_FUNCTION ||
-			function_type.parameter_count != arguments.size()) continue;
+			arguments.size() < pattern.required_parameter_count ||
+			arguments.size() > function_type.parameter_count) continue;
 		const TypeId* parameters =
 			program_->types.Parameters(pattern.shape_type);
 		if (explicit_arguments &&
