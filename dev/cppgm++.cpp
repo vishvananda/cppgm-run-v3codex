@@ -574,6 +574,8 @@ int run_emit_semantics_mode(const vector<string> & args)
            << stats.constructor_member_action_visits
 		   << " constructor_base_action_visits="
 		   << stats.constructor_base_action_visits
+		   << " constructor_delegation_action_visits="
+		   << stats.constructor_delegation_action_visits
 		   << " destructor_subobject_action_visits="
 		   << stats.destructor_subobject_action_visits
 		   << " lexical_cleanup_action_visits="
@@ -678,6 +680,8 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << semantic.constructor_member_action_visits
 			 << " constructor_base_action_visits="
 			 << semantic.constructor_base_action_visits
+			 << " constructor_delegation_action_visits="
+			 << semantic.constructor_delegation_action_visits
 			 << " destructor_subobject_action_visits="
 			 << semantic.destructor_subobject_action_visits
 			 << " lexical_cleanup_action_visits="

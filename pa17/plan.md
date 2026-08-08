@@ -23,30 +23,30 @@ proportional to owned obligations and emitted IR.
 
 ## Current Failure Map
 
-Audited result: **188/233**. The landed checkpoint's original **186/231** pass
-set, both audit regressions, and all earlier stages remain intact; the
-non-overlapping failure map still contains 45 tests:
+Audited result: **193/233**. The complete non-overlapping failure map contains
+40 tests; the original pass set, both audit regressions, and all earlier stages
+remain intact:
 
 | Failures | Shared behavior | Primary owner |
 | ---: | --- | --- |
-| 11 | temporary cleanup across residual control flow | PA12 lifetime facts + PA17 lowering |
-| 1 | namespace class-array copy initialization | PA12 class-value initialization + static lowering |
-| 19 | residual operators, conversions, lookup, and ref qualification | PA12 calls/operator resolution |
-| 13 | class-value construction, initialization, copy/move, and ABI shapes | PA12 initialization + PA15-PA17 lowering |
-| 1 | residual namespace/control interaction | PA12 lookup and statement analysis |
+| 1 | aliased explicit destructor lookup | PA12 member lookup/call analysis |
+| 13 | lookup, operators, conversion ranking, and ref qualification | PA12 calls/operator resolution |
+| 19 | class-value initialization, copy/move, and ABI/storage shapes | PA12 initialization + PA15-PA17 lowering |
+| 6 | residual temporary materialization and control-flow cleanup | PA12 lifetime facts + PA17 lowering |
+| 1 | residual scoped-name/control interaction | PA12 lookup and statement analysis |
 
 ## Active Checkpoint
 
-**Active: delegating and out-of-class special-member definitions.** Apply
-`spec.md` sections 2, 3, 4, 6, and 9 to retain one canonical member identity
-from declaration through qualified definition, delegation selection, cycle
-detection, and lowering. Parsing/PA12 own definition completion, selected
-delegate identity, and ordered construction facts; PA17 lowers those facts
-without lookup or retry. Work is O(delegation chain + indexed candidates +
-emitted actions), with cycle checks bounded by in-progress state. Validate the
-basic, overloaded, and external delegating-constructor cases; out-of-class
-constructor/destructor/defaulted definitions; cycle rejection; full PA17,
-through PA16, file audit, and 32/64/128 delegation/candidate scaling.
+**Next: composite subobject copy/move storage transfer.** Apply `spec.md`
+sections 2, 6, 8, and 9 to retain canonical member/layout identity and one
+ordered transfer recipe across arrays, references, bit-fields, empty objects,
+and mixed trivial/nontrivial prefixes. PA12 special-member completion owns the
+subobject recipe; PA17 lowering consumes it through typed projections without
+layout lookup or scalar payload invention. Expected work is O(subobjects +
+emitted actions), with whole-prefix `copyobj` retained as one action. Validate
+the residual bit-field, empty-object, reference-member, array-member,
+leading-prefix, move-only aggregate, and trivial-transfer cases; full PA17,
+through PA16, audit, and 32/64/128 mixed-subobject scaling.
 
 ## Performance Evidence
 
@@ -107,6 +107,13 @@ through PA16, file audit, and 32/64/128 delegation/candidate scaling.
   were 1.115/2.065/4.029 ms; lowering medians were 0.105/0.105/0.134 ms with
   fixed 2,990 typed bytes and 262 output bytes. Required list facts and storage
   scale proportionally, while the retained destination recipe stays fixed.
+- Same-arity delegating chains at 32/64/128 links recorded exactly 32/64/128
+  typed delegation actions, 65/129/257 demand pushes, 293/581/1,157
+  instructions, and 129,191/256,807/512,039 typed bytes. Five-run semantic
+  medians were 3.056/8.727/29.650 ms. Required all-candidate work was
+  6,467/25,219/99,587 visits and 9,313/37,057/147,841 conversions (roughly 4x
+  per doubling because every link has the full same-arity overload set), while
+  actions, demand, IR, storage, and output remained linear with no retry loop.
 
 ## Completed Checkpoints
 
@@ -126,3 +133,4 @@ through PA16, file audit, and 32/64/128 delegation/candidate scaling.
 | Branch-local class values and full-expression cleanup | 160/231 -> 173/231 | Branch lifetime plus right-hand short-circuit construction-state probes pass; original pass set intact; through PA16 1,436/1,436; file audit and linear 16/32/64 cleanup probes pass |
 | Loop full-expression regions | 173/231 -> 174/231 | Direct/cast/comma/conditional discarded materialization; exact normal/unwind cleanup; focused 17/17; through PA16 1,436/1,436; file audit and linear nested/width probes pass |
 | Class direct-initialization recipes | 174/231 -> 186/231; audit 188/233 | Landed pass set gains 12 tests; scalar-list rank and narrowing regressions pass without changing the original set; through PA16 1,436/1,436; file audit and proportional list/candidate probes pass |
+| Typed constructor delegation and qualified default completion | 188/233 -> 193/233 | Positive delegation and out-of-class special members 5/5; cycle/mixed rejection 3/3; through PA16 1,436/1,436; audit and bounded 32/64/128 chain/candidate probes pass |

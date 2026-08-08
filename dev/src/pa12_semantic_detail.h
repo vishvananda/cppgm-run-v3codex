@@ -54,6 +54,7 @@ public:
 		  zero_offset_subobject_generation_(0),
 		  constructor_member_action_visits_(0),
 		  constructor_base_action_visits_(0),
+		  constructor_delegation_action_visits_(0),
 		  destructor_subobject_action_visits_(0),
 		  lexical_cleanup_action_visits_(0),
 		  unwind_cleanup_scope_visits_(0),
@@ -309,9 +310,11 @@ private:
 	void AnalyzeConversionFunction(NodeId node, ScopeId scope,
 		TypeId owner_type, AccessKind access);
 	void AnalyzeOutOfClassSpecialMember(NodeId node, ScopeId scope);
+	void CompleteDefaultedDefaultConstructor(EntityId entity,
+		BindingId constructor);
 	void RegisterClassSpecialMember(BindingId binding);
 	void ConfigureAssignmentSpecialMember(BindingId binding,
-		NodeId initializer);
+		NodeId initializer, bool defaulted_inline = true);
 	bool AnalyzeQualifiedAssignmentStatement(NodeId node, ScopeId scope,
 		std::uint32_t output_parent);
 	void CompleteClassSpecialMembers(EntityId entity);
@@ -362,7 +365,7 @@ private:
 	BindingId EnsureImplicitDestructor(EntityId entity);
 	const std::vector<BindingId>& ConstructorCandidates(EntityId entity) const;
 	BindingId DestructorForType(TypeId type) const;
-	bool IsEmptyUnionDestructor(BindingId destructor) const;
+	bool IsElidableAutomaticDestructor(BindingId destructor) const;
 	EntityId DestructedEntity(TypeId type) const;
 	BindingId SelectConstructor(ScopeId scope,
 		const std::vector<NodeId>& argument_syntax,
@@ -398,6 +401,7 @@ private:
 	void AddConstructorMemberActions(const FunctionInfo& constructor,
 		ScopeId function_scope, const std::vector<BindingId>& parameters,
 		std::uint32_t body);
+	void RecordDelegatingConstructor(BindingId source, BindingId selected);
 	void AddBaseInitializationAction(EntityId entity, NodeId initializer,
 		ScopeId scope, std::uint32_t body);
 	void AddMemberInitializationAction(BindingId member, NodeId initializer,
@@ -576,6 +580,7 @@ private:
 	std::uint32_t zero_offset_subobject_generation_;
 	std::size_t constructor_member_action_visits_;
 	std::size_t constructor_base_action_visits_;
+	std::size_t constructor_delegation_action_visits_;
 	std::size_t destructor_subobject_action_visits_;
 	std::size_t lexical_cleanup_action_visits_;
 	std::size_t unwind_cleanup_scope_visits_;

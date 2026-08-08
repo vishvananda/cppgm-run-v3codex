@@ -151,6 +151,7 @@ bool SemanticAnalyzer::IsDeclaration(NodeId node) const
 		arena_->IsTag(node, "namespace-definition") ||
 		arena_->IsTag(node, "namespace-alias-definition") ||
 		arena_->IsTag(node, "template-declaration") ||
+		arena_->IsTag(node, "special-member-declaration") ||
 		arena_->IsTag(node, "special-member-definition") ||
 		arena_->IsTag(node, "class-specifier") ||
 		arena_->IsTag(node, "class-forward-declaration") ||
@@ -2145,7 +2146,8 @@ void SemanticAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 		AnalyzeFunction(node, scope, output_parent);
 		return;
 	}
-	if (arena_->IsTag(node, "special-member-definition"))
+	if (arena_->IsTag(node, "special-member-definition") ||
+		arena_->IsTag(node, "special-member-declaration"))
 	{
 		AnalyzeOutOfClassSpecialMember(node, scope);
 		return;
@@ -2302,7 +2304,8 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			ValidateFunctionRefQualifier(function);
 			ValidateNonmemberOperator(function);
 			const NodeId function_initializer = FindChild(item, "initializer");
-			ConfigureAssignmentSpecialMember(function, function_initializer);
+			ConfigureAssignmentSpecialMember(function, function_initializer,
+				!declared_path.global && declared_path.Size() <= 1);
 			const NodeId special = function_initializer == kNoNode ? kNoNode :
 				FindChild(function_initializer, "special-initializer");
 			if (special != kNoNode && arena_->Payload(special) == "delete")
@@ -2907,6 +2910,8 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 			constructor_member_action_visits_;
 		stats_->constructor_base_action_visits =
 			constructor_base_action_visits_;
+		stats_->constructor_delegation_action_visits =
+			constructor_delegation_action_visits_;
 		stats_->destructor_subobject_action_visits =
 			destructor_subobject_action_visits_;
 		stats_->lexical_cleanup_action_visits =
@@ -2966,35 +2971,4 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 	program_ = 0;
 }
 }
-SemanticAnalysisStats::SemanticAnalysisStats()
-	: tokens(0), syntax_nodes(0), semantic_nodes(0), semantic_edges(0),
-	  interned_names(0), canonical_types(0), scopes(0), declarations(0),
-	  expressions(0), class_layouts(0), class_layout_member_visits(0),
-	  class_zero_offset_subobject_visits(0),
-	  special_member_fact_lookups(0), special_member_subobject_visits(0),
-	  constructor_member_action_visits(0),
-	  constructor_base_action_visits(0),
-	  destructor_subobject_action_visits(0),
-	  lexical_cleanup_action_visits(0),
-	  unwind_cleanup_scope_visits(0), unwind_cleanup_action_visits(0),
-	  namespace_object_actions(0),
-	  lookup_queries(0), lookup_scope_visits(0),
-	  lookup_edge_visits(0), lookup_cache_hits(0), lookup_cache_misses(0),
-	  lookup_cache_invalidations(0), lookup_cache_dependency_edges(0),
-	  lookup_cache_invalidation_pushes(0), associated_scope_visits(0),
-	  associated_declaration_visits(0),
-	  overload_candidates(0),
-	  overload_order_comparisons(0), conversion_checks(0),
-	  call_conversion_cache_hits(0), call_conversion_cache_misses(0),
-	  braced_fact_cache_hits(0), braced_fact_cache_misses(0),
-	  function_signature_lookups(0), access_checks(0),
-	  access_path_visits(0), access_grant_probes(0),
-	  template_specialization_requests(0),
-	  template_specialization_cache_hits(0), demand_worklist_pushes(0),
-	  demanded_function_emissions(0), default_constructor_emissions(0),
-	  semantic_storage_bytes(0), peak_stage_storage_bytes(0),
-	  analysis_nanoseconds(0), render_nanoseconds(0), elapsed_nanoseconds(0)
-{
-}
-
 }

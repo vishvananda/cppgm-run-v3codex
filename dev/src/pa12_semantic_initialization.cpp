@@ -847,6 +847,42 @@ void SemanticAnalyzer::AddMemberInitializationAction(BindingId member_id,
 	++expression_count_;
 }
 
+void SemanticAnalyzer::RecordDelegatingConstructor(BindingId source,
+	BindingId selected)
+{
+	const auto complete_identity = [this](BindingId binding)
+	{
+		binding = program_->bindings[binding].canonical;
+		const FunctionInfo& function = GetFunction(binding);
+		return function.complete_constructor == kNoBinding ?
+			binding : function.complete_constructor;
+	};
+	source = complete_identity(source);
+	selected = complete_identity(selected);
+	FunctionInfo& source_info = GetMutableFunction(source);
+	if (source_info.delegated_constructor != kNoBinding)
+	{
+		if (complete_identity(source_info.delegated_constructor) != selected)
+			throw std::logic_error(
+				"constructor has conflicting delegation facts");
+		return;
+	}
+	BindingId cursor = selected;
+	for (std::size_t depth = 0; depth <= functions_.size(); ++depth)
+	{
+		if (cursor == source)
+			throw std::runtime_error("delegating constructor cycle");
+		const BindingId next = GetFunction(cursor).delegated_constructor;
+		if (next == kNoBinding)
+		{
+			source_info.delegated_constructor = selected;
+			return;
+		}
+		cursor = complete_identity(next);
+	}
+	throw std::logic_error("cyclic constructor delegation fact graph");
+}
+
 void SemanticAnalyzer::AddConstructorMemberActions(
 	const FunctionInfo& constructor, ScopeId function_scope,
 	const std::vector<BindingId>& parameters,
@@ -861,6 +897,13 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 	constructor_initializer_touched_.clear();
 	NodeId base_initializer = kNoNode;
 	bool base_initializer_seen = false;
+	std::size_t initializer_count = 0;
+	if (constructor.constructor_initializer != kNoNode)
+		for (std::uint32_t edge = arena_->FirstEdge(
+			constructor.constructor_initializer); edge != kNoEdge;
+			edge = arena_->NextEdge(edge))
+			if (arena_->IsTag(arena_->EdgeChild(edge), "mem-initializer"))
+				++initializer_count;
 	if (constructor.inherited_constructor_source != kNoBinding)
 	{
 		const EntityId base = program_->entities[entity].direct_base;
@@ -916,6 +959,43 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 			}
 			if (value == kNoNode)
 				throw std::runtime_error("member initializer has no value");
+			const LookupResult target_type = LookupSpelling(function_scope,
+				arena_->Payload(id), LOOKUP_TYPE);
+			if (target_type.type != kNoType &&
+				EntityOf(target_type.type) == entity)
+			{
+				if (initializer_count != 1)
+					throw std::runtime_error(
+						"delegating initializer must be the only initializer");
+				std::vector<NodeId> arguments;
+				const bool list_initialization =
+					arena_->IsTag(value, "braced-init-list");
+				if (arena_->IsTag(value, "paren-argument-list") ||
+					list_initialization)
+					for (std::uint32_t argument_edge = arena_->FirstEdge(value);
+						argument_edge != kNoEdge;
+						argument_edge = arena_->NextEdge(argument_edge))
+						arguments.push_back(arena_->EdgeChild(argument_edge));
+				else arguments.push_back(value);
+				const TypeId owner_type = program_->entities[entity].type;
+				const std::uint32_t action = MakeDump(
+					DUMP_DELEGATING_INITIALIZER_ACTION, owner_type,
+					VALUE_NONE, program_->entities[entity].identity_name);
+				const bool base_entry =
+					program_->bindings[constructor.binding].constructor_base_entry;
+				const std::uint32_t delegate = BuildConstructorAction(owner_type,
+					function_scope, arguments, false, list_initialization,
+					base_entry, true,
+					list_initialization ? value : kNoNode);
+				RecordDelegatingConstructor(
+					constructor.binding, dump_.nodes[delegate].binding);
+				dump_.Add(action, delegate);
+				AppendFullExpressionDestructionActions(delegate, action);
+				dump_.Add(body, action);
+				++constructor_delegation_action_visits_;
+				++expression_count_;
+				return;
+			}
 			if (found.ordinary != kNoBinding &&
 				program_->bindings[found.ordinary].non_static_data_member &&
 				program_->bindings[found.ordinary].member_owner == entity)
@@ -2171,7 +2251,7 @@ std::uint32_t SemanticAnalyzer::MakeTemporaryDestructorAction(
 	if (!CanAccessMember(destructor, entity))
 		throw std::runtime_error("inaccessible temporary destructor");
 	if (program_->entities[entity].trivial_destructor ||
-		IsEmptyUnionDestructor(destructor))
+		IsElidableAutomaticDestructor(destructor))
 		return kNoDumpEdge;
 	const std::uint32_t action = MakeDestructorAction(
 		type, destructor, kNoBinding);
@@ -2290,19 +2370,28 @@ void SemanticAnalyzer::AppendUnwindDestructionActions(ScopeId scope,
 	}
 }
 
-bool SemanticAnalyzer::IsEmptyUnionDestructor(BindingId destructor) const
+bool SemanticAnalyzer::IsElidableAutomaticDestructor(
+	BindingId destructor) const
 {
 	if (destructor == kNoBinding || destructor >= program_->bindings.size())
 		return false;
 	const BindingRecord& binding = program_->bindings[destructor];
-	if (binding.member_owner == kNoEntity ||
-		program_->entities[binding.member_owner].flavor != NAMED_UNION)
+	if (binding.member_owner == kNoEntity)
 		return false;
 	const FunctionInfo& info = GetFunction(destructor);
-	if (info.definition_body == kNoNode ||
-		FirstSemanticChild(info.definition_body) != kNoNode)
+	const bool union_object =
+		program_->entities[binding.member_owner].flavor == NAMED_UNION;
+	const bool empty_definition = info.definition_body != kNoNode &&
+		FirstSemanticChild(info.definition_body) == kNoNode;
+	const bool elidable_out_of_line = !binding.inline_function &&
+		(empty_definition || info.defaulted_destructor);
+	if ((!union_object || !empty_definition) && !elidable_out_of_line)
 		return false;
 	const EntityId entity = binding.member_owner;
+	const EntityId base = program_->entities[entity].direct_base;
+	if (base != kNoEntity &&
+		!program_->entities[base].trivial_destructor)
+		return false;
 	if (entity >= entity_data_members_.size()) return true;
 	const std::vector<BindingId>& variants = entity_data_members_[entity];
 	for (std::size_t i = 0; i < variants.size(); ++i)
@@ -2329,7 +2418,7 @@ void SemanticAnalyzer::AddLifetimeObligation(ScopeId scope,
 	if (!CanAccessMember(destructor, entity))
 		throw std::runtime_error("inaccessible destructor");
 	if (program_->entities[entity].trivial_destructor ||
-		IsEmptyUnionDestructor(destructor)) return;
+		IsElidableAutomaticDestructor(destructor)) return;
 	if (scope_lifetimes_.size() <= scope)
 		scope_lifetimes_.resize(static_cast<std::size_t>(scope) + 1);
 	if (nearest_lifetime_scopes_.size() <= scope)

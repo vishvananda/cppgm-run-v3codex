@@ -112,7 +112,7 @@ void SemanticAnalyzer::RegisterClassSpecialMember(BindingId binding)
 }
 
 void SemanticAnalyzer::ConfigureAssignmentSpecialMember(BindingId binding,
-	NodeId initializer)
+	NodeId initializer, bool defaulted_inline)
 {
 	binding = program_->bindings[binding].canonical;
 	RegisterClassSpecialMember(binding);
@@ -133,7 +133,8 @@ void SemanticAnalyzer::ConfigureAssignmentSpecialMember(BindingId binding,
 	function.defined = true;
 	function.deferred = !function.deleted_special_member;
 	BindingRecord& declaration = program_->bindings[binding];
-	declaration.inline_function = declaration.inline_function || defaulted;
+	declaration.inline_function = declaration.inline_function ||
+		(defaulted && defaulted_inline);
 	const EntityId entity = declaration.member_owner;
 	if (defaulted && entity != kNoEntity &&
 		program_->entities[entity].layout_complete)
@@ -601,7 +602,8 @@ void SemanticAnalyzer::AddSynthesizedConstructorBody(
 		DUMP_SPECIAL_MEMBER_CONSTRUCTION_ACTION, owner.type);
 	dump_.nodes[construction].object_binding = parameters[0];
 
-	if (function.trivial_special_member && !owner.empty_class)
+	if ((function.trivial_special_member ||
+		function.synthesized_storage_copy) && !owner.empty_class)
 	{
 		const std::uint32_t step = MakeDump(
 			DUMP_SPECIAL_MEMBER_SUBOBJECT_ACTION, owner.type);

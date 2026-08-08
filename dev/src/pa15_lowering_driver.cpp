@@ -188,6 +188,8 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 				semantic_stats.constructor_member_action_visits;
 			semantic.constructor_base_action_visits +=
 				semantic_stats.constructor_base_action_visits;
+			semantic.constructor_delegation_action_visits +=
+				semantic_stats.constructor_delegation_action_visits;
 			semantic.destructor_subobject_action_visits +=
 				semantic_stats.destructor_subobject_action_visits;
 			semantic.lexical_cleanup_action_visits +=

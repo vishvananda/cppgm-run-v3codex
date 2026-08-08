@@ -147,6 +147,35 @@ protected:
 			derived.CompleteFullExpressionCleanup();
 	}
 
+	void LowerDelegatingInitializationAction(const DumpNode& action,
+		const NodeChildren& children)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (action.kind != DUMP_DELEGATING_INITIALIZER_ACTION ||
+			derived.current_this_binding_ == kNoBinding || children.empty() ||
+			derived.arena_.nodes[children[0]].kind != DUMP_CONSTRUCTOR_ACTION)
+			throw std::logic_error(
+				"delegating initialization is outside a constructor");
+		if (children.size() > 1)
+			derived.BeginFullExpressionCleanup(children, 1);
+		const Operand destination = derived.LoadStorage(
+			derived.StorageFor(derived.current_this_binding_, LowPtr()), LowPtr());
+		derived.LowerConstructorAction(children[0], destination);
+		if (children.size() > 1)
+			derived.CompleteFullExpressionCleanup();
+	}
+
+	bool TryLowerConstructorInitializationAction(const DumpNode& action,
+		const NodeChildren& children)
+	{
+		if (action.kind == DUMP_BASE_INITIALIZER_ACTION)
+			LowerBaseInitializationAction(action, children);
+		else if (action.kind == DUMP_DELEGATING_INITIALIZER_ACTION)
+			LowerDelegatingInitializationAction(action, children);
+		else return false;
+		return true;
+	}
+
 	void LowerConstructorAggregateLeaf(const DumpNode& action,
 		const NodeChildren& values, const ConstructorMemberPath& path,
 		const Operand& retained_destination)

@@ -67,4 +67,35 @@ void ConsumeSemanticTranslationUnit(const std::string& path,
 	PublishDriverStats(source, syntax, started, stats);
 }
 
+SemanticAnalysisStats::SemanticAnalysisStats()
+	: tokens(0), syntax_nodes(0), semantic_nodes(0), semantic_edges(0),
+	  interned_names(0), canonical_types(0), scopes(0), declarations(0),
+	  expressions(0), class_layouts(0), class_layout_member_visits(0),
+	  class_zero_offset_subobject_visits(0),
+	  special_member_fact_lookups(0), special_member_subobject_visits(0),
+	  constructor_member_action_visits(0),
+	  constructor_base_action_visits(0),
+	  constructor_delegation_action_visits(0),
+	  destructor_subobject_action_visits(0),
+	  lexical_cleanup_action_visits(0),
+	  unwind_cleanup_scope_visits(0), unwind_cleanup_action_visits(0),
+	  namespace_object_actions(0),
+	  lookup_queries(0), lookup_scope_visits(0),
+	  lookup_edge_visits(0), lookup_cache_hits(0), lookup_cache_misses(0),
+	  lookup_cache_invalidations(0), lookup_cache_dependency_edges(0),
+	  lookup_cache_invalidation_pushes(0), associated_scope_visits(0),
+	  associated_declaration_visits(0), overload_candidates(0),
+	  overload_order_comparisons(0), conversion_checks(0),
+	  call_conversion_cache_hits(0), call_conversion_cache_misses(0),
+	  braced_fact_cache_hits(0), braced_fact_cache_misses(0),
+	  function_signature_lookups(0), access_checks(0),
+	  access_path_visits(0), access_grant_probes(0),
+	  template_specialization_requests(0),
+	  template_specialization_cache_hits(0), demand_worklist_pushes(0),
+	  demanded_function_emissions(0), default_constructor_emissions(0),
+	  semantic_storage_bytes(0), peak_stage_storage_bytes(0),
+	  analysis_nanoseconds(0), render_nanoseconds(0), elapsed_nanoseconds(0)
+{
+}
+
 }

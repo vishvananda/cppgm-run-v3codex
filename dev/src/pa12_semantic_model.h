@@ -75,6 +75,7 @@ enum DumpKind
 	DUMP_SPECIAL_MEMBER_SUBOBJECT_ACTION,
 	DUMP_INITIALIZER_ACTION,
 	DUMP_BASE_INITIALIZER_ACTION,
+	DUMP_DELEGATING_INITIALIZER_ACTION,
 	DUMP_MEMBER_EXPRESSION,
 	DUMP_NEW_EXPRESSION,
 	DUMP_DELETE_EXPRESSION,
@@ -292,6 +293,7 @@ struct FunctionInfo
 {
 	BindingId binding;
 	BindingId inherited_constructor_source;
+	BindingId complete_constructor, delegated_constructor;
 	ScopeId owner;
 	TypeId type, signature;
 	TypeId conversion_target;
@@ -320,10 +322,12 @@ struct FunctionInfo
 	bool defaulted_special_member;
 	bool deleted_special_member;
 	bool trivial_special_member;
+	bool synthesized_storage_copy;
 	bool ordinary_visible;
 	std::uint8_t demand_state;
 	FunctionInfo()
 		: binding(kNoBinding), inherited_constructor_source(kNoBinding),
+		  complete_constructor(kNoBinding), delegated_constructor(kNoBinding),
 		  owner(kNoScope), type(kNoType), signature(kNoType),
 		  conversion_target(kNoType), member_owner(kNoType),
 		  friend_of(kNoEntity), lexical_scope(kNoScope),
@@ -337,6 +341,7 @@ struct FunctionInfo
 		  deleted_destructor(false), special_member(SPECIAL_MEMBER_NONE),
 		  implicit_special_member(false), defaulted_special_member(false),
 		  deleted_special_member(false), trivial_special_member(false),
+		  synthesized_storage_copy(false),
 		  ordinary_visible(true),
 		  demand_state(0) {}
 };

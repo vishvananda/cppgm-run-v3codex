@@ -2096,11 +2096,7 @@ private:
 			LowerMemberInitializationAction(record, children);
 			return;
 		}
-		if (record.kind == DUMP_BASE_INITIALIZER_ACTION)
-		{
-			LowerBaseInitializationAction(record, children);
-			return;
-		}
+		if (TryLowerConstructorInitializationAction(record, children)) return;
 		if (record.kind == DUMP_DESTRUCTOR_ACTION)
 		{
 			LowerDestructorAction(record);

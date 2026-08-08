@@ -110,6 +110,9 @@ void SemanticAnalyzer::RenderLine(const DumpNode& node, std::size_t depth)
 	case DUMP_BASE_INITIALIZER_ACTION:
 		output_ << "base-initializer-action "
 			<< program_->RenderType(node.type); break;
+	case DUMP_DELEGATING_INITIALIZER_ACTION:
+		output_ << "delegating-initializer-action "
+			<< program_->RenderType(node.type); break;
 	case DUMP_MEMBER_EXPRESSION:
 		output_ << "member-expression " << category << ' '
 			<< program_->RenderType(node.type) << ' '

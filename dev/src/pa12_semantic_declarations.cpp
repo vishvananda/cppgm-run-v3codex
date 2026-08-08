@@ -1201,6 +1201,8 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 	FunctionInfo& info = GetMutableFunction(constructor);
 	info.member_owner = owner_type;
 	info.constructor = true;
+	if (info.complete_constructor == kNoBinding)
+		info.complete_constructor = info.binding;
 	ValidateFunctionRefQualifier(constructor);
 	info.defaulted_constructor = info.defaulted_constructor || defaulted;
 	info.deleted_constructor = info.deleted_constructor || deleted;
@@ -1291,9 +1293,7 @@ void SemanticAnalyzer::AnalyzeConversionFunction(NodeId node, ScopeId scope,
 	if (std::find(functions.begin(), functions.end(), function) ==
 		functions.end()) functions.push_back(function);
 }
-
-void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
-	ScopeId scope)
+void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node, ScopeId scope)
 {
 	const NodeId declarator = FindChild(node, "declarator");
 	if (declarator == kNoNode)
@@ -1385,11 +1385,14 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 		info.deleted_special_member =
 			info.deleted_special_member || deleted;
 		info.deferred = !info.deleted_special_member;
+		DemandFunction(special);
 		current_class_context_ = previous_class;
 		return;
 	}
 	if (constructor_definition)
 	{
+		if (info.complete_constructor == kNoBinding)
+			info.complete_constructor = info.binding;
 		info.constructor_initializer = FindChild(node, "ctor-initializer");
 		info.defaulted_constructor = info.defaulted_constructor || defaulted;
 		info.deleted_constructor = info.deleted_constructor || deleted;
@@ -1407,8 +1410,11 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 			info.deleted_constructor = implicitly_deleted;
 			info.deleted_special_member = implicitly_deleted;
 			info.trivial_special_member = false;
+			info.synthesized_storage_copy = trivial;
 			program_->bindings[special].nonthrowing = nonthrowing;
 		}
+		else if (defaulted)
+			CompleteDefaultedDefaultConstructor(entity, special);
 	}
 	else
 	{
@@ -1429,11 +1435,11 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 		program_->entities[entity].trivial_destructor = false;
 		(void)EnsureDestructorBaseEntry(special);
 	}
+	DemandFunction(special);
 	current_class_context_ = previous_class;
 }
 
-TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope,
-	const std::string& hint, bool elaborated)
+TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::string& hint, bool elaborated)
 {
 	std::string spelling = arena_->Payload(node);
 	if (spelling.empty()) spelling = hint;
@@ -2209,6 +2215,8 @@ BindingId SemanticAnalyzer::EnsureConstructorBaseEntry(BindingId constructor)
 
 	FunctionInfo info = source_info;
 	info.binding = base_entry;
+	info.complete_constructor = source_info.complete_constructor == kNoBinding ?
+		constructor : source_info.complete_constructor;
 	info.ordinary_visible = false;
 	info.demand_state = 0;
 	if (function_fact_by_binding_.size() <= base_entry)

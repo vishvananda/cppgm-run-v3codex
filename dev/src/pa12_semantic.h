@@ -34,6 +34,7 @@ struct SemanticAnalysisStats
 	std::size_t special_member_subobject_visits;
 	std::size_t constructor_member_action_visits;
 	std::size_t constructor_base_action_visits;
+	std::size_t constructor_delegation_action_visits;
 	std::size_t destructor_subobject_action_visits;
 	std::size_t lexical_cleanup_action_visits;
 	std::size_t unwind_cleanup_scope_visits;
