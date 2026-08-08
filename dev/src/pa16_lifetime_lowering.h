@@ -188,8 +188,25 @@ protected:
 			else if (derived.current_result_.kind == LOW_VOID)
 				(void)derived.LowerValue(children[0]);
 			else if (derived.current_result_reference_)
-				result_value = derived.AddressOfStorage(
-					derived.LowerStorage(children[0]));
+			{
+				const DumpNode& returned = derived.arena_.nodes[children[0]];
+				if (returned.category != VALUE_PRVALUE)
+					result_value = derived.AddressOfStorage(
+						derived.LowerStorage(children[0]));
+				else
+				{
+					const LowType type =
+						derived.LowerExpressionType(returned.type);
+					const Operand slot(derived.EnsureGeneratedSlot(
+						children[0], "retref", type), type);
+					Instruction store(Instruction::STORE);
+					store.type = type;
+					store.first = derived.LowerValue(children[0], type);
+					store.second = slot;
+					derived.Emit(store);
+					result_value = derived.AddressOfStorage(slot);
+				}
+			}
 			else
 			{
 				const Operand value = derived.LowerValue(children[0],

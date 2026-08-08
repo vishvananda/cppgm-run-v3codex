@@ -1953,6 +1953,7 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope)
 		const std::size_t index = function_templates_.size();
 		function_templates_.push_back(pattern);
 		template_function_sets_.Ensure(key).Push(index);
+		program_->PublishFunctionTemplateName(pattern.owner, pattern.name);
 	}
 }
 

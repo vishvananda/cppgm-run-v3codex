@@ -176,6 +176,8 @@ private:
 		std::vector<BindingId>* result);
 	std::vector<std::size_t> FindFunctionTemplates(ScopeId scope,
 		const std::string& spelling);
+	std::vector<ScopeId> FindFunctionTemplateOwners(ScopeId scope,
+		const std::string& spelling);
 	std::vector<BindingId> FunctionTemplateTargetCandidates(
 		ScopeId scope, const std::string& spelling, TypeId target);
 	bool AnalyzeFunctionId(NodeId node, ScopeId scope, TypeId target,
@@ -325,6 +327,10 @@ private:
 	ExpressionInfo AnalyzeBinary(NodeId node, ScopeId scope);
 	ExpressionInfo AnalyzeAssignment(NodeId node, ScopeId scope);
 	ExpressionInfo AnalyzeCast(NodeId node, ScopeId scope);
+	bool AnalyzeParenthesizedFunctionTemplateCast(NodeId type_id,
+		NodeId operand, ScopeId scope, ExpressionInfo* result);
+	void AppendParenthesizedCallArguments(NodeId node,
+		std::vector<NodeId>* arguments) const;
 	ExpressionInfo AnalyzeConditional(NodeId node, ScopeId scope);
 	ExpressionInfo BuildClassConditional(std::uint32_t condition,
 		const ExpressionInfo& yes, const ExpressionInfo& no, TypeId type,

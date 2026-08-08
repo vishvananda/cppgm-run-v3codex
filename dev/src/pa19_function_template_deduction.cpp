@@ -170,54 +170,44 @@ void SemanticAnalyzer::DeduceFunctionTemplates(ScopeId scope,
 	const NamePath path = ParseNamePath(base);
 	const NameId name = path.Last();
 	if (name == 0) return;
-	ScopeId visible_owner = kNoScope;
-	if (path.global || path.Size() > 1)
-		visible_owner = ResolveOwner(scope, path);
-	else
-		for (ScopeId current = scope; current != kNoScope; )
-		{
-			const std::uint64_t key =
-				(static_cast<std::uint64_t>(current) << 32) | name;
-			if (template_function_sets_.Find(key))
-			{
-				visible_owner = current;
-				break;
-			}
-			current = current < scope_parents_.size() ?
-				scope_parents_[current] : kNoScope;
-		}
-	if (visible_owner == kNoScope) return;
-	const std::uint64_t visible_key =
-		(static_cast<std::uint64_t>(visible_owner) << 32) | name;
-	const CompactIndexSequence* found =
-		template_function_sets_.Find(visible_key);
-	if (!found) return;
-	const std::vector<std::size_t> patterns = found->Copy();
-	std::vector<BindingId> specializations;
-	DeduceFunctionTemplatePatterns(patterns, arguments, &specializations,
-		explicit_id ? &explicit_arguments : 0);
-	for (std::size_t i = 0; i < specializations.size(); ++i)
+	const std::vector<ScopeId> visible_owners =
+		FindFunctionTemplateOwners(scope, base);
+	for (std::size_t owner = 0; owner < visible_owners.size(); ++owner)
 	{
-		const BindingId source = specializations[i];
-		const BindingRecord& source_record = program_->bindings[source];
-		if (source_record.owner == visible_owner) continue;
-		const FunctionInfo& function = GetFunction(source);
-		const FunctionSignatureKey signature_key(visible_owner, name,
-			function.signature);
-		++function_signature_lookups_;
-		if (function_declarations_.Find(signature_key) != kNoBinding) continue;
-		++function_signature_lookups_;
-		if (using_function_declarations_.Find(signature_key) != kNoBinding)
-			continue;
-		const BindingId alias = program_->AddBinding(visible_owner,
-			BIND_FUNCTION, name, function.type, false, 0, NAMED_NONE, 0,
-			source);
-		CompactIndexSequence& aliases = function_sets_.Ensure(visible_key);
-		CompactIndexSequence& ordinary_aliases =
-			ordinary_function_sets_.Ensure(visible_key);
-		aliases.Push(alias);
-		ordinary_aliases.Push(alias);
-		using_function_declarations_.Insert(signature_key, alias);
+		const ScopeId visible_owner = visible_owners[owner];
+		const std::uint64_t visible_key =
+			(static_cast<std::uint64_t>(visible_owner) << 32) | name;
+		const CompactIndexSequence* found =
+			template_function_sets_.Find(visible_key);
+		if (!found) continue;
+		const std::vector<std::size_t> patterns = found->Copy();
+		std::vector<BindingId> specializations;
+		DeduceFunctionTemplatePatterns(patterns, arguments, &specializations,
+			explicit_id ? &explicit_arguments : 0);
+		for (std::size_t i = 0; i < specializations.size(); ++i)
+		{
+			const BindingId source = specializations[i];
+			const BindingRecord& source_record = program_->bindings[source];
+			if (source_record.owner == visible_owner) continue;
+			const FunctionInfo& function = GetFunction(source);
+			const FunctionSignatureKey signature_key(visible_owner, name,
+				function.signature);
+			++function_signature_lookups_;
+			if (function_declarations_.Find(signature_key) != kNoBinding)
+				continue;
+			++function_signature_lookups_;
+			if (using_function_declarations_.Find(signature_key) != kNoBinding)
+				continue;
+			const BindingId alias = program_->AddBinding(visible_owner,
+				BIND_FUNCTION, name, function.type, false, 0, NAMED_NONE, 0,
+				source);
+			CompactIndexSequence& aliases = function_sets_.Ensure(visible_key);
+			CompactIndexSequence& ordinary_aliases =
+				ordinary_function_sets_.Ensure(visible_key);
+			aliases.Push(alias);
+			ordinary_aliases.Push(alias);
+			using_function_declarations_.Insert(signature_key, alias);
+		}
 	}
 }
 

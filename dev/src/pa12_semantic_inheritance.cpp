@@ -268,11 +268,16 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 {
 	const NodeId type_id = FindChild(node, "type-id");
 	if (type_id == kNoNode) throw std::runtime_error("cast without type-id");
-	const TypeId target = BuildTypeId(type_id, scope);
 	NodeId operand_node = kNoNode;
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
 		if (arena_->EdgeChild(edge) != type_id) operand_node = arena_->EdgeChild(edge);
+	ExpressionInfo parenthesized_call;
+	if (arena_->Payload(node).compare(0, 10, "OP_LPAREN:") == 0 &&
+		AnalyzeParenthesizedFunctionTemplateCast(
+			type_id, operand_node, scope, &parenthesized_call))
+		return parenthesized_call;
+	const TypeId target = BuildTypeId(type_id, scope);
 	// Expression analysis can intern more types and reallocate TypeTable storage.
 	// Keep the cast shape by value across the recursive operand analysis.
 	const TypeRecord target_record = program_->types.Get(target);
@@ -441,6 +446,53 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 	result.value = operand.value;
 	++expression_count_;
 	return result;
+}
+
+void SemanticAnalyzer::AppendParenthesizedCallArguments(NodeId node,
+	std::vector<NodeId>* arguments) const
+{
+	if (arena_->IsTag(node, "binary-expression") &&
+		PayloadSource(node) == ",")
+	{
+		for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
+			edge = arena_->NextEdge(edge))
+			AppendParenthesizedCallArguments(
+				arena_->EdgeChild(edge), arguments);
+		return;
+	}
+	arguments->push_back(node);
+}
+
+bool SemanticAnalyzer::AnalyzeParenthesizedFunctionTemplateCast(
+	NodeId type_id, NodeId operand, ScopeId scope, ExpressionInfo* result)
+{
+	const NodeId specifiers = FindChild(type_id, "type-specifier-seq");
+	const NodeId name = specifiers == kNoNode ? kNoNode :
+		FirstSemanticChild(specifiers);
+	if (name == kNoNode || !arena_->IsTag(name, "type-name") ||
+		operand == kNoNode || !arena_->IsTag(operand, "parenthesized-expression"))
+		return false;
+	const std::string spelling = PayloadSource(name);
+	if (FindFunctionTemplates(scope, spelling).empty()) return false;
+	const NodeId argument_root = FirstSemanticChild(operand);
+	std::vector<NodeId> argument_syntax;
+	if (argument_root != kNoNode)
+		AppendParenthesizedCallArguments(argument_root, &argument_syntax);
+	std::vector<ExpressionInfo> arguments;
+	arguments.reserve(argument_syntax.size());
+	for (std::size_t i = 0; i < argument_syntax.size(); ++i)
+		arguments.push_back(AnalyzeExpression(argument_syntax[i], scope));
+	DeduceFunctionTemplates(scope, spelling, arguments);
+	const std::vector<BindingId> candidates =
+		FunctionCallCandidates(scope, spelling);
+	if (candidates.empty())
+		throw std::runtime_error(
+			"parenthesized function template has no specialization");
+	const BindingId selected = SelectOverload(
+		scope, argument_syntax, arguments, candidates);
+	*result = BuildResolvedCall(selected, scope, argument_syntax,
+		arguments, 0, kNoType);
+	return true;
 }
 
 ExpressionInfo SemanticAnalyzer::AnalyzeImplicitDataMember(

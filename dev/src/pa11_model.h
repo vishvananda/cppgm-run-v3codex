@@ -338,12 +338,22 @@ struct LookupResult
 	std::size_t OrdinaryCount() const;
 	BindingId OrdinaryAt(std::size_t index) const;
 	void AddOrdinary(BindingId binding);
-	std::size_t OrdinaryStorageBytes() const;
+	bool HasFunctionTemplateLookup() const;
+	void BeginFunctionTemplateLookup();
+	std::size_t FunctionTemplateOwnerCount() const;
+	ScopeId FunctionTemplateOwnerAt(std::size_t index) const;
+	void AddFunctionTemplateOwner(ScopeId owner);
+	std::size_t DynamicStorageBytes() const;
 
 private:
 	BindingId extra_ordinary_inline_[2];
 	std::vector<BindingId> extra_ordinary_overflow_;
 	std::size_t extra_ordinary_count_;
+	ScopeId function_template_owner_;
+	ScopeId extra_function_template_owner_inline_[2];
+	std::vector<ScopeId> extra_function_template_owner_overflow_;
+	std::size_t extra_function_template_owner_count_;
+	bool function_template_lookup_;
 };
 
 enum LookupKind
@@ -351,7 +361,8 @@ enum LookupKind
 	LOOKUP_NAMESPACE,
 	LOOKUP_TYPE,
 	LOOKUP_ORDINARY,
-	LOOKUP_SCOPE_CARRIER
+	LOOKUP_SCOPE_CARRIER,
+	LOOKUP_FUNCTION_TEMPLATE
 };
 
 class Program
@@ -366,6 +377,7 @@ public:
 	void SetScopeEmissionName(ScopeId scope, NameId name);
 	void AddNamespaceAlias(ScopeId owner, NameId name, ScopeId target);
 	void AddUsingEdge(ScopeId owner, ScopeId target);
+	void PublishFunctionTemplateName(ScopeId owner, NameId name);
 	EntityId NewEntity(NameId name, NamedFlavor flavor, bool complete,
 		TypeId underlying = kNoType, ScopeId owner = kNoScope,
 		NameId identity_name = 0);

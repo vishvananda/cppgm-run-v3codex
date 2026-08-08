@@ -584,13 +584,19 @@ LookupResult::LookupResult()
 	  type_declaration_canonical(kNoBinding),
 	  ordinary(kNoBinding), ordinary_declaration(kNoBinding),
 	  naming_class(kNoEntity), extra_ordinary_inline_(),
-	  extra_ordinary_overflow_(), extra_ordinary_count_(0)
+	  extra_ordinary_overflow_(), extra_ordinary_count_(0),
+	  function_template_owner_(kNoScope),
+	  extra_function_template_owner_inline_(),
+	  extra_function_template_owner_overflow_(),
+	  extra_function_template_owner_count_(0),
+	  function_template_lookup_(false)
 {
 }
 
 bool LookupResult::Empty() const
 {
-	return name_space == kNoScope && type == kNoType && ordinary == kNoBinding;
+	return name_space == kNoScope && type == kNoType && ordinary == kNoBinding &&
+		!function_template_lookup_;
 }
 
 std::size_t LookupResult::OrdinaryCount() const
@@ -632,9 +638,70 @@ void LookupResult::AddOrdinary(BindingId binding)
 	++extra_ordinary_count_;
 }
 
-std::size_t LookupResult::OrdinaryStorageBytes() const
+bool LookupResult::HasFunctionTemplateLookup() const
 {
-	return extra_ordinary_overflow_.capacity() * sizeof(BindingId);
+	return function_template_lookup_;
+}
+
+void LookupResult::BeginFunctionTemplateLookup()
+{
+	function_template_lookup_ = true;
+}
+
+std::size_t LookupResult::FunctionTemplateOwnerCount() const
+{
+	return function_template_owner_ == kNoScope ? 0 :
+		extra_function_template_owner_count_ + 1;
+}
+
+ScopeId LookupResult::FunctionTemplateOwnerAt(std::size_t index) const
+{
+	if (index == 0 && function_template_owner_ != kNoScope)
+		return function_template_owner_;
+	if (function_template_owner_ == kNoScope || --index >=
+		extra_function_template_owner_count_)
+		throw std::logic_error(
+			"function-template owner index is out of range");
+	return extra_function_template_owner_count_ <= 2 ?
+		extra_function_template_owner_inline_[index] :
+		extra_function_template_owner_overflow_[index];
+}
+
+void LookupResult::AddFunctionTemplateOwner(ScopeId owner)
+{
+	if (owner == kNoScope)
+		throw std::logic_error("function-template lookup owner is missing");
+	function_template_lookup_ = true;
+	for (std::size_t i = 0; i < FunctionTemplateOwnerCount(); ++i)
+		if (FunctionTemplateOwnerAt(i) == owner) return;
+	if (function_template_owner_ == kNoScope)
+	{
+		function_template_owner_ = owner;
+		return;
+	}
+	if (extra_function_template_owner_count_ < 2 &&
+		extra_function_template_owner_overflow_.empty())
+		extra_function_template_owner_inline_[
+			extra_function_template_owner_count_] = owner;
+	else
+	{
+		if (extra_function_template_owner_overflow_.empty())
+		{
+			extra_function_template_owner_overflow_.reserve(4);
+			extra_function_template_owner_overflow_.insert(
+				extra_function_template_owner_overflow_.end(),
+				extra_function_template_owner_inline_,
+				extra_function_template_owner_inline_ + 2);
+		}
+		extra_function_template_owner_overflow_.push_back(owner);
+	}
+	++extra_function_template_owner_count_;
+}
+
+std::size_t LookupResult::DynamicStorageBytes() const
+{
+	return extra_ordinary_overflow_.capacity() * sizeof(BindingId) +
+		extra_function_template_owner_overflow_.capacity() * sizeof(ScopeId);
 }
 
 struct Program::ScopeRecord
@@ -669,10 +736,12 @@ struct Program::NameEntry
 	TypeId type;
 	BindingId type_declaration;
 	BindingId ordinary;
+	bool function_template;
 
 	NameEntry()
 		: scope(kNoScope), name(0), name_space(kNoScope), type(kNoType),
-		  type_declaration(kNoBinding), ordinary(kNoBinding) {}
+		  type_declaration(kNoBinding), ordinary(kNoBinding),
+		  function_template(false) {}
 };
 
 struct Program::UsingEdge
@@ -990,6 +1059,14 @@ void Program::AddUsingEdge(ScopeId owner, ScopeId target)
 		if (owner_became_visible) PropagateUsingName(owner, visible_name);
 		InvalidateLookupName(owner, visible_name);
 	}
+}
+
+void Program::PublishFunctionTemplateName(ScopeId owner, NameId name)
+{
+	NameEntry* entry = EnsureEntry(owner, name);
+	if (entry->function_template) return;
+	entry->function_template = true;
+	InvalidateLookupName(owner, name);
 }
 
 void Program::RehashUsingEdges(std::size_t capacity)
@@ -1526,6 +1603,13 @@ LookupResult Program::DirectLookup(ScopeId scope, NameId name,
 		result.ordinary_declaration = entry->ordinary == kNoBinding ?
 			kNoBinding : bindings[entry->ordinary].canonical;
 	}
+	if (kind == LOOKUP_FUNCTION_TEMPLATE &&
+		(entry->ordinary != kNoBinding || entry->function_template))
+	{
+		result.BeginFunctionTemplateLookup();
+		if (entry->function_template)
+			result.AddFunctionTemplateOwner(scope);
+	}
 	return result;
 }
 
@@ -1533,6 +1617,19 @@ void Program::MergeLookup(LookupResult* result,
 	const LookupResult& candidate) const
 {
 	if (candidate.Empty()) return;
+	if (candidate.HasFunctionTemplateLookup())
+	{
+		if (!result->HasFunctionTemplateLookup())
+		{
+			*result = candidate;
+			return;
+		}
+		for (std::size_t i = 0;
+			i < candidate.FunctionTemplateOwnerCount(); ++i)
+			result->AddFunctionTemplateOwner(
+				candidate.FunctionTemplateOwnerAt(i));
+		return;
+	}
 	if (result->Empty())
 	{
 		*result = candidate;
@@ -2054,7 +2151,7 @@ std::size_t Program::LookupCache::StorageBytes() const
 		invalidation_worklist.capacity() * sizeof(std::uint32_t);
 	for (std::size_t i = 0; i < entries.size(); ++i)
 		bytes += entries[i].scope_dependencies.StorageBytes() +
-			entries[i].result.OrdinaryStorageBytes();
+			entries[i].result.DynamicStorageBytes();
 	for (std::size_t i = 0; i < scope_dependency_buckets.size(); ++i)
 		bytes += scope_dependency_buckets[i].dependents.StorageBytes();
 	for (std::size_t i = 0;

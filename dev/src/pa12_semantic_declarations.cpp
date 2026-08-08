@@ -2088,6 +2088,8 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 		for (std::size_t i = 0; i < template_patterns.size(); ++i)
 			if (!template_aliases.Contains(template_patterns[i]))
 				template_aliases.Push(template_patterns[i]);
+		if (!template_patterns.empty())
+			program_->PublishFunctionTemplateName(scope, name);
 		CompactIndexSequence& aliases = function_sets_.Ensure(key);
 		CompactIndexSequence& ordinary_aliases =
 			ordinary_function_sets_.Ensure(key);
@@ -2571,33 +2573,56 @@ FunctionInfo& SemanticAnalyzer::GetMutableFunction(BindingId binding)
 std::vector<std::size_t> SemanticAnalyzer::FindFunctionTemplates(
 	ScopeId scope, const std::string& spelling)
 {
-	std::string base = spelling;
-	const std::size_t angle = base.find('<');
-	if (angle != std::string::npos) base.erase(angle);
-	const NamePath path = ParseNamePath(base);
-	const NameId name = path.Last();
-	if (name == 0) return std::vector<std::size_t>();
+	const std::vector<ScopeId> owners =
+		FindFunctionTemplateOwners(scope, spelling);
+	const NamePath path = ParseNamePath(spelling);
+	if (path.Empty()) return std::vector<std::size_t>();
+	std::string terminal = program_->names.Get(path.Last());
+	const std::size_t angle = terminal.find('<');
+	if (angle != std::string::npos) terminal.erase(angle);
+	const NameId name = program_->names.Intern(terminal);
+	std::vector<std::size_t> result;
+	for (std::size_t owner = 0; owner < owners.size(); ++owner)
+	{
+		const std::uint64_t key =
+			(static_cast<std::uint64_t>(owners[owner]) << 32) |
+			name;
+		const CompactIndexSequence* found =
+			template_function_sets_.Find(key);
+		if (!found) continue;
+		for (std::size_t i = 0; i < found->Size(); ++i)
+			result.push_back((*found)[i]);
+	}
+	return result;
+}
+
+std::vector<ScopeId> SemanticAnalyzer::FindFunctionTemplateOwners(
+	ScopeId scope, const std::string& spelling)
+{
+	NamePath path = ParseNamePath(spelling);
+	if (path.Empty()) return std::vector<ScopeId>();
+	std::string terminal = program_->names.Get(path.Last());
+	const std::size_t angle = terminal.find('<');
+	if (angle != std::string::npos) terminal.erase(angle);
+	path.Pop();
+	path.Push(program_->names.Intern(terminal));
+	LookupResult found;
 	if (path.global || path.Size() > 1)
 	{
 		const ScopeId owner = ResolveOwner(scope, path);
-		if (owner == kNoScope) return std::vector<std::size_t>();
-		const std::uint64_t key =
-			(static_cast<std::uint64_t>(owner) << 32) | name;
-		const CompactIndexSequence* found =
-			template_function_sets_.Find(key);
-		return found ? found->Copy() : std::vector<std::size_t>();
+		if (owner == kNoScope) return std::vector<ScopeId>();
+		NamePath name;
+		name.Push(path.Last());
+		found = program_->LookupQualified(
+			owner, name, LOOKUP_FUNCTION_TEMPLATE);
 	}
-	for (ScopeId current = scope; current != kNoScope; )
-	{
-		const std::uint64_t key =
-			(static_cast<std::uint64_t>(current) << 32) | name;
-		const CompactIndexSequence* found =
-			template_function_sets_.Find(key);
-		if (found) return found->Copy();
-		current = current < scope_parents_.size() ?
-			scope_parents_[current] : kNoScope;
-	}
-	return std::vector<std::size_t>();
+	else found = program_->LookupName(
+		scope, path.Last(), LOOKUP_FUNCTION_TEMPLATE);
+	std::vector<ScopeId> result;
+	result.reserve(found.FunctionTemplateOwnerCount());
+	for (std::size_t i = 0; i < found.FunctionTemplateOwnerCount(); ++i)
+		result.push_back(found.FunctionTemplateOwnerAt(i));
+	return result;
 }
 
 bool SemanticAnalyzer::ParseExplicitTemplateArguments(ScopeId scope,
