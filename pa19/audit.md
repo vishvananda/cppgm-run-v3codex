@@ -2,31 +2,33 @@
 
 ## Current Checkpoint Review
 
-Checkpoint `5ca3aed9` landed explicit class-instantiation parsing, canonical
-specialization completion, indexed member demand, and LowIR object roots. The
-audit started from its clean 1,713/1,713 PA1-PA18 baseline and 258/293 PA19
-baseline and was bounded to that increment.
+Checkpoint `6c1a56be` landed enum builtin/operator competition, directional
+integral-to-enum rejection, enum conversion lowering, and empty class-value
+default-argument demand. The audit started from its clean 1,713/1,713 PA1-PA18
+and 264/296 PA19 baseline and was bounded to that increment.
 
-The increment's three new cases were valid, but the complete affected path had
-four defects. Class-template arguments were duplicated in PA19 side tables and
-lowering reconstructed class-template member identity from presentation names;
-generated members therefore had strong linkage and synthetic Itanium owners.
-Nested specialization arguments were also dropped by the ABI type adapter.
-`object_root=yes` was emitted but rejected by the shared LowIR parser. Finally,
-namespace placement, class/union agreement, and declaration-after-definition
-ordering were not enforced. All findings are closed.
+The three landed cases were valid, but the complete ownership path had four
+defects. Enum-only operator lookup admitted every same-name function instead of
+applying N3485 13.3.1.2's exact corresponding-enum parameter rule; the landed
+probe therefore performed 129/257/513 overload visits for one relevant
+operator. Builtin comma was incorrectly ranked as a competing candidate rather
+than used only as the paragraph 9 fallback. PA15 reconstructed an enum
+conversion from a source type, and the class-value fix reran default-constructor
+selection at `kNoScope` instead of retaining the source-selected action. All
+findings are closed, with two audit regressions covering the language defects.
 
-The resulting ownership path is source syntax -> `AnalyzeExplicitInstantiation`
--> canonical class specialization -> entity-owned `TypeId` argument slice ->
-indexed member demand -> binding-owned weak/root facts -> typed LowIR symbol
-identity and structured ABI facts -> LowIR renderer/parser. Qualified and inline
-namespace placement use scope identity, class and struct remain compatible,
-and union mismatches are rejected. Primitive, qualified, and nested template
-arguments now produce the checked weak Itanium object identities; constructors,
-destructors, conversion functions, and static/nonstatic members follow the same
-path. The production path does not serialize and reparse LowIR, and the bounded
-source scan found no new reference/host invocation, test-name branch, cached
-answer, or whole-program retry.
+The repaired operator path is function publication -> a TU-owned dense index
+keyed by canonical `(ScopeId, NameId, enum TypeId, operand)` -> ordinary lookup
+anchors and associated-scope edges -> canonical candidate deduplication ->
+conversion ranking -> one selected `BindingId` or builtin -> a typed enum
+conversion fact -> direct typed lowering. Hidden friends and deduced template
+specializations receive the same exact-parameter filter. Empty aggregate
+functional casts retain their selected constructor node in the semantic arena;
+the by-value argument boundary consumes and demands that node without lookup.
+No source/token/semantic representation was duplicated, no text was parsed back
+into structure, and a bounded changed-source scan found no host/reference
+invocation, filename/test branch, cached answer, global invalidation, or retry
+loop.
 
 ## Durable Architecture Decisions
 
@@ -41,24 +43,36 @@ answer, or whole-program retry.
   only and are not symbol-identity or mangling inputs.
 - `object_root` is part of the documented textual LowIR adapter and is accepted
   by the shared parser; the in-process production boundary remains typed.
+- Enum-only non-member operator candidates are indexed by scope, interned name,
+  canonical enum type, and operand position. Ordinary visibility and ADL select
+  index owners first; unrelated same-name declarations never reach conversion
+  ranking.
+- Standard enum conversions and source-selected class-value constructor actions
+  are semantic facts. Lowering and call staging consume those facts rather than
+  rediscovering type or constructor intent.
 
 ## Performance Evidence
 
-For explicit definitions with 64/128/256 defined members, one specialization
-request produced exactly 64/128/256 demand pushes and emissions, 129/257/513
-instructions, and 1.10/2.12/3.96 ms semantic time. Typed storage and rendered
-output grew linearly (80,198/159,366/317,702 bytes and
-11,788/23,584/47,392 bytes). An ordinary use followed by explicit demand kept
-one cache hit and emitted the member body once.
+For 128/256/512 unrelated indexed `operator&` declarations, the landed path
+performed 128/256/512 associated declaration visits, 129/257/513 overload
+visits, and 263/519/1,031 conversion checks. After the audit fix, ordinary plus
+ADL observation stays at two declaration visits, two overload visits, nine
+conversion checks, and one conversion-cache miss. Typed storage remains linear
+at 132,259/263,203/525,091 bytes and semantic time was 2.88/4.59/9.56 ms,
+reflecting source publication rather than candidate materialization.
+
+A complementary 128/256/512 probe in which every exact-first-parameter operator
+is language-required produced 129/257/513 declaration visits,
+128/256/512 overload visits, 263/519/1,031 conversion checks, and
+2.37/4.48/9.06 ms semantic time. This distinguishes eliminated unrelated work
+from linear required candidate work.
 
 ## Validation
 
-- PA19: 261/296 combined; the handout remains 258/293 with the same 35
-  outstanding tests, and all three audit legality regressions pass.
-- Exact weak object names match all three landed references; nested
-  `box<holder<int>>` emits `_ZN3boxI6holderIiEE5valueEv`.
-- Generated `object_root` LowIR parses through `lowir2cy86`, including lifecycle
-  and conversion members.
+- PA19: 266/298 combined; the original 264/296 checkpoint baseline is intact,
+  the two audit regressions pass, and the same 32 original tests remain.
+- The three landed enum/default-argument cases and focused PA16 enum/value-init
+  plus PA17 nothrow construction cases pass.
 - PA1-PA18: 1,713/1,713.
 - PA19 file audit: pass with the 11 pre-existing advisory header warnings.
 
@@ -67,3 +81,4 @@ one cache hit and emitted the member body once.
 | Checkpoint | Audit disposition | Final evidence |
 |---|---|---|
 | Explicit class-instantiation completion and member demand (`5ca3aed9`) | Pass after audit fix | Canonical entity arguments, structured ABI identity, weak/root propagation and parser support, N3485 legality controls, linear member-demand probe, prior baseline retained |
+| Canonical enum builtin competition and class default arguments (`6c1a56be`) | Pass after audit fix | Exact enum-parameter index, comma fallback, typed conversion/constructor facts, two regressions, constant unrelated-candidate work, linear required work, prior baseline retained |

@@ -1444,8 +1444,8 @@ private:
 			arena_.nodes[children[0]].operand_type == kNoType &&
 			LowerExpressionType(arena_.nodes[children[0]].type).kind == LOW_I64;
 		const bool preserves_enum_conversion =
-			(source_types_.IsEnumeration(arena_.nodes[children[0]].type) && !SameType(left.type, operand_type)) ||
-			(source_types_.IsEnumeration(arena_.nodes[children[1]].type) && !SameType(right.type, operand_type));
+			(arena_.nodes[children[0]].enum_arithmetic_conversion && !SameType(left.type, operand_type)) ||
+			(arena_.nodes[children[1]].enum_arithmetic_conversion && !SameType(right.type, operand_type));
 		const bool canonicalize_immediates =
 			(!preserves_enum_conversion && !comparison && (op == "+" || op == "-")) ||
 			(comparison &&

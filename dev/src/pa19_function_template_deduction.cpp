@@ -289,6 +289,7 @@ void SemanticAnalyzer::DeduceFunctionTemplates(ScopeId scope,
 				ordinary_function_sets_.Ensure(visible_key);
 			aliases.Push(alias);
 			ordinary_aliases.Push(alias);
+			IndexEnumOperatorCandidate(alias);
 			using_function_declarations_.Insert(signature_key, alias);
 		}
 	}

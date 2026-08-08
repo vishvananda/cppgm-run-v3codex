@@ -119,6 +119,110 @@ void SemanticAnalyzer::AddCandidate(BindingId binding,
 	candidates->push_back(binding);
 }
 
+TypeId SemanticAnalyzer::EnumOperatorOperandType(TypeId type) const
+{
+	const TypeRecord* shape = &program_->types.Get(type);
+	if (shape->kind == TYPE_LVALUE_REFERENCE ||
+		shape->kind == TYPE_RVALUE_REFERENCE)
+	{
+		type = shape->child;
+		shape = &program_->types.Get(type);
+	}
+	if (shape->kind == TYPE_QUALIFIED)
+	{
+		type = shape->child;
+		shape = &program_->types.Get(type);
+	}
+	if (shape->kind != TYPE_NAMED) return kNoType;
+	const NamedFlavor flavor = program_->entities[shape->entity].flavor;
+	return flavor == NAMED_ENUM || flavor == NAMED_ENUM_CLASS ?
+		type : kNoType;
+}
+
+bool SemanticAnalyzer::MatchesEnumOnlyOperatorCandidate(BindingId binding,
+	const std::vector<ExpressionInfo>& operands) const
+{
+	const FunctionInfo& function = GetFunction(binding);
+	if (function.member_owner != kNoType) return false;
+	const TypeRecord& function_type = program_->types.Get(function.type);
+	const TypeId* parameters = program_->types.Parameters(function.type);
+	const std::size_t count = std::min<std::size_t>(
+		function_type.parameter_count, operands.size());
+	for (std::size_t i = 0; i < count; ++i)
+	{
+		const TypeId enum_type = EnumOperatorOperandType(operands[i].type);
+		if (enum_type != kNoType &&
+			EnumOperatorOperandType(parameters[i]) == enum_type)
+			return true;
+	}
+	return false;
+}
+
+void SemanticAnalyzer::IndexEnumOperatorCandidate(BindingId binding)
+{
+	if (binding == kNoBinding || binding >= program_->bindings.size()) return;
+	const BindingRecord& record = program_->bindings[binding];
+	if (record.kind != BIND_FUNCTION) return;
+	const FunctionInfo& function = GetFunction(binding);
+	if (function.member_owner != kNoType) return;
+	const BindingRecord& canonical =
+		program_->bindings[record.canonical];
+	if (canonical.operator_kind == OPERATOR_NONE) return;
+	const TypeRecord& function_type = program_->types.Get(function.type);
+	const TypeId* parameters = program_->types.Parameters(function.type);
+	const std::size_t count = std::min<std::size_t>(
+		function_type.parameter_count, 2);
+	for (std::size_t i = 0; i < count; ++i)
+	{
+		const TypeId enum_type = EnumOperatorOperandType(parameters[i]);
+		if (enum_type == kNoType) continue;
+		const EnumOperatorCandidateKey key(record.owner, record.name,
+			enum_type, static_cast<std::uint8_t>(i));
+		enum_operator_candidates_.Ensure(key).Push(binding);
+	}
+}
+
+void SemanticAnalyzer::AppendIndexedEnumOperatorCandidates(ScopeId owner,
+	NameId name, const std::vector<ExpressionInfo>& operands,
+	std::vector<BindingId>* candidates)
+{
+	const std::size_t count = std::min<std::size_t>(operands.size(), 2);
+	for (std::size_t i = 0; i < count; ++i)
+	{
+		const TypeId enum_type = EnumOperatorOperandType(operands[i].type);
+		if (enum_type == kNoType) continue;
+		const EnumOperatorCandidateKey key(owner, name, enum_type,
+			static_cast<std::uint8_t>(i));
+		const CompactIndexSequence* functions =
+			enum_operator_candidates_.Find(key);
+		if (!functions) continue;
+		for (std::size_t candidate = 0;
+			candidate < functions->Size(); ++candidate)
+		{
+			++associated_declaration_visits_;
+			AddCandidate(static_cast<BindingId>((*functions)[candidate]),
+				candidates);
+		}
+	}
+}
+
+void SemanticAnalyzer::AppendVisibleEnumOperatorCandidates(ScopeId scope,
+	NameId name, const std::vector<ExpressionInfo>& operands,
+	std::vector<BindingId>* candidates)
+{
+	const LookupResult found =
+		program_->LookupName(scope, name, LOOKUP_ORDINARY);
+	for (std::size_t i = 0; i < found.OrdinaryCount(); ++i)
+	{
+		const BindingId anchor = found.OrdinaryAt(i);
+		if (anchor == kNoBinding || anchor >= program_->bindings.size()) continue;
+		const BindingRecord& record = program_->bindings[anchor];
+		if (record.kind != BIND_FUNCTION) continue;
+		AppendIndexedEnumOperatorCandidates(record.owner, record.name,
+			operands, candidates);
+	}
+}
+
 void SemanticAnalyzer::AppendDirectFunctionCandidates(ScopeId owner,
 	NameId name, std::vector<BindingId>* candidates)
 {
@@ -133,7 +237,8 @@ void SemanticAnalyzer::AppendDirectFunctionCandidates(ScopeId owner,
 }
 
 void SemanticAnalyzer::AppendHiddenFriendCandidates(EntityId owner,
-	NameId name, std::vector<BindingId>* candidates)
+	NameId name, const std::vector<ExpressionInfo>* enum_only_operands,
+	std::vector<BindingId>* candidates)
 {
 	const std::uint64_t key = (static_cast<std::uint64_t>(owner) << 32) | name;
 	const CompactIndexSequence* functions = hidden_friend_sets_.Find(key);
@@ -141,13 +246,16 @@ void SemanticAnalyzer::AppendHiddenFriendCandidates(EntityId owner,
 	for (std::size_t i = 0; i < functions->Size(); ++i)
 	{
 		++associated_declaration_visits_;
-		AddCandidate(static_cast<BindingId>((*functions)[i]), candidates);
+		const BindingId binding = static_cast<BindingId>((*functions)[i]);
+		if (!enum_only_operands ||
+			MatchesEnumOnlyOperatorCandidate(binding, *enum_only_operands))
+			AddCandidate(binding, candidates);
 	}
 }
 
 void SemanticAnalyzer::AppendArgumentDependentCandidates(NameId name,
 	const std::vector<ExpressionInfo>& arguments,
-	std::vector<BindingId>* candidates)
+	std::vector<BindingId>* candidates, bool enum_operator_only)
 {
 	BeginAssociatedLookup();
 	for (std::size_t i = 0; i < arguments.size(); ++i)
@@ -204,12 +312,19 @@ void SemanticAnalyzer::AppendArgumentDependentCandidates(NameId name,
 				&specializations);
 			for (std::size_t specialization = 0;
 				specialization < specializations.size(); ++specialization)
-				AddCandidate(specializations[specialization], candidates);
+				if (!enum_operator_only || MatchesEnumOnlyOperatorCandidate(
+					specializations[specialization], arguments))
+					AddCandidate(specializations[specialization], candidates);
 		}
-		AppendDirectFunctionCandidates(associated_scopes_[i], name, candidates);
+		if (enum_operator_only)
+			AppendIndexedEnumOperatorCandidates(
+				associated_scopes_[i], name, arguments, candidates);
+		else AppendDirectFunctionCandidates(
+			associated_scopes_[i], name, candidates);
 	}
 	for (std::size_t i = 0; i < associated_entities_.size(); ++i)
-		AppendHiddenFriendCandidates(associated_entities_[i], name, candidates);
+		AppendHiddenFriendCandidates(associated_entities_[i], name,
+			enum_operator_only ? &arguments : 0, candidates);
 }
 
 CallConversionFact SemanticAnalyzer::ConvertingConstructor(
@@ -498,6 +613,10 @@ bool SemanticAnalyzer::ApplyBuiltinBinaryConversions(
 			selected_ranks->push_back(left_rank);
 			selected_ranks->push_back(right_rank);
 		}
+		if (apply && EnumOperatorOperandType(left->type) != kNoType)
+			*left = ApplyTarget(*left, left_target, left_rank);
+		if (apply && EnumOperatorOperandType(right->type) != kNoType)
+			*right = ApplyTarget(*right, right_target, right_rank);
 		return true;
 	}
 	if (operation == "&&" || operation == "||")
@@ -966,8 +1085,8 @@ ExpressionInfo SemanticAnalyzer::ApplyCallArgument(
 		}
 		else if (dump_.nodes[value.node].kind == DUMP_BRACED_INIT_LIST &&
 			dump_.nodes[value.node].value_initialization &&
-			program_->entities[target_record.entity].empty_class)
-			value.node = BuildDefaultConstructorAction(target_object, kNoScope);
+			dump_.nodes[value.node].value_constructor != kNoDumpEdge)
+			value.node = dump_.nodes[value.node].value_constructor;
 		else if (dump_.nodes[value.node].kind != DUMP_CONSTRUCTOR_ACTION)
 			value.node = BuildClassValueConstructorAction(target, value);
 		if (dump_.nodes[value.node].kind == DUMP_CONSTRUCTOR_ACTION &&
@@ -1288,6 +1407,7 @@ bool SemanticAnalyzer::TryAnalyzeOverloadedOperator(
 	const std::vector<ConversionRank>* competing_builtin_ranks)
 {
 	bool overloadable_operand = false;
+	bool class_operand = false;
 	for (std::size_t i = 0; i < operands.size(); ++i)
 	{
 		if (operands[i].type == kNoType) continue;
@@ -1295,10 +1415,16 @@ bool SemanticAnalyzer::TryAnalyzeOverloadedOperator(
 		if (entity == kNoEntity) continue;
 		const NamedFlavor flavor = program_->entities[entity].flavor;
 		if (flavor == NAMED_STRUCT || flavor == NAMED_CLASS ||
-			flavor == NAMED_UNION || flavor == NAMED_ENUM ||
-			flavor == NAMED_ENUM_CLASS) overloadable_operand = true;
+			flavor == NAMED_UNION)
+		{
+			overloadable_operand = true;
+			class_operand = true;
+		}
+		else if (flavor == NAMED_ENUM || flavor == NAMED_ENUM_CLASS)
+			overloadable_operand = true;
 	}
 	if (!overloadable_operand || operands.empty()) return false;
+	const bool enum_operator_only = !class_operand;
 	const NameId name = program_->names.Intern("operator" + operation);
 	BeginCandidateCollection();
 	std::vector<BindingId> candidates;
@@ -1322,12 +1448,19 @@ bool SemanticAnalyzer::TryAnalyzeOverloadedOperator(
 	}
 	if (!member_only)
 	{
-		const std::vector<BindingId> ordinary =
-			FunctionCandidates(scope, program_->names.Get(name));
-		for (std::size_t i = 0; i < ordinary.size(); ++i)
-			if (GetFunction(ordinary[i]).member_owner == kNoType)
-				AddCandidate(ordinary[i], &candidates);
-		AppendArgumentDependentCandidates(name, operands, &candidates);
+		if (enum_operator_only)
+			AppendVisibleEnumOperatorCandidates(
+				scope, name, operands, &candidates);
+		else
+		{
+			const std::vector<BindingId> ordinary =
+				FunctionCandidates(scope, program_->names.Get(name));
+			for (std::size_t i = 0; i < ordinary.size(); ++i)
+				if (GetFunction(ordinary[i]).member_owner == kNoType)
+					AddCandidate(ordinary[i], &candidates);
+		}
+		AppendArgumentDependentCandidates(name, operands, &candidates,
+			enum_operator_only);
 	}
 	if (candidates.empty()) return false;
 	const ExpressionInfo object = MakeImplicitObjectPointer(operands[0]);

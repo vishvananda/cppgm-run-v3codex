@@ -332,7 +332,7 @@ private:
 		ExpressionInfo* result);
 	void AppendArgumentDependentCandidates(NameId name,
 		const std::vector<ExpressionInfo>& arguments,
-		std::vector<BindingId>* candidates);
+		std::vector<BindingId>* candidates, bool enum_operator_only = false);
 	bool TryAnalyzeOverloadedOperator(const std::string& operation,
 		ScopeId scope, const std::vector<NodeId>& operand_syntax,
 		const std::vector<ExpressionInfo>& operands, bool member_only,
@@ -360,9 +360,20 @@ private:
 	void BeginCandidateCollection();
 	void AddCandidate(BindingId binding,
 		std::vector<BindingId>* candidates);
+	TypeId EnumOperatorOperandType(TypeId type) const;
+	bool MatchesEnumOnlyOperatorCandidate(BindingId binding,
+		const std::vector<ExpressionInfo>& operands) const;
+	void IndexEnumOperatorCandidate(BindingId binding);
+	void AppendIndexedEnumOperatorCandidates(ScopeId owner, NameId name,
+		const std::vector<ExpressionInfo>& operands,
+		std::vector<BindingId>* candidates);
+	void AppendVisibleEnumOperatorCandidates(ScopeId scope, NameId name,
+		const std::vector<ExpressionInfo>& operands,
+		std::vector<BindingId>* candidates);
 	void AppendDirectFunctionCandidates(ScopeId owner, NameId name,
 		std::vector<BindingId>* candidates);
 	void AppendHiddenFriendCandidates(EntityId owner, NameId name,
+		const std::vector<ExpressionInfo>* enum_only_operands,
 		std::vector<BindingId>* candidates);
 	ExpressionInfo AnalyzeUnary(NodeId node, ScopeId scope,
 		TypeId target = kNoType);
@@ -636,6 +647,7 @@ private:
 	std::vector<NameId> scope_prefix_scratch_;
 	IndexedSequenceTable function_sets_;
 	IndexedSequenceTable ordinary_function_sets_;
+	EnumOperatorCandidateTable enum_operator_candidates_;
 	IndexedSequenceTable hidden_friend_sets_;
 	IndexedSequenceTable friend_class_grants_;
 	IndexedSequenceTable friend_function_grants_;

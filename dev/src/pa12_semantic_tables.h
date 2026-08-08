@@ -39,6 +39,35 @@ struct FunctionSignatureHash
 	}
 };
 
+struct EnumOperatorCandidateKey
+{
+	ScopeId owner;
+	NameId name;
+	TypeId enum_type;
+	std::uint8_t operand;
+
+	EnumOperatorCandidateKey()
+		: owner(kNoScope), name(0), enum_type(kNoType), operand(0) {}
+	EnumOperatorCandidateKey(ScopeId owner_value, NameId name_value,
+		TypeId enum_type_value, std::uint8_t operand_value)
+		: owner(owner_value), name(name_value), enum_type(enum_type_value),
+		  operand(operand_value) {}
+	bool operator==(const EnumOperatorCandidateKey& other) const
+	{
+		return owner == other.owner && name == other.name &&
+			enum_type == other.enum_type && operand == other.operand;
+	}
+};
+
+struct EnumOperatorCandidateHash
+{
+	std::size_t operator()(const EnumOperatorCandidateKey& key) const
+	{
+		return MixHash(MixHash(MixHash(key.owner, key.name), key.enum_type),
+			key.operand);
+	}
+};
+
 class CompactIndexSequence
 {
 public:
@@ -72,6 +101,28 @@ private:
 		explicit Entry(std::uint64_t key_value);
 	};
 	static std::size_t Hash(std::uint64_t key);
+	void Rehash(std::size_t capacity);
+
+	std::vector<Entry> entries_;
+	std::vector<std::uint32_t> slots_;
+};
+
+class EnumOperatorCandidateTable
+{
+public:
+	EnumOperatorCandidateTable();
+	CompactIndexSequence& Ensure(const EnumOperatorCandidateKey& key);
+	const CompactIndexSequence* Find(
+		const EnumOperatorCandidateKey& key) const;
+	std::size_t StorageBytes() const;
+
+private:
+	struct Entry
+	{
+		EnumOperatorCandidateKey key;
+		CompactIndexSequence values;
+		explicit Entry(const EnumOperatorCandidateKey& key_value);
+	};
 	void Rehash(std::size_t capacity);
 
 	std::vector<Entry> entries_;

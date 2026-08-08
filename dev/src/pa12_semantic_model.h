@@ -104,11 +104,13 @@ struct DumpNode
 	std::uint32_t last_edge;
 	std::uint32_t base_projection_count;
 	std::uint32_t aggregate_helper;
+	std::uint32_t value_constructor;
 	std::uint32_t lifetime_object;
 	std::uint32_t virtual_slot;
 	std::uint32_t storage_transfer_alignment;
 	bool constant;
 	bool integer_narrowing_conversion;
+	bool enum_arithmetic_conversion;
 	bool boolean_conversion;
 	bool user_conversion_call;
 	bool explicit_user_conversion_call;
@@ -139,10 +141,12 @@ struct DumpNode
 		  constant_value(0), array_count(0), storage_transfer_size(0),
 		  first_edge(kNoDumpEdge),
 		  last_edge(kNoDumpEdge), base_projection_count(0),
-		  aggregate_helper(kNoDumpEdge), lifetime_object(kNoDumpEdge),
+		  aggregate_helper(kNoDumpEdge), value_constructor(kNoDumpEdge),
+		  lifetime_object(kNoDumpEdge),
 		  virtual_slot(kNoDumpEdge),
 		  storage_transfer_alignment(0),
 		  constant(false), integer_narrowing_conversion(false),
+		  enum_arithmetic_conversion(false),
 		  boolean_conversion(false), user_conversion_call(false),
 		  explicit_user_conversion_call(false),
 		  allocation_may_return_null(false),

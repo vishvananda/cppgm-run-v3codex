@@ -500,8 +500,15 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 	const bool source_is_bool =
 		conversion_source_record.kind == TYPE_FUNDAMENTAL &&
 		conversion_source_record.fundamental == FUND_BOOL;
+	const EntityId conversion_source_entity = EntityOf(conversion_source);
+	const bool source_is_enum = conversion_source_entity != kNoEntity &&
+		(program_->entities[conversion_source_entity].flavor == NAMED_ENUM ||
+		 program_->entities[conversion_source_entity].flavor == NAMED_ENUM_CLASS);
 	if (target_is_bool && !source_is_bool)
 		dump_.nodes[value.node].boolean_conversion = true;
+	if (source_is_enum && conversion_source != conversion_target &&
+		IsArithmetic(conversion_target))
+		dump_.nodes[value.node].enum_arithmetic_conversion = true;
 	if (!target_is_bool && IsIntegral(conversion_source, true) &&
 		IsIntegral(conversion_target, true) &&
 		program_->SizeOf(conversion_target) < program_->SizeOf(conversion_source))
@@ -1502,10 +1509,11 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 	std::vector<ConversionRank> builtin_ranks;
 	const bool builtin_viable = ApplyBuiltinBinaryConversions(operation,
 		&left, &right, &builtin_ranks, false);
+	const bool builtin_competes = builtin_viable && operation != ",";
 	ExpressionInfo overloaded;
 	if (TryAnalyzeOverloadedOperator(operation, scope, overloaded_syntax,
 		overloaded_operands, false, kNoType, &overloaded,
-		builtin_viable ? &builtin_ranks : 0)) return overloaded;
+		builtin_competes ? &builtin_ranks : 0)) return overloaded;
 	(void)ApplyBuiltinBinaryConversions(operation, &left, &right);
 	TypeId result_type = kNoType;
 	TypeId operand_type = kNoType;

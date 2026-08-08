@@ -1,0 +1,30 @@
+function @operator_(%__param0 : i32, %__param1 : i64) -> i64 [binding=strong, object=_Zcm1El] {
+  slot $__param0 : i32
+  slot $__param1 : i64
+
+  block ^entry:
+    store i32 %__param0, $__param0
+    store i64 %__param1, $__param1
+    return i64 9
+}
+
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $cond__1 : i32
+
+  block ^entry:
+    %t1 = call i64 @operator_(0, 1)
+    %t2 = cmp eq i64 %t1, 9
+    branch %t2, ^cond_then_1, ^cond_else_2
+
+  block ^cond_then_1:
+    store i32 0, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_else_2:
+    store i32 1, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_end_3:
+    %t3 = load i32 $cond__1
+    return i32 %t3
+}

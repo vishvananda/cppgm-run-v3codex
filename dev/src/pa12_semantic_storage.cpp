@@ -14,6 +14,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		scope_prefix_scratch_.capacity() * sizeof(NameId) +
 		function_sets_.StorageBytes() +
 		ordinary_function_sets_.StorageBytes() +
+		enum_operator_candidates_.StorageBytes() +
 		hidden_friend_sets_.StorageBytes() +
 		friend_class_grants_.StorageBytes() +
 		friend_function_grants_.StorageBytes() +

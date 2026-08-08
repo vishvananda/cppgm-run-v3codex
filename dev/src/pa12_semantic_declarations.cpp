@@ -2090,10 +2090,12 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 	canonical_record.operator_literal_suffix = literal_suffix.empty() ? 0 :
 		program_->names.Intern(literal_suffix);
 	if (GetFunction(canonical).ordinary_visible && !was_ordinary_visible)
+	{
 		ordinary_function_sets_.Ensure(key).Push(canonical);
+		IndexEnumOperatorCandidate(canonical);
+	}
 	return canonical;
 }
-
 void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 	std::uint32_t output_parent, bool local, AccessKind access)
 {
@@ -2211,6 +2213,7 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 				PublishUsingAccess(alias, functions[i], access);
 			if (!aliases.Contains(alias)) aliases.Push(alias);
 			if (!ordinary_aliases.Contains(alias)) ordinary_aliases.Push(alias);
+			IndexEnumOperatorCandidate(alias);
 			using_function_declarations_.Insert(signature_key, alias);
 		}
 		return;
