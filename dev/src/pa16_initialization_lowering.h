@@ -286,7 +286,16 @@ protected:
 			return derived.LowerArrayDeleteExpression(node, record, children);
 		if (children.size() != 1)
 			throw std::runtime_error("invalid scalar delete action");
-		const Operand pointer = derived.LowerValue(children[0], LowPtr());
+		Operand pointer;
+		const DumpNode& operand = derived.arena_.nodes[children[0]];
+		const NodeChildren operand_children = derived.Children(children[0]);
+		if (operand.kind == DUMP_CAST_EXPRESSION &&
+			operand_children.size() == 1 &&
+			derived.arena_.nodes[operand_children[0]].kind == DUMP_LITERAL &&
+			derived.arena_.nodes[operand_children[0]].constant &&
+			derived.arena_.nodes[operand_children[0]].constant_value == 0)
+			pointer = Operand(0, LowPtr());
+		else pointer = derived.LowerValue(children[0], LowPtr());
 		if (!derived.IsClassObjectType(record.operand_type))
 		{
 			EmitSelectedDeallocation(record, pointer);
@@ -305,9 +314,29 @@ protected:
 		derived.Emit(compare);
 		derived.EmitBranch(condition, nonnull, done);
 		derived.SelectBlock(nonnull);
-		if (record.selected_binding != kNoBinding)
+		if (record.virtual_call)
+		{
+			const Operand table = derived.LoadStorage(pointer, LowPtr());
+			Operand entry = table;
+			if (record.virtual_slot != 0)
+				entry = derived.IndexAddress(LowI8(), table,
+					Operand(static_cast<std::int64_t>(record.virtual_slot) * 8,
+						LowI64()), false);
+			const Operand callee = derived.LoadStorage(entry, LowPtr());
+			Instruction call(Instruction::CALL);
+			call.type = LowVoid();
+			call.indirect = true;
+			call.first = callee;
+			CallArguments arguments;
+			CallArgumentFlags references;
+			arguments.Push(pointer);
+			references.Push(0);
+			derived.AttachCallArguments(&call, arguments, references);
+			derived.Emit(call);
+		}
+		else if (record.selected_binding != kNoBinding)
 			derived.EmitDestructorCall(record.selected_binding, pointer);
-		EmitSelectedDeallocation(record, pointer);
+		if (!record.virtual_call) EmitSelectedDeallocation(record, pointer);
 		derived.EmitJump(done);
 		derived.SelectBlock(done);
 		return Operand(0, LowVoid());

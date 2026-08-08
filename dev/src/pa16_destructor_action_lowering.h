@@ -34,12 +34,21 @@ protected:
 	}
 
 	Operand ProjectBaseSubobjects(Operand object,
-		std::uint32_t projection_count)
+		std::uint32_t projection_count, TypeId source_type = kNoType)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
+		EntityId entity = derived.BaseEntityForType(source_type);
+		std::uint64_t offset = 0;
 		for (std::uint32_t i = 0; i < projection_count; ++i)
-			object = derived.ProjectBaseSubobject(object);
-		return object;
+		{
+			if (entity != kNoEntity)
+			{
+				offset += derived.program_.entities[entity].direct_base_offset;
+				entity = derived.program_.entities[entity].direct_base;
+			}
+		}
+		return projection_count == 0 ? object :
+			derived.ProjectBaseSubobjectOffset(object, offset);
 	}
 
 	void EmitDestructorCall(BindingId destructor, const Operand& destination)

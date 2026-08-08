@@ -1,5 +1,4 @@
 #include "pa12_semantic_detail.h"
-
 #include <algorithm>
 #include <cctype>
 #include <chrono>
@@ -10,12 +9,10 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
-
 namespace cppgm
 {
 namespace pa12_semantic_detail
 {
-
 NodeId SemanticAnalyzer::FindChild(NodeId node, const char* tag) const
 {
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
@@ -26,18 +23,15 @@ NodeId SemanticAnalyzer::FindChild(NodeId node, const char* tag) const
 	}
 	return kNoNode;
 }
-
 NodeId SemanticAnalyzer::FirstSemanticChild(NodeId node) const
 {
 	const std::uint32_t edge = arena_->FirstEdge(node);
 	return edge == kNoEdge ? kNoNode : arena_->EdgeChild(edge);
 }
-
 std::string SemanticAnalyzer::PayloadSource(NodeId node) const
 {
 	return arena_->SemanticPayload(node);
 }
-
 NamePath SemanticAnalyzer::ParseNamePath(const std::string& spelling)
 {
 	NamePath result;
@@ -82,7 +76,6 @@ NamePath SemanticAnalyzer::ParseNamePath(const std::string& spelling)
 	}
 	return result;
 }
-
 LookupResult SemanticAnalyzer::LookupPath(ScopeId scope,
 	const NamePath& path, LookupKind kind)
 {
@@ -112,7 +105,6 @@ LookupResult SemanticAnalyzer::LookupPath(ScopeId scope,
 	}
 	return program_->Lookup(scope, path, kind);
 }
-
 LookupResult SemanticAnalyzer::LookupSpelling(ScopeId scope,
 	const std::string& spelling, LookupKind kind)
 {
@@ -120,7 +112,6 @@ LookupResult SemanticAnalyzer::LookupSpelling(ScopeId scope,
 		return program_->LookupName(scope, program_->names.Intern(spelling), kind);
 	return LookupPath(scope, ParseNamePath(spelling), kind);
 }
-
 ScopeId SemanticAnalyzer::ResolveScopeSpelling(ScopeId scope,
 	const std::string& spelling)
 {
@@ -129,7 +120,6 @@ ScopeId SemanticAnalyzer::ResolveScopeSpelling(ScopeId scope,
 	return result.name_space != kNoScope ? result.name_space :
 		result.type != kNoType ? program_->ScopeForType(result.type) : kNoScope;
 }
-
 ScopeId SemanticAnalyzer::ResolveOwner(ScopeId scope, const NamePath& name)
 {
 	if (!name.global && name.Size() <= 1) return scope;
@@ -140,7 +130,6 @@ ScopeId SemanticAnalyzer::ResolveOwner(ScopeId scope, const NamePath& name)
 	return result.name_space != kNoScope ? result.name_space :
 		result.type != kNoType ? program_->ScopeForType(result.type) : kNoScope;
 }
-
 bool SemanticAnalyzer::IsDeclaration(NodeId node) const
 {
 	return arena_->IsTag(node, "simple-declaration") ||
@@ -179,7 +168,6 @@ std::uint32_t SemanticAnalyzer::MakeDump(DumpKind kind, TypeId type,
 	}
 	return node;
 }
-
 std::size_t SemanticAnalyzer::SideStorageBytes() const {
 	std::size_t bytes =
 		scope_prefixes_.capacity() * sizeof(NameId) +
@@ -264,7 +252,6 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const {
 			sizeof(NameId);
 	return bytes;
 }
-
 TypeId SemanticAnalyzer::EffectiveType(TypeId type) const
 {
 	const TypeRecord record = program_->types.Get(type);
@@ -796,7 +783,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 			std::size_t ls = 0;
 			for (std::size_t i = 0; i < spelling.size(); ++i)
 				if (spelling[i] == 'l' || spelling[i] == 'L') ++ls;
-			const FundamentalKind kind = ls > 1 ?
+			const bool ordinary_character = spelling.size() == 3 &&
+				spelling[0] == '\'' && spelling[2] == '\'';
+			const FundamentalKind kind = ordinary_character ? FUND_CHAR : ls > 1 ?
 				(has_u ? FUND_UNSIGNED_LONG_LONG_INT : FUND_LONG_LONG_INT) :
 				ls == 1 ? (has_u ? FUND_UNSIGNED_LONG_INT : FUND_LONG_INT) :
 				has_u ? FUND_UNSIGNED_INT : FUND_INT;
@@ -1205,7 +1194,8 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 				projections > std::numeric_limits<std::uint32_t>::max())
 				throw std::logic_error(
 					"selected object conversion has no bounded base path");
-			object_conversion->base_projection_count = projections == 0 ? 0 : 1;
+			object_conversion->base_projection_count =
+				static_cast<std::uint32_t>(projections);
 		}
 	}
 	if (argument_conversions)
@@ -1224,7 +1214,8 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	const std::vector<ExpressionInfo>& arguments,
 	const ExpressionInfo* object, TypeId target, EntityId naming_class,
 	const ObjectConversionFact* object_conversion,
-	const std::vector<CallConversionFact>* argument_conversions)
+	const std::vector<CallConversionFact>* argument_conversions,
+	bool suppress_virtual_dispatch)
 {
 	if (GetFunction(selected).deleted_special_member)
 		throw std::runtime_error("selected special member is deleted");
@@ -1256,6 +1247,12 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	const BindingId emission_binding = program_->bindings[selected].canonical;
 	const std::uint32_t call = MakeDump(DUMP_CALL_EXPRESSION,
 		result_type, category, 0, emission_binding);
+	const std::uint32_t virtual_slot = VirtualSlotFor(selected);
+	if (!suppress_virtual_dispatch && object && virtual_slot != kNoDumpEdge)
+	{
+		dump_.nodes[call].virtual_call = true;
+		dump_.nodes[call].virtual_slot = virtual_slot;
+	}
 	dump_.nodes[call].user_conversion_call = function.conversion_function;
 	dump_.nodes[call].explicit_user_conversion_call =
 		function.conversion_function && function.explicit_conversion;
@@ -1445,7 +1442,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 				object ? &object_conversion : 0, &argument_conversions);
 			return BuildResolvedCall(selected, scope, argument_syntax,
 				analyzed_arguments, object, target, function_naming_class,
-				object ? &object_conversion : 0, &argument_conversions);
+				object ? &object_conversion : 0, &argument_conversions,
+				spelling.find("::") != std::string::npos);
 		}
 
 		const TypeId cast_type = ResolveFunctionalCastType(scope, spelling);
@@ -2462,6 +2460,8 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	ValidateFunctionRefQualifier(binding);
 	ValidateNonmemberOperator(binding);
 	FunctionInfo& function = GetMutableFunction(binding);
+	if (program_->bindings[binding].virtual_function)
+		MarkVtableDemand(program_->bindings[binding].member_owner);
 	function.deferred = false;
 	const bool member = function.member_owner != kNoType;
 	const TypeId output_type = member ?
@@ -2910,7 +2910,7 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 	const std::chrono::steady_clock::time_point render_started =
 		std::chrono::steady_clock::now();
 	if (graph_consumer_) graph_consumer_->Consume(SemanticGraphView(program,
-		dump_, namespace_objects_, aggregate_helpers_, root_));
+		dump_, namespace_objects_, aggregate_helpers_, class_polymorphism_, root_));
 	if (render_output_) Render();
 	if (stats_)
 	{

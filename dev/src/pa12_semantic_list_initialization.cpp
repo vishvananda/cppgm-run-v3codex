@@ -723,6 +723,7 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 		arguments, candidates, copy_initialization, list_initialization,
 		&selected_conversions, false, source_list,
 		program_->types.RemoveTopCv(EffectiveType(type)));
+	const BindingId complete_constructor = selected;
 	if (base_subobject) selected = EnsureConstructorBaseEntry(selected);
 	const FunctionInfo constructor = GetFunction(selected);
 	const TypeRecord function_type = program_->types.Get(constructor.type);
@@ -826,6 +827,15 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 		!(constructor.implicit_constructor &&
 		program_->entities[entity].trivial_default_constructor))
 		DemandFunction(selected);
+	if (demand && base_subobject && current_class_context_ != kNoEntity &&
+		program_->entities[current_class_context_].polymorphic_class &&
+		(!program_->entities[entity].polymorphic_class ||
+		 (DestructorForType(program_->entities[entity].type) != kNoBinding &&
+		  program_->bindings[DestructorForType(
+			program_->entities[entity].type)].virtual_function)) &&
+		!GetFunction(complete_constructor).implicit_constructor &&
+		!GetFunction(complete_constructor).defaulted_constructor)
+		DemandFunction(complete_constructor);
 	++expression_count_;
 	return action;
 }

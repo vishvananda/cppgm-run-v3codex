@@ -193,7 +193,8 @@ private:
 		const ExpressionInfo* object, TypeId target,
 		EntityId naming_class = kNoEntity,
 		const ObjectConversionFact* object_conversion = 0,
-		const std::vector<CallConversionFact>* argument_conversions = 0);
+		const std::vector<CallConversionFact>* argument_conversions = 0,
+		bool suppress_virtual_dispatch = false);
 	CallConversionFact CallConversion(const ExpressionInfo& source,
 		TypeId target, CallConversionTable* cache, std::size_t source_ordinal);
 	int CompareCallConversions(const CallConversionFact& left,
@@ -332,6 +333,13 @@ private:
 	void AnalyzeConversionFunction(NodeId node, ScopeId scope,
 		TypeId owner_type, AccessKind access);
 	void AnalyzeOutOfClassSpecialMember(NodeId node, ScopeId scope);
+	void ConfigureVirtualFunction(BindingId binding, const SpecInfo& spec,
+		NodeId declarator, NodeId initializer);
+	void CompleteClassPolymorphism(EntityId entity);
+	void MarkVtableDemand(EntityId entity);
+	bool CovariantVirtualReturn(TypeId derived, TypeId base) const;
+	bool VirtualSignatureMatches(BindingId derived, BindingId base) const;
+	std::uint32_t VirtualSlotFor(BindingId binding) const;
 	void CompleteOutOfClassDefaultedConstructor(EntityId entity,
 		BindingId constructor);
 	void CompleteDefaultedDefaultConstructor(EntityId entity,
@@ -543,6 +551,8 @@ private:
 	std::vector<EntityId> zero_offset_subobject_scratch_;
 	std::vector<std::vector<BindingId> > entity_constructors_;
 	std::vector<std::vector<BindingId> > entity_conversion_functions_;
+	std::vector<std::vector<BindingId> > entity_member_functions_;
+	std::vector<ClassPolymorphismFacts> class_polymorphism_;
 	std::vector<std::uint32_t> variable_node_by_binding_;
 	std::vector<ClassSpecialMemberFacts> class_special_members_;
 	std::vector<BindingId> implicit_constructor_by_entity_;

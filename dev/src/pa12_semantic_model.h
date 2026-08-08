@@ -75,6 +75,7 @@ enum DumpKind
 	DUMP_SPECIAL_MEMBER_SUBOBJECT_ACTION,
 	DUMP_INITIALIZER_ACTION,
 	DUMP_BASE_INITIALIZER_ACTION,
+	DUMP_VPTR_INITIALIZATION_ACTION,
 	DUMP_DELEGATING_INITIALIZER_ACTION,
 	DUMP_MEMBER_EXPRESSION,
 	DUMP_NEW_EXPRESSION,
@@ -104,6 +105,7 @@ struct DumpNode
 	std::uint32_t base_projection_count;
 	std::uint32_t aggregate_helper;
 	std::uint32_t lifetime_object;
+	std::uint32_t virtual_slot;
 	std::uint32_t storage_transfer_alignment;
 	bool constant;
 	bool integer_narrowing_conversion;
@@ -128,6 +130,7 @@ struct DumpNode
 	bool full_expression_staging;
 	bool conditionally_constructed;
 	bool control_dependent_temporary;
+	bool virtual_call;
 
 	explicit DumpNode(DumpKind value)
 		: kind(value), type(kNoType), operand_type(kNoType),
@@ -137,6 +140,7 @@ struct DumpNode
 		  first_edge(kNoDumpEdge),
 		  last_edge(kNoDumpEdge), base_projection_count(0),
 		  aggregate_helper(kNoDumpEdge), lifetime_object(kNoDumpEdge),
+		  virtual_slot(kNoDumpEdge),
 		  storage_transfer_alignment(0),
 		  constant(false), integer_narrowing_conversion(false),
 		  boolean_conversion(false), user_conversion_call(false),
@@ -151,7 +155,7 @@ struct DumpNode
 		  direct_return_slot(false), declaration_only(false),
 		  unwind_only(false), full_expression_staging(false),
 		  conditionally_constructed(false),
-		  control_dependent_temporary(false) {}
+		  control_dependent_temporary(false), virtual_call(false) {}
 };
 
 struct DumpEdge
@@ -205,10 +209,12 @@ struct SpecInfo
 	bool placeholder_auto;
 	bool thread_local_storage;
 	bool mutable_member;
+	bool virtual_specifier;
 	SpecInfo() : type(kNoType), storage_class(STORAGE_CLASS_NONE),
 		is_typedef(false), is_constexpr(false), is_friend(false),
 		placeholder_auto(false),
-		thread_local_storage(false), mutable_member(false) {}
+		thread_local_storage(false), mutable_member(false),
+		virtual_specifier(false) {}
 };
 
 struct ParameterInfo
@@ -386,6 +392,25 @@ struct ClassLayoutMember
 		  bit_field(bit_field_value) {}
 };
 
+struct VirtualSlotFact
+{
+	BindingId root;
+	BindingId function;
+
+	VirtualSlotFact() : root(kNoBinding), function(kNoBinding) {}
+	VirtualSlotFact(BindingId root_value, BindingId function_value)
+		: root(root_value), function(function_value) {}
+};
+
+struct ClassPolymorphismFacts
+{
+	std::vector<VirtualSlotFact> slots;
+	bool complete;
+	bool vtable_demanded;
+
+	ClassPolymorphismFacts() : complete(false), vtable_demanded(false) {}
+};
+
 struct FunctionTemplatePattern
 {
 	ScopeId owner;
@@ -463,16 +488,19 @@ struct SemanticGraphView
 	const DumpArena& arena;
 	const std::vector<NamespaceObjectAction>& namespace_objects;
 	const std::vector<AggregateHelperInfo>& aggregate_helpers;
+	const std::vector<ClassPolymorphismFacts>& class_polymorphism;
 	std::uint32_t root;
 
 	SemanticGraphView(const Program& program_value,
 		const DumpArena& arena_value,
 		const std::vector<NamespaceObjectAction>& namespace_objects_value,
 		const std::vector<AggregateHelperInfo>& aggregate_helpers_value,
+		const std::vector<ClassPolymorphismFacts>& class_polymorphism_value,
 		std::uint32_t root_value)
 		: program(program_value), arena(arena_value),
 		  namespace_objects(namespace_objects_value),
-		  aggregate_helpers(aggregate_helpers_value), root(root_value) {}
+		  aggregate_helpers(aggregate_helpers_value),
+		  class_polymorphism(class_polymorphism_value), root(root_value) {}
 };
 
 class SemanticGraphConsumer

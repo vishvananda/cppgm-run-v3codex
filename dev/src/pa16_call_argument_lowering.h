@@ -105,7 +105,61 @@ protected:
 		const Operand address = derived.IsClassObjectType(source.type) ?
 			derived.AddressOfStorage(derived.LowerStorage(child)) :
 			derived.LowerValue(child, LowPtr());
-		return derived.ProjectBaseSubobjects(address, projection_count);
+		TypeId source_shape = derived.program_.types.RemoveTopCv(source.type);
+		const bool pointer_source =
+			derived.program_.types.Get(source_shape).kind == TYPE_POINTER;
+		const bool nonnull_this = source.kind == DUMP_ID_EXPRESSION &&
+			source.binding != kNoBinding &&
+			derived.program_.names.Get(
+				derived.program_.bindings[source.binding].name) == "this";
+		EntityId entity = derived.BaseEntityForType(source.type);
+		bool adjusted = false;
+		for (std::uint32_t i = 0; i < projection_count &&
+			entity != kNoEntity; ++i)
+		{
+			adjusted = adjusted ||
+				derived.program_.entities[entity].direct_base_offset != 0;
+			entity = derived.program_.entities[entity].direct_base;
+		}
+		if (!pointer_source || !adjusted || nonnull_this)
+			return derived.ProjectBaseSubobjects(address, projection_count,
+				source.type);
+
+		const Operand result(derived.EnsureGeneratedSlot(
+			child, "basecast", LowPtr()), LowPtr());
+		const BlockId null_block = derived.AddBlock(
+			derived.NewLabel("basecast_null"));
+		const BlockId adjust_block = derived.AddBlock(
+			derived.NewLabel("basecast_adjust"));
+		const BlockId end_block = derived.AddBlock(
+			derived.NewLabel("basecast_end"));
+		const Operand is_null = derived.Temp(LowU8());
+		Instruction compare(Instruction::CMP);
+		compare.dest = is_null.id;
+		compare.op = LOW_OP_EQ;
+		compare.type = LowPtr();
+		compare.first = address;
+		compare.second = Operand(0, LowPtr());
+		derived.Emit(compare);
+		derived.EmitBranch(is_null, null_block, adjust_block);
+		derived.SelectBlock(null_block);
+		Instruction store_null(Instruction::STORE);
+		store_null.type = LowPtr();
+		store_null.first = Operand(0, LowPtr());
+		store_null.second = result;
+		derived.Emit(store_null);
+		derived.EmitJump(end_block);
+		derived.SelectBlock(adjust_block);
+		const Operand projected = derived.ProjectBaseSubobjects(
+			address, projection_count, source.type);
+		Instruction store_adjusted(Instruction::STORE);
+		store_adjusted.type = LowPtr();
+		store_adjusted.first = projected;
+		store_adjusted.second = result;
+		derived.Emit(store_adjusted);
+		derived.EmitJump(end_block);
+		derived.SelectBlock(end_block);
+		return derived.LoadStorage(result, LowPtr());
 	}
 
 	Operand LowerReferenceCallArgument(std::uint32_t node, TypeId target)

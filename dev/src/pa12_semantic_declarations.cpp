@@ -1,5 +1,4 @@
 #include "pa12_semantic_detail.h"
-
 #include <algorithm>
 #include <limits>
 #include <sstream>
@@ -7,15 +6,12 @@
 #include <string>
 #include <utility>
 #include <vector>
-
 namespace cppgm
 {
 namespace pa12_semantic_detail
 {
-
 namespace
 {
-
 std::size_t AlignUp(std::size_t value, std::size_t alignment)
 {
 	if (alignment == 0 || (alignment & (alignment - 1)) != 0)
@@ -27,7 +23,6 @@ std::size_t AlignUp(std::size_t value, std::size_t alignment)
 		throw std::runtime_error("class layout is too large");
 	return value + addition;
 }
-
 OperatorKind ClassifyOperator(const std::string& name,
 	std::string* literal_suffix)
 {
@@ -84,9 +79,7 @@ OperatorKind ClassifyOperator(const std::string& name,
 	}
 	return OPERATOR_NONE;
 }
-
 }
-
 TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	const std::string& hint, bool elaborated)
 {
@@ -149,6 +142,10 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 		entity_layout_members_.resize(static_cast<std::size_t>(entity) + 1);
 	if (entity_constructors_.size() <= entity)
 		entity_constructors_.resize(static_cast<std::size_t>(entity) + 1);
+	if (entity_member_functions_.size() <= entity)
+		entity_member_functions_.resize(static_cast<std::size_t>(entity) + 1);
+	if (class_polymorphism_.size() <= entity)
+		class_polymorphism_.resize(static_cast<std::size_t>(entity) + 1);
 	if (class_special_members_.size() <= entity)
 		class_special_members_.resize(static_cast<std::size_t>(entity) + 1);
 	if (implicit_constructor_by_entity_.size() <= entity)
@@ -319,6 +316,7 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 				arena_->IsTag(member, "alias-declaration"))
 				AnalyzeUsing(member, member_scope, root_, false, member_access);
 		}
+		CompleteClassPolymorphism(entity);
 		CompleteClassLayout(entity);
 		if (entity < entity_constructors_.size())
 			for (std::size_t i = 0;
@@ -471,13 +469,25 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 		base = &program_->entities[owner.direct_base];
 		if (!base->layout_complete)
 			throw std::runtime_error("direct base layout is incomplete");
-		size = base->empty_class ? 0 :
-			static_cast<std::size_t>(base->object_size);
 		const std::size_t base_alignment =
 			static_cast<std::size_t>(base->object_alignment);
+		const std::size_t effective_base_alignment = packing_alignment == 0 ?
+			base_alignment : std::min(base_alignment, packing_alignment);
+		if (owner.polymorphic_class && !base->polymorphic_class &&
+			!base->empty_class)
+		{
+			owner.direct_base_offset = AlignUp(8, effective_base_alignment);
+			size = static_cast<std::size_t>(owner.direct_base_offset) +
+				static_cast<std::size_t>(base->object_size);
+		}
+		else
+		{
+			owner.direct_base_offset = 0;
+			size = base->empty_class ? 0 :
+				static_cast<std::size_t>(base->object_size);
+		}
 		natural_alignment = std::max(natural_alignment, base_alignment);
-		alignment = packing_alignment == 0 ? base_alignment :
-			std::min(base_alignment, packing_alignment);
+		alignment = effective_base_alignment;
 		if (!base->destructible) owner.destructible = false;
 		if (!base->trivial_destructor) owner.trivial_destructor = false;
 		const BindingId destructor = DestructorForType(base->type);
@@ -487,6 +497,15 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 	}
 	const bool is_union = owner.flavor == NAMED_UNION;
 	bool empty_class = base == 0 || base->empty_class;
+	if (owner.polymorphic_class)
+	{
+		empty_class = false;
+		natural_alignment = std::max<std::size_t>(natural_alignment, 8);
+		alignment = std::max<std::size_t>(alignment,
+			packing_alignment == 0 ? 8 : std::min<std::size_t>(8,
+				packing_alignment));
+		if (!base || !base->polymorphic_class) size = std::max<std::size_t>(size, 8);
+	}
 	bool defaulted_destructor = !owner.has_user_declared_destructor;
 	if (owner.has_user_declared_destructor)
 	{
@@ -500,11 +519,13 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 	const bool implicit_default_constructor =
 		!owner.has_user_declared_constructor;
 	owner.is_aggregate = !owner.has_user_provided_constructor &&
-		!owner.has_direct_base;
+		!owner.has_direct_base && !owner.polymorphic_class;
 	if (implicit_default_constructor)
 	{
 		owner.default_constructible = true;
 		owner.trivial_default_constructor = true;
+		if (owner.polymorphic_class)
+			owner.trivial_default_constructor = false;
 		if (base)
 		{
 			if (!base->default_constructible)
@@ -873,6 +894,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 			binding.operator_kind == OPERATOR_DELETE_ARRAY;
 		if (!binding.static_member_function) info.member_owner = owner_type;
 		ValidateFunctionRefQualifier(function);
+		ConfigureVirtualFunction(function, spec, declarator, kNoNode);
 		info.definition_body =
 			FindChild(node, "compound-statement");
 		info.deferred = true;
@@ -915,6 +937,11 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 			if (!binding.static_member_function)
 				GetMutableFunction(function).member_owner = owner_type;
 			ValidateFunctionRefQualifier(function);
+			ConfigureVirtualFunction(function, spec, declarator,
+				FindChild(item, "initializer"));
+			if (binding.operator_kind == OPERATOR_DELETE ||
+				binding.operator_kind == OPERATOR_DELETE_ARRAY)
+				GetMutableFunction(function).deferred = true;
 			ConfigureAssignmentSpecialMember(
 				function, FindChild(item, "initializer"));
 		}
@@ -1165,6 +1192,14 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 		info.member_owner = owner_type;
 		info.destructor = true;
 		ValidateFunctionRefQualifier(destructor);
+		SpecInfo virtual_spec;
+		if (specifiers != kNoNode)
+			for (std::uint32_t edge = arena_->FirstEdge(specifiers);
+				edge != kNoEdge; edge = arena_->NextEdge(edge))
+				if (PayloadSource(arena_->EdgeChild(edge)) == "virtual")
+					virtual_spec.virtual_specifier = true;
+		ConfigureVirtualFunction(destructor, virtual_spec, declarator,
+			initializer);
 		info.defaulted_destructor =
 			info.defaulted_destructor || defaulted;
 		info.deleted_destructor = info.deleted_destructor || deleted;
@@ -1633,6 +1668,7 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 			result.thread_local_storage = true;
 		else if (spelling == "auto") result.placeholder_auto = true;
 		else if (spelling == "mutable") result.mutable_member = true;
+		else if (spelling == "virtual") result.virtual_specifier = true;
 		else if (spelling == "const") cv |= CV_CONST;
 		else if (spelling == "volatile") cv |= CV_VOLATILE;
 		else if (spelling == "unsigned") is_unsigned = true;
@@ -1648,9 +1684,7 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 		else if (spelling == "wchar_t") is_wchar = true;
 		else if (spelling == "char16_t") is_char16 = true;
 		else if (spelling == "char32_t") is_char32 = true;
-		else if (spelling != "inline" &&
-			spelling != "virtual" &&
-			spelling != "explicit")
+		else if (spelling != "inline" && spelling != "explicit")
 		{
 			const LookupResult found = LookupSpelling(scope, spelling, LOOKUP_TYPE);
 			if (found.type == kNoType)
@@ -1904,7 +1938,16 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 	signature_parameters.reserve(declared_type.parameter_count);
 	const TypeId* declared_parameters = program_->types.Parameters(type);
 	for (std::size_t i = 0; i < declared_type.parameter_count; ++i)
+	{
+		const TypeId parameter =
+			program_->types.RemoveTopCv(declared_parameters[i]);
+		const TypeRecord& shape = program_->types.Get(parameter);
+		if (shape.kind == TYPE_NAMED &&
+			program_->entities[shape.entity].abstract_class)
+			throw std::runtime_error(
+				"function parameter has abstract class type");
 		signature_parameters.push_back(declared_parameters[i]);
+	}
 	const TypeId signature = program_->types.Function(
 		program_->types.Fundamental(FUND_VOID), signature_parameters,
 		declared_type.variadic, declared_type.cv,
@@ -2243,7 +2286,8 @@ BindingId SemanticAnalyzer::EnsureDestructorBaseEntry(BindingId destructor)
 			static_cast<std::size_t>(destructor) + 1, kNoBinding);
 	if (destructor_base_entry_by_binding_[destructor] != kNoBinding)
 		return destructor_base_entry_by_binding_[destructor];
-	if (program_->bindings[destructor].inline_function)
+	if (program_->bindings[destructor].inline_function &&
+		!program_->bindings[destructor].virtual_function)
 	{
 		destructor_base_entry_by_binding_[destructor] = destructor;
 		return destructor;
@@ -2778,6 +2822,12 @@ void SemanticAnalyzer::DemandFunction(BindingId binding)
 {
 	if (binding == kNoBinding || unevaluated_depth_ != 0) return;
 	binding = program_->bindings[binding].canonical;
+	if ((program_->bindings[binding].constructor ||
+		 program_->bindings[binding].destructor) &&
+		program_->bindings[binding].member_owner != kNoEntity &&
+		program_->entities[program_->bindings[binding].member_owner].
+			polymorphic_class)
+		MarkVtableDemand(program_->bindings[binding].member_owner);
 	if (binding < constructor_base_entry_by_binding_.size())
 	{
 		const BindingId base_entry =
@@ -2915,6 +2965,13 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 			const std::uint32_t destructor_body =
 				MakeDump(DUMP_COMPOUND_STATEMENT);
 			dump_.Add(function, destructor_body);
+			const EntityId entity =
+				program_->bindings[info.binding].member_owner;
+			if (entity != kNoEntity &&
+				program_->entities[entity].polymorphic_class)
+				dump_.Add(destructor_body,
+					MakeDump(DUMP_VPTR_INITIALIZATION_ACTION,
+						program_->entities[entity].type));
 			if (info.definition_body != kNoNode)
 				AnalyzeCompound(info.definition_body, function_scope,
 					destructor_body);

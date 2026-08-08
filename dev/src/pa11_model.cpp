@@ -541,13 +541,15 @@ EntityRecord::EntityRecord()
 	  underlying(kNoType), declaration(kNoBinding),
 	  union_default_member(kNoBinding), object_size(0),
 	  object_alignment(0), natural_alignment(0), requested_alignment(0),
-	  packing_alignment(0), base_access(ACCESS_PUBLIC), complete(false),
+	  packing_alignment(0), direct_base_offset(0),
+	  base_access(ACCESS_PUBLIC), complete(false),
 	  layout_complete(false),
 	  has_user_declared_constructor(false),
 	  has_user_provided_constructor(false), default_constructible(false),
 	  trivial_default_constructor(false), has_user_declared_destructor(false),
 	  destructible(true), trivial_destructor(true), has_direct_base(false),
-	  is_aggregate(false), empty_class(false), indirect_class_value_abi(false)
+	  is_aggregate(false), empty_class(false), indirect_class_value_abi(false),
+	  polymorphic_class(false), abstract_class(false)
 {
 }
 
@@ -570,7 +572,9 @@ BindingRecord::BindingRecord()
 	  has_default_member_initializer(false), conversion_function(false),
 	  constructor(false),
 	  constructor_base_entry(false),
-	  destructor(false), destructor_base_entry(false), inline_function(false)
+	  destructor(false), destructor_base_entry(false), inline_function(false),
+	  virtual_function(false), pure_virtual(false), final_virtual(false),
+	  override_specifier(false)
 {
 }
 

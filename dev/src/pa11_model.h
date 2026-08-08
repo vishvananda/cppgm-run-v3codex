@@ -279,14 +279,14 @@ struct EntityRecord
 	TypeId type, underlying;
 	BindingId declaration, union_default_member;
 	std::uint64_t object_size, object_alignment, natural_alignment,
-		requested_alignment, packing_alignment;
+		requested_alignment, packing_alignment, direct_base_offset;
 	AccessKind base_access;
 	bool complete, layout_complete, has_user_declared_constructor,
 		has_user_provided_constructor, default_constructible,
 		trivial_default_constructor, has_user_declared_destructor,
 		destructible, trivial_destructor,
 		has_direct_base, is_aggregate, empty_class,
-		indirect_class_value_abi;
+		indirect_class_value_abi, polymorphic_class, abstract_class;
 
 	EntityRecord();
 };
@@ -318,7 +318,8 @@ struct BindingRecord
 		static_member_function, has_default_member_initializer,
 		conversion_function, constructor,
 		constructor_base_entry, destructor, destructor_base_entry,
-		inline_function;
+		inline_function, virtual_function, pure_virtual, final_virtual,
+		override_specifier;
 
 	BindingRecord();
 };

@@ -342,7 +342,8 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 		&argument_conversions);
 	*result = BuildResolvedCall(selected, scope, argument_syntax,
 		arguments, &object_pointer, target, found.naming_class,
-		&object_conversion, &argument_conversions);
+		&object_conversion, &argument_conversions,
+		member_spelling.find("::") != std::string::npos);
 	return true;
 }
 
@@ -434,7 +435,7 @@ bool SemanticAnalyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 	const std::vector<NodeId> no_syntax;
 	const std::vector<ExpressionInfo> no_arguments;
 	*result = BuildResolvedCall(destructor, scope, no_syntax,
-		no_arguments, &object_pointer, target, entity);
+		no_arguments, &object_pointer, target, entity, 0, 0, true);
 	return true;
 }
 

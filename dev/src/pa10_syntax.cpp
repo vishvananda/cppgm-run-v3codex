@@ -31,7 +31,6 @@ public:
 			throw std::runtime_error("too many syntax tokens");
 		SetNameFact("nullptr_t", kKnownType);
 	}
-
 	NodeId ParseTranslationUnit()
 	{
 		const NodeId root = arena_.Make("translation-unit");
@@ -47,7 +46,6 @@ public:
 		if (position_ != tokens_.size()) throw Error("tokens after EOF");
 		return root;
 	}
-
 	std::size_t StorageBytes() const
 	{
 		std::size_t bytes =
@@ -60,7 +58,6 @@ public:
 			bytes += current_classes_[i].capacity();
 		return bytes;
 	}
-
 private:
 	struct Mark
 	{
@@ -69,33 +66,27 @@ private:
 		std::size_t edges;
 		std::size_t fact_changes;
 	};
-
 	enum NameFact
 	{
 		kKnownType = 1,
 		kKnownTemplate = 2,
 		kKnownNonTemplate = 4
 	};
-
 	struct NameFactChange
 	{
 		TextId name;
 		std::uint8_t previous;
-
 		NameFactChange(TextId name_value, std::uint8_t previous_value)
 			: name(name_value), previous(previous_value) {}
 	};
-
 	struct AngleMatch
 	{
 		std::uint32_t close;
 		std::uint32_t fact_revision;
-
 		AngleMatch()
 			: close(std::numeric_limits<std::uint32_t>::max()),
 			  fact_revision(0) {}
 	};
-
 	void AdvanceNameFactRevision()
 	{
 		++name_fact_revision_;
@@ -104,7 +95,6 @@ private:
 		for (std::size_t i = 0; i < angle_matches_.size(); ++i)
 			angle_matches_[i].fact_revision = 0;
 	}
-
 	Mark Checkpoint()
 	{
 		if (stats_) ++stats_->parser_checkpoints;
@@ -112,7 +102,6 @@ private:
 			name_fact_changes_.size()};
 		return mark;
 	}
-
 	void Rollback(const Mark& mark)
 	{
 		if (stats_) ++stats_->parser_rollbacks;
@@ -126,13 +115,11 @@ private:
 			AdvanceNameFactRevision();
 		}
 	}
-
 	bool HasNameFact(TextId name, NameFact fact) const
 	{
 		return name < name_facts_.size() &&
 			(name_facts_[name] & static_cast<std::uint8_t>(fact)) != 0;
 	}
-
 	void SetNameFact(TextId name, NameFact fact, bool enabled = true)
 	{
 		if (name >= name_facts_.size()) name_facts_.resize(name + 1, 0);
@@ -147,7 +134,6 @@ private:
 		AdvanceNameFactRevision();
 		if (stats_) ++stats_->parser_fact_changes;
 	}
-
 	void SetNameFact(const std::string& name, NameFact fact,
 		bool enabled = true)
 	{
@@ -164,7 +150,6 @@ private:
 		for (std::size_t i = 0; i < parameter_names_.size(); ++i)
 		{ SetNameFact(parameter_names_[i], kKnownType, false);
 			SetNameFact(parameter_names_[i], kKnownNonTemplate); } }
-
 	std::runtime_error Error(const std::string& message) const
 	{
 		return std::runtime_error(message + " at token " +
@@ -172,38 +157,32 @@ private:
 			(position_ < tokens_.size() ? " (`" + Spelling(position_) + "`)" :
 			 std::string()));
 	}
-
 	bool At(SimpleTokenKind kind) const
 	{
 		return position_ < tokens_.size() && tokens_[position_].kind ==
 			static_cast<std::uint16_t>(kind);
 	}
-
 	bool AtOffset(std::size_t offset, SimpleTokenKind kind) const
 	{
 		return position_ + offset < tokens_.size() &&
 			tokens_[position_ + offset].kind ==
 				static_cast<std::uint16_t>(kind);
 	}
-
 	bool AtIdentifier() const
 	{
 		return position_ < tokens_.size() &&
 			tokens_[position_].kind == kIdentifierToken;
 	}
-
 	bool AtLiteral() const
 	{
 		return position_ < tokens_.size() &&
 			tokens_[position_].kind == kLiteralToken;
 	}
-
 	bool AtEof() const
 	{
 		return position_ < tokens_.size() &&
 			tokens_[position_].kind == kEofToken;
 	}
-
 	bool AtCloseAngle() const
 	{
 		if (position_ >= tokens_.size()) return false;
@@ -211,7 +190,6 @@ private:
 		return kind == static_cast<std::uint16_t>(OP_GT) ||
 			kind == kRShiftFirstToken || kind == kRShiftSecondToken;
 	}
-
 	bool Match(SimpleTokenKind kind)
 	{
 		if (!At(kind)) return false;
@@ -2469,7 +2447,7 @@ NodeId Parser::ParseClass(bool require_semicolon)
 	if (!name.empty()) last_declared_names_.push_back(strings_.Intern(name));
 	if (!name.empty()) SetNameFact(name, kKnownType);
 	if ((require_semicolon && Match(OP_SEMICOLON)) ||
-		(!require_semicolon && !At(OP_LBRACE)))
+		(!require_semicolon && !At(OP_LBRACE) && !At(OP_COLON)))
 	{
 		last_declared_names_.clear();
 		if (!name.empty()) last_declared_names_.push_back(strings_.Intern(name));
@@ -2660,7 +2638,18 @@ bool Parser::StartsStandaloneClassDeclaration()
 		if (!ParseName(&ignored, true)) Rollback(name_mark);
 	}
 	SkipAttributes();
-	bool result = At(OP_COLON) || At(OP_SEMICOLON);
+	bool result = At(OP_SEMICOLON);
+	if (At(OP_COLON))
+	{
+		std::size_t scan = position_;
+		while (scan < tokens_.size() &&
+			tokens_[scan].kind != static_cast<std::uint16_t>(OP_LBRACE) &&
+			tokens_[scan].kind != static_cast<std::uint16_t>(OP_SEMICOLON))
+			++scan;
+		if (scan < tokens_.size() &&
+			tokens_[scan].kind == static_cast<std::uint16_t>(OP_LBRACE))
+			position_ = scan;
+	}
 	if (At(OP_LBRACE))
 	{
 		std::size_t scan = position_;

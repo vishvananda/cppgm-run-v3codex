@@ -4,7 +4,6 @@
 #include "pa15_lowering_abi.h"
 #include "pa15_lowering_support.h"
 #include "pa15_source_type_lowering.h"
-
 #include "pa11_model.h"
 #include "pa12_semantic.h"
 #include "pa12_semantic_model.h"
@@ -22,7 +21,7 @@
 #include "pa17_value_boundary_lowering.h"
 #include "pa17_special_member_lowering.h"
 #include "pa17_temporary_lifetime_lowering.h"
-
+#include "pa18_polymorphism_lowering.h"
 #include <algorithm>
 #include <limits>
 #include <ostream>
@@ -41,6 +40,7 @@ const std::size_t kAggregateProjectionReplayLimit = 8;
 typedef SmallSequence<BindingId, kAggregateProjectionReplayLimit> AggregatePath;
 class GraphLowerer :
 	private pa15_lowering_detail::ControlFlowLowering<GraphLowerer>,
+	private pa18_lowering_detail::PolymorphismActionLowering<GraphLowerer>,
 	private pa17_lowering_detail::BitFieldValueLowering<GraphLowerer>,
 	private pa17_lowering_detail::ValueBoundaryLowering<GraphLowerer>,
 	private pa17_lowering_detail::SpecialMemberLowering<GraphLowerer>,
@@ -70,6 +70,7 @@ public:
 		  lowering_namespace_object_(false),
 		  current_class_value_boundary_(false),
 		  current_this_binding_(kNoBinding),
+		  current_member_owner_(kNoEntity),
 		  destructor_return_target_(kNoLowId),
 		  destructor_return_routes_to_epilogue_(false),
 		  full_expression_cleanup_active_(false), full_expression_cleanup_dispatch_(kNoLowId),
@@ -115,15 +116,19 @@ public:
 	{
 		RegisterAggregateHelpers();
 		ScanTop(graph_.root);
+		pa18_lowering_detail::PreparePolymorphism(graph_, output_, stats_,
+			source_ordinal_, function_symbols_, &polymorphism_);
 		EmitTop(graph_.root);
+		pa18_lowering_detail::EmitDeletingDestructors(graph_, output_, stats_,
+			function_symbols_, &polymorphism_);
 		EmitAggregateHelpers();
 		EmitThreadLocalInitializers();
 		EmitDynamicInitializer();
 		EmitDynamicFinalizer();
 	}
-
 private:
 	friend class pa15_lowering_detail::ControlFlowLowering<GraphLowerer>;
+	friend class pa18_lowering_detail::PolymorphismActionLowering<GraphLowerer>;
 	friend class pa17_lowering_detail::BitFieldValueLowering<GraphLowerer>;
 	friend class pa17_lowering_detail::ValueBoundaryLowering<GraphLowerer>;
 	friend class pa17_lowering_detail::SpecialMemberLowering<GraphLowerer>;
@@ -137,7 +142,6 @@ private:
 	friend class pa16_lowering_detail::LifetimeActionLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::SlotPlanning<GraphLowerer>;
 	friend class pa17_lowering_detail::TemporaryLifetimeLowering<GraphLowerer>;
-
 	enum StatementTaskKind : std::uint8_t
 	{
 		STATEMENT_NODE,
@@ -152,7 +156,6 @@ private:
 		STATEMENT_FOR_AFTER_ITERATION,
 		STATEMENT_SWITCH_AFTER_BODY
 	};
-
 	struct StatementTask
 	{
 		std::uint32_t node;
@@ -163,13 +166,11 @@ private:
 		BlockId third;
 		StatementTaskKind kind;
 		bool flag;
-
 		explicit StatementTask(StatementTaskKind kind_value)
 			: node(kNoDumpEdge), auxiliary(kNoDumpEdge), last(kNoDumpEdge),
 			  first(kNoLowId), second(kNoLowId),
 			  third(kNoLowId), kind(kind_value), flag(false) {}
 	};
-
 	NodeChildren Children(std::uint32_t node) const
 	{
 		NodeChildren result;
@@ -178,48 +179,55 @@ private:
 			result.Push(arena_.edges[edge].child);
 		return result;
 	}
-
 	LowType LowerType(TypeId type) const { return source_types_.Lower(type); }
 	bool IsReferenceType(TypeId type) const
 		{ return source_types_.IsReference(type); }
-
 	TypeId RemoveReference(TypeId type) const
 		{ return source_types_.RemoveReference(type); }
-
 	TypeId RemoveTopQualifiers(TypeId type) const
 		{ return source_types_.RemoveTopQualifiers(type); }
-
 	TypeId ExpressionObjectType(TypeId type) const
 		{ return source_types_.ExpressionObject(type); }
-
 	bool IsArrayType(TypeId type) const
 		{ return source_types_.IsArray(type); }
-
 	bool IsFunctionType(TypeId type) const
 		{ return source_types_.IsFunction(type); }
-
 	bool IsClassObjectType(TypeId type) const
 		{ return source_types_.IsClassObject(type); }
-
+	EntityId ClassEntity(TypeId type) const
+	{
+		type = program_.types.RemoveTopCv(ExpressionObjectType(type));
+		const TypeRecord& record = program_.types.Get(type);
+		return record.kind == TYPE_NAMED ? record.entity : kNoEntity;
+	}
+	EntityId BaseEntityForType(TypeId type) const
+	{
+		if (type == kNoType)
+			return current_member_owner_;
+		TypeId shape_id = program_.types.RemoveTopCv(type);
+		const TypeRecord* shape = &program_.types.Get(shape_id);
+		if (shape->kind == TYPE_LVALUE_REFERENCE ||
+			shape->kind == TYPE_RVALUE_REFERENCE || shape->kind == TYPE_POINTER)
+		{
+			shape_id = program_.types.RemoveTopCv(shape->child);
+			shape = &program_.types.Get(shape_id);
+		}
+		return shape->kind == TYPE_NAMED ? shape->entity : kNoEntity;
+	}
 	LowType LowerExpressionType(TypeId type) const
 		{ return source_types_.LowerExpression(type); }
-
 	LowType LowerStorageType(TypeId type) const
 		{ return source_types_.LowerStorage(type); }
-
 	TypeId ArrayElementType(TypeId type) const
 		{ return source_types_.ArrayElement(type); }
-
 	bool IsPointerLikeType(TypeId type) const
 		{ return source_types_.IsPointerLike(type); }
-
 	LowType NullPointerExpectation(std::uint32_t node,
 		const LowType& target) const
 	{
 		return target.kind == LOW_PTR &&
 			source_types_.IsNullptr(arena_.nodes[node].type) ? target : LowType();
 	}
-
 	TypeId PointeeType(TypeId type) const
 		{ return source_types_.Pointee(type); }
 	LowType LowerBoundaryResult(TypeId type) const {
@@ -232,8 +240,11 @@ private:
 		const std::string& proposed_name, const std::string& object_name)
 	{
 		const BindingRecord& binding = program_.bindings[node.binding];
-		const bool internal = binding.storage_class == STORAGE_CLASS_STATIC &&
-			binding.member_owner == kNoEntity;
+		const bool local_member = pa18_lowering_detail::IsFunctionLocalEntity(
+			program_, binding.member_owner);
+		const bool internal = local_member ||
+			(binding.storage_class == STORAGE_CLASS_STATIC &&
+			 binding.member_owner == kNoEntity);
 		const bool c_linkage =
 			binding.language_linkage == LANGUAGE_LINKAGE_C;
 		SymbolIdentity identity;
@@ -244,7 +255,10 @@ private:
 		identity.signature = kind == Symbol::FUNCTION_SYMBOL && !c_linkage ?
 			output_.identities.InternFunctionSignature(program_, binding.type,
 				identity_type_cache_) : kNoLowId;
-		identity.internal_owner = internal ? source_ordinal_ + 1 : 0;
+		identity.internal_owner = local_member ?
+			((source_ordinal_ + 1) << 32) |
+				(static_cast<std::size_t>(binding.member_owner) + 1) :
+			internal ? source_ordinal_ + 1 : 0;
 		const IdentityTypeId source_type = output_.identities.InternType(
 			program_, node.type, identity_type_cache_);
 		SymbolId found = kNoLowId;
@@ -267,7 +281,8 @@ private:
 		const std::string name = count++ == 0 ? proposed_name :
 			proposed_name + "__sym" + std::to_string(count);
 		const SymbolId symbol = static_cast<SymbolId>(output_.symbols.size());
-		output_.symbols.push_back(Symbol(kind, name, object_name, c_linkage,
+		output_.symbols.push_back(Symbol(kind, name,
+			local_member ? std::string() : object_name, c_linkage,
 			internal, binding.nonthrowing));
 		pa15_lowering_abi::ApplyBuiltinSymbolMetadata(&output_.symbols.back(),
 			binding.builtin_function);
@@ -289,8 +304,11 @@ private:
 				program_.bindings[record.binding].overload_ordinal;
 			const std::string name = ordinal <= 1 ? base :
 				base + "__ov" + std::to_string(ordinal);
+			const std::string entry_name = binding.constructor_base_entry ?
+				name + "__base_entry" : binding.destructor_base_entry ?
+				name + "__base_entry" : name;
 			function_symbols_[record.binding] = InternSymbol(record,
-				Symbol::FUNCTION_SYMBOL, name,
+				Symbol::FUNCTION_SYMBOL, entry_name,
 				pa15_lowering_abi::MangleFunction(program_, record));
 		}
 		if (record.kind == DUMP_FUNCTION_DEFINITION)
@@ -700,6 +718,7 @@ private:
 		assigned_names_.Clear();
 		slot_name_counts_.Clear();
 		current_this_binding_ = kNoBinding;
+		current_member_owner_ = kNoEntity;
 		current_class_value_boundary_ = false;
 		SelectBlock(AddBlock("entry"));
 	}
@@ -715,6 +734,7 @@ private:
 		current_result_reference_ = false;
 		current_indirect_result_ = false;
 		current_this_binding_ = kNoBinding;
+		current_member_owner_ = kNoEntity;
 	}
 
 	std::string UniqueSlotName(const std::string& requested)
@@ -807,6 +827,8 @@ private:
 		ResetFullExpressionFunctionState();
 		parameter_slot_index_ = current_indirect_result_ ? 1 : 0;
 		current_this_binding_ = kNoBinding;
+		current_member_owner_ = record.binding == kNoBinding ? kNoEntity :
+			program_.bindings[record.binding].member_owner;
 		CollectSourceNames(node);
 		CollectSlots(node);
 		SelectBlock(AddBlock("entry"));
@@ -867,6 +889,7 @@ private:
 		current_indirect_result_ = false;
 		current_class_value_boundary_ = false;
 		current_this_binding_ = kNoBinding;
+		current_member_owner_ = kNoEntity;
 		return result;
 	}
 
@@ -1008,7 +1031,8 @@ private:
 		Operand base = pointer_object ?
 			LowerValue(children[0], LowPtr()) :
 			AddressOfStorage(LowerStorage(children[0]));
-		base = ProjectBaseSubobjects(base, record.base_projection_count);
+		base = ProjectBaseSubobjects(base, record.base_projection_count,
+			arena_.nodes[children[0]].type);
 		const Operand result = Temp(LowPtr());
 		Instruction index(Instruction::INDEX);
 		index.dest = result.id;
@@ -1120,7 +1144,7 @@ private:
 		{
 			const Operand source = AddressOfStorage(LowerStorage(children[0]));
 			return ProjectBaseSubobjects(source,
-				record.base_projection_count);
+				record.base_projection_count, arena_.nodes[children[0]].type);
 		}
 		throw std::runtime_error("expression does not designate scalar storage");
 	}
@@ -1410,6 +1434,11 @@ private:
 			LowerExpressionType(arena_.nodes[children[0]].type).kind == LOW_I64;
 		const bool canonicalize_immediates =
 			(!comparison && (op == "+" || op == "-")) ||
+			(comparison &&
+			 ((left.kind == Operand::INTEGER && IsInteger(left.type) &&
+			   left.type.width < operand_type.width) ||
+			  (right.kind == Operand::INTEGER && IsInteger(right.type) &&
+			   right.type.width < operand_type.width))) ||
 			canonical_pointer_difference_compare ||
 			(comparison && (current_class_value_boundary_ ||
 				CallHasClassValueBoundary(children[0]) ||
@@ -1675,7 +1704,8 @@ private:
 			EnsureFullExpressionCleanupSegment();
 		const DumpNode& callee = arena_.nodes[children[0]];
 		if (stats_) ++stats_->binding_index_probes;
-		const bool direct = callee.kind == DUMP_CALLEE &&
+		const bool direct = !record.virtual_call &&
+			callee.kind == DUMP_CALLEE &&
 			callee.binding != kNoBinding &&
 			callee.binding < function_symbols_.size() &&
 			function_symbols_[callee.binding] != kNoLowId;
@@ -1704,6 +1734,7 @@ private:
 				function_symbols_[callee.binding], LowPtr());
 		}
 		Operand result_storage;
+		Operand virtual_object;
 		if (indirect_result)
 		{
 			if (supplied_result.kind != Operand::NONE)
@@ -1744,8 +1775,17 @@ private:
 					CanonicalizeImmediateConversion(children[i]) ||
 					CanonicalizeOperatorLiteral(children[i], callee)));
 			}
+			if (record.virtual_call && i == 1)
+				virtual_object = arguments[arguments.size() - 1];
 		}
-		if (!direct) call.first = LowerValue(children[0], LowPtr());
+		if (record.virtual_call)
+		{
+			if (virtual_object.kind == Operand::NONE ||
+				record.virtual_slot == kNoDumpEdge)
+				throw std::logic_error("virtual call has no object or slot");
+			call.first = LowerVirtualCallee(record, virtual_object);
+		}
+		else if (!direct) call.first = LowerValue(children[0], LowPtr());
 		AttachCallArguments(&call, arguments, argument_references);
 		if (call.type.kind == LOW_VOID)
 		{
@@ -2074,6 +2114,11 @@ private:
 		if (record.kind == DUMP_INITIALIZER_ACTION)
 		{
 			LowerMemberInitializationAction(record, children);
+			return;
+		}
+		if (record.kind == DUMP_VPTR_INITIALIZATION_ACTION)
+		{
+			LowerVptrInitializationAction(record);
 			return;
 		}
 		if (TryLowerConstructorInitializationAction(record, children)) return;
@@ -2450,19 +2495,6 @@ private:
 		index.second = Operand(
 			static_cast<std::int64_t>(member.member_offset), LowI64());
 		index.projection = INDEX_PROJECTION_FIELD;
-		Emit(index);
-		return projected;
-	}
-
-	Operand ProjectBaseSubobject(const Operand& object)
-	{
-		const Operand projected = Temp(LowPtr());
-		Instruction index(Instruction::INDEX);
-		index.dest = projected.id;
-		index.type = LowI8();
-		index.first = object;
-		index.second = Operand(0, LowI64());
-		index.projection = INDEX_PROJECTION_BASE_SUBOBJECT;
 		Emit(index);
 		return projected;
 	}
@@ -2903,6 +2935,7 @@ private:
 	std::size_t temp_counter_;
 	std::size_t block_counter_;
 	std::size_t generated_slot_ordinal_;
+	pa18_lowering_detail::PolymorphismLoweringState polymorphism_;
 	std::vector<SlotId> binding_slots_;
 	std::vector<ParameterId> binding_indirect_parameters_;
 	std::vector<SlotId> generated_slots_;
@@ -2932,6 +2965,7 @@ private:
 	bool lowering_namespace_object_;
 	bool current_class_value_boundary_;
 	BindingId current_this_binding_;
+	EntityId current_member_owner_;
 	BlockId destructor_return_target_;
 	bool destructor_return_routes_to_epilogue_, full_expression_cleanup_active_;
 	BlockId full_expression_cleanup_dispatch_, full_expression_cleanup_end_, full_expression_linked_cleanup_dispatch_;

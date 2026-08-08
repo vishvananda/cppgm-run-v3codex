@@ -55,6 +55,7 @@ bool SemanticAnalyzer::EmptyDefaultConstructorChain(BindingId constructor,
 		const EntityId entity = binding.member_owner;
 		if (entity == kNoEntity || entity >= entity_data_members_.size())
 			return false;
+		if (program_->entities[entity].polymorphic_class) return false;
 		const std::vector<BindingId>& members = entity_data_members_[entity];
 		for (std::size_t i = 0; i < members.size(); ++i)
 		{
@@ -114,6 +115,8 @@ BindingId SemanticAnalyzer::ValidateClassValueConstruction(TypeId type,
 	const EntityId entity = EntityOf(type);
 	if (!IsClassEntity(*program_, entity))
 		throw std::logic_error("class-value construction has non-class type");
+	if (program_->entities[entity].abstract_class)
+		throw std::runtime_error("cannot construct an abstract class value");
 	std::vector<NodeId> argument_syntax(1, kNoNode);
 	std::vector<ExpressionInfo> arguments(1, source);
 	return SelectConstructor(kNoScope, argument_syntax,
@@ -1129,6 +1132,9 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 		constructor.inherited_constructor_source == kNoBinding)
 		AddBaseInitializationAction(entity, base_initializer,
 			function_scope, body);
+	if (program_->entities[entity].polymorphic_class)
+		dump_.Add(body, MakeDump(DUMP_VPTR_INITIALIZATION_ACTION,
+			program_->entities[entity].type));
 	if (program_->entities[entity].flavor == NAMED_UNION)
 	{
 		const BindingId active = constructor_initializer_touched_.empty() ?
@@ -2137,6 +2143,15 @@ ExpressionInfo SemanticAnalyzer::AnalyzeDeleteExpression(NodeId node,
 		void_type, VALUE_PRVALUE, 0, deallocation);
 	dump_.nodes[expression].operand_type = leaf_type;
 	dump_.nodes[expression].selected_binding = destructor;
+	if (destructor != kNoBinding &&
+		program_->bindings[destructor].virtual_function)
+	{
+		dump_.nodes[expression].virtual_call = true;
+		const std::uint32_t complete_slot = VirtualSlotFor(destructor);
+		if (complete_slot == kNoDumpEdge)
+			throw std::logic_error("virtual destructor has no slot");
+		dump_.nodes[expression].virtual_slot = complete_slot + 1;
+	}
 	dump_.nodes[expression].array_action = array;
 	dump_.nodes[expression].array_cookie = array && class_object;
 	dump_.Add(expression, operand.node);
@@ -2578,6 +2593,8 @@ bool SemanticAnalyzer::IsElidableAutomaticDestructor(
 	const BindingRecord& binding = program_->bindings[destructor];
 	if (binding.member_owner == kNoEntity)
 		return false;
+	if (program_->entities[binding.member_owner].polymorphic_class)
+		return false;
 	const FunctionInfo& info = GetFunction(destructor);
 	const bool union_object =
 		program_->entities[binding.member_owner].flavor == NAMED_UNION;
@@ -2802,12 +2819,14 @@ void SemanticAnalyzer::AddDestructorSubobjectActions(EntityId entity,
 	const EntityId base = program_->entities[entity].direct_base;
 	if (base != kNoEntity && !program_->entities[base].trivial_destructor)
 	{
-		const BindingId destructor = DestructorForType(
+		BindingId destructor = DestructorForType(
 			program_->entities[base].type);
 		if (destructor == kNoBinding)
 			throw std::logic_error("base has no destructor identity");
 		if (!CanAccessMember(destructor, base))
 			throw std::runtime_error("inaccessible base destructor");
+		if (program_->bindings[destructor].virtual_function)
+			destructor = EnsureDestructorBaseEntry(destructor);
 		dump_.Add(body, MakeDestructorAction(program_->entities[base].type,
 			destructor, kNoBinding, 1));
 		++destructor_subobject_action_visits_;
