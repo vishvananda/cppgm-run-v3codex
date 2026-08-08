@@ -156,6 +156,28 @@ void SemanticAnalyzer::AppendArgumentDependentCandidates(NameId name,
 	{
 		const EntityId entity = associated_entities_[i];
 		const EntityRecord& record = program_->entities[entity];
+		if (entity < class_template_pattern_by_entity_.size() &&
+			class_template_pattern_by_entity_[entity] != kNoDumpEdge &&
+			entity < class_template_argument_begin_by_entity_.size() &&
+			class_template_argument_begin_by_entity_[entity] != kNoDumpEdge)
+		{
+			const std::size_t pattern =
+				class_template_pattern_by_entity_[entity];
+			if (pattern >= class_templates_.size())
+				throw std::logic_error(
+					"associated class template pattern is invalid");
+			const std::size_t first =
+				class_template_argument_begin_by_entity_[entity];
+			const std::size_t count =
+				class_templates_[pattern].type_parameters.size();
+			if (first > class_template_entity_arguments_.size() ||
+				count > class_template_entity_arguments_.size() - first)
+				throw std::logic_error(
+					"associated class template argument range is invalid");
+			for (std::size_t argument = 0; argument < count; ++argument)
+				AddAssociatedType(
+					class_template_entity_arguments_[first + argument]);
+		}
 		if (record.direct_base != kNoEntity)
 			AddAssociatedEntity(record.direct_base);
 		ScopeId owner = record.owner;
@@ -171,6 +193,21 @@ void SemanticAnalyzer::AppendArgumentDependentCandidates(NameId name,
 	for (std::size_t i = 0; i < associated_scopes_.size(); ++i)
 	{
 		++associated_scope_visits_;
+		const std::uint64_t key =
+			(static_cast<std::uint64_t>(associated_scopes_[i]) << 32) | name;
+		const CompactIndexSequence* template_patterns =
+			template_function_sets_.Find(key);
+		if (template_patterns)
+		{
+			const std::vector<std::size_t> patterns = template_patterns->Copy();
+			associated_declaration_visits_ += patterns.size();
+			std::vector<BindingId> specializations;
+			DeduceFunctionTemplatePatterns(patterns, arguments,
+				&specializations);
+			for (std::size_t specialization = 0;
+				specialization < specializations.size(); ++specialization)
+				AddCandidate(specializations[specialization], candidates);
+		}
 		AppendDirectFunctionCandidates(associated_scopes_[i], name, candidates);
 	}
 	for (std::size_t i = 0; i < associated_entities_.size(); ++i)

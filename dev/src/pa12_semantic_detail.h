@@ -200,6 +200,10 @@ private:
 	void UpgradeFunctionTemplateSpecializations(std::size_t pattern);
 	bool DeduceFunctionTemplateType(TypeId pattern, TypeId argument,
 		std::vector<TypeId>* deduced) const;
+	void DeduceFunctionTemplatePatterns(
+		const std::vector<std::size_t>& patterns,
+		const std::vector<ExpressionInfo>& arguments,
+		std::vector<BindingId>* specializations = 0);
 	void DeduceFunctionTemplates(ScopeId scope, const std::string& spelling,
 		const std::vector<ExpressionInfo>& arguments);
 	void DemandFunction(BindingId binding);
@@ -605,6 +609,8 @@ private:
 	TemplateSpecializationTable template_instantiations_;
 	std::vector<ClassTemplatePattern> class_templates_;
 	std::vector<std::uint32_t> class_template_pattern_by_entity_;
+	std::vector<std::uint32_t> class_template_argument_begin_by_entity_;
+	std::vector<TypeId> class_template_entity_arguments_;
 	TemplateSpecializationTable class_template_instantiations_;
 	std::vector<std::uint8_t> class_template_specialization_states_;
 	std::vector<std::uint32_t> class_template_member_definition_counts_;

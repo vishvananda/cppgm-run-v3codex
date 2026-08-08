@@ -2032,9 +2032,12 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 		return;
 	}
 	const std::vector<BindingId> functions = FunctionCandidates(scope, target);
-	if (!functions.empty())
+	const std::vector<std::size_t> template_patterns =
+		FindFunctionTemplates(scope, target);
+	if (!functions.empty() || !template_patterns.empty())
 	{
-		if (class_owner != kNoEntity &&
+		if (!functions.empty() && template_patterns.empty() &&
+			class_owner != kNoEntity &&
 			program_->entities[class_owner].direct_base != kNoEntity)
 		{
 			const EntityId base = program_->entities[class_owner].direct_base;
@@ -2053,6 +2056,11 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 		}
 		const std::uint64_t key =
 			(static_cast<std::uint64_t>(scope) << 32) | name;
+		CompactIndexSequence& template_aliases =
+			template_function_sets_.Ensure(key);
+		for (std::size_t i = 0; i < template_patterns.size(); ++i)
+			if (!template_aliases.Contains(template_patterns[i]))
+				template_aliases.Push(template_patterns[i]);
 		CompactIndexSequence& aliases = function_sets_.Ensure(key);
 		CompactIndexSequence& ordinary_aliases =
 			ordinary_function_sets_.Ensure(key);
@@ -2693,112 +2701,6 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 		mutable_pattern.specialization_arguments.end(),
 		arguments.begin(), arguments.end());
 	return binding;
-}
-
-bool SemanticAnalyzer::DeduceFunctionTemplateType(TypeId pattern,
-	TypeId argument, std::vector<TypeId>* deduced) const
-{
-	for (std::size_t i = 0;
-		i < function_template_shape_parameters_.size() && i < deduced->size(); ++i)
-		if (pattern == function_template_shape_parameters_[i])
-		{
-			argument = program_->types.RemoveTopCv(argument);
-			if ((*deduced)[i] != kNoType && (*deduced)[i] != argument)
-				return false;
-			(*deduced)[i] = argument;
-			return true;
-		}
-	const TypeRecord& pattern_record = program_->types.Get(pattern);
-	if (pattern_record.kind == TYPE_QUALIFIED)
-		return DeduceFunctionTemplateType(pattern_record.child,
-			program_->types.RemoveTopCv(argument), deduced);
-	const TypeRecord& argument_record = program_->types.Get(argument);
-	if (pattern_record.kind != argument_record.kind) return false;
-	switch (pattern_record.kind)
-	{
-	case TYPE_POINTER:
-	case TYPE_LVALUE_REFERENCE:
-	case TYPE_RVALUE_REFERENCE:
-		return DeduceFunctionTemplateType(pattern_record.child,
-			argument_record.child, deduced);
-	case TYPE_ARRAY:
-		return (pattern_record.bound == 0 ||
-			pattern_record.bound == argument_record.bound) &&
-			DeduceFunctionTemplateType(pattern_record.child,
-				argument_record.child, deduced);
-	case TYPE_FUNCTION:
-	{
-		if (pattern_record.parameter_count != argument_record.parameter_count ||
-			pattern_record.variadic != argument_record.variadic ||
-			pattern_record.cv != argument_record.cv ||
-			pattern_record.ref_qualifier != argument_record.ref_qualifier ||
-			!DeduceFunctionTemplateType(pattern_record.child,
-				argument_record.child, deduced))
-			return false;
-		const TypeId* pattern_parameters = program_->types.Parameters(pattern);
-		const TypeId* argument_parameters = program_->types.Parameters(argument);
-		for (std::size_t i = 0; i < pattern_record.parameter_count; ++i)
-			if (!DeduceFunctionTemplateType(pattern_parameters[i],
-				argument_parameters[i], deduced)) return false;
-		return true;
-	}
-	case TYPE_MEMBER_POINTER:
-		return pattern_record.entity == argument_record.entity &&
-			DeduceFunctionTemplateType(pattern_record.child,
-				argument_record.child, deduced);
-	case TYPE_FUNDAMENTAL:
-	case TYPE_NAMED:
-	case TYPE_INVALID:
-	case TYPE_QUALIFIED:
-		return pattern == argument;
-	}
-	return false;
-}
-
-void SemanticAnalyzer::DeduceFunctionTemplates(ScopeId scope,
-	const std::string& spelling,
-	const std::vector<ExpressionInfo>& arguments)
-{
-	if (spelling.find('<') != std::string::npos) return;
-	const std::vector<std::size_t> patterns =
-		FindFunctionTemplates(scope, spelling);
-	for (std::size_t p = 0; p < patterns.size(); ++p)
-	{
-		const FunctionTemplatePattern& pattern =
-			function_templates_[patterns[p]];
-		const TypeRecord& function_type =
-			program_->types.Get(pattern.shape_type);
-		if (function_type.kind != TYPE_FUNCTION ||
-			function_type.parameter_count != arguments.size()) continue;
-		const TypeId* parameters =
-			program_->types.Parameters(pattern.shape_type);
-		std::vector<TypeId> deduced(pattern.type_parameters.size(), kNoType);
-		bool valid = true;
-		for (std::size_t a = 0; a < arguments.size() && valid; ++a)
-		{
-			if (arguments[a].type == kNoType)
-			{
-				valid = false;
-				continue;
-			}
-			TypeId parameter = parameters[a];
-			TypeId argument = EffectiveType(arguments[a].type);
-			const TypeRecord& parameter_record =
-				program_->types.Get(parameter);
-			if (parameter_record.kind == TYPE_LVALUE_REFERENCE ||
-				parameter_record.kind == TYPE_RVALUE_REFERENCE)
-				parameter = parameter_record.child;
-			else
-			{
-				parameter = program_->types.RemoveTopCv(parameter);
-				argument = program_->types.RemoveTopCv(Decay(argument));
-			}
-			valid = DeduceFunctionTemplateType(parameter, argument, &deduced);
-		}
-		for (std::size_t t = 0; t < deduced.size(); ++t)
-			if (deduced[t] == kNoType) valid = false;
-		if (valid) InstantiateFunctionTemplate(patterns[p], deduced);
-	}
 }
 
 void SemanticAnalyzer::DemandFunction(BindingId binding)

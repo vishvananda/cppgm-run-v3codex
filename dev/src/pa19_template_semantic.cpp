@@ -860,6 +860,20 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 			static_cast<std::size_t>(entity) + 1, kNoDumpEdge);
 	class_template_pattern_by_entity_[entity] =
 		static_cast<std::uint32_t>(index);
+	if (class_template_argument_begin_by_entity_.size() <= entity)
+		class_template_argument_begin_by_entity_.resize(
+			static_cast<std::size_t>(entity) + 1, kNoDumpEdge);
+	if (class_template_argument_begin_by_entity_[entity] == kNoDumpEdge)
+	{
+		if (class_template_entity_arguments_.size() >= kNoDumpEdge)
+			throw std::runtime_error("too many class template entity arguments");
+		class_template_argument_begin_by_entity_[entity] =
+			static_cast<std::uint32_t>(
+				class_template_entity_arguments_.size());
+		class_template_entity_arguments_.insert(
+			class_template_entity_arguments_.end(),
+			arguments.begin(), arguments.end());
+	}
 	const BindingId binding = program_->entities[entity].declaration;
 	class_template_instantiations_.Insert(key, binding);
 	pattern.specialization_bindings.push_back(binding);

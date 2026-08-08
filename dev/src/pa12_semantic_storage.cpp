@@ -52,6 +52,9 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		template_instantiations_.StorageBytes() +
 		class_templates_.capacity() * sizeof(ClassTemplatePattern) +
 		class_template_pattern_by_entity_.capacity() * sizeof(std::uint32_t) +
+		class_template_argument_begin_by_entity_.capacity() *
+			sizeof(std::uint32_t) +
+		class_template_entity_arguments_.capacity() * sizeof(TypeId) +
 		class_template_instantiations_.StorageBytes() +
 		class_template_specialization_states_.capacity() * sizeof(std::uint8_t) +
 		class_template_member_definition_counts_.capacity() *
