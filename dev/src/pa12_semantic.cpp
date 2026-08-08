@@ -677,6 +677,41 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 		ExpressionInfo function_id;
 		if (AnalyzeFunctionId(node, scope, target, &function_id))
 			return function_id;
+		return AnalyzeNamedValue(spelling, scope, target);
+	}
+	if (arena_->IsTag(node, "call-expression"))
+		return AnalyzeCall(node, scope, target);
+	if (arena_->IsTag(node, "unary-expression") ||
+		arena_->IsTag(node, "postfix-expression"))
+		return ApplyTarget(AnalyzeUnary(node, scope, target), target);
+	if (arena_->IsTag(node, "binary-expression"))
+		return ApplyTarget(AnalyzeBinary(node, scope), target);
+	if (arena_->IsTag(node, "assignment-expression"))
+		return ApplyTarget(AnalyzeAssignment(node, scope), target);
+	if (arena_->IsTag(node, "cast-expression"))
+		return ApplyTarget(AnalyzeCast(node, scope), target);
+	if (arena_->IsTag(node, "conditional-expression"))
+		return ApplyTarget(AnalyzeConditional(node, scope), target);
+	if (arena_->IsTag(node, "subscript-expression"))
+		return ApplyTarget(AnalyzeSubscript(node, scope), target);
+	if (arena_->IsTag(node, "sizeof-expression"))
+		return ApplyTarget(AnalyzeSizeof(node, scope), target);
+	if (arena_->IsTag(node, "type-trait-expression") &&
+		PayloadSource(node) == "alignof")
+		return ApplyTarget(AnalyzeSizeof(node, scope), target);
+	if (arena_->IsTag(node, "braced-init-list"))
+		return AnalyzeBracedInit(node, scope, target);
+	if (arena_->IsTag(node, "new-expression")) return AnalyzeNewExpression(node, scope, target);
+	if (arena_->IsTag(node, "delete-expression"))
+		return AnalyzeDeleteExpression(node, scope, target);
+	if (arena_->IsTag(node, "member-expression"))
+		return ApplyTarget(AnalyzeMember(node, scope), target);
+	throw std::runtime_error("unsupported PA12 expression: " + arena_->Tag(node));
+}
+
+ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
+	const std::string& spelling, ScopeId scope, TypeId target)
+{
 		const LookupResult found = LookupSpelling(scope, spelling, LOOKUP_ORDINARY);
 		if (found.ordinary == kNoBinding)
 			throw std::runtime_error("unknown expression name: " + spelling);
@@ -732,35 +767,6 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 		dump_.nodes[result.node].constant_value = result.value;
 		++expression_count_;
 		return ApplyTarget(result, target);
-	}
-	if (arena_->IsTag(node, "call-expression"))
-		return AnalyzeCall(node, scope, target);
-	if (arena_->IsTag(node, "unary-expression") ||
-		arena_->IsTag(node, "postfix-expression"))
-		return ApplyTarget(AnalyzeUnary(node, scope, target), target);
-	if (arena_->IsTag(node, "binary-expression"))
-		return ApplyTarget(AnalyzeBinary(node, scope), target);
-	if (arena_->IsTag(node, "assignment-expression"))
-		return ApplyTarget(AnalyzeAssignment(node, scope), target);
-	if (arena_->IsTag(node, "cast-expression"))
-		return ApplyTarget(AnalyzeCast(node, scope), target);
-	if (arena_->IsTag(node, "conditional-expression"))
-		return ApplyTarget(AnalyzeConditional(node, scope), target);
-	if (arena_->IsTag(node, "subscript-expression"))
-		return ApplyTarget(AnalyzeSubscript(node, scope), target);
-	if (arena_->IsTag(node, "sizeof-expression"))
-		return ApplyTarget(AnalyzeSizeof(node, scope), target);
-	if (arena_->IsTag(node, "type-trait-expression") &&
-		PayloadSource(node) == "alignof")
-		return ApplyTarget(AnalyzeSizeof(node, scope), target);
-	if (arena_->IsTag(node, "braced-init-list"))
-		return AnalyzeBracedInit(node, scope, target);
-	if (arena_->IsTag(node, "new-expression")) return AnalyzeNewExpression(node, scope, target);
-	if (arena_->IsTag(node, "delete-expression"))
-		return AnalyzeDeleteExpression(node, scope, target);
-	if (arena_->IsTag(node, "member-expression"))
-		return ApplyTarget(AnalyzeMember(node, scope), target);
-	throw std::runtime_error("unsupported PA12 expression: " + arena_->Tag(node));
 }
 BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 	const std::vector<NodeId>& argument_syntax,
@@ -1131,13 +1137,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 			argument_syntax.push_back(arena_->EdgeChild(argument));
 	std::vector<ExpressionInfo> analyzed_arguments;
 	bool arguments_analyzed = false;
-
 	ExpressionInfo member_call;
 	if (AnalyzeExplicitDestructorCall(callee_syntax, scope, argument_syntax,
 		target, &member_call)) return member_call;
 	if (AnalyzeDirectMemberCall(callee_syntax, scope, argument_syntax,
 		target, &member_call)) return member_call;
-
 	if (arena_->IsTag(direct_callee_syntax, "id-expression"))
 	{
 		const std::string spelling = arena_->Payload(direct_callee_syntax);
@@ -1177,7 +1181,6 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 			++expression_count_;
 			return ApplyTarget(result, target);
 		}
-
 		EntityId function_naming_class = kNoEntity;
 		std::vector<BindingId> candidates = FunctionCallCandidates(scope, spelling,
 			&function_naming_class);
@@ -1185,13 +1188,19 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 			analyzed_arguments.push_back(
 				AnalyzeExpression(argument_syntax[i], scope));
 		arguments_analyzed = true;
-		if (!FindFunctionTemplates(scope, spelling).empty())
+		const TypeId cast_type = ResolveFunctionalCastType(scope, spelling);
+		const bool type_precedes_functions =
+			FunctionalCastPrecedesFunctions(
+				spelling, scope, cast_type, candidates);
+		if (!type_precedes_functions &&
+			!FindFunctionTemplates(scope, spelling).empty())
 		{
 			DeduceFunctionTemplates(scope, spelling, analyzed_arguments);
 			candidates = FunctionCallCandidates(scope, spelling,
 				&function_naming_class);
 		}
-		if (!parenthesized_callee && !qualified_callee)
+		if (!type_precedes_functions &&
+			!parenthesized_callee && !qualified_callee)
 		{
 			BeginCandidateCollection();
 			std::vector<BindingId> combined;
@@ -1207,7 +1216,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 					analyzed_arguments, &combined);
 			candidates.swap(combined);
 		}
-		if (!candidates.empty())
+		if (!type_precedes_functions && !candidates.empty())
 		{
 			bool has_member_candidate = false;
 			for (std::size_t i = 0; i < candidates.size(); ++i)
@@ -1244,8 +1253,6 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 				object ? &object_conversion : 0, &argument_conversions,
 				qualified_callee);
 		}
-
-		const TypeId cast_type = ResolveFunctionalCastType(scope, spelling);
 		if (cast_type != kNoType)
 		{
 			if (IsClassObjectType(cast_type))
@@ -1284,9 +1291,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 			++expression_count_;
 			return ApplyTarget(result, target);
 		}
-
 	}
-
 	ExpressionInfo callee = AnalyzeExpression(callee_syntax, scope);
 	if (!arguments_analyzed)
 	{
@@ -1466,6 +1471,15 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBinary(NodeId node, ScopeId scope)
 	ExpressionInfo left = AnalyzeExpression(left_syntax, scope);
 	ExpressionInfo right = AnalyzeExpression(right_syntax, scope);
 	const std::string operation = PayloadSource(node);
+	return BuildBinaryExpression(operation, arena_->Payload(node),
+		left_syntax, right_syntax, left, right, scope);
+}
+
+ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
+	const std::string& operation, const std::string& display_operation,
+	NodeId left_syntax, NodeId right_syntax, ExpressionInfo left,
+	ExpressionInfo right, ScopeId scope)
+{
 	std::vector<NodeId> overloaded_syntax;
 	overloaded_syntax.push_back(left_syntax);
 	overloaded_syntax.push_back(right_syntax);
@@ -1570,7 +1584,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBinary(NodeId node, ScopeId scope)
 	}
 	const std::uint32_t expression = MakeDump(DUMP_BINARY_EXPRESSION,
 		result_type, result_category,
-		program_->names.Intern(arena_->Payload(node)));
+		program_->names.Intern(display_operation));
 	dump_.nodes[expression].operand_type = operand_type;
 	dump_.Add(expression, left.node);
 	dump_.Add(expression, right.node);
@@ -2124,6 +2138,11 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 	std::uint32_t output_parent, bool local, bool qualified_lexical_scope)
 {
 	if (local && AnalyzeQualifiedAssignmentStatement(
+		node, scope, output_parent))
+		return;
+	if (local && AnalyzeAmbiguousCallStatement(node, scope, output_parent))
+		return;
+	if (local && AnalyzeAmbiguousDirectInitializer(
 		node, scope, output_parent))
 		return;
 	const NodeId specifiers = FindChild(node, "decl-specifier-seq");

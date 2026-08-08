@@ -277,6 +277,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		AnalyzeParenthesizedFunctionTemplateCast(
 			type_id, operand_node, scope, &parenthesized_call))
 		return parenthesized_call;
+	ExpressionInfo parenthesized_binary;
+	if (arena_->Payload(node).compare(0, 10, "OP_LPAREN:") == 0 &&
+		AnalyzeParenthesizedValueBinaryCast(
+			type_id, operand_node, scope, &parenthesized_binary))
+		return parenthesized_binary;
 	const TypeId target = BuildTypeId(type_id, scope);
 	// Expression analysis can intern more types and reallocate TypeTable storage.
 	// Keep the cast shape by value across the recursive operand analysis.
@@ -492,6 +497,45 @@ bool SemanticAnalyzer::AnalyzeParenthesizedFunctionTemplateCast(
 		scope, argument_syntax, arguments, candidates);
 	*result = BuildResolvedCall(selected, scope, argument_syntax,
 		arguments, 0, kNoType);
+	return true;
+}
+
+bool SemanticAnalyzer::AnalyzeParenthesizedValueBinaryCast(
+	NodeId type_id, NodeId operand, ScopeId scope, ExpressionInfo* result)
+{
+	const NodeId specifiers = FindChild(type_id, "type-specifier-seq");
+	const NodeId name = specifiers == kNoNode ? kNoNode :
+		FirstSemanticChild(specifiers);
+	if (name == kNoNode || !arena_->IsTag(name, "type-name") ||
+		operand == kNoNode || !arena_->IsTag(operand, "unary-expression"))
+		return false;
+	const std::string operation = PayloadSource(operand);
+	if (operation != "+" && operation != "-") return false;
+	const std::string spelling = PayloadSource(name);
+	const LookupResult found = LookupSpelling(scope, spelling, LOOKUP_ORDINARY);
+	if (found.ordinary == kNoBinding) return false;
+	const BindingKind kind = program_->bindings[found.ordinary].kind;
+	if (kind != BIND_VARIABLE && kind != BIND_PARAMETER &&
+		kind != BIND_ENUMERATOR)
+		return false;
+	const NodeId right_syntax = FirstSemanticChild(operand);
+	if (right_syntax == kNoNode) return false;
+	ExpressionInfo left = AnalyzeNamedValue(spelling, scope);
+	if (left.constant && left.category == VALUE_LVALUE &&
+		IsIntegral(left.type, true))
+	{
+		left.type = program_->types.RemoveTopCv(EffectiveType(left.type));
+		left.category = VALUE_PRVALUE;
+		left.binding = kNoBinding;
+		left.node = MakeDump(DUMP_LITERAL, left.type, VALUE_PRVALUE,
+			InternNumber(left.value));
+		dump_.nodes[left.node].constant = true;
+		dump_.nodes[left.node].constant_value = left.value;
+		++expression_count_;
+	}
+	ExpressionInfo right = AnalyzeExpression(right_syntax, scope);
+	*result = BuildBinaryExpression(operation, arena_->Payload(operand),
+		name, right_syntax, left, right, scope);
 	return true;
 }
 

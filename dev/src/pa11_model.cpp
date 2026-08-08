@@ -1604,7 +1604,8 @@ LookupResult Program::DirectLookup(ScopeId scope, NameId name,
 			kNoBinding : bindings[entry->ordinary].canonical;
 	}
 	if (kind == LOOKUP_FUNCTION_TEMPLATE &&
-		(entry->ordinary != kNoBinding || entry->function_template))
+		(entry->ordinary != kNoBinding || entry->type != kNoType ||
+		 entry->function_template))
 	{
 		result.BeginFunctionTemplateLookup();
 		if (entry->function_template)

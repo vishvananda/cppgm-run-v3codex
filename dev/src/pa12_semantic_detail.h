@@ -105,6 +105,10 @@ private:
 	void AnalyzeSimple(NodeId node, ScopeId scope,
 		std::uint32_t output_parent, bool local,
 		bool qualified_lexical_scope = false);
+	bool AnalyzeAmbiguousCallStatement(NodeId node, ScopeId scope,
+		std::uint32_t output_parent);
+	bool AnalyzeAmbiguousDirectInitializer(NodeId node, ScopeId scope,
+		std::uint32_t output_parent);
 	void PublishVariableDeclarationFacts(BindingId binding,
 		ScopeId declaration_scope, NameId name, TypeId type,
 		const SpecInfo& spec, bool local);
@@ -224,6 +228,8 @@ private:
 
 	ExpressionInfo AnalyzeExpression(NodeId node, ScopeId scope,
 		TypeId target = kNoType);
+	ExpressionInfo AnalyzeNamedValue(const std::string& spelling,
+		ScopeId scope, TypeId target = kNoType);
 	BindingId SelectOverload(ScopeId scope,
 		const std::vector<NodeId>& argument_syntax,
 		const std::vector<ExpressionInfo>& arguments,
@@ -275,6 +281,13 @@ private:
 	ExpressionInfo AnalyzeVariableInitializer(NodeId initializer,
 		ScopeId scope, TypeId type, bool local);
 	ExpressionInfo AnalyzeCall(NodeId node, ScopeId scope, TypeId target);
+	bool FunctionalCastPrecedesFunctions(const std::string& spelling,
+		ScopeId scope, TypeId cast_type,
+		const std::vector<BindingId>& candidates);
+	bool AnalyzeRetainedNamedCall(const std::string& spelling, ScopeId scope,
+		const std::vector<NodeId>& argument_syntax,
+		const std::vector<ExpressionInfo>& arguments, TypeId target,
+		ExpressionInfo* result);
 	TypeId ResolveFunctionalCastType(ScopeId scope,
 		const std::string& spelling);
 	bool IsClassObjectType(TypeId type) const;
@@ -325,9 +338,15 @@ private:
 	ExpressionInfo AnalyzeUnary(NodeId node, ScopeId scope,
 		TypeId target = kNoType);
 	ExpressionInfo AnalyzeBinary(NodeId node, ScopeId scope);
+	ExpressionInfo BuildBinaryExpression(const std::string& operation,
+		const std::string& display_operation, NodeId left_syntax,
+		NodeId right_syntax, ExpressionInfo left, ExpressionInfo right,
+		ScopeId scope);
 	ExpressionInfo AnalyzeAssignment(NodeId node, ScopeId scope);
 	ExpressionInfo AnalyzeCast(NodeId node, ScopeId scope);
 	bool AnalyzeParenthesizedFunctionTemplateCast(NodeId type_id,
+		NodeId operand, ScopeId scope, ExpressionInfo* result);
+	bool AnalyzeParenthesizedValueBinaryCast(NodeId type_id,
 		NodeId operand, ScopeId scope, ExpressionInfo* result);
 	void AppendParenthesizedCallArguments(NodeId node,
 		std::vector<NodeId>* arguments) const;

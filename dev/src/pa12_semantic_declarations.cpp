@@ -1,5 +1,6 @@
 #include "pa12_semantic_detail.h"
 #include <algorithm>
+#include <cctype>
 #include <limits>
 #include <sstream>
 #include <stdexcept>
@@ -1695,11 +1696,52 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 		TypeId declared = spec.type;
 		if (declarator != kNoNode)
 		{
-			const DeclaratorInfo parsed =
-				BuildDeclarator(declarator, spec.type, scope,
-					spec.placeholder_auto);
-			name = parsed.name;
-			declared = parsed.type;
+			bool parenthesized_parameter_name = false;
+			if (DeclaratorName(declarator) == 0)
+			{
+				const NodeId clause = FindChild(declarator, "parameter-clause");
+				const std::uint32_t first_edge = clause == kNoNode ? kNoEdge :
+					arena_->FirstEdge(clause);
+				const NodeId provisional = first_edge == kNoEdge ? kNoNode :
+					arena_->EdgeChild(first_edge);
+				if (provisional != kNoNode &&
+					arena_->NextEdge(first_edge) == kNoEdge &&
+					arena_->IsTag(provisional, "parameter-declaration") &&
+					FindChild(provisional, "declarator") == kNoNode)
+				{
+					const NodeId provisional_specifiers =
+						FindChild(provisional, "decl-specifier-seq");
+					const std::uint32_t spelling_edge =
+						provisional_specifiers == kNoNode ? kNoEdge :
+						arena_->FirstEdge(provisional_specifiers);
+					const NodeId spelling_node = spelling_edge == kNoEdge ?
+						kNoNode : arena_->EdgeChild(spelling_edge);
+					if (spelling_node != kNoNode &&
+						arena_->NextEdge(spelling_edge) == kNoEdge)
+					{
+						const std::string spelling = PayloadSource(spelling_node);
+						const bool identifier = !spelling.empty() &&
+							(std::isalpha(static_cast<unsigned char>(spelling[0])) ||
+							 spelling[0] == '_');
+						const LookupResult type_name = identifier ?
+							LookupSpelling(scope, spelling, LOOKUP_TYPE) :
+							LookupResult();
+						if (identifier && type_name.type == kNoType)
+						{
+							name = program_->names.Intern(spelling);
+							parenthesized_parameter_name = true;
+						}
+					}
+				}
+			}
+			if (!parenthesized_parameter_name)
+			{
+				const DeclaratorInfo parsed =
+					BuildDeclarator(declarator, spec.type, scope,
+						spec.placeholder_auto);
+				name = parsed.name;
+				declared = parsed.type;
+			}
 			if (FindChild(declarator, "parameter-pack") != kNoNode)
 				*variadic = true;
 		}
