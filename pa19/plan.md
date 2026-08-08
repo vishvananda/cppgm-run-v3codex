@@ -13,25 +13,25 @@ Native IR and ELF remain later-stage boundaries.
 
 ## Current Failure Map
 
-The class-template checkpoint raised PA19 from 32 to 129/293. The complete
-remaining 164-test set is:
+The retained-member checkpoint raised PA19 from 129 to 166/293. The complete
+remaining 127-test set is:
 
 | Failures | Shared behavior | Owner |
 |---:|---|---|
-| 143 exit mismatches | Dependent/current-instantiation lookup, out-of-class and nested definitions, complex function deduction/type forms, ADL/using/operator replay, variable templates, and definition-time diagnostics are incomplete. | PA12 template scope, lookup, declaration, and demand facts |
-| 21 LowIR mismatches | Selected instantiated facts still diverge for special members/lifetimes/polymorphism or overload/ADL/control-flow cases. | PA12 selected semantic facts and PA15-PA19 typed lowering |
+| 99 exit mismatches | Dependent-base/ADL/using replay, remaining complex function deduction and type forms, explicit instantiation syntax/demand, variable templates, and definition-time diagnostics are incomplete. | PA12 template lookup, overload, declaration, and demand facts |
+| 28 LowIR mismatches | Selected instantiated facts still diverge for special members/lifetimes/polymorphism, constant static members, or overload/ADL/control-flow cases. | PA12 selected semantic facts and PA15-PA19 typed lowering |
 
 ## Active Checkpoint
 
-Add current-instantiation/dependent owner resolution and out-of-class class
-template member definitions. A retained member definition resolves its
-structured template-id owner through the canonical class-specialization cache,
-rebinds declaration parameter names in a parent-linked scope, and attaches to
-the existing member binding before body demand. Owner lookup is O(path length),
-specialization lookup is O(1) average, and each member definition/body remains
-single-owner and monotonic. Validate renamed/swapped parameters, nested owners,
-constructors/destructors, static data/function members, inherited/member aliases,
-PA1-PA18 preservation, file audit, and specialization reuse scaling.
+Add dependent lookup provenance and point-of-instantiation ADL/using replay.
+Each retained dependent call/name records its definition scope, required
+ordinary/using edges, and substituted associated scopes; specialization demand
+combines only those indexed candidates, memoizes the selected declaration and
+conversions, and leaves lowering lookup-free. Lookup is O(lexical path plus
+required relation/candidate visits), cache access is O(1) average, and no global
+retry is allowed. Validate dependent bases, hidden friends, using declarations
+and directives, enum/operator fallback, local and inline namespaces, PA1-PA18
+preservation, file audit, and candidate-visit scaling.
 
 ## Performance Evidence
 
@@ -39,6 +39,7 @@ PA1-PA18 preservation, file audit, and specialization reuse scaling.
 |---|---|
 | One demanded function-template specialization, 128/256/512 calls | Requests 128/256/512, hits 127/255/511, one demand push; semantic nodes 783/1,551/3,087 and instructions 519/1,031/2,055. |
 | One class-template specialization, 128/256/512 object uses | Requests 128/256/512, hits 127/255/511, exactly one class layout/member visit; semantic nodes 1,544/3,080/6,152, typed bytes 132,519/263,463/525,351, semantic time 1.82/3.62/7.16 ms. |
+| One renamed out-of-class member specialization, 128/256/512 calls | Requests 128/256/512, hits 127/255/511, one class layout and one demanded body emission; semantic nodes 2,064/4,112/8,208, typed bytes 144,482/285,794/568,418, semantic time 2.41/4.78/9.45 ms. |
 
 ## Completed Checkpoints
 
@@ -47,3 +48,4 @@ PA1-PA18 preservation, file audit, and specialization reuse scaling.
 | PA18 handoff | Pass | PA1-PA18 through report clean |
 | Demanded function-template definitions | Pass | Canonical merge/deduction/cache; PA19 14 to 32, prior 1713/1713 |
 | Canonical class-template identity/layout | Pass | Retained patterns, defaults, forward upgrade, canonical specialization shells and one-time layout; PA19 32 to 129, 13/13 focused, prior 1713/1713, audit pass |
+| Current-instantiation and retained member owners | Pass | Canonical injected-name bridge, structured nested owner paths, renamed definition scopes, deferred functions/special members, static/nested definitions; PA19 129 to 166, prior 1713/1713, audit pass |

@@ -239,6 +239,9 @@ bool SemanticAnalyzer::AnalyzeBuiltinCall(const std::string& spelling,
 TypeId SemanticAnalyzer::ResolveFunctionalCastType(ScopeId scope,
 	const std::string& spelling)
 {
+	const TypeId specialization =
+		ResolveClassTemplateSpecialization(scope, spelling);
+	if (specialization != kNoType) return specialization;
 	const LookupResult named = LookupSpelling(scope, spelling, LOOKUP_TYPE);
 	if (named.type != kNoType) return named.type;
 	if (spelling.size() > 10 && spelling.compare(0, 9, "decltype(") == 0 &&

@@ -100,13 +100,17 @@ private:
 	void AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 		const std::vector<NameId>& parameters,
 		const std::vector<NodeId>& defaults);
+	bool AnalyzeClassTemplateMember(NodeId declaration, ScopeId scope,
+		const std::vector<NameId>& parameters);
 	void AnalyzeSimple(NodeId node, ScopeId scope,
-		std::uint32_t output_parent, bool local);
+		std::uint32_t output_parent, bool local,
+		bool qualified_lexical_scope = false);
 	void PublishVariableDeclarationFacts(BindingId binding,
 		ScopeId declaration_scope, NameId name, TypeId type,
 		const SpecInfo& spec, bool local);
 	void AnalyzeFunction(NodeId node, ScopeId scope,
-		std::uint32_t output_parent);
+		std::uint32_t output_parent,
+		bool deferred_member_definition = false);
 	void AnalyzeCompound(NodeId node, ScopeId scope,
 		std::uint32_t output_parent);
 	void AnalyzeStatement(NodeId node, ScopeId scope,
@@ -186,6 +190,8 @@ private:
 	ScopeId BindClassTemplateArguments(const ClassTemplatePattern& pattern,
 		const std::vector<TypeId>& arguments);
 	void UpgradeClassTemplateSpecializations(std::size_t pattern);
+	void ApplyClassTemplateMemberDefinitions(std::size_t pattern,
+		BindingId specialization, const std::vector<TypeId>& arguments);
 	BindingId InstantiateFunctionTemplate(std::size_t pattern,
 		const std::vector<TypeId>& arguments);
 	ScopeId BindFunctionTemplateArguments(
@@ -357,7 +363,9 @@ private:
 		AccessKind access);
 	void AnalyzeConversionFunction(NodeId node, ScopeId scope,
 		TypeId owner_type, AccessKind access);
-	void AnalyzeOutOfClassSpecialMember(NodeId node, ScopeId scope);
+	void AnalyzeOutOfClassSpecialMember(NodeId node, ScopeId scope,
+		ScopeId declaration_scope = kNoScope,
+		bool defer_demand = false);
 	void ConfigureVirtualFunction(BindingId binding, const SpecInfo& spec,
 		NodeId declarator, NodeId initializer);
 	void CompleteClassPolymorphism(EntityId entity);
@@ -599,6 +607,7 @@ private:
 	std::vector<std::uint32_t> class_template_pattern_by_entity_;
 	TemplateSpecializationTable class_template_instantiations_;
 	std::vector<std::uint8_t> class_template_specialization_states_;
+	std::vector<std::uint32_t> class_template_member_definition_counts_;
 	std::vector<std::uint32_t> injected_fact_by_binding_;
 	std::vector<InjectedMemberInfo> injected_members_;
 	std::vector<std::vector<LifetimeObligation> > scope_lifetimes_;

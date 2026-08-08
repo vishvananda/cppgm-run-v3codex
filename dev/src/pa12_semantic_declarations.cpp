@@ -1938,6 +1938,8 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 	{
 		FunctionInfo& merged = GetMutableFunction(canonical);
 		merged.ordinary_visible = merged.ordinary_visible || ordinary_visible;
+		if (merged.parameters.empty() && !parameters.empty())
+			merged.parameters = parameters;
 		if (merged.parameters.size() != parameters.size())
 			throw std::logic_error("PA12 function parameter fact mismatch");
 		for (std::size_t i = 0; i < parameters.size(); ++i)

@@ -902,7 +902,7 @@ void SemanticAnalyzer::AddSynthesizedAssignmentBody(
 }
 
 void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
-	ScopeId scope)
+	ScopeId scope, ScopeId declaration_scope, bool defer_demand)
 {
 	const NodeId declarator = FindChild(node, "declarator");
 	if (declarator == kNoNode)
@@ -922,7 +922,8 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 	if (!path.global && path.Size() <= 1)
 		throw std::runtime_error(
 			"unqualified special member definition outside a class");
-	const ScopeId owner = ResolveOwner(scope, path);
+	const ScopeId owner = declaration_scope == kNoScope ?
+		ResolveOwner(scope, path) : program_->ParentScope(declaration_scope);
 	const EntityId entity = owner == kNoScope ? kNoEntity :
 		program_->EntityForScope(owner);
 	if (entity == kNoEntity)
@@ -941,11 +942,13 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 
 	const EntityId previous_class = current_class_context_;
 	current_class_context_ = entity;
+	const ScopeId semantic_scope = declaration_scope == kNoScope ?
+		owner : declaration_scope;
 	const TypeId conversion_target = conversion_definition ?
-		BuildTypeId(conversion_type, owner) :
+		BuildTypeId(conversion_type, semantic_scope) :
 		program_->types.Fundamental(FUND_VOID);
 	const DeclaratorInfo parsed = BuildDeclarator(declarator,
-		conversion_target, owner);
+		conversion_target, semantic_scope);
 	BindingId special = kNoBinding;
 	if (conversion_definition && entity < entity_conversion_functions_.size())
 		for (std::size_t i = 0;
@@ -972,8 +975,11 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 	}
 	else special = DeclareFunction(owner, path.Last(),
 		parsed.type, parsed.parameters, true, false, STORAGE_CLASS_NONE,
-		current_language_linkage_, IsNonthrowing(declarator, owner));
+		current_language_linkage_, IsNonthrowing(declarator, semantic_scope));
 	FunctionInfo& info = GetMutableFunction(special);
+	info.lexical_scope = semantic_scope;
+	if (defer_demand)
+		program_->bindings[special].inline_function = true;
 	if (info.member_owner != program_->entities[entity].type)
 		throw std::runtime_error(
 			"qualified special member definition has no member declaration");
@@ -1004,7 +1010,7 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 		info.deleted_special_member =
 			info.deleted_special_member || deleted;
 		info.deferred = !info.deleted_special_member;
-		DemandFunction(special);
+		if (!defer_demand) DemandFunction(special);
 		current_class_context_ = previous_class;
 		return;
 	}
@@ -1039,7 +1045,15 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 	if (constructor_definition)
 	{
 		program_->entities[entity].has_user_provided_constructor = true;
-		(void)EnsureConstructorBaseEntry(special);
+		if (defer_demand &&
+			program_->entities[entity].direct_base == kNoEntity)
+		{
+			if (constructor_base_entry_by_binding_.size() <= special)
+				constructor_base_entry_by_binding_.resize(
+					static_cast<std::size_t>(special) + 1, kNoBinding);
+			constructor_base_entry_by_binding_[special] = special;
+		}
+		else (void)EnsureConstructorBaseEntry(special);
 	}
 	else
 	{
@@ -1047,7 +1061,7 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 		program_->entities[entity].trivial_destructor = false;
 		(void)EnsureDestructorBaseEntry(special);
 	}
-	DemandFunction(special);
+	if (!defer_demand) DemandFunction(special);
 	current_class_context_ = previous_class;
 }
 

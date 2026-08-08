@@ -85,57 +85,6 @@ NamePath SemanticAnalyzer::ParseNamePath(const std::string& spelling)
 	}
 	return result;
 }
-LookupResult SemanticAnalyzer::LookupPath(ScopeId scope,
-	const NamePath& path, LookupKind kind)
-{
-	if (!path.global && path.Size() > 1)
-	{
-		ScopeId carrier = kNoScope;
-		for (ScopeId current = scope; current != kNoScope; )
-		{
-			const TypeId specialization = ResolveClassTemplateSpecialization(
-				current, program_->names.Get(path[0]));
-			if (specialization != kNoType)
-			{
-				carrier = program_->ScopeForType(specialization);
-				break;
-			}
-			const LookupResult direct = program_->LookupDirect(current, path[0],
-				LOOKUP_SCOPE_CARRIER);
-			if (!direct.Empty())
-			{
-				carrier = direct.name_space != kNoScope ? direct.name_space :
-					program_->ScopeForType(direct.type);
-				break;
-			}
-			current = current < scope_parents_.size() ?
-				scope_parents_[current] : kNoScope;
-		}
-		if (carrier != kNoScope)
-		{
-			NamePath remainder;
-			for (std::size_t i = 1; i < path.Size(); ++i)
-				remainder.Push(path[i]);
-			return program_->LookupQualified(carrier, remainder, kind);
-		}
-	}
-	return program_->Lookup(scope, path, kind);
-}
-LookupResult SemanticAnalyzer::LookupSpelling(ScopeId scope,
-	const std::string& spelling, LookupKind kind)
-{
-	if (spelling.find("::") == std::string::npos)
-		return program_->LookupName(scope, program_->names.Intern(spelling), kind);
-	return LookupPath(scope, ParseNamePath(spelling), kind);
-}
-ScopeId SemanticAnalyzer::ResolveScopeSpelling(ScopeId scope,
-	const std::string& spelling)
-{
-	const LookupResult result =
-		LookupSpelling(scope, spelling, LOOKUP_SCOPE_CARRIER);
-	return result.name_space != kNoScope ? result.name_space :
-		result.type != kNoType ? program_->ScopeForType(result.type) : kNoScope;
-}
 std::uint32_t SemanticAnalyzer::MakeDump(DumpKind kind, TypeId type,
 	ValueCategory category, NameId text, BindingId binding)
 {
@@ -843,6 +792,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 			result.category, program_->names.Intern(spelling), found.ordinary);
 		result.constant = binding.constant;
 		result.value = binding.value;
+		dump_.nodes[result.node].constant = result.constant;
+		dump_.nodes[result.node].constant_value = result.value;
 		++expression_count_;
 		return ApplyTarget(result, target);
 	}
@@ -1931,6 +1882,8 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope)
 		if (child != clause) target = child;
 	}
 	if (target != kNoNode &&
+		AnalyzeClassTemplateMember(target, scope, parameters)) return;
+	if (target != kNoNode &&
 		(arena_->IsTag(target, "class-specifier") ||
 		 arena_->IsTag(target, "class-forward-declaration")))
 	{
@@ -2223,7 +2176,7 @@ void SemanticAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 }
 
 void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
-	std::uint32_t output_parent, bool local)
+	std::uint32_t output_parent, bool local, bool qualified_lexical_scope)
 {
 	if (local && AnalyzeQualifiedAssignmentStatement(
 		node, scope, output_parent))
@@ -2281,12 +2234,15 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		if (declarator == kNoNode) throw std::runtime_error("missing declarator");
 		const NamePath declared_path = DeclaratorNamePath(declarator);
 		const ScopeId declaration_scope =
+			qualified_lexical_scope ? program_->ParentScope(scope) :
 			declared_path.global || declared_path.Size() > 1 ?
 				ResolveOwner(scope, declared_path) : scope;
 		if (declaration_scope == kNoScope)
 			throw std::runtime_error("variable owner not found");
+		const ScopeId semantic_scope = qualified_lexical_scope ?
+			scope : declaration_scope;
 		DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type,
-			declaration_scope);
+			semantic_scope);
 		parsed.name = declared_path.Last();
 		if (parsed.name == 0) throw std::runtime_error("unnamed declaration");
 		if (spec.is_typedef)
@@ -2337,11 +2293,11 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		if (spec.is_constexpr && initializer_node == kNoNode)
 			throw std::runtime_error("constexpr variable requires initializer");
 		ExpressionInfo initializer;
-		const bool has_initializer = initializer_node != kNoNode;
+		bool has_initializer = initializer_node != kNoNode;
 		if (initializer_node != kNoNode)
 		{
 			initializer = AnalyzeVariableInitializer(initializer_node,
-				declaration_scope, parsed.type, local);
+				semantic_scope, parsed.type, local);
 			if (program_->types.Get(parsed.type).kind == TYPE_ARRAY &&
 				program_->types.Get(parsed.type).bound == 0)
 			{
@@ -2364,13 +2320,32 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			canonical.constant = true;
 			canonical.value = program_->bindings[binding].value;
 		}
+		if (!has_initializer && qualified_lexical_scope &&
+			program_->bindings[binding].constant)
+		{
+			initializer.type = parsed.type;
+			initializer.category = VALUE_PRVALUE;
+			initializer.constant = true;
+			initializer.value = program_->bindings[binding].value;
+			initializer.node = MakeDump(DUMP_LITERAL, parsed.type,
+				VALUE_PRVALUE, InternNumber(initializer.value));
+			dump_.nodes[initializer.node].constant = true;
+			dump_.nodes[initializer.node].constant_value = initializer.value;
+			has_initializer = true;
+			++expression_count_;
+		}
 		const bool declaration_only = !local && !has_initializer &&
 			program_->bindings[binding].storage_class == STORAGE_CLASS_EXTERN;
 		const std::uint32_t variable = MakeDump(DUMP_VARIABLE, parsed.type,
 			VALUE_NONE, parsed.name, binding);
 		if (has_initializer) dump_.Add(variable, initializer.node);
 		else if (!declaration_only && DestructedEntity(parsed.type) != kNoEntity)
-			AddDefaultConstructor(variable, binding, parsed.type);
+		{
+			const EntityId object = DestructedEntity(parsed.type);
+			if (!qualified_lexical_scope || object == kNoEntity ||
+				!program_->entities[object].trivial_default_constructor)
+				AddDefaultConstructor(variable, binding, parsed.type);
+		}
 		dump_.Add(owner, variable);
 		if (local && program_->bindings[binding].storage_class ==
 			STORAGE_CLASS_NONE)
@@ -2422,32 +2397,47 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 }
 
 void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
-	std::uint32_t output_parent)
+	std::uint32_t output_parent, bool deferred_member_definition)
 {
 	const NodeId declarator = FindChild(node, "declarator");
 	const NamePath path = DeclaratorNamePath(declarator);
-	const ScopeId owner = ResolveOwner(scope, path);
+	const ScopeId owner = deferred_member_definition ?
+		program_->ParentScope(scope) : ResolveOwner(scope, path);
 	if (owner == kNoScope) throw std::runtime_error("function owner not found");
 	const EntityId previous_class = current_class_context_;
 	const EntityId declaration_class = program_->EntityForScope(owner);
 	if (declaration_class != kNoEntity)
 		current_class_context_ = declaration_class;
+	const ScopeId semantic_scope = deferred_member_definition ? scope : owner;
 	const SpecInfo spec = BuildSpecifiers(FindChild(node, "decl-specifier-seq"),
-		owner, std::string(), true);
+		semantic_scope, std::string(), true);
 	if (spec.virtual_specifier ||
 		FindChild(declarator, "virt-specifier") != kNoNode)
 		throw std::runtime_error(
 			"virtual specifier is only allowed in a class definition");
-	DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type, owner);
+	DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type,
+		semantic_scope);
 	parsed.name = path.Last();
 	if (!program_->types.IsFunction(parsed.type))
 		throw std::runtime_error("function definition has non-function type");
 	const BindingId binding = DeclareFunction(owner, parsed.name,
 		parsed.type, parsed.parameters, true, false, spec.storage_class,
-		current_language_linkage_, IsNonthrowing(declarator, owner));
+		current_language_linkage_, IsNonthrowing(declarator, semantic_scope));
 	ValidateFunctionRefQualifier(binding);
 	ValidateNonmemberOperator(binding);
 	FunctionInfo& function = GetMutableFunction(binding);
+	if (deferred_member_definition)
+	{
+		if (declaration_class == kNoEntity ||
+			program_->bindings[binding].member_owner != declaration_class)
+			throw std::runtime_error(
+				"class template member definition has no declaration");
+		function.definition_body = FindChild(node, "compound-statement");
+		function.lexical_scope = semantic_scope;
+		function.deferred = true;
+		current_class_context_ = previous_class;
+		return;
+	}
 	if (program_->bindings[binding].virtual_function)
 		MarkVtableDemand(program_->bindings[binding].member_owner);
 	function.deferred = false;

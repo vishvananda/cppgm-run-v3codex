@@ -54,6 +54,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		class_template_pattern_by_entity_.capacity() * sizeof(std::uint32_t) +
 		class_template_instantiations_.StorageBytes() +
 		class_template_specialization_states_.capacity() * sizeof(std::uint8_t) +
+		class_template_member_definition_counts_.capacity() *
+			sizeof(std::uint32_t) +
 		injected_fact_by_binding_.capacity() * sizeof(std::uint32_t) +
 		injected_members_.capacity() * sizeof(InjectedMemberInfo) +
 		scope_lifetimes_.capacity() *
@@ -108,13 +110,28 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 			function_templates_[i].specialization_arguments.capacity() *
 				sizeof(TypeId);
 	for (std::size_t i = 0; i < class_templates_.size(); ++i)
+	{
 		bytes += class_templates_[i].type_parameters.capacity() *
 				sizeof(NameId) +
 			class_templates_[i].default_arguments.capacity() * sizeof(NodeId) +
 			class_templates_[i].specialization_bindings.capacity() *
 				sizeof(BindingId) +
 			class_templates_[i].specialization_arguments.capacity() *
-				sizeof(TypeId);
+				sizeof(TypeId) +
+			class_templates_[i].member_definitions.capacity() *
+				sizeof(ClassTemplateMemberPattern);
+		for (std::size_t member = 0;
+			member < class_templates_[i].member_definitions.size(); ++member)
+		{
+			const ClassTemplateMemberPattern& definition =
+				class_templates_[i].member_definitions[member];
+			bytes += definition.type_parameters.capacity() * sizeof(NameId) +
+				definition.owner_parameter_indices.capacity() *
+					sizeof(std::uint32_t) +
+				definition.owner_fixed_arguments.capacity() * sizeof(TypeId) +
+				definition.nested_owner_path.capacity() * sizeof(NameId);
+		}
+	}
 	return bytes;
 }
 

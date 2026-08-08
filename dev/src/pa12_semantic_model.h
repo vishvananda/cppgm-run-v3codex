@@ -436,6 +436,19 @@ struct FunctionTemplatePattern
 		  nonthrowing(false) {}
 };
 
+struct ClassTemplateMemberPattern
+{
+	ScopeId lexical_scope;
+	NodeId declaration;
+	std::vector<NameId> type_parameters;
+	std::vector<std::uint32_t> owner_parameter_indices;
+	std::vector<TypeId> owner_fixed_arguments;
+	std::vector<NameId> nested_owner_path;
+
+	ClassTemplateMemberPattern()
+		: lexical_scope(kNoScope), declaration(kNoNode) {}
+};
+
 struct ClassTemplatePattern
 {
 	ScopeId owner;
@@ -446,6 +459,7 @@ struct ClassTemplatePattern
 	std::vector<NodeId> default_arguments;
 	std::vector<BindingId> specialization_bindings;
 	std::vector<TypeId> specialization_arguments;
+	std::vector<ClassTemplateMemberPattern> member_definitions;
 	EntityId marker_entity;
 	bool defined;
 
