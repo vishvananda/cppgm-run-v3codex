@@ -1306,5 +1306,182 @@ bool SemanticAnalyzer::TryAnalyzeCallOperator(ScopeId scope,
 		operands, true, target, result);
 }
 
+bool SemanticAnalyzer::TryAnalyzeCallSurrogate(ScopeId scope,
+	const ExpressionInfo& callee,
+	const std::vector<ExpressionInfo>& arguments, TypeId target,
+	ExpressionInfo* result)
+{
+	const EntityId entity = EntityOf(callee.type);
+	if (entity == kNoEntity) return false;
+	std::vector<BindingId> conversions;
+	AppendConversionFunctions(entity, &conversions);
+	struct Candidate
+	{
+		BindingId binding;
+		TypeId function_type;
+		ConversionRank object_rank;
+		std::size_t object_distance;
+		std::vector<CallConversionFact> argument_facts;
+		Candidate()
+			: binding(kNoBinding), function_type(kNoType),
+			  object_rank(CONVERSION_INVALID),
+			  object_distance(std::numeric_limits<std::size_t>::max()) {}
+	};
+	std::vector<Candidate> candidates;
+	CallConversionTable conversion_cache;
+	for (std::size_t i = 0; i < conversions.size(); ++i)
+	{
+		++overload_candidates_;
+		const BindingId binding = conversions[i];
+		const FunctionInfo& conversion = GetFunction(binding);
+		if (!conversion.conversion_function || conversion.explicit_conversion)
+			continue;
+		const TypeRecord& conversion_type =
+			program_->types.Get(conversion.type);
+		if (!RefQualifierViable(callee, conversion_type)) continue;
+		const TypeId pointer_type = Decay(conversion.conversion_target);
+		const TypeRecord& pointer = program_->types.Get(pointer_type);
+		if (pointer.kind != TYPE_POINTER) continue;
+		const TypeRecord& callable = program_->types.Get(pointer.child);
+		if (callable.kind != TYPE_FUNCTION ||
+			arguments.size() < callable.parameter_count ||
+			(!callable.variadic &&
+			 arguments.size() != callable.parameter_count))
+			continue;
+
+		TypeId object_type = conversion.member_owner;
+		if ((conversion_type.cv & CV_CONST) != 0)
+			object_type = program_->types.Qualify(object_type, CV_CONST);
+		if ((conversion_type.cv & CV_VOLATILE) != 0)
+			object_type = program_->types.Qualify(object_type, CV_VOLATILE);
+		ExpressionInfo object = callee;
+		object.type = program_->types.Pointer(EffectiveType(callee.type));
+		const TypeId object_target = program_->types.Pointer(object_type);
+		const ConversionRank object_rank = MemberObjectConversion(
+			object, object_target, binding);
+		if (object_rank == CONVERSION_INVALID) continue;
+
+		Candidate candidate;
+		candidate.binding = binding;
+		candidate.function_type = pointer.child;
+		candidate.object_rank = object_rank;
+		if (object_rank == CONVERSION_DERIVED_TO_BASE)
+			candidate.object_distance = BaseConversionDistance(
+				object.type, object_target);
+		const TypeId* parameters =
+			program_->types.Parameters(candidate.function_type);
+		bool viable = true;
+		candidate.argument_facts.reserve(arguments.size());
+		for (std::size_t a = 0; a < arguments.size(); ++a)
+		{
+			CallConversionFact fact;
+			fact.rank = CONVERSION_ELLIPSIS;
+			if (a < callable.parameter_count)
+				fact = CallConversion(arguments[a], parameters[a],
+					&conversion_cache, a);
+			if (fact.rank == CONVERSION_INVALID) viable = false;
+			candidate.argument_facts.push_back(fact);
+		}
+		if (viable) candidates.push_back(candidate);
+	}
+	if (candidates.empty()) return false;
+
+	const auto better = [this, &candidates, &arguments, &callee](
+		std::size_t left, std::size_t right) -> bool
+	{
+		++overload_order_comparisons_;
+		const Candidate& l = candidates[left];
+		const Candidate& r = candidates[right];
+		bool no_worse = l.object_rank <= r.object_rank;
+		bool strictly_better = l.object_rank < r.object_rank;
+		if (l.object_rank == r.object_rank &&
+			l.object_rank == CONVERSION_DERIVED_TO_BASE)
+		{
+			if (l.object_distance > r.object_distance) no_worse = false;
+			if (l.object_distance < r.object_distance) strictly_better = true;
+		}
+		for (std::size_t a = 0; a < arguments.size(); ++a)
+		{
+			const CallConversionFact& lf = l.argument_facts[a];
+			const CallConversionFact& rf = r.argument_facts[a];
+			if (lf.rank > rf.rank) no_worse = false;
+			if (lf.rank < rf.rank) strictly_better = true;
+			if (lf.rank == CONVERSION_USER_DEFINED &&
+				rf.rank == CONVERSION_USER_DEFINED)
+			{
+				const int preference = CompareCallConversions(lf, rf);
+				if (preference < 0) no_worse = false;
+				if (preference > 0) strictly_better = true;
+			}
+		}
+		if (!no_worse) return false;
+		if (strictly_better) return true;
+		const FunctionInfo& lfunction = GetFunction(l.binding);
+		const FunctionInfo& rfunction = GetFunction(r.binding);
+		const int object_preference = CompareImplicitObjectBindings(
+			callee.category, program_->types.Get(lfunction.type),
+			program_->types.Get(rfunction.type));
+		return object_preference > 0;
+	};
+
+	std::size_t champion = 0;
+	for (std::size_t i = 1; i < candidates.size(); ++i)
+		if (better(i, champion)) champion = i;
+	for (std::size_t i = 0; i < candidates.size(); ++i)
+		if (i != champion && !better(champion, i))
+			throw std::runtime_error("ambiguous callable surrogate");
+
+	const Candidate& selected = candidates[champion];
+	ExpressionInfo selected_callee = callee;
+	if (selected_callee.category != VALUE_LVALUE &&
+		dump_.nodes[selected_callee.node].kind != DUMP_TEMPORARY_OBJECT)
+		selected_callee = MaterializeTemporary(selected_callee);
+	ExpressionInfo object = MakeImplicitObjectPointer(selected_callee);
+	ObjectConversionFact object_conversion;
+	object_conversion.rank = selected.object_rank;
+	if (selected.object_rank == CONVERSION_DERIVED_TO_BASE)
+	{
+		if (selected.object_distance ==
+				std::numeric_limits<std::size_t>::max() ||
+			selected.object_distance >
+				std::numeric_limits<std::uint32_t>::max())
+			throw std::logic_error(
+				"callable surrogate has no bounded object path");
+		object_conversion.base_projection_count =
+			static_cast<std::uint32_t>(selected.object_distance);
+	}
+	const std::vector<NodeId> no_syntax;
+	const std::vector<ExpressionInfo> no_arguments;
+	const ExpressionInfo converted = BuildResolvedCall(selected.binding,
+		scope, no_syntax, no_arguments, &object, kNoType,
+		program_->bindings[selected.binding].member_owner,
+		&object_conversion, 0);
+
+	const TypeRecord& callable = program_->types.Get(selected.function_type);
+	const TypeId* parameters =
+		program_->types.Parameters(selected.function_type);
+	const TypeRecord& returned = program_->types.Get(callable.child);
+	const ValueCategory category = returned.kind == TYPE_LVALUE_REFERENCE ?
+		VALUE_LVALUE : returned.kind == TYPE_RVALUE_REFERENCE ?
+		VALUE_XVALUE : VALUE_PRVALUE;
+	const std::uint32_t call = MakeDump(DUMP_CALL_EXPRESSION,
+		callable.child, category);
+	dump_.Add(call, converted.node);
+	for (std::size_t a = 0; a < arguments.size(); ++a)
+	{
+		ExpressionInfo argument = arguments[a];
+		if (a < callable.parameter_count)
+			argument = ApplyCallArgument(argument, parameters[a],
+				&selected.argument_facts[a]);
+		dump_.Add(call, argument.node);
+	}
+	result->node = call;
+	result->type = callable.child;
+	result->category = category;
+	++expression_count_;
+	*result = ApplyTarget(*result, target);
+	return true;
+}
+
 }
 }

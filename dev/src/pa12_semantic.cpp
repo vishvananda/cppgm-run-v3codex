@@ -999,6 +999,10 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 		CONVERSION_ELLIPSIS);
 	std::vector<std::size_t> base_distances(candidates.size() * arity,
 		std::numeric_limits<std::size_t>::max());
+	std::vector<ConversionRank> actual_object_ranks(candidates.size(),
+		CONVERSION_INVALID);
+	std::vector<std::size_t> actual_object_distances(candidates.size(),
+		std::numeric_limits<std::size_t>::max());
 	std::vector<CallConversionFact> conversions(
 		candidates.size() * explicit_arity);
 	CallConversionTable conversion_cache;
@@ -1028,10 +1032,18 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 				object_type = program_->types.Qualify(object_type, CV_VOLATILE);
 			const ConversionRank object_rank = MemberObjectConversion(*object,
 				program_->types.Pointer(object_type), candidates[c]);
-			ranks[c * arity] = object_rank;
+			actual_object_ranks[c] = object_rank;
+			const ConversionRank selection_rank =
+				MemberCandidateSelectionRank(
+					*object, candidates[c], object_rank);
+			ranks[c * arity] = selection_rank;
 			if (object_rank == CONVERSION_DERIVED_TO_BASE)
-				base_distances[c * arity] = BaseConversionDistance(
+			{
+				actual_object_distances[c] = BaseConversionDistance(
 					object->type, program_->types.Pointer(object_type));
+				if (selection_rank == object_rank)
+					base_distances[c * arity] = actual_object_distances[c];
+			}
 			if (object_rank == CONVERSION_INVALID)
 			{
 				viable[c] = false;
@@ -1185,10 +1197,10 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 		}
 	if (object_conversion && object)
 	{
-		object_conversion->rank = ranks[champion * arity];
+		object_conversion->rank = actual_object_ranks[champion];
 		if (object_conversion->rank == CONVERSION_DERIVED_TO_BASE)
 		{
-			const std::size_t projections = base_distances[champion * arity];
+			const std::size_t projections = actual_object_distances[champion];
 			if (projections == std::numeric_limits<std::size_t>::max() ||
 				projections > std::numeric_limits<std::uint32_t>::max())
 				throw std::logic_error(
@@ -1298,6 +1310,15 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 {
 	const NodeId callee_syntax = FirstSemanticChild(node);
 	if (callee_syntax == kNoNode) throw std::runtime_error("call without callee");
+	NodeId direct_callee_syntax = callee_syntax;
+	bool parenthesized_callee = false;
+	while (arena_->IsTag(direct_callee_syntax, "parenthesized-expression"))
+	{
+		parenthesized_callee = true;
+		direct_callee_syntax = FirstSemanticChild(direct_callee_syntax);
+		if (direct_callee_syntax == kNoNode)
+			throw std::runtime_error("empty parenthesized callee");
+	}
 	NodeId arguments_node = FindChild(node, "argument-list");
 	if (arguments_node == kNoNode)
 		arguments_node = FindChild(node, "braced-init-list");
@@ -1321,9 +1342,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 	if (AnalyzeDirectMemberCall(callee_syntax, scope, argument_syntax,
 		target, &member_call)) return member_call;
 
-	if (arena_->IsTag(callee_syntax, "id-expression"))
+	if (arena_->IsTag(direct_callee_syntax, "id-expression"))
 	{
-		const std::string spelling = arena_->Payload(callee_syntax);
+		const std::string spelling = arena_->Payload(direct_callee_syntax);
 		ExpressionInfo builtin;
 		if (AnalyzeBuiltinCall(spelling, scope, argument_syntax, target, &builtin))
 			return builtin;
@@ -1371,7 +1392,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 			candidates = FunctionCandidates(scope, spelling,
 				&function_naming_class);
 		}
-		if (spelling.find("::") == std::string::npos)
+		if (!parenthesized_callee &&
+			spelling.find("::") == std::string::npos)
 		{
 			BeginCandidateCollection();
 			std::vector<BindingId> combined;
@@ -1467,9 +1489,19 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 	}
 
 	ExpressionInfo callee = AnalyzeExpression(callee_syntax, scope);
+	if (!arguments_analyzed)
+	{
+		for (std::size_t i = 0; i < argument_syntax.size(); ++i)
+			analyzed_arguments.push_back(
+				AnalyzeExpression(argument_syntax[i], scope));
+		arguments_analyzed = true;
+	}
 	ExpressionInfo call_operator;
 	if (TryAnalyzeCallOperator(scope, callee, argument_syntax,
-		arguments_analyzed ? &analyzed_arguments : 0, target, &call_operator))
+		&analyzed_arguments, target, &call_operator))
+		return call_operator;
+	if (TryAnalyzeCallSurrogate(scope, callee, analyzed_arguments,
+		target, &call_operator))
 		return call_operator;
 	TypeId function_type = program_->types.RemoveTopCv(
 		EffectiveType(callee.type));

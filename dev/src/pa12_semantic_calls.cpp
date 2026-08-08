@@ -34,6 +34,23 @@ int SemanticAnalyzer::CompareImplicitObjectBindings(ValueCategory category,
 	return 0;
 }
 
+ConversionRank SemanticAnalyzer::MemberCandidateSelectionRank(
+	const ExpressionInfo& object, BindingId candidate,
+	ConversionRank actual) const
+{
+	if (actual == CONVERSION_INVALID) return actual;
+	const BindingRecord& declaration = program_->bindings[candidate];
+	if (declaration.canonical == candidate ||
+		declaration.access_owner == kNoEntity)
+		return actual;
+	TypeId source_type = program_->types.RemoveTopCv(
+		EffectiveType(object.type));
+	const TypeRecord source_shape = program_->types.Get(source_type);
+	if (source_shape.kind == TYPE_POINTER) source_type = source_shape.child;
+	return EntityOf(source_type) == declaration.access_owner ?
+		CONVERSION_EXACT : actual;
+}
+
 int SemanticAnalyzer::CompareReferenceBindings(
 	const ExpressionInfo& argument, TypeId left, TypeId right) const
 {
@@ -329,8 +346,14 @@ bool SemanticAnalyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 	}
 
 	const BindingId destructor = DestructorForType(destroyed_type);
-	if (destructor == kNoBinding ||
-		program_->names.Get(program_->bindings[destructor].name) != spelling)
+	LookupResult destructor_type = LookupSpelling(
+		scope, spelling.substr(1), LOOKUP_TYPE);
+	if (destructor_type.type == kNoType)
+		destructor_type = program_->LookupMember(entity,
+			ParseNamePath(spelling.substr(1)).Last(), LOOKUP_TYPE);
+	if (destructor == kNoBinding || destructor_type.type == kNoType ||
+		program_->types.RemoveTopCv(EffectiveType(destructor_type.type)) !=
+			destroyed_type)
 		throw std::runtime_error("class has no matching destructor");
 	ExpressionInfo object_pointer = object;
 	if (arrow)

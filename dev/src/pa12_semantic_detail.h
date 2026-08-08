@@ -117,7 +117,8 @@ private:
 	TypeId AnalyzeEnum(NodeId node, ScopeId scope,
 		const std::string& hint, bool elaborated);
 	SpecInfo BuildSpecifiers(NodeId node, ScopeId scope,
-		const std::string& hint, bool has_declarators);
+		const std::string& hint, bool has_declarators,
+		bool type_id_context = false);
 	TypeId BuildTypeId(NodeId node, ScopeId scope);
 	DeclaratorInfo BuildDeclarator(NodeId node, TypeId base, ScopeId scope,
 		bool placeholder_auto = false);
@@ -144,6 +145,9 @@ private:
 		const TypeRecord& function_type) const;
 	int CompareImplicitObjectBindings(ValueCategory category,
 		const TypeRecord& left, const TypeRecord& right) const;
+	ConversionRank MemberCandidateSelectionRank(
+		const ExpressionInfo& object, BindingId candidate,
+		ConversionRank actual) const;
 	int CompareReferenceBindings(const ExpressionInfo& argument,
 		TypeId left, TypeId right) const;
 	std::vector<BindingId> FunctionCandidates(ScopeId scope,
@@ -241,6 +245,9 @@ private:
 	bool TryAnalyzeCallOperator(ScopeId scope, const ExpressionInfo& callee,
 		const std::vector<NodeId>& argument_syntax,
 		const std::vector<ExpressionInfo>* analyzed_arguments, TypeId target,
+		ExpressionInfo* result);
+	bool TryAnalyzeCallSurrogate(ScopeId scope, const ExpressionInfo& callee,
+		const std::vector<ExpressionInfo>& arguments, TypeId target,
 		ExpressionInfo* result);
 	BindingId SelectOperatorOverload(ScopeId scope,
 		const std::vector<NodeId>& operand_syntax,

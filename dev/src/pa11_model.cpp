@@ -593,6 +593,7 @@ struct Program::ScopeRecord
 	ScopeKind kind;
 	NameId name, emission_name;
 	EntityId entity;
+	std::uint32_t depth;
 	BindingId first_binding;
 	BindingId last_binding;
 	std::uint32_t first_child;
@@ -601,6 +602,7 @@ struct Program::ScopeRecord
 
 	ScopeRecord()
 		: parent(kNoScope), kind(SCOPE_NAMESPACE), name(0), emission_name(0),
+		  entity(kNoEntity), depth(0),
 		  first_binding(kNoBinding), last_binding(kNoBinding),
 		  first_child(std::numeric_limits<std::uint32_t>::max()),
 		  last_child(std::numeric_limits<std::uint32_t>::max()),
@@ -625,10 +627,13 @@ struct Program::UsingEdge
 {
 	ScopeId owner;
 	ScopeId target;
+	ScopeId injection;
 	std::uint32_t next;
 	UsingEdge(ScopeId owner_value, ScopeId target_value,
+		ScopeId injection_value,
 		std::uint32_t next_value)
-		: owner(owner_value), target(target_value), next(next_value) {}
+		: owner(owner_value), target(target_value), injection(injection_value),
+		  next(next_value) {}
 };
 
 struct Program::ChildEdge
@@ -770,7 +775,8 @@ Program::Program(InternedStringTable& strings)
 	  lookup_cache_invalidation_pushes(0),
 	  name_index_probes(0), using_index_probes(0),
 	  using_edge_slots_(64, 0), entry_slots_(64, 0), lookup_generation_(1),
-	  lookup_dependency_generation_(0), collecting_lookup_dependencies_(false),
+	  lookup_dependency_generation_(0), lookup_pending_generation_(0),
+	  collecting_lookup_dependencies_(false),
 	  lookup_cache_(new LookupCache())
 {
 	NewScope(kNoScope, SCOPE_NAMESPACE, names.Intern("<global>"));
@@ -798,8 +804,11 @@ ScopeId Program::NewScope(ScopeId parent, ScopeKind kind, NameId name,
 	record.name = name;
 	record.emission_name = name;
 	record.entity = entity;
+	record.depth = parent == kNoScope ? 0 : scopes_[parent].depth + 1;
 	lookup_marks_.push_back(0);
 	lookup_dependency_marks_.push_back(0);
+	lookup_pending_targets_.push_back(std::vector<ScopeId>());
+	lookup_pending_target_marks_.push_back(0);
 	lookup_cache_->AddScope();
 	const ScopeId tree_parent = output_parent == kNoScope ? parent : output_parent;
 	if (tree_parent != kNoScope)
@@ -865,9 +874,28 @@ void Program::AddUsingEdge(ScopeId owner, ScopeId target)
 	if (using_edges_.size() >=
 		std::numeric_limits<std::uint32_t>::max())
 		throw std::runtime_error("too many PA11 using edges");
+	ScopeId owner_namespace = owner;
+	while (owner_namespace != kNoScope &&
+		scopes_[owner_namespace].kind != SCOPE_NAMESPACE)
+		owner_namespace = scopes_[owner_namespace].parent;
+	if (owner_namespace == kNoScope || target >= scopes_.size() ||
+		scopes_[target].kind != SCOPE_NAMESPACE)
+		throw std::logic_error("using edge has no namespace injection scope");
+	ScopeId left = owner_namespace;
+	ScopeId right = target;
+	while (scopes_[left].depth > scopes_[right].depth)
+		left = scopes_[left].parent;
+	while (scopes_[right].depth > scopes_[left].depth)
+		right = scopes_[right].parent;
+	while (left != right)
+	{
+		left = scopes_[left].parent;
+		right = scopes_[right].parent;
+	}
+	const ScopeId injection = left;
 	const std::uint32_t edge =
 		static_cast<std::uint32_t>(using_edges_.size());
-	using_edges_.push_back(UsingEdge(owner, target,
+	using_edges_.push_back(UsingEdge(owner, target, injection,
 		scopes_[owner].first_using));
 	using_edge_slots_[slot] = edge + 1;
 	scopes_[owner].first_using = edge;
@@ -1345,47 +1373,73 @@ LookupResult Program::LookupUnqualified(ScopeId scope, NameId name,
 {
 	const ScopeId requested = scope;
 	BeginLookupDependencies();
+	LookupResult cached;
+	std::uint32_t cache_entry = std::numeric_limits<std::uint32_t>::max();
+	if (lookup_cache_->Find(requested, name, kind, &cached, &cache_entry))
+	{
+		++lookup_cache_hits;
+		collecting_lookup_dependencies_ = false;
+		return cached;
+	}
+	++lookup_cache_misses;
+
+	for (std::size_t i = 0; i < lookup_pending_touched_.size(); ++i)
+		lookup_pending_targets_[lookup_pending_touched_[i]].clear();
+	lookup_pending_touched_.clear();
+	++lookup_pending_generation_;
+	if (lookup_pending_generation_ == 0)
+	{
+		std::fill(lookup_pending_target_marks_.begin(),
+			lookup_pending_target_marks_.end(), 0);
+		lookup_pending_generation_ = 1;
+	}
+
+	LookupResult result;
 	for (ScopeId current = scope; current != kNoScope;
 		current = scopes_[current].parent)
 	{
-		LookupResult cached;
-		std::uint32_t cache_entry = std::numeric_limits<std::uint32_t>::max();
-		if (lookup_cache_->Find(current, name, kind, &cached, &cache_entry))
+		RecordLookupDependency(current);
+		for (std::uint32_t edge = scopes_[current].first_using;
+			edge != std::numeric_limits<std::uint32_t>::max();
+			edge = using_edges_[edge].next)
 		{
-			++lookup_cache_hits;
-			if (current != requested)
-			{
-				// Preserve the lexical shortcut as one cache-fact edge instead of
-				// copying the parent's transitive scope dependency set.
-				std::size_t dependency_edges = 0;
-				lookup_cache_->Store(requested, name, kind, cached,
-					lookup_dependencies_, cache_entry, &dependency_edges);
-				lookup_cache_dependency_edges += dependency_edges;
-			}
-			collecting_lookup_dependencies_ = false;
-			return cached;
+			++lookup_edge_visits;
+			const UsingEdge& using_edge = using_edges_[edge];
+			if (lookup_pending_target_marks_[using_edge.target] ==
+				lookup_pending_generation_)
+				continue;
+			lookup_pending_target_marks_[using_edge.target] =
+				lookup_pending_generation_;
+			std::vector<ScopeId>& bucket =
+				lookup_pending_targets_[using_edge.injection];
+			if (bucket.empty())
+				lookup_pending_touched_.push_back(using_edge.injection);
+			bucket.push_back(using_edge.target);
 		}
-		++lookup_cache_misses;
-		const LookupResult result = LookupGraph(current, name, kind);
-		if (!result.Empty())
-		{
-			std::size_t dependency_edges = 0;
-			lookup_cache_->Store(requested, name, kind, result,
-				lookup_dependencies_, std::numeric_limits<std::uint32_t>::max(),
-				&dependency_edges);
-			lookup_cache_dependency_edges += dependency_edges;
-			collecting_lookup_dependencies_ = false;
-			return result;
-		}
+
+		++lookup_scope_visits;
+		result = DirectLookup(current, name, kind);
+		const EntityId scope_entity = scopes_[current].entity;
+		if (result.Empty() && scope_entity != kNoEntity &&
+			(entities[scope_entity].flavor == NAMED_STRUCT ||
+			 entities[scope_entity].flavor == NAMED_CLASS ||
+			 entities[scope_entity].flavor == NAMED_UNION))
+			result = LookupGraph(current, name, kind);
+
+		const std::vector<ScopeId>& targets =
+			lookup_pending_targets_[current];
+		for (std::size_t i = 0; i < targets.size(); ++i)
+			MergeLookup(&result, LookupGraph(targets[i], name, kind));
+		if (!result.Empty()) break;
 	}
-	const LookupResult missing;
+
 	std::size_t dependency_edges = 0;
-	lookup_cache_->Store(requested, name, kind, missing,
+	lookup_cache_->Store(requested, name, kind, result,
 		lookup_dependencies_, std::numeric_limits<std::uint32_t>::max(),
 		&dependency_edges);
 	lookup_cache_dependency_edges += dependency_edges;
 	collecting_lookup_dependencies_ = false;
-	return missing;
+	return result;
 }
 
 void Program::LookupCache::AddScope()
@@ -2111,7 +2165,7 @@ std::size_t Program::ScopeCount() const
 
 std::size_t Program::StorageBytes() const
 {
-	return names.StorageBytes() + types.StorageBytes() +
+	std::size_t bytes = names.StorageBytes() + types.StorageBytes() +
 		scopes_.capacity() * sizeof(ScopeRecord) +
 		child_edges_.capacity() * sizeof(ChildEdge) +
 		using_edges_.capacity() * sizeof(UsingEdge) +
@@ -2122,6 +2176,9 @@ std::size_t Program::StorageBytes() const
 		lookup_worklist_.capacity() * sizeof(ScopeId) +
 		lookup_dependency_marks_.capacity() * sizeof(std::uint32_t) +
 		lookup_dependencies_.capacity() * sizeof(ScopeId) +
+		lookup_pending_targets_.capacity() * sizeof(std::vector<ScopeId>) +
+		lookup_pending_touched_.capacity() * sizeof(ScopeId) +
+		lookup_pending_target_marks_.capacity() * sizeof(std::uint32_t) +
 		base_jumps_.capacity() * sizeof(EntityId) +
 		base_jump_offsets_.capacity() * sizeof(std::size_t) +
 		base_jump_counts_.capacity() * sizeof(std::uint8_t) +
@@ -2130,6 +2187,9 @@ std::size_t Program::StorageBytes() const
 		lookup_cache_->StorageBytes() +
 		entities.capacity() * sizeof(EntityRecord) +
 		bindings.capacity() * sizeof(BindingRecord);
+	for (std::size_t i = 0; i < lookup_pending_targets_.size(); ++i)
+		bytes += lookup_pending_targets_[i].capacity() * sizeof(ScopeId);
+	return bytes;
 }
 
 }

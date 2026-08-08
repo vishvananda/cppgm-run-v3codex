@@ -449,12 +449,16 @@ private:
 	std::uint32_t lookup_generation_;
 	std::vector<std::uint32_t> lookup_dependency_marks_;
 	std::vector<ScopeId> lookup_dependencies_;
+	std::vector<std::vector<ScopeId> > lookup_pending_targets_;
+	std::vector<ScopeId> lookup_pending_touched_;
+	std::vector<std::uint32_t> lookup_pending_target_marks_;
 	std::vector<EntityId> base_jumps_;
 	std::vector<std::size_t> base_jump_offsets_;
 	std::vector<std::uint8_t> base_jump_counts_;
 	std::vector<std::uint32_t> base_depths_;
 	std::vector<std::uint32_t> deepest_nonpublic_base_depths_;
 	std::uint32_t lookup_dependency_generation_;
+	std::uint32_t lookup_pending_generation_;
 	bool collecting_lookup_dependencies_;
 	std::unique_ptr<LookupCache> lookup_cache_;
 };

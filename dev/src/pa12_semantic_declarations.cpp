@@ -1541,7 +1541,7 @@ TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::stri
 }
 
 SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
-	const std::string& hint, bool has_declarators)
+	const std::string& hint, bool has_declarators, bool type_id_context)
 {
 	if (node == kNoNode) throw std::runtime_error("missing type specifiers");
 	SpecInfo result;
@@ -1567,7 +1567,7 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 			arena_->IsTag(child, "class-forward-declaration"))
 		{
 			result.type = AnalyzeClass(child, scope, hint,
-				has_declarators &&
+				(has_declarators || type_id_context) &&
 				arena_->IsTag(child, "class-forward-declaration"));
 			continue;
 		}
@@ -1690,7 +1690,8 @@ TypeId SemanticAnalyzer::BuildTypeId(NodeId node, ScopeId scope)
 	NodeId specifiers = FindChild(node, "type-specifier-seq");
 	if (specifiers == kNoNode)
 		specifiers = FindChild(node, "decl-specifier-seq");
-	const SpecInfo spec = BuildSpecifiers(specifiers, scope, std::string(), false);
+	const SpecInfo spec = BuildSpecifiers(
+		specifiers, scope, std::string(), false, true);
 	NodeId declarator = FindChild(node, "abstract-declarator");
 	if (declarator == kNoNode) declarator = FindChild(node, "declarator");
 	return declarator == kNoNode ? spec.type :

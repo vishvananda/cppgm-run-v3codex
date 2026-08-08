@@ -47,34 +47,36 @@ relationship once and reuses it for reference relatedness and rank.
 
 ## Current Failure Map
 
-Audited result: **216/239**. The complete non-overlapping failure map contains
-23 tests; the landed pass set and all earlier stages remain intact:
+Audited result: **222/239**. The complete non-overlapping failure map contains
+17 tests; the landed pass set remains intact:
 
 | Failures | Shared behavior | Primary owner |
 | ---: | --- | --- |
-| 6 | canonical lookup/candidate identity: qualified destructor aliases, ADL suppression, base `using`, using-directive ambiguity, same-name filtering, inherited surrogates | PA12 scope + call candidate construction |
-| 4 | user-defined conversion and nonmember/built-in operator selection | PA12/PA16 operator resolution |
+| 3 | user-defined conversion and nonmember/built-in operator selection | PA12/PA16 operator resolution |
 | 7 | residual special-member, aggregate, bit-field, array, base, and ABI/storage shapes | PA12 initialization + PA15-PA17 lowering |
-| 4 | conditional/result temporary materialization and copy elision | PA12 lifetime facts + PA17 lowering |
+| 5 | conditional/result temporary materialization and copy elision | PA12 lifetime facts + PA17 lowering |
 | 2 | shadowed local identity and cleanup rebinding across control flow | PA12 scope facts + PA17 lowering |
 
 ## Active Checkpoint
 
-**Next: canonical lookup and candidate identity (6 failures).** Apply
-`spec.md` sections 2, 3, 5, and 9: scope/name indexes own qualified and
-unqualified lookup results, explicit using/ADL/base edges contribute each
-canonical declaration once, and call analysis filters candidates by kind and
-arity before conversion. PA12 scope/call analysis owns lookup and selected
-bindings; lowering receives only those identities. Expected work is
-O(visited lexical/associated scopes + result declarations + viable
-candidates), with generation-stamped flat deduplication and no global scan.
-Validate aliased destructor names, parenthesized ADL suppression, base `using`
-overload merging, using-directive ambiguity, same-name nonconstructor
-filtering, inherited call surrogates, full PA17, through PA16, file audit, and
-32/64/128 scope/candidate probes.
+**Next: conversion-aware operator closure (3 failures).** Apply `spec.md`
+sections 2, 3, 6, and 9: ordinary, hidden-friend/ADL, conversion-function, and
+built-in candidates retain canonical identities and complete conversion facts;
+lowering consumes the selected function or built-in action directly. PA12/PA16
+operator resolution owns candidate union, rank comparison, and converted
+operands. Expected work is O(associated declarations + viable candidates ×
+operand count), with generation-stamped deduplication and the existing typed
+conversion cache. Validate reverse hidden-friend `operator+`, converting
+pass-by-value overloads, class-to-pointer built-in subtraction, full PA17,
+through PA16, file audit, and 32/64/128 candidate probes.
 
 ## Performance Evidence
 
+- Canonical lookup/call probes at 32/64/128 nested using edges and unrelated
+  base overloads recorded 204/396/780 scope visits, 63/127/255 edge visits,
+  125/253/509 candidates, 222/446/894 conversions, and
+  225,731/449,715/899,643 semantic bytes. Five-run semantic medians were
+  1.315/2.308/4.640 ms, proportional to visited paths and candidate facts.
 - Same-name declaration and selected-call probes scale proportionally from
   64/128/256 declarations; medians were 1.269/2.401/4.830 ms and
   2.920/5.944/11.815 ms respectively, with doubling counters and storage.
@@ -190,3 +192,4 @@ filtering, inherited call surrogates, full PA17, through PA16, file audit, and
 | Typed constructor delegation and qualified default completion | 188/233 -> 193/233; audit 199/239 | Positive delegation/qualified definitions 5/5; cycle/mixed rejection 3/3; six defaulted-definition regressions; through PA16 1,436/1,436; file audit and proportional 32/64/128 probes pass |
 | Composite subobject copy/move storage transfer | 199/239 -> 207/239; audit 207/239 | Prefix, array, empty, reference, move-only aggregate, implicit-move, and trivial ABI gains remain 8/8; direct typed lowering and bounded array loops audited; through PA16 1,436/1,436; fixed-shape extent probes and file audit pass |
 | Value-category and reference-binding closure | 207/239 -> 216/239; audit 216/239 | Planned focus 7/7 plus two adjacent gains and rejection focus 3/3; canonical value/conversion facts feed direct typed lowering; indexed ancestry removes repeated base-chain work; through PA16 1,436/1,436, file audit, and proportional 16/32/64/128 probes pass |
+| Canonical lookup and candidate identity | 216/239 -> 222/239 | Focus 6/6; direct selected-call lowering, path-aware using lookup, typed destruction, and callable surrogates; through PA16 1,436/1,436, file audit, and proportional 32/64/128 probes pass |
