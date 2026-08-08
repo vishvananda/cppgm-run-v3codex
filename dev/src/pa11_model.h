@@ -333,6 +333,15 @@ struct LookupResult
 
 	LookupResult();
 	bool Empty() const;
+	std::size_t OrdinaryCount() const;
+	BindingId OrdinaryAt(std::size_t index) const;
+	void AddOrdinary(BindingId binding);
+	std::size_t OrdinaryStorageBytes() const;
+
+private:
+	BindingId extra_ordinary_inline_[2];
+	std::vector<BindingId> extra_ordinary_overflow_;
+	std::size_t extra_ordinary_count_;
 };
 
 enum LookupKind
@@ -409,12 +418,24 @@ public:
 
 private:
 	struct ScopeRecord; struct NameEntry;
-	struct UsingEdge; struct ChildEdge;
+	struct UsingEdge; struct UsingNameRelation; struct ScopeVisibleName;
+	struct ChildEdge;
 	struct LookupCacheEntry; struct LookupCache;
 	NameEntry* EnsureEntry(ScopeId scope, NameId name);
 	const NameEntry* FindEntry(ScopeId scope, NameId name) const;
 	void RehashEntries(std::size_t capacity);
 	void RehashUsingEdges(std::size_t capacity);
+	void RehashVisibleNames(std::size_t capacity);
+	void RehashUsingNameRelations(std::size_t capacity);
+	std::uint32_t FindVisibleName(ScopeId scope, NameId name) const;
+	std::uint32_t EnsureVisibleName(ScopeId scope, NameId name,
+		bool* created);
+	std::uint32_t FindUsingNameRelation(std::uint32_t edge,
+		NameId name) const;
+	bool AddUsingNameRelation(std::uint32_t edge, NameId name,
+		bool* owner_became_visible);
+	void PublishUsingName(ScopeId scope, NameId name);
+	void PropagateUsingName(ScopeId scope, NameId name);
 	void BeginLookupDependencies();
 	void RecordLookupDependency(ScopeId scope);
 	void InvalidateLookupName(ScopeId scope, NameId name);
@@ -442,6 +463,13 @@ private:
 	std::vector<ChildEdge> child_edges_;
 	std::vector<UsingEdge> using_edges_;
 	std::vector<std::uint32_t> using_edge_slots_;
+	std::vector<ScopeVisibleName> visible_names_;
+	std::vector<std::uint32_t> visible_name_slots_;
+	std::vector<UsingNameRelation> using_name_relations_;
+	std::vector<std::uint32_t> using_name_relation_slots_;
+	std::vector<ScopeId> using_name_worklist_;
+	std::vector<std::uint32_t> using_name_invalidation_marks_;
+	std::uint32_t using_name_invalidation_generation_;
 	std::vector<NameEntry> entries_;
 	std::vector<std::uint32_t> entry_slots_;
 	std::vector<std::uint32_t> lookup_marks_;
@@ -449,8 +477,10 @@ private:
 	std::uint32_t lookup_generation_;
 	std::vector<std::uint32_t> lookup_dependency_marks_;
 	std::vector<ScopeId> lookup_dependencies_;
-	std::vector<std::vector<ScopeId> > lookup_pending_targets_;
-	std::vector<ScopeId> lookup_pending_touched_;
+	std::vector<std::uint32_t> lookup_pending_heads_;
+	std::vector<std::uint32_t> lookup_pending_head_marks_;
+	std::vector<ScopeId> lookup_pending_targets_;
+	std::vector<std::uint32_t> lookup_pending_next_;
 	std::vector<std::uint32_t> lookup_pending_target_marks_;
 	std::vector<EntityId> base_jumps_;
 	std::vector<std::size_t> base_jump_offsets_;

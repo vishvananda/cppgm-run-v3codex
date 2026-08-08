@@ -578,13 +578,58 @@ LookupResult::LookupResult()
 	: name_space(kNoScope), type(kNoType), type_declaration(kNoBinding),
 	  type_declaration_canonical(kNoBinding),
 	  ordinary(kNoBinding), ordinary_declaration(kNoBinding),
-	  naming_class(kNoEntity)
+	  naming_class(kNoEntity), extra_ordinary_inline_(),
+	  extra_ordinary_overflow_(), extra_ordinary_count_(0)
 {
 }
 
 bool LookupResult::Empty() const
 {
 	return name_space == kNoScope && type == kNoType && ordinary == kNoBinding;
+}
+
+std::size_t LookupResult::OrdinaryCount() const
+{
+	return ordinary == kNoBinding ? 0 : extra_ordinary_count_ + 1;
+}
+
+BindingId LookupResult::OrdinaryAt(std::size_t index) const
+{
+	if (index == 0) return ordinary;
+	--index;
+	if (index >= extra_ordinary_count_)
+		throw std::logic_error("ordinary lookup candidate index is out of range");
+	return extra_ordinary_count_ <= 2 ? extra_ordinary_inline_[index] :
+		extra_ordinary_overflow_[index];
+}
+
+void LookupResult::AddOrdinary(BindingId binding)
+{
+	if (binding == kNoBinding)
+		throw std::logic_error("ordinary lookup candidate has no identity");
+	if (ordinary == kNoBinding)
+	{
+		ordinary = binding;
+		return;
+	}
+	if (extra_ordinary_count_ < 2 && extra_ordinary_overflow_.empty())
+		extra_ordinary_inline_[extra_ordinary_count_] = binding;
+	else
+	{
+		if (extra_ordinary_overflow_.empty())
+		{
+			extra_ordinary_overflow_.reserve(4);
+			extra_ordinary_overflow_.insert(extra_ordinary_overflow_.end(),
+				extra_ordinary_inline_, extra_ordinary_inline_ + 2);
+		}
+		extra_ordinary_overflow_.push_back(binding);
+	}
+	++extra_ordinary_count_;
+}
+
+std::size_t LookupResult::OrdinaryStorageBytes() const
+{
+	return extra_ordinary_overflow_.capacity() * sizeof(BindingId);
 }
 
 struct Program::ScopeRecord
@@ -598,7 +643,8 @@ struct Program::ScopeRecord
 	BindingId last_binding;
 	std::uint32_t first_child;
 	std::uint32_t last_child;
-	std::uint32_t first_using;
+	std::uint32_t first_incoming_using;
+	std::uint32_t first_visible_name;
 
 	ScopeRecord()
 		: parent(kNoScope), kind(SCOPE_NAMESPACE), name(0), emission_name(0),
@@ -606,7 +652,8 @@ struct Program::ScopeRecord
 		  first_binding(kNoBinding), last_binding(kNoBinding),
 		  first_child(std::numeric_limits<std::uint32_t>::max()),
 		  last_child(std::numeric_limits<std::uint32_t>::max()),
-		  first_using(std::numeric_limits<std::uint32_t>::max()) {}
+		  first_incoming_using(std::numeric_limits<std::uint32_t>::max()),
+		  first_visible_name(std::numeric_limits<std::uint32_t>::max()) {}
 };
 
 struct Program::NameEntry
@@ -628,12 +675,35 @@ struct Program::UsingEdge
 	ScopeId owner;
 	ScopeId target;
 	ScopeId injection;
-	std::uint32_t next;
+	std::uint32_t next_incoming;
 	UsingEdge(ScopeId owner_value, ScopeId target_value,
 		ScopeId injection_value,
-		std::uint32_t next_value)
+		std::uint32_t next_incoming_value)
 		: owner(owner_value), target(target_value), injection(injection_value),
-		  next(next_value) {}
+		  next_incoming(next_incoming_value) {}
+};
+
+struct Program::ScopeVisibleName
+{
+	ScopeId scope;
+	NameId name;
+	std::uint32_t first_relation;
+	std::uint32_t next_in_scope;
+	ScopeVisibleName(ScopeId scope_value, NameId name_value,
+		std::uint32_t next_value)
+		: scope(scope_value), name(name_value),
+		  first_relation(std::numeric_limits<std::uint32_t>::max()),
+		  next_in_scope(next_value) {}
+};
+
+struct Program::UsingNameRelation
+{
+	std::uint32_t edge;
+	NameId name;
+	std::uint32_t next;
+	UsingNameRelation(std::uint32_t edge_value, NameId name_value,
+		std::uint32_t next_value)
+		: edge(edge_value), name(name_value), next(next_value) {}
 };
 
 struct Program::ChildEdge
@@ -774,7 +844,10 @@ Program::Program(InternedStringTable& strings)
 	  lookup_cache_invalidations(0), lookup_cache_dependency_edges(0),
 	  lookup_cache_invalidation_pushes(0),
 	  name_index_probes(0), using_index_probes(0),
-	  using_edge_slots_(64, 0), entry_slots_(64, 0), lookup_generation_(1),
+	  using_edge_slots_(64, 0), visible_name_slots_(64, 0),
+	  using_name_relation_slots_(64, 0),
+	  using_name_invalidation_generation_(0), entry_slots_(64, 0),
+	  lookup_generation_(1),
 	  lookup_dependency_generation_(0), lookup_pending_generation_(0),
 	  collecting_lookup_dependencies_(false),
 	  lookup_cache_(new LookupCache())
@@ -807,7 +880,9 @@ ScopeId Program::NewScope(ScopeId parent, ScopeKind kind, NameId name,
 	record.depth = parent == kNoScope ? 0 : scopes_[parent].depth + 1;
 	lookup_marks_.push_back(0);
 	lookup_dependency_marks_.push_back(0);
-	lookup_pending_targets_.push_back(std::vector<ScopeId>());
+	using_name_invalidation_marks_.push_back(0);
+	lookup_pending_heads_.push_back(std::numeric_limits<std::uint32_t>::max());
+	lookup_pending_head_marks_.push_back(0);
 	lookup_pending_target_marks_.push_back(0);
 	lookup_cache_->AddScope();
 	const ScopeId tree_parent = output_parent == kNoScope ? parent : output_parent;
@@ -896,10 +971,20 @@ void Program::AddUsingEdge(ScopeId owner, ScopeId target)
 	const std::uint32_t edge =
 		static_cast<std::uint32_t>(using_edges_.size());
 	using_edges_.push_back(UsingEdge(owner, target, injection,
-		scopes_[owner].first_using));
+		scopes_[target].first_incoming_using));
 	using_edge_slots_[slot] = edge + 1;
-	scopes_[owner].first_using = edge;
-	InvalidateLookupScope(owner);
+	scopes_[target].first_incoming_using = edge;
+	for (std::uint32_t visible = scopes_[target].first_visible_name;
+		visible != std::numeric_limits<std::uint32_t>::max();
+		visible = visible_names_[visible].next_in_scope)
+	{
+		const NameId visible_name = visible_names_[visible].name;
+		bool owner_became_visible = false;
+		if (!AddUsingNameRelation(
+			edge, visible_name, &owner_became_visible)) continue;
+		if (owner_became_visible) PropagateUsingName(owner, visible_name);
+		InvalidateLookupName(owner, visible_name);
+	}
 }
 
 void Program::RehashUsingEdges(std::size_t capacity)
@@ -914,6 +999,151 @@ void Program::RehashUsingEdges(std::size_t capacity)
 		replacement[slot] = static_cast<std::uint32_t>(i + 1);
 	}
 	using_edge_slots_.swap(replacement);
+}
+
+void Program::RehashVisibleNames(std::size_t capacity)
+{
+	visible_name_slots_.assign(capacity, 0);
+	const std::size_t mask = capacity - 1;
+	for (std::size_t i = 0; i < visible_names_.size(); ++i)
+	{
+		const ScopeVisibleName& fact = visible_names_[i];
+		std::size_t slot = MixHash(fact.scope, fact.name) & mask;
+		while (visible_name_slots_[slot] != 0) slot = (slot + 1) & mask;
+		visible_name_slots_[slot] = static_cast<std::uint32_t>(i + 1);
+	}
+}
+
+std::uint32_t Program::FindVisibleName(ScopeId scope, NameId name) const
+{
+	const std::size_t mask = visible_name_slots_.size() - 1;
+	std::size_t slot = MixHash(scope, name) & mask;
+	while (visible_name_slots_[slot] != 0)
+	{
+		const std::uint32_t fact = visible_name_slots_[slot] - 1;
+		if (visible_names_[fact].scope == scope &&
+			visible_names_[fact].name == name)
+			return fact;
+		slot = (slot + 1) & mask;
+	}
+	return std::numeric_limits<std::uint32_t>::max();
+}
+
+std::uint32_t Program::EnsureVisibleName(ScopeId scope, NameId name,
+	bool* created)
+{
+	if ((visible_names_.size() + 1) * 10 > visible_name_slots_.size() * 7)
+		RehashVisibleNames(visible_name_slots_.size() * 2);
+	const std::size_t mask = visible_name_slots_.size() - 1;
+	std::size_t slot = MixHash(scope, name) & mask;
+	while (visible_name_slots_[slot] != 0)
+	{
+		const std::uint32_t fact = visible_name_slots_[slot] - 1;
+		if (visible_names_[fact].scope == scope &&
+			visible_names_[fact].name == name)
+		{
+			*created = false;
+			return fact;
+		}
+		slot = (slot + 1) & mask;
+	}
+	if (visible_names_.size() >= std::numeric_limits<std::uint32_t>::max())
+		throw std::runtime_error("too many visible scope names");
+	const std::uint32_t fact =
+		static_cast<std::uint32_t>(visible_names_.size());
+	visible_names_.push_back(ScopeVisibleName(
+		scope, name, scopes_[scope].first_visible_name));
+	scopes_[scope].first_visible_name = fact;
+	visible_name_slots_[slot] = fact + 1;
+	*created = true;
+	return fact;
+}
+
+void Program::RehashUsingNameRelations(std::size_t capacity)
+{
+	using_name_relation_slots_.assign(capacity, 0);
+	const std::size_t mask = capacity - 1;
+	for (std::size_t i = 0; i < using_name_relations_.size(); ++i)
+	{
+		const UsingNameRelation& relation = using_name_relations_[i];
+		std::size_t slot = MixHash(relation.edge, relation.name) & mask;
+		while (using_name_relation_slots_[slot] != 0)
+			slot = (slot + 1) & mask;
+		using_name_relation_slots_[slot] = static_cast<std::uint32_t>(i + 1);
+	}
+}
+
+std::uint32_t Program::FindUsingNameRelation(std::uint32_t edge,
+	NameId name) const
+{
+	const std::size_t mask = using_name_relation_slots_.size() - 1;
+	std::size_t slot = MixHash(edge, name) & mask;
+	while (using_name_relation_slots_[slot] != 0)
+	{
+		const std::uint32_t relation =
+			using_name_relation_slots_[slot] - 1;
+		if (using_name_relations_[relation].edge == edge &&
+			using_name_relations_[relation].name == name)
+			return relation;
+		slot = (slot + 1) & mask;
+	}
+	return std::numeric_limits<std::uint32_t>::max();
+}
+
+bool Program::AddUsingNameRelation(std::uint32_t edge, NameId name,
+	bool* owner_became_visible)
+{
+	if (FindUsingNameRelation(edge, name) !=
+		std::numeric_limits<std::uint32_t>::max())
+	{
+		*owner_became_visible = false;
+		return false;
+	}
+	if ((using_name_relations_.size() + 1) * 10 >
+		using_name_relation_slots_.size() * 7)
+		RehashUsingNameRelations(using_name_relation_slots_.size() * 2);
+	const ScopeId owner = using_edges_[edge].owner;
+	const std::uint32_t visible =
+		EnsureVisibleName(owner, name, owner_became_visible);
+	if (using_name_relations_.size() >=
+		std::numeric_limits<std::uint32_t>::max())
+		throw std::runtime_error("too many indexed using names");
+	const std::uint32_t relation =
+		static_cast<std::uint32_t>(using_name_relations_.size());
+	using_name_relations_.push_back(UsingNameRelation(
+		edge, name, visible_names_[visible].first_relation));
+	visible_names_[visible].first_relation = relation;
+	const std::size_t mask = using_name_relation_slots_.size() - 1;
+	std::size_t slot = MixHash(edge, name) & mask;
+	while (using_name_relation_slots_[slot] != 0) slot = (slot + 1) & mask;
+	using_name_relation_slots_[slot] = relation + 1;
+	return true;
+}
+
+void Program::PropagateUsingName(ScopeId scope, NameId name)
+{
+	using_name_worklist_.clear();
+	using_name_worklist_.push_back(scope);
+	for (std::size_t i = 0; i < using_name_worklist_.size(); ++i)
+	{
+		const ScopeId target = using_name_worklist_[i];
+		for (std::uint32_t edge = scopes_[target].first_incoming_using;
+			edge != std::numeric_limits<std::uint32_t>::max();
+			edge = using_edges_[edge].next_incoming)
+		{
+			bool owner_became_visible = false;
+			if (AddUsingNameRelation(edge, name, &owner_became_visible) &&
+				owner_became_visible)
+				using_name_worklist_.push_back(using_edges_[edge].owner);
+		}
+	}
+}
+
+void Program::PublishUsingName(ScopeId scope, NameId name)
+{
+	bool created = false;
+	(void)EnsureVisibleName(scope, name, &created);
+	if (created) PropagateUsingName(scope, name);
 }
 
 EntityId Program::NewEntity(NameId name, NamedFlavor flavor, bool complete,
@@ -1163,6 +1393,7 @@ Program::NameEntry* Program::EnsureEntry(ScopeId scope, NameId name)
 	entry.scope = scope;
 	entry.name = name;
 	entry_slots_[slot] = static_cast<std::uint32_t>(entries_.size());
+	PublishUsingName(scope, name);
 	return &entry;
 }
 
@@ -1226,10 +1457,38 @@ void Program::InvalidateLookupScope(ScopeId scope)
 
 void Program::InvalidateLookupName(ScopeId scope, NameId name)
 {
-	std::size_t worklist_pushes = 0;
-	lookup_cache_invalidations +=
-		lookup_cache_->InvalidateName(scope, name, &worklist_pushes);
-	lookup_cache_invalidation_pushes += worklist_pushes;
+	++using_name_invalidation_generation_;
+	if (using_name_invalidation_generation_ == 0)
+	{
+		std::fill(using_name_invalidation_marks_.begin(),
+			using_name_invalidation_marks_.end(), 0);
+		using_name_invalidation_generation_ = 1;
+	}
+	using_name_worklist_.clear();
+	using_name_invalidation_marks_[scope] =
+		using_name_invalidation_generation_;
+	using_name_worklist_.push_back(scope);
+	for (std::size_t i = 0; i < using_name_worklist_.size(); ++i)
+	{
+		const ScopeId current = using_name_worklist_[i];
+		std::size_t worklist_pushes = 0;
+		lookup_cache_invalidations += lookup_cache_->InvalidateName(
+			current, name, &worklist_pushes);
+		lookup_cache_invalidation_pushes += worklist_pushes;
+		for (std::uint32_t edge = scopes_[current].first_incoming_using;
+			edge != std::numeric_limits<std::uint32_t>::max();
+			edge = using_edges_[edge].next_incoming)
+		{
+			if (FindUsingNameRelation(edge, name) ==
+				std::numeric_limits<std::uint32_t>::max()) continue;
+			const ScopeId owner = using_edges_[edge].owner;
+			if (using_name_invalidation_marks_[owner] ==
+				using_name_invalidation_generation_) continue;
+			using_name_invalidation_marks_[owner] =
+				using_name_invalidation_generation_;
+			using_name_worklist_.push_back(owner);
+		}
+	}
 }
 
 LookupResult Program::DirectLookup(ScopeId scope, NameId name,
@@ -1277,9 +1536,26 @@ void Program::MergeLookup(LookupResult* result,
 	if (result->name_space != candidate.name_space ||
 		result->type != candidate.type ||
 		result->type_declaration_canonical !=
-			candidate.type_declaration_canonical ||
-		result->ordinary_declaration != candidate.ordinary_declaration)
+			candidate.type_declaration_canonical)
 		throw std::runtime_error("ambiguous PA11 lookup");
+	if (result->ordinary == kNoBinding && candidate.ordinary == kNoBinding)
+		return;
+	if (result->ordinary == kNoBinding || candidate.ordinary == kNoBinding)
+		throw std::runtime_error("ambiguous PA11 lookup");
+	const bool result_functions =
+		bindings[result->ordinary].kind == BIND_FUNCTION;
+	const bool candidate_functions =
+		bindings[candidate.ordinary].kind == BIND_FUNCTION;
+	if (!result_functions || !candidate_functions)
+	{
+		if (result->OrdinaryCount() == 1 && candidate.OrdinaryCount() == 1 &&
+			bindings[result->ordinary].canonical ==
+				bindings[candidate.ordinary].canonical)
+			return;
+		throw std::runtime_error("ambiguous PA11 lookup");
+	}
+	for (std::size_t i = 0; i < candidate.OrdinaryCount(); ++i)
+		result->AddOrdinary(candidate.OrdinaryAt(i));
 }
 
 LookupResult Program::LookupGraph(ScopeId scope, NameId name,
@@ -1316,11 +1592,16 @@ LookupResult Program::LookupGraph(ScopeId scope, NameId name,
 			lookup_worklist_.push_back(target);
 		}
 	}
-	for (std::uint32_t edge = scopes_[scope].first_using;
-		edge != std::numeric_limits<std::uint32_t>::max();
-		edge = using_edges_[edge].next)
+	const std::uint32_t scope_visible = FindVisibleName(scope, name);
+	for (std::uint32_t relation = scope_visible ==
+			std::numeric_limits<std::uint32_t>::max() ?
+			std::numeric_limits<std::uint32_t>::max() :
+			visible_names_[scope_visible].first_relation;
+		relation != std::numeric_limits<std::uint32_t>::max();
+		relation = using_name_relations_[relation].next)
 	{
 		++lookup_edge_visits;
+		const std::uint32_t edge = using_name_relations_[relation].edge;
 		const ScopeId target = using_edges_[edge].target;
 		if (lookup_marks_[target] == lookup_generation_) continue;
 		lookup_marks_[target] = lookup_generation_;
@@ -1352,11 +1633,16 @@ LookupResult Program::LookupGraph(ScopeId scope, NameId name,
 				lookup_worklist_.push_back(target);
 			}
 		}
-		for (std::uint32_t edge = scopes_[current].first_using;
-			edge != std::numeric_limits<std::uint32_t>::max();
-			edge = using_edges_[edge].next)
+		const std::uint32_t current_visible = FindVisibleName(current, name);
+		for (std::uint32_t relation = current_visible ==
+				std::numeric_limits<std::uint32_t>::max() ?
+				std::numeric_limits<std::uint32_t>::max() :
+				visible_names_[current_visible].first_relation;
+			relation != std::numeric_limits<std::uint32_t>::max();
+			relation = using_name_relations_[relation].next)
 		{
 			++lookup_edge_visits;
+			const std::uint32_t edge = using_name_relations_[relation].edge;
 			const ScopeId target = using_edges_[edge].target;
 			if (lookup_marks_[target] == lookup_generation_) continue;
 			lookup_marks_[target] = lookup_generation_;
@@ -1383,14 +1669,15 @@ LookupResult Program::LookupUnqualified(ScopeId scope, NameId name,
 	}
 	++lookup_cache_misses;
 
-	for (std::size_t i = 0; i < lookup_pending_touched_.size(); ++i)
-		lookup_pending_targets_[lookup_pending_touched_[i]].clear();
-	lookup_pending_touched_.clear();
+	lookup_pending_targets_.clear();
+	lookup_pending_next_.clear();
 	++lookup_pending_generation_;
 	if (lookup_pending_generation_ == 0)
 	{
 		std::fill(lookup_pending_target_marks_.begin(),
 			lookup_pending_target_marks_.end(), 0);
+		std::fill(lookup_pending_head_marks_.begin(),
+			lookup_pending_head_marks_.end(), 0);
 		lookup_pending_generation_ = 1;
 	}
 
@@ -1399,22 +1686,36 @@ LookupResult Program::LookupUnqualified(ScopeId scope, NameId name,
 		current = scopes_[current].parent)
 	{
 		RecordLookupDependency(current);
-		for (std::uint32_t edge = scopes_[current].first_using;
-			edge != std::numeric_limits<std::uint32_t>::max();
-			edge = using_edges_[edge].next)
+		const std::uint32_t current_visible = FindVisibleName(current, name);
+		for (std::uint32_t relation = current_visible ==
+				std::numeric_limits<std::uint32_t>::max() ?
+				std::numeric_limits<std::uint32_t>::max() :
+				visible_names_[current_visible].first_relation;
+			relation != std::numeric_limits<std::uint32_t>::max();
+			relation = using_name_relations_[relation].next)
 		{
 			++lookup_edge_visits;
+			const std::uint32_t edge = using_name_relations_[relation].edge;
 			const UsingEdge& using_edge = using_edges_[edge];
 			if (lookup_pending_target_marks_[using_edge.target] ==
 				lookup_pending_generation_)
 				continue;
 			lookup_pending_target_marks_[using_edge.target] =
 				lookup_pending_generation_;
-			std::vector<ScopeId>& bucket =
-				lookup_pending_targets_[using_edge.injection];
-			if (bucket.empty())
-				lookup_pending_touched_.push_back(using_edge.injection);
-			bucket.push_back(using_edge.target);
+			if (lookup_pending_targets_.size() >=
+				std::numeric_limits<std::uint32_t>::max())
+				throw std::runtime_error("too many pending using targets");
+			const std::uint32_t pending =
+				static_cast<std::uint32_t>(lookup_pending_targets_.size());
+			lookup_pending_targets_.push_back(using_edge.target);
+			lookup_pending_next_.push_back(
+				lookup_pending_head_marks_[using_edge.injection] ==
+					lookup_pending_generation_ ?
+					lookup_pending_heads_[using_edge.injection] :
+					std::numeric_limits<std::uint32_t>::max());
+			lookup_pending_heads_[using_edge.injection] = pending;
+			lookup_pending_head_marks_[using_edge.injection] =
+				lookup_pending_generation_;
 		}
 
 		++lookup_scope_visits;
@@ -1426,10 +1727,14 @@ LookupResult Program::LookupUnqualified(ScopeId scope, NameId name,
 			 entities[scope_entity].flavor == NAMED_UNION))
 			result = LookupGraph(current, name, kind);
 
-		const std::vector<ScopeId>& targets =
-			lookup_pending_targets_[current];
-		for (std::size_t i = 0; i < targets.size(); ++i)
-			MergeLookup(&result, LookupGraph(targets[i], name, kind));
+		for (std::uint32_t pending =
+				lookup_pending_head_marks_[current] ==
+					lookup_pending_generation_ ? lookup_pending_heads_[current] :
+					std::numeric_limits<std::uint32_t>::max();
+			pending != std::numeric_limits<std::uint32_t>::max();
+			pending = lookup_pending_next_[pending])
+			MergeLookup(&result,
+				LookupGraph(lookup_pending_targets_[pending], name, kind));
 		if (!result.Empty()) break;
 	}
 
@@ -1743,7 +2048,8 @@ std::size_t Program::LookupCache::StorageBytes() const
 		active_cache_dependents.capacity() * sizeof(std::size_t) +
 		invalidation_worklist.capacity() * sizeof(std::uint32_t);
 	for (std::size_t i = 0; i < entries.size(); ++i)
-		bytes += entries[i].scope_dependencies.StorageBytes();
+		bytes += entries[i].scope_dependencies.StorageBytes() +
+			entries[i].result.OrdinaryStorageBytes();
 	for (std::size_t i = 0; i < scope_dependency_buckets.size(); ++i)
 		bytes += scope_dependency_buckets[i].dependents.StorageBytes();
 	for (std::size_t i = 0;
@@ -2170,14 +2476,22 @@ std::size_t Program::StorageBytes() const
 		child_edges_.capacity() * sizeof(ChildEdge) +
 		using_edges_.capacity() * sizeof(UsingEdge) +
 		using_edge_slots_.capacity() * sizeof(std::uint32_t) +
+		visible_names_.capacity() * sizeof(ScopeVisibleName) +
+		visible_name_slots_.capacity() * sizeof(std::uint32_t) +
+		using_name_relations_.capacity() * sizeof(UsingNameRelation) +
+		using_name_relation_slots_.capacity() * sizeof(std::uint32_t) +
+		using_name_worklist_.capacity() * sizeof(ScopeId) +
+		using_name_invalidation_marks_.capacity() * sizeof(std::uint32_t) +
 		entries_.capacity() * sizeof(NameEntry) +
 		entry_slots_.capacity() * sizeof(std::uint32_t) +
 		lookup_marks_.capacity() * sizeof(std::uint32_t) +
 		lookup_worklist_.capacity() * sizeof(ScopeId) +
 		lookup_dependency_marks_.capacity() * sizeof(std::uint32_t) +
 		lookup_dependencies_.capacity() * sizeof(ScopeId) +
-		lookup_pending_targets_.capacity() * sizeof(std::vector<ScopeId>) +
-		lookup_pending_touched_.capacity() * sizeof(ScopeId) +
+		lookup_pending_heads_.capacity() * sizeof(std::uint32_t) +
+		lookup_pending_head_marks_.capacity() * sizeof(std::uint32_t) +
+		lookup_pending_targets_.capacity() * sizeof(ScopeId) +
+		lookup_pending_next_.capacity() * sizeof(std::uint32_t) +
 		lookup_pending_target_marks_.capacity() * sizeof(std::uint32_t) +
 		base_jumps_.capacity() * sizeof(EntityId) +
 		base_jump_offsets_.capacity() * sizeof(std::size_t) +
@@ -2187,8 +2501,6 @@ std::size_t Program::StorageBytes() const
 		lookup_cache_->StorageBytes() +
 		entities.capacity() * sizeof(EntityRecord) +
 		bindings.capacity() * sizeof(BindingRecord);
-	for (std::size_t i = 0; i < lookup_pending_targets_.size(); ++i)
-		bytes += lookup_pending_targets_[i].capacity() * sizeof(ScopeId);
 	return bytes;
 }
 

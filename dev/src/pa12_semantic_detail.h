@@ -147,12 +147,14 @@ private:
 		const TypeRecord& left, const TypeRecord& right) const;
 	ConversionRank MemberCandidateSelectionRank(
 		const ExpressionInfo& object, BindingId candidate,
-		ConversionRank actual) const;
+		ConversionRank actual, std::size_t* base_distance) const;
 	int CompareReferenceBindings(const ExpressionInfo& argument,
 		TypeId left, TypeId right) const;
 	std::vector<BindingId> FunctionCandidates(ScopeId scope,
 		const std::string& spelling, EntityId* naming_class = 0);
 	std::vector<BindingId> FunctionSet(BindingId binding);
+	void AppendFunctionSet(BindingId binding,
+		std::vector<BindingId>* result);
 	std::vector<std::size_t> FindFunctionTemplates(ScopeId scope,
 		const std::string& spelling);
 	bool ParseExplicitTemplateArguments(ScopeId scope,

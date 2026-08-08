@@ -45,10 +45,25 @@ repeated base-chain walks; context-sensitive private/protected/friend access
 continues through the detailed access owner. Candidate conversion computes the
 relationship once and reuses it for reference relatedness and rank.
 
+Ordinary lookup retains compact canonical overload-set representatives rather
+than collapsing distinct functions into value-style ambiguity. Using
+directives are explicit indexed `(edge, NameId)` relations fed by per-scope
+visible-name facts and reverse incoming edges; a deduplicated worklist
+propagates late names and invalidation follows only reverse relations for the
+changed name. Call analysis expands the representatives and flat-deduplicates
+canonical `BindingId` values. Introduced base members retain both their
+declaration/access owner for implicit-object ranking and the actual object
+conversion for typed base projection. Callable-surrogate conversion facts and
+pending lookup targets are flat indexed sequences, while the common merged
+lookup result stays inline. This preserves O(visited relevant scopes and edges
++ result declarations + viable candidates) work and avoids per-candidate or
+per-scope owning containers.
+
 ## Current Failure Map
 
-Audited result: **222/239**. The complete non-overlapping failure map contains
-17 tests; the landed pass set remains intact:
+Audited result: **224/241**. The complete non-overlapping failure map contains
+17 tests; the turn-start 222-test pass set remains intact and both audit
+regressions pass:
 
 | Failures | Shared behavior | Primary owner |
 | ---: | --- | --- |
@@ -72,11 +87,16 @@ through PA16, file audit, and 32/64/128 candidate probes.
 
 ## Performance Evidence
 
-- Canonical lookup/call probes at 32/64/128 nested using edges and unrelated
-  base overloads recorded 204/396/780 scope visits, 63/127/255 edge visits,
-  125/253/509 candidates, 222/446/894 conversions, and
-  225,731/449,715/899,643 semantic bytes. Five-run semantic medians were
-  1.315/2.308/4.640 ms, proportional to visited paths and candidate facts.
+- Using-directive function merges at 32/64/128 contributing namespaces
+  recorded 134/262/518 scope visits, 32/64/128 relevant edge visits,
+  32/64/128 candidates, 33/65/129 conversions, and
+  263,007/525,935/1,051,779 semantic bytes. Five-run semantic medians were
+  1.344/2.449/4.600 ms, proportional to the contributing relations and facts.
+- Callable-surrogate sets at 32/64/128 candidates recorded 137/265/521 scope
+  visits, no using-edge visits, 32/64/128 candidates, 66/130/258 conversions,
+  and 241,408/482,280/963,916 semantic bytes. Five-run semantic medians were
+  1.465/2.689/5.378 ms, confirming proportional candidate work and flat fact
+  storage.
 - Same-name declaration and selected-call probes scale proportionally from
   64/128/256 declarations; medians were 1.269/2.401/4.830 ms and
   2.920/5.944/11.815 ms respectively, with doubling counters and storage.
@@ -192,4 +212,4 @@ through PA16, file audit, and 32/64/128 candidate probes.
 | Typed constructor delegation and qualified default completion | 188/233 -> 193/233; audit 199/239 | Positive delegation/qualified definitions 5/5; cycle/mixed rejection 3/3; six defaulted-definition regressions; through PA16 1,436/1,436; file audit and proportional 32/64/128 probes pass |
 | Composite subobject copy/move storage transfer | 199/239 -> 207/239; audit 207/239 | Prefix, array, empty, reference, move-only aggregate, implicit-move, and trivial ABI gains remain 8/8; direct typed lowering and bounded array loops audited; through PA16 1,436/1,436; fixed-shape extent probes and file audit pass |
 | Value-category and reference-binding closure | 207/239 -> 216/239; audit 216/239 | Planned focus 7/7 plus two adjacent gains and rejection focus 3/3; canonical value/conversion facts feed direct typed lowering; indexed ancestry removes repeated base-chain work; through PA16 1,436/1,436, file audit, and proportional 16/32/64/128 probes pass |
-| Canonical lookup and candidate identity | 216/239 -> 222/239 | Focus 6/6; direct selected-call lowering, path-aware using lookup, typed destruction, and callable surrogates; through PA16 1,436/1,436, file audit, and proportional 32/64/128 probes pass |
+| Canonical lookup and candidate identity | 216/239 -> 222/239; audit 224/241 | Focus 6/6 plus two using/inheritance regressions; indexed using-name propagation, compact canonical overload merging, retained object conversions, and direct selected-call lowering; through PA16 1,436/1,436, file audit, and proportional 32/64/128 probes pass |

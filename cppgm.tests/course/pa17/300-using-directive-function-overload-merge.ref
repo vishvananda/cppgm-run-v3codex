@@ -1,0 +1,41 @@
+function @exact_ns__pick(%value : i32) -> i32 [binding=strong, object=_ZN8exact_ns4pickEi] {
+  slot $value : i32
+
+  block ^entry:
+    store i32 %value, $value
+    %t1 = load i32 $value
+    %t2 = binary add i32 %t1, 1
+    return i32 %t2
+}
+
+function @conversion_ns__pick(%value : f64) -> i32 [binding=strong, object=_ZN13conversion_ns4pickEd] {
+  slot $value : f64
+
+  block ^entry:
+    store f64 %value, $value
+    %t1 = load f64 $value
+    %t2 = convert fptosi i32 f64 %t1
+    %t3 = binary add i32 %t2, 2
+    return i32 %t3
+}
+
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $cond__1 : i32
+
+  block ^entry:
+    %t1 = call i32 @exact_ns__pick(4)
+    %t2 = cmp eq i32 %t1, 5
+    branch %t2, ^cond_then_1, ^cond_else_2
+
+  block ^cond_then_1:
+    store i32 0, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_else_2:
+    store i32 1, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_end_3:
+    %t3 = load i32 $cond__1
+    return i32 %t3
+}

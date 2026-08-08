@@ -995,6 +995,10 @@ BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
 		CONVERSION_ELLIPSIS);
 	std::vector<std::size_t> base_distances(candidates.size() * arity,
 		std::numeric_limits<std::size_t>::max());
+	std::vector<ConversionRank> actual_object_ranks(candidates.size(),
+		CONVERSION_INVALID);
+	std::vector<std::size_t> actual_object_distances(candidates.size(),
+		std::numeric_limits<std::size_t>::max());
 	std::vector<CallConversionFact> conversions(candidates.size() * arity);
 	CallConversionTable conversion_cache;
 	std::vector<bool> viable(candidates.size(), true);
@@ -1018,13 +1022,20 @@ BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
 			if ((function_type.cv & CV_VOLATILE) != 0)
 				object_type = program_->types.Qualify(object_type, CV_VOLATILE);
 			const TypeId target = program_->types.Pointer(object_type);
-			const ConversionRank rank = MemberObjectConversion(object, target,
+			const ConversionRank actual_rank = MemberObjectConversion(object, target,
 				candidates[c]);
-			ranks[c * arity] = rank;
-			if (rank == CONVERSION_DERIVED_TO_BASE)
-				base_distances[c * arity] =
+			actual_object_ranks[c] = actual_rank;
+			if (actual_rank == CONVERSION_DERIVED_TO_BASE)
+				actual_object_distances[c] =
 					BaseConversionDistance(object.type, target);
-			if (rank == CONVERSION_INVALID)
+			std::size_t selection_distance = actual_object_distances[c];
+			const ConversionRank selection_rank =
+				MemberCandidateSelectionRank(object, candidates[c], actual_rank,
+					&selection_distance);
+			ranks[c * arity] = selection_rank;
+			if (selection_rank == CONVERSION_DERIVED_TO_BASE)
+				base_distances[c * arity] = selection_distance;
+			if (actual_rank == CONVERSION_INVALID)
 			{
 				viable[c] = false;
 				continue;
@@ -1162,10 +1173,10 @@ BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
 	*selected_member = GetFunction(candidates[champion]).member_owner != kNoType;
 	if (*selected_member && object_conversion)
 	{
-		object_conversion->rank = ranks[champion * arity];
+		object_conversion->rank = actual_object_ranks[champion];
 		if (object_conversion->rank == CONVERSION_DERIVED_TO_BASE)
 		{
-			const std::size_t projections = base_distances[champion * arity];
+			const std::size_t projections = actual_object_distances[champion];
 			if (projections == std::numeric_limits<std::size_t>::max() ||
 				projections > std::numeric_limits<std::uint32_t>::max())
 				throw std::logic_error(
@@ -1321,13 +1332,19 @@ bool SemanticAnalyzer::TryAnalyzeCallSurrogate(ScopeId scope,
 		TypeId function_type;
 		ConversionRank object_rank;
 		std::size_t object_distance;
-		std::vector<CallConversionFact> argument_facts;
+		std::size_t argument_offset;
 		Candidate()
 			: binding(kNoBinding), function_type(kNoType),
 			  object_rank(CONVERSION_INVALID),
-			  object_distance(std::numeric_limits<std::size_t>::max()) {}
+			  object_distance(std::numeric_limits<std::size_t>::max()),
+			  argument_offset(0) {}
 	};
 	std::vector<Candidate> candidates;
+	if (!arguments.empty() && conversions.size() >
+		std::numeric_limits<std::size_t>::max() / arguments.size())
+		throw std::runtime_error("callable surrogate table is too large");
+	std::vector<CallConversionFact> argument_facts;
+	argument_facts.reserve(conversions.size() * arguments.size());
 	CallConversionTable conversion_cache;
 	for (std::size_t i = 0; i < conversions.size(); ++i)
 	{
@@ -1368,10 +1385,10 @@ bool SemanticAnalyzer::TryAnalyzeCallSurrogate(ScopeId scope,
 		if (object_rank == CONVERSION_DERIVED_TO_BASE)
 			candidate.object_distance = BaseConversionDistance(
 				object.type, object_target);
+		candidate.argument_offset = argument_facts.size();
 		const TypeId* parameters =
 			program_->types.Parameters(candidate.function_type);
 		bool viable = true;
-		candidate.argument_facts.reserve(arguments.size());
 		for (std::size_t a = 0; a < arguments.size(); ++a)
 		{
 			CallConversionFact fact;
@@ -1380,13 +1397,14 @@ bool SemanticAnalyzer::TryAnalyzeCallSurrogate(ScopeId scope,
 				fact = CallConversion(arguments[a], parameters[a],
 					&conversion_cache, a);
 			if (fact.rank == CONVERSION_INVALID) viable = false;
-			candidate.argument_facts.push_back(fact);
+			argument_facts.push_back(fact);
 		}
 		if (viable) candidates.push_back(candidate);
+		else argument_facts.resize(candidate.argument_offset);
 	}
 	if (candidates.empty()) return false;
 
-	const auto better = [this, &candidates, &arguments, &callee](
+	const auto better = [this, &candidates, &argument_facts, &arguments, &callee](
 		std::size_t left, std::size_t right) -> bool
 	{
 		++overload_order_comparisons_;
@@ -1402,8 +1420,10 @@ bool SemanticAnalyzer::TryAnalyzeCallSurrogate(ScopeId scope,
 		}
 		for (std::size_t a = 0; a < arguments.size(); ++a)
 		{
-			const CallConversionFact& lf = l.argument_facts[a];
-			const CallConversionFact& rf = r.argument_facts[a];
+			const CallConversionFact& lf =
+				argument_facts[l.argument_offset + a];
+			const CallConversionFact& rf =
+				argument_facts[r.argument_offset + a];
 			if (lf.rank > rf.rank) no_worse = false;
 			if (lf.rank < rf.rank) strictly_better = true;
 			if (lf.rank == CONVERSION_USER_DEFINED &&
@@ -1472,7 +1492,7 @@ bool SemanticAnalyzer::TryAnalyzeCallSurrogate(ScopeId scope,
 		ExpressionInfo argument = arguments[a];
 		if (a < callable.parameter_count)
 			argument = ApplyCallArgument(argument, parameters[a],
-				&selected.argument_facts[a]);
+				&argument_facts[selected.argument_offset + a]);
 		dump_.Add(call, argument.node);
 	}
 	result->node = call;

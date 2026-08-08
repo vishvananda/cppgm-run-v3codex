@@ -2,70 +2,78 @@
 
 ## Current Checkpoint Review
 
-**Checkpoint:** `8e3c7cdc` (`pa17: close value-category reference binding`)
+**Checkpoint:** `b210bf54` (`Implement pa17 canonical lookup checkpoint`)
 
-**Result:** Pass after audit fixes. The landed increment is bounded to the seven
-planned value-category/reference-binding cases and two adjacent gains in
-brace-temporary materialization and shadowed-local cleanup. The remaining
-23-test failure map is unchanged; canonical lookup/candidate identity is the
-next substantial checkpoint.
+**Result:** Pass after audit fixes. The landed increment remains bounded to the
+six planned lookup/candidate cases: zero-parameter same-name filtering,
+parenthesized ADL suppression, destructor aliases, base `using` overloads,
+using-directive ambiguity, and inherited callable surrogates. The audit adds
+two general regressions for function-overload merging through using directives
+and inherited-member ranking on a further-derived object. The original 222/239
+pass set is intact; with those regressions the audited result is 224/241 and
+the exact original 17 failures remain.
 
-The complete ownership path is source expression -> PA12 `ExpressionInfo`
-with canonical `TypeId`, `ValueCategory`, and `BindingId` -> retained
-`Conversion`/`CallConversionFact` and selected overload binding -> typed cast,
-base projection, materialization, or lifetime action -> PA15-PA17 direct typed
-LowIR. Member-call analysis preserves xvalues, reference binding materializes
-only prvalues, class by-value staging consumes the retained base projection,
-and array references remain references rather than being reclassified as array
-objects. Empty inline destructor chains are elided only after accessibility is
-checked and never for array objects. No template or ELF owner is introduced at
-this PA17 boundary.
+The affected ownership path is source lookup/call -> PA11 canonical `ScopeId`,
+`NameId`, and `BindingId` indexes plus explicit using-name relations -> a
+cached `LookupResult` containing compact overload-set representatives -> PA12
+canonical candidate deduplication, conversion ranking, and selected binding ->
+`BuildResolvedCall` with the retained object/argument conversions -> PA15
+direct typed `LowerCall`. Destructor aliases compare canonical `TypeId`;
+surrogate selection retains the conversion call before constructing the typed
+indirect call. Lowering consumes the selected declaration and conversion facts
+without lookup, spelling reconstruction, or semantic-node synthesis. The
+checkpoint introduces no template, machine-IR, or ELF owner and does not alter
+existing template demand.
 
 Audit findings are closed:
 
-1. Standard derived/base conversion repeatedly walked the full direct-base
-   chain while ranking each viable candidate, and one reference conversion
-   queried the same relationship twice. This made a valid inheritance-overload
-   family quadratic. `Program` now owns a compact canonical ancestry index:
-   depth/access-prefix facts and variable-width binary-lifting rows are built
-   once with the direct-base edge. Public ancestry and distance use that index;
-   non-public paths retain the complete private/protected/friend context walk.
-   Conversion computes the relationship once and reuses it for reference
-   relatedness and ranking.
-2. The landed semantic and lowering changes consume canonical types,
-   categories, selected declarations, conversions, projections, and lifetime
-   actions directly. The affected path performs no lowering-time lookup,
-   signature rendering, fake semantic-node construction, text round trip,
-   whole-program retry, or recovery fallback.
-3. The xvalue/materialization changes remain scoped to the retained value
-   category, and destructor elision remains scoped to accessible empty chains.
-   The original pass set, rejection behavior, PA16 access rules, and nested
-   class-array lifetime output remain intact.
-4. The changed source contains no test-name, source-spelling, reference-binary,
-   host-compiler, subprocess, timeout, or cached-output shortcut. The audit
-   adds no source file, and all files remain within the file-audit limit.
+1. Using-directive lookup treated distinct functions like conflicting values.
+   `LookupResult` now keeps a two-entry inline sequence with geometric overflow
+   for ordinary representatives, and call analysis expands their compact
+   function sets and flat-deduplicates canonical declarations.
+2. A base member introduced by `using` ranked its implicit object against the
+   declaration owner, which was insufficient for a further-derived caller.
+   Member and operator candidate selection now rank against the retained
+   `access_owner` while preserving the actual object conversion and base
+   distance used by lowering.
+3. Lookup initially revisited unrelated using directives for each queried
+   name. `Program` now owns dense `(scope,name)` visibility and `(edge,name)`
+   relation indexes, reverse incoming edges, a deduplicated propagation
+   worklist, and name-precise reverse invalidation. Late declarations and
+   cycles propagate through the same explicit relation; lookup visits only
+   edges that can contribute the requested name.
+4. Surrogate conversion facts and pending lookup targets are flat indexed
+   sequences rather than one owning vector per candidate or scope. The hot
+   keys are compact IDs, common lookup results stay inline, and large sequences
+   grow geometrically.
+5. The complete changed path contains no test/source-name shortcut,
+   reference/host compiler invocation, subprocess, timeout, cached answer,
+   text round trip, global retry, or lowering fallback. Candidate rejection
+   stays in typed control flow, and direct selected-binding lowering remains
+   unchanged.
 
-On viable single-inheritance overload sets at 16/32/64/128 candidates, the
-audit changed 405/1,333/4,725/17,653 repeated path visits into
-105/217/441/889 indexed ancestry probes while preserving exactly
-16/32/64/128 candidate visits, 30/62/126/254 comparisons, and
-48/96/192/384 conversions. Five-run semantic medians were
-0.668/1.213/2.271/4.503 ms and peak semantic storage was
-150,852/299,580/597,156/1,195,292 bytes. An unrelated reference-overload probe
-at 32/64/128 candidates likewise retained exact doubling in candidates and
-conversions, with the same proportional time and storage trend.
+Representative using-merge probes at 32/64/128 contributing namespaces
+recorded 134/262/518 scope visits, 32/64/128 relevant edge visits,
+32/64/128 candidates, 33/65/129 conversions, and
+263,007/525,935/1,051,779 semantic bytes. Five-run semantic medians were
+1.344/2.449/4.600 ms. Callable-surrogate probes at 32/64/128 candidates
+recorded 137/265/521 scope visits, no using-edge visits, 32/64/128 candidates,
+66/130/258 conversions, 241,408/482,280/963,916 semantic bytes, and
+1.465/2.689/5.378 ms medians. Required work, storage, and time are therefore
+proportional to contributing names and candidates rather than unrelated using
+edges.
 
 Validation:
 
 - `make test-report ACTIVE_TEST_REPORT_PAS='pa17'`: expected incomplete-stage
-  failure, 216/239; the turn-start pass set and exact 23-test failure set are
-  unchanged.
+  failure, 224/241; the turn-start 222-test pass set is preserved and the
+  original 17-test failure set is unchanged.
 - Required through-stage command: PA1-PA16 pass 1,436/1,436.
 - `perl scripts/cppgm_file_audit.pl --stage pa17 --paths dev/src`: pass with
-  11 header-division warnings and no fatal issue.
-- Landed focus and rejection cases pass 12/12; five PA16 inheritance,
-  access-control, and nested-array lifetime cases pass; source/ownership scans
-  find only compact typed identities and no shortcut or fallback.
+  11 existing header-division warnings and no fatal issue.
+- The six landed cases, two audit regressions, adjacent operator/using checks,
+  late-name propagation, and cyclic-using probes pass. Source and ownership
+  scans find only canonical typed identities and no shortcut or fallback.
 
 ## Checkpoint Audit Ledger
 
@@ -78,3 +86,4 @@ Validation:
 | Typed constructor delegation and qualified default completion | Pass after audit fixes | Canonical declaration/complete-constructor identities and typed action reuse; invalid/deleted defaults rejected; 193/233 baseline, six regressions, proportional probes, and required gates pass |
 | Composite subobject copy/move storage transfer | Pass after audit fixes | Canonical recipe and direct selected-binding lowering; bounded array loops; 207/239 baseline, focused/through-stage gates, file audit, and fixed-shape extent probes pass |
 | Value-category and reference-binding closure | Pass after audit fixes | Canonical value/conversion facts and direct typed lowering; indexed ancestry closes repeated chain work; 216/239 baseline, focused/rejection/through-stage gates, file audit, and proportional probes pass |
+| Canonical lookup and candidate identity | Pass after audit fixes | Indexed using-name relations, compact canonical overload merging, retained object conversions; 222/239 baseline preserved, two regressions, proportional probes, and required gates pass |

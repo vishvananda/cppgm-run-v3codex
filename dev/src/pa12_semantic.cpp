@@ -1033,17 +1033,16 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 			const ConversionRank object_rank = MemberObjectConversion(*object,
 				program_->types.Pointer(object_type), candidates[c]);
 			actual_object_ranks[c] = object_rank;
-			const ConversionRank selection_rank =
-				MemberCandidateSelectionRank(
-					*object, candidates[c], object_rank);
-			ranks[c * arity] = selection_rank;
 			if (object_rank == CONVERSION_DERIVED_TO_BASE)
-			{
 				actual_object_distances[c] = BaseConversionDistance(
 					object->type, program_->types.Pointer(object_type));
-				if (selection_rank == object_rank)
-					base_distances[c * arity] = actual_object_distances[c];
-			}
+			std::size_t selection_distance = actual_object_distances[c];
+			const ConversionRank selection_rank =
+				MemberCandidateSelectionRank(
+					*object, candidates[c], object_rank, &selection_distance);
+			ranks[c * arity] = selection_rank;
+			if (selection_rank == CONVERSION_DERIVED_TO_BASE)
+				base_distances[c * arity] = selection_distance;
 			if (object_rank == CONVERSION_INVALID)
 			{
 				viable[c] = false;

@@ -1,5 +1,7 @@
 #include "pa12_semantic_detail.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -8,6 +10,51 @@ namespace cppgm
 {
 namespace pa12_semantic_detail
 {
+
+namespace
+{
+
+class CandidateIdentitySet
+{
+public:
+	CandidateIdentitySet() : slots_(8, 0), size_(0) {}
+	bool Insert(BindingId binding)
+	{
+		if ((size_ + 1) * 10 > slots_.size() * 7)
+			Rehash(slots_.size() * 2);
+		const std::size_t mask = slots_.size() - 1;
+		std::size_t slot = MixHash(0, binding) & mask;
+		while (slots_[slot] != 0)
+		{
+			if (slots_[slot] - 1 == binding) return false;
+			slot = (slot + 1) & mask;
+		}
+		slots_[slot] = binding + 1;
+		++size_;
+		return true;
+	}
+
+private:
+	void Rehash(std::size_t capacity)
+	{
+		std::vector<std::uint32_t> replacement(capacity, 0);
+		const std::size_t mask = capacity - 1;
+		for (std::size_t i = 0; i < slots_.size(); ++i)
+		{
+			if (slots_[i] == 0) continue;
+			const BindingId binding = slots_[i] - 1;
+			std::size_t slot = MixHash(0, binding) & mask;
+			while (replacement[slot] != 0) slot = (slot + 1) & mask;
+			replacement[slot] = binding + 1;
+		}
+		slots_.swap(replacement);
+	}
+
+	std::vector<std::uint32_t> slots_;
+	std::size_t size_;
+};
+
+}
 
 bool SemanticAnalyzer::RefQualifierViable(const ExpressionInfo& object,
 	const TypeRecord& function_type) const
@@ -36,19 +83,26 @@ int SemanticAnalyzer::CompareImplicitObjectBindings(ValueCategory category,
 
 ConversionRank SemanticAnalyzer::MemberCandidateSelectionRank(
 	const ExpressionInfo& object, BindingId candidate,
-	ConversionRank actual) const
+	ConversionRank actual, std::size_t* base_distance) const
 {
 	if (actual == CONVERSION_INVALID) return actual;
 	const BindingRecord& declaration = program_->bindings[candidate];
 	if (declaration.canonical == candidate ||
 		declaration.access_owner == kNoEntity)
 		return actual;
-	TypeId source_type = program_->types.RemoveTopCv(
-		EffectiveType(object.type));
-	const TypeRecord source_shape = program_->types.Get(source_type);
-	if (source_shape.kind == TYPE_POINTER) source_type = source_shape.child;
-	return EntityOf(source_type) == declaration.access_owner ?
-		CONVERSION_EXACT : actual;
+	TypeId owner_type = program_->entities[declaration.access_owner].type;
+	const TypeRecord& function_type =
+		program_->types.Get(GetFunction(candidate).type);
+	if ((function_type.cv & CV_CONST) != 0)
+		owner_type = program_->types.Qualify(owner_type, CV_CONST);
+	if ((function_type.cv & CV_VOLATILE) != 0)
+		owner_type = program_->types.Qualify(owner_type, CV_VOLATILE);
+	const TypeId target = program_->types.Pointer(owner_type);
+	const ConversionRank selection =
+		MemberObjectConversion(object, target, candidate);
+	if (selection == CONVERSION_DERIVED_TO_BASE && base_distance)
+		*base_distance = BaseConversionDistance(object.type, target);
+	return selection;
 }
 
 int SemanticAnalyzer::CompareReferenceBindings(
@@ -382,6 +436,88 @@ bool SemanticAnalyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 	*result = BuildResolvedCall(destructor, scope, no_syntax,
 		no_arguments, &object_pointer, target, entity);
 	return true;
+}
+
+std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
+	const std::string& spelling, EntityId* naming_class)
+{
+	if (naming_class) *naming_class = kNoEntity;
+	std::string lookup_name = spelling;
+	std::string explicit_base;
+	std::vector<TypeId> explicit_arguments;
+	if (ParseExplicitTemplateArguments(scope, spelling, &explicit_base,
+		&explicit_arguments))
+	{
+		std::vector<BindingId> explicit_candidates;
+		const std::vector<std::size_t> patterns =
+			FindFunctionTemplates(scope, explicit_base);
+		for (std::size_t i = 0; i < patterns.size(); ++i)
+			if (function_templates_[patterns[i]].type_parameters.size() ==
+				explicit_arguments.size())
+			{
+				const BindingId candidate = InstantiateFunctionTemplate(
+					patterns[i], explicit_arguments);
+				if (candidate != kNoBinding &&
+					std::find(explicit_candidates.begin(),
+						explicit_candidates.end(), candidate) ==
+						explicit_candidates.end())
+					explicit_candidates.push_back(candidate);
+			}
+		return explicit_candidates;
+	}
+	const LookupResult found =
+		LookupSpelling(scope, lookup_name, LOOKUP_ORDINARY);
+	if (naming_class) *naming_class = found.naming_class;
+	if (found.ordinary == kNoBinding) return std::vector<BindingId>();
+	if (program_->bindings[found.ordinary].kind != BIND_FUNCTION)
+		return std::vector<BindingId>();
+	std::vector<BindingId> collected;
+	for (std::size_t i = 0; i < found.OrdinaryCount(); ++i)
+		AppendFunctionSet(found.OrdinaryAt(i), &collected);
+	CandidateIdentitySet seen;
+	std::vector<BindingId> result;
+	result.reserve(collected.size());
+	for (std::size_t i = 0; i < collected.size(); ++i)
+		if (seen.Insert(program_->bindings[collected[i]].canonical))
+			result.push_back(collected[i]);
+	return result;
+}
+
+std::vector<BindingId> SemanticAnalyzer::FunctionSet(BindingId binding)
+{
+	std::vector<BindingId> result;
+	AppendFunctionSet(binding, &result);
+	return result;
+}
+
+void SemanticAnalyzer::AppendFunctionSet(BindingId binding,
+	std::vector<BindingId>* result)
+{
+	if (binding == kNoBinding || binding >= program_->bindings.size() ||
+		program_->bindings[binding].kind != BIND_FUNCTION)
+		return;
+	const BindingRecord& record = program_->bindings[binding];
+	const std::uint64_t key = (static_cast<std::uint64_t>(record.owner) << 32) |
+		record.name;
+	const CompactIndexSequence* set = ordinary_function_sets_.Find(key);
+	if (!set) return;
+	if (result->empty()) result->reserve(set->Size());
+	for (std::size_t i = 0; i < set->Size(); ++i)
+	{
+		const BindingId candidate = static_cast<BindingId>((*set)[i]);
+		const BindingRecord& candidate_record = program_->bindings[candidate];
+		if (candidate_record.access_owner != kNoEntity &&
+			candidate_record.canonical != candidate)
+		{
+			const FunctionInfo& function = GetFunction(candidate);
+			const FunctionSignatureKey signature_key(record.owner, record.name,
+				function.signature);
+			++function_signature_lookups_;
+			if (function_declarations_.Find(signature_key) != kNoBinding)
+				continue;
+		}
+		result->push_back(candidate);
+	}
 }
 
 }
