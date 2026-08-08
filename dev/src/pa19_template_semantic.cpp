@@ -181,7 +181,7 @@ LookupResult SemanticAnalyzer::LookupPath(ScopeId scope,
 	for (; carrier != kNoScope && component + 1 < path.Size(); ++component)
 	{
 		const TypeId specialization = ResolveClassTemplateSpecialization(
-			carrier, program_->names.Get(path[component]));
+			carrier, scope, program_->names.Get(path[component]));
 		if (specialization != kNoType)
 		{
 			carrier = program_->ScopeForType(specialization);
@@ -198,7 +198,7 @@ LookupResult SemanticAnalyzer::LookupPath(ScopeId scope,
 	if (kind == LOOKUP_TYPE || kind == LOOKUP_SCOPE_CARRIER)
 	{
 		const TypeId specialization = ResolveClassTemplateSpecialization(
-			carrier, program_->names.Get(path.Last()));
+			carrier, scope, program_->names.Get(path.Last()));
 		if (specialization != kNoType)
 		{
 			LookupResult result;
@@ -932,12 +932,20 @@ void SemanticAnalyzer::UpgradeClassTemplateSpecializations(std::size_t index)
 TypeId SemanticAnalyzer::ResolveClassTemplateSpecialization(ScopeId scope,
 	const std::string& spelling)
 {
+	return ResolveClassTemplateSpecialization(scope, scope, spelling);
+}
+
+TypeId SemanticAnalyzer::ResolveClassTemplateSpecialization(
+	ScopeId template_scope, ScopeId argument_scope,
+	const std::string& spelling)
+{
 	if (spelling.find('<') == std::string::npos) return kNoType;
 	std::string base;
 	std::vector<TypeId> arguments;
-	if (!ParseExplicitTemplateArguments(scope, spelling, &base, &arguments))
+	if (!ParseExplicitTemplateArguments(argument_scope, spelling,
+		&base, &arguments))
 		return kNoType;
-	const std::size_t pattern = FindClassTemplate(scope, base);
+	const std::size_t pattern = FindClassTemplate(template_scope, base);
 	if (pattern == NoTemplatePattern()) return kNoType;
 	const BindingId binding = InstantiateClassTemplate(pattern, arguments);
 	return binding == kNoBinding ? kNoType : program_->bindings[binding].type;

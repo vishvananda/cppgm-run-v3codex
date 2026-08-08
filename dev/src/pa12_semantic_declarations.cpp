@@ -2042,9 +2042,9 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 	const NamePath path = ParseNamePath(target);
 	const NameId name = path.Last();
 	const LookupResult ordinary =
-		program_->Lookup(scope, path, LOOKUP_ORDINARY);
+		LookupPath(scope, path, LOOKUP_ORDINARY);
 	const LookupResult type = ordinary.ordinary == kNoBinding ?
-		program_->Lookup(scope, path, LOOKUP_TYPE) : LookupResult();
+		LookupPath(scope, path, LOOKUP_TYPE) : LookupResult();
 	if (ordinary.ordinary == kNoBinding && type.type != kNoType)
 	{
 		if (type.type_declaration != kNoBinding &&

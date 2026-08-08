@@ -187,6 +187,8 @@ private:
 		const std::string& spelling);
 	TypeId ResolveClassTemplateSpecialization(ScopeId scope,
 		const std::string& spelling);
+	TypeId ResolveClassTemplateSpecialization(ScopeId template_scope,
+		ScopeId argument_scope, const std::string& spelling);
 	std::size_t FindClassTemplate(ScopeId scope,
 		const std::string& spelling);
 	BindingId InstantiateClassTemplate(std::size_t pattern,
