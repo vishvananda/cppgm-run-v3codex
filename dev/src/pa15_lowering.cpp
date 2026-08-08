@@ -2569,7 +2569,11 @@ private:
 		{
 			store.type = LowerExpressionType(action.type);
 			if (!values.empty())
-				store.first = LowerConvertedValue(values[0], store.type, false);
+			{
+				const LowType source = LowerExpressionType(arena_.nodes[values[0]].type);
+				store.first = LowerConvertedValue(values[0], store.type, IsInteger(source) &&
+					IsInteger(store.type) && source.is_signed == store.type.is_signed && source.width <= store.type.width);
+			}
 			else if (store.type.kind == LOW_PTR)
 				store.first = Operand::NullPointer(store.type);
 			else if (IsFloating(store.type))

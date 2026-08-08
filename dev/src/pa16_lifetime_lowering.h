@@ -144,6 +144,27 @@ protected:
 				}
 			}
 			else if (derived.arena_.nodes[children[0]].kind ==
+				DUMP_AGGREGATE_CONSTRUCTION_ACTION)
+			{
+				if (derived.current_indirect_result_)
+				{
+					const Operand destination(
+						static_cast<ParameterId>(0), LowPtr());
+					derived.LowerAggregateConstructionAction(
+						children[0], destination);
+				}
+				else if (derived.current_result_.kind == LOW_OBJECT)
+				{
+					const Operand slot(EnsureDirectReturnSlot(children[0]),
+						derived.current_result_);
+					derived.LowerAggregateConstructionAction(children[0],
+						derived.AddressOfStorage(slot));
+					result_value = slot;
+				}
+				else throw std::logic_error(
+					"aggregate construction return has a non-object boundary");
+			}
+			else if (derived.arena_.nodes[children[0]].kind ==
 				DUMP_CONSTRUCTOR_ACTION)
 			{
 				if (derived.current_indirect_result_)

@@ -252,7 +252,12 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const {
 		bytes += entity_conversion_functions_[i].capacity() * sizeof(BindingId);
 	for (std::size_t i = 0; i < scope_lifetimes_.size(); ++i)
 		bytes += scope_lifetimes_[i].capacity() * sizeof(LifetimeObligation);
-	for (std::size_t i = 0; i < aggregate_helpers_.size(); ++i) bytes += aggregate_helpers_[i].members.capacity() * sizeof(BindingId);
+	for (std::size_t i = 0; i < aggregate_helpers_.size(); ++i)
+		bytes += aggregate_helpers_[i].members.capacity() * sizeof(BindingId) +
+			aggregate_helpers_[i].member_constructors.capacity() *
+				sizeof(BindingId) +
+			aggregate_helpers_[i].trivial_member_constructors.capacity() *
+				sizeof(std::uint8_t);
 	for (std::size_t i = 0; i < function_templates_.size(); ++i)
 		bytes += function_templates_[i].type_parameters.capacity() *
 			sizeof(NameId);

@@ -60,12 +60,12 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		const LowType type = derived.LowerType(target);
 		const Operand slot(derived.EnsureGeneratedSlot(
-			node, derived.UsesIndirectClassResult(target) ?
+			node, derived.UsesIndirectClassParameter(target) ?
 				"arg" : "argobj", type), type);
 		if (derived.arena_.nodes[node].kind == DUMP_TEMPORARY_OBJECT)
 		{
 			const Operand temporary = derived.LowerStorage(node);
-			return derived.UsesIndirectClassResult(target) ? temporary : slot;
+			return derived.UsesIndirectClassParameter(target) ? temporary : slot;
 		}
 		const Operand destination = derived.AddressOfStorage(slot);
 		if (derived.arena_.nodes[node].kind == DUMP_CLASS_VALUE_TRANSFER)
@@ -73,7 +73,7 @@ protected:
 		else if (derived.arena_.nodes[node].kind == DUMP_CONSTRUCTOR_ACTION)
 			derived.LowerConstructorAction(node, destination);
 		else (void)derived.AddressOfStorage(derived.LowerStorage(node));
-		return derived.UsesIndirectClassResult(target) ? destination : slot;
+		return derived.UsesIndirectClassParameter(target) ? destination : slot;
 	}
 
 	bool IsProjectedClassReference(std::uint32_t node) const

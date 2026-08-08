@@ -307,6 +307,12 @@ protected:
 			if (value.value_initialization)
 				derived.EmitZeroInitialization(action.type, destination);
 			if (derived.IsTrivialConstructorAction(action.type, children)) return;
+			if (value.trivial_special_member_action)
+			{
+				const TypeRecord& object = derived.program_.types.Get(
+					derived.ExpressionObjectType(action.type));
+				if (derived.program_.entities[object.entity].empty_class) return;
+			}
 			LowerConstructorAction(value_node, destination);
 			return;
 		}

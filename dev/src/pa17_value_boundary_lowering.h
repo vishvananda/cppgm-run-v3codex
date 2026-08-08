@@ -40,6 +40,25 @@ protected:
 			(size < 16 && entity.indirect_class_value_abi);
 	}
 
+	bool UsesIndirectClassParameter(pa11::TypeId type) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		const pa11::TypeRecord& top = derived.program_.types.Get(type);
+		if (top.kind == pa11::TYPE_LVALUE_REFERENCE ||
+			top.kind == pa11::TYPE_RVALUE_REFERENCE ||
+			!derived.IsClassObjectType(type))
+			return false;
+		const pa11::TypeId object_type = derived.ExpressionObjectType(type);
+		const pa11::TypeRecord& object =
+			derived.program_.types.Get(object_type);
+		if (object.kind != pa11::TYPE_NAMED ||
+			!derived.program_.entities[object.entity].complete)
+			return false;
+		const std::size_t size = derived.program_.SizeOf(object_type);
+		return size != 16 &&
+			derived.program_.entities[object.entity].indirect_class_value_abi;
+	}
+
 	void FillBoundary(std::uint32_t node,
 		std::vector<pa15_lowir_detail::Parameter>* parameters,
 		pa15_lowir_detail::LowType* result, bool* variadic) const
@@ -84,7 +103,7 @@ protected:
 				derived.program_.types.Parameters(record.type);
 			const bool by_address =
 				parameter_index < function_type.parameter_count &&
-				UsesIndirectClassResult(source_parameters[parameter_index]);
+				UsesIndirectClassParameter(source_parameters[parameter_index]);
 			parameter.type = by_address ? pa15_lowir_detail::LowPtr() :
 				derived.LowerType(child.type);
 			parameter.reference = parameter_index < function_type.parameter_count &&
@@ -104,7 +123,7 @@ protected:
 				(record.kind == pa12_semantic_detail::DUMP_FUNCTION_DECLARATION ?
 					"arg" : "__param") + std::to_string(parameter_index);
 			const bool by_address =
-				UsesIndirectClassResult(source_parameters[parameter_index]);
+				UsesIndirectClassParameter(source_parameters[parameter_index]);
 			parameter.type = by_address ? pa15_lowir_detail::LowPtr() :
 				derived.LowerType(source_parameters[parameter_index]);
 			parameter.reference =

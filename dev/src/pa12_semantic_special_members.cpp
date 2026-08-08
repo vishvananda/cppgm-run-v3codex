@@ -378,6 +378,48 @@ void SemanticAnalyzer::EvaluateSynthesizedAssignment(EntityId entity,
 			visit(program_->bindings[entity_data_members_[entity][i]].type);
 }
 
+void SemanticAnalyzer::ConfigureSynthesizedStoragePrefix(EntityId entity,
+	FunctionInfo* function) const
+{
+	function->synthesized_prefix_size = 0;
+	function->synthesized_prefix_alignment = 0;
+	function->synthesized_prefix_members = 0;
+	if (function->deleted_special_member || function->trivial_special_member)
+		return;
+	const bool assignment = IsAssignmentSpecialMember(
+		function->special_member);
+	const EntityRecord& owner = program_->entities[entity];
+	if (owner.direct_base != kNoEntity)
+	{
+		const TypeId base_type = program_->entities[owner.direct_base].type;
+		const BindingId selected = assignment ?
+			AssignmentForSubobject(base_type, function->special_member) :
+			ConstructorForSubobject(base_type, function->special_member);
+		if (selected == kNoBinding ||
+			!GetFunction(selected).trivial_special_member)
+			return;
+	}
+	if (entity >= entity_data_members_.size()) return;
+	const std::vector<BindingId>& members = entity_data_members_[entity];
+	for (std::size_t i = 0; i < members.size(); ++i)
+	{
+		const BindingRecord& member = program_->bindings[members[i]];
+		const BindingId selected = assignment ?
+			AssignmentForSubobject(member.type, function->special_member) :
+			ConstructorForSubobject(member.type, function->special_member);
+		if (selected == kNoBinding ||
+			GetFunction(selected).trivial_special_member)
+			continue;
+		if (member.member_offset == 0) return;
+		function->synthesized_prefix_size = member.member_offset;
+		function->synthesized_prefix_alignment =
+			static_cast<std::uint32_t>(owner.object_alignment);
+		function->synthesized_prefix_members =
+			static_cast<std::uint32_t>(i);
+		return;
+	}
+}
+
 BindingId SemanticAnalyzer::DeclareImplicitCopyMoveConstructor(
 	EntityId entity, SpecialMemberKind kind)
 {
@@ -602,6 +644,16 @@ void SemanticAnalyzer::CompleteClassSpecialMembers(EntityId entity)
 	program_->entities[entity].indirect_class_value_abi =
 		nontrivial_copy || nontrivial_move ||
 		!program_->entities[entity].trivial_destructor;
+	ConfigureSynthesizedStoragePrefix(
+		entity, &GetMutableFunction(facts.copy_constructor));
+	if (facts.move_constructor != kNoBinding)
+		ConfigureSynthesizedStoragePrefix(
+			entity, &GetMutableFunction(facts.move_constructor));
+	ConfigureSynthesizedStoragePrefix(
+		entity, &GetMutableFunction(facts.copy_assignment));
+	if (facts.move_assignment != kNoBinding)
+		ConfigureSynthesizedStoragePrefix(
+			entity, &GetMutableFunction(facts.move_assignment));
 }
 
 void SemanticAnalyzer::AddSynthesizedConstructorBody(
@@ -617,6 +669,16 @@ void SemanticAnalyzer::AddSynthesizedConstructorBody(
 	const std::uint32_t construction = MakeDump(
 		DUMP_SPECIAL_MEMBER_CONSTRUCTION_ACTION, owner.type);
 	dump_.nodes[construction].object_binding = parameters[0];
+	if (function.synthesized_prefix_size != 0)
+	{
+		const std::uint32_t prefix = MakeDump(
+			DUMP_SPECIAL_MEMBER_SUBOBJECT_ACTION, owner.type);
+		dump_.nodes[prefix].storage_transfer_size =
+			function.synthesized_prefix_size;
+		dump_.nodes[prefix].storage_transfer_alignment =
+			function.synthesized_prefix_alignment;
+		dump_.Add(construction, prefix);
+	}
 
 	if ((function.trivial_special_member ||
 		function.synthesized_storage_copy) && !owner.empty_class)
@@ -627,7 +689,8 @@ void SemanticAnalyzer::AddSynthesizedConstructorBody(
 	}
 	else
 	{
-		if (owner.direct_base != kNoEntity)
+		if (owner.direct_base != kNoEntity &&
+			function.synthesized_prefix_size == 0)
 		{
 			++special_member_subobject_visits_;
 			const EntityRecord& base =
@@ -653,7 +716,7 @@ void SemanticAnalyzer::AddSynthesizedConstructorBody(
 			}
 		}
 		if (entity < entity_data_members_.size())
-			for (std::size_t i = 0;
+			for (std::size_t i = function.synthesized_prefix_members;
 				i < entity_data_members_[entity].size(); ++i)
 			{
 				++special_member_subobject_visits_;
@@ -737,9 +800,29 @@ void SemanticAnalyzer::AddSynthesizedAssignmentBody(
 		DUMP_SPECIAL_MEMBER_ASSIGNMENT_ACTION,
 		owner.type, VALUE_LVALUE, 0, function.binding);
 	dump_.nodes[assignment].object_binding = parameters[0];
+	if (function.synthesized_prefix_size != 0)
+	{
+		const std::uint32_t prefix = MakeDump(
+			DUMP_SPECIAL_MEMBER_SUBOBJECT_ACTION, owner.type);
+		dump_.nodes[prefix].storage_transfer_size =
+			function.synthesized_prefix_size;
+		dump_.nodes[prefix].storage_transfer_alignment =
+			function.synthesized_prefix_alignment;
+		dump_.Add(assignment, prefix);
+	}
+	bool has_bit_fields = false;
+	if (entity < entity_data_members_.size())
+		for (std::size_t i = 0; i < entity_data_members_[entity].size(); ++i)
+			if (program_->bindings[
+				entity_data_members_[entity][i]].bit_field)
+			{
+				has_bit_fields = true;
+				break;
+			}
 
 	if (function.trivial_special_member &&
-		owner.direct_base == kNoEntity && !owner.empty_class)
+		owner.direct_base == kNoEntity && !owner.empty_class &&
+		!has_bit_fields)
 	{
 		const std::uint32_t step = MakeDump(
 			DUMP_SPECIAL_MEMBER_SUBOBJECT_ACTION, owner.type);
@@ -747,7 +830,8 @@ void SemanticAnalyzer::AddSynthesizedAssignmentBody(
 	}
 	else
 	{
-		if (owner.direct_base != kNoEntity)
+		if (owner.direct_base != kNoEntity &&
+			function.synthesized_prefix_size == 0)
 		{
 			++special_member_subobject_visits_;
 			const EntityRecord& base =
@@ -766,7 +850,7 @@ void SemanticAnalyzer::AddSynthesizedAssignmentBody(
 			}
 		}
 		if (entity < entity_data_members_.size())
-			for (std::size_t i = 0;
+			for (std::size_t i = function.synthesized_prefix_members;
 				i < entity_data_members_[entity].size(); ++i)
 			{
 				++special_member_subobject_visits_;
@@ -788,9 +872,26 @@ void SemanticAnalyzer::AddSynthesizedAssignmentBody(
 				const std::uint32_t step = MakeDump(
 					DUMP_SPECIAL_MEMBER_SUBOBJECT_ACTION, type,
 					VALUE_NONE, 0, member);
+				if (program_->bindings[member].bit_field)
+				{
+					if (i != function.synthesized_prefix_members)
+					{
+						const BindingRecord& previous = program_->bindings[
+							entity_data_members_[entity][i - 1]];
+						const BindingRecord& current =
+							program_->bindings[member];
+						if (previous.bit_field &&
+							previous.member_offset == current.member_offset &&
+							previous.bit_storage_bits == current.bit_storage_bits)
+							continue;
+					}
+					dump_.nodes[step].storage_unit_transfer = true;
+				}
 				dump_.nodes[step].selected_binding = selected;
 				dump_.Add(assignment, step);
-				if (selected != kNoBinding) DemandFunction(selected);
+				if (selected != kNoBinding &&
+					!GetFunction(selected).trivial_special_member)
+					DemandFunction(selected);
 			}
 	}
 	const std::uint32_t statement = MakeDump(DUMP_RETURN_STATEMENT);

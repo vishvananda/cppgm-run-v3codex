@@ -498,6 +498,29 @@ void SemanticAnalyzer::AnalyzeReturnStatement(NodeId node, ScopeId scope,
 			value.category = VALUE_PRVALUE;
 		}
 		if (class_return && dump_.nodes[value.node].kind ==
+			DUMP_BRACED_INIT_LIST &&
+			program_->entities[returned_record.entity].is_aggregate)
+		{
+			bool has_boundary_member = false;
+			for (std::uint32_t edge = dump_.nodes[value.node].first_edge;
+				edge != kNoDumpEdge; edge = dump_.edges[edge].next)
+			{
+				const DumpNode& action =
+					dump_.nodes[dump_.edges[edge].child];
+				const TypeKind kind = program_->types.Get(action.type).kind;
+				if (kind == TYPE_LVALUE_REFERENCE ||
+					kind == TYPE_RVALUE_REFERENCE ||
+					IsClassEntity(*program_, EntityOf(action.type)))
+				{
+					has_boundary_member = true;
+					break;
+				}
+			}
+			if (has_boundary_member)
+				value.node = BuildAggregateConstructionAction(
+					returned_object, value.node);
+		}
+		if (class_return && dump_.nodes[value.node].kind ==
 			DUMP_CONDITIONAL_EXPRESSION &&
 			program_->types.RemoveTopCv(EffectiveType(value.type)) ==
 				returned_object)
@@ -519,7 +542,9 @@ void SemanticAnalyzer::AnalyzeReturnStatement(NodeId node, ScopeId scope,
 			program_->types.RemoveTopCv(EffectiveType(value.type)) ==
 				returned_object &&
 			dump_.nodes[value.node].kind != DUMP_CONSTRUCTOR_ACTION &&
-			dump_.nodes[value.node].kind != DUMP_BRACED_INIT_LIST)
+			dump_.nodes[value.node].kind != DUMP_BRACED_INIT_LIST &&
+			dump_.nodes[value.node].kind !=
+				DUMP_AGGREGATE_CONSTRUCTION_ACTION)
 		{
 			if (value.category == VALUE_PRVALUE &&
 				dump_.nodes[value.node].kind == DUMP_CALL_EXPRESSION)
@@ -1422,6 +1447,8 @@ std::uint32_t SemanticAnalyzer::BuildAggregateConstructionAction(TypeId type,
 		throw std::logic_error("aggregate helper has non-aggregate type");
 	std::vector<std::uint32_t> values;
 	std::vector<BindingId> members;
+	std::vector<BindingId> member_constructors;
+	std::vector<std::uint8_t> trivial_member_constructors;
 	std::vector<TypeId> parameter_types;
 	for (std::uint32_t edge = dump_.nodes[aggregate_list].first_edge;
 		edge != kNoDumpEdge; edge = dump_.edges[edge].next)
@@ -1438,14 +1465,39 @@ std::uint32_t SemanticAnalyzer::BuildAggregateConstructionAction(TypeId type,
 		const std::uint32_t value = dump_.edges[action.first_edge].child;
 		const TypeKind kind = program_->types.Get(
 			program_->types.RemoveTopCv(action.type)).kind;
-		if (kind == TYPE_ARRAY || kind == TYPE_LVALUE_REFERENCE ||
-			kind == TYPE_RVALUE_REFERENCE ||
-			IsClassEntity(*program_, EntityOf(action.type)))
+		if (kind == TYPE_ARRAY)
 			return aggregate_list;
-		values.push_back(value);
 		members.push_back(action.binding);
 		const TypeId adjusted = AdjustParameterType(action.type);
 		parameter_types.push_back(adjusted);
+		ExpressionInfo argument;
+		argument.node = value;
+		argument.type = dump_.nodes[value].type;
+		argument.category = dump_.nodes[value].category;
+		argument.binding = dump_.nodes[value].binding;
+		if (IsClassEntity(*program_, EntityOf(action.type)))
+		{
+			argument.type = action.type;
+			argument.category = VALUE_PRVALUE;
+		}
+		values.push_back(IsClassEntity(*program_, EntityOf(action.type)) ?
+			ApplyCallArgument(argument, adjusted).node : value);
+		BindingId constructor = kNoBinding;
+		if (IsClassEntity(*program_, EntityOf(action.type)))
+		{
+			constructor = ConstructorForSubobject(
+				action.type, SPECIAL_MEMBER_MOVE_CONSTRUCTOR);
+			if (constructor == kNoBinding ||
+				GetFunction(constructor).deleted_constructor ||
+				GetFunction(constructor).deleted_special_member)
+				throw std::runtime_error(
+					"aggregate member has no usable value constructor");
+			if (!GetFunction(constructor).trivial_special_member)
+				DemandFunction(constructor);
+		}
+		member_constructors.push_back(constructor);
+		trivial_member_constructors.push_back(constructor != kNoBinding &&
+			GetFunction(constructor).trivial_special_member ? 1 : 0);
 	}
 	if (members.empty()) return aggregate_list;
 	const EntityRecord& owner = program_->entities[entity];
@@ -1466,7 +1518,8 @@ std::uint32_t SemanticAnalyzer::BuildAggregateConstructionAction(TypeId type,
 			throw std::runtime_error("too many aggregate helper identities");
 		helper = static_cast<std::uint32_t>(aggregate_helpers_.size());
 		aggregate_helpers_.push_back(AggregateHelperInfo(
-			entity, type, function_type, members));
+			entity, type, function_type, members, member_constructors,
+			trivial_member_constructors));
 		aggregate_helper_index_.Insert(key,
 			static_cast<BindingId>(helper));
 	}
@@ -1474,7 +1527,11 @@ std::uint32_t SemanticAnalyzer::BuildAggregateConstructionAction(TypeId type,
 	{
 		helper = static_cast<std::uint32_t>(encoded);
 		if (helper >= aggregate_helpers_.size() ||
-			aggregate_helpers_[helper].members != members)
+			aggregate_helpers_[helper].members != members ||
+			aggregate_helpers_[helper].member_constructors !=
+				member_constructors ||
+			aggregate_helpers_[helper].trivial_member_constructors !=
+				trivial_member_constructors)
 			throw std::logic_error("aggregate helper identity collision");
 	}
 	const std::uint32_t call = MakeDump(
@@ -2370,6 +2427,42 @@ void SemanticAnalyzer::AppendUnwindDestructionActions(ScopeId scope,
 	}
 }
 
+bool SemanticAnalyzer::IsEmptyDestructorChain(BindingId destructor) const
+{
+	if (destructor == kNoBinding || destructor >= program_->bindings.size())
+		return false;
+	const BindingRecord& binding = program_->bindings[destructor];
+	if (binding.member_owner == kNoEntity) return false;
+	const FunctionInfo& info = GetFunction(destructor);
+	const bool empty_definition = info.definition_body != kNoNode &&
+		FirstSemanticChild(info.definition_body) == kNoNode;
+	if (!info.implicit_destructor && !info.defaulted_destructor &&
+		!empty_definition)
+		return false;
+	const EntityId entity = binding.member_owner;
+	const EntityId base = program_->entities[entity].direct_base;
+	if (base != kNoEntity && !program_->entities[base].trivial_destructor)
+	{
+		const BindingId base_destructor = DestructorForType(
+			program_->entities[base].type);
+		if (!IsEmptyDestructorChain(base_destructor)) return false;
+	}
+	if (entity >= entity_data_members_.size()) return true;
+	const std::vector<BindingId>& members = entity_data_members_[entity];
+	for (std::size_t i = 0; i < members.size(); ++i)
+	{
+		const EntityId member = DestructedEntity(
+			program_->bindings[members[i]].type);
+		if (member == kNoEntity ||
+			program_->entities[member].trivial_destructor)
+			continue;
+		if (!IsEmptyDestructorChain(DestructorForType(
+			program_->bindings[members[i]].type)))
+			return false;
+	}
+	return true;
+}
+
 bool SemanticAnalyzer::IsElidableAutomaticDestructor(
 	BindingId destructor) const
 {
@@ -2383,26 +2476,12 @@ bool SemanticAnalyzer::IsElidableAutomaticDestructor(
 		program_->entities[binding.member_owner].flavor == NAMED_UNION;
 	const bool empty_definition = info.definition_body != kNoNode &&
 		FirstSemanticChild(info.definition_body) == kNoNode;
-	const bool elidable_out_of_line = !binding.inline_function &&
-		(empty_definition || info.defaulted_destructor);
-	if ((!union_object || !empty_definition) && !elidable_out_of_line)
+	const bool elidable_definition = info.implicit_destructor ||
+		(!binding.inline_function &&
+			(empty_definition || info.defaulted_destructor));
+	if ((!union_object || !empty_definition) && !elidable_definition)
 		return false;
-	const EntityId entity = binding.member_owner;
-	const EntityId base = program_->entities[entity].direct_base;
-	if (base != kNoEntity &&
-		!program_->entities[base].trivial_destructor)
-		return false;
-	if (entity >= entity_data_members_.size()) return true;
-	const std::vector<BindingId>& variants = entity_data_members_[entity];
-	for (std::size_t i = 0; i < variants.size(); ++i)
-	{
-		const EntityId variant =
-			DestructedEntity(program_->bindings[variants[i]].type);
-		if (variant != kNoEntity &&
-			!program_->entities[variant].trivial_destructor)
-			return false;
-	}
-	return true;
+	return IsEmptyDestructorChain(destructor);
 }
 
 void SemanticAnalyzer::AddLifetimeObligation(ScopeId scope,

@@ -98,11 +98,13 @@ struct DumpNode
 	BindingId binding, object_binding, selected_binding;
 	std::int64_t constant_value;
 	std::uint64_t array_count;
+	std::uint64_t storage_transfer_size;
 	std::uint32_t first_edge;
 	std::uint32_t last_edge;
 	std::uint32_t base_projection_count;
 	std::uint32_t aggregate_helper;
 	std::uint32_t lifetime_object;
+	std::uint32_t storage_transfer_alignment;
 	bool constant;
 	bool integer_narrowing_conversion;
 	bool boolean_conversion;
@@ -114,6 +116,7 @@ struct DumpNode
 	bool value_initialization;
 	bool elide_empty_constructor;
 	bool trivial_special_member_action;
+	bool storage_unit_transfer;
 	bool argument_materialization;
 	bool discarded_materialization;
 	bool reference_call_materialization;
@@ -128,16 +131,18 @@ struct DumpNode
 		: kind(value), type(kNoType), operand_type(kNoType),
 		  category(VALUE_NONE), text(0), binding(kNoBinding),
 		  object_binding(kNoBinding), selected_binding(kNoBinding),
-		  constant_value(0), array_count(0), first_edge(kNoDumpEdge),
+		  constant_value(0), array_count(0), storage_transfer_size(0),
+		  first_edge(kNoDumpEdge),
 		  last_edge(kNoDumpEdge), base_projection_count(0),
 		  aggregate_helper(kNoDumpEdge), lifetime_object(kNoDumpEdge),
+		  storage_transfer_alignment(0),
 		  constant(false), integer_narrowing_conversion(false),
 		  boolean_conversion(false), user_conversion_call(false),
 		  allocation_may_return_null(false),
 		  array_action(false), array_cookie(false),
 		  array_count_constant(false),
 		  value_initialization(false), elide_empty_constructor(false),
-		  trivial_special_member_action(false),
+		  trivial_special_member_action(false), storage_unit_transfer(false),
 		  argument_materialization(false), discarded_materialization(false),
 		  reference_call_materialization(false), class_argument_staging(false),
 		  direct_return_slot(false), declaration_only(false),
@@ -323,6 +328,9 @@ struct FunctionInfo
 	bool deleted_special_member;
 	bool trivial_special_member;
 	bool synthesized_storage_copy;
+	std::uint64_t synthesized_prefix_size;
+	std::uint32_t synthesized_prefix_alignment;
+	std::uint32_t synthesized_prefix_members;
 	bool ordinary_visible;
 	std::uint8_t demand_state;
 	FunctionInfo()
@@ -341,7 +349,8 @@ struct FunctionInfo
 		  deleted_destructor(false), special_member(SPECIAL_MEMBER_NONE),
 		  implicit_special_member(false), defaulted_special_member(false),
 		  deleted_special_member(false), trivial_special_member(false),
-		  synthesized_storage_copy(false),
+		  synthesized_storage_copy(false), synthesized_prefix_size(0),
+		  synthesized_prefix_alignment(0), synthesized_prefix_members(0),
 		  ordinary_visible(true),
 		  demand_state(0) {}
 };
@@ -428,11 +437,17 @@ struct AggregateHelperInfo
 	TypeId object_type;
 	TypeId function_type;
 	std::vector<BindingId> members;
+	std::vector<BindingId> member_constructors;
+	std::vector<std::uint8_t> trivial_member_constructors;
 
 	AggregateHelperInfo(EntityId entity_value, TypeId object_type_value,
-		TypeId function_type_value, const std::vector<BindingId>& members_value)
+		TypeId function_type_value, const std::vector<BindingId>& members_value,
+		const std::vector<BindingId>& member_constructors_value,
+		const std::vector<std::uint8_t>& trivial_member_constructors_value)
 		: entity(entity_value), object_type(object_type_value),
-		  function_type(function_type_value), members(members_value) {}
+		  function_type(function_type_value), members(members_value),
+		  member_constructors(member_constructors_value),
+		  trivial_member_constructors(trivial_member_constructors_value) {}
 };
 
 // Borrowed, translation-unit-local view of the canonical PA12 graph.  The

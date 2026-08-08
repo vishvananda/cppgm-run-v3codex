@@ -331,6 +331,8 @@ private:
 	void EvaluateSynthesizedConstructor(EntityId entity,
 		SpecialMemberKind kind, bool* deleted, bool* trivial,
 		bool* nonthrowing) const;
+	void ConfigureSynthesizedStoragePrefix(EntityId entity,
+		FunctionInfo* function) const;
 	BindingId DeclareImplicitAssignment(EntityId entity,
 		SpecialMemberKind kind);
 	BindingId DeclareImplicitCopyMoveConstructor(EntityId entity,
@@ -368,6 +370,7 @@ private:
 	BindingId EnsureImplicitDestructor(EntityId entity);
 	const std::vector<BindingId>& ConstructorCandidates(EntityId entity) const;
 	BindingId DestructorForType(TypeId type) const;
+	bool IsEmptyDestructorChain(BindingId destructor) const;
 	bool IsElidableAutomaticDestructor(BindingId destructor) const;
 	EntityId DestructedEntity(TypeId type) const;
 	BindingId SelectConstructor(ScopeId scope,

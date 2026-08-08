@@ -28,30 +28,28 @@ identity and lowers one typed action into the existing destination.
 
 ## Current Failure Map
 
-Audited result: **199/239**. The complete non-overlapping failure map contains
-40 tests; the landed **193/233** pass set, six audit regressions, and all
-earlier stages remain intact:
+Audited result: **207/239**. The complete non-overlapping failure map contains
+32 tests; the original pass set and all earlier stages remain intact:
 
 | Failures | Shared behavior | Primary owner |
 | ---: | --- | --- |
 | 1 | aliased explicit destructor lookup | PA12 member lookup/call analysis |
-| 13 | lookup, operators, conversion ranking, and ref qualification | PA12 calls/operator resolution |
-| 19 | class-value initialization, copy/move, and ABI/storage shapes | PA12 initialization + PA15-PA17 lowering |
+| 14 | lookup, operators, conversion ranking, and ref qualification | PA12 calls/operator resolution |
+| 10 | residual class-value initialization, copy/move, and ABI/storage shapes | PA12 initialization + PA15-PA17 lowering |
 | 6 | residual temporary materialization and control-flow cleanup | PA12 lifetime facts + PA17 lowering |
 | 1 | residual scoped-name/control interaction | PA12 lookup and statement analysis |
 
 ## Active Checkpoint
 
-**Next: composite subobject copy/move storage transfer.** Apply `spec.md`
-sections 2, 6, 8, and 9 to retain canonical member/layout identity and one
-ordered transfer recipe across arrays, references, bit-fields, empty objects,
-and mixed trivial/nontrivial prefixes. PA12 special-member completion owns the
-subobject recipe; PA17 lowering consumes it through typed projections without
-layout lookup or scalar payload invention. Expected work is O(subobjects +
-emitted actions), with whole-prefix `copyobj` retained as one action. Validate
-the residual bit-field, empty-object, reference-member, array-member,
-leading-prefix, move-only aggregate, and trivial-transfer cases; full PA17,
-through PA16, audit, and 32/64/128 mixed-subobject scaling.
+**Next: lookup and reference-binding closure.** Apply `spec.md` sections 2, 3,
+6, and 9 to retain canonical unqualified/qualified lookup sets, value category,
+and conversion rank through calls and built-in/operator selection. PA12
+lookup/call analysis owns candidate construction and the selected binding;
+lowering consumes only typed call and conversion facts. Expected work is
+O(lookup scope + viable candidates), with indexed declaration access and no
+lowering-time lookup. Validate ADL suppression, imported/base overload sets,
+ref-qualified calls, pointer built-ins, xvalue members, and reference argument
+binding; then full PA17, through PA16, audit, and 32/64/128 candidate scaling.
 
 ## Performance Evidence
 
@@ -124,6 +122,12 @@ through PA16, audit, and 32/64/128 mixed-subobject scaling.
   224/448/896 access checks, and 113,970/221,618/436,976 typed bytes. Five-run
   semantic medians were 0.228/0.363/0.572 ms, confirming one bounded
   subobject-fact traversal per completion/emission owner.
+- Mixed classes with 32/64/128 scalar prefix members and one nontrivial tail
+  recorded 34/66/130 layout visits, 144/272/528 fact lookups, and
+  136/264/520 subobject visits. Five-run semantic medians were
+  0.438/0.479/0.630 ms; lowering stayed at 57 nodes, 109 instructions, and
+  32,343 typed bytes, confirming linear recipe construction and one retained
+  whole-prefix transfer.
 
 ## Completed Checkpoints
 
@@ -144,3 +148,4 @@ through PA16, audit, and 32/64/128 mixed-subobject scaling.
 | Loop full-expression regions | 173/231 -> 174/231 | Direct/cast/comma/conditional discarded materialization; exact normal/unwind cleanup; focused 17/17; through PA16 1,436/1,436; file audit and linear nested/width probes pass |
 | Class direct-initialization recipes | 174/231 -> 186/231; audit 188/233 | Landed pass set gains 12 tests; scalar-list rank and narrowing regressions pass without changing the original set; through PA16 1,436/1,436; file audit and proportional list/candidate probes pass |
 | Typed constructor delegation and qualified default completion | 188/233 -> 193/233; audit 199/239 | Positive delegation/qualified definitions 5/5; cycle/mixed rejection 3/3; six defaulted-definition regressions; through PA16 1,436/1,436; file audit and proportional 32/64/128 probes pass |
+| Composite subobject copy/move storage transfer | 199/239 -> 207/239 | Prefix, array, empty, reference, move-only aggregate, implicit-move, and trivial ABI cases gained 8/8; original set intact; through PA16 1,436/1,436; linear recipe/fixed-lowering probe pass |
