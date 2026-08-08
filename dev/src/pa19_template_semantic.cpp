@@ -288,6 +288,22 @@ ScopeId SemanticAnalyzer::ResolveOwner(ScopeId scope, const NamePath& name)
 		result.type != kNoType ? program_->ScopeForType(result.type) : kNoScope;
 }
 
+std::vector<BindingId> SemanticAnalyzer::UsingFunctionCandidates(
+	ScopeId scope, const NamePath& path, const std::string& spelling,
+	ScopeId* target_owner, bool* names_owner_alias)
+{
+	std::vector<BindingId> functions = FunctionCandidates(scope, spelling);
+	*target_owner = path.Size() > 1 ? ResolveOwner(scope, path) : kNoScope;
+	*names_owner_alias = path.Size() > 1 &&
+		path.Last() == path[path.Size() - 2];
+	const EntityId target_entity = *target_owner == kNoScope ? kNoEntity :
+		program_->EntityForScope(*target_owner);
+	if (!functions.empty() || !*names_owner_alias || target_entity == kNoEntity)
+		return functions;
+	const NameId identity = program_->entities[target_entity].identity_name;
+	return FunctionCandidates(*target_owner, program_->names.Get(identity));
+}
+
 TypeId SemanticAnalyzer::ResolveTemplateTypeArgument(ScopeId scope,
 	const std::string& source)
 {
@@ -355,25 +371,59 @@ TypeId SemanticAnalyzer::ResolveTemplateTypeArgument(ScopeId scope,
 	else if (!spelling.empty() && spelling[spelling.size() - 1] == ')')
 	{
 		std::size_t open = std::string::npos;
-		std::size_t angle_depth = 0;
-		for (std::size_t i = 0; i < spelling.size(); ++i)
+		std::size_t paren_depth = 0;
+		for (std::size_t i = spelling.size(); i-- > 0; )
 		{
-			if (spelling[i] == '<') ++angle_depth;
-			else if (spelling[i] == '>' && angle_depth != 0) --angle_depth;
-			else if (spelling[i] == '(' && angle_depth == 0)
+			if (spelling[i] == ')') ++paren_depth;
+			else if (spelling[i] == '(' && --paren_depth == 0)
 			{
 				open = i;
 				break;
 			}
 		}
 		if (open == std::string::npos || open == 0) return kNoType;
+		std::string result_spelling = TrimTypeSpelling(
+			spelling.substr(0, open));
+		char declarator_kind = 0;
+		if (!result_spelling.empty() &&
+			result_spelling[result_spelling.size() - 1] == ')')
+		{
+			std::size_t declarator_open = std::string::npos;
+			std::size_t declarator_depth = 0;
+			for (std::size_t i = result_spelling.size(); i-- > 0; )
+			{
+				if (result_spelling[i] == ')') ++declarator_depth;
+				else if (result_spelling[i] == '(' && --declarator_depth == 0)
+				{
+					declarator_open = i;
+					break;
+				}
+			}
+			if (declarator_open != std::string::npos)
+			{
+				std::string declarator = TrimTypeSpelling(
+					result_spelling.substr(declarator_open + 1,
+						result_spelling.size() - declarator_open - 2));
+				declarator.erase(std::remove_if(declarator.begin(),
+					declarator.end(), [](unsigned char character) {
+						return std::isspace(character) != 0;
+					}), declarator.end());
+				if (declarator == "*" || declarator == "&" ||
+					declarator == "&&")
+				{
+					declarator_kind = declarator == "&&" ? 'r' : declarator[0];
+					result_spelling = TrimTypeSpelling(
+						result_spelling.substr(0, declarator_open));
+				}
+			}
+		}
 		const TypeId returned = ResolveTemplateTypeArgument(
-			scope, spelling.substr(0, open));
+			scope, result_spelling);
 		if (returned == kNoType) return kNoType;
 		std::vector<TypeId> parameters;
 		std::size_t first = open + 1;
-		angle_depth = 0;
-		std::size_t paren_depth = 0;
+		std::size_t angle_depth = 0;
+		paren_depth = 0;
 		for (std::size_t i = first; i < spelling.size() - 1; ++i)
 		{
 			if (spelling[i] == '<') ++angle_depth;
@@ -397,6 +447,11 @@ TypeId SemanticAnalyzer::ResolveTemplateTypeArgument(ScopeId scope,
 			parameters.push_back(parameter);
 		}
 		result = program_->types.Function(returned, parameters, false);
+		if (declarator_kind == '*') result = program_->types.Pointer(result);
+		else if (declarator_kind == '&')
+			result = program_->types.Reference(TYPE_LVALUE_REFERENCE, result);
+		else if (declarator_kind == 'r')
+			result = program_->types.Reference(TYPE_RVALUE_REFERENCE, result);
 	}
 	else if (!spelling.empty() && spelling[spelling.size() - 1] == ']')
 	{

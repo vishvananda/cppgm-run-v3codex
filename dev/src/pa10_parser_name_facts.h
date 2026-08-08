@@ -4,6 +4,7 @@
 #include "pa10_syntax_model.h"
 
 #include <cstddef>
+#include <string>
 #include <vector>
 
 namespace cppgm
@@ -15,6 +16,23 @@ template <class Derived>
 class ParserNameFacts
 {
 protected:
+	std::string UnqualifiedClassName(std::string owner) const
+	{
+		std::size_t separator = std::string::npos;
+		std::size_t angle_depth = 0;
+		for (std::size_t i = 0; i + 1 < owner.size(); ++i)
+		{
+			if (owner[i] == '<') ++angle_depth;
+			else if (owner[i] == '>' && angle_depth != 0) --angle_depth;
+			else if (angle_depth == 0 && owner[i] == ':' && owner[i + 1] == ':')
+				separator = i;
+		}
+		if (separator != std::string::npos) owner.erase(0, separator + 2);
+		const std::size_t arguments = owner.find('<');
+		if (arguments != std::string::npos) owner.erase(arguments);
+		return owner;
+	}
+
 	bool QualifiedStartsType() const
 	{
 		const Derived& parser = static_cast<const Derived&>(*this);
@@ -36,13 +54,20 @@ protected:
 			qualified = true;
 			++scan;
 		}
-		if (last != parser.tokens_.size() && parser.HasNameFact(
-			parser.tokens_[last].spelling, Derived::kKnownNonTemplate)) return false;
+		const bool terminal_template = last != parser.tokens_.size() &&
+			parser.HasNameFact(parser.tokens_[last].spelling,
+				Derived::kKnownTemplate);
+		const bool qualified_template_id = qualified && terminal_template &&
+			scan < parser.tokens_.size() && parser.tokens_[scan].kind ==
+				static_cast<std::uint16_t>(OP_LT);
+		if (!qualified_template_id && last != parser.tokens_.size() &&
+			parser.HasNameFact(parser.tokens_[last].spelling,
+				Derived::kKnownNonTemplate)) return false;
 		return last != parser.tokens_.size() &&
 			(parser.HasNameFact(parser.tokens_[last].spelling,
 				Derived::kKnownType) || parser.IsLikelyTypeIdentifier(last) ||
-			 (qualified && scan < parser.tokens_.size() &&
-			  parser.tokens_[scan].kind == kIdentifierToken));
+			 qualified_template_id || (qualified && scan < parser.tokens_.size() &&
+			 parser.tokens_[scan].kind == kIdentifierToken));
 	}
 
 	void PublishClassNameFacts(std::size_t mark)

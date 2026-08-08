@@ -598,7 +598,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeConditional(NodeId node, ScopeId scope)
 	ExpressionInfo condition = AnalyzeExpression(children[0], scope);
 	if (!IsArithmetic(condition.type) && !IsPointer(Decay(condition.type)) &&
 		!IsNullptr(condition.type))
-		throw std::runtime_error("invalid conditional condition");
+		condition = ApplyExplicitConversion(condition,
+			program_->types.Fundamental(FUND_BOOL));
 	ExpressionInfo yes = AnalyzeExpression(children[1], scope);
 	ExpressionInfo no = AnalyzeExpression(children[2], scope);
 	TypeId type = kNoType;

@@ -52,7 +52,8 @@ public:
 			name_facts_.capacity() * sizeof(std::uint8_t) +
 			name_fact_changes_.capacity() * sizeof(NameFactChange) +
 			angle_matches_.capacity() * sizeof(AngleMatch) +
-			(last_declared_names_.capacity() + parameter_names_.capacity()) * sizeof(TextId) +
+			(last_declared_names_.capacity() + parameter_names_.capacity() +
+			 active_non_type_parameter_names_.capacity()) * sizeof(TextId) +
 			current_classes_.capacity() * sizeof(std::string);
 		for (std::size_t i = 0; i < current_classes_.size(); ++i)
 			bytes += current_classes_[i].capacity();
@@ -70,7 +71,8 @@ private:
 	{
 		kKnownType = 1,
 		kKnownTemplate = 2,
-		kKnownNonTemplate = 4
+		kKnownNonTemplate = 4,
+		kActiveNonTypeParameter = 8
 	};
 	struct NameFactChange
 	{
@@ -196,30 +198,25 @@ private:
 		++position_;
 		return true;
 	}
-
 	bool MatchCloseAngle()
 	{
 		if (!AtCloseAngle()) return false;
 		++position_;
 		return true;
 	}
-
 	void Expect(SimpleTokenKind kind)
 	{
 		if (!Match(kind))
 			throw Error(std::string("expected ") + SimpleTokenKindName(kind));
 	}
-
 	void ExpectCloseAngle()
 	{
 		if (!MatchCloseAngle()) throw Error("expected close angle bracket");
 	}
-
 	const std::string& Spelling(std::size_t position) const
 	{
 		return strings_.Get(tokens_[position].spelling);
 	}
-
 	std::string TokenDescription(std::size_t position) const
 	{
 		const SyntaxToken& token = tokens_[position];
@@ -232,14 +229,12 @@ private:
 			static_cast<SimpleTokenKind>(token.kind))) + ":" +
 			Spelling(position);
 	}
-
 	NodeId MakeTokenNode(const char* tag, std::size_t position)
 	{
 		const NodeId node = arena_.Make(tag, TokenDescription(position));
 		arena_.SetSemanticPayload(node, tokens_[position].spelling);
 		return node;
 	}
-
 	std::string JoinSpellings(std::size_t first, std::size_t last) const
 	{
 		std::string result;
@@ -262,7 +257,6 @@ private:
 		}
 		return result;
 	}
-
 	bool SkipBalanced(SimpleTokenKind open, SimpleTokenKind close)
 	{
 		if (!Match(open)) return false;
@@ -276,7 +270,6 @@ private:
 		}
 		return depth == 0;
 	}
-
 	bool SkipAttribute()
 	{
 		const Mark mark = Checkpoint();
@@ -310,12 +303,10 @@ private:
 		Rollback(mark);
 		return false;
 	}
-
 	void SkipAttributes()
 	{
 		while (SkipAttribute()) {}
 	}
-
 	NodeId ParseAlignmentSpecifier()
 	{
 		if (!At(KW_ALIGNAS)) return kNoNode;
@@ -336,7 +327,6 @@ private:
 		Match(OP_DOTS);
 		return alignment;
 	}
-
 	void ParseSemanticAttributes(std::vector<NodeId>* alignments)
 	{
 		while (true)
@@ -349,7 +339,6 @@ private:
 			if (!SkipAttribute()) break;
 		}
 	}
-
 	bool IsLikelyTypeIdentifier(std::size_t position) const
 	{ if (position >= tokens_.size() ||
 		tokens_[position].kind != kIdentifierToken) return false;
@@ -463,7 +452,6 @@ private:
 		}
 		return true;
 	}
-
 	void TryConsumeTemplateArguments()
 	{
 		if (!At(OP_LT)) return;
@@ -488,11 +476,19 @@ private:
 		const bool qualified_candidate = position_ >= 2 &&
 			tokens_[position_ - 2].kind ==
 				static_cast<std::uint16_t>(OP_COLON2);
-		const bool trusted =
-			(qualified_candidate ||
-			 !HasNameFact(candidate_id, kKnownNonTemplate)) &&
-			(HasNameFact(candidate_id, kKnownTemplate) ||
-			 candidate.find('T') != std::string::npos);
+		const bool known_template = HasNameFact(candidate_id, kKnownTemplate);
+		const bool known_non_template = HasNameFact(candidate_id, kKnownNonTemplate);
+		const bool active_non_type_parameter =
+			HasNameFact(candidate_id, kActiveNonTypeParameter);
+		if (!qualified_candidate && known_non_template &&
+			(!known_template || active_non_type_parameter))
+		{
+			angle_matches_[opener].close = no_match;
+			angle_matches_[opener].fact_revision = name_fact_revision_;
+			return;
+		}
+		const bool trusted = qualified_candidate || known_template ||
+			(!known_non_template && candidate.find('T') != std::string::npos);
 		const Mark mark = Checkpoint();
 		++position_;
 		const std::size_t scan_start = position_;
@@ -537,7 +533,7 @@ private:
 			}
 			else if (paren == 0 && square == 0 && brace == 0)
 			{
-				if (At(OP_LOR) || At(OP_LAND) || At(OP_QMARK) ||
+				if (At(OP_LOR) || At(OP_LAND) || At(OP_QMARK) || At(OP_COLON) ||
 					At(OP_PLUSASS) || At(OP_MINUSASS) || At(OP_ASS))
 					saw_expression_operator = true;
 				if (At(OP_LT))
@@ -549,12 +545,9 @@ private:
 					const bool explicitly_templated = position_ >= 2 &&
 						tokens_[position_ - 2].kind ==
 							static_cast<std::uint16_t>(KW_TEMPLATE);
-					const bool qualified_nested = position_ >= 2 &&
-						tokens_[position_ - 2].kind ==
-							static_cast<std::uint16_t>(OP_COLON2);
 					if (explicitly_templated ||
-						(qualified_nested && HasNameFact(nested_candidate_id,
-							kKnownTemplate)) ||
+						(HasNameFact(nested_candidate_id, kKnownTemplate) &&
+						 !HasNameFact(nested_candidate_id, kActiveNonTypeParameter)) ||
 						!HasNameFact(nested_candidate_id, kKnownNonTemplate))
 					{
 						++angle;
@@ -611,17 +604,15 @@ private:
 		RecordTemplateArgumentScan(scan_start, true);
 		Rollback(mark);
 	}
-
 	void RecordTemplateArgumentScan(std::size_t scan_start, bool failed)
 	{
 		if (!stats_) return;
 		const std::size_t scanned = position_ - scan_start;
 		stats_->template_argument_scan_tokens += scanned;
 		stats_->max_template_argument_scan_tokens = std::max(
-			stats_->max_template_argument_scan_tokens, scanned);
+		stats_->max_template_argument_scan_tokens, scanned);
 		if (failed) ++stats_->failed_template_argument_scans;
 	}
-
 	NodeId ParseDeclaration(bool in_class);
 	NodeId ParseNamespace();
 	NodeId ParseUsing();
@@ -653,7 +644,6 @@ private:
 	int BinaryPrecedence(std::uint16_t kind) const;
 	bool StartsStandaloneClassDeclaration();
 	bool StartsStandaloneEnumDeclaration() const;
-
 	const std::vector<SyntaxToken>& tokens_;
 	StringTable& strings_;
 	SyntaxArena& arena_;
@@ -664,10 +654,10 @@ private:
 	std::vector<std::uint8_t> name_facts_;
 	std::vector<NameFactChange> name_fact_changes_;
 	std::vector<AngleMatch> angle_matches_;
-	std::vector<TextId> last_declared_names_, parameter_names_;
+	std::vector<TextId> last_declared_names_, parameter_names_,
+		active_non_type_parameter_names_;
 	std::vector<std::string> current_classes_;
 };
-
 NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id,
 	std::string* first_type)
 {
@@ -814,7 +804,6 @@ NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id,
 	}
 	return sequence;
 }
-
 bool Parser::ParseTypeId(NodeId parent, bool attach)
 {
 	const Mark mark = Checkpoint();
@@ -834,7 +823,6 @@ bool Parser::ParseTypeId(NodeId parent, bool attach)
 	if (attach) arena_.Add(parent, type_id);
 	return true;
 }
-
 NodeId Parser::ParseParameterClause()
 {
 	if (!Match(OP_LPAREN)) return kNoNode;
@@ -920,7 +908,6 @@ NodeId Parser::ParseParameterClause()
 	Expect(OP_RPAREN);
 	return clause;
 }
-
 NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 {
 	const Mark mark = Checkpoint();
@@ -1086,6 +1073,8 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 					  tokens_[position_ + 1].kind ==
 						static_cast<std::uint16_t>(KW_DECLTYPE) ||
 					  tokens_[position_ + 1].kind ==
+						static_cast<std::uint16_t>(KW_TYPENAME) ||
+					  tokens_[position_ + 1].kind ==
 						static_cast<std::uint16_t>(KW_STRUCT) ||
 					  tokens_[position_ + 1].kind ==
 						static_cast<std::uint16_t>(KW_ENUM) ||
@@ -1191,7 +1180,6 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 	}
 	return result;
 }
-
 int Parser::BinaryPrecedence(std::uint16_t kind) const
 {
 	if (kind == kRShiftFirstToken) return 10;
@@ -1216,7 +1204,6 @@ int Parser::BinaryPrecedence(std::uint16_t kind) const
 	default: return 0;
 	}
 }
-
 NodeId Parser::ParseExpression(int minimum_precedence)
 {
 	NodeId left = ParseUnaryExpression();
@@ -1561,7 +1548,9 @@ NodeId Parser::ParseUnaryExpression()
 		if (At(KW_STRUCT) || At(KW_CLASS) || At(KW_UNION) ||
 			(position_ < tokens_.size() &&
 			 IsFundamentalKind(tokens_[position_].kind))) prefer_type = true;
-		if (AtIdentifier() && IsLikelyTypeIdentifier(position_) &&
+		if (AtIdentifier() && (IsLikelyTypeIdentifier(position_) ||
+			(AtOffset(1, OP_LT) && HasNameFact(tokens_[position_].spelling,
+				kKnownTemplate))) &&
 			!AtOffset(1, OP_LPAREN) &&
 			(!AtOffset(1, OP_COLON2) || QualifiedStartsType()))
 			prefer_type = true;
@@ -1805,7 +1794,7 @@ NodeId Parser::ParseCompoundStatement()
 		NodeId item = kNoNode;
 		const bool declaration_start = At(KW_TEMPLATE) || At(KW_USING) ||
 			At(KW_NAMESPACE) ||
-			At(KW_TYPEDEF) || At(KW_CLASS) || At(KW_STRUCT) || At(KW_UNION) ||
+			At(KW_TYPEDEF) || At(KW_TYPENAME) || At(KW_CLASS) || At(KW_STRUCT) || At(KW_UNION) ||
 			At(KW_ENUM) || At(KW_DECLTYPE) || At(KW_STATIC_ASSERT) || At(KW_EXTERN) ||
 			(position_ < tokens_.size() &&
 			 IsDeclSpecifierKeyword(tokens_[position_].kind)) ||
@@ -1921,6 +1910,7 @@ NodeId Parser::ParseStatement()
 	}
 	if (Match(KW_FOR))
 	{
+		const std::size_t for_fact_mark = name_fact_changes_.size();
 		const NodeId statement = arena_.Make("for-statement");
 		Expect(OP_LPAREN);
 		const NodeId initial = arena_.Make("for-init-statement");
@@ -1949,6 +1939,7 @@ NodeId Parser::ParseStatement()
 		const NodeId body = ParseStatement();
 		if (body == kNoNode) throw Error("expected for body");
 		arena_.Add(statement, body);
+		RestoreNameFacts(for_fact_mark);
 		return statement;
 	}
 	if (Match(KW_TRY))
@@ -2028,7 +2019,7 @@ NodeId Parser::ParseStatement()
 		return statement;
 	}
 	const bool declaration_start = At(KW_USING) || At(KW_NAMESPACE) ||
-		At(KW_TYPEDEF) ||
+		At(KW_TYPEDEF) || At(KW_TYPENAME) ||
 		At(KW_CLASS) || At(KW_STRUCT) || At(KW_UNION) || At(KW_ENUM) ||
 		At(KW_DECLTYPE) || At(KW_STATIC_ASSERT) || At(KW_EXTERN) ||
 		(position_ < tokens_.size() &&
@@ -2200,7 +2191,12 @@ NodeId Parser::ParseNonTypeTemplateParameter()
 	if (declarator != kNoNode) arena_.Add(parameter, declarator);
 	else Rollback(declarator_mark);
 	if (!parameter_name.empty())
+	{
 		SetNameFact(parameter_name, kKnownNonTemplate);
+		const TextId parameter_id = strings_.Intern(parameter_name);
+		SetNameFact(parameter_id, kActiveNonTypeParameter);
+		active_non_type_parameter_names_.push_back(parameter_id);
+	}
 	if (Match(OP_ASS))
 	{
 		const NodeId argument = arena_.Make("default-template-argument");
@@ -2226,6 +2222,7 @@ NodeId Parser::ParseTemplateParameter()
 NodeId Parser::ParseTemplate(bool in_class)
 {
 	if (!Match(KW_TEMPLATE)) return kNoNode;
+	const std::size_t parameter_mark = active_non_type_parameter_names_.size();
 	const NodeId declaration = arena_.Make("template-declaration");
 	const NodeId clause = arena_.Make("template-parameter-clause");
 	Expect(OP_LT);
@@ -2248,6 +2245,12 @@ NodeId Parser::ParseTemplate(bool in_class)
 	const NodeId target = ParseDeclaration(in_class);
 	if (target == kNoNode) throw Error("expected templated declaration");
 	arena_.Add(declaration, target);
+	while (active_non_type_parameter_names_.size() > parameter_mark)
+	{
+		SetNameFact(active_non_type_parameter_names_.back(),
+			kActiveNonTypeParameter, false);
+		active_non_type_parameter_names_.pop_back();
+	}
 	for (std::size_t i = 0; i < last_declared_names_.size(); ++i)
 	{
 		SetNameFact(last_declared_names_[i], kKnownTemplate);
@@ -2333,11 +2336,8 @@ NodeId Parser::ParseSpecialMember(bool)
 	}
 	else if (!special_name && !current_classes_.empty())
 	{
-		std::string owner = current_classes_.back();
-		const std::size_t arguments = owner.find('<');
-		if (arguments != std::string::npos) owner.erase(arguments);
-		const std::size_t separator = owner.rfind("::");
-		if (separator != std::string::npos) owner.erase(0, separator + 2);
+		const std::string owner =
+			UnqualifiedClassName(current_classes_.back());
 		special_name = name == owner || name == "~" + owner;
 	}
 	if (!special_name)

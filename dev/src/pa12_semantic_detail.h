@@ -187,6 +187,9 @@ private:
 		TypeId left, TypeId right) const;
 	std::vector<BindingId> FunctionCandidates(ScopeId scope,
 		const std::string& spelling, EntityId* naming_class = 0);
+	std::vector<BindingId> UsingFunctionCandidates(ScopeId scope,
+		const NamePath& path, const std::string& spelling,
+		ScopeId* target_owner, bool* names_owner_alias);
 	std::vector<BindingId> FunctionCallCandidates(ScopeId scope,
 		const std::string& spelling, EntityId* naming_class = 0);
 	std::vector<BindingId> RetainedFunctionCallCandidates(NodeId callee,

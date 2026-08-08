@@ -2155,7 +2155,10 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 			PublishUsingAccess(alias, type.type_declaration, access);
 		return;
 	}
-	const std::vector<BindingId> functions = FunctionCandidates(scope, target);
+	ScopeId using_target_owner = kNoScope;
+	bool names_owner_alias = false;
+	std::vector<BindingId> functions = UsingFunctionCandidates(
+		scope, path, target, &using_target_owner, &names_owner_alias);
 	const std::vector<std::size_t> template_patterns =
 		FindFunctionTemplates(scope, target);
 	if (!functions.empty() || !template_patterns.empty())
@@ -2165,10 +2168,10 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 			program_->entities[class_owner].direct_base != kNoEntity)
 		{
 			const EntityId base = program_->entities[class_owner].direct_base;
-			const ScopeId target_owner = ResolveOwner(scope, path);
-			bool constructor_set = target_owner ==
+			bool constructor_set = using_target_owner ==
 				program_->entities[base].member_scope &&
-				name == program_->entities[base].identity_name;
+				(name == program_->entities[base].identity_name ||
+				 names_owner_alias);
 			for (std::size_t i = 0; i < functions.size(); ++i)
 				constructor_set = constructor_set &&
 					GetFunction(functions[i]).constructor;
@@ -2230,7 +2233,6 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 		PublishUsingAccess(alias, ordinary.ordinary, access);
 	(void)local;
 }
-
 void SemanticAnalyzer::InheritConstructors(EntityId entity,
 	const std::vector<BindingId>& constructors)
 {
@@ -2276,7 +2278,6 @@ void SemanticAnalyzer::InheritConstructors(EntityId entity,
 			derived.default_constructible = true;
 	}
 }
-
 BindingId SemanticAnalyzer::EnsureConstructorBaseEntry(BindingId constructor)
 {
 	constructor = program_->bindings[constructor].canonical;
@@ -2287,7 +2288,6 @@ BindingId SemanticAnalyzer::EnsureConstructorBaseEntry(BindingId constructor)
 			static_cast<std::size_t>(constructor) + 1, kNoBinding);
 	if (constructor_base_entry_by_binding_[constructor] != kNoBinding)
 		return constructor_base_entry_by_binding_[constructor];
-
 	const BindingRecord source_binding = program_->bindings[constructor];
 	const FunctionInfo source_info = GetFunction(constructor);
 	if (!source_binding.constructor || !source_info.constructor)
