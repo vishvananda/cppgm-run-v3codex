@@ -790,6 +790,7 @@ private:
 		assigned_names_.Clear();
 		slot_name_counts_.Clear();
 		generated_slot_ordinal_ = 0;
+		ResetLifetimeFunctionState();
 		ResetFullExpressionFunctionState();
 		parameter_slot_index_ = current_indirect_result_ ? 1 : 0;
 		current_this_binding_ = kNoBinding;

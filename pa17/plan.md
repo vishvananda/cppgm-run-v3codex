@@ -20,29 +20,29 @@ emitted IR.
 
 ## Current Failure Map
 
-Post-audit result: **174/231**. The turn-start checkpoint pass set and all
-earlier stages remain intact; the non-overlapping failure map contains 57 tests:
+Post-checkpoint result: **186/231**. The turn-start checkpoint pass set and all
+earlier stages remain intact; the non-overlapping failure map contains 45 tests:
 
 | Failures | Shared behavior | Primary owner |
 | ---: | --- | --- |
 | 11 | temporary cleanup across residual control flow | PA12 lifetime facts + PA17 lowering |
 | 1 | namespace class-array copy initialization | PA12 class-value initialization + static lowering |
 | 19 | residual operators, conversions, lookup, and ref qualification | PA12 calls/operator resolution |
-| 25 | class-value construction, initialization, copy/move, and ABI shapes | PA12 initialization + PA15-PA17 lowering |
+| 13 | class-value construction, initialization, copy/move, and ABI shapes | PA12 initialization + PA15-PA17 lowering |
 | 1 | residual namespace/control interaction | PA12 lookup and statement analysis |
 
 ## Active Checkpoint
 
-**Active: class direct-initialization recipes.** Apply `spec.md` sections 2, 3,
-6, and 9 where C-style/static/function-style casts, braced defaults, and
-constructor arguments converge. PA12 owns the canonical destination type,
-selected constructor, conversion sequence, and materialization identity;
-PA17 consumes that recipe into caller- or temporary-owned storage without
-repeating lookup. Selection is O(indexed candidates + conversions), recipe
-construction O(arguments), and lowering O(emitted actions). Validate the
-shared cast/braced/default-argument failure cluster while preserving the
-audited loop lifetime path, then full PA17, through PA16, file audit, and
-candidate-count scaling.
+**Active: delegating and out-of-class special-member definitions.** Apply
+`spec.md` sections 2, 3, 4, 6, and 9 to retain one canonical member identity
+from declaration through qualified definition, delegation selection, cycle
+detection, and lowering. Parsing/PA12 own definition completion, selected
+delegate identity, and ordered construction facts; PA17 lowers those facts
+without lookup or retry. Work is O(delegation chain + indexed candidates +
+emitted actions), with cycle checks bounded by in-progress state. Validate the
+basic, overloaded, and external delegating-constructor cases; out-of-class
+constructor/destructor/defaulted definitions; cycle rejection; full PA17,
+through PA16, file audit, and 32/64/128 delegation/candidate scaling.
 
 ## Performance Evidence
 
@@ -96,6 +96,12 @@ candidate-count scaling.
   instructions, and 32,560/58,320/109,840 typed bytes. Five-run semantic
   medians were 0.330/0.389/0.577 ms and lowering medians
   0.247/0.357/0.399 ms, confirming one linked cleanup suffix per obligation.
+- Direct-list construction with 32/64/128 indexed constructor candidates
+  recorded 34/66/130 candidate visits, a fixed 6 conversion checks, and
+  269,164/532,868/1,060,340 semantic peak bytes. Five-run semantic medians
+  were 1.134/2.046/4.009 ms; lowering remained 0.144/0.142/0.173 ms with a
+  fixed 9,828 typed bytes, confirming proportional selection and one retained
+  destination recipe.
 
 ## Completed Checkpoints
 
@@ -114,3 +120,4 @@ candidate-count scaling.
 | Condition-declaration lifetime regions | 157/231 -> 160/231 | Nested false-path containment, reference-extended temporary, class-to-bool and switch-to-int conversion 4/4; through PA16 1,436/1,436; audit and proportional depth probe pass |
 | Branch-local class values and full-expression cleanup | 160/231 -> 173/231 | Branch lifetime plus right-hand short-circuit construction-state probes pass; original pass set intact; through PA16 1,436/1,436; file audit and linear 16/32/64 cleanup probes pass |
 | Loop full-expression regions | 173/231 -> 174/231 | Direct/cast/comma/conditional discarded materialization; exact normal/unwind cleanup; focused 17/17; through PA16 1,436/1,436; file audit and linear nested/width probes pass |
+| Class direct-initialization recipes | 174/231 -> 186/231 | Cast/braced/default/member/return focus 11/11; converting by-value case reaches residual scalar canonicalization; through PA16 1,436/1,436; audit and proportional candidate probes pass |

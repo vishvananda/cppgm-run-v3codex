@@ -365,6 +365,7 @@ private:
 		const std::vector<ExpressionInfo>& arguments,
 		const std::vector<BindingId>& candidates, bool copy_initialization,
 		bool list_initialization);
+	bool BracedInitializationShapeViable(NodeId list, TypeId target) const;
 	bool EmptyDefaultConstructorChain(BindingId constructor,
 		std::vector<BindingId>* base_entries);
 	std::uint32_t BuildConstructorAction(TypeId type, ScopeId scope,

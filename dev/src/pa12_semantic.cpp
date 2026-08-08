@@ -1285,9 +1285,10 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 		if (a >= function.parameters.size() ||
 			function.parameters[a].default_argument == kNoNode)
 			throw std::runtime_error("missing default argument fact");
-		const ExpressionInfo argument = AnalyzeExpression(
+		ExpressionInfo argument = AnalyzeExpression(
 			function.parameters[a].default_argument,
 			function.parameters[a].default_scope, parameters[a]);
+		argument = ApplyCallArgument(argument, parameters[a]);
 		dump_.Add(call, argument.node);
 	}
 	ExpressionInfo result;
@@ -1305,10 +1306,15 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 {
 	const NodeId callee_syntax = FirstSemanticChild(node);
 	if (callee_syntax == kNoNode) throw std::runtime_error("call without callee");
-	NodeId arguments_node = kNoNode;
-	std::uint32_t edge = arena_->FirstEdge(node);
-	if (edge != kNoEdge) edge = arena_->NextEdge(edge);
-	if (edge != kNoEdge) arguments_node = arena_->EdgeChild(edge);
+	NodeId arguments_node = FindChild(node, "argument-list");
+	if (arguments_node == kNoNode)
+		arguments_node = FindChild(node, "braced-init-list");
+	if (arguments_node == kNoNode)
+	{
+		std::uint32_t edge = arena_->FirstEdge(node);
+		if (edge != kNoEdge) edge = arena_->NextEdge(edge);
+		if (edge != kNoEdge) arguments_node = arena_->EdgeChild(edge);
+	}
 	std::vector<NodeId> argument_syntax;
 	if (arguments_node != kNoNode)
 		for (std::uint32_t argument = arena_->FirstEdge(arguments_node);

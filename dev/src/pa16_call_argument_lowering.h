@@ -62,17 +62,16 @@ protected:
 		const Operand slot(derived.EnsureGeneratedSlot(
 			node, derived.UsesIndirectClassResult(target) ?
 				"arg" : "argobj", type), type);
+		if (derived.arena_.nodes[node].kind == DUMP_TEMPORARY_OBJECT)
+		{
+			const Operand temporary = derived.LowerStorage(node);
+			return derived.UsesIndirectClassResult(target) ? temporary : slot;
+		}
 		const Operand destination = derived.AddressOfStorage(slot);
 		if (derived.arena_.nodes[node].kind == DUMP_CLASS_VALUE_TRANSFER)
 			derived.LowerClassValueTransfer(node, destination);
 		else if (derived.arena_.nodes[node].kind == DUMP_CONSTRUCTOR_ACTION)
 			derived.LowerConstructorAction(node, destination);
-		else if (derived.arena_.nodes[node].kind == DUMP_TEMPORARY_OBJECT)
-		{
-			const Operand temporary = derived.LowerStorage(node);
-			return derived.UsesIndirectClassResult(target) ? temporary :
-				derived.LoadStorage(temporary, type);
-		}
 		else (void)derived.AddressOfStorage(derived.LowerStorage(node));
 		return derived.UsesIndirectClassResult(target) ? destination : slot;
 	}
@@ -103,7 +102,11 @@ protected:
 		const DumpNode& argument = derived.arena_.nodes[node];
 		if (argument.category == VALUE_LVALUE ||
 			argument.category == VALUE_XVALUE)
+		{
+			if (argument.kind == DUMP_TEMPORARY_OBJECT)
+				return derived.LowerStorage(node);
 			return derived.AddressOfStorage(derived.LowerStorage(node));
+		}
 		if (derived.IsClassObjectType(argument.type) &&
 			derived.UsesIndirectClassResult(argument.type))
 		{

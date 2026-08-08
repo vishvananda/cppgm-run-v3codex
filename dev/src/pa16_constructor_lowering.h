@@ -76,7 +76,9 @@ protected:
 			if (reference)
 			{
 				const DumpNode& argument = derived.arena_.nodes[children[i]];
-				if (argument.category == VALUE_LVALUE ||
+				if (argument.kind == DUMP_TEMPORARY_OBJECT)
+					arguments.Push(derived.LowerStorage(children[i]));
+				else if (argument.category == VALUE_LVALUE ||
 					argument.category == VALUE_XVALUE ||
 					derived.IsClassObjectType(argument.type))
 					arguments.Push(derived.AddressOfStorage(
@@ -109,7 +111,10 @@ protected:
 					derived.LowerType(parameters[parameter]) :
 					derived.LowerExpressionType(
 						derived.arena_.nodes[children[i]].type);
-				arguments.Push(derived.Convert(
+				if (derived.source_types_.IsNullptr(
+					derived.arena_.nodes[children[i]].type))
+					arguments.Push(Operand::NullPointer(expected));
+				else arguments.Push(derived.Convert(
 					derived.LowerValue(children[i]), expected));
 			}
 		}
@@ -274,6 +279,15 @@ protected:
 				derived.EmitZeroInitialization(action.type, destination);
 			if (derived.IsTrivialConstructorAction(action.type, children)) return;
 			LowerConstructorAction(value_node, destination);
+			return;
+		}
+		if (value.kind == DUMP_CLASS_VALUE_TRANSFER)
+		{
+			const Operand object = derived.LoadStorage(
+				derived.StorageFor(derived.current_this_binding_, LowPtr()), LowPtr());
+			const Operand destination =
+				derived.ProjectAggregateMember(object, action.binding);
+			derived.LowerClassValueTransfer(value_node, destination);
 			return;
 		}
 		if (value.kind == DUMP_BRACED_INIT_LIST &&

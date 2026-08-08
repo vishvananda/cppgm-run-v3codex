@@ -33,6 +33,85 @@ std::vector<unsigned char> DecodeStringInitializer(
 
 }
 
+bool SemanticAnalyzer::BracedInitializationShapeViable(
+	NodeId list, TypeId target) const
+{
+	if (list == kNoNode || !arena_->IsTag(list, "braced-init-list"))
+		return false;
+	TypeId object = program_->types.RemoveTopCv(target);
+	const TypeRecord top = program_->types.Get(object);
+	if (top.kind == TYPE_LVALUE_REFERENCE ||
+		top.kind == TYPE_RVALUE_REFERENCE)
+	{
+		if (top.kind == TYPE_LVALUE_REFERENCE)
+		{
+			const TypeRecord referred = program_->types.Get(top.child);
+			const std::uint8_t cv = referred.kind == TYPE_QUALIFIED ?
+				referred.cv : CV_NONE;
+			if ((cv & CV_CONST) == 0 || (cv & CV_VOLATILE) != 0)
+				return false;
+		}
+		object = program_->types.RemoveTopCv(top.child);
+	}
+	std::vector<NodeId> elements;
+	for (std::uint32_t edge = arena_->FirstEdge(list); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+		elements.push_back(arena_->EdgeChild(edge));
+	const TypeRecord record = program_->types.Get(object);
+	if (record.kind == TYPE_ARRAY)
+	{
+		if (record.bound != 0 && elements.size() > record.bound) return false;
+		for (std::size_t i = 0; i < elements.size(); ++i)
+			if (arena_->IsTag(elements[i], "braced-init-list") &&
+				!BracedInitializationShapeViable(elements[i], record.child))
+				return false;
+		return true;
+	}
+	if (record.kind != TYPE_NAMED) return elements.size() <= 1;
+	const EntityRecord& entity = program_->entities[record.entity];
+	if (entity.flavor != NAMED_STRUCT && entity.flavor != NAMED_CLASS &&
+		entity.flavor != NAMED_UNION)
+		return elements.size() <= 1;
+	if (entity.is_aggregate)
+	{
+		if (record.entity >= entity_data_members_.size()) return false;
+		const std::vector<BindingId>& members = entity_data_members_[record.entity];
+		const std::size_t limit = entity.flavor == NAMED_UNION ?
+			(members.empty() ? 0 : 1) : members.size();
+		if (elements.size() > limit) return false;
+		for (std::size_t i = 0; i < elements.size(); ++i)
+			if (arena_->IsTag(elements[i], "braced-init-list") &&
+				!BracedInitializationShapeViable(
+					elements[i], program_->bindings[members[i]].type))
+				return false;
+		return true;
+	}
+	const std::vector<BindingId>& constructors =
+		ConstructorCandidates(record.entity);
+	for (std::size_t c = 0; c < constructors.size(); ++c)
+	{
+		const FunctionInfo& constructor = GetFunction(constructors[c]);
+		const TypeRecord function = program_->types.Get(constructor.type);
+		if (!constructor.constructor) continue;
+		std::size_t required = function.parameter_count;
+		while (required != 0 && required <= constructor.parameters.size() &&
+			constructor.parameters[required - 1].default_argument != kNoNode)
+			--required;
+		if (elements.size() < required ||
+			(!function.variadic && elements.size() > function.parameter_count))
+			continue;
+		const TypeId* parameters = program_->types.Parameters(constructor.type);
+		bool viable = true;
+		for (std::size_t i = 0;
+			i < elements.size() && i < function.parameter_count; ++i)
+			if (arena_->IsTag(elements[i], "braced-init-list") &&
+				!BracedInitializationShapeViable(elements[i], parameters[i]))
+				viable = false;
+		if (viable) return true;
+	}
+	return false;
+}
+
 BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 	const std::vector<NodeId>& argument_syntax,
 	const std::vector<ExpressionInfo>& arguments,
@@ -45,6 +124,7 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 		throw std::runtime_error("constructor conversion table is too large");
 	std::vector<ConversionRank> ranks(candidates.size() * arity,
 		CONVERSION_ELLIPSIS);
+	std::vector<TypeId> braced_sources(candidates.size() * arity, kNoType);
 	CallConversionTable conversion_cache;
 	std::vector<bool> viable(candidates.size(), true);
 	for (std::size_t c = 0; c < candidates.size(); ++c)
@@ -76,7 +156,24 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 			if (a < function_type.parameter_count)
 			{
 				if (arguments[a].type == kNoType)
-					rank = CONVERSION_INVALID;
+				{
+					const TypeId parameter = parameters[a];
+					if (arena_->IsTag(argument_syntax[a], "braced-init-list") &&
+						BracedInitializationShapeViable(
+							argument_syntax[a], parameter))
+					{
+						const TypeRecord top = program_->types.Get(parameter);
+						const TypeId source = program_->types.RemoveTopCv(
+							top.kind == TYPE_LVALUE_REFERENCE ||
+							top.kind == TYPE_RVALUE_REFERENCE ? top.child : parameter);
+						ExpressionInfo descriptor;
+						descriptor.type = source;
+						descriptor.category = VALUE_PRVALUE;
+						rank = Conversion(descriptor, parameter);
+						braced_sources[c * arity + a] = source;
+					}
+					else rank = CONVERSION_INVALID;
+				}
 				else rank = CallConversion(arguments[a], parameters[a],
 					&conversion_cache, a).rank;
 			}
@@ -84,7 +181,8 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 			if (rank == CONVERSION_INVALID) viable[c] = false;
 		}
 	}
-	const auto better = [this, &ranks, &arguments, &candidates, arity](
+	const auto better = [this, &ranks, &braced_sources, &arguments,
+		&candidates, arity](
 		std::size_t left, std::size_t right) -> bool
 	{
 		++overload_order_comparisons_;
@@ -112,8 +210,17 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 			if (a >= left_type.parameter_count ||
 				a >= right_type.parameter_count)
 				continue;
+			ExpressionInfo argument = arguments[a];
+			if (argument.type == kNoType)
+			{
+				const TypeId left_source = braced_sources[left * arity + a];
+				const TypeId right_source = braced_sources[right * arity + a];
+				if (left_source == kNoType || left_source != right_source) continue;
+				argument.type = left_source;
+				argument.category = VALUE_PRVALUE;
+			}
 			const int preference = CompareReferenceBindings(
-				arguments[a], left_parameters[a], right_parameters[a]);
+				argument, left_parameters[a], right_parameters[a]);
 			if (preference != 0) return preference > 0;
 		}
 		return false;
@@ -126,7 +233,10 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 		++viable_count;
 		if (champion == candidates.size() || better(c, champion)) champion = c;
 	}
-	if (viable_count == 0) throw std::runtime_error("no viable constructor");
+	if (viable_count == 0)
+		throw std::runtime_error("no viable constructor for " +
+			std::to_string(arity) + " argument(s) from " +
+			std::to_string(candidates.size()) + " candidate(s)");
 	if (viable_count != 1)
 		for (std::size_t c = 0; c < candidates.size(); ++c)
 			if (c != champion && viable[c] && !better(champion, c))
@@ -266,8 +376,23 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 		if (a < function_type.parameter_count)
 		{
 			if (argument.type == kNoType)
-				argument = AnalyzeExpression(argument_syntax[a], scope,
-					parameters[a]);
+			{
+				const TypeRecord parameter = program_->types.Get(parameters[a]);
+				const TypeId list_target = parameter.kind == TYPE_LVALUE_REFERENCE ||
+					parameter.kind == TYPE_RVALUE_REFERENCE ?
+					parameter.child : parameters[a];
+				argument = AnalyzeExpression(
+					argument_syntax[a], scope, list_target);
+				argument.category = VALUE_PRVALUE;
+				dump_.nodes[argument.node].category = VALUE_PRVALUE;
+				const EntityId list_entity = EntityOf(list_target);
+				if (list_entity != kNoEntity &&
+					program_->entities[list_entity].is_aggregate &&
+					dump_.nodes[argument.node].kind == DUMP_BRACED_INIT_LIST)
+					argument.node = BuildAggregateConstructionAction(
+						list_target, argument.node);
+				argument = ApplyCallArgument(argument, parameters[a]);
+			}
 			else argument = ApplyCallArgument(argument, parameters[a]);
 		}
 		dump_.Add(action, argument.node);
@@ -278,9 +403,10 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 		if (a >= constructor.parameters.size() ||
 			constructor.parameters[a].default_argument == kNoNode)
 			throw std::logic_error("selected constructor lacks a default argument");
-		const ExpressionInfo argument = AnalyzeExpression(
+		ExpressionInfo argument = AnalyzeExpression(
 			constructor.parameters[a].default_argument,
 			constructor.parameters[a].default_scope, parameters[a]);
+		argument = ApplyCallArgument(argument, parameters[a]);
 		dump_.Add(action, argument.node);
 	}
 	if (demand && !dump_.nodes[action].elide_empty_constructor &&
@@ -348,9 +474,10 @@ std::uint32_t SemanticAnalyzer::BuildClassValueConstructorAction(TypeId type,
 			constructor.parameters[a].default_argument == kNoNode)
 			throw std::logic_error(
 				"selected class-value constructor lacks a default argument");
-		const ExpressionInfo argument = AnalyzeExpression(
+		ExpressionInfo argument = AnalyzeExpression(
 			constructor.parameters[a].default_argument,
 			constructor.parameters[a].default_scope, parameters[a]);
+		argument = ApplyCallArgument(argument, parameters[a]);
 		dump_.Add(action, argument.node);
 	}
 	if ((demand || conversion_result_materialization) &&
@@ -617,10 +744,6 @@ void SemanticAnalyzer::AnalyzeReturnStatement(NodeId node, ScopeId scope,
 	}
 	else
 	{
-		ExpressionInfo value = AnalyzeExpression(expression, scope,
-			IsVoid(current_return_type_) ? kNoType : current_return_type_);
-		if (IsVoid(current_return_type_) && !IsVoid(value.type))
-			throw std::runtime_error("void function returns a value");
 		const TypeId returned_object = program_->types.RemoveTopCv(
 			EffectiveType(current_return_type_));
 		const TypeRecord& returned_record = program_->types.Get(returned_object);
@@ -632,6 +755,56 @@ void SemanticAnalyzer::AnalyzeReturnStatement(NodeId node, ScopeId scope,
 			(program_->entities[returned_record.entity].flavor == NAMED_STRUCT ||
 			 program_->entities[returned_record.entity].flavor == NAMED_CLASS ||
 			 program_->entities[returned_record.entity].flavor == NAMED_UNION);
+		const bool direct_syntax = arena_->IsTag(expression, "call-expression") ||
+			arena_->IsTag(expression, "braced-init-list");
+		ExpressionInfo value = AnalyzeExpression(expression, scope,
+			IsVoid(current_return_type_) || (class_return && !direct_syntax) ?
+			kNoType : current_return_type_);
+		if (IsVoid(current_return_type_) && !IsVoid(value.type))
+			throw std::runtime_error("void function returns a value");
+		if (class_return && dump_.nodes[value.node].kind ==
+			DUMP_TEMPORARY_OBJECT &&
+			dump_.nodes[value.node].first_edge != kNoDumpEdge &&
+			dump_.edges[dump_.nodes[value.node].first_edge].next == kNoDumpEdge)
+		{
+			const std::uint32_t recipe =
+				dump_.edges[dump_.nodes[value.node].first_edge].child;
+			if ((dump_.nodes[recipe].kind == DUMP_CONSTRUCTOR_ACTION ||
+				dump_.nodes[recipe].kind == DUMP_BRACED_INIT_LIST ||
+				dump_.nodes[recipe].kind == DUMP_CLASS_VALUE_TRANSFER) &&
+				program_->types.RemoveTopCv(EffectiveType(value.type)) ==
+					returned_object)
+			{
+				value.node = recipe;
+				value.category = VALUE_PRVALUE;
+			}
+		}
+		if (class_return && dump_.nodes[value.node].kind ==
+			DUMP_CONSTRUCTOR_ACTION &&
+			dump_.nodes[value.node].first_edge != kNoDumpEdge &&
+			dump_.edges[dump_.nodes[value.node].first_edge].next == kNoDumpEdge &&
+			dump_.nodes[value.node].binding != kNoBinding)
+		{
+			const FunctionInfo& outer =
+				GetFunction(dump_.nodes[value.node].binding);
+			const std::uint32_t temporary =
+				dump_.edges[dump_.nodes[value.node].first_edge].child;
+			if ((outer.special_member == SPECIAL_MEMBER_COPY_CONSTRUCTOR ||
+				 outer.special_member == SPECIAL_MEMBER_MOVE_CONSTRUCTOR ||
+				 dump_.nodes[value.node].trivial_special_member_action) &&
+				dump_.nodes[temporary].kind == DUMP_TEMPORARY_OBJECT &&
+				dump_.nodes[temporary].first_edge != kNoDumpEdge &&
+				dump_.edges[dump_.nodes[temporary].first_edge].next == kNoDumpEdge)
+			{
+				const std::uint32_t recipe =
+					dump_.edges[dump_.nodes[temporary].first_edge].child;
+				if (dump_.nodes[recipe].kind == DUMP_CONSTRUCTOR_ACTION ||
+					dump_.nodes[recipe].kind == DUMP_BRACED_INIT_LIST ||
+					dump_.nodes[recipe].kind ==
+						DUMP_AGGREGATE_CONSTRUCTION_ACTION)
+					value.node = recipe;
+			}
+		}
 		if (class_return && dump_.nodes[value.node].kind ==
 			DUMP_BRACED_INIT_LIST && dump_.nodes[value.node].value_initialization)
 		{
@@ -686,6 +859,15 @@ void SemanticAnalyzer::AnalyzeReturnStatement(NodeId node, ScopeId scope,
 				value.node = BuildClassValueConstructorAction(
 					current_return_type_, source, true, false);
 			}
+			value.type = returned_object;
+			value.category = VALUE_PRVALUE;
+		}
+		else if (class_return &&
+			program_->types.RemoveTopCv(EffectiveType(value.type)) !=
+				returned_object)
+		{
+			value.node = BuildClassValueConstructorAction(
+				current_return_type_, value, true, false);
 			value.type = returned_object;
 			value.category = VALUE_PRVALUE;
 		}
@@ -751,13 +933,34 @@ ExpressionInfo SemanticAnalyzer::AnalyzeVariableInitializer(
 			}
 			else
 			{
-				const NodeId argument_list = FindChild(expression, "argument-list");
+				NodeId argument_list = FindChild(expression, "argument-list");
+				if (argument_list == kNoNode)
+					argument_list = FindChild(expression, "braced-init-list");
 				if (argument_list != kNoNode)
 					for (std::uint32_t argument = arena_->FirstEdge(argument_list);
 						argument != kNoEdge; argument = arena_->NextEdge(argument))
 						arguments.push_back(arena_->EdgeChild(argument));
 				initializer.node = BuildConstructorAction(
-					type, scope, arguments, false, false);
+					type, scope, arguments, false, argument_list != kNoNode &&
+					arena_->IsTag(argument_list, "braced-init-list"));
+			}
+		}
+		else if (expression != kNoNode &&
+			arena_->IsTag(expression, "cast-expression") &&
+			!program_->entities[class_entity].is_aggregate)
+		{
+			initializer = AnalyzeExpression(expression, scope, type);
+			if (dump_.nodes[initializer.node].kind == DUMP_TEMPORARY_OBJECT &&
+				dump_.nodes[initializer.node].first_edge != kNoDumpEdge &&
+				dump_.edges[dump_.nodes[initializer.node].first_edge].next ==
+					kNoDumpEdge)
+			{
+				const std::uint32_t recipe = dump_.edges[
+					dump_.nodes[initializer.node].first_edge].child;
+				if (dump_.nodes[recipe].kind == DUMP_CONSTRUCTOR_ACTION &&
+					dump_.nodes[recipe].operand_type ==
+						program_->types.RemoveTopCv(EffectiveType(type)))
+					initializer.node = recipe;
 			}
 		}
 		else if (expression != kNoNode &&
@@ -878,19 +1081,40 @@ void SemanticAnalyzer::AddMemberInitializationAction(BindingId member_id,
 					program_->entities[member_entity].identity_name);
 				if (callee == kNoNode || !arena_->IsTag(callee, "id-expression") ||
 					arena_->Payload(callee) != expected)
-					throw std::runtime_error(
-						"unsupported class default member initializer");
-				const NodeId list = FindChild(initializer, "argument-list");
-				if (list != kNoNode)
-					for (std::uint32_t edge = arena_->FirstEdge(list);
-						edge != kNoEdge; edge = arena_->NextEdge(edge))
-						arguments.push_back(arena_->EdgeChild(edge));
-				constructor_copy = false;
+				{
+					ExpressionInfo initialized = AnalyzeExpression(
+						initializer, scope, member.type);
+					if (program_->types.RemoveTopCv(
+						EffectiveType(initialized.type)) !=
+						program_->types.RemoveTopCv(EffectiveType(member.type)))
+						throw std::runtime_error(
+							"invalid class default member initializer");
+					if (initialized.category == VALUE_PRVALUE &&
+						dump_.nodes[initialized.node].kind == DUMP_CALL_EXPRESSION)
+					{
+						ValidateClassValueConstruction(member.type, initialized);
+						initialized = BuildDirectClassValueTransfer(
+							initialized, member.type);
+					}
+					value = initialized.node;
+				}
+				else
+				{
+					NodeId list = FindChild(initializer, "argument-list");
+					if (list == kNoNode)
+						list = FindChild(initializer, "braced-init-list");
+					if (list != kNoNode)
+						for (std::uint32_t edge = arena_->FirstEdge(list);
+							edge != kNoEdge; edge = arena_->NextEdge(edge))
+							arguments.push_back(arena_->EdgeChild(edge));
+					constructor_copy = false;
+				}
 			}
 			else if (initializer != kNoNode)
 				arguments.push_back(initializer);
-			value = BuildConstructorAction(member.type, scope, arguments,
-				constructor_copy, constructor_list);
+			if (value == kNoDumpEdge)
+				value = BuildConstructorAction(member.type, scope, arguments,
+					constructor_copy, constructor_list);
 			if (initializer != kNoNode &&
 				arena_->IsTag(initializer, "paren-argument-list") &&
 				arguments.empty() && dump_.nodes[value].binding != kNoBinding &&

@@ -24,6 +24,24 @@ template <class Derived>
 class LifetimeActionLowering
 {
 protected:
+	LifetimeActionLowering() : direct_return_slot_(kNoLowId) {}
+
+	void ResetLifetimeFunctionState()
+	{
+		direct_return_slot_ = kNoLowId;
+	}
+
+	SlotId EnsureDirectReturnSlot(std::uint32_t node)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (direct_return_slot_ == kNoLowId)
+			direct_return_slot_ = derived.EnsureGeneratedSlot(
+				node, "retobj", derived.current_result_);
+		else if (derived.generated_slots_[node] == kNoLowId)
+			derived.generated_slots_[node] = direct_return_slot_;
+		return direct_return_slot_;
+	}
+
 	void LowerReturn(const NodeChildren& children)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
@@ -72,8 +90,7 @@ protected:
 				}
 				else if (derived.current_result_.kind == LOW_OBJECT)
 				{
-					const Operand slot(derived.EnsureGeneratedSlot(
-						children[0], "retobj", derived.current_result_),
+					const Operand slot(EnsureDirectReturnSlot(children[0]),
 						derived.current_result_);
 					derived.LowerRuntimeObjectValue(
 						derived.arena_.nodes[children[0]].type,
@@ -96,8 +113,7 @@ protected:
 				}
 				else if (derived.current_result_.kind == LOW_OBJECT)
 				{
-					const Operand slot(derived.EnsureGeneratedSlot(
-						children[0], "retobj", derived.current_result_),
+					const Operand slot(EnsureDirectReturnSlot(children[0]),
 						derived.current_result_);
 					derived.LowerClassConditionalResult(children[0],
 						derived.AddressOfStorage(slot));
@@ -120,8 +136,7 @@ protected:
 						"class-value return has a non-object boundary");
 				else
 				{
-					const Operand slot(derived.EnsureGeneratedSlot(
-						children[0], "retobj", derived.current_result_),
+					const Operand slot(EnsureDirectReturnSlot(children[0]),
 						derived.current_result_);
 					derived.LowerClassValueTransfer(children[0],
 						derived.AddressOfStorage(slot));
@@ -140,8 +155,7 @@ protected:
 				}
 				else if (derived.current_result_.kind == LOW_OBJECT)
 				{
-					const Operand slot(derived.EnsureGeneratedSlot(
-						children[0], "retobj", derived.current_result_),
+					const Operand slot(EnsureDirectReturnSlot(children[0]),
 						derived.current_result_);
 					derived.LowerConstructorAction(children[0],
 						derived.AddressOfStorage(slot));
@@ -378,6 +392,7 @@ protected:
 		derived.SelectBlock(end);
 	}
 
+	SlotId direct_return_slot_;
 };
 
 }

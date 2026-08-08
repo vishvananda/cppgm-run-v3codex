@@ -290,6 +290,38 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		function_pointer_target ||
 		unqualified_target_record.kind == TYPE_MEMBER_POINTER ?
 		target : kNoType);
+	const std::string cast_kind = arena_->Payload(node);
+	TypeId constructed_target = target;
+	if (target_record.kind == TYPE_LVALUE_REFERENCE ||
+		target_record.kind == TYPE_RVALUE_REFERENCE)
+		constructed_target = target_record.child;
+	constructed_target = program_->types.RemoveTopCv(constructed_target);
+	const EntityId constructed_entity = EntityOf(constructed_target);
+	const bool constructor_cast = constructed_entity != kNoEntity &&
+		(program_->entities[constructed_entity].flavor == NAMED_STRUCT ||
+		 program_->entities[constructed_entity].flavor == NAMED_CLASS ||
+		 program_->entities[constructed_entity].flavor == NAMED_UNION) &&
+		(cast_kind.find("STATIC") != std::string::npos ||
+		 cast_kind.compare(0, 10, "OP_LPAREN:") == 0) &&
+		program_->types.RemoveTopCv(EffectiveType(operand.type)) !=
+			constructed_target;
+	if (constructor_cast)
+	{
+		ExpressionInfo initialized;
+		initialized.node = BuildClassValueConstructorAction(
+			constructed_target, operand, false, true);
+		initialized.type = constructed_target;
+		initialized.category = VALUE_PRVALUE;
+		initialized = MaterializeTemporary(initialized);
+		if (target_record.kind == TYPE_LVALUE_REFERENCE ||
+			target_record.kind == TYPE_RVALUE_REFERENCE)
+		{
+			initialized.type = target;
+			initialized.category = target_record.kind == TYPE_LVALUE_REFERENCE ?
+				VALUE_LVALUE : VALUE_XVALUE;
+		}
+		return initialized;
+	}
 	if (EntityOf(operand.type) != kNoEntity &&
 		ConvertingFunction(operand, target, true).rank != CONVERSION_INVALID)
 		return ApplyExplicitConversion(operand, target);
@@ -302,7 +334,6 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 	const ValueCategory category = target_record.kind == TYPE_LVALUE_REFERENCE ?
 		VALUE_LVALUE : target_record.kind == TYPE_RVALUE_REFERENCE ?
 		VALUE_XVALUE : VALUE_PRVALUE;
-	const std::string cast_kind = arena_->Payload(node);
 	if (target_record.kind == TYPE_LVALUE_REFERENCE ||
 		target_record.kind == TYPE_RVALUE_REFERENCE)
 	{

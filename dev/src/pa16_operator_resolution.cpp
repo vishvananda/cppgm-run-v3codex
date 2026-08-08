@@ -794,9 +794,10 @@ ExpressionInfo SemanticAnalyzer::BuildConvertingArgument(
 			constructor.parameters[i].default_argument == kNoNode)
 			throw std::logic_error(
 				"converting constructor lacks a default argument");
-		const ExpressionInfo value = AnalyzeExpression(
+		ExpressionInfo value = AnalyzeExpression(
 			constructor.parameters[i].default_argument,
 			constructor.parameters[i].default_scope, parameters[i]);
+		value = ApplyCallArgument(value, parameters[i]);
 		dump_.Add(action, value.node);
 	}
 	DemandFunction(constructor_binding);
@@ -836,7 +837,15 @@ ExpressionInfo SemanticAnalyzer::ApplyCallArgument(
 				&object_conversion, 0);
 			converted_by_function = true;
 		}
-		else return BuildConvertingArgument(value, target, resolved);
+		else
+		{
+			value = BuildConvertingArgument(value, target, resolved);
+			const TypeRecord converted_target = program_->types.Get(target);
+			if (converted_target.kind != TYPE_LVALUE_REFERENCE &&
+				converted_target.kind != TYPE_RVALUE_REFERENCE)
+				dump_.nodes[value.node].class_argument_staging = true;
+			return value;
+		}
 	}
 	const TypeRecord target_top = program_->types.Get(target);
 	const TypeId target_object = program_->types.RemoveTopCv(target);
@@ -925,7 +934,11 @@ ExpressionInfo SemanticAnalyzer::ApplyCallArgument(
 		materialized_class &&
 		dump_.nodes[value.node].kind != DUMP_TEMPORARY_OBJECT &&
 		(dump_.nodes[value.node].kind == DUMP_CALL_EXPRESSION ||
-		 dump_.nodes[value.node].kind == DUMP_CONDITIONAL_EXPRESSION))
+		 dump_.nodes[value.node].kind == DUMP_CONDITIONAL_EXPRESSION ||
+		 dump_.nodes[value.node].kind == DUMP_CONSTRUCTOR_ACTION ||
+		 dump_.nodes[value.node].kind == DUMP_BRACED_INIT_LIST ||
+		 dump_.nodes[value.node].kind == DUMP_AGGREGATE_CONSTRUCTION_ACTION ||
+		 dump_.nodes[value.node].kind == DUMP_CLASS_VALUE_TRANSFER))
 		value = MaterializeTemporary(value);
 	if ((target_top.kind == TYPE_LVALUE_REFERENCE ||
 		target_top.kind == TYPE_RVALUE_REFERENCE) &&

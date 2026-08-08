@@ -154,6 +154,9 @@ protected:
 			else if (derived.arena_.nodes[children[0]].kind == DUMP_BRACED_INIT_LIST)
 				derived.LowerAggregateActions(children[0], destination, path,
 					destination);
+			else if (derived.arena_.nodes[children[0]].kind ==
+				DUMP_AGGREGATE_CONSTRUCTION_ACTION)
+				derived.LowerAggregateConstructionAction(children[0], destination);
 			else if (derived.arena_.nodes[children[0]].kind == DUMP_CALL_EXPRESSION)
 			{
 				const DumpNode& call = derived.arena_.nodes[children[0]];
