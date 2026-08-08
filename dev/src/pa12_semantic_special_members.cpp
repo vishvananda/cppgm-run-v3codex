@@ -139,6 +139,19 @@ void SemanticAnalyzer::ConfigureAssignmentSpecialMember(BindingId binding,
 	if (defaulted && entity != kNoEntity &&
 		program_->entities[entity].layout_complete)
 	{
+		if (!defaulted_inline)
+		{
+			const TypeRecord& function_type =
+				program_->types.Get(function.type);
+			const TypeRecord& result_type =
+				program_->types.Get(function_type.child);
+			if (function.parameters.size() != 1 ||
+				function.parameters[0].default_argument != kNoNode ||
+				result_type.kind != TYPE_LVALUE_REFERENCE ||
+				result_type.child != program_->entities[entity].type)
+				throw std::runtime_error(
+					"explicitly defaulted assignment has the wrong type");
+		}
 		bool implicitly_deleted = false;
 		bool trivial = false;
 		bool nonthrowing = false;
@@ -148,6 +161,9 @@ void SemanticAnalyzer::ConfigureAssignmentSpecialMember(BindingId binding,
 		function.trivial_special_member = trivial;
 		declaration.nonthrowing = nonthrowing;
 		function.deferred = !implicitly_deleted;
+		if (!defaulted_inline && implicitly_deleted)
+			throw std::runtime_error(
+				"out-of-class defaulted assignment is deleted");
 	}
 }
 

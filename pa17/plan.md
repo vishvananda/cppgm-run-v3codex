@@ -19,13 +19,18 @@ wider sequences intern one linked suffix per constructed temporary, and flat
 maps clear only occupied slots. This follows `spec.md` sections 2, 3, 4, 6, 8,
 and 9: monotonic demand, O(1)-average fact access, O(candidate count) selection,
 O(subobject count) synthesis, and analysis, lowering, storage, and output
-proportional to owned obligations and emitted IR.
+proportional to owned obligations and emitted IR. Qualified special-member
+definitions reuse the class declaration's canonical binding. Explicitly
+defaulted definitions validate their implicit signature and deleted state at
+that owner; defaulted destructor completion visits each canonical base/member
+destructor fact once. Delegation records one selected complete-constructor
+identity and lowers one typed action into the existing destination.
 
 ## Current Failure Map
 
-Audited result: **193/233**. The complete non-overlapping failure map contains
-40 tests; the original pass set, both audit regressions, and all earlier stages
-remain intact:
+Audited result: **199/239**. The complete non-overlapping failure map contains
+40 tests; the landed **193/233** pass set, six audit regressions, and all
+earlier stages remain intact:
 
 | Failures | Shared behavior | Primary owner |
 | ---: | --- | --- |
@@ -108,12 +113,17 @@ through PA16, audit, and 32/64/128 mixed-subobject scaling.
   fixed 2,990 typed bytes and 262 output bytes. Required list facts and storage
   scale proportionally, while the retained destination recipe stays fixed.
 - Same-arity delegating chains at 32/64/128 links recorded exactly 32/64/128
-  typed delegation actions, 65/129/257 demand pushes, 293/581/1,157
-  instructions, and 129,191/256,807/512,039 typed bytes. Five-run semantic
-  medians were 3.056/8.727/29.650 ms. Required all-candidate work was
-  6,467/25,219/99,587 visits and 9,313/37,057/147,841 conversions (roughly 4x
+  typed delegation actions, 66/130/258 demand pushes, 296/584/1,160
+  instructions, and 130,531/258,787/515,504 typed bytes. Five-run semantic
+  medians were 3.073/8.948/29.744 ms. Required all-candidate work was
+  6,732/25,740/100,620 visits and 9,770/37,962/149,642 conversions (roughly 4x
   per doubling because every link has the full same-arity overload set), while
   actions, demand, IR, storage, and output remained linear with no retry loop.
+- Out-of-class defaulted destructors over 32/64/128 nontrivial members recorded
+  64/128/256 destructor actions across the complete/base ABI entries,
+  224/448/896 access checks, and 113,970/221,618/436,976 typed bytes. Five-run
+  semantic medians were 0.228/0.363/0.572 ms, confirming one bounded
+  subobject-fact traversal per completion/emission owner.
 
 ## Completed Checkpoints
 
@@ -133,4 +143,4 @@ through PA16, audit, and 32/64/128 mixed-subobject scaling.
 | Branch-local class values and full-expression cleanup | 160/231 -> 173/231 | Branch lifetime plus right-hand short-circuit construction-state probes pass; original pass set intact; through PA16 1,436/1,436; file audit and linear 16/32/64 cleanup probes pass |
 | Loop full-expression regions | 173/231 -> 174/231 | Direct/cast/comma/conditional discarded materialization; exact normal/unwind cleanup; focused 17/17; through PA16 1,436/1,436; file audit and linear nested/width probes pass |
 | Class direct-initialization recipes | 174/231 -> 186/231; audit 188/233 | Landed pass set gains 12 tests; scalar-list rank and narrowing regressions pass without changing the original set; through PA16 1,436/1,436; file audit and proportional list/candidate probes pass |
-| Typed constructor delegation and qualified default completion | 188/233 -> 193/233 | Positive delegation and out-of-class special members 5/5; cycle/mixed rejection 3/3; through PA16 1,436/1,436; audit and bounded 32/64/128 chain/candidate probes pass |
+| Typed constructor delegation and qualified default completion | 188/233 -> 193/233; audit 199/239 | Positive delegation/qualified definitions 5/5; cycle/mixed rejection 3/3; six defaulted-definition regressions; through PA16 1,436/1,436; file audit and proportional 32/64/128 probes pass |

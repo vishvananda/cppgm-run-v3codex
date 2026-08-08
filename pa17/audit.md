@@ -2,62 +2,66 @@
 
 ## Current Checkpoint Review
 
-**Checkpoint:** `12ac2a13` (`Implement PA17 class direct initialization`)
+**Checkpoint:** `f28a83f9` (`Implement PA17 constructor delegation`)
 
-**Result:** Pass after audit fixes. The landed increment is bounded to direct
-class construction through casts, braced/default arguments, member/base
-initializers, returns, and their existing temporary, reference, ABI, and return
-slot recipes. Delegating constructors and out-of-class special-member
-definitions remain the next checkpoint.
+**Result:** Pass after audit fixes. The landed increment is bounded to
+delegating constructors, out-of-class constructor/destructor definitions, and
+qualified default completion. Composite copy/move subobject transfer remains
+the next checkpoint.
 
-The ownership path is source initializer syntax -> one PA12 analysis of each
-list clause -> canonical `TypeId` list-conversion facts and selected
-`BindingId` plus `CallConversionFact` records -> typed constructor, temporary,
-lifetime, and return actions -> PA15-PA17 destination storage and ABI result
-slots -> typed LowIR. Lowering consumes those identities directly; it does not
-repeat lookup, reconstruct conversion facts from names, or use a text round
+The ownership path is source special-member syntax -> the class declaration's
+canonical `BindingId` and completed `FunctionInfo` -> selected constructor and
+conversion facts -> one normalized complete-constructor delegation edge and
+typed delegation action -> demand-keyed complete/base ABI entries -> the
+existing `%this` destination -> typed LowIR. Default completion uses canonical
+member/layout/destructor identities at the same declaration owner. Lowering
+does no lookup, signature rendering, semantic reconstruction, or text round
 trip.
 
 Audit findings are closed:
 
-1. The landed braced-list viability check ranked each candidate as though its
-   own parameter type were the source. Consequently `X({1})` was ambiguous for
-   `X(int)` and `X(double)`, and shape-only acceptance omitted narrowing.
-   PA12 now computes the actual recursive list-initialization sequence,
-   including scalar rank, aggregate/class conversion, explicit copy-list
-   rejection, and arithmetic narrowing. Focused rank and narrowing regressions
-   cover both sides of the defect.
-2. Candidate checking could reanalyze list clauses and rerun nested constructor
-   selection; expected nested rejection also escaped through exceptions. A
-   constructor-operation context now owns flat `(NodeId, TypeId)` conversion
-   tables, separate direct/copy selection tables, explicit in-progress state,
-   and the selected conversion facts. Clauses are prepared once, nested
-   rejection returns `kNoBinding`, and the common one/two-conversion selection
-   record stays inline.
-3. Moving constructor selection and action construction into the dedicated
-   list-initialization source keeps the existing source files within the audit
-   limit. The new source is registered in the per-tool source set and carries
-   no test, reference-binary, host-compiler, subprocess, or timeout shortcut.
+1. A qualified `= default` definition could be accepted when it was not a
+   valid special-member signature or when completion made it deleted. The
+   deleted fact disabled demand, so an unused ill-formed constructor or
+   assignment escaped; defaulted union destructors also skipped member
+   destruction and escaped. Qualified constructor/assignment definitions now
+   validate the implicit signature and reject a deleted completion
+   immediately. Defaulted destructor completion visits canonical base/member
+   destructor facts once and records deletion, destructibility, and the
+   conservative nonthrowing fact. Six focused regressions cover wrong
+   signatures and deleted default constructor, move constructor, move
+   assignment, and union-destructor definitions.
+2. Delegation normalizes complete/base ABI identities before recording one
+   selected edge, rejects mixed initializers and direct/indirect cycles, and
+   lowers the retained typed action into existing storage. The graph walk is
+   bounded by the indexed constructor set, demand states suppress duplicate
+   emission, and no retry, global invalidation, or fallback path is present.
+3. The dedicated PA17 completion source remains registered in the compiler
+   source set and below the file-audit limit. The changed path contains no
+   test-name, reference-binary, host-compiler, subprocess, timeout, or cached
+   output shortcut.
 
-Representative 32/64/128-candidate braced-list probes recorded
-236/460/908 candidate visits, 240/464/912 conversion checks, 1 cache hit and
-36/68/132 cache misses, and 261,656/519,736/1,035,952 peak semantic bytes.
-Five-run semantic medians were 1.115/2.065/4.029 ms; lowering medians were
-0.105/0.105/0.134 ms with fixed 2,990 typed bytes and 262 output bytes. Work
-and semantic storage are proportional to the required candidate/list facts,
-while the retained destination recipe is fixed. A side-effecting list-clause
-probe contains exactly one LowIR call to its source function.
+Representative 32/64/128-link delegation probes recorded 32/64/128 actions,
+66/130/258 demand pushes, 296/584/1,160 instructions, and
+130,531/258,787/515,504 typed bytes. Five-run semantic medians were
+3.073/8.948/29.744 ms. Candidate visits (6,732/25,740/100,620) and conversions
+(9,770/37,962/149,642) grow roughly fourfold because each same-arity link must
+inspect the full overload set; actions, demand, IR, storage, and output remain
+linear. Defaulted-destructor probes at 32/64/128 nontrivial members recorded
+64/128/256 complete/base actions, 224/448/896 access checks, and semantic
+medians of 0.228/0.363/0.572 ms, with proportional storage.
 
 Validation:
 
 - `make test-report ACTIVE_TEST_REPORT_PAS='pa17'`: expected incomplete-stage
-  failure, 188/233. The original 186/231 checkpoint pass set is unchanged and
-  both audit regressions pass; the same 45 residual PA17 tests fail.
+  failure, 199/239. The landed 193/233 pass set and all six audit regressions
+  pass; the same 40 residual PA17 tests fail.
 - Required through-stage command: PA1-PA16 pass 1,436/1,436.
 - `perl scripts/cppgm_file_audit.pl --stage pa17 --paths dev/src`: pass with
   the same ten header-division warnings and no fatal issue.
-- Source and ownership audit finds compact canonical keys, bounded local
-  caches, recorded selected conversions, and no semantic or textual fallback.
+- Focused landed and audit coverage passes 15/15; source/ownership audit finds
+  canonical compact keys, typed demand/action facts, and no semantic or textual
+  fallback.
 
 ## Checkpoint Audit Ledger
 
@@ -67,3 +71,4 @@ Validation:
 | Branch-local class values and full-expression cleanup | Pass after audit fixes | Typed construction state on normal/unwind exits; exact flat and linked cleanup reuse; 173/231 baseline intact; linear probes and required gates pass |
 | Loop full-expression regions | Pass after audit fixes | Typed discarded materialization; bounded-inline and linked-suffix cleanup; 174/231 baseline, linear probes, and required gates pass |
 | Class direct-initialization recipes | Pass after audit fixes | Canonical list conversions and selected constructor are reused; original pass set, audit regressions, proportional probes, and required gates pass |
+| Typed constructor delegation and qualified default completion | Pass after audit fixes | Canonical declaration/complete-constructor identities and typed action reuse; invalid/deleted defaults rejected; 193/233 baseline, six regressions, proportional probes, and required gates pass |

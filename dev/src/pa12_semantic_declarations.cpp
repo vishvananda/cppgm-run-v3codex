@@ -1400,27 +1400,20 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node, ScopeId scope
 			info.defaulted_special_member || defaulted;
 		info.deleted_special_member =
 			info.deleted_special_member || deleted;
-		if (defaulted && info.special_member != SPECIAL_MEMBER_NONE)
-		{
-			bool implicitly_deleted = false;
-			bool trivial = false;
-			bool nonthrowing = false;
-			EvaluateSynthesizedConstructor(entity, info.special_member,
-				&implicitly_deleted, &trivial, &nonthrowing);
-			info.deleted_constructor = implicitly_deleted;
-			info.deleted_special_member = implicitly_deleted;
-			info.trivial_special_member = false;
-			info.synthesized_storage_copy = trivial;
-			program_->bindings[special].nonthrowing = nonthrowing;
-		}
-		else if (defaulted)
-			CompleteDefaultedDefaultConstructor(entity, special);
+		if (defaulted)
+			CompleteOutOfClassDefaultedConstructor(entity, special);
 	}
 	else
 	{
 		info.defaulted_destructor = info.defaulted_destructor || defaulted;
 		info.deleted_destructor = info.deleted_destructor || deleted;
-		if (defaulted) program_->bindings[special].nonthrowing = true;
+		if (defaulted)
+		{
+			CompleteDefaultedDestructor(entity, special);
+			if (info.deleted_destructor)
+				throw std::runtime_error(
+					"out-of-class defaulted destructor is deleted");
+		}
 	}
 	info.deferred = !(constructor_definition ? info.deleted_constructor :
 		info.deleted_destructor);

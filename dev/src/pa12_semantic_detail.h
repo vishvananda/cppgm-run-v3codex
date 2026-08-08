@@ -310,8 +310,11 @@ private:
 	void AnalyzeConversionFunction(NodeId node, ScopeId scope,
 		TypeId owner_type, AccessKind access);
 	void AnalyzeOutOfClassSpecialMember(NodeId node, ScopeId scope);
+	void CompleteOutOfClassDefaultedConstructor(EntityId entity,
+		BindingId constructor);
 	void CompleteDefaultedDefaultConstructor(EntityId entity,
 		BindingId constructor);
+	void CompleteDefaultedDestructor(EntityId entity, BindingId destructor);
 	void RegisterClassSpecialMember(BindingId binding);
 	void ConfigureAssignmentSpecialMember(BindingId binding,
 		NodeId initializer, bool defaulted_inline = true);
