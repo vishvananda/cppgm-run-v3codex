@@ -2379,6 +2379,10 @@ void SemanticAnalyzer::EnsureStaticMemberStorage(BindingId member)
 	if (binding.kind != BIND_VARIABLE ||
 		binding.member_owner == kNoEntity || binding.non_static_data_member)
 		return;
+	// An in-class integral constant does not require storage until an
+	// out-of-class definition supplies it. Pure constant-expression uses keep
+	// the canonical member fact and must not manufacture an undefined global.
+	if (binding.constant) return;
 	if (static_member_storage_by_binding_.size() <= member)
 		static_member_storage_by_binding_.resize(
 			static_cast<std::size_t>(member) + 1, kNoDumpEdge);

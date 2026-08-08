@@ -385,6 +385,7 @@ public:
 		TypeId type, bool constant = false, std::int64_t value = 0,
 		NamedFlavor display = NAMED_NONE, NameId display_type_name = 0,
 		BindingId canonical = kNoBinding, bool merge_redeclaration = true);
+	bool IsStaticDataMember(BindingId binding) const;
 	BindingId AddOutputTypeBinding(ScopeId owner, NameId display_name,
 		TypeId type, NamedFlavor display);
 	void SetTypeName(ScopeId owner, NameId name, TypeId type);

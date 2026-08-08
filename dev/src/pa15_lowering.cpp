@@ -1285,7 +1285,9 @@ private:
 		}
 		else if (record.kind == DUMP_ID_EXPRESSION)
 		{
-			if (record.binding != kNoBinding && record.binding < function_symbols_.size() &&
+			if (record.constant && program_.IsStaticDataMember(record.binding))
+				result = Operand(record.constant_value, LowerExpressionType(record.type));
+			else if (record.binding != kNoBinding && record.binding < function_symbols_.size() &&
 				function_symbols_[record.binding] != kNoLowId)
 			{
 				result = DecayAddress(AddressOfStorage(Operand(Operand::FUNCTION,

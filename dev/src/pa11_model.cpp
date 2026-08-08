@@ -1319,6 +1319,14 @@ BindingId Program::AddBinding(ScopeId owner, BindingKind kind, NameId name,
 	return binding;
 }
 
+bool Program::IsStaticDataMember(BindingId binding) const
+{
+	if (binding == kNoBinding || binding >= bindings.size()) return false;
+	const BindingRecord& record = bindings[bindings[binding].canonical];
+	return record.kind == BIND_VARIABLE && record.member_owner != kNoEntity &&
+		!record.non_static_data_member;
+}
+
 BindingId Program::AddOutputTypeBinding(ScopeId owner, NameId display_name,
 	TypeId type, NamedFlavor display)
 {
