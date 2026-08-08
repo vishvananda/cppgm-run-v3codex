@@ -2,37 +2,37 @@
 
 ## Current Checkpoint Review
 
-Checkpoint `e10d5439` landed declaration-owned local and qualified type replay.
-It raised PA19 from a reproduced parent result of 266/298 to 272/298 while the
-PA1-PA18 baseline remained 1,713/1,713. This audit is bounded to that increment
-and its parser-to-specialization ownership path.
+Checkpoint `28035796` landed scalar/control conversion replay and raised PA19
+from a reproduced parent result of 280/298 to 288/298 while PA1-PA18 remained
+1,713/1,713. The eight-case gain is valid, but its binary-immediate policy used
+whether the translation unit's shared template-argument pool was empty. An
+unrelated demanded specialization could therefore change an ordinary
+function's LowIR. That was an incomplete semantic key and violated `spec.md`
+sections 2, 4-6, and 9 as well as PA19's monotonic-extension rule. Pointer
+value-initialization was also recognized only in call-argument lowering, even
+though the semantic fact belongs to the literal and applies in every context.
 
-The six newly passing cases were valid, but the function-pointer case decoded
-`F (*)()` from a rendered template-argument string in semantic analysis. The
-nested-constructor path likewise recovered the current class's unqualified name
-by scanning a rendered qualified name. Both violated `spec.md` sections 1-4 and
-9: parsed structure and compact identity must survive to their consumers, and
-semantic work must not round-trip through text.
+The repaired ownership path is retained expression -> PA12 typed literal,
+selected operand type, constant, and template-layout provenance -> one shared
+semantic `DumpNode` -> PA15 typed operand/conversion/branch construction.
+Signedness-changing immediate materialization now depends only on the local
+source and selected target types plus parent-local constant/layout facts; it no
+longer reads a translation-unit template registry. Template-layout provenance
+is propagated with semantic graph edges, so an ordinary layout constant
+keeps its established PA18 form while a demanded specialization layout retains
+its selected conversion. Pointer value-initialization now becomes a typed null
+operand in generic literal lowering, covering calls, initialization, and
+returns. Direct constant branches continue to consume the PA12 constant fact
+without lookup or expression replay.
 
-The repaired path is token interning -> scoped PA10 name facts and cached angle
-matching -> one retained `type-id` per supported explicit type argument plus
-interned qualified-name components -> ordinary `BuildTypeId` canonicalization
--> indexed class-template lookup -> the existing canonical specialization
-cache -> ordinary completion and lowering. Current-class tracking now compares
-the terminal interned identifier directly. PA11 adopts the parser's interned ID
-without rehashing its spelling. The retained structure is semantic-only at the
-PA10 serialization boundary, preserving the earlier public syntax contract.
-The semantic function-pointer text decoder added by the checkpoint is removed,
-so `F (*)()` reaches specialization solely through the retained declarator
-tree. Shape-first ambiguous-call recovery was adjusted to accept the new
-structured child without adding speculative lookup, and inherited-constructor
-helpers were moved to their existing special-member owner to preserve the
-file-audit boundary.
-
-A bounded changed-source scan found no reference/host invocation, filename or
-test branch, cached output, full-program retry, or new unindexed semantic scan.
-The remaining textual template resolver predates this checkpoint and is not on
-the repaired explicit-type-argument path.
+Two audit controls prove both repaired boundaries: demanding an unrelated
+function specialization leaves ordinary `sizeof(holder) - 1` unchanged, and a
+pointer value-initialization lowers as `nullptr` in both return and local
+initialization contexts. The original eight passing cases remain passing. A
+bounded changed-source scan found no host/reference invocation, filename or
+test branch, cached output, textual semantic reconstruction, full-program
+retry, new unindexed lookup, or per-use allocation. Work is O(replayed semantic
+nodes plus emitted typed nodes).
 
 ## Durable Architecture Decisions
 
@@ -64,30 +64,27 @@ the repaired explicit-type-argument path.
 - Structured template-name resolution adopts existing interned IDs and feeds
   argument trees through `BuildTypeId` and the canonical specialization cache;
   unresolved argument types cannot enter that cache.
+- Scalar immediate conversion policy is owned by local typed source/target,
+  constant-expression, and template-layout facts; translation-unit template
+  registries are not conversion keys.
+- Pointer value-initialization is literal-owned provenance. Typed lowering
+  constructs one null-pointer operand from that fact in every use context.
 
 ## Performance Evidence
 
-For 128/256/512 paired loop-local relational and qualified `api::item<int>`
-uses, token counts were 3,911/7,751/15,431 and syntax nodes were
-4,942/9,806/19,534. Template scans were 128/256/512 at exactly two tokens each,
-with no failed scans; parser storage was 33,640/66,664/132,712 bytes and median
-parse time was 1.176/2.336/4.716 ms. Retaining argument trees therefore remains
-linear in source size while cached angle recognition stays bounded per use.
-
-For 128/256/512 repeated `result_traits<F, F (*)()>::type` uses, specialization
-requests were 128/256/512 with 127/255/511 cache hits, while canonical types
-stayed at 36, class layouts at two, layout member visits at one, and lookup
-misses at three. Semantic nodes were 133/261/517, storage was
-125,486/236,974/464,046 bytes, and median semantic time was
-1.246/2.329/4.531 ms. This demonstrates one canonical specialization and
-completion with linear work only for the repeated source uses.
+For 128/256/512 repeated mixed replay operations (`sizeof(T) - 1`, a direct
+constant branch, and pointer value-initialization), semantic nodes were
+2,069/4,117/8,213, lowered nodes 1,421/2,829/5,645, conversion checks
+1,288/2,568/5,128, and peak semantic storage
+1,165,394/2,318,866/4,625,810 bytes. Five-run median semantic-plus-lowering
+times were 6.515/12.769/25.157 ms. Work, storage, and time follow the doubled
+input/output; the audit fix adds no registry scan or repeated semantic work.
 
 ## Validation
 
-- PA19: 272/298; the 272/298 turn-start baseline and exact 26-test residual set
-  are intact.
-- Ten focused declaration-owned replay and ambiguity cases pass, including
-  the structural function-pointer and nested-constructor paths.
+- PA19: 290/300 including two audit controls; the original 288/298 pass set and
+  exact ten-test residual set are intact.
+- The eight landed scalar/control cases and both audit controls pass.
 - PA1-PA18: 1,713/1,713.
 - PA19 file audit: pass with the 11 pre-existing advisory header warnings.
 
@@ -98,3 +95,4 @@ completion with linear work only for the repeated source uses.
 | Explicit class-instantiation completion and member demand (`5ca3aed9`) | Pass after audit fix | Canonical entity arguments, structured ABI identity, weak/root propagation and parser support, N3485 legality controls, linear member-demand probe, prior baseline retained |
 | Canonical enum builtin competition and class default arguments (`6c1a56be`) | Pass after audit fix | Exact enum-parameter index, comma fallback, typed conversion/constructor facts, two regressions, constant unrelated-candidate work, linear required work, prior baseline retained |
 | Declaration-owned local and qualified type replay (`e10d5439`) | Pass after audit fix | Retained type-argument trees, interned component/class identity, canonical specialization path, bounded parser scans, one-completion function-pointer probe, 272/298 PA19 and prior baseline retained |
+| Selected scalar/control replay (`28035796`) | Pass after audit fix | Local conversion/layout keys, literal-owned null provenance, two audit controls, linear mixed replay, original 288/298 pass set and prior baseline retained |

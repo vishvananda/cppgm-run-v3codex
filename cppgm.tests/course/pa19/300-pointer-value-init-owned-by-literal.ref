@@ -1,0 +1,28 @@
+function @make_pointer() -> ptr [binding=strong, object=_Z12make_pointerv] {
+  block ^entry:
+    return ptr nullptr
+}
+
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $value : ptr
+  slot $cond__1 : i32
+
+  block ^entry:
+    store ptr nullptr, $value
+    %t1 = call ptr @make_pointer()
+    %t2 = load ptr $value
+    %t3 = cmp eq ptr %t1, %t2
+    branch %t3, ^cond_then_1, ^cond_else_2
+
+  block ^cond_then_1:
+    store i32 0, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_else_2:
+    store i32 1, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_end_3:
+    %t4 = load i32 $cond__1
+    return i32 %t4
+}

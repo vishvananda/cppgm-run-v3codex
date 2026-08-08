@@ -1272,7 +1272,10 @@ private:
 		else if (record.kind == DUMP_LITERAL)
 		{
 			const LowType type = LowerType(record.type);
-			if (expected.kind == LOW_PTR &&
+			if (type.kind == LOW_PTR && record.constant &&
+				record.constant_value == 0 && record.value_initialization)
+				result = Operand::NullPointer(type);
+			else if (expected.kind == LOW_PTR &&
 				source_types_.IsNullptr(record.type))
 			{
 				result = Temp(expected);
@@ -1458,12 +1461,14 @@ private:
 			left.kind == Operand::INTEGER && left.integer_value == 0)
 			left.type = operand_type;
 		else left = Convert(left, operand_type, CanonicalizeBinaryImmediate(
-			children[0], operand_type, canonicalize_immediates, comparison));
+			children[0], operand_type, canonicalize_immediates, comparison,
+			record.constant, record.template_layout_constant));
 		if (comparison && operand_type.kind == LOW_PTR &&
 			right.kind == Operand::INTEGER && right.integer_value == 0)
 			right.type = operand_type;
 		else right = Convert(right, operand_type, CanonicalizeBinaryImmediate(
-			children[1], operand_type, canonicalize_immediates, comparison));
+			children[1], operand_type, canonicalize_immediates, comparison,
+			record.constant, record.template_layout_constant));
 		const LowType result_type = LowerType(record.type);
 		const Operand result = Temp(result_type);
 		Instruction instruction(comparison ? Instruction::CMP : Instruction::BINARY);
@@ -1778,9 +1783,7 @@ private:
 					else if (IsInteger(expected) && expected.width < 32)
 						expected = LowI32();
 				}
-				if (IsTypedNullPointerLiteral(children[i], expected))
-					arguments.Push(Operand::NullPointer(expected));
-				else arguments.Push(LowerConvertedValue(children[i], expected,
+				arguments.Push(LowerConvertedValue(children[i], expected,
 					CanonicalizeImmediateConversion(children[i]) ||
 					CanonicalizeOperatorLiteral(children[i], callee)));
 			}

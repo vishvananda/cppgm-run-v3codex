@@ -1784,6 +1784,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 	ExpressionInfo result;
 	result.type = program_->types.Fundamental(FUND_UNSIGNED_LONG_INT);
 	result.node = MakeDump(DUMP_SIZEOF_EXPRESSION, result.type, VALUE_PRVALUE);
+	dump_.nodes[result.node].template_layout_constant =
+		IsClassTemplateSpecializationContext(EntityOf(measured));
 	result.constant = true;
 	result.value = static_cast<std::int64_t>(value);
 	RecordExpressionFacts(result);

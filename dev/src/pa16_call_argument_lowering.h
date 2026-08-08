@@ -84,7 +84,8 @@ protected:
 	}
 
 	bool CanonicalizeBinaryImmediate(std::uint32_t node,
-		const LowType& target, bool selected, bool comparison) const
+		const LowType& target, bool selected, bool comparison,
+		bool constant_expression, bool template_layout_constant) const
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
 		const DumpNode& source_node = derived.arena_.nodes[node];
@@ -98,8 +99,8 @@ protected:
 		if (source_record.kind == TYPE_FUNDAMENTAL &&
 			source_record.fundamental == FUND_BOOL) return true;
 		if (source.is_signed != target.is_signed)
-			return !comparison &&
-				derived.program_.template_arguments.empty();
+			return !comparison && constant_expression &&
+				!template_layout_constant;
 		return !comparison || source.is_signed || source.width >= target.width;
 	}
 
@@ -109,18 +110,6 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		return derived.LowerConvertedValue(node, target,
 			CanonicalizeInitializerImmediate(node, target));
-	}
-
-	bool IsTypedNullPointerLiteral(std::uint32_t node,
-		const LowType& target) const
-	{
-		const Derived& derived = static_cast<const Derived&>(*this);
-		const DumpNode& source = derived.arena_.nodes[node];
-		if (target.kind != LOW_PTR || source.kind != DUMP_LITERAL ||
-			!source.constant || source.constant_value != 0 ||
-			!source.value_initialization) return false;
-		const TypeId type = derived.program_.types.RemoveTopCv(source.type);
-		return derived.program_.types.Get(type).kind == TYPE_POINTER;
 	}
 
 	Operand LowerClassArgumentStaging(std::uint32_t node, TypeId target)

@@ -21,9 +21,13 @@ NameId, enum TypeId, operand)`; visibility and associated-scope edges choose
 index owners before exact candidates are ranked. Selected enum conversions and
 empty class-value constructors are semantic facts consumed by call staging and
 typed lowering. Scalar functional value-initialization retains provenance;
-typed lowering applies selected immediate-conversion and constant-control facts
-without lookup. Explicit-instantiation demand, weak ODR linkage, object roots,
-and structured ABI identity remain binding/entity-owned. This follows
+typed lowering applies selected immediate-conversion, template-layout, and
+constant-control facts without lookup. Immediate policy is keyed only by the
+local source/target and parent expression facts, never by a translation-unit
+template registry; pointer value-initialization is owned by generic literal
+lowering rather than a call-site exception. Explicit-instantiation demand,
+weak ODR linkage, object roots, and structured ABI identity remain
+binding/entity-owned. This follows
 `spec.md` sections 1-6 and 9: source regions are parsed once, hot identity/cache
 access is O(1) average, completion is monotonic, retained syntax is shared,
 unrelated candidates are not materialized, and lowering performs neither lookup
@@ -32,7 +36,8 @@ stages.
 
 ## Current Failure Map
 
-Selected scalar/control replay raises the combined PA19 result to 288/298.
+Selected scalar/control replay plus two audit controls raises the combined PA19
+result to 290/300 while preserving the original 288/298 pass set.
 The exact remaining 10-test set groups as follows:
 
 | Failures | Shared behavior | Owner |
@@ -63,7 +68,7 @@ PA19 report, PA1-PA18, file audit, and a demand-fanout scaling probe.
 | 128/256/512 structural `result_traits<F, F (*)()>::type` uses | Requests 128/256/512 with 127/255/511 hits; canonical types stay at 36, layouts at two, member visits at one, and lookup misses at three; semantic nodes 133/261/517, storage 125,486/236,974/464,046 bytes, and median semantic time 1.246/2.329/4.531 ms. |
 | 64/128/256 same-spelling function-local type specializations | Requests and demand pushes 64/128/256 with no duplicate completions; semantic nodes 837/1,669/3,333, typed storage 217,243/434,323/868,627 bytes, and semantic time 4.484/10.485/17.659 ms. |
 | 32/64/128 indexed member-template candidates | Candidate visits are exactly 32/64/128 with one viable overload and four conversions; specialization requests 35/67/131, peak semantic storage 336,615/659,683/1,305,887 bytes, and median semantic time 1.425/4.274/8.103 ms. |
-| 128/256/512 mixed scalar/control replay operations | Semantic nodes 2,069/4,117/8,213; lowered nodes 1,293/2,573/5,133; conversion checks 1,288/2,568/5,128; peak storage 1,165,394/2,318,866/4,625,810 bytes; median semantic-plus-lowering time 6.596/13.340/25.155 ms. |
+| 128/256/512 mixed scalar/control replay operations, audit rerun | Semantic nodes 2,069/4,117/8,213; lowered nodes 1,421/2,829/5,645; conversion checks 1,288/2,568/5,128; peak storage 1,165,394/2,318,866/4,625,810 bytes; five-run median semantic-plus-lowering time 6.515/12.769/25.157 ms. |
 
 ## Completed Checkpoints
 
@@ -91,4 +96,4 @@ PA19 report, PA1-PA18, file audit, and a demand-fanout scaling probe.
 | Declaration-owned local and qualified type replay | Pass after audit fix | Scoped parser facts, retained type-argument trees, interned qualified/current-class identity, canonical function-pointer specialization, contextual bool conversion, and alias-inherited constructors; PA19 266 to 272 across six cases, bounded parser scans, one-completion specialization probe, prior 1713/1713 |
 | Canonical local-type specialization and emission identity | Pass | Collision-free compact specialization scope keys, function-owned local type identity, typed emission keys and structured local-type ABI facts; PA19 272 to 274, two focused cases, linear specialization probe, prior 1713/1713, audit pass |
 | Canonical retained callable/member replay | Pass | Canonical `>>`/qualified `[]` ids, indexed member-template owner/access replay, adjusted parameter bindings, static callable lowering, deferred dependent results, forwarding-reference deduction and constrained tie-breaking; PA19 274 to 280, six focused cases, linear candidate probe, prior 1713/1713, audit pass |
-| Selected scalar/control replay | Pass | Value-initialized pointer provenance, signedness-aware immediate policy, bool promotions, narrowing casts, and direct constant branches consumed from typed semantic facts; PA19 280 to 288 across eight cases, linear mixed replay evidence, prior 1713/1713, audit pass |
+| Selected scalar/control replay | Pass after audit fix | Local source/target, constant, and template-layout conversion keys; literal-owned pointer null provenance; bool/narrowing and direct constant branches; PA19 280 to 288 plus two audit controls, linear mixed replay evidence, prior 1713/1713 |

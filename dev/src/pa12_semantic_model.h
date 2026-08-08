@@ -111,6 +111,7 @@ struct DumpNode
 	bool constant;
 	bool integer_narrowing_conversion;
 	bool enum_arithmetic_conversion;
+	bool template_layout_constant;
 	bool boolean_conversion;
 	bool user_conversion_call;
 	bool explicit_user_conversion_call;
@@ -146,7 +147,7 @@ struct DumpNode
 		  virtual_slot(kNoDumpEdge),
 		  storage_transfer_alignment(0),
 		  constant(false), integer_narrowing_conversion(false),
-		  enum_arithmetic_conversion(false),
+		  enum_arithmetic_conversion(false), template_layout_constant(false),
 		  boolean_conversion(false), user_conversion_call(false),
 		  explicit_user_conversion_call(false),
 		  allocation_may_return_null(false),
@@ -188,6 +189,8 @@ public:
 		const std::uint32_t edge = static_cast<std::uint32_t>(edges.size());
 		edges.push_back(DumpEdge(child));
 		DumpNode& owner = nodes[parent];
+		owner.template_layout_constant = owner.template_layout_constant ||
+			nodes[child].template_layout_constant;
 		if (owner.first_edge == kNoDumpEdge) owner.first_edge = edge;
 		else edges[owner.last_edge].next = edge;
 		owner.last_edge = edge;
