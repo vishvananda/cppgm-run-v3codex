@@ -856,7 +856,8 @@ ExpressionInfo SemanticAnalyzer::ApplyCallArgument(
 		(program_->entities[target_record.entity].flavor == NAMED_STRUCT ||
 		 program_->entities[target_record.entity].flavor == NAMED_CLASS ||
 		 program_->entities[target_record.entity].flavor == NAMED_UNION) &&
-		program_->types.RemoveTopCv(EffectiveType(value.type)) == target_object;
+		(program_->types.RemoveTopCv(EffectiveType(value.type)) == target_object ||
+		 resolved.rank == CONVERSION_DERIVED_TO_BASE);
 	if (!converted_by_function)
 		value = ApplyTarget(value, target, resolved.rank);
 	if (class_value)

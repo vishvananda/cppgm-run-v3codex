@@ -59,6 +59,10 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		const DumpNode& source = derived.arena_.nodes[node];
+		if (source.kind == DUMP_CAST_EXPRESSION &&
+			source.category == VALUE_PRVALUE &&
+			source.base_projection_count != 0)
+			return derived.LowerValue(node, LowPtr());
 		if (source.category == VALUE_LVALUE || source.category == VALUE_XVALUE ||
 			source.kind == DUMP_TEMPORARY_OBJECT)
 			return derived.AddressOfStorage(derived.LowerStorage(node));

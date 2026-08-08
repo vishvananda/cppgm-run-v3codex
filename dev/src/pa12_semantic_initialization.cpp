@@ -2477,8 +2477,7 @@ bool SemanticAnalyzer::IsElidableAutomaticDestructor(
 	const bool empty_definition = info.definition_body != kNoNode &&
 		FirstSemanticChild(info.definition_body) == kNoNode;
 	const bool elidable_definition = info.implicit_destructor ||
-		(!binding.inline_function &&
-			(empty_definition || info.defaulted_destructor));
+		empty_definition || info.defaulted_destructor;
 	if ((!union_object || !empty_definition) && !elidable_definition)
 		return false;
 	return IsEmptyDestructorChain(destructor);
@@ -2496,8 +2495,11 @@ void SemanticAnalyzer::AddLifetimeObligation(ScopeId scope,
 		throw std::logic_error("class has no destructor identity");
 	if (!CanAccessMember(destructor, entity))
 		throw std::runtime_error("inaccessible destructor");
+	const TypeKind object_kind = program_->types.Get(
+		program_->types.RemoveTopCv(type)).kind;
 	if (program_->entities[entity].trivial_destructor ||
-		IsElidableAutomaticDestructor(destructor)) return;
+		(object_kind != TYPE_ARRAY &&
+		 IsElidableAutomaticDestructor(destructor))) return;
 	if (scope_lifetimes_.size() <= scope)
 		scope_lifetimes_.resize(static_cast<std::size_t>(scope) + 1);
 	if (nearest_lifetime_scopes_.size() <= scope)

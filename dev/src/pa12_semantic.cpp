@@ -523,8 +523,14 @@ ConversionRank SemanticAnalyzer::Conversion(TypeId source,
 		if (QualificationConversion(EffectiveType(source), target_record.child))
 			return !lvalue_reference && category == VALUE_LVALUE ?
 				CONVERSION_INVALID : CONVERSION_EXACT;
-		if (lvalue_reference && category != VALUE_LVALUE &&
-			IsConst(target_record.child))
+		const EntityId source_entity = EntityOf(from);
+		const EntityId target_entity = EntityOf(to);
+		const bool reference_related =
+			SimilarUnqualified(EffectiveType(source), target_record.child) ||
+			(source_entity != kNoEntity && target_entity != kNoEntity &&
+			 BaseConversionAllowed(source_entity, target_entity));
+		if (!reference_related &&
+			(!lvalue_reference || IsConst(target_record.child)))
 		{
 			const ConversionRank temporary = Conversion(source, category,
 				integer_zero, target_record.child);
@@ -553,6 +559,11 @@ ConversionRank SemanticAnalyzer::Conversion(TypeId source,
 	TypeId from = Decay(source);
 	TypeId to = program_->types.RemoveTopCv(target);
 	if (from == to) return CONVERSION_EXACT;
+	const EntityId derived_object = EntityOf(from);
+	const EntityId base_object = EntityOf(to);
+	if (derived_object != kNoEntity && base_object != kNoEntity &&
+		BaseConversionAllowed(derived_object, base_object))
+		return CONVERSION_DERIVED_TO_BASE;
 	if (IsNullptr(to) && integer_zero) return CONVERSION_STANDARD;
 	if (IsPointer(to) && (IsNullptr(from) || integer_zero))
 		return CONVERSION_STANDARD;
@@ -675,14 +686,29 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 		value.constant = false;
 		++expression_count_;
 	}
+	const bool reference_target = target_record.kind == TYPE_LVALUE_REFERENCE ||
+		target_record.kind == TYPE_RVALUE_REFERENCE;
+	if (reference_target &&
+		!SimilarUnqualified(EffectiveType(value.type), target_record.child) &&
+		conversion != CONVERSION_DERIVED_TO_BASE)
+	{
+		const std::uint32_t cast = MakeDump(DUMP_CAST_EXPRESSION,
+			nonreference, VALUE_PRVALUE);
+		dump_.Add(cast, value.node);
+		value.node = cast;
+		value.type = nonreference;
+		value.category = VALUE_PRVALUE;
+		value.binding = kNoBinding;
+		value.constant = false;
+		++expression_count_;
+	}
 	if (value.integer_literal_zero &&
 		(IsPointer(nonreference) || IsNullptr(nonreference)))
 	{
 		value.type = program_->types.RemoveTopCv(nonreference);
 		dump_.nodes[value.node].type = value.type;
 	}
-	if ((target_record.kind == TYPE_LVALUE_REFERENCE ||
-		target_record.kind == TYPE_RVALUE_REFERENCE) &&
+	if (reference_target &&
 		program_->types.RemoveTopCv(EffectiveType(value.type)) !=
 			program_->types.RemoveTopCv(target_record.child) &&
 		IsArithmetic(value.type) && IsArithmetic(target_record.child))
@@ -958,46 +984,6 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 		return ApplyTarget(AnalyzeMember(node, scope), target);
 	throw std::runtime_error("unsupported PA12 expression: " + arena_->Tag(node));
 }
-bool SemanticAnalyzer::RefQualifierViable(const ExpressionInfo& object,
-	const TypeRecord& function_type) const
-{
-	if (function_type.ref_qualifier == FUNCTION_REF_NONE) return true;
-	if (function_type.ref_qualifier == FUNCTION_REF_RVALUE)
-		return object.category != VALUE_LVALUE;
-	if (object.category == VALUE_LVALUE) return true;
-	return (function_type.cv & CV_CONST) != 0 &&
-		(function_type.cv & CV_VOLATILE) == 0;
-}
-
-int SemanticAnalyzer::CompareImplicitObjectBindings(ValueCategory category,
-	const TypeRecord& left, const TypeRecord& right) const
-{
-	if (category != VALUE_LVALUE &&
-		left.ref_qualifier != right.ref_qualifier)
-	{
-		if (left.ref_qualifier == FUNCTION_REF_RVALUE) return 1;
-		if (right.ref_qualifier == FUNCTION_REF_RVALUE) return -1;
-	}
-	if (left.cv != right.cv && (left.cv & ~right.cv) == 0) return 1;
-	if (left.cv != right.cv && (right.cv & ~left.cv) == 0) return -1;
-	return 0;
-}
-
-int SemanticAnalyzer::CompareReferenceBindings(
-	const ExpressionInfo& argument, TypeId left, TypeId right) const
-{
-	if (argument.category == VALUE_LVALUE) return 0;
-	const TypeKind left_kind = program_->types.Get(left).kind;
-	const TypeKind right_kind = program_->types.Get(right).kind;
-	if (left_kind == TYPE_RVALUE_REFERENCE &&
-		right_kind == TYPE_LVALUE_REFERENCE)
-		return 1;
-	if (left_kind == TYPE_LVALUE_REFERENCE &&
-		right_kind == TYPE_RVALUE_REFERENCE)
-		return -1;
-	return 0;
-}
-
 BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 	const std::vector<NodeId>& argument_syntax,
 	const std::vector<ExpressionInfo>& arguments,

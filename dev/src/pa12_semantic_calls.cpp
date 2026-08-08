@@ -9,6 +9,57 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+bool SemanticAnalyzer::RefQualifierViable(const ExpressionInfo& object,
+	const TypeRecord& function_type) const
+{
+	if (function_type.ref_qualifier == FUNCTION_REF_NONE) return true;
+	if (function_type.ref_qualifier == FUNCTION_REF_RVALUE)
+		return object.category != VALUE_LVALUE;
+	if (object.category == VALUE_LVALUE) return true;
+	return (function_type.cv & CV_CONST) != 0 &&
+		(function_type.cv & CV_VOLATILE) == 0;
+}
+
+int SemanticAnalyzer::CompareImplicitObjectBindings(ValueCategory category,
+	const TypeRecord& left, const TypeRecord& right) const
+{
+	if (category != VALUE_LVALUE &&
+		left.ref_qualifier != right.ref_qualifier)
+	{
+		if (left.ref_qualifier == FUNCTION_REF_RVALUE) return 1;
+		if (right.ref_qualifier == FUNCTION_REF_RVALUE) return -1;
+	}
+	if (left.cv != right.cv && (left.cv & ~right.cv) == 0) return 1;
+	if (left.cv != right.cv && (right.cv & ~left.cv) == 0) return -1;
+	return 0;
+}
+
+int SemanticAnalyzer::CompareReferenceBindings(
+	const ExpressionInfo& argument, TypeId left, TypeId right) const
+{
+	const TypeKind left_kind = program_->types.Get(left).kind;
+	const TypeKind right_kind = program_->types.Get(right).kind;
+	if (argument.category == VALUE_LVALUE)
+	{
+		const TypeId source = EffectiveType(argument.type);
+		const TypeId left_target = left_kind == TYPE_LVALUE_REFERENCE ||
+			left_kind == TYPE_RVALUE_REFERENCE ?
+			program_->types.Get(left).child : left;
+		const TypeId right_target = right_kind == TYPE_LVALUE_REFERENCE ||
+			right_kind == TYPE_RVALUE_REFERENCE ?
+			program_->types.Get(right).child : right;
+		if (SimilarUnqualified(source, left_target) ||
+			SimilarUnqualified(source, right_target)) return 0;
+	}
+	if (left_kind == TYPE_RVALUE_REFERENCE &&
+		right_kind == TYPE_LVALUE_REFERENCE)
+		return 1;
+	if (left_kind == TYPE_LVALUE_REFERENCE &&
+		right_kind == TYPE_RVALUE_REFERENCE)
+		return -1;
+	return 0;
+}
+
 BindingId SemanticAnalyzer::EnsureBuiltinFunction(BuiltinFunctionKind kind)
 {
 	if (kind == BUILTIN_FUNCTION_NONE)
@@ -200,7 +251,7 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 	if (found.ordinary == kNoBinding ||
 		program_->bindings[found.ordinary].kind != BIND_FUNCTION)
 		return false;
-	if (!arrow && object.category != VALUE_LVALUE &&
+	if (!arrow && object.category == VALUE_PRVALUE &&
 		dump_.nodes[object.node].kind != DUMP_TEMPORARY_OBJECT)
 		object = MaterializeTemporary(object);
 	const std::vector<BindingId> candidates = FunctionSet(found.ordinary);

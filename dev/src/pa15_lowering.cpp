@@ -2069,7 +2069,7 @@ private:
 			if (LowerVariableConstructor(record, children)) return;
 			if (!children.empty())
 			{
-				if (IsArrayType(record.type))
+				if (!IsReferenceType(record.type) && IsArrayType(record.type))
 				{
 					LowerArrayInitializer(record, children);
 					return;

@@ -35,28 +35,31 @@ runtime transfer work remains O(array elements).
 
 ## Current Failure Map
 
-Audited result: **207/239**. The complete non-overlapping failure map contains
-32 tests; the landed pass set and all earlier stages remain intact:
+Audited result: **216/239**. The complete non-overlapping failure map contains
+23 tests; the landed pass set and all earlier stages remain intact:
 
 | Failures | Shared behavior | Primary owner |
 | ---: | --- | --- |
-| 1 | aliased explicit destructor lookup | PA12 member lookup/call analysis |
-| 14 | lookup, operators, conversion ranking, and ref qualification | PA12 calls/operator resolution |
-| 10 | residual class-value initialization, copy/move, and ABI/storage shapes | PA12 initialization + PA15-PA17 lowering |
-| 6 | residual temporary materialization and control-flow cleanup | PA12 lifetime facts + PA17 lowering |
-| 1 | residual scoped-name/control interaction | PA12 lookup and statement analysis |
+| 6 | canonical lookup/candidate identity: qualified destructor aliases, ADL suppression, base `using`, using-directive ambiguity, same-name filtering, inherited surrogates | PA12 scope + call candidate construction |
+| 4 | user-defined conversion and nonmember/built-in operator selection | PA12/PA16 operator resolution |
+| 7 | residual special-member, aggregate, bit-field, array, base, and ABI/storage shapes | PA12 initialization + PA15-PA17 lowering |
+| 4 | conditional/result temporary materialization and copy elision | PA12 lifetime facts + PA17 lowering |
+| 2 | shadowed local identity and cleanup rebinding across control flow | PA12 scope facts + PA17 lowering |
 
 ## Active Checkpoint
 
-**Next: lookup and reference-binding closure.** Apply `spec.md` sections 2, 3,
-6, and 9 to retain canonical unqualified/qualified lookup sets, value category,
-and conversion rank through calls and built-in/operator selection. PA12
-lookup/call analysis owns candidate construction and the selected binding;
-lowering consumes only typed call and conversion facts. Expected work is
-O(lookup scope + viable candidates), with indexed declaration access and no
-lowering-time lookup. Validate ADL suppression, imported/base overload sets,
-ref-qualified calls, pointer built-ins, xvalue members, and reference argument
-binding; then full PA17, through PA16, audit, and 32/64/128 candidate scaling.
+**Next: canonical lookup and candidate identity (6 failures).** Apply
+`spec.md` sections 2, 3, 5, and 9: scope/name indexes own qualified and
+unqualified lookup results, explicit using/ADL/base edges contribute each
+canonical declaration once, and call analysis filters candidates by kind and
+arity before conversion. PA12 scope/call analysis owns lookup and selected
+bindings; lowering receives only those identities. Expected work is
+O(visited lexical/associated scopes + result declarations + viable
+candidates), with generation-stamped flat deduplication and no global scan.
+Validate aliased destructor names, parenthesized ADL suppression, base `using`
+overload merging, using-directive ambiguity, same-name nonconstructor
+filtering, inherited call surrogates, full PA17, through PA16, file audit, and
+32/64/128 scope/candidate probes.
 
 ## Performance Evidence
 
@@ -141,6 +144,11 @@ binding; then full PA17, through PA16, audit, and 32/64/128 candidate scaling.
   0.246/0.222/0.250 ms and lowering medians were 0.253/0.222/0.251 ms; output
   was 3,781/3,785/3,787 bytes (only the bound spelling changes). A nested
   32x32 array retained the same counts with one 1,024-element loop.
+- Reference overload sets at 32/64/128 candidates recorded exactly
+  32/64/128 candidate visits and 96/192/384 conversion checks. Five-run
+  semantic medians were 1.146/2.138/4.335 ms and semantic peak storage was
+  297,470/592,958/1,184,018 bytes, confirming proportional retained facts,
+  work, and storage.
 
 ## Completed Checkpoints
 
@@ -162,3 +170,4 @@ binding; then full PA17, through PA16, audit, and 32/64/128 candidate scaling.
 | Class direct-initialization recipes | 174/231 -> 186/231; audit 188/233 | Landed pass set gains 12 tests; scalar-list rank and narrowing regressions pass without changing the original set; through PA16 1,436/1,436; file audit and proportional list/candidate probes pass |
 | Typed constructor delegation and qualified default completion | 188/233 -> 193/233; audit 199/239 | Positive delegation/qualified definitions 5/5; cycle/mixed rejection 3/3; six defaulted-definition regressions; through PA16 1,436/1,436; file audit and proportional 32/64/128 probes pass |
 | Composite subobject copy/move storage transfer | 199/239 -> 207/239; audit 207/239 | Prefix, array, empty, reference, move-only aggregate, implicit-move, and trivial ABI gains remain 8/8; direct typed lowering and bounded array loops audited; through PA16 1,436/1,436; fixed-shape extent probes and file audit pass |
+| Value-category and reference-binding closure | 207/239 -> 216/239 | Audited group 7/7 plus two adjacent gains; original pass set restored; rejection focus 3/3; through PA16 1,436/1,436; file audit and linear 32/64/128 probes pass |
