@@ -22,18 +22,24 @@ template <class Derived>
 class InitializationLowering
 {
 protected:
+	Operand TemporaryObjectStorageSlot(std::uint32_t node)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const LowType type = derived.LowerStorageType(
+			derived.arena_.nodes[node].type);
+		return Operand(derived.EnsureGeneratedSlot(node,
+			derived.arena_.nodes[node].reference_call_materialization ? "refcall" :
+			derived.arena_.nodes[node].argument_materialization ? "arg" :
+			derived.arena_.nodes[node].discarded_materialization ?
+				"discard" : "tmpobj", type), type);
+	}
+
 	Operand PrepareTemporaryObjectStorage(std::uint32_t node)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (derived.temporary_addresses_[node].kind != Operand::NONE)
 			return derived.temporary_addresses_[node];
-		const LowType type = derived.LowerStorageType(
-			derived.arena_.nodes[node].type);
-		const Operand slot(derived.EnsureGeneratedSlot(node,
-			derived.arena_.nodes[node].reference_call_materialization ? "refcall" :
-			derived.arena_.nodes[node].argument_materialization ? "arg" :
-			derived.arena_.nodes[node].discarded_materialization ?
-				"discard" : "tmpobj", type), type);
+		const Operand slot = TemporaryObjectStorageSlot(node);
 		derived.temporary_addresses_[node] = derived.AddressOfStorage(slot);
 		return derived.temporary_addresses_[node];
 	}
@@ -164,6 +170,7 @@ protected:
 			else throw std::runtime_error(
 				"unsupported temporary object initializer");
 			derived.temporary_initialized_[node] = 1;
+			derived.MarkConditionalTemporaryConstructed(node);
 			if (derived.full_expression_cleanup_active_)
 				derived.TransitionFullExpressionCleanup();
 		}

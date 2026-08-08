@@ -2,60 +2,62 @@
 
 ## Current Checkpoint Review
 
-**Checkpoint:** `1cc83de7` (`Implement PA17 ref-qualified member boundary`)
+**Checkpoint:** `2e42c865` (`Implement PA17 branch-local temporary cleanup`)
 
-**Result:** Pass after audit fixes. The landed increment is bounded to canonical
-function ref-qualifier identity, declaration compatibility, implicit-object
-viability/ranking, xvalue propagation through non-reference data members, and
-typed callable/ABI identity. Class-value transfer and conversion-operator tests
-that also contain ref-qualified calls remain blocked in their later primary
-owners; the scalar ref-qualified boundary itself is closed.
+**Result:** Pass after audit fixes. The landed increment is bounded to typed
+class-conditional arms, temporary materialization across conditional and
+short-circuit CFG, full-expression destruction, and return/member destinations.
+Loop condition and iteration re-evaluation remain the next checkpoint; their
+existing failure is not hidden by this closure.
 
-The complete ownership path is source declarator -> canonical PA11 `TypeId` ->
-PA12 declaration and overload indexes -> binding-carrying call/member facts ->
-PA15 typed callable identity and terminal ABI spelling. `TypeRecord` owns the
-packed qualifier, the flat declaration-shape index enforces the language rule
-without scanning a same-name overload set, and overload resolution retains the
-selected binding and object conversion. Lowering strips member-only qualifiers
-only when adapting the already-selected function to its explicit `%this`
-callable shape; it performs no lookup or textual reconstruction.
+The ownership path is source expression -> PA12 typed expression and stable
+temporary node identity -> ordered destructor actions carrying selected binding
+and canonical `TypeId` -> PA17 function-local cleanup state and CFG -> typed
+LowIR. PA12 now records whether a temporary is conditionally constructed while
+walking only the relevant expression subtree. Lowering uses compact IDs and
+flat function-local tables to reset and mark construction, and all normal and
+unwind exits consume the same typed action chain. It performs no name lookup,
+rendered-signature recovery, or text round trip.
 
 Audit findings are closed:
 
-1. The mixed qualified/unqualified index included member cv-qualification, so
-   otherwise-identical `const`/`volatile` declarations could evade the rule.
-   Its key now uses owner, name, adjusted parameter types, and variadic shape,
-   while deliberately excluding return type, member cv, and ref-qualifier.
-2. Implicit-object ranking compared cv subsets before reference binding. For an
-   rvalue this could select `const &` over `const volatile &&`; rvalue-reference
-   preference now precedes the cv tie-break in both ordinary and operator calls.
-3. Static members were classified by the absence of an implicit `%this` and
-   skipped declaration-shape validation. Validation now distinguishes class
-   declaration ownership from non-static callable shape, so a static
-   unqualified member cannot mix with an otherwise-identical ref-qualified
-   member.
+1. Normal completion destroyed the entire semantic suffix, although the
+   constructed-prefix filter was applied only to unwind dispatch. A temporary
+   in the right operand of `&&` was therefore destroyed on the short path.
+   Region-owned runtime state now guards each potentially path-dependent
+   temporary and is cleared before its destructor call.
+2. Expression statements and scalar returns bypassed the cleanup region and
+   had the same unconditional-destruction defect. They now use the same
+   action-owned region as declarations and control conditions; class arm-local
+   destinations remain branch-local.
+3. Cleanup reuse used heap-owned vector keys and repeatedly walked every
+   constructed prefix. A 64-temporary probe exposed 4,098 dispatch probes for
+   65 entries. Ordinary semantic-action sequences now use an exact flat cache
+   with contiguous key slices, while path-dependent regions intern one linked
+   dispatch node per action. The final probe records 64 probes and 64 entries.
+4. Audit instrumentation initially pushed `pa15_lowering.cpp` over its file
+   limit. Lifetime-slot and reset ownership moved into the PA17 lowering mixin;
+   the implementation file is 2,999 lines and the stage file audit passes.
 
-Representative release probes show proportional work. For 64/128/256 distinct
-same-name parameter shapes, each declared in `&` and `&&` forms, signature
-lookups were 646/1,286/2,566, lookup queries 452/900/1,796, dependency edges
-128/256/512, peak semantic bytes 372,305/742,629/1,483,493, and five-run
-semantic medians 1.269/2.401/4.830 ms. A separate 64/128/256-class probe with
-one lvalue and one prvalue selected call per class recorded 384/768/1,536
-candidates, 1,155/2,307/4,611 instructions, and semantic medians
-2.920/5.944/11.815 ms. There is no overload-set rescan or superlinear counter.
+Representative release probes with 16/32/64 conditionally evaluated right-hand
+temporaries recorded 16/32/64 lifetime slots, marks, dispatch probes, and
+entries; 171/331/651 blocks; 619/1,211/2,395 instructions; and
+30,359/59,815/119,238 output bytes. Five 100-compile batch medians were
+0.43/0.50/0.65 seconds, with 7.2-7.9 MiB peak RSS. Work, storage, CFG, and output
+are proportional to obligations rather than constructed-prefix products.
 
 Validation:
 
-- Focused landed and audit regression set: 15/15 pass.
+- Focused checked-in branch-lifetime set: 4/4 pass. Skipped and constructed
+  right-hand temporary probes at condition, discarded-expression, and scalar
+  return boundaries compile successfully and emit guarded cleanup.
 - `make test-report ACTIVE_TEST_REPORT_PAS='pa17'`: expected full-stage
-  failure, 57/231. The checked-in 54/228 baseline and its same 174 future-stage
-  failures are intact; the three additional passes are audit regressions.
+  failure, 173/231. The checkpoint pass set is intact.
 - `make test-report-through-pa16`: 1,436/1,436 and 16/16 stages pass.
 - `perl scripts/cppgm_file_audit.pl --stage pa17 --paths dev/src`: pass with
-  the same six baseline header-division warnings; the touched headers add only
-  declarations and packed identity fields, not implementation ownership.
-- Valgrind reports no errors or definite/indirect leaks on an out-of-class
-  ref-qualified definition. A process-only trace contains the compiler
+  the same ten turn-start header-division warnings and no fatal issue.
+- Valgrind reports no errors or definite/indirect leaks on the right-hand
+  temporary probe. A process-only trace contains the compiler
   `execve` and `exit_group(0)` only, with no child process or external tool.
 
 ## Checkpoint Audit Ledger
@@ -63,3 +65,4 @@ Validation:
 | Checkpoint | Audit result | Closure evidence |
 |---|---|---|
 | Ref-qualified member identity and selection | Pass after audit fixes | Canonical declaration/call/ABI path; complete mixed-set key; correct object ranking; focused, baseline, scaling, and required gates pass |
+| Branch-local class values and full-expression cleanup | Pass after audit fixes | Typed construction state on normal/unwind exits; exact flat and linked cleanup reuse; 173/231 baseline intact; linear probes and required gates pass |

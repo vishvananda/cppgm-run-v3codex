@@ -410,7 +410,11 @@ ExpressionInfo SemanticAnalyzer::BuildClassConditional(
 		{
 			const std::uint32_t action =
 				MakeTemporaryDestructorAction(temporaries[t - 1]);
-			if (action != kNoDumpEdge) dump_.Add(arm, action);
+			if (action != kNoDumpEdge)
+			{
+				dump_.nodes[action].full_expression_staging = true;
+				dump_.Add(arm, action);
+			}
 		}
 		arms[i] = arm;
 	}
@@ -2255,15 +2259,33 @@ std::uint32_t SemanticAnalyzer::MakeTemporaryDestructorAction(
 }
 
 void SemanticAnalyzer::CollectTemporaryObjects(std::uint32_t node,
-	std::vector<std::uint32_t>* temporaries) const
+	std::vector<std::uint32_t>* temporaries, bool conditionally_evaluated)
 {
 	if (node == kNoDumpEdge || node >= dump_.nodes.size()) return;
-	if (dump_.nodes[node].kind == DUMP_CONDITIONAL_ARM) return;
-	for (std::uint32_t edge = dump_.nodes[node].first_edge;
-		edge != kNoDumpEdge; edge = dump_.edges[edge].next)
-		CollectTemporaryObjects(dump_.edges[edge].child, temporaries);
-	if (dump_.nodes[node].kind == DUMP_TEMPORARY_OBJECT)
+	DumpNode& record = dump_.nodes[node];
+	if (record.kind == DUMP_CONDITIONAL_ARM) return;
+	bool short_circuit = false;
+	if (record.kind == DUMP_BINARY_EXPRESSION && record.text != 0)
+	{
+		const std::string& operation = program_->names.Get(record.text);
+		short_circuit = operation.find("&&") != std::string::npos ||
+			operation.find("||") != std::string::npos;
+	}
+	std::size_t child_index = 0;
+	for (std::uint32_t edge = record.first_edge; edge != kNoDumpEdge;
+		edge = dump_.edges[edge].next, ++child_index)
+	{
+		const bool branch_only =
+			(short_circuit && child_index == 1) ||
+			(record.kind == DUMP_CONDITIONAL_EXPRESSION && child_index != 0);
+		CollectTemporaryObjects(dump_.edges[edge].child, temporaries,
+			conditionally_evaluated || branch_only);
+	}
+	if (record.kind == DUMP_TEMPORARY_OBJECT)
+	{
+		if (conditionally_evaluated) record.conditionally_constructed = true;
 		temporaries->push_back(node);
+	}
 }
 
 void SemanticAnalyzer::MarkFullExpressionCalls(std::uint32_t node)
@@ -2307,7 +2329,11 @@ void SemanticAnalyzer::AppendFullExpressionDestructionActions(
 	{
 		const std::uint32_t action =
 			MakeTemporaryDestructorAction(temporaries[i - 1]);
-		if (action != kNoDumpEdge) dump_.Add(output_parent, action);
+		if (action != kNoDumpEdge)
+		{
+			dump_.nodes[action].full_expression_staging = true;
+			dump_.Add(output_parent, action);
+		}
 	}
 }
 

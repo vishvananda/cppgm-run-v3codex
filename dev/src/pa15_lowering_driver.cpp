@@ -141,6 +141,9 @@ void CoalesceLifecycleFunctions(TypedProgram* program,
 LowIRLoweringStats::LowIRLoweringStats()
 	: source_bytes(0), semantic(), lowered_nodes(0), functions(0), globals(0),
 	  blocks(0), instructions(0), binding_index_probes(0),
+	  cleanup_dispatch_probes(0), cleanup_dispatch_cache_hits(0),
+	  cleanup_dispatch_entries(0), conditional_lifetime_slots(0),
+	  conditional_lifetime_marks(0),
 	  typed_storage_bytes(0), output_bytes(0), lowering_nanoseconds(0),
 	  render_nanoseconds(0)
 {

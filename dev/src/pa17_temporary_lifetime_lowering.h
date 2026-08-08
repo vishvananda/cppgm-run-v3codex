@@ -8,7 +8,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
-#include <unordered_map>
 #include <vector>
 
 namespace cppgm
@@ -20,30 +19,227 @@ using namespace pa12_semantic_detail;
 using namespace pa15_lowir_detail;
 using namespace pa15_lowering_support;
 
-struct CleanupDispatchKeyHash
+class CleanupDispatchCache
 {
-	std::size_t operator()(const std::vector<std::uint64_t>& key) const
+public:
+	CleanupDispatchCache() : slots_(16), size_(0) {}
+
+	bool Find(const DumpArena& arena,
+		const std::vector<std::uint32_t>& actions, BlockId* block) const
 	{
-		std::size_t hash = static_cast<std::size_t>(1469598103934665603ULL);
-		for (std::size_t i = 0; i < key.size(); ++i)
+		const std::uint64_t fingerprint = Fingerprint(arena, actions);
+		std::size_t index = static_cast<std::size_t>(fingerprint) &
+			(slots_.size() - 1);
+		while (slots_[index].occupied)
 		{
-			hash ^= static_cast<std::size_t>(key[i]);
-			hash *= static_cast<std::size_t>(1099511628211ULL);
+			const Entry& entry = slots_[index];
+			if (entry.fingerprint == fingerprint &&
+				Matches(entry, arena, actions))
+			{
+				*block = entry.block;
+				return true;
+			}
+			index = (index + 1) & (slots_.size() - 1);
 		}
+		return false;
+	}
+
+	void Insert(const DumpArena& arena,
+		const std::vector<std::uint32_t>& actions, BlockId block)
+	{
+		if ((size_ + 1) * 2 >= slots_.size()) Rehash(slots_.size() * 2);
+		Entry entry;
+		entry.fingerprint = Fingerprint(arena, actions);
+		entry.offset = words_.size();
+		entry.count = actions.size() * kWordsPerAction;
+		entry.block = block;
+		entry.occupied = true;
+		for (std::size_t i = 0; i < actions.size(); ++i)
+			for (std::size_t word = 0; word < kWordsPerAction; ++word)
+				words_.push_back(IdentityWord(arena.nodes[actions[i]], word));
+		std::size_t index = static_cast<std::size_t>(entry.fingerprint) &
+			(slots_.size() - 1);
+		while (slots_[index].occupied)
+			index = (index + 1) & (slots_.size() - 1);
+		slots_[index] = entry;
+		++size_;
+	}
+
+	void Clear()
+	{
+		for (std::size_t i = 0; i < slots_.size(); ++i)
+			slots_[i].occupied = false;
+		words_.clear();
+		size_ = 0;
+	}
+
+private:
+	static const std::size_t kWordsPerAction = 5;
+	struct Entry
+	{
+		std::uint64_t fingerprint;
+		std::size_t offset, count;
+		BlockId block;
+		bool occupied;
+		Entry() : fingerprint(0), offset(0), count(0), block(kNoLowId),
+			occupied(false) {}
+	};
+
+	static std::uint64_t IdentityWord(const DumpNode& action,
+		std::size_t word)
+	{
+		switch (word)
+		{
+		case 0: return action.lifetime_object == kNoDumpEdge ? 0 : 1;
+		case 1: return action.lifetime_object;
+		case 2: return action.object_binding;
+		case 3: return action.binding;
+		default: return action.operand_type;
+		}
+	}
+
+	static std::uint64_t Fingerprint(const DumpArena& arena,
+		const std::vector<std::uint32_t>& actions)
+	{
+		std::uint64_t hash = 1469598103934665603ULL;
+		for (std::size_t i = 0; i < actions.size(); ++i)
+			for (std::size_t word = 0; word < kWordsPerAction; ++word)
+			{
+				hash ^= IdentityWord(arena.nodes[actions[i]], word);
+				hash *= 1099511628211ULL;
+			}
 		return hash;
 	}
-};
 
-typedef std::unordered_map<std::vector<std::uint64_t>, BlockId,
-	CleanupDispatchKeyHash> CleanupDispatchMap;
+	bool Matches(const Entry& entry, const DumpArena& arena,
+		const std::vector<std::uint32_t>& actions) const
+	{
+		if (entry.count != actions.size() * kWordsPerAction) return false;
+		std::size_t current = entry.offset;
+		for (std::size_t i = 0; i < actions.size(); ++i)
+			for (std::size_t word = 0; word < kWordsPerAction; ++word)
+				if (words_[current++] !=
+					IdentityWord(arena.nodes[actions[i]], word))
+					return false;
+		return true;
+	}
+
+	void Rehash(std::size_t capacity)
+	{
+		std::vector<Entry> replacement(capacity);
+		for (std::size_t i = 0; i < slots_.size(); ++i)
+		{
+			if (!slots_[i].occupied) continue;
+			std::size_t index = static_cast<std::size_t>(
+				slots_[i].fingerprint) & (capacity - 1);
+			while (replacement[index].occupied)
+				index = (index + 1) & (capacity - 1);
+			replacement[index] = slots_[i];
+		}
+		slots_.swap(replacement);
+	}
+
+	std::vector<Entry> slots_;
+	std::vector<std::uint64_t> words_;
+	std::size_t size_;
+};
 
 template <class Derived>
 class TemporaryLifetimeLowering
 {
 protected:
+	SlotId EnsureTemporaryLifetimeSlot(std::uint32_t node)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		std::uint32_t retained = kNoLowId;
+		if (derived.temporary_lifetime_slots_.Find(node, &retained))
+			return SlotId(retained);
+		const SlotId result = static_cast<SlotId>(
+			derived.function_->slots.size());
+		Slot slot;
+		slot.name = derived.GeneratedSlotName("lifetime");
+		slot.type = LowU8();
+		derived.function_->slots.push_back(slot);
+		derived.temporary_lifetime_slots_.Insert(node, result);
+		if (derived.stats_) ++derived.stats_->conditional_lifetime_slots;
+		return result;
+	}
+
+	void ResetFullExpressionFunctionState()
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		derived.full_expression_cleanup_dispatches_.Clear();
+		derived.temporary_lifetime_slots_.Clear();
+		derived.conditional_cleanup_dispatches_.Clear();
+		derived.conditional_cleanup_tails_.Clear();
+		derived.runtime_lifetime_temporaries_.Clear();
+		derived.conditional_cleanup_resume_ = kNoLowId;
+	}
+
+	BlockId InternConditionalCleanupDispatch()
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const BlockId original = derived.current_block_;
+		if (derived.conditional_cleanup_resume_ == kNoLowId)
+		{
+			derived.conditional_cleanup_resume_ = derived.AddBlock(
+				derived.NewLabel("conditional_cleanup_resume"));
+			derived.SelectBlock(derived.conditional_cleanup_resume_);
+			derived.Emit(Instruction(Instruction::RESUME));
+		}
+		const BlockId previous_dispatch =
+			derived.full_expression_cleanup_dispatch_;
+		derived.full_expression_cleanup_dispatch_ =
+			derived.conditional_cleanup_resume_;
+		BlockId tail = derived.conditional_cleanup_resume_;
+		for (std::size_t i = derived.full_expression_segment_actions_.size();
+			i != 0; --i)
+		{
+			const std::uint32_t action =
+				derived.full_expression_segment_actions_[i - 1];
+			std::uint32_t cached_value = kNoLowId;
+			if (derived.stats_) ++derived.stats_->cleanup_dispatch_probes;
+			if (derived.conditional_cleanup_dispatches_.Find(
+				action, &cached_value))
+			{
+				if (derived.stats_)
+					++derived.stats_->cleanup_dispatch_cache_hits;
+				std::uint32_t cached_tail = kNoLowId;
+				if (!derived.conditional_cleanup_tails_.Find(
+					action, &cached_tail) || cached_tail != tail)
+					throw std::logic_error(
+						"cleanup action acquired a second ordered suffix");
+				tail = BlockId(cached_value);
+				continue;
+			}
+			const BlockId block = derived.AddBlock(
+				derived.NewLabel("conditional_cleanup_dispatch"));
+			if (derived.stats_) ++derived.stats_->cleanup_dispatch_entries;
+			derived.conditional_cleanup_dispatches_.Insert(action, block);
+			derived.conditional_cleanup_tails_.Insert(action, tail);
+			derived.SelectBlock(block);
+			LowerFullExpressionDestructorAction(action);
+			derived.EmitJump(tail);
+			tail = block;
+		}
+		derived.full_expression_cleanup_dispatch_ = previous_dispatch;
+		derived.SelectBlock(original);
+		return tail;
+	}
+
 	void StartFullExpressionCleanupSegment()
 	{
 		Derived& derived = static_cast<Derived&>(*this);
+		if (derived.full_expression_tracks_lifetime_state_)
+		{
+			derived.full_expression_cleanup_dispatch_ =
+				derived.runtime_lifetime_cleanup_dispatch_;
+			derived.full_expression_cleanup_dispatch_reused_ = true;
+			derived.full_expression_cleanup_end_ = kNoLowId;
+			derived.EmitEhTarget(Instruction::EH_TRY,
+				derived.full_expression_cleanup_dispatch_);
+			return;
+		}
 		derived.full_expression_segment_actions_.clear();
 		for (std::size_t i = 0;
 			i < derived.full_expression_cleanup_actions_.size(); ++i)
@@ -58,32 +254,24 @@ protected:
 				)
 				derived.full_expression_segment_actions_.push_back(action);
 		}
-		std::vector<std::uint64_t> key;
-		key.reserve(derived.full_expression_segment_actions_.size() * 5);
-		for (std::size_t i = 0;
-			i < derived.full_expression_segment_actions_.size(); ++i)
-		{
-			const DumpNode& action = derived.arena_.nodes[
-				derived.full_expression_segment_actions_[i]];
-			key.push_back(action.lifetime_object == kNoDumpEdge ? 0 : 1);
-			key.push_back(action.lifetime_object);
-			key.push_back(action.object_binding);
-			key.push_back(action.binding);
-			key.push_back(action.operand_type);
-		}
-		CleanupDispatchMap::const_iterator cached =
-			derived.full_expression_cleanup_dispatches_.find(key);
+		BlockId cached;
+		if (derived.stats_) ++derived.stats_->cleanup_dispatch_probes;
 		derived.full_expression_cleanup_dispatch_reused_ =
-			cached != derived.full_expression_cleanup_dispatches_.end();
+			derived.full_expression_cleanup_dispatches_.Find(derived.arena_,
+				derived.full_expression_segment_actions_, &cached);
 		if (derived.full_expression_cleanup_dispatch_reused_)
-			derived.full_expression_cleanup_dispatch_ = cached->second;
+		{
+			if (derived.stats_) ++derived.stats_->cleanup_dispatch_cache_hits;
+			derived.full_expression_cleanup_dispatch_ = cached;
+		}
 		else
 		{
+			if (derived.stats_) ++derived.stats_->cleanup_dispatch_entries;
 			derived.full_expression_cleanup_dispatch_ = derived.AddBlock(
 				derived.NewLabel("call_unwind_dispatch"));
-			derived.full_expression_cleanup_dispatches_.insert(
-				std::make_pair(key,
-					derived.full_expression_cleanup_dispatch_));
+			derived.full_expression_cleanup_dispatches_.Insert(derived.arena_,
+				derived.full_expression_segment_actions_,
+				derived.full_expression_cleanup_dispatch_);
 		}
 		derived.full_expression_cleanup_end_ = kNoLowId;
 		derived.EmitEhTarget(Instruction::EH_TRY,
@@ -96,6 +284,111 @@ protected:
 		if (derived.full_expression_cleanup_active_ &&
 			derived.full_expression_cleanup_dispatch_ == kNoLowId)
 			StartFullExpressionCleanupSegment();
+	}
+
+	bool IsConditionalTemporaryAction(std::uint32_t action) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		const DumpNode& record = derived.arena_.nodes[action];
+		return record.lifetime_object != kNoDumpEdge &&
+			derived.arena_.nodes[record.lifetime_object].
+				conditionally_constructed;
+	}
+
+	bool UsesRuntimeLifetimeState(std::uint32_t action) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		const std::uint32_t temporary =
+			derived.arena_.nodes[action].lifetime_object;
+		std::uint32_t ignored = 0;
+		return temporary != kNoDumpEdge &&
+			derived.runtime_lifetime_temporaries_.Find(temporary, &ignored);
+	}
+
+	void PrepareRuntimeLifetimeState()
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		derived.runtime_lifetime_temporaries_.Clear();
+		derived.full_expression_tracks_lifetime_state_ = false;
+		for (std::size_t i = 0;
+			i < derived.full_expression_cleanup_actions_.size(); ++i)
+			if (IsConditionalTemporaryAction(
+				derived.full_expression_cleanup_actions_[i]))
+				derived.full_expression_tracks_lifetime_state_ = true;
+		if (!derived.full_expression_tracks_lifetime_state_)
+		{
+			derived.runtime_lifetime_cleanup_dispatch_ = kNoLowId;
+			return;
+		}
+		for (std::size_t i = 0;
+			i < derived.full_expression_cleanup_actions_.size(); ++i)
+		{
+			const std::uint32_t action =
+				derived.full_expression_cleanup_actions_[i];
+			const std::uint32_t temporary =
+				derived.arena_.nodes[action].lifetime_object;
+			if (temporary == kNoDumpEdge) continue;
+			derived.runtime_lifetime_temporaries_.Insert(temporary, 1);
+			Instruction reset(Instruction::STORE);
+			reset.type = LowU8();
+			reset.first = Operand(0, LowU8());
+			reset.second = Operand(
+				derived.EnsureTemporaryLifetimeSlot(temporary), LowU8());
+			derived.Emit(reset);
+		}
+		derived.full_expression_segment_actions_ =
+			derived.full_expression_cleanup_actions_;
+		derived.runtime_lifetime_cleanup_dispatch_ =
+			InternConditionalCleanupDispatch();
+	}
+
+	void MarkConditionalTemporaryConstructed(std::uint32_t temporary)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		std::uint32_t tracked = 0;
+		if (!derived.full_expression_cleanup_active_ ||
+			!derived.runtime_lifetime_temporaries_.Find(temporary, &tracked))
+			return;
+		Instruction mark(Instruction::STORE);
+		mark.type = LowU8();
+		mark.first = Operand(1, LowU8());
+		mark.second = Operand(
+			derived.EnsureTemporaryLifetimeSlot(temporary), LowU8());
+		derived.Emit(mark);
+		if (derived.stats_) ++derived.stats_->conditional_lifetime_marks;
+	}
+
+	void LowerFullExpressionDestructorAction(std::uint32_t action)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (!UsesRuntimeLifetimeState(action))
+		{
+			derived.LowerDestructorAction(derived.arena_.nodes[action]);
+			return;
+		}
+		const std::uint32_t temporary =
+			derived.arena_.nodes[action].lifetime_object;
+		const Operand state = derived.LoadStorage(Operand(
+			derived.EnsureTemporaryLifetimeSlot(temporary), LowU8()), LowU8());
+		const BlockId destroy = derived.AddBlock(
+			derived.NewLabel("conditional_temporary_destroy"));
+		const BlockId done = derived.AddBlock(
+			derived.NewLabel("conditional_temporary_done"));
+		derived.EmitBranch(state, destroy, done);
+		derived.SelectBlock(destroy);
+		Instruction clear(Instruction::STORE);
+		clear.type = LowU8();
+		clear.first = Operand(0, LowU8());
+		clear.second = Operand(
+			derived.EnsureTemporaryLifetimeSlot(temporary), LowU8());
+		derived.Emit(clear);
+		const DumpNode& cleanup = derived.arena_.nodes[action];
+		const Operand destination = derived.AddressOfStorage(
+			derived.TemporaryObjectStorageSlot(temporary));
+		derived.LowerDestructorObject(
+			cleanup.operand_type, destination, cleanup.binding);
+		derived.EmitJump(done);
+		derived.SelectBlock(done);
 	}
 
 	void PauseFullExpressionCleanupSegment()
@@ -122,8 +415,8 @@ protected:
 		derived.SelectBlock(dispatch);
 		for (std::size_t i = 0;
 			i < derived.full_expression_segment_actions_.size(); ++i)
-			derived.LowerDestructorAction(derived.arena_.nodes[
-				derived.full_expression_segment_actions_[i]]);
+			LowerFullExpressionDestructorAction(
+				derived.full_expression_segment_actions_[i]);
 		derived.Emit(Instruction(Instruction::RESUME));
 		derived.SelectBlock(end);
 	}
@@ -148,6 +441,7 @@ protected:
 		derived.full_expression_cleanup_dispatch_ = kNoLowId;
 		derived.full_expression_cleanup_end_ = kNoLowId;
 		derived.full_expression_cleanup_dispatch_reused_ = false;
+		PrepareRuntimeLifetimeState();
 		if (!defer_segment) StartFullExpressionCleanupSegment();
 	}
 
@@ -172,8 +466,8 @@ protected:
 			i < derived.full_expression_cleanup_actions_.size(); ++i)
 			if (!derived.arena_.nodes[
 				derived.full_expression_cleanup_actions_[i]].unwind_only)
-				derived.LowerDestructorAction(derived.arena_.nodes[
-					derived.full_expression_cleanup_actions_[i]]);
+				LowerFullExpressionDestructorAction(
+					derived.full_expression_cleanup_actions_[i]);
 		CloseFullExpressionCleanupSegment();
 		derived.full_expression_cleanup_active_ = false;
 		derived.full_expression_cleanup_actions_.clear();
@@ -181,6 +475,9 @@ protected:
 		derived.full_expression_cleanup_dispatch_ = kNoLowId;
 		derived.full_expression_cleanup_end_ = kNoLowId;
 		derived.full_expression_cleanup_dispatch_reused_ = false;
+		derived.full_expression_tracks_lifetime_state_ = false;
+		derived.runtime_lifetime_cleanup_dispatch_ = kNoLowId;
+		derived.runtime_lifetime_temporaries_.Clear();
 	}
 
 	Operand RetainFullExpressionCallResult(std::uint32_t node,
@@ -219,27 +516,44 @@ protected:
 			i < derived.full_expression_cleanup_actions_.size(); ++i)
 			if (!derived.arena_.nodes[
 				derived.full_expression_cleanup_actions_[i]].unwind_only)
-				derived.LowerDestructorAction(derived.arena_.nodes[
-					derived.full_expression_cleanup_actions_[i]]);
+				LowerFullExpressionDestructorAction(
+					derived.full_expression_cleanup_actions_[i]);
 		derived.EmitJump(true_block);
 		derived.SelectBlock(false_cleanup);
 		for (std::size_t i = 0;
 			i < derived.full_expression_cleanup_actions_.size(); ++i)
 			if (!derived.arena_.nodes[
 				derived.full_expression_cleanup_actions_[i]].unwind_only)
-				derived.LowerDestructorAction(derived.arena_.nodes[
-					derived.full_expression_cleanup_actions_[i]]);
+				LowerFullExpressionDestructorAction(
+					derived.full_expression_cleanup_actions_[i]);
 		derived.EmitJump(false_block);
 		derived.full_expression_cleanup_active_ = false;
 		derived.full_expression_cleanup_actions_.clear();
 		derived.full_expression_segment_actions_.clear();
 		derived.full_expression_cleanup_dispatch_ = kNoLowId;
 		derived.full_expression_cleanup_end_ = kNoLowId;
+		derived.full_expression_cleanup_dispatch_reused_ = false;
+		derived.full_expression_tracks_lifetime_state_ = false;
+		derived.runtime_lifetime_cleanup_dispatch_ = kNoLowId;
+		derived.runtime_lifetime_temporaries_.Clear();
 	}
 
 	void LowerFullExpressionStatement(const NodeChildren& children)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
+		bool conditional_cleanup = false;
+		for (std::size_t i = 1; i < children.size(); ++i)
+			if (derived.arena_.nodes[children[i]].kind ==
+					DUMP_DESTRUCTOR_ACTION &&
+				IsConditionalTemporaryAction(children[i]))
+				conditional_cleanup = true;
+		if (conditional_cleanup)
+		{
+			BeginFullExpressionCleanup(children, 1);
+			if (!children.empty()) derived.LowerDiscardedValue(children[0]);
+			CompleteFullExpressionCleanup();
+			return;
+		}
 		if (!children.empty()) derived.LowerDiscardedValue(children[0]);
 		for (std::size_t i = 1; i < children.size(); ++i)
 		{

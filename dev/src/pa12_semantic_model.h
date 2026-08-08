@@ -121,6 +121,7 @@ struct DumpNode
 	bool declaration_only;
 	bool unwind_only;
 	bool full_expression_staging;
+	bool conditionally_constructed;
 
 	explicit DumpNode(DumpKind value)
 		: kind(value), type(kNoType), operand_type(kNoType),
@@ -139,7 +140,8 @@ struct DumpNode
 		  argument_materialization(false), discarded_materialization(false),
 		  reference_call_materialization(false), class_argument_staging(false),
 		  direct_return_slot(false), declaration_only(false),
-		  unwind_only(false), full_expression_staging(false) {}
+		  unwind_only(false), full_expression_staging(false),
+		  conditionally_constructed(false) {}
 };
 
 struct DumpEdge

@@ -94,6 +94,9 @@ protected:
 				derived.generated_slots_[current] == kNoLowId)
 				(void)derived.EnsureGeneratedSlot(current, "arg",
 					derived.LowerStorageType(record.type));
+			if (record.kind == DUMP_TEMPORARY_OBJECT &&
+				record.conditionally_constructed)
+				(void)derived.EnsureTemporaryLifetimeSlot(current);
 			const NodeChildren children = derived.Children(current);
 			if (record.kind == DUMP_NEW_EXPRESSION && record.array_action &&
 				!children.empty())

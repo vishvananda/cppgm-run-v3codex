@@ -391,7 +391,8 @@ private:
 	void AddTemporaryLifetimeObligation(ScopeId scope,
 		std::uint32_t temporary);
 	void CollectTemporaryObjects(std::uint32_t node,
-		std::vector<std::uint32_t>* temporaries) const;
+		std::vector<std::uint32_t>* temporaries,
+		bool conditionally_evaluated = false);
 	void MarkFullExpressionCalls(std::uint32_t node);
 	bool HasControlDependentTemporary(std::uint32_t node) const;
 	void AppendFullExpressionDestructionActions(std::uint32_t expression,

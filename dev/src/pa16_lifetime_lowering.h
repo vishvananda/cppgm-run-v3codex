@@ -27,13 +27,31 @@ protected:
 	void LowerReturn(const NodeChildren& children)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		std::size_t first_cleanup = 0;
 		const bool has_value = !children.empty() &&
 			derived.arena_.nodes[children[0]].kind != DUMP_DESTRUCTOR_ACTION;
+		const std::size_t first_cleanup = has_value ? 1 : 0;
+		std::size_t full_expression_cleanup_end = first_cleanup;
+		NodeChildren full_expression_actions;
+		bool conditional_full_expression = false;
+		while (full_expression_cleanup_end < children.size())
+		{
+			const DumpNode& action =
+				derived.arena_.nodes[children[full_expression_cleanup_end]];
+			if (action.kind != DUMP_DESTRUCTOR_ACTION ||
+				!action.full_expression_staging)
+				break;
+			full_expression_actions.Push(children[full_expression_cleanup_end]);
+			if (action.lifetime_object != kNoDumpEdge &&
+				derived.arena_.nodes[action.lifetime_object].
+					conditionally_constructed)
+				conditional_full_expression = true;
+			++full_expression_cleanup_end;
+		}
+		if (conditional_full_expression)
+			derived.BeginFullExpressionCleanup(full_expression_actions, 0);
 		Operand result_value;
 		if (has_value)
 		{
-			first_cleanup = 1;
 			if (derived.arena_.nodes[children[0]].direct_return_slot)
 			{
 				if (!derived.current_indirect_result_)
@@ -151,7 +169,11 @@ protected:
 					!preserve_unsigned_conversion);
 			}
 		}
-		for (std::size_t i = first_cleanup; i < children.size(); ++i)
+		if (conditional_full_expression)
+			derived.CompleteFullExpressionCleanup();
+		const std::size_t remaining_cleanup = conditional_full_expression ?
+			full_expression_cleanup_end : first_cleanup;
+		for (std::size_t i = remaining_cleanup; i < children.size(); ++i)
 		{
 			if (derived.arena_.nodes[children[i]].kind != DUMP_DESTRUCTOR_ACTION)
 				throw std::logic_error("invalid return cleanup action");

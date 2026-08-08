@@ -720,6 +720,16 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << " blocks=" << stats.blocks
 			 << " instructions=" << stats.instructions
 			 << " binding_index_probes=" << stats.binding_index_probes
+			 << " cleanup_dispatch_probes="
+			 << stats.cleanup_dispatch_probes
+			 << " cleanup_dispatch_cache_hits="
+			 << stats.cleanup_dispatch_cache_hits
+			 << " cleanup_dispatch_entries="
+			 << stats.cleanup_dispatch_entries
+			 << " conditional_lifetime_slots="
+			 << stats.conditional_lifetime_slots
+			 << " conditional_lifetime_marks="
+			 << stats.conditional_lifetime_marks
 			 << " typed_storage_bytes=" << stats.typed_storage_bytes
 			 << " semantic_peak_stage_bytes="
 			 << semantic.peak_stage_storage_bytes

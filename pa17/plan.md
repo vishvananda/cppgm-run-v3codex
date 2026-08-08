@@ -5,17 +5,19 @@
 PA17 extends the PA16 typed semantic graph and LowIR. Canonical `TypeId`,
 completed special-member facts, selected function identity, and typed actions
 remain the phase boundary; lowering performs no lookup or text round trip.
-Class completion owns copy/move/assignment facts, PA12 owns selection and
-demand, and PA15-PA17 materialize into destination storage or ABI result slots.
-This follows `spec.md` sections 2, 3, 4, 6, 8, and 9: monotonic demand,
-O(1)-average fact access, O(candidate count) selection, O(subobject count)
-synthesis, and O(emitted IR) lowering.
+Class completion owns copy/move/assignment facts. PA12 owns selection, demand,
+stable temporary identity, conditional-construction facts, and ordered
+destructor actions. PA15-PA17 materialize into destination storage or ABI
+result slots, using compact action/slot IDs and function-local flat tables so
+normal and unwind exits share one typed cleanup chain. This follows `spec.md`
+sections 2, 3, 4, 6, 8, and 9: monotonic demand, O(1)-average fact access,
+O(candidate count) selection, O(subobject count) synthesis, and analysis,
+lowering, storage, and output proportional to owned obligations and emitted IR.
 
 ## Current Failure Map
 
-Current result: **173/231**, up from the **124/231** checkpoint baseline and
-**13** tests during the branch-cleanup checkpoint. The
-non-overlapping remaining-failure map is:
+Current result: **173/231**. The landed checkpoint's pass set remains intact,
+and the non-overlapping remaining-failure map is unchanged at 58 tests:
 
 | Failures | Shared behavior | Primary owner |
 | ---: | --- | --- |
@@ -76,10 +78,12 @@ through PA16, audit, and loop-depth scaling.
 - Nested condition declarations at depth 16/32/64 emitted 560/1,056/2,048
   LowIR lines (12,473/23,950/46,990 bytes). Five 300-compile batch medians were
   1.10/1.28/1.65 s, proportional to reached scopes and emitted cleanup edges.
-- Short-circuit temporary chains at depth 16/32/64 emitted 301/605/1,213
-  LowIR lines, 46/94/190 blocks, and 7,225/14,555/29,669 bytes. Thirty-compile
-  batches took 0.09/0.10/0.13 s with 5,536/5,796/6,072 KiB peak RSS, consistent
-  with linear CFG and cleanup output.
+- Conditionally evaluated right-hand temporary chains at depth 16/32/64
+  recorded 16/32/64 lifetime slots, marks, dispatch probes, and dispatch
+  entries; 171/331/651 blocks; 619/1,211/2,395 instructions; and
+  30,359/59,815/119,238 output bytes. Five 100-compile batch medians were
+  0.43/0.50/0.65 s with 7.2-7.9 MiB peak RSS, confirming one cleanup node per
+  obligation rather than repeated constructed-prefix expansion.
 
 ## Completed Checkpoints
 
@@ -96,4 +100,4 @@ through PA16, audit, and loop-depth scaling.
 | Union declaration and object actions | 145/231 -> 151/231 | Anonymous injection, active/default variant validation, constructor precedence, empty inactive lifetime, and whole-storage copy 6/6; through PA16 1,436/1,436; linear member probe and audit pass |
 | Typed temporary identity and linear lifetime regions | 151/231 -> 157/231 | Discarded direct/indirect class results, noexcept argument and throwing base-init suffixes, local reference extension, and rvalue-reference materialization 6/6; proportional 16/32/64-temporary probe |
 | Condition-declaration lifetime regions | 157/231 -> 160/231 | Nested false-path containment, reference-extended temporary, class-to-bool and switch-to-int conversion 4/4; through PA16 1,436/1,436; audit and proportional depth probe pass |
-| Branch-local class values and full-expression cleanup | 160/231 -> 173/231 | Branch lifetime 4/4 and class-conditional compatibility 5/6; zero regressions; through PA16 1,436/1,436; audit and linear 16/32/64 branch probe pass |
+| Branch-local class values and full-expression cleanup | 160/231 -> 173/231 | Branch lifetime plus right-hand short-circuit construction-state probes pass; original pass set intact; through PA16 1,436/1,436; file audit and linear 16/32/64 cleanup probes pass |

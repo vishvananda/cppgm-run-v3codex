@@ -67,10 +67,10 @@ public:
 		  current_this_binding_(kNoBinding),
 		  destructor_return_target_(kNoLowId),
 		  destructor_return_routes_to_epilogue_(false),
-		  full_expression_cleanup_active_(false),
-		  full_expression_cleanup_dispatch_(kNoLowId),
-		  full_expression_cleanup_end_(kNoLowId),
-		  full_expression_cleanup_dispatch_reused_(false),
+		  full_expression_cleanup_active_(false), full_expression_cleanup_dispatch_(kNoLowId),
+		  full_expression_cleanup_end_(kNoLowId), full_expression_cleanup_dispatch_reused_(false),
+		  full_expression_tracks_lifetime_state_(false), runtime_lifetime_cleanup_dispatch_(kNoLowId),
+		  conditional_cleanup_resume_(kNoLowId),
 		  source_types_(program_),
 		  static_initializers_(program_, arena_, output_, stats_,
 			function_symbols_, global_symbols_, literal_symbols_,
@@ -104,7 +104,6 @@ public:
 		aggregate_helper_symbols_.resize(
 			graph_.aggregate_helpers.size(), kNoLowId);
 	}
-
 	void Lower()
 	{
 		RegisterAggregateHelpers();
@@ -683,7 +682,7 @@ private:
 		temp_counter_ = 0;
 		block_counter_ = 0;
 		generated_slot_ordinal_ = 0;
-		full_expression_cleanup_dispatches_.clear();
+		ResetFullExpressionFunctionState();
 		break_targets_.clear();
 		continue_targets_.clear();
 		label_blocks_.Clear();
@@ -791,7 +790,7 @@ private:
 		assigned_names_.Clear();
 		slot_name_counts_.Clear();
 		generated_slot_ordinal_ = 0;
-		full_expression_cleanup_dispatches_.clear();
+		ResetFullExpressionFunctionState();
 		parameter_slot_index_ = current_indirect_result_ ? 1 : 0;
 		current_this_binding_ = kNoBinding;
 		CollectSourceNames(node);
@@ -2950,6 +2949,7 @@ private:
 	std::vector<SlotId> binding_slots_;
 	std::vector<ParameterId> binding_indirect_parameters_;
 	std::vector<SlotId> generated_slots_;
+	FlatIdMap temporary_lifetime_slots_;
 	std::vector<BlockId> switch_case_blocks_;
 	std::vector<SymbolId> aggregate_helper_symbols_;
 	std::vector<BlockId> break_targets_;
@@ -2972,13 +2972,13 @@ private:
 	bool lowering_namespace_object_;
 	BindingId current_this_binding_;
 	BlockId destructor_return_target_;
-	bool destructor_return_routes_to_epilogue_;
-	bool full_expression_cleanup_active_;
+	bool destructor_return_routes_to_epilogue_, full_expression_cleanup_active_;
 	BlockId full_expression_cleanup_dispatch_, full_expression_cleanup_end_;
-	bool full_expression_cleanup_dispatch_reused_;
-	std::vector<std::uint32_t> full_expression_cleanup_actions_;
-	std::vector<std::uint32_t> full_expression_segment_actions_;
-	pa17_lowering_detail::CleanupDispatchMap full_expression_cleanup_dispatches_;
+	bool full_expression_cleanup_dispatch_reused_, full_expression_tracks_lifetime_state_;
+	BlockId runtime_lifetime_cleanup_dispatch_, conditional_cleanup_resume_;
+	std::vector<std::uint32_t> full_expression_cleanup_actions_, full_expression_segment_actions_;
+	pa17_lowering_detail::CleanupDispatchCache full_expression_cleanup_dispatches_;
+	FlatIdMap conditional_cleanup_dispatches_, conditional_cleanup_tails_, runtime_lifetime_temporaries_;
 	std::vector<IdentityTypeId> identity_type_cache_;
 	pa15_lowering_detail::SourceTypeLowering source_types_;
 	pa16_lowering_detail::StaticInitializerLowering static_initializers_;
