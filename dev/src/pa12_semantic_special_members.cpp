@@ -639,10 +639,11 @@ void SemanticAnalyzer::CompleteClassSpecialMembers(EntityId entity)
 	const FunctionInfo& copy = GetFunction(facts.copy_constructor);
 	const bool nontrivial_copy = copy.deleted_constructor ||
 		copy.deleted_special_member || !copy.trivial_special_member;
-	const bool nontrivial_move = facts.move_constructor != kNoBinding &&
+	const bool nontrivial_move = facts.move_constructor == kNoBinding ||
 		!GetFunction(facts.move_constructor).trivial_special_member;
+	// PA17 may use a direct boundary when either available transfer is trivial.
 	program_->entities[entity].indirect_class_value_abi =
-		nontrivial_copy || nontrivial_move ||
+		(nontrivial_copy && nontrivial_move) ||
 		!program_->entities[entity].trivial_destructor;
 	ConfigureSynthesizedStoragePrefix(
 		entity, &GetMutableFunction(facts.copy_constructor));

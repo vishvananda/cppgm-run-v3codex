@@ -712,7 +712,10 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 	dump_.nodes[action].operand_type =
 		program_->types.RemoveTopCv(EffectiveType(type));
 	dump_.nodes[action].trivial_special_member_action =
-		constructor.trivial_special_member && !materialized_conversion_result;
+		constructor.trivial_special_member &&
+		(constructor.implicit_special_member ||
+		 constructor.special_member == SPECIAL_MEMBER_COPY_CONSTRUCTOR) &&
+		!materialized_conversion_result;
 	std::vector<BindingId> empty_base_entries;
 	if (((constructor.defaulted_constructor &&
 		  program_->entities[entity].empty_class) ||

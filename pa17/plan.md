@@ -17,13 +17,12 @@ remains demand-driven and leaves virtual dispatch to PA18.
 
 ## Current Failure Map
 
-Latest audit: **230/241** PA17 tests pass, up from the turn-start **224/241**;
-all earlier stages and file audit pass. The complete 11-test failure set is
-grouped without overlap:
+Latest audit: **233/241** PA17 tests pass, up from this turn's **230/241**
+baseline; all earlier stages and file audit pass. The complete current
+8-test failure set is grouped without overlap:
 
 | Failures | Shared behavior | Primary owner |
 | ---: | --- | --- |
-| 3 | residual implicit/defaulted move and inherited value-initialization classification | PA12 class completion + PA16/PA17 special-member lowering |
 | 3 | aggregate appertainment, bit-field transfer order, and global class-array copy shape | PA12 aggregate initialization + PA16/PA17 storage lowering |
 | 2 | shadowed local identity and cleanup rebinding across control flow | PA12 scope facts + PA17 lifetime lowering |
 | 1 | converting-constructor staging for a selected by-value parameter | PA12 call conversion + PA17 argument lowering |
@@ -32,19 +31,22 @@ grouped without overlap:
 
 ## Active Checkpoint
 
-**Residual synthesized construction and move classification (3 failures).**
-Apply `spec.md` sections 2, 3, 6, and 8: class completion owns one canonical
-implicit/defaulted special-member fact, and initialization retains the exact
-selected constructor rather than retrying lookup during lowering. Data flows
-`completed class -> selected copy/move identity -> subobject recipe -> typed
-LowIR`. PA12 class completion and special-member synthesis own the fix;
-PA16/PA17 lowering only consumes retained steps. Expected work is O(direct
-bases + members), with each selected dependency demanded once.
+**Aggregate and storage-transfer recipe closure (3 failures).** Apply `spec.md`
+sections 2, 6, 8, and 9: aggregate appertainment owns canonical member paths
+and selected copy/reference actions; namespace and function lowering consume
+those retained paths in source order without reconstructing field identity.
+Data flows `typed initializer -> aggregate member path and transfer action ->
+local/global typed storage lowering -> LowIR`. PA12 aggregate initialization
+owns appertainment and member identity; PA16/PA17 local and namespace lowering
+own storage placement. Expected work is O(initializer clauses + selected
+subobjects + emitted actions), with one visit per member or bit-field storage
+unit and no whole-program scan.
 
-Validate the three move/inherited-value failures, deleted/private and
-copy-fallback controls, full PA17, through PA16, and file audit. Measure
-16/32/64-subobject copy/move chains; visits, emitted actions, time, and retained
-storage must scale linearly.
+Validate the aggregate-reference, bit-field, and global-array failures plus
+passing nested aggregate, array-copy, reference-member, and storage-prefix
+controls; then full PA17, through PA16, and file audit. Measure 16/32/64-member
+aggregate paths; visits, retained storage, and emitted actions must scale
+linearly.
 
 ## Performance Evidence
 
@@ -54,10 +56,12 @@ storage must scale linearly.
   53,478/101,238/197,270 typed bytes. Nine-run median semantic/lowering/render
   times were 0.545/0.357/0.093, 0.922/0.536/0.156, and
   1.614/0.891/0.267 ms; all work, storage, and phase time remain proportional.
-- Existing synthesized construction at 32/64/128 members recorded
-  160/320/640 special-member fact lookups, 161/321/641 subobject visits, and
-  271/527/1,039 instructions. This is the linear baseline for the next
-  copy/move-classification checkpoint.
+- Synthesized construction at 16/32/64 scalar members recorded 48/96/192
+  special-member subobject visits, fixed 27 semantic nodes, 14 lowered nodes,
+  and 17 instructions, plus 39,738/54,282/89,178 peak stage bytes. Nine-run
+  semantic medians were 0.206/0.229/0.323 ms; lowering medians were
+  0.122/0.125/0.124 ms. Completion work and storage are linear in subobjects,
+  while retained bulk-copy lowering remains constant-size.
 
 ## Completed Checkpoints
 
@@ -82,3 +86,4 @@ storage must scale linearly.
 | Value-category and reference-binding closure | 207/239 -> 216/239 | Focus plus adjacent gains; ancestry probes |
 | Canonical lookup and candidate identity | 216/239 -> 224/241 | Focus plus audits; through PA16; lookup probes |
 | Class-prvalue destination propagation | 224/241 -> 230/241 | Focus 6/6 plus controls; direct/indirect and cleanup audit fixes; through PA16; linear forwarding probe |
+| Synthesized construction and move classification | 230/241 -> 233/241 | Focus 3/3 plus six controls; through PA16; file audit; linear subobject probe |

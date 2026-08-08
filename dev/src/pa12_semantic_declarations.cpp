@@ -320,6 +320,18 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 				AnalyzeUsing(member, member_scope, root_, false, member_access);
 		}
 		CompleteClassLayout(entity);
+		if (entity < entity_constructors_.size())
+			for (std::size_t i = 0;
+				i < entity_constructors_[entity].size(); ++i)
+			{
+				const BindingId constructor =
+					entity_constructors_[entity][i];
+				const FunctionInfo& info = GetFunction(constructor);
+				if (info.defaulted_constructor &&
+					info.special_member == SPECIAL_MEMBER_NONE)
+					CompleteDefaultedDefaultConstructor(
+						entity, constructor);
+			}
 		for (std::size_t i = 0; i < anonymous_alias_storage.size(); ++i)
 		{
 			BindingRecord& alias =
@@ -2131,15 +2143,13 @@ void SemanticAnalyzer::InheritConstructors(EntityId entity,
 	const std::vector<BindingId>& constructors)
 {
 	EntityRecord& derived = program_->entities[entity];
-	derived.has_user_declared_constructor = true;
-	derived.has_user_provided_constructor = true;
 	derived.is_aggregate = false;
 	if (entity_constructors_.size() <= entity)
 		entity_constructors_.resize(static_cast<std::size_t>(entity) + 1);
 	for (std::size_t i = 0; i < constructors.size(); ++i)
 	{
 		const FunctionInfo source = GetFunction(constructors[i]);
-		if (!source.constructor) continue;
+		if (!source.constructor || source.parameters.empty()) continue;
 		const FunctionSignatureKey signature_key(derived.member_scope,
 			derived.identity_name, source.signature);
 		++function_signature_lookups_;
