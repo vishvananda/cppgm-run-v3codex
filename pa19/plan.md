@@ -18,27 +18,31 @@ Native IR and ELF remain later-stage boundaries.
 
 ## Current Failure Map
 
-Explicit class-instantiation completion and member demand raised the handout
-suite from 255 to 258/293. Three audit legality regressions also pass, for a
-combined 261/296 while the complete remaining 35 handout-test set stays:
+Explicit class-instantiation completion and member demand plus its audit left
+the turn baseline at 261/296. Canonical enum competition and empty class-value
+default arguments now pass three more cases, leaving this complete 32-test set:
 
 | Failures | Shared behavior | Owner |
 |---:|---|---|
-| 6 rejected valid inputs | Enum/member operators, target function references, and associated-class overloads. | PA19 candidate materialization and PA12/PA16 overload selection |
-| 8 rejected valid inputs | Dependent/local type and member lookup, nested completion, and retained replay. | PA12 retained scopes and lookup provenance; PA19 completion |
-| 6 rejected valid inputs | Defaults, variable templates, and unsupported declaration forms. | PA19 template declaration and demand owners |
-| 15 LowIR mismatches | Selected instantiated facts diverge in emission/lifetimes, overload provenance, or scalar/control-flow lowering. | PA12 selected facts and PA15-PA19 typed lowering |
+| 8 lookup/call failures | Member/operator overloads, target function references, ADL, and logical template operators. | PA19 candidate materialization and PA12/PA16 overload selection |
+| 15 replay/completion failures | Dependent/local names, nested and base completion, aliases, shadowing, and retained scopes. | PA12 retained provenance and PA19 specialization completion |
+| 4 declaration/default failures | Function aliases, alignment, variable-template syntax, and default-argument demand. | PA19 declaration patterns and demand owners |
+| 5 emission/lifetime mismatches | Reference casts, local enum identity, virtual destruction, unevaluated construction, and unused inline emission. | PA12 selected facts and PA15-PA19 typed lowering/demand |
 
-## Next Substantial Checkpoint
+## Active Checkpoint
 
-Complete enum operator candidate provenance across retained template bodies.
-The PA16 operator resolver owns builtin and overload candidates; PA19 replay
-preserves the definition-time ordinary/template set and the instantiated enum's
-associated namespace, then selects one canonical function or builtin before
-lowering. This applies `spec.md` sections 2-5 and 9 in O(actual candidates plus
-associated edges), without generating synthetic overload families. Validate
-scoped and unscoped enums, builtin preference/fallback, definition-point ADL,
-template-body replay, prior/audit, and enum-declaration scaling.
+Complete: canonical enum builtin competition and empty class-value default
+arguments. PA16 owns candidate construction from canonical operand `TypeId`s:
+builtin targets/ranks and indexed ordinary/template/ADL candidates produce one
+selected builtin or `BindingId`; PA12 rejects implicit integral-to-enum flow,
+and PA15 consumes the selected enum conversion without reconstructing it.
+PA12/PA16 also preserve an empty aggregate functional cast as a demanded
+constructor action when it crosses a by-value default-argument boundary. This
+applies `spec.md` sections 2-4, 6, and 9. Candidate work is O(actual candidates
+and associated edges), deduplication is O(1) average, and class construction adds
+one demand edge. Validate builtin preference/fallback, definition-point enum
+comparison with a class default argument, PA1-PA18, file audit, and the
+128/256/512 indexed candidate probe.
 
 ## Performance Evidence
 
@@ -62,6 +66,7 @@ template-body replay, prior/audit, and enum-declaration scaling.
 | Retained global call over substituted base depth 64/128/256 | Overload candidates and conversion checks stay constant at 5, with 3 functions and 8 instructions; total lookup scope visits 158/286/542 and semantic time 1.88/3.48/6.90 ms grow linearly with declarations/layout, not a replayed call lookup. |
 | Retained call with 64/128/256 visible template patterns and one viable candidate | Overload candidates stay 2, conversion checks 5, specialization requests 2, functions 3, and instructions 11; semantic time 2.34/4.62/8.95 ms and lookup visits 364/684/1,324 scale linearly with the published pattern set. |
 | Explicit class definition with 64/128/256 defined members | One specialization request; exactly 64/128/256 demand pushes and emissions, 129/257/513 instructions, 80,198/159,366/317,702 typed bytes, and 1.10/2.12/3.96 ms semantic time. Prior ordinary use plus explicit demand gives one cache hit and still emits its member once. |
+| Builtin enum competition with 128/256/512 indexed `operator&` declarations | Associated declaration visits 128/256/512, overload candidates 129/257/513, conversion checks 263/519/1,031, constant two functions/six instructions; typed bytes 132,259/263,203/525,091 and semantic time 2.45/4.56/9.50 ms. |
 
 ## Completed Checkpoints
 
@@ -85,3 +90,4 @@ template-body replay, prior/audit, and enum-declaration scaling.
 | Definition-time non-template call provenance | Pass | Node-indexed candidate/naming-class facts bypass concrete dependent bases while fixed-base replay remains intact; PA19 247 to 250, constant call-candidate probe across base depth, prior 1713/1713, audit pass |
 | Complete retained call provenance and demand | Pass | Node-indexed function/template/empty sets, naming class and ADL bit replay; local using sets, cv-reference ordering, value-aware `sizeof` ambiguity, and selected demand in template units with PA18-compatible ordinary anchors; PA19 250 to 255, linear pattern-set probe, prior 1713/1713, audit pass |
 | Explicit class-instantiation completion and member demand | Pass after audit fix | Entity-owned canonical argument slices, indexed source-member demand, N3485 namespace/key/order controls, typed owner/argument symbol identity, structured nested-template ABI names, weak linkage and parser-preserved object roots; PA19 handout 255 to 258 plus 3 audit regressions, linear member probe, prior 1713/1713 |
+| Canonical enum builtin competition and class default arguments | Pass | Directional enum conversions, ranked builtin competition, preserved widening, demanded empty-aggregate constructor action; PA19 261 to 264, linear candidate probe, prior 1713/1713, audit pass |

@@ -105,6 +105,15 @@ bool SourceTypeLowering::IsClassObject(TypeId type) const
 		flavor == NAMED_UNION;
 }
 
+bool SourceTypeLowering::IsEnumeration(TypeId type) const
+{
+	type = ExpressionObject(type);
+	const TypeRecord& record = program_.types.Get(type);
+	if (record.kind != TYPE_NAMED) return false;
+	const NamedFlavor flavor = program_.entities[record.entity].flavor;
+	return flavor == NAMED_ENUM || flavor == NAMED_ENUM_CLASS;
+}
+
 LowType SourceTypeLowering::LowerExpression(TypeId type) const
 {
 	return Lower(RemoveReference(type));

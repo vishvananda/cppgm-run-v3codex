@@ -471,7 +471,35 @@ bool SemanticAnalyzer::ApplyBuiltinBinaryConversions(
 		(program_->entities[right_entity].flavor == NAMED_STRUCT ||
 		 program_->entities[right_entity].flavor == NAMED_CLASS ||
 		 program_->entities[right_entity].flavor == NAMED_UNION);
-	if (!left_class && !right_class) return true;
+	if (!left_class && !right_class)
+	{
+		if (operation == ",")
+		{
+			if (selected_ranks)
+			{
+				selected_ranks->clear();
+				selected_ranks->push_back(CONVERSION_EXACT);
+				selected_ranks->push_back(CONVERSION_EXACT);
+			}
+			return true;
+		}
+		TypeId left_target = kNoType;
+		TypeId right_target = kNoType;
+		if (!BuiltinBinaryParameterTypes(operation, *left, Decay(left->type),
+			*right, Decay(right->type), &left_target, &right_target))
+			return false;
+		const ConversionRank left_rank = Conversion(*left, left_target);
+		const ConversionRank right_rank = Conversion(*right, right_target);
+		if (left_rank == CONVERSION_INVALID ||
+			right_rank == CONVERSION_INVALID) return false;
+		if (selected_ranks)
+		{
+			selected_ranks->clear();
+			selected_ranks->push_back(left_rank);
+			selected_ranks->push_back(right_rank);
+		}
+		return true;
+	}
 	if (operation == "&&" || operation == "||")
 	{
 		const TypeId boolean = program_->types.Fundamental(FUND_BOOL);
@@ -936,8 +964,17 @@ ExpressionInfo SemanticAnalyzer::ApplyCallArgument(
 				ValidateClassValueConstruction(target, value);
 			value = BuildDirectClassValueTransfer(value, target, selected);
 		}
+		else if (dump_.nodes[value.node].kind == DUMP_BRACED_INIT_LIST &&
+			dump_.nodes[value.node].value_initialization &&
+			program_->entities[target_record.entity].empty_class)
+			value.node = BuildDefaultConstructorAction(target_object, kNoScope);
 		else if (dump_.nodes[value.node].kind != DUMP_CONSTRUCTOR_ACTION)
 			value.node = BuildClassValueConstructorAction(target, value);
+		if (dump_.nodes[value.node].kind == DUMP_CONSTRUCTOR_ACTION &&
+			dump_.nodes[value.node].binding != kNoBinding &&
+			!dump_.nodes[value.node].trivial_special_member_action &&
+			!dump_.nodes[value.node].elide_empty_constructor)
+			DemandFunction(dump_.nodes[value.node].binding);
 		value.type = target_object;
 		value.category = VALUE_PRVALUE;
 		dump_.nodes[value.node].class_argument_staging = true;

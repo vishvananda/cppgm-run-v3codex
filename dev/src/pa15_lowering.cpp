@@ -1399,9 +1399,7 @@ private:
 		return Convert(LowerValue(node, target.kind == LOW_PTR ?
 			target : LowType()), target, canonicalize_immediate);
 	}
-	bool CanonicalizeImmediateConversion(std::uint32_t node) const {
-		return arena_.nodes[node].integer_narrowing_conversion; }
-
+	bool CanonicalizeImmediateConversion(std::uint32_t node) const { return arena_.nodes[node].integer_narrowing_conversion; }
 	void LowerDiscardedValue(std::uint32_t node) { const DumpNode& record = arena_.nodes[node];
 		if (record.kind == DUMP_BINARY_EXPRESSION) { (void)LowerBinary(node, record, Children(node), true); return; }
 		if ((record.category == VALUE_LVALUE || record.category == VALUE_XVALUE) && !IsFunctionType(RemoveReference(record.type))) (void)LowerStorage(node);
@@ -1445,8 +1443,11 @@ private:
 			arena_.nodes[children[0]].kind == DUMP_BINARY_EXPRESSION &&
 			arena_.nodes[children[0]].operand_type == kNoType &&
 			LowerExpressionType(arena_.nodes[children[0]].type).kind == LOW_I64;
+		const bool preserves_enum_conversion =
+			(source_types_.IsEnumeration(arena_.nodes[children[0]].type) && !SameType(left.type, operand_type)) ||
+			(source_types_.IsEnumeration(arena_.nodes[children[1]].type) && !SameType(right.type, operand_type));
 		const bool canonicalize_immediates =
-			(!comparison && (op == "+" || op == "-")) ||
+			(!preserves_enum_conversion && !comparison && (op == "+" || op == "-")) ||
 			(comparison &&
 			 ((left.kind == Operand::INTEGER && IsInteger(left.type) &&
 			   left.type.width < operand_type.width) ||

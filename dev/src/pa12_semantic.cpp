@@ -390,7 +390,14 @@ ConversionRank SemanticAnalyzer::Conversion(TypeId source,
 		}
 		if (IsArithmetic(from) && IsArithmetic(to) &&
 			(IsConst(target_record.child) || !lvalue_reference))
+		{
+			const EntityId target_entity = EntityOf(to);
+			if (target_entity != kNoEntity &&
+				(program_->entities[target_entity].flavor == NAMED_ENUM ||
+				 program_->entities[target_entity].flavor == NAMED_ENUM_CLASS))
+				return CONVERSION_INVALID;
 			return lvalue_reference ? CONVERSION_BOOLEAN : CONVERSION_STANDARD;
+		}
 		return CONVERSION_INVALID;
 	}
 
@@ -442,6 +449,11 @@ ConversionRank SemanticAnalyzer::Conversion(TypeId source,
 		return CONVERSION_BOOLEAN;
 	if (IsArithmetic(from) && IsArithmetic(to))
 	{
+		const EntityId target_entity = EntityOf(to);
+		if (target_entity != kNoEntity &&
+			(program_->entities[target_entity].flavor == NAMED_ENUM ||
+			 program_->entities[target_entity].flavor == NAMED_ENUM_CLASS))
+			return CONVERSION_INVALID;
 		if (IsIntegral(from) && IsIntegral(to) &&
 			IntegralPromotionType(from) == to)
 			return CONVERSION_PROMOTION;

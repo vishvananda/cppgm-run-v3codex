@@ -20,6 +20,7 @@ public:
 	bool IsArray(pa11::TypeId type) const;
 	bool IsFunction(pa11::TypeId type) const;
 	bool IsClassObject(pa11::TypeId type) const;
+	bool IsEnumeration(pa11::TypeId type) const;
 	bool IsPointerLike(pa11::TypeId type) const;
 	bool IsNullptr(pa11::TypeId type) const;
 	pa11::TypeId RemoveReference(pa11::TypeId type) const;
