@@ -14,27 +14,26 @@ Native IR and ELF remain later-stage boundaries.
 
 ## Current Failure Map
 
-Complete retained call provenance and selected-only hidden-friend demand raised
-PA19 from 250 to 255/293. The complete remaining 38-test set is:
+Explicit class-instantiation completion and member demand raised PA19 from 255
+to 258/293. The complete remaining 35-test set is:
 
 | Failures | Shared behavior | Owner |
 |---:|---|---|
 | 6 rejected valid inputs | Enum/member operators, target function references, and associated-class overloads. | PA19 candidate materialization and PA12/PA16 overload selection |
 | 8 rejected valid inputs | Dependent/local type and member lookup, nested completion, and retained replay. | PA12 retained scopes and lookup provenance; PA19 completion |
-| 9 rejected valid inputs | Explicit instantiation demand, defaults, variable templates, and declaration forms. | PA19 template declaration and demand owners |
+| 6 rejected valid inputs | Defaults, variable templates, and unsupported declaration forms. | PA19 template declaration and demand owners |
 | 15 LowIR mismatches | Selected instantiated facts diverge in emission/lifetimes, overload provenance, or scalar/control-flow lowering. | PA12 selected facts and PA15-PA19 typed lowering |
 
 ## Active Checkpoint
 
-Make explicit class-instantiation declarations drive canonical completion and
-member demand. The PA19 template declaration owner resolves one specialization
-key, the specialization state machine completes layout once, and an explicit
-definition enqueues each required non-template member through the ordinary
-demand owner; lowering sees only completed selected facts. This applies
-`spec.md` sections 2-5 and 9 in O(1) average specialization lookup plus
-O(declared members) monotonic demand. Validate qualified/unqualified explicit
-forms, static and nonstatic members, defaults, duplicate demand, prior/audit,
-and member-count scaling.
+Complete enum operator candidate provenance across retained template bodies.
+The PA16 operator resolver owns builtin and overload candidates; PA19 replay
+preserves the definition-time ordinary/template set and the instantiated enum's
+associated namespace, then selects one canonical function or builtin before
+lowering. This applies `spec.md` sections 2-5 and 9 in O(actual candidates plus
+associated edges), without generating synthetic overload families. Validate
+scoped and unscoped enums, builtin preference/fallback, definition-point ADL,
+template-body replay, prior/audit, and enum-declaration scaling.
 
 ## Performance Evidence
 
@@ -57,6 +56,7 @@ and member-count scaling.
 | Indirect class-value call with 32/64/128 arguments | Conversion checks 136/264/520, instructions 190/350/670, requests 35/67/131 with 33/65/129 hits, and constant three demand pushes; semantic time 2.40/3.80/6.66 ms and lowering 1.19/1.49/2.35 ms. |
 | Retained global call over substituted base depth 64/128/256 | Overload candidates and conversion checks stay constant at 5, with 3 functions and 8 instructions; total lookup scope visits 158/286/542 and semantic time 1.88/3.48/6.90 ms grow linearly with declarations/layout, not a replayed call lookup. |
 | Retained call with 64/128/256 visible template patterns and one viable candidate | Overload candidates stay 2, conversion checks 5, specialization requests 2, functions 3, and instructions 11; semantic time 2.34/4.62/8.95 ms and lookup visits 364/684/1,324 scale linearly with the published pattern set. |
+| Explicit class definition with 64/128/256 defined members | One specialization request; exactly 64/128/256 demand pushes and emissions, 129/257/513 instructions, and 1.37/2.13/4.20 ms semantic time. Prior ordinary use plus explicit demand still emits its member once. |
 
 ## Completed Checkpoints
 
@@ -79,3 +79,4 @@ and member-count scaling.
 | Canonical class-value call and construction boundaries | Pass | Direct, indirect, and converting calls share selected argument staging; typed call-passing facts, aggregate helpers, reference-move actions, and retained defaulted definitions reuse ordinary lowering; PA19 241 to 247 across six cases, linear argument/member probes, prior 1713/1713, audit pass |
 | Definition-time non-template call provenance | Pass | Node-indexed candidate/naming-class facts bypass concrete dependent bases while fixed-base replay remains intact; PA19 247 to 250, constant call-candidate probe across base depth, prior 1713/1713, audit pass |
 | Complete retained call provenance and demand | Pass | Node-indexed function/template/empty sets, naming class and ADL bit replay; local using sets, cv-reference ordering, value-aware `sizeof` ambiguity, and selected demand in template units with PA18-compatible ordinary anchors; PA19 250 to 255, linear pattern-set probe, prior 1713/1713, audit pass |
+| Explicit class-instantiation completion and member demand | Pass | Distinct parser form, canonical specialization state, indexed source-member demand, implicit-member filtering, and typed object-output roots; qualified/defaulted forms pass, PA19 255 to 258, linear member probe, prior 1713/1713, audit pass |

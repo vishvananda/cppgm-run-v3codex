@@ -320,7 +320,7 @@ struct BindingRecord
 		conversion_function, constructor,
 		constructor_base_entry, destructor, destructor_base_entry,
 		inline_function, virtual_function, pure_virtual, final_virtual,
-		override_specifier;
+		override_specifier, object_output_root;
 
 	BindingRecord();
 };

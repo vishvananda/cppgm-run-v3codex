@@ -1,5 +1,6 @@
 #include "pa12_semantic_detail.h"
 
+#include <algorithm>
 #include <cctype>
 #include <limits>
 #include <sstream>
@@ -160,6 +161,8 @@ bool SemanticAnalyzer::IsDeclaration(NodeId node) const
 		arena_->IsTag(node, "namespace-definition") ||
 		arena_->IsTag(node, "namespace-alias-definition") ||
 		arena_->IsTag(node, "template-declaration") ||
+		arena_->IsTag(node, "explicit-instantiation-declaration") ||
+		arena_->IsTag(node, "explicit-instantiation-definition") ||
 		arena_->IsTag(node, "special-member-declaration") ||
 		arena_->IsTag(node, "special-member-definition") ||
 		arena_->IsTag(node, "class-specifier") ||
@@ -169,6 +172,19 @@ bool SemanticAnalyzer::IsDeclaration(NodeId node) const
 		arena_->IsTag(node, "layout-pack-push") ||
 		arena_->IsTag(node, "layout-pack-pop") ||
 		arena_->IsTag(node, "linkage-specification");
+}
+
+void SemanticAnalyzer::RegisterClassMemberFunction(EntityId entity,
+	BindingId function)
+{
+	if (entity == kNoEntity || function == kNoBinding) return;
+	if (entity_member_functions_.size() <= entity)
+		entity_member_functions_.resize(static_cast<std::size_t>(entity) + 1);
+	function = program_->bindings[function].canonical;
+	std::vector<BindingId>& functions = entity_member_functions_[entity];
+	if (std::find(functions.begin(), functions.end(), function) ==
+		functions.end())
+		functions.push_back(function);
 }
 
 LookupResult SemanticAnalyzer::LookupPath(ScopeId scope,
@@ -1192,6 +1208,67 @@ TypeId SemanticAnalyzer::ResolveClassTemplateSpecialization(
 	if (pattern == NoTemplatePattern()) return kNoType;
 	const BindingId binding = InstantiateClassTemplate(pattern, arguments);
 	return binding == kNoBinding ? kNoType : program_->bindings[binding].type;
+}
+
+void SemanticAnalyzer::AnalyzeExplicitInstantiation(NodeId node,
+	ScopeId scope, bool definition)
+{
+	const NodeId target = FirstSemanticChild(node);
+	if (target == kNoNode ||
+		(!arena_->IsTag(target, "class-forward-declaration") &&
+		 !arena_->IsTag(target, "class-specifier")))
+		throw std::runtime_error(
+			"PA19 explicit instantiation requires a class template-id");
+	const TypeId type = ResolveClassTemplateSpecialization(
+		scope, arena_->Payload(target));
+	if (type == kNoType)
+		throw std::runtime_error(
+			"explicit class instantiation target was not found");
+	EnsureClassDefinition(type);
+	const EntityId entity = EntityOf(type);
+	if (entity == kNoEntity || !program_->entities[entity].complete)
+		throw std::runtime_error(
+			"explicit class instantiation target is incomplete");
+	const BindingId specialization =
+		program_->entities[entity].declaration;
+	if (class_template_explicit_instantiation_states_.size() <= specialization)
+		class_template_explicit_instantiation_states_.resize(
+			static_cast<std::size_t>(specialization) + 1, 0);
+	std::uint8_t& state =
+		class_template_explicit_instantiation_states_[specialization];
+	if (!definition)
+	{
+		state |= 1;
+		return;
+	}
+	if ((state & 2) != 0)
+		throw std::runtime_error(
+			"duplicate explicit class instantiation definition");
+	state |= 2;
+	const auto demand_member = [this](BindingId binding) {
+		if (binding == kNoBinding) return;
+		binding = program_->bindings[binding].canonical;
+		const FunctionInfo& function = GetFunction(binding);
+		if (!function.defined || function.implicit_constructor ||
+			function.implicit_destructor || function.implicit_special_member ||
+			function.deleted_constructor || function.deleted_destructor ||
+			function.deleted_special_member)
+			return;
+		program_->bindings[binding].object_output_root = true;
+		DemandFunction(binding);
+	};
+	if (entity < entity_member_functions_.size())
+		for (std::size_t i = 0; i < entity_member_functions_[entity].size(); ++i)
+			demand_member(entity_member_functions_[entity][i]);
+	if (entity < entity_conversion_functions_.size())
+		for (std::size_t i = 0;
+			i < entity_conversion_functions_[entity].size(); ++i)
+			demand_member(entity_conversion_functions_[entity][i]);
+	if (entity < entity_constructors_.size())
+		for (std::size_t i = 0; i < entity_constructors_[entity].size(); ++i)
+			demand_member(entity_constructors_[entity][i]);
+	if (entity < entity_destructor_by_entity_.size())
+		demand_member(entity_destructor_by_entity_[entity]);
 }
 
 }

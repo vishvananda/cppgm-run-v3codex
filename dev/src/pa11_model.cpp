@@ -575,7 +575,7 @@ BindingRecord::BindingRecord()
 	  constructor_base_entry(false),
 	  destructor(false), destructor_base_entry(false), inline_function(false),
 	  virtual_function(false), pure_virtual(false), final_virtual(false),
-	  override_specifier(false)
+	  override_specifier(false), object_output_root(false)
 {
 }
 

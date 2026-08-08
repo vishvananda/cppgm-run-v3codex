@@ -99,6 +99,8 @@ private:
 		std::uint32_t output_parent, bool local,
 		AccessKind access = ACCESS_PUBLIC);
 	void AnalyzeTemplate(NodeId node, ScopeId scope);
+	void AnalyzeExplicitInstantiation(NodeId node, ScopeId scope,
+		bool definition);
 	void ValidateRetainedTemplateDefinition(NodeId target, ScopeId scope,
 		const std::vector<NameId>& parameters);
 	void RecordRetainedCallLookup(NodeId callee, ScopeId scope,
@@ -420,6 +422,7 @@ private:
 		TypeId target, EntityId naming_class);
 	void AnalyzeClassMember(NodeId node, ScopeId scope, TypeId owner_type,
 		AccessKind access);
+	void RegisterClassMemberFunction(EntityId entity, BindingId function);
 	void AnalyzeBitField(NodeId node, ScopeId scope, TypeId owner_type,
 		AccessKind access);
 	void AnalyzeSpecialMember(NodeId node, ScopeId scope, TypeId owner_type,
@@ -677,6 +680,7 @@ private:
 	std::vector<TypeId> class_template_entity_arguments_;
 	TemplateSpecializationTable class_template_instantiations_;
 	std::vector<std::uint8_t> class_template_specialization_states_;
+	std::vector<std::uint8_t> class_template_explicit_instantiation_states_;
 	std::vector<std::uint32_t> class_template_member_definition_counts_;
 	std::vector<NodeId> deferred_class_definition_by_entity_;
 	std::vector<ScopeId> deferred_class_scope_by_entity_;

@@ -2835,18 +2835,21 @@ NodeId Parser::ParseDeclaration(bool in_class)
 	if ((At(KW_INLINE) && AtOffset(1, KW_NAMESPACE)) || At(KW_NAMESPACE))
 		return ParseNamespace();
 	if (At(KW_USING)) return ParseUsing();
-	if (At(KW_TEMPLATE)) return ParseTemplate(in_class);
-	if (At(KW_EXTERN) && AtOffset(1, KW_TEMPLATE))
+	const bool explicit_definition = At(KW_TEMPLATE) && !AtOffset(1, OP_LT);
+	const bool explicit_declaration = At(KW_EXTERN) && AtOffset(1, KW_TEMPLATE);
+	if (explicit_definition || explicit_declaration)
 	{
-		position_ += 2;
-		const NodeId declaration = arena_.Make(
-			"explicit-instantiation-declaration");
+		position_ += explicit_declaration ? 2 : 1;
+		const NodeId result = arena_.Make(explicit_declaration ?
+			"explicit-instantiation-declaration" :
+			"explicit-instantiation-definition");
 		const NodeId target = At(KW_CLASS) || At(KW_STRUCT) || At(KW_UNION) ?
 			ParseClass() : ParseSimpleOrFunction(in_class);
 		if (target == kNoNode) throw Error("expected explicit instantiation");
-		arena_.Add(declaration, target);
-		return declaration;
+		arena_.Add(result, target);
+		return result;
 	}
+	if (At(KW_TEMPLATE)) return ParseTemplate(in_class);
 	if (At(KW_EXTERN) && position_ + 1 < tokens_.size() &&
 		tokens_[position_ + 1].kind == kLiteralToken)
 	{

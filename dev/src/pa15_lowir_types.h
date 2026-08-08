@@ -402,6 +402,7 @@ struct Symbol
 	bool declaration_emitted;
 	bool definition_emitted;
 	bool referenced;
+	bool object_output_root;
 
 	Symbol(Kind kind_value, const std::string& name_value,
 		const std::string& object_name_value, bool c_linkage_value,
@@ -412,7 +413,8 @@ struct Symbol
 		  nonthrowing(nonthrowing_value), noreturn(false),
 		  thread_local_storage(false),
 		  tls_for_symbol(kNoLowId), source_type(kNoLowId),
-		  declaration_emitted(false), definition_emitted(false), referenced(false) {}
+		  declaration_emitted(false), definition_emitted(false), referenced(false),
+		  object_output_root(false) {}
 };
 
 }

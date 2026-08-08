@@ -2054,6 +2054,13 @@ void SemanticAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 		AnalyzeTemplate(node, scope);
 		return;
 	}
+	if (arena_->IsTag(node, "explicit-instantiation-declaration") ||
+		arena_->IsTag(node, "explicit-instantiation-definition"))
+	{
+		AnalyzeExplicitInstantiation(node, scope,
+			arena_->IsTag(node, "explicit-instantiation-definition"));
+		return;
+	}
 	if (arena_->IsTag(node, "namespace-definition"))
 	{
 		AnalyzeNamespace(node, scope, output_parent);

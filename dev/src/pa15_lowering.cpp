@@ -235,7 +235,6 @@ private:
 		const TypeRecord& record = program_.types.Get(unqualified);
 		return record.kind == TYPE_NAMED &&
 			!program_.entities[record.entity].complete ? LowVoid() : LowerType(type); }
-
 	SymbolId InternSymbol(const DumpNode& node, Symbol::Kind kind,
 		const std::string& proposed_name, const std::string& object_name)
 	{
@@ -245,8 +244,7 @@ private:
 		const bool internal = local_member ||
 			(binding.storage_class == STORAGE_CLASS_STATIC &&
 			 binding.member_owner == kNoEntity);
-		const bool c_linkage =
-			binding.language_linkage == LANGUAGE_LINKAGE_C;
+		const bool c_linkage = binding.language_linkage == LANGUAGE_LINKAGE_C;
 		SymbolIdentity identity;
 		identity.kind = kind;
 		identity.path = output_.identities.InternPath(program_,
@@ -274,6 +272,7 @@ private:
 				symbol.object_name != object_name)
 				throw std::logic_error("conflicting PA15 ABI object identity");
 			symbol.nonthrowing = symbol.nonthrowing || binding.nonthrowing;
+			symbol.object_output_root |= binding.object_output_root;
 			pa15_lowering_abi::ApplyBuiltinSymbolMetadata(
 				&symbol, binding.builtin_function);
 			return found;
@@ -290,6 +289,7 @@ private:
 		pa15_lowering_abi::ApplyBuiltinSymbolMetadata(&output_.symbols.back(),
 			binding.builtin_function);
 		output_.symbols.back().source_type = source_type;
+		output_.symbols.back().object_output_root = binding.object_output_root;
 		output_.symbol_index.Insert(identity, symbol);
 		return symbol;
 	}

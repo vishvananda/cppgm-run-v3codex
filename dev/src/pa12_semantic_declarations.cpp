@@ -947,6 +947,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 			FindChild(node, "compound-statement");
 		info.deferred = true;
 		ConfigureAssignmentSpecialMember(function, kNoNode);
+		RegisterClassMemberFunction(owner_entity, function);
 		return;
 	}
 	const NodeId list = FindChild(node, "init-declarator-list");
@@ -994,6 +995,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 				GetMutableFunction(function).deferred = true;
 			ConfigureAssignmentSpecialMember(
 				function, FindChild(item, "initializer"));
+			RegisterClassMemberFunction(EntityOf(owner_type), function);
 		}
 		else
 		{
