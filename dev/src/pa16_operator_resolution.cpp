@@ -462,6 +462,7 @@ bool SemanticAnalyzer::ApplyBuiltinBinaryConversions(
 	ExpressionInfo* right, std::vector<ConversionRank>* selected_ranks,
 	bool apply)
 {
+	if (left->type == kNoType || right->type == kNoType) return false;
 	const EntityId left_entity = EntityOf(left->type);
 	const EntityId right_entity = EntityOf(right->type);
 	const bool left_class = left_entity != kNoEntity &&
@@ -1110,12 +1111,19 @@ BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
 				else if (a < operand_syntax.size() &&
 					operand_syntax[a] != kNoNode)
 				{
-					const std::vector<BindingId> functions = FunctionCandidates(
-						scope, arena_->Payload(operand_syntax[a]));
 					TypeId desired =
 						program_->types.RemoveTopCv(parameters[parameter]);
 					if (program_->types.Get(desired).kind == TYPE_POINTER)
 						desired = program_->types.Get(desired).child;
+					std::vector<BindingId> functions = FunctionCandidates(
+						scope, arena_->Payload(operand_syntax[a]));
+					const std::vector<BindingId> template_functions =
+						FunctionTemplateTargetCandidates(scope,
+							arena_->Payload(operand_syntax[a]), desired);
+					for (std::size_t f = 0; f < template_functions.size(); ++f)
+						if (std::find(functions.begin(), functions.end(),
+							template_functions[f]) == functions.end())
+							functions.push_back(template_functions[f]);
 					std::size_t matches = 0;
 					for (std::size_t f = 0; f < functions.size(); ++f)
 						if (GetFunction(functions[f]).type == desired) ++matches;
@@ -1245,6 +1253,7 @@ bool SemanticAnalyzer::TryAnalyzeOverloadedOperator(
 	bool overloadable_operand = false;
 	for (std::size_t i = 0; i < operands.size(); ++i)
 	{
+		if (operands[i].type == kNoType) continue;
 		const EntityId entity = EntityOf(operands[i].type);
 		if (entity == kNoEntity) continue;
 		const NamedFlavor flavor = program_->entities[entity].flavor;

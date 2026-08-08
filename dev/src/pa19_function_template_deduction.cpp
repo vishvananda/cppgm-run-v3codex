@@ -10,6 +10,77 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+bool SemanticAnalyzer::FunctionTemplateTypeIsDependent(TypeId type) const
+{
+	for (std::size_t i = 0; i < function_template_shape_parameters_.size(); ++i)
+		if (type == function_template_shape_parameters_[i])
+		{
+			if (function_template_dependency_cache_.size() <= type)
+				function_template_dependency_cache_.resize(
+					static_cast<std::size_t>(type) + 1, 0);
+			function_template_dependency_cache_[type] = 2;
+			return true;
+		}
+	if (function_template_dependency_cache_.size() <= type)
+		function_template_dependency_cache_.resize(
+			static_cast<std::size_t>(type) + 1, 0);
+	if (function_template_dependency_cache_[type] != 0)
+		return function_template_dependency_cache_[type] == 2;
+	// Mark the node non-dependent while descending so malformed cyclic metadata
+	// cannot recurse indefinitely; a dependent child upgrades it below.
+	function_template_dependency_cache_[type] = 1;
+	const TypeRecord& record = program_->types.Get(type);
+	bool dependent = false;
+	switch (record.kind)
+	{
+	case TYPE_QUALIFIED:
+	case TYPE_POINTER:
+	case TYPE_LVALUE_REFERENCE:
+	case TYPE_RVALUE_REFERENCE:
+	case TYPE_ARRAY:
+		dependent = FunctionTemplateTypeIsDependent(record.child);
+		break;
+	case TYPE_FUNCTION:
+	{
+		dependent = FunctionTemplateTypeIsDependent(record.child);
+		const TypeId* parameters = program_->types.Parameters(type);
+		for (std::size_t i = 0; i < record.parameter_count && !dependent; ++i)
+			if (FunctionTemplateTypeIsDependent(parameters[i])) dependent = true;
+		break;
+	}
+	case TYPE_MEMBER_POINTER:
+		dependent = FunctionTemplateTypeIsDependent(record.child);
+		break;
+	case TYPE_NAMED:
+	{
+		if (record.entity >= class_template_pattern_by_entity_.size() ||
+			class_template_pattern_by_entity_[record.entity] == kNoDumpEdge ||
+			record.entity >= class_template_argument_begin_by_entity_.size())
+			break;
+		const std::uint32_t template_index =
+			class_template_pattern_by_entity_[record.entity];
+		if (template_index >= class_templates_.size()) break;
+		const std::size_t first =
+			class_template_argument_begin_by_entity_[record.entity];
+		const std::size_t count =
+			class_templates_[template_index].type_parameters.size();
+		if (first > class_template_entity_arguments_.size() ||
+			count > class_template_entity_arguments_.size() - first)
+			throw std::logic_error(
+				"invalid dependent class template argument range");
+		for (std::size_t i = 0; i < count && !dependent; ++i)
+			if (FunctionTemplateTypeIsDependent(
+				class_template_entity_arguments_[first + i])) dependent = true;
+		break;
+	}
+	case TYPE_FUNDAMENTAL:
+	case TYPE_INVALID:
+		break;
+	}
+	function_template_dependency_cache_[type] = dependent ? 2 : 1;
+	return dependent;
+}
+
 bool SemanticAnalyzer::DeduceFunctionTemplateType(TypeId pattern,
 	TypeId argument, std::vector<TypeId>* deduced) const
 {
@@ -17,16 +88,27 @@ bool SemanticAnalyzer::DeduceFunctionTemplateType(TypeId pattern,
 		i < function_template_shape_parameters_.size() && i < deduced->size(); ++i)
 		if (pattern == function_template_shape_parameters_[i])
 		{
-			argument = program_->types.RemoveTopCv(argument);
 			if ((*deduced)[i] != kNoType && (*deduced)[i] != argument)
 				return false;
 			(*deduced)[i] = argument;
 			return true;
 		}
+	if (!FunctionTemplateTypeIsDependent(pattern)) return true;
 	const TypeRecord& pattern_record = program_->types.Get(pattern);
 	if (pattern_record.kind == TYPE_QUALIFIED)
+	{
+		const TypeRecord& argument_record = program_->types.Get(argument);
+		if (argument_record.kind != TYPE_QUALIFIED)
+			return DeduceFunctionTemplateType(pattern_record.child,
+				argument, deduced);
+		const std::uint8_t extra_cv = static_cast<std::uint8_t>(
+			argument_record.cv & ~pattern_record.cv);
+		TypeId adjusted = argument_record.child;
+		if (extra_cv != CV_NONE)
+			adjusted = program_->types.Qualify(adjusted, extra_cv);
 		return DeduceFunctionTemplateType(pattern_record.child,
-			program_->types.RemoveTopCv(argument), deduced);
+			adjusted, deduced);
+	}
 	const TypeRecord& argument_record = program_->types.Get(argument);
 	if (pattern_record.kind != argument_record.kind) return false;
 	switch (pattern_record.kind)

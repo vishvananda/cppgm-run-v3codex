@@ -220,6 +220,7 @@ private:
 		const FunctionTemplatePattern& pattern,
 		const std::vector<TypeId>& arguments);
 	void UpgradeFunctionTemplateSpecializations(std::size_t pattern);
+	bool FunctionTemplateTypeIsDependent(TypeId type) const;
 	bool DeduceFunctionTemplateType(TypeId pattern, TypeId argument,
 		std::vector<TypeId>* deduced) const;
 	void DeduceFunctionTemplatePatterns(
@@ -647,6 +648,7 @@ private:
 	std::vector<BindingId> constructor_initializer_touched_;
 	std::vector<FunctionTemplatePattern> function_templates_;
 	std::vector<TypeId> function_template_shape_parameters_;
+	mutable std::vector<std::uint8_t> function_template_dependency_cache_;
 	IndexedSequenceTable template_function_sets_;
 	TemplateSpecializationTable template_instantiations_;
 	std::vector<ClassTemplatePattern> class_templates_;

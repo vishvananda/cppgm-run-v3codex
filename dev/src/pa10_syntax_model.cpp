@@ -278,20 +278,30 @@ void SyntaxArena::SetSemanticPayload(NodeId node, TextId payload)
 void SyntaxArena::AppendImmediateParameterNames(NodeId declarator,
 	std::vector<TextId>* result) const
 {
-	for (std::uint32_t edge = FirstEdge(declarator); edge != kNoEdge;
-		edge = NextEdge(edge))
+	std::vector<NodeId> pending(1, declarator);
+	while (!pending.empty())
 	{
-		const NodeId clause = EdgeChild(edge);
-		if (!IsTag(clause, "parameter-clause")) continue;
-		for (std::uint32_t item = FirstEdge(clause); item != kNoEdge;
-			item = NextEdge(item))
+		const NodeId current = pending.back();
+		pending.pop_back();
+		for (std::uint32_t edge = FirstEdge(current); edge != kNoEdge;
+			edge = NextEdge(edge))
 		{
-			const NodeId parameter = EdgeChild(item);
-			if (!IsTag(parameter, "parameter-declaration")) continue;
-			const TextId name = nodes_[parameter].semantic_payload;
-			if (name != 0) result->push_back(name);
+			const NodeId child = EdgeChild(edge);
+			if (!IsTag(child, "parameter-clause"))
+			{
+				pending.push_back(child);
+				continue;
+			}
+			for (std::uint32_t item = FirstEdge(child); item != kNoEdge;
+				item = NextEdge(item))
+			{
+				const NodeId parameter = EdgeChild(item);
+				if (!IsTag(parameter, "parameter-declaration")) continue;
+				const TextId name = nodes_[parameter].semantic_payload;
+				if (name != 0) result->push_back(name);
+			}
+			return;
 		}
-		break;
 	}
 }
 
@@ -306,6 +316,25 @@ bool SyntaxArena::HasDirectChildTag(NodeId node, const char* tag) const
 	for (std::uint32_t edge = nodes_[node].first_edge;
 		edge != kNoEdge; edge = edges_[edge].next)
 		if (nodes_[edges_[edge].child].tag == identity) return true;
+	return false;
+}
+
+bool SyntaxArena::HasDescendantTag(NodeId node, const char* tag) const
+{
+	const TextId identity = strings_.Intern(tag);
+	std::vector<NodeId> pending(1, node);
+	while (!pending.empty())
+	{
+		const NodeId current = pending.back();
+		pending.pop_back();
+		for (std::uint32_t edge = nodes_[current].first_edge;
+			edge != kNoEdge; edge = edges_[edge].next)
+		{
+			const NodeId child = edges_[edge].child;
+			if (nodes_[child].tag == identity) return true;
+			pending.push_back(child);
+		}
+	}
 	return false;
 }
 

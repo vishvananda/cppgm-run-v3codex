@@ -989,7 +989,11 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 			Rollback(mark);
 			return kNoNode;
 		}
-		Expect(OP_RPAREN);
+		if (!Match(OP_RPAREN))
+		{
+			Rollback(mark);
+			return kNoNode;
+		}
 		arena_.Add(nested_declarator, nested);
 		arena_.Add(result, nested_declarator);
 		if (name) *name = nested_name;
@@ -2754,7 +2758,7 @@ NodeId Parser::ParseSimpleOrFunction(bool, bool)
 			return kNoNode;
 		}
 		if (At(OP_LBRACE) && names.empty() &&
-			arena_.HasDirectChildTag(declarator, "parameter-clause"))
+			arena_.HasDescendantTag(declarator, "parameter-clause"))
 		{
 			const NodeId declaration = arena_.Make("function-definition");
 			arena_.Add(declaration, specifiers);

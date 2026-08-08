@@ -124,6 +124,7 @@ public:
 		std::vector<TextId>* result) const;
 	void SetPayload(NodeId node, const std::string& payload);
 	bool HasDirectChildTag(NodeId node, const char* tag) const;
+	bool HasDescendantTag(NodeId node, const char* tag) const;
 	std::uint32_t FirstEdge(NodeId node) const;
 	std::uint32_t NextEdge(std::uint32_t edge) const;
 	NodeId EdgeChild(std::uint32_t edge) const;

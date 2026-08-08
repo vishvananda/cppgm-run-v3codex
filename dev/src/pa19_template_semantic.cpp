@@ -519,6 +519,29 @@ TypeId SemanticAnalyzer::ResolveTemplateTypeArgument(ScopeId scope,
 			!program_->types.IsFunction(result))
 			result = program_->types.Qualify(result, base_cv);
 	}
+	if (result == kNoType && outer_cv == CV_NONE)
+	{
+		static const char* const compact_qualifiers[] = {
+			"const", "volatile"
+		};
+		static const std::uint8_t compact_cv[] = {
+			CV_CONST, CV_VOLATILE
+		};
+		for (std::size_t i = 0; i < sizeof(compact_qualifiers) /
+			sizeof(compact_qualifiers[0]); ++i)
+		{
+			const std::size_t length = std::char_traits<char>::length(
+				compact_qualifiers[i]);
+			if (spelling.size() <= length || spelling.compare(
+				spelling.size() - length, length, compact_qualifiers[i]) != 0)
+				continue;
+			const TypeId base = ResolveTemplateTypeArgument(scope,
+				spelling.substr(0, spelling.size() - length));
+			if (base == kNoType || program_->types.IsFunction(base)) continue;
+			result = program_->types.Qualify(base, compact_cv[i]);
+			break;
+		}
+	}
 	if (result != kNoType && outer_cv != CV_NONE &&
 		!program_->types.IsFunction(result))
 		result = program_->types.Qualify(result, outer_cv);

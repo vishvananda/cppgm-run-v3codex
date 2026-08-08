@@ -66,6 +66,7 @@ private:
 	void PredeclareClassSimple(NodeId node, std::size_t scope);
 	void DeclareEnumValues(NodeId node, std::size_t scope);
 	void VisitFunction(NodeId node, std::size_t scope);
+	NodeId FindParameterClause(NodeId declarator) const;
 	void BindFunctionParameters(NodeId declarator, std::size_t scope);
 	void VisitSimple(NodeId node, std::size_t scope, bool predeclared);
 	void VisitUsing(NodeId node, std::size_t scope);
@@ -202,10 +203,28 @@ void RetainedTemplateValidator::VisitChildren(NodeId node, std::size_t scope)
 		Visit(analyzer_.arena_->EdgeChild(edge), scope);
 }
 
+NodeId RetainedTemplateValidator::FindParameterClause(NodeId declarator) const
+{
+	std::vector<NodeId> pending(1, declarator);
+	while (!pending.empty())
+	{
+		const NodeId current = pending.back();
+		pending.pop_back();
+		for (std::uint32_t edge = analyzer_.arena_->FirstEdge(current);
+			edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+		{
+			const NodeId child = analyzer_.arena_->EdgeChild(edge);
+			if (analyzer_.arena_->IsTag(child, "parameter-clause")) return child;
+			pending.push_back(child);
+		}
+	}
+	return kNoNode;
+}
+
 void RetainedTemplateValidator::BindFunctionParameters(NodeId declarator,
 	std::size_t scope)
 {
-	const NodeId clause = analyzer_.FindChild(declarator, "parameter-clause");
+	const NodeId clause = FindParameterClause(declarator);
 	if (clause == kNoNode) return;
 	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(clause);
 		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
@@ -566,7 +585,7 @@ bool RetainedTemplateValidator::IsNonthrowingSyntax(NodeId declarator) const
 
 std::size_t RetainedTemplateValidator::ParameterCount(NodeId declarator) const
 {
-	const NodeId clause = analyzer_.FindChild(declarator, "parameter-clause");
+	const NodeId clause = FindParameterClause(declarator);
 	std::size_t result = 0;
 	if (clause != kNoNode)
 		for (std::uint32_t edge = analyzer_.arena_->FirstEdge(clause);
