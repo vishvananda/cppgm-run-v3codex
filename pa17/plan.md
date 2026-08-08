@@ -17,16 +17,17 @@ remains demand-driven and leaves virtual dispatch to PA18.
 
 ## Current Failure Map
 
-Latest audit: **240/241** PA17 tests pass, up from this turn's **230/241**
-baseline. The complete current failure set is:
+Latest audit: **241/241** PA17 tests pass, up from this turn's **230/241**
+baseline; PA1-PA16 are 1436/1436 and file audit passes. There are no current
+PA17 failures.
 
 | Failures | Shared behavior | Primary owner |
 | ---: | --- | --- |
-| 1 | functional class cast used as the current member-call object | PA12 expression analysis |
+| 0 | Stage test set complete | PA12 semantic graph through PA17 LowIR lowering |
 
 ## Active Checkpoint
 
-**Functional class-prvalue member-object closure (1 failure).** Apply `spec.md`
+**Functional class-prvalue member-object closure — completed.** Applied `spec.md`
 sections 2, 3, 8, and 9: PA12 recognizes a named class functional cast from
 class identity, independent of whether its destructor is nontrivial; selected
 construction produces one materialized temporary, which direct-member-call
@@ -37,11 +38,10 @@ temporary identity; call analysis owns member lookup and implicit-object
 conversion. Expected work is O(arguments + selected candidates + construction
 and cleanup actions), with no reparsing, repeated lookup, or graph rescan.
 
-Validate the failure plus trivial/nontrivial functional class casts, direct
-member calls on prvalues, copy-and-swap lifetime, scalar functional casts, and
-constructor rejection controls; then full PA17, through PA16, and file audit.
-Measure 16/32/64 functional-cast member calls; candidates, temporary facts,
-semantic/lowered nodes, storage, and emitted instructions must remain linear.
+Validation covers the target plus trivial/nontrivial functional class casts,
+direct member calls on prvalues, copy-and-swap lifetime, scalar casts, explicit
+constructors, and same-name function controls. The completion audit requires
+full PA17, through PA16, file audit, and a clean committed tree.
 
 ## Performance Evidence
 
@@ -76,6 +76,13 @@ semantic/lowered nodes, storage, and emitted instructions must remain linear.
   medians were 0.469/0.332/0.139, 0.724/0.477/0.235, and
   1.208/0.845/0.423 ms; cached boundary lookup, owner indexing, storage,
   emission, and phase time remain linear.
+- Functional-cast member calls at 16/32/64 sites recorded 53/101/197 overload
+  candidates, 92/172/332 conversion checks, 148/276/532 temporary-dependency
+  visits, 205/365/685 semantic nodes, 90/154/282 lowered nodes,
+  134/230/422 instructions, and 33,303/54,663/97,383 typed bytes. Nine-run
+  semantic/lowering/render medians were 0.425/0.279/0.085,
+  0.635/0.339/0.131, and 1.052/0.501/0.213 ms; lookup, identity, storage,
+  emission, and phase time remain linear.
 
 ## Completed Checkpoints
 
@@ -104,3 +111,4 @@ semantic/lowered nodes, storage, and emitted instructions must remain linear.
 | Non-braced aggregate appertainment and namespace copies | 233/241 -> 235/241 | Focus 6/6 plus four PA16 controls; linear 16/32/64 probe |
 | Function-exit identity and reachability closure | 235/241 -> 237/241 | Focus 6/6; binding/CFG 16/32/64 probe |
 | Typed scalar and bit-field emission normalization | 237/241 -> 240/241 | Targets 3/3 plus 12 controls; linear 16/32/64 probe |
+| Functional class-prvalue member-object closure | 240/241 -> 241/241 | Target plus 11 controls; linear 16/32/64 probe |

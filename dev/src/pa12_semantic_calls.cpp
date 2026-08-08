@@ -483,6 +483,18 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 	return result;
 }
 
+std::vector<BindingId> SemanticAnalyzer::FunctionCallCandidates(
+	ScopeId scope, const std::string& spelling, EntityId* naming_class)
+{
+	std::vector<BindingId> result =
+		FunctionCandidates(scope, spelling, naming_class);
+	result.erase(std::remove_if(result.begin(), result.end(),
+		[this](BindingId candidate) {
+			return GetFunction(candidate).constructor;
+		}), result.end());
+	return result;
+}
+
 std::vector<BindingId> SemanticAnalyzer::FunctionSet(BindingId binding)
 {
 	std::vector<BindingId> result;

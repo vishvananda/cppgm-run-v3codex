@@ -153,6 +153,8 @@ private:
 		TypeId left, TypeId right) const;
 	std::vector<BindingId> FunctionCandidates(ScopeId scope,
 		const std::string& spelling, EntityId* naming_class = 0);
+	std::vector<BindingId> FunctionCallCandidates(ScopeId scope,
+		const std::string& spelling, EntityId* naming_class = 0);
 	std::vector<BindingId> FunctionSet(BindingId binding);
 	void AppendFunctionSet(BindingId binding,
 		std::vector<BindingId>* result);
@@ -228,6 +230,7 @@ private:
 	ExpressionInfo AnalyzeCall(NodeId node, ScopeId scope, TypeId target);
 	TypeId ResolveFunctionalCastType(ScopeId scope,
 		const std::string& spelling);
+	bool IsClassObjectType(TypeId type) const;
 	BindingId EnsureBuiltinFunction(BuiltinFunctionKind kind);
 	bool AnalyzeBuiltinCall(const std::string& spelling, ScopeId scope,
 		const std::vector<NodeId>& argument_syntax, TypeId target,

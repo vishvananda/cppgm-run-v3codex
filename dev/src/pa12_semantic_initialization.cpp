@@ -33,6 +33,11 @@ std::vector<unsigned char> DecodeStringInitializer(
 
 }
 
+bool SemanticAnalyzer::IsClassObjectType(TypeId type) const
+{
+	return IsClassEntity(*program_, EntityOf(type));
+}
+
 bool SemanticAnalyzer::EmptyDefaultConstructorChain(BindingId constructor,
 	std::vector<BindingId>* base_entries)
 {

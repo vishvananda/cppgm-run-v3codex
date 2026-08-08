@@ -1381,7 +1381,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 		}
 
 		EntityId function_naming_class = kNoEntity;
-		std::vector<BindingId> candidates = FunctionCandidates(scope, spelling,
+		std::vector<BindingId> candidates = FunctionCallCandidates(scope, spelling,
 			&function_naming_class);
 		for (std::size_t i = 0; i < argument_syntax.size(); ++i)
 			analyzed_arguments.push_back(
@@ -1390,7 +1390,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 		if (!FindFunctionTemplates(scope, spelling).empty())
 		{
 			DeduceFunctionTemplates(scope, spelling, analyzed_arguments);
-			candidates = FunctionCandidates(scope, spelling,
+			candidates = FunctionCallCandidates(scope, spelling,
 				&function_naming_class);
 		}
 		if (!parenthesized_callee &&
@@ -1450,7 +1450,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 		const TypeId cast_type = ResolveFunctionalCastType(scope, spelling);
 		if (cast_type != kNoType)
 		{
-			if (DestructedEntity(cast_type) != kNoEntity)
+			if (IsClassObjectType(cast_type))
 				return AnalyzeClassFunctionalCast(cast_type, scope,
 					argument_syntax, arguments_node, target);
 			if (argument_syntax.size() > 1)
