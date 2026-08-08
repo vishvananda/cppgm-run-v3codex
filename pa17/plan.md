@@ -33,6 +33,18 @@ No lowering-only semantic node is synthesized. Compile work is therefore
 O(owned subobjects + emitted loop IR), independent of a retained array extent;
 runtime transfer work remains O(array elements).
 
+Expression analysis also retains canonical value category, referred type,
+selected declaration, and standard-conversion facts. Xvalue member calls stay
+xvalues, reference binding materializes only prvalues, and derived-to-base
+by-value staging records the typed base projection consumed by lowering.
+Array-reference and no-op destructor handling use those same facts without
+reconstructing an object shape. The `Program` model owns the inheritance edge
+index: each class has canonical depth and access-prefix metadata plus a compact
+binary-lifting row. Public ancestry and distance queries therefore avoid
+repeated base-chain walks; context-sensitive private/protected/friend access
+continues through the detailed access owner. Candidate conversion computes the
+relationship once and reuses it for reference relatedness and rank.
+
 ## Current Failure Map
 
 Audited result: **216/239**. The complete non-overlapping failure map contains
@@ -144,11 +156,18 @@ filtering, inherited call surrogates, full PA17, through PA16, file audit, and
   0.246/0.222/0.250 ms and lowering medians were 0.253/0.222/0.251 ms; output
   was 3,781/3,785/3,787 bytes (only the bound spelling changes). A nested
   32x32 array retained the same counts with one 1,024-element loop.
-- Reference overload sets at 32/64/128 candidates recorded exactly
-  32/64/128 candidate visits and 96/192/384 conversion checks. Five-run
-  semantic medians were 1.146/2.138/4.335 ms and semantic peak storage was
-  297,470/592,958/1,184,018 bytes, confirming proportional retained facts,
-  work, and storage.
+- Unrelated reference overload sets at 32/64/128 candidates recorded exactly
+  32/64/128 candidate visits, 96/192/384 conversion checks, and 62/126/254
+  indexed ancestry probes. Five-run semantic medians were
+  1.160/2.121/4.222 ms and semantic peak storage was
+  298,014/594,046/1,186,194 bytes, proportional to the retained candidates.
+- Viable single-inheritance overload sets at 16/32/64/128 candidates recorded
+  16/32/64/128 candidate visits, 30/62/126/254 comparisons, and
+  48/96/192/384 conversions. The audit changed repeated base-chain visits of
+  405/1,333/4,725/17,653 into 105/217/441/889 indexed ancestry probes.
+  Five-run semantic medians were 0.668/1.213/2.271/4.503 ms and peak storage
+  was 150,852/299,580/597,156/1,195,292 bytes, demonstrating proportional
+  candidate work and storage after the index replacement.
 
 ## Completed Checkpoints
 
@@ -170,4 +189,4 @@ filtering, inherited call surrogates, full PA17, through PA16, file audit, and
 | Class direct-initialization recipes | 174/231 -> 186/231; audit 188/233 | Landed pass set gains 12 tests; scalar-list rank and narrowing regressions pass without changing the original set; through PA16 1,436/1,436; file audit and proportional list/candidate probes pass |
 | Typed constructor delegation and qualified default completion | 188/233 -> 193/233; audit 199/239 | Positive delegation/qualified definitions 5/5; cycle/mixed rejection 3/3; six defaulted-definition regressions; through PA16 1,436/1,436; file audit and proportional 32/64/128 probes pass |
 | Composite subobject copy/move storage transfer | 199/239 -> 207/239; audit 207/239 | Prefix, array, empty, reference, move-only aggregate, implicit-move, and trivial ABI gains remain 8/8; direct typed lowering and bounded array loops audited; through PA16 1,436/1,436; fixed-shape extent probes and file audit pass |
-| Value-category and reference-binding closure | 207/239 -> 216/239 | Audited group 7/7 plus two adjacent gains; original pass set restored; rejection focus 3/3; through PA16 1,436/1,436; file audit and linear 32/64/128 probes pass |
+| Value-category and reference-binding closure | 207/239 -> 216/239; audit 216/239 | Planned focus 7/7 plus two adjacent gains and rejection focus 3/3; canonical value/conversion facts feed direct typed lowering; indexed ancestry removes repeated base-chain work; through PA16 1,436/1,436, file audit, and proportional 16/32/64/128 probes pass |

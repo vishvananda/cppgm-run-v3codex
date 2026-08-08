@@ -14,13 +14,8 @@ bool SemanticAnalyzer::AccessIsBaseOf(EntityId base, EntityId derived) const
 	if (base == kNoEntity || derived == kNoEntity ||
 		base >= program_->entities.size() || derived >= program_->entities.size())
 		return false;
-	for (EntityId current = derived; current != kNoEntity;
-		current = program_->entities[current].direct_base)
-	{
-		++access_path_visits_;
-		if (current == base) return true;
-	}
-	return false;
+	++access_path_visits_;
+	return program_->QueryBasePath(derived, base, 0, 0);
 }
 
 bool SemanticAnalyzer::HasClassPrivilege(EntityId owner) const
@@ -135,6 +130,12 @@ bool SemanticAnalyzer::BaseConversionAllowed(EntityId derived,
 {
 	++access_checks_;
 	if (base == derived) return false;
+	std::size_t distance = 0;
+	bool all_public = false;
+	++access_path_visits_;
+	if (!program_->QueryBasePath(
+		derived, base, &distance, &all_public) || distance == 0) return false;
+	if (all_public) return true;
 	EntityId privilege_anchor = kNoEntity;
 	for (EntityId context = current_class_context_; context != kNoEntity;
 		context = program_->entities[context].enclosing_class)
@@ -182,13 +183,9 @@ std::size_t SemanticAnalyzer::BaseConversionDistance(TypeId source,
 	if (derived == kNoEntity || base == kNoEntity)
 		return std::numeric_limits<std::size_t>::max();
 	std::size_t distance = 0;
-	for (EntityId current = derived; current != kNoEntity;
-		current = program_->entities[current].direct_base, ++distance)
-	{
-		++access_path_visits_;
-		if (current == base) return distance;
-	}
-	return std::numeric_limits<std::size_t>::max();
+	++access_path_visits_;
+	return program_->QueryBasePath(derived, base, &distance, 0) ? distance :
+		std::numeric_limits<std::size_t>::max();
 }
 
 std::size_t SemanticAnalyzer::BaseProjectionCount(TypeId source,

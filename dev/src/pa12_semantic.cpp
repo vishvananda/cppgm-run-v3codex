@@ -525,10 +525,12 @@ ConversionRank SemanticAnalyzer::Conversion(TypeId source,
 				CONVERSION_INVALID : CONVERSION_EXACT;
 		const EntityId source_entity = EntityOf(from);
 		const EntityId target_entity = EntityOf(to);
+		const bool derived_to_base = source_entity != kNoEntity &&
+			target_entity != kNoEntity &&
+			BaseConversionAllowed(source_entity, target_entity);
 		const bool reference_related =
 			SimilarUnqualified(EffectiveType(source), target_record.child) ||
-			(source_entity != kNoEntity && target_entity != kNoEntity &&
-			 BaseConversionAllowed(source_entity, target_entity));
+			derived_to_base;
 		if (!reference_related &&
 			(!lvalue_reference || IsConst(target_record.child)))
 		{
@@ -536,10 +538,7 @@ ConversionRank SemanticAnalyzer::Conversion(TypeId source,
 				integer_zero, target_record.child);
 			if (temporary != CONVERSION_INVALID) return temporary;
 		}
-		const EntityId derived = EntityOf(from);
-		const EntityId base = EntityOf(to);
-		if (derived != kNoEntity && base != kNoEntity &&
-			BaseConversionAllowed(derived, base))
+		if (derived_to_base)
 		{
 			const TypeRecord source_top = program_->types.Get(EffectiveType(source));
 			const TypeRecord target_top = program_->types.Get(target_record.child);

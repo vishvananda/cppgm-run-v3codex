@@ -368,6 +368,8 @@ public:
 	void SetEntityScope(EntityId entity, ScopeId scope);
 	void SetDirectBase(EntityId derived, EntityId base, AccessKind access);
 	bool IsBaseOf(EntityId base, EntityId derived) const;
+	bool QueryBasePath(EntityId derived, EntityId base,
+		std::size_t* distance, bool* all_public) const;
 	LookupResult Lookup(ScopeId current, const NamePath& name,
 		LookupKind kind);
 	LookupResult LookupName(ScopeId current, NameId name, LookupKind kind);
@@ -447,6 +449,11 @@ private:
 	std::uint32_t lookup_generation_;
 	std::vector<std::uint32_t> lookup_dependency_marks_;
 	std::vector<ScopeId> lookup_dependencies_;
+	std::vector<EntityId> base_jumps_;
+	std::vector<std::size_t> base_jump_offsets_;
+	std::vector<std::uint8_t> base_jump_counts_;
+	std::vector<std::uint32_t> base_depths_;
+	std::vector<std::uint32_t> deepest_nonpublic_base_depths_;
 	std::uint32_t lookup_dependency_generation_;
 	bool collecting_lookup_dependencies_;
 	std::unique_ptr<LookupCache> lookup_cache_;

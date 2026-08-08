@@ -895,6 +895,10 @@ EntityId Program::NewEntity(NameId name, NamedFlavor flavor, bool complete,
 		throw std::runtime_error("too many PA11 entities");
 	const EntityId entity = static_cast<EntityId>(entities.size());
 	entities.push_back(EntityRecord());
+	base_jump_offsets_.push_back(0);
+	base_jump_counts_.push_back(0);
+	base_depths_.push_back(0);
+	deepest_nonpublic_base_depths_.push_back(0);
 	EntityRecord& record = entities.back();
 	record.name = name;
 	record.identity_name = identity_name == 0 ? name : identity_name;
@@ -1048,21 +1052,68 @@ void Program::SetDirectBase(EntityId derived, EntityId base, AccessKind access)
 	if (entities[derived].member_scope != kNoScope)
 		throw std::logic_error(
 			"direct base must be fixed before publishing the member scope");
+	if (entities[derived].direct_base == base)
+	{
+		if (entities[derived].base_access != access)
+			throw std::runtime_error("inconsistent direct base access");
+		return;
+	}
 	if (IsBaseOf(derived, base))
 		throw std::runtime_error("cyclic class inheritance");
+	if (base_depths_[base] == std::numeric_limits<std::uint32_t>::max())
+		throw std::runtime_error("class inheritance is too deep");
 	entities[derived].direct_base = base;
 	entities[derived].base_access = access;
 	entities[derived].has_direct_base = true;
+	base_depths_[derived] = base_depths_[base] + 1;
+	deepest_nonpublic_base_depths_[derived] = access == ACCESS_PUBLIC ?
+		deepest_nonpublic_base_depths_[base] : base_depths_[derived];
+	std::uint32_t remaining_depth = base_depths_[derived];
+	std::uint8_t jump_count = 0;
+	while (remaining_depth != 0)
+	{
+		++jump_count;
+		remaining_depth >>= 1;
+	}
+	base_jump_offsets_[derived] = base_jumps_.size();
+	base_jump_counts_[derived] = jump_count;
+	base_jumps_.insert(base_jumps_.end(), jump_count, kNoEntity);
+	base_jumps_[base_jump_offsets_[derived]] = base;
+	for (std::size_t level = 1; level < jump_count; ++level)
+	{
+		const EntityId previous =
+			base_jumps_[base_jump_offsets_[derived] + level - 1];
+		base_jumps_[base_jump_offsets_[derived] + level] =
+			previous == kNoEntity || base_jump_counts_[previous] < level ?
+			kNoEntity : base_jumps_[base_jump_offsets_[previous] + level - 1];
+	}
 }
 
 bool Program::IsBaseOf(EntityId base, EntityId derived) const
 {
+	return QueryBasePath(derived, base, 0, 0);
+}
+
+bool Program::QueryBasePath(EntityId derived, EntityId base,
+	std::size_t* distance, bool* all_public) const
+{
 	if (base == kNoEntity || derived == kNoEntity ||
-		base >= entities.size() || derived >= entities.size()) return false;
-	for (EntityId current = derived; current != kNoEntity;
-		current = entities[current].direct_base)
-		if (current == base) return true;
-	return false;
+		base >= entities.size() || derived >= entities.size() ||
+		base_depths_[derived] < base_depths_[base]) return false;
+	const std::uint32_t difference =
+		base_depths_[derived] - base_depths_[base];
+	EntityId current = derived;
+	std::uint32_t remaining = difference;
+	for (std::size_t level = 0; remaining != 0 && current != kNoEntity;
+		++level, remaining >>= 1)
+		if ((remaining & 1) != 0)
+			current = level < base_jump_counts_[current] ?
+				base_jumps_[base_jump_offsets_[current] + level] : kNoEntity;
+	if (current != base) return false;
+	if (distance) *distance = difference;
+	if (all_public) *all_public =
+		deepest_nonpublic_base_depths_[derived] <= base_depths_[base];
+	return true;
 }
 
 Program::NameEntry* Program::EnsureEntry(ScopeId scope, NameId name)
@@ -2071,6 +2122,11 @@ std::size_t Program::StorageBytes() const
 		lookup_worklist_.capacity() * sizeof(ScopeId) +
 		lookup_dependency_marks_.capacity() * sizeof(std::uint32_t) +
 		lookup_dependencies_.capacity() * sizeof(ScopeId) +
+		base_jumps_.capacity() * sizeof(EntityId) +
+		base_jump_offsets_.capacity() * sizeof(std::size_t) +
+		base_jump_counts_.capacity() * sizeof(std::uint8_t) +
+		base_depths_.capacity() * sizeof(std::uint32_t) +
+		deepest_nonpublic_base_depths_.capacity() * sizeof(std::uint32_t) +
 		lookup_cache_->StorageBytes() +
 		entities.capacity() * sizeof(EntityRecord) +
 		bindings.capacity() * sizeof(BindingRecord);
