@@ -2,33 +2,37 @@
 
 ## Current Checkpoint Review
 
-Checkpoint `6c1a56be` landed enum builtin/operator competition, directional
-integral-to-enum rejection, enum conversion lowering, and empty class-value
-default-argument demand. The audit started from its clean 1,713/1,713 PA1-PA18
-and 264/296 PA19 baseline and was bounded to that increment.
+Checkpoint `e10d5439` landed declaration-owned local and qualified type replay.
+It raised PA19 from a reproduced parent result of 266/298 to 272/298 while the
+PA1-PA18 baseline remained 1,713/1,713. This audit is bounded to that increment
+and its parser-to-specialization ownership path.
 
-The three landed cases were valid, but the complete ownership path had four
-defects. Enum-only operator lookup admitted every same-name function instead of
-applying N3485 13.3.1.2's exact corresponding-enum parameter rule; the landed
-probe therefore performed 129/257/513 overload visits for one relevant
-operator. Builtin comma was incorrectly ranked as a competing candidate rather
-than used only as the paragraph 9 fallback. PA15 reconstructed an enum
-conversion from a source type, and the class-value fix reran default-constructor
-selection at `kNoScope` instead of retaining the source-selected action. All
-findings are closed, with two audit regressions covering the language defects.
+The six newly passing cases were valid, but the function-pointer case decoded
+`F (*)()` from a rendered template-argument string in semantic analysis. The
+nested-constructor path likewise recovered the current class's unqualified name
+by scanning a rendered qualified name. Both violated `spec.md` sections 1-4 and
+9: parsed structure and compact identity must survive to their consumers, and
+semantic work must not round-trip through text.
 
-The repaired operator path is function publication -> a TU-owned dense index
-keyed by canonical `(ScopeId, NameId, enum TypeId, operand)` -> ordinary lookup
-anchors and associated-scope edges -> canonical candidate deduplication ->
-conversion ranking -> one selected `BindingId` or builtin -> a typed enum
-conversion fact -> direct typed lowering. Hidden friends and deduced template
-specializations receive the same exact-parameter filter. Empty aggregate
-functional casts retain their selected constructor node in the semantic arena;
-the by-value argument boundary consumes and demands that node without lookup.
-No source/token/semantic representation was duplicated, no text was parsed back
-into structure, and a bounded changed-source scan found no host/reference
-invocation, filename/test branch, cached answer, global invalidation, or retry
-loop.
+The repaired path is token interning -> scoped PA10 name facts and cached angle
+matching -> one retained `type-id` per supported explicit type argument plus
+interned qualified-name components -> ordinary `BuildTypeId` canonicalization
+-> indexed class-template lookup -> the existing canonical specialization
+cache -> ordinary completion and lowering. Current-class tracking now compares
+the terminal interned identifier directly. PA11 adopts the parser's interned ID
+without rehashing its spelling. The retained structure is semantic-only at the
+PA10 serialization boundary, preserving the earlier public syntax contract.
+The semantic function-pointer text decoder added by the checkpoint is removed,
+so `F (*)()` reaches specialization solely through the retained declarator
+tree. Shape-first ambiguous-call recovery was adjusted to accept the new
+structured child without adding speculative lookup, and inherited-constructor
+helpers were moved to their existing special-member owner to preserve the
+file-audit boundary.
+
+A bounded changed-source scan found no reference/host invocation, filename or
+test branch, cached output, full-program retry, or new unindexed semantic scan.
+The remaining textual template resolver predates this checkpoint and is not on
+the repaired explicit-type-argument path.
 
 ## Durable Architecture Decisions
 
@@ -50,29 +54,40 @@ loop.
 - Standard enum conversions and source-selected class-value constructor actions
   are semantic facts. Lowering and call staging consume those facts rather than
   rediscovering type or constructor intent.
+- Supported explicit type template arguments are retained as ordinary PA10
+  `type-id` trees beneath compact qualified-name components and hidden only at
+  the public PA10 serialization boundary. Rendered names are presentation
+  payloads, not semantic inputs.
+- Parser current-class state stores the terminal interned identifier. Nested
+  constructors and destructors are classified by compact identity rather than
+  by parsing a qualified class spelling.
+- Structured template-name resolution adopts existing interned IDs and feeds
+  argument trees through `BuildTypeId` and the canonical specialization cache;
+  unresolved argument types cannot enter that cache.
 
 ## Performance Evidence
 
-For 128/256/512 unrelated indexed `operator&` declarations, the landed path
-performed 128/256/512 associated declaration visits, 129/257/513 overload
-visits, and 263/519/1,031 conversion checks. After the audit fix, ordinary plus
-ADL observation stays at two declaration visits, two overload visits, nine
-conversion checks, and one conversion-cache miss. Typed storage remains linear
-at 132,259/263,203/525,091 bytes and semantic time was 2.88/4.59/9.56 ms,
-reflecting source publication rather than candidate materialization.
+For 128/256/512 paired loop-local relational and qualified `api::item<int>`
+uses, token counts were 3,911/7,751/15,431 and syntax nodes were
+4,942/9,806/19,534. Template scans were 128/256/512 at exactly two tokens each,
+with no failed scans; parser storage was 33,640/66,664/132,712 bytes and median
+parse time was 1.176/2.336/4.716 ms. Retaining argument trees therefore remains
+linear in source size while cached angle recognition stays bounded per use.
 
-A complementary 128/256/512 probe in which every exact-first-parameter operator
-is language-required produced 129/257/513 declaration visits,
-128/256/512 overload visits, 263/519/1,031 conversion checks, and
-2.37/4.48/9.06 ms semantic time. This distinguishes eliminated unrelated work
-from linear required candidate work.
+For 128/256/512 repeated `result_traits<F, F (*)()>::type` uses, specialization
+requests were 128/256/512 with 127/255/511 cache hits, while canonical types
+stayed at 36, class layouts at two, layout member visits at one, and lookup
+misses at three. Semantic nodes were 133/261/517, storage was
+125,486/236,974/464,046 bytes, and median semantic time was
+1.246/2.329/4.531 ms. This demonstrates one canonical specialization and
+completion with linear work only for the repeated source uses.
 
 ## Validation
 
-- PA19: 266/298 combined; the original 264/296 checkpoint baseline is intact,
-  the two audit regressions pass, and the same 32 original tests remain.
-- The three landed enum/default-argument cases and focused PA16 enum/value-init
-  plus PA17 nothrow construction cases pass.
+- PA19: 272/298; the 272/298 turn-start baseline and exact 26-test residual set
+  are intact.
+- Ten focused declaration-owned replay and ambiguity cases pass, including
+  the structural function-pointer and nested-constructor paths.
 - PA1-PA18: 1,713/1,713.
 - PA19 file audit: pass with the 11 pre-existing advisory header warnings.
 
@@ -82,3 +97,4 @@ from linear required candidate work.
 |---|---|---|
 | Explicit class-instantiation completion and member demand (`5ca3aed9`) | Pass after audit fix | Canonical entity arguments, structured ABI identity, weak/root propagation and parser support, N3485 legality controls, linear member-demand probe, prior baseline retained |
 | Canonical enum builtin competition and class default arguments (`6c1a56be`) | Pass after audit fix | Exact enum-parameter index, comma fallback, typed conversion/constructor facts, two regressions, constant unrelated-candidate work, linear required work, prior baseline retained |
+| Declaration-owned local and qualified type replay (`e10d5439`) | Pass after audit fix | Retained type-argument trees, interned component/class identity, canonical specialization path, bounded parser scans, one-completion function-pointer probe, 272/298 PA19 and prior baseline retained |

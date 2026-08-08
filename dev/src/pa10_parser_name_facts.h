@@ -4,6 +4,8 @@
 #include "pa10_syntax_model.h"
 
 #include <cstddef>
+#include <limits>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -16,21 +18,171 @@ template <class Derived>
 class ParserNameFacts
 {
 protected:
-	std::string UnqualifiedClassName(std::string owner) const
+	NodeId TryConsumeTemplateArguments(bool retain_types = false)
 	{
-		std::size_t separator = std::string::npos;
-		std::size_t angle_depth = 0;
-		for (std::size_t i = 0; i + 1 < owner.size(); ++i)
+		Derived& parser = static_cast<Derived&>(*this);
+		if (!parser.At(OP_LT)) return kNoNode;
+		if (parser.stats_) ++parser.stats_->template_argument_probes;
+		const std::size_t opener = parser.position_;
+		const std::uint32_t no_match =
+			std::numeric_limits<std::uint32_t>::max() - 1;
+		if (opener >= no_match)
+			throw std::runtime_error("too many syntax tokens");
+		const typename Derived::AngleMatch& cached =
+			parser.angle_matches_[opener];
+		if (cached.fact_revision == parser.name_fact_revision_)
 		{
-			if (owner[i] == '<') ++angle_depth;
-			else if (owner[i] == '>' && angle_depth != 0) --angle_depth;
-			else if (angle_depth == 0 && owner[i] == ':' && owner[i + 1] == ':')
-				separator = i;
+			if (parser.stats_) ++parser.stats_->template_argument_cache_hits;
+			if (cached.close != no_match)
+			{
+				parser.position_ = static_cast<std::size_t>(cached.close) + 1;
+				return retain_types ?
+					parser.ParseMatchedTemplateTypeArguments(
+						opener, parser.position_) : kNoNode;
+			}
+			return kNoNode;
 		}
-		if (separator != std::string::npos) owner.erase(0, separator + 2);
-		const std::size_t arguments = owner.find('<');
-		if (arguments != std::string::npos) owner.erase(arguments);
-		return owner;
+		const std::string candidate = parser.position_ == 0 ?
+			std::string() : parser.Spelling(parser.position_ - 1);
+		const TextId candidate_id = parser.position_ == 0 ? 0 :
+			parser.tokens_[parser.position_ - 1].spelling;
+		const bool qualified_candidate = parser.position_ >= 2 &&
+			parser.tokens_[parser.position_ - 2].kind ==
+				static_cast<std::uint16_t>(OP_COLON2);
+		const bool known_template = parser.HasNameFact(
+			candidate_id, Derived::kKnownTemplate);
+		const bool known_non_template = parser.HasNameFact(
+			candidate_id, Derived::kKnownNonTemplate);
+		const bool active_non_type_parameter = parser.HasNameFact(
+			candidate_id, Derived::kActiveNonTypeParameter);
+		if (!qualified_candidate && known_non_template &&
+			(!known_template || active_non_type_parameter))
+		{
+			parser.angle_matches_[opener].close = no_match;
+			parser.angle_matches_[opener].fact_revision =
+				parser.name_fact_revision_;
+			return kNoNode;
+		}
+		const bool trusted = qualified_candidate || known_template ||
+			(!known_non_template && candidate.find('T') != std::string::npos);
+		const typename Derived::Mark mark = parser.Checkpoint();
+		++parser.position_;
+		const std::size_t scan_start = parser.position_;
+		if (parser.stats_) ++parser.stats_->template_argument_scans;
+		std::size_t paren = 0, square = 0, brace = 0, angle = 1;
+		std::vector<std::size_t> open_angles(1, opener);
+		bool saw_expression_operator = false;
+		bool hit_untrusted_limit = false;
+		// Unclassified identifiers are ambiguous. Keep speculative lookahead
+		// bounded; established template names may consume full argument lists.
+		const std::size_t untrusted_scan_limit = 256;
+		while (parser.position_ < parser.tokens_.size() && !parser.AtEof())
+		{
+			if (paren == 0 && square == 0 && brace == 0 &&
+				(parser.At(OP_SEMICOLON) || parser.At(OP_LBRACE))) break;
+			if (!trusted &&
+				parser.position_ - scan_start >= untrusted_scan_limit)
+			{
+				hit_untrusted_limit = true;
+				break;
+			}
+			if (parser.At(OP_LPAREN)) ++paren;
+			else if (parser.At(OP_RPAREN))
+			{
+				if (paren == 0) break;
+				--paren;
+			}
+			else if (parser.At(OP_LSQUARE)) ++square;
+			else if (parser.At(OP_RSQUARE))
+			{
+				if (square == 0) break;
+				--square;
+			}
+			else if (parser.At(OP_LBRACE)) ++brace;
+			else if (parser.At(OP_RBRACE))
+			{
+				if (brace == 0) break;
+				--brace;
+			}
+			else if (paren == 0 && square == 0 && brace == 0)
+			{
+				if (parser.At(OP_LOR) || parser.At(OP_LAND) ||
+					parser.At(OP_QMARK) || parser.At(OP_COLON) ||
+					parser.At(OP_PLUSASS) || parser.At(OP_MINUSASS) ||
+					parser.At(OP_ASS))
+					saw_expression_operator = true;
+				if (parser.At(OP_LT))
+				{
+					const TextId nested_candidate_id = parser.position_ == 0 ?
+						0 : parser.tokens_[parser.position_ - 1].spelling;
+					const bool explicitly_templated = parser.position_ >= 2 &&
+						parser.tokens_[parser.position_ - 2].kind ==
+							static_cast<std::uint16_t>(KW_TEMPLATE);
+					if (explicitly_templated ||
+						(parser.HasNameFact(nested_candidate_id,
+							Derived::kKnownTemplate) &&
+						 !parser.HasNameFact(nested_candidate_id,
+							Derived::kActiveNonTypeParameter)) ||
+						!parser.HasNameFact(nested_candidate_id,
+							Derived::kKnownNonTemplate))
+					{
+						++angle;
+						open_angles.push_back(parser.position_);
+					}
+					else saw_expression_operator = true;
+				}
+				else if (parser.AtCloseAngle())
+				{
+					if (open_angles.empty())
+						throw std::logic_error("invalid angle lookahead stack");
+					const std::size_t matched_opener = open_angles.back();
+					open_angles.pop_back();
+					--angle;
+					const std::size_t matched_close = parser.position_++;
+					if (angle == 0)
+					{
+						if (!trusted && saw_expression_operator)
+						{
+							parser.angle_matches_[matched_opener].close =
+								no_match;
+							parser.angle_matches_[matched_opener].fact_revision =
+								parser.name_fact_revision_;
+							parser.RecordTemplateArgumentScan(scan_start, true);
+							parser.Rollback(mark);
+							return kNoNode;
+						}
+						parser.angle_matches_[matched_opener].close =
+							static_cast<std::uint32_t>(matched_close);
+						parser.angle_matches_[matched_opener].fact_revision =
+							parser.name_fact_revision_;
+						parser.RecordTemplateArgumentScan(scan_start, false);
+						return retain_types ?
+							parser.ParseMatchedTemplateTypeArguments(
+								opener, parser.position_) : kNoNode;
+					}
+					continue;
+				}
+			}
+			++parser.position_;
+		}
+		if (hit_untrusted_limit)
+		{
+			parser.angle_matches_[opener].close = no_match;
+			parser.angle_matches_[opener].fact_revision =
+				parser.name_fact_revision_;
+		}
+		else
+		{
+			for (std::size_t i = 0; i < open_angles.size(); ++i)
+			{
+				parser.angle_matches_[open_angles[i]].close = no_match;
+				parser.angle_matches_[open_angles[i]].fact_revision =
+					parser.name_fact_revision_;
+			}
+		}
+		parser.RecordTemplateArgumentScan(scan_start, true);
+		parser.Rollback(mark);
+		return kNoNode;
 	}
 
 	bool QualifiedStartsType() const

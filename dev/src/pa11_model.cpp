@@ -194,14 +194,20 @@ NameId NameTable::Intern(const std::string& spelling)
 NameId NameTable::InternRange(const std::string& spelling,
 	std::size_t first, std::size_t count)
 {
-	const NameId id = strings_.InternRange(spelling, first, count);
-	if (used_.size() <= id) used_.resize(static_cast<std::size_t>(id) + 1, 0);
-	if (used_[id] == 0)
+	return UseInterned(strings_.InternRange(spelling, first, count));
+}
+
+NameId NameTable::UseInterned(NameId name)
+{
+	(void)strings_.Get(name);
+	if (used_.size() <= name)
+		used_.resize(static_cast<std::size_t>(name) + 1, 0);
+	if (used_[name] == 0)
 	{
-		used_[id] = 1;
+		used_[name] = 1;
 		++size_;
 	}
-	return id;
+	return name;
 }
 
 const std::string& NameTable::Get(NameId name) const

@@ -35,6 +35,7 @@ public:
 	NameId Intern(const std::string& spelling);
 	NameId InternRange(const std::string& spelling,
 		std::size_t first, std::size_t count);
+	NameId UseInterned(NameId name);
 	const std::string& Get(NameId name) const;
 	std::size_t Size() const;
 	std::size_t StorageBytes() const;

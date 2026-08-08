@@ -1555,6 +1555,15 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 				arena_->Payload(child).size() != 0);
 			continue;
 		}
+		const NodeId structured_name =
+			FindChild(child, "structured-type-name");
+		if (structured_name != kNoNode)
+		{
+			result.type = ResolveStructuredTypeName(structured_name, scope);
+			if (result.type == kNoType)
+				throw std::runtime_error("structured template type was not found");
+			continue;
+		}
 		if (arena_->IsTag(child, "decltype-specifier") ||
 			(arena_->IsTag(child, "decl-specifier") &&
 			 FirstSemanticChild(child) != kNoNode))
@@ -2233,98 +2242,6 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 		PublishUsingAccess(alias, ordinary.ordinary, access);
 	(void)local;
 }
-void SemanticAnalyzer::InheritConstructors(EntityId entity,
-	const std::vector<BindingId>& constructors)
-{
-	EntityRecord& derived = program_->entities[entity];
-	derived.is_aggregate = false;
-	if (entity_constructors_.size() <= entity)
-		entity_constructors_.resize(static_cast<std::size_t>(entity) + 1);
-	for (std::size_t i = 0; i < constructors.size(); ++i)
-	{
-		const FunctionInfo source = GetFunction(constructors[i]);
-		if (!source.constructor || source.parameters.empty()) continue;
-		const FunctionSignatureKey signature_key(derived.member_scope,
-			derived.identity_name, source.signature);
-		++function_signature_lookups_;
-		if (function_declarations_.Find(signature_key) != kNoBinding)
-			continue;
-		const BindingRecord source_binding =
-			program_->bindings[source.binding];
-		const BindingId source_base_entry =
-			EnsureConstructorBaseEntry(source.binding);
-		const BindingId inherited = DeclareFunction(derived.member_scope,
-			derived.identity_name, source.type, source.parameters, true, false,
-			STORAGE_CLASS_NONE, source_binding.language_linkage,
-			source_binding.nonthrowing);
-		BindingRecord& binding = program_->bindings[inherited];
-		binding.member_owner = entity;
-		binding.access_owner = source_binding.access_owner != kNoEntity ?
-			source_binding.access_owner : source_binding.member_owner;
-		binding.access = source_binding.access;
-		binding.constructor = true;
-		FunctionInfo& info = GetMutableFunction(inherited);
-		info.member_owner = derived.type;
-		info.constructor = true;
-		info.explicit_constructor = source.explicit_constructor;
-		info.deleted_constructor = source.deleted_constructor;
-		info.inherited_constructor_source = source_base_entry;
-		info.deferred = !info.deleted_constructor;
-		entity_constructors_[entity].push_back(inherited);
-		std::size_t required = info.parameters.size();
-		while (required != 0 &&
-			info.parameters[required - 1].default_argument != kNoNode) --required;
-		if (!info.deleted_constructor && required == 0)
-			derived.default_constructible = true;
-	}
-}
-BindingId SemanticAnalyzer::EnsureConstructorBaseEntry(BindingId constructor)
-{
-	constructor = program_->bindings[constructor].canonical;
-	if (program_->bindings[constructor].constructor_base_entry)
-		return constructor;
-	if (constructor_base_entry_by_binding_.size() <= constructor)
-		constructor_base_entry_by_binding_.resize(
-			static_cast<std::size_t>(constructor) + 1, kNoBinding);
-	if (constructor_base_entry_by_binding_[constructor] != kNoBinding)
-		return constructor_base_entry_by_binding_[constructor];
-	const BindingRecord source_binding = program_->bindings[constructor];
-	const FunctionInfo source_info = GetFunction(constructor);
-	if (!source_binding.constructor || !source_info.constructor)
-		throw std::logic_error("constructor base entry requested for non-constructor");
-	const NameId generated_name = program_->names.Intern(
-		"__cppgm_constructor_base_" + std::to_string(constructor));
-	const BindingId base_entry = program_->AddBinding(source_binding.owner,
-		BIND_FUNCTION, generated_name, source_binding.type, false, 0,
-		NAMED_NONE, 0, kNoBinding, false);
-	BindingRecord& binding = program_->bindings[base_entry];
-	binding.member_owner = source_binding.member_owner;
-	binding.access_owner = source_binding.access_owner;
-	binding.overload_ordinal = source_binding.overload_ordinal;
-	binding.language_linkage = source_binding.language_linkage;
-	binding.storage_class = source_binding.storage_class;
-	binding.access = source_binding.access;
-	binding.nonthrowing = source_binding.nonthrowing;
-	binding.static_member_function = source_binding.static_member_function;
-	binding.constructor = true;
-	binding.constructor_base_entry = true;
-
-	FunctionInfo info = source_info;
-	info.binding = base_entry;
-	info.complete_constructor = source_info.complete_constructor == kNoBinding ?
-		constructor : source_info.complete_constructor;
-	info.ordinary_visible = false;
-	info.demand_state = 0;
-	if (function_fact_by_binding_.size() <= base_entry)
-		function_fact_by_binding_.resize(
-			static_cast<std::size_t>(base_entry) + 1, kNoDumpEdge);
-	function_fact_by_binding_[base_entry] =
-		static_cast<std::uint32_t>(functions_.size());
-	functions_.push_back(info);
-	constructor_base_entry_by_binding_[constructor] = base_entry;
-	return base_entry;
-}
-
 BindingId SemanticAnalyzer::EnsureDestructorBaseEntry(BindingId destructor)
 {
 	destructor = program_->bindings[destructor].canonical;

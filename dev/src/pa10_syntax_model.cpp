@@ -270,6 +270,13 @@ const std::string& SyntaxArena::SemanticPayload(NodeId node) const
 		record.payload : record.semantic_payload);
 }
 
+TextId SyntaxArena::SemanticPayloadId(NodeId node) const
+{
+	const SyntaxNode& record = nodes_[node];
+	return record.semantic_payload == 0 ?
+		record.payload : record.semantic_payload;
+}
+
 void SyntaxArena::SetSemanticPayload(NodeId node, TextId payload)
 {
 	nodes_[node].semantic_payload = payload;

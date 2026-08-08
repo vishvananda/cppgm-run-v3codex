@@ -371,59 +371,25 @@ TypeId SemanticAnalyzer::ResolveTemplateTypeArgument(ScopeId scope,
 	else if (!spelling.empty() && spelling[spelling.size() - 1] == ')')
 	{
 		std::size_t open = std::string::npos;
-		std::size_t paren_depth = 0;
-		for (std::size_t i = spelling.size(); i-- > 0; )
+		std::size_t angle_depth = 0;
+		for (std::size_t i = 0; i < spelling.size(); ++i)
 		{
-			if (spelling[i] == ')') ++paren_depth;
-			else if (spelling[i] == '(' && --paren_depth == 0)
+			if (spelling[i] == '<') ++angle_depth;
+			else if (spelling[i] == '>' && angle_depth != 0) --angle_depth;
+			else if (spelling[i] == '(' && angle_depth == 0)
 			{
 				open = i;
 				break;
 			}
 		}
 		if (open == std::string::npos || open == 0) return kNoType;
-		std::string result_spelling = TrimTypeSpelling(
-			spelling.substr(0, open));
-		char declarator_kind = 0;
-		if (!result_spelling.empty() &&
-			result_spelling[result_spelling.size() - 1] == ')')
-		{
-			std::size_t declarator_open = std::string::npos;
-			std::size_t declarator_depth = 0;
-			for (std::size_t i = result_spelling.size(); i-- > 0; )
-			{
-				if (result_spelling[i] == ')') ++declarator_depth;
-				else if (result_spelling[i] == '(' && --declarator_depth == 0)
-				{
-					declarator_open = i;
-					break;
-				}
-			}
-			if (declarator_open != std::string::npos)
-			{
-				std::string declarator = TrimTypeSpelling(
-					result_spelling.substr(declarator_open + 1,
-						result_spelling.size() - declarator_open - 2));
-				declarator.erase(std::remove_if(declarator.begin(),
-					declarator.end(), [](unsigned char character) {
-						return std::isspace(character) != 0;
-					}), declarator.end());
-				if (declarator == "*" || declarator == "&" ||
-					declarator == "&&")
-				{
-					declarator_kind = declarator == "&&" ? 'r' : declarator[0];
-					result_spelling = TrimTypeSpelling(
-						result_spelling.substr(0, declarator_open));
-				}
-			}
-		}
 		const TypeId returned = ResolveTemplateTypeArgument(
-			scope, result_spelling);
+			scope, spelling.substr(0, open));
 		if (returned == kNoType) return kNoType;
 		std::vector<TypeId> parameters;
 		std::size_t first = open + 1;
-		std::size_t angle_depth = 0;
-		paren_depth = 0;
+		angle_depth = 0;
+		std::size_t paren_depth = 0;
 		for (std::size_t i = first; i < spelling.size() - 1; ++i)
 		{
 			if (spelling[i] == '<') ++angle_depth;
@@ -447,11 +413,6 @@ TypeId SemanticAnalyzer::ResolveTemplateTypeArgument(ScopeId scope,
 			parameters.push_back(parameter);
 		}
 		result = program_->types.Function(returned, parameters, false);
-		if (declarator_kind == '*') result = program_->types.Pointer(result);
-		else if (declarator_kind == '&')
-			result = program_->types.Reference(TYPE_LVALUE_REFERENCE, result);
-		else if (declarator_kind == 'r')
-			result = program_->types.Reference(TYPE_RVALUE_REFERENCE, result);
 	}
 	else if (!spelling.empty() && spelling[spelling.size() - 1] == ']')
 	{
@@ -852,10 +813,9 @@ void SemanticAnalyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 		static_cast<std::uint32_t>(index);
 }
 
-std::size_t SemanticAnalyzer::FindClassTemplate(ScopeId scope,
-	const std::string& spelling)
+std::size_t SemanticAnalyzer::FindClassTemplateIndex(
+	const LookupResult& found, NameId requested) const
 {
-	const LookupResult found = LookupSpelling(scope, spelling, LOOKUP_TYPE);
 	if (found.type == kNoType) return NoTemplatePattern();
 	const TypeRecord& type = program_->types.Get(
 		program_->types.RemoveTopCv(found.type));
@@ -871,7 +831,6 @@ std::size_t SemanticAnalyzer::FindClassTemplate(ScopeId scope,
 	if (type.entity == pattern.marker_entity) return index;
 	// A specialization's injected primary name denotes the current template,
 	// but an arbitrary alias to that specialization is not itself a template.
-	const NameId requested = ParseNamePath(spelling).Last();
 	if (requested != pattern.name || found.type_declaration == kNoBinding)
 		return NoTemplatePattern();
 	const BindingRecord& declaration =
@@ -879,6 +838,83 @@ std::size_t SemanticAnalyzer::FindClassTemplate(ScopeId scope,
 	return declaration.owner == program_->entities[type.entity].member_scope &&
 		declaration.member_owner == type.entity &&
 		declaration.name == pattern.name ? index : NoTemplatePattern();
+}
+
+std::size_t SemanticAnalyzer::FindClassTemplate(ScopeId scope,
+	const std::string& spelling)
+{
+	const NamePath path = ParseNamePath(spelling);
+	if (path.Empty()) return NoTemplatePattern();
+	return FindClassTemplateIndex(
+		LookupSpelling(scope, spelling, LOOKUP_TYPE), path.Last());
+}
+
+TypeId SemanticAnalyzer::ResolveStructuredTypeName(NodeId name,
+	ScopeId argument_scope)
+{
+	std::vector<NodeId> components;
+	for (std::uint32_t edge = arena_->FirstEdge(name); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId child = arena_->EdgeChild(edge);
+		if (arena_->IsTag(child, "name-component"))
+			components.push_back(child);
+	}
+	if (components.empty()) return kNoType;
+
+	const bool global = FindChild(name, "global-qualifier") != kNoNode;
+	ScopeId carrier = global ? program_->GlobalScope() : kNoScope;
+	for (std::size_t i = 0; i < components.size(); ++i)
+	{
+		const NameId component = program_->names.UseInterned(
+			arena_->SemanticPayloadId(components[i]));
+		const NodeId argument_list = FindChild(
+			components[i], "template-type-argument-list");
+		const bool terminal = i + 1 == components.size();
+		const LookupKind kind = argument_list != kNoNode || terminal ?
+			LOOKUP_TYPE : LOOKUP_SCOPE_CARRIER;
+		LookupResult found;
+		if (carrier == kNoScope)
+			found = program_->LookupName(argument_scope, component, kind);
+		else
+		{
+			NamePath direct;
+			direct.Push(component);
+			found = program_->LookupQualified(carrier, direct, kind);
+		}
+
+		TypeId type = found.type;
+		if (argument_list != kNoNode)
+		{
+			const std::size_t pattern =
+				FindClassTemplateIndex(found, component);
+			if (pattern == NoTemplatePattern()) return kNoType;
+			std::vector<TypeId> arguments;
+			for (std::uint32_t edge = arena_->FirstEdge(argument_list);
+				edge != kNoEdge; edge = arena_->NextEdge(edge))
+			{
+				const NodeId argument = arena_->EdgeChild(edge);
+				if (!arena_->IsTag(argument, "type-id")) return kNoType;
+				const TypeId argument_type =
+					BuildTypeId(argument, argument_scope);
+				if (argument_type == kNoType) return kNoType;
+				arguments.push_back(argument_type);
+			}
+			const BindingId specialization =
+				InstantiateClassTemplate(pattern, arguments);
+			if (specialization == kNoBinding) return kNoType;
+			type = program_->bindings[specialization].type;
+		}
+		if (terminal) return type;
+		if (type != kNoType)
+		{
+			EnsureClassDefinition(type);
+			carrier = program_->ScopeForType(type);
+		}
+		else carrier = found.name_space;
+		if (carrier == kNoScope) return kNoType;
+	}
+	return kNoType;
 }
 
 ScopeId SemanticAnalyzer::BindClassTemplateArguments(

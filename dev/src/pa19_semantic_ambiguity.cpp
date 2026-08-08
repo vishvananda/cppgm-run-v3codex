@@ -117,11 +117,11 @@ bool SemanticAnalyzer::AnalyzeAmbiguousCallStatement(
 		arena_->NextEdge(item_edge) != kNoEdge)
 		return false;
 	const NodeId specifier_node = arena_->EdgeChild(specifier_edge);
-	if (FirstSemanticChild(specifier_node) != kNoNode) return false;
-	const std::string spelling = PayloadSource(specifier_node);
-	if (FunctionCallCandidates(scope, spelling).empty() &&
-		FindFunctionTemplates(scope, spelling).empty())
+	const NodeId specifier_structure = FirstSemanticChild(specifier_node);
+	if (specifier_structure != kNoNode &&
+		!arena_->IsTag(specifier_structure, "structured-type-name"))
 		return false;
+	const std::string spelling = PayloadSource(specifier_node);
 	const NodeId item = arena_->EdgeChild(item_edge);
 	if (FindChild(item, "initializer") != kNoNode) return false;
 	const NodeId declarator = FindChild(item, "declarator");
@@ -134,6 +134,9 @@ bool SemanticAnalyzer::AnalyzeAmbiguousCallStatement(
 	if (argument_name == kNoNode ||
 		FindChild(argument_declarator, "parameter-clause") != kNoNode ||
 		FindChild(argument_declarator, "array-suffix") != kNoNode)
+		return false;
+	if (FunctionCallCandidates(scope, spelling).empty() &&
+		FindFunctionTemplates(scope, spelling).empty())
 		return false;
 	const std::string argument_spelling = PayloadSource(argument_name);
 	std::vector<NodeId> argument_syntax(1, argument_name);

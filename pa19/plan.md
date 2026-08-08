@@ -6,23 +6,28 @@ PA19 extends the PA11/PA12 canonical semantic graph and PA15-PA18 typed LowIR
 path with retained template patterns and demanded specializations. Patterns own
 one PA10 syntax body; specializations use canonical `(pattern, TypeId...)` keys,
 parent-linked argument scopes, indexed lexical/using/associated relations, and
-the ordinary class/function, lifetime, and lowering owners. Class-specialization
-entities and function-specialization bindings own slices in one canonical
-`TypeId` argument pool. Enum-only operator candidates use a compact index keyed
-by `(ScopeId, NameId, enum TypeId, operand)`; visibility and associated-scope
-edges choose index owners before exact candidates are ranked. Selected enum
-conversions and empty class-value constructors are semantic facts consumed by
-call staging and typed lowering. Explicit-instantiation demand, weak ODR
-linkage, object roots, and structured ABI identity remain binding/entity-owned.
-This follows `spec.md` sections 2-6 and 9: hot identity/cache access is O(1)
-average, completion is monotonic, retained syntax is shared, unrelated
-candidates are not materialized, and lowering performs neither lookup replay
-nor presentation-name reconstruction. Native IR and ELF remain later stages.
+the ordinary class/function, lifetime, and lowering owners. Supported explicit
+type arguments remain ordinary PA10 `type-id` trees below interned qualified-name
+components; `BuildTypeId` supplies canonical argument identity, so rendered
+names never drive specialization, while semantic-only serialization preserves
+the PA10 public dump contract. Class-specialization entities and
+function-specialization bindings own slices in one canonical `TypeId` argument
+pool. Enum-only operator candidates use a compact index keyed by `(ScopeId,
+NameId, enum TypeId, operand)`; visibility and associated-scope edges choose
+index owners before exact candidates are ranked. Selected enum conversions and
+empty class-value constructors are semantic facts consumed by call staging and
+typed lowering. Explicit-instantiation demand, weak ODR linkage, object roots,
+and structured ABI identity remain binding/entity-owned. This follows
+`spec.md` sections 1-6 and 9: source regions are parsed once, hot identity/cache
+access is O(1) average, completion is monotonic, retained syntax is shared,
+unrelated candidates are not materialized, and lowering performs neither lookup
+replay nor presentation-name reconstruction. Native IR and ELF remain later
+stages.
 
 ## Current Failure Map
 
 Declaration-owned replay raises the combined PA19 result from 266/298 to
-272/298. The complete remaining 26-test failure set is:
+272/298. The audit preserves that result and the exact remaining 26-test set:
 
 | Failures | Shared behavior | Owner |
 |---:|---|---|
@@ -37,22 +42,19 @@ Complete selected-call fact propagation for template-backed member and
 operator calls. PA19 candidate materialization owns retained ordinary/ADL and
 target-context sets; PA12/PA16 overload selection records the selected binding,
 object/value category, and conversions; PA15 consumes those facts without
-lookup replay. This targets `spec.md` sections 2-6 and 9: candidates are reached
-through indexed scope/association edges, each demanded specialization key is
-memoized, and lowering is linear in selected call IR. Validate the complete
-lookup/call group, PA1-PA18, file audit, and candidate-set scaling probes.
+lookup replay. This is the next substantial checkpoint because the largest
+remaining coherent group is the ten lookup/call failures. It targets `spec.md`
+sections 2-6 and 9: candidates are reached through indexed scope/association
+edges, each demanded specialization key is memoized, and lowering is linear in
+selected call IR. Validate the complete lookup/call group, PA1-PA18, file audit,
+and candidate-set scaling probes.
 
 ## Performance Evidence
 
 | Probe | Result |
 |---|---|
-| One demanded function specialization across 128/256/512 calls | Requests 128/256/512, hits 127/255/511, one demand push; semantic nodes and instructions grow linearly at 783/1,551/3,087 and 519/1,031/2,055. |
-| One demanded class specialization across 128/256/512 object uses | Requests 128/256/512, hits 127/255/511, exactly one layout/member visit; typed bytes 132,519/263,463/525,351 and semantic time 1.82/3.62/7.16 ms. |
-| Retained call with 64/128/256 visible template patterns | Two overload candidates, five conversion checks, two specialization requests, three functions, and 11 instructions stay constant; lookup visits 364/684/1,324 and semantic time 2.34/4.62/8.95 ms scale with the published lookup set. |
-| Explicit class definition with 64/128/256 members | One specialization request; 64/128/256 demand pushes/emissions, 129/257/513 instructions, and 1.10/2.12/3.96 ms semantic time. |
-| 128/256/512 unrelated same-name enum operators | Audit index keeps declaration visits, overload visits, conversion checks, and conversion-cache misses constant at 2/2/9/1; typed bytes 132,259/263,203/525,091 and semantic time 2.88/4.59/9.56 ms scale with source publication. |
-| 128/256/512 language-required exact enum operators | Declaration visits 129/257/513, overload visits 128/256/512, conversion checks 263/519/1,031, typed bytes 132,542/263,358/524,990, and semantic time 2.37/4.48/9.06 ms scale linearly with required candidates. |
-| 128/256/512 paired local-relational and qualified-shadow uses | Tokens 3,911/7,751/15,431, syntax nodes 4,046/8,014/15,950, scans 128/256/512 at exactly two tokens each, no failed scans, and parse time 0.88/1.72/3.51 ms. |
+| 128/256/512 paired local-relational and qualified-shadow uses | Tokens 3,911/7,751/15,431; syntax nodes 4,942/9,806/19,534; scans 128/256/512 at exactly two tokens with none failed; parser storage 33,640/66,664/132,712 bytes; median parse time 1.176/2.336/4.716 ms. |
+| 128/256/512 structural `result_traits<F, F (*)()>::type` uses | Requests 128/256/512 with 127/255/511 hits; canonical types stay at 36, layouts at two, member visits at one, and lookup misses at three; semantic nodes 133/261/517, storage 125,486/236,974/464,046 bytes, and median semantic time 1.246/2.329/4.531 ms. |
 
 ## Completed Checkpoints
 
@@ -77,4 +79,4 @@ lookup/call group, PA1-PA18, file audit, and candidate-set scaling probes.
 | Complete retained call provenance and demand | Pass | Node-indexed function/template/empty sets, naming class and ADL bit replay; local using sets, cv-reference ordering, value-aware `sizeof` ambiguity, and selected demand in template units with PA18-compatible ordinary anchors; PA19 250 to 255, linear pattern-set probe, prior 1713/1713, audit pass |
 | Explicit class-instantiation completion and member demand | Pass after audit fix | Entity-owned canonical argument slices, indexed source-member demand, N3485 namespace/key/order controls, typed owner/argument symbol identity, structured nested-template ABI names, weak linkage and parser-preserved object roots; PA19 handout 255 to 258 plus 3 audit regressions, linear member probe, prior 1713/1713 |
 | Canonical enum builtin competition and class default arguments | Pass after audit fix | Exact enum-parameter index and filtering, comma fallback, typed conversion and source-selected constructor facts; PA19 261 to 264 plus 2 audit regressions, constant unrelated-candidate work, linear required work, prior 1713/1713 |
-| Declaration-owned local and qualified type replay | Pass | Scoped parser facts, qualified-shadow classification, `typename` block declarations, nested constructor identity, contextual bool conversion, alias-inherited constructors, and canonical function-pointer arguments; PA19 266 to 272 across six cases, linear parser probe, prior 1713/1713, audit pass |
+| Declaration-owned local and qualified type replay | Pass after audit fix | Scoped parser facts, retained type-argument trees, interned qualified/current-class identity, canonical function-pointer specialization, contextual bool conversion, and alias-inherited constructors; PA19 266 to 272 across six cases, bounded parser scans, one-completion specialization probe, prior 1713/1713 |

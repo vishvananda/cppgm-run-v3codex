@@ -119,6 +119,7 @@ public:
 	bool IsTag(NodeId node, const char* tag) const;
 	const std::string& Payload(NodeId node) const;
 	const std::string& SemanticPayload(NodeId node) const;
+	TextId SemanticPayloadId(NodeId node) const;
 	void SetSemanticPayload(NodeId node, TextId payload);
 	void AppendImmediateParameterNames(NodeId declarator,
 		std::vector<TextId>* result) const;

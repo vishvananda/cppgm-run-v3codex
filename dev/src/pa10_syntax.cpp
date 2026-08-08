@@ -53,10 +53,8 @@ public:
 			name_fact_changes_.capacity() * sizeof(NameFactChange) +
 			angle_matches_.capacity() * sizeof(AngleMatch) +
 			(last_declared_names_.capacity() + parameter_names_.capacity() +
-			 active_non_type_parameter_names_.capacity()) * sizeof(TextId) +
-			current_classes_.capacity() * sizeof(std::string);
-		for (std::size_t i = 0; i < current_classes_.size(); ++i)
-			bytes += current_classes_[i].capacity();
+			 active_non_type_parameter_names_.capacity() +
+			 current_classes_.capacity()) * sizeof(TextId);
 		return bytes;
 	}
 private:
@@ -363,11 +361,17 @@ private:
 			while (At(KW_CONST) || At(KW_VOLATILE)) ++position_;
 		return true; }
 	bool ParseName(std::string* text, bool allow_qualified = true,
-		bool allow_operator = true, bool allow_template_arguments = true)
+		bool allow_operator = true, bool allow_template_arguments = true,
+		NodeId* structure = 0, TextId* terminal_identifier = 0)
 	{
 		const Mark mark = Checkpoint();
 		const std::size_t first = position_;
-		if (allow_qualified) Match(OP_COLON2);
+		const bool global = allow_qualified && Match(OP_COLON2);
+		std::vector<TextId> component_names;
+		std::vector<NodeId> component_arguments;
+		bool retained_arguments = false;
+		if (structure) *structure = kNoNode;
+		if (terminal_identifier) *terminal_identifier = 0;
 		if (At(KW_OPERATOR) && allow_operator)
 		{
 			++position_;
@@ -408,9 +412,23 @@ private:
 				Rollback(mark);
 				return false;
 			}
-			++position_;
+			const TextId identifier = tokens_[position_++].spelling;
+			if (terminal_identifier) *terminal_identifier = identifier;
+			if (structure)
+			{
+				component_names.push_back(identifier);
+				component_arguments.push_back(kNoNode);
+			}
 		}
-		if (allow_template_arguments) TryConsumeTemplateArguments();
+		if (allow_template_arguments)
+		{
+			const NodeId arguments = TryConsumeTemplateArguments(structure != 0);
+			if (structure && arguments != kNoNode && !component_arguments.empty())
+			{
+				component_arguments.back() = arguments;
+				retained_arguments = true;
+			}
+		}
 		if (allow_qualified)
 		{
 			while (Match(OP_COLON2))
@@ -430,13 +448,32 @@ private:
 						return false;
 					}
 				}
-				else if (AtIdentifier()) ++position_;
+				else if (AtIdentifier())
+				{
+					const TextId identifier = tokens_[position_++].spelling;
+					if (terminal_identifier) *terminal_identifier = identifier;
+					if (structure)
+					{
+						component_names.push_back(identifier);
+						component_arguments.push_back(kNoNode);
+					}
+				}
 				else
 				{
 					Rollback(mark);
 					return false;
 				}
-				if (allow_template_arguments) TryConsumeTemplateArguments();
+				if (allow_template_arguments)
+				{
+					const NodeId arguments =
+						TryConsumeTemplateArguments(structure != 0);
+					if (structure && arguments != kNoNode &&
+						!component_arguments.empty())
+					{
+						component_arguments.back() = arguments;
+						retained_arguments = true;
+					}
+				}
 			}
 		}
 		*text = JoinSpellings(first, position_);
@@ -450,159 +487,81 @@ private:
 				 (*text)[after] == '_'))
 				text->insert(after, " ");
 		}
+		if (structure && retained_arguments)
+		{
+			const NodeId name = arena_.Make("structured-type-name");
+			arena_.AddFlags(name, SYNTAX_FLAG_SEMANTIC_ONLY);
+			if (global) arena_.Add(name, arena_.Make("global-qualifier"));
+			for (std::size_t i = 0; i < component_names.size(); ++i)
+			{
+				const NodeId component = arena_.Make("name-component",
+					strings_.Get(component_names[i]));
+				arena_.SetSemanticPayload(component, component_names[i]);
+				if (component_arguments[i] != kNoNode)
+					arena_.Add(component, component_arguments[i]);
+				arena_.Add(name, component);
+			}
+			*structure = name;
+		}
 		return true;
 	}
-	void TryConsumeTemplateArguments()
+	bool TemplateArgumentStartsType() const
 	{
-		if (!At(OP_LT)) return;
-		if (stats_) ++stats_->template_argument_probes;
-		const std::size_t opener = position_;
-		const std::uint32_t no_match =
-			std::numeric_limits<std::uint32_t>::max() - 1;
-		if (opener >= no_match)
-			throw std::runtime_error("too many syntax tokens");
-		const AngleMatch& cached = angle_matches_[opener];
-		if (cached.fact_revision == name_fact_revision_)
-		{
-			if (stats_) ++stats_->template_argument_cache_hits;
-			if (cached.close != no_match)
-				position_ = static_cast<std::size_t>(cached.close) + 1;
-			return;
-		}
-		const std::string candidate = position_ == 0 ? std::string() :
-			Spelling(position_ - 1);
-		const TextId candidate_id = position_ == 0 ? 0 :
-			tokens_[position_ - 1].spelling;
-		const bool qualified_candidate = position_ >= 2 &&
-			tokens_[position_ - 2].kind ==
-				static_cast<std::uint16_t>(OP_COLON2);
-		const bool known_template = HasNameFact(candidate_id, kKnownTemplate);
-		const bool known_non_template = HasNameFact(candidate_id, kKnownNonTemplate);
-		const bool active_non_type_parameter =
-			HasNameFact(candidate_id, kActiveNonTypeParameter);
-		if (!qualified_candidate && known_non_template &&
-			(!known_template || active_non_type_parameter))
-		{
-			angle_matches_[opener].close = no_match;
-			angle_matches_[opener].fact_revision = name_fact_revision_;
-			return;
-		}
-		const bool trusted = qualified_candidate || known_template ||
-			(!known_non_template && candidate.find('T') != std::string::npos);
+		if (At(KW_TYPENAME) || At(KW_DECLTYPE) || At(KW_CLASS) ||
+			At(KW_STRUCT) || At(KW_UNION) || At(KW_ENUM) || At(KW_CONST) ||
+			At(KW_VOLATILE) || (position_ < tokens_.size() &&
+			 IsFundamentalKind(tokens_[position_].kind))) return true;
+		if (At(OP_COLON2) ||
+			(AtIdentifier() && AtOffset(1, OP_COLON2)))
+			return QualifiedStartsType();
+		if (!AtIdentifier()) return false;
+		const TextId name = tokens_[position_].spelling;
+		if (HasNameFact(name, kKnownNonTemplate) &&
+			!HasNameFact(name, kKnownType)) return false;
+		return HasNameFact(name, kKnownType) ||
+			HasNameFact(name, kKnownTemplate) ||
+			IsLikelyTypeIdentifier(position_);
+	}
+	NodeId ParseMatchedTemplateTypeArguments(std::size_t opener,
+		std::size_t after)
+	{
+		const std::size_t saved = position_;
+		position_ = opener + 1;
 		const Mark mark = Checkpoint();
-		++position_;
-		const std::size_t scan_start = position_;
-		if (stats_) ++stats_->template_argument_scans;
-		std::size_t paren = 0;
-		std::size_t square = 0;
-		std::size_t brace = 0;
-		std::size_t angle = 1;
-		std::vector<std::size_t> open_angles(1, opener);
-		bool saw_expression_operator = false;
-		bool hit_untrusted_limit = false;
-		// An unclassified identifier is an intentionally ambiguous PA10 case.
-		// Keep its speculative lookahead bounded; established and mock-template
-		// names may consume arbitrarily large argument lists.
-		const std::size_t untrusted_scan_limit = 256;
-		while (position_ < tokens_.size() && !AtEof())
+		const NodeId list = arena_.Make("template-type-argument-list");
+		bool all_types = true;
+		if (!AtCloseAngle())
 		{
-			if (paren == 0 && square == 0 && brace == 0 &&
-				(At(OP_SEMICOLON) || At(OP_LBRACE))) break;
-			if (!trusted && position_ - scan_start >= untrusted_scan_limit)
+			while (true)
 			{
-				hit_untrusted_limit = true;
-				break;
-			}
-			if (At(OP_LPAREN)) ++paren;
-			else if (At(OP_RPAREN))
-			{
-				if (paren == 0) break;
-				--paren;
-			}
-			else if (At(OP_LSQUARE)) ++square;
-			else if (At(OP_RSQUARE))
-			{
-				if (square == 0) break;
-				--square;
-			}
-			else if (At(OP_LBRACE)) ++brace;
-			else if (At(OP_RBRACE))
-			{
-				if (brace == 0) break;
-				--brace;
-			}
-			else if (paren == 0 && square == 0 && brace == 0)
-			{
-				if (At(OP_LOR) || At(OP_LAND) || At(OP_QMARK) || At(OP_COLON) ||
-					At(OP_PLUSASS) || At(OP_MINUSASS) || At(OP_ASS))
-					saw_expression_operator = true;
-				if (At(OP_LT))
+				if (TemplateArgumentStartsType())
 				{
-					const std::string nested_candidate = position_ == 0 ?
-						std::string() : Spelling(position_ - 1);
-					const TextId nested_candidate_id = position_ == 0 ? 0 :
-						tokens_[position_ - 1].spelling;
-					const bool explicitly_templated = position_ >= 2 &&
-						tokens_[position_ - 2].kind ==
-							static_cast<std::uint16_t>(KW_TEMPLATE);
-					if (explicitly_templated ||
-						(HasNameFact(nested_candidate_id, kKnownTemplate) &&
-						 !HasNameFact(nested_candidate_id, kActiveNonTypeParameter)) ||
-						!HasNameFact(nested_candidate_id, kKnownNonTemplate))
-					{
-						++angle;
-						open_angles.push_back(position_);
-					}
-					else saw_expression_operator = true;
+					if (!ParseTypeId(list))
+						all_types = false;
 				}
-				else if (AtCloseAngle())
+				else
 				{
-					if (open_angles.empty())
-						throw std::logic_error("invalid angle lookahead stack");
-					const std::size_t matched_opener = open_angles.back();
-					open_angles.pop_back();
-					--angle;
-					const std::size_t matched_close = position_;
-					++position_;
-					if (angle == 0)
+					const NodeId expression = ParseExpression(2);
+					if (expression == kNoNode)
 					{
-						if (!trusted && saw_expression_operator)
-						{
-							angle_matches_[matched_opener].close = no_match;
-							angle_matches_[matched_opener].fact_revision =
-								name_fact_revision_;
-							RecordTemplateArgumentScan(scan_start, true);
-							Rollback(mark);
-							return;
-						}
-						angle_matches_[matched_opener].close =
-							static_cast<std::uint32_t>(matched_close);
-						angle_matches_[matched_opener].fact_revision =
-							name_fact_revision_;
-						RecordTemplateArgumentScan(scan_start, false);
-						return;
+						Rollback(mark);
+						position_ = saved;
+						return kNoNode;
 					}
-					continue;
+					arena_.Add(list, expression);
+					all_types = false;
 				}
-			}
-			++position_;
-		}
-		if (hit_untrusted_limit)
-		{
-			angle_matches_[opener].close = no_match;
-			angle_matches_[opener].fact_revision = name_fact_revision_;
-		}
-		else
-		{
-			for (std::size_t i = 0; i < open_angles.size(); ++i)
-			{
-				angle_matches_[open_angles[i]].close = no_match;
-				angle_matches_[open_angles[i]].fact_revision =
-					name_fact_revision_;
+				if (!Match(OP_COMMA)) break;
 			}
 		}
-		RecordTemplateArgumentScan(scan_start, true);
-		Rollback(mark);
+		if (!MatchCloseAngle() || position_ != after || !all_types)
+		{
+			Rollback(mark);
+			position_ = saved;
+			return kNoNode;
+		}
+		position_ = saved;
+		return list;
 	}
 	void RecordTemplateArgumentScan(std::size_t scan_start, bool failed)
 	{
@@ -656,7 +615,7 @@ private:
 	std::vector<AngleMatch> angle_matches_;
 	std::vector<TextId> last_declared_names_, parameter_names_,
 		active_non_type_parameter_names_;
-	std::vector<std::string> current_classes_;
+	std::vector<TextId> current_classes_;
 };
 NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id,
 	std::string* first_type)
@@ -776,7 +735,8 @@ NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id,
 		{
 			const Mark name_mark = Checkpoint();
 			std::string name;
-			if (!ParseName(&name))
+			NodeId structure = kNoNode;
+			if (!ParseName(&name, true, true, true, &structure))
 			{
 				Rollback(name_mark);
 				break;
@@ -788,6 +748,7 @@ NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id,
 				"decl-specifier", for_type_id || decorated ? name :
 				"TT_IDENTIFIER:" + name);
 			arena_.SetSemanticPayload(name_node, strings_.Intern(name));
+			if (structure != kNoNode) arena_.Add(name_node, structure);
 			arena_.Add(sequence, name_node);
 			if (first_type && first_type->empty()) *first_type = name;
 			consumed = true;
@@ -2315,7 +2276,9 @@ NodeId Parser::ParseSpecialMember(bool)
 	SkipAttributes();
 	const std::size_t name_start = position_;
 	std::string name;
-	if (!ParseName(&name) || !At(OP_LPAREN))
+	TextId terminal_identifier = 0;
+	if (!ParseName(&name, true, true, true, 0, &terminal_identifier) ||
+		!At(OP_LPAREN))
 	{
 		Rollback(mark);
 		return kNoNode;
@@ -2336,9 +2299,7 @@ NodeId Parser::ParseSpecialMember(bool)
 	}
 	else if (!special_name && !current_classes_.empty())
 	{
-		const std::string owner =
-			UnqualifiedClassName(current_classes_.back());
-		special_name = name == owner || name == "~" + owner;
+		special_name = terminal_identifier == current_classes_.back();
 	}
 	if (!special_name)
 	{
@@ -2442,15 +2403,15 @@ NodeId Parser::ParseClass(bool require_semicolon)
 	std::vector<NodeId> alignments;
 	ParseSemanticAttributes(&alignments);
 	std::string name;
+	TextId class_identifier = 0;
 	const Mark name_mark = Checkpoint();
-	if (!ParseName(&name, true))
+	if (!ParseName(&name, true, true, true, 0, &class_identifier))
 	{
 		Rollback(name_mark);
 		name.clear();
 	}
 	ParseSemanticAttributes(&alignments);
 	if (name.empty() && !At(OP_LBRACE)) throw Error("expected class name");
-	const std::string visible_name = name.empty() ? std::string() : name;
 	last_declared_names_.clear();
 	if (!name.empty()) last_declared_names_.push_back(strings_.Intern(name));
 	if (!name.empty()) SetNameFact(name, kKnownType);
@@ -2506,7 +2467,7 @@ NodeId Parser::ParseClass(bool require_semicolon)
 		arena_.Add(declaration, clause);
 	}
 	Expect(OP_LBRACE);
-	current_classes_.push_back(visible_name);
+	current_classes_.push_back(class_identifier);
 	while (!At(OP_RBRACE))
 	{
 		if (AtEof()) throw Error("unterminated class");
