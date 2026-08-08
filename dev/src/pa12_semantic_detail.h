@@ -52,6 +52,8 @@ public:
 		  constructor_base_action_visits_(0),
 		  destructor_subobject_action_visits_(0),
 		  lexical_cleanup_action_visits_(0),
+		  unwind_cleanup_scope_visits_(0),
+		  unwind_cleanup_action_visits_(0),
 		  anonymous_enum_count_(0), local_type_count_(0) {}
 
 	void Consume(const SyntaxArena& arena, NodeId root);
@@ -502,6 +504,7 @@ private:
 	std::vector<std::uint32_t> injected_fact_by_binding_;
 	std::vector<InjectedMemberInfo> injected_members_;
 	std::vector<std::vector<LifetimeObligation> > scope_lifetimes_;
+	std::vector<ScopeId> nearest_lifetime_scopes_;
 	std::vector<NamespaceObjectAction> namespace_objects_;
 	std::vector<AggregateHelperInfo> aggregate_helpers_;
 	FunctionSignatureTable aggregate_helper_index_;
@@ -555,6 +558,8 @@ private:
 	std::size_t constructor_base_action_visits_;
 	std::size_t destructor_subobject_action_visits_;
 	std::size_t lexical_cleanup_action_visits_;
+	std::size_t unwind_cleanup_scope_visits_;
+	std::size_t unwind_cleanup_action_visits_;
 	std::size_t anonymous_enum_count_;
 	std::size_t local_type_count_;
 };

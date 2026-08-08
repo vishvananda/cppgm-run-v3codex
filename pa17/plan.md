@@ -16,12 +16,12 @@ lowering, storage, and output proportional to owned obligations and emitted IR.
 
 ## Current Failure Map
 
-Current result: **173/231**. The landed checkpoint's pass set remains intact,
-and the non-overlapping remaining-failure map is unchanged at 58 tests:
+Current result: **174/231**. The previous pass set remains intact, and the
+non-overlapping remaining-failure map contains 57 tests:
 
 | Failures | Shared behavior | Primary owner |
 | ---: | --- | --- |
-| 12 | temporary cleanup across loop and residual control flow | PA12 lifetime facts + PA17 lowering |
+| 11 | temporary cleanup across residual control flow | PA12 lifetime facts + PA17 lowering |
 | 1 | namespace class-array copy initialization | PA12 class-value initialization + static lowering |
 | 19 | residual operators, conversions, lookup, and ref qualification | PA12 calls/operator resolution |
 | 25 | class-value construction, initialization, copy/move, and ABI shapes | PA12 initialization + PA15-PA17 lowering |
@@ -29,17 +29,15 @@ and the non-overlapping remaining-failure map is unchanged at 58 tests:
 
 ## Active Checkpoint
 
-**Active: loop full-expression regions.** Apply `spec.md` sections 2, 6, 8,
-and 9 at `for` condition/iteration boundaries. PA12 owns each loop component's
-typed expression and ordered temporary-destruction suffix; PA17 must lower one
-fresh cleanup region per runtime evaluation and route continue/back edges only
-after normal destruction, while unwind edges destroy exactly the constructed
-prefix. Data flows from temporary identity and selected destructor action IDs
-to typed CFG edges and LowIR, without lookup during lowering. Analysis remains
-O(loop syntax + obligations), lowering O(CFG + emitted cleanup IR), and retained
-state O(active obligations). Validate the iteration-temporary case together
-with for-init lifetime and condition-declaration regressions, then full PA17,
-through PA16, audit, and loop-depth scaling.
+**Active: class direct-initialization recipes.** Apply `spec.md` sections 2, 3,
+6, and 9 where C-style/static/function-style casts, braced defaults, and
+constructor arguments converge. PA12 owns the canonical destination type,
+selected constructor, conversion sequence, and materialization identity;
+PA17 consumes that recipe into caller- or temporary-owned storage without
+repeating lookup. Selection is O(indexed candidates + conversions), recipe
+construction O(arguments), and lowering O(emitted actions). Validate the
+shared cast/braced/default-argument failure cluster, then full PA17, through
+PA16, audit, and candidate-count scaling.
 
 ## Performance Evidence
 
@@ -84,6 +82,10 @@ through PA16, audit, and loop-depth scaling.
   30,359/59,815/119,238 output bytes. Five 100-compile batch medians were
   0.43/0.50/0.65 s with 7.2-7.9 MiB peak RSS, confirming one cleanup node per
   obligation rather than repeated constructed-prefix expansion.
+- Nested loop iteration cleanup at depth 16/32/64 recorded 16/32/64 indexed
+  unwind-scope visits and actions, 32/64/128 dispatch probes, 437/853/1,685
+  instructions, and 81,548/153,710/297,966 typed bytes. Five-run semantic
+  medians were 0.629/1.056/1.884 ms and lowering medians 0.387/0.592/1.011 ms.
 
 ## Completed Checkpoints
 
@@ -101,3 +103,4 @@ through PA16, audit, and loop-depth scaling.
 | Typed temporary identity and linear lifetime regions | 151/231 -> 157/231 | Discarded direct/indirect class results, noexcept argument and throwing base-init suffixes, local reference extension, and rvalue-reference materialization 6/6; proportional 16/32/64-temporary probe |
 | Condition-declaration lifetime regions | 157/231 -> 160/231 | Nested false-path containment, reference-extended temporary, class-to-bool and switch-to-int conversion 4/4; through PA16 1,436/1,436; audit and proportional depth probe pass |
 | Branch-local class values and full-expression cleanup | 160/231 -> 173/231 | Branch lifetime plus right-hand short-circuit construction-state probes pass; original pass set intact; through PA16 1,436/1,436; file audit and linear 16/32/64 cleanup probes pass |
+| Loop full-expression regions | 173/231 -> 174/231 | Iteration temporary normal/unwind cleanup, for-init lifetime, conditions, continue, through PA16 1,436/1,436, audit, and linear nested-loop probes pass |

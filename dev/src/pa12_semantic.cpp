@@ -222,6 +222,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const {
 		injected_members_.capacity() * sizeof(InjectedMemberInfo) +
 		scope_lifetimes_.capacity() *
 			sizeof(std::vector<LifetimeObligation>) +
+		nearest_lifetime_scopes_.capacity() * sizeof(ScopeId) +
 		namespace_objects_.capacity() * sizeof(NamespaceObjectAction) +
 		aggregate_helpers_.capacity() * sizeof(AggregateHelperInfo) + aggregate_helper_index_.StorageBytes() +
 		break_cleanup_stops_.capacity() * sizeof(ScopeId) +
@@ -2688,9 +2689,18 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 					else dump_.Add(init, AnalyzeExpression(value, control).node);
 					if (!IsDeclaration(value) &&
 						dump_.nodes[init].first_edge != kNoDumpEdge)
+					{
+						const std::uint32_t expression =
+							dump_.edges[dump_.nodes[init].first_edge].child;
+						const std::size_t edge_count = dump_.edges.size();
 						AppendFullExpressionDestructionActions(
-							dump_.edges[dump_.nodes[init].first_edge].child,
-							init);
+							expression, init);
+						if (dump_.edges.size() != edge_count)
+						{
+							MarkFullExpressionCalls(expression);
+							AppendUnwindDestructionActions(control, init);
+						}
+					}
 				}
 			}
 			else if (arena_->IsTag(child, "condition"))
@@ -2702,7 +2712,13 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 				const ExpressionInfo value = AnalyzeExpression(
 					FirstSemanticChild(child), control);
 				dump_.Add(iteration, value.node);
+				const std::size_t edge_count = dump_.edges.size();
 				AppendFullExpressionDestructionActions(value.node, iteration);
+				if (dump_.edges.size() != edge_count)
+				{
+					MarkFullExpressionCalls(value.node);
+					AppendUnwindDestructionActions(control, iteration);
+				}
 			}
 			else AnalyzeSubstatement(child, control, statement);
 		}
@@ -2886,6 +2902,10 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 			destructor_subobject_action_visits_;
 		stats_->lexical_cleanup_action_visits =
 			lexical_cleanup_action_visits_;
+		stats_->unwind_cleanup_scope_visits =
+			unwind_cleanup_scope_visits_;
+		stats_->unwind_cleanup_action_visits =
+			unwind_cleanup_action_visits_;
 		stats_->namespace_object_actions = namespace_objects_.size();
 		stats_->lookup_queries = program.lookup_queries;
 		stats_->lookup_scope_visits = program.lookup_scope_visits;
@@ -2948,6 +2968,7 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 	  constructor_base_action_visits(0),
 	  destructor_subobject_action_visits(0),
 	  lexical_cleanup_action_visits(0),
+	  unwind_cleanup_scope_visits(0), unwind_cleanup_action_visits(0),
 	  namespace_object_actions(0),
 	  lookup_queries(0), lookup_scope_visits(0),
 	  lookup_edge_visits(0), lookup_cache_hits(0), lookup_cache_misses(0),

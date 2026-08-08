@@ -2148,12 +2148,12 @@ private:
 			EmitJump(LabelBlock(record.text));
 			return;
 		}
-		if (record.kind == DUMP_FOR_INIT_STATEMENT ||
-			record.kind == DUMP_ITERATION)
-		{
-			PushStatementSequence(record.first_edge, STATEMENT_FOR_COMPONENTS);
-			return;
-		}
+		if (record.kind == DUMP_ITERATION ||
+			(record.kind == DUMP_FOR_INIT_STATEMENT && !children.empty() &&
+			 arena_.nodes[children[0]].kind != DUMP_SIMPLE_DECLARATION))
+		{ LowerFullExpressionStatement(children); return; }
+		if (record.kind == DUMP_FOR_INIT_STATEMENT)
+		{ PushStatementSequence(record.first_edge, STATEMENT_FOR_COMPONENTS); return; }
 		if (record.kind == DUMP_BREAK_STATEMENT)
 		{
 			if (break_targets_.empty())

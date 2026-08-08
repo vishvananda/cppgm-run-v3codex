@@ -541,13 +541,15 @@ protected:
 	void LowerFullExpressionStatement(const NodeChildren& children)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		bool conditional_cleanup = false;
+		bool managed_cleanup = !children.empty() &&
+			derived.arena_.nodes[children[0]].full_expression_staging;
 		for (std::size_t i = 1; i < children.size(); ++i)
 			if (derived.arena_.nodes[children[i]].kind ==
 					DUMP_DESTRUCTOR_ACTION &&
-				IsConditionalTemporaryAction(children[i]))
-				conditional_cleanup = true;
-		if (conditional_cleanup)
+				(IsConditionalTemporaryAction(children[i]) ||
+				 derived.arena_.nodes[children[i]].unwind_only))
+				managed_cleanup = true;
+		if (managed_cleanup)
 		{
 			BeginFullExpressionCleanup(children, 1);
 			if (!children.empty()) derived.LowerDiscardedValue(children[0]);

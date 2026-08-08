@@ -68,9 +68,14 @@ ScopeId SemanticAnalyzer::NewScope(ScopeId parent, ScopeKind kind,
 		scope_prefixes_.resize(static_cast<std::size_t>(scope) + 1, 0);
 		scope_prefix_segments_.resize(static_cast<std::size_t>(scope) + 1, 0);
 		scope_parents_.resize(static_cast<std::size_t>(scope) + 1, kNoScope);
+		nearest_lifetime_scopes_.resize(
+			static_cast<std::size_t>(scope) + 1, kNoScope);
 	}
 	scope_prefixes_[scope] = prefix;
 	scope_parents_[scope] = parent;
+	nearest_lifetime_scopes_[scope] = parent != kNoScope &&
+		parent < nearest_lifetime_scopes_.size() ?
+		nearest_lifetime_scopes_[parent] : kNoScope;
 	return scope;
 }
 

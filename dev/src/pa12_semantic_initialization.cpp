@@ -2340,10 +2340,13 @@ void SemanticAnalyzer::AppendFullExpressionDestructionActions(
 void SemanticAnalyzer::AppendUnwindDestructionActions(ScopeId scope,
 	std::uint32_t output_parent)
 {
-	for (ScopeId current = scope; current != kNoScope;
-		current = scope_parents_[current])
+	ScopeId current = scope < nearest_lifetime_scopes_.size() ?
+		nearest_lifetime_scopes_[scope] : kNoScope;
+	while (current != kNoScope)
 	{
-		if (current >= scope_lifetimes_.size()) continue;
+		++unwind_cleanup_scope_visits_;
+		if (current >= scope_lifetimes_.size())
+			throw std::logic_error("indexed lifetime scope has no obligations");
 		const std::vector<LifetimeObligation>& obligations =
 			scope_lifetimes_[current];
 		for (std::size_t i = obligations.size(); i != 0; --i)
@@ -2357,7 +2360,12 @@ void SemanticAnalyzer::AppendUnwindDestructionActions(ScopeId scope,
 			if (action == kNoDumpEdge) continue;
 			dump_.nodes[action].unwind_only = true;
 			dump_.Add(output_parent, action);
+			++unwind_cleanup_action_visits_;
 		}
+		const ScopeId parent = scope_parents_[current];
+		current = parent != kNoScope &&
+			parent < nearest_lifetime_scopes_.size() ?
+			nearest_lifetime_scopes_[parent] : kNoScope;
 	}
 }
 
@@ -2403,6 +2411,10 @@ void SemanticAnalyzer::AddLifetimeObligation(ScopeId scope,
 		IsEmptyUnionDestructor(destructor)) return;
 	if (scope_lifetimes_.size() <= scope)
 		scope_lifetimes_.resize(static_cast<std::size_t>(scope) + 1);
+	if (nearest_lifetime_scopes_.size() <= scope)
+		nearest_lifetime_scopes_.resize(
+			static_cast<std::size_t>(scope) + 1, kNoScope);
+	nearest_lifetime_scopes_[scope] = scope;
 	scope_lifetimes_[scope].push_back(
 		LifetimeObligation(object, destructor, type));
 }
@@ -2415,6 +2427,10 @@ void SemanticAnalyzer::AddTemporaryLifetimeObligation(ScopeId scope,
 	const DumpNode& cleanup = dump_.nodes[action];
 	if (scope_lifetimes_.size() <= scope)
 		scope_lifetimes_.resize(static_cast<std::size_t>(scope) + 1);
+	if (nearest_lifetime_scopes_.size() <= scope)
+		nearest_lifetime_scopes_.resize(
+			static_cast<std::size_t>(scope) + 1, kNoScope);
+	nearest_lifetime_scopes_[scope] = scope;
 	scope_lifetimes_[scope].push_back(LifetimeObligation(kNoBinding,
 		cleanup.binding, cleanup.operand_type, temporary));
 }
