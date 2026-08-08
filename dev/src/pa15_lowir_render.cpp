@@ -306,8 +306,14 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 				output << "%arg" << i << " : ";
 				WriteType(output,
 					program.call_arguments[instruction.extra_first + i].type);
-				if (program.call_argument_references[instruction.extra_first + i])
+				const std::uint8_t passing =
+					program.call_argument_references[instruction.extra_first + i];
+				if (passing == Instruction::CALL_PASS_REFERENCE)
 					output << " [pass=reference]";
+				else if (passing == Instruction::CALL_PASS_BY_ADDRESS)
+					output << " [pass=by_address]";
+				else if (passing == Instruction::CALL_PASS_INDIRECT_RESULT)
+					output << " [pass=indirect_result]";
 			}
 			output << ") -> ";
 			WriteType(output, instruction.type);

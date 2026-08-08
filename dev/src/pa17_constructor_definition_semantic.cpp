@@ -27,8 +27,10 @@ void SemanticAnalyzer::CompleteOutOfClassDefaultedConstructor(EntityId entity,
 			&deleted, &trivial, &nonthrowing);
 		info.deleted_constructor = deleted;
 		info.deleted_special_member = deleted;
-		info.trivial_special_member = false;
-		info.synthesized_storage_copy = trivial;
+		const bool retained_specialization =
+			IsClassTemplateSpecializationContext(entity);
+		info.trivial_special_member = retained_specialization && trivial;
+		info.synthesized_storage_copy = !retained_specialization && trivial;
 		program_->bindings[constructor].nonthrowing = nonthrowing;
 	}
 	else CompleteDefaultedDefaultConstructor(entity, constructor);

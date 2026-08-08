@@ -822,8 +822,15 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 		argument = ApplyCallArgument(argument, parameters[a]);
 		dump_.Add(action, argument.node);
 	}
+	const EntityId constructor_owner =
+		program_->bindings[constructor.binding].member_owner;
+	const bool explicitly_defaulted = constructor.defaulted_special_member &&
+		!constructor.implicit_special_member &&
+		!constructor.synthesized_memberwise_copy &&
+		IsClassTemplateSpecializationEntity(constructor_owner);
 	if (demand && !dump_.nodes[action].elide_empty_constructor &&
-		!dump_.nodes[action].trivial_special_member_action &&
+		(explicitly_defaulted ||
+		 !dump_.nodes[action].trivial_special_member_action) &&
 		!(constructor.implicit_constructor &&
 		program_->entities[entity].trivial_default_constructor))
 		DemandFunction(selected);

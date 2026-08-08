@@ -338,6 +338,7 @@ struct FunctionInfo
 	bool deleted_special_member;
 	bool trivial_special_member;
 	bool synthesized_storage_copy;
+	bool synthesized_memberwise_copy;
 	std::uint64_t synthesized_prefix_size;
 	std::uint32_t synthesized_prefix_alignment;
 	std::uint32_t synthesized_prefix_members;
@@ -359,7 +360,8 @@ struct FunctionInfo
 		  deleted_destructor(false), special_member(SPECIAL_MEMBER_NONE),
 		  implicit_special_member(false), defaulted_special_member(false),
 		  deleted_special_member(false), trivial_special_member(false),
-		  synthesized_storage_copy(false), synthesized_prefix_size(0),
+		  synthesized_storage_copy(false), synthesized_memberwise_copy(false),
+		  synthesized_prefix_size(0),
 		  synthesized_prefix_alignment(0), synthesized_prefix_members(0),
 		  ordinary_visible(true),
 		  demand_state(0) {}

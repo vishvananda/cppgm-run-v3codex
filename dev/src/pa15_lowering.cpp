@@ -1752,13 +1752,13 @@ private:
 				result_storage = AddressOfStorage(slot);
 			}
 			arguments.Push(result_storage);
-			argument_references.Push(0);
+			argument_references.Push(Instruction::CALL_PASS_INDIRECT_RESULT);
 		}
 		for (std::size_t i = 1; i < children.size(); ++i)
 		{
-			const bool reference = i - 1 < function_type.parameter_count &&
-				IsReferenceType(parameters[i - 1]);
-			argument_references.Push(reference ? 1 : 0);
+			const bool reference = i - 1 < function_type.parameter_count && IsReferenceType(parameters[i - 1]);
+			argument_references.Push(i - 1 < function_type.parameter_count ?
+				BoundaryCallPassing(parameters[i - 1]) : Instruction::CALL_PASS_VALUE);
 			if (!reference && arena_.nodes[children[i]].class_argument_staging)
 				arguments.Push(LowerClassArgumentStaging(
 					children[i], parameters[i - 1]));

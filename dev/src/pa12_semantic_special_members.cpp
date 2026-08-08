@@ -384,8 +384,8 @@ void SemanticAnalyzer::ConfigureSynthesizedStoragePrefix(EntityId entity,
 	function->synthesized_prefix_size = 0;
 	function->synthesized_prefix_alignment = 0;
 	function->synthesized_prefix_members = 0;
-	if (function->deleted_special_member || function->trivial_special_member)
-		return;
+	function->synthesized_memberwise_copy = false;
+	if (function->deleted_special_member) return;
 	const bool assignment = IsAssignmentSpecialMember(
 		function->special_member);
 	const EntityRecord& owner = program_->entities[entity];
@@ -404,6 +404,22 @@ void SemanticAnalyzer::ConfigureSynthesizedStoragePrefix(EntityId entity,
 	for (std::size_t i = 0; i < members.size(); ++i)
 	{
 		const BindingRecord& member = program_->bindings[members[i]];
+		bool is_const = false;
+		bool is_reference = false;
+		(void)SubobjectClass(
+			*program_, member.type, &is_const, &is_reference);
+		(void)is_const;
+		if (is_reference)
+		{
+			function->synthesized_memberwise_copy = true;
+			if (member.member_offset == 0) return;
+			function->synthesized_prefix_size = member.member_offset;
+			function->synthesized_prefix_alignment =
+				static_cast<std::uint32_t>(owner.object_alignment);
+			function->synthesized_prefix_members =
+				static_cast<std::uint32_t>(i);
+			return;
+		}
 		const BindingId selected = assignment ?
 			AssignmentForSubobject(member.type, function->special_member) :
 			ConstructorForSubobject(member.type, function->special_member);
@@ -682,7 +698,8 @@ void SemanticAnalyzer::AddSynthesizedConstructorBody(
 	}
 
 	if ((function.trivial_special_member ||
-		function.synthesized_storage_copy) && !owner.empty_class)
+		function.synthesized_storage_copy) &&
+		!function.synthesized_memberwise_copy && !owner.empty_class)
 	{
 		const std::uint32_t step = MakeDump(
 			DUMP_SPECIAL_MEMBER_SUBOBJECT_ACTION, owner.type);

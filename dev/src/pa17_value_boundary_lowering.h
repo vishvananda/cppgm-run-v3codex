@@ -103,6 +103,16 @@ protected:
 			derived.program_.entities[object.entity].indirect_class_value_abi;
 	}
 
+	std::uint8_t BoundaryCallPassing(pa11::TypeId type) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		if (derived.IsReferenceType(type))
+			return pa15_lowir_detail::Instruction::CALL_PASS_REFERENCE;
+		return UsesIndirectClassParameter(type) ?
+			pa15_lowir_detail::Instruction::CALL_PASS_BY_ADDRESS :
+			pa15_lowir_detail::Instruction::CALL_PASS_VALUE;
+	}
+
 	void FillBoundary(std::uint32_t node,
 		std::vector<pa15_lowir_detail::Parameter>* parameters,
 		pa15_lowir_detail::LowType* result, bool* variadic) const

@@ -212,8 +212,16 @@ std::uint32_t SemanticAnalyzer::BuildClassValueConstructorAction(TypeId type,
 		argument = ApplyCallArgument(argument, parameters[a]);
 		dump_.Add(action, argument.node);
 	}
-	if ((demand || materialized_conversion_result) &&
-		!dump_.nodes[action].trivial_special_member_action)
+	const EntityId constructor_owner =
+		program_->bindings[constructor.binding].member_owner;
+	const bool explicitly_defaulted = constructor.defaulted_special_member &&
+		!constructor.implicit_special_member &&
+		!constructor.synthesized_memberwise_copy &&
+		IsClassTemplateSpecializationEntity(constructor_owner);
+	if ((demand && (explicitly_defaulted ||
+		!dump_.nodes[action].trivial_special_member_action)) ||
+		(materialized_conversion_result &&
+		 !dump_.nodes[action].trivial_special_member_action))
 		DemandFunction(selected);
 	++expression_count_;
 	return action;
@@ -559,7 +567,10 @@ void SemanticAnalyzer::AnalyzeReturnStatement(NodeId node, ScopeId scope,
 			DUMP_BRACED_INIT_LIST &&
 			program_->entities[returned_record.entity].is_aggregate)
 		{
-			bool has_boundary_member = false;
+			const bool retained_specialization =
+				current_function_context_ != kNoBinding &&
+				GetFunction(current_function_context_).template_specialization;
+			bool has_boundary_member = retained_specialization;
 			for (std::uint32_t edge = dump_.nodes[value.node].first_edge;
 				edge != kNoDumpEdge; edge = dump_.edges[edge].next)
 			{

@@ -823,8 +823,10 @@ ExpressionInfo SemanticAnalyzer::BuildConvertingArgument(
 	const std::uint32_t action = MakeDump(DUMP_CONSTRUCTOR_ACTION,
 		AdaptMemberFunctionType(constructor_binding), VALUE_NONE,
 		constructor.display_name, constructor_binding);
-	ExpressionInfo converted = ApplyTarget(source, parameters[0],
-		conversion.constructor_argument_rank);
+	CallConversionFact parameter_conversion;
+	parameter_conversion.rank = conversion.constructor_argument_rank;
+	ExpressionInfo converted = ApplyCallArgument(
+		source, parameters[0], &parameter_conversion);
 	dump_.Add(action, converted.node);
 	for (std::size_t i = 1; i < function.parameter_count; ++i)
 	{

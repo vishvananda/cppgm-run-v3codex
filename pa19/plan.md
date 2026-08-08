@@ -14,27 +14,27 @@ Native IR and ELF remain later-stage boundaries.
 
 ## Current Failure Map
 
-Canonical static-member constant/storage demand raised PA19 from 233 to
-241/293. The complete remaining 52-test set is:
+Canonical class-value boundary and construction facts raised PA19 from 241 to
+247/293. The complete remaining 46-test set is:
 
 | Failures | Shared behavior | Owner |
 |---:|---|---|
 | 8 rejected valid inputs | Function-template ordering, enum/member operators, target function references, and associated-class ADL. | PA19 candidate materialization and PA12/PA16 overload selection |
 | 9 rejected valid inputs | Dependent/local type and member lookup, nested completion, and retained replay. | PA12 retained scopes and lookup provenance; PA19 completion |
 | 9 rejected valid inputs | Explicit instantiation demand, defaults, variable templates, and declaration forms. | PA19 template declaration and demand owners |
-| 26 LowIR mismatches | Selected instantiated facts diverge in initialization, special members/lifetimes, or overload/control-flow lowering. | PA12 selected facts and PA15-PA19 typed lowering |
+| 20 LowIR mismatches | Selected instantiated facts diverge in lookup provenance, emission/lifetimes, or scalar/control-flow lowering. | PA12 selected facts and PA15-PA19 typed lowering |
 
 ## Active Checkpoint
 
-Normalize instantiated implicit copy/move and aggregate-construction facts.
-PA12's canonical `ClassSpecialMemberFacts` owns selected constructors, PA17
-emits their base/member lifetime actions, and PA15 consumes those actions;
-template replay must not grow a second construction path. This applies
-`spec.md` sections 3-5 and 9 in O(bases plus members) once per completed class,
-with O(1) binding/fact access at each use. Validate instantiated member calls,
-reference-member moves, aggregate returns, rvalue function-pointer arguments,
-local converting iterators, nested definitions, PA1-PA18, file audit, and
-member-count scaling.
+Preserve definition-time ordinary lookup provenance across dependent-base
+instantiation. The PA19 retained call/name fact owns the definition candidate
+set and deferred-ADL marker; substitution may add only language-permitted
+associated candidates, and PA12 selection/lowering consume the resulting
+binding without searching bases again. This applies `spec.md` sections 2-5 and
+9 in O(indexed lexical/associated edges and actual candidates) once per call,
+with O(1) selected-binding identity. Validate direct and local dependent-base
+calls, unqualified-call skipping, private-base ADL, nested retained bodies,
+PA1-PA18, file audit, and base-depth scaling.
 
 ## Performance Evidence
 
@@ -53,6 +53,8 @@ member-count scaling.
 | One retained function body with 128/256/512 local declarations | Constant six lookup queries and no specialization requests; semantic peak bytes 126,695/236,775/458,983 and semantic time 1.64/3.15/5.79 ms. |
 | Template-operator stress after deduction normalization | 122 tokens; 16 specialization requests with 15 cache hits, 22 candidate visits, 40 conversion checks, one demanded body, and 0.53 ms semantic time. Dependency classification is memoized per canonical `TypeId`. |
 | Instantiated static constants with/without explicit storage | Constant-only case: 9 requests/6 hits, zero globals, 0.32 ms semantic time; out-of-class-definition case: one request, exactly one global, 0.35 ms. Each value use adds only canonical binding/fact probes. |
+| Reference-move specialization with 128/256/512 scalar-prefix members | Layout visits 129/257/513, special-member fact lookups 129/257/513, and subobject visits 388/772/1,540; three functions and 32 instructions stay constant through one prefix transfer plus one reference action; semantic time 3.16/5.80/11.80 ms. |
+| Indirect class-value call with 32/64/128 arguments | Conversion checks 136/264/520, instructions 190/350/670, requests 35/67/131 with 33/65/129 hits, and constant three demand pushes; semantic time 2.40/3.80/6.66 ms and lowering 1.19/1.49/2.35 ms. |
 
 ## Completed Checkpoints
 
@@ -72,3 +74,4 @@ member-count scaling.
 | One-pass retained-definition validation | Pass | Indexed lexical scopes, nondependent value/type classification, parameter and member redeclaration checks, dependent-name deferral, and retained special-member exception matching; PA19 214 to 225, all 11 accepted-invalid cases, linear body probe, prior 1713/1713, audit pass |
 | Canonical function-template deduction and result shapes | Pass | Memoized dependent-pattern classification, nondependent conversion deferral, preserved cv/ref deduction, postfix-cv recovery, target-driven operator operands, and nested reference/array declarators; PA19 225 to 233, prior 1713/1713, audit pass |
 | Canonical static-member constant/storage demand | Pass | PA15 consumes canonical constant `id-expression` facts; PA12 suppresses synthetic globals for non-odr constant uses while explicit out-of-class definitions remain ordinary storage; PA19 233 to 241 across eight cases, prior 1713/1713, audit pass |
+| Canonical class-value call and construction boundaries | Pass | Direct, indirect, and converting calls share selected argument staging; typed call-passing facts, aggregate helpers, reference-move actions, and retained defaulted definitions reuse ordinary lowering; PA19 241 to 247 across six cases, linear argument/member probes, prior 1713/1713, audit pass |

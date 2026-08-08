@@ -294,6 +294,25 @@ protected:
 			derived.Emit(copy);
 			return;
 		}
+		if (derived.IsReferenceType(step.type))
+		{
+			if (step.binding == kNoBinding || step.selected_binding != kNoBinding)
+				throw std::logic_error(
+					"invalid synthesized reference construction step");
+			Operand source = LoadAssignmentObject(construction.object_binding);
+			source = derived.ProjectAggregateMember(source, step.binding);
+			const Operand value = derived.LoadStorage(source, LowPtr());
+			Operand destination = LoadAssignmentObject(
+				derived.current_this_binding_);
+			destination = derived.ProjectAggregateMember(
+				destination, step.binding);
+			Instruction store(Instruction::STORE);
+			store.type = LowPtr();
+			store.first = value;
+			store.second = destination;
+			derived.Emit(store);
+			return;
+		}
 		Operand destination = LoadAssignmentObject(
 			derived.current_this_binding_);
 		if (step.binding != kNoBinding)

@@ -1338,7 +1338,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 		ExpressionInfo argument = arguments_analyzed ? analyzed_arguments[a] :
 			AnalyzeExpression(argument_syntax[a], scope);
 		if (a < callable.parameter_count)
-			argument = ApplyTarget(argument, parameters[a]);
+			argument = ApplyCallArgument(argument, parameters[a]);
 		dump_.Add(call, argument.node);
 	}
 	ExpressionInfo result;

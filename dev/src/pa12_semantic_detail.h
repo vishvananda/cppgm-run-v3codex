@@ -209,6 +209,8 @@ private:
 		BindingId specialization, const std::vector<TypeId>& arguments);
 	void EnsureClassDefinition(TypeId type);
 	bool ClassTemplateSpecializationArgumentsComplete(EntityId entity) const;
+	bool IsClassTemplateSpecializationEntity(EntityId entity) const;
+	bool IsClassTemplateSpecializationContext(EntityId entity) const;
 	ScopeId BindClassTemplateArguments(const ClassTemplatePattern& pattern,
 		const std::vector<TypeId>& arguments);
 	void UpgradeClassTemplateSpecializations(std::size_t pattern);

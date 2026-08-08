@@ -216,6 +216,13 @@ enum IndexProjection : std::uint8_t
 
 struct Instruction
 {
+	enum CallPassing : std::uint8_t
+	{
+		CALL_PASS_VALUE,
+		CALL_PASS_REFERENCE,
+		CALL_PASS_BY_ADDRESS,
+		CALL_PASS_INDIRECT_RESULT
+	};
 	enum Kind : std::uint8_t
 	{
 		CONST,

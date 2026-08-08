@@ -1037,6 +1037,26 @@ bool SemanticAnalyzer::ClassTemplateSpecializationArgumentsComplete(
 	return true;
 }
 
+bool SemanticAnalyzer::IsClassTemplateSpecializationEntity(
+	EntityId entity) const
+{
+	return entity != kNoEntity &&
+		entity < class_template_argument_begin_by_entity_.size() &&
+		class_template_argument_begin_by_entity_[entity] != kNoDumpEdge;
+}
+
+bool SemanticAnalyzer::IsClassTemplateSpecializationContext(
+	EntityId entity) const
+{
+	for (std::size_t depth = 0;
+		entity != kNoEntity && depth < program_->entities.size(); ++depth)
+	{
+		if (IsClassTemplateSpecializationEntity(entity)) return true;
+		entity = program_->entities[entity].enclosing_class;
+	}
+	return false;
+}
+
 BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 	const std::vector<TypeId>& supplied_arguments)
 {
