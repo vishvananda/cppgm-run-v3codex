@@ -40,13 +40,13 @@ protected:
 	}
 
 	Operand BoundFlatArrayElementAddress(BindingId object_binding,
-		TypeId array_type, TypeId element_type, std::size_t index)
+		TypeId array_type, TypeId element_type, const Operand& index)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		const Operand base = derived.DecayAddress(
 			BoundObjectAddress(object_binding, array_type));
 		const std::size_t element_size = derived.program_.SizeOf(element_type);
-		Operand displacement(static_cast<std::int64_t>(index), LowI64());
+		Operand displacement = index;
 		if (element_size != 1)
 		{
 			const Operand scaled = derived.Temp(LowI64());
@@ -61,6 +61,13 @@ protected:
 			displacement = scaled;
 		}
 		return derived.IndexAddress(LowI8(), base, displacement, true);
+	}
+
+	Operand BoundFlatArrayElementAddress(BindingId object_binding,
+		TypeId array_type, TypeId element_type, std::size_t index)
+	{
+		return BoundFlatArrayElementAddress(object_binding, array_type,
+			element_type, Operand(static_cast<std::int64_t>(index), LowI64()));
 	}
 
 	Operand BoundArrayElementAddress(BindingId object_binding, TypeId type,
@@ -141,35 +148,105 @@ protected:
 		*element_action = node;
 	}
 
-	void LowerCompactConstructorArray(std::uint32_t element_action,
+	void LowerLoopConstructorArray(std::uint32_t element_action,
 		BindingId object_binding, TypeId array_type, TypeId element_type,
 		std::size_t count, BindingId destructor)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		SmallSequence<BlockId, 8> cleanup_blocks;
-		for (std::size_t i = 1; i < count; ++i)
-			cleanup_blocks.Push(derived.AddBlock(
-				derived.NewLabel("call_unwind_cleanup")));
+		if (count > static_cast<std::size_t>(
+			std::numeric_limits<std::int64_t>::max()))
+			throw std::logic_error("constructor array extent exceeds LowIR");
+		const SlotId progress_id = static_cast<SlotId>(
+			derived.function_->slots.size());
+		Slot progress_slot;
+		progress_slot.name = derived.GeneratedSlotName("constructor_array_index");
+		progress_slot.type = LowI64();
+		derived.function_->slots.push_back(progress_slot);
+		const Operand progress(progress_id, LowI64());
+		const BlockId condition = derived.AddBlock(
+			derived.NewLabel("constructor_array_cond"));
+		const BlockId body = derived.AddBlock(
+			derived.NewLabel("constructor_array_body"));
 		const BlockId end = derived.AddBlock(
-			derived.NewLabel("call_unwind_end"));
-		for (std::size_t i = 0; i < count; ++i)
+			derived.NewLabel("constructor_array_end"));
+		const bool cleanup_needed = destructor != kNoBinding;
+		const BlockId cleanup = cleanup_needed ? derived.AddBlock(
+			derived.NewLabel("constructor_array_cleanup")) : BlockId(kNoLowId);
+		const BlockId cleanup_body = cleanup_needed ? derived.AddBlock(
+			derived.NewLabel("constructor_array_cleanup_body")) : BlockId(kNoLowId);
+		const BlockId resume = cleanup_needed ? derived.AddBlock(
+			derived.NewLabel("constructor_array_resume")) : BlockId(kNoLowId);
+		Instruction initialize(Instruction::STORE);
+		initialize.type = LowI64();
+		initialize.first = Operand(0, LowI64());
+		initialize.second = progress;
+		derived.Emit(initialize);
+		derived.EmitJump(condition);
+		derived.SelectBlock(condition);
+		const Operand index = derived.LoadStorage(progress, LowI64());
+		const Operand more = derived.Temp(LowU8());
+		Instruction compare(Instruction::CMP);
+		compare.dest = more.id;
+		compare.op = LOW_OP_ULT;
+		compare.type = LowI64();
+		compare.first = index;
+		compare.second = Operand(static_cast<std::int64_t>(count), LowI64());
+		derived.Emit(compare);
+		derived.EmitBranch(more, body, end);
+		derived.SelectBlock(body);
+		if (cleanup_needed)
+			derived.EmitEhTarget(Instruction::EH_TRY, cleanup);
+		const Operand element = BoundFlatArrayElementAddress(
+			object_binding, array_type, element_type, index);
+		derived.LowerConstructorAction(element_action, element);
+		if (cleanup_needed) derived.Emit(Instruction(Instruction::EH_END));
+		const Operand next = derived.Temp(LowI64());
+		Instruction increment(Instruction::BINARY);
+		increment.dest = next.id;
+		increment.op = LOW_OP_ADD;
+		increment.type = LowI64();
+		increment.first = index;
+		increment.second = Operand(1, LowI64());
+		derived.Emit(increment);
+		Instruction save(Instruction::STORE);
+		save.type = LowI64();
+		save.first = next;
+		save.second = progress;
+		derived.Emit(save);
+		derived.EmitJump(condition);
+		if (cleanup_needed)
 		{
-			if (i != 0)
-				derived.EmitEhTarget(Instruction::EH_TRY, cleanup_blocks[i - 1]);
-			const Operand element = BoundFlatArrayElementAddress(
-				object_binding, array_type, element_type, i);
-			derived.LowerConstructorAction(element_action, element);
-			if (i != 0) derived.Emit(Instruction(Instruction::EH_END));
-		}
-		derived.EmitJump(end);
-		for (std::size_t i = 0; i < cleanup_blocks.size(); ++i)
-		{
-			derived.SelectBlock(cleanup_blocks[i]);
+			derived.SelectBlock(cleanup);
+			const Operand remaining = derived.LoadStorage(progress, LowI64());
+			const Operand any = derived.Temp(LowU8());
+			Instruction nonzero(Instruction::CMP);
+			nonzero.dest = any.id;
+			nonzero.op = LOW_OP_NE;
+			nonzero.type = LowI64();
+			nonzero.first = remaining;
+			nonzero.second = Operand(0, LowI64());
+			derived.Emit(nonzero);
+			derived.EmitBranch(any, cleanup_body, resume);
+			derived.SelectBlock(cleanup_body);
+			const Operand previous = derived.Temp(LowI64());
+			Instruction decrement(Instruction::BINARY);
+			decrement.dest = previous.id;
+			decrement.op = LOW_OP_SUB;
+			decrement.type = LowI64();
+			decrement.first = remaining;
+			decrement.second = Operand(1, LowI64());
+			derived.Emit(decrement);
+			Instruction save_previous(Instruction::STORE);
+			save_previous.type = LowI64();
+			save_previous.first = previous;
+			save_previous.second = progress;
+			derived.Emit(save_previous);
 			derived.EmitDestructorCall(destructor,
 				BoundFlatArrayElementAddress(object_binding, array_type,
-					element_type, i));
-			if (i != 0) derived.EmitJump(cleanup_blocks[i - 1]);
-			else derived.Emit(Instruction(Instruction::RESUME));
+					element_type, previous));
+			derived.EmitJump(cleanup);
+			derived.SelectBlock(resume);
+			derived.Emit(Instruction(Instruction::RESUME));
 		}
 		derived.SelectBlock(end);
 	}
@@ -190,10 +267,11 @@ protected:
 		const bool cleanup_needed = action.binding != kNoBinding &&
 			(element_action.binding == kNoBinding ||
 			 !derived.program_.bindings[element_action.binding].nonthrowing);
-		if (cleanup_needed && count > kConstructorArrayCleanupInlineLimit)
+		if (count > kConstructorArrayCleanupInlineLimit)
 		{
-			LowerCompactConstructorArray(element_node, object_binding,
-				action.operand_type, element_type, count, action.binding);
+			LowerLoopConstructorArray(element_node, object_binding,
+				action.operand_type, element_type, count,
+				cleanup_needed ? action.binding : kNoBinding);
 			return;
 		}
 		for (std::size_t i = 0; i < count; ++i)

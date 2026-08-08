@@ -238,6 +238,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const {
 		associated_scope_marks_.capacity() * sizeof(std::uint32_t) +
 		associated_type_marks_.capacity() * sizeof(std::uint32_t) +
 		candidate_marks_.capacity() * sizeof(std::uint32_t) +
+		empty_destructor_chain_cache_.capacity() * sizeof(std::uint8_t) +
 		pack_alignment_stack_.capacity() * sizeof(std::size_t);
 	for (std::size_t i = 0; i < functions_.size(); ++i)
 		bytes += functions_[i].parameters.capacity() * sizeof(ParameterInfo);
@@ -2438,7 +2439,6 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 	current_class_context_ = previous_class_context;
 }
 
-
 void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	std::uint32_t output_parent)
 {
@@ -2927,8 +2927,7 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		stats_->class_layout_member_visits = class_layout_member_visits_;
 		stats_->class_zero_offset_subobject_visits =
 			class_zero_offset_subobject_visits_;
-		stats_->special_member_fact_lookups =
-			special_member_fact_lookups_;
+		stats_->special_member_fact_lookups = special_member_fact_lookups_;
 		stats_->special_member_subobject_visits =
 			special_member_subobject_visits_;
 		stats_->constructor_member_action_visits =
@@ -2946,6 +2945,8 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		stats_->unwind_cleanup_action_visits =
 			unwind_cleanup_action_visits_;
 		stats_->temporary_dependency_visits = temporary_dependency_visits_;
+		stats_->empty_destructor_chain_visits = empty_destructor_chain_visits_;
+		stats_->empty_destructor_chain_cache_hits = empty_destructor_chain_cache_hits_;
 		stats_->namespace_object_actions = namespace_objects_.size();
 		stats_->lookup_queries = program.lookup_queries;
 		stats_->lookup_scope_visits = program.lookup_scope_visits;
@@ -2978,8 +2979,7 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 			template_specialization_cache_hits_;
 		stats_->demand_worklist_pushes = demand_worklist_pushes_;
 		stats_->demanded_function_emissions = demanded_function_emissions_;
-		stats_->default_constructor_emissions =
-			default_constructor_emissions_;
+		stats_->default_constructor_emissions = default_constructor_emissions_;
 		const std::size_t shared_string_storage =
 			arena.SharedStrings().StorageBytes();
 		const std::size_t program_storage = program.StorageBytes();

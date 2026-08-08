@@ -60,6 +60,8 @@ public:
 		  unwind_cleanup_scope_visits_(0),
 		  unwind_cleanup_action_visits_(0),
 		  temporary_dependency_visits_(0),
+		  empty_destructor_chain_visits_(0),
+		  empty_destructor_chain_cache_hits_(0),
 		  anonymous_enum_count_(0), local_type_count_(0) {}
 
 	void Consume(const SyntaxArena& arena, NodeId root);
@@ -390,7 +392,9 @@ private:
 	BindingId EnsureImplicitDestructor(EntityId entity);
 	const std::vector<BindingId>& ConstructorCandidates(EntityId entity) const;
 	BindingId DestructorForType(TypeId type) const;
-	bool IsEmptyDestructorChain(BindingId destructor) const;
+	bool CacheDestructorChainDecision(BindingId destructor,
+		bool proven_empty) const;
+	bool CanElideDestructorChain(BindingId destructor) const;
 	bool IsElidableAutomaticDestructor(BindingId destructor) const;
 	EntityId DestructedEntity(TypeId type) const;
 	BindingId SelectConstructor(ScopeId scope,
@@ -572,6 +576,7 @@ private:
 	std::vector<std::uint32_t> associated_scope_marks_;
 	std::vector<std::uint32_t> associated_type_marks_;
 	std::vector<std::uint32_t> candidate_marks_;
+	mutable std::vector<std::uint8_t> empty_destructor_chain_cache_;
 	LanguageLinkage current_language_linkage_;
 	TypeId current_return_type_;
 	EntityId current_class_context_;
@@ -617,6 +622,8 @@ private:
 	std::size_t unwind_cleanup_scope_visits_;
 	std::size_t unwind_cleanup_action_visits_;
 	std::size_t temporary_dependency_visits_;
+	mutable std::size_t empty_destructor_chain_visits_;
+	mutable std::size_t empty_destructor_chain_cache_hits_;
 	std::size_t anonymous_enum_count_;
 	std::size_t local_type_count_;
 };

@@ -1,114 +1,114 @@
-# PA17 Implementation Plan
+# PA17 Full-Stage Plan
 
 ## Stage Design and Spec Alignment
 
-PA17 extends the PA16 semantic graph and typed LowIR with non-polymorphic class
-value semantics. PA12 owns canonical class types, selected special members,
-conversion facts, class-prvalue recipes, temporary identities, and destructor
-actions. `DUMP_CLASS_VALUE_TRANSFER` retains the selected constructor;
-PA15-PA17 lowering sends only indirect results a destination and copies direct
-typed results once. Temporary collection retains control dependency once for
-O(1) cleanup decisions. Class completion owns synthesized recipes, while
-function-local lowering owns storage and cleanup state. This applies `spec.md`
-sections 2, 3, 6, 8, and 9: stable identities, retained overload results,
-one-way typed lowering, phase-local ownership, and work proportional to
-selected candidates, owned subobjects, lifetime actions, and emitted IR. PA17
-remains demand-driven and leaves virtual dispatch to PA18.
+PA17 is complete at 241/241 stage tests. It extends the PA11/PA12 canonical
+semantic model and PA15/PA16 typed LowIR with non-polymorphic class value
+semantics: special-member selection and synthesis, direct and indirect class
+results, temporary identity and cleanup, constructor delegation, conversion
+functions, scalar and array new/delete, unions, bit-fields, and aggregate
+initialization.
 
-## Current Failure Map
+The stage data flow is:
 
-Latest audit: **241/241** PA17 tests pass, up from this turn's **230/241**
-baseline; PA1-PA16 are 1436/1436 and file audit passes. There are no current
-PA17 failures.
+```text
+immutable source buffer
+  -> PA10 retained tokens and SyntaxArena
+  -> PA11 Program (NameId/TypeId/ScopeId/EntityId/BindingId)
+     plus PA12 DumpArena typed semantic actions
+  -> borrowed SemanticGraphView
+  -> PA15-PA17 TypedProgram
+  -> one terminal textual LowIR view
+```
 
-| Failures | Shared behavior | Primary owner |
-| ---: | --- | --- |
-| 0 | Stage test set complete | PA12 semantic graph through PA17 LowIR lowering |
-
-## Active Checkpoint
-
-**Functional class-prvalue member-object closure — completed.** Applied `spec.md`
-sections 2, 3, 8, and 9: PA12 recognizes a named class functional cast from
-class identity, independent of whether its destructor is nontrivial; selected
-construction produces one materialized temporary, which direct-member-call
-analysis converts to the implicit object pointer. Data flows `functional-cast
-type -> selected constructor action -> temporary identity -> member object
-conversion -> retained call`. Expression analysis owns class recognition and
-temporary identity; call analysis owns member lookup and implicit-object
-conversion. Expected work is O(arguments + selected candidates + construction
-and cleanup actions), with no reparsing, repeated lookup, or graph rescan.
-
-Validation covers the target plus trivial/nontrivial functional class casts,
-direct member calls on prvalues, copy-and-swap lifetime, scalar casts, explicit
-constructors, and same-name function controls. The completion audit requires
-full PA17, through PA16, file audit, and a clean committed tree.
+The PA10 syntax boundary and textual LowIR endpoint are assignment contracts,
+so `spec.md`'s integrated parser and source-to-ELF requirements are adapted at
+those two boundaries. Within the available PA17 surface, semantic selection is
+recorded once and lowering is direct and typed. There is no semantic-text or
+LowIR-text transport, lowering lookup, host compiler, reference binary, or
+name-based recovery path. The syntax and semantic graph are translation-unit
+owned and released after synchronous lowering; the typed program remains for
+the required final multi-source presentation.
 
 ## Performance Evidence
 
-- Audited destination-forwarding chains at 16/32/64 functions recorded
-  158/318/638 temporary-dependency visits, 251/475/923 semantic nodes,
-  96/176/336 lowered nodes, 175/335/655 instructions, and
-  53,478/101,238/197,270 typed bytes. Nine-run median semantic/lowering/render
-  times were 0.545/0.357/0.093, 0.922/0.536/0.156, and
-  1.614/0.891/0.267 ms; all work, storage, and phase time remain proportional.
-- Synthesized construction at 16/32/64 scalar members recorded 48/96/192
-  special-member subobject visits, fixed 27 semantic nodes, 14 lowered nodes,
-  and 17 instructions, plus 39,738/54,282/89,178 peak stage bytes. Nine-run
-  semantic medians were 0.206/0.229/0.323 ms; lowering medians were
-  0.122/0.125/0.124 ms. Completion work and storage are linear in subobjects,
-  while retained bulk-copy lowering remains constant-size.
-- Aggregate appertainment at 16/32/64 direct class-member clauses recorded
-  83/163/323 conversion checks, 32/64/128 cached target misses, 145/273/529
-  semantic nodes, 107/203/395 lowered nodes, 138/266/522 instructions, and
-  35,113/67,609/132,601 typed bytes. Nine-run semantic/lowering/render medians
-  were 0.422/0.186/0.065, 0.655/0.259/0.118, and 1.080/0.418/0.193 ms;
-  conversion, graph, storage, emission, and phase time remain linear.
-- Function-exit ownership at 16/32/64 by-value parameters plus independent
-  switch arms recorded 32/64/128 cleanup visits, 18/34/66 binding probes and
-  CFG edges, 23/39/71 blocks, 46/78/142 instructions, and
-  17,507/29,363/53,075 typed bytes. Nine-run semantic/lowering/render medians
-  were 0.321/0.244/0.057, 0.456/0.331/0.079, and 0.706/0.492/0.119 ms; owned
-  cleanup, reachability facts, storage, emission, and phase time are linear.
-- Typed emission at 16/32/64 widened comparisons and bit-field members recorded
-  25/41/73 conversion checks, 84/164/324 special-member visits, 16/32/64
-  constructor actions, 111/207/400 lowered nodes, 257/497/977 instructions,
-  and 58,807/109,095/209,671 typed bytes. Nine-run semantic/lowering/render
-  medians were 0.469/0.332/0.139, 0.724/0.477/0.235, and
-  1.208/0.845/0.423 ms; cached boundary lookup, owner indexing, storage,
-  emission, and phase time remain linear.
-- Functional-cast member calls at 16/32/64 sites recorded 53/101/197 overload
-  candidates, 92/172/332 conversion checks, 148/276/532 temporary-dependency
-  visits, 205/365/685 semantic nodes, 90/154/282 lowered nodes,
-  134/230/422 instructions, and 33,303/54,663/97,383 typed bytes. Nine-run
-  semantic/lowering/render medians were 0.425/0.279/0.085,
-  0.635/0.339/0.131, and 1.052/0.501/0.213 ms; lookup, identity, storage,
-  emission, and phase time remain linear.
+Final release telemetry covers source size, graph size, lookup and conversion
+work, demand, lifetime work, typed storage, emitted blocks/instructions, output
+bytes, and phase time.
 
-## Completed Checkpoints
+| Probe | Sizes | Scaling result |
+|---|---:|---|
+| Fixed non-trivial member array | 16/64/256 elements | 54 semantic nodes, 1 destructor action, 21 blocks, 90 instructions, and 23,230 typed bytes at every bound; LowIR is 4,639/4,640/4,644 bytes. Nine-run median semantic/lowering/render time is 0.251/0.204/0.077, 0.224/0.176/0.069, and 0.223/0.171/0.067 ms. |
+| Repeated class-value member calls | 32/64/128 sites | Candidates 320/640/1,280; conversions 553/1,097/2,185; temporary visits 277/533/1,045; instructions 254/446/830; typed bytes 60,691/99,187/176,179. Nine-run median semantic/lowering/render time is 0.777/0.334/0.133, 1.255/0.436/0.212, and 2.254/0.660/0.361 ms. |
+| Empty destructor chain | 32/64/128/256 depth and uses | Visits are 64/128/256/512 with 31/63/127/255 cache hits; retained graph, instructions, storage, and median phase time are proportional. |
+| Unresolved out-of-line base destructor | 32/64/128 depth and uses | Audit baseline visits 1,056/4,160/16,512; final visits 64/128/256 with identical LowIR. |
+| Reused function-template declaration | two `sink<int>` calls | 4 specialization requests, 3 cache hits, 1 demand push, and 1 demanded declaration emission. |
 
-| Checkpoint | Result | Validation |
-| --- | --- | --- |
-| Ref-qualified member identity and selection | 42/228 -> 57/231 | Focus 15/15; through PA16; proportional probes |
-| Direct trivial class-value transfer and ABI | 57/231 -> 68/231 | Exact-copy focus; through PA16; constant transfer probes |
-| Synthesized copy/move assignment | 68/231 -> 79/231 | Implicit/defaulted/deleted focus; linear probes |
-| Synthesized copy/move construction and materialization | 79/231 -> 97/231 | Value call/return focus; through PA16; linear probes |
-| Indexed conversion functions and retained selection | 97/231 -> 110/231 | Conversion focus 10/10; through PA16; linear probes |
-| Built-in operators after class conversion | 110/231 -> 124/231 | Operator focus 14/15; through PA16; proportional probes |
-| Scalar allocation/deallocation typed actions | 124/231 -> 136/231 | Focus 12/12; through PA16; proportional probes |
-| Dynamic array allocation/deallocation typed actions | 136/231 -> 145/231 | Focus 9/9; fixed-size lowering probe |
-| Union declaration and object actions | 145/231 -> 151/231 | Focus 6/6; linear member probe |
-| Typed temporary identity and linear lifetime regions | 151/231 -> 157/231 | Focus 6/6; 16/32/64 probes |
-| Condition-declaration lifetime regions | 157/231 -> 160/231 | Focus 4/4; through PA16; depth probe |
-| Branch-local class values and cleanup | 160/231 -> 173/231 | Branch focus; through PA16; linear cleanup probes |
-| Loop full-expression regions | 173/231 -> 174/231 | Focus 17/17; through PA16; loop probes |
-| Class direct-initialization recipes | 174/231 -> 188/233 | Focus 12/12 plus audits; list/candidate probes |
-| Constructor delegation and qualified defaults | 188/233 -> 199/239 | Positive/rejection/default focus; chain probes |
-| Composite subobject copy/move transfer | 199/239 -> 207/239 | Focus 8/8; bounded array-loop probes |
-| Value-category and reference-binding closure | 207/239 -> 216/239 | Focus plus adjacent gains; ancestry probes |
-| Canonical lookup and candidate identity | 216/239 -> 224/241 | Focus plus audits; through PA16; lookup probes |
-| Class-prvalue destination propagation | 224/241 -> 230/241 | Focus 6/6 plus controls; direct/indirect and cleanup audit fixes; through PA16; linear forwarding probe |
-| Synthesized construction and move classification | 230/241 -> 233/241 | Focus 3/3 plus six controls; through PA16; file audit; linear subobject probe |
-| Non-braced aggregate appertainment and namespace copies | 233/241 -> 235/241 | Focus 6/6 plus four PA16 controls; linear 16/32/64 probe |
-| Function-exit identity and reachability closure | 235/241 -> 237/241 | Focus 6/6; binding/CFG 16/32/64 probe |
-| Typed scalar and bit-field emission normalization | 237/241 -> 240/241 | Targets 3/3 plus 12 controls; linear 16/32/64 probe |
-| Functional class-prvalue member-object closure | 240/241 -> 241/241 | Target plus 11 controls; linear 16/32/64 probe |
+The checkpoint probes also cover destination forwarding, synthesized
+subobjects, aggregate appertainment, function-exit cleanup, bit-field emission,
+and lookup/candidate identity. Their counters and phase times grow with the
+represented semantic input or emitted IR.
+
+## Architecture Review
+
+| `spec.md` audit area | PA17 result |
+|---|---|
+| Representation and ownership | Pass for the staged contract. Source/PA10 syntax, one PA11/PA12 semantic graph, and typed LowIR have explicit owners. `SemanticGraphView` is borrowed synchronously; no text is reparsed. The assignment-mandated full PA10 arena overlap is recorded as a staged boundary, not hidden. |
+| Identity and lookup | Pass. Names, types, scopes, entities, bindings, layouts, selected functions, conversions, temporary objects, and ABI entries use compact canonical IDs. Scope/name/kind and function-signature indexes avoid unrelated declaration scans; lowering consumes retained identities. |
+| Templates and repeated work | Pass for the inherited declaration-only template surface available through PA17. Canonical template identity plus canonical arguments key specialization reuse, and monotonic demand emits once. Template-aware class-value semantics and general body instantiation remain explicitly outside PA17. |
+| Lowering and backend | Pass through typed LowIR. Functions and ABI entries lower once from semantic facts. The only whole-program pass coalesces cross-translation-unit lifecycle roles. Machine IR, native code, and ELF are later assignments and are not claimed here. |
+| Allocation and scaling | Pass. Translation-unit semantic arenas, compact IDs/indexes, inline-small sequences, geometric vectors, and function-local lowering state own hot data. Large fixed class arrays now lower to loops, and destructor-chain decisions are memoized. |
+| Self-containment | Pass. Production sources contain no reference/host compiler invocation, cached answers, test/source-name branches, or subprocess output path. `dev/src/test_runner.cpp` is test harness infrastructure and is not used to produce compiler output. |
+
+The file audit's 11 header-division advisories are unchanged and non-fatal.
+They identify established CRTP/model headers; this audit added no new source
+owner and no new warning.
+
+## Final Architecture Review
+
+The final PA-wide review closed two blockers found despite a clean functional
+baseline:
+
+1. Fixed non-trivial arrays were expanded once per element in PA12 destructor
+   actions and again in constructor/destructor lowering. Bounds above eight now
+   retain one typed action and emit constant-size forward/reverse loops,
+   including reverse cleanup of only successfully constructed elements.
+2. Empty destructor-chain elision recursively recomputed the same base/member
+   fact for every temporary. The semantic owner now records one monotonic
+   decision per destructor binding: proven empty, or conservative retain. New
+   counters expose visits and cache hits.
+
+Small arrays retain their exact checked-in form. Focused array tests, all PA17
+tests, the file audit, and the required through-stage report pass. No remaining
+correctness, architecture, scaling, self-containment, or file-audit blocker was
+found.
+
+## Checkpoint Ledger
+
+| Checkpoint | Final result | Principal closure |
+|---|---|---|
+| Ref-qualified member identity and selection | Pass | Canonical mixed-set identity, object ranking, and ABI path |
+| Direct trivial class-value transfer and ABI | Pass | Exact direct transfer and retained boundary facts |
+| Synthesized copy/move assignment | Pass | Implicit/defaulted/deleted classification and typed recipes |
+| Synthesized copy/move construction | Pass | Materialization, value call, and return ownership |
+| Conversion functions | Pass | Indexed candidates and retained selected conversion |
+| Built-in operators after class conversion | Pass | Conversion reuse without lowering lookup |
+| Scalar allocation/deallocation | Pass | Typed allocation, initialization, and delete actions |
+| Dynamic array allocation/deallocation | Pass | Count/cookie/lifetime ownership and loop lowering |
+| Union declaration and object actions | Pass | Active storage rules and non-polymorphic union semantics |
+| Typed temporary identity | Pass | Stable temporary IDs and linear lifetime regions |
+| Condition-declaration lifetimes | Pass | Scope-owned condition cleanup |
+| Branch-local class cleanup | Pass | Normal/unwind state and shared cleanup suffixes |
+| Loop full-expression regions | Pass | Per-iteration materialization and bounded cleanup |
+| Class direct initialization | Pass | Selected constructor/list conversions retained once |
+| Constructor delegation/default completion | Pass | Canonical complete/base entries and cycle/rejection rules |
+| Composite subobject transfer | Pass | Member/base recipes and bounded array loops |
+| Value-category/reference binding | Pass | Canonical category, conversion, and indexed ancestry facts |
+| Canonical lookup/candidate identity | Pass | Indexed using relations and compact overload merging |
+| Class-prvalue destination propagation | Pass | Direct/indirect result split and selected constructor invariant |
+| Synthesized construction classification | Pass | Move/copy and class completion closure |
+| Aggregate appertainment/namespace copies | Pass | Cached target facts and source-owned initialization |
+| Function-exit identity/reachability | Pass | Binding-indexed cleanup and CFG ownership |
+| Typed scalar/bit-field normalization | Pass | Width-correct values and storage-transfer owner indexing |
+| Functional class-prvalue calls | Pass | Functional construction through member-object conversion |
+| Full-stage architecture closure | Pass | Constant-size fixed-array lifetime IR and memoized destructor-chain decisions |

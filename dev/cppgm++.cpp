@@ -584,6 +584,10 @@ int run_emit_semantics_mode(const vector<string> & args)
 		   << stats.unwind_cleanup_scope_visits
 		   << " unwind_cleanup_action_visits="
 		   << stats.unwind_cleanup_action_visits
+		   << " empty_destructor_chain_visits="
+		   << stats.empty_destructor_chain_visits
+		   << " empty_destructor_chain_cache_hits="
+		   << stats.empty_destructor_chain_cache_hits
 		   << " namespace_object_actions="
 		   << stats.namespace_object_actions
            << " lookup_queries=" << stats.lookup_queries
@@ -692,6 +696,10 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << semantic.unwind_cleanup_action_visits
 			 << " temporary_dependency_visits="
 			 << semantic.temporary_dependency_visits
+			 << " empty_destructor_chain_visits="
+			 << semantic.empty_destructor_chain_visits
+			 << " empty_destructor_chain_cache_hits="
+			 << semantic.empty_destructor_chain_cache_hits
 			 << " namespace_object_actions="
 			 << semantic.namespace_object_actions
 			 << " lookup_queries=" << semantic.lookup_queries

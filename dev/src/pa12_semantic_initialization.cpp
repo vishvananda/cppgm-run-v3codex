@@ -12,6 +12,8 @@ namespace pa12_semantic_detail
 namespace
 {
 
+const std::size_t kDestructorArrayInlineLimit = 8;
+
 bool IsClassEntity(const Program& program, EntityId entity)
 {
 	if (entity == kNoEntity) return false;
@@ -2510,27 +2512,49 @@ void SemanticAnalyzer::AppendUnwindDestructionActions(ScopeId scope,
 	}
 }
 
-bool SemanticAnalyzer::IsEmptyDestructorChain(BindingId destructor) const
+bool SemanticAnalyzer::CacheDestructorChainDecision(BindingId destructor,
+	bool proven_empty) const
 {
+	if (empty_destructor_chain_cache_.size() <= destructor)
+		empty_destructor_chain_cache_.resize(
+			static_cast<std::size_t>(destructor) + 1, 0);
+	// A conservative no-elide decision is monotonic: a later empty definition
+	// may enable an optional optimization, but retaining destruction is correct.
+	empty_destructor_chain_cache_[destructor] = proven_empty ? 2 : 1;
+	return proven_empty;
+}
+
+bool SemanticAnalyzer::CanElideDestructorChain(BindingId destructor) const
+{
+	++empty_destructor_chain_visits_;
 	if (destructor == kNoBinding || destructor >= program_->bindings.size())
 		return false;
+	if (destructor < empty_destructor_chain_cache_.size() &&
+		empty_destructor_chain_cache_[destructor] != 0)
+	{
+		++empty_destructor_chain_cache_hits_;
+		return empty_destructor_chain_cache_[destructor] == 2;
+	}
 	const BindingRecord& binding = program_->bindings[destructor];
-	if (binding.member_owner == kNoEntity) return false;
+	if (binding.member_owner == kNoEntity)
+		return CacheDestructorChainDecision(destructor, false);
 	const FunctionInfo& info = GetFunction(destructor);
 	const bool empty_definition = info.definition_body != kNoNode &&
 		FirstSemanticChild(info.definition_body) == kNoNode;
 	if (!info.implicit_destructor && !info.defaulted_destructor &&
 		!empty_definition)
-		return false;
+		return CacheDestructorChainDecision(destructor, false);
 	const EntityId entity = binding.member_owner;
 	const EntityId base = program_->entities[entity].direct_base;
 	if (base != kNoEntity && !program_->entities[base].trivial_destructor)
 	{
 		const BindingId base_destructor = DestructorForType(
 			program_->entities[base].type);
-		if (!IsEmptyDestructorChain(base_destructor)) return false;
+		if (!CanElideDestructorChain(base_destructor))
+			return CacheDestructorChainDecision(destructor, false);
 	}
-	if (entity >= entity_data_members_.size()) return true;
+	if (entity >= entity_data_members_.size())
+		return CacheDestructorChainDecision(destructor, true);
 	const std::vector<BindingId>& members = entity_data_members_[entity];
 	for (std::size_t i = 0; i < members.size(); ++i)
 	{
@@ -2539,11 +2563,11 @@ bool SemanticAnalyzer::IsEmptyDestructorChain(BindingId destructor) const
 		if (member == kNoEntity ||
 			program_->entities[member].trivial_destructor)
 			continue;
-		if (!IsEmptyDestructorChain(DestructorForType(
+		if (!CanElideDestructorChain(DestructorForType(
 			program_->bindings[members[i]].type)))
-			return false;
+			return CacheDestructorChainDecision(destructor, false);
 	}
-	return true;
+	return CacheDestructorChainDecision(destructor, true);
 }
 
 bool SemanticAnalyzer::IsElidableAutomaticDestructor(
@@ -2563,7 +2587,7 @@ bool SemanticAnalyzer::IsElidableAutomaticDestructor(
 		empty_definition || info.defaulted_destructor;
 	if ((!union_object || !empty_definition) && !elidable_definition)
 		return false;
-	return IsEmptyDestructorChain(destructor);
+	return CanElideDestructorChain(destructor);
 }
 
 ScopeId SemanticAnalyzer::CompoundCleanupStop(ScopeId scope) const
@@ -2734,6 +2758,29 @@ void SemanticAnalyzer::AddDestructorSubobjectActions(EntityId entity,
 		const TypeRecord& record = program_->types.Get(object);
 		if (record.kind == TYPE_ARRAY)
 		{
+			std::size_t element_count = 1;
+			TypeId element_type = object;
+			for (;;)
+			{
+				const TypeRecord& array = program_->types.Get(
+					program_->types.RemoveTopCv(element_type));
+				if (array.kind != TYPE_ARRAY) break;
+				if (array.bound == 0 || array.bound >
+					std::numeric_limits<std::size_t>::max() / element_count)
+					throw std::logic_error("invalid destructor array extent");
+				element_count *= static_cast<std::size_t>(array.bound);
+				element_type = array.child;
+			}
+			if (element_count > kDestructorArrayInlineLimit)
+			{
+				const std::uint32_t action = MakeDestructorAction(
+					type, destructor, member);
+				dump_.nodes[action].array_action = true;
+				dump_.nodes[action].array_count = element_count;
+				dump_.Add(body, action);
+				++destructor_subobject_action_visits_;
+				continue;
+			}
 			for (std::size_t element =
 				static_cast<std::size_t>(record.bound); element != 0; --element)
 			{

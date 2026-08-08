@@ -1,80 +1,187 @@
-# PA17 Audit
+# PA17 Full-Stage Audit
 
-## Current Checkpoint Review
+## Findings
 
-**Checkpoint:** `ad3272ab` (`Implement PA17 class-prvalue destination
-propagation`)
+The independent audit started from a clean 241/241 PA17 and 1,677/1,677
+through-stage baseline. Review of `spec.md`, the PA17 contract, all 33 PA17
+stage commits, the complete stage delta, current records, and representative
+data paths found no functional regression, test-specific branch, text
+round-trip, lowering lookup, external compiler/reference dependency, or
+cross-phase ownership leak.
 
-**Result:** Pass after audit fixes. The landed six-case increment covers
-conditional local construction, ref-qualified conditional calls, reverse
-friend operators, indirect call-result reference materialization, demanded
-member-return construction, and conversion-result placement construction. The
-audited result remains 230/241, preserving the prior audited 224/241 pass set
-and the checkpoint's six gains with the same 11 failures.
+It did find two performance architecture defects not exposed by the checked-in
+tests:
 
-The affected ownership path is parsed call/initialization -> PA12 canonical
-`TypeId`/`BindingId`, selected constructor, argument conversion, value category,
-and temporary identity -> a typed `DUMP_CLASS_VALUE_TRANSFER` retaining the
-selected copy/move constructor -> PA15/PA16 destination-aware lowering. An
-indirect class result receives the final destination; a direct result is
-produced as a typed operand and copied once. Conditional cleanup records one
-control-dependency fact on the owned temporary during the existing semantic
-walk, and destructor selection consumes it by identity. Demanded function
-bodies run the same named-return finalization as source-order bodies. No lookup
-or overload selection occurs in lowering, and the checkpoint adds no template,
-machine-IR, or ELF owner.
+1. A fixed non-trivial class array had O(bound) PA12 destructor nodes and
+   O(bound) constructor/destructor LowIR expansion. A 16/64/256-element member
+   array produced 69/117/309 semantic nodes, 16/64/256 destructor actions,
+   41/137/521 blocks, 520/2,008/7,960 instructions, and
+   96,392/355,496/1,392,228 typed bytes from essentially constant-size source.
+2. Empty destructor-chain classification recursively revisited the same
+   canonical base/member chain for each temporary. The complete-chain probe
+   showed superlinear semantic time, and the unresolved-base probe made the
+   repeated work explicit at 1,056/4,160/16,512 visits for N=32/64/128.
 
-Audit findings are closed:
+Both findings are closed. The 11 file-audit header-division warnings are
+pre-existing advisory findings, not blockers; no warning was added.
 
-1. A direct-result call was given an unusable destination, and integer-literal
-   folding depended on whether that destination happened to be present.
-   Direct and indirect result paths are now explicit. Ordinary overloaded
-   operator folding is derived from the selected canonical operator binding;
-   allocation calls and unrelated calls retain their established conversion
-   shape.
-2. Empty-destructor handling recursively searched each temporary subtree.
-   `CollectTemporaryObjects` now retains the subtree control-dependency fact on
-   each temporary, making every later cleanup decision O(1). The release
-   telemetry reports `temporary_dependency_visits` for the bounded semantic
-   walks.
-3. Lowering could accept a class-value transfer without proving that semantic
-   analysis had retained a selected constructor. It now treats a missing or
-   non-constructor `selected_binding` as an invariant violation before emitting
-   the direct transfer.
-4. The complete changed path has one translation-unit-owned semantic graph and
-   function-local typed lowering state. It has no source/test-name branch,
-   host/reference invocation, subprocess, timeout, cached answer, text round
-   trip, global retry, whole-program scan, or name-based lowering fallback.
+## Changes
 
-The audited 16/32/64-function forwarding probe recorded 158/318/638 temporary
-dependency visits, 251/475/923 semantic nodes, 96/176/336 lowered nodes,
-175/335/655 instructions, 53,478/101,238/197,270 typed bytes, and
-121,557/236,019/465,553 peak stage bytes. Nine-run median
-semantic/lowering/render times were 0.545/0.357/0.093,
-0.922/0.536/0.156, and 1.614/0.891/0.267 ms. Work, storage, and time are
-proportional to the represented forwarding functions and produced IR.
+- PA12 now represents a large fixed member-array destructor obligation with one
+  typed array action rather than one node per outer element. Small arrays up to
+  eight retain the previous deterministic inline representation.
+- PA16 constructor-array lowering emits a forward index loop above the inline
+  limit. A throwing element constructor enters one cleanup loop that destroys
+  exactly the successfully constructed prefix in reverse order before resume.
+- PA16 destructor lowering flattens bounded multidimensional arrays and emits a
+  reverse index loop above the same limit. Local, temporary, member, normal,
+  and unwind destructor actions all use that owner.
+- PA12 now memoizes the automatic-destructor lowering decision by canonical
+  `BindingId`. State is monotonic: a destructor is either proven empty or is
+  conservatively retained. A later empty out-of-line definition may miss an
+  optional elision, but retained destruction remains correct and no stale
+  positive fact is possible.
+- Release telemetry now publishes empty-destructor-chain visits and cache hits,
+  aggregates them across translation units, and includes cache storage in the
+  semantic storage count.
 
-Validation:
+## Architecture Review
 
-- `make test-report ACTIVE_TEST_REPORT_PAS='pa17'`: expected incomplete-stage
-  failure, 230/241; the 224/241 prior audit set and all six landed gains remain.
-- Required through-stage command: PA1-PA16 pass 1,436/1,436.
+### Representative declaration trace
+
+For `Holder { Elem values[N]; }` with non-trivial `Elem` construction and
+destruction, preprocessing retains source-offset tokens and PA10 parses the
+declarations once into its assignment-mandated `SyntaxArena`. PA11 interns the
+class names and types, assigns `EntityId`/`BindingId` identities to the classes,
+member, constructors, and destructors, and stores the array as a canonical
+`TypeId`. PA12 class completion selects the canonical `Elem` special members
+and records constructor-array and destructor-array actions against the member
+binding. No name or signature is recovered later.
+
+`ConsumeSemanticTranslationUnit` exposes that graph as a synchronous borrowed
+`SemanticGraphView`. PA15-PA17 creates function-owned typed slots, operands,
+blocks, calls, EH edges, and forward/reverse array loops. The semantic and
+syntax owners die after the callback; the typed program remains only until the
+required multi-source LowIR view is rendered once. The rendered LowIR is never
+parsed back by the production PA17 path.
+
+At the boundaries, immutable source plus PA10 tokens/syntax are live while the
+single PA11/PA12 graph is built; during synchronous lowering that graph and the
+growing typed program overlap. The first overlap is required by the staged
+PA10 contract and is the documented adaptation from `spec.md`'s future
+integrated parser. No semantic-text copy or duplicate semantic graph exists.
+
+### Demanded template trace
+
+The supported inherited probe
+`template<class T> void sink(T); sink<int>(1); sink<int>(2);` parses one pattern
+and retains its syntax identity. The specialization table keys the canonical
+pattern and canonical `int` `TypeId`; four request paths produce three cache
+hits, one demand push, and one demanded declaration emission. Both calls retain
+the same selected `BindingId`, and lowering emits one LowIR declaration and two
+typed calls. There is no token replay or grammar reparse. General template body
+instantiation and template-aware PA17 class-value semantics are outside the
+assignment contract, so this audit does not claim their later-stage behavior.
+
+### Adapted `spec.md` checklist
+
+- Representation/ownership: each source, syntax, semantic, and typed owner has
+  a bounded destruction phase; the graph view cannot outlive semantic analysis.
+  No text is an in-process transport.
+- Identity/lookup: `NameId`, `TypeId`, `ScopeId`, `EntityId`, and `BindingId`
+  are hot keys. Scope/name/kind, function-signature, using-edge, hidden-friend,
+  specialization, lifetime, and binding indexes constrain work to relevant
+  facts. Deterministic text is a final view.
+- Templates/repeated work: the available specialization signature is keyed by
+  canonical identity and demand is monotonic/deduplicated. Lookup cache reverse
+  dependencies invalidate only affected entries; there is no retry-all loop.
+- Lowering/backend: typed lowering consumes selected bindings, conversions,
+  layouts, ABI entries, and lifetime actions directly. Every function/ABI entry
+  lowers once. Lifecycle-role coalescing is the only final function-wide scan
+  and owns genuinely cross-translation-unit presentation. Machine IR and ELF
+  are not PA17 surfaces.
+- Allocation/scaling: semantic storage is translation-unit-owned, common small
+  sequences stay inline, large vectors grow geometrically, and lowering state
+  is function-local. The two accidental repeated-work paths found by telemetry
+  are now bounded by semantic input and emitted IR.
+- Self-containment: production implementation scans show no host/reference
+  invocation, filename/source/test recognition, cached output, or required
+  subprocess. The fork/exec code found in `test_runner.cpp` belongs solely to
+  the test harness.
+
+## Performance Evidence
+
+### Fixed array lifetime work
+
+| Bound | Before nodes/actions/blocks/instructions | Final nodes/actions/blocks/instructions | Before -> final typed bytes | Before -> final LowIR bytes |
+|---:|---:|---:|---:|---:|
+| 16 | 69 / 16 / 41 / 520 | 54 / 1 / 21 / 90 | 96,392 -> 23,230 | 21,657 -> 4,639 |
+| 64 | 117 / 64 / 137 / 2,008 | 54 / 1 / 21 / 90 | 355,496 -> 23,230 | 83,626 -> 4,640 |
+| 256 | 309 / 256 / 521 / 7,960 | 54 / 1 / 21 / 90 | 1,392,228 -> 23,230 | 339,616 -> 4,644 |
+
+Final nine-run median semantic/lowering/render times in milliseconds are
+0.251/0.204/0.077, 0.224/0.176/0.069, and 0.223/0.171/0.067. A 3x4
+multidimensional probe records one destructor action and loop count 12, and a
+nonthrowing-constructor probe omits EH cleanup while retaining the same bounded
+loop shape.
+
+### Destructor decision work
+
+For complete empty chains at N=32/64/128/256, final visits are
+64/128/256/512 with 31/63/127/255 cache hits. Semantic nodes are
+106/202/394/778 and instructions are 67/131/259/515. Nine-run median semantic
+times are 1.003/1.819/3.496/7.056 ms; lowering and render remain proportional.
+
+For an unresolved out-of-line base destructor, visits fell from
+1,056/4,160/16,512 to 64/128/256 at N=32/64/128. The N=128 semantic time fell
+from 7.81 to 4.06 ms, and byte-for-byte LowIR comparison is unchanged.
+
+### Class-value and lookup work
+
+At 32/64/128 functional class-value member-call sites, overload candidates are
+320/640/1,280, conversion checks 553/1,097/2,185, temporary visits
+277/533/1,045, semantic nodes 426/778/1,482, instructions 254/446/830, and
+typed bytes 60,691/99,187/176,179. Nine-run median
+semantic/lowering/render times are 0.777/0.334/0.133,
+1.255/0.436/0.212, and 2.254/0.660/0.361 ms. No unexplained slow path remains;
+phase time follows the measured candidates, graph, and output.
+
+## Validation
+
+- Focused array lifetime controls: 3/3 pass, including synthesized member
+  arrays, multidimensional lifetime, and non-trivial array new/delete.
+- `make test-pa17`: 241/241 pass (228 handout plus 13 course audit tests).
 - `perl scripts/cppgm_file_audit.pl --stage pa17 --paths dev/src`: pass with
-  11 existing header-division warnings and no fatal issue.
-- The six landed cases plus private-copy rejection, explicit-conversion,
-  prvalue/braced-move, overloaded-subscript, and conditional-lifetime controls pass;
-  the stage report has no timeout or newly failing case.
+  11 non-fatal established header-division advisories.
+- `make test-report-through-pa17`: 1,677/1,677 tests and 17/17 stages pass.
+- Final commit is cohesive and `git status --short` is empty.
 
 ## Checkpoint Audit Ledger
 
-| Checkpoint | Audit result | Closure evidence |
+| Checkpoint | Audit disposition | Final evidence |
 |---|---|---|
-| Ref-qualified member identity and selection | Pass after audit fixes | Canonical declaration/call/ABI path; complete mixed-set key; correct object ranking; focused, baseline, scaling, and required gates pass |
-| Branch-local class values and full-expression cleanup | Pass after audit fixes | Typed construction state on normal/unwind exits; exact flat and linked cleanup reuse; 173/231 baseline intact; linear probes and required gates pass |
-| Loop full-expression regions | Pass after audit fixes | Typed discarded materialization; bounded-inline and linked-suffix cleanup; 174/231 baseline, linear probes, and required gates pass |
-| Class direct-initialization recipes | Pass after audit fixes | Canonical list conversions and selected constructor are reused; original pass set, audit regressions, proportional probes, and required gates pass |
-| Typed constructor delegation and qualified default completion | Pass after audit fixes | Canonical declaration/complete-constructor identities and typed action reuse; invalid/deleted defaults rejected; 193/233 baseline, six regressions, proportional probes, and required gates pass |
-| Composite subobject copy/move storage transfer | Pass after audit fixes | Canonical recipe and direct selected-binding lowering; bounded array loops; 207/239 baseline, focused/through-stage gates, file audit, and fixed-shape extent probes pass |
-| Value-category and reference-binding closure | Pass after audit fixes | Canonical value/conversion facts and direct typed lowering; indexed ancestry closes repeated chain work; 216/239 baseline, focused/rejection/through-stage gates, file audit, and proportional probes pass |
-| Canonical lookup and candidate identity | Pass after audit fixes | Indexed using-name relations, compact canonical overload merging, retained object conversions; 222/239 baseline preserved, two regressions, proportional probes, and required gates pass |
-| Class-prvalue destination propagation | Pass after audit fixes | Selected constructor retained; direct/indirect results separated; O(1) temporary cleanup fact; 224/241 baseline, six gains, linear probe, and required gates pass |
+| Ref-qualified member boundary | Pass after checkpoint audit | Mixed cv/ref/static identity and ranking controls |
+| Trivial class-value transfer | Pass | Direct ABI transfer controls |
+| Synthesized assignments | Pass | Implicit/defaulted/deleted controls |
+| Synthesized constructors | Pass | Call/return/materialization controls |
+| Conversion functions | Pass | Indexed candidate and selected-conversion controls |
+| Built-in converted operators | Pass | Operator ranking and scalar conversion controls |
+| Scalar new/delete | Pass | Allocation, initialization, and deallocation controls |
+| Dynamic array new/delete | Pass | Count, cookie, cleanup, and delete[] controls |
+| Union semantics | Pass | Declaration, initialization, and lifetime controls |
+| Temporary identity | Pass | Full-expression ordering and lifetime controls |
+| Condition declarations | Pass | Scope and branch cleanup controls |
+| Branch-local cleanup | Pass after checkpoint audit | Normal/unwind and conditional-state controls |
+| Loop full expressions | Pass after checkpoint audit | Iteration cleanup and discarded-value controls |
+| Class direct initialization | Pass after checkpoint audit | Direct/list/candidate controls |
+| Constructor delegation/defaults | Pass after checkpoint audit | Delegation, complete/base entry, rejection controls |
+| Composite subobject transfer | Pass after checkpoint audit | Base/member/array copy-move controls |
+| Value category/reference binding | Pass after checkpoint audit | Binding, ancestry, and category controls |
+| Canonical lookup/candidates | Pass after checkpoint audit | Using/hidden-friend/overload merge controls |
+| Prvalue destination propagation | Pass after checkpoint audit | Direct/indirect result and temporary controls |
+| Synthesized construction classification | Pass | Move/copy classification controls |
+| Aggregate appertainment | Pass | Clause targeting and namespace copy controls |
+| Function-exit ownership | Pass | Binding/CFG cleanup controls |
+| Scalar/bit-field normalization | Pass | Width/storage owner controls |
+| Functional class casts | Pass | Functional construction and member-object controls |
+| Full-stage architecture | Pass after final audit fixes | Fixed-array loop scaling, destructor decision cache, full gates |

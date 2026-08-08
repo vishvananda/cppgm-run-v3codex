@@ -6,6 +6,7 @@
 #include "pa12_semantic_model.h"
 
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
 
 namespace cppgm
@@ -22,6 +23,8 @@ template <class Derived>
 class DestructorActionLowering
 {
 protected:
+	static const std::size_t kDestructorArrayInlineLimit = 8;
+
 	void EmitEhTarget(Instruction::Kind kind, BlockId target)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
@@ -73,6 +76,90 @@ protected:
 		}
 		if (record.bound == 0)
 			throw std::runtime_error("destruction of an unbounded array");
+		std::size_t count = 1;
+		TypeId element_type = type;
+		for (;;)
+		{
+			const TypeRecord& array = derived.program_.types.Get(
+				derived.RemoveTopQualifiers(element_type));
+			if (array.kind != TYPE_ARRAY) break;
+			if (array.bound == 0 || array.bound >
+				std::numeric_limits<std::size_t>::max() / count)
+				throw std::logic_error("invalid destructor array extent");
+			count *= static_cast<std::size_t>(array.bound);
+			element_type = array.child;
+		}
+		if (count > kDestructorArrayInlineLimit)
+		{
+			if (count > static_cast<std::size_t>(
+				std::numeric_limits<std::int64_t>::max()))
+				throw std::logic_error("destructor array extent exceeds LowIR");
+			const SlotId progress_id = static_cast<SlotId>(
+				derived.function_->slots.size());
+			Slot progress_slot;
+			progress_slot.name = derived.GeneratedSlotName("destructor_array_index");
+			progress_slot.type = LowI64();
+			derived.function_->slots.push_back(progress_slot);
+			const Operand progress(progress_id, LowI64());
+			const BlockId condition = derived.AddBlock(
+				derived.NewLabel("destructor_array_cond"));
+			const BlockId body = derived.AddBlock(
+				derived.NewLabel("destructor_array_body"));
+			const BlockId end = derived.AddBlock(
+				derived.NewLabel("destructor_array_end"));
+			Instruction initialize(Instruction::STORE);
+			initialize.type = LowI64();
+			initialize.first = Operand(static_cast<std::int64_t>(count), LowI64());
+			initialize.second = progress;
+			derived.Emit(initialize);
+			derived.EmitJump(condition);
+			derived.SelectBlock(condition);
+			const Operand remaining = derived.LoadStorage(progress, LowI64());
+			const Operand any = derived.Temp(LowU8());
+			Instruction nonzero(Instruction::CMP);
+			nonzero.dest = any.id;
+			nonzero.op = LOW_OP_NE;
+			nonzero.type = LowI64();
+			nonzero.first = remaining;
+			nonzero.second = Operand(0, LowI64());
+			derived.Emit(nonzero);
+			derived.EmitBranch(any, body, end);
+			derived.SelectBlock(body);
+			const Operand previous = derived.Temp(LowI64());
+			Instruction decrement(Instruction::BINARY);
+			decrement.dest = previous.id;
+			decrement.op = LOW_OP_SUB;
+			decrement.type = LowI64();
+			decrement.first = remaining;
+			decrement.second = Operand(1, LowI64());
+			derived.Emit(decrement);
+			Instruction save(Instruction::STORE);
+			save.type = LowI64();
+			save.first = previous;
+			save.second = progress;
+			derived.Emit(save);
+			Operand displacement = previous;
+			const std::size_t element_size =
+				derived.program_.SizeOf(element_type);
+			if (element_size != 1)
+			{
+				const Operand scaled = derived.Temp(LowI64());
+				Instruction multiply(Instruction::BINARY);
+				multiply.dest = scaled.id;
+				multiply.op = LOW_OP_MUL;
+				multiply.type = LowI64();
+				multiply.first = displacement;
+				multiply.second = Operand(
+					static_cast<std::int64_t>(element_size), LowI64());
+				derived.Emit(multiply);
+				displacement = scaled;
+			}
+			derived.EmitDestructorCall(destructor, derived.IndexAddress(
+				LowI8(), derived.DecayAddress(address), displacement, true));
+			derived.EmitJump(condition);
+			derived.SelectBlock(end);
+			return;
+		}
 		const Operand base = derived.DecayAddress(address);
 		const std::size_t element_size = derived.program_.SizeOf(record.child);
 		for (std::size_t i = static_cast<std::size_t>(record.bound);
@@ -108,16 +195,32 @@ protected:
 				LowerDestructorObject(outer.child, element, action.binding);
 				return;
 			}
-			for (std::size_t ordinal = 0;
-				ordinal < static_cast<std::size_t>(outer.bound); ++ordinal)
+			std::size_t count = 1;
+			TypeId element_type = action.operand_type;
+			for (;;)
 			{
-				const std::size_t index =
-					static_cast<std::size_t>(outer.bound) - ordinal - 1;
-				const Operand element = derived.BoundArrayElementAddress(
-					action.object_binding, action.operand_type, index);
-				LowerDestructorObject(outer.child, element, action.binding);
+				const TypeRecord& array = derived.program_.types.Get(
+					derived.RemoveTopQualifiers(element_type));
+				if (array.kind != TYPE_ARRAY) break;
+				if (array.bound == 0 || array.bound >
+					std::numeric_limits<std::size_t>::max() / count)
+					throw std::logic_error("invalid destructor array extent");
+				count *= static_cast<std::size_t>(array.bound);
+				element_type = array.child;
 			}
-			return;
+			if (count <= kDestructorArrayInlineLimit)
+			{
+				for (std::size_t ordinal = 0;
+					ordinal < static_cast<std::size_t>(outer.bound); ++ordinal)
+				{
+					const std::size_t index =
+						static_cast<std::size_t>(outer.bound) - ordinal - 1;
+					const Operand element = derived.BoundArrayElementAddress(
+						action.object_binding, action.operand_type, index);
+					LowerDestructorObject(outer.child, element, action.binding);
+				}
+				return;
+			}
 		}
 		Operand destination;
 		if (action.lifetime_object != kNoDumpEdge)
