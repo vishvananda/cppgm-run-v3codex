@@ -17,34 +17,31 @@ remains demand-driven and leaves virtual dispatch to PA18.
 
 ## Current Failure Map
 
-Latest audit: **237/241** PA17 tests pass, up from this turn's **230/241**
-baseline; PA1-PA16 are 1436/1436 and file audit passes. The complete current
-4-test failure set is grouped without overlap:
+Latest audit: **240/241** PA17 tests pass, up from this turn's **230/241**
+baseline. The complete current failure set is:
 
 | Failures | Shared behavior | Primary owner |
 | ---: | --- | --- |
-| 1 | bit-field constructor read/modify/write presentation order | PA16 constructor storage lowering |
-| 2 | redundant integer-immediate conversion in widened comparisons | PA15 scalar lowering |
 | 1 | functional class cast used as the current member-call object | PA12 expression analysis |
 
 ## Active Checkpoint
 
-**Typed scalar and bit-field emission normalization (3 failures).** Apply
-`spec.md` sections 3, 6, and 9: PA12-retained conversion facts determine the
-typed operands once; PA15 scalar lowering must fold representable integer
-immediates directly to the selected common type, while PA16 bit-field lowering
-must preserve source-value evaluation before destination read/modify/write.
-Data flows `selected conversion -> typed operand -> comparison` and
-`initializer value -> masked value -> destination address/RMW -> LowIR`.
-Owners are scalar conversion lowering and constructor storage lowering;
-expected work is O(expression nodes + initialized bit-fields + emitted
-instructions), with no candidate, type, or instruction rescans.
+**Functional class-prvalue member-object closure (1 failure).** Apply `spec.md`
+sections 2, 3, 8, and 9: PA12 recognizes a named class functional cast from
+class identity, independent of whether its destructor is nontrivial; selected
+construction produces one materialized temporary, which direct-member-call
+analysis converts to the implicit object pointer. Data flows `functional-cast
+type -> selected constructor action -> temporary identity -> member object
+conversion -> retained call`. Expression analysis owns class recognition and
+temporary identity; call analysis owns member lookup and implicit-object
+conversion. Expected work is O(arguments + selected candidates + construction
+and cleanup actions), with no reparsing, repeated lookup, or graph rescan.
 
-Validate all three failures plus signed/unsigned width, nonconstant conversion,
-multi-bit-field, assignment, and constructor controls; then full PA17, through
-PA16, and file audit. Measure 16/32/64 widened constant comparisons and
-bit-field initializers; conversion probes, lowering nodes, storage, and emitted
-instructions must remain linear.
+Validate the failure plus trivial/nontrivial functional class casts, direct
+member calls on prvalues, copy-and-swap lifetime, scalar functional casts, and
+constructor rejection controls; then full PA17, through PA16, and file audit.
+Measure 16/32/64 functional-cast member calls; candidates, temporary facts,
+semantic/lowered nodes, storage, and emitted instructions must remain linear.
 
 ## Performance Evidence
 
@@ -72,6 +69,13 @@ instructions must remain linear.
   17,507/29,363/53,075 typed bytes. Nine-run semantic/lowering/render medians
   were 0.321/0.244/0.057, 0.456/0.331/0.079, and 0.706/0.492/0.119 ms; owned
   cleanup, reachability facts, storage, emission, and phase time are linear.
+- Typed emission at 16/32/64 widened comparisons and bit-field members recorded
+  25/41/73 conversion checks, 84/164/324 special-member visits, 16/32/64
+  constructor actions, 111/207/400 lowered nodes, 257/497/977 instructions,
+  and 58,807/109,095/209,671 typed bytes. Nine-run semantic/lowering/render
+  medians were 0.469/0.332/0.139, 0.724/0.477/0.235, and
+  1.208/0.845/0.423 ms; cached boundary lookup, owner indexing, storage,
+  emission, and phase time remain linear.
 
 ## Completed Checkpoints
 
@@ -99,3 +103,4 @@ instructions must remain linear.
 | Synthesized construction and move classification | 230/241 -> 233/241 | Focus 3/3 plus six controls; through PA16; file audit; linear subobject probe |
 | Non-braced aggregate appertainment and namespace copies | 233/241 -> 235/241 | Focus 6/6 plus four PA16 controls; linear 16/32/64 probe |
 | Function-exit identity and reachability closure | 235/241 -> 237/241 | Focus 6/6; binding/CFG 16/32/64 probe |
+| Typed scalar and bit-field emission normalization | 237/241 -> 240/241 | Targets 3/3 plus 12 controls; linear 16/32/64 probe |

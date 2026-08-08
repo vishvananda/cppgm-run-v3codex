@@ -397,13 +397,8 @@ protected:
 		}
 		if (derived.program_.bindings[action.binding].bit_field)
 		{
-			const Operand object = derived.LoadStorage(
-				derived.StorageFor(
-					derived.current_this_binding_, LowPtr()), LowPtr());
-			store.second = derived.ProjectAggregateMember(
-				object, action.binding);
-			derived.InitializeBitField(action.binding, store.first,
-				store.second, derived.LowerExpressionType(action.type));
+			derived.LowerConstructorBitField(action.binding, store.first,
+				derived.LowerExpressionType(action.type));
 		}
 		else
 		{

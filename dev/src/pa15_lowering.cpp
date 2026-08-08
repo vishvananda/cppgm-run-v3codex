@@ -18,6 +18,7 @@
 #include "pa16_lifetime_lowering.h"
 #include "pa16_static_initializer_lowering.h"
 #include "pa16_slot_planning.h"
+#include "pa17_bit_field_value_lowering.h"
 #include "pa17_value_boundary_lowering.h"
 #include "pa17_special_member_lowering.h"
 #include "pa17_temporary_lifetime_lowering.h"
@@ -40,6 +41,7 @@ const std::size_t kAggregateProjectionReplayLimit = 8;
 typedef SmallSequence<BindingId, kAggregateProjectionReplayLimit> AggregatePath;
 class GraphLowerer :
 	private pa15_lowering_detail::ControlFlowLowering<GraphLowerer>,
+	private pa17_lowering_detail::BitFieldValueLowering<GraphLowerer>,
 	private pa17_lowering_detail::ValueBoundaryLowering<GraphLowerer>,
 	private pa17_lowering_detail::SpecialMemberLowering<GraphLowerer>,
 	private pa16_lowering_detail::AssignmentLowering<GraphLowerer>,
@@ -66,6 +68,7 @@ public:
 		  initialized_bit_field_unit_valid_(false),
 		  source_ordinal_(source_ordinal), needs_global_class_initializer_(false),
 		  lowering_namespace_object_(false),
+		  current_class_value_boundary_(false),
 		  current_this_binding_(kNoBinding),
 		  destructor_return_target_(kNoLowId),
 		  destructor_return_routes_to_epilogue_(false),
@@ -103,6 +106,8 @@ public:
 		binding_indirect_parameters_.resize(program_.bindings.size());
 		generated_slots_.resize(arena_.nodes.size(), kNoLowId);
 		switch_case_blocks_.resize(arena_.nodes.size(), kNoLowId);
+		bit_field_storage_transfer_owners_.resize(
+			program_.entities.size(), 0);
 		aggregate_helper_symbols_.resize(
 			graph_.aggregate_helpers.size(), kNoLowId);
 	}
@@ -119,6 +124,7 @@ public:
 
 private:
 	friend class pa15_lowering_detail::ControlFlowLowering<GraphLowerer>;
+	friend class pa17_lowering_detail::BitFieldValueLowering<GraphLowerer>;
 	friend class pa17_lowering_detail::ValueBoundaryLowering<GraphLowerer>;
 	friend class pa17_lowering_detail::SpecialMemberLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::AssignmentLowering<GraphLowerer>;
@@ -288,7 +294,10 @@ private:
 				pa15_lowering_abi::MangleFunction(program_, record));
 		}
 		if (record.kind == DUMP_FUNCTION_DEFINITION)
+		{
 			function_definition_[record.binding] = node;
+			IndexBitFieldStorageTransferOwner(node);
+		}
 		else if (function_declaration_[record.binding] == kNoDumpEdge)
 			function_declaration_[record.binding] = node;
 	}
@@ -691,6 +700,7 @@ private:
 		assigned_names_.Clear();
 		slot_name_counts_.Clear();
 		current_this_binding_ = kNoBinding;
+		current_class_value_boundary_ = false;
 		SelectBlock(AddBlock("entry"));
 	}
 
@@ -777,6 +787,8 @@ private:
 		FillBoundary(node, &result.parameters, &result.result, &result.variadic);
 		function_ = &result;
 		current_result_ = result.result;
+		current_class_value_boundary_ =
+			FunctionHasClassValueBoundary(record.type);
 		const TypeRecord& source_function = program_.types.Get(record.type);
 		current_indirect_result_ = UsesIndirectClassResult(source_function.child);
 		current_result_reference_ = IsReferenceType(source_function.child);
@@ -853,6 +865,7 @@ private:
 		function_ = 0;
 		current_result_reference_ = false;
 		current_indirect_result_ = false;
+		current_class_value_boundary_ = false;
 		current_this_binding_ = kNoBinding;
 		return result;
 	}
@@ -1398,6 +1411,9 @@ private:
 		const bool canonicalize_immediates =
 			(!comparison && (op == "+" || op == "-")) ||
 			canonical_pointer_difference_compare ||
+			(comparison && (current_class_value_boundary_ ||
+				CallHasClassValueBoundary(children[0]) ||
+				CallHasClassValueBoundary(children[1]))) ||
 			(comparison &&
 			 (arena_.nodes[children[0]].kind == DUMP_MEMBER_EXPRESSION ||
 			  arena_.nodes[children[1]].kind == DUMP_MEMBER_EXPRESSION ||
@@ -2893,6 +2909,8 @@ private:
 	FlatIdMap temporary_lifetime_slots_;
 	std::vector<BlockId> switch_case_blocks_;
 	std::vector<std::uint32_t> block_incoming_;
+	std::vector<std::uint8_t> bit_field_storage_transfer_owners_;
+	FlatIdMap class_value_boundary_types_;
 	std::vector<SymbolId> aggregate_helper_symbols_;
 	std::vector<BlockId> break_targets_;
 	std::vector<BlockId> continue_targets_;
@@ -2912,6 +2930,7 @@ private:
 	std::size_t source_ordinal_;
 	bool needs_global_class_initializer_;
 	bool lowering_namespace_object_;
+	bool current_class_value_boundary_;
 	BindingId current_this_binding_;
 	BlockId destructor_return_target_;
 	bool destructor_return_routes_to_epilogue_, full_expression_cleanup_active_;

@@ -20,6 +20,50 @@ template <typename Derived>
 class ValueBoundaryLowering
 {
 protected:
+	bool IsClassValueBoundaryType(pa11::TypeId type) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		const pa11::TypeRecord& top = derived.program_.types.Get(type);
+		return top.kind != pa11::TYPE_LVALUE_REFERENCE &&
+			top.kind != pa11::TYPE_RVALUE_REFERENCE &&
+			derived.IsClassObjectType(type);
+	}
+
+	bool FunctionHasClassValueBoundary(pa11::TypeId type)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		std::uint32_t cached = 0;
+		if (derived.class_value_boundary_types_.Find(type, &cached))
+			return cached == 2;
+		const pa11::TypeRecord& function = derived.program_.types.Get(type);
+		bool boundary = function.kind == pa11::TYPE_FUNCTION &&
+			IsClassValueBoundaryType(function.child);
+		if (function.kind == pa11::TYPE_FUNCTION)
+		{
+			const pa11::TypeId* parameters =
+				derived.program_.types.Parameters(type);
+			for (std::size_t i = 0; !boundary &&
+				i < function.parameter_count; ++i)
+				boundary = IsClassValueBoundaryType(parameters[i]);
+		}
+		derived.class_value_boundary_types_.Insert(type, boundary ? 2 : 1);
+		return boundary;
+	}
+
+	bool CallHasClassValueBoundary(std::uint32_t node)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (derived.arena_.nodes[node].kind !=
+			pa12_semantic_detail::DUMP_CALL_EXPRESSION) return false;
+		const pa15_lowering_support::NodeChildren children =
+			derived.Children(node);
+		return !children.empty() &&
+			derived.arena_.nodes[children[0]].kind ==
+				pa12_semantic_detail::DUMP_CALLEE &&
+			FunctionHasClassValueBoundary(
+				derived.arena_.nodes[children[0]].type);
+	}
+
 	bool UsesIndirectClassResult(pa11::TypeId type) const
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
