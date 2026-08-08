@@ -723,11 +723,12 @@ bool SemanticAnalyzer::IsModifiableLvalue(const ExpressionInfo& value) const
 		!program_->types.IsFunction(EffectiveType(value.type)) &&
 		!IsVoid(value.type);
 }
-
 ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 	TypeId target)
 {
 	if (node == kNoNode) throw std::runtime_error("missing expression");
+	ExpressionInfo prepared;
+	if (ReusePreparedBracedExpression(node, target, &prepared)) return prepared;
 	if (arena_->IsTag(node, "parenthesized-expression"))
 		return AnalyzeExpression(FirstSemanticChild(node), scope, target);
 	if (arena_->IsTag(node, "literal"))
@@ -2934,6 +2935,8 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		stats_->conversion_checks = conversion_checks_;
 		stats_->call_conversion_cache_hits = call_conversion_cache_hits_;
 		stats_->call_conversion_cache_misses = call_conversion_cache_misses_;
+		stats_->braced_fact_cache_hits = braced_fact_cache_hits_;
+		stats_->braced_fact_cache_misses = braced_fact_cache_misses_;
 		stats_->function_signature_lookups = function_signature_lookups_;
 		stats_->access_checks = access_checks_;
 		stats_->access_path_visits = access_path_visits_;
@@ -2962,10 +2965,7 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 	}
 	program_ = 0;
 }
-
-
 }
-
 SemanticAnalysisStats::SemanticAnalysisStats()
 	: tokens(0), syntax_nodes(0), semantic_nodes(0), semantic_edges(0),
 	  interned_names(0), canonical_types(0), scopes(0), declarations(0),
@@ -2986,6 +2986,7 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 	  overload_candidates(0),
 	  overload_order_comparisons(0), conversion_checks(0),
 	  call_conversion_cache_hits(0), call_conversion_cache_misses(0),
+	  braced_fact_cache_hits(0), braced_fact_cache_misses(0),
 	  function_signature_lookups(0), access_checks(0),
 	  access_path_visits(0), access_grant_probes(0),
 	  template_specialization_requests(0),

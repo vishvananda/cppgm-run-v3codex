@@ -221,6 +221,10 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 				semantic_stats.call_conversion_cache_hits;
 			semantic.call_conversion_cache_misses +=
 				semantic_stats.call_conversion_cache_misses;
+			semantic.braced_fact_cache_hits +=
+				semantic_stats.braced_fact_cache_hits;
+			semantic.braced_fact_cache_misses +=
+				semantic_stats.braced_fact_cache_misses;
 			semantic.function_signature_lookups +=
 				semantic_stats.function_signature_lookups;
 			semantic.access_checks += semantic_stats.access_checks;

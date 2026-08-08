@@ -8,20 +8,24 @@ remain the phase boundary; lowering performs no lookup or text round trip.
 Class completion owns copy/move/assignment facts. PA12 owns selection, demand,
 stable temporary identity, conditional-construction facts, and ordered
 destructor actions, including materialization of class-valued discarded calls,
-conditionals, casts, and comma wrappers. PA15-PA17 materialize into destination
-storage or ABI result slots, using compact action/slot IDs and function-local
-flat tables so normal and unwind exits share one typed cleanup chain. Small
-cleanup sequences use a bounded exact path; wider sequences intern one linked
-suffix per constructed temporary, and flat maps clear only occupied slots. This
-follows `spec.md` sections 2, 3, 4, 6, 8, and 9: monotonic demand, O(1)-average
-fact access, O(candidate count) selection, O(subobject count) synthesis, and
-analysis, lowering, storage, and output proportional to owned obligations and
-emitted IR.
+conditionals, casts, and comma wrappers. Braced constructor operations analyze
+each list clause once and retain recursive conversion and selected-constructor
+facts in flat tables keyed by canonical `(NodeId, TypeId)` identity, with
+separate direct/copy results and explicit in-progress state. PA15-PA17
+materialize into destination storage or ABI result slots, using compact
+action/slot IDs and function-local flat tables so normal and unwind exits share
+one typed cleanup chain. Small cleanup sequences use a bounded exact path;
+wider sequences intern one linked suffix per constructed temporary, and flat
+maps clear only occupied slots. This follows `spec.md` sections 2, 3, 4, 6, 8,
+and 9: monotonic demand, O(1)-average fact access, O(candidate count) selection,
+O(subobject count) synthesis, and analysis, lowering, storage, and output
+proportional to owned obligations and emitted IR.
 
 ## Current Failure Map
 
-Post-checkpoint result: **186/231**. The turn-start checkpoint pass set and all
-earlier stages remain intact; the non-overlapping failure map contains 45 tests:
+Audited result: **188/233**. The landed checkpoint's original **186/231** pass
+set, both audit regressions, and all earlier stages remain intact; the
+non-overlapping failure map still contains 45 tests:
 
 | Failures | Shared behavior | Primary owner |
 | ---: | --- | --- |
@@ -96,12 +100,13 @@ through PA16, file audit, and 32/64/128 delegation/candidate scaling.
   instructions, and 32,560/58,320/109,840 typed bytes. Five-run semantic
   medians were 0.330/0.389/0.577 ms and lowering medians
   0.247/0.357/0.399 ms, confirming one linked cleanup suffix per obligation.
-- Direct-list construction with 32/64/128 indexed constructor candidates
-  recorded 34/66/130 candidate visits, a fixed 6 conversion checks, and
-  269,164/532,868/1,060,340 semantic peak bytes. Five-run semantic medians
-  were 1.134/2.046/4.009 ms; lowering remained 0.144/0.142/0.173 ms with a
-  fixed 9,828 typed bytes, confirming proportional selection and one retained
-  destination recipe.
+- Braced-list construction with 32/64/128 indexed constructor candidates
+  recorded 236/460/908 candidate visits, 240/464/912 conversion checks,
+  1 cache hit and 36/68/132 cache misses, and
+  261,656/519,736/1,035,952 semantic peak bytes. Five-run semantic medians
+  were 1.115/2.065/4.029 ms; lowering medians were 0.105/0.105/0.134 ms with
+  fixed 2,990 typed bytes and 262 output bytes. Required list facts and storage
+  scale proportionally, while the retained destination recipe stays fixed.
 
 ## Completed Checkpoints
 
@@ -120,4 +125,4 @@ through PA16, file audit, and 32/64/128 delegation/candidate scaling.
 | Condition-declaration lifetime regions | 157/231 -> 160/231 | Nested false-path containment, reference-extended temporary, class-to-bool and switch-to-int conversion 4/4; through PA16 1,436/1,436; audit and proportional depth probe pass |
 | Branch-local class values and full-expression cleanup | 160/231 -> 173/231 | Branch lifetime plus right-hand short-circuit construction-state probes pass; original pass set intact; through PA16 1,436/1,436; file audit and linear 16/32/64 cleanup probes pass |
 | Loop full-expression regions | 173/231 -> 174/231 | Direct/cast/comma/conditional discarded materialization; exact normal/unwind cleanup; focused 17/17; through PA16 1,436/1,436; file audit and linear nested/width probes pass |
-| Class direct-initialization recipes | 174/231 -> 186/231 | Cast/braced/default/member/return focus 11/11; converting by-value case reaches residual scalar canonicalization; through PA16 1,436/1,436; audit and proportional candidate probes pass |
+| Class direct-initialization recipes | 174/231 -> 186/231; audit 188/233 | Landed pass set gains 12 tests; scalar-list rank and narrowing regressions pass without changing the original set; through PA16 1,436/1,436; file audit and proportional list/candidate probes pass |

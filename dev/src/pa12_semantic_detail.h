@@ -19,6 +19,8 @@ namespace pa12_semantic_detail
 using namespace pa10_syntax_detail;
 using namespace pa11;
 
+struct BracedInitializationContext;
+
 class SemanticAnalyzer : public SyntaxTreeConsumer
 {
 public:
@@ -29,6 +31,7 @@ public:
 		  root_(kNoDumpEdge), current_language_linkage_(LANGUAGE_LINKAGE_CPP),
 		  current_return_type_(kNoType), current_class_context_(kNoEntity),
 		  current_function_context_(kNoBinding),
+		  braced_initialization_context_(0),
 		  current_pack_alignment_(0),
 		  loop_depth_(0), switch_depth_(0), unevaluated_depth_(0),
 		  expression_count_(0),
@@ -36,7 +39,8 @@ public:
 		  associated_scope_visits_(0), associated_declaration_visits_(0),
 		  overload_candidates_(0), overload_order_comparisons_(0),
 		  conversion_checks_(0), call_conversion_cache_hits_(0),
-		  call_conversion_cache_misses_(0), function_signature_lookups_(0),
+		  call_conversion_cache_misses_(0), braced_fact_cache_hits_(0),
+		  braced_fact_cache_misses_(0), function_signature_lookups_(0),
 		  access_checks_(0), access_path_visits_(0),
 		  access_grant_probes_(0),
 		  template_specialization_requests_(0),
@@ -364,14 +368,26 @@ private:
 		const std::vector<NodeId>& argument_syntax,
 		const std::vector<ExpressionInfo>& arguments,
 		const std::vector<BindingId>& candidates, bool copy_initialization,
-		bool list_initialization);
-	bool BracedInitializationShapeViable(NodeId list, TypeId target) const;
+		bool list_initialization,
+		std::vector<CallConversionFact>* selected_conversions = 0,
+		bool quiet = false, NodeId source_list = kNoNode,
+		TypeId initialized_type = kNoType);
+	void PrepareBracedInitialization(NodeId list, ScopeId scope);
+	bool ReusePreparedBracedExpression(NodeId node, TypeId target,
+		ExpressionInfo* result);
+	CallConversionFact BracedInitializationConversion(
+		NodeId list, ScopeId scope, TypeId target);
+	bool IsBracedNarrowing(
+		const ExpressionInfo& source, TypeId target,
+		const CallConversionFact* conversion = 0) const;
+	ExpressionInfo AnalyzeBracedCallArgument(
+		NodeId list, ScopeId scope, TypeId target);
 	bool EmptyDefaultConstructorChain(BindingId constructor,
 		std::vector<BindingId>* base_entries);
 	std::uint32_t BuildConstructorAction(TypeId type, ScopeId scope,
 		const std::vector<NodeId>& argument_syntax, bool copy_initialization,
 		bool list_initialization, bool base_subobject = false,
-		bool demand = true);
+		bool demand = true, NodeId source_list = kNoNode);
 	std::uint32_t BuildClassValueConstructorAction(TypeId type,
 		const ExpressionInfo& source, bool copy_initialization = true,
 		bool demand = true);
@@ -525,6 +541,7 @@ private:
 	TypeId current_return_type_;
 	EntityId current_class_context_;
 	BindingId current_function_context_;
+	BracedInitializationContext* braced_initialization_context_;
 	std::size_t current_pack_alignment_;
 	std::vector<std::size_t> pack_alignment_stack_;
 	std::size_t loop_depth_;
@@ -540,6 +557,8 @@ private:
 	mutable std::size_t conversion_checks_;
 	std::size_t call_conversion_cache_hits_;
 	std::size_t call_conversion_cache_misses_;
+	std::size_t braced_fact_cache_hits_;
+	std::size_t braced_fact_cache_misses_;
 	std::size_t function_signature_lookups_;
 	mutable std::size_t access_checks_;
 	mutable std::size_t access_path_visits_;

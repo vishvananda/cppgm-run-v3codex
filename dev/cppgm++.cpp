@@ -607,6 +607,8 @@ int run_emit_semantics_mode(const vector<string> & args)
            << stats.call_conversion_cache_hits
            << " call_conversion_cache_misses="
            << stats.call_conversion_cache_misses
+           << " braced_fact_cache_hits=" << stats.braced_fact_cache_hits
+           << " braced_fact_cache_misses=" << stats.braced_fact_cache_misses
            << " function_signature_lookups="
            << stats.function_signature_lookups
            << " access_checks=" << stats.access_checks
@@ -709,6 +711,8 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << semantic.call_conversion_cache_hits
 			 << " call_conversion_cache_misses="
 			 << semantic.call_conversion_cache_misses
+			 << " braced_fact_cache_hits=" << semantic.braced_fact_cache_hits
+			 << " braced_fact_cache_misses=" << semantic.braced_fact_cache_misses
 			 << " function_signature_lookups="
 			 << semantic.function_signature_lookups
 			 << " access_checks=" << semantic.access_checks
