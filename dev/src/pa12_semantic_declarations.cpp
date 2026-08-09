@@ -1059,6 +1059,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		info.definition_body =
 			FindChild(node, "compound-statement");
 		info.deferred = true;
+		info.definition_in_class = true;
 		ConfigureAssignmentSpecialMember(function, kNoNode);
 		RegisterClassMemberFunction(owner_entity, function);
 		return;
@@ -1159,13 +1160,10 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 					throw std::runtime_error(
 						"invalid in-class static data member initializer");
 				const ExpressionInfo value = AnalyzeInClassStaticInitializer(
-					FindChild(item, "initializer"), scope, member_type, spec);
+					FindChild(item, "initializer"), scope, member_type);
 				if (!value.constant)
 					throw std::runtime_error(
 						"nonconstant in-class static data member initializer");
-				if (value.node != kNoDumpEdge && dump_.nodes[value.node].kind ==
-					DUMP_CALL_EXPRESSION && value.binding != kNoBinding)
-					DemandFunction(value.binding);
 				const TypeRecord declared_array = program_->types.Get(
 					program_->types.RemoveTopCv(member_type));
 				const TypeRecord completed_array = program_->types.Get(
@@ -2535,10 +2533,7 @@ void SemanticAnalyzer::EnsureStaticMemberStorage(BindingId member, bool constant
 		static_member_storage_by_binding_.resize(
 			static_cast<std::size_t>(member) + 1, kNoDumpEdge);
 	if (static_member_storage_by_binding_[member] != kNoDumpEdge) return;
-	if (member < static_constant_dependencies_by_binding_.size())
-		for (std::size_t i = 0;
-			i < static_constant_dependencies_by_binding_[member].size(); ++i)
-			DemandFunction(static_constant_dependencies_by_binding_[member][i]);
+	DemandStaticConstantInitializerDependencies(member);
 	if (root_ == kNoDumpEdge)
 		throw std::logic_error("static member storage has no translation unit");
 	const std::uint32_t declaration = MakeDump(DUMP_VARIABLE,

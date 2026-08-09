@@ -439,6 +439,8 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	function.template_pattern = static_cast<std::uint32_t>(index);
 	function.parameter_pack_name = FunctionParameterPackName(pattern.declarator);
 	function.deferred = true;
+	function.definition_in_class = member_owner != kNoEntity &&
+		pattern.lexical_scope == pattern.owner;
 	function.lexical_scope = template_scope;
 	if (pattern.defined) function.definition_body = pattern.definition_body;
 	template_instantiations_.Insert(cache_key, binding);

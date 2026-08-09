@@ -228,10 +228,11 @@ std::uint32_t SemanticAnalyzer::BuildClassValueConstructorAction(TypeId type,
 		!constructor.implicit_special_member &&
 		!constructor.synthesized_memberwise_copy &&
 		IsClassTemplateSpecializationEntity(constructor_owner);
-	if ((demand && (explicitly_defaulted ||
+	if (preserve_constant_initializer_recipe_depth_ == 0 &&
+		((demand && (explicitly_defaulted ||
 		!dump_.nodes[action].trivial_special_member_action)) ||
 		(materialized_conversion_result &&
-		 !dump_.nodes[action].trivial_special_member_action))
+		 !dump_.nodes[action].trivial_special_member_action)))
 		DemandFunction(selected);
 	++expression_count_;
 	return action;

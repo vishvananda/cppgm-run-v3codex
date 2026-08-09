@@ -1,0 +1,23 @@
+global @source : i32 [binding=internal, object=_ZL6source] = 3
+
+global @stored__value : i32 [binding=strong, object=_ZN6stored5valueE] = 9
+
+global @late__value : i32 [binding=strong, object=_ZN4late5valueE] = 11
+
+function @read(%value : ptr [pass=reference]) -> i32 [binding=strong, object=_Z4readRKi] {
+  slot $value : ptr
+
+  block ^entry:
+    store ptr %value, $value
+    %t1 = load ptr $value
+    %t2 = load i32 %t1
+    return i32 %t2
+}
+
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  block ^entry:
+    %t1 = addr @stored__value
+    %t2 = call i32 @read(%t1)
+    %t3 = binary sub i32 %t2, 9
+    return i32 %t3
+}

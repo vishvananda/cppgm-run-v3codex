@@ -793,8 +793,9 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 		EmptyDefaultConstructorChain(selected, &empty_base_entries))
 	{
 		dump_.nodes[action].elide_empty_constructor = true;
-		for (std::size_t i = 0; i < empty_base_entries.size(); ++i)
-			DemandFunction(empty_base_entries[i]);
+		if (preserve_constant_initializer_recipe_depth_ == 0)
+			for (std::size_t i = 0; i < empty_base_entries.size(); ++i)
+				DemandFunction(empty_base_entries[i]);
 	}
 	for (std::size_t a = 0; a < argument_syntax.size(); ++a)
 	{
@@ -864,13 +865,16 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 	const bool compile_time_only = constant_expression_required_depth_ != 0 &&
 		constant_initializer_required_depth_ == 0;
 	if (demand && !compile_time_only &&
+		preserve_constant_initializer_recipe_depth_ == 0 &&
 		!dump_.nodes[action].elide_empty_constructor &&
 		(explicitly_defaulted ||
 		 !dump_.nodes[action].trivial_special_member_action) &&
 		!(constructor.implicit_constructor &&
 		program_->entities[entity].trivial_default_constructor))
 		DemandFunction(selected);
-	if (demand && base_subobject && current_class_context_ != kNoEntity &&
+	if (demand && base_subobject &&
+		preserve_constant_initializer_recipe_depth_ == 0 &&
+		current_class_context_ != kNoEntity &&
 		program_->entities[current_class_context_].polymorphic_class &&
 		(!program_->entities[entity].polymorphic_class ||
 		 (DestructorForType(program_->entities[entity].type) != kNoBinding &&

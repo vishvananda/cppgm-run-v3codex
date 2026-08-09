@@ -204,6 +204,10 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 				semantic_stats.temporary_dependency_visits;
 			semantic.nonthrowing_action_visits +=
 				semantic_stats.nonthrowing_action_visits;
+			semantic.static_constant_initializer_visits +=
+				semantic_stats.static_constant_initializer_visits;
+			semantic.static_constant_dependency_edges +=
+				semantic_stats.static_constant_dependency_edges;
 			semantic.empty_destructor_chain_visits +=
 				semantic_stats.empty_destructor_chain_visits;
 			semantic.empty_destructor_chain_cache_hits +=

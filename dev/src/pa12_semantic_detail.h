@@ -80,6 +80,8 @@ public:
 		  unwind_cleanup_action_visits_(0),
 		  temporary_dependency_visits_(0),
 		  nonthrowing_action_visits_(0),
+		  static_constant_initializer_visits_(0),
+		  static_constant_dependency_edges_(0),
 		  empty_destructor_chain_visits_(0),
 		  empty_destructor_chain_cache_hits_(0),
 		  anonymous_enum_count_(0), local_type_count_(0) {}
@@ -157,7 +159,8 @@ private:
 		const SpecInfo& spec, bool local);
 	TypeId CompleteQualifiedStaticArrayType(
 		BindingId prior, TypeId declared) const;
-	bool IsStaticConstantDefinition(BindingId binding) const;
+	bool IsStaticConstantDefinition(
+		BindingId binding, NodeId initializer) const;
 	void InheritVariableRedeclarationFacts(BindingId binding);
 	void AnalyzeFunction(NodeId node, ScopeId scope,
 		std::uint32_t output_parent,
@@ -434,6 +437,8 @@ private:
 		const std::vector<ExpressionInfo>& arguments,
 		NodeId syntax = kNoNode);
 	void DemandFunction(BindingId binding);
+	bool ShouldDemandResolvedCall(BindingId binding, bool folded,
+		bool compile_time_only) const;
 	void PublishInlineFunctionFacts(BindingId binding, bool inline_specifier);
 	TypeId AdaptMemberFunctionType(BindingId binding);
 	void EmitDefaultConstructor(EntityId entity);
@@ -502,13 +507,16 @@ private:
 		ScopeId scope, TypeId type, bool local, bool require_constant,
 		bool preserve_recipe = false);
 	ExpressionInfo AnalyzeInClassStaticInitializer(NodeId initializer,
-		ScopeId scope, TypeId type, const SpecInfo& spec);
+		ScopeId scope, TypeId type);
 	ExpressionInfo FinalizeVariableInitializer(ExpressionInfo initializer,
 		TypeId type, EntityId class_entity, bool local);
 	ExpressionInfo AnalyzeDefaultConstexprObjectInitializer(
 		TypeId type, ScopeId scope, bool local);
 	void PublishConstantVariableInitializer(BindingId binding, TypeId type,
 		const SpecInfo& spec, const ExpressionInfo& initializer);
+	void RecordStaticConstantInitializer(
+		BindingId binding, std::uint32_t initializer);
+	void PublishStaticConstantEvaluationStats() const;
 	ExpressionInfo AnalyzeCall(NodeId node, ScopeId scope, TypeId target);
 	bool TryAnalyzeImmediateBuiltinCall(const std::string& spelling,
 		ScopeId scope, const std::vector<NodeId>& argument_syntax,
@@ -730,6 +738,7 @@ private:
 	BindingId EnsureDestructorBaseEntry(BindingId destructor);
 	void EnsureStaticMemberStorage(BindingId member,
 		bool constant_storage = false);
+	void DemandStaticConstantInitializerDependencies(BindingId member);
 	BindingId EnsureImplicitConstructor(EntityId entity);
 	BindingId EnsureImplicitDestructor(EntityId entity);
 	const std::vector<BindingId>& ConstructorCandidates(EntityId entity) const;
@@ -1008,12 +1017,17 @@ private:
 	std::vector<BindingId> constructor_base_entry_by_binding_;
 	std::vector<BindingId> destructor_base_entry_by_binding_;
 	std::vector<std::uint32_t> static_member_storage_by_binding_;
-	// Completion records compact callable edges before an ODR-used definition
-	// is rematerialized from its immutable value.
-	std::vector<std::uint8_t> static_constant_dependency_state_by_binding_;
-	std::vector<std::uint32_t> static_constant_initializer_by_binding_;
-	std::vector<std::vector<BindingId> >
-		static_constant_dependencies_by_binding_;
+	struct StaticConstantInitializerFact
+	{
+		std::uint32_t initializer;
+		std::vector<BindingId> function_dependencies;
+		StaticConstantInitializerFact() : initializer(kNoDumpEdge) {}
+	};
+	// Canonical member identity owns the immutable initializer recipe and only
+	// the callable edges needed if an ODR-use later demands storage.
+	std::vector<StaticConstantInitializerFact>
+		static_constant_initializers_by_binding_;
+	std::vector<BindingId> static_constant_dependency_owner_marks_;
 	std::vector<BindingId> entity_destructor_by_entity_;
 	std::vector<BindingId> hidden_friend_anchor_by_entity_;
 	std::vector<NodeId> member_initializer_by_binding_;
@@ -1162,6 +1176,8 @@ private:
 	std::size_t unwind_cleanup_action_visits_;
 	std::size_t temporary_dependency_visits_;
 	mutable std::size_t nonthrowing_action_visits_;
+	std::size_t static_constant_initializer_visits_;
+	std::size_t static_constant_dependency_edges_;
 	mutable std::size_t empty_destructor_chain_visits_;
 	mutable std::size_t empty_destructor_chain_cache_hits_;
 	std::size_t anonymous_enum_count_;

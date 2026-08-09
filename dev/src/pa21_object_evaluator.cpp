@@ -22,14 +22,23 @@ TypeId SemanticAnalyzer::CompleteQualifiedStaticArrayType(
 		candidate.bound == 0 ? prior_type : declared;
 }
 
-bool SemanticAnalyzer::IsStaticConstantDefinition(BindingId binding) const
+bool SemanticAnalyzer::IsStaticConstantDefinition(
+	BindingId binding, NodeId initializer) const
 {
 	const BindingRecord& declared = program_->bindings[binding];
 	const BindingRecord& canonical =
 		program_->bindings[declared.canonical];
-	return declared.canonical != binding &&
+	const bool definition = declared.canonical != binding &&
 		canonical.member_owner != kNoEntity &&
 		!canonical.non_static_data_member && canonical.constant;
+	const bool already_initialized = declared.canonical <
+		static_constant_initializers_by_binding_.size() &&
+		static_constant_initializers_by_binding_[declared.canonical].initializer !=
+			kNoDumpEdge;
+	if (definition && already_initialized && initializer != kNoNode)
+		throw std::runtime_error(
+			"static constant definition must not have an initializer");
+	return definition;
 }
 
 ExpressionInfo SemanticAnalyzer::AnalyzeArrayAggregateInit(TypeId type,
@@ -149,14 +158,16 @@ bool SemanticAnalyzer::MaterializeConstantDefinitionInitializer(
 {
 	if (!program_->bindings[binding].constant) return false;
 	const BindingId canonical = program_->bindings[binding].canonical;
-	if (canonical < static_constant_initializer_by_binding_.size() &&
-		static_constant_initializer_by_binding_[canonical] != kNoDumpEdge)
+	if (canonical < static_constant_initializers_by_binding_.size() &&
+		static_constant_initializers_by_binding_[canonical].initializer !=
+			kNoDumpEdge)
 	{
 		const std::uint32_t node =
-			static_constant_initializer_by_binding_[canonical];
+			static_constant_initializers_by_binding_[canonical].initializer;
 		if (node >= dump_.nodes.size())
 			throw std::logic_error(
 				"static constant initializer fact is out of range");
+		DemandStaticConstantInitializerDependencies(binding);
 		initializer->node = node;
 		initializer->type = *type;
 		initializer->category = VALUE_NONE;

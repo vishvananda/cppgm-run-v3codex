@@ -41,6 +41,8 @@ struct SemanticAnalysisStats
 	std::size_t unwind_cleanup_action_visits;
 	std::size_t temporary_dependency_visits;
 	std::size_t nonthrowing_action_visits;
+	std::size_t static_constant_initializer_visits;
+	std::size_t static_constant_dependency_edges;
 	std::size_t empty_destructor_chain_visits;
 	std::size_t empty_destructor_chain_cache_hits;
 	std::size_t namespace_object_actions;

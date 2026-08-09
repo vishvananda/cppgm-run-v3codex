@@ -15,7 +15,11 @@ transitive newest-local summary prevent direct or nested local addresses from es
 Exception specifications keep constant-expression demand active through one typed
 contextual-bool conversion; `noexcept` consumes selected callable/lifetime facts, including
 temporary destructors, and records bounded action-walk visits without creating emission
-demand.
+demand. Each canonical static constant owns one immutable typed initializer recipe and a
+deduplicated set of canonical callable dependencies. Compile-time scalar, address, and
+object consumers reuse that fact without emission; namespace definition or ODR storage
+demand alone consumes its dependency edges, and definition provenance preserves established
+out-of-class member emission. Namespace definitions reject replacement initializers.
 One semantic arrow-chain owner supplies typed pointer/object facts to every arrow consumer,
 and speculative syntax attachments use an exact rollback journal released at the parser
 boundary. Runtime ODR-use rematerializes completed facts and creates emission demand without
@@ -25,20 +29,21 @@ fact-driven lowering, explicit phase ownership, and observable work.
 
 ## Current Failure Map
 
-The combined report is 118/135. The 17 failures group by stable owner into function-local
-static classification, guards, and emission (12, including class-template/reference and
-array-reference-return probes); class-valued runtime/global materialization (4, including
-the concrete `decltype` probe whose qualified lookup succeeds before empty-class staging
-fails); and constexpr declaration suitability (1). Qualified/static constant completion's
-nine owned failures now pass; two originally adjacent probes were reassigned by semantic and
-LowIR evidence to the first two remaining groups.
+The combined report is 120/137 after adding two passing audit regressions. The same 17
+handout failures group by stable owner into function-local static classification, guards,
+and emission (12, including class-template/reference and array-reference-return probes);
+class-valued runtime/global materialization (4, including the concrete `decltype` probe
+whose qualified lookup succeeds before empty-class staging fails); and constexpr declaration
+suitability (1). Qualified static constant completion's nine owned failures and eight nearby
+probes remain passing; no failure moved or expanded during audit.
 
 ## Active Checkpoint
 
-**Function-local static storage and guards (next).** Classify local `static` declarations as
-static-duration objects rather than automatic slots, complete constant or dynamic scalar,
-reference, class, and array initializers once, and lower one storage symbol plus one guard per
-dynamic object across ordinary, template, nested, and local-class functions.
+**Function-local static storage and guards (next substantial checkpoint).** Classify local
+`static` declarations as static-duration objects rather than automatic slots, complete each
+constant or dynamic scalar, reference, class, and array initializer once, and lower one
+storage symbol plus one guard per dynamic object across ordinary, template, nested, and
+local-class functions.
 
 Requirements: PA21's constant-initialization and first-use contract plus `spec.md` §§2–6,8–9
 require canonical binding/storage identity, declaration-owned initializer facts, explicit
@@ -52,42 +57,17 @@ array-width scaling.
 
 ## Performance Evidence
 
-The retained width probes remain linear: 32/64/128/256-element arrays used
-49/81/145/273 semantic nodes and 45/77/141/269 conversion checks; pointer walks used
-133/261/517/1,029 evaluator steps; and 16/32/64/128-member constructor/member probes used
-101/181/341/661 semantic nodes and 68/132/260/516 LowIR instructions. Class returns over
-16/32/64/128 members stayed at one request, three evaluator steps, seven scratch nodes, and
-one LowIR instruction while layout and conversion work grew linearly with width.
+For 16/32/64/128-element ODR-used static constexpr class arrays, semantic nodes were
+92/156/284/540 and initializer visits were 33/65/129/257 (`2N + 1`). Each width retained one
+canonical dependency edge; demand pushes (2), demanded function emissions (1), globals (1),
+and LowIR instructions (20) stayed fixed. Typed storage grew linearly at
+8,364/9,260/11,052/14,636 bytes.
 
-For 1/2/4/8 identical class-argument calls with contextual `operator bool`, requests were
-2/3/5/9 with 0/1/3/7 cache hits, evaluator steps were 5/6/8/12, and scratch stayed fixed at
-11 nodes. Semantic nodes were 13/23/43/83, overload candidates 12/22/42/82, and conversion
-checks 36/57/99/183; all runs emitted one LowIR instruction and zero demanded functions.
-Thus source-facing overload work grows linearly while completed evaluation remains cached
-and compile-time-only demand stays bounded.
-
-For 1/2/4/8 identical address-returning calls, requests were 1/2/4/8 with 0/1/3/7 cache
-hits, while evaluator steps (2), scratch nodes (2), typed storage (2,151 bytes), LowIR
-instructions (1), and demanded functions (0) stayed fixed; semantic nodes grew
-12/18/30/54. Those sources retained 41/48/62/90 syntax edges and used
-1,165/1,222/1,334/2,326 parser bytes with geometric capacity growth. The rollback journal
-is one 12-byte mutation per edge while parsing and is released before semantic consumption.
-
-For 1/2/4/8 identical dependent `noexcept(work<int>())` consumers, semantic nodes were
-10/13/19/31, nonthrowing-action visits 2/4/8/16, and overload candidates 1/2/4/8.
-Specialization requests were 6/10/18/34 with 4/8/16/32 cache hits, leaving exactly two misses
-at every width; conversion checks (2), typed storage (1,735 bytes), LowIR instructions (1),
-constexpr calls (0), and demanded functions (0) stayed fixed. Successful temporary operands
-at the same widths used 8/11/17/29 semantic nodes, 2/4/8/16 action visits, and 2/4/8/16
-overload candidates while conversion checks (1), typed storage (1,735 bytes), LowIR
-instructions (1), demand pushes (0), and demanded functions (0) stayed fixed. Thus action
-inspection and source-facing selection grow linearly while completed template facts are
-reused without emission demand.
-
-For 16/32/64/128-element ODR-used static constexpr template arrays, semantic nodes were
-30/46/78/142, conversion checks 25/41/73/137, and typed storage 4,201/5,097/6,889/10,473
-bytes. Lookup queries (24), demand pushes (1), globals (1), and LowIR instructions (6) stayed
-fixed. This is linear initializer/storage growth with constant qualified lookup and demand.
+For 1/2/4/8 compile-time-only uses of one scalar static member, semantic nodes were
+11/14/20/32 while initializer visits (1), constexpr call requests (1), typed storage (1,735
+bytes), and LowIR instructions (1) stayed fixed. Dependency edges, demand pushes, and
+demanded function emissions all remained zero. Repeated constant lookup therefore reuses
+the canonical initializer fact without graph replay or helper emission.
 
 ## Completed Checkpoints
 
@@ -102,4 +82,4 @@ fixed. This is linear initializer/storage growth with constant qualified lookup 
 | Base-subobject completion | Ordered direct-base facts after direct members, base/member/delegating initialization, active/complete object transport with adjusted addresses through receivers/references/cache facts, and initializer-local demand/slot boundaries; audit repaired repeated-base ambiguity and inherited-base ownership | PA21 handout 80/131→87/132 preserved, audit regression passes for 88/133; eight focused base/delegation tests pass; PA1–20 2,185/2,185; file audit pass; linear depth scaling above |
 | Callable and contextual conversions | Local-callable shadowing, call operators/surrogates, one recursive-arrow owner, overloaded unary/binary/subscript/assignment/logical operators, semantic class-expression initialization, user/return conversions, complete cached scalar/reference/pointer/object results, template cv partial ordering, exact parser rollback, and compile-time/runtime demand separation | PA21 handout 88→100/133 preserved, audit regression passes for 101/134; PA1–20 2,185/2,185; file audit pass; repeated call/address and parser scaling above |
 | Canonical exception and `noexcept` facts | Unevaluated fold-suppressed operands consume selected canonical call/constructor/lifetime facts; dependent specifications complete per specialization; audit unified contextual-bool conversion, compile-time-only demand, temporary destruction, and action observability | PA21 101→108/134 preserved, audit regression passes for 109/135; owned probes 8/8; PA1–20 2,185/2,185; file audit pass; linear action/specialization scaling above |
-| Qualified static constant storage | Canonical incomplete-array redeclarations; typed scalar/object/address and initializer/dependency facts; ODR-demanded storage; constructor/reference rematerialization; qualified `sizeof`/NTTP use; typed wide literals | PA21 109→118/135; owned probes 9/9 and nearby probes 8/8; PA1–20 2,185/2,185; file audit pass; linear static-array scaling above |
+| Qualified static constant storage | Canonical incomplete-array redeclarations; typed scalar/object/address facts; ODR-demanded storage; constructor/reference rematerialization; qualified `sizeof`/NTTP use; typed wide literals; audit unified constant-required recipes, canonical O(1)-deduplicated dependency ownership, definition validation, demand provenance, and counters | PA21 109→118/135 preserved, audit regressions pass for 120/137; owned probes 9/9 and nearby probes 8/8; PA1–20 2,185/2,185; file audit pass; linear initializer traversal and constant repeated-use work above |

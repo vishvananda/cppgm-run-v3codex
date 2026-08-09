@@ -1218,8 +1218,8 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 		!(nonstatic_member && constant_initializer_required_depth_ != 0 &&
 		  (!constexpr_has_scalar ||
 		   local_constant_initializer_depth_ != 0));
-	if (!folded_call && !compile_time_only_call &&
-		constexpr_evaluation_depth_ == 0)
+	if (ShouldDemandResolvedCall(
+		selected, folded_call, compile_time_only_call))
 		DemandFunction(selected);
 	++expression_count_;
 	return ApplyTarget(result, target);
@@ -2259,15 +2259,14 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			parsed.name, parsed.type);
 		PublishVariableDeclarationFacts(binding, declaration_scope,
 			parsed.name, parsed.type, spec, local);
-		const BindingRecord& declared_binding = program_->bindings[binding];
-		const bool static_constant_definition = IsStaticConstantDefinition(binding);
+		const bool static_constant_definition = IsStaticConstantDefinition(binding, initializer_node);
 		const bool constexpr_class_default =
 			spec.is_constexpr && IsClassObjectType(parsed.type) &&
 			!static_constant_definition;
 		if (spec.is_constexpr && initializer_node == kNoNode &&
 			!constexpr_class_default &&
 			!static_constant_definition &&
-			!(qualified_lexical_scope && declared_binding.constant))
+			!(qualified_lexical_scope && program_->bindings[binding].constant))
 			throw std::runtime_error("constexpr variable requires initializer");
 		ExpressionInfo initializer;
 		bool has_initializer = initializer_node != kNoNode;
@@ -2930,6 +2929,7 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 			unwind_cleanup_action_visits_;
 		stats_->temporary_dependency_visits = temporary_dependency_visits_;
 		stats_->nonthrowing_action_visits = nonthrowing_action_visits_;
+		PublishStaticConstantEvaluationStats();
 		stats_->empty_destructor_chain_visits = empty_destructor_chain_visits_;
 		stats_->empty_destructor_chain_cache_hits = empty_destructor_chain_cache_hits_;
 		stats_->namespace_object_actions = namespace_objects_.size();

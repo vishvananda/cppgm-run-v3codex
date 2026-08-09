@@ -651,6 +651,7 @@ struct FunctionInfo
 	std::uint32_t template_pattern;
 	bool defined;
 	bool deferred;
+	bool definition_in_class;
 	bool template_specialization;
 	bool constructor;
 	bool implicit_constructor;
@@ -685,7 +686,8 @@ struct FunctionInfo
 		  friend_of(kNoEntity), lexical_scope(kNoScope),
 		  definition_body(kNoNode), constructor_initializer(kNoNode),
 		  template_pattern(kNoDumpEdge),
-		  defined(false), deferred(false), template_specialization(false),
+		  defined(false), deferred(false), definition_in_class(false),
+		  template_specialization(false),
 		  constructor(false), implicit_constructor(false),
 		  defaulted_constructor(false), deleted_constructor(false),
 		  explicit_constructor(false), conversion_function(false),
