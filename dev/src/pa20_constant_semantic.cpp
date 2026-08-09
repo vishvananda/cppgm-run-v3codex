@@ -200,6 +200,24 @@ bool SemanticAnalyzer::TryFoldConstantClassConversion(
 	return true;
 }
 
+ExpressionInfo SemanticAnalyzer::ApplyContextualBool(ExpressionInfo value)
+{
+	const TypeId boolean = program_->types.Fundamental(FUND_BOOL);
+	if (program_->types.RemoveTopCv(EffectiveType(value.type)) == boolean)
+	{
+		value.type = boolean;
+		return value;
+	}
+	if (IsArithmetic(value.type) || IsPointer(Decay(value.type)) ||
+		IsNullptr(value.type))
+	{
+		value = ApplyTarget(value, boolean);
+		value.type = boolean;
+		return value;
+	}
+	return ApplyExplicitConversion(value, boolean);
+}
+
 ExpressionInfo SemanticAnalyzer::AnalyzeNoexcept(NodeId node, ScopeId scope)
 {
 	const NodeId operand = FirstSemanticChild(node);
@@ -429,6 +447,7 @@ void SemanticAnalyzer::AnalyzeStaticAssert(NodeId node, ScopeId scope)
 	try
 	{
 		condition = AnalyzeExpression(condition_syntax, scope);
+		condition = ApplyContextualBool(condition);
 	}
 	catch (...)
 	{
@@ -436,17 +455,6 @@ void SemanticAnalyzer::AnalyzeStaticAssert(NodeId node, ScopeId scope)
 		throw;
 	}
 	--constant_expression_required_depth_;
-	if (!IsArithmetic(condition.type) &&
-		!IsPointer(Decay(condition.type)) && !IsNullptr(condition.type))
-		condition = ApplyExplicitConversion(condition,
-			program_->types.Fundamental(FUND_BOOL));
-	if ((IsPointer(Decay(condition.type)) || IsNullptr(condition.type)) &&
-		condition.constant)
-	{
-		const TypeId boolean = program_->types.Fundamental(FUND_BOOL);
-		condition = ApplyTarget(condition, boolean);
-		condition.type = boolean;
-	}
 	if (!IsIntegral(condition.type, true) || !condition.constant)
 		throw std::runtime_error(
 			"static_assert requires an integral constant expression");

@@ -12,6 +12,10 @@ address. Completed calls key canonical functions, active/complete receivers, and
 scalar/object/address arguments; scalar, immutable object, address results, and expected
 failures are memoized at that owner. Invocation storage boundaries plus each object's
 transitive newest-local summary prevent direct or nested local addresses from escaping.
+Exception specifications keep constant-expression demand active through one typed
+contextual-bool conversion; `noexcept` consumes selected callable/lifetime facts, including
+temporary destructors, and records bounded action-walk visits without creating emission
+demand.
 One semantic arrow-chain owner supplies typed pointer/object facts to every arrow consumer,
 and speculative syntax attachments use an exact rollback journal released at the parser
 boundary. Runtime ODR-use rematerializes completed facts and creates emission demand without
@@ -21,7 +25,8 @@ fact-driven lowering, explicit phase ownership, and observable work.
 
 ## Current Failure Map
 
-The combined report is now 108/134. The 26 remaining failures group by owner into
+The combined report is now 109/135, including the exception-ownership audit regression. The
+26 remaining handout failures group by owner into
 qualified/static references, arrays, and wide literals (11); function-local static
 classification, guards, and emission (11, including the array-reference-return case whose
 diff is entirely local-static storage); class-valued runtime/global materialization (3); and
@@ -70,11 +75,15 @@ instructions (1), and demanded functions (0) stayed fixed; semantic nodes grew
 is one 12-byte mutation per edge while parsing and is released before semantic consumption.
 
 For 1/2/4/8 identical dependent `noexcept(work<int>())` consumers, semantic nodes were
-10/13/19/31 and overload candidates 1/2/4/8. Specialization requests were 6/10/18/34 with
-4/8/16/32 cache hits, leaving exactly two misses at every width; conversion checks (2), typed
-storage (1,735 bytes), LowIR instructions (1), constexpr calls (0), and demanded functions
-(0) stayed fixed. Repeated consumers therefore add only linear retained expression work and
-reuse the same completed function/class specialization facts without emission demand.
+10/13/19/31, nonthrowing-action visits 2/4/8/16, and overload candidates 1/2/4/8.
+Specialization requests were 6/10/18/34 with 4/8/16/32 cache hits, leaving exactly two misses
+at every width; conversion checks (2), typed storage (1,735 bytes), LowIR instructions (1),
+constexpr calls (0), and demanded functions (0) stayed fixed. Successful temporary operands
+at the same widths used 8/11/17/29 semantic nodes, 2/4/8/16 action visits, and 2/4/8/16
+overload candidates while conversion checks (1), typed storage (1,735 bytes), LowIR
+instructions (1), demand pushes (0), and demanded functions (0) stayed fixed. Thus action
+inspection and source-facing selection grow linearly while completed template facts are
+reused without emission demand.
 
 ## Completed Checkpoints
 
@@ -88,4 +97,4 @@ reuse the same completed function/class specialization facts without emission de
 | Class-valued calls and conversions | Object IDs through returns/calls, converting-constructor argument facts, temporary allocation identity, constexpr hidden-friend facts, compile-time/runtime demand separation; audit added complete typed result keys and transitive invocation-storage escape checks | PA21 76→79/130 preserved and audit regression passes for 80/131; aggregate return/NTTP, hidden-friend, reference-conversion, and dangling-object probes pass; PA1–20 2,185/2,185; file audit pass; bounded width and repeated-call scaling above |
 | Base-subobject completion | Ordered direct-base facts after direct members, base/member/delegating initialization, active/complete object transport with adjusted addresses through receivers/references/cache facts, and initializer-local demand/slot boundaries; audit repaired repeated-base ambiguity and inherited-base ownership | PA21 handout 80/131→87/132 preserved, audit regression passes for 88/133; eight focused base/delegation tests pass; PA1–20 2,185/2,185; file audit pass; linear depth scaling above |
 | Callable and contextual conversions | Local-callable shadowing, call operators/surrogates, one recursive-arrow owner, overloaded unary/binary/subscript/assignment/logical operators, semantic class-expression initialization, user/return conversions, complete cached scalar/reference/pointer/object results, template cv partial ordering, exact parser rollback, and compile-time/runtime demand separation | PA21 handout 88→100/133 preserved, audit regression passes for 101/134; PA1–20 2,185/2,185; file audit pass; repeated call/address and parser scaling above |
-| Canonical exception and `noexcept` facts | Unevaluated fold-suppressed operands consume selected canonical call/constructor facts; dependent exception specifications complete per specialization; class results receive contextual-bool conversion | PA21 101→108/134; owned probes 7/7; PA1–20 2,185/2,185; audit pass; repeated specialization scaling above |
+| Canonical exception and `noexcept` facts | Unevaluated fold-suppressed operands consume selected canonical call/constructor/lifetime facts; dependent specifications complete per specialization; audit unified contextual-bool conversion, compile-time-only demand, temporary destruction, and action observability | PA21 101→108/134 preserved, audit regression passes for 109/135; owned probes 8/8; PA1–20 2,185/2,185; file audit pass; linear action/specialization scaling above |

@@ -1394,8 +1394,27 @@ bool SemanticAnalyzer::InitializationActionsAreNonthrowing(
 	{
 		const std::uint32_t node = pending.back();
 		pending.pop_back();
+		++nonthrowing_action_visits_;
 		const DumpNode& record = dump_.nodes[node];
 		if (record.kind == DUMP_CONSTRUCTOR_ACTION)
+		{
+			if (record.binding == kNoBinding ||
+				!program_->bindings[record.binding].nonthrowing)
+				return false;
+		}
+		else if (record.kind == DUMP_TEMPORARY_OBJECT)
+		{
+			const EntityId entity = DestructedEntity(record.type);
+			if (entity != kNoEntity &&
+				!program_->entities[entity].trivial_destructor)
+			{
+				const BindingId destructor = DestructorForType(record.type);
+				if (destructor == kNoBinding ||
+					!program_->bindings[destructor].nonthrowing)
+					return false;
+			}
+		}
+		else if (record.kind == DUMP_DESTRUCTOR_ACTION)
 		{
 			if (record.binding == kNoBinding ||
 				!program_->bindings[record.binding].nonthrowing)

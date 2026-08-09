@@ -78,6 +78,7 @@ public:
 		  unwind_cleanup_scope_visits_(0),
 		  unwind_cleanup_action_visits_(0),
 		  temporary_dependency_visits_(0),
+		  nonthrowing_action_visits_(0),
 		  empty_destructor_chain_visits_(0),
 		  empty_destructor_chain_cache_hits_(0),
 		  anonymous_enum_count_(0), local_type_count_(0) {}
@@ -481,6 +482,7 @@ private:
 	ExpressionInfo ApplyCallArgument(ExpressionInfo value, TypeId target,
 		const CallConversionFact* conversion = 0);
 	ExpressionInfo ApplyExplicitConversion(ExpressionInfo value, TypeId target);
+	ExpressionInfo ApplyContextualBool(ExpressionInfo value);
 	ExpressionInfo BuildConvertingArgument(const ExpressionInfo& source,
 		TypeId target, const CallConversionFact& conversion);
 	bool IsDirectTrivialClassValueType(TypeId type) const;
@@ -1144,6 +1146,7 @@ private:
 	std::size_t unwind_cleanup_scope_visits_;
 	std::size_t unwind_cleanup_action_visits_;
 	std::size_t temporary_dependency_visits_;
+	mutable std::size_t nonthrowing_action_visits_;
 	mutable std::size_t empty_destructor_chain_visits_;
 	mutable std::size_t empty_destructor_chain_cache_hits_;
 	std::size_t anonymous_enum_count_;

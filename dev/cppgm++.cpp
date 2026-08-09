@@ -714,6 +714,8 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << semantic.unwind_cleanup_action_visits
 			 << " temporary_dependency_visits="
 			 << semantic.temporary_dependency_visits
+			 << " nonthrowing_action_visits="
+			 << semantic.nonthrowing_action_visits
 			 << " empty_destructor_chain_visits="
 			 << semantic.empty_destructor_chain_visits
 			 << " empty_destructor_chain_cache_hits="

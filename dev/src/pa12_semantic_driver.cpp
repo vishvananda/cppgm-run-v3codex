@@ -80,6 +80,7 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 	  lexical_cleanup_action_visits(0),
 	  unwind_cleanup_scope_visits(0), unwind_cleanup_action_visits(0),
 	  temporary_dependency_visits(0),
+	  nonthrowing_action_visits(0),
 	  empty_destructor_chain_visits(0),
 	  empty_destructor_chain_cache_hits(0),
 	  namespace_object_actions(0),

@@ -686,8 +686,20 @@ bool SemanticAnalyzer::IsNonthrowing(NodeId declarator, ScopeId scope)
 	const NodeId expression_node = FirstSemanticChild(qualifier);
 	if (expression_node == kNoNode)
 		throw std::logic_error("missing noexcept expression");
-	const ExpressionInfo expression = AnalyzeExpression(expression_node, scope);
-	if (!expression.constant)
+	++constant_expression_required_depth_;
+	ExpressionInfo expression;
+	try
+	{
+		expression = ApplyContextualBool(
+			AnalyzeExpression(expression_node, scope));
+	}
+	catch (...)
+	{
+		--constant_expression_required_depth_;
+		throw;
+	}
+	--constant_expression_required_depth_;
+	if (!expression.constant || !IsIntegral(expression.type, true))
 		throw std::runtime_error("nonconstant noexcept expression");
 	return expression.value != 0;
 }
@@ -2908,6 +2920,7 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		stats_->unwind_cleanup_action_visits =
 			unwind_cleanup_action_visits_;
 		stats_->temporary_dependency_visits = temporary_dependency_visits_;
+		stats_->nonthrowing_action_visits = nonthrowing_action_visits_;
 		stats_->empty_destructor_chain_visits = empty_destructor_chain_visits_;
 		stats_->empty_destructor_chain_cache_hits = empty_destructor_chain_cache_hits_;
 		stats_->namespace_object_actions = namespace_objects_.size();
