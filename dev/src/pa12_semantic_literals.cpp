@@ -293,6 +293,84 @@ ExpressionInfo SemanticAnalyzer::AnalyzeThisExpression(ScopeId scope)
 	return result;
 }
 
+ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
+	const std::string& spelling, ScopeId scope, TypeId target, NodeId syntax)
+{
+	LookupResult found;
+	const NodeId decltype_name = syntax == kNoNode ? kNoNode :
+		FindChild(syntax, "decltype-name");
+	if (decltype_name != kNoNode)
+	{
+		const TypeId qualifier = program_->types.RemoveTopCv(
+			EffectiveType(DecltypeType(
+				FirstSemanticChild(decltype_name), scope)));
+		EnsureClassDefinition(qualifier);
+		const ScopeId carrier = program_->ScopeForType(qualifier);
+		const NodeId qualified = FindChild(decltype_name, "qualified-name");
+		if (carrier != kNoScope && qualified != kNoNode)
+			found = program_->LookupQualified(carrier,
+				ParseNamePath(PayloadSource(qualified)), LOOKUP_ORDINARY);
+	}
+	else if (syntax != kNoNode &&
+		FindChild(syntax, "structured-type-name") != kNoNode)
+		found = LookupStructuredName(syntax, scope, LOOKUP_ORDINARY);
+	else found = LookupSpelling(scope, spelling, LOOKUP_ORDINARY);
+	if (found.ordinary == kNoBinding)
+		throw std::runtime_error("unknown expression name: " + spelling);
+	const BindingRecord& binding = program_->bindings[found.ordinary];
+	if (binding.kind == BIND_ENUMERATOR)
+	{
+		ExpressionInfo result = MakeLiteral(binding.type,
+			InternNumber(binding.value));
+		result.constant = true;
+		result.value = binding.value;
+		return ApplyTarget(result, target);
+	}
+	if (binding.kind != BIND_VARIABLE && binding.kind != BIND_PARAMETER)
+		throw std::runtime_error("name does not denote a value");
+	if (!CanAccessMember(found.ordinary, found.naming_class))
+		throw std::runtime_error("inaccessible member object");
+	if (binding.non_static_data_member)
+		return AnalyzeImplicitDataMember(found.ordinary, scope, target,
+			found.naming_class);
+	if (binding.member_owner != kNoEntity)
+		EnsureStaticMemberStorage(found.ordinary);
+	const std::uint32_t injected_fact =
+		found.ordinary < injected_fact_by_binding_.size() ?
+		injected_fact_by_binding_[found.ordinary] : kNoDumpEdge;
+	if (injected_fact != kNoDumpEdge)
+	{
+		const InjectedMemberInfo& injected = injected_members_[injected_fact];
+		const BindingRecord& storage = program_->bindings[injected.storage];
+		const BindingRecord& member = program_->bindings[injected.member];
+		const std::uint32_t storage_node = MakeDump(DUMP_ID_EXPRESSION,
+			storage.type, VALUE_LVALUE, storage.name, injected.storage);
+		const std::uint32_t member_node = MakeDump(DUMP_MEMBER_EXPRESSION,
+			binding.type, VALUE_LVALUE, member.name, injected.member);
+		dump_.Add(member_node, storage_node);
+		ExpressionInfo result;
+		result.node = member_node;
+		result.type = binding.type;
+		result.category = VALUE_LVALUE;
+		expression_count_ += 2;
+		return ApplyTarget(result, target);
+	}
+	ExpressionInfo result;
+	const BindingId value_binding = binding.kind == BIND_PARAMETER ?
+		binding.canonical : found.ordinary;
+	result.type = EffectiveType(binding.type);
+	result.category = VALUE_LVALUE;
+	result.binding = value_binding;
+	result.node = MakeDump(DUMP_ID_EXPRESSION, result.type,
+		result.category, program_->names.Intern(spelling), value_binding);
+	result.constant = binding.constant;
+	result.value = binding.value;
+	dump_.nodes[result.node].constant = result.constant;
+	dump_.nodes[result.node].constant_value = result.value;
+	++expression_count_;
+	return ApplyTarget(result, target);
+}
+
 TypeId SemanticAnalyzer::DecltypeType(NodeId node, ScopeId scope)
 {
 	if (node == kNoNode) throw std::runtime_error("empty decltype");

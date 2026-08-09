@@ -499,7 +499,25 @@ std::size_t SemanticAnalyzer::RequestedAlignment(NodeId node, ScopeId scope)
 			throw std::runtime_error("empty alignment specifier");
 		std::uint64_t value = 0;
 		if (arena_->IsTag(operand, "type-id"))
-			value = program_->AlignOf(BuildTypeId(operand, scope));
+		{
+			const NodeId specifiers = FindChild(operand, "type-specifier-seq");
+			const NodeId name = specifiers == kNoNode ? kNoNode :
+				FirstSemanticChild(specifiers);
+			const LookupResult constant = name != kNoNode &&
+				arena_->IsTag(name, "type-name") ?
+				LookupSpelling(scope, PayloadSource(name), LOOKUP_ORDINARY) :
+				LookupResult();
+			if (constant.ordinary != kNoBinding)
+			{
+				const ExpressionInfo expression = AnalyzeNamedValue(
+					PayloadSource(name), scope, kNoType, name);
+				if (!expression.constant || expression.value < 0)
+					throw std::runtime_error(
+						"nonconstant alignment specifier");
+				value = static_cast<std::uint64_t>(expression.value);
+			}
+			else value = program_->AlignOf(BuildTypeId(operand, scope));
+		}
 		else
 		{
 			const ExpressionInfo expression = AnalyzeExpression(operand, scope);

@@ -25,7 +25,8 @@ public:
 	Parser(const std::vector<SyntaxToken>& tokens, StringTable& strings,
 		SyntaxArena& arena, SyntaxStats* stats)
 		: tokens_(tokens), strings_(strings), arena_(arena), stats_(stats),
-		  position_(0), angle_stop_depth_(0), name_fact_revision_(1),
+		  position_(0), angle_stop_depth_(0),
+		  retained_template_argument_depth_(0), name_fact_revision_(1),
 		  angle_matches_(tokens.size())
 	{
 		if (tokens.size() >= std::numeric_limits<std::uint32_t>::max() - 1)
@@ -552,12 +553,16 @@ private:
 	{
 		if (At(KW_TYPENAME) || At(KW_DECLTYPE) || At(KW_CLASS) ||
 			At(KW_STRUCT) || At(KW_UNION) || At(KW_ENUM) || At(KW_CONST) ||
-			At(KW_VOLATILE) || (position_ < tokens_.size() &&
-			 IsFundamentalKind(tokens_[position_].kind))) return true;
+			At(KW_VOLATILE)) return true;
+		if (position_ < tokens_.size() &&
+			IsFundamentalKind(tokens_[position_].kind))
+			return !At(KW_BOOL) || !AtOffset(1, OP_LPAREN) ||
+				AtOffset(2, OP_RPAREN);
 		if (At(OP_COLON2) ||
 			(AtIdentifier() && AtOffset(1, OP_COLON2)))
 			return QualifiedStartsType();
 		if (!AtIdentifier()) return false;
+		if (AtOffset(1, OP_LBRACE)) return false;
 		const TextId name = tokens_[position_].spelling;
 		if (HasNameFact(name, kKnownTemplate) &&
 			!HasNameFact(name, kActiveNonTypeParameter)) return true;
@@ -579,12 +584,21 @@ private:
 		{
 			while (true)
 			{
-				if (TemplateArgumentStartsType())
+				bool parse_expression = !TemplateArgumentStartsType();
+				if (!parse_expression)
 				{
-					if (!ParseTypeId(list))
-						valid = false;
+					const Mark argument_mark = Checkpoint();
+					++retained_template_argument_depth_;
+					const bool parsed_type = ParseTypeId(list);
+					--retained_template_argument_depth_;
+					if (!parsed_type ||
+						(!At(OP_COMMA) && !AtCloseAngle()))
+					{
+						Rollback(argument_mark);
+						parse_expression = true;
+					}
 				}
-				else
+				if (parse_expression)
 				{
 					++angle_stop_depth_;
 					const NodeId expression = ParseExpression(2);
@@ -651,6 +665,7 @@ private:
 	SyntaxStats* stats_;
 	std::size_t position_;
 	std::size_t angle_stop_depth_;
+	std::size_t retained_template_argument_depth_;
 	std::uint32_t name_fact_revision_;
 	std::vector<std::uint8_t> name_facts_;
 	std::vector<NameFactChange> name_fact_changes_;
@@ -1396,22 +1411,7 @@ NodeId Parser::ParsePrimaryExpression()
 		return parenthesized;
 	}
 	if (At(KW_DECLTYPE))
-	{
-		const std::size_t first = position_++;
-		Expect(OP_LPAREN);
-		const NodeId ignored = ParseExpression();
-		if (ignored == kNoNode) throw Error("expected decltype expression");
-		Expect(OP_RPAREN);
-		while (Match(OP_COLON2))
-		{
-			Match(KW_TEMPLATE);
-			if (!AtIdentifier()) throw Error("expected qualified decltype name");
-			++position_;
-			TryConsumeTemplateArguments();
-		}
-		return arena_.Make("id-expression",
-			JoinSpellings(first, position_));
-	}
+		return ParseDecltypeValueName();
 	if (AtIdentifier() || At(OP_COLON2) || At(KW_OPERATOR) ||
 		(position_ < tokens_.size() &&
 		 IsFundamentalKind(tokens_[position_].kind)))
@@ -2242,7 +2242,8 @@ NodeId Parser::ParseNonTypeTemplateParameter()
 
 NodeId Parser::ParseTemplateParameter()
 {
-	if (At(KW_CLASS) || At(KW_TYPENAME) || At(KW_TEMPLATE))
+	if (!StartsDependentNonTypeTemplateParameter() &&
+		(At(KW_CLASS) || At(KW_TYPENAME) || At(KW_TEMPLATE)))
 		return ParseTypeTemplateParameter();
 	return ParseNonTypeTemplateParameter();
 }

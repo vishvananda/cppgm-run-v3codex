@@ -14,33 +14,32 @@ evaluation and PA22/PA23 SFINAE remain out of scope.
 
 ## Current Failure Map
 
-The stage is 110/164, up from the checkpoint baseline of 106/164.  Ordered
-type/value base packs, empty base packs, namespace-qualified inherited values,
-and lockstep base initializers now pass.  Remaining pack failures group into
-dependent default expressions, dependent bool/value rewriting, one invalid
-non-type pack acceptance, and one explicit-pack call parsed as a type-id.
-The unknown-bound array case analyzes correctly but has one extra decay
-instruction in LowIR.  Other
-`100-*` failures belong to dependent qualified lookup, delayed member demand,
-variable templates, declaration ambiguity, and literal/cast forms; `300-*`
-belongs to explicit specialization and `400-*` to stale-primary refresh.
+The stage is 116/164, up from the checkpoint baseline of 110/164.  Retained
+`decltype` value qualification, expression-valued `alignas`, dependent
+`typename` non-type parameter declarations/defaults, and qualified relational
+arguments now pass.  The 48 remaining failures group into dependent
+defaults/bool conversions and two LowIR initialization mismatches; delayed
+member/vtable replay and declaration ownership; variable-template and
+declaration ambiguity; literals/casts and one invalid pack acceptance; explicit
+specialization (`300-*`); and stale-primary refresh (`400-*`).  The unknown-bound
+array case is semantically accepted but retains one extra decay instruction.
 
 ## Active Checkpoint
 
-Replace source-spelling rewrites for dependent defaults and qualified values
-with retained typed dependent nodes evaluated once in the concrete
-specialization environment.  `spec.md` requires each template body to be parsed
-once, immutable parent-linked environments, rechecking only dependent nodes,
-separate default/member demand, canonical constants, and lowering from recorded
-facts rather than reconstructed text.
+Canonicalize concrete dependent defaults and class-object-to-integral helper
+values without introducing PA21's general constexpr-function evaluator.
+`spec.md` requires templates to retain typed dependent nodes, bind immutable
+specialization environments, canonicalize constants before cache selection,
+and lower recorded facts; PA20 additionally permits supported casts/helper
+bindings while explicitly excluding general constexpr-function evaluation.
 
-PA10 owns retained syntax identity, PA19 owns dependency marking and pattern
-demand, PA20 owns substitution/constant evaluation, and PA12 lookup/lowering
-consumes the concrete type/value facts.  Work should be O(dependent nodes plus
-required indexed lookups) per newly demanded specialization with O(1)-average
-cache probes.  Validate defaulted non-type aliases/expressions, dependent bool
-traits, `decltype`, `alignas`, parameter types, qualified relational arguments,
-and unchanged non-dependent replay.
+PA10 owns retained default/cast syntax, PA19 owns pattern demand, PA20 owns the
+parameter overlay and canonical argument, and PA12 owns selected conversions
+and constant member facts consumed by lowering.  Work should be O(dependent
+nodes plus indexed lookups) per new specialization with O(1)-average cache
+probes.  Validate the two default-expression LowIR cases, dependent bool object
+and member values, pack-expanded bool values, static-member `alignas`, and
+unchanged non-dependent class construction.
 
 ## Performance Evidence
 
@@ -90,6 +89,13 @@ instructions 176/336/656; peak semantic bytes
 identity overlays reduced inherited-edge scans from 512/2,048/8,192 to zero;
 work, storage, demand, and output now scale linearly with produced base edges.
 
+Seven-run release medians for 16/32/64 distinct dependent-parameter/default and
+`alignas` specializations: tokens 202/346/634; semantic nodes 213/421/837;
+lookups 471/935/1,863; member visits 16/32/64; specialization requests
+32/64/128; peak semantic bytes 356,362/707,930/1,411,066; semantic time
+1.821/5.384/6.423 ms.  Deterministic work and storage scale linearly; timings at
+this sub-7-ms size were noisy but showed no corresponding retry/work growth.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result |
@@ -100,3 +106,4 @@ work, storage, demand, and output now scale linearly with produced base edges.
 | Lockstep expression and initializer expansion | Recursive pack discovery, equal-length element scopes, nested call/functional/braced/member expansion, empty named function packs, and out-of-class owner-pack replay; PA20 96 -> 103, PA1-PA19 2,013/2,013, audit pass, nested scaling linear |
 | Canonical multiple type/value pack ranges | Per-parameter offsets in specialization keys/replay, symbolic integral shape arguments, nested class-template pack deduction, partial explicit value arguments, and ADL over variable-width class arguments; PA20 103 -> 106, PA1-PA19 2,013/2,013, audit pass, two-pack scaling linear |
 | Ordered base-pack edges and initializers | Compact ordered base identities/offsets, variable-width lookup/layout, type/value base expansion, lexical element overlays, lockstep initializer actions, and offset-driven lowering; PA20 106 -> 110, PA1-PA19 2,013/2,013, audit pass, base-pack scaling linear |
+| Typed dependent declaration/value boundaries | Retained `decltype` carrier/member syntax, semantic `alignas` disambiguation, dependent `typename` non-type parameter declarations/defaults, and bounded type/expression template-argument ambiguity; PA20 110 -> 116, PA1-PA19 2,013/2,013, audit pass, dependent-specialization work/storage linear |

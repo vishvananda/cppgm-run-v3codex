@@ -18,6 +18,49 @@ template <class Derived>
 class ParserNameFacts
 {
 protected:
+	NodeId ParseDecltypeValueName()
+	{
+		Derived& parser = static_cast<Derived&>(*this);
+		const std::size_t first = parser.position_++;
+		parser.Expect(OP_LPAREN);
+		const NodeId operand = parser.ParseExpression();
+		if (operand == kNoNode)
+			throw parser.Error("expected decltype expression");
+		parser.Expect(OP_RPAREN);
+		const NodeId dependent = parser.arena_.Make("decltype-name");
+		parser.arena_.AddFlags(dependent, SYNTAX_FLAG_SEMANTIC_ONLY);
+		parser.arena_.Add(dependent, operand);
+		if (parser.Match(OP_COLON2))
+		{
+			parser.Match(KW_TEMPLATE);
+			std::string qualified;
+			NodeId structure = kNoNode;
+			if (!parser.ParseName(
+				&qualified, true, true, true, &structure))
+				throw parser.Error("expected qualified decltype name");
+			parser.arena_.Add(dependent, parser.MakeStructuredNode(
+				"qualified-name", qualified, structure));
+		}
+		const NodeId expression = parser.arena_.Make("id-expression",
+			parser.JoinSpellings(first, parser.position_));
+		parser.arena_.Add(expression, dependent);
+		return expression;
+	}
+
+	bool StartsDependentNonTypeTemplateParameter()
+	{
+		Derived& parser = static_cast<Derived&>(*this);
+		if (!parser.At(KW_TYPENAME)) return false;
+		const typename Derived::Mark mark = parser.Checkpoint();
+		++parser.position_;
+		std::string type_name;
+		const bool result = parser.ParseName(
+			&type_name, true, true, true) &&
+			type_name.find("::") != std::string::npos;
+		parser.Rollback(mark);
+		return result;
+	}
+
 	NodeId TryConsumeTemplateArguments(bool retain_types = false)
 	{
 		Derived& parser = static_cast<Derived&>(*this);
@@ -55,6 +98,9 @@ protected:
 			candidate_id, Derived::kKnownNonTemplate);
 		const bool active_non_type_parameter = parser.HasNameFact(
 			candidate_id, Derived::kActiveNonTypeParameter);
+		const bool explicitly_templated = opener >= 2 &&
+			parser.tokens_[opener - 2].kind ==
+				static_cast<std::uint16_t>(KW_TEMPLATE);
 		if (!qualified_candidate && known_non_template &&
 			(!known_template || active_non_type_parameter))
 		{
@@ -71,6 +117,10 @@ protected:
 		if (parser.stats_) ++parser.stats_->template_argument_scans;
 		std::size_t paren = 0, square = 0, brace = 0, angle = 1;
 		std::vector<std::size_t> open_angles(1, opener);
+		const bool reject_candidate =
+			parser.retained_template_argument_depth_ != 0 &&
+			qualified_candidate &&
+			!explicitly_templated && !known_template;
 		bool saw_expression_operator = false;
 		bool hit_untrusted_limit = false;
 		// Unclassified identifiers are ambiguous. Keep speculative lookahead
@@ -79,7 +129,8 @@ protected:
 		while (parser.position_ < parser.tokens_.size() && !parser.AtEof())
 		{
 			if (paren == 0 && square == 0 && brace == 0 &&
-				(parser.At(OP_SEMICOLON) || parser.At(OP_LBRACE))) break;
+				(parser.At(OP_SEMICOLON) ||
+				 (!trusted && parser.At(OP_LBRACE)))) break;
 			if (!trusted &&
 				parser.position_ - scan_start >= untrusted_scan_limit)
 			{
@@ -118,13 +169,17 @@ protected:
 					const bool explicitly_templated = parser.position_ >= 2 &&
 						parser.tokens_[parser.position_ - 2].kind ==
 							static_cast<std::uint16_t>(KW_TEMPLATE);
-					if (explicitly_templated ||
-						(parser.HasNameFact(nested_candidate_id,
-							Derived::kKnownTemplate) &&
-						 !parser.HasNameFact(nested_candidate_id,
-							Derived::kActiveNonTypeParameter)) ||
+					const bool qualified_candidate = parser.position_ >= 2 &&
+						parser.tokens_[parser.position_ - 2].kind ==
+							static_cast<std::uint16_t>(OP_COLON2);
+					const bool known_template = parser.HasNameFact(
+						nested_candidate_id, Derived::kKnownTemplate) &&
 						!parser.HasNameFact(nested_candidate_id,
-							Derived::kKnownNonTemplate))
+							Derived::kActiveNonTypeParameter);
+					if (explicitly_templated ||
+						known_template ||
+						(!qualified_candidate && !parser.HasNameFact(
+							nested_candidate_id, Derived::kKnownNonTemplate)))
 					{
 						++angle;
 						open_angles.push_back(parser.position_);
@@ -141,7 +196,8 @@ protected:
 					const std::size_t matched_close = parser.position_++;
 					if (angle == 0)
 					{
-						if (!trusted && saw_expression_operator)
+						if (reject_candidate ||
+							(!trusted && saw_expression_operator))
 						{
 							parser.angle_matches_[matched_opener].close =
 								no_match;

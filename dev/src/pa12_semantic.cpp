@@ -737,69 +737,6 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 	throw std::runtime_error("unsupported PA12 expression: " + arena_->Tag(node));
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
-	const std::string& spelling, ScopeId scope, TypeId target, NodeId syntax)
-{
-		const LookupResult found = syntax != kNoNode &&
-			FindChild(syntax, "structured-type-name") != kNoNode ?
-			LookupStructuredName(syntax, scope, LOOKUP_ORDINARY) :
-			LookupSpelling(scope, spelling, LOOKUP_ORDINARY);
-		if (found.ordinary == kNoBinding)
-			throw std::runtime_error("unknown expression name: " + spelling);
-		const BindingRecord& binding = program_->bindings[found.ordinary];
-		if (binding.kind == BIND_ENUMERATOR)
-		{
-			ExpressionInfo result = MakeLiteral(binding.type,
-				InternNumber(binding.value));
-			result.constant = true;
-			result.value = binding.value;
-			return ApplyTarget(result, target);
-		}
-		if (binding.kind != BIND_VARIABLE && binding.kind != BIND_PARAMETER)
-			throw std::runtime_error("name does not denote a value");
-		if (!CanAccessMember(found.ordinary, found.naming_class))
-			throw std::runtime_error("inaccessible member object");
-		if (binding.non_static_data_member)
-			return AnalyzeImplicitDataMember(found.ordinary, scope, target,
-				found.naming_class);
-		if (binding.member_owner != kNoEntity)
-			EnsureStaticMemberStorage(found.ordinary);
-		const std::uint32_t injected_fact =
-			found.ordinary < injected_fact_by_binding_.size() ?
-			injected_fact_by_binding_[found.ordinary] : kNoDumpEdge;
-		if (injected_fact != kNoDumpEdge)
-		{
-			const InjectedMemberInfo& injected = injected_members_[injected_fact];
-			const BindingRecord& storage =
-				program_->bindings[injected.storage];
-			const BindingRecord& member =
-				program_->bindings[injected.member];
-			const std::uint32_t storage_node = MakeDump(DUMP_ID_EXPRESSION,
-				storage.type, VALUE_LVALUE, storage.name, injected.storage);
-			const std::uint32_t member_node = MakeDump(DUMP_MEMBER_EXPRESSION,
-				binding.type, VALUE_LVALUE, member.name, injected.member);
-			dump_.Add(member_node, storage_node);
-			ExpressionInfo result;
-			result.node = member_node;
-			result.type = binding.type;
-			result.category = VALUE_LVALUE;
-			expression_count_ += 2;
-			return ApplyTarget(result, target);
-		}
-		ExpressionInfo result;
-		const BindingId value_binding = binding.kind == BIND_PARAMETER ? binding.canonical : found.ordinary;
-		result.type = EffectiveType(binding.type);
-		result.category = VALUE_LVALUE;
-		result.binding = value_binding;
-		result.node = MakeDump(DUMP_ID_EXPRESSION, result.type,
-			result.category, program_->names.Intern(spelling), value_binding);
-		result.constant = binding.constant;
-		result.value = binding.value;
-		dump_.nodes[result.node].constant = result.constant;
-		dump_.nodes[result.node].constant_value = result.value;
-		++expression_count_;
-		return ApplyTarget(result, target);
-}
 BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 	const std::vector<NodeId>& argument_syntax,
 	const std::vector<ExpressionInfo>& arguments,
