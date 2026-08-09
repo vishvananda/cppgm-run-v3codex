@@ -27,7 +27,9 @@ local source/target and parent expression facts, never by a translation-unit
 template registry; pointer value-initialization is owned by generic literal
 lowering rather than a call-site exception. Explicit-instantiation demand,
 weak ODR linkage, object roots, and structured ABI identity remain
-binding/entity-owned. This follows
+binding/entity-owned. Selected class allocation/deallocation functions enter
+the ordinary demand worklist, so typed lowering consumes a direct canonical
+symbol even when lookup found an inherited declaration. This follows
 `spec.md` sections 1-6 and 9: source regions are parsed once, hot identity/cache
 access is O(1) average, completion is monotonic, retained syntax is shared,
 unrelated candidates are not materialized, and lowering performs neither lookup
@@ -36,25 +38,19 @@ stages.
 
 ## Current Failure Map
 
-Indexed extension declaration retention raises PA19 to 299/300 while
-preserving PA1-PA18. The final failure is:
-
-| Failures | Shared behavior | Owner |
-|---:|---|---|
-| 1 allocation lowering | Inherited class `operator new` reaches an unlowered semantic node. | PA12 selection and PA16 allocation lowering |
+No unresolved PA19 failure groups remain. The full stage passes 300/300, the
+PA1-PA18 through report passes 1,713/1,713, and the PA19 file audit passes.
 
 ## Active Checkpoint
 
-Complete inherited allocation selection and lowering for a structured nested
-class-template type. PA19 owns specialization completion and canonical nested
-type identity; PA12 owns inherited static `operator new` lookup and the selected
-new-expression fact; PA16 owns typed allocation-call/object lowering. The flow
-is `nested specialization -> completed base relation -> selected allocation
-binding -> DUMP_NEW_EXPRESSION -> typed LowIR`, aligned with `spec.md` sections
-2-6: lookup precedes lowering, selected bindings are canonical, and lowering
-does not reconstruct qualified source names. Expected work is O(base depth plus
-selected allocation arguments), with indexed member lookup. Validate the final
-failure, all PA19 tests, PA1-PA18, file audit, and an inheritance-depth probe.
+PA19 handoff is complete. At the final boundary, PA19 specialization completion
+supplies canonical nested types, PA12 inherited lookup selects and demands the
+class allocation binding, and PA16 lowers the resulting direct call and object
+construction. The flow is `nested specialization -> completed base relation ->
+selected allocation binding -> demanded declaration -> DUMP_NEW_EXPRESSION ->
+typed LowIR`, preserving the `spec.md` sections 2-6 rule that lowering performs
+no lookup or qualified-name reconstruction. Validation covers the exact PA19
+report, PA1-PA18, file audit, and inheritance depth.
 
 ## Performance Evidence
 
@@ -68,6 +64,7 @@ failure, all PA19 tests, PA1-PA18, file audit, and an inheritance-depth probe.
 | 16/32/64 polymorphic specializations, static objects, and unused inline definitions | Requests 16/32/64; demand pushes 33/65/129; semantic nodes 279/551/1,095; lowered nodes 83/163/323; emitted functions 50/98/194 (the 16/32/64 unused inline bodies stay absent); globals 64/128/256; typed storage 165,813/331,285/662,229 bytes; five-run median semantic-plus-lowering time 2.469/4.452/8.442 ms. |
 | 32/64/128 nested class-default/base-constructor levels | Requests and base-action visits are 32/64/128; demand pushes are 33/65/129; semantic nodes 335/655/1,295 and instructions 265/521/1,033. Output grows 26,223/77,599/257,151 bytes with required nested ABI spellings; five-run median semantic/lowering time is 2.634/4.473, 5.868/14.832, and 15.068/54.327 ms, while canonical replay work remains linear. |
 | 32/64/128 GNU-aligned specializations plus primary/partial variable-template pairs | Tokens 2,058/4,106/8,202; layouts and specialization requests 32/64/128; lookup-scope visits 96/192/384; semantic nodes 357/709/1,413; typed storage 29,571/58,211/115,491 bytes. Five-run median semantic/lowering time is 2.528/0.256, 5.032/0.372, and 9.736/0.568 ms. |
+| 16/32/64 nested-specialization inheritance levels with one inherited `operator new` | Requests 16/32/64; layouts 33/65/129; lookup-scope visits 103/199/391 and access-path visits 97/193/385; demand pushes/emissions remain 2/2 and lowering remains 13 nodes. Typed storage is 6,739/7,315/8,467 bytes; five-run median semantic/lowering time is 1.374/0.180, 2.689/0.186, and 6.272/0.256 ms. |
 
 ## Completed Checkpoints
 
@@ -99,3 +96,4 @@ failure, all PA19 tests, PA1-PA18, file audit, and an inheritance-depth probe.
 | Demand-owned inline and polymorphic static/ABI lowering | Pass | Explicit inline emission demand, deferred-completion fact, canonical RTTI type encoding, and typed static vptr data; PA19 290 to 294 across four cases, linear demand/ABI probe, prior 1713/1713, audit pass |
 | Canonical default and base-constructor replay | Pass | Pattern-owned required arity, structured template-id base resolution, direct derived/base reference casts, selected constructor ABI-pair demand, and empty-base copy lowering; PA19 294 to 297 across three cases, nested replay probe, prior 1713/1713, audit pass |
 | Indexed extension declaration retention | Pass | GNU `__alignof` token/trait replay and indexed opaque variable-template primary/partial patterns with declarator-owner classification; PA19 297 to 299 across two cases plus one classifier regression, linear declaration probe, prior 1713/1713, audit pass |
+| Demand-owned allocation declaration lowering | Pass | Inherited static `operator new` selection queues its class declaration before typed lowering; PA19 299 to 300, linear inheritance-path probe, prior 1713/1713, audit pass |

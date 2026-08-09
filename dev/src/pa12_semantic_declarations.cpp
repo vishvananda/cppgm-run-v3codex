@@ -1036,8 +1036,8 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 			ValidateFunctionRefQualifier(function);
 			ConfigureVirtualFunction(function, spec, declarator,
 				FindChild(item, "initializer"));
-			if (binding.operator_kind == OPERATOR_DELETE ||
-				binding.operator_kind == OPERATOR_DELETE_ARRAY)
+			if (binding.operator_kind >= OPERATOR_NEW &&
+				binding.operator_kind <= OPERATOR_DELETE_ARRAY)
 				GetMutableFunction(function).deferred = true;
 			ConfigureAssignmentSpecialMember(
 				function, FindChild(item, "initializer"));
