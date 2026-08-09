@@ -90,6 +90,13 @@ bool SemanticAnalyzer::CanAccessMember(BindingId member,
 	const EntityId owner = binding.member_owner;
 	if (owner == kNoEntity) return true;
 	if (naming_class == kNoEntity) naming_class = owner;
+	if (binding.access == ACCESS_PUBLIC)
+	{
+		bool all_public = false;
+		if (program_->QueryBasePath(
+			naming_class, owner, 0, &all_public) && all_public)
+			return true;
+	}
 	EntityId privilege_anchor = kNoEntity;
 	for (EntityId context = current_class_context_; context != kNoEntity;
 		context = program_->entities[context].enclosing_class)

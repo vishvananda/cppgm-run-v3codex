@@ -306,6 +306,17 @@ enum BuiltinFunctionKind
 	BUILTIN_FUNCTION_OPERATOR_DELETE_ARRAY
 };
 
+struct DirectBaseEdge
+{
+	EntityId entity;
+	std::uint64_t offset;
+	AccessKind access;
+
+	DirectBaseEdge(EntityId entity_ = kNoEntity,
+		AccessKind access_ = ACCESS_PUBLIC)
+		: entity(entity_), offset(0), access(access_) {}
+};
+
 struct EntityRecord
 {
 	NameId name, identity_name;
@@ -313,6 +324,7 @@ struct EntityRecord
 	EntityId direct_base, enclosing_class;
 	BindingId local_context;
 	std::uint32_t template_argument_begin, template_argument_count;
+	std::uint32_t direct_base_begin, direct_base_count;
 	NamedFlavor flavor;
 	TypeId type, underlying;
 	BindingId declaration, union_default_member;
@@ -325,6 +337,7 @@ struct EntityRecord
 		destructible, trivial_destructor,
 		has_direct_base, is_aggregate, empty_class,
 		indirect_class_value_abi, polymorphic_class, abstract_class;
+	bool nonlinear_base_graph;
 	bool deferred_template_completion;
 
 	EntityRecord();
@@ -430,6 +443,12 @@ public:
 	void SetTypeName(ScopeId owner, NameId name, TypeId type);
 	void SetEntityScope(EntityId entity, ScopeId scope);
 	void SetDirectBase(EntityId derived, EntityId base, AccessKind access);
+	void SetDirectBases(EntityId derived,
+		const std::vector<DirectBaseEdge>& bases);
+	const DirectBaseEdge& DirectBase(EntityId derived,
+		std::size_t ordinal) const;
+	DirectBaseEdge& MutableDirectBase(EntityId derived,
+		std::size_t ordinal);
 	bool IsBaseOf(EntityId base, EntityId derived) const;
 	bool QueryBasePath(EntityId derived, EntityId base,
 		std::size_t* distance, bool* all_public) const;
@@ -463,6 +482,7 @@ public:
 	NameTable names;
 	TypeTable types;
 	std::vector<EntityRecord> entities;
+	std::vector<DirectBaseEdge> direct_bases;
 	std::vector<BindingRecord> bindings;
 	std::vector<TypeId> template_arguments;
 	std::vector<TemplateArgument> canonical_template_arguments;

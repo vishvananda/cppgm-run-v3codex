@@ -2329,7 +2329,9 @@ NodeId Parser::ParseCtorInitializer()
 		}
 		else if (At(OP_LBRACE)) arena_.Add(member, ParseBracedInitList());
 		else throw Error("expected mem-initializer");
-		Match(OP_DOTS);
+		if (Match(OP_DOTS))
+			arena_.Add(member, arena_.Make(
+				"pack-expansion", "OP_DOTS:..."));
 		arena_.Add(initializer, member);
 		if (!Match(OP_COMMA)) break;
 	}
@@ -2545,7 +2547,9 @@ NodeId Parser::ParseClass(bool require_semicolon)
 				throw Error("expected base name");
 			arena_.Add(base,
 				MakeStructuredNode("base-name", base_name, base_structure));
-			Match(OP_DOTS);
+			if (Match(OP_DOTS))
+				arena_.Add(base, arena_.Make(
+					"pack-expansion", "OP_DOTS:..."));
 			arena_.Add(clause, base);
 			if (!Match(OP_COMMA)) break;
 		}

@@ -101,6 +101,7 @@ struct DumpNode
 	std::int64_t constant_value;
 	std::uint64_t array_count;
 	std::uint64_t storage_transfer_size;
+	std::uint64_t direct_base_offset;
 	std::uint32_t first_edge;
 	std::uint32_t last_edge;
 	std::uint32_t base_projection_count;
@@ -135,12 +136,14 @@ struct DumpNode
 	bool conditionally_constructed;
 	bool control_dependent_temporary;
 	bool virtual_call;
+	bool has_direct_base_offset;
 
 	explicit DumpNode(DumpKind value)
 		: kind(value), type(kNoType), operand_type(kNoType),
 		  category(VALUE_NONE), text(0), binding(kNoBinding),
 		  object_binding(kNoBinding), selected_binding(kNoBinding),
 		  constant_value(0), array_count(0), storage_transfer_size(0),
+		  direct_base_offset(0),
 		  first_edge(kNoDumpEdge),
 		  last_edge(kNoDumpEdge), base_projection_count(0),
 		  aggregate_helper(kNoDumpEdge), value_constructor(kNoDumpEdge),
@@ -161,7 +164,8 @@ struct DumpNode
 		  direct_return_slot(false), declaration_only(false),
 		  unwind_only(false), full_expression_staging(false),
 		  conditionally_constructed(false),
-		  control_dependent_temporary(false), virtual_call(false) {}
+		  control_dependent_temporary(false), virtual_call(false),
+		  has_direct_base_offset(false) {}
 };
 
 struct DumpEdge

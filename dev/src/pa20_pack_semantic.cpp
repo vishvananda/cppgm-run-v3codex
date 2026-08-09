@@ -105,6 +105,67 @@ void SemanticAnalyzer::CollectPackExpansionNames(NodeId node, ScopeId scope,
 		CollectPackExpansionNames(arena_->EdgeChild(edge), scope, names);
 }
 
+bool SemanticAnalyzer::ExpandPackElementScopes(NodeId pattern, ScopeId scope,
+	std::vector<ScopeId>* element_scopes)
+{
+	std::vector<NameId> names;
+	CollectPackExpansionNames(pattern, scope, &names);
+	if (names.empty()) return false;
+	std::vector<std::vector<TemplateArgument> > packs(names.size());
+	std::size_t length = std::numeric_limits<std::size_t>::max();
+	for (std::size_t source = 0; source < names.size(); ++source)
+	{
+		if (!LookupTemplateArgumentPack(scope, names[source], &packs[source]))
+			throw std::runtime_error(
+				"declaration pack expansion requires a template parameter pack");
+		if (length == std::numeric_limits<std::size_t>::max())
+			length = packs[source].size();
+		else if (length != packs[source].size())
+			throw std::runtime_error(
+				"pack expansion operands have different lengths");
+	}
+	element_scopes->reserve(element_scopes->size() + length);
+	for (std::size_t element = 0; element < length; ++element)
+	{
+		const ScopeId element_scope = NewScope(scope,
+			SCOPE_TEMPLATE_PARAMETERS, 0, ScopePrefixId(scope));
+		for (std::size_t source = 0; source < names.size(); ++source)
+		{
+			TemplateParameter parameter;
+			parameter.name = names[source];
+			parameter.kind = packs[source][element].kind;
+			BindTemplateArgument(element_scope, parameter,
+				packs[source][element]);
+		}
+		element_scopes->push_back(element_scope);
+	}
+	return true;
+}
+
+void SemanticAnalyzer::BindLexicalTypeNames(NodeId pattern,
+	ScopeId lexical_owner, ScopeId target_scope)
+{
+	if (pattern == kNoNode) return;
+	if (arena_->IsTag(pattern, "name-component"))
+	{
+		const NameId name = program_->names.UseInterned(
+			arena_->SemanticPayloadId(pattern));
+		if (name != 0 && program_->LookupDirect(
+			target_scope, name, LOOKUP_TYPE).type == kNoType)
+		{
+			const LookupResult lexical = program_->LookupDirect(
+				lexical_owner, name, LOOKUP_TYPE);
+			if (lexical.type != kNoType)
+				program_->AddBinding(target_scope,
+					BIND_TYPE_ALIAS, name, lexical.type);
+		}
+	}
+	for (std::uint32_t edge = arena_->FirstEdge(pattern); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+		BindLexicalTypeNames(arena_->EdgeChild(edge),
+			lexical_owner, target_scope);
+}
+
 void SemanticAnalyzer::ExpandExpressionPack(NodeId expansion, ScopeId scope,
 	std::vector<NodeId>* syntax,
 	std::vector<ExpressionInfo>* expressions)

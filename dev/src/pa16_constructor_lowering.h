@@ -150,8 +150,11 @@ protected:
 			derived.BeginFullExpressionCleanup(children, 1);
 		const Operand object = derived.LoadStorage(
 			derived.StorageFor(derived.current_this_binding_, LowPtr()), LowPtr());
-		const Operand destination = derived.ProjectBaseSubobjects(object,
-			action.base_projection_count);
+		const Operand destination = action.has_direct_base_offset ?
+			derived.ProjectBaseSubobjectOffset(
+				object, action.direct_base_offset) :
+			derived.ProjectBaseSubobjects(object,
+				action.base_projection_count);
 		derived.LowerConstructorAction(children[0], destination);
 		if (children.size() > 1)
 			derived.CompleteFullExpressionCleanup();

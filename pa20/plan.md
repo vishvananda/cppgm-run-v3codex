@@ -14,10 +14,11 @@ evaluation and PA22/PA23 SFINAE remain out of scope.
 
 ## Current Failure Map
 
-The stage is 106/164, up from the checkpoint baseline of 103/164.  Independent
-and covarying type/value pack deduction now pass.  Remaining pack failures group
-into base-list/base-initializer expansion, dependent default expressions,
-dependent bool/value rewriting, and one explicit-pack call parsed as a type-id.
+The stage is 110/164, up from the checkpoint baseline of 106/164.  Ordered
+type/value base packs, empty base packs, namespace-qualified inherited values,
+and lockstep base initializers now pass.  Remaining pack failures group into
+dependent default expressions, dependent bool/value rewriting, one invalid
+non-type pack acceptance, and one explicit-pack call parsed as a type-id.
 The unknown-bound array case analyzes correctly but has one extra decay
 instruction in LowIR.  Other
 `100-*` failures belong to dependent qualified lookup, delayed member demand,
@@ -26,18 +27,20 @@ belongs to explicit specialization and `400-*` to stale-primary refresh.
 
 ## Active Checkpoint
 
-Replace the singular direct-base fact with an ordered compact base-edge range,
-then expand dependent base clauses and constructor base initializers against
-that identity.  `spec.md` requires explicit indexed base relationships,
-canonical typed layouts, demand-separated completion, and lowering from chosen
-facts rather than names.
+Replace source-spelling rewrites for dependent defaults and qualified values
+with retained typed dependent nodes evaluated once in the concrete
+specialization environment.  `spec.md` requires each template body to be parsed
+once, immutable parent-linked environments, rechecking only dependent nodes,
+separate default/member demand, canonical constants, and lowering from recorded
+facts rather than reconstructed text.
 
-PA11 owns canonical base edges, PA12 owns access/layout and initializer actions,
-PA19/PA20 supply substituted base types, and typed lowering consumes offsets and
-selected constructors.  Collection and lookup should be O(number of bases),
-layout O(bases + members), and each demanded constructor action emitted once.
-Validate empty/nonempty type and value packs, namespace-qualified bases,
-lockstep base initializers, ambiguity/access, and all single-base regressions.
+PA10 owns retained syntax identity, PA19 owns dependency marking and pattern
+demand, PA20 owns substitution/constant evaluation, and PA12 lookup/lowering
+consumes the concrete type/value facts.  Work should be O(dependent nodes plus
+required indexed lookups) per newly demanded specialization with O(1)-average
+cache probes.  Validate defaulted non-type aliases/expressions, dependent bool
+traits, `decltype`, `alignas`, parameter types, qualified relational arguments,
+and unchanged non-dependent replay.
 
 ## Performance Evidence
 
@@ -78,6 +81,15 @@ instructions 61/109/205; peak semantic-stage bytes
 0.854/1.191/1.938 ms.  Argument partitions, cache work, storage, and emitted
 output grow linearly with produced elements.
 
+Eleven-run release medians for 16/32/64 nonempty value-pack bases with
+lockstep initializers: semantic nodes 324/628/1,236; layout visits and base
+actions 16/32/64; specialization requests 65/129/257 with 32/64/128 hits;
+instructions 176/336/656; peak semantic bytes
+586,517/1,163,966/2,298,040; typed LowIR bytes
+92,174/181,567/360,635; semantic time 5.885/11.381/21.673 ms.  Direct lexical
+identity overlays reduced inherited-edge scans from 512/2,048/8,192 to zero;
+work, storage, demand, and output now scale linearly with produced base edges.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result |
@@ -87,3 +99,4 @@ output grow linearly with produced elements.
 | Canonical trailing type/function packs | Ordered scope-indexed pack ranges, flattened canonical keys with pattern-owned boundaries, variable-width replay offsets, empty/fixed-prefix deduction, named forwarding, `sizeof...` and simple `sizeof(Ts)...` expansion; PA20 83 -> 96, PA1-PA19 2,013/2,013, audit pass, scaling linear |
 | Lockstep expression and initializer expansion | Recursive pack discovery, equal-length element scopes, nested call/functional/braced/member expansion, empty named function packs, and out-of-class owner-pack replay; PA20 96 -> 103, PA1-PA19 2,013/2,013, audit pass, nested scaling linear |
 | Canonical multiple type/value pack ranges | Per-parameter offsets in specialization keys/replay, symbolic integral shape arguments, nested class-template pack deduction, partial explicit value arguments, and ADL over variable-width class arguments; PA20 103 -> 106, PA1-PA19 2,013/2,013, audit pass, two-pack scaling linear |
+| Ordered base-pack edges and initializers | Compact ordered base identities/offsets, variable-width lookup/layout, type/value base expansion, lexical element overlays, lockstep initializer actions, and offset-driven lowering; PA20 106 -> 110, PA1-PA19 2,013/2,013, audit pass, base-pack scaling linear |

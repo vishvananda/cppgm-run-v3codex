@@ -989,6 +989,42 @@ void SemanticAnalyzer::RecordDelegatingConstructor(BindingId source,
 	throw std::logic_error("cyclic constructor delegation fact graph");
 }
 
+void SemanticAnalyzer::CollectConstructorInitializers(
+	const FunctionInfo& constructor, EntityId entity, ScopeId function_scope,
+	std::vector<NodeId>* syntax, std::vector<ScopeId>* scopes,
+	std::vector<std::uint8_t>* expanded)
+{
+	if (constructor.constructor_initializer == kNoNode) return;
+	for (std::uint32_t edge = arena_->FirstEdge(
+		constructor.constructor_initializer); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId initializer = arena_->EdgeChild(edge);
+		if (!arena_->IsTag(initializer, "mem-initializer")) continue;
+		if (FindChild(initializer, "pack-expansion") == kNoNode)
+		{
+			syntax->push_back(initializer);
+			scopes->push_back(function_scope);
+			expanded->push_back(0);
+			continue;
+		}
+		std::vector<ScopeId> element_scopes;
+		if (!ExpandPackElementScopes(
+			initializer, function_scope, &element_scopes))
+			throw std::runtime_error(
+				"constructor pack expansion contains no unexpanded pack");
+		for (std::size_t element = 0;
+			element < element_scopes.size(); ++element)
+		{
+			BindLexicalTypeNames(initializer,
+				program_->entities[entity].owner, element_scopes[element]);
+			syntax->push_back(initializer);
+			scopes->push_back(element_scopes[element]);
+			expanded->push_back(1);
+		}
+	}
+}
+
 void SemanticAnalyzer::AddConstructorMemberActions(
 	const FunctionInfo& constructor, ScopeId function_scope,
 	const std::vector<BindingId>& parameters,
@@ -1001,15 +1037,18 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 	if (constructor_initializer_scratch_.size() < members.size())
 		constructor_initializer_scratch_.resize(members.size(), kNoNode);
 	constructor_initializer_touched_.clear();
-	NodeId base_initializer = kNoNode;
-	bool base_initializer_seen = false;
-	std::size_t initializer_count = 0;
-	if (constructor.constructor_initializer != kNoNode)
-		for (std::uint32_t edge = arena_->FirstEdge(
-			constructor.constructor_initializer); edge != kNoEdge;
-			edge = arena_->NextEdge(edge))
-			if (arena_->IsTag(arena_->EdgeChild(edge), "mem-initializer"))
-				++initializer_count;
+	const std::size_t base_count =
+		program_->entities[entity].direct_base_count;
+	std::vector<NodeId> base_initializers(base_count, kNoNode);
+	std::vector<ScopeId> base_initializer_scopes(base_count, function_scope);
+	std::vector<std::uint8_t> base_initializer_seen(base_count, 0);
+	std::vector<std::uint8_t> base_initializer_expanded(base_count, 0);
+	std::vector<NodeId> initializer_syntax;
+	std::vector<ScopeId> initializer_scopes;
+	std::vector<std::uint8_t> initializer_expanded;
+	CollectConstructorInitializers(constructor, entity, function_scope,
+		&initializer_syntax, &initializer_scopes, &initializer_expanded);
+	const std::size_t initializer_count = initializer_syntax.size();
 	if (constructor.inherited_constructor_source != kNoBinding)
 	{
 		const EntityId base = program_->entities[entity].direct_base;
@@ -1038,18 +1077,17 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 		DemandFunction(source);
 		dump_.Add(base_action, call);
 		dump_.Add(body, base_action);
-		base_initializer_seen = true;
 		++constructor_base_action_visits_;
 		++expression_count_;
 	}
-	else if (constructor.constructor_initializer != kNoNode)
+	else if (!initializer_syntax.empty())
 	{
-		for (std::uint32_t edge = arena_->FirstEdge(
-			constructor.constructor_initializer); edge != kNoEdge;
-			edge = arena_->NextEdge(edge))
+		for (std::size_t initializer_index = 0;
+			initializer_index < initializer_syntax.size(); ++initializer_index)
 		{
-			const NodeId initializer = arena_->EdgeChild(edge);
-			if (!arena_->IsTag(initializer, "mem-initializer")) continue;
+			const NodeId initializer = initializer_syntax[initializer_index];
+			const ScopeId initializer_scope =
+				initializer_scopes[initializer_index];
 			const NodeId id = FindChild(initializer, "mem-initializer-id");
 			if (id == kNoNode)
 				throw std::runtime_error("member initializer has no target");
@@ -1061,17 +1099,32 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 				child_edge != kNoEdge; child_edge = arena_->NextEdge(child_edge))
 			{
 				const NodeId child = arena_->EdgeChild(child_edge);
-				if (child != id) value = child;
+				if (child != id &&
+					!arena_->IsTag(child, "pack-expansion")) value = child;
 			}
 			if (value == kNoNode)
 				throw std::runtime_error("member initializer has no value");
 			LookupResult target_type;
 			const NodeId structured = FindChild(id, "structured-type-name");
 			if (structured != kNoNode)
+			{
+				const NamePath target_path = StructuredNamePath(structured);
+				if (!target_path.global && target_path.Size() == 1 &&
+					program_->LookupDirect(initializer_scope, target_path.Last(),
+						LOOKUP_TYPE).type == kNoType)
+				{
+					const LookupResult lexical = program_->LookupDirect(
+						program_->entities[entity].owner,
+						target_path.Last(), LOOKUP_TYPE);
+					if (lexical.type != kNoType)
+						program_->AddBinding(initializer_scope,
+							BIND_TYPE_ALIAS, target_path.Last(), lexical.type);
+				}
 				target_type.type = ResolveStructuredTypeName(
-					structured, function_scope);
+					structured, initializer_scope);
+			}
 			else
-				target_type = LookupSpelling(function_scope,
+				target_type = LookupSpelling(initializer_scope,
 					arena_->Payload(id), LOOKUP_TYPE);
 			if (target_type.type != kNoType &&
 				EntityOf(target_type.type) == entity)
@@ -1096,7 +1149,7 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 				const bool base_entry =
 					program_->bindings[constructor.binding].constructor_base_entry;
 				const std::uint32_t delegate = BuildConstructorAction(owner_type,
-					function_scope, arguments, false, list_initialization,
+					initializer_scope, arguments, false, list_initialization,
 					base_entry, true,
 					list_initialization ? value : kNoNode);
 				RecordDelegatingConstructor(
@@ -1132,24 +1185,37 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 			if (found.ordinary != kNoBinding)
 				throw std::runtime_error(
 					"constructor initializer target is not a data member");
-			if (program_->entities[entity].direct_base == kNoEntity ||
-				EntityOf(target_type.type) != program_->entities[entity].direct_base)
+			const EntityId target_base = EntityOf(target_type.type);
+			std::size_t base_ordinal = base_count;
+			for (std::size_t i = 0; i < base_count; ++i)
+				if (program_->DirectBase(entity, i).entity == target_base)
+				{
+					base_ordinal = i;
+					break;
+				}
+			if (base_ordinal == base_count)
 				throw std::runtime_error(
 					"unknown constructor member initializer");
 			if (target_type.type_declaration != kNoBinding &&
 				!CanAccessMember(target_type.type_declaration,
 					target_type.naming_class))
 				throw std::runtime_error("inaccessible base initializer type");
-			if (base_initializer_seen)
+			if (base_initializer_seen[base_ordinal])
 				throw std::runtime_error("duplicate base initializer");
-			base_initializer = value;
-			base_initializer_seen = true;
+			base_initializers[base_ordinal] = value;
+			base_initializer_scopes[base_ordinal] = initializer_scope;
+			base_initializer_seen[base_ordinal] = 1;
+			base_initializer_expanded[base_ordinal] =
+				initializer_expanded[initializer_index];
 		}
 	}
-	if (program_->entities[entity].direct_base != kNoEntity &&
-		constructor.inherited_constructor_source == kNoBinding)
-		AddBaseInitializationAction(entity, base_initializer,
-			function_scope, body);
+	if (constructor.inherited_constructor_source == kNoBinding)
+		for (std::size_t base_ordinal = 0;
+			base_ordinal < base_count; ++base_ordinal)
+			AddBaseInitializationAction(entity, base_ordinal,
+				base_initializers[base_ordinal],
+				base_initializer_scopes[base_ordinal], body,
+				base_initializer_expanded[base_ordinal] != 0);
 	if (program_->entities[entity].polymorphic_class)
 		dump_.Add(body, MakeDump(DUMP_VPTR_INITIALIZATION_ACTION,
 			program_->entities[entity].type));
@@ -1196,11 +1262,12 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 }
 
 void SemanticAnalyzer::AddBaseInitializationAction(EntityId entity,
-	NodeId initializer, ScopeId scope, std::uint32_t body)
+	std::size_t base_ordinal, NodeId initializer, ScopeId scope,
+	std::uint32_t body, bool pack_expanded)
 {
-	const EntityId base = program_->entities[entity].direct_base;
-	if (base == kNoEntity)
+	if (base_ordinal >= program_->entities[entity].direct_base_count)
 		throw std::logic_error("base initialization has no direct base");
+	const EntityId base = program_->DirectBase(entity, base_ordinal).entity;
 	std::vector<NodeId> arguments;
 	bool list_initialization = false;
 	if (initializer != kNoNode)
@@ -1219,10 +1286,13 @@ void SemanticAnalyzer::AddBaseInitializationAction(EntityId entity,
 	const std::uint32_t action = MakeDump(DUMP_BASE_INITIALIZER_ACTION,
 		base_type, VALUE_NONE, program_->entities[base].identity_name);
 	dump_.nodes[action].base_projection_count = 1;
+	dump_.nodes[action].direct_base_offset =
+		program_->DirectBase(entity, base_ordinal).offset;
+	dump_.nodes[action].has_direct_base_offset = true;
 	const std::uint32_t constructor = BuildConstructorAction(base_type,
 		scope, arguments, false, list_initialization, true, true,
 		list_initialization ? initializer : kNoNode);
-	if (initializer != kNoNode && !arguments.empty() &&
+	if (!pack_expanded && initializer != kNoNode && !arguments.empty() &&
 		dump_.nodes[constructor].kind == DUMP_CONSTRUCTOR_ACTION &&
 		dump_.nodes[constructor].binding != kNoBinding)
 	{

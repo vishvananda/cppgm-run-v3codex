@@ -165,6 +165,9 @@ private:
 		EntityId entity, NamedFlavor flavor, ScopeId owner, NameId name,
 		NameId lookup_name, ScopeId specialization_owner,
 		NameId specialization_identity);
+	void CollectClassDirectBases(NodeId clause, ScopeId scope,
+		EntityId entity, NamedFlavor flavor,
+		std::vector<DirectBaseEdge>* direct_bases);
 	TypeId AnalyzeEnum(NodeId node, ScopeId scope,
 		const std::string& hint, bool elaborated);
 	SpecInfo BuildSpecifiers(NodeId node, ScopeId scope,
@@ -266,6 +269,10 @@ private:
 		std::vector<ExpressionInfo>* arguments);
 	void CollectPackExpansionNames(NodeId node, ScopeId scope,
 		std::vector<NameId>* names) const;
+	bool ExpandPackElementScopes(NodeId pattern, ScopeId scope,
+		std::vector<ScopeId>* element_scopes);
+	void BindLexicalTypeNames(NodeId pattern, ScopeId lexical_owner,
+		ScopeId target_scope);
 	void ExpandExpressionPack(NodeId expansion, ScopeId scope,
 		std::vector<NodeId>* syntax,
 		std::vector<ExpressionInfo>* expressions);
@@ -602,6 +609,8 @@ private:
 	const EntityRecord* InitializeClassBaseLayout(EntityId entity,
 		std::size_t packing_alignment, std::size_t* size,
 		std::size_t* alignment, std::size_t* natural_alignment);
+	bool ClassBasesAreEmpty(EntityId entity) const;
+	void InitializeImplicitBaseConstructorFacts(EntityId entity);
 	void CompleteClassMemberDestructionFacts(EntityId entity,
 		bool is_union, bool defaulted_destructor);
 	void CompleteClassLayout(EntityId entity);
@@ -657,9 +666,14 @@ private:
 	void AddConstructorMemberActions(const FunctionInfo& constructor,
 		ScopeId function_scope, const std::vector<BindingId>& parameters,
 		std::uint32_t body);
+	void CollectConstructorInitializers(const FunctionInfo& constructor,
+		EntityId entity, ScopeId function_scope,
+		std::vector<NodeId>* syntax, std::vector<ScopeId>* scopes,
+		std::vector<std::uint8_t>* expanded);
 	void RecordDelegatingConstructor(BindingId source, BindingId selected);
-	void AddBaseInitializationAction(EntityId entity, NodeId initializer,
-		ScopeId scope, std::uint32_t body);
+	void AddBaseInitializationAction(EntityId entity, std::size_t base_ordinal,
+		NodeId initializer, ScopeId scope, std::uint32_t body,
+		bool pack_expanded = false);
 	void AddMemberInitializationAction(BindingId member, NodeId initializer,
 		ScopeId scope, std::uint32_t body);
 	bool InitializationActionsAreNonthrowing(std::uint32_t body) const;

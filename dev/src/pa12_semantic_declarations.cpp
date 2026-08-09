@@ -197,40 +197,82 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	return type;
 }
 
-void SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
-	TypeId type, EntityId entity, NamedFlavor flavor, ScopeId owner,
-	NameId name, NameId lookup_name, ScopeId specialization_owner,
-	NameId specialization_identity)
+void SemanticAnalyzer::CollectClassDirectBases(NodeId clause, ScopeId scope,
+	EntityId entity, NamedFlavor flavor,
+	std::vector<DirectBaseEdge>* direct_bases)
 {
-		if (program_->entities[entity].complete)
-			throw std::runtime_error("duplicate class definition");
-		program_->entities[entity].packing_alignment = current_pack_alignment_;
-		const NodeId base_clause = FindChild(node, "base-clause");
-		if (base_clause != kNoNode)
+	bool saw_base_specifier = false;
+	for (std::uint32_t edge = arena_->FirstEdge(clause);
+		edge != kNoEdge; edge = arena_->NextEdge(edge))
+	{
+		const NodeId base_specifier = arena_->EdgeChild(edge);
+		if (!arena_->IsTag(base_specifier, "base-specifier")) continue;
+		saw_base_specifier = true;
+		const NodeId base_name = FindChild(base_specifier, "base-name");
+		if (base_name == kNoNode)
+			throw std::runtime_error("base specifier has no base name");
+		AccessKind base_access = flavor == NAMED_CLASS ?
+			ACCESS_PRIVATE : ACCESS_PUBLIC;
+		const NodeId access = FindChild(base_specifier, "access-specifier");
+		if (access != kNoNode)
 		{
-			NodeId base_specifier = kNoNode;
-			for (std::uint32_t edge = arena_->FirstEdge(base_clause);
-				edge != kNoEdge; edge = arena_->NextEdge(edge))
+			const std::string access_text = PayloadSource(access);
+			base_access = access_text == "private" ? ACCESS_PRIVATE :
+				access_text == "protected" ? ACCESS_PROTECTED : ACCESS_PUBLIC;
+		}
+		std::vector<ScopeId> base_scopes;
+		if (FindChild(base_specifier, "pack-expansion") != kNoNode)
+		{
+			if (!ExpandPackElementScopes(base_name, scope, &base_scopes))
 			{
-				const NodeId candidate = arena_->EdgeChild(edge);
-				if (!arena_->IsTag(candidate, "base-specifier")) continue;
-				if (base_specifier != kNoNode)
+				const NameId pack_name = program_->names.Intern(
+					PayloadSource(base_name));
+				if (entity >= class_template_pattern_by_entity_.size() ||
+					class_template_pattern_by_entity_[entity] == kNoDumpEdge)
 					throw std::runtime_error(
-						"multiple inheritance is outside PA16");
-				base_specifier = candidate;
+						"pack expansion contains no unexpanded pack");
+				const std::size_t pattern_index =
+					class_template_pattern_by_entity_[entity];
+				if (pattern_index >= class_templates_.size())
+					throw std::logic_error(
+						"invalid class template base-pack owner");
+				const ClassTemplatePattern& pattern =
+					class_templates_[pattern_index];
+				std::size_t parameter_index = pattern.parameters.size();
+				for (std::size_t i = 0; i < pattern.parameters.size(); ++i)
+					if (pattern.parameters[i].pack &&
+						pattern.parameters[i].name == pack_name)
+						parameter_index = i;
+				const EntityRecord& specialization = program_->entities[entity];
+				if (parameter_index == pattern.parameters.size() ||
+					specialization.template_argument_begin == kNoBinding ||
+					parameter_index > specialization.template_argument_count)
+					throw std::runtime_error(
+						"pack expansion contains no bound class pack");
+				const std::vector<TemplateArgument> arguments =
+					StoredTemplateArguments(specialization.template_argument_begin,
+						specialization.template_argument_count);
+				for (std::size_t i = parameter_index; i < arguments.size(); ++i)
+				{
+					const ScopeId element_scope = NewScope(scope,
+						SCOPE_TEMPLATE_PARAMETERS, 0, ScopePrefixId(scope));
+					TemplateParameter parameter = pattern.parameters[parameter_index];
+					parameter.pack = false;
+					BindTemplateArgument(element_scope, parameter, arguments[i]);
+					base_scopes.push_back(element_scope);
+				}
 			}
-			if (base_specifier == kNoNode)
-				throw std::runtime_error("base clause has no base type");
-			const NodeId base_name = FindChild(base_specifier, "base-name");
-			if (base_name == kNoNode)
-				throw std::runtime_error("base specifier has no base name");
+		}
+		else base_scopes.push_back(scope);
+		for (std::size_t element = 0; element < base_scopes.size(); ++element)
+		{
 			LookupResult base_lookup;
 			const NodeId structured_base = FindChild(
 				base_name, "structured-type-name");
 			base_lookup.type = structured_base == kNoNode ? kNoType :
-				ResolveStructuredTypeName(structured_base, scope);
+				ResolveStructuredTypeName(structured_base, base_scopes[element]);
 			if (base_lookup.type == kNoType && structured_base == kNoNode)
-				base_lookup = LookupSpelling(scope,
+				base_lookup = LookupSpelling(base_scopes[element],
 					arena_->Payload(base_name), LOOKUP_TYPE);
 			EnsureClassDefinition(base_lookup.type);
 			const EntityId base = EntityOf(base_lookup.type);
@@ -242,16 +284,28 @@ void SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 				!CanAccessMember(base_lookup.type_declaration,
 					base_lookup.naming_class))
 				throw std::runtime_error("inaccessible direct base type");
-			AccessKind base_access = flavor == NAMED_CLASS ?
-				ACCESS_PRIVATE : ACCESS_PUBLIC;
-			const NodeId access = FindChild(base_specifier, "access-specifier");
-			if (access != kNoNode)
-			{
-				const std::string access_text = PayloadSource(access);
-				base_access = access_text == "private" ? ACCESS_PRIVATE :
-					access_text == "protected" ? ACCESS_PROTECTED : ACCESS_PUBLIC;
-			}
-			program_->SetDirectBase(entity, base, base_access);
+			direct_bases->push_back(DirectBaseEdge(base, base_access));
+		}
+	}
+	if (!saw_base_specifier)
+		throw std::runtime_error("base clause has no base type");
+}
+
+void SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
+	TypeId type, EntityId entity, NamedFlavor flavor, ScopeId owner,
+	NameId name, NameId lookup_name, ScopeId specialization_owner,
+	NameId specialization_identity)
+{
+		if (program_->entities[entity].complete)
+			throw std::runtime_error("duplicate class definition");
+		program_->entities[entity].packing_alignment = current_pack_alignment_;
+		const NodeId base_clause = FindChild(node, "base-clause");
+		if (base_clause != kNoNode)
+		{
+			std::vector<DirectBaseEdge> direct_bases;
+			CollectClassDirectBases(
+				base_clause, scope, entity, flavor, &direct_bases);
+			program_->SetDirectBases(entity, direct_bases);
 		}
 		ScopeId member_scope = program_->entities[entity].member_scope;
 		if (member_scope == kNoScope)
@@ -490,8 +544,13 @@ bool SemanticAnalyzer::VisitZeroOffsetSubobjects(EntityId root,
 		if (zero_offset_subobject_marks_[entity] == conflict_marker) return true;
 		zero_offset_subobject_marks_[entity] = marker;
 		const EntityRecord& record = program_->entities[entity];
-		if (record.direct_base != kNoEntity)
-			zero_offset_subobject_scratch_.push_back(record.direct_base);
+		for (std::size_t base_index = 0;
+			base_index < record.direct_base_count; ++base_index)
+		{
+			const DirectBaseEdge& base = program_->DirectBase(entity, base_index);
+			if (base.offset == 0)
+				zero_offset_subobject_scratch_.push_back(base.entity);
+		}
 		if (entity >= entity_layout_members_.size()) continue;
 		const std::vector<ClassLayoutMember>& members =
 			entity_layout_members_[entity];
@@ -539,36 +598,45 @@ const EntityRecord* SemanticAnalyzer::InitializeClassBaseLayout(
 		owner.destructible = true;
 		owner.trivial_destructor = true;
 	}
-	if (owner.direct_base == kNoEntity) return 0;
-	const EntityRecord* base = &program_->entities[owner.direct_base];
-	if (!base->layout_complete)
-		throw std::runtime_error("direct base layout is incomplete");
-	const std::size_t base_alignment =
-		static_cast<std::size_t>(base->object_alignment);
-	const std::size_t effective_base_alignment = packing_alignment == 0 ?
-		base_alignment : std::min(base_alignment, packing_alignment);
-	if (owner.polymorphic_class && !base->polymorphic_class &&
-		!base->empty_class)
+	if (owner.direct_base_count == 0) return 0;
+	const EntityRecord* primary = 0;
+	for (std::size_t base_index = 0;
+		base_index < owner.direct_base_count; ++base_index)
 	{
-		owner.direct_base_offset = AlignUp(8, effective_base_alignment);
-		*size = static_cast<std::size_t>(owner.direct_base_offset) +
-			static_cast<std::size_t>(base->object_size);
+		DirectBaseEdge& edge = program_->MutableDirectBase(entity, base_index);
+		const EntityRecord* base = &program_->entities[edge.entity];
+		if (!base->layout_complete)
+			throw std::runtime_error("direct base layout is incomplete");
+		if (base_index == 0) primary = base;
+		const std::size_t base_alignment =
+			static_cast<std::size_t>(base->object_alignment);
+		const std::size_t effective_base_alignment = packing_alignment == 0 ?
+			base_alignment : std::min(base_alignment, packing_alignment);
+		std::size_t offset = 0;
+		if (!base->empty_class)
+		{
+			if (base_index == 0 && owner.polymorphic_class &&
+				!base->polymorphic_class)
+				offset = AlignUp(std::max<std::size_t>(*size, 8),
+					effective_base_alignment);
+			else offset = AlignUp(*size, effective_base_alignment);
+			if (offset > std::numeric_limits<std::size_t>::max() -
+				static_cast<std::size_t>(base->object_size))
+				throw std::runtime_error("class layout is too large");
+			*size = offset + static_cast<std::size_t>(base->object_size);
+		}
+		edge.offset = offset;
+		if (base_index == 0) owner.direct_base_offset = offset;
+		*natural_alignment = std::max(*natural_alignment, base_alignment);
+		*alignment = std::max(*alignment, effective_base_alignment);
+		if (!base->destructible) owner.destructible = false;
+		if (!base->trivial_destructor) owner.trivial_destructor = false;
+		const BindingId destructor = DestructorForType(base->type);
+		if (destructor == kNoBinding ||
+			!CanAccessMember(destructor, edge.entity))
+			owner.destructible = false;
 	}
-	else
-	{
-		owner.direct_base_offset = 0;
-		*size = base->empty_class ? 0 :
-			static_cast<std::size_t>(base->object_size);
-	}
-	*natural_alignment = std::max(*natural_alignment, base_alignment);
-	*alignment = effective_base_alignment;
-	if (!base->destructible) owner.destructible = false;
-	if (!base->trivial_destructor) owner.trivial_destructor = false;
-	const BindingId destructor = DestructorForType(base->type);
-	if (destructor == kNoBinding ||
-		!CanAccessMember(destructor, owner.direct_base))
-		owner.destructible = false;
-	return base;
+	return primary;
 }
 
 void SemanticAnalyzer::CompleteClassMemberDestructionFacts(EntityId entity,
@@ -609,6 +677,34 @@ void SemanticAnalyzer::CompleteClassMemberDestructionFacts(EntityId entity,
 	}
 }
 
+bool SemanticAnalyzer::ClassBasesAreEmpty(EntityId entity) const
+{
+	const EntityRecord& owner = program_->entities[entity];
+	for (std::size_t base_index = 0;
+		base_index < owner.direct_base_count; ++base_index)
+		if (!program_->entities[
+			program_->DirectBase(entity, base_index).entity].empty_class)
+			return false;
+	return true;
+}
+
+void SemanticAnalyzer::InitializeImplicitBaseConstructorFacts(EntityId entity)
+{
+	EntityRecord& owner = program_->entities[entity];
+	owner.default_constructible = true;
+	owner.trivial_default_constructor = !owner.polymorphic_class;
+	for (std::size_t base_index = 0;
+		base_index < owner.direct_base_count; ++base_index)
+	{
+		const EntityRecord& base = program_->entities[
+			program_->DirectBase(entity, base_index).entity];
+		if (!base.default_constructible)
+			owner.default_constructible = false;
+		if (!base.trivial_default_constructor)
+			owner.trivial_default_constructor = false;
+	}
+}
+
 void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 {
 	EntityRecord& owner = program_->entities[entity];
@@ -622,7 +718,7 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 	const EntityRecord* base = InitializeClassBaseLayout(entity,
 		packing_alignment, &size, &alignment, &natural_alignment);
 	const bool is_union = owner.flavor == NAMED_UNION;
-	bool empty_class = base == 0 || base->empty_class;
+	bool empty_class = ClassBasesAreEmpty(entity);
 	if (owner.polymorphic_class)
 	{
 		empty_class = false;
@@ -646,19 +742,7 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 	owner.is_aggregate = !owner.has_user_provided_constructor &&
 		!owner.has_direct_base && !owner.polymorphic_class;
 	if (implicit_default_constructor)
-	{
-		owner.default_constructible = true;
-		owner.trivial_default_constructor = true;
-		if (owner.polymorphic_class)
-			owner.trivial_default_constructor = false;
-		if (base)
-		{
-			if (!base->default_constructible)
-				owner.default_constructible = false;
-			if (!base->trivial_default_constructor)
-				owner.trivial_default_constructor = false;
-		}
-	}
+		InitializeImplicitBaseConstructorFacts(entity);
 	bool active_bit_unit = false;
 	std::size_t active_bit_offset = 0;
 	std::size_t active_bit_size = 0;
@@ -775,9 +859,16 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 		}
 		else
 		{
-			if (size == 0 && ZeroOffsetSubobjectConflict(
-				owner.direct_base, layout.type))
-				size = 1;
+			if (size == 0)
+				for (std::size_t base_index = 0;
+					base_index < owner.direct_base_count; ++base_index)
+					if (program_->DirectBase(entity, base_index).offset == 0 &&
+						ZeroOffsetSubobjectConflict(program_->DirectBase(
+							entity, base_index).entity, layout.type))
+					{
+						size = 1;
+						break;
+					}
 			size = AlignUp(size, member_alignment);
 			member->member_offset = size;
 			if (size > std::numeric_limits<std::size_t>::max() - member_size)

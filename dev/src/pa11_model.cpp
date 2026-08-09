@@ -545,6 +545,7 @@ EntityRecord::EntityRecord()
 	  direct_base(kNoEntity), enclosing_class(kNoEntity),
 	  local_context(kNoBinding),
 	  template_argument_begin(kNoBinding), template_argument_count(0),
+	  direct_base_begin(0), direct_base_count(0),
 	  flavor(NAMED_NONE), type(kNoType),
 	  underlying(kNoType), declaration(kNoBinding),
 	  union_default_member(kNoBinding), object_size(0),
@@ -558,6 +559,7 @@ EntityRecord::EntityRecord()
 	  destructible(true), trivial_destructor(true), has_direct_base(false),
 	  is_aggregate(false), empty_class(false), indirect_class_value_abi(false),
 	  polymorphic_class(false), abstract_class(false),
+	  nonlinear_base_graph(false),
 	  deferred_template_completion(false)
 {
 }
@@ -1413,30 +1415,61 @@ EntityId Program::EntityForScope(ScopeId scope) const
 
 void Program::SetDirectBase(EntityId derived, EntityId base, AccessKind access)
 {
-	if (derived >= entities.size() || base >= entities.size() || derived == base)
-		throw std::runtime_error("invalid direct base relationship");
-	if (entities[derived].direct_base != kNoEntity &&
-		entities[derived].direct_base != base)
-		throw std::runtime_error("multiple inheritance is outside PA16");
-	if (entities[derived].member_scope != kNoScope)
+	std::vector<DirectBaseEdge> bases(1, DirectBaseEdge(base, access));
+	SetDirectBases(derived, bases);
+}
+
+void Program::SetDirectBases(EntityId derived,
+	const std::vector<DirectBaseEdge>& bases)
+{
+	if (derived >= entities.size())
+		throw std::runtime_error("invalid direct base owner");
+	EntityRecord& record = entities[derived];
+	if (record.direct_base_count != 0)
+		throw std::runtime_error("direct bases are already fixed");
+	if (record.member_scope != kNoScope)
 		throw std::logic_error(
-			"direct base must be fixed before publishing the member scope");
-	if (entities[derived].direct_base == base)
+			"direct bases must be fixed before publishing the member scope");
+	for (std::size_t i = 0; i < bases.size(); ++i)
 	{
-		if (entities[derived].base_access != access)
-			throw std::runtime_error("inconsistent direct base access");
-		return;
+		const EntityId base = bases[i].entity;
+		if (base >= entities.size() || derived == base)
+			throw std::runtime_error("invalid direct base relationship");
+		for (std::size_t previous = 0; previous < i; ++previous)
+			if (bases[previous].entity == base)
+				throw std::runtime_error("duplicate direct base");
+		if (IsBaseOf(derived, base))
+			throw std::runtime_error("cyclic class inheritance");
+		if (base_depths_[base] == std::numeric_limits<std::uint32_t>::max())
+			throw std::runtime_error("class inheritance is too deep");
 	}
-	if (IsBaseOf(derived, base))
-		throw std::runtime_error("cyclic class inheritance");
-	if (base_depths_[base] == std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("class inheritance is too deep");
-	entities[derived].direct_base = base;
-	entities[derived].base_access = access;
-	entities[derived].has_direct_base = true;
-	base_depths_[derived] = base_depths_[base] + 1;
-	deepest_nonpublic_base_depths_[derived] = access == ACCESS_PUBLIC ?
-		deepest_nonpublic_base_depths_[base] : base_depths_[derived];
+	if (bases.size() > std::numeric_limits<std::uint32_t>::max() ||
+		direct_bases.size() > std::numeric_limits<std::uint32_t>::max() -
+			bases.size())
+		throw std::runtime_error("too many direct base relationships");
+	record.direct_base_begin = static_cast<std::uint32_t>(direct_bases.size());
+	record.direct_base_count = static_cast<std::uint32_t>(bases.size());
+	direct_bases.insert(direct_bases.end(), bases.begin(), bases.end());
+	if (bases.empty()) return;
+	record.direct_base = bases[0].entity;
+	record.base_access = bases[0].access;
+	record.has_direct_base = true;
+	std::uint32_t maximum_depth = 0;
+	std::uint32_t nonpublic_depth = 0;
+	for (std::size_t i = 0; i < bases.size(); ++i)
+	{
+		maximum_depth = std::max(maximum_depth, base_depths_[bases[i].entity]);
+		nonpublic_depth = std::max(nonpublic_depth,
+			bases[i].access == ACCESS_PUBLIC ?
+				deepest_nonpublic_base_depths_[bases[i].entity] :
+				base_depths_[bases[i].entity] + 1);
+		if (entities[bases[i].entity].nonlinear_base_graph)
+			record.nonlinear_base_graph = true;
+	}
+	record.nonlinear_base_graph = record.nonlinear_base_graph || bases.size() != 1;
+	base_depths_[derived] = maximum_depth + 1;
+	deepest_nonpublic_base_depths_[derived] = nonpublic_depth;
+	if (record.nonlinear_base_graph) return;
 	std::uint32_t remaining_depth = base_depths_[derived];
 	std::uint8_t jump_count = 0;
 	while (remaining_depth != 0)
@@ -1447,7 +1480,7 @@ void Program::SetDirectBase(EntityId derived, EntityId base, AccessKind access)
 	base_jump_offsets_[derived] = base_jumps_.size();
 	base_jump_counts_[derived] = jump_count;
 	base_jumps_.insert(base_jumps_.end(), jump_count, kNoEntity);
-	base_jumps_[base_jump_offsets_[derived]] = base;
+	base_jumps_[base_jump_offsets_[derived]] = bases[0].entity;
 	for (std::size_t level = 1; level < jump_count; ++level)
 	{
 		const EntityId previous =
@@ -1456,6 +1489,22 @@ void Program::SetDirectBase(EntityId derived, EntityId base, AccessKind access)
 			previous == kNoEntity || base_jump_counts_[previous] < level ?
 			kNoEntity : base_jumps_[base_jump_offsets_[previous] + level - 1];
 	}
+}
+
+const DirectBaseEdge& Program::DirectBase(EntityId derived,
+	std::size_t ordinal) const
+{
+	if (derived >= entities.size() || ordinal >= entities[derived].direct_base_count)
+		throw std::logic_error("invalid direct base edge query");
+	return direct_bases[entities[derived].direct_base_begin + ordinal];
+}
+
+DirectBaseEdge& Program::MutableDirectBase(EntityId derived,
+	std::size_t ordinal)
+{
+	if (derived >= entities.size() || ordinal >= entities[derived].direct_base_count)
+		throw std::logic_error("invalid direct base edge mutation");
+	return direct_bases[entities[derived].direct_base_begin + ordinal];
 }
 
 bool Program::IsBaseOf(EntityId base, EntityId derived) const
@@ -1467,8 +1516,41 @@ bool Program::QueryBasePath(EntityId derived, EntityId base,
 	std::size_t* distance, bool* all_public) const
 {
 	if (base == kNoEntity || derived == kNoEntity ||
-		base >= entities.size() || derived >= entities.size() ||
-		base_depths_[derived] < base_depths_[base]) return false;
+		base >= entities.size() || derived >= entities.size()) return false;
+	if (entities[derived].nonlinear_base_graph)
+	{
+		struct PendingBase
+		{
+			EntityId entity;
+			std::size_t distance;
+			bool all_public;
+			PendingBase(EntityId entity_, std::size_t distance_, bool public_)
+				: entity(entity_), distance(distance_), all_public(public_) {}
+		};
+		std::vector<PendingBase> pending;
+		pending.push_back(PendingBase(derived, 0, true));
+		while (!pending.empty())
+		{
+			const PendingBase current = pending.back();
+			pending.pop_back();
+			if (current.entity == base)
+			{
+				if (distance) *distance = current.distance;
+				if (all_public) *all_public = current.all_public;
+				return true;
+			}
+			const EntityRecord& current_record = entities[current.entity];
+			for (std::size_t i = current_record.direct_base_count; i != 0; --i)
+			{
+				const DirectBaseEdge& edge = DirectBase(current.entity, i - 1);
+				pending.push_back(PendingBase(edge.entity,
+					current.distance + 1,
+					current.all_public && edge.access == ACCESS_PUBLIC));
+			}
+		}
+		return false;
+	}
+	if (base_depths_[derived] < base_depths_[base]) return false;
 	const std::uint32_t difference =
 		base_depths_[derived] - base_depths_[base];
 	EntityId current = derived;
@@ -1712,16 +1794,20 @@ LookupResult Program::LookupGraph(ScopeId scope, NameId name,
 	const LookupResult local = DirectLookup(scope, name, kind);
 	if (!local.Empty()) return local;
 	const EntityId owner_entity = scopes_[scope].entity;
-	if (owner_entity != kNoEntity &&
-		entities[owner_entity].direct_base != kNoEntity)
+	if (owner_entity != kNoEntity)
 	{
-		const ScopeId target =
-			entities[entities[owner_entity].direct_base].member_scope;
-		if (target != kNoScope && lookup_marks_[target] != lookup_generation_)
+		const EntityRecord& owner_record = entities[owner_entity];
+		for (std::size_t base_index = 0;
+			base_index < owner_record.direct_base_count; ++base_index)
 		{
-			++lookup_edge_visits;
-			lookup_marks_[target] = lookup_generation_;
-			lookup_worklist_.push_back(target);
+			const ScopeId target = entities[
+				DirectBase(owner_entity, base_index).entity].member_scope;
+			if (target != kNoScope && lookup_marks_[target] != lookup_generation_)
+			{
+				++lookup_edge_visits;
+				lookup_marks_[target] = lookup_generation_;
+				lookup_worklist_.push_back(target);
+			}
 		}
 	}
 	const std::uint32_t scope_visible = FindVisibleName(scope, name);
@@ -1752,17 +1838,21 @@ LookupResult Program::LookupGraph(ScopeId scope, NameId name,
 			continue;
 		}
 		const EntityId current_entity = scopes_[current].entity;
-		if (current_entity != kNoEntity &&
-			entities[current_entity].direct_base != kNoEntity)
+		if (current_entity != kNoEntity)
 		{
-			const ScopeId target =
-				entities[entities[current_entity].direct_base].member_scope;
-			if (target != kNoScope &&
-				lookup_marks_[target] != lookup_generation_)
+			const EntityRecord& current_record = entities[current_entity];
+			for (std::size_t base_index = 0;
+				base_index < current_record.direct_base_count; ++base_index)
 			{
-				++lookup_edge_visits;
-				lookup_marks_[target] = lookup_generation_;
-				lookup_worklist_.push_back(target);
+				const ScopeId target = entities[
+					DirectBase(current_entity, base_index).entity].member_scope;
+				if (target != kNoScope &&
+					lookup_marks_[target] != lookup_generation_)
+				{
+					++lookup_edge_visits;
+					lookup_marks_[target] = lookup_generation_;
+					lookup_worklist_.push_back(target);
+				}
 			}
 		}
 		const std::uint32_t current_visible = FindVisibleName(current, name);
@@ -2625,6 +2715,7 @@ std::size_t Program::StorageBytes() const
 		lookup_pending_targets_.capacity() * sizeof(ScopeId) +
 		lookup_pending_next_.capacity() * sizeof(std::uint32_t) +
 		lookup_pending_target_marks_.capacity() * sizeof(std::uint32_t) +
+		direct_bases.capacity() * sizeof(DirectBaseEdge) +
 		base_jumps_.capacity() * sizeof(EntityId) +
 		base_jump_offsets_.capacity() * sizeof(std::size_t) +
 		base_jump_counts_.capacity() * sizeof(std::uint8_t) +
