@@ -736,6 +736,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeVariableInitializer(
 			initializer.node = BuildConstructorAction(type, scope, arguments,
 				PayloadSource(initializer_node) == "copy", true, false, true,
 				expression);
+			if (arguments.empty() &&
+				!program_->entities[class_entity].has_user_provided_constructor)
+				dump_.nodes[initializer.node].value_initialization = true;
 		}
 		else if (expression != kNoNode &&
 			arena_->IsTag(expression, "call-expression") &&
@@ -1672,7 +1675,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAggregateInit(TypeId type,
 }
 
 std::uint32_t SemanticAnalyzer::BuildAggregateConstructionAction(TypeId type,
-	std::uint32_t aggregate_list)
+	std::uint32_t aggregate_list, bool allow_array_members)
 {
 	const EntityId entity = EntityOf(type);
 	if (!IsClassEntity(*program_, entity) ||
@@ -1698,8 +1701,22 @@ std::uint32_t SemanticAnalyzer::BuildAggregateConstructionAction(TypeId type,
 		const std::uint32_t value = dump_.edges[action.first_edge].child;
 		const TypeKind kind = program_->types.Get(
 			program_->types.RemoveTopCv(action.type)).kind;
-		if (kind == TYPE_ARRAY)
+		if (kind == TYPE_ARRAY && !allow_array_members)
 			return aggregate_list;
+		if (kind == TYPE_ARRAY && allow_array_members)
+		{
+			std::vector<std::uint32_t> pending(1, value);
+			while (!pending.empty())
+			{
+				const std::uint32_t current = pending.back();
+				pending.pop_back();
+				if (dump_.nodes[current].kind == DUMP_CONSTRUCTOR_ACTION)
+					dump_.nodes[current].elide_empty_constructor = false;
+				for (std::uint32_t child = dump_.nodes[current].first_edge;
+					child != kNoDumpEdge; child = dump_.edges[child].next)
+					pending.push_back(dump_.edges[child].child);
+			}
+		}
 		members.push_back(action.binding);
 		const TypeId adjusted = AdjustParameterType(action.type);
 		parameter_types.push_back(adjusted);
@@ -2149,6 +2166,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
 		else
 		{
 			std::vector<NodeId> constructor_arguments;
+			std::vector<ExpressionInfo> prepared_constructor_arguments;
 			const bool list = initializer != kNoNode &&
 				arena_->IsTag(initializer, "braced-init-list");
 			if (initializer != kNoNode &&
@@ -2156,9 +2174,16 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
 				for (std::uint32_t edge = arena_->FirstEdge(initializer);
 					edge != kNoEdge; edge = arena_->NextEdge(edge))
 					constructor_arguments.push_back(arena_->EdgeChild(edge));
+			const std::vector<NodeId> original_constructor_arguments =
+				constructor_arguments;
+			const bool expanded_constructor_arguments = ExpandCallArgumentPacks(
+				original_constructor_arguments, scope, &constructor_arguments,
+				&prepared_constructor_arguments);
 			construction = BuildConstructorAction(object_type, scope,
 				constructor_arguments, false, list, false, true,
-				list ? initializer : kNoNode);
+				list ? initializer : kNoNode,
+				expanded_constructor_arguments ?
+					&prepared_constructor_arguments : 0);
 			const DumpNode& action = dump_.nodes[construction];
 			if (action.binding != kNoBinding &&
 				GetFunction(action.binding).implicit_constructor &&
@@ -2178,6 +2203,31 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
 		}
 		else if (arena_->IsTag(initializer, "paren-initializer"))
 		{
+			std::vector<NodeId> scalar_syntax;
+			for (std::uint32_t edge = arena_->FirstEdge(initializer);
+				edge != kNoEdge; edge = arena_->NextEdge(edge))
+				scalar_syntax.push_back(arena_->EdgeChild(edge));
+			std::vector<NodeId> expanded_syntax;
+			std::vector<ExpressionInfo> expanded_values;
+			if (ExpandCallArgumentPacks(scalar_syntax, scope,
+				&expanded_syntax, &expanded_values))
+			{
+				if (expanded_values.size() > 1)
+					throw std::runtime_error(
+						"scalar new has multiple initializers");
+				if (expanded_values.empty())
+				{
+					ExpressionInfo zero = MakeLiteral(object_type,
+						program_->names.Intern("0"));
+					zero.constant = true;
+					zero.value = 0;
+					construction = zero.node;
+				}
+				else construction = ApplyTarget(
+					expanded_values[0], object_type).node;
+			}
+			else
+			{
 			const std::uint32_t first = arena_->FirstEdge(initializer);
 			if (first == kNoEdge)
 			{
@@ -2194,6 +2244,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
 						"scalar new has multiple initializers");
 				construction = AnalyzeExpression(arena_->EdgeChild(first),
 					scope, object_type).node;
+			}
 			}
 		}
 		else construction = AnalyzeExpression(
@@ -2370,79 +2421,6 @@ ExpressionInfo SemanticAnalyzer::MaterializeDiscardedClassResult(
 	discarded = MaterializeDiscardedClassResult(discarded);
 	dump_.edges[edge].child = discarded.node;
 	return value;
-}
-
-ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
-	ScopeId scope, const std::vector<NodeId>& argument_syntax,
-	NodeId arguments_node, TypeId target)
-{
-	const EntityId cast_entity = EntityOf(cast_type);
-	if (argument_syntax.size() == 1)
-	{
-		const ExpressionInfo operand =
-			AnalyzeExpression(argument_syntax[0], scope);
-		if (operand.type != kNoType && EntityOf(operand.type) != kNoEntity &&
-			ConvertingFunction(operand, cast_type, true).rank !=
-				CONVERSION_INVALID)
-		{
-			ExpressionInfo converted =
-				ApplyExplicitConversion(operand, cast_type);
-			converted = MaterializeTemporary(converted);
-			return target == kNoType ? converted : ApplyTarget(converted, target);
-		}
-	}
-	if (program_->entities[cast_entity].is_aggregate &&
-		arguments_node != kNoNode &&
-		arena_->IsTag(arguments_node, "braced-init-list"))
-	{
-		ExpressionInfo result = AnalyzeBracedInit(
-			arguments_node, scope, cast_type);
-		if (target == kNoType) return MaterializeTemporary(result);
-		return IsIntegral(target, true) ?
-			ApplyClassObjectTarget(result, target) : result;
-	}
-	if (program_->entities[cast_entity].is_aggregate && argument_syntax.empty())
-	{
-		if (target == kNoType)
-		{
-			const std::vector<NodeId> no_arguments;
-			ExpressionInfo initialized;
-			initialized.node = BuildConstructorAction(
-				cast_type, scope, no_arguments, false, false);
-			initialized.type = cast_type;
-			initialized.category = VALUE_PRVALUE;
-			dump_.nodes[initialized.node].value_initialization = true;
-			return MaterializeTemporary(initialized);
-		}
-		std::uint32_t empty = kNoEdge;
-		ExpressionInfo result = AnalyzeAggregateInit(cast_type, scope, &empty);
-		dump_.nodes[result.node].value_initialization = true;
-		if (program_->entities[cast_entity].empty_class)
-		{
-			const std::vector<NodeId> no_arguments;
-			const std::uint32_t constructor = BuildConstructorAction(
-				cast_type, scope, no_arguments, false, false, false, false);
-			dump_.nodes[constructor].value_initialization = true;
-			dump_.nodes[result.node].value_constructor = constructor;
-		}
-		if (target != kNoType && IsIntegral(target, true))
-			return ApplyClassObjectTarget(result, target);
-		return result;
-	}
-	ExpressionInfo result;
-	result.node = BuildConstructorAction(cast_type, scope, argument_syntax,
-		false, arguments_node != kNoNode &&
-		arena_->IsTag(arguments_node, "braced-init-list"), false, true,
-		arguments_node != kNoNode &&
-		arena_->IsTag(arguments_node, "braced-init-list") ?
-			arguments_node : kNoNode);
-	result.type = cast_type;
-	result.category = VALUE_PRVALUE;
-	if (argument_syntax.empty() &&
-		!program_->entities[cast_entity].has_user_provided_constructor)
-		dump_.nodes[result.node].value_initialization = true;
-	return target == kNoType ? MaterializeTemporary(result) :
-		ApplyTarget(result, target);
 }
 
 void SemanticAnalyzer::AddDefaultConstructor(std::uint32_t variable,

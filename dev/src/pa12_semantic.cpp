@@ -1049,6 +1049,14 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	result.type = result_type;
 	result.category = category;
 	result.binding = selected;
+	std::int64_t constexpr_value = 0;
+	if (!object && TryEvaluateConstexprFunction(
+		selected, arguments, &constexpr_value))
+	{
+		result.constant = true;
+		result.value = NormalizeIntegralConstant(result_type, constexpr_value);
+		RecordExpressionFacts(result);
+	}
 	DemandFunction(selected);
 	++expression_count_;
 	return ApplyTarget(result, target);
@@ -1675,7 +1683,38 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 	const NodeId operand = FirstSemanticChild(node);
 	if (operand == kNoNode) throw std::runtime_error("empty sizeof");
 	TypeId measured = kNoType;
-	if (arena_->IsTag(operand, "type-id")) measured = BuildTypeId(operand, scope);
+	if (arena_->IsTag(operand, "type-id"))
+	{
+		const NodeId specifiers = FindChild(operand, "type-specifier-seq");
+		const NodeId name = specifiers == kNoNode ? kNoNode :
+			FirstSemanticChild(specifiers);
+		const NodeId declarator = FindChild(operand, "abstract-declarator");
+		const NodeId clause = declarator == kNoNode ? kNoNode :
+			FindChild(declarator, "parameter-clause");
+		NamePath base;
+		std::vector<TypeId> explicit_arguments;
+		const bool ambiguous_function_call = name != kNoNode &&
+			arena_->IsTag(name, "type-name") && clause != kNoNode &&
+			FirstSemanticChild(clause) == kNoNode &&
+			ParseExplicitTemplateArguments(
+				name, scope, &base, &explicit_arguments);
+		if (ambiguous_function_call)
+		{
+			const std::vector<std::size_t> patterns =
+				FindFunctionTemplates(scope, base);
+			std::vector<BindingId> candidates;
+			const std::vector<ExpressionInfo> no_arguments;
+			DeduceFunctionTemplatePatterns(patterns, no_arguments,
+				&candidates, &explicit_arguments);
+			if (candidates.size() == 1)
+				measured = program_->types.Get(
+					GetFunction(candidates[0]).type).child;
+			else if (!candidates.empty())
+				throw std::runtime_error(
+					"ambiguous function template in sizeof expression");
+		}
+		if (measured == kNoType) measured = BuildTypeId(operand, scope);
+	}
 	else if (arena_->IsTag(operand, "id-expression"))
 	{
 		const std::string spelling = arena_->Payload(operand);
@@ -1738,6 +1777,9 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 		const NodeId child = arena_->EdgeChild(edge);
 		if (child != clause) target = child;
 	}
+	if (clause != kNoNode && list == kNoNode && target != kNoNode &&
+		AnalyzeExplicitTemplateSpecialization(target, scope, member_access))
+		return;
 	if (target != kNoNode)
 		ValidateRetainedTemplateDefinition(target, scope, parameters);
 	// Alias templates are outside PA20.  Retain their parsed declaration as an
@@ -1754,7 +1796,7 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 		return;
 	}
 	if (target != kNoNode && RetainVariableTemplate(
-		target, scope, parameter_name_list, defaults)) return;
+		target, scope, parameters)) return;
 	if (target == kNoNode ||
 		(!arena_->IsTag(target, "simple-declaration") &&
 		 !arena_->IsTag(target, "function-definition")))
@@ -2383,6 +2425,9 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	ValidateFunctionRefQualifier(binding);
 	ValidateNonmemberOperator(binding);
 	FunctionInfo& function = GetMutableFunction(binding);
+	function.constexpr_function =
+		function.constexpr_function || spec.is_constexpr;
+	function.definition_body = FindChild(node, "compound-statement");
 	if (deferred_member_definition)
 	{
 		if (declaration_class == kNoEntity ||

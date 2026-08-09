@@ -533,13 +533,24 @@ struct ClassTemplateMemberPattern
 		: lexical_scope(kNoScope), declaration(kNoNode) {}
 };
 
+struct ClassTemplatePartialPattern
+{
+	ScopeId lexical_scope;
+	NodeId declaration;
+	std::vector<TemplateParameter> parameters;
+	std::vector<NodeId> arguments;
+
+	ClassTemplatePartialPattern()
+		: lexical_scope(kNoScope), declaration(kNoNode) {}
+};
+
 struct VariableTemplatePattern
 {
 	ScopeId owner, lexical_scope;
 	NameId name;
 	NodeId declaration, specifiers, declarator, initializer;
-	std::vector<NameId> type_parameters;
-	std::vector<NodeId> default_arguments;
+	std::vector<TemplateParameter> parameters;
+	std::vector<NodeId> specialization_arguments;
 	bool partial_specialization;
 
 	VariableTemplatePattern()
@@ -561,6 +572,7 @@ struct ClassTemplatePattern
 	// another retained definition.
 	std::deque<ClassTemplateMemberPattern> member_definitions;
 	std::deque<ClassTemplateMemberPattern> demanded_member_definitions;
+	std::deque<ClassTemplatePartialPattern> partial_specializations;
 	EntityId marker_entity;
 	bool defined;
 

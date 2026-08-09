@@ -296,10 +296,10 @@ struct Parameter
 	enum Alias : std::uint8_t { ALIAS_DEFAULT, ALIAS_NOALIAS } alias;
 	std::string name;
 	LowType type;
-	bool reference, indirect_result, by_address;
+	bool reference, decay, indirect_result, by_address;
 
 	Parameter() : capture(CAPTURE_DEFAULT), access(ACCESS_DEFAULT),
-		alias(ALIAS_DEFAULT), reference(false), indirect_result(false),
+		alias(ALIAS_DEFAULT), reference(false), decay(false), indirect_result(false),
 		by_address(false) {}
 };
 

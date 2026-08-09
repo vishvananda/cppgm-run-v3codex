@@ -1,7 +1,9 @@
 #include "pa12_semantic_detail.h"
 
 #include <algorithm>
+#include <cctype>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
@@ -26,6 +28,487 @@ bool SyntaxUsesTemplateParameter(const SyntaxArena& arena, NodeId node,
 	return false;
 }
 
+std::string ExplicitArgumentPresentation(const Program& program,
+	const TemplateArgument& argument)
+{
+	if (argument.kind == TEMPLATE_ARGUMENT_TYPE)
+	{
+		std::string result = program.RenderType(argument.type);
+		const char* prefixes[] = {"struct ", "class ", "union ", "enum "};
+		for (std::size_t prefix = 0; prefix < 4; ++prefix)
+		{
+			const std::size_t length =
+				std::char_traits<char>::length(prefixes[prefix]);
+			if (result.compare(0, length, prefixes[prefix]) == 0)
+			{
+				result.erase(0, length);
+				break;
+			}
+		}
+		return result;
+	}
+	const TypeId type = program.types.RemoveTopCv(argument.type);
+	const TypeRecord& record = program.types.Get(type);
+	if (record.kind == TYPE_NAMED && record.entity != kNoEntity &&
+		program.entities[record.entity].flavor == NAMED_ENUM)
+		return "(" + program.names.Get(program.entities[record.entity].name) +
+			")" + std::to_string(argument.value);
+	return std::to_string(argument.value);
+}
+
+std::string ExplicitClassSpecializationName(const Program& program,
+	NameId primary, const std::vector<TemplateArgument>& arguments)
+{
+	std::string source = program.names.Get(primary) + "<";
+	for (std::size_t i = 0; i < arguments.size(); ++i)
+	{
+		if (i != 0) source += ", ";
+		source += ExplicitArgumentPresentation(program, arguments[i]);
+	}
+	source += '>';
+	std::string result;
+	result.reserve(source.size());
+	for (std::size_t i = 0; i < source.size(); ++i)
+	{
+		const unsigned char character =
+			static_cast<unsigned char>(source[i]);
+		result += std::isalnum(character) || character == '_' ?
+			static_cast<char>(character) : '_';
+	}
+	return result;
+}
+
+}
+
+bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
+	NodeId target, ScopeId scope, AccessKind)
+{
+	NodeId declarator = FindChild(target, "declarator");
+	if (arena_->IsTag(target, "simple-declaration"))
+	{
+		const NodeId list = FindChild(target, "init-declarator-list");
+		const NodeId item = list == kNoNode ? kNoNode :
+			FirstSemanticChild(list);
+		declarator = item == kNoNode ? kNoNode :
+			FindChild(item, "declarator");
+	}
+	const NodeId structure =
+		arena_->IsTag(target, "class-specifier") ||
+		arena_->IsTag(target, "class-forward-declaration") ?
+		FindChild(target, "structured-type-name") :
+		declarator == kNoNode ? kNoNode :
+		DeclaratorNameStructure(declarator);
+	if (structure == kNoNode) return false;
+
+	// A concrete out-of-class member specialization names its class template-id
+	// before the terminal member.  Complete that canonical owner once and feed
+	// the declaration through the ordinary member-definition boundary.
+	std::vector<NodeId> components;
+	NamePath structured_path;
+	structured_path.global =
+		FindChild(structure, "global-qualifier") != kNoNode;
+	for (std::uint32_t edge = arena_->FirstEdge(structure);
+		edge != kNoEdge; edge = arena_->NextEdge(edge))
+	{
+		const NodeId child = arena_->EdgeChild(edge);
+		if (!arena_->IsTag(child, "name-component")) continue;
+		components.push_back(child);
+		structured_path.Push(program_->names.UseInterned(
+			arena_->SemanticPayloadId(child)));
+	}
+	for (std::size_t component = 0;
+		component + 1 < components.size(); ++component)
+	{
+		const NodeId list = FindChild(
+			components[component], "template-type-argument-list");
+		if (list == kNoNode) continue;
+		NamePath primary;
+		primary.global = structured_path.global;
+		for (std::size_t i = 0; i <= component; ++i)
+			primary.Push(structured_path[i]);
+		const std::size_t pattern_index = FindClassTemplate(scope, primary);
+		if (pattern_index == std::numeric_limits<std::size_t>::max())
+			throw std::runtime_error(
+				"explicit member specialization owner was not found");
+		const ClassTemplatePattern& pattern =
+			class_templates_[pattern_index];
+		std::vector<NodeId> argument_syntax;
+		for (std::uint32_t edge = arena_->FirstEdge(list);
+			edge != kNoEdge; edge = arena_->NextEdge(edge))
+			argument_syntax.push_back(arena_->EdgeChild(edge));
+		std::vector<TemplateArgument> arguments;
+		if (!BuildTemplateArguments(pattern.parameters, argument_syntax,
+			scope, pattern.lexical_scope, &arguments))
+			throw std::runtime_error(
+				"invalid explicit member specialization arguments");
+		const BindingId owner = InstantiateClassTemplate(
+			pattern_index, arguments);
+		const EntityId entity = owner == kNoBinding ? kNoEntity :
+			EntityOf(program_->bindings[owner].type);
+		if (entity == kNoEntity || !program_->entities[entity].complete ||
+			program_->entities[entity].member_scope == kNoScope)
+			throw std::runtime_error(
+				"explicit member specialization has incomplete owner");
+		const ScopeId definition_scope = NewScope(
+			program_->entities[entity].member_scope,
+			SCOPE_TEMPLATE_PARAMETERS, 0,
+			ScopePrefixId(program_->entities[entity].member_scope));
+		if (arena_->IsTag(target, "simple-declaration"))
+			AnalyzeSimple(target, definition_scope, root_, false, true, true);
+		else if (arena_->IsTag(target, "function-definition"))
+			AnalyzeFunction(target, definition_scope, root_, true);
+		else throw std::runtime_error(
+			"unsupported explicit member specialization");
+		return true;
+	}
+
+	NamePath primary;
+	std::vector<NodeId> argument_syntax;
+	if (!CollectExplicitTemplateArguments(
+		structure, &primary, &argument_syntax)) return false;
+
+	if (arena_->IsTag(target, "class-specifier") ||
+		arena_->IsTag(target, "class-forward-declaration"))
+	{
+		const LookupResult found = LookupPath(scope, primary, LOOKUP_TYPE);
+		const std::size_t pattern_index =
+			FindClassTemplateIndex(found, primary.Last());
+		if (pattern_index == std::numeric_limits<std::size_t>::max())
+			throw std::runtime_error(
+				"explicit class specialization primary was not found");
+		ClassTemplatePattern& pattern = class_templates_[pattern_index];
+		std::vector<TemplateArgument> arguments;
+		if (!BuildTemplateArguments(pattern.parameters, argument_syntax,
+			scope, pattern.lexical_scope, &arguments))
+			throw std::runtime_error(
+				"invalid explicit class specialization arguments");
+		for (std::size_t i = 0; i < arguments.size(); ++i)
+			if (arguments[i].IsDependent())
+				throw std::runtime_error(
+					"dependent explicit class specialization");
+
+		++template_specialization_requests_;
+		const TemplateSpecializationKey key(pattern_index, arguments);
+		BindingId binding = class_template_instantiations_.Find(key);
+		TypeId type = kNoType;
+		EntityId entity = kNoEntity;
+		const ScopeId specialization_scope =
+			BindClassTemplateArguments(pattern, arguments);
+		if (binding != kNoBinding)
+		{
+			++template_specialization_cache_hits_;
+			type = program_->bindings[binding].type;
+			entity = EntityOf(type);
+			if (entity == kNoEntity)
+				throw std::logic_error(
+					"explicit class specialization cache has no entity");
+			if (program_->entities[entity].complete)
+				throw std::runtime_error(
+					"explicit specialization follows completed instantiation");
+			const BindingRecord& declaration = program_->bindings[
+				program_->entities[entity].declaration];
+			const NodeId key_node = FindChild(target, "class-key");
+			const std::string key_text = PayloadSource(key_node);
+			const NamedFlavor flavor = key_text == "struct" ? NAMED_STRUCT :
+				key_text == "class" ? NAMED_CLASS :
+				key_text == "union" ? NAMED_UNION : NAMED_NONE;
+			if (flavor == NAMED_NONE)
+				throw std::runtime_error("invalid explicit specialization class-key");
+			CompleteClassDefinition(target, specialization_scope, type, entity,
+				flavor, pattern.owner, declaration.name, declaration.name,
+				pattern.owner, pattern.name);
+		}
+		else
+		{
+			const std::string name = ExplicitClassSpecializationName(
+				*program_, pattern.name, arguments);
+			type = AnalyzeClass(target, specialization_scope, std::string(),
+				false, name, pattern.owner, pattern.name, true,
+				program_->names.Intern(name));
+			entity = EntityOf(type);
+			if (entity == kNoEntity ||
+				program_->entities[entity].declaration == kNoBinding)
+				throw std::logic_error(
+					"explicit class specialization has no declaration");
+			binding = program_->entities[entity].declaration;
+		}
+		if (program_->entities[entity].template_argument_begin == kNoBinding)
+			StoreTemplateArguments(arguments,
+				&program_->entities[entity].template_argument_begin,
+				&program_->entities[entity].template_argument_count);
+		if (class_template_pattern_by_entity_.size() <= entity)
+			class_template_pattern_by_entity_.resize(
+				static_cast<std::size_t>(entity) + 1, kNoDumpEdge);
+		class_template_pattern_by_entity_[entity] =
+			static_cast<std::uint32_t>(pattern_index);
+		class_template_instantiations_.Insert(key, binding);
+		if (std::find(pattern.specialization_bindings.begin(),
+			pattern.specialization_bindings.end(), binding) ==
+			pattern.specialization_bindings.end())
+			pattern.specialization_bindings.push_back(binding);
+		if (class_template_specialization_states_.size() <= binding)
+			class_template_specialization_states_.resize(
+				static_cast<std::size_t>(binding) + 1, 0);
+		class_template_specialization_states_[binding] = 2;
+		return true;
+	}
+
+	if (declarator == kNoNode) return false;
+	const NodeId specifiers = FindChild(target, "decl-specifier-seq");
+	if (specifiers == kNoNode) return false;
+	const SpecInfo spec = BuildSpecifiers(
+		specifiers, scope, std::string(), true);
+	const DeclaratorInfo parsed = BuildDeclarator(
+		declarator, spec.type, scope);
+	if (!program_->types.IsFunction(parsed.type)) return false;
+	const std::vector<std::size_t> patterns =
+		FindFunctionTemplates(scope, primary);
+	BindingId selected = kNoBinding;
+	for (std::size_t i = 0; i < patterns.size(); ++i)
+	{
+		const FunctionTemplatePattern& pattern = function_templates_[patterns[i]];
+		std::vector<TemplateArgument> arguments;
+		if (!BuildTemplateArguments(pattern.parameters, argument_syntax,
+			scope, pattern.lexical_scope, &arguments)) continue;
+		std::vector<std::uint32_t> offsets;
+		if (!BuildFunctionTemplateArgumentOffsets(
+			pattern.parameters, arguments.size(), &offsets)) continue;
+		const BindingId candidate = InstantiateFunctionTemplate(
+			patterns[i], arguments, offsets);
+		if (candidate == kNoBinding ||
+			GetFunction(candidate).type != parsed.type) continue;
+		if (selected != kNoBinding && selected != candidate)
+			throw std::runtime_error(
+				"ambiguous explicit function specialization");
+		selected = candidate;
+	}
+	if (selected == kNoBinding)
+		throw std::runtime_error(
+			"explicit function specialization primary was not found");
+	FunctionInfo& function = GetMutableFunction(selected);
+	function.parameters = parsed.parameters;
+	function.defined = arena_->IsTag(target, "function-definition");
+	function.deferred = true;
+	function.definition_body = FindChild(target, "compound-statement");
+	function.lexical_scope = scope;
+	program_->bindings[selected].nonthrowing =
+		IsNonthrowing(declarator, scope);
+	PublishInlineFunctionFacts(selected, spec.inline_specifier);
+	ValidateFunctionRefQualifier(selected);
+	ValidateNonmemberOperator(selected);
+	return true;
+}
+
+std::vector<std::size_t> SemanticAnalyzer::FindVariableTemplates(
+	ScopeId scope, const NamePath& path)
+{
+	std::vector<std::size_t> result;
+	if (path.Empty()) return result;
+	if (path.global || path.Size() > 1)
+	{
+		const ScopeId owner = ResolveOwner(scope, path);
+		if (owner == kNoScope) return result;
+		const std::uint64_t key =
+			(static_cast<std::uint64_t>(owner) << 32) | path.Last();
+		const CompactIndexSequence* found = variable_template_sets_.Find(key);
+		if (found)
+			for (std::size_t i = 0; i < found->Size(); ++i)
+				result.push_back((*found)[i]);
+		return result;
+	}
+	for (ScopeId owner = scope; owner != kNoScope;
+		owner = program_->ParentScope(owner))
+	{
+		const std::uint64_t key =
+			(static_cast<std::uint64_t>(owner) << 32) | path.Last();
+		const CompactIndexSequence* found = variable_template_sets_.Find(key);
+		if (!found) continue;
+		for (std::size_t i = 0; i < found->Size(); ++i)
+			result.push_back((*found)[i]);
+		break;
+	}
+	return result;
+}
+
+BindingId SemanticAnalyzer::InstantiateVariableTemplate(
+	NodeId syntax, ScopeId scope)
+{
+	NamePath path;
+	std::vector<NodeId> argument_syntax;
+	if (!CollectExplicitTemplateArguments(
+		syntax, &path, &argument_syntax)) return kNoBinding;
+	const std::vector<std::size_t> related =
+		FindVariableTemplates(scope, path);
+	std::size_t primary_index = variable_templates_.size();
+	for (std::size_t i = 0; i < related.size(); ++i)
+		if (!variable_templates_[related[i]].partial_specialization)
+		{
+			primary_index = related[i];
+			break;
+		}
+	if (primary_index == variable_templates_.size()) return kNoBinding;
+	const VariableTemplatePattern& primary = variable_templates_[primary_index];
+	std::vector<TemplateArgument> arguments;
+	if (!BuildTemplateArguments(primary.parameters, argument_syntax,
+		scope, primary.lexical_scope, &arguments)) return kNoBinding;
+
+	++template_specialization_requests_;
+	const TemplateSpecializationKey key(primary_index, arguments);
+	BindingId cached = variable_template_instantiations_.Find(key);
+	if (cached != kNoBinding)
+	{
+		++template_specialization_cache_hits_;
+		return cached;
+	}
+
+	std::size_t selected_index = primary_index;
+	std::vector<TemplateArgument> selected_bindings = arguments;
+	for (std::size_t candidate_ordinal = 0;
+		candidate_ordinal < related.size(); ++candidate_ordinal)
+	{
+		const std::size_t candidate_index = related[candidate_ordinal];
+		const VariableTemplatePattern& candidate =
+			variable_templates_[candidate_index];
+		if (!candidate.partial_specialization) continue;
+		while (function_template_shape_parameters_.size() <
+			candidate.parameters.size())
+		{
+			std::ostringstream generated;
+			generated << "__function_template_parameter_shape_"
+				<< function_template_shape_parameters_.size();
+			const NameId name = program_->names.Intern(generated.str());
+			const EntityId entity = program_->NewEntity(name,
+				NAMED_TYPENAME_PARAMETER, false, kNoType,
+				program_->GlobalScope(), name);
+			function_template_shape_parameters_.push_back(
+				program_->types.Named(entity));
+		}
+		const ScopeId shape_scope = NewScope(candidate.lexical_scope,
+			SCOPE_TEMPLATE_PARAMETERS, 0,
+			ScopePrefixId(candidate.lexical_scope));
+		for (std::size_t parameter = 0;
+			parameter < candidate.parameters.size(); ++parameter)
+		{
+			const TemplateParameter& record = candidate.parameters[parameter];
+			if (record.name == 0) continue;
+			if (record.kind == TEMPLATE_ARGUMENT_TYPE)
+				program_->AddBinding(shape_scope, BIND_TYPE_ALIAS, record.name,
+					function_template_shape_parameters_[parameter]);
+			else program_->AddBinding(shape_scope, BIND_PARAMETER, record.name,
+				record.dependent_type ?
+					program_->types.Fundamental(FUND_INT) : record.value_type,
+				false, static_cast<std::int64_t>(parameter));
+		}
+		std::vector<TemplateArgument> pattern_arguments;
+		if (!BuildTemplateArguments(primary.parameters,
+			candidate.specialization_arguments, shape_scope,
+			primary.lexical_scope, &pattern_arguments) ||
+			pattern_arguments.size() != arguments.size()) continue;
+		std::vector<TypeId> deduced_types(
+			candidate.parameters.size(), kNoType);
+		std::vector<TemplateArgument> bindings(candidate.parameters.size());
+		bool match = true;
+		for (std::size_t argument = 0;
+			argument < arguments.size() && match; ++argument)
+		{
+			if (pattern_arguments[argument].kind != arguments[argument].kind)
+			{
+				match = false;
+				break;
+			}
+			if (arguments[argument].kind == TEMPLATE_ARGUMENT_TYPE)
+			{
+				const TypeId pattern_type = pattern_arguments[argument].type;
+				match = FunctionTemplateTypeIsDependent(pattern_type) ?
+					DeduceFunctionTemplateType(pattern_type,
+						arguments[argument].type, &deduced_types) :
+					pattern_type == arguments[argument].type;
+			}
+			else if (pattern_arguments[argument].IsDependent())
+			{
+				const std::size_t parameter =
+					pattern_arguments[argument].dependent_parameter;
+				if (parameter >= bindings.size()) match = false;
+				else if (bindings[parameter].type != kNoType &&
+					bindings[parameter] != arguments[argument]) match = false;
+				else bindings[parameter] = arguments[argument];
+			}
+			else match = pattern_arguments[argument] == arguments[argument];
+		}
+		for (std::size_t parameter = 0;
+			parameter < candidate.parameters.size() && match; ++parameter)
+		{
+			bindings[parameter].kind = candidate.parameters[parameter].kind;
+			if (candidate.parameters[parameter].kind == TEMPLATE_ARGUMENT_TYPE)
+			{
+				if (deduced_types[parameter] == kNoType) match = false;
+				else bindings[parameter].type = deduced_types[parameter];
+			}
+			else if (bindings[parameter].type == kNoType) match = false;
+		}
+		if (!match) continue;
+		selected_index = candidate_index;
+		selected_bindings.swap(bindings);
+	}
+
+	const VariableTemplatePattern& selected =
+		variable_templates_[selected_index];
+	const ScopeId substitution_scope = NewScope(selected.lexical_scope,
+		SCOPE_TEMPLATE_PARAMETERS, 0, ScopePrefixId(selected.lexical_scope));
+	if (selected.parameters.size() != selected_bindings.size())
+		throw std::logic_error(
+			"variable template substitution shape is invalid");
+	for (std::size_t parameter = 0;
+		parameter < selected.parameters.size(); ++parameter)
+		BindTemplateArgument(substitution_scope,
+			selected.parameters[parameter], selected_bindings[parameter]);
+	const SpecInfo spec = BuildSpecifiers(selected.specifiers,
+		substitution_scope, std::string(), true);
+	DeclaratorInfo parsed = BuildDeclarator(selected.declarator,
+		spec.type, substitution_scope);
+	if (program_->types.IsFunction(parsed.type))
+		throw std::runtime_error("variable template declares a function");
+	if (spec.is_constexpr)
+		parsed.type = program_->types.Qualify(parsed.type, CV_CONST);
+	std::ostringstream generated;
+	generated << "__variable_template_" << primary_index << '_';
+	for (std::size_t i = 0; i < arguments.size(); ++i)
+		generated << arguments[i].kind << '_' << arguments[i].type << '_'
+			<< arguments[i].value << '_';
+	const NameId name = program_->names.Intern(generated.str());
+	const BindingId binding = program_->AddBinding(
+		selected.owner, BIND_VARIABLE, name, parsed.type);
+	if (variable_template_bindings_.size() <= binding)
+		variable_template_bindings_.resize(
+			static_cast<std::size_t>(binding) + 1, 0);
+	variable_template_bindings_[binding] = 1;
+	BindingRecord& record = program_->bindings[binding];
+	record.storage_class = spec.storage_class;
+	StoreTemplateArguments(arguments,
+		&record.template_argument_begin, &record.template_argument_count);
+	bool dependent = false;
+	for (std::size_t i = 0; i < arguments.size(); ++i)
+		if (arguments[i].IsDependent() ||
+			(arguments[i].kind == TEMPLATE_ARGUMENT_TYPE &&
+			 FunctionTemplateTypeIsDependent(arguments[i].type)))
+			dependent = true;
+	if (!dependent)
+	{
+		if (selected.initializer == kNoNode)
+			throw std::runtime_error(
+				"variable template specialization has no initializer");
+		const ExpressionInfo initializer = AnalyzeVariableInitializer(
+			selected.initializer, substitution_scope, parsed.type, false);
+		if (initializer.constant &&
+			(spec.is_constexpr || (IsConst(parsed.type) &&
+			 IsIntegral(parsed.type, true))))
+		{
+			record.constant = true;
+			record.value = initializer.value;
+		}
+	}
+	variable_template_instantiations_.Insert(key, binding);
+	return binding;
 }
 
 void SemanticAnalyzer::ParseTemplateParameters(NodeId list, ScopeId scope,
@@ -247,12 +730,37 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 					"type-specifier-seq");
 				const NodeId name = specifiers == kNoNode ? kNoNode :
 					FirstSemanticChild(specifiers);
-				if (name == kNoNode || !arena_->IsTag(name, "type-name") ||
-					FindChild(source, "abstract-declarator") != kNoNode)
-					return false;
-				expression = AnalyzeNamedValue(PayloadSource(name),
-					source_scope,
-					argument.type, name);
+				if (name != kNoNode && arena_->IsTag(name, "type-name") &&
+					FindChild(source, "abstract-declarator") == kNoNode)
+					expression = AnalyzeNamedValue(PayloadSource(name),
+						source_scope, argument.type, name);
+				else if (name != kNoNode &&
+					arena_->IsTag(name, "decltype-specifier") &&
+					FindChild(source, "abstract-declarator") == kNoNode)
+				{
+					const TypeId qualifier = program_->types.RemoveTopCv(
+						EffectiveType(DecltypeType(
+							FirstSemanticChild(name), source_scope)));
+					EnsureClassDefinition(qualifier);
+					const ScopeId carrier = program_->ScopeForType(qualifier);
+					const NodeId qualified = FindChild(
+						name, "qualified-type-name");
+					const LookupResult found = carrier == kNoScope ||
+						qualified == kNoNode ? LookupResult() :
+						program_->LookupQualified(carrier,
+							ParseNamePath(PayloadSource(qualified)),
+							LOOKUP_ORDINARY);
+					if (found.ordinary == kNoBinding ||
+						!program_->bindings[found.ordinary].constant)
+						return false;
+					expression = MakeLiteral(
+						program_->bindings[found.ordinary].type,
+						InternNumber(program_->bindings[found.ordinary].value));
+					expression.constant = true;
+					expression.value =
+						program_->bindings[found.ordinary].value;
+				}
+				else return false;
 			}
 			else expression = AnalyzeExpression(source,
 				source_scope, argument.type);
@@ -280,7 +788,8 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 					static_cast<std::uint32_t>(parameter);
 			}
 			else throw std::runtime_error(
-				"non-type template argument is not an integral constant");
+				"non-type template argument is not an integral constant: " +
+				PayloadSource(source));
 		}
 		arguments->push_back(argument);
 		if (arguments->size() <= fixed)

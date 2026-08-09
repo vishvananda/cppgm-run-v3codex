@@ -903,24 +903,53 @@ private:
 			EmitPunctuator(spelling);
 			return true;
 		}
-		const char* punctuators[] = {
-			"%:%:", "...", "->*", "<<=", ">>=", "##", "<:", ":>",
-			"<%", "%>", "%:", "::", ".*", "+=", "-=", "*=", "/=",
-			"%=", "^=", "&=", "|=", "<<", ">>", "<=", ">=", "==",
-			"!=", "&&", "||", "++", "--", "->", "{", "}", "[", "]",
-			"#", "(", ")", ";", ":", "?", ".", "+", "-", "*", "/",
-			"%", "^", "&", "|", "~", "!", "=", "<", ">", ","
-		};
-		for (std::size_t i = 0; i < sizeof(punctuators) / sizeof(punctuators[0]); ++i)
+		std::size_t length = 0;
+		const int first = Peek(0);
+		const int second = Peek(1);
+		const int third = Peek(2);
+		switch (first)
 		{
-			if (!MatchesAscii(punctuators[i]))
-				continue;
-			std::string& spelling = StartTokenSpelling();
-			ConsumeAscii(std::strlen(punctuators[i]), &spelling);
-			EmitPunctuator(spelling);
-			return true;
+		case '%':
+			length = second == ':' && third == '%' && Peek(3) == ':' ? 4 :
+				(second == '=' || second == '>' || second == ':') ? 2 : 1;
+			break;
+		case '.':
+			length = second == '.' && third == '.' ? 3 :
+				second == '*' ? 2 : 1;
+			break;
+		case '-':
+			length = second == '>' && third == '*' ? 3 :
+				(second == '=' || second == '-' || second == '>') ? 2 : 1;
+			break;
+		case '<':
+			length = second == '<' && third == '=' ? 3 :
+				(second == ':' || second == '%' || second == '<' ||
+				 second == '=') ? 2 : 1;
+			break;
+		case '>':
+			length = second == '>' && third == '=' ? 3 :
+				(second == '>' || second == '=') ? 2 : 1;
+			break;
+		case '#': length = second == '#' ? 2 : 1; break;
+		case ':': length = second == '>' || second == ':' ? 2 : 1; break;
+		case '+': length = second == '=' || second == '+' ? 2 : 1; break;
+		case '*': length = second == '=' ? 2 : 1; break;
+		case '/': length = second == '=' ? 2 : 1; break;
+		case '^': length = second == '=' ? 2 : 1; break;
+		case '&': length = second == '=' || second == '&' ? 2 : 1; break;
+		case '|': length = second == '=' || second == '|' ? 2 : 1; break;
+		case '=': length = second == '=' ? 2 : 1; break;
+		case '!': length = second == '=' ? 2 : 1; break;
+		case '{': case '}': case '[': case ']': case '(':
+		case ')': case ';': case '?': case '~': case ',':
+			length = 1;
+			break;
+		default: return false;
 		}
-		return false;
+		std::string& spelling = StartTokenSpelling();
+		ConsumeAscii(length, &spelling);
+		EmitPunctuator(spelling);
+		return true;
 	}
 
 	void ScanNonWhitespaceCharacter()

@@ -107,6 +107,8 @@ private:
 		AccessKind access = ACCESS_PUBLIC);
 	void AnalyzeTemplate(NodeId node, ScopeId scope,
 		AccessKind member_access = ACCESS_PUBLIC);
+	bool AnalyzeExplicitTemplateSpecialization(NodeId target, ScopeId scope,
+		AccessKind member_access);
 	void ParseTemplateParameters(NodeId list, ScopeId scope,
 		std::vector<TemplateParameter>* parameters,
 		std::vector<NameId>* names, std::vector<NodeId>* defaults);
@@ -123,8 +125,10 @@ private:
 	void AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 		const std::vector<TemplateParameter>& parameters);
 	bool RetainVariableTemplate(NodeId declaration, ScopeId scope,
-		const std::vector<NameId>& parameters,
-		const std::vector<NodeId>& defaults);
+		const std::vector<TemplateParameter>& parameters);
+	std::vector<std::size_t> FindVariableTemplates(
+		ScopeId scope, const NamePath& path);
+	BindingId InstantiateVariableTemplate(NodeId syntax, ScopeId scope);
 	bool AnalyzeClassTemplateMember(NodeId declaration, ScopeId scope,
 		const std::vector<TemplateParameter>& parameters);
 	void AnalyzeSimple(NodeId node, ScopeId scope,
@@ -527,7 +531,7 @@ private:
 	ExpressionInfo BuildLocalAggregateArrayActions(
 		const ExpressionInfo& initializer);
 	std::uint32_t BuildAggregateConstructionAction(TypeId type,
-		std::uint32_t aggregate_list);
+		std::uint32_t aggregate_list, bool allow_array_members = false);
 	ExpressionInfo AnalyzeNewExpression(NodeId node, ScopeId scope,
 		TypeId target);
 	ExpressionInfo AnalyzeArrayNewExpression(NodeId node, NodeId type_node,
@@ -549,6 +553,10 @@ private:
 		TypeId target, EntityId naming_class);
 	void AnalyzeClassMember(NodeId node, ScopeId scope, TypeId owner_type,
 		AccessKind access);
+	void ValidateOrdinaryMemberFunctionBodies(EntityId entity);
+	void ValidateOrdinaryMemberFunctionBody(BindingId function);
+	void ValidateStaticAssertionsInBlock(NodeId block, ScopeId scope,
+		std::uint32_t detached_output);
 	void RegisterClassMemberFunction(EntityId entity, BindingId function);
 	void AnalyzeBitField(NodeId node, ScopeId scope, TypeId owner_type,
 		AccessKind access);
@@ -663,7 +671,8 @@ private:
 	std::uint32_t BuildConstructorAction(TypeId type, ScopeId scope,
 		const std::vector<NodeId>& argument_syntax, bool copy_initialization,
 		bool list_initialization, bool base_subobject = false,
-		bool demand = true, NodeId source_list = kNoNode);
+		bool demand = true, NodeId source_list = kNoNode,
+		const std::vector<ExpressionInfo>* prepared_arguments = 0);
 	std::uint32_t BuildClassValueConstructorAction(TypeId type,
 		const ExpressionInfo& source, bool copy_initialization = true,
 		bool demand = true);
@@ -756,6 +765,8 @@ private:
 	std::size_t IntegralWidth(TypeId type) const;
 	std::int64_t NormalizeIntegralConstant(TypeId type,
 		std::int64_t value) const;
+	bool TryEvaluateConstexprFunction(BindingId function,
+		const std::vector<ExpressionInfo>& arguments, std::int64_t* value);
 	std::int64_t ParseInteger(const std::string& spelling) const;
 	std::int64_t ApplyConstantBinary(const std::string& operation,
 		std::int64_t left, std::int64_t right, TypeId operand_type) const;
@@ -832,8 +843,10 @@ private:
 	std::deque<ClassTemplatePattern> class_templates_;
 	std::vector<VariableTemplatePattern> variable_templates_;
 	IndexedSequenceTable variable_template_sets_;
+	std::vector<std::uint8_t> variable_template_bindings_;
 	std::vector<std::uint32_t> class_template_pattern_by_entity_;
 	TemplateSpecializationTable class_template_instantiations_;
+	TemplateSpecializationTable variable_template_instantiations_;
 	std::vector<std::uint8_t> class_template_specialization_states_;
 	std::vector<std::uint8_t> class_template_explicit_instantiation_states_;
 	std::vector<std::uint32_t> class_template_member_definition_counts_;
@@ -856,6 +869,7 @@ private:
 	std::vector<EntityId> demanded_default_constructor_entities_;
 	std::vector<std::uint8_t> default_constructor_demand_states_;
 	std::vector<BindingId> demanded_functions_;
+	std::vector<BindingId> constexpr_evaluation_stack_;
 	std::vector<EntityId> associated_entities_;
 	std::vector<ScopeId> associated_scopes_;
 	std::vector<TypeId> associated_type_scratch_;

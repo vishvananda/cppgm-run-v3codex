@@ -93,6 +93,8 @@ private:
 	void VisitSizeof(NodeId node, std::size_t scope);
 	void VisitIdExpression(NodeId node, std::size_t scope,
 		bool unknown_callee);
+	void ValidateKnownTemplateArgumentKinds(NodeId node, ScopeId scope);
+	const TemplateParameter* TemplateParameterUsedBy(NodeId node) const;
 	void ValidateSpecialMemberExceptionSpecification();
 	bool IsNonthrowingSyntax(NodeId declarator) const;
 	std::size_t ParameterCount(NodeId declarator) const;
@@ -102,6 +104,7 @@ private:
 	ScopeId lexical_scope_;
 	const std::vector<TemplateParameter>& parameters_;
 	std::unordered_set<NameId> parameter_names_;
+	std::unordered_set<NodeId> template_argument_validation_visited_;
 	std::vector<RetainedScope> scopes_;
 };
 
@@ -269,6 +272,62 @@ bool RetainedTemplateValidator::SyntaxUsesTemplateParameter(NodeId node) const
 		if (SyntaxUsesTemplateParameter(analyzer_.arena_->EdgeChild(edge)))
 			return true;
 	return false;
+}
+
+const TemplateParameter* RetainedTemplateValidator::TemplateParameterUsedBy(
+	NodeId node) const
+{
+	if (node == kNoNode) return 0;
+	const NameId name = analyzer_.program_->names.UseInterned(
+		analyzer_.arena_->SemanticPayloadId(node));
+	for (std::size_t i = 0; i < parameters_.size(); ++i)
+		if (parameters_[i].name != 0 && parameters_[i].name == name)
+			return &parameters_[i];
+	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
+		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+	{
+		const TemplateParameter* result = TemplateParameterUsedBy(
+			analyzer_.arena_->EdgeChild(edge));
+		if (result) return result;
+	}
+	return 0;
+}
+
+void RetainedTemplateValidator::ValidateKnownTemplateArgumentKinds(
+	NodeId node, ScopeId scope)
+{
+	if (!template_argument_validation_visited_.insert(node).second) return;
+	NamePath primary;
+	std::vector<NodeId> arguments;
+	if (analyzer_.CollectExplicitTemplateArguments(
+		node, &primary, &arguments))
+	{
+		const std::size_t pattern_index =
+			analyzer_.FindClassTemplate(scope, primary);
+		if (pattern_index != std::numeric_limits<std::size_t>::max())
+		{
+			const ClassTemplatePattern& pattern =
+				analyzer_.class_templates_[pattern_index];
+			for (std::size_t argument = 0;
+				argument < arguments.size(); ++argument)
+			{
+				const TemplateParameter& destination =
+					TemplateParameterForArgument(pattern.parameters, argument);
+				const NodeId syntax = arguments[argument];
+				const TemplateParameter* source =
+					TemplateParameterUsedBy(syntax);
+				if (source && source->pack &&
+					analyzer_.arena_->IsTag(syntax, "type-id") &&
+					source->kind != destination.kind)
+					throw std::runtime_error(
+						"template argument pack kind does not match parameter");
+			}
+		}
+	}
+	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
+		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+		ValidateKnownTemplateArgumentKinds(
+			analyzer_.arena_->EdgeChild(edge), scope);
 }
 
 void RetainedTemplateValidator::VisitChildren(NodeId node, std::size_t scope)
@@ -633,6 +692,8 @@ void RetainedTemplateValidator::VisitIdExpression(NodeId node,
 		return;
 	}
 	const NameId name = path.Last();
+	if (!analyzer_.FindVariableTemplates(
+		scopes_[scope].semantic_scope, path).empty()) return;
 	const std::uint8_t local = LookupLocal(scope, name);
 	if ((local & RETAINED_VALUE_NAME) != 0)
 	{
@@ -856,8 +917,7 @@ void RetainedTemplateValidator::Run()
 		(analyzer_.arena_->Flags(target_) & SYNTAX_FLAG_DEFINITION) != 0 ||
 		analyzer_.arena_->IsTag(target_, "function-definition") ||
 		analyzer_.arena_->IsTag(target_, "special-member-definition");
-	if (!definition) return;
-	ValidateSpecialMemberExceptionSpecification();
+	if (definition) ValidateSpecialMemberExceptionSpecification();
 	const ScopeId semantic = analyzer_.NewScope(lexical_scope_,
 		SCOPE_TEMPLATE_PARAMETERS, 0,
 		analyzer_.ScopePrefixId(lexical_scope_));
@@ -867,6 +927,8 @@ void RetainedTemplateValidator::Run()
 		IsQualifiedMemberDefinition(target_));
 	for (std::size_t i = 0; i < parameters_.size(); ++i)
 		DeclareParameter(root, parameters_[i]);
+	ValidateKnownTemplateArgumentKinds(target_, semantic);
+	if (!definition) return;
 	Visit(target_, root);
 }
 

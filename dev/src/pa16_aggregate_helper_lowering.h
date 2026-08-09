@@ -72,6 +72,8 @@ protected:
 					derived.LowerType(source_parameters[p]);
 				parameter.reference =
 					derived.IsReferenceType(source_parameters[p]);
+				parameter.decay = p != 0 && derived.IsArrayType(
+					derived.program_.bindings[helper.members[p - 1]].type);
 				parameter.name = p == 0 ? "this" : derived.program_.names.Get(
 					derived.program_.bindings[helper.members[p - 1]].name);
 				result.parameters.push_back(parameter);
@@ -132,12 +134,27 @@ protected:
 					continue;
 				}
 				const LowType value_type = result.parameters[m + 1].type;
-				const Operand value = derived.LoadStorage(
-					Operand(static_cast<SlotId>(m + 1), value_type), value_type);
+				const bool array_member = derived.IsArrayType(
+					derived.program_.bindings[member].type);
+				Operand value;
+				if (!array_member)
+					value = derived.LoadStorage(
+						Operand(static_cast<SlotId>(m + 1), value_type),
+						value_type);
 				const Operand object = derived.LoadStorage(
 					Operand(static_cast<SlotId>(0), LowPtr()), LowPtr());
 				const Operand destination =
 					derived.ProjectAggregateMember(object, member);
+				if (array_member)
+				{
+					const Operand source = derived.LoadStorage(
+						Operand(static_cast<SlotId>(m + 1), value_type),
+						value_type);
+					derived.EmitClassObjectCopy(
+						derived.program_.bindings[member].type,
+						source, destination);
+					continue;
+				}
 				if (derived.program_.bindings[member].bit_field)
 					derived.InitializeBitField(member, value, destination,
 						derived.LowerExpressionType(
@@ -192,7 +209,23 @@ protected:
 			const LowType expected = derived.LowerType(parameters[i + 1]);
 			const bool reference =
 				derived.IsReferenceType(parameters[i + 1]);
-			if (!reference &&
+			const TypeId member_type = derived.program_.bindings[
+				helper.members[i]].type;
+			if (derived.IsArrayType(member_type))
+			{
+				const LowType array_type = derived.LowerStorageType(member_type);
+				const Operand slot(derived.EnsureGeneratedSlot(
+					children[i], "argarr", array_type), array_type);
+				const Operand destination = derived.AddressOfStorage(slot);
+				if (derived.arena_.nodes[children[i]].kind !=
+					DUMP_BRACED_INIT_LIST)
+					throw std::runtime_error(
+						"aggregate array argument requires braces");
+				derived.LowerRuntimeArrayValues(
+					member_type, children[i], destination, true);
+				arguments.Push(destination);
+			}
+			else if (!reference &&
 				derived.IsClassValueType(parameters[i + 1]))
 				arguments.Push(derived.LowerClassArgumentStaging(
 					children[i], parameters[i + 1]));

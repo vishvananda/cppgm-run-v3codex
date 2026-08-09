@@ -482,59 +482,10 @@ void SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 			EnsureImplicitConstructor(entity);
 		if (!program_->entities[entity].has_user_declared_destructor)
 			EnsureImplicitDestructor(entity);
-		current_class_context_ = previous_class_context;
 		program_->entities[entity].complete = true;
+		ValidateOrdinaryMemberFunctionBodies(entity);
+		current_class_context_ = previous_class_context;
 }
-std::size_t SemanticAnalyzer::RequestedAlignment(NodeId node, ScopeId scope)
-{
-	std::size_t result = 0;
-	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
-		edge = arena_->NextEdge(edge))
-	{
-		const NodeId alignment = arena_->EdgeChild(edge);
-		if (!arena_->IsTag(alignment, "alignment-specifier")) continue;
-		const NodeId operand = FirstSemanticChild(alignment);
-		if (operand == kNoNode)
-			throw std::runtime_error("empty alignment specifier");
-		std::uint64_t value = 0;
-		if (arena_->IsTag(operand, "type-id"))
-		{
-			const NodeId specifiers = FindChild(operand, "type-specifier-seq");
-			const NodeId name = specifiers == kNoNode ? kNoNode :
-				FirstSemanticChild(specifiers);
-			const LookupResult constant = name != kNoNode &&
-				arena_->IsTag(name, "type-name") ?
-				FindChild(name, "structured-type-name") != kNoNode ?
-					LookupStructuredName(name, scope, LOOKUP_ORDINARY) :
-				LookupSpelling(scope, PayloadSource(name), LOOKUP_ORDINARY) :
-				LookupResult();
-			if (constant.ordinary != kNoBinding)
-			{
-				const ExpressionInfo expression = AnalyzeNamedValue(
-					PayloadSource(name), scope, kNoType, name);
-				if (!expression.constant || expression.value < 0)
-					throw std::runtime_error(
-						"nonconstant alignment specifier");
-				value = static_cast<std::uint64_t>(expression.value);
-			}
-			else value = program_->AlignOf(BuildTypeId(operand, scope));
-		}
-		else
-		{
-			const ExpressionInfo expression = AnalyzeExpression(operand, scope);
-			if (!expression.constant || expression.value < 0)
-				throw std::runtime_error("nonconstant alignment specifier");
-			value = static_cast<std::uint64_t>(expression.value);
-		}
-		if (value == 0) continue;
-		if ((value & (value - 1)) != 0 ||
-			value > std::numeric_limits<std::size_t>::max())
-			throw std::runtime_error("invalid requested alignment");
-		result = std::max(result, static_cast<std::size_t>(value));
-	}
-	return result;
-}
-
 EntityId SemanticAnalyzer::ZeroOffsetClassEntity(TypeId type) const
 {
 	const TypeRecord* record = &program_->types.Get(type);
@@ -1090,6 +1041,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 			parsed.type, parsed.parameters, true, false, STORAGE_CLASS_NONE,
 			current_language_linkage_, IsNonthrowing(declarator, scope));
 		FunctionInfo& info = GetMutableFunction(function);
+		info.constexpr_function = info.constexpr_function || spec.is_constexpr;
 		const EntityId owner_entity = EntityOf(owner_type);
 		BindingRecord& binding = program_->bindings[function];
 		binding.member_owner = owner_entity;
@@ -1147,6 +1099,8 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 				binding.operator_kind == OPERATOR_DELETE_ARRAY;
 			if (!binding.static_member_function)
 				GetMutableFunction(function).member_owner = owner_type;
+			GetMutableFunction(function).constexpr_function =
+				GetFunction(function).constexpr_function || spec.is_constexpr;
 			ValidateFunctionRefQualifier(function);
 			ConfigureVirtualFunction(function, spec, declarator,
 				FindChild(item, "initializer"));
@@ -1177,57 +1131,64 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 			const BindingId member = program_->AddBinding(scope, BIND_VARIABLE,
 				parsed.name, member_type, false, 0, NAMED_NONE, 0, kNoBinding,
 				false);
-			BindingRecord& binding = program_->bindings[member];
-			binding.storage_class = spec.storage_class;
-			binding.thread_local_storage = spec.thread_local_storage;
-			binding.mutable_member = spec.mutable_member;
-			binding.member_owner = EntityOf(owner_type);
-			binding.access = access;
-			binding.requested_alignment = RequestedAlignment(node, scope);
-			binding.non_static_data_member =
+			const std::size_t requested_alignment =
+				RequestedAlignment(node, scope);
+			const bool non_static_data_member =
 				spec.storage_class == STORAGE_CLASS_NONE;
-			binding.has_default_member_initializer =
-				binding.non_static_data_member &&
+			const bool has_default_member_initializer =
+				non_static_data_member &&
 				FindChild(item, "initializer") != kNoNode;
-			if (!binding.non_static_data_member &&
+			{
+				BindingRecord& binding = program_->bindings[member];
+				binding.storage_class = spec.storage_class;
+				binding.thread_local_storage = spec.thread_local_storage;
+				binding.mutable_member = spec.mutable_member;
+				binding.member_owner = EntityOf(owner_type);
+				binding.access = access;
+				binding.requested_alignment = requested_alignment;
+				binding.non_static_data_member = non_static_data_member;
+				binding.has_default_member_initializer =
+					has_default_member_initializer;
+			}
+			if (!non_static_data_member &&
 				FindChild(item, "initializer") != kNoNode)
 			{
 				if (!spec.is_constexpr &&
-					!(IsConst(binding.type) && IsIntegral(binding.type, true)))
+					!(IsConst(member_type) && IsIntegral(member_type, true)))
 					throw std::runtime_error(
 						"invalid in-class static data member initializer");
 				const NodeId initializer = FirstSemanticChild(
 					FindChild(item, "initializer"));
 				const ExpressionInfo value = AnalyzeExpression(initializer,
-					scope, binding.type);
+					scope, member_type);
 				if (!value.constant)
 					throw std::runtime_error(
 						"nonconstant in-class static data member initializer");
-				binding.constant = true;
-				binding.value = value.value;
+				program_->bindings[member].constant = true;
+				program_->bindings[member].value = value.value;
 			}
-			else if (!binding.non_static_data_member && spec.is_constexpr)
+			else if (!non_static_data_member && spec.is_constexpr)
 				throw std::runtime_error(
 					"constexpr static data member requires initializer");
 			if (member_initializer_by_binding_.size() <= member)
 				member_initializer_by_binding_.resize(
 					static_cast<std::size_t>(member) + 1, kNoNode);
-			if (binding.has_default_member_initializer)
+			if (has_default_member_initializer)
 				member_initializer_by_binding_[member] =
 					FindChild(item, "initializer");
 			const EntityId entity = EntityOf(owner_type);
-			if (binding.non_static_data_member && entity_data_members_.size() <= entity)
+			if (non_static_data_member && entity_data_members_.size() <= entity)
 				entity_data_members_.resize(static_cast<std::size_t>(entity) + 1);
-			if (binding.non_static_data_member)
+			if (non_static_data_member)
 			{
-				binding.member_ordinal = static_cast<std::uint32_t>(
+				program_->bindings[member].member_ordinal = static_cast<std::uint32_t>(
 					entity_data_members_[entity].size());
 				entity_data_members_[entity].push_back(member);
 				if (entity_layout_members_.size() <= entity)
 					entity_layout_members_.resize(
 						static_cast<std::size_t>(entity) + 1);
 				entity_layout_members_[entity].push_back(
-					ClassLayoutMember(member, binding.type));
+					ClassLayoutMember(member, member_type));
 			}
 		}
 	}
@@ -1732,7 +1693,9 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 			if (result.type == kNoType && deferred_type != kNoType)
 				result.type = deferred_type;
 			if (result.type == kNoType)
-				throw std::runtime_error("structured template type was not found");
+				throw std::runtime_error(
+					"structured template type was not found: " +
+					PayloadSource(child));
 			if (found.type_declaration != kNoBinding &&
 				!CanAccessMember(found.type_declaration, found.naming_class))
 				throw std::runtime_error("inaccessible member type");

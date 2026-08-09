@@ -10,6 +10,34 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+namespace
+{
+
+bool HasFunctionParameterPack(const SyntaxArena& arena, NodeId node)
+{
+	if (node == kNoNode) return false;
+	if (arena.IsTag(node, "parameter-declaration"))
+	{
+		for (std::uint32_t edge = arena.FirstEdge(node); edge != kNoEdge;
+			edge = arena.NextEdge(edge))
+		{
+			const NodeId child = arena.EdgeChild(edge);
+			if (!arena.IsTag(child, "declarator")) continue;
+			for (std::uint32_t declarator_edge = arena.FirstEdge(child);
+				declarator_edge != kNoEdge;
+				declarator_edge = arena.NextEdge(declarator_edge))
+				if (arena.IsTag(arena.EdgeChild(declarator_edge),
+					"parameter-pack")) return true;
+		}
+	}
+	for (std::uint32_t edge = arena.FirstEdge(node); edge != kNoEdge;
+		edge = arena.NextEdge(edge))
+		if (HasFunctionParameterPack(arena, arena.EdgeChild(edge))) return true;
+	return false;
+}
+
+}
+
 ExpressionInfo SemanticAnalyzer::AnalyzeSizeofPackExpression(
 	NodeId node, ScopeId scope)
 {
@@ -36,7 +64,7 @@ void SemanticAnalyzer::InitializeFunctionTemplatePackShape(
 	FunctionTemplatePattern* pattern, const DeclaratorInfo& shape)
 {
 	pattern->function_parameter_pack =
-		HasTrailingTemplateParameterPack(pattern->parameters) &&
+		HasFunctionParameterPack(*arena_, pattern->declarator) &&
 		program_->types.Get(pattern->shape_type).variadic;
 	pattern->required_parameter_count =
 		RequiredFunctionParameterCount(shape.parameters);

@@ -690,7 +690,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBracedCallArgument(
 std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 	ScopeId scope, const std::vector<NodeId>& argument_syntax,
 	bool copy_initialization, bool list_initialization, bool base_subobject,
-	bool demand, NodeId source_list)
+	bool demand, NodeId source_list,
+	const std::vector<ExpressionInfo>* prepared_arguments)
 {
 	const EntityId entity = EntityOf(type);
 	if (!IsClassEntity(*program_, entity))
@@ -706,19 +707,29 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 			braced_initialization_context_, &context);
 		return BuildConstructorAction(type, scope, argument_syntax,
 			copy_initialization, list_initialization, base_subobject, demand,
-			source_list);
+			source_list, prepared_arguments);
 	}
 	if (braced_initialization_context_)
 		for (std::size_t i = 0; i < argument_syntax.size(); ++i)
 			if (arena_->IsTag(argument_syntax[i], "braced-init-list"))
 				PrepareBracedInitialization(argument_syntax[i], scope);
 	std::vector<ExpressionInfo> arguments;
-	arguments.reserve(argument_syntax.size());
-	for (std::size_t i = 0; i < argument_syntax.size(); ++i)
+	if (prepared_arguments)
 	{
-		if (arena_->IsTag(argument_syntax[i], "braced-init-list"))
-			arguments.push_back(ExpressionInfo());
-		else arguments.push_back(AnalyzeExpression(argument_syntax[i], scope));
+		if (prepared_arguments->size() != argument_syntax.size())
+			throw std::logic_error(
+				"prepared constructor argument count mismatch");
+		arguments = *prepared_arguments;
+	}
+	else
+	{
+		arguments.reserve(argument_syntax.size());
+		for (std::size_t i = 0; i < argument_syntax.size(); ++i)
+		{
+			if (arena_->IsTag(argument_syntax[i], "braced-init-list"))
+				arguments.push_back(ExpressionInfo());
+			else arguments.push_back(AnalyzeExpression(argument_syntax[i], scope));
+		}
 	}
 	const std::vector<BindingId>& candidates = ConstructorCandidates(entity);
 	std::vector<CallConversionFact> selected_conversions;

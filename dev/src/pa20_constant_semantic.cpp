@@ -1,12 +1,82 @@
 #include "pa12_semantic_detail.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
+#include <unordered_set>
 
 namespace cppgm
 {
 namespace pa12_semantic_detail
 {
+
+namespace
+{
+
+bool SyntaxContainsTag(const SyntaxArena& arena, NodeId node,
+	const char* tag, std::unordered_set<NodeId>* visited)
+{
+	if (!visited->insert(node).second) return false;
+	if (arena.IsTag(node, tag)) return true;
+	for (std::uint32_t edge = arena.FirstEdge(node); edge != kNoEdge;
+		edge = arena.NextEdge(edge))
+		if (SyntaxContainsTag(
+			arena, arena.EdgeChild(edge), tag, visited)) return true;
+	return false;
+}
+
+}
+
+std::size_t SemanticAnalyzer::RequestedAlignment(NodeId node, ScopeId scope)
+{
+	std::size_t result = 0;
+	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId alignment = arena_->EdgeChild(edge);
+		if (!arena_->IsTag(alignment, "alignment-specifier")) continue;
+		const NodeId operand = FirstSemanticChild(alignment);
+		if (operand == kNoNode)
+			throw std::runtime_error("empty alignment specifier");
+		std::uint64_t value = 0;
+		if (arena_->IsTag(operand, "type-id"))
+		{
+			const NodeId specifiers = FindChild(operand, "type-specifier-seq");
+			const NodeId name = specifiers == kNoNode ? kNoNode :
+				FirstSemanticChild(specifiers);
+			const LookupResult constant = name != kNoNode &&
+				arena_->IsTag(name, "type-name") ?
+				FindChild(name, "structured-type-name") != kNoNode ?
+					LookupStructuredName(name, scope, LOOKUP_ORDINARY) :
+				LookupSpelling(scope, PayloadSource(name), LOOKUP_ORDINARY) :
+				LookupResult();
+			if (constant.ordinary != kNoBinding)
+			{
+				const ExpressionInfo expression = AnalyzeNamedValue(
+					PayloadSource(name), scope, kNoType, name);
+				if (!expression.constant || expression.value < 0)
+					throw std::runtime_error(
+						"nonconstant alignment specifier");
+				value = static_cast<std::uint64_t>(expression.value);
+			}
+			else value = program_->AlignOf(BuildTypeId(operand, scope));
+		}
+		else
+		{
+			const ExpressionInfo expression = AnalyzeExpression(operand, scope);
+			if (!expression.constant || expression.value < 0)
+				throw std::runtime_error("nonconstant alignment specifier");
+			value = static_cast<std::uint64_t>(expression.value);
+		}
+		if (value == 0) continue;
+		if ((value & (value - 1)) != 0 ||
+			value > std::numeric_limits<std::size_t>::max())
+			throw std::runtime_error("invalid requested alignment");
+		result = std::max(result, static_cast<std::size_t>(value));
+	}
+	return result;
+}
 
 void SemanticAnalyzer::RecordExpressionFacts(const ExpressionInfo& value)
 {
@@ -78,6 +148,85 @@ std::int64_t SemanticAnalyzer::NormalizeIntegralConstant(TypeId type,
 	return static_cast<std::int64_t>(bits);
 }
 
+bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
+	const std::vector<ExpressionInfo>& arguments, std::int64_t* value)
+{
+	function = program_->bindings[function].canonical;
+	const FunctionInfo info = GetFunction(function);
+	const TypeId result_type = program_->types.Get(info.type).child;
+	if (!info.constexpr_function || info.definition_body == kNoNode ||
+		!IsIntegral(result_type, true) ||
+		arguments.size() != info.parameters.size() ||
+		(info.member_owner != kNoType &&
+		 !program_->bindings[function].static_member_function) ||
+		std::find(constexpr_evaluation_stack_.begin(),
+			constexpr_evaluation_stack_.end(), function) !=
+			constexpr_evaluation_stack_.end())
+		return false;
+	for (std::size_t i = 0; i < arguments.size(); ++i)
+		if (!arguments[i].constant ||
+			!IsIntegral(ParameterBindingType(info.parameters[i]), true))
+			return false;
+
+	constexpr_evaluation_stack_.push_back(function);
+	const ScopeId function_scope = NewScope(info.lexical_scope, SCOPE_FUNCTION,
+		program_->bindings[function].name, ScopePrefixId(info.owner));
+	for (std::size_t i = 0; i < info.parameters.size(); ++i)
+	{
+		const ParameterInfo& parameter = info.parameters[i];
+		const BindingId binding = program_->AddBinding(function_scope,
+			BIND_PARAMETER, parameter.name, ParameterBindingType(parameter));
+		program_->bindings[binding].constant = true;
+		program_->bindings[binding].value = NormalizeIntegralConstant(
+			ParameterBindingType(parameter), arguments[i].value);
+	}
+	const ScopeId block = NewScope(function_scope, SCOPE_BLOCK, 0,
+		ScopePrefixId(function_scope));
+	const TypeId previous_return = current_return_type_;
+	const EntityId previous_class = current_class_context_;
+	const BindingId previous_function = current_function_context_;
+	current_return_type_ = result_type;
+	current_class_context_ = program_->bindings[function].member_owner;
+	current_function_context_ = function;
+	bool found_return = false;
+	bool constant = true;
+	std::int64_t result = 0;
+	const std::uint32_t detached = MakeDump(DUMP_COMPOUND_STATEMENT);
+	for (std::uint32_t edge = arena_->FirstEdge(info.definition_body);
+		edge != kNoEdge; edge = arena_->NextEdge(edge))
+	{
+		const NodeId statement = arena_->EdgeChild(edge);
+		if (arena_->IsTag(statement, "return-statement"))
+		{
+			if (found_return)
+			{
+				constant = false;
+				break;
+			}
+			const NodeId expression = FirstSemanticChild(statement);
+			const ExpressionInfo evaluated = expression == kNoNode ?
+				ExpressionInfo() : AnalyzeExpression(expression, block, result_type);
+			found_return = expression != kNoNode && evaluated.constant;
+			constant = found_return;
+			if (found_return) result = evaluated.value;
+		}
+		else if (IsDeclaration(statement))
+			AnalyzeDeclaration(statement, block, detached, true);
+		else
+		{
+			constant = false;
+			break;
+		}
+	}
+	current_return_type_ = previous_return;
+	current_class_context_ = previous_class;
+	current_function_context_ = previous_function;
+	constexpr_evaluation_stack_.pop_back();
+	if (!constant || !found_return) return false;
+	*value = NormalizeIntegralConstant(result_type, result);
+	return true;
+}
+
 bool SemanticAnalyzer::TryFoldConstantClassConversion(
 	const ExpressionInfo& value, BindingId conversion, TypeId target,
 	std::int64_t* result)
@@ -137,6 +286,176 @@ ExpressionInfo SemanticAnalyzer::ApplyClassObjectTarget(
 		return folded;
 	}
 	return ApplyCallArgument(value, target, &conversion);
+}
+
+void SemanticAnalyzer::ValidateStaticAssertionsInBlock(NodeId block,
+	ScopeId scope, std::uint32_t detached_output)
+{
+	const ScopeId local = NewScope(scope, SCOPE_BLOCK, 0, ScopePrefixId(scope));
+	for (std::uint32_t edge = arena_->FirstEdge(block); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId child = arena_->EdgeChild(edge);
+		if (arena_->IsTag(child, "static-assert-declaration"))
+			AnalyzeStaticAssert(child, local);
+		else if (arena_->IsTag(child, "simple-declaration") ||
+			arena_->IsTag(child, "alias-declaration") ||
+			arena_->IsTag(child, "using-declaration"))
+			AnalyzeDeclaration(child, local, detached_output, true);
+		else if (arena_->IsTag(child, "compound-statement"))
+			ValidateStaticAssertionsInBlock(child, local, detached_output);
+		else
+			for (std::uint32_t nested = arena_->FirstEdge(child);
+				nested != kNoEdge; nested = arena_->NextEdge(nested))
+			{
+				const NodeId statement = arena_->EdgeChild(nested);
+				if (arena_->IsTag(statement, "compound-statement"))
+					ValidateStaticAssertionsInBlock(
+						statement, local, detached_output);
+			}
+	}
+}
+
+void SemanticAnalyzer::ValidateOrdinaryMemberFunctionBody(BindingId function)
+{
+	FunctionInfo& info = GetMutableFunction(function);
+	if (!info.defined || info.definition_body == kNoNode) return;
+	std::unordered_set<NodeId> visited;
+	if (!SyntaxContainsTag(*arena_, info.definition_body,
+		"static-assert-declaration", &visited)) return;
+	const TypeId output_type = AdaptMemberFunctionType(info.binding);
+	const ScopeId function_scope = NewScope(info.lexical_scope, SCOPE_FUNCTION,
+		program_->bindings[info.binding].name, ScopePrefixId(info.owner));
+	BindFunctionParameterPackElement(
+		function_scope, info.parameter_pack_name, kNoBinding);
+	if (info.member_owner != kNoType)
+	{
+		const TypeId this_type = program_->types.Parameters(output_type)[0];
+		program_->AddBinding(function_scope, BIND_PARAMETER,
+			program_->names.Intern("this"), this_type);
+	}
+	for (std::size_t i = 0; i < info.parameters.size(); ++i)
+	{
+		const ParameterInfo& parameter = info.parameters[i];
+		const BindingId binding = program_->AddBinding(function_scope,
+			BIND_PARAMETER, parameter.name, ParameterBindingType(parameter));
+		BindFunctionParameterPackElement(
+			function_scope, parameter.pack_name, binding);
+	}
+	const TypeId previous_return = current_return_type_;
+	const EntityId previous_class = current_class_context_;
+	const BindingId previous_function = current_function_context_;
+	current_return_type_ = program_->types.Get(info.type).child;
+	current_class_context_ = program_->bindings[info.binding].member_owner;
+	current_function_context_ = program_->bindings[info.binding].canonical;
+	const std::uint32_t detached = MakeDump(DUMP_COMPOUND_STATEMENT);
+	++unevaluated_depth_;
+	try
+	{
+		ValidateStaticAssertionsInBlock(
+			info.definition_body, function_scope, detached);
+	}
+	catch (...)
+	{
+		--unevaluated_depth_;
+		current_return_type_ = previous_return;
+		current_class_context_ = previous_class;
+		current_function_context_ = previous_function;
+		throw;
+	}
+	--unevaluated_depth_;
+	current_return_type_ = previous_return;
+	current_class_context_ = previous_class;
+	current_function_context_ = previous_function;
+}
+
+void SemanticAnalyzer::ValidateOrdinaryMemberFunctionBodies(EntityId entity)
+{
+	if (entity < class_template_pattern_by_entity_.size() &&
+		class_template_pattern_by_entity_[entity] != kNoDumpEdge)
+		return;
+	if (entity >= entity_member_functions_.size()) return;
+	const std::vector<BindingId> functions = entity_member_functions_[entity];
+	for (std::size_t i = 0; i < functions.size(); ++i)
+		ValidateOrdinaryMemberFunctionBody(functions[i]);
+}
+
+ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
+	ScopeId scope, const std::vector<NodeId>& argument_syntax,
+	NodeId arguments_node, TypeId target)
+{
+	const EntityId cast_entity = EntityOf(cast_type);
+	if (argument_syntax.size() == 1)
+	{
+		const ExpressionInfo operand =
+			AnalyzeExpression(argument_syntax[0], scope);
+		if (operand.type != kNoType && EntityOf(operand.type) != kNoEntity &&
+			ConvertingFunction(operand, cast_type, true).rank !=
+				CONVERSION_INVALID)
+		{
+			ExpressionInfo converted =
+				ApplyExplicitConversion(operand, cast_type);
+			converted = MaterializeTemporary(converted);
+			return target == kNoType ? converted : ApplyTarget(converted, target);
+		}
+	}
+	if (program_->entities[cast_entity].is_aggregate &&
+		arguments_node != kNoNode &&
+		arena_->IsTag(arguments_node, "braced-init-list"))
+	{
+		ExpressionInfo result = AnalyzeBracedInit(
+			arguments_node, scope, cast_type);
+		if (target == kNoType)
+		{
+			result.node = BuildAggregateConstructionAction(
+				cast_type, result.node, true);
+			return MaterializeTemporary(result);
+		}
+		return IsIntegral(target, true) ?
+			ApplyClassObjectTarget(result, target) : result;
+	}
+	if (program_->entities[cast_entity].is_aggregate && argument_syntax.empty())
+	{
+		if (target == kNoType)
+		{
+			const std::vector<NodeId> no_arguments;
+			ExpressionInfo initialized;
+			initialized.node = BuildConstructorAction(
+				cast_type, scope, no_arguments, false, false);
+			initialized.type = cast_type;
+			initialized.category = VALUE_PRVALUE;
+			dump_.nodes[initialized.node].value_initialization = true;
+			return MaterializeTemporary(initialized);
+		}
+		std::uint32_t empty = kNoEdge;
+		ExpressionInfo result = AnalyzeAggregateInit(cast_type, scope, &empty);
+		dump_.nodes[result.node].value_initialization = true;
+		if (program_->entities[cast_entity].empty_class)
+		{
+			const std::vector<NodeId> no_arguments;
+			const std::uint32_t constructor = BuildConstructorAction(
+				cast_type, scope, no_arguments, false, false, false, false);
+			dump_.nodes[constructor].value_initialization = true;
+			dump_.nodes[result.node].value_constructor = constructor;
+		}
+		if (target != kNoType && IsIntegral(target, true))
+			return ApplyClassObjectTarget(result, target);
+		return result;
+	}
+	ExpressionInfo result;
+	result.node = BuildConstructorAction(cast_type, scope, argument_syntax,
+		false, arguments_node != kNoNode &&
+		arena_->IsTag(arguments_node, "braced-init-list"), false, true,
+		arguments_node != kNoNode &&
+		arena_->IsTag(arguments_node, "braced-init-list") ?
+			arguments_node : kNoNode);
+	result.type = cast_type;
+	result.category = VALUE_PRVALUE;
+	if (argument_syntax.empty() &&
+		!program_->entities[cast_entity].has_user_provided_constructor)
+		dump_.nodes[result.node].value_initialization = true;
+	return target == kNoType ? MaterializeTemporary(result) :
+		ApplyTarget(result, target);
 }
 
 void SemanticAnalyzer::AnalyzeStaticAssert(NodeId node, ScopeId scope)

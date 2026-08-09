@@ -1362,7 +1362,7 @@ private:
 				const DumpNode& source = arena_.nodes[children[0]];
 				if ((source.category == VALUE_LVALUE ||
 					 source.category == VALUE_XVALUE) &&
-					IsClassObjectType(source.type))
+					(IsClassObjectType(source.type) || IsArrayType(source.type)))
 					(void)AddressOfStorage(LowerStorage(children[0]));
 				else (void)LowerValue(children[0]);
 				result = Operand(0, LowVoid());
@@ -1849,14 +1849,14 @@ private:
 		SelectBlock(then_block);
 		Instruction yes_store(Instruction::STORE);
 		yes_store.type = type;
-		yes_store.first = LowerValue(children[1], type);
+		yes_store.first = LowerConvertedValue(children[1], type, false);
 		yes_store.second = slot;
 		Emit(yes_store);
 		EmitJump(end_block);
 		SelectBlock(else_block);
 		Instruction no_store(Instruction::STORE);
 		no_store.type = type;
-		no_store.first = LowerValue(children[2], type);
+		no_store.first = LowerConvertedValue(children[2], type, false);
 		no_store.second = slot;
 		Emit(no_store);
 		EmitJump(end_block);
@@ -2345,7 +2345,7 @@ private:
 		}
 	}
 	void LowerRuntimeArrayValues(TypeId type, std::uint32_t list_node,
-		const Operand& array_address)
+		const Operand& array_address, bool compact_addressing = false)
 	{
 		const TypeRecord& array = program_.types.Get(
 			ExpressionObjectType(type));
@@ -2353,7 +2353,8 @@ private:
 		if (array.kind != TYPE_ARRAY || array.bound == 0 ||
 			values.size() > array.bound)
 			throw std::runtime_error("invalid runtime array initializer");
-		const Operand base = DecayAddress(array_address);
+		const Operand base = compact_addressing ?
+			array_address : DecayAddress(array_address);
 		const std::size_t element_size = program_.SizeOf(array.child);
 		for (std::size_t i = 0; i < static_cast<std::size_t>(array.bound); ++i)
 		{
@@ -2371,8 +2372,8 @@ private:
 				Emit(multiply);
 				displacement = scaled;
 			}
-			const Operand destination = IndexAddress(LowI8(), base,
-				displacement, true);
+			const Operand destination = compact_addressing && i == 0 ? base :
+				IndexAddress(LowI8(), base, displacement, true);
 			if (i < values.size())
 				LowerRuntimeObjectValue(array.child, values[i], destination);
 			else LowerRuntimeZeroValue(array.child, destination);
@@ -2990,7 +2991,6 @@ private:
 }
 namespace pa15_lowering_detail
 {
-
 void LowerSemanticGraph(const SemanticGraphView& graph, TypedProgram& program,
 	LowIRLoweringStats* stats, std::size_t source_ordinal)
 {

@@ -493,11 +493,26 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 	}
 	else if (syntax != kNoNode &&
 		FindChild(syntax, "structured-type-name") != kNoNode)
-		found = LookupStructuredName(syntax, scope, LOOKUP_ORDINARY);
+	{
+		const BindingId variable_template =
+			InstantiateVariableTemplate(syntax, scope);
+		if (variable_template != kNoBinding)
+			found.ordinary = variable_template;
+		else found = LookupStructuredName(syntax, scope, LOOKUP_ORDINARY);
+	}
 	else found = LookupSpelling(scope, spelling, LOOKUP_ORDINARY);
 	if (found.ordinary == kNoBinding)
 		throw std::runtime_error("unknown expression name: " + spelling);
 	const BindingRecord& binding = program_->bindings[found.ordinary];
+	if (found.ordinary < variable_template_bindings_.size() &&
+		variable_template_bindings_[found.ordinary] != 0 && binding.constant)
+	{
+		ExpressionInfo result = MakeLiteral(
+			EffectiveType(binding.type), InternNumber(binding.value));
+		result.constant = true;
+		result.value = binding.value;
+		return ApplyTarget(result, target);
+	}
 	if (binding.kind == BIND_ENUMERATOR)
 	{
 		ExpressionInfo result = MakeLiteral(binding.type,

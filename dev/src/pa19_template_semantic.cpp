@@ -365,12 +365,34 @@ bool SemanticAnalyzer::ParseExplicitTemplateArguments(NodeId syntax,
 		const NodeId argument = syntax_arguments[i];
 		const NodeId declarator = arena_->IsTag(argument, "type-id") ?
 			FindChild(argument, "abstract-declarator") : kNoNode;
-		if (!arena_->IsTag(argument, "type-id") ||
-			(declarator != kNoNode &&
-			 FindChild(declarator, "parameter-pack") != kNoNode))
+		if (!arena_->IsTag(argument, "type-id"))
 		{
 			arguments->clear();
 			return false;
+		}
+		if (declarator != kNoNode &&
+			FindChild(declarator, "parameter-pack") != kNoNode)
+		{
+			std::vector<ScopeId> element_scopes;
+			if (!ExpandPackElementScopes(
+				argument, scope, &element_scopes))
+			{
+				arguments->clear();
+				return false;
+			}
+			for (std::size_t element = 0;
+				element < element_scopes.size(); ++element)
+			{
+				const TypeId type = BuildTypeId(
+					argument, element_scopes[element]);
+				if (type == kNoType)
+				{
+					arguments->clear();
+					return false;
+				}
+				arguments->push_back(type);
+			}
+			continue;
 		}
 		const TypeId type = BuildTypeId(argument, scope);
 		if (type == kNoType)
@@ -541,8 +563,7 @@ bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,
 }
 
 bool SemanticAnalyzer::RetainVariableTemplate(NodeId declaration,
-	ScopeId scope, const std::vector<NameId>& parameters,
-	const std::vector<NodeId>& defaults)
+	ScopeId scope, const std::vector<TemplateParameter>& parameters)
 {
 	if (!arena_->IsTag(declaration, "simple-declaration")) return false;
 	const NodeId list = FindChild(declaration, "init-declarator-list");
@@ -609,8 +630,17 @@ bool SemanticAnalyzer::RetainVariableTemplate(NodeId declaration,
 	pattern.specifiers = FindChild(declaration, "decl-specifier-seq");
 	pattern.declarator = declarator;
 	pattern.initializer = FindChild(item, "initializer");
-	pattern.type_parameters = parameters;
-	pattern.default_arguments = defaults;
+	pattern.parameters = parameters;
+	if (terminal_component != kNoNode)
+	{
+		const NodeId arguments = FindChild(
+			terminal_component, "template-type-argument-list");
+		if (arguments != kNoNode)
+			for (std::uint32_t edge = arena_->FirstEdge(arguments);
+				edge != kNoEdge; edge = arena_->NextEdge(edge))
+				pattern.specialization_arguments.push_back(
+					arena_->EdgeChild(edge));
+	}
 	pattern.partial_specialization = partial;
 	const std::size_t index = variable_templates_.size();
 	if (index > std::numeric_limits<std::uint32_t>::max())
@@ -623,6 +653,23 @@ bool SemanticAnalyzer::RetainVariableTemplate(NodeId declaration,
 void SemanticAnalyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 	const std::vector<TemplateParameter>& parameters)
 {
+	NamePath partial_primary;
+	std::vector<NodeId> partial_arguments;
+	if (CollectExplicitTemplateArguments(
+		declaration, &partial_primary, &partial_arguments))
+	{
+		const std::size_t primary = FindClassTemplate(scope, partial_primary);
+		if (primary == NoTemplatePattern())
+			throw std::runtime_error(
+				"class partial specialization has no primary");
+		ClassTemplatePartialPattern partial;
+		partial.lexical_scope = scope;
+		partial.declaration = declaration;
+		partial.parameters = parameters;
+		partial.arguments = partial_arguments;
+		class_templates_[primary].partial_specializations.push_back(partial);
+		return;
+	}
 	const NamePath path = ParseNamePath(arena_->Payload(declaration));
 	const NameId name = path.Last();
 	const ScopeId owner = ResolveOwner(scope, path);
@@ -1227,19 +1274,124 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 		return old;
 	}
 
+	std::size_t selected_partial = NoTemplatePattern();
+	std::vector<TemplateArgument> partial_bindings;
+	if (ClassTemplateArgumentsAreComplete(*program_, arguments))
+		for (std::size_t candidate_index = 0;
+			candidate_index < pattern.partial_specializations.size();
+			++candidate_index)
+		{
+			const ClassTemplatePartialPattern& candidate =
+				pattern.partial_specializations[candidate_index];
+			while (function_template_shape_parameters_.size() <
+				candidate.parameters.size())
+			{
+				std::ostringstream generated;
+				generated << "__function_template_parameter_shape_"
+					<< function_template_shape_parameters_.size();
+				const NameId name = program_->names.Intern(generated.str());
+				const EntityId entity = program_->NewEntity(name,
+					NAMED_TYPENAME_PARAMETER, false, kNoType,
+					program_->GlobalScope(), name);
+				function_template_shape_parameters_.push_back(
+					program_->types.Named(entity));
+			}
+			const ScopeId shape_scope = NewScope(candidate.lexical_scope,
+				SCOPE_TEMPLATE_PARAMETERS, 0,
+				ScopePrefixId(candidate.lexical_scope));
+			for (std::size_t parameter = 0;
+				parameter < candidate.parameters.size(); ++parameter)
+			{
+				const TemplateParameter& record = candidate.parameters[parameter];
+				if (record.name == 0) continue;
+				if (record.kind == TEMPLATE_ARGUMENT_TYPE)
+					program_->AddBinding(shape_scope, BIND_TYPE_ALIAS,
+						record.name,
+						function_template_shape_parameters_[parameter]);
+				else program_->AddBinding(shape_scope, BIND_PARAMETER,
+					record.name, record.dependent_type ?
+						program_->types.Fundamental(FUND_INT) :
+						record.value_type, false,
+					static_cast<std::int64_t>(parameter));
+			}
+			std::vector<TemplateArgument> pattern_arguments;
+			if (!BuildTemplateArguments(pattern.parameters,
+				candidate.arguments, shape_scope, pattern.lexical_scope,
+				&pattern_arguments) ||
+				pattern_arguments.size() != arguments.size()) continue;
+			std::vector<TypeId> deduced_types(
+				candidate.parameters.size(), kNoType);
+			std::vector<TemplateArgument> bindings(candidate.parameters.size());
+			bool match = true;
+			for (std::size_t argument = 0;
+				argument < arguments.size() && match; ++argument)
+			{
+				if (pattern_arguments[argument].kind != arguments[argument].kind)
+				{
+					match = false;
+					break;
+				}
+				if (arguments[argument].kind == TEMPLATE_ARGUMENT_TYPE)
+				{
+					const TypeId pattern_type = pattern_arguments[argument].type;
+					match = FunctionTemplateTypeIsDependent(pattern_type) ?
+						DeduceFunctionTemplateType(pattern_type,
+							arguments[argument].type, &deduced_types) :
+						pattern_type == arguments[argument].type;
+				}
+				else if (pattern_arguments[argument].IsDependent())
+				{
+					const std::size_t parameter =
+						pattern_arguments[argument].dependent_parameter;
+					if (parameter >= bindings.size()) match = false;
+					else if (bindings[parameter].type != kNoType &&
+						bindings[parameter] != arguments[argument]) match = false;
+					else bindings[parameter] = arguments[argument];
+				}
+				else match = pattern_arguments[argument] == arguments[argument];
+			}
+			for (std::size_t parameter = 0;
+				parameter < candidate.parameters.size() && match; ++parameter)
+			{
+				bindings[parameter].kind = candidate.parameters[parameter].kind;
+				if (candidate.parameters[parameter].kind == TEMPLATE_ARGUMENT_TYPE)
+				{
+					if (deduced_types[parameter] == kNoType) match = false;
+					else bindings[parameter].type = deduced_types[parameter];
+				}
+				else if (bindings[parameter].type == kNoType) match = false;
+			}
+			if (!match) continue;
+			selected_partial = candidate_index;
+			partial_bindings.swap(bindings);
+		}
+
 	const std::string specialization_name =
 		ClassTemplateSpecializationName(*program_, pattern.name, arguments);
-	const ScopeId template_scope =
-		BindClassTemplateArguments(pattern, arguments);
+	ScopeId template_scope = BindClassTemplateArguments(pattern, arguments);
+	NodeId selected_declaration = pattern.declaration;
+	if (selected_partial != NoTemplatePattern())
+	{
+		const ClassTemplatePartialPattern& selected =
+			pattern.partial_specializations[selected_partial];
+		template_scope = NewScope(selected.lexical_scope,
+			SCOPE_TEMPLATE_PARAMETERS, 0, ScopePrefixId(selected.lexical_scope));
+		for (std::size_t parameter = 0;
+			parameter < selected.parameters.size(); ++parameter)
+			BindTemplateArgument(template_scope, selected.parameters[parameter],
+				partial_bindings[parameter]);
+		selected_declaration = selected.declaration;
+	}
 	NameId specialization_lookup_name =
 		program_->names.Intern(specialization_name);
 	if (program_->LookupDirect(pattern.owner, specialization_lookup_name,
 		LOOKUP_TYPE).type != kNoType)
 		specialization_lookup_name = program_->names.Intern(
 			ClassTemplateSpecializationScopeName(index, arguments));
-	const TypeId shell = AnalyzeClass(pattern.declaration, template_scope,
+	const TypeId shell = AnalyzeClass(selected_declaration, template_scope,
 		std::string(), false, specialization_name, pattern.owner,
-		pattern.name, false, specialization_lookup_name);
+		pattern.name, selected_partial != NoTemplatePattern(),
+		specialization_lookup_name);
 	const EntityId entity = EntityOf(shell);
 	if (entity == kNoEntity || program_->entities[entity].declaration == kNoBinding)
 		throw std::logic_error("class template shell has no declaration");
@@ -1263,7 +1415,9 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 	if (class_template_specialization_states_.size() <= binding)
 		class_template_specialization_states_.resize(
 			static_cast<std::size_t>(binding) + 1, 0);
-	if (pattern.defined &&
+	if (selected_partial != NoTemplatePattern())
+		class_template_specialization_states_[binding] = 2;
+	else if (pattern.defined &&
 		ClassTemplateArgumentsAreComplete(*program_, arguments))
 		CompleteClassTemplateSpecialization(index, binding, arguments);
 	return binding;
