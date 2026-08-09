@@ -536,19 +536,40 @@ bool SemanticAnalyzer::ParseExplicitTemplateArguments(NodeId syntax,
 bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,
 	ScopeId scope, const std::vector<TemplateParameter>& parameters)
 {
-	NodeId declarator = FindChild(declaration, "declarator");
-	if (arena_->IsTag(declaration, "simple-declaration"))
+	// Out-of-class member templates have one template head for the class and
+	// another for the member.  The outer head owns attachment to each concrete
+	// class specialization; retain the inner declaration intact so its own head
+	// is analyzed exactly once when that attachment is replayed.
+	NodeId described_declaration = declaration;
+	while (arena_->IsTag(described_declaration, "template-declaration"))
 	{
-		const NodeId list = FindChild(declaration, "init-declarator-list");
+		const NodeId clause = FindChild(
+			described_declaration, "template-parameter-clause");
+		NodeId target = kNoNode;
+		for (std::uint32_t edge = arena_->FirstEdge(described_declaration);
+			edge != kNoEdge; edge = arena_->NextEdge(edge))
+		{
+			const NodeId child = arena_->EdgeChild(edge);
+			if (child != clause) target = child;
+		}
+		if (target == kNoNode) return false;
+		described_declaration = target;
+	}
+	NodeId declarator = FindChild(described_declaration, "declarator");
+	if (arena_->IsTag(described_declaration, "simple-declaration"))
+	{
+		const NodeId list = FindChild(
+			described_declaration, "init-declarator-list");
 		const NodeId item = list == kNoNode ? kNoNode :
 			FirstSemanticChild(list);
 		declarator = item == kNoNode ? kNoNode :
 			FindChild(item, "declarator");
 	}
 	NodeId structure = kNoNode;
-	if (arena_->IsTag(declaration, "class-specifier") ||
-		arena_->IsTag(declaration, "class-forward-declaration"))
-		structure = FindChild(declaration, "structured-type-name");
+	if (arena_->IsTag(described_declaration, "class-specifier") ||
+		arena_->IsTag(described_declaration, "class-forward-declaration"))
+		structure = FindChild(
+			described_declaration, "structured-type-name");
 	else if (declarator != kNoNode)
 		structure = DeclaratorNameStructure(declarator);
 	else return false;
@@ -595,78 +616,51 @@ bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,
 	for (std::uint32_t edge = arena_->FirstEdge(owner_argument_list);
 		edge != kNoEdge; edge = arena_->NextEdge(edge))
 		owner_arguments.push_back(arena_->EdgeChild(edge));
-	if (!owner_pattern.defined || owner_arguments.size() !=
-		owner_pattern.parameters.size())
+	if ((!HasTrailingTemplateParameterPack(owner_pattern.parameters) &&
+		 owner_arguments.size() != owner_pattern.parameters.size()) ||
+		(HasTrailingTemplateParameterPack(owner_pattern.parameters) &&
+		 owner_arguments.size() <
+			FixedTemplateParameterCount(owner_pattern.parameters)))
 		throw std::runtime_error("invalid class template member owner shape");
 
 	ClassTemplateMemberPattern member;
 	member.lexical_scope = scope;
 	member.declaration = declaration;
 	member.parameters = parameters;
-	member.owner_parameter_indices.assign(owner_arguments.size(), kNoDumpEdge);
-	member.owner_fixed_arguments.assign(owner_arguments.size(),
-		TemplateArgument());
 	for (std::size_t component = owner_component + 1;
 		component + 1 < path.Size(); ++component)
-		member.nested_owner_path.push_back(path[component]);
-	std::vector<std::uint8_t> used(parameters.size(), 0);
-	for (std::size_t argument = 0; argument < owner_arguments.size(); ++argument)
-	{
-		std::size_t parameter = parameters.size();
-		NameId argument_id = 0;
-		if (arena_->IsTag(owner_arguments[argument], "type-id"))
-		{
-			const NodeId argument_specifiers = FindChild(
-				owner_arguments[argument], "type-specifier-seq");
-			const NodeId argument_name = argument_specifiers == kNoNode ?
-				kNoNode : FirstSemanticChild(argument_specifiers);
-			if (argument_name != kNoNode &&
-				arena_->IsTag(argument_name, "type-name"))
-				argument_id = program_->names.Intern(PayloadSource(argument_name));
-		}
-		else if (arena_->IsTag(owner_arguments[argument], "id-expression") &&
-			FindChild(owner_arguments[argument], "structured-type-name") == kNoNode)
-			argument_id = program_->names.Intern(
-				PayloadSource(owner_arguments[argument]));
-		for (std::size_t candidate = 0;
-			candidate < parameters.size(); ++candidate)
-			if (parameters[candidate].name != 0 &&
-				argument_id == parameters[candidate].name &&
-				parameters[candidate].kind ==
-					owner_pattern.parameters[argument].kind)
-			{
-				parameter = candidate;
-				break;
-			}
-		if (parameter != parameters.size())
-		{
-			if (used[parameter])
-				throw std::runtime_error(
-					"repeated class template member owner parameter");
-			used[parameter] = 1;
-			member.owner_parameter_indices[argument] =
-				static_cast<std::uint32_t>(parameter);
-			continue;
-		}
-		if (owner_pattern.parameters[argument].kind != TEMPLATE_ARGUMENT_TYPE ||
-			!arena_->IsTag(owner_arguments[argument], "type-id"))
-			throw std::runtime_error(
-				"fixed non-type class template member owners are unsupported");
-		member.owner_fixed_arguments[argument] = TemplateArgument(
-			TEMPLATE_ARGUMENT_TYPE,
-			BuildTypeId(owner_arguments[argument], scope));
-	}
-	for (std::size_t i = 0; i < used.size(); ++i)
-		if (!used[i])
-			throw std::runtime_error(
-				"class template member parameter is not bound by its owner");
+		if (path[component] != path[owner_component])
+			member.nested_owner_path.push_back(path[component]);
+	if (owner_pattern.defined && !member.nested_owner_path.empty() &&
+		FindChild(owner_pattern.declaration, "base-clause") == kNoNode &&
+		!RetainedClassDeclaresNestedPath(
+			owner_pattern.declaration, member.nested_owner_path))
+		throw std::runtime_error(
+			"class template member has a missing nested owner");
+	std::uint8_t owner_shape_state = 0;
+	if (!MaterializeTemplatePartialArguments(owner_pattern.parameters,
+		parameters, owner_arguments, scope, &member.canonical_owner_arguments,
+		&owner_shape_state) || owner_shape_state != 1)
+		throw std::runtime_error(
+			"class template member owner pattern is not deducible");
 
 	const bool demand_definition =
-		arena_->IsTag(declaration, "simple-declaration");
+		arena_->IsTag(described_declaration, "simple-declaration");
 	if (demand_definition)
 		class_templates_[pattern_index].demanded_member_definitions.push_back(
 			member);
 	else class_templates_[pattern_index].member_definitions.push_back(member);
+	if (parameters.empty())
+	{
+		bool concrete_owner = true;
+		for (std::size_t i = 0;
+			i < member.canonical_owner_arguments.size(); ++i)
+			if (member.canonical_owner_arguments[i].IsDependent())
+				concrete_owner = false;
+		if (concrete_owner)
+			(void)InstantiateClassTemplate(
+				pattern_index, member.canonical_owner_arguments);
+	}
 	const std::vector<BindingId> specializations =
 		class_templates_[pattern_index].specialization_bindings;
 	const std::size_t parameter_count = owner_pattern.parameters.size();
@@ -689,6 +683,51 @@ bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,
 				pattern_index, specializations[i]);
 		else ApplyClassTemplateMemberDefinitions(
 			pattern_index, specializations[i], arguments);
+	}
+	return true;
+}
+
+bool SemanticAnalyzer::RetainedClassDeclaresNestedPath(NodeId declaration,
+	const std::vector<NameId>& path)
+{
+	NodeId owner = declaration;
+	for (std::size_t part = 0; part < path.size(); ++part)
+	{
+		NodeId selected = kNoNode;
+		for (std::uint32_t edge = arena_->FirstEdge(owner);
+			edge != kNoEdge; edge = arena_->NextEdge(edge))
+		{
+			NodeId candidate = arena_->EdgeChild(edge);
+			while (arena_->IsTag(candidate, "template-declaration"))
+			{
+				const NodeId clause = FindChild(
+					candidate, "template-parameter-clause");
+				NodeId target = kNoNode;
+				for (std::uint32_t nested = arena_->FirstEdge(candidate);
+					nested != kNoEdge; nested = arena_->NextEdge(nested))
+				{
+					const NodeId child = arena_->EdgeChild(nested);
+					if (child != clause) target = child;
+				}
+				candidate = target;
+			}
+			if (candidate == kNoNode ||
+				(!arena_->IsTag(candidate, "class-specifier") &&
+				 !arena_->IsTag(candidate, "class-forward-declaration")))
+				continue;
+			const NodeId structure = FindChild(
+				candidate, "structured-type-name");
+			const NameId name = structure == kNoNode ?
+				program_->names.Intern(arena_->Payload(candidate)) :
+				StructuredNamePath(structure).Last();
+			if (name == path[part])
+			{
+				selected = candidate;
+				break;
+			}
+		}
+		if (selected == kNoNode) return false;
+		owner = selected;
 	}
 	return true;
 }
@@ -1005,68 +1044,30 @@ void SemanticAnalyzer::ApplyClassTemplateMemberDefinitions(
 			counts[specialization]++;
 		const ClassTemplateMemberPattern& definition =
 			definitions[definition_index];
-		const bool pack_owner =
-			definition.owner_parameter_indices.size() == 1 &&
-			definition.owner_parameter_indices[0] != kNoDumpEdge &&
-			definition.owner_parameter_indices[0] < definition.parameters.size() &&
-			definition.parameters[definition.owner_parameter_indices[0]].pack;
-		if (!pack_owner &&
-			(definition.owner_parameter_indices.size() != arguments.size() ||
-			 definition.owner_fixed_arguments.size() != arguments.size()))
-			throw std::logic_error("class template member argument shape changed");
-		std::vector<TemplateArgument> bindings(definition.parameters.size());
-		std::vector<std::uint8_t> bound(definition.parameters.size(), 0);
-		for (std::size_t owner = 0;
-			!pack_owner && owner < arguments.size(); ++owner)
-		{
-			const std::uint32_t parameter =
-				definition.owner_parameter_indices[owner];
-			if (parameter == kNoDumpEdge)
-			{
-				if (definition.owner_fixed_arguments[owner] != arguments[owner])
-					throw std::runtime_error(
-						"class template member owner does not match specialization");
-				continue;
-			}
-			if (parameter >= bindings.size())
-				throw std::logic_error(
-					"class template member parameter index is invalid");
-			if (bound[parameter] && bindings[parameter] != arguments[owner])
-				throw std::runtime_error(
-					"class template member owner deduction conflict");
-			bindings[parameter] = arguments[owner];
-			bound[parameter] = 1;
-		}
+		FunctionTemplateDeduction owner_bindings(definition.parameters);
+		if (!MatchTemplatePartialArguments(definition.parameters,
+			definition.canonical_owner_arguments, arguments, &owner_bindings))
+			continue;
 		const ScopeId member_scope = program_->entities[entity].member_scope;
 		if (member_scope == kNoScope)
 			throw std::logic_error(
 				"class template member definition has no class scope");
-		for (std::size_t parameter = 0;
-			!pack_owner && parameter < bindings.size(); ++parameter)
-			if (!bound[parameter] || definition.parameters[parameter].name == 0)
-				throw std::runtime_error(
-					"unbound class template member parameter");
 		const ClassTemplateMemberPattern* definition_pointer = &definition;
-		const std::vector<TemplateArgument>* binding_pointer = &bindings;
-		const std::vector<TemplateArgument>* argument_pointer = &arguments;
+		const FunctionTemplateDeduction* binding_pointer = &owner_bindings;
 		const auto make_definition_scope = [this, definition_pointer,
-			binding_pointer, argument_pointer, pack_owner](ScopeId parent) {
+			binding_pointer](ScopeId parent) {
 			const ScopeId result = NewScope(parent, SCOPE_TEMPLATE_PARAMETERS,
 				0, ScopePrefixId(parent));
-			if (pack_owner)
-			{
-				const std::uint32_t parameter =
-					definition_pointer->owner_parameter_indices[0];
-				BindTemplateArgumentPack(result,
-					definition_pointer->parameters[parameter],
-					*argument_pointer, 0, argument_pointer->size());
-				return result;
-			}
 			for (std::size_t parameter = 0;
-				parameter < binding_pointer->size(); ++parameter)
-				BindTemplateArgument(result,
+				parameter < definition_pointer->parameters.size(); ++parameter)
+				if (definition_pointer->parameters[parameter].pack)
+					BindTemplateArgumentPack(result,
+						definition_pointer->parameters[parameter],
+						binding_pointer->pack_arguments[parameter], 0,
+						binding_pointer->pack_arguments[parameter].size());
+				else BindTemplateArgument(result,
 					definition_pointer->parameters[parameter],
-					(*binding_pointer)[parameter]);
+					binding_pointer->fixed_arguments[parameter]);
 			return result;
 		};
 		ScopeId actual_owner = member_scope;
@@ -1087,7 +1088,21 @@ void SemanticAnalyzer::ApplyClassTemplateMemberDefinitions(
 		ScopeId definition_scope = make_definition_scope(actual_owner);
 		const NodeId node = definition.declaration;
 
-		if (arena_->IsTag(node, "function-definition"))
+		if (arena_->IsTag(node, "template-declaration"))
+		{
+			++class_template_member_replay_depth_;
+			try
+			{
+				AnalyzeTemplate(node, definition_scope, ACCESS_PUBLIC);
+			}
+			catch (...)
+			{
+				--class_template_member_replay_depth_;
+				throw;
+			}
+			--class_template_member_replay_depth_;
+		}
+		else if (arena_->IsTag(node, "function-definition"))
 			AnalyzeFunction(node, definition_scope, root_, true);
 		else if (arena_->IsTag(node, "special-member-definition") ||
 			arena_->IsTag(node, "special-member-declaration"))

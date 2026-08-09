@@ -267,6 +267,21 @@ protected:
 		return kNoNode;
 	}
 
+	bool StartsKnownMemberTemplateCall()
+	{
+		Derived& parser = static_cast<Derived&>(*this);
+		if (!parser.AtIdentifier() || !parser.AtOffset(1, OP_LT) ||
+			!parser.HasNameFact(parser.tokens_[parser.position_].spelling,
+				Derived::kKnownTemplate)) return false;
+		const typename Derived::Mark mark = parser.Checkpoint();
+		++parser.position_;
+		const std::size_t opener = parser.position_;
+		TryConsumeTemplateArguments();
+		const bool result = parser.position_ > opener && parser.At(OP_LPAREN);
+		parser.Rollback(mark);
+		return result;
+	}
+
 	bool QualifiedStartsTypeAt(std::size_t scan) const
 	{
 		const Derived& parser = static_cast<const Derived&>(*this);

@@ -1719,13 +1719,14 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 	if (clause != kNoNode && list == kNoNode && target != kNoNode &&
 		AnalyzeExplicitTemplateSpecialization(target, scope, member_access))
 		return;
-	if (target != kNoNode)
+	if (target != kNoNode &&
+		!arena_->IsTag(target, "template-declaration"))
 		ValidateRetainedTemplateDefinition(target, scope, parameters);
 	// Alias templates are outside PA20.  Retain their parsed declaration as an
 	// inert boundary so unrelated supported declarations in the same source do
 	// not eagerly require alias substitution semantics.
 	if (target != kNoNode && arena_->IsTag(target, "alias-declaration")) return;
-	if (target != kNoNode &&
+	if (target != kNoNode && class_template_member_replay_depth_ == 0 &&
 		AnalyzeClassTemplateMember(target, scope, parameters)) return;
 	if (target != kNoNode &&
 		(arena_->IsTag(target, "class-specifier") ||
@@ -1736,20 +1737,25 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 	}
 	if (target != kNoNode && RetainVariableTemplate(
 		target, scope, parameters)) return;
+	const bool special_member_template = target != kNoNode &&
+		(arena_->IsTag(target, "special-member-declaration") ||
+		 arena_->IsTag(target, "special-member-definition"));
 	if (target == kNoNode ||
 		(!arena_->IsTag(target, "simple-declaration") &&
-		 !arena_->IsTag(target, "function-definition")))
+		 !arena_->IsTag(target, "function-definition") &&
+		 !special_member_template))
 		throw std::runtime_error("unsupported PA12 templated declaration");
 	const NodeId specifiers = FindChild(target, "decl-specifier-seq");
-	if (specifiers == kNoNode)
+	if (specifiers == kNoNode && !special_member_template)
 		throw std::runtime_error("invalid PA12 function template");
-	const bool definition = arena_->IsTag(target, "function-definition");
+	const bool definition = arena_->IsTag(target, "function-definition") ||
+		arena_->IsTag(target, "special-member-definition");
 	const NodeId declarators = definition ? kNoNode :
 		FindChild(target, "init-declarator-list");
-	if (!definition && declarators == kNoNode)
+	if (!definition && declarators == kNoNode && !special_member_template)
 		throw std::runtime_error("invalid PA12 function template");
 	std::vector<NodeId> pattern_declarators;
-	if (definition)
+	if (definition || special_member_template)
 	{
 		const NodeId declarator = FindChild(target, "declarator");
 		if (declarator == kNoNode)
@@ -1783,7 +1789,8 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 		if (parameters[i].name != 0)
 			parameter_names.insert(parameters[i].name);
 	bool deferred_dependent_result = false;
-	for (std::uint32_t edge = arena_->FirstEdge(specifiers);
+	for (std::uint32_t edge = specifiers == kNoNode ? kNoEdge :
+		arena_->FirstEdge(specifiers);
 		edge != kNoEdge && !deferred_dependent_result;
 		edge = arena_->NextEdge(edge))
 	{
@@ -1816,124 +1823,17 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 	for (std::size_t i = 0; i < pattern_declarators.size(); ++i)
 	{
 		const NodeId declarator = pattern_declarators[i];
-		const NamePath path = DeclaratorNamePath(declarator);
-		FunctionTemplatePattern pattern;
-		pattern.owner = ResolveOwner(scope, path);
-		if (pattern.owner == kNoScope)
-			throw std::runtime_error("function template owner not found");
-		pattern.lexical_scope = scope;
-		pattern.name = path.Last();
-		pattern.specifiers = specifiers;
-		pattern.declarator = declarator;
-		pattern.definition_body = definition ?
-			FindChild(target, "compound-statement") : kNoNode;
-		pattern.parameters = parameters;
-		pattern.language_linkage = current_language_linkage_;
-		pattern.member_access = member_access;
-		pattern.defined = definition;
 		const NodeId exception_qualifier =
 			FindChild(declarator, "function-qualifier");
 		const NodeId exception_expression = exception_qualifier == kNoNode ?
 			kNoNode : FirstSemanticChild(exception_qualifier);
-		pattern.dependent_exception_specification =
+		const bool dependent_exception_specification =
 			exception_expression != kNoNode && SyntaxUsesAnyIdentifier(
 				*arena_, exception_expression, parameter_names);
-		pattern.nonthrowing = pattern.dependent_exception_specification ?
-			false : IsNonthrowing(declarator, pattern.owner);
-		const ScopeId shape_scope = NewScope(scope, SCOPE_TEMPLATE_PARAMETERS,
-			0, ScopePrefixId(scope));
-		for (std::size_t p = 0; p < parameters.size(); ++p)
-		{
-			if (parameters[p].name == 0) continue;
-			if (parameters[p].kind == TEMPLATE_ARGUMENT_TYPE)
-				program_->AddBinding(shape_scope, BIND_TYPE_ALIAS,
-					parameters[p].name, function_template_shape_parameters_[p]);
-			else program_->AddBinding(shape_scope, BIND_PARAMETER,
-				parameters[p].name, parameters[p].dependent_type ?
-					program_->types.Fundamental(FUND_INT) :
-					parameters[p].value_type, false,
-				static_cast<std::int64_t>(p));
-		}
-		const SpecInfo shape_spec = BuildSpecifiers(specifiers, shape_scope,
-			std::string(), true, false, dependent_result_shape);
-		const NodeId trailing_return =
-			FindChild(declarator, "trailing-return-type");
-		const bool defer_trailing_return = trailing_return != kNoNode &&
-			PayloadSource(trailing_return).compare(0, 8, "decltype") == 0;
-		const EntityId member_owner =
-			program_->EntityForScope(pattern.owner);
-		const bool nonstatic_member = member_owner != kNoEntity &&
-			shape_spec.storage_class != STORAGE_CLASS_STATIC;
-		const EntityId previous_class = current_class_context_;
-		if (member_owner != kNoEntity) current_class_context_ = member_owner;
-		DeclaratorInfo shape_declarator = BuildDeclarator(declarator,
-			shape_spec.type, shape_scope, false, nonstatic_member,
-			defer_trailing_return);
-		current_class_context_ = previous_class;
-		if (!program_->types.IsFunction(shape_declarator.type))
-			throw std::runtime_error(
-				"function template has non-function declaration");
-		if (shape_spec.is_constexpr)
-			shape_declarator.type = ApplyConstexprMemberFunctionType(
-				shape_declarator.type, member_owner,
-				shape_spec.storage_class == STORAGE_CLASS_STATIC);
-		if (shape_spec.is_constexpr)
-			ValidateConstexprCallableType(shape_declarator.type, false);
-		pattern.shape_type = shape_declarator.type;
-		InitializeFunctionTemplatePackShape(&pattern, shape_declarator);
-		const std::uint64_t key =
-			(static_cast<std::uint64_t>(pattern.owner) << 32) | pattern.name;
-		const CompactIndexSequence* prior_patterns =
-			template_function_sets_.Find(key);
-		std::size_t prior_index = function_templates_.size();
-		if (prior_patterns)
-			for (std::size_t p = 0; p < prior_patterns->Size(); ++p)
-			{
-				const std::size_t candidate = (*prior_patterns)[p];
-				const FunctionTemplatePattern& prior =
-					function_templates_[candidate];
-				if (prior.parameters.size() == parameters.size() &&
-					prior.shape_type == pattern.shape_type)
-				{
-					prior_index = candidate;
-					break;
-				}
-			}
-		if (prior_index != function_templates_.size())
-		{
-			FunctionTemplatePattern& prior = function_templates_[prior_index];
-			for (std::size_t d = 0; d < parameters.size(); ++d)
-				if (prior.parameters[d].default_argument == kNoNode &&
-					parameters[d].default_argument != kNoNode)
-					prior.parameters[d].default_argument =
-						parameters[d].default_argument;
-			prior.required_parameter_count = std::min(prior.required_parameter_count, pattern.required_parameter_count);
-			if (prior.nonthrowing != pattern.nonthrowing ||
-				prior.dependent_exception_specification !=
-					pattern.dependent_exception_specification)
-				throw std::runtime_error(
-					"conflicting function template exception specification");
-			if (definition)
-			{
-				if (prior.defined)
-					throw std::runtime_error(
-						"duplicate function template definition");
-				prior.lexical_scope = pattern.lexical_scope;
-				prior.specifiers = pattern.specifiers;
-				prior.declarator = pattern.declarator;
-				prior.definition_body = pattern.definition_body;
-				prior.parameters = pattern.parameters;
-				prior.language_linkage = pattern.language_linkage;
-				prior.member_access = pattern.member_access;
-				prior.defined = true;
-				UpgradeFunctionTemplateSpecializations(prior_index);
-			}
-			continue;
-		}
-		const std::size_t index = function_templates_.size();
-		function_templates_.push_back(pattern);
-		template_function_sets_.Ensure(key).Push(index);
-		program_->PublishFunctionTemplateName(pattern.owner, pattern.name);
+		RegisterFunctionTemplatePattern(target, scope, member_access,
+			parameters, specifiers, declarator, definition,
+			special_member_template, dependent_result_shape,
+			dependent_exception_specification);
 	}
 }
 void SemanticAnalyzer::AnalyzeNamespace(NodeId node, ScopeId scope,

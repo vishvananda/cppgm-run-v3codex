@@ -443,7 +443,7 @@ CallConversionFact SemanticAnalyzer::BracedInitializationConversion(
 BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 	const std::vector<NodeId>& argument_syntax,
 	const std::vector<ExpressionInfo>& arguments,
-	const std::vector<BindingId>& candidates, bool copy_initialization,
+	const std::vector<BindingId>& input_candidates, bool copy_initialization,
 	bool list_initialization,
 	std::vector<CallConversionFact>* selected_conversions,
 	bool quiet, NodeId source_list, TypeId initialized_type)
@@ -483,6 +483,9 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 		}
 		++braced_fact_cache_misses_;
 	}
+	std::vector<BindingId> candidates(input_candidates);
+	AppendConstructorTemplateCandidates(
+		initialized_type, arguments, &candidates);
 	const std::size_t arity = argument_syntax.size();
 	if (arity != 0 && candidates.size() >
 		std::numeric_limits<std::size_t>::max() / arity)

@@ -1503,8 +1503,10 @@ NodeId Parser::ParsePostfixSuffixes(NodeId value) {
 			std::string member;
 			NodeId structure = kNoNode;
 			const bool qualified_member = AtIdentifier() && AtOffset(1, OP_COLON2);
+			const bool known_template_member = StartsKnownMemberTemplateCall();
 			if (!ParseName(&member, qualified_member, true,
-				dependent_template || qualified_member, &structure))
+				dependent_template || qualified_member || known_template_member,
+				&structure))
 				throw Error("expected member name");
 			if (dependent_template) member = "template " + member;
 			const NodeId expression = MakeTokenNode("member-expression", operation);

@@ -33,6 +33,7 @@ public:
 		  graph_consumer_(graph_consumer), render_output_(render_output),
 		  root_(kNoDumpEdge),
 		  function_template_dependent_result_shape_(kNoType),
+		  class_template_member_replay_depth_(0),
 		  current_language_linkage_(LANGUAGE_LINKAGE_CPP),
 		  current_return_type_(kNoType), current_class_context_(kNoEntity),
 		  current_function_context_(kNoBinding),
@@ -129,6 +130,12 @@ private:
 		AccessKind access = ACCESS_PUBLIC);
 	void AnalyzeTemplate(NodeId node, ScopeId scope,
 		AccessKind member_access = ACCESS_PUBLIC);
+	void RegisterFunctionTemplatePattern(NodeId target, ScopeId scope,
+		AccessKind member_access,
+		const std::vector<TemplateParameter>& parameters, NodeId specifiers,
+		NodeId declarator, bool definition, bool special_member_template,
+		TypeId dependent_result_shape,
+		bool dependent_exception_specification);
 	bool AnalyzeExplicitTemplateSpecialization(NodeId target, ScopeId scope,
 		AccessKind member_access);
 	void ParseTemplateParameters(NodeId list, ScopeId scope,
@@ -153,6 +160,8 @@ private:
 	BindingId InstantiateVariableTemplate(NodeId syntax, ScopeId scope);
 	bool AnalyzeClassTemplateMember(NodeId declaration, ScopeId scope,
 		const std::vector<TemplateParameter>& parameters);
+	bool RetainedClassDeclaresNestedPath(NodeId declaration,
+		const std::vector<NameId>& path);
 	void AnalyzeSimple(NodeId node, ScopeId scope,
 		std::uint32_t output_parent, bool local,
 		bool qualified_lexical_scope = false,
@@ -805,6 +814,9 @@ private:
 		std::vector<CallConversionFact>* selected_conversions = 0,
 		bool quiet = false, NodeId source_list = kNoNode,
 		TypeId initialized_type = kNoType);
+	void AppendConstructorTemplateCandidates(TypeId initialized_type,
+		const std::vector<ExpressionInfo>& arguments,
+		std::vector<BindingId>* candidates);
 	void PrepareBracedInitialization(NodeId list, ScopeId scope);
 	bool ReusePreparedBracedExpression(NodeId node, TypeId target,
 		ExpressionInfo* result);
@@ -1122,6 +1134,7 @@ private:
 	// Bit 0 is monotonic owner demand; bit 1 is deduplicated queued work.
 	std::vector<std::uint8_t> class_template_member_definition_demand_states_;
 	std::vector<BindingId> demanded_class_template_member_definitions_;
+	std::size_t class_template_member_replay_depth_;
 	std::vector<NodeId> deferred_class_definition_by_entity_;
 	std::vector<ScopeId> deferred_class_scope_by_entity_;
 	std::vector<std::uint32_t> injected_fact_by_binding_;

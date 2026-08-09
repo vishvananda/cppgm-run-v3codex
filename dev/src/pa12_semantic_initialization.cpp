@@ -118,8 +118,8 @@ BindingId SemanticAnalyzer::ValidateClassValueConstruction(TypeId type,
 		throw std::runtime_error("cannot construct an abstract class value");
 	std::vector<NodeId> argument_syntax(1, kNoNode);
 	std::vector<ExpressionInfo> arguments(1, source);
-	return SelectConstructor(kNoScope, argument_syntax,
-		arguments, ConstructorCandidates(entity), copy_initialization, false);
+	return SelectConstructor(kNoScope, argument_syntax, arguments,
+		ConstructorCandidates(entity), copy_initialization, false, 0, false, kNoNode, type);
 }
 
 bool SemanticAnalyzer::TryBuildElidedClassValueTransfer(TypeId type,
@@ -166,7 +166,7 @@ std::uint32_t SemanticAnalyzer::BuildClassValueConstructorAction(TypeId type,
 	std::vector<CallConversionFact> selected_conversions;
 	const BindingId selected = SelectConstructor(kNoScope, argument_syntax,
 		arguments, ConstructorCandidates(entity), copy_initialization, false,
-		&selected_conversions);
+		&selected_conversions, false, kNoNode, type);
 	const FunctionInfo constructor = GetFunction(selected);
 	const TypeRecord function_type = program_->types.Get(constructor.type);
 	const TypeId* parameter_data = program_->types.Parameters(constructor.type);

@@ -36,6 +36,7 @@ struct RetainedScope
 	std::unordered_map<NameId, std::vector<BindingId> > call_functions;
 	std::unordered_map<NameId, std::vector<std::size_t> > call_templates;
 	std::unordered_map<NameId, EntityId> call_naming_classes;
+	std::unordered_set<NameId> dependent_values;
 	bool defer_unknown_members;
 	bool unmodeled_fixed_base;
 	bool unmodeled_current_class;
@@ -73,6 +74,7 @@ private:
 	bool LookupLocalCallSets(std::size_t scope, NameId name,
 		std::vector<BindingId>* functions,
 		std::vector<std::size_t>* templates, EntityId* naming_class) const;
+	bool IsDependentValue(std::size_t scope, NameId name) const;
 	bool DefersUnknownMembers(std::size_t scope) const;
 	bool HasUnmodeledFixedBase(std::size_t scope) const;
 	bool HasUnmodeledCurrentClass(std::size_t scope) const;
@@ -189,6 +191,17 @@ bool RetainedTemplateValidator::LookupLocalCallSets(std::size_t scope,
 				*naming_class = naming->second;
 			return true;
 		}
+		scope = scopes_[scope].parent;
+	}
+	return false;
+}
+
+bool RetainedTemplateValidator::IsDependentValue(
+	std::size_t scope, NameId name) const
+{
+	while (scope != std::numeric_limits<std::size_t>::max())
+	{
+		if (scopes_[scope].dependent_values.count(name) != 0) return true;
 		scope = scopes_[scope].parent;
 	}
 	return false;
@@ -377,8 +390,13 @@ void RetainedTemplateValidator::BindFunctionParameters(NodeId declarator,
 		const NodeId parameter_declarator =
 			analyzer_.FindChild(parameter, "declarator");
 		if (parameter_declarator != kNoNode)
+		{
 			Declare(scope, analyzer_.DeclaratorName(parameter_declarator),
 				RETAINED_VALUE_NAME);
+			if (SyntaxUsesTemplateParameter(parameter))
+				scopes_[scope].dependent_values.insert(
+					analyzer_.DeclaratorName(parameter_declarator));
+		}
 		VisitChildren(parameter, scope);
 	}
 }
@@ -562,7 +580,9 @@ void RetainedTemplateValidator::VisitSimple(NodeId node, std::size_t scope,
 				if (declarator != kNoNode)
 					Declare(scope, analyzer_.DeclaratorName(declarator),
 						type_declaration ? RETAINED_TYPE_NAME :
-						RETAINED_VALUE_NAME);
+						RETAINED_VALUE_NAME,
+						!type_declaration &&
+						FindParameterClause(declarator) != kNoNode);
 			}
 	}
 	VisitChildren(node, scope);
@@ -824,6 +844,75 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 		VisitChildren(node, block);
 		return;
 	}
+	if (analyzer_.arena_->IsTag(node, "template-declaration"))
+	{
+		const NodeId clause = analyzer_.FindChild(
+			node, "template-parameter-clause");
+		const NodeId list = clause == kNoNode ? kNoNode :
+			analyzer_.FindChild(clause, "template-parameter-list");
+		std::vector<TemplateParameter> parameters;
+		std::vector<NameId> names;
+		std::vector<NodeId> defaults;
+		analyzer_.ParseTemplateParameters(list,
+			scopes_[scope].semantic_scope, &parameters, &names, &defaults);
+		const std::size_t template_scope = AddChildScope(
+			scope, SCOPE_TEMPLATE_PARAMETERS, DefersUnknownMembers(scope));
+		std::vector<NameId> introduced;
+		for (std::size_t i = 0; i < parameters.size(); ++i)
+		{
+			DeclareParameter(template_scope, parameters[i]);
+			if (parameters[i].name != 0)
+				introduced.push_back(parameters[i].name);
+		}
+		for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
+			edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+		{
+			const NodeId child = analyzer_.arena_->EdgeChild(edge);
+			if (child != clause) Visit(child, template_scope);
+		}
+		for (std::size_t i = 0; i < introduced.size(); ++i)
+			parameter_names_.erase(introduced[i]);
+		return;
+	}
+	if (analyzer_.arena_->IsTag(node, "member-expression"))
+	{
+		const std::uint32_t object_edge = analyzer_.arena_->FirstEdge(node);
+		const std::uint32_t member_edge = object_edge == kNoEdge ? kNoEdge :
+			analyzer_.arena_->NextEdge(object_edge);
+		if (member_edge != kNoEdge)
+		{
+			const NodeId object = analyzer_.arena_->EdgeChild(object_edge);
+			const NodeId member = analyzer_.arena_->EdgeChild(member_edge);
+			const NodeId structure = analyzer_.FindChild(
+				member, "structured-type-name");
+			NodeId terminal = kNoNode;
+			if (structure != kNoNode)
+				for (std::uint32_t edge = analyzer_.arena_->FirstEdge(structure);
+					edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+				{
+					const NodeId child = analyzer_.arena_->EdgeChild(edge);
+					if (analyzer_.arena_->IsTag(child, "name-component"))
+						terminal = child;
+				}
+			const bool template_id = terminal != kNoNode &&
+				analyzer_.FindChild(terminal,
+					"template-type-argument-list") != kNoNode;
+			const bool template_keyword = analyzer_.PayloadSource(member).
+				compare(0, 8, "template") == 0;
+			if (template_id && !template_keyword &&
+				analyzer_.arena_->IsTag(object, "id-expression") &&
+				analyzer_.FindChild(object, "structured-type-name") == kNoNode)
+			{
+				const NameId object_name = analyzer_.program_->names.Intern(
+					analyzer_.PayloadSource(object));
+				if (IsDependentValue(scope, object_name))
+					throw std::runtime_error(
+						"dependent member template-id requires template");
+			}
+		}
+		VisitChildren(node, scope);
+		return;
+	}
 	if (analyzer_.arena_->IsTag(node, "class-specifier"))
 	{
 		VisitClass(node, scope);
@@ -1038,9 +1127,32 @@ void SemanticAnalyzer::CompleteFunctionCallTemplateCandidates(NodeId callee,
 	if (!retained_lookup)
 	{
 		const NamePath structured = StructuredNamePath(callee);
-		const std::vector<std::size_t> patterns = structured.Empty() ?
-			FindFunctionTemplates(scope, spelling) :
-			FindFunctionTemplates(scope, structured);
+		std::vector<std::size_t> patterns;
+		if (structured.Empty())
+			patterns = FindFunctionTemplates(scope, spelling);
+		else
+		{
+			// Resolve template-id owner components semantically.  A flattened
+			// NamePath identifies box<int> as box and would otherwise stop at
+			// the primary marker rather than the concrete member scope.
+			const LookupResult found = LookupStructuredName(
+				callee, scope, LOOKUP_FUNCTION_TEMPLATE);
+			const NameId name = structured.Last();
+			for (std::size_t owner = 0;
+				owner < found.FunctionTemplateOwnerCount(); ++owner)
+			{
+				const std::uint64_t key =
+					(static_cast<std::uint64_t>(
+						found.FunctionTemplateOwnerAt(owner)) << 32) | name;
+				const CompactIndexSequence* indexed =
+					template_function_sets_.Find(key);
+				if (!indexed) continue;
+				for (std::size_t i = 0; i < indexed->Size(); ++i)
+					patterns.push_back((*indexed)[i]);
+			}
+			if (patterns.empty())
+				patterns = FindFunctionTemplates(scope, structured);
+		}
 		if (patterns.empty()) return;
 		NamePath base;
 		std::vector<TypeId> explicit_arguments;

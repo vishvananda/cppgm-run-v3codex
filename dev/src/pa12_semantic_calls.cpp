@@ -422,6 +422,8 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 		member_path.global || member_path.Size() > 1;
 	LookupResult found = program_->LookupMember(
 		entity, name, LOOKUP_ORDINARY);
+	const LookupResult template_found = program_->LookupMember(
+		entity, name, LOOKUP_FUNCTION_TEMPLATE);
 	if (found.ordinary == kNoBinding &&
 		member_spelling.compare(0, 8, "operator") == 0)
 	{
@@ -441,13 +443,27 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 				break;
 			}
 	}
-	if (found.ordinary == kNoBinding ||
-		program_->bindings[found.ordinary].kind != BIND_FUNCTION)
-		return false;
+	std::vector<std::size_t> template_patterns;
+	for (std::size_t owner = 0;
+		owner < template_found.FunctionTemplateOwnerCount(); ++owner)
+	{
+		const ScopeId template_owner =
+			template_found.FunctionTemplateOwnerAt(owner);
+		const std::uint64_t key =
+			(static_cast<std::uint64_t>(template_owner) << 32) | name;
+		const CompactIndexSequence* indexed = template_function_sets_.Find(key);
+		if (!indexed) continue;
+		for (std::size_t pattern = 0; pattern < indexed->Size(); ++pattern)
+			template_patterns.push_back((*indexed)[pattern]);
+	}
+	const bool ordinary_functions = found.ordinary != kNoBinding &&
+		program_->bindings[found.ordinary].kind == BIND_FUNCTION;
+	if (!ordinary_functions && template_patterns.empty()) return false;
 	if (!arrow && object.category == VALUE_PRVALUE &&
 		dump_.nodes[object.node].kind != DUMP_TEMPORARY_OBJECT)
 		object = MaterializeTemporary(object);
-	const std::vector<BindingId> candidates = FunctionSet(found.ordinary);
+	std::vector<BindingId> candidates = ordinary_functions ?
+		FunctionSet(found.ordinary) : std::vector<BindingId>();
 	ExpressionInfo object_pointer = object;
 	if (!arrow)
 	{
@@ -457,6 +473,46 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 	std::vector<ExpressionInfo> arguments;
 	for (std::size_t i = 0; i < argument_syntax.size(); ++i)
 		arguments.push_back(AnalyzeExpression(argument_syntax[i], scope));
+	if (!template_patterns.empty())
+	{
+		NamePath explicit_base;
+		std::vector<TypeId> explicit_arguments;
+		const bool explicit_id = ParseExplicitTemplateArguments(
+			identifier, scope, &explicit_base, &explicit_arguments);
+		NamePath syntax_base;
+		std::vector<NodeId> explicit_syntax;
+		const bool has_explicit_syntax = CollectExplicitTemplateArguments(
+			identifier, &syntax_base, &explicit_syntax);
+		std::vector<BindingId> specializations;
+		if (has_explicit_syntax && !explicit_id)
+		{
+			for (std::size_t i = 0; i < template_patterns.size(); ++i)
+			{
+				const FunctionTemplatePattern& pattern =
+					function_templates_[template_patterns[i]];
+				std::vector<TemplateArgument> canonical;
+				if (!BuildTemplateArguments(pattern.parameters, explicit_syntax,
+					scope, pattern.lexical_scope, &canonical, false)) continue;
+				std::vector<std::size_t> one_pattern(
+					1, template_patterns[i]);
+				DeduceFunctionTemplatePatterns(one_pattern, arguments,
+					&specializations, 0, &canonical);
+			}
+		}
+		else DeduceFunctionTemplatePatterns(template_patterns, arguments,
+			&specializations, explicit_id ? &explicit_arguments : 0);
+		for (std::size_t i = 0; i < specializations.size(); ++i)
+		{
+			const BindingId canonical =
+				program_->bindings[specializations[i]].canonical;
+			bool present = false;
+			for (std::size_t prior = 0; prior < candidates.size(); ++prior)
+				if (program_->bindings[candidates[prior]].canonical == canonical)
+					present = true;
+			if (!present) candidates.push_back(specializations[i]);
+		}
+	}
+	if (candidates.empty()) return false;
 	ObjectConversionFact object_conversion;
 	std::vector<CallConversionFact> argument_conversions;
 	const BindingId selected = SelectOverload(scope, argument_syntax,

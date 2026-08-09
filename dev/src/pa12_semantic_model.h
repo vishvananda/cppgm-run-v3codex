@@ -802,6 +802,7 @@ struct FunctionTemplatePattern
 	NodeId specifiers;
 	NodeId declarator;
 	NodeId definition_body;
+	NodeId constructor_initializer;
 	TypeId shape_type;
 	std::size_t required_parameter_count;
 	std::vector<TemplateParameter> parameters;
@@ -815,16 +816,20 @@ struct FunctionTemplatePattern
 	bool nonthrowing;
 	bool dependent_exception_specification;
 	bool function_parameter_pack;
+	bool static_member;
+	bool constructor_template;
 
 	FunctionTemplatePattern()
 		: owner(kNoScope), lexical_scope(kNoScope), name(0),
 		  specifiers(kNoNode),
 		  declarator(kNoNode), definition_body(kNoNode),
+		  constructor_initializer(kNoNode),
 		  shape_type(kNoType), required_parameter_count(0),
 		  language_linkage(LANGUAGE_LINKAGE_CPP), member_access(ACCESS_PUBLIC),
 		  defined(false),
 		  nonthrowing(false), dependent_exception_specification(false),
-		  function_parameter_pack(false) {}
+		  function_parameter_pack(false), static_member(false),
+		  constructor_template(false) {}
 };
 
 struct FunctionTemplateDeduction
@@ -849,8 +854,7 @@ struct ClassTemplateMemberPattern
 	ScopeId lexical_scope;
 	NodeId declaration;
 	std::vector<TemplateParameter> parameters;
-	std::vector<std::uint32_t> owner_parameter_indices;
-	std::vector<TemplateArgument> owner_fixed_arguments;
+	std::vector<TemplateArgument> canonical_owner_arguments;
 	std::vector<NameId> nested_owner_path;
 
 	ClassTemplateMemberPattern()

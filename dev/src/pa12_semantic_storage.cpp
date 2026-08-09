@@ -195,10 +195,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 				const ClassTemplateMemberPattern& definition = definitions[member];
 				bytes += definition.parameters.capacity() *
 					sizeof(TemplateParameter) +
-					definition.owner_parameter_indices.capacity() *
-					sizeof(std::uint32_t) +
-					definition.owner_fixed_arguments.capacity() *
-					sizeof(TemplateArgument) +
+					definition.canonical_owner_arguments.capacity() *
+						sizeof(TemplateArgument) +
 					definition.nested_owner_path.capacity() * sizeof(NameId);
 			}
 		}
