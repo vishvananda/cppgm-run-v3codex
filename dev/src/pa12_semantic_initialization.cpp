@@ -2350,7 +2350,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 	{
 		ExpressionInfo result = AnalyzeBracedInit(
 			arguments_node, scope, cast_type);
-		return target == kNoType ? MaterializeTemporary(result) : result;
+		if (target == kNoType) return MaterializeTemporary(result);
+		return IsIntegral(target, true) ?
+			ApplyClassObjectTarget(result, target) : result;
 	}
 	if (program_->entities[cast_entity].is_aggregate && argument_syntax.empty())
 	{
@@ -2376,6 +2378,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 			dump_.nodes[constructor].value_initialization = true;
 			dump_.nodes[result.node].value_constructor = constructor;
 		}
+		if (target != kNoType && IsIntegral(target, true))
+			return ApplyClassObjectTarget(result, target);
 		return result;
 	}
 	ExpressionInfo result;

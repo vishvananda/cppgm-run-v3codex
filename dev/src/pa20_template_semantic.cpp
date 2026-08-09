@@ -332,17 +332,11 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 			if (!append_argument(syntax[i], use_scope)) return false;
 			continue;
 		}
-		const NodeId specifiers = FindChild(type_id, "type-specifier-seq");
-		const NodeId spelling_node = specifiers == kNoNode ? kNoNode :
-			FirstSemanticChild(specifiers);
-		if (spelling_node == kNoNode) return false;
-		const NameId source_name = program_->names.Intern(
-			PayloadSource(spelling_node));
 		if (arguments->size() >= fixed && !has_pack) return false;
 		if (TemplateParameterForArgument(parameters, arguments->size()).kind !=
 			TEMPLATE_ARGUMENT_TYPE) return false;
-		std::vector<TemplateArgument> expanded;
-		if (!LookupTemplateArgumentPack(use_scope, source_name, &expanded))
+		std::vector<ScopeId> element_scopes;
+		if (!ExpandPackElementScopes(type_id, use_scope, &element_scopes))
 		{
 			// While retaining a function-template shape, a pack has one
 			// placeholder alias.  The concrete specialization later replays the
@@ -350,19 +344,14 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 			if (!append_argument(syntax[i], use_scope)) return false;
 			continue;
 		}
-		for (std::size_t element = 0; element < expanded.size(); ++element)
+		for (std::size_t element = 0; element < element_scopes.size(); ++element)
 		{
-			if (expanded[element].kind != TEMPLATE_ARGUMENT_TYPE ||
-				(arguments->size() >= fixed && !has_pack)) return false;
+			if (arguments->size() >= fixed && !has_pack) return false;
 			const TemplateParameter& destination =
 				TemplateParameterForArgument(parameters, arguments->size());
 			if (destination.kind != TEMPLATE_ARGUMENT_TYPE) return false;
-			const ScopeId element_scope = NewScope(use_scope,
-				SCOPE_TEMPLATE_PARAMETERS, 0, ScopePrefixId(use_scope));
-			program_->AddBinding(element_scope, BIND_TYPE_ALIAS, source_name,
-				expanded[element].type);
 			TemplateArgument argument(TEMPLATE_ARGUMENT_TYPE,
-				BuildTypeId(type_id, element_scope));
+				BuildTypeId(type_id, element_scopes[element]));
 			if (argument.type == kNoType) return false;
 			arguments->push_back(argument);
 			if (arguments->size() <= fixed)

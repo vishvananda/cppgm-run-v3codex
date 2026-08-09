@@ -534,6 +534,9 @@ private:
 	ExpressionInfo AnalyzeClassFunctionalCast(TypeId cast_type, ScopeId scope,
 		const std::vector<NodeId>& argument_syntax, NodeId arguments_node,
 		TypeId target);
+	ExpressionInfo ApplyClassObjectTarget(ExpressionInfo value, TypeId target);
+	bool TryFoldConstantClassConversion(const ExpressionInfo& value,
+		BindingId conversion, TypeId target, std::int64_t* result);
 	ExpressionInfo AnalyzeMember(NodeId node, ScopeId scope);
 	ExpressionInfo AnalyzeImplicitDataMember(BindingId member, ScopeId scope,
 		TypeId target, EntityId naming_class);

@@ -344,6 +344,7 @@ struct FunctionInfo
 	bool deleted_constructor;
 	bool explicit_constructor;
 	bool conversion_function;
+	bool constexpr_function;
 	bool explicit_conversion;
 	bool destructor;
 	bool implicit_destructor;
@@ -374,7 +375,7 @@ struct FunctionInfo
 		  constructor(false), implicit_constructor(false),
 		  defaulted_constructor(false), deleted_constructor(false),
 		  explicit_constructor(false), conversion_function(false),
-		  explicit_conversion(false), destructor(false),
+		  constexpr_function(false), explicit_conversion(false), destructor(false),
 		  implicit_destructor(false), defaulted_destructor(false),
 		  deleted_destructor(false), special_member(SPECIAL_MEMBER_NONE),
 		  implicit_special_member(false), defaulted_special_member(false),

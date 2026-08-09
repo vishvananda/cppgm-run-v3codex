@@ -128,7 +128,14 @@ protected:
 		if (derived.arena_.nodes[node].kind == DUMP_CLASS_VALUE_TRANSFER)
 			derived.LowerClassValueTransfer(node, destination);
 		else if (derived.arena_.nodes[node].kind == DUMP_CONSTRUCTOR_ACTION)
+		{
+			const EntityId entity = derived.ClassEntity(target);
+			if (derived.arena_.nodes[node].value_initialization &&
+				entity != kNoEntity && entity < derived.program_.entities.size() &&
+				!derived.program_.entities[entity].empty_class)
+				derived.EmitZeroInitialization(target, destination);
 			derived.LowerConstructorAction(node, destination);
+		}
 		else (void)derived.AddressOfStorage(derived.LowerStorage(node));
 		return derived.UsesIndirectClassParameter(target) ? destination : slot;
 	}

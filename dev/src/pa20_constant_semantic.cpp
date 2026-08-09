@@ -78,6 +78,67 @@ std::int64_t SemanticAnalyzer::NormalizeIntegralConstant(TypeId type,
 	return static_cast<std::int64_t>(bits);
 }
 
+bool SemanticAnalyzer::TryFoldConstantClassConversion(
+	const ExpressionInfo& value, BindingId conversion, TypeId target,
+	std::int64_t* result)
+{
+	const EntityId entity = EntityOf(value.type);
+	if (entity == kNoEntity || !IsIntegral(target, true)) return false;
+	const EntityRecord& object = program_->entities[entity];
+	if (!object.empty_class || !object.trivial_default_constructor ||
+		!object.trivial_destructor) return false;
+	const FunctionInfo& function = GetFunction(conversion);
+	if (!function.conversion_function || !function.constexpr_function ||
+		function.definition_body == kNoNode ||
+		program_->types.RemoveTopCv(EffectiveType(function.conversion_target)) !=
+		program_->types.RemoveTopCv(EffectiveType(target))) return false;
+	NodeId statement = kNoNode;
+	for (std::uint32_t edge = arena_->FirstEdge(function.definition_body);
+		edge != kNoEdge; edge = arena_->NextEdge(edge))
+	{
+		if (statement != kNoNode) return false;
+		statement = arena_->EdgeChild(edge);
+	}
+	if (statement == kNoNode || !arena_->IsTag(statement, "return-statement"))
+		return false;
+	const NodeId expression = FirstSemanticChild(statement);
+	if (expression == kNoNode || !arena_->IsTag(expression, "id-expression"))
+		return false;
+	const NamePath path = StructuredNamePath(expression);
+	const NameId name = path.Empty() ?
+		program_->names.Intern(PayloadSource(expression)) : path.Last();
+	const LookupResult found = program_->LookupMember(
+		entity, name, LOOKUP_ORDINARY);
+	if (found.ordinary == kNoBinding) return false;
+	const BindingRecord& member = program_->bindings[
+		program_->bindings[found.ordinary].canonical];
+	if (member.kind != BIND_VARIABLE || member.non_static_data_member ||
+		!member.constant || !IsIntegral(member.type, true)) return false;
+	*result = NormalizeIntegralConstant(target, member.value);
+	return true;
+}
+
+ExpressionInfo SemanticAnalyzer::ApplyClassObjectTarget(
+	ExpressionInfo value, TypeId target)
+{
+	const CallConversionFact conversion =
+		ConvertingFunction(value, target, false);
+	if (conversion.rank == CONVERSION_INVALID)
+		return ApplyTarget(value, target);
+	std::int64_t constant = 0;
+	if (conversion.conversion_function != kNoBinding &&
+		TryFoldConstantClassConversion(
+			value, conversion.conversion_function, target, &constant))
+	{
+		ExpressionInfo folded = MakeLiteral(target, InternNumber(constant));
+		folded.constant = true;
+		folded.value = constant;
+		RecordExpressionFacts(folded);
+		return folded;
+	}
+	return ApplyCallArgument(value, target, &conversion);
+}
+
 void SemanticAnalyzer::AnalyzeStaticAssert(NodeId node, ScopeId scope)
 {
 	const NodeId condition_syntax = FirstSemanticChild(node);

@@ -485,7 +485,6 @@ void SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 		current_class_context_ = previous_class_context;
 		program_->entities[entity].complete = true;
 }
-
 std::size_t SemanticAnalyzer::RequestedAlignment(NodeId node, ScopeId scope)
 {
 	std::size_t result = 0;
@@ -505,6 +504,8 @@ std::size_t SemanticAnalyzer::RequestedAlignment(NodeId node, ScopeId scope)
 				FirstSemanticChild(specifiers);
 			const LookupResult constant = name != kNoNode &&
 				arena_->IsTag(name, "type-name") ?
+				FindChild(name, "structured-type-name") != kNoNode ?
+					LookupStructuredName(name, scope, LOOKUP_ORDINARY) :
 				LookupSpelling(scope, PayloadSource(name), LOOKUP_ORDINARY) :
 				LookupResult();
 			if (constant.ordinary != kNoBinding)
@@ -1503,7 +1504,6 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 		(source_definition || (!defaulted && !deleted));
 	RegisterClassSpecialMember(constructor);
 }
-
 void SemanticAnalyzer::AnalyzeConversionFunction(NodeId node, ScopeId scope,
 	TypeId owner_type, AccessKind access)
 {
@@ -1550,6 +1550,7 @@ void SemanticAnalyzer::AnalyzeConversionFunction(NodeId node, ScopeId scope,
 		{
 			const std::string value = PayloadSource(arena_->EdgeChild(edge));
 			if (value == "explicit") info.explicit_conversion = true;
+			if (value == "constexpr") info.constexpr_function = true;
 			if (value == "static")
 				throw std::runtime_error("conversion function cannot be static");
 			if (value == "inline") binding.inline_function = true;

@@ -14,32 +14,31 @@ evaluation and PA22/PA23 SFINAE remain out of scope.
 
 ## Current Failure Map
 
-The stage is 116/164, up from the checkpoint baseline of 110/164.  Retained
-`decltype` value qualification, expression-valued `alignas`, dependent
-`typename` non-type parameter declarations/defaults, and qualified relational
-arguments now pass.  The 48 remaining failures group into dependent
-defaults/bool conversions and two LowIR initialization mismatches; delayed
-member/vtable replay and declaration ownership; variable-template and
-declaration ambiguity; literals/casts and one invalid pack acceptance; explicit
-specialization (`300-*`); and stale-primary refresh (`400-*`).  The unknown-bound
-array case is semantically accepted but retains one extra decay instruction.
+The stage is 120/164, up from the checkpoint baseline of 116/164.  Canonical
+class-helper bool values, nested dependent bool packs, structured static-member
+`alignas`, and default-expression value-initialization now pass.  The 44
+remaining failures group into specialized-class member storage/vtable identity
+and demand; variable-template, qualified-name, and declaration ambiguity;
+literals, casts, and one invalid pack acceptance; explicit specialization
+(`300-*`); and stale-primary refresh (`400-*`).  The unknown-bound array case is
+accepted but retains one extra decay instruction.
 
 ## Active Checkpoint
 
-Canonicalize concrete dependent defaults and class-object-to-integral helper
-values without introducing PA21's general constexpr-function evaluator.
-`spec.md` requires templates to retain typed dependent nodes, bind immutable
-specialization environments, canonicalize constants before cache selection,
-and lower recorded facts; PA20 additionally permits supported casts/helper
-bindings while explicitly excluding general constexpr-function evaluation.
+Canonicalize specialized-class ownership and demand for static members and
+vtable artifacts.  `spec.md` requires one canonical specialization entity,
+immutable retained definitions, separate declaration/definition demand states,
+and lowering/mangling from semantic identity rather than reconstructed source
+spellings.
 
-PA10 owns retained default/cast syntax, PA19 owns pattern demand, PA20 owns the
-parameter overlay and canonical argument, and PA12 owns selected conversions
-and constant member facts consumed by lowering.  Work should be O(dependent
-nodes plus indexed lookups) per new specialization with O(1)-average cache
-probes.  Validate the two default-expression LowIR cases, dependent bool object
-and member values, pack-expanded bool values, static-member `alignas`, and
-unchanged non-dependent class construction.
+PA19 owns retained member patterns, PA20 owns specialization selection and
+replay into the canonical owner, PA12 owns member storage identity and demand,
+and ABI/lowering consume those facts.  Data flows from canonical template
+arguments through member replay to an idempotent artifact worklist.  Expected
+work is O(replayed members plus demanded artifacts) once per specialization,
+with O(1)-average owner/cache lookup.  Validate suppressed unused static
+constants, required conversion-helper storage, reference-bound static members,
+dependent and enum non-type vtables, and unchanged non-template storage demand.
 
 ## Performance Evidence
 
@@ -96,6 +95,13 @@ lookups 471/935/1,863; member visits 16/32/64; specialization requests
 1.821/5.384/6.423 ms.  Deterministic work and storage scale linearly; timings at
 this sub-7-ms size were noisy but showed no corresponding retry/work growth.
 
+Seven-run release medians for 16/32/64 nested dependent bool helper packs:
+tokens 194/226/290; semantic nodes 53/85/149; lookups 273/433/753;
+specialization requests 23/39/71 with 17/33/65 hits; peak semantic bytes
+183,740/267,509/477,781; semantic time 1.111/1.535/2.283 ms.  Incremental work,
+storage, and time scale linearly with pack length; nested discovery does not
+form a Cartesian expansion.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result |
@@ -107,3 +113,4 @@ this sub-7-ms size were noisy but showed no corresponding retry/work growth.
 | Canonical multiple type/value pack ranges | Per-parameter offsets in specialization keys/replay, symbolic integral shape arguments, nested class-template pack deduction, partial explicit value arguments, and ADL over variable-width class arguments; PA20 103 -> 106, PA1-PA19 2,013/2,013, audit pass, two-pack scaling linear |
 | Ordered base-pack edges and initializers | Compact ordered base identities/offsets, variable-width lookup/layout, type/value base expansion, lexical element overlays, lockstep initializer actions, and offset-driven lowering; PA20 106 -> 110, PA1-PA19 2,013/2,013, audit pass, base-pack scaling linear |
 | Typed dependent declaration/value boundaries | Retained `decltype` carrier/member syntax, semantic `alignas` disambiguation, dependent `typename` non-type parameter declarations/defaults, and bounded type/expression template-argument ambiguity; PA20 110 -> 116, PA1-PA19 2,013/2,013, audit pass, dependent-specialization work/storage linear |
+| Canonical dependent helper values and nested packs | Restricted structural constexpr conversion, structured `alignas` lookup, recursive lockstep type-pack scopes, and non-empty value-initialized argument staging; PA20 116 -> 120, PA1-PA19 2,013/2,013, audit pass, helper-pack scaling linear |
