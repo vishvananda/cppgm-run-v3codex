@@ -1439,7 +1439,8 @@ NodeId Parser::ParsePostfixExpression() {
 NodeId Parser::ParsePostfixSuffixes(NodeId value) {
 	while (true) {
 		if (At(OP_LBRACE) && arena_.IsTag(value, "id-expression") &&
-			HasNameFact(strings_.Intern(arena_.Payload(value)), kKnownType)) {
+			(HasNameFact(strings_.Intern(arena_.Payload(value)), kKnownType) ||
+			 arena_.FirstEdge(value) != kNoEdge)) {
 			const NodeId call = arena_.Make("call-expression");
 			arena_.Add(call, value); arena_.Add(call, ParseBracedInitList());
 			value = call; continue;

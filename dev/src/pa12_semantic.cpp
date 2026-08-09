@@ -557,6 +557,7 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 		dump_.nodes[value.node].integer_narrowing_conversion = true;
 	if (conversion == CONVERSION_DERIVED_TO_BASE)
 	{
+		const std::uint32_t complete_object = ExpressionObject(value);
 		const bool binds_temporary =
 			target_record.kind == TYPE_LVALUE_REFERENCE &&
 			value.category != VALUE_LVALUE;
@@ -584,6 +585,10 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 		value.binding = kNoBinding;
 		value.constant = false;
 		value.constexpr_object = kNoConstexprObject;
+		if (complete_object != kNoConstexprObject &&
+			ProjectConstexprObject(complete_object, nonreference) !=
+				kNoConstexprObject)
+			SetExpressionObject(&value, complete_object);
 		++expression_count_;
 	}
 	if (reference_target &&
@@ -1027,6 +1032,8 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	if (!CanAccessMember(selected, naming_class, object_class))
 		throw std::runtime_error("inaccessible member function");
 	const FunctionInfo function = GetFunction(selected);
+	const bool nonstatic_member = function.member_owner != kNoType &&
+		!program_->bindings[selected].static_member_function;
 	const TypeRecord function_type = program_->types.Get(function.type);
 	const TypeId* parameter_data = program_->types.Parameters(function.type);
 	std::vector<TypeId> parameters;
@@ -1112,7 +1119,11 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 		evaluated_call = true;
 		if (returned.kind == TYPE_LVALUE_REFERENCE ||
 			returned.kind == TYPE_RVALUE_REFERENCE)
+		{
 			SetExpressionLvalueAddress(&result, constexpr_address);
+			if (constexpr_object != kNoConstexprObject)
+				SetExpressionObject(&result, constexpr_object);
+		}
 		else if (IsPointer(EffectiveType(result_type)))
 			SetExpressionAddress(&result, constexpr_address);
 		else if (constexpr_object != kNoConstexprObject)
@@ -1124,6 +1135,8 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 			NormalizeScalarConstant(result_type, constexpr_value));
 		RecordExpressionFacts(result);
 		if (constant_expression_required_depth_ != 0 &&
+			!(nonstatic_member &&
+			  constant_initializer_required_depth_ != 0) &&
 			constexpr_address == kNoConstexprAddress &&
 			constexpr_object == kNoConstexprObject)
 		{
@@ -1135,8 +1148,10 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 			folded_call = true;
 		}
 	}
-	if (!folded_call &&
-		!(evaluated_call && constant_expression_required_depth_ != 0) &&
+	const bool compile_time_only_call = evaluated_call &&
+		constant_expression_required_depth_ != 0 &&
+		!(nonstatic_member && constant_initializer_required_depth_ != 0);
+	if (!folded_call && !compile_time_only_call &&
 		constexpr_evaluation_depth_ == 0)
 		DemandFunction(selected);
 	++expression_count_;

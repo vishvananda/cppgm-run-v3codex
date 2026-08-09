@@ -753,8 +753,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeVariableInitializer(
 				initializer = AnalyzeExpression(expression, scope);
 				if (program_->types.RemoveTopCv(EffectiveType(initializer.type)) !=
 					program_->types.RemoveTopCv(type))
-					throw std::runtime_error("invalid class copy initializer");
-				if (initializer.category == VALUE_PRVALUE &&
+				{
+					arguments.push_back(expression);
+					const std::vector<ExpressionInfo> prepared(1, initializer);
+					initializer.node = BuildConstructorAction(type, scope, arguments,
+						true, false, false, true, kNoNode, &prepared);
+				}
+				else if (initializer.category == VALUE_PRVALUE &&
 					dump_.nodes[initializer.node].kind == DUMP_CALL_EXPRESSION &&
 					!dump_.nodes[initializer.node].explicit_user_conversion_call)
 				{
@@ -881,7 +886,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeVariableInitializer(
 				!constructor.defaulted_constructor &&
 				!constructor.implicit_constructor &&
 				!constructor.defaulted_special_member &&
-				!constructor.implicit_special_member)
+				!constructor.implicit_special_member &&
+				program_->entities[class_entity].direct_base_count == 0)
 				user_constexpr_constructor = true;
 		}
 	if (constant_expression_required_depth_ != 0 &&
@@ -2344,8 +2350,15 @@ ExpressionInfo SemanticAnalyzer::MaterializeTemporary(
 	dump_.nodes[temporary].reference_call_materialization = reference_result;
 	dump_.Add(temporary, initializer.node);
 	const DumpNode& action = dump_.nodes[initializer.node];
+	const EntityId initializer_entity = EntityOf(initializer.type);
+	const bool base_compile_time_only =
+		constant_expression_required_depth_ != 0 &&
+		constant_initializer_required_depth_ == 0 &&
+		initializer_entity != kNoEntity &&
+		program_->entities[initializer_entity].direct_base_count != 0;
 	if (action.kind == DUMP_CONSTRUCTOR_ACTION &&
-		action.binding != kNoBinding)
+		action.binding != kNoBinding &&
+		!base_compile_time_only)
 		DemandFunction(action.binding);
 	ExpressionInfo result = initializer;
 	result.node = temporary;

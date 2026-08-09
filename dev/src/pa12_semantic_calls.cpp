@@ -685,9 +685,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 		member_binding.non_static_data_member &&
 		object.constexpr_object != kNoConstexprObject)
 	{
-		const ConstexprObjectElement* element = ConstexprObjectElementAt(
-			object.constexpr_object, member_binding.member_ordinal);
-		if (element && element->member == found.ordinary)
+		const ConstexprObjectElement* element = ConstexprClassMemberAt(
+			object.constexpr_object, found.ordinary);
+		if (element)
 			SetExpressionObjectElement(&result, *element);
 	}
 	else if (canonical.constant)

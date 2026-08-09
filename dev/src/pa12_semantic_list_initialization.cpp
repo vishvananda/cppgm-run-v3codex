@@ -850,8 +850,8 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 	}
 	std::uint32_t constexpr_object = kNoConstexprObject;
 	if (constant_evaluation_suppressed_depth_ == 0 &&
-		constructor.constexpr_function && !constructor.defaulted_constructor &&
-		!constructor.implicit_constructor &&
+		(constructor.constexpr_function || constructor.defaulted_constructor ||
+		 constructor.implicit_constructor) &&
 		TryEvaluateConstexprConstructor(
 			selected, constexpr_arguments, &constexpr_object))
 		PublishDumpObject(action, constexpr_object);
@@ -861,7 +861,10 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 		!constructor.implicit_special_member &&
 		!constructor.synthesized_memberwise_copy &&
 		IsClassTemplateSpecializationEntity(constructor_owner);
-	if (demand && !dump_.nodes[action].elide_empty_constructor &&
+	const bool compile_time_only = constant_expression_required_depth_ != 0 &&
+		constant_initializer_required_depth_ == 0;
+	if (demand && !compile_time_only &&
+		!dump_.nodes[action].elide_empty_constructor &&
 		(explicitly_defaulted ||
 		 !dump_.nodes[action].trivial_special_member_action) &&
 		!(constructor.implicit_constructor &&

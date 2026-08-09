@@ -94,6 +94,17 @@ protected:
 				derived.generated_slots_[current] == kNoLowId)
 				(void)derived.EnsureGeneratedSlot(current, "arg",
 					derived.LowerStorageType(record.type));
+			if (record.class_argument_staging && variable_initializer &&
+				derived.generated_slots_[current] == kNoLowId)
+			{
+				const TypeId staging_type =
+					record.kind == DUMP_CONSTRUCTOR_ACTION ?
+						record.operand_type : record.type;
+				(void)derived.EnsureGeneratedSlot(current,
+					derived.UsesIndirectClassParameter(staging_type) ?
+						"arg" : "argobj",
+					derived.LowerStorageType(staging_type));
+			}
 			if (record.kind == DUMP_TEMPORARY_OBJECT &&
 				record.conditionally_constructed)
 				(void)derived.EnsureTemporaryLifetimeSlot(current);

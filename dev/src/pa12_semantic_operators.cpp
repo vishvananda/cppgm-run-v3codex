@@ -52,6 +52,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 	ExpressionInfo overloaded;
 	if (TryAnalyzeOverloadedOperator(operation, scope, overloaded_syntax,
 		overloaded_operands, false, target, &overloaded)) return overloaded;
+	const std::uint32_t operand_object = ExpressionObject(operand);
 	(void)ApplyBuiltinUnaryConversion(operation, &operand);
 	if (operation == "&" && operand.binding != kNoBinding)
 		EnsureStaticMemberStorage(operand.binding, true);
@@ -201,6 +202,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 	else if (constant) SetExpressionScalar(&result, scalar);
 	if (lvalue_address != kNoConstexprAddress)
 		SetExpressionLvalueAddress(&result, lvalue_address);
+	if (operation == "*" && operand_object != kNoConstexprObject)
+		SetExpressionObject(&result, operand_object);
 	if (operation == "*" && lvalue_address != kNoConstexprAddress)
 	{
 		const ConstexprAddressValue* pointed =
@@ -208,6 +211,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 		if (pointed && pointed->kind == CONSTEXPR_ADDRESS_BINDING &&
 			pointed->identity < program_->bindings.size() &&
 			program_->bindings[static_cast<BindingId>(pointed->identity)].constant &&
+			program_->types.Get(program_->types.RemoveTopCv(EffectiveType(
+				program_->bindings[static_cast<BindingId>(
+					pointed->identity)].type))).kind == TYPE_ARRAY &&
 			pointed->offset >= 0)
 		{
 			const std::uint32_t object = BindingObject(

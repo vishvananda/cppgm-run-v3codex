@@ -41,6 +41,7 @@ public:
 		  loop_depth_(0), switch_depth_(0), unevaluated_depth_(0),
 		  constant_evaluation_suppressed_depth_(0),
 		  constant_expression_required_depth_(0),
+		  constant_initializer_required_depth_(0),
 		  constexpr_evaluation_depth_(0), constexpr_evaluation_steps_(0),
 		  next_constexpr_storage_identity_(1),
 		  expression_count_(0),
@@ -874,6 +875,10 @@ private:
 		const std::vector<ConstexprObjectElement>& elements);
 	const ConstexprObjectElement* ConstexprObjectElementAt(
 		std::uint32_t object, std::size_t ordinal) const;
+	std::uint32_t ProjectConstexprObject(
+		std::uint32_t object, TypeId target) const;
+	const ConstexprObjectElement* ConstexprClassMemberAt(
+		std::uint32_t object, BindingId member) const;
 	void SetExpressionObjectElement(ExpressionInfo* expression,
 		const ConstexprObjectElement& element) const;
 	ExpressionInfo MaterializeConstexprObject(std::uint32_t object,
@@ -898,6 +903,14 @@ private:
 	bool TryEvaluateConstexprConstructor(BindingId constructor,
 		const std::vector<ExpressionInfo>& arguments,
 		std::uint32_t* object);
+	struct ConstexprConstructorPlan;
+	bool PlanConstexprConstructorInitializers(const FunctionInfo& constructor,
+		EntityId entity, std::size_t argument_count,
+		ConstexprConstructorPlan* plan);
+	bool EvaluateConstexprConstructorInitializers(
+		const FunctionInfo& constructor, EntityId entity,
+		const std::vector<ExpressionInfo>& arguments,
+		const ConstexprConstructorPlan& plan, std::uint32_t* object);
 	bool AnalyzeConstexprMemberInitializer(NodeId initializer, ScopeId scope,
 		TypeId type, ExpressionInfo* value);
 	bool AddConstexprInvocationArguments(const FunctionInfo& function,
@@ -1048,6 +1061,7 @@ private:
 	std::size_t unevaluated_depth_;
 	std::size_t constant_evaluation_suppressed_depth_;
 	std::size_t constant_expression_required_depth_;
+	std::size_t constant_initializer_required_depth_;
 	std::size_t constexpr_evaluation_depth_;
 	std::size_t constexpr_evaluation_steps_;
 	std::uint64_t next_constexpr_storage_identity_;

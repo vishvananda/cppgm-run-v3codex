@@ -275,6 +275,7 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprReturn(NodeId expression,
 				constexpr_frames_.back().first_storage_identity)
 			return CONSTEXPR_FLOW_INVALID;
 		*result_address = address;
+		*result_object = ExpressionObject(value);
 	}
 	else if (IsPointer(EffectiveType(result_type)))
 	{

@@ -459,6 +459,57 @@ const ConstexprObjectElement* SemanticAnalyzer::ConstexprObjectElementAt(
 	return &constexpr_object_elements_[value.first_element + ordinal];
 }
 
+std::uint32_t SemanticAnalyzer::ProjectConstexprObject(
+	std::uint32_t object, TypeId target) const
+{
+	if (object == kNoConstexprObject || object >= constexpr_objects_.size())
+		return kNoConstexprObject;
+	target = program_->types.RemoveTopCv(EffectiveType(target));
+	const ConstexprObjectValue& value = constexpr_objects_[object];
+	if (value.type == target) return object;
+	const EntityId source_entity = EntityOf(value.type);
+	const EntityId target_entity = EntityOf(target);
+	if (source_entity == kNoEntity || target_entity == kNoEntity ||
+		source_entity >= entity_data_members_.size())
+		return kNoConstexprObject;
+	const std::size_t member_count =
+		entity_data_members_[source_entity].size();
+	const std::size_t base_count =
+		program_->entities[source_entity].direct_base_count;
+	if (member_count > value.element_count ||
+		base_count > value.element_count - member_count)
+		return kNoConstexprObject;
+	std::uint32_t result = kNoConstexprObject;
+	for (std::size_t i = 0; i < base_count; ++i)
+	{
+		const ConstexprObjectElement& element = constexpr_object_elements_[
+			value.first_element + member_count + i];
+		if (!element.object_value) return kNoConstexprObject;
+		const std::uint32_t projected =
+			ProjectConstexprObject(element.object, target);
+		if (projected == kNoConstexprObject) continue;
+		if (result != kNoConstexprObject && result != projected)
+			return kNoConstexprObject;
+		result = projected;
+	}
+	return result;
+}
+
+const ConstexprObjectElement* SemanticAnalyzer::ConstexprClassMemberAt(
+	std::uint32_t object, BindingId member) const
+{
+	if (member == kNoBinding || member >= program_->bindings.size()) return 0;
+	const BindingRecord& binding = program_->bindings[member];
+	if (!binding.non_static_data_member || binding.member_owner == kNoEntity)
+		return 0;
+	object = ProjectConstexprObject(
+		object, program_->entities[binding.member_owner].type);
+	if (object == kNoConstexprObject) return 0;
+	const ConstexprObjectElement* element =
+		ConstexprObjectElementAt(object, binding.member_ordinal);
+	return element && element->member == member ? element : 0;
+}
+
 void SemanticAnalyzer::SetExpressionObjectElement(ExpressionInfo* expression,
 	const ConstexprObjectElement& element) const
 {
@@ -507,7 +558,17 @@ ExpressionInfo SemanticAnalyzer::MaterializeConstexprObject(
 	const TypeRecord& record = program_->types.Get(unqualified);
 	const std::uint32_t list = MakeDump(
 		DUMP_BRACED_INIT_LIST, type, VALUE_LVALUE);
-	for (std::size_t i = 0; i < value.element_count; ++i)
+	std::size_t materialized_count = value.element_count;
+	if (record.kind != TYPE_ARRAY)
+	{
+		const EntityId entity = EntityOf(unqualified);
+		if (entity == kNoEntity || entity >= entity_data_members_.size() ||
+			entity_data_members_[entity].size() > value.element_count)
+			throw std::logic_error(
+				"constexpr class object has an invalid direct-member range");
+		materialized_count = entity_data_members_[entity].size();
+	}
+	for (std::size_t i = 0; i < materialized_count; ++i)
 	{
 		const ConstexprObjectElement& element =
 			constexpr_object_elements_[value.first_element + i];
@@ -876,17 +937,29 @@ ExpressionInfo SemanticAnalyzer::AnalyzeConstantAwareVariableInitializer(
 	NodeId initializer, ScopeId scope, TypeId type, bool local,
 	bool require_constant)
 {
-	if (require_constant) ++constant_expression_required_depth_;
+	if (require_constant)
+	{
+		++constant_expression_required_depth_;
+		++constant_initializer_required_depth_;
+	}
 	try
 	{
 		ExpressionInfo result = AnalyzeVariableInitializer(
 			initializer, scope, type, local);
-		if (require_constant) --constant_expression_required_depth_;
+		if (require_constant)
+		{
+			--constant_initializer_required_depth_;
+			--constant_expression_required_depth_;
+		}
 		return result;
 	}
 	catch (...)
 	{
-		if (require_constant) --constant_expression_required_depth_;
+		if (require_constant)
+		{
+			--constant_initializer_required_depth_;
+			--constant_expression_required_depth_;
+		}
 		throw;
 	}
 }
@@ -896,16 +969,19 @@ ExpressionInfo SemanticAnalyzer::AnalyzeDefaultConstexprObjectInitializer(
 {
 	ExpressionInfo initializer;
 	++constant_expression_required_depth_;
+	++constant_initializer_required_depth_;
 	try
 	{
 		initializer.node = BuildDefaultConstructorAction(type, scope);
 		initializer.type = type;
 		initializer.category = VALUE_NONE;
 		SetExpressionDumpObject(&initializer);
+		--constant_initializer_required_depth_;
 		--constant_expression_required_depth_;
 	}
 	catch (...)
 	{
+		--constant_initializer_required_depth_;
 		--constant_expression_required_depth_;
 		throw;
 	}
@@ -1468,6 +1544,341 @@ bool SemanticAnalyzer::AnalyzeConstexprMemberInitializer(
 	return value->constant;
 }
 
+struct SemanticAnalyzer::ConstexprConstructorPlan
+{
+	ConstexprConstructorPlan(std::size_t members, std::size_t bases,
+		ScopeId lexical_scope)
+		: member_initializers(members, kNoNode),
+		  member_scopes(members, lexical_scope),
+		  base_initializers(bases, kNoNode),
+		  base_scopes(bases, lexical_scope),
+		  base_prepared_arguments(
+			bases, std::numeric_limits<std::size_t>::max()),
+		  delegating_initializer(kNoNode),
+		  delegating_scope(lexical_scope)
+	{}
+
+	std::vector<NodeId> member_initializers;
+	std::vector<ScopeId> member_scopes;
+	std::vector<NodeId> base_initializers;
+	std::vector<ScopeId> base_scopes;
+	std::vector<std::size_t> base_prepared_arguments;
+	NodeId delegating_initializer;
+	ScopeId delegating_scope;
+};
+
+bool SemanticAnalyzer::PlanConstexprConstructorInitializers(
+	const FunctionInfo& constructor, EntityId entity,
+	std::size_t argument_count, ConstexprConstructorPlan* plan)
+{
+	if (constructor.constructor_initializer == kNoNode) return true;
+	try
+	{
+		std::vector<NodeId> syntax;
+		std::vector<ScopeId> scopes;
+		std::vector<std::uint8_t> expanded;
+		std::vector<NodeId> raw_initializers;
+		for (std::uint32_t edge = arena_->FirstEdge(
+			constructor.constructor_initializer); edge != kNoEdge;
+			edge = arena_->NextEdge(edge))
+			if (arena_->IsTag(arena_->EdgeChild(edge), "mem-initializer"))
+				raw_initializers.push_back(arena_->EdgeChild(edge));
+
+		const std::size_t base_count = plan->base_initializers.size();
+		bool positional_base_pack = raw_initializers.size() == 1 &&
+			base_count == argument_count && base_count != 0 &&
+			FindChild(raw_initializers[0], "pack-expansion") != kNoNode;
+		if (positional_base_pack)
+		{
+			const NodeId id = FindChild(
+				raw_initializers[0], "mem-initializer-id");
+			NodeId value = kNoNode;
+			for (std::uint32_t child = arena_->FirstEdge(raw_initializers[0]);
+				child != kNoEdge; child = arena_->NextEdge(child))
+			{
+				const NodeId candidate = arena_->EdgeChild(child);
+				if (candidate != id &&
+					!arena_->IsTag(candidate, "pack-expansion")) value = candidate;
+			}
+			positional_base_pack = id != kNoNode && value != kNoNode;
+			for (std::size_t i = 0; positional_base_pack && i < base_count; ++i)
+			{
+				plan->base_initializers[i] = value;
+				plan->base_prepared_arguments[i] = i;
+			}
+		}
+		if (!positional_base_pack)
+			CollectConstructorInitializers(constructor, entity,
+				constructor.lexical_scope, &syntax, &scopes, &expanded);
+
+		const std::vector<BindingId>& members = entity_data_members_[entity];
+		for (std::size_t index = 0; index < syntax.size(); ++index)
+		{
+			const NodeId initializer = syntax[index];
+			const ScopeId initializer_scope = scopes[index];
+			const NodeId id = FindChild(initializer, "mem-initializer-id");
+			if (id == kNoNode) return false;
+			const LookupResult found = program_->LookupDirect(
+				program_->entities[entity].member_scope,
+				program_->names.Intern(arena_->Payload(id)), LOOKUP_ORDINARY);
+			NodeId value = kNoNode;
+			for (std::uint32_t child = arena_->FirstEdge(initializer);
+				child != kNoEdge; child = arena_->NextEdge(child))
+			{
+				const NodeId candidate = arena_->EdgeChild(child);
+				if (candidate != id &&
+					!arena_->IsTag(candidate, "pack-expansion")) value = candidate;
+			}
+			if (value == kNoNode) return false;
+
+			LookupResult target_type;
+			const NodeId structured = FindChild(id, "structured-type-name");
+			if (structured != kNoNode)
+				target_type.type = ResolveStructuredTypeName(
+					structured, initializer_scope);
+			else target_type = LookupSpelling(initializer_scope,
+				arena_->Payload(id), LOOKUP_TYPE);
+			if (target_type.type != kNoType &&
+				EntityOf(target_type.type) == entity)
+			{
+				if (syntax.size() != 1 ||
+					plan->delegating_initializer != kNoNode) return false;
+				plan->delegating_initializer = value;
+				plan->delegating_scope = initializer_scope;
+				continue;
+			}
+			if (found.ordinary != kNoBinding &&
+				program_->bindings[found.ordinary].non_static_data_member &&
+				program_->bindings[found.ordinary].member_owner == entity)
+			{
+				const std::size_t ordinal =
+					program_->bindings[found.ordinary].member_ordinal;
+				if (ordinal >= members.size() ||
+					members[ordinal] != found.ordinary ||
+					plan->member_initializers[ordinal] != kNoNode) return false;
+				plan->member_initializers[ordinal] = value;
+				plan->member_scopes[ordinal] = initializer_scope;
+				continue;
+			}
+			if (found.ordinary != kNoBinding) return false;
+
+			const EntityId target_base = EntityOf(target_type.type);
+			std::size_t base_ordinal = base_count;
+			for (std::size_t i = 0; i < base_count; ++i)
+				if (program_->DirectBase(entity, i).entity == target_base)
+				{
+					base_ordinal = i;
+					break;
+				}
+			if (base_ordinal == base_count ||
+				plan->base_initializers[base_ordinal] != kNoNode) return false;
+			plan->base_initializers[base_ordinal] = value;
+			plan->base_scopes[base_ordinal] = initializer_scope;
+		}
+	}
+	catch (...) { return false; }
+	return true;
+}
+
+bool SemanticAnalyzer::EvaluateConstexprConstructorInitializers(
+	const FunctionInfo& constructor, EntityId entity,
+	const std::vector<ExpressionInfo>& arguments,
+	const ConstexprConstructorPlan& plan, std::uint32_t* object)
+{
+	bool valid = true;
+	const std::vector<BindingId>& members = entity_data_members_[entity];
+	const std::size_t base_count = plan.base_initializers.size();
+	std::vector<ConstexprObjectElement> base_elements;
+	std::vector<ConstexprObjectElement> member_elements;
+	base_elements.reserve(base_count);
+	member_elements.reserve(members.size());
+	try
+	{
+		if (plan.delegating_initializer != kNoNode)
+		{
+			const std::size_t nodes = dump_.nodes.size();
+			const std::size_t edges = dump_.edges.size();
+			ExpressionInfo delegated;
+			valid = AnalyzeConstexprMemberInitializer(
+				plan.delegating_initializer, plan.delegating_scope,
+				program_->entities[entity].type, &delegated);
+			const std::uint32_t delegated_object = ExpressionObject(delegated);
+			if (valid && delegated_object != kNoConstexprObject &&
+				constexpr_objects_[delegated_object].type ==
+					program_->types.RemoveTopCv(program_->entities[entity].type))
+			{
+				*object = delegated_object;
+				constexpr_frames_.back().receiver_object = delegated_object;
+			}
+			else valid = false;
+			ReleaseConstexprScratch(nodes, edges);
+		}
+		for (std::size_t i = 0;
+			valid && plan.delegating_initializer == kNoNode && i < base_count; ++i)
+		{
+			const EntityId base = program_->DirectBase(entity, i).entity;
+			const TypeId base_type = program_->entities[base].type;
+			const std::size_t nodes = dump_.nodes.size();
+			const std::size_t edges = dump_.edges.size();
+			ExpressionInfo initialized;
+			if (constructor.inherited_constructor_source != kNoBinding && i == 0)
+			{
+				std::uint32_t inherited_object = kNoConstexprObject;
+				valid = TryEvaluateConstexprConstructor(
+					constructor.inherited_constructor_source,
+					arguments, &inherited_object);
+				if (valid) initialized = MaterializeConstexprObject(
+					inherited_object, base_type);
+			}
+			else if (plan.base_initializers[i] != kNoNode &&
+				plan.base_prepared_arguments[i] !=
+					std::numeric_limits<std::size_t>::max())
+			{
+				const ExpressionInfo& source =
+					arguments[plan.base_prepared_arguments[i]];
+				bool direct_trivial_copy = false;
+				if (ExpressionObject(source) != kNoConstexprObject &&
+					program_->types.RemoveTopCv(EffectiveType(source.type)) ==
+						program_->types.RemoveTopCv(base_type))
+				{
+					const BindingId selected =
+						ValidateClassValueConstruction(base_type, source, false);
+					direct_trivial_copy = selected != kNoBinding &&
+						GetFunction(selected).trivial_special_member;
+					if (direct_trivial_copy) initialized = source;
+				}
+				NodeId argument_list = plan.base_initializers[i];
+				while (argument_list != kNoNode &&
+					arena_->IsTag(argument_list, "initializer"))
+					argument_list = FirstSemanticChild(argument_list);
+				std::vector<NodeId> argument_syntax;
+				if (argument_list != kNoNode &&
+					(arena_->IsTag(argument_list, "paren-argument-list") ||
+					 arena_->IsTag(argument_list, "braced-init-list")))
+					for (std::uint32_t edge = arena_->FirstEdge(argument_list);
+						edge != kNoEdge; edge = arena_->NextEdge(edge))
+						argument_syntax.push_back(arena_->EdgeChild(edge));
+				else if (argument_list != kNoNode)
+					argument_syntax.push_back(argument_list);
+				const std::vector<ExpressionInfo> prepared(1, source);
+				if (!direct_trivial_copy &&
+					argument_syntax.size() != prepared.size()) valid = false;
+				else if (!direct_trivial_copy)
+				{
+					initialized.node = BuildConstructorAction(base_type,
+						plan.base_scopes[i], argument_syntax, false,
+						arena_->IsTag(argument_list, "braced-init-list"),
+						true, false,
+						arena_->IsTag(argument_list, "braced-init-list") ?
+							argument_list : kNoNode, &prepared);
+					initialized.type = base_type;
+					initialized.category = VALUE_NONE;
+					SetExpressionDumpObject(&initialized);
+					valid = initialized.constant;
+				}
+			}
+			else if (plan.base_initializers[i] != kNoNode)
+				valid = AnalyzeConstexprMemberInitializer(
+					plan.base_initializers[i], plan.base_scopes[i],
+					base_type, &initialized);
+			else
+			{
+				const std::vector<NodeId> no_arguments;
+				initialized.node = BuildConstructorAction(base_type,
+					constructor.lexical_scope, no_arguments,
+					false, false, true, false);
+				initialized.type = base_type;
+				initialized.category = VALUE_NONE;
+				SetExpressionDumpObject(&initialized);
+				valid = initialized.constant;
+			}
+			ConstexprObjectElement element(kNoBinding,
+				ConstexprScalarValue(static_cast<std::int64_t>(0)));
+			if (valid) valid = BuildConstexprObjectElement(
+				base_type, kNoBinding, initialized, &element);
+			if (valid) base_elements.push_back(element);
+			ReleaseConstexprScratch(nodes, edges);
+		}
+		for (std::size_t i = 0;
+			valid && plan.delegating_initializer == kNoNode &&
+			i < members.size(); ++i)
+		{
+			const BindingId member_id = members[i];
+			const BindingRecord& member = program_->bindings[member_id];
+			NodeId initializer = plan.member_initializers[i];
+			if (initializer == kNoNode &&
+				member_id < member_initializer_by_binding_.size())
+				initializer = member_initializer_by_binding_[member_id];
+			const std::size_t nodes = dump_.nodes.size();
+			const std::size_t edges = dump_.edges.size();
+			ExpressionInfo initialized;
+			if (initializer != kNoNode)
+				valid = AnalyzeConstexprMemberInitializer(initializer,
+					plan.member_scopes[i], member.type, &initialized);
+			else
+			{
+				const TypeId member_type = program_->types.RemoveTopCv(
+					EffectiveType(member.type));
+				const TypeRecord& member_record = program_->types.Get(member_type);
+				if (IsIntegral(member_type, true) || IsFloating(member_type))
+				{
+					valid = constructor.defaulted_constructor ||
+						constructor.implicit_constructor;
+					initialized.node = kNoDumpEdge;
+					initialized.type = member.type;
+					initialized.category = VALUE_NONE;
+				}
+				else if (member_record.kind == TYPE_ARRAY)
+				{
+					std::uint32_t omitted = kNoEdge;
+					initialized = AnalyzeArrayAggregateInit(
+						member.type, constructor.lexical_scope, &omitted);
+					valid = initialized.constant;
+				}
+				else if (IsConstexprClassEntity(
+					*program_, EntityOf(member_type)))
+				{
+					const std::vector<NodeId> no_arguments;
+					initialized.node = BuildConstructorAction(member.type,
+						constructor.lexical_scope, no_arguments, false, false);
+					initialized.type = member.type;
+					initialized.category = VALUE_NONE;
+					SetExpressionDumpObject(&initialized);
+					valid = initialized.constant;
+				}
+				else valid = false;
+			}
+			ConstexprObjectElement element(member_id,
+				ConstexprScalarValue(static_cast<std::int64_t>(0)));
+			if (valid) valid = BuildConstexprObjectElement(
+				member.type, member_id, initialized, &element);
+			if (valid) member_elements.push_back(element);
+			ReleaseConstexprScratch(nodes, edges);
+		}
+		if (valid && plan.delegating_initializer == kNoNode &&
+			member_elements.size() == members.size() &&
+			base_elements.size() == base_count)
+		{
+			std::vector<ConstexprObjectElement> elements;
+			elements.reserve(member_elements.size() + base_elements.size());
+			elements.insert(elements.end(),
+				member_elements.begin(), member_elements.end());
+			elements.insert(elements.end(),
+				base_elements.begin(), base_elements.end());
+			*object = InternConstexprObject(program_->entities[entity].type, elements);
+			if (constexpr_objects_[*object].newest_local_storage_identity >=
+				constexpr_frames_.back().first_storage_identity)
+			{
+				*object = kNoConstexprObject;
+				valid = false;
+			}
+			else constexpr_frames_.back().receiver_object = *object;
+		}
+	}
+	catch (...) { valid = false; }
+	return valid;
+}
+
 bool SemanticAnalyzer::TryEvaluateConstexprConstructor(BindingId function,
 	const std::vector<ExpressionInfo>& arguments, std::uint32_t* object)
 {
@@ -1478,8 +1889,7 @@ bool SemanticAnalyzer::TryEvaluateConstexprConstructor(BindingId function,
 		 !info.implicit_constructor) ||
 		arguments.size() != info.parameters.size()) return false;
 	const EntityId entity = program_->bindings[function].member_owner;
-	if (entity == kNoEntity || entity >= entity_data_members_.size() ||
-		program_->entities[entity].direct_base_count != 0) return false;
+	if (entity == kNoEntity || entity >= entity_data_members_.size()) return false;
 	if ((info.defaulted_constructor || info.implicit_constructor) &&
 		arguments.size() == 1)
 	{
@@ -1524,124 +1934,12 @@ bool SemanticAnalyzer::TryEvaluateConstexprConstructor(BindingId function,
 		constexpr_locals_.size(), constexpr_scope_facts_.size(),
 		constexpr_block_offsets_.size(), next_constexpr_storage_identity_));
 	bool valid = AddConstexprInvocationArguments(info, arguments);
-	std::vector<ConstexprObjectElement> elements;
-	const std::vector<BindingId>& members = entity_data_members_[entity];
-	elements.reserve(members.size());
-	std::vector<NodeId> initializers(members.size(), kNoNode);
-	if (valid && info.constructor_initializer != kNoNode)
-	{
-		for (std::uint32_t edge = arena_->FirstEdge(
-			info.constructor_initializer); edge != kNoEdge;
-			edge = arena_->NextEdge(edge))
-		{
-			const NodeId syntax = arena_->EdgeChild(edge);
-			if (!arena_->IsTag(syntax, "mem-initializer")) continue;
-			const NodeId id = FindChild(syntax, "mem-initializer-id");
-			if (id == kNoNode) { valid = false; break; }
-			const LookupResult found = program_->LookupDirect(
-				program_->entities[entity].member_scope,
-				program_->names.Intern(arena_->Payload(id)), LOOKUP_ORDINARY);
-			if (found.ordinary == kNoBinding ||
-				!program_->bindings[found.ordinary].non_static_data_member ||
-				program_->bindings[found.ordinary].member_owner != entity)
-			{
-				valid = false;
-				break;
-			}
-			const std::size_t ordinal =
-				program_->bindings[found.ordinary].member_ordinal;
-			if (ordinal >= members.size() || members[ordinal] != found.ordinary ||
-				initializers[ordinal] != kNoNode)
-			{
-				valid = false;
-				break;
-			}
-			NodeId value = kNoNode;
-			for (std::uint32_t child = arena_->FirstEdge(syntax);
-				child != kNoEdge; child = arena_->NextEdge(child))
-			{
-				const NodeId candidate = arena_->EdgeChild(child);
-				if (candidate != id &&
-					!arena_->IsTag(candidate, "pack-expansion")) value = candidate;
-			}
-			if (value == kNoNode) { valid = false; break; }
-			initializers[ordinal] = value;
-		}
-	}
-	try
-	{
-		for (std::size_t i = 0; valid && i < members.size(); ++i)
-		{
-			const BindingId member_id = members[i];
-			const BindingRecord& member = program_->bindings[member_id];
-			NodeId initializer = initializers[i];
-			if (initializer == kNoNode &&
-				member_id < member_initializer_by_binding_.size())
-				initializer = member_initializer_by_binding_[member_id];
-			const std::size_t nodes = dump_.nodes.size();
-			const std::size_t edges = dump_.edges.size();
-			ExpressionInfo initialized;
-			if (initializer != kNoNode)
-				valid = AnalyzeConstexprMemberInitializer(initializer,
-					info.lexical_scope, member.type, &initialized);
-			else
-			{
-				const TypeId member_type = program_->types.RemoveTopCv(
-					EffectiveType(member.type));
-				const TypeRecord& member_record =
-					program_->types.Get(member_type);
-				if (IsIntegral(member_type, true) || IsFloating(member_type))
-				{
-					valid = info.defaulted_constructor || info.implicit_constructor;
-					initialized.node = kNoDumpEdge;
-					initialized.type = member.type;
-					initialized.category = VALUE_NONE;
-				}
-				else if (member_record.kind == TYPE_ARRAY)
-				{
-					std::uint32_t omitted = kNoEdge;
-					initialized = AnalyzeArrayAggregateInit(
-						member.type, info.lexical_scope, &omitted);
-					valid = initialized.constant;
-				}
-				else if (IsConstexprClassEntity(
-					*program_, EntityOf(member_type)))
-				{
-					const std::vector<NodeId> no_arguments;
-					initialized.node = BuildConstructorAction(member.type,
-						info.lexical_scope, no_arguments, false, false);
-					initialized.type = member.type;
-					initialized.category = VALUE_NONE;
-					SetExpressionDumpObject(&initialized);
-					valid = initialized.constant;
-				}
-				else valid = false;
-			}
-			ConstexprObjectElement element(member_id,
-				ConstexprScalarValue(static_cast<std::int64_t>(0)));
-			if (valid) valid = BuildConstexprObjectElement(
-				member.type, member_id, initialized, &element);
-			if (valid) elements.push_back(element);
-			ReleaseConstexprScratch(nodes, edges);
-		}
-		if (valid && elements.size() == members.size())
-		{
-			*object = InternConstexprObject(
-				program_->entities[entity].type, elements);
-			if (constexpr_objects_[*object].newest_local_storage_identity >=
-				constexpr_frames_.back().first_storage_identity)
-			{
-				*object = kNoConstexprObject;
-				valid = false;
-			}
-			else constexpr_frames_.back().receiver_object = *object;
-		}
-	}
-	catch (...)
-	{
-		valid = false;
-	}
-
+	ConstexprConstructorPlan plan(entity_data_members_[entity].size(),
+		program_->entities[entity].direct_base_count, info.lexical_scope);
+	if (valid) valid = PlanConstexprConstructorInitializers(
+		info, entity, arguments.size(), &plan);
+	if (valid) valid = EvaluateConstexprConstructorInitializers(
+		info, entity, arguments, plan, object);
 	const TypeId previous_return = current_return_type_;
 	const EntityId previous_class = current_class_context_;
 	const BindingId previous_function = current_function_context_;
@@ -1860,6 +2158,7 @@ bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 	{
 		if (evaluated_address == kNoConstexprAddress) return false;
 		*address = evaluated_address;
+		*object = evaluated_object;
 		return true;
 	}
 	if (object_result)

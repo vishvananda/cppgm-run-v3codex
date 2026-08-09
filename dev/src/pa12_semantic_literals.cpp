@@ -564,7 +564,34 @@ ExpressionInfo SemanticAnalyzer::AnalyzeThisExpression(ScopeId scope)
 	const LookupResult found = program_->LookupName(
 		scope, name, LOOKUP_ORDINARY);
 	if (found.ordinary == kNoBinding)
-		throw std::runtime_error("this outside member function");
+	{
+		if (constexpr_frames_.empty())
+			throw std::runtime_error("this outside member function");
+		const FunctionInfo& function =
+			GetFunction(constexpr_frames_.back().function);
+		if (function.member_owner == kNoType)
+			throw std::runtime_error("this outside member function");
+		TypeId owner = function.member_owner;
+		const TypeRecord& function_type = program_->types.Get(function.type);
+		if (function_type.cv != CV_NONE)
+			owner = program_->types.Qualify(owner, function_type.cv);
+		ExpressionInfo result;
+		result.type = program_->types.Pointer(owner);
+		result.category = VALUE_PRVALUE;
+		result.node = MakeDump(DUMP_ID_EXPRESSION, result.type,
+			VALUE_PRVALUE, name);
+		if (constexpr_frames_.back().receiver_address != kNoConstexprAddress)
+			SetExpressionAddress(&result,
+				constexpr_frames_.back().receiver_address);
+		if (constexpr_frames_.back().receiver_object != kNoConstexprObject)
+		{
+			result.constexpr_object =
+				constexpr_frames_.back().receiver_object;
+			result.constant = true;
+		}
+		++expression_count_;
+		return result;
+	}
 	const BindingRecord& binding = program_->bindings[found.ordinary];
 	ExpressionInfo result;
 	result.type = EffectiveType(binding.type);
@@ -573,13 +600,15 @@ ExpressionInfo SemanticAnalyzer::AnalyzeThisExpression(ScopeId scope)
 	result.node = MakeDump(DUMP_ID_EXPRESSION, result.type,
 		VALUE_PRVALUE, name, found.ordinary);
 	if (!constexpr_frames_.empty() &&
-		constexpr_frames_.back().receiver_object != kNoConstexprObject)
-		SetExpressionObject(&result,
-			constexpr_frames_.back().receiver_object);
-	if (!constexpr_frames_.empty() &&
 		constexpr_frames_.back().receiver_address != kNoConstexprAddress)
 		SetExpressionAddress(&result,
 			constexpr_frames_.back().receiver_address);
+	if (!constexpr_frames_.empty() &&
+		constexpr_frames_.back().receiver_object != kNoConstexprObject)
+	{
+		result.constexpr_object = constexpr_frames_.back().receiver_object;
+		result.constant = true;
+	}
 	++expression_count_;
 	return result;
 }

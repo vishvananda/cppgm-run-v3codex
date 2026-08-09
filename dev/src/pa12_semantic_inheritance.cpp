@@ -312,6 +312,15 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		constructed_target = target_record.child;
 	constructed_target = program_->types.RemoveTopCv(constructed_target);
 	const EntityId constructed_entity = EntityOf(constructed_target);
+	const TypeId operand_object_type = program_->types.RemoveTopCv(
+		EffectiveType(operand.type));
+	const EntityId operand_entity = EntityOf(operand_object_type);
+	const bool static_reference_downcast =
+		(target_record.kind == TYPE_LVALUE_REFERENCE ||
+		 target_record.kind == TYPE_RVALUE_REFERENCE) &&
+		cast_kind.find("STATIC") != std::string::npos &&
+		operand_entity != kNoEntity && constructed_entity != kNoEntity &&
+		program_->IsBaseOf(operand_entity, constructed_entity);
 	const bool direct_reference_cast =
 		(target_record.kind == TYPE_LVALUE_REFERENCE ||
 		 target_record.kind == TYPE_RVALUE_REFERENCE) &&
@@ -323,6 +332,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		(cast_kind.find("STATIC") != std::string::npos ||
 		 cast_kind.compare(0, 10, "OP_LPAREN:") == 0) &&
 		!direct_reference_cast &&
+		!static_reference_downcast &&
 		program_->types.RemoveTopCv(EffectiveType(operand.type)) !=
 			constructed_target;
 	if (constructor_cast)
@@ -367,6 +377,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 			(cast_kind.find("CONST") != std::string::npos ||
 			 cast_kind.compare(0, 10, "OP_LPAREN:") == 0);
 		if (!explicit_rvalue && !explicit_cv_lvalue &&
+			!static_reference_downcast &&
 			reference_conversion == CONVERSION_INVALID)
 			throw std::runtime_error("invalid reference cast");
 		if (reference_conversion == CONVERSION_DERIVED_TO_BASE)
@@ -594,9 +605,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeImplicitDataMember(
 		}
 		const ConstexprObjectElement* element =
 			constexpr_frames_.back().receiver_object == kNoConstexprObject ? 0 :
-			ConstexprObjectElementAt(
-				constexpr_frames_.back().receiver_object, binding.member_ordinal);
-		if (element && element->member == member_binding)
+			ConstexprClassMemberAt(
+				constexpr_frames_.back().receiver_object, member_binding);
+		if (element)
 			SetExpressionObjectElement(&result, *element);
 		RecordExpressionFacts(result);
 		++expression_count_;
