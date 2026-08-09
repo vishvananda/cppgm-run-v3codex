@@ -382,6 +382,7 @@ struct BindingRecord
 		constructor_base_entry, destructor, destructor_base_entry,
 		inline_function, virtual_function, pure_virtual, final_virtual,
 		override_specifier, weak_odr, object_output_root, emission_demanded;
+	bool explicit_instantiation_suppressed;
 
 	BindingRecord();
 };

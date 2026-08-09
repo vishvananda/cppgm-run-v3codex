@@ -143,6 +143,8 @@ private:
 		std::vector<NameId>* names, std::vector<NodeId>* defaults);
 	void AnalyzeExplicitInstantiation(NodeId node, ScopeId scope,
 		bool definition);
+	bool AnalyzeExplicitFunctionInstantiation(NodeId target, ScopeId scope,
+		bool definition);
 	void ValidateRetainedTemplateDefinition(NodeId target, ScopeId scope,
 		const std::vector<TemplateParameter>& parameters);
 	void RecordRetainedCallLookup(NodeId callee, ScopeId scope,
@@ -1146,6 +1148,9 @@ private:
 	std::vector<ClassTemplatePartialSelection>
 		class_template_partial_selections_;
 	std::vector<std::uint8_t> class_template_explicit_instantiation_states_;
+	std::vector<std::uint8_t> class_template_explicit_specialization_states_;
+	std::vector<std::uint8_t> function_explicit_instantiation_states_;
+	std::vector<std::uint8_t> function_explicit_specialization_states_;
 	std::vector<std::uint32_t> class_template_member_definition_counts_;
 	std::vector<std::uint32_t>
 		class_template_demanded_member_definition_counts_;

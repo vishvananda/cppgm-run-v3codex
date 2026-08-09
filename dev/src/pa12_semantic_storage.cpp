@@ -78,6 +78,12 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 			sizeof(ClassTemplatePartialSelection) +
 		class_template_explicit_instantiation_states_.capacity() *
 			sizeof(std::uint8_t) +
+		class_template_explicit_specialization_states_.capacity() *
+			sizeof(std::uint8_t) +
+		function_explicit_instantiation_states_.capacity() *
+			sizeof(std::uint8_t) +
+		function_explicit_specialization_states_.capacity() *
+			sizeof(std::uint8_t) +
 		class_template_member_definition_counts_.capacity() *
 			sizeof(std::uint32_t) +
 		class_template_demanded_member_definition_counts_.capacity() *

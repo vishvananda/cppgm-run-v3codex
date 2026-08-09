@@ -617,7 +617,7 @@ BindingRecord::BindingRecord()
 	  destructor(false), destructor_base_entry(false), inline_function(false),
 	  virtual_function(false), pure_virtual(false), final_virtual(false),
 	  override_specifier(false), weak_odr(false), object_output_root(false),
-	  emission_demanded(false)
+	  emission_demanded(false), explicit_instantiation_suppressed(false)
 {
 }
 

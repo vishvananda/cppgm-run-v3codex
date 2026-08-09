@@ -1,5 +1,6 @@
 #include "pa12_semantic_detail.h"
 
+#include <algorithm>
 #include <limits>
 #include <stdexcept>
 
@@ -310,6 +311,136 @@ TypeId SemanticAnalyzer::InstantiateAliasTemplate(std::size_t index,
 		alias_template_instantiation_states_[binding] = 3;
 		throw;
 	}
+}
+
+bool SemanticAnalyzer::AnalyzeExplicitFunctionInstantiation(
+	NodeId target, ScopeId scope, bool definition)
+{
+	if (program_->KindOfScope(scope) != SCOPE_NAMESPACE)
+		throw std::runtime_error(
+			"explicit function instantiation must appear at namespace scope");
+
+	NodeId declarator = FindChild(target, "declarator");
+	if (arena_->IsTag(target, "simple-declaration"))
+	{
+		const NodeId list = FindChild(target, "init-declarator-list");
+		const NodeId item = list == kNoNode ? kNoNode :
+			FirstSemanticChild(list);
+		declarator = item == kNoNode ? kNoNode :
+			FindChild(item, "declarator");
+		if (item != kNoNode)
+		{
+			const std::uint32_t first = arena_->FirstEdge(list);
+			if (first != kNoEdge && arena_->NextEdge(first) != kNoEdge)
+				throw std::runtime_error(
+					"explicit function instantiation has multiple declarators");
+		}
+	}
+	if (declarator == kNoNode) return false;
+	const NodeId structure = DeclaratorNameStructure(declarator);
+	const NamePath path = DeclaratorNamePath(declarator);
+	if (path.Empty()) return false;
+	std::string function_name = program_->names.Get(path.Last());
+	if (structure == kNoNode &&
+		function_name.compare(0, 8, "operator") == 0)
+	{
+		const std::size_t arguments = function_name.find('<');
+		if (arguments != std::string::npos)
+			function_name.erase(arguments);
+	}
+	const NodeId identifier = FindChild(declarator, "identifier");
+	const NodeId name_syntax = structure != kNoNode ? structure : identifier;
+	if (name_syntax == kNoNode) return false;
+
+	SpecInfo spec;
+	if (arena_->IsTag(target, "special-member-declaration") ||
+		arena_->IsTag(target, "special-member-definition"))
+		spec.type = program_->types.Fundamental(FUND_VOID);
+	else
+	{
+		const NodeId specifiers = FindChild(target, "decl-specifier-seq");
+		if (specifiers == kNoNode) return false;
+		spec = BuildSpecifiers(specifiers, scope, std::string(), true);
+	}
+	DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type, scope);
+	if (!program_->types.IsFunction(parsed.type)) return false;
+	if (spec.is_constexpr)
+		parsed.type = ApplyConstexprDeclaredFunctionType(
+			parsed.type, scope, path.Last(), kNoEntity);
+
+	std::vector<BindingId> candidates;
+	NamePath explicit_base;
+	std::vector<NodeId> explicit_arguments;
+	const bool explicit_template_id = CollectExplicitTemplateArguments(
+		name_syntax, &explicit_base, &explicit_arguments);
+	if (explicit_template_id)
+		candidates = FunctionCandidates(
+			scope, function_name, 0, name_syntax);
+	else
+	{
+		const LookupResult ordinary = structure != kNoNode ?
+			LookupStructuredName(structure, scope, LOOKUP_ORDINARY) :
+			LookupPath(scope, path, LOOKUP_ORDINARY);
+		if (ordinary.ordinary != kNoBinding &&
+			program_->bindings[ordinary.ordinary].kind == BIND_FUNCTION)
+			for (std::size_t i = 0; i < ordinary.OrdinaryCount(); ++i)
+				AppendFunctionSet(ordinary.OrdinaryAt(i), &candidates);
+	}
+	const std::vector<BindingId> template_candidates =
+		FunctionTemplateTargetCandidates(scope,
+			function_name, parsed.type, name_syntax);
+	for (std::size_t i = 0; i < template_candidates.size(); ++i)
+		candidates.push_back(template_candidates[i]);
+
+	BindingId selected = kNoBinding;
+	for (std::size_t i = 0; i < candidates.size(); ++i)
+	{
+		const BindingId candidate = program_->bindings[candidates[i]].canonical;
+		if (candidate >= program_->bindings.size() ||
+			program_->bindings[candidate].kind != BIND_FUNCTION ||
+			GetFunction(candidate).type != parsed.type) continue;
+		const FunctionInfo& function = GetFunction(candidate);
+		const EntityId member_owner =
+			program_->bindings[candidate].member_owner;
+		const bool templated_owner = member_owner != kNoEntity &&
+			program_->entities[member_owner].template_argument_count != 0;
+		if (function.template_pattern == kNoDumpEdge &&
+			program_->bindings[candidate].template_argument_count == 0 &&
+			!templated_owner) continue;
+		if (selected != kNoBinding && selected != candidate)
+			throw std::runtime_error(
+				"ambiguous explicit function instantiation target");
+		selected = candidate;
+	}
+	if (selected == kNoBinding) return false;
+
+	if (function_explicit_instantiation_states_.size() <= selected)
+		function_explicit_instantiation_states_.resize(
+			static_cast<std::size_t>(selected) + 1, 0);
+	std::uint8_t& state =
+		function_explicit_instantiation_states_[selected];
+	BindingRecord& binding = program_->bindings[selected];
+	if (!definition)
+	{
+		if ((state & 2) != 0)
+			throw std::runtime_error(
+				"explicit function instantiation declaration follows definition");
+		state |= 1;
+		binding.explicit_instantiation_suppressed = true;
+		return true;
+	}
+	if ((state & 2) != 0)
+		throw std::runtime_error(
+			"duplicate explicit function instantiation definition");
+	if (!GetFunction(selected).defined)
+		throw std::runtime_error(
+			"explicit function instantiation target has no definition");
+	state |= 2;
+	binding.explicit_instantiation_suppressed = false;
+	binding.weak_odr = true;
+	binding.object_output_root = true;
+	DemandFunction(selected);
+	return true;
 }
 
 }

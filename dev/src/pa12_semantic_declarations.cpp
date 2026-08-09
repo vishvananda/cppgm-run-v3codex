@@ -2873,14 +2873,17 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 	if (state.demand_state >= 2) return;
 	state.demand_state = 2;
 	const FunctionInfo info = GetFunction(binding);
+	const bool emit_definition = info.defined &&
+		!program_->bindings[binding].explicit_instantiation_suppressed;
 	const bool member = info.member_owner != kNoType;
 	const TypeId output_type = member ?
 		AdaptMemberFunctionType(info.binding) : info.type;
-	const std::uint32_t function = MakeDump(info.defined ?
+	const std::uint32_t function = MakeDump(emit_definition ?
 		DUMP_FUNCTION_DEFINITION : DUMP_FUNCTION_DECLARATION,
 		output_type, VALUE_NONE, info.display_name, info.binding);
 	dump_.Add(root_, function);
-	if (!info.defined && member)
+	if (!emit_definition && (member ||
+		program_->bindings[binding].explicit_instantiation_suppressed))
 	{
 		GetMutableFunction(binding).demand_state = 3;
 		++demanded_function_emissions_;
@@ -2913,13 +2916,13 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 		AddLifetimeObligation(function_scope, parameter_binding,
 			parameter.function_type, false);
 	}
-	if (!info.defined)
+	if (!emit_definition)
 	{
 		GetMutableFunction(binding).demand_state = 3;
 		++demanded_function_emissions_;
 		return;
 	}
-	if (info.defined)
+	if (emit_definition)
 	{
 		const TypeId previous_return = current_return_type_;
 		const EntityId previous_class = current_class_context_;

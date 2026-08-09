@@ -661,6 +661,7 @@ struct FunctionInfo
 	bool deferred;
 	bool definition_in_class;
 	bool template_specialization;
+	bool explicit_specialization;
 	bool constructor;
 	bool implicit_constructor;
 	bool defaulted_constructor;
@@ -695,7 +696,7 @@ struct FunctionInfo
 		  definition_body(kNoNode), constructor_initializer(kNoNode),
 		  template_pattern(kNoDumpEdge),
 		  defined(false), deferred(false), definition_in_class(false),
-		  template_specialization(false),
+		  template_specialization(false), explicit_specialization(false),
 		  constructor(false), implicit_constructor(false),
 		  defaulted_constructor(false), deleted_constructor(false),
 		  explicit_constructor(false), conversion_function(false),

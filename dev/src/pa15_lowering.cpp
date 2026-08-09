@@ -262,9 +262,10 @@ private:
 		const std::string& proposed_name, const std::string& object_name)
 	{
 		const BindingRecord& binding = program_.bindings[node.binding];
-		const bool weak_odr = binding.weak_odr ||
+		const bool weak_odr = !binding.explicit_instantiation_suppressed &&
+			(binding.weak_odr ||
 			(kind == Symbol::FUNCTION_SYMBOL &&
-			 binding.template_argument_count != 0);
+			 binding.template_argument_count != 0));
 		const bool local_member = pa18_lowering_detail::IsFunctionLocalEntity(
 			program_, binding.member_owner);
 		const bool internal = local_member ||

@@ -2883,8 +2883,10 @@ NodeId Parser::ParseDeclaration(bool in_class)
 		const NodeId result = arena_.Make(explicit_declaration ?
 			"explicit-instantiation-declaration" :
 			"explicit-instantiation-definition");
-		const NodeId target = At(KW_CLASS) || At(KW_STRUCT) || At(KW_UNION) ?
+		NodeId target = At(KW_CLASS) || At(KW_STRUCT) || At(KW_UNION) ?
 			ParseClass() : ParseSimpleOrFunction(in_class);
+		if (target == kNoNode)
+			target = ParseSpecialMember(false);
 		if (target == kNoNode) throw Error("expected explicit instantiation");
 		arena_.Add(result, target);
 		return result;

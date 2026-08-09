@@ -2255,11 +2255,16 @@ void SemanticAnalyzer::AnalyzeExplicitInstantiation(NodeId node,
 	ScopeId scope, bool definition)
 {
 	const NodeId target = FirstSemanticChild(node);
-	if (target == kNoNode ||
-		(!arena_->IsTag(target, "class-forward-declaration") &&
-		 !arena_->IsTag(target, "class-specifier")))
+	if (target == kNoNode)
+		throw std::runtime_error("explicit instantiation has no target");
+	if (!arena_->IsTag(target, "class-forward-declaration") &&
+		!arena_->IsTag(target, "class-specifier"))
+	{
+		if (AnalyzeExplicitFunctionInstantiation(target, scope, definition))
+			return;
 		throw std::runtime_error(
-			"PA19 explicit instantiation requires a class template-id");
+			"explicit instantiation target is not a supported template");
+	}
 	NamePath base;
 	std::vector<TypeId> arguments;
 	if (!ParseExplicitTemplateArguments(target, scope, &base, &arguments))
@@ -2331,8 +2336,9 @@ void SemanticAnalyzer::AnalyzeExplicitInstantiation(NodeId node,
 	if ((state & 2) != 0)
 		throw std::runtime_error(
 			"duplicate explicit class instantiation definition");
+	const bool object_output_root = (state & 1) == 0;
 	state |= 2;
-	const auto demand_member = [this](BindingId binding) {
+	const auto demand_member = [this, object_output_root](BindingId binding) {
 		if (binding == kNoBinding) return;
 		binding = program_->bindings[binding].canonical;
 		const FunctionInfo& function = GetFunction(binding);
@@ -2342,7 +2348,7 @@ void SemanticAnalyzer::AnalyzeExplicitInstantiation(NodeId node,
 			function.deleted_special_member)
 			return;
 		program_->bindings[binding].weak_odr = true;
-		program_->bindings[binding].object_output_root = true;
+		program_->bindings[binding].object_output_root |= object_output_root;
 		DemandFunction(binding);
 	};
 	if (entity < entity_member_functions_.size())

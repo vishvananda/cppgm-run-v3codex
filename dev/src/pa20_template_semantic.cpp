@@ -153,16 +153,111 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 			program_->entities[entity].member_scope == kNoScope)
 			throw std::runtime_error(
 				"explicit member specialization has incomplete owner");
+		if (owner < class_template_explicit_specialization_states_.size() &&
+			class_template_explicit_specialization_states_[owner] != 0)
+			throw std::runtime_error(
+				"member of an explicit class specialization has a template header");
 		const ScopeId definition_scope = NewScope(
 			program_->entities[entity].member_scope,
 			SCOPE_TEMPLATE_PARAMETERS, 0,
 			ScopePrefixId(program_->entities[entity].member_scope));
-		if (arena_->IsTag(target, "simple-declaration"))
+		SpecInfo member_spec;
+		if (arena_->IsTag(target, "special-member-declaration") ||
+			arena_->IsTag(target, "special-member-definition"))
+			member_spec.type = program_->types.Fundamental(FUND_VOID);
+		else
+		{
+			const NodeId specifiers = FindChild(target, "decl-specifier-seq");
+			if (specifiers == kNoNode)
+				throw std::runtime_error(
+					"explicit member specialization has no declared type");
+			member_spec = BuildSpecifiers(specifiers, definition_scope,
+				std::string(), true);
+		}
+		const EntityId previous_class = current_class_context_;
+		current_class_context_ = entity;
+		DeclaratorInfo parsed = BuildDeclarator(
+			declarator, member_spec.type, definition_scope);
+		current_class_context_ = previous_class;
+		if (!program_->types.IsFunction(parsed.type))
+		{
+			if (!arena_->IsTag(target, "simple-declaration"))
+				throw std::runtime_error(
+					"explicit member specialization is not a function");
 			AnalyzeSimple(target, definition_scope, root_, false, true, true);
-		else if (arena_->IsTag(target, "function-definition"))
-			AnalyzeFunction(target, definition_scope, root_, true);
-		else throw std::runtime_error(
-			"unsupported explicit member specialization");
+			return true;
+		}
+
+		std::vector<BindingId> candidates;
+		NamePath terminal_base;
+		std::vector<NodeId> terminal_arguments;
+		const bool terminal_template_id = CollectExplicitTemplateArguments(
+			structure, &terminal_base, &terminal_arguments);
+		if (terminal_template_id)
+			candidates = FunctionCandidates(scope,
+				program_->names.Get(structured_path.Last()), 0, structure);
+		else
+		{
+			const LookupResult found = LookupStructuredName(
+				structure, scope, LOOKUP_ORDINARY);
+			if (found.ordinary != kNoBinding &&
+				program_->bindings[found.ordinary].kind == BIND_FUNCTION)
+				for (std::size_t i = 0; i < found.OrdinaryCount(); ++i)
+					AppendFunctionSet(found.OrdinaryAt(i), &candidates);
+		}
+		const std::vector<BindingId> template_candidates =
+			FunctionTemplateTargetCandidates(scope,
+				program_->names.Get(structured_path.Last()), parsed.type,
+				structure);
+		candidates.insert(candidates.end(), template_candidates.begin(),
+			template_candidates.end());
+		BindingId selected = kNoBinding;
+		for (std::size_t i = 0; i < candidates.size(); ++i)
+		{
+			const BindingId candidate =
+				program_->bindings[candidates[i]].canonical;
+			if (GetFunction(candidate).type != parsed.type) continue;
+			if (selected != kNoBinding && selected != candidate)
+				throw std::runtime_error(
+					"ambiguous explicit member specialization");
+			selected = candidate;
+		}
+		if (selected == kNoBinding)
+			throw std::runtime_error(
+				"explicit member specialization target was not found");
+		if (function_explicit_specialization_states_.size() <= selected)
+			function_explicit_specialization_states_.resize(
+				static_cast<std::size_t>(selected) + 1, 0);
+		std::uint8_t& state =
+			function_explicit_specialization_states_[selected];
+		const bool target_definition =
+			arena_->IsTag(target, "function-definition") ||
+			arena_->IsTag(target, "special-member-definition");
+		if (target_definition && (state & 2) != 0)
+			throw std::runtime_error(
+				"duplicate explicit member specialization definition");
+		if (GetFunction(selected).demand_state >= 2)
+			throw std::runtime_error(
+				"explicit member specialization follows instantiation");
+		state |= target_definition ? 2 : 1;
+		FunctionInfo& function = GetMutableFunction(selected);
+		function.explicit_specialization = true;
+		function.parameters = parsed.parameters;
+		function.defined = target_definition;
+		function.deferred = true;
+		function.definition_body = target_definition ?
+			FindChild(target, "compound-statement") : kNoNode;
+		function.constructor_initializer = target_definition ?
+			FindChild(target, "ctor-initializer") : kNoNode;
+		function.lexical_scope = definition_scope;
+		function.constexpr_function = function.constexpr_function ||
+			member_spec.is_constexpr;
+		BindingRecord& selected_binding = program_->bindings[selected];
+		selected_binding.explicit_instantiation_suppressed = false;
+		selected_binding.nonthrowing = IsNonthrowing(
+			declarator, definition_scope);
+		PublishInlineFunctionFacts(selected,
+			member_spec.inline_specifier || member_spec.is_constexpr);
 		return true;
 	}
 
@@ -261,6 +356,10 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 		class_template_partial_selections_[binding] =
 			ClassTemplatePartialSelection();
 		class_template_specialization_states_[binding] = 2;
+		if (class_template_explicit_specialization_states_.size() <= binding)
+			class_template_explicit_specialization_states_.resize(
+				static_cast<std::size_t>(binding) + 1, 0);
+		class_template_explicit_specialization_states_[binding] = 1;
 		return true;
 	}
 
@@ -303,17 +402,32 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 		throw std::runtime_error(
 			"explicit function specialization primary was not found");
 	FunctionInfo& function = GetMutableFunction(selected);
+	if (function_explicit_specialization_states_.size() <= selected)
+		function_explicit_specialization_states_.resize(
+			static_cast<std::size_t>(selected) + 1, 0);
+	std::uint8_t& specialization_state =
+		function_explicit_specialization_states_[selected];
+	const bool target_definition =
+		arena_->IsTag(target, "function-definition");
+	if (target_definition && (specialization_state & 2) != 0)
+		throw std::runtime_error(
+			"duplicate explicit function specialization definition");
+	if (function.demand_state >= 2)
+		throw std::runtime_error(
+			"explicit function specialization follows instantiation");
+	specialization_state |= target_definition ? 2 : 1;
+	function.explicit_specialization = true;
 	if (spec.is_constexpr)
 		ValidateConstexprCallableType(function.type, false);
 	function.parameters = parsed.parameters;
 	function.constexpr_function =
 		function.constexpr_function || spec.is_constexpr;
-	function.defined = arena_->IsTag(target, "function-definition");
+	function.defined = target_definition;
 	function.deferred = true;
 	function.definition_body = FindChild(target, "compound-statement");
-	function.lexical_scope = scope;
 	program_->bindings[selected].nonthrowing =
 		IsNonthrowing(declarator, scope);
+	program_->bindings[selected].explicit_instantiation_suppressed = false;
 	PublishInlineFunctionFacts(
 		selected, spec.inline_specifier || spec.is_constexpr);
 	ValidateFunctionRefQualifier(selected);

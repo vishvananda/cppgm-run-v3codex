@@ -477,6 +477,7 @@ void SemanticAnalyzer::UpgradeFunctionTemplateSpecializations(
 				spec.storage_class == STORAGE_CLASS_STATIC);
 		FunctionInfo& function = GetMutableFunction(
 			specializations[specialization]);
+		if (function.explicit_specialization) continue;
 		if (function.type != parsed.type)
 			throw std::runtime_error(
 				"function template definition does not match declaration");
