@@ -71,9 +71,13 @@ bool SemanticAnalyzer::FunctionTemplateTypeIsDependent(TypeId type) const
 			class_template_pattern_by_entity_[record.entity];
 		if (template_index >= class_templates_.size()) break;
 		const std::size_t first = entity.template_argument_begin;
-		const std::size_t count =
-			class_templates_[template_index].parameters.size();
-		if (entity.template_argument_count != count ||
+		const std::size_t count = entity.template_argument_count;
+		const std::vector<TemplateParameter>& template_parameters =
+			class_templates_[template_index].parameters;
+		if ((!HasTrailingTemplateParameterPack(template_parameters) &&
+			 count != template_parameters.size()) ||
+			(HasTrailingTemplateParameterPack(template_parameters) && count <
+			 FixedTemplateParameterCount(template_parameters)) ||
 			first > program_->template_arguments.size() ||
 			count > program_->template_arguments.size() - first)
 			throw std::logic_error(
@@ -191,10 +195,8 @@ bool SemanticAnalyzer::DeduceFunctionTemplateType(TypeId pattern,
 		const EntityRecord& argument_owner = program_->entities[argument_entity];
 		const std::size_t pattern_first = pattern_owner.template_argument_begin;
 		const std::size_t argument_first = argument_owner.template_argument_begin;
-		const std::size_t count =
-			class_templates_[pattern_template].parameters.size();
-		if (pattern_owner.template_argument_count != count ||
-			argument_owner.template_argument_count != count ||
+		const std::size_t count = pattern_owner.template_argument_count;
+		if (argument_owner.template_argument_count != count ||
 			pattern_first > program_->template_arguments.size() ||
 			argument_first > program_->template_arguments.size() ||
 			count > program_->template_arguments.size() - pattern_first ||
@@ -239,23 +241,44 @@ void SemanticAnalyzer::DeduceFunctionTemplatePatterns(
 			function_templates_[patterns[p]];
 		const TypeRecord& function_type =
 			program_->types.Get(pattern.shape_type);
+		const bool template_pack =
+			HasTrailingTemplateParameterPack(pattern.parameters);
+		const std::size_t fixed_template_parameters =
+			FixedTemplateParameterCount(pattern.parameters);
+		const std::size_t fixed_function_parameters =
+			pattern.function_parameter_pack ?
+			function_type.parameter_count - 1 : function_type.parameter_count;
 		if (function_type.kind != TYPE_FUNCTION ||
 			arguments.size() < pattern.required_parameter_count ||
-			arguments.size() > function_type.parameter_count) continue;
+			(!pattern.function_parameter_pack &&
+			 arguments.size() > function_type.parameter_count)) continue;
 		const TypeId* parameters =
 			program_->types.Parameters(pattern.shape_type);
 		if (explicit_arguments &&
-			explicit_arguments->size() > pattern.parameters.size())
+			((!template_pack &&
+			  explicit_arguments->size() > pattern.parameters.size()) ||
+			 (template_pack &&
+			  explicit_arguments->size() < fixed_template_parameters)))
 			continue;
 		std::vector<TypeId> deduced(pattern.parameters.size(), kNoType);
 		if (explicit_arguments)
-			std::copy(explicit_arguments->begin(), explicit_arguments->end(),
+			std::copy(explicit_arguments->begin(), explicit_arguments->begin() +
+				std::min(explicit_arguments->size(), fixed_template_parameters),
 				deduced.begin());
+		std::vector<TypeId> pack_arguments;
+		if (template_pack && explicit_arguments &&
+			explicit_arguments->size() > fixed_template_parameters)
+			pack_arguments.assign(
+				explicit_arguments->begin() + fixed_template_parameters,
+				explicit_arguments->end());
 		bool valid = true;
 		for (std::size_t a = 0; a < arguments.size() && valid; ++a)
 		{
 			if (arguments[a].type == kNoType) continue;
-			TypeId parameter = parameters[a];
+			const bool pack_element = pattern.function_parameter_pack &&
+				a >= fixed_function_parameters;
+			TypeId parameter = parameters[pack_element ?
+				fixed_function_parameters : a];
 			TypeId argument = EffectiveType(arguments[a].type);
 			const TypeRecord& parameter_record =
 				program_->types.Get(parameter);
@@ -282,12 +305,36 @@ void SemanticAnalyzer::DeduceFunctionTemplatePatterns(
 				parameter = program_->types.RemoveTopCv(parameter);
 				argument = program_->types.RemoveTopCv(Decay(argument));
 			}
-			valid = DeduceFunctionTemplateType(parameter, argument, &deduced);
+			if (!pack_element)
+				valid = DeduceFunctionTemplateType(parameter, argument, &deduced);
+			else
+			{
+				const std::size_t element = a - fixed_function_parameters;
+				std::vector<TypeId> element_deduced = deduced;
+				if (element < pack_arguments.size())
+					element_deduced.back() = pack_arguments[element];
+				valid = DeduceFunctionTemplateType(
+					parameter, argument, &element_deduced);
+				if (valid && element >= pack_arguments.size())
+				{
+					if (element_deduced.back() == kNoType) valid = false;
+					else pack_arguments.push_back(element_deduced.back());
+				}
+			}
 		}
 		if (valid)
 		{
+			std::vector<TypeId> canonical;
+			if (template_pack)
+			{
+				canonical.assign(deduced.begin(),
+					deduced.begin() + fixed_template_parameters);
+				canonical.insert(canonical.end(), pack_arguments.begin(),
+					pack_arguments.end());
+			}
+			else canonical = deduced;
 			const BindingId specialization =
-				InstantiateFunctionTemplate(patterns[p], deduced);
+				InstantiateFunctionTemplate(patterns[p], canonical);
 			if (specializations && specialization != kNoBinding)
 				specializations->push_back(specialization);
 		}

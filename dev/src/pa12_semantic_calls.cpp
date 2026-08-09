@@ -500,20 +500,29 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 				std::vector<TypeId> explicit_arguments;
 				if (!ParseExplicitTemplateArguments(
 					syntax, scope, &type_base, &explicit_arguments)) continue;
-				const std::size_t width = pattern.parameters.size();
-				if (pattern.specialization_bindings.size() >
-					pattern.specialization_arguments.size() / width)
+				if (pattern.specialization_argument_offsets.size() !=
+					pattern.specialization_bindings.size())
 					throw std::logic_error(
 						"function template specialization argument range is invalid");
 				for (std::size_t specialization = 0;
 					specialization < pattern.specialization_bindings.size();
 					++specialization)
 				{
+					const std::size_t first =
+						pattern.specialization_argument_offsets[specialization];
+					const std::size_t last = specialization + 1 <
+						pattern.specialization_argument_offsets.size() ?
+						pattern.specialization_argument_offsets[specialization + 1] :
+						pattern.specialization_arguments.size();
+					if (first > last || last >
+						pattern.specialization_arguments.size() ||
+						explicit_arguments.size() > last - first)
+						continue;
 					bool matches = true;
 					for (std::size_t argument = 0;
 						argument < explicit_arguments.size(); ++argument)
 						if (pattern.specialization_arguments[
-							specialization * width + argument] != TemplateArgument(
+							first + argument] != TemplateArgument(
 								TEMPLATE_ARGUMENT_TYPE,
 								explicit_arguments[argument]))
 							matches = false;

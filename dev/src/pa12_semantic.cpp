@@ -723,6 +723,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 		return ApplyTarget(AnalyzeSubscript(node, scope), target);
 	if (arena_->IsTag(node, "sizeof-expression"))
 		return ApplyTarget(AnalyzeSizeof(node, scope), target);
+	if (arena_->IsTag(node, "sizeof-pack-expression")) return ApplyTarget(AnalyzeSizeofPackExpression(node, scope), target);
 	if (arena_->IsTag(node, "type-trait-expression") &&
 		(PayloadSource(node) == "alignof" || PayloadSource(node) == "__alignof"))
 		return ApplyTarget(AnalyzeSizeof(node, scope), target);
@@ -1139,16 +1140,13 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	++expression_count_;
 	return ApplyTarget(result, target);
 }
-
-ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
-	TypeId target)
+ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId target)
 {
 	const NodeId callee_syntax = FirstSemanticChild(node);
 	if (callee_syntax == kNoNode) throw std::runtime_error("call without callee");
 	NodeId direct_callee_syntax = callee_syntax;
 	bool parenthesized_callee = false;
-	while (arena_->IsTag(direct_callee_syntax, "parenthesized-expression"))
-	{
+	while (arena_->IsTag(direct_callee_syntax, "parenthesized-expression")) {
 		parenthesized_callee = true;
 		direct_callee_syntax = FirstSemanticChild(direct_callee_syntax);
 		if (direct_callee_syntax == kNoNode)
@@ -1175,6 +1173,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 		target, &member_call)) return member_call;
 	if (AnalyzeDirectMemberCall(callee_syntax, scope, argument_syntax,
 		target, &member_call)) return member_call;
+	if (ExpandCallArgumentPacks(argument_syntax, scope, &argument_syntax, &analyzed_arguments)) arguments_analyzed = true;
 	if (arena_->IsTag(direct_callee_syntax, "id-expression"))
 	{
 		const std::string spelling = arena_->Payload(direct_callee_syntax);
@@ -1218,9 +1217,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 		bool retained_lookup = false;
 		std::vector<BindingId> candidates = RetainedFunctionCallCandidates(
 			direct_callee_syntax, scope, spelling, &function_naming_class, &retained_lookup);
-		for (std::size_t i = 0; i < argument_syntax.size(); ++i)
-			analyzed_arguments.push_back(
-				AnalyzeExpression(argument_syntax[i], scope));
+		if (!arguments_analyzed)
+			for (std::size_t i = 0; i < argument_syntax.size(); ++i)
+				analyzed_arguments.push_back(AnalyzeExpression(argument_syntax[i], scope));
 		arguments_analyzed = true;
 		const TypeId cast_type = ResolveFunctionalCastType(scope, spelling,
 			direct_callee_syntax);
@@ -1946,7 +1945,7 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 			throw std::runtime_error(
 				"function template has non-function declaration");
 		pattern.shape_type = shape_declarator.type;
-		pattern.required_parameter_count = RequiredFunctionParameterCount(shape_declarator.parameters);
+		InitializeFunctionTemplatePackShape(&pattern, shape_declarator);
 		const std::uint64_t key =
 			(static_cast<std::uint64_t>(pattern.owner) << 32) | pattern.name;
 		const CompactIndexSequence* prior_patterns =
@@ -2477,6 +2476,7 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 			parameter.name = function.parameters[i].name;
 		const BindingId parameter_binding = program_->AddBinding(function_scope,
 			BIND_PARAMETER, parameter.name, ParameterBindingType(parameter));
+		BindFunctionParameterPackElement(function_scope, parameter.pack_name, parameter_binding);
 		const std::uint32_t parameter_node = MakeDump(DUMP_PARAMETER,
 			parameter.function_type, VALUE_NONE, parameter.name, parameter_binding);
 		dump_.Add(output_node, parameter_node);

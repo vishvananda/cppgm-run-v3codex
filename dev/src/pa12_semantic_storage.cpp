@@ -50,6 +50,9 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		function_templates_.size() * sizeof(FunctionTemplatePattern) +
 		function_template_shape_parameters_.capacity() * sizeof(TypeId) +
 		template_function_sets_.StorageBytes() +
+		template_argument_pack_bindings_.StorageBytes() +
+		template_argument_pack_values_.capacity() * sizeof(TemplateArgument) +
+		function_parameter_pack_bindings_.StorageBytes() +
 		retained_call_function_sets_.StorageBytes() +
 		retained_call_template_sets_.StorageBytes() +
 		retained_call_lookup_states_.capacity() * sizeof(std::uint8_t) +
@@ -119,7 +122,9 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 			function_templates_[i].specialization_bindings.capacity() *
 				sizeof(BindingId) +
 			function_templates_[i].specialization_arguments.capacity() *
-				sizeof(TemplateArgument);
+				sizeof(TemplateArgument) +
+			function_templates_[i].specialization_argument_offsets.capacity() *
+				sizeof(std::uint32_t);
 	for (std::size_t i = 0; i < class_templates_.size(); ++i)
 	{
 		bytes += class_templates_[i].parameters.capacity() *

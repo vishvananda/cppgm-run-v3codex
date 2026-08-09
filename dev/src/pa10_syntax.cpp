@@ -1536,7 +1536,6 @@ NodeId Parser::ParsePostfixSuffixes(NodeId value) {
 	}
 	return value;
 }
-
 NodeId Parser::ParseUnaryExpression()
 {
 	if (At(OP_INC) || At(OP_DEC) || At(OP_STAR) || At(OP_AMP) ||
@@ -1554,6 +1553,10 @@ NodeId Parser::ParseUnaryExpression()
 		const std::size_t keyword = position_++;
 		const SimpleTokenKind kind = static_cast<SimpleTokenKind>(
 			tokens_[keyword].kind);
+		if (kind == KW_SIZEOF && Match(OP_DOTS)) {
+			Expect(OP_LPAREN); if (!AtIdentifier()) throw Error("expected parameter pack name");
+			const TextId name = tokens_[position_++].spelling; Expect(OP_RPAREN);
+			const NodeId result = arena_.Make("sizeof-pack-expression", strings_.Get(name)); arena_.SetSemanticPayload(result, name); return ParsePostfixSuffixes(result); }
 		const NodeId trait = kind == KW_SIZEOF ?
 			arena_.Make("sizeof-expression") :
 			MakeTokenNode("type-trait-expression", keyword);

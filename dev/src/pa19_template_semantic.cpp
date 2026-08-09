@@ -729,8 +729,13 @@ ScopeId SemanticAnalyzer::BindClassTemplateArguments(
 {
 	const ScopeId template_scope = NewScope(pattern.lexical_scope,
 		SCOPE_TEMPLATE_PARAMETERS, 0, ScopePrefixId(pattern.lexical_scope));
-	for (std::size_t i = 0; i < arguments.size(); ++i)
+	const std::size_t fixed =
+		FixedTemplateParameterCount(pattern.parameters);
+	for (std::size_t i = 0; i < arguments.size() && i < fixed; ++i)
 		BindTemplateArgument(template_scope, pattern.parameters[i], arguments[i]);
+	if (HasTrailingTemplateParameterPack(pattern.parameters))
+		BindTemplateArgumentPack(template_scope, pattern.parameters.back(),
+			arguments, fixed);
 	return template_scope;
 }
 
@@ -854,7 +859,10 @@ void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
 	// templates, so replay borrows the one published pattern rather than copying
 	// its growing specialization and member-definition sequences.
 	const ClassTemplatePattern& pattern = class_templates_[index];
-	if (arguments.size() != pattern.parameters.size())
+	if ((!HasTrailingTemplateParameterPack(pattern.parameters) &&
+		 arguments.size() != pattern.parameters.size()) ||
+		(HasTrailingTemplateParameterPack(pattern.parameters) &&
+		 arguments.size() < FixedTemplateParameterCount(pattern.parameters)))
 		throw std::logic_error("class template completion argument mismatch");
 	class_template_specialization_states_[binding] = 1;
 	std::string specialization_name = program_->names.Get(pattern.name);
@@ -896,14 +904,16 @@ void SemanticAnalyzer::EnsureClassDefinition(TypeId type)
 		if (specialization.template_argument_begin == kNoBinding)
 			throw std::logic_error("class specialization has no arguments");
 		const std::size_t first = specialization.template_argument_begin;
-		if (specialization.template_argument_count !=
-			pattern.parameters.size() ||
+		const std::size_t count = specialization.template_argument_count;
+		if ((!HasTrailingTemplateParameterPack(pattern.parameters) &&
+			 count != pattern.parameters.size()) ||
+			(HasTrailingTemplateParameterPack(pattern.parameters) &&
+			 count < FixedTemplateParameterCount(pattern.parameters)) ||
 			first > program_->template_arguments.size() ||
-			pattern.parameters.size() >
-				program_->template_arguments.size() - first)
+			count > program_->template_arguments.size() - first)
 			throw std::logic_error("class specialization arguments are truncated");
 		const std::vector<TemplateArgument> arguments =
-			StoredTemplateArguments(first, pattern.parameters.size());
+			StoredTemplateArguments(first, count);
 		CompleteClassTemplateSpecialization(index,
 			program_->entities[entity].declaration, arguments);
 		return;
@@ -931,8 +941,12 @@ bool SemanticAnalyzer::ClassTemplateSpecializationArgumentsComplete(
 		throw std::logic_error("invalid class specialization owner index");
 	const EntityRecord& specialization = program_->entities[entity];
 	const std::size_t first = specialization.template_argument_begin;
-	const std::size_t count = class_templates_[index].parameters.size();
-	if (specialization.template_argument_count != count ||
+	const ClassTemplatePattern& pattern = class_templates_[index];
+	const std::size_t count = specialization.template_argument_count;
+	if ((!HasTrailingTemplateParameterPack(pattern.parameters) &&
+		 count != pattern.parameters.size()) ||
+		(HasTrailingTemplateParameterPack(pattern.parameters) &&
+		 count < FixedTemplateParameterCount(pattern.parameters)) ||
 		first > program_->template_arguments.size() ||
 		count > program_->template_arguments.size() - first)
 		throw std::logic_error("class specialization arguments are truncated");
@@ -977,12 +991,15 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 	if (index >= class_templates_.size())
 		throw std::logic_error("invalid class template pattern");
 	const ClassTemplatePattern& pattern = class_templates_[index];
-	if (supplied_arguments.size() > pattern.parameters.size()) return kNoBinding;
+	const bool has_pack = HasTrailingTemplateParameterPack(pattern.parameters);
+	if (!has_pack && supplied_arguments.size() > pattern.parameters.size())
+		return kNoBinding;
 	std::vector<TemplateArgument> canonical;
 	canonical.reserve(supplied_arguments.size());
 	for (std::size_t i = 0; i < supplied_arguments.size(); ++i)
 	{
-		if (pattern.parameters[i].kind != TEMPLATE_ARGUMENT_TYPE)
+		if (TemplateParameterForArgument(pattern.parameters, i).kind !=
+			TEMPLATE_ARGUMENT_TYPE)
 			return kNoBinding;
 		canonical.push_back(TemplateArgument(
 			TEMPLATE_ARGUMENT_TYPE, supplied_arguments[i]));
@@ -996,7 +1013,10 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 	if (index >= class_templates_.size())
 		throw std::logic_error("invalid class template pattern");
 	ClassTemplatePattern& pattern = class_templates_[index];
-	if (supplied_arguments.size() > pattern.parameters.size()) return kNoBinding;
+	const bool has_pack = HasTrailingTemplateParameterPack(pattern.parameters);
+	const std::size_t fixed = FixedTemplateParameterCount(pattern.parameters);
+	if (!has_pack && supplied_arguments.size() > pattern.parameters.size())
+		return kNoBinding;
 	++template_specialization_requests_;
 	const TemplateSpecializationKey request_key(index, supplied_arguments);
 	BindingId old = class_template_instantiations_.Find(request_key);
@@ -1008,8 +1028,9 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 			throw std::logic_error("cached class specialization has no entity");
 		const EntityRecord& record = program_->entities[entity];
 		const std::size_t first = record.template_argument_begin;
-		const std::size_t count = pattern.parameters.size();
-		if (record.template_argument_count != count ||
+		const std::size_t count = record.template_argument_count;
+		if ((!has_pack && count != pattern.parameters.size()) ||
+			(has_pack && count < fixed) ||
 			first > program_->template_arguments.size() || count >
 				program_->template_arguments.size() - first)
 			throw std::logic_error(
@@ -1030,15 +1051,15 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 	}
 	std::vector<TemplateArgument> arguments = supplied_arguments;
 	for (std::size_t i = 0; i < arguments.size(); ++i)
-		if (arguments[i].kind != pattern.parameters[i].kind)
+		if (arguments[i].kind !=
+			TemplateParameterForArgument(pattern.parameters, i).kind)
 			return kNoBinding;
 	ScopeId argument_scope = kNoScope;
-	if (arguments.size() < pattern.parameters.size())
+	if (arguments.size() < fixed)
 	{
 		argument_scope = BindClassTemplateArguments(pattern, arguments);
 	}
-	for (std::size_t i = arguments.size();
-		i < pattern.parameters.size(); ++i)
+	for (std::size_t i = arguments.size(); i < fixed; ++i)
 	{
 		const TemplateParameter& parameter = pattern.parameters[i];
 		if (parameter.default_argument == kNoNode) return kNoBinding;
@@ -1140,8 +1161,6 @@ void SemanticAnalyzer::UpgradeClassTemplateSpecializations(std::size_t index)
 	// A forward-declaration upgrade is one bounded pass over the shells that
 	// existed when the definition arrived. Pattern ownership itself is stable;
 	// only the mutable shell sequence needs a work snapshot.
-	const std::size_t parameter_count =
-		class_templates_[index].parameters.size();
 	const std::vector<BindingId> specializations =
 		class_templates_[index].specialization_bindings;
 	for (std::size_t i = 0; i < specializations.size(); ++i)
@@ -1156,11 +1175,16 @@ void SemanticAnalyzer::UpgradeClassTemplateSpecializations(std::size_t index)
 			throw std::logic_error("class specialization has no entity");
 		const EntityRecord& record = program_->entities[entity];
 		const std::size_t first = record.template_argument_begin;
-		if (record.template_argument_count != parameter_count ||
-			first > program_->template_arguments.size() || parameter_count >
+		const std::size_t count = record.template_argument_count;
+		const ClassTemplatePattern& pattern = class_templates_[index];
+		if ((!HasTrailingTemplateParameterPack(pattern.parameters) &&
+			 count != pattern.parameters.size()) ||
+			(HasTrailingTemplateParameterPack(pattern.parameters) && count <
+			 FixedTemplateParameterCount(pattern.parameters)) ||
+			first > program_->template_arguments.size() || count >
 				program_->template_arguments.size() - first)
 			throw std::logic_error("class specialization arguments are invalid");
-		arguments = StoredTemplateArguments(first, parameter_count);
+		arguments = StoredTemplateArguments(first, count);
 		if (ClassTemplateArgumentsAreComplete(*program_, arguments))
 			CompleteClassTemplateSpecialization(index, binding, arguments);
 	}

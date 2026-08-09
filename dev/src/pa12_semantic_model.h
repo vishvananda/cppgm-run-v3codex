@@ -230,13 +230,14 @@ struct SpecInfo
 struct ParameterInfo
 {
 	NameId name;
+	NameId pack_name;
 	TypeId declared_type;
 	TypeId function_type;
 	NodeId default_argument;
 	ScopeId default_scope;
 	ParameterInfo(NameId name_value, TypeId declared_value,
 		TypeId function_value)
-		: name(name_value), declared_type(declared_value),
+		: name(name_value), pack_name(0), declared_type(declared_value),
 		  function_type(function_value), default_argument(kNoNode),
 		  default_scope(kNoScope) {}
 };
@@ -442,6 +443,26 @@ struct TemplateParameter
 		  default_argument(kNoNode), dependent_type(false), pack(false) {}
 };
 
+inline bool HasTrailingTemplateParameterPack(
+	const std::vector<TemplateParameter>& parameters)
+{
+	return !parameters.empty() && parameters.back().pack;
+}
+
+inline std::size_t FixedTemplateParameterCount(
+	const std::vector<TemplateParameter>& parameters)
+{
+	return parameters.size() -
+		(HasTrailingTemplateParameterPack(parameters) ? 1 : 0);
+}
+
+inline const TemplateParameter& TemplateParameterForArgument(
+	const std::vector<TemplateParameter>& parameters, std::size_t argument)
+{
+	const std::size_t fixed = FixedTemplateParameterCount(parameters);
+	return parameters[argument < fixed ? argument : parameters.size() - 1];
+}
+
 struct FunctionTemplatePattern
 {
 	ScopeId owner;
@@ -455,10 +476,12 @@ struct FunctionTemplatePattern
 	std::vector<TemplateParameter> parameters;
 	std::vector<BindingId> specialization_bindings;
 	std::vector<TemplateArgument> specialization_arguments;
+	std::vector<std::uint32_t> specialization_argument_offsets;
 	LanguageLinkage language_linkage;
 	AccessKind member_access;
 	bool defined;
 	bool nonthrowing;
+	bool function_parameter_pack;
 
 	FunctionTemplatePattern()
 		: owner(kNoScope), lexical_scope(kNoScope), name(0),
@@ -467,7 +490,7 @@ struct FunctionTemplatePattern
 		  shape_type(kNoType), required_parameter_count(0),
 		  language_linkage(LANGUAGE_LINKAGE_CPP), member_access(ACCESS_PUBLIC),
 		  defined(false),
-		  nonthrowing(false) {}
+		  nonthrowing(false), function_parameter_pack(false) {}
 };
 
 struct ClassTemplateMemberPattern

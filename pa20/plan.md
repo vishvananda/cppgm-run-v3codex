@@ -14,30 +14,29 @@ evaluation and PA22/PA23 SFINAE remain out of scope.
 
 ## Current Failure Map
 
-The stage is 83/164, up from the 15/164 turn baseline and 39/164 prior
-checkpoint.  The largest remaining owner is parameter-pack collection and
-expansion (`200-*`): parser-retained expansion sites need one pack environment
-and lockstep replay.  Explicit specialization and stale-primary refresh own the
-`300-*`/`400-*` group.  The remaining fixed-arity failures cluster around
-dependent qualified lookup, delayed member validation/demand, variable
-templates, declaration ambiguity, and a few literal/cast forms.  Several of
-these compile but differ in replayed globals, vtables, or specialization choice.
+The stage is 96/164, up from the 83/164 turn baseline.  Remaining `200-*`
+failures divide into lockstep expression/member/base/initializer expansion,
+value packs, out-of-class owner packs, dependent `decltype` defaults, and
+array/explicit-function-id parsing; the unrelated user-defined-literal cases
+remain with literal lookup.  The `100-*` group is dependent qualified lookup,
+delayed member validation/demand, variable templates, declaration ambiguity,
+and literal/cast forms.  Explicit specialization owns `300-*`; stale-primary
+refresh owns `400-*`.  LowIR-only mismatches in those groups are replay/global,
+vtable, or specialization-selection ownership rather than pack collection.
 
 ## Active Checkpoint
 
-Add typed type/value parameter-pack collection, `sizeof...`, and supported
-pack-expansion replay.  The canonical argument environment must represent a
-pack as an ordered range without flattening ownership; each expansion consumes
-that range in source order, and multiple packs at one site must have equal
-length rather than forming a Cartesian product.  Empty packs remain valid.
+Extend the typed pack environment from single-pack call sites to lockstep
+expression, member/base, and initializer expansion, then add value-pack
+elements.  Multiple packs at one site must have equal length rather than form a
+Cartesian product; empty expansions remain valid.
 
-Owner/data flow: PA10 pack/ellipsis syntax -> PA12 typed parameter and expansion
-facts -> PA19 canonical pack bindings/substitution scope -> existing class or
-function replay -> typed lowering.  Collection and replay must be O(parameters
-+ expanded arguments), with O(1)-average specialization lookup and one demand
-per canonical specialization.  Validate `sizeof...`, empty and fixed-prefix
-packs, explicit type/value packs, lockstep expansions, malformed mixed packs,
-then the full PA20 report, PA1-PA19 gate, audit, and 1x/2x/4x expansion probes.
+Owner/data flow remains PA10 ellipsis syntax -> PA12 typed expansion recipe ->
+PA19 canonical pack ranges/substitution scope -> class/function replay -> typed
+lowering.  Each site is O(syntax + packs + expanded elements), specialization
+lookup remains O(1)-average, and replay occurs once per canonical demand.
+Validate same-pack and independent lockstep calls, base/member initialization,
+empty packs, value/type mixtures and malformed unequal packs before full gates.
 
 ## Performance Evidence
 
@@ -56,9 +55,17 @@ Requests were 128/256/512 with 96/192/384 cache hits, while emitted functions
 were 33/65/129.  Time, storage, and output scale linearly; repeated keys hit the
 cache and do not duplicate emitted specializations.
 
+Seven-run release medians for 32/64/128-element type/function packs relayed
+through `sink(values...)`: semantic nodes 148/276/532; conversion checks
+71/135/263; instructions 110/206/398; peak semantic-stage bytes
+90,225/157,649/285,842; typed LowIR bytes 39,232/73,856/143,104; semantic time
+0.444/0.580/1.050 ms.  Two canonical specializations and two emissions remain
+constant while work, storage, and output grow linearly with pack length.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result |
 |---|---|
 | Typed integral constants and `static_assert` | Width/signedness-aware casts, folds, literals, declaration/class/block validation, and `wchar_t`/`char16_t`/`char32_t` lowering; PA20 15 -> 39, PA1-PA19 2,013/2,013, audit pass |
 | Canonical fixed-arity integral template arguments | Tagged type/value slots and keys, normalized defaults/expressions/enums, constant substitution, retained member replay, canonical LowIR identity and ABI value mangling; PA20 39 -> 83, focused 14/14, scaling linear |
+| Canonical trailing type/function packs | Ordered scope-indexed pack ranges, flattened canonical keys with pattern-owned boundaries, variable-width replay offsets, empty/fixed-prefix deduction, named forwarding, `sizeof...` and simple `sizeof(Ts)...` expansion; PA20 83 -> 96, PA1-PA19 2,013/2,013, audit pass, scaling linear |

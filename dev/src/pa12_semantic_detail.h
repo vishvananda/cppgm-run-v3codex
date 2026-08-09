@@ -251,6 +251,21 @@ private:
 		ScopeId parameter_scope);
 	void BindTemplateArgument(ScopeId scope,
 		const TemplateParameter& parameter, const TemplateArgument& argument);
+	void BindTemplateArgumentPack(ScopeId scope,
+		const TemplateParameter& parameter,
+		const std::vector<TemplateArgument>& arguments, std::size_t first);
+	bool LookupTemplateArgumentPack(ScopeId scope, NameId name,
+		std::vector<TemplateArgument>* arguments) const;
+	bool LookupFunctionParameterPack(ScopeId scope, NameId name,
+		std::vector<BindingId>* bindings) const;
+	ExpressionInfo AnalyzeSizeofPackExpression(NodeId node, ScopeId scope);
+	bool ExpandCallArgumentPacks(const std::vector<NodeId>& original,
+		ScopeId scope, std::vector<NodeId>* syntax,
+		std::vector<ExpressionInfo>* arguments);
+	void InitializeFunctionTemplatePackShape(FunctionTemplatePattern* pattern,
+		const DeclaratorInfo& shape);
+	void BindFunctionParameterPackElement(ScopeId scope, NameId pack,
+		BindingId binding);
 	std::vector<TemplateArgument> TypeTemplateArguments(
 		const std::vector<TypeId>& arguments) const;
 	std::vector<TemplateArgument> StoredTemplateArguments(
@@ -751,6 +766,9 @@ private:
 	TypeId function_template_dependent_result_shape_;
 	mutable std::vector<std::uint8_t> function_template_dependency_cache_;
 	IndexedSequenceTable template_function_sets_;
+	IndexedSequenceTable template_argument_pack_bindings_;
+	std::vector<TemplateArgument> template_argument_pack_values_;
+	IndexedSequenceTable function_parameter_pack_bindings_;
 	IndexedSequenceTable retained_call_function_sets_;
 	IndexedSequenceTable retained_call_template_sets_;
 	std::vector<std::uint8_t> retained_call_lookup_states_;

@@ -1811,6 +1811,40 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 		if (!arena_->IsTag(child, "parameter-declaration")) continue;
 		const NodeId specifiers = FindChild(child, "decl-specifier-seq");
 		const NodeId declarator = FindChild(child, "declarator");
+		const bool declared_pack = declarator != kNoNode &&
+			FindChild(declarator, "parameter-pack") != kNoNode;
+		if (declared_pack)
+		{
+			const NodeId spelling_node = specifiers == kNoNode ? kNoNode :
+				FirstSemanticChild(specifiers);
+			const NameId type_pack_name = spelling_node == kNoNode ? 0 :
+				program_->names.Intern(PayloadSource(spelling_node));
+			std::vector<TemplateArgument> pack;
+			if (type_pack_name != 0 &&
+				LookupTemplateArgumentPack(scope, type_pack_name, &pack))
+			{
+				const NameId parameter_pack_name = DeclaratorName(declarator);
+				const std::string parameter_pack_spelling = parameter_pack_name == 0 ?
+					std::string() : program_->names.Get(parameter_pack_name);
+				for (std::size_t i = 0; i < pack.size(); ++i)
+				{
+					if (pack[i].kind != TEMPLATE_ARGUMENT_TYPE)
+						throw std::runtime_error(
+							"function type pack contains a value argument");
+					const DeclaratorInfo parsed = BuildDeclarator(
+						declarator, pack[i].type, parameter_scope);
+					const NameId element_name = parameter_pack_name == 0 ? 0 :
+						i == 0 ? parameter_pack_name : program_->names.Intern(
+							parameter_pack_spelling + "__pack" +
+							std::to_string(i + 1));
+					ParameterInfo parameter(element_name, parsed.type,
+						AdjustParameterType(parsed.type));
+					parameter.pack_name = parameter_pack_name;
+					result.push_back(parameter);
+				}
+				continue;
+			}
+		}
 		const SpecInfo spec = BuildSpecifiers(specifiers, parameter_scope,
 			std::string(), declarator != kNoNode);
 		NameId name = 0;
@@ -1863,11 +1897,12 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 				name = parsed.name;
 				declared = parsed.type;
 			}
-			if (FindChild(declarator, "parameter-pack") != kNoNode)
+			if (declared_pack)
 				*variadic = true;
 		}
 		result.push_back(ParameterInfo(name, declared,
 			AdjustParameterType(declared)));
+		if (declared_pack) result.back().pack_name = name;
 		if (name != 0)
 			program_->AddBinding(parameter_scope, BIND_PARAMETER,
 				name, declared);
@@ -2765,6 +2800,8 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 		const BindingId parameter_binding = program_->AddBinding(function_scope,
 			BIND_PARAMETER, parameter.name, ParameterBindingType(parameter));
 		parameter_bindings.push_back(parameter_binding);
+		BindFunctionParameterPackElement(
+			function_scope, parameter.pack_name, parameter_binding);
 		dump_.Add(function, MakeDump(DUMP_PARAMETER, parameter.function_type,
 			VALUE_NONE, parameter.name, parameter_binding));
 		AddLifetimeObligation(function_scope, parameter_binding,
