@@ -60,6 +60,8 @@ public:
 		  access_grant_probes_(0),
 		  template_specialization_requests_(0),
 		  template_specialization_cache_hits_(0),
+		  template_partial_candidates_(0),
+		  template_partial_order_comparisons_(0),
 		  constexpr_call_requests_(0), constexpr_call_cache_hits_(0),
 		  constexpr_local_index_probes_(0),
 		  constexpr_scope_index_probes_(0),
@@ -381,12 +383,32 @@ private:
 		const std::vector<TemplateArgument>& arguments);
 	std::size_t SelectClassTemplatePartial(ClassTemplatePattern& pattern,
 		const std::vector<TemplateArgument>& arguments,
-		std::vector<TemplateArgument>* bindings);
+		FunctionTemplateDeduction* bindings);
+	bool MaterializeTemplatePartialArguments(
+		const std::vector<TemplateParameter>& primary_parameters,
+		const std::vector<TemplateParameter>& partial_parameters,
+		const std::vector<NodeId>& syntax, ScopeId lexical_scope,
+		std::vector<TemplateArgument>* arguments, std::uint8_t* state);
 	bool MatchTemplatePartialArguments(
 		const std::vector<TemplateParameter>& parameters,
 		const std::vector<TemplateArgument>& pattern_arguments,
 		const std::vector<TemplateArgument>& arguments,
-		std::vector<TemplateArgument>* bindings);
+		FunctionTemplateDeduction* bindings) const;
+	bool DeduceTemplatePartialArgument(const TemplateArgument& pattern,
+		const TemplateArgument& argument,
+		const std::vector<TemplateParameter>& parameters,
+		FunctionTemplateDeduction* deduced) const;
+	bool DeduceTemplatePartialType(TypeId pattern, TypeId argument,
+		const std::vector<TemplateParameter>& parameters,
+		FunctionTemplateDeduction* deduced) const;
+	std::size_t TemplatePartialPackParameter(TypeId type,
+		const std::vector<TemplateParameter>& parameters,
+		std::size_t depth = 0) const;
+	int CompareTemplatePartialPatterns(
+		const std::vector<TemplateParameter>& left_parameters,
+		const std::vector<TemplateArgument>& left_arguments,
+		const std::vector<TemplateParameter>& right_parameters,
+		const std::vector<TemplateArgument>& right_arguments) const;
 	void CompleteClassTemplateSpecialization(std::size_t pattern,
 		BindingId specialization,
 		const std::vector<TemplateArgument>& arguments);
@@ -1184,6 +1206,8 @@ private:
 	mutable std::size_t access_grant_probes_;
 	std::size_t template_specialization_requests_;
 	std::size_t template_specialization_cache_hits_;
+	mutable std::size_t template_partial_candidates_;
+	mutable std::size_t template_partial_order_comparisons_;
 	std::size_t constexpr_call_requests_;
 	std::size_t constexpr_call_cache_hits_;
 	mutable std::size_t constexpr_local_index_probes_;

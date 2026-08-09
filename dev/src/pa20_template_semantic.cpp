@@ -376,66 +376,90 @@ BindingId SemanticAnalyzer::InstantiateVariableTemplate(
 	}
 
 	std::size_t selected_index = primary_index;
-	std::vector<TemplateArgument> selected_bindings = arguments;
+	FunctionTemplateDeduction selected_bindings(primary.parameters);
+	const std::size_t primary_fixed =
+		FixedTemplateParameterCount(primary.parameters);
+	for (std::size_t argument = 0;
+		argument < arguments.size() && argument < primary_fixed; ++argument)
+		selected_bindings.fixed_arguments[argument] = arguments[argument];
+	if (HasTrailingTemplateParameterPack(primary.parameters))
+		selected_bindings.pack_arguments.back().assign(
+			arguments.begin() + primary_fixed, arguments.end());
+	std::vector<std::size_t> matches;
 	for (std::size_t candidate_ordinal = 0;
 		candidate_ordinal < related.size(); ++candidate_ordinal)
 	{
 		const std::size_t candidate_index = related[candidate_ordinal];
-		const VariableTemplatePattern& candidate =
+		VariableTemplatePattern& candidate =
 			variable_templates_[candidate_index];
 		if (!candidate.partial_specialization) continue;
-		while (function_template_shape_parameters_.size() <
-			candidate.parameters.size())
-		{
-			std::ostringstream generated;
-			generated << "__function_template_parameter_shape_"
-				<< function_template_shape_parameters_.size();
-			const NameId name = program_->names.Intern(generated.str());
-			const EntityId entity = program_->NewEntity(name,
-				NAMED_TYPENAME_PARAMETER, false, kNoType,
-				program_->GlobalScope(), name);
-			function_template_shape_parameters_.push_back(
-				program_->types.Named(entity));
-		}
-		const ScopeId shape_scope = NewScope(candidate.lexical_scope,
-			SCOPE_TEMPLATE_PARAMETERS, 0,
-			ScopePrefixId(candidate.lexical_scope));
-		for (std::size_t parameter = 0;
-			parameter < candidate.parameters.size(); ++parameter)
-		{
-			const TemplateParameter& record = candidate.parameters[parameter];
-			if (record.name == 0) continue;
-			if (record.kind == TEMPLATE_ARGUMENT_TYPE)
-				program_->AddBinding(shape_scope, BIND_TYPE_ALIAS, record.name,
-					function_template_shape_parameters_[parameter]);
-			else program_->AddBinding(shape_scope, BIND_PARAMETER, record.name,
-				record.dependent_type ?
-					program_->types.Fundamental(FUND_INT) : record.value_type,
-				false, static_cast<std::int64_t>(parameter));
-		}
-		std::vector<TemplateArgument> pattern_arguments;
-		if (!BuildTemplateArguments(primary.parameters,
-			candidate.specialization_arguments, shape_scope,
-			primary.lexical_scope, &pattern_arguments) ||
-			pattern_arguments.size() != arguments.size()) continue;
-		std::vector<TemplateArgument> bindings;
+		++template_partial_candidates_;
+		if (!MaterializeTemplatePartialArguments(primary.parameters,
+			candidate.parameters, candidate.specialization_arguments,
+			candidate.lexical_scope,
+			&candidate.canonical_specialization_arguments,
+			&candidate.canonical_argument_state)) continue;
+		FunctionTemplateDeduction bindings(candidate.parameters);
 		if (!MatchTemplatePartialArguments(candidate.parameters,
-			pattern_arguments, arguments, &bindings)) continue;
-		selected_index = candidate_index;
-		selected_bindings.swap(bindings);
+			candidate.canonical_specialization_arguments,
+			arguments, &bindings)) continue;
+		matches.push_back(candidate_index);
+	}
+	if (!matches.empty())
+	{
+		std::size_t winner = matches.size();
+		for (std::size_t i = 0; i < matches.size(); ++i)
+		{
+			bool best = true;
+			for (std::size_t j = 0; j < matches.size(); ++j)
+			{
+				if (i == j) continue;
+				const VariableTemplatePattern& left =
+					variable_templates_[matches[i]];
+				const VariableTemplatePattern& right =
+					variable_templates_[matches[j]];
+				if (CompareTemplatePartialPatterns(left.parameters,
+					left.canonical_specialization_arguments,
+					right.parameters,
+					right.canonical_specialization_arguments) <= 0)
+				{
+					best = false;
+					break;
+				}
+			}
+			if (best) winner = i;
+		}
+		if (matches.size() != 1 && winner == matches.size())
+			throw std::runtime_error(
+				"ambiguous variable template partial specialization");
+		selected_index = matches[matches.size() == 1 ? 0 : winner];
+		const VariableTemplatePattern& selected_partial =
+			variable_templates_[selected_index];
+		if (!MatchTemplatePartialArguments(selected_partial.parameters,
+			selected_partial.canonical_specialization_arguments,
+			arguments, &selected_bindings))
+			throw std::logic_error(
+				"selected variable partial no longer matches");
 	}
 
 	const VariableTemplatePattern& selected =
 		variable_templates_[selected_index];
 	const ScopeId substitution_scope = NewScope(selected.lexical_scope,
 		SCOPE_TEMPLATE_PARAMETERS, 0, ScopePrefixId(selected.lexical_scope));
-	if (selected.parameters.size() != selected_bindings.size())
+	if (selected.parameters.size() !=
+		selected_bindings.fixed_arguments.size())
 		throw std::logic_error(
 			"variable template substitution shape is invalid");
 	for (std::size_t parameter = 0;
 		parameter < selected.parameters.size(); ++parameter)
-		BindTemplateArgument(substitution_scope,
-			selected.parameters[parameter], selected_bindings[parameter]);
+		if (selected.parameters[parameter].pack)
+			BindTemplateArgumentPack(substitution_scope,
+				selected.parameters[parameter],
+				selected_bindings.pack_arguments[parameter], 0,
+				selected_bindings.pack_arguments[parameter].size());
+		else BindTemplateArgument(substitution_scope,
+			selected.parameters[parameter],
+			selected_bindings.fixed_arguments[parameter]);
 	const SpecInfo spec = BuildSpecifiers(selected.specifiers,
 		substitution_scope, std::string(), true);
 	DeclaratorInfo parsed = BuildDeclarator(selected.declarator,

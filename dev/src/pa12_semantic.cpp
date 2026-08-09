@@ -2934,6 +2934,9 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 			template_specialization_requests_;
 		stats_->template_specialization_cache_hits =
 			template_specialization_cache_hits_;
+		stats_->template_partial_candidates = template_partial_candidates_;
+		stats_->template_partial_order_comparisons =
+			template_partial_order_comparisons_;
 		stats_->constexpr_call_requests = constexpr_call_requests_;
 		stats_->constexpr_call_cache_hits = constexpr_call_cache_hits_;
 		stats_->constexpr_local_index_probes =

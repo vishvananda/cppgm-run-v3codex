@@ -206,14 +206,18 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 			const ClassTemplatePartialPattern& pattern =
 				class_templates_[i].partial_specializations[partial];
 			bytes += pattern.parameters.capacity() * sizeof(TemplateParameter) +
-				pattern.arguments.capacity() * sizeof(NodeId);
+				pattern.arguments.capacity() * sizeof(NodeId) +
+				pattern.canonical_arguments.capacity() *
+					sizeof(TemplateArgument);
 		}
 	}
 	for (std::size_t i = 0; i < variable_templates_.size(); ++i)
 		bytes += variable_templates_[i].parameters.capacity() *
 				sizeof(TemplateParameter) +
 			variable_templates_[i].specialization_arguments.capacity() *
-				sizeof(NodeId);
+				sizeof(NodeId) +
+			variable_templates_[i].canonical_specialization_arguments.capacity() *
+				sizeof(TemplateArgument);
 	bytes += variable_template_instantiations_.StorageBytes();
 	return bytes;
 }

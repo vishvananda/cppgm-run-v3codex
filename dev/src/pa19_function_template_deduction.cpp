@@ -47,8 +47,11 @@ bool SemanticAnalyzer::FunctionTemplateTypeIsDependent(TypeId type) const
 	case TYPE_POINTER:
 	case TYPE_LVALUE_REFERENCE:
 	case TYPE_RVALUE_REFERENCE:
-	case TYPE_ARRAY:
 		dependent = FunctionTemplateTypeIsDependent(record.child);
+		break;
+	case TYPE_ARRAY:
+		dependent = record.dependent_bound_parameter != kNoTemplateParameter ||
+			FunctionTemplateTypeIsDependent(record.child);
 		break;
 	case TYPE_FUNCTION:
 	{

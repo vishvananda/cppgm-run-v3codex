@@ -2110,7 +2110,25 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 					--constant_expression_required_depth_;
 					throw;
 				}
-				if (!expression.constant || expression.value <= 0)
+				if (!expression.constant)
+				{
+					if (expression.binding == kNoBinding ||
+						expression.binding >= program_->bindings.size())
+						throw std::runtime_error("invalid array bound");
+					const BindingRecord& binding =
+						program_->bindings[expression.binding];
+					if (binding.kind != BIND_PARAMETER || binding.constant ||
+						program_->KindOfScope(binding.owner) !=
+							SCOPE_TEMPLATE_PARAMETERS || binding.value < 0 ||
+						static_cast<std::uint64_t>(binding.value) >=
+							kNoTemplateParameter)
+						throw std::runtime_error("invalid array bound");
+					type = program_->types.DependentArray(type,
+						program_->types.RemoveTopCv(expression.type),
+						static_cast<std::uint32_t>(binding.value));
+					continue;
+				}
+				if (expression.value <= 0)
 					throw std::runtime_error("invalid array bound");
 				bound = static_cast<std::uint64_t>(expression.value);
 			}

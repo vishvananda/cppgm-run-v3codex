@@ -862,9 +862,12 @@ struct ClassTemplatePartialPattern
 	NodeId declaration;
 	std::vector<TemplateParameter> parameters;
 	std::vector<NodeId> arguments;
+	std::vector<TemplateArgument> canonical_arguments;
+	std::uint8_t canonical_argument_state;
 
 	ClassTemplatePartialPattern()
-		: lexical_scope(kNoScope), declaration(kNoNode) {}
+		: lexical_scope(kNoScope), declaration(kNoNode),
+		  canonical_argument_state(0) {}
 };
 
 struct VariableTemplatePattern
@@ -874,12 +877,15 @@ struct VariableTemplatePattern
 	NodeId declaration, specifiers, declarator, initializer;
 	std::vector<TemplateParameter> parameters;
 	std::vector<NodeId> specialization_arguments;
+	std::vector<TemplateArgument> canonical_specialization_arguments;
+	std::uint8_t canonical_argument_state;
 	bool partial_specialization;
 
 	VariableTemplatePattern()
 		: owner(kNoScope), lexical_scope(kNoScope), name(0),
 		  declaration(kNoNode), specifiers(kNoNode), declarator(kNoNode),
-		  initializer(kNoNode), partial_specialization(false) {}
+		  initializer(kNoNode), canonical_argument_state(0),
+		  partial_specialization(false) {}
 };
 
 struct ClassTemplatePattern

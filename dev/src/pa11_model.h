@@ -158,6 +158,8 @@ struct TypeRecord
 	TypeId child;
 	EntityId entity;
 	std::uint64_t bound;
+	TypeId dependent_bound_type;
+	std::uint32_t dependent_bound_parameter;
 	std::uint32_t parameter_offset;
 	std::uint32_t parameter_count;
 	std::uint8_t cv;
@@ -179,6 +181,8 @@ public:
 	TypeId MemberPointer(TypeId owner, TypeId member);
 	TypeId Reference(TypeKind kind, TypeId type);
 	TypeId Array(TypeId type, std::uint64_t bound);
+	TypeId DependentArray(TypeId type, TypeId bound_type,
+		std::uint32_t parameter);
 	TypeId Function(TypeId result, const std::vector<TypeId>& parameters,
 		bool variadic, std::uint8_t cv = CV_NONE,
 		std::uint8_t ref_qualifier = FUNCTION_REF_NONE);

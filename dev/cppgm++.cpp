@@ -631,6 +631,10 @@ int run_emit_semantics_mode(const vector<string> & args)
            << stats.template_specialization_requests
            << " template_specialization_cache_hits="
            << stats.template_specialization_cache_hits
+		   << " template_partial_candidates="
+		   << stats.template_partial_candidates
+		   << " template_partial_order_comparisons="
+		   << stats.template_partial_order_comparisons
            << " constexpr_call_requests=" << stats.constexpr_call_requests
            << " constexpr_call_cache_hits=" << stats.constexpr_call_cache_hits
            << " constexpr_local_index_probes="
@@ -772,6 +776,10 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << semantic.template_specialization_requests
 			 << " template_specialization_cache_hits="
 			 << semantic.template_specialization_cache_hits
+			 << " template_partial_candidates="
+			 << semantic.template_partial_candidates
+			 << " template_partial_order_comparisons="
+			 << semantic.template_partial_order_comparisons
 			 << " constexpr_call_requests="
 			 << semantic.constexpr_call_requests
 			 << " constexpr_call_cache_hits="

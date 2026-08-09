@@ -259,6 +259,10 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 				semantic_stats.template_specialization_requests;
 			semantic.template_specialization_cache_hits +=
 				semantic_stats.template_specialization_cache_hits;
+			semantic.template_partial_candidates +=
+				semantic_stats.template_partial_candidates;
+			semantic.template_partial_order_comparisons +=
+				semantic_stats.template_partial_order_comparisons;
 			semantic.constexpr_call_requests +=
 				semantic_stats.constexpr_call_requests;
 			semantic.constexpr_call_cache_hits +=

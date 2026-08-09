@@ -279,6 +279,8 @@ NameId NamePath::Last() const
 
 TypeRecord::TypeRecord()
 	: kind(TYPE_INVALID), child(kNoType), entity(kNoEntity), bound(0),
+	  dependent_bound_type(kNoType),
+	  dependent_bound_parameter(kNoTemplateParameter),
 	  parameter_offset(0), parameter_count(0), cv(CV_NONE),
 	  ref_qualifier(FUNCTION_REF_NONE), variadic(false),
 	  fundamental(FUND_INT)
@@ -319,7 +321,11 @@ TypeId TypeTable::Qualify(TypeId type, std::uint8_t cv)
 	if (cv == CV_NONE) return type;
 	const TypeRecord& record = Get(type);
 	if (record.kind == TYPE_ARRAY)
-		return Array(Qualify(record.child, cv), record.bound);
+		return record.dependent_bound_parameter == kNoTemplateParameter ?
+			Array(Qualify(record.child, cv), record.bound) :
+			DependentArray(Qualify(record.child, cv),
+				record.dependent_bound_type,
+				record.dependent_bound_parameter);
 	if (record.kind == TYPE_LVALUE_REFERENCE ||
 		record.kind == TYPE_RVALUE_REFERENCE) return type;
 	if (record.kind == TYPE_FUNCTION)
@@ -382,6 +388,25 @@ TypeId TypeTable::Array(TypeId type, std::uint64_t bound)
 	candidate.kind = TYPE_ARRAY;
 	candidate.child = type;
 	candidate.bound = bound;
+	return Intern(candidate, 0, 0);
+}
+
+TypeId TypeTable::DependentArray(TypeId type, TypeId bound_type,
+	std::uint32_t parameter)
+{
+	if (parameter == kNoTemplateParameter)
+		throw std::logic_error("dependent array has no parameter");
+	const TypeRecord& record = Get(type);
+	if (record.kind == TYPE_LVALUE_REFERENCE ||
+		record.kind == TYPE_RVALUE_REFERENCE || record.kind == TYPE_FUNCTION ||
+		(record.kind == TYPE_FUNDAMENTAL &&
+		 record.fundamental == FUND_VOID))
+		throw std::runtime_error("invalid dependent array element type");
+	TypeRecord candidate;
+	candidate.kind = TYPE_ARRAY;
+	candidate.child = type;
+	candidate.dependent_bound_type = bound_type;
+	candidate.dependent_bound_parameter = parameter;
 	return Intern(candidate, 0, 0);
 }
 
@@ -468,6 +493,8 @@ std::size_t TypeTable::Hash(const TypeRecord& record,
 	hash = MixHash(hash, record.child);
 	hash = MixHash(hash, record.entity);
 	hash = MixHash(hash, record.bound);
+	hash = MixHash(hash, record.dependent_bound_type);
+	hash = MixHash(hash, record.dependent_bound_parameter);
 	hash = MixHash(hash, record.cv);
 	hash = MixHash(hash, record.ref_qualifier);
 	hash = MixHash(hash, record.variadic ? 1 : 0);
@@ -483,6 +510,9 @@ bool TypeTable::Equal(const TypeRecord& existing,
 {
 	if (existing.kind != candidate.kind || existing.child != candidate.child ||
 		existing.entity != candidate.entity || existing.bound != candidate.bound ||
+		existing.dependent_bound_type != candidate.dependent_bound_type ||
+		existing.dependent_bound_parameter !=
+			candidate.dependent_bound_parameter ||
 		existing.cv != candidate.cv ||
 		existing.ref_qualifier != candidate.ref_qualifier ||
 		existing.variadic != candidate.variadic ||
@@ -2395,7 +2425,8 @@ std::size_t Program::SizeOf(TypeId type) const
 		}
 		if (record.kind == TYPE_ARRAY)
 		{
-			if (record.bound == 0 ||
+			if (record.dependent_bound_parameter != kNoTemplateParameter ||
+				record.bound == 0 ||
 				record.bound > std::numeric_limits<std::size_t>::max() ||
 				multiplier > std::numeric_limits<std::size_t>::max() /
 					static_cast<std::size_t>(record.bound))
@@ -2521,7 +2552,8 @@ void Program::AppendType(std::string& output, TypeId type,
 			break;
 		case TYPE_ARRAY:
 			output += "array of ";
-			output += std::to_string(record.bound);
+			output += record.dependent_bound_parameter == kNoTemplateParameter ?
+				std::to_string(record.bound) : "dependent";
 			output += ' ';
 			tasks.Push(Task(record.child, true));
 			break;
