@@ -21,11 +21,12 @@ std::size_t NoTemplatePattern()
 }
 
 bool ClassTemplateArgumentsAreComplete(const Program& program,
-	const std::vector<TypeId>& arguments)
+	const std::vector<TemplateArgument>& arguments)
 {
 	for (std::size_t i = 0; i < arguments.size(); ++i)
 	{
-		const TypeId argument = program.types.RemoveTopCv(arguments[i]);
+		if (arguments[i].kind != TEMPLATE_ARGUMENT_TYPE) continue;
+		const TypeId argument = program.types.RemoveTopCv(arguments[i].type);
 		const TypeRecord& record = program.types.Get(argument);
 		if (record.kind == TYPE_NAMED &&
 			!program.entities[record.entity].complete)
@@ -71,13 +72,26 @@ std::string TemplateArgumentName(const std::string& source)
 	return result.empty() ? "type" : result;
 }
 
+std::string CanonicalTemplateArgumentName(const Program& program,
+	const TemplateArgument& argument)
+{
+	if (argument.kind == TEMPLATE_ARGUMENT_TYPE)
+		return TemplateArgumentName(program.RenderType(argument.type));
+	std::ostringstream result;
+	result << "value_" << argument.type << '_';
+	if (argument.value < 0) result << 'm' << -(argument.value + 1) + 1;
+	else result << 'p' << argument.value;
+	return result.str();
+}
+
 std::string ClassTemplateSpecializationScopeName(std::size_t pattern,
-	const std::vector<TypeId>& arguments)
+	const std::vector<TemplateArgument>& arguments)
 {
 	std::ostringstream result;
 	result << "__cppgm_class_template_" << pattern;
 	for (std::size_t i = 0; i < arguments.size(); ++i)
-		result << '_' << arguments[i];
+		result << '_' << arguments[i].kind << '_' << arguments[i].type << '_'
+			<< arguments[i].value;
 	return result.str();
 }
 
@@ -202,17 +216,16 @@ LookupResult SemanticAnalyzer::LookupStructuredName(NodeId syntax,
 			const std::size_t pattern =
 				FindClassTemplateIndex(found, component);
 			if (pattern == NoTemplatePattern()) return LookupResult();
-			std::vector<TypeId> arguments;
+			std::vector<NodeId> argument_syntax;
 			for (std::uint32_t edge = arena_->FirstEdge(argument_list);
 				edge != kNoEdge; edge = arena_->NextEdge(edge))
-			{
-				const NodeId argument = arena_->EdgeChild(edge);
-				if (!arena_->IsTag(argument, "type-id"))
-					return LookupResult();
-				const TypeId argument_type = BuildTypeId(argument, scope);
-				if (argument_type == kNoType) return LookupResult();
-				arguments.push_back(argument_type);
-			}
+				argument_syntax.push_back(arena_->EdgeChild(edge));
+			std::vector<TemplateArgument> arguments;
+			const ClassTemplatePattern& class_pattern =
+				class_templates_[pattern];
+			if (!BuildTemplateArguments(class_pattern.parameters,
+				argument_syntax, scope, class_pattern.lexical_scope, &arguments))
+				return LookupResult();
 			const BindingId specialization =
 				InstantiateClassTemplate(pattern, arguments);
 			if (specialization == kNoBinding) return LookupResult();
@@ -330,33 +343,18 @@ std::vector<BindingId> SemanticAnalyzer::UsingFunctionCandidates(
 bool SemanticAnalyzer::ParseExplicitTemplateArguments(NodeId syntax,
 	ScopeId scope, NamePath* base, std::vector<TypeId>* arguments)
 {
-	if (syntax == kNoNode) return false;
-	const NodeId structure = arena_->IsTag(
-		syntax, "structured-type-name") ? syntax :
-		FindChild(syntax, "structured-type-name");
-	if (structure == kNoNode) return false;
-	NodeId terminal_component = kNoNode;
-	for (std::uint32_t edge = arena_->FirstEdge(structure); edge != kNoEdge;
-		edge = arena_->NextEdge(edge))
-	{
-		const NodeId child = arena_->EdgeChild(edge);
-		if (arena_->IsTag(child, "name-component"))
-			terminal_component = child;
-	}
-	if (terminal_component == kNoNode) return false;
-	const NodeId argument_list = FindChild(
-		terminal_component, "template-type-argument-list");
-	if (argument_list == kNoNode) return false;
-
-	*base = StructuredNamePath(structure);
+	std::vector<NodeId> syntax_arguments;
+	if (!CollectExplicitTemplateArguments(syntax, base, &syntax_arguments))
+		return false;
 	arguments->clear();
-	for (std::uint32_t edge = arena_->FirstEdge(argument_list);
-		edge != kNoEdge; edge = arena_->NextEdge(edge))
+	for (std::size_t i = 0; i < syntax_arguments.size(); ++i)
 	{
-		const NodeId argument = arena_->EdgeChild(edge);
+		const NodeId argument = syntax_arguments[i];
 		if (!arena_->IsTag(argument, "type-id"))
-			throw std::runtime_error(
-				"PA19 explicit template argument is not a type");
+		{
+			arguments->clear();
+			return false;
+		}
 		const TypeId type = BuildTypeId(argument, scope);
 		if (type == kNoType)
 			throw std::runtime_error("unknown explicit template type argument");
@@ -366,7 +364,7 @@ bool SemanticAnalyzer::ParseExplicitTemplateArguments(NodeId syntax,
 }
 
 bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,
-	ScopeId scope, const std::vector<NameId>& parameters)
+	ScopeId scope, const std::vector<TemplateParameter>& parameters)
 {
 	NodeId declarator = FindChild(declaration, "declarator");
 	if (arena_->IsTag(declaration, "simple-declaration"))
@@ -428,44 +426,50 @@ bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,
 		edge != kNoEdge; edge = arena_->NextEdge(edge))
 		owner_arguments.push_back(arena_->EdgeChild(edge));
 	if (!owner_pattern.defined || owner_arguments.size() !=
-		owner_pattern.type_parameters.size())
+		owner_pattern.parameters.size())
 		throw std::runtime_error("invalid class template member owner shape");
 
 	ClassTemplateMemberPattern member;
 	member.lexical_scope = scope;
 	member.declaration = declaration;
-	member.type_parameters = parameters;
+	member.parameters = parameters;
 	member.owner_parameter_indices.assign(owner_arguments.size(), kNoDumpEdge);
-	member.owner_fixed_arguments.assign(owner_arguments.size(), kNoType);
+	member.owner_fixed_arguments.assign(owner_arguments.size(),
+		TemplateArgument());
 	for (std::size_t component = owner_component + 1;
 		component + 1 < path.Size(); ++component)
 		member.nested_owner_path.push_back(path[component]);
 	std::vector<std::uint8_t> used(parameters.size(), 0);
 	for (std::size_t argument = 0; argument < owner_arguments.size(); ++argument)
 	{
-		if (!arena_->IsTag(owner_arguments[argument], "type-id"))
-			throw std::runtime_error(
-				"class template member owner argument is not a type");
 		std::size_t parameter = parameters.size();
-		const NodeId argument_specifiers = FindChild(
-			owner_arguments[argument], "type-specifier-seq");
-		const NodeId argument_name = argument_specifiers == kNoNode ? kNoNode :
-			FirstSemanticChild(argument_specifiers);
-		if (argument_name != kNoNode &&
-			arena_->IsTag(argument_name, "type-name") &&
-			FindChild(owner_arguments[argument], "abstract-declarator") == kNoNode)
+		NameId argument_id = 0;
+		if (arena_->IsTag(owner_arguments[argument], "type-id"))
 		{
-			const NameId argument_id = program_->names.UseInterned(
-				arena_->SemanticPayloadId(argument_name));
-			for (std::size_t candidate = 0;
-				candidate < parameters.size(); ++candidate)
-				if (parameters[candidate] != 0 &&
-					argument_id == parameters[candidate])
-				{
-					parameter = candidate;
-					break;
-				}
+			const NodeId argument_specifiers = FindChild(
+				owner_arguments[argument], "type-specifier-seq");
+			const NodeId argument_name = argument_specifiers == kNoNode ?
+				kNoNode : FirstSemanticChild(argument_specifiers);
+			if (argument_name != kNoNode &&
+				arena_->IsTag(argument_name, "type-name") &&
+				FindChild(owner_arguments[argument],
+					"abstract-declarator") == kNoNode)
+				argument_id = program_->names.Intern(PayloadSource(argument_name));
 		}
+		else if (arena_->IsTag(owner_arguments[argument], "id-expression") &&
+			FindChild(owner_arguments[argument], "structured-type-name") == kNoNode)
+			argument_id = program_->names.Intern(
+				PayloadSource(owner_arguments[argument]));
+		for (std::size_t candidate = 0;
+			candidate < parameters.size(); ++candidate)
+			if (parameters[candidate].name != 0 &&
+				argument_id == parameters[candidate].name &&
+				parameters[candidate].kind ==
+					owner_pattern.parameters[argument].kind)
+			{
+				parameter = candidate;
+				break;
+			}
 		if (parameter != parameters.size())
 		{
 			if (used[parameter])
@@ -476,8 +480,13 @@ bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,
 				static_cast<std::uint32_t>(parameter);
 			continue;
 		}
-		member.owner_fixed_arguments[argument] =
-			BuildTypeId(owner_arguments[argument], scope);
+		if (owner_pattern.parameters[argument].kind != TEMPLATE_ARGUMENT_TYPE ||
+			!arena_->IsTag(owner_arguments[argument], "type-id"))
+			throw std::runtime_error(
+				"fixed non-type class template member owners are unsupported");
+		member.owner_fixed_arguments[argument] = TemplateArgument(
+			TEMPLATE_ARGUMENT_TYPE,
+			BuildTypeId(owner_arguments[argument], scope));
 	}
 	for (std::size_t i = 0; i < used.size(); ++i)
 		if (!used[i])
@@ -487,7 +496,7 @@ bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,
 	class_templates_[pattern_index].member_definitions.push_back(member);
 	const std::vector<BindingId> specializations =
 		class_templates_[pattern_index].specialization_bindings;
-	const std::size_t parameter_count = owner_pattern.type_parameters.size();
+	const std::size_t parameter_count = owner_pattern.parameters.size();
 	for (std::size_t i = 0; i < specializations.size(); ++i)
 	{
 		const EntityId entity = EntityOf(
@@ -500,8 +509,8 @@ bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,
 			first > program_->template_arguments.size() || parameter_count >
 				program_->template_arguments.size() - first)
 			throw std::logic_error("class specialization arguments are invalid");
-		const std::vector<TypeId> arguments(program_->template_arguments.begin() +
-			first, program_->template_arguments.begin() + first + parameter_count);
+		const std::vector<TemplateArgument> arguments =
+			StoredTemplateArguments(first, parameter_count);
 		ApplyClassTemplateMemberDefinitions(
 			pattern_index, specializations[i], arguments);
 	}
@@ -589,8 +598,7 @@ bool SemanticAnalyzer::RetainVariableTemplate(NodeId declaration,
 }
 
 void SemanticAnalyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
-	const std::vector<NameId>& parameters,
-	const std::vector<NodeId>& defaults)
+	const std::vector<TemplateParameter>& parameters)
 {
 	const NamePath path = ParseNamePath(arena_->Payload(declaration));
 	const NameId name = path.Last();
@@ -616,19 +624,25 @@ void SemanticAnalyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 	if (prior_index != NoTemplatePattern())
 	{
 		ClassTemplatePattern& prior = class_templates_[prior_index];
-		if (prior.type_parameters.size() != parameters.size())
+		if (prior.parameters.size() != parameters.size())
 			throw std::runtime_error(
 				"class template parameter count mismatch");
-		for (std::size_t i = 0; i < defaults.size(); ++i)
-			if (prior.default_arguments[i] == kNoNode &&
-				defaults[i] != kNoNode)
-				prior.default_arguments[i] = defaults[i];
+		std::vector<TemplateParameter> merged = parameters;
+		for (std::size_t i = 0; i < parameters.size(); ++i)
+		{
+			if (prior.parameters[i].kind != parameters[i].kind)
+				throw std::runtime_error(
+					"class template parameter kind mismatch");
+			if (merged[i].default_argument == kNoNode)
+				merged[i].default_argument =
+					prior.parameters[i].default_argument;
+		}
+		prior.parameters.swap(merged);
 		if (!definition) return;
 		if (prior.defined)
 			throw std::runtime_error("duplicate class template definition");
 		prior.lexical_scope = scope;
 		prior.declaration = declaration;
-		prior.type_parameters = parameters;
 		prior.defined = true;
 		UpgradeClassTemplateSpecializations(prior_index);
 		return;
@@ -639,8 +653,7 @@ void SemanticAnalyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 	pattern.lexical_scope = scope;
 	pattern.name = name;
 	pattern.declaration = declaration;
-	pattern.type_parameters = parameters;
-	pattern.default_arguments = defaults;
+	pattern.parameters = parameters;
 	pattern.defined = definition;
 	const NameId marker_name = EmissionName(owner, name);
 	pattern.marker_entity = program_->NewEntity(marker_name,
@@ -712,20 +725,18 @@ TypeId SemanticAnalyzer::ResolveStructuredTypeName(NodeId name,
 
 ScopeId SemanticAnalyzer::BindClassTemplateArguments(
 	const ClassTemplatePattern& pattern,
-	const std::vector<TypeId>& arguments)
+	const std::vector<TemplateArgument>& arguments)
 {
 	const ScopeId template_scope = NewScope(pattern.lexical_scope,
 		SCOPE_TEMPLATE_PARAMETERS, 0, ScopePrefixId(pattern.lexical_scope));
 	for (std::size_t i = 0; i < arguments.size(); ++i)
-		if (pattern.type_parameters[i] != 0)
-			program_->AddBinding(template_scope, BIND_TYPE_ALIAS,
-				pattern.type_parameters[i], arguments[i]);
+		BindTemplateArgument(template_scope, pattern.parameters[i], arguments[i]);
 	return template_scope;
 }
 
 void SemanticAnalyzer::ApplyClassTemplateMemberDefinitions(
 	std::size_t index, BindingId specialization,
-	const std::vector<TypeId>& arguments)
+	const std::vector<TemplateArgument>& arguments)
 {
 	if (index >= class_templates_.size() || specialization == kNoBinding)
 		throw std::logic_error("invalid class template member application");
@@ -744,7 +755,8 @@ void SemanticAnalyzer::ApplyClassTemplateMemberDefinitions(
 		if (definition.owner_parameter_indices.size() != arguments.size() ||
 			definition.owner_fixed_arguments.size() != arguments.size())
 			throw std::logic_error("class template member argument shape changed");
-		std::vector<TypeId> bindings(definition.type_parameters.size(), kNoType);
+		std::vector<TemplateArgument> bindings(definition.parameters.size());
+		std::vector<std::uint8_t> bound(definition.parameters.size(), 0);
 		for (std::size_t owner = 0; owner < arguments.size(); ++owner)
 		{
 			const std::uint32_t parameter =
@@ -759,31 +771,30 @@ void SemanticAnalyzer::ApplyClassTemplateMemberDefinitions(
 			if (parameter >= bindings.size())
 				throw std::logic_error(
 					"class template member parameter index is invalid");
-			if (bindings[parameter] != kNoType &&
-				bindings[parameter] != arguments[owner])
+			if (bound[parameter] && bindings[parameter] != arguments[owner])
 				throw std::runtime_error(
 					"class template member owner deduction conflict");
 			bindings[parameter] = arguments[owner];
+			bound[parameter] = 1;
 		}
 		const ScopeId member_scope = program_->entities[entity].member_scope;
 		if (member_scope == kNoScope)
 			throw std::logic_error(
 				"class template member definition has no class scope");
 		for (std::size_t parameter = 0; parameter < bindings.size(); ++parameter)
-			if (bindings[parameter] == kNoType ||
-				definition.type_parameters[parameter] == 0)
+			if (!bound[parameter] || definition.parameters[parameter].name == 0)
 				throw std::runtime_error(
 					"unbound class template member parameter");
 		const ClassTemplateMemberPattern* definition_pointer = &definition;
-		const std::vector<TypeId>* binding_pointer = &bindings;
+		const std::vector<TemplateArgument>* binding_pointer = &bindings;
 		const auto make_definition_scope = [this, definition_pointer,
 			binding_pointer](ScopeId parent) {
 			const ScopeId result = NewScope(parent, SCOPE_TEMPLATE_PARAMETERS,
 				0, ScopePrefixId(parent));
 			for (std::size_t parameter = 0;
 				parameter < binding_pointer->size(); ++parameter)
-				program_->AddBinding(result, BIND_TYPE_ALIAS,
-					definition_pointer->type_parameters[parameter],
+				BindTemplateArgument(result,
+					definition_pointer->parameters[parameter],
 					(*binding_pointer)[parameter]);
 			return result;
 		};
@@ -829,7 +840,7 @@ void SemanticAnalyzer::ApplyClassTemplateMemberDefinitions(
 }
 
 void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
-	BindingId binding, const std::vector<TypeId>& arguments)
+	BindingId binding, const std::vector<TemplateArgument>& arguments)
 {
 	if (index >= class_templates_.size())
 		throw std::logic_error("invalid class template completion pattern");
@@ -843,13 +854,13 @@ void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
 	// templates, so replay borrows the one published pattern rather than copying
 	// its growing specialization and member-definition sequences.
 	const ClassTemplatePattern& pattern = class_templates_[index];
-	if (arguments.size() != pattern.type_parameters.size())
+	if (arguments.size() != pattern.parameters.size())
 		throw std::logic_error("class template completion argument mismatch");
 	class_template_specialization_states_[binding] = 1;
 	std::string specialization_name = program_->names.Get(pattern.name);
 	for (std::size_t i = 0; i < arguments.size(); ++i)
 		specialization_name += "_" +
-			TemplateArgumentName(program_->RenderType(arguments[i]));
+			CanonicalTemplateArgumentName(*program_, arguments[i]);
 	specialization_name += "_";
 	const ScopeId template_scope =
 		BindClassTemplateArguments(pattern, arguments);
@@ -886,15 +897,13 @@ void SemanticAnalyzer::EnsureClassDefinition(TypeId type)
 			throw std::logic_error("class specialization has no arguments");
 		const std::size_t first = specialization.template_argument_begin;
 		if (specialization.template_argument_count !=
-			pattern.type_parameters.size() ||
+			pattern.parameters.size() ||
 			first > program_->template_arguments.size() ||
-			pattern.type_parameters.size() >
+			pattern.parameters.size() >
 				program_->template_arguments.size() - first)
 			throw std::logic_error("class specialization arguments are truncated");
-		const std::vector<TypeId> arguments(
-			program_->template_arguments.begin() + first,
-			program_->template_arguments.begin() + first +
-				pattern.type_parameters.size());
+		const std::vector<TemplateArgument> arguments =
+			StoredTemplateArguments(first, pattern.parameters.size());
 		CompleteClassTemplateSpecialization(index,
 			program_->entities[entity].declaration, arguments);
 		return;
@@ -922,13 +931,17 @@ bool SemanticAnalyzer::ClassTemplateSpecializationArgumentsComplete(
 		throw std::logic_error("invalid class specialization owner index");
 	const EntityRecord& specialization = program_->entities[entity];
 	const std::size_t first = specialization.template_argument_begin;
-	const std::size_t count = class_templates_[index].type_parameters.size();
+	const std::size_t count = class_templates_[index].parameters.size();
 	if (specialization.template_argument_count != count ||
 		first > program_->template_arguments.size() ||
 		count > program_->template_arguments.size() - first)
 		throw std::logic_error("class specialization arguments are truncated");
 	for (std::size_t i = 0; i < count; ++i)
 	{
+		if (first + i < program_->canonical_template_arguments.size() &&
+			program_->canonical_template_arguments[first + i].kind !=
+				TEMPLATE_ARGUMENT_TYPE)
+			continue;
 		const TypeId argument = program_->types.RemoveTopCv(
 			program_->template_arguments[first + i]);
 		const TypeRecord& record = program_->types.Get(argument);
@@ -963,9 +976,27 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 {
 	if (index >= class_templates_.size())
 		throw std::logic_error("invalid class template pattern");
+	const ClassTemplatePattern& pattern = class_templates_[index];
+	if (supplied_arguments.size() > pattern.parameters.size()) return kNoBinding;
+	std::vector<TemplateArgument> canonical;
+	canonical.reserve(supplied_arguments.size());
+	for (std::size_t i = 0; i < supplied_arguments.size(); ++i)
+	{
+		if (pattern.parameters[i].kind != TEMPLATE_ARGUMENT_TYPE)
+			return kNoBinding;
+		canonical.push_back(TemplateArgument(
+			TEMPLATE_ARGUMENT_TYPE, supplied_arguments[i]));
+	}
+	return InstantiateClassTemplate(index, canonical);
+}
+
+BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
+	const std::vector<TemplateArgument>& supplied_arguments)
+{
+	if (index >= class_templates_.size())
+		throw std::logic_error("invalid class template pattern");
 	ClassTemplatePattern& pattern = class_templates_[index];
-	if (supplied_arguments.size() > pattern.type_parameters.size())
-		return kNoBinding;
+	if (supplied_arguments.size() > pattern.parameters.size()) return kNoBinding;
 	++template_specialization_requests_;
 	const TemplateSpecializationKey request_key(index, supplied_arguments);
 	BindingId old = class_template_instantiations_.Find(request_key);
@@ -977,15 +1008,14 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 			throw std::logic_error("cached class specialization has no entity");
 		const EntityRecord& record = program_->entities[entity];
 		const std::size_t first = record.template_argument_begin;
-		const std::size_t count = pattern.type_parameters.size();
+		const std::size_t count = pattern.parameters.size();
 		if (record.template_argument_count != count ||
 			first > program_->template_arguments.size() || count >
 				program_->template_arguments.size() - first)
 			throw std::logic_error(
 				"cached class specialization arguments are invalid");
-		const std::vector<TypeId> cached_arguments(
-			program_->template_arguments.begin() + first,
-			program_->template_arguments.begin() + first + count);
+		const std::vector<TemplateArgument> cached_arguments =
+			StoredTemplateArguments(first, count);
 		if (pattern.defined &&
 			(old >= class_template_specialization_states_.size() ||
 			 class_template_specialization_states_[old] == 0) &&
@@ -998,24 +1028,46 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 				index, old, cached_arguments);
 		return old;
 	}
-	std::vector<TypeId> arguments = supplied_arguments;
+	std::vector<TemplateArgument> arguments = supplied_arguments;
+	for (std::size_t i = 0; i < arguments.size(); ++i)
+		if (arguments[i].kind != pattern.parameters[i].kind)
+			return kNoBinding;
 	ScopeId argument_scope = kNoScope;
-	if (arguments.size() < pattern.type_parameters.size())
-		argument_scope = BindClassTemplateArguments(pattern, arguments);
-	for (std::size_t i = arguments.size();
-		i < pattern.type_parameters.size(); ++i)
+	if (arguments.size() < pattern.parameters.size())
 	{
-		if (pattern.default_arguments[i] == kNoNode) return kNoBinding;
-		NodeId type_id = FindChild(pattern.default_arguments[i], "type-id");
-		if (type_id == kNoNode)
-			type_id = FirstSemanticChild(pattern.default_arguments[i]);
-		if (type_id == kNoNode)
+		argument_scope = BindClassTemplateArguments(pattern, arguments);
+	}
+	for (std::size_t i = arguments.size();
+		i < pattern.parameters.size(); ++i)
+	{
+		const TemplateParameter& parameter = pattern.parameters[i];
+		if (parameter.default_argument == kNoNode) return kNoBinding;
+		NodeId source = FirstSemanticChild(parameter.default_argument);
+		if (source == kNoNode)
 			throw std::runtime_error("empty default template argument");
-		const TypeId argument = BuildTypeId(type_id, argument_scope);
+		TemplateArgument argument;
+		argument.kind = parameter.kind;
+		if (parameter.kind == TEMPLATE_ARGUMENT_TYPE)
+		{
+			NodeId type_id = arena_->IsTag(source, "type-id") ? source :
+				FindChild(source, "type-id");
+			if (type_id == kNoNode) return kNoBinding;
+			argument.type = BuildTypeId(type_id, argument_scope);
+		}
+		else
+		{
+			argument.type = ResolveTemplateParameterType(
+				parameter, argument_scope);
+			const ExpressionInfo expression = AnalyzeExpression(
+				source, argument_scope, argument.type);
+			if (!expression.constant || !IsIntegral(expression.type, true))
+				throw std::runtime_error(
+					"default non-type template argument is not constant");
+			argument.value = NormalizeIntegralConstant(
+				argument.type, expression.value);
+		}
 		arguments.push_back(argument);
-		if (pattern.type_parameters[i] != 0)
-			program_->AddBinding(argument_scope, BIND_TYPE_ALIAS,
-				pattern.type_parameters[i], argument);
+		BindTemplateArgument(argument_scope, parameter, argument);
 	}
 
 	const TemplateSpecializationKey key(index, arguments);
@@ -1039,7 +1091,7 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 	std::string specialization_name = program_->names.Get(pattern.name);
 	for (std::size_t i = 0; i < arguments.size(); ++i)
 		specialization_name += "_" +
-			TemplateArgumentName(program_->RenderType(arguments[i]));
+			CanonicalTemplateArgumentName(*program_, arguments[i]);
 	specialization_name += "_";
 	const ScopeId template_scope =
 		BindClassTemplateArguments(pattern, arguments);
@@ -1064,17 +1116,9 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 	specialization.deferred_template_completion =
 		!ClassTemplateArgumentsAreComplete(*program_, arguments);
 	if (specialization.template_argument_begin == kNoBinding)
-	{
-		if (program_->template_arguments.size() >
-			std::numeric_limits<std::uint32_t>::max() - arguments.size())
-			throw std::runtime_error("too many class template entity arguments");
-		specialization.template_argument_begin = static_cast<std::uint32_t>(
-			program_->template_arguments.size());
-		specialization.template_argument_count =
-			static_cast<std::uint32_t>(arguments.size());
-		program_->template_arguments.insert(program_->template_arguments.end(),
-			arguments.begin(), arguments.end());
-	}
+		StoreTemplateArguments(arguments,
+			&specialization.template_argument_begin,
+			&specialization.template_argument_count);
 	const BindingId binding = program_->entities[entity].declaration;
 	class_template_instantiations_.Insert(key, binding);
 	if (arguments != supplied_arguments)
@@ -1097,7 +1141,7 @@ void SemanticAnalyzer::UpgradeClassTemplateSpecializations(std::size_t index)
 	// existed when the definition arrived. Pattern ownership itself is stable;
 	// only the mutable shell sequence needs a work snapshot.
 	const std::size_t parameter_count =
-		class_templates_[index].type_parameters.size();
+		class_templates_[index].parameters.size();
 	const std::vector<BindingId> specializations =
 		class_templates_[index].specialization_bindings;
 	for (std::size_t i = 0; i < specializations.size(); ++i)
@@ -1106,7 +1150,7 @@ void SemanticAnalyzer::UpgradeClassTemplateSpecializations(std::size_t index)
 		if (binding < class_template_specialization_states_.size() &&
 			class_template_specialization_states_[binding] != 0)
 			continue;
-		std::vector<TypeId> arguments;
+		std::vector<TemplateArgument> arguments;
 		const EntityId entity = EntityOf(program_->bindings[binding].type);
 		if (entity == kNoEntity)
 			throw std::logic_error("class specialization has no entity");
@@ -1116,8 +1160,7 @@ void SemanticAnalyzer::UpgradeClassTemplateSpecializations(std::size_t index)
 			first > program_->template_arguments.size() || parameter_count >
 				program_->template_arguments.size() - first)
 			throw std::logic_error("class specialization arguments are invalid");
-		arguments.assign(program_->template_arguments.begin() + first,
-			program_->template_arguments.begin() + first + parameter_count);
+		arguments = StoredTemplateArguments(first, parameter_count);
 		if (ClassTemplateArgumentsAreComplete(*program_, arguments))
 			CompleteClassTemplateSpecialization(index, binding, arguments);
 	}

@@ -425,6 +425,23 @@ struct ClassPolymorphismFacts
 	ClassPolymorphismFacts() : complete(false), vtable_demanded(false) {}
 };
 
+struct TemplateParameter
+{
+	TemplateArgumentKind kind;
+	NameId name;
+	TypeId value_type;
+	NodeId specifiers;
+	NodeId declarator;
+	NodeId default_argument;
+	bool dependent_type;
+	bool pack;
+
+	TemplateParameter()
+		: kind(TEMPLATE_ARGUMENT_TYPE), name(0), value_type(kNoType),
+		  specifiers(kNoNode), declarator(kNoNode),
+		  default_argument(kNoNode), dependent_type(false), pack(false) {}
+};
+
 struct FunctionTemplatePattern
 {
 	ScopeId owner;
@@ -435,10 +452,9 @@ struct FunctionTemplatePattern
 	NodeId definition_body;
 	TypeId shape_type;
 	std::size_t required_parameter_count;
-	std::vector<NameId> type_parameters;
-	std::vector<NodeId> default_arguments;
+	std::vector<TemplateParameter> parameters;
 	std::vector<BindingId> specialization_bindings;
-	std::vector<TypeId> specialization_arguments;
+	std::vector<TemplateArgument> specialization_arguments;
 	LanguageLinkage language_linkage;
 	AccessKind member_access;
 	bool defined;
@@ -458,9 +474,9 @@ struct ClassTemplateMemberPattern
 {
 	ScopeId lexical_scope;
 	NodeId declaration;
-	std::vector<NameId> type_parameters;
+	std::vector<TemplateParameter> parameters;
 	std::vector<std::uint32_t> owner_parameter_indices;
-	std::vector<TypeId> owner_fixed_arguments;
+	std::vector<TemplateArgument> owner_fixed_arguments;
 	std::vector<NameId> nested_owner_path;
 
 	ClassTemplateMemberPattern()
@@ -488,8 +504,7 @@ struct ClassTemplatePattern
 	ScopeId lexical_scope;
 	NameId name;
 	NodeId declaration;
-	std::vector<NameId> type_parameters;
-	std::vector<NodeId> default_arguments;
+	std::vector<TemplateParameter> parameters;
 	std::vector<BindingId> specialization_bindings;
 	// Retained member patterns are published once and borrowed during
 	// specialization replay. Keep their addresses stable if replay discovers

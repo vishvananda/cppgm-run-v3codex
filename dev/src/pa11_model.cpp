@@ -2633,7 +2633,8 @@ std::size_t Program::StorageBytes() const
 		lookup_cache_->StorageBytes() +
 		entities.capacity() * sizeof(EntityRecord) +
 		bindings.capacity() * sizeof(BindingRecord) +
-		template_arguments.capacity() * sizeof(TypeId);
+		template_arguments.capacity() * sizeof(TypeId) +
+		canonical_template_arguments.capacity() * sizeof(TemplateArgument);
 	return bytes;
 }
 

@@ -1297,7 +1297,9 @@ private:
 		}
 		else if (record.kind == DUMP_ID_EXPRESSION)
 		{
-			if (record.constant && program_.IsStaticDataMember(record.binding))
+			if (record.constant && record.binding != kNoBinding &&
+				(program_.IsStaticDataMember(record.binding) ||
+				 program_.bindings[record.binding].kind == BIND_PARAMETER))
 				result = Operand(record.constant_value, LowerExpressionType(record.type));
 			else if (record.binding != kNoBinding && record.binding < function_symbols_.size() &&
 				function_symbols_[record.binding] != kNoLowId)
@@ -2994,7 +2996,5 @@ void LowerSemanticGraph(const SemanticGraphView& graph, TypedProgram& program,
 {
 	GraphLowerer(graph, program, stats, source_ordinal).Lower();
 }
-
 }
-
 }

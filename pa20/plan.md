@@ -2,46 +2,42 @@
 
 ## Stage Design and Spec Alignment
 
-PA20 extends the retained PA19 template graph at semantic analysis; syntax is
-still parsed once by PA10 and successful programs still lower directly from
-typed PA12 facts to typed LowIR.  `spec.md` requires canonical constants and
-specialization arguments, O(1)-average identity/cache lookup, immutable
-parent-linked template environments, separate demand states, and lowering that
-does not reconstruct lookup or constants from text.  PA20 therefore needs one
-typed integral-constant path shared by `static_assert` and non-type arguments,
-parameter records that distinguish type/value/pack slots, canonical argument
-keys, and specialization selection before demand-driven replay.  No PA21
-constexpr-function evaluation or PA22/PA23 SFINAE behavior is pulled forward.
+PA20 extends the retained PA19 template graph at semantic analysis; PA10 parses
+syntax once and successful programs still lower typed PA12 facts directly to
+LowIR.  `spec.md` requires canonical constants and specialization arguments,
+O(1)-average cache lookup, immutable parent-linked template environments,
+separate demand states, and no lowering-time reconstruction from source text.
+The stage therefore shares one typed constant path across assertions and value
+arguments, uses tagged parameter/argument records, and selects canonical
+specializations before demand-driven replay.  PA21 constexpr-function
+evaluation and PA22/PA23 SFINAE remain out of scope.
 
 ## Current Failure Map
 
-Turn-start baseline was 15/164; the completed assertion checkpoint raises the
-stage to 39/164.  The dominant remaining group reaches the PA19 type-only
-template-parameter guard (integral non-type ownership and argument binding).
-The pack group reaches invalid placeholder identity, missing `sizeof...`
-syntax, or unsupported expansion replay.  Eight successful compilations have
-specialization/pack LowIR mismatches; the remainder are dependent lookup,
-literal, declaration-ambiguity, early member-body validation, and stale
-specialization composition cases.  These groups are owned primarily by PA12
-semantic facts plus PA19 template replay; LowIR needs no new PA20 form.
+The stage is 83/164, up from the 15/164 turn baseline and 39/164 prior
+checkpoint.  The largest remaining owner is parameter-pack collection and
+expansion (`200-*`): parser-retained expansion sites need one pack environment
+and lockstep replay.  Explicit specialization and stale-primary refresh own the
+`300-*`/`400-*` group.  The remaining fixed-arity failures cluster around
+dependent qualified lookup, delayed member validation/demand, variable
+templates, declaration ambiguity, and a few literal/cast forms.  Several of
+these compile but differ in replayed globals, vtables, or specialization choice.
 
 ## Active Checkpoint
 
-Implement canonical fixed-arity integral non-type template parameters and
-arguments for class and explicitly-argumented function templates.  Pattern
-slots must distinguish type and integral-value parameters; arguments carry a
-canonical type plus normalized value, and specialization keys compare those
-facts without rendered strings.  Instantiation binds value slots as constant
-parameter bindings in an immutable child scope, then reuses PA19 demand-driven
-class/function replay.  Packs and partial specialization remain separate.
+Add typed type/value parameter-pack collection, `sizeof...`, and supported
+pack-expansion replay.  The canonical argument environment must represent a
+pack as an ordered range without flattening ownership; each expansion consumes
+that range in source order, and multiple packs at one site must have equal
+length rather than forming a Cartesian product.  Empty packs remain valid.
 
-Owner/data flow: PA10 parameter/argument syntax -> PA12 typed constant facts ->
-PA19 pattern and canonical specialization key -> substitution scope -> existing
-typed lowering.  Per request work is O(parameters + supplied/default arguments)
-with O(1)-average cache lookup; repeated complete keys must be cache hits and
-must not repeat layout/member work.  Validate fixed class/function cases,
-defaults, expression/enum arguments and template assertions, then full PA20,
-PA1-PA19, file audit, and 1x/2x/4x distinct/repeated specialization probes.
+Owner/data flow: PA10 pack/ellipsis syntax -> PA12 typed parameter and expansion
+facts -> PA19 canonical pack bindings/substitution scope -> existing class or
+function replay -> typed lowering.  Collection and replay must be O(parameters
++ expanded arguments), with O(1)-average specialization lookup and one demand
+per canonical specialization.  Validate `sizeof...`, empty and fixed-prefix
+packs, explicit type/value packs, lockstep expansions, malformed mixed packs,
+then the full PA20 report, PA1-PA19 gate, audit, and 1x/2x/4x expansion probes.
 
 ## Performance Evidence
 
@@ -52,8 +48,17 @@ conversion checks 769/1,537/3,073; peak semantic-stage bytes
 at three and typed LowIR storage at 1,735 bytes.  Work and storage track the
 assertion expression count without retry or output growth.
 
+Five-run release medians for 32/64/128 distinct integral function
+specializations, each requested twice: semantic time 2.558/4.770/9.408 ms;
+semantic nodes 452/900/1,796; peak semantic-stage bytes
+317,536/627,968/1,248,888; typed LowIR bytes 52,562/104,402/208,082.
+Requests were 128/256/512 with 96/192/384 cache hits, while emitted functions
+were 33/65/129.  Time, storage, and output scale linearly; repeated keys hit the
+cache and do not duplicate emitted specializations.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result |
 |---|---|
 | Typed integral constants and `static_assert` | Width/signedness-aware casts, folds, literals, declaration/class/block validation, and `wchar_t`/`char16_t`/`char32_t` lowering; PA20 15 -> 39, PA1-PA19 2,013/2,013, audit pass |
+| Canonical fixed-arity integral template arguments | Tagged type/value slots and keys, normalized defaults/expressions/enums, constant substitution, retained member replay, canonical LowIR identity and ABI value mangling; PA20 39 -> 83, focused 14/14, scaling linear |

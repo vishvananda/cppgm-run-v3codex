@@ -1792,24 +1792,11 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 	const NodeId clause = FindChild(node, "template-parameter-clause");
 	const NodeId list = clause == kNoNode ? kNoNode :
 		FindChild(clause, "template-parameter-list");
-	std::vector<NameId> parameters;
+	std::vector<TemplateParameter> parameters;
+	std::vector<NameId> parameter_name_list;
 	std::vector<NodeId> defaults;
-	if (list != kNoNode)
-	{
-		for (std::uint32_t edge = arena_->FirstEdge(list); edge != kNoEdge;
-			edge = arena_->NextEdge(edge))
-		{
-			const NodeId parameter = arena_->EdgeChild(edge);
-			if (!arena_->IsTag(parameter, "type-parameter"))
-				throw std::runtime_error(
-					"PA19 templates require type parameters");
-			const NodeId identifier = FindChild(parameter, "identifier");
-			parameters.push_back(identifier == kNoNode ? 0 :
-				program_->names.Intern(arena_->Payload(identifier)));
-			defaults.push_back(
-				FindChild(parameter, "default-template-argument"));
-		}
-	}
+	ParseTemplateParameters(list, scope, &parameters,
+		&parameter_name_list, &defaults);
 	NodeId target = kNoNode;
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
@@ -1825,13 +1812,11 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 		(arena_->IsTag(target, "class-specifier") ||
 		 arena_->IsTag(target, "class-forward-declaration")))
 	{
-		AnalyzeClassTemplate(target, scope, parameters, defaults);
+		AnalyzeClassTemplate(target, scope, parameters);
 		return;
 	}
-	if (target != kNoNode && RetainVariableTemplate(target, scope, parameters, defaults)) return;
-	for (std::size_t i = 0; i < parameters.size(); ++i)
-		if (parameters[i] == 0)
-			throw std::runtime_error("unnamed function template parameter");
+	if (target != kNoNode && RetainVariableTemplate(
+		target, scope, parameter_name_list, defaults)) return;
 	if (target == kNoNode ||
 		(!arena_->IsTag(target, "simple-declaration") &&
 		 !arena_->IsTag(target, "function-definition")))
@@ -1876,7 +1861,8 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 	}
 	std::unordered_set<NameId> parameter_names;
 	for (std::size_t i = 0; i < parameters.size(); ++i)
-		if (parameters[i] != 0) parameter_names.insert(parameters[i]);
+		if (parameters[i].name != 0)
+			parameter_names.insert(parameters[i].name);
 	bool deferred_dependent_result = false;
 	for (std::uint32_t edge = arena_->FirstEdge(specifiers);
 		edge != kNoEdge && !deferred_dependent_result;
@@ -1922,8 +1908,7 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 		pattern.declarator = declarator;
 		pattern.definition_body = definition ?
 			FindChild(target, "compound-statement") : kNoNode;
-		pattern.type_parameters = parameters;
-		pattern.default_arguments = defaults;
+		pattern.parameters = parameters;
 		pattern.language_linkage = current_language_linkage_;
 		pattern.member_access = member_access;
 		pattern.defined = definition;
@@ -1931,8 +1916,16 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 		const ScopeId shape_scope = NewScope(scope, SCOPE_TEMPLATE_PARAMETERS,
 			0, ScopePrefixId(scope));
 		for (std::size_t p = 0; p < parameters.size(); ++p)
-			program_->AddBinding(shape_scope, BIND_TYPE_ALIAS, parameters[p],
-				function_template_shape_parameters_[p]);
+		{
+			if (parameters[p].name == 0) continue;
+			if (parameters[p].kind == TEMPLATE_ARGUMENT_TYPE)
+				program_->AddBinding(shape_scope, BIND_TYPE_ALIAS,
+					parameters[p].name, function_template_shape_parameters_[p]);
+			else program_->AddBinding(shape_scope, BIND_PARAMETER,
+				parameters[p].name, parameters[p].dependent_type ?
+					program_->types.Fundamental(FUND_INT) :
+					parameters[p].value_type);
+		}
 		const SpecInfo shape_spec = BuildSpecifiers(specifiers, shape_scope,
 			std::string(), true, false, dependent_result_shape);
 		const NodeId trailing_return =
@@ -1965,7 +1958,7 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 				const std::size_t candidate = (*prior_patterns)[p];
 				const FunctionTemplatePattern& prior =
 					function_templates_[candidate];
-				if (prior.type_parameters.size() == parameters.size() &&
+				if (prior.parameters.size() == parameters.size() &&
 					prior.shape_type == pattern.shape_type)
 				{
 					prior_index = candidate;
@@ -1975,10 +1968,11 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 		if (prior_index != function_templates_.size())
 		{
 			FunctionTemplatePattern& prior = function_templates_[prior_index];
-			for (std::size_t d = 0; d < defaults.size(); ++d)
-				if (prior.default_arguments[d] == kNoNode &&
-					defaults[d] != kNoNode)
-					prior.default_arguments[d] = defaults[d];
+			for (std::size_t d = 0; d < parameters.size(); ++d)
+				if (prior.parameters[d].default_argument == kNoNode &&
+					parameters[d].default_argument != kNoNode)
+					prior.parameters[d].default_argument =
+						parameters[d].default_argument;
 			prior.required_parameter_count = std::min(prior.required_parameter_count, pattern.required_parameter_count);
 			if (prior.nonthrowing != pattern.nonthrowing)
 				throw std::runtime_error(
@@ -1992,7 +1986,7 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 				prior.specifiers = pattern.specifiers;
 				prior.declarator = pattern.declarator;
 				prior.definition_body = pattern.definition_body;
-				prior.type_parameters = pattern.type_parameters;
+				prior.parameters = pattern.parameters;
 				prior.language_linkage = pattern.language_linkage;
 				prior.member_access = pattern.member_access;
 				prior.defined = true;
@@ -2332,8 +2326,12 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			canonical.constant = true;
 			canonical.value = program_->bindings[binding].value;
 		}
+		const bool deferred_template_constant_storage = !has_initializer &&
+			qualified_lexical_scope && program_->bindings[binding].constant &&
+			ClassTemplateHasNonTypeParameter(declaration_class_context);
 		if (!has_initializer && qualified_lexical_scope &&
-			program_->bindings[binding].constant)
+			program_->bindings[binding].constant &&
+			!deferred_template_constant_storage)
 		{
 			initializer.type = parsed.type;
 			initializer.category = VALUE_PRVALUE;
@@ -2346,6 +2344,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			has_initializer = true;
 			++expression_count_;
 		}
+		if (deferred_template_constant_storage) continue;
 		const bool declaration_only = !local && !has_initializer &&
 			program_->bindings[binding].storage_class == STORAGE_CLASS_EXTERN;
 		const std::uint32_t variable = MakeDump(DUMP_VARIABLE, parsed.type,

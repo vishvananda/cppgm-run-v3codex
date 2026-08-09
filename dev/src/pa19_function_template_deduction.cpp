@@ -72,7 +72,7 @@ bool SemanticAnalyzer::FunctionTemplateTypeIsDependent(TypeId type) const
 		if (template_index >= class_templates_.size()) break;
 		const std::size_t first = entity.template_argument_begin;
 		const std::size_t count =
-			class_templates_[template_index].type_parameters.size();
+			class_templates_[template_index].parameters.size();
 		if (entity.template_argument_count != count ||
 			first > program_->template_arguments.size() ||
 			count > program_->template_arguments.size() - first)
@@ -101,9 +101,9 @@ int SemanticAnalyzer::CompareFunctionTemplateConstraints(
 		right.template_pattern >= function_templates_.size())
 		return 0;
 	const std::size_t left_parameters = function_templates_[
-		left.template_pattern].type_parameters.size();
+		left.template_pattern].parameters.size();
 	const std::size_t right_parameters = function_templates_[
-		right.template_pattern].type_parameters.size();
+		right.template_pattern].parameters.size();
 	if (left_parameters == right_parameters) return 0;
 	// Equal instantiated signatures expose equality constraints in the pattern:
 	// fewer independent type parameters means the pattern accepted a strict
@@ -192,7 +192,7 @@ bool SemanticAnalyzer::DeduceFunctionTemplateType(TypeId pattern,
 		const std::size_t pattern_first = pattern_owner.template_argument_begin;
 		const std::size_t argument_first = argument_owner.template_argument_begin;
 		const std::size_t count =
-			class_templates_[pattern_template].type_parameters.size();
+			class_templates_[pattern_template].parameters.size();
 		if (pattern_owner.template_argument_count != count ||
 			argument_owner.template_argument_count != count ||
 			pattern_first > program_->template_arguments.size() ||
@@ -245,9 +245,9 @@ void SemanticAnalyzer::DeduceFunctionTemplatePatterns(
 		const TypeId* parameters =
 			program_->types.Parameters(pattern.shape_type);
 		if (explicit_arguments &&
-			explicit_arguments->size() > pattern.type_parameters.size())
+			explicit_arguments->size() > pattern.parameters.size())
 			continue;
-		std::vector<TypeId> deduced(pattern.type_parameters.size(), kNoType);
+		std::vector<TypeId> deduced(pattern.parameters.size(), kNoType);
 		if (explicit_arguments)
 			std::copy(explicit_arguments->begin(), explicit_arguments->end(),
 				deduced.begin());
@@ -267,7 +267,7 @@ void SemanticAnalyzer::DeduceFunctionTemplatePatterns(
 				{
 					bool forwarding_reference = false;
 					for (std::size_t t = 0;
-						t < pattern.type_parameters.size(); ++t)
+						t < pattern.parameters.size(); ++t)
 						if (parameter_record.child ==
 							function_template_shape_parameters_[t])
 							forwarding_reference = true;
@@ -371,9 +371,9 @@ std::vector<BindingId> SemanticAnalyzer::FunctionTemplateTargetCandidates(
 			throw std::logic_error("invalid target function template candidate");
 		const FunctionTemplatePattern& pattern = function_templates_[patterns[i]];
 		if (explicit_id &&
-			explicit_arguments.size() > pattern.type_parameters.size())
+			explicit_arguments.size() > pattern.parameters.size())
 			continue;
-		std::vector<TypeId> deduced(pattern.type_parameters.size(), kNoType);
+		std::vector<TypeId> deduced(pattern.parameters.size(), kNoType);
 		if (explicit_id)
 			std::copy(explicit_arguments.begin(), explicit_arguments.end(),
 				deduced.begin());

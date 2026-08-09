@@ -42,6 +42,34 @@ public:
 		return id;
 	}
 
+	std::string AddTemplateArgument(std::size_t argument)
+	{
+		using namespace abi_mangle;
+		using namespace pa11;
+		if (argument >= program_.template_arguments.size())
+			throw std::logic_error("ABI template argument index is invalid");
+		if (argument >= program_.canonical_template_arguments.size() ||
+			program_.canonical_template_arguments[argument].kind ==
+				TEMPLATE_ARGUMENT_TYPE)
+			return AddTypeArgument(program_.template_arguments[argument]);
+		const TemplateArgument& source =
+			program_.canonical_template_arguments[argument];
+		const std::string id = "__cppgm_abi_value_argument_" +
+			std::to_string(next_argument_++);
+		AbiFactRecord definition;
+		definition.set_kind(ABI_FACT_RECORD_DEFINITION);
+		definition.definition.id = id;
+		definition.definition.set_kind(ABI_DEFINITION_TEMPLATE_ARGUMENT);
+		AbiTemplateArgument& target =
+			definition.definition.template_argument;
+		target.kind = ABI_TEMPLATE_ARGUMENT_VALUE;
+		target.value_type = MakeType(source.type);
+		target.has_value_type = true;
+		target.value = source.value;
+		facts_.records.push_back(definition);
+		return id;
+	}
+
 	std::string AddLocalContext(pa11::BindingId binding)
 	{
 		using namespace abi_mangle;
@@ -145,8 +173,7 @@ public:
 					throw std::logic_error(
 						"class template ABI argument range is invalid");
 				for (std::size_t i = 0; i < entity.template_argument_count; ++i)
-					result.argument_refs.push_back(AddTypeArgument(
-						program_.template_arguments[first + i]));
+					result.argument_refs.push_back(AddTemplateArgument(first + i));
 			}
 			return result;
 		}
@@ -211,8 +238,8 @@ bool AppendClassTemplateOwner(const pa11::Program& program,
 			component.function.standard_substitution = "-";
 			for (std::size_t argument = 0;
 				argument < entity.template_argument_count; ++argument)
-				component.function.argument_refs.push_back(builder->AddTypeArgument(
-					program.template_arguments[first + argument]));
+				component.function.argument_refs.push_back(
+					builder->AddTemplateArgument(first + argument));
 		}
 		else component.function.kind = ABI_FUNCTION_RECORD_NAME_SOURCE;
 		facts->records.push_back(component);
@@ -412,8 +439,8 @@ std::string MangleFunction(const pa11::Program& program,
 				"function template argument range is invalid during mangling");
 		for (std::size_t i = 0; i < count; ++i)
 		{
-			const std::string argument_id = facts.AddTypeArgument(
-				program.template_arguments[first + i]);
+			const std::string argument_id =
+				facts.AddTemplateArgument(first + i);
 			AbiFactRecord argument;
 			argument.set_kind(ABI_FACT_RECORD_FUNCTION);
 			argument.function.kind =

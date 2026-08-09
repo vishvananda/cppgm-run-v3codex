@@ -574,7 +574,7 @@ private:
 		position_ = opener + 1;
 		const Mark mark = Checkpoint();
 		const NodeId list = arena_.Make("template-type-argument-list");
-		bool all_types = true;
+		bool valid = true;
 		if (!AtCloseAngle())
 		{
 			while (true)
@@ -582,18 +582,20 @@ private:
 				if (TemplateArgumentStartsType())
 				{
 					if (!ParseTypeId(list))
-						all_types = false;
+						valid = false;
 				}
 				else
 				{
-					Rollback(mark);
-					position_ = saved;
-					return kNoNode;
+					++angle_stop_depth_;
+					const NodeId expression = ParseExpression(2);
+					--angle_stop_depth_;
+					if (expression == kNoNode) valid = false;
+					else arena_.Add(list, expression);
 				}
 				if (!Match(OP_COMMA)) break;
 			}
 		}
-		if (!MatchCloseAngle() || position_ != after || !all_types)
+		if (!MatchCloseAngle() || position_ != after || !valid)
 		{
 			Rollback(mark);
 			position_ = saved;
@@ -1379,7 +1381,10 @@ NodeId Parser::ParsePrimaryExpression()
 		}
 		Rollback(cast_mark);
 		Expect(OP_LPAREN);
+		const bool nested_template_argument = angle_stop_depth_ != 0;
+		if (nested_template_argument) --angle_stop_depth_;
 		const NodeId expression = ParseExpression();
+		if (nested_template_argument) ++angle_stop_depth_;
 		if (expression == kNoNode) throw Error("expected parenthesized expression");
 		Expect(OP_RPAREN);
 		const NodeId parenthesized = arena_.Make("parenthesized-expression");

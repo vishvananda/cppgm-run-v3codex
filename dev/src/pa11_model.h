@@ -26,6 +26,32 @@ const ScopeId kNoScope = std::numeric_limits<ScopeId>::max();
 const EntityId kNoEntity = std::numeric_limits<EntityId>::max();
 const BindingId kNoBinding = std::numeric_limits<BindingId>::max();
 
+enum TemplateArgumentKind
+{
+	TEMPLATE_ARGUMENT_TYPE,
+	TEMPLATE_ARGUMENT_INTEGRAL
+};
+
+struct TemplateArgument
+{
+	TemplateArgumentKind kind;
+	TypeId type;
+	std::int64_t value;
+
+	TemplateArgument()
+		: kind(TEMPLATE_ARGUMENT_TYPE), type(kNoType), value(0) {}
+	TemplateArgument(TemplateArgumentKind kind_value, TypeId type_value,
+		std::int64_t integral_value = 0)
+		: kind(kind_value), type(type_value), value(integral_value) {}
+	bool operator==(const TemplateArgument& other) const
+	{
+		return kind == other.kind && type == other.type &&
+			value == other.value;
+	}
+	bool operator!=(const TemplateArgument& other) const
+		{ return !(*this == other); }
+};
+
 std::size_t MixHash(std::size_t seed, std::uint64_t value);
 
 class NameTable
@@ -430,6 +456,7 @@ public:
 	std::vector<EntityRecord> entities;
 	std::vector<BindingRecord> bindings;
 	std::vector<TypeId> template_arguments;
+	std::vector<TemplateArgument> canonical_template_arguments;
 	std::size_t lookup_queries, lookup_scope_visits, lookup_edge_visits;
 	std::size_t lookup_cache_hits, lookup_cache_misses;
 	std::size_t lookup_cache_invalidations, lookup_cache_dependency_edges;

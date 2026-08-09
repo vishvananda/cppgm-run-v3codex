@@ -104,8 +104,16 @@ IdentityTypeId EmissionIdentityTable::InternBindingTemplateArguments(
 		count > program.template_arguments.size() - first)
 		throw std::logic_error(
 			"function template identity argument range is invalid");
-	return InternTypeSequence(program,
-		&program.template_arguments[first], count, cache);
+	IdentityTypeKey key;
+	key.kind = TYPE_FUNCTION;
+	key.parameters.reserve(count);
+	for (std::size_t i = 0; i < count; ++i)
+	{
+		InternType(program, program.template_arguments[first + i], cache);
+		key.parameters.push_back(InternStoredTemplateArgument(
+			program, first + i, cache));
+	}
+	return InternTypeKey(key);
 }
 
 IdentityTypeId EmissionIdentityTable::InternEntityTemplateArguments(
@@ -118,8 +126,16 @@ IdentityTypeId EmissionIdentityTable::InternEntityTemplateArguments(
 	if (first > program.template_arguments.size() ||
 		count > program.template_arguments.size() - first)
 		throw std::logic_error("class template identity argument range is invalid");
-	return InternTypeSequence(program,
-		&program.template_arguments[first], count, cache);
+	IdentityTypeKey key;
+	key.kind = TYPE_FUNCTION;
+	key.parameters.reserve(count);
+	for (std::size_t i = 0; i < count; ++i)
+	{
+		InternType(program, program.template_arguments[first + i], cache);
+		key.parameters.push_back(InternStoredTemplateArgument(
+			program, first + i, cache));
+	}
+	return InternTypeKey(key);
 }
 
 std::size_t EmissionIdentityTable::StorageBytes() const
@@ -208,7 +224,8 @@ IdentityTypeKey EmissionIdentityTable::MakeTypeKey(const Program& program,
 		}
 		const std::size_t first = entity.template_argument_begin;
 		for (std::size_t i = 0; i < entity.template_argument_count; ++i)
-			key.parameters.push_back(cache[program.template_arguments[first + i]]);
+			key.parameters.push_back(InternStoredTemplateArgument(
+				program, first + i, cache));
 	}
 	if (HasChild(source.kind)) key.child = cache[source.child];
 	if (source.kind == TYPE_FUNCTION)
@@ -219,6 +236,28 @@ IdentityTypeKey EmissionIdentityTable::MakeTypeKey(const Program& program,
 			key.parameters.push_back(cache[parameters[i]]);
 	}
 	return key;
+}
+
+IdentityTypeId EmissionIdentityTable::InternStoredTemplateArgument(
+	const Program& program, std::size_t argument,
+	const std::vector<IdentityTypeId>& cache)
+{
+	if (argument >= program.template_arguments.size())
+		throw std::logic_error("template identity argument index is invalid");
+	const TypeId type = program.template_arguments[argument];
+	if (type >= cache.size() || cache[type] == kNoLowId)
+		throw std::logic_error("template identity argument type is unresolved");
+	if (argument >= program.canonical_template_arguments.size() ||
+		program.canonical_template_arguments[argument].kind ==
+			TEMPLATE_ARGUMENT_TYPE)
+		return cache[type];
+	const TemplateArgument& source =
+		program.canonical_template_arguments[argument];
+	IdentityTypeKey key;
+	key.kind = TYPE_INVALID;
+	key.child = cache[type];
+	key.bound = static_cast<std::uint64_t>(source.value);
+	return InternTypeKey(key);
 }
 
 IdentityPathId EmissionIdentityTable::InternPathKey(const IdentityPathKey& key)

@@ -173,11 +173,11 @@ private:
 struct TemplateSpecializationKey
 {
 	std::size_t pattern;
-	std::vector<TypeId> arguments;
+	std::vector<TemplateArgument> arguments;
 
 	TemplateSpecializationKey() : pattern(0) {}
 	TemplateSpecializationKey(std::size_t pattern_value,
-		const std::vector<TypeId>& argument_values)
+		const std::vector<TemplateArgument>& argument_values)
 		: pattern(pattern_value), arguments(argument_values) {}
 	bool operator==(const TemplateSpecializationKey& other) const
 	{
@@ -191,7 +191,12 @@ struct TemplateSpecializationHash
 	{
 		std::size_t result = key.pattern;
 		for (std::size_t i = 0; i < key.arguments.size(); ++i)
-			result = MixHash(result, key.arguments[i]);
+		{
+			result = MixHash(result, key.arguments[i].kind);
+			result = MixHash(result, key.arguments[i].type);
+			result = MixHash(result,
+				static_cast<std::uint64_t>(key.arguments[i].value));
+		}
 		return result;
 	}
 };

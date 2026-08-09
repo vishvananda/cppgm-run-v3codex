@@ -73,13 +73,12 @@ std::vector<ScopeId> SemanticAnalyzer::FindFunctionTemplateOwners(
 
 ScopeId SemanticAnalyzer::BindFunctionTemplateArguments(
 	const FunctionTemplatePattern& pattern,
-	const std::vector<TypeId>& arguments)
+	const std::vector<TemplateArgument>& arguments)
 {
 	const ScopeId template_scope = NewScope(pattern.lexical_scope,
 		SCOPE_TEMPLATE_PARAMETERS, 0, ScopePrefixId(pattern.lexical_scope));
 	for (std::size_t i = 0; i < arguments.size(); ++i)
-		program_->AddBinding(template_scope, BIND_TYPE_ALIAS,
-			pattern.type_parameters[i], arguments[i]);
+		BindTemplateArgument(template_scope, pattern.parameters[i], arguments[i]);
 	return template_scope;
 }
 
@@ -89,15 +88,15 @@ void SemanticAnalyzer::UpgradeFunctionTemplateSpecializations(
 	if (index >= function_templates_.size())
 		throw std::logic_error("invalid function template upgrade");
 	const FunctionTemplatePattern& pattern = function_templates_[index];
-	const std::size_t parameter_count = pattern.type_parameters.size();
+	const std::size_t parameter_count = pattern.parameters.size();
 	const std::vector<BindingId> specializations =
 		pattern.specialization_bindings;
-	const std::vector<TypeId> specialization_arguments =
+	const std::vector<TemplateArgument> specialization_arguments =
 		pattern.specialization_arguments;
 	for (std::size_t specialization = 0;
 		specialization < specializations.size(); ++specialization)
 	{
-		std::vector<TypeId> arguments;
+		std::vector<TemplateArgument> arguments;
 		arguments.reserve(parameter_count);
 		for (std::size_t p = 0; p < parameter_count; ++p)
 			arguments.push_back(specialization_arguments[
@@ -133,7 +132,26 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	if (index >= function_templates_.size())
 		throw std::logic_error("invalid PA12 function template pattern");
 	const FunctionTemplatePattern& pattern = function_templates_[index];
-	if (arguments.size() != pattern.type_parameters.size()) return kNoBinding;
+	if (arguments.size() != pattern.parameters.size()) return kNoBinding;
+	std::vector<TemplateArgument> canonical;
+	canonical.reserve(arguments.size());
+	for (std::size_t i = 0; i < arguments.size(); ++i)
+	{
+		if (pattern.parameters[i].kind != TEMPLATE_ARGUMENT_TYPE)
+			return kNoBinding;
+		canonical.push_back(TemplateArgument(
+			TEMPLATE_ARGUMENT_TYPE, arguments[i]));
+	}
+	return InstantiateFunctionTemplate(index, canonical);
+}
+
+BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
+	const std::vector<TemplateArgument>& arguments)
+{
+	if (index >= function_templates_.size())
+		throw std::logic_error("invalid PA12 function template pattern");
+	const FunctionTemplatePattern& pattern = function_templates_[index];
+	if (arguments.size() != pattern.parameters.size()) return kNoBinding;
 	++template_specialization_requests_;
 	const TemplateSpecializationKey request_key(index, arguments);
 	BindingId old = template_instantiations_.Find(request_key);
@@ -143,19 +161,21 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 		return old;
 	}
 
-	std::vector<TypeId> completed = arguments;
+	std::vector<TemplateArgument> completed = arguments;
 	ScopeId default_scope = kNoScope;
 	for (std::size_t i = 0; i < completed.size(); ++i)
 	{
-		if (completed[i] != kNoType)
+		if (completed[i].kind != pattern.parameters[i].kind)
+			return kNoBinding;
+		if (completed[i].type != kNoType)
 		{
 			if (default_scope != kNoScope)
-				program_->AddBinding(default_scope, BIND_TYPE_ALIAS,
-					pattern.type_parameters[i], completed[i]);
+				BindTemplateArgument(default_scope,
+					pattern.parameters[i], completed[i]);
 			continue;
 		}
-		if (i >= pattern.default_arguments.size() ||
-			pattern.default_arguments[i] == kNoNode)
+		if (pattern.parameters[i].kind != TEMPLATE_ARGUMENT_TYPE ||
+			pattern.parameters[i].default_argument == kNoNode)
 			return kNoBinding;
 		if (default_scope == kNoScope)
 		{
@@ -163,19 +183,20 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 				SCOPE_TEMPLATE_PARAMETERS, 0,
 				ScopePrefixId(pattern.lexical_scope));
 			for (std::size_t prior = 0; prior < i; ++prior)
-				program_->AddBinding(default_scope, BIND_TYPE_ALIAS,
-					pattern.type_parameters[prior], completed[prior]);
+				BindTemplateArgument(default_scope,
+					pattern.parameters[prior], completed[prior]);
 		}
-		NodeId type_id = FindChild(pattern.default_arguments[i], "type-id");
+		NodeId type_id = FindChild(
+			pattern.parameters[i].default_argument, "type-id");
 		if (type_id == kNoNode)
-			type_id = FirstSemanticChild(pattern.default_arguments[i]);
+			type_id = FirstSemanticChild(
+				pattern.parameters[i].default_argument);
 		if (type_id == kNoNode)
 			throw std::runtime_error(
 				"empty function template default argument");
-		completed[i] = BuildTypeId(type_id, default_scope);
-		if (completed[i] == kNoType) return kNoBinding;
-		program_->AddBinding(default_scope, BIND_TYPE_ALIAS,
-			pattern.type_parameters[i], completed[i]);
+		completed[i].type = BuildTypeId(type_id, default_scope);
+		if (completed[i].type == kNoType) return kNoBinding;
+		BindTemplateArgument(default_scope, pattern.parameters[i], completed[i]);
 	}
 	const TemplateSpecializationKey cache_key(index, completed);
 	if (completed != arguments)
@@ -223,18 +244,9 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 		RegisterClassMemberFunction(member_owner, binding);
 	}
 	if (binding_record.template_argument_count == 0)
-	{
-		if (program_->template_arguments.size() >
-			std::numeric_limits<std::uint32_t>::max() - completed.size())
-			throw std::runtime_error("too many function template arguments");
-		binding_record.template_argument_begin = static_cast<std::uint32_t>(
-			program_->template_arguments.size());
-		binding_record.template_argument_count =
-			static_cast<std::uint32_t>(completed.size());
-		program_->template_arguments.insert(
-			program_->template_arguments.end(),
-			completed.begin(), completed.end());
-	}
+		StoreTemplateArguments(completed,
+			&binding_record.template_argument_begin,
+			&binding_record.template_argument_count);
 	ValidateFunctionRefQualifier(binding);
 	ValidateNonmemberOperator(binding);
 	FunctionInfo& function = GetMutableFunction(binding);

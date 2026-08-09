@@ -470,9 +470,9 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 	if (naming_class) *naming_class = kNoEntity;
 	std::string lookup_name = spelling;
 	NamePath structured_base;
-	std::vector<TypeId> explicit_arguments;
-	const bool structured_explicit = ParseExplicitTemplateArguments(
-		syntax, scope, &structured_base, &explicit_arguments);
+	std::vector<NodeId> explicit_syntax;
+	const bool structured_explicit = CollectExplicitTemplateArguments(
+		syntax, &structured_base, &explicit_syntax);
 	if (structured_explicit)
 	{
 		std::vector<BindingId> explicit_candidates;
@@ -482,12 +482,12 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 		{
 			const FunctionTemplatePattern& pattern =
 				function_templates_[patterns[i]];
-			if (explicit_arguments.size() > pattern.type_parameters.size())
-				continue;
-			if (pattern.type_parameters.size() == explicit_arguments.size())
+			std::vector<TemplateArgument> arguments;
+			if (BuildTemplateArguments(pattern.parameters, explicit_syntax,
+				scope, pattern.lexical_scope, &arguments))
 			{
 				const BindingId candidate = InstantiateFunctionTemplate(
-					patterns[i], explicit_arguments);
+					patterns[i], arguments);
 				if (candidate != kNoBinding &&
 					std::find(explicit_candidates.begin(),
 						explicit_candidates.end(), candidate) ==
@@ -496,7 +496,11 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 			}
 			else
 			{
-				const std::size_t width = pattern.type_parameters.size();
+				NamePath type_base;
+				std::vector<TypeId> explicit_arguments;
+				if (!ParseExplicitTemplateArguments(
+					syntax, scope, &type_base, &explicit_arguments)) continue;
+				const std::size_t width = pattern.parameters.size();
 				if (pattern.specialization_bindings.size() >
 					pattern.specialization_arguments.size() / width)
 					throw std::logic_error(
@@ -509,8 +513,9 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 					for (std::size_t argument = 0;
 						argument < explicit_arguments.size(); ++argument)
 						if (pattern.specialization_arguments[
-							specialization * width + argument] !=
-							explicit_arguments[argument])
+							specialization * width + argument] != TemplateArgument(
+								TEMPLATE_ARGUMENT_TYPE,
+								explicit_arguments[argument]))
 							matches = false;
 					if (!matches) continue;
 					const BindingId candidate =

@@ -275,7 +275,7 @@ void SemanticAnalyzer::AppendArgumentDependentCandidates(NameId name,
 					"associated class template pattern is invalid");
 			const std::size_t first = record.template_argument_begin;
 			const std::size_t count =
-				class_templates_[pattern].type_parameters.size();
+				class_templates_[pattern].parameters.size();
 			if (record.template_argument_count != count ||
 				first > program_->template_arguments.size() ||
 				count > program_->template_arguments.size() - first)

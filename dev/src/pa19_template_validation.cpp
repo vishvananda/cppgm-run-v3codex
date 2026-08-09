@@ -52,7 +52,7 @@ class RetainedTemplateValidator
 {
 public:
 	RetainedTemplateValidator(SemanticAnalyzer& analyzer, NodeId target,
-		ScopeId lexical_scope, const std::vector<NameId>& parameters)
+		ScopeId lexical_scope, const std::vector<TemplateParameter>& parameters)
 		: analyzer_(analyzer), target_(target), lexical_scope_(lexical_scope),
 		  parameters_(parameters) {}
 
@@ -64,7 +64,8 @@ private:
 		bool unmodeled_current_class = false);
 	std::size_t AddChildScope(std::size_t parent, ScopeKind kind,
 		bool defer_unknown_members = false);
-	void DeclareParameter(std::size_t scope, NameId name);
+	void DeclareParameter(std::size_t scope,
+		const TemplateParameter& parameter);
 	void Declare(std::size_t scope, NameId name, RetainedNameKind kind,
 		bool allow_existing = false);
 	std::uint8_t LookupLocal(std::size_t scope, NameId name) const;
@@ -99,7 +100,7 @@ private:
 	SemanticAnalyzer& analyzer_;
 	NodeId target_;
 	ScopeId lexical_scope_;
-	const std::vector<NameId>& parameters_;
+	const std::vector<TemplateParameter>& parameters_;
 	std::unordered_set<NameId> parameter_names_;
 	std::vector<RetainedScope> scopes_;
 };
@@ -125,12 +126,14 @@ std::size_t RetainedTemplateValidator::AddChildScope(std::size_t parent,
 }
 
 void RetainedTemplateValidator::DeclareParameter(std::size_t scope,
-	NameId name)
+	const TemplateParameter& parameter)
 {
+	const NameId name = parameter.name;
 	if (name == 0) return;
 	if (!parameter_names_.insert(name).second)
 		throw std::runtime_error("duplicate template parameter");
-	scopes_[scope].names[name] |= RETAINED_TYPE_NAME;
+	scopes_[scope].names[name] |= parameter.kind == TEMPLATE_ARGUMENT_TYPE ?
+		RETAINED_TYPE_NAME : RETAINED_VALUE_NAME;
 }
 
 void RetainedTemplateValidator::Declare(std::size_t scope, NameId name,
@@ -868,7 +871,7 @@ void RetainedTemplateValidator::Run()
 }
 
 void SemanticAnalyzer::ValidateRetainedTemplateDefinition(NodeId target,
-	ScopeId scope, const std::vector<NameId>& parameters)
+	ScopeId scope, const std::vector<TemplateParameter>& parameters)
 {
 	RetainedTemplateValidator(*this, target, scope, parameters).Run();
 }

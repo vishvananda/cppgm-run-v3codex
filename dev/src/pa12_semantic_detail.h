@@ -107,10 +107,13 @@ private:
 		AccessKind access = ACCESS_PUBLIC);
 	void AnalyzeTemplate(NodeId node, ScopeId scope,
 		AccessKind member_access = ACCESS_PUBLIC);
+	void ParseTemplateParameters(NodeId list, ScopeId scope,
+		std::vector<TemplateParameter>* parameters,
+		std::vector<NameId>* names, std::vector<NodeId>* defaults);
 	void AnalyzeExplicitInstantiation(NodeId node, ScopeId scope,
 		bool definition);
 	void ValidateRetainedTemplateDefinition(NodeId target, ScopeId scope,
-		const std::vector<NameId>& parameters);
+		const std::vector<TemplateParameter>& parameters);
 	void RecordRetainedCallLookup(NodeId callee, ScopeId scope,
 		const std::string& spelling, bool adl_eligible);
 	void PublishRetainedCallLookup(NodeId callee,
@@ -118,13 +121,12 @@ private:
 		const std::vector<std::size_t>& templates, EntityId naming_class,
 		bool adl_eligible);
 	void AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
-		const std::vector<NameId>& parameters,
-		const std::vector<NodeId>& defaults);
+		const std::vector<TemplateParameter>& parameters);
 	bool RetainVariableTemplate(NodeId declaration, ScopeId scope,
 		const std::vector<NameId>& parameters,
 		const std::vector<NodeId>& defaults);
 	bool AnalyzeClassTemplateMember(NodeId declaration, ScopeId scope,
-		const std::vector<NameId>& parameters);
+		const std::vector<TemplateParameter>& parameters);
 	void AnalyzeSimple(NodeId node, ScopeId scope,
 		std::uint32_t output_parent, bool local,
 		bool qualified_lexical_scope = false);
@@ -240,6 +242,21 @@ private:
 		ExpressionInfo* result);
 	bool ParseExplicitTemplateArguments(NodeId syntax, ScopeId scope,
 		NamePath* base, std::vector<TypeId>* arguments);
+	bool CollectExplicitTemplateArguments(NodeId syntax, NamePath* base,
+		std::vector<NodeId>* arguments);
+	bool BuildTemplateArguments(const std::vector<TemplateParameter>& parameters,
+		const std::vector<NodeId>& syntax, ScopeId use_scope,
+		ScopeId lexical_scope, std::vector<TemplateArgument>* arguments);
+	TypeId ResolveTemplateParameterType(const TemplateParameter& parameter,
+		ScopeId parameter_scope);
+	void BindTemplateArgument(ScopeId scope,
+		const TemplateParameter& parameter, const TemplateArgument& argument);
+	std::vector<TemplateArgument> TypeTemplateArguments(
+		const std::vector<TypeId>& arguments) const;
+	std::vector<TemplateArgument> StoredTemplateArguments(
+		std::size_t first, std::size_t count) const;
+	void StoreTemplateArguments(const std::vector<TemplateArgument>& arguments,
+		std::uint32_t* first, std::uint32_t* count);
 	TypeId ResolveStructuredTypeName(NodeId name, ScopeId scope);
 	std::size_t FindClassTemplate(ScopeId scope,
 		const std::string& spelling);
@@ -248,22 +265,29 @@ private:
 		NameId requested) const;
 	BindingId InstantiateClassTemplate(std::size_t pattern,
 		const std::vector<TypeId>& arguments);
+	BindingId InstantiateClassTemplate(std::size_t pattern,
+		const std::vector<TemplateArgument>& arguments);
 	void CompleteClassTemplateSpecialization(std::size_t pattern,
-		BindingId specialization, const std::vector<TypeId>& arguments);
+		BindingId specialization,
+		const std::vector<TemplateArgument>& arguments);
 	void EnsureClassDefinition(TypeId type);
 	bool ClassTemplateSpecializationArgumentsComplete(EntityId entity) const;
 	bool IsClassTemplateSpecializationEntity(EntityId entity) const;
+	bool ClassTemplateHasNonTypeParameter(EntityId entity) const;
 	bool IsClassTemplateSpecializationContext(EntityId entity) const;
 	ScopeId BindClassTemplateArguments(const ClassTemplatePattern& pattern,
-		const std::vector<TypeId>& arguments);
+		const std::vector<TemplateArgument>& arguments);
 	void UpgradeClassTemplateSpecializations(std::size_t pattern);
 	void ApplyClassTemplateMemberDefinitions(std::size_t pattern,
-		BindingId specialization, const std::vector<TypeId>& arguments);
+		BindingId specialization,
+		const std::vector<TemplateArgument>& arguments);
 	BindingId InstantiateFunctionTemplate(std::size_t pattern,
 		const std::vector<TypeId>& arguments);
+	BindingId InstantiateFunctionTemplate(std::size_t pattern,
+		const std::vector<TemplateArgument>& arguments);
 	ScopeId BindFunctionTemplateArguments(
 		const FunctionTemplatePattern& pattern,
-		const std::vector<TypeId>& arguments);
+		const std::vector<TemplateArgument>& arguments);
 	void UpgradeFunctionTemplateSpecializations(std::size_t pattern);
 	bool FunctionTemplateTypeIsDependent(TypeId type) const;
 	bool DeduceFunctionTemplateType(TypeId pattern, TypeId argument,
