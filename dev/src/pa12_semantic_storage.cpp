@@ -88,6 +88,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 			sizeof(std::vector<LifetimeObligation>) +
 		nearest_lifetime_scopes_.capacity() * sizeof(ScopeId) +
 		namespace_objects_.capacity() * sizeof(NamespaceObjectAction) +
+		local_static_objects_.capacity() * sizeof(LocalStaticObjectAction) +
 		aggregate_helpers_.capacity() * sizeof(AggregateHelperInfo) +
 		aggregate_helper_index_.StorageBytes() +
 		break_cleanup_stops_.capacity() * sizeof(ScopeId) +
@@ -154,6 +155,9 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 			sizeof(VirtualSlotFact);
 	for (std::size_t i = 0; i < scope_lifetimes_.size(); ++i)
 		bytes += scope_lifetimes_[i].capacity() * sizeof(LifetimeObligation);
+	for (std::size_t i = 0; i < local_static_objects_.size(); ++i)
+		bytes += local_static_objects_[i].source_string_literals.capacity() *
+			sizeof(NameId);
 	for (std::size_t i = 0; i < aggregate_helpers_.size(); ++i)
 		bytes += aggregate_helpers_[i].members.capacity() * sizeof(BindingId) +
 			aggregate_helpers_[i].member_constructors.capacity() *

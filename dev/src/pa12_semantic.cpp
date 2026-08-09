@@ -676,34 +676,6 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 	return value;
 }
 
-bool SemanticAnalyzer::IsNonthrowing(NodeId declarator, ScopeId scope)
-{
-	const NodeId qualifier = FindChild(declarator, "function-qualifier");
-	if (qualifier == kNoNode) return false;
-	const std::string spelling = PayloadSource(qualifier);
-	if (spelling == "noexcept" || spelling == "throw()") return true;
-	if (spelling.compare(0, 8, "noexcept") != 0) return false;
-	const NodeId expression_node = FirstSemanticChild(qualifier);
-	if (expression_node == kNoNode)
-		throw std::logic_error("missing noexcept expression");
-	++constant_expression_required_depth_;
-	ExpressionInfo expression;
-	try
-	{
-		expression = ApplyContextualBool(
-			AnalyzeExpression(expression_node, scope));
-	}
-	catch (...)
-	{
-		--constant_expression_required_depth_;
-		throw;
-	}
-	--constant_expression_required_depth_;
-	if (!expression.constant || !IsIntegral(expression.type, true))
-		throw std::runtime_error("nonconstant noexcept expression");
-	return expression.value != 0;
-}
-
 bool SemanticAnalyzer::IsModifiableLvalue(const ExpressionInfo& value) const
 {
 	return value.category == VALUE_LVALUE && !IsConst(value.type) &&
@@ -1198,6 +1170,7 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 			NormalizeScalarConstant(result_type, constexpr_value));
 		RecordExpressionFacts(result);
 		if (constant_expression_required_depth_ != 0 &&
+			preserve_constant_initializer_recipe_depth_ == 0 &&
 			!(nonstatic_member &&
 			  constant_initializer_required_depth_ != 0 &&
 			  (!constexpr_has_scalar ||
@@ -2276,8 +2249,13 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 				(!program_->types.IsReference(parsed.type) &&
 				 IsConst(parsed.type) && IsIntegral(parsed.type, true)) ||
 				spec.storage_class == STORAGE_CLASS_STATIC;
+			const bool preserve_runtime_recipe = !local && spec.is_constexpr &&
+				IsClassObjectType(parsed.type) &&
+				FindChild(initializer_node, "paren-initializer") != kNoNode &&
+				arena_->HasDescendantTag(initializer_node, "call-expression");
 			initializer = AnalyzeConstantAwareVariableInitializer(initializer_node,
-				semantic_scope, parsed.type, local, require_constant);
+				semantic_scope, parsed.type, local, require_constant,
+				preserve_runtime_recipe);
 			if (program_->types.Get(parsed.type).kind == TYPE_ARRAY &&
 				program_->types.Get(parsed.type).bound == 0)
 			{
@@ -2286,6 +2264,8 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			}
 			PublishConstantVariableInitializer(
 				binding, parsed.type, spec, initializer);
+			if (preserve_runtime_recipe)
+				DemandRuntimeInitializerFunctions(initializer.node);
 		}
 		else if (constexpr_class_default)
 		{
@@ -2319,17 +2299,8 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 				AddDefaultConstructor(variable, binding, parsed.type);
 		}
 		dump_.Add(owner, variable);
-		if (local && program_->bindings[binding].storage_class ==
-			STORAGE_CLASS_NONE)
-			AddLifetimeObligation(scope, binding, parsed.type);
-		else if (!local && !declaration_only)
-		{
-			const std::uint32_t initializer_action =
-				dump_.nodes[variable].first_edge == kNoDumpEdge ? kNoDumpEdge :
-				dump_.edges[dump_.nodes[variable].first_edge].child;
-			AddNamespaceObjectAction(variable, binding, parsed.type,
-				initializer_action);
-		}
+		RegisterVariableLifetimeAndStorage(scope, local, declaration_only,
+			variable, binding, parsed.type, item);
 		if (local && has_initializer)
 		{
 			const TypeKind declared_kind = program_->types.Get(parsed.type).kind;
@@ -2395,6 +2366,19 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	if (spec.is_constexpr &&
 		IsVoid(program_->types.Get(parsed.type).child))
 		throw std::runtime_error("constexpr function may not return void");
+	if (spec.is_constexpr)
+	{
+		const TypeRecord& constexpr_type = program_->types.Get(parsed.type);
+		if (!IsConstexprLiteralType(constexpr_type.child))
+			throw std::runtime_error(
+				"constexpr function result is not a literal type");
+		const TypeId* constexpr_parameters =
+			program_->types.Parameters(parsed.type);
+		for (std::size_t i = 0; i < constexpr_type.parameter_count; ++i)
+			if (!IsConstexprLiteralType(constexpr_parameters[i]))
+				throw std::runtime_error(
+					"constexpr function parameter is not a literal type");
+	}
 	const BindingId binding = DeclareFunction(owner, parsed.name,
 		parsed.type, parsed.parameters, true, false, spec.storage_class,
 		current_language_linkage_, IsNonthrowing(declarator, semantic_scope));
@@ -2893,7 +2877,8 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 	const std::chrono::steady_clock::time_point render_started =
 		std::chrono::steady_clock::now();
 	if (graph_consumer_) graph_consumer_->Consume(SemanticGraphView(program,
-		dump_, namespace_objects_, aggregate_helpers_, class_polymorphism_, root_));
+		dump_, namespace_objects_, local_static_objects_, aggregate_helpers_,
+		class_polymorphism_, root_));
 	if (render_output_) Render();
 	if (stats_)
 	{

@@ -78,15 +78,19 @@ SymbolId StaticInitializerLowering::EnsureStringLiteral(std::uint32_t node)
 		throw std::logic_error("invalid PA15 literal node");
 	if (literal_symbols_[node] != kNoLowId) return literal_symbols_[node];
 	const std::string spelling = program_.names.Get(arena_.nodes[node].text);
+	literal_symbols_[node] = EnsureStringLiteralSpelling(spelling);
+	return literal_symbols_[node];
+}
+
+SymbolId StaticInitializerLowering::EnsureStringLiteralSpelling(
+	const std::string& spelling)
+{
 	const InternedStringId literal = output_.literals.Intern(spelling);
 	if (output_.string_literal_symbols.size() <= literal)
 		output_.string_literal_symbols.resize(
 			static_cast<std::size_t>(literal) + 1, kNoLowId);
 	if (output_.string_literal_symbols[literal] != kNoLowId)
-	{
-		literal_symbols_[node] = output_.string_literal_symbols[literal];
-		return literal_symbols_[node];
-	}
+		return output_.string_literal_symbols[literal];
 	const std::string name = "__strlit__" +
 		std::to_string(++output_.string_literal_count);
 	const SymbolId symbol = static_cast<SymbolId>(output_.symbols.size());
@@ -94,24 +98,34 @@ SymbolId StaticInitializerLowering::EnsureStringLiteral(std::uint32_t node)
 		std::string(), false, true, false));
 	output_.symbols.back().definition_emitted = true;
 	output_.symbols.back().referenced = true;
-	literal_symbols_[node] = symbol;
 	output_.string_literal_symbols[literal] = symbol;
 	FundamentalType decoded_type = FT_CHAR;
 	std::vector<std::uint32_t> units;
 	if (!DecodeStringLiteralCodeUnits(spelling, &decoded_type, &units) ||
 		units.empty())
 		throw std::runtime_error("invalid PA16 string literal spelling");
-	const TypeRecord& array = program_.types.Get(
-		types_.ExpressionObject(arena_.nodes[node].type));
-	if (array.kind != TYPE_ARRAY || array.bound != units.size())
-		throw std::logic_error("typed string literal shape mismatch");
-	const LowType element = types_.LowerExpression(array.child);
-	if (!IsInteger(element))
-		throw std::logic_error("typed string literal element is not integral");
+	LowType element;
+	std::size_t alignment = 1;
+	if (decoded_type == FT_CHAR) element = LowI8();
+	else if (decoded_type == FT_WCHAR_T)
+	{
+		element = LowI32();
+		alignment = 4;
+	}
+	else if (decoded_type == FT_CHAR16_T)
+	{
+		element = LowU16();
+		alignment = 2;
+	}
+	else if (decoded_type == FT_CHAR32_T)
+	{
+		element = LowU32();
+		alignment = 4;
+	}
+	else throw std::runtime_error("unsupported string literal element type");
 	Global global;
 	global.symbol = symbol;
-	global.type = LowObject(program_.SizeOf(arena_.nodes[node].type),
-		program_.AlignOf(array.child));
+	global.type = LowObject(units.size() * alignment, alignment);
 	global.initializer_kind = Global::STRUCTURED_VALUE;
 	for (std::size_t i = 0; i < units.size(); ++i)
 	{
@@ -185,6 +199,14 @@ bool StaticInitializerLowering::RequiresDynamicAddress(std::uint32_t node) const
 	return record.kind == DUMP_UNARY_EXPRESSION && children.size() == 1 &&
 		StripOperationPrefix(program_.names.Get(record.text)) == "&" &&
 		arena_.nodes[children[0]].kind == DUMP_SUBSCRIPT_EXPRESSION;
+}
+
+bool StaticInitializerLowering::HasConstantAddress(std::uint32_t node)
+{
+	SymbolId symbol = kNoLowId;
+	std::int64_t offset = 0;
+	return node != kNoDumpEdge && !RequiresDynamicAddress(node) &&
+		ResolveConstantAddress(node, &symbol, &offset);
 }
 
 void StaticInitializerLowering::AppendZero(std::size_t bytes,
@@ -301,6 +323,8 @@ bool StaticInitializerLowering::AppendValue(TypeId type, std::uint32_t node,
 			node = found->second;
 	}
 	const DumpNode& value = arena_.nodes[node];
+	if (substitutions && value.kind == DUMP_CALL_EXPRESSION)
+		return false;
 	const LowType low_type = types_.LowerExpression(type);
 	Global::DataItem item;
 	item.type = low_type;
@@ -366,16 +390,28 @@ bool StaticInitializerLowering::AppendConstructorValue(TypeId type,
 	const NodeChildren actions = Children(body);
 	std::size_t cursor = 0;
 	bool saw_vptr = false;
+	const std::size_t item_begin = items->size();
 	for (std::size_t i = 0; i < actions.size(); ++i)
 	{
 		const DumpNode& member_action = arena_.nodes[actions[i]];
+		if (member_action.kind == DUMP_BASE_INITIALIZER_ACTION)
+		{
+			const NodeChildren values = Children(actions[i]);
+			if (values.size() != 1 ||
+				arena_.nodes[values[0]].kind != DUMP_CONSTRUCTOR_ACTION ||
+				member_action.direct_base_offset != cursor ||
+				!AppendConstructorValue(member_action.type, values[0], items, false))
+				return false;
+			cursor += program_.SizeOf(member_action.type);
+			continue;
+		}
 		if (member_action.kind == DUMP_VPTR_INITIALIZATION_ACTION)
 		{
 			const TypeRecord& object = program_.types.Get(
 				types_.ExpressionObject(member_action.type));
 			const EntityId entity = object.kind == TYPE_NAMED ?
 				object.entity : kNoEntity;
-			if (cursor != 0 || entity == kNoEntity ||
+			if (entity == kNoEntity ||
 				entity >= class_vtable_symbols_.size() ||
 				class_vtable_symbols_[entity] == kNoLowId)
 				return false;
@@ -384,9 +420,14 @@ bool StaticInitializerLowering::AppendConstructorValue(TypeId type,
 			vptr.type = LowPtr();
 			vptr.symbol = class_vtable_symbols_[entity];
 			vptr.offset = 16;
-			items->push_back(vptr);
+			if (cursor == 0) items->push_back(vptr);
+			else if (item_begin < items->size() &&
+				(*items)[item_begin].kind == Global::DataItem::ADDRESS_ITEM &&
+				(*items)[item_begin].type.kind == LOW_PTR)
+				(*items)[item_begin] = vptr;
+			else return false;
 			output_.symbols[vptr.symbol].referenced = true;
-			cursor = 8;
+			if (cursor < 8) cursor = 8;
 			saw_vptr = true;
 			continue;
 		}

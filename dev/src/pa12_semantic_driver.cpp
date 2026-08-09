@@ -43,7 +43,8 @@ void WriteSemanticTranslationUnit(const std::string& path,
 		std::chrono::steady_clock::now();
 	if (stats) *stats = SemanticAnalysisStats();
 	SyntaxStats syntax;
-	pa12_semantic_detail::SemanticAnalyzer analyzer(output, stats);
+	pa12_semantic_detail::SemanticAnalyzer analyzer(output, stats, 0, true,
+		&path, &source);
 	ConsumeSyntaxTranslationUnit(path, source, options, analyzer,
 		stats ? &syntax : 0);
 	PublishDriverStats(source, syntax, started, stats);
@@ -61,7 +62,7 @@ void ConsumeSemanticTranslationUnit(const std::string& path,
 	NullStreamBuffer sink_buffer;
 	std::ostream sink(&sink_buffer);
 	pa12_semantic_detail::SemanticAnalyzer analyzer(sink, stats,
-		&consumer, false);
+		&consumer, false, &path, &source);
 	ConsumeSyntaxTranslationUnit(path, source, options, analyzer,
 		stats ? &syntax : 0);
 	PublishDriverStats(source, syntax, started, stats);

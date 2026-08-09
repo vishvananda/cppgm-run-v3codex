@@ -33,8 +33,12 @@ protected:
 			const bool variable_initializer = under_variable.back() != 0;
 			under_variable.pop_back();
 			const DumpNode& record = derived.arena_.nodes[current];
+			const bool persistent_variable = record.kind == DUMP_VARIABLE &&
+				record.binding != kNoBinding &&
+				derived.program_.bindings[record.binding].storage_class ==
+					STORAGE_CLASS_STATIC;
 			if ((record.kind == DUMP_PARAMETER || record.kind == DUMP_VARIABLE) &&
-				record.binding != kNoBinding)
+				record.binding != kNoBinding && !persistent_variable)
 			{
 				if (record.kind == DUMP_VARIABLE && record.direct_return_slot &&
 					derived.current_indirect_result_)

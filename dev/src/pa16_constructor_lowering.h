@@ -26,11 +26,11 @@ class ConstructorActionLowering
 {
 protected:
 	void LowerConstructorAction(std::uint32_t node,
-		const Operand& destination)
+		const Operand& destination, bool force_empty = false)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		const DumpNode& action = derived.arena_.nodes[node];
-		if (action.elide_empty_constructor) return;
+		if (action.elide_empty_constructor && !force_empty) return;
 		if (action.kind != DUMP_CONSTRUCTOR_ACTION ||
 			action.binding == kNoBinding)
 			throw std::runtime_error("invalid constructor action");
@@ -124,8 +124,10 @@ protected:
 				if (derived.source_types_.IsNullptr(
 					derived.arena_.nodes[children[i]].type))
 					arguments.Push(Operand::NullPointer(expected));
-				else arguments.Push(derived.Convert(
-					derived.LowerValue(children[i]), expected));
+				else arguments.Push(derived.LowerConvertedValue(
+					children[i], expected,
+					derived.CanonicalizeInitializerImmediate(
+						children[i], expected)));
 			}
 		}
 		derived.output_.symbols[

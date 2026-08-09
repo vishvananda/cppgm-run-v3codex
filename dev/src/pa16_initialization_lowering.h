@@ -100,6 +100,20 @@ protected:
 					derived.Children(children[0])), destination);
 			return;
 		}
+		if (source.kind == DUMP_CONSTRUCTOR_ACTION)
+		{
+			derived.LowerConstructorAction(children[0], destination);
+			return;
+		}
+		if (source.kind == DUMP_BRACED_INIT_LIST)
+		{
+			if (source.value_constructor != kNoDumpEdge)
+				derived.LowerConstructorAction(
+					source.value_constructor, destination);
+			else derived.LowerRuntimeObjectValue(
+					action.type, children[0], destination);
+			return;
+		}
 		EmitClassObjectCopy(action.type,
 			LowerClassTransferSource(children[0]), destination);
 	}
@@ -169,8 +183,14 @@ protected:
 			if (derived.arena_.nodes[children[0]].kind == DUMP_CONSTRUCTOR_ACTION)
 				derived.LowerConstructorAction(children[0], destination);
 			else if (derived.arena_.nodes[children[0]].kind == DUMP_BRACED_INIT_LIST)
-				derived.LowerAggregateActions(children[0], destination, path,
+			{
+				const DumpNode& initializer = derived.arena_.nodes[children[0]];
+				if (initializer.value_constructor != kNoDumpEdge)
+					derived.LowerConstructorAction(
+						initializer.value_constructor, destination, true);
+				else derived.LowerAggregateActions(children[0], destination, path,
 					destination);
+			}
 			else if (derived.arena_.nodes[children[0]].kind ==
 				DUMP_AGGREGATE_CONSTRUCTION_ACTION)
 				derived.LowerAggregateConstructionAction(children[0], destination);

@@ -928,6 +928,34 @@ struct NamespaceObjectAction
 		  initializer(initializer_value), destructor(destructor_value) {}
 };
 
+// A block-scope static owns persistent storage independently of an invocation.
+// The source identity distinguishes repeated declarations and the function
+// identity distinguishes template specializations that share retained syntax.
+struct LocalStaticObjectAction
+{
+	BindingId object, function;
+	TypeId type;
+	std::uint32_t variable, initializer, destructor;
+	std::uint32_t token_first, token_last;
+	NameId source_file;
+	std::uint32_t source_line, source_column;
+	std::vector<NameId> source_string_literals;
+
+	LocalStaticObjectAction(BindingId object_value, BindingId function_value,
+		TypeId type_value, std::uint32_t variable_value,
+		std::uint32_t initializer_value, std::uint32_t destructor_value,
+		std::uint32_t token_first_value, std::uint32_t token_last_value,
+		NameId source_file_value, std::uint32_t source_line_value,
+		std::uint32_t source_column_value,
+		const std::vector<NameId>& source_string_literals_value)
+		: object(object_value), function(function_value), type(type_value),
+		  variable(variable_value), initializer(initializer_value),
+		  destructor(destructor_value), token_first(token_first_value),
+		  token_last(token_last_value), source_file(source_file_value),
+		  source_line(source_line_value), source_column(source_column_value),
+		  source_string_literals(source_string_literals_value) {}
+};
+
 // A lowering-only aggregate helper has a canonical typed identity but is not a
 // C++ constructor declaration and therefore never participates in lookup.
 // The explicit parameters correspond one-for-one with members; the hidden
@@ -959,6 +987,7 @@ struct SemanticGraphView
 	const Program& program;
 	const DumpArena& arena;
 	const std::vector<NamespaceObjectAction>& namespace_objects;
+	const std::vector<LocalStaticObjectAction>& local_static_objects;
 	const std::vector<AggregateHelperInfo>& aggregate_helpers;
 	const std::vector<ClassPolymorphismFacts>& class_polymorphism;
 	std::uint32_t root;
@@ -966,11 +995,13 @@ struct SemanticGraphView
 	SemanticGraphView(const Program& program_value,
 		const DumpArena& arena_value,
 		const std::vector<NamespaceObjectAction>& namespace_objects_value,
+		const std::vector<LocalStaticObjectAction>& local_static_objects_value,
 		const std::vector<AggregateHelperInfo>& aggregate_helpers_value,
 		const std::vector<ClassPolymorphismFacts>& class_polymorphism_value,
 		std::uint32_t root_value)
 		: program(program_value), arena(arena_value),
 		  namespace_objects(namespace_objects_value),
+		  local_static_objects(local_static_objects_value),
 		  aggregate_helpers(aggregate_helpers_value),
 		  class_polymorphism(class_polymorphism_value), root(root_value) {}
 };

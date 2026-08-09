@@ -2,84 +2,60 @@
 
 ## Stage Design and Spec Alignment
 
-PA21 extends the canonical PA12 graph with one typed constant layer for declaration checks,
-template arguments, `static_assert`, initialization, and LowIR demand. Tagged scalars,
-structurally interned immutable aggregate/array objects, canonical allocation-relative
-addresses, compact binding indexes, local scope facts, and block lifetimes remain
-evaluator-owned. A class expression carries both its immutable complete-object ID and the
-active subobject selected by typed base edges, together with the adjusted allocation-relative
-address. Completed calls key canonical functions, active/complete receivers, and typed
-scalar/object/address arguments; scalar, immutable object, address results, and expected
-failures are memoized at that owner. Invocation storage boundaries plus each object's
-transitive newest-local summary prevent direct or nested local addresses from escaping.
-Exception specifications keep constant-expression demand active through one typed
-contextual-bool conversion; `noexcept` consumes selected callable/lifetime facts, including
-temporary destructors, and records bounded action-walk visits without creating emission
-demand. Each canonical static constant owns one immutable typed initializer recipe and a
-deduplicated set of canonical callable dependencies. Compile-time scalar, address, and
-object consumers reuse that fact without emission; namespace definition or ODR storage
-demand alone consumes its dependency edges, and definition provenance preserves established
-out-of-class member emission. Namespace definitions reject replacement initializers.
-One semantic arrow-chain owner supplies typed pointer/object facts to every arrow consumer,
-and speculative syntax attachments use an exact rollback journal released at the parser
-boundary. Runtime ODR-use rematerializes completed facts and creates emission demand without
-replaying evaluation. This follows `spec.md` §§1–6,8–10: bounded parser checkpoints,
-canonical identity, complete cache keys, indexed lookup, demand-separated completion,
-fact-driven lowering, explicit phase ownership, and observable work.
+PA21 extends the canonical semantic graph with typed constexpr scalar/object/address
+facts, complete invocation keys, allocation-relative subobject identity, and explicit
+runtime-demand edges. Declaration checks, template arguments, `static_assert`, static
+initialization, and `noexcept` consume those facts without conflating evaluation with
+emission. This follows `spec.md` §§1–6 and 8–10: canonical identity, indexed lookup,
+phase-owned facts, bounded traversal, demand-driven completion, and fact-driven lowering.
+
+Function-local statics are declaration-owned static-duration actions, not automatic
+slots. Their flow is syntax token range -> canonical binding/function owner -> typed
+initializer/destructor fact -> global storage and optional guard -> first-use CFG. Constant
+scalars/classes/addresses use static data where representable; dynamic objects use one
+guarded initializer. Template-owned instances use weak ABI-stable source identity. The
+lowerer retains O(1) binding-to-action/storage maps and O(initializer size) action walks,
+preserving PA22+ room for richer destruction and thread-safe guard policy.
 
 ## Current Failure Map
 
-The combined report is 120/137 after adding two passing audit regressions. The same 17
-handout failures group by stable owner into function-local static classification, guards,
-and emission (12, including class-template/reference and array-reference-return probes);
-class-valued runtime/global materialization (4, including the concrete `decltype` probe
-whose qualified lookup succeeds before empty-class staging fails); and constexpr declaration
-suitability (1). Qualified static constant completion's nine owned failures and eight nearby
-probes remain passing; no failure moved or expanded during audit.
+No PA21 failures remain: 137/137 pass, improved from 120/137. The original set was grouped
+under local-static ownership/guards (12), runtime class/global materialization (4), and
+constexpr declaration suitability (1). The fixes now live at declaration, evaluator,
+demand, ABI, static-initializer, and lowering boundaries; PA16–PA20 focused regression
+reports also pass after narrowing constructor demand to empty runtime arguments and
+constexpr polymorphic bases.
 
 ## Active Checkpoint
 
-**Function-local static storage and guards (next substantial checkpoint).** Classify local
-`static` declarations as static-duration objects rather than automatic slots, complete each
-constant or dynamic scalar, reference, class, and array initializer once, and lower one
-storage symbol plus one guard per dynamic object across ordinary, template, nested, and
-local-class functions.
-
-Requirements: PA21's constant-initialization and first-use contract plus `spec.md` §§2–6,8–9
-require canonical binding/storage identity, declaration-owned initializer facts, explicit
-demand, fact-driven lowering, and bounded phase-local indexes. Owner/data flow: local
-declaration -> canonical static binding and typed initializer -> function demand -> global
-storage/optional guard -> first-use control-flow action -> ordinary expression access.
-Expected work is O(initializer elements + guard actions) per demanded declaration with O(1)
-binding-to-storage access and no function-wide rescans. Validate all 12 owned failures,
-nearby automatic/local-template families, PA1–20, full PA21, file audit, and repeated-use/
-array-width scaling.
+**Final verification and handoff.** The implementation checkpoint is complete. Validation
+is the exact PA21 report, PA1–20 through-report, PA21 file audit, diff hygiene, and a clean
+cohesive commit. Expected validation work is linear in test count; no semantic rescans are
+introduced.
 
 ## Performance Evidence
 
-For 16/32/64/128-element ODR-used static constexpr class arrays, semantic nodes were
-92/156/284/540 and initializer visits were 33/65/129/257 (`2N + 1`). Each width retained one
-canonical dependency edge; demand pushes (2), demanded function emissions (1), globals (1),
-and LowIR instructions (20) stayed fixed. Typed storage grew linearly at
-8,364/9,260/11,052/14,636 bytes.
-
-For 1/2/4/8 compile-time-only uses of one scalar static member, semantic nodes were
-11/14/20/32 while initializer visits (1), constexpr call requests (1), typed storage (1,735
-bytes), and LowIR instructions (1) stayed fixed. Dependency edges, demand pushes, and
-demanded function emissions all remained zero. Repeated constant lookup therefore reuses
-the canonical initializer fact without graph replay or helper emission.
+- Dynamic local-static arrays of width 16/32/64/128 produced 67/99/163/291 LowIR lines,
+  exactly `2N + 35`; peak RSS stayed 5,944/5,864/5,936/5,956 KiB. This confirms linear
+  element lowering with fixed guard/control overhead.
+- Earlier ODR-used static constexpr class arrays at width 16/32/64/128 used 33/65/129/257
+  initializer visits (`2N + 1`), one dependency edge, two demand pushes, one emitted
+  function, and one global.
+- Reusing one compile-time-only static constant 1/2/4/8 times kept initializer visits and
+  call requests at one, with zero dependency demand or helper emission.
 
 ## Completed Checkpoints
 
 | Checkpoint | Result | Validation |
 | --- | --- | --- |
-| Integral scalar invocation and demand | Recursive/defaulted/template-pack calls, locals, scoped type/using overlays, branches, loops, local mutation, demand folding, scalar declaration checks; ownership audit repaired canonical-graph leakage | PA1–20 2,185/2,185; all 41/129 handout passes plus audit regression; file audit pass; fixed canonical graph and linear scaling above |
-| Tagged floating scalar widening | Target-rounded literals/conversions, mixed signed/unsigned arithmetic and comparison, floating locals/free calls, binding publication, typed call keys/results, and canonical LowIR literals | PA21 42→49/130; PA1–20 2,185/2,185; file audit pass; fixed canonical graph and linear scaling above |
-| Immutable aggregate/array values | Structural interning, zero/nested/string initialization, binding/local publication, direct projection, ODR-use rematerialization, canonical bool identities, and multidimensional strides | PA21 49→56/130; PA1–20 2,185/2,185; file audit pass; linear 32–256 element scaling above |
-| Constructor/member invocation | Dump-node object facts, constructor argument frames, member-initializer execution, immutable receiver calls, default class initialization, scalar-member suitability checks, and runtime/static materialization boundaries | PA21 56→67/130; PA1–20 2,185/2,185; file audit pass; linear 16–128 field scaling above |
-| Canonical addresses and indirect calls | Allocation-relative null/binding/local/string/function identities, lvalue/reference transport, subobject bounds, pointer walking/comparison/truth, address-returning calls, indirect function calls, and expanded-pack array completion | PA21 67→76/130; PA1–20 2,185/2,185; file audit pass; linear 32–256 pointer-walk scaling above |
-| Class-valued calls and conversions | Object IDs through returns/calls, converting-constructor argument facts, temporary allocation identity, constexpr hidden-friend facts, compile-time/runtime demand separation; audit added complete typed result keys and transitive invocation-storage escape checks | PA21 76→79/130 preserved and audit regression passes for 80/131; aggregate return/NTTP, hidden-friend, reference-conversion, and dangling-object probes pass; PA1–20 2,185/2,185; file audit pass; bounded width and repeated-call scaling above |
-| Base-subobject completion | Ordered direct-base facts after direct members, base/member/delegating initialization, active/complete object transport with adjusted addresses through receivers/references/cache facts, and initializer-local demand/slot boundaries; audit repaired repeated-base ambiguity and inherited-base ownership | PA21 handout 80/131→87/132 preserved, audit regression passes for 88/133; eight focused base/delegation tests pass; PA1–20 2,185/2,185; file audit pass; linear depth scaling above |
-| Callable and contextual conversions | Local-callable shadowing, call operators/surrogates, one recursive-arrow owner, overloaded unary/binary/subscript/assignment/logical operators, semantic class-expression initialization, user/return conversions, complete cached scalar/reference/pointer/object results, template cv partial ordering, exact parser rollback, and compile-time/runtime demand separation | PA21 handout 88→100/133 preserved, audit regression passes for 101/134; PA1–20 2,185/2,185; file audit pass; repeated call/address and parser scaling above |
-| Canonical exception and `noexcept` facts | Unevaluated fold-suppressed operands consume selected canonical call/constructor/lifetime facts; dependent specifications complete per specialization; audit unified contextual-bool conversion, compile-time-only demand, temporary destruction, and action observability | PA21 101→108/134 preserved, audit regression passes for 109/135; owned probes 8/8; PA1–20 2,185/2,185; file audit pass; linear action/specialization scaling above |
-| Qualified static constant storage | Canonical incomplete-array redeclarations; typed scalar/object/address facts; ODR-demanded storage; constructor/reference rematerialization; qualified `sizeof`/NTTP use; typed wide literals; audit unified constant-required recipes, canonical O(1)-deduplicated dependency ownership, definition validation, demand provenance, and counters | PA21 109→118/135 preserved, audit regressions pass for 120/137; owned probes 9/9 and nearby probes 8/8; PA1–20 2,185/2,185; file audit pass; linear initializer traversal and constant repeated-use work above |
+| Integral scalar invocation | Recursive/defaulted/template calls, locals, mutation, control flow, declaration checks, canonical demand | PA1–20 clean; PA21 41/129 baseline family; linear scaling |
+| Floating scalar widening | Typed literals/conversions, mixed arithmetic, typed call keys/results | PA21 42→49/130; prior stages and audit clean |
+| Aggregate/array values | Structural interning, nested/string init, projection, ODR rematerialization | PA21 49→56/130; linear element scaling |
+| Constructor/member invocation | Constructor frames, member initializers, receiver calls, runtime/static boundaries | PA21 56→67/130; linear field scaling |
+| Canonical addresses/calls | Binding/local/string/function addresses, pointer operations, indirect calls | PA21 67→76/130; linear pointer-walk scaling |
+| Class-valued conversions | Object return/call facts, temporary identity, demand separation, escape checks | PA21 76→80/131; bounded repeated-call work |
+| Base-subobject completion | Ordered base facts, adjusted receiver/address identity, delegated/base initialization | PA21 80→88/133; linear inheritance-depth scaling |
+| Callable/contextual conversion | Call operators, overloaded operators, arrow chains, parser rollback, cv ordering | PA21 88→101/134; bounded lookup/parser work |
+| `noexcept` facts | Fold-suppressed selected calls/lifetimes, contextual bool, dependent specialization | PA21 101→109/135; linear action walks |
+| Qualified static constants | Canonical recipes, ODR storage demand, typed rematerialization and dependency ownership | PA21 109→120/137; fixed repeated-use work |
+| Local statics and final boundaries | Static-duration actions, guards, weak template identity, class/reference/array init, literal-type checks, vptr and empty-value materialization | PA21 120→137/137; PA16–PA20 focused reports and file audit clean |

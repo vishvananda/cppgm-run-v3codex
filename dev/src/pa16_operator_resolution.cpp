@@ -1135,6 +1135,31 @@ ExpressionInfo SemanticAnalyzer::ApplyCallArgument(
 		value.type = target_object;
 		value.category = VALUE_PRVALUE;
 		dump_.nodes[value.node].class_argument_staging = true;
+		std::vector<std::uint32_t> pending(1, value.node);
+		while (!pending.empty())
+		{
+			const std::uint32_t current = pending.back();
+			pending.pop_back();
+			DumpNode& action = dump_.nodes[current];
+			if (action.kind == DUMP_CONSTRUCTOR_ACTION)
+			{
+				const EntityId action_entity = EntityOf(action.operand_type);
+				if (action_entity != kNoEntity &&
+					program_->entities[action_entity].empty_class &&
+					constant_expression_required_depth_ == 0 &&
+					(action.elide_empty_constructor || action.value_initialization))
+				{
+					action.elide_empty_constructor = false;
+					if (action.binding != kNoBinding)
+						DemandFunction(action.binding);
+				}
+			}
+			for (std::uint32_t edge = action.first_edge;
+				edge != kNoDumpEdge; edge = dump_.edges[edge].next)
+				pending.push_back(dump_.edges[edge].child);
+			if (action.value_constructor != kNoDumpEdge)
+				pending.push_back(action.value_constructor);
+		}
 		return value;
 	}
 	if ((target_top.kind == TYPE_LVALUE_REFERENCE ||

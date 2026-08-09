@@ -99,16 +99,63 @@ public:
 		return id;
 	}
 
+	bool FunctionTemplateParameter(pa11::TypeId type,
+		const pa11::BindingRecord* function, std::size_t* index) const
+	{
+		using namespace pa11;
+		if (!function || function->template_argument_count == 0) return false;
+		const std::size_t first = function->template_argument_begin;
+		if (first > program_.template_arguments.size() ||
+			function->template_argument_count >
+				program_.template_arguments.size() - first)
+			throw std::logic_error("function template ABI argument range is invalid");
+		for (std::size_t i = 0; i < function->template_argument_count; ++i)
+		{
+			const std::size_t argument = first + i;
+			if (argument < program_.canonical_template_arguments.size() &&
+				program_.canonical_template_arguments[argument].kind !=
+					TEMPLATE_ARGUMENT_TYPE)
+				continue;
+			if (program_.template_arguments[argument] == type)
+			{
+				*index = i;
+				return true;
+			}
+		}
+		return false;
+	}
+
 	abi_mangle::AbiType MakeType(pa11::TypeId type)
+	{
+		return MakeType(type, 0);
+	}
+
+	abi_mangle::AbiType MakeFunctionTemplateType(pa11::TypeId type,
+		const pa11::BindingRecord& function)
+	{
+		return MakeType(type, &function);
+	}
+
+	abi_mangle::AbiType MakeType(pa11::TypeId type,
+		const pa11::BindingRecord* function)
 	{
 		using namespace abi_mangle;
 		using namespace pa11;
 		std::vector<AbiTypeModifier> modifiers;
 		const TypeRecord* record = &program_.types.Get(type);
+		std::size_t template_parameter = 0;
 		while (record->kind == TYPE_QUALIFIED || record->kind == TYPE_POINTER ||
 			record->kind == TYPE_LVALUE_REFERENCE ||
 			record->kind == TYPE_RVALUE_REFERENCE || record->kind == TYPE_ARRAY)
 		{
+			if (FunctionTemplateParameter(type, function, &template_parameter))
+			{
+				AbiType result;
+				result.kind = ABI_TYPE_TEMPLATE_PARAMETER;
+				result.index = template_parameter;
+				result.modifiers.swap(modifiers);
+				return result;
+			}
 			AbiTypeModifier modifier;
 			if (record->kind == TYPE_QUALIFIED)
 			{
@@ -131,13 +178,19 @@ public:
 		}
 		AbiType result;
 		result.modifiers.swap(modifiers);
+		if (FunctionTemplateParameter(type, function, &template_parameter))
+		{
+			result.kind = ABI_TYPE_TEMPLATE_PARAMETER;
+			result.index = template_parameter;
+			return result;
+		}
 		if (record->kind == TYPE_FUNCTION)
 		{
 			result.kind = ABI_TYPE_FUNCTION;
-			result.types.push_back(MakeType(record->child));
+			result.types.push_back(MakeType(record->child, function));
 			const TypeId* parameters = program_.types.Parameters(type);
 			for (std::size_t i = 0; i < record->parameter_count; ++i)
-				result.types.push_back(MakeType(parameters[i]));
+				result.types.push_back(MakeType(parameters[i], function));
 			result.variadic = record->variadic;
 			return result;
 		}
@@ -451,7 +504,8 @@ std::string MangleFunction(const pa11::Program& program,
 		AbiFactRecord result;
 		result.set_kind(ABI_FACT_RECORD_FUNCTION);
 		result.function.kind = ABI_FUNCTION_RECORD_RESULT;
-		result.function.type = facts.MakeType(function_type.child);
+		result.function.type = facts.MakeFunctionTemplateType(
+			function_type.child, binding);
 		file.cases[0].records.push_back(result);
 	}
 	const bool member = binding.member_owner != kNoEntity &&
@@ -537,7 +591,8 @@ std::string MangleFunction(const pa11::Program& program,
 		AbiFactRecord parameter;
 		parameter.set_kind(ABI_FACT_RECORD_FUNCTION);
 		parameter.function.kind = ABI_FUNCTION_RECORD_PARAMETER;
-		parameter.function.type = facts.MakeType(parameters[i]);
+		parameter.function.type = facts.MakeFunctionTemplateType(
+			parameters[i], binding);
 		file.cases[0].records.push_back(parameter);
 	}
 	if (function_type.variadic)

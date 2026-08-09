@@ -2794,6 +2794,7 @@ NodeId Parser::ParseSimpleOrFunction(bool, bool)
 	std::vector<std::string> names;
 	while (true)
 	{
+		const std::size_t item_first = position_;
 		const NodeId item = arena_.Make("init-declarator");
 		std::string name;
 		const NodeId declarator = ParseDeclarator(false, &name);
@@ -2824,6 +2825,7 @@ NodeId Parser::ParseSimpleOrFunction(bool, bool)
 		const NodeId initializer = ParseInitializer();
 		if (initializer != kNoNode) arena_.Add(item, initializer);
 		SkipAttributes();
+		arena_.SetTokenRange(item, item_first, position_);
 		arena_.Add(list, item);
 		if (!Match(OP_COMMA)) break;
 	}

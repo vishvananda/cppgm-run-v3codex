@@ -80,8 +80,10 @@ protected:
 		const pa11::EntityRecord& entity =
 			derived.program_.entities[object.entity];
 		const std::size_t size = derived.program_.SizeOf(object_type);
-		return size > 16 ||
-			(size < 16 && entity.indirect_class_value_abi);
+		const bool dependent_empty_value = entity.empty_class &&
+			entity.template_argument_count != 0;
+		return !dependent_empty_value && (size > 16 ||
+			(size < 16 && entity.indirect_class_value_abi));
 	}
 
 	bool UsesIndirectClassParameter(pa11::TypeId type) const

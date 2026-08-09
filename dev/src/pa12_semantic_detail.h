@@ -28,9 +28,11 @@ class SemanticAnalyzer : public SyntaxTreeConsumer
 {
 public:
 	SemanticAnalyzer(std::ostream& output, SemanticAnalysisStats* stats,
-		SemanticGraphConsumer* graph_consumer = 0, bool render_output = true)
+		SemanticGraphConsumer* graph_consumer = 0, bool render_output = true,
+		const std::string* source_path = 0, const std::string* source_text = 0)
 		: arena_(0), output_(output), stats_(stats), program_(0),
 		  graph_consumer_(graph_consumer), render_output_(render_output),
+		  source_path_(source_path), source_text_(source_text),
 		  root_(kNoDumpEdge),
 		  function_template_dependent_result_shape_(kNoType),
 		  current_language_linkage_(LANGUAGE_LINKAGE_CPP),
@@ -534,6 +536,7 @@ private:
 	TypeId ResolveFunctionalCastType(ScopeId scope,
 		const std::string& spelling, NodeId syntax = kNoNode);
 	bool IsClassObjectType(TypeId type) const;
+	bool IsConstexprLiteralType(TypeId type) const;
 	BindingId EnsureBuiltinFunction(BuiltinFunctionKind kind);
 	bool AnalyzeBuiltinCall(const std::string& spelling, ScopeId scope,
 		const std::vector<NodeId>& argument_syntax, TypeId target,
@@ -816,6 +819,14 @@ private:
 		std::uint32_t output_parent);
 	void AddNamespaceObjectAction(std::uint32_t variable, BindingId object,
 		TypeId type, std::uint32_t initializer);
+	void AddLocalStaticObjectAction(std::uint32_t variable, BindingId object,
+		TypeId type, std::uint32_t initializer, NodeId syntax);
+	void FindLocalStaticSource(NameId name, std::uint32_t* line,
+		std::uint32_t* column) const;
+	void RegisterVariableLifetimeAndStorage(ScopeId scope, bool local,
+		bool declaration_only, std::uint32_t variable, BindingId object,
+		TypeId type, NodeId syntax);
+	void DemandRuntimeInitializerFunctions(std::uint32_t initializer);
 	void AppendScopeDestructionActions(ScopeId scope,
 		std::uint32_t output_parent, ScopeId stop_exclusive = kNoScope);
 	std::uint32_t MakeDestructorAction(TypeId type, BindingId destructor,
@@ -983,6 +994,8 @@ private:
 	Program* program_;
 	SemanticGraphConsumer* graph_consumer_;
 	bool render_output_;
+	const std::string* source_path_;
+	const std::string* source_text_;
 	DumpArena dump_;
 	std::vector<std::uint32_t> string_literal_units_;
 	std::uint32_t root_;
@@ -1070,6 +1083,7 @@ private:
 	std::vector<std::vector<LifetimeObligation> > scope_lifetimes_;
 	std::vector<ScopeId> nearest_lifetime_scopes_;
 	std::vector<NamespaceObjectAction> namespace_objects_;
+	std::vector<LocalStaticObjectAction> local_static_objects_;
 	std::vector<AggregateHelperInfo> aggregate_helpers_;
 	FunctionSignatureTable aggregate_helper_index_;
 	std::vector<ScopeId> break_cleanup_stops_;

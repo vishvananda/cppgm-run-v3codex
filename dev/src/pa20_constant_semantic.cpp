@@ -387,6 +387,16 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 	{
 		ExpressionInfo result = AnalyzeBracedInit(
 			arguments_node, scope, cast_type);
+		if (program_->entities[cast_entity].empty_class &&
+			dump_.nodes[result.node].kind == DUMP_BRACED_INIT_LIST)
+		{
+			const std::vector<NodeId> no_arguments;
+			const std::uint32_t constructor = BuildConstructorAction(
+				cast_type, scope, no_arguments, false, false, false, false);
+			dump_.nodes[constructor].value_initialization = true;
+			dump_.nodes[result.node].value_initialization = true;
+			dump_.nodes[result.node].value_constructor = constructor;
+		}
 		if (target == kNoType)
 		{
 			result.node = BuildAggregateConstructionAction(

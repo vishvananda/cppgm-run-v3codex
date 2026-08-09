@@ -6,6 +6,7 @@
 #include "pa15_source_type_lowering.h"
 
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -32,7 +33,10 @@ public:
 		bool thread_local_object, pa15_lowir_detail::Global* global,
 		bool* needs_global_class_initializer);
 	void SetZero(pa11::TypeId type, pa15_lowir_detail::Global* global);
+	bool HasConstantAddress(std::uint32_t node);
 	pa15_lowir_detail::SymbolId EnsureStringLiteral(std::uint32_t node);
+	pa15_lowir_detail::SymbolId EnsureStringLiteralSpelling(
+		const std::string& spelling);
 
 private:
 	pa15_lowering_support::NodeChildren Children(std::uint32_t node) const;

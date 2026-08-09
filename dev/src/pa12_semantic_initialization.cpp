@@ -355,8 +355,10 @@ void SemanticAnalyzer::FinalizeNamedReturnSlot(std::uint32_t function)
 	if (!IsClassEntity(*program_, entity)) return;
 	const EntityRecord& class_record = program_->entities[entity];
 	const std::size_t size = program_->SizeOf(result);
-	const bool indirect = size > 16 ||
-		(size < 16 && class_record.indirect_class_value_abi);
+	const bool dependent_empty_value = class_record.empty_class &&
+		class_record.template_argument_count != 0;
+	const bool indirect = !dependent_empty_value && (size > 16 ||
+		(size < 16 && class_record.indirect_class_value_abi));
 
 	std::vector<std::uint32_t> pending(1, function);
 	std::vector<std::uint32_t> return_edges;
@@ -1378,16 +1380,22 @@ void SemanticAnalyzer::AddBaseInitializationAction(EntityId entity,
 	const std::uint32_t constructor = BuildConstructorAction(base_type,
 		scope, arguments, false, list_initialization, true, true,
 		list_initialization ? initializer : kNoNode);
-	if (!pack_expanded && initializer != kNoNode && !arguments.empty() &&
-		dump_.nodes[constructor].kind == DUMP_CONSTRUCTOR_ACTION &&
+	if (dump_.nodes[constructor].kind == DUMP_CONSTRUCTOR_ACTION &&
 		dump_.nodes[constructor].binding != kNoBinding)
 	{
 		const FunctionInfo& selected =
 			GetFunction(dump_.nodes[constructor].binding);
 		const EntityId selected_owner =
 			program_->bindings[selected.binding].member_owner;
-		if (IsClassTemplateSpecializationEntity(selected_owner) &&
-			!selected.implicit_constructor && !selected.defaulted_constructor)
+		const bool demanded_template_base = !pack_expanded &&
+			initializer != kNoNode && !arguments.empty() &&
+			IsClassTemplateSpecializationEntity(selected_owner);
+		const bool demanded_constexpr_vptr_base =
+			selected_owner != kNoEntity && selected.constexpr_function &&
+			program_->entities[selected_owner].polymorphic_class;
+		if ((demanded_template_base || demanded_constexpr_vptr_base) &&
+			!selected.implicit_constructor && !selected.defaulted_constructor &&
+			selected.complete_constructor != kNoBinding)
 			DemandFunction(selected.complete_constructor);
 	}
 	dump_.Add(action, constructor);
@@ -2552,7 +2560,9 @@ std::uint32_t SemanticAnalyzer::MakeTemporaryDestructorAction(
 	if (!CanAccessMember(destructor, entity))
 		throw std::runtime_error("inaccessible temporary destructor");
 	if (program_->entities[entity].trivial_destructor) return kNoDumpEdge;
-	if (IsElidableAutomaticDestructor(destructor) &&
+	const bool dependent_template_object =
+		program_->entities[entity].template_argument_count != 0;
+	if (!dependent_template_object && IsElidableAutomaticDestructor(destructor) &&
 		!dump_.nodes[temporary].control_dependent_temporary)
 		return kNoDumpEdge;
 	const std::uint32_t action = MakeDestructorAction(
