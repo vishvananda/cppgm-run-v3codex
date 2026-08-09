@@ -183,6 +183,10 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 	for (std::size_t i = 0; i < function_templates_.size(); ++i)
 		bytes += function_templates_[i].parameters.capacity() *
 				sizeof(TemplateParameter) +
+			function_templates_[i].function_parameter_names.capacity() *
+				sizeof(NameId) +
+			function_templates_[i].function_parameter_defaults.capacity() *
+				sizeof(NodeId) +
 			function_templates_[i].specialization_bindings.capacity() *
 				sizeof(BindingId) +
 			function_templates_[i].specialization_arguments.capacity() *

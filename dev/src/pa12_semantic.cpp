@@ -1060,6 +1060,7 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 		parameters.assign(parameter_data,
 			parameter_data + function_type.parameter_count);
 	const TypeId result_type = function_type.child;
+	EnsureClassDefinition(result_type);
 	const TypeRecord returned = program_->types.Get(result_type);
 	const ValueCategory category = returned.kind == TYPE_LVALUE_REFERENCE ?
 		VALUE_LVALUE : returned.kind == TYPE_RVALUE_REFERENCE ?

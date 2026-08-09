@@ -386,6 +386,7 @@ CallConversionFact SemanticAnalyzer::ConvertingConstructor(
 		target = top.child;
 	}
 	target = program_->types.RemoveTopCv(target);
+	EnsureClassDefinition(target);
 	const TypeRecord object = program_->types.Get(target);
 	if (object.kind != TYPE_NAMED) return result;
 	const NamedFlavor flavor = program_->entities[object.entity].flavor;

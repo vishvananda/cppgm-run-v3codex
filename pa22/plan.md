@@ -4,140 +4,71 @@
 
 PA22 extends the existing typed path
 `SyntaxArena -> Program/SemanticAnalyzer -> SemanticGraphView -> GraphLowerer -> LowIR`.
-Template primaries own indexed partial-pattern sequences, each retained pattern owns
-one memoized canonical typed shape, and the canonical specialization table owns
-identity. A specialization binding stores the selected declaration index, declaration
-revision, and fixed/pack substitution overlay until completion; a later equivalent
-definition refreshes only that overlay. Pack expansion is part of canonical argument
-identity. Semantic lookup uses an internal specialization slot while source-oriented
-emission remains a separate policy, including local-type context.
+Canonical class/function/alias specialization tables own identity; retained patterns
+own lexical syntax and indexed declaration state; selection, completion, semantic
+use, demand, and source-oriented emission remain separate monotonic states. Member,
+friend, nested, primary, partial, and explicit definitions route through stable owner
+and pattern ordinals rather than textual keys.
 
-Function-template patterns have stable deque/index identity. Declaration equivalence
-includes template-parameter kind and pack shape, canonical non-dependent value type,
-and declaration-time structural comparison of dependent value-parameter syntax with
-parameter names normalized to ordinals. A call derives template specializations from
-the indexed visible patterns and its current arguments; previously materialized
-specializations are cache results, not independent lookup candidates.
+Function-template patterns now retain ordinary, constructor, and conversion roles
+explicitly. Declaration-side function-parameter names/defaults survive an
+out-of-class definition and map through trailing parameter-pack expansion before a
+specialization is declared. Class-valued call results and conversion targets are
+completed only when overload/conversion use demands their members; canonical shells
+remain memoized and incomplete until that boundary.
 
-Alias templates now own retained lexical patterns and typed specialization caches.
-Template-template arguments carry canonical template-marker identity; dependent
-partial patterns use non-completing proxy specializations only as typed deduction
-shapes, then bind the selected concrete template entity for ordinary completion.
-Explicit function and class instantiations share canonical specialization bindings.
-Binding-level suppression controls extern-template emission without changing the
-owned definition, while indexed declaration/definition states reject duplicate
-ownership and allow a later definition to monotonically release suppression.
-Friend templates retain lexical class scope separately from their canonical
-namespace/member-template owner. Indexed entity/name ADL edges and monotonic
-class/function grant sets connect each declaring specialization to cached and future
-friend specializations without publishing hidden names to ordinary lookup.
-Retained class-member definitions also record whether their canonical owner is the
-primary or one exact partial-pattern ordinal. Replay compares that stable identity
-with the specialization's selected pattern before substitution. Qualified type and
-template carriers preserve their naming-class binding and access provenance.
-Dependent nested owner components retain indexed names plus argument syntax until
-their enclosing specialization is concrete; replay then materializes canonical
-arguments and transfers the remaining pattern to the indexed nested template owner.
-Semantic owner scope and source/substitution overlays remain separate, and terminal
-function-template IDs resolve through the concrete structured carrier.
-Concrete retained member definitions additionally store one exact specialization
-binding. Their replay is routed directly to that owner, and a first explicit member
-template definition replaces the primary-instantiated pattern in place while a
-second is rejected. Explicit class specialization publishes its canonical shell,
-arguments, and primary identity before member analysis. Eager implementation-only
-completion can be reset in place until a separate semantic-use bit is set, preserving
-pointer/typedef identity without admitting specialization after actual use.
-
-This stage applies `spec.md` §§2–6, 8–10: canonical specialization identity,
-indexed lookup, separate retained-pattern/selection/completion state, memoized demand,
-typed lowering, bounded temporary ownership, explicit work counters, and no textual
-semantic keys or external compiler fallback. Partial selection may inspect ordinary
-incomplete class arguments, but layout and completion remain deferred. PA23
-deduction/SFINAE and §7 object-backend work remain outside this LowIR stage.
+This follows `spec.md` §§2–6, 8–10: canonical typed identity, indexed/provenance-aware
+lookup, retained substitution scope, demand-driven completion, typed lowering,
+bounded side storage, and observable work counters. It adds no PA23 SFINAE behavior
+and does not pull in the §7 object backend.
 
 ## Current Failure Map
 
-Current result: **240/310**. The remaining 70 failures group by exclusive primary
-owner: member/friend ownership, lookup, and access 34; alias/template-template/pack
-integration 20; explicit specialization and instantiation integration 4;
-dependent lookup, deduction, conversion, and lowering 10; residual partial
+Current result: **245/310**. The remaining 65 failures have one primary owner each:
+member/friend callable ownership, body replay, lookup, and access 29;
+alias/template-template/pack integration 20; dependent deduction, conversion, and
+lowering 10; explicit specialization/instantiation integration 4; residual partial
 ordering/replay 2.
 
 ## Active Checkpoint
 
-**Member-template overload identity and active-owner lookup.** Owner: each concrete
-class specialization's member scope owns the indexed template overload family, while
-retained declarations keep lexical substitution scope separately. Data flow:
-in-class declaration/out-of-class definition -> canonical cv/ref/operator and
-template-head shape -> owner-local overload match -> using/base/active-owner lookup ->
-deduction, demand, and typed emission. Apply `spec.md` §§2–6 and 9: identity must be
-structural, lookup must remain indexed and provenance-preserving, and lowering must
-consume only the selected binding. Expected work is O(owner depth + named overloads +
-argument conversions), with no unrelated-member scan. Validate overloaded and const
-member templates, operators, using-imported members, dependent defaults, renamed
-owner parameters, PA22, through PA21, audit, and overload-family scaling probes.
+**Dependent callable replay and lookup provenance.** Owner: each instantiated
+function owns one lexical template-argument overlay, while its concrete member owner
+and naming class own access and indexed candidate lookup. Data flow: retained body ->
+specialization lexical scope -> dependent member/unqualified name replay -> indexed
+member/base/using and ADL edges -> overload selection -> demand and typed emission.
+Apply `spec.md` §§3–6 and 9: preserve naming-class and ordinary-vs-ADL provenance,
+defer bodies past open classes, and cache replay per specialization. Expected work is
+O(body nodes + owner depth + visited name/ADL edges + viable candidates), with no
+unrelated-template scan. Validate open-class body deferral, local-using plus ADL,
+dependent base/super calls, using-imported members, nested member templates, PA22,
+through PA21, audit, and 16/32/64 indexed-owner probes.
 
 ## Performance Evidence
 
-Five-run medians after materializing 16/32/64 unrelated concrete owners and then
-replacing one exact member-template definition are 2.455/4.298/8.087 ms semantic
-time and 0.421/0.821/1.623 MB peak stage storage. Specialization requests are
-42/74/138, while cache hits stay 7/7/7 and overload candidates, demand pushes, and
-emissions stay 1/1/1. Construction scales linearly, but exact replacement work is
-constant and does not scan the unrelated owner set.
+Five-run medians for 16/32/64 independent calls whose result specialization is
+initially blocked by its open class owner are 3.818/7.596/14.498 ms semantic time and
+0.904/1.799/3.588 MB peak stage storage. Layouts are 32/64/128, specialization
+requests 144/288/576, cache hits 112/224/448, overload candidates 272/544/1088, and
+demand pushes/emissions 48/96/192. Time, storage, and every representative counter
+scale linearly; result/target completion revisits only the demanded canonical shell.
 
-Five-run medians on the audited path for 16/32/64 concrete class specializations
-sharing one retained out-of-class member template are 3.02/5.55/10.78 ms semantic
-time and 0.53/1.05/2.10 MiB peak semantic storage. Specialization requests are
-80/160/320, cache hits 48/96/192, overload candidates 32/64/128, and demand pushes
-and emitted functions are each 16/32/64. Time, storage, and every work counter scale
-linearly; call filtering visits the selected member set and does not scan unrelated
-templates. Earlier partial-family evidence remains 1.269/2.272/4.313 ms for
-8/16/32 patterns with the expected O(k*s) related-candidate work.
-
-Five-run medians for 16/32/64 recursively demanded class uses of one alias pattern
-are 2.218/3.867/7.453 ms semantic time and 0.503/0.834/1.636 MB peak stage storage.
-Specialization requests are 66/130/258, cache hits 17/33/65, layouts 33/65/129,
-and lookup queries 523/1019/2011. Every work counter and storage scale linearly;
-the typed alias cache adds no unrelated-template scan.
-
-Five-run medians for 16/32/64 explicit function-instantiation definitions are
-0.577/0.986/1.658 ms semantic time and 0.108/0.209/0.411 MB peak stage storage.
-Specialization requests and demand pushes/emissions are exactly 16/32/64; lookup
-queries are 117/229/453 and conversion checks 33/65/129. Time, storage, and all
-representative work counters scale linearly with the related definition set.
-
-Five-run medians with 16/32/64 differently named hidden friend templates and one
-selected ADL call are 1.178/1.779/3.329 ms semantic time and 0.161/0.295/0.564 MB
-peak stage storage. Associated scope/declaration visits and specialization requests
-remain exactly 1/1/1 at every size; demand pushes/emissions remain 3/1, while lookup
-queries grow only 76/108/172 with source declarations. The entity/name edge excludes
-all unrelated friend patterns and total construction cost scales linearly.
-
-Five-run medians for exact out-of-class ownership over 16/32/64 partial patterns are
-0.967/1.601/2.989 ms semantic time and 0.136/0.223/0.432 MB peak stage storage.
-Related candidates are 16/32/64. Deduction visits are 160/568/2152: the new exact
-owner scan is O(P * owner arity), while the complete probe exposes the pre-existing
-all-pairs partial-registration cost. Storage and observed time remain near-linear at
-these sizes; the quadratic deduction counter is retained as a later optimization
-target rather than hidden by the checkpoint.
-
-Five-run medians for one late nested definition routed into 16/32/64 pre-existing
-outer/inner specialization pairs are 17.73/36.78/74.19 ms semantic time and
-1.260/2.485/4.945 MB peak stage storage. Specialization requests are 198/390/774,
-cache hits 132/260/516, lookup queries 1919/3791/7535, and demand pushes/emissions
-33/65/129. Every counter, time, and storage scales linearly; each transfer visits only
-the concrete outer pattern and its directly owned nested specialization sequence.
+Earlier audited 16/32/64 probes likewise showed linear retained-member, alias,
+explicit-instantiation, hidden-friend, exact-owner, and nested-owner construction.
+Exact explicit-member replacement kept selected candidates, demand, and emission
+constant as unrelated concrete owners grew; the known all-pairs partial-registration
+deduction counter remains a later optimization target.
 
 ## Completed Checkpoints
 
 | Checkpoint | Result |
 |---|---|
-| `5d70a120` + `26eafabe` canonical partial selection and ownership audit | Retained selected owner/revision/substitution, canonical pack identity, deterministic replay/emission separation, and work counters; PA22 82 -> 112/309, prior 2329/2329. |
-| `da807b9f` member-template attachment plus checkpoint audit | Stable owner-pattern replay; indexed member calls; static/constructor and late definitions; canonical template-head identity; no stale specialization candidates. Landed PA22 112 -> 144/309, audit corpus 145/310, prior 2329/2329. |
-| `b0f34797` canonical alias/template entity graph | Retained alias patterns, typed cached substitution, template-template shape/identity matching, proxy partial deduction, defaults/packs, ADL ownership, and nested parameter parsing; PA22 145 -> 192/310 with no regressions, prior 2329/2329, audit pass. |
-| `88ab9ab1` explicit specialization/instantiation ownership | Canonical function target selection, extern suppression, definition demand/root state, class redeclaration transitions, and primary-body replacement; PA22 192 -> 208/310 with 16 gains and no regressions, prior 2329/2329, audit pass; linear scaling evidence above. |
-| `03b7bf00` friend-template ownership and grant propagation | Canonical namespace/member owners, indexed hidden ADL edges, cached/future specialization grants, dependent friend type-ids, and protected access context; PA22 208 -> 221/310 with 13 gains and no regressions, prior 2329/2329, audit pass; constant unrelated-friend candidate work above. |
-| `403c1ff5` partial-member owner identity and naming-class access | Exact primary/partial owner validation and replay, member-template access provenance, and intermediate qualified-carrier checks; PA22 221 -> 229/310 with eight gains and no regressions, prior 2329/2329, audit pass; scaling evidence above. |
-| `c52d6734` nested template-id owner routing | Staged canonical transfer through concrete nested patterns, owner-aware lexical overlays, retained-local validation, and structured terminal function-template lookup; PA22 229 -> 234/310 with five gains and no regressions, prior 2329/2329, audit pass; linear scaling evidence above. |
-| Concrete explicit-member replacement and specialization refresh | Exact owner routing, primary-body replacement, canonical shell reset before semantic use, structured ordinary/special-member owners, and explicit-specialization publication; PA22 234 -> 240/310 with six gains and no regressions, prior 2329/2329, audit pass; constant unrelated-owner work above. |
+| `5d70a120` + `26eafabe` canonical partial selection | Stable owner/revision/substitution and pack identity; PA22 82 -> 112, prior 2329/2329. |
+| `da807b9f` member-template attachment | Indexed member calls, retained late definitions, and template-head identity; PA22 112 -> 145. |
+| `b0f34797` alias/template entity graph | Typed alias cache, template-template identity, proxy deduction, defaults/packs; PA22 145 -> 192. |
+| `88ab9ab1` explicit specialization/instantiation | Canonical targets, extern suppression, definition demand, and class state transitions; PA22 192 -> 208. |
+| `03b7bf00` friend-template ownership | Namespace/member owners, hidden ADL edges, grant propagation, and protected access; PA22 208 -> 221. |
+| `403c1ff5` partial-member ownership | Exact primary/partial routing and naming-class access provenance; PA22 221 -> 229. |
+| `c52d6734` nested owner routing | Staged nested transfer, lexical overlays, and structured terminal lookup; PA22 229 -> 234. |
+| `98e953dd` explicit-member replacement | In-place primary replacement, semantic-use reset guard, and explicit shell publication; PA22 234 -> 240. |
+| Callable role, metadata, and demand boundary | Constructor/conversion role split, declaration metadata inheritance with pack mapping, and demanded result/target completion; PA22 240 -> 245, prior 2329/2329, audit pass. |

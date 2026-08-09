@@ -496,6 +496,9 @@ private:
 	DeclaratorInfo BuildFunctionTemplateSpecializationDeclarator(
 		const FunctionTemplatePattern& pattern, ScopeId template_scope,
 		SpecInfo* spec, EntityId* member_owner);
+	void PublishFunctionTemplateSpecialMemberRole(
+		const FunctionTemplatePattern& pattern, BindingId binding,
+		EntityId member_owner, TypeId function_type);
 	bool BuildFunctionTemplateArgumentOffsets(
 		const std::vector<TemplateParameter>& parameters,
 		std::size_t argument_count,

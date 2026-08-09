@@ -808,6 +808,8 @@ struct FunctionTemplatePattern
 	TypeId shape_type;
 	std::size_t required_parameter_count;
 	std::vector<TemplateParameter> parameters;
+	std::vector<NameId> function_parameter_names;
+	std::vector<NodeId> function_parameter_defaults;
 	std::vector<BindingId> specialization_bindings;
 	std::vector<TemplateArgument> specialization_arguments;
 	std::vector<std::uint32_t> specialization_argument_offsets;
@@ -823,6 +825,7 @@ struct FunctionTemplatePattern
 	bool function_parameter_pack;
 	bool static_member;
 	bool constructor_template;
+	bool conversion_template;
 	bool explicit_member_definition;
 
 	FunctionTemplatePattern()
@@ -835,7 +838,8 @@ struct FunctionTemplatePattern
 		  defined(false), ordinary_visible(true), definition_in_class(false),
 		  nonthrowing(false), dependent_exception_specification(false),
 		  function_parameter_pack(false), static_member(false),
-		  constructor_template(false), explicit_member_definition(false) {}
+		  constructor_template(false), conversion_template(false),
+		  explicit_member_definition(false) {}
 };
 
 struct FunctionTemplateDeduction
