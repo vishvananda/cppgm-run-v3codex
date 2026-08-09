@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <iomanip>
 #include <limits>
 #include <locale>
@@ -19,6 +20,20 @@ namespace
 
 const std::size_t kMaxConstexprDepth = 1024;
 const std::size_t kMaxConstexprSteps = 1000000;
+
+std::size_t MixConstexprHash(std::size_t seed, std::size_t value)
+{
+	return seed ^ (value + static_cast<std::size_t>(0x9e3779b9U) +
+		(seed << 6) + (seed >> 2));
+}
+
+bool IsConstexprClassEntity(const Program& program, EntityId entity)
+{
+	if (entity == kNoEntity) return false;
+	const NamedFlavor flavor = program.entities[entity].flavor;
+	return flavor == NAMED_STRUCT || flavor == NAMED_CLASS ||
+		flavor == NAMED_UNION;
+}
 
 }
 
@@ -110,11 +125,22 @@ void SemanticAnalyzer::SetExpressionScalar(ExpressionInfo* expression,
 	const ConstexprScalarValue& value) const
 {
 	expression->constant = true;
+	expression->constexpr_object = kNoConstexprObject;
 	expression->floating_constant =
 		value.kind == CONSTEXPR_SCALAR_FLOATING;
 	if (expression->floating_constant)
 		expression->floating_value = value.floating;
 	else expression->value = value.integral;
+}
+
+void SemanticAnalyzer::SetExpressionObject(ExpressionInfo* expression,
+	std::uint32_t object) const
+{
+	if (object == kNoConstexprObject || object >= constexpr_objects_.size())
+		throw std::logic_error("invalid constexpr object identity");
+	expression->constant = true;
+	expression->floating_constant = false;
+	expression->constexpr_object = object;
 }
 
 ConstexprScalarValue SemanticAnalyzer::BindingScalar(BindingId binding) const
@@ -140,6 +166,27 @@ ConstexprScalarValue SemanticAnalyzer::BindingScalar(BindingId binding) const
 		}
 	}
 	return ConstexprScalarValue(record.value);
+}
+
+std::uint32_t SemanticAnalyzer::BindingObject(BindingId binding) const
+{
+	if (binding == kNoBinding || binding >= program_->bindings.size())
+		throw std::logic_error("invalid constant binding identity");
+	const BindingRecord& record = program_->bindings[binding];
+	if (!record.constant)
+		throw std::logic_error("binding has no constant value");
+	BindingId owner = binding;
+	if ((owner >= constexpr_object_by_binding_.size() ||
+		constexpr_object_by_binding_[owner] == kNoConstexprObject) &&
+		record.canonical != binding)
+		owner = record.canonical;
+	if (owner >= constexpr_object_by_binding_.size() ||
+		constexpr_object_by_binding_[owner] == kNoConstexprObject)
+		return kNoConstexprObject;
+	const std::uint32_t object = constexpr_object_by_binding_[owner];
+	if (object >= constexpr_objects_.size())
+		throw std::logic_error("constexpr object fact is out of range");
+	return object;
 }
 
 void SemanticAnalyzer::PublishBindingScalar(BindingId binding,
@@ -172,6 +219,214 @@ void SemanticAnalyzer::PublishBindingScalar(BindingId binding,
 			throw std::logic_error("floating constant fact is out of range");
 		floating_constant_values_[fact - 1] = value.floating;
 	}
+}
+
+void SemanticAnalyzer::PublishBindingObject(BindingId binding,
+	std::uint32_t object)
+{
+	if (binding == kNoBinding || binding >= program_->bindings.size())
+		throw std::logic_error("invalid constant binding publication");
+	if (object == kNoConstexprObject || object >= constexpr_objects_.size())
+		throw std::logic_error("invalid constexpr object publication");
+	program_->bindings[binding].constant = true;
+	if (constexpr_object_by_binding_.size() <= binding)
+		constexpr_object_by_binding_.resize(
+			static_cast<std::size_t>(binding) + 1, kNoConstexprObject);
+	constexpr_object_by_binding_[binding] = object;
+}
+
+void SemanticAnalyzer::PublishBindingConstant(BindingId binding,
+	const ExpressionInfo& value)
+{
+	if (!value.constant)
+		throw std::logic_error("publishing a nonconstant expression");
+	if (value.constexpr_object != kNoConstexprObject)
+		PublishBindingObject(binding, value.constexpr_object);
+	else PublishBindingScalar(binding, ExpressionScalar(value));
+}
+
+void SemanticAnalyzer::SetExpressionBindingConstant(
+	ExpressionInfo* expression, BindingId binding) const
+{
+	const std::uint32_t object = BindingObject(binding);
+	if (object != kNoConstexprObject) SetExpressionObject(expression, object);
+	else SetExpressionScalar(expression, BindingScalar(binding));
+}
+
+bool SemanticAnalyzer::BuildConstexprObjectElement(TypeId type,
+	BindingId member, const ExpressionInfo& value,
+	ConstexprObjectElement* result) const
+{
+	type = program_->types.RemoveTopCv(EffectiveType(type));
+	if (IsIntegral(type, true) || IsFloating(type))
+	{
+		ConstexprScalarValue scalar(static_cast<std::int64_t>(0));
+		if (value.node != kNoDumpEdge)
+		{
+			if (!value.constant ||
+				value.constexpr_object != kNoConstexprObject) return false;
+			scalar = ConvertScalarConstant(
+				value.type, type, ExpressionScalar(value));
+		}
+		else scalar = NormalizeScalarConstant(type, scalar);
+		*result = ConstexprObjectElement(member, scalar);
+		return true;
+	}
+	const TypeRecord& record = program_->types.Get(type);
+	if (record.kind != TYPE_ARRAY &&
+		!IsConstexprClassEntity(*program_, EntityOf(type))) return false;
+	if (value.constexpr_object == kNoConstexprObject) return false;
+	*result = ConstexprObjectElement(member, value.constexpr_object);
+	return true;
+}
+
+std::uint32_t SemanticAnalyzer::InternConstexprObject(TypeId type,
+	const std::vector<ConstexprObjectElement>& elements)
+{
+	type = program_->types.RemoveTopCv(EffectiveType(type));
+	std::size_t hash = std::hash<TypeId>()(type);
+	for (std::size_t i = 0; i < elements.size(); ++i)
+	{
+		const ConstexprObjectElement& element = elements[i];
+		hash = MixConstexprHash(hash, std::hash<BindingId>()(element.member));
+		hash = MixConstexprHash(hash,
+			std::hash<bool>()(element.object_value));
+		if (element.object_value)
+			hash = MixConstexprHash(hash,
+				std::hash<std::uint32_t>()(element.object));
+		else
+		{
+			hash = MixConstexprHash(hash,
+				std::hash<int>()(static_cast<int>(element.scalar.kind)));
+			hash = MixConstexprHash(hash,
+				element.scalar.kind == CONSTEXPR_SCALAR_FLOATING ?
+				std::hash<long double>()(element.scalar.floating) :
+				std::hash<std::int64_t>()(element.scalar.integral));
+		}
+	}
+	const std::pair<std::unordered_multimap<std::size_t,
+		std::uint32_t>::const_iterator,
+		std::unordered_multimap<std::size_t, std::uint32_t>::const_iterator>
+		range = constexpr_object_index_.equal_range(hash);
+	for (std::unordered_multimap<std::size_t,
+		std::uint32_t>::const_iterator candidate = range.first;
+		candidate != range.second; ++candidate)
+	{
+		const ConstexprObjectValue& object =
+			constexpr_objects_[candidate->second];
+		if (object.type != type || object.element_count != elements.size())
+			continue;
+		bool equal = true;
+		for (std::size_t i = 0; i < elements.size(); ++i)
+			if (!(constexpr_object_elements_[object.first_element + i] ==
+				elements[i]))
+			{
+				equal = false;
+				break;
+			}
+		if (equal) return candidate->second;
+	}
+	if (elements.size() > kNoConstexprObject ||
+		constexpr_objects_.size() >= kNoConstexprObject ||
+		constexpr_object_elements_.size() > kNoConstexprObject - elements.size())
+		throw std::runtime_error("too many constexpr object facts");
+	const std::uint32_t first = static_cast<std::uint32_t>(
+		constexpr_object_elements_.size());
+	const std::uint32_t count = static_cast<std::uint32_t>(elements.size());
+	constexpr_object_elements_.insert(
+		constexpr_object_elements_.end(), elements.begin(), elements.end());
+	const std::uint32_t result = static_cast<std::uint32_t>(
+		constexpr_objects_.size());
+	constexpr_objects_.push_back(
+		ConstexprObjectValue(type, first, count, hash));
+	constexpr_object_index_.insert(std::make_pair(hash, result));
+	return result;
+}
+
+const ConstexprObjectElement* SemanticAnalyzer::ConstexprObjectElementAt(
+	std::uint32_t object, std::size_t ordinal) const
+{
+	if (object == kNoConstexprObject || object >= constexpr_objects_.size())
+		return 0;
+	const ConstexprObjectValue& value = constexpr_objects_[object];
+	if (ordinal >= value.element_count) return 0;
+	return &constexpr_object_elements_[value.first_element + ordinal];
+}
+
+void SemanticAnalyzer::SetExpressionObjectElement(ExpressionInfo* expression,
+	const ConstexprObjectElement& element) const
+{
+	if (element.object_value) SetExpressionObject(expression, element.object);
+	else SetExpressionScalar(expression, element.scalar);
+}
+
+ExpressionInfo SemanticAnalyzer::MaterializeConstexprObjectElement(
+	const ConstexprObjectElement& element, TypeId type)
+{
+	if (element.object_value)
+		return MaterializeConstexprObject(element.object, type);
+	ExpressionInfo result = MakeLiteral(type, InternScalar(type, element.scalar));
+	SetExpressionScalar(&result, element.scalar);
+	RecordExpressionFacts(result);
+	return result;
+}
+
+ExpressionInfo SemanticAnalyzer::MaterializeConstexprObject(
+	std::uint32_t object, TypeId type)
+{
+	if (object == kNoConstexprObject || object >= constexpr_objects_.size())
+		throw std::logic_error("invalid constexpr object materialization");
+	const ConstexprObjectValue& value = constexpr_objects_[object];
+	TypeId unqualified = program_->types.RemoveTopCv(EffectiveType(type));
+	if (value.type != unqualified)
+	{
+		const TypeRecord& requested = program_->types.Get(unqualified);
+		const TypeRecord& completed = program_->types.Get(value.type);
+		if (requested.kind != TYPE_ARRAY || requested.bound != 0 ||
+			completed.kind != TYPE_ARRAY ||
+			requested.child != completed.child)
+			throw std::logic_error(
+				"constexpr object materialization type mismatch");
+		type = value.type;
+		unqualified = value.type;
+	}
+	const TypeRecord& record = program_->types.Get(unqualified);
+	const std::uint32_t list = MakeDump(
+		DUMP_BRACED_INIT_LIST, type, VALUE_LVALUE);
+	for (std::size_t i = 0; i < value.element_count; ++i)
+	{
+		const ConstexprObjectElement& element =
+			constexpr_object_elements_[value.first_element + i];
+		if (record.kind == TYPE_ARRAY)
+		{
+			const ExpressionInfo child =
+				MaterializeConstexprObjectElement(element, record.child);
+			dump_.Add(list, child.node);
+		}
+		else
+		{
+			if (element.member == kNoBinding ||
+				element.member >= program_->bindings.size())
+				throw std::logic_error(
+					"constexpr class object has no member identity");
+			const BindingRecord& member = program_->bindings[element.member];
+			const std::uint32_t action = MakeDump(DUMP_INITIALIZER_ACTION,
+				member.type, VALUE_NONE, member.name, element.member);
+			const ExpressionInfo child =
+				MaterializeConstexprObjectElement(element, member.type);
+			dump_.Add(action, child.node);
+			dump_.Add(list, action);
+			++expression_count_;
+		}
+	}
+	ExpressionInfo result;
+	result.node = list;
+	result.type = type;
+	result.category = VALUE_LVALUE;
+	SetExpressionObject(&result, object);
+	RecordExpressionFacts(result);
+	++expression_count_;
+	return result;
 }
 
 bool SemanticAnalyzer::ScalarTruth(const ConstexprScalarValue& value) const
@@ -290,6 +545,28 @@ bool SemanticAnalyzer::AddConstexprLocal(NameId name, NameId pack_name,
 	return true;
 }
 
+bool SemanticAnalyzer::AddConstexprLocal(NameId name, NameId pack_name,
+	TypeId type, std::uint32_t object, std::size_t* local)
+{
+	if (constexpr_frames_.empty() || object == kNoConstexprObject ||
+		object >= constexpr_objects_.size()) return false;
+	const ConstexprFrame& frame = constexpr_frames_.back();
+	const std::size_t first =
+		constexpr_block_offsets_.size() > frame.first_block ?
+		constexpr_block_offsets_.back().first_local : frame.first_local;
+	if (name != 0)
+		for (std::size_t i = first; i < constexpr_locals_.size(); ++i)
+			if (constexpr_locals_[i].name == name &&
+				(pack_name == 0 || constexpr_locals_[i].pack_name != pack_name))
+				return false;
+	if (local) *local = constexpr_locals_.size();
+	constexpr_locals_.push_back(
+		ConstexprLocalValue(name, pack_name, type, object));
+	if (constexpr_locals_.size() > constexpr_peak_locals_)
+		constexpr_peak_locals_ = constexpr_locals_.size();
+	return true;
+}
+
 bool SemanticAnalyzer::AddConstexprTypeAlias(NameId name, TypeId type)
 {
 	if (name == 0 || constexpr_frames_.empty()) return false;
@@ -376,11 +653,14 @@ bool SemanticAnalyzer::TryAnalyzeConstexprLocal(
 	result->type = EffectiveType(value.type);
 	result->category = VALUE_LVALUE;
 	result->constexpr_local = local;
-	SetExpressionScalar(result, value.value);
+	if (value.object != kNoConstexprObject)
+		SetExpressionObject(result, value.object);
+	else SetExpressionScalar(result, value.value);
 	result->node = MakeDump(DUMP_ID_EXPRESSION, result->type,
 		VALUE_LVALUE, name);
 	dump_.nodes[result->node].constant = true;
-	if (!result->floating_constant)
+	if (!result->floating_constant &&
+		result->constexpr_object == kNoConstexprObject)
 		dump_.nodes[result->node].constant_value = result->value;
 	++expression_count_;
 	*result = ApplyTarget(*result, target);
@@ -456,10 +736,19 @@ ExpressionInfo SemanticAnalyzer::AnalyzeConstantAwareVariableInitializer(
 void SemanticAnalyzer::PublishConstantVariableInitializer(BindingId binding,
 	TypeId type, const SpecInfo& spec, const ExpressionInfo& initializer)
 {
+	const TypeId object_type_id = program_->types.RemoveTopCv(
+		EffectiveType(type));
+	const TypeRecord& object_type = program_->types.Get(object_type_id);
+	const bool aggregate_object_type = object_type.kind == TYPE_ARRAY ||
+		IsConstexprClassEntity(*program_, EntityOf(object_type_id));
 	if (spec.is_constexpr && !program_->types.IsReference(type) &&
 		(IsIntegral(type, true) || IsFloating(type)) && !initializer.constant)
 		throw std::runtime_error(
 			"constexpr scalar initializer is not constant");
+	if (spec.is_constexpr && aggregate_object_type &&
+		initializer.constexpr_object == kNoConstexprObject)
+		throw std::runtime_error(
+			"constexpr object initializer is not constant");
 	if (!initializer.constant ||
 		(!spec.is_constexpr &&
 		 !(IsConst(type) && (IsIntegral(type, true) || IsFloating(type))) &&
@@ -467,6 +756,13 @@ void SemanticAnalyzer::PublishConstantVariableInitializer(BindingId binding,
 			(IsIntegral(type, true) || IsFloating(type)))))
 		return;
 	const bool scalar_type = IsIntegral(type, true) || IsFloating(type);
+	if (aggregate_object_type)
+	{
+		PublishBindingObject(binding, initializer.constexpr_object);
+		if (spec.is_constexpr && initializer.node != kNoDumpEdge)
+			dump_.nodes[initializer.node].type = type;
+		return;
+	}
 	const ConstexprScalarValue converted = scalar_type ?
 		ConvertScalarConstant(initializer.type, type,
 			ExpressionScalar(initializer)) :
@@ -537,11 +833,16 @@ bool SemanticAnalyzer::EvaluateConstexprDeclaration(NodeId node, ScopeId scope)
 					const NodeId initializer = FindChild(item, "initializer");
 					ExpressionInfo value;
 					valid = parsed.name != 0 && initializer != kNoNode &&
-						(IsIntegral(parsed.type, true) || IsFloating(parsed.type)) &&
 						AnalyzeConstexprInitializer(initializer, scope,
-							parsed.type, &value) &&
-						AddConstexprLocal(parsed.name, 0, parsed.type,
-							ExpressionScalar(value));
+							parsed.type, &value);
+					if (valid)
+						valid = value.constexpr_object != kNoConstexprObject ?
+							AddConstexprLocal(parsed.name, 0, parsed.type,
+								value.constexpr_object) :
+							(IsIntegral(parsed.type, true) ||
+							 IsFloating(parsed.type)) &&
+							AddConstexprLocal(parsed.name, 0, parsed.type,
+								ExpressionScalar(value));
 				}
 			}
 		}

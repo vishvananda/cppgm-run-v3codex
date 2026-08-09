@@ -1057,7 +1057,6 @@ private:
 		return IsReferenceType(member.type) ?
 			LoadStorage(result, LowPtr()) : result;
 	}
-
 	Operand LowerArrayPointer(std::uint32_t node)
 	{
 		const DumpNode& record = arena_.nodes[node];
@@ -1065,7 +1064,8 @@ private:
 		{
 			if (record.kind == DUMP_LITERAL)
 				return AddressOfStorage(LowerStorage(node));
-			return record.kind == DUMP_CONDITIONAL_EXPRESSION ?
+			return record.kind == DUMP_CONDITIONAL_EXPRESSION || record.kind ==
+				DUMP_SUBSCRIPT_EXPRESSION ?
 				LowerStorage(node) :
 				DecayAddress(AddressOfStorage(LowerStorage(node)));
 		}
@@ -1114,7 +1114,7 @@ private:
 		{
 			const Operand base = LowerArrayPointer(children[0]);
 			Operand offset = LowerValue(children[1]);
-			if (IsClassObjectType(record.type))
+			if (IsClassObjectType(record.type) || IsArrayType(record.type))
 			{
 				const std::size_t element_size = program_.SizeOf(record.type);
 				if (element_size != 1)

@@ -455,6 +455,7 @@ bool SemanticAnalyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 		dump_.Add(address, object.node);
 		object_pointer.node = address;
 		object_pointer.constant = false;
+		object_pointer.constexpr_object = kNoConstexprObject;
 		++expression_count_;
 	}
 	const std::vector<NodeId> no_syntax;
@@ -661,11 +662,23 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	result.binding = found.ordinary;
 	const BindingRecord& canonical = program_->bindings[
 		program_->bindings[found.ordinary].canonical];
-	if (canonical.constant)
-		SetExpressionScalar(&result,
-			BindingScalar(program_->bindings[found.ordinary].canonical));
-	dump_.nodes[expression].constant = result.constant;
-	if (!result.floating_constant)
+	if ((constant_expression_required_depth_ != 0 ||
+		constexpr_evaluation_depth_ != 0) &&
+		member_binding.non_static_data_member &&
+		object.constexpr_object != kNoConstexprObject)
+	{
+		const ConstexprObjectElement* element = ConstexprObjectElementAt(
+			object.constexpr_object, member_binding.member_ordinal);
+		if (element && element->member == found.ordinary)
+			SetExpressionObjectElement(&result, *element);
+	}
+	else if (canonical.constant)
+		SetExpressionBindingConstant(&result,
+			program_->bindings[found.ordinary].canonical);
+	dump_.nodes[expression].constant = result.constant &&
+		result.constexpr_object == kNoConstexprObject;
+	if (!result.floating_constant &&
+		result.constexpr_object == kNoConstexprObject)
 		dump_.nodes[expression].constant_value = result.value;
 	++expression_count_;
 	return result;

@@ -49,6 +49,9 @@ std::string ExplicitArgumentPresentation(const Program& program,
 	}
 	const TypeId type = program.types.RemoveTopCv(argument.type);
 	const TypeRecord& record = program.types.Get(type);
+	if (record.kind == TYPE_FUNDAMENTAL &&
+		record.fundamental == FUND_BOOL)
+		return argument.value == 0 ? "false" : "true";
 	if (record.kind == TYPE_NAMED && record.entity != kNoEntity &&
 		program.entities[record.entity].flavor == NAMED_ENUM)
 		return "(" + program.names.Get(program.entities[record.entity].name) +

@@ -2,56 +2,46 @@
 
 ## Stage Design and Spec Alignment
 
-PA21 extends the canonical PA12 semantic graph with a reusable typed constant-evaluation
-layer consumed by declaration checks, template arguments, `static_assert`, constant
-initialization, and LowIR demand. Evaluation owns tagged scalar values, local type/using
-facts, and block lifetimes in compact invocation stacks; floating binding facts use a
-compact binding index plus dense payload table instead of widening every hot binding.
-Expression products use a reusable scratch arena, and only completed canonical call facts
-escape. Lookup consults the overlay without inserting transient names into the `Program`,
-while lowering consumes folded typed facts without evaluation replay. This follows `spec.md` §§2–5
-(canonical identity, indexed lookup, complete monotonic call keys), §§6,8 (fact-driven
-lowering and explicit temporary ownership), and §§9–10 (bounded observable work and
-self-contained evaluation).
+PA21 extends the canonical PA12 graph with one typed constant layer for declaration checks,
+template arguments, `static_assert`, initialization, and LowIR demand. Tagged scalars,
+structurally interned immutable aggregate/array objects, compact binding indexes, local
+scope facts, and block lifetimes remain evaluator-owned; only completed call/object facts
+escape. Runtime ODR-use rematerializes object facts as structured initializers instead of
+replaying evaluation. This follows `spec.md` §§2–6,8–10: canonical identity, indexed lookup,
+demand-separated completion, fact-driven lowering, phase-local ownership, and bounded work.
 
 ## Current Failure Map
 
-Current result: 49/130 pass, with all previous passes retained and seven scalar tests added;
-81 failures remain. The complete remainder partitions by owner into class/aggregate/array
-values and constructors; indirect, member, operator, and callable-object calls;
-pointer/reference/subobject/static-member address values; literal-class and constexpr
-constructor declaration validation; `noexcept` deduction; and function-local static
-classification, guards, and LowIR emission. The remaining floating-suffix test depends on
-array values and is assigned to the object-value owner, not scalar arithmetic.
+Current result: 56/130 pass, with all previous passes retained and seven object tests added;
+74 failures remain. The complete remainder partitions by owner into constexpr constructors,
+base/member execution, and literal-class validation; indirect/member/operator/callable calls;
+pointer/reference/subobject address values; `noexcept` deduction; and function-local static
+classification, guards, and LowIR emission. Aggregate/member-function tests now depend on
+constructor receiver execution, while direct aggregate/array storage is complete.
 
 ## Active Checkpoint
 
-**Invocation object store and constructor/member execution.** Add invocation-local object
-and array storage keyed by compact object/subobject identity, execute selected constexpr
-constructors and member functions against recorded layout/member facts, and intern only
-completed immutable object values for binding publication and call reuse. This bundles
-aggregate initialization with constructor/member access at one stable object-value
-boundary while leaving pointer arithmetic and runtime local-static guards separate.
+**Constructor/member invocation over object slots.** Reuse immutable object values as
+invocation receivers, initialize mutable invocation-local slots from constructor
+initializer facts, execute selected constexpr constructors/member functions, and intern
+only a successfully completed result. Pointer arithmetic and runtime local-static guards
+remain separate checkpoints.
 
-Owner/data flow: selected constructor/member declarations plus canonical layouts ->
-invocation object slots and subobject IDs -> immutable completed object value -> member,
-array, call, initializer, and LowIR consumers. Relevant requirements are `spec.md` §§2,4,
-6,8–9: stable identity, demand-separated completion, fact-driven lowering, phase-local
-ownership, and bounded work. Expected work is O(executed statements plus initialized or
-read subobjects), O(1) member access by recorded ordinal/offset, and O(1)-average reuse by
-prehashed immutable object identity. Validate aggregate/array, constexpr constructor,
-member-call, temporary-object, and declaration-rejection groups; then the full PA21,
-prior-through-PA20, file audit, and member-count/depth scaling probes.
+Owner/data flow: selected function plus layout/initializer facts -> invocation receiver and
+subobject slots -> statement execution -> immutable completed object -> call, member, and
+initializer consumers. Requirements: `spec.md` §§2,4,6,8–9. Expected work is O(executed
+statements plus initialized/read subobjects), O(1) member access by ordinal, and O(1)-average
+completed-result reuse. Validate constructors, base/member calls, temporaries, declaration
+rejection, full PA21, prior PA1–20, file audit, and depth/member-count probes.
 
 ## Performance Evidence
 
-Floating recursion/conversion depths 32/64/128/256 used 66/130/258/514 evaluator
-steps, 66/130/258/514 peak locals, and 397/781/1,549/3,085 scratch nodes. Canonical
-scopes/declarations/semantic nodes stayed fixed at 5/9/14; peak stage bytes were
-108,616/193,641/363,643/701,563. Repeating depth 128 produced one call-cache hit and held
-work at 258 steps. This is linear executed work and temporary storage; completed lookup is
-O(1)-average, and float storage adds four indexed bytes per reached binding plus one dense
-payload only per published float fact.
+Constexpr arrays of 32/64/128/256 elements produced 49/81/145/273 semantic nodes,
+45/77/141/269 conversion checks, 5,039/6,831/10,415/17,583 typed-storage bytes, and
+41,928/56,424/90,569/165,065 peak-stage bytes; lowering stayed fixed at six instructions.
+This is linear construction/storage with O(1) ordinal reads. Earlier floating recursion at
+32/64/128/256 was also linear (66/130/258/514 steps), with a repeated depth-128 call hitting
+the completed-call cache.
 
 ## Completed Checkpoints
 
@@ -59,3 +49,4 @@ payload only per published float fact.
 | --- | --- | --- |
 | Integral scalar invocation and demand | Recursive/defaulted/template-pack calls, locals, scoped type/using overlays, branches, loops, local mutation, demand folding, scalar declaration checks; ownership audit repaired canonical-graph leakage | PA1–20 2,185/2,185; all 41/129 handout passes plus audit regression; file audit pass; fixed canonical graph and linear scaling above |
 | Tagged floating scalar widening | Target-rounded literals/conversions, mixed signed/unsigned arithmetic and comparison, floating locals/free calls, binding publication, typed call keys/results, and canonical LowIR literals | PA21 42→49/130; PA1–20 2,185/2,185; file audit pass; fixed canonical graph and linear scaling above |
+| Immutable aggregate/array values | Structural interning, zero/nested/string initialization, binding/local publication, direct projection, ODR-use rematerialization, canonical bool identities, and multidimensional strides | PA21 49→56/130; PA1–20 2,185/2,185; file audit pass; linear 32–256 element scaling above |

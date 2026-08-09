@@ -1461,52 +1461,6 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 	return result;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeArrayAggregateInit(TypeId type,
-	ScopeId scope, std::uint32_t* element_edge)
-{
-	const TypeRecord array = program_->types.Get(
-		program_->types.RemoveTopCv(type));
-	if (array.kind != TYPE_ARRAY)
-		throw std::logic_error("array initialization has non-array type");
-	const std::uint32_t list = MakeDump(DUMP_BRACED_INIT_LIST,
-		type, VALUE_LVALUE);
-	std::size_t count = 0;
-	while (*element_edge != kNoEdge &&
-		(array.bound == 0 || count < array.bound))
-	{
-		const std::uint32_t before = *element_edge;
-		const ExpressionInfo value = AnalyzeAggregateElement(
-			array.child, scope, element_edge);
-		if (value.node == kNoDumpEdge || *element_edge == before)
-			throw std::logic_error("array initializer made no progress");
-		dump_.Add(list, value.node);
-		++count;
-	}
-	if (array.bound != 0)
-	{
-		while (count < array.bound)
-		{
-			std::uint32_t omitted = kNoEdge;
-			const ExpressionInfo value = AnalyzeAggregateElement(
-				array.child, scope, &omitted);
-			if (value.node != kNoDumpEdge) dump_.Add(list, value.node);
-			++count;
-		}
-	}
-	else
-	{
-		type = program_->types.Array(array.child, count);
-		dump_.nodes[list].type = type;
-	}
-	ExpressionInfo result;
-	result.node = list;
-	result.type = type;
-	result.category = VALUE_LVALUE;
-	RecordExpressionFacts(result);
-	++expression_count_;
-	return result;
-}
-
 ExpressionInfo SemanticAnalyzer::AnalyzeAggregateElement(TypeId type,
 	ScopeId scope, std::uint32_t* element_edge)
 {
@@ -1540,6 +1494,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAggregateElement(TypeId type,
 				initialized_type = program_->types.Array(record.child, bytes.size());
 			const std::uint32_t list = MakeDump(DUMP_BRACED_INIT_LIST,
 				initialized_type, VALUE_LVALUE);
+			std::vector<ConstexprObjectElement> constant_elements;
+			const std::size_t element_count = record.bound == 0 ? bytes.size() :
+				static_cast<std::size_t>(record.bound);
+			constant_elements.reserve(element_count);
 			for (std::size_t i = 0; i < bytes.size(); ++i)
 			{
 				ExpressionInfo value = MakeLiteral(record.child,
@@ -1549,12 +1507,21 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAggregateElement(TypeId type,
 				dump_.nodes[value.node].constant = true;
 				dump_.nodes[value.node].constant_value = bytes[i];
 				dump_.Add(list, value.node);
+				constant_elements.push_back(ConstexprObjectElement(kNoBinding,
+					NormalizeScalarConstant(record.child,
+						ConstexprScalarValue(static_cast<std::int64_t>(bytes[i])))));
 			}
+			while (constant_elements.size() < element_count)
+				constant_elements.push_back(ConstexprObjectElement(kNoBinding,
+					NormalizeScalarConstant(record.child,
+						ConstexprScalarValue(static_cast<std::int64_t>(0)))));
 			*element_edge = arena_->NextEdge(source_edge);
 			ExpressionInfo result;
 			result.node = list;
 			result.type = initialized_type;
 			result.category = VALUE_LVALUE;
+			SetExpressionObject(&result,
+				InternConstexprObject(initialized_type, constant_elements));
 			++expression_count_;
 			return result;
 		}
@@ -1637,41 +1604,6 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAggregateElement(TypeId type,
 	omitted.type = type;
 	omitted.category = VALUE_NONE;
 	return omitted;
-}
-
-ExpressionInfo SemanticAnalyzer::AnalyzeAggregateInit(TypeId type,
-	ScopeId scope, std::uint32_t* element_edge)
-{
-	const EntityId entity = EntityOf(type);
-	if (entity == kNoEntity || !program_->entities[entity].is_aggregate)
-		throw std::runtime_error("class is not an aggregate");
-	if (entity >= entity_data_members_.size())
-		throw std::logic_error("aggregate is missing its member index");
-	const std::uint32_t list = MakeDump(DUMP_BRACED_INIT_LIST,
-		type, VALUE_LVALUE);
-	const std::vector<BindingId>& members = entity_data_members_[entity];
-	const std::size_t member_count =
-		program_->entities[entity].flavor == NAMED_UNION ?
-			(members.empty() ? 0 : 1) :
-			members.size();
-	for (std::size_t i = 0; i < member_count; ++i)
-	{
-		const BindingId member_id = members[i];
-		const BindingRecord& member = program_->bindings[member_id];
-		const std::uint32_t action = MakeDump(DUMP_INITIALIZER_ACTION,
-			member.type, VALUE_NONE, member.name, member_id);
-		const ExpressionInfo value = AnalyzeAggregateElement(
-			member.type, scope, element_edge);
-		if (value.node != kNoDumpEdge) dump_.Add(action, value.node);
-		dump_.Add(list, action);
-		++expression_count_;
-	}
-	ExpressionInfo result;
-	result.node = list;
-	result.type = type;
-	result.category = VALUE_LVALUE;
-	++expression_count_;
-	return result;
 }
 
 std::uint32_t SemanticAnalyzer::BuildAggregateConstructionAction(TypeId type,

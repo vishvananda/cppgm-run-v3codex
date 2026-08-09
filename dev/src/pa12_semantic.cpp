@@ -570,6 +570,7 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 		value.category = category;
 		value.binding = kNoBinding;
 		value.constant = false;
+		value.constexpr_object = kNoConstexprObject;
 		++expression_count_;
 	}
 	const bool reference_target = target_record.kind == TYPE_LVALUE_REFERENCE ||
@@ -586,6 +587,7 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 		value.category = VALUE_PRVALUE;
 		value.binding = kNoBinding;
 		value.constant = false;
+		value.constexpr_object = kNoConstexprObject;
 		++expression_count_;
 	}
 	if (value.integer_literal_zero &&
@@ -1497,6 +1499,19 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSubscript(NodeId node, ScopeId scope)
 			pointer.child, string_literal_units_[index]);
 		RecordExpressionFacts(result);
 	}
+	else if ((constant_expression_required_depth_ != 0 ||
+		constexpr_evaluation_depth_ != 0) &&
+		left.constexpr_object != kNoConstexprObject && right.constant &&
+		right.constexpr_object == kNoConstexprObject && right.value >= 0)
+	{
+		const ConstexprObjectElement* element = ConstexprObjectElementAt(
+			left.constexpr_object, static_cast<std::size_t>(right.value));
+		if (element)
+		{
+			SetExpressionObjectElement(&result, *element);
+			RecordExpressionFacts(result);
+		}
+	}
 	++expression_count_;
 	return result;
 }
@@ -2105,7 +2120,9 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			parsed.name, parsed.type);
 		PublishVariableDeclarationFacts(binding, declaration_scope,
 			parsed.name, parsed.type, spec, local);
-		if (spec.is_constexpr && initializer_node == kNoNode)
+		if (spec.is_constexpr && initializer_node == kNoNode &&
+			!(qualified_lexical_scope &&
+			  program_->bindings[binding].constant))
 			throw std::runtime_error("constexpr variable requires initializer");
 		ExpressionInfo initializer;
 		bool has_initializer = initializer_node != kNoNode;
@@ -2127,7 +2144,11 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		}
 		if (program_->bindings[binding].constant)
 		{
-			PublishBindingScalar(program_->bindings[binding].canonical,
+			const std::uint32_t object = BindingObject(binding);
+			if (object != kNoConstexprObject)
+				PublishBindingObject(
+					program_->bindings[binding].canonical, object);
+			else PublishBindingScalar(program_->bindings[binding].canonical,
 				BindingScalar(binding));
 		}
 		const bool deferred_template_constant_storage = !has_initializer &&
@@ -2135,21 +2156,9 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			!demanded_template_storage &&
 			ClassTemplateHasNonTypeParameter(declaration_class_context);
 		if (!has_initializer && qualified_lexical_scope &&
-			program_->bindings[binding].constant &&
 			!deferred_template_constant_storage)
-		{
-			initializer.type = parsed.type;
-			initializer.category = VALUE_PRVALUE;
-			SetExpressionScalar(&initializer, BindingScalar(binding));
-			initializer.node = MakeDump(DUMP_LITERAL, parsed.type,
-				VALUE_PRVALUE, InternScalar(parsed.type,
-					ExpressionScalar(initializer)));
-			dump_.nodes[initializer.node].constant = true;
-			if (!initializer.floating_constant)
-				dump_.nodes[initializer.node].constant_value = initializer.value;
-			has_initializer = true;
-			++expression_count_;
-		}
+			has_initializer = MaterializeConstantDefinitionInitializer(
+				binding, &parsed.type, &initializer);
 		if (deferred_template_constant_storage) continue;
 		const bool declaration_only = !local && !has_initializer &&
 			program_->bindings[binding].storage_class == STORAGE_CLASS_EXTERN;

@@ -281,6 +281,43 @@ struct ConstexprScalarValue
 	}
 };
 
+const std::uint32_t kNoConstexprObject =
+	std::numeric_limits<std::uint32_t>::max();
+
+struct ConstexprObjectElement
+{
+	BindingId member;
+	ConstexprScalarValue scalar;
+	std::uint32_t object;
+	bool object_value;
+
+	ConstexprObjectElement(BindingId member_value,
+		const ConstexprScalarValue& scalar_value)
+		: member(member_value), scalar(scalar_value),
+		  object(kNoConstexprObject), object_value(false) {}
+	ConstexprObjectElement(BindingId member_value, std::uint32_t object_id)
+		: member(member_value), scalar(), object(object_id),
+		  object_value(true) {}
+
+	bool operator==(const ConstexprObjectElement& other) const
+	{
+		return member == other.member && object_value == other.object_value &&
+			(object_value ? object == other.object : scalar == other.scalar);
+	}
+};
+
+struct ConstexprObjectValue
+{
+	TypeId type;
+	std::uint32_t first_element, element_count;
+	std::size_t hash;
+
+	ConstexprObjectValue(TypeId type_value, std::uint32_t first,
+		std::uint32_t count, std::size_t hash_value)
+		: type(type_value), first_element(first), element_count(count),
+		  hash(hash_value) {}
+};
+
 struct ExpressionInfo
 {
 	std::uint32_t node;
@@ -292,6 +329,7 @@ struct ExpressionInfo
 	std::int64_t value;
 	bool floating_constant;
 	long double floating_value;
+	std::uint32_t constexpr_object;
 	bool integer_literal_zero;
 	std::uint32_t string_unit_begin;
 	std::uint32_t string_unit_count;
@@ -301,7 +339,7 @@ struct ExpressionInfo
 		  binding(kNoBinding),
 		  constexpr_local(std::numeric_limits<std::size_t>::max()),
 		  constant(false), value(0), floating_constant(false),
-		  floating_value(0.0L),
+		  floating_value(0.0L), constexpr_object(kNoConstexprObject),
 		  integer_literal_zero(false), string_unit_begin(kNoDumpEdge),
 		  string_unit_count(0) {}
 };
@@ -311,11 +349,16 @@ struct ConstexprLocalValue
 	NameId name, pack_name;
 	TypeId type;
 	ConstexprScalarValue value;
+	std::uint32_t object;
 
 	ConstexprLocalValue(NameId name_value, NameId pack_name_value,
 		TypeId type_value, const ConstexprScalarValue& value_value)
 		: name(name_value), pack_name(pack_name_value), type(type_value),
-		  value(value_value) {}
+		  value(value_value), object(kNoConstexprObject) {}
+	ConstexprLocalValue(NameId name_value, NameId pack_name_value,
+		TypeId type_value, std::uint32_t object_value)
+		: name(name_value), pack_name(pack_name_value), type(type_value),
+		  value(), object(object_value) {}
 };
 
 struct ConstexprFrame

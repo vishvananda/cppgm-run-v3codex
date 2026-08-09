@@ -614,7 +614,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 		throw std::runtime_error("unknown expression name: " + spelling);
 	const BindingRecord& binding = program_->bindings[found.ordinary];
 	if (found.ordinary < variable_template_bindings_.size() &&
-		variable_template_bindings_[found.ordinary] != 0 && binding.constant)
+		variable_template_bindings_[found.ordinary] != 0 && binding.constant &&
+		(IsIntegral(binding.type, true) || IsFloating(binding.type)))
 	{
 		const ConstexprScalarValue scalar = BindingScalar(found.ordinary);
 		ExpressionInfo result = MakeLiteral(EffectiveType(binding.type),
@@ -639,7 +640,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 			found.naming_class);
 	if (binding.member_owner != kNoEntity && constexpr_evaluation_depth_ == 0)
 		EnsureStaticMemberStorage(found.ordinary,
-			target != kNoType && program_->types.IsReference(target));
+			(target != kNoType && program_->types.IsReference(target)) ||
+			(binding.constant &&
+			 BindingObject(found.ordinary) != kNoConstexprObject &&
+			 constant_expression_required_depth_ == 0));
 	const std::uint32_t injected_fact =
 		found.ordinary < injected_fact_by_binding_.size() ?
 		injected_fact_by_binding_[found.ordinary] : kNoDumpEdge;
@@ -669,9 +673,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 	result.node = MakeDump(DUMP_ID_EXPRESSION, result.type,
 		result.category, program_->names.Intern(spelling), value_binding);
 	if (binding.constant)
-		SetExpressionScalar(&result, BindingScalar(found.ordinary));
-	dump_.nodes[result.node].constant = result.constant;
-	if (!result.floating_constant)
+		SetExpressionBindingConstant(&result, found.ordinary);
+	dump_.nodes[result.node].constant = result.constant &&
+		result.constexpr_object == kNoConstexprObject;
+	if (!result.floating_constant &&
+		result.constexpr_object == kNoConstexprObject)
 		dump_.nodes[result.node].constant_value = result.value;
 	++expression_count_;
 	return ApplyTarget(result, target);

@@ -173,6 +173,8 @@ private:
 	void PopConstexprBlock();
 	bool AddConstexprLocal(NameId name, NameId pack_name, TypeId type,
 		const ConstexprScalarValue& value, std::size_t* local = 0);
+	bool AddConstexprLocal(NameId name, NameId pack_name, TypeId type,
+		std::uint32_t object, std::size_t* local = 0);
 	bool FindConstexprLocal(NameId name, std::size_t* local) const;
 	bool FindConstexprPack(NameId name,
 		std::vector<std::size_t>* locals) const;
@@ -817,9 +819,31 @@ private:
 		TypeId target_type, const ConstexprScalarValue& value) const;
 	void SetExpressionScalar(ExpressionInfo* expression,
 		const ConstexprScalarValue& value) const;
+	void SetExpressionObject(ExpressionInfo* expression,
+		std::uint32_t object) const;
 	ConstexprScalarValue BindingScalar(BindingId binding) const;
+	std::uint32_t BindingObject(BindingId binding) const;
 	void PublishBindingScalar(BindingId binding,
 		const ConstexprScalarValue& value);
+	void PublishBindingObject(BindingId binding, std::uint32_t object);
+	void PublishBindingConstant(BindingId binding,
+		const ExpressionInfo& value);
+	void SetExpressionBindingConstant(ExpressionInfo* expression,
+		BindingId binding) const;
+	bool BuildConstexprObjectElement(TypeId type, BindingId member,
+		const ExpressionInfo& value, ConstexprObjectElement* result) const;
+	std::uint32_t InternConstexprObject(TypeId type,
+		const std::vector<ConstexprObjectElement>& elements);
+	const ConstexprObjectElement* ConstexprObjectElementAt(
+		std::uint32_t object, std::size_t ordinal) const;
+	void SetExpressionObjectElement(ExpressionInfo* expression,
+		const ConstexprObjectElement& element) const;
+	ExpressionInfo MaterializeConstexprObject(std::uint32_t object,
+		TypeId type);
+	ExpressionInfo MaterializeConstexprObjectElement(
+		const ConstexprObjectElement& element, TypeId type);
+	bool MaterializeConstantDefinitionInitializer(BindingId binding,
+		TypeId* type, ExpressionInfo* initializer);
 	bool ScalarTruth(const ConstexprScalarValue& value) const;
 	ConstexprScalarValue ApplyConstantScalarBinary(
 		const std::string& operation, const ConstexprScalarValue& left,
@@ -938,6 +962,13 @@ private:
 	// Binding-indexed O(1) access with dense payloads only for floating facts.
 	std::vector<std::uint32_t> floating_constant_fact_by_binding_;
 	std::vector<long double> floating_constant_values_;
+	// Completed object values are immutable and structurally interned. Bindings
+	// carry only a compact object identity; elements remain dense by ordinal.
+	std::vector<std::uint32_t> constexpr_object_by_binding_;
+	std::vector<ConstexprObjectValue> constexpr_objects_;
+	std::vector<ConstexprObjectElement> constexpr_object_elements_;
+	std::unordered_multimap<std::size_t, std::uint32_t>
+		constexpr_object_index_;
 	DumpArena constexpr_scratch_dump_;
 	std::unordered_map<ConstexprCallKey, ConstexprCallFact,
 		ConstexprCallKeyHash> constexpr_call_facts_;

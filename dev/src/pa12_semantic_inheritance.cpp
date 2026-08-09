@@ -266,6 +266,7 @@ ExpressionInfo SemanticAnalyzer::ApplyMemberObjectTarget(
 	value.category = VALUE_PRVALUE;
 	value.binding = kNoBinding;
 	value.constant = false;
+	value.constexpr_object = kNoConstexprObject;
 	++expression_count_;
 	RecordExpressionFacts(value);
 	return value;

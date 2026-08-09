@@ -1164,7 +1164,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 				if (!value.constant)
 					throw std::runtime_error(
 						"nonconstant in-class static data member initializer");
-				PublishBindingScalar(member, ExpressionScalar(value));
+				PublishBindingConstant(member, value);
 			}
 			else if (!non_static_data_member && spec.is_constexpr)
 				throw std::runtime_error(
@@ -1304,7 +1304,10 @@ void SemanticAnalyzer::PublishVariableDeclarationFacts(BindingId binding,
 	canonical.thread_local_storage = record.thread_local_storage;
 	if (record.canonical != binding && canonical.constant)
 	{
-		PublishBindingScalar(binding, BindingScalar(record.canonical));
+		const std::uint32_t object = BindingObject(record.canonical);
+		if (object != kNoConstexprObject)
+			PublishBindingObject(binding, object);
+		else PublishBindingScalar(binding, BindingScalar(record.canonical));
 	}
 	if (!local) record.qualified_name = EmissionName(declaration_scope, name);
 }
@@ -2496,17 +2499,22 @@ void SemanticAnalyzer::EnsureStaticMemberStorage(BindingId member, bool constant
 	// out-of-class definition supplies it. Pure constant-expression uses keep
 	// the canonical member fact and must not manufacture an undefined global.
 	if (binding.constant && !constant_storage) return;
-	DemandClassTemplateMemberDefinitions(binding.member_owner);
+	// Preserve the already-instantiated class spelling before replaying a
+	// dependent out-of-class definition, whose substituted expression spelling
+	// may be equivalent but less canonical (for example, `1` versus `true`).
+	if (binding.qualified_name == 0)
+		binding.qualified_name = EmissionName(binding.owner, binding.name);
+	const EntityId member_owner = binding.member_owner;
+	DemandClassTemplateMemberDefinitions(member_owner);
+	const BindingRecord& completed_binding = program_->bindings[member];
 	if (static_member_storage_by_binding_.size() <= member)
 		static_member_storage_by_binding_.resize(
 			static_cast<std::size_t>(member) + 1, kNoDumpEdge);
 	if (static_member_storage_by_binding_[member] != kNoDumpEdge) return;
 	if (root_ == kNoDumpEdge)
 		throw std::logic_error("static member storage has no translation unit");
-	if (binding.qualified_name == 0)
-		binding.qualified_name = EmissionName(binding.owner, binding.name);
-	const std::uint32_t declaration = MakeDump(DUMP_VARIABLE, binding.type,
-		VALUE_NONE, binding.name, member);
+	const std::uint32_t declaration = MakeDump(DUMP_VARIABLE,
+		completed_binding.type, VALUE_NONE, completed_binding.name, member);
 	dump_.nodes[declaration].declaration_only = true;
 	dump_.Add(root_, declaration);
 	static_member_storage_by_binding_[member] = declaration;
