@@ -275,6 +275,7 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	ValidateNonmemberOperator(binding);
 	FunctionInfo& function = GetMutableFunction(binding);
 	function.template_pattern = static_cast<std::uint32_t>(index);
+	function.parameter_pack_name = FunctionParameterPackName(pattern.declarator);
 	function.deferred = true;
 	function.lexical_scope = template_scope;
 	if (pattern.defined) function.definition_body = pattern.definition_body;

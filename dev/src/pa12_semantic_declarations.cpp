@@ -2785,6 +2785,8 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 	const ScopeId function_scope = NewScope(info.lexical_scope, SCOPE_FUNCTION,
 		program_->bindings[info.binding].name, ScopePrefixId(info.owner));
 	std::vector<BindingId> parameter_bindings;
+	BindFunctionParameterPackElement(
+		function_scope, info.parameter_pack_name, kNoBinding);
 	if (member)
 	{
 		const TypeId this_type = program_->types.Parameters(output_type)[0];

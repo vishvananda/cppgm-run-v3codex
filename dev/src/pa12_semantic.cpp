@@ -787,11 +787,12 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 			return ApplyTarget(result, target);
 		}
 		ExpressionInfo result;
+		const BindingId value_binding = binding.kind == BIND_PARAMETER ? binding.canonical : found.ordinary;
 		result.type = EffectiveType(binding.type);
 		result.category = VALUE_LVALUE;
-		result.binding = found.ordinary;
+		result.binding = value_binding;
 		result.node = MakeDump(DUMP_ID_EXPRESSION, result.type,
-			result.category, program_->names.Intern(spelling), found.ordinary);
+			result.category, program_->names.Intern(spelling), value_binding);
 		result.constant = binding.constant;
 		result.value = binding.value;
 		dump_.nodes[result.node].constant = result.constant;

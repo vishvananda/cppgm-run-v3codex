@@ -324,6 +324,7 @@ struct FunctionInfo
 	TypeId type, signature;
 	TypeId conversion_target;
 	NameId display_name;
+	NameId parameter_pack_name;
 	TypeId member_owner;
 	EntityId friend_of;
 	ScopeId lexical_scope;
@@ -360,7 +361,8 @@ struct FunctionInfo
 		: binding(kNoBinding), inherited_constructor_source(kNoBinding),
 		  complete_constructor(kNoBinding), delegated_constructor(kNoBinding),
 		  owner(kNoScope), type(kNoType), signature(kNoType),
-		  conversion_target(kNoType), member_owner(kNoType),
+		  conversion_target(kNoType), display_name(0), parameter_pack_name(0),
+		  member_owner(kNoType),
 		  friend_of(kNoEntity), lexical_scope(kNoScope),
 		  definition_body(kNoNode), constructor_initializer(kNoNode),
 		  template_pattern(kNoDumpEdge),

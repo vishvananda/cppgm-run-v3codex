@@ -1,5 +1,7 @@
 #include "pa12_semantic_detail.h"
 
+#include <algorithm>
+#include <limits>
 #include <stdexcept>
 #include <vector>
 
@@ -49,7 +51,233 @@ void SemanticAnalyzer::BindFunctionParameterPackElement(
 	if (pack == 0) return;
 	const std::uint64_t key =
 		(static_cast<std::uint64_t>(scope) << 32) | pack;
-	function_parameter_pack_bindings_.Ensure(key).Push(binding);
+	CompactIndexSequence& elements =
+		function_parameter_pack_bindings_.Ensure(key);
+	if (binding != kNoBinding) elements.Push(binding);
+}
+
+NameId SemanticAnalyzer::FunctionParameterPackName(NodeId declarator)
+{
+	if (declarator == kNoNode) return 0;
+	if (arena_->IsTag(declarator, "parameter-declaration"))
+	{
+		const NodeId parameter = FindChild(declarator, "declarator");
+		if (parameter != kNoNode &&
+			FindChild(parameter, "parameter-pack") != kNoNode)
+			return DeclaratorName(parameter);
+	}
+	for (std::uint32_t edge = arena_->FirstEdge(declarator); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NameId name = FunctionParameterPackName(arena_->EdgeChild(edge));
+		if (name != 0) return name;
+	}
+	return 0;
+}
+
+void SemanticAnalyzer::CollectPackExpansionNames(NodeId node, ScopeId scope,
+	std::vector<NameId>* names) const
+{
+	if (node == kNoNode ||
+		arena_->IsTag(node, "pack-expansion-expression")) return;
+	const bool can_name_pack =
+		arena_->IsTag(node, "id-expression") ||
+		arena_->IsTag(node, "type-name") ||
+		arena_->IsTag(node, "decl-specifier") ||
+		arena_->IsTag(node, "name-component") ||
+		arena_->IsTag(node, "sizeof-pack-expression");
+	if (can_name_pack)
+	{
+		const std::string spelling = PayloadSource(node);
+		if (!spelling.empty())
+		{
+			const NameId name = program_->names.Intern(spelling);
+			std::vector<TemplateArgument> template_pack;
+			std::vector<BindingId> function_pack;
+			if ((LookupTemplateArgumentPack(scope, name, &template_pack) ||
+				 LookupFunctionParameterPack(scope, name, &function_pack)) &&
+				std::find(names->begin(), names->end(), name) == names->end())
+				names->push_back(name);
+		}
+	}
+	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+		CollectPackExpansionNames(arena_->EdgeChild(edge), scope, names);
+}
+
+void SemanticAnalyzer::ExpandExpressionPack(NodeId expansion, ScopeId scope,
+	std::vector<NodeId>* syntax,
+	std::vector<ExpressionInfo>* expressions)
+{
+	if (!arena_->IsTag(expansion, "pack-expansion-expression"))
+		throw std::logic_error("expression pack expansion node is invalid");
+	const NodeId operand = FirstSemanticChild(expansion);
+	if (operand == kNoNode)
+		throw std::runtime_error("empty pack expansion expression");
+	std::vector<NameId> names;
+	CollectPackExpansionNames(operand, scope, &names);
+	if (names.empty())
+		throw std::runtime_error("pack expansion contains no unexpanded pack");
+	std::vector<std::vector<TemplateArgument> > template_packs(names.size());
+	std::vector<std::vector<BindingId> > function_packs(names.size());
+	std::vector<std::uint8_t> is_template(names.size(), 0);
+	std::size_t length = std::numeric_limits<std::size_t>::max();
+	for (std::size_t source = 0; source < names.size(); ++source)
+	{
+		if (LookupTemplateArgumentPack(
+			scope, names[source], &template_packs[source]))
+			is_template[source] = 1;
+		else if (!LookupFunctionParameterPack(
+			scope, names[source], &function_packs[source]))
+			throw std::logic_error("collected pack binding disappeared");
+		const std::size_t source_length = is_template[source] ?
+			template_packs[source].size() : function_packs[source].size();
+		if (length == std::numeric_limits<std::size_t>::max())
+			length = source_length;
+		else if (length != source_length)
+			throw std::runtime_error(
+				"pack expansion operands have different lengths");
+	}
+	for (std::size_t element = 0; element < length; ++element)
+	{
+		const ScopeId element_scope = NewScope(scope,
+			SCOPE_TEMPLATE_PARAMETERS, 0, ScopePrefixId(scope));
+		for (std::size_t source = 0; source < names.size(); ++source)
+		{
+			if (is_template[source])
+			{
+				TemplateParameter parameter;
+				parameter.name = names[source];
+				parameter.kind = template_packs[source][element].kind;
+				BindTemplateArgument(element_scope, parameter,
+					template_packs[source][element]);
+			}
+			else
+			{
+				const BindingId binding = function_packs[source][element];
+				if (binding >= program_->bindings.size())
+					throw std::logic_error(
+						"function parameter pack binding is invalid");
+				const BindingRecord& record = program_->bindings[binding];
+				program_->AddBinding(element_scope, BIND_PARAMETER, names[source],
+					record.type, record.constant, record.value, NAMED_NONE, 0,
+					binding, false);
+			}
+		}
+		syntax->push_back(kNoNode);
+		expressions->push_back(AnalyzeExpression(operand, element_scope));
+	}
+}
+
+bool SemanticAnalyzer::TryAnalyzeExpandedBracedInit(
+	NodeId node, ScopeId scope, TypeId target, ExpressionInfo* result)
+{
+	bool has_expansion = false;
+	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+		if (arena_->IsTag(
+			arena_->EdgeChild(edge), "pack-expansion-expression"))
+			has_expansion = true;
+	if (!has_expansion) return false;
+	std::vector<NodeId> syntax;
+	std::vector<ExpressionInfo> values;
+	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId child = arena_->EdgeChild(edge);
+		if (arena_->IsTag(child, "pack-expansion-expression"))
+			ExpandExpressionPack(child, scope, &syntax, &values);
+		else
+		{
+			syntax.push_back(child);
+			values.push_back(AnalyzeExpression(child, scope));
+		}
+	}
+	TypeId object = program_->types.RemoveTopCv(target);
+	const TypeRecord record = program_->types.Get(object);
+	const EntityId entity = EntityOf(object);
+	const bool class_aggregate = record.kind == TYPE_NAMED &&
+		IsClassObjectType(object) && program_->entities[entity].is_aggregate;
+	if (class_aggregate)
+	{
+		if (entity >= entity_data_members_.size())
+			throw std::logic_error("aggregate is missing its member index");
+		const std::vector<BindingId>& members = entity_data_members_[entity];
+		const std::size_t member_count =
+			program_->entities[entity].flavor == NAMED_UNION ?
+				(members.empty() ? 0 : 1) : members.size();
+		if (values.size() > member_count)
+			throw std::runtime_error("excess aggregate initializer elements");
+		const std::uint32_t list = MakeDump(
+			DUMP_BRACED_INIT_LIST, target, VALUE_LVALUE);
+		for (std::size_t i = 0; i < member_count; ++i)
+		{
+			const BindingRecord& member = program_->bindings[members[i]];
+			const std::uint32_t action = MakeDump(DUMP_INITIALIZER_ACTION,
+				member.type, VALUE_NONE, member.name, members[i]);
+			ExpressionInfo value;
+			if (i < values.size())
+			{
+				if (IsBracedNarrowing(values[i], member.type))
+					throw std::runtime_error(
+						"narrowing aggregate initialization conversion");
+				value = ApplyTarget(values[i], member.type);
+			}
+			else
+			{
+				std::uint32_t omitted = kNoEdge;
+				value = AnalyzeAggregateElement(
+					member.type, scope, &omitted);
+			}
+			if (value.node != kNoDumpEdge) dump_.Add(action, value.node);
+			dump_.Add(list, action);
+			++expression_count_;
+		}
+		result->node = list;
+		result->type = target;
+		result->category = VALUE_LVALUE;
+		++expression_count_;
+		return true;
+	}
+	if (record.kind == TYPE_ARRAY)
+	{
+		if (record.bound != 0 && values.size() > record.bound)
+			throw std::runtime_error("excess array initializer elements");
+		const std::size_t count = record.bound == 0 ?
+			values.size() : record.bound;
+		const TypeId initialized = record.bound == 0 ?
+			program_->types.Array(record.child, count) : target;
+		const std::uint32_t list = MakeDump(
+			DUMP_BRACED_INIT_LIST, initialized, VALUE_LVALUE);
+		for (std::size_t i = 0; i < count; ++i)
+		{
+			ExpressionInfo value;
+			if (i < values.size())
+			{
+				if (IsBracedNarrowing(values[i], record.child))
+					throw std::runtime_error(
+						"narrowing array initialization conversion");
+				value = ApplyTarget(values[i], record.child);
+			}
+			else
+			{
+				std::uint32_t omitted = kNoEdge;
+				value = AnalyzeAggregateElement(
+					record.child, scope, &omitted);
+			}
+			if (value.node != kNoDumpEdge) dump_.Add(list, value.node);
+		}
+		result->node = list;
+		result->type = initialized;
+		result->category = VALUE_LVALUE;
+		RecordExpressionFacts(*result);
+		++expression_count_;
+		return true;
+	}
+	if (values.size() != 1)
+		throw std::runtime_error("scalar pack initialization has invalid arity");
+	*result = ApplyTarget(values[0], target);
+	return true;
 }
 
 bool SemanticAnalyzer::ExpandCallArgumentPacks(
@@ -72,64 +300,7 @@ bool SemanticAnalyzer::ExpandCallArgumentPacks(
 			arguments->push_back(AnalyzeExpression(input[i], scope));
 			continue;
 		}
-		const NodeId operand = FirstSemanticChild(input[i]);
-		if (operand == kNoNode)
-			throw std::runtime_error(
-				"unsupported PA20 pack expansion expression");
-		if (arena_->IsTag(operand, "id-expression"))
-		{
-			const NameId name = program_->names.Intern(arena_->Payload(operand));
-			std::vector<BindingId> bindings;
-			if (!LookupFunctionParameterPack(scope, name, &bindings))
-				throw std::runtime_error(
-					"pack expansion does not name a function parameter pack");
-			for (std::size_t element = 0; element < bindings.size(); ++element)
-			{
-				const BindingId binding = bindings[element];
-				if (binding >= program_->bindings.size())
-					throw std::logic_error(
-						"function parameter pack binding is invalid");
-				const BindingRecord& record = program_->bindings[binding];
-				ExpressionInfo expression;
-				expression.type = record.type;
-				expression.category = VALUE_LVALUE;
-				expression.binding = binding;
-				expression.node = MakeDump(DUMP_ID_EXPRESSION,
-					record.type, VALUE_LVALUE, name, binding);
-				syntax->push_back(kNoNode);
-				arguments->push_back(expression);
-				++expression_count_;
-			}
-			continue;
-		}
-		if (arena_->IsTag(operand, "sizeof-expression"))
-		{
-			const NodeId type_id = FirstSemanticChild(operand);
-			const NodeId specifiers = type_id == kNoNode ? kNoNode :
-				FindChild(type_id, "type-specifier-seq");
-			const NodeId spelling_node = specifiers == kNoNode ? kNoNode :
-				FirstSemanticChild(specifiers);
-			const NameId name = spelling_node == kNoNode ? 0 :
-				program_->names.Intern(PayloadSource(spelling_node));
-			std::vector<TemplateArgument> elements;
-			if (name == 0 || !LookupTemplateArgumentPack(scope, name, &elements))
-				throw std::runtime_error(
-					"sizeof expansion does not name a type pack");
-			for (std::size_t element = 0; element < elements.size(); ++element)
-			{
-				if (elements[element].kind != TEMPLATE_ARGUMENT_TYPE)
-					throw std::runtime_error(
-						"sizeof type expansion contains a value argument");
-				const ScopeId element_scope = NewScope(scope,
-					SCOPE_TEMPLATE_PARAMETERS, 0, ScopePrefixId(scope));
-				program_->AddBinding(element_scope, BIND_TYPE_ALIAS,
-					name, elements[element].type);
-				syntax->push_back(kNoNode);
-				arguments->push_back(AnalyzeExpression(operand, element_scope));
-			}
-			continue;
-		}
-		throw std::runtime_error("unsupported PA20 pack expansion expression");
+		ExpandExpressionPack(input[i], scope, syntax, arguments);
 	}
 	return true;
 }

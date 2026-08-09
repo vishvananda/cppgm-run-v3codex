@@ -972,9 +972,31 @@ void SemanticAnalyzer::CompleteFunctionCallTemplateCandidates(NodeId callee,
 			FindFunctionTemplates(scope, spelling) :
 			FindFunctionTemplates(scope, structured);
 		if (patterns.empty()) return;
+		NamePath base;
+		std::vector<TypeId> explicit_arguments;
+		const bool explicit_id = ParseExplicitTemplateArguments(
+			callee, scope, &base, &explicit_arguments);
+		NamePath syntax_base;
+		std::vector<NodeId> explicit_syntax;
+		const bool has_explicit_syntax = CollectExplicitTemplateArguments(
+			callee, &syntax_base, &explicit_syntax);
+		if (has_explicit_syntax && !explicit_id) return;
+		std::vector<BindingId> specializations;
+		DeduceFunctionTemplatePatterns(patterns, arguments, &specializations,
+			explicit_id ? &explicit_arguments : 0);
 		DeduceFunctionTemplates(scope, spelling, arguments, callee);
 		*candidates = FunctionCallCandidates(
 			scope, spelling, naming_class, callee);
+		for (std::size_t i = 0; i < specializations.size(); ++i)
+		{
+			const BindingId canonical =
+				program_->bindings[specializations[i]].canonical;
+			bool present = false;
+			for (std::size_t existing = 0; existing < candidates->size(); ++existing)
+				if (program_->bindings[(*candidates)[existing]].canonical == canonical)
+					present = true;
+			if (!present) candidates->push_back(specializations[i]);
+		}
 		return;
 	}
 	const CompactIndexSequence* retained_templates =
@@ -986,6 +1008,25 @@ void SemanticAnalyzer::CompleteFunctionCallTemplateCandidates(NodeId callee,
 	const bool explicit_id = ParseExplicitTemplateArguments(
 		callee, scope, &base, &explicit_arguments);
 	std::vector<BindingId> specializations;
+	NamePath syntax_base;
+	std::vector<NodeId> explicit_syntax;
+	const bool has_explicit_syntax = CollectExplicitTemplateArguments(
+		callee, &syntax_base, &explicit_syntax);
+	if (has_explicit_syntax && !explicit_id)
+	{
+		for (std::size_t i = 0; i < patterns.size(); ++i)
+		{
+			const FunctionTemplatePattern& pattern = function_templates_[patterns[i]];
+			std::vector<TemplateArgument> canonical;
+			if (!BuildTemplateArguments(pattern.parameters, explicit_syntax,
+				scope, pattern.lexical_scope, &canonical)) continue;
+			const BindingId specialization =
+				InstantiateFunctionTemplate(patterns[i], canonical);
+			if (specialization != kNoBinding)
+				specializations.push_back(specialization);
+		}
+	}
+	else
 	DeduceFunctionTemplatePatterns(patterns, arguments, &specializations,
 		explicit_id ? &explicit_arguments : 0);
 	for (std::size_t i = 0; i < specializations.size(); ++i)

@@ -262,10 +262,18 @@ private:
 	bool ExpandCallArgumentPacks(const std::vector<NodeId>& original,
 		ScopeId scope, std::vector<NodeId>* syntax,
 		std::vector<ExpressionInfo>* arguments);
+	void CollectPackExpansionNames(NodeId node, ScopeId scope,
+		std::vector<NameId>* names) const;
+	void ExpandExpressionPack(NodeId expansion, ScopeId scope,
+		std::vector<NodeId>* syntax,
+		std::vector<ExpressionInfo>* expressions);
+	bool TryAnalyzeExpandedBracedInit(NodeId node, ScopeId scope,
+		TypeId target, ExpressionInfo* result);
 	void InitializeFunctionTemplatePackShape(FunctionTemplatePattern* pattern,
 		const DeclaratorInfo& shape);
 	void BindFunctionParameterPackElement(ScopeId scope, NameId pack,
 		BindingId binding);
+	NameId FunctionParameterPackName(NodeId declarator);
 	std::vector<TemplateArgument> TypeTemplateArguments(
 		const std::vector<TypeId>& arguments) const;
 	std::vector<TemplateArgument> StoredTemplateArguments(

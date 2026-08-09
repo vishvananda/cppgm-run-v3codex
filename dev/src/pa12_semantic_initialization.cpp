@@ -928,17 +928,19 @@ void SemanticAnalyzer::AddMemberInitializationAction(BindingId member_id,
 		{
 			const std::uint32_t list = MakeDump(DUMP_BRACED_INIT_LIST,
 				member.type, VALUE_LVALUE);
-			std::size_t count = 0;
+			std::vector<NodeId> syntax;
 			for (std::uint32_t edge = arena_->FirstEdge(initializer);
 				edge != kNoEdge; edge = arena_->NextEdge(edge))
-			{
-				if (++count > 1)
-					throw std::runtime_error(
-						"scalar member has multiple initializers");
-				const ExpressionInfo value = AnalyzeExpression(
-					arena_->EdgeChild(edge), scope, member.type);
-				dump_.Add(list, value.node);
-			}
+				syntax.push_back(arena_->EdgeChild(edge));
+			std::vector<ExpressionInfo> values;
+			if (!ExpandCallArgumentPacks(syntax, scope, &syntax, &values))
+				for (std::size_t i = 0; i < syntax.size(); ++i)
+					values.push_back(AnalyzeExpression(syntax[i], scope));
+			if (values.size() > 1)
+				throw std::runtime_error(
+					"scalar member has multiple initializers");
+			for (std::size_t i = 0; i < values.size(); ++i)
+				dump_.Add(list, ApplyTarget(values[i], member.type).node);
 			dump_.Add(action, list);
 		}
 	}
@@ -1278,6 +1280,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 	TypeId target)
 {
 	if (target == kNoType) throw std::runtime_error("untyped braced-init-list");
+	ExpressionInfo expanded;
+	if (TryAnalyzeExpandedBracedInit(node, scope, target, &expanded))
+		return expanded;
 	TypeId type = target;
 	const TypeRecord array = program_->types.Get(
 		program_->types.RemoveTopCv(type));

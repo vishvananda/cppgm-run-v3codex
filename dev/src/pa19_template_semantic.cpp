@@ -451,9 +451,7 @@ bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,
 			const NodeId argument_name = argument_specifiers == kNoNode ?
 				kNoNode : FirstSemanticChild(argument_specifiers);
 			if (argument_name != kNoNode &&
-				arena_->IsTag(argument_name, "type-name") &&
-				FindChild(owner_arguments[argument],
-					"abstract-declarator") == kNoNode)
+				arena_->IsTag(argument_name, "type-name"))
 				argument_id = program_->names.Intern(PayloadSource(argument_name));
 		}
 		else if (arena_->IsTag(owner_arguments[argument], "id-expression") &&
@@ -757,12 +755,19 @@ void SemanticAnalyzer::ApplyClassTemplateMemberDefinitions(
 			class_template_member_definition_counts_[specialization]++;
 		const ClassTemplateMemberPattern& definition =
 			class_templates_[index].member_definitions[definition_index];
-		if (definition.owner_parameter_indices.size() != arguments.size() ||
-			definition.owner_fixed_arguments.size() != arguments.size())
+		const bool pack_owner =
+			definition.owner_parameter_indices.size() == 1 &&
+			definition.owner_parameter_indices[0] != kNoDumpEdge &&
+			definition.owner_parameter_indices[0] < definition.parameters.size() &&
+			definition.parameters[definition.owner_parameter_indices[0]].pack;
+		if (!pack_owner &&
+			(definition.owner_parameter_indices.size() != arguments.size() ||
+			 definition.owner_fixed_arguments.size() != arguments.size()))
 			throw std::logic_error("class template member argument shape changed");
 		std::vector<TemplateArgument> bindings(definition.parameters.size());
 		std::vector<std::uint8_t> bound(definition.parameters.size(), 0);
-		for (std::size_t owner = 0; owner < arguments.size(); ++owner)
+		for (std::size_t owner = 0;
+			!pack_owner && owner < arguments.size(); ++owner)
 		{
 			const std::uint32_t parameter =
 				definition.owner_parameter_indices[owner];
@@ -786,16 +791,27 @@ void SemanticAnalyzer::ApplyClassTemplateMemberDefinitions(
 		if (member_scope == kNoScope)
 			throw std::logic_error(
 				"class template member definition has no class scope");
-		for (std::size_t parameter = 0; parameter < bindings.size(); ++parameter)
+		for (std::size_t parameter = 0;
+			!pack_owner && parameter < bindings.size(); ++parameter)
 			if (!bound[parameter] || definition.parameters[parameter].name == 0)
 				throw std::runtime_error(
 					"unbound class template member parameter");
 		const ClassTemplateMemberPattern* definition_pointer = &definition;
 		const std::vector<TemplateArgument>* binding_pointer = &bindings;
+		const std::vector<TemplateArgument>* argument_pointer = &arguments;
 		const auto make_definition_scope = [this, definition_pointer,
-			binding_pointer](ScopeId parent) {
+			binding_pointer, argument_pointer, pack_owner](ScopeId parent) {
 			const ScopeId result = NewScope(parent, SCOPE_TEMPLATE_PARAMETERS,
 				0, ScopePrefixId(parent));
+			if (pack_owner)
+			{
+				const std::uint32_t parameter =
+					definition_pointer->owner_parameter_indices[0];
+				BindTemplateArgumentPack(result,
+					definition_pointer->parameters[parameter],
+					*argument_pointer, 0);
+				return result;
+			}
 			for (std::size_t parameter = 0;
 				parameter < binding_pointer->size(); ++parameter)
 				BindTemplateArgument(result,

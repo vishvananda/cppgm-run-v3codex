@@ -635,6 +635,7 @@ private:
 	NodeId ParsePrimaryExpression();
 	NodeId ParseInitializer();
 	NodeId ParseBracedInitList();
+	NodeId ParsePackExpansion(NodeId value);
 	NodeId ParseParameterClause();
 	NodeId ParseDeclarator(bool abstract, std::string* name = 0);
 	NodeId ParseDeclSpecifierSeq(bool for_type_id, std::string* first_type = 0);
@@ -1282,18 +1283,21 @@ NodeId Parser::ParseBracedInitList()
 		if (At(OP_LBRACE)) value = ParseBracedInitList();
 		else value = ParseExpression(2);
 		if (value == kNoNode) throw Error("expected braced initializer");
-		if (Match(OP_DOTS))
-		{
-			const NodeId pack = arena_.Make("pack-expansion-expression");
-			arena_.Add(pack, value);
-			value = pack;
-		}
+		value = ParsePackExpansion(value);
 		arena_.Add(list, value);
 		if (!Match(OP_COMMA)) break;
 		if (At(OP_RBRACE)) break;
 	}
 	Expect(OP_RBRACE);
 	return list;
+}
+
+NodeId Parser::ParsePackExpansion(NodeId value)
+{
+	if (!Match(OP_DOTS)) return value;
+	const NodeId pack = arena_.Make("pack-expansion-expression");
+	arena_.Add(pack, value);
+	return pack;
 }
 
 NodeId Parser::ParsePrimaryExpression()
@@ -1479,13 +1483,7 @@ NodeId Parser::ParsePostfixSuffixes(NodeId value) {
 						ParseBracedInitList() : ParseExpression(2);
 					if (argument == kNoNode)
 						throw Error("expected call argument");
-					if (Match(OP_DOTS))
-					{
-						const NodeId pack = arena_.Make(
-							"pack-expansion-expression");
-						arena_.Add(pack, argument);
-						argument = pack;
-					}
+					argument = ParsePackExpansion(argument);
 					arena_.Add(arguments, argument);
 					if (!Match(OP_COMMA)) break;
 				}
@@ -1682,13 +1680,7 @@ NodeId Parser::ParseUnaryExpression()
 					NodeId value = ParseExpression(2);
 					if (value == kNoNode)
 						throw Error("expected new initializer");
-					if (Match(OP_DOTS))
-					{
-						const NodeId pack = arena_.Make(
-							"pack-expansion-expression");
-						arena_.Add(pack, value);
-						value = pack;
-					}
+					value = ParsePackExpansion(value);
 					arena_.Add(values, value);
 					if (!Match(OP_COMMA)) break;
 				}
@@ -1769,6 +1761,7 @@ NodeId Parser::ParseInitializer()
 			{
 				NodeId value = ParseExpression(2);
 				if (value == kNoNode) throw Error("expected paren initializer");
+				value = ParsePackExpansion(value);
 				arena_.Add(values, value);
 				if (!Match(OP_COMMA)) break;
 			}
@@ -2323,9 +2316,10 @@ NodeId Parser::ParseCtorInitializer()
 			{
 				while (true)
 				{
-					const NodeId value = ParseExpression(2);
+					NodeId value = ParseExpression(2);
 					if (value == kNoNode)
 						throw Error("expected mem-initializer argument");
+					value = ParsePackExpansion(value);
 					arena_.Add(arguments, value);
 					if (!Match(OP_COMMA)) break;
 				}
