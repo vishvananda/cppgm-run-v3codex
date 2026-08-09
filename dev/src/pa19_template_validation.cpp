@@ -980,10 +980,23 @@ void SemanticAnalyzer::CompleteFunctionCallTemplateCandidates(NodeId callee,
 		std::vector<NodeId> explicit_syntax;
 		const bool has_explicit_syntax = CollectExplicitTemplateArguments(
 			callee, &syntax_base, &explicit_syntax);
-		if (has_explicit_syntax && !explicit_id) return;
 		std::vector<BindingId> specializations;
-		DeduceFunctionTemplatePatterns(patterns, arguments, &specializations,
-			explicit_id ? &explicit_arguments : 0);
+		if (has_explicit_syntax && !explicit_id)
+		{
+			for (std::size_t i = 0; i < patterns.size(); ++i)
+			{
+				const FunctionTemplatePattern& pattern =
+					function_templates_[patterns[i]];
+				std::vector<TemplateArgument> canonical;
+				if (!BuildTemplateArguments(pattern.parameters, explicit_syntax,
+					scope, pattern.lexical_scope, &canonical, false)) continue;
+				std::vector<std::size_t> one_pattern(1, patterns[i]);
+				DeduceFunctionTemplatePatterns(one_pattern, arguments,
+					&specializations, 0, &canonical);
+			}
+		}
+		else DeduceFunctionTemplatePatterns(patterns, arguments,
+			&specializations, explicit_id ? &explicit_arguments : 0);
 		DeduceFunctionTemplates(scope, spelling, arguments, callee);
 		*candidates = FunctionCallCandidates(
 			scope, spelling, naming_class, callee);
@@ -1019,11 +1032,10 @@ void SemanticAnalyzer::CompleteFunctionCallTemplateCandidates(NodeId callee,
 			const FunctionTemplatePattern& pattern = function_templates_[patterns[i]];
 			std::vector<TemplateArgument> canonical;
 			if (!BuildTemplateArguments(pattern.parameters, explicit_syntax,
-				scope, pattern.lexical_scope, &canonical)) continue;
-			const BindingId specialization =
-				InstantiateFunctionTemplate(patterns[i], canonical);
-			if (specialization != kNoBinding)
-				specializations.push_back(specialization);
+				scope, pattern.lexical_scope, &canonical, false)) continue;
+			std::vector<std::size_t> one_pattern(1, patterns[i]);
+			DeduceFunctionTemplatePatterns(one_pattern, arguments,
+				&specializations, 0, &canonical);
 		}
 	}
 	else

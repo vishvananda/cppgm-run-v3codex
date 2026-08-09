@@ -25,6 +25,8 @@ const TypeId kNoType = std::numeric_limits<TypeId>::max();
 const ScopeId kNoScope = std::numeric_limits<ScopeId>::max();
 const EntityId kNoEntity = std::numeric_limits<EntityId>::max();
 const BindingId kNoBinding = std::numeric_limits<BindingId>::max();
+const std::uint32_t kNoTemplateParameter =
+	std::numeric_limits<std::uint32_t>::max();
 
 enum TemplateArgumentKind
 {
@@ -37,16 +39,23 @@ struct TemplateArgument
 	TemplateArgumentKind kind;
 	TypeId type;
 	std::int64_t value;
+	std::uint32_t dependent_parameter;
 
 	TemplateArgument()
-		: kind(TEMPLATE_ARGUMENT_TYPE), type(kNoType), value(0) {}
+		: kind(TEMPLATE_ARGUMENT_TYPE), type(kNoType), value(0),
+		  dependent_parameter(kNoTemplateParameter) {}
 	TemplateArgument(TemplateArgumentKind kind_value, TypeId type_value,
-		std::int64_t integral_value = 0)
-		: kind(kind_value), type(type_value), value(integral_value) {}
+		std::int64_t integral_value = 0,
+		std::uint32_t dependent_parameter_value = kNoTemplateParameter)
+		: kind(kind_value), type(type_value), value(integral_value),
+		  dependent_parameter(dependent_parameter_value) {}
+	bool IsDependent() const
+		{ return dependent_parameter != kNoTemplateParameter; }
 	bool operator==(const TemplateArgument& other) const
 	{
 		return kind == other.kind && type == other.type &&
-			value == other.value;
+			value == other.value &&
+			dependent_parameter == other.dependent_parameter;
 	}
 	bool operator!=(const TemplateArgument& other) const
 		{ return !(*this == other); }

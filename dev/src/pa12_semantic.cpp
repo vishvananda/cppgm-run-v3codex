@@ -1323,8 +1323,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 			++expression_count_;
 			return ApplyTarget(result, target);
 		}
-		if (retained_lookup)
-			throw std::runtime_error("retained call has no viable function");
+		if (retained_lookup) throw std::runtime_error("retained call has no viable function");
 	}
 	ExpressionInfo callee = AnalyzeExpression(callee_syntax, scope);
 	if (!arguments_analyzed)
@@ -1924,7 +1923,8 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 			else program_->AddBinding(shape_scope, BIND_PARAMETER,
 				parameters[p].name, parameters[p].dependent_type ?
 					program_->types.Fundamental(FUND_INT) :
-					parameters[p].value_type);
+					parameters[p].value_type, false,
+				static_cast<std::int64_t>(p));
 		}
 		const SpecInfo shape_spec = BuildSpecifiers(specifiers, shape_scope,
 			std::string(), true, false, dependent_result_shape);

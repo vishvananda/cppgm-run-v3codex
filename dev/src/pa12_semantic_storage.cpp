@@ -124,6 +124,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 			function_templates_[i].specialization_arguments.capacity() *
 				sizeof(TemplateArgument) +
 			function_templates_[i].specialization_argument_offsets.capacity() *
+				sizeof(std::uint32_t) +
+			function_templates_[i].specialization_parameter_offsets.capacity() *
 				sizeof(std::uint32_t);
 	for (std::size_t i = 0; i < class_templates_.size(); ++i)
 	{

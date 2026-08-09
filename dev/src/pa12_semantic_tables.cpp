@@ -387,7 +387,9 @@ std::size_t TemplateSpecializationTable::StorageBytes() const
 	std::size_t bytes = entries_.capacity() * sizeof(Entry) +
 		slots_.capacity() * sizeof(std::uint32_t);
 	for (std::size_t i = 0; i < entries_.size(); ++i)
-		bytes += entries_[i].key.arguments.capacity() * sizeof(TypeId);
+		bytes += entries_[i].key.arguments.capacity() * sizeof(TemplateArgument) +
+			entries_[i].key.parameter_offsets.capacity() *
+				sizeof(std::uint32_t);
 	return bytes;
 }
 

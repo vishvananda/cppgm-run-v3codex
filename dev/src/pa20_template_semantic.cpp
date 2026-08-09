@@ -129,21 +129,27 @@ void SemanticAnalyzer::BindTemplateArgument(ScopeId scope,
 	if (argument.kind == TEMPLATE_ARGUMENT_TYPE)
 		program_->AddBinding(scope, BIND_TYPE_ALIAS, parameter.name,
 			argument.type);
+	else if (argument.IsDependent())
+		program_->AddBinding(scope, BIND_PARAMETER, parameter.name,
+			argument.type, false, argument.dependent_parameter);
 	else program_->AddBinding(scope, BIND_PARAMETER, parameter.name,
-		argument.type, true, argument.value);
+			argument.type, true, argument.value);
 }
 
 void SemanticAnalyzer::BindTemplateArgumentPack(ScopeId scope,
 	const TemplateParameter& parameter,
-	const std::vector<TemplateArgument>& arguments, std::size_t first)
+	const std::vector<TemplateArgument>& arguments, std::size_t first,
+	std::size_t last)
 {
+	if (first > last || last > arguments.size())
+		throw std::logic_error("template argument pack range is invalid");
 	if (parameter.name == 0) return;
 	const std::uint64_t key =
 		(static_cast<std::uint64_t>(scope) << 32) | parameter.name;
 	CompactIndexSequence& values = template_argument_pack_bindings_.Ensure(key);
 	if (values.Size() != 0)
 		throw std::logic_error("template argument pack rebound in one scope");
-	for (std::size_t i = first; i < arguments.size(); ++i)
+	for (std::size_t i = first; i < last; ++i)
 	{
 		if (arguments[i].kind != parameter.kind)
 			throw std::logic_error("template argument pack kind mismatch");
@@ -200,7 +206,8 @@ bool SemanticAnalyzer::LookupFunctionParameterPack(ScopeId scope, NameId name,
 bool SemanticAnalyzer::BuildTemplateArguments(
 	const std::vector<TemplateParameter>& parameters,
 	const std::vector<NodeId>& syntax, ScopeId use_scope,
-	ScopeId lexical_scope, std::vector<TemplateArgument>* arguments)
+	ScopeId lexical_scope, std::vector<TemplateArgument>* arguments,
+	bool require_complete)
 {
 	const bool has_pack = HasTrailingTemplateParameterPack(parameters);
 	const std::size_t fixed = FixedTemplateParameterCount(parameters);
@@ -210,7 +217,8 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 	arguments->reserve(std::max(parameters.size(), syntax.size()));
 	const ScopeId parameter_scope = NewScope(lexical_scope,
 		SCOPE_TEMPLATE_PARAMETERS, 0, ScopePrefixId(lexical_scope));
-	const auto append_argument = [&](NodeId source, bool supplied) -> bool
+	const auto append_argument = [&](NodeId source,
+		ScopeId source_scope) -> bool
 	{
 		if (arguments->size() >= fixed && !has_pack) return false;
 		const TemplateParameter& parameter =
@@ -225,7 +233,7 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 				FindChild(source, "type-id");
 			if (type_id == kNoNode) return false;
 			argument.type = BuildTypeId(type_id,
-				supplied ? use_scope : parameter_scope);
+				source_scope);
 			if (argument.type == kNoType) return false;
 		}
 		else
@@ -243,16 +251,36 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 					FindChild(source, "abstract-declarator") != kNoNode)
 					return false;
 				expression = AnalyzeNamedValue(PayloadSource(name),
-					supplied ? use_scope : parameter_scope,
+					source_scope,
 					argument.type, name);
 			}
 			else expression = AnalyzeExpression(source,
-				supplied ? use_scope : parameter_scope, argument.type);
-			if (!expression.constant || !IsIntegral(expression.type, true))
+				source_scope, argument.type);
+			if (!IsIntegral(expression.type, true))
 				throw std::runtime_error(
 					"non-type template argument is not an integral constant");
-			argument.value = NormalizeIntegralConstant(
-				argument.type, expression.value);
+			if (expression.constant)
+				argument.value = NormalizeIntegralConstant(
+					argument.type, expression.value);
+			else if (expression.binding != kNoBinding &&
+				expression.binding < program_->bindings.size() &&
+				program_->bindings[expression.binding].kind == BIND_PARAMETER &&
+				!program_->bindings[expression.binding].constant &&
+				program_->KindOfScope(
+					program_->bindings[expression.binding].owner) ==
+					SCOPE_TEMPLATE_PARAMETERS)
+			{
+				const std::int64_t parameter =
+					program_->bindings[expression.binding].value;
+				if (parameter < 0 || static_cast<std::uint64_t>(parameter) >=
+					kNoTemplateParameter)
+					throw std::logic_error(
+						"dependent template argument index is invalid");
+				argument.dependent_parameter =
+					static_cast<std::uint32_t>(parameter);
+			}
+			else throw std::runtime_error(
+				"non-type template argument is not an integral constant");
 		}
 		arguments->push_back(argument);
 		if (arguments->size() <= fixed)
@@ -261,6 +289,36 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 	};
 	for (std::size_t i = 0; i < syntax.size(); ++i)
 	{
+		if (arena_->IsTag(syntax[i], "pack-expansion-expression"))
+		{
+			const NodeId operand = FirstSemanticChild(syntax[i]);
+			if (operand == kNoNode)
+				throw std::runtime_error("empty template argument pack expansion");
+			const NameId source_name = program_->names.Intern(
+				PayloadSource(operand));
+			std::vector<TemplateArgument> expanded;
+			if (!LookupTemplateArgumentPack(use_scope, source_name, &expanded))
+			{
+				if (!append_argument(operand, use_scope)) return false;
+				continue;
+			}
+			for (std::size_t element = 0; element < expanded.size(); ++element)
+			{
+				if (arguments->size() >= fixed && !has_pack) return false;
+				const TemplateParameter& destination =
+					TemplateParameterForArgument(parameters, arguments->size());
+				if (destination.kind != expanded[element].kind) return false;
+				const ScopeId element_scope = NewScope(use_scope,
+					SCOPE_TEMPLATE_PARAMETERS, 0, ScopePrefixId(use_scope));
+				TemplateParameter source_parameter;
+				source_parameter.name = source_name;
+				source_parameter.kind = expanded[element].kind;
+				BindTemplateArgument(element_scope, source_parameter,
+					expanded[element]);
+				if (!append_argument(operand, element_scope)) return false;
+			}
+			continue;
+		}
 		NodeId type_id = arena_->IsTag(syntax[i], "type-id") ? syntax[i] :
 			FindChild(syntax[i], "type-id");
 		NodeId declarator = type_id == kNoNode ? kNoNode :
@@ -271,7 +329,7 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 			FindChild(declarator, "parameter-pack") != kNoNode;
 		if (!expansion)
 		{
-			if (!append_argument(syntax[i], true)) return false;
+			if (!append_argument(syntax[i], use_scope)) return false;
 			continue;
 		}
 		const NodeId specifiers = FindChild(type_id, "type-specifier-seq");
@@ -289,7 +347,7 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 			// While retaining a function-template shape, a pack has one
 			// placeholder alias.  The concrete specialization later replays the
 			// same type-id against the ordered pack environment.
-			if (!append_argument(syntax[i], true)) return false;
+			if (!append_argument(syntax[i], use_scope)) return false;
 			continue;
 		}
 		for (std::size_t element = 0; element < expanded.size(); ++element)
@@ -311,18 +369,19 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 				BindTemplateArgument(parameter_scope, destination, argument);
 		}
 	}
-	while (arguments->size() < fixed)
+	while (require_complete && arguments->size() < fixed)
 	{
 		const TemplateParameter& parameter = parameters[arguments->size()];
 		NodeId source = parameter.default_argument;
 		if (source == kNoNode) return false;
 		source = FirstSemanticChild(source);
-		if (!append_argument(source, false)) return false;
+		if (!append_argument(source, parameter_scope)) return false;
 	}
-	if (!has_pack && arguments->size() != parameters.size()) return false;
+	if (require_complete && !has_pack &&
+		arguments->size() != parameters.size()) return false;
 	if (has_pack)
 		BindTemplateArgumentPack(parameter_scope, parameters.back(),
-			*arguments, fixed);
+			*arguments, fixed, arguments->size());
 	return true;
 }
 

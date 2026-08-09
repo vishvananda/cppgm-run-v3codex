@@ -274,15 +274,24 @@ void SemanticAnalyzer::AppendArgumentDependentCandidates(NameId name,
 				throw std::logic_error(
 					"associated class template pattern is invalid");
 			const std::size_t first = record.template_argument_begin;
-			const std::size_t count =
-				class_templates_[pattern].parameters.size();
-			if (record.template_argument_count != count ||
+			const std::size_t count = record.template_argument_count;
+			const std::vector<TemplateParameter>& parameters =
+				class_templates_[pattern].parameters;
+			if ((!HasTrailingTemplateParameterPack(parameters) &&
+				 count != parameters.size()) ||
+				(HasTrailingTemplateParameterPack(parameters) &&
+				 count < FixedTemplateParameterCount(parameters)) ||
 				first > program_->template_arguments.size() ||
 				count > program_->template_arguments.size() - first)
 				throw std::logic_error(
 					"associated class template argument range is invalid");
 			for (std::size_t argument = 0; argument < count; ++argument)
-				AddAssociatedType(program_->template_arguments[first + argument]);
+				if (first + argument >=
+						program_->canonical_template_arguments.size() ||
+					program_->canonical_template_arguments[first + argument].kind ==
+						TEMPLATE_ARGUMENT_TYPE)
+					AddAssociatedType(
+						program_->template_arguments[first + argument]);
 		}
 		if (record.direct_base != kNoEntity)
 			AddAssociatedEntity(record.direct_base);

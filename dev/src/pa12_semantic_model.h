@@ -479,6 +479,7 @@ struct FunctionTemplatePattern
 	std::vector<BindingId> specialization_bindings;
 	std::vector<TemplateArgument> specialization_arguments;
 	std::vector<std::uint32_t> specialization_argument_offsets;
+	std::vector<std::uint32_t> specialization_parameter_offsets;
 	LanguageLinkage language_linkage;
 	AccessKind member_access;
 	bool defined;
@@ -493,6 +494,22 @@ struct FunctionTemplatePattern
 		  language_linkage(LANGUAGE_LINKAGE_CPP), member_access(ACCESS_PUBLIC),
 		  defined(false),
 		  nonthrowing(false), function_parameter_pack(false) {}
+};
+
+struct FunctionTemplateDeduction
+{
+	std::vector<TemplateArgument> fixed_arguments;
+	std::vector<std::vector<TemplateArgument> > pack_arguments;
+	std::vector<std::size_t> pack_deduction_positions;
+
+	explicit FunctionTemplateDeduction(
+		const std::vector<TemplateParameter>& parameters)
+		: fixed_arguments(parameters.size()), pack_arguments(parameters.size()),
+		  pack_deduction_positions(parameters.size(), 0)
+	{
+		for (std::size_t i = 0; i < parameters.size(); ++i)
+			fixed_arguments[i].kind = parameters[i].kind;
+	}
 };
 
 struct ClassTemplateMemberPattern

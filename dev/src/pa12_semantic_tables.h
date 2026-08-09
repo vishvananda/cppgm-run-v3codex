@@ -174,14 +174,21 @@ struct TemplateSpecializationKey
 {
 	std::size_t pattern;
 	std::vector<TemplateArgument> arguments;
+	std::vector<std::uint32_t> parameter_offsets;
 
 	TemplateSpecializationKey() : pattern(0) {}
 	TemplateSpecializationKey(std::size_t pattern_value,
 		const std::vector<TemplateArgument>& argument_values)
 		: pattern(pattern_value), arguments(argument_values) {}
+	TemplateSpecializationKey(std::size_t pattern_value,
+		const std::vector<TemplateArgument>& argument_values,
+		const std::vector<std::uint32_t>& offset_values)
+		: pattern(pattern_value), arguments(argument_values),
+		  parameter_offsets(offset_values) {}
 	bool operator==(const TemplateSpecializationKey& other) const
 	{
-		return pattern == other.pattern && arguments == other.arguments;
+		return pattern == other.pattern && arguments == other.arguments &&
+			parameter_offsets == other.parameter_offsets;
 	}
 };
 
@@ -196,7 +203,12 @@ struct TemplateSpecializationHash
 			result = MixHash(result, key.arguments[i].type);
 			result = MixHash(result,
 				static_cast<std::uint64_t>(key.arguments[i].value));
+			result = MixHash(result,
+				key.arguments[i].dependent_parameter);
 		}
+		result = MixHash(result, key.parameter_offsets.size());
+		for (std::size_t i = 0; i < key.parameter_offsets.size(); ++i)
+			result = MixHash(result, key.parameter_offsets[i]);
 		return result;
 	}
 };

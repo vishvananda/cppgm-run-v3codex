@@ -25,6 +25,7 @@ bool ClassTemplateArgumentsAreComplete(const Program& program,
 {
 	for (std::size_t i = 0; i < arguments.size(); ++i)
 	{
+		if (arguments[i].IsDependent()) return false;
 		if (arguments[i].kind != TEMPLATE_ARGUMENT_TYPE) continue;
 		const TypeId argument = program.types.RemoveTopCv(arguments[i].type);
 		const TypeRecord& record = program.types.Get(argument);
@@ -78,6 +79,12 @@ std::string CanonicalTemplateArgumentName(const Program& program,
 	if (argument.kind == TEMPLATE_ARGUMENT_TYPE)
 		return TemplateArgumentName(program.RenderType(argument.type));
 	std::ostringstream result;
+	if (argument.IsDependent())
+	{
+		result << "dependent_" << argument.type << '_'
+			<< argument.dependent_parameter;
+		return result.str();
+	}
 	result << "value_" << argument.type << '_';
 	if (argument.value < 0) result << 'm' << -(argument.value + 1) + 1;
 	else result << 'p' << argument.value;
@@ -91,7 +98,7 @@ std::string ClassTemplateSpecializationScopeName(std::size_t pattern,
 	result << "__cppgm_class_template_" << pattern;
 	for (std::size_t i = 0; i < arguments.size(); ++i)
 		result << '_' << arguments[i].kind << '_' << arguments[i].type << '_'
-			<< arguments[i].value;
+			<< arguments[i].value << '_' << arguments[i].dependent_parameter;
 	return result.str();
 }
 
@@ -350,7 +357,11 @@ bool SemanticAnalyzer::ParseExplicitTemplateArguments(NodeId syntax,
 	for (std::size_t i = 0; i < syntax_arguments.size(); ++i)
 	{
 		const NodeId argument = syntax_arguments[i];
-		if (!arena_->IsTag(argument, "type-id"))
+		const NodeId declarator = arena_->IsTag(argument, "type-id") ?
+			FindChild(argument, "abstract-declarator") : kNoNode;
+		if (!arena_->IsTag(argument, "type-id") ||
+			(declarator != kNoNode &&
+			 FindChild(declarator, "parameter-pack") != kNoNode))
 		{
 			arguments->clear();
 			return false;
@@ -733,7 +744,7 @@ ScopeId SemanticAnalyzer::BindClassTemplateArguments(
 		BindTemplateArgument(template_scope, pattern.parameters[i], arguments[i]);
 	if (HasTrailingTemplateParameterPack(pattern.parameters))
 		BindTemplateArgumentPack(template_scope, pattern.parameters.back(),
-			arguments, fixed);
+			arguments, fixed, arguments.size());
 	return template_scope;
 }
 
@@ -809,7 +820,7 @@ void SemanticAnalyzer::ApplyClassTemplateMemberDefinitions(
 					definition_pointer->owner_parameter_indices[0];
 				BindTemplateArgumentPack(result,
 					definition_pointer->parameters[parameter],
-					*argument_pointer, 0);
+					*argument_pointer, 0, argument_pointer->size());
 				return result;
 			}
 			for (std::size_t parameter = 0;

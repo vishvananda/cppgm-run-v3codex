@@ -11,6 +11,24 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+namespace
+{
+
+bool FunctionTemplateNeedsPartitionIdentity(
+	const std::vector<TemplateParameter>& parameters)
+{
+	std::size_t packs = 0;
+	for (std::size_t i = 0; i < parameters.size(); ++i)
+		if (parameters[i].pack)
+		{
+			++packs;
+			if (i + 1 != parameters.size()) return true;
+		}
+	return packs > 1;
+}
+
+}
+
 std::vector<std::size_t> SemanticAnalyzer::FindFunctionTemplates(
 	ScopeId scope, const std::string& spelling)
 {
@@ -71,19 +89,65 @@ std::vector<ScopeId> SemanticAnalyzer::FindFunctionTemplateOwners(
 	return result;
 }
 
+bool SemanticAnalyzer::BuildFunctionTemplateArgumentOffsets(
+	const std::vector<TemplateParameter>& parameters,
+	std::size_t argument_count, std::vector<std::uint32_t>* offsets) const
+{
+	offsets->clear();
+	offsets->reserve(parameters.size() + 1);
+	std::size_t cursor = 0;
+	for (std::size_t parameter = 0; parameter < parameters.size(); ++parameter)
+	{
+		if (cursor > std::numeric_limits<std::uint32_t>::max()) return false;
+		offsets->push_back(static_cast<std::uint32_t>(cursor));
+		if (parameters[parameter].pack)
+		{
+			if (parameter + 1 != parameters.size()) return false;
+			cursor = argument_count;
+		}
+		else
+		{
+			if (cursor >= argument_count) return false;
+			++cursor;
+		}
+	}
+	if (cursor != argument_count ||
+		cursor > std::numeric_limits<std::uint32_t>::max()) return false;
+	offsets->push_back(static_cast<std::uint32_t>(cursor));
+	return true;
+}
+
 ScopeId SemanticAnalyzer::BindFunctionTemplateArguments(
 	const FunctionTemplatePattern& pattern,
-	const std::vector<TemplateArgument>& arguments)
+	const std::vector<TemplateArgument>& arguments,
+	const std::vector<std::uint32_t>& parameter_offsets)
 {
+	if (parameter_offsets.size() != pattern.parameters.size() + 1 ||
+		parameter_offsets.empty() || parameter_offsets.front() != 0 ||
+		parameter_offsets.back() != arguments.size())
+		throw std::logic_error("function template argument offsets are invalid");
 	const ScopeId template_scope = NewScope(pattern.lexical_scope,
 		SCOPE_TEMPLATE_PARAMETERS, 0, ScopePrefixId(pattern.lexical_scope));
-	const std::size_t fixed =
-		FixedTemplateParameterCount(pattern.parameters);
-	for (std::size_t i = 0; i < arguments.size() && i < fixed; ++i)
-		BindTemplateArgument(template_scope, pattern.parameters[i], arguments[i]);
-	if (HasTrailingTemplateParameterPack(pattern.parameters))
-		BindTemplateArgumentPack(template_scope, pattern.parameters.back(),
-			arguments, fixed);
+	for (std::size_t parameter = 0;
+		parameter < pattern.parameters.size(); ++parameter)
+	{
+		const std::size_t first = parameter_offsets[parameter];
+		const std::size_t last = parameter_offsets[parameter + 1];
+		if (first > last || last > arguments.size())
+			throw std::logic_error(
+				"function template argument offset range is invalid");
+		if (pattern.parameters[parameter].pack)
+			BindTemplateArgumentPack(template_scope,
+				pattern.parameters[parameter], arguments, first, last);
+		else
+		{
+			if (last != first + 1)
+				throw std::logic_error(
+					"fixed function template parameter has invalid arity");
+			BindTemplateArgument(template_scope, pattern.parameters[parameter],
+				arguments[first]);
+		}
+	}
 	return template_scope;
 }
 
@@ -99,6 +163,8 @@ void SemanticAnalyzer::UpgradeFunctionTemplateSpecializations(
 		pattern.specialization_arguments;
 	const std::vector<std::uint32_t> specialization_offsets =
 		pattern.specialization_argument_offsets;
+	const std::vector<std::uint32_t> parameter_offsets =
+		pattern.specialization_parameter_offsets;
 	if (specialization_offsets.size() != specializations.size())
 		throw std::logic_error(
 			"function template specialization offsets are invalid");
@@ -116,8 +182,26 @@ void SemanticAnalyzer::UpgradeFunctionTemplateSpecializations(
 		arguments.reserve(last - first);
 		for (std::size_t p = first; p < last; ++p)
 			arguments.push_back(specialization_arguments[p]);
+		std::vector<std::uint32_t> partitions;
+		if (FunctionTemplateNeedsPartitionIdentity(pattern.parameters))
+		{
+			const std::size_t partition_first = specialization *
+				(pattern.parameters.size() + 1);
+			if (partition_first > parameter_offsets.size() ||
+				pattern.parameters.size() + 1 >
+					parameter_offsets.size() - partition_first)
+				throw std::logic_error(
+					"function template specialization partitions are invalid");
+			partitions.assign(parameter_offsets.begin() + partition_first,
+				parameter_offsets.begin() + partition_first +
+					pattern.parameters.size() + 1);
+		}
+		else if (!BuildFunctionTemplateArgumentOffsets(
+			pattern.parameters, arguments.size(), &partitions))
+			throw std::logic_error(
+				"function template specialization shape is invalid");
 		const ScopeId template_scope =
-			BindFunctionTemplateArguments(pattern, arguments);
+			BindFunctionTemplateArguments(pattern, arguments, partitions);
 		const SpecInfo spec = BuildSpecifiers(pattern.specifiers, template_scope,
 			std::string(), true);
 		const EntityId member_owner = program_->EntityForScope(pattern.owner);
@@ -147,21 +231,22 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	if (index >= function_templates_.size())
 		throw std::logic_error("invalid PA12 function template pattern");
 	const FunctionTemplatePattern& pattern = function_templates_[index];
-	const bool has_pack = HasTrailingTemplateParameterPack(pattern.parameters);
-	const std::size_t fixed = FixedTemplateParameterCount(pattern.parameters);
-	if ((!has_pack && arguments.size() != pattern.parameters.size()) ||
-		(has_pack && arguments.size() < fixed)) return kNoBinding;
+	std::vector<std::uint32_t> offsets;
+	if (!BuildFunctionTemplateArgumentOffsets(
+		pattern.parameters, arguments.size(), &offsets)) return kNoBinding;
 	std::vector<TemplateArgument> canonical;
 	canonical.reserve(arguments.size());
-	for (std::size_t i = 0; i < arguments.size(); ++i)
-	{
-		if (TemplateParameterForArgument(pattern.parameters, i).kind !=
-			TEMPLATE_ARGUMENT_TYPE)
-			return kNoBinding;
-		canonical.push_back(TemplateArgument(
-			TEMPLATE_ARGUMENT_TYPE, arguments[i]));
-	}
-	return InstantiateFunctionTemplate(index, canonical);
+	for (std::size_t parameter = 0;
+		parameter < pattern.parameters.size(); ++parameter)
+		for (std::size_t argument = offsets[parameter];
+			argument < offsets[parameter + 1]; ++argument)
+		{
+			if (pattern.parameters[parameter].kind != TEMPLATE_ARGUMENT_TYPE)
+				return kNoBinding;
+			canonical.push_back(TemplateArgument(
+				TEMPLATE_ARGUMENT_TYPE, arguments[argument]));
+		}
+	return InstantiateFunctionTemplate(index, canonical, offsets);
 }
 
 BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
@@ -170,12 +255,41 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	if (index >= function_templates_.size())
 		throw std::logic_error("invalid PA12 function template pattern");
 	const FunctionTemplatePattern& pattern = function_templates_[index];
-	const bool has_pack = HasTrailingTemplateParameterPack(pattern.parameters);
-	const std::size_t fixed = FixedTemplateParameterCount(pattern.parameters);
-	if ((!has_pack && arguments.size() != pattern.parameters.size()) ||
-		(has_pack && arguments.size() < fixed)) return kNoBinding;
+	std::vector<std::uint32_t> offsets;
+	if (!BuildFunctionTemplateArgumentOffsets(
+		pattern.parameters, arguments.size(), &offsets)) return kNoBinding;
+	return InstantiateFunctionTemplate(index, arguments, offsets);
+}
+
+BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
+	const std::vector<TemplateArgument>& arguments,
+	const std::vector<std::uint32_t>& parameter_offsets)
+{
+	if (index >= function_templates_.size())
+		throw std::logic_error("invalid PA12 function template pattern");
+	const FunctionTemplatePattern& pattern = function_templates_[index];
+	if (parameter_offsets.size() != pattern.parameters.size() + 1 ||
+		parameter_offsets.empty() || parameter_offsets.front() != 0 ||
+		parameter_offsets.back() != arguments.size()) return kNoBinding;
+	for (std::size_t parameter = 0;
+		parameter < pattern.parameters.size(); ++parameter)
+	{
+		const std::size_t first = parameter_offsets[parameter];
+		const std::size_t last = parameter_offsets[parameter + 1];
+		if (first > last || last > arguments.size() ||
+			(!pattern.parameters[parameter].pack && last != first + 1))
+			return kNoBinding;
+		for (std::size_t argument = first; argument < last; ++argument)
+			if (arguments[argument].kind != pattern.parameters[parameter].kind ||
+				arguments[argument].IsDependent()) return kNoBinding;
+	}
 	++template_specialization_requests_;
-	const TemplateSpecializationKey request_key(index, arguments);
+	const std::vector<std::uint32_t> no_identity_offsets;
+	const std::vector<std::uint32_t>& identity_offsets =
+		FunctionTemplateNeedsPartitionIdentity(pattern.parameters) ?
+			parameter_offsets : no_identity_offsets;
+	const TemplateSpecializationKey request_key(
+		index, arguments, identity_offsets);
 	BindingId old = template_instantiations_.Find(request_key);
 	if (old != kNoBinding)
 	{
@@ -185,20 +299,30 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 
 	std::vector<TemplateArgument> completed = arguments;
 	ScopeId default_scope = kNoScope;
-	for (std::size_t i = 0; i < completed.size(); ++i)
+	for (std::size_t parameter_index = 0;
+		parameter_index < pattern.parameters.size(); ++parameter_index)
 	{
 		const TemplateParameter& parameter =
-			TemplateParameterForArgument(pattern.parameters, i);
-		if (completed[i].kind != parameter.kind)
-			return kNoBinding;
-		if (completed[i].type != kNoType)
+			pattern.parameters[parameter_index];
+		const std::size_t first = parameter_offsets[parameter_index];
+		const std::size_t last = parameter_offsets[parameter_index + 1];
+		if (parameter.pack)
 		{
-			if (default_scope != kNoScope && i < fixed)
-				BindTemplateArgument(default_scope,
-					parameter, completed[i]);
+			for (std::size_t argument = first; argument < last; ++argument)
+				if (completed[argument].type == kNoType) return kNoBinding;
+			if (default_scope != kNoScope)
+				BindTemplateArgumentPack(default_scope, parameter,
+					completed, first, last);
 			continue;
 		}
-		if (i >= fixed || parameter.kind != TEMPLATE_ARGUMENT_TYPE ||
+		TemplateArgument& argument = completed[first];
+		if (argument.type != kNoType)
+		{
+			if (default_scope != kNoScope)
+				BindTemplateArgument(default_scope, parameter, argument);
+			continue;
+		}
+		if (parameter.kind != TEMPLATE_ARGUMENT_TYPE ||
 			parameter.default_argument == kNoNode)
 			return kNoBinding;
 		if (default_scope == kNoScope)
@@ -206,9 +330,17 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 			default_scope = NewScope(pattern.lexical_scope,
 				SCOPE_TEMPLATE_PARAMETERS, 0,
 				ScopePrefixId(pattern.lexical_scope));
-			for (std::size_t prior = 0; prior < i; ++prior)
-				BindTemplateArgument(default_scope,
-					pattern.parameters[prior], completed[prior]);
+			for (std::size_t prior = 0; prior < parameter_index; ++prior)
+			{
+				const std::size_t prior_first = parameter_offsets[prior];
+				const std::size_t prior_last = parameter_offsets[prior + 1];
+				if (pattern.parameters[prior].pack)
+					BindTemplateArgumentPack(default_scope,
+						pattern.parameters[prior], completed,
+						prior_first, prior_last);
+				else BindTemplateArgument(default_scope,
+					pattern.parameters[prior], completed[prior_first]);
+			}
 		}
 		NodeId type_id = FindChild(
 			parameter.default_argument, "type-id");
@@ -218,11 +350,12 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 		if (type_id == kNoNode)
 			throw std::runtime_error(
 				"empty function template default argument");
-		completed[i].type = BuildTypeId(type_id, default_scope);
-		if (completed[i].type == kNoType) return kNoBinding;
-		BindTemplateArgument(default_scope, parameter, completed[i]);
+		argument.type = BuildTypeId(type_id, default_scope);
+		if (argument.type == kNoType) return kNoBinding;
+		BindTemplateArgument(default_scope, parameter, argument);
 	}
-	const TemplateSpecializationKey cache_key(index, completed);
+	const TemplateSpecializationKey cache_key(
+		index, completed, identity_offsets);
 	if (completed != arguments)
 	{
 		old = template_instantiations_.Find(cache_key);
@@ -235,7 +368,7 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	}
 
 	const ScopeId template_scope =
-		BindFunctionTemplateArguments(pattern, completed);
+		BindFunctionTemplateArguments(pattern, completed, parameter_offsets);
 	const SpecInfo spec = BuildSpecifiers(pattern.specifiers, template_scope,
 		std::string(), true);
 	const EntityId member_owner = program_->EntityForScope(pattern.owner);
@@ -294,6 +427,16 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	mutable_pattern.specialization_arguments.insert(
 		mutable_pattern.specialization_arguments.end(),
 		completed.begin(), completed.end());
+	if (!identity_offsets.empty())
+	{
+		if (mutable_pattern.specialization_parameter_offsets.size() >
+			std::numeric_limits<std::uint32_t>::max() - parameter_offsets.size())
+			throw std::runtime_error(
+				"too many function template specialization partitions");
+		mutable_pattern.specialization_parameter_offsets.insert(
+			mutable_pattern.specialization_parameter_offsets.end(),
+			parameter_offsets.begin(), parameter_offsets.end());
+	}
 	return binding;
 }
 

@@ -590,7 +590,7 @@ private:
 					const NodeId expression = ParseExpression(2);
 					--angle_stop_depth_;
 					if (expression == kNoNode) valid = false;
-					else arena_.Add(list, expression);
+					else arena_.Add(list, ParsePackExpansion(expression));
 				}
 				if (!Match(OP_COMMA)) break;
 			}

@@ -246,14 +246,16 @@ private:
 		std::vector<NodeId>* arguments);
 	bool BuildTemplateArguments(const std::vector<TemplateParameter>& parameters,
 		const std::vector<NodeId>& syntax, ScopeId use_scope,
-		ScopeId lexical_scope, std::vector<TemplateArgument>* arguments);
+		ScopeId lexical_scope, std::vector<TemplateArgument>* arguments,
+		bool require_complete = true);
 	TypeId ResolveTemplateParameterType(const TemplateParameter& parameter,
 		ScopeId parameter_scope);
 	void BindTemplateArgument(ScopeId scope,
 		const TemplateParameter& parameter, const TemplateArgument& argument);
 	void BindTemplateArgumentPack(ScopeId scope,
 		const TemplateParameter& parameter,
-		const std::vector<TemplateArgument>& arguments, std::size_t first);
+		const std::vector<TemplateArgument>& arguments, std::size_t first,
+		std::size_t last);
 	bool LookupTemplateArgumentPack(ScopeId scope, NameId name,
 		std::vector<TemplateArgument>* arguments) const;
 	bool LookupFunctionParameterPack(ScopeId scope, NameId name,
@@ -308,13 +310,28 @@ private:
 		const std::vector<TypeId>& arguments);
 	BindingId InstantiateFunctionTemplate(std::size_t pattern,
 		const std::vector<TemplateArgument>& arguments);
+	BindingId InstantiateFunctionTemplate(std::size_t pattern,
+		const std::vector<TemplateArgument>& arguments,
+		const std::vector<std::uint32_t>& parameter_offsets);
 	ScopeId BindFunctionTemplateArguments(
 		const FunctionTemplatePattern& pattern,
-		const std::vector<TemplateArgument>& arguments);
+		const std::vector<TemplateArgument>& arguments,
+		const std::vector<std::uint32_t>& parameter_offsets);
+	bool BuildFunctionTemplateArgumentOffsets(
+		const std::vector<TemplateParameter>& parameters,
+		std::size_t argument_count,
+		std::vector<std::uint32_t>* offsets) const;
 	void UpgradeFunctionTemplateSpecializations(std::size_t pattern);
 	bool FunctionTemplateTypeIsDependent(TypeId type) const;
 	bool DeduceFunctionTemplateType(TypeId pattern, TypeId argument,
 		std::vector<TypeId>* deduced) const;
+	bool DeduceFunctionTemplatePackType(TypeId pattern, TypeId argument,
+		const std::vector<TemplateParameter>& parameters,
+		FunctionTemplateDeduction* deduced) const;
+	bool DeduceFunctionTemplatePackArgument(
+		const TemplateArgument& pattern, const TemplateArgument& argument,
+		const std::vector<TemplateParameter>& parameters,
+		FunctionTemplateDeduction* deduced) const;
 	std::size_t RequiredFunctionParameterCount(
 		const std::vector<ParameterInfo>& parameters) const;
 	int CompareFunctionTemplateConstraints(
@@ -323,7 +340,8 @@ private:
 		const std::vector<std::size_t>& patterns,
 		const std::vector<ExpressionInfo>& arguments,
 		std::vector<BindingId>* specializations = 0,
-		const std::vector<TypeId>* explicit_arguments = 0);
+		const std::vector<TypeId>* explicit_arguments = 0,
+		const std::vector<TemplateArgument>* canonical_explicit_arguments = 0);
 	void DeduceFunctionTemplates(ScopeId scope, const std::string& spelling,
 		const std::vector<ExpressionInfo>& arguments,
 		NodeId syntax = kNoNode);
