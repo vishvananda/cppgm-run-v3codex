@@ -1353,6 +1353,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 	if (TryAnalyzeOverloadedOperator(operation, scope, overloaded_syntax,
 		overloaded_operands, false, target, &overloaded)) return overloaded;
 	(void)ApplyBuiltinUnaryConversion(operation, &operand);
+	if (operation == "&" && operand.binding != kNoBinding)
+		EnsureStaticMemberStorage(operand.binding, true);
 	if (operation == "&" && operand.binding != kNoBinding &&
 		program_->bindings[operand.binding].bit_field)
 		throw std::runtime_error("address-of bit-field unsupported");
@@ -2110,7 +2112,8 @@ void SemanticAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 }
 
 void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
-	std::uint32_t output_parent, bool local, bool qualified_lexical_scope)
+	std::uint32_t output_parent, bool local, bool qualified_lexical_scope,
+	bool demanded_template_storage)
 {
 	if (local && AnalyzeQualifiedAssignmentStatement(
 		node, scope, output_parent))
@@ -2222,7 +2225,11 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		const NodeId initializer_node = FindChild(item, "initializer");
 		if (spec.storage_class != STORAGE_CLASS_EXTERN ||
 			initializer_node != kNoNode)
+		{
 			EnsureClassDefinition(parsed.type);
+			DemandClassTemplateMemberDefinitions(
+				DestructedEntity(parsed.type));
+		}
 		const LookupResult occupied =
 			program_->LookupDirect(declaration_scope, parsed.name, LOOKUP_ORDINARY);
 		if (occupied.ordinary != kNoBinding &&
@@ -2265,6 +2272,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		}
 		const bool deferred_template_constant_storage = !has_initializer &&
 			qualified_lexical_scope && program_->bindings[binding].constant &&
+			!demanded_template_storage &&
 			ClassTemplateHasNonTypeParameter(declaration_class_context);
 		if (!has_initializer && qualified_lexical_scope &&
 			program_->bindings[binding].constant &&
@@ -2829,9 +2837,17 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 			DemandFunction(hidden_friend_anchor_by_entity_[i]);
 	std::size_t default_demand = 0;
 	std::size_t function_demand = 0;
-	while (default_demand < demanded_default_constructor_entities_.size() ||
+	std::size_t member_definition_demand = 0;
+	while (member_definition_demand <
+			demanded_class_template_member_definitions_.size() ||
+		default_demand < demanded_default_constructor_entities_.size() ||
 		function_demand < demanded_functions_.size())
 	{
+		while (member_definition_demand <
+			demanded_class_template_member_definitions_.size())
+			ApplyDemandedClassTemplateMemberDefinitions(
+				demanded_class_template_member_definitions_[
+					member_definition_demand++]);
 		while (default_demand < demanded_default_constructor_entities_.size())
 			EmitDefaultConstructor(
 				demanded_default_constructor_entities_[default_demand++]);

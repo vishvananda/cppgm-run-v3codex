@@ -129,7 +129,8 @@ private:
 		const std::vector<TemplateParameter>& parameters);
 	void AnalyzeSimple(NodeId node, ScopeId scope,
 		std::uint32_t output_parent, bool local,
-		bool qualified_lexical_scope = false);
+		bool qualified_lexical_scope = false,
+		bool demanded_template_storage = false);
 	bool AnalyzeAmbiguousCallStatement(NodeId node, ScopeId scope,
 		std::uint32_t output_parent);
 	bool AnalyzeAmbiguousDirectInitializer(NodeId node, ScopeId scope,
@@ -312,7 +313,11 @@ private:
 	void UpgradeClassTemplateSpecializations(std::size_t pattern);
 	void ApplyClassTemplateMemberDefinitions(std::size_t pattern,
 		BindingId specialization,
-		const std::vector<TemplateArgument>& arguments);
+		const std::vector<TemplateArgument>& arguments, bool demanded = false);
+	void DemandClassTemplateMemberDefinitions(EntityId entity);
+	void QueueClassTemplateMemberDefinitions(std::size_t pattern,
+		BindingId specialization);
+	void ApplyDemandedClassTemplateMemberDefinitions(BindingId specialization);
 	BindingId InstantiateFunctionTemplate(std::size_t pattern,
 		const std::vector<TypeId>& arguments);
 	BindingId InstantiateFunctionTemplate(std::size_t pattern,
@@ -622,7 +627,8 @@ private:
 		const std::vector<BindingId>& constructors);
 	BindingId EnsureConstructorBaseEntry(BindingId constructor);
 	BindingId EnsureDestructorBaseEntry(BindingId destructor);
-	void EnsureStaticMemberStorage(BindingId member);
+	void EnsureStaticMemberStorage(BindingId member,
+		bool constant_storage = false);
 	BindingId EnsureImplicitConstructor(EntityId entity);
 	BindingId EnsureImplicitDestructor(EntityId entity);
 	const std::vector<BindingId>& ConstructorCandidates(EntityId entity) const;
@@ -825,6 +831,11 @@ private:
 	std::vector<std::uint8_t> class_template_specialization_states_;
 	std::vector<std::uint8_t> class_template_explicit_instantiation_states_;
 	std::vector<std::uint32_t> class_template_member_definition_counts_;
+	std::vector<std::uint32_t>
+		class_template_demanded_member_definition_counts_;
+	// Bit 0 is monotonic owner demand; bit 1 is deduplicated queued work.
+	std::vector<std::uint8_t> class_template_member_definition_demand_states_;
+	std::vector<BindingId> demanded_class_template_member_definitions_;
 	std::vector<NodeId> deferred_class_definition_by_entity_;
 	std::vector<ScopeId> deferred_class_scope_by_entity_;
 	std::vector<std::uint32_t> injected_fact_by_binding_;

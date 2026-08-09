@@ -14,31 +14,31 @@ evaluation and PA22/PA23 SFINAE remain out of scope.
 
 ## Current Failure Map
 
-The stage is 120/164, up from the checkpoint baseline of 116/164.  Canonical
-class-helper bool values, nested dependent bool packs, structured static-member
-`alignas`, and default-expression value-initialization now pass.  The 44
-remaining failures group into specialized-class member storage/vtable identity
-and demand; variable-template, qualified-name, and declaration ambiguity;
-literals, casts, and one invalid pack acceptance; explicit specialization
-(`300-*`); and stale-primary refresh (`400-*`).  The unknown-bound array case is
-accepted but retains one extra decay instruction.
+The stage is 125/164, up from the checkpoint baseline of 120/164.  Canonical
+specialization presentation, selective static-member definition demand,
+reference-bound nested storage, and integral/enum non-type vtable identity now
+pass.  The 39 remaining failures group into literal/operator decoding and
+casts; variable-template, qualified-name, and declaration ambiguity; one
+invalid pack acceptance and one extra array decay; explicit specialization
+(`300-*`); and stale-primary refresh (`400-*`).
 
 ## Active Checkpoint
 
-Canonicalize specialized-class ownership and demand for static members and
-vtable artifacts.  `spec.md` requires one canonical specialization entity,
-immutable retained definitions, separate declaration/definition demand states,
-and lowering/mangling from semantic identity rather than reconstructed source
-spellings.
+Build a typed literal boundary covering ordinary multi-character/wide literals
+and cooked user-defined integer literal dispatch.  `spec.md` requires source
+bytes to become canonical typed constants once, overload results to retain the
+selected declaration/conversions, and lowering to consume those facts without
+re-decoding token text.
 
-PA19 owns retained member patterns, PA20 owns specialization selection and
-replay into the canonical owner, PA12 owns member storage identity and demand,
-and ABI/lowering consume those facts.  Data flows from canonical template
-arguments through member replay to an idempotent artifact worklist.  Expected
-work is O(replayed members plus demanded artifacts) once per specialization,
-with O(1)-average owner/cache lookup.  Validate suppressed unused static
-constants, required conversion-helper storage, reference-bound static members,
-dependent and enum non-type vtables, and unchanged non-template storage demand.
+PA10 owns retained literal-token syntax, PA12 owns bounded decoding and typed
+constant facts, PA20 owns literal-operator lookup/template selection, and
+lowering consumes the selected call or canonical immediate.  Data flows from
+one token slice through one decoder into indexed overload resolution.  Expected
+work is O(token bytes plus viable literal-operator candidates), with each token
+decoded once and O(1)-average name/cache lookup.  Validate ordinary
+multi-character and wide literals, cooked non-template/overload/template
+operators, unchanged built-in integer suffixes, and rejection of malformed
+literals.
 
 ## Performance Evidence
 
@@ -102,6 +102,15 @@ specialization requests 23/39/71 with 17/33/65 hits; peak semantic bytes
 storage, and time scale linearly with pack length; nested discovery does not
 form a Cartesian expansion.
 
+Seven-run release medians for 16/32/64 object-demanded static definitions plus
+the same number of alias-only specializations: tokens 332/604/1,148; semantic
+nodes 247/487/967; lookups 716/1,420/2,828; specialization requests
+48/96/192; demand pushes 32/64/128; emitted globals 32/64/128; peak semantic
+bytes 546,536/1,091,104/2,176,418; semantic time 2.354/4.614/8.990 ms.  Each
+demanded object produces its object and static-member globals; alias-only
+specializations produce none.  Work, storage, queue traffic, and output scale
+linearly.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result |
@@ -114,3 +123,4 @@ form a Cartesian expansion.
 | Ordered base-pack edges and initializers | Compact ordered base identities/offsets, variable-width lookup/layout, type/value base expansion, lexical element overlays, lockstep initializer actions, and offset-driven lowering; PA20 106 -> 110, PA1-PA19 2,013/2,013, audit pass, base-pack scaling linear |
 | Typed dependent declaration/value boundaries | Retained `decltype` carrier/member syntax, semantic `alignas` disambiguation, dependent `typename` non-type parameter declarations/defaults, and bounded type/expression template-argument ambiguity; PA20 110 -> 116, PA1-PA19 2,013/2,013, audit pass, dependent-specialization work/storage linear |
 | Canonical dependent helper values and nested packs | Restricted structural constexpr conversion, structured `alignas` lookup, recursive lockstep type-pack scopes, and non-empty value-initialized argument staging; PA20 116 -> 120, PA1-PA19 2,013/2,013, audit pass, helper-pack scaling linear |
+| Canonical specialized owners and static-definition demand | Type-ID-independent argument presentation, separate retained static definitions, deduplicated object/function/vtable and reference/address demand, and canonical lowering identity; PA20 120 -> 125, PA1-PA19 2,013/2,013, audit pass, demand/output scaling linear |

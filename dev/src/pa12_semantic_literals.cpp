@@ -334,7 +334,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 		return AnalyzeImplicitDataMember(found.ordinary, scope, target,
 			found.naming_class);
 	if (binding.member_owner != kNoEntity)
-		EnsureStaticMemberStorage(found.ordinary);
+		EnsureStaticMemberStorage(found.ordinary,
+			target != kNoType && program_->types.IsReference(target));
 	const std::uint32_t injected_fact =
 		found.ordinary < injected_fact_by_binding_.size() ?
 		injected_fact_by_binding_[found.ordinary] : kNoDumpEdge;

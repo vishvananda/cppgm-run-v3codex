@@ -36,11 +36,11 @@ bool ClassTemplateArgumentsAreComplete(const Program& program,
 	return true;
 }
 
-std::string TemplateArgumentName(const std::string& source)
+std::string TemplateArgumentTypeName(const std::string& source)
 {
 	std::string spelling = source;
-	const char* prefixes[] = {"struct ", "class ", "union "};
-	for (std::size_t prefix = 0; prefix < 3; ++prefix)
+	const char* prefixes[] = {"struct ", "class ", "union ", "enum "};
+	for (std::size_t prefix = 0; prefix < 4; ++prefix)
 	{
 		const std::size_t length =
 			std::char_traits<char>::length(prefixes[prefix]);
@@ -50,45 +50,51 @@ std::string TemplateArgumentName(const std::string& source)
 			break;
 		}
 	}
-	std::string result;
-	result.reserve(spelling.size());
-	bool underscore = false;
-	for (std::size_t i = 0; i < spelling.size(); ++i)
-	{
-		const unsigned char character =
-			static_cast<unsigned char>(spelling[i]);
-		if (std::isalnum(character))
-		{
-			result += static_cast<char>(character);
-			underscore = false;
-		}
-		else if (!underscore)
-		{
-			result += '_';
-			underscore = true;
-		}
-	}
-	while (!result.empty() && result[result.size() - 1] == '_')
-		result.erase(result.size() - 1);
-	return result.empty() ? "type" : result;
+	return spelling;
 }
 
-std::string CanonicalTemplateArgumentName(const Program& program,
+std::string CanonicalTemplateArgumentPresentation(const Program& program,
 	const TemplateArgument& argument)
 {
 	if (argument.kind == TEMPLATE_ARGUMENT_TYPE)
-		return TemplateArgumentName(program.RenderType(argument.type));
-	std::ostringstream result;
+		return TemplateArgumentTypeName(program.RenderType(argument.type));
 	if (argument.IsDependent())
 	{
-		result << "dependent_" << argument.type << '_'
-			<< argument.dependent_parameter;
+		std::ostringstream result;
+		result << "dependent(" << TemplateArgumentTypeName(
+			program.RenderType(argument.type)) << ", "
+			<< argument.dependent_parameter << ')';
 		return result.str();
 	}
-	result << "value_" << argument.type << '_';
-	if (argument.value < 0) result << 'm' << -(argument.value + 1) + 1;
-	else result << 'p' << argument.value;
-	return result.str();
+	const TypeId type = program.types.RemoveTopCv(argument.type);
+	const TypeRecord& record = program.types.Get(type);
+	if (record.kind == TYPE_NAMED && record.entity != kNoEntity &&
+		program.entities[record.entity].flavor == NAMED_ENUM)
+		return "(" + program.names.Get(program.entities[record.entity].name) +
+			")" + std::to_string(argument.value);
+	return std::to_string(argument.value);
+}
+
+std::string ClassTemplateSpecializationName(const Program& program,
+	NameId primary, const std::vector<TemplateArgument>& arguments)
+{
+	std::string source = program.names.Get(primary) + "<";
+	for (std::size_t i = 0; i < arguments.size(); ++i)
+	{
+		if (i != 0) source += ", ";
+		source += CanonicalTemplateArgumentPresentation(program, arguments[i]);
+	}
+	source += '>';
+	std::string result;
+	result.reserve(source.size());
+	for (std::size_t i = 0; i < source.size(); ++i)
+	{
+		const unsigned char character =
+			static_cast<unsigned char>(source[i]);
+		result += std::isalnum(character) || character == '_' ?
+			static_cast<char>(character) : '_';
+	}
+	return result;
 }
 
 std::string ClassTemplateSpecializationScopeName(std::size_t pattern,
@@ -502,7 +508,12 @@ bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,
 			throw std::runtime_error(
 				"class template member parameter is not bound by its owner");
 
-	class_templates_[pattern_index].member_definitions.push_back(member);
+	const bool demand_definition =
+		arena_->IsTag(declaration, "simple-declaration");
+	if (demand_definition)
+		class_templates_[pattern_index].demanded_member_definitions.push_back(
+			member);
+	else class_templates_[pattern_index].member_definitions.push_back(member);
 	const std::vector<BindingId> specializations =
 		class_templates_[pattern_index].specialization_bindings;
 	const std::size_t parameter_count = owner_pattern.parameters.size();
@@ -520,7 +531,10 @@ bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,
 			throw std::logic_error("class specialization arguments are invalid");
 		const std::vector<TemplateArgument> arguments =
 			StoredTemplateArguments(first, parameter_count);
-		ApplyClassTemplateMemberDefinitions(
+		if (demand_definition)
+			QueueClassTemplateMemberDefinitions(
+				pattern_index, specializations[i]);
+		else ApplyClassTemplateMemberDefinitions(
 			pattern_index, specializations[i], arguments);
 	}
 	return true;
@@ -750,22 +764,27 @@ ScopeId SemanticAnalyzer::BindClassTemplateArguments(
 
 void SemanticAnalyzer::ApplyClassTemplateMemberDefinitions(
 	std::size_t index, BindingId specialization,
-	const std::vector<TemplateArgument>& arguments)
+	const std::vector<TemplateArgument>& arguments, bool demanded)
 {
 	if (index >= class_templates_.size() || specialization == kNoBinding)
 		throw std::logic_error("invalid class template member application");
 	const EntityId entity = EntityOf(program_->bindings[specialization].type);
 	if (entity == kNoEntity || !program_->entities[entity].complete) return;
-	if (class_template_member_definition_counts_.size() <= specialization)
-		class_template_member_definition_counts_.resize(
+	std::vector<std::uint32_t>& counts = demanded ?
+		class_template_demanded_member_definition_counts_ :
+		class_template_member_definition_counts_;
+	const std::deque<ClassTemplateMemberPattern>& definitions = demanded ?
+		class_templates_[index].demanded_member_definitions :
+		class_templates_[index].member_definitions;
+	if (counts.size() <= specialization)
+		counts.resize(
 			static_cast<std::size_t>(specialization) + 1, 0);
-	while (class_template_member_definition_counts_[specialization] <
-		class_templates_[index].member_definitions.size())
+	while (counts[specialization] < definitions.size())
 	{
 		const std::size_t definition_index =
-			class_template_member_definition_counts_[specialization]++;
+			counts[specialization]++;
 		const ClassTemplateMemberPattern& definition =
-			class_templates_[index].member_definitions[definition_index];
+			definitions[definition_index];
 		const bool pack_owner =
 			definition.owner_parameter_indices.size() == 1 &&
 			definition.owner_parameter_indices[0] != kNoDumpEdge &&
@@ -855,7 +874,7 @@ void SemanticAnalyzer::ApplyClassTemplateMemberDefinitions(
 			AnalyzeOutOfClassSpecialMember(node, definition_scope,
 				definition_scope, true);
 		else if (arena_->IsTag(node, "simple-declaration"))
-			AnalyzeSimple(node, definition_scope, root_, false, true);
+			AnalyzeSimple(node, definition_scope, root_, false, true, demanded);
 		else if (arena_->IsTag(node, "class-specifier") ||
 			arena_->IsTag(node, "class-forward-declaration"))
 		{
@@ -869,6 +888,80 @@ void SemanticAnalyzer::ApplyClassTemplateMemberDefinitions(
 		else throw std::runtime_error(
 			"unsupported class template member definition");
 	}
+}
+
+void SemanticAnalyzer::QueueClassTemplateMemberDefinitions(
+	std::size_t pattern, BindingId specialization)
+{
+	if (pattern >= class_templates_.size() || specialization == kNoBinding)
+		throw std::logic_error("invalid class template member demand");
+	if (class_template_member_definition_demand_states_.size() <= specialization)
+		class_template_member_definition_demand_states_.resize(
+			static_cast<std::size_t>(specialization) + 1, 0);
+	std::uint8_t& state =
+		class_template_member_definition_demand_states_[specialization];
+	if ((state & 1U) == 0 || (state & 2U) != 0) return;
+	const std::size_t applied =
+		specialization <
+			class_template_demanded_member_definition_counts_.size() ?
+		class_template_demanded_member_definition_counts_[specialization] : 0;
+	if (applied >=
+		class_templates_[pattern].demanded_member_definitions.size()) return;
+	state |= 2U;
+	demanded_class_template_member_definitions_.push_back(specialization);
+	++demand_worklist_pushes_;
+}
+
+void SemanticAnalyzer::DemandClassTemplateMemberDefinitions(EntityId entity)
+{
+	for (std::size_t depth = 0; entity != kNoEntity &&
+		depth <= program_->entities.size(); ++depth)
+	{
+		if (entity >= program_->entities.size())
+			throw std::logic_error("invalid class template member demand entity");
+		if (entity >= class_template_pattern_by_entity_.size() ||
+			class_template_pattern_by_entity_[entity] == kNoDumpEdge)
+		{
+			entity = program_->entities[entity].enclosing_class;
+			continue;
+		}
+		const std::size_t pattern = class_template_pattern_by_entity_[entity];
+		if (pattern >= class_templates_.size())
+			throw std::logic_error("invalid class template member demand owner");
+		const BindingId specialization = program_->entities[entity].declaration;
+		if (specialization == kNoBinding) return;
+		if (class_template_member_definition_demand_states_.size() <= specialization)
+			class_template_member_definition_demand_states_.resize(
+				static_cast<std::size_t>(specialization) + 1, 0);
+		class_template_member_definition_demand_states_[specialization] |= 1U;
+		QueueClassTemplateMemberDefinitions(pattern, specialization);
+		return;
+	}
+}
+
+void SemanticAnalyzer::ApplyDemandedClassTemplateMemberDefinitions(
+	BindingId specialization)
+{
+	if (specialization == kNoBinding ||
+		specialization >= program_->bindings.size())
+		throw std::logic_error("invalid demanded class template member owner");
+	const EntityId entity = EntityOf(program_->bindings[specialization].type);
+	if (entity == kNoEntity || entity >= class_template_pattern_by_entity_.size())
+		throw std::logic_error("demanded class template member has no entity");
+	const std::size_t pattern = class_template_pattern_by_entity_[entity];
+	if (pattern == kNoDumpEdge || pattern >= class_templates_.size())
+		throw std::logic_error("demanded class template member has no pattern");
+	if (class_template_member_definition_demand_states_.size() <= specialization)
+		throw std::logic_error("class template member demand state is missing");
+	class_template_member_definition_demand_states_[specialization] &= 1U;
+	const EntityRecord& record = program_->entities[entity];
+	if (record.template_argument_begin == kNoBinding)
+		throw std::logic_error("demanded class template member has no arguments");
+	const std::vector<TemplateArgument> arguments = StoredTemplateArguments(
+		record.template_argument_begin, record.template_argument_count);
+	ApplyClassTemplateMemberDefinitions(
+		pattern, specialization, arguments, true);
+	QueueClassTemplateMemberDefinitions(pattern, specialization);
 }
 
 void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
@@ -892,11 +985,8 @@ void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
 		 arguments.size() < FixedTemplateParameterCount(pattern.parameters)))
 		throw std::logic_error("class template completion argument mismatch");
 	class_template_specialization_states_[binding] = 1;
-	std::string specialization_name = program_->names.Get(pattern.name);
-	for (std::size_t i = 0; i < arguments.size(); ++i)
-		specialization_name += "_" +
-			CanonicalTemplateArgumentName(*program_, arguments[i]);
-	specialization_name += "_";
+	const std::string specialization_name =
+		ClassTemplateSpecializationName(*program_, pattern.name, arguments);
 	const ScopeId template_scope =
 		BindClassTemplateArguments(pattern, arguments);
 	(void)AnalyzeClass(pattern.declaration, template_scope,
@@ -904,6 +994,7 @@ void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
 		pattern.name, true, program_->bindings[binding].name);
 	class_template_specialization_states_[binding] = 2;
 	ApplyClassTemplateMemberDefinitions(index, binding, arguments);
+	QueueClassTemplateMemberDefinitions(index, binding);
 }
 
 void SemanticAnalyzer::EnsureClassDefinition(TypeId type)
@@ -1136,11 +1227,8 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 		return old;
 	}
 
-	std::string specialization_name = program_->names.Get(pattern.name);
-	for (std::size_t i = 0; i < arguments.size(); ++i)
-		specialization_name += "_" +
-			CanonicalTemplateArgumentName(*program_, arguments[i]);
-	specialization_name += "_";
+	const std::string specialization_name =
+		ClassTemplateSpecializationName(*program_, pattern.name, arguments);
 	const ScopeId template_scope =
 		BindClassTemplateArguments(pattern, arguments);
 	NameId specialization_lookup_name =

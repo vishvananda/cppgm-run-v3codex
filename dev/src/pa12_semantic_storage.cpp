@@ -68,6 +68,12 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 			sizeof(std::uint8_t) +
 		class_template_member_definition_counts_.capacity() *
 			sizeof(std::uint32_t) +
+		class_template_demanded_member_definition_counts_.capacity() *
+			sizeof(std::uint32_t) +
+		class_template_member_definition_demand_states_.capacity() *
+			sizeof(std::uint8_t) +
+		demanded_class_template_member_definitions_.capacity() *
+			sizeof(BindingId) +
 		deferred_class_definition_by_entity_.capacity() * sizeof(NodeId) +
 		deferred_class_scope_by_entity_.capacity() * sizeof(ScopeId) +
 		injected_fact_by_binding_.capacity() * sizeof(std::uint32_t) +
@@ -132,21 +138,24 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		bytes += class_templates_[i].parameters.capacity() *
 				sizeof(TemplateParameter) +
 			class_templates_[i].specialization_bindings.capacity() *
-				sizeof(BindingId) +
-			class_templates_[i].member_definitions.size() *
-				sizeof(ClassTemplateMemberPattern);
-		for (std::size_t member = 0;
-			member < class_templates_[i].member_definitions.size(); ++member)
+				sizeof(BindingId);
+		for (std::size_t set = 0; set < 2; ++set)
 		{
-			const ClassTemplateMemberPattern& definition =
-				class_templates_[i].member_definitions[member];
-			bytes += definition.parameters.capacity() *
+			const std::deque<ClassTemplateMemberPattern>& definitions = set == 0 ?
+				class_templates_[i].member_definitions :
+				class_templates_[i].demanded_member_definitions;
+			bytes += definitions.size() * sizeof(ClassTemplateMemberPattern);
+			for (std::size_t member = 0; member < definitions.size(); ++member)
+			{
+				const ClassTemplateMemberPattern& definition = definitions[member];
+				bytes += definition.parameters.capacity() *
 					sizeof(TemplateParameter) +
-				definition.owner_parameter_indices.capacity() *
+					definition.owner_parameter_indices.capacity() *
 					sizeof(std::uint32_t) +
-				definition.owner_fixed_arguments.capacity() *
+					definition.owner_fixed_arguments.capacity() *
 					sizeof(TemplateArgument) +
-				definition.nested_owner_path.capacity() * sizeof(NameId);
+					definition.nested_owner_path.capacity() * sizeof(NameId);
+			}
 		}
 	}
 	for (std::size_t i = 0; i < variable_templates_.size(); ++i)

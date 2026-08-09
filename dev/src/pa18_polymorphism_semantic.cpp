@@ -253,6 +253,7 @@ void SemanticAnalyzer::CompleteClassPolymorphism(EntityId entity)
 
 void SemanticAnalyzer::MarkVtableDemand(EntityId entity)
 {
+	DemandClassTemplateMemberDefinitions(entity);
 	for (std::size_t depth = 0; entity != kNoEntity &&
 		depth <= program_->entities.size(); ++depth)
 	{

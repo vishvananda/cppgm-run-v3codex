@@ -2524,8 +2524,7 @@ BindingId SemanticAnalyzer::EnsureDestructorBaseEntry(BindingId destructor)
 	destructor_base_entry_by_binding_[destructor] = base_entry;
 	return base_entry;
 }
-
-void SemanticAnalyzer::EnsureStaticMemberStorage(BindingId member)
+void SemanticAnalyzer::EnsureStaticMemberStorage(BindingId member, bool constant_storage)
 {
 	member = program_->bindings[member].canonical;
 	BindingRecord& binding = program_->bindings[member];
@@ -2535,7 +2534,8 @@ void SemanticAnalyzer::EnsureStaticMemberStorage(BindingId member)
 	// An in-class integral constant does not require storage until an
 	// out-of-class definition supplies it. Pure constant-expression uses keep
 	// the canonical member fact and must not manufacture an undefined global.
-	if (binding.constant) return;
+	if (binding.constant && !constant_storage) return;
+	DemandClassTemplateMemberDefinitions(binding.member_owner);
 	if (static_member_storage_by_binding_.size() <= member)
 		static_member_storage_by_binding_.resize(
 			static_cast<std::size_t>(member) + 1, kNoDumpEdge);
@@ -2816,11 +2816,11 @@ FunctionInfo& SemanticAnalyzer::GetMutableFunction(BindingId binding)
 		throw std::logic_error("missing PA12 function fact");
 	return functions_[function_fact_by_binding_[canonical]];
 }
-
 void SemanticAnalyzer::DemandFunction(BindingId binding)
 {
 	if (binding == kNoBinding || unevaluated_depth_ != 0) return;
 	binding = program_->bindings[binding].canonical;
+	DemandClassTemplateMemberDefinitions(program_->bindings[binding].member_owner);
 	program_->bindings[binding].emission_demanded |= program_->bindings[binding].inline_function;
 	if ((program_->bindings[binding].constructor ||
 		 program_->bindings[binding].destructor) &&

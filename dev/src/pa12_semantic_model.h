@@ -557,6 +557,7 @@ struct ClassTemplatePattern
 	// specialization replay. Keep their addresses stable if replay discovers
 	// another retained definition.
 	std::deque<ClassTemplateMemberPattern> member_definitions;
+	std::deque<ClassTemplateMemberPattern> demanded_member_definitions;
 	EntityId marker_entity;
 	bool defined;
 
