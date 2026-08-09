@@ -862,6 +862,7 @@ struct ClassTemplateMemberPattern
 	std::vector<TemplateParameter> parameters;
 	std::vector<TemplateArgument> canonical_owner_arguments;
 	std::vector<NameId> nested_owner_path;
+	std::vector<NodeId> nested_owner_argument_lists;
 
 	ClassTemplateMemberPattern()
 		: lexical_scope(kNoScope), declaration(kNoNode),

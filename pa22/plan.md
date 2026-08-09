@@ -35,6 +35,11 @@ Retained class-member definitions also record whether their canonical owner is t
 primary or one exact partial-pattern ordinal. Replay compares that stable identity
 with the specialization's selected pattern before substitution. Qualified type and
 template carriers preserve their naming-class binding and access provenance.
+Dependent nested owner components retain indexed names plus argument syntax until
+their enclosing specialization is concrete; replay then materializes canonical
+arguments and transfers the remaining pattern to the indexed nested template owner.
+Semantic owner scope and source/substitution overlays remain separate, and terminal
+function-template IDs resolve through the concrete structured carrier.
 
 This stage applies `spec.md` §§2–6, 8–10: canonical specialization identity,
 indexed lookup, separate retained-pattern/selection/completion state, memoized demand,
@@ -45,25 +50,26 @@ deduction/SFINAE and §7 object-backend work remain outside this LowIR stage.
 
 ## Current Failure Map
 
-Current result: **229/310**. The remaining 81 failures group by exclusive primary
-owner: member/friend ownership, lookup, and access 39; alias/template-template/pack
-integration 20; explicit specialization and instantiation integration 10;
+Current result: **234/310**. The remaining 76 failures group by exclusive primary
+owner: member/friend ownership, lookup, and access 36; alias/template-template/pack
+integration 20; explicit specialization and instantiation integration 8;
 dependent lookup, deduction, conversion, and lowering 10; residual partial
 ordering/replay 2.
 
 ## Active Checkpoint
 
-**Nested template-id owner-component routing.** Owner: each templated intermediate
-component in `outer<T>::inner<U>` resolves through the current concrete outer
-specialization to the nested template pattern and specialization that owns replay.
-Data flow: retained structured owner component -> outer specialization -> indexed
-nested template pattern -> canonical nested specialization -> definition demand and
-lowering. Apply `spec.md` §§2–6 and 9: typed owner paths, canonical specialization
-identity, phase-separated replay/completion, indexed lookup, and one emission owner.
-Expected work is O(owner depth + directly related nested patterns/specializations)
-with O(1)-average indexes. Validate late nested definitions, nested member partials,
-prvalue destruction, explicit specialization/instantiation, then PA22, through PA21,
-audit, and owner-depth/member-count probes.
+**Concrete explicit-member replacement and revision propagation.** Owner: one
+canonical class/member specialization binding owns its selected explicit definition;
+an earlier primary-instantiated body is replaceable only by that binding's later
+explicit definition. Data flow: explicit declaration -> canonical class arguments and
+member signature -> indexed specialization binding -> monotonic definition revision
+and stale-body replacement -> demand queue -> one typed emission. Apply `spec.md`
+§§2–6 and 9: complete specialization keys, separate definition/demand state, precise
+invalidation, and lowering from the chosen declaration. Expected work is O(owner
+depth + indexed target overloads + affected specialization), with no unrelated
+specialization scan. Validate multiple owners, forward use, stale primary refresh,
+member templates, converting constructors, duplicate rejection, then PA22, through
+PA21, audit, and unrelated-owner/replacement-count probes.
 
 ## Performance Evidence
 
@@ -103,6 +109,13 @@ all-pairs partial-registration cost. Storage and observed time remain near-linea
 these sizes; the quadratic deduction counter is retained as a later optimization
 target rather than hidden by the checkpoint.
 
+Five-run medians for one late nested definition routed into 16/32/64 pre-existing
+outer/inner specialization pairs are 17.73/36.78/74.19 ms semantic time and
+1.260/2.485/4.945 MB peak stage storage. Specialization requests are 198/390/774,
+cache hits 132/260/516, lookup queries 1919/3791/7535, and demand pushes/emissions
+33/65/129. Every counter, time, and storage scales linearly; each transfer visits only
+the concrete outer pattern and its directly owned nested specialization sequence.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result |
@@ -112,4 +125,5 @@ target rather than hidden by the checkpoint.
 | `b0f34797` canonical alias/template entity graph | Retained alias patterns, typed cached substitution, template-template shape/identity matching, proxy partial deduction, defaults/packs, ADL ownership, and nested parameter parsing; PA22 145 -> 192/310 with no regressions, prior 2329/2329, audit pass. |
 | `88ab9ab1` explicit specialization/instantiation ownership | Canonical function target selection, extern suppression, definition demand/root state, class redeclaration transitions, and primary-body replacement; PA22 192 -> 208/310 with 16 gains and no regressions, prior 2329/2329, audit pass; linear scaling evidence above. |
 | `03b7bf00` friend-template ownership and grant propagation | Canonical namespace/member owners, indexed hidden ADL edges, cached/future specialization grants, dependent friend type-ids, and protected access context; PA22 208 -> 221/310 with 13 gains and no regressions, prior 2329/2329, audit pass; constant unrelated-friend candidate work above. |
-| Partial-member owner identity and naming-class access | Exact primary/partial owner validation and replay, member-template access provenance, and intermediate qualified-carrier checks; PA22 221 -> 229/310 with eight gains and no regressions, prior 2329/2329, audit pass; scaling evidence above. |
+| `403c1ff5` partial-member owner identity and naming-class access | Exact primary/partial owner validation and replay, member-template access provenance, and intermediate qualified-carrier checks; PA22 221 -> 229/310 with eight gains and no regressions, prior 2329/2329, audit pass; scaling evidence above. |
+| Nested template-id owner routing | Staged canonical transfer through concrete nested patterns, owner-aware lexical overlays, retained-local validation, and structured terminal function-template lookup; PA22 229 -> 234/310 with five gains and no regressions, prior 2329/2329, audit pass; linear scaling evidence above. |

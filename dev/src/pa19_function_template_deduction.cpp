@@ -756,9 +756,11 @@ std::vector<BindingId> SemanticAnalyzer::FunctionTemplateTargetCandidates(
 		syntax, scope, &structured_base, &explicit_arguments);
 	const bool explicit_id = structured_explicit;
 	if (!structured_explicit) structured_base = StructuredNamePath(syntax);
-	const std::vector<std::size_t> patterns =
-		!structured_base.Empty() ? FindFunctionTemplates(scope, structured_base) :
+	std::vector<std::size_t> patterns = !structured_base.Empty() ?
+		FindStructuredFunctionTemplates(syntax, scope) :
 		FindFunctionTemplates(scope, spelling);
+	if (patterns.empty() && !structured_base.Empty())
+		patterns = FindFunctionTemplates(scope, structured_base);
 	std::vector<BindingId> result;
 	for (std::size_t i = 0; i < patterns.size(); ++i)
 	{
@@ -842,9 +844,11 @@ bool SemanticAnalyzer::AnalyzeFunctionId(NodeId node, ScopeId scope,
 	const bool explicit_template_id = ParseExplicitTemplateArguments(
 		node, scope, &structured_base, &explicit_arguments);
 	if (!explicit_template_id) structured_base = StructuredNamePath(node);
-	const std::vector<std::size_t> template_patterns =
-		!structured_base.Empty() ? FindFunctionTemplates(scope, structured_base) :
+	std::vector<std::size_t> template_patterns = !structured_base.Empty() ?
+		FindStructuredFunctionTemplates(node, scope) :
 		FindFunctionTemplates(scope, spelling);
+	if (template_patterns.empty() && !structured_base.Empty())
+		template_patterns = FindFunctionTemplates(scope, structured_base);
 	TypeId desired = target;
 	if (desired != kNoType)
 	{

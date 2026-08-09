@@ -202,8 +202,24 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	pattern.constructor_template = special_member_template;
 	pattern.dependent_exception_specification =
 		dependent_exception_specification;
-	const ScopeId shape_scope = NewScope(scope, SCOPE_TEMPLATE_PARAMETERS,
-		0, ScopePrefixId(scope));
+	bool friend_syntax = false;
+	for (std::uint32_t edge = specifiers == kNoNode ? kNoEdge :
+		arena_->FirstEdge(specifiers); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+		if (PayloadSource(arena_->EdgeChild(edge)) == "friend")
+			friend_syntax = true;
+	if (!friend_syntax)
+	{
+		pattern.owner = ResolveOwner(scope, path);
+		if (pattern.owner == kNoScope)
+			throw std::runtime_error("function template owner not found");
+		if (program_->EntityForScope(pattern.owner) != kNoEntity)
+			pattern.lexical_scope =
+				TemplateLexicalScope(scope, pattern.owner);
+	}
+	const ScopeId shape_scope = NewScope(pattern.lexical_scope,
+		SCOPE_TEMPLATE_PARAMETERS, 0,
+		ScopePrefixId(pattern.lexical_scope));
 	for (std::size_t p = 0; p < parameters.size(); ++p)
 	{
 		if (parameters[p].name == 0) continue;
@@ -248,7 +264,8 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 		pattern.ordinary_visible = qualified_friend;
 		pattern.definition_in_class = definition;
 	}
-	else pattern.owner = ResolveOwner(scope, path);
+	else if (pattern.owner == kNoScope)
+		pattern.owner = ResolveOwner(scope, path);
 	if (pattern.owner == kNoScope)
 		throw std::runtime_error("function template owner not found");
 	pattern.nonthrowing = dependent_exception_specification ?
@@ -390,6 +407,30 @@ std::vector<std::size_t> SemanticAnalyzer::FindFunctionTemplates(
 		if (!found) continue;
 		for (std::size_t i = 0; i < found->Size(); ++i)
 			result.push_back((*found)[i]);
+	}
+	return result;
+}
+
+std::vector<std::size_t> SemanticAnalyzer::FindStructuredFunctionTemplates(
+	NodeId syntax, ScopeId scope)
+{
+	const NamePath path = StructuredNamePath(syntax);
+	if (path.Empty()) return std::vector<std::size_t>();
+	const LookupResult found = LookupStructuredName(
+		syntax, scope, LOOKUP_FUNCTION_TEMPLATE);
+	const NameId name = path.Last();
+	std::vector<std::size_t> result;
+	for (std::size_t owner = 0;
+		owner < found.FunctionTemplateOwnerCount(); ++owner)
+	{
+		const std::uint64_t key =
+			(static_cast<std::uint64_t>(
+				found.FunctionTemplateOwnerAt(owner)) << 32) | name;
+		const CompactIndexSequence* indexed =
+			template_function_sets_.Find(key);
+		if (!indexed) continue;
+		for (std::size_t i = 0; i < indexed->Size(); ++i)
+			result.push_back((*indexed)[i]);
 	}
 	return result;
 }

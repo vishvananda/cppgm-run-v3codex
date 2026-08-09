@@ -189,6 +189,13 @@ private:
 	bool ClassTemplateMemberNamesPrimaryParameters(
 		const std::vector<TemplateParameter>& parameters,
 		const std::vector<TemplateArgument>& arguments) const;
+	void SelectClassTemplateMemberOwner(
+		std::size_t pattern, ClassTemplateMemberPattern* member);
+	ScopeId TemplateLexicalScope(ScopeId source, ScopeId owner) const;
+	bool RouteClassTemplateMemberDefinition(
+		const ClassTemplateMemberPattern& definition,
+		std::size_t component, ScopeId owner, ScopeId lexical_scope,
+		bool demanded);
 	bool RetainedClassDeclaresNestedPath(NodeId declaration,
 		const std::vector<NameId>& path);
 	void AnalyzeSimple(NodeId node, ScopeId scope,
@@ -356,6 +363,8 @@ private:
 		const std::string& spelling);
 	std::vector<std::size_t> FindFunctionTemplates(ScopeId scope,
 		const NamePath& path);
+	std::vector<std::size_t> FindStructuredFunctionTemplates(
+		NodeId syntax, ScopeId scope);
 	std::vector<ScopeId> FindFunctionTemplateOwners(ScopeId scope,
 		const std::string& spelling);
 	std::vector<ScopeId> FindFunctionTemplateOwners(ScopeId scope,

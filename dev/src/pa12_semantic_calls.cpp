@@ -632,8 +632,10 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 	if (structured_explicit)
 	{
 		std::vector<BindingId> explicit_candidates;
-		const std::vector<std::size_t> patterns =
-			FindFunctionTemplates(scope, structured_base);
+		std::vector<std::size_t> patterns =
+			FindStructuredFunctionTemplates(syntax, scope);
+		if (patterns.empty())
+			patterns = FindFunctionTemplates(scope, structured_base);
 		for (std::size_t i = 0; i < patterns.size(); ++i)
 		{
 			const FunctionTemplatePattern& pattern =

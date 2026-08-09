@@ -34,6 +34,157 @@ bool EquivalentAliasTemplateParameters(
 
 }
 
+void SemanticAnalyzer::SelectClassTemplateMemberOwner(
+	std::size_t pattern_index, ClassTemplateMemberPattern* member)
+{
+	if (!member || pattern_index >= class_templates_.size())
+		throw std::logic_error("invalid class template member owner");
+	ClassTemplatePattern& owner = class_templates_[pattern_index];
+	member->owner_partial_pattern = kNoDumpEdge;
+	for (std::size_t partial_index = 0;
+		partial_index < owner.partial_specializations.size(); ++partial_index)
+	{
+		ClassTemplatePartialPattern& partial =
+			owner.partial_specializations[partial_index];
+		if (!MaterializeTemplatePartialArguments(owner.parameters,
+			partial.parameters, partial.arguments, partial.lexical_scope,
+			&partial.canonical_arguments,
+			&partial.canonical_argument_state)) continue;
+		FunctionTemplateDeduction partial_from_member(partial.parameters);
+		FunctionTemplateDeduction member_from_partial(member->parameters);
+		if (!MatchTemplatePartialArguments(partial.parameters,
+			partial.canonical_arguments, member->canonical_owner_arguments,
+			&partial_from_member) ||
+			!MatchTemplatePartialArguments(member->parameters,
+				member->canonical_owner_arguments, partial.canonical_arguments,
+				&member_from_partial)) continue;
+		if (partial_index > std::numeric_limits<std::uint32_t>::max())
+			throw std::runtime_error("too many class partial patterns");
+		member->owner_partial_pattern =
+			static_cast<std::uint32_t>(partial_index);
+		break;
+	}
+	if (member->owner_partial_pattern == kNoDumpEdge &&
+		!ClassTemplateMemberNamesPrimaryParameters(
+			member->parameters, member->canonical_owner_arguments))
+		throw std::runtime_error(
+			"class template member owner is not a declared specialization");
+}
+
+ScopeId SemanticAnalyzer::TemplateLexicalScope(
+	ScopeId source, ScopeId owner) const
+{
+	if (program_->KindOfScope(owner) != SCOPE_CLASS) return source;
+	for (ScopeId current = source; current != kNoScope;
+		current = program_->ParentScope(current))
+		if (current == owner) return source;
+	return owner;
+}
+
+bool SemanticAnalyzer::RouteClassTemplateMemberDefinition(
+	const ClassTemplateMemberPattern& definition, std::size_t component,
+	ScopeId owner_scope, ScopeId lexical_scope, bool demanded)
+{
+	if (component >= definition.nested_owner_path.size() ||
+		component >= definition.nested_owner_argument_lists.size() ||
+		definition.nested_owner_argument_lists[component] == kNoNode)
+		return false;
+	const NameId name = definition.nested_owner_path[component];
+	const LookupResult found = program_->LookupDirect(
+		owner_scope, name, LOOKUP_SCOPE_CARRIER);
+	const std::size_t pattern_index = FindClassTemplateIndex(found, name);
+	if (pattern_index == NoAliasTemplatePattern()) return false;
+
+	const NodeId declaration = definition.declaration;
+	if (!arena_->IsTag(declaration, "template-declaration")) return false;
+	const NodeId clause = FindChild(declaration, "template-parameter-clause");
+	const NodeId list = clause == kNoNode ? kNoNode :
+		FindChild(clause, "template-parameter-list");
+	if (list == kNoNode) return false;
+	std::vector<TemplateParameter> parameters;
+	std::vector<NameId> parameter_names;
+	std::vector<NodeId> defaults;
+	ParseTemplateParameters(list, lexical_scope, &parameters,
+		&parameter_names, &defaults);
+	if (parameters.empty()) return false;
+	NodeId target = kNoNode;
+	for (std::uint32_t edge = arena_->FirstEdge(declaration);
+		edge != kNoEdge; edge = arena_->NextEdge(edge))
+	{
+		const NodeId child = arena_->EdgeChild(edge);
+		if (child != clause) target = child;
+	}
+	if (target == kNoNode) return false;
+
+	std::vector<NodeId> owner_arguments;
+	const NodeId argument_list =
+		definition.nested_owner_argument_lists[component];
+	for (std::uint32_t edge = arena_->FirstEdge(argument_list);
+		edge != kNoEdge; edge = arena_->NextEdge(edge))
+		owner_arguments.push_back(arena_->EdgeChild(edge));
+	ClassTemplateMemberPattern routed;
+	routed.lexical_scope = lexical_scope;
+	routed.declaration = target;
+	routed.parameters.swap(parameters);
+	routed.nested_owner_path.assign(
+		definition.nested_owner_path.begin() + component + 1,
+		definition.nested_owner_path.end());
+	routed.nested_owner_argument_lists.assign(
+		definition.nested_owner_argument_lists.begin() + component + 1,
+		definition.nested_owner_argument_lists.end());
+	std::vector<NameId> declared_owner_path = routed.nested_owner_path;
+	for (std::size_t nested = 0;
+		nested < routed.nested_owner_argument_lists.size(); ++nested)
+		if (routed.nested_owner_argument_lists[nested] != kNoNode)
+		{
+			declared_owner_path.resize(nested + 1);
+			break;
+		}
+	std::uint8_t owner_shape_state = 0;
+	ClassTemplatePattern& pattern = class_templates_[pattern_index];
+	if (pattern.defined && !declared_owner_path.empty() &&
+		FindChild(pattern.declaration, "base-clause") == kNoNode &&
+		!RetainedClassDeclaresNestedPath(
+			pattern.declaration, declared_owner_path))
+		throw std::runtime_error(
+			"class template member has a missing nested owner");
+	if (!MaterializeTemplatePartialArguments(pattern.parameters,
+		routed.parameters, owner_arguments, lexical_scope,
+		&routed.canonical_owner_arguments, &owner_shape_state) ||
+		owner_shape_state != 1)
+		throw std::runtime_error(
+			"nested class template member owner pattern is not deducible");
+	SelectClassTemplateMemberOwner(pattern_index, &routed);
+
+	std::deque<ClassTemplateMemberPattern>& definitions = demanded ?
+		pattern.demanded_member_definitions : pattern.member_definitions;
+	definitions.push_back(routed);
+	const std::vector<BindingId> specializations =
+		pattern.specialization_bindings;
+	for (std::size_t i = 0; i < specializations.size(); ++i)
+	{
+		const BindingId specialization = specializations[i];
+		const EntityId entity = EntityOf(
+			program_->bindings[specialization].type);
+		if (entity == kNoEntity)
+			throw std::logic_error(
+				"nested class specialization has no entity");
+		const EntityRecord& record = program_->entities[entity];
+		if (record.template_argument_begin == kNoBinding)
+			throw std::logic_error(
+				"nested class specialization has no arguments");
+		const std::vector<TemplateArgument> arguments =
+			StoredTemplateArguments(record.template_argument_begin,
+				record.template_argument_count);
+		if (demanded)
+			QueueClassTemplateMemberDefinitions(
+				pattern_index, specialization);
+		else ApplyClassTemplateMemberDefinitions(
+			pattern_index, specialization, arguments);
+	}
+	return true;
+}
+
 bool SemanticAnalyzer::TemplateTemplateParameterMatches(
 	const std::vector<TemplateParameter>& expected,
 	const std::vector<TemplateParameter>& actual) const

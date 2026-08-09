@@ -210,7 +210,9 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 					sizeof(TemplateParameter) +
 					definition.canonical_owner_arguments.capacity() *
 						sizeof(TemplateArgument) +
-					definition.nested_owner_path.capacity() * sizeof(NameId);
+					definition.nested_owner_path.capacity() * sizeof(NameId) +
+					definition.nested_owner_argument_lists.capacity() *
+						sizeof(NodeId);
 			}
 		}
 		for (std::size_t partial = 0;

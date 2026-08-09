@@ -342,8 +342,11 @@ LookupResult SemanticAnalyzer::LookupStructuredName(NodeId syntax,
 			arena_->SemanticPayloadId(component_node));
 		const NodeId argument_list = FindChild(
 			component_node, "template-type-argument-list");
-		const LookupKind component_kind = argument_list != kNoNode ?
-			LOOKUP_TYPE : terminal ? kind : LOOKUP_SCOPE_CARRIER;
+		const bool terminal_function_template = terminal &&
+			kind == LOOKUP_FUNCTION_TEMPLATE;
+		const LookupKind component_kind = terminal_function_template ? kind :
+			argument_list != kNoNode ? LOOKUP_TYPE :
+			terminal ? kind : LOOKUP_SCOPE_CARRIER;
 		LookupResult found;
 		if (carrier == kNoScope)
 		{
@@ -363,7 +366,7 @@ LookupResult SemanticAnalyzer::LookupStructuredName(NodeId syntax,
 			!CanAccessMember(found.type_declaration, found.naming_class))
 			throw std::runtime_error("inaccessible qualified type");
 
-		if (argument_list != kNoNode)
+		if (argument_list != kNoNode && !terminal_function_template)
 		{
 			std::vector<NodeId> argument_syntax;
 			for (std::uint32_t edge = arena_->FirstEdge(argument_list);
@@ -697,11 +700,23 @@ bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,
 	for (std::size_t component = owner_component + 1;
 		component + 1 < path.Size(); ++component)
 		if (path[component] != path[owner_component])
+		{
 			member.nested_owner_path.push_back(path[component]);
-	if (owner_pattern.defined && !member.nested_owner_path.empty() &&
+			member.nested_owner_argument_lists.push_back(FindChild(
+				components[component], "template-type-argument-list"));
+		}
+	std::vector<NameId> declared_owner_path = member.nested_owner_path;
+	for (std::size_t component = 0;
+		component < member.nested_owner_argument_lists.size(); ++component)
+		if (member.nested_owner_argument_lists[component] != kNoNode)
+		{
+			declared_owner_path.resize(component + 1);
+			break;
+		}
+	if (owner_pattern.defined && !declared_owner_path.empty() &&
 		FindChild(owner_pattern.declaration, "base-clause") == kNoNode &&
 		!RetainedClassDeclaresNestedPath(
-			owner_pattern.declaration, member.nested_owner_path))
+			owner_pattern.declaration, declared_owner_path))
 		throw std::runtime_error(
 			"class template member has a missing nested owner");
 	std::uint8_t owner_shape_state = 0;
@@ -710,35 +725,7 @@ bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,
 		&owner_shape_state) || owner_shape_state != 1)
 		throw std::runtime_error(
 			"class template member owner pattern is not deducible");
-	for (std::size_t partial_index = 0;
-		partial_index < owner_pattern.partial_specializations.size();
-		++partial_index)
-	{
-		ClassTemplatePartialPattern& partial = class_templates_[
-			pattern_index].partial_specializations[partial_index];
-		if (!MaterializeTemplatePartialArguments(owner_pattern.parameters,
-			partial.parameters, partial.arguments, partial.lexical_scope,
-			&partial.canonical_arguments,
-			&partial.canonical_argument_state)) continue;
-		FunctionTemplateDeduction partial_from_member(partial.parameters);
-		FunctionTemplateDeduction member_from_partial(member.parameters);
-		if (!MatchTemplatePartialArguments(partial.parameters,
-			partial.canonical_arguments, member.canonical_owner_arguments,
-			&partial_from_member) ||
-			!MatchTemplatePartialArguments(member.parameters,
-				member.canonical_owner_arguments, partial.canonical_arguments,
-				&member_from_partial)) continue;
-		if (partial_index > std::numeric_limits<std::uint32_t>::max())
-			throw std::runtime_error("too many class partial patterns");
-		member.owner_partial_pattern =
-			static_cast<std::uint32_t>(partial_index);
-		break;
-	}
-	if (member.owner_partial_pattern == kNoDumpEdge &&
-		!ClassTemplateMemberNamesPrimaryParameters(
-			parameters, member.canonical_owner_arguments))
-		throw std::runtime_error(
-			"class template member owner is not a declared specialization");
+	SelectClassTemplateMemberOwner(pattern_index, &member);
 
 	const bool demand_definition =
 		arena_->IsTag(described_declaration, "simple-declaration");
@@ -1012,11 +999,11 @@ void SemanticAnalyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 			throw std::runtime_error(
 				"class partial specialization has no primary");
 		ClassTemplatePartialPattern partial;
-		partial.lexical_scope = scope;
 		partial.declaration = declaration;
 		partial.parameters = parameters;
 		partial.arguments = partial_arguments;
 		ClassTemplatePattern& owner = class_templates_[primary];
+		partial.lexical_scope = TemplateLexicalScope(scope, owner.owner);
 		(void)MaterializeTemplatePartialArguments(owner.parameters,
 			partial.parameters, partial.arguments, partial.lexical_scope,
 			&partial.canonical_arguments, &partial.canonical_argument_state);
@@ -1111,7 +1098,7 @@ void SemanticAnalyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 		if (!definition) return;
 		if (prior.defined)
 			throw std::runtime_error("duplicate class template definition");
-		prior.lexical_scope = scope;
+		prior.lexical_scope = TemplateLexicalScope(scope, prior.owner);
 		prior.declaration = declaration;
 		prior.defined = true;
 		UpgradeClassTemplateSpecializations(prior_index);
@@ -1120,7 +1107,7 @@ void SemanticAnalyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 
 	ClassTemplatePattern pattern;
 	pattern.owner = owner;
-	pattern.lexical_scope = scope;
+	pattern.lexical_scope = TemplateLexicalScope(scope, owner);
 	pattern.name = name;
 	pattern.declaration = declaration;
 	pattern.parameters = parameters;
@@ -1269,15 +1256,31 @@ void SemanticAnalyzer::ApplyClassTemplateMemberDefinitions(
 			return result;
 		};
 		ScopeId actual_owner = member_scope;
+		bool routed_owner = false;
 		for (std::size_t part = 0;
 			part < definition.nested_owner_path.size(); ++part)
 		{
+			if (part >= definition.nested_owner_argument_lists.size())
+				throw std::logic_error(
+					"class template member owner path shape is invalid");
+			if (definition.nested_owner_argument_lists[part] != kNoNode)
+			{
+				const ScopeId routing_scope =
+					make_definition_scope(actual_owner);
+				if (RouteClassTemplateMemberDefinition(definition, part,
+					actual_owner, routing_scope, demanded))
+				{
+					routed_owner = true;
+					break;
+				}
+			}
 			const LookupResult nested = program_->LookupDirect(actual_owner,
 				definition.nested_owner_path[part], LOOKUP_SCOPE_CARRIER);
 			actual_owner = nested.name_space != kNoScope ? nested.name_space :
 				program_->ScopeForType(nested.type);
 			if (actual_owner == kNoScope) break;
 		}
+		if (routed_owner) continue;
 		if (actual_owner == kNoScope)
 			throw std::runtime_error(
 				"class template member definition owner was not found while resolving " +
