@@ -4,6 +4,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace cppgm
@@ -25,6 +26,84 @@ bool FunctionTemplateNeedsPartitionIdentity(
 			if (i + 1 != parameters.size()) return true;
 		}
 	return packs > 1;
+}
+
+std::size_t TemplateParameterOrdinal(
+	const std::vector<TemplateParameter>& parameters, NameId name)
+{
+	if (name == 0) return parameters.size();
+	for (std::size_t i = 0; i < parameters.size(); ++i)
+		if (parameters[i].name == name) return i;
+	return parameters.size();
+}
+
+bool EquivalentNormalizedTemplateSyntax(const SyntaxArena& arena,
+	NodeId left, NodeId right,
+	const std::vector<TemplateParameter>& left_parameters,
+	const std::vector<TemplateParameter>& right_parameters)
+{
+	// A dependent non-type parameter type is not always safe to materialize
+	// against an incomplete shape type. Compare the retained parsed structure
+	// once at declaration insertion, normalizing parameter names to ordinals.
+	if (left == kNoNode || right == kNoNode) return left == right;
+	std::vector<std::pair<NodeId, NodeId> > pending(
+		1, std::make_pair(left, right));
+	while (!pending.empty())
+	{
+		const NodeId left_node = pending.back().first;
+		const NodeId right_node = pending.back().second;
+		pending.pop_back();
+		if (arena.Tag(left_node) != arena.Tag(right_node)) return false;
+		const NameId left_name = arena.SemanticPayloadId(left_node);
+		const NameId right_name = arena.SemanticPayloadId(right_node);
+		const std::size_t left_parameter = TemplateParameterOrdinal(
+			left_parameters, left_name);
+		const std::size_t right_parameter = TemplateParameterOrdinal(
+			right_parameters, right_name);
+		const bool parameter_name = left_parameter < left_parameters.size() ||
+			right_parameter < right_parameters.size();
+		if (parameter_name)
+		{
+			if (left_parameter != right_parameter) return false;
+		}
+		else if (left_name != right_name ||
+			arena.Payload(left_node) != arena.Payload(right_node)) return false;
+		std::uint32_t left_edge = arena.FirstEdge(left_node);
+		std::uint32_t right_edge = arena.FirstEdge(right_node);
+		while (left_edge != kNoEdge && right_edge != kNoEdge)
+		{
+			pending.push_back(std::make_pair(
+				arena.EdgeChild(left_edge), arena.EdgeChild(right_edge)));
+			left_edge = arena.NextEdge(left_edge);
+			right_edge = arena.NextEdge(right_edge);
+		}
+		if (left_edge != right_edge) return false;
+	}
+	return true;
+}
+
+bool EquivalentFunctionTemplateParameterLists(const SyntaxArena& arena,
+	const std::vector<TemplateParameter>& left,
+	const std::vector<TemplateParameter>& right)
+{
+	if (left.size() != right.size()) return false;
+	for (std::size_t i = 0; i < left.size(); ++i)
+	{
+		if (left[i].kind != right[i].kind || left[i].pack != right[i].pack)
+			return false;
+		if (left[i].kind != TEMPLATE_ARGUMENT_INTEGRAL) continue;
+		if (left[i].dependent_type != right[i].dependent_type) return false;
+		if (!left[i].dependent_type)
+		{
+			if (left[i].value_type != right[i].value_type) return false;
+			continue;
+		}
+		if (!EquivalentNormalizedTemplateSyntax(arena,
+				left[i].specifiers, right[i].specifiers, left, right) ||
+			!EquivalentNormalizedTemplateSyntax(arena,
+				left[i].declarator, right[i].declarator, left, right)) return false;
+	}
+	return true;
 }
 
 }
@@ -150,7 +229,8 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 			const std::size_t candidate = (*prior_patterns)[p];
 			const FunctionTemplatePattern& prior =
 				function_templates_[candidate];
-			if (prior.parameters.size() == parameters.size() &&
+			if (EquivalentFunctionTemplateParameterLists(*arena_,
+					prior.parameters, pattern.parameters) &&
 				prior.shape_type == pattern.shape_type)
 			{
 				prior_index = candidate;

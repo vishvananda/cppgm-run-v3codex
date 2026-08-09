@@ -464,6 +464,11 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 		object = MaterializeTemporary(object);
 	std::vector<BindingId> candidates = ordinary_functions ?
 		FunctionSet(found.ordinary) : std::vector<BindingId>();
+	if (!template_patterns.empty())
+		candidates.erase(std::remove_if(candidates.begin(), candidates.end(),
+			[this](BindingId candidate) {
+				return GetFunction(candidate).template_specialization;
+			}), candidates.end());
 	ExpressionInfo object_pointer = object;
 	if (!arrow)
 	{
@@ -483,6 +488,8 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 		std::vector<NodeId> explicit_syntax;
 		const bool has_explicit_syntax = CollectExplicitTemplateArguments(
 			identifier, &syntax_base, &explicit_syntax);
+		if (has_explicit_syntax)
+			candidates.clear();
 		std::vector<BindingId> specializations;
 		if (has_explicit_syntax && !explicit_id)
 		{

@@ -1,0 +1,56 @@
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $value : obj<1x1>
+  slot $cond__1 : i32
+  slot $land__2 : i64
+
+  block ^entry:
+    %t1 = addr $value
+    %t2 = addr $value
+    %t3 = call i32 @owner_char___choose(%t2)
+    %t4 = cmp eq i32 %t3, 1
+    branch %t4, ^land_rhs_4, ^land_short_5
+
+  block ^land_rhs_4:
+    %t5 = addr $value
+    %t6 = call i32 @owner_char___choose__ov2(%t5)
+    %t7 = cmp eq i32 %t6, 7
+    %t8 = cmp ne i64 %t7, 0
+    store i64 %t8, $land__2
+    jump ^land_end_6
+
+  block ^land_short_5:
+    store i64 0, $land__2
+    jump ^land_end_6
+
+  block ^land_end_6:
+    %t9 = load i64 $land__2
+    branch %t9, ^cond_then_1, ^cond_else_2
+
+  block ^cond_then_1:
+    store i32 0, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_else_2:
+    store i32 1, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_end_3:
+    %t10 = load i32 $cond__1
+    return i32 %t10
+}
+
+function @owner_char___choose(%this : ptr) -> i32 [binding=weak, object=_ZN5ownerIcE6chooseIlEEiv] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return i32 1
+}
+
+function @owner_char___choose__ov2(%this : ptr) -> i32 [binding=weak, object=_ZN5ownerIcE6chooseILi7EEEiv] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return i32 7
+}
