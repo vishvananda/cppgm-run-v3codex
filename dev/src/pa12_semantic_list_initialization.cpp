@@ -780,6 +780,8 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 		(constructor.implicit_special_member ||
 		 constructor.special_member == SPECIAL_MEMBER_COPY_CONSTRUCTOR) &&
 		!materialized_conversion_result;
+	std::vector<ExpressionInfo> constexpr_arguments;
+	constexpr_arguments.reserve(function_type.parameter_count);
 	std::vector<BindingId> empty_base_entries;
 	if (((constructor.defaulted_constructor &&
 		  program_->entities[entity].empty_class) ||
@@ -830,6 +832,8 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 						&selected_conversions[a] : 0);
 		}
 		dump_.Add(action, argument.node);
+		if (a < function_type.parameter_count)
+			constexpr_arguments.push_back(argument);
 	}
 	for (std::size_t a = argument_syntax.size();
 		a < function_type.parameter_count; ++a)
@@ -842,7 +846,15 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 			constructor.parameters[a].default_scope, parameters[a]);
 		argument = ApplyCallArgument(argument, parameters[a]);
 		dump_.Add(action, argument.node);
+		constexpr_arguments.push_back(argument);
 	}
+	std::uint32_t constexpr_object = kNoConstexprObject;
+	if (constant_evaluation_suppressed_depth_ == 0 &&
+		constructor.constexpr_function && !constructor.defaulted_constructor &&
+		!constructor.implicit_constructor &&
+		TryEvaluateConstexprConstructor(
+			selected, constexpr_arguments, &constexpr_object))
+		PublishDumpObject(action, constexpr_object);
 	const EntityId constructor_owner =
 		program_->bindings[constructor.binding].member_owner;
 	const bool explicitly_defaulted = constructor.defaulted_special_member &&

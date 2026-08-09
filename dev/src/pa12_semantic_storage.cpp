@@ -104,6 +104,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		constexpr_object_index_.bucket_count() * sizeof(void*) +
 		constexpr_object_index_.size() *
 			(sizeof(std::size_t) + sizeof(std::uint32_t)) +
+		constexpr_object_by_dump_.capacity() * sizeof(std::uint32_t) +
+		constexpr_scratch_object_by_dump_.capacity() * sizeof(std::uint32_t) +
 		constexpr_scratch_dump_.StorageBytes() +
 		constexpr_call_facts_.bucket_count() * sizeof(void*) +
 		constexpr_call_facts_.size() *

@@ -572,6 +572,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeThisExpression(ScopeId scope)
 	result.binding = found.ordinary;
 	result.node = MakeDump(DUMP_ID_EXPRESSION, result.type,
 		VALUE_PRVALUE, name, found.ordinary);
+	if (!constexpr_frames_.empty() &&
+		constexpr_frames_.back().receiver_object != kNoConstexprObject)
+		SetExpressionObject(&result,
+			constexpr_frames_.back().receiver_object);
 	++expression_count_;
 	return result;
 }

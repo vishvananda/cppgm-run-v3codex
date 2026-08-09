@@ -467,6 +467,7 @@ void SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 					info.special_member == SPECIAL_MEMBER_NONE)
 					CompleteDefaultedDefaultConstructor(
 						entity, constructor);
+				ValidateConstexprConstructorDefinition(info);
 			}
 		for (std::size_t i = 0; i < anonymous_alias_storage.size(); ++i)
 		{
@@ -1442,8 +1443,12 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 	if (specifiers != kNoNode)
 		for (std::uint32_t edge = arena_->FirstEdge(specifiers); edge != kNoEdge;
 			edge = arena_->NextEdge(edge))
-			if (PayloadSource(arena_->EdgeChild(edge)) == "explicit")
-				info.explicit_constructor = true;
+		{
+			const std::string value = PayloadSource(arena_->EdgeChild(edge));
+			if (value == "explicit") info.explicit_constructor = true;
+			else if (value == "constexpr") info.constexpr_function = true;
+			else if (value == "inline") binding.inline_function = true;
+		}
 	if (source_definition)
 	{
 		info.definition_body = FindChild(node, "compound-statement");

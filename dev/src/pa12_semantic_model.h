@@ -365,10 +365,13 @@ struct ConstexprFrame
 {
 	BindingId function;
 	std::size_t first_local, first_scope_fact, first_block;
+	std::uint32_t receiver_object;
 	ConstexprFrame(BindingId function_value, std::size_t local,
-		std::size_t scope_fact, std::size_t block)
+		std::size_t scope_fact, std::size_t block,
+		std::uint32_t receiver = kNoConstexprObject)
 		: function(function_value), first_local(local),
-		  first_scope_fact(scope_fact), first_block(block) {}
+		  first_scope_fact(scope_fact), first_block(block),
+		  receiver_object(receiver) {}
 };
 
 struct ConstexprScopeFact

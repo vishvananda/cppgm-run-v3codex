@@ -5,6 +5,67 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+void SemanticAnalyzer::ValidateConstexprConstructorDefinition(
+	const FunctionInfo& constructor)
+{
+	if (!constructor.constructor || !constructor.constexpr_function ||
+		constructor.definition_body == kNoNode ||
+		constructor.defaulted_constructor || constructor.implicit_constructor)
+		return;
+	const EntityId entity =
+		program_->bindings[constructor.binding].member_owner;
+	if (entity == kNoEntity || entity >= entity_data_members_.size())
+		throw std::logic_error(
+			"constexpr constructor is missing its member index");
+	if (IsClassTemplateSpecializationContext(entity)) return;
+	const std::vector<BindingId>& members = entity_data_members_[entity];
+	std::vector<std::uint8_t> initialized(members.size(), 0);
+	for (std::size_t i = 0; i < members.size(); ++i)
+		if (program_->bindings[members[i]].has_default_member_initializer)
+			initialized[i] = 1;
+	if (constructor.constructor_initializer != kNoNode)
+		for (std::uint32_t edge = arena_->FirstEdge(
+			constructor.constructor_initializer); edge != kNoEdge;
+			edge = arena_->NextEdge(edge))
+		{
+			const NodeId syntax = arena_->EdgeChild(edge);
+			if (!arena_->IsTag(syntax, "mem-initializer")) continue;
+			const NodeId id = FindChild(syntax, "mem-initializer-id");
+			if (id == kNoNode) continue;
+			if (arena_->Payload(id) == program_->names.Get(
+				program_->entities[entity].identity_name)) return;
+			const LookupResult found = program_->LookupDirect(
+				program_->entities[entity].member_scope,
+				program_->names.Intern(arena_->Payload(id)), LOOKUP_ORDINARY);
+			if (found.ordinary == kNoBinding ||
+				!program_->bindings[found.ordinary].non_static_data_member ||
+				program_->bindings[found.ordinary].member_owner != entity)
+				continue;
+			const std::size_t ordinal =
+				program_->bindings[found.ordinary].member_ordinal;
+			if (ordinal < members.size() && members[ordinal] == found.ordinary)
+				initialized[ordinal] = 1;
+		}
+	for (std::size_t i = 0; i < members.size(); ++i)
+	{
+		if (initialized[i]) continue;
+		TypeId type = program_->bindings[members[i]].type;
+		TypeRecord record = program_->types.Get(type);
+		while (record.kind == TYPE_ARRAY || record.kind == TYPE_QUALIFIED)
+		{
+			type = record.child;
+			record = program_->types.Get(type);
+		}
+		const NamedFlavor flavor = record.kind == TYPE_NAMED ?
+			program_->entities[record.entity].flavor : NAMED_NONE;
+		if (record.kind != TYPE_NAMED ||
+			(flavor != NAMED_STRUCT && flavor != NAMED_CLASS &&
+			 flavor != NAMED_UNION))
+			throw std::runtime_error(
+				"constexpr constructor leaves a scalar member uninitialized");
+	}
+}
+
 void SemanticAnalyzer::CompleteOutOfClassDefaultedConstructor(EntityId entity,
 	BindingId constructor)
 {

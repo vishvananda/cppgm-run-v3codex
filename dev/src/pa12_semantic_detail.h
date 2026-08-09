@@ -469,6 +469,8 @@ private:
 		ScopeId scope, TypeId type, bool local);
 	ExpressionInfo AnalyzeConstantAwareVariableInitializer(NodeId initializer,
 		ScopeId scope, TypeId type, bool local, bool require_constant);
+	ExpressionInfo AnalyzeDefaultConstexprObjectInitializer(
+		TypeId type, ScopeId scope, bool local);
 	void PublishConstantVariableInitializer(BindingId binding, TypeId type,
 		const SpecInfo& spec, const ExpressionInfo& initializer);
 	ExpressionInfo AnalyzeCall(NodeId node, ScopeId scope, TypeId target);
@@ -625,6 +627,8 @@ private:
 		BindingId constructor);
 	void CompleteDefaultedDefaultConstructor(EntityId entity,
 		BindingId constructor);
+	void ValidateConstexprConstructorDefinition(
+		const FunctionInfo& constructor);
 	void CompleteDefaultedDestructor(EntityId entity, BindingId destructor);
 	void RegisterClassSpecialMember(BindingId binding);
 	void ConfigureAssignmentSpecialMember(BindingId binding,
@@ -821,6 +825,9 @@ private:
 		const ConstexprScalarValue& value) const;
 	void SetExpressionObject(ExpressionInfo* expression,
 		std::uint32_t object) const;
+	std::uint32_t ExpressionObject(const ExpressionInfo& expression) const;
+	void SetExpressionDumpObject(ExpressionInfo* expression) const;
+	void PublishDumpObject(std::uint32_t node, std::uint32_t object);
 	ConstexprScalarValue BindingScalar(BindingId binding) const;
 	std::uint32_t BindingObject(BindingId binding) const;
 	void PublishBindingScalar(BindingId binding,
@@ -851,7 +858,15 @@ private:
 	NameId InternScalar(TypeId type, const ConstexprScalarValue& value);
 	bool TryEvaluateConstexprFunction(BindingId function,
 		const std::vector<ExpressionInfo>& arguments,
-		ConstexprScalarValue* value);
+		ConstexprScalarValue* value,
+		const ExpressionInfo* receiver = 0);
+	bool TryEvaluateConstexprConstructor(BindingId constructor,
+		const std::vector<ExpressionInfo>& arguments,
+		std::uint32_t* object);
+	bool AnalyzeConstexprMemberInitializer(NodeId initializer, ScopeId scope,
+		TypeId type, ExpressionInfo* value);
+	bool AddConstexprInvocationArguments(const FunctionInfo& function,
+		const std::vector<ExpressionInfo>& arguments);
 	std::int64_t ParseInteger(const std::string& spelling) const;
 	std::int64_t ApplyConstantBinary(const std::string& operation,
 		std::int64_t left, std::int64_t right, TypeId operand_type) const;
@@ -969,6 +984,8 @@ private:
 	std::vector<ConstexprObjectElement> constexpr_object_elements_;
 	std::unordered_multimap<std::size_t, std::uint32_t>
 		constexpr_object_index_;
+	std::vector<std::uint32_t> constexpr_object_by_dump_;
+	std::vector<std::uint32_t> constexpr_scratch_object_by_dump_;
 	DumpArena constexpr_scratch_dump_;
 	std::unordered_map<ConstexprCallKey, ConstexprCallFact,
 		ConstexprCallKeyHash> constexpr_call_facts_;

@@ -1079,9 +1079,9 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	result.binding = selected;
 	ConstexprScalarValue constexpr_value;
 	bool folded_call = false;
-	if (constant_evaluation_suppressed_depth_ == 0 && !object &&
+	if (constant_evaluation_suppressed_depth_ == 0 &&
 		TryEvaluateConstexprFunction(
-		selected, constexpr_arguments, &constexpr_value))
+		selected, constexpr_arguments, &constexpr_value, object))
 	{
 		SetExpressionScalar(&result,
 			NormalizeScalarConstant(result_type, constexpr_value));
@@ -2120,7 +2120,10 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			parsed.name, parsed.type);
 		PublishVariableDeclarationFacts(binding, declaration_scope,
 			parsed.name, parsed.type, spec, local);
+		const bool constexpr_class_default =
+			spec.is_constexpr && IsClassObjectType(parsed.type);
 		if (spec.is_constexpr && initializer_node == kNoNode &&
+			!constexpr_class_default &&
 			!(qualified_lexical_scope &&
 			  program_->bindings[binding].constant))
 			throw std::runtime_error("constexpr variable requires initializer");
@@ -2141,6 +2144,14 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			}
 			PublishConstantVariableInitializer(
 				binding, parsed.type, spec, initializer);
+		}
+		else if (constexpr_class_default)
+		{
+			initializer = AnalyzeDefaultConstexprObjectInitializer(
+				parsed.type, semantic_scope, local);
+			PublishConstantVariableInitializer(
+				binding, parsed.type, spec, initializer);
+			has_initializer = true;
 		}
 		if (program_->bindings[binding].constant)
 		{

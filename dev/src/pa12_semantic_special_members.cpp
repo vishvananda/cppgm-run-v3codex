@@ -1155,6 +1155,7 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 		info.deleted_destructor);
 	if (constructor_definition)
 	{
+		ValidateConstexprConstructorDefinition(info);
 		program_->entities[entity].has_user_provided_constructor = true;
 		if (defer_demand &&
 			program_->entities[entity].direct_base == kNoEntity)

@@ -860,7 +860,38 @@ ExpressionInfo SemanticAnalyzer::AnalyzeVariableInitializer(
 			initializer = ApplyTarget(initializer, type);
 		}
 	}
-	return local ? BuildLocalAggregateArrayActions(initializer) : initializer;
+	SetExpressionDumpObject(&initializer);
+	const std::uint32_t constant_object = ExpressionObject(initializer);
+	bool user_constexpr_constructor = false;
+	if (constant_object != kNoConstexprObject && class_entity != kNoEntity &&
+		class_entity < entity_constructors_.size())
+		for (std::size_t i = 0;
+			i < entity_constructors_[class_entity].size(); ++i)
+		{
+			const BindingId candidate =
+				entity_constructors_[class_entity][i];
+			const FunctionInfo& constructor = GetFunction(candidate);
+			if (constructor.defaulted_constructor &&
+				!constructor.implicit_constructor &&
+				constructor.parameters.empty() &&
+				constexpr_evaluation_depth_ == 0 &&
+				constant_expression_required_depth_ != 0)
+				DemandFunction(candidate);
+			if (constructor.constexpr_function &&
+				!constructor.defaulted_constructor &&
+				!constructor.implicit_constructor &&
+				!constructor.defaulted_special_member &&
+				!constructor.implicit_special_member)
+				user_constexpr_constructor = true;
+		}
+	if (constant_expression_required_depth_ != 0 &&
+		constant_object != kNoConstexprObject &&
+		user_constexpr_constructor)
+		initializer = MaterializeConstexprObject(constant_object, type);
+	ExpressionInfo result = local ?
+		BuildLocalAggregateArrayActions(initializer) : initializer;
+	SetExpressionDumpObject(&result);
+	return result;
 }
 
 void SemanticAnalyzer::AddMemberInitializationAction(BindingId member_id,
@@ -1420,6 +1451,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 				false, true, false, true, node);
 			result.type = type;
 			result.category = VALUE_NONE;
+			SetExpressionDumpObject(&result);
 			return result;
 		}
 		std::uint32_t element_edge = arena_->FirstEdge(node);
@@ -2319,6 +2351,12 @@ ExpressionInfo SemanticAnalyzer::MaterializeTemporary(
 	result.node = temporary;
 	result.type = object_type;
 	result.category = VALUE_XVALUE;
+	const std::uint32_t object = ExpressionObject(initializer);
+	if (object != kNoConstexprObject)
+	{
+		SetExpressionObject(&result, object);
+		PublishDumpObject(temporary, object);
+	}
 	++expression_count_;
 	return result;
 }

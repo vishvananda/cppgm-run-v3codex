@@ -567,6 +567,25 @@ ExpressionInfo SemanticAnalyzer::AnalyzeImplicitDataMember(
 	EntityId naming_class)
 {
 	const BindingRecord& binding = program_->bindings[member_binding];
+	if (!constexpr_frames_.empty() && binding.non_static_data_member &&
+		constexpr_frames_.back().receiver_object != kNoConstexprObject)
+	{
+		if (!CanAccessMember(member_binding, naming_class))
+			throw std::runtime_error("inaccessible implicit data member");
+		ExpressionInfo result;
+		result.node = MakeDump(DUMP_MEMBER_EXPRESSION, binding.type,
+			VALUE_LVALUE, binding.name, member_binding);
+		result.type = binding.type;
+		result.category = VALUE_LVALUE;
+		result.binding = member_binding;
+		const ConstexprObjectElement* element = ConstexprObjectElementAt(
+			constexpr_frames_.back().receiver_object, binding.member_ordinal);
+		if (element && element->member == member_binding)
+			SetExpressionObjectElement(&result, *element);
+		RecordExpressionFacts(result);
+		++expression_count_;
+		return ApplyTarget(result, target);
+	}
 	const NameId this_name = program_->names.Intern("this");
 	const LookupResult this_lookup =
 		program_->LookupName(scope, this_name, LOOKUP_ORDINARY);
