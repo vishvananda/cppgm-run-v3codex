@@ -1,8 +1,11 @@
 #include "pa12_semantic_detail.h"
+#include "post_tokenizer.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <climits>
 #include <cstdlib>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -11,6 +14,59 @@ namespace cppgm
 {
 namespace pa12_semantic_detail
 {
+
+namespace
+{
+
+bool IsFloatingLiteralSpelling(const std::string& spelling)
+{
+	return spelling.find('.') != std::string::npos ||
+		spelling.find('p') != std::string::npos ||
+		spelling.find('P') != std::string::npos ||
+		((spelling.size() < 2 || spelling[0] != '0' ||
+		  (spelling[1] != 'x' && spelling[1] != 'X')) &&
+		 (spelling.find('e') != std::string::npos ||
+		  spelling.find('E') != std::string::npos));
+}
+
+FundamentalKind StringElementKind(FundamentalType type)
+{
+	switch (type)
+	{
+	case FT_CHAR: return FUND_CHAR;
+	case FT_WCHAR_T: return FUND_WCHAR_T;
+	case FT_CHAR16_T: return FUND_CHAR16_T;
+	case FT_CHAR32_T: return FUND_CHAR32_T;
+	default: break;
+	}
+	throw std::runtime_error("invalid string literal element type");
+}
+
+std::size_t CharacterUnitCount(const std::string& spelling,
+	std::size_t quote, std::size_t close)
+{
+	std::size_t count = 0;
+	for (std::size_t i = quote + 1; i < close; ++i)
+	{
+		if (spelling[i] == '\\')
+		{
+			if (++i >= close) return 0;
+			if (spelling[i] == 'x')
+				while (i + 1 < close &&
+					((spelling[i + 1] >= '0' && spelling[i + 1] <= '9') ||
+					 (spelling[i + 1] >= 'a' && spelling[i + 1] <= 'f') ||
+					 (spelling[i + 1] >= 'A' && spelling[i + 1] <= 'F'))) ++i;
+			else if (spelling[i] >= '0' && spelling[i] <= '7')
+				for (int digits = 1; digits < 3 && i + 1 < close &&
+					spelling[i + 1] >= '0' && spelling[i + 1] <= '7';
+					++digits) ++i;
+		}
+		++count;
+	}
+	return count;
+}
+
+}
 
 std::int64_t SemanticAnalyzer::ParseInteger(const std::string& spelling) const
 {
@@ -186,32 +242,78 @@ ExpressionInfo SemanticAnalyzer::MakeLiteral(TypeId type, NameId text,
 ExpressionInfo SemanticAnalyzer::MakeStringLiteral(
 	const std::string& spelling, std::size_t* character_count)
 {
-	if (spelling.size() < 2 || spelling[0] != '"' ||
-		spelling[spelling.size() - 1] != '"')
+	FundamentalType decoded_type = FT_CHAR;
+	std::vector<std::uint32_t> decoded;
+	if (!DecodeStringLiteralCodeUnits(spelling, &decoded_type, &decoded) ||
+		decoded.empty())
 		throw std::runtime_error("invalid string literal spelling");
-	std::size_t count = 1;
-	for (std::size_t i = 1; i + 1 < spelling.size(); ++i)
-	{
-		if (spelling[i] == '\\' && i + 2 < spelling.size())
-		{
-			++i;
-			if (spelling[i] == 'x')
-				while (i + 2 < spelling.size() &&
-					((spelling[i + 1] >= '0' && spelling[i + 1] <= '9') ||
-					 (spelling[i + 1] >= 'a' && spelling[i + 1] <= 'f') ||
-					 (spelling[i + 1] >= 'A' && spelling[i + 1] <= 'F'))) ++i;
-			else if (spelling[i] >= '0' && spelling[i] <= '7')
-				for (int digits = 1; digits < 3 && i + 2 < spelling.size() &&
-					spelling[i + 1] >= '0' && spelling[i + 1] <= '7';
-					++digits) ++i;
-		}
-		++count;
-	}
-	if (character_count) *character_count = count - 1;
+	if (string_literal_units_.size() >
+		std::numeric_limits<std::uint32_t>::max() - decoded.size())
+		throw std::runtime_error("too many retained string literal code units");
+	const std::uint32_t first =
+		static_cast<std::uint32_t>(string_literal_units_.size());
+	string_literal_units_.insert(
+		string_literal_units_.end(), decoded.begin(), decoded.end());
+	if (character_count) *character_count = decoded.size() - 1;
 	const TypeId element = program_->types.Qualify(
-		program_->types.Fundamental(FUND_CHAR), CV_CONST);
-	return MakeLiteral(program_->types.Array(element, count),
+		program_->types.Fundamental(StringElementKind(decoded_type)), CV_CONST);
+	ExpressionInfo result = MakeLiteral(
+		program_->types.Array(element, decoded.size()),
 		program_->names.Intern(spelling), VALUE_LVALUE);
+	result.string_unit_begin = first;
+	result.string_unit_count = static_cast<std::uint32_t>(decoded.size());
+	return result;
+}
+
+ExpressionInfo SemanticAnalyzer::MakeBuiltinScalarLiteral(
+	const std::string& spelling)
+{
+	const std::size_t quote = spelling.find('\'');
+	if (quote != std::string::npos)
+	{
+		const std::size_t close = spelling.rfind('\'');
+		const std::int64_t value = ParseInteger(spelling);
+		FundamentalKind kind = FUND_INT;
+		if (quote == 0)
+		{
+			const std::size_t units = CharacterUnitCount(spelling, quote, close);
+			kind = units == 1 && value <= 0x7F ? FUND_CHAR : FUND_INT;
+		}
+		else if (quote == 1 && spelling[0] == 'L') kind = FUND_WCHAR_T;
+		else if (quote == 1 && spelling[0] == 'u') kind = FUND_CHAR16_T;
+		else if (quote == 1 && spelling[0] == 'U') kind = FUND_CHAR32_T;
+		else throw std::runtime_error("invalid character literal prefix");
+		ExpressionInfo result = MakeLiteral(program_->types.Fundamental(kind),
+			program_->names.Intern(spelling));
+		result.constant = true;
+		result.value = value;
+		return result;
+	}
+	if (IsFloatingLiteralSpelling(spelling))
+	{
+		const char suffix = spelling.empty() ? 0 : spelling[spelling.size() - 1];
+		const FundamentalKind kind = suffix == 'f' || suffix == 'F' ?
+			FUND_FLOAT : suffix == 'l' || suffix == 'L' ?
+			FUND_LONG_DOUBLE : FUND_DOUBLE;
+		return MakeLiteral(program_->types.Fundamental(kind),
+			program_->names.Intern(spelling));
+	}
+	const std::int64_t value = ParseInteger(spelling);
+	const bool has_u = spelling.find('u') != std::string::npos ||
+		spelling.find('U') != std::string::npos;
+	std::size_t ls = 0;
+	for (std::size_t i = 0; i < spelling.size(); ++i)
+		if (spelling[i] == 'l' || spelling[i] == 'L') ++ls;
+	const FundamentalKind kind = ls > 1 ?
+		(has_u ? FUND_UNSIGNED_LONG_LONG_INT : FUND_LONG_LONG_INT) :
+		ls == 1 ? (has_u ? FUND_UNSIGNED_LONG_INT : FUND_LONG_INT) :
+		has_u ? FUND_UNSIGNED_INT : FUND_INT;
+	ExpressionInfo result = MakeLiteral(program_->types.Fundamental(kind),
+		program_->names.Intern(spelling));
+	result.constant = true;
+	result.value = value;
+	result.integer_literal_zero = value == 0;
+	return result;
 }
 
 bool SemanticAnalyzer::TryAnalyzeUserDefinedStringLiteral(
@@ -272,6 +374,84 @@ bool SemanticAnalyzer::TryAnalyzeUserDefinedStringLiteral(
 	}
 	*result = BuildResolvedCall(selected, scope, argument_syntax, arguments,
 		0, target, kNoEntity, 0, &argument_conversions);
+	return true;
+}
+
+bool SemanticAnalyzer::TryAnalyzeUserDefinedNumericLiteral(
+	const std::string& spelling, ScopeId scope, TypeId target,
+	ExpressionInfo* result)
+{
+	const std::size_t suffix_begin = spelling.find('_');
+	if (suffix_begin == std::string::npos) return false;
+	if (suffix_begin == 0)
+		throw std::runtime_error("invalid user-defined numeric literal");
+	const std::string source = spelling.substr(0, suffix_begin);
+	const std::string function_name =
+		"operator\"\"" + spelling.substr(suffix_begin);
+	const bool floating = IsFloatingLiteralSpelling(source);
+	const TypeId cooked_parameter = program_->types.Fundamental(floating ?
+		FUND_LONG_DOUBLE : FUND_UNSIGNED_LONG_LONG_INT);
+	const std::vector<BindingId> ordinary =
+		FunctionCandidates(scope, function_name);
+	std::vector<BindingId> cooked;
+	for (std::size_t i = 0; i < ordinary.size(); ++i)
+	{
+		const TypeRecord& type =
+			program_->types.Get(GetFunction(ordinary[i]).type);
+		const TypeId* parameters =
+			program_->types.Parameters(GetFunction(ordinary[i]).type);
+		if (type.parameter_count == 1 && parameters[0] == cooked_parameter)
+			cooked.push_back(ordinary[i]);
+	}
+	if (!cooked.empty())
+	{
+		std::vector<ExpressionInfo> arguments(1,
+			MakeBuiltinScalarLiteral(source));
+		const std::vector<NodeId> syntax(1, kNoNode);
+		std::vector<CallConversionFact> conversions;
+		const BindingId selected = SelectOverload(scope, syntax, arguments,
+			cooked, 0, 0, &conversions);
+		*result = BuildResolvedCall(selected, scope, syntax, arguments, 0,
+			target, kNoEntity, 0, &conversions);
+		return true;
+	}
+
+	const TypeId character = program_->types.Fundamental(FUND_CHAR);
+	std::vector<TemplateArgument> arguments;
+	arguments.reserve(source.size());
+	for (std::size_t i = 0; i < source.size(); ++i)
+		arguments.push_back(TemplateArgument(TEMPLATE_ARGUMENT_INTEGRAL,
+			character, static_cast<unsigned char>(source[i])));
+	const std::vector<std::size_t> patterns =
+		FindFunctionTemplates(scope, function_name);
+	std::vector<BindingId> candidates;
+	for (std::size_t i = 0; i < patterns.size(); ++i)
+	{
+		const FunctionTemplatePattern& pattern = function_templates_[patterns[i]];
+		if (pattern.parameters.size() != 1 || !pattern.parameters[0].pack ||
+			pattern.parameters[0].kind != TEMPLATE_ARGUMENT_INTEGRAL ||
+			pattern.parameters[0].dependent_type ||
+			program_->types.RemoveTopCv(pattern.parameters[0].value_type) !=
+				character)
+			continue;
+		const BindingId candidate =
+			InstantiateFunctionTemplate(patterns[i], arguments);
+		if (candidate == kNoBinding) continue;
+		const TypeRecord& type =
+			program_->types.Get(GetFunction(candidate).type);
+		if (type.parameter_count == 0 &&
+			std::find(candidates.begin(), candidates.end(), candidate) ==
+				candidates.end())
+			candidates.push_back(candidate);
+	}
+	if (candidates.empty())
+		throw std::runtime_error("user-defined literal operator not found");
+	const std::vector<NodeId> no_syntax;
+	const std::vector<ExpressionInfo> no_arguments;
+	const BindingId selected = SelectOverload(scope, no_syntax, no_arguments,
+		candidates, 0, 0, 0);
+	*result = BuildResolvedCall(selected, scope, no_syntax, no_arguments, 0,
+		target, kNoEntity, 0, 0);
 	return true;
 }
 

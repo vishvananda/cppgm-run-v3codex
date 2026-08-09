@@ -632,46 +632,19 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 	{
 		const std::string spelling = arena_->Payload(node);
 		ExpressionInfo result;
-		if (!spelling.empty() && spelling[0] == '"')
+		if (spelling.find('"') != std::string::npos)
 		{
-			if (TryAnalyzeUserDefinedStringLiteral(
+			if (!spelling.empty() && spelling[0] == '"' &&
+				TryAnalyzeUserDefinedStringLiteral(
 				spelling, scope, target, &result)) return result;
 			result = MakeStringLiteral(spelling);
 		}
-		else if (spelling.find('.') != std::string::npos ||
-			spelling.find('p') != std::string::npos ||
-			spelling.find('P') != std::string::npos ||
-			((spelling.size() < 2 || spelling[0] != '0' ||
-			  (spelling[1] != 'x' && spelling[1] != 'X')) &&
-			 (spelling.find('e') != std::string::npos ||
-			  spelling.find('E') != std::string::npos)))
-		{
-			const char suffix = spelling.empty() ? 0 : spelling[spelling.size() - 1];
-			const FundamentalKind kind = suffix == 'f' || suffix == 'F' ?
-				FUND_FLOAT : suffix == 'l' || suffix == 'L' ?
-				FUND_LONG_DOUBLE : FUND_DOUBLE;
-			result = MakeLiteral(program_->types.Fundamental(kind),
-				program_->names.Intern(spelling));
-		}
 		else
 		{
-			const std::int64_t value = ParseInteger(spelling);
-			const bool has_u = spelling.find('u') != std::string::npos ||
-				spelling.find('U') != std::string::npos;
-			std::size_t ls = 0;
-			for (std::size_t i = 0; i < spelling.size(); ++i)
-				if (spelling[i] == 'l' || spelling[i] == 'L') ++ls;
-			const bool ordinary_character = spelling.size() == 3 &&
-				spelling[0] == '\'' && spelling[2] == '\'';
-			const FundamentalKind kind = ordinary_character ? FUND_CHAR : ls > 1 ?
-				(has_u ? FUND_UNSIGNED_LONG_LONG_INT : FUND_LONG_LONG_INT) :
-				ls == 1 ? (has_u ? FUND_UNSIGNED_LONG_INT : FUND_LONG_INT) :
-				has_u ? FUND_UNSIGNED_INT : FUND_INT;
-			result = MakeLiteral(program_->types.Fundamental(kind),
-				program_->names.Intern(spelling));
-			result.constant = true;
-			result.value = value;
-			result.integer_literal_zero = value == 0;
+			if (spelling.find('\'') == std::string::npos &&
+				TryAnalyzeUserDefinedNumericLiteral(
+					spelling, scope, target, &result)) return result;
+			result = MakeBuiltinScalarLiteral(spelling);
 		}
 		return ApplyTarget(result, target);
 	}
@@ -1670,6 +1643,19 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSubscript(NodeId node, ScopeId scope)
 	result.node = expression;
 	result.type = pointer.child;
 	result.category = VALUE_LVALUE;
+	if (left.string_unit_begin != kNoDumpEdge && right.constant &&
+		right.value >= 0 &&
+		static_cast<std::uint64_t>(right.value) < left.string_unit_count)
+	{
+		const std::size_t index = left.string_unit_begin +
+			static_cast<std::size_t>(right.value);
+		if (index >= string_literal_units_.size())
+			throw std::logic_error("string literal code-unit range is invalid");
+		result.constant = true;
+		result.value = NormalizeIntegralConstant(
+			pointer.child, string_literal_units_[index]);
+		RecordExpressionFacts(result);
+	}
 	++expression_count_;
 	return result;
 }

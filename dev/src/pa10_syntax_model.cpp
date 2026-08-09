@@ -1,4 +1,5 @@
 #include "pa10_syntax_model.h"
+#include "post_tokenizer.h"
 
 #include <algorithm>
 #include <limits>
@@ -30,6 +31,12 @@ SyntaxTokenSink::SyntaxTokenSink(StringTable& strings) : strings_(strings) {}
 
 void SyntaxTokenSink::EmitInvalid(const std::string& source)
 {
+	std::uint32_t multicharacter = 0;
+	if (DecodeOrdinaryMulticharacterLiteral(source, &multicharacter))
+	{
+		EmitLiteralSpelling(source);
+		return;
+	}
 	throw std::runtime_error("invalid phase-7 token: " + source);
 }
 

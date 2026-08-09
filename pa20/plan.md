@@ -14,31 +14,29 @@ evaluation and PA22/PA23 SFINAE remain out of scope.
 
 ## Current Failure Map
 
-The stage is 125/164, up from the checkpoint baseline of 120/164.  Canonical
-specialization presentation, selective static-member definition demand,
-reference-bound nested storage, and integral/enum non-type vtable identity now
-pass.  The 39 remaining failures group into literal/operator decoding and
-casts; variable-template, qualified-name, and declaration ambiguity; one
-invalid pack acceptance and one extra array decay; explicit specialization
-(`300-*`); and stale-primary refresh (`400-*`).
+The stage is 130/164, up from the checkpoint baseline of 125/164.  The 34
+remaining failures group into template-id/qualified lookup and variable-template
+materialization; retained member/static-assert replay and duplicate signatures;
+pack validation/lowering; explicit specialization (`300-*`); and stale-primary
+refresh (`400-*`).
 
 ## Active Checkpoint
 
-Build a typed literal boundary covering ordinary multi-character/wide literals
-and cooked user-defined integer literal dispatch.  `spec.md` requires source
-bytes to become canonical typed constants once, overload results to retain the
-selected declaration/conversions, and lowering to consume those facts without
-re-decoding token text.
+Build the retained template-id and variable-template value boundary.  `spec.md`
+requires parser ambiguity to be represented once, semantic lookup to select a
+type/value/template role without reparsing, and specializations to use canonical
+arguments and stable bindings before initializer demand.
 
-PA10 owns retained literal-token syntax, PA12 owns bounded decoding and typed
-constant facts, PA20 owns literal-operator lookup/template selection, and
-lowering consumes the selected call or canonical immediate.  Data flows from
-one token slice through one decoder into indexed overload resolution.  Expected
-work is O(token bytes plus viable literal-operator candidates), with each token
-decoded once and O(1)-average name/cache lookup.  Validate ordinary
-multi-character and wide literals, cooked non-template/overload/template
-operators, unchanged built-in integer suffixes, and rejection of malformed
-literals.
+PA10 owns bounded `<`/declaration scans and retained alternatives; PA20 lookup
+owns qualified role selection and canonical variable specialization; PA12
+initialization publishes typed constant/object facts; lowering consumes the
+selected binding.  Data flows from one retained name path and argument range to
+indexed lookup, specialization cache, then demand.  Expected work is O(path
+segments plus explicit arguments and visible candidates), with O(1)-average
+cache lookup.  Validate variable-template id expressions/local use, defaulted
+partial arguments, dependent `typename`, shadowed qualified template heads,
+less-than expression arguments, and prior non-template ambiguity cases;
+explicit-specialization replacement remains a later checkpoint.
 
 ## Performance Evidence
 
@@ -111,6 +109,14 @@ demanded object produces its object and static-member globals; alias-only
 specializations produce none.  Work, storage, queue traffic, and output scale
 linearly.
 
+Seven-run release medians for 64/128/256-character numeric literal-operator
+packs: semantic nodes 15/15/15; specialization requests 1/1/1; demanded
+emissions 1/1/1; peak semantic bytes 25,860/32,837/46,789; typed LowIR bytes
+5,005/5,581/6,733; output bytes 934/1,256/1,896; semantic time
+0.169/0.180/0.232 ms.  Decoding/canonical pack storage and ABI output grow
+linearly while lookup, specialization, demand, and semantic graph size remain
+constant.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result |
@@ -124,3 +130,4 @@ linearly.
 | Typed dependent declaration/value boundaries | Retained `decltype` carrier/member syntax, semantic `alignas` disambiguation, dependent `typename` non-type parameter declarations/defaults, and bounded type/expression template-argument ambiguity; PA20 110 -> 116, PA1-PA19 2,013/2,013, audit pass, dependent-specialization work/storage linear |
 | Canonical dependent helper values and nested packs | Restricted structural constexpr conversion, structured `alignas` lookup, recursive lockstep type-pack scopes, and non-empty value-initialized argument staging; PA20 116 -> 120, PA1-PA19 2,013/2,013, audit pass, helper-pack scaling linear |
 | Canonical specialized owners and static-definition demand | Type-ID-independent argument presentation, separate retained static definitions, deduplicated object/function/vtable and reference/address demand, and canonical lowering identity; PA20 120 -> 125, PA1-PA19 2,013/2,013, audit pass, demand/output scaling linear |
+| Typed literal decoding and literal-operator dispatch | PA10-gated ordinary multichar admission preserving PA2, retained typed wide-string code units and constant subscripts, cooked `unsigned long long` resolution, and canonical `char...` specialization/demand; PA20 125 -> 130, PA1-PA19 2,013/2,013, audit pass, literal-pack scaling linear |

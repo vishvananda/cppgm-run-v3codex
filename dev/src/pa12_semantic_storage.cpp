@@ -8,6 +8,7 @@ namespace pa12_semantic_detail
 std::size_t SemanticAnalyzer::SideStorageBytes() const
 {
 	std::size_t bytes =
+		string_literal_units_.capacity() * sizeof(std::uint32_t) +
 		scope_prefixes_.capacity() * sizeof(NameId) +
 		scope_prefix_segments_.capacity() * sizeof(NameId) +
 		scope_parents_.capacity() * sizeof(ScopeId) +

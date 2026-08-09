@@ -716,7 +716,10 @@ private:
 		ValueCategory category = VALUE_PRVALUE);
 	ExpressionInfo MakeStringLiteral(const std::string& spelling,
 		std::size_t* character_count = 0);
+	ExpressionInfo MakeBuiltinScalarLiteral(const std::string& spelling);
 	bool TryAnalyzeUserDefinedStringLiteral(const std::string& spelling,
+		ScopeId scope, TypeId target, ExpressionInfo* result);
+	bool TryAnalyzeUserDefinedNumericLiteral(const std::string& spelling,
 		ScopeId scope, TypeId target, ExpressionInfo* result);
 	ExpressionInfo AnalyzeThisExpression(ScopeId scope);
 	bool IsNonthrowing(NodeId declarator, ScopeId scope);
@@ -771,6 +774,7 @@ private:
 	SemanticGraphConsumer* graph_consumer_;
 	bool render_output_;
 	DumpArena dump_;
+	std::vector<std::uint32_t> string_literal_units_;
 	std::uint32_t root_;
 	std::vector<NameId> scope_prefixes_;
 	std::vector<NameId> scope_prefix_segments_;

@@ -263,11 +263,14 @@ struct ExpressionInfo
 	bool constant;
 	std::int64_t value;
 	bool integer_literal_zero;
+	std::uint32_t string_unit_begin;
+	std::uint32_t string_unit_count;
 
 	ExpressionInfo()
 		: node(kNoDumpEdge), type(kNoType), category(VALUE_PRVALUE),
 		  binding(kNoBinding), constant(false), value(0),
-		  integer_literal_zero(false) {}
+		  integer_literal_zero(false), string_unit_begin(kNoDumpEdge),
+		  string_unit_count(0) {}
 };
 
 enum ConversionRank

@@ -1335,6 +1335,66 @@ bool DecodeNarrowStringLiteral(const std::string& source,
 	return true;
 }
 
+bool DecodeStringLiteralCodeUnits(const std::string& source,
+	FundamentalType* type, std::vector<std::uint32_t>* units)
+{
+	if (!type || !units)
+		throw std::logic_error("missing typed string literal destination");
+	StringPart parsed;
+	if (!ParseStringPart(source, &parsed) ||
+		parsed.suffix_begin != parsed.suffix_end)
+		return false;
+	std::vector<unsigned char> bytes;
+	std::size_t count = 0;
+	if (!DecodeStringPart(source, parsed.content_begin, parsed.content_end,
+		parsed.raw, parsed.encoding, &bytes, &count) ||
+		!AppendStringUnit(0, parsed.encoding, &bytes, &count))
+		return false;
+	const std::size_t width = EncodingWidth(parsed.encoding);
+	if (bytes.size() != count * width) return false;
+	units->clear();
+	units->reserve(count);
+	for (std::size_t unit = 0; unit < count; ++unit)
+	{
+		std::uint32_t value = 0;
+		for (std::size_t byte = 0; byte < width; ++byte)
+			value |= static_cast<std::uint32_t>(
+				bytes[unit * width + byte]) << (byte * 8);
+		units->push_back(value);
+	}
+	*type = EncodingType(parsed.encoding);
+	return true;
+}
+
+bool DecodeOrdinaryMulticharacterLiteral(const std::string& source,
+	std::uint32_t* value)
+{
+	if (!value) throw std::logic_error("missing multicharacter destination");
+	QuotedSyntax syntax;
+	if (!ParseCharacterSyntax(source, &syntax) || syntax.type != FT_CHAR ||
+		!syntax.suffix.empty()) return false;
+	std::size_t position = syntax.content_begin;
+	std::size_t count = 0;
+	std::uint32_t result = 0;
+	while (position < syntax.content_end)
+	{
+		std::uint32_t current = 0;
+		if (source[position] == '\\')
+		{
+			if (!DecodeEscape(source, syntax.content_end, &position, &current))
+				return false;
+		}
+		else if (!DecodeUTF8One(source, syntax.content_end, &position, &current))
+			return false;
+		if (current > 0xFF || count == sizeof(result)) return false;
+		result = (result << 8) | current;
+		++count;
+	}
+	if (count < 2) return false;
+	*value = result;
+	return true;
+}
+
 const char* FundamentalTypeName(FundamentalType type)
 {
 	static const char* names[] = {

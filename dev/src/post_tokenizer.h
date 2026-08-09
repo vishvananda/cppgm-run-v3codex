@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "IPPTokenStream.h"
 #include "pp_tokenizer.h"
@@ -263,6 +264,18 @@ bool DecodeOrdinaryStringLiteral(const std::string& source,
 // while rejecting user-defined suffixes. The value excludes the null unit.
 bool DecodeNarrowStringLiteral(const std::string& source,
 	std::string* value);
+
+// Decode one ordinary string-literal into typed code units, including its
+// terminating null unit.  This retains the phase-6 encoding decision for
+// semantic consumers that need array element constants.
+bool DecodeStringLiteralCodeUnits(const std::string& source,
+	FundamentalType* type, std::vector<std::uint32_t>* units);
+
+// Recognize the conditionally-supported ordinary multi-character form for
+// compiler stages that choose to accept it.  The PA2 post-token stream itself
+// continues to diagnose this form as invalid.
+bool DecodeOrdinaryMulticharacterLiteral(const std::string& source,
+	std::uint32_t* value);
 
 // Run phases 1-3 through the shared PA1 tokenizer, apply the PA2 phase-6 and
 // token recognition rules, and emit typed events without retaining a token
