@@ -2139,29 +2139,19 @@ NodeId Parser::ParseNestedTemplateParameterClause()
 {
 	const NodeId clause = arena_.Make("template-parameter-clause");
 	Expect(OP_LT);
+	++angle_stop_depth_;
 	if (!AtCloseAngle())
 	{
 		const NodeId list = arena_.Make("template-parameter-list");
 		while (true)
 		{
-			if (!At(KW_CLASS) && !At(KW_TYPENAME))
-				throw Error("expected nested type parameter");
-			const std::size_t key = position_++;
-			const NodeId parameter = arena_.Make("type-parameter");
-			arena_.Add(parameter, MakeTokenNode("parameter-key", key));
-			if (Match(OP_DOTS))
-				arena_.Add(parameter, arena_.Make("parameter-pack", "..."));
-			if (AtIdentifier())
-			{
-				const std::string name = Spelling(position_++);
-				arena_.Add(parameter, arena_.Make("identifier", name));
-				SetNameFact(name, kKnownType);
-			}
+			const NodeId parameter = ParseTemplateParameter();
 			arena_.Add(list, parameter);
 			if (!Match(OP_COMMA)) break;
 		}
 		arena_.Add(clause, list);
 	}
+	--angle_stop_depth_;
 	ExpectCloseAngle();
 	return clause;
 }

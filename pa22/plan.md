@@ -19,6 +19,11 @@ parameter names normalized to ordinals. A call derives template specializations 
 the indexed visible patterns and its current arguments; previously materialized
 specializations are cache results, not independent lookup candidates.
 
+Alias templates now own retained lexical patterns and typed specialization caches.
+Template-template arguments carry canonical template-marker identity; dependent
+partial patterns use non-completing proxy specializations only as typed deduction
+shapes, then bind the selected concrete template entity for ordinary completion.
+
 This stage applies `spec.md` §§2–6, 8–10: canonical specialization identity,
 indexed lookup, separate retained-pattern/selection/completion state, memoized demand,
 typed lowering, bounded temporary ownership, explicit work counters, and no textual
@@ -28,26 +33,24 @@ deduction/SFINAE and §7 object-backend work remain outside this LowIR stage.
 
 ## Current Failure Map
 
-Current result: **145/310**: the landed checkpoint remains 144/309 and the audit
-identity regression adds one passing test. The remaining 165 failures are unchanged
-and group by exclusive primary owner: partial matching/ordering/replay 40;
-member/friend ownership, lookup, and access 44; alias/template-template/pack graph
-38; explicit instantiation/specialization ownership 27; dependent lookup,
-deduction, conversion, and lowering integration 16.
+Current result: **192/310**. The remaining 118 failures group by exclusive primary
+owner: member/friend ownership, lookup, and access 60; explicit specialization and
+instantiation ownership 26; alias/template-template/pack integration 20; dependent
+lookup, deduction, conversion, and lowering 10; residual partial ordering/replay 2.
 
 ## Active Checkpoint
 
-**Alias and template-template binding across retained scopes.** Owner: the canonical
-alias/template declaration and its lexical parameter scope; uses retain their own
-lookup scope and canonical argument overlay. Data flow: retained declaration ->
-use-scope argument binding -> canonical substitution -> dependent member lookup ->
-ordinary demand/completion/lowering. Apply `spec.md` §§2–6 and 8–9: stable entity
-identity, typed substitution keys, immutable retained syntax, indexed lookup, and
-memoized demand. Expected work is O(alias-chain depth + bound arguments + related
-overloads), with O(1)-average specialization lookup and cycle detection. Validate
-forward aliases, template-template packs/defaults, qualified identities, lexical
-use-scope separation, and dependent result reconstruction; then run PA22 and the
-through-PA21 report.
+**Explicit specialization/instantiation ownership and emission state.** Owner: the
+canonical primary/specialization record and separate declaration, definition, and
+emission-demand states. Data flow: explicit target lookup -> canonical typed key ->
+ownership/suppression transition -> ordinary demand/completion -> LowIR emission.
+Apply `spec.md` §§2–6 and 8–9: indexed target lookup, monotonic fact states, precise
+cache ownership, typed demand reasons, and one lowering per emission identity.
+Expected work is O(related overloads + demanded class members), with O(1)-average
+specialization lookup and no scan of unrelated templates. Validate class/function/
+constructor/member-template explicit definitions, extern suppression with inline
+member availability, late explicit replacement, and duplicate ownership; then run
+PA22, the through-PA21 report, audit, and a related-member doubling probe.
 
 ## Performance Evidence
 
@@ -60,9 +63,16 @@ linearly; call filtering visits the selected member set and does not scan unrela
 templates. Earlier partial-family evidence remains 1.269/2.272/4.313 ms for
 8/16/32 patterns with the expected O(k*s) related-candidate work.
 
+Five-run medians for 16/32/64 recursively demanded class uses of one alias pattern
+are 2.218/3.867/7.453 ms semantic time and 0.503/0.834/1.636 MB peak stage storage.
+Specialization requests are 66/130/258, cache hits 17/33/65, layouts 33/65/129,
+and lookup queries 523/1019/2011. Every work counter and storage scale linearly;
+the typed alias cache adds no unrelated-template scan.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result |
 |---|---|
 | `5d70a120` + `26eafabe` canonical partial selection and ownership audit | Retained selected owner/revision/substitution, canonical pack identity, deterministic replay/emission separation, and work counters; PA22 82 -> 112/309, prior 2329/2329. |
 | `da807b9f` member-template attachment plus checkpoint audit | Stable owner-pattern replay; indexed member calls; static/constructor and late definitions; canonical template-head identity; no stale specialization candidates. Landed PA22 112 -> 144/309, audit corpus 145/310, prior 2329/2329. |
+| Canonical alias/template entity graph | Retained alias patterns, typed cached substitution, template-template shape/identity matching, proxy partial deduction, defaults/packs, ADL ownership, and nested parameter parsing; PA22 145 -> 192/310 with no regressions, prior 2329/2329, audit pass. |

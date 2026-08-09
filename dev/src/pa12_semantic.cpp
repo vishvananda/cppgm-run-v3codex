@@ -1722,10 +1722,11 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 	if (target != kNoNode &&
 		!arena_->IsTag(target, "template-declaration"))
 		ValidateRetainedTemplateDefinition(target, scope, parameters);
-	// Alias templates are outside PA20.  Retain their parsed declaration as an
-	// inert boundary so unrelated supported declarations in the same source do
-	// not eagerly require alias substitution semantics.
-	if (target != kNoNode && arena_->IsTag(target, "alias-declaration")) return;
+	if (target != kNoNode && arena_->IsTag(target, "alias-declaration"))
+	{
+		RegisterAliasTemplate(target, scope, member_access, parameters);
+		return;
+	}
 	if (target != kNoNode && class_template_member_replay_depth_ == 0 &&
 		AnalyzeClassTemplateMember(target, scope, parameters)) return;
 	if (target != kNoNode &&

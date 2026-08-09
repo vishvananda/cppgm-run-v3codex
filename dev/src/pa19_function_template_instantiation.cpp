@@ -91,6 +91,10 @@ bool EquivalentFunctionTemplateParameterLists(const SyntaxArena& arena,
 	{
 		if (left[i].kind != right[i].kind || left[i].pack != right[i].pack)
 			return false;
+		if (left[i].kind == TEMPLATE_ARGUMENT_TEMPLATE &&
+			!EquivalentFunctionTemplateParameterLists(arena,
+				left[i].template_parameters, right[i].template_parameters))
+			return false;
 		if (left[i].kind != TEMPLATE_ARGUMENT_INTEGRAL) continue;
 		if (left[i].dependent_type != right[i].dependent_type) return false;
 		if (!left[i].dependent_type)
@@ -170,6 +174,9 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 		if (parameters[p].kind == TEMPLATE_ARGUMENT_TYPE)
 			program_->AddBinding(shape_scope, BIND_TYPE_ALIAS,
 				parameters[p].name, function_template_shape_parameters_[p]);
+		else if (parameters[p].kind == TEMPLATE_ARGUMENT_TEMPLATE)
+			CreateTemplateTemplateParameterProxy(shape_scope,
+				parameters[p], p);
 		else program_->AddBinding(shape_scope, BIND_PARAMETER,
 			parameters[p].name, parameters[p].dependent_type ?
 				program_->types.Fundamental(FUND_INT) :
@@ -616,6 +623,12 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 			if (type_id == kNoNode) return kNoBinding;
 			argument.type = BuildTypeId(type_id, default_scope);
 			if (argument.type == kNoType) return kNoBinding;
+		}
+		else if (parameter.kind == TEMPLATE_ARGUMENT_TEMPLATE)
+		{
+			if (!BuildTemplateTemplateArgument(
+				source, default_scope, parameter, &argument))
+				return kNoBinding;
 		}
 		else
 		{

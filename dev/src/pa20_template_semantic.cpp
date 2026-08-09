@@ -31,7 +31,8 @@ bool SyntaxUsesTemplateParameter(const SyntaxArena& arena, NodeId node,
 std::string ExplicitArgumentPresentation(const Program& program,
 	const TemplateArgument& argument)
 {
-	if (argument.kind == TEMPLATE_ARGUMENT_TYPE)
+	if (argument.kind == TEMPLATE_ARGUMENT_TYPE ||
+		argument.kind == TEMPLATE_ARGUMENT_TEMPLATE)
 	{
 		std::string result = program.RenderType(argument.type);
 		const char* prefixes[] = {"struct ", "class ", "union ", "enum "};
@@ -497,7 +498,8 @@ BindingId SemanticAnalyzer::InstantiateVariableTemplate(
 	bool dependent = false;
 	for (std::size_t i = 0; i < arguments.size(); ++i)
 		if (arguments[i].IsDependent() ||
-			(arguments[i].kind == TEMPLATE_ARGUMENT_TYPE &&
+			((arguments[i].kind == TEMPLATE_ARGUMENT_TYPE ||
+			  arguments[i].kind == TEMPLATE_ARGUMENT_TEMPLATE) &&
 			 FunctionTemplateTypeIsDependent(arguments[i].type)))
 			dependent = true;
 	if (!dependent)
@@ -534,6 +536,19 @@ void SemanticAnalyzer::ParseTemplateParameters(NodeId list, ScopeId scope,
 		record.pack = FindChild(parameter, "parameter-pack") != kNoNode;
 		if (arena_->IsTag(parameter, "type-parameter"))
 		{
+			if (FindChild(parameter, "template-template-parameter") != kNoNode)
+			{
+				record.kind = TEMPLATE_ARGUMENT_TEMPLATE;
+				const NodeId nested_clause = FindChild(
+					parameter, "template-parameter-clause");
+				const NodeId nested_list = nested_clause == kNoNode ? kNoNode :
+					FindChild(nested_clause, "template-parameter-list");
+				std::vector<NameId> nested_names;
+				std::vector<NodeId> nested_defaults;
+				ParseTemplateParameters(nested_list, scope,
+					&record.template_parameters, &nested_names,
+					&nested_defaults);
+			}
 			const NodeId identifier = FindChild(parameter, "identifier");
 			record.name = identifier == kNoNode ? 0 :
 				program_->names.Intern(arena_->Payload(identifier));
@@ -616,7 +631,8 @@ void SemanticAnalyzer::BindTemplateArgument(ScopeId scope,
 	if (parameter.name == 0) return;
 	if (parameter.kind != argument.kind)
 		throw std::logic_error("template parameter/argument kind mismatch");
-	if (argument.kind == TEMPLATE_ARGUMENT_TYPE)
+	if (argument.kind == TEMPLATE_ARGUMENT_TYPE ||
+		argument.kind == TEMPLATE_ARGUMENT_TEMPLATE)
 		program_->AddBinding(scope, BIND_TYPE_ALIAS, parameter.name,
 			argument.type);
 	else if (argument.IsDependent())
@@ -701,8 +717,6 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 {
 	const bool has_pack = HasTrailingTemplateParameterPack(parameters);
 	const std::size_t fixed = FixedTemplateParameterCount(parameters);
-	if ((!has_pack && syntax.size() > parameters.size()) ||
-		(parameters.empty() && !syntax.empty())) return false;
 	arguments->clear();
 	arguments->reserve(std::max(parameters.size(), syntax.size()));
 	const ScopeId parameter_scope = NewScope(lexical_scope,
@@ -725,6 +739,11 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 			argument.type = BuildTypeId(type_id,
 				source_scope);
 			if (argument.type == kNoType) return false;
+		}
+		else if (parameter.kind == TEMPLATE_ARGUMENT_TEMPLATE)
+		{
+			if (!BuildTemplateTemplateArgument(
+				source, source_scope, parameter, &argument)) return false;
 		}
 		else
 		{
@@ -867,7 +886,6 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 			if (!append_argument(syntax[i], use_scope)) return false;
 			continue;
 		}
-		if (arguments->size() >= fixed && !has_pack) return false;
 		const TemplateArgumentKind destination_kind =
 			TemplateParameterForArgument(parameters, arguments->size()).kind;
 		std::vector<ScopeId> element_scopes;

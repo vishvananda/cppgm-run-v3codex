@@ -765,6 +765,7 @@ struct TemplateParameter
 	NodeId specifiers;
 	NodeId declarator;
 	NodeId default_argument;
+	std::vector<TemplateParameter> template_parameters;
 	bool dependent_type;
 	bool pack;
 
@@ -904,6 +905,20 @@ struct VariableTemplatePattern
 		  partial_specialization(false) {}
 };
 
+struct AliasTemplatePattern
+{
+	ScopeId owner, lexical_scope, specialization_scope;
+	NameId name;
+	NodeId declaration, type_id;
+	std::vector<TemplateParameter> parameters;
+	EntityId marker_entity;
+
+	AliasTemplatePattern()
+		: owner(kNoScope), lexical_scope(kNoScope),
+		  specialization_scope(kNoScope), name(0), declaration(kNoNode),
+		  type_id(kNoNode), marker_entity(kNoEntity) {}
+};
+
 struct ClassTemplatePattern
 {
 	ScopeId owner;
@@ -919,11 +934,15 @@ struct ClassTemplatePattern
 	std::deque<ClassTemplateMemberPattern> demanded_member_definitions;
 	std::deque<ClassTemplatePartialPattern> partial_specializations;
 	EntityId marker_entity;
+	std::uint32_t template_parameter_ordinal;
 	bool defined;
+	bool template_parameter_proxy;
 
 	ClassTemplatePattern()
 		: owner(kNoScope), lexical_scope(kNoScope), name(0),
-		  declaration(kNoNode), marker_entity(kNoEntity), defined(false) {}
+		  declaration(kNoNode), marker_entity(kNoEntity),
+		  template_parameter_ordinal(kNoTemplateParameter), defined(false),
+		  template_parameter_proxy(false) {}
 };
 
 struct InjectedMemberInfo

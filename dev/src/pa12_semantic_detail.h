@@ -153,6 +153,20 @@ private:
 		bool adl_eligible);
 	void AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 		const std::vector<TemplateParameter>& parameters);
+	void RegisterAliasTemplate(NodeId declaration, ScopeId scope,
+		AccessKind member_access,
+		const std::vector<TemplateParameter>& parameters);
+	std::size_t FindAliasTemplateIndex(
+		const LookupResult& found, NameId requested) const;
+	TypeId InstantiateAliasTemplate(std::size_t index,
+		const std::vector<TemplateArgument>& arguments);
+	bool BuildTemplateTemplateArgument(NodeId syntax, ScopeId scope,
+		const TemplateParameter& parameter, TemplateArgument* argument);
+	bool TemplateTemplateParameterMatches(
+		const std::vector<TemplateParameter>& parameter,
+		const std::vector<TemplateParameter>& argument) const;
+	TypeId CreateTemplateTemplateParameterProxy(ScopeId scope,
+		const TemplateParameter& parameter, std::size_t ordinal);
 	bool RetainVariableTemplate(NodeId declaration, ScopeId scope,
 		const std::vector<TemplateParameter>& parameters);
 	std::vector<std::size_t> FindVariableTemplates(
@@ -1116,6 +1130,10 @@ private:
 	std::vector<EntityId> retained_call_naming_classes_;
 	TemplateSpecializationTable template_instantiations_;
 	std::deque<ClassTemplatePattern> class_templates_;
+	std::vector<AliasTemplatePattern> alias_templates_;
+	std::vector<std::uint32_t> alias_template_pattern_by_entity_;
+	TemplateSpecializationTable alias_template_instantiations_;
+	std::vector<std::uint8_t> alias_template_instantiation_states_;
 	std::vector<VariableTemplatePattern> variable_templates_;
 	IndexedSequenceTable variable_template_sets_;
 	std::vector<std::uint8_t> variable_template_bindings_;

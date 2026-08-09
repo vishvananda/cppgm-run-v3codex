@@ -138,8 +138,8 @@ void RetainedTemplateValidator::DeclareParameter(std::size_t scope,
 	if (name == 0) return;
 	if (!parameter_names_.insert(name).second)
 		throw std::runtime_error("duplicate template parameter");
-	scopes_[scope].names[name] |= parameter.kind == TEMPLATE_ARGUMENT_TYPE ?
-		RETAINED_TYPE_NAME : RETAINED_VALUE_NAME;
+	scopes_[scope].names[name] |= parameter.kind == TEMPLATE_ARGUMENT_INTEGRAL ?
+		RETAINED_VALUE_NAME : RETAINED_TYPE_NAME;
 }
 
 void RetainedTemplateValidator::Declare(std::size_t scope, NameId name,

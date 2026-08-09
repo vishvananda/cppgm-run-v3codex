@@ -288,8 +288,8 @@ void SemanticAnalyzer::AppendArgumentDependentCandidates(NameId name,
 			for (std::size_t argument = 0; argument < count; ++argument)
 				if (first + argument >=
 						program_->canonical_template_arguments.size() ||
-					program_->canonical_template_arguments[first + argument].kind ==
-						TEMPLATE_ARGUMENT_TYPE)
+					program_->canonical_template_arguments[first + argument].kind !=
+						TEMPLATE_ARGUMENT_INTEGRAL)
 					AddAssociatedType(
 						program_->template_arguments[first + argument]);
 		}

@@ -31,7 +31,8 @@ const std::uint32_t kNoTemplateParameter =
 enum TemplateArgumentKind
 {
 	TEMPLATE_ARGUMENT_TYPE,
-	TEMPLATE_ARGUMENT_INTEGRAL
+	TEMPLATE_ARGUMENT_INTEGRAL,
+	TEMPLATE_ARGUMENT_TEMPLATE
 };
 
 struct TemplateArgument
