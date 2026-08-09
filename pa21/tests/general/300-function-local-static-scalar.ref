@@ -1,11 +1,11 @@
-global @__local_static__next_id__id__tokens7_10 : i32 [binding=internal] = 0
+global @__local_static__next_id__decl0__id : i32 [binding=internal] = 0
 
 function @next_id() -> i32 [binding=strong, object=_Z7next_idv] {
   block ^entry:
-    %t1 = load i32 @__local_static__next_id__id__tokens7_10
+    %t1 = load i32 @__local_static__next_id__decl0__id
     %t2 = binary add i32 %t1, 1
-    store i32 %t2, @__local_static__next_id__id__tokens7_10
-    %t3 = load i32 @__local_static__next_id__id__tokens7_10
+    store i32 %t2, @__local_static__next_id__decl0__id
+    %t3 = load i32 @__local_static__next_id__decl0__id
     return i32 %t3
 }
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {

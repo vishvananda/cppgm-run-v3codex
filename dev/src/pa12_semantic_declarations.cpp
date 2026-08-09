@@ -484,6 +484,7 @@ void SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 		if (!program_->entities[entity].has_user_declared_destructor)
 			EnsureImplicitDestructor(entity);
 		program_->entities[entity].complete = true;
+		ValidateConstexprClassDeclarations(entity);
 		ValidateOrdinaryMemberFunctionBodies(entity);
 		current_class_context_ = previous_class_context;
 }
@@ -1038,12 +1039,20 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		const NodeId declarator = FindChild(node, "declarator");
 		DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type, scope,
 			false, spec.storage_class != STORAGE_CLASS_STATIC);
+		const EntityId owner_entity = EntityOf(owner_type);
+		if (spec.is_constexpr)
+			parsed.type = ApplyConstexprMemberFunctionType(parsed.type,
+				owner_entity, spec.storage_class == STORAGE_CLASS_STATIC);
+		const bool constexpr_function = spec.is_constexpr &&
+			(!IsClassTemplateSpecializationContext(owner_entity) ||
+			 IsConstexprCallableType(parsed.type, false));
+		if (spec.is_constexpr && constexpr_function)
+			ValidateConstexprCallableType(parsed.type, false);
 		const BindingId function = DeclareFunction(scope, parsed.name,
 			parsed.type, parsed.parameters, true, false, STORAGE_CLASS_NONE,
 			current_language_linkage_, IsNonthrowing(declarator, scope));
 		FunctionInfo& info = GetMutableFunction(function);
-		info.constexpr_function = info.constexpr_function || spec.is_constexpr;
-		const EntityId owner_entity = EntityOf(owner_type);
+		info.constexpr_function = info.constexpr_function || constexpr_function;
 		BindingRecord& binding = program_->bindings[function];
 		binding.member_owner = owner_entity;
 		binding.access = access;
@@ -1062,6 +1071,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		info.definition_in_class = true;
 		ConfigureAssignmentSpecialMember(function, kNoNode);
 		RegisterClassMemberFunction(owner_entity, function);
+		PublishInlineFunctionFacts(function, true);
 		return;
 	}
 	const NodeId list = FindChild(node, "init-declarator-list");
@@ -1072,7 +1082,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		const NodeId item = arena_->EdgeChild(edge);
 		const NodeId declarator = FindChild(item, "declarator");
 		if (declarator == kNoNode) continue;
-		const DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type, scope,
+		DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type, scope,
 			false, spec.storage_class != STORAGE_CLASS_STATIC &&
 				FindChild(declarator, "parameter-clause") != kNoNode);
 		if (spec.is_typedef)
@@ -1087,6 +1097,15 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		{
 			if (spec.thread_local_storage)
 				throw std::runtime_error("thread_local member function");
+			const EntityId owner_entity = EntityOf(owner_type);
+			if (spec.is_constexpr)
+				parsed.type = ApplyConstexprMemberFunctionType(parsed.type,
+					owner_entity, spec.storage_class == STORAGE_CLASS_STATIC);
+			const bool constexpr_function = spec.is_constexpr &&
+				(!IsClassTemplateSpecializationContext(owner_entity) ||
+				 IsConstexprCallableType(parsed.type, false));
+			if (spec.is_constexpr && constexpr_function)
+				ValidateConstexprCallableType(parsed.type, false);
 			const BindingId function = DeclareFunction(scope, parsed.name,
 				parsed.type, parsed.parameters, false, false, STORAGE_CLASS_NONE,
 				current_language_linkage_, IsNonthrowing(declarator, scope));
@@ -1102,7 +1121,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 			if (!binding.static_member_function)
 				GetMutableFunction(function).member_owner = owner_type;
 			GetMutableFunction(function).constexpr_function =
-				GetFunction(function).constexpr_function || spec.is_constexpr;
+				GetFunction(function).constexpr_function || constexpr_function;
 			ValidateFunctionRefQualifier(function);
 			ConfigureVirtualFunction(function, spec, declarator,
 				FindChild(item, "initializer"));
@@ -1112,6 +1131,8 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 			ConfigureAssignmentSpecialMember(
 				function, FindChild(item, "initializer"));
 			RegisterClassMemberFunction(EntityOf(owner_type), function);
+			PublishInlineFunctionFacts(
+				function, spec.inline_specifier || constexpr_function);
 		}
 		else
 		{
@@ -1126,6 +1147,9 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 			TypeId member_type = parsed.type;
 			if (spec.is_constexpr)
 				member_type = program_->types.Qualify(member_type, CV_CONST);
+			if (spec.is_constexpr && !IsConstexprLiteralType(member_type))
+				throw std::runtime_error(
+					"constexpr static data member does not have literal type");
 			const LookupResult occupied =
 				program_->LookupDirect(scope, parsed.name, LOOKUP_ORDINARY);
 			if (parsed.name != 0 && occupied.ordinary != kNoBinding)
@@ -1455,6 +1479,15 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 			else if (value == "constexpr") info.constexpr_function = true;
 			else if (value == "inline") binding.inline_function = true;
 		}
+	if (info.constexpr_function)
+	{
+		if (IsClassTemplateSpecializationContext(entity) &&
+			!IsConstexprCallableType(info.type, true))
+			info.constexpr_function = false;
+		else ValidateConstexprCallableType(info.type, true);
+	}
+	PublishInlineFunctionFacts(constructor, source_definition || defaulted ||
+		info.constexpr_function || binding.inline_function);
 	if (source_definition)
 	{
 		info.definition_body = FindChild(node, "compound-statement");
@@ -1476,65 +1509,6 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 		class_record.has_user_provided_constructor ||
 		(source_definition || (!defaulted && !deleted));
 	RegisterClassSpecialMember(constructor);
-}
-void SemanticAnalyzer::AnalyzeConversionFunction(NodeId node, ScopeId scope,
-	TypeId owner_type, AccessKind access)
-{
-	const NodeId declarator = FindChild(node, "declarator");
-	const NodeId target_node = declarator == kNoNode ? kNoNode :
-		FindChild(declarator, "conversion-type-id");
-	if (target_node == kNoNode)
-		throw std::logic_error("conversion function has no target type");
-	const TypeId target = BuildTypeId(target_node, scope);
-	const DeclaratorInfo parsed = BuildDeclarator(declarator, target, scope);
-	if (!program_->types.IsFunction(parsed.type) || !parsed.parameters.empty() ||
-		program_->types.Get(parsed.type).child != target)
-		throw std::runtime_error("invalid conversion function declarator");
-	const NodeId initializer = FindChild(node, "initializer");
-	const NodeId special = initializer == kNoNode ? kNoNode :
-		FindChild(initializer, "special-initializer");
-	if (special != kNoNode && arena_->Payload(special) == "default")
-		throw std::runtime_error("conversion function cannot be defaulted");
-	const bool deleted = special != kNoNode &&
-		arena_->Payload(special) == "delete";
-	const bool definition = arena_->IsTag(node, "special-member-definition");
-	const NameId conversion_name = DeclaratorNamePath(declarator).Last();
-	const BindingId function = DeclareFunction(scope, conversion_name,
-		parsed.type, parsed.parameters, definition, false, STORAGE_CLASS_NONE,
-		current_language_linkage_, IsNonthrowing(declarator, scope));
-	const EntityId entity = EntityOf(owner_type);
-	BindingRecord& binding = program_->bindings[function];
-	binding.member_owner = entity;
-	binding.access = access;
-	binding.inline_function = definition;
-	binding.conversion_function = true;
-	binding.conversion_target = target;
-	FunctionInfo& info = GetMutableFunction(function);
-	info.member_owner = owner_type;
-	info.conversion_function = true;
-	info.conversion_target = target;
-	info.deleted_special_member = info.deleted_special_member || deleted;
-	info.deferred = !info.deleted_special_member;
-	if (definition) info.definition_body = FindChild(node, "compound-statement");
-	const NodeId specifiers = FindChild(node, "member-specifiers");
-	if (specifiers != kNoNode)
-		for (std::uint32_t edge = arena_->FirstEdge(specifiers);
-			edge != kNoEdge; edge = arena_->NextEdge(edge))
-		{
-			const std::string value = PayloadSource(arena_->EdgeChild(edge));
-			if (value == "explicit") info.explicit_conversion = true;
-			if (value == "constexpr") info.constexpr_function = true;
-			if (value == "static")
-				throw std::runtime_error("conversion function cannot be static");
-			if (value == "inline") binding.inline_function = true;
-		}
-	ValidateFunctionRefQualifier(function);
-	if (entity_conversion_functions_.size() <= entity)
-		entity_conversion_functions_.resize(
-			static_cast<std::size_t>(entity) + 1);
-	std::vector<BindingId>& functions = entity_conversion_functions_[entity];
-	if (std::find(functions.begin(), functions.end(), function) ==
-		functions.end()) functions.push_back(function);
 }
 TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::string& hint, bool elaborated)
 {
@@ -2610,6 +2584,8 @@ void SemanticAnalyzer::AnalyzeFriendFunction(NodeId node,
 			declarators[i], spec.type, class_scope);
 		if (!program_->types.IsFunction(parsed.type))
 			throw std::runtime_error("friend declaration is not a function");
+		if (spec.is_constexpr)
+			ValidateConstexprCallableType(parsed.type, false);
 		const NamePath declared_name = DeclaratorNamePath(declarators[i]);
 		const bool qualified_friend = declared_name.global ||
 			declared_name.Size() > 1;
@@ -2643,6 +2619,8 @@ void SemanticAnalyzer::AnalyzeFriendFunction(NodeId node,
 			IsNonthrowing(declarators[i], class_scope), false);
 		FunctionInfo& info = GetMutableFunction(binding);
 		info.constexpr_function = info.constexpr_function || spec.is_constexpr;
+		PublishInlineFunctionFacts(
+			binding, definition || spec.inline_specifier || spec.is_constexpr);
 		if (info.friend_of == kNoEntity) info.friend_of = owner_entity;
 		ValidateFunctionRefQualifier(binding);
 		const std::uint64_t access_key =

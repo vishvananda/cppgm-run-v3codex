@@ -1,0 +1,87 @@
+global @__local_static__get_value__decl0__item [binding=internal] = {
+  zero 4
+}
+
+global @__local_static__get_value__decl0__item__guard : i64 [binding=internal] = zero
+
+global @destroyed : i32 [binding=strong, object=_Z9destroyed] = 0
+
+function @get_value() -> ptr [binding=strong, object=_Z9get_valuev] {
+  block ^entry:
+    %t1 = load i64 @__local_static__get_value__decl0__item__guard
+    %t2 = cmp ne i64 %t1, 0
+    branch %t2, ^local_static_ready_1, ^local_static_init_2
+
+  block ^local_static_init_2:
+    %t3 = addr @__local_static__get_value__decl0__item
+    call void @value__value(%t3, 7)
+    store i64 1, @__local_static__get_value__decl0__item__guard
+    jump ^local_static_ready_1
+
+  block ^local_static_ready_1:
+    %t4 = addr @__local_static__get_value__decl0__item
+    return ptr %t4
+}
+
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $cond__1 : i32
+
+  block ^entry:
+    %t1 = call ptr @get_value()
+    %t2 = index i8 [projection=field] %t1, 0
+    %t3 = load i32 %t2
+    %t4 = cmp eq i32 %t3, 7
+    branch %t4, ^cond_then_1, ^cond_else_2
+
+  block ^cond_then_1:
+    store i32 0, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_else_2:
+    store i32 1, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_end_3:
+    %t5 = load i32 $cond__1
+    return i32 %t5
+}
+
+function @value__value(%this : ptr, %input : i32) -> void [binding=weak, object=_ZN5valueC1Ei] {
+  slot $this : ptr
+  slot $input : i32
+
+  block ^entry:
+    store ptr %this, $this
+    store i32 %input, $input
+    %t1 = load i32 $input
+    %t2 = load ptr $this
+    %t3 = index i8 [projection=field] %t2, 0
+    store i32 %t1, %t3
+    return void
+}
+
+function @value___value(%this : ptr) -> void [binding=strong, object=_ZN5valueD1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load i32 @destroyed
+    %t2 = binary add i32 %t1, 1
+    store i32 %t2, @destroyed
+    return void
+}
+
+function @__cppgm_fini() -> void [role=fini, binding=internal] {
+  block ^entry:
+    %t1 = load i64 @__local_static__get_value__decl0__item__guard
+    %t2 = cmp ne i64 %t1, 0
+    branch %t2, ^local_static_destroy_1, ^local_static_fini_next_2
+
+  block ^local_static_destroy_1:
+    %t3 = addr @__local_static__get_value__decl0__item
+    call void @value___value(%t3)
+    jump ^local_static_fini_next_2
+
+  block ^local_static_fini_next_2:
+    return void
+}

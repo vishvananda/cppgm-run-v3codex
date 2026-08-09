@@ -28,11 +28,9 @@ class SemanticAnalyzer : public SyntaxTreeConsumer
 {
 public:
 	SemanticAnalyzer(std::ostream& output, SemanticAnalysisStats* stats,
-		SemanticGraphConsumer* graph_consumer = 0, bool render_output = true,
-		const std::string* source_path = 0, const std::string* source_text = 0)
+		SemanticGraphConsumer* graph_consumer = 0, bool render_output = true)
 		: arena_(0), output_(output), stats_(stats), program_(0),
 		  graph_consumer_(graph_consumer), render_output_(render_output),
-		  source_path_(source_path), source_text_(source_text),
 		  root_(kNoDumpEdge),
 		  function_template_dependent_result_shape_(kNoType),
 		  current_language_linkage_(LANGUAGE_LINKAGE_CPP),
@@ -63,6 +61,8 @@ public:
 		  template_specialization_requests_(0),
 		  template_specialization_cache_hits_(0),
 		  constexpr_call_requests_(0), constexpr_call_cache_hits_(0),
+		  constexpr_local_index_probes_(0),
+		  constexpr_scope_index_probes_(0),
 		  constexpr_object_projection_visits_(0),
 		  constexpr_step_visits_(0), constexpr_max_depth_(0),
 		  constexpr_peak_locals_(0), constexpr_scratch_peak_nodes_(0),
@@ -152,6 +152,10 @@ private:
 		std::uint32_t output_parent, bool local,
 		bool qualified_lexical_scope = false,
 		bool demanded_template_storage = false);
+	void AnalyzeSimpleFunctionDeclaration(NodeId item, NodeId declarator,
+		ScopeId syntax_scope, ScopeId declaration_scope,
+		std::uint32_t output_parent, const NamePath& declared_path,
+		const SpecInfo& spec, DeclaratorInfo parsed);
 	bool AnalyzeAmbiguousCallStatement(NodeId node, ScopeId scope,
 		std::uint32_t output_parent);
 	bool AnalyzeAmbiguousDirectInitializer(NodeId node, ScopeId scope,
@@ -197,6 +201,10 @@ private:
 	bool ConsumeConstexprStep();
 	void PushConstexprBlock();
 	void PopConstexprBlock();
+	void ReleaseConstexprLocals(std::size_t first);
+	void ReleaseConstexprScopeFacts(std::size_t first);
+	bool AddConstexprLocalValue(ConstexprLocalValue value,
+		std::size_t* local);
 	bool AddConstexprLocal(NameId name, NameId pack_name, TypeId type,
 		const ConstexprScalarValue& value, std::size_t* local = 0);
 	bool AddConstexprLocal(NameId name, NameId pack_name, TypeId type,
@@ -508,6 +516,9 @@ private:
 	ExpressionInfo AnalyzeConstantAwareVariableInitializer(NodeId initializer,
 		ScopeId scope, TypeId type, bool local, bool require_constant,
 		bool preserve_recipe = false);
+	bool ShouldProbeConstantInitialization(bool local, const SpecInfo& spec,
+		TypeId type) const;
+	bool HasConstantInitializerFact(const ExpressionInfo& initializer) const;
 	ExpressionInfo AnalyzeInClassStaticInitializer(NodeId initializer,
 		ScopeId scope, TypeId type);
 	ExpressionInfo FinalizeVariableInitializer(ExpressionInfo initializer,
@@ -537,6 +548,14 @@ private:
 		const std::string& spelling, NodeId syntax = kNoNode);
 	bool IsClassObjectType(TypeId type) const;
 	bool IsConstexprLiteralType(TypeId type) const;
+	bool IsVolatileSubobjectType(TypeId type) const;
+	bool IsConstexprCallableType(TypeId type, bool constructor) const;
+	TypeId ApplyConstexprMemberFunctionType(TypeId type, EntityId owner,
+		bool static_member);
+	TypeId ApplyConstexprDeclaredFunctionType(TypeId type, ScopeId owner,
+		NameId name, EntityId entity);
+	void ValidateConstexprCallableType(TypeId type, bool constructor) const;
+	void ValidateConstexprClassDeclarations(EntityId entity);
 	BindingId EnsureBuiltinFunction(BuiltinFunctionKind kind);
 	bool AnalyzeBuiltinCall(const std::string& spelling, ScopeId scope,
 		const std::vector<NodeId>& argument_syntax, TypeId target,
@@ -820,12 +839,10 @@ private:
 	void AddNamespaceObjectAction(std::uint32_t variable, BindingId object,
 		TypeId type, std::uint32_t initializer);
 	void AddLocalStaticObjectAction(std::uint32_t variable, BindingId object,
-		TypeId type, std::uint32_t initializer, NodeId syntax);
-	void FindLocalStaticSource(NameId name, std::uint32_t* line,
-		std::uint32_t* column) const;
+		TypeId type, std::uint32_t initializer, bool constant_initialized);
 	void RegisterVariableLifetimeAndStorage(ScopeId scope, bool local,
 		bool declaration_only, std::uint32_t variable, BindingId object,
-		TypeId type, NodeId syntax);
+		TypeId type, bool constant_initialized);
 	void DemandRuntimeInitializerFunctions(std::uint32_t initializer);
 	void AppendScopeDestructionActions(ScopeId scope,
 		std::uint32_t output_parent, ScopeId stop_exclusive = kNoScope);
@@ -994,8 +1011,6 @@ private:
 	Program* program_;
 	SemanticGraphConsumer* graph_consumer_;
 	bool render_output_;
-	const std::string* source_path_;
-	const std::string* source_text_;
 	DumpArena dump_;
 	std::vector<std::uint32_t> string_literal_units_;
 	std::uint32_t root_;
@@ -1084,6 +1099,7 @@ private:
 	std::vector<ScopeId> nearest_lifetime_scopes_;
 	std::vector<NamespaceObjectAction> namespace_objects_;
 	std::vector<LocalStaticObjectAction> local_static_objects_;
+	std::vector<std::uint32_t> local_static_count_by_function_;
 	std::vector<AggregateHelperInfo> aggregate_helpers_;
 	FunctionSignatureTable aggregate_helper_index_;
 	std::vector<ScopeId> break_cleanup_stops_;
@@ -1094,7 +1110,10 @@ private:
 	std::vector<BindingId> constexpr_evaluation_stack_;
 	std::vector<ConstexprFrame> constexpr_frames_;
 	std::vector<ConstexprLocalValue> constexpr_locals_;
+	std::vector<std::size_t> constexpr_local_by_name_;
+	std::vector<std::size_t> constexpr_local_by_pack_;
 	std::vector<ConstexprScopeFact> constexpr_scope_facts_;
+	std::vector<std::size_t> constexpr_type_alias_by_name_;
 	std::vector<ConstexprBlockOffset> constexpr_block_offsets_;
 	// Binding-indexed O(1) access with dense payloads only for floating facts.
 	std::vector<std::uint32_t> floating_constant_fact_by_binding_;
@@ -1167,6 +1186,8 @@ private:
 	std::size_t template_specialization_cache_hits_;
 	std::size_t constexpr_call_requests_;
 	std::size_t constexpr_call_cache_hits_;
+	mutable std::size_t constexpr_local_index_probes_;
+	mutable std::size_t constexpr_scope_index_probes_;
 	mutable std::size_t constexpr_object_projection_visits_;
 	std::size_t constexpr_step_visits_;
 	std::size_t constexpr_max_depth_;

@@ -2925,6 +2925,7 @@ private:
 	std::vector<std::uint8_t> local_static_dynamic_;
 	std::vector<std::uint8_t> local_static_emitted_;
 	std::vector<std::uint32_t> local_static_eager_initializers_;
+	std::vector<std::uint32_t> local_static_finalizers_;
 	Function* function_;
 	BlockId current_block_;
 	LowType current_result_;

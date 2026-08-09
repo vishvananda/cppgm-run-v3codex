@@ -1,6 +1,5 @@
 #include "pa12_semantic_detail.h"
 
-#include <cctype>
 #include <limits>
 #include <stdexcept>
 
@@ -47,7 +46,7 @@ bool SemanticAnalyzer::IsConstexprLiteralType(TypeId type) const
 		top.kind == TYPE_MEMBER_POINTER)
 		return true;
 	if (top.kind == TYPE_ARRAY)
-		return top.bound != 0 && IsConstexprLiteralType(top.child);
+		return IsConstexprLiteralType(top.child);
 	if (top.kind == TYPE_FUNDAMENTAL)
 		return top.fundamental != FUND_VOID;
 	if (top.kind != TYPE_NAMED || top.entity >= program_->entities.size())
@@ -69,6 +68,7 @@ bool SemanticAnalyzer::IsConstexprLiteralType(TypeId type) const
 			const FunctionInfo& constructor = GetFunction(constructors[i]);
 			if ((constructor.constexpr_function ||
 				 constructor.defaulted_constructor) &&
+				!constructor.deleted_constructor &&
 				constructor.special_member != SPECIAL_MEMBER_COPY_CONSTRUCTOR &&
 				constructor.special_member != SPECIAL_MEMBER_MOVE_CONSTRUCTOR)
 			{
@@ -78,84 +78,183 @@ bool SemanticAnalyzer::IsConstexprLiteralType(TypeId type) const
 		}
 	}
 	if (!literal_constructor) return false;
-	if (entity.direct_base != kNoEntity &&
-		!IsConstexprLiteralType(program_->entities[entity.direct_base].type))
-		return false;
+	for (std::size_t i = 0; i < entity.direct_base_count; ++i)
+		if (!IsConstexprLiteralType(program_->entities[
+			program_->DirectBase(top.entity, i).entity].type)) return false;
 	if (top.entity < entity_data_members_.size())
 		for (std::size_t i = 0; i < entity_data_members_[top.entity].size(); ++i)
 		{
 			const BindingRecord& member = program_->bindings[
 				entity_data_members_[top.entity][i]];
-			if (!IsConstexprLiteralType(member.type)) return false;
+			if (IsVolatileSubobjectType(member.type) ||
+				!IsConstexprLiteralType(member.type)) return false;
 		}
 	return true;
 }
 
-void SemanticAnalyzer::FindLocalStaticSource(NameId name,
-	std::uint32_t* line, std::uint32_t* column) const
+bool SemanticAnalyzer::IsVolatileSubobjectType(TypeId type) const
 {
-	*line = 0;
-	*column = 0;
-	if (!source_text_) return;
-	const std::string& source = *source_text_;
-	const std::string& spelling = program_->names.Get(name);
-	if (spelling.empty()) return;
-	std::size_t position = 0;
-	while ((position = source.find(spelling, position)) != std::string::npos)
+	const TypeRecord& record = program_->types.Get(type);
+	if (record.kind == TYPE_QUALIFIED)
+		return (record.cv & CV_VOLATILE) != 0 ||
+			IsVolatileSubobjectType(record.child);
+	if (record.kind == TYPE_ARRAY)
+		return IsVolatileSubobjectType(record.child);
+	return false;
+}
+
+bool SemanticAnalyzer::IsConstexprCallableType(TypeId type,
+	bool constructor) const
+{
+	const TypeRecord& function = program_->types.Get(type);
+	if (function.kind != TYPE_FUNCTION)
+		throw std::logic_error("constexpr callable has non-function type");
+	if (!constructor && !IsConstexprLiteralType(function.child)) return false;
+	const TypeId* parameters = program_->types.Parameters(type);
+	for (std::size_t i = 0; i < function.parameter_count; ++i)
+		if (!IsConstexprLiteralType(parameters[i])) return false;
+	return true;
+}
+
+TypeId SemanticAnalyzer::ApplyConstexprMemberFunctionType(TypeId type,
+	EntityId owner, bool static_member)
+{
+	if (owner == kNoEntity || static_member) return type;
+	const TypeRecord& function = program_->types.Get(type);
+	if (function.kind != TYPE_FUNCTION)
+		throw std::logic_error("constexpr member has non-function type");
+	if ((function.cv & CV_CONST) != 0) return type;
+	const TypeId* parameter_data = program_->types.Parameters(type);
+	std::vector<TypeId> parameters;
+	parameters.reserve(function.parameter_count);
+	for (std::size_t i = 0; i < function.parameter_count; ++i)
+		parameters.push_back(parameter_data[i]);
+	return program_->types.Function(function.child, parameters,
+		function.variadic, function.cv | CV_CONST, function.ref_qualifier);
+}
+
+TypeId SemanticAnalyzer::ApplyConstexprDeclaredFunctionType(TypeId type,
+	ScopeId owner, NameId name, EntityId entity)
+{
+	bool static_member = false;
+	if (entity != kNoEntity)
 	{
-		const std::size_t after = position + spelling.size();
-		const bool left_identifier = position != 0 &&
-			(std::isalnum(static_cast<unsigned char>(source[position - 1])) ||
-			 source[position - 1] == '_');
-		const bool right_identifier = after < source.size() &&
-			(std::isalnum(static_cast<unsigned char>(source[after])) ||
-			 source[after] == '_');
-		if (!left_identifier && !right_identifier)
+		const LookupResult found =
+			program_->LookupDirect(owner, name, LOOKUP_ORDINARY);
+		for (std::size_t i = 0; i < found.OrdinaryCount(); ++i)
 		{
-			const std::size_t line_begin_value = position == 0 ? 0 :
-				source.rfind('\n', position - 1);
-			const std::size_t line_begin = line_begin_value == std::string::npos ?
-				0 : line_begin_value + 1;
-			const std::string prefix = source.substr(line_begin,
-				position - line_begin);
-			std::size_t static_position = prefix.find("static");
-			while (static_position != std::string::npos)
+			const BindingId binding = found.OrdinaryAt(i);
+			if (program_->bindings[binding].kind == BIND_FUNCTION &&
+				program_->bindings[binding].static_member_function &&
+				GetFunction(binding).type == type)
 			{
-				const std::size_t static_after = static_position + 6;
-				const bool static_left = static_position != 0 &&
-					(std::isalnum(static_cast<unsigned char>(
-						prefix[static_position - 1])) ||
-					 prefix[static_position - 1] == '_');
-				const bool static_right = static_after < prefix.size() &&
-					(std::isalnum(static_cast<unsigned char>(prefix[static_after])) ||
-					 prefix[static_after] == '_');
-				if (!static_left && !static_right)
-				{
-					std::size_t source_line = 1;
-					for (std::size_t i = 0; i < line_begin; ++i)
-						if (source[i] == '\n') ++source_line;
-					if (source_line > std::numeric_limits<std::uint32_t>::max() ||
-						position - line_begin + 1 >
-							std::numeric_limits<std::uint32_t>::max())
-						throw std::runtime_error(
-							"local static source location is too large");
-					*line = static_cast<std::uint32_t>(source_line);
-					*column = static_cast<std::uint32_t>(
-						position - line_begin + 1);
-					return;
-				}
-				static_position = prefix.find("static", static_position + 6);
+				static_member = true;
+				break;
 			}
 		}
-		position = after;
 	}
+	return ApplyConstexprMemberFunctionType(type, entity, static_member);
+}
+
+void SemanticAnalyzer::ValidateConstexprCallableType(TypeId type,
+	bool constructor) const
+{
+	if (!IsConstexprCallableType(type, constructor))
+		throw std::runtime_error(
+			"constexpr callable uses a non-literal result or parameter type");
+}
+
+void SemanticAnalyzer::ValidateConstexprClassDeclarations(
+	EntityId entity)
+{
+	if (entity == kNoEntity || entity >= program_->entities.size())
+		throw std::logic_error("invalid constexpr class validation owner");
+	const TypeId owner_type = program_->entities[entity].type;
+	const bool template_specialization =
+		IsClassTemplateSpecializationContext(entity);
+	if (entity < entity_constructors_.size())
+		for (std::size_t i = 0; i < entity_constructors_[entity].size(); ++i)
+		{
+			FunctionInfo& constructor =
+				GetMutableFunction(entity_constructors_[entity][i]);
+			if (constructor.constexpr_function)
+			{
+				if (template_specialization &&
+					(!IsConstexprCallableType(constructor.type, true) ||
+					 !IsConstexprLiteralType(owner_type)))
+				{
+					constructor.constexpr_function = false;
+					continue;
+				}
+				ValidateConstexprCallableType(constructor.type, true);
+				if (!IsConstexprLiteralType(owner_type))
+					throw std::runtime_error(
+						"constexpr constructor owner is not a literal type");
+			}
+		}
+	if (entity < entity_member_functions_.size())
+		for (std::size_t i = 0; i < entity_member_functions_[entity].size(); ++i)
+		{
+			const BindingId binding = entity_member_functions_[entity][i];
+			FunctionInfo& function = GetMutableFunction(binding);
+			if (!function.constexpr_function) continue;
+			if (program_->bindings[binding].virtual_function)
+				throw std::runtime_error(
+					"constexpr function may not be virtual");
+			if (template_specialization &&
+				(!IsConstexprCallableType(function.type, false) ||
+				 (!program_->bindings[binding].static_member_function &&
+				  !IsConstexprLiteralType(owner_type))))
+			{
+				function.constexpr_function = false;
+				continue;
+			}
+			ValidateConstexprCallableType(function.type, false);
+			if (!program_->bindings[binding].static_member_function &&
+				!IsConstexprLiteralType(owner_type))
+				throw std::runtime_error(
+					"constexpr member function owner is not a literal type");
+		}
+	if (entity < entity_conversion_functions_.size())
+		for (std::size_t i = 0;
+			i < entity_conversion_functions_[entity].size(); ++i)
+		{
+			const BindingId binding = entity_conversion_functions_[entity][i];
+			FunctionInfo& function = GetMutableFunction(binding);
+			if (!function.constexpr_function) continue;
+			if (program_->bindings[binding].virtual_function)
+				throw std::runtime_error(
+					"constexpr conversion function may not be virtual");
+			if (template_specialization &&
+				(!IsConstexprCallableType(function.type, false) ||
+				 !IsConstexprLiteralType(owner_type)))
+			{
+				function.constexpr_function = false;
+				continue;
+			}
+			ValidateConstexprCallableType(function.type, false);
+			if (!IsConstexprLiteralType(owner_type))
+				throw std::runtime_error(
+					"constexpr conversion function owner is not a literal type");
+		}
 }
 
 void SemanticAnalyzer::AddLocalStaticObjectAction(std::uint32_t variable,
-	BindingId object, TypeId type, std::uint32_t initializer, NodeId syntax)
+	BindingId object, TypeId type, std::uint32_t initializer,
+	bool constant_initialized)
 {
 	if (current_function_context_ == kNoBinding)
 		throw std::logic_error("local static object has no function owner");
+	const BindingId function =
+		program_->bindings[current_function_context_].canonical;
+	if (local_static_count_by_function_.size() <= function)
+		local_static_count_by_function_.resize(
+			static_cast<std::size_t>(function) + 1, 0);
+	std::uint32_t& declaration_ordinal =
+		local_static_count_by_function_[function];
+	if (declaration_ordinal == std::numeric_limits<std::uint32_t>::max())
+		throw std::runtime_error("too many local static declarations");
+	const std::uint32_t ordinal = declaration_ordinal++;
 	std::uint32_t destructor_action = kNoDumpEdge;
 	const EntityId entity = DestructedEntity(type);
 	if (entity != kNoEntity)
@@ -170,48 +269,14 @@ void SemanticAnalyzer::AddLocalStaticObjectAction(std::uint32_t variable,
 		if (!program_->entities[entity].trivial_destructor)
 			destructor_action = MakeDestructorAction(type, destructor, object);
 	}
-	std::uint32_t line = 0;
-	std::uint32_t column = 0;
-	FindLocalStaticSource(program_->bindings[object].name, &line, &column);
-	const NameId source_file = source_path_ ?
-		program_->names.Intern(*source_path_) : 0;
-	const std::size_t first = arena_->TokenFirst(syntax);
-	const std::size_t last = arena_->TokenLast(syntax);
-	if (first > std::numeric_limits<std::uint32_t>::max() ||
-		last > std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("local static token identity is too large");
-	std::vector<NameId> source_string_literals;
-	std::vector<NodeId> pending(1, syntax);
-	while (!pending.empty())
-	{
-		const NodeId current = pending.back();
-		pending.pop_back();
-		if (arena_->IsTag(current, "literal"))
-		{
-			std::string spelling = arena_->Payload(current);
-			if (spelling.compare(0, 11, "TT_LITERAL:") == 0)
-				spelling.erase(0, 11);
-			if (spelling.find('"') != std::string::npos)
-				source_string_literals.push_back(
-					program_->names.Intern(spelling));
-		}
-		std::vector<NodeId> children;
-		for (std::uint32_t edge = arena_->FirstEdge(current);
-			edge != kNoEdge; edge = arena_->NextEdge(edge))
-			children.push_back(arena_->EdgeChild(edge));
-		for (std::size_t i = children.size(); i != 0; --i)
-			pending.push_back(children[i - 1]);
-	}
 	local_static_objects_.push_back(LocalStaticObjectAction(object,
-		current_function_context_, type, variable, initializer,
-		destructor_action, static_cast<std::uint32_t>(first),
-		static_cast<std::uint32_t>(last), source_file, line, column,
-		source_string_literals));
+		function, type, variable, initializer, destructor_action, ordinal,
+		constant_initialized));
 }
 
 void SemanticAnalyzer::RegisterVariableLifetimeAndStorage(ScopeId scope,
 	bool local, bool declaration_only, std::uint32_t variable,
-	BindingId object, TypeId type, NodeId syntax)
+	BindingId object, TypeId type, bool constant_initialized)
 {
 	const StorageClass storage = program_->bindings[object].storage_class;
 	if (local && storage == STORAGE_CLASS_NONE)
@@ -224,7 +289,8 @@ void SemanticAnalyzer::RegisterVariableLifetimeAndStorage(ScopeId scope,
 		const std::uint32_t edge = dump_.nodes[variable].first_edge;
 		const std::uint32_t initializer = edge == kNoDumpEdge ?
 			kNoDumpEdge : dump_.edges[edge].child;
-		AddLocalStaticObjectAction(variable, object, type, initializer, syntax);
+		AddLocalStaticObjectAction(variable, object, type, initializer,
+			constant_initialized);
 		return;
 	}
 	if (!local && !declaration_only)

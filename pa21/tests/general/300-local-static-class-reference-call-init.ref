@@ -1,50 +1,30 @@
-global @__local_static__get_table__table__tokens21_30 [binding=internal] = {
-  zero 8
+global @__local_static__get_table__decl0__table [binding=internal] = {
+  i32 1
+  i32 2
 }
-global @__local_static__get_table__table__tokens21_30__guard : i64 [binding=internal] = zero
-global @__local_static__read_table__table__tokens43_49 : ptr [binding=internal] = zero
-global @__local_static__read_table__table__tokens43_49__guard : i64 [binding=internal] = zero
+global @__local_static__read_table__decl0__table : ptr [binding=internal] = zero
+global @__local_static__read_table__decl0__table__guard : i64 [binding=internal] = zero
 
 function @get_table() -> ptr [binding=strong, object=_Z9get_tablev] {
   block ^entry:
-    %t1 = load i64 @__local_static__get_table__table__tokens21_30__guard
-    %t2 = cmp ne i64 %t1, 0
-    branch %t2, ^local_static_ready_1, ^local_static_init_2
-
-  block ^local_static_init_2:
-    %t3 = addr @__local_static__get_table__table__tokens21_30
-    %t4 = addr @__local_static__get_table__table__tokens21_30
-    %t5 = index i8 [projection=field] %t4, 0
-    %t6 = unary decay ptr %t5
-    %t7 = index i32 [projection=array_element] %t6, 0
-    store i32 1, %t7
-    %t8 = addr @__local_static__get_table__table__tokens21_30
-    %t9 = index i8 [projection=field] %t8, 0
-    %t10 = unary decay ptr %t9
-    %t11 = index i32 [projection=array_element] %t10, 1
-    store i32 2, %t11
-    store i64 1, @__local_static__get_table__table__tokens21_30__guard
-    jump ^local_static_ready_1
-
-  block ^local_static_ready_1:
-    %t12 = addr @__local_static__get_table__table__tokens21_30
-    return ptr %t12
+    %t1 = addr @__local_static__get_table__decl0__table
+    return ptr %t1
 }
 function @read_table() -> i32 [binding=strong, object=_Z10read_tablev] {
   block ^entry:
-    %t1 = load i64 @__local_static__read_table__table__tokens43_49__guard
+    %t1 = load i64 @__local_static__read_table__decl0__table__guard
     %t2 = cmp ne i64 %t1, 0
     branch %t2, ^local_static_ready_1, ^local_static_init_2
 
   block ^local_static_init_2:
-    %t3 = addr @__local_static__read_table__table__tokens43_49
+    %t3 = addr @__local_static__read_table__decl0__table
     %t4 = call ptr @get_table()
     store ptr %t4, %t3
-    store i64 1, @__local_static__read_table__table__tokens43_49__guard
+    store i64 1, @__local_static__read_table__decl0__table__guard
     jump ^local_static_ready_1
 
   block ^local_static_ready_1:
-    %t5 = load ptr @__local_static__read_table__table__tokens43_49
+    %t5 = load ptr @__local_static__read_table__decl0__table
     %t6 = index i8 [projection=field] %t5, 0
     %t7 = unary decay ptr %t6
     %t8 = index i32 [projection=array_element] %t7, 1

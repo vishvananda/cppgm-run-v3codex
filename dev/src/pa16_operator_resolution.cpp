@@ -1005,6 +1005,8 @@ ExpressionInfo SemanticAnalyzer::BuildConvertingArgument(
 	}
 	std::uint32_t constexpr_object = kNoConstexprObject;
 	if (constant_evaluation_suppressed_depth_ == 0 &&
+		(constant_expression_required_depth_ != 0 ||
+		 constexpr_evaluation_depth_ != 0) &&
 		constructor.constexpr_function &&
 		TryEvaluateConstexprConstructor(
 			constructor_binding, constexpr_arguments, &constexpr_object))

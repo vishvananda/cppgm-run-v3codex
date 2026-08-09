@@ -1,61 +1,52 @@
-# PA21 Implementation Plan
+# PA21 Final Audit Plan
 
 ## Stage Design and Spec Alignment
 
-PA21 extends the canonical semantic graph with typed constexpr scalar/object/address
-facts, complete invocation keys, allocation-relative subobject identity, and explicit
-runtime-demand edges. Declaration checks, template arguments, `static_assert`, static
-initialization, and `noexcept` consume those facts without conflating evaluation with
-emission. This follows `spec.md` §§1–6 and 8–10: canonical identity, indexed lookup,
-phase-owned facts, bounded traversal, demand-driven completion, and fact-driven lowering.
+PA21 keeps one typed, ID-based path from source to LowIR:
 
-Function-local statics are declaration-owned static-duration actions, not automatic
-slots. Their flow is syntax token range -> canonical binding/function owner -> typed
-initializer/destructor fact -> global storage and optional guard -> first-use CFG. Constant
-scalars/classes/addresses use static data where representable; dynamic objects use one
-guarded initializer. Template-owned instances use weak ABI-stable source identity. The
-lowerer retains O(1) binding-to-action/storage maps and O(initializer size) action walks,
-preserving PA22+ room for richer destruction and thread-safe guard policy.
+`preprocessor -> compact syntax tokens/SyntaxArena -> Program + DumpArena -> typed constexpr and storage facts -> SemanticGraphView -> GraphLowerer -> LowIR`
 
-## Current Failure Map
+Parser rollback uses an exact edge-mutation journal whose storage is released at the syntax boundary. Semantic identity is canonical `BindingId`/`TypeId`; scalar, object, address, call, static-initializer, and local-static facts remain owned by semantic analysis and are consumed synchronously by lowering. Objects and addresses are structurally interned, call facts have explicit in-progress/success/failure states, and constant evaluation uses a discardable scratch arena. Evaluation demand is separate from runtime emission demand.
 
-No PA21 failures remain: 137/137 pass, improved from 120/137. The original set was grouped
-under local-static ownership/guards (12), runtime class/global materialization (4), and
-constexpr declaration suitability (1). The fixes now live at declaration, evaluator,
-demand, ABI, static-initializer, and lowering boundaries; PA16–PA20 focused regression
-reports also pass after narrowing constructor demand to empty runtime arguments and
-constexpr polymorphic bases.
+Function-local statics are keyed by canonical function identity plus declaration ordinal. Their typed action carries object/type/initializer/destructor and constant-initialization state into global storage, optional guard CFG, and finalization lowering. No path scans source text, reparses rendered types, invokes another compiler, or reads tests/reference fixtures.
 
-## Active Checkpoint
-
-**Final verification and handoff.** The implementation checkpoint is complete. Validation
-is the exact PA21 report, PA1–20 through-report, PA21 file audit, diff hygiene, and a clean
-cohesive commit. Expected validation work is linear in test count; no semantic rescans are
-introduced.
+This aligns the available PA21 surfaces with `spec.md` §§1–6 and 8–10: compact canonical identity, indexed lookup, phase-owned facts, explicit demand/cycle state, typed lowering, bounded temporary ownership, deterministic ordinals, and observable work counters. `spec.md` §7 machine-code concerns remain outside PA21's LowIR endpoint. PA22 template extensions and richer thread-safe guard/destruction policy remain outside the assignment contract.
 
 ## Performance Evidence
 
-- Dynamic local-static arrays of width 16/32/64/128 produced 67/99/163/291 LowIR lines,
-  exactly `2N + 35`; peak RSS stayed 5,944/5,864/5,936/5,956 KiB. This confirms linear
-  element lowering with fixed guard/control overhead.
-- Earlier ODR-used static constexpr class arrays at width 16/32/64/128 used 33/65/129/257
-  initializer visits (`2N + 1`), one dependency edge, two demand pushes, one emitted
-  function, and one global.
-- Reusing one compile-time-only static constant 1/2/4/8 times kept initializer visits and
-  call requests at one, with zero dependency demand or helper emission.
+- An ordinary runtime call `spin(1000000)` previously triggered 1,000,000 constexpr steps and 2,189,468,949 ns of semantic work. It now records zero constexpr requests/steps, 218,483 ns semantic time, 0.00 s elapsed, and 7,120 KiB peak RSS.
+- Unique constexpr locals at 8,192/16,384/32,768 declarations take 26.865/59.090/114.561 ms semantic time, with exactly `N+1` name-index probes and `N+2` evaluator steps. The old scan path took 55.863/183.218/1,519.634 ms and became sharply superlinear.
+- Local type aliases at 8,192/16,384/32,768 take 10.212/20.219/41.669 ms, with exactly `N` alias-index probes and `N+2` evaluator steps.
+- Functions containing 1,024/2,048/4,096 local statics produce exactly N globals; semantic time is 7.562/13.497/28.899 ms and lowering time is 1.585/3.208/5.673 ms.
 
-## Completed Checkpoints
+The counters identify no unexplained replay: local and alias probes, evaluator steps, globals, and lowering work scale with owned input/output structure.
 
-| Checkpoint | Result | Validation |
+## Architecture Review
+
+- Representation and ownership: syntax, semantic facts, and LowIR each have one owning representation; later phases retain compact IDs or synchronous views, not source buffers or serialized IR.
+- Graphs and lookup: dense scope-restored name/pack/alias heads replace hot vector scans; structural hash indexes verify full equality; recursive calls observe in-progress cache state.
+- Phase boundaries: constant-required contexts request evaluation; ordinary runtime calls only create emission demand. Namespace and block-static initialization explicitly probe constant initialization.
+- Typed lowering: resolved object/function addresses take precedence over scalar placeholder facts, and function-address dependencies demand the referenced specialization before emission.
+- Determinism and self-containment: source ordinals and ABI identities drive local-static symbols; no filesystem/test/ref/compiler oracle is consulted by production code.
+- Allocation and limits: parser rollback and constexpr scratch storage are released in bulk; iterative walks and explicit depth/step limits bound recursive language behavior.
+- File division: conversion and simple-function declaration handling now have dedicated translation units and are listed in `frontend_source_sets.mk`.
+
+## Final Architecture Review
+
+No PA21 correctness, performance, self-containment, or file-audit blocker remains. The required file audit passes; its 13 warning-only header-division advisories are inherited template/CRTP organization notes and do not cross a fatal threshold. The supplied primary log records the original 2,322-test baseline; after adding seven audit regressions, the through-PA21 report passes 2,329/2,329 tests across 21/21 stages. The final audit is committed with a clean-worktree handoff.
+
+## Checkpoint Ledger
+
+| Stage commit(s) | Owned stage | Final audit disposition |
 | --- | --- | --- |
-| Integral scalar invocation | Recursive/defaulted/template calls, locals, mutation, control flow, declaration checks, canonical demand | PA1–20 clean; PA21 41/129 baseline family; linear scaling |
-| Floating scalar widening | Typed literals/conversions, mixed arithmetic, typed call keys/results | PA21 42→49/130; prior stages and audit clean |
-| Aggregate/array values | Structural interning, nested/string init, projection, ODR rematerialization | PA21 49→56/130; linear element scaling |
-| Constructor/member invocation | Constructor frames, member initializers, receiver calls, runtime/static boundaries | PA21 56→67/130; linear field scaling |
-| Canonical addresses/calls | Binding/local/string/function addresses, pointer operations, indirect calls | PA21 67→76/130; linear pointer-walk scaling |
-| Class-valued conversions | Object return/call facts, temporary identity, demand separation, escape checks | PA21 76→80/131; bounded repeated-call work |
-| Base-subobject completion | Ordered base facts, adjusted receiver/address identity, delegated/base initialization | PA21 80→88/133; linear inheritance-depth scaling |
-| Callable/contextual conversion | Call operators, overloaded operators, arrow chains, parser rollback, cv ordering | PA21 88→101/134; bounded lookup/parser work |
-| `noexcept` facts | Fold-suppressed selected calls/lifetimes, contextual bool, dependent specialization | PA21 101→109/135; linear action walks |
-| Qualified static constants | Canonical recipes, ODR storage demand, typed rematerialization and dependency ownership | PA21 109→120/137; fixed repeated-use work |
-| Local statics and final boundaries | Static-duration actions, guards, weak template identity, class/reference/array init, literal-type checks, vptr and empty-value materialization | PA21 120→137/137; PA16–PA20 focused reports and file audit clean |
+| `dd3dd301`, `3f92499b` | Integral scalar invocation and evaluator ownership | Pass; demand separation and dense local indexes remove replay/scans |
+| `267d7437` | Floating constants | Pass; typed scalar facts and call keys remain canonical |
+| `22051550` | Aggregate/array objects | Pass; structural interning verifies full equality |
+| `0e7c1ea7` | Constructors and member calls | Pass; literal-owner validation and C++11 implicit-const typing repaired |
+| `f76ac972` | Constant addresses | Pass; kind/identity/offset/bounds facts remain typed and interned |
+| `d4d44664`, `263efed0` | Class-valued calls | Pass; complete-object identity and escape checks preserved |
+| `44134d03`, `5fa7f407` | Base subobjects | Pass; all direct bases participate in literal/object validation |
+| `149f92db`, `f49edb9b` | Callable/contextual conversion | Pass; conversion declarations share constexpr suitability/inline rules |
+| `49e62fbb`, `cc85a99d` | `noexcept` | Pass; constant-required evaluation and lifetime facts remain separated from emission |
+| `9db9e273`, `23502678` | Qualified static constants | Pass; canonical recipes/dependencies and namespace constant initialization are owned |
+| `290fab26` | Full PA21 stage | Pass after local-static identity, initialization, finalization, declaration, scaling, and file-division repairs |

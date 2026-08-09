@@ -633,8 +633,12 @@ int run_emit_semantics_mode(const vector<string> & args)
            << stats.template_specialization_cache_hits
            << " constexpr_call_requests=" << stats.constexpr_call_requests
            << " constexpr_call_cache_hits=" << stats.constexpr_call_cache_hits
-		   << " constexpr_object_projection_visits="
-		   << stats.constexpr_object_projection_visits
+           << " constexpr_local_index_probes="
+           << stats.constexpr_local_index_probes
+           << " constexpr_scope_index_probes="
+           << stats.constexpr_scope_index_probes
+           << " constexpr_object_projection_visits="
+           << stats.constexpr_object_projection_visits
            << " constexpr_step_visits=" << stats.constexpr_step_visits
            << " constexpr_max_depth=" << stats.constexpr_max_depth
            << " constexpr_peak_locals=" << stats.constexpr_peak_locals
@@ -772,6 +776,10 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << semantic.constexpr_call_requests
 			 << " constexpr_call_cache_hits="
 			 << semantic.constexpr_call_cache_hits
+			 << " constexpr_local_index_probes="
+			 << semantic.constexpr_local_index_probes
+			 << " constexpr_scope_index_probes="
+			 << semantic.constexpr_scope_index_probes
 			 << " constexpr_object_projection_visits="
 			 << semantic.constexpr_object_projection_visits
 			 << " constexpr_step_visits="

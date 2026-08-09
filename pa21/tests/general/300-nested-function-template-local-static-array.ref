@@ -1,7 +1,7 @@
-global @__local_static__function_symbol_5f5a3576616c7565494c693145456976__data__source2061742074657374732f67656e6572616c2f3330302d6e65737465642d66756e6374696f6e2d74656d706c6174652d6c6f63616c2d7374617469632d61727261792e743a353a3136 [binding=weak, object=@__local_static__function_symbol_5f5a3576616c7565494c693145456976__data__source2061742074657374732f67656e6572616c2f3330302d6e65737465642d66756e6374696f6e2d74656d706c6174652d6c6f63616c2d7374617469632d61727261792e743a353a3136] = {
+global @__local_static__function_symbol_5f5a3576616c7565494c693145456976__decl0__data [binding=weak, object=@__local_static__function_symbol_5f5a3576616c7565494c693145456976__decl0__data] = {
   i32 1
 }
-global @__local_static__function_symbol_5f5a3576616c7565494c693245456976__data__source2061742074657374732f67656e6572616c2f3330302d6e65737465642d66756e6374696f6e2d74656d706c6174652d6c6f63616c2d7374617469632d61727261792e743a353a3136 [binding=weak, object=@__local_static__function_symbol_5f5a3576616c7565494c693245456976__data__source2061742074657374732f67656e6572616c2f3330302d6e65737465642d66756e6374696f6e2d74656d706c6174652d6c6f63616c2d7374617469632d61727261792e743a353a3136] = {
+global @__local_static__function_symbol_5f5a3576616c7565494c693245456976__decl0__data [binding=weak, object=@__local_static__function_symbol_5f5a3576616c7565494c693245456976__decl0__data] = {
   i32 2
 }
 
@@ -33,7 +33,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 }
 function @value() -> i32 [binding=weak, object=_Z5valueILi1EEiv] {
   block ^entry:
-    %t1 = addr @__local_static__function_symbol_5f5a3576616c7565494c693145456976__data__source2061742074657374732f67656e6572616c2f3330302d6e65737465642d66756e6374696f6e2d74656d706c6174652d6c6f63616c2d7374617469632d61727261792e743a353a3136
+    %t1 = addr @__local_static__function_symbol_5f5a3576616c7565494c693145456976__decl0__data
     %t2 = unary decay ptr %t1
     %t3 = index i32 [projection=array_element] %t2, 0
     %t4 = load i32 %t3
@@ -41,7 +41,7 @@ function @value() -> i32 [binding=weak, object=_Z5valueILi1EEiv] {
 }
 function @value__ov2() -> i32 [binding=weak, object=_Z5valueILi2EEiv] {
   block ^entry:
-    %t1 = addr @__local_static__function_symbol_5f5a3576616c7565494c693245456976__data__source2061742074657374732f67656e6572616c2f3330302d6e65737465642d66756e6374696f6e2d74656d706c6174652d6c6f63616c2d7374617469632d61727261792e743a353a3136
+    %t1 = addr @__local_static__function_symbol_5f5a3576616c7565494c693245456976__decl0__data
     %t2 = unary decay ptr %t1
     %t3 = index i32 [projection=array_element] %t2, 0
     %t4 = load i32 %t3

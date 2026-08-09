@@ -1136,6 +1136,8 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	bool folded_call = false;
 	bool evaluated_call = false;
 	if (constant_evaluation_suppressed_depth_ == 0 &&
+		(constant_expression_required_depth_ != 0 ||
+		 constexpr_evaluation_depth_ != 0) &&
 		TryEvaluateConstexprFunction(
 		selected, constexpr_arguments, &constexpr_value, &constexpr_has_scalar,
 		&constexpr_address,
@@ -1864,13 +1866,19 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 			shape_spec.storage_class != STORAGE_CLASS_STATIC;
 		const EntityId previous_class = current_class_context_;
 		if (member_owner != kNoEntity) current_class_context_ = member_owner;
-		const DeclaratorInfo shape_declarator = BuildDeclarator(declarator,
+		DeclaratorInfo shape_declarator = BuildDeclarator(declarator,
 			shape_spec.type, shape_scope, false, nonstatic_member,
 			defer_trailing_return);
 		current_class_context_ = previous_class;
 		if (!program_->types.IsFunction(shape_declarator.type))
 			throw std::runtime_error(
 				"function template has non-function declaration");
+		if (shape_spec.is_constexpr)
+			shape_declarator.type = ApplyConstexprMemberFunctionType(
+				shape_declarator.type, member_owner,
+				shape_spec.storage_class == STORAGE_CLASS_STATIC);
+		if (shape_spec.is_constexpr)
+			ValidateConstexprCallableType(shape_declarator.type, false);
 		pattern.shape_type = shape_declarator.type;
 		InitializeFunctionTemplatePackShape(&pattern, shape_declarator);
 		const std::uint64_t key =
@@ -2186,27 +2194,8 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		}
 		if (program_->types.IsFunction(parsed.type))
 		{
-			if (FindChild(declarator, "virt-specifier") != kNoNode)
-				throw std::runtime_error(
-					"virt-specifier is only allowed in a class definition");
-			if (spec.thread_local_storage)
-				throw std::runtime_error("thread_local function");
-			const BindingId function = DeclareFunction(declaration_scope, parsed.name,
-				parsed.type, parsed.parameters, false, false, spec.storage_class,
-				current_language_linkage_, IsNonthrowing(declarator, scope));
-			PublishInlineFunctionFacts(function, spec.inline_specifier);
-			ValidateFunctionRefQualifier(function);
-			ValidateNonmemberOperator(function);
-			const NodeId function_initializer = FindChild(item, "initializer");
-			ConfigureAssignmentSpecialMember(function, function_initializer,
-				!declared_path.global && declared_path.Size() <= 1);
-			const NodeId special = function_initializer == kNoNode ? kNoNode :
-				FindChild(function_initializer, "special-initializer");
-			if (special != kNoNode && arena_->Payload(special) == "delete")
-				continue;
-			const std::uint32_t declaration = MakeDump(DUMP_FUNCTION_DECLARATION,
-				parsed.type, VALUE_NONE, GetFunction(function).display_name, function);
-			dump_.Add(owner, declaration);
+			AnalyzeSimpleFunctionDeclaration(item, declarator, scope,
+				declaration_scope, owner, declared_path, spec, parsed);
 			continue;
 		}
 		if (spec.is_constexpr)
@@ -2219,6 +2208,9 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			DemandClassTemplateMemberDefinitions(
 				DestructedEntity(parsed.type));
 		}
+		if (spec.is_constexpr && !IsConstexprLiteralType(parsed.type))
+			throw std::runtime_error(
+				"constexpr variable does not have literal type");
 		const LookupResult occupied =
 			program_->LookupDirect(declaration_scope, parsed.name, LOOKUP_ORDINARY);
 		if (occupied.ordinary != kNoBinding &&
@@ -2245,10 +2237,8 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		bool has_initializer = initializer_node != kNoNode;
 		if (initializer_node != kNoNode)
 		{
-			const bool require_constant = spec.is_constexpr ||
-				(!program_->types.IsReference(parsed.type) &&
-				 IsConst(parsed.type) && IsIntegral(parsed.type, true)) ||
-				spec.storage_class == STORAGE_CLASS_STATIC;
+			const bool require_constant =
+				ShouldProbeConstantInitialization(local, spec, parsed.type);
 			const bool preserve_runtime_recipe = !local && spec.is_constexpr &&
 				IsClassObjectType(parsed.type) &&
 				FindChild(initializer_node, "paren-initializer") != kNoNode &&
@@ -2300,7 +2290,8 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		}
 		dump_.Add(owner, variable);
 		RegisterVariableLifetimeAndStorage(scope, local, declaration_only,
-			variable, binding, parsed.type, item);
+			variable, binding, parsed.type,
+			has_initializer && HasConstantInitializerFact(initializer));
 		if (local && has_initializer)
 		{
 			const TypeKind declared_kind = program_->types.Get(parsed.type).kind;
@@ -2363,26 +2354,16 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	parsed.name = path.Last();
 	if (!program_->types.IsFunction(parsed.type))
 		throw std::runtime_error("function definition has non-function type");
-	if (spec.is_constexpr &&
-		IsVoid(program_->types.Get(parsed.type).child))
-		throw std::runtime_error("constexpr function may not return void");
 	if (spec.is_constexpr)
-	{
-		const TypeRecord& constexpr_type = program_->types.Get(parsed.type);
-		if (!IsConstexprLiteralType(constexpr_type.child))
-			throw std::runtime_error(
-				"constexpr function result is not a literal type");
-		const TypeId* constexpr_parameters =
-			program_->types.Parameters(parsed.type);
-		for (std::size_t i = 0; i < constexpr_type.parameter_count; ++i)
-			if (!IsConstexprLiteralType(constexpr_parameters[i]))
-				throw std::runtime_error(
-					"constexpr function parameter is not a literal type");
-	}
+		parsed.type = ApplyConstexprDeclaredFunctionType(parsed.type,
+			owner, parsed.name, declaration_class);
+	if (spec.is_constexpr)
+		ValidateConstexprCallableType(parsed.type, false);
 	const BindingId binding = DeclareFunction(owner, parsed.name,
 		parsed.type, parsed.parameters, true, false, spec.storage_class,
 		current_language_linkage_, IsNonthrowing(declarator, semantic_scope));
-	PublishInlineFunctionFacts(binding, spec.inline_specifier);
+	PublishInlineFunctionFacts(
+		binding, spec.inline_specifier || spec.is_constexpr);
 	ValidateFunctionRefQualifier(binding);
 	ValidateNonmemberOperator(binding);
 	FunctionInfo& function = GetMutableFunction(binding);
@@ -2955,6 +2936,10 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 			template_specialization_cache_hits_;
 		stats_->constexpr_call_requests = constexpr_call_requests_;
 		stats_->constexpr_call_cache_hits = constexpr_call_cache_hits_;
+		stats_->constexpr_local_index_probes =
+			constexpr_local_index_probes_;
+		stats_->constexpr_scope_index_probes =
+			constexpr_scope_index_probes_;
 		stats_->constexpr_object_projection_visits =
 			constexpr_object_projection_visits_;
 		stats_->constexpr_step_visits = constexpr_step_visits_;

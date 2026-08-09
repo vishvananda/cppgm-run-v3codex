@@ -1,6 +1,6 @@
 global @counter : i32 [binding=strong, object=_Z7counter] = 0
-global @__local_static__get_value__value__tokens28_33 : i32 [binding=internal] = zero
-global @__local_static__get_value__value__tokens28_33__guard : i64 [binding=internal] = zero
+global @__local_static__get_value__decl0__value : i32 [binding=internal] = zero
+global @__local_static__get_value__decl0__value__guard : i64 [binding=internal] = zero
 
 function @init_value() -> i32 [binding=strong, object=_Z10init_valuev] {
   block ^entry:
@@ -11,19 +11,19 @@ function @init_value() -> i32 [binding=strong, object=_Z10init_valuev] {
 }
 function @get_value() -> ptr [binding=strong, object=_Z9get_valuev] {
   block ^entry:
-    %t1 = load i64 @__local_static__get_value__value__tokens28_33__guard
+    %t1 = load i64 @__local_static__get_value__decl0__value__guard
     %t2 = cmp ne i64 %t1, 0
     branch %t2, ^local_static_ready_1, ^local_static_init_2
 
   block ^local_static_init_2:
-    %t3 = addr @__local_static__get_value__value__tokens28_33
+    %t3 = addr @__local_static__get_value__decl0__value
     %t4 = call i32 @init_value()
     store i32 %t4, %t3
-    store i64 1, @__local_static__get_value__value__tokens28_33__guard
+    store i64 1, @__local_static__get_value__decl0__value__guard
     jump ^local_static_ready_1
 
   block ^local_static_ready_1:
-    %t5 = addr @__local_static__get_value__value__tokens28_33
+    %t5 = addr @__local_static__get_value__decl0__value
     return ptr %t5
 }
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {

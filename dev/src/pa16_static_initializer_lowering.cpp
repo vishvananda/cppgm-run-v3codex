@@ -336,6 +336,14 @@ bool StaticInitializerLowering::AppendValue(TypeId type, std::uint32_t node,
 		items->push_back(item);
 		return true;
 	}
+	if (value.constant && low_type.kind == LOW_PTR &&
+		value.constant_value == 0 && !RequiresDynamicAddress(node) &&
+		ResolveConstantAddress(node, &item.symbol, &item.offset))
+	{
+		item.kind = Global::DataItem::ADDRESS_ITEM;
+		items->push_back(item);
+		return true;
+	}
 	if (value.constant)
 	{
 		if (low_type.kind == LOW_PTR && value.constant_value == 0)
@@ -533,12 +541,6 @@ bool StaticInitializerLowering::Lower(const NamespaceObjectAction& action,
 			program_.names.Get(initializer.text));
 		return true;
 	}
-	if (initializer.constant)
-	{
-		global->initializer_kind = Global::INTEGER_VALUE;
-		global->initializer = initializer.constant_value;
-		return true;
-	}
 	SymbolId symbol = kNoLowId;
 	std::int64_t offset = 0;
 	if (global->type.kind == LOW_PTR &&
@@ -548,6 +550,12 @@ bool StaticInitializerLowering::Lower(const NamespaceObjectAction& action,
 		global->initializer_kind = Global::ADDRESS_VALUE;
 		global->address_symbol = symbol;
 		global->address_offset = offset;
+		return true;
+	}
+	if (initializer.constant)
+	{
+		global->initializer_kind = Global::INTEGER_VALUE;
+		global->initializer = initializer.constant_value;
 		return true;
 	}
 	return false;

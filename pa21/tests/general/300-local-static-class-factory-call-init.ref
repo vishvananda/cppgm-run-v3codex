@@ -1,8 +1,8 @@
 global @factory_calls : i32 [binding=strong, object=_Z13factory_calls] = 0
-global @__local_static__read_cached__cached__tokens60_66 [binding=internal] = {
+global @__local_static__read_cached__decl0__cached [binding=internal] = {
   zero 24
 }
-global @__local_static__read_cached__cached__tokens60_66__guard : i64 [binding=internal] = zero
+global @__local_static__read_cached__decl0__cached__guard : i64 [binding=internal] = zero
 
 function @make_wide(%ret : ptr [pass=indirect_result], %seed : i64) -> void [binding=strong, object=_Z9make_widel] {
   slot $seed : i64
@@ -30,22 +30,22 @@ function @read_cached(%seed : i64) -> i64 [binding=strong, object=_Z11read_cache
 
   block ^entry:
     store i64 %seed, $seed
-    %t1 = load i64 @__local_static__read_cached__cached__tokens60_66__guard
+    %t1 = load i64 @__local_static__read_cached__decl0__cached__guard
     %t2 = cmp ne i64 %t1, 0
     branch %t2, ^local_static_ready_1, ^local_static_init_2
 
   block ^local_static_init_2:
-    %t3 = addr @__local_static__read_cached__cached__tokens60_66
+    %t3 = addr @__local_static__read_cached__decl0__cached
     %t4 = load i64 $seed
     call void @make_wide(%t3, %t4)
-    store i64 1, @__local_static__read_cached__cached__tokens60_66__guard
+    store i64 1, @__local_static__read_cached__decl0__cached__guard
     jump ^local_static_ready_1
 
   block ^local_static_ready_1:
-    %t5 = addr @__local_static__read_cached__cached__tokens60_66
+    %t5 = addr @__local_static__read_cached__decl0__cached
     %t6 = index i8 [projection=field] %t5, 0
     %t7 = load i64 %t6
-    %t8 = addr @__local_static__read_cached__cached__tokens60_66
+    %t8 = addr @__local_static__read_cached__decl0__cached
     %t9 = index i8 [projection=field] %t8, 16
     %t10 = load i64 %t9
     %t11 = binary add i64 %t7, %t10

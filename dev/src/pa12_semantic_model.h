@@ -285,6 +285,8 @@ const std::uint32_t kNoConstexprObject =
 	std::numeric_limits<std::uint32_t>::max();
 const std::uint32_t kNoConstexprAddress =
 	std::numeric_limits<std::uint32_t>::max();
+const std::size_t kNoConstexprLocal =
+	std::numeric_limits<std::size_t>::max();
 
 enum ConstexprAddressKind
 {
@@ -417,19 +419,23 @@ struct ConstexprLocalValue
 	ConstexprScalarValue value;
 	std::uint32_t object, complete_object, address;
 	std::uint64_t storage_identity;
+	std::size_t previous_same_name, previous_same_pack;
 
 	ConstexprLocalValue(NameId name_value, NameId pack_name_value,
 		TypeId type_value, const ConstexprScalarValue& value_value)
 		: name(name_value), pack_name(pack_name_value), type(type_value),
 		  value(value_value), object(kNoConstexprObject),
 		  complete_object(kNoConstexprObject),
-		  address(kNoConstexprAddress), storage_identity(0) {}
+		  address(kNoConstexprAddress), storage_identity(0),
+		  previous_same_name(kNoConstexprLocal),
+		  previous_same_pack(kNoConstexprLocal) {}
 	ConstexprLocalValue(NameId name_value, NameId pack_name_value,
 		TypeId type_value, std::uint32_t object_value)
 		: name(name_value), pack_name(pack_name_value), type(type_value),
 		  value(), object(object_value), complete_object(object_value),
 		  address(kNoConstexprAddress),
-		  storage_identity(0) {}
+		  storage_identity(0), previous_same_name(kNoConstexprLocal),
+		  previous_same_pack(kNoConstexprLocal) {}
 };
 
 struct ConstexprFrame
@@ -457,9 +463,11 @@ struct ConstexprScopeFact
 	NameId name;
 	TypeId type;
 	ScopeId name_space;
+	std::size_t previous_same_name;
 	ConstexprScopeFact(NameId name_value, TypeId type_value,
 		ScopeId namespace_value)
-		: name(name_value), type(type_value), name_space(namespace_value) {}
+		: name(name_value), type(type_value), name_space(namespace_value),
+		  previous_same_name(kNoConstexprLocal) {}
 };
 
 struct ConstexprBlockOffset
@@ -929,31 +937,27 @@ struct NamespaceObjectAction
 };
 
 // A block-scope static owns persistent storage independently of an invocation.
-// The source identity distinguishes repeated declarations and the function
-// identity distinguishes template specializations that share retained syntax.
+// Its declaration ordinal is scoped by the canonical function identity, so
+// retained template syntax gives each declaration and specialization exactly
+// one stable object identity without reconstructing source text.
 struct LocalStaticObjectAction
 {
 	BindingId object, function;
 	TypeId type;
 	std::uint32_t variable, initializer, destructor;
-	std::uint32_t token_first, token_last;
-	NameId source_file;
-	std::uint32_t source_line, source_column;
-	std::vector<NameId> source_string_literals;
+	std::uint32_t declaration_ordinal;
+	bool constant_initialized;
 
 	LocalStaticObjectAction(BindingId object_value, BindingId function_value,
 		TypeId type_value, std::uint32_t variable_value,
 		std::uint32_t initializer_value, std::uint32_t destructor_value,
-		std::uint32_t token_first_value, std::uint32_t token_last_value,
-		NameId source_file_value, std::uint32_t source_line_value,
-		std::uint32_t source_column_value,
-		const std::vector<NameId>& source_string_literals_value)
+		std::uint32_t declaration_ordinal_value,
+		bool constant_initialized_value)
 		: object(object_value), function(function_value), type(type_value),
 		  variable(variable_value), initializer(initializer_value),
-		  destructor(destructor_value), token_first(token_first_value),
-		  token_last(token_last_value), source_file(source_file_value),
-		  source_line(source_line_value), source_column(source_column_value),
-		  source_string_literals(source_string_literals_value) {}
+		  destructor(destructor_value),
+		  declaration_ordinal(declaration_ordinal_value),
+		  constant_initialized(constant_initialized_value) {}
 };
 
 // A lowering-only aggregate helper has a canonical typed identity but is not a

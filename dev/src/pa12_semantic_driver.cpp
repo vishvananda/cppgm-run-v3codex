@@ -43,8 +43,7 @@ void WriteSemanticTranslationUnit(const std::string& path,
 		std::chrono::steady_clock::now();
 	if (stats) *stats = SemanticAnalysisStats();
 	SyntaxStats syntax;
-	pa12_semantic_detail::SemanticAnalyzer analyzer(output, stats, 0, true,
-		&path, &source);
+	pa12_semantic_detail::SemanticAnalyzer analyzer(output, stats);
 	ConsumeSyntaxTranslationUnit(path, source, options, analyzer,
 		stats ? &syntax : 0);
 	PublishDriverStats(source, syntax, started, stats);
@@ -62,7 +61,7 @@ void ConsumeSemanticTranslationUnit(const std::string& path,
 	NullStreamBuffer sink_buffer;
 	std::ostream sink(&sink_buffer);
 	pa12_semantic_detail::SemanticAnalyzer analyzer(sink, stats,
-		&consumer, false, &path, &source);
+		&consumer, false);
 	ConsumeSyntaxTranslationUnit(path, source, options, analyzer,
 		stats ? &syntax : 0);
 	PublishDriverStats(source, syntax, started, stats);
@@ -101,7 +100,9 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 	  access_path_visits(0), access_grant_probes(0),
 	  template_specialization_requests(0),
 	  template_specialization_cache_hits(0), constexpr_call_requests(0),
-	  constexpr_call_cache_hits(0), constexpr_object_projection_visits(0),
+	  constexpr_call_cache_hits(0), constexpr_local_index_probes(0),
+	  constexpr_scope_index_probes(0),
+	  constexpr_object_projection_visits(0),
 	  constexpr_step_visits(0),
 	  constexpr_max_depth(0), constexpr_peak_locals(0),
 	  constexpr_scratch_peak_nodes(0), demand_worklist_pushes(0),

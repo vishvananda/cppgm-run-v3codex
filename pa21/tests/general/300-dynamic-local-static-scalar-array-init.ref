@@ -1,25 +1,25 @@
 declare function @next() -> i32 [binding=strong, object=_Z4nextv]
 
-global @__local_static__read__values__tokens12_22 [binding=internal] = {
+global @__local_static__read__decl0__values [binding=internal] = {
   zero 4
 }
-global @__local_static__read__values__tokens12_22__guard : i64 [binding=internal] = zero
+global @__local_static__read__decl0__values__guard : i64 [binding=internal] = zero
 
 function @read() -> i32 [binding=strong, object=_Z4readv] {
   block ^entry:
-    %t1 = load i64 @__local_static__read__values__tokens12_22__guard
+    %t1 = load i64 @__local_static__read__decl0__values__guard
     %t2 = cmp ne i64 %t1, 0
     branch %t2, ^local_static_ready_1, ^local_static_init_2
 
   block ^local_static_init_2:
-    %t3 = addr @__local_static__read__values__tokens12_22
+    %t3 = addr @__local_static__read__decl0__values
     %t4 = call i32 @next()
     store i32 %t4, %t3
-    store i64 1, @__local_static__read__values__tokens12_22__guard
+    store i64 1, @__local_static__read__decl0__values__guard
     jump ^local_static_ready_1
 
   block ^local_static_ready_1:
-    %t5 = addr @__local_static__read__values__tokens12_22
+    %t5 = addr @__local_static__read__decl0__values
     %t6 = unary decay ptr %t5
     %t7 = index i32 [projection=array_element] %t6, 0
     %t8 = load i32 %t7

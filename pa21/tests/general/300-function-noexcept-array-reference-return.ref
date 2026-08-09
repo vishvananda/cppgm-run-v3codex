@@ -1,4 +1,4 @@
-global @__local_static__digits__arr__tokens16_30 [binding=internal] = {
+global @__local_static__digits__decl0__arr [binding=internal] = {
   i8 48
   i8 49
   i8 50
@@ -7,7 +7,7 @@ global @__local_static__digits__arr__tokens16_30 [binding=internal] = {
 
 function @digits() -> ptr [unwind=no, binding=strong, object=_Z6digitsv] {
   block ^entry:
-    %t1 = addr @__local_static__digits__arr__tokens16_30
+    %t1 = addr @__local_static__digits__decl0__arr
     return ptr %t1
 }
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {

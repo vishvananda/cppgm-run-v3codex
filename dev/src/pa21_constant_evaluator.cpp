@@ -730,36 +730,110 @@ void SemanticAnalyzer::PopConstexprBlock()
 	if (constexpr_frames_.empty() ||
 		constexpr_block_offsets_.size() <= constexpr_frames_.back().first_block)
 		throw std::logic_error("constexpr block stack is unbalanced");
-	constexpr_locals_.erase(
-		constexpr_locals_.begin() +
-			constexpr_block_offsets_.back().first_local,
-		constexpr_locals_.end());
-	constexpr_scope_facts_.erase(
-		constexpr_scope_facts_.begin() +
-			constexpr_block_offsets_.back().first_scope_fact,
-		constexpr_scope_facts_.end());
+	ReleaseConstexprLocals(
+		constexpr_block_offsets_.back().first_local);
+	ReleaseConstexprScopeFacts(
+		constexpr_block_offsets_.back().first_scope_fact);
 	constexpr_block_offsets_.pop_back();
 }
 
-bool SemanticAnalyzer::AddConstexprLocal(NameId name, NameId pack_name,
-	TypeId type, const ConstexprScalarValue& value, std::size_t* local)
+void SemanticAnalyzer::ReleaseConstexprLocals(std::size_t first)
+{
+	if (first > constexpr_locals_.size())
+		throw std::logic_error("constexpr local release is out of range");
+	while (constexpr_locals_.size() > first)
+	{
+		const std::size_t index = constexpr_locals_.size() - 1;
+		const ConstexprLocalValue& value = constexpr_locals_.back();
+		if (value.name != 0)
+		{
+			if (value.name >= constexpr_local_by_name_.size() ||
+				constexpr_local_by_name_[value.name] != index)
+				throw std::logic_error(
+					"constexpr local name index is unbalanced");
+			constexpr_local_by_name_[value.name] = value.previous_same_name;
+		}
+		if (value.pack_name != 0)
+		{
+			if (value.pack_name >= constexpr_local_by_pack_.size() ||
+				constexpr_local_by_pack_[value.pack_name] != index)
+				throw std::logic_error(
+					"constexpr local pack index is unbalanced");
+			constexpr_local_by_pack_[value.pack_name] =
+				value.previous_same_pack;
+		}
+		constexpr_locals_.pop_back();
+	}
+}
+
+void SemanticAnalyzer::ReleaseConstexprScopeFacts(std::size_t first)
+{
+	if (first > constexpr_scope_facts_.size())
+		throw std::logic_error("constexpr scope fact release is out of range");
+	while (constexpr_scope_facts_.size() > first)
+	{
+		const std::size_t index = constexpr_scope_facts_.size() - 1;
+		const ConstexprScopeFact& fact = constexpr_scope_facts_.back();
+		if (fact.name != 0)
+		{
+			if (fact.name >= constexpr_type_alias_by_name_.size() ||
+				constexpr_type_alias_by_name_[fact.name] != index)
+				throw std::logic_error(
+					"constexpr type alias index is unbalanced");
+			constexpr_type_alias_by_name_[fact.name] =
+				fact.previous_same_name;
+		}
+		constexpr_scope_facts_.pop_back();
+	}
+}
+
+bool SemanticAnalyzer::AddConstexprLocalValue(ConstexprLocalValue value,
+	std::size_t* local)
 {
 	if (constexpr_frames_.empty()) return false;
 	const ConstexprFrame& frame = constexpr_frames_.back();
 	const std::size_t first =
 		constexpr_block_offsets_.size() > frame.first_block ?
 		constexpr_block_offsets_.back().first_local : frame.first_local;
-	if (name != 0)
-		for (std::size_t i = first; i < constexpr_locals_.size(); ++i)
-			if (constexpr_locals_[i].name == name &&
-				(pack_name == 0 || constexpr_locals_[i].pack_name != pack_name))
-				return false;
-	if (local) *local = constexpr_locals_.size();
-	constexpr_locals_.push_back(ConstexprLocalValue(
-		name, pack_name, type, NormalizeScalarConstant(type, value)));
+	if (value.name != 0)
+	{
+		if (constexpr_local_by_name_.size() <= value.name)
+			constexpr_local_by_name_.resize(
+				static_cast<std::size_t>(value.name) + 1,
+				kNoConstexprLocal);
+		++constexpr_local_index_probes_;
+		const std::size_t prior = constexpr_local_by_name_[value.name];
+		if (prior != kNoConstexprLocal && prior >= first &&
+			(value.pack_name == 0 ||
+			 constexpr_locals_[prior].pack_name != value.pack_name))
+			return false;
+		value.previous_same_name = prior;
+	}
+	if (value.pack_name != 0)
+	{
+		if (constexpr_local_by_pack_.size() <= value.pack_name)
+			constexpr_local_by_pack_.resize(
+				static_cast<std::size_t>(value.pack_name) + 1,
+				kNoConstexprLocal);
+		value.previous_same_pack =
+			constexpr_local_by_pack_[value.pack_name];
+	}
+	const std::size_t index = constexpr_locals_.size();
+	if (local) *local = index;
+	constexpr_locals_.push_back(value);
+	if (value.name != 0) constexpr_local_by_name_[value.name] = index;
+	if (value.pack_name != 0)
+		constexpr_local_by_pack_[value.pack_name] = index;
 	if (constexpr_locals_.size() > constexpr_peak_locals_)
 		constexpr_peak_locals_ = constexpr_locals_.size();
 	return true;
+}
+
+bool SemanticAnalyzer::AddConstexprLocal(NameId name, NameId pack_name,
+	TypeId type, const ConstexprScalarValue& value, std::size_t* local)
+{
+	return AddConstexprLocalValue(ConstexprLocalValue(name, pack_name, type,
+		NormalizeScalarConstant(type, value)), local);
 }
 
 bool SemanticAnalyzer::AddConstexprLocal(NameId name, NameId pack_name,
@@ -777,45 +851,19 @@ bool SemanticAnalyzer::AddConstexprLocal(NameId name, NameId pack_name,
 		object >= constexpr_objects_.size() ||
 		complete_object == kNoConstexprObject ||
 		complete_object >= constexpr_objects_.size()) return false;
-	const ConstexprFrame& frame = constexpr_frames_.back();
-	const std::size_t first =
-		constexpr_block_offsets_.size() > frame.first_block ?
-		constexpr_block_offsets_.back().first_local : frame.first_local;
-	if (name != 0)
-		for (std::size_t i = first; i < constexpr_locals_.size(); ++i)
-			if (constexpr_locals_[i].name == name &&
-				(pack_name == 0 || constexpr_locals_[i].pack_name != pack_name))
-				return false;
-	if (local) *local = constexpr_locals_.size();
-	constexpr_locals_.push_back(
-		ConstexprLocalValue(name, pack_name, type, object));
-	constexpr_locals_.back().complete_object = complete_object;
-	if (constexpr_locals_.size() > constexpr_peak_locals_)
-		constexpr_peak_locals_ = constexpr_locals_.size();
-	return true;
+	ConstexprLocalValue value(name, pack_name, type, object);
+	value.complete_object = complete_object;
+	return AddConstexprLocalValue(value, local);
 }
 
 bool SemanticAnalyzer::AddConstexprAddressLocal(NameId name, NameId pack_name,
 	TypeId type, std::uint32_t address, std::size_t* local)
 {
 	if (constexpr_frames_.empty() || !ConstexprAddressAt(address)) return false;
-	const ConstexprFrame& frame = constexpr_frames_.back();
-	const std::size_t first =
-		constexpr_block_offsets_.size() > frame.first_block ?
-		constexpr_block_offsets_.back().first_local : frame.first_local;
-	if (name != 0)
-		for (std::size_t i = first; i < constexpr_locals_.size(); ++i)
-			if (constexpr_locals_[i].name == name &&
-				(pack_name == 0 || constexpr_locals_[i].pack_name != pack_name))
-				return false;
-	if (local) *local = constexpr_locals_.size();
 	ConstexprLocalValue value(name, pack_name, type,
 		ConstexprScalarValue(static_cast<std::int64_t>(0)));
 	value.address = address;
-	constexpr_locals_.push_back(value);
-	if (constexpr_locals_.size() > constexpr_peak_locals_)
-		constexpr_peak_locals_ = constexpr_locals_.size();
-	return true;
+	return AddConstexprLocalValue(value, local);
 }
 
 bool SemanticAnalyzer::AddConstexprTypeAlias(NameId name, TypeId type)
@@ -826,10 +874,17 @@ bool SemanticAnalyzer::AddConstexprTypeAlias(NameId name, TypeId type)
 		constexpr_block_offsets_.size() > frame.first_block ?
 		constexpr_block_offsets_.back().first_scope_fact :
 		frame.first_scope_fact;
-	for (std::size_t i = first; i < constexpr_scope_facts_.size(); ++i)
-		if (constexpr_scope_facts_[i].name == name) return false;
-	constexpr_scope_facts_.push_back(
-		ConstexprScopeFact(name, type, kNoScope));
+	if (constexpr_type_alias_by_name_.size() <= name)
+		constexpr_type_alias_by_name_.resize(
+			static_cast<std::size_t>(name) + 1, kNoConstexprLocal);
+	++constexpr_scope_index_probes_;
+	const std::size_t prior = constexpr_type_alias_by_name_[name];
+	if (prior != kNoConstexprLocal && prior >= first) return false;
+	ConstexprScopeFact fact(name, type, kNoScope);
+	fact.previous_same_name = prior;
+	const std::size_t index = constexpr_scope_facts_.size();
+	constexpr_scope_facts_.push_back(fact);
+	constexpr_type_alias_by_name_[name] = index;
 	return true;
 }
 
@@ -844,15 +899,14 @@ void SemanticAnalyzer::AddConstexprUsingNamespace(ScopeId name_space)
 bool SemanticAnalyzer::FindConstexprTypeAlias(NameId name, TypeId* type) const
 {
 	if (name == 0 || constexpr_frames_.empty()) return false;
+	++constexpr_scope_index_probes_;
 	const std::size_t first = constexpr_frames_.back().first_scope_fact;
-	for (std::size_t i = constexpr_scope_facts_.size(); i > first; --i)
-		if (constexpr_scope_facts_[i - 1].name == name &&
-			constexpr_scope_facts_[i - 1].type != kNoType)
-		{
-			*type = constexpr_scope_facts_[i - 1].type;
-			return true;
-		}
-	return false;
+	if (name >= constexpr_type_alias_by_name_.size() ||
+		constexpr_type_alias_by_name_[name] == kNoConstexprLocal ||
+		constexpr_type_alias_by_name_[name] < first) return false;
+	*type = constexpr_scope_facts_[
+		constexpr_type_alias_by_name_[name]].type;
+	return true;
 }
 
 void SemanticAnalyzer::FindConstexprUsingNamespaces(
@@ -870,14 +924,13 @@ bool SemanticAnalyzer::FindConstexprLocal(NameId name,
 	std::size_t* local) const
 {
 	if (name == 0 || constexpr_frames_.empty()) return false;
+	++constexpr_local_index_probes_;
 	const std::size_t first = constexpr_frames_.back().first_local;
-	for (std::size_t i = constexpr_locals_.size(); i > first; --i)
-		if (constexpr_locals_[i - 1].name == name)
-		{
-			*local = i - 1;
-			return true;
-		}
-	return false;
+	if (name >= constexpr_local_by_name_.size() ||
+		constexpr_local_by_name_[name] == kNoConstexprLocal ||
+		constexpr_local_by_name_[name] < first) return false;
+	*local = constexpr_local_by_name_[name];
+	return true;
 }
 
 bool SemanticAnalyzer::FindConstexprPack(NameId name,
@@ -885,9 +938,16 @@ bool SemanticAnalyzer::FindConstexprPack(NameId name,
 {
 	if (name == 0 || constexpr_frames_.empty()) return false;
 	locals->clear();
+	++constexpr_local_index_probes_;
 	const std::size_t first = constexpr_frames_.back().first_local;
-	for (std::size_t i = first; i < constexpr_locals_.size(); ++i)
-		if (constexpr_locals_[i].pack_name == name) locals->push_back(i);
+	std::size_t current = name < constexpr_local_by_pack_.size() ?
+		constexpr_local_by_pack_[name] : kNoConstexprLocal;
+	while (current != kNoConstexprLocal && current >= first)
+	{
+		locals->push_back(current);
+		current = constexpr_locals_[current].previous_same_pack;
+	}
+	std::reverse(locals->begin(), locals->end());
 	if (!locals->empty()) return true;
 	return GetFunction(constexpr_frames_.back().function).parameter_pack_name ==
 		name;
@@ -1030,6 +1090,24 @@ ExpressionInfo SemanticAnalyzer::AnalyzeConstantAwareVariableInitializer(
 	}
 }
 
+bool SemanticAnalyzer::ShouldProbeConstantInitialization(bool local,
+	const SpecInfo& spec, TypeId type) const
+{
+	return spec.is_constexpr || !local ||
+		(!program_->types.IsReference(type) && IsConst(type) &&
+		 IsIntegral(type, true)) ||
+		spec.storage_class == STORAGE_CLASS_STATIC;
+}
+
+bool SemanticAnalyzer::HasConstantInitializerFact(
+	const ExpressionInfo& initializer) const
+{
+	return initializer.constant || initializer.floating_constant ||
+		initializer.constexpr_object != kNoConstexprObject ||
+		initializer.constexpr_address != kNoConstexprAddress ||
+		initializer.constexpr_lvalue_address != kNoConstexprAddress;
+}
+
 ExpressionInfo SemanticAnalyzer::AnalyzeInClassStaticInitializer(
 	NodeId initializer, ScopeId scope, TypeId type)
 {
@@ -1167,6 +1245,10 @@ void SemanticAnalyzer::RecordStaticConstantInitializer(
 			record.kind == DUMP_CALL_EXPRESSION) &&
 			record.binding != kNoBinding)
 			dependency = program_->bindings[record.binding].canonical;
+		else if (record.kind == DUMP_ID_EXPRESSION &&
+			record.binding != kNoBinding &&
+			program_->bindings[record.binding].kind == BIND_FUNCTION)
+			dependency = program_->bindings[record.binding].canonical;
 		else if (record.kind == DUMP_CLASS_VALUE_TRANSFER &&
 			record.selected_binding != kNoBinding)
 			dependency = program_->bindings[record.selected_binding].canonical;
@@ -1231,6 +1313,19 @@ void SemanticAnalyzer::PublishConstantVariableInitializer(BindingId binding,
 	const std::uint32_t initializer_object = ExpressionObject(initializer);
 	const std::uint32_t initializer_address = program_->types.IsReference(type) ?
 		initializer.constexpr_lvalue_address : ExpressionAddress(initializer);
+	if (initializer_address != kNoConstexprAddress &&
+		!program_->IsStaticDataMember(binding))
+	{
+		const ConstexprAddressValue* address =
+			ConstexprAddressAt(initializer_address);
+		if (address && address->kind == CONSTEXPR_ADDRESS_FUNCTION)
+		{
+			if (address->identity >= program_->bindings.size())
+				throw std::logic_error(
+					"constant function address has invalid binding identity");
+			DemandFunction(static_cast<BindingId>(address->identity));
+		}
+	}
 	if (spec.is_constexpr &&
 		(IsPointer(EffectiveType(type)) || program_->types.IsReference(type)) &&
 		initializer_address == kNoConstexprAddress)
@@ -1254,7 +1349,9 @@ void SemanticAnalyzer::PublishConstantVariableInitializer(BindingId binding,
 	if (initializer_address != kNoConstexprAddress)
 	{
 		PublishBindingAddress(binding, initializer_address);
-		if (!program_->IsStaticDataMember(binding) &&
+		const bool immediate_storage =
+			!program_->IsStaticDataMember(binding);
+		if (immediate_storage &&
 			initializer.node != kNoDumpEdge &&
 			dump_.nodes[initializer.node].kind == DUMP_CALL_EXPRESSION &&
 			initializer.binding != kNoBinding)
@@ -2245,12 +2342,8 @@ bool SemanticAnalyzer::TryEvaluateConstexprConstructor(BindingId function,
 	constexpr_block_offsets_.erase(
 		constexpr_block_offsets_.begin() + frame.first_block,
 		constexpr_block_offsets_.end());
-	constexpr_locals_.erase(
-		constexpr_locals_.begin() + frame.first_local,
-		constexpr_locals_.end());
-	constexpr_scope_facts_.erase(
-		constexpr_scope_facts_.begin() + frame.first_scope_fact,
-		constexpr_scope_facts_.end());
+	ReleaseConstexprLocals(frame.first_local);
+	ReleaseConstexprScopeFacts(frame.first_scope_fact);
 	constexpr_frames_.pop_back();
 	constexpr_evaluation_stack_.pop_back();
 	--constexpr_evaluation_depth_;
@@ -2418,12 +2511,8 @@ bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 	constexpr_block_offsets_.erase(
 		constexpr_block_offsets_.begin() + frame.first_block,
 		constexpr_block_offsets_.end());
-	constexpr_locals_.erase(
-		constexpr_locals_.begin() + frame.first_local,
-		constexpr_locals_.end());
-	constexpr_scope_facts_.erase(
-		constexpr_scope_facts_.begin() + frame.first_scope_fact,
-		constexpr_scope_facts_.end());
+	ReleaseConstexprLocals(frame.first_local);
+	ReleaseConstexprScopeFacts(frame.first_scope_fact);
 	constexpr_frames_.pop_back();
 	constexpr_evaluation_stack_.pop_back();
 	--constexpr_evaluation_depth_;

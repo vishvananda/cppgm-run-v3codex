@@ -7,28 +7,24 @@ global @__strlit__2 [binding=internal] = {
   i8 98
   i8 0
 }
-global @__strlit__3 [binding=internal] = {
-  i8 120
-  i8 0
-}
-global @__local_static__f__values__tokens8_18 [binding=internal] = {
+global @__local_static__f__decl0__values [binding=internal] = {
   ptr addr @__strlit__1
   ptr addr @__strlit__2
 }
-global @__local_static__f__nested__tokens22_33 [binding=internal] = {
+global @__local_static__f__decl1__nested [binding=internal] = {
   i8 120
   i8 0
 }
 
 function @f() -> i32 [binding=strong, object=_Z1fv] {
   block ^entry:
-    %t1 = addr @__local_static__f__values__tokens8_18
+    %t1 = addr @__local_static__f__decl0__values
     %t2 = unary decay ptr %t1
     %t3 = index ptr [projection=array_element] %t2, 0
     %t4 = load ptr %t3
     %t5 = index i8 [projection=array_element] %t4, 0
     %t6 = load i8 %t5
-    %t7 = addr @__local_static__f__values__tokens8_18
+    %t7 = addr @__local_static__f__decl0__values
     %t8 = unary decay ptr %t7
     %t9 = index ptr [projection=array_element] %t8, 1
     %t10 = load ptr %t9
@@ -37,7 +33,7 @@ function @f() -> i32 [binding=strong, object=_Z1fv] {
     %t13 = convert sext i32 i8 %t6
     %t14 = convert sext i32 i8 %t12
     %t15 = binary add i32 %t13, %t14
-    %t16 = addr @__local_static__f__nested__tokens22_33
+    %t16 = addr @__local_static__f__decl1__nested
     %t17 = unary decay ptr %t16
     %t18 = binary mul i64 0, 2
     %t19 = index i8 [projection=array_element] %t17, %t18

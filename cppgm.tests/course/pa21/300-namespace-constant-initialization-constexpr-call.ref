@@ -1,15 +1,10 @@
-global @__local_static__read__decl0__value : i32 [binding=internal] = 7
+global @value : i32 [binding=strong, object=_Z5value] = 7
 
-function @read() -> i32 [binding=strong, object=_Z4readv] {
-  block ^entry:
-    %t1 = load i32 @__local_static__read__decl0__value
-    return i32 %t1
-}
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $cond__1 : i32
 
   block ^entry:
-    %t1 = call i32 @read()
+    %t1 = load i32 @value
     %t2 = cmp eq i32 %t1, 7
     branch %t2, ^cond_then_1, ^cond_else_2
 

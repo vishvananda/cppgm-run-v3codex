@@ -55,20 +55,9 @@ protected:
 				HexLocalStaticSymbolComponent(object);
 		}
 		std::string name = "__local_static__" + function_identity + "__" +
+			"decl" + std::to_string(action.declaration_ordinal) + "__" +
 			SanitizeSymbol(derived.program_.names.Get(
 				derived.program_.bindings[action.object].name));
-		if (weak && action.source_file != 0 && action.source_line != 0 &&
-			action.source_column != 0)
-		{
-			const std::string source = " at " +
-				derived.program_.names.Get(action.source_file) + ":" +
-				std::to_string(action.source_line) + ":" +
-				std::to_string(action.source_column);
-			name += "__source" + HexLocalStaticSymbolComponent(source);
-		}
-		else
-			name += "__tokens" + std::to_string(action.token_first) + "_" +
-				std::to_string(action.token_last);
 		return name;
 	}
 
@@ -123,21 +112,16 @@ protected:
 					derived.local_static_eager_initializers_.push_back(
 						static_cast<std::uint32_t>(i));
 			}
-			else if (!derived.IsClassObjectType(action.type))
+			else if (!derived.IsClassObjectType(action.type) ||
+				action.constant_initialized)
 				static_initialized = derived.static_initializers_.Lower(
 					initializer, false, &global,
 					&derived.needs_global_class_initializer_);
-			if (derived.IsClassObjectType(action.type) ||
-				(!static_initialized && !derived.IsReferenceType(action.type)))
+			if (!static_initialized && !derived.IsReferenceType(action.type))
 				derived.static_initializers_.SetZero(action.type, &global);
 			const bool eager =
 				!derived.local_static_eager_initializers_.empty() &&
 				derived.local_static_eager_initializers_.back() == i;
-			for (std::size_t literal = 0;
-				literal < action.source_string_literals.size(); ++literal)
-				(void)derived.static_initializers_.EnsureStringLiteralSpelling(
-					derived.program_.names.Get(
-						action.source_string_literals[literal]));
 			const bool dynamic = !static_initialized && !eager;
 			if (dynamic)
 			{
@@ -158,6 +142,9 @@ protected:
 				derived.local_static_guard_symbols_[i] = guard_symbol;
 			}
 			derived.output_.globals.push_back(global);
+			if (action.destructor != kNoDumpEdge)
+				derived.local_static_finalizers_.push_back(
+					static_cast<std::uint32_t>(i));
 			if (derived.stats_) ++derived.stats_->globals;
 			if (dynamic)
 			{
@@ -215,7 +202,8 @@ protected:
 	void EmitDynamicFinalizer()
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		if (derived.dynamic_finalizers_.empty()) return;
+		if (derived.dynamic_finalizers_.empty() &&
+			derived.local_static_finalizers_.empty()) return;
 		const std::string proposed = "__cppgm_fini";
 		std::size_t& count = derived.output_.symbol_name_counts[proposed];
 		const std::string name = count++ == 0 ? proposed :
@@ -231,11 +219,56 @@ protected:
 		result.result = LowVoid();
 		result.finalizer = true;
 		derived.BeginSyntheticFunction(&result);
+		for (std::size_t i = derived.local_static_finalizers_.size();
+			i != 0; --i)
+		{
+			const std::uint32_t action_index =
+				derived.local_static_finalizers_[i - 1];
+			if (!derived.local_static_dynamic_[action_index]) continue;
+			const LocalStaticObjectAction& action =
+				derived.graph_.local_static_objects[action_index];
+			const SymbolId guard_symbol =
+				derived.local_static_guard_symbols_[action_index];
+			if (guard_symbol == kNoLowId)
+				throw std::logic_error(
+					"dynamic local static finalizer has no guard symbol");
+			const BlockId destroy =
+				derived.AddBlock(derived.NewLabel("local_static_destroy"));
+			const BlockId next =
+				derived.AddBlock(derived.NewLabel("local_static_fini_next"));
+			const Operand guard = derived.LoadStorage(
+				Operand(Operand::GLOBAL, guard_symbol, LowI64()), LowI64());
+			const Operand initialized = derived.Temp(LowI64());
+			Instruction compare(Instruction::CMP);
+			compare.dest = initialized.id;
+			compare.op = LOW_OP_NE;
+			compare.type = LowI64();
+			compare.first = guard;
+			compare.second = Operand(0, LowI64());
+			derived.Emit(compare);
+			derived.EmitBranch(initialized, destroy, next);
+			derived.SelectBlock(destroy);
+			derived.LowerDestructorAction(
+				derived.arena_.nodes[action.destructor]);
+			derived.EmitJump(next);
+			derived.SelectBlock(next);
+		}
 		for (std::size_t i = derived.dynamic_finalizers_.size(); i != 0; --i)
 		{
 			const NamespaceObjectAction& action =
 				derived.graph_.namespace_objects[
 					derived.dynamic_finalizers_[i - 1]];
+			derived.LowerDestructorAction(
+				derived.arena_.nodes[action.destructor]);
+		}
+		for (std::size_t i = derived.local_static_finalizers_.size();
+			i != 0; --i)
+		{
+			const std::uint32_t action_index =
+				derived.local_static_finalizers_[i - 1];
+			if (derived.local_static_dynamic_[action_index]) continue;
+			const LocalStaticObjectAction& action =
+				derived.graph_.local_static_objects[action_index];
 			derived.LowerDestructorAction(
 				derived.arena_.nodes[action.destructor]);
 		}

@@ -1,57 +1,62 @@
-# PA21 Checkpoint Audit
+# PA21 Final Audit
 
-## Current Checkpoint Review
+## Findings
 
-The landed `9db9e273` increment raised the combined PA21 report from 109/135 to
-118/135 by completing qualified static constants, incomplete-array
-redeclarations, typed constant storage, and ODR rematerialization. The audit
-found that scalar initializers used a different constant-expression path from
-array/class initializers and could eagerly demand constexpr helpers; address and
-constructor paths had the same premature-demand leak. The canonical initializer
-graph also used parallel owner arrays, sorting for deduplication, and no direct
-work counters. Finally, an out-of-class definition could incorrectly add a
-second initializer. These violated N3485 9.4.2's static-member definition rule
-and `spec.md` §§2,4–6,8–10 requirements for one typed owner, demand-separated
-completion, bounded indexed work, and observable performance.
+All blocking findings are resolved.
 
-The repaired path analyzes every in-class static constant initializer in the
-same constant-required recipe context. Canonical member identity owns one
-immutable initializer fact containing its typed recipe and O(1)-deduplicated
-canonical callable edges; already-folded scalar/address leaves prune their
-evaluation-only call trees. Lookup and constant consumers reuse the fact without
-emission, while namespace definition or ODR storage demand explicitly consumes
-the retained edges before typed rematerialization. Function-definition
-provenance preserves the established PA20 emission of an explicitly
-out-of-class static constexpr member without reintroducing demand for in-class
-or free compile-time-only helpers. The namespace definition validator now
-rejects a second initializer. Lowering consumes binding/type/value facts only;
-no path reconstructs semantics from names, invokes an external tool, or
-recognizes a test.
+1. Ordinary runtime calls to `constexpr` functions were eagerly interpreted, so runtime work could become compile-time work. Evaluation is now gated by a constant-required or active constexpr context at scalar-call, constructor, list-initialization, conversion, and address boundaries.
+2. Constexpr local declarations, lookups, packs, and type aliases used frame/block vector scans. Dense `NameId` heads with scope-restored predecessor links now make declaration and lookup proportional to actual facts visited.
+3. Local-static identity depended on rescanning raw source text and could alias same-named declarations in one template function. Canonical function identity plus declaration ordinal now owns deterministic, distinct storage without source retention.
+4. Constant-initialized class local statics were forced through zero/dynamic guard lowering, and recorded local destructors were dead. Typed constant-initialization facts now enable static class data; dynamic finalizers check guards, while statically initialized objects receive unconditional finalization in the supported PA21 model.
+5. C++11 constexpr declaration validation was fragmented. Shared validation now covers literal variables, callable result/parameters, all direct bases and members, volatile subobjects, constructors, conversions, friends, template specializations, implicit inline status, virtual rejection, and the implicit `const` type of non-static constexpr members.
+6. Ordinary namespace objects did not probe constexpr-call initializers for constant initialization. Static-storage definitions now enter the same constant-aware path without reintroducing evaluation for automatic runtime calls.
+7. Static-initializer lowering could consume a scalar zero placeholder before a resolved typed address, and function-address dependencies did not always demand the referenced specialization. Address facts now take precedence and their dependency walk reaches the owning function binding.
+8. The final file audit exposed an oversized declaration routine and two source files at/over fatal limits. Conversion and simple-function declarations now have focused translation units; all new files are registered in the compiler source set.
 
-For ODR-used 16/32/64/128-element constexpr class arrays, semantic nodes were
-92/156/284/540 and initializer visits were exactly 33/65/129/257, with one
-dependency edge at every width. Demand pushes (2), demanded function emissions
-(1), globals (1), and LowIR instructions (20) stayed fixed; typed storage grew
-8,364/9,260/11,052/14,636 bytes. For 1/2/4/8 compile-time-only uses of one scalar
-member, semantic nodes were 11/14/20/32 while initializer visits (1), constexpr
-call requests (1), typed storage (1,735 bytes), and LowIR instructions (1)
-stayed fixed, with zero dependency edges, demand pushes, or demanded functions.
-The owned walk is therefore linear in initializer structure and repeated
-constant consumers do not replay or emit its helper.
+No production path shells out, consumes reference/test data, reconstructs types from text, or hardcodes a fixture. Checked-in PA21 LowIR fixtures were migrated only where canonical local-static identity and correct class constant initialization intentionally change the stage contract.
 
-Validation passes both audit regressions for a combined 120/137 while retaining
-the exact 17 pre-existing PA21 failures and exceeding the 118/135 turn-start
-baseline. The landed nine owned and eight nearby probes remain passing,
-PA1–PA20 passes 2,185/2,185, and the PA21 file audit passes with the same 12
-header-division advisories.
+## Changes
 
-## Checkpoint Audit Ledger
+- Added typed dense indexes and work counters for constexpr locals, packs, and type aliases, with balanced scope/frame release.
+- Removed semantic ownership of source path/text and source-scanning local-static metadata.
+- Added canonical per-function local-static ordinals, constant-initialization state, guarded dynamic finalization, and class static-data lowering.
+- Centralized constexpr literal/callable/member validation and propagated constexpr/inline facts through ordinary, class, constructor, conversion, friend, function-template, specialization, and variable-template paths.
+- Added constant-context gates so evaluation and emission demand remain independent, including namespace static initialization.
+- Preserved typed object/function addresses through static-initializer lowering and made constant function-address dependencies demand their specialization.
+- Split conversion and simple-function declaration implementations into dedicated source files to satisfy file-audit ownership limits.
+- Added seven focused PA21 regressions for declaration identity, guarded destruction, namespace constant initialization, C++11 implicit-const members, nonliteral member owners, nonliteral secondary bases, and nonliteral constexpr variables.
 
-| Checkpoint | Audit disposition | Evidence |
+## Performance Evidence
+
+| Workload | Evidence |
+| --- | --- |
+| Runtime `spin(1000000)` call | Before: 1 request, 1,000,000 steps, 2,189.469 ms semantic. After: 0 requests, 0 steps, 0.218 ms semantic, 0.00 s elapsed, 7,120 KiB RSS. |
+| Unique constexpr locals, N=8,192/16,384/32,768 | 26.865/59.090/114.561 ms; probes `N+1`; steps `N+2`; RSS 12,784/20,176/33,868 KiB. Previous 32,768 case was 1,519.634 ms. |
+| Local aliases, N=8,192/16,384/32,768 | 10.212/20.219/41.669 ms; probes exactly N; steps `N+2`; RSS 8,860/12,940/21,728 KiB. |
+| Local statics, N=1,024/2,048/4,096 | N globals; semantic 7.562/13.497/28.899 ms; lowering 1.585/3.208/5.673 ms; elapsed 0.02/0.04/0.07 s. |
+
+The measured doubling behavior and exact counters confirm linear owned work. No residual hot path required profiler sampling after the counter-attributed scans and eager evaluator were removed.
+
+## Validation
+
+- `perl scripts/cppgm_file_audit.pl --stage pa21 --paths dev/src`: pass, with 13 warning-only header-division advisories.
+- `make test-pa21`: pass, 129/129 handout tests and 15/15 course tests.
+- `make test-report-through-pa21`: pass, 2,329/2,329 tests and 21/21 stages.
+- `git diff --check`: pass.
+- Final audit changes committed with a clean `git status --short` handoff.
+
+## Checkpoint Ledger
+
+| Checkpoint | Audit result | Final evidence |
 | --- | --- | --- |
-| `dd3dd301` integral scalar invocation and demand | Pass after ownership repair | stack/scratch ownership, namespace-mutation rejection, fixed canonical graph, linear counters, PA1–20 clean, PA21 baseline preserved |
-| `d4d44664` class-valued calls and conversions | Pass after completion-boundary repair | complete typed call keys/object results, transitive local-address escape rejection, constant repeated-call work, PA1–20 and checkpoint baselines preserved |
-| `44134d03` base-subobject completion | Pass after active-subobject ownership repair | complete/active IDs and adjusted addresses through projection, calls, references, and caches; linear depth counters; PA1–20 and checkpoint baselines preserved |
-| `149f92db` callable and contextual conversions | Pass after parser/call ownership repair | exact rollback journal, shared recursive-arrow owner, semantic class initialization, retained surrogate conversions, cached address results; PA1–20 and checkpoint baselines preserved |
-| `49e62fbb` canonical exception and `noexcept` facts | Pass after conversion/lifetime ownership repair | shared contextual-bool fact, compile-time-only demand, temporary-destructor coverage, linear action counter; PA1–20 and 108/134 baseline preserved |
-| `9db9e273` qualified static constant storage | Pass after definition/demand ownership repair | canonical recipe/dependency fact, no reinitializer, compile-time-only scalar/address/object demand suppression, O(1) deduplication and counters; PA1–20 and 118/135 baseline preserved |
+| `dd3dd301` / `3f92499b` scalar evaluator | Pass after repair | Runtime demand separated; local/alias indexes and explicit counters are linear |
+| `267d7437` floating evaluator | Pass | Typed floating facts remain in scalar/call/storage paths |
+| `22051550` object evaluator | Pass | Immutable structural objects, full collision equality, bounded projection walks |
+| `0e7c1ea7` constructors/member calls | Pass after repair | Complete callable validation, literal owners, C++11 implicit const, static class initialization |
+| `f76ac972` address evaluator | Pass | Interned canonical address kind/identity/offset/bounds; local escapes rejected |
+| `d4d44664` / `263efed0` class-valued calls | Pass | Receiver/complete object/address included in invocation identity and result facts |
+| `44134d03` / `5fa7f407` base completion | Pass after repair | Ordered base facts preserved; every direct base checked for literal ownership |
+| `149f92db` / `f49edb9b` callables | Pass | Exact parser rollback, typed conversion functions, no semantic text roundtrip |
+| `49e62fbb` / `cc85a99d` `noexcept` | Pass | Constant-required context and temporary-lifetime facts remain bounded and typed |
+| `9db9e273` / `23502678` static constants | Pass after repair | Canonical recipes/dependencies plus namespace constant-initialization probing |
+| `290fab26` full stage | Pass after repair | Local-static ownership/finalization, declaration validation, linear scaling, fatal-free file audit |

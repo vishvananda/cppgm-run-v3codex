@@ -18,22 +18,22 @@ global @__strlit__2 [binding=internal] = {
   i8 0
 }
 global @constructed : i32 [binding=strong, object=_Z11constructed] = 0
-global @__local_static__make_result__prefixes__tokens68_87 [binding=internal] = {
+global @__local_static__make_result__decl0__prefixes [binding=internal] = {
   zero 32
 }
-global @__local_static__make_result__prefixes__tokens68_87__guard : i64 [binding=internal] = zero
+global @__local_static__make_result__decl0__prefixes__guard : i64 [binding=internal] = zero
 
 function @make_result() -> obj<16x8> [binding=strong, object=_Z11make_resultv] {
   slot $result : obj<16x8>
   slot $retobj__1 : obj<16x8>
 
   block ^entry:
-    %t1 = load i64 @__local_static__make_result__prefixes__tokens68_87__guard
+    %t1 = load i64 @__local_static__make_result__decl0__prefixes__guard
     %t2 = cmp ne i64 %t1, 0
     branch %t2, ^local_static_ready_1, ^local_static_init_2
 
   block ^local_static_init_2:
-    %t3 = addr @__local_static__make_result__prefixes__tokens68_87
+    %t3 = addr @__local_static__make_result__decl0__prefixes
     %t4 = addr @__strlit__1
     %t5 = convert sext i64 i32 6
     call void @Prefix__local_14110209623060619131__Prefix(%t3, %t4, %t5)
@@ -41,12 +41,12 @@ function @make_result() -> obj<16x8> [binding=strong, object=_Z11make_resultv] {
     %t7 = addr @__strlit__2
     %t8 = convert sext i64 i32 7
     call void @Prefix__local_14110209623060619131__Prefix(%t6, %t7, %t8)
-    store i64 1, @__local_static__make_result__prefixes__tokens68_87__guard
+    store i64 1, @__local_static__make_result__decl0__prefixes__guard
     jump ^local_static_ready_1
 
   block ^local_static_ready_1:
     %t9 = addr $result
-    %t10 = addr @__local_static__make_result__prefixes__tokens68_87
+    %t10 = addr @__local_static__make_result__decl0__prefixes
     %t11 = unary decay ptr %t10
     %t12 = binary mul i64 1, 16
     %t13 = index i8 [projection=array_element] %t11, %t12

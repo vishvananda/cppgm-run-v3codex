@@ -206,23 +206,31 @@ void SemanticAnalyzer::UpgradeFunctionTemplateSpecializations(
 		const EntityId member_owner = program_->EntityForScope(pattern.owner);
 		const EntityId previous_class = current_class_context_;
 		if (member_owner != kNoEntity) current_class_context_ = member_owner;
-		const DeclaratorInfo parsed = BuildDeclarator(pattern.declarator,
+		DeclaratorInfo parsed = BuildDeclarator(pattern.declarator,
 			spec.type, template_scope, false,
 			member_owner != kNoEntity &&
 				spec.storage_class != STORAGE_CLASS_STATIC);
 		current_class_context_ = previous_class;
+		if (spec.is_constexpr)
+			parsed.type = ApplyConstexprMemberFunctionType(parsed.type,
+				member_owner, spec.storage_class == STORAGE_CLASS_STATIC);
 		FunctionInfo& function = GetMutableFunction(
 			specializations[specialization]);
 		if (function.type != parsed.type)
 			throw std::runtime_error(
 				"function template definition does not match declaration");
+		const bool constexpr_specialization = spec.is_constexpr &&
+			IsConstexprCallableType(parsed.type, false);
 		function.parameters = parsed.parameters;
 		function.constexpr_function =
-			function.constexpr_function || spec.is_constexpr;
+			function.constexpr_function || constexpr_specialization;
 		function.defined = true;
 		function.deferred = true;
 		function.definition_body = pattern.definition_body;
 		function.lexical_scope = template_scope;
+		PublishInlineFunctionFacts(function.binding,
+			spec.inline_specifier || constexpr_specialization ||
+			function.definition_in_class);
 	}
 }
 
@@ -398,11 +406,14 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	const EntityId member_owner = program_->EntityForScope(pattern.owner);
 	const EntityId previous_class = current_class_context_;
 	if (member_owner != kNoEntity) current_class_context_ = member_owner;
-	const DeclaratorInfo parsed = BuildDeclarator(pattern.declarator,
+	DeclaratorInfo parsed = BuildDeclarator(pattern.declarator,
 		spec.type, template_scope, false,
 		member_owner != kNoEntity &&
 			spec.storage_class != STORAGE_CLASS_STATIC);
 	current_class_context_ = previous_class;
+	if (spec.is_constexpr)
+		parsed.type = ApplyConstexprMemberFunctionType(parsed.type,
+			member_owner, spec.storage_class == STORAGE_CLASS_STATIC);
 	const bool nonthrowing = pattern.dependent_exception_specification ?
 		IsNonthrowing(pattern.declarator, template_scope) :
 		pattern.nonthrowing;
@@ -434,13 +445,18 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	ValidateFunctionRefQualifier(binding);
 	ValidateNonmemberOperator(binding);
 	FunctionInfo& function = GetMutableFunction(binding);
+	const bool constexpr_specialization = spec.is_constexpr &&
+		IsConstexprCallableType(parsed.type, false);
 	function.constexpr_function =
-		function.constexpr_function || spec.is_constexpr;
+		function.constexpr_function || constexpr_specialization;
+	function.definition_in_class = member_owner != kNoEntity &&
+		pattern.lexical_scope == pattern.owner;
+	PublishInlineFunctionFacts(binding,
+		spec.inline_specifier || constexpr_specialization ||
+		function.definition_in_class);
 	function.template_pattern = static_cast<std::uint32_t>(index);
 	function.parameter_pack_name = FunctionParameterPackName(pattern.declarator);
 	function.deferred = true;
-	function.definition_in_class = member_owner != kNoEntity &&
-		pattern.lexical_scope == pattern.owner;
 	function.lexical_scope = template_scope;
 	if (pattern.defined) function.definition_body = pattern.definition_body;
 	template_instantiations_.Insert(cache_key, binding);

@@ -278,8 +278,14 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 			pattern.parameters, arguments.size(), &offsets)) continue;
 		const BindingId candidate = InstantiateFunctionTemplate(
 			patterns[i], arguments, offsets);
-		if (candidate == kNoBinding ||
-			GetFunction(candidate).type != parsed.type) continue;
+		if (candidate == kNoBinding) continue;
+		TypeId specialization_type = parsed.type;
+		if (spec.is_constexpr)
+			specialization_type = ApplyConstexprMemberFunctionType(
+				specialization_type,
+				program_->bindings[candidate].member_owner,
+				program_->bindings[candidate].static_member_function);
+		if (GetFunction(candidate).type != specialization_type) continue;
 		if (selected != kNoBinding && selected != candidate)
 			throw std::runtime_error(
 				"ambiguous explicit function specialization");
@@ -289,14 +295,19 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 		throw std::runtime_error(
 			"explicit function specialization primary was not found");
 	FunctionInfo& function = GetMutableFunction(selected);
+	if (spec.is_constexpr)
+		ValidateConstexprCallableType(function.type, false);
 	function.parameters = parsed.parameters;
+	function.constexpr_function =
+		function.constexpr_function || spec.is_constexpr;
 	function.defined = arena_->IsTag(target, "function-definition");
 	function.deferred = true;
 	function.definition_body = FindChild(target, "compound-statement");
 	function.lexical_scope = scope;
 	program_->bindings[selected].nonthrowing =
 		IsNonthrowing(declarator, scope);
-	PublishInlineFunctionFacts(selected, spec.inline_specifier);
+	PublishInlineFunctionFacts(
+		selected, spec.inline_specifier || spec.is_constexpr);
 	ValidateFunctionRefQualifier(selected);
 	ValidateNonmemberOperator(selected);
 	return true;
@@ -433,6 +444,9 @@ BindingId SemanticAnalyzer::InstantiateVariableTemplate(
 		throw std::runtime_error("variable template declares a function");
 	if (spec.is_constexpr)
 		parsed.type = program_->types.Qualify(parsed.type, CV_CONST);
+	if (spec.is_constexpr && !IsConstexprLiteralType(parsed.type))
+		throw std::runtime_error(
+			"constexpr variable template does not have literal type");
 	std::ostringstream generated;
 	generated << "__variable_template_" << primary_index << '_';
 	for (std::size_t i = 0; i < arguments.size(); ++i)

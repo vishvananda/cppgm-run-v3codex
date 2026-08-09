@@ -1,9 +1,9 @@
 global @source : i32 [binding=strong, object=_Z6source] = 5
-global @__local_static__read__reference__tokens13_17 : ptr [binding=internal] = zero
+global @__local_static__read__decl0__reference : ptr [binding=internal] = zero
 
 function @read() -> i32 [binding=strong, object=_Z4readv] {
   block ^entry:
-    %t1 = load ptr @__local_static__read__reference__tokens13_17
+    %t1 = load ptr @__local_static__read__decl0__reference
     %t2 = load i32 %t1
     return i32 %t2
 }
@@ -30,6 +30,6 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 function @__cppgm_init() -> void [role=init, binding=internal] {
   block ^entry:
     %t1 = addr @source
-    store ptr %t1, @__local_static__read__reference__tokens13_17
+    store ptr %t1, @__local_static__read__decl0__reference
     return void
 }
