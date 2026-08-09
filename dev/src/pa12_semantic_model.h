@@ -833,6 +833,7 @@ struct FunctionTemplateDeduction
 	std::vector<std::vector<TemplateArgument> > pack_arguments;
 	std::vector<std::size_t> pack_deduction_positions;
 
+	FunctionTemplateDeduction() {}
 	explicit FunctionTemplateDeduction(
 		const std::vector<TemplateParameter>& parameters)
 		: fixed_arguments(parameters.size()), pack_arguments(parameters.size()),
@@ -864,10 +865,21 @@ struct ClassTemplatePartialPattern
 	std::vector<NodeId> arguments;
 	std::vector<TemplateArgument> canonical_arguments;
 	std::uint8_t canonical_argument_state;
+	std::uint32_t revision;
 
 	ClassTemplatePartialPattern()
 		: lexical_scope(kNoScope), declaration(kNoNode),
-		  canonical_argument_state(0) {}
+		  canonical_argument_state(0), revision(1) {}
+};
+
+struct ClassTemplatePartialSelection
+{
+	std::uint32_t pattern;
+	std::uint32_t revision;
+	FunctionTemplateDeduction bindings;
+
+	ClassTemplatePartialSelection()
+		: pattern(kNoDumpEdge), revision(0) {}
 };
 
 struct VariableTemplatePattern

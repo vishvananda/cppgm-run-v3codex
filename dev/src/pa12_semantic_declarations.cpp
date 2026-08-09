@@ -100,7 +100,7 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	const std::string& hint, bool elaborated,
 	const std::string& specialization_name, ScopeId specialization_owner,
 	NameId specialization_identity, bool complete_definition,
-	NameId specialization_lookup_name)
+	NameId specialization_lookup_name, NameId specialization_emission_name)
 {
 	const NodeId key = FindChild(node, "class-key");
 	if (key == kNoNode) throw std::runtime_error("class without class-key");
@@ -193,7 +193,8 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 		(arena_->Flags(node) & SYNTAX_FLAG_DEFINITION) != 0)
 		CompleteClassDefinition(node, scope, type, entity, flavor, owner,
 			name, lookup_name, specialization_owner,
-			specialization_identity);
+			specialization_identity, specialization_emission_name == 0 ?
+				program_->names.Intern(spelling) : specialization_emission_name);
 	return type;
 }
 
@@ -294,7 +295,7 @@ void SemanticAnalyzer::CollectClassDirectBases(NodeId clause, ScopeId scope,
 void SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 	TypeId type, EntityId entity, NamedFlavor flavor, ScopeId owner,
 	NameId name, NameId lookup_name, ScopeId specialization_owner,
-	NameId specialization_identity)
+	NameId specialization_identity, NameId emission_name)
 {
 		if (program_->entities[entity].complete)
 			throw std::runtime_error("duplicate class definition");
@@ -316,6 +317,10 @@ void SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 				owner : scope;
 			member_scope = NewScope(lexical_owner, SCOPE_CLASS, lookup_name,
 				program_->names.Intern(prefix));
+			// Semantic lookup may use an internal specialization slot while
+			// emission follows the caller's separate presentation policy.
+			if (specialization_owner != kNoScope)
+				program_->SetScopeEmissionName(member_scope, emission_name);
 			program_->SetEntityScope(entity, member_scope);
 			program_->SetTypeName(member_scope, name, type);
 			const BindingId injected = program_->AddBinding(member_scope,

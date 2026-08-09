@@ -317,8 +317,15 @@ void RetainedTemplateValidator::ValidateKnownTemplateArgumentKinds(
 				const NodeId syntax = arguments[argument];
 				const TemplateParameter* source =
 					TemplateParameterUsedBy(syntax);
+				const NodeId abstract = analyzer_.FindChild(
+					syntax, "abstract-declarator");
+				const NodeId declarator = abstract == kNoNode ?
+					analyzer_.FindChild(syntax, "declarator") : abstract;
+				const bool direct_type_pack = declarator != kNoNode &&
+					analyzer_.FindChild(
+						declarator, "parameter-pack") != kNoNode;
 				if (source && source->pack &&
-					analyzer_.arena_->IsTag(syntax, "type-id") &&
+					direct_type_pack &&
 					source->kind != destination.kind)
 					throw std::runtime_error(
 						"template argument pack kind does not match parameter");

@@ -62,6 +62,9 @@ public:
 		  template_specialization_cache_hits_(0),
 		  template_partial_candidates_(0),
 		  template_partial_order_comparisons_(0),
+		  template_partial_shape_materializations_(0),
+		  template_partial_shape_cache_hits_(0),
+		  template_partial_deduction_visits_(0),
 		  constexpr_call_requests_(0), constexpr_call_cache_hits_(0),
 		  constexpr_local_index_probes_(0),
 		  constexpr_scope_index_probes_(0),
@@ -240,11 +243,12 @@ private:
 		ScopeId specialization_owner = kNoScope,
 		NameId specialization_identity = 0,
 		bool complete_definition = true,
-		NameId specialization_lookup_name = 0);
+		NameId specialization_lookup_name = 0,
+		NameId specialization_emission_name = 0);
 	void CompleteClassDefinition(NodeId node, ScopeId scope, TypeId type,
 		EntityId entity, NamedFlavor flavor, ScopeId owner, NameId name,
 		NameId lookup_name, ScopeId specialization_owner,
-		NameId specialization_identity);
+		NameId specialization_identity, NameId emission_name);
 	void CollectClassDirectBases(NodeId clause, ScopeId scope,
 		EntityId entity, NamedFlavor flavor,
 		std::vector<DirectBaseEdge>* direct_bases);
@@ -369,6 +373,7 @@ private:
 		const std::vector<TypeId>& arguments) const;
 	std::vector<TemplateArgument> StoredTemplateArguments(
 		std::size_t first, std::size_t count) const;
+	TemplateArgument StoredTemplateArgument(std::size_t index) const;
 	void StoreTemplateArguments(const std::vector<TemplateArgument>& arguments,
 		std::uint32_t* first, std::uint32_t* count);
 	TypeId ResolveStructuredTypeName(NodeId name, ScopeId scope);
@@ -1106,6 +1111,10 @@ private:
 	TemplateSpecializationTable class_template_instantiations_;
 	TemplateSpecializationTable variable_template_instantiations_;
 	std::vector<std::uint8_t> class_template_specialization_states_;
+	// A specialization shell retains the selected partial declaration and its
+	// narrow substitution overlay until definition completion consumes them.
+	std::vector<ClassTemplatePartialSelection>
+		class_template_partial_selections_;
 	std::vector<std::uint8_t> class_template_explicit_instantiation_states_;
 	std::vector<std::uint32_t> class_template_member_definition_counts_;
 	std::vector<std::uint32_t>
@@ -1208,6 +1217,9 @@ private:
 	std::size_t template_specialization_cache_hits_;
 	mutable std::size_t template_partial_candidates_;
 	mutable std::size_t template_partial_order_comparisons_;
+	std::size_t template_partial_shape_materializations_;
+	std::size_t template_partial_shape_cache_hits_;
+	mutable std::size_t template_partial_deduction_visits_;
 	std::size_t constexpr_call_requests_;
 	std::size_t constexpr_call_cache_hits_;
 	mutable std::size_t constexpr_local_index_probes_;

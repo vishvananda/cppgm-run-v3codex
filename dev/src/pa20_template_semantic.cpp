@@ -219,7 +219,9 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 				throw std::runtime_error("invalid explicit specialization class-key");
 			CompleteClassDefinition(target, specialization_scope, type, entity,
 				flavor, pattern.owner, declaration.name, declaration.name,
-				pattern.owner, pattern.name);
+				pattern.owner, pattern.name, program_->names.Intern(
+					ExplicitClassSpecializationName(
+						*program_, pattern.name, arguments)));
 		}
 		else
 		{
@@ -252,6 +254,11 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 		if (class_template_specialization_states_.size() <= binding)
 			class_template_specialization_states_.resize(
 				static_cast<std::size_t>(binding) + 1, 0);
+		if (class_template_partial_selections_.size() <= binding)
+			class_template_partial_selections_.resize(
+				static_cast<std::size_t>(binding) + 1);
+		class_template_partial_selections_[binding] =
+			ClassTemplatePartialSelection();
 		class_template_specialization_states_[binding] = 2;
 		return true;
 	}
@@ -597,7 +604,7 @@ TypeId SemanticAnalyzer::ResolveTemplateParameterType(
 		std::string(), parameter.declarator != kNoNode);
 	const TypeId type = parameter.declarator == kNoNode ? spec.type :
 		BuildDeclarator(parameter.declarator, spec.type, parameter_scope).type;
-	if (!IsIntegral(type, true))
+	if (!IsIntegral(type, true) && !FunctionTemplateTypeIsDependent(type))
 		throw std::runtime_error(
 			"non-type template parameter does not have integral type");
 	return program_->types.RemoveTopCv(type);
@@ -723,6 +730,8 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 		{
 			argument.type = ResolveTemplateParameterType(
 				parameter, parameter_scope);
+			const bool dependent_target =
+				FunctionTemplateTypeIsDependent(argument.type);
 			ExpressionInfo expression;
 			if (arena_->IsTag(source, "type-id"))
 			{
@@ -730,8 +739,12 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 					"type-specifier-seq");
 				const NodeId name = specifiers == kNoNode ? kNoNode :
 					FirstSemanticChild(specifiers);
+				const NodeId declarator = FindChild(
+					source, "abstract-declarator");
+				const bool retained_pack_name = declarator != kNoNode &&
+					FindChild(declarator, "parameter-pack") != kNoNode;
 				if (name != kNoNode && arena_->IsTag(name, "type-name") &&
-					FindChild(source, "abstract-declarator") == kNoNode)
+					(declarator == kNoNode || retained_pack_name))
 					expression = AnalyzeNamedValue(PayloadSource(name),
 						source_scope, argument.type, name);
 				else if (name != kNoNode &&
@@ -766,8 +779,8 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 				++constant_expression_required_depth_;
 				try
 				{
-					expression = AnalyzeExpression(source,
-						source_scope, argument.type);
+					expression = AnalyzeExpression(source, source_scope,
+						dependent_target ? kNoType : argument.type);
 				}
 				catch (...)
 				{
@@ -780,8 +793,8 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 				throw std::runtime_error(
 					"non-type template argument is not an integral constant");
 			if (expression.constant)
-				argument.value = NormalizeIntegralConstant(
-					argument.type, expression.value);
+				argument.value = dependent_target ? expression.value :
+					NormalizeIntegralConstant(argument.type, expression.value);
 			else if (expression.binding != kNoBinding &&
 				expression.binding < program_->bindings.size() &&
 				program_->bindings[expression.binding].kind == BIND_PARAMETER &&
@@ -821,6 +834,7 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 			if (!LookupTemplateArgumentPack(use_scope, source_name, &expanded))
 			{
 				if (!append_argument(operand, use_scope)) return false;
+				arguments->back().pack_expansion = true;
 				continue;
 			}
 			for (std::size_t element = 0; element < expanded.size(); ++element)
@@ -854,15 +868,17 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 			continue;
 		}
 		if (arguments->size() >= fixed && !has_pack) return false;
-		if (TemplateParameterForArgument(parameters, arguments->size()).kind !=
-			TEMPLATE_ARGUMENT_TYPE) return false;
+		const TemplateArgumentKind destination_kind =
+			TemplateParameterForArgument(parameters, arguments->size()).kind;
 		std::vector<ScopeId> element_scopes;
 		if (!ExpandPackElementScopes(type_id, use_scope, &element_scopes))
 		{
-			// While retaining a function-template shape, a pack has one
-			// placeholder alias.  The concrete specialization later replays the
-			// same type-id against the ordered pack environment.
+			// A retained pack has one symbolic exemplar. The concrete
+			// specialization later replays the same syntax against its ordered
+			// pack environment. This also covers a non-type pack parsed as the
+			// ambiguous type-id spelling `Name...`.
 			if (!append_argument(syntax[i], use_scope)) return false;
+			arguments->back().pack_expansion = true;
 			continue;
 		}
 		for (std::size_t element = 0; element < element_scopes.size(); ++element)
@@ -870,13 +886,18 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 			if (arguments->size() >= fixed && !has_pack) return false;
 			const TemplateParameter& destination =
 				TemplateParameterForArgument(parameters, arguments->size());
-			if (destination.kind != TEMPLATE_ARGUMENT_TYPE) return false;
-			TemplateArgument argument(TEMPLATE_ARGUMENT_TYPE,
-				BuildTypeId(type_id, element_scopes[element]));
-			if (argument.type == kNoType) return false;
-			arguments->push_back(argument);
-			if (arguments->size() <= fixed)
-				BindTemplateArgument(parameter_scope, destination, argument);
+			if (destination.kind != destination_kind) return false;
+			if (destination_kind == TEMPLATE_ARGUMENT_TYPE)
+			{
+				TemplateArgument argument(TEMPLATE_ARGUMENT_TYPE,
+					BuildTypeId(type_id, element_scopes[element]));
+				if (argument.type == kNoType) return false;
+				arguments->push_back(argument);
+				if (arguments->size() <= fixed)
+					BindTemplateArgument(parameter_scope, destination, argument);
+			}
+			else if (!append_argument(syntax[i], element_scopes[element]))
+				return false;
 		}
 	}
 	while (require_complete && arguments->size() < fixed)
@@ -915,13 +936,18 @@ std::vector<TemplateArgument> SemanticAnalyzer::StoredTemplateArguments(
 	std::vector<TemplateArgument> result;
 	result.reserve(count);
 	for (std::size_t i = 0; i < count; ++i)
-	{
-		const std::size_t index = first + i;
-		result.push_back(index < program_->canonical_template_arguments.size() ?
-			program_->canonical_template_arguments[index] : TemplateArgument(
-				TEMPLATE_ARGUMENT_TYPE, program_->template_arguments[index]));
-	}
+		result.push_back(StoredTemplateArgument(first + i));
 	return result;
+}
+
+TemplateArgument SemanticAnalyzer::StoredTemplateArgument(
+	std::size_t index) const
+{
+	if (index >= program_->template_arguments.size())
+		throw std::logic_error("stored template argument index is invalid");
+	return index < program_->canonical_template_arguments.size() ?
+		program_->canonical_template_arguments[index] : TemplateArgument(
+			TEMPLATE_ARGUMENT_TYPE, program_->template_arguments[index]);
 }
 
 void SemanticAnalyzer::StoreTemplateArguments(

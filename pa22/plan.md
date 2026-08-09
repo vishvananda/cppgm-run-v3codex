@@ -4,23 +4,26 @@
 
 PA22 extends the existing typed path
 `SyntaxArena -> Program/SemanticAnalyzer -> SemanticGraphView -> GraphLowerer -> LowIR`.
-Template primaries own indexed partial-pattern sequences; retained patterns own
-canonical typed argument shapes, and specialization keys continue to use canonical
-template identity plus typed arguments. Dependent array bounds are canonical typed
-components. Selection records one declaration owner before ordinary class
-completion and LowIR demand.
+Template primaries own indexed partial-pattern sequences, each retained pattern owns
+one memoized canonical typed shape, and the canonical specialization table owns
+identity. A specialization binding stores the selected declaration index, declaration
+revision, and fixed/pack substitution overlay until completion; a later equivalent
+definition refreshes only that overlay. Pack expansion is part of canonical argument
+identity. Semantic lookup uses an internal specialization slot while source-oriented
+emission remains a separate policy, including local-type context.
 
 This stage applies `spec.md` §§2–6, 8–10: canonical specialization identity,
-indexed lookup, separate retained-pattern and specialization state, memoized demand,
-typed lowering, bounded temporary ownership, work counters, and no textual keys or
-external compiler fallback. PA23 deduction/SFINAE and §7 object-backend work remain
-outside this LowIR stage.
+indexed lookup, separate retained-pattern/selection/completion state, memoized demand,
+typed lowering, bounded temporary ownership, explicit work counters, and no textual
+semantic keys or external compiler fallback. Partial selection may inspect ordinary
+incomplete class arguments, but layout and completion remain deferred. PA23
+deduction/SFINAE and §7 object-backend work remain outside this LowIR stage.
 
 ## Current Failure Map
 
-Current result: **103/308**, up from the 82/308 turn-start baseline with no PA22
-regressions. The remaining 205 failures group by exclusive primary owner as follows:
-partial matching/ordering/replay 48; member/friend ownership, lookup, and access 76;
+Current result: **111/308**, up from the checkpoint-audit baseline of 103/308 with
+no PA22 regressions. The remaining 197 failures group by exclusive primary owner as
+follows: partial matching/ordering/replay 40; member/friend ownership, lookup, and access 76;
 alias/template-template/pack graph 38; explicit instantiation/specialization
 ownership 27; dependent lookup, deduction, conversion, and lowering integration 16.
 
@@ -38,15 +41,17 @@ first demand, explicit replacement, and through-stage regressions.
 
 ## Performance Evidence
 
-For synthetic families with 8/16/32 partial patterns and the same number of unique
-specialization keys, counters report exactly 64/256/1024 candidate visits and
-8/16/32 specialization-cache hits. Median semantic time was 1.31/2.33/4.38 ms and
-peak semantic storage 221/435/865 KiB. Focused two-candidate ordering cases report
-two comparisons. This matches O(k*s) required indexed-candidate work plus ordering
-only among matches; canonical pattern shapes are materialized once per declaration.
+For synthetic families with 8/16/32 partial patterns, the same number of unique keys,
+and repeated uses, five-run medians are 1.269/2.272/4.313 ms with peak semantic
+storage 194/422/813 KiB. Counters report 64/256/1024 candidate visits,
+24/48/96 cache hits, and exactly 8/16/32 shape materializations; the increasing shape
+cache hits are declaration-equivalence and selection reuse, not rematerialization.
+Representative checked-in ordering tests report 2, 4, and 2 comparisons. This is
+the required O(k*s) candidate work for k requested keys and s related partials, with
+ordering confined to matches and near-linear retained storage.
 
 ## Completed Checkpoints
 
 | Checkpoint | Result |
 |---|---|
-| Canonical class/variable partial matching and ordering | Memoized typed shapes, strict cv/function/pack/non-type/array deduction, deterministic bidirectional ordering, equivalent redeclaration merge, and counters; PA22 82 -> 103, prior 2329/2329. |
+| `5d70a120` canonical class/variable partial matching and ordering, audited | Retained selected owner/revision/substitution, canonical pack-expansion identity, incomplete-argument selection, deterministic replay and emission separation, indexed nested matching, and work counters; PA22 103 -> 111 during audit (82 -> 111 checkpoint total), prior 2329/2329. |

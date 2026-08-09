@@ -979,6 +979,7 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 	const bool abstract_function_suffix = abstract && At(OP_LPAREN) &&
 		(AtOffset(1, OP_RPAREN) || AtOffset(1, OP_DOTS) ||
 		 IsLikelyTypeIdentifier(position_ + 1) ||
+		 QualifiedStartsTypeAt(position_ + 1) ||
 		 (position_ + 1 < tokens_.size() &&
 		  IsDeclSpecifierKeyword(tokens_[position_ + 1].Kind())));
 	if (!abstract_function_suffix && Match(OP_LPAREN))

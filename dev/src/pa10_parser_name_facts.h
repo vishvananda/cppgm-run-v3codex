@@ -267,10 +267,9 @@ protected:
 		return kNoNode;
 	}
 
-	bool QualifiedStartsType() const
+	bool QualifiedStartsTypeAt(std::size_t scan) const
 	{
 		const Derived& parser = static_cast<const Derived&>(*this);
-		std::size_t scan = parser.position_;
 		bool qualified = false;
 		if (scan < parser.tokens_.size() && parser.tokens_[scan].Kind() ==
 			static_cast<std::uint16_t>(OP_COLON2))
@@ -302,6 +301,12 @@ protected:
 				Derived::kKnownType) || parser.IsLikelyTypeIdentifier(last) ||
 			 qualified_template_id || (qualified && scan < parser.tokens_.size() &&
 			 parser.tokens_[scan].Kind() == kIdentifierToken));
+	}
+
+	bool QualifiedStartsType() const
+	{
+		const Derived& parser = static_cast<const Derived&>(*this);
+		return QualifiedStartsTypeAt(parser.position_);
 	}
 
 	void PublishClassNameFacts(std::size_t mark)

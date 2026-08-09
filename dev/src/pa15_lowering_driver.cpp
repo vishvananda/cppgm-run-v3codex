@@ -263,6 +263,12 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 				semantic_stats.template_partial_candidates;
 			semantic.template_partial_order_comparisons +=
 				semantic_stats.template_partial_order_comparisons;
+			semantic.template_partial_shape_materializations +=
+				semantic_stats.template_partial_shape_materializations;
+			semantic.template_partial_shape_cache_hits +=
+				semantic_stats.template_partial_shape_cache_hits;
+			semantic.template_partial_deduction_visits +=
+				semantic_stats.template_partial_deduction_visits;
 			semantic.constexpr_call_requests +=
 				semantic_stats.constexpr_call_requests;
 			semantic.constexpr_call_cache_hits +=

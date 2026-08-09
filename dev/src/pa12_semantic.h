@@ -77,6 +77,9 @@ struct SemanticAnalysisStats
 	std::size_t template_specialization_cache_hits;
 	std::size_t template_partial_candidates;
 	std::size_t template_partial_order_comparisons;
+	std::size_t template_partial_shape_materializations;
+	std::size_t template_partial_shape_cache_hits;
+	std::size_t template_partial_deduction_visits;
 	std::size_t constexpr_call_requests;
 	std::size_t constexpr_call_cache_hits;
 	std::size_t constexpr_local_index_probes;

@@ -205,6 +205,8 @@ struct TemplateSpecializationHash
 				static_cast<std::uint64_t>(key.arguments[i].value));
 			result = MixHash(result,
 				key.arguments[i].dependent_parameter);
+			result = MixHash(result,
+				key.arguments[i].pack_expansion ? 1 : 0);
 		}
 		result = MixHash(result, key.parameter_offsets.size());
 		for (std::size_t i = 0; i < key.parameter_offsets.size(); ++i)

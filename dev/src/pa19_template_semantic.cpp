@@ -20,7 +20,7 @@ std::size_t NoTemplatePattern()
 	return std::numeric_limits<std::size_t>::max();
 }
 
-bool ClassTemplateArgumentsAreComplete(const Program& program,
+bool ClassTemplateArgumentsAreLayoutReady(const Program& program,
 	const std::vector<TemplateArgument>& arguments)
 {
 	for (std::size_t i = 0; i < arguments.size(); ++i)
@@ -34,6 +34,82 @@ bool ClassTemplateArgumentsAreComplete(const Program& program,
 			return false;
 	}
 	return true;
+}
+
+bool ClassTemplateArgumentsAllowPartialSelection(const Program& program,
+	const std::vector<TemplateArgument>& arguments)
+{
+	for (std::size_t i = 0; i < arguments.size(); ++i)
+	{
+		if (arguments[i].IsDependent()) return false;
+		if (arguments[i].kind != TEMPLATE_ARGUMENT_TYPE) continue;
+		const TypeId argument = program.types.RemoveTopCv(arguments[i].type);
+		const TypeRecord& record = program.types.Get(argument);
+		if (record.kind != TYPE_NAMED) continue;
+		const EntityRecord& entity = program.entities[record.entity];
+		if (entity.complete) continue;
+		// Shape parameters and deferred dependent specializations are not
+		// complete keys. An ordinary forward-declared class is nevertheless a
+		// valid actual argument for partial-specialization matching.
+		if (entity.flavor == NAMED_TYPENAME_PARAMETER ||
+			entity.flavor == NAMED_TEMPLATE_PARAMETER ||
+			entity.deferred_template_completion) return false;
+	}
+	return true;
+}
+
+bool TypeContainsLocalContext(const Program& program, TypeId type,
+	std::size_t depth)
+{
+	if (depth > program.types.Size()) return true;
+	const TypeRecord& record = program.types.Get(type);
+	if (record.kind == TYPE_NAMED)
+	{
+		const EntityRecord& entity = program.entities[record.entity];
+		if (entity.local_context != kNoBinding) return true;
+		const std::size_t first = entity.template_argument_begin;
+		if (first == kNoBinding || first > program.template_arguments.size() ||
+			entity.template_argument_count >
+				program.template_arguments.size() - first) return false;
+		for (std::size_t argument = 0;
+			argument < entity.template_argument_count; ++argument)
+			if ((first + argument >=
+				 program.canonical_template_arguments.size() ||
+				 program.canonical_template_arguments[first + argument].kind ==
+					TEMPLATE_ARGUMENT_TYPE) &&
+				TypeContainsLocalContext(program,
+					program.template_arguments[first + argument], depth + 1))
+				return true;
+		return false;
+	}
+	if (record.kind == TYPE_FUNCTION)
+	{
+		if (TypeContainsLocalContext(program, record.child, depth + 1))
+			return true;
+		const TypeId* parameters = program.types.Parameters(type);
+		for (std::size_t parameter = 0;
+			parameter < record.parameter_count; ++parameter)
+			if (TypeContainsLocalContext(
+				program, parameters[parameter], depth + 1)) return true;
+		return false;
+	}
+	if (record.kind == TYPE_MEMBER_POINTER && TypeContainsLocalContext(
+		program, static_cast<TypeId>(record.bound), depth + 1)) return true;
+	return record.kind == TYPE_QUALIFIED || record.kind == TYPE_POINTER ||
+		record.kind == TYPE_LVALUE_REFERENCE ||
+		record.kind == TYPE_RVALUE_REFERENCE || record.kind == TYPE_ARRAY ||
+		record.kind == TYPE_MEMBER_POINTER ?
+		TypeContainsLocalContext(program, record.child, depth + 1) : false;
+}
+
+bool TemplateArgumentsNeedInternalEmission(const Program& program,
+	const std::vector<TemplateArgument>& arguments)
+{
+	for (std::size_t argument = 0; argument < arguments.size(); ++argument)
+		if (arguments[argument].kind == TEMPLATE_ARGUMENT_TYPE &&
+			TypeContainsLocalContext(program, arguments[argument].type, 0))
+			return true;
+	return false;
 }
 
 std::string TemplateArgumentTypeName(const std::string& source)
@@ -101,13 +177,10 @@ std::string ClassTemplateSpecializationName(const Program& program,
 }
 
 std::string ClassTemplateSpecializationScopeName(std::size_t pattern,
-	const std::vector<TemplateArgument>& arguments)
+	std::size_t ordinal)
 {
 	std::ostringstream result;
-	result << "__cppgm_class_template_" << pattern;
-	for (std::size_t i = 0; i < arguments.size(); ++i)
-		result << '_' << arguments[i].kind << '_' << arguments[i].type << '_'
-			<< arguments[i].value << '_' << arguments[i].dependent_parameter;
+	result << "__cppgm_class_template_" << pattern << '_' << ordinal;
 	return result.str();
 }
 
@@ -751,7 +824,15 @@ void SemanticAnalyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 			if (prior_definition && definition)
 				throw std::runtime_error(
 					"duplicate class template partial definition");
-			if (definition) prior = partial;
+			if (definition)
+			{
+				if (prior.revision ==
+					std::numeric_limits<std::uint32_t>::max())
+					throw std::runtime_error(
+						"too many class partial redeclarations");
+				partial.revision = prior.revision + 1;
+				prior = partial;
+			}
 			return;
 		}
 		owner.partial_specializations.push_back(partial);
@@ -1109,7 +1190,6 @@ void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
 {
 	if (index >= class_templates_.size())
 		throw std::logic_error("invalid class template completion pattern");
-	if (!class_templates_[index].defined) return;
 	if (class_template_specialization_states_.size() <= binding)
 		class_template_specialization_states_.resize(
 			static_cast<std::size_t>(binding) + 1, 0);
@@ -1118,20 +1198,85 @@ void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
 	// Pattern storage is stable across re-entrant publication of nested
 	// templates, so replay borrows the one published pattern rather than copying
 	// its growing specialization and member-definition sequences.
-	const ClassTemplatePattern& pattern = class_templates_[index];
+	ClassTemplatePattern& pattern = class_templates_[index];
 	if ((!HasTrailingTemplateParameterPack(pattern.parameters) &&
 		 arguments.size() != pattern.parameters.size()) ||
 		(HasTrailingTemplateParameterPack(pattern.parameters) &&
 		 arguments.size() < FixedTemplateParameterCount(pattern.parameters)))
 		throw std::logic_error("class template completion argument mismatch");
+	ClassTemplatePartialSelection* selection =
+		binding < class_template_partial_selections_.size() ?
+		&class_template_partial_selections_[binding] : 0;
+	const std::size_t selected_partial = selection ?
+		selection->pattern : kNoDumpEdge;
+	NodeId declaration = pattern.declaration;
+	ScopeId template_scope = kNoScope;
+	if (selected_partial != kNoDumpEdge)
+	{
+		if (selected_partial >= pattern.partial_specializations.size())
+			throw std::logic_error(
+				"selected class partial completion owner is invalid");
+		ClassTemplatePartialPattern& selected =
+			pattern.partial_specializations[selected_partial];
+		if ((arena_->Flags(selected.declaration) &
+			SYNTAX_FLAG_DEFINITION) == 0) return;
+		if (!selection)
+			throw std::logic_error(
+				"selected class partial has no substitution owner");
+		if (selection->revision != selected.revision)
+		{
+			FunctionTemplateDeduction refreshed(selected.parameters);
+			if (!MatchTemplatePartialArguments(selected.parameters,
+				selected.canonical_arguments, arguments, &refreshed))
+				throw std::logic_error(
+					"redeclared class partial no longer matches its shell");
+			selection->bindings.fixed_arguments.swap(
+				refreshed.fixed_arguments);
+			selection->bindings.pack_arguments.swap(
+				refreshed.pack_arguments);
+			selection->bindings.pack_deduction_positions.swap(
+				refreshed.pack_deduction_positions);
+			selection->revision = selected.revision;
+		}
+		const FunctionTemplateDeduction& bindings = selection->bindings;
+		if (bindings.fixed_arguments.size() != selected.parameters.size() ||
+			bindings.pack_arguments.size() != selected.parameters.size())
+			throw std::logic_error(
+				"selected class partial substitution shape is invalid");
+		template_scope = NewScope(selected.lexical_scope,
+			SCOPE_TEMPLATE_PARAMETERS, 0,
+			ScopePrefixId(selected.lexical_scope));
+		for (std::size_t parameter = 0;
+			parameter < selected.parameters.size(); ++parameter)
+			if (selected.parameters[parameter].pack)
+				BindTemplateArgumentPack(template_scope,
+					selected.parameters[parameter],
+					bindings.pack_arguments[parameter], 0,
+					bindings.pack_arguments[parameter].size());
+			else BindTemplateArgument(template_scope,
+				selected.parameters[parameter],
+				bindings.fixed_arguments[parameter]);
+		declaration = selected.declaration;
+	}
+	else
+	{
+		if (!pattern.defined) return;
+		template_scope = BindClassTemplateArguments(pattern, arguments);
+	}
 	class_template_specialization_states_[binding] = 1;
 	const std::string specialization_name =
 		ClassTemplateSpecializationName(*program_, pattern.name, arguments);
-	const ScopeId template_scope =
-		BindClassTemplateArguments(pattern, arguments);
-	(void)AnalyzeClass(pattern.declaration, template_scope,
+	const NameId specialization_emission_name =
+		TemplateArgumentsNeedInternalEmission(*program_, arguments) ?
+			program_->bindings[binding].name :
+			program_->names.Intern(specialization_name);
+	const TypeId completed = AnalyzeClass(declaration, template_scope,
 		std::string(), false, specialization_name, pattern.owner,
-		pattern.name, true, program_->bindings[binding].name);
+		pattern.name, true, program_->bindings[binding].name,
+		specialization_emission_name);
+	const EntityId entity = EntityOf(completed);
+	if (entity == kNoEntity || !program_->entities[entity].complete)
+		throw std::logic_error("class template completion remained incomplete");
 	class_template_specialization_states_[binding] = 2;
 	ApplyClassTemplateMemberDefinitions(index, binding, arguments);
 	QueueClassTemplateMemberDefinitions(index, binding);
@@ -1271,8 +1416,13 @@ bool SemanticAnalyzer::MaterializeTemplatePartialArguments(
 	const std::vector<NodeId>& syntax, ScopeId lexical_scope,
 	std::vector<TemplateArgument>* arguments, std::uint8_t* state)
 {
-	if (*state == 1) return true;
-	if (*state == 2 || *state == 3) return false;
+	if (*state == 1 || *state == 3)
+	{
+		++template_partial_shape_cache_hits_;
+		return *state == 1;
+	}
+	if (*state == 2) return false;
+	++template_partial_shape_materializations_;
 	while (function_template_shape_parameters_.size() <
 		partial_parameters.size())
 	{
@@ -1329,6 +1479,7 @@ bool SemanticAnalyzer::DeduceTemplatePartialArgument(
 	const std::vector<TemplateParameter>& parameters,
 	FunctionTemplateDeduction* deduced) const
 {
+	++template_partial_deduction_visits_;
 	if (pattern.kind != argument.kind) return false;
 	std::size_t dependent = parameters.size();
 	if (pattern.kind == TEMPLATE_ARGUMENT_TYPE)
@@ -1367,6 +1518,10 @@ bool SemanticAnalyzer::DeduceTemplatePartialArgument(
 	if (pattern.kind == TEMPLATE_ARGUMENT_TYPE)
 		return DeduceTemplatePartialType(
 			pattern.type, argument.type, parameters, deduced);
+	if (pattern.value == argument.value &&
+		FunctionTemplateTypeIsDependent(pattern.type))
+		return DeduceTemplatePartialType(
+			pattern.type, argument.type, parameters, deduced);
 	return pattern == argument;
 }
 
@@ -1393,19 +1548,19 @@ std::size_t SemanticAnalyzer::TemplatePartialPackParameter(TypeId type,
 	{
 		const EntityRecord& entity = program_->entities[record.entity];
 		if (entity.template_argument_begin == kNoBinding) break;
-		const std::vector<TemplateArgument> arguments = StoredTemplateArguments(
-			entity.template_argument_begin, entity.template_argument_count);
 		std::size_t found = parameters.size();
-		for (std::size_t i = 0; i < arguments.size(); ++i)
+		for (std::size_t i = 0; i < entity.template_argument_count; ++i)
 		{
+			const TemplateArgument argument = StoredTemplateArgument(
+				entity.template_argument_begin + i);
 			std::size_t candidate = parameters.size();
-			if (arguments[i].kind == TEMPLATE_ARGUMENT_TYPE)
+			if (argument.kind == TEMPLATE_ARGUMENT_TYPE)
 				candidate = TemplatePartialPackParameter(
-					arguments[i].type, parameters, depth + 1);
-			else if (arguments[i].IsDependent() &&
-				arguments[i].dependent_parameter < parameters.size() &&
-				parameters[arguments[i].dependent_parameter].pack)
-				candidate = arguments[i].dependent_parameter;
+					argument.type, parameters, depth + 1);
+			else if (argument.IsDependent() &&
+				argument.dependent_parameter < parameters.size() &&
+				parameters[argument.dependent_parameter].pack)
+				candidate = argument.dependent_parameter;
 			if (candidate == parameters.size()) continue;
 			if (found != parameters.size() && found != candidate)
 				return parameters.size();
@@ -1425,6 +1580,7 @@ bool SemanticAnalyzer::DeduceTemplatePartialType(TypeId pattern,
 	TypeId argument, const std::vector<TemplateParameter>& parameters,
 	FunctionTemplateDeduction* deduced) const
 {
+	++template_partial_deduction_visits_;
 	for (std::size_t i = 0;
 		i < function_template_shape_parameters_.size() &&
 		i < parameters.size(); ++i)
@@ -1546,18 +1702,13 @@ bool SemanticAnalyzer::DeduceTemplatePartialType(TypeId pattern,
 		const EntityRecord& argument_owner = program_->entities[argument_entity];
 		if (pattern_owner.template_argument_begin == kNoBinding ||
 			argument_owner.template_argument_begin == kNoBinding) return false;
-		const std::vector<TemplateArgument> pattern_arguments =
-			StoredTemplateArguments(pattern_owner.template_argument_begin,
-				pattern_owner.template_argument_count);
-		const std::vector<TemplateArgument> argument_arguments =
-			StoredTemplateArguments(argument_owner.template_argument_begin,
-				argument_owner.template_argument_count);
 		const std::vector<TemplateParameter>& class_parameters =
 			class_templates_[class_pattern].parameters;
 		std::size_t pattern_index = 0, argument_index = 0;
-		while (pattern_index < pattern_arguments.size())
+		while (pattern_index < pattern_owner.template_argument_count)
 		{
-			const TemplateArgument& item = pattern_arguments[pattern_index];
+			const TemplateArgument item = StoredTemplateArgument(
+				pattern_owner.template_argument_begin + pattern_index);
 			std::size_t dependent = parameters.size();
 			if (item.kind == TEMPLATE_ARGUMENT_TYPE)
 			{
@@ -1574,23 +1725,28 @@ bool SemanticAnalyzer::DeduceTemplatePartialType(TypeId pattern,
 						item.type, parameters);
 			}
 			else if (item.IsDependent()) dependent = item.dependent_parameter;
-			const bool expansion = dependent < parameters.size() &&
+			const bool expansion = item.pack_expansion &&
+				dependent < parameters.size() &&
 				parameters[dependent].pack && !class_parameters.empty() &&
 				TemplateParameterForArgument(
 					class_parameters, pattern_index).pack;
 			if (expansion)
 			{
 				const std::size_t remaining =
-					pattern_arguments.size() - pattern_index - 1;
-				if (argument_index + remaining > argument_arguments.size())
+					pattern_owner.template_argument_count - pattern_index - 1;
+				if (argument_index + remaining >
+					argument_owner.template_argument_count)
 					return false;
-				const std::size_t last = argument_arguments.size() - remaining;
+				const std::size_t last =
+					argument_owner.template_argument_count - remaining;
 				const std::size_t prior_size =
 					deduced->pack_arguments[dependent].size();
 				deduced->pack_deduction_positions[dependent] = 0;
 				while (argument_index < last)
 					if (!DeduceTemplatePartialArgument(item,
-						argument_arguments[argument_index++], parameters,
+						StoredTemplateArgument(
+							argument_owner.template_argument_begin +
+							argument_index++), parameters,
 						deduced)) return false;
 				if ((prior_size != 0 &&
 					 deduced->pack_arguments[dependent].size() != prior_size) ||
@@ -1599,14 +1755,17 @@ bool SemanticAnalyzer::DeduceTemplatePartialType(TypeId pattern,
 				++pattern_index;
 				continue;
 			}
-			if (argument_index >= argument_arguments.size() ||
-				!DeduceTemplatePartialArgument(item,
-					argument_arguments[argument_index], parameters, deduced))
+			if (argument_index >= argument_owner.template_argument_count)
 				return false;
+			const TemplateArgument argument_item = StoredTemplateArgument(
+				argument_owner.template_argument_begin + argument_index);
+			if (argument_item.pack_expansion ||
+				!DeduceTemplatePartialArgument(
+					item, argument_item, parameters, deduced)) return false;
 			++pattern_index;
 			++argument_index;
 		}
-		return argument_index == argument_arguments.size();
+		return argument_index == argument_owner.template_argument_count;
 	}
 	case TYPE_FUNDAMENTAL:
 	case TYPE_INVALID:
@@ -1642,7 +1801,8 @@ bool SemanticAnalyzer::MatchTemplatePartialArguments(
 				dependent = TemplatePartialPackParameter(item.type, parameters);
 		}
 		else if (item.IsDependent()) dependent = item.dependent_parameter;
-		const bool expansion = dependent < parameters.size() &&
+		const bool expansion = item.pack_expansion &&
+			dependent < parameters.size() &&
 			parameters[dependent].pack;
 		if (expansion)
 		{
@@ -1658,6 +1818,7 @@ bool SemanticAnalyzer::MatchTemplatePartialArguments(
 			continue;
 		}
 		if (argument_index >= arguments.size() ||
+			arguments[argument_index].pack_expansion ||
 			!DeduceTemplatePartialArgument(item, arguments[argument_index],
 				parameters, bindings)) return false;
 		++pattern_index;
@@ -1693,7 +1854,7 @@ std::size_t SemanticAnalyzer::SelectClassTemplatePartial(
 	const std::vector<TemplateArgument>& arguments,
 	FunctionTemplateDeduction* selected_bindings)
 {
-	if (!ClassTemplateArgumentsAreComplete(*program_, arguments))
+	if (!ClassTemplateArgumentsAllowPartialSelection(*program_, arguments))
 		return NoTemplatePattern();
 	std::vector<std::size_t> matches;
 	for (std::size_t candidate_index = 0;
@@ -1782,10 +1943,9 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 				"cached class specialization arguments are invalid");
 		const std::vector<TemplateArgument> cached_arguments =
 			StoredTemplateArguments(first, count);
-		if (pattern.defined &&
-			(old >= class_template_specialization_states_.size() ||
+		if ((old >= class_template_specialization_states_.size() ||
 			 class_template_specialization_states_[old] == 0) &&
-			ClassTemplateArgumentsAreComplete(*program_, cached_arguments))
+			ClassTemplateArgumentsAreLayoutReady(*program_, cached_arguments))
 			CompleteClassTemplateSpecialization(
 				index, old, cached_arguments);
 		if (old < class_template_specialization_states_.size() &&
@@ -1854,10 +2014,9 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 		++template_specialization_cache_hits_;
 		if (arguments != supplied_arguments)
 			class_template_instantiations_.Insert(request_key, old);
-		if (pattern.defined &&
-			(old >= class_template_specialization_states_.size() ||
+		if ((old >= class_template_specialization_states_.size() ||
 			 class_template_specialization_states_[old] == 0) &&
-			ClassTemplateArgumentsAreComplete(*program_, arguments))
+			ClassTemplateArgumentsAreLayoutReady(*program_, arguments))
 			CompleteClassTemplateSpecialization(index, old, arguments);
 		if (old < class_template_specialization_states_.size() &&
 			class_template_specialization_states_[old] == 2)
@@ -1891,15 +2050,12 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 				partial_bindings.fixed_arguments[parameter]);
 		selected_declaration = selected.declaration;
 	}
-	NameId specialization_lookup_name =
-		program_->names.Intern(specialization_name);
-	if (program_->LookupDirect(pattern.owner, specialization_lookup_name,
-		LOOKUP_TYPE).type != kNoType)
-		specialization_lookup_name = program_->names.Intern(
-			ClassTemplateSpecializationScopeName(index, arguments));
+	const NameId specialization_lookup_name = program_->names.Intern(
+		ClassTemplateSpecializationScopeName(
+			index, pattern.specialization_bindings.size()));
 	const TypeId shell = AnalyzeClass(selected_declaration, template_scope,
 		std::string(), false, specialization_name, pattern.owner,
-		pattern.name, selected_partial != NoTemplatePattern(),
+		pattern.name, false,
 		specialization_lookup_name);
 	const EntityId entity = EntityOf(shell);
 	if (entity == kNoEntity || program_->entities[entity].declaration == kNoBinding)
@@ -1911,7 +2067,8 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 		static_cast<std::uint32_t>(index);
 	EntityRecord& specialization = program_->entities[entity];
 	specialization.deferred_template_completion =
-		!ClassTemplateArgumentsAreComplete(*program_, arguments);
+		!specialization.complete &&
+		!ClassTemplateArgumentsAreLayoutReady(*program_, arguments);
 	if (specialization.template_argument_begin == kNoBinding)
 		StoreTemplateArguments(arguments,
 			&specialization.template_argument_begin,
@@ -1924,10 +2081,28 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 	if (class_template_specialization_states_.size() <= binding)
 		class_template_specialization_states_.resize(
 			static_cast<std::size_t>(binding) + 1, 0);
+	if (class_template_partial_selections_.size() <= binding)
+		class_template_partial_selections_.resize(
+			static_cast<std::size_t>(binding) + 1);
+	if (selected_partial != NoTemplatePattern() && selected_partial >
+		std::numeric_limits<std::uint32_t>::max())
+		throw std::runtime_error("too many class template partial patterns");
+	ClassTemplatePartialSelection& selection =
+		class_template_partial_selections_[binding];
+	selection.pattern = selected_partial == NoTemplatePattern() ?
+		kNoDumpEdge : static_cast<std::uint32_t>(selected_partial);
+	selection.revision = selected_partial == NoTemplatePattern() ? 0 :
+		pattern.partial_specializations[selected_partial].revision;
 	if (selected_partial != NoTemplatePattern())
-		class_template_specialization_states_[binding] = 2;
-	else if (pattern.defined &&
-		ClassTemplateArgumentsAreComplete(*program_, arguments))
+	{
+		selection.bindings.fixed_arguments.swap(
+			partial_bindings.fixed_arguments);
+		selection.bindings.pack_arguments.swap(
+			partial_bindings.pack_arguments);
+		selection.bindings.pack_deduction_positions.swap(
+			partial_bindings.pack_deduction_positions);
+	}
+	if (ClassTemplateArgumentsAreLayoutReady(*program_, arguments))
 		CompleteClassTemplateSpecialization(index, binding, arguments);
 	return binding;
 }
@@ -1963,7 +2138,7 @@ void SemanticAnalyzer::UpgradeClassTemplateSpecializations(std::size_t index)
 				program_->template_arguments.size() - first)
 			throw std::logic_error("class specialization arguments are invalid");
 		arguments = StoredTemplateArguments(first, count);
-		if (ClassTemplateArgumentsAreComplete(*program_, arguments))
+		if (ClassTemplateArgumentsAreLayoutReady(*program_, arguments))
 			CompleteClassTemplateSpecialization(index, binding, arguments);
 	}
 }

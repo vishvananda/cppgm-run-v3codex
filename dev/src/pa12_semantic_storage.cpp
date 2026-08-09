@@ -70,6 +70,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		class_template_pattern_by_entity_.capacity() * sizeof(std::uint32_t) +
 		class_template_instantiations_.StorageBytes() +
 		class_template_specialization_states_.capacity() * sizeof(std::uint8_t) +
+		class_template_partial_selections_.capacity() *
+			sizeof(ClassTemplatePartialSelection) +
 		class_template_explicit_instantiation_states_.capacity() *
 			sizeof(std::uint8_t) +
 		class_template_member_definition_counts_.capacity() *
@@ -210,6 +212,21 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 				pattern.canonical_arguments.capacity() *
 					sizeof(TemplateArgument);
 		}
+	}
+	for (std::size_t i = 0;
+		i < class_template_partial_selections_.size(); ++i)
+	{
+		const FunctionTemplateDeduction& bindings =
+			class_template_partial_selections_[i].bindings;
+		bytes += bindings.fixed_arguments.capacity() *
+				sizeof(TemplateArgument) +
+			bindings.pack_arguments.capacity() *
+				sizeof(std::vector<TemplateArgument>) +
+			bindings.pack_deduction_positions.capacity() * sizeof(std::size_t);
+		for (std::size_t pack = 0;
+			pack < bindings.pack_arguments.size(); ++pack)
+			bytes += bindings.pack_arguments[pack].capacity() *
+				sizeof(TemplateArgument);
 	}
 	for (std::size_t i = 0; i < variable_templates_.size(); ++i)
 		bytes += variable_templates_[i].parameters.capacity() *

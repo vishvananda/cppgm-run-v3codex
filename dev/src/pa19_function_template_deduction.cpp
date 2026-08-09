@@ -475,7 +475,8 @@ bool SemanticAnalyzer::DeduceFunctionTemplatePackType(TypeId pattern,
 			}
 			else if (pattern_argument.IsDependent())
 				dependent = pattern_argument.dependent_parameter;
-			const bool expansion = dependent < parameters.size() &&
+			const bool expansion = pattern_argument.pack_expansion &&
+				dependent < parameters.size() &&
 				parameters[dependent].pack && !class_parameters.empty() &&
 				TemplateParameterForArgument(class_parameters,
 					pattern_index).pack;
