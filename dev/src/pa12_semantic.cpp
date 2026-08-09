@@ -1735,7 +1735,7 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 		(arena_->IsTag(target, "class-specifier") ||
 		 arena_->IsTag(target, "class-forward-declaration")))
 	{
-		AnalyzeClassTemplate(target, scope, parameters);
+		AnalyzeClassTemplate(target, scope, parameters, member_access);
 		return;
 	}
 	if (target != kNoNode && RetainVariableTemplate(

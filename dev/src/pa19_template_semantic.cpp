@@ -358,6 +358,10 @@ LookupResult SemanticAnalyzer::LookupStructuredName(NodeId syntax,
 			found = program_->LookupQualified(
 				carrier, direct, component_kind);
 		}
+		if (argument_list == kNoNode &&
+			found.type_declaration != kNoBinding &&
+			!CanAccessMember(found.type_declaration, found.naming_class))
+			throw std::runtime_error("inaccessible qualified type");
 
 		if (argument_list != kNoNode)
 		{
@@ -556,6 +560,46 @@ bool SemanticAnalyzer::ParseExplicitTemplateArguments(NodeId syntax,
 	return true;
 }
 
+bool SemanticAnalyzer::ClassTemplateMemberNamesPrimaryParameters(
+	const std::vector<TemplateParameter>& parameters,
+	const std::vector<TemplateArgument>& arguments) const
+{
+	if (parameters.size() != arguments.size()) return false;
+	for (std::size_t i = 0; i < parameters.size(); ++i)
+	{
+		const TemplateParameter& parameter = parameters[i];
+		const TemplateArgument& argument = arguments[i];
+		if (argument.kind != parameter.kind ||
+			argument.pack_expansion != parameter.pack) return false;
+		if (argument.kind == TEMPLATE_ARGUMENT_TYPE)
+		{
+			if (i >= function_template_shape_parameters_.size() ||
+				argument.type != function_template_shape_parameters_[i])
+				return false;
+		}
+		else if (argument.kind == TEMPLATE_ARGUMENT_INTEGRAL)
+		{
+			if (!argument.IsDependent() || argument.dependent_parameter != i)
+				return false;
+		}
+		else
+		{
+			const TypeRecord marker = program_->types.Get(
+				program_->types.RemoveTopCv(argument.type));
+			if (marker.kind != TYPE_NAMED ||
+				marker.entity >= class_template_pattern_by_entity_.size())
+				return false;
+			const std::uint32_t pattern =
+				class_template_pattern_by_entity_[marker.entity];
+			if (pattern == kNoDumpEdge || pattern >= class_templates_.size() ||
+				!class_templates_[pattern].template_parameter_proxy ||
+				class_templates_[pattern].template_parameter_ordinal != i)
+				return false;
+		}
+	}
+	return true;
+}
+
 bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,
 	ScopeId scope, const std::vector<TemplateParameter>& parameters)
 {
@@ -666,6 +710,35 @@ bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,
 		&owner_shape_state) || owner_shape_state != 1)
 		throw std::runtime_error(
 			"class template member owner pattern is not deducible");
+	for (std::size_t partial_index = 0;
+		partial_index < owner_pattern.partial_specializations.size();
+		++partial_index)
+	{
+		ClassTemplatePartialPattern& partial = class_templates_[
+			pattern_index].partial_specializations[partial_index];
+		if (!MaterializeTemplatePartialArguments(owner_pattern.parameters,
+			partial.parameters, partial.arguments, partial.lexical_scope,
+			&partial.canonical_arguments,
+			&partial.canonical_argument_state)) continue;
+		FunctionTemplateDeduction partial_from_member(partial.parameters);
+		FunctionTemplateDeduction member_from_partial(member.parameters);
+		if (!MatchTemplatePartialArguments(partial.parameters,
+			partial.canonical_arguments, member.canonical_owner_arguments,
+			&partial_from_member) ||
+			!MatchTemplatePartialArguments(member.parameters,
+				member.canonical_owner_arguments, partial.canonical_arguments,
+				&member_from_partial)) continue;
+		if (partial_index > std::numeric_limits<std::uint32_t>::max())
+			throw std::runtime_error("too many class partial patterns");
+		member.owner_partial_pattern =
+			static_cast<std::uint32_t>(partial_index);
+		break;
+	}
+	if (member.owner_partial_pattern == kNoDumpEdge &&
+		!ClassTemplateMemberNamesPrimaryParameters(
+			parameters, member.canonical_owner_arguments))
+		throw std::runtime_error(
+			"class template member owner is not a declared specialization");
 
 	const bool demand_definition =
 		arena_->IsTag(described_declaration, "simple-declaration");
@@ -926,7 +999,8 @@ bool SemanticAnalyzer::AnalyzeFriendClassTemplate(NodeId target,
 }
 
 void SemanticAnalyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
-	const std::vector<TemplateParameter>& parameters)
+	const std::vector<TemplateParameter>& parameters,
+	AccessKind member_access)
 {
 	NamePath partial_primary;
 	std::vector<NodeId> partial_arguments;
@@ -1057,8 +1131,14 @@ void SemanticAnalyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 	const TypeId marker_type =
 		program_->entities[pattern.marker_entity].type;
 	program_->SetTypeName(owner, name, marker_type);
-	program_->AddBinding(owner, BIND_TYPE, name, marker_type,
-		false, 0, NAMED_TEMPLATE_PARAMETER);
+	const BindingId marker_binding = program_->AddBinding(owner, BIND_TYPE,
+		name, marker_type, false, 0, NAMED_TEMPLATE_PARAMETER);
+	const EntityId class_owner = program_->EntityForScope(owner);
+	if (class_owner != kNoEntity)
+	{
+		program_->bindings[marker_binding].member_owner = class_owner;
+		program_->bindings[marker_binding].access = member_access;
+	}
 	const std::size_t index = class_templates_.size();
 	if (index > std::numeric_limits<std::uint32_t>::max())
 		throw std::runtime_error("too many class templates");
@@ -1158,6 +1238,10 @@ void SemanticAnalyzer::ApplyClassTemplateMemberDefinitions(
 			counts[specialization]++;
 		const ClassTemplateMemberPattern& definition =
 			definitions[definition_index];
+		const std::uint32_t selected_partial = specialization <
+			class_template_partial_selections_.size() ?
+			class_template_partial_selections_[specialization].pattern : kNoDumpEdge;
+		if (definition.owner_partial_pattern != selected_partial) continue;
 		FunctionTemplateDeduction owner_bindings(definition.parameters);
 		if (!MatchTemplatePartialArguments(definition.parameters,
 			definition.canonical_owner_arguments, arguments, &owner_bindings))

@@ -163,7 +163,8 @@ private:
 		const std::vector<std::size_t>& templates, EntityId naming_class,
 		bool adl_eligible);
 	void AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
-		const std::vector<TemplateParameter>& parameters);
+		const std::vector<TemplateParameter>& parameters,
+		AccessKind member_access = ACCESS_PUBLIC);
 	void RegisterAliasTemplate(NodeId declaration, ScopeId scope,
 		AccessKind member_access,
 		const std::vector<TemplateParameter>& parameters);
@@ -185,6 +186,9 @@ private:
 	BindingId InstantiateVariableTemplate(NodeId syntax, ScopeId scope);
 	bool AnalyzeClassTemplateMember(NodeId declaration, ScopeId scope,
 		const std::vector<TemplateParameter>& parameters);
+	bool ClassTemplateMemberNamesPrimaryParameters(
+		const std::vector<TemplateParameter>& parameters,
+		const std::vector<TemplateArgument>& arguments) const;
 	bool RetainedClassDeclaresNestedPath(NodeId declaration,
 		const std::vector<NameId>& path);
 	void AnalyzeSimple(NodeId node, ScopeId scope,

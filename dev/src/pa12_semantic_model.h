@@ -858,12 +858,14 @@ struct ClassTemplateMemberPattern
 {
 	ScopeId lexical_scope;
 	NodeId declaration;
+	std::uint32_t owner_partial_pattern;
 	std::vector<TemplateParameter> parameters;
 	std::vector<TemplateArgument> canonical_owner_arguments;
 	std::vector<NameId> nested_owner_path;
 
 	ClassTemplateMemberPattern()
-		: lexical_scope(kNoScope), declaration(kNoNode) {}
+		: lexical_scope(kNoScope), declaration(kNoNode),
+		  owner_partial_pattern(kNoDumpEdge) {}
 };
 
 struct ClassTemplatePartialPattern
