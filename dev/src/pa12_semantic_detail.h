@@ -489,7 +489,7 @@ private:
 		BindingId selected_constructor = kNoBinding);
 	ExpressionInfo AnalyzeVariableInitializer(NodeId initializer,
 		ScopeId scope, TypeId type, bool local);
-	bool TryAnalyzeClassOperatorInitializer(NodeId expression, ScopeId scope,
+	bool TryAnalyzeClassExpressionInitializer(NodeId expression, ScopeId scope,
 		TypeId type, ExpressionInfo* initializer);
 	ExpressionInfo AnalyzeConstantAwareVariableInitializer(NodeId initializer,
 		ScopeId scope, TypeId type, bool local, bool require_constant);
@@ -503,6 +503,8 @@ private:
 	bool TryAnalyzeImmediateBuiltinCall(const std::string& spelling,
 		ScopeId scope, const std::vector<NodeId>& argument_syntax,
 		TypeId target, ExpressionInfo* result);
+	TypeId ResolveArrowOperand(ExpressionInfo* object, ScopeId scope,
+		NodeId object_syntax);
 	bool FunctionalCastPrecedesFunctions(const std::string& spelling,
 		ScopeId scope, TypeId cast_type, NodeId syntax,
 		const std::vector<BindingId>& candidates);
@@ -873,7 +875,8 @@ private:
 	bool TryAnalyzeConstexprIndirectCall(ExpressionInfo* callee,
 		ScopeId scope, const std::vector<NodeId>& argument_syntax,
 		const std::vector<ExpressionInfo>& arguments, TypeId target,
-		ExpressionInfo* result);
+		ExpressionInfo* result,
+		const std::vector<CallConversionFact>* argument_conversions = 0);
 	std::uint32_t ExpressionObject(const ExpressionInfo& expression) const;
 	std::uint32_t ExpressionCompleteObject(
 		const ExpressionInfo& expression) const;

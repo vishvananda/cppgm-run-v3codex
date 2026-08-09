@@ -2183,7 +2183,6 @@ bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 		return false;
 	++constexpr_call_requests_;
 
-	const bool cacheable = !address_result;
 	ConstexprCallKey key;
 	key.function = function;
 	key.receiver_object = receiver_object;
@@ -2218,7 +2217,6 @@ bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 		key.arguments.push_back(argument);
 	}
 
-	if (cacheable)
 	{
 		std::unordered_map<ConstexprCallKey, ConstexprCallFact,
 			ConstexprCallKeyHash>::iterator cached =
@@ -2228,13 +2226,11 @@ bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 			++constexpr_call_cache_hits_;
 			if (cached->second.state == 2)
 			{
-				if (object_result)
-				{
-					*object = cached->second.object;
-					*complete_object = cached->second.complete_object;
-				}
-				else *value = cached->second.value;
-				*has_scalar = !object_result;
+				*address = cached->second.address;
+				*object = cached->second.object;
+				*complete_object = cached->second.complete_object;
+				*has_scalar = cached->second.has_scalar;
+				if (cached->second.has_scalar) *value = cached->second.value;
 				return true;
 			}
 			return false;
@@ -2246,7 +2242,7 @@ bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 	if (constexpr_evaluation_depth_ >= kMaxConstexprDepth ||
 		!ConsumeConstexprStep())
 	{
-		if (cacheable) constexpr_call_facts_.find(key)->second.state = 3;
+		constexpr_call_facts_.find(key)->second.state = 3;
 		return false;
 	}
 
@@ -2319,12 +2315,23 @@ bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 
 	if (flow != CONSTEXPR_FLOW_RETURN)
 	{
-		if (cacheable) constexpr_call_facts_.find(key)->second.state = 3;
+		constexpr_call_facts_.find(key)->second.state = 3;
 		return false;
 	}
 	if (address_result)
 	{
-		if (evaluated_address == kNoConstexprAddress) return false;
+		if (evaluated_address == kNoConstexprAddress)
+		{
+			constexpr_call_facts_.find(key)->second.state = 3;
+			return false;
+		}
+		ConstexprCallFact& fact = constexpr_call_facts_.find(key)->second;
+		fact.state = 2;
+		fact.address = evaluated_address;
+		fact.object = evaluated_object;
+		fact.complete_object = evaluated_complete_object;
+		fact.has_scalar = evaluated_has_scalar;
+		if (evaluated_has_scalar) fact.value = evaluated;
 		*address = evaluated_address;
 		*object = evaluated_object;
 		*complete_object = evaluated_complete_object;
@@ -2339,16 +2346,13 @@ bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 			constexpr_objects_[evaluated_object].newest_local_storage_identity >=
 				frame.first_storage_identity)
 		{
-			if (cacheable) constexpr_call_facts_.find(key)->second.state = 3;
+			constexpr_call_facts_.find(key)->second.state = 3;
 			return false;
 		}
-		if (cacheable)
-		{
-			ConstexprCallFact& fact = constexpr_call_facts_.find(key)->second;
-			fact.state = 2;
-			fact.object = evaluated_object;
-			fact.complete_object = evaluated_complete_object;
-		}
+		ConstexprCallFact& fact = constexpr_call_facts_.find(key)->second;
+		fact.state = 2;
+		fact.object = evaluated_object;
+		fact.complete_object = evaluated_complete_object;
 		*object = evaluated_object;
 		*complete_object = evaluated_complete_object;
 		*has_scalar = false;
@@ -2356,12 +2360,10 @@ bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 	}
 	const ConstexprScalarValue normalized =
 		NormalizeScalarConstant(result_type, evaluated);
-	if (cacheable)
-	{
-		ConstexprCallFact& fact = constexpr_call_facts_.find(key)->second;
-		fact.state = 2;
-		fact.value = normalized;
-	}
+	ConstexprCallFact& fact = constexpr_call_facts_.find(key)->second;
+	fact.state = 2;
+	fact.value = normalized;
+	fact.has_scalar = true;
 	*value = normalized;
 	*has_scalar = true;
 	*complete_object = kNoConstexprObject;

@@ -824,7 +824,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeVariableInitializer(
 					initializer.node = recipe;
 			}
 		}
-		else if (TryAnalyzeClassOperatorInitializer(
+		else if (TryAnalyzeClassExpressionInitializer(
 			expression, scope, type, &initializer)) {}
 		else if (expression != kNoNode &&
 			!program_->entities[class_entity].is_aggregate)

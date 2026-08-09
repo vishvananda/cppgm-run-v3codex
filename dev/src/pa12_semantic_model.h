@@ -576,10 +576,12 @@ struct ConstexprCallFact
 	// 1=in progress, 2=success, 3=expected failure.
 	std::uint8_t state;
 	ConstexprScalarValue value;
-	std::uint32_t object, complete_object;
+	std::uint32_t address, object, complete_object;
+	bool has_scalar;
 	ConstexprCallFact()
-		: state(1), value(), object(kNoConstexprObject),
-		  complete_object(kNoConstexprObject) {}
+		: state(1), value(), address(kNoConstexprAddress),
+		  object(kNoConstexprObject), complete_object(kNoConstexprObject),
+		  has_scalar(false) {}
 };
 
 enum ConversionRank

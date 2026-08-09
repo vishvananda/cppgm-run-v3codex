@@ -1771,10 +1771,19 @@ bool SemanticAnalyzer::TryAnalyzeCallSurrogate(ScopeId scope,
 	}
 	const std::vector<NodeId> no_syntax;
 	const std::vector<ExpressionInfo> no_arguments;
-	const ExpressionInfo converted = BuildResolvedCall(selected.binding,
+	ExpressionInfo converted = BuildResolvedCall(selected.binding,
 		scope, no_syntax, no_arguments, &object, kNoType,
 		program_->bindings[selected.binding].member_owner,
 		&object_conversion, 0);
+	std::vector<CallConversionFact> selected_argument_facts;
+	selected_argument_facts.reserve(arguments.size());
+	for (std::size_t a = 0; a < arguments.size(); ++a)
+		selected_argument_facts.push_back(
+			argument_facts[selected.argument_offset + a]);
+	const std::vector<NodeId> indirect_syntax(arguments.size(), kNoNode);
+	if (TryAnalyzeConstexprIndirectCall(&converted, scope, indirect_syntax,
+		arguments, target, result, &selected_argument_facts))
+		return true;
 
 	const TypeRecord& callable = program_->types.Get(selected.function_type);
 	const TypeId* parameters =
@@ -1791,7 +1800,7 @@ bool SemanticAnalyzer::TryAnalyzeCallSurrogate(ScopeId scope,
 		ExpressionInfo argument = arguments[a];
 		if (a < callable.parameter_count)
 			argument = ApplyCallArgument(argument, parameters[a],
-				&argument_facts[selected.argument_offset + a]);
+				&selected_argument_facts[a]);
 		dump_.Add(call, argument.node);
 	}
 	result->node = call;

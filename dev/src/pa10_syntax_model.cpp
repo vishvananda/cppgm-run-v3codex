@@ -195,7 +195,8 @@ SyntaxEdge::SyntaxEdge(NodeId child_value) : child(child_value), next(kNoEdge)
 
 SyntaxArena::SyntaxArena(StringTable& strings,
 	const std::vector<SyntaxLiteralFact>& literal_facts)
-	: strings_(strings), literal_facts_(literal_facts) {}
+	: strings_(strings), literal_facts_(literal_facts),
+	  rollback_edge_base_(0) {}
 
 NodeId SyntaxArena::Make(const char* tag)
 {
@@ -218,26 +219,12 @@ void SyntaxArena::Add(NodeId parent, NodeId child)
 	if (edges_.size() >= kNoEdge)
 		throw std::runtime_error("too many syntax edges");
 	const std::uint32_t edge = static_cast<std::uint32_t>(edges_.size());
-	edges_.push_back(SyntaxEdge(child));
 	SyntaxNode& node = nodes_[parent];
-	// A speculative parse can attach to a surviving node and then roll its
-	// edge back.  Repair that compact checkpoint tail lazily before reusing
-	// the same edge identity; otherwise the replacement edge links to itself.
-	if (node.first_edge == kNoEdge || node.first_edge >= edge)
-		node.first_edge = edge;
-	else
-	{
-		if (node.last_edge >= edge)
-		{
-			std::uint32_t last = node.first_edge;
-			while (edges_[last].next != kNoEdge &&
-				edges_[last].next < edge)
-				last = edges_[last].next;
-			edges_[last].next = kNoEdge;
-			node.last_edge = last;
-		}
-		edges_[node.last_edge].next = edge;
-	}
+	edge_mutations_.push_back(
+		EdgeMutation(parent, node.first_edge, node.last_edge));
+	edges_.push_back(SyntaxEdge(child));
+	if (node.first_edge == kNoEdge) node.first_edge = edge;
+	else edges_[node.last_edge].next = edge;
 	node.last_edge = edge;
 }
 
@@ -247,8 +234,10 @@ void SyntaxArena::Prepend(NodeId parent, NodeId child)
 	if (edges_.size() >= kNoEdge)
 		throw std::runtime_error("too many syntax edges");
 	const std::uint32_t edge = static_cast<std::uint32_t>(edges_.size());
-	edges_.push_back(SyntaxEdge(child));
 	SyntaxNode& node = nodes_[parent];
+	edge_mutations_.push_back(
+		EdgeMutation(parent, node.first_edge, node.last_edge));
+	edges_.push_back(SyntaxEdge(child));
 	edges_[edge].next = node.first_edge;
 	node.first_edge = edge;
 	if (node.last_edge == kNoEdge) node.last_edge = edge;
@@ -259,10 +248,37 @@ std::size_t SyntaxArena::EdgeMark() const { return edges_.size(); }
 
 void SyntaxArena::Rollback(std::size_t node_mark, std::size_t edge_mark)
 {
-	nodes_.erase(nodes_.begin() + node_mark, nodes_.end());
+	if (node_mark > nodes_.size() || edge_mark > edges_.size() ||
+		edge_mark < rollback_edge_base_ ||
+		edge_mutations_.size() != edges_.size() - rollback_edge_base_)
+		throw std::logic_error("invalid syntax rollback checkpoint");
+	for (std::size_t edge = edges_.size(); edge != edge_mark; --edge)
+	{
+		const EdgeMutation& mutation =
+			edge_mutations_[edge - rollback_edge_base_ - 1];
+		if (mutation.parent >= node_mark) continue;
+		SyntaxNode& parent = nodes_[mutation.parent];
+		if (mutation.last_edge != kNoEdge)
+			edges_[mutation.last_edge].next = kNoEdge;
+		parent.first_edge = mutation.first_edge;
+		parent.last_edge = mutation.last_edge;
+	}
+	edge_mutations_.erase(
+		edge_mutations_.begin() + (edge_mark - rollback_edge_base_),
+		edge_mutations_.end());
 	edges_.erase(edges_.begin() + edge_mark, edges_.end());
-	// Surviving nodes only have edges below edge_mark: speculative callers mark
-	// before attaching children to an existing parent.
+	nodes_.erase(nodes_.begin() + node_mark, nodes_.end());
+}
+
+std::size_t SyntaxArena::RollbackStorageBytes() const
+{
+	return edge_mutations_.capacity() * sizeof(EdgeMutation);
+}
+
+void SyntaxArena::ReleaseRollbackStorage()
+{
+	std::vector<EdgeMutation>().swap(edge_mutations_);
+	rollback_edge_base_ = edges_.size();
 }
 
 void SyntaxArena::Write(std::ostream& output, NodeId root,

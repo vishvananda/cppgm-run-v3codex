@@ -107,18 +107,13 @@ bool SemanticAnalyzer::TryAnalyzeImmediateBuiltinCall(
 	return true;
 }
 
-bool SemanticAnalyzer::TryAnalyzeClassOperatorInitializer(
+bool SemanticAnalyzer::TryAnalyzeClassExpressionInitializer(
 	NodeId expression, ScopeId scope, TypeId type,
 	ExpressionInfo* initializer)
 {
 	const EntityId entity = EntityOf(type);
 	if (expression == kNoNode || entity == kNoEntity ||
-		program_->entities[entity].is_aggregate ||
-		(!arena_->IsTag(expression, "unary-expression") &&
-		 !arena_->IsTag(expression, "postfix-expression") &&
-		 !arena_->IsTag(expression, "binary-expression") &&
-		 !arena_->IsTag(expression, "assignment-expression") &&
-		 !arena_->IsTag(expression, "subscript-expression"))) return false;
+		program_->entities[entity].is_aggregate) return false;
 	*initializer = AnalyzeExpression(expression, scope);
 	if (program_->types.RemoveTopCv(EffectiveType(initializer->type)) ==
 		program_->types.RemoveTopCv(type) &&
@@ -134,6 +129,34 @@ bool SemanticAnalyzer::TryAnalyzeClassOperatorInitializer(
 	else initializer->node =
 		BuildClassValueConstructorAction(type, *initializer);
 	return true;
+}
+
+TypeId SemanticAnalyzer::ResolveArrowOperand(
+	ExpressionInfo* object, ScopeId scope, NodeId object_syntax)
+{
+	TypeId owner_type = EffectiveType(object->type);
+	std::vector<TypeId> arrow_types;
+	while (program_->types.Get(
+		program_->types.RemoveTopCv(owner_type)).kind != TYPE_POINTER)
+	{
+		const TypeId arrow_type = program_->types.RemoveTopCv(owner_type);
+		if (EntityOf(arrow_type) == kNoEntity ||
+			std::find(arrow_types.begin(), arrow_types.end(), arrow_type) !=
+				arrow_types.end())
+			throw std::runtime_error(
+				"arrow operand has no terminating operator-> chain");
+		arrow_types.push_back(arrow_type);
+		std::vector<NodeId> syntax(1, object_syntax);
+		std::vector<ExpressionInfo> operands(1, *object);
+		ExpressionInfo converted;
+		if (!TryAnalyzeOverloadedOperator("->", scope, syntax, operands,
+			true, kNoType, &converted))
+			throw std::runtime_error("arrow operand is not a pointer");
+		*object = converted;
+		owner_type = EffectiveType(object->type);
+	}
+	const TypeId pointer_type = program_->types.RemoveTopCv(owner_type);
+	return program_->types.Get(pointer_type).child;
 }
 
 bool SemanticAnalyzer::RefQualifierViable(const ExpressionInfo& object,
@@ -382,13 +405,8 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 	const bool arrow = PayloadSource(callee) == "->";
 	TypeId owner_type = EffectiveType(object.type);
 	if (arrow)
-	{
-		owner_type = program_->types.RemoveTopCv(owner_type);
-		const TypeRecord pointer = program_->types.Get(owner_type);
-		if (pointer.kind != TYPE_POINTER)
-			throw std::runtime_error("arrow operand is not a pointer");
-		owner_type = pointer.child;
-	}
+		owner_type = ResolveArrowOperand(
+			&object, scope, arena_->EdgeChild(object_edge));
 	const EntityId entity = EntityOf(owner_type);
 	if (entity == kNoEntity ||
 		program_->entities[entity].member_scope == kNoScope)
@@ -474,14 +492,8 @@ bool SemanticAnalyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 	const bool arrow = PayloadSource(callee) == "->";
 	TypeId destroyed_type = EffectiveType(object.type);
 	if (arrow)
-	{
-		destroyed_type = program_->types.RemoveTopCv(destroyed_type);
-		const TypeRecord pointer = program_->types.Get(destroyed_type);
-		if (pointer.kind != TYPE_POINTER)
-			throw std::runtime_error(
-				"explicit destructor arrow operand is not a pointer");
-		destroyed_type = pointer.child;
-	}
+		destroyed_type = ResolveArrowOperand(
+			&object, scope, arena_->EdgeChild(object_edge));
 	destroyed_type = program_->types.RemoveTopCv(EffectiveType(destroyed_type));
 	const EntityId entity = EntityOf(destroyed_type);
 	if (entity == kNoEntity)
@@ -673,31 +685,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 		object = MaterializeTemporary(object);
 	TypeId owner_type = EffectiveType(object.type);
 	if (source_operation == "->")
-	{
-		std::vector<TypeId> arrow_types;
-		while (program_->types.Get(
-			program_->types.RemoveTopCv(owner_type)).kind != TYPE_POINTER)
-		{
-			const TypeId arrow_type = program_->types.RemoveTopCv(owner_type);
-			if (EntityOf(arrow_type) == kNoEntity ||
-				std::find(arrow_types.begin(), arrow_types.end(), arrow_type) !=
-					arrow_types.end())
-				throw std::runtime_error(
-					"arrow operand has no terminating operator-> chain");
-			arrow_types.push_back(arrow_type);
-			std::vector<NodeId> syntax(1, arena_->EdgeChild(first));
-			std::vector<ExpressionInfo> operands(1, object);
-			ExpressionInfo converted;
-			if (!TryAnalyzeOverloadedOperator("->", scope, syntax, operands,
-				true, kNoType, &converted))
-				throw std::runtime_error("arrow operand is not a pointer");
-			object = converted;
-			owner_type = EffectiveType(object.type);
-		}
-		owner_type = program_->types.RemoveTopCv(owner_type);
-		const TypeRecord pointer = program_->types.Get(owner_type);
-		owner_type = pointer.child;
-	}
+		owner_type = ResolveArrowOperand(
+			&object, scope, arena_->EdgeChild(first));
 	const EntityId entity = EntityOf(owner_type);
 	if (entity == kNoEntity || program_->entities[entity].member_scope == kNoScope)
 		throw std::runtime_error("member access on non-class object");

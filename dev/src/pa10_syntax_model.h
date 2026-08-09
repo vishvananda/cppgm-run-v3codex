@@ -133,6 +133,8 @@ public:
 	std::size_t NodeMark() const;
 	std::size_t EdgeMark() const;
 	void Rollback(std::size_t node_mark, std::size_t edge_mark);
+	std::size_t RollbackStorageBytes() const;
+	void ReleaseRollbackStorage();
 	void Write(std::ostream& output, NodeId root, std::size_t* output_bytes,
 		std::size_t* max_depth, std::size_t* stack_storage_bytes) const;
 	std::size_t Nodes() const;
@@ -163,10 +165,21 @@ public:
 	std::size_t StorageBytes() const;
 
 private:
+	struct EdgeMutation
+	{
+		NodeId parent;
+		std::uint32_t first_edge, last_edge;
+		EdgeMutation(NodeId parent_value, std::uint32_t first,
+			std::uint32_t last)
+			: parent(parent_value), first_edge(first), last_edge(last) {}
+	};
+
 	StringTable& strings_;
 	const std::vector<SyntaxLiteralFact>& literal_facts_;
 	std::vector<SyntaxNode> nodes_;
 	std::vector<SyntaxEdge> edges_;
+	std::vector<EdgeMutation> edge_mutations_;
+	std::size_t rollback_edge_base_;
 };
 
 class SyntaxTreeConsumer

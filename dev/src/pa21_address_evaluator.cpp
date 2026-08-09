@@ -225,7 +225,8 @@ bool SemanticAnalyzer::ExpressionTruth(
 bool SemanticAnalyzer::TryAnalyzeConstexprIndirectCall(ExpressionInfo* callee,
 	ScopeId scope, const std::vector<NodeId>& argument_syntax,
 	const std::vector<ExpressionInfo>& arguments, TypeId target,
-	ExpressionInfo* result)
+	ExpressionInfo* result,
+	const std::vector<CallConversionFact>* argument_conversions)
 {
 	std::uint32_t callable_address = ExpressionAddress(*callee);
 	if (callable_address == kNoConstexprAddress)
@@ -245,7 +246,7 @@ bool SemanticAnalyzer::TryAnalyzeConstexprIndirectCall(ExpressionInfo* callee,
 	const BindingId function = static_cast<BindingId>(address->identity);
 	if (program_->bindings[function].kind != BIND_FUNCTION) return false;
 	*result = BuildResolvedCall(function, scope, argument_syntax,
-		arguments, 0, target);
+		arguments, 0, target, kNoEntity, 0, argument_conversions);
 	return true;
 }
 

@@ -1,0 +1,8 @@
+global @pointer [binding=internal, object=_ZL7pointer] = {
+  i32 17
+}
+
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  block ^entry:
+    return i32 0
+}

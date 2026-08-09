@@ -2957,6 +2957,8 @@ void RunSyntaxTranslationUnit(const std::string& path,
 	Parser parser(sink.Tokens(), strings, arena, stats);
 	const std::chrono::steady_clock::time_point parse_started = std::chrono::steady_clock::now();
 	const NodeId root = parser.ParseTranslationUnit();
+	const std::size_t rollback_storage = arena.RollbackStorageBytes();
+	arena.ReleaseRollbackStorage();
 	const std::chrono::steady_clock::time_point boundary_started = std::chrono::steady_clock::now();
 	if (output)
 		arena.Write(*output, root, stats ? &stats->syntax_output_bytes : 0,
@@ -2972,7 +2974,7 @@ void RunSyntaxTranslationUnit(const std::string& path,
 		stats->token_storage_bytes = sink.StorageBytes();
 		stats->syntax_storage_bytes = arena.StorageBytes() +
 			strings.StorageBytes();
-		stats->parser_storage_bytes = parser.StorageBytes();
+		stats->parser_storage_bytes = parser.StorageBytes() + rollback_storage;
 		stats->peak_stage_storage_bytes = source.size() +
 			stats->token_storage_bytes + stats->syntax_storage_bytes +
 			stats->parser_storage_bytes + stats->render_stack_storage_bytes;
