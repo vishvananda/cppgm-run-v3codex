@@ -42,6 +42,34 @@ FundamentalKind StringElementKind(FundamentalType type)
 	throw std::runtime_error("invalid string literal element type");
 }
 
+FundamentalKind SemanticFundamentalKind(FundamentalType type)
+{
+	switch (type)
+	{
+	case FT_SIGNED_CHAR: return FUND_SIGNED_CHAR;
+	case FT_SHORT_INT: return FUND_SHORT_INT;
+	case FT_INT: return FUND_INT;
+	case FT_LONG_INT: return FUND_LONG_INT;
+	case FT_LONG_LONG_INT: return FUND_LONG_LONG_INT;
+	case FT_UNSIGNED_CHAR: return FUND_UNSIGNED_CHAR;
+	case FT_UNSIGNED_SHORT_INT: return FUND_UNSIGNED_SHORT_INT;
+	case FT_UNSIGNED_INT: return FUND_UNSIGNED_INT;
+	case FT_UNSIGNED_LONG_INT: return FUND_UNSIGNED_LONG_INT;
+	case FT_UNSIGNED_LONG_LONG_INT: return FUND_UNSIGNED_LONG_LONG_INT;
+	case FT_WCHAR_T: return FUND_WCHAR_T;
+	case FT_CHAR: return FUND_CHAR;
+	case FT_CHAR16_T: return FUND_CHAR16_T;
+	case FT_CHAR32_T: return FUND_CHAR32_T;
+	case FT_BOOL: return FUND_BOOL;
+	case FT_FLOAT: return FUND_FLOAT;
+	case FT_DOUBLE: return FUND_DOUBLE;
+	case FT_LONG_DOUBLE: return FUND_LONG_DOUBLE;
+	case FT_VOID: return FUND_VOID;
+	case FT_NULLPTR_T: return FUND_NULLPTR_T;
+	}
+	throw std::logic_error("unknown retained literal type");
+}
+
 std::size_t CharacterUnitCount(const std::string& spelling,
 	std::size_t quote, std::size_t close)
 {
@@ -164,6 +192,38 @@ std::int64_t SemanticAnalyzer::ApplyConstantBinary(
 	}
 	const std::uint64_t unsigned_left = static_cast<std::uint64_t>(left);
 	const std::uint64_t unsigned_right = static_cast<std::uint64_t>(right);
+	const std::size_t width = integral_type ? IntegralWidth(operand_type) : 64;
+	const std::int64_t signed_minimum = width == 64 ? INT64_MIN :
+		- static_cast<std::int64_t>(std::uint64_t(1) << (width - 1));
+	const std::int64_t signed_maximum = width == 64 ? INT64_MAX :
+		static_cast<std::int64_t>(
+			(std::uint64_t(1) << (width - 1)) - 1);
+	if (integral_type && !unsigned_type)
+	{
+		const bool addition_overflow = operation == "+" &&
+			((right > 0 && left > signed_maximum - right) ||
+			 (right < 0 && left < signed_minimum - right));
+		const bool subtraction_overflow = operation == "-" &&
+			((right < 0 && left > signed_maximum + right) ||
+			 (right > 0 && left < signed_minimum + right));
+		bool multiplication_overflow = false;
+		if (operation == "*" && left != 0 && right != 0)
+		{
+			if (left == -1) multiplication_overflow = right == signed_minimum;
+			else if (right == -1)
+				multiplication_overflow = left == signed_minimum;
+			else if (left > 0)
+				multiplication_overflow = right > 0 ?
+					left > signed_maximum / right :
+					right < signed_minimum / left;
+			else multiplication_overflow = right > 0 ?
+				left < signed_minimum / right :
+				left < signed_maximum / right;
+		}
+		if (addition_overflow || subtraction_overflow ||
+			multiplication_overflow)
+			throw std::runtime_error("signed constant arithmetic overflow");
+	}
 	std::int64_t value = 0;
 	if (operation == "+")
 		value = static_cast<std::int64_t>(unsigned_left + unsigned_right);
@@ -178,7 +238,7 @@ std::int64_t SemanticAnalyzer::ApplyConstantBinary(
 			value = static_cast<std::int64_t>(unsigned_left / unsigned_right);
 		else
 		{
-			if (left == INT64_MIN && right == -1)
+			if (left == signed_minimum && right == -1)
 				throw std::runtime_error("signed division overflow");
 			value = left / right;
 		}
@@ -190,7 +250,7 @@ std::int64_t SemanticAnalyzer::ApplyConstantBinary(
 			value = static_cast<std::int64_t>(unsigned_left % unsigned_right);
 		else
 		{
-			if (left == INT64_MIN && right == -1)
+			if (left == signed_minimum && right == -1)
 				throw std::runtime_error("signed division overflow");
 			value = left % right;
 		}
@@ -198,10 +258,19 @@ std::int64_t SemanticAnalyzer::ApplyConstantBinary(
 	else if (operation == "<<" || operation == ">>")
 	{
 		if (right < 0 || static_cast<std::uint64_t>(right) >=
-			IntegralWidth(operand_type))
+			width)
 			throw std::runtime_error("invalid constant shift count");
 		if (operation == "<<")
+		{
+			if (!unsigned_type && left < 0)
+				throw std::runtime_error("invalid negative constant left shift");
+			const std::uint64_t maximum = width == 64 ?
+				std::numeric_limits<std::uint64_t>::max() :
+				(std::uint64_t(1) << width) - 1;
+			if (unsigned_left > (maximum >> right))
+				throw std::runtime_error("constant left shift overflow");
 			value = static_cast<std::int64_t>(unsigned_left << right);
+		}
 		else value = unsigned_type ?
 			static_cast<std::int64_t>(unsigned_left >> right) : left >> right;
 	}
@@ -266,24 +335,35 @@ ExpressionInfo SemanticAnalyzer::MakeStringLiteral(
 }
 
 ExpressionInfo SemanticAnalyzer::MakeBuiltinScalarLiteral(
-	const std::string& spelling)
+	const std::string& spelling, NodeId syntax)
 {
+	FundamentalType retained_type = FT_VOID;
+	std::uint64_t retained_value = 0;
+	const bool retained = syntax != kNoNode && arena_->ScalarLiteralFact(
+		syntax, &retained_type, &retained_value);
 	const std::size_t quote = spelling.find('\'');
 	if (quote != std::string::npos)
 	{
 		const std::size_t close = spelling.rfind('\'');
-		const std::int64_t value = ParseInteger(spelling);
-		FundamentalKind kind = FUND_INT;
-		if (quote == 0)
+		std::int64_t value = retained ?
+			static_cast<std::int64_t>(retained_value) : ParseInteger(spelling);
+		FundamentalKind kind = retained ?
+			SemanticFundamentalKind(retained_type) : FUND_INT;
+		if (!retained && quote == 0)
 		{
 			const std::size_t units = CharacterUnitCount(spelling, quote, close);
 			kind = units == 1 && value <= 0x7F ? FUND_CHAR : FUND_INT;
 		}
-		else if (quote == 1 && spelling[0] == 'L') kind = FUND_WCHAR_T;
-		else if (quote == 1 && spelling[0] == 'u') kind = FUND_CHAR16_T;
-		else if (quote == 1 && spelling[0] == 'U') kind = FUND_CHAR32_T;
-		else throw std::runtime_error("invalid character literal prefix");
-		ExpressionInfo result = MakeLiteral(program_->types.Fundamental(kind),
+		else if (!retained)
+		{
+			if (quote == 1 && spelling[0] == 'L') kind = FUND_WCHAR_T;
+			else if (quote == 1 && spelling[0] == 'u') kind = FUND_CHAR16_T;
+			else if (quote == 1 && spelling[0] == 'U') kind = FUND_CHAR32_T;
+			else throw std::runtime_error("invalid character literal prefix");
+		}
+		const TypeId type = program_->types.Fundamental(kind);
+		value = NormalizeIntegralConstant(type, value);
+		ExpressionInfo result = MakeLiteral(type,
 			program_->names.Intern(spelling));
 		result.constant = true;
 		result.value = value;
@@ -292,19 +372,24 @@ ExpressionInfo SemanticAnalyzer::MakeBuiltinScalarLiteral(
 	if (IsFloatingLiteralSpelling(spelling))
 	{
 		const char suffix = spelling.empty() ? 0 : spelling[spelling.size() - 1];
-		const FundamentalKind kind = suffix == 'f' || suffix == 'F' ?
+		const FundamentalKind kind = retained ?
+			SemanticFundamentalKind(retained_type) :
+			suffix == 'f' || suffix == 'F' ?
 			FUND_FLOAT : suffix == 'l' || suffix == 'L' ?
 			FUND_LONG_DOUBLE : FUND_DOUBLE;
 		return MakeLiteral(program_->types.Fundamental(kind),
 			program_->names.Intern(spelling));
 	}
-	const std::int64_t value = ParseInteger(spelling);
+	const std::int64_t value = retained ?
+		static_cast<std::int64_t>(retained_value) : ParseInteger(spelling);
 	const bool has_u = spelling.find('u') != std::string::npos ||
 		spelling.find('U') != std::string::npos;
 	std::size_t ls = 0;
 	for (std::size_t i = 0; i < spelling.size(); ++i)
 		if (spelling[i] == 'l' || spelling[i] == 'L') ++ls;
-	const FundamentalKind kind = ls > 1 ?
+	const FundamentalKind kind = retained ?
+		SemanticFundamentalKind(retained_type) :
+		ls > 1 ?
 		(has_u ? FUND_UNSIGNED_LONG_LONG_INT : FUND_LONG_LONG_INT) :
 		ls == 1 ? (has_u ? FUND_UNSIGNED_LONG_INT : FUND_LONG_INT) :
 		has_u ? FUND_UNSIGNED_INT : FUND_INT;
@@ -488,8 +573,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 		const ScopeId carrier = program_->ScopeForType(qualifier);
 		const NodeId qualified = FindChild(decltype_name, "qualified-name");
 		if (carrier != kNoScope && qualified != kNoNode)
-			found = program_->LookupQualified(carrier,
-				ParseNamePath(PayloadSource(qualified)), LOOKUP_ORDINARY);
+			found = LookupStructuredName(
+				qualified, carrier, LOOKUP_ORDINARY);
 	}
 	else if (syntax != kNoNode &&
 		FindChild(syntax, "structured-type-name") != kNoNode)

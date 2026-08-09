@@ -1716,8 +1716,8 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 				if (carrier == kNoScope)
 					throw std::runtime_error(
 						"decltype qualifier does not name a class type");
-				const LookupResult found = program_->LookupQualified(carrier,
-					ParseNamePath(arena_->Payload(qualified)), LOOKUP_TYPE);
+				const LookupResult found = LookupStructuredName(
+					qualified, carrier, LOOKUP_TYPE);
 				if (found.type == kNoType)
 					throw std::runtime_error(
 						"qualified decltype type was not found");

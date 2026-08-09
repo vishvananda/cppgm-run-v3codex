@@ -25,17 +25,33 @@ extern const std::uint16_t kRShiftFirstToken;
 extern const std::uint16_t kRShiftSecondToken;
 extern const std::uint16_t kPragmaPackPushToken;
 extern const std::uint16_t kPragmaPackPopToken;
+extern const std::uint32_t kNoLiteralFact;
 extern const NodeId kNoNode;
 extern const std::uint32_t kNoEdge;
 
 typedef InternedStringTable StringTable;
 
+struct SyntaxLiteralFact
+{
+	std::uint64_t value;
+	FundamentalType type;
+	bool value_valid;
+
+	SyntaxLiteralFact(FundamentalType type_value, std::uint64_t value_value,
+		bool value_valid_value)
+		: value(value_value), type(type_value),
+		  value_valid(value_valid_value) {}
+};
+
 struct SyntaxToken
 {
-	std::uint16_t kind;
+	std::uint32_t kind_and_literal_fact;
 	TextId spelling;
 
-	SyntaxToken(std::uint16_t kind_value, TextId spelling_value);
+	SyntaxToken(std::uint16_t kind_value, TextId spelling_value,
+		std::uint32_t literal_fact = kNoLiteralFact);
+	std::uint16_t Kind() const;
+	std::uint32_t LiteralFact() const;
 };
 
 class SyntaxTokenSink : public IPostTokenStream
@@ -62,13 +78,17 @@ public:
 	void EmitPragmaPackPop();
 	void EmitEof();
 	const std::vector<SyntaxToken>& Tokens() const;
+	const std::vector<SyntaxLiteralFact>& LiteralFacts() const;
 	std::size_t StorageBytes() const;
 
 private:
 	void EmitLiteralSpelling(const std::string& source);
+	void EmitScalarLiteral(const std::string& source, FundamentalType type,
+		const void* data, std::size_t size);
 
 	StringTable& strings_;
 	std::vector<SyntaxToken> tokens_;
+	std::vector<SyntaxLiteralFact> literal_facts_;
 };
 
 struct SyntaxNode
@@ -89,7 +109,8 @@ enum SyntaxNodeFlags
 {
 	SYNTAX_FLAG_NONE = 0,
 	SYNTAX_FLAG_DEFINITION = 1,
-	SYNTAX_FLAG_SEMANTIC_ONLY = 2
+	SYNTAX_FLAG_SEMANTIC_ONLY = 2,
+	SYNTAX_FLAG_LITERAL_FACT = 4
 };
 
 struct SyntaxEdge
@@ -103,7 +124,8 @@ struct SyntaxEdge
 class SyntaxArena
 {
 public:
-	explicit SyntaxArena(StringTable& strings);
+	SyntaxArena(StringTable& strings,
+		const std::vector<SyntaxLiteralFact>& literal_facts);
 	NodeId Make(const char* tag);
 	NodeId Make(const char* tag, const std::string& payload);
 	void Add(NodeId parent, NodeId child);
@@ -121,6 +143,9 @@ public:
 	const std::string& SemanticPayload(NodeId node) const;
 	TextId SemanticPayloadId(NodeId node) const;
 	void SetSemanticPayload(NodeId node, TextId payload);
+	void SetLiteralFact(NodeId node, std::uint32_t fact);
+	bool ScalarLiteralFact(NodeId node, FundamentalType* type,
+		std::uint64_t* value) const;
 	void AppendImmediateParameterNames(NodeId declarator,
 		std::vector<TextId>* result) const;
 	void SetPayload(NodeId node, const std::string& payload);
@@ -139,6 +164,7 @@ public:
 
 private:
 	StringTable& strings_;
+	const std::vector<SyntaxLiteralFact>& literal_facts_;
 	std::vector<SyntaxNode> nodes_;
 	std::vector<SyntaxEdge> edges_;
 };

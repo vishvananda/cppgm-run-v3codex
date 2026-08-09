@@ -747,9 +747,8 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 						name, "qualified-type-name");
 					const LookupResult found = carrier == kNoScope ||
 						qualified == kNoNode ? LookupResult() :
-						program_->LookupQualified(carrier,
-							ParseNamePath(PayloadSource(qualified)),
-							LOOKUP_ORDINARY);
+						LookupStructuredName(
+							qualified, carrier, LOOKUP_ORDINARY);
 					if (found.ordinary == kNoBinding ||
 						!program_->bindings[found.ordinary].constant)
 						return false;

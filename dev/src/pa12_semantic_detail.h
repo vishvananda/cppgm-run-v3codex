@@ -38,6 +38,7 @@ public:
 		  braced_initialization_context_(0),
 		  current_pack_alignment_(0),
 		  loop_depth_(0), switch_depth_(0), unevaluated_depth_(0),
+		  constant_evaluation_suppressed_depth_(0),
 		  expression_count_(0),
 		  associated_generation_(0), candidate_generation_(0),
 		  associated_scope_visits_(0), associated_declaration_visits_(0),
@@ -727,7 +728,8 @@ private:
 		ValueCategory category = VALUE_PRVALUE);
 	ExpressionInfo MakeStringLiteral(const std::string& spelling,
 		std::size_t* character_count = 0);
-	ExpressionInfo MakeBuiltinScalarLiteral(const std::string& spelling);
+	ExpressionInfo MakeBuiltinScalarLiteral(const std::string& spelling,
+		NodeId syntax = kNoNode);
 	bool TryAnalyzeUserDefinedStringLiteral(const std::string& spelling,
 		ScopeId scope, TypeId target, ExpressionInfo* result);
 	bool TryAnalyzeUserDefinedNumericLiteral(const std::string& spelling,
@@ -888,6 +890,7 @@ private:
 	std::size_t loop_depth_;
 	std::size_t switch_depth_;
 	std::size_t unevaluated_depth_;
+	std::size_t constant_evaluation_suppressed_depth_;
 	std::size_t expression_count_;
 	std::uint32_t associated_generation_;
 	std::uint32_t candidate_generation_;

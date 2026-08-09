@@ -2,64 +2,106 @@
 
 ## Stage Design and Spec Alignment
 
-PA20 extends the retained PA19 template graph rather than reconstructing source
-during lowering. Canonical tagged type/value arguments and parameter-partition
-offsets own specialization identity; indexed primary sets and O(1)-average
-caches publish class, function, member, and variable specializations; immutable
-parent-linked scopes carry fixed and packed substitutions into replay. Demand
-remains separate from completion, and LowIR consumes the selected typed binding.
+PA20 extends the retained PA19 graph through the assignment's LowIR endpoint.
+The forward path is immutable source buffers -> streaming preprocessing ->
+interned PA10 tokens and one retained syntax arena -> canonical PA11/PA12
+semantic IDs -> typed PA15 LowIR -> terminal text rendering. The PA10 syntax
+boundary and terminal LowIR text are assignment adaptations to `spec.md`;
+machine IR and ELF are later-stage surfaces and are not claimed here.
 
-The completed stage adds width-aware integral constant evaluation, dependent
-qualified values and `decltype`, explicit and supported partial specialization,
-variable templates, lockstep type/value/function packs, declaration-time
-validation, and pack-aware initialization/lowering. Array-capable aggregate
-helpers are confined to the functional-cast boundary that needs them, preserving
-earlier aggregate representations. PA21 general constexpr interpretation and
-later SFINAE remain outside this stage.
+Template identity is `(pattern ID, canonical type/value arguments, pack
+partition offsets)`. A pattern ID also owns its lexical scope, so member
+patterns replayed in an enclosing specialization receive distinct context.
+Patterns and retained definitions have stable ownership; parent-linked
+template scopes bind fixed arguments and pack slices. Class completion,
+member-definition demand, function demand, and virtual demand use separate
+monotonic states/worklists. Lowering consumes selected `BindingId`, `TypeId`,
+layout, conversion, and action facts without semantic lookup or text parsing.
 
-## Current Failure Map
-
-No open failures. PA20 improved from the turn checkpoint of 136/164 to 164/164;
-PA1-PA19 pass 2,013/2,013, and the PA20 file audit passes. The prior PA3 recovery
-blocker was a linear punctuator-table scan on the 12.0-MB triple-token fixture;
-direct token dispatch removed the timeout without changing oracle output.
-
-## Active Checkpoint
-
-Full-stage closure is complete. Semantic ownership flows from parsed template
-parameters and terminal template-ids through canonical argument construction,
-indexed specialization selection/publication, retained-scope replay, monotonic
-completion/demand, and typed lowering. Expected lookup/publication cost is
-O(argument syntax plus same-name candidate shape), with O(1)-average cache
-access; pack replay and generated output are linear in produced elements.
-
-Validation is the required PA20 report, the exact prior-through-PA19 report,
-file audit, focused accept/reject pairs for empty packs and argument kinds, and
-representative specialization/tokenizer scaling.
+The audit repaired the remaining phase-boundary gaps: scalar literals now carry
+their phase-7 type and decoded value in a dense side table; dependent
+`decltype(... )::name` paths carry structured interned components; and
+constant folding implements the target's usual arithmetic conversions,
+short-circuit selection, and signed-overflow rejection.
 
 ## Performance Evidence
 
-| Case | Sizes | Release evidence |
-|---|---:|---|
-| Integral assertion folding | 64/128/256 | Semantic nodes 453/901/1,797; peak bytes 147,772/279,396/542,605; median semantic time 0.704/1.303/2.526 ms |
-| Function specialization cache | 32/64/128, each requested twice | Requests 128/256/512; hits 96/192/384; emitted functions 33/65/129; median semantic time 2.558/4.770/9.408 ms |
-| Pack/base/demand checkpoints | 16/32/64 representative elements | Nodes, lookup/layout visits, demand, storage, and output grew linearly; lockstep and independent-pack cases showed no Cartesian expansion |
-| Explicit class/function specializations | 16/32/64, seven-run medians | Tokens 793/1,545/3,049; nodes 248/488/968; lookups 294/582/1,158; requests 96/192/384 with 64/128/256 hits; peak bytes 298,217/588,249/1,168,314; output bytes 4,798/9,388/18,637; semantic time 1.527/2.695/5.164 ms |
-| PA3 12,039,435-byte tokenizer fixture | before/after | 8.220 s -> 3.395 s compiler time (8.41 s -> 3.58 s wall); output remained byte-identical |
+Seven-run medians were measured with release telemetry on fresh generated
+families. Counts below are for 1x/2x/4x semantic inputs.
 
-## Completed Checkpoints
+| Family | Sizes | Work counters | Peak bytes / LowIR bytes | Median semantic time |
+|---|---:|---|---|---:|
+| Integral folding | 128/256/512 assertions | tokens 3,210/6,410/12,810; nodes 1,669/3,333/6,661; lookups 5/5/5 | 551,252/1,088,724/2,165,716; output 106 fixed | 2.561/5.072/10.145 ms |
+| Class/function specialization reuse | 16/32/64 keys, each called twice | requests 128/256/512; hits 96/192/384; demanded functions 16/32/64; lookups 827/1,643/3,275 | 379,669/753,245/1,500,397; output 6,008/12,100/24,292 | 2.006/3.693/7.273 ms |
+| Type-pack relay expansion | 16/32/64 elements | nodes 79/143/271; lookups 67/115/211; requests 3 fixed; hits 1 fixed; demanded functions 2 fixed | 89,858/152,264/293,912; output 3,921/7,609/14,985 | 0.544/0.781/1.198 ms |
 
-| Checkpoint | Result |
-|---|---|
-| Typed integral constants and assertions | Canonical width/signedness-aware literals, casts, folds, and assertion validation; PA20 15 -> 39 |
-| Fixed-arity integral arguments | Tagged canonical type/value keys, defaults, substitution, ABI identity; PA20 39 -> 83 |
-| Trailing type/function packs | Ordered pack ranges, offsets, empty/fixed-prefix deduction, forwarding, `sizeof...`; PA20 83 -> 96 |
-| Lockstep expansion | Nested call, functional, braced, member, and out-of-class owner replay; PA20 96 -> 103 |
-| Multiple pack partitions | Canonical per-parameter offsets, symbolic value shapes, ADL; PA20 103 -> 106 |
-| Base packs | Ordered base identities, lookup/layout, initializer actions, offset lowering; PA20 106 -> 110 |
-| Dependent declaration boundaries | `decltype`, `alignas`, `typename`, and type/expression disambiguation; PA20 110 -> 116 |
-| Dependent helper values | Structural constant conversion and recursive pack element scopes; PA20 116 -> 120 |
-| Specialized owners and demand | Stable static definitions plus deduplicated object/function/vtable demand; PA20 120 -> 125 |
-| Literal packs | Typed character/string decoding and literal-operator dispatch; PA20 125 -> 130 |
-| Retained template-id conversions | Angle matching, defaults, derived deduction, target-directed function addresses; PA20 130 -> 136 |
-| Full specialization and replay closure | Explicit class/function/member/variable specializations, partial class/variable selection, qualified constants, constexpr-call subset, empty/defaulted packs, aggregate functional lowering, and PA3 recovery; PA20 136 -> 164, PA1-PA19 2,013/2,013, audit pass |
+Doubling ratios are 2.00x/2.00x, 1.84x/1.97x, and 1.44x/1.53x respectively.
+Counters explain the slopes, cache hits stay at 75% in the specialization
+family, and pack work follows produced elements without a Cartesian product.
+No unexplained slow path met the profiling trigger.
+
+## Architecture Review
+
+A representative constant declaration,
+`static_assert(0xffffffff > 0)`, enters post-tokenization with the phase-7
+`unsigned int` type and decoded value. Its 8-byte token refers to one 16-byte
+dense scalar fact. PA10 attaches that fact ID to the literal node without
+growing every syntax node. PA12 interns the semantic fundamental `TypeId`,
+normalizes the value at its width, applies typed conversions/folding once, and
+records the constant on the semantic dump. Static-assert validation consumes
+that fact; lowering ignores the declaration because it has no runtime unit.
+
+For the demanded probe `twice<N>() -> Box<N>::value`, PA10 parses each template
+body once. Explicit integral arguments become canonical `TemplateArgument`
+records; the class/function tables probe compact specialization keys. A miss
+creates a parent-linked substitution scope, rechecks dependent retained nodes,
+publishes one specialization binding, and marks completion. Duplicate calls hit
+the same table entry. Typed demand enqueues each function once; lowering uses
+the binding index to emit one function and direct calls, then the typed program
+is rendered once as terminal LowIR.
+
+Checklist disposition:
+
+- Representation/ownership: source, token/literal facts, syntax, synchronous
+  semantic graph, and typed LowIR each have explicit owners. The staged
+  syntax/semantic overlap is bounded; no rendered text is parsed back.
+- Identity/lookup: names, types, scopes, entities, bindings, template arguments,
+  specializations, and pack offsets use compact identities and dense indexes.
+  Structured qualified names remove semantic spelling keys from PA20 paths.
+- Templates/repeated work: retained patterns are stable, scopes are overlays,
+  cache misses return `kNoBinding`/false where candidate failure is expected,
+  and completion/demand states prevent duplicate or global retry work.
+- Lowering/backend: `SemanticGraphView` is borrowed synchronously and lowers
+  directly to `TypedProgram`; no lookup, host compiler, LowIR reparse, machine
+  IR, or ELF path participates in PA20.
+- Allocation/scaling: hot tables use vectors/open addressing and compact IDs;
+  no per-node ownership was added. Telemetry exposes specialization requests,
+  hits, worklist pushes, demand emissions, graph sizes, storage, and phase time.
+- Self-containment: compiler-source scans found no host/reference execution,
+  test/ref-name branch, cached output, or hosted-library shortcut. The fork in
+  `test_runner.cpp` is harness-only and absent from the compiler source set.
+
+## Final Architecture Review
+
+All audit findings are closed. The PA20 path is canonical, demand-driven,
+self-contained, and linear in the measured semantic input and produced output.
+The file audit has no fatal issue; its advisory header-division findings and the
+pre-existing duplicate optional partial-specialization matcher do not alter the
+in-scope ownership or complexity bounds. The required report passes 2,185/2,185
+tests across all 20 stages. The cohesive audit commit and clean-worktree proof
+close the stage.
+
+## Checkpoint Audit Ledger
+
+| Checkpoint group | Independent disposition | Final evidence |
+|---|---|---|
+| Integral assertions (`c74ce9d5`) | Pass after audit repair | phase-7 typed scalar facts; correct mixed-sign conversion, selection, and overflow rules |
+| Integral template arguments (`c7783d8d`) | Pass after audit repair | canonical width/value arguments now originate from retained typed literals |
+| Pack identity and expansion (`6d3d2a75`-`80cef651`) | Pass | canonical partition offsets, lockstep element scopes, no Cartesian scaling |
+| Base packs (`e744d35c`) | Pass | ordered bases feed indexed lookup/layout and typed lowering actions |
+| Dependent boundaries/helpers (`d8e5ca44`-`dee259a3`) | Pass after audit repair | structured `decltype` qualified paths and canonical constant lookup |
+| Specialized artifacts/demand (`c8745d36`) | Pass | stable patterns, monotonic class/member/function/vtable demand |
+| Literal dispatch (`10b67478`) | Pass after audit repair | scalar type/value handoff complements retained UDL/string syntax |
+| Target-directed conversions (`7f74da10`) | Pass | selected callable/binding facts survive into lowering |
+| Specialization closure (`40fc166d`) | Pass after audit repair | explicit/late specialization path retained; operator owner split restores file-audit limits |
+| Final PA-wide audit | Pass | file audit passes; full report passes 2,185/2,185 and 20/20 stages |

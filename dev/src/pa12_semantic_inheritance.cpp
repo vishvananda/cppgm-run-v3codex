@@ -622,8 +622,33 @@ ExpressionInfo SemanticAnalyzer::AnalyzeConditional(NodeId node, ScopeId scope)
 		!IsNullptr(condition.type))
 		condition = ApplyExplicitConversion(condition,
 			program_->types.Fundamental(FUND_BOOL));
-	ExpressionInfo yes = AnalyzeExpression(children[1], scope);
-	ExpressionInfo no = AnalyzeExpression(children[2], scope);
+	const bool known_condition = condition.constant;
+	const bool suppress_yes = known_condition && condition.value == 0;
+	const bool suppress_no = known_condition && condition.value != 0;
+	if (suppress_yes) ++constant_evaluation_suppressed_depth_;
+	ExpressionInfo yes;
+	try
+	{
+		yes = AnalyzeExpression(children[1], scope);
+	}
+	catch (...)
+	{
+		if (suppress_yes) --constant_evaluation_suppressed_depth_;
+		throw;
+	}
+	if (suppress_yes) --constant_evaluation_suppressed_depth_;
+	if (suppress_no) ++constant_evaluation_suppressed_depth_;
+	ExpressionInfo no;
+	try
+	{
+		no = AnalyzeExpression(children[2], scope);
+	}
+	catch (...)
+	{
+		if (suppress_no) --constant_evaluation_suppressed_depth_;
+		throw;
+	}
+	if (suppress_no) --constant_evaluation_suppressed_depth_;
 	TypeId type = kNoType;
 	ValueCategory category = VALUE_PRVALUE;
 	const TypeId yes_object = program_->types.RemoveTopCv(
@@ -706,7 +731,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeConditional(NodeId node, ScopeId scope)
 	result.node = expression;
 	result.type = type;
 	result.category = category;
-	result.constant = condition.constant &&
+	result.constant = constant_evaluation_suppressed_depth_ == 0 &&
+		condition.constant &&
 		(condition.value ? yes.constant : no.constant);
 	if (result.constant) result.value = condition.value ? yes.value : no.value;
 	++expression_count_;

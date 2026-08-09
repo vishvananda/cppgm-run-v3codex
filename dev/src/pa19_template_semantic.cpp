@@ -670,7 +670,12 @@ void SemanticAnalyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 		class_templates_[primary].partial_specializations.push_back(partial);
 		return;
 	}
-	const NamePath path = ParseNamePath(arena_->Payload(declaration));
+	NamePath path;
+	const NodeId name_structure = FindChild(
+		declaration, "structured-type-name");
+	if (name_structure != kNoNode)
+		path = StructuredNamePath(name_structure);
+	else path.Push(program_->names.Intern(arena_->Payload(declaration)));
 	const NameId name = path.Last();
 	const ScopeId owner = ResolveOwner(scope, path);
 	if (name == 0 || owner == kNoScope)
@@ -925,10 +930,11 @@ void SemanticAnalyzer::ApplyClassTemplateMemberDefinitions(
 		else if (arena_->IsTag(node, "class-specifier") ||
 			arena_->IsTag(node, "class-forward-declaration"))
 		{
-			const NamePath nested_name =
-				ParseNamePath(arena_->Payload(node));
-			const std::string terminal =
-				program_->names.Get(nested_name.Last());
+			const NodeId structure = FindChild(node, "structured-type-name");
+			const NameId terminal_name = structure == kNoNode ?
+				program_->names.Intern(arena_->Payload(node)) :
+				StructuredNamePath(structure).Last();
+			const std::string terminal = program_->names.Get(terminal_name);
 			(void)AnalyzeClass(node, definition_scope, std::string(), false,
 				terminal, actual_owner, 0, true);
 		}

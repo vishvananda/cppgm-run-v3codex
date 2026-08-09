@@ -161,34 +161,34 @@ private:
 	}
 	bool At(SimpleTokenKind kind) const
 	{
-		return position_ < tokens_.size() && tokens_[position_].kind ==
+		return position_ < tokens_.size() && tokens_[position_].Kind() ==
 			static_cast<std::uint16_t>(kind);
 	}
 	bool AtOffset(std::size_t offset, SimpleTokenKind kind) const
 	{
 		return position_ + offset < tokens_.size() &&
-			tokens_[position_ + offset].kind ==
+			tokens_[position_ + offset].Kind() ==
 				static_cast<std::uint16_t>(kind);
 	}
 	bool AtIdentifier() const
 	{
 		return position_ < tokens_.size() &&
-			tokens_[position_].kind == kIdentifierToken;
+			tokens_[position_].Kind() == kIdentifierToken;
 	}
 	bool AtLiteral() const
 	{
 		return position_ < tokens_.size() &&
-			tokens_[position_].kind == kLiteralToken;
+			tokens_[position_].Kind() == kLiteralToken;
 	}
 	bool AtEof() const
 	{
 		return position_ < tokens_.size() &&
-			tokens_[position_].kind == kEofToken;
+			tokens_[position_].Kind() == kEofToken;
 	}
 	bool AtCloseAngle() const
 	{
 		if (position_ >= tokens_.size()) return false;
-		const std::uint16_t kind = tokens_[position_].kind;
+		const std::uint16_t kind = tokens_[position_].Kind();
 		return kind == static_cast<std::uint16_t>(OP_GT) ||
 			kind == kRShiftFirstToken || kind == kRShiftSecondToken;
 	}
@@ -220,13 +220,13 @@ private:
 	std::string TokenDescription(std::size_t position) const
 	{
 		const SyntaxToken& token = tokens_[position];
-		if (token.kind == kIdentifierToken) return "TT_IDENTIFIER:" +
+		if (token.Kind() == kIdentifierToken) return "TT_IDENTIFIER:" +
 			Spelling(position);
-		if (token.kind == kLiteralToken) return Spelling(position);
-		if (token.kind == kRShiftFirstToken ||
-			token.kind == kRShiftSecondToken) return "OP_RSHIFT:>>";
+		if (token.Kind() == kLiteralToken) return Spelling(position);
+		if (token.Kind() == kRShiftFirstToken ||
+			token.Kind() == kRShiftSecondToken) return "OP_RSHIFT:>>";
 		return std::string(SimpleTokenKindName(
-			static_cast<SimpleTokenKind>(token.kind))) + ":" +
+			static_cast<SimpleTokenKind>(token.Kind()))) + ":" +
 			Spelling(position);
 	}
 	NodeId MakeTokenNode(const char* tag, std::size_t position)
@@ -249,7 +249,7 @@ private:
 		{
 			if (i != first)
 			{
-				const std::uint16_t previous = tokens_[i - 1].kind;
+				const std::uint16_t previous = tokens_[i - 1].Kind();
 				if (previous == static_cast<std::uint16_t>(KW_CONST) ||
 					previous == static_cast<std::uint16_t>(KW_VOLATILE) ||
 					previous == static_cast<std::uint16_t>(KW_TYPENAME) ||
@@ -283,14 +283,14 @@ private:
 			return true;
 		}
 		if (position_ + 1 < tokens_.size() &&
-			tokens_[position_].kind == kRShiftFirstToken &&
-			tokens_[position_ + 1].kind == kRShiftSecondToken)
+			tokens_[position_].Kind() == kRShiftFirstToken &&
+			tokens_[position_ + 1].Kind() == kRShiftSecondToken)
 		{
 			position_ += 2;
 			return true;
 		}
 		if (position_ < tokens_.size() &&
-			IsOperatorNameToken(tokens_[position_].kind))
+			IsOperatorNameToken(tokens_[position_].Kind()))
 		{
 			++position_;
 			return true;
@@ -381,7 +381,7 @@ private:
 	}
 	bool IsLikelyTypeIdentifier(std::size_t position) const
 	{ if (position >= tokens_.size() ||
-		tokens_[position].kind != kIdentifierToken) return false;
+		tokens_[position].Kind() != kIdentifierToken) return false;
 		const std::string& name = Spelling(position);
 		if (HasNameFact(tokens_[position].spelling, kKnownType)) return true;
 		return name.find('C') != std::string::npos ||
@@ -391,10 +391,10 @@ private:
 	bool ParseConversionTypeName()
 	{ while (At(KW_CONST) || At(KW_VOLATILE)) ++position_;
 		if (position_ < tokens_.size() &&
-			IsFundamentalKind(tokens_[position_].kind))
+			IsFundamentalKind(tokens_[position_].Kind()))
 		{ do ++position_;
 			while (position_ < tokens_.size() &&
-				IsFundamentalKind(tokens_[position_].kind)); }
+				IsFundamentalKind(tokens_[position_].Kind())); }
 		else
 		{ std::string ignored;
 			if (!ParseName(&ignored, true, false, true)) return false; }
@@ -555,7 +555,7 @@ private:
 			At(KW_STRUCT) || At(KW_UNION) || At(KW_ENUM) || At(KW_CONST) ||
 			At(KW_VOLATILE)) return true;
 		if (position_ < tokens_.size() &&
-			IsFundamentalKind(tokens_[position_].kind))
+			IsFundamentalKind(tokens_[position_].Kind()))
 			return !At(KW_BOOL) || !AtOffset(1, OP_LPAREN) ||
 				AtOffset(2, OP_RPAREN);
 		if (At(OP_COLON2) ||
@@ -688,7 +688,7 @@ NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id,
 		SkipAttributes();
 		if (position_ >= tokens_.size()) break;
 		const std::size_t token_position = position_;
-		const std::uint16_t kind = tokens_[position_].kind;
+		const std::uint16_t kind = tokens_[position_].Kind();
 		if (kind < kSimpleTokenCount && IsFundamentalKind(kind))
 		{
 			if (saw_user_type) break;
@@ -732,24 +732,15 @@ NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id,
 			const NodeId expression = ParseExpression();
 			if (expression == kNoNode) throw Error("expected decltype expression");
 			Expect(OP_RPAREN);
-			const std::size_t qualifier_first = position_;
-			while (Match(OP_COLON2))
-			{
-				Match(KW_TEMPLATE);
-				if (!AtIdentifier())
-					throw Error("expected qualified decltype type name");
-				++position_;
-				TryConsumeTemplateArguments();
-			}
+			const NodeId qualified =
+				ParseDecltypeQualifiedName("qualified-type-name");
 			const std::string rendered = (typename_decltype ?
 				"typename " : std::string()) +
 				JoinSpellings(first, position_);
 			const NodeId node = arena_.Make(for_type_id ?
 				"decltype-specifier" : "decl-specifier", rendered);
 			arena_.Add(node, expression);
-			if (position_ != qualifier_first)
-				arena_.Add(node, arena_.Make("qualified-type-name",
-					JoinSpellings(qualifier_first + 1, position_)));
+			arena_.Add(node, qualified);
 			arena_.Add(sequence, node);
 			if (first_type && first_type->empty()) *first_type = rendered;
 			consumed = true;
@@ -870,8 +861,8 @@ NodeId Parser::ParseParameterClause()
 		std::string name;
 		NodeId declarator = kNoNode;
 		if (At(OP_LPAREN) && position_ + 2 < tokens_.size() &&
-			tokens_[position_ + 1].kind == kIdentifierToken &&
-			tokens_[position_ + 2].kind ==
+			tokens_[position_ + 1].Kind() == kIdentifierToken &&
+			tokens_[position_ + 2].Kind() ==
 				static_cast<std::uint16_t>(OP_RPAREN))
 		{
 			position_ += 1;
@@ -989,7 +980,7 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 		(AtOffset(1, OP_RPAREN) || AtOffset(1, OP_DOTS) ||
 		 IsLikelyTypeIdentifier(position_ + 1) ||
 		 (position_ + 1 < tokens_.size() &&
-		  IsDeclSpecifierKeyword(tokens_[position_ + 1].kind)));
+		  IsDeclSpecifierKeyword(tokens_[position_ + 1].Kind())));
 	if (!abstract_function_suffix && Match(OP_LPAREN))
 	{
 		const NodeId nested_declarator = arena_.Make("nested-declarator");
@@ -1021,22 +1012,22 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 			const std::size_t name_last = position_;
 			std::size_t conversion = name_last;
 			for (std::size_t i = name_first; i < name_last; ++i)
-				if (tokens_[i].kind ==
+				if (tokens_[i].Kind() ==
 					static_cast<std::uint16_t>(KW_OPERATOR)) conversion = i;
 			const bool conversion_name = conversion + 1 < name_last &&
-				!IsOperatorNameToken(tokens_[conversion + 1].kind) &&
-				!(tokens_[conversion + 1].kind == kRShiftFirstToken &&
+				!IsOperatorNameToken(tokens_[conversion + 1].Kind()) &&
+				!(tokens_[conversion + 1].Kind() == kRShiftFirstToken &&
 				  conversion + 2 < name_last &&
-				  tokens_[conversion + 2].kind == kRShiftSecondToken) &&
-				tokens_[conversion + 1].kind !=
+				  tokens_[conversion + 2].Kind() == kRShiftSecondToken) &&
+				tokens_[conversion + 1].Kind() !=
 					static_cast<std::uint16_t>(OP_LPAREN) &&
-				tokens_[conversion + 1].kind !=
+				tokens_[conversion + 1].Kind() !=
 					static_cast<std::uint16_t>(OP_LSQUARE) &&
-				tokens_[conversion + 1].kind !=
+				tokens_[conversion + 1].Kind() !=
 					static_cast<std::uint16_t>(KW_NEW) &&
-				tokens_[conversion + 1].kind !=
+				tokens_[conversion + 1].Kind() !=
 					static_cast<std::uint16_t>(KW_DELETE) &&
-				tokens_[conversion + 1].kind != kLiteralToken;
+				tokens_[conversion + 1].Kind() != kLiteralToken;
 			if (conversion_name)
 			{
 				position_ = conversion + 1;
@@ -1097,20 +1088,20 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 			const bool parameter_like = AtOffset(1, OP_RPAREN) ||
 				AtOffset(1, OP_DOTS) ||
 				(position_ + 1 < tokens_.size() &&
-					 (IsDeclSpecifierKeyword(tokens_[position_ + 1].kind) ||
-					  IsFundamentalKind(tokens_[position_ + 1].kind) ||
-					  tokens_[position_ + 1].kind ==
+					 (IsDeclSpecifierKeyword(tokens_[position_ + 1].Kind()) ||
+					  IsFundamentalKind(tokens_[position_ + 1].Kind()) ||
+					  tokens_[position_ + 1].Kind() ==
 						static_cast<std::uint16_t>(KW_DECLTYPE) ||
-					  tokens_[position_ + 1].kind ==
+					  tokens_[position_ + 1].Kind() ==
 						static_cast<std::uint16_t>(KW_TYPENAME) ||
-					  tokens_[position_ + 1].kind ==
+					  tokens_[position_ + 1].Kind() ==
 						static_cast<std::uint16_t>(KW_STRUCT) ||
-					  tokens_[position_ + 1].kind ==
+					  tokens_[position_ + 1].Kind() ==
 						static_cast<std::uint16_t>(KW_ENUM) ||
 					  IsLikelyTypeIdentifier(position_ + 1) ||
-					  (tokens_[position_ + 1].kind == kIdentifierToken &&
+					  (tokens_[position_ + 1].Kind() == kIdentifierToken &&
 					   position_ + 2 < tokens_.size() &&
-					   tokens_[position_ + 2].kind ==
+					   tokens_[position_ + 2].Kind() ==
 						static_cast<std::uint16_t>(OP_COLON2))));
 			if (!parameter_like) break;
 			const NodeId parameters = ParseParameterClause();
@@ -1254,7 +1245,7 @@ NodeId Parser::ParseExpression(int minimum_precedence)
 			left = conditional;
 			continue;
 		}
-		const std::uint16_t kind = tokens_[position_].kind;
+		const std::uint16_t kind = tokens_[position_].Kind();
 		if (angle_stop_depth_ != 0 &&
 			(kind == static_cast<std::uint16_t>(OP_GT) ||
 			 kind == kRShiftFirstToken || kind == kRShiftSecondToken)) break;
@@ -1264,7 +1255,7 @@ NodeId Parser::ParseExpression(int minimum_precedence)
 		if (kind == kRShiftFirstToken)
 		{
 			if (position_ + 1 >= tokens_.size() ||
-				tokens_[position_ + 1].kind != kRShiftSecondToken) break;
+				tokens_[position_ + 1].Kind() != kRShiftSecondToken) break;
 			position_ += 2;
 		}
 		else ++position_;
@@ -1314,13 +1305,12 @@ NodeId Parser::ParsePackExpansion(NodeId value)
 	arena_.Add(pack, value);
 	return pack;
 }
-
 NodeId Parser::ParsePrimaryExpression()
 {
-	if (AtLiteral())
-	{
-		const std::string value = Spelling(position_++);
-		return arena_.Make("literal", value);
+	if (AtLiteral()) {
+		const std::size_t token = position_++;
+		const NodeId literal = arena_.Make("literal", Spelling(token));
+		arena_.SetLiteralFact(literal, tokens_[token].LiteralFact()); return literal;
 	}
 	if (At(KW_TRUE) || At(KW_FALSE) || At(KW_NULLPTR) || At(KW_THIS))
 	{
@@ -1385,7 +1375,7 @@ NodeId Parser::ParsePrimaryExpression()
 		const bool type_like = At(KW_CONST) || At(KW_VOLATILE) ||
 			At(KW_STRUCT) || At(KW_CLASS) || At(KW_UNION) ||
 			(position_ < tokens_.size() &&
-			 IsFundamentalKind(tokens_[position_].kind)) ||
+			 IsFundamentalKind(tokens_[position_].Kind())) ||
 			IsLikelyTypeIdentifier(position_);
 		if (type_like && ParseTypeId(cast) && Match(OP_RPAREN) &&
 			!At(OP_SEMICOLON) && !At(OP_COMMA) && !At(OP_RPAREN) &&
@@ -1414,15 +1404,15 @@ NodeId Parser::ParsePrimaryExpression()
 		return ParseDecltypeValueName();
 	if (AtIdentifier() || At(OP_COLON2) || At(KW_OPERATOR) ||
 		(position_ < tokens_.size() &&
-		 IsFundamentalKind(tokens_[position_].kind)))
+		 IsFundamentalKind(tokens_[position_].Kind())))
 	{
 		std::string name;
 		if (position_ < tokens_.size() &&
-			IsFundamentalKind(tokens_[position_].kind))
+			IsFundamentalKind(tokens_[position_].Kind()))
 		{
 			const std::size_t first = position_++;
 			while (position_ < tokens_.size() &&
-				IsFundamentalKind(tokens_[position_].kind)) ++position_;
+				IsFundamentalKind(tokens_[position_].Kind())) ++position_;
 			for (std::size_t i = first; i < position_; ++i)
 			{
 				if (i != first) name += ' ';
@@ -1550,7 +1540,7 @@ NodeId Parser::ParseUnaryExpression()
 	{
 		const std::size_t keyword = position_++;
 		const SimpleTokenKind kind = static_cast<SimpleTokenKind>(
-			tokens_[keyword].kind);
+			tokens_[keyword].Kind());
 		if (kind == KW_SIZEOF && Match(OP_DOTS)) {
 			Expect(OP_LPAREN); if (!AtIdentifier()) throw Error("expected parameter pack name");
 			const TextId name = tokens_[position_++].spelling; Expect(OP_RPAREN);
@@ -1571,7 +1561,7 @@ NodeId Parser::ParseUnaryExpression()
 			prefer_type = true;
 		if (At(KW_STRUCT) || At(KW_CLASS) || At(KW_UNION) ||
 			(position_ < tokens_.size() &&
-			 IsFundamentalKind(tokens_[position_].kind))) prefer_type = true;
+			 IsFundamentalKind(tokens_[position_].Kind()))) prefer_type = true;
 		if (AtIdentifier() && (IsLikelyTypeIdentifier(position_) ||
 			(AtOffset(1, OP_LT) && HasNameFact(tokens_[position_].spelling,
 				kKnownTemplate))) &&
@@ -1628,19 +1618,19 @@ NodeId Parser::ParseUnaryExpression()
 			std::size_t depth = 1;
 			while (scan < tokens_.size() && depth != 0)
 			{
-				if (tokens_[scan].kind == static_cast<std::uint16_t>(OP_LPAREN))
+				if (tokens_[scan].Kind() == static_cast<std::uint16_t>(OP_LPAREN))
 					++depth;
-				else if (tokens_[scan].kind ==
+				else if (tokens_[scan].Kind() ==
 					static_cast<std::uint16_t>(OP_RPAREN)) --depth;
 				++scan;
 			}
 			if (depth != 0) throw Error("unterminated new parentheses");
 			bool placement = scan < tokens_.size() &&
-				(tokens_[scan].kind == kIdentifierToken ||
-				 (tokens_[scan].kind < kSimpleTokenCount &&
-				  (IsFundamentalKind(tokens_[scan].kind) ||
-				   tokens_[scan].kind == static_cast<std::uint16_t>(KW_CONST) ||
-				   tokens_[scan].kind == static_cast<std::uint16_t>(KW_VOLATILE))));
+				(tokens_[scan].Kind() == kIdentifierToken ||
+				 (tokens_[scan].Kind() < kSimpleTokenCount &&
+				  (IsFundamentalKind(tokens_[scan].Kind()) ||
+				   tokens_[scan].Kind() == static_cast<std::uint16_t>(KW_CONST) ||
+				   tokens_[scan].Kind() == static_cast<std::uint16_t>(KW_VOLATILE))));
 			if (placement)
 			{
 				const std::size_t first = position_;
@@ -1816,7 +1806,7 @@ NodeId Parser::ParseCompoundStatement()
 			At(KW_TYPEDEF) || At(KW_TYPENAME) || At(KW_CLASS) || At(KW_STRUCT) || At(KW_UNION) ||
 			At(KW_ENUM) || At(KW_DECLTYPE) || At(KW_STATIC_ASSERT) || At(KW_EXTERN) ||
 			(position_ < tokens_.size() &&
-			 IsDeclSpecifierKeyword(tokens_[position_].kind)) ||
+			 IsDeclSpecifierKeyword(tokens_[position_].Kind())) ||
 			(IsLikelyTypeIdentifier(position_) && !AtOffset(1, OP_COLON2) &&
 			 !AtOffset(1, OP_LSQUARE)) ||
 			(((AtIdentifier() && AtOffset(1, OP_COLON2)) || At(OP_COLON2)) &&
@@ -2042,7 +2032,7 @@ NodeId Parser::ParseStatement()
 		At(KW_CLASS) || At(KW_STRUCT) || At(KW_UNION) || At(KW_ENUM) ||
 		At(KW_DECLTYPE) || At(KW_STATIC_ASSERT) || At(KW_EXTERN) ||
 		(position_ < tokens_.size() &&
-		 IsDeclSpecifierKeyword(tokens_[position_].kind)) ||
+		 IsDeclSpecifierKeyword(tokens_[position_].Kind())) ||
 		(IsLikelyTypeIdentifier(position_) && !AtOffset(1, OP_COLON2) &&
 		 !AtOffset(1, OP_LSQUARE)) ||
 		(((AtIdentifier() && AtOffset(1, OP_COLON2)) || At(OP_COLON2)) &&
@@ -2229,9 +2219,11 @@ NodeId Parser::ParseNonTypeTemplateParameter()
 	{
 		const NodeId argument = arena_.Make("default-template-argument");
 		NodeId value;
-		if (bare_int_parameter && parameter_name.empty() && AtLiteral())
-			value = arena_.Make("literal", "TT_LITERAL:" +
-				Spelling(position_++));
+		if (bare_int_parameter && parameter_name.empty() && AtLiteral()) {
+			const std::size_t token = position_++;
+			value = arena_.Make("literal", "TT_LITERAL:" + Spelling(token));
+			arena_.SetLiteralFact(value, tokens_[token].LiteralFact());
+		}
 		else value = ParseExpression(2);
 		if (value == kNoNode) throw Error("expected non-type default");
 		arena_.Add(argument, value);
@@ -2444,7 +2436,7 @@ NodeId Parser::ParseSpecialMember(bool)
 		for (std::size_t i = 0; i < specifiers.size(); ++i)
 		{
 			const std::size_t specifier = specifiers[i];
-			if (tokens_[specifier].kind ==
+			if (tokens_[specifier].Kind() ==
 				static_cast<std::uint16_t>(KW_EXPLICIT))
 				arena_.Add(set, arena_.Make("specifier", "explicit"));
 			else arena_.Add(set, MakeTokenNode("specifier", specifier));
@@ -2702,11 +2694,11 @@ bool Parser::StartsStandaloneClassDeclaration()
 	{
 		std::size_t scan = position_;
 		while (scan < tokens_.size() &&
-			tokens_[scan].kind != static_cast<std::uint16_t>(OP_LBRACE) &&
-			tokens_[scan].kind != static_cast<std::uint16_t>(OP_SEMICOLON))
+			tokens_[scan].Kind() != static_cast<std::uint16_t>(OP_LBRACE) &&
+			tokens_[scan].Kind() != static_cast<std::uint16_t>(OP_SEMICOLON))
 			++scan;
 		if (scan < tokens_.size() &&
-			tokens_[scan].kind == static_cast<std::uint16_t>(OP_LBRACE))
+			tokens_[scan].Kind() == static_cast<std::uint16_t>(OP_LBRACE))
 			position_ = scan;
 	}
 	if (At(OP_LBRACE))
@@ -2715,9 +2707,9 @@ bool Parser::StartsStandaloneClassDeclaration()
 		std::size_t depth = 0;
 		for (; scan < tokens_.size(); ++scan)
 		{
-			if (tokens_[scan].kind == static_cast<std::uint16_t>(OP_LBRACE))
+			if (tokens_[scan].Kind() == static_cast<std::uint16_t>(OP_LBRACE))
 				++depth;
-			else if (tokens_[scan].kind == static_cast<std::uint16_t>(OP_RBRACE))
+			else if (tokens_[scan].Kind() == static_cast<std::uint16_t>(OP_RBRACE))
 			{
 				if (--depth == 0)
 				{
@@ -2727,7 +2719,7 @@ bool Parser::StartsStandaloneClassDeclaration()
 			}
 		}
 		result = scan < tokens_.size() &&
-			tokens_[scan].kind == static_cast<std::uint16_t>(OP_SEMICOLON);
+			tokens_[scan].Kind() == static_cast<std::uint16_t>(OP_SEMICOLON);
 	}
 	Rollback(mark);
 	return result;
@@ -2737,19 +2729,19 @@ bool Parser::StartsStandaloneEnumDeclaration() const
 {
 	std::size_t scan = position_ + 1;
 	if (scan < tokens_.size() &&
-		(tokens_[scan].kind == static_cast<std::uint16_t>(KW_CLASS) ||
-		 tokens_[scan].kind == static_cast<std::uint16_t>(KW_STRUCT))) ++scan;
+		(tokens_[scan].Kind() == static_cast<std::uint16_t>(KW_CLASS) ||
+		 tokens_[scan].Kind() == static_cast<std::uint16_t>(KW_STRUCT))) ++scan;
 	if (scan >= tokens_.size()) return false;
-	if (tokens_[scan].kind == static_cast<std::uint16_t>(OP_LBRACE))
+	if (tokens_[scan].Kind() == static_cast<std::uint16_t>(OP_LBRACE))
 		return true;
-	if (tokens_[scan].kind != kIdentifierToken) return false;
+	if (tokens_[scan].Kind() != kIdentifierToken) return false;
 	++scan;
 	while (scan + 1 < tokens_.size() &&
-		tokens_[scan].kind == static_cast<std::uint16_t>(OP_COLON2) &&
-		tokens_[scan + 1].kind == kIdentifierToken)
+		tokens_[scan].Kind() == static_cast<std::uint16_t>(OP_COLON2) &&
+		tokens_[scan + 1].Kind() == kIdentifierToken)
 		scan += 2;
 	if (scan >= tokens_.size()) return false;
-	const std::uint16_t kind = tokens_[scan].kind;
+	const std::uint16_t kind = tokens_[scan].Kind();
 	return kind == static_cast<std::uint16_t>(OP_LBRACE) ||
 		kind == static_cast<std::uint16_t>(OP_COLON) ||
 		kind == static_cast<std::uint16_t>(OP_SEMICOLON);
@@ -2788,7 +2780,7 @@ NodeId Parser::ParseSimpleOrFunction(bool, bool)
 	const std::size_t specifier_last = position_;
 	bool is_typedef = false;
 	for (std::size_t i = specifier_first; i < specifier_last; ++i)
-		if (tokens_[i].kind == static_cast<std::uint16_t>(KW_TYPEDEF))
+		if (tokens_[i].Kind() == static_cast<std::uint16_t>(KW_TYPEDEF))
 			is_typedef = true;
 	if (Match(OP_SEMICOLON))
 	{
@@ -2866,7 +2858,7 @@ NodeId Parser::ParseSimpleOrFunction(bool, bool)
 NodeId Parser::ParseDeclaration(bool in_class)
 {
 	if (position_ < tokens_.size() &&
-		tokens_[position_].kind == kPragmaPackPushToken)
+		tokens_[position_].Kind() == kPragmaPackPushToken)
 	{
 		const NodeId directive = arena_.Make("layout-pack-push",
 			Spelling(position_++));
@@ -2874,7 +2866,7 @@ NodeId Parser::ParseDeclaration(bool in_class)
 		return directive;
 	}
 	if (position_ < tokens_.size() &&
-		tokens_[position_].kind == kPragmaPackPopToken)
+		tokens_[position_].Kind() == kPragmaPackPopToken)
 	{
 		++position_;
 		const NodeId directive = arena_.Make("layout-pack-pop");
@@ -2902,7 +2894,7 @@ NodeId Parser::ParseDeclaration(bool in_class)
 	}
 	if (At(KW_TEMPLATE)) return ParseTemplate(in_class);
 	if (At(KW_EXTERN) && position_ + 1 < tokens_.size() &&
-		tokens_[position_ + 1].kind == kLiteralToken)
+		tokens_[position_ + 1].Kind() == kLiteralToken)
 	{
 		position_ += 1;
 		std::string language = Spelling(position_++);
@@ -2959,7 +2951,7 @@ void RunSyntaxTranslationUnit(const std::string& path,
 	SyntaxTokenSink sink(strings);
 	PreprocessFile(path, source, sink, options,
 		stats ? &stats->preprocessing : 0);
-	SyntaxArena arena(strings);
+	SyntaxArena arena(strings, sink.LiteralFacts());
 	Parser parser(sink.Tokens(), strings, arena, stats);
 	const std::chrono::steady_clock::time_point parse_started = std::chrono::steady_clock::now();
 	const NodeId root = parser.ParseTranslationUnit();

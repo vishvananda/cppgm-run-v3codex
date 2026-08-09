@@ -30,21 +30,34 @@ protected:
 		const NodeId dependent = parser.arena_.Make("decltype-name");
 		parser.arena_.AddFlags(dependent, SYNTAX_FLAG_SEMANTIC_ONLY);
 		parser.arena_.Add(dependent, operand);
-		if (parser.Match(OP_COLON2))
-		{
-			parser.Match(KW_TEMPLATE);
-			std::string qualified;
-			NodeId structure = kNoNode;
-			if (!parser.ParseName(
-				&qualified, true, true, true, &structure))
-				throw parser.Error("expected qualified decltype name");
-			parser.arena_.Add(dependent, parser.MakeStructuredNode(
-				"qualified-name", qualified, structure));
-		}
+		parser.arena_.Add(dependent,
+			ParseDecltypeQualifiedName("qualified-name"));
 		const NodeId expression = parser.arena_.Make("id-expression",
 			parser.JoinSpellings(first, parser.position_));
 		parser.arena_.Add(expression, dependent);
 		return expression;
+	}
+
+	NodeId ParseDecltypeQualifiedName(const char* tag)
+	{
+		Derived& parser = static_cast<Derived&>(*this);
+		if (!parser.Match(OP_COLON2)) return kNoNode;
+		parser.Match(KW_TEMPLATE);
+		std::string qualified;
+		NodeId structure = kNoNode;
+		if (!parser.ParseName(&qualified, true, true, true, &structure))
+			throw parser.Error("expected qualified decltype name");
+		if (structure == kNoNode)
+		{
+			structure = parser.arena_.Make("structured-type-name");
+			parser.arena_.AddFlags(structure, SYNTAX_FLAG_SEMANTIC_ONLY);
+			const TextId name = parser.strings_.Intern(qualified);
+			const NodeId component = parser.arena_.Make(
+				"name-component", qualified);
+			parser.arena_.SetSemanticPayload(component, name);
+			parser.arena_.Add(structure, component);
+		}
+		return parser.MakeStructuredNode(tag, qualified, structure);
 	}
 
 	bool StartsDependentNonTypeTemplateParameter()
@@ -90,7 +103,7 @@ protected:
 		const TextId candidate_id = parser.position_ == 0 ? 0 :
 			parser.tokens_[parser.position_ - 1].spelling;
 		const bool qualified_candidate = parser.position_ >= 2 &&
-			parser.tokens_[parser.position_ - 2].kind ==
+			parser.tokens_[parser.position_ - 2].Kind() ==
 				static_cast<std::uint16_t>(OP_COLON2);
 		const bool known_template = parser.HasNameFact(
 			candidate_id, Derived::kKnownTemplate);
@@ -99,7 +112,7 @@ protected:
 		const bool active_non_type_parameter = parser.HasNameFact(
 			candidate_id, Derived::kActiveNonTypeParameter);
 		const bool explicitly_templated = opener >= 2 &&
-			parser.tokens_[opener - 2].kind ==
+			parser.tokens_[opener - 2].Kind() ==
 				static_cast<std::uint16_t>(KW_TEMPLATE);
 		if (!qualified_candidate && known_non_template &&
 			(!known_template || active_non_type_parameter))
@@ -165,10 +178,10 @@ protected:
 				if (parser.At(OP_LT))
 				{
 					const bool identifier_candidate = parser.position_ != 0 &&
-						parser.tokens_[parser.position_ - 1].kind ==
+						parser.tokens_[parser.position_ - 1].Kind() ==
 							kIdentifierToken;
 					const std::uint16_t previous_kind = parser.position_ == 0 ?
-						0 : parser.tokens_[parser.position_ - 1].kind;
+						0 : parser.tokens_[parser.position_ - 1].Kind();
 					const bool cast_candidate =
 						previous_kind == static_cast<std::uint16_t>(KW_STATIC_CAST) ||
 						previous_kind == static_cast<std::uint16_t>(KW_DYNAMIC_CAST) ||
@@ -177,10 +190,10 @@ protected:
 					const TextId nested_candidate_id = parser.position_ == 0 ?
 						0 : parser.tokens_[parser.position_ - 1].spelling;
 					const bool explicitly_templated = parser.position_ >= 2 &&
-						parser.tokens_[parser.position_ - 2].kind ==
+						parser.tokens_[parser.position_ - 2].Kind() ==
 							static_cast<std::uint16_t>(KW_TEMPLATE);
 					const bool qualified_candidate = parser.position_ >= 2 &&
-						parser.tokens_[parser.position_ - 2].kind ==
+						parser.tokens_[parser.position_ - 2].Kind() ==
 							static_cast<std::uint16_t>(OP_COLON2);
 					const bool active_non_type = parser.HasNameFact(
 						nested_candidate_id, Derived::kActiveNonTypeParameter);
@@ -259,7 +272,7 @@ protected:
 		const Derived& parser = static_cast<const Derived&>(*this);
 		std::size_t scan = parser.position_;
 		bool qualified = false;
-		if (scan < parser.tokens_.size() && parser.tokens_[scan].kind ==
+		if (scan < parser.tokens_.size() && parser.tokens_[scan].Kind() ==
 			static_cast<std::uint16_t>(OP_COLON2))
 		{
 			qualified = true;
@@ -267,10 +280,10 @@ protected:
 		}
 		std::size_t last = parser.tokens_.size();
 		while (scan < parser.tokens_.size() &&
-			parser.tokens_[scan].kind == kIdentifierToken)
+			parser.tokens_[scan].Kind() == kIdentifierToken)
 		{
 			last = scan++;
-			if (scan >= parser.tokens_.size() || parser.tokens_[scan].kind !=
+			if (scan >= parser.tokens_.size() || parser.tokens_[scan].Kind() !=
 				static_cast<std::uint16_t>(OP_COLON2)) break;
 			qualified = true;
 			++scan;
@@ -279,7 +292,7 @@ protected:
 			parser.HasNameFact(parser.tokens_[last].spelling,
 				Derived::kKnownTemplate);
 		const bool qualified_template_id = qualified && terminal_template &&
-			scan < parser.tokens_.size() && parser.tokens_[scan].kind ==
+			scan < parser.tokens_.size() && parser.tokens_[scan].Kind() ==
 				static_cast<std::uint16_t>(OP_LT);
 		if (!qualified_template_id && last != parser.tokens_.size() &&
 			parser.HasNameFact(parser.tokens_[last].spelling,
@@ -288,7 +301,7 @@ protected:
 			(parser.HasNameFact(parser.tokens_[last].spelling,
 				Derived::kKnownType) || parser.IsLikelyTypeIdentifier(last) ||
 			 qualified_template_id || (qualified && scan < parser.tokens_.size() &&
-			 parser.tokens_[scan].kind == kIdentifierToken));
+			 parser.tokens_[scan].Kind() == kIdentifierToken));
 	}
 
 	void PublishClassNameFacts(std::size_t mark)

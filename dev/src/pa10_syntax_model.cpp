@@ -19,12 +19,40 @@ const std::uint16_t kRShiftFirstToken = kSimpleTokenCount + 3;
 const std::uint16_t kRShiftSecondToken = kSimpleTokenCount + 4;
 const std::uint16_t kPragmaPackPushToken = kSimpleTokenCount + 5;
 const std::uint16_t kPragmaPackPopToken = kSimpleTokenCount + 6;
+const std::uint32_t kNoLiteralFact =
+	std::numeric_limits<std::uint32_t>::max();
 const NodeId kNoNode = std::numeric_limits<NodeId>::max();
 const std::uint32_t kNoEdge = std::numeric_limits<std::uint32_t>::max();
 
-SyntaxToken::SyntaxToken(std::uint16_t kind_value, TextId spelling_value)
-	: kind(kind_value), spelling(spelling_value)
+static_assert(static_cast<unsigned int>(OP_ARROW) + 7 <= 0xffU,
+	"syntax token kinds must fit the packed identity byte");
+static_assert(sizeof(SyntaxToken) == 8,
+	"syntax tokens must remain a pair of compact 32-bit words");
+static_assert(sizeof(SyntaxLiteralFact) == 16,
+	"scalar literal facts must remain compact");
+
+SyntaxToken::SyntaxToken(std::uint16_t kind_value, TextId spelling_value,
+	std::uint32_t literal_fact)
+	: kind_and_literal_fact(0), spelling(spelling_value)
 {
+	if (kind_value > 0xffU)
+		throw std::logic_error("syntax token kind exceeds packed identity");
+	const std::uint32_t encoded_fact = literal_fact == kNoLiteralFact ? 0 :
+		literal_fact + 1;
+	if (encoded_fact > 0xffffffU)
+		throw std::runtime_error("too many scalar literal facts");
+	kind_and_literal_fact = kind_value | (encoded_fact << 8);
+}
+
+std::uint16_t SyntaxToken::Kind() const
+{
+	return static_cast<std::uint16_t>(kind_and_literal_fact & 0xffU);
+}
+
+std::uint32_t SyntaxToken::LiteralFact() const
+{
+	const std::uint32_t encoded = kind_and_literal_fact >> 8;
+	return encoded == 0 ? kNoLiteralFact : encoded - 1;
 }
 
 SyntaxTokenSink::SyntaxTokenSink(StringTable& strings) : strings_(strings) {}
@@ -34,7 +62,8 @@ void SyntaxTokenSink::EmitInvalid(const std::string& source)
 	std::uint32_t multicharacter = 0;
 	if (DecodeOrdinaryMulticharacterLiteral(source, &multicharacter))
 	{
-		EmitLiteralSpelling(source);
+		EmitScalarLiteral(source, FT_INT, &multicharacter,
+			sizeof(multicharacter));
 		return;
 	}
 	throw std::runtime_error("invalid phase-7 token: " + source);
@@ -59,10 +88,10 @@ void SyntaxTokenSink::EmitIdentifier(const std::string& source)
 	tokens_.push_back(SyntaxToken(kIdentifierToken, strings_.Intern(source)));
 }
 
-void SyntaxTokenSink::EmitLiteral(const std::string& source, FundamentalType,
-	const void*, std::size_t)
+void SyntaxTokenSink::EmitLiteral(const std::string& source, FundamentalType type,
+	const void* data, std::size_t size)
 {
-	EmitLiteralSpelling(source);
+	EmitScalarLiteral(source, type, data, size);
 }
 
 void SyntaxTokenSink::EmitLiteralArray(const std::string& source, std::size_t,
@@ -117,14 +146,40 @@ const std::vector<SyntaxToken>& SyntaxTokenSink::Tokens() const
 	return tokens_;
 }
 
+const std::vector<SyntaxLiteralFact>& SyntaxTokenSink::LiteralFacts() const
+{
+	return literal_facts_;
+}
+
 std::size_t SyntaxTokenSink::StorageBytes() const
 {
-	return tokens_.capacity() * sizeof(SyntaxToken);
+	return tokens_.capacity() * sizeof(SyntaxToken) +
+		literal_facts_.capacity() * sizeof(SyntaxLiteralFact);
 }
 
 void SyntaxTokenSink::EmitLiteralSpelling(const std::string& source)
 {
 	tokens_.push_back(SyntaxToken(kLiteralToken, strings_.Intern(source)));
+}
+
+void SyntaxTokenSink::EmitScalarLiteral(const std::string& source,
+	FundamentalType type, const void* data, std::size_t size)
+{
+	std::uint64_t value = 0;
+	const bool value_valid = data != 0 && size <= sizeof(value);
+	if (value_valid)
+	{
+		const unsigned char* bytes = static_cast<const unsigned char*>(data);
+		for (std::size_t i = 0; i < size; ++i)
+			value |= static_cast<std::uint64_t>(bytes[i]) << (i * 8);
+	}
+	if (literal_facts_.size() >= 0xffffffU)
+		throw std::runtime_error("too many scalar literal facts");
+	const std::uint32_t fact =
+		static_cast<std::uint32_t>(literal_facts_.size());
+	literal_facts_.push_back(SyntaxLiteralFact(type, value, value_valid));
+	tokens_.push_back(SyntaxToken(
+		kLiteralToken, strings_.Intern(source), fact));
 }
 
 SyntaxNode::SyntaxNode(TextId tag_value, TextId payload_value)
@@ -138,7 +193,9 @@ SyntaxEdge::SyntaxEdge(NodeId child_value) : child(child_value), next(kNoEdge)
 {
 }
 
-SyntaxArena::SyntaxArena(StringTable& strings) : strings_(strings) {}
+SyntaxArena::SyntaxArena(StringTable& strings,
+	const std::vector<SyntaxLiteralFact>& literal_facts)
+	: strings_(strings), literal_facts_(literal_facts) {}
 
 NodeId SyntaxArena::Make(const char* tag)
 {
@@ -287,6 +344,29 @@ TextId SyntaxArena::SemanticPayloadId(NodeId node) const
 void SyntaxArena::SetSemanticPayload(NodeId node, TextId payload)
 {
 	nodes_[node].semantic_payload = payload;
+}
+
+void SyntaxArena::SetLiteralFact(NodeId node, std::uint32_t fact)
+{
+	if (fact == kNoLiteralFact) return;
+	if (fact >= literal_facts_.size())
+		throw std::logic_error("invalid scalar literal fact");
+	nodes_[node].token_first = fact;
+	nodes_[node].flags |= SYNTAX_FLAG_LITERAL_FACT;
+}
+
+bool SyntaxArena::ScalarLiteralFact(NodeId node, FundamentalType* type,
+	std::uint64_t* value) const
+{
+	const SyntaxNode& syntax = nodes_[node];
+	if ((syntax.flags & SYNTAX_FLAG_LITERAL_FACT) == 0) return false;
+	if (syntax.token_first >= literal_facts_.size())
+		throw std::logic_error("scalar literal fact is out of range");
+	const SyntaxLiteralFact& fact = literal_facts_[syntax.token_first];
+	if (!fact.value_valid) return false;
+	if (type) *type = fact.type;
+	if (value) *value = fact.value;
+	return true;
 }
 
 void SyntaxArena::AppendImmediateParameterNames(NodeId declarator,
