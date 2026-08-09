@@ -622,9 +622,14 @@ bool SemanticAnalyzer::ApplyBuiltinBinaryConversions(
 			selected_ranks->push_back(left_rank);
 			selected_ranks->push_back(right_rank);
 		}
-		if (apply && EnumOperatorOperandType(left->type) != kNoType)
+		const bool constant_logical = (operation == "&&" || operation == "||") &&
+			(constant_expression_required_depth_ != 0 ||
+			 constexpr_evaluation_depth_ != 0);
+		if (apply && (EnumOperatorOperandType(left->type) != kNoType ||
+			constant_logical))
 			*left = ApplyTarget(*left, left_target, left_rank);
-		if (apply && EnumOperatorOperandType(right->type) != kNoType)
+		if (apply && (EnumOperatorOperandType(right->type) != kNoType ||
+			constant_logical))
 			*right = ApplyTarget(*right, right_target, right_rank);
 		return true;
 	}
@@ -1006,7 +1011,11 @@ ExpressionInfo SemanticAnalyzer::BuildConvertingArgument(
 		PublishDumpObject(action, constexpr_object);
 	if (constexpr_object == kNoConstexprObject ||
 		(constant_expression_required_depth_ == 0 &&
-		 constexpr_evaluation_depth_ == 0))
+		 constexpr_evaluation_depth_ == 0) ||
+		(constant_expression_required_depth_ != 0 &&
+		 constant_initializer_required_depth_ == 0 &&
+		 (target_top.kind == TYPE_LVALUE_REFERENCE ||
+		  target_top.kind == TYPE_RVALUE_REFERENCE)))
 		DemandFunction(constructor_binding);
 	const std::uint32_t temporary = MakeDump(DUMP_TEMPORARY_OBJECT,
 		object_type, VALUE_XVALUE);
@@ -1118,7 +1127,10 @@ ExpressionInfo SemanticAnalyzer::ApplyCallArgument(
 		if (dump_.nodes[value.node].kind == DUMP_CONSTRUCTOR_ACTION &&
 			dump_.nodes[value.node].binding != kNoBinding &&
 			!dump_.nodes[value.node].trivial_special_member_action &&
-			!dump_.nodes[value.node].elide_empty_constructor)
+			!dump_.nodes[value.node].elide_empty_constructor &&
+			!(constant_expression_required_depth_ != 0 &&
+			  constant_initializer_required_depth_ == 0 &&
+			  ExpressionObject(value) != kNoConstexprObject))
 			DemandFunction(dump_.nodes[value.node].binding);
 		value.type = target_object;
 		value.category = VALUE_PRVALUE;

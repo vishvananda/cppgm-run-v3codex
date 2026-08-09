@@ -509,9 +509,15 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 	const ConversionRank conversion = known_conversion == CONVERSION_INVALID ?
 		Conversion(value, target) : known_conversion;
 	if (conversion == CONVERSION_INVALID)
-		throw std::runtime_error("invalid standard conversion from " +
+	{
+		const CallConversionFact implicit =
+			CallConversion(value, target, 0, 0);
+		if (implicit.rank != CONVERSION_INVALID)
+			return ApplyCallArgument(value, target, &implicit);
+		throw std::runtime_error("invalid implicit conversion from " +
 			program_->RenderType(value.type) + " to " +
 			program_->RenderType(target));
+	}
 	const TypeRecord target_record = program_->types.Get(target);
 	const TypeId nonreference = target_record.kind == TYPE_LVALUE_REFERENCE ||
 		target_record.kind == TYPE_RVALUE_REFERENCE ? target_record.child : target;
@@ -528,6 +534,9 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 		program_->types.Get(conversion_source);
 	const bool reference_target = target_record.kind == TYPE_LVALUE_REFERENCE ||
 		target_record.kind == TYPE_RVALUE_REFERENCE;
+	const std::uint32_t source_object = ExpressionObject(value);
+	const std::uint32_t source_complete_object =
+		ExpressionCompleteObject(value);
 	std::uint32_t source_address = ExpressionAddress(value);
 	if (source_address == kNoConstexprAddress && value.constant &&
 		IsNullptr(conversion_source))
@@ -641,12 +650,23 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 		SetExpressionLvalueAddress(&value, source_address);
 	else if (IsPointer(conversion_target) &&
 		source_address != kNoConstexprAddress)
+	{
 		SetExpressionAddress(&value, source_address);
+		if (source_object != kNoConstexprObject &&
+			source_complete_object != kNoConstexprObject)
+			SetExpressionSubobject(&value, source_object,
+				source_complete_object);
+	}
 	else if (target_is_bool &&
-		(IsPointer(conversion_source) || IsNullptr(conversion_source)) &&
+		(IsPointer(Decay(conversion_source)) || IsNullptr(conversion_source)) &&
 		source_address != kNoConstexprAddress)
+	{
+		const ConstexprAddressValue* address =
+			ConstexprAddressAt(source_address);
 		SetExpressionScalar(&value, ConstexprScalarValue(
-			static_cast<std::int64_t>(ExpressionTruth(value))));
+			static_cast<std::int64_t>(address &&
+				address->kind != CONSTEXPR_ADDRESS_NULL)));
+	}
 	if (value.constant &&
 		(IsIntegral(conversion_source, true) || IsFloating(conversion_source)) &&
 		(IsIntegral(conversion_target, true) || IsFloating(conversion_target)))
@@ -1121,6 +1141,7 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	result.category = category;
 	result.binding = selected;
 	ConstexprScalarValue constexpr_value;
+	bool constexpr_has_scalar = false;
 	std::uint32_t constexpr_address = kNoConstexprAddress;
 	std::uint32_t constexpr_object = kNoConstexprObject;
 	std::uint32_t constexpr_complete_object = kNoConstexprObject;
@@ -1128,20 +1149,30 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	bool evaluated_call = false;
 	if (constant_evaluation_suppressed_depth_ == 0 &&
 		TryEvaluateConstexprFunction(
-		selected, constexpr_arguments, &constexpr_value, &constexpr_address,
+		selected, constexpr_arguments, &constexpr_value, &constexpr_has_scalar,
+		&constexpr_address,
 		&constexpr_object, &constexpr_complete_object, constexpr_receiver))
 	{
 		evaluated_call = true;
 		if (returned.kind == TYPE_LVALUE_REFERENCE ||
 			returned.kind == TYPE_RVALUE_REFERENCE)
 		{
+			if (constexpr_has_scalar)
+				SetExpressionScalar(&result,
+					NormalizeScalarConstant(EffectiveType(result_type),
+						constexpr_value));
+			if (constexpr_object != kNoConstexprObject)
+				SetExpressionSubobject(&result, constexpr_object,
+					constexpr_complete_object);
 			SetExpressionLvalueAddress(&result, constexpr_address);
+		}
+		else if (IsPointer(EffectiveType(result_type)))
+		{
+			SetExpressionAddress(&result, constexpr_address);
 			if (constexpr_object != kNoConstexprObject)
 				SetExpressionSubobject(&result, constexpr_object,
 					constexpr_complete_object);
 		}
-		else if (IsPointer(EffectiveType(result_type)))
-			SetExpressionAddress(&result, constexpr_address);
 		else if (constexpr_object != kNoConstexprObject)
 		{
 			SetExpressionObject(&result, constexpr_object);
@@ -1152,7 +1183,9 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 		RecordExpressionFacts(result);
 		if (constant_expression_required_depth_ != 0 &&
 			!(nonstatic_member &&
-			  constant_initializer_required_depth_ != 0) &&
+			  constant_initializer_required_depth_ != 0 &&
+			  (!constexpr_has_scalar ||
+			   local_constant_initializer_depth_ != 0)) &&
 			constexpr_address == kNoConstexprAddress &&
 			constexpr_object == kNoConstexprObject)
 		{
@@ -1166,7 +1199,9 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	}
 	const bool compile_time_only_call = evaluated_call &&
 		constant_expression_required_depth_ != 0 &&
-		!(nonstatic_member && constant_initializer_required_depth_ != 0);
+		!(nonstatic_member && constant_initializer_required_depth_ != 0 &&
+		  (!constexpr_has_scalar ||
+		   local_constant_initializer_depth_ != 0));
 	if (!folded_call && !compile_time_only_call &&
 		constexpr_evaluation_depth_ == 0)
 		DemandFunction(selected);
@@ -1207,45 +1242,24 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 	if (AnalyzeDirectMemberCall(callee_syntax, scope, argument_syntax,
 		target, &member_call)) return member_call;
 	if (ExpandCallArgumentPacks(argument_syntax, scope, &argument_syntax, &analyzed_arguments)) arguments_analyzed = true;
-	if (arena_->IsTag(direct_callee_syntax, "id-expression"))
+	std::size_t constexpr_callee_local = 0;
+	const bool local_callable =
+		arena_->IsTag(direct_callee_syntax, "id-expression") &&
+		FindChild(direct_callee_syntax, "structured-type-name") == kNoNode &&
+		arena_->Payload(direct_callee_syntax).find("::") == std::string::npos &&
+		FindConstexprLocal(program_->names.Intern(
+			arena_->Payload(direct_callee_syntax)), &constexpr_callee_local);
+	if (arena_->IsTag(direct_callee_syntax, "id-expression") &&
+		!local_callable)
 	{
 		const std::string spelling = arena_->Payload(direct_callee_syntax);
 		NamePath callee_path = StructuredNamePath(direct_callee_syntax);
 		if (callee_path.Empty()) callee_path = ParseNamePath(spelling);
 		const bool qualified_callee = callee_path.global || callee_path.Size() > 1;
 		ExpressionInfo builtin;
-		if (AnalyzeBuiltinCall(spelling, scope, argument_syntax, target, &builtin))
+		if (TryAnalyzeImmediateBuiltinCall(
+			spelling, scope, argument_syntax, target, &builtin))
 			return builtin;
-		if (spelling == "__builtin_constant_p")
-		{
-			if (argument_syntax.size() != 1)
-				throw std::runtime_error("invalid __builtin_constant_p call");
-			const ExpressionInfo operand =
-				AnalyzeExpression(argument_syntax[0], scope);
-			ExpressionInfo result = MakeLiteral(
-				program_->types.Fundamental(FUND_INT),
-				program_->names.Intern(operand.constant ? "1" : "0"));
-			result.constant = true;
-			result.value = operand.constant ? 1 : 0;
-			return ApplyTarget(result, target);
-		}
-		if (spelling == "__builtin_abort")
-		{
-			if (!argument_syntax.empty())
-				throw std::runtime_error("invalid __builtin_abort call");
-			const TypeId function_type = program_->types.Function(
-				program_->types.Fundamental(FUND_VOID), std::vector<TypeId>(), false);
-			const std::uint32_t call = MakeDump(DUMP_CALL_EXPRESSION,
-				program_->types.Fundamental(FUND_VOID), VALUE_PRVALUE);
-			const std::uint32_t callee = MakeDump(DUMP_CALLEE, function_type,
-				VALUE_NONE, program_->names.Intern("__builtin_abort"));
-			dump_.Add(call, callee);
-			ExpressionInfo result;
-			result.node = call;
-			result.type = program_->types.Fundamental(FUND_VOID);
-			++expression_count_;
-			return ApplyTarget(result, target);
-		}
 		EntityId function_naming_class = kNoEntity;
 		bool retained_lookup = false;
 		std::vector<BindingId> candidates = RetainedFunctionCallCandidates(

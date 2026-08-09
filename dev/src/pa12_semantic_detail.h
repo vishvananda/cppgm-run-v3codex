@@ -42,6 +42,7 @@ public:
 		  constant_evaluation_suppressed_depth_(0),
 		  constant_expression_required_depth_(0),
 		  constant_initializer_required_depth_(0),
+		  local_constant_initializer_depth_(0),
 		  constexpr_evaluation_depth_(0), constexpr_evaluation_steps_(0),
 		  next_constexpr_storage_identity_(1),
 		  expression_count_(0),
@@ -167,14 +168,17 @@ private:
 		std::uint32_t output_parent, bool switch_condition);
 	ConstexprFlow EvaluateConstexprCompound(NodeId node, ScopeId scope,
 		TypeId result_type, ConstexprScalarValue* result,
+		bool* result_has_scalar,
 		std::uint32_t* result_address, std::uint32_t* result_object,
 		std::uint32_t* result_complete_object);
 	ConstexprFlow EvaluateConstexprStatement(NodeId node, ScopeId scope,
 		TypeId result_type, ConstexprScalarValue* result,
+		bool* result_has_scalar,
 		std::uint32_t* result_address, std::uint32_t* result_object,
 		std::uint32_t* result_complete_object);
 	ConstexprFlow EvaluateConstexprReturn(NodeId expression, ScopeId scope,
 		TypeId result_type, ConstexprScalarValue* result,
+		bool* result_has_scalar,
 		std::uint32_t* result_address, std::uint32_t* result_object,
 		std::uint32_t* result_complete_object);
 	bool EvaluateConstexprCondition(NodeId node, ScopeId scope, bool* value);
@@ -399,6 +403,8 @@ private:
 		std::vector<std::uint32_t>* offsets) const;
 	void UpgradeFunctionTemplateSpecializations(std::size_t pattern);
 	bool FunctionTemplateTypeIsDependent(TypeId type) const;
+	bool FunctionTemplatePatternAccepts(TypeId pattern,
+		TypeId exemplar) const;
 	bool DeduceFunctionTemplateType(TypeId pattern, TypeId argument,
 		std::vector<TypeId>* deduced) const;
 	bool DeduceFunctionTemplatePackType(TypeId pattern, TypeId argument,
@@ -483,13 +489,20 @@ private:
 		BindingId selected_constructor = kNoBinding);
 	ExpressionInfo AnalyzeVariableInitializer(NodeId initializer,
 		ScopeId scope, TypeId type, bool local);
+	bool TryAnalyzeClassOperatorInitializer(NodeId expression, ScopeId scope,
+		TypeId type, ExpressionInfo* initializer);
 	ExpressionInfo AnalyzeConstantAwareVariableInitializer(NodeId initializer,
 		ScopeId scope, TypeId type, bool local, bool require_constant);
+	ExpressionInfo FinalizeVariableInitializer(ExpressionInfo initializer,
+		TypeId type, EntityId class_entity, bool local);
 	ExpressionInfo AnalyzeDefaultConstexprObjectInitializer(
 		TypeId type, ScopeId scope, bool local);
 	void PublishConstantVariableInitializer(BindingId binding, TypeId type,
 		const SpecInfo& spec, const ExpressionInfo& initializer);
 	ExpressionInfo AnalyzeCall(NodeId node, ScopeId scope, TypeId target);
+	bool TryAnalyzeImmediateBuiltinCall(const std::string& spelling,
+		ScopeId scope, const std::vector<NodeId>& argument_syntax,
+		TypeId target, ExpressionInfo* result);
 	bool FunctionalCastPrecedesFunctions(const std::string& spelling,
 		ScopeId scope, TypeId cast_type, NodeId syntax,
 		const std::vector<BindingId>& candidates);
@@ -908,7 +921,7 @@ private:
 	NameId InternScalar(TypeId type, const ConstexprScalarValue& value);
 	bool TryEvaluateConstexprFunction(BindingId function,
 		const std::vector<ExpressionInfo>& arguments,
-		ConstexprScalarValue* value,
+		ConstexprScalarValue* value, bool* has_scalar,
 		std::uint32_t* address,
 		std::uint32_t* object,
 		std::uint32_t* complete_object,
@@ -1075,6 +1088,7 @@ private:
 	std::size_t constant_evaluation_suppressed_depth_;
 	std::size_t constant_expression_required_depth_;
 	std::size_t constant_initializer_required_depth_;
+	std::size_t local_constant_initializer_depth_;
 	std::size_t constexpr_evaluation_depth_;
 	std::size_t constexpr_evaluation_steps_;
 	std::uint64_t next_constexpr_storage_identity_;

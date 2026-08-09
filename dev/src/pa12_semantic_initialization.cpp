@@ -294,6 +294,17 @@ ExpressionInfo SemanticAnalyzer::BuildClassConditional(
 	result.node = expression;
 	result.type = object;
 	result.category = VALUE_PRVALUE;
+	if ((constant_expression_required_depth_ != 0 ||
+		constexpr_evaluation_depth_ != 0) &&
+		condition < dump_.nodes.size() && dump_.nodes[condition].constant)
+	{
+		const ExpressionInfo& selected =
+			dump_.nodes[condition].constant_value != 0 ? yes : no;
+		const std::uint32_t selected_object = ExpressionObject(selected);
+		if (selected_object != kNoConstexprObject)
+			SetExpressionSubobject(&result, selected_object,
+				ExpressionCompleteObject(selected));
+	}
 	expression_count_ += 3;
 	return result;
 }
@@ -478,6 +489,13 @@ ExpressionInfo SemanticAnalyzer::BuildDirectClassValueTransfer(
 	result.node = action;
 	result.type = program_->types.RemoveTopCv(EffectiveType(target));
 	result.category = VALUE_PRVALUE;
+	const std::uint32_t object = ExpressionObject(source);
+	if (object != kNoConstexprObject)
+	{
+		SetExpressionSubobject(
+			&result, object, ExpressionCompleteObject(source));
+		PublishDumpObject(action, object);
+	}
 	++expression_count_;
 	return result;
 }
@@ -663,8 +681,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeVariableInitializer(
 {
 	NodeId expression = FirstSemanticChild(initializer_node);
 	const EntityId class_entity = EntityOf(type);
+	const TypeKind declared_kind = program_->types.Get(type).kind;
 	const TypeRecord declared = program_->types.Get(type);
-	const TypeKind declared_kind = declared.kind;
 	ExpressionInfo initializer;
 	if (declared_kind == TYPE_ARRAY && expression != kNoNode &&
 		arena_->IsTag(expression, "literal") &&
@@ -806,6 +824,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeVariableInitializer(
 					initializer.node = recipe;
 			}
 		}
+		else if (TryAnalyzeClassOperatorInitializer(
+			expression, scope, type, &initializer)) {}
 		else if (expression != kNoNode &&
 			!program_->entities[class_entity].is_aggregate)
 		{
@@ -865,39 +885,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeVariableInitializer(
 			initializer = ApplyTarget(initializer, type);
 		}
 	}
-	SetExpressionDumpObject(&initializer);
-	const std::uint32_t constant_object = ExpressionObject(initializer);
-	bool user_constexpr_constructor = false;
-	if (constant_object != kNoConstexprObject && class_entity != kNoEntity &&
-		class_entity < entity_constructors_.size())
-		for (std::size_t i = 0;
-			i < entity_constructors_[class_entity].size(); ++i)
-		{
-			const BindingId candidate =
-				entity_constructors_[class_entity][i];
-			const FunctionInfo& constructor = GetFunction(candidate);
-			if (constructor.defaulted_constructor &&
-				!constructor.implicit_constructor &&
-				constructor.parameters.empty() &&
-				constexpr_evaluation_depth_ == 0 &&
-				constant_expression_required_depth_ != 0)
-				DemandFunction(candidate);
-			if (constructor.constexpr_function &&
-				!constructor.defaulted_constructor &&
-				!constructor.implicit_constructor &&
-				!constructor.defaulted_special_member &&
-				!constructor.implicit_special_member &&
-				program_->entities[class_entity].direct_base_count == 0)
-				user_constexpr_constructor = true;
-		}
-	if (constant_expression_required_depth_ != 0 &&
-		constant_object != kNoConstexprObject &&
-		user_constexpr_constructor)
-		initializer = MaterializeConstexprObject(constant_object, type);
-	ExpressionInfo result = local ?
-		BuildLocalAggregateArrayActions(initializer) : initializer;
-	SetExpressionDumpObject(&result);
-	return result;
+	return FinalizeVariableInitializer(initializer, type, class_entity, local);
 }
 
 void SemanticAnalyzer::AddMemberInitializationAction(BindingId member_id,
@@ -2350,15 +2338,15 @@ ExpressionInfo SemanticAnalyzer::MaterializeTemporary(
 	dump_.nodes[temporary].reference_call_materialization = reference_result;
 	dump_.Add(temporary, initializer.node);
 	const DumpNode& action = dump_.nodes[initializer.node];
-	const EntityId initializer_entity = EntityOf(initializer.type);
-	const bool base_compile_time_only =
+	const bool compile_time_only =
 		constant_expression_required_depth_ != 0 &&
 		constant_initializer_required_depth_ == 0 &&
-		initializer_entity != kNoEntity &&
-		program_->entities[initializer_entity].direct_base_count != 0;
+		ExpressionObject(initializer) != kNoConstexprObject &&
+		(action.binding == kNoBinding ||
+		 GetFunction(action.binding).delegated_constructor == kNoBinding);
 	if (action.kind == DUMP_CONSTRUCTOR_ACTION &&
 		action.binding != kNoBinding &&
-		!base_compile_time_only)
+		!compile_time_only)
 		DemandFunction(action.binding);
 	ExpressionInfo result = initializer;
 	result.node = temporary;

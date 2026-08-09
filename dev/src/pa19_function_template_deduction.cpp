@@ -110,15 +110,90 @@ int SemanticAnalyzer::CompareFunctionTemplateConstraints(
 		left.template_pattern >= function_templates_.size() ||
 		right.template_pattern >= function_templates_.size())
 		return 0;
-	const std::size_t left_parameters = function_templates_[
-		left.template_pattern].parameters.size();
-	const std::size_t right_parameters = function_templates_[
-		right.template_pattern].parameters.size();
+	const FunctionTemplatePattern& left_pattern =
+		function_templates_[left.template_pattern];
+	const FunctionTemplatePattern& right_pattern =
+		function_templates_[right.template_pattern];
+	const TypeRecord left_shape = program_->types.Get(left_pattern.shape_type);
+	const TypeRecord right_shape = program_->types.Get(right_pattern.shape_type);
+	if (left_shape.kind == TYPE_FUNCTION && right_shape.kind == TYPE_FUNCTION &&
+		left_shape.parameter_count == right_shape.parameter_count)
+	{
+		const TypeId* left_types =
+			program_->types.Parameters(left_pattern.shape_type);
+		const TypeId* right_types =
+			program_->types.Parameters(right_pattern.shape_type);
+		bool left_accepts_right = true;
+		bool right_accepts_left = true;
+		for (std::size_t i = 0; i < left_shape.parameter_count; ++i)
+		{
+			left_accepts_right = left_accepts_right &&
+				FunctionTemplatePatternAccepts(left_types[i], right_types[i]);
+			right_accepts_left = right_accepts_left &&
+				FunctionTemplatePatternAccepts(right_types[i], left_types[i]);
+		}
+		if (right_accepts_left != left_accepts_right)
+			return right_accepts_left ? 1 : -1;
+	}
+	const std::size_t left_parameters = left_pattern.parameters.size();
+	const std::size_t right_parameters = right_pattern.parameters.size();
 	if (left_parameters == right_parameters) return 0;
 	// Equal instantiated signatures expose equality constraints in the pattern:
 	// fewer independent type parameters means the pattern accepted a strict
 	// subset of the argument combinations accepted by the other candidate.
 	return left_parameters < right_parameters ? 1 : -1;
+}
+
+bool SemanticAnalyzer::FunctionTemplatePatternAccepts(
+	TypeId pattern, TypeId exemplar) const
+{
+	for (std::size_t i = 0;
+		i < function_template_shape_parameters_.size(); ++i)
+		if (pattern == function_template_shape_parameters_[i]) return true;
+	if (pattern == exemplar) return true;
+	const TypeRecord pattern_record = program_->types.Get(pattern);
+	const TypeRecord exemplar_record = program_->types.Get(exemplar);
+	if (pattern_record.kind != exemplar_record.kind) return false;
+	switch (pattern_record.kind)
+	{
+	case TYPE_QUALIFIED:
+		return (pattern_record.cv & ~exemplar_record.cv) == 0 &&
+			FunctionTemplatePatternAccepts(
+				pattern_record.child, exemplar_record.child);
+	case TYPE_POINTER:
+	case TYPE_LVALUE_REFERENCE:
+	case TYPE_RVALUE_REFERENCE:
+		return FunctionTemplatePatternAccepts(
+			pattern_record.child, exemplar_record.child);
+	case TYPE_ARRAY:
+		return pattern_record.bound == exemplar_record.bound &&
+			FunctionTemplatePatternAccepts(
+				pattern_record.child, exemplar_record.child);
+	case TYPE_FUNCTION:
+	{
+		if (pattern_record.parameter_count != exemplar_record.parameter_count ||
+			pattern_record.variadic != exemplar_record.variadic ||
+			pattern_record.cv != exemplar_record.cv ||
+			pattern_record.ref_qualifier != exemplar_record.ref_qualifier ||
+			!FunctionTemplatePatternAccepts(
+				pattern_record.child, exemplar_record.child)) return false;
+		const TypeId* pattern_parameters = program_->types.Parameters(pattern);
+		const TypeId* exemplar_parameters = program_->types.Parameters(exemplar);
+		for (std::size_t i = 0; i < pattern_record.parameter_count; ++i)
+			if (!FunctionTemplatePatternAccepts(
+				pattern_parameters[i], exemplar_parameters[i])) return false;
+		return true;
+	}
+	case TYPE_MEMBER_POINTER:
+		return pattern_record.entity == exemplar_record.entity &&
+			FunctionTemplatePatternAccepts(
+				pattern_record.child, exemplar_record.child);
+	case TYPE_NAMED:
+	case TYPE_FUNDAMENTAL:
+	case TYPE_INVALID:
+		return false;
+	}
+	return false;
 }
 
 bool SemanticAnalyzer::DeduceFunctionTemplateType(TypeId pattern,

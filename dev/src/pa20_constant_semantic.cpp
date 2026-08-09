@@ -344,8 +344,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 				cast_type, result.node, true);
 			return MaterializeTemporary(result);
 		}
-		return IsIntegral(target, true) ?
-			ApplyClassObjectTarget(result, target) : result;
+		return ApplyTarget(result, target);
 	}
 	if (program_->entities[cast_entity].is_aggregate && argument_syntax.empty())
 	{
@@ -371,9 +370,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 			dump_.nodes[constructor].value_initialization = true;
 			dump_.nodes[result.node].value_constructor = constructor;
 		}
-		if (target != kNoType && IsIntegral(target, true))
-			return ApplyClassObjectTarget(result, target);
-		return result;
+		return ApplyTarget(result, target);
 	}
 	ExpressionInfo result;
 	result.node = BuildConstructorAction(cast_type, scope, argument_syntax,

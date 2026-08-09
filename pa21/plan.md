@@ -19,34 +19,29 @@ observable work.
 
 ## Current Failure Map
 
-Current handout result: 87/132 pass and 45 fail; the audit regression makes the combined
-report 88/133 without changing the handout failure set. The remaining failures partition by
-owner into overloaded operators, callable objects, and contextual/user conversions (11);
-`noexcept` facts (8); qualified/static object lookup, arrays, and wide literals (11);
-class-valued runtime/global materialization (4); function-local static classification,
-guards, and emission (10); and constexpr declaration suitability (1). Base construction,
-active-subobject projection, direct constructors, immutable member/array objects, canonical
-addresses, indirect calls, safe class returns, complete call-result keys, and converting call
-arguments are complete.
+Latest result: 100/133 pass, up from 88/133 at turn start. The 33 remaining failures group by
+owner into `noexcept` declaration/expression facts (8); qualified/static references, arrays,
+and wide literals (11); function-local static classification, guards, and emission (10);
+class-valued runtime/global materialization (3); and constexpr declaration suitability (1).
+Callable objects, overloaded operators, contextual/user conversions, pointer/object paired
+facts, template const-reference ordering, and the earlier base/object/address layers are
+complete.
 
 ## Active Checkpoint
 
-**Callable and contextual-conversion completion.** Keep overload lookup/ranking in the
-ordinary semantic graph, then let the evaluator consume its selected canonical binding,
-prepared conversion facts, receiver object/address, and converted argument identities for
-overloaded operators, callable objects, and user conversions. Results return through the
-existing typed scalar/object/address channel; runtime demand remains separate from a
-successful compile-time fact.
+**`noexcept` fact completion (next).** Resolve exception specifications once at declaration
+completion, including defaulted/user constructors, inherited using overloads, dependent
+callables, `decltype`, and array-reference results. Expression consumers read the selected
+function or constructor's canonical nonthrowing fact; LowIR uses the same fact without
+re-running overload resolution.
 
-Requirements: PA21's call/operator/conversion constant-expression rules and `spec.md`
-§§2–6,8–9 require one canonical call owner, complete cache keys, recorded conversions,
-fact-driven consumers, and demand-separated lowering. Data flow: expression/operator ->
-ordinary overload set and conversion sequence -> selected call with active receiver facts ->
-evaluator frame/cache -> typed result -> contextual consumer or LowIR demand. Expected work
-is O(candidates × arguments + executed constexpr steps) per uncached call and average O(1)
-cache lookup; conversion analysis must not replay in the evaluator. Validate all 11 mapped
-failures, receiver/reference and shadowing probes, repeated-call scaling, PA1–20, full PA21,
-and audit.
+Requirements: PA21 declaration checks plus `spec.md` §§2–6,8–9 require canonical declaration
+ownership, indexed lookup, retained selected bindings, fact-driven lowering, and no semantic
+replay. Data flow: declarator/defaulted-special-member completion -> canonical function fact
+-> ordinary or unevaluated call selection -> `noexcept`/`decltype` scalar consumer -> LowIR
+signature. Expected work is O(declarations + selected overload candidates), with average O(1)
+canonical fact lookup. Validate all 8 mapped failures, nearby passing overload/defaulted
+probes, PA1–20, full PA21, and audit.
 
 ## Performance Evidence
 
@@ -62,6 +57,13 @@ For repeated class returns with object-reference arguments, 1/2/4/8 identical us
 storage (5,294 bytes), and LowIR instructions (8) stayed fixed. Semantic nodes
 33/41/57/89 and peak-stage storage 48,199/48,923/55,795/66,083 grew with the source uses,
 showing that only required parsing/consumer work scales after the first complete call key.
+
+For 1/2/4/8 identical class-argument calls with contextual `operator bool`, requests were
+2/3/5/9 with 0/1/3/7 cache hits, evaluator steps were 5/6/8/12, and scratch stayed fixed at
+11 nodes. Semantic nodes were 13/23/43/83, overload candidates 12/22/42/82, and conversion
+checks 36/57/99/183; all runs emitted one LowIR instruction and zero demanded functions.
+Thus source-facing overload work grows linearly while completed evaluation remains cached
+and compile-time-only demand stays bounded.
 
 Audited base-depth probes at 8/16/32/64 levels used 15/31/63/127 constructor-base visits,
 9/17/33/65 object-projection visits, 11/19/35/67 evaluator steps, 41/81/161/321 scratch
@@ -83,3 +85,4 @@ sibling subobjects.
 | Canonical addresses and indirect calls | Allocation-relative null/binding/local/string/function identities, lvalue/reference transport, subobject bounds, pointer walking/comparison/truth, address-returning calls, indirect function calls, and expanded-pack array completion | PA21 67→76/130; PA1–20 2,185/2,185; file audit pass; linear 32–256 pointer-walk scaling above |
 | Class-valued calls and conversions | Object IDs through returns/calls, converting-constructor argument facts, temporary allocation identity, constexpr hidden-friend facts, compile-time/runtime demand separation; audit added complete typed result keys and transitive invocation-storage escape checks | PA21 76→79/130 preserved and audit regression passes for 80/131; aggregate return/NTTP, hidden-friend, reference-conversion, and dangling-object probes pass; PA1–20 2,185/2,185; file audit pass; bounded width and repeated-call scaling above |
 | Base-subobject completion | Ordered direct-base facts after direct members, base/member/delegating initialization, active/complete object transport with adjusted addresses through receivers/references/cache facts, and initializer-local demand/slot boundaries; audit repaired repeated-base ambiguity and inherited-base ownership | PA21 handout 80/131→87/132 preserved, audit regression passes for 88/133; eight focused base/delegation tests pass; PA1–20 2,185/2,185; file audit pass; linear depth scaling above |
+| Callable and contextual conversions | Local-callable shadowing, callable/recursive-arrow dispatch, overloaded unary/binary/subscript/assignment/logical operators, user and return conversions, scalar/reference/pointer/object result transport, template cv partial ordering, and compile-time/runtime demand separation | PA21 88→100/133; all 12 mapped and nearby regression probes pass; PA1–20 2,185/2,185; file audit pass; repeated-call scaling above |

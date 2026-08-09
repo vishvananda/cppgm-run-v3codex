@@ -251,7 +251,8 @@ bool SemanticAnalyzer::TryAnalyzeConstexprIndirectCall(ExpressionInfo* callee,
 
 ConstexprFlow SemanticAnalyzer::EvaluateConstexprReturn(NodeId expression,
 	ScopeId scope, TypeId result_type, ConstexprScalarValue* result,
-	std::uint32_t* result_address, std::uint32_t* result_object,
+	bool* result_has_scalar, std::uint32_t* result_address,
+	std::uint32_t* result_object,
 	std::uint32_t* result_complete_object)
 {
 	ExpressionInfo value;
@@ -279,6 +280,13 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprReturn(NodeId expression,
 		*result_address = address;
 		*result_object = ExpressionObject(value);
 		*result_complete_object = ExpressionCompleteObject(value);
+		if (value.constant &&
+			(IsIntegral(EffectiveType(value.type), true) ||
+			 IsFloating(EffectiveType(value.type))))
+		{
+			*result = ExpressionScalar(value);
+			*result_has_scalar = true;
+		}
 	}
 	else if (IsPointer(EffectiveType(result_type)))
 	{
@@ -291,6 +299,8 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprReturn(NodeId expression,
 				constexpr_frames_.back().first_storage_identity)
 			return CONSTEXPR_FLOW_INVALID;
 		*result_address = address;
+		*result_object = ExpressionObject(value);
+		*result_complete_object = ExpressionCompleteObject(value);
 	}
 	else if (class_result)
 	{
@@ -306,6 +316,7 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprReturn(NodeId expression,
 			return CONSTEXPR_FLOW_INVALID;
 		*result = ConvertScalarConstant(
 			value.type, result_type, ExpressionScalar(value));
+		*result_has_scalar = true;
 	}
 	return CONSTEXPR_FLOW_RETURN;
 }

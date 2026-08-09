@@ -204,6 +204,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 	else if (constant) SetExpressionScalar(&result, scalar);
 	if (lvalue_address != kNoConstexprAddress)
 		SetExpressionLvalueAddress(&result, lvalue_address);
+	if (operation == "&" && operand_object != kNoConstexprObject)
+		SetExpressionSubobject(
+			&result, operand_object, operand_complete_object);
 	if (operation == "*" && operand_object != kNoConstexprObject)
 		SetExpressionSubobject(
 			&result, operand_object, operand_complete_object);
@@ -397,6 +400,16 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 		(short_circuit || (left.constant && right.constant));
 	if (result.constant)
 	{
+		if (operation == ",")
+		{
+			result = right;
+			result.node = expression;
+			result.type = result_type;
+			result.category = result_category;
+			RecordExpressionFacts(result);
+			++expression_count_;
+			return result;
+		}
 		std::uint32_t left_address = ExpressionAddress(left);
 		std::uint32_t right_address = ExpressionAddress(right);
 		if (left_address == kNoConstexprAddress &&
@@ -498,12 +511,6 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 					else SetExpressionAddress(&result, advanced);
 				}
 			}
-			++expression_count_;
-			return result;
-		}
-		if (operation == "," && right_address != kNoConstexprAddress)
-		{
-			SetExpressionAddress(&result, right_address);
 			++expression_count_;
 			return result;
 		}

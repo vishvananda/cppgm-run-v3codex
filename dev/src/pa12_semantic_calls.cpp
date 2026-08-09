@@ -57,6 +57,85 @@ private:
 
 }
 
+bool SemanticAnalyzer::TryAnalyzeImmediateBuiltinCall(
+	const std::string& spelling, ScopeId scope,
+	const std::vector<NodeId>& argument_syntax, TypeId target,
+	ExpressionInfo* result)
+{
+	if (spelling == "__builtin_expect")
+	{
+		if (argument_syntax.size() != 2)
+			throw std::runtime_error("invalid __builtin_expect call");
+		*result = AnalyzeExpression(argument_syntax[0], scope);
+		const ExpressionInfo prediction =
+			AnalyzeExpression(argument_syntax[1], scope);
+		if (!prediction.constant || !IsIntegral(prediction.type, true))
+			throw std::runtime_error(
+				"__builtin_expect prediction is not constant");
+		*result = ApplyTarget(*result, target);
+		return true;
+	}
+	if (AnalyzeBuiltinCall(
+		spelling, scope, argument_syntax, target, result)) return true;
+	if (spelling == "__builtin_constant_p")
+	{
+		if (argument_syntax.size() != 1)
+			throw std::runtime_error("invalid __builtin_constant_p call");
+		const ExpressionInfo operand =
+			AnalyzeExpression(argument_syntax[0], scope);
+		*result = MakeLiteral(program_->types.Fundamental(FUND_INT),
+			program_->names.Intern(operand.constant ? "1" : "0"));
+		result->constant = true;
+		result->value = operand.constant ? 1 : 0;
+		*result = ApplyTarget(*result, target);
+		return true;
+	}
+	if (spelling != "__builtin_abort") return false;
+	if (!argument_syntax.empty())
+		throw std::runtime_error("invalid __builtin_abort call");
+	const TypeId function_type = program_->types.Function(
+		program_->types.Fundamental(FUND_VOID), std::vector<TypeId>(), false);
+	const std::uint32_t call = MakeDump(DUMP_CALL_EXPRESSION,
+		program_->types.Fundamental(FUND_VOID), VALUE_PRVALUE);
+	const std::uint32_t callee = MakeDump(DUMP_CALLEE, function_type,
+		VALUE_NONE, program_->names.Intern("__builtin_abort"));
+	dump_.Add(call, callee);
+	result->node = call;
+	result->type = program_->types.Fundamental(FUND_VOID);
+	++expression_count_;
+	*result = ApplyTarget(*result, target);
+	return true;
+}
+
+bool SemanticAnalyzer::TryAnalyzeClassOperatorInitializer(
+	NodeId expression, ScopeId scope, TypeId type,
+	ExpressionInfo* initializer)
+{
+	const EntityId entity = EntityOf(type);
+	if (expression == kNoNode || entity == kNoEntity ||
+		program_->entities[entity].is_aggregate ||
+		(!arena_->IsTag(expression, "unary-expression") &&
+		 !arena_->IsTag(expression, "postfix-expression") &&
+		 !arena_->IsTag(expression, "binary-expression") &&
+		 !arena_->IsTag(expression, "assignment-expression") &&
+		 !arena_->IsTag(expression, "subscript-expression"))) return false;
+	*initializer = AnalyzeExpression(expression, scope);
+	if (program_->types.RemoveTopCv(EffectiveType(initializer->type)) ==
+		program_->types.RemoveTopCv(type) &&
+		initializer->category == VALUE_PRVALUE &&
+		dump_.nodes[initializer->node].kind == DUMP_CALL_EXPRESSION &&
+		!dump_.nodes[initializer->node].explicit_user_conversion_call)
+	{
+		const BindingId selected =
+			ValidateClassValueConstruction(type, *initializer);
+		*initializer = BuildDirectClassValueTransfer(
+			*initializer, type, selected);
+	}
+	else initializer->node =
+		BuildClassValueConstructorAction(type, *initializer);
+	return true;
+}
+
 bool SemanticAnalyzer::RefQualifierViable(const ExpressionInfo& object,
 	const TypeRecord& function_type) const
 {
@@ -595,10 +674,28 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	TypeId owner_type = EffectiveType(object.type);
 	if (source_operation == "->")
 	{
+		std::vector<TypeId> arrow_types;
+		while (program_->types.Get(
+			program_->types.RemoveTopCv(owner_type)).kind != TYPE_POINTER)
+		{
+			const TypeId arrow_type = program_->types.RemoveTopCv(owner_type);
+			if (EntityOf(arrow_type) == kNoEntity ||
+				std::find(arrow_types.begin(), arrow_types.end(), arrow_type) !=
+					arrow_types.end())
+				throw std::runtime_error(
+					"arrow operand has no terminating operator-> chain");
+			arrow_types.push_back(arrow_type);
+			std::vector<NodeId> syntax(1, arena_->EdgeChild(first));
+			std::vector<ExpressionInfo> operands(1, object);
+			ExpressionInfo converted;
+			if (!TryAnalyzeOverloadedOperator("->", scope, syntax, operands,
+				true, kNoType, &converted))
+				throw std::runtime_error("arrow operand is not a pointer");
+			object = converted;
+			owner_type = EffectiveType(object.type);
+		}
 		owner_type = program_->types.RemoveTopCv(owner_type);
 		const TypeRecord pointer = program_->types.Get(owner_type);
-		if (pointer.kind != TYPE_POINTER)
-			throw std::runtime_error("arrow operand is not a pointer");
 		owner_type = pointer.child;
 	}
 	const EntityId entity = EntityOf(owner_type);

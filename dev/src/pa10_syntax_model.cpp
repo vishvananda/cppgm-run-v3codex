@@ -220,8 +220,24 @@ void SyntaxArena::Add(NodeId parent, NodeId child)
 	const std::uint32_t edge = static_cast<std::uint32_t>(edges_.size());
 	edges_.push_back(SyntaxEdge(child));
 	SyntaxNode& node = nodes_[parent];
-	if (node.first_edge == kNoEdge) node.first_edge = edge;
-	else edges_[node.last_edge].next = edge;
+	// A speculative parse can attach to a surviving node and then roll its
+	// edge back.  Repair that compact checkpoint tail lazily before reusing
+	// the same edge identity; otherwise the replacement edge links to itself.
+	if (node.first_edge == kNoEdge || node.first_edge >= edge)
+		node.first_edge = edge;
+	else
+	{
+		if (node.last_edge >= edge)
+		{
+			std::uint32_t last = node.first_edge;
+			while (edges_[last].next != kNoEdge &&
+				edges_[last].next < edge)
+				last = edges_[last].next;
+			edges_[last].next = kNoEdge;
+			node.last_edge = last;
+		}
+		edges_[node.last_edge].next = edge;
+	}
 	node.last_edge = edge;
 }
 
