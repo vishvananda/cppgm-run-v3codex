@@ -136,6 +136,15 @@ private:
 		NodeId declarator, bool definition, bool special_member_template,
 		TypeId dependent_result_shape,
 		bool dependent_exception_specification);
+	void RegisterFunctionTemplateFriend(std::size_t pattern,
+		EntityId owner, bool hidden);
+	void PublishFunctionTemplateFriendGrants(
+		const FunctionTemplatePattern& pattern, BindingId specialization);
+	bool AnalyzeFriendClassTemplate(NodeId target, ScopeId scope,
+		const std::vector<TemplateParameter>& parameters);
+	void RegisterClassTemplateFriend(std::size_t pattern, EntityId owner);
+	void PublishClassTemplateFriendGrants(
+		const ClassTemplatePattern& pattern, EntityId specialization);
 	bool AnalyzeExplicitTemplateSpecialization(NodeId target, ScopeId scope,
 		AccessKind member_access);
 	void ParseTemplateParameters(NodeId list, ScopeId scope,
@@ -468,6 +477,9 @@ private:
 		const FunctionTemplatePattern& pattern,
 		const std::vector<TemplateArgument>& arguments,
 		const std::vector<std::uint32_t>& parameter_offsets);
+	DeclaratorInfo BuildFunctionTemplateSpecializationDeclarator(
+		const FunctionTemplatePattern& pattern, ScopeId template_scope,
+		SpecInfo* spec, EntityId* member_owner);
 	bool BuildFunctionTemplateArgumentOffsets(
 		const std::vector<TemplateParameter>& parameters,
 		std::size_t argument_count,
@@ -661,7 +673,7 @@ private:
 	void AppendDirectFunctionCandidates(ScopeId owner, NameId name,
 		std::vector<BindingId>* candidates);
 	void AppendHiddenFriendCandidates(EntityId owner, NameId name,
-		const std::vector<ExpressionInfo>* enum_only_operands,
+		const std::vector<ExpressionInfo>& arguments, bool enum_operator_only,
 		std::vector<BindingId>* candidates);
 	ExpressionInfo AnalyzeUnary(NodeId node, ScopeId scope,
 		TypeId target = kNoType);
@@ -1077,6 +1089,7 @@ private:
 	IndexedSequenceTable ordinary_function_sets_;
 	EnumOperatorCandidateTable enum_operator_candidates_;
 	IndexedSequenceTable hidden_friend_sets_;
+	IndexedSequenceTable hidden_friend_template_sets_;
 	IndexedSequenceTable friend_class_grants_;
 	IndexedSequenceTable friend_function_grants_;
 	FunctionSignatureTable function_declarations_;

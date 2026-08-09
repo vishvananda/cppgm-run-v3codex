@@ -237,18 +237,33 @@ void SemanticAnalyzer::AppendDirectFunctionCandidates(ScopeId owner,
 }
 
 void SemanticAnalyzer::AppendHiddenFriendCandidates(EntityId owner,
-	NameId name, const std::vector<ExpressionInfo>* enum_only_operands,
+	NameId name, const std::vector<ExpressionInfo>& arguments,
+	bool enum_operator_only,
 	std::vector<BindingId>* candidates)
 {
 	const std::uint64_t key = (static_cast<std::uint64_t>(owner) << 32) | name;
 	const CompactIndexSequence* functions = hidden_friend_sets_.Find(key);
-	if (!functions) return;
-	for (std::size_t i = 0; i < functions->Size(); ++i)
+	if (functions)
+		for (std::size_t i = 0; i < functions->Size(); ++i)
+		{
+			++associated_declaration_visits_;
+			const BindingId binding = static_cast<BindingId>((*functions)[i]);
+			if (!enum_operator_only ||
+				MatchesEnumOnlyOperatorCandidate(binding, arguments))
+				AddCandidate(binding, candidates);
+		}
+	const CompactIndexSequence* indexed_patterns =
+		hidden_friend_template_sets_.Find(key);
+	if (!indexed_patterns) return;
+	const std::vector<std::size_t> patterns = indexed_patterns->Copy();
+	associated_declaration_visits_ += patterns.size();
+	std::vector<BindingId> specializations;
+	DeduceFunctionTemplatePatterns(patterns, arguments, &specializations);
+	for (std::size_t i = 0; i < specializations.size(); ++i)
 	{
-		++associated_declaration_visits_;
-		const BindingId binding = static_cast<BindingId>((*functions)[i]);
-		if (!enum_only_operands ||
-			MatchesEnumOnlyOperatorCandidate(binding, *enum_only_operands))
+		const BindingId binding = specializations[i];
+		if (!enum_operator_only ||
+			MatchesEnumOnlyOperatorCandidate(binding, arguments))
 			AddCandidate(binding, candidates);
 	}
 }
@@ -314,7 +329,16 @@ void SemanticAnalyzer::AppendArgumentDependentCandidates(NameId name,
 			template_function_sets_.Find(key);
 		if (template_patterns)
 		{
-			const std::vector<std::size_t> patterns = template_patterns->Copy();
+			std::vector<std::size_t> patterns;
+			patterns.reserve(template_patterns->Size());
+			for (std::size_t pattern = 0;
+				pattern < template_patterns->Size(); ++pattern)
+			{
+				const std::size_t index = (*template_patterns)[pattern];
+				if (index < function_templates_.size() &&
+					function_templates_[index].ordinary_visible)
+					patterns.push_back(index);
+			}
 			associated_declaration_visits_ += patterns.size();
 			std::vector<BindingId> specializations;
 			DeduceFunctionTemplatePatterns(patterns, arguments,
@@ -333,7 +357,7 @@ void SemanticAnalyzer::AppendArgumentDependentCandidates(NameId name,
 	}
 	for (std::size_t i = 0; i < associated_entities_.size(); ++i)
 		AppendHiddenFriendCandidates(associated_entities_[i], name,
-			enum_operator_only ? &arguments : 0, candidates);
+			arguments, enum_operator_only, candidates);
 }
 
 CallConversionFact SemanticAnalyzer::ConvertingConstructor(

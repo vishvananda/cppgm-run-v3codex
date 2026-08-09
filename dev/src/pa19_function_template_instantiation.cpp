@@ -138,6 +138,45 @@ void SemanticAnalyzer::AppendConstructorTemplateCandidates(
 			candidates->push_back(specializations[i]);
 }
 
+void SemanticAnalyzer::PublishFunctionTemplateFriendGrants(
+	const FunctionTemplatePattern& pattern, BindingId specialization)
+{
+	if (specialization == kNoBinding) return;
+	specialization = program_->bindings[specialization].canonical;
+	FunctionInfo& function = GetMutableFunction(specialization);
+	for (std::size_t i = 0; i < pattern.friend_owners.size(); ++i)
+	{
+		const EntityId owner = pattern.friend_owners[i];
+		const std::uint64_t key =
+			(static_cast<std::uint64_t>(owner) << 32) | specialization;
+		CompactIndexSequence& grants = friend_function_grants_.Ensure(key);
+		if (grants.Size() == 0) grants.Push(0);
+		if (function.friend_of == kNoEntity) function.friend_of = owner;
+	}
+}
+
+void SemanticAnalyzer::RegisterFunctionTemplateFriend(
+	std::size_t pattern_index, EntityId owner, bool hidden)
+{
+	if (pattern_index >= function_templates_.size() || owner == kNoEntity)
+		throw std::logic_error("invalid function template friend owner");
+	FunctionTemplatePattern& pattern = function_templates_[pattern_index];
+	if (std::find(pattern.friend_owners.begin(), pattern.friend_owners.end(),
+		owner) == pattern.friend_owners.end())
+		pattern.friend_owners.push_back(owner);
+	if (hidden)
+	{
+		const std::uint64_t key =
+			(static_cast<std::uint64_t>(owner) << 32) | pattern.name;
+		CompactIndexSequence& patterns =
+			hidden_friend_template_sets_.Ensure(key);
+		if (!patterns.Contains(pattern_index)) patterns.Push(pattern_index);
+	}
+	for (std::size_t i = 0; i < pattern.specialization_bindings.size(); ++i)
+		PublishFunctionTemplateFriendGrants(
+			pattern, pattern.specialization_bindings[i]);
+}
+
 void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	ScopeId scope, AccessKind member_access,
 	const std::vector<TemplateParameter>& parameters, NodeId specifiers,
@@ -145,10 +184,9 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	TypeId dependent_result_shape, bool dependent_exception_specification)
 {
 	const NamePath path = DeclaratorNamePath(declarator);
+	if (path.Empty())
+		throw std::runtime_error("function template has no name");
 	FunctionTemplatePattern pattern;
-	pattern.owner = ResolveOwner(scope, path);
-	if (pattern.owner == kNoScope)
-		throw std::runtime_error("function template owner not found");
 	pattern.lexical_scope = scope;
 	pattern.name = path.Last();
 	pattern.specifiers = specifiers;
@@ -164,8 +202,6 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	pattern.constructor_template = special_member_template;
 	pattern.dependent_exception_specification =
 		dependent_exception_specification;
-	pattern.nonthrowing = dependent_exception_specification ?
-		false : IsNonthrowing(declarator, pattern.owner);
 	const ScopeId shape_scope = NewScope(scope, SCOPE_TEMPLATE_PARAMETERS,
 		0, ScopePrefixId(scope));
 	for (std::size_t p = 0; p < parameters.size(); ++p)
@@ -188,6 +224,35 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 		shape_spec.type = program_->types.Fundamental(FUND_VOID);
 	else shape_spec = BuildSpecifiers(specifiers, shape_scope,
 		std::string(), true, false, dependent_result_shape);
+	EntityId friend_owner = kNoEntity;
+	const bool qualified_friend = path.global || path.Size() > 1;
+	if (shape_spec.is_friend)
+	{
+		ScopeId class_scope = scope;
+		while (class_scope != kNoScope &&
+			program_->KindOfScope(class_scope) != SCOPE_CLASS)
+			class_scope = program_->ParentScope(class_scope);
+		friend_owner = class_scope == kNoScope ? kNoEntity :
+			program_->EntityForScope(class_scope);
+		if (friend_owner == kNoEntity)
+			throw std::runtime_error(
+				"friend function template has no class owner");
+		if (qualified_friend) pattern.owner = ResolveOwner(scope, path);
+		else
+		{
+			pattern.owner = program_->entities[friend_owner].owner;
+			while (pattern.owner != kNoScope &&
+				program_->KindOfScope(pattern.owner) != SCOPE_NAMESPACE)
+				pattern.owner = program_->ParentScope(pattern.owner);
+		}
+		pattern.ordinary_visible = qualified_friend;
+		pattern.definition_in_class = definition;
+	}
+	else pattern.owner = ResolveOwner(scope, path);
+	if (pattern.owner == kNoScope)
+		throw std::runtime_error("function template owner not found");
+	pattern.nonthrowing = dependent_exception_specification ?
+		false : IsNonthrowing(declarator, pattern.owner);
 	const NodeId trailing_return =
 		FindChild(declarator, "trailing-return-type");
 	const bool defer_trailing_return = trailing_return != kNoNode &&
@@ -259,6 +324,14 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 				pattern.dependent_exception_specification)
 			throw std::runtime_error(
 				"conflicting function template exception specification");
+		if (friend_owner != kNoEntity)
+			RegisterFunctionTemplateFriend(
+				prior_index, friend_owner, !qualified_friend);
+		if (pattern.ordinary_visible && !prior.ordinary_visible)
+		{
+			prior.ordinary_visible = true;
+			program_->PublishFunctionTemplateName(prior.owner, prior.name);
+		}
 		if (definition)
 		{
 			if (prior.defined)
@@ -272,6 +345,7 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 			prior.parameters = pattern.parameters;
 			prior.language_linkage = pattern.language_linkage;
 			prior.static_member = prior.static_member || pattern.static_member;
+			prior.definition_in_class = pattern.definition_in_class;
 			if (pattern.lexical_scope == pattern.owner)
 				prior.member_access = pattern.member_access;
 			prior.defined = true;
@@ -279,10 +353,16 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 		}
 		return;
 	}
+	if (friend_owner != kNoEntity && qualified_friend)
+		throw std::runtime_error(
+			"qualified friend function template was not declared");
 	const std::size_t index = function_templates_.size();
 	function_templates_.push_back(pattern);
 	template_function_sets_.Ensure(key).Push(index);
-	program_->PublishFunctionTemplateName(pattern.owner, pattern.name);
+	if (pattern.ordinary_visible)
+		program_->PublishFunctionTemplateName(pattern.owner, pattern.name);
+	if (friend_owner != kNoEntity)
+		RegisterFunctionTemplateFriend(index, friend_owner, true);
 }
 
 std::vector<std::size_t> SemanticAnalyzer::FindFunctionTemplates(
@@ -406,6 +486,41 @@ ScopeId SemanticAnalyzer::BindFunctionTemplateArguments(
 	return template_scope;
 }
 
+DeclaratorInfo SemanticAnalyzer::BuildFunctionTemplateSpecializationDeclarator(
+	const FunctionTemplatePattern& pattern, ScopeId template_scope,
+	SpecInfo* spec, EntityId* member_owner)
+{
+	*member_owner = program_->EntityForScope(pattern.owner);
+	const EntityId semantic_owner = *member_owner != kNoEntity ?
+		*member_owner : pattern.friend_owners.empty() ? kNoEntity :
+		pattern.friend_owners.front();
+	const EntityId previous_class = current_class_context_;
+	if (semantic_owner != kNoEntity) current_class_context_ = semantic_owner;
+	DeclaratorInfo parsed;
+	try
+	{
+		if (pattern.constructor_template)
+			spec->type = program_->types.Fundamental(FUND_VOID);
+		else *spec = BuildSpecifiers(pattern.specifiers, template_scope,
+			std::string(), true);
+		parsed = BuildDeclarator(pattern.declarator, spec->type,
+			template_scope, false, *member_owner != kNoEntity &&
+				!pattern.static_member &&
+				spec->storage_class != STORAGE_CLASS_STATIC);
+	}
+	catch (...)
+	{
+		current_class_context_ = previous_class;
+		throw;
+	}
+	current_class_context_ = previous_class;
+	if (spec->is_constexpr)
+		parsed.type = ApplyConstexprMemberFunctionType(parsed.type,
+			*member_owner, pattern.static_member ||
+				spec->storage_class == STORAGE_CLASS_STATIC);
+	return parsed;
+}
+
 void SemanticAnalyzer::UpgradeFunctionTemplateSpecializations(
 	std::size_t index)
 {
@@ -458,23 +573,9 @@ void SemanticAnalyzer::UpgradeFunctionTemplateSpecializations(
 		const ScopeId template_scope =
 			BindFunctionTemplateArguments(pattern, arguments, partitions);
 		SpecInfo spec;
-		if (pattern.constructor_template)
-			spec.type = program_->types.Fundamental(FUND_VOID);
-		else spec = BuildSpecifiers(pattern.specifiers, template_scope,
-			std::string(), true);
-		const EntityId member_owner = program_->EntityForScope(pattern.owner);
-		const EntityId previous_class = current_class_context_;
-		if (member_owner != kNoEntity) current_class_context_ = member_owner;
-		DeclaratorInfo parsed = BuildDeclarator(pattern.declarator,
-			spec.type, template_scope, false,
-			member_owner != kNoEntity &&
-				!pattern.static_member &&
-				spec.storage_class != STORAGE_CLASS_STATIC);
-		current_class_context_ = previous_class;
-		if (spec.is_constexpr)
-			parsed.type = ApplyConstexprMemberFunctionType(parsed.type,
-				member_owner, pattern.static_member ||
-				spec.storage_class == STORAGE_CLASS_STATIC);
+		EntityId member_owner = kNoEntity;
+		DeclaratorInfo parsed = BuildFunctionTemplateSpecializationDeclarator(
+			pattern, template_scope, &spec, &member_owner);
 		FunctionInfo& function = GetMutableFunction(
 			specializations[specialization]);
 		if (function.explicit_specialization) continue;
@@ -492,6 +593,11 @@ void SemanticAnalyzer::UpgradeFunctionTemplateSpecializations(
 		if (pattern.constructor_template)
 			function.constructor_initializer = pattern.constructor_initializer;
 		function.lexical_scope = template_scope;
+		function.definition_in_class = pattern.definition_in_class ||
+			(member_owner != kNoEntity &&
+			 pattern.lexical_scope == pattern.owner);
+		PublishFunctionTemplateFriendGrants(
+			pattern, specializations[specialization]);
 		PublishInlineFunctionFacts(function.binding,
 			spec.inline_specifier || constexpr_specialization ||
 			function.definition_in_class);
@@ -672,30 +778,16 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	const ScopeId template_scope =
 		BindFunctionTemplateArguments(pattern, completed, parameter_offsets);
 	SpecInfo spec;
-	if (pattern.constructor_template)
-		spec.type = program_->types.Fundamental(FUND_VOID);
-	else spec = BuildSpecifiers(pattern.specifiers, template_scope,
-		std::string(), true);
-	const EntityId member_owner = program_->EntityForScope(pattern.owner);
-	const EntityId previous_class = current_class_context_;
-	if (member_owner != kNoEntity) current_class_context_ = member_owner;
-	DeclaratorInfo parsed = BuildDeclarator(pattern.declarator,
-		spec.type, template_scope, false,
-		member_owner != kNoEntity &&
-			!pattern.static_member &&
-			spec.storage_class != STORAGE_CLASS_STATIC);
-	current_class_context_ = previous_class;
-	if (spec.is_constexpr)
-		parsed.type = ApplyConstexprMemberFunctionType(parsed.type,
-			member_owner, pattern.static_member ||
-			spec.storage_class == STORAGE_CLASS_STATIC);
+	EntityId member_owner = kNoEntity;
+	DeclaratorInfo parsed = BuildFunctionTemplateSpecializationDeclarator(
+		pattern, template_scope, &spec, &member_owner);
 	const bool nonthrowing = pattern.dependent_exception_specification ?
 		IsNonthrowing(pattern.declarator, template_scope) :
 		pattern.nonthrowing;
 	const BindingId binding = DeclareFunction(pattern.owner, pattern.name,
 		parsed.type, parsed.parameters, pattern.defined, true,
 		member_owner == kNoEntity ? spec.storage_class : STORAGE_CLASS_NONE,
-		pattern.language_linkage, nonthrowing);
+		pattern.language_linkage, nonthrowing, pattern.ordinary_visible);
 	BindingRecord& binding_record = program_->bindings[binding];
 	if (member_owner != kNoEntity)
 	{
@@ -747,8 +839,8 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 		IsConstexprCallableType(parsed.type, false);
 	function.constexpr_function =
 		function.constexpr_function || constexpr_specialization;
-	function.definition_in_class = member_owner != kNoEntity &&
-		pattern.lexical_scope == pattern.owner;
+	function.definition_in_class = pattern.definition_in_class ||
+		(member_owner != kNoEntity && pattern.lexical_scope == pattern.owner);
 	PublishInlineFunctionFacts(binding,
 		spec.inline_specifier || constexpr_specialization ||
 		function.definition_in_class);
@@ -757,6 +849,7 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	function.deferred = true;
 	function.lexical_scope = template_scope;
 	if (pattern.defined) function.definition_body = pattern.definition_body;
+	PublishFunctionTemplateFriendGrants(pattern, binding);
 	template_instantiations_.Insert(cache_key, binding);
 	if (completed != arguments)
 		template_instantiations_.Insert(request_key, binding);

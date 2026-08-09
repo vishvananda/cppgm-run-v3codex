@@ -843,6 +843,88 @@ bool SemanticAnalyzer::RetainVariableTemplate(NodeId declaration,
 	return true;
 }
 
+void SemanticAnalyzer::PublishClassTemplateFriendGrants(
+	const ClassTemplatePattern& pattern, EntityId specialization)
+{
+	if (specialization == kNoEntity) return;
+	for (std::size_t i = 0; i < pattern.friend_owners.size(); ++i)
+	{
+		const std::uint64_t key =
+			(static_cast<std::uint64_t>(pattern.friend_owners[i]) << 32) |
+			specialization;
+		CompactIndexSequence& grants = friend_class_grants_.Ensure(key);
+		if (grants.Size() == 0) grants.Push(0);
+	}
+}
+
+void SemanticAnalyzer::RegisterClassTemplateFriend(
+	std::size_t pattern_index, EntityId owner)
+{
+	if (pattern_index >= class_templates_.size() || owner == kNoEntity)
+		throw std::logic_error("invalid class template friend owner");
+	ClassTemplatePattern& pattern = class_templates_[pattern_index];
+	if (std::find(pattern.friend_owners.begin(), pattern.friend_owners.end(),
+		owner) == pattern.friend_owners.end())
+		pattern.friend_owners.push_back(owner);
+	for (std::size_t i = 0; i < pattern.specialization_bindings.size(); ++i)
+	{
+		const EntityId specialization = EntityOf(
+			program_->bindings[pattern.specialization_bindings[i]].type);
+		PublishClassTemplateFriendGrants(pattern, specialization);
+	}
+}
+
+bool SemanticAnalyzer::AnalyzeFriendClassTemplate(NodeId target,
+	ScopeId scope, const std::vector<TemplateParameter>& parameters)
+{
+	if (!arena_->IsTag(target, "simple-declaration")) return false;
+	const NodeId specifiers = FindChild(target, "decl-specifier-seq");
+	const NodeId declaration = specifiers == kNoNode ? kNoNode :
+		FindChild(specifiers, "class-forward-declaration");
+	if (declaration == kNoNode) return false;
+	bool friend_specifier = false;
+	for (std::uint32_t edge = arena_->FirstEdge(specifiers); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+		if (PayloadSource(arena_->EdgeChild(edge)) == "friend")
+			friend_specifier = true;
+	if (!friend_specifier) return false;
+	const NodeId declarators = FindChild(target, "init-declarator-list");
+	if (declarators != kNoNode && FirstSemanticChild(declarators) != kNoNode)
+		throw std::runtime_error(
+			"friend class template has an unexpected declarator");
+	ScopeId class_scope = scope;
+	while (class_scope != kNoScope &&
+		program_->KindOfScope(class_scope) != SCOPE_CLASS)
+		class_scope = program_->ParentScope(class_scope);
+	const EntityId friend_owner = class_scope == kNoScope ? kNoEntity :
+		program_->EntityForScope(class_scope);
+	if (friend_owner == kNoEntity)
+		throw std::runtime_error("friend class template has no class owner");
+
+	NamePath path;
+	const NodeId structure = FindChild(declaration, "structured-type-name");
+	if (structure != kNoNode) path = StructuredNamePath(structure);
+	else path.Push(program_->names.Intern(arena_->Payload(declaration)));
+	if (path.Empty())
+		throw std::runtime_error("friend class template has no name");
+	ScopeId declaration_scope = scope;
+	if (!path.global && path.Size() == 1)
+	{
+		declaration_scope = program_->entities[friend_owner].owner;
+		while (declaration_scope != kNoScope &&
+			program_->KindOfScope(declaration_scope) != SCOPE_NAMESPACE)
+			declaration_scope = program_->ParentScope(declaration_scope);
+	}
+	if (declaration_scope == kNoScope)
+		throw std::runtime_error("friend class template has no namespace owner");
+	AnalyzeClassTemplate(declaration, declaration_scope, parameters);
+	const std::size_t pattern = FindClassTemplate(declaration_scope, path);
+	if (pattern == NoTemplatePattern())
+		throw std::logic_error("friend class template was not registered");
+	RegisterClassTemplateFriend(pattern, friend_owner);
+	return true;
+}
+
 void SemanticAnalyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 	const std::vector<TemplateParameter>& parameters)
 {
@@ -2129,6 +2211,7 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 		if (arguments != supplied_arguments)
 			class_template_instantiations_.Insert(request_key, binding);
 		pattern.specialization_bindings.push_back(binding);
+		PublishClassTemplateFriendGrants(pattern, entity);
 		return binding;
 	}
 
@@ -2186,6 +2269,7 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 	if (arguments != supplied_arguments)
 		class_template_instantiations_.Insert(request_key, binding);
 	pattern.specialization_bindings.push_back(binding);
+	PublishClassTemplateFriendGrants(pattern, entity);
 	if (class_template_specialization_states_.size() <= binding)
 		class_template_specialization_states_.resize(
 			static_cast<std::size_t>(binding) + 1, 0);

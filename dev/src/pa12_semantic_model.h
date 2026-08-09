@@ -812,9 +812,12 @@ struct FunctionTemplatePattern
 	std::vector<TemplateArgument> specialization_arguments;
 	std::vector<std::uint32_t> specialization_argument_offsets;
 	std::vector<std::uint32_t> specialization_parameter_offsets;
+	std::vector<EntityId> friend_owners;
 	LanguageLinkage language_linkage;
 	AccessKind member_access;
 	bool defined;
+	bool ordinary_visible;
+	bool definition_in_class;
 	bool nonthrowing;
 	bool dependent_exception_specification;
 	bool function_parameter_pack;
@@ -828,7 +831,7 @@ struct FunctionTemplatePattern
 		  constructor_initializer(kNoNode),
 		  shape_type(kNoType), required_parameter_count(0),
 		  language_linkage(LANGUAGE_LINKAGE_CPP), member_access(ACCESS_PUBLIC),
-		  defined(false),
+		  defined(false), ordinary_visible(true), definition_in_class(false),
 		  nonthrowing(false), dependent_exception_specification(false),
 		  function_parameter_pack(false), static_member(false),
 		  constructor_template(false) {}
@@ -928,6 +931,7 @@ struct ClassTemplatePattern
 	NodeId declaration;
 	std::vector<TemplateParameter> parameters;
 	std::vector<BindingId> specialization_bindings;
+	std::vector<EntityId> friend_owners;
 	// Retained member patterns are published once and borrowed during
 	// specialization replay. Keep their addresses stable if replay discovers
 	// another retained definition.

@@ -1727,6 +1727,8 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 		RegisterAliasTemplate(target, scope, member_access, parameters);
 		return;
 	}
+	if (target != kNoNode &&
+		AnalyzeFriendClassTemplate(target, scope, parameters)) return;
 	if (target != kNoNode && class_template_member_replay_depth_ == 0 &&
 		AnalyzeClassTemplateMember(target, scope, parameters)) return;
 	if (target != kNoNode &&

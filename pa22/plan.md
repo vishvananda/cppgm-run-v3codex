@@ -27,6 +27,10 @@ Explicit function and class instantiations share canonical specialization bindin
 Binding-level suppression controls extern-template emission without changing the
 owned definition, while indexed declaration/definition states reject duplicate
 ownership and allow a later definition to monotonically release suppression.
+Friend templates retain lexical class scope separately from their canonical
+namespace/member-template owner. Indexed entity/name ADL edges and monotonic
+class/function grant sets connect each declaring specialization to cached and future
+friend specializations without publishing hidden names to ordinary lookup.
 
 This stage applies `spec.md` §§2–6, 8–10: canonical specialization identity,
 indexed lookup, separate retained-pattern/selection/completion state, memoized demand,
@@ -37,26 +41,27 @@ deduction/SFINAE and §7 object-backend work remain outside this LowIR stage.
 
 ## Current Failure Map
 
-Current result: **208/310**. The remaining 102 failures group by exclusive primary
-owner: member/friend ownership, lookup, and access 60; alias/template-template/pack
+Current result: **221/310**. The remaining 89 failures group by exclusive primary
+owner: member/friend ownership, lookup, and access 47; alias/template-template/pack
 integration 20; explicit specialization and instantiation integration 10;
 dependent lookup, deduction, conversion, and lowering 10; residual partial
 ordering/replay 2.
 
 ## Active Checkpoint
 
-**Nested member/friend template owner graph and access provenance.** Owner: each
-retained nested/member/friend declaration's canonical namespace or concrete class
-scope, plus the naming-class access path that selected it. Data flow: retained
-declaration -> typed owner-path replay -> indexed member/friend publication ->
-access-aware lookup/ADL -> ordinary demand and lowering. Apply `spec.md` §§2–6 and
-8–9: stable entity identity, lexical versus semantic scope separation, indexed
-lookup, monotonic replay state, and one canonical emission owner. Expected work is
-O(owner-path depth + related members/friends), with O(1)-average owner indexes and
-no scan of unrelated specializations. Validate nested member-template definitions,
-friend access/ADL, explicit member-template replacement, inherited/private paths,
-and active-owner overloads; then run PA22, through PA21, audit, and owner-depth and
-member-count probes.
+**Nested member-template owner-path replay and naming-class access.** Owner: each
+retained out-of-class declaration belongs to one canonical primary/partial class
+pattern and resolves through the selected specialization's concrete nested scopes;
+lookup separately retains the naming class that determines access. Data flow:
+retained declaration -> typed primary/partial owner match -> concrete nested-scope
+path -> indexed member-template publication -> access-aware overload selection ->
+demand and lowering. Apply `spec.md` §§2–6 and 9: stable owner identity, lexical and
+semantic scope separation, indexed lookup, monotonic replay, and one typed emission
+owner. Expected work is O(owner depth + related owner patterns and overloads), with
+O(1)-average indexes and no unrelated specialization scan. Validate nested and
+partial-owner out-of-class definitions, overloaded member templates, rooted static
+members, inherited/private rejection, and active-owner calls; then run PA22,
+through PA21, audit, and owner-depth/member-count probes.
 
 ## Performance Evidence
 
@@ -81,6 +86,13 @@ Specialization requests and demand pushes/emissions are exactly 16/32/64; lookup
 queries are 117/229/453 and conversion checks 33/65/129. Time, storage, and all
 representative work counters scale linearly with the related definition set.
 
+Five-run medians with 16/32/64 differently named hidden friend templates and one
+selected ADL call are 1.178/1.779/3.329 ms semantic time and 0.161/0.295/0.564 MB
+peak stage storage. Associated scope/declaration visits and specialization requests
+remain exactly 1/1/1 at every size; demand pushes/emissions remain 3/1, while lookup
+queries grow only 76/108/172 with source declarations. The entity/name edge excludes
+all unrelated friend patterns and total construction cost scales linearly.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result |
@@ -88,4 +100,5 @@ representative work counters scale linearly with the related definition set.
 | `5d70a120` + `26eafabe` canonical partial selection and ownership audit | Retained selected owner/revision/substitution, canonical pack identity, deterministic replay/emission separation, and work counters; PA22 82 -> 112/309, prior 2329/2329. |
 | `da807b9f` member-template attachment plus checkpoint audit | Stable owner-pattern replay; indexed member calls; static/constructor and late definitions; canonical template-head identity; no stale specialization candidates. Landed PA22 112 -> 144/309, audit corpus 145/310, prior 2329/2329. |
 | `b0f34797` canonical alias/template entity graph | Retained alias patterns, typed cached substitution, template-template shape/identity matching, proxy partial deduction, defaults/packs, ADL ownership, and nested parameter parsing; PA22 145 -> 192/310 with no regressions, prior 2329/2329, audit pass. |
-| Explicit specialization/instantiation ownership | Canonical function target selection, extern suppression, definition demand/root state, class redeclaration transitions, and primary-body replacement; PA22 192 -> 208/310 with 16 gains and no regressions, prior 2329/2329, audit pass; linear scaling evidence above. |
+| `88ab9ab1` explicit specialization/instantiation ownership | Canonical function target selection, extern suppression, definition demand/root state, class redeclaration transitions, and primary-body replacement; PA22 192 -> 208/310 with 16 gains and no regressions, prior 2329/2329, audit pass; linear scaling evidence above. |
+| Friend-template ownership and grant propagation | Canonical namespace/member owners, indexed hidden ADL edges, cached/future specialization grants, dependent friend type-ids, and protected access context; PA22 208 -> 221/310 with 13 gains and no regressions, prior 2329/2329, audit pass; constant unrelated-friend candidate work above. |

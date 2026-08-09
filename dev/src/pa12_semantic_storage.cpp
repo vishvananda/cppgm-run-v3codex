@@ -17,6 +17,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		ordinary_function_sets_.StorageBytes() +
 		enum_operator_candidates_.StorageBytes() +
 		hidden_friend_sets_.StorageBytes() +
+		hidden_friend_template_sets_.StorageBytes() +
 		friend_class_grants_.StorageBytes() +
 		friend_function_grants_.StorageBytes() +
 		function_declarations_.StorageBytes() +
@@ -187,13 +188,15 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 			function_templates_[i].specialization_argument_offsets.capacity() *
 				sizeof(std::uint32_t) +
 			function_templates_[i].specialization_parameter_offsets.capacity() *
-				sizeof(std::uint32_t);
+				sizeof(std::uint32_t) +
+			function_templates_[i].friend_owners.capacity() * sizeof(EntityId);
 	for (std::size_t i = 0; i < class_templates_.size(); ++i)
 	{
 		bytes += class_templates_[i].parameters.capacity() *
 				sizeof(TemplateParameter) +
 			class_templates_[i].specialization_bindings.capacity() *
-				sizeof(BindingId);
+				sizeof(BindingId) +
+			class_templates_[i].friend_owners.capacity() * sizeof(EntityId);
 		for (std::size_t set = 0; set < 2; ++set)
 		{
 			const std::deque<ClassTemplateMemberPattern>& definitions = set == 0 ?
