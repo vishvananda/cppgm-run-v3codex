@@ -607,9 +607,11 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 		value.category = VALUE_PRVALUE;
 		++expression_count_;
 	}
-	if (value.constant && IsIntegral(conversion_source, true) && IsIntegral(
-		conversion_target, true))
-		value.value = NormalizeIntegralConstant(conversion_target, value.value);
+	if (value.constant &&
+		(IsIntegral(conversion_source, true) || IsFloating(conversion_source)) &&
+		(IsIntegral(conversion_target, true) || IsFloating(conversion_target)))
+		SetExpressionScalar(&value, ConvertScalarConstant(conversion_source,
+			conversion_target, ExpressionScalar(value)));
 	RecordExpressionFacts(value);
 	return value;
 }
@@ -1073,21 +1075,21 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	result.type = result_type;
 	result.category = category;
 	result.binding = selected;
-	std::int64_t constexpr_value = 0;
+	ConstexprScalarValue constexpr_value;
 	bool folded_call = false;
 	if (constant_evaluation_suppressed_depth_ == 0 && !object &&
 		TryEvaluateConstexprFunction(
 		selected, constexpr_arguments, &constexpr_value))
 	{
-		result.constant = true;
-		result.value = NormalizeIntegralConstant(result_type, constexpr_value);
+		SetExpressionScalar(&result,
+			NormalizeScalarConstant(result_type, constexpr_value));
 		RecordExpressionFacts(result);
 		if (constant_expression_required_depth_ != 0)
 		{
-			result = MakeLiteral(result_type, InternNumber(constexpr_value));
-			result.constant = true;
-			result.value = NormalizeIntegralConstant(
-				result_type, constexpr_value);
+			result = MakeLiteral(
+				result_type, InternScalar(result_type, constexpr_value));
+			SetExpressionScalar(&result,
+				NormalizeScalarConstant(result_type, constexpr_value));
 			RecordExpressionFacts(result);
 			folded_call = true;
 		}
@@ -1398,11 +1400,23 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 	if (constexpr_evaluation_depth_ != 0 &&
 		constant_evaluation_suppressed_depth_ == 0 &&
 		right.constant &&
-		IsIntegral(result_type, true))
+		(IsIntegral(result_type, true) || IsFloating(result_type)))
 	{
 		const std::size_t local = left.constexpr_local;
 		bool valid = local < constexpr_locals_.size();
-		std::int64_t assigned = right.value;
+		ConstexprScalarValue assigned;
+		if (valid)
+		{
+			try
+			{
+				assigned = ConvertScalarConstant(
+					right.type, result_type, ExpressionScalar(right));
+			}
+			catch (...)
+			{
+				valid = false;
+			}
+		}
 		if (valid && operation != "=")
 		{
 			const std::string binary = operation.substr(0, operation.size() - 1);
@@ -1410,9 +1424,12 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 				dump_.nodes[expression].operand_type : result_type;
 			try
 			{
-				assigned = ApplyConstantBinary(
-					binary, constexpr_locals_[local].value,
-					right.value, operand_type);
+				const ConstexprScalarValue left_operand = ConvertScalarConstant(
+					result_type, operand_type, constexpr_locals_[local].value);
+				const ConstexprScalarValue right_operand = ConvertScalarConstant(
+					right.type, operand_type, ExpressionScalar(right));
+				assigned = ApplyConstantScalarBinary(
+					binary, left_operand, right_operand, operand_type);
 			}
 			catch (...)
 			{
@@ -1421,12 +1438,12 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 		}
 		if (valid)
 		{
-			assigned = NormalizeIntegralConstant(result_type, assigned);
+			assigned = NormalizeScalarConstant(result_type, assigned);
 			constexpr_locals_[local].value = assigned;
-			result.constant = true;
-			result.value = assigned;
+			SetExpressionScalar(&result, assigned);
 			dump_.nodes[expression].constant = true;
-			dump_.nodes[expression].constant_value = assigned;
+			if (assigned.kind == CONSTEXPR_SCALAR_INTEGRAL)
+				dump_.nodes[expression].constant_value = assigned.integral;
 		}
 	}
 	++expression_count_;
@@ -2110,10 +2127,8 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		}
 		if (program_->bindings[binding].constant)
 		{
-			BindingRecord& canonical = program_->bindings[
-				program_->bindings[binding].canonical];
-			canonical.constant = true;
-			canonical.value = program_->bindings[binding].value;
+			PublishBindingScalar(program_->bindings[binding].canonical,
+				BindingScalar(binding));
 		}
 		const bool deferred_template_constant_storage = !has_initializer &&
 			qualified_lexical_scope && program_->bindings[binding].constant &&
@@ -2125,12 +2140,13 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		{
 			initializer.type = parsed.type;
 			initializer.category = VALUE_PRVALUE;
-			initializer.constant = true;
-			initializer.value = program_->bindings[binding].value;
+			SetExpressionScalar(&initializer, BindingScalar(binding));
 			initializer.node = MakeDump(DUMP_LITERAL, parsed.type,
-				VALUE_PRVALUE, InternNumber(initializer.value));
+				VALUE_PRVALUE, InternScalar(parsed.type,
+					ExpressionScalar(initializer)));
 			dump_.nodes[initializer.node].constant = true;
-			dump_.nodes[initializer.node].constant_value = initializer.value;
+			if (!initializer.floating_constant)
+				dump_.nodes[initializer.node].constant_value = initializer.value;
 			has_initializer = true;
 			++expression_count_;
 		}

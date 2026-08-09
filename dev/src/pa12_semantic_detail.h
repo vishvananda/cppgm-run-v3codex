@@ -163,16 +163,16 @@ private:
 	void AnalyzeCondition(NodeId node, ScopeId scope,
 		std::uint32_t output_parent, bool switch_condition);
 	ConstexprFlow EvaluateConstexprCompound(NodeId node, ScopeId scope,
-		TypeId result_type, std::int64_t* result);
+		TypeId result_type, ConstexprScalarValue* result);
 	ConstexprFlow EvaluateConstexprStatement(NodeId node, ScopeId scope,
-		TypeId result_type, std::int64_t* result);
+		TypeId result_type, ConstexprScalarValue* result);
 	bool EvaluateConstexprCondition(NodeId node, ScopeId scope, bool* value);
 	bool EvaluateConstexprDeclaration(NodeId node, ScopeId scope);
 	bool ConsumeConstexprStep();
 	void PushConstexprBlock();
 	void PopConstexprBlock();
 	bool AddConstexprLocal(NameId name, NameId pack_name, TypeId type,
-		std::int64_t value, std::size_t* local = 0);
+		const ConstexprScalarValue& value, std::size_t* local = 0);
 	bool FindConstexprLocal(NameId name, std::size_t* local) const;
 	bool FindConstexprPack(NameId name,
 		std::vector<std::size_t>* locals) const;
@@ -810,8 +810,24 @@ private:
 	std::size_t IntegralWidth(TypeId type) const;
 	std::int64_t NormalizeIntegralConstant(TypeId type,
 		std::int64_t value) const;
+	ConstexprScalarValue ExpressionScalar(const ExpressionInfo& value) const;
+	ConstexprScalarValue NormalizeScalarConstant(TypeId type,
+		const ConstexprScalarValue& value) const;
+	ConstexprScalarValue ConvertScalarConstant(TypeId source_type,
+		TypeId target_type, const ConstexprScalarValue& value) const;
+	void SetExpressionScalar(ExpressionInfo* expression,
+		const ConstexprScalarValue& value) const;
+	ConstexprScalarValue BindingScalar(BindingId binding) const;
+	void PublishBindingScalar(BindingId binding,
+		const ConstexprScalarValue& value);
+	bool ScalarTruth(const ConstexprScalarValue& value) const;
+	ConstexprScalarValue ApplyConstantScalarBinary(
+		const std::string& operation, const ConstexprScalarValue& left,
+		const ConstexprScalarValue& right, TypeId operand_type) const;
+	NameId InternScalar(TypeId type, const ConstexprScalarValue& value);
 	bool TryEvaluateConstexprFunction(BindingId function,
-		const std::vector<ExpressionInfo>& arguments, std::int64_t* value);
+		const std::vector<ExpressionInfo>& arguments,
+		ConstexprScalarValue* value);
 	std::int64_t ParseInteger(const std::string& spelling) const;
 	std::int64_t ApplyConstantBinary(const std::string& operation,
 		std::int64_t left, std::int64_t right, TypeId operand_type) const;
@@ -919,6 +935,9 @@ private:
 	std::vector<ConstexprLocalValue> constexpr_locals_;
 	std::vector<ConstexprScopeFact> constexpr_scope_facts_;
 	std::vector<ConstexprBlockOffset> constexpr_block_offsets_;
+	// Binding-indexed O(1) access with dense payloads only for floating facts.
+	std::vector<std::uint32_t> floating_constant_fact_by_binding_;
+	std::vector<long double> floating_constant_values_;
 	DumpArena constexpr_scratch_dump_;
 	std::unordered_map<ConstexprCallKey, ConstexprCallFact,
 		ConstexprCallKeyHash> constexpr_call_facts_;

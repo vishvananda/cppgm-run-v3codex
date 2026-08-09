@@ -623,8 +623,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeConditional(NodeId node, ScopeId scope)
 		condition = ApplyExplicitConversion(condition,
 			program_->types.Fundamental(FUND_BOOL));
 	const bool known_condition = condition.constant;
-	const bool suppress_yes = known_condition && condition.value == 0;
-	const bool suppress_no = known_condition && condition.value != 0;
+	const bool condition_truth = known_condition &&
+		ScalarTruth(ExpressionScalar(condition));
+	const bool suppress_yes = known_condition && !condition_truth;
+	const bool suppress_no = known_condition && condition_truth;
 	if (suppress_yes) ++constant_evaluation_suppressed_depth_;
 	ExpressionInfo yes;
 	try
@@ -733,8 +735,16 @@ ExpressionInfo SemanticAnalyzer::AnalyzeConditional(NodeId node, ScopeId scope)
 	result.category = category;
 	result.constant = constant_evaluation_suppressed_depth_ == 0 &&
 		condition.constant &&
-		(condition.value ? yes.constant : no.constant);
-	if (result.constant) result.value = condition.value ? yes.value : no.value;
+		(condition_truth ? yes.constant : no.constant);
+	if (result.constant)
+	{
+		const ExpressionInfo& selected = condition_truth ? yes : no;
+		if ((IsIntegral(selected.type, true) || IsFloating(selected.type)) &&
+			(IsIntegral(type, true) || IsFloating(type)))
+			SetExpressionScalar(&result, ConvertScalarConstant(
+				selected.type, type, ExpressionScalar(selected)));
+		else result.value = selected.value;
+	}
 	++expression_count_;
 	return result;
 }

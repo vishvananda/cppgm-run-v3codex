@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <limits>
 #include <stdexcept>
 #include <vector>
@@ -254,6 +255,32 @@ struct DeclaratorInfo
 	DeclaratorInfo() : name(0), type(kNoType) {}
 };
 
+enum ConstexprScalarKind
+{
+	CONSTEXPR_SCALAR_INTEGRAL,
+	CONSTEXPR_SCALAR_FLOATING
+};
+
+struct ConstexprScalarValue
+{
+	ConstexprScalarKind kind;
+	std::int64_t integral;
+	long double floating;
+
+	ConstexprScalarValue()
+		: kind(CONSTEXPR_SCALAR_INTEGRAL), integral(0), floating(0.0L) {}
+	explicit ConstexprScalarValue(std::int64_t value)
+		: kind(CONSTEXPR_SCALAR_INTEGRAL), integral(value), floating(0.0L) {}
+	explicit ConstexprScalarValue(long double value)
+		: kind(CONSTEXPR_SCALAR_FLOATING), integral(0), floating(value) {}
+
+	bool operator==(const ConstexprScalarValue& other) const
+	{
+		return kind == other.kind && (kind == CONSTEXPR_SCALAR_FLOATING ?
+			floating == other.floating : integral == other.integral);
+	}
+};
+
 struct ExpressionInfo
 {
 	std::uint32_t node;
@@ -263,6 +290,8 @@ struct ExpressionInfo
 	std::size_t constexpr_local;
 	bool constant;
 	std::int64_t value;
+	bool floating_constant;
+	long double floating_value;
 	bool integer_literal_zero;
 	std::uint32_t string_unit_begin;
 	std::uint32_t string_unit_count;
@@ -271,7 +300,8 @@ struct ExpressionInfo
 		: node(kNoDumpEdge), type(kNoType), category(VALUE_PRVALUE),
 		  binding(kNoBinding),
 		  constexpr_local(std::numeric_limits<std::size_t>::max()),
-		  constant(false), value(0),
+		  constant(false), value(0), floating_constant(false),
+		  floating_value(0.0L),
 		  integer_literal_zero(false), string_unit_begin(kNoDumpEdge),
 		  string_unit_count(0) {}
 };
@@ -280,10 +310,10 @@ struct ConstexprLocalValue
 {
 	NameId name, pack_name;
 	TypeId type;
-	std::int64_t value;
+	ConstexprScalarValue value;
 
 	ConstexprLocalValue(NameId name_value, NameId pack_name_value,
-		TypeId type_value, std::int64_t value_value)
+		TypeId type_value, const ConstexprScalarValue& value_value)
 		: name(name_value), pack_name(pack_name_value), type(type_value),
 		  value(value_value) {}
 };
@@ -328,7 +358,7 @@ struct ConstexprCallKey
 {
 	BindingId function;
 	std::vector<TypeId> parameter_types;
-	std::vector<std::int64_t> parameter_values;
+	std::vector<ConstexprScalarValue> parameter_values;
 
 	ConstexprCallKey() : function(kNoBinding) {}
 
@@ -349,9 +379,12 @@ struct ConstexprCallKeyHash
 		{
 			hash ^= static_cast<std::size_t>(key.parameter_types[i]) +
 				0x9e3779b9u + (hash << 6) + (hash >> 2);
-			const std::uint64_t bits = static_cast<std::uint64_t>(
-				key.parameter_values[i]);
-			hash ^= static_cast<std::size_t>(bits ^ (bits >> 32)) +
+			const ConstexprScalarValue& value = key.parameter_values[i];
+			const std::size_t value_hash =
+				value.kind == CONSTEXPR_SCALAR_FLOATING ?
+				std::hash<long double>()(value.floating) :
+				std::hash<std::int64_t>()(value.integral);
+			hash ^= value_hash +
 				0x9e3779b9u + (hash << 6) + (hash >> 2);
 		}
 		return hash;
@@ -362,8 +395,8 @@ struct ConstexprCallFact
 {
 	// 1=in progress, 2=success, 3=expected failure.
 	std::uint8_t state;
-	std::int64_t value;
-	ConstexprCallFact() : state(1), value(0) {}
+	ConstexprScalarValue value;
+	ConstexprCallFact() : state(1), value() {}
 };
 
 enum ConversionRank

@@ -60,7 +60,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 	TypeId result_type = EffectiveType(operand.type);
 	ValueCategory category = VALUE_PRVALUE;
 	bool constant = operand.constant;
-	std::int64_t value = operand.value;
+	ConstexprScalarValue scalar = ExpressionScalar(operand);
 	if (operation == "&")
 	{
 		if (operand.category != VALUE_LVALUE)
@@ -93,16 +93,19 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 			constant_evaluation_suppressed_depth_ == 0 &&
 			operand.constexpr_local < constexpr_locals_.size() &&
 			operand.constant &&
-			IsIntegral(result_type, true))
+			(IsIntegral(result_type, true) || IsFloating(result_type)))
 		{
 			ConstexprLocalValue& local =
 				constexpr_locals_[operand.constexpr_local];
-			const std::int64_t previous = local.value;
-			const std::int64_t updated = NormalizeIntegralConstant(result_type,
-				operation == "++" ? previous + 1 : previous - 1);
+			const ConstexprScalarValue previous = local.value;
+			const ConstexprScalarValue one = IsFloating(result_type) ?
+				ConstexprScalarValue(1.0L) :
+				ConstexprScalarValue(static_cast<std::int64_t>(1));
+			const ConstexprScalarValue updated = ApplyConstantScalarBinary(
+				operation == "++" ? "+" : "-", previous, one, result_type);
 			local.value = updated;
 			constant = true;
-			value = postfix ? previous : updated;
+			scalar = postfix ? previous : updated;
 		}
 	}
 	else if (operation == "!")
@@ -111,7 +114,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 			!IsNullptr(result_type))
 			throw std::runtime_error("invalid logical-not operand");
 		result_type = program_->types.Fundamental(FUND_BOOL);
-		if (constant) value = !value;
+		if (constant) scalar = ConstexprScalarValue(
+			static_cast<std::int64_t>(!ScalarTruth(scalar)));
 	}
 	else if (operation == "+" || operation == "-" || operation == "~")
 	{
@@ -130,21 +134,26 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 			result_type = program_->types.Fundamental(FUND_INT);
 		if (constant)
 		{
-			if (operation == "-")
+			if (IsFloating(result_type))
+			{
+				if (operation == "-") scalar.floating = -scalar.floating;
+				scalar = NormalizeScalarConstant(result_type, scalar);
+			}
+			else if (operation == "-")
 			{
 				const std::size_t width = IntegralWidth(result_type);
 				const std::int64_t minimum = width == 64 ? INT64_MIN :
 					- static_cast<std::int64_t>(
 						std::uint64_t(1) << (width - 1));
-				if (!IsUnsignedIntegral(result_type) && value == minimum)
+				if (!IsUnsignedIntegral(result_type) && scalar.integral == minimum)
 					throw std::runtime_error(
 						"signed constant unary negation overflow");
-				value = static_cast<std::int64_t>(
-					- static_cast<std::uint64_t>(value));
+				scalar.integral = static_cast<std::int64_t>(
+					- static_cast<std::uint64_t>(scalar.integral));
 			}
-			else if (operation == "~") value = ~value;
+			else if (operation == "~") scalar.integral = ~scalar.integral;
 			if (IsIntegral(result_type, true))
-				value = NormalizeIntegralConstant(result_type, value);
+				scalar = NormalizeScalarConstant(result_type, scalar);
 		}
 	}
 	else throw std::runtime_error("unsupported unary operator");
@@ -156,8 +165,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 	result.node = expression;
 	result.type = result_type;
 	result.category = category;
-	result.constant = constant;
-	result.value = value;
+	if (constant) SetExpressionScalar(&result, scalar);
 	++expression_count_;
 	return result;
 }
@@ -173,8 +181,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBinary(NodeId node, ScopeId scope)
 	ExpressionInfo left = AnalyzeExpression(left_syntax, scope);
 	const std::string operation = PayloadSource(node);
 	const bool short_circuit = left.constant &&
-		((operation == "&&" && left.value == 0) ||
-		 (operation == "||" && left.value != 0));
+		((operation == "&&" && !ScalarTruth(ExpressionScalar(left))) ||
+		 (operation == "||" && ScalarTruth(ExpressionScalar(left))));
 	if (short_circuit) ++constant_evaluation_suppressed_depth_;
 	ExpressionInfo right;
 	try
@@ -313,14 +321,28 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 	result.type = result_type;
 	result.category = result_category;
 	const bool short_circuit = left.constant &&
-		((operation == "&&" && left.value == 0) ||
-		 (operation == "||" && left.value != 0));
+		((operation == "&&" && !ScalarTruth(ExpressionScalar(left))) ||
+		 (operation == "||" && ScalarTruth(ExpressionScalar(left))));
 	result.constant = constant_evaluation_suppressed_depth_ == 0 &&
 		(short_circuit || (left.constant && right.constant));
 	if (result.constant)
-		result.value = short_circuit ? left.value != 0 :
-			ApplyConstantBinary(operation, left.value, right.value,
-				operand_type != kNoType ? operand_type : result_type);
+	{
+		ConstexprScalarValue left_value = ExpressionScalar(left);
+		ConstexprScalarValue right_value = ExpressionScalar(right);
+		if (operand_type != kNoType &&
+			(IsIntegral(operand_type, true) || IsFloating(operand_type)))
+		{
+			left_value = ConvertScalarConstant(
+				left.type, operand_type, left_value);
+			right_value = ConvertScalarConstant(
+				right.type, operand_type, right_value);
+		}
+		SetExpressionScalar(&result, short_circuit ?
+			ConstexprScalarValue(static_cast<std::int64_t>(
+				ScalarTruth(left_value))) :
+			ApplyConstantScalarBinary(operation, left_value, right_value,
+				operand_type != kNoType ? operand_type : result_type));
+	}
 	++expression_count_;
 	return result;
 }

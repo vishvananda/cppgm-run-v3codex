@@ -463,8 +463,7 @@ BindingId SemanticAnalyzer::InstantiateVariableTemplate(
 			(spec.is_constexpr || (IsConst(parsed.type) &&
 			 IsIntegral(parsed.type, true))))
 		{
-			record.constant = true;
-			record.value = initializer.value;
+			PublishBindingScalar(binding, ExpressionScalar(initializer));
 		}
 	}
 	variable_template_instantiations_.Insert(key, binding);

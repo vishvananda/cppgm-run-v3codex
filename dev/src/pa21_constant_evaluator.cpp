@@ -1,6 +1,11 @@
 #include "pa12_semantic_detail.h"
 
+#include <cmath>
 #include <cstdint>
+#include <iomanip>
+#include <limits>
+#include <locale>
+#include <sstream>
 #include <stdexcept>
 #include <utility>
 
@@ -15,6 +20,221 @@ namespace
 const std::size_t kMaxConstexprDepth = 1024;
 const std::size_t kMaxConstexprSteps = 1000000;
 
+}
+
+ConstexprScalarValue SemanticAnalyzer::ExpressionScalar(
+	const ExpressionInfo& value) const
+{
+	return value.floating_constant ?
+		ConstexprScalarValue(value.floating_value) :
+		ConstexprScalarValue(value.value);
+}
+
+ConstexprScalarValue SemanticAnalyzer::ConvertScalarConstant(
+	TypeId source_type, TypeId target_type,
+	const ConstexprScalarValue& value) const
+{
+	source_type = program_->types.RemoveTopCv(EffectiveType(source_type));
+	target_type = program_->types.RemoveTopCv(EffectiveType(target_type));
+	if ((!IsIntegral(source_type, true) && !IsFloating(source_type)) ||
+		(!IsIntegral(target_type, true) && !IsFloating(target_type)))
+		throw std::logic_error("non-arithmetic scalar constant conversion");
+	const TypeRecord& target_record = program_->types.Get(target_type);
+	if (target_record.kind == TYPE_FUNDAMENTAL &&
+		target_record.fundamental == FUND_BOOL)
+		return ConstexprScalarValue(
+			static_cast<std::int64_t>(ScalarTruth(value)));
+	if (IsFloating(target_type))
+	{
+		long double converted = 0.0L;
+		if (value.kind == CONSTEXPR_SCALAR_FLOATING)
+			converted = value.floating;
+		else if (IsUnsignedIntegral(source_type))
+			converted = static_cast<long double>(
+				static_cast<std::uint64_t>(value.integral));
+		else converted = static_cast<long double>(value.integral);
+		switch (FundamentalOf(target_type))
+		{
+		case FUND_FLOAT:
+			converted = static_cast<long double>(
+				static_cast<float>(converted));
+			break;
+		case FUND_DOUBLE:
+			converted = static_cast<long double>(
+				static_cast<double>(converted));
+			break;
+		case FUND_LONG_DOUBLE: break;
+		default: throw std::logic_error("invalid floating constant target");
+		}
+		if (!std::isfinite(converted))
+			throw std::runtime_error("non-finite floating constant");
+		return ConstexprScalarValue(converted);
+	}
+	if (value.kind == CONSTEXPR_SCALAR_FLOATING)
+	{
+		if (!std::isfinite(value.floating))
+			throw std::runtime_error("non-finite floating to integral conversion");
+		const std::size_t width = IntegralWidth(target_type);
+		const long double minimum = IsUnsignedIntegral(target_type) ? 0.0L :
+			width == 64 ?
+				static_cast<long double>(std::numeric_limits<std::int64_t>::min()) :
+				-std::ldexp(1.0L, static_cast<int>(width - 1));
+		const long double maximum = IsUnsignedIntegral(target_type) ?
+			width == 64 ?
+				static_cast<long double>(
+					std::numeric_limits<std::uint64_t>::max()) :
+				std::ldexp(1.0L, static_cast<int>(width)) - 1.0L :
+			width == 64 ?
+				static_cast<long double>(std::numeric_limits<std::int64_t>::max()) :
+				std::ldexp(1.0L, static_cast<int>(width - 1)) - 1.0L;
+		if (value.floating < minimum || value.floating > maximum)
+			throw std::runtime_error("floating constant outside integral range");
+		const std::int64_t converted = IsUnsignedIntegral(target_type) ?
+			static_cast<std::int64_t>(
+				static_cast<std::uint64_t>(value.floating)) :
+			static_cast<std::int64_t>(value.floating);
+		return ConstexprScalarValue(
+			NormalizeIntegralConstant(target_type, converted));
+	}
+	return ConstexprScalarValue(
+		NormalizeIntegralConstant(target_type, value.integral));
+}
+
+ConstexprScalarValue SemanticAnalyzer::NormalizeScalarConstant(
+	TypeId type, const ConstexprScalarValue& value) const
+{
+	return ConvertScalarConstant(type, type, value);
+}
+
+void SemanticAnalyzer::SetExpressionScalar(ExpressionInfo* expression,
+	const ConstexprScalarValue& value) const
+{
+	expression->constant = true;
+	expression->floating_constant =
+		value.kind == CONSTEXPR_SCALAR_FLOATING;
+	if (expression->floating_constant)
+		expression->floating_value = value.floating;
+	else expression->value = value.integral;
+}
+
+ConstexprScalarValue SemanticAnalyzer::BindingScalar(BindingId binding) const
+{
+	if (binding == kNoBinding || binding >= program_->bindings.size())
+		throw std::logic_error("invalid constant binding identity");
+	const BindingRecord& record = program_->bindings[binding];
+	if (!record.constant)
+		throw std::logic_error("binding has no constant value");
+	BindingId owner = binding;
+	if ((owner >= floating_constant_fact_by_binding_.size() ||
+		floating_constant_fact_by_binding_[owner] == 0) &&
+		record.canonical != binding)
+		owner = record.canonical;
+	if (owner < floating_constant_fact_by_binding_.size())
+	{
+		const std::uint32_t fact = floating_constant_fact_by_binding_[owner];
+		if (fact != 0)
+		{
+			if (fact > floating_constant_values_.size())
+				throw std::logic_error("floating constant fact is out of range");
+			return ConstexprScalarValue(floating_constant_values_[fact - 1]);
+		}
+	}
+	return ConstexprScalarValue(record.value);
+}
+
+void SemanticAnalyzer::PublishBindingScalar(BindingId binding,
+	const ConstexprScalarValue& value)
+{
+	if (binding == kNoBinding || binding >= program_->bindings.size())
+		throw std::logic_error("invalid constant binding publication");
+	BindingRecord& record = program_->bindings[binding];
+	record.constant = true;
+	if (value.kind == CONSTEXPR_SCALAR_INTEGRAL)
+	{
+		record.value = value.integral;
+		return;
+	}
+	if (floating_constant_fact_by_binding_.size() <= binding)
+		floating_constant_fact_by_binding_.resize(
+			static_cast<std::size_t>(binding) + 1, 0);
+	std::uint32_t& fact = floating_constant_fact_by_binding_[binding];
+	if (fact == 0)
+	{
+		if (floating_constant_values_.size() >=
+			std::numeric_limits<std::uint32_t>::max())
+			throw std::runtime_error("too many floating constant facts");
+		floating_constant_values_.push_back(value.floating);
+		fact = static_cast<std::uint32_t>(floating_constant_values_.size());
+	}
+	else
+	{
+		if (fact > floating_constant_values_.size())
+			throw std::logic_error("floating constant fact is out of range");
+		floating_constant_values_[fact - 1] = value.floating;
+	}
+}
+
+bool SemanticAnalyzer::ScalarTruth(const ConstexprScalarValue& value) const
+{
+	return value.kind == CONSTEXPR_SCALAR_FLOATING ?
+		value.floating != 0.0L : value.integral != 0;
+}
+
+ConstexprScalarValue SemanticAnalyzer::ApplyConstantScalarBinary(
+	const std::string& operation, const ConstexprScalarValue& left,
+	const ConstexprScalarValue& right, TypeId operand_type) const
+{
+	if (operation == "&&")
+		return ConstexprScalarValue(static_cast<std::int64_t>(
+			ScalarTruth(left) && ScalarTruth(right)));
+	if (operation == "||")
+		return ConstexprScalarValue(static_cast<std::int64_t>(
+			ScalarTruth(left) || ScalarTruth(right)));
+	if (operation == ",") return right;
+	if (operand_type != kNoType && IsFloating(operand_type))
+	{
+		if (left.kind != CONSTEXPR_SCALAR_FLOATING ||
+			right.kind != CONSTEXPR_SCALAR_FLOATING)
+			throw std::logic_error("unnormalized floating constant operands");
+		const long double l = left.floating;
+		const long double r = right.floating;
+		if (operation == "==" || operation == "!=" || operation == "<" ||
+			operation == ">" || operation == "<=" || operation == ">=")
+		{
+			const bool compared = operation == "==" ? l == r :
+				operation == "!=" ? l != r : operation == "<" ? l < r :
+				operation == ">" ? l > r : operation == "<=" ? l <= r : l >= r;
+			return ConstexprScalarValue(static_cast<std::int64_t>(compared));
+		}
+		if (operation == "/" && r == 0.0L)
+			throw std::runtime_error("floating constant division by zero");
+		long double calculated = operation == "+" ? l + r :
+			operation == "-" ? l - r : operation == "*" ? l * r :
+			operation == "/" ? l / r :
+			throw std::runtime_error("unsupported floating constant operator");
+		return NormalizeScalarConstant(
+			operand_type, ConstexprScalarValue(calculated));
+	}
+	return ConstexprScalarValue(ApplyConstantBinary(operation,
+		left.integral, right.integral, operand_type));
+}
+
+NameId SemanticAnalyzer::InternScalar(TypeId type,
+	const ConstexprScalarValue& value)
+{
+	if (value.kind == CONSTEXPR_SCALAR_INTEGRAL)
+		return InternNumber(value.integral);
+	std::ostringstream spelling;
+	spelling.imbue(std::locale::classic());
+	const FundamentalKind kind = FundamentalOf(type);
+	const int precision = kind == FUND_FLOAT ?
+		std::numeric_limits<float>::max_digits10 : kind == FUND_DOUBLE ?
+		std::numeric_limits<double>::max_digits10 :
+		std::numeric_limits<long double>::max_digits10;
+	spelling << std::setprecision(precision) << value.floating;
+	if (kind == FUND_FLOAT) spelling << 'f';
+	else if (kind == FUND_LONG_DOUBLE) spelling << 'L';
+	return program_->names.Intern(spelling.str());
 }
 
 bool SemanticAnalyzer::ConsumeConstexprStep()
@@ -50,7 +270,7 @@ void SemanticAnalyzer::PopConstexprBlock()
 }
 
 bool SemanticAnalyzer::AddConstexprLocal(NameId name, NameId pack_name,
-	TypeId type, std::int64_t value, std::size_t* local)
+	TypeId type, const ConstexprScalarValue& value, std::size_t* local)
 {
 	if (constexpr_frames_.empty()) return false;
 	const ConstexprFrame& frame = constexpr_frames_.back();
@@ -64,7 +284,7 @@ bool SemanticAnalyzer::AddConstexprLocal(NameId name, NameId pack_name,
 				return false;
 	if (local) *local = constexpr_locals_.size();
 	constexpr_locals_.push_back(ConstexprLocalValue(
-		name, pack_name, type, NormalizeIntegralConstant(type, value)));
+		name, pack_name, type, NormalizeScalarConstant(type, value)));
 	if (constexpr_locals_.size() > constexpr_peak_locals_)
 		constexpr_peak_locals_ = constexpr_locals_.size();
 	return true;
@@ -156,12 +376,12 @@ bool SemanticAnalyzer::TryAnalyzeConstexprLocal(
 	result->type = EffectiveType(value.type);
 	result->category = VALUE_LVALUE;
 	result->constexpr_local = local;
-	result->constant = true;
-	result->value = value.value;
+	SetExpressionScalar(result, value.value);
 	result->node = MakeDump(DUMP_ID_EXPRESSION, result->type,
 		VALUE_LVALUE, name);
 	dump_.nodes[result->node].constant = true;
-	dump_.nodes[result->node].constant_value = result->value;
+	if (!result->floating_constant)
+		dump_.nodes[result->node].constant_value = result->value;
 	++expression_count_;
 	*result = ApplyTarget(*result, target);
 	return true;
@@ -237,18 +457,28 @@ void SemanticAnalyzer::PublishConstantVariableInitializer(BindingId binding,
 	TypeId type, const SpecInfo& spec, const ExpressionInfo& initializer)
 {
 	if (spec.is_constexpr && !program_->types.IsReference(type) &&
-		IsIntegral(type, true) && !initializer.constant)
+		(IsIntegral(type, true) || IsFloating(type)) && !initializer.constant)
 		throw std::runtime_error(
 			"constexpr scalar initializer is not constant");
 	if (!initializer.constant ||
 		(!spec.is_constexpr &&
-		 !(IsConst(type) && IsIntegral(type, true)) &&
-		 !(constexpr_evaluation_depth_ != 0 && IsIntegral(type, true))))
+		 !(IsConst(type) && (IsIntegral(type, true) || IsFloating(type))) &&
+		 !(constexpr_evaluation_depth_ != 0 &&
+			(IsIntegral(type, true) || IsFloating(type)))))
 		return;
-	program_->bindings[binding].constant = true;
-	program_->bindings[binding].value = initializer.value;
+	const bool scalar_type = IsIntegral(type, true) || IsFloating(type);
+	const ConstexprScalarValue converted = scalar_type ?
+		ConvertScalarConstant(initializer.type, type,
+			ExpressionScalar(initializer)) :
+		ConstexprScalarValue(initializer.value);
+	PublishBindingScalar(binding, converted);
 	if (spec.is_constexpr && !IsPointer(type))
+	{
 		dump_.nodes[initializer.node].type = type;
+		if (converted.kind == CONSTEXPR_SCALAR_FLOATING &&
+			dump_.nodes[initializer.node].kind == DUMP_LITERAL)
+			dump_.nodes[initializer.node].text = InternScalar(type, converted);
+	}
 }
 
 bool SemanticAnalyzer::EvaluateConstexprDeclaration(NodeId node, ScopeId scope)
@@ -307,11 +537,11 @@ bool SemanticAnalyzer::EvaluateConstexprDeclaration(NodeId node, ScopeId scope)
 					const NodeId initializer = FindChild(item, "initializer");
 					ExpressionInfo value;
 					valid = parsed.name != 0 && initializer != kNoNode &&
-						IsIntegral(parsed.type, true) &&
+						(IsIntegral(parsed.type, true) || IsFloating(parsed.type)) &&
 						AnalyzeConstexprInitializer(initializer, scope,
 							parsed.type, &value) &&
 						AddConstexprLocal(parsed.name, 0, parsed.type,
-							value.value);
+							ExpressionScalar(value));
 				}
 			}
 		}
@@ -345,24 +575,27 @@ bool SemanticAnalyzer::EvaluateConstexprCondition(
 		const NodeId initializer = FindChild(declaration, "initializer");
 		ExpressionInfo evaluated;
 		if (parsed.name == 0 || initializer == kNoNode ||
-			!IsIntegral(parsed.type, true) ||
+			(!IsIntegral(parsed.type, true) && !IsFloating(parsed.type)) ||
 			!AnalyzeConstexprInitializer(
 				initializer, scope, parsed.type, &evaluated) ||
 			!AddConstexprLocal(
-				parsed.name, 0, parsed.type, evaluated.value)) return false;
-		*value = evaluated.value != 0;
+				parsed.name, 0, parsed.type,
+				ExpressionScalar(evaluated))) return false;
+		*value = ScalarTruth(ExpressionScalar(evaluated));
 		return true;
 	}
 	ExpressionInfo expression;
 	if (first == kNoNode ||
 		!AnalyzeConstexprExpression(first, scope, kNoType, &expression) ||
-		!IsIntegral(expression.type, true)) return false;
-	*value = expression.value != 0;
+		(!IsIntegral(expression.type, true) &&
+		 !IsFloating(expression.type))) return false;
+	*value = ScalarTruth(ExpressionScalar(expression));
 	return true;
 }
 
 ConstexprFlow SemanticAnalyzer::EvaluateConstexprCompound(
-	NodeId node, ScopeId scope, TypeId result_type, std::int64_t* result)
+	NodeId node, ScopeId scope, TypeId result_type,
+	ConstexprScalarValue* result)
 {
 	PushConstexprBlock();
 	ConstexprFlow result_flow = CONSTEXPR_FLOW_NORMAL;
@@ -385,7 +618,8 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprCompound(
 }
 
 ConstexprFlow SemanticAnalyzer::EvaluateConstexprStatement(
-	NodeId node, ScopeId scope, TypeId result_type, std::int64_t* result)
+	NodeId node, ScopeId scope, TypeId result_type,
+	ConstexprScalarValue* result)
 {
 	if (!ConsumeConstexprStep()) return CONSTEXPR_FLOW_INVALID;
 	if (arena_->IsTag(node, "compound-statement"))
@@ -398,9 +632,11 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprStatement(
 		if (!AnalyzeConstexprExpression(
 			expression, scope, result_type, &value))
 			return CONSTEXPR_FLOW_INVALID;
-		if (!value.constant || !IsIntegral(value.type, true))
+		if (!value.constant ||
+			(!IsIntegral(value.type, true) && !IsFloating(value.type)))
 			return CONSTEXPR_FLOW_INVALID;
-		*result = NormalizeIntegralConstant(result_type, value.value);
+		*result = ConvertScalarConstant(
+			value.type, result_type, ExpressionScalar(value));
 		return CONSTEXPR_FLOW_RETURN;
 	}
 	if (arena_->IsTag(node, "expression-statement"))
@@ -618,13 +854,14 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprStatement(
 }
 
 bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
-	const std::vector<ExpressionInfo>& arguments, std::int64_t* value)
+	const std::vector<ExpressionInfo>& arguments,
+	ConstexprScalarValue* value)
 {
 	function = program_->bindings[function].canonical;
 	const FunctionInfo info = GetFunction(function);
 	const TypeId result_type = program_->types.Get(info.type).child;
 	if (!info.constexpr_function || info.definition_body == kNoNode ||
-		!IsIntegral(result_type, true) ||
+		(!IsIntegral(result_type, true) && !IsFloating(result_type)) ||
 		arguments.size() != info.parameters.size() ||
 		(info.member_owner != kNoType &&
 		 !program_->bindings[function].static_member_function))
@@ -638,11 +875,13 @@ bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 	for (std::size_t i = 0; i < arguments.size(); ++i)
 	{
 		const TypeId type = ParameterBindingType(info.parameters[i]);
-		if (!arguments[i].constant || !IsIntegral(type, true)) return false;
+		if (!arguments[i].constant ||
+			(!IsIntegral(type, true) && !IsFloating(type))) return false;
 		key.parameter_types.push_back(
 			program_->types.RemoveTopCv(EffectiveType(type)));
 		key.parameter_values.push_back(
-			NormalizeIntegralConstant(type, arguments[i].value));
+			ConvertScalarConstant(arguments[i].type, type,
+				ExpressionScalar(arguments[i])));
 	}
 
 	std::unordered_map<ConstexprCallKey, ConstexprCallFact,
@@ -695,7 +934,7 @@ bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 	current_return_type_ = result_type;
 	current_class_context_ = program_->bindings[function].member_owner;
 	current_function_context_ = function;
-	std::int64_t evaluated = 0;
+	ConstexprScalarValue evaluated;
 	ConstexprFlow flow = CONSTEXPR_FLOW_INVALID;
 	try
 	{
@@ -736,7 +975,7 @@ bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 		return false;
 	}
 	fact.state = 2;
-	fact.value = NormalizeIntegralConstant(result_type, evaluated);
+	fact.value = NormalizeScalarConstant(result_type, evaluated);
 	*value = fact.value;
 	return true;
 }

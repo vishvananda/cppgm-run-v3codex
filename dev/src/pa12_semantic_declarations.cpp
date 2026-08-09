@@ -1164,8 +1164,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 				if (!value.constant)
 					throw std::runtime_error(
 						"nonconstant in-class static data member initializer");
-				program_->bindings[member].constant = true;
-				program_->bindings[member].value = value.value;
+				PublishBindingScalar(member, ExpressionScalar(value));
 			}
 			else if (!non_static_data_member && spec.is_constexpr)
 				throw std::runtime_error(
@@ -1305,8 +1304,7 @@ void SemanticAnalyzer::PublishVariableDeclarationFacts(BindingId binding,
 	canonical.thread_local_storage = record.thread_local_storage;
 	if (record.canonical != binding && canonical.constant)
 	{
-		record.constant = true;
-		record.value = canonical.value;
+		PublishBindingScalar(binding, BindingScalar(record.canonical));
 	}
 	if (!local) record.qualified_name = EmissionName(declaration_scope, name);
 }

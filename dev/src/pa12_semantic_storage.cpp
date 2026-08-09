@@ -95,6 +95,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		constexpr_locals_.capacity() * sizeof(ConstexprLocalValue) +
 		constexpr_scope_facts_.capacity() * sizeof(ConstexprScopeFact) +
 		constexpr_block_offsets_.capacity() * sizeof(ConstexprBlockOffset) +
+		floating_constant_fact_by_binding_.capacity() * sizeof(std::uint32_t) +
+		floating_constant_values_.capacity() * sizeof(long double) +
 		constexpr_scratch_dump_.StorageBytes() +
 		constexpr_call_facts_.bucket_count() * sizeof(void*) +
 		constexpr_call_facts_.size() *
@@ -114,7 +116,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		ConstexprCallKeyHash>::const_iterator i = constexpr_call_facts_.begin();
 		i != constexpr_call_facts_.end(); ++i)
 		bytes += i->first.parameter_types.capacity() * sizeof(TypeId) +
-			i->first.parameter_values.capacity() * sizeof(std::int64_t);
+			i->first.parameter_values.capacity() *
+				sizeof(ConstexprScalarValue);
 	for (std::size_t i = 0; i < entity_data_members_.size(); ++i)
 		bytes += entity_data_members_[i].capacity() * sizeof(BindingId);
 	for (std::size_t i = 0; i < entity_layout_members_.size(); ++i)

@@ -82,8 +82,11 @@ void SemanticAnalyzer::RecordExpressionFacts(const ExpressionInfo& value)
 {
 	if (value.node == kNoDumpEdge) return;
 	DumpNode& node = dump_.nodes[value.node];
-	node.constant = value.constant;
-	node.constant_value = value.value;
+	// Floating literal identity is retained for lowering, but PA15's runtime
+	// control-flow lowering must not reinterpret a PA21 semantic float fact as
+	// an optimization request.
+	node.constant = value.constant && !value.floating_constant;
+	if (!value.floating_constant) node.constant_value = value.value;
 }
 
 bool SemanticAnalyzer::IsUnsignedIntegral(TypeId type) const

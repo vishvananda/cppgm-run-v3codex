@@ -6,6 +6,8 @@
 #include <climits>
 #include <cstdlib>
 #include <limits>
+#include <locale>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -377,8 +379,24 @@ ExpressionInfo SemanticAnalyzer::MakeBuiltinScalarLiteral(
 			suffix == 'f' || suffix == 'F' ?
 			FUND_FLOAT : suffix == 'l' || suffix == 'L' ?
 			FUND_LONG_DOUBLE : FUND_DOUBLE;
-		return MakeLiteral(program_->types.Fundamental(kind),
-			program_->names.Intern(spelling));
+		const TypeId type = program_->types.Fundamental(kind);
+		std::string numeric = spelling;
+		if (!numeric.empty() && (numeric[numeric.size() - 1] == 'f' ||
+			numeric[numeric.size() - 1] == 'F' ||
+			numeric[numeric.size() - 1] == 'l' ||
+			numeric[numeric.size() - 1] == 'L'))
+			numeric.erase(numeric.size() - 1);
+		std::istringstream input(numeric);
+		input.imbue(std::locale::classic());
+		long double decoded = 0.0L;
+		input >> decoded;
+		if (!input || input.peek() != std::char_traits<char>::eof())
+			throw std::runtime_error("invalid floating literal value");
+		ExpressionInfo result = MakeLiteral(
+			type, program_->names.Intern(spelling));
+		SetExpressionScalar(&result, ConvertScalarConstant(
+			type, type, ConstexprScalarValue(decoded)));
+		return result;
 	}
 	const std::int64_t value = retained ?
 		static_cast<std::int64_t>(retained_value) : ParseInteger(spelling);
@@ -598,10 +616,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 	if (found.ordinary < variable_template_bindings_.size() &&
 		variable_template_bindings_[found.ordinary] != 0 && binding.constant)
 	{
-		ExpressionInfo result = MakeLiteral(
-			EffectiveType(binding.type), InternNumber(binding.value));
-		result.constant = true;
-		result.value = binding.value;
+		const ConstexprScalarValue scalar = BindingScalar(found.ordinary);
+		ExpressionInfo result = MakeLiteral(EffectiveType(binding.type),
+			InternScalar(EffectiveType(binding.type), scalar));
+		SetExpressionScalar(&result, scalar);
 		return ApplyTarget(result, target);
 	}
 	if (binding.kind == BIND_ENUMERATOR)
@@ -650,10 +668,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 	result.binding = value_binding;
 	result.node = MakeDump(DUMP_ID_EXPRESSION, result.type,
 		result.category, program_->names.Intern(spelling), value_binding);
-	result.constant = binding.constant;
-	result.value = binding.value;
+	if (binding.constant)
+		SetExpressionScalar(&result, BindingScalar(found.ordinary));
 	dump_.nodes[result.node].constant = result.constant;
-	dump_.nodes[result.node].constant_value = result.value;
+	if (!result.floating_constant)
+		dump_.nodes[result.node].constant_value = result.value;
 	++expression_count_;
 	return ApplyTarget(result, target);
 }

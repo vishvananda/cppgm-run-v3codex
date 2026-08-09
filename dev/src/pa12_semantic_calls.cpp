@@ -661,10 +661,12 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	result.binding = found.ordinary;
 	const BindingRecord& canonical = program_->bindings[
 		program_->bindings[found.ordinary].canonical];
-	result.constant = canonical.constant;
-	result.value = canonical.value;
+	if (canonical.constant)
+		SetExpressionScalar(&result,
+			BindingScalar(program_->bindings[found.ordinary].canonical));
 	dump_.nodes[expression].constant = result.constant;
-	dump_.nodes[expression].constant_value = result.value;
+	if (!result.floating_constant)
+		dump_.nodes[expression].constant_value = result.value;
 	++expression_count_;
 	return result;
 }
