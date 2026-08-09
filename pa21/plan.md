@@ -13,25 +13,29 @@ lowering, phase-local ownership, and bounded work.
 
 ## Current Failure Map
 
-Current result: 76/130 pass, with all previous passes retained; 54 failures remain. The
-remainder partitions by owner into base/delegating/converting and object-return execution;
-overloaded/operator/callable calls; `noexcept` deduction; pointer-bearing constructor
-materialization and wide literals; and function-local static classification, guards, and
-LowIR emission. Direct constructors, immutable objects, canonical address evaluation,
-indirect calls, and checked pointer walking are complete.
+Current result: 79/130 pass, with all previous passes retained; 51 failures remain. The
+remainder partitions by owner into base/delegating object shape; overloaded operators,
+callable objects, and contextual conversions; `noexcept` deduction; pointer-bearing class
+materialization and wide literals; constexpr declaration suitability; runtime class-return
+ABI details; and function-local static classification, guards, and LowIR emission. Direct
+constructors, immutable objects, canonical addresses, indirect calls, class-valued returns,
+and converting call arguments are complete.
 
 ## Active Checkpoint
 
-**Base-subobject and converting construction.** Extend immutable object completion across
-base initializer order, copy/converting construction, constructor delegation, and class
-results returned from constexpr functions without weakening nonliteral-result rejection.
+**Base-subobject completion.** Extend immutable object completion across ordered direct-base
+initializers, base copy/conversion, derived-to-base receiver/reference projection, and
+delegating constructors while retaining the completed class-return transport.
 
-Owner/data flow: constructor selection and ordered base/member recipes -> evaluator frame ->
-immutable complete-object fact -> reference/value projection or returned class fact ->
-syntax-preserving materialization and demand. Requirements: `spec.md` §§2–6,8–9. Expected
-work is linear in initialized subobjects plus executed statements, with O(1)-average binding
-and completed-object lookup. Validate base/copy/delegating/converting probes, nonliteral bad
-cases, full PA21, prior PA1–20, file audit, and constructor-width scaling.
+Requirements: PA21 requires valid base/member initialization and base-backed member calls;
+`spec.md` §§2–6,8–9 require canonical subobject identity, indexed base edges, narrow
+completion ownership, recorded conversion/layout facts, and bounded work. Owner/data flow:
+selected constructor plus ordered direct-base/member recipes -> evaluator frame -> immutable
+complete-object fact with explicit base projection -> member/reference reads or returned
+class fact -> demand/materialization. Expected work is linear in initialized subobjects plus
+executed statements, with O(1)-average member/object lookup and bounded base-path traversal.
+Validate CRTP/base-reference, base-copy, delegation and base-pack probes, nonliteral bad
+cases, full PA21, prior PA1–20, file audit, and inheritance-depth scaling.
 
 ## Performance Evidence
 
@@ -48,6 +52,12 @@ Checked pointer walks of 32/64/128/256 elements used 133/261/517/1,029 constexpr
 one call request, 18 semantic nodes, 16,743 typed-storage bytes, and
 60,409/64,921/73,899/89,753 peak-stage bytes; lowering stayed at one instruction. The
 four-step-per-element growth confirms O(1) canonical stepping, bounds checks, and lookup.
+Class returns over 16/32/64/128-member objects used one call request, three evaluator steps,
+seven scratch nodes, and one LowIR instruction at every width. Layout visits were
+16/32/64/128, special-member subobject visits 64/128/256/512, conversion checks
+101/181/341/661, and lookups 68/116/212/404; peak-stage storage was
+57,287/65,639/111,527/204,413 bytes. Work is linear and storage follows geometric growth;
+returned object facts add no width-dependent call replay or lowering.
 
 ## Completed Checkpoints
 
@@ -58,3 +68,4 @@ four-step-per-element growth confirms O(1) canonical stepping, bounds checks, an
 | Immutable aggregate/array values | Structural interning, zero/nested/string initialization, binding/local publication, direct projection, ODR-use rematerialization, canonical bool identities, and multidimensional strides | PA21 49→56/130; PA1–20 2,185/2,185; file audit pass; linear 32–256 element scaling above |
 | Constructor/member invocation | Dump-node object facts, constructor argument frames, member-initializer execution, immutable receiver calls, default class initialization, scalar-member suitability checks, and runtime/static materialization boundaries | PA21 56→67/130; PA1–20 2,185/2,185; file audit pass; linear 16–128 field scaling above |
 | Canonical addresses and indirect calls | Allocation-relative null/binding/local/string/function identities, lvalue/reference transport, subobject bounds, pointer walking/comparison/truth, address-returning calls, indirect function calls, and expanded-pack array completion | PA21 67→76/130; PA1–20 2,185/2,185; file audit pass; linear 32–256 pointer-walk scaling above |
+| Class-valued calls and conversions | Object IDs through returns/calls, converting-constructor argument facts, temporary allocation identity, constexpr hidden-friend facts, and compile-time/runtime demand separation | PA21 76→79/130; aggregate return/NTTP, hidden-friend, and reference-conversion probes pass; PA1–20 2,185/2,185; audit pass; linear 16–128 member scaling above |

@@ -120,6 +120,21 @@ std::uint32_t SemanticAnalyzer::LvalueAddress(ExpressionInfo* expression)
 		SetExpressionLvalueAddress(expression, address);
 		return address;
 	}
+	const std::uint32_t object = ExpressionObject(*expression);
+	const bool temporary_object = object != kNoConstexprObject &&
+		(expression->binding == kNoBinding ||
+		 (expression->binding < program_->bindings.size() &&
+		  program_->bindings[expression->binding].kind == BIND_FUNCTION));
+	if (temporary_object)
+	{
+		const std::int64_t extent = static_cast<std::int64_t>(
+			program_->SizeOf(EffectiveType(expression->type)));
+		const std::uint32_t address = InternConstexprAddress(
+			ConstexprAddressValue(CONSTEXPR_ADDRESS_LOCAL,
+				next_constexpr_storage_identity_++, 0, 0, extent));
+		SetExpressionLvalueAddress(expression, address);
+		return address;
+	}
 	if (expression->binding != kNoBinding &&
 		expression->binding < program_->bindings.size())
 	{
@@ -235,12 +250,19 @@ bool SemanticAnalyzer::TryAnalyzeConstexprIndirectCall(ExpressionInfo* callee,
 
 ConstexprFlow SemanticAnalyzer::EvaluateConstexprReturn(NodeId expression,
 	ScopeId scope, TypeId result_type, ConstexprScalarValue* result,
-	std::uint32_t* result_address)
+	std::uint32_t* result_address, std::uint32_t* result_object)
 {
 	ExpressionInfo value;
 	if (!AnalyzeConstexprExpression(expression, scope, result_type, &value))
 		return CONSTEXPR_FLOW_INVALID;
 	const TypeRecord returned = program_->types.Get(result_type);
+	const TypeId object_type = program_->types.RemoveTopCv(
+		EffectiveType(result_type));
+	const EntityId object_entity = EntityOf(object_type);
+	const bool class_result = object_entity != kNoEntity &&
+		(program_->entities[object_entity].flavor == NAMED_STRUCT ||
+		 program_->entities[object_entity].flavor == NAMED_CLASS ||
+		 program_->entities[object_entity].flavor == NAMED_UNION);
 	if (returned.kind == TYPE_LVALUE_REFERENCE ||
 		returned.kind == TYPE_RVALUE_REFERENCE)
 	{
@@ -253,6 +275,12 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprReturn(NodeId expression,
 		const std::uint32_t address = ExpressionAddress(value);
 		if (address == kNoConstexprAddress) return CONSTEXPR_FLOW_INVALID;
 		*result_address = address;
+	}
+	else if (class_result)
+	{
+		const std::uint32_t object = ExpressionObject(value);
+		if (object == kNoConstexprObject) return CONSTEXPR_FLOW_INVALID;
+		*result_object = object;
 	}
 	else
 	{

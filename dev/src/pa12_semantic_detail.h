@@ -165,13 +165,13 @@ private:
 		std::uint32_t output_parent, bool switch_condition);
 	ConstexprFlow EvaluateConstexprCompound(NodeId node, ScopeId scope,
 		TypeId result_type, ConstexprScalarValue* result,
-		std::uint32_t* result_address);
+		std::uint32_t* result_address, std::uint32_t* result_object);
 	ConstexprFlow EvaluateConstexprStatement(NodeId node, ScopeId scope,
 		TypeId result_type, ConstexprScalarValue* result,
-		std::uint32_t* result_address);
+		std::uint32_t* result_address, std::uint32_t* result_object);
 	ConstexprFlow EvaluateConstexprReturn(NodeId expression, ScopeId scope,
 		TypeId result_type, ConstexprScalarValue* result,
-		std::uint32_t* result_address);
+		std::uint32_t* result_address, std::uint32_t* result_object);
 	bool EvaluateConstexprCondition(NodeId node, ScopeId scope, bool* value);
 	bool EvaluateConstexprDeclaration(NodeId node, ScopeId scope);
 	bool ConsumeConstexprStep();
@@ -893,6 +893,7 @@ private:
 		const std::vector<ExpressionInfo>& arguments,
 		ConstexprScalarValue* value,
 		std::uint32_t* address,
+		std::uint32_t* object,
 		const ExpressionInfo* receiver = 0);
 	bool TryEvaluateConstexprConstructor(BindingId constructor,
 		const std::vector<ExpressionInfo>& arguments,

@@ -2590,7 +2590,6 @@ void SemanticAnalyzer::AnalyzeFriendFunction(NodeId node,
 		friend_owner = program_->ParentScope(friend_owner);
 	if (friend_owner == kNoScope)
 		throw std::runtime_error("friend function has no namespace owner");
-
 	std::vector<NodeId> declarators;
 	if (arena_->IsTag(node, "function-definition"))
 	{
@@ -2650,6 +2649,7 @@ void SemanticAnalyzer::AnalyzeFriendFunction(NodeId node,
 			STORAGE_CLASS_NONE, current_language_linkage_,
 			IsNonthrowing(declarators[i], class_scope), false);
 		FunctionInfo& info = GetMutableFunction(binding);
+		info.constexpr_function = info.constexpr_function || spec.is_constexpr;
 		if (info.friend_of == kNoEntity) info.friend_of = owner_entity;
 		ValidateFunctionRefQualifier(binding);
 		const std::uint64_t access_key =

@@ -1090,7 +1090,8 @@ bool SemanticAnalyzer::EvaluateConstexprCondition(
 
 ConstexprFlow SemanticAnalyzer::EvaluateConstexprCompound(
 	NodeId node, ScopeId scope, TypeId result_type,
-	ConstexprScalarValue* result, std::uint32_t* result_address)
+	ConstexprScalarValue* result, std::uint32_t* result_address,
+	std::uint32_t* result_object)
 {
 	PushConstexprBlock();
 	ConstexprFlow result_flow = CONSTEXPR_FLOW_NORMAL;
@@ -1102,7 +1103,7 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprCompound(
 			(EvaluateConstexprDeclaration(child, scope) ?
 				CONSTEXPR_FLOW_NORMAL : CONSTEXPR_FLOW_INVALID) :
 			EvaluateConstexprStatement(child, scope, result_type, result,
-				result_address);
+				result_address, result_object);
 		if (flow != CONSTEXPR_FLOW_NORMAL)
 		{
 			result_flow = flow;
@@ -1115,18 +1116,20 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprCompound(
 
 ConstexprFlow SemanticAnalyzer::EvaluateConstexprStatement(
 	NodeId node, ScopeId scope, TypeId result_type,
-	ConstexprScalarValue* result, std::uint32_t* result_address)
+	ConstexprScalarValue* result, std::uint32_t* result_address,
+	std::uint32_t* result_object)
 {
 	if (!ConsumeConstexprStep()) return CONSTEXPR_FLOW_INVALID;
 	if (arena_->IsTag(node, "compound-statement"))
 		return EvaluateConstexprCompound(node, scope, result_type, result,
-			result_address);
+			result_address, result_object);
 	if (arena_->IsTag(node, "return-statement"))
 	{
 		const NodeId expression = FirstSemanticChild(node);
 		if (expression == kNoNode) return CONSTEXPR_FLOW_INVALID;
 		return EvaluateConstexprReturn(
-			expression, scope, result_type, result, result_address);
+			expression, scope, result_type, result, result_address,
+			result_object);
 	}
 	if (arena_->IsTag(node, "expression-statement"))
 	{
@@ -1163,7 +1166,7 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprStatement(
 		const NodeId branch = selected ? then_branch : else_branch;
 		const ConstexprFlow flow = branch == kNoNode ? CONSTEXPR_FLOW_NORMAL :
 			EvaluateConstexprStatement(branch, scope, result_type, result,
-				result_address);
+				result_address, result_object);
 		PopConstexprBlock();
 		return flow;
 	}
@@ -1208,7 +1211,8 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprStatement(
 				return CONSTEXPR_FLOW_INVALID;
 			}
 			const ConstexprFlow flow = EvaluateConstexprStatement(
-				body, scope, result_type, result, result_address);
+				body, scope, result_type, result, result_address,
+				result_object);
 			if (flow == CONSTEXPR_FLOW_RETURN ||
 				flow == CONSTEXPR_FLOW_INVALID)
 			{
@@ -1305,7 +1309,8 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprStatement(
 				return CONSTEXPR_FLOW_INVALID;
 			}
 			const ConstexprFlow flow = EvaluateConstexprStatement(
-				body, scope, result_type, result, result_address);
+				body, scope, result_type, result, result_address,
+				result_object);
 			if (flow == CONSTEXPR_FLOW_RETURN ||
 				flow == CONSTEXPR_FLOW_INVALID)
 			{
@@ -1625,8 +1630,10 @@ bool SemanticAnalyzer::TryEvaluateConstexprConstructor(BindingId function,
 		try
 		{
 			std::uint32_t ignored_address = kNoConstexprAddress;
+			std::uint32_t ignored_object = kNoConstexprObject;
 			valid = EvaluateConstexprCompound(info.definition_body,
-				info.lexical_scope, result_type, &ignored, &ignored_address) ==
+				info.lexical_scope, result_type, &ignored, &ignored_address,
+				&ignored_object) ==
 				CONSTEXPR_FLOW_NORMAL;
 		}
 		catch (...) { valid = false; }
@@ -1664,7 +1671,7 @@ bool SemanticAnalyzer::TryEvaluateConstexprConstructor(BindingId function,
 
 bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 	const std::vector<ExpressionInfo>& arguments,
-	ConstexprScalarValue* value, std::uint32_t* address,
+	ConstexprScalarValue* value, std::uint32_t* address, std::uint32_t* object,
 	const ExpressionInfo* receiver)
 {
 	function = program_->bindings[function].canonical;
@@ -1680,16 +1687,23 @@ bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 	const bool address_result = IsPointer(EffectiveType(result_type)) ||
 		returned.kind == TYPE_LVALUE_REFERENCE ||
 		returned.kind == TYPE_RVALUE_REFERENCE;
+	const TypeId result_object_type = program_->types.RemoveTopCv(
+		EffectiveType(result_type));
+	const TypeRecord& result_object_record =
+		program_->types.Get(result_object_type);
+	const bool object_result = !address_result &&
+		result_object_record.kind == TYPE_NAMED &&
+		IsConstexprClassEntity(*program_, result_object_record.entity);
 	if (!info.constexpr_function || info.definition_body == kNoNode ||
-		(!address_result && !IsIntegral(result_type, true) &&
-		 !IsFloating(result_type)) ||
+		(!address_result && !object_result &&
+		 !IsIntegral(result_type, true) && !IsFloating(result_type)) ||
 		arguments.size() != info.parameters.size() ||
 		(nonstatic_member && receiver_object == kNoConstexprObject &&
 		 receiver_address == kNoConstexprAddress))
 		return false;
 	++constexpr_call_requests_;
 
-	bool cacheable = !nonstatic_member && !address_result;
+	bool cacheable = !nonstatic_member && !address_result && !object_result;
 	ConstexprCallKey key;
 	key.function = function;
 	key.parameter_types.reserve(arguments.size());
@@ -1766,12 +1780,13 @@ bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 	current_function_context_ = function;
 	ConstexprScalarValue evaluated;
 	std::uint32_t evaluated_address = kNoConstexprAddress;
+	std::uint32_t evaluated_object = kNoConstexprObject;
 	ConstexprFlow flow = CONSTEXPR_FLOW_INVALID;
 	try
 	{
 		if (valid) flow = EvaluateConstexprCompound(
 			info.definition_body, info.lexical_scope, result_type, &evaluated,
-			&evaluated_address);
+			&evaluated_address, &evaluated_object);
 	}
 	catch (...) { flow = CONSTEXPR_FLOW_INVALID; }
 	current_return_type_ = previous_return;
@@ -1809,6 +1824,14 @@ bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 	{
 		if (evaluated_address == kNoConstexprAddress) return false;
 		*address = evaluated_address;
+		return true;
+	}
+	if (object_result)
+	{
+		if (evaluated_object == kNoConstexprObject ||
+			constexpr_objects_[evaluated_object].type != result_object_type)
+			return false;
+		*object = evaluated_object;
 		return true;
 	}
 	const ConstexprScalarValue normalized =

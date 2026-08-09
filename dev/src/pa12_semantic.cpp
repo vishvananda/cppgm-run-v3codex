@@ -1101,12 +1101,13 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	result.binding = selected;
 	ConstexprScalarValue constexpr_value;
 	std::uint32_t constexpr_address = kNoConstexprAddress;
+	std::uint32_t constexpr_object = kNoConstexprObject;
 	bool folded_call = false;
 	bool evaluated_call = false;
 	if (constant_evaluation_suppressed_depth_ == 0 &&
 		TryEvaluateConstexprFunction(
 		selected, constexpr_arguments, &constexpr_value, &constexpr_address,
-		object))
+		&constexpr_object, object))
 	{
 		evaluated_call = true;
 		if (returned.kind == TYPE_LVALUE_REFERENCE ||
@@ -1114,11 +1115,17 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 			SetExpressionLvalueAddress(&result, constexpr_address);
 		else if (IsPointer(EffectiveType(result_type)))
 			SetExpressionAddress(&result, constexpr_address);
+		else if (constexpr_object != kNoConstexprObject)
+		{
+			SetExpressionObject(&result, constexpr_object);
+			PublishDumpObject(call, constexpr_object);
+		}
 		else SetExpressionScalar(&result,
 			NormalizeScalarConstant(result_type, constexpr_value));
 		RecordExpressionFacts(result);
 		if (constant_expression_required_depth_ != 0 &&
-			constexpr_address == kNoConstexprAddress)
+			constexpr_address == kNoConstexprAddress &&
+			constexpr_object == kNoConstexprObject)
 		{
 			result = MakeLiteral(
 				result_type, InternScalar(result_type, constexpr_value));
@@ -2782,7 +2789,9 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		AnalyzeDeclaration(arena.EdgeChild(edge), program.GlobalScope(), root_, false);
 	if (function_templates_.empty() && class_templates_.empty())
 		for (std::size_t i = 0; i < hidden_friend_anchor_by_entity_.size(); ++i)
-			DemandFunction(hidden_friend_anchor_by_entity_[i]);
+			if (hidden_friend_anchor_by_entity_[i] != kNoBinding &&
+				!GetFunction(hidden_friend_anchor_by_entity_[i]).constexpr_function)
+				DemandFunction(hidden_friend_anchor_by_entity_[i]);
 	std::size_t default_demand = 0;
 	std::size_t function_demand = 0;
 	std::size_t member_definition_demand = 0;

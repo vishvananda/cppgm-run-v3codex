@@ -982,6 +982,9 @@ ExpressionInfo SemanticAnalyzer::BuildConvertingArgument(
 	ExpressionInfo converted = ApplyCallArgument(
 		source, parameters[0], &parameter_conversion);
 	dump_.Add(action, converted.node);
+	std::vector<ExpressionInfo> constexpr_arguments;
+	constexpr_arguments.reserve(function.parameter_count);
+	constexpr_arguments.push_back(converted);
 	for (std::size_t i = 1; i < function.parameter_count; ++i)
 	{
 		if (i >= constructor.parameters.size() ||
@@ -993,16 +996,30 @@ ExpressionInfo SemanticAnalyzer::BuildConvertingArgument(
 			constructor.parameters[i].default_scope, parameters[i]);
 		value = ApplyCallArgument(value, parameters[i]);
 		dump_.Add(action, value.node);
+		constexpr_arguments.push_back(value);
 	}
-	DemandFunction(constructor_binding);
+	std::uint32_t constexpr_object = kNoConstexprObject;
+	if (constant_evaluation_suppressed_depth_ == 0 &&
+		constructor.constexpr_function &&
+		TryEvaluateConstexprConstructor(
+			constructor_binding, constexpr_arguments, &constexpr_object))
+		PublishDumpObject(action, constexpr_object);
+	if (constexpr_object == kNoConstexprObject ||
+		(constant_expression_required_depth_ == 0 &&
+		 constexpr_evaluation_depth_ == 0))
+		DemandFunction(constructor_binding);
 	const std::uint32_t temporary = MakeDump(DUMP_TEMPORARY_OBJECT,
 		object_type, VALUE_XVALUE);
 	dump_.Add(temporary, action);
 	dump_.nodes[temporary].argument_materialization = true;
+	if (constexpr_object != kNoConstexprObject)
+		PublishDumpObject(temporary, constexpr_object);
 	ExpressionInfo result;
 	result.node = temporary;
 	result.type = object_type;
 	result.category = VALUE_XVALUE;
+	if (constexpr_object != kNoConstexprObject)
+		SetExpressionObject(&result, constexpr_object);
 	expression_count_ += 2;
 	return ApplyTarget(result, target);
 }
