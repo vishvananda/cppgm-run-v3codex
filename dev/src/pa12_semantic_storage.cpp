@@ -91,6 +91,9 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		demanded_default_constructor_entities_.capacity() * sizeof(EntityId) +
 		default_constructor_demand_states_.capacity() * sizeof(std::uint8_t) +
 		demanded_functions_.capacity() * sizeof(BindingId) +
+		constexpr_call_facts_.bucket_count() * sizeof(void*) +
+		constexpr_call_facts_.size() *
+			(sizeof(ConstexprCallKey) + sizeof(ConstexprCallFact)) +
 		associated_entities_.capacity() * sizeof(EntityId) +
 		associated_scopes_.capacity() * sizeof(ScopeId) +
 		associated_type_scratch_.capacity() * sizeof(TypeId) +
@@ -102,6 +105,11 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		pack_alignment_stack_.capacity() * sizeof(std::size_t);
 	for (std::size_t i = 0; i < functions_.size(); ++i)
 		bytes += functions_[i].parameters.capacity() * sizeof(ParameterInfo);
+	for (std::unordered_map<ConstexprCallKey, ConstexprCallFact,
+		ConstexprCallKeyHash>::const_iterator i = constexpr_call_facts_.begin();
+		i != constexpr_call_facts_.end(); ++i)
+		bytes += i->first.parameter_types.capacity() * sizeof(TypeId) +
+			i->first.parameter_values.capacity() * sizeof(std::int64_t);
 	for (std::size_t i = 0; i < entity_data_members_.size(); ++i)
 		bytes += entity_data_members_[i].capacity() * sizeof(BindingId);
 	for (std::size_t i = 0; i < entity_layout_members_.size(); ++i)

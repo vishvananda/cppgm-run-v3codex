@@ -1024,6 +1024,8 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	const std::uint32_t callee = MakeDump(DUMP_CALLEE, callable_type,
 		VALUE_NONE, function.display_name, emission_binding);
 	dump_.Add(call, callee);
+	std::vector<ExpressionInfo> constexpr_arguments;
+	constexpr_arguments.reserve(function_type.parameter_count);
 	if (function.member_owner != kNoType)
 	{
 		if (!object) throw std::logic_error("selected member call has no object");
@@ -1043,7 +1045,8 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 					parameters[a]);
 			else argument = ApplyCallArgument(argument, parameters[a],
 				argument_conversions && a < argument_conversions->size() ?
-				&(*argument_conversions)[a] : 0);
+					&(*argument_conversions)[a] : 0);
+			constexpr_arguments.push_back(argument);
 		}
 		dump_.Add(call, argument.node);
 	}
@@ -1058,6 +1061,7 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 			function.parameters[a].default_scope, parameters[a]);
 		argument = ApplyCallArgument(argument, parameters[a]);
 		dump_.Add(call, argument.node);
+		constexpr_arguments.push_back(argument);
 	}
 	ExpressionInfo result;
 	result.node = call;
@@ -1065,15 +1069,26 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	result.category = category;
 	result.binding = selected;
 	std::int64_t constexpr_value = 0;
+	bool folded_call = false;
 	if (constant_evaluation_suppressed_depth_ == 0 && !object &&
 		TryEvaluateConstexprFunction(
-		selected, arguments, &constexpr_value))
+		selected, constexpr_arguments, &constexpr_value))
 	{
 		result.constant = true;
 		result.value = NormalizeIntegralConstant(result_type, constexpr_value);
 		RecordExpressionFacts(result);
+		if (constant_expression_required_depth_ != 0)
+		{
+			result = MakeLiteral(result_type, InternNumber(constexpr_value));
+			result.constant = true;
+			result.value = NormalizeIntegralConstant(
+				result_type, constexpr_value);
+			RecordExpressionFacts(result);
+			folded_call = true;
+		}
 	}
-	DemandFunction(selected);
+	if (!folded_call && constexpr_evaluation_depth_ == 0)
+		DemandFunction(selected);
 	++expression_count_;
 	return ApplyTarget(result, target);
 }
@@ -1375,6 +1390,45 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 	result.node = expression;
 	result.type = result_type;
 	result.category = VALUE_LVALUE;
+	if (constexpr_evaluation_depth_ != 0 &&
+		constant_evaluation_suppressed_depth_ == 0 &&
+		left.binding != kNoBinding && right.constant &&
+		IsIntegral(result_type, true))
+	{
+		BindingRecord& binding = program_->bindings[left.binding];
+		bool valid = operation == "=" || binding.constant;
+		std::int64_t assigned = right.value;
+		if (valid && operation != "=")
+		{
+			const std::string binary = operation.substr(0, operation.size() - 1);
+			const TypeId operand_type = dump_.nodes[expression].operand_type != kNoType ?
+				dump_.nodes[expression].operand_type : result_type;
+			try
+			{
+				assigned = ApplyConstantBinary(
+					binary, binding.value, right.value, operand_type);
+			}
+			catch (...)
+			{
+				valid = false;
+			}
+		}
+		if (valid)
+		{
+			assigned = NormalizeIntegralConstant(result_type, assigned);
+			binding.constant = true;
+			binding.value = assigned;
+			if (binding.canonical != left.binding)
+			{
+				program_->bindings[binding.canonical].constant = true;
+				program_->bindings[binding.canonical].value = assigned;
+			}
+			result.constant = true;
+			result.value = assigned;
+			dump_.nodes[expression].constant = true;
+			dump_.nodes[expression].constant_value = assigned;
+		}
+	}
 	++expression_count_;
 	return result;
 }
@@ -2040,22 +2094,19 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		bool has_initializer = initializer_node != kNoNode;
 		if (initializer_node != kNoNode)
 		{
-			initializer = AnalyzeVariableInitializer(initializer_node,
-				semantic_scope, parsed.type, local);
+			const bool require_constant = spec.is_constexpr ||
+				(IsConst(parsed.type) && IsIntegral(parsed.type, true)) ||
+				spec.storage_class == STORAGE_CLASS_STATIC;
+			initializer = AnalyzeConstantAwareVariableInitializer(initializer_node,
+				semantic_scope, parsed.type, local, require_constant);
 			if (program_->types.Get(parsed.type).kind == TYPE_ARRAY &&
 				program_->types.Get(parsed.type).bound == 0)
 			{
 				parsed.type = initializer.type;
 				program_->bindings[binding].type = parsed.type;
 			}
-			if (initializer.constant && (spec.is_constexpr ||
-				(IsConst(parsed.type) && IsIntegral(parsed.type, true))))
-			{
-				program_->bindings[binding].constant = true;
-				program_->bindings[binding].value = initializer.value;
-				if (spec.is_constexpr && !IsPointer(parsed.type))
-					dump_.nodes[initializer.node].type = parsed.type;
-			}
+			PublishConstantVariableInitializer(
+				binding, parsed.type, spec, initializer);
 		}
 		if (program_->bindings[binding].constant)
 		{
@@ -2170,6 +2221,9 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	parsed.name = path.Last();
 	if (!program_->types.IsFunction(parsed.type))
 		throw std::runtime_error("function definition has non-function type");
+	if (spec.is_constexpr &&
+		IsVoid(program_->types.Get(parsed.type).child))
+		throw std::runtime_error("constexpr function may not return void");
 	const BindingId binding = DeclareFunction(owner, parsed.name,
 		parsed.type, parsed.parameters, true, false, spec.storage_class,
 		current_language_linkage_, IsNonthrowing(declarator, semantic_scope));
@@ -2194,7 +2248,12 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	}
 	if (program_->bindings[binding].virtual_function)
 		MarkVtableDemand(program_->bindings[binding].member_owner);
-	function.deferred = false;
+	function.deferred = spec.is_constexpr;
+	if (function.deferred)
+	{
+		current_class_context_ = previous_class;
+		return;
+	}
 	const bool member = function.member_owner != kNoType;
 	const TypeId output_type = member ?
 		AdaptMemberFunctionType(binding) : parsed.type;
@@ -2296,6 +2355,13 @@ void SemanticAnalyzer::AnalyzeCondition(NodeId node, ScopeId scope,
 		const NodeId initializer = FindChild(declaration_node, "initializer");
 		ExpressionInfo value = AnalyzeVariableInitializer(initializer,
 			scope, parsed.type, true);
+		if (constexpr_evaluation_depth_ != 0 && value.constant &&
+			IsIntegral(parsed.type, true))
+		{
+			program_->bindings[binding].constant = true;
+			program_->bindings[binding].value =
+				NormalizeIntegralConstant(parsed.type, value.value);
+		}
 		const std::uint32_t declaration = MakeDump(DUMP_CONDITION_DECLARATION);
 		const std::uint32_t variable = MakeDump(DUMP_VARIABLE, parsed.type,
 			VALUE_NONE, parsed.name, binding);
@@ -2727,6 +2793,10 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 			template_specialization_requests_;
 		stats_->template_specialization_cache_hits =
 			template_specialization_cache_hits_;
+		stats_->constexpr_call_requests = constexpr_call_requests_;
+		stats_->constexpr_call_cache_hits = constexpr_call_cache_hits_;
+		stats_->constexpr_step_visits = constexpr_step_visits_;
+		stats_->constexpr_max_depth = constexpr_max_depth_;
 		stats_->demand_worklist_pushes = demand_worklist_pushes_;
 		stats_->demanded_function_emissions = demanded_function_emissions_;
 		stats_->default_constructor_emissions = default_constructor_emissions_;

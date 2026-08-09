@@ -89,6 +89,25 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 			throw std::runtime_error("invalid increment operand");
 		category = postfix ? VALUE_PRVALUE : VALUE_LVALUE;
 		constant = false;
+		if (constexpr_evaluation_depth_ != 0 &&
+			constant_evaluation_suppressed_depth_ == 0 &&
+			operand.binding != kNoBinding && operand.constant &&
+			IsIntegral(result_type, true))
+		{
+			BindingRecord& binding = program_->bindings[operand.binding];
+			const std::int64_t previous = binding.value;
+			const std::int64_t updated = NormalizeIntegralConstant(result_type,
+				operation == "++" ? previous + 1 : previous - 1);
+			binding.constant = true;
+			binding.value = updated;
+			if (binding.canonical != operand.binding)
+			{
+				program_->bindings[binding.canonical].constant = true;
+				program_->bindings[binding.canonical].value = updated;
+			}
+			constant = true;
+			value = postfix ? previous : updated;
+		}
 	}
 	else if (operation == "!")
 	{

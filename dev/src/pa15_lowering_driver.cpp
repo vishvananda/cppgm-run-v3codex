@@ -253,6 +253,15 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 				semantic_stats.template_specialization_requests;
 			semantic.template_specialization_cache_hits +=
 				semantic_stats.template_specialization_cache_hits;
+			semantic.constexpr_call_requests +=
+				semantic_stats.constexpr_call_requests;
+			semantic.constexpr_call_cache_hits +=
+				semantic_stats.constexpr_call_cache_hits;
+			semantic.constexpr_step_visits +=
+				semantic_stats.constexpr_step_visits;
+			semantic.constexpr_max_depth = std::max(
+				semantic.constexpr_max_depth,
+				semantic_stats.constexpr_max_depth);
 			semantic.demand_worklist_pushes +=
 				semantic_stats.demand_worklist_pushes;
 			semantic.demanded_function_emissions +=

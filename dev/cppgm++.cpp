@@ -631,6 +631,10 @@ int run_emit_semantics_mode(const vector<string> & args)
            << stats.template_specialization_requests
            << " template_specialization_cache_hits="
            << stats.template_specialization_cache_hits
+           << " constexpr_call_requests=" << stats.constexpr_call_requests
+           << " constexpr_call_cache_hits=" << stats.constexpr_call_cache_hits
+           << " constexpr_step_visits=" << stats.constexpr_step_visits
+           << " constexpr_max_depth=" << stats.constexpr_max_depth
            << " demand_worklist_pushes=" << stats.demand_worklist_pushes
            << " demanded_function_emissions="
            << stats.demanded_function_emissions
@@ -751,6 +755,14 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << semantic.template_specialization_requests
 			 << " template_specialization_cache_hits="
 			 << semantic.template_specialization_cache_hits
+			 << " constexpr_call_requests="
+			 << semantic.constexpr_call_requests
+			 << " constexpr_call_cache_hits="
+			 << semantic.constexpr_call_cache_hits
+			 << " constexpr_step_visits="
+			 << semantic.constexpr_step_visits
+			 << " constexpr_max_depth="
+			 << semantic.constexpr_max_depth
 			 << " demand_worklist_pushes=" << semantic.demand_worklist_pushes
 			 << " demanded_function_emissions="
 			 << semantic.demanded_function_emissions

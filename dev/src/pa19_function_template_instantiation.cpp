@@ -218,6 +218,8 @@ void SemanticAnalyzer::UpgradeFunctionTemplateSpecializations(
 			throw std::runtime_error(
 				"function template definition does not match declaration");
 		function.parameters = parsed.parameters;
+		function.constexpr_function =
+			function.constexpr_function || spec.is_constexpr;
 		function.defined = true;
 		function.deferred = true;
 		function.definition_body = pattern.definition_body;
@@ -356,8 +358,19 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 		{
 			argument.type = ResolveTemplateParameterType(
 				parameter, default_scope);
-			const ExpressionInfo value = AnalyzeExpression(
-				source, default_scope, argument.type);
+			++constant_expression_required_depth_;
+			ExpressionInfo value;
+			try
+			{
+				value = AnalyzeExpression(
+					source, default_scope, argument.type);
+			}
+			catch (...)
+			{
+				--constant_expression_required_depth_;
+				throw;
+			}
+			--constant_expression_required_depth_;
 			if (!value.constant || !IsIntegral(value.type, true))
 				throw std::runtime_error(
 					"default non-type function template argument is not constant");
@@ -419,6 +432,8 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	ValidateFunctionRefQualifier(binding);
 	ValidateNonmemberOperator(binding);
 	FunctionInfo& function = GetMutableFunction(binding);
+	function.constexpr_function =
+		function.constexpr_function || spec.is_constexpr;
 	function.template_pattern = static_cast<std::uint32_t>(index);
 	function.parameter_pack_name = FunctionParameterPackName(pattern.declarator);
 	function.deferred = true;

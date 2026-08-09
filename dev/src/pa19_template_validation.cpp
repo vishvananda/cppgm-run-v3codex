@@ -1,5 +1,6 @@
 #include "pa12_semantic_detail.h"
 
+#include <algorithm>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -1076,8 +1077,20 @@ void SemanticAnalyzer::CompleteFunctionCallTemplateCandidates(NodeId callee,
 	}
 	const CompactIndexSequence* retained_templates =
 		retained_call_template_sets_.Find(callee);
-	if (!retained_templates || retained_templates->Size() == 0) return;
-	const std::vector<std::size_t> patterns = retained_templates->Copy();
+	std::vector<std::size_t> patterns = retained_templates ?
+		retained_templates->Copy() : std::vector<std::size_t>();
+	if (current_function_context_ != kNoBinding)
+	{
+		const FunctionInfo& current = GetFunction(current_function_context_);
+		if (current.template_pattern != kNoDumpEdge &&
+			current.template_pattern < function_templates_.size() &&
+			function_templates_[current.template_pattern].name ==
+				program_->names.Intern(spelling) &&
+			std::find(patterns.begin(), patterns.end(),
+				current.template_pattern) == patterns.end())
+			patterns.push_back(current.template_pattern);
+	}
+	if (patterns.empty()) return;
 	NamePath base;
 	std::vector<TypeId> explicit_arguments;
 	const bool explicit_id = ParseExplicitTemplateArguments(

@@ -273,6 +273,57 @@ struct ExpressionInfo
 		  string_unit_count(0) {}
 };
 
+enum ConstexprFlow
+{
+	CONSTEXPR_FLOW_NORMAL,
+	CONSTEXPR_FLOW_RETURN,
+	CONSTEXPR_FLOW_BREAK,
+	CONSTEXPR_FLOW_CONTINUE,
+	CONSTEXPR_FLOW_INVALID
+};
+
+struct ConstexprCallKey
+{
+	BindingId function;
+	std::vector<TypeId> parameter_types;
+	std::vector<std::int64_t> parameter_values;
+
+	ConstexprCallKey() : function(kNoBinding) {}
+
+	bool operator==(const ConstexprCallKey& other) const
+	{
+		return function == other.function &&
+			parameter_types == other.parameter_types &&
+			parameter_values == other.parameter_values;
+	}
+};
+
+struct ConstexprCallKeyHash
+{
+	std::size_t operator()(const ConstexprCallKey& key) const
+	{
+		std::size_t hash = static_cast<std::size_t>(key.function) + 1;
+		for (std::size_t i = 0; i < key.parameter_types.size(); ++i)
+		{
+			hash ^= static_cast<std::size_t>(key.parameter_types[i]) +
+				0x9e3779b9u + (hash << 6) + (hash >> 2);
+			const std::uint64_t bits = static_cast<std::uint64_t>(
+				key.parameter_values[i]);
+			hash ^= static_cast<std::size_t>(bits ^ (bits >> 32)) +
+				0x9e3779b9u + (hash << 6) + (hash >> 2);
+		}
+		return hash;
+	}
+};
+
+struct ConstexprCallFact
+{
+	// 1=in progress, 2=success, 3=expected failure.
+	std::uint8_t state;
+	std::int64_t value;
+	ConstexprCallFact() : state(1), value(0) {}
+};
+
 enum ConversionRank
 {
 	CONVERSION_EXACT = 0,

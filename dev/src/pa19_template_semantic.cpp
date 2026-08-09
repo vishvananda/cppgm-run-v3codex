@@ -1250,8 +1250,19 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 		{
 			argument.type = ResolveTemplateParameterType(
 				parameter, argument_scope);
-			const ExpressionInfo expression = AnalyzeExpression(
-				source, argument_scope, argument.type);
+			++constant_expression_required_depth_;
+			ExpressionInfo expression;
+			try
+			{
+				expression = AnalyzeExpression(
+					source, argument_scope, argument.type);
+			}
+			catch (...)
+			{
+				--constant_expression_required_depth_;
+				throw;
+			}
+			--constant_expression_required_depth_;
 			if (!expression.constant || !IsIntegral(expression.type, true))
 				throw std::runtime_error(
 					"default non-type template argument is not constant");

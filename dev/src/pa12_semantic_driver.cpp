@@ -96,7 +96,9 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 	  virtual_slot_lookups(0), vtable_demands(0), access_checks(0),
 	  access_path_visits(0), access_grant_probes(0),
 	  template_specialization_requests(0),
-	  template_specialization_cache_hits(0), demand_worklist_pushes(0),
+	  template_specialization_cache_hits(0), constexpr_call_requests(0),
+	  constexpr_call_cache_hits(0), constexpr_step_visits(0),
+	  constexpr_max_depth(0), demand_worklist_pushes(0),
 	  demanded_function_emissions(0), default_constructor_emissions(0),
 	  semantic_storage_bytes(0), peak_stage_storage_bytes(0),
 	  analysis_nanoseconds(0), render_nanoseconds(0), elapsed_nanoseconds(0)

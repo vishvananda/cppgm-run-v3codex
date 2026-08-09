@@ -148,85 +148,6 @@ std::int64_t SemanticAnalyzer::NormalizeIntegralConstant(TypeId type,
 	return static_cast<std::int64_t>(bits);
 }
 
-bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
-	const std::vector<ExpressionInfo>& arguments, std::int64_t* value)
-{
-	function = program_->bindings[function].canonical;
-	const FunctionInfo info = GetFunction(function);
-	const TypeId result_type = program_->types.Get(info.type).child;
-	if (!info.constexpr_function || info.definition_body == kNoNode ||
-		!IsIntegral(result_type, true) ||
-		arguments.size() != info.parameters.size() ||
-		(info.member_owner != kNoType &&
-		 !program_->bindings[function].static_member_function) ||
-		std::find(constexpr_evaluation_stack_.begin(),
-			constexpr_evaluation_stack_.end(), function) !=
-			constexpr_evaluation_stack_.end())
-		return false;
-	for (std::size_t i = 0; i < arguments.size(); ++i)
-		if (!arguments[i].constant ||
-			!IsIntegral(ParameterBindingType(info.parameters[i]), true))
-			return false;
-
-	constexpr_evaluation_stack_.push_back(function);
-	const ScopeId function_scope = NewScope(info.lexical_scope, SCOPE_FUNCTION,
-		program_->bindings[function].name, ScopePrefixId(info.owner));
-	for (std::size_t i = 0; i < info.parameters.size(); ++i)
-	{
-		const ParameterInfo& parameter = info.parameters[i];
-		const BindingId binding = program_->AddBinding(function_scope,
-			BIND_PARAMETER, parameter.name, ParameterBindingType(parameter));
-		program_->bindings[binding].constant = true;
-		program_->bindings[binding].value = NormalizeIntegralConstant(
-			ParameterBindingType(parameter), arguments[i].value);
-	}
-	const ScopeId block = NewScope(function_scope, SCOPE_BLOCK, 0,
-		ScopePrefixId(function_scope));
-	const TypeId previous_return = current_return_type_;
-	const EntityId previous_class = current_class_context_;
-	const BindingId previous_function = current_function_context_;
-	current_return_type_ = result_type;
-	current_class_context_ = program_->bindings[function].member_owner;
-	current_function_context_ = function;
-	bool found_return = false;
-	bool constant = true;
-	std::int64_t result = 0;
-	const std::uint32_t detached = MakeDump(DUMP_COMPOUND_STATEMENT);
-	for (std::uint32_t edge = arena_->FirstEdge(info.definition_body);
-		edge != kNoEdge; edge = arena_->NextEdge(edge))
-	{
-		const NodeId statement = arena_->EdgeChild(edge);
-		if (arena_->IsTag(statement, "return-statement"))
-		{
-			if (found_return)
-			{
-				constant = false;
-				break;
-			}
-			const NodeId expression = FirstSemanticChild(statement);
-			const ExpressionInfo evaluated = expression == kNoNode ?
-				ExpressionInfo() : AnalyzeExpression(expression, block, result_type);
-			found_return = expression != kNoNode && evaluated.constant;
-			constant = found_return;
-			if (found_return) result = evaluated.value;
-		}
-		else if (IsDeclaration(statement))
-			AnalyzeDeclaration(statement, block, detached, true);
-		else
-		{
-			constant = false;
-			break;
-		}
-	}
-	current_return_type_ = previous_return;
-	current_class_context_ = previous_class;
-	current_function_context_ = previous_function;
-	constexpr_evaluation_stack_.pop_back();
-	if (!constant || !found_return) return false;
-	*value = NormalizeIntegralConstant(result_type, result);
-	return true;
-}
-
 bool SemanticAnalyzer::TryFoldConstantClassConversion(
 	const ExpressionInfo& value, BindingId conversion, TypeId target,
 	std::int64_t* result)
@@ -463,7 +384,18 @@ void SemanticAnalyzer::AnalyzeStaticAssert(NodeId node, ScopeId scope)
 	const NodeId condition_syntax = FirstSemanticChild(node);
 	if (condition_syntax == kNoNode)
 		throw std::runtime_error("static_assert has no condition");
-	const ExpressionInfo condition = AnalyzeExpression(condition_syntax, scope);
+	++constant_expression_required_depth_;
+	ExpressionInfo condition;
+	try
+	{
+		condition = AnalyzeExpression(condition_syntax, scope);
+	}
+	catch (...)
+	{
+		--constant_expression_required_depth_;
+		throw;
+	}
+	--constant_expression_required_depth_;
 	if (!IsIntegral(condition.type, true) || !condition.constant)
 		throw std::runtime_error(
 			"static_assert requires an integral constant expression");

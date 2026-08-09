@@ -761,8 +761,21 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 				}
 				else return false;
 			}
-			else expression = AnalyzeExpression(source,
-				source_scope, argument.type);
+			else
+			{
+				++constant_expression_required_depth_;
+				try
+				{
+					expression = AnalyzeExpression(source,
+						source_scope, argument.type);
+				}
+				catch (...)
+				{
+					--constant_expression_required_depth_;
+					throw;
+				}
+				--constant_expression_required_depth_;
+			}
 			if (!IsIntegral(expression.type, true))
 				throw std::runtime_error(
 					"non-type template argument is not an integral constant");

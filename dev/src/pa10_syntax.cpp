@@ -655,7 +655,7 @@ private:
 	NodeId ParseDeclSpecifierSeq(bool for_type_id, std::string* first_type = 0);
 	bool ParseTypeId(NodeId parent, bool attach = true);
 	NodeId ParseCtorInitializer();
-	NodeId ParseCondition();
+	NodeId ParseCondition(SimpleTokenKind terminator = OP_RPAREN);
 	int BinaryPrecedence(std::uint16_t kind) const;
 	bool StartsStandaloneClassDeclaration();
 	bool StartsStandaloneEnumDeclaration() const;
@@ -1763,7 +1763,7 @@ NodeId Parser::ParseInitializer()
 	return kNoNode;
 }
 
-NodeId Parser::ParseCondition()
+NodeId Parser::ParseCondition(SimpleTokenKind terminator)
 {
 	const NodeId condition = arena_.Make("condition");
 	const Mark declaration_mark = Checkpoint();
@@ -1776,7 +1776,7 @@ NodeId Parser::ParseCondition()
 		const NodeId declarator = ParseDeclarator(false, &name);
 		const NodeId initializer = declarator == kNoNode ? kNoNode :
 			ParseInitializer();
-		if (declarator != kNoNode && initializer != kNoNode && At(OP_RPAREN))
+		if (declarator != kNoNode && initializer != kNoNode && At(terminator))
 		{
 			arena_.Add(declaration, specifiers);
 			arena_.Add(declaration, declarator);
@@ -1934,7 +1934,8 @@ NodeId Parser::ParseStatement()
 		}
 		arena_.Add(initial, initial_value);
 		arena_.Add(statement, initial);
-		if (!At(OP_SEMICOLON)) arena_.Add(statement, ParseCondition());
+		if (!At(OP_SEMICOLON))
+			arena_.Add(statement, ParseCondition(OP_SEMICOLON));
 		Expect(OP_SEMICOLON);
 		if (!At(OP_RPAREN))
 		{

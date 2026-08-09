@@ -10,6 +10,7 @@
 #include <deque>
 #include <iosfwd>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace cppgm
@@ -39,6 +40,8 @@ public:
 		  current_pack_alignment_(0),
 		  loop_depth_(0), switch_depth_(0), unevaluated_depth_(0),
 		  constant_evaluation_suppressed_depth_(0),
+		  constant_expression_required_depth_(0),
+		  constexpr_evaluation_depth_(0), constexpr_evaluation_steps_(0),
 		  expression_count_(0),
 		  associated_generation_(0), candidate_generation_(0),
 		  associated_scope_visits_(0), associated_declaration_visits_(0),
@@ -53,6 +56,8 @@ public:
 		  access_grant_probes_(0),
 		  template_specialization_requests_(0),
 		  template_specialization_cache_hits_(0),
+		  constexpr_call_requests_(0), constexpr_call_cache_hits_(0),
+		  constexpr_step_visits_(0), constexpr_max_depth_(0),
 		  demand_worklist_pushes_(0), demanded_function_emissions_(0),
 		  default_constructor_emissions_(0),
 		  class_layouts_(0), class_layout_member_visits_(0),
@@ -156,6 +161,13 @@ private:
 		std::uint32_t output_parent);
 	void AnalyzeCondition(NodeId node, ScopeId scope,
 		std::uint32_t output_parent, bool switch_condition);
+	ConstexprFlow EvaluateConstexprCompound(NodeId node, ScopeId scope,
+		TypeId result_type, std::int64_t* result);
+	ConstexprFlow EvaluateConstexprStatement(NodeId node, ScopeId scope,
+		TypeId result_type, std::int64_t* result);
+	bool EvaluateConstexprCondition(NodeId node, ScopeId scope, bool* value);
+	bool EvaluateConstexprDeclaration(NodeId node, ScopeId scope);
+	bool ConsumeConstexprStep();
 	void RegisterConditionLifetime(ScopeId scope, BindingId object,
 		TypeId type, const ExpressionInfo& initializer,
 		std::uint32_t condition);
@@ -426,6 +438,10 @@ private:
 		BindingId selected_constructor = kNoBinding);
 	ExpressionInfo AnalyzeVariableInitializer(NodeId initializer,
 		ScopeId scope, TypeId type, bool local);
+	ExpressionInfo AnalyzeConstantAwareVariableInitializer(NodeId initializer,
+		ScopeId scope, TypeId type, bool local, bool require_constant);
+	void PublishConstantVariableInitializer(BindingId binding, TypeId type,
+		const SpecInfo& spec, const ExpressionInfo& initializer);
 	ExpressionInfo AnalyzeCall(NodeId node, ScopeId scope, TypeId target);
 	bool FunctionalCastPrecedesFunctions(const std::string& spelling,
 		ScopeId scope, TypeId cast_type, NodeId syntax,
@@ -872,6 +888,8 @@ private:
 	std::vector<std::uint8_t> default_constructor_demand_states_;
 	std::vector<BindingId> demanded_functions_;
 	std::vector<BindingId> constexpr_evaluation_stack_;
+	std::unordered_map<ConstexprCallKey, ConstexprCallFact,
+		ConstexprCallKeyHash> constexpr_call_facts_;
 	std::vector<EntityId> associated_entities_;
 	std::vector<ScopeId> associated_scopes_;
 	std::vector<TypeId> associated_type_scratch_;
@@ -891,6 +909,9 @@ private:
 	std::size_t switch_depth_;
 	std::size_t unevaluated_depth_;
 	std::size_t constant_evaluation_suppressed_depth_;
+	std::size_t constant_expression_required_depth_;
+	std::size_t constexpr_evaluation_depth_;
+	std::size_t constexpr_evaluation_steps_;
 	std::size_t expression_count_;
 	std::uint32_t associated_generation_;
 	std::uint32_t candidate_generation_;
@@ -915,6 +936,10 @@ private:
 	mutable std::size_t access_grant_probes_;
 	std::size_t template_specialization_requests_;
 	std::size_t template_specialization_cache_hits_;
+	std::size_t constexpr_call_requests_;
+	std::size_t constexpr_call_cache_hits_;
+	std::size_t constexpr_step_visits_;
+	std::size_t constexpr_max_depth_;
 	std::size_t demand_worklist_pushes_;
 	std::size_t demanded_function_emissions_;
 	std::size_t default_constructor_emissions_;

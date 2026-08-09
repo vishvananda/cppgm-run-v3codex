@@ -72,6 +72,10 @@ struct SemanticAnalysisStats
 	std::size_t access_grant_probes;
 	std::size_t template_specialization_requests;
 	std::size_t template_specialization_cache_hits;
+	std::size_t constexpr_call_requests;
+	std::size_t constexpr_call_cache_hits;
+	std::size_t constexpr_step_visits;
+	std::size_t constexpr_max_depth;
 	std::size_t demand_worklist_pushes;
 	std::size_t demanded_function_emissions;
 	std::size_t default_constructor_emissions;
