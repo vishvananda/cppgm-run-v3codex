@@ -1,5 +1,6 @@
 #include "pa12_semantic_detail.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <functional>
@@ -367,6 +368,7 @@ std::uint32_t SemanticAnalyzer::InternConstexprObject(TypeId type,
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
 	std::size_t hash = std::hash<TypeId>()(type);
+	std::uint64_t newest_local_storage_identity = 0;
 	for (std::size_t i = 0; i < elements.size(); ++i)
 	{
 		const ConstexprObjectElement& element = elements[i];
@@ -376,11 +378,27 @@ std::uint32_t SemanticAnalyzer::InternConstexprObject(TypeId type,
 		hash = MixConstexprHash(hash,
 			std::hash<bool>()(element.address_value));
 		if (element.object_value)
+		{
 			hash = MixConstexprHash(hash,
 				std::hash<std::uint32_t>()(element.object));
+			if (element.object >= constexpr_objects_.size())
+				throw std::logic_error("invalid nested constexpr object identity");
+			newest_local_storage_identity = std::max(
+				newest_local_storage_identity,
+				constexpr_objects_[element.object].newest_local_storage_identity);
+		}
 		else if (element.address_value)
+		{
 			hash = MixConstexprHash(hash,
 				std::hash<std::uint32_t>()(element.address));
+			const ConstexprAddressValue* address =
+				ConstexprAddressAt(element.address);
+			if (!address)
+				throw std::logic_error("invalid constexpr object address identity");
+			if (address->kind == CONSTEXPR_ADDRESS_LOCAL)
+				newest_local_storage_identity = std::max(
+					newest_local_storage_identity, address->identity);
+		}
 		else
 		{
 			hash = MixConstexprHash(hash,
@@ -425,7 +443,8 @@ std::uint32_t SemanticAnalyzer::InternConstexprObject(TypeId type,
 	const std::uint32_t result = static_cast<std::uint32_t>(
 		constexpr_objects_.size());
 	constexpr_objects_.push_back(
-		ConstexprObjectValue(type, first, count, hash));
+		ConstexprObjectValue(type, first, count, hash,
+			newest_local_storage_identity));
 	constexpr_object_index_.insert(std::make_pair(hash, result));
 	return result;
 }
@@ -1503,7 +1522,7 @@ bool SemanticAnalyzer::TryEvaluateConstexprConstructor(BindingId function,
 	constexpr_evaluation_stack_.push_back(function);
 	constexpr_frames_.push_back(ConstexprFrame(function,
 		constexpr_locals_.size(), constexpr_scope_facts_.size(),
-		constexpr_block_offsets_.size()));
+		constexpr_block_offsets_.size(), next_constexpr_storage_identity_));
 	bool valid = AddConstexprInvocationArguments(info, arguments);
 	std::vector<ConstexprObjectElement> elements;
 	const std::vector<BindingId>& members = entity_data_members_[entity];
@@ -1609,7 +1628,13 @@ bool SemanticAnalyzer::TryEvaluateConstexprConstructor(BindingId function,
 		{
 			*object = InternConstexprObject(
 				program_->entities[entity].type, elements);
-			constexpr_frames_.back().receiver_object = *object;
+			if (constexpr_objects_[*object].newest_local_storage_identity >=
+				constexpr_frames_.back().first_storage_identity)
+			{
+				*object = kNoConstexprObject;
+				valid = false;
+			}
+			else constexpr_frames_.back().receiver_object = *object;
 		}
 	}
 	catch (...)
@@ -1703,28 +1728,37 @@ bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 		return false;
 	++constexpr_call_requests_;
 
-	bool cacheable = !nonstatic_member && !address_result && !object_result;
+	const bool cacheable = !address_result;
 	ConstexprCallKey key;
 	key.function = function;
-	key.parameter_types.reserve(arguments.size());
-	key.parameter_values.reserve(arguments.size());
+	key.receiver_object = receiver_object;
+	key.receiver_address = receiver_address;
+	key.arguments.reserve(arguments.size());
 	for (std::size_t i = 0; i < arguments.size(); ++i)
 	{
 		const TypeId type = ParameterBindingType(info.parameters[i]);
-		if (ExpressionObject(arguments[i]) != kNoConstexprObject ||
-			ExpressionAddress(arguments[i]) != kNoConstexprAddress ||
-			arguments[i].constexpr_lvalue_address != kNoConstexprAddress)
+		const bool reference = program_->types.IsReference(type);
+		ConstexprCallArgument argument;
+		argument.type = type;
+		argument.object = ExpressionObject(arguments[i]);
+		if (argument.object != kNoConstexprObject)
+			argument.kind |= CONSTEXPR_CALL_ARGUMENT_OBJECT;
+		argument.address = reference ?
+			arguments[i].constexpr_lvalue_address : ExpressionAddress(arguments[i]);
+		if (argument.address != kNoConstexprAddress)
+			argument.kind |= CONSTEXPR_CALL_ARGUMENT_ADDRESS;
+		if (arguments[i].constant &&
+			(IsIntegral(EffectiveType(type), true) ||
+			 IsFloating(EffectiveType(type))))
 		{
-			cacheable = false;
-			continue;
+			argument.kind |= CONSTEXPR_CALL_ARGUMENT_SCALAR;
+			argument.scalar = ConvertScalarConstant(
+				arguments[i].type, type, ExpressionScalar(arguments[i]));
 		}
-		if (!arguments[i].constant ||
-			(!IsIntegral(EffectiveType(type), true) &&
-			 !IsFloating(EffectiveType(type)))) return false;
-		key.parameter_types.push_back(
-			program_->types.RemoveTopCv(EffectiveType(type)));
-		key.parameter_values.push_back(ConvertScalarConstant(
-			arguments[i].type, type, ExpressionScalar(arguments[i])));
+		if (argument.kind == 0 ||
+			(reference &&
+			 !(argument.kind & CONSTEXPR_CALL_ARGUMENT_ADDRESS))) return false;
+		key.arguments.push_back(argument);
 	}
 
 	if (cacheable)
@@ -1737,7 +1771,8 @@ bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 			++constexpr_call_cache_hits_;
 			if (cached->second.state == 2)
 			{
-				*value = cached->second.value;
+				if (object_result) *object = cached->second.object;
+				else *value = cached->second.value;
 				return true;
 			}
 			return false;
@@ -1769,7 +1804,8 @@ bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 	constexpr_evaluation_stack_.push_back(function);
 	constexpr_frames_.push_back(ConstexprFrame(function,
 		constexpr_locals_.size(), constexpr_scope_facts_.size(),
-		constexpr_block_offsets_.size(), receiver_object, receiver_address));
+		constexpr_block_offsets_.size(), next_constexpr_storage_identity_,
+		receiver_object, receiver_address));
 	bool valid = AddConstexprInvocationArguments(info, arguments);
 
 	const TypeId previous_return = current_return_type_;
@@ -1829,8 +1865,19 @@ bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 	if (object_result)
 	{
 		if (evaluated_object == kNoConstexprObject ||
-			constexpr_objects_[evaluated_object].type != result_object_type)
+			constexpr_objects_[evaluated_object].type != result_object_type ||
+			constexpr_objects_[evaluated_object].newest_local_storage_identity >=
+				frame.first_storage_identity)
+		{
+			if (cacheable) constexpr_call_facts_.find(key)->second.state = 3;
 			return false;
+		}
+		if (cacheable)
+		{
+			ConstexprCallFact& fact = constexpr_call_facts_.find(key)->second;
+			fact.state = 2;
+			fact.object = evaluated_object;
+		}
 		*object = evaluated_object;
 		return true;
 	}

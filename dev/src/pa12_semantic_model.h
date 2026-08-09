@@ -370,11 +370,14 @@ struct ConstexprObjectValue
 	TypeId type;
 	std::uint32_t first_element, element_count;
 	std::size_t hash;
+	std::uint64_t newest_local_storage_identity;
 
 	ConstexprObjectValue(TypeId type_value, std::uint32_t first,
-		std::uint32_t count, std::size_t hash_value)
+		std::uint32_t count, std::size_t hash_value,
+		std::uint64_t newest_local_storage)
 		: type(type_value), first_element(first), element_count(count),
-		  hash(hash_value) {}
+		  hash(hash_value),
+		  newest_local_storage_identity(newest_local_storage) {}
 };
 
 struct ExpressionInfo
@@ -430,14 +433,16 @@ struct ConstexprFrame
 {
 	BindingId function;
 	std::size_t first_local, first_scope_fact, first_block;
+	std::uint64_t first_storage_identity;
 	std::uint32_t receiver_object;
 	std::uint32_t receiver_address;
 	ConstexprFrame(BindingId function_value, std::size_t local,
-		std::size_t scope_fact, std::size_t block,
+		std::size_t scope_fact, std::size_t block, std::uint64_t storage_identity,
 		std::uint32_t receiver = kNoConstexprObject,
 		std::uint32_t address = kNoConstexprAddress)
 		: function(function_value), first_local(local),
 		  first_scope_fact(scope_fact), first_block(block),
+		  first_storage_identity(storage_identity),
 		  receiver_object(receiver), receiver_address(address) {}
 };
 
@@ -467,19 +472,49 @@ enum ConstexprFlow
 	CONSTEXPR_FLOW_INVALID
 };
 
+enum ConstexprCallArgumentKind
+{
+	CONSTEXPR_CALL_ARGUMENT_SCALAR = 1,
+	CONSTEXPR_CALL_ARGUMENT_OBJECT = 2,
+	CONSTEXPR_CALL_ARGUMENT_ADDRESS = 4
+};
+
+struct ConstexprCallArgument
+{
+	TypeId type;
+	std::uint8_t kind;
+	ConstexprScalarValue scalar;
+	std::uint32_t object, address;
+
+	ConstexprCallArgument()
+		: type(kNoType), kind(0), scalar(), object(kNoConstexprObject),
+		  address(kNoConstexprAddress) {}
+
+	bool operator==(const ConstexprCallArgument& other) const
+	{
+		return type == other.type && kind == other.kind &&
+			(!(kind & CONSTEXPR_CALL_ARGUMENT_SCALAR) || scalar == other.scalar) &&
+			(!(kind & CONSTEXPR_CALL_ARGUMENT_OBJECT) || object == other.object) &&
+			(!(kind & CONSTEXPR_CALL_ARGUMENT_ADDRESS) || address == other.address);
+	}
+};
+
 struct ConstexprCallKey
 {
 	BindingId function;
-	std::vector<TypeId> parameter_types;
-	std::vector<ConstexprScalarValue> parameter_values;
+	std::uint32_t receiver_object, receiver_address;
+	std::vector<ConstexprCallArgument> arguments;
 
-	ConstexprCallKey() : function(kNoBinding) {}
+	ConstexprCallKey()
+		: function(kNoBinding), receiver_object(kNoConstexprObject),
+		  receiver_address(kNoConstexprAddress) {}
 
 	bool operator==(const ConstexprCallKey& other) const
 	{
 		return function == other.function &&
-			parameter_types == other.parameter_types &&
-			parameter_values == other.parameter_values;
+			receiver_object == other.receiver_object &&
+			receiver_address == other.receiver_address &&
+			arguments == other.arguments;
 	}
 };
 
@@ -488,17 +523,32 @@ struct ConstexprCallKeyHash
 	std::size_t operator()(const ConstexprCallKey& key) const
 	{
 		std::size_t hash = static_cast<std::size_t>(key.function) + 1;
-		for (std::size_t i = 0; i < key.parameter_types.size(); ++i)
+		hash ^= std::hash<std::uint32_t>()(key.receiver_object) +
+			0x9e3779b9u + (hash << 6) + (hash >> 2);
+		hash ^= std::hash<std::uint32_t>()(key.receiver_address) +
+			0x9e3779b9u + (hash << 6) + (hash >> 2);
+		for (std::size_t i = 0; i < key.arguments.size(); ++i)
 		{
-			hash ^= static_cast<std::size_t>(key.parameter_types[i]) +
+			const ConstexprCallArgument& argument = key.arguments[i];
+			hash ^= static_cast<std::size_t>(argument.type) +
 				0x9e3779b9u + (hash << 6) + (hash >> 2);
-			const ConstexprScalarValue& value = key.parameter_values[i];
-			const std::size_t value_hash =
-				value.kind == CONSTEXPR_SCALAR_FLOATING ?
-				std::hash<long double>()(value.floating) :
-				std::hash<std::int64_t>()(value.integral);
-			hash ^= value_hash +
+			hash ^= std::hash<std::uint8_t>()(argument.kind) +
 				0x9e3779b9u + (hash << 6) + (hash >> 2);
+			if (argument.kind & CONSTEXPR_CALL_ARGUMENT_SCALAR)
+			{
+				const std::size_t value_hash =
+					argument.scalar.kind == CONSTEXPR_SCALAR_FLOATING ?
+					std::hash<long double>()(argument.scalar.floating) :
+					std::hash<std::int64_t>()(argument.scalar.integral);
+				hash ^= value_hash +
+					0x9e3779b9u + (hash << 6) + (hash >> 2);
+			}
+			if (argument.kind & CONSTEXPR_CALL_ARGUMENT_OBJECT)
+				hash ^= std::hash<std::uint32_t>()(argument.object) +
+					0x9e3779b9u + (hash << 6) + (hash >> 2);
+			if (argument.kind & CONSTEXPR_CALL_ARGUMENT_ADDRESS)
+				hash ^= std::hash<std::uint32_t>()(argument.address) +
+					0x9e3779b9u + (hash << 6) + (hash >> 2);
 		}
 		return hash;
 	}
@@ -509,7 +559,9 @@ struct ConstexprCallFact
 	// 1=in progress, 2=success, 3=expected failure.
 	std::uint8_t state;
 	ConstexprScalarValue value;
-	ConstexprCallFact() : state(1), value() {}
+	std::uint32_t object;
+	ConstexprCallFact()
+		: state(1), value(), object(kNoConstexprObject) {}
 };
 
 enum ConversionRank

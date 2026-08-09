@@ -268,12 +268,24 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprReturn(NodeId expression,
 	{
 		const std::uint32_t address = LvalueAddress(&value);
 		if (address == kNoConstexprAddress) return CONSTEXPR_FLOW_INVALID;
+		const ConstexprAddressValue* returned_address =
+			ConstexprAddressAt(address);
+		if (returned_address->kind == CONSTEXPR_ADDRESS_LOCAL &&
+			returned_address->identity >=
+				constexpr_frames_.back().first_storage_identity)
+			return CONSTEXPR_FLOW_INVALID;
 		*result_address = address;
 	}
 	else if (IsPointer(EffectiveType(result_type)))
 	{
 		const std::uint32_t address = ExpressionAddress(value);
 		if (address == kNoConstexprAddress) return CONSTEXPR_FLOW_INVALID;
+		const ConstexprAddressValue* returned_address =
+			ConstexprAddressAt(address);
+		if (returned_address->kind == CONSTEXPR_ADDRESS_LOCAL &&
+			returned_address->identity >=
+				constexpr_frames_.back().first_storage_identity)
+			return CONSTEXPR_FLOW_INVALID;
 		*result_address = address;
 	}
 	else if (class_result)

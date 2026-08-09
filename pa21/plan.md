@@ -6,19 +6,24 @@ PA21 extends the canonical PA12 graph with one typed constant layer for declarat
 template arguments, `static_assert`, initialization, and LowIR demand. Tagged scalars,
 structurally interned immutable aggregate/array objects, canonical allocation-relative
 addresses, compact binding indexes, local scope facts, and block lifetimes remain
-evaluator-owned; only completed call/object/address facts escape. Runtime ODR-use
-rematerializes completed facts instead of replaying evaluation. This follows `spec.md`
-§§2–6,8–10: canonical identity, indexed lookup, demand-separated completion, fact-driven
-lowering, phase-local ownership, and bounded work.
+evaluator-owned. Completed calls use canonical function/receiver and typed
+scalar/object/address argument identities; scalar or immutable object results and expected
+failures are memoized at that owner. Invocation storage boundaries plus each object's
+transitive newest-local summary prevent direct or nested local addresses from escaping.
+Runtime ODR-use rematerializes completed facts and creates emission demand without replaying
+evaluation. This follows `spec.md` §§2–6,8–10: canonical identity, complete cache keys,
+indexed lookup, demand-separated completion, fact-driven lowering, phase-local ownership,
+and bounded work.
 
 ## Current Failure Map
 
-Current result: 79/130 pass, with all previous passes retained; 51 failures remain. The
-remainder partitions by owner into base/delegating object shape; overloaded operators,
-callable objects, and contextual conversions; `noexcept` deduction; pointer-bearing class
-materialization and wide literals; constexpr declaration suitability; runtime class-return
-ABI details; and function-local static classification, guards, and LowIR emission. Direct
-constructors, immutable objects, canonical addresses, indirect calls, class-valued returns,
+Current result: the original 79/130 checkpoint suite is preserved, and the audit regression
+passes for 80/131 overall; the same 51 handout failures remain. They partition by owner into
+base/delegating object shape; overloaded operators, callable objects, and contextual
+conversions; `noexcept` deduction; pointer-bearing class materialization and wide literals;
+constexpr declaration suitability; runtime class-return ABI details; and function-local
+static classification, guards, and LowIR emission. Direct constructors, immutable objects,
+canonical addresses, indirect calls, safe class-valued returns, complete call-result keys,
 and converting call arguments are complete.
 
 ## Active Checkpoint
@@ -39,25 +44,18 @@ cases, full PA21, prior PA1–20, file audit, and inheritance-depth scaling.
 
 ## Performance Evidence
 
-Constexpr arrays of 32/64/128/256 elements produced 49/81/145/273 semantic nodes,
-45/77/141/269 conversion checks, 5,039/6,831/10,415/17,583 typed-storage bytes, and
-41,928/56,424/90,569/165,065 peak-stage bytes; lowering stayed fixed at six instructions.
-This is linear construction/storage with O(1) ordinal reads. Earlier floating recursion at
-32/64/128/256 was also linear (66/130/258/514 steps), with a repeated depth-128 call hitting
-the completed-call cache. Constructor/member probes with 16/32/64/128 fields produced
-101/181/341/661 semantic nodes, 31/63/127/255 scratch nodes, 20,028/36,284/68,796/133,825
-typed bytes, and 68/132/260/516 LowIR instructions; constructor/member and ordinal-probe
-counters doubled exactly, confirming linear initialization/read/lowering work.
-Checked pointer walks of 32/64/128/256 elements used 133/261/517/1,029 constexpr steps,
-one call request, 18 semantic nodes, 16,743 typed-storage bytes, and
-60,409/64,921/73,899/89,753 peak-stage bytes; lowering stayed at one instruction. The
-four-step-per-element growth confirms O(1) canonical stepping, bounds checks, and lookup.
-Class returns over 16/32/64/128-member objects used one call request, three evaluator steps,
-seven scratch nodes, and one LowIR instruction at every width. Layout visits were
-16/32/64/128, special-member subobject visits 64/128/256/512, conversion checks
-101/181/341/661, and lookups 68/116/212/404; peak-stage storage was
-57,287/65,639/111,527/204,413 bytes. Work is linear and storage follows geometric growth;
-returned object facts add no width-dependent call replay or lowering.
+The retained width probes remain linear: 32/64/128/256-element arrays used
+49/81/145/273 semantic nodes and 45/77/141/269 conversion checks; pointer walks used
+133/261/517/1,029 evaluator steps; and 16/32/64/128-member constructor/member probes used
+101/181/341/661 semantic nodes and 68/132/260/516 LowIR instructions. Class returns over
+16/32/64/128 members stayed at one request, three evaluator steps, seven scratch nodes, and
+one LowIR instruction while layout and conversion work grew linearly with width.
+
+For repeated class returns with object-reference arguments, 1/2/4/8 identical uses produced
+1/2/4/8 requests and 0/1/3/7 cache hits while evaluator steps (5), scratch nodes (17), typed
+storage (5,294 bytes), and LowIR instructions (8) stayed fixed. Semantic nodes
+33/41/57/89 and peak-stage storage 48,199/48,923/55,795/66,083 grew with the source uses,
+showing that only required parsing/consumer work scales after the first complete call key.
 
 ## Completed Checkpoints
 
@@ -68,4 +66,4 @@ returned object facts add no width-dependent call replay or lowering.
 | Immutable aggregate/array values | Structural interning, zero/nested/string initialization, binding/local publication, direct projection, ODR-use rematerialization, canonical bool identities, and multidimensional strides | PA21 49→56/130; PA1–20 2,185/2,185; file audit pass; linear 32–256 element scaling above |
 | Constructor/member invocation | Dump-node object facts, constructor argument frames, member-initializer execution, immutable receiver calls, default class initialization, scalar-member suitability checks, and runtime/static materialization boundaries | PA21 56→67/130; PA1–20 2,185/2,185; file audit pass; linear 16–128 field scaling above |
 | Canonical addresses and indirect calls | Allocation-relative null/binding/local/string/function identities, lvalue/reference transport, subobject bounds, pointer walking/comparison/truth, address-returning calls, indirect function calls, and expanded-pack array completion | PA21 67→76/130; PA1–20 2,185/2,185; file audit pass; linear 32–256 pointer-walk scaling above |
-| Class-valued calls and conversions | Object IDs through returns/calls, converting-constructor argument facts, temporary allocation identity, constexpr hidden-friend facts, and compile-time/runtime demand separation | PA21 76→79/130; aggregate return/NTTP, hidden-friend, and reference-conversion probes pass; PA1–20 2,185/2,185; audit pass; linear 16–128 member scaling above |
+| Class-valued calls and conversions | Object IDs through returns/calls, converting-constructor argument facts, temporary allocation identity, constexpr hidden-friend facts, compile-time/runtime demand separation; audit added complete typed result keys and transitive invocation-storage escape checks | PA21 76→79/130 preserved and audit regression passes for 80/131; aggregate return/NTTP, hidden-friend, reference-conversion, and dangling-object probes pass; PA1–20 2,185/2,185; file audit pass; bounded width and repeated-call scaling above |

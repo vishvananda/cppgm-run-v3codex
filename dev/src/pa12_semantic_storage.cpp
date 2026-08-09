@@ -129,9 +129,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 	for (std::unordered_map<ConstexprCallKey, ConstexprCallFact,
 		ConstexprCallKeyHash>::const_iterator i = constexpr_call_facts_.begin();
 		i != constexpr_call_facts_.end(); ++i)
-		bytes += i->first.parameter_types.capacity() * sizeof(TypeId) +
-			i->first.parameter_values.capacity() *
-				sizeof(ConstexprScalarValue);
+		bytes += i->first.arguments.capacity() * sizeof(ConstexprCallArgument);
 	for (std::size_t i = 0; i < entity_data_members_.size(); ++i)
 		bytes += entity_data_members_[i].capacity() * sizeof(BindingId);
 	for (std::size_t i = 0; i < entity_layout_members_.size(); ++i)
