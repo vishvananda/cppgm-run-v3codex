@@ -592,16 +592,11 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 		value.category = VALUE_PRVALUE;
 		++expression_count_;
 	}
+	if (value.constant && IsIntegral(conversion_source, true) && IsIntegral(
+		conversion_target, true))
+		value.value = NormalizeIntegralConstant(conversion_target, value.value);
 	RecordExpressionFacts(value);
 	return value;
-}
-
-void SemanticAnalyzer::RecordExpressionFacts(const ExpressionInfo& value)
-{
-	if (value.node == kNoDumpEdge) return;
-	DumpNode& node = dump_.nodes[value.node];
-	node.constant = value.constant;
-	node.constant_value = value.value;
 }
 
 bool SemanticAnalyzer::IsNonthrowing(NodeId declarator, ScopeId scope)
@@ -619,7 +614,6 @@ bool SemanticAnalyzer::IsNonthrowing(NodeId declarator, ScopeId scope)
 		throw std::runtime_error("nonconstant noexcept expression");
 	return expression.value != 0;
 }
-
 bool SemanticAnalyzer::IsModifiableLvalue(const ExpressionInfo& value) const
 {
 	return value.category == VALUE_LVALUE && !IsConst(value.type) &&
@@ -1621,7 +1615,10 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 			(!integral_only && (!IsArithmetic(left.type) ||
 			 !IsArithmetic(right.type))))
 			throw std::runtime_error("invalid binary arithmetic operands");
-		result_type = operand_type = CommonArithmeticType(left.type, right.type);
+		if (operation == "<<" || operation == ">>") result_type =
+			operand_type = IntegralPromotionType(left.type);
+		else result_type = operand_type =
+			CommonArithmeticType(left.type, right.type);
 	}
 	const std::uint32_t expression = MakeDump(DUMP_BINARY_EXPRESSION,
 		result_type, result_category,
@@ -1635,7 +1632,8 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 	result.category = result_category;
 	result.constant = left.constant && right.constant;
 	if (result.constant)
-		result.value = ApplyConstantBinary(operation, left.value, right.value);
+		result.value = ApplyConstantBinary(operation, left.value, right.value,
+			operand_type != kNoType ? operand_type : result_type);
 	++expression_count_;
 	return result;
 }
@@ -2072,6 +2070,8 @@ void SemanticAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 		AnalyzeTemplate(node, scope);
 		return;
 	}
+	if (arena_->IsTag(node, "static-assert-declaration"))
+		return AnalyzeStaticAssert(node, scope);
 	if (arena_->IsTag(node, "explicit-instantiation-declaration") ||
 		arena_->IsTag(node, "explicit-instantiation-definition"))
 	{

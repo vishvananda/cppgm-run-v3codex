@@ -83,8 +83,7 @@ std::int64_t SemanticAnalyzer::ParseInteger(const std::string& spelling) const
 	errno = 0;
 	char* end = 0;
 	const unsigned long long value = std::strtoull(digits.c_str(), &end, 0);
-	if (errno == ERANGE || end == digits.c_str() || *end != '\0' ||
-		value > static_cast<unsigned long long>(INT64_MAX))
+	if (errno == ERANGE || end == digits.c_str() || *end != '\0')
 		throw std::runtime_error("integer literal outside PA12 range");
 	return static_cast<std::int64_t>(value);
 }
@@ -95,36 +94,82 @@ NameId SemanticAnalyzer::InternNumber(std::int64_t value)
 }
 
 std::int64_t SemanticAnalyzer::ApplyConstantBinary(
-	const std::string& operation, std::int64_t left, std::int64_t right) const
+	const std::string& operation, std::int64_t left, std::int64_t right,
+	TypeId operand_type) const
 {
-	if (operation == "+") return left + right;
-	if (operation == "-") return left - right;
-	if (operation == "*") return left * right;
+	const bool integral_type = operand_type != kNoType &&
+		IsIntegral(operand_type, true);
+	const bool unsigned_type = integral_type &&
+		IsUnsignedIntegral(operand_type);
+	if (integral_type)
+	{
+		left = NormalizeIntegralConstant(operand_type, left);
+		right = NormalizeIntegralConstant(operand_type, right);
+	}
+	const std::uint64_t unsigned_left = static_cast<std::uint64_t>(left);
+	const std::uint64_t unsigned_right = static_cast<std::uint64_t>(right);
+	std::int64_t value = 0;
+	if (operation == "+")
+		value = static_cast<std::int64_t>(unsigned_left + unsigned_right);
+	else if (operation == "-")
+		value = static_cast<std::int64_t>(unsigned_left - unsigned_right);
+	else if (operation == "*")
+		value = static_cast<std::int64_t>(unsigned_left * unsigned_right);
 	if (operation == "/")
 	{
 		if (right == 0) throw std::runtime_error("division by zero");
-		return left / right;
+		if (unsigned_type)
+			value = static_cast<std::int64_t>(unsigned_left / unsigned_right);
+		else
+		{
+			if (left == INT64_MIN && right == -1)
+				throw std::runtime_error("signed division overflow");
+			value = left / right;
+		}
 	}
-	if (operation == "%")
+	else if (operation == "%")
 	{
 		if (right == 0) throw std::runtime_error("division by zero");
-		return left % right;
+		if (unsigned_type)
+			value = static_cast<std::int64_t>(unsigned_left % unsigned_right);
+		else
+		{
+			if (left == INT64_MIN && right == -1)
+				throw std::runtime_error("signed division overflow");
+			value = left % right;
+		}
 	}
-	if (operation == "<<") return left << right;
-	if (operation == ">>") return left >> right;
-	if (operation == "&") return left & right;
-	if (operation == "|") return left | right;
-	if (operation == "^") return left ^ right;
-	if (operation == "==") return left == right;
-	if (operation == "!=") return left != right;
-	if (operation == "<") return left < right;
-	if (operation == ">") return left > right;
-	if (operation == "<=") return left <= right;
-	if (operation == ">=") return left >= right;
-	if (operation == "&&") return left && right;
-	if (operation == "||") return left || right;
-	if (operation == ",") return right;
-	throw std::runtime_error("unsupported constant binary operator");
+	else if (operation == "<<" || operation == ">>")
+	{
+		if (right < 0 || static_cast<std::uint64_t>(right) >=
+			IntegralWidth(operand_type))
+			throw std::runtime_error("invalid constant shift count");
+		if (operation == "<<")
+			value = static_cast<std::int64_t>(unsigned_left << right);
+		else value = unsigned_type ?
+			static_cast<std::int64_t>(unsigned_left >> right) : left >> right;
+	}
+	else if (operation == "&") value = left & right;
+	else if (operation == "|") value = left | right;
+	else if (operation == "^") value = left ^ right;
+	else if (operation == "==") return unsigned_left == unsigned_right;
+	else if (operation == "!=") return unsigned_left != unsigned_right;
+	else if (operation == "<") return unsigned_type ?
+		unsigned_left < unsigned_right : left < right;
+	else if (operation == ">") return unsigned_type ?
+		unsigned_left > unsigned_right : left > right;
+	else if (operation == "<=") return unsigned_type ?
+		unsigned_left <= unsigned_right : left <= right;
+	else if (operation == ">=") return unsigned_type ?
+		unsigned_left >= unsigned_right : left >= right;
+	else if (operation == "&&") return left && right;
+	else if (operation == "||") return left || right;
+	else if (operation == ",") return right;
+	else if (operation != "+" && operation != "-" && operation != "*" &&
+		operation != "/" && operation != "%")
+		throw std::runtime_error("unsupported constant binary operator");
+	return integral_type ?
+		NormalizeIntegralConstant(operand_type, value) : value;
 }
 
 ExpressionInfo SemanticAnalyzer::MakeLiteral(TypeId type, NameId text,

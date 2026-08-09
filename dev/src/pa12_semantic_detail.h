@@ -99,6 +99,7 @@ private:
 
 	void AnalyzeDeclaration(NodeId node, ScopeId scope,
 		std::uint32_t output_parent, bool local);
+	void AnalyzeStaticAssert(NodeId node, ScopeId scope);
 	void AnalyzeNamespace(NodeId node, ScopeId scope,
 		std::uint32_t output_parent);
 	void AnalyzeUsing(NodeId node, ScopeId scope,
@@ -658,9 +659,13 @@ private:
 	FundamentalKind FundamentalOf(TypeId type) const;
 	int IntegralRank(TypeId type) const;
 	TypeId IntegralPromotionType(TypeId type) const;
+	bool IsUnsignedIntegral(TypeId type) const;
+	std::size_t IntegralWidth(TypeId type) const;
+	std::int64_t NormalizeIntegralConstant(TypeId type,
+		std::int64_t value) const;
 	std::int64_t ParseInteger(const std::string& spelling) const;
 	std::int64_t ApplyConstantBinary(const std::string& operation,
-		std::int64_t left, std::int64_t right) const;
+		std::int64_t left, std::int64_t right, TypeId operand_type) const;
 	NameId InternNumber(std::int64_t value);
 	std::size_t SideStorageBytes() const;
 

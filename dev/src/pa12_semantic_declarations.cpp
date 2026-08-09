@@ -397,6 +397,8 @@ void SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 			else if (arena_->IsTag(member, "using-declaration") ||
 				arena_->IsTag(member, "alias-declaration"))
 				AnalyzeUsing(member, member_scope, root_, false, member_access);
+			else if (arena_->IsTag(member, "static-assert-declaration"))
+				AnalyzeStaticAssert(member, member_scope);
 		}
 		CompleteClassPolymorphism(entity);
 		CompleteClassLayout(entity);

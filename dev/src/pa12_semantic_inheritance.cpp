@@ -454,6 +454,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 	result.type = target;
 	result.constant = operand.constant;
 	result.value = operand.value;
+	if (result.constant && IsIntegral(target, true) &&
+		IsIntegral(operand.type, true))
+		result.value = NormalizeIntegralConstant(target, result.value);
 	++expression_count_;
 	return result;
 }

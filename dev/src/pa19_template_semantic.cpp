@@ -100,6 +100,7 @@ bool SemanticAnalyzer::IsDeclaration(NodeId node) const
 		arena_->IsTag(node, "class-specifier") ||
 		arena_->IsTag(node, "class-forward-declaration") ||
 		arena_->IsTag(node, "enum-specifier") ||
+		arena_->IsTag(node, "static-assert-declaration") ||
 		arena_->IsTag(node, "empty-declaration") ||
 		arena_->IsTag(node, "layout-pack-push") ||
 		arena_->IsTag(node, "layout-pack-pop") ||
