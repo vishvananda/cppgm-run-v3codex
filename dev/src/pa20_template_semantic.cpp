@@ -404,49 +404,9 @@ BindingId SemanticAnalyzer::InstantiateVariableTemplate(
 			candidate.specialization_arguments, shape_scope,
 			primary.lexical_scope, &pattern_arguments) ||
 			pattern_arguments.size() != arguments.size()) continue;
-		std::vector<TypeId> deduced_types(
-			candidate.parameters.size(), kNoType);
-		std::vector<TemplateArgument> bindings(candidate.parameters.size());
-		bool match = true;
-		for (std::size_t argument = 0;
-			argument < arguments.size() && match; ++argument)
-		{
-			if (pattern_arguments[argument].kind != arguments[argument].kind)
-			{
-				match = false;
-				break;
-			}
-			if (arguments[argument].kind == TEMPLATE_ARGUMENT_TYPE)
-			{
-				const TypeId pattern_type = pattern_arguments[argument].type;
-				match = FunctionTemplateTypeIsDependent(pattern_type) ?
-					DeduceFunctionTemplateType(pattern_type,
-						arguments[argument].type, &deduced_types) :
-					pattern_type == arguments[argument].type;
-			}
-			else if (pattern_arguments[argument].IsDependent())
-			{
-				const std::size_t parameter =
-					pattern_arguments[argument].dependent_parameter;
-				if (parameter >= bindings.size()) match = false;
-				else if (bindings[parameter].type != kNoType &&
-					bindings[parameter] != arguments[argument]) match = false;
-				else bindings[parameter] = arguments[argument];
-			}
-			else match = pattern_arguments[argument] == arguments[argument];
-		}
-		for (std::size_t parameter = 0;
-			parameter < candidate.parameters.size() && match; ++parameter)
-		{
-			bindings[parameter].kind = candidate.parameters[parameter].kind;
-			if (candidate.parameters[parameter].kind == TEMPLATE_ARGUMENT_TYPE)
-			{
-				if (deduced_types[parameter] == kNoType) match = false;
-				else bindings[parameter].type = deduced_types[parameter];
-			}
-			else if (bindings[parameter].type == kNoType) match = false;
-		}
-		if (!match) continue;
+		std::vector<TemplateArgument> bindings;
+		if (!MatchTemplatePartialArguments(candidate.parameters,
+			pattern_arguments, arguments, &bindings)) continue;
 		selected_index = candidate_index;
 		selected_bindings.swap(bindings);
 	}

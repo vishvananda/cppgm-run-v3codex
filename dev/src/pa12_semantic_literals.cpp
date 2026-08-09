@@ -561,6 +561,12 @@ ExpressionInfo SemanticAnalyzer::AnalyzeThisExpression(ScopeId scope)
 ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 	const std::string& spelling, ScopeId scope, TypeId target, NodeId syntax)
 {
+	ExpressionInfo local;
+	if (syntax != kNoNode &&
+		FindChild(syntax, "structured-type-name") == kNoNode &&
+		spelling.find("::") == std::string::npos &&
+		TryAnalyzeConstexprLocal(spelling, target, &local))
+		return local;
 	LookupResult found;
 	const NodeId decltype_name = syntax == kNoNode ? kNoNode :
 		FindChild(syntax, "decltype-name");
@@ -613,7 +619,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 	if (binding.non_static_data_member)
 		return AnalyzeImplicitDataMember(found.ordinary, scope, target,
 			found.naming_class);
-	if (binding.member_owner != kNoEntity)
+	if (binding.member_owner != kNoEntity && constexpr_evaluation_depth_ == 0)
 		EnsureStaticMemberStorage(found.ordinary,
 			target != kNoType && program_->types.IsReference(target));
 	const std::uint32_t injected_fact =

@@ -76,6 +76,8 @@ struct SemanticAnalysisStats
 	std::size_t constexpr_call_cache_hits;
 	std::size_t constexpr_step_visits;
 	std::size_t constexpr_max_depth;
+	std::size_t constexpr_peak_locals;
+	std::size_t constexpr_scratch_peak_nodes;
 	std::size_t demand_worklist_pushes;
 	std::size_t demanded_function_emissions;
 	std::size_t default_constructor_emissions;

@@ -635,6 +635,9 @@ int run_emit_semantics_mode(const vector<string> & args)
            << " constexpr_call_cache_hits=" << stats.constexpr_call_cache_hits
            << " constexpr_step_visits=" << stats.constexpr_step_visits
            << " constexpr_max_depth=" << stats.constexpr_max_depth
+           << " constexpr_peak_locals=" << stats.constexpr_peak_locals
+           << " constexpr_scratch_peak_nodes="
+           << stats.constexpr_scratch_peak_nodes
            << " demand_worklist_pushes=" << stats.demand_worklist_pushes
            << " demanded_function_emissions="
            << stats.demanded_function_emissions
@@ -679,6 +682,8 @@ int run_emit_lowir_mode(const vector<string> & args)
 		cerr << "pa15_stats"
 			 << " source_bytes=" << stats.source_bytes
 			 << " tokens=" << semantic.tokens
+			 << " scopes=" << semantic.scopes
+			 << " declarations=" << semantic.declarations
 			 << " semantic_nodes=" << semantic.semantic_nodes
 			 << " semantic_edges=" << semantic.semantic_edges
 			 << " lowered_nodes=" << stats.lowered_nodes
@@ -763,6 +768,10 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << semantic.constexpr_step_visits
 			 << " constexpr_max_depth="
 			 << semantic.constexpr_max_depth
+			 << " constexpr_peak_locals="
+			 << semantic.constexpr_peak_locals
+			 << " constexpr_scratch_peak_nodes="
+			 << semantic.constexpr_scratch_peak_nodes
 			 << " demand_worklist_pushes=" << semantic.demand_worklist_pushes
 			 << " demanded_function_emissions="
 			 << semantic.demanded_function_emissions

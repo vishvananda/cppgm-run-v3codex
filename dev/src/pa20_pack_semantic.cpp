@@ -44,9 +44,12 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeofPackExpression(
 	const NameId name = program_->names.Intern(arena_->Payload(node));
 	std::vector<TemplateArgument> template_arguments;
 	std::vector<BindingId> function_arguments;
+	std::vector<std::size_t> constexpr_arguments;
 	std::size_t count = 0;
 	if (LookupTemplateArgumentPack(scope, name, &template_arguments))
 		count = template_arguments.size();
+	else if (FindConstexprPack(name, &constexpr_arguments))
+		count = constexpr_arguments.size();
 	else if (LookupFunctionParameterPack(scope, name, &function_arguments))
 		count = function_arguments.size();
 	else throw std::runtime_error("sizeof names no parameter pack");
@@ -122,7 +125,9 @@ void SemanticAnalyzer::CollectPackExpansionNames(NodeId node, ScopeId scope,
 			const NameId name = program_->names.Intern(spelling);
 			std::vector<TemplateArgument> template_pack;
 			std::vector<BindingId> function_pack;
+			std::vector<std::size_t> constexpr_pack;
 			if ((LookupTemplateArgumentPack(scope, name, &template_pack) ||
+				 FindConstexprPack(name, &constexpr_pack) ||
 				 LookupFunctionParameterPack(scope, name, &function_pack)) &&
 				std::find(names->begin(), names->end(), name) == names->end())
 				names->push_back(name);
@@ -209,18 +214,24 @@ void SemanticAnalyzer::ExpandExpressionPack(NodeId expansion, ScopeId scope,
 		throw std::runtime_error("pack expansion contains no unexpanded pack");
 	std::vector<std::vector<TemplateArgument> > template_packs(names.size());
 	std::vector<std::vector<BindingId> > function_packs(names.size());
-	std::vector<std::uint8_t> is_template(names.size(), 0);
+	std::vector<std::vector<std::size_t> > constexpr_packs(names.size());
+	// 1=template argument pack, 2=invocation-local function pack.
+	std::vector<std::uint8_t> pack_kind(names.size(), 0);
 	std::size_t length = std::numeric_limits<std::size_t>::max();
 	for (std::size_t source = 0; source < names.size(); ++source)
 	{
 		if (LookupTemplateArgumentPack(
 			scope, names[source], &template_packs[source]))
-			is_template[source] = 1;
+			pack_kind[source] = 1;
+		else if (FindConstexprPack(
+			names[source], &constexpr_packs[source]))
+			pack_kind[source] = 2;
 		else if (!LookupFunctionParameterPack(
 			scope, names[source], &function_packs[source]))
 			throw std::logic_error("collected pack binding disappeared");
-		const std::size_t source_length = is_template[source] ?
-			template_packs[source].size() : function_packs[source].size();
+		const std::size_t source_length = pack_kind[source] == 1 ?
+			template_packs[source].size() : pack_kind[source] == 2 ?
+			constexpr_packs[source].size() : function_packs[source].size();
 		if (length == std::numeric_limits<std::size_t>::max())
 			length = source_length;
 		else if (length != source_length)
@@ -229,17 +240,34 @@ void SemanticAnalyzer::ExpandExpressionPack(NodeId expansion, ScopeId scope,
 	}
 	for (std::size_t element = 0; element < length; ++element)
 	{
-		const ScopeId element_scope = NewScope(scope,
-			SCOPE_TEMPLATE_PARAMETERS, 0, ScopePrefixId(scope));
+		bool needs_semantic_scope = false;
+		bool needs_constexpr_block = false;
 		for (std::size_t source = 0; source < names.size(); ++source)
 		{
-			if (is_template[source])
+			needs_semantic_scope |= pack_kind[source] != 2;
+			needs_constexpr_block |= pack_kind[source] == 2;
+		}
+		const ScopeId element_scope = needs_semantic_scope ? NewScope(scope,
+			SCOPE_TEMPLATE_PARAMETERS, 0, ScopePrefixId(scope)) : scope;
+		if (needs_constexpr_block) PushConstexprBlock();
+		for (std::size_t source = 0; source < names.size(); ++source)
+		{
+			if (pack_kind[source] == 1)
 			{
 				TemplateParameter parameter;
 				parameter.name = names[source];
 				parameter.kind = template_packs[source][element].kind;
 				BindTemplateArgument(element_scope, parameter,
 					template_packs[source][element]);
+			}
+			else if (pack_kind[source] == 2)
+			{
+				const ConstexprLocalValue& local = constexpr_locals_[
+					constexpr_packs[source][element]];
+				if (!AddConstexprLocal(names[source], 0,
+					local.type, local.value))
+					throw std::logic_error(
+						"constexpr pack element alias conflicts");
 			}
 			else
 			{
@@ -255,6 +283,7 @@ void SemanticAnalyzer::ExpandExpressionPack(NodeId expansion, ScopeId scope,
 		}
 		syntax->push_back(kNoNode);
 		expressions->push_back(AnalyzeExpression(operand, element_scope));
+		if (needs_constexpr_block) PopConstexprBlock();
 	}
 }
 

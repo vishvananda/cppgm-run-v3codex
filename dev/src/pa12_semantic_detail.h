@@ -58,6 +58,7 @@ public:
 		  template_specialization_cache_hits_(0),
 		  constexpr_call_requests_(0), constexpr_call_cache_hits_(0),
 		  constexpr_step_visits_(0), constexpr_max_depth_(0),
+		  constexpr_peak_locals_(0), constexpr_scratch_peak_nodes_(0),
 		  demand_worklist_pushes_(0), demanded_function_emissions_(0),
 		  default_constructor_emissions_(0),
 		  class_layouts_(0), class_layout_member_visits_(0),
@@ -168,6 +169,24 @@ private:
 	bool EvaluateConstexprCondition(NodeId node, ScopeId scope, bool* value);
 	bool EvaluateConstexprDeclaration(NodeId node, ScopeId scope);
 	bool ConsumeConstexprStep();
+	void PushConstexprBlock();
+	void PopConstexprBlock();
+	bool AddConstexprLocal(NameId name, NameId pack_name, TypeId type,
+		std::int64_t value, std::size_t* local = 0);
+	bool FindConstexprLocal(NameId name, std::size_t* local) const;
+	bool FindConstexprPack(NameId name,
+		std::vector<std::size_t>* locals) const;
+	bool AddConstexprTypeAlias(NameId name, TypeId type);
+	void AddConstexprUsingNamespace(ScopeId name_space);
+	bool FindConstexprTypeAlias(NameId name, TypeId* type) const;
+	void FindConstexprUsingNamespaces(std::vector<ScopeId>* scopes) const;
+	bool TryAnalyzeConstexprLocal(const std::string& spelling, TypeId target,
+		ExpressionInfo* result);
+	bool AnalyzeConstexprExpression(NodeId node, ScopeId scope, TypeId target,
+		ExpressionInfo* result);
+	bool AnalyzeConstexprInitializer(NodeId node, ScopeId scope, TypeId target,
+		ExpressionInfo* result);
+	void ReleaseConstexprScratch(std::size_t nodes, std::size_t edges);
 	void RegisterConditionLifetime(ScopeId scope, BindingId object,
 		TypeId type, const ExpressionInfo& initializer,
 		std::uint32_t condition);
@@ -319,6 +338,14 @@ private:
 		const std::vector<TypeId>& arguments);
 	BindingId InstantiateClassTemplate(std::size_t pattern,
 		const std::vector<TemplateArgument>& arguments);
+	std::size_t SelectClassTemplatePartial(ClassTemplatePattern& pattern,
+		const std::vector<TemplateArgument>& arguments,
+		std::vector<TemplateArgument>* bindings);
+	bool MatchTemplatePartialArguments(
+		const std::vector<TemplateParameter>& parameters,
+		const std::vector<TemplateArgument>& pattern_arguments,
+		const std::vector<TemplateArgument>& arguments,
+		std::vector<TemplateArgument>* bindings);
 	void CompleteClassTemplateSpecialization(std::size_t pattern,
 		BindingId specialization,
 		const std::vector<TemplateArgument>& arguments);
@@ -888,6 +915,11 @@ private:
 	std::vector<std::uint8_t> default_constructor_demand_states_;
 	std::vector<BindingId> demanded_functions_;
 	std::vector<BindingId> constexpr_evaluation_stack_;
+	std::vector<ConstexprFrame> constexpr_frames_;
+	std::vector<ConstexprLocalValue> constexpr_locals_;
+	std::vector<ConstexprScopeFact> constexpr_scope_facts_;
+	std::vector<ConstexprBlockOffset> constexpr_block_offsets_;
+	DumpArena constexpr_scratch_dump_;
 	std::unordered_map<ConstexprCallKey, ConstexprCallFact,
 		ConstexprCallKeyHash> constexpr_call_facts_;
 	std::vector<EntityId> associated_entities_;
@@ -940,6 +972,8 @@ private:
 	std::size_t constexpr_call_cache_hits_;
 	std::size_t constexpr_step_visits_;
 	std::size_t constexpr_max_depth_;
+	std::size_t constexpr_peak_locals_;
+	std::size_t constexpr_scratch_peak_nodes_;
 	std::size_t demand_worklist_pushes_;
 	std::size_t demanded_function_emissions_;
 	std::size_t default_constructor_emissions_;

@@ -691,6 +691,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 	if (arena_->IsTag(node, "id-expression"))
 	{
 		const std::string spelling = arena_->Payload(node);
+		ExpressionInfo local;
+		if (FindChild(node, "structured-type-name") == kNoNode &&
+			spelling.find("::") == std::string::npos &&
+			TryAnalyzeConstexprLocal(spelling, target, &local))
+			return local;
 		ExpressionInfo function_id;
 		if (AnalyzeFunctionId(node, scope, target, &function_id))
 			return function_id;
@@ -1392,11 +1397,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 	result.category = VALUE_LVALUE;
 	if (constexpr_evaluation_depth_ != 0 &&
 		constant_evaluation_suppressed_depth_ == 0 &&
-		left.binding != kNoBinding && right.constant &&
+		right.constant &&
 		IsIntegral(result_type, true))
 	{
-		BindingRecord& binding = program_->bindings[left.binding];
-		bool valid = operation == "=" || binding.constant;
+		const std::size_t local = left.constexpr_local;
+		bool valid = local < constexpr_locals_.size();
 		std::int64_t assigned = right.value;
 		if (valid && operation != "=")
 		{
@@ -1406,7 +1411,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 			try
 			{
 				assigned = ApplyConstantBinary(
-					binary, binding.value, right.value, operand_type);
+					binary, constexpr_locals_[local].value,
+					right.value, operand_type);
 			}
 			catch (...)
 			{
@@ -1416,13 +1422,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 		if (valid)
 		{
 			assigned = NormalizeIntegralConstant(result_type, assigned);
-			binding.constant = true;
-			binding.value = assigned;
-			if (binding.canonical != left.binding)
-			{
-				program_->bindings[binding.canonical].constant = true;
-				program_->bindings[binding.canonical].value = assigned;
-			}
+			constexpr_locals_[local].value = assigned;
 			result.constant = true;
 			result.value = assigned;
 			dump_.nodes[expression].constant = true;
@@ -2797,6 +2797,9 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		stats_->constexpr_call_cache_hits = constexpr_call_cache_hits_;
 		stats_->constexpr_step_visits = constexpr_step_visits_;
 		stats_->constexpr_max_depth = constexpr_max_depth_;
+		stats_->constexpr_peak_locals = constexpr_peak_locals_;
+		stats_->constexpr_scratch_peak_nodes =
+			constexpr_scratch_peak_nodes_;
 		stats_->demand_worklist_pushes = demand_worklist_pushes_;
 		stats_->demanded_function_emissions = demanded_function_emissions_;
 		stats_->default_constructor_emissions = default_constructor_emissions_;

@@ -262,6 +262,12 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 			semantic.constexpr_max_depth = std::max(
 				semantic.constexpr_max_depth,
 				semantic_stats.constexpr_max_depth);
+			semantic.constexpr_peak_locals = std::max(
+				semantic.constexpr_peak_locals,
+				semantic_stats.constexpr_peak_locals);
+			semantic.constexpr_scratch_peak_nodes = std::max(
+				semantic.constexpr_scratch_peak_nodes,
+				semantic_stats.constexpr_scratch_peak_nodes);
 			semantic.demand_worklist_pushes +=
 				semantic_stats.demand_worklist_pushes;
 			semantic.demanded_function_emissions +=

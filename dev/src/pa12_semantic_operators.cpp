@@ -91,20 +91,16 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 		constant = false;
 		if (constexpr_evaluation_depth_ != 0 &&
 			constant_evaluation_suppressed_depth_ == 0 &&
-			operand.binding != kNoBinding && operand.constant &&
+			operand.constexpr_local < constexpr_locals_.size() &&
+			operand.constant &&
 			IsIntegral(result_type, true))
 		{
-			BindingRecord& binding = program_->bindings[operand.binding];
-			const std::int64_t previous = binding.value;
+			ConstexprLocalValue& local =
+				constexpr_locals_[operand.constexpr_local];
+			const std::int64_t previous = local.value;
 			const std::int64_t updated = NormalizeIntegralConstant(result_type,
 				operation == "++" ? previous + 1 : previous - 1);
-			binding.constant = true;
-			binding.value = updated;
-			if (binding.canonical != operand.binding)
-			{
-				program_->bindings[binding.canonical].constant = true;
-				program_->bindings[binding.canonical].value = updated;
-			}
+			local.value = updated;
 			constant = true;
 			value = postfix ? previous : updated;
 		}

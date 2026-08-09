@@ -2781,7 +2781,8 @@ FunctionInfo& SemanticAnalyzer::GetMutableFunction(BindingId binding)
 }
 void SemanticAnalyzer::DemandFunction(BindingId binding)
 {
-	if (binding == kNoBinding || unevaluated_depth_ != 0) return;
+	if (binding == kNoBinding || unevaluated_depth_ != 0 ||
+		constexpr_evaluation_depth_ != 0) return;
 	binding = program_->bindings[binding].canonical;
 	DemandClassTemplateMemberDefinitions(program_->bindings[binding].member_owner);
 	program_->bindings[binding].emission_demanded |= program_->bindings[binding].inline_function;

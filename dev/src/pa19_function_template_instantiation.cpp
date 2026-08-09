@@ -80,8 +80,7 @@ std::vector<ScopeId> SemanticAnalyzer::FindFunctionTemplateOwners(
 		found = program_->LookupQualified(
 			owner, name, LOOKUP_FUNCTION_TEMPLATE);
 	}
-	else found = program_->LookupName(
-		scope, path.Last(), LOOKUP_FUNCTION_TEMPLATE);
+	else found = LookupPath(scope, path, LOOKUP_FUNCTION_TEMPLATE);
 	std::vector<ScopeId> result;
 	result.reserve(found.FunctionTemplateOwnerCount());
 	for (std::size_t i = 0; i < found.FunctionTemplateOwnerCount(); ++i)

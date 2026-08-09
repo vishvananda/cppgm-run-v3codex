@@ -260,6 +260,7 @@ struct ExpressionInfo
 	TypeId type;
 	ValueCategory category;
 	BindingId binding;
+	std::size_t constexpr_local;
 	bool constant;
 	std::int64_t value;
 	bool integer_literal_zero;
@@ -268,9 +269,50 @@ struct ExpressionInfo
 
 	ExpressionInfo()
 		: node(kNoDumpEdge), type(kNoType), category(VALUE_PRVALUE),
-		  binding(kNoBinding), constant(false), value(0),
+		  binding(kNoBinding),
+		  constexpr_local(std::numeric_limits<std::size_t>::max()),
+		  constant(false), value(0),
 		  integer_literal_zero(false), string_unit_begin(kNoDumpEdge),
 		  string_unit_count(0) {}
+};
+
+struct ConstexprLocalValue
+{
+	NameId name, pack_name;
+	TypeId type;
+	std::int64_t value;
+
+	ConstexprLocalValue(NameId name_value, NameId pack_name_value,
+		TypeId type_value, std::int64_t value_value)
+		: name(name_value), pack_name(pack_name_value), type(type_value),
+		  value(value_value) {}
+};
+
+struct ConstexprFrame
+{
+	BindingId function;
+	std::size_t first_local, first_scope_fact, first_block;
+	ConstexprFrame(BindingId function_value, std::size_t local,
+		std::size_t scope_fact, std::size_t block)
+		: function(function_value), first_local(local),
+		  first_scope_fact(scope_fact), first_block(block) {}
+};
+
+struct ConstexprScopeFact
+{
+	NameId name;
+	TypeId type;
+	ScopeId name_space;
+	ConstexprScopeFact(NameId name_value, TypeId type_value,
+		ScopeId namespace_value)
+		: name(name_value), type(type_value), name_space(namespace_value) {}
+};
+
+struct ConstexprBlockOffset
+{
+	std::size_t first_local, first_scope_fact;
+	ConstexprBlockOffset(std::size_t local, std::size_t scope_fact)
+		: first_local(local), first_scope_fact(scope_fact) {}
 };
 
 enum ConstexprFlow
