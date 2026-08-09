@@ -391,7 +391,7 @@ struct ExpressionInfo
 	std::int64_t value;
 	bool floating_constant;
 	long double floating_value;
-	std::uint32_t constexpr_object;
+	std::uint32_t constexpr_object, constexpr_complete_object;
 	std::uint32_t constexpr_address, constexpr_lvalue_address;
 	bool integer_literal_zero;
 	std::uint32_t string_unit_begin;
@@ -403,6 +403,7 @@ struct ExpressionInfo
 		  constexpr_local(std::numeric_limits<std::size_t>::max()),
 		  constant(false), value(0), floating_constant(false),
 		  floating_value(0.0L), constexpr_object(kNoConstexprObject),
+		  constexpr_complete_object(kNoConstexprObject),
 		  constexpr_address(kNoConstexprAddress),
 		  constexpr_lvalue_address(kNoConstexprAddress),
 		  integer_literal_zero(false), string_unit_begin(kNoDumpEdge),
@@ -414,18 +415,20 @@ struct ConstexprLocalValue
 	NameId name, pack_name;
 	TypeId type;
 	ConstexprScalarValue value;
-	std::uint32_t object, address;
+	std::uint32_t object, complete_object, address;
 	std::uint64_t storage_identity;
 
 	ConstexprLocalValue(NameId name_value, NameId pack_name_value,
 		TypeId type_value, const ConstexprScalarValue& value_value)
 		: name(name_value), pack_name(pack_name_value), type(type_value),
 		  value(value_value), object(kNoConstexprObject),
+		  complete_object(kNoConstexprObject),
 		  address(kNoConstexprAddress), storage_identity(0) {}
 	ConstexprLocalValue(NameId name_value, NameId pack_name_value,
 		TypeId type_value, std::uint32_t object_value)
 		: name(name_value), pack_name(pack_name_value), type(type_value),
-		  value(), object(object_value), address(kNoConstexprAddress),
+		  value(), object(object_value), complete_object(object_value),
+		  address(kNoConstexprAddress),
 		  storage_identity(0) {}
 };
 
@@ -434,16 +437,19 @@ struct ConstexprFrame
 	BindingId function;
 	std::size_t first_local, first_scope_fact, first_block;
 	std::uint64_t first_storage_identity;
-	std::uint32_t receiver_object;
+	std::uint32_t receiver_object, receiver_complete_object;
 	std::uint32_t receiver_address;
 	ConstexprFrame(BindingId function_value, std::size_t local,
 		std::size_t scope_fact, std::size_t block, std::uint64_t storage_identity,
 		std::uint32_t receiver = kNoConstexprObject,
+		std::uint32_t complete_receiver = kNoConstexprObject,
 		std::uint32_t address = kNoConstexprAddress)
 		: function(function_value), first_local(local),
 		  first_scope_fact(scope_fact), first_block(block),
 		  first_storage_identity(storage_identity),
-		  receiver_object(receiver), receiver_address(address) {}
+		  receiver_object(receiver),
+		  receiver_complete_object(complete_receiver),
+		  receiver_address(address) {}
 };
 
 struct ConstexprScopeFact
@@ -484,10 +490,11 @@ struct ConstexprCallArgument
 	TypeId type;
 	std::uint8_t kind;
 	ConstexprScalarValue scalar;
-	std::uint32_t object, address;
+	std::uint32_t object, complete_object, address;
 
 	ConstexprCallArgument()
 		: type(kNoType), kind(0), scalar(), object(kNoConstexprObject),
+		  complete_object(kNoConstexprObject),
 		  address(kNoConstexprAddress) {}
 
 	bool operator==(const ConstexprCallArgument& other) const
@@ -495,6 +502,8 @@ struct ConstexprCallArgument
 		return type == other.type && kind == other.kind &&
 			(!(kind & CONSTEXPR_CALL_ARGUMENT_SCALAR) || scalar == other.scalar) &&
 			(!(kind & CONSTEXPR_CALL_ARGUMENT_OBJECT) || object == other.object) &&
+			(!(kind & CONSTEXPR_CALL_ARGUMENT_OBJECT) ||
+			 complete_object == other.complete_object) &&
 			(!(kind & CONSTEXPR_CALL_ARGUMENT_ADDRESS) || address == other.address);
 	}
 };
@@ -502,17 +511,19 @@ struct ConstexprCallArgument
 struct ConstexprCallKey
 {
 	BindingId function;
-	std::uint32_t receiver_object, receiver_address;
+	std::uint32_t receiver_object, receiver_complete_object, receiver_address;
 	std::vector<ConstexprCallArgument> arguments;
 
 	ConstexprCallKey()
 		: function(kNoBinding), receiver_object(kNoConstexprObject),
+		  receiver_complete_object(kNoConstexprObject),
 		  receiver_address(kNoConstexprAddress) {}
 
 	bool operator==(const ConstexprCallKey& other) const
 	{
 		return function == other.function &&
 			receiver_object == other.receiver_object &&
+			receiver_complete_object == other.receiver_complete_object &&
 			receiver_address == other.receiver_address &&
 			arguments == other.arguments;
 	}
@@ -524,6 +535,8 @@ struct ConstexprCallKeyHash
 	{
 		std::size_t hash = static_cast<std::size_t>(key.function) + 1;
 		hash ^= std::hash<std::uint32_t>()(key.receiver_object) +
+			0x9e3779b9u + (hash << 6) + (hash >> 2);
+		hash ^= std::hash<std::uint32_t>()(key.receiver_complete_object) +
 			0x9e3779b9u + (hash << 6) + (hash >> 2);
 		hash ^= std::hash<std::uint32_t>()(key.receiver_address) +
 			0x9e3779b9u + (hash << 6) + (hash >> 2);
@@ -544,8 +557,12 @@ struct ConstexprCallKeyHash
 					0x9e3779b9u + (hash << 6) + (hash >> 2);
 			}
 			if (argument.kind & CONSTEXPR_CALL_ARGUMENT_OBJECT)
+			{
 				hash ^= std::hash<std::uint32_t>()(argument.object) +
 					0x9e3779b9u + (hash << 6) + (hash >> 2);
+				hash ^= std::hash<std::uint32_t>()(argument.complete_object) +
+					0x9e3779b9u + (hash << 6) + (hash >> 2);
+			}
 			if (argument.kind & CONSTEXPR_CALL_ARGUMENT_ADDRESS)
 				hash ^= std::hash<std::uint32_t>()(argument.address) +
 					0x9e3779b9u + (hash << 6) + (hash >> 2);
@@ -559,9 +576,10 @@ struct ConstexprCallFact
 	// 1=in progress, 2=success, 3=expected failure.
 	std::uint8_t state;
 	ConstexprScalarValue value;
-	std::uint32_t object;
+	std::uint32_t object, complete_object;
 	ConstexprCallFact()
-		: state(1), value(), object(kNoConstexprObject) {}
+		: state(1), value(), object(kNoConstexprObject),
+		  complete_object(kNoConstexprObject) {}
 };
 
 enum ConversionRank

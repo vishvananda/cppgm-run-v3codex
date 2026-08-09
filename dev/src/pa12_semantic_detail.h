@@ -59,6 +59,7 @@ public:
 		  template_specialization_requests_(0),
 		  template_specialization_cache_hits_(0),
 		  constexpr_call_requests_(0), constexpr_call_cache_hits_(0),
+		  constexpr_object_projection_visits_(0),
 		  constexpr_step_visits_(0), constexpr_max_depth_(0),
 		  constexpr_peak_locals_(0), constexpr_scratch_peak_nodes_(0),
 		  demand_worklist_pushes_(0), demanded_function_emissions_(0),
@@ -166,13 +167,16 @@ private:
 		std::uint32_t output_parent, bool switch_condition);
 	ConstexprFlow EvaluateConstexprCompound(NodeId node, ScopeId scope,
 		TypeId result_type, ConstexprScalarValue* result,
-		std::uint32_t* result_address, std::uint32_t* result_object);
+		std::uint32_t* result_address, std::uint32_t* result_object,
+		std::uint32_t* result_complete_object);
 	ConstexprFlow EvaluateConstexprStatement(NodeId node, ScopeId scope,
 		TypeId result_type, ConstexprScalarValue* result,
-		std::uint32_t* result_address, std::uint32_t* result_object);
+		std::uint32_t* result_address, std::uint32_t* result_object,
+		std::uint32_t* result_complete_object);
 	ConstexprFlow EvaluateConstexprReturn(NodeId expression, ScopeId scope,
 		TypeId result_type, ConstexprScalarValue* result,
-		std::uint32_t* result_address, std::uint32_t* result_object);
+		std::uint32_t* result_address, std::uint32_t* result_object,
+		std::uint32_t* result_complete_object);
 	bool EvaluateConstexprCondition(NodeId node, ScopeId scope, bool* value);
 	bool EvaluateConstexprDeclaration(NodeId node, ScopeId scope);
 	bool ConsumeConstexprStep();
@@ -182,6 +186,9 @@ private:
 		const ConstexprScalarValue& value, std::size_t* local = 0);
 	bool AddConstexprLocal(NameId name, NameId pack_name, TypeId type,
 		std::uint32_t object, std::size_t* local = 0);
+	bool AddConstexprLocal(NameId name, NameId pack_name, TypeId type,
+		std::uint32_t object, std::uint32_t complete_object,
+		std::size_t* local);
 	bool AddConstexprAddressLocal(NameId name, NameId pack_name, TypeId type,
 		std::uint32_t address, std::size_t* local = 0);
 	bool FindConstexprLocal(NameId name, std::size_t* local) const;
@@ -834,6 +841,8 @@ private:
 		const ConstexprScalarValue& value) const;
 	void SetExpressionObject(ExpressionInfo* expression,
 		std::uint32_t object) const;
+	void SetExpressionSubobject(ExpressionInfo* expression,
+		std::uint32_t object, std::uint32_t complete_object) const;
 	void SetExpressionAddress(ExpressionInfo* expression,
 		std::uint32_t address) const;
 	void SetExpressionLvalueAddress(ExpressionInfo* expression,
@@ -853,6 +862,8 @@ private:
 		const std::vector<ExpressionInfo>& arguments, TypeId target,
 		ExpressionInfo* result);
 	std::uint32_t ExpressionObject(const ExpressionInfo& expression) const;
+	std::uint32_t ExpressionCompleteObject(
+		const ExpressionInfo& expression) const;
 	void SetExpressionDumpObject(ExpressionInfo* expression) const;
 	void PublishDumpObject(std::uint32_t node, std::uint32_t object);
 	ConstexprScalarValue BindingScalar(BindingId binding) const;
@@ -876,7 +887,8 @@ private:
 	const ConstexprObjectElement* ConstexprObjectElementAt(
 		std::uint32_t object, std::size_t ordinal) const;
 	std::uint32_t ProjectConstexprObject(
-		std::uint32_t object, TypeId target) const;
+		std::uint32_t object, TypeId target,
+		std::uint64_t* byte_offset = 0) const;
 	const ConstexprObjectElement* ConstexprClassMemberAt(
 		std::uint32_t object, BindingId member) const;
 	void SetExpressionObjectElement(ExpressionInfo* expression,
@@ -899,6 +911,7 @@ private:
 		ConstexprScalarValue* value,
 		std::uint32_t* address,
 		std::uint32_t* object,
+		std::uint32_t* complete_object,
 		const ExpressionInfo* receiver = 0);
 	bool TryEvaluateConstexprConstructor(BindingId constructor,
 		const std::vector<ExpressionInfo>& arguments,
@@ -1091,6 +1104,7 @@ private:
 	std::size_t template_specialization_cache_hits_;
 	std::size_t constexpr_call_requests_;
 	std::size_t constexpr_call_cache_hits_;
+	mutable std::size_t constexpr_object_projection_visits_;
 	std::size_t constexpr_step_visits_;
 	std::size_t constexpr_max_depth_;
 	std::size_t constexpr_peak_locals_;

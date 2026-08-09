@@ -1203,6 +1203,7 @@ ExpressionInfo SemanticAnalyzer::MakeImplicitObjectPointer(
 	{
 		SetExpressionAddress(&result, address);
 		result.constexpr_object = object.constexpr_object;
+		result.constexpr_complete_object = object.constexpr_complete_object;
 	}
 	++expression_count_;
 	return result;

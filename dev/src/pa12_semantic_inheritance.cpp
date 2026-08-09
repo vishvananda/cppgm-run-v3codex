@@ -246,10 +246,18 @@ ExpressionInfo SemanticAnalyzer::ApplyMemberObjectTarget(
 	ExpressionInfo value, TypeId target, BindingId member,
 	const ObjectConversionFact* conversion_fact)
 {
+	const std::uint32_t object = ExpressionObject(value);
+	const std::uint32_t complete_object = ExpressionCompleteObject(value);
+	const std::uint32_t object_address = ExpressionAddress(value);
 	const ConversionRank conversion = conversion_fact ? conversion_fact->rank :
 		MemberObjectConversion(value, target, member);
 	if (conversion != CONVERSION_DERIVED_TO_BASE)
-		return ApplyTarget(value, target);
+	{
+		value = ApplyTarget(value, target);
+		if (object != kNoConstexprObject)
+			SetExpressionSubobject(&value, object, complete_object);
+		return value;
+	}
 	const std::size_t projections = conversion_fact ?
 		conversion_fact->base_projection_count :
 		BaseProjectionCount(value.type, target);
@@ -267,6 +275,30 @@ ExpressionInfo SemanticAnalyzer::ApplyMemberObjectTarget(
 	value.binding = kNoBinding;
 	value.constant = false;
 	value.constexpr_object = kNoConstexprObject;
+	value.constexpr_complete_object = kNoConstexprObject;
+	if (object != kNoConstexprObject && member != kNoBinding &&
+		member < program_->bindings.size())
+	{
+		const EntityId owner = program_->bindings[member].member_owner;
+		std::uint64_t projection_offset = 0;
+		const std::uint32_t projected = owner == kNoEntity ?
+			kNoConstexprObject : ProjectConstexprObject(
+				object, program_->entities[owner].type, &projection_offset);
+		if (projected != kNoConstexprObject)
+		{
+			if (object_address != kNoConstexprAddress &&
+				projection_offset <= static_cast<std::uint64_t>(
+					std::numeric_limits<std::int64_t>::max()))
+			{
+				const std::uint32_t projected_address = OffsetConstexprAddress(
+					object_address, static_cast<std::int64_t>(projection_offset),
+					false);
+				if (projected_address != kNoConstexprAddress)
+					SetExpressionAddress(&value, projected_address);
+			}
+			SetExpressionSubobject(&value, projected, complete_object);
+		}
+	}
 	++expression_count_;
 	RecordExpressionFacts(value);
 	return value;
@@ -382,6 +414,14 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 			throw std::runtime_error("invalid reference cast");
 		if (reference_conversion == CONVERSION_DERIVED_TO_BASE)
 			return ApplyTarget(operand, target);
+		if (static_reference_downcast)
+		{
+			const std::uint32_t complete = ExpressionCompleteObject(operand);
+			const std::uint32_t projected = ProjectConstexprObject(
+				complete, constructed_target);
+			if (projected != kNoConstexprObject)
+				SetExpressionSubobject(&operand, projected, complete);
+		}
 		operand.type = target;
 		operand.category = category;
 		if (dump_.nodes[operand.node].kind == DUMP_TEMPORARY_OBJECT)
@@ -805,7 +845,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeConditional(NodeId node, ScopeId scope)
 			SetExpressionLvalueAddress(
 				&result, selected.constexpr_lvalue_address);
 		else if (ExpressionObject(selected) != kNoConstexprObject)
-			SetExpressionObject(&result, ExpressionObject(selected));
+			SetExpressionSubobject(&result, ExpressionObject(selected),
+				ExpressionCompleteObject(selected));
 		else result.value = selected.value;
 	}
 	++expression_count_;

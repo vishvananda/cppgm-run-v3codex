@@ -456,6 +456,7 @@ bool SemanticAnalyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 		object_pointer.node = address;
 		object_pointer.constant = false;
 		object_pointer.constexpr_object = kNoConstexprObject;
+		object_pointer.constexpr_complete_object = kNoConstexprObject;
 		++expression_count_;
 	}
 	const std::vector<NodeId> no_syntax;

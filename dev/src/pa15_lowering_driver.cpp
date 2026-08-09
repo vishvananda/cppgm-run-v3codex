@@ -257,6 +257,8 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 				semantic_stats.constexpr_call_requests;
 			semantic.constexpr_call_cache_hits +=
 				semantic_stats.constexpr_call_cache_hits;
+			semantic.constexpr_object_projection_visits +=
+				semantic_stats.constexpr_object_projection_visits;
 			semantic.constexpr_step_visits +=
 				semantic_stats.constexpr_step_visits;
 			semantic.constexpr_max_depth = std::max(

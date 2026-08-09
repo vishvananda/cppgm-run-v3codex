@@ -585,9 +585,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeThisExpression(ScopeId scope)
 				constexpr_frames_.back().receiver_address);
 		if (constexpr_frames_.back().receiver_object != kNoConstexprObject)
 		{
-			result.constexpr_object =
-				constexpr_frames_.back().receiver_object;
-			result.constant = true;
+			SetExpressionSubobject(&result,
+				constexpr_frames_.back().receiver_object,
+				constexpr_frames_.back().receiver_complete_object);
 		}
 		++expression_count_;
 		return result;
@@ -606,8 +606,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeThisExpression(ScopeId scope)
 	if (!constexpr_frames_.empty() &&
 		constexpr_frames_.back().receiver_object != kNoConstexprObject)
 	{
-		result.constexpr_object = constexpr_frames_.back().receiver_object;
-		result.constant = true;
+		SetExpressionSubobject(&result,
+			constexpr_frames_.back().receiver_object,
+			constexpr_frames_.back().receiver_complete_object);
 	}
 	++expression_count_;
 	return result;

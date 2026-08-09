@@ -48,6 +48,7 @@ void SemanticAnalyzer::SetExpressionAddress(ExpressionInfo* expression,
 		constexpr_evaluation_depth_ != 0;
 	expression->floating_constant = false;
 	expression->constexpr_object = kNoConstexprObject;
+	expression->constexpr_complete_object = kNoConstexprObject;
 	expression->constexpr_address = address;
 }
 
@@ -250,7 +251,8 @@ bool SemanticAnalyzer::TryAnalyzeConstexprIndirectCall(ExpressionInfo* callee,
 
 ConstexprFlow SemanticAnalyzer::EvaluateConstexprReturn(NodeId expression,
 	ScopeId scope, TypeId result_type, ConstexprScalarValue* result,
-	std::uint32_t* result_address, std::uint32_t* result_object)
+	std::uint32_t* result_address, std::uint32_t* result_object,
+	std::uint32_t* result_complete_object)
 {
 	ExpressionInfo value;
 	if (!AnalyzeConstexprExpression(expression, scope, result_type, &value))
@@ -276,6 +278,7 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprReturn(NodeId expression,
 			return CONSTEXPR_FLOW_INVALID;
 		*result_address = address;
 		*result_object = ExpressionObject(value);
+		*result_complete_object = ExpressionCompleteObject(value);
 	}
 	else if (IsPointer(EffectiveType(result_type)))
 	{
@@ -294,6 +297,7 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprReturn(NodeId expression,
 		const std::uint32_t object = ExpressionObject(value);
 		if (object == kNoConstexprObject) return CONSTEXPR_FLOW_INVALID;
 		*result_object = object;
+		*result_complete_object = ExpressionCompleteObject(value);
 	}
 	else
 	{

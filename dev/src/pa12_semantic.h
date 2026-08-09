@@ -74,6 +74,7 @@ struct SemanticAnalysisStats
 	std::size_t template_specialization_cache_hits;
 	std::size_t constexpr_call_requests;
 	std::size_t constexpr_call_cache_hits;
+	std::size_t constexpr_object_projection_visits;
 	std::size_t constexpr_step_visits;
 	std::size_t constexpr_max_depth;
 	std::size_t constexpr_peak_locals;

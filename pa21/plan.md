@@ -6,25 +6,28 @@ PA21 extends the canonical PA12 graph with one typed constant layer for declarat
 template arguments, `static_assert`, initialization, and LowIR demand. Tagged scalars,
 structurally interned immutable aggregate/array objects, canonical allocation-relative
 addresses, compact binding indexes, local scope facts, and block lifetimes remain
-evaluator-owned. Completed calls use canonical function/receiver and typed
-scalar/object/address argument identities; scalar or immutable object results and expected
-failures are memoized at that owner. Invocation storage boundaries plus each object's
-transitive newest-local summary prevent direct or nested local addresses from escaping.
-Runtime ODR-use rematerializes completed facts and creates emission demand without replaying
-evaluation. This follows `spec.md` §§2–6,8–10: canonical identity, complete cache keys,
-indexed lookup, demand-separated completion, fact-driven lowering, phase-local ownership,
-and bounded work.
+evaluator-owned. A class expression carries both its immutable complete-object ID and the
+active subobject selected by typed base edges, together with the adjusted allocation-relative
+address. Completed calls key canonical functions, active/complete receivers, and typed
+scalar/object/address arguments; scalar or immutable object results and expected failures
+are memoized at that owner. Invocation storage boundaries plus each object's transitive
+newest-local summary prevent direct or nested local addresses from escaping. Runtime ODR-use
+rematerializes completed facts and creates emission demand without replaying evaluation.
+This follows `spec.md` §§2–6,8–10: canonical identity, complete cache keys, indexed lookup,
+demand-separated completion, fact-driven lowering, explicit phase ownership, and bounded,
+observable work.
 
 ## Current Failure Map
 
-Current result: 87/132 pass and 45 fail, up from 80/131. The complete remaining set
-partitions by owner into overloaded operators, callable objects, and contextual/user
-conversions (11); `noexcept` facts (8); qualified/static object lookup, arrays, and wide
-literals (11); class-valued runtime/global materialization (4); function-local static
-classification, guards, and emission (10); and constexpr declaration suitability (1).
-Base construction/projection, direct constructors, immutable member/array objects,
-canonical addresses, indirect calls, safe class returns, complete call-result keys, and
-converting call arguments are complete.
+Current handout result: 87/132 pass and 45 fail; the audit regression makes the combined
+report 88/133 without changing the handout failure set. The remaining failures partition by
+owner into overloaded operators, callable objects, and contextual/user conversions (11);
+`noexcept` facts (8); qualified/static object lookup, arrays, and wide literals (11);
+class-valued runtime/global materialization (4); function-local static classification,
+guards, and emission (10); and constexpr declaration suitability (1). Base construction,
+active-subobject projection, direct constructors, immutable member/array objects, canonical
+addresses, indirect calls, safe class returns, complete call-result keys, and converting call
+arguments are complete.
 
 ## Active Checkpoint
 
@@ -38,11 +41,12 @@ successful compile-time fact.
 Requirements: PA21's call/operator/conversion constant-expression rules and `spec.md`
 §§2–6,8–9 require one canonical call owner, complete cache keys, recorded conversions,
 fact-driven consumers, and demand-separated lowering. Data flow: expression/operator ->
-ordinary overload set and conversion sequence -> selected call -> evaluator frame/cache ->
-typed result -> contextual consumer or LowIR demand. Expected work is O(candidates ×
-arguments + executed constexpr steps) per uncached call and average O(1) cache lookup;
-conversion analysis must not replay in the evaluator. Validate all 11 mapped failures,
-receiver/reference and shadowing probes, repeated-call scaling, PA1–20, full PA21, and audit.
+ordinary overload set and conversion sequence -> selected call with active receiver facts ->
+evaluator frame/cache -> typed result -> contextual consumer or LowIR demand. Expected work
+is O(candidates × arguments + executed constexpr steps) per uncached call and average O(1)
+cache lookup; conversion analysis must not replay in the evaluator. Validate all 11 mapped
+failures, receiver/reference and shadowing probes, repeated-call scaling, PA1–20, full PA21,
+and audit.
 
 ## Performance Evidence
 
@@ -59,9 +63,14 @@ storage (5,294 bytes), and LowIR instructions (8) stayed fixed. Semantic nodes
 33/41/57/89 and peak-stage storage 48,199/48,923/55,795/66,083 grew with the source uses,
 showing that only required parsing/consumer work scales after the first complete call key.
 
-Base-depth probes at 8/16/32/64 levels used 15/31/63/127 constructor-base visits,
-11/19/35/67 evaluator steps, 41/81/161/321 scratch nodes, and 123/235/459/907 LowIR
-instructions. The near-doubling confirms linear constructor traversal and projection work.
+Audited base-depth probes at 8/16/32/64 levels used 15/31/63/127 constructor-base visits,
+9/17/33/65 object-projection visits, 11/19/35/67 evaluator steps, 41/81/161/321 scratch
+nodes, and 123/235/459/907 LowIR instructions. Typed storage was
+41,484/80,246/157,016/311,576 bytes and peak-stage storage was
+276,966/551,103/1,135,047/2,429,119 bytes. A two-branch repeated-base probe used two call
+requests, zero cache hits, 14 projection visits, 14 steps, four scratch nodes, and one LowIR
+instruction. These counters show linear depth traversal and distinct cache ownership for
+sibling subobjects.
 
 ## Completed Checkpoints
 
@@ -73,4 +82,4 @@ instructions. The near-doubling confirms linear constructor traversal and projec
 | Constructor/member invocation | Dump-node object facts, constructor argument frames, member-initializer execution, immutable receiver calls, default class initialization, scalar-member suitability checks, and runtime/static materialization boundaries | PA21 56→67/130; PA1–20 2,185/2,185; file audit pass; linear 16–128 field scaling above |
 | Canonical addresses and indirect calls | Allocation-relative null/binding/local/string/function identities, lvalue/reference transport, subobject bounds, pointer walking/comparison/truth, address-returning calls, indirect function calls, and expanded-pack array completion | PA21 67→76/130; PA1–20 2,185/2,185; file audit pass; linear 32–256 pointer-walk scaling above |
 | Class-valued calls and conversions | Object IDs through returns/calls, converting-constructor argument facts, temporary allocation identity, constexpr hidden-friend facts, compile-time/runtime demand separation; audit added complete typed result keys and transitive invocation-storage escape checks | PA21 76→79/130 preserved and audit regression passes for 80/131; aggregate return/NTTP, hidden-friend, reference-conversion, and dangling-object probes pass; PA1–20 2,185/2,185; file audit pass; bounded width and repeated-call scaling above |
-| Base-subobject completion | Ordered direct-base facts after direct members, base/member/delegating initialization, base projection for receivers/references, class-return transport, and initializer-local demand/slot boundaries | PA21 80/131→87/132; seven focused base/delegation tests pass; PA1–20 2,185/2,185; file audit pass; linear depth scaling above |
+| Base-subobject completion | Ordered direct-base facts after direct members, base/member/delegating initialization, active/complete object transport with adjusted addresses through receivers/references/cache facts, and initializer-local demand/slot boundaries; audit repaired repeated-base ambiguity and inherited-base ownership | PA21 handout 80/131→87/132 preserved, audit regression passes for 88/133; eight focused base/delegation tests pass; PA1–20 2,185/2,185; file audit pass; linear depth scaling above |

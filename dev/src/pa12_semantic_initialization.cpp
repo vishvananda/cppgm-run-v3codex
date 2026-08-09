@@ -2367,7 +2367,8 @@ ExpressionInfo SemanticAnalyzer::MaterializeTemporary(
 	const std::uint32_t object = ExpressionObject(initializer);
 	if (object != kNoConstexprObject)
 	{
-		SetExpressionObject(&result, object);
+		SetExpressionSubobject(
+			&result, object, ExpressionCompleteObject(initializer));
 		PublishDumpObject(temporary, object);
 	}
 	++expression_count_;

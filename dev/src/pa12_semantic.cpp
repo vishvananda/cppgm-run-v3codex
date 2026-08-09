@@ -557,7 +557,8 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 		dump_.nodes[value.node].integer_narrowing_conversion = true;
 	if (conversion == CONVERSION_DERIVED_TO_BASE)
 	{
-		const std::uint32_t complete_object = ExpressionObject(value);
+		const std::uint32_t object = ExpressionObject(value);
+		const std::uint32_t complete_object = ExpressionCompleteObject(value);
 		const bool binds_temporary =
 			target_record.kind == TYPE_LVALUE_REFERENCE &&
 			value.category != VALUE_LVALUE;
@@ -585,10 +586,19 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 		value.binding = kNoBinding;
 		value.constant = false;
 		value.constexpr_object = kNoConstexprObject;
-		if (complete_object != kNoConstexprObject &&
-			ProjectConstexprObject(complete_object, nonreference) !=
-				kNoConstexprObject)
-			SetExpressionObject(&value, complete_object);
+		value.constexpr_complete_object = kNoConstexprObject;
+		std::uint64_t projection_offset = 0;
+		const std::uint32_t projected = ProjectConstexprObject(
+			object, nonreference, &projection_offset);
+		if (projected != kNoConstexprObject)
+		{
+			SetExpressionSubobject(&value, projected, complete_object);
+			if (source_address != kNoConstexprAddress &&
+				projection_offset <= static_cast<std::uint64_t>(
+					std::numeric_limits<std::int64_t>::max()))
+				source_address = OffsetConstexprAddress(source_address,
+					static_cast<std::int64_t>(projection_offset), false);
+		}
 		++expression_count_;
 	}
 	if (reference_target &&
@@ -604,6 +614,7 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 		value.binding = kNoBinding;
 		value.constant = false;
 		value.constexpr_object = kNoConstexprObject;
+		value.constexpr_complete_object = kNoConstexprObject;
 		++expression_count_;
 	}
 	if (value.integer_literal_zero &&
@@ -1062,6 +1073,8 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	const std::uint32_t callee = MakeDump(DUMP_CALLEE, callable_type,
 		VALUE_NONE, function.display_name, emission_binding);
 	dump_.Add(call, callee);
+	ExpressionInfo converted_object;
+	const ExpressionInfo* constexpr_receiver = object;
 	std::vector<ExpressionInfo> constexpr_arguments;
 	constexpr_arguments.reserve(function_type.parameter_count);
 	if (function.member_owner != kNoType)
@@ -1069,9 +1082,10 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 		if (!object) throw std::logic_error("selected member call has no object");
 		const TypeId object_parameter =
 			program_->types.Parameters(callable_type)[0];
-		const ExpressionInfo converted = ApplyMemberObjectTarget(
+		converted_object = ApplyMemberObjectTarget(
 			*object, object_parameter, selected, object_conversion);
-		dump_.Add(call, converted.node);
+		dump_.Add(call, converted_object.node);
+		constexpr_receiver = &converted_object;
 	}
 	for (std::size_t a = 0; a < arguments.size(); ++a)
 	{
@@ -1109,12 +1123,13 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	ConstexprScalarValue constexpr_value;
 	std::uint32_t constexpr_address = kNoConstexprAddress;
 	std::uint32_t constexpr_object = kNoConstexprObject;
+	std::uint32_t constexpr_complete_object = kNoConstexprObject;
 	bool folded_call = false;
 	bool evaluated_call = false;
 	if (constant_evaluation_suppressed_depth_ == 0 &&
 		TryEvaluateConstexprFunction(
 		selected, constexpr_arguments, &constexpr_value, &constexpr_address,
-		&constexpr_object, object))
+		&constexpr_object, &constexpr_complete_object, constexpr_receiver))
 	{
 		evaluated_call = true;
 		if (returned.kind == TYPE_LVALUE_REFERENCE ||
@@ -1122,7 +1137,8 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 		{
 			SetExpressionLvalueAddress(&result, constexpr_address);
 			if (constexpr_object != kNoConstexprObject)
-				SetExpressionObject(&result, constexpr_object);
+				SetExpressionSubobject(&result, constexpr_object,
+					constexpr_complete_object);
 		}
 		else if (IsPointer(EffectiveType(result_type)))
 			SetExpressionAddress(&result, constexpr_address);
@@ -2904,6 +2920,8 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 			template_specialization_cache_hits_;
 		stats_->constexpr_call_requests = constexpr_call_requests_;
 		stats_->constexpr_call_cache_hits = constexpr_call_cache_hits_;
+		stats_->constexpr_object_projection_visits =
+			constexpr_object_projection_visits_;
 		stats_->constexpr_step_visits = constexpr_step_visits_;
 		stats_->constexpr_max_depth = constexpr_max_depth_;
 		stats_->constexpr_peak_locals = constexpr_peak_locals_;

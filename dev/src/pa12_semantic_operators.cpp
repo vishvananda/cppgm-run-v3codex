@@ -53,6 +53,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 	if (TryAnalyzeOverloadedOperator(operation, scope, overloaded_syntax,
 		overloaded_operands, false, target, &overloaded)) return overloaded;
 	const std::uint32_t operand_object = ExpressionObject(operand);
+	const std::uint32_t operand_complete_object =
+		ExpressionCompleteObject(operand);
 	(void)ApplyBuiltinUnaryConversion(operation, &operand);
 	if (operation == "&" && operand.binding != kNoBinding)
 		EnsureStaticMemberStorage(operand.binding, true);
@@ -203,7 +205,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 	if (lvalue_address != kNoConstexprAddress)
 		SetExpressionLvalueAddress(&result, lvalue_address);
 	if (operation == "*" && operand_object != kNoConstexprObject)
-		SetExpressionObject(&result, operand_object);
+		SetExpressionSubobject(
+			&result, operand_object, operand_complete_object);
 	if (operation == "*" && lvalue_address != kNoConstexprAddress)
 	{
 		const ConstexprAddressValue* pointed =
