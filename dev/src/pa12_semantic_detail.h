@@ -242,6 +242,8 @@ private:
 	std::vector<BindingId> FunctionTemplateTargetCandidates(
 		ScopeId scope, const std::string& spelling, TypeId target,
 		NodeId syntax = kNoNode);
+	bool HasUniqueFunctionAddressTarget(
+		ScopeId scope, NodeId syntax, TypeId target);
 	bool AnalyzeFunctionId(NodeId node, ScopeId scope, TypeId target,
 		ExpressionInfo* result);
 	bool ParseExplicitTemplateArguments(NodeId syntax, ScopeId scope,

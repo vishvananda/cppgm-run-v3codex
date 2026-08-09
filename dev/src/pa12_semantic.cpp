@@ -630,7 +630,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 		return AnalyzeExpression(FirstSemanticChild(node), scope, target);
 	if (arena_->IsTag(node, "literal"))
 	{
-		const std::string spelling = arena_->Payload(node);
+		std::string spelling = arena_->Payload(node);
+		if (spelling.compare(0, 11, "TT_LITERAL:") == 0)
+			spelling.erase(0, 11);
 		ExpressionInfo result;
 		if (spelling.find('"') != std::string::npos)
 		{
@@ -1310,6 +1312,14 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 	const NodeId operand_syntax = FirstSemanticChild(node);
 	ExpressionInfo operand = AnalyzeExpression(operand_syntax, scope,
 		operand_target);
+	// Preserve an unresolved overload set until a surrounding call or
+	// constructor supplies the function-pointer target.  The target-directed
+	// replay consumes the retained syntax and publishes one selected binding.
+	if (operand.type == kNoType)
+	{
+		if (operation == "&" && target == kNoType) return operand;
+		throw std::runtime_error("unresolved unary operand");
+	}
 	std::vector<NodeId> overloaded_syntax(1, operand_syntax);
 	std::vector<ExpressionInfo> overloaded_operands(1, operand);
 	if (postfix && (operation == "++" || operation == "--"))
@@ -1730,6 +1740,10 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 	}
 	if (target != kNoNode)
 		ValidateRetainedTemplateDefinition(target, scope, parameters);
+	// Alias templates are outside PA20.  Retain their parsed declaration as an
+	// inert boundary so unrelated supported declarations in the same source do
+	// not eagerly require alias substitution semantics.
+	if (target != kNoNode && arena_->IsTag(target, "alias-declaration")) return;
 	if (target != kNoNode &&
 		AnalyzeClassTemplateMember(target, scope, parameters)) return;
 	if (target != kNoNode &&

@@ -542,6 +542,9 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 						}
 						braced_sources[c * arity + a] = source;
 					}
+					else if (HasUniqueFunctionAddressTarget(
+						scope, argument_syntax[a], parameter))
+						conversion.rank = CONVERSION_EXACT;
 					else conversion.rank = CONVERSION_INVALID;
 				}
 				else
@@ -787,20 +790,27 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 		{
 			if (argument.type == kNoType)
 			{
-				const TypeRecord parameter = program_->types.Get(parameters[a]);
-				const TypeId list_target = parameter.kind == TYPE_LVALUE_REFERENCE ||
-					parameter.kind == TYPE_RVALUE_REFERENCE ?
-					parameter.child : parameters[a];
-				argument = AnalyzeBracedCallArgument(
-					argument_syntax[a], scope, list_target);
-				argument.category = VALUE_PRVALUE;
-				dump_.nodes[argument.node].category = VALUE_PRVALUE;
-				const EntityId list_entity = EntityOf(list_target);
-				if (list_entity != kNoEntity &&
-					program_->entities[list_entity].is_aggregate &&
-					dump_.nodes[argument.node].kind == DUMP_BRACED_INIT_LIST)
-					argument.node = BuildAggregateConstructionAction(
-						list_target, argument.node);
+				if (arena_->IsTag(argument_syntax[a], "braced-init-list"))
+				{
+					const TypeRecord parameter =
+						program_->types.Get(parameters[a]);
+					const TypeId list_target =
+						parameter.kind == TYPE_LVALUE_REFERENCE ||
+						parameter.kind == TYPE_RVALUE_REFERENCE ?
+						parameter.child : parameters[a];
+					argument = AnalyzeBracedCallArgument(
+						argument_syntax[a], scope, list_target);
+					argument.category = VALUE_PRVALUE;
+					dump_.nodes[argument.node].category = VALUE_PRVALUE;
+					const EntityId list_entity = EntityOf(list_target);
+					if (list_entity != kNoEntity &&
+						program_->entities[list_entity].is_aggregate &&
+						dump_.nodes[argument.node].kind == DUMP_BRACED_INIT_LIST)
+						argument.node = BuildAggregateConstructionAction(
+							list_target, argument.node);
+				}
+				else argument = AnalyzeExpression(
+					argument_syntax[a], scope, parameters[a]);
 				argument = ApplyCallArgument(argument, parameters[a]);
 			}
 			else if (!(a == 0 && first_argument_converted))

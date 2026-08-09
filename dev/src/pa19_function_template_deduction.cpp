@@ -344,9 +344,27 @@ bool SemanticAnalyzer::DeduceFunctionTemplatePackType(TypeId pattern,
 			return false;
 		const std::uint32_t class_pattern =
 			class_template_pattern_by_entity_[pattern_entity];
-		if (class_pattern == kNoDumpEdge || class_pattern !=
-			class_template_pattern_by_entity_[argument_entity] ||
-			class_pattern >= class_templates_.size()) return false;
+		if (class_pattern == kNoDumpEdge || class_pattern >= class_templates_.size())
+			return false;
+		if (class_pattern != class_template_pattern_by_entity_[argument_entity])
+		{
+			const EntityRecord& derived = program_->entities[argument_entity];
+			for (std::size_t base = 0; base < derived.direct_base_count; ++base)
+			{
+				const EntityId base_entity =
+					program_->DirectBase(argument_entity, base).entity;
+				if (base_entity == kNoEntity ||
+					base_entity >= program_->entities.size()) continue;
+				FunctionTemplateDeduction trial = *deduced;
+				if (DeduceFunctionTemplatePackType(pattern,
+					program_->entities[base_entity].type, parameters, &trial))
+				{
+					*deduced = trial;
+					return true;
+				}
+			}
+			return false;
+		}
 		const EntityRecord& pattern_owner = program_->entities[pattern_entity];
 		const EntityRecord& argument_owner = program_->entities[argument_entity];
 		if (pattern_owner.template_argument_begin == kNoBinding ||
@@ -684,6 +702,53 @@ std::vector<BindingId> SemanticAnalyzer::FunctionTemplateTargetCandidates(
 			result.push_back(candidate);
 	}
 	return result;
+}
+
+bool SemanticAnalyzer::HasUniqueFunctionAddressTarget(
+	ScopeId scope, NodeId syntax, TypeId target)
+{
+	while (syntax != kNoNode &&
+		arena_->IsTag(syntax, "parenthesized-expression"))
+		syntax = FirstSemanticChild(syntax);
+	if (syntax == kNoNode || !arena_->IsTag(syntax, "unary-expression") ||
+		PayloadSource(syntax) != "&") return false;
+	syntax = FirstSemanticChild(syntax);
+	while (syntax != kNoNode &&
+		arena_->IsTag(syntax, "parenthesized-expression"))
+		syntax = FirstSemanticChild(syntax);
+	if (syntax == kNoNode || !arena_->IsTag(syntax, "id-expression"))
+		return false;
+
+	TypeId desired = program_->types.RemoveTopCv(target);
+	TypeRecord shape = program_->types.Get(desired);
+	if (shape.kind == TYPE_LVALUE_REFERENCE ||
+		shape.kind == TYPE_RVALUE_REFERENCE)
+	{
+		desired = program_->types.RemoveTopCv(shape.child);
+		shape = program_->types.Get(desired);
+	}
+	if (shape.kind != TYPE_POINTER ||
+		!program_->types.IsFunction(shape.child)) return false;
+	desired = shape.child;
+
+	const std::string spelling = arena_->Payload(syntax);
+	std::vector<BindingId> candidates =
+		FunctionCandidates(scope, spelling, 0, syntax);
+	const std::vector<BindingId> templates =
+		FunctionTemplateTargetCandidates(scope, spelling, desired, syntax);
+	for (std::size_t i = 0; i < templates.size(); ++i)
+		if (std::find(candidates.begin(), candidates.end(), templates[i]) ==
+			candidates.end())
+			candidates.push_back(templates[i]);
+	BindingId selected = kNoBinding;
+	for (std::size_t i = 0; i < candidates.size(); ++i)
+	{
+		if (GetFunction(candidates[i]).type != desired) continue;
+		const BindingId canonical = program_->bindings[candidates[i]].canonical;
+		if (selected != kNoBinding && selected != canonical) return false;
+		selected = canonical;
+	}
+	return selected != kNoBinding;
 }
 
 bool SemanticAnalyzer::AnalyzeFunctionId(NodeId node, ScopeId scope,

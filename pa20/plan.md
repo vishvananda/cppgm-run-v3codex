@@ -14,29 +14,32 @@ evaluation and PA22/PA23 SFINAE remain out of scope.
 
 ## Current Failure Map
 
-The stage is 130/164, up from the checkpoint baseline of 125/164.  The 34
-remaining failures group into template-id/qualified lookup and variable-template
-materialization; retained member/static-assert replay and duplicate signatures;
-pack validation/lowering; explicit specialization (`300-*`); and stale-primary
-refresh (`400-*`).
+The stage is 136/164, up from the last completed checkpoint's 130/164.  The 28
+failures group by owner into aggregate-expression lowering (1); class/member,
+default, and variable-template semantic replay (9); pack
+substitution/lowering (5); explicit-specialization selection and lowering
+(11); and stale-specialization refresh (2).
 
 ## Active Checkpoint
 
-Build the retained template-id and variable-template value boundary.  `spec.md`
-requires parser ambiguity to be represented once, semantic lookup to select a
-type/value/template role without reparsing, and specializations to use canonical
-arguments and stable bindings before initializer demand.
+Complete the retained template-id and target-directed conversion boundary.
+`spec.md` requires each ambiguity to be parsed once, overload lookup to visit
+only indexed candidates, and canonical arguments/defaults to select one stable
+binding before lowering.  PA20 requires integral defaults and explicit
+function-template arguments while alias/variable templates remain out of scope
+and must not trigger eager replay.
 
-PA10 owns bounded `<`/declaration scans and retained alternatives; PA20 lookup
-owns qualified role selection and canonical variable specialization; PA12
-initialization publishes typed constant/object facts; lowering consumes the
-selected binding.  Data flows from one retained name path and argument range to
-indexed lookup, specialization cache, then demand.  Expected work is O(path
-segments plus explicit arguments and visible candidates), with O(1)-average
-cache lookup.  Validate variable-template id expressions/local use, defaulted
-partial arguments, dependent `typename`, shadowed qualified template heads,
-less-than expression arguments, and prior non-template ambiguity cases;
-explicit-specialization replacement remains a later checkpoint.
+PA10 owns cached, bounded `<` scans and distinguishes cast brackets from
+relational operators; PA19/PA20 lookup owns structural deduction and canonical
+default completion; PA12 constructor selection retains an unresolved function
+address until its parameter type selects one canonical binding.  Typed literal
+initialization remains a PA12 fact consumed directly by lowering.  Work is
+O(scanned tokens plus visible function candidates and template patterns times
+parameter-shape size), with each angle range scanned once and O(1)-average
+specialization lookup.  Validate cast/value arguments, shadowed qualified
+heads, integral defaults, derived template-pointer conversion, qualified
+function addresses in constructor arguments, wide literal arrays, unsupported
+alias boundaries, and PA19 regressions.
 
 ## Performance Evidence
 
@@ -117,6 +120,14 @@ emissions 1/1/1; peak semantic bytes 25,860/32,837/46,789; typed LowIR bytes
 linearly while lookup, specialization, demand, and semantic graph size remain
 constant.
 
+Seven-run release medians for 16/32/64 distinct constructor-targeted
+`&function_template` arguments: tokens 879/1,823/3,839; semantic nodes
+660/1,380/2,884; lookups 760/1,512/3,016; overload candidates 96/192/384;
+specialization requests 80/160/320 with 32/64/128 hits; peak semantic bytes
+732,178/1,461,047/2,920,700; semantic time 3.144/6.047/12.310 ms.  Indexed
+target lookup, canonical specialization traffic, storage, and time scale
+linearly with produced constructor/function specializations.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result |
@@ -131,3 +142,4 @@ constant.
 | Canonical dependent helper values and nested packs | Restricted structural constexpr conversion, structured `alignas` lookup, recursive lockstep type-pack scopes, and non-empty value-initialized argument staging; PA20 116 -> 120, PA1-PA19 2,013/2,013, audit pass, helper-pack scaling linear |
 | Canonical specialized owners and static-definition demand | Type-ID-independent argument presentation, separate retained static definitions, deduplicated object/function/vtable and reference/address demand, and canonical lowering identity; PA20 120 -> 125, PA1-PA19 2,013/2,013, audit pass, demand/output scaling linear |
 | Typed literal decoding and literal-operator dispatch | PA10-gated ordinary multichar admission preserving PA2, retained typed wide-string code units and constant subscripts, cooked `unsigned long long` resolution, and canonical `char...` specialization/demand; PA20 125 -> 130, PA1-PA19 2,013/2,013, audit pass, literal-pack scaling linear |
+| Retained template-id and target-directed conversions | Bounded cast/relational angle matching, inert alias boundary, canonical integral defaults, derived deduction, typed string arrays, and constructor-targeted function addresses; PA20 130 -> 136, focused 9/9, PA1-PA19 2,013/2,013, audit pass, target scaling linear |

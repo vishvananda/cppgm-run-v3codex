@@ -164,6 +164,16 @@ protected:
 					saw_expression_operator = true;
 				if (parser.At(OP_LT))
 				{
+					const bool identifier_candidate = parser.position_ != 0 &&
+						parser.tokens_[parser.position_ - 1].kind ==
+							kIdentifierToken;
+					const std::uint16_t previous_kind = parser.position_ == 0 ?
+						0 : parser.tokens_[parser.position_ - 1].kind;
+					const bool cast_candidate =
+						previous_kind == static_cast<std::uint16_t>(KW_STATIC_CAST) ||
+						previous_kind == static_cast<std::uint16_t>(KW_DYNAMIC_CAST) ||
+						previous_kind == static_cast<std::uint16_t>(KW_CONST_CAST) ||
+						previous_kind == static_cast<std::uint16_t>(KW_REINTERPET_CAST);
 					const TextId nested_candidate_id = parser.position_ == 0 ?
 						0 : parser.tokens_[parser.position_ - 1].spelling;
 					const bool explicitly_templated = parser.position_ >= 2 &&
@@ -172,13 +182,16 @@ protected:
 					const bool qualified_candidate = parser.position_ >= 2 &&
 						parser.tokens_[parser.position_ - 2].kind ==
 							static_cast<std::uint16_t>(OP_COLON2);
-					const bool known_template = parser.HasNameFact(
-						nested_candidate_id, Derived::kKnownTemplate) &&
-						!parser.HasNameFact(nested_candidate_id,
-							Derived::kActiveNonTypeParameter);
-					if (explicitly_templated ||
+					const bool active_non_type = parser.HasNameFact(
+						nested_candidate_id, Derived::kActiveNonTypeParameter);
+					const bool known_template = identifier_candidate &&
+						parser.HasNameFact(
+							nested_candidate_id, Derived::kKnownTemplate) &&
+						(qualified_candidate || !active_non_type);
+					if (cast_candidate || explicitly_templated ||
 						known_template ||
-						(!qualified_candidate && !parser.HasNameFact(
+						(identifier_candidate && !qualified_candidate &&
+						 !parser.HasNameFact(
 							nested_candidate_id, Derived::kKnownNonTemplate)))
 					{
 						++angle;

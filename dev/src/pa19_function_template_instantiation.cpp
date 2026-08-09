@@ -322,9 +322,7 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 				BindTemplateArgument(default_scope, parameter, argument);
 			continue;
 		}
-		if (parameter.kind != TEMPLATE_ARGUMENT_TYPE ||
-			parameter.default_argument == kNoNode)
-			return kNoBinding;
+		if (parameter.default_argument == kNoNode) return kNoBinding;
 		if (default_scope == kNoScope)
 		{
 			default_scope = NewScope(pattern.lexical_scope,
@@ -342,16 +340,30 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 					pattern.parameters[prior], completed[prior_first]);
 			}
 		}
-		NodeId type_id = FindChild(
-			parameter.default_argument, "type-id");
-		if (type_id == kNoNode)
-			type_id = FirstSemanticChild(
-				parameter.default_argument);
-		if (type_id == kNoNode)
+		NodeId source = FirstSemanticChild(parameter.default_argument);
+		if (source == kNoNode)
 			throw std::runtime_error(
 				"empty function template default argument");
-		argument.type = BuildTypeId(type_id, default_scope);
-		if (argument.type == kNoType) return kNoBinding;
+		if (parameter.kind == TEMPLATE_ARGUMENT_TYPE)
+		{
+			NodeId type_id = arena_->IsTag(source, "type-id") ? source :
+				FindChild(source, "type-id");
+			if (type_id == kNoNode) return kNoBinding;
+			argument.type = BuildTypeId(type_id, default_scope);
+			if (argument.type == kNoType) return kNoBinding;
+		}
+		else
+		{
+			argument.type = ResolveTemplateParameterType(
+				parameter, default_scope);
+			const ExpressionInfo value = AnalyzeExpression(
+				source, default_scope, argument.type);
+			if (!value.constant || !IsIntegral(value.type, true))
+				throw std::runtime_error(
+					"default non-type function template argument is not constant");
+			argument.value = NormalizeIntegralConstant(
+				argument.type, value.value);
+		}
 		BindTemplateArgument(default_scope, parameter, argument);
 	}
 	const TemplateSpecializationKey cache_key(
