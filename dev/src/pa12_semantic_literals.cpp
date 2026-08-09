@@ -576,6 +576,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeThisExpression(ScopeId scope)
 		constexpr_frames_.back().receiver_object != kNoConstexprObject)
 		SetExpressionObject(&result,
 			constexpr_frames_.back().receiver_object);
+	if (!constexpr_frames_.empty() &&
+		constexpr_frames_.back().receiver_address != kNoConstexprAddress)
+		SetExpressionAddress(&result,
+			constexpr_frames_.back().receiver_address);
 	++expression_count_;
 	return result;
 }
@@ -648,6 +652,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 			(binding.constant &&
 			 BindingObject(found.ordinary) != kNoConstexprObject &&
 			 constant_expression_required_depth_ == 0));
+	const std::uint32_t constant_address = binding.constant ?
+		BindingAddress(found.ordinary) : kNoConstexprAddress;
+	if (constant_address != kNoConstexprAddress &&
+		constant_expression_required_depth_ == 0 &&
+		(target == kNoType || !program_->types.IsReference(target)))
+		return ApplyTarget(MaterializeConstexprAddress(
+			constant_address, EffectiveType(binding.type)), target);
 	const std::uint32_t injected_fact =
 		found.ordinary < injected_fact_by_binding_.size() ?
 		injected_fact_by_binding_[found.ordinary] : kNoDumpEdge;
@@ -679,9 +690,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 	if (binding.constant)
 		SetExpressionBindingConstant(&result, found.ordinary);
 	dump_.nodes[result.node].constant = result.constant &&
-		result.constexpr_object == kNoConstexprObject;
+		result.constexpr_object == kNoConstexprObject &&
+		result.constexpr_address == kNoConstexprAddress;
 	if (!result.floating_constant &&
-		result.constexpr_object == kNoConstexprObject)
+		result.constexpr_object == kNoConstexprObject &&
+		result.constexpr_address == kNoConstexprAddress)
 		dump_.nodes[result.node].constant_value = result.value;
 	++expression_count_;
 	return ApplyTarget(result, target);

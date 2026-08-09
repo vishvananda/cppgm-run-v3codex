@@ -1,6 +1,7 @@
 #include "pa12_semantic_detail.h"
 
 #include <climits>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -60,7 +61,15 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 	TypeId result_type = EffectiveType(operand.type);
 	ValueCategory category = VALUE_PRVALUE;
 	bool constant = operand.constant;
-	ConstexprScalarValue scalar = ExpressionScalar(operand);
+	ConstexprScalarValue scalar;
+	std::uint32_t address = ExpressionAddress(operand);
+	if (address == kNoConstexprAddress &&
+		(operation == "*" || operation == "+") &&
+		IsPointer(Decay(operand.type)))
+		address = LvalueAddress(&operand);
+	std::uint32_t lvalue_address = kNoConstexprAddress;
+	if (constant && address == kNoConstexprAddress)
+		scalar = ExpressionScalar(operand);
 	if (operation == "&")
 	{
 		if (operand.category != VALUE_LVALUE)
@@ -70,7 +79,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 				TYPE_MEMBER_POINTER)
 			result_type = program_->types.RemoveTopCv(target);
 		else result_type = program_->types.Pointer(result_type);
-		constant = false;
+		address = LvalueAddress(&operand);
+		constant = address != kNoConstexprAddress;
 	}
 	else if (operation == "*")
 	{
@@ -80,6 +90,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 			throw std::runtime_error("dereference requires pointer");
 		result_type = pointer.child;
 		category = VALUE_LVALUE;
+		lvalue_address = address;
 		constant = false;
 	}
 	else if (operation == "++" || operation == "--")
@@ -92,20 +103,39 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 		if (constexpr_evaluation_depth_ != 0 &&
 			constant_evaluation_suppressed_depth_ == 0 &&
 			operand.constexpr_local < constexpr_locals_.size() &&
-			operand.constant &&
-			(IsIntegral(result_type, true) || IsFloating(result_type)))
+			operand.constant)
 		{
 			ConstexprLocalValue& local =
 				constexpr_locals_[operand.constexpr_local];
-			const ConstexprScalarValue previous = local.value;
-			const ConstexprScalarValue one = IsFloating(result_type) ?
-				ConstexprScalarValue(1.0L) :
-				ConstexprScalarValue(static_cast<std::int64_t>(1));
-			const ConstexprScalarValue updated = ApplyConstantScalarBinary(
-				operation == "++" ? "+" : "-", previous, one, result_type);
-			local.value = updated;
-			constant = true;
-			scalar = postfix ? previous : updated;
+			if (IsPointer(result_type) &&
+				local.address != kNoConstexprAddress)
+			{
+				const TypeRecord pointer = program_->types.Get(
+					program_->types.RemoveTopCv(result_type));
+				const std::int64_t step = static_cast<std::int64_t>(
+					program_->SizeOf(pointer.child));
+				const std::uint32_t previous = local.address;
+				const std::uint32_t updated = OffsetConstexprAddress(previous,
+					operation == "++" ? step : -step, false);
+				if (updated != kNoConstexprAddress)
+				{
+					local.address = updated;
+					address = postfix ? previous : updated;
+					constant = true;
+				}
+			}
+			else if (IsIntegral(result_type, true) || IsFloating(result_type))
+			{
+				const ConstexprScalarValue previous = local.value;
+				const ConstexprScalarValue one = IsFloating(result_type) ?
+					ConstexprScalarValue(1.0L) :
+					ConstexprScalarValue(static_cast<std::int64_t>(1));
+				const ConstexprScalarValue updated = ApplyConstantScalarBinary(
+					operation == "++" ? "+" : "-", previous, one, result_type);
+				local.value = updated;
+				constant = true;
+				scalar = postfix ? previous : updated;
+			}
 		}
 	}
 	else if (operation == "!")
@@ -115,14 +145,15 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 			throw std::runtime_error("invalid logical-not operand");
 		result_type = program_->types.Fundamental(FUND_BOOL);
 		if (constant) scalar = ConstexprScalarValue(
-			static_cast<std::int64_t>(!ScalarTruth(scalar)));
+			static_cast<std::int64_t>(!ExpressionTruth(operand)));
+		address = kNoConstexprAddress;
 	}
 	else if (operation == "+" || operation == "-" || operation == "~")
 	{
 		if (operation == "+" && IsPointer(Decay(result_type)))
 		{
 			result_type = Decay(result_type);
-			constant = false;
+			constant = address != kNoConstexprAddress;
 		}
 		else if ((operation == "~" && !IsIntegral(result_type)) ||
 			(operation != "~" && !IsArithmetic(result_type)))
@@ -165,7 +196,35 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 	result.node = expression;
 	result.type = result_type;
 	result.category = category;
-	if (constant) SetExpressionScalar(&result, scalar);
+	if (constant && address != kNoConstexprAddress)
+		SetExpressionAddress(&result, address);
+	else if (constant) SetExpressionScalar(&result, scalar);
+	if (lvalue_address != kNoConstexprAddress)
+		SetExpressionLvalueAddress(&result, lvalue_address);
+	if (operation == "*" && lvalue_address != kNoConstexprAddress)
+	{
+		const ConstexprAddressValue* pointed =
+			ConstexprAddressAt(lvalue_address);
+		if (pointed && pointed->kind == CONSTEXPR_ADDRESS_BINDING &&
+			pointed->identity < program_->bindings.size() &&
+			program_->bindings[static_cast<BindingId>(pointed->identity)].constant &&
+			pointed->offset >= 0)
+		{
+			const std::uint32_t object = BindingObject(
+				static_cast<BindingId>(pointed->identity));
+			const std::int64_t step = static_cast<std::int64_t>(
+				program_->SizeOf(result_type));
+			if (object != kNoConstexprObject && step > 0 &&
+				pointed->offset < pointed->upper_bound &&
+				pointed->offset % step == 0)
+			{
+				const ConstexprObjectElement* element =
+					ConstexprObjectElementAt(object,
+						static_cast<std::size_t>(pointed->offset / step));
+				if (element) SetExpressionObjectElement(&result, *element);
+			}
+		}
+	}
 	++expression_count_;
 	return result;
 }
@@ -181,8 +240,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBinary(NodeId node, ScopeId scope)
 	ExpressionInfo left = AnalyzeExpression(left_syntax, scope);
 	const std::string operation = PayloadSource(node);
 	const bool short_circuit = left.constant &&
-		((operation == "&&" && !ScalarTruth(ExpressionScalar(left))) ||
-		 (operation == "||" && ScalarTruth(ExpressionScalar(left))));
+		((operation == "&&" && !ExpressionTruth(left)) ||
+		 (operation == "||" && ExpressionTruth(left)));
 	if (short_circuit) ++constant_evaluation_suppressed_depth_;
 	ExpressionInfo right;
 	try
@@ -270,9 +329,11 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 			else throw std::runtime_error("invalid pointer comparison operands");
 		}
 		else if (IsPointer(Decay(left.type)) &&
-			((right.integer_literal_zero && equality) || IsNullptr(right.type))) {}
+			((right.integer_literal_zero && equality) || IsNullptr(right.type)))
+			SetExpressionAddress(&right, NullConstexprAddress());
 		else if (IsPointer(Decay(right.type)) &&
-			((left.integer_literal_zero && equality) || IsNullptr(left.type))) {}
+			((left.integer_literal_zero && equality) || IsNullptr(left.type)))
+			SetExpressionAddress(&left, NullConstexprAddress());
 		else throw std::runtime_error("invalid comparison operands");
 		result_type = program_->types.Fundamental(FUND_BOOL);
 	}
@@ -321,12 +382,122 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 	result.type = result_type;
 	result.category = result_category;
 	const bool short_circuit = left.constant &&
-		((operation == "&&" && !ScalarTruth(ExpressionScalar(left))) ||
-		 (operation == "||" && ScalarTruth(ExpressionScalar(left))));
+		((operation == "&&" && !ExpressionTruth(left)) ||
+		 (operation == "||" && ExpressionTruth(left)));
 	result.constant = constant_evaluation_suppressed_depth_ == 0 &&
 		(short_circuit || (left.constant && right.constant));
 	if (result.constant)
 	{
+		std::uint32_t left_address = ExpressionAddress(left);
+		std::uint32_t right_address = ExpressionAddress(right);
+		if (left_address == kNoConstexprAddress &&
+			IsPointer(Decay(left.type)))
+			left_address = LvalueAddress(&left);
+		if (right_address == kNoConstexprAddress &&
+			IsPointer(Decay(right.type)))
+			right_address = LvalueAddress(&right);
+		if (operation == "&&" || operation == "||")
+		{
+			SetExpressionScalar(&result, ConstexprScalarValue(
+				static_cast<std::int64_t>(short_circuit ?
+					ExpressionTruth(left) :
+					(operation == "&&" ?
+					 ExpressionTruth(left) && ExpressionTruth(right) :
+					 ExpressionTruth(left) || ExpressionTruth(right)))));
+			++expression_count_;
+			return result;
+		}
+		if ((operation == "==" || operation == "!=" || operation == "<" ||
+			operation == ">" || operation == "<=" || operation == ">=") &&
+			(left_address != kNoConstexprAddress ||
+			 right_address != kNoConstexprAddress))
+		{
+			const ConstexprAddressValue* a = ConstexprAddressAt(left_address);
+			const ConstexprAddressValue* b = ConstexprAddressAt(right_address);
+			if (!a || !b)
+				result.constant = false;
+			else
+			{
+				const bool same_base = a->kind == b->kind &&
+					a->identity == b->identity;
+				bool compared = false;
+				if (operation == "==")
+					compared = same_base && a->offset == b->offset;
+				else if (operation == "!=")
+					compared = !(same_base && a->offset == b->offset);
+				else if (!same_base) result.constant = false;
+				else if (operation == "<") compared = a->offset < b->offset;
+				else if (operation == ">") compared = a->offset > b->offset;
+				else if (operation == "<=") compared = a->offset <= b->offset;
+				else compared = a->offset >= b->offset;
+				if (result.constant) SetExpressionScalar(&result,
+					ConstexprScalarValue(static_cast<std::int64_t>(compared)));
+			}
+			++expression_count_;
+			return result;
+		}
+		if ((operation == "+" || operation == "-") &&
+			(left_address != kNoConstexprAddress ||
+			 right_address != kNoConstexprAddress))
+		{
+			if (left_address != kNoConstexprAddress &&
+				right_address != kNoConstexprAddress)
+			{
+				const ConstexprAddressValue* a =
+					ConstexprAddressAt(left_address);
+				const ConstexprAddressValue* b =
+					ConstexprAddressAt(right_address);
+				if (operation != "-" || !a || !b || a->kind != b->kind ||
+					a->identity != b->identity)
+					result.constant = false;
+				else
+				{
+					const TypeRecord pointer = program_->types.Get(
+						program_->types.RemoveTopCv(Decay(left.type)));
+					const std::int64_t step = static_cast<std::int64_t>(
+						program_->SizeOf(pointer.child));
+					if (step == 0 || (a->offset - b->offset) % step != 0)
+						result.constant = false;
+					else SetExpressionScalar(&result, ConstexprScalarValue(
+						(a->offset - b->offset) / step));
+				}
+			}
+			else
+			{
+				const bool pointer_left = left_address != kNoConstexprAddress;
+				const ExpressionInfo& index = pointer_left ? right : left;
+				const TypeId pointer_type = Decay(
+					(pointer_left ? left : right).type);
+				const TypeRecord pointer = program_->types.Get(
+					program_->types.RemoveTopCv(pointer_type));
+				const std::int64_t count = ExpressionScalar(index).integral;
+				const std::int64_t step = static_cast<std::int64_t>(
+					program_->SizeOf(pointer.child));
+				if (step != 0 && (count >
+					std::numeric_limits<std::int64_t>::max() / step ||
+					count < std::numeric_limits<std::int64_t>::min() / step))
+					result.constant = false;
+				else
+				{
+					std::int64_t delta = count * step;
+					if (operation == "-" && pointer_left) delta = -delta;
+					const std::uint32_t advanced = OffsetConstexprAddress(
+						pointer_left ? left_address : right_address,
+						delta, false);
+					if (advanced == kNoConstexprAddress)
+						result.constant = false;
+					else SetExpressionAddress(&result, advanced);
+				}
+			}
+			++expression_count_;
+			return result;
+		}
+		if (operation == "," && right_address != kNoConstexprAddress)
+		{
+			SetExpressionAddress(&result, right_address);
+			++expression_count_;
+			return result;
+		}
 		ConstexprScalarValue left_value = ExpressionScalar(left);
 		ConstexprScalarValue right_value = ExpressionScalar(right);
 		if (operand_type != kNoType &&

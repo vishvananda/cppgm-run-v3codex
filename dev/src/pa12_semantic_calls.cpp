@@ -660,6 +660,24 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	result.type = type;
 	result.category = member_category;
 	result.binding = found.ordinary;
+	if (member_binding.non_static_data_member)
+	{
+		std::uint32_t object_address = source_operation == "->" ?
+			ExpressionAddress(object) : LvalueAddress(&object);
+		if (object_address != kNoConstexprAddress &&
+			member_binding.member_offset <=
+				static_cast<std::uint64_t>(
+					std::numeric_limits<std::int64_t>::max()))
+		{
+			const std::uint32_t member_address = OffsetConstexprAddress(
+				object_address,
+				static_cast<std::int64_t>(member_binding.member_offset), true,
+				static_cast<std::int64_t>(program_->SizeOf(
+					EffectiveType(member_binding.type))));
+			if (member_address != kNoConstexprAddress)
+				SetExpressionLvalueAddress(&result, member_address);
+		}
+	}
 	const BindingRecord& canonical = program_->bindings[
 		program_->bindings[found.ordinary].canonical];
 	if ((constant_expression_required_depth_ != 0 ||
@@ -676,9 +694,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 		SetExpressionBindingConstant(&result,
 			program_->bindings[found.ordinary].canonical);
 	dump_.nodes[expression].constant = result.constant &&
-		result.constexpr_object == kNoConstexprObject;
+		result.constexpr_object == kNoConstexprObject &&
+		result.constexpr_address == kNoConstexprAddress;
 	if (!result.floating_constant &&
-		result.constexpr_object == kNoConstexprObject)
+		result.constexpr_object == kNoConstexprObject &&
+		result.constexpr_address == kNoConstexprAddress)
 		dump_.nodes[expression].constant_value = result.value;
 	++expression_count_;
 	return result;

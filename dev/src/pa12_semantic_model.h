@@ -283,26 +283,85 @@ struct ConstexprScalarValue
 
 const std::uint32_t kNoConstexprObject =
 	std::numeric_limits<std::uint32_t>::max();
+const std::uint32_t kNoConstexprAddress =
+	std::numeric_limits<std::uint32_t>::max();
+
+enum ConstexprAddressKind
+{
+	CONSTEXPR_ADDRESS_NULL,
+	CONSTEXPR_ADDRESS_BINDING,
+	CONSTEXPR_ADDRESS_STRING,
+	CONSTEXPR_ADDRESS_LOCAL,
+	CONSTEXPR_ADDRESS_FUNCTION
+};
+
+struct ConstexprAddressValue
+{
+	ConstexprAddressKind kind;
+	std::uint64_t identity;
+	std::int64_t offset, lower_bound, upper_bound;
+
+	ConstexprAddressValue()
+		: kind(CONSTEXPR_ADDRESS_NULL), identity(0), offset(0),
+		  lower_bound(0), upper_bound(0) {}
+	ConstexprAddressValue(ConstexprAddressKind kind_value,
+		std::uint64_t identity_value, std::int64_t offset_value,
+		std::int64_t lower, std::int64_t upper)
+		: kind(kind_value), identity(identity_value), offset(offset_value),
+		  lower_bound(lower), upper_bound(upper) {}
+
+	bool operator==(const ConstexprAddressValue& other) const
+	{
+		return kind == other.kind && identity == other.identity &&
+			offset == other.offset && lower_bound == other.lower_bound &&
+			upper_bound == other.upper_bound;
+	}
+};
+
+struct ConstexprAddressValueHash
+{
+	std::size_t operator()(const ConstexprAddressValue& value) const
+	{
+		std::size_t hash = std::hash<int>()(static_cast<int>(value.kind));
+		hash ^= std::hash<std::uint64_t>()(value.identity) +
+			0x9e3779b9u + (hash << 6) + (hash >> 2);
+		hash ^= std::hash<std::int64_t>()(value.offset) +
+			0x9e3779b9u + (hash << 6) + (hash >> 2);
+		hash ^= std::hash<std::int64_t>()(value.lower_bound) +
+			0x9e3779b9u + (hash << 6) + (hash >> 2);
+		hash ^= std::hash<std::int64_t>()(value.upper_bound) +
+			0x9e3779b9u + (hash << 6) + (hash >> 2);
+		return hash;
+	}
+};
 
 struct ConstexprObjectElement
 {
 	BindingId member;
 	ConstexprScalarValue scalar;
-	std::uint32_t object;
-	bool object_value;
+	std::uint32_t object, address;
+	bool object_value, address_value;
 
 	ConstexprObjectElement(BindingId member_value,
 		const ConstexprScalarValue& scalar_value)
 		: member(member_value), scalar(scalar_value),
-		  object(kNoConstexprObject), object_value(false) {}
+		  object(kNoConstexprObject), address(kNoConstexprAddress),
+		  object_value(false), address_value(false) {}
 	ConstexprObjectElement(BindingId member_value, std::uint32_t object_id)
 		: member(member_value), scalar(), object(object_id),
-		  object_value(true) {}
+		  address(kNoConstexprAddress), object_value(true),
+		  address_value(false) {}
+	ConstexprObjectElement(BindingId member_value, std::uint32_t address_id,
+		bool)
+		: member(member_value), scalar(), object(kNoConstexprObject),
+		  address(address_id), object_value(false), address_value(true) {}
 
 	bool operator==(const ConstexprObjectElement& other) const
 	{
 		return member == other.member && object_value == other.object_value &&
-			(object_value ? object == other.object : scalar == other.scalar);
+			address_value == other.address_value &&
+			(object_value ? object == other.object :
+			 address_value ? address == other.address : scalar == other.scalar);
 	}
 };
 
@@ -330,6 +389,7 @@ struct ExpressionInfo
 	bool floating_constant;
 	long double floating_value;
 	std::uint32_t constexpr_object;
+	std::uint32_t constexpr_address, constexpr_lvalue_address;
 	bool integer_literal_zero;
 	std::uint32_t string_unit_begin;
 	std::uint32_t string_unit_count;
@@ -340,6 +400,8 @@ struct ExpressionInfo
 		  constexpr_local(std::numeric_limits<std::size_t>::max()),
 		  constant(false), value(0), floating_constant(false),
 		  floating_value(0.0L), constexpr_object(kNoConstexprObject),
+		  constexpr_address(kNoConstexprAddress),
+		  constexpr_lvalue_address(kNoConstexprAddress),
 		  integer_literal_zero(false), string_unit_begin(kNoDumpEdge),
 		  string_unit_count(0) {}
 };
@@ -349,16 +411,19 @@ struct ConstexprLocalValue
 	NameId name, pack_name;
 	TypeId type;
 	ConstexprScalarValue value;
-	std::uint32_t object;
+	std::uint32_t object, address;
+	std::uint64_t storage_identity;
 
 	ConstexprLocalValue(NameId name_value, NameId pack_name_value,
 		TypeId type_value, const ConstexprScalarValue& value_value)
 		: name(name_value), pack_name(pack_name_value), type(type_value),
-		  value(value_value), object(kNoConstexprObject) {}
+		  value(value_value), object(kNoConstexprObject),
+		  address(kNoConstexprAddress), storage_identity(0) {}
 	ConstexprLocalValue(NameId name_value, NameId pack_name_value,
 		TypeId type_value, std::uint32_t object_value)
 		: name(name_value), pack_name(pack_name_value), type(type_value),
-		  value(), object(object_value) {}
+		  value(), object(object_value), address(kNoConstexprAddress),
+		  storage_identity(0) {}
 };
 
 struct ConstexprFrame
@@ -366,12 +431,14 @@ struct ConstexprFrame
 	BindingId function;
 	std::size_t first_local, first_scope_fact, first_block;
 	std::uint32_t receiver_object;
+	std::uint32_t receiver_address;
 	ConstexprFrame(BindingId function_value, std::size_t local,
 		std::size_t scope_fact, std::size_t block,
-		std::uint32_t receiver = kNoConstexprObject)
+		std::uint32_t receiver = kNoConstexprObject,
+		std::uint32_t address = kNoConstexprAddress)
 		: function(function_value), first_local(local),
 		  first_scope_fact(scope_fact), first_block(block),
-		  receiver_object(receiver) {}
+		  receiver_object(receiver), receiver_address(address) {}
 };
 
 struct ConstexprScopeFact

@@ -82,14 +82,20 @@ void SemanticAnalyzer::RecordExpressionFacts(const ExpressionInfo& value)
 {
 	if (value.node == kNoDumpEdge) return;
 	DumpNode& node = dump_.nodes[value.node];
+	const ConstexprAddressValue* address =
+		ConstexprAddressAt(value.constexpr_address);
+	const bool null_address = address &&
+		address->kind == CONSTEXPR_ADDRESS_NULL;
 	// Floating literal identity is retained for lowering, but PA15's runtime
 	// control-flow lowering must not reinterpret a PA21 semantic float fact as
 	// an optimization request.
 	node.constant = value.constant && !value.floating_constant &&
-		value.constexpr_object == kNoConstexprObject;
+		value.constexpr_object == kNoConstexprObject &&
+		(value.constexpr_address == kNoConstexprAddress || null_address);
 	if (!value.floating_constant &&
-		value.constexpr_object == kNoConstexprObject)
-		node.constant_value = value.value;
+		value.constexpr_object == kNoConstexprObject &&
+		(value.constexpr_address == kNoConstexprAddress || null_address))
+		node.constant_value = null_address ? 0 : value.value;
 }
 
 bool SemanticAnalyzer::IsUnsignedIntegral(TypeId type) const
@@ -402,6 +408,13 @@ void SemanticAnalyzer::AnalyzeStaticAssert(NodeId node, ScopeId scope)
 		throw;
 	}
 	--constant_expression_required_depth_;
+	if ((IsPointer(Decay(condition.type)) || IsNullptr(condition.type)) &&
+		condition.constant)
+	{
+		const TypeId boolean = program_->types.Fundamental(FUND_BOOL);
+		condition = ApplyTarget(condition, boolean);
+		condition.type = boolean;
+	}
 	if (!IsIntegral(condition.type, true) || !condition.constant)
 		throw std::runtime_error(
 			"static_assert requires an integral constant expression");

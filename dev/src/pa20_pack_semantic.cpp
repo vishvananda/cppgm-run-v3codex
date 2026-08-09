@@ -328,6 +328,9 @@ bool SemanticAnalyzer::TryAnalyzeExpandedBracedInit(
 			throw std::runtime_error("excess aggregate initializer elements");
 		const std::uint32_t list = MakeDump(
 			DUMP_BRACED_INIT_LIST, target, VALUE_LVALUE);
+		std::vector<ConstexprObjectElement> constant_elements;
+		constant_elements.reserve(member_count);
+		bool constant_object = true;
 		for (std::size_t i = 0; i < member_count; ++i)
 		{
 			const BindingRecord& member = program_->bindings[members[i]];
@@ -348,12 +351,21 @@ bool SemanticAnalyzer::TryAnalyzeExpandedBracedInit(
 					member.type, scope, &omitted);
 			}
 			if (value.node != kNoDumpEdge) dump_.Add(action, value.node);
+			ConstexprObjectElement element(members[i],
+				ConstexprScalarValue(static_cast<std::int64_t>(0)));
+			if (constant_object && BuildConstexprObjectElement(
+				member.type, members[i], value, &element))
+				constant_elements.push_back(element);
+			else constant_object = false;
 			dump_.Add(list, action);
 			++expression_count_;
 		}
 		result->node = list;
 		result->type = target;
 		result->category = VALUE_LVALUE;
+		if (constant_object && constant_elements.size() == member_count)
+			SetExpressionObject(result,
+				InternConstexprObject(target, constant_elements));
 		++expression_count_;
 		return true;
 	}
@@ -367,6 +379,9 @@ bool SemanticAnalyzer::TryAnalyzeExpandedBracedInit(
 			program_->types.Array(record.child, count) : target;
 		const std::uint32_t list = MakeDump(
 			DUMP_BRACED_INIT_LIST, initialized, VALUE_LVALUE);
+		std::vector<ConstexprObjectElement> constant_elements;
+		constant_elements.reserve(count);
+		bool constant_object = true;
 		for (std::size_t i = 0; i < count; ++i)
 		{
 			ExpressionInfo value;
@@ -384,10 +399,19 @@ bool SemanticAnalyzer::TryAnalyzeExpandedBracedInit(
 					record.child, scope, &omitted);
 			}
 			if (value.node != kNoDumpEdge) dump_.Add(list, value.node);
+			ConstexprObjectElement element(kNoBinding,
+				ConstexprScalarValue(static_cast<std::int64_t>(0)));
+			if (constant_object && BuildConstexprObjectElement(
+				record.child, kNoBinding, value, &element))
+				constant_elements.push_back(element);
+			else constant_object = false;
 		}
 		result->node = list;
 		result->type = initialized;
 		result->category = VALUE_LVALUE;
+		if (constant_object && constant_elements.size() == count)
+			SetExpressionObject(result,
+				InternConstexprObject(initialized, constant_elements));
 		RecordExpressionFacts(*result);
 		++expression_count_;
 		return true;

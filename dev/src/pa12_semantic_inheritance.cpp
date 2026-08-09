@@ -568,7 +568,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeImplicitDataMember(
 {
 	const BindingRecord& binding = program_->bindings[member_binding];
 	if (!constexpr_frames_.empty() && binding.non_static_data_member &&
-		constexpr_frames_.back().receiver_object != kNoConstexprObject)
+		(constexpr_frames_.back().receiver_object != kNoConstexprObject ||
+		 constexpr_frames_.back().receiver_address != kNoConstexprAddress))
 	{
 		if (!CanAccessMember(member_binding, naming_class))
 			throw std::runtime_error("inaccessible implicit data member");
@@ -578,8 +579,23 @@ ExpressionInfo SemanticAnalyzer::AnalyzeImplicitDataMember(
 		result.type = binding.type;
 		result.category = VALUE_LVALUE;
 		result.binding = member_binding;
-		const ConstexprObjectElement* element = ConstexprObjectElementAt(
-			constexpr_frames_.back().receiver_object, binding.member_ordinal);
+		const std::uint32_t receiver_address =
+			constexpr_frames_.back().receiver_address;
+		if (receiver_address != kNoConstexprAddress &&
+			binding.member_offset <= static_cast<std::uint64_t>(
+				std::numeric_limits<std::int64_t>::max()))
+		{
+			const std::uint32_t address = OffsetConstexprAddress(receiver_address,
+				static_cast<std::int64_t>(binding.member_offset), true,
+				static_cast<std::int64_t>(program_->SizeOf(
+					EffectiveType(binding.type))));
+			if (address != kNoConstexprAddress)
+				SetExpressionLvalueAddress(&result, address);
+		}
+		const ConstexprObjectElement* element =
+			constexpr_frames_.back().receiver_object == kNoConstexprObject ? 0 :
+			ConstexprObjectElementAt(
+				constexpr_frames_.back().receiver_object, binding.member_ordinal);
 		if (element && element->member == member_binding)
 			SetExpressionObjectElement(&result, *element);
 		RecordExpressionFacts(result);
@@ -744,6 +760,15 @@ ExpressionInfo SemanticAnalyzer::AnalyzeConditional(NodeId node, ScopeId scope)
 			type = Decay(yes.type);
 	}
 	if (type == kNoType) throw std::runtime_error("incompatible conditional arms");
+	if (IsPointer(type))
+	{
+		if (yes.integer_literal_zero || IsNullptr(yes.type))
+			SetExpressionAddress(&yes, NullConstexprAddress());
+		else yes = ApplyTarget(yes, type);
+		if (no.integer_literal_zero || IsNullptr(no.type))
+			SetExpressionAddress(&no, NullConstexprAddress());
+		else no = ApplyTarget(no, type);
+	}
 	const std::uint32_t expression = MakeDump(DUMP_CONDITIONAL_EXPRESSION,
 		type, category);
 	dump_.Add(expression, condition.node);
@@ -763,6 +788,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeConditional(NodeId node, ScopeId scope)
 			(IsIntegral(type, true) || IsFloating(type)))
 			SetExpressionScalar(&result, ConvertScalarConstant(
 				selected.type, type, ExpressionScalar(selected)));
+		else if (ExpressionAddress(selected) != kNoConstexprAddress)
+			SetExpressionAddress(&result, ExpressionAddress(selected));
+		else if (selected.constexpr_lvalue_address != kNoConstexprAddress)
+			SetExpressionLvalueAddress(
+				&result, selected.constexpr_lvalue_address);
+		else if (ExpressionObject(selected) != kNoConstexprObject)
+			SetExpressionObject(&result, ExpressionObject(selected));
 		else result.value = selected.value;
 	}
 	++expression_count_;

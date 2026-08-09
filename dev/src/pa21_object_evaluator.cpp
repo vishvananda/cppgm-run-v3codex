@@ -125,6 +125,12 @@ bool SemanticAnalyzer::MaterializeConstantDefinitionInitializer(
 {
 	if (!program_->bindings[binding].constant) return false;
 	const std::uint32_t object = BindingObject(binding);
+	const std::uint32_t address = BindingAddress(binding);
+	if (address != kNoConstexprAddress)
+	{
+		*initializer = MaterializeConstexprAddress(address, *type);
+		return true;
+	}
 	if (object != kNoConstexprObject)
 	{
 		*initializer = MaterializeConstexprObject(object, *type);

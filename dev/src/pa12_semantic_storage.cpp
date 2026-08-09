@@ -98,6 +98,11 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		floating_constant_fact_by_binding_.capacity() * sizeof(std::uint32_t) +
 		floating_constant_values_.capacity() * sizeof(long double) +
 		constexpr_object_by_binding_.capacity() * sizeof(std::uint32_t) +
+		constexpr_address_by_binding_.capacity() * sizeof(std::uint32_t) +
+		constexpr_addresses_.capacity() * sizeof(ConstexprAddressValue) +
+		constexpr_address_index_.bucket_count() * sizeof(void*) +
+		constexpr_address_index_.size() *
+			(sizeof(ConstexprAddressValue) + sizeof(std::uint32_t)) +
 		constexpr_objects_.capacity() * sizeof(ConstexprObjectValue) +
 		constexpr_object_elements_.capacity() *
 			sizeof(ConstexprObjectElement) +

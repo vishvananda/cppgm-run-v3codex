@@ -4,35 +4,34 @@
 
 PA21 extends the canonical PA12 graph with one typed constant layer for declaration checks,
 template arguments, `static_assert`, initialization, and LowIR demand. Tagged scalars,
-structurally interned immutable aggregate/array objects, compact binding indexes, local
-scope facts, and block lifetimes remain evaluator-owned; only completed call/object facts
-escape. Runtime ODR-use rematerializes object facts as structured initializers instead of
-replaying evaluation. This follows `spec.md` §§2–6,8–10: canonical identity, indexed lookup,
-demand-separated completion, fact-driven lowering, phase-local ownership, and bounded work.
+structurally interned immutable aggregate/array objects, canonical allocation-relative
+addresses, compact binding indexes, local scope facts, and block lifetimes remain
+evaluator-owned; only completed call/object/address facts escape. Runtime ODR-use
+rematerializes completed facts instead of replaying evaluation. This follows `spec.md`
+§§2–6,8–10: canonical identity, indexed lookup, demand-separated completion, fact-driven
+lowering, phase-local ownership, and bounded work.
 
 ## Current Failure Map
 
-Current result: 67/130 pass, with all previous passes retained; 63 failures remain. The
+Current result: 76/130 pass, with all previous passes retained; 54 failures remain. The
 remainder partitions by owner into base/delegating/converting and object-return execution;
-indirect/operator/callable calls; pointer/reference/subobject address values; `noexcept`
-deduction; and function-local static classification, guards, and LowIR emission. Direct
-constructors, default object initialization, receiver member reads, and scalar constructor
-suitability checks are complete.
+overloaded/operator/callable calls; `noexcept` deduction; pointer-bearing constructor
+materialization and wide literals; and function-local static classification, guards, and
+LowIR emission. Direct constructors, immutable objects, canonical address evaluation,
+indirect calls, and checked pointer walking are complete.
 
 ## Active Checkpoint
 
-**Pointer/reference constant values and indirect calls.** Add canonical address values for
-objects, subobjects, functions, one-past positions, and null; preserve provenance through
-reference parameters and conversions; then resolve indirect function calls from retained
-addresses. Callable objects and overloaded conversion/operator paths follow once the
-address core is stable.
+**Base-subobject and converting construction.** Extend immutable object completion across
+base initializer order, copy/converting construction, constructor delegation, and class
+results returned from constexpr functions without weakening nonliteral-result rejection.
 
-Owner/data flow: binding/object identity plus layout ordinal -> canonical address fact ->
-conversion/reference local -> comparison, dereference, or indirect-call consumer.
-Requirements: `spec.md` §§2,4,6,8–9. Expected lookup and comparison are O(1)-average and
-pointer stepping is O(1) with bounds checked against one allocation. Validate function and
-reference calls, subobject identity/arithmetic rejection, full PA21, prior PA1–20, file
-audit, and repeated-address/depth probes.
+Owner/data flow: constructor selection and ordered base/member recipes -> evaluator frame ->
+immutable complete-object fact -> reference/value projection or returned class fact ->
+syntax-preserving materialization and demand. Requirements: `spec.md` §§2–6,8–9. Expected
+work is linear in initialized subobjects plus executed statements, with O(1)-average binding
+and completed-object lookup. Validate base/copy/delegating/converting probes, nonliteral bad
+cases, full PA21, prior PA1–20, file audit, and constructor-width scaling.
 
 ## Performance Evidence
 
@@ -45,6 +44,10 @@ the completed-call cache. Constructor/member probes with 16/32/64/128 fields pro
 101/181/341/661 semantic nodes, 31/63/127/255 scratch nodes, 20,028/36,284/68,796/133,825
 typed bytes, and 68/132/260/516 LowIR instructions; constructor/member and ordinal-probe
 counters doubled exactly, confirming linear initialization/read/lowering work.
+Checked pointer walks of 32/64/128/256 elements used 133/261/517/1,029 constexpr steps,
+one call request, 18 semantic nodes, 16,743 typed-storage bytes, and
+60,409/64,921/73,899/89,753 peak-stage bytes; lowering stayed at one instruction. The
+four-step-per-element growth confirms O(1) canonical stepping, bounds checks, and lookup.
 
 ## Completed Checkpoints
 
@@ -54,3 +57,4 @@ counters doubled exactly, confirming linear initialization/read/lowering work.
 | Tagged floating scalar widening | Target-rounded literals/conversions, mixed signed/unsigned arithmetic and comparison, floating locals/free calls, binding publication, typed call keys/results, and canonical LowIR literals | PA21 42→49/130; PA1–20 2,185/2,185; file audit pass; fixed canonical graph and linear scaling above |
 | Immutable aggregate/array values | Structural interning, zero/nested/string initialization, binding/local publication, direct projection, ODR-use rematerialization, canonical bool identities, and multidimensional strides | PA21 49→56/130; PA1–20 2,185/2,185; file audit pass; linear 32–256 element scaling above |
 | Constructor/member invocation | Dump-node object facts, constructor argument frames, member-initializer execution, immutable receiver calls, default class initialization, scalar-member suitability checks, and runtime/static materialization boundaries | PA21 56→67/130; PA1–20 2,185/2,185; file audit pass; linear 16–128 field scaling above |
+| Canonical addresses and indirect calls | Allocation-relative null/binding/local/string/function identities, lvalue/reference transport, subobject bounds, pointer walking/comparison/truth, address-returning calls, indirect function calls, and expanded-pack array completion | PA21 67→76/130; PA1–20 2,185/2,185; file audit pass; linear 32–256 pointer-walk scaling above |

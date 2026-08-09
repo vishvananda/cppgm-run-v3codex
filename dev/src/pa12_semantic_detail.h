@@ -42,6 +42,7 @@ public:
 		  constant_evaluation_suppressed_depth_(0),
 		  constant_expression_required_depth_(0),
 		  constexpr_evaluation_depth_(0), constexpr_evaluation_steps_(0),
+		  next_constexpr_storage_identity_(1),
 		  expression_count_(0),
 		  associated_generation_(0), candidate_generation_(0),
 		  associated_scope_visits_(0), associated_declaration_visits_(0),
@@ -163,9 +164,14 @@ private:
 	void AnalyzeCondition(NodeId node, ScopeId scope,
 		std::uint32_t output_parent, bool switch_condition);
 	ConstexprFlow EvaluateConstexprCompound(NodeId node, ScopeId scope,
-		TypeId result_type, ConstexprScalarValue* result);
+		TypeId result_type, ConstexprScalarValue* result,
+		std::uint32_t* result_address);
 	ConstexprFlow EvaluateConstexprStatement(NodeId node, ScopeId scope,
-		TypeId result_type, ConstexprScalarValue* result);
+		TypeId result_type, ConstexprScalarValue* result,
+		std::uint32_t* result_address);
+	ConstexprFlow EvaluateConstexprReturn(NodeId expression, ScopeId scope,
+		TypeId result_type, ConstexprScalarValue* result,
+		std::uint32_t* result_address);
 	bool EvaluateConstexprCondition(NodeId node, ScopeId scope, bool* value);
 	bool EvaluateConstexprDeclaration(NodeId node, ScopeId scope);
 	bool ConsumeConstexprStep();
@@ -175,6 +181,8 @@ private:
 		const ConstexprScalarValue& value, std::size_t* local = 0);
 	bool AddConstexprLocal(NameId name, NameId pack_name, TypeId type,
 		std::uint32_t object, std::size_t* local = 0);
+	bool AddConstexprAddressLocal(NameId name, NameId pack_name, TypeId type,
+		std::uint32_t address, std::size_t* local = 0);
 	bool FindConstexprLocal(NameId name, std::size_t* local) const;
 	bool FindConstexprPack(NameId name,
 		std::vector<std::size_t>* locals) const;
@@ -825,16 +833,39 @@ private:
 		const ConstexprScalarValue& value) const;
 	void SetExpressionObject(ExpressionInfo* expression,
 		std::uint32_t object) const;
+	void SetExpressionAddress(ExpressionInfo* expression,
+		std::uint32_t address) const;
+	void SetExpressionLvalueAddress(ExpressionInfo* expression,
+		std::uint32_t address) const;
+	std::uint32_t ExpressionAddress(const ExpressionInfo& expression) const;
+	std::uint32_t LvalueAddress(ExpressionInfo* expression);
+	std::uint32_t InternConstexprAddress(
+		const ConstexprAddressValue& address);
+	const ConstexprAddressValue* ConstexprAddressAt(
+		std::uint32_t address) const;
+	std::uint32_t OffsetConstexprAddress(std::uint32_t address,
+		std::int64_t byte_offset, bool narrow, std::int64_t extent = 0);
+	std::uint32_t NullConstexprAddress();
+	bool ExpressionTruth(const ExpressionInfo& expression) const;
+	bool TryAnalyzeConstexprIndirectCall(ExpressionInfo* callee,
+		ScopeId scope, const std::vector<NodeId>& argument_syntax,
+		const std::vector<ExpressionInfo>& arguments, TypeId target,
+		ExpressionInfo* result);
 	std::uint32_t ExpressionObject(const ExpressionInfo& expression) const;
 	void SetExpressionDumpObject(ExpressionInfo* expression) const;
 	void PublishDumpObject(std::uint32_t node, std::uint32_t object);
 	ConstexprScalarValue BindingScalar(BindingId binding) const;
 	std::uint32_t BindingObject(BindingId binding) const;
+	std::uint32_t BindingAddress(BindingId binding) const;
 	void PublishBindingScalar(BindingId binding,
 		const ConstexprScalarValue& value);
 	void PublishBindingObject(BindingId binding, std::uint32_t object);
+	void PublishBindingAddress(BindingId binding, std::uint32_t address);
 	void PublishBindingConstant(BindingId binding,
 		const ExpressionInfo& value);
+	void PublishCanonicalBindingConstant(BindingId binding);
+	ExpressionInfo AnalyzeConstantRequiredExpression(NodeId node,
+		ScopeId scope, TypeId type, bool required);
 	void SetExpressionBindingConstant(ExpressionInfo* expression,
 		BindingId binding) const;
 	bool BuildConstexprObjectElement(TypeId type, BindingId member,
@@ -849,6 +880,8 @@ private:
 		TypeId type);
 	ExpressionInfo MaterializeConstexprObjectElement(
 		const ConstexprObjectElement& element, TypeId type);
+	ExpressionInfo MaterializeConstexprAddress(std::uint32_t address,
+		TypeId type);
 	bool MaterializeConstantDefinitionInitializer(BindingId binding,
 		TypeId* type, ExpressionInfo* initializer);
 	bool ScalarTruth(const ConstexprScalarValue& value) const;
@@ -859,6 +892,7 @@ private:
 	bool TryEvaluateConstexprFunction(BindingId function,
 		const std::vector<ExpressionInfo>& arguments,
 		ConstexprScalarValue* value,
+		std::uint32_t* address,
 		const ExpressionInfo* receiver = 0);
 	bool TryEvaluateConstexprConstructor(BindingId constructor,
 		const std::vector<ExpressionInfo>& arguments,
@@ -980,6 +1014,10 @@ private:
 	// Completed object values are immutable and structurally interned. Bindings
 	// carry only a compact object identity; elements remain dense by ordinal.
 	std::vector<std::uint32_t> constexpr_object_by_binding_;
+	std::vector<std::uint32_t> constexpr_address_by_binding_;
+	std::vector<ConstexprAddressValue> constexpr_addresses_;
+	std::unordered_map<ConstexprAddressValue, std::uint32_t,
+		ConstexprAddressValueHash> constexpr_address_index_;
 	std::vector<ConstexprObjectValue> constexpr_objects_;
 	std::vector<ConstexprObjectElement> constexpr_object_elements_;
 	std::unordered_multimap<std::size_t, std::uint32_t>
@@ -1011,6 +1049,7 @@ private:
 	std::size_t constant_expression_required_depth_;
 	std::size_t constexpr_evaluation_depth_;
 	std::size_t constexpr_evaluation_steps_;
+	std::uint64_t next_constexpr_storage_identity_;
 	std::size_t expression_count_;
 	std::uint32_t associated_generation_;
 	std::uint32_t candidate_generation_;

@@ -126,6 +126,7 @@ void SemanticAnalyzer::SetExpressionScalar(ExpressionInfo* expression,
 {
 	expression->constant = true;
 	expression->constexpr_object = kNoConstexprObject;
+	expression->constexpr_address = kNoConstexprAddress;
 	expression->floating_constant =
 		value.kind == CONSTEXPR_SCALAR_FLOATING;
 	if (expression->floating_constant)
@@ -141,6 +142,7 @@ void SemanticAnalyzer::SetExpressionObject(ExpressionInfo* expression,
 	expression->constant = true;
 	expression->floating_constant = false;
 	expression->constexpr_object = object;
+	expression->constexpr_address = kNoConstexprAddress;
 }
 
 std::uint32_t SemanticAnalyzer::ExpressionObject(
@@ -270,16 +272,57 @@ void SemanticAnalyzer::PublishBindingConstant(BindingId binding,
 	if (!value.constant)
 		throw std::logic_error("publishing a nonconstant expression");
 	const std::uint32_t object = ExpressionObject(value);
-	if (object != kNoConstexprObject)
+	const std::uint32_t address = ExpressionAddress(value);
+	if (address != kNoConstexprAddress)
+		PublishBindingAddress(binding, address);
+	else if (object != kNoConstexprObject)
 		PublishBindingObject(binding, object);
 	else PublishBindingScalar(binding, ExpressionScalar(value));
+}
+
+void SemanticAnalyzer::PublishCanonicalBindingConstant(BindingId binding)
+{
+	if (binding == kNoBinding || binding >= program_->bindings.size() ||
+		!program_->bindings[binding].constant) return;
+	const BindingId canonical = program_->bindings[binding].canonical;
+	const std::uint32_t address = BindingAddress(binding);
+	const std::uint32_t object = BindingObject(binding);
+	if (address != kNoConstexprAddress)
+		PublishBindingAddress(canonical, address);
+	else if (object != kNoConstexprObject)
+		PublishBindingObject(canonical, object);
+	else PublishBindingScalar(canonical, BindingScalar(binding));
+}
+
+ExpressionInfo SemanticAnalyzer::AnalyzeConstantRequiredExpression(
+	NodeId node, ScopeId scope, TypeId type, bool required)
+{
+	if (required) ++constant_expression_required_depth_;
+	try
+	{
+		ExpressionInfo result = AnalyzeExpression(node, scope, type);
+		if (required) --constant_expression_required_depth_;
+		return result;
+	}
+	catch (...)
+	{
+		if (required) --constant_expression_required_depth_;
+		throw;
+	}
 }
 
 void SemanticAnalyzer::SetExpressionBindingConstant(
 	ExpressionInfo* expression, BindingId binding) const
 {
+	const std::uint32_t address = BindingAddress(binding);
 	const std::uint32_t object = BindingObject(binding);
-	if (object != kNoConstexprObject) SetExpressionObject(expression, object);
+	if (address != kNoConstexprAddress)
+	{
+		if (program_->types.IsReference(program_->bindings[binding].type))
+			SetExpressionLvalueAddress(expression, address);
+		else SetExpressionAddress(expression, address);
+	}
+	else if (object != kNoConstexprObject) SetExpressionObject(expression, object);
 	else SetExpressionScalar(expression, BindingScalar(binding));
 }
 
@@ -288,6 +331,14 @@ bool SemanticAnalyzer::BuildConstexprObjectElement(TypeId type,
 	ConstexprObjectElement* result) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
+	if (IsPointer(type) || program_->types.IsReference(type))
+	{
+		const std::uint32_t address = program_->types.IsReference(type) ?
+			value.constexpr_lvalue_address : ExpressionAddress(value);
+		if (address == kNoConstexprAddress) return false;
+		*result = ConstexprObjectElement(member, address, true);
+		return true;
+	}
 	if (IsIntegral(type, true) || IsFloating(type))
 	{
 		ConstexprScalarValue scalar(static_cast<std::int64_t>(0));
@@ -322,9 +373,14 @@ std::uint32_t SemanticAnalyzer::InternConstexprObject(TypeId type,
 		hash = MixConstexprHash(hash, std::hash<BindingId>()(element.member));
 		hash = MixConstexprHash(hash,
 			std::hash<bool>()(element.object_value));
+		hash = MixConstexprHash(hash,
+			std::hash<bool>()(element.address_value));
 		if (element.object_value)
 			hash = MixConstexprHash(hash,
 				std::hash<std::uint32_t>()(element.object));
+		else if (element.address_value)
+			hash = MixConstexprHash(hash,
+				std::hash<std::uint32_t>()(element.address));
 		else
 		{
 			hash = MixConstexprHash(hash,
@@ -388,6 +444,12 @@ void SemanticAnalyzer::SetExpressionObjectElement(ExpressionInfo* expression,
 	const ConstexprObjectElement& element) const
 {
 	if (element.object_value) SetExpressionObject(expression, element.object);
+	else if (element.address_value)
+	{
+		if (program_->types.IsReference(expression->type))
+			SetExpressionLvalueAddress(expression, element.address);
+		else SetExpressionAddress(expression, element.address);
+	}
 	else SetExpressionScalar(expression, element.scalar);
 }
 
@@ -396,6 +458,8 @@ ExpressionInfo SemanticAnalyzer::MaterializeConstexprObjectElement(
 {
 	if (element.object_value)
 		return MaterializeConstexprObject(element.object, type);
+	if (element.address_value)
+		return MaterializeConstexprAddress(element.address, type);
 	ExpressionInfo result = MakeLiteral(type, InternScalar(type, element.scalar));
 	SetExpressionScalar(&result, element.scalar);
 	RecordExpressionFacts(result);
@@ -598,6 +662,29 @@ bool SemanticAnalyzer::AddConstexprLocal(NameId name, NameId pack_name,
 	return true;
 }
 
+bool SemanticAnalyzer::AddConstexprAddressLocal(NameId name, NameId pack_name,
+	TypeId type, std::uint32_t address, std::size_t* local)
+{
+	if (constexpr_frames_.empty() || !ConstexprAddressAt(address)) return false;
+	const ConstexprFrame& frame = constexpr_frames_.back();
+	const std::size_t first =
+		constexpr_block_offsets_.size() > frame.first_block ?
+		constexpr_block_offsets_.back().first_local : frame.first_local;
+	if (name != 0)
+		for (std::size_t i = first; i < constexpr_locals_.size(); ++i)
+			if (constexpr_locals_[i].name == name &&
+				(pack_name == 0 || constexpr_locals_[i].pack_name != pack_name))
+				return false;
+	if (local) *local = constexpr_locals_.size();
+	ConstexprLocalValue value(name, pack_name, type,
+		ConstexprScalarValue(static_cast<std::int64_t>(0)));
+	value.address = address;
+	constexpr_locals_.push_back(value);
+	if (constexpr_locals_.size() > constexpr_peak_locals_)
+		constexpr_peak_locals_ = constexpr_locals_.size();
+	return true;
+}
+
 bool SemanticAnalyzer::AddConstexprTypeAlias(NameId name, TypeId type)
 {
 	if (name == 0 || constexpr_frames_.empty()) return false;
@@ -684,14 +771,27 @@ bool SemanticAnalyzer::TryAnalyzeConstexprLocal(
 	result->type = EffectiveType(value.type);
 	result->category = VALUE_LVALUE;
 	result->constexpr_local = local;
-	if (value.object != kNoConstexprObject)
+	if (program_->types.IsReference(value.type))
+	{
+		if (value.object != kNoConstexprObject)
+			SetExpressionObject(result, value.object);
+		else if (IsIntegral(EffectiveType(value.type), true) ||
+			IsFloating(EffectiveType(value.type)))
+			SetExpressionScalar(result, value.value);
+		if (value.address != kNoConstexprAddress)
+			SetExpressionLvalueAddress(result, value.address);
+	}
+	else if (value.address != kNoConstexprAddress)
+		SetExpressionAddress(result, value.address);
+	else if (value.object != kNoConstexprObject)
 		SetExpressionObject(result, value.object);
 	else SetExpressionScalar(result, value.value);
 	result->node = MakeDump(DUMP_ID_EXPRESSION, result->type,
 		VALUE_LVALUE, name);
 	dump_.nodes[result->node].constant = true;
 	if (!result->floating_constant &&
-		result->constexpr_object == kNoConstexprObject)
+		result->constexpr_object == kNoConstexprObject &&
+		result->constexpr_address == kNoConstexprAddress)
 		dump_.nodes[result->node].constant_value = result->value;
 	++expression_count_;
 	*result = ApplyTarget(*result, target);
@@ -727,7 +827,9 @@ bool SemanticAnalyzer::AnalyzeConstexprExpression(NodeId node, ScopeId scope,
 		throw;
 	}
 	ReleaseConstexprScratch(nodes, edges);
-	return result->constant;
+	return result->constant ||
+		result->constexpr_address != kNoConstexprAddress ||
+		result->constexpr_lvalue_address != kNoConstexprAddress;
 }
 
 bool SemanticAnalyzer::AnalyzeConstexprInitializer(NodeId node, ScopeId scope,
@@ -746,7 +848,9 @@ bool SemanticAnalyzer::AnalyzeConstexprInitializer(NodeId node, ScopeId scope,
 		throw;
 	}
 	ReleaseConstexprScratch(nodes, edges);
-	return result->constant;
+	return result->constant ||
+		result->constexpr_address != kNoConstexprAddress ||
+		result->constexpr_lvalue_address != kNoConstexprAddress;
 }
 
 ExpressionInfo SemanticAnalyzer::AnalyzeConstantAwareVariableInitializer(
@@ -804,6 +908,13 @@ void SemanticAnalyzer::PublishConstantVariableInitializer(BindingId binding,
 	const bool aggregate_object_type = object_type.kind == TYPE_ARRAY ||
 		IsConstexprClassEntity(*program_, EntityOf(object_type_id));
 	const std::uint32_t initializer_object = ExpressionObject(initializer);
+	const std::uint32_t initializer_address = program_->types.IsReference(type) ?
+		initializer.constexpr_lvalue_address : ExpressionAddress(initializer);
+	if (spec.is_constexpr &&
+		(IsPointer(EffectiveType(type)) || program_->types.IsReference(type)) &&
+		initializer_address == kNoConstexprAddress)
+		throw std::runtime_error(
+			"constexpr pointer/reference initializer is not constant");
 	if (spec.is_constexpr && !program_->types.IsReference(type) &&
 		(IsIntegral(type, true) || IsFloating(type)) && !initializer.constant)
 		throw std::runtime_error(
@@ -819,6 +930,15 @@ void SemanticAnalyzer::PublishConstantVariableInitializer(BindingId binding,
 			(IsIntegral(type, true) || IsFloating(type)))))
 		return;
 	const bool scalar_type = IsIntegral(type, true) || IsFloating(type);
+	if (initializer_address != kNoConstexprAddress)
+	{
+		PublishBindingAddress(binding, initializer_address);
+		if (initializer.node != kNoDumpEdge &&
+			dump_.nodes[initializer.node].kind == DUMP_CALL_EXPRESSION &&
+			initializer.binding != kNoBinding)
+			DemandFunction(initializer.binding);
+		return;
+	}
 	if (aggregate_object_type)
 	{
 		PublishBindingObject(binding, initializer_object);
@@ -900,7 +1020,13 @@ bool SemanticAnalyzer::EvaluateConstexprDeclaration(NodeId node, ScopeId scope)
 						AnalyzeConstexprInitializer(initializer, scope,
 							parsed.type, &value);
 					if (valid)
-						valid = value.constexpr_object != kNoConstexprObject ?
+						valid = value.constexpr_address != kNoConstexprAddress ||
+							value.constexpr_lvalue_address != kNoConstexprAddress ?
+							AddConstexprAddressLocal(parsed.name, 0, parsed.type,
+								program_->types.IsReference(parsed.type) ?
+								value.constexpr_lvalue_address :
+								value.constexpr_address) :
+							value.constexpr_object != kNoConstexprObject ?
 							AddConstexprLocal(parsed.name, 0, parsed.type,
 								value.constexpr_object) :
 							(IsIntegral(parsed.type, true) ||
@@ -940,27 +1066,31 @@ bool SemanticAnalyzer::EvaluateConstexprCondition(
 		const NodeId initializer = FindChild(declaration, "initializer");
 		ExpressionInfo evaluated;
 		if (parsed.name == 0 || initializer == kNoNode ||
-			(!IsIntegral(parsed.type, true) && !IsFloating(parsed.type)) ||
+			(!IsIntegral(parsed.type, true) && !IsFloating(parsed.type) &&
+			 !IsPointer(EffectiveType(parsed.type))) ||
 			!AnalyzeConstexprInitializer(
 				initializer, scope, parsed.type, &evaluated) ||
-			!AddConstexprLocal(
-				parsed.name, 0, parsed.type,
-				ExpressionScalar(evaluated))) return false;
-		*value = ScalarTruth(ExpressionScalar(evaluated));
+			(IsPointer(EffectiveType(parsed.type)) ?
+			 !AddConstexprAddressLocal(parsed.name, 0, parsed.type,
+				 ExpressionAddress(evaluated)) :
+			 !AddConstexprLocal(parsed.name, 0, parsed.type,
+				 ExpressionScalar(evaluated)))) return false;
+		*value = ExpressionTruth(evaluated);
 		return true;
 	}
 	ExpressionInfo expression;
 	if (first == kNoNode ||
 		!AnalyzeConstexprExpression(first, scope, kNoType, &expression) ||
 		(!IsIntegral(expression.type, true) &&
-		 !IsFloating(expression.type))) return false;
-	*value = ScalarTruth(ExpressionScalar(expression));
+		 !IsFloating(expression.type) &&
+		 !IsPointer(EffectiveType(expression.type)))) return false;
+	*value = ExpressionTruth(expression);
 	return true;
 }
 
 ConstexprFlow SemanticAnalyzer::EvaluateConstexprCompound(
 	NodeId node, ScopeId scope, TypeId result_type,
-	ConstexprScalarValue* result)
+	ConstexprScalarValue* result, std::uint32_t* result_address)
 {
 	PushConstexprBlock();
 	ConstexprFlow result_flow = CONSTEXPR_FLOW_NORMAL;
@@ -971,7 +1101,8 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprCompound(
 		const ConstexprFlow flow = IsDeclaration(child) ?
 			(EvaluateConstexprDeclaration(child, scope) ?
 				CONSTEXPR_FLOW_NORMAL : CONSTEXPR_FLOW_INVALID) :
-			EvaluateConstexprStatement(child, scope, result_type, result);
+			EvaluateConstexprStatement(child, scope, result_type, result,
+				result_address);
 		if (flow != CONSTEXPR_FLOW_NORMAL)
 		{
 			result_flow = flow;
@@ -984,25 +1115,18 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprCompound(
 
 ConstexprFlow SemanticAnalyzer::EvaluateConstexprStatement(
 	NodeId node, ScopeId scope, TypeId result_type,
-	ConstexprScalarValue* result)
+	ConstexprScalarValue* result, std::uint32_t* result_address)
 {
 	if (!ConsumeConstexprStep()) return CONSTEXPR_FLOW_INVALID;
 	if (arena_->IsTag(node, "compound-statement"))
-		return EvaluateConstexprCompound(node, scope, result_type, result);
+		return EvaluateConstexprCompound(node, scope, result_type, result,
+			result_address);
 	if (arena_->IsTag(node, "return-statement"))
 	{
 		const NodeId expression = FirstSemanticChild(node);
 		if (expression == kNoNode) return CONSTEXPR_FLOW_INVALID;
-		ExpressionInfo value;
-		if (!AnalyzeConstexprExpression(
-			expression, scope, result_type, &value))
-			return CONSTEXPR_FLOW_INVALID;
-		if (!value.constant ||
-			(!IsIntegral(value.type, true) && !IsFloating(value.type)))
-			return CONSTEXPR_FLOW_INVALID;
-		*result = ConvertScalarConstant(
-			value.type, result_type, ExpressionScalar(value));
-		return CONSTEXPR_FLOW_RETURN;
+		return EvaluateConstexprReturn(
+			expression, scope, result_type, result, result_address);
 	}
 	if (arena_->IsTag(node, "expression-statement"))
 	{
@@ -1038,7 +1162,8 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprStatement(
 		}
 		const NodeId branch = selected ? then_branch : else_branch;
 		const ConstexprFlow flow = branch == kNoNode ? CONSTEXPR_FLOW_NORMAL :
-			EvaluateConstexprStatement(branch, scope, result_type, result);
+			EvaluateConstexprStatement(branch, scope, result_type, result,
+				result_address);
 		PopConstexprBlock();
 		return flow;
 	}
@@ -1083,7 +1208,7 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprStatement(
 				return CONSTEXPR_FLOW_INVALID;
 			}
 			const ConstexprFlow flow = EvaluateConstexprStatement(
-				body, scope, result_type, result);
+				body, scope, result_type, result, result_address);
 			if (flow == CONSTEXPR_FLOW_RETURN ||
 				flow == CONSTEXPR_FLOW_INVALID)
 			{
@@ -1180,7 +1305,7 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprStatement(
 				return CONSTEXPR_FLOW_INVALID;
 			}
 			const ConstexprFlow flow = EvaluateConstexprStatement(
-				body, scope, result_type, result);
+				body, scope, result_type, result, result_address);
 			if (flow == CONSTEXPR_FLOW_RETURN ||
 				flow == CONSTEXPR_FLOW_INVALID)
 			{
@@ -1227,15 +1352,29 @@ bool SemanticAnalyzer::AddConstexprInvocationArguments(
 	{
 		const ParameterInfo& parameter = function.parameters[i];
 		const TypeId type = ParameterBindingType(parameter);
+		const bool reference = program_->types.IsReference(type);
+		const std::uint32_t address = reference ?
+			arguments[i].constexpr_lvalue_address :
+			ExpressionAddress(arguments[i]);
+		if (reference && address == kNoConstexprAddress) return false;
 		const std::uint32_t object = ExpressionObject(arguments[i]);
-		const bool added = object != kNoConstexprObject ?
-			AddConstexprLocal(parameter.name, parameter.pack_name, type, object) :
-			arguments[i].constant &&
+		bool added = false;
+		if (object != kNoConstexprObject)
+			added = AddConstexprLocal(
+				parameter.name, parameter.pack_name, type, object);
+		else if (arguments[i].constant &&
 			(IsIntegral(EffectiveType(type), true) ||
-			 IsFloating(EffectiveType(type))) &&
-			AddConstexprLocal(parameter.name, parameter.pack_name, type,
+			 IsFloating(EffectiveType(type))))
+			added = AddConstexprLocal(parameter.name, parameter.pack_name, type,
 				ConvertScalarConstant(arguments[i].type, type,
 					ExpressionScalar(arguments[i])));
+		else if ((IsPointer(EffectiveType(type)) || reference) &&
+			address != kNoConstexprAddress)
+			added = AddConstexprAddressLocal(parameter.name,
+				parameter.pack_name, type, address);
+		if (added && reference && address != kNoConstexprAddress &&
+			!constexpr_locals_.empty())
+			constexpr_locals_.back().address = address;
 		if (!added) return false;
 	}
 	return true;
@@ -1270,6 +1409,11 @@ bool SemanticAnalyzer::AnalyzeConstexprMemberInitializer(
 				ConstexprScalarValue(static_cast<std::int64_t>(0))));
 			return true;
 		}
+		if (syntax.size() != 1) return false;
+		return AnalyzeConstexprExpression(syntax[0], scope, type, value);
+	}
+	if (IsPointer(object_type))
+	{
 		if (syntax.size() != 1) return false;
 		return AnalyzeConstexprExpression(syntax[0], scope, type, value);
 	}
@@ -1328,6 +1472,8 @@ bool SemanticAnalyzer::TryEvaluateConstexprConstructor(BindingId function,
 	{
 		const TypeId type = ParameterBindingType(info.parameters[i]);
 		if (ExpressionObject(arguments[i]) == kNoConstexprObject &&
+			ExpressionAddress(arguments[i]) == kNoConstexprAddress &&
+			arguments[i].constexpr_lvalue_address == kNoConstexprAddress &&
 			(!arguments[i].constant ||
 			 (!IsIntegral(EffectiveType(type), true) &&
 			  !IsFloating(EffectiveType(type))))) return false;
@@ -1478,8 +1624,10 @@ bool SemanticAnalyzer::TryEvaluateConstexprConstructor(BindingId function,
 		ConstexprScalarValue ignored;
 		try
 		{
+			std::uint32_t ignored_address = kNoConstexprAddress;
 			valid = EvaluateConstexprCompound(info.definition_body,
-				info.lexical_scope, result_type, &ignored) == CONSTEXPR_FLOW_NORMAL;
+				info.lexical_scope, result_type, &ignored, &ignored_address) ==
+				CONSTEXPR_FLOW_NORMAL;
 		}
 		catch (...) { valid = false; }
 	}
@@ -1516,7 +1664,8 @@ bool SemanticAnalyzer::TryEvaluateConstexprConstructor(BindingId function,
 
 bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 	const std::vector<ExpressionInfo>& arguments,
-	ConstexprScalarValue* value, const ExpressionInfo* receiver)
+	ConstexprScalarValue* value, std::uint32_t* address,
+	const ExpressionInfo* receiver)
 {
 	function = program_->bindings[function].canonical;
 	const FunctionInfo info = GetFunction(function);
@@ -1525,14 +1674,22 @@ bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 		!program_->bindings[function].static_member_function;
 	const std::uint32_t receiver_object = nonstatic_member && receiver ?
 		ExpressionObject(*receiver) : kNoConstexprObject;
+	const std::uint32_t receiver_address = nonstatic_member && receiver ?
+		ExpressionAddress(*receiver) : kNoConstexprAddress;
+	const TypeRecord returned = program_->types.Get(result_type);
+	const bool address_result = IsPointer(EffectiveType(result_type)) ||
+		returned.kind == TYPE_LVALUE_REFERENCE ||
+		returned.kind == TYPE_RVALUE_REFERENCE;
 	if (!info.constexpr_function || info.definition_body == kNoNode ||
-		(!IsIntegral(result_type, true) && !IsFloating(result_type)) ||
+		(!address_result && !IsIntegral(result_type, true) &&
+		 !IsFloating(result_type)) ||
 		arguments.size() != info.parameters.size() ||
-		(nonstatic_member && receiver_object == kNoConstexprObject))
+		(nonstatic_member && receiver_object == kNoConstexprObject &&
+		 receiver_address == kNoConstexprAddress))
 		return false;
 	++constexpr_call_requests_;
 
-	bool cacheable = !nonstatic_member;
+	bool cacheable = !nonstatic_member && !address_result;
 	ConstexprCallKey key;
 	key.function = function;
 	key.parameter_types.reserve(arguments.size());
@@ -1540,7 +1697,9 @@ bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 	for (std::size_t i = 0; i < arguments.size(); ++i)
 	{
 		const TypeId type = ParameterBindingType(info.parameters[i]);
-		if (ExpressionObject(arguments[i]) != kNoConstexprObject)
+		if (ExpressionObject(arguments[i]) != kNoConstexprObject ||
+			ExpressionAddress(arguments[i]) != kNoConstexprAddress ||
+			arguments[i].constexpr_lvalue_address != kNoConstexprAddress)
 		{
 			cacheable = false;
 			continue;
@@ -1596,7 +1755,7 @@ bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 	constexpr_evaluation_stack_.push_back(function);
 	constexpr_frames_.push_back(ConstexprFrame(function,
 		constexpr_locals_.size(), constexpr_scope_facts_.size(),
-		constexpr_block_offsets_.size(), receiver_object));
+		constexpr_block_offsets_.size(), receiver_object, receiver_address));
 	bool valid = AddConstexprInvocationArguments(info, arguments);
 
 	const TypeId previous_return = current_return_type_;
@@ -1606,11 +1765,13 @@ bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 	current_class_context_ = program_->bindings[function].member_owner;
 	current_function_context_ = function;
 	ConstexprScalarValue evaluated;
+	std::uint32_t evaluated_address = kNoConstexprAddress;
 	ConstexprFlow flow = CONSTEXPR_FLOW_INVALID;
 	try
 	{
 		if (valid) flow = EvaluateConstexprCompound(
-			info.definition_body, info.lexical_scope, result_type, &evaluated);
+			info.definition_body, info.lexical_scope, result_type, &evaluated,
+			&evaluated_address);
 	}
 	catch (...) { flow = CONSTEXPR_FLOW_INVALID; }
 	current_return_type_ = previous_return;
@@ -1643,6 +1804,12 @@ bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 	{
 		if (cacheable) constexpr_call_facts_.find(key)->second.state = 3;
 		return false;
+	}
+	if (address_result)
+	{
+		if (evaluated_address == kNoConstexprAddress) return false;
+		*address = evaluated_address;
+		return true;
 	}
 	const ConstexprScalarValue normalized =
 		NormalizeScalarConstant(result_type, evaluated);

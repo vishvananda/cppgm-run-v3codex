@@ -849,7 +849,9 @@ bool SemanticAnalyzer::AnalyzeFunctionId(NodeId node, ScopeId scope,
 	result->binding = emission_binding;
 	result->node = MakeDump(DUMP_ID_EXPRESSION, result->type,
 		result->category, program_->names.Intern(spelling), emission_binding);
-	DemandFunction(selected);
+	if (constant_expression_required_depth_ == 0 &&
+		constexpr_evaluation_depth_ == 0)
+		DemandFunction(selected);
 	++expression_count_;
 	return true;
 }

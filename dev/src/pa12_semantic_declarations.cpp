@@ -1160,11 +1160,25 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 						"invalid in-class static data member initializer");
 				const NodeId initializer = FirstSemanticChild(
 					FindChild(item, "initializer"));
-				const ExpressionInfo value = AnalyzeExpression(initializer,
-					scope, member_type);
+				const ExpressionInfo value = AnalyzeConstantRequiredExpression(initializer, scope, member_type, spec.is_constexpr && !IsIntegral(member_type, true) && !IsFloating(member_type));
 				if (!value.constant)
 					throw std::runtime_error(
 						"nonconstant in-class static data member initializer");
+				if (value.node != kNoDumpEdge && dump_.nodes[value.node].kind ==
+					DUMP_CALL_EXPRESSION && value.binding != kNoBinding)
+					DemandFunction(value.binding);
+				const TypeRecord declared_array = program_->types.Get(
+					program_->types.RemoveTopCv(member_type));
+				const TypeRecord completed_array = program_->types.Get(
+					program_->types.RemoveTopCv(value.type));
+				if (declared_array.kind == TYPE_ARRAY &&
+					declared_array.bound == 0 && completed_array.kind == TYPE_ARRAY &&
+					completed_array.bound != 0)
+				{
+					member_type = spec.is_constexpr ?
+						program_->types.Qualify(value.type, CV_CONST) : value.type;
+					program_->bindings[member].type = member_type;
+				}
 				PublishBindingConstant(member, value);
 			}
 			else if (!non_static_data_member && spec.is_constexpr)
@@ -2118,7 +2132,18 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 			std::uint64_t bound = 0;
 			if (bound_node != kNoNode)
 			{
-				const ExpressionInfo expression = AnalyzeExpression(bound_node, scope);
+				++constant_expression_required_depth_;
+				ExpressionInfo expression;
+				try
+				{
+					expression = AnalyzeExpression(bound_node, scope);
+					--constant_expression_required_depth_;
+				}
+				catch (...)
+				{
+					--constant_expression_required_depth_;
+					throw;
+				}
 				if (!expression.constant || expression.value <= 0)
 					throw std::runtime_error("invalid array bound");
 				bound = static_cast<std::uint64_t>(expression.value);

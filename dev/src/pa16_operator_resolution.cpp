@@ -1180,6 +1180,13 @@ ExpressionInfo SemanticAnalyzer::MakeImplicitObjectPointer(
 	result.node = MakeDump(DUMP_UNARY_EXPRESSION, result.type, VALUE_PRVALUE,
 		program_->names.Intern("OP_AMP:&"));
 	dump_.Add(result.node, object.node);
+	ExpressionInfo addressable = object;
+	const std::uint32_t address = LvalueAddress(&addressable);
+	if (address != kNoConstexprAddress)
+	{
+		SetExpressionAddress(&result, address);
+		result.constexpr_object = object.constexpr_object;
+	}
 	++expression_count_;
 	return result;
 }
