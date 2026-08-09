@@ -4,6 +4,7 @@
 #include "pa11_model.h"
 
 #include <cstdint>
+#include <deque>
 #include <limits>
 #include <stdexcept>
 #include <vector>
@@ -435,6 +436,7 @@ struct FunctionTemplatePattern
 	TypeId shape_type;
 	std::size_t required_parameter_count;
 	std::vector<NameId> type_parameters;
+	std::vector<NodeId> default_arguments;
 	std::vector<BindingId> specialization_bindings;
 	std::vector<TypeId> specialization_arguments;
 	LanguageLinkage language_linkage;
@@ -489,7 +491,10 @@ struct ClassTemplatePattern
 	std::vector<NameId> type_parameters;
 	std::vector<NodeId> default_arguments;
 	std::vector<BindingId> specialization_bindings;
-	std::vector<ClassTemplateMemberPattern> member_definitions;
+	// Retained member patterns are published once and borrowed during
+	// specialization replay. Keep their addresses stable if replay discovers
+	// another retained definition.
+	std::deque<ClassTemplateMemberPattern> member_definitions;
 	EntityId marker_entity;
 	bool defined;
 

@@ -164,8 +164,13 @@ NodeId TypeAnalyzer::FindChild(NodeId node, const char* tag) const
 
 NodeId TypeAnalyzer::FirstSemanticChild(NodeId node) const
 {
-	const std::uint32_t edge = arena_->FirstEdge(node);
-	return edge == kNoEdge ? kNoNode : arena_->EdgeChild(edge);
+	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId child = arena_->EdgeChild(edge);
+		if (!arena_->IsTag(child, "structured-type-name")) return child;
+	}
+	return kNoNode;
 }
 
 std::string TypeAnalyzer::PayloadSource(NodeId node) const

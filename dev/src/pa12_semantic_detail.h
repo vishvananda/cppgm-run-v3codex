@@ -7,6 +7,7 @@
 #include "pa12_semantic_model.h"
 #include "pa12_semantic_tables.h"
 
+#include <deque>
 #include <iosfwd>
 #include <string>
 #include <vector>
@@ -80,6 +81,9 @@ private:
 	NamePath ParseNamePath(const std::string& spelling);
 	LookupResult LookupPath(ScopeId scope, const NamePath& path,
 		LookupKind kind);
+	LookupResult LookupStructuredName(NodeId syntax, ScopeId scope,
+		LookupKind kind, ScopeId* terminal_owner = 0);
+	NamePath StructuredNamePath(NodeId syntax);
 	LookupResult LookupSpelling(ScopeId scope, const std::string& spelling,
 		LookupKind kind);
 	ScopeId ResolveScopeSpelling(ScopeId scope, const std::string& spelling);
@@ -173,6 +177,7 @@ private:
 		bool* variadic);
 	NameId DeclaratorName(NodeId node);
 	NamePath DeclaratorNamePath(NodeId node);
+	NodeId DeclaratorNameStructure(NodeId node) const;
 	TypeId AdjustParameterType(TypeId type);
 	TypeId ParameterBindingType(const ParameterInfo& parameter) const;
 	TypeId DecltypeType(NodeId node, ScopeId scope);
@@ -199,12 +204,15 @@ private:
 	int CompareReferenceBindings(const ExpressionInfo& argument,
 		TypeId left, TypeId right) const;
 	std::vector<BindingId> FunctionCandidates(ScopeId scope,
-		const std::string& spelling, EntityId* naming_class = 0);
+		const std::string& spelling, EntityId* naming_class = 0,
+		NodeId syntax = kNoNode);
 	std::vector<BindingId> UsingFunctionCandidates(ScopeId scope,
 		const NamePath& path, const std::string& spelling,
-		ScopeId* target_owner, bool* names_owner_alias);
+		ScopeId* target_owner, bool* names_owner_alias,
+		NodeId syntax = kNoNode);
 	std::vector<BindingId> FunctionCallCandidates(ScopeId scope,
-		const std::string& spelling, EntityId* naming_class = 0);
+		const std::string& spelling, EntityId* naming_class = 0,
+		NodeId syntax = kNoNode);
 	std::vector<BindingId> RetainedFunctionCallCandidates(NodeId callee,
 		ScopeId scope, const std::string& spelling, EntityId* naming_class,
 		bool* retained_lookup);
@@ -218,24 +226,23 @@ private:
 		std::vector<BindingId>* result);
 	std::vector<std::size_t> FindFunctionTemplates(ScopeId scope,
 		const std::string& spelling);
+	std::vector<std::size_t> FindFunctionTemplates(ScopeId scope,
+		const NamePath& path);
 	std::vector<ScopeId> FindFunctionTemplateOwners(ScopeId scope,
 		const std::string& spelling);
+	std::vector<ScopeId> FindFunctionTemplateOwners(ScopeId scope,
+		const NamePath& path);
 	std::vector<BindingId> FunctionTemplateTargetCandidates(
-		ScopeId scope, const std::string& spelling, TypeId target);
+		ScopeId scope, const std::string& spelling, TypeId target,
+		NodeId syntax = kNoNode);
 	bool AnalyzeFunctionId(NodeId node, ScopeId scope, TypeId target,
 		ExpressionInfo* result);
-	bool ParseExplicitTemplateArguments(ScopeId scope,
-		const std::string& spelling, std::string* base,
-		std::vector<TypeId>* arguments);
-	TypeId ResolveTemplateTypeArgument(ScopeId scope,
-		const std::string& spelling);
+	bool ParseExplicitTemplateArguments(NodeId syntax, ScopeId scope,
+		NamePath* base, std::vector<TypeId>* arguments);
 	TypeId ResolveStructuredTypeName(NodeId name, ScopeId scope);
-	TypeId ResolveClassTemplateSpecialization(ScopeId scope,
-		const std::string& spelling);
-	TypeId ResolveClassTemplateSpecialization(ScopeId template_scope,
-		ScopeId argument_scope, const std::string& spelling);
 	std::size_t FindClassTemplate(ScopeId scope,
 		const std::string& spelling);
+	std::size_t FindClassTemplate(ScopeId scope, const NamePath& path);
 	std::size_t FindClassTemplateIndex(const LookupResult& found,
 		NameId requested) const;
 	BindingId InstantiateClassTemplate(std::size_t pattern,
@@ -270,7 +277,8 @@ private:
 		std::vector<BindingId>* specializations = 0,
 		const std::vector<TypeId>* explicit_arguments = 0);
 	void DeduceFunctionTemplates(ScopeId scope, const std::string& spelling,
-		const std::vector<ExpressionInfo>& arguments);
+		const std::vector<ExpressionInfo>& arguments,
+		NodeId syntax = kNoNode);
 	void DemandFunction(BindingId binding);
 	void PublishInlineFunctionFacts(BindingId binding, bool inline_specifier);
 	TypeId AdaptMemberFunctionType(BindingId binding);
@@ -282,7 +290,7 @@ private:
 	ExpressionInfo AnalyzeExpression(NodeId node, ScopeId scope,
 		TypeId target = kNoType);
 	ExpressionInfo AnalyzeNamedValue(const std::string& spelling,
-		ScopeId scope, TypeId target = kNoType);
+		ScopeId scope, TypeId target = kNoType, NodeId syntax = kNoNode);
 	BindingId SelectOverload(ScopeId scope,
 		const std::vector<NodeId>& argument_syntax,
 		const std::vector<ExpressionInfo>& arguments,
@@ -335,14 +343,15 @@ private:
 		ScopeId scope, TypeId type, bool local);
 	ExpressionInfo AnalyzeCall(NodeId node, ScopeId scope, TypeId target);
 	bool FunctionalCastPrecedesFunctions(const std::string& spelling,
-		ScopeId scope, TypeId cast_type,
+		ScopeId scope, TypeId cast_type, NodeId syntax,
 		const std::vector<BindingId>& candidates);
-	bool AnalyzeRetainedNamedCall(const std::string& spelling, ScopeId scope,
+	bool AnalyzeRetainedNamedCall(NodeId name_syntax,
+		const std::string& spelling, ScopeId scope,
 		const std::vector<NodeId>& argument_syntax,
 		const std::vector<ExpressionInfo>& arguments, TypeId target,
 		ExpressionInfo* result);
 	TypeId ResolveFunctionalCastType(ScopeId scope,
-		const std::string& spelling);
+		const std::string& spelling, NodeId syntax = kNoNode);
 	bool IsClassObjectType(TypeId type) const;
 	BindingId EnsureBuiltinFunction(BuiltinFunctionKind kind);
 	bool AnalyzeBuiltinCall(const std::string& spelling, ScopeId scope,
@@ -706,7 +715,9 @@ private:
 	std::vector<NodeId> member_initializer_by_binding_;
 	std::vector<NodeId> constructor_initializer_scratch_;
 	std::vector<BindingId> constructor_initializer_touched_;
-	std::vector<FunctionTemplatePattern> function_templates_;
+	// Replay can publish nested patterns, so published pattern owners must not
+	// move while semantic construction is re-entrant.
+	std::deque<FunctionTemplatePattern> function_templates_;
 	std::vector<TypeId> function_template_shape_parameters_;
 	TypeId function_template_dependent_result_shape_;
 	mutable std::vector<std::uint8_t> function_template_dependency_cache_;
@@ -716,7 +727,7 @@ private:
 	std::vector<std::uint8_t> retained_call_lookup_states_;
 	std::vector<EntityId> retained_call_naming_classes_;
 	TemplateSpecializationTable template_instantiations_;
-	std::vector<ClassTemplatePattern> class_templates_;
+	std::deque<ClassTemplatePattern> class_templates_;
 	std::vector<VariableTemplatePattern> variable_templates_;
 	IndexedSequenceTable variable_template_sets_;
 	std::vector<std::uint32_t> class_template_pattern_by_entity_;

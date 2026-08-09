@@ -1063,11 +1063,14 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 			}
 			if (value == kNoNode)
 				throw std::runtime_error("member initializer has no value");
-			LookupResult target_type = LookupSpelling(function_scope,
-				arena_->Payload(id), LOOKUP_TYPE);
-			if (target_type.type == kNoType)
-				target_type.type = ResolveClassTemplateSpecialization(
-					function_scope, arena_->Payload(id));
+			LookupResult target_type;
+			const NodeId structured = FindChild(id, "structured-type-name");
+			if (structured != kNoNode)
+				target_type.type = ResolveStructuredTypeName(
+					structured, function_scope);
+			else
+				target_type = LookupSpelling(function_scope,
+					arena_->Payload(id), LOOKUP_TYPE);
 			if (target_type.type != kNoType &&
 				EntityOf(target_type.type) == entity)
 			{

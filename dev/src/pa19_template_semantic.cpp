@@ -81,84 +81,6 @@ std::string ClassTemplateSpecializationScopeName(std::size_t pattern,
 	return result.str();
 }
 
-std::string TrimTypeSpelling(const std::string& source)
-{
-	const std::size_t first = source.find_first_not_of(" \t\r\n");
-	if (first == std::string::npos) return std::string();
-	const std::size_t last = source.find_last_not_of(" \t\r\n");
-	return source.substr(first, last - first + 1);
-}
-
-bool RemoveTrailingTypeWord(std::string* spelling, const char* word)
-{
-	const std::size_t length = std::char_traits<char>::length(word);
-	if (spelling->size() < length ||
-		spelling->compare(spelling->size() - length, length, word) != 0)
-		return false;
-	const std::size_t first = spelling->size() - length;
-	if (first != 0)
-	{
-		const unsigned char previous =
-			static_cast<unsigned char>((*spelling)[first - 1]);
-		if (std::isalnum(previous) || previous == '_') return false;
-	}
-	spelling->erase(first);
-	*spelling = TrimTypeSpelling(*spelling);
-	return true;
-}
-
-bool RemoveLeadingTypeWord(std::string* spelling, const char* word)
-{
-	const std::size_t length = std::char_traits<char>::length(word);
-	if (spelling->size() < length || spelling->compare(0, length, word) != 0)
-		return false;
-	if (spelling->size() != length)
-	{
-		const unsigned char next =
-			static_cast<unsigned char>((*spelling)[length]);
-		if (std::isalnum(next) || next == '_') return false;
-	}
-	spelling->erase(0, length);
-	*spelling = TrimTypeSpelling(*spelling);
-	return true;
-}
-
-bool ParseRawTemplateComponent(const std::string& spelling,
-	std::string* base, std::vector<std::string>* arguments)
-{
-	const std::size_t open = spelling.find('<');
-	if (open == std::string::npos || spelling.empty() ||
-		spelling[spelling.size() - 1] != '>') return false;
-	*base = spelling.substr(0, open);
-	arguments->clear();
-	std::size_t first = open + 1;
-	std::size_t angle_depth = 0, paren_depth = 0, bracket_depth = 0;
-	for (std::size_t i = first; i + 1 < spelling.size(); ++i)
-	{
-		if (spelling[i] == '<') ++angle_depth;
-		else if (spelling[i] == '>')
-		{
-			if (angle_depth == 0) return false;
-			--angle_depth;
-		}
-		else if (spelling[i] == '(') ++paren_depth;
-		else if (spelling[i] == ')' && paren_depth != 0) --paren_depth;
-		else if (spelling[i] == '[') ++bracket_depth;
-		else if (spelling[i] == ']' && bracket_depth != 0) --bracket_depth;
-		else if (spelling[i] == ',' && angle_depth == 0 &&
-			paren_depth == 0 && bracket_depth == 0)
-		{
-			arguments->push_back(TrimTypeSpelling(
-				spelling.substr(first, i - first)));
-			first = i + 1;
-		}
-	}
-	if (first + 1 < spelling.size())
-		arguments->push_back(TrimTypeSpelling(spelling.substr(
-			first, spelling.size() - first - 1)));
-	return angle_depth == 0 && paren_depth == 0 && bracket_depth == 0;
-}
-
 }
 
 bool SemanticAnalyzer::IsDeclaration(NodeId node) const
@@ -205,34 +127,16 @@ LookupResult SemanticAnalyzer::LookupPath(ScopeId scope,
 	std::size_t component = 0;
 	if (!path.global)
 	{
-		const TypeId specialization = ResolveClassTemplateSpecialization(
-			scope, program_->names.Get(path[0]));
-		if (specialization != kNoType)
-		{
-			EnsureClassDefinition(specialization);
-			carrier = program_->ScopeForType(specialization);
-		}
-		else
-		{
-			const LookupResult first = program_->LookupName(
-				scope, path[0], LOOKUP_SCOPE_CARRIER);
-			if (first.type != kNoType) EnsureClassDefinition(first.type);
-			carrier = first.name_space != kNoScope ? first.name_space :
-				first.type != kNoType ? program_->ScopeForType(first.type) :
-				kNoScope;
-		}
+		const LookupResult first = program_->LookupName(
+			scope, path[0], LOOKUP_SCOPE_CARRIER);
+		if (first.type != kNoType) EnsureClassDefinition(first.type);
+		carrier = first.name_space != kNoScope ? first.name_space :
+			first.type != kNoType ? program_->ScopeForType(first.type) :
+			kNoScope;
 		component = 1;
 	}
 	for (; carrier != kNoScope && component + 1 < path.Size(); ++component)
 	{
-		const TypeId specialization = ResolveClassTemplateSpecialization(
-			carrier, scope, program_->names.Get(path[component]));
-		if (specialization != kNoType)
-		{
-			EnsureClassDefinition(specialization);
-			carrier = program_->ScopeForType(specialization);
-			continue;
-		}
 		NamePath one;
 		one.Push(path[component]);
 		const LookupResult next = program_->LookupQualified(
@@ -243,20 +147,111 @@ LookupResult SemanticAnalyzer::LookupPath(ScopeId scope,
 			kNoScope;
 	}
 	if (carrier == kNoScope) return LookupResult();
-	if (kind == LOOKUP_TYPE || kind == LOOKUP_SCOPE_CARRIER)
-	{
-		const TypeId specialization = ResolveClassTemplateSpecialization(
-			carrier, scope, program_->names.Get(path.Last()));
-		if (specialization != kNoType)
-		{
-			LookupResult result;
-			result.type = specialization;
-			return result;
-		}
-	}
 	NamePath terminal;
 	terminal.Push(path.Last());
 	return program_->LookupQualified(carrier, terminal, kind);
+}
+
+LookupResult SemanticAnalyzer::LookupStructuredName(NodeId syntax,
+	ScopeId scope, LookupKind kind, ScopeId* terminal_owner)
+{
+	if (terminal_owner) *terminal_owner = kNoScope;
+	const NodeId structure = syntax != kNoNode &&
+		arena_->IsTag(syntax, "structured-type-name") ? syntax :
+		syntax == kNoNode ? kNoNode :
+		FindChild(syntax, "structured-type-name");
+	if (structure == kNoNode) return LookupResult();
+	std::uint32_t component_edge = arena_->FirstEdge(structure);
+	while (component_edge != kNoEdge && !arena_->IsTag(
+		arena_->EdgeChild(component_edge), "name-component"))
+		component_edge = arena_->NextEdge(component_edge);
+	if (component_edge == kNoEdge) return LookupResult();
+
+	ScopeId carrier = FindChild(structure, "global-qualifier") != kNoNode ?
+		program_->GlobalScope() : kNoScope;
+	while (component_edge != kNoEdge)
+	{
+		const NodeId component_node = arena_->EdgeChild(component_edge);
+		std::uint32_t next_component_edge = arena_->NextEdge(component_edge);
+		while (next_component_edge != kNoEdge && !arena_->IsTag(
+			arena_->EdgeChild(next_component_edge), "name-component"))
+			next_component_edge = arena_->NextEdge(next_component_edge);
+		const bool terminal = next_component_edge == kNoEdge;
+		if (terminal && terminal_owner && carrier != kNoScope)
+			*terminal_owner = carrier;
+		const NameId component = program_->names.UseInterned(
+			arena_->SemanticPayloadId(component_node));
+		const NodeId argument_list = FindChild(
+			component_node, "template-type-argument-list");
+		const LookupKind component_kind = argument_list != kNoNode ?
+			LOOKUP_TYPE : terminal ? kind : LOOKUP_SCOPE_CARRIER;
+		LookupResult found;
+		if (carrier == kNoScope)
+			found = program_->LookupName(scope, component, component_kind);
+		else
+		{
+			NamePath direct;
+			direct.Push(component);
+			found = program_->LookupQualified(
+				carrier, direct, component_kind);
+		}
+
+		if (argument_list != kNoNode)
+		{
+			const std::size_t pattern =
+				FindClassTemplateIndex(found, component);
+			if (pattern == NoTemplatePattern()) return LookupResult();
+			std::vector<TypeId> arguments;
+			for (std::uint32_t edge = arena_->FirstEdge(argument_list);
+				edge != kNoEdge; edge = arena_->NextEdge(edge))
+			{
+				const NodeId argument = arena_->EdgeChild(edge);
+				if (!arena_->IsTag(argument, "type-id"))
+					return LookupResult();
+				const TypeId argument_type = BuildTypeId(argument, scope);
+				if (argument_type == kNoType) return LookupResult();
+				arguments.push_back(argument_type);
+			}
+			const BindingId specialization =
+				InstantiateClassTemplate(pattern, arguments);
+			if (specialization == kNoBinding) return LookupResult();
+			found = LookupResult();
+			found.type = program_->bindings[specialization].type;
+			found.type_declaration = specialization;
+			found.type_declaration_canonical =
+				program_->bindings[specialization].canonical;
+		}
+		if (terminal) return found;
+		if (found.type != kNoType)
+		{
+			EnsureClassDefinition(found.type);
+			carrier = program_->ScopeForType(found.type);
+		}
+		else carrier = found.name_space;
+		if (carrier == kNoScope) return LookupResult();
+		component_edge = next_component_edge;
+	}
+	return LookupResult();
+}
+
+NamePath SemanticAnalyzer::StructuredNamePath(NodeId syntax)
+{
+	NamePath path;
+	const NodeId structure = syntax != kNoNode &&
+		arena_->IsTag(syntax, "structured-type-name") ? syntax :
+		syntax == kNoNode ? kNoNode :
+		FindChild(syntax, "structured-type-name");
+	if (structure == kNoNode) return path;
+	path.global = FindChild(structure, "global-qualifier") != kNoNode;
+	for (std::uint32_t edge = arena_->FirstEdge(structure); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId child = arena_->EdgeChild(edge);
+		if (arena_->IsTag(child, "name-component"))
+			path.Push(program_->names.UseInterned(
+				arena_->SemanticPayloadId(child)));
+	}
+	return path;
 }
 
 LookupResult SemanticAnalyzer::LookupSpelling(ScopeId scope,
@@ -285,13 +280,6 @@ ScopeId SemanticAnalyzer::ResolveOwner(ScopeId scope, const NamePath& name)
 	if (owner.Empty()) return owner.global ? program_->GlobalScope() : scope;
 	const ScopeId lookup_scope = owner.global ?
 		program_->GlobalScope() : scope;
-	if (owner.Size() == 1)
-	{
-		const TypeId specialization = ResolveClassTemplateSpecialization(
-			lookup_scope, program_->names.Get(owner[0]));
-		if (specialization != kNoType)
-			return program_->ScopeForType(specialization);
-	}
 	const LookupResult result =
 		LookupPath(lookup_scope, owner, LOOKUP_SCOPE_CARRIER);
 	return result.name_space != kNoScope ? result.name_space :
@@ -300,12 +288,36 @@ ScopeId SemanticAnalyzer::ResolveOwner(ScopeId scope, const NamePath& name)
 
 std::vector<BindingId> SemanticAnalyzer::UsingFunctionCandidates(
 	ScopeId scope, const NamePath& path, const std::string& spelling,
-	ScopeId* target_owner, bool* names_owner_alias)
+	ScopeId* target_owner, bool* names_owner_alias, NodeId syntax)
 {
-	std::vector<BindingId> functions = FunctionCandidates(scope, spelling);
-	*target_owner = path.Size() > 1 ? ResolveOwner(scope, path) : kNoScope;
-	*names_owner_alias = path.Size() > 1 &&
-		path.Last() == path[path.Size() - 2];
+	std::vector<BindingId> functions =
+		FunctionCandidates(scope, spelling, 0, syntax);
+	const NodeId structure = syntax == kNoNode ? kNoNode :
+		FindChild(syntax, "structured-type-name");
+	if (structure != kNoNode)
+	{
+		ScopeId structured_owner = kNoScope;
+		(void)LookupStructuredName(
+			syntax, scope, LOOKUP_ORDINARY, &structured_owner);
+		*target_owner = structured_owner;
+		std::vector<NameId> names;
+		for (std::uint32_t edge = arena_->FirstEdge(structure);
+			edge != kNoEdge; edge = arena_->NextEdge(edge))
+		{
+			const NodeId child = arena_->EdgeChild(edge);
+			if (arena_->IsTag(child, "name-component"))
+				names.push_back(program_->names.UseInterned(
+					arena_->SemanticPayloadId(child)));
+		}
+		*names_owner_alias = names.size() > 1 &&
+			names[names.size() - 1] == names[names.size() - 2];
+	}
+	else
+	{
+		*target_owner = path.Size() > 1 ? ResolveOwner(scope, path) : kNoScope;
+		*names_owner_alias = path.Size() > 1 &&
+			path.Last() == path[path.Size() - 2];
+	}
 	const EntityId target_entity = *target_owner == kNoScope ? kNoEntity :
 		program_->EntityForScope(*target_owner);
 	if (!functions.empty() || !*names_owner_alias || target_entity == kNoEntity)
@@ -314,322 +326,37 @@ std::vector<BindingId> SemanticAnalyzer::UsingFunctionCandidates(
 	return FunctionCandidates(*target_owner, program_->names.Get(identity));
 }
 
-TypeId SemanticAnalyzer::ResolveTemplateTypeArgument(ScopeId scope,
-	const std::string& source)
+bool SemanticAnalyzer::ParseExplicitTemplateArguments(NodeId syntax,
+	ScopeId scope, NamePath* base, std::vector<TypeId>* arguments)
 {
-	std::string spelling = TrimTypeSpelling(source);
-	if (spelling.empty()) return kNoType;
-	while (RemoveLeadingTypeWord(&spelling, "typename")) {}
-	NamedFlavor elaborated_flavor = NAMED_NONE;
-	if (RemoveLeadingTypeWord(&spelling, "class"))
-		elaborated_flavor = NAMED_CLASS;
-	else if (RemoveLeadingTypeWord(&spelling, "struct"))
-		elaborated_flavor = NAMED_STRUCT;
-	std::uint8_t outer_cv = CV_NONE;
-	bool removed = true;
-	while (removed)
+	if (syntax == kNoNode) return false;
+	const NodeId structure = arena_->IsTag(
+		syntax, "structured-type-name") ? syntax :
+		FindChild(syntax, "structured-type-name");
+	if (structure == kNoNode) return false;
+	NodeId terminal_component = kNoNode;
+	for (std::uint32_t edge = arena_->FirstEdge(structure); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
 	{
-		removed = false;
-		if (RemoveTrailingTypeWord(&spelling, "const"))
-		{
-			outer_cv |= CV_CONST;
-			removed = true;
-		}
-		if (RemoveTrailingTypeWord(&spelling, "volatile"))
-		{
-			outer_cv |= CV_VOLATILE;
-			removed = true;
-		}
+		const NodeId child = arena_->EdgeChild(edge);
+		if (arena_->IsTag(child, "name-component"))
+			terminal_component = child;
 	}
-	TypeId result = kNoType;
-	if (spelling.compare(0, 9, "decltype(") == 0)
-	{
-		std::size_t close = std::string::npos;
-		std::size_t depth = 1;
-		for (std::size_t i = 9; i < spelling.size(); ++i)
-		{
-			if (spelling[i] == '(') ++depth;
-			else if (spelling[i] == ')' && --depth == 0)
-			{
-				close = i;
-				break;
-			}
-		}
-		if (close != std::string::npos && close + 2 < spelling.size() &&
-			spelling.compare(close + 1, 2, "::") == 0)
-		{
-			const std::string operand = TrimTypeSpelling(
-				spelling.substr(9, close - 9));
-			const LookupResult declaration =
-				LookupSpelling(scope, operand, LOOKUP_ORDINARY);
-			if (declaration.ordinary != kNoBinding)
-			{
-				const TypeId carrier_type = EffectiveType(
-					program_->bindings[declaration.ordinary].type);
-				EnsureClassDefinition(carrier_type);
-				const ScopeId carrier = program_->ScopeForType(carrier_type);
-				if (carrier != kNoScope)
-				{
-					const NamePath terminal = ParseNamePath(
-						spelling.substr(close + 3));
-					result = program_->LookupQualified(
-						carrier, terminal, LOOKUP_TYPE).type;
-				}
-			}
-		}
-	}
-	else if (!spelling.empty() && spelling[spelling.size() - 1] == ')')
-	{
-		std::size_t open = std::string::npos;
-		std::size_t angle_depth = 0;
-		for (std::size_t i = 0; i < spelling.size(); ++i)
-		{
-			if (spelling[i] == '<') ++angle_depth;
-			else if (spelling[i] == '>' && angle_depth != 0) --angle_depth;
-			else if (spelling[i] == '(' && angle_depth == 0)
-			{
-				open = i;
-				break;
-			}
-		}
-		if (open == std::string::npos || open == 0) return kNoType;
-		const TypeId returned = ResolveTemplateTypeArgument(
-			scope, spelling.substr(0, open));
-		if (returned == kNoType) return kNoType;
-		std::vector<TypeId> parameters;
-		std::size_t first = open + 1;
-		angle_depth = 0;
-		std::size_t paren_depth = 0;
-		for (std::size_t i = first; i < spelling.size() - 1; ++i)
-		{
-			if (spelling[i] == '<') ++angle_depth;
-			else if (spelling[i] == '>' && angle_depth != 0) --angle_depth;
-			else if (spelling[i] == '(') ++paren_depth;
-			else if (spelling[i] == ')' && paren_depth != 0) --paren_depth;
-			else if (spelling[i] == ',' && angle_depth == 0 && paren_depth == 0)
-			{
-				const TypeId parameter = ResolveTemplateTypeArgument(
-					scope, spelling.substr(first, i - first));
-				if (parameter == kNoType) return kNoType;
-				parameters.push_back(parameter);
-				first = i + 1;
-			}
-		}
-		if (first < spelling.size() - 1)
-		{
-			const TypeId parameter = ResolveTemplateTypeArgument(scope,
-				spelling.substr(first, spelling.size() - first - 1));
-			if (parameter == kNoType) return kNoType;
-			parameters.push_back(parameter);
-		}
-		result = program_->types.Function(returned, parameters, false);
-	}
-	else if (!spelling.empty() && spelling[spelling.size() - 1] == ']')
-	{
-		const std::size_t open = spelling.rfind('[');
-		if (open == std::string::npos) return kNoType;
-		std::uint64_t bound = 0;
-		if (open + 1 == spelling.size() - 1) return kNoType;
-		for (std::size_t i = open + 1; i + 1 < spelling.size(); ++i)
-		{
-			if (spelling[i] < '0' || spelling[i] > '9') return kNoType;
-			const std::uint64_t digit =
-				static_cast<std::uint64_t>(spelling[i] - '0');
-			if (bound > (std::numeric_limits<std::uint64_t>::max() - digit) / 10)
-				throw std::runtime_error("array template argument is too large");
-			bound = bound * 10 + digit;
-		}
-		const TypeId element = ResolveTemplateTypeArgument(
-			scope, spelling.substr(0, open));
-		if (element != kNoType) result = program_->types.Array(element, bound);
-	}
-	else if (spelling.size() >= 2 &&
-		spelling.compare(spelling.size() - 2, 2, "&&") == 0)
-	{
-		spelling.erase(spelling.size() - 2);
-		const TypeId referred = ResolveTemplateTypeArgument(scope, spelling);
-		if (referred != kNoType)
-			result = program_->types.Reference(TYPE_RVALUE_REFERENCE, referred);
-	}
-	else if (!spelling.empty() && spelling[spelling.size() - 1] == '&')
-	{
-		spelling.erase(spelling.size() - 1);
-		const TypeId referred = ResolveTemplateTypeArgument(scope, spelling);
-		if (referred != kNoType)
-			result = program_->types.Reference(TYPE_LVALUE_REFERENCE, referred);
-	}
-	else if (!spelling.empty() && spelling[spelling.size() - 1] == '*')
-	{
-		spelling.erase(spelling.size() - 1);
-		const TypeId pointed = ResolveTemplateTypeArgument(scope, spelling);
-		if (pointed != kNoType) result = program_->types.Pointer(pointed);
-	}
-	else
-	{
-		std::uint8_t base_cv = CV_NONE;
-		removed = true;
-		while (removed)
-		{
-			removed = false;
-			if (RemoveLeadingTypeWord(&spelling, "const"))
-			{
-				base_cv |= CV_CONST;
-				removed = true;
-			}
-			if (RemoveLeadingTypeWord(&spelling, "volatile"))
-			{
-				base_cv |= CV_VOLATILE;
-				removed = true;
-			}
-		}
-		result = ResolveClassTemplateSpecialization(scope, spelling);
-		if (result == kNoType)
-		{
-			std::string compact;
-			for (std::size_t i = 0; i < spelling.size(); ++i)
-				if (!std::isspace(static_cast<unsigned char>(spelling[i])))
-					compact += spelling[i];
-			FundamentalKind fundamental = FUND_INT;
-			bool known = true;
-			if (compact == "bool") fundamental = FUND_BOOL;
-			else if (compact == "char") fundamental = FUND_CHAR;
-			else if (compact == "signedchar") fundamental = FUND_SIGNED_CHAR;
-			else if (compact == "unsignedchar") fundamental = FUND_UNSIGNED_CHAR;
-			else if (compact == "short" || compact == "shortint" ||
-				compact == "signedshort" || compact == "signedshortint")
-				fundamental = FUND_SHORT_INT;
-			else if (compact == "unsignedshort" ||
-				compact == "unsignedshortint")
-				fundamental = FUND_UNSIGNED_SHORT_INT;
-			else if (compact == "int" || compact == "signed" ||
-				compact == "signedint") fundamental = FUND_INT;
-			else if (compact == "unsigned" || compact == "unsignedint")
-				fundamental = FUND_UNSIGNED_INT;
-			else if (compact == "long" || compact == "longint" ||
-				compact == "signedlong" || compact == "signedlongint")
-				fundamental = FUND_LONG_INT;
-			else if (compact == "unsignedlong" ||
-				compact == "unsignedlongint") fundamental = FUND_UNSIGNED_LONG_INT;
-			else if (compact == "longlong" || compact == "longlongint" ||
-				compact == "signedlonglong" ||
-				compact == "signedlonglongint") fundamental = FUND_LONG_LONG_INT;
-			else if (compact == "unsignedlonglong" ||
-				compact == "unsignedlonglongint")
-				fundamental = FUND_UNSIGNED_LONG_LONG_INT;
-			else if (compact == "float") fundamental = FUND_FLOAT;
-			else if (compact == "double") fundamental = FUND_DOUBLE;
-			else if (compact == "longdouble") fundamental = FUND_LONG_DOUBLE;
-			else if (compact == "void") fundamental = FUND_VOID;
-			else if (compact == "wchar_t") fundamental = FUND_WCHAR_T;
-			else if (compact == "char16_t") fundamental = FUND_CHAR16_T;
-			else if (compact == "char32_t") fundamental = FUND_CHAR32_T;
-			else known = false;
-			if (known) result = program_->types.Fundamental(fundamental);
-			else
-			{
-				const LookupResult found =
-					LookupSpelling(scope, spelling, LOOKUP_TYPE);
-				result = found.type;
-				if (result == kNoType && elaborated_flavor != NAMED_NONE &&
-					spelling.find("::") == std::string::npos &&
-					spelling.find('<') == std::string::npos)
-				{
-					ScopeId owner = scope;
-					while (program_->KindOfScope(owner) ==
-						SCOPE_TEMPLATE_PARAMETERS)
-						owner = program_->ParentScope(owner);
-					const NameId name = program_->names.Intern(spelling);
-					const EntityId entity = program_->NewEntity(name,
-						elaborated_flavor, false, kNoType, owner, name);
-					result = program_->entities[entity].type;
-					program_->SetTypeName(owner, name, result);
-					program_->AddBinding(owner, BIND_TYPE, name, result,
-						false, 0, elaborated_flavor);
-				}
-				if (result != kNoType)
-				{
-					const TypeRecord& named = program_->types.Get(
-						program_->types.RemoveTopCv(result));
-					if (named.kind == TYPE_NAMED &&
-						program_->entities[named.entity].flavor ==
-							NAMED_TEMPLATE_PARAMETER)
-						result = kNoType;
-				}
-			}
-		}
-		if (result != kNoType && base_cv != CV_NONE &&
-			!program_->types.IsFunction(result))
-			result = program_->types.Qualify(result, base_cv);
-	}
-	if (result == kNoType && outer_cv == CV_NONE)
-	{
-		static const char* const compact_qualifiers[] = {
-			"const", "volatile"
-		};
-		static const std::uint8_t compact_cv[] = {
-			CV_CONST, CV_VOLATILE
-		};
-		for (std::size_t i = 0; i < sizeof(compact_qualifiers) /
-			sizeof(compact_qualifiers[0]); ++i)
-		{
-			const std::size_t length = std::char_traits<char>::length(
-				compact_qualifiers[i]);
-			if (spelling.size() <= length || spelling.compare(
-				spelling.size() - length, length, compact_qualifiers[i]) != 0)
-				continue;
-			const TypeId base = ResolveTemplateTypeArgument(scope,
-				spelling.substr(0, spelling.size() - length));
-			if (base == kNoType || program_->types.IsFunction(base)) continue;
-			result = program_->types.Qualify(base, compact_cv[i]);
-			break;
-		}
-	}
-	if (result != kNoType && outer_cv != CV_NONE &&
-		!program_->types.IsFunction(result))
-		result = program_->types.Qualify(result, outer_cv);
-	return result;
-}
+	if (terminal_component == kNoNode) return false;
+	const NodeId argument_list = FindChild(
+		terminal_component, "template-type-argument-list");
+	if (argument_list == kNoNode) return false;
 
-bool SemanticAnalyzer::ParseExplicitTemplateArguments(ScopeId scope,
-	const std::string& spelling, std::string* base,
-	std::vector<TypeId>* arguments)
-{
-	const std::size_t open = spelling.find('<');
-	if (open == std::string::npos || spelling.empty() ||
-		spelling[spelling.size() - 1] != '>') return false;
-	*base = spelling.substr(0, open);
+	*base = StructuredNamePath(structure);
 	arguments->clear();
-	std::size_t first = open + 1;
-	std::size_t depth = 0;
-	std::size_t paren_depth = 0;
-	std::size_t bracket_depth = 0;
-	for (std::size_t i = first; i < spelling.size() - 1; ++i)
+	for (std::uint32_t edge = arena_->FirstEdge(argument_list);
+		edge != kNoEdge; edge = arena_->NextEdge(edge))
 	{
-		if (spelling[i] == '<') ++depth;
-		else if (spelling[i] == '>')
-		{
-			if (depth == 0) return false;
-			--depth;
-		}
-		else if (spelling[i] == '(') ++paren_depth;
-		else if (spelling[i] == ')' && paren_depth != 0) --paren_depth;
-		else if (spelling[i] == '[') ++bracket_depth;
-		else if (spelling[i] == ']' && bracket_depth != 0) --bracket_depth;
-		else if (spelling[i] == ',' && depth == 0 && paren_depth == 0 &&
-			bracket_depth == 0)
-		{
-			const TypeId type = ResolveTemplateTypeArgument(scope,
-				spelling.substr(first, i - first));
-			if (type == kNoType)
-				throw std::runtime_error("unknown explicit template type argument");
-			arguments->push_back(type);
-			first = i + 1;
-		}
-	}
-	if (first < spelling.size() - 1)
-	{
-		const TypeId type = ResolveTemplateTypeArgument(scope,
-			spelling.substr(first, spelling.size() - first - 1));
+		const NodeId argument = arena_->EdgeChild(edge);
+		if (!arena_->IsTag(argument, "type-id"))
+			throw std::runtime_error(
+				"PA19 explicit template argument is not a type");
+		const TypeId type = BuildTypeId(argument, scope);
 		if (type == kNoType)
 			throw std::runtime_error("unknown explicit template type argument");
 		arguments->push_back(type);
@@ -649,40 +376,58 @@ bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,
 		declarator = item == kNoNode ? kNoNode :
 			FindChild(item, "declarator");
 	}
-	NamePath path;
+	NodeId structure = kNoNode;
 	if (arena_->IsTag(declaration, "class-specifier") ||
 		arena_->IsTag(declaration, "class-forward-declaration"))
-		path = ParseNamePath(arena_->Payload(declaration));
-	else if (declarator != kNoNode) path = DeclaratorNamePath(declarator);
+		structure = FindChild(declaration, "structured-type-name");
+	else if (declarator != kNoNode)
+		structure = DeclaratorNameStructure(declarator);
 	else return false;
+	if (structure == kNoNode) return false;
+	std::vector<NodeId> components;
+	NamePath path;
+	path.global = FindChild(structure, "global-qualifier") != kNoNode;
+	for (std::uint32_t edge = arena_->FirstEdge(structure); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId child = arena_->EdgeChild(edge);
+		if (!arena_->IsTag(child, "name-component")) continue;
+		components.push_back(child);
+		path.Push(program_->names.UseInterned(
+			arena_->SemanticPayloadId(child)));
+	}
 	if (path.Size() <= 1) return false;
 
 	std::size_t owner_component = path.Size();
-	std::string primary_component;
-	std::vector<std::string> owner_arguments;
+	NodeId owner_argument_list = kNoNode;
 	for (std::size_t i = 0; i + 1 < path.Size(); ++i)
-		if (ParseRawTemplateComponent(program_->names.Get(path[i]),
-			&primary_component, &owner_arguments))
+	{
+		const NodeId arguments = FindChild(
+			components[i], "template-type-argument-list");
+		if (arguments != kNoNode)
 		{
 			owner_component = i;
+			owner_argument_list = arguments;
 			break;
 		}
+	}
 	if (owner_component == path.Size()) return false;
 
-	std::string primary = path.global ? "::" : std::string();
+	NamePath primary;
+	primary.global = path.global;
 	for (std::size_t i = 0; i <= owner_component; ++i)
-	{
-		if (i != 0) primary += "::";
-		primary += i == owner_component ? primary_component :
-			program_->names.Get(path[i]);
-	}
+		primary.Push(path[i]);
 	const std::size_t pattern_index = FindClassTemplate(scope, primary);
 	if (pattern_index == NoTemplatePattern())
 		throw std::runtime_error("class template member owner was not found");
 	const ClassTemplatePattern& owner_pattern =
 		class_templates_[pattern_index];
-	if (!owner_pattern.defined ||
-		owner_arguments.size() != owner_pattern.type_parameters.size())
+	std::vector<NodeId> owner_arguments;
+	for (std::uint32_t edge = arena_->FirstEdge(owner_argument_list);
+		edge != kNoEdge; edge = arena_->NextEdge(edge))
+		owner_arguments.push_back(arena_->EdgeChild(edge));
+	if (!owner_pattern.defined || owner_arguments.size() !=
+		owner_pattern.type_parameters.size())
 		throw std::runtime_error("invalid class template member owner shape");
 
 	ClassTemplateMemberPattern member;
@@ -697,14 +442,29 @@ bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,
 	std::vector<std::uint8_t> used(parameters.size(), 0);
 	for (std::size_t argument = 0; argument < owner_arguments.size(); ++argument)
 	{
+		if (!arena_->IsTag(owner_arguments[argument], "type-id"))
+			throw std::runtime_error(
+				"class template member owner argument is not a type");
 		std::size_t parameter = parameters.size();
-		for (std::size_t candidate = 0; candidate < parameters.size(); ++candidate)
-			if (parameters[candidate] != 0 && owner_arguments[argument] ==
-				program_->names.Get(parameters[candidate]))
-			{
-				parameter = candidate;
-				break;
-			}
+		const NodeId argument_specifiers = FindChild(
+			owner_arguments[argument], "type-specifier-seq");
+		const NodeId argument_name = argument_specifiers == kNoNode ? kNoNode :
+			FirstSemanticChild(argument_specifiers);
+		if (argument_name != kNoNode &&
+			arena_->IsTag(argument_name, "type-name") &&
+			FindChild(owner_arguments[argument], "abstract-declarator") == kNoNode)
+		{
+			const NameId argument_id = program_->names.UseInterned(
+				arena_->SemanticPayloadId(argument_name));
+			for (std::size_t candidate = 0;
+				candidate < parameters.size(); ++candidate)
+				if (parameters[candidate] != 0 &&
+					argument_id == parameters[candidate])
+				{
+					parameter = candidate;
+					break;
+				}
+		}
 		if (parameter != parameters.size())
 		{
 			if (used[parameter])
@@ -716,10 +476,7 @@ bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,
 			continue;
 		}
 		member.owner_fixed_arguments[argument] =
-			ResolveTemplateTypeArgument(scope, owner_arguments[argument]);
-		if (member.owner_fixed_arguments[argument] == kNoType)
-			throw std::runtime_error(
-				"unsupported class template member owner argument");
+			BuildTypeId(owner_arguments[argument], scope);
 	}
 	for (std::size_t i = 0; i < used.size(); ++i)
 		if (!used[i])
@@ -785,9 +542,18 @@ bool SemanticAnalyzer::RetainVariableTemplate(NodeId declaration,
 	if (owner == kNoScope)
 		throw std::runtime_error("variable template owner not found");
 	std::string terminal = program_->names.Get(path.Last());
-	const std::size_t angle = terminal.find('<');
-	const bool partial = angle != std::string::npos;
-	if (partial) terminal.erase(angle);
+	const NodeId structure = DeclaratorNameStructure(declarator);
+	NodeId terminal_component = kNoNode;
+	if (structure != kNoNode)
+		for (std::uint32_t edge = arena_->FirstEdge(structure);
+			edge != kNoEdge; edge = arena_->NextEdge(edge))
+		{
+			const NodeId child = arena_->EdgeChild(edge);
+			if (arena_->IsTag(child, "name-component"))
+				terminal_component = child;
+		}
+	const bool partial = terminal_component != kNoNode && FindChild(
+		terminal_component, "template-type-argument-list") != kNoNode;
 	if (terminal.empty())
 		throw std::runtime_error("invalid variable template name");
 	const NameId name = program_->names.Intern(terminal);
@@ -925,77 +691,22 @@ std::size_t SemanticAnalyzer::FindClassTemplate(ScopeId scope,
 	const std::string& spelling)
 {
 	const NamePath path = ParseNamePath(spelling);
+	return FindClassTemplate(scope, path);
+}
+
+std::size_t SemanticAnalyzer::FindClassTemplate(ScopeId scope,
+	const NamePath& path)
+{
 	if (path.Empty()) return NoTemplatePattern();
 	return FindClassTemplateIndex(
-		LookupSpelling(scope, spelling, LOOKUP_TYPE), path.Last());
+		LookupPath(scope, path, LOOKUP_TYPE), path.Last());
 }
 
 TypeId SemanticAnalyzer::ResolveStructuredTypeName(NodeId name,
 	ScopeId argument_scope)
 {
-	std::vector<NodeId> components;
-	for (std::uint32_t edge = arena_->FirstEdge(name); edge != kNoEdge;
-		edge = arena_->NextEdge(edge))
-	{
-		const NodeId child = arena_->EdgeChild(edge);
-		if (arena_->IsTag(child, "name-component"))
-			components.push_back(child);
-	}
-	if (components.empty()) return kNoType;
-
-	const bool global = FindChild(name, "global-qualifier") != kNoNode;
-	ScopeId carrier = global ? program_->GlobalScope() : kNoScope;
-	for (std::size_t i = 0; i < components.size(); ++i)
-	{
-		const NameId component = program_->names.UseInterned(
-			arena_->SemanticPayloadId(components[i]));
-		const NodeId argument_list = FindChild(
-			components[i], "template-type-argument-list");
-		const bool terminal = i + 1 == components.size();
-		const LookupKind kind = argument_list != kNoNode || terminal ?
-			LOOKUP_TYPE : LOOKUP_SCOPE_CARRIER;
-		LookupResult found;
-		if (carrier == kNoScope)
-			found = program_->LookupName(argument_scope, component, kind);
-		else
-		{
-			NamePath direct;
-			direct.Push(component);
-			found = program_->LookupQualified(carrier, direct, kind);
-		}
-
-		TypeId type = found.type;
-		if (argument_list != kNoNode)
-		{
-			const std::size_t pattern =
-				FindClassTemplateIndex(found, component);
-			if (pattern == NoTemplatePattern()) return kNoType;
-			std::vector<TypeId> arguments;
-			for (std::uint32_t edge = arena_->FirstEdge(argument_list);
-				edge != kNoEdge; edge = arena_->NextEdge(edge))
-			{
-				const NodeId argument = arena_->EdgeChild(edge);
-				if (!arena_->IsTag(argument, "type-id")) return kNoType;
-				const TypeId argument_type =
-					BuildTypeId(argument, argument_scope);
-				if (argument_type == kNoType) return kNoType;
-				arguments.push_back(argument_type);
-			}
-			const BindingId specialization =
-				InstantiateClassTemplate(pattern, arguments);
-			if (specialization == kNoBinding) return kNoType;
-			type = program_->bindings[specialization].type;
-		}
-		if (terminal) return type;
-		if (type != kNoType)
-		{
-			EnsureClassDefinition(type);
-			carrier = program_->ScopeForType(type);
-		}
-		else carrier = found.name_space;
-		if (carrier == kNoScope) return kNoType;
-	}
-	return kNoType;
+	return LookupStructuredName(
+		name, argument_scope, LOOKUP_TYPE).type;
 }
 
 ScopeId SemanticAnalyzer::BindClassTemplateArguments(
@@ -1027,7 +738,7 @@ void SemanticAnalyzer::ApplyClassTemplateMemberDefinitions(
 	{
 		const std::size_t definition_index =
 			class_template_member_definition_counts_[specialization]++;
-		const ClassTemplateMemberPattern definition =
+		const ClassTemplateMemberPattern& definition =
 			class_templates_[index].member_definitions[definition_index];
 		if (definition.owner_parameter_indices.size() != arguments.size() ||
 			definition.owner_fixed_arguments.size() != arguments.size())
@@ -1079,15 +790,6 @@ void SemanticAnalyzer::ApplyClassTemplateMemberDefinitions(
 		for (std::size_t part = 0;
 			part < definition.nested_owner_path.size(); ++part)
 		{
-			const std::string spelling =
-				program_->names.Get(definition.nested_owner_path[part]);
-			const TypeId specialization =
-				ResolveClassTemplateSpecialization(actual_owner, spelling);
-			if (specialization != kNoType)
-			{
-				actual_owner = program_->ScopeForType(specialization);
-				continue;
-			}
 			const LookupResult nested = program_->LookupDirect(actual_owner,
 				definition.nested_owner_path[part], LOOKUP_SCOPE_CARRIER);
 			actual_owner = nested.name_space != kNoScope ? nested.name_space :
@@ -1136,9 +838,10 @@ void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
 			static_cast<std::size_t>(binding) + 1, 0);
 	if (class_template_specialization_states_[binding] != 0) return;
 
-	// Completing a body may register nested templates, so retain a stable
-	// pattern snapshot across replay while identity remains index-owned.
-	const ClassTemplatePattern pattern = class_templates_[index];
+	// Pattern storage is stable across re-entrant publication of nested
+	// templates, so replay borrows the one published pattern rather than copying
+	// its growing specialization and member-definition sequences.
+	const ClassTemplatePattern& pattern = class_templates_[index];
 	if (arguments.size() != pattern.type_parameters.size())
 		throw std::logic_error("class template completion argument mismatch");
 	class_template_specialization_states_[binding] = 1;
@@ -1175,7 +878,7 @@ void SemanticAnalyzer::EnsureClassDefinition(TypeId type)
 		const std::size_t index = class_template_pattern_by_entity_[entity];
 		if (index >= class_templates_.size())
 			throw std::logic_error("invalid class specialization owner index");
-		const ClassTemplatePattern pattern = class_templates_[index];
+		const ClassTemplatePattern& pattern = class_templates_[index];
 		if (entity == pattern.marker_entity) return;
 		const EntityRecord& specialization = program_->entities[entity];
 		if (specialization.template_argument_begin == kNoBinding)
@@ -1262,6 +965,38 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 	ClassTemplatePattern& pattern = class_templates_[index];
 	if (supplied_arguments.size() > pattern.type_parameters.size())
 		return kNoBinding;
+	++template_specialization_requests_;
+	const TemplateSpecializationKey request_key(index, supplied_arguments);
+	BindingId old = class_template_instantiations_.Find(request_key);
+	if (old != kNoBinding)
+	{
+		++template_specialization_cache_hits_;
+		const EntityId entity = EntityOf(program_->bindings[old].type);
+		if (entity == kNoEntity)
+			throw std::logic_error("cached class specialization has no entity");
+		const EntityRecord& record = program_->entities[entity];
+		const std::size_t first = record.template_argument_begin;
+		const std::size_t count = pattern.type_parameters.size();
+		if (record.template_argument_count != count ||
+			first > program_->template_arguments.size() || count >
+				program_->template_arguments.size() - first)
+			throw std::logic_error(
+				"cached class specialization arguments are invalid");
+		const std::vector<TypeId> cached_arguments(
+			program_->template_arguments.begin() + first,
+			program_->template_arguments.begin() + first + count);
+		if (pattern.defined &&
+			(old >= class_template_specialization_states_.size() ||
+			 class_template_specialization_states_[old] == 0) &&
+			ClassTemplateArgumentsAreComplete(*program_, cached_arguments))
+			CompleteClassTemplateSpecialization(
+				index, old, cached_arguments);
+		if (old < class_template_specialization_states_.size() &&
+			class_template_specialization_states_[old] == 2)
+			ApplyClassTemplateMemberDefinitions(
+				index, old, cached_arguments);
+		return old;
+	}
 	std::vector<TypeId> arguments = supplied_arguments;
 	ScopeId argument_scope = kNoScope;
 	if (arguments.size() < pattern.type_parameters.size())
@@ -1282,12 +1017,13 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 				pattern.type_parameters[i], argument);
 	}
 
-	++template_specialization_requests_;
 	const TemplateSpecializationKey key(index, arguments);
-	const BindingId old = class_template_instantiations_.Find(key);
+	old = class_template_instantiations_.Find(key);
 	if (old != kNoBinding)
 	{
 		++template_specialization_cache_hits_;
+		if (arguments != supplied_arguments)
+			class_template_instantiations_.Insert(request_key, old);
 		if (pattern.defined &&
 			(old >= class_template_specialization_states_.size() ||
 			 class_template_specialization_states_[old] == 0) &&
@@ -1340,6 +1076,8 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 	}
 	const BindingId binding = program_->entities[entity].declaration;
 	class_template_instantiations_.Insert(key, binding);
+	if (arguments != supplied_arguments)
+		class_template_instantiations_.Insert(request_key, binding);
 	pattern.specialization_bindings.push_back(binding);
 	if (class_template_specialization_states_.size() <= binding)
 		class_template_specialization_states_.resize(
@@ -1354,13 +1092,16 @@ void SemanticAnalyzer::UpgradeClassTemplateSpecializations(std::size_t index)
 {
 	if (index >= class_templates_.size())
 		throw std::logic_error("invalid class template upgrade");
-	// Completing one shell can discover nested class templates and grow the
-	// pattern table, so keep a stable snapshot across the completion calls.
-	const ClassTemplatePattern pattern = class_templates_[index];
-	const std::size_t parameter_count = pattern.type_parameters.size();
-	for (std::size_t i = 0; i < pattern.specialization_bindings.size(); ++i)
+	// A forward-declaration upgrade is one bounded pass over the shells that
+	// existed when the definition arrived. Pattern ownership itself is stable;
+	// only the mutable shell sequence needs a work snapshot.
+	const std::size_t parameter_count =
+		class_templates_[index].type_parameters.size();
+	const std::vector<BindingId> specializations =
+		class_templates_[index].specialization_bindings;
+	for (std::size_t i = 0; i < specializations.size(); ++i)
 	{
-		const BindingId binding = pattern.specialization_bindings[i];
+		const BindingId binding = specializations[i];
 		if (binding < class_template_specialization_states_.size() &&
 			class_template_specialization_states_[binding] != 0)
 			continue;
@@ -1381,28 +1122,6 @@ void SemanticAnalyzer::UpgradeClassTemplateSpecializations(std::size_t index)
 	}
 }
 
-TypeId SemanticAnalyzer::ResolveClassTemplateSpecialization(ScopeId scope,
-	const std::string& spelling)
-{
-	return ResolveClassTemplateSpecialization(scope, scope, spelling);
-}
-
-TypeId SemanticAnalyzer::ResolveClassTemplateSpecialization(
-	ScopeId template_scope, ScopeId argument_scope,
-	const std::string& spelling)
-{
-	if (spelling.find('<') == std::string::npos) return kNoType;
-	std::string base;
-	std::vector<TypeId> arguments;
-	if (!ParseExplicitTemplateArguments(argument_scope, spelling,
-		&base, &arguments))
-		return kNoType;
-	const std::size_t pattern = FindClassTemplate(template_scope, base);
-	if (pattern == NoTemplatePattern()) return kNoType;
-	const BindingId binding = InstantiateClassTemplate(pattern, arguments);
-	return binding == kNoBinding ? kNoType : program_->bindings[binding].type;
-}
-
 void SemanticAnalyzer::AnalyzeExplicitInstantiation(NodeId node,
 	ScopeId scope, bool definition)
 {
@@ -1412,10 +1131,9 @@ void SemanticAnalyzer::AnalyzeExplicitInstantiation(NodeId node,
 		 !arena_->IsTag(target, "class-specifier")))
 		throw std::runtime_error(
 			"PA19 explicit instantiation requires a class template-id");
-	std::string base;
+	NamePath base;
 	std::vector<TypeId> arguments;
-	if (!ParseExplicitTemplateArguments(scope, arena_->Payload(target),
-		&base, &arguments))
+	if (!ParseExplicitTemplateArguments(target, scope, &base, &arguments))
 		throw std::runtime_error(
 			"explicit class instantiation requires a simple-template-id");
 	const std::size_t pattern_index = FindClassTemplate(scope, base);
@@ -1426,7 +1144,7 @@ void SemanticAnalyzer::AnalyzeExplicitInstantiation(NodeId node,
 	if (scope_kind != SCOPE_NAMESPACE)
 		throw std::runtime_error(
 			"explicit class instantiation must appear at namespace scope");
-	const NamePath target_path = ParseNamePath(base);
+	const NamePath& target_path = base;
 	if (!target_path.global && target_path.Size() == 1)
 	{
 		ScopeId permitted = pattern.owner;

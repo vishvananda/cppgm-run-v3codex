@@ -250,11 +250,14 @@ bool SemanticAnalyzer::AnalyzeBuiltinCall(const std::string& spelling,
 }
 
 TypeId SemanticAnalyzer::ResolveFunctionalCastType(ScopeId scope,
-	const std::string& spelling)
+	const std::string& spelling, NodeId syntax)
 {
-	const TypeId specialization =
-		ResolveClassTemplateSpecialization(scope, spelling);
+	const NodeId structure = syntax == kNoNode ? kNoNode :
+		FindChild(syntax, "structured-type-name");
+	const TypeId specialization = structure == kNoNode ? kNoType :
+		ResolveStructuredTypeName(structure, scope);
 	if (specialization != kNoType) return specialization;
+	if (structure != kNoNode) return kNoType;
 	const LookupResult named = LookupSpelling(scope, spelling, LOOKUP_TYPE);
 	if (named.type != kNoType) return named.type;
 	if (spelling.size() > 10 && spelling.compare(0, 9, "decltype(") == 0 &&
@@ -313,7 +316,10 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 		throw std::runtime_error("member call on non-class object");
 	const NodeId identifier = arena_->EdgeChild(name_edge);
 	const std::string member_spelling = arena_->Payload(identifier);
-	const NamePath member_path = ParseNamePath(member_spelling);
+	const NodeId member_structure = FindChild(
+		identifier, "structured-type-name");
+	const NamePath member_path = member_structure == kNoNode ?
+		ParseNamePath(member_spelling) : StructuredNamePath(member_structure);
 	const NameId name = member_path.Last();
 	const bool explicitly_qualified =
 		member_path.global || member_path.Size() > 1;
@@ -459,18 +465,19 @@ bool SemanticAnalyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 }
 
 std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
-	const std::string& spelling, EntityId* naming_class)
+	const std::string& spelling, EntityId* naming_class, NodeId syntax)
 {
 	if (naming_class) *naming_class = kNoEntity;
 	std::string lookup_name = spelling;
-	std::string explicit_base;
+	NamePath structured_base;
 	std::vector<TypeId> explicit_arguments;
-	if (ParseExplicitTemplateArguments(scope, spelling, &explicit_base,
-		&explicit_arguments))
+	const bool structured_explicit = ParseExplicitTemplateArguments(
+		syntax, scope, &structured_base, &explicit_arguments);
+	if (structured_explicit)
 	{
 		std::vector<BindingId> explicit_candidates;
 		const std::vector<std::size_t> patterns =
-			FindFunctionTemplates(scope, explicit_base);
+			FindFunctionTemplates(scope, structured_base);
 		for (std::size_t i = 0; i < patterns.size(); ++i)
 		{
 			const FunctionTemplatePattern& pattern =
@@ -517,7 +524,9 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 		}
 		return explicit_candidates;
 	}
-	const LookupResult found =
+	const LookupResult found = syntax != kNoNode &&
+		FindChild(syntax, "structured-type-name") != kNoNode ?
+		LookupStructuredName(syntax, scope, LOOKUP_ORDINARY) :
 		LookupSpelling(scope, lookup_name, LOOKUP_ORDINARY);
 	if (naming_class) *naming_class = found.naming_class;
 	if (found.ordinary == kNoBinding) return std::vector<BindingId>();
@@ -536,10 +545,11 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 }
 
 std::vector<BindingId> SemanticAnalyzer::FunctionCallCandidates(
-	ScopeId scope, const std::string& spelling, EntityId* naming_class)
+	ScopeId scope, const std::string& spelling, EntityId* naming_class,
+	NodeId syntax)
 {
 	std::vector<BindingId> result =
-		FunctionCandidates(scope, spelling, naming_class);
+		FunctionCandidates(scope, spelling, naming_class, syntax);
 	result.erase(std::remove_if(result.begin(), result.end(),
 		[this](BindingId candidate) {
 			return GetFunction(candidate).constructor;
@@ -579,7 +589,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	if (entity == kNoEntity || program_->entities[entity].member_scope == kNoScope)
 		throw std::runtime_error("member access on non-class object");
 	const NodeId identifier = arena_->EdgeChild(second);
-	const NameId name = ParseNamePath(arena_->Payload(identifier)).Last();
+	const NodeId member_structure = FindChild(
+		identifier, "structured-type-name");
+	const NameId name = member_structure == kNoNode ?
+		ParseNamePath(arena_->Payload(identifier)).Last() :
+		StructuredNamePath(member_structure).Last();
 	const LookupResult found = program_->LookupMember(
 		entity, name, LOOKUP_ORDINARY);
 	if (found.ordinary == kNoBinding)

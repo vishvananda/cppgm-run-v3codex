@@ -12,18 +12,18 @@ namespace pa12_semantic_detail
 
 bool SemanticAnalyzer::FunctionalCastPrecedesFunctions(
 	const std::string& spelling, ScopeId scope, TypeId cast_type,
-	const std::vector<BindingId>& candidates)
+	NodeId syntax, const std::vector<BindingId>& candidates)
 {
 	if (cast_type == kNoType) return false;
 	if (candidates.empty()) return true;
 	for (std::size_t i = 0; i < candidates.size(); ++i)
 		if (GetFunction(candidates[i]).member_owner != kNoType)
 			return false;
-	std::string type_spelling = spelling;
-	const std::size_t angle = type_spelling.find('<');
-	if (angle != std::string::npos) type_spelling.erase(angle);
-	const LookupResult type_lookup =
-		LookupSpelling(scope, type_spelling, LOOKUP_TYPE);
+	const NodeId structure = syntax == kNoNode ? kNoNode :
+		FindChild(syntax, "structured-type-name");
+	const LookupResult type_lookup = structure != kNoNode ?
+		LookupStructuredName(syntax, scope, LOOKUP_TYPE) :
+		LookupSpelling(scope, spelling, LOOKUP_TYPE);
 	ScopeId type_owner = kNoScope;
 	if (type_lookup.type_declaration != kNoBinding)
 		type_owner = program_->bindings[type_lookup.type_declaration].owner;
@@ -55,18 +55,28 @@ bool SemanticAnalyzer::FunctionalCastPrecedesFunctions(
 }
 
 bool SemanticAnalyzer::AnalyzeRetainedNamedCall(
-	const std::string& spelling, ScopeId scope,
+	NodeId name_syntax, const std::string& spelling, ScopeId scope,
 	const std::vector<NodeId>& argument_syntax,
 	const std::vector<ExpressionInfo>& arguments, TypeId target,
 	ExpressionInfo* result)
 {
 	EntityId naming_class = kNoEntity;
 	std::vector<BindingId> candidates =
-		FunctionCallCandidates(scope, spelling, &naming_class);
-	if (!FindFunctionTemplates(scope, spelling).empty())
+		FunctionCallCandidates(scope, spelling, &naming_class, name_syntax);
+	NamePath structured_base;
+	std::vector<TypeId> explicit_arguments;
+	const bool structured_explicit = ParseExplicitTemplateArguments(
+		name_syntax, scope, &structured_base, &explicit_arguments);
+	if (!structured_explicit)
+		structured_base = StructuredNamePath(name_syntax);
+	const bool has_templates = !structured_base.Empty() ?
+		!FindFunctionTemplates(scope, structured_base).empty() :
+		!FindFunctionTemplates(scope, spelling).empty();
+	if (has_templates)
 	{
-		DeduceFunctionTemplates(scope, spelling, arguments);
-		candidates = FunctionCallCandidates(scope, spelling, &naming_class);
+		DeduceFunctionTemplates(scope, spelling, arguments, name_syntax);
+		candidates = FunctionCallCandidates(
+			scope, spelling, &naming_class, name_syntax);
 	}
 	if (candidates.empty()) return false;
 	bool has_member_candidate = false;
@@ -135,15 +145,18 @@ bool SemanticAnalyzer::AnalyzeAmbiguousCallStatement(
 		FindChild(argument_declarator, "parameter-clause") != kNoNode ||
 		FindChild(argument_declarator, "array-suffix") != kNoNode)
 		return false;
-	if (FunctionCallCandidates(scope, spelling).empty() &&
-		FindFunctionTemplates(scope, spelling).empty())
+	const NamePath structured = StructuredNamePath(specifier_node);
+	if (FunctionCallCandidates(scope, spelling, 0, specifier_node).empty() &&
+		(structured.Empty() ? FindFunctionTemplates(scope, spelling) :
+		 FindFunctionTemplates(scope, structured)).empty())
 		return false;
 	const std::string argument_spelling = PayloadSource(argument_name);
 	std::vector<NodeId> argument_syntax(1, argument_name);
 	std::vector<ExpressionInfo> arguments(1,
-		AnalyzeNamedValue(argument_spelling, scope));
+		AnalyzeNamedValue(argument_spelling, scope, kNoType, argument_name));
 	ExpressionInfo call;
-	if (!AnalyzeRetainedNamedCall(spelling, scope, argument_syntax,
+	if (!AnalyzeRetainedNamedCall(specifier_node, spelling, scope,
+		argument_syntax,
 		arguments, kNoType, &call))
 		return false;
 	call = MaterializeDiscardedClassResult(call);
@@ -184,10 +197,12 @@ bool SemanticAnalyzer::AnalyzeAmbiguousDirectInitializer(
 		arena_->FirstEdge(call_specifiers);
 	if (call_edge == kNoEdge || arena_->NextEdge(call_edge) != kNoEdge)
 		return false;
-	const std::string call_spelling =
-		PayloadSource(arena_->EdgeChild(call_edge));
-	if (FunctionCallCandidates(scope, call_spelling).empty() &&
-		FindFunctionTemplates(scope, call_spelling).empty())
+	const NodeId call_name = arena_->EdgeChild(call_edge);
+	const std::string call_spelling = PayloadSource(call_name);
+	const NamePath structured = StructuredNamePath(call_name);
+	if (FunctionCallCandidates(scope, call_spelling, 0, call_name).empty() &&
+		(structured.Empty() ? FindFunctionTemplates(scope, call_spelling) :
+		 FindFunctionTemplates(scope, structured)).empty())
 		return false;
 	const NodeId call_declarator = FindChild(provisional, "declarator");
 	const NodeId call_clause = call_declarator == kNoNode ? kNoNode :
@@ -212,9 +227,10 @@ bool SemanticAnalyzer::AnalyzeAmbiguousDirectInitializer(
 		program_->names.Get(variable_name), true);
 	std::vector<NodeId> argument_syntax(1, argument_name);
 	std::vector<ExpressionInfo> arguments(1,
-		AnalyzeNamedValue(argument_spelling, scope));
+		AnalyzeNamedValue(argument_spelling, scope, kNoType, argument_name));
 	ExpressionInfo call;
-	if (!AnalyzeRetainedNamedCall(call_spelling, scope, argument_syntax,
+	if (!AnalyzeRetainedNamedCall(call_name, call_spelling, scope,
+		argument_syntax,
 		arguments, kNoType, &call))
 		return false;
 	const LookupResult occupied =

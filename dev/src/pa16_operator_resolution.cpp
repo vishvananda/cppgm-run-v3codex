@@ -1272,10 +1272,12 @@ BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
 					if (program_->types.Get(desired).kind == TYPE_POINTER)
 						desired = program_->types.Get(desired).child;
 					std::vector<BindingId> functions = FunctionCandidates(
-						scope, arena_->Payload(operand_syntax[a]));
+						scope, arena_->Payload(operand_syntax[a]), 0,
+						operand_syntax[a]);
 					const std::vector<BindingId> template_functions =
 						FunctionTemplateTargetCandidates(scope,
-							arena_->Payload(operand_syntax[a]), desired);
+							arena_->Payload(operand_syntax[a]), desired,
+							operand_syntax[a]);
 					for (std::size_t f = 0; f < template_functions.size(); ++f)
 						if (std::find(functions.begin(), functions.end(),
 							template_functions[f]) == functions.end())

@@ -1,6 +1,5 @@
 #include "pa12_semantic_detail.h"
 
-#include <cctype>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -78,7 +77,7 @@ private:
 	bool IsQualifiedMemberDefinition(NodeId node) const;
 	bool IsTypedef(NodeId specifiers) const;
 	bool HasBaseClass(NodeId node) const;
-	bool SpellingUsesTemplateParameter(const std::string& spelling) const;
+	bool SyntaxUsesTemplateParameter(NodeId node) const;
 	void Visit(NodeId node, std::size_t scope, bool unknown_callee = false);
 	void VisitChildren(NodeId node, std::size_t scope);
 	void VisitClass(NodeId node, std::size_t scope);
@@ -245,28 +244,27 @@ bool RetainedTemplateValidator::HasBaseClass(NodeId node) const
 	return clause != kNoNode;
 }
 
-bool RetainedTemplateValidator::SpellingUsesTemplateParameter(
-	const std::string& spelling) const
+bool RetainedTemplateValidator::SyntaxUsesTemplateParameter(NodeId node) const
 {
-	for (std::size_t parameter = 0; parameter < parameters_.size(); ++parameter)
+	if (node == kNoNode) return false;
+	const bool structured = analyzer_.FindChild(
+		node, "structured-type-name") != kNoNode;
+	if (analyzer_.arena_->IsTag(node, "name-component") ||
+		(!structured &&
+		 (analyzer_.arena_->IsTag(node, "base-name") ||
+		  analyzer_.arena_->IsTag(node, "id-expression") ||
+		  analyzer_.arena_->IsTag(node, "target") ||
+		  analyzer_.arena_->IsTag(node, "type-name") ||
+		  analyzer_.arena_->IsTag(node, "decl-specifier"))))
 	{
-		if (parameters_[parameter] == 0) continue;
-		const std::string name =
-			analyzer_.program_->names.Get(parameters_[parameter]);
-		std::size_t found = spelling.find(name);
-		while (found != std::string::npos)
-		{
-			const bool left = found == 0 ||
-				(!std::isalnum(static_cast<unsigned char>(spelling[found - 1])) &&
-				 spelling[found - 1] != '_');
-			const std::size_t after = found + name.size();
-			const bool right = after == spelling.size() ||
-				(!std::isalnum(static_cast<unsigned char>(spelling[after])) &&
-				 spelling[after] != '_');
-			if (left && right) return true;
-			found = spelling.find(name, found + 1);
-		}
+		const NameId name = analyzer_.program_->names.UseInterned(
+			analyzer_.arena_->SemanticPayloadId(node));
+		if (parameter_names_.find(name) != parameter_names_.end()) return true;
 	}
+	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
+		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+		if (SyntaxUsesTemplateParameter(analyzer_.arena_->EdgeChild(edge)))
+			return true;
 	return false;
 }
 
@@ -441,8 +439,7 @@ void RetainedTemplateValidator::VisitClass(NodeId node, std::size_t scope)
 			const NodeId base = analyzer_.arena_->EdgeChild(edge);
 			if (!analyzer_.arena_->IsTag(base, "base-specifier")) continue;
 			const NodeId name = analyzer_.FindChild(base, "base-name");
-			if (name != kNoNode && SpellingUsesTemplateParameter(
-				analyzer_.PayloadSource(name)))
+			if (name != kNoNode && SyntaxUsesTemplateParameter(name))
 				dependent_base = true;
 		}
 	const std::size_t class_scope = AddChildScope(
@@ -523,11 +520,15 @@ void RetainedTemplateValidator::VisitUsing(NodeId node, std::size_t scope)
 			scopes_[scope].semantic_scope, target_scope);
 		return;
 	}
-	const NamePath path = analyzer_.ParseNamePath(target);
+	const NodeId structure = analyzer_.FindChild(
+		target_node, "structured-type-name");
+	const NamePath path = structure == kNoNode ?
+		analyzer_.ParseNamePath(target) :
+		analyzer_.StructuredNamePath(structure);
 	const NameId name = path.Last();
 	if (parameter_names_.find(name) != parameter_names_.end())
 		throw std::runtime_error("using declaration redeclares template parameter");
-	if (SpellingUsesTemplateParameter(target))
+	if (SyntaxUsesTemplateParameter(target_node))
 	{
 		Declare(scope, name, RETAINED_TYPE_NAME, true);
 		Declare(scope, name, RETAINED_VALUE_NAME, true);
@@ -543,10 +544,12 @@ void RetainedTemplateValidator::VisitUsing(NodeId node, std::size_t scope)
 	EntityId naming_class = kNoEntity;
 	const std::vector<BindingId> functions =
 		analyzer_.FunctionCallCandidates(
-			scopes_[scope].semantic_scope, target, &naming_class);
+			scopes_[scope].semantic_scope, target, &naming_class, target_node);
 	const std::vector<std::size_t> templates =
+		structure == kNoNode ? analyzer_.FindFunctionTemplates(
+			scopes_[scope].semantic_scope, target) :
 		analyzer_.FindFunctionTemplates(
-			scopes_[scope].semantic_scope, target);
+			scopes_[scope].semantic_scope, path);
 	if (!functions.empty() || !templates.empty())
 	{
 		Declare(scope, name, RETAINED_VALUE_NAME, true);
@@ -555,14 +558,20 @@ void RetainedTemplateValidator::VisitUsing(NodeId node, std::size_t scope)
 		scopes_[scope].call_naming_classes[name] = naming_class;
 		return;
 	}
-	const LookupResult ordinary = analyzer_.LookupPath(
-		scopes_[scope].semantic_scope, path, LOOKUP_ORDINARY);
+	const LookupResult ordinary = structure != kNoNode ?
+		analyzer_.LookupStructuredName(target_node,
+			scopes_[scope].semantic_scope, LOOKUP_ORDINARY) :
+		analyzer_.LookupPath(
+			scopes_[scope].semantic_scope, path, LOOKUP_ORDINARY);
 	if (ordinary.ordinary != kNoBinding)
 		Declare(scope, name, RETAINED_VALUE_NAME, true);
 	else
 	{
-		const LookupResult type = analyzer_.LookupPath(
-			scopes_[scope].semantic_scope, path, LOOKUP_TYPE);
+		const LookupResult type = structure != kNoNode ?
+			analyzer_.LookupStructuredName(target_node,
+				scopes_[scope].semantic_scope, LOOKUP_TYPE) :
+			analyzer_.LookupPath(
+				scopes_[scope].semantic_scope, path, LOOKUP_TYPE);
 		if (type.type == kNoType)
 			throw std::runtime_error("retained using declaration target not found");
 		Declare(scope, name, RETAINED_TYPE_NAME);
@@ -573,16 +582,23 @@ void RetainedTemplateValidator::VisitIdExpression(NodeId node,
 	std::size_t scope, bool unknown_callee)
 {
 	const std::string spelling = analyzer_.PayloadSource(node);
-	const NamePath path = analyzer_.ParseNamePath(spelling);
+	const NodeId structure = analyzer_.FindChild(
+		node, "structured-type-name");
+	const NamePath path = structure == kNoNode ?
+		analyzer_.ParseNamePath(spelling) :
+		analyzer_.StructuredNamePath(structure);
 	if (path.Empty()) return;
 	if (path.global || path.Size() > 1)
 	{
-		if (SpellingUsesTemplateParameter(spelling)) return;
+		if (SyntaxUsesTemplateParameter(node)) return;
 		if (!path.global &&
 			(LookupLocal(scope, path[0]) & RETAINED_TYPE_NAME) != 0)
 			return;
-		const LookupResult ordinary = analyzer_.LookupSpelling(
-			scopes_[scope].semantic_scope, spelling, LOOKUP_ORDINARY);
+		const LookupResult ordinary = structure != kNoNode ?
+			analyzer_.LookupStructuredName(node,
+				scopes_[scope].semantic_scope, LOOKUP_ORDINARY) :
+			analyzer_.LookupSpelling(
+				scopes_[scope].semantic_scope, spelling, LOOKUP_ORDINARY);
 		if (ordinary.ordinary != kNoBinding)
 		{
 			if (unknown_callee &&
@@ -592,15 +608,23 @@ void RetainedTemplateValidator::VisitIdExpression(NodeId node,
 					scopes_[scope].semantic_scope, spelling, false);
 			return;
 		}
-		const LookupResult type = analyzer_.LookupSpelling(
-			scopes_[scope].semantic_scope, spelling, LOOKUP_TYPE);
+		const LookupResult type = structure != kNoNode ?
+			analyzer_.LookupStructuredName(node,
+				scopes_[scope].semantic_scope, LOOKUP_TYPE) :
+			analyzer_.LookupSpelling(
+				scopes_[scope].semantic_scope, spelling, LOOKUP_TYPE);
 		if (type.type != kNoType)
 		{
 			if (unknown_callee) return;
 			throw std::runtime_error("type name used as retained value");
 		}
-		if (unknown_callee && !analyzer_.FindFunctionTemplates(
-			scopes_[scope].semantic_scope, spelling).empty())
+		const std::vector<std::size_t> templates = structure != kNoNode ?
+			analyzer_.FindFunctionTemplates(
+				scopes_[scope].semantic_scope,
+				analyzer_.StructuredNamePath(node)) :
+			analyzer_.FindFunctionTemplates(
+				scopes_[scope].semantic_scope, spelling);
+		if (unknown_callee && !templates.empty())
 			analyzer_.RecordRetainedCallLookup(node,
 				scopes_[scope].semantic_scope, spelling, false);
 		return;
@@ -664,8 +688,12 @@ void RetainedTemplateValidator::VisitSizeof(NodeId node, std::size_t scope)
 	if (analyzer_.arena_->IsTag(operand, "id-expression"))
 	{
 		const std::string spelling = analyzer_.PayloadSource(operand);
-		const NamePath path = analyzer_.ParseNamePath(spelling);
-		if (SpellingUsesTemplateParameter(spelling)) return;
+		const NodeId structure = analyzer_.FindChild(
+			operand, "structured-type-name");
+		const NamePath path = structure == kNoNode ?
+			analyzer_.ParseNamePath(spelling) :
+			analyzer_.StructuredNamePath(structure);
+		if (SyntaxUsesTemplateParameter(operand)) return;
 		if (!path.Empty() && !path.global && path.Size() == 1)
 		{
 			const std::uint8_t local = LookupLocal(scope, path.Last());
@@ -676,12 +704,18 @@ void RetainedTemplateValidator::VisitSizeof(NodeId node, std::size_t scope)
 			}
 			if ((local & RETAINED_TYPE_NAME) != 0) return;
 		}
-		const LookupResult ordinary = analyzer_.LookupSpelling(
-			scopes_[scope].semantic_scope, spelling, LOOKUP_ORDINARY);
+		const LookupResult ordinary = structure != kNoNode ?
+			analyzer_.LookupStructuredName(operand,
+				scopes_[scope].semantic_scope, LOOKUP_ORDINARY) :
+			analyzer_.LookupSpelling(
+				scopes_[scope].semantic_scope, spelling, LOOKUP_ORDINARY);
 		if (ordinary.ordinary == kNoBinding)
 		{
-			const LookupResult type = analyzer_.LookupSpelling(
-				scopes_[scope].semantic_scope, spelling, LOOKUP_TYPE);
+			const LookupResult type = structure != kNoNode ?
+				analyzer_.LookupStructuredName(operand,
+					scopes_[scope].semantic_scope, LOOKUP_TYPE) :
+				analyzer_.LookupSpelling(
+					scopes_[scope].semantic_scope, spelling, LOOKUP_TYPE);
 			if (type.type != kNoType) return;
 		}
 	}
@@ -779,9 +813,18 @@ void RetainedTemplateValidator::ValidateSpecialMemberExceptionSpecification()
 	if (declarator == kNoNode) return;
 	const NamePath path = analyzer_.DeclaratorNamePath(declarator);
 	if (!path.global && path.Size() <= 1) return;
-	std::string owner = analyzer_.program_->names.Get(path[0]);
-	const std::size_t angle = owner.find('<');
-	if (angle != std::string::npos) owner.erase(angle);
+	NamePath owner;
+	const NodeId structure = analyzer_.DeclaratorNameStructure(declarator);
+	if (structure != kNoNode)
+	{
+		owner = analyzer_.StructuredNamePath(structure);
+		if (!owner.Empty()) owner.Pop();
+	}
+	else
+	{
+		owner = path;
+		owner.Pop();
+	}
 	const std::size_t index = analyzer_.FindClassTemplate(lexical_scope_, owner);
 	if (index >= analyzer_.class_templates_.size()) return;
 	const ClassTemplatePattern& pattern = analyzer_.class_templates_[index];
@@ -869,11 +912,23 @@ void SemanticAnalyzer::RecordRetainedCallLookup(NodeId callee, ScopeId scope,
 {
 	EntityId naming_class = kNoEntity;
 	std::vector<BindingId> functions;
-	const bool explicit_template_id = spelling.find('<') != std::string::npos &&
-		!spelling.empty() && spelling[spelling.size() - 1] == '>';
+	const NodeId structure = FindChild(callee, "structured-type-name");
+	NodeId terminal_component = kNoNode;
+	if (structure != kNoNode)
+		for (std::uint32_t edge = arena_->FirstEdge(structure);
+			edge != kNoEdge; edge = arena_->NextEdge(edge))
+		{
+			const NodeId child = arena_->EdgeChild(edge);
+			if (arena_->IsTag(child, "name-component"))
+				terminal_component = child;
+		}
+	const bool explicit_template_id = terminal_component != kNoNode &&
+		FindChild(terminal_component, "template-type-argument-list") != kNoNode;
 	if (!explicit_template_id)
-		functions = FunctionCallCandidates(scope, spelling, &naming_class);
-	const std::vector<std::size_t> templates =
+		functions = FunctionCallCandidates(
+			scope, spelling, &naming_class, callee);
+	const std::vector<std::size_t> templates = structure != kNoNode ?
+		FindFunctionTemplates(scope, StructuredNamePath(callee)) :
 		FindFunctionTemplates(scope, spelling);
 	PublishRetainedCallLookup(callee, functions, templates, naming_class,
 		adl_eligible);
@@ -887,7 +942,8 @@ std::vector<BindingId> SemanticAnalyzer::RetainedFunctionCallCandidates(
 		(retained_call_lookup_states_[callee] &
 			RETAINED_CALL_LOOKUP_PUBLISHED) != 0;
 	if (!*retained_lookup)
-		return FunctionCallCandidates(scope, spelling, naming_class);
+		return FunctionCallCandidates(
+			scope, spelling, naming_class, callee);
 	*naming_class = retained_call_naming_classes_[callee];
 	std::vector<BindingId> result;
 	const CompactIndexSequence* retained_functions =
@@ -908,19 +964,24 @@ void SemanticAnalyzer::CompleteFunctionCallTemplateCandidates(NodeId callee,
 {
 	if (!retained_lookup)
 	{
-		if (FindFunctionTemplates(scope, spelling).empty()) return;
-		DeduceFunctionTemplates(scope, spelling, arguments);
-		*candidates = FunctionCallCandidates(scope, spelling, naming_class);
+		const NamePath structured = StructuredNamePath(callee);
+		const std::vector<std::size_t> patterns = structured.Empty() ?
+			FindFunctionTemplates(scope, spelling) :
+			FindFunctionTemplates(scope, structured);
+		if (patterns.empty()) return;
+		DeduceFunctionTemplates(scope, spelling, arguments, callee);
+		*candidates = FunctionCallCandidates(
+			scope, spelling, naming_class, callee);
 		return;
 	}
 	const CompactIndexSequence* retained_templates =
 		retained_call_template_sets_.Find(callee);
 	if (!retained_templates || retained_templates->Size() == 0) return;
 	const std::vector<std::size_t> patterns = retained_templates->Copy();
-	std::string base;
+	NamePath base;
 	std::vector<TypeId> explicit_arguments;
-	const bool explicit_id = ParseExplicitTemplateArguments(scope, spelling,
-		&base, &explicit_arguments);
+	const bool explicit_id = ParseExplicitTemplateArguments(
+		callee, scope, &base, &explicit_arguments);
 	std::vector<BindingId> specializations;
 	DeduceFunctionTemplatePatterns(patterns, arguments, &specializations,
 		explicit_id ? &explicit_arguments : 0);

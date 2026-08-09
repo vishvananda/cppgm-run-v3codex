@@ -483,7 +483,12 @@ bool SemanticAnalyzer::AnalyzeParenthesizedFunctionTemplateCast(
 		operand == kNoNode || !arena_->IsTag(operand, "parenthesized-expression"))
 		return false;
 	const std::string spelling = PayloadSource(name);
-	if (FindFunctionTemplates(scope, spelling).empty()) return false;
+	NamePath structured_base;
+	std::vector<TypeId> explicit_arguments;
+	const bool explicit_id = ParseExplicitTemplateArguments(
+		name, scope, &structured_base, &explicit_arguments);
+	if ((explicit_id ? FindFunctionTemplates(scope, structured_base) :
+		FindFunctionTemplates(scope, spelling)).empty()) return false;
 	const NodeId argument_root = FirstSemanticChild(operand);
 	std::vector<NodeId> argument_syntax;
 	if (argument_root != kNoNode)
@@ -492,9 +497,9 @@ bool SemanticAnalyzer::AnalyzeParenthesizedFunctionTemplateCast(
 	arguments.reserve(argument_syntax.size());
 	for (std::size_t i = 0; i < argument_syntax.size(); ++i)
 		arguments.push_back(AnalyzeExpression(argument_syntax[i], scope));
-	DeduceFunctionTemplates(scope, spelling, arguments);
+	DeduceFunctionTemplates(scope, spelling, arguments, name);
 	const std::vector<BindingId> candidates =
-		FunctionCallCandidates(scope, spelling);
+		FunctionCallCandidates(scope, spelling, 0, name);
 	if (candidates.empty())
 		throw std::runtime_error(
 			"parenthesized function template has no specialization");
@@ -517,7 +522,9 @@ bool SemanticAnalyzer::AnalyzeParenthesizedValueBinaryCast(
 	const std::string operation = PayloadSource(operand);
 	if (operation != "+" && operation != "-") return false;
 	const std::string spelling = PayloadSource(name);
-	const LookupResult found = LookupSpelling(scope, spelling, LOOKUP_ORDINARY);
+	const LookupResult found = FindChild(name, "structured-type-name") != kNoNode ?
+		LookupStructuredName(name, scope, LOOKUP_ORDINARY) :
+		LookupSpelling(scope, spelling, LOOKUP_ORDINARY);
 	if (found.ordinary == kNoBinding) return false;
 	const BindingKind kind = program_->bindings[found.ordinary].kind;
 	if (kind != BIND_VARIABLE && kind != BIND_PARAMETER &&
@@ -525,7 +532,7 @@ bool SemanticAnalyzer::AnalyzeParenthesizedValueBinaryCast(
 		return false;
 	const NodeId right_syntax = FirstSemanticChild(operand);
 	if (right_syntax == kNoNode) return false;
-	ExpressionInfo left = AnalyzeNamedValue(spelling, scope);
+	ExpressionInfo left = AnalyzeNamedValue(spelling, scope, kNoType, name);
 	if (left.constant && left.category == VALUE_LVALUE &&
 		IsIntegral(left.type, true))
 	{

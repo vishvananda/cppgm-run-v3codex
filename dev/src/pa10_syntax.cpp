@@ -1,4 +1,5 @@
 #include "pa10_syntax.h"
+#include "pa10_syntax_driver_detail.h"
 #include "pa10_syntax_model.h"
 #include "pa10_parser_name_facts.h"
 #include "pa10_parser_token_classification.h"
@@ -233,6 +234,13 @@ private:
 		arena_.SetSemanticPayload(node, tokens_[position].spelling);
 		return node;
 	}
+	NodeId MakeStructuredNode(const char* tag, const std::string& spelling,
+		NodeId structure)
+	{
+		const NodeId node = arena_.Make(tag, spelling);
+		if (structure != kNoNode) arena_.Add(node, structure);
+		return node;
+	}
 	std::string JoinSpellings(std::size_t first, std::size_t last) const
 	{
 		std::string result;
@@ -405,8 +413,10 @@ private:
 		bool retained_arguments = false;
 		if (structure) *structure = kNoNode;
 		if (terminal_identifier) *terminal_identifier = 0;
+		bool operator_component = false;
 		if (At(KW_OPERATOR) && allow_operator)
 		{
+			operator_component = true;
 			++position_;
 			if (AtLiteral())
 			{
@@ -429,7 +439,7 @@ private:
 		}
 		else
 		{
-			Match(OP_COMPL);
+			const bool destructor = Match(OP_COMPL);
 			if (!AtIdentifier())
 			{
 				Rollback(mark);
@@ -439,7 +449,8 @@ private:
 			if (terminal_identifier) *terminal_identifier = identifier;
 			if (structure)
 			{
-				component_names.push_back(identifier);
+				component_names.push_back(destructor ? strings_.Intern(
+					"~" + strings_.Get(identifier)) : identifier);
 				component_arguments.push_back(kNoNode);
 			}
 		}
@@ -457,9 +468,10 @@ private:
 			while (Match(OP_COLON2))
 			{
 				Match(KW_TEMPLATE);
-				Match(OP_COMPL);
+				const bool destructor = Match(OP_COMPL);
 				if (At(KW_OPERATOR) && allow_operator)
 				{
+					operator_component = true;
 					++position_;
 					if (!ParseOperatorFunctionSuffix() &&
 						!ParseConversionTypeName())
@@ -474,7 +486,8 @@ private:
 					if (terminal_identifier) *terminal_identifier = identifier;
 					if (structure)
 					{
-						component_names.push_back(identifier);
+						component_names.push_back(destructor ? strings_.Intern(
+							"~" + strings_.Get(identifier)) : identifier);
 						component_arguments.push_back(kNoNode);
 					}
 				}
@@ -507,7 +520,17 @@ private:
 				 (*text)[after] == '_'))
 				text->insert(after, " ");
 		}
-		if (structure && retained_arguments)
+		if (structure && operator_component)
+		{
+			const std::size_t operation = text->rfind("::operator");
+			const std::string terminal = operation == std::string::npos ? *text : text->substr(operation + 2);
+			std::string canonical;
+			for (std::size_t i = 0; i < terminal.size(); ++i)
+				if (!std::isspace(static_cast<unsigned char>(terminal[i]))) canonical += terminal[i];
+			component_names.push_back(strings_.Intern(canonical)); component_arguments.push_back(kNoNode);
+		}
+		if (structure && (retained_arguments || global ||
+			component_names.size() > 1))
 		{
 			const NodeId name = arena_.Make("structured-type-name");
 			arena_.AddFlags(name, SYNTAX_FLAG_SEMANTIC_ONLY);
@@ -536,6 +559,8 @@ private:
 			return QualifiedStartsType();
 		if (!AtIdentifier()) return false;
 		const TextId name = tokens_[position_].spelling;
+		if (HasNameFact(name, kKnownTemplate) &&
+			!HasNameFact(name, kActiveNonTypeParameter)) return true;
 		if (HasNameFact(name, kKnownNonTemplate) &&
 			!HasNameFact(name, kKnownType)) return false;
 		return HasNameFact(name, kKnownType) ||
@@ -561,15 +586,9 @@ private:
 				}
 				else
 				{
-					const NodeId expression = ParseExpression(2);
-					if (expression == kNoNode)
-					{
-						Rollback(mark);
-						position_ = saved;
-						return kNoNode;
-					}
-					arena_.Add(list, expression);
-					all_types = false;
+					Rollback(mark);
+					position_ = saved;
+					return kNoNode;
 				}
 				if (!Match(OP_COMMA)) break;
 			}
@@ -685,6 +704,9 @@ NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id,
 			if (kind == static_cast<std::uint16_t>(KW_AUTO)) saw_type = true;
 			continue;
 		}
+		const bool typename_decltype = !saw_type && At(KW_TYPENAME) &&
+			AtOffset(1, KW_DECLTYPE);
+		if (typename_decltype) ++position_;
 		if (!saw_type && At(KW_DECLTYPE))
 		{
 			const std::size_t first = position_++;
@@ -701,7 +723,9 @@ NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id,
 				++position_;
 				TryConsumeTemplateArguments();
 			}
-			const std::string rendered = JoinSpellings(first, position_);
+			const std::string rendered = (typename_decltype ?
+				"typename " : std::string()) +
+				JoinSpellings(first, position_);
 			const NodeId node = arena_.Make(for_type_id ?
 				"decltype-specifier" : "decl-specifier", rendered);
 			arena_.Add(node, expression);
@@ -718,13 +742,14 @@ NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id,
 		if (!saw_type && Match(KW_TYPENAME))
 		{
 			std::string name;
-			if (!ParseName(&name))
+			NodeId structure = kNoNode;
+			if (!ParseName(&name, true, true, true, &structure))
 			{
 				Rollback(mark);
 				return kNoNode;
 			}
-			arena_.Add(sequence, arena_.Make(for_type_id ?
-				"type-name" : "decl-specifier", name));
+			arena_.Add(sequence, MakeStructuredNode(for_type_id ?
+				"type-name" : "decl-specifier", name, structure));
 			if (first_type && first_type->empty()) *first_type = name;
 			consumed = true;
 			saw_type = true;
@@ -972,7 +997,8 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 		const Mark name_mark = Checkpoint();
 		const std::size_t name_first = position_;
 		std::string parsed_name;
-		if (ParseName(&parsed_name))
+		NodeId name_structure = kNoNode;
+		if (ParseName(&parsed_name, true, true, true, &name_structure))
 		{
 			const std::size_t name_last = position_;
 			std::size_t conversion = name_last;
@@ -1034,7 +1060,8 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 				position_ = name_last;
 			}
 			if (name) *name = parsed_name;
-			arena_.Add(result, arena_.Make("identifier", parsed_name));
+			arena_.Add(result, MakeStructuredNode(
+				"identifier", parsed_name, name_structure));
 			consumed = true;
 		}
 		else Rollback(name_mark);
@@ -1393,7 +1420,12 @@ NodeId Parser::ParsePrimaryExpression()
 				name += Spelling(i);
 			}
 		}
-		else if (!ParseName(&name)) return kNoNode;
+		else
+		{
+			NodeId structure = kNoNode;
+			if (!ParseName(&name, true, true, true, &structure)) return kNoNode;
+			return MakeStructuredNode("id-expression", name, structure);
+		}
 		return arena_.Make("id-expression", name);
 	}
 	return kNoNode;
@@ -1474,14 +1506,16 @@ NodeId Parser::ParsePostfixSuffixes(NodeId value) {
 			const std::size_t operation = position_++;
 			const bool dependent_template = Match(KW_TEMPLATE);
 			std::string member;
+			NodeId structure = kNoNode;
 			const bool qualified_member = AtIdentifier() && AtOffset(1, OP_COLON2);
 			if (!ParseName(&member, qualified_member, true,
-				dependent_template || qualified_member))
+				dependent_template || qualified_member, &structure))
 				throw Error("expected member name");
 			if (dependent_template) member = "template " + member;
 			const NodeId expression = MakeTokenNode("member-expression", operation);
 			arena_.Add(expression, value);
-			arena_.Add(expression, arena_.Make("identifier", member));
+			arena_.Add(expression, MakeStructuredNode(
+				"identifier", member, structure));
 			value = expression;
 			continue;
 		}
@@ -2037,11 +2071,14 @@ NodeId Parser::ParseNamespace()
 		const std::string alias = Spelling(position_++);
 		Expect(OP_ASS);
 		std::string target;
-		if (!ParseName(&target)) throw Error("expected namespace alias target");
+		NodeId structure = kNoNode;
+		if (!ParseName(&target, true, true, true, &structure))
+			throw Error("expected namespace alias target");
 		Expect(OP_SEMICOLON);
 		const NodeId declaration = arena_.Make(
 			"namespace-alias-definition", alias);
-		arena_.Add(declaration, arena_.Make("target", target));
+		arena_.Add(declaration,
+			MakeStructuredNode("target", target, structure));
 		return declaration;
 	}
 	std::string name = "<unnamed>";
@@ -2066,10 +2103,13 @@ NodeId Parser::ParseUsing()
 	if (Match(KW_NAMESPACE))
 	{
 		std::string target;
-		if (!ParseName(&target)) throw Error("expected using namespace target");
+		NodeId structure = kNoNode;
+		if (!ParseName(&target, true, true, true, &structure))
+			throw Error("expected using namespace target");
 		Expect(OP_SEMICOLON);
 		const NodeId declaration = arena_.Make("using-directive");
-		arena_.Add(declaration, arena_.Make("target", target));
+		arena_.Add(declaration,
+			MakeStructuredNode("target", target, structure));
 		return declaration;
 	}
 	Match(KW_TYPENAME);
@@ -2089,10 +2129,13 @@ NodeId Parser::ParseUsing()
 	}
 	Rollback(alias_mark);
 	std::string target;
-	if (!ParseName(&target)) throw Error("expected using target");
+	NodeId structure = kNoNode;
+	if (!ParseName(&target, true, true, true, &structure))
+		throw Error("expected using target");
 	Expect(OP_SEMICOLON);
 	const NodeId declaration = arena_.Make("using-declaration");
-	arena_.Add(declaration, arena_.Make("target", target));
+	arena_.Add(declaration,
+		MakeStructuredNode("target", target, structure));
 	return declaration;
 }
 
@@ -2250,6 +2293,7 @@ NodeId Parser::ParseCtorInitializer()
 	while (true)
 	{
 		std::string name;
+		NodeId structure = kNoNode;
 		if (At(KW_DECLTYPE))
 		{
 			const std::size_t first = position_++;
@@ -2259,10 +2303,11 @@ NodeId Parser::ParseCtorInitializer()
 			Expect(OP_RPAREN);
 			name = JoinSpellings(first, position_);
 		}
-		else if (!ParseName(&name))
+		else if (!ParseName(&name, true, true, true, &structure))
 			throw Error("expected mem-initializer-id");
 		const NodeId member = arena_.Make("mem-initializer");
-		arena_.Add(member, arena_.Make("mem-initializer-id", name));
+		arena_.Add(member,
+			MakeStructuredNode("mem-initializer-id", name, structure));
 		if (Match(OP_LPAREN))
 		{
 			const NodeId arguments = arena_.Make("paren-argument-list");
@@ -2300,7 +2345,9 @@ NodeId Parser::ParseSpecialMember(bool)
 	const std::size_t name_start = position_;
 	std::string name;
 	TextId terminal_identifier = 0;
-	if (!ParseName(&name, true, true, true, 0, &terminal_identifier) ||
+	NodeId name_structure = kNoNode;
+	if (!ParseName(&name, true, true, true, &name_structure,
+		&terminal_identifier) ||
 		!At(OP_LPAREN))
 	{
 		Rollback(mark);
@@ -2308,17 +2355,23 @@ NodeId Parser::ParseSpecialMember(bool)
 	}
 	const bool qualified = name.find("::") != std::string::npos;
 	bool special_name = name.find("operator") != std::string::npos;
-	if (!special_name && qualified)
+	if (!special_name && qualified && name_structure != kNoNode)
 	{
-		const std::size_t separator = name.rfind("::");
-		const std::string tail = name.substr(separator + 2);
-		std::string owner = name.substr(0, separator);
-		const std::size_t owner_separator = owner.rfind("::");
-		if (owner_separator != std::string::npos)
-			owner.erase(0, owner_separator + 2);
-		const std::size_t arguments = owner.find('<');
-		if (arguments != std::string::npos) owner.erase(arguments);
-		special_name = tail == owner || tail == "~" + owner;
+		std::vector<TextId> components;
+		for (std::uint32_t edge = arena_.FirstEdge(name_structure);
+			edge != kNoEdge; edge = arena_.NextEdge(edge))
+		{
+			const NodeId child = arena_.EdgeChild(edge);
+			if (arena_.IsTag(child, "name-component"))
+				components.push_back(arena_.SemanticPayloadId(child));
+		}
+		if (components.size() > 1)
+		{
+			const TextId owner = components[components.size() - 2];
+			const TextId terminal = components.back();
+			special_name = terminal == owner || terminal == strings_.Intern(
+				"~" + strings_.Get(owner));
+		}
 	}
 	else if (!special_name && !current_classes_.empty())
 	{
@@ -2427,8 +2480,10 @@ NodeId Parser::ParseClass(bool require_semicolon)
 	ParseSemanticAttributes(&alignments);
 	std::string name;
 	TextId class_identifier = 0;
+	NodeId name_structure = kNoNode;
 	const Mark name_mark = Checkpoint();
-	if (!ParseName(&name, true, true, true, 0, &class_identifier))
+	if (!ParseName(&name, true, true, true, &name_structure,
+		&class_identifier))
 	{
 		Rollback(name_mark);
 		name.clear();
@@ -2444,6 +2499,7 @@ NodeId Parser::ParseClass(bool require_semicolon)
 		last_declared_names_.clear();
 		if (!name.empty()) last_declared_names_.push_back(strings_.Intern(name));
 		const NodeId declaration = arena_.Make("class-forward-declaration", name);
+		if (name_structure != kNoNode) arena_.Add(declaration, name_structure);
 		arena_.Add(declaration, MakeTokenNode("class-key", key));
 		for (std::size_t i = 0; i < alignments.size(); ++i)
 			arena_.Add(declaration, alignments[i]);
@@ -2451,6 +2507,7 @@ NodeId Parser::ParseClass(bool require_semicolon)
 		return declaration;
 	}
 	const NodeId declaration = arena_.Make("class-specifier", name);
+	if (name_structure != kNoNode) arena_.Add(declaration, name_structure);
 	const std::size_t class_fact_mark = name_fact_changes_.size();
 	arena_.Add(declaration, MakeTokenNode("class-key", key));
 	for (std::size_t i = 0; i < alignments.size(); ++i)
@@ -2471,6 +2528,7 @@ NodeId Parser::ParseClass(bool require_semicolon)
 			if (Match(KW_VIRTUAL))
 				arena_.Add(base, arena_.Make("virtual", "KW_VIRTUAL:virtual"));
 			std::string base_name;
+			NodeId base_structure = kNoNode;
 			if (At(KW_DECLTYPE))
 			{
 				const std::size_t first = position_++;
@@ -2481,8 +2539,10 @@ NodeId Parser::ParseClass(bool require_semicolon)
 				Expect(OP_RPAREN);
 				base_name = JoinSpellings(first, position_);
 			}
-			else if (!ParseName(&base_name)) throw Error("expected base name");
-			arena_.Add(base, arena_.Make("base-name", base_name));
+			else if (!ParseName(&base_name, true, true, true, &base_structure))
+				throw Error("expected base name");
+			arena_.Add(base,
+				MakeStructuredNode("base-name", base_name, base_structure));
 			Match(OP_DOTS);
 			arena_.Add(clause, base);
 			if (!Match(OP_COMMA)) break;
@@ -2879,38 +2939,34 @@ NodeId Parser::ParseDeclaration(bool in_class)
 
 }
 
-void WriteSyntaxTranslationUnit(const std::string& path,
-	const std::string& source, const PreprocessingOptions& options,
-	std::ostream& output, SyntaxStats* stats)
+namespace pa10_syntax_detail
 {
-	std::chrono::steady_clock::time_point started;
-	if (stats)
-	{
-		*stats = SyntaxStats();
-		started = std::chrono::steady_clock::now();
-	}
+
+void RunSyntaxTranslationUnit(const std::string& path,
+	const std::string& source, const PreprocessingOptions& options,
+	std::ostream* output, SyntaxTreeConsumer* consumer, SyntaxStats* stats)
+{
+	const std::chrono::steady_clock::time_point started = std::chrono::steady_clock::now();
+	if (stats) *stats = SyntaxStats();
 	StringTable strings;
 	SyntaxTokenSink sink(strings);
 	PreprocessFile(path, source, sink, options,
 		stats ? &stats->preprocessing : 0);
 	SyntaxArena arena(strings);
 	Parser parser(sink.Tokens(), strings, arena, stats);
-	std::chrono::steady_clock::time_point parse_started;
-	if (stats) parse_started = std::chrono::steady_clock::now();
+	const std::chrono::steady_clock::time_point parse_started = std::chrono::steady_clock::now();
 	const NodeId root = parser.ParseTranslationUnit();
-	std::chrono::steady_clock::time_point render_started;
-	if (stats) render_started = std::chrono::steady_clock::now();
-	arena.Write(output, root, stats ? &stats->syntax_output_bytes : 0,
-		stats ? &stats->max_syntax_depth : 0,
-		stats ? &stats->render_stack_storage_bytes : 0);
+	const std::chrono::steady_clock::time_point boundary_started = std::chrono::steady_clock::now();
+	if (output)
+		arena.Write(*output, root, stats ? &stats->syntax_output_bytes : 0,
+			stats ? &stats->max_syntax_depth : 0,
+			stats ? &stats->render_stack_storage_bytes : 0);
+	else consumer->Consume(arena, root);
 	if (stats)
 	{
-		const std::chrono::steady_clock::time_point finished =
-			std::chrono::steady_clock::now();
-		stats->tokens = sink.Tokens().size();
-		stats->interned_spellings = strings.Size();
-		stats->spelling_bytes = strings.SpellingBytes();
-		stats->syntax_nodes = arena.Nodes();
+		const std::chrono::steady_clock::time_point finished = std::chrono::steady_clock::now();
+		stats->tokens = sink.Tokens().size(); stats->interned_spellings = strings.Size();
+		stats->spelling_bytes = strings.SpellingBytes(); stats->syntax_nodes = arena.Nodes();
 		stats->syntax_edges = arena.Edges();
 		stats->token_storage_bytes = sink.StorageBytes();
 		stats->syntax_storage_bytes = arena.StorageBytes() +
@@ -2921,64 +2977,16 @@ void WriteSyntaxTranslationUnit(const std::string& path,
 			stats->parser_storage_bytes + stats->render_stack_storage_bytes;
 		stats->parse_nanoseconds = static_cast<std::uint64_t>(
 			std::chrono::duration_cast<std::chrono::nanoseconds>(
-				render_started - parse_started).count());
+				boundary_started - parse_started).count());
 		stats->render_nanoseconds = static_cast<std::uint64_t>(
 			std::chrono::duration_cast<std::chrono::nanoseconds>(
-				finished - render_started).count());
+				finished - boundary_started).count());
 		stats->elapsed_nanoseconds = static_cast<std::uint64_t>(
 			std::chrono::duration_cast<std::chrono::nanoseconds>(
 				finished - started).count());
 	}
 }
 
-void ConsumeSyntaxTranslationUnit(const std::string& path,
-	const std::string& source, const PreprocessingOptions& options,
-	pa10_syntax_detail::SyntaxTreeConsumer& consumer, SyntaxStats* stats)
-{
-	std::chrono::steady_clock::time_point started;
-	if (stats)
-	{
-		*stats = SyntaxStats();
-		started = std::chrono::steady_clock::now();
-	}
-	StringTable strings;
-	SyntaxTokenSink sink(strings);
-	PreprocessFile(path, source, sink, options,
-		stats ? &stats->preprocessing : 0);
-	SyntaxArena arena(strings);
-	Parser parser(sink.Tokens(), strings, arena, stats);
-	const std::chrono::steady_clock::time_point parse_started =
-		std::chrono::steady_clock::now();
-	const NodeId root = parser.ParseTranslationUnit();
-	const std::chrono::steady_clock::time_point consume_started =
-		std::chrono::steady_clock::now();
-	consumer.Consume(arena, root);
-	if (stats)
-	{
-		const std::chrono::steady_clock::time_point finished =
-			std::chrono::steady_clock::now();
-		stats->tokens = sink.Tokens().size();
-		stats->interned_spellings = strings.Size();
-		stats->spelling_bytes = strings.SpellingBytes();
-		stats->syntax_nodes = arena.Nodes();
-		stats->syntax_edges = arena.Edges();
-		stats->token_storage_bytes = sink.StorageBytes();
-		stats->syntax_storage_bytes = arena.StorageBytes() +
-			strings.StorageBytes();
-		stats->parser_storage_bytes = parser.StorageBytes();
-		stats->peak_stage_storage_bytes = source.size() +
-			stats->token_storage_bytes + stats->syntax_storage_bytes +
-			stats->parser_storage_bytes;
-		stats->parse_nanoseconds = static_cast<std::uint64_t>(
-			std::chrono::duration_cast<std::chrono::nanoseconds>(
-				consume_started - parse_started).count());
-		stats->render_nanoseconds = static_cast<std::uint64_t>(
-			std::chrono::duration_cast<std::chrono::nanoseconds>(
-				finished - consume_started).count());
-		stats->elapsed_nanoseconds = static_cast<std::uint64_t>(
-			std::chrono::duration_cast<std::chrono::nanoseconds>(
-				finished - started).count());
-	}
 }
 
 }

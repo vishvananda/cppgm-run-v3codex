@@ -16,25 +16,13 @@ namespace pa12_semantic_detail
 {
 namespace
 {
-bool SpellingUsesAnyIdentifier(const std::string& spelling,
-	const std::unordered_set<std::string>& identifiers)
+bool SyntaxUsesAnyIdentifier(const SyntaxArena& arena, NodeId node,
+	const std::unordered_set<NameId>& identifiers)
 {
-	std::size_t first = 0;
-	while (first < spelling.size())
-	{
-		const unsigned char initial = static_cast<unsigned char>(spelling[first]);
-		if (!std::isalpha(initial) && spelling[first] != '_') { ++first; continue; }
-		std::size_t last = first + 1;
-		while (last < spelling.size())
-		{
-			const unsigned char next = static_cast<unsigned char>(spelling[last]);
-			if (!std::isalnum(next) && spelling[last] != '_') break;
-			++last;
-		}
-		if (identifiers.count(spelling.substr(first, last - first)) != 0)
-			return true;
-		first = last;
-	}
+	if (identifiers.count(arena.SemanticPayloadId(node)) != 0) return true;
+	for (std::uint32_t edge = arena.FirstEdge(node); edge != kNoEdge;
+		edge = arena.NextEdge(edge))
+		if (SyntaxUsesAnyIdentifier(arena, arena.EdgeChild(edge), identifiers)) return true;
 	return false;
 }
 }
@@ -722,7 +710,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 		ExpressionInfo function_id;
 		if (AnalyzeFunctionId(node, scope, target, &function_id))
 			return function_id;
-		return AnalyzeNamedValue(spelling, scope, target);
+		return AnalyzeNamedValue(spelling, scope, target, node);
 	}
 	if (arena_->IsTag(node, "call-expression"))
 		return AnalyzeCall(node, scope, target);
@@ -755,9 +743,12 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 }
 
 ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
-	const std::string& spelling, ScopeId scope, TypeId target)
+	const std::string& spelling, ScopeId scope, TypeId target, NodeId syntax)
 {
-		const LookupResult found = LookupSpelling(scope, spelling, LOOKUP_ORDINARY);
+		const LookupResult found = syntax != kNoNode &&
+			FindChild(syntax, "structured-type-name") != kNoNode ?
+			LookupStructuredName(syntax, scope, LOOKUP_ORDINARY) :
+			LookupSpelling(scope, spelling, LOOKUP_ORDINARY);
 		if (found.ordinary == kNoBinding)
 			throw std::runtime_error("unknown expression name: " + spelling);
 		const BindingRecord& binding = program_->bindings[found.ordinary];
@@ -912,15 +903,15 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 				}
 				else
 				{
-					std::vector<BindingId> argument_functions =
-						FunctionCandidates(scope,
-							arena_->Payload(argument_syntax[a]));
+					std::vector<BindingId> argument_functions = FunctionCandidates(
+							scope, arena_->Payload(argument_syntax[a]), 0,
+							argument_syntax[a]);
 					TypeId desired = program_->types.RemoveTopCv(parameters[a]);
 					if (program_->types.Get(desired).kind == TYPE_POINTER)
 						desired = program_->types.Get(desired).child;
 					const std::vector<BindingId> target_templates =
 						FunctionTemplateTargetCandidates(scope,
-							arena_->Payload(argument_syntax[a]), desired);
+							arena_->Payload(argument_syntax[a]), desired, argument_syntax[a]);
 					for (std::size_t f = 0; f < target_templates.size(); ++f)
 						if (std::find(argument_functions.begin(),
 							argument_functions.end(), target_templates[f]) ==
@@ -1193,9 +1184,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 	if (arena_->IsTag(direct_callee_syntax, "id-expression"))
 	{
 		const std::string spelling = arena_->Payload(direct_callee_syntax);
-		const NamePath callee_path = ParseNamePath(spelling);
-		const bool qualified_callee =
-			callee_path.global || callee_path.Size() > 1;
+		NamePath callee_path = StructuredNamePath(direct_callee_syntax);
+		if (callee_path.Empty()) callee_path = ParseNamePath(spelling);
+		const bool qualified_callee = callee_path.global || callee_path.Size() > 1;
 		ExpressionInfo builtin;
 		if (AnalyzeBuiltinCall(spelling, scope, argument_syntax, target, &builtin))
 			return builtin;
@@ -1237,10 +1228,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope,
 			analyzed_arguments.push_back(
 				AnalyzeExpression(argument_syntax[i], scope));
 		arguments_analyzed = true;
-		const TypeId cast_type = ResolveFunctionalCastType(scope, spelling);
-		const bool type_precedes_functions =
-			FunctionalCastPrecedesFunctions(
-				spelling, scope, cast_type, candidates);
+		const TypeId cast_type = ResolveFunctionalCastType(scope, spelling,
+			direct_callee_syntax);
+		const bool type_precedes_functions = FunctionalCastPrecedesFunctions(
+				spelling, scope, cast_type, direct_callee_syntax, candidates);
 		if (!type_precedes_functions)
 			CompleteFunctionCallTemplateCandidates(direct_callee_syntax, scope,
 				spelling, analyzed_arguments, retained_lookup, &candidates,
@@ -1756,11 +1747,15 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 	else if (arena_->IsTag(operand, "id-expression"))
 	{
 		const std::string spelling = arena_->Payload(operand);
-		const LookupResult ordinary = LookupSpelling(
-			scope, spelling, LOOKUP_ORDINARY);
+		const NodeId structure = FindChild(operand, "structured-type-name");
+		const LookupResult ordinary = structure != kNoNode ?
+			LookupStructuredName(operand, scope, LOOKUP_ORDINARY) :
+			LookupSpelling(scope, spelling, LOOKUP_ORDINARY);
 		if (ordinary.ordinary == kNoBinding)
 		{
-			const LookupResult type = LookupSpelling(scope, spelling, LOOKUP_TYPE);
+			const LookupResult type = structure != kNoNode ?
+				LookupStructuredName(operand, scope, LOOKUP_TYPE) :
+				LookupSpelling(scope, spelling, LOOKUP_TYPE);
 			if (type.type != kNoType) measured = type.type;
 		}
 	}
@@ -1881,23 +1876,23 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 		function_template_shape_parameters_.push_back(
 			program_->types.Named(entity));
 	}
-	std::unordered_set<std::string> parameter_spellings;
+	std::unordered_set<NameId> parameter_names;
 	for (std::size_t i = 0; i < parameters.size(); ++i)
-		parameter_spellings.insert(program_->names.Get(parameters[i]));
+		if (parameters[i] != 0) parameter_names.insert(parameters[i]);
 	bool deferred_dependent_result = false;
 	for (std::uint32_t edge = arena_->FirstEdge(specifiers);
 		edge != kNoEdge && !deferred_dependent_result;
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId specifier = arena_->EdgeChild(edge);
-		const std::string spelling = PayloadSource(specifier);
+		const NodeId structured = FindChild(specifier, "structured-type-name");
 		const bool deferred_shape =
 			arena_->IsTag(specifier, "decltype-specifier") ||
 			(arena_->IsTag(specifier, "decl-specifier") &&
 			 FirstSemanticChild(specifier) != kNoNode) ||
-			spelling.find("::") != std::string::npos;
+			(structured != kNoNode && StructuredNamePath(structured).Size() > 1);
 		if (deferred_shape &&
-			SpellingUsesAnyIdentifier(spelling, parameter_spellings))
+			SyntaxUsesAnyIdentifier(*arena_, specifier, parameter_names))
 			deferred_dependent_result = true;
 	}
 	TypeId dependent_result_shape = kNoType;
@@ -1930,6 +1925,7 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 		pattern.definition_body = definition ?
 			FindChild(target, "compound-statement") : kNoNode;
 		pattern.type_parameters = parameters;
+		pattern.default_arguments = defaults;
 		pattern.language_linkage = current_language_linkage_;
 		pattern.member_access = member_access;
 		pattern.defined = definition;
@@ -1981,6 +1977,10 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 		if (prior_index != function_templates_.size())
 		{
 			FunctionTemplatePattern& prior = function_templates_[prior_index];
+			for (std::size_t d = 0; d < defaults.size(); ++d)
+				if (prior.default_arguments[d] == kNoNode &&
+					defaults[d] != kNoNode)
+					prior.default_arguments[d] = defaults[d];
 			prior.required_parameter_count = std::min(prior.required_parameter_count, pattern.required_parameter_count);
 			if (prior.nonthrowing != pattern.nonthrowing)
 				throw std::runtime_error(

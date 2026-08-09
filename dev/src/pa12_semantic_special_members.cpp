@@ -286,7 +286,7 @@ bool SemanticAnalyzer::AnalyzeQualifiedAssignmentStatement(NodeId node,
 
 	EntityId naming_class = kNoEntity;
 	const std::vector<BindingId> candidates =
-		FunctionCandidates(scope, spelling, &naming_class);
+		FunctionCandidates(scope, spelling, &naming_class, specifier);
 	if (candidates.empty())
 		throw std::runtime_error("qualified assignment operator was not found");
 	const NameId argument_name =

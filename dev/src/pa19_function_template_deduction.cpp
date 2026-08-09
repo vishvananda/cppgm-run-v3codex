@@ -284,8 +284,6 @@ void SemanticAnalyzer::DeduceFunctionTemplatePatterns(
 			}
 			valid = DeduceFunctionTemplateType(parameter, argument, &deduced);
 		}
-		for (std::size_t t = 0; t < deduced.size(); ++t)
-			if (deduced[t] == kNoType) valid = false;
 		if (valid)
 		{
 			const BindingId specialization =
@@ -298,17 +296,22 @@ void SemanticAnalyzer::DeduceFunctionTemplatePatterns(
 
 void SemanticAnalyzer::DeduceFunctionTemplates(ScopeId scope,
 	const std::string& spelling,
-	const std::vector<ExpressionInfo>& arguments)
+	const std::vector<ExpressionInfo>& arguments, NodeId syntax)
 {
-	std::string base = spelling;
+	NamePath structured_base;
 	std::vector<TypeId> explicit_arguments;
-	const bool explicit_id = ParseExplicitTemplateArguments(scope, spelling,
-		&base, &explicit_arguments);
-	const NamePath path = ParseNamePath(base);
+	const bool structured_explicit = ParseExplicitTemplateArguments(
+		syntax, scope, &structured_base, &explicit_arguments);
+	const bool explicit_id = structured_explicit;
+	if (!structured_explicit) structured_base = StructuredNamePath(syntax);
+	const bool structured_name = !structured_base.Empty();
+	const NamePath path = structured_name ? structured_base :
+		ParseNamePath(spelling);
 	const NameId name = path.Last();
 	if (name == 0) return;
 	const std::vector<ScopeId> visible_owners =
-		FindFunctionTemplateOwners(scope, base);
+		structured_name ? FindFunctionTemplateOwners(scope, structured_base) :
+		FindFunctionTemplateOwners(scope, spelling);
 	for (std::size_t owner = 0; owner < visible_owners.size(); ++owner)
 	{
 		const ScopeId visible_owner = visible_owners[owner];
@@ -350,14 +353,17 @@ void SemanticAnalyzer::DeduceFunctionTemplates(ScopeId scope,
 }
 
 std::vector<BindingId> SemanticAnalyzer::FunctionTemplateTargetCandidates(
-	ScopeId scope, const std::string& spelling, TypeId target)
+	ScopeId scope, const std::string& spelling, TypeId target, NodeId syntax)
 {
-	std::string base = spelling;
+	NamePath structured_base;
 	std::vector<TypeId> explicit_arguments;
-	const bool explicit_id = ParseExplicitTemplateArguments(scope, spelling,
-		&base, &explicit_arguments);
+	const bool structured_explicit = ParseExplicitTemplateArguments(
+		syntax, scope, &structured_base, &explicit_arguments);
+	const bool explicit_id = structured_explicit;
+	if (!structured_explicit) structured_base = StructuredNamePath(syntax);
 	const std::vector<std::size_t> patterns =
-		FindFunctionTemplates(scope, base);
+		!structured_base.Empty() ? FindFunctionTemplates(scope, structured_base) :
+		FindFunctionTemplates(scope, spelling);
 	std::vector<BindingId> result;
 	for (std::size_t i = 0; i < patterns.size(); ++i)
 	{
@@ -373,10 +379,6 @@ std::vector<BindingId> SemanticAnalyzer::FunctionTemplateTargetCandidates(
 				deduced.begin());
 		if (!DeduceFunctionTemplateType(pattern.shape_type, target, &deduced))
 			continue;
-		bool complete = true;
-		for (std::size_t argument = 0; argument < deduced.size(); ++argument)
-			if (deduced[argument] == kNoType) complete = false;
-		if (!complete) continue;
 		const BindingId candidate =
 			InstantiateFunctionTemplate(patterns[i], deduced);
 		if (candidate != kNoBinding &&
@@ -392,8 +394,14 @@ bool SemanticAnalyzer::AnalyzeFunctionId(NodeId node, ScopeId scope,
 	const std::string spelling = arena_->Payload(node);
 	EntityId naming_class = kNoEntity;
 	std::vector<BindingId> candidates =
-		FunctionCandidates(scope, spelling, &naming_class);
+		FunctionCandidates(scope, spelling, &naming_class, node);
+	NamePath structured_base;
+	std::vector<TypeId> explicit_arguments;
+	const bool explicit_template_id = ParseExplicitTemplateArguments(
+		node, scope, &structured_base, &explicit_arguments);
+	if (!explicit_template_id) structured_base = StructuredNamePath(node);
 	const std::vector<std::size_t> template_patterns =
+		!structured_base.Empty() ? FindFunctionTemplates(scope, structured_base) :
 		FindFunctionTemplates(scope, spelling);
 	TypeId desired = target;
 	if (desired != kNoType)
@@ -408,14 +416,14 @@ bool SemanticAnalyzer::AnalyzeFunctionId(NodeId node, ScopeId scope,
 		else if (program_->types.Get(desired).kind == TYPE_MEMBER_POINTER)
 			desired = program_->types.Get(desired).child;
 		const std::vector<BindingId> target_templates =
-			FunctionTemplateTargetCandidates(scope, spelling, desired);
+			FunctionTemplateTargetCandidates(scope, spelling, desired, node);
 		for (std::size_t i = 0; i < target_templates.size(); ++i)
 			if (std::find(candidates.begin(), candidates.end(),
 				target_templates[i]) == candidates.end())
 				candidates.push_back(target_templates[i]);
 	}
 	if (desired == kNoType && !template_patterns.empty() &&
-		spelling.find('<') == std::string::npos)
+		!explicit_template_id)
 	{
 		result->binding = candidates.empty() ? kNoBinding : candidates[0];
 		return true;

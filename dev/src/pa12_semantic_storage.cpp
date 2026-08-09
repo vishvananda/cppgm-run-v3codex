@@ -47,7 +47,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		member_initializer_by_binding_.capacity() * sizeof(NodeId) +
 		constructor_initializer_scratch_.capacity() * sizeof(NodeId) +
 		constructor_initializer_touched_.capacity() * sizeof(BindingId) +
-		function_templates_.capacity() * sizeof(FunctionTemplatePattern) +
+		function_templates_.size() * sizeof(FunctionTemplatePattern) +
 		function_template_shape_parameters_.capacity() * sizeof(TypeId) +
 		template_function_sets_.StorageBytes() +
 		retained_call_function_sets_.StorageBytes() +
@@ -55,7 +55,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		retained_call_lookup_states_.capacity() * sizeof(std::uint8_t) +
 		retained_call_naming_classes_.capacity() * sizeof(EntityId) +
 		template_instantiations_.StorageBytes() +
-		class_templates_.capacity() * sizeof(ClassTemplatePattern) +
+		class_templates_.size() * sizeof(ClassTemplatePattern) +
 		variable_templates_.capacity() * sizeof(VariableTemplatePattern) +
 		variable_template_sets_.StorageBytes() +
 		class_template_pattern_by_entity_.capacity() * sizeof(std::uint32_t) +
@@ -116,6 +116,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 	for (std::size_t i = 0; i < function_templates_.size(); ++i)
 		bytes += function_templates_[i].type_parameters.capacity() *
 				sizeof(NameId) +
+			function_templates_[i].default_arguments.capacity() *
+				sizeof(NodeId) +
 			function_templates_[i].specialization_bindings.capacity() *
 				sizeof(BindingId) +
 			function_templates_[i].specialization_arguments.capacity() *
@@ -127,7 +129,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 			class_templates_[i].default_arguments.capacity() * sizeof(NodeId) +
 			class_templates_[i].specialization_bindings.capacity() *
 				sizeof(BindingId) +
-			class_templates_[i].member_definitions.capacity() *
+			class_templates_[i].member_definitions.size() *
 				sizeof(ClassTemplateMemberPattern);
 		for (std::size_t member = 0;
 			member < class_templates_[i].member_definitions.size(); ++member)
