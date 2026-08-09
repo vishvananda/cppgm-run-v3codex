@@ -1158,9 +1158,8 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 					!(IsConst(member_type) && IsIntegral(member_type, true)))
 					throw std::runtime_error(
 						"invalid in-class static data member initializer");
-				const NodeId initializer = FirstSemanticChild(
-					FindChild(item, "initializer"));
-				const ExpressionInfo value = AnalyzeConstantRequiredExpression(initializer, scope, member_type, spec.is_constexpr && !IsIntegral(member_type, true) && !IsFloating(member_type));
+				const ExpressionInfo value = AnalyzeInClassStaticInitializer(
+					FindChild(item, "initializer"), scope, member_type, spec);
 				if (!value.constant)
 					throw std::runtime_error(
 						"nonconstant in-class static data member initializer");
@@ -1179,7 +1178,8 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 						program_->types.Qualify(value.type, CV_CONST) : value.type;
 					program_->bindings[member].type = member_type;
 				}
-				PublishBindingConstant(member, value);
+				PublishConstantVariableInitializer(
+					member, member_type, spec, value);
 			}
 			else if (!non_static_data_member && spec.is_constexpr)
 				throw std::runtime_error(
@@ -1306,6 +1306,7 @@ void SemanticAnalyzer::PublishVariableDeclarationFacts(BindingId binding,
 	if (!local && record.storage_class == STORAGE_CLASS_NONE &&
 		top_type.kind == TYPE_QUALIFIED && (top_type.cv & CV_CONST) != 0)
 		record.storage_class = STORAGE_CLASS_STATIC;
+	InheritVariableRedeclarationFacts(binding);
 	BindingRecord& canonical = program_->bindings[record.canonical];
 	canonical.unnamed_namespace_linkage =
 		canonical.unnamed_namespace_linkage || record.unnamed_namespace_linkage;
@@ -1317,13 +1318,6 @@ void SemanticAnalyzer::PublishVariableDeclarationFacts(BindingId binding,
 		record.thread_local_storage)
 		throw std::runtime_error("thread_local redeclaration mismatch");
 	canonical.thread_local_storage = record.thread_local_storage;
-	if (record.canonical != binding && canonical.constant)
-	{
-		const std::uint32_t object = BindingObject(record.canonical);
-		if (object != kNoConstexprObject)
-			PublishBindingObject(binding, object);
-		else PublishBindingScalar(binding, BindingScalar(record.canonical));
-	}
 	if (!local) record.qualified_name = EmissionName(declaration_scope, name);
 }
 
@@ -2541,6 +2535,10 @@ void SemanticAnalyzer::EnsureStaticMemberStorage(BindingId member, bool constant
 		static_member_storage_by_binding_.resize(
 			static_cast<std::size_t>(member) + 1, kNoDumpEdge);
 	if (static_member_storage_by_binding_[member] != kNoDumpEdge) return;
+	if (member < static_constant_dependencies_by_binding_.size())
+		for (std::size_t i = 0;
+			i < static_constant_dependencies_by_binding_[member].size(); ++i)
+			DemandFunction(static_constant_dependencies_by_binding_[member][i]);
 	if (root_ == kNoDumpEdge)
 		throw std::logic_error("static member storage has no translation unit");
 	const std::uint32_t declaration = MakeDump(DUMP_VARIABLE,

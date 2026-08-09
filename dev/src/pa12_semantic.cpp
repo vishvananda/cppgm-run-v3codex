@@ -1691,6 +1691,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 				LookupSpelling(scope, spelling, LOOKUP_TYPE);
 			if (type.type != kNoType) measured = type.type;
 		}
+		else measured = EffectiveType(
+			program_->bindings[ordinary.ordinary].type);
 	}
 	if (measured == kNoType)
 	{
@@ -2249,17 +2251,23 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		if (occupied.ordinary != kNoBinding &&
 			program_->bindings[occupied.ordinary].kind == BIND_FUNCTION)
 			throw std::runtime_error("variable conflicts with function binding");
+		if (qualified_lexical_scope)
+			parsed.type = CompleteQualifiedStaticArrayType(
+				occupied.ordinary, parsed.type);
 		const BindingId binding = program_->AddBinding(declaration_scope,
 			BIND_VARIABLE,
 			parsed.name, parsed.type);
 		PublishVariableDeclarationFacts(binding, declaration_scope,
 			parsed.name, parsed.type, spec, local);
+		const BindingRecord& declared_binding = program_->bindings[binding];
+		const bool static_constant_definition = IsStaticConstantDefinition(binding);
 		const bool constexpr_class_default =
-			spec.is_constexpr && IsClassObjectType(parsed.type);
+			spec.is_constexpr && IsClassObjectType(parsed.type) &&
+			!static_constant_definition;
 		if (spec.is_constexpr && initializer_node == kNoNode &&
 			!constexpr_class_default &&
-			!(qualified_lexical_scope &&
-			  program_->bindings[binding].constant))
+			!static_constant_definition &&
+			!(qualified_lexical_scope && declared_binding.constant))
 			throw std::runtime_error("constexpr variable requires initializer");
 		ExpressionInfo initializer;
 		bool has_initializer = initializer_node != kNoNode;
@@ -2293,7 +2301,8 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			qualified_lexical_scope && program_->bindings[binding].constant &&
 			!demanded_template_storage &&
 			ClassTemplateHasNonTypeParameter(declaration_class_context);
-		if (!has_initializer && qualified_lexical_scope &&
+		if (!has_initializer &&
+			(qualified_lexical_scope || static_constant_definition) &&
 			!deferred_template_constant_storage)
 			has_initializer = MaterializeConstantDefinitionInitializer(
 				binding, &parsed.type, &initializer);

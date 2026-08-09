@@ -25,31 +25,30 @@ fact-driven lowering, explicit phase ownership, and observable work.
 
 ## Current Failure Map
 
-The combined report is now 109/135, including the exception-ownership audit regression. The
-26 remaining handout failures group by owner into
-qualified/static references, arrays, and wide literals (11); function-local static
-classification, guards, and emission (11, including the array-reference-return case whose
-diff is entirely local-static storage); class-valued runtime/global materialization (3); and
-constexpr declaration suitability (1). Canonical exception specifications and `noexcept`
-expressions now join the completed callable, conversion, base/object, and address layers.
+The combined report is 118/135. The 17 failures group by stable owner into function-local
+static classification, guards, and emission (12, including class-template/reference and
+array-reference-return probes); class-valued runtime/global materialization (4, including
+the concrete `decltype` probe whose qualified lookup succeeds before empty-class staging
+fails); and constexpr declaration suitability (1). Qualified/static constant completion's
+nine owned failures now pass; two originally adjacent probes were reassigned by semantic and
+LowIR evidence to the first two remaining groups.
 
 ## Active Checkpoint
 
-**Qualified static constant storage completion (next).** Unify qualified lookup and storage
-publication for static constexpr scalars, references, pointers, arrays, and class objects,
-including class-template and typedef-qualified owners. Preserve immutable scalar/object/
-address facts for compile-time consumers while creating one stable storage/emission identity
-only when ODR-use or runtime lowering demands it; wide literals use their typed element width.
+**Function-local static storage and guards (next).** Classify local `static` declarations as
+static-duration objects rather than automatic slots, complete constant or dynamic scalar,
+reference, class, and array initializers once, and lower one storage symbol plus one guard per
+dynamic object across ordinary, template, nested, and local-class functions.
 
-Requirements: PA21's object-valued evaluation, qualified reuse, and constant-initialization
-contract plus `spec.md` §§2–6,8–9 require canonical binding/type/object identities, indexed
-qualified lookup, demand-separated completion, typed lowering, and bounded phase-local
-storage. Owner/data flow: class/member or specialization completion -> canonical static
-binding -> typed scalar/object/address initializer fact -> qualified semantic consumer or
-ODR-use demand -> one global LowIR identity. Expected work is O(qualified path length +
-initializer elements + demand edges), with average O(1) completed-fact access and no scans of
-unrelated declarations. Validate all 11 owned failures, nearby passing qualified/object
-probes, PA1–20, full PA21, file audit, and width/repeated-lookup scaling.
+Requirements: PA21's constant-initialization and first-use contract plus `spec.md` §§2–6,8–9
+require canonical binding/storage identity, declaration-owned initializer facts, explicit
+demand, fact-driven lowering, and bounded phase-local indexes. Owner/data flow: local
+declaration -> canonical static binding and typed initializer -> function demand -> global
+storage/optional guard -> first-use control-flow action -> ordinary expression access.
+Expected work is O(initializer elements + guard actions) per demanded declaration with O(1)
+binding-to-storage access and no function-wide rescans. Validate all 12 owned failures,
+nearby automatic/local-template families, PA1–20, full PA21, file audit, and repeated-use/
+array-width scaling.
 
 ## Performance Evidence
 
@@ -85,6 +84,11 @@ instructions (1), demand pushes (0), and demanded functions (0) stayed fixed. Th
 inspection and source-facing selection grow linearly while completed template facts are
 reused without emission demand.
 
+For 16/32/64/128-element ODR-used static constexpr template arrays, semantic nodes were
+30/46/78/142, conversion checks 25/41/73/137, and typed storage 4,201/5,097/6,889/10,473
+bytes. Lookup queries (24), demand pushes (1), globals (1), and LowIR instructions (6) stayed
+fixed. This is linear initializer/storage growth with constant qualified lookup and demand.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result | Validation |
@@ -98,3 +102,4 @@ reused without emission demand.
 | Base-subobject completion | Ordered direct-base facts after direct members, base/member/delegating initialization, active/complete object transport with adjusted addresses through receivers/references/cache facts, and initializer-local demand/slot boundaries; audit repaired repeated-base ambiguity and inherited-base ownership | PA21 handout 80/131→87/132 preserved, audit regression passes for 88/133; eight focused base/delegation tests pass; PA1–20 2,185/2,185; file audit pass; linear depth scaling above |
 | Callable and contextual conversions | Local-callable shadowing, call operators/surrogates, one recursive-arrow owner, overloaded unary/binary/subscript/assignment/logical operators, semantic class-expression initialization, user/return conversions, complete cached scalar/reference/pointer/object results, template cv partial ordering, exact parser rollback, and compile-time/runtime demand separation | PA21 handout 88→100/133 preserved, audit regression passes for 101/134; PA1–20 2,185/2,185; file audit pass; repeated call/address and parser scaling above |
 | Canonical exception and `noexcept` facts | Unevaluated fold-suppressed operands consume selected canonical call/constructor/lifetime facts; dependent specifications complete per specialization; audit unified contextual-bool conversion, compile-time-only demand, temporary destruction, and action observability | PA21 101→108/134 preserved, audit regression passes for 109/135; owned probes 8/8; PA1–20 2,185/2,185; file audit pass; linear action/specialization scaling above |
+| Qualified static constant storage | Canonical incomplete-array redeclarations; typed scalar/object/address and initializer/dependency facts; ODR-demanded storage; constructor/reference rematerialization; qualified `sizeof`/NTTP use; typed wide literals | PA21 109→118/135; owned probes 9/9 and nearby probes 8/8; PA1–20 2,185/2,185; file audit pass; linear static-array scaling above |

@@ -22,6 +22,7 @@
 #include "pa17_special_member_lowering.h"
 #include "pa17_temporary_lifetime_lowering.h"
 #include "pa18_polymorphism_lowering.h"
+#include "pa21_constant_lowering.h"
 #include <algorithm>
 #include <limits>
 #include <ostream>
@@ -53,7 +54,8 @@ class GraphLowerer :
 	private pa16_lowering_detail::InitializationLowering<GraphLowerer>,
 	private pa16_lowering_detail::LifetimeActionLowering<GraphLowerer>,
 	private pa16_lowering_detail::SlotPlanning<GraphLowerer>,
-	private pa17_lowering_detail::TemporaryLifetimeLowering<GraphLowerer>
+	private pa17_lowering_detail::TemporaryLifetimeLowering<GraphLowerer>,
+	private pa21_lowering_detail::ConstantLowering<GraphLowerer>
 {
 public:
 	GraphLowerer(const SemanticGraphView& graph, TypedProgram& output,
@@ -142,6 +144,7 @@ private:
 	friend class pa16_lowering_detail::LifetimeActionLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::SlotPlanning<GraphLowerer>;
 	friend class pa17_lowering_detail::TemporaryLifetimeLowering<GraphLowerer>;
+	friend class pa21_lowering_detail::ConstantLowering<GraphLowerer>;
 	enum StatementTaskKind : std::uint8_t
 	{
 		STATEMENT_NODE,
@@ -301,7 +304,6 @@ private:
 		output_.symbol_index.Insert(identity, symbol);
 		return symbol;
 	}
-
 	void RegisterFunction(std::uint32_t node)
 	{
 		const DumpNode& record = arena_.nodes[node];
@@ -376,7 +378,6 @@ private:
 				pending.push_back(children[i - 1]);
 		}
 	}
-
 	void EmitTop(std::uint32_t node)
 	{
 		std::vector<std::uint32_t> pending(1, node);
@@ -463,7 +464,6 @@ private:
 				pending.push_back(children[i - 1]);
 		}
 	}
-
 	FunctionDeclaration LowerDeclaration(std::uint32_t node) const
 	{
 		const DumpNode& record = arena_.nodes[node];
@@ -1446,7 +1446,7 @@ private:
 			(arena_.nodes[children[0]].enum_arithmetic_conversion && !SameType(left.type, operand_type)) ||
 			(arena_.nodes[children[1]].enum_arithmetic_conversion && !SameType(right.type, operand_type));
 		const bool canonicalize_immediates =
-			(!preserves_enum_conversion && !comparison && (op == "+" || op == "-")) ||
+			CanonicalizeAdditiveImmediates(children[0], op, comparison, preserves_enum_conversion) ||
 			(comparison &&
 			 ((left.kind == Operand::INTEGER && IsInteger(left.type) &&
 			   left.type.width < operand_type.width) ||
@@ -1507,12 +1507,12 @@ private:
 		bool conjunction)
 	{
 		const DumpNode& left_record = arena_.nodes[children[0]];
-		if (left_record.kind == DUMP_LITERAL && left_record.constant)
+		if (FoldNamedLogicalConstant(children[0]))
 		{
 			const bool left_truth = left_record.constant_value != 0;
 			if ((conjunction && !left_truth) || (!conjunction && left_truth))
 				return Operand(left_truth ? 1 : 0, LowU8());
-			return LowerCondition(children[1]);
+			return LowerCanonicalCondition(children[1]);
 		}
 		const Operand slot(EnsureGeneratedSlot(node,
 			conjunction ? "land" : "lor", LowI64()), LowI64());

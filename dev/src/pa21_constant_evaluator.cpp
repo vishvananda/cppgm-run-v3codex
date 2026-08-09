@@ -995,7 +995,7 @@ bool SemanticAnalyzer::AnalyzeConstexprInitializer(NodeId node, ScopeId scope,
 
 ExpressionInfo SemanticAnalyzer::AnalyzeConstantAwareVariableInitializer(
 	NodeId initializer, ScopeId scope, TypeId type, bool local,
-	bool require_constant)
+	bool require_constant, bool preserve_recipe)
 {
 	if (require_constant)
 	{
@@ -1003,6 +1003,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeConstantAwareVariableInitializer(
 		++constant_initializer_required_depth_;
 		if (local) ++local_constant_initializer_depth_;
 	}
+	if (preserve_recipe) ++preserve_constant_initializer_recipe_depth_;
 	try
 	{
 		ExpressionInfo result = AnalyzeVariableInitializer(
@@ -1013,6 +1014,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeConstantAwareVariableInitializer(
 			--constant_initializer_required_depth_;
 			--constant_expression_required_depth_;
 		}
+		if (preserve_recipe) --preserve_constant_initializer_recipe_depth_;
 		return result;
 	}
 	catch (...)
@@ -1023,8 +1025,43 @@ ExpressionInfo SemanticAnalyzer::AnalyzeConstantAwareVariableInitializer(
 			--constant_initializer_required_depth_;
 			--constant_expression_required_depth_;
 		}
+		if (preserve_recipe) --preserve_constant_initializer_recipe_depth_;
 		throw;
 	}
+}
+
+ExpressionInfo SemanticAnalyzer::AnalyzeInClassStaticInitializer(
+	NodeId initializer, ScopeId scope, TypeId type, const SpecInfo& spec)
+{
+	const TypeRecord shape = program_->types.Get(
+		program_->types.RemoveTopCv(type));
+	if (shape.kind == TYPE_ARRAY || EntityOf(type) != kNoEntity)
+		return AnalyzeConstantAwareVariableInitializer(
+			initializer, scope, type, false, true, true);
+	return AnalyzeConstantRequiredExpression(
+		FirstSemanticChild(initializer), scope, type,
+		spec.is_constexpr && !IsIntegral(type, true) && !IsFloating(type));
+}
+
+void SemanticAnalyzer::InheritVariableRedeclarationFacts(BindingId binding)
+{
+	BindingRecord& declared = program_->bindings[binding];
+	BindingRecord& canonical = program_->bindings[declared.canonical];
+	if (declared.canonical == binding) return;
+	if (canonical.member_owner != kNoEntity)
+	{
+		declared.member_owner = canonical.member_owner;
+		declared.non_static_data_member = canonical.non_static_data_member;
+		declared.weak_odr = canonical.weak_odr;
+	}
+	if (!canonical.constant) return;
+	const std::uint32_t address = BindingAddress(declared.canonical);
+	const std::uint32_t object = BindingObject(declared.canonical);
+	if (address != kNoConstexprAddress)
+		PublishBindingAddress(binding, address);
+	else if (object != kNoConstexprObject)
+		PublishBindingObject(binding, object);
+	else PublishBindingScalar(binding, BindingScalar(declared.canonical));
 }
 
 ExpressionInfo SemanticAnalyzer::FinalizeVariableInitializer(
@@ -1056,6 +1093,7 @@ ExpressionInfo SemanticAnalyzer::FinalizeVariableInitializer(
 		}
 	if (constant_expression_required_depth_ != 0 &&
 		constant_object != kNoConstexprObject && user_constexpr_constructor &&
+		preserve_constant_initializer_recipe_depth_ == 0 &&
 		dump_.nodes[initializer.node].kind != DUMP_CLASS_VALUE_TRANSFER)
 		initializer = MaterializeConstexprObject(constant_object, type);
 	ExpressionInfo result = local ?
@@ -1100,6 +1138,54 @@ ExpressionInfo SemanticAnalyzer::AnalyzeDefaultConstexprObjectInitializer(
 void SemanticAnalyzer::PublishConstantVariableInitializer(BindingId binding,
 	TypeId type, const SpecInfo& spec, const ExpressionInfo& initializer)
 {
+	const BindingRecord& published_binding = program_->bindings[binding];
+	if (published_binding.member_owner != kNoEntity &&
+		!published_binding.non_static_data_member &&
+		initializer.node != kNoDumpEdge)
+	{
+		const BindingId canonical = published_binding.canonical;
+		if (static_constant_dependency_state_by_binding_.size() <= canonical)
+		{
+			static_constant_dependency_state_by_binding_.resize(
+				static_cast<std::size_t>(canonical) + 1, 0);
+			static_constant_dependencies_by_binding_.resize(
+				static_cast<std::size_t>(canonical) + 1);
+			static_constant_initializer_by_binding_.resize(
+				static_cast<std::size_t>(canonical) + 1, kNoDumpEdge);
+		}
+		if (static_constant_dependency_state_by_binding_[canonical] == 0)
+		{
+			std::vector<BindingId>& dependencies =
+				static_constant_dependencies_by_binding_[canonical];
+			std::vector<std::uint32_t> pending(1, initializer.node);
+			while (!pending.empty())
+			{
+				const std::uint32_t node = pending.back();
+				pending.pop_back();
+				if (node >= dump_.nodes.size())
+					throw std::logic_error(
+						"static constant initializer is out of range");
+				const DumpNode& record = dump_.nodes[node];
+				if ((record.kind == DUMP_CONSTRUCTOR_ACTION ||
+					record.kind == DUMP_CALL_EXPRESSION) &&
+					record.binding != kNoBinding)
+					dependencies.push_back(
+						program_->bindings[record.binding].canonical);
+				if (record.kind == DUMP_CLASS_VALUE_TRANSFER &&
+					record.selected_binding != kNoBinding)
+					dependencies.push_back(program_->bindings[
+						record.selected_binding].canonical);
+				for (std::uint32_t edge = record.first_edge;
+					edge != kNoDumpEdge; edge = dump_.edges[edge].next)
+					pending.push_back(dump_.edges[edge].child);
+			}
+			std::sort(dependencies.begin(), dependencies.end());
+			dependencies.erase(std::unique(
+				dependencies.begin(), dependencies.end()), dependencies.end());
+			static_constant_dependency_state_by_binding_[canonical] = 1;
+			static_constant_initializer_by_binding_[canonical] = initializer.node;
+		}
+	}
 	const TypeId object_type_id = program_->types.RemoveTopCv(
 		EffectiveType(type));
 	const TypeRecord& object_type = program_->types.Get(object_type_id);

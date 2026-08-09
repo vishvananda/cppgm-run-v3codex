@@ -43,6 +43,12 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		constructor_base_entry_by_binding_.capacity() * sizeof(BindingId) +
 		destructor_base_entry_by_binding_.capacity() * sizeof(BindingId) +
 		static_member_storage_by_binding_.capacity() * sizeof(std::uint32_t) +
+		static_constant_dependency_state_by_binding_.capacity() *
+			sizeof(std::uint8_t) +
+		static_constant_initializer_by_binding_.capacity() *
+			sizeof(std::uint32_t) +
+		static_constant_dependencies_by_binding_.capacity() *
+			sizeof(std::vector<BindingId>) +
 		entity_destructor_by_entity_.capacity() * sizeof(BindingId) +
 		hidden_friend_anchor_by_entity_.capacity() * sizeof(BindingId) +
 		member_initializer_by_binding_.capacity() * sizeof(NodeId) +
@@ -132,6 +138,10 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		bytes += i->first.arguments.capacity() * sizeof(ConstexprCallArgument);
 	for (std::size_t i = 0; i < entity_data_members_.size(); ++i)
 		bytes += entity_data_members_[i].capacity() * sizeof(BindingId);
+	for (std::size_t i = 0;
+		i < static_constant_dependencies_by_binding_.size(); ++i)
+		bytes += static_constant_dependencies_by_binding_[i].capacity() *
+			sizeof(BindingId);
 	for (std::size_t i = 0; i < entity_layout_members_.size(); ++i)
 		bytes += entity_layout_members_[i].capacity() *
 			sizeof(ClassLayoutMember);

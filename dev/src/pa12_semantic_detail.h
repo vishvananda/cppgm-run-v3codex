@@ -43,6 +43,7 @@ public:
 		  constant_expression_required_depth_(0),
 		  constant_initializer_required_depth_(0),
 		  local_constant_initializer_depth_(0),
+		  preserve_constant_initializer_recipe_depth_(0),
 		  constexpr_evaluation_depth_(0), constexpr_evaluation_steps_(0),
 		  next_constexpr_storage_identity_(1),
 		  expression_count_(0),
@@ -154,6 +155,10 @@ private:
 	void PublishVariableDeclarationFacts(BindingId binding,
 		ScopeId declaration_scope, NameId name, TypeId type,
 		const SpecInfo& spec, bool local);
+	TypeId CompleteQualifiedStaticArrayType(
+		BindingId prior, TypeId declared) const;
+	bool IsStaticConstantDefinition(BindingId binding) const;
+	void InheritVariableRedeclarationFacts(BindingId binding);
 	void AnalyzeFunction(NodeId node, ScopeId scope,
 		std::uint32_t output_parent,
 		bool deferred_member_definition = false);
@@ -494,7 +499,10 @@ private:
 	bool TryAnalyzeClassExpressionInitializer(NodeId expression, ScopeId scope,
 		TypeId type, ExpressionInfo* initializer);
 	ExpressionInfo AnalyzeConstantAwareVariableInitializer(NodeId initializer,
-		ScopeId scope, TypeId type, bool local, bool require_constant);
+		ScopeId scope, TypeId type, bool local, bool require_constant,
+		bool preserve_recipe = false);
+	ExpressionInfo AnalyzeInClassStaticInitializer(NodeId initializer,
+		ScopeId scope, TypeId type, const SpecInfo& spec);
 	ExpressionInfo FinalizeVariableInitializer(ExpressionInfo initializer,
 		TypeId type, EntityId class_entity, bool local);
 	ExpressionInfo AnalyzeDefaultConstexprObjectInitializer(
@@ -1000,6 +1008,12 @@ private:
 	std::vector<BindingId> constructor_base_entry_by_binding_;
 	std::vector<BindingId> destructor_base_entry_by_binding_;
 	std::vector<std::uint32_t> static_member_storage_by_binding_;
+	// Completion records compact callable edges before an ODR-used definition
+	// is rematerialized from its immutable value.
+	std::vector<std::uint8_t> static_constant_dependency_state_by_binding_;
+	std::vector<std::uint32_t> static_constant_initializer_by_binding_;
+	std::vector<std::vector<BindingId> >
+		static_constant_dependencies_by_binding_;
 	std::vector<BindingId> entity_destructor_by_entity_;
 	std::vector<BindingId> hidden_friend_anchor_by_entity_;
 	std::vector<NodeId> member_initializer_by_binding_;
@@ -1095,6 +1109,7 @@ private:
 	std::size_t constant_expression_required_depth_;
 	std::size_t constant_initializer_required_depth_;
 	std::size_t local_constant_initializer_depth_;
+	std::size_t preserve_constant_initializer_recipe_depth_;
 	std::size_t constexpr_evaluation_depth_;
 	std::size_t constexpr_evaluation_steps_;
 	std::uint64_t next_constexpr_storage_identity_;

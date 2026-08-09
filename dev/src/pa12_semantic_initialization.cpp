@@ -136,6 +136,7 @@ bool SemanticAnalyzer::TryBuildElidedClassValueTransfer(TypeId type,
 		return false;
 	const DumpNode& materialized = dump_.nodes[source.node];
 	if (materialized.kind != DUMP_TEMPORARY_OBJECT ||
+		materialized.reference_call_materialization ||
 		materialized.first_edge == kNoDumpEdge ||
 		dump_.edges[materialized.first_edge].next != kNoDumpEdge)
 		return false;
@@ -200,6 +201,7 @@ std::uint32_t SemanticAnalyzer::BuildClassValueConstructorAction(TypeId type,
 	dump_.nodes[action].trivial_special_member_action =
 		constructor.trivial_special_member && !materialized_conversion_result;
 	dump_.Add(action, converted_source.node);
+	std::vector<ExpressionInfo> constexpr_arguments(1, converted_source);
 	for (std::size_t a = 1; a < function_type.parameter_count; ++a)
 	{
 		if (a >= constructor.parameters.size() ||
@@ -211,7 +213,15 @@ std::uint32_t SemanticAnalyzer::BuildClassValueConstructorAction(TypeId type,
 			constructor.parameters[a].default_scope, parameters[a]);
 		argument = ApplyCallArgument(argument, parameters[a]);
 		dump_.Add(action, argument.node);
+		constexpr_arguments.push_back(argument);
 	}
+	std::uint32_t constexpr_object = kNoConstexprObject;
+	if (constant_evaluation_suppressed_depth_ == 0 &&
+		(constructor.constexpr_function || constructor.defaulted_constructor ||
+		 constructor.implicit_constructor) &&
+		TryEvaluateConstexprConstructor(
+			selected, constexpr_arguments, &constexpr_object))
+		PublishDumpObject(action, constexpr_object);
 	const EntityId constructor_owner =
 		program_->bindings[constructor.binding].member_owner;
 	const bool explicitly_defaulted = constructor.defaulted_special_member &&

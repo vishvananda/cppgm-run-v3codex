@@ -365,8 +365,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		 cast_kind.compare(0, 10, "OP_LPAREN:") == 0) &&
 		!direct_reference_cast &&
 		!static_reference_downcast &&
-		program_->types.RemoveTopCv(EffectiveType(operand.type)) !=
-			constructed_target;
+		(program_->types.RemoveTopCv(EffectiveType(operand.type)) !=
+			constructed_target ||
+		 (target_record.kind != TYPE_LVALUE_REFERENCE &&
+		  target_record.kind != TYPE_RVALUE_REFERENCE));
 	if (constructor_cast)
 	{
 		ExpressionInfo initialized;
@@ -374,6 +376,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 			constructed_target, operand, false, true);
 		initialized.type = constructed_target;
 		initialized.category = VALUE_PRVALUE;
+		SetExpressionDumpObject(&initialized);
 		initialized = MaterializeTemporary(initialized);
 		if (target_record.kind == TYPE_LVALUE_REFERENCE ||
 			target_record.kind == TYPE_RVALUE_REFERENCE)

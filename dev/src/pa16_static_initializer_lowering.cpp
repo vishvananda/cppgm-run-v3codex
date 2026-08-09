@@ -1,6 +1,7 @@
 #include "pa16_static_initializer_lowering.h"
 
 #include "pa15_lowering_support.h"
+#include "post_tokenizer.h"
 
 #include <algorithm>
 #include <stdexcept>
@@ -95,17 +96,29 @@ SymbolId StaticInitializerLowering::EnsureStringLiteral(std::uint32_t node)
 	output_.symbols.back().referenced = true;
 	literal_symbols_[node] = symbol;
 	output_.string_literal_symbols[literal] = symbol;
-	const std::vector<unsigned char> bytes = DecodeStringLiteral(spelling);
+	FundamentalType decoded_type = FT_CHAR;
+	std::vector<std::uint32_t> units;
+	if (!DecodeStringLiteralCodeUnits(spelling, &decoded_type, &units) ||
+		units.empty())
+		throw std::runtime_error("invalid PA16 string literal spelling");
+	const TypeRecord& array = program_.types.Get(
+		types_.ExpressionObject(arena_.nodes[node].type));
+	if (array.kind != TYPE_ARRAY || array.bound != units.size())
+		throw std::logic_error("typed string literal shape mismatch");
+	const LowType element = types_.LowerExpression(array.child);
+	if (!IsInteger(element))
+		throw std::logic_error("typed string literal element is not integral");
 	Global global;
 	global.symbol = symbol;
-	global.type = LowObject(bytes.size(), 1);
+	global.type = LowObject(program_.SizeOf(arena_.nodes[node].type),
+		program_.AlignOf(array.child));
 	global.initializer_kind = Global::STRUCTURED_VALUE;
-	for (std::size_t i = 0; i < bytes.size(); ++i)
+	for (std::size_t i = 0; i < units.size(); ++i)
 	{
 		Global::DataItem item;
 		item.kind = Global::DataItem::INTEGER_ITEM;
-		item.type = LowI8();
-		item.integer_value = bytes[i];
+		item.type = element;
+		item.integer_value = units[i];
 		global.items.push_back(item);
 	}
 	output_.globals.push_back(global);

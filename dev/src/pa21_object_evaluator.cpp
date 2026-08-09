@@ -8,6 +8,30 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+TypeId SemanticAnalyzer::CompleteQualifiedStaticArrayType(
+	BindingId prior, TypeId declared) const
+{
+	if (prior == kNoBinding || prior >= program_->bindings.size() ||
+		program_->bindings[prior].kind != BIND_VARIABLE)
+		return declared;
+	const TypeId prior_type = program_->bindings[prior].type;
+	const TypeRecord completed = program_->types.Get(prior_type);
+	const TypeRecord candidate = program_->types.Get(declared);
+	return completed.kind == TYPE_ARRAY && candidate.kind == TYPE_ARRAY &&
+		completed.child == candidate.child && completed.bound != 0 &&
+		candidate.bound == 0 ? prior_type : declared;
+}
+
+bool SemanticAnalyzer::IsStaticConstantDefinition(BindingId binding) const
+{
+	const BindingRecord& declared = program_->bindings[binding];
+	const BindingRecord& canonical =
+		program_->bindings[declared.canonical];
+	return declared.canonical != binding &&
+		canonical.member_owner != kNoEntity &&
+		!canonical.non_static_data_member && canonical.constant;
+}
+
 ExpressionInfo SemanticAnalyzer::AnalyzeArrayAggregateInit(TypeId type,
 	ScopeId scope, std::uint32_t* element_edge)
 {
@@ -124,6 +148,21 @@ bool SemanticAnalyzer::MaterializeConstantDefinitionInitializer(
 	BindingId binding, TypeId* type, ExpressionInfo* initializer)
 {
 	if (!program_->bindings[binding].constant) return false;
+	const BindingId canonical = program_->bindings[binding].canonical;
+	if (canonical < static_constant_initializer_by_binding_.size() &&
+		static_constant_initializer_by_binding_[canonical] != kNoDumpEdge)
+	{
+		const std::uint32_t node =
+			static_constant_initializer_by_binding_[canonical];
+		if (node >= dump_.nodes.size())
+			throw std::logic_error(
+				"static constant initializer fact is out of range");
+		initializer->node = node;
+		initializer->type = *type;
+		initializer->category = VALUE_NONE;
+		SetExpressionDumpObject(initializer);
+		return true;
+	}
 	const std::uint32_t object = BindingObject(binding);
 	const std::uint32_t address = BindingAddress(binding);
 	if (address != kNoConstexprAddress)
