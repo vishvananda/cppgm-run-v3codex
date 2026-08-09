@@ -202,6 +202,9 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	pattern.constructor_template = special_member_template;
 	pattern.dependent_exception_specification =
 		dependent_exception_specification;
+	const bool explicit_member_definition = definition &&
+		explicit_member_template_replay_depth_ != 0;
+	pattern.explicit_member_definition = explicit_member_definition;
 	bool friend_syntax = false;
 	for (std::uint32_t edge = specifiers == kNoNode ? kNoEdge :
 		arena_->FirstEdge(specifiers); edge != kNoEdge;
@@ -210,7 +213,13 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 			friend_syntax = true;
 	if (!friend_syntax)
 	{
-		pattern.owner = ResolveOwner(scope, path);
+		ScopeId structured_owner = kNoScope;
+		const NodeId structure = DeclaratorNameStructure(declarator);
+		if (structure != kNoNode && (path.global || path.Size() > 1))
+			(void)LookupStructuredName(structure, scope,
+				LOOKUP_FUNCTION_TEMPLATE, &structured_owner);
+		pattern.owner = structured_owner != kNoScope ? structured_owner :
+			ResolveOwner(scope, path);
 		if (pattern.owner == kNoScope)
 			throw std::runtime_error("function template owner not found");
 		if (program_->EntityForScope(pattern.owner) != kNoEntity)
@@ -351,7 +360,8 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 		}
 		if (definition)
 		{
-			if (prior.defined)
+			if (prior.defined && (!explicit_member_definition ||
+				prior.explicit_member_definition))
 				throw std::runtime_error(
 					"duplicate function template definition");
 			prior.lexical_scope = pattern.lexical_scope;
@@ -363,6 +373,8 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 			prior.language_linkage = pattern.language_linkage;
 			prior.static_member = prior.static_member || pattern.static_member;
 			prior.definition_in_class = pattern.definition_in_class;
+			prior.explicit_member_definition =
+				prior.explicit_member_definition || explicit_member_definition;
 			if (pattern.lexical_scope == pattern.owner)
 				prior.member_access = pattern.member_access;
 			prior.defined = true;
@@ -370,6 +382,9 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 		}
 		return;
 	}
+	if (explicit_member_definition)
+		throw std::runtime_error(
+			"explicit member template definition target was not found");
 	if (friend_owner != kNoEntity && qualified_friend)
 		throw std::runtime_error(
 			"qualified friend function template was not declared");

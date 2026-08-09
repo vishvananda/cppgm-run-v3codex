@@ -84,6 +84,51 @@ std::string ExplicitClassSpecializationName(const Program& program,
 
 }
 
+void SemanticAnalyzer::ResetClassTemplateSpecializationDefinition(
+	BindingId specialization)
+{
+	if (specialization == kNoBinding ||
+		specialization >= program_->bindings.size())
+		throw std::logic_error("invalid class specialization reset");
+	const EntityId entity = EntityOf(program_->bindings[specialization].type);
+	if (entity == kNoEntity)
+		throw std::logic_error("class specialization reset has no entity");
+	program_->ResetClassDefinition(entity);
+	if (entity < entity_data_members_.size())
+		entity_data_members_[entity].clear();
+	if (entity < entity_layout_members_.size())
+		entity_layout_members_[entity].clear();
+	if (entity < entity_constructors_.size())
+		entity_constructors_[entity].clear();
+	if (entity < entity_conversion_functions_.size())
+		entity_conversion_functions_[entity].clear();
+	if (entity < entity_member_functions_.size())
+		entity_member_functions_[entity].clear();
+	if (entity < class_polymorphism_.size())
+		class_polymorphism_[entity] = ClassPolymorphismFacts();
+	if (entity < class_special_members_.size())
+		class_special_members_[entity] = ClassSpecialMemberFacts();
+	if (entity < implicit_constructor_by_entity_.size())
+		implicit_constructor_by_entity_[entity] = kNoBinding;
+	if (entity < entity_destructor_by_entity_.size())
+		entity_destructor_by_entity_[entity] = kNoBinding;
+	if (entity < hidden_friend_anchor_by_entity_.size())
+		hidden_friend_anchor_by_entity_[entity] = kNoBinding;
+	if (entity < deferred_class_definition_by_entity_.size())
+		deferred_class_definition_by_entity_[entity] = kNoNode;
+	if (entity < deferred_class_scope_by_entity_.size())
+		deferred_class_scope_by_entity_[entity] = kNoScope;
+	if (entity < default_constructor_demand_states_.size())
+		default_constructor_demand_states_[entity] = 0;
+	if (specialization < class_template_specialization_states_.size())
+		class_template_specialization_states_[specialization] = 0;
+	if (specialization < class_template_member_definition_counts_.size())
+		class_template_member_definition_counts_[specialization] = 0;
+	if (specialization <
+		class_template_demanded_member_definition_counts_.size())
+		class_template_demanded_member_definition_counts_[specialization] = 0;
+}
+
 bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 	NodeId target, ScopeId scope, AccessKind)
 {
@@ -301,9 +346,6 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 			if (entity == kNoEntity)
 				throw std::logic_error(
 					"explicit class specialization cache has no entity");
-			if (program_->entities[entity].complete)
-				throw std::runtime_error(
-					"explicit specialization follows completed instantiation");
 			const BindingRecord& declaration = program_->bindings[
 				program_->entities[entity].declaration];
 			const NodeId key_node = FindChild(target, "class-key");
@@ -313,6 +355,20 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 				key_text == "union" ? NAMED_UNION : NAMED_NONE;
 			if (flavor == NAMED_NONE)
 				throw std::runtime_error("invalid explicit specialization class-key");
+			const bool demanded =
+				(binding < class_template_specialization_use_states_.size() &&
+				 class_template_specialization_use_states_[binding] != 0) ||
+				(binding < class_template_member_definition_demand_states_.size() &&
+				 (class_template_member_definition_demand_states_[binding] & 1U) != 0) ||
+				(binding < class_template_explicit_instantiation_states_.size() &&
+				 class_template_explicit_instantiation_states_[binding] != 0);
+			if (program_->entities[entity].complete)
+			{
+				if (demanded)
+					throw std::runtime_error(
+						"explicit specialization follows completed instantiation");
+				ResetClassTemplateSpecializationDefinition(binding);
+			}
 			CompleteClassDefinition(target, specialization_scope, type, entity,
 				flavor, pattern.owner, declaration.name, declaration.name,
 				pattern.owner, pattern.name, program_->names.Intern(
@@ -323,8 +379,11 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 		{
 			const std::string name = ExplicitClassSpecializationName(
 				*program_, pattern.name, arguments);
+			// Publish the canonical specialization shell before analyzing its
+			// members.  In particular, an injected primary name used by a member
+			// declaration must already route back to this template pattern.
 			type = AnalyzeClass(target, specialization_scope, std::string(),
-				false, name, pattern.owner, pattern.name, true,
+				false, name, pattern.owner, pattern.name, false,
 				program_->names.Intern(name));
 			entity = EntityOf(type);
 			if (entity == kNoEntity ||
@@ -332,6 +391,19 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 				throw std::logic_error(
 					"explicit class specialization has no declaration");
 			binding = program_->entities[entity].declaration;
+			StoreTemplateArguments(arguments,
+				&program_->entities[entity].template_argument_begin,
+				&program_->entities[entity].template_argument_count);
+			if (class_template_pattern_by_entity_.size() <= entity)
+				class_template_pattern_by_entity_.resize(
+					static_cast<std::size_t>(entity) + 1, kNoDumpEdge);
+			class_template_pattern_by_entity_[entity] =
+				static_cast<std::uint32_t>(pattern_index);
+			class_template_instantiations_.Insert(key, binding);
+			pattern.specialization_bindings.push_back(binding);
+			(void)AnalyzeClass(target, specialization_scope, std::string(),
+				false, name, pattern.owner, pattern.name, true,
+				program_->names.Intern(name));
 		}
 		if (program_->entities[entity].template_argument_begin == kNoBinding)
 			StoreTemplateArguments(arguments,

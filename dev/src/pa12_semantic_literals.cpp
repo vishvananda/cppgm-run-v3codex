@@ -673,6 +673,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 		throw std::runtime_error("name does not denote a value");
 	if (!CanAccessMember(found.ordinary, found.naming_class))
 		throw std::runtime_error("inaccessible member object");
+	MarkClassTemplateSpecializationUse(binding.member_owner);
 	if (binding.non_static_data_member)
 		return AnalyzeImplicitDataMember(found.ordinary, scope, target,
 			found.naming_class);

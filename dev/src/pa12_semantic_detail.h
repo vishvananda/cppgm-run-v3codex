@@ -34,6 +34,7 @@ public:
 		  root_(kNoDumpEdge),
 		  function_template_dependent_result_shape_(kNoType),
 		  class_template_member_replay_depth_(0),
+		  explicit_member_template_replay_depth_(0),
 		  current_language_linkage_(LANGUAGE_LINKAGE_CPP),
 		  current_return_type_(kNoType), current_class_context_(kNoEntity),
 		  current_function_context_(kNoBinding),
@@ -472,10 +473,12 @@ private:
 	ScopeId BindClassTemplateArguments(const ClassTemplatePattern& pattern,
 		const std::vector<TemplateArgument>& arguments);
 	void UpgradeClassTemplateSpecializations(std::size_t pattern);
+	void ResetClassTemplateSpecializationDefinition(BindingId specialization);
 	void ApplyClassTemplateMemberDefinitions(std::size_t pattern,
 		BindingId specialization,
 		const std::vector<TemplateArgument>& arguments, bool demanded = false);
 	void DemandClassTemplateMemberDefinitions(EntityId entity);
+	void MarkClassTemplateSpecializationUse(EntityId entity);
 	void QueueClassTemplateMemberDefinitions(std::size_t pattern,
 		BindingId specialization);
 	void ApplyDemandedClassTemplateMemberDefinitions(BindingId specialization);
@@ -1169,6 +1172,7 @@ private:
 	TemplateSpecializationTable class_template_instantiations_;
 	TemplateSpecializationTable variable_template_instantiations_;
 	std::vector<std::uint8_t> class_template_specialization_states_;
+	std::vector<std::uint8_t> class_template_specialization_use_states_;
 	// A specialization shell retains the selected partial declaration and its
 	// narrow substitution overlay until definition completion consumes them.
 	std::vector<ClassTemplatePartialSelection>
@@ -1184,6 +1188,7 @@ private:
 	std::vector<std::uint8_t> class_template_member_definition_demand_states_;
 	std::vector<BindingId> demanded_class_template_member_definitions_;
 	std::size_t class_template_member_replay_depth_;
+	std::size_t explicit_member_template_replay_depth_;
 	std::vector<NodeId> deferred_class_definition_by_entity_;
 	std::vector<ScopeId> deferred_class_scope_by_entity_;
 	std::vector<std::uint32_t> injected_fact_by_binding_;

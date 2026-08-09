@@ -725,6 +725,23 @@ bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,
 		&owner_shape_state) || owner_shape_state != 1)
 		throw std::runtime_error(
 			"class template member owner pattern is not deducible");
+	bool concrete_owner = true;
+	for (std::size_t i = 0;
+		i < member.canonical_owner_arguments.size(); ++i)
+		if (member.canonical_owner_arguments[i].IsDependent() ||
+			(member.canonical_owner_arguments[i].kind == TEMPLATE_ARGUMENT_TYPE &&
+			 FunctionTemplateTypeIsDependent(
+				member.canonical_owner_arguments[i].type)))
+			concrete_owner = false;
+	if (concrete_owner && !parameters.empty())
+	{
+		const BindingId binding = InstantiateClassTemplate(
+			pattern_index, member.canonical_owner_arguments);
+		if (binding != kNoBinding && binding <
+			class_template_explicit_specialization_states_.size() &&
+			class_template_explicit_specialization_states_[binding] != 0)
+			return false;
+	}
 	SelectClassTemplateMemberOwner(pattern_index, &member);
 
 	const bool demand_definition =
@@ -733,20 +750,10 @@ bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,
 		class_templates_[pattern_index].demanded_member_definitions.push_back(
 			member);
 	else class_templates_[pattern_index].member_definitions.push_back(member);
-	if (parameters.empty())
-	{
-		bool concrete_owner = true;
-		for (std::size_t i = 0;
-			i < member.canonical_owner_arguments.size(); ++i)
-			if (member.canonical_owner_arguments[i].IsDependent())
-				concrete_owner = false;
-		if (concrete_owner)
-			(void)InstantiateClassTemplate(
-				pattern_index, member.canonical_owner_arguments);
-	}
 	const std::vector<BindingId> specializations =
-		class_templates_[pattern_index].specialization_bindings;
-	const std::size_t parameter_count = owner_pattern.parameters.size();
+		member.concrete_owner == kNoBinding ?
+		class_templates_[pattern_index].specialization_bindings :
+		std::vector<BindingId>(1, member.concrete_owner);
 	for (std::size_t i = 0; i < specializations.size(); ++i)
 	{
 		const EntityId entity = EntityOf(
@@ -755,12 +762,12 @@ bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,
 			throw std::logic_error("class specialization has no entity");
 		const EntityRecord& record = program_->entities[entity];
 		const std::size_t first = record.template_argument_begin;
-		if (record.template_argument_count != parameter_count ||
-			first > program_->template_arguments.size() || parameter_count >
+		const std::size_t count = record.template_argument_count;
+		if (first > program_->template_arguments.size() || count >
 				program_->template_arguments.size() - first)
 			throw std::logic_error("class specialization arguments are invalid");
 		const std::vector<TemplateArgument> arguments =
-			StoredTemplateArguments(first, parameter_count);
+			StoredTemplateArguments(first, count);
 		if (demand_definition)
 			QueueClassTemplateMemberDefinitions(
 				pattern_index, specializations[i]);
@@ -1225,6 +1232,8 @@ void SemanticAnalyzer::ApplyClassTemplateMemberDefinitions(
 			counts[specialization]++;
 		const ClassTemplateMemberPattern& definition =
 			definitions[definition_index];
+		if (definition.concrete_owner != kNoBinding &&
+			definition.concrete_owner != specialization) continue;
 		const std::uint32_t selected_partial = specialization <
 			class_template_partial_selections_.size() ?
 			class_template_partial_selections_[specialization].pattern : kNoDumpEdge;
@@ -1292,15 +1301,21 @@ void SemanticAnalyzer::ApplyClassTemplateMemberDefinitions(
 		if (arena_->IsTag(node, "template-declaration"))
 		{
 			++class_template_member_replay_depth_;
+			const bool explicit_member =
+				definition.concrete_owner != kNoBinding;
+			if (explicit_member) ++explicit_member_template_replay_depth_;
 			try
 			{
 				AnalyzeTemplate(node, definition_scope, ACCESS_PUBLIC);
 			}
 			catch (...)
 			{
+				if (explicit_member)
+					--explicit_member_template_replay_depth_;
 				--class_template_member_replay_depth_;
 				throw;
 			}
+			if (explicit_member) --explicit_member_template_replay_depth_;
 			--class_template_member_replay_depth_;
 		}
 		else if (arena_->IsTag(node, "function-definition"))
@@ -1373,6 +1388,29 @@ void SemanticAnalyzer::DemandClassTemplateMemberDefinitions(EntityId entity)
 		class_template_member_definition_demand_states_[specialization] |= 1U;
 		QueueClassTemplateMemberDefinitions(pattern, specialization);
 		return;
+	}
+}
+
+void SemanticAnalyzer::MarkClassTemplateSpecializationUse(EntityId entity)
+{
+	for (std::size_t depth = 0; entity != kNoEntity &&
+		depth <= program_->entities.size(); ++depth)
+	{
+		if (entity >= program_->entities.size())
+			throw std::logic_error("invalid class template use entity");
+		if (entity < class_template_pattern_by_entity_.size() &&
+			class_template_pattern_by_entity_[entity] != kNoDumpEdge)
+		{
+			const BindingId specialization =
+				program_->entities[entity].declaration;
+			if (specialization == kNoBinding) return;
+			if (class_template_specialization_use_states_.size() <= specialization)
+				class_template_specialization_use_states_.resize(
+					static_cast<std::size_t>(specialization) + 1, 0);
+			class_template_specialization_use_states_[specialization] = 1;
+			return;
+		}
+		entity = program_->entities[entity].enclosing_class;
 	}
 }
 

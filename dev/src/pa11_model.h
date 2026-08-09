@@ -452,6 +452,7 @@ public:
 		TypeId type, NamedFlavor display);
 	void SetTypeName(ScopeId owner, NameId name, TypeId type);
 	void SetEntityScope(EntityId entity, ScopeId scope);
+	void ResetClassDefinition(EntityId entity);
 	void SetDirectBase(EntityId derived, EntityId base, AccessKind access);
 	void SetDirectBases(EntityId derived,
 		const std::vector<DirectBaseEdge>& bases);

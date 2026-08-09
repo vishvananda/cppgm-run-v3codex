@@ -1033,8 +1033,15 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 	if (!path.global && path.Size() <= 1)
 		throw std::runtime_error(
 			"unqualified special member definition outside a class");
+	ScopeId structured_owner = kNoScope;
+	const NodeId structure = DeclaratorNameStructure(declarator);
+	if (declaration_scope == kNoScope && structure != kNoNode)
+		(void)LookupStructuredName(structure, scope,
+			LOOKUP_ORDINARY, &structured_owner);
 	const ScopeId owner = declaration_scope == kNoScope ?
-		ResolveOwner(scope, path) : program_->ParentScope(declaration_scope);
+		(structured_owner != kNoScope ? structured_owner :
+			ResolveOwner(scope, path)) :
+		program_->ParentScope(declaration_scope);
 	const EntityId entity = owner == kNoScope ? kNoEntity :
 		program_->EntityForScope(owner);
 	if (entity == kNoEntity)
@@ -1157,7 +1164,13 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 	{
 		ValidateConstexprConstructorDefinition(info);
 		program_->entities[entity].has_user_provided_constructor = true;
-		if (defer_demand &&
+		const BindingId class_declaration =
+			program_->entities[entity].declaration;
+		const bool explicit_class_specialization =
+			class_declaration <
+				class_template_explicit_specialization_states_.size() &&
+			class_template_explicit_specialization_states_[class_declaration] != 0;
+		if ((defer_demand || explicit_class_specialization) &&
 			program_->entities[entity].direct_base == kNoEntity)
 		{
 			if (constructor_base_entry_by_binding_.size() <= special)

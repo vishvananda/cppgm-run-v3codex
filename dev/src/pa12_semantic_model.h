@@ -823,6 +823,7 @@ struct FunctionTemplatePattern
 	bool function_parameter_pack;
 	bool static_member;
 	bool constructor_template;
+	bool explicit_member_definition;
 
 	FunctionTemplatePattern()
 		: owner(kNoScope), lexical_scope(kNoScope), name(0),
@@ -834,7 +835,7 @@ struct FunctionTemplatePattern
 		  defined(false), ordinary_visible(true), definition_in_class(false),
 		  nonthrowing(false), dependent_exception_specification(false),
 		  function_parameter_pack(false), static_member(false),
-		  constructor_template(false) {}
+		  constructor_template(false), explicit_member_definition(false) {}
 };
 
 struct FunctionTemplateDeduction
@@ -858,6 +859,7 @@ struct ClassTemplateMemberPattern
 {
 	ScopeId lexical_scope;
 	NodeId declaration;
+	BindingId concrete_owner;
 	std::uint32_t owner_partial_pattern;
 	std::vector<TemplateParameter> parameters;
 	std::vector<TemplateArgument> canonical_owner_arguments;
@@ -866,6 +868,7 @@ struct ClassTemplateMemberPattern
 
 	ClassTemplateMemberPattern()
 		: lexical_scope(kNoScope), declaration(kNoNode),
+		  concrete_owner(kNoBinding),
 		  owner_partial_pattern(kNoDumpEdge) {}
 };
 

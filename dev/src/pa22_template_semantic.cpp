@@ -41,6 +41,27 @@ void SemanticAnalyzer::SelectClassTemplateMemberOwner(
 		throw std::logic_error("invalid class template member owner");
 	ClassTemplatePattern& owner = class_templates_[pattern_index];
 	member->owner_partial_pattern = kNoDumpEdge;
+	bool concrete = true;
+	for (std::size_t i = 0;
+		i < member->canonical_owner_arguments.size(); ++i)
+		if (member->canonical_owner_arguments[i].IsDependent() ||
+			(member->canonical_owner_arguments[i].kind == TEMPLATE_ARGUMENT_TYPE &&
+			 FunctionTemplateTypeIsDependent(
+				member->canonical_owner_arguments[i].type)))
+			concrete = false;
+	if (concrete)
+	{
+		member->concrete_owner = InstantiateClassTemplate(
+			pattern_index, member->canonical_owner_arguments);
+		if (member->concrete_owner == kNoBinding)
+			throw std::runtime_error(
+				"invalid concrete class template member owner");
+		if (member->concrete_owner <
+			class_template_partial_selections_.size())
+			member->owner_partial_pattern = class_template_partial_selections_[
+				member->concrete_owner].pattern;
+		return;
+	}
 	for (std::size_t partial_index = 0;
 		partial_index < owner.partial_specializations.size(); ++partial_index)
 	{

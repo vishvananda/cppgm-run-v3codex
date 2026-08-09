@@ -2238,8 +2238,16 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 {
 	const NodeId declarator = FindChild(node, "declarator");
 	const NamePath path = DeclaratorNamePath(declarator);
+	ScopeId structured_owner = kNoScope;
+	const NodeId structure = DeclaratorNameStructure(declarator);
+	if (!deferred_member_definition && structure != kNoNode &&
+		(path.global || path.Size() > 1))
+		(void)LookupStructuredName(structure, scope,
+			LOOKUP_ORDINARY, &structured_owner);
 	const ScopeId owner = deferred_member_definition ?
-		program_->ParentScope(scope) : ResolveOwner(scope, path);
+		program_->ParentScope(scope) :
+		structured_owner != kNoScope ? structured_owner :
+		ResolveOwner(scope, path);
 	if (owner == kNoScope) throw std::runtime_error("function owner not found");
 	const EntityId previous_class = current_class_context_;
 	const EntityId declaration_class = program_->EntityForScope(owner);

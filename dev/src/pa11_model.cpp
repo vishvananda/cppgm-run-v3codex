@@ -1413,6 +1413,36 @@ void Program::SetEntityScope(EntityId entity, ScopeId scope)
 	scopes_[scope].entity = entity;
 }
 
+void Program::ResetClassDefinition(EntityId entity)
+{
+	if (entity >= entities.size())
+		throw std::logic_error("class reset entity is invalid");
+	const EntityRecord old = entities[entity];
+	if (old.member_scope != kNoScope)
+	{
+		if (old.member_scope >= scopes_.size())
+			throw std::logic_error("class reset member scope is invalid");
+		scopes_[old.member_scope].entity = kNoEntity;
+		InvalidateLookupScope(old.member_scope);
+	}
+	EntityRecord reset;
+	reset.name = old.name;
+	reset.identity_name = old.identity_name;
+	reset.owner = old.owner;
+	reset.enclosing_class = old.enclosing_class;
+	reset.local_context = old.local_context;
+	reset.template_argument_begin = old.template_argument_begin;
+	reset.template_argument_count = old.template_argument_count;
+	reset.flavor = old.flavor;
+	reset.type = old.type;
+	reset.declaration = old.declaration;
+	entities[entity] = reset;
+	base_jump_offsets_[entity] = 0;
+	base_jump_counts_[entity] = 0;
+	base_depths_[entity] = 0;
+	deepest_nonpublic_base_depths_[entity] = 0;
+}
+
 ScopeId Program::ParentScope(ScopeId scope) const
 {
 	if (scope >= scopes_.size()) return kNoScope;

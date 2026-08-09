@@ -40,6 +40,13 @@ their enclosing specialization is concrete; replay then materializes canonical
 arguments and transfers the remaining pattern to the indexed nested template owner.
 Semantic owner scope and source/substitution overlays remain separate, and terminal
 function-template IDs resolve through the concrete structured carrier.
+Concrete retained member definitions additionally store one exact specialization
+binding. Their replay is routed directly to that owner, and a first explicit member
+template definition replaces the primary-instantiated pattern in place while a
+second is rejected. Explicit class specialization publishes its canonical shell,
+arguments, and primary identity before member analysis. Eager implementation-only
+completion can be reset in place until a separate semantic-use bit is set, preserving
+pointer/typedef identity without admitting specialization after actual use.
 
 This stage applies `spec.md` §§2–6, 8–10: canonical specialization identity,
 indexed lookup, separate retained-pattern/selection/completion state, memoized demand,
@@ -50,28 +57,34 @@ deduction/SFINAE and §7 object-backend work remain outside this LowIR stage.
 
 ## Current Failure Map
 
-Current result: **234/310**. The remaining 76 failures group by exclusive primary
-owner: member/friend ownership, lookup, and access 36; alias/template-template/pack
-integration 20; explicit specialization and instantiation integration 8;
+Current result: **240/310**. The remaining 70 failures group by exclusive primary
+owner: member/friend ownership, lookup, and access 34; alias/template-template/pack
+integration 20; explicit specialization and instantiation integration 4;
 dependent lookup, deduction, conversion, and lowering 10; residual partial
 ordering/replay 2.
 
 ## Active Checkpoint
 
-**Concrete explicit-member replacement and revision propagation.** Owner: one
-canonical class/member specialization binding owns its selected explicit definition;
-an earlier primary-instantiated body is replaceable only by that binding's later
-explicit definition. Data flow: explicit declaration -> canonical class arguments and
-member signature -> indexed specialization binding -> monotonic definition revision
-and stale-body replacement -> demand queue -> one typed emission. Apply `spec.md`
-§§2–6 and 9: complete specialization keys, separate definition/demand state, precise
-invalidation, and lowering from the chosen declaration. Expected work is O(owner
-depth + indexed target overloads + affected specialization), with no unrelated
-specialization scan. Validate multiple owners, forward use, stale primary refresh,
-member templates, converting constructors, duplicate rejection, then PA22, through
-PA21, audit, and unrelated-owner/replacement-count probes.
+**Member-template overload identity and active-owner lookup.** Owner: each concrete
+class specialization's member scope owns the indexed template overload family, while
+retained declarations keep lexical substitution scope separately. Data flow:
+in-class declaration/out-of-class definition -> canonical cv/ref/operator and
+template-head shape -> owner-local overload match -> using/base/active-owner lookup ->
+deduction, demand, and typed emission. Apply `spec.md` §§2–6 and 9: identity must be
+structural, lookup must remain indexed and provenance-preserving, and lowering must
+consume only the selected binding. Expected work is O(owner depth + named overloads +
+argument conversions), with no unrelated-member scan. Validate overloaded and const
+member templates, operators, using-imported members, dependent defaults, renamed
+owner parameters, PA22, through PA21, audit, and overload-family scaling probes.
 
 ## Performance Evidence
+
+Five-run medians after materializing 16/32/64 unrelated concrete owners and then
+replacing one exact member-template definition are 2.455/4.298/8.087 ms semantic
+time and 0.421/0.821/1.623 MB peak stage storage. Specialization requests are
+42/74/138, while cache hits stay 7/7/7 and overload candidates, demand pushes, and
+emissions stay 1/1/1. Construction scales linearly, but exact replacement work is
+constant and does not scan the unrelated owner set.
 
 Five-run medians on the audited path for 16/32/64 concrete class specializations
 sharing one retained out-of-class member template are 3.02/5.55/10.78 ms semantic
@@ -126,4 +139,5 @@ the concrete outer pattern and its directly owned nested specialization sequence
 | `88ab9ab1` explicit specialization/instantiation ownership | Canonical function target selection, extern suppression, definition demand/root state, class redeclaration transitions, and primary-body replacement; PA22 192 -> 208/310 with 16 gains and no regressions, prior 2329/2329, audit pass; linear scaling evidence above. |
 | `03b7bf00` friend-template ownership and grant propagation | Canonical namespace/member owners, indexed hidden ADL edges, cached/future specialization grants, dependent friend type-ids, and protected access context; PA22 208 -> 221/310 with 13 gains and no regressions, prior 2329/2329, audit pass; constant unrelated-friend candidate work above. |
 | `403c1ff5` partial-member owner identity and naming-class access | Exact primary/partial owner validation and replay, member-template access provenance, and intermediate qualified-carrier checks; PA22 221 -> 229/310 with eight gains and no regressions, prior 2329/2329, audit pass; scaling evidence above. |
-| Nested template-id owner routing | Staged canonical transfer through concrete nested patterns, owner-aware lexical overlays, retained-local validation, and structured terminal function-template lookup; PA22 229 -> 234/310 with five gains and no regressions, prior 2329/2329, audit pass; linear scaling evidence above. |
+| `c52d6734` nested template-id owner routing | Staged canonical transfer through concrete nested patterns, owner-aware lexical overlays, retained-local validation, and structured terminal function-template lookup; PA22 229 -> 234/310 with five gains and no regressions, prior 2329/2329, audit pass; linear scaling evidence above. |
+| Concrete explicit-member replacement and specialization refresh | Exact owner routing, primary-body replacement, canonical shell reset before semantic use, structured ordinary/special-member owners, and explicit-specialization publication; PA22 234 -> 240/310 with six gains and no regressions, prior 2329/2329, audit pass; constant unrelated-owner work above. |
