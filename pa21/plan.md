@@ -21,30 +21,30 @@ fact-driven lowering, explicit phase ownership, and observable work.
 
 ## Current Failure Map
 
-The handout remains at its 100/133 audit-start baseline; the audit regression makes the
-combined report 101/134. The 33 remaining failures group by owner into `noexcept`
-declaration/expression facts (8); qualified/static references, arrays, and wide literals
-(11); function-local static classification, guards, and emission (10); class-valued
-runtime/global materialization (3); and constexpr declaration suitability (1). Callable
-objects and surrogates, overloaded operators, recursive arrows, contextual/user conversions,
-all typed call-result categories, template const-reference ordering, and the earlier
-base/object/address layers are complete.
+The combined report is now 108/134. The 26 remaining failures group by owner into
+qualified/static references, arrays, and wide literals (11); function-local static
+classification, guards, and emission (11, including the array-reference-return case whose
+diff is entirely local-static storage); class-valued runtime/global materialization (3); and
+constexpr declaration suitability (1). Canonical exception specifications and `noexcept`
+expressions now join the completed callable, conversion, base/object, and address layers.
 
 ## Active Checkpoint
 
-**`noexcept` fact completion (next).** Resolve exception specifications once at declaration
-completion, including defaulted/user constructors, inherited using overloads, dependent
-callables, `decltype`, and array-reference results. Expression consumers read the selected
-function or constructor's canonical nonthrowing fact; LowIR uses the same fact without
-re-running overload resolution.
+**Qualified static constant storage completion (next).** Unify qualified lookup and storage
+publication for static constexpr scalars, references, pointers, arrays, and class objects,
+including class-template and typedef-qualified owners. Preserve immutable scalar/object/
+address facts for compile-time consumers while creating one stable storage/emission identity
+only when ODR-use or runtime lowering demands it; wide literals use their typed element width.
 
-Requirements: PA21 declaration checks plus `spec.md` §§2–6,8–9 require canonical declaration
-ownership, indexed lookup, retained selected bindings, fact-driven lowering, and no semantic
-replay. Data flow: declarator/defaulted-special-member completion -> canonical function fact
--> ordinary or unevaluated call selection -> `noexcept`/`decltype` scalar consumer -> LowIR
-signature. Expected work is O(declarations + selected overload candidates), with average O(1)
-canonical fact lookup. Validate all 8 mapped failures, nearby passing overload/defaulted
-probes, PA1–20, full PA21, and audit.
+Requirements: PA21's object-valued evaluation, qualified reuse, and constant-initialization
+contract plus `spec.md` §§2–6,8–9 require canonical binding/type/object identities, indexed
+qualified lookup, demand-separated completion, typed lowering, and bounded phase-local
+storage. Owner/data flow: class/member or specialization completion -> canonical static
+binding -> typed scalar/object/address initializer fact -> qualified semantic consumer or
+ODR-use demand -> one global LowIR identity. Expected work is O(qualified path length +
+initializer elements + demand edges), with average O(1) completed-fact access and no scans of
+unrelated declarations. Validate all 11 owned failures, nearby passing qualified/object
+probes, PA1–20, full PA21, file audit, and width/repeated-lookup scaling.
 
 ## Performance Evidence
 
@@ -69,6 +69,13 @@ instructions (1), and demanded functions (0) stayed fixed; semantic nodes grew
 1,165/1,222/1,334/2,326 parser bytes with geometric capacity growth. The rollback journal
 is one 12-byte mutation per edge while parsing and is released before semantic consumption.
 
+For 1/2/4/8 identical dependent `noexcept(work<int>())` consumers, semantic nodes were
+10/13/19/31 and overload candidates 1/2/4/8. Specialization requests were 6/10/18/34 with
+4/8/16/32 cache hits, leaving exactly two misses at every width; conversion checks (2), typed
+storage (1,735 bytes), LowIR instructions (1), constexpr calls (0), and demanded functions
+(0) stayed fixed. Repeated consumers therefore add only linear retained expression work and
+reuse the same completed function/class specialization facts without emission demand.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result | Validation |
@@ -81,3 +88,4 @@ is one 12-byte mutation per edge while parsing and is released before semantic c
 | Class-valued calls and conversions | Object IDs through returns/calls, converting-constructor argument facts, temporary allocation identity, constexpr hidden-friend facts, compile-time/runtime demand separation; audit added complete typed result keys and transitive invocation-storage escape checks | PA21 76→79/130 preserved and audit regression passes for 80/131; aggregate return/NTTP, hidden-friend, reference-conversion, and dangling-object probes pass; PA1–20 2,185/2,185; file audit pass; bounded width and repeated-call scaling above |
 | Base-subobject completion | Ordered direct-base facts after direct members, base/member/delegating initialization, active/complete object transport with adjusted addresses through receivers/references/cache facts, and initializer-local demand/slot boundaries; audit repaired repeated-base ambiguity and inherited-base ownership | PA21 handout 80/131→87/132 preserved, audit regression passes for 88/133; eight focused base/delegation tests pass; PA1–20 2,185/2,185; file audit pass; linear depth scaling above |
 | Callable and contextual conversions | Local-callable shadowing, call operators/surrogates, one recursive-arrow owner, overloaded unary/binary/subscript/assignment/logical operators, semantic class-expression initialization, user/return conversions, complete cached scalar/reference/pointer/object results, template cv partial ordering, exact parser rollback, and compile-time/runtime demand separation | PA21 handout 88→100/133 preserved, audit regression passes for 101/134; PA1–20 2,185/2,185; file audit pass; repeated call/address and parser scaling above |
+| Canonical exception and `noexcept` facts | Unevaluated fold-suppressed operands consume selected canonical call/constructor facts; dependent exception specifications complete per specialization; class results receive contextual-bool conversion | PA21 101→108/134; owned probes 7/7; PA1–20 2,185/2,185; audit pass; repeated specialization scaling above |

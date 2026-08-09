@@ -403,10 +403,13 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 		member_owner != kNoEntity &&
 			spec.storage_class != STORAGE_CLASS_STATIC);
 	current_class_context_ = previous_class;
+	const bool nonthrowing = pattern.dependent_exception_specification ?
+		IsNonthrowing(pattern.declarator, template_scope) :
+		pattern.nonthrowing;
 	const BindingId binding = DeclareFunction(pattern.owner, pattern.name,
 		parsed.type, parsed.parameters, pattern.defined, true,
 		member_owner == kNoEntity ? spec.storage_class : STORAGE_CLASS_NONE,
-		pattern.language_linkage, pattern.nonthrowing);
+		pattern.language_linkage, nonthrowing);
 	BindingRecord& binding_record = program_->bindings[binding];
 	if (member_owner != kNoEntity)
 	{

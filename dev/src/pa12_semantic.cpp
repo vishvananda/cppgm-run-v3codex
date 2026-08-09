@@ -691,6 +691,7 @@ bool SemanticAnalyzer::IsNonthrowing(NodeId declarator, ScopeId scope)
 		throw std::runtime_error("nonconstant noexcept expression");
 	return expression.value != 0;
 }
+
 bool SemanticAnalyzer::IsModifiableLvalue(const ExpressionInfo& value) const
 {
 	return value.category == VALUE_LVALUE && !IsConst(value.type) &&
@@ -784,6 +785,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 	if (arena_->IsTag(node, "type-trait-expression") &&
 		(PayloadSource(node) == "alignof" || PayloadSource(node) == "__alignof"))
 		return ApplyTarget(AnalyzeSizeof(node, scope), target);
+	if (arena_->IsTag(node, "type-trait-expression") &&
+		PayloadSource(node) == "noexcept")
+		return ApplyTarget(AnalyzeNoexcept(node, scope), target);
 	if (arena_->IsTag(node, "braced-init-list"))
 		return AnalyzeBracedInit(node, scope, target);
 	if (arena_->IsTag(node, "new-expression")) return AnalyzeNewExpression(node, scope, target);
@@ -1838,7 +1842,15 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 		pattern.language_linkage = current_language_linkage_;
 		pattern.member_access = member_access;
 		pattern.defined = definition;
-		pattern.nonthrowing = IsNonthrowing(declarator, pattern.owner);
+		const NodeId exception_qualifier =
+			FindChild(declarator, "function-qualifier");
+		const NodeId exception_expression = exception_qualifier == kNoNode ?
+			kNoNode : FirstSemanticChild(exception_qualifier);
+		pattern.dependent_exception_specification =
+			exception_expression != kNoNode && SyntaxUsesAnyIdentifier(
+				*arena_, exception_expression, parameter_names);
+		pattern.nonthrowing = pattern.dependent_exception_specification ?
+			false : IsNonthrowing(declarator, pattern.owner);
 		const ScopeId shape_scope = NewScope(scope, SCOPE_TEMPLATE_PARAMETERS,
 			0, ScopePrefixId(scope));
 		for (std::size_t p = 0; p < parameters.size(); ++p)
@@ -1901,7 +1913,9 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 					prior.parameters[d].default_argument =
 						parameters[d].default_argument;
 			prior.required_parameter_count = std::min(prior.required_parameter_count, pattern.required_parameter_count);
-			if (prior.nonthrowing != pattern.nonthrowing)
+			if (prior.nonthrowing != pattern.nonthrowing ||
+				prior.dependent_exception_specification !=
+					pattern.dependent_exception_specification)
 				throw std::runtime_error(
 					"conflicting function template exception specification");
 			if (definition)

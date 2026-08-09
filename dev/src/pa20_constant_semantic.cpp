@@ -200,6 +200,37 @@ bool SemanticAnalyzer::TryFoldConstantClassConversion(
 	return true;
 }
 
+ExpressionInfo SemanticAnalyzer::AnalyzeNoexcept(NodeId node, ScopeId scope)
+{
+	const NodeId operand = FirstSemanticChild(node);
+	if (operand == kNoNode)
+		throw std::runtime_error("noexcept expression has no operand");
+	++unevaluated_depth_;
+	++constant_evaluation_suppressed_depth_;
+	ExpressionInfo analyzed;
+	try
+	{
+		analyzed = AnalyzeExpression(operand, scope);
+	}
+	catch (...)
+	{
+		--constant_evaluation_suppressed_depth_;
+		--unevaluated_depth_;
+		throw;
+	}
+	--constant_evaluation_suppressed_depth_;
+	--unevaluated_depth_;
+	const bool nonthrowing = InitializationActionsAreNonthrowing(analyzed.node);
+	ExpressionInfo result = MakeLiteral(
+		program_->types.Fundamental(FUND_BOOL),
+		program_->names.Intern(nonthrowing ? "true" : "false"));
+	result.constant = true;
+	result.value = nonthrowing ? 1 : 0;
+	SetExpressionScalar(&result, ConstexprScalarValue(result.value));
+	RecordExpressionFacts(result);
+	return result;
+}
+
 ExpressionInfo SemanticAnalyzer::ApplyClassObjectTarget(
 	ExpressionInfo value, TypeId target)
 {
@@ -405,6 +436,10 @@ void SemanticAnalyzer::AnalyzeStaticAssert(NodeId node, ScopeId scope)
 		throw;
 	}
 	--constant_expression_required_depth_;
+	if (!IsArithmetic(condition.type) &&
+		!IsPointer(Decay(condition.type)) && !IsNullptr(condition.type))
+		condition = ApplyExplicitConversion(condition,
+			program_->types.Fundamental(FUND_BOOL));
 	if ((IsPointer(Decay(condition.type)) || IsNullptr(condition.type)) &&
 		condition.constant)
 	{

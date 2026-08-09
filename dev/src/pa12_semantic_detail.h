@@ -816,6 +816,7 @@ private:
 		ScopeId scope, TypeId target, ExpressionInfo* result);
 	ExpressionInfo AnalyzeThisExpression(ScopeId scope);
 	bool IsNonthrowing(NodeId declarator, ScopeId scope);
+	ExpressionInfo AnalyzeNoexcept(NodeId node, ScopeId scope);
 	void RecordExpressionFacts(const ExpressionInfo& value);
 	ExpressionInfo ApplyTarget(ExpressionInfo value, TypeId target,
 		ConversionRank known_conversion = CONVERSION_INVALID);

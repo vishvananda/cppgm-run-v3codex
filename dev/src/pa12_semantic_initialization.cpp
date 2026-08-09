@@ -1403,7 +1403,8 @@ bool SemanticAnalyzer::InitializationActionsAreNonthrowing(
 		}
 		else if (record.kind == DUMP_CALL_EXPRESSION)
 		{
-			bool known_nonthrowing = false;
+			bool known_nonthrowing = record.binding != kNoBinding &&
+				program_->bindings[record.binding].nonthrowing;
 			for (std::uint32_t edge = record.first_edge; edge != kNoDumpEdge;
 				edge = dump_.edges[edge].next)
 			{
@@ -1413,6 +1414,15 @@ bool SemanticAnalyzer::InitializationActionsAreNonthrowing(
 					known_nonthrowing = true;
 			}
 			if (!known_nonthrowing) return false;
+		}
+		else if (record.kind == DUMP_DELETE_EXPRESSION)
+		{
+			if (record.binding == kNoBinding ||
+				!program_->bindings[record.binding].nonthrowing)
+				return false;
+			if (record.selected_binding != kNoBinding &&
+				!program_->bindings[record.selected_binding].nonthrowing)
+				return false;
 		}
 		for (std::uint32_t edge = record.first_edge; edge != kNoDumpEdge;
 			edge = dump_.edges[edge].next)

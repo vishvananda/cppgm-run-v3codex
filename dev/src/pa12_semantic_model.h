@@ -803,6 +803,7 @@ struct FunctionTemplatePattern
 	AccessKind member_access;
 	bool defined;
 	bool nonthrowing;
+	bool dependent_exception_specification;
 	bool function_parameter_pack;
 
 	FunctionTemplatePattern()
@@ -812,7 +813,8 @@ struct FunctionTemplatePattern
 		  shape_type(kNoType), required_parameter_count(0),
 		  language_linkage(LANGUAGE_LINKAGE_CPP), member_access(ACCESS_PUBLIC),
 		  defined(false),
-		  nonthrowing(false), function_parameter_pack(false) {}
+		  nonthrowing(false), dependent_exception_specification(false),
+		  function_parameter_pack(false) {}
 };
 
 struct FunctionTemplateDeduction
