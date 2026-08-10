@@ -172,12 +172,12 @@ std::uint32_t SemanticAnalyzer::BuildClassValueConstructorAction(TypeId type,
 	{
 		if (a >= constructor.parameters.size() ||
 			constructor.parameters[a].default_argument == kNoNode)
-			throw std::logic_error(
-				"selected class-value constructor lacks a default argument");
+			throw std::logic_error("class-value constructor lacks default argument");
 		ExpressionInfo argument = AnalyzeExpression(
 			constructor.parameters[a].default_argument,
 			constructor.parameters[a].default_scope, parameters[a]);
 		argument = ApplyCallArgument(argument, parameters[a]);
+		dump_.nodes[argument.node].default_argument = true;
 		dump_.Add(action, argument.node);
 		constexpr_arguments.push_back(argument);
 	}

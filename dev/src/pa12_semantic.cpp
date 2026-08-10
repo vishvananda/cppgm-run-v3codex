@@ -1137,6 +1137,7 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 			function.parameters[a].default_argument,
 			function.parameters[a].default_scope, parameters[a]);
 		argument = ApplyCallArgument(argument, parameters[a]);
+		dump_.nodes[argument.node].default_argument = true;
 		dump_.Add(call, argument.node);
 		constexpr_arguments.push_back(argument);
 	}

@@ -857,6 +857,7 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 			constructor.parameters[a].default_argument,
 			constructor.parameters[a].default_scope, parameters[a]);
 		argument = ApplyCallArgument(argument, parameters[a]);
+		dump_.nodes[argument.node].default_argument = true;
 		dump_.Add(action, argument.node);
 		constexpr_arguments.push_back(argument);
 	}

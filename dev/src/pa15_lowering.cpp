@@ -1372,10 +1372,10 @@ private:
 		return expected.kind == LOW_INVALID ? result : Convert(result, expected);
 	}
 	Operand LowerConvertedValue(std::uint32_t node, const LowType& target,
-		bool canonicalize_immediate = true)
-	{
+		bool canonicalize_immediate = true) {
 		if (arena_.nodes[node].boolean_conversion)
 			return LowerBooleanConversion(node, target);
+		if (canonicalize_immediate && CanonicalizeNullPointerImmediate(node, target)) return Operand(0, target);
 		return Convert(LowerValue(node, target.kind == LOW_PTR ?
 			target : LowType()), target, canonicalize_immediate);
 	}

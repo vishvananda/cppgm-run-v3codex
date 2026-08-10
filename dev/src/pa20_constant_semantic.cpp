@@ -92,6 +92,7 @@ void SemanticAnalyzer::RecordExpressionFacts(const ExpressionInfo& value)
 	node.constant = value.constant && !value.floating_constant &&
 		value.constexpr_object == kNoConstexprObject &&
 		(value.constexpr_address == kNoConstexprAddress || null_address);
+	node.integer_literal_zero = value.integer_literal_zero;
 	if (!value.floating_constant &&
 		value.constexpr_object == kNoConstexprObject &&
 		(value.constexpr_address == kNoConstexprAddress || null_address))

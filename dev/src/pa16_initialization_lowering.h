@@ -143,6 +143,12 @@ protected:
 	void EmitZeroInitialization(TypeId type, const Operand& destination)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
+		if (derived.IsClassObjectType(type))
+		{
+			const TypeRecord& object = derived.program_.types.Get(
+				derived.ExpressionObjectType(type));
+			if (derived.program_.entities[object.entity].empty_class) return;
+		}
 		const std::size_t size = derived.program_.SizeOf(type);
 		if (size > 64)
 		{

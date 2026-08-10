@@ -74,6 +74,7 @@ protected:
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
 		const DumpNode& source_node = derived.arena_.nodes[node];
+		if (CanonicalizeNullPointerImmediate(node, target)) return true;
 		if (source_node.integer_narrowing_conversion) return true;
 		if (source_node.kind != DUMP_LITERAL ||
 			source_node.enum_arithmetic_conversion) return false;
@@ -81,6 +82,18 @@ protected:
 		return IsInteger(source) && IsInteger(target) &&
 			source.is_signed == target.is_signed &&
 			(source.is_signed || source.width >= target.width);
+	}
+
+	bool CanonicalizeNullPointerImmediate(std::uint32_t node,
+		const LowType& target) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		const DumpNode& cast = derived.arena_.nodes[node];
+		if (target.kind != LOW_PTR || cast.kind != DUMP_CAST_EXPRESSION)
+			return false;
+		const NodeChildren children = derived.Children(node);
+		return children.size() == 1 && IsNullPointerLiteralCast(
+			derived.program_, derived.arena_.nodes[children[0]], cast.type);
 	}
 
 	bool CanonicalizeBinaryImmediate(std::uint32_t node,
@@ -241,7 +254,7 @@ protected:
 			node, "refarg", type), type);
 		Instruction store(Instruction::STORE);
 		store.type = type;
-		store.first = derived.LowerConvertedValue(node, type);
+		store.first = derived.LowerConvertedValue(node, type, false);
 		store.second = slot;
 		derived.Emit(store);
 		return derived.AddressOfStorage(slot);

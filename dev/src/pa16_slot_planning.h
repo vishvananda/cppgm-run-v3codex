@@ -109,9 +109,6 @@ protected:
 						"arg" : "argobj",
 					derived.LowerStorageType(staging_type));
 			}
-			if (record.kind == DUMP_TEMPORARY_OBJECT &&
-				record.conditionally_constructed)
-				(void)derived.EnsureTemporaryLifetimeSlot(current);
 			const NodeChildren children = derived.Children(current);
 			if (record.kind == DUMP_NEW_EXPRESSION && record.array_action &&
 				!children.empty())

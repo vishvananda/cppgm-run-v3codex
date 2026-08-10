@@ -124,8 +124,9 @@ protected:
 					derived.LowerType(parameters[parameter]) :
 					derived.LowerExpressionType(
 						derived.arena_.nodes[children[i]].type);
-				if (derived.source_types_.IsNullptr(
-					derived.arena_.nodes[children[i]].type))
+				const DumpNode& child = derived.arena_.nodes[children[i]];
+				if (derived.source_types_.IsNullptr(child.type) &&
+					!child.default_argument)
 					arguments.Push(Operand::NullPointer(expected));
 				else arguments.Push(derived.LowerConvertedValue(
 					children[i], expected,

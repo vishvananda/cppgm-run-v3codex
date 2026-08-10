@@ -112,6 +112,7 @@ struct DumpNode
 	std::uint32_t virtual_slot;
 	std::uint32_t storage_transfer_alignment;
 	bool constant;
+	bool integer_literal_zero;
 	bool integer_narrowing_conversion;
 	bool enum_arithmetic_conversion;
 	bool template_layout_constant;
@@ -136,6 +137,7 @@ struct DumpNode
 	bool unwind_only;
 	bool full_expression_staging;
 	bool conditionally_constructed;
+	bool default_argument;
 	bool control_dependent_temporary;
 	bool virtual_call;
 	bool has_direct_base_offset;
@@ -152,7 +154,8 @@ struct DumpNode
 		  lifetime_object(kNoDumpEdge),
 		  virtual_slot(kNoDumpEdge),
 		  storage_transfer_alignment(0),
-		  constant(false), integer_narrowing_conversion(false),
+		  constant(false), integer_literal_zero(false),
+		  integer_narrowing_conversion(false),
 		  enum_arithmetic_conversion(false), template_layout_constant(false),
 		  boolean_conversion(false), user_conversion_call(false),
 		  explicit_user_conversion_call(false),
@@ -167,6 +170,7 @@ struct DumpNode
 		  direct_return_slot(false), declaration_only(false),
 		  unwind_only(false), full_expression_staging(false),
 		  conditionally_constructed(false),
+		  default_argument(false),
 		  control_dependent_temporary(false), virtual_call(false),
 		  has_direct_base_offset(false) {}
 };

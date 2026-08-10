@@ -9,18 +9,26 @@ namespace cppgm
 namespace pa15_lowering_support
 {
 
-bool IsIncompletePointeeNullPointerCast(const pa11::Program& program,
+bool IsNullPointerLiteralCast(const pa11::Program& program,
 	const pa12_semantic_detail::DumpNode& source, pa11::TypeId target)
 {
 	target = program.types.RemoveTopCv(target);
 	const pa11::TypeRecord& target_record = program.types.Get(target);
 	if (target_record.kind != pa11::TYPE_POINTER) return false;
+	return source.integer_literal_zero;
+}
+
+bool IsIncompletePointeeNullPointerCast(const pa11::Program& program,
+	const pa12_semantic_detail::DumpNode& source, pa11::TypeId target)
+{
+	target = program.types.RemoveTopCv(target);
+	const pa11::TypeRecord& target_record = program.types.Get(target);
+	if (target_record.kind != pa11::TYPE_POINTER ||
+		!source.integer_literal_zero) return false;
 	const pa11::TypeId pointee = program.types.RemoveTopCv(target_record.child);
 	const pa11::TypeRecord& pointee_record = program.types.Get(pointee);
 	return pointee_record.kind == pa11::TYPE_NAMED &&
-		!program.entities[pointee_record.entity].complete &&
-		source.kind == pa12_semantic_detail::DUMP_LITERAL && source.constant &&
-		source.constant_value == 0;
+		!program.entities[pointee_record.entity].complete;
 }
 
 FlatIdMap::FlatIdMap() : slots_(16, 0) {}
