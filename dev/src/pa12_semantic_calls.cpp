@@ -226,14 +226,46 @@ int SemanticAnalyzer::CompareReferenceBindings(
 		const bool right_similar = SimilarUnqualified(source, right_target);
 		if (left_similar && right_similar)
 		{
-			const TypeRecord& left_record = program_->types.Get(left_target);
-			const TypeRecord& right_record = program_->types.Get(right_target);
-			const std::uint8_t left_cv = left_record.kind == TYPE_QUALIFIED ?
-				left_record.cv : CV_NONE;
-			const std::uint8_t right_cv = right_record.kind == TYPE_QUALIFIED ?
-				right_record.cv : CV_NONE;
-			if (left_cv != right_cv && (left_cv & ~right_cv) == 0) return 1;
-			if (left_cv != right_cv && (right_cv & ~left_cv) == 0) return -1;
+			const auto qualification_subset = [this](TypeId less,
+				TypeId more) -> bool
+			{
+				while (true)
+				{
+					TypeRecord less_record = program_->types.Get(less);
+					TypeRecord more_record = program_->types.Get(more);
+					const std::uint8_t less_cv =
+						less_record.kind == TYPE_QUALIFIED ?
+						less_record.cv : CV_NONE;
+					const std::uint8_t more_cv =
+						more_record.kind == TYPE_QUALIFIED ?
+						more_record.cv : CV_NONE;
+					if ((less_cv & ~more_cv) != 0) return false;
+					if (less_record.kind == TYPE_QUALIFIED)
+					{
+						less = less_record.child;
+						less_record = program_->types.Get(less);
+					}
+					if (more_record.kind == TYPE_QUALIFIED)
+					{
+						more = more_record.child;
+						more_record = program_->types.Get(more);
+					}
+					if (less_record.kind != more_record.kind) return false;
+					if (less_record.kind == TYPE_ARRAY &&
+						less_record.bound != more_record.bound) return false;
+					if (less_record.kind != TYPE_POINTER &&
+						less_record.kind != TYPE_ARRAY)
+						return less == more;
+					less = less_record.child;
+					more = more_record.child;
+				}
+			};
+			const bool left_less_qualified =
+				qualification_subset(left_target, right_target);
+			const bool right_less_qualified =
+				qualification_subset(right_target, left_target);
+			if (left_less_qualified && !right_less_qualified) return 1;
+			if (right_less_qualified && !left_less_qualified) return -1;
 		}
 		if (left_similar || right_similar) return 0;
 	}

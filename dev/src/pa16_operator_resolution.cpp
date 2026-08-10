@@ -224,10 +224,13 @@ void SemanticAnalyzer::AppendVisibleEnumOperatorCandidates(ScopeId scope,
 }
 
 void SemanticAnalyzer::AppendDirectFunctionCandidates(ScopeId owner,
-	NameId name, std::vector<BindingId>* candidates)
+	NameId name, bool exclude_template_specializations,
+	std::vector<BindingId>* candidates)
 {
 	const std::uint64_t key = (static_cast<std::uint64_t>(owner) << 32) | name;
-	const CompactIndexSequence* functions = ordinary_function_sets_.Find(key);
+	const CompactIndexSequence* functions = exclude_template_specializations ?
+		ordinary_nontemplate_function_sets_.Find(key) :
+		ordinary_function_sets_.Find(key);
 	if (!functions) return;
 	for (std::size_t i = 0; i < functions->Size(); ++i)
 	{
@@ -353,7 +356,7 @@ void SemanticAnalyzer::AppendArgumentDependentCandidates(NameId name,
 			AppendIndexedEnumOperatorCandidates(
 				associated_scopes_[i], name, arguments, candidates);
 		else AppendDirectFunctionCandidates(
-			associated_scopes_[i], name, candidates);
+			associated_scopes_[i], name, template_patterns != 0, candidates);
 	}
 	for (std::size_t i = 0; i < associated_entities_.size(); ++i)
 		AppendHiddenFriendCandidates(associated_entities_[i], name,
@@ -403,17 +406,25 @@ CallConversionFact SemanticAnalyzer::ConvertingConstructor(
 		++overload_candidates_;
 		const FunctionInfo& constructor = GetFunction(candidates[i]);
 		const TypeRecord function = program_->types.Get(constructor.type);
-		if (!constructor.constructor || constructor.explicit_constructor ||
-			function.parameter_count == 0)
+		if (!constructor.constructor || constructor.explicit_constructor)
 			continue;
-		std::size_t required = function.parameter_count;
-		while (required != 0 && required <= constructor.parameters.size() &&
-			constructor.parameters[required - 1].default_argument != kNoNode)
-			--required;
-		if (required > 1) continue;
-		const ConversionRank rank = Conversion(
-			source, program_->types.Parameters(constructor.type)[0]);
-		if (rank == CONVERSION_INVALID) continue;
+		ConversionRank rank = CONVERSION_INVALID;
+		if (function.parameter_count == 0)
+		{
+			if (!function.variadic) continue;
+			rank = CONVERSION_ELLIPSIS;
+		}
+		else
+		{
+			std::size_t required = function.parameter_count;
+			while (required != 0 && required <= constructor.parameters.size() &&
+				constructor.parameters[required - 1].default_argument != kNoNode)
+				--required;
+			if (required > 1) continue;
+			rank = Conversion(
+				source, program_->types.Parameters(constructor.type)[0]);
+			if (rank == CONVERSION_INVALID) continue;
+		}
 		if (selected == kNoBinding || rank < best)
 		{
 			selected = candidates[i];
@@ -999,22 +1010,34 @@ ExpressionInfo SemanticAnalyzer::BuildConvertingArgument(
 	if (!CanAccessMember(constructor_binding))
 		throw std::runtime_error("selected converting constructor is inaccessible");
 	const TypeRecord function = program_->types.Get(constructor.type);
-	if (function.parameter_count == 0)
+	if (function.parameter_count == 0 && !function.variadic)
 		throw std::logic_error("converting constructor has no source parameter");
 	const TypeId* parameter_data = program_->types.Parameters(constructor.type);
-	std::vector<TypeId> parameters(parameter_data,
-		parameter_data + function.parameter_count);
+	std::vector<TypeId> parameters;
+	if (function.parameter_count != 0)
+		parameters.assign(parameter_data,
+			parameter_data + function.parameter_count);
 	const std::uint32_t action = MakeDump(DUMP_CONSTRUCTOR_ACTION,
 		AdaptMemberFunctionType(constructor_binding), VALUE_NONE,
 		constructor.display_name, constructor_binding);
-	CallConversionFact parameter_conversion;
-	parameter_conversion.rank = conversion.constructor_argument_rank;
-	ExpressionInfo converted = ApplyCallArgument(
-		source, parameters[0], &parameter_conversion);
-	dump_.Add(action, converted.node);
 	std::vector<ExpressionInfo> constexpr_arguments;
 	constexpr_arguments.reserve(function.parameter_count);
-	constexpr_arguments.push_back(converted);
+	if (function.parameter_count == 0)
+	{
+		// An ellipsis-only constructor is a converting constructor.  Its
+		// source argument has no parameter target, just as for any other
+		// variadic tail argument.
+		dump_.Add(action, source.node);
+	}
+	else
+	{
+		CallConversionFact parameter_conversion;
+		parameter_conversion.rank = conversion.constructor_argument_rank;
+		ExpressionInfo converted = ApplyCallArgument(
+			source, parameters[0], &parameter_conversion);
+		dump_.Add(action, converted.node);
+		constexpr_arguments.push_back(converted);
+	}
 	for (std::size_t i = 1; i < function.parameter_count; ++i)
 	{
 		if (i >= constructor.parameters.size() ||

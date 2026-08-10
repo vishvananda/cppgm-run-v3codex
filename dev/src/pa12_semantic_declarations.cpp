@@ -2353,6 +2353,8 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 	if (GetFunction(canonical).ordinary_visible && !was_ordinary_visible)
 	{
 		ordinary_function_sets_.Ensure(key).Push(canonical);
+		if (!GetFunction(canonical).template_specialization)
+			ordinary_nontemplate_function_sets_.Ensure(key).Push(canonical);
 		IndexEnumOperatorCandidate(canonical);
 	}
 	return canonical;
@@ -2462,6 +2464,8 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 		CompactIndexSequence& aliases = function_sets_.Ensure(key);
 		CompactIndexSequence& ordinary_aliases =
 			ordinary_function_sets_.Ensure(key);
+		CompactIndexSequence& ordinary_nontemplate_aliases =
+			ordinary_nontemplate_function_sets_.Ensure(key);
 		for (std::size_t i = 0; i < functions.size(); ++i)
 		{
 			const FunctionInfo& function = GetFunction(functions[i]);
@@ -2485,6 +2489,9 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 				PublishUsingAccess(alias, functions[i], access);
 			if (!aliases.Contains(alias)) aliases.Push(alias);
 			if (!ordinary_aliases.Contains(alias)) ordinary_aliases.Push(alias);
+			if (!function.template_specialization &&
+				!ordinary_nontemplate_aliases.Contains(alias))
+				ordinary_nontemplate_aliases.Push(alias);
 			IndexEnumOperatorCandidate(alias);
 			using_function_declarations_.Insert(signature_key, alias);
 		}

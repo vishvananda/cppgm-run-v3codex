@@ -40,6 +40,11 @@ boundaries, and member qualifications. Shape construction gives unknown dependen
 member templates unique non-deduced markers; concrete replay performs exact owner
 lookup, derived-to-base deduction, reference operand layout, and runtime declaration
 demand before typed lowering.
+Same-class pointer casts bypass base-access checks, unevaluated implicit members keep
+typed binding facts without runtime objects, and ellipsis-only converting
+constructors participate in surrogate calls. Nested qualification ordering covers
+array elements. ADL merges deduced templates with an indexed direct non-template
+slice, preserving source-point using imports without rescanning prior instantiations.
 
 This applies `spec.md` §§2–6 and 8–10: canonical typed identity, provenance-aware
 indexed lookup, retained substitution scopes, demand-driven completion, typed
@@ -48,23 +53,21 @@ SFINAE behavior and does not pull in the §7 object backend.
 
 ## Current Failure Map
 
-Current result: **291/310**. The 19 remaining failures group by actual phase owner:
-specialization-local-static initialization presentation 1;
-dependent declaration/lookup/overload rejection 7; typed materialization,
-conversion, empty-object, and lifetime lowering 11.
+Current result: **294/310**. The 16 remaining failures group by actual phase owner:
+retained expression/declaration semantic rejection 4; typed presentation,
+empty-object, static initialization, and lifetime lowering 12.
 
 ## Active Checkpoint
 
-**Dependent declaration and owner-lookup replay.** Requirements: dependent member
-typedefs, aliases, qualified declarations, and overload candidates retain canonical
-owner identity plus lexical source scope; concrete substitution resolves each owner
-path once and rejects invalid candidates before lowering (`spec.md` §§2–6, 8–10).
-Owner and flow: retained declaration/path -> canonical argument tuple -> indexed
-owner/member lookup -> typed declaration or candidate set -> demand -> lowering.
-Expected work is O(replayed declarations + owner-path edges + viable candidates),
-with no textual specialization scan or unrelated shell completion. Validate the
-seven declaration/lookup/overload failures, adjacent nested-owner/partial/friend
-tests, PA22, through PA21, audit, and 16/32/64 independent-owner scaling.
+**Typed address and empty-object materialization.** Requirements: canonical semantic
+facts distinguish null/address constants, objectless values, storage-bearing class
+objects, and materialized temporaries before lowering; LowIR emits only ABI-relevant
+copies, projections, storage, and lifetime actions (`spec.md` §§2, 5–6, 8–10).
+Owner and flow: expression/value-category facts -> demand and object-layout facts ->
+typed lowering -> address/value operation or elision. Expected work is O(lowered
+typed nodes + demanded object/lifetime actions), with no owner scan or presentation
+retry. Validate the mapped redundant null-copy/empty-storage cluster, adjacent alias
+and lifetime tests, PA22, through PA21, audit, and 16/32/64 typed-value scaling.
 
 ## Performance Evidence
 
@@ -90,6 +93,7 @@ storage is peak-stage MB.
 | Dependent qualified declaration replay | 9.819/19.353/38.468 | 1.662/3.025/6.022 | lookups 1894/3702/7318; requests 311/615/1223; candidates 401/801/1601; demand pushes 66/130/258 |
 | Canonical callable declarations | 3.314/6.275/12.513 | 0.647/1.288/2.570 | lookups 526/1038/2062; candidates 80/160/320; requests 64/128/256; demand pushes 32/64/128 |
 | Specialized static definition demand | 1.469/2.523/4.784 | 0.305/0.602/1.196 | lookups 367/719/1423; requests 48/96/192; demand/static visits 16/32/64; globals 17/33/65 |
+| Class-scope type/conversion materialization | 28.627/49.773/97.823 | 2.383/4.569/9.108 | lookups 2775/5431/10743; ADL declarations 128/256/512; candidates 672/1344/2688; requests 336/672/1344; demand 32/64/128 |
 
 The alias benchmark confirms linear specialization requests and constexpr call/step
 counts. Its recursive variadic `cx_plus` evaluator retains 440/1648/6368 local-index
@@ -125,6 +129,12 @@ members with retained out-of-class definitions. Demand, initializer visits, glob
 lookup, specialization requests, time, and storage all scale linearly. The remaining
 local-static fixture differs only because its oracle stages function-address
 constants dynamically; the compiler keeps C++11 constant initialization.
+The class-scope benchmark combines independent selected partials, member `decltype`,
+same-class casts, callable surrogates, and nested array qualification. Its initial
+shared-ADL merge accumulated 1512/4816/16800 candidates; the indexed direct
+non-template slice reduces that to 672/1344/2688 while preserving source-point using
+imports. Lookup, specialization, deduction, demand, elapsed time, and storage scale
+linearly in the final five-run medians.
 
 ## Completed Checkpoints
 
@@ -156,3 +166,4 @@ constants dynamically; the compiler keeps C++11 constant initialization.
 | Dependent qualified declaration replay | Rooted/template-id retention, qualified member lookup, derived-base deduction, reference layout, dependent template markers, and external-callee demand; 278 -> 285, prior 2329/2329, audit pass. |
 | Canonical callable declaration reconciliation | Qualified/direct-init disambiguation, return-class shells, retained non-deduced partial paths, and explicit template-id friend grants; 285 -> 288, prior 2329/2329, audit pass. |
 | Specialization-owned static initialization | Pack-aware ABI identity, initializer-pack replay, structured constexpr pointers, exact retained-definition demand, and explicit-specialization suppression; 288 -> 291, prior 2329/2329, audit pass. |
+| Dependent class-scope type/conversion materialization | Same-class casts, objectless unevaluated members, ellipsis converting constructors, nested qualification ordering, and indexed ADL direct candidates; 291 -> 294, prior 2329/2329, audit pass. |

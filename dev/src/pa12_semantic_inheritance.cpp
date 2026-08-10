@@ -532,7 +532,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 			program_->types.RemoveTopCv(target));
 		const EntityId derived = EntityOf(source_pointer.child);
 		const EntityId base = EntityOf(target_pointer.child);
-		if (derived != kNoEntity && base != kNoEntity &&
+		if (derived != kNoEntity && base != kNoEntity && derived != base &&
 			program_->IsBaseOf(base, derived) &&
 			!BaseConversionAllowed(derived, base))
 			throw std::runtime_error("inaccessible base conversion");
@@ -716,6 +716,24 @@ ExpressionInfo SemanticAnalyzer::AnalyzeImplicitDataMember(
 				constexpr_frames_.back().receiver_object, member_binding);
 		if (element)
 			SetExpressionObjectElement(&result, *element);
+		RecordExpressionFacts(result);
+		++expression_count_;
+		return ApplyTarget(result, target);
+	}
+	// An unqualified non-static member in an unevaluated operand still has its
+	// declared lvalue type, but does not require a runtime implicit object.  Keep
+	// the canonical member binding as the expression fact; no lowering can be
+	// demanded for this operand.
+	if (unevaluated_depth_ != 0 && current_class_context_ != kNoEntity &&
+		binding.member_owner != kNoEntity &&
+		program_->IsBaseOf(binding.member_owner, current_class_context_))
+	{
+		ExpressionInfo result;
+		result.node = MakeDump(DUMP_MEMBER_EXPRESSION, binding.type,
+			VALUE_LVALUE, binding.name, member_binding);
+		result.type = binding.type;
+		result.category = VALUE_LVALUE;
+		result.binding = member_binding;
 		RecordExpressionFacts(result);
 		++expression_count_;
 		return ApplyTarget(result, target);

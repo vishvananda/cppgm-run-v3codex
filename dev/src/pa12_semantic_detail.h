@@ -712,6 +712,7 @@ private:
 		const std::vector<ExpressionInfo>& operands,
 		std::vector<BindingId>* candidates);
 	void AppendDirectFunctionCandidates(ScopeId owner, NameId name,
+		bool exclude_template_specializations,
 		std::vector<BindingId>* candidates);
 	void AppendHiddenFriendCandidates(EntityId owner, NameId name,
 		const std::vector<ExpressionInfo>& arguments, bool enum_operator_only,
@@ -1135,6 +1136,10 @@ private:
 	std::vector<NameId> scope_prefix_scratch_;
 	IndexedSequenceTable function_sets_;
 	IndexedSequenceTable ordinary_function_sets_;
+	// ADL combines ordinary declarations with function-template deduction.
+	// Keep the direct non-specialization slice indexed so that it need not scan
+	// every prior instantiation of the same template name.
+	IndexedSequenceTable ordinary_nontemplate_function_sets_;
 	EnumOperatorCandidateTable enum_operator_candidates_;
 	IndexedSequenceTable hidden_friend_sets_;
 	IndexedSequenceTable hidden_friend_template_sets_;
