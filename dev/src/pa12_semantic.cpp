@@ -1754,6 +1754,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 		--unevaluated_depth_;
 	}
 	measured = EffectiveType(measured);
+	EnsureClassDefinition(measured);
 	const bool alignment_query = arena_->IsTag(node, "type-trait-expression");
 	const std::size_t value = alignment_query ? program_->AlignOf(measured) :
 		program_->SizeOf(measured);

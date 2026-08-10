@@ -10,7 +10,6 @@ namespace pa12_semantic_detail
 
 namespace
 {
-
 const std::size_t kDestructorArrayInlineLimit = 8;
 
 bool IsClassEntity(const Program& program, EntityId entity)
@@ -33,7 +32,6 @@ std::vector<unsigned char> DecodeStringInitializer(
 }
 
 }
-
 bool SemanticAnalyzer::IsClassObjectType(TypeId type) const
 {
 	return IsClassEntity(*program_, EntityOf(type));
@@ -111,6 +109,7 @@ bool SemanticAnalyzer::EmptyDefaultConstructorChain(BindingId constructor,
 BindingId SemanticAnalyzer::ValidateClassValueConstruction(TypeId type,
 	const ExpressionInfo& source, bool copy_initialization)
 {
+	EnsureClassDefinition(type);
 	const EntityId entity = EntityOf(type);
 	if (!IsClassEntity(*program_, entity))
 		throw std::logic_error("class-value construction has non-class type");
@@ -125,6 +124,7 @@ BindingId SemanticAnalyzer::ValidateClassValueConstruction(TypeId type,
 std::uint32_t SemanticAnalyzer::BuildClassValueConstructorAction(TypeId type,
 	const ExpressionInfo& source, bool copy_initialization, bool demand)
 {
+	EnsureClassDefinition(type);
 	const EntityId entity = EntityOf(type);
 	if (!IsClassEntity(*program_, entity))
 		throw std::logic_error("class-value construction has non-class type");
@@ -430,7 +430,6 @@ std::uint32_t SemanticAnalyzer::BuildDefaultConstructorAction(TypeId type,
 	dump_.Add(action, BuildDefaultConstructorAction(record.child, scope));
 	return action;
 }
-
 bool SemanticAnalyzer::IsDirectTrivialClassValueType(TypeId type) const
 {
 	const TypeRecord& top = program_->types.Get(type);
@@ -663,6 +662,7 @@ void SemanticAnalyzer::AnalyzeReturnStatement(NodeId node, ScopeId scope,
 ExpressionInfo SemanticAnalyzer::AnalyzeVariableInitializer(
 	NodeId initializer_node, ScopeId scope, TypeId type, bool local)
 {
+	EnsureClassDefinition(type);
 	NodeId expression = FirstSemanticChild(initializer_node);
 	const EntityId class_entity = EntityOf(type);
 	const TypeKind declared_kind = program_->types.Get(type).kind;
@@ -871,7 +871,6 @@ ExpressionInfo SemanticAnalyzer::AnalyzeVariableInitializer(
 	}
 	return FinalizeVariableInitializer(initializer, type, class_entity, local);
 }
-
 void SemanticAnalyzer::AddMemberInitializationAction(BindingId member_id,
 	NodeId initializer, ScopeId scope, std::uint32_t body)
 {
@@ -1450,6 +1449,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 	TypeId target)
 {
 	if (target == kNoType) throw std::runtime_error("untyped braced-init-list");
+	EnsureClassDefinition(target);
 	ExpressionInfo expanded;
 	if (TryAnalyzeExpandedBracedInit(node, scope, target, &expanded))
 		return expanded;
@@ -2781,6 +2781,7 @@ void SemanticAnalyzer::AddLifetimeObligation(ScopeId scope,
 {
 	const EntityId entity = DestructedEntity(type);
 	if (entity == kNoEntity) return;
+	EnsureClassDefinition(type);
 	if (!program_->entities[entity].destructible)
 		throw std::runtime_error("object type is not destructible");
 	const BindingId destructor = DestructorForType(type);
@@ -2802,7 +2803,6 @@ void SemanticAnalyzer::AddLifetimeObligation(ScopeId scope,
 	scope_lifetimes_[scope].push_back(
 		LifetimeObligation(object, destructor, type));
 }
-
 void SemanticAnalyzer::AddTemporaryLifetimeObligation(ScopeId scope,
 	std::uint32_t temporary)
 {
@@ -2870,6 +2870,7 @@ void SemanticAnalyzer::AddNamespaceObjectAction(std::uint32_t variable,
 	const EntityId entity = DestructedEntity(type);
 	if (entity != kNoEntity)
 	{
+		EnsureClassDefinition(type);
 		if (program_->bindings[object].unnamed_namespace_linkage &&
 			initializer != kNoDumpEdge &&
 			dump_.nodes[initializer].kind == DUMP_CONSTRUCTOR_ACTION)
@@ -2891,7 +2892,6 @@ void SemanticAnalyzer::AddNamespaceObjectAction(std::uint32_t variable,
 	namespace_objects_.push_back(NamespaceObjectAction(object, type, variable,
 		initializer, destructor_action));
 }
-
 void SemanticAnalyzer::AppendScopeDestructionActions(ScopeId scope,
 	std::uint32_t output_parent, ScopeId stop_exclusive)
 {

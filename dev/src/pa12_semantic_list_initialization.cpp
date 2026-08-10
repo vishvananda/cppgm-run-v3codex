@@ -685,6 +685,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBracedCallArgument(
 	NodeId list, ScopeId scope, TypeId target)
 {
 	const TypeId object = program_->types.RemoveTopCv(EffectiveType(target));
+	EnsureClassDefinition(object);
 	const EntityId entity = EntityOf(object);
 	if (IsClassEntity(*program_, entity) &&
 		!program_->entities[entity].is_aggregate)
@@ -709,6 +710,7 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 	bool demand, NodeId source_list,
 	const std::vector<ExpressionInfo>* prepared_arguments)
 {
+	EnsureClassDefinition(type);
 	const EntityId entity = EntityOf(type);
 	if (!IsClassEntity(*program_, entity))
 		throw std::logic_error("constructor action has non-class type");

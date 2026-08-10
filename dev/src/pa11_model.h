@@ -30,6 +30,8 @@ const TemplateArgumentListId kNoTemplateArgumentList =
 	std::numeric_limits<TemplateArgumentListId>::max();
 const std::uint32_t kNoTemplateParameter =
 	std::numeric_limits<std::uint32_t>::max();
+const std::uint32_t kNondeducedTemplateParameter =
+	std::numeric_limits<std::uint32_t>::max() - 1;
 
 enum TemplateArgumentKind
 {
@@ -58,6 +60,8 @@ struct TemplateArgument
 		  pack_expansion(pack_expansion_value) {}
 	bool IsDependent() const
 		{ return dependent_parameter != kNoTemplateParameter; }
+	bool IsNondeduced() const
+		{ return dependent_parameter == kNondeducedTemplateParameter; }
 	bool operator==(const TemplateArgument& other) const
 	{
 		return kind == other.kind && type == other.type &&

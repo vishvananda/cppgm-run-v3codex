@@ -15,42 +15,41 @@ not rediscover template semantics.
 
 ## Current Failure Map
 
-Current result is 255/401, up from the turn baseline of 248/401 and stage
-baseline of 223/401 with no regressions. The remaining 146 failures group by
+Current result is 263/401, up from the turn baseline of 255/401 and stage
+baseline of 223/401 with no regressions. The remaining 138 failures group by
 primary owner and observed kind: call/address/constructor deduction (`100-*`:
-17 exits, 2 LowIR), typed partial ordering (`200-*`: 6 exits, 1 LowIR),
-immediate substitution and demand (`300-*`: 70 exits, 9 LowIR), canonical
+17 exits, 2 LowIR), typed partial ordering (`200-*`: 2 exits, 1 LowIR),
+immediate substitution and demand (`300-*`: 66 exits, 9 LowIR), canonical
 non-type/conversion arguments (`400-*`: 18 exits, 1 LowIR), and composed
 lookup/alias/class paths (`500-*`:
 13 exits, 9 LowIR).
 
 ## Active Checkpoint
 
-The seven remaining `200-*` failures split into class/default typed formation
-(4), inherited/member candidate publication (2), and emission identity (1).
-The next checkpoint owns the first group at retained class-template arguments
--> specialization completion -> function-pattern ordering. N3485 14.5.7,
-14.7.1, 14.7.3, 14.8.2.4, and 14.8.2.5 require defaults to materialize in the
-declaration context, dependent aliases to preserve specialization identity,
-and template-template shapes to participate in bidirectional ordering. Class
-patterns own defaults and retained syntax; specialization requests own
-canonical argument partitions and completion state; qualified lookup exposes
-formed aliases; function ordering consumes typed results. Expected work is
-O(arguments plus qualified lookup) per cached request and O(pattern nodes) per
-ordering comparison. Validate the four class/default `200-*` failures, the
-seven newly passing ordering cases, PA1-PA22, and audit; measure repeated
-defaulted requests and doubled template-template argument lists.
+The final three `200-*` failures share the member-template candidate lifecycle:
+inherited-constructor publication, member-operator ordering through dependent
+aliases, and canonical virtual-member emission. N3485 10.3, 12.9, 14.7.1,
+14.8.2.4, and 14.8.3 require inherited declarations to retain their template
+owner and forwarding shape, typed aliases to constrain partial ordering, and
+selected virtual definitions to demand one canonical specialization. Class
+specializations own member publication and base/using edges; deduction owns
+candidate-local bindings; overload resolution records the winner; demand owns
+definition and vtable emission. Expected work is O(inherited edges plus
+candidate shape nodes), O(1)-average canonical lookup, and one emission per
+selected binding. Validate all three failures, the complete passing `200-*`
+set, PA1-PA22, and audit; measure doubled inherited/member candidate sets.
 
 ## Performance Evidence
 
-For trailing packs of 32/64/128 elements, deduction visits are 132/260/516,
-ordering comparisons remain 2, peak semantic memory is 0.35/0.66/1.31 MB, and
-semantic time is 1.22/1.89/3.37 ms. For 17/33/65 viable overload candidates,
-ordering comparisons are 32/64/128, deduction visits 32/64/128, peak memory
-0.39/0.75/1.48 MB, and semantic time 2.01/3.68/6.86 ms. Counts and storage are
-linear with no expansion-product search. The prior retained-partial probe also
-scaled linearly through 512 patterns. Final gates are PA1-PA22 2,639/2,639,
-PA23 255/401, zero regressions, and audit pass with 13 inherited warnings.
+For 64/128/256 repeated concrete default requests, specialization requests are
+384/768/1,536 with 382/766/1,534 cache hits; peak semantic memory is
+0.54/1.06/2.09 MB and time is 2.69/5.17/9.74 ms. For dependent-default chains
+of 16/32/64, deduction visits are 51/99/195, requests 53/101/197, peak memory
+0.19/0.31/0.54 MB, and time 0.96/1.31/2.04 ms. Incremental dependency tracking,
+identity caches, work, and storage scale linearly. Earlier pack, overload, and
+retained-partial probes also scaled linearly. Final gates are PA1-PA22
+2,639/2,639, PA23 263/401, zero regressions, and audit pass with 13 inherited
+warnings.
 
 ## Completed Checkpoints
 
@@ -62,3 +61,4 @@ PA23 255/401, zero regressions, and audit pass with 13 inherited warnings.
 | Explicit-call expression substitution and variadic class boundary | Candidate failure spans defaults through expressions and lowering consumes ellipsis storage facts; 211 -> 223, no regressions, linear scaling. |
 | Concrete replay of retained class-partial type arguments | Dependent alias/`void_t`/array/`decltype` patterns replay after deduction; builtin invoke preserves call result facts, hard body errors escape SFINAE, and candidate result formation is demand-driven; 223 -> 248, no regressions, linear replay scaling. |
 | Typed function-pack deduction and partial ordering | Inner/trailing/empty/repeated packs, active defaulted tails, and direct `T&`/forwarding-`T&&` ordering pass; 248 -> 255, seven gains, no regressions, linear pack/candidate scaling. |
+| Dependent class defaults and lazy type identity | Symbolic defaults retain canonical non-deduced facts, aliases avoid eager layout, explicit uses demand completion, re-entrant layout retains stable owners (ASan-clean), and typed ordering selects correctly; 255 -> 263, eight gains, no regressions, linear scaling. |

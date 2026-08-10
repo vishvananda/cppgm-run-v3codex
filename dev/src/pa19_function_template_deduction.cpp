@@ -169,6 +169,7 @@ bool SemanticAnalyzer::FunctionTemplateArgumentPatternAccepts(
 	const std::vector<TemplateParameter>& exemplar_parameters) const
 {
 	if (pattern.kind != exemplar.kind) return false;
+	if (pattern.IsNondeduced()) return true;
 	if (pattern.kind == TEMPLATE_ARGUMENT_TYPE)
 		return FunctionTemplatePatternAccepts(pattern.type, exemplar.type,
 			pattern_parameters, exemplar_parameters);
@@ -193,10 +194,34 @@ bool SemanticAnalyzer::FunctionTemplateParameterListAccepts(
 		(exemplar.function_parameter_pack ? 1 : 0);
 	const std::size_t common = std::min(pattern_fixed, exemplar_fixed);
 	for (std::size_t i = 0; i < common; ++i)
+	{
+		TypeId pattern_parameter = pattern_types[i];
+		TypeId exemplar_parameter = exemplar_types[i];
+		const TypeKind pattern_kind =
+			program_->types.Get(pattern_parameter).kind;
+		const TypeKind exemplar_kind =
+			program_->types.Get(exemplar_parameter).kind;
+		const bool pattern_reference =
+			pattern_kind == TYPE_LVALUE_REFERENCE ||
+			pattern_kind == TYPE_RVALUE_REFERENCE;
+		const bool exemplar_reference =
+			exemplar_kind == TYPE_LVALUE_REFERENCE ||
+			exemplar_kind == TYPE_RVALUE_REFERENCE;
+		if (pattern_reference)
+			pattern_parameter = program_->types.Get(pattern_parameter).child;
+		if (exemplar_reference)
+			exemplar_parameter = program_->types.Get(exemplar_parameter).child;
+		if (!pattern_reference || !exemplar_reference)
+		{
+			pattern_parameter = program_->types.RemoveTopCv(pattern_parameter);
+			exemplar_parameter = program_->types.RemoveTopCv(exemplar_parameter);
+		}
 		if ((i >= pattern.function_parameter_nondeduced.size() ||
 			pattern.function_parameter_nondeduced[i] == 0) &&
-			!FunctionTemplatePatternAccepts(pattern_types[i], exemplar_types[i],
+			!FunctionTemplatePatternAccepts(
+				pattern_parameter, exemplar_parameter,
 				pattern.parameters, exemplar.parameters)) return false;
+	}
 	if (pattern_fixed > exemplar_fixed &&
 		pattern.required_parameter_count > exemplar_fixed) return false;
 	if (pattern_fixed < exemplar_fixed)
@@ -300,6 +325,8 @@ bool SemanticAnalyzer::FunctionTemplatePatternAccepts(
 	const std::vector<TemplateParameter>& pattern_parameters,
 	const std::vector<TemplateParameter>& exemplar_parameters) const
 {
+	if (pattern == class_template_nondeduced_type_shape_ &&
+		pattern != kNoType) return true;
 	for (std::size_t i = 0; i < pattern_parameters.size() &&
 		i < function_template_shape_parameters_.size(); ++i)
 		if (pattern == function_template_shape_parameters_[i]) return true;
@@ -535,6 +562,8 @@ bool SemanticAnalyzer::DeduceFunctionTemplatePackArgument(
 	const std::vector<TemplateParameter>& parameters,
 	FunctionTemplateDeduction* deduced) const
 {
+	if (pattern.kind != argument.kind) return false;
+	if (pattern.IsNondeduced()) return true;
 	std::size_t dependent = parameters.size();
 	if (pattern.kind == TEMPLATE_ARGUMENT_TYPE)
 	{
@@ -572,7 +601,7 @@ bool SemanticAnalyzer::DeduceFunctionTemplatePackArgument(
 		prior = argument;
 		return true;
 	}
-	if (pattern.kind != argument.kind || argument.IsDependent()) return false;
+	if (argument.IsDependent()) return false;
 	if (pattern.kind == TEMPLATE_ARGUMENT_TYPE)
 		return DeduceFunctionTemplatePackType(
 			pattern.type, argument.type, parameters, deduced);

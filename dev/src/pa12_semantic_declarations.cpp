@@ -724,8 +724,6 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 		defaulted_destructor = destructor != kNoBinding &&
 			GetFunction(destructor).defaulted_destructor;
 	}
-	const std::vector<ClassLayoutMember>& layout_members =
-		entity_layout_members_[entity];
 	const bool implicit_default_constructor =
 		!owner.has_user_declared_constructor;
 	owner.is_aggregate = !owner.has_user_provided_constructor &&
@@ -737,24 +735,26 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 	std::size_t active_bit_size = 0;
 	std::size_t active_bit_alignment = 0;
 	std::size_t active_bit_used = 0;
-	for (std::size_t i = 0; i < layout_members.size(); ++i)
+	for (std::size_t i = 0;
+		i < entity_layout_members_[entity].size(); ++i)
 	{
 		++class_layout_member_visits_;
-		const ClassLayoutMember& layout = layout_members[i];
+		const ClassLayoutMember layout = entity_layout_members_[entity][i];
 		EnsureClassDefinition(layout.type);
+		EntityRecord& current_owner = program_->entities[entity];
 		BindingRecord* member = layout.binding == kNoBinding ? 0 :
 			&program_->bindings[layout.binding];
 		if (is_union && member && member->has_default_member_initializer)
 		{
-			if (owner.union_default_member != kNoBinding &&
-				owner.union_default_member != layout.binding)
+			if (current_owner.union_default_member != kNoBinding &&
+				current_owner.union_default_member != layout.binding)
 				throw std::runtime_error(
 					"union has multiple default member initializers");
-			owner.union_default_member = layout.binding;
+			current_owner.union_default_member = layout.binding;
 		}
 		if (member && (member->has_default_member_initializer ||
 			member->access != ACCESS_PUBLIC))
-			owner.is_aggregate = false;
+			current_owner.is_aggregate = false;
 		const std::size_t member_size = program_->SizeOf(layout.type);
 		const std::size_t type_alignment = program_->AlignOf(layout.type);
 		const std::size_t requested_member_alignment = member ?
@@ -850,7 +850,7 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 		{
 			if (size == 0)
 				for (std::size_t base_index = 0;
-					base_index < owner.direct_base_count; ++base_index)
+					base_index < current_owner.direct_base_count; ++base_index)
 					if (program_->DirectBase(entity, base_index).offset == 0 &&
 						ZeroOffsetSubobjectConflict(program_->DirectBase(
 							entity, base_index).entity, layout.type))
@@ -867,7 +867,7 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 		if (!implicit_default_constructor) continue;
 		if (member->has_default_member_initializer)
 		{
-			owner.trivial_default_constructor = false;
+			current_owner.trivial_default_constructor = false;
 			continue;
 		}
 		TypeId member_type = member->type;
@@ -880,7 +880,7 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 		if (member_record->kind == TYPE_LVALUE_REFERENCE ||
 			member_record->kind == TYPE_RVALUE_REFERENCE)
 		{
-			owner.default_constructible = false;
+			current_owner.default_constructible = false;
 			continue;
 		}
 		const bool const_member = member_record->kind == TYPE_QUALIFIED &&
@@ -892,7 +892,7 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 		}
 		if (member_record->kind != TYPE_NAMED)
 		{
-			if (const_member) owner.default_constructible = false;
+			if (const_member) current_owner.default_constructible = false;
 			continue;
 		}
 		const EntityRecord& subobject =
@@ -900,29 +900,30 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 		if (subobject.flavor == NAMED_ENUM ||
 			subobject.flavor == NAMED_ENUM_CLASS)
 		{
-			if (const_member) owner.default_constructible = false;
+			if (const_member) current_owner.default_constructible = false;
 			continue;
 		}
 		if (!subobject.default_constructible)
-			owner.default_constructible = false;
+			current_owner.default_constructible = false;
 		if (!subobject.trivial_default_constructor)
-			owner.trivial_default_constructor = false;
+			current_owner.trivial_default_constructor = false;
 	}
 	CompleteClassMemberDestructionFacts(entity, is_union,
 		defaulted_destructor);
-	if (owner.requested_alignment != 0 &&
-		owner.requested_alignment < natural_alignment)
+	EntityRecord& completed_owner = program_->entities[entity];
+	if (completed_owner.requested_alignment != 0 &&
+		completed_owner.requested_alignment < natural_alignment)
 		throw std::runtime_error(
 			"requested alignment is weaker than the natural class alignment");
 	alignment = std::max(alignment,
-		static_cast<std::size_t>(owner.requested_alignment));
+		static_cast<std::size_t>(completed_owner.requested_alignment));
 	if (size == 0) size = 1;
 	size = AlignUp(size, alignment);
-	owner.object_size = size;
-	owner.object_alignment = alignment;
-	owner.natural_alignment = natural_alignment;
-	owner.empty_class = empty_class;
-	owner.layout_complete = true;
+	completed_owner.object_size = size;
+	completed_owner.object_alignment = alignment;
+	completed_owner.natural_alignment = natural_alignment;
+	completed_owner.empty_class = empty_class;
+	completed_owner.layout_complete = true;
 }
 
 BindingId SemanticAnalyzer::EnsureImplicitConstructor(EntityId entity)

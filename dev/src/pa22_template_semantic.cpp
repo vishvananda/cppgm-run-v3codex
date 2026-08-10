@@ -918,7 +918,21 @@ TypeId SemanticAnalyzer::InstantiateAliasTemplate(std::size_t index,
 	}
 	try
 	{
-		const TypeId result = BuildTypeId(pattern.type_id, substitution_scope);
+		// Alias substitution establishes a canonical type identity; it does not
+		// by itself require the aliased class layout.  Qualified components in
+		// the retained type-id still demand their carriers through lookup.
+		++class_template_completion_suppressed_depth_;
+		TypeId result = kNoType;
+		try
+		{
+			result = BuildTypeId(pattern.type_id, substitution_scope);
+		}
+		catch (...)
+		{
+			--class_template_completion_suppressed_depth_;
+			throw;
+		}
+		--class_template_completion_suppressed_depth_;
 		if (result == kNoType)
 			throw std::runtime_error(
 				"alias template specialization has no result type");

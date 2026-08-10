@@ -1011,8 +1011,9 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 				(*symbolic)[element] |= pack[element].pack_expansion ? 1U : 0U;
 		}
 	};
-	const auto append_argument = [&](NodeId source,
-		ScopeId source_scope) -> bool
+	const auto append_argument = [&](NodeId source, ScopeId source_scope,
+		const std::unordered_set<NameId>* source_dependent_names,
+		bool default_argument) -> bool
 	{
 		if (arguments->size() >= fixed && !has_pack) return false;
 		const TemplateParameter& parameter =
@@ -1021,13 +1022,19 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 			throw std::runtime_error("empty template argument");
 		TemplateArgument argument;
 		argument.kind = parameter.kind;
+		const bool retained_default = default_argument &&
+			source_dependent_names != 0 &&
+			SyntaxUsesTemplateParameter(
+				*arena_, source, *source_dependent_names) &&
+			!IsDirectTemplateParameterExpression(
+				source, *source_dependent_names);
 		if (parameter.kind == TEMPLATE_ARGUMENT_TYPE)
 		{
 			NodeId type_id = arena_->IsTag(source, "type-id") ? source :
 				FindChild(source, "type-id");
 			if (type_id != kNoNode)
 				argument.type = BuildCanonicalTemplateTypeArgument(
-					type_id, source_scope, dependent_names);
+					type_id, source_scope, source_dependent_names);
 			else if (arena_->IsTag(source, "id-expression"))
 			{
 				const NodeId structure = FindChild(
@@ -1043,7 +1050,13 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 		else if (parameter.kind == TEMPLATE_ARGUMENT_TEMPLATE)
 		{
 			if (!BuildTemplateTemplateArgument(
-				source, source_scope, parameter, &argument)) return false;
+				source, source_scope, parameter, &argument))
+			{
+				if (!retained_default) return false;
+				argument.type = ClassTemplateNondeducedTypeShape();
+				argument.dependent_parameter =
+					kNondeducedTemplateParameter;
+			}
 		}
 		else
 		{
@@ -1051,6 +1064,16 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 				parameter, parameter_scope);
 			if (CandidateSubstitutionFailed() || argument.type == kNoType)
 				return false;
+			if (retained_default)
+			{
+				argument.dependent_parameter =
+					kNondeducedTemplateParameter;
+				arguments->push_back(argument);
+				if (arguments->size() <= fixed)
+					BindTemplateArgument(
+						parameter_scope, parameter, argument);
+				return true;
+			}
 			const bool dependent_target =
 				FunctionTemplateTypeIsDependent(argument.type);
 			ExpressionInfo expression;
@@ -1154,7 +1177,8 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 			if (!ExpandPackElementScopes(
 				operand, use_scope, &element_scopes))
 			{
-				if (!append_argument(operand, use_scope)) return false;
+				if (!append_argument(
+					operand, use_scope, dependent_names, false)) return false;
 				arguments->back().pack_expansion = true;
 				continue;
 			}
@@ -1165,8 +1189,8 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 				element < element_scopes.size(); ++element)
 			{
 				if (arguments->size() >= fixed && !has_pack) return false;
-				if (!append_argument(
-					operand, element_scopes[element])) return false;
+				if (!append_argument(operand, element_scopes[element],
+					dependent_names, false)) return false;
 				arguments->back().pack_expansion = symbolic[element] != 0;
 			}
 			continue;
@@ -1181,7 +1205,8 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 			FindChild(declarator, "parameter-pack") != kNoNode;
 		if (!expansion)
 		{
-			if (!append_argument(syntax[i], use_scope)) return false;
+			if (!append_argument(
+				syntax[i], use_scope, dependent_names, false)) return false;
 			continue;
 		}
 		const TemplateArgumentKind destination_kind =
@@ -1193,7 +1218,8 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 			// specialization later replays the same syntax against its ordered
 			// pack environment. This also covers a non-type pack parsed as the
 			// ambiguous type-id spelling `Name...`.
-			if (!append_argument(syntax[i], use_scope)) return false;
+			if (!append_argument(
+				syntax[i], use_scope, dependent_names, false)) return false;
 			arguments->back().pack_expansion = true;
 			continue;
 		}
@@ -1218,19 +1244,48 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 			}
 			else
 			{
-				if (!append_argument(syntax[i], element_scopes[element]))
+				if (!append_argument(syntax[i], element_scopes[element],
+					dependent_names, false))
 					return false;
 				arguments->back().pack_expansion = symbolic[element] != 0;
 			}
 		}
 	}
+	std::unordered_set<NameId> default_dependent_names;
+	if (dependent_names)
+		default_dependent_names.insert(
+			dependent_names->begin(), dependent_names->end());
+	for (std::size_t prior = 0; prior < arguments->size() &&
+		prior < parameters.size(); ++prior)
+	{
+		const TemplateArgument& prior_argument = (*arguments)[prior];
+		const bool dependent = prior_argument.IsDependent() ||
+			((prior_argument.kind == TEMPLATE_ARGUMENT_TYPE ||
+			  prior_argument.kind == TEMPLATE_ARGUMENT_TEMPLATE) &&
+			 prior_argument.type != kNoType &&
+			 FunctionTemplateTypeIsDependent(prior_argument.type));
+		if (dependent && parameters[prior].name != 0)
+			default_dependent_names.insert(parameters[prior].name);
+	}
 	while (require_complete && arguments->size() < fixed)
 	{
-		const TemplateParameter& parameter = parameters[arguments->size()];
+		const std::size_t parameter_index = arguments->size();
+		const TemplateParameter& parameter = parameters[parameter_index];
 		NodeId source = parameter.default_argument;
 		if (source == kNoNode) return false;
 		source = FirstSemanticChild(source);
-		if (!append_argument(source, parameter_scope)) return false;
+		const std::unordered_set<NameId>* default_names =
+			default_dependent_names.empty() ? 0 : &default_dependent_names;
+		if (!append_argument(
+			source, parameter_scope, default_names, true)) return false;
+		const TemplateArgument& appended = (*arguments)[parameter_index];
+		const bool dependent = appended.IsDependent() ||
+			((appended.kind == TEMPLATE_ARGUMENT_TYPE ||
+			  appended.kind == TEMPLATE_ARGUMENT_TEMPLATE) &&
+			 appended.type != kNoType &&
+			 FunctionTemplateTypeIsDependent(appended.type));
+		if (dependent && parameter.name != 0)
+			default_dependent_names.insert(parameter.name);
 	}
 	if (require_complete && !has_pack &&
 		arguments->size() != parameters.size()) return false;
@@ -1253,7 +1308,21 @@ TypeId SemanticAnalyzer::BuildCanonicalTemplateTypeArgument(NodeId type_id,
 	{
 		try
 		{
-			return BuildTypeId(type_id, source_scope);
+			// A template argument needs canonical type identity, not the layout
+			// of every class specialization named inside that identity.
+			++class_template_completion_suppressed_depth_;
+			TypeId result = kNoType;
+			try
+			{
+				result = BuildTypeId(type_id, source_scope);
+			}
+			catch (...)
+			{
+				--class_template_completion_suppressed_depth_;
+				throw;
+			}
+			--class_template_completion_suppressed_depth_;
+			return result;
 		}
 		catch (const std::runtime_error&)
 		{
@@ -1264,6 +1333,11 @@ TypeId SemanticAnalyzer::BuildCanonicalTemplateTypeArgument(NodeId type_id,
 			if (!source_dependent) throw;
 		}
 	}
+	return ClassTemplateNondeducedTypeShape();
+}
+
+TypeId SemanticAnalyzer::ClassTemplateNondeducedTypeShape()
+{
 	if (class_template_nondeduced_type_shape_ == kNoType)
 	{
 		const NameId name = program_->names.Intern(

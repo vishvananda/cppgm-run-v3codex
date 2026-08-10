@@ -323,7 +323,12 @@ int SemanticAnalyzer::CompareReferenceBindings(
 {
 	const TypeKind left_kind = program_->types.Get(left).kind;
 	const TypeKind right_kind = program_->types.Get(right).kind;
-	if (argument.category == VALUE_LVALUE)
+	const bool left_reference = left_kind == TYPE_LVALUE_REFERENCE ||
+		left_kind == TYPE_RVALUE_REFERENCE;
+	const bool right_reference = right_kind == TYPE_LVALUE_REFERENCE ||
+		right_kind == TYPE_RVALUE_REFERENCE;
+	if (argument.category == VALUE_LVALUE &&
+		left_reference && right_reference)
 	{
 		const TypeId source = EffectiveType(argument.type);
 		const TypeId left_target = left_kind == TYPE_LVALUE_REFERENCE ||
@@ -549,6 +554,7 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 	if (arrow)
 		owner_type = ResolveArrowOperand(
 			&object, scope, arena_->EdgeChild(object_edge));
+	EnsureClassDefinition(owner_type);
 	const EntityId entity = EntityOf(owner_type);
 	if (entity == kNoEntity ||
 		program_->entities[entity].member_scope == kNoScope)
@@ -688,6 +694,7 @@ bool SemanticAnalyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 		destroyed_type = ResolveArrowOperand(
 			&object, scope, arena_->EdgeChild(object_edge));
 	destroyed_type = program_->types.RemoveTopCv(EffectiveType(destroyed_type));
+	EnsureClassDefinition(destroyed_type);
 	const EntityId entity = EntityOf(destroyed_type);
 	if (entity == kNoEntity)
 	{
@@ -895,6 +902,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	if (source_operation == "->")
 		owner_type = ResolveArrowOperand(
 			&object, scope, arena_->EdgeChild(first));
+	EnsureClassDefinition(owner_type);
 	const EntityId entity = EntityOf(owner_type);
 	if (entity == kNoEntity || program_->entities[entity].member_scope == kNoScope)
 	{

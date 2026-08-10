@@ -1538,6 +1538,7 @@ bool SemanticAnalyzer::TryAnalyzeOverloadedOperator(
 	for (std::size_t i = 0; i < operands.size(); ++i)
 	{
 		if (operands[i].type == kNoType) continue;
+		EnsureClassDefinition(EffectiveType(operands[i].type));
 		const EntityId entity = EntityOf(operands[i].type);
 		if (entity == kNoEntity) continue;
 		const NamedFlavor flavor = program_->entities[entity].flavor;

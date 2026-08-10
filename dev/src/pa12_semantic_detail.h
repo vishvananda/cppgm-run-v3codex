@@ -447,6 +447,7 @@ private:
 	TypeId BuildCanonicalTemplateTypeArgument(NodeId type_id,
 		ScopeId source_scope,
 		const std::unordered_set<NameId>* dependent_names);
+	TypeId ClassTemplateNondeducedTypeShape();
 	TypeId ResolveTemplateParameterType(const TemplateParameter& parameter,
 		ScopeId parameter_scope);
 	void BindTemplateArgument(ScopeId scope,

@@ -61,7 +61,12 @@ std::size_t SemanticAnalyzer::RequestedAlignment(NodeId node, ScopeId scope)
 						"nonconstant alignment specifier");
 				value = static_cast<std::uint64_t>(expression.value);
 			}
-			else value = program_->AlignOf(BuildTypeId(operand, scope));
+			else
+			{
+				const TypeId type = BuildTypeId(operand, scope);
+				EnsureClassDefinition(type);
+				value = program_->AlignOf(type);
+			}
 		}
 		else
 		{
@@ -370,6 +375,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 	NodeId arguments_node, TypeId target,
 	const std::vector<ExpressionInfo>* prepared_arguments)
 {
+	EnsureClassDefinition(cast_type);
 	const EntityId cast_entity = EntityOf(cast_type);
 	const bool reference_target = target != kNoType &&
 		(program_->types.Get(target).kind == TYPE_LVALUE_REFERENCE ||

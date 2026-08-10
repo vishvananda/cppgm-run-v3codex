@@ -36,6 +36,21 @@ bool ClassTemplateArgumentsAreLayoutReady(const Program& program,
 	return true;
 }
 
+bool HasClassTemplateSpecializationArgument(const Program& program,
+	const std::vector<TemplateArgument>& arguments)
+{
+	for (std::size_t i = 0; i < arguments.size(); ++i)
+	{
+		if (arguments[i].kind != TEMPLATE_ARGUMENT_TYPE) continue;
+		const TypeRecord& record = program.types.Get(
+			program.types.RemoveTopCv(arguments[i].type));
+		if (record.kind == TYPE_NAMED &&
+			program.entities[record.entity].template_argument_begin != kNoBinding)
+			return true;
+	}
+	return false;
+}
+
 bool TypeContainsDependentTemplateShape(const Program& program, TypeId type,
 	std::size_t depth)
 {
@@ -1413,6 +1428,7 @@ void SemanticAnalyzer::ApplyClassTemplateMemberDefinitions(
 			}
 			const LookupResult nested = program_->LookupDirect(actual_owner,
 				definition.nested_owner_path[part], LOOKUP_SCOPE_CARRIER);
+			if (nested.type != kNoType) EnsureClassDefinition(nested.type);
 			actual_owner = nested.name_space != kNoScope ? nested.name_space :
 				program_->ScopeForType(nested.type);
 			if (actual_owner == kNoScope) break;
@@ -1678,6 +1694,10 @@ void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
 		}
 		throw std::logic_error("class template completion remained incomplete");
 	}
+	// A shell deferred by another specialization becomes an ordinary completed
+	// identity; preserve provenance for ordinary forward-declared arguments.
+	if (HasClassTemplateSpecializationArgument(*program_, arguments))
+		program_->entities[entity].deferred_template_completion = false;
 	class_template_specialization_states_[binding] = 2;
 	ApplyClassTemplateMemberDefinitions(index, binding, arguments);
 	QueueClassTemplateMemberDefinitions(index, binding);
@@ -1887,6 +1907,7 @@ bool SemanticAnalyzer::DeduceTemplatePartialArgument(
 {
 	++template_partial_deduction_visits_;
 	if (pattern.kind != argument.kind) return false;
+	if (pattern.IsNondeduced()) return true;
 	std::size_t dependent = parameters.size();
 	if (pattern.kind == TEMPLATE_ARGUMENT_TYPE)
 	{
