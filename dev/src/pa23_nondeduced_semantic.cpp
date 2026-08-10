@@ -82,9 +82,11 @@ LookupResult SemanticAnalyzer::ResolveClassDirectBase(
 }
 
 bool SemanticAnalyzer::HasDependentQualifiedType(NodeId node,
-	const std::unordered_set<NameId>& names, ScopeId scope)
+	const std::unordered_set<NameId>& names, ScopeId scope,
+	std::size_t alias_depth)
 {
 	if (node == kNoNode) return false;
+	if (alias_depth > alias_templates_.size()) return true;
 	if (arena_->IsTag(node, "decltype-specifier") &&
 		SyntaxUsesAnyTemplateParameter(node, names)) return true;
 	if (arena_->IsTag(node, "decl-specifier") &&
@@ -108,13 +110,27 @@ bool SemanticAnalyzer::HasDependentQualifiedType(NodeId node,
 		const NamePath path = StructuredNamePath(structure);
 		if (!components.empty() && IsUnqualifiedAliasTemplateName(scope, path))
 		{
+			const LookupResult marker = LookupSpelling(
+				scope, program_->names.Get(path.Last()), LOOKUP_TYPE);
+			const std::size_t alias = FindAliasTemplateIndex(marker, path.Last());
+			if (alias < alias_templates_.size())
+			{
+				const AliasTemplatePattern& pattern = alias_templates_[alias];
+				std::unordered_set<NameId> alias_names;
+				for (std::size_t i = 0; i < pattern.parameters.size(); ++i)
+					if (pattern.parameters[i].name != 0)
+						alias_names.insert(pattern.parameters[i].name);
+				if (HasDependentQualifiedType(pattern.type_id, alias_names,
+					pattern.lexical_scope, alias_depth + 1)) return true;
+			}
 			const NodeId arguments = FindChild(
 				components.back(), "template-type-argument-list");
 			if (arguments != kNoNode)
 				for (std::uint32_t edge = arena_->FirstEdge(arguments);
 					edge != kNoEdge; edge = arena_->NextEdge(edge))
 					if (HasDependentQualifiedType(
-						arena_->EdgeChild(edge), names, scope)) return true;
+						arena_->EdgeChild(edge), names, scope,
+						alias_depth)) return true;
 		}
 		return false;
 	}
@@ -122,11 +138,10 @@ bool SemanticAnalyzer::HasDependentQualifiedType(NodeId node,
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId child = arena_->EdgeChild(edge);
-		// A terminal alias-id such as void_t<typename T::member> is itself a
-		// non-deduced context even though the outer decl-specifier does not use
-		// `typename`. Search its retained arguments for an actual dependent type
-		// form; a value path such as trait<T>::value remains an expression.
-		if (HasDependentQualifiedType(child, names, scope)) return true;
+		// A terminal alias-id is non-deduced when either its retained result or
+		// one of its arguments requires dependent qualified type lookup.
+		if (HasDependentQualifiedType(
+			child, names, scope, alias_depth)) return true;
 	}
 	return false;
 }

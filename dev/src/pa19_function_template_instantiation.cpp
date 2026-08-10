@@ -253,6 +253,12 @@ bool EquivalentDependentFunctionTemplateResults(const SyntaxArena& arena,
 	NodeId right_global_owner = kNoNode;
 	(void)EquivalentResultRootLookup(left, right,
 		&left_global_owner, &right_global_owner);
+	if (left.result_root_structure != kNoNode &&
+		right.result_root_structure != kNoNode)
+		return EquivalentNormalizedTemplateSyntax(arena,
+			left.result_root_structure, right.result_root_structure,
+			left.parameters, right.parameters,
+			left_global_owner, right_global_owner);
 	std::uint32_t left_edge = NextDependentResultEdge(arena,
 		left.specifiers == kNoNode ? kNoEdge : arena.FirstEdge(left.specifiers));
 	std::uint32_t right_edge = NextDependentResultEdge(arena,
@@ -408,6 +414,9 @@ void SemanticAnalyzer::InheritFunctionTemplateResultLookups(
 	NodeId destination_global_owner = kNoNode;
 	(void)EquivalentResultRootLookup(source, *destination,
 		&source_global_owner, &destination_global_owner);
+	const std::vector<FunctionTemplateResultLookupFact> destination_facts =
+		destination->result_lookup_facts;
+	bool mapping_diverged = false;
 	std::vector<std::pair<NodeId, NodeId> > pending;
 	std::uint32_t source_specifier = NextDependentResultEdge(*arena_,
 		source.specifiers == kNoNode ? kNoEdge :
@@ -425,9 +434,8 @@ void SemanticAnalyzer::InheritFunctionTemplateResultLookups(
 			*arena_, arena_->NextEdge(destination_specifier));
 	}
 	if (source_specifier != destination_specifier)
-		throw std::logic_error(
-			"equivalent function template result specifiers diverged");
-	pending.push_back(std::make_pair(source.trailing_return_syntax,
+		mapping_diverged = true;
+	else pending.push_back(std::make_pair(source.trailing_return_syntax,
 		destination->trailing_return_syntax));
 	std::vector<FunctionTemplateResultLookupFact> remapped;
 	remapped.reserve(source.result_lookup_facts.size());
@@ -439,8 +447,10 @@ void SemanticAnalyzer::InheritFunctionTemplateResultLookups(
 		if (left == kNoNode || right == kNoNode)
 		{
 			if (left != right)
-				throw std::logic_error(
-					"equivalent function template result shape diverged");
+			{
+				mapping_diverged = true;
+				pending.clear();
+			}
 			continue;
 		}
 		CopyRetainedCallLookup(left, right);
@@ -471,8 +481,92 @@ void SemanticAnalyzer::InheritFunctionTemplateResultLookups(
 				arena_->NextEdge(right_edge), ignore_global_qualifier);
 		}
 		if (left_edge != right_edge)
-			throw std::logic_error(
-				"equivalent function template result edge count diverged");
+		{
+			mapping_diverged = true;
+			pending.clear();
+		}
+	}
+	if (mapping_diverged)
+	{
+		remapped.clear();
+		std::vector<std::uint8_t> used(destination_facts.size(), 0);
+		for (std::size_t i = 0; i < source.result_lookup_facts.size(); ++i)
+		{
+			const FunctionTemplateResultLookupFact& source_fact =
+				source.result_lookup_facts[i];
+			std::size_t match = destination_facts.size();
+			for (std::size_t j = 0; j < destination_facts.size(); ++j)
+			{
+				if (used[j] != 0) continue;
+				const FunctionTemplateResultLookupFact& destination_fact =
+					destination_facts[j];
+				const bool same_declaration =
+					source_fact.declaration != kNoBinding &&
+					destination_fact.declaration != kNoBinding &&
+					program_->bindings[source_fact.declaration].canonical ==
+						program_->bindings[destination_fact.declaration].canonical;
+				const bool same_namespace =
+					source_fact.declaration == kNoBinding &&
+					destination_fact.declaration == kNoBinding &&
+					source_fact.name_space != kNoScope &&
+					source_fact.name_space == destination_fact.name_space;
+				if (same_declaration || same_namespace)
+				{
+					match = j;
+					break;
+				}
+			}
+			if (match == destination_facts.size())
+				throw std::logic_error(
+					"equivalent function template result lookup diverged");
+			used[match] = 1;
+			FunctionTemplateResultLookupFact inherited = source_fact;
+			inherited.syntax = destination_facts[match].syntax;
+			remapped.push_back(inherited);
+		}
+
+		const auto collect_calls = [this](
+			const FunctionTemplatePattern& pattern,
+			std::vector<NodeId>* calls) {
+			std::vector<NodeId> nodes;
+			if (pattern.specifiers != kNoNode)
+				nodes.push_back(pattern.specifiers);
+			if (pattern.trailing_return_syntax != kNoNode)
+				nodes.push_back(pattern.trailing_return_syntax);
+			while (!nodes.empty())
+			{
+				const NodeId node = nodes.back();
+				nodes.pop_back();
+				if (node < retained_call_lookup_states_.size() &&
+					retained_call_lookup_states_[node] != 0)
+					calls->push_back(node);
+				for (std::uint32_t edge = arena_->FirstEdge(node);
+					edge != kNoEdge; edge = arena_->NextEdge(edge))
+					nodes.push_back(arena_->EdgeChild(edge));
+			}
+			std::sort(calls->begin(), calls->end());
+		};
+		std::vector<NodeId> source_calls, destination_calls;
+		collect_calls(source, &source_calls);
+		collect_calls(*destination, &destination_calls);
+		std::vector<std::uint8_t> used_calls(destination_calls.size(), 0);
+		for (std::size_t i = 0; i < source_calls.size(); ++i)
+		{
+			std::size_t match = destination_calls.size();
+			for (std::size_t j = 0; j < destination_calls.size(); ++j)
+				if (used_calls[j] == 0 && EquivalentNormalizedTemplateSyntax(
+					*arena_, source_calls[i], destination_calls[j],
+					source.parameters, destination->parameters))
+				{
+					match = j;
+					break;
+				}
+			if (match == destination_calls.size())
+				throw std::logic_error(
+					"equivalent function template retained call diverged");
+			used_calls[match] = 1;
+			CopyRetainedCallLookup(source_calls[i], destination_calls[match]);
+		}
 	}
 	if (remapped.size() != source.result_lookup_facts.size())
 		throw std::logic_error(
@@ -598,6 +692,21 @@ void SemanticAnalyzer::RegisterFunctionTemplateFriend(
 			pattern, pattern.specialization_bindings[i]);
 }
 
+TypeId SemanticAnalyzer::DependentFunctionTemplateResultShape()
+{
+	if (function_template_dependent_result_shape_ == kNoType)
+	{
+		const NameId shape_name = program_->names.Intern(
+			"__function_template_dependent_result_shape");
+		const EntityId shape = program_->NewEntity(shape_name,
+			NAMED_TYPENAME_PARAMETER, false, kNoType,
+			program_->GlobalScope(), shape_name);
+		function_template_dependent_result_shape_ =
+			program_->types.Named(shape);
+	}
+	return function_template_dependent_result_shape_;
+}
+
 void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	ScopeId scope, AccessKind member_access,
 	const std::vector<TemplateParameter>& parameters, NodeId specifiers,
@@ -651,8 +760,7 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 				TemplateLexicalScope(scope, pattern.owner);
 	}
 	const ScopeId shape_scope = NewScope(pattern.lexical_scope,
-		SCOPE_TEMPLATE_PARAMETERS, 0,
-		ScopePrefixId(pattern.lexical_scope));
+		SCOPE_TEMPLATE_PARAMETERS, 0, ScopePrefixId(pattern.lexical_scope));
 	std::unordered_set<NameId> parameter_names;
 	for (std::size_t p = 0; p < parameters.size(); ++p)
 	{
@@ -670,6 +778,11 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 				parameters[p].value_type, false,
 			static_cast<std::int64_t>(p));
 	}
+	const NodeId trailing_return = FindChild(declarator, "trailing-return-type");
+	if (dependent_result_shape == kNoType && trailing_return != kNoNode &&
+		(PayloadSource(trailing_return).find("decltype") == 0 ||
+		 SyntaxUsesAnyTemplateParameter(trailing_return, parameter_names)))
+		dependent_result_shape = DependentFunctionTemplateResultShape();
 	SpecInfo shape_spec;
 	if (pattern.constructor_template)
 		shape_spec.type = program_->types.Fundamental(FUND_VOID);
@@ -678,6 +791,9 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 			FindChild(declarator, "conversion-type-id"), shape_scope);
 	else shape_spec = BuildSpecifiers(specifiers, shape_scope, std::string(), true, false, dependent_result_shape);
 	ApplyFunctionTemplateSpecifierFacts(pattern, &shape_spec);
+	if (dependent_result_shape != kNoType && shape_spec.placeholder_auto &&
+		trailing_return != kNoNode)
+		shape_spec.type = dependent_result_shape;
 	pattern.deferred_result_formation = dependent_result_shape != kNoType && shape_spec.type == dependent_result_shape;
 	EntityId friend_owner = kNoEntity;
 	const bool qualified_friend = path.global || path.Size() > 1;

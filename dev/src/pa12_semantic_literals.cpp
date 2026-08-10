@@ -755,6 +755,7 @@ TypeId SemanticAnalyzer::DecltypeType(NodeId node, ScopeId scope)
 			EffectiveType(binding.type));
 	}
 	++unevaluated_depth_;
+	++decltype_operand_depth_;
 	ExpressionInfo expression;
 	try
 	{
@@ -762,9 +763,11 @@ TypeId SemanticAnalyzer::DecltypeType(NodeId node, ScopeId scope)
 	}
 	catch (...)
 	{
+		--decltype_operand_depth_;
 		--unevaluated_depth_;
 		throw;
 	}
+	--decltype_operand_depth_;
 	--unevaluated_depth_;
 	if (CandidateSubstitutionFailed()) return kNoType;
 	if (unparenthesized_member && expression.binding != kNoBinding)

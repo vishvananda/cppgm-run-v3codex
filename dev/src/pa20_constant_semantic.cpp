@@ -375,6 +375,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 	NodeId arguments_node, TypeId target,
 	const std::vector<ExpressionInfo>* prepared_arguments)
 {
+	const auto materialize_if_evaluated = [this](ExpressionInfo value) {
+		return decltype_operand_depth_ == 0 ?
+			MaterializeTemporary(value) : value;
+	};
 	EnsureClassDefinition(cast_type);
 	const EntityId cast_entity = EntityOf(cast_type);
 	if (cast_entity != kNoEntity &&
@@ -394,7 +398,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 		{
 			ExpressionInfo converted =
 				ApplyExplicitConversion(operand, cast_type);
-			converted = MaterializeTemporary(converted);
+			converted = materialize_if_evaluated(converted);
 			return target == kNoType ? converted : ApplyTarget(converted, target);
 		}
 	}
@@ -418,7 +422,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 		{
 			result.node = BuildAggregateConstructionAction(
 				cast_type, result.node, true);
-			return MaterializeTemporary(result);
+			return materialize_if_evaluated(result);
 		}
 		if (reference_target) result = MaterializeTemporary(result);
 		return ApplyTarget(result, target);
@@ -434,7 +438,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 			initialized.type = cast_type;
 			initialized.category = VALUE_PRVALUE;
 			dump_.nodes[initialized.node].value_initialization = true;
-			return MaterializeTemporary(initialized);
+			return materialize_if_evaluated(initialized);
 		}
 		std::uint32_t empty = kNoEdge;
 		ExpressionInfo result = AnalyzeAggregateInit(cast_type, scope, &empty);
@@ -463,7 +467,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 	if (argument_syntax.empty() &&
 		!program_->entities[cast_entity].has_user_provided_constructor)
 		dump_.nodes[result.node].value_initialization = true;
-	return target == kNoType ? MaterializeTemporary(result) :
+	return target == kNoType ? materialize_if_evaluated(result) :
 		ApplyTarget(result, target);
 }
 

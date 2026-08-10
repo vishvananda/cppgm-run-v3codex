@@ -1486,10 +1486,12 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 	const NodeId left_syntax = arena_->EdgeChild(first);
 	const NodeId right_syntax = arena_->EdgeChild(second);
 	ExpressionInfo left = AnalyzeExpression(left_syntax, scope);
+	if (CandidateSubstitutionFailed()) return left;
 	const std::string operation = PayloadSource(node);
 	ExpressionInfo right = AnalyzeExpression(right_syntax, scope,
 		operation == "=" && arena_->IsTag(right_syntax, "braced-init-list") ?
 			EffectiveType(left.type) : kNoType);
+	if (CandidateSubstitutionFailed()) return right;
 	std::vector<NodeId> overloaded_syntax;
 	overloaded_syntax.push_back(left_syntax);
 	overloaded_syntax.push_back(right_syntax);
@@ -1879,19 +1881,7 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 	}
 	TypeId dependent_result_shape = kNoType;
 	if (deferred_dependent_result)
-	{
-		if (function_template_dependent_result_shape_ == kNoType)
-		{
-			const NameId shape_name = program_->names.Intern(
-				"__function_template_dependent_result_shape");
-			const EntityId shape = program_->NewEntity(shape_name,
-				NAMED_TYPENAME_PARAMETER, false, kNoType,
-				program_->GlobalScope(), shape_name);
-			function_template_dependent_result_shape_ =
-				program_->types.Named(shape);
-		}
-		dependent_result_shape = function_template_dependent_result_shape_;
-	}
+		dependent_result_shape = DependentFunctionTemplateResultShape();
 	for (std::size_t i = 0; i < pattern_declarators.size(); ++i)
 	{
 		const NodeId declarator = pattern_declarators[i];

@@ -69,6 +69,7 @@ public:
 		  braced_initialization_context_(0),
 		  current_pack_alignment_(0),
 		  loop_depth_(0), switch_depth_(0), unevaluated_depth_(0),
+		  decltype_operand_depth_(0),
 		  constant_evaluation_suppressed_depth_(0),
 		  constant_expression_required_depth_(0),
 		  constant_initializer_required_depth_(0),
@@ -174,6 +175,7 @@ private:
 		NodeId declarator, bool definition, bool special_member_template,
 		TypeId dependent_result_shape,
 		bool dependent_exception_specification);
+	TypeId DependentFunctionTemplateResultShape();
 	void RegisterFunctionTemplateFriend(std::size_t pattern,
 		EntityId owner, bool hidden);
 	void PublishFunctionTemplateFriendGrants(
@@ -366,7 +368,8 @@ private:
 		const std::unordered_set<NameId>& names) const;
 	LookupResult ResolveClassDirectBase(NodeId base_name, ScopeId scope);
 	bool HasDependentQualifiedType(NodeId node,
-		const std::unordered_set<NameId>& names, ScopeId scope);
+		const std::unordered_set<NameId>& names, ScopeId scope,
+		std::size_t alias_depth = 0);
 	void ValidateDeferredFunctionTemplateResult(NodeId node, ScopeId scope,
 		FunctionTemplatePattern* pattern,
 		const std::unordered_set<NameId>& dependent_names);
@@ -1472,6 +1475,7 @@ private:
 	std::size_t loop_depth_;
 	std::size_t switch_depth_;
 	std::size_t unevaluated_depth_;
+	std::size_t decltype_operand_depth_;
 	std::size_t constant_evaluation_suppressed_depth_;
 	std::size_t constant_expression_required_depth_;
 	std::size_t constant_initializer_required_depth_;

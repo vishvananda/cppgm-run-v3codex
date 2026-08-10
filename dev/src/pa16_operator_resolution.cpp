@@ -656,18 +656,18 @@ bool SemanticAnalyzer::ApplyBuiltinBinaryConversions(
 		(program_->entities[right_entity].flavor == NAMED_STRUCT ||
 		 program_->entities[right_entity].flavor == NAMED_CLASS ||
 		 program_->entities[right_entity].flavor == NAMED_UNION);
+	if (operation == ",")
+	{
+		if (selected_ranks)
+		{
+			selected_ranks->clear();
+			selected_ranks->push_back(CONVERSION_EXACT);
+			selected_ranks->push_back(CONVERSION_EXACT);
+		}
+		return true;
+	}
 	if (!left_class && !right_class)
 	{
-		if (operation == ",")
-		{
-			if (selected_ranks)
-			{
-				selected_ranks->clear();
-				selected_ranks->push_back(CONVERSION_EXACT);
-				selected_ranks->push_back(CONVERSION_EXACT);
-			}
-			return true;
-		}
 		TypeId left_target = kNoType;
 		TypeId right_target = kNoType;
 		if (!BuiltinBinaryParameterTypes(operation, *left, Decay(left->type),

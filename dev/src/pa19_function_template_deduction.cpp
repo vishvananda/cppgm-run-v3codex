@@ -1465,7 +1465,29 @@ std::vector<BindingId> SemanticAnalyzer::FunctionTemplateTargetCandidates(
 		if (explicit_id)
 			std::copy(explicit_arguments.begin(), explicit_arguments.end(),
 				deduced.begin());
-		if (!DeduceFunctionTemplateType(pattern.shape_type, target, &deduced))
+		TypeId deduction_target = target;
+		const TypeRecord& shape = program_->types.Get(pattern.shape_type);
+		const TypeRecord& desired = program_->types.Get(target);
+		if (shape.kind == TYPE_FUNCTION && desired.kind == TYPE_FUNCTION &&
+			shape.parameter_count == desired.parameter_count &&
+			pattern.function_parameter_nondeduced.size() ==
+				desired.parameter_count)
+		{
+			std::vector<TypeId> parameters(
+				program_->types.Parameters(target),
+				program_->types.Parameters(target) + desired.parameter_count);
+			const TypeId* shape_parameters =
+				program_->types.Parameters(pattern.shape_type);
+			for (std::size_t parameter = 0;
+				parameter < parameters.size(); ++parameter)
+				if (pattern.function_parameter_nondeduced[parameter] != 0)
+					parameters[parameter] = shape_parameters[parameter];
+			deduction_target = program_->types.Function(desired.child,
+				parameters, desired.variadic, desired.cv,
+				desired.ref_qualifier);
+		}
+		if (!DeduceFunctionTemplateType(
+			pattern.shape_type, deduction_target, &deduced))
 			continue;
 		const BindingId candidate =
 			InstantiateFunctionTemplate(patterns[i], deduced);
