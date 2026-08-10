@@ -713,6 +713,8 @@ private:
 		TypeId target, bool allow_explicit = false);
 	void AppendConversionFunctions(EntityId entity,
 		std::vector<BindingId>* candidates) const;
+	void AppendConversionFunctionTemplateCandidates(EntityId entity,
+		TypeId target, std::vector<BindingId>* candidates);
 	void AppendBuiltinConversionTargets(const ExpressionInfo& source,
 		std::vector<TypeId>* targets) const;
 	bool BuiltinBinaryParameterTypes(const std::string& operation,
@@ -1315,6 +1317,8 @@ private:
 	std::vector<EntityId> zero_offset_subobject_scratch_;
 	std::vector<std::vector<BindingId> > entity_constructors_;
 	std::vector<std::vector<BindingId> > entity_conversion_functions_;
+	std::vector<std::vector<std::size_t> >
+		entity_conversion_function_templates_;
 	std::vector<std::vector<BindingId> > entity_member_functions_;
 	std::vector<ClassPolymorphismFacts>& class_polymorphism_;
 	std::vector<std::uint32_t> virtual_slot_by_binding_;

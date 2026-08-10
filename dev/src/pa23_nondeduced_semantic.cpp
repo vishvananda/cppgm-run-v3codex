@@ -87,6 +87,9 @@ bool SemanticAnalyzer::HasDependentQualifiedType(NodeId node,
 	if (node == kNoNode) return false;
 	if (arena_->IsTag(node, "decltype-specifier") &&
 		SyntaxUsesAnyTemplateParameter(node, names)) return true;
+	if (arena_->IsTag(node, "decl-specifier") &&
+		PayloadSource(node).compare(0, 8, "decltype") == 0 &&
+		SyntaxUsesAnyTemplateParameter(node, names)) return true;
 	const bool type_spelling = arena_->IsTag(node, "decl-specifier") ||
 		arena_->IsTag(node, "type-name");
 	const NodeId structure = type_spelling ?

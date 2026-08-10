@@ -397,8 +397,9 @@ CallConversionFact SemanticAnalyzer::ConvertingConstructor(
 	if (flavor != NAMED_STRUCT && flavor != NAMED_CLASS &&
 		flavor != NAMED_UNION) return result;
 
-	const std::vector<BindingId>& candidates =
-		ConstructorCandidates(object.entity);
+	std::vector<BindingId> candidates = ConstructorCandidates(object.entity);
+	const std::vector<ExpressionInfo> arguments(1, source);
+	AppendConstructorTemplateCandidates(target, arguments, &candidates);
 	BindingId selected = kNoBinding;
 	ConversionRank best = CONVERSION_INVALID;
 	bool ambiguous = false;
@@ -432,7 +433,30 @@ CallConversionFact SemanticAnalyzer::ConvertingConstructor(
 			best = rank;
 			ambiguous = false;
 		}
-		else if (rank == best) ambiguous = true;
+		else if (rank == best)
+		{
+			const FunctionInfo& prior = GetFunction(selected);
+			if (constructor.template_specialization !=
+				prior.template_specialization)
+			{
+				if (!constructor.template_specialization)
+				{
+					selected = candidates[i];
+					ambiguous = false;
+				}
+			}
+			else
+			{
+				const int preference = CompareFunctionTemplateConstraints(
+					constructor, prior);
+				if (preference > 0)
+				{
+					selected = candidates[i];
+					ambiguous = false;
+				}
+				else if (preference == 0) ambiguous = true;
+			}
+		}
 	}
 	if (ambiguous || selected == kNoBinding) return result;
 	result.rank = CONVERSION_USER_DEFINED;
@@ -830,6 +854,7 @@ CallConversionFact SemanticAnalyzer::ConvertingFunction(
 	if (entity == kNoEntity) return result;
 	std::vector<BindingId> candidates;
 	AppendConversionFunctions(entity, &candidates);
+	AppendConversionFunctionTemplateCandidates(entity, target, &candidates);
 	BindingId selected = kNoBinding;
 	ConversionRank best_result = CONVERSION_INVALID;
 	ConversionRank best_object = CONVERSION_INVALID;
@@ -883,7 +908,20 @@ CallConversionFact SemanticAnalyzer::ConvertingFunction(
 			const int preference = CompareImplicitObjectBindings(source.category,
 				function_type, program_->types.Get(GetFunction(selected).type));
 			better = preference > 0;
-			if (preference == 0) ambiguous = true;
+			if (preference == 0)
+			{
+				const FunctionInfo& prior = GetFunction(selected);
+				if (function.template_specialization !=
+					prior.template_specialization)
+					better = !function.template_specialization;
+				else
+				{
+					const int template_preference =
+						CompareFunctionTemplateConstraints(function, prior);
+					better = template_preference > 0;
+					if (template_preference == 0) ambiguous = true;
+				}
+			}
 		}
 		if (better)
 		{
@@ -1275,8 +1313,13 @@ ExpressionInfo SemanticAnalyzer::ApplyCallArgument(
 ExpressionInfo SemanticAnalyzer::MakeImplicitObjectPointer(
 	const ExpressionInfo& object)
 {
-	ExpressionInfo result = object;
-	const TypeId object_type = EffectiveType(object.type);
+	ExpressionInfo addressable = object;
+	if (object.category == VALUE_PRVALUE && IsClassObjectType(object.type) &&
+		ExpressionObject(object) == kNoConstexprObject &&
+		dump_.nodes[object.node].kind != DUMP_TEMPORARY_OBJECT)
+		addressable = MaterializeTemporary(object);
+	ExpressionInfo result = addressable;
+	const TypeId object_type = EffectiveType(addressable.type);
 	result.type = program_->types.Pointer(object_type);
 	// The LowIR address is a pointer prvalue, while overload resolution needs
 	// the value category of the source object expression.  Keep that semantic
@@ -1286,14 +1329,13 @@ ExpressionInfo SemanticAnalyzer::MakeImplicitObjectPointer(
 	result.constant = false;
 	result.node = MakeDump(DUMP_UNARY_EXPRESSION, result.type, VALUE_PRVALUE,
 		program_->names.Intern("OP_AMP:&"));
-	dump_.Add(result.node, object.node);
-	ExpressionInfo addressable = object;
+	dump_.Add(result.node, addressable.node);
 	const std::uint32_t address = LvalueAddress(&addressable);
 	if (address != kNoConstexprAddress)
 	{
 		SetExpressionAddress(&result, address);
-		result.constexpr_object = object.constexpr_object;
-		result.constexpr_complete_object = object.constexpr_complete_object;
+		result.constexpr_object = addressable.constexpr_object;
+		result.constexpr_complete_object = addressable.constexpr_complete_object;
 	}
 	++expression_count_;
 	return result;

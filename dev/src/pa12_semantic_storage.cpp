@@ -37,6 +37,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		entity_constructors_.capacity() * sizeof(std::vector<BindingId>) +
 		entity_conversion_functions_.capacity() *
 			sizeof(std::vector<BindingId>) +
+		entity_conversion_function_templates_.capacity() *
+			sizeof(std::vector<std::size_t>) +
 		entity_member_functions_.capacity() *
 			sizeof(std::vector<BindingId>) +
 		class_polymorphism_.capacity() * sizeof(ClassPolymorphismFacts) +
@@ -182,6 +184,10 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		bytes += entity_constructors_[i].capacity() * sizeof(BindingId);
 	for (std::size_t i = 0; i < entity_conversion_functions_.size(); ++i)
 		bytes += entity_conversion_functions_[i].capacity() * sizeof(BindingId);
+	for (std::size_t i = 0;
+		i < entity_conversion_function_templates_.size(); ++i)
+		bytes += entity_conversion_function_templates_[i].capacity() *
+			sizeof(std::size_t);
 	for (std::size_t i = 0; i < entity_member_functions_.size(); ++i)
 		bytes += entity_member_functions_[i].capacity() * sizeof(BindingId);
 	for (std::size_t i = 0; i < class_polymorphism_.size(); ++i)

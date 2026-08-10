@@ -195,12 +195,12 @@ void SemanticAnalyzer::RegisterClassSpecialMember(BindingId binding)
 	else if (function_type.parameter_count != 1) return;
 	const TypeId parameter = program_->types.Parameters(function.type)[0];
 	const TypeRecord& reference = program_->types.Get(parameter);
-	if (reference.kind != TYPE_LVALUE_REFERENCE &&
-		reference.kind != TYPE_RVALUE_REFERENCE)
-		return;
-	if (program_->types.RemoveTopCv(reference.child) !=
-		program_->entities[entity].type)
-		return;
+	const bool by_reference = reference.kind == TYPE_LVALUE_REFERENCE ||
+		reference.kind == TYPE_RVALUE_REFERENCE;
+	const TypeId parameter_object = program_->types.RemoveTopCv(
+		by_reference ? reference.child : parameter);
+	if (parameter_object != program_->entities[entity].type) return;
+	if (function.constructor && !by_reference) return;
 
 	SpecialMemberKind kind = SPECIAL_MEMBER_NONE;
 	if (function.constructor)
@@ -208,7 +208,7 @@ void SemanticAnalyzer::RegisterClassSpecialMember(BindingId binding)
 			SPECIAL_MEMBER_COPY_CONSTRUCTOR :
 			SPECIAL_MEMBER_MOVE_CONSTRUCTOR;
 	else if (declaration.operator_kind == OPERATOR_ASSIGN)
-		kind = reference.kind == TYPE_LVALUE_REFERENCE ?
+		kind = !by_reference || reference.kind == TYPE_LVALUE_REFERENCE ?
 			SPECIAL_MEMBER_COPY_ASSIGNMENT :
 			SPECIAL_MEMBER_MOVE_ASSIGNMENT;
 	if (kind == SPECIAL_MEMBER_NONE) return;

@@ -107,6 +107,11 @@ bool SemanticAnalyzer::FunctionTemplateTypeIsDependent(TypeId type) const
 		const std::uint32_t template_index =
 			class_template_pattern_by_entity_[record.entity];
 		if (template_index >= class_templates_.size()) break;
+		if (class_templates_[template_index].template_parameter_proxy)
+		{
+			dependent = true;
+			break;
+		}
 		const std::size_t first = entity.template_argument_begin;
 		const std::size_t count = entity.template_argument_count;
 		const std::vector<TemplateParameter>& template_parameters =
@@ -997,6 +1002,100 @@ bool SemanticAnalyzer::DeduceFunctionTemplateOverloadArgument(
 	return true;
 }
 
+void SemanticAnalyzer::AppendConversionFunctionTemplateCandidates(
+	EntityId entity, TypeId target, std::vector<BindingId>* candidates)
+{
+	if (!candidates || target == kNoType) return;
+	while (entity != kNoEntity)
+	{
+		if (entity >= entity_conversion_function_templates_.size())
+		{
+			entity = program_->entities[entity].direct_base;
+			continue;
+		}
+		const std::vector<std::size_t>& patterns =
+			entity_conversion_function_templates_[entity];
+		for (std::size_t p = 0; p < patterns.size(); ++p)
+		{
+			if (patterns[p] >= function_templates_.size())
+				throw std::logic_error(
+					"invalid conversion function template candidate");
+			const FunctionTemplatePattern& pattern = function_templates_[patterns[p]];
+			if (!pattern.conversion_template) continue;
+			const TypeRecord& function = program_->types.Get(pattern.shape_type);
+			if (function.kind != TYPE_FUNCTION) continue;
+			TypeId parameter = function.child;
+			TypeId argument = target;
+			TypeRecord parameter_top = program_->types.Get(parameter);
+			TypeRecord argument_top = program_->types.Get(argument);
+			if (parameter_top.kind == TYPE_LVALUE_REFERENCE ||
+				parameter_top.kind == TYPE_RVALUE_REFERENCE)
+			{
+				parameter = parameter_top.child;
+				parameter_top = program_->types.Get(parameter);
+			}
+			if (argument_top.kind == TYPE_LVALUE_REFERENCE ||
+				argument_top.kind == TYPE_RVALUE_REFERENCE)
+				argument = argument_top.child;
+			else
+			{
+				if (parameter_top.kind == TYPE_ARRAY ||
+					parameter_top.kind == TYPE_FUNCTION)
+					parameter = Decay(parameter);
+				else parameter = program_->types.RemoveTopCv(parameter);
+			}
+			argument = program_->types.RemoveTopCv(argument);
+			FunctionTemplateDeduction deduced(pattern.parameters);
+			if (!DeduceFunctionTemplatePackType(parameter, argument,
+				pattern.parameters, &deduced)) continue;
+
+			std::vector<TemplateArgument> canonical;
+			std::vector<std::uint32_t> offsets;
+			offsets.reserve(pattern.parameters.size() + 1);
+			bool valid = true;
+			for (std::size_t i = 0; i < pattern.parameters.size(); ++i)
+			{
+				if (canonical.size() >
+					std::numeric_limits<std::uint32_t>::max())
+				{
+					valid = false;
+					break;
+				}
+				offsets.push_back(static_cast<std::uint32_t>(canonical.size()));
+				if (pattern.parameters[i].pack)
+					canonical.insert(canonical.end(),
+						deduced.pack_arguments[i].begin(),
+						deduced.pack_arguments[i].end());
+				else
+				{
+					TemplateArgument value = deduced.fixed_arguments[i];
+					value.kind = pattern.parameters[i].kind;
+					if (value.type == kNoType &&
+						pattern.parameters[i].default_argument == kNoNode)
+					{
+						valid = false;
+						break;
+					}
+					canonical.push_back(value);
+				}
+			}
+			if (!valid || canonical.size() >
+				std::numeric_limits<std::uint32_t>::max()) continue;
+			offsets.push_back(static_cast<std::uint32_t>(canonical.size()));
+			candidate_substitution_failures_.push_back(0);
+			const BindingId specialization = InstantiateFunctionTemplate(
+				patterns[p], canonical, offsets);
+			const bool substitution_failed = CandidateSubstitutionFailed();
+			candidate_substitution_failures_.pop_back();
+			if (specialization != kNoBinding && !substitution_failed &&
+				std::find(candidates->begin(), candidates->end(), specialization) ==
+					candidates->end())
+				candidates->push_back(specialization);
+		}
+		entity = program_->entities[entity].direct_base;
+	}
+}
+
 void SemanticAnalyzer::DeduceFunctionTemplatePatterns(
 	const std::vector<std::size_t>& patterns,
 	const std::vector<ExpressionInfo>& arguments,
@@ -1151,7 +1250,9 @@ void SemanticAnalyzer::DeduceFunctionTemplatePatterns(
 				parameter_record.kind == TYPE_RVALUE_REFERENCE)
 			{
 				if (parameter_record.kind == TYPE_RVALUE_REFERENCE &&
-					arguments[a].category == VALUE_LVALUE)
+					arguments[a].category == VALUE_LVALUE &&
+					(arguments[a].node == kNoDumpEdge ||
+					 dump_.nodes[arguments[a].node].kind != DUMP_BRACED_INIT_LIST))
 				{
 					bool forwarding_reference = false;
 					for (std::size_t t = 0;

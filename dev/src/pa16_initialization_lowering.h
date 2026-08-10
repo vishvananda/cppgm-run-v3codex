@@ -69,6 +69,16 @@ protected:
 			source.category == VALUE_PRVALUE &&
 			source.base_projection_count != 0)
 			return derived.LowerValue(node, LowPtr());
+		if (source.kind == DUMP_BRACED_INIT_LIST &&
+			derived.IsClassObjectType(source.type))
+		{
+			const LowType type = derived.LowerStorageType(source.type);
+			const Operand slot(derived.EnsureGeneratedSlot(node, "tmpobj", type),
+				type);
+			const Operand destination = derived.AddressOfStorage(slot);
+			derived.LowerRuntimeObjectValue(source.type, node, destination);
+			return destination;
+		}
 		if (source.category == VALUE_LVALUE || source.category == VALUE_XVALUE ||
 			source.kind == DUMP_TEMPORARY_OBJECT)
 			return derived.AddressOfStorage(derived.LowerStorage(node));
@@ -94,6 +104,11 @@ protected:
 		if (source.kind == DUMP_CONDITIONAL_EXPRESSION)
 		{
 			derived.LowerClassConditionalResult(children[0], destination);
+			return;
+		}
+		if (source.kind == DUMP_CLASS_VALUE_TRANSFER)
+		{
+			derived.LowerClassValueTransfer(children[0], destination);
 			return;
 		}
 		if (source.kind == DUMP_CALL_EXPRESSION)

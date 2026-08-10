@@ -24,31 +24,30 @@ lowering fact.
 
 ## Current Failure Map
 
-The current report is 320/405, four gains over the turn baseline with all
-`100-*` and `200-*` tests passing. The complete remaining set groups by shared
-behavior and primary owner: candidate result/default substitution, dependent
-lookup, and demand timing (`300-*`: 41 exits, 8 LowIR); canonical non-type arguments,
-conversion templates, and overload ownership (`400-*`: 16 exits, 2 LowIR);
-and composed alias/class/member lookup, pack replay, and selected-fact lowering
-(`500-*`: 8 exits, 10 LowIR). These groups account for all 85 failures; lexical
-call shadowing, recursive detector requests, invalid surrogate input, and
-ellipsis conversion recipe ownership have left the map.
+The report is 330/405, with every `100-*` and `200-*` test passing. All 75
+remaining failures group by owner: retained result/default/member lookup and
+candidate-local substitution (`300-*`: 34 exits), canonical NTTP and template
+argument/candidate identity (`400-*`: 13 exits), and composed owner/pack replay
+(`500-*`: 5 exits). The other 23 are selected-fact lowering or ABI-shape
+mismatches (`300/400/500`: 10/2/11). Constructor and conversion-function
+template discovery, target deduction, and ordinary nontemplate preference have
+left the map.
 
 ## Active Checkpoint
 
-Constructor and conversion-function template participation is the next stable
-boundary. Canonical source/target and implicit-object types must flow through
-template deduction into the ordinary constructor/conversion candidate sequence;
-candidate frames own failed result/default formation, overload selection owns
-the winning conversion facts, and initialization/lowering consume that selection
-without body demand or lookup replay. `spec.md` sections 2-4 require canonical
-specialization and object identity, complete candidate inspection, and
-candidate-local rejection; sections 5-6 require narrow demand and selected-fact
-lowering; section 9 bounds work to O(C*A) for candidates C and arguments A.
-Validate forwarding versus const-reference constructors, initial-sequence
-ranking, nontemplate copy/move and conversion preference, object/owner-dependent
-conversion results, unselected-body timing, all remaining `300-*`, PA23,
-PA1-PA22, and file audit; measure doubled constructor/conversion candidate sets.
+Dependent owner-qualified alias/member/default replay is the next stable
+boundary. Remaining failures show retained syntax crossing class completion,
+out-of-class member definitions, inherited owners, and default arguments with
+the wrong declaring scope or demand state. Per `spec.md` sections 2-5, template
+patterns must own canonical lexical/declaring identities and retained syntax;
+lookup supplies owner-qualified facts to a candidate-local substitution frame,
+which may reject without completing unrelated classes or bodies. Lowering then
+consumes only the selected specialization (`spec.md` section 6). Index work by
+owner and name so expected cost is O(R*D + C*A), for retained shapes R, owner
+depth D, candidates C, and arguments A, rather than scanning all patterns.
+Validate nested aliases, inherited and out-of-class member templates, declaring-
+scope defaults, no-eager-layout probes, all remaining `300-*`, PA23, PA1-PA22,
+and file audit; measure doubled owner depth and retained member-pattern sets.
 
 ## Performance Evidence
 
@@ -69,9 +68,14 @@ deduction visits 96/192/384/768, lookups 1,221/2,437/4,869/9,733, peak bytes
 6.94/13.92/27.31/56.60 ms. Detector base depths 8/16/32/64 visit
 16/32/64/128 lookup edges and 177/241/369/625 lookups with five candidates and
 11 requests flat; peak bytes are 243,267/302,575/446,765/779,629 and medians
-1.51/1.63/2.17/3.01 ms. Work, storage, and time are linear; all four repaired
-probes are ASan/UBSan-clean. Gates are PA1-PA22 2,639/2,639, PA23 320/405, and
-file-audit pass with 13 inherited warnings.
+1.51/1.63/2.17/3.01 ms. For 8/16/32/64 constructor/conversion-template owners,
+candidates are 32/64/128/256, requests and deduction visits are
+16/32/64/128, lookups are 340/676/1,348/2,692, peak stage bytes are
+363,555/722,780/1,441,196/2,878,156, and three-run semantic medians are
+2.02/3.73/7.04/14.07 ms. Work, storage, and time are linear; representative
+repaired and constexpr-preservation probes are ASan/UBSan-clean. Gates are
+PA1-PA22 2,639/2,639, PA23 330/405, and file-audit pass with 13 inherited
+warnings.
 
 ## Completed Checkpoints
 
@@ -95,3 +99,4 @@ file-audit pass with 13 inherited warnings.
 | Candidate-local alias, call-surrogate, and detector replay | Nested aliases defer without body demand, explicit invalid types use typed candidate failure and monotonic alias states without exception control flow, retained `decltype` bases replay by syntax identity, and ellipsis fallbacks participate; landed 298 -> 307, audited full report 308/404, no regressions, linear failure scaling. |
 | Candidate-local expression validity and typed exceptional facts | Abstract construction/allocation, narrowing, virtual-base casts, scalar pseudo-destruction, and `void()` dispatch use scoped typed facts; the audit unified complete-object pointer arithmetic and typed comparison/arithmetic failure before lowering; original 308 -> 315, audit guard 316/405, no regressions, linear candidate/path scaling. |
 | Dependent callable replay and re-entrant detector demand | Lexical value/type depth selects callable objects correctly; canonical class requests expose scoped in-progress state; invalid callees stay candidate-local; ellipsis conversions publish typed recipes; 316 -> 320, no regressions, sanitizer-clean, linear call/depth scaling. |
+| Constructor and conversion-function template participation | Entity-owned conversion patterns feed target deduction; constructor templates join conversion ranking; dependent `decltype` and template-template targets retain shape identity; selected class results materialize without disturbing constexpr objects; 320 -> 330, no regressions, sanitizer-clean, linear owner-local scaling. |

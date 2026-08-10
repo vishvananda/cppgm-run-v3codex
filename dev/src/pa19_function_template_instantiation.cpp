@@ -631,13 +631,19 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 		*arena_, *program_, specifiers, &pattern);
 	if (!friend_syntax)
 	{
-		ScopeId structured_owner = kNoScope;
-		const NodeId structure = DeclaratorNameStructure(declarator);
-		if (structure != kNoNode && (path.global || path.Size() > 1))
-			(void)LookupStructuredName(structure, scope,
-				LOOKUP_FUNCTION_TEMPLATE, &structured_owner);
-		pattern.owner = structured_owner != kNoScope ? structured_owner :
-			ResolveOwner(scope, path);
+		if (special_member_template &&
+			program_->EntityForScope(scope) != kNoEntity)
+			pattern.owner = scope;
+		else
+		{
+			ScopeId structured_owner = kNoScope;
+			const NodeId structure = DeclaratorNameStructure(declarator);
+			if (structure != kNoNode && (path.global || path.Size() > 1))
+				(void)LookupStructuredName(structure, scope,
+					LOOKUP_FUNCTION_TEMPLATE, &structured_owner);
+			pattern.owner = structured_owner != kNoScope ? structured_owner :
+				ResolveOwner(scope, path);
+		}
 		if (pattern.owner == kNoScope)
 			throw std::runtime_error("function template owner not found");
 		if (program_->EntityForScope(pattern.owner) != kNoEntity)
@@ -818,6 +824,13 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	const std::size_t index = function_templates_.size();
 	function_templates_.push_back(pattern);
 	template_function_sets_.Ensure(key).Push(index);
+	if (pattern.conversion_template)
+	{
+		if (entity_conversion_function_templates_.size() <= member_owner)
+			entity_conversion_function_templates_.resize(
+				static_cast<std::size_t>(member_owner) + 1);
+		entity_conversion_function_templates_[member_owner].push_back(index);
+	}
 	if (pattern.ordinary_visible)
 		program_->PublishFunctionTemplateName(pattern.owner, pattern.name);
 	if (friend_owner != kNoEntity)
