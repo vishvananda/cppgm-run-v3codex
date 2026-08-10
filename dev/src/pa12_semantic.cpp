@@ -2110,8 +2110,10 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 	const EntityId previous_class_context = current_class_context_;
 	if (declaration_class_context != kNoEntity)
 		current_class_context_ = declaration_class_context;
-	const SpecInfo spec = BuildSpecifiers(specifiers, scope, hint,
-		list != kNoNode);
+	const bool identity_only = HasDeclSpecifier(specifiers, "typedef");
+	const SpecInfo spec = identity_only ? BuildIdentityOnlySpecifiers(
+		specifiers, scope, hint, list != kNoNode) :
+		BuildSpecifiers(specifiers, scope, hint, list != kNoNode);
 	if (spec.virtual_specifier)
 		throw std::runtime_error(
 			"virtual specifier is only allowed in a class definition");

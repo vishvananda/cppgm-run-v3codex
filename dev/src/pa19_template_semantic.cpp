@@ -20,6 +20,8 @@ std::size_t NoTemplatePattern()
 	return std::numeric_limits<std::size_t>::max();
 }
 
+const std::uint8_t kClassTemplateCompletionPendingDefinition = 4;
+
 class ScopedTemplateRequest
 {
 public:
@@ -1251,9 +1253,11 @@ void SemanticAnalyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 				partial.revision = prior.revision + 1;
 				prior = partial;
 			}
+			UpgradeClassTemplateSpecializations(primary);
 			return;
 		}
 		owner.partial_specializations.push_back(partial);
+		UpgradeClassTemplateSpecializations(primary);
 		return;
 	}
 	NamePath path;
@@ -1654,7 +1658,9 @@ void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
 	if (class_template_specialization_states_.size() <= binding)
 		class_template_specialization_states_.resize(
 			static_cast<std::size_t>(binding) + 1, 0);
-	if (class_template_specialization_states_[binding] != 0) return;
+	if (class_template_specialization_states_[binding] != 0 &&
+		class_template_specialization_states_[binding] !=
+			kClassTemplateCompletionPendingDefinition) return;
 
 	// Pattern storage is stable across re-entrant publication of nested
 	// templates, so replay borrows the one published pattern rather than copying
@@ -1665,14 +1671,27 @@ void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
 		(HasTrailingTemplateParameterPack(pattern.parameters) &&
 		 arguments.size() < FixedTemplateParameterCount(pattern.parameters)))
 		throw std::logic_error("class template completion argument mismatch");
-	ClassTemplatePartialSelection* selection =
-		binding < class_template_partial_selections_.size() ?
-		&class_template_partial_selections_[binding] : 0;
-	const std::size_t selected_partial = selection ?
-		selection->pattern : kNoDumpEdge;
+	if (binding >= class_template_partial_selections_.size())
+		throw std::logic_error(
+			"class specialization has no partial-selection state");
+	FunctionTemplateDeduction refreshed(pattern.parameters);
+	const std::size_t selected_partial = SelectClassTemplatePartial(
+		pattern, arguments, &refreshed);
+	ClassTemplatePartialSelection& selection =
+		class_template_partial_selections_[binding];
+	selection.pattern = selected_partial == NoTemplatePattern() ?
+		kNoDumpEdge : static_cast<std::uint32_t>(selected_partial);
+	selection.revision = selected_partial == NoTemplatePattern() ? 0 :
+		pattern.partial_specializations[selected_partial].revision;
+	selection.bindings.fixed_arguments.swap(refreshed.fixed_arguments);
+	selection.bindings.pack_arguments.swap(refreshed.pack_arguments);
+	selection.bindings.pack_deduction_positions.swap(
+		refreshed.pack_deduction_positions);
+	selection.bindings.pack_deduction_started.swap(
+		refreshed.pack_deduction_started);
 	NodeId declaration = pattern.declaration;
 	ScopeId template_scope = kNoScope;
-	if (selected_partial != kNoDumpEdge)
+	if (selected_partial != NoTemplatePattern())
 	{
 		if (selected_partial >= pattern.partial_specializations.size())
 			throw std::logic_error(
@@ -1680,28 +1699,13 @@ void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
 		ClassTemplatePartialPattern& selected =
 			pattern.partial_specializations[selected_partial];
 		if ((arena_->Flags(selected.declaration) &
-			SYNTAX_FLAG_DEFINITION) == 0) return;
-		if (!selection)
-			throw std::logic_error(
-				"selected class partial has no substitution owner");
-		if (selection->revision != selected.revision)
+			SYNTAX_FLAG_DEFINITION) == 0)
 		{
-			FunctionTemplateDeduction refreshed(selected.parameters);
-			if (!MatchTemplatePartialArguments(selected.parameters,
-				selected.canonical_arguments, arguments, &refreshed))
-				throw std::logic_error(
-					"redeclared class partial no longer matches its shell");
-			selection->bindings.fixed_arguments.swap(
-				refreshed.fixed_arguments);
-			selection->bindings.pack_arguments.swap(
-				refreshed.pack_arguments);
-			selection->bindings.pack_deduction_positions.swap(
-				refreshed.pack_deduction_positions);
-			selection->bindings.pack_deduction_started.swap(
-				refreshed.pack_deduction_started);
-			selection->revision = selected.revision;
+			class_template_specialization_states_[binding] =
+				kClassTemplateCompletionPendingDefinition;
+			return;
 		}
-		const FunctionTemplateDeduction& bindings = selection->bindings;
+		const FunctionTemplateDeduction& bindings = selection.bindings;
 		if (bindings.fixed_arguments.size() != selected.parameters.size() ||
 			bindings.pack_arguments.size() != selected.parameters.size())
 			throw std::logic_error(
@@ -1723,7 +1727,12 @@ void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
 	}
 	else
 	{
-		if (!pattern.defined) return;
+		if (!pattern.defined)
+		{
+			class_template_specialization_states_[binding] =
+				kClassTemplateCompletionPendingDefinition;
+			return;
+		}
 		template_scope = BindClassTemplateArguments(pattern, arguments);
 	}
 	class_template_specialization_states_[binding] = 1;
@@ -2766,8 +2775,9 @@ void SemanticAnalyzer::UpgradeClassTemplateSpecializations(std::size_t index)
 	for (std::size_t i = 0; i < specializations.size(); ++i)
 	{
 		const BindingId binding = specializations[i];
-		if (binding < class_template_specialization_states_.size() &&
-			class_template_specialization_states_[binding] != 0)
+		if (binding >= class_template_specialization_states_.size() ||
+			class_template_specialization_states_[binding] !=
+				kClassTemplateCompletionPendingDefinition)
 			continue;
 		std::vector<TemplateArgument> arguments;
 		const EntityId entity = EntityOf(program_->bindings[binding].type);

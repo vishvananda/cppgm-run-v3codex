@@ -1059,12 +1059,11 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		AnalyzeFriendClass(node, scope, owner_type);
 		return;
 	}
-	const bool callable_declaration = IsCallableDeclaration(node);
-	if (callable_declaration) ++class_template_completion_suppressed_depth_;
-	SpecInfo spec;
-	try { spec = BuildSpecifiers(specifiers, scope, std::string(), true); }
-	catch (...) { if (callable_declaration) --class_template_completion_suppressed_depth_; throw; }
-	if (callable_declaration) --class_template_completion_suppressed_depth_;
+	const bool identity_only = IsCallableDeclaration(node) ||
+		HasDeclSpecifier(specifiers, "typedef");
+	const SpecInfo spec = identity_only ? BuildIdentityOnlySpecifiers(
+		specifiers, scope, std::string(), true) :
+		BuildSpecifiers(specifiers, scope, std::string(), true);
 	if (spec.is_friend)
 	{
 		const NodeId declarators = FindChild(node, "init-declarator-list");
@@ -2404,7 +2403,8 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 	const EntityId class_owner = program_->EntityForScope(scope);
 	if (arena_->IsTag(node, "alias-declaration"))
 	{
-		const TypeId type = BuildTypeId(FindChild(node, "type-id"), scope);
+		const TypeId type = BuildIdentityOnlyTypeId(
+			FindChild(node, "type-id"), scope);
 		const NameId name = program_->names.Intern(arena_->Payload(node));
 		const BindingId binding =
 			program_->AddBinding(scope, BIND_TYPE_ALIAS, name, type);

@@ -138,6 +138,7 @@ public:
 private:
 	friend class RetainedTemplateValidator;
 	NodeId FindChild(NodeId node, const char* tag) const;
+	bool HasDeclSpecifier(NodeId specifiers, const char* spelling) const;
 	NodeId FirstSemanticChild(NodeId node) const;
 	std::string PayloadSource(NodeId node) const;
 	NamePath ParseNamePath(const std::string& spelling);
@@ -350,7 +351,10 @@ private:
 		const std::string& hint, bool has_declarators,
 		bool type_id_context = false,
 		TypeId deferred_type = kNoType);
+	SpecInfo BuildIdentityOnlySpecifiers(NodeId node, ScopeId scope,
+		const std::string& hint, bool has_declarators);
 	TypeId BuildTypeId(NodeId node, ScopeId scope);
+	TypeId BuildIdentityOnlyTypeId(NodeId node, ScopeId scope);
 	DeclaratorInfo BuildDeclarator(NodeId node, TypeId base, ScopeId scope,
 		bool placeholder_auto = false,
 		bool member_implicit_object = false,

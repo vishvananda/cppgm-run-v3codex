@@ -291,7 +291,11 @@ void SemanticAnalyzer::ValidateDeferredFunctionTemplateResult(NodeId node,
 					}
 					if (terminal) break;
 					if (found.type != kNoType)
+					{
+						if (!FunctionTemplateTypeIsDependent(found.type))
+							EnsureClassDefinition(found.type);
 						carrier = program_->ScopeForType(found.type);
+					}
 					else carrier = found.name_space;
 					if (carrier == kNoScope)
 					{

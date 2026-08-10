@@ -327,10 +327,12 @@ protected:
 		if (!parser.AtIdentifier() && !parser.At(OP_COLON2)) return false;
 		const typename Derived::Mark mark = parser.Checkpoint();
 		std::string name;
+		TextId terminal = 0;
 		const bool parsed = parser.ParseName(
-			&name, true, true, true, 0, 0);
+			&name, true, true, true, 0, &terminal);
 		const bool result = parsed && name.find("::") != std::string::npos &&
-			parser.At(OP_LPAREN);
+			parser.At(OP_LPAREN) && !parser.HasNameFact(
+				terminal, Derived::kKnownType);
 		parser.Rollback(mark);
 		return result;
 	}

@@ -2060,6 +2060,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
 	if (program_->types.Get(program_->types.RemoveTopCv(object_type)).kind ==
 		TYPE_ARRAY)
 		throw std::runtime_error("array new is outside PA16");
+	EnsureClassDefinition(object_type);
 	const EntityId object_entity = EntityOf(object_type);
 	if (object_entity != kNoEntity &&
 		program_->entities[object_entity].abstract_class)

@@ -8,6 +8,50 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+bool SemanticAnalyzer::HasDeclSpecifier(
+	NodeId specifiers, const char* spelling) const
+{
+	for (std::uint32_t edge = specifiers == kNoNode ? kNoEdge :
+		arena_->FirstEdge(specifiers); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+		if (PayloadSource(arena_->EdgeChild(edge)) == spelling) return true;
+	return false;
+}
+
+SpecInfo SemanticAnalyzer::BuildIdentityOnlySpecifiers(
+	NodeId node, ScopeId scope, const std::string& hint, bool has_declarators)
+{
+	++class_template_completion_suppressed_depth_;
+	try
+	{
+		const SpecInfo result = BuildSpecifiers(
+			node, scope, hint, has_declarators);
+		--class_template_completion_suppressed_depth_;
+		return result;
+	}
+	catch (...)
+	{
+		--class_template_completion_suppressed_depth_;
+		throw;
+	}
+}
+
+TypeId SemanticAnalyzer::BuildIdentityOnlyTypeId(NodeId node, ScopeId scope)
+{
+	++class_template_completion_suppressed_depth_;
+	try
+	{
+		const TypeId result = BuildTypeId(node, scope);
+		--class_template_completion_suppressed_depth_;
+		return result;
+	}
+	catch (...)
+	{
+		--class_template_completion_suppressed_depth_;
+		throw;
+	}
+}
+
 TypeId SemanticAnalyzer::BuildArrayDeclaratorType(NodeId suffix,
 	TypeId element, ScopeId scope,
 	const std::unordered_set<NameId>* template_parameter_names)

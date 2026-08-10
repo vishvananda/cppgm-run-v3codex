@@ -1808,9 +1808,9 @@ NodeId Parser::ParseCompoundStatement()
 			(position_ < tokens_.size() &&
 			 IsDeclSpecifierKeyword(tokens_[position_].Kind())) ||
 			(IsLikelyTypeIdentifier(position_) && !AtOffset(1, OP_COLON2) &&
-			 !AtOffset(1, OP_LSQUARE)) ||
+			 !AtOffset(1, OP_LSQUARE) && !StartsQualifiedCallExpression()) ||
 			(((AtIdentifier() && AtOffset(1, OP_COLON2)) || At(OP_COLON2)) &&
-			 QualifiedStartsType());
+			 QualifiedStartsType() && !StartsQualifiedCallExpression());
 		if (declaration_start)
 		{
 			const Mark declaration_mark = Checkpoint();
@@ -2035,9 +2035,9 @@ NodeId Parser::ParseStatement()
 		(position_ < tokens_.size() &&
 		 IsDeclSpecifierKeyword(tokens_[position_].Kind())) ||
 		(IsLikelyTypeIdentifier(position_) && !AtOffset(1, OP_COLON2) &&
-		 !AtOffset(1, OP_LSQUARE)) ||
+		 !AtOffset(1, OP_LSQUARE) && !StartsQualifiedCallExpression()) ||
 		(((AtIdentifier() && AtOffset(1, OP_COLON2)) || At(OP_COLON2)) &&
-		 QualifiedStartsType());
+		 QualifiedStartsType() && !StartsQualifiedCallExpression());
 	if (declaration_start)
 	{
 		const Mark declaration_mark = Checkpoint();

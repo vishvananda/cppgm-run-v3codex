@@ -28,6 +28,21 @@ bool FunctionTemplateNeedsPartitionIdentity(
 	return packs > 1;
 }
 
+bool TypeContainsDependentResultShape(const TypeTable& types, TypeId type,
+	TypeId dependent_result)
+{
+	if (dependent_result == kNoType || type == kNoType) return false;
+	if (type == dependent_result) return true;
+	const TypeRecord& record = types.Get(type);
+	if (record.kind == TYPE_QUALIFIED || record.kind == TYPE_POINTER ||
+		record.kind == TYPE_LVALUE_REFERENCE ||
+		record.kind == TYPE_RVALUE_REFERENCE || record.kind == TYPE_ARRAY ||
+		record.kind == TYPE_MEMBER_POINTER || record.kind == TYPE_FUNCTION)
+		return TypeContainsDependentResultShape(
+			types, record.child, dependent_result);
+	return false;
+}
+
 bool CaptureFunctionTemplateSpecifierFacts(const SyntaxArena& arena,
 	const Program& program, NodeId specifiers, FunctionTemplatePattern* pattern)
 {
@@ -909,10 +924,9 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 			const std::size_t candidate = (*prior_patterns)[p];
 			const FunctionTemplatePattern& prior =
 				function_templates_[candidate];
-			const bool dependent_result =
-				function_template_dependent_result_shape_ != kNoType &&
-				program_->types.Get(prior.shape_type).child ==
-					function_template_dependent_result_shape_;
+			const bool dependent_result = TypeContainsDependentResultShape(
+				program_->types, program_->types.Get(prior.shape_type).child,
+				function_template_dependent_result_shape_);
 			if (EquivalentFunctionTemplateParameterLists(*arena_,
 					prior.parameters, pattern.parameters) &&
 				prior.shape_type == pattern.shape_type &&
