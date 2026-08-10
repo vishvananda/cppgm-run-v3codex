@@ -388,6 +388,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		cast_kind.find("STATIC") != std::string::npos &&
 		operand_entity != kNoEntity && constructed_entity != kNoEntity &&
 		program_->IsBaseOf(operand_entity, constructed_entity);
+	const bool static_reference_base_cast =
+		(target_record.kind == TYPE_LVALUE_REFERENCE ||
+		 target_record.kind == TYPE_RVALUE_REFERENCE) &&
+		cast_kind.find("STATIC") != std::string::npos &&
+		operand_entity != kNoEntity && constructed_entity != kNoEntity &&
+		operand_entity != constructed_entity &&
+		program_->IsBaseOf(constructed_entity, operand_entity);
 	const bool direct_reference_cast =
 		(target_record.kind == TYPE_LVALUE_REFERENCE ||
 		 target_record.kind == TYPE_RVALUE_REFERENCE) &&
@@ -400,6 +407,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		 cast_kind.compare(0, 10, "OP_LPAREN:") == 0) &&
 		!direct_reference_cast &&
 		!static_reference_downcast &&
+		!static_reference_base_cast &&
 		(program_->types.RemoveTopCv(EffectiveType(operand.type)) !=
 			constructed_target ||
 		 (target_record.kind != TYPE_LVALUE_REFERENCE &&
@@ -437,6 +445,12 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 	if (target_record.kind == TYPE_LVALUE_REFERENCE ||
 		target_record.kind == TYPE_RVALUE_REFERENCE)
 	{
+		if (static_reference_base_cast)
+		{
+			operand.category = target_record.kind == TYPE_LVALUE_REFERENCE ?
+				VALUE_LVALUE : VALUE_XVALUE;
+			return ApplyTarget(operand, target);
+		}
 		const ConversionRank reference_conversion = Conversion(operand, target);
 		const bool explicit_rvalue = target_record.kind == TYPE_RVALUE_REFERENCE &&
 			SimilarUnqualified(EffectiveType(operand.type), target_record.child);

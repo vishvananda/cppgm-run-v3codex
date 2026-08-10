@@ -536,7 +536,8 @@ protected:
 		NodeChildren constructor;
 		constructor.Push(values[0]);
 		if (!IsTrivialConstructorAction(action.type, constructor))
-			derived.LowerConstructorAction(values[0], destination);
+			derived.LowerConstructorAction(
+				values[0], destination, false, true);
 		return true;
 	}
 };

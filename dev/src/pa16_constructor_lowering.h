@@ -26,7 +26,8 @@ class ConstructorActionLowering
 {
 protected:
 	void LowerConstructorAction(std::uint32_t node,
-		const Operand& destination, bool force_empty = false)
+		const Operand& destination, bool force_empty = false,
+		bool elide_direct_empty_source = false)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		const DumpNode& action = derived.arena_.nodes[node];
@@ -47,9 +48,11 @@ protected:
 			{
 				const DumpNode& source = derived.arena_.nodes[children[0]];
 				const NodeChildren source_children = derived.Children(children[0]);
-				if (source.kind != DUMP_CAST_EXPRESSION ||
-					source.base_projection_count == 0 || source_children.size() != 1 ||
-					derived.arena_.nodes[source_children[0]].kind != DUMP_ID_EXPRESSION)
+				const bool direct_id = source.kind == DUMP_ID_EXPRESSION;
+				const bool projected_id = source.kind == DUMP_CAST_EXPRESSION &&
+					source.base_projection_count != 0 && source_children.size() == 1 &&
+					derived.arena_.nodes[source_children[0]].kind == DUMP_ID_EXPRESSION;
+				if ((!direct_id || !elide_direct_empty_source) && !projected_id)
 					(void)derived.LowerClassTransferSource(children[0]);
 				return;
 			}
@@ -157,7 +160,7 @@ protected:
 				object, action.direct_base_offset) :
 			derived.ProjectBaseSubobjects(object,
 				action.base_projection_count);
-		derived.LowerConstructorAction(children[0], destination);
+		derived.LowerConstructorAction(children[0], destination, false, true);
 		if (children.size() > 1)
 			derived.CompleteFullExpressionCleanup();
 	}

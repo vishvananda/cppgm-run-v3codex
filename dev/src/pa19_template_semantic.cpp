@@ -1530,7 +1530,18 @@ void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
 		specialization_emission_name);
 	const EntityId entity = EntityOf(completed);
 	if (entity == kNoEntity || !program_->entities[entity].complete)
+	{
+		if (entity != kNoEntity &&
+			program_->entities[entity].deferred_template_completion)
+		{
+			// This shell is keyed by immutable dependent shape arguments.  A
+			// concrete substitution receives a different specialization key, so
+			// repeated lookup must not retry this incomplete base completion.
+			class_template_specialization_states_[binding] = 3;
+			return;
+		}
 		throw std::logic_error("class template completion remained incomplete");
+	}
 	class_template_specialization_states_[binding] = 2;
 	ApplyClassTemplateMemberDefinitions(index, binding, arguments);
 	QueueClassTemplateMemberDefinitions(index, binding);

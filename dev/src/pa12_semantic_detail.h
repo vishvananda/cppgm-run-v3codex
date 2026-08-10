@@ -291,11 +291,11 @@ private:
 		bool complete_definition = true,
 		NameId specialization_lookup_name = 0,
 		NameId specialization_emission_name = 0);
-	void CompleteClassDefinition(NodeId node, ScopeId scope, TypeId type,
+	bool CompleteClassDefinition(NodeId node, ScopeId scope, TypeId type,
 		EntityId entity, NamedFlavor flavor, ScopeId owner, NameId name,
 		NameId lookup_name, ScopeId specialization_owner,
 		NameId specialization_identity, NameId emission_name);
-	void CollectClassDirectBases(NodeId clause, ScopeId scope,
+	bool CollectClassDirectBases(NodeId clause, ScopeId scope,
 		EntityId entity, NamedFlavor flavor,
 		std::vector<DirectBaseEdge>* direct_bases);
 	TypeId AnalyzeEnum(NodeId node, ScopeId scope,

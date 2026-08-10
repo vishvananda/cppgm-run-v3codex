@@ -1625,7 +1625,7 @@ bool SemanticAnalyzer::TryAnalyzeOverloadedOperator(
 	std::vector<NodeId> arguments_syntax;
 	std::vector<ExpressionInfo> arguments;
 	ExpressionInfo selected_object = object;
-	if (selected_member && operands[0].category != VALUE_LVALUE &&
+	if (selected_member && operands[0].category == VALUE_PRVALUE &&
 		dump_.nodes[operands[0].node].kind != DUMP_TEMPORARY_OBJECT)
 	{
 		const EntityId entity = EntityOf(operands[0].type);
@@ -1804,7 +1804,7 @@ bool SemanticAnalyzer::TryAnalyzeCallSurrogate(ScopeId scope,
 
 	const Candidate& selected = candidates[champion];
 	ExpressionInfo selected_callee = callee;
-	if (selected_callee.category != VALUE_LVALUE &&
+	if (selected_callee.category == VALUE_PRVALUE &&
 		dump_.nodes[selected_callee.node].kind != DUMP_TEMPORARY_OBJECT)
 		selected_callee = MaterializeTemporary(selected_callee);
 	ExpressionInfo object = MakeImplicitObjectPointer(selected_callee);

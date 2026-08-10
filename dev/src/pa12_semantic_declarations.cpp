@@ -191,14 +191,14 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 			static_cast<std::uint64_t>(requested_alignment));
 	if (complete_definition &&
 		(arena_->Flags(node) & SYNTAX_FLAG_DEFINITION) != 0)
-		CompleteClassDefinition(node, scope, type, entity, flavor, owner,
+		(void)CompleteClassDefinition(node, scope, type, entity, flavor, owner,
 			name, lookup_name, specialization_owner,
 			specialization_identity, specialization_emission_name == 0 ?
 				program_->names.Intern(spelling) : specialization_emission_name);
 	return type;
 }
 
-void SemanticAnalyzer::CollectClassDirectBases(NodeId clause, ScopeId scope,
+bool SemanticAnalyzer::CollectClassDirectBases(NodeId clause, ScopeId scope,
 	EntityId entity, NamedFlavor flavor,
 	std::vector<DirectBaseEdge>* direct_bases)
 {
@@ -279,8 +279,13 @@ void SemanticAnalyzer::CollectClassDirectBases(NodeId clause, ScopeId scope,
 			const EntityId base = EntityOf(base_lookup.type);
 			if (base == kNoEntity || !program_->entities[base].complete ||
 				program_->entities[base].flavor == NAMED_UNION)
+			{
+				if (base != kNoEntity &&
+					FunctionTemplateTypeIsDependent(base_lookup.type))
+					return false;
 				throw std::runtime_error(
 					"direct base must name a complete non-union class");
+			}
 			if (base_lookup.type_declaration != kNoBinding &&
 				!CanAccessMember(base_lookup.type_declaration,
 					base_lookup.naming_class))
@@ -290,9 +295,10 @@ void SemanticAnalyzer::CollectClassDirectBases(NodeId clause, ScopeId scope,
 	}
 	if (!saw_base_specifier)
 		throw std::runtime_error("base clause has no base type");
+	return true;
 }
 
-void SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
+bool SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 	TypeId type, EntityId entity, NamedFlavor flavor, ScopeId owner,
 	NameId name, NameId lookup_name, ScopeId specialization_owner,
 	NameId specialization_identity, NameId emission_name)
@@ -304,8 +310,12 @@ void SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 		if (base_clause != kNoNode)
 		{
 			std::vector<DirectBaseEdge> direct_bases;
-			CollectClassDirectBases(
-				base_clause, scope, entity, flavor, &direct_bases);
+			if (!CollectClassDirectBases(
+				base_clause, scope, entity, flavor, &direct_bases))
+			{
+				program_->entities[entity].deferred_template_completion = true;
+				return false;
+			}
 			program_->SetDirectBases(entity, direct_bases);
 		}
 		ScopeId member_scope = program_->entities[entity].member_scope;
@@ -492,6 +502,7 @@ void SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 		ValidateConstexprClassDeclarations(entity);
 		ValidateOrdinaryMemberFunctionBodies(entity);
 		current_class_context_ = previous_class_context;
+		return true;
 }
 EntityId SemanticAnalyzer::ZeroOffsetClassEntity(TypeId type) const
 {
