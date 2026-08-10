@@ -547,6 +547,17 @@ const ConstexprObjectElement* SemanticAnalyzer::ConstexprClassMemberAt(
 	object = ProjectConstexprObject(
 		object, program_->entities[binding.member_owner].type);
 	if (object == kNoConstexprObject) return 0;
+	if (program_->entities[binding.member_owner].flavor == NAMED_UNION)
+	{
+		const ConstexprObjectValue& value = constexpr_objects_[object];
+		for (std::size_t i = 0; i < value.element_count; ++i)
+		{
+			const ConstexprObjectElement& element =
+				constexpr_object_elements_[value.first_element + i];
+			if (element.member == member) return &element;
+		}
+		return 0;
+	}
 	const ConstexprObjectElement* element =
 		ConstexprObjectElementAt(object, binding.member_ordinal);
 	return element && element->member == member ? element : 0;
@@ -604,11 +615,15 @@ ExpressionInfo SemanticAnalyzer::MaterializeConstexprObject(
 	if (record.kind != TYPE_ARRAY)
 	{
 		const EntityId entity = EntityOf(unqualified);
+		const bool union_object = entity != kNoEntity &&
+			program_->entities[entity].flavor == NAMED_UNION;
 		if (entity == kNoEntity || entity >= entity_data_members_.size() ||
-			entity_data_members_[entity].size() > value.element_count)
+			(!union_object &&
+			 entity_data_members_[entity].size() > value.element_count))
 			throw std::logic_error(
 				"constexpr class object has an invalid direct-member range");
-		materialized_count = entity_data_members_[entity].size();
+		materialized_count = union_object ? value.element_count :
+			entity_data_members_[entity].size();
 	}
 	for (std::size_t i = 0; i < materialized_count; ++i)
 	{
@@ -1883,6 +1898,13 @@ bool SemanticAnalyzer::AnalyzeConstexprMemberInitializer(
 	for (std::uint32_t edge = arena_->FirstEdge(initializer); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
 		syntax.push_back(arena_->EdgeChild(edge));
+	const bool aggregate_braced = arena_->IsTag(initializer,
+		"braced-init-list") && (record.kind == TYPE_ARRAY ||
+		(IsConstexprClassEntity(*program_, EntityOf(object_type)) &&
+		 program_->entities[EntityOf(object_type)].is_aggregate));
+	std::vector<ExpressionInfo> prepared;
+	const bool expanded = !aggregate_braced && ExpandCallArgumentPacks(
+		syntax, scope, &syntax, &prepared);
 	if (IsIntegral(object_type, true) || IsFloating(object_type))
 	{
 		if (syntax.empty())
@@ -1895,12 +1917,18 @@ bool SemanticAnalyzer::AnalyzeConstexprMemberInitializer(
 			return true;
 		}
 		if (syntax.size() != 1) return false;
-		return AnalyzeConstexprExpression(syntax[0], scope, type, value);
+		if (!expanded)
+			return AnalyzeConstexprExpression(syntax[0], scope, type, value);
+		*value = ApplyTarget(prepared[0], type);
+		return value->constant;
 	}
 	if (IsPointer(object_type))
 	{
 		if (syntax.size() != 1) return false;
-		return AnalyzeConstexprExpression(syntax[0], scope, type, value);
+		if (!expanded)
+			return AnalyzeConstexprExpression(syntax[0], scope, type, value);
+		*value = ApplyTarget(prepared[0], type);
+		return ExpressionAddress(*value) != kNoConstexprAddress;
 	}
 	if (record.kind == TYPE_ARRAY ||
 		(IsConstexprClassEntity(*program_, EntityOf(object_type)) &&
@@ -1922,7 +1950,8 @@ bool SemanticAnalyzer::AnalyzeConstexprMemberInitializer(
 	if (!IsConstexprClassEntity(*program_, EntityOf(object_type))) return false;
 	value->node = BuildConstructorAction(type, scope, syntax, false,
 		arena_->IsTag(initializer, "braced-init-list"), false, true,
-		arena_->IsTag(initializer, "braced-init-list") ? initializer : kNoNode);
+		arena_->IsTag(initializer, "braced-init-list") ? initializer : kNoNode,
+		expanded ? &prepared : 0);
 	value->type = type;
 	value->category = VALUE_NONE;
 	SetExpressionDumpObject(value);
@@ -1939,6 +1968,7 @@ struct SemanticAnalyzer::ConstexprConstructorPlan
 		  base_scopes(bases, lexical_scope),
 		  base_prepared_arguments(
 			bases, std::numeric_limits<std::size_t>::max()),
+		  active_union_member(kNoBinding),
 		  delegating_initializer(kNoNode),
 		  delegating_scope(lexical_scope)
 	{}
@@ -1948,6 +1978,7 @@ struct SemanticAnalyzer::ConstexprConstructorPlan
 	std::vector<NodeId> base_initializers;
 	std::vector<ScopeId> base_scopes;
 	std::vector<std::size_t> base_prepared_arguments;
+	BindingId active_union_member;
 	NodeId delegating_initializer;
 	ScopeId delegating_scope;
 };
@@ -1956,7 +1987,13 @@ bool SemanticAnalyzer::PlanConstexprConstructorInitializers(
 	const FunctionInfo& constructor, EntityId entity,
 	std::size_t argument_count, ConstexprConstructorPlan* plan)
 {
-	if (constructor.constructor_initializer == kNoNode) return true;
+	if (constructor.constructor_initializer == kNoNode)
+	{
+		if (program_->entities[entity].flavor == NAMED_UNION)
+			plan->active_union_member =
+				program_->entities[entity].union_default_member;
+		return true;
+	}
 	try
 	{
 		std::vector<NodeId> syntax;
@@ -2036,6 +2073,9 @@ bool SemanticAnalyzer::PlanConstexprConstructorInitializers(
 				program_->bindings[found.ordinary].non_static_data_member &&
 				program_->bindings[found.ordinary].member_owner == entity)
 			{
+				if (program_->entities[entity].flavor == NAMED_UNION &&
+					plan->active_union_member != kNoBinding &&
+					plan->active_union_member != found.ordinary) return false;
 				const std::size_t ordinal =
 					program_->bindings[found.ordinary].member_ordinal;
 				if (ordinal >= members.size() ||
@@ -2043,6 +2083,8 @@ bool SemanticAnalyzer::PlanConstexprConstructorInitializers(
 					plan->member_initializers[ordinal] != kNoNode) return false;
 				plan->member_initializers[ordinal] = value;
 				plan->member_scopes[ordinal] = initializer_scope;
+				if (program_->entities[entity].flavor == NAMED_UNION)
+					plan->active_union_member = found.ordinary;
 				continue;
 			}
 			if (found.ordinary != kNoBinding) return false;
@@ -2073,6 +2115,10 @@ bool SemanticAnalyzer::EvaluateConstexprConstructorInitializers(
 	bool valid = true;
 	const std::vector<BindingId>& members = entity_data_members_[entity];
 	const std::size_t base_count = plan.base_initializers.size();
+	const bool union_object =
+		program_->entities[entity].flavor == NAMED_UNION;
+	const BindingId active_union_member = plan.active_union_member != kNoBinding ?
+		plan.active_union_member : program_->entities[entity].union_default_member;
 	std::vector<ConstexprObjectElement> base_elements;
 	std::vector<ConstexprObjectElement> member_elements;
 	base_elements.reserve(base_count);
@@ -2205,6 +2251,7 @@ bool SemanticAnalyzer::EvaluateConstexprConstructorInitializers(
 			i < members.size(); ++i)
 		{
 			const BindingId member_id = members[i];
+			if (union_object && member_id != active_union_member) continue;
 			const BindingRecord& member = program_->bindings[member_id];
 			NodeId initializer = plan.member_initializers[i];
 			if (initializer == kNoNode &&
@@ -2256,8 +2303,10 @@ bool SemanticAnalyzer::EvaluateConstexprConstructorInitializers(
 			if (valid) member_elements.push_back(element);
 			ReleaseConstexprScratch(nodes, edges);
 		}
+		const std::size_t required_member_elements = union_object ?
+			(active_union_member == kNoBinding ? 0 : 1) : members.size();
 		if (valid && plan.delegating_initializer == kNoNode &&
-			member_elements.size() == members.size() &&
+			member_elements.size() == required_member_elements &&
 			base_elements.size() == base_count)
 		{
 			std::vector<ConstexprObjectElement> elements;

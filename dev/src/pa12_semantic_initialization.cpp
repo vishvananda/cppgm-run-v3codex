@@ -848,15 +848,37 @@ ExpressionInfo SemanticAnalyzer::AnalyzeVariableInitializer(
 	{
 		const bool direct_initialization = expression != kNoNode &&
 			arena_->IsTag(expression, "paren-initializer");
-		if (expression != kNoNode &&
-			arena_->IsTag(expression, "paren-initializer"))
-			expression = FirstSemanticChild(expression);
 		if (direct_initialization)
 		{
-			initializer = AnalyzeExpression(expression, scope);
-			initializer = EntityOf(initializer.type) != kNoEntity ?
-				ApplyExplicitConversion(initializer, type) :
-				ApplyTarget(initializer, type);
+			std::vector<NodeId> syntax;
+			for (std::uint32_t edge = arena_->FirstEdge(expression);
+				edge != kNoEdge; edge = arena_->NextEdge(edge))
+				syntax.push_back(arena_->EdgeChild(edge));
+			std::vector<ExpressionInfo> expanded_values;
+			const bool expanded = ExpandCallArgumentPacks(
+				syntax, scope, &syntax, &expanded_values);
+			if ((expanded ? expanded_values.size() : syntax.size()) > 1)
+				throw std::runtime_error(
+					"scalar direct-initializer has multiple arguments");
+			if ((expanded ? expanded_values.size() : syntax.size()) == 0)
+			{
+				if (declared_kind == TYPE_LVALUE_REFERENCE ||
+					declared_kind == TYPE_RVALUE_REFERENCE)
+					throw std::runtime_error(
+						"reference direct-initializer is empty");
+				initializer = MakeLiteral(type, program_->names.Intern("0"));
+				initializer.constant = true;
+				initializer.value = 0;
+				RecordExpressionFacts(initializer);
+			}
+			else
+			{
+				initializer = expanded ? expanded_values[0] :
+					AnalyzeExpression(syntax[0], scope);
+				initializer = EntityOf(initializer.type) != kNoEntity ?
+					ApplyExplicitConversion(initializer, type) :
+					ApplyTarget(initializer, type);
+			}
 		}
 		else initializer = AnalyzeExpression(expression, scope, type);
 		if ((declared_kind == TYPE_LVALUE_REFERENCE ||
@@ -963,10 +985,15 @@ void SemanticAnalyzer::AddMemberInitializationAction(BindingId member_id,
 			}
 			else if (initializer != kNoNode)
 				arguments.push_back(initializer);
+			std::vector<ExpressionInfo> prepared_arguments;
+			const bool expanded_arguments = value == kNoDumpEdge &&
+				ExpandCallArgumentPacks(arguments, scope, &arguments,
+					&prepared_arguments);
 			if (value == kNoDumpEdge)
 				value = BuildConstructorAction(member.type, scope, arguments,
 					constructor_copy, constructor_list, false, true,
-					constructor_list ? initializer : kNoNode);
+					constructor_list ? initializer : kNoNode,
+					expanded_arguments ? &prepared_arguments : 0);
 			if (initializer != kNoNode &&
 				arena_->IsTag(initializer, "paren-argument-list") &&
 				arguments.empty() && dump_.nodes[value].binding != kNoBinding &&

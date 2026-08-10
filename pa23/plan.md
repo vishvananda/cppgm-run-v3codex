@@ -15,28 +15,29 @@ not rediscover template semantics.
 
 ## Current Failure Map
 
-Current result is 273/401, up from the turn baseline of 269 and stage baseline
-of 223 with no regressions; all `200-*` tests pass. The remaining 128 failures
-group by primary owner and observed kind: call/address/constructor deduction
-(`100-*`: 10 exits, 2 LowIR), immediate substitution and demand (`300-*`: 66
+Current result is 279/401, up from this turn's 273 and stage baseline of 223
+with no regressions; all `200-*` tests pass. The remaining 122 failures group
+by primary owner and observed kind: call/address/constructor deduction
+(`100-*`: 7 exits, 2 LowIR), immediate substitution and demand (`300-*`: 64
 exits, 9 LowIR), canonical non-type/conversion arguments (`400-*`: 18 exits,
-1 LowIR), and composed lookup/alias/class paths (`500-*`: 13 exits, 9 LowIR).
+1 LowIR), and composed lookup/alias/class paths (`500-*`: 12 exits, 9 LowIR).
 
 ## Active Checkpoint
 
-Four remaining `100-*` failures share pack-expansion initialization: an empty
-or nested expansion must produce a typed argument sequence before constructor
-selection, and constexpr evaluation must consume the same selected actions.
-N3485 5.1.1, 8.5, 12.6.2, and 14.5.3 require expansion cardinality to come from
-pack bindings, empty sequences to remain valid, each expanded initializer to be
-analyzed in its positional environment, and constructor/member initialization
-to preserve value category and constant facts. Pack planning owns positional
-syntax; initialization owns typed actions; constructor selection consumes that
-sequence; constexpr evaluation and lowering consume selected actions without
-re-expansion. Expected work is O(expanded elements + constructor candidates),
-cached by syntax and pack binding. Validate the fixed/empty trailing-pack,
-nested scalar-init, constexpr-union, and empty member-init failures, pack guards,
-all `100-*`, PA1-PA22, and audit; measure doubled pack lengths.
+The next `100-*` checkpoint is canonical function-parameter normalization and
+zero-length pack partial ordering: fixed-over-empty trailing-pack ordering,
+forwarded multidimensional array references, and elaborated top-cv deduction
+must compare adjusted parameter shapes without losing rank or array extents.
+N3485 8.3.5, 14.5.6.2, 14.8.2.1, and 14.8.2.4 require candidate-local
+reference/cv/array adjustments, non-deduced shape preservation, and fixed
+parameter sequences to order ahead of an otherwise-equivalent empty trailing
+pack. Canonical `TypeTable` shapes and retained parameter metadata own inputs;
+deduction creates isolated bindings; partial ordering consumes those bindings;
+the selected specialization alone reaches lowering. Expected work is O(C*S)
+for deduction and language-required O(C^2*S) pairwise ordering for C viable
+candidates of shape size S, with no unrelated lookup scan. Validate the three
+targets, adjacent array/cv/pack guards, all `100-*`, PA1-PA22, and audit;
+measure doubled candidate sets and parameter-shape depth.
 
 ## Performance Evidence
 
@@ -47,8 +48,12 @@ overload sets with both candidates and list elements doubled through
 expected O(candidates * elements) traversal without superlinear cache churn.
 For 64/128/256/512 ordinary overloads, function-template deduction visits were
 256/512/1,024/2,048, peak semantic storage was 0.78/1.55/3.10/6.19 MB, and wall
-time was 0.00/0.01/0.02/0.04 s. Final gates are PA1-PA22 2,639/2,639, PA23
-273/401, zero regressions, and audit pass with 13 inherited warnings.
+time was 0.00/0.01/0.02/0.04 s. For 8/16/32/64/128 positional member-initializer
+pack elements, semantic nodes were 68/108/188/348/668, candidate-index visits
+9/17/33/65/129, peak stage storage 0.11/0.15/0.25/0.43/0.85 MB, and all three
+wall runs were below 0.01 s, confirming linear produced-element work. Final
+gates are PA1-PA22 671/671 files, PA23 279/401 files, zero regressions, and
+audit pass with 13 inherited warnings.
 
 ## Completed Checkpoints
 
@@ -64,3 +69,4 @@ time was 0.00/0.01/0.02/0.04 s. Final gates are PA1-PA22 2,639/2,639, PA23
 | Inherited member-template ordering and virtual emission | Constructor-template using edges synthesize derived wrappers, exact reference ranks expose typed partial ordering, and canonical RTTI/vtable symbols emit once; all 46 `200-*` pass, 263 -> 266, no regressions, linear candidate scaling. |
 | Contextual braced-call deduction and materialization | Lists stay untyped through deduction, rank per selected parameter, materialize scalar/class/array arguments once, and preserve constexpr temporary lifetime; three gains, 266 -> 269, no regressions, O(candidates * elements). |
 | Target-aware function-designator deduction | Explicit-fixed parameters defer to conversion, ordinary overloads trial-deduce in isolated state, address conversion applies normal non-template preference, and selected syntax replays once; four gains, 269 -> 273, no regressions, linear overload scaling. |
+| Typed pack-expansion initialization and constexpr union state | Scalar/member init consumes one typed positional sequence, empty constructor packs participate, special-member template specifiers persist, and constexpr unions retain only the active member; six gains, 273 -> 279, no regressions, linear scaling. |

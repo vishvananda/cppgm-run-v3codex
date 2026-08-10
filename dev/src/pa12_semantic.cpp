@@ -1802,7 +1802,8 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 		 !arena_->IsTag(target, "function-definition") &&
 		 !special_member_template))
 		throw std::runtime_error("unsupported PA12 templated declaration");
-	const NodeId specifiers = FindChild(target, "decl-specifier-seq");
+	const NodeId specifiers = FindChild(target, special_member_template ?
+		"member-specifiers" : "decl-specifier-seq");
 	if (specifiers == kNoNode && !special_member_template)
 		throw std::runtime_error("invalid PA12 function template");
 	const bool definition = arena_->IsTag(target, "function-definition") ||

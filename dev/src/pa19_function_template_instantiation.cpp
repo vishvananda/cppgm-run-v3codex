@@ -28,6 +28,54 @@ bool FunctionTemplateNeedsPartitionIdentity(
 	return packs > 1;
 }
 
+bool CaptureFunctionTemplateSpecifierFacts(const SyntaxArena& arena,
+	const Program& program, NodeId specifiers, FunctionTemplatePattern* pattern)
+{
+	bool friend_syntax = false;
+	for (std::uint32_t edge = specifiers == kNoNode ? kNoEdge :
+		arena.FirstEdge(specifiers); edge != kNoEdge;
+		edge = arena.NextEdge(edge))
+	{
+		const NodeId child = arena.EdgeChild(edge);
+		const NameId semantic_name = arena.SemanticPayloadId(child);
+		const std::string value = semantic_name == 0 ? arena.Payload(child) :
+			program.names.Get(semantic_name);
+		if (value == "friend") friend_syntax = true;
+		else if (value == "constexpr") pattern->constexpr_specifier = true;
+		else if (value == "explicit") pattern->explicit_specifier = true;
+		else if (value == "inline") pattern->inline_specifier = true;
+	}
+	return friend_syntax;
+}
+
+bool ConstructorTemplateMayAcceptNoArguments(
+	const FunctionTemplatePattern& pattern)
+{
+	if (!pattern.constructor_template || pattern.required_parameter_count != 0)
+		return false;
+	for (std::size_t parameter = 0;
+		parameter < pattern.parameters.size(); ++parameter)
+		if (!pattern.parameters[parameter].pack &&
+			pattern.parameters[parameter].default_argument == kNoNode)
+			return false;
+	return true;
+}
+
+void ApplyFunctionTemplateSpecifierFacts(
+	const FunctionTemplatePattern& pattern, SpecInfo* spec)
+{
+	spec->is_constexpr = spec->is_constexpr || pattern.constexpr_specifier;
+	spec->inline_specifier = spec->inline_specifier || pattern.inline_specifier;
+}
+
+void MergeFunctionTemplateSpecifierFacts(FunctionTemplatePattern* retained,
+	const FunctionTemplatePattern& incoming)
+{
+	retained->constexpr_specifier |= incoming.constexpr_specifier;
+	retained->explicit_specifier |= incoming.explicit_specifier;
+	retained->inline_specifier |= incoming.inline_specifier;
+}
+
 std::size_t TemplateParameterOrdinal(
 	const std::vector<TemplateParameter>& parameters, NameId name)
 {
@@ -389,8 +437,7 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	TypeId dependent_result_shape, bool dependent_exception_specification)
 {
 	const NamePath path = DeclaratorNamePath(declarator);
-	if (path.Empty())
-		throw std::runtime_error("function template has no name");
+	if (path.Empty()) throw std::runtime_error("function template has no name");
 	FunctionTemplatePattern pattern;
 	pattern.lexical_scope = scope;
 	pattern.name = path.Last();
@@ -413,12 +460,8 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	const bool explicit_member_definition = definition &&
 		explicit_member_template_replay_depth_ != 0;
 	pattern.explicit_member_definition = explicit_member_definition;
-	bool friend_syntax = false;
-	for (std::uint32_t edge = specifiers == kNoNode ? kNoEdge :
-		arena_->FirstEdge(specifiers); edge != kNoEdge;
-		edge = arena_->NextEdge(edge))
-		if (PayloadSource(arena_->EdgeChild(edge)) == "friend")
-			friend_syntax = true;
+	const bool friend_syntax = CaptureFunctionTemplateSpecifierFacts(
+		*arena_, *program_, specifiers, &pattern);
 	if (!friend_syntax)
 	{
 		ScopeId structured_owner = kNoScope;
@@ -461,6 +504,7 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 		shape_spec.type = BuildTypeId(
 			FindChild(declarator, "conversion-type-id"), shape_scope);
 	else shape_spec = BuildSpecifiers(specifiers, shape_scope, std::string(), true, false, dependent_result_shape);
+	ApplyFunctionTemplateSpecifierFacts(pattern, &shape_spec);
 	pattern.deferred_result_formation = dependent_result_shape != kNoType && shape_spec.type == dependent_result_shape;
 	EntityId friend_owner = kNoEntity;
 	const bool qualified_friend = path.global || path.Size() > 1;
@@ -513,12 +557,13 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	if (!program_->types.IsFunction(shape_declarator.type))
 		throw std::runtime_error(
 			"function template has non-function declaration");
-	if (shape_spec.is_constexpr)
+	if (shape_spec.is_constexpr && !pattern.constructor_template)
 		shape_declarator.type = ApplyConstexprMemberFunctionType(
 			shape_declarator.type, member_owner,
 			shape_spec.storage_class == STORAGE_CLASS_STATIC);
 	if (shape_spec.is_constexpr)
-		ValidateConstexprCallableType(shape_declarator.type, false);
+		ValidateConstexprCallableType(
+			shape_declarator.type, pattern.constructor_template);
 	pattern.shape_type = shape_declarator.type;
 	CaptureFunctionParameterMetadata(&pattern, shape_declarator);
 	CaptureFunctionTemplateDefaultContexts(&pattern);
@@ -537,6 +582,8 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 		program_->entities[member_owner].is_aggregate = false;
 	}
 	InitializeFunctionTemplatePackShape(&pattern, shape_declarator);
+	if (ConstructorTemplateMayAcceptNoArguments(pattern))
+		program_->entities[member_owner].default_constructible = true;
 	const std::uint64_t key =
 		(static_cast<std::uint64_t>(pattern.owner) << 32) | pattern.name;
 	const CompactIndexSequence* prior_patterns =
@@ -568,6 +615,7 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	if (prior_index != function_templates_.size())
 	{
 		FunctionTemplatePattern& prior = function_templates_[prior_index];
+		MergeFunctionTemplateSpecifierFacts(&prior, pattern);
 		InheritFunctionParameterMetadata(&prior, &pattern, definition);
 		MergeFunctionTemplateDefaults(&prior, pattern, definition);
 		prior.required_parameter_count = std::min(
@@ -787,11 +835,19 @@ DeclaratorInfo SemanticAnalyzer::BuildFunctionTemplateSpecializationDeclarator(
 	try
 	{
 		if (pattern.constructor_template)
+		{
 			spec->type = program_->types.Fundamental(FUND_VOID);
+			spec->is_constexpr = pattern.constexpr_specifier;
+			spec->inline_specifier = pattern.inline_specifier;
+		}
 		else if (pattern.conversion_template)
+		{
 			spec->type = BuildTypeId(
 				FindChild(pattern.declarator, "conversion-type-id"),
 				template_scope);
+			spec->is_constexpr = pattern.constexpr_specifier;
+			spec->inline_specifier = pattern.inline_specifier;
+		}
 		else if (pattern.deferred_result_formation)
 		{
 			// Forming a candidate's retained alias result does not demand the
@@ -867,7 +923,7 @@ DeclaratorInfo SemanticAnalyzer::BuildFunctionTemplateSpecializationDeclarator(
 			parsed.parameters[parameter].default_scope = template_scope;
 		}
 	}
-	if (spec->is_constexpr)
+	if (spec->is_constexpr && !pattern.constructor_template)
 		parsed.type = ApplyConstexprMemberFunctionType(parsed.type,
 			*member_owner, pattern.static_member ||
 				spec->storage_class == STORAGE_CLASS_STATIC);
@@ -936,7 +992,7 @@ void SemanticAnalyzer::UpgradeFunctionTemplateSpecializations(
 			throw std::runtime_error(
 				"function template definition does not match declaration");
 		const bool constexpr_specialization = spec.is_constexpr &&
-			IsConstexprCallableType(parsed.type, false);
+			IsConstexprCallableType(parsed.type, pattern.constructor_template);
 		function.parameters = parsed.parameters;
 		function.constexpr_function =
 			function.constexpr_function || constexpr_specialization;
@@ -1009,6 +1065,8 @@ void SemanticAnalyzer::PublishFunctionTemplateSpecialMemberRole(
 	{
 		record.constructor = true;
 		function.constructor = true;
+		function.explicit_constructor =
+			function.explicit_constructor || pattern.explicit_specifier;
 		function.complete_constructor = binding;
 		function.constructor_initializer = pattern.constructor_initializer;
 		if (entity_constructors_.size() <= member_owner)
@@ -1027,6 +1085,8 @@ void SemanticAnalyzer::PublishFunctionTemplateSpecialMemberRole(
 	record.conversion_function = true;
 	record.conversion_target = conversion_target;
 	function.conversion_function = true;
+	function.explicit_conversion =
+		function.explicit_conversion || pattern.explicit_specifier;
 	function.conversion_target = conversion_target;
 	if (entity_conversion_functions_.size() <= member_owner)
 		entity_conversion_functions_.resize(
@@ -1365,7 +1425,7 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	ValidateNonmemberOperator(binding);
 	FunctionInfo& function = GetMutableFunction(binding);
 	const bool constexpr_specialization = spec.is_constexpr &&
-		IsConstexprCallableType(parsed.type, false);
+		IsConstexprCallableType(parsed.type, pattern.constructor_template);
 	function.constexpr_function =
 		function.constexpr_function || constexpr_specialization;
 	function.definition_in_class = pattern.definition_in_class ||

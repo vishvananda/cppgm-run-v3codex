@@ -853,6 +853,9 @@ struct FunctionTemplatePattern
 	bool static_member;
 	bool constructor_template;
 	bool conversion_template;
+	bool constexpr_specifier;
+	bool explicit_specifier;
+	bool inline_specifier;
 	bool explicit_member_definition;
 	bool deferred_result_formation;
 
@@ -868,6 +871,8 @@ struct FunctionTemplatePattern
 		  nonthrowing(false), dependent_exception_specification(false),
 		  function_parameter_pack(false), static_member(false),
 		  constructor_template(false), conversion_template(false),
+		  constexpr_specifier(false), explicit_specifier(false),
+		  inline_specifier(false),
 		  explicit_member_definition(false), deferred_result_formation(false) {}
 };
 
