@@ -238,7 +238,7 @@ protected:
 			return derived.AddressOfStorage(derived.LowerStorage(node));
 		}
 		if (derived.IsClassObjectType(argument.type) &&
-			derived.UsesIndirectClassResult(argument.type))
+			derived.UsesIndirectClassResult(argument.type, argument.binding))
 		{
 			const LowType type = derived.LowerStorageType(argument.type);
 			const Operand slot(derived.EnsureGeneratedSlot(

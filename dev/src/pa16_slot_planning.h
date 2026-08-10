@@ -85,7 +85,7 @@ protected:
 			}
 			if (record.kind == DUMP_CALL_EXPRESSION &&
 				record.full_expression_staging &&
-				!derived.UsesIndirectClassResult(record.type))
+				!derived.UsesIndirectClassResult(record.type, record.binding))
 			{
 				const LowType result = derived.LowerType(record.type);
 				if (result.kind != LOW_VOID)
@@ -95,8 +95,7 @@ protected:
 				record.argument_materialization &&
 				(variable_initializer || union_argument ||
 				 (record.full_expression_staging &&
-				  (temporary_entity == kNoEntity ||
-				   !derived.program_.entities[temporary_entity].lambda_closure))) &&
+				  !record.managed_full_expression_cleanup)) &&
 				derived.generated_slots_[current] == kNoLowId)
 				(void)derived.EnsureGeneratedSlot(current, "arg",
 					derived.LowerStorageType(record.type));

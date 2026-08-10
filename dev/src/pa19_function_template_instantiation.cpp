@@ -989,6 +989,16 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 		member_owner == kNoEntity ? spec.storage_class : STORAGE_CLASS_NONE,
 		pattern.language_linkage, nonthrowing, pattern.ordinary_visible);
 	BindingRecord& binding_record = program_->bindings[binding];
+	for (std::size_t i = 0;
+		i < completed.size() && !binding_record.closure_template_specialization;
+		++i)
+	{
+		const EntityId argument_entity = completed[i].type == kNoType ?
+			kNoEntity : EntityOf(completed[i].type);
+		binding_record.closure_template_specialization =
+			argument_entity != kNoEntity &&
+			program_->entities[argument_entity].lambda_closure;
+	}
 	if (member_owner != kNoEntity)
 	{
 		binding_record.member_owner = member_owner;

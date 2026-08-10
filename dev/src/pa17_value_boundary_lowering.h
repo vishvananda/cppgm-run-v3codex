@@ -64,7 +64,8 @@ protected:
 				derived.arena_.nodes[children[0]].type);
 	}
 
-	bool UsesIndirectClassResult(pa11::TypeId type) const
+	bool UsesIndirectClassResult(pa11::TypeId type,
+		pa11::BindingId function = pa11::kNoBinding) const
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
 		const pa11::TypeRecord& top = derived.program_.types.Get(type);
@@ -80,9 +81,18 @@ protected:
 		const pa11::EntityRecord& entity =
 			derived.program_.entities[object.entity];
 		const std::size_t size = derived.program_.SizeOf(object_type);
+		if (function != pa11::kNoBinding)
+		{
+			if (function >= derived.program_.bindings.size())
+				throw std::logic_error(
+					"class-result boundary has an invalid callable owner");
+			function = derived.program_.bindings[function].canonical;
+		}
+		const bool forced_indirect = function != pa11::kNoBinding &&
+			derived.program_.bindings[function].force_indirect_class_result_abi;
 		const bool dependent_empty_value = entity.empty_class &&
 			entity.template_argument_count != 0 &&
-			!entity.closure_forced_indirect_value_abi &&
+			!forced_indirect &&
 			(entity.enclosing_class == pa11::kNoEntity ||
 			 !entity.indirect_class_value_abi);
 		return !dependent_empty_value && (size > 16 ||
@@ -128,7 +138,7 @@ protected:
 		const pa11::TypeRecord& function_type =
 			derived.program_.types.Get(record.type);
 		const bool indirect_result =
-			UsesIndirectClassResult(function_type.child);
+			UsesIndirectClassResult(function_type.child, record.binding);
 		*result = indirect_result ? pa15_lowir_detail::LowVoid() :
 			derived.LowerBoundaryResult(function_type.child);
 		*variadic = function_type.variadic;

@@ -1098,7 +1098,6 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	ExpressionInfo converted_object;
 	const ExpressionInfo* constexpr_receiver = object;
 	std::vector<ExpressionInfo> constexpr_arguments;
-	bool closure_argument = false;
 	constexpr_arguments.reserve(function_type.parameter_count);
 	if (function.member_owner != kNoType)
 	{
@@ -1128,10 +1127,6 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 					&(*argument_conversions)[a] : 0);
 			constexpr_arguments.push_back(argument);
 		}
-		const EntityId argument_entity = EntityOf(EffectiveType(argument.type));
-		if (argument_entity != kNoEntity &&
-			program_->entities[argument_entity].lambda_closure)
-			closure_argument = true;
 		dump_.Add(call, argument.node);
 	}
 	for (std::size_t a = arguments.size();
@@ -1149,9 +1144,11 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 		constexpr_arguments.push_back(argument);
 	}
 	const EntityId result_entity = EntityOf(result_type);
-	if (closure_argument && result_entity != kNoEntity &&
+	if (program_->bindings[emission_binding].closure_template_specialization &&
+		result_entity != kNoEntity &&
 		program_->entities[result_entity].indirect_class_value_abi)
-		program_->entities[result_entity].closure_forced_indirect_value_abi = true;
+		program_->bindings[emission_binding].
+			force_indirect_class_result_abi = true;
 	ExpressionInfo result;
 	result.node = call;
 	result.type = result_type;

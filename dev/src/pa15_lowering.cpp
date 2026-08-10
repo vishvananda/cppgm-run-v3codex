@@ -793,7 +793,7 @@ private:
 		current_class_value_boundary_ =
 			FunctionHasClassValueBoundary(record.type);
 		const TypeRecord& source_function = program_.types.Get(record.type);
-		current_indirect_result_ = UsesIndirectClassResult(source_function.child);
+		current_indirect_result_ = UsesIndirectClassResult(source_function.child, record.binding);
 		current_result_reference_ = IsReferenceType(source_function.child);
 		temp_counter_ = 0;
 		block_counter_ = 0;
@@ -1118,8 +1118,8 @@ private:
 			return LowerConditionalAddress(node, children);
 		if (record.kind == DUMP_ASSIGNMENT_EXPRESSION)
 			return LowerAssignmentCore(record, children, true);
-		if (record.kind == DUMP_CALL_EXPRESSION &&
-			(IsReferenceType(record.type) || UsesIndirectClassResult(record.type)))
+		if (record.kind == DUMP_CALL_EXPRESSION && (IsReferenceType(record.type) ||
+			UsesIndirectClassResult(record.type, record.binding)))
 			return LowerCall(node, record, children);
 		if (record.kind == DUMP_CAST_EXPRESSION && children.size() == 1 &&
 			(record.category == VALUE_LVALUE || record.category == VALUE_XVALUE ||
@@ -1721,7 +1721,7 @@ private:
 		Instruction call(Instruction::CALL);
 		CallArguments arguments;
 		CallArgumentFlags argument_references;
-		const bool indirect_result = UsesIndirectClassResult(function_type.child);
+		const bool indirect_result = UsesIndirectClassResult(function_type.child, callee.binding);
 		call.type = indirect_result ? LowVoid() : LowerType(record.type);
 		call.indirect = !direct;
 		if (direct)

@@ -350,7 +350,6 @@ struct EntityRecord
 	bool nonlinear_base_graph;
 	bool deferred_template_completion;
 	bool lambda_closure;
-	bool closure_forced_indirect_value_abi;
 	std::uint32_t lambda_ordinal;
 
 	EntityRecord();
@@ -387,6 +386,12 @@ struct BindingRecord
 		inline_function, virtual_function, pure_virtual, final_virtual,
 		override_specifier, weak_odr, object_output_root, emission_demanded;
 	bool explicit_instantiation_suppressed;
+	// A canonical callable specialization owns boundary exceptions that cannot
+	// be inferred from its result type alone.  Keeping this on the binding
+	// prevents one call site from mutating the ABI of every function returning
+	// the same class entity.
+	bool force_indirect_class_result_abi;
+	bool closure_template_specialization;
 
 	BindingRecord();
 };

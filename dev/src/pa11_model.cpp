@@ -592,7 +592,7 @@ EntityRecord::EntityRecord()
 	  polymorphic_class(false), abstract_class(false),
 	  nonlinear_base_graph(false),
 	  deferred_template_completion(false), lambda_closure(false),
-	  closure_forced_indirect_value_abi(false), lambda_ordinal(0)
+	  lambda_ordinal(0)
 {
 }
 
@@ -620,7 +620,9 @@ BindingRecord::BindingRecord()
 	  destructor(false), destructor_base_entry(false), inline_function(false),
 	  virtual_function(false), pure_virtual(false), final_virtual(false),
 	  override_specifier(false), weak_odr(false), object_output_root(false),
-	  emission_demanded(false), explicit_instantiation_suppressed(false)
+	  emission_demanded(false), explicit_instantiation_suppressed(false),
+	  force_indirect_class_result_abi(false),
+	  closure_template_specialization(false)
 {
 }
 

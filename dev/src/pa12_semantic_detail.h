@@ -944,14 +944,15 @@ private:
 	bool CollectTemporaryObjects(std::uint32_t node,
 		std::vector<std::uint32_t>* temporaries,
 		bool conditionally_evaluated = false);
-	void MarkFullExpressionCalls(std::uint32_t node);
+	void MarkFullExpressionCalls(std::uint32_t node,
+		bool managed_cleanup = false);
 	bool HasControlDependentTemporary(std::uint32_t node);
 	void AppendFullExpressionDestructionActions(std::uint32_t expression,
 		std::uint32_t output_parent);
 	void StageNestedTemplateTemporaryCleanup(std::uint32_t expression,
 		std::uint32_t statement, ScopeId scope);
-	void StageLambdaReturnTemporaryCleanup(std::uint32_t expression,
-		std::uint32_t statement);
+	void StageReturnTemporaryCleanup(std::uint32_t expression,
+		std::uint32_t statement, ScopeId scope);
 	void AppendUnwindDestructionActions(ScopeId scope,
 		std::uint32_t output_parent);
 	void AddNamespaceObjectAction(std::uint32_t variable, BindingId object,

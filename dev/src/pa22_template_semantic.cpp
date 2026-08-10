@@ -299,29 +299,60 @@ void SemanticAnalyzer::StageNestedTemplateTemporaryCleanup(
 	}
 }
 
-void SemanticAnalyzer::StageLambdaReturnTemporaryCleanup(
-	std::uint32_t expression, std::uint32_t statement)
+void SemanticAnalyzer::StageReturnTemporaryCleanup(
+	std::uint32_t expression, std::uint32_t statement, ScopeId scope)
 {
-	std::vector<std::uint32_t> pending(1, expression);
-	bool has_closure = false;
-	while (!pending.empty() && !has_closure)
+	std::vector<std::uint32_t> tracked_temporaries;
+	for (std::uint32_t edge = dump_.nodes[statement].first_edge;
+		edge != kNoDumpEdge; edge = dump_.edges[edge].next)
 	{
-		const std::uint32_t node = pending.back();
+		const DumpNode& action = dump_.nodes[dump_.edges[edge].child];
+		if (action.kind == DUMP_DESTRUCTOR_ACTION &&
+			action.full_expression_staging &&
+			action.lifetime_object != kNoDumpEdge)
+		{
+			tracked_temporaries.push_back(action.lifetime_object);
+			dump_.nodes[action.lifetime_object].
+				managed_full_expression_cleanup = true;
+		}
+	}
+	if (tracked_temporaries.empty()) return;
+
+	struct Visit
+	{
+		std::uint32_t node;
+		bool below_call;
+		Visit(std::uint32_t node_value, bool below_call_value)
+			: node(node_value), below_call(below_call_value) {}
+	};
+	std::vector<Visit> pending(1, Visit(expression, false));
+	bool managed = false;
+	while (!pending.empty() && !managed)
+	{
+		const Visit visit = pending.back();
 		pending.pop_back();
 		++temporary_dependency_visits_;
-		const DumpNode& record = dump_.nodes[node];
-		if (record.kind == DUMP_TEMPORARY_OBJECT)
-		{
-			const EntityId entity = EntityOf(EffectiveType(record.type));
-			has_closure = entity != kNoEntity &&
-				program_->entities[entity].lambda_closure;
-		}
+		const DumpNode& record = dump_.nodes[visit.node];
+		managed = visit.below_call && record.managed_full_expression_cleanup;
+		const bool below_call = visit.below_call ||
+			record.kind == DUMP_CALL_EXPRESSION;
 		for (std::uint32_t edge = record.first_edge;
-			!has_closure && edge != kNoDumpEdge; edge = dump_.edges[edge].next)
-			pending.push_back(dump_.edges[edge].child);
+			!managed && edge != kNoDumpEdge; edge = dump_.edges[edge].next)
+			pending.push_back(Visit(dump_.edges[edge].child, below_call));
 	}
-	if (!has_closure) return;
-	MarkFullExpressionCalls(expression);
+	if (!managed)
+	{
+		for (std::size_t i = 0; i < tracked_temporaries.size(); ++i)
+			dump_.nodes[tracked_temporaries[i]].
+				managed_full_expression_cleanup = false;
+		return;
+	}
+
+	// A temporary used as an object or argument of an enclosing call is live
+	// while that call runs.  Publish one explicit cleanup region so lowering
+	// can install the typed destructor set before the call without recognizing
+	// the spelling or kind of any argument (including a closure).
+	MarkFullExpressionCalls(expression, true);
 	for (std::uint32_t edge = dump_.nodes[statement].first_edge;
 		edge != kNoDumpEdge; edge = dump_.edges[edge].next)
 	{
@@ -329,6 +360,14 @@ void SemanticAnalyzer::StageLambdaReturnTemporaryCleanup(
 		if (action.kind == DUMP_DESTRUCTOR_ACTION &&
 			action.full_expression_staging)
 			action.managed_full_expression_cleanup = true;
+	}
+	AppendUnwindDestructionActions(scope, statement);
+	for (std::uint32_t edge = dump_.nodes[statement].first_edge;
+		edge != kNoDumpEdge; edge = dump_.edges[edge].next)
+	{
+		DumpNode& action = dump_.nodes[dump_.edges[edge].child];
+		if (action.kind == DUMP_DESTRUCTOR_ACTION && action.unwind_only)
+			action.full_expression_staging = true;
 	}
 }
 

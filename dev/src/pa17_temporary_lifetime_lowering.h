@@ -757,7 +757,7 @@ protected:
 		}
 		if (record.kind == DUMP_CALL_EXPRESSION)
 		{
-			if (derived.UsesIndirectClassResult(record.type))
+			if (derived.UsesIndirectClassResult(record.type, record.binding))
 				(void)derived.LowerCall(node, record, children, destination);
 			else derived.EmitClassObjectCopy(record.type,
 				derived.LowerValue(node, derived.LowerExpressionType(record.type)),

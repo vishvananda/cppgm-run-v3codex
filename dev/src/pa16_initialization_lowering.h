@@ -97,7 +97,7 @@ protected:
 		}
 		if (source.kind == DUMP_CALL_EXPRESSION)
 		{
-			if (derived.UsesIndirectClassResult(source.type))
+			if (derived.UsesIndirectClassResult(source.type, source.binding))
 				(void)derived.LowerCall(children[0], source,
 					derived.Children(children[0]), destination);
 			else EmitClassObjectCopy(action.type,
@@ -251,7 +251,7 @@ protected:
 			else if (derived.arena_.nodes[children[0]].kind == DUMP_CALL_EXPRESSION)
 			{
 				const DumpNode& call = derived.arena_.nodes[children[0]];
-				if (derived.UsesIndirectClassResult(call.type))
+				if (derived.UsesIndirectClassResult(call.type, call.binding))
 					(void)derived.LowerCall(children[0], call,
 						derived.Children(children[0]), destination);
 				else EmitClassObjectCopy(call.type,

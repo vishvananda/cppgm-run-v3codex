@@ -322,8 +322,11 @@ void SemanticAnalyzer::FinalizeNamedReturnSlot(std::uint32_t function)
 	if (!IsClassEntity(*program_, entity)) return;
 	const EntityRecord& class_record = program_->entities[entity];
 	const std::size_t size = program_->SizeOf(result);
+	const BindingId function_binding = dump_.nodes[function].binding;
+	const bool forced_indirect = function_binding != kNoBinding &&
+		program_->bindings[program_->bindings[function_binding].canonical].force_indirect_class_result_abi;
 	const bool dependent_empty_value = class_record.empty_class &&
-		class_record.template_argument_count != 0 && !class_record.closure_forced_indirect_value_abi && (class_record.enclosing_class == kNoEntity ||
+		class_record.template_argument_count != 0 && !forced_indirect && (class_record.enclosing_class == kNoEntity ||
 		 !class_record.indirect_class_value_abi);
 	const bool indirect = !dependent_empty_value && (size > 16 ||
 		(size < 16 && class_record.indirect_class_value_abi));
@@ -652,7 +655,7 @@ void SemanticAnalyzer::AnalyzeReturnStatement(NodeId node, ScopeId scope,
 		}
 		dump_.Add(statement, value.node);
 		AppendFullExpressionDestructionActions(value.node, statement);
-		StageLambdaReturnTemporaryCleanup(value.node, statement);
+		StageReturnTemporaryCleanup(value.node, statement, scope);
 	}
 	AppendScopeDestructionActions(scope, statement);
 }
@@ -2608,18 +2611,15 @@ bool SemanticAnalyzer::CollectTemporaryObjects(std::uint32_t node,
 	return control_dependent;
 }
 
-void SemanticAnalyzer::MarkFullExpressionCalls(std::uint32_t node)
+void SemanticAnalyzer::MarkFullExpressionCalls(std::uint32_t node, bool managed_cleanup)
 {
 	if (node == kNoDumpEdge || node >= dump_.nodes.size()) return;
 	DumpNode& record = dump_.nodes[node];
 	record.full_expression_staging = true;
-	if (record.kind == DUMP_CALL_EXPRESSION)
-		record.full_expression_staging = true;
-	if (record.kind == DUMP_TEMPORARY_OBJECT)
-		record.full_expression_staging = true;
+	if (managed_cleanup && record.kind == DUMP_TEMPORARY_OBJECT) record.managed_full_expression_cleanup = true;
 	for (std::uint32_t edge = record.first_edge; edge != kNoDumpEdge;
 		edge = dump_.edges[edge].next)
-		MarkFullExpressionCalls(dump_.edges[edge].child);
+		MarkFullExpressionCalls(dump_.edges[edge].child, managed_cleanup);
 }
 
 bool SemanticAnalyzer::HasControlDependentTemporary(std::uint32_t node)
