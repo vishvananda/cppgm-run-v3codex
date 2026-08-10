@@ -1039,6 +1039,7 @@ Program::Program(InternedStringTable& strings)
 	  lookup_edge_visits(0), lookup_cache_hits(0), lookup_cache_misses(0),
 	  lookup_cache_invalidations(0), lookup_cache_dependency_edges(0),
 	  lookup_cache_invalidation_pushes(0),
+	  virtual_base_path_visits(0),
 	  name_index_probes(0), using_index_probes(0),
 	  template_argument_list_requests(0),
 	  template_argument_list_cache_hits(0),

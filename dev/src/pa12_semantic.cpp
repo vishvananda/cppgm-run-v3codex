@@ -1380,6 +1380,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 				return ApplyTarget(zero, target);
 			}
 			ExpressionInfo operand = analyzed_arguments[0];
+			if (arguments_node != kNoNode &&
+				arena_->IsTag(arguments_node, "braced-init-list") &&
+				IsBracedNarrowing(operand, cast_type))
+				return CandidateExpressionFailure(
+					"narrowing list-initialization conversion");
 			if (EntityOf(operand.type) != kNoEntity &&
 				ConvertingFunction(operand, cast_type, true).rank !=
 					CONVERSION_INVALID)
@@ -1435,9 +1440,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 		callable = program_->types.Get(function_type);
 	}
 	if (callable.kind != TYPE_FUNCTION)
-		throw std::runtime_error("called object is not callable");
+		return CandidateExpressionFailure("called object is not callable");
 	if (argument_syntax.size() < callable.parameter_count || (!callable.variadic && argument_syntax.size() != callable.parameter_count))
-		throw std::runtime_error("indirect call arity mismatch");
+		return CandidateExpressionFailure("indirect call arity mismatch");
 	ExpressionInfo constexpr_call; if (TryAnalyzeConstexprIndirectCall(&callee, scope, argument_syntax,
 		analyzed_arguments, target, &constexpr_call)) return constexpr_call;
 	const TypeId* parameter_data = program_->types.Parameters(function_type);
@@ -1497,9 +1502,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 	(void)ApplyBuiltinAssignmentConversion(operation, left, &right);
 	if (operation == "=") right = ApplyTarget(right, EffectiveType(left.type));
 	if (!IsModifiableLvalue(left))
-		throw std::runtime_error("assignment requires modifiable lvalue");
+		return CandidateExpressionFailure(
+			"assignment requires modifiable lvalue");
 	const bool pointer_add = IsPointer(left.type) &&
 		(operation == "+=" || operation == "-=") && IsIntegral(right.type);
+	const bool reverse_pointer_add = operation == "+=" &&
+		program_->types.RemoveTopCv(EffectiveType(left.type)) ==
+			program_->types.Fundamental(FUND_BOOL) && IsPointer(right.type);
 	if (operation != "=")
 	{
 		const bool additive = operation == "+=" || operation == "-=";
@@ -1512,15 +1521,17 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 			IsArithmetic(left.type) && IsArithmetic(right.type);
 		const bool integral = integral_operation && IsIntegral(left.type) &&
 			IsIntegral(right.type);
-		if (!pointer_add && !arithmetic && !integral)
-			throw std::runtime_error("invalid compound assignment");
+		if (!pointer_add && !reverse_pointer_add && !arithmetic && !integral)
+			return CandidateExpressionFailure("invalid compound assignment");
 	}
 	const TypeId result_type = EffectiveType(left.type);
 	const std::uint32_t expression = MakeDump(DUMP_ASSIGNMENT_EXPRESSION,
 		result_type, VALUE_LVALUE, program_->names.Intern(arena_->Payload(node)));
 	dump_.nodes[expression].target_typed_scalar_immediate =
 		HasTargetTypedSpecializedMemberImmediate(left, right);
-	if (operation != "=" && !pointer_add)
+	dump_.nodes[expression].reverse_pointer_compound_assignment =
+		reverse_pointer_add;
+	if (operation != "=" && !pointer_add && !reverse_pointer_add)
 		dump_.nodes[expression].operand_type =
 			CommonArithmeticType(left.type, right.type);
 	dump_.Add(expression, left.node);
@@ -2889,6 +2900,7 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 			program.lookup_cache_dependency_edges;
 		stats_->lookup_cache_invalidation_pushes =
 			program.lookup_cache_invalidation_pushes;
+		stats_->virtual_base_path_visits = program.virtual_base_path_visits;
 		stats_->associated_scope_visits = associated_scope_visits_;
 		stats_->associated_declaration_visits =
 			associated_declaration_visits_;

@@ -377,6 +377,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 {
 	EnsureClassDefinition(cast_type);
 	const EntityId cast_entity = EntityOf(cast_type);
+	if (cast_entity != kNoEntity &&
+		program_->entities[cast_entity].abstract_class)
+		return CandidateExpressionFailure(
+			"cannot construct an abstract class value");
 	const bool reference_target = target != kNoType &&
 		(program_->types.Get(target).kind == TYPE_LVALUE_REFERENCE ||
 		 program_->types.Get(target).kind == TYPE_RVALUE_REFERENCE);

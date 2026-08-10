@@ -229,6 +229,8 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 				semantic_stats.lookup_cache_dependency_edges;
 			semantic.lookup_cache_invalidation_pushes +=
 				semantic_stats.lookup_cache_invalidation_pushes;
+			semantic.virtual_base_path_visits +=
+				semantic_stats.virtual_base_path_visits;
 			semantic.associated_scope_visits +=
 				semantic_stats.associated_scope_visits;
 			semantic.associated_declaration_visits +=

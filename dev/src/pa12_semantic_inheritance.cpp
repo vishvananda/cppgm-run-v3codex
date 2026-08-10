@@ -524,6 +524,22 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		cast_kind.compare(0, 10, "OP_LPAREN:") == 0 ||
 		cast_kind.find("REINTER") != std::string::npos;
 	const TypeId decayed_operand_type = Decay(operand.type);
+	if ((cast_kind.compare(0, 10, "OP_LPAREN:") == 0 ||
+		 cast_kind.find("STATIC") != std::string::npos) &&
+		IsPointer(target) && IsPointer(decayed_operand_type))
+	{
+		const TypeRecord source_pointer =
+			program_->types.Get(decayed_operand_type);
+		const TypeRecord target_pointer = program_->types.Get(
+			program_->types.RemoveTopCv(target));
+		const EntityId source_class = EntityOf(source_pointer.child);
+		const EntityId target_class = EntityOf(target_pointer.child);
+		if (source_class != kNoEntity && target_class != kNoEntity &&
+			program_->IsBaseOf(source_class, target_class) &&
+			program_->HasVirtualBasePath(target_class, source_class))
+			return CandidateExpressionFailure(
+				"invalid downcast through virtual base");
+	}
 	if (cast_kind.find("STATIC") != std::string::npos && IsPointer(target) &&
 		IsPointer(decayed_operand_type))
 	{
@@ -535,7 +551,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		if (derived != kNoEntity && base != kNoEntity && derived != base &&
 			program_->IsBaseOf(base, derived) &&
 			!BaseConversionAllowed(derived, base))
-			throw std::runtime_error("inaccessible base conversion");
+			return CandidateExpressionFailure("inaccessible base conversion");
 	}
 	const bool valid = IsVoid(target) ||
 		(IsArithmetic(target) && IsArithmetic(operand.type)) ||
@@ -551,7 +567,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		(permits_reinterpretation &&
 			((IsPointer(target) && IsIntegral(operand.type)) ||
 			 (IsIntegral(target) && IsPointer(decayed_operand_type))));
-	if (!valid) throw std::runtime_error("invalid explicit conversion");
+	if (!valid) return CandidateExpressionFailure(
+		"invalid explicit conversion");
 	const std::uint32_t cast = MakeDump(DUMP_CAST_EXPRESSION, target,
 		VALUE_PRVALUE, program_->names.Intern(arena_->Payload(node)));
 	if (cast_kind.find("REINTER") == std::string::npos && IsPointer(target) &&

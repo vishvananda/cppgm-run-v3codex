@@ -20,39 +20,40 @@ requests retain distinct expected- and hard-failure states, and retained
 
 ## Current Failure Map
 
-Current result is 308/404 including three audit guards, or 305/401 on the
-original suite. The landed checkpoint's 307/403 baseline is preserved with no
-regression; all `100-*` and `200-*` tests pass. The complete remaining set
-groups by shared behavior and primary owner: candidate result/default
-substitution, dependent lookup, and demand timing (`300-*`: 52 exits, 8
-LowIR); canonical non-type arguments, conversion templates, and overload
-ownership (`400-*`: 16 exits, 2 LowIR); and composed alias/class/member lookup,
-pack replay, and selected-fact lowering (`500-*`: 8 exits, 10 LowIR). These
-groups account for all 96 failures.
+Current result is 315/404, up seven from the turn baseline with no regressions;
+all `100-*` and `200-*` tests pass. The complete remaining set groups by shared
+behavior and primary owner: candidate result/default substitution, dependent
+lookup, and demand timing (`300-*`: 45 exits, 8 LowIR); canonical non-type
+arguments, conversion templates, and overload ownership (`400-*`: 16 exits,
+2 LowIR); and composed alias/class/member lookup, pack replay, and selected-fact
+lowering (`500-*`: 8 exits, 10 LowIR). These groups account for all 89 failures.
 
 ## Active Checkpoint
 
-The next checkpoint owns candidate-local expression validity in the remaining
-`300-*` set: abstract construction, narrowing, cast legality, overloaded
-operators, pseudo-destructors, and `noexcept` probes. `spec.md` sections 2-5
-require canonical expression facts, isolated expected failure, and cached
-demand; section 6 requires lowering to consume only the selected facts, and
-section 9 requires O(C*(E+L)) work for C candidates, dependent expression size
-E, and indexed lookup L. Expression analysis owns typed validity, overload
-resolution owns candidate discard, and instantiation/lowering consume the
-winner without reanalysis. Validate focused positive/fallback/hard-error pairs,
-all `300-*`, PA1-PA22, and audit; measure doubled expression and candidate sets.
+Dependent callable replay and re-entrant detector demand are the next stable
+boundary. Retained call syntax and canonical argument/object types flow through
+indexed ordinary/member/ADL lookup into one overload candidate sequence;
+candidate frames own failure while specialization request states own recursive
+observation. `spec.md` sections 2-5 require canonical object cv identity,
+explicit lookup edges, complete candidate keys, in-progress observation, and
+no global retry; section 6 requires the selected call/conversion facts to reach
+lowering unchanged; section 9 bounds work to O(C*(A+L)) for participating
+candidates C, argument count A, and visited lookup edges L. Validate mutable
+versus const call operators, recursive streamable/swappable detectors, call
+surrogates, positive/fallback/hard-error pairs, all remaining `300-*`, PA23,
+PA1-PA22, and file audit; measure doubled call sets and recursion depth.
 
 ## Performance Evidence
 
-Independent invalid-alias sets of 16/32/64/128 produce 16/32/64/128 overload
-visits, 176/352/704/1,408 specialization requests, 96/192/384/768 cache hits,
-32/64/128/256 deduction visits, 844/1,660/3,292/6,556 lookups, and
-727,475/1,446,883/2,887,131/5,766,323 peak semantic bytes. Three-run semantic
-medians are 4.08/7.89/15.35/30.90 ms. Work, storage, and time are linear in
-participating failures, and representative failed paths have no C++ unwind.
-Final gates are PA1-PA22 2,639/2,639, PA23 308/404 with zero regressions, and
-file-audit pass with 13 inherited warnings.
+For 8/16/32/64 independent abstract-expression units, candidates are
+16/32/64/128, specialization requests 80/160/320/640, deduction visits
+32/64/128/256, and lookups 336/672/1,344/2,688; three-run semantic medians are
+1.99/3.70/6.95/13.20 ms and per-unit peak storage stays 57,488 bytes. Virtual
+base chains of depth 16/32/64/128 take 34/66/130/258 typed path visits,
+164/292/548/1,060 lookups, 165,575/297,811/585,639/1,147,815 peak bytes, and
+0.87/1.30/2.10/3.96 ms medians. Candidate work, graph work, storage, and time
+are linear. Gates are PA1-PA22 2,639/2,639, PA23 315/404 with no regressions,
+and file-audit pass with 13 inherited warnings.
 
 ## Completed Checkpoints
 
@@ -74,3 +75,4 @@ file-audit pass with 13 inherited warnings.
 | Inherited-using identity and reference/base lowering | Access-owned specialization aliases, local-signature preference, array-reference stores, and nonempty-base value initialization pass; all `100-*` pass, 289 -> 292, no regressions, linear/flat scaling. |
 | Declaration-time result lookup and canonical identity | Deferred results retain canonical type/namespace roots and first-declaration call candidates through redeclaration and substitution; fixed qualifiers validate immediately, recursive calls stay bounded, original PA23 292 -> 296 (298/403 with audit guards), no regressions, linear candidate/depth scaling. |
 | Candidate-local alias, call-surrogate, and detector replay | Nested aliases defer without body demand, explicit invalid types use typed candidate failure and monotonic alias states without exception control flow, retained `decltype` bases replay by syntax identity, and ellipsis fallbacks participate; landed 298 -> 307, audited full report 308/404, no regressions, linear failure scaling. |
+| Candidate-local expression validity and typed exceptional facts | Abstract construction/allocation, narrowing, virtual-base casts, compound operators, scalar pseudo-destruction, and `void()` dispatch use typed facts and scoped failure; 308 -> 315, no regressions, linear candidate/path scaling. |

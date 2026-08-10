@@ -601,6 +601,8 @@ int run_emit_semantics_mode(const vector<string> & args)
            << stats.lookup_cache_dependency_edges
            << " lookup_cache_invalidation_pushes="
            << stats.lookup_cache_invalidation_pushes
+           << " virtual_base_path_visits="
+           << stats.virtual_base_path_visits
            << " associated_scope_visits="
            << stats.associated_scope_visits
            << " associated_declaration_visits="
@@ -781,6 +783,8 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << semantic.lookup_cache_dependency_edges
 			 << " lookup_cache_invalidation_pushes="
 			 << semantic.lookup_cache_invalidation_pushes
+			 << " virtual_base_path_visits="
+			 << semantic.virtual_base_path_visits
 			 << " associated_scope_visits="
 			 << semantic.associated_scope_visits
 			 << " associated_declaration_visits="

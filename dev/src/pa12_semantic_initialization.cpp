@@ -1403,6 +1403,7 @@ bool SemanticAnalyzer::InitializationActionsAreNonthrowing(
 		pending.pop_back();
 		++nonthrowing_action_visits_;
 		const DumpNode& record = dump_.nodes[node];
+		if (record.pseudo_destructor_call) continue;
 		if (record.kind == DUMP_CONSTRUCTOR_ACTION)
 		{
 			if (record.binding == kNoBinding ||
@@ -2027,6 +2028,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
 	if (program_->types.Get(program_->types.RemoveTopCv(object_type)).kind ==
 		TYPE_ARRAY)
 		throw std::runtime_error("array new is outside PA16");
+	const EntityId object_entity = EntityOf(object_type);
+	if (object_entity != kNoEntity &&
+		program_->entities[object_entity].abstract_class)
+		return CandidateExpressionFailure(
+			"cannot allocate an abstract class object");
 	const NodeId placement = FindChild(node, "placement");
 	const NodeId placement_arguments = placement == kNoNode ? kNoNode :
 		FindChild(placement, "paren-argument-list");

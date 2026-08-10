@@ -354,6 +354,15 @@ public:
 				derived.PointeeType(derived.arena_.nodes[children[0]].type),
 				op == "-=");
 		}
+		else if (op == "+=" && record.reverse_pointer_compound_assignment)
+		{
+			storage = derived.LowerStorage(children[0]);
+			const Operand offset = derived.LoadStorage(storage, type);
+			value = derived.ApplyPointerOffset(
+				derived.LowerValue(children[1]), offset,
+				derived.PointeeType(derived.arena_.nodes[children[1]].type), false);
+			value = derived.Convert(value, type, false);
+		}
 		else
 		{
 			storage = derived.LowerStorage(children[0]);

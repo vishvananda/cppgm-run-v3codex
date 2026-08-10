@@ -56,6 +56,7 @@ struct SemanticAnalysisStats
 	std::size_t lookup_cache_invalidations;
 	std::size_t lookup_cache_dependency_edges;
 	std::size_t lookup_cache_invalidation_pushes;
+	std::size_t virtual_base_path_visits;
 	std::size_t associated_scope_visits;
 	std::size_t associated_declaration_visits;
 	std::size_t function_candidate_index_visits;

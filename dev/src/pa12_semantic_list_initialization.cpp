@@ -231,7 +231,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 			element);
 		if (IsIntegral(element, true) && IsArithmetic(value.type) &&
 			!IsIntegral(value.type, true))
-			throw std::runtime_error("narrowing list-initialization conversion");
+			return CandidateExpressionFailure(
+				"narrowing list-initialization conversion");
 		values.push_back(value);
 	}
 	const std::uint32_t list = MakeDump(DUMP_BRACED_INIT_LIST, type,
@@ -872,6 +873,15 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 	const EntityId entity = EntityOf(type);
 	if (!IsClassEntity(*program_, entity))
 		throw std::logic_error("constructor action has non-class type");
+	if (!base_subobject && program_->entities[entity].abstract_class)
+	{
+		if (CandidateSubstitutionActive())
+		{
+			RecordCandidateSubstitutionFailure();
+			return kNoDumpEdge;
+		}
+		throw std::runtime_error("cannot construct an abstract class value");
+	}
 	bool has_braced_argument = false;
 	for (std::size_t i = 0; i < argument_syntax.size(); ++i)
 		if (argument_syntax[i] != kNoNode &&

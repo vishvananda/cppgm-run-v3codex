@@ -337,10 +337,12 @@ struct DirectBaseEdge
 	EntityId entity;
 	std::uint64_t offset;
 	AccessKind access;
+	bool virtual_base;
 
 	DirectBaseEdge(EntityId entity_ = kNoEntity,
-		AccessKind access_ = ACCESS_PUBLIC)
-		: entity(entity_), offset(0), access(access_) {}
+		AccessKind access_ = ACCESS_PUBLIC, bool virtual_base_ = false)
+		: entity(entity_), offset(0), access(access_),
+		  virtual_base(virtual_base_) {}
 };
 
 struct EntityRecord
@@ -494,6 +496,7 @@ public:
 	DirectBaseEdge& MutableDirectBase(EntityId derived,
 		std::size_t ordinal);
 	bool IsBaseOf(EntityId base, EntityId derived) const;
+	bool HasVirtualBasePath(EntityId derived, EntityId base) const;
 	bool QueryBasePath(EntityId derived, EntityId base,
 		std::size_t* distance, bool* all_public) const;
 	LookupResult Lookup(ScopeId current, const NamePath& name,
@@ -534,6 +537,7 @@ public:
 	std::size_t lookup_cache_hits, lookup_cache_misses;
 	std::size_t lookup_cache_invalidations, lookup_cache_dependency_edges;
 	std::size_t lookup_cache_invalidation_pushes;
+	mutable std::size_t virtual_base_path_visits;
 	mutable std::size_t name_index_probes;
 	std::size_t using_index_probes;
 	std::size_t template_argument_list_requests;

@@ -143,6 +143,8 @@ struct DumpNode
 	bool control_dependent_temporary;
 	bool virtual_call;
 	bool has_direct_base_offset;
+	bool pseudo_destructor_call;
+	bool reverse_pointer_compound_assignment;
 
 	explicit DumpNode(DumpKind value)
 		: kind(value), type(kNoType), operand_type(kNoType),
@@ -176,7 +178,8 @@ struct DumpNode
 		  conditionally_constructed(false),
 		  default_argument(false),
 		  control_dependent_temporary(false), virtual_call(false),
-		  has_direct_base_offset(false) {}
+		  has_direct_base_offset(false), pseudo_destructor_call(false),
+		  reverse_pointer_compound_assignment(false) {}
 };
 
 struct DumpEdge

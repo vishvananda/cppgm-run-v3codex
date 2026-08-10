@@ -562,6 +562,7 @@ TypeId SemanticAnalyzer::ResolveFunctionalCastType(ScopeId scope,
 	else if (spelling == "float") kind = FUND_FLOAT;
 	else if (spelling == "double") kind = FUND_DOUBLE;
 	else if (spelling == "long double") kind = FUND_LONG_DOUBLE;
+	else if (spelling == "void") kind = FUND_VOID;
 	else return kNoType;
 	return program_->types.Fundamental(kind);
 }
@@ -753,6 +754,7 @@ bool SemanticAnalyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 			program_->types.Fundamental(FUND_VOID);
 		const std::uint32_t discarded = MakeDump(DUMP_CAST_EXPRESSION,
 			void_type, VALUE_PRVALUE);
+		dump_.nodes[discarded].pseudo_destructor_call = true;
 		dump_.Add(discarded, object.node);
 		result->node = discarded;
 		result->type = void_type;

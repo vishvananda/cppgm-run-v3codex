@@ -214,6 +214,8 @@ bool SemanticAnalyzer::CollectClassDirectBases(NodeId clause, ScopeId scope,
 			throw std::runtime_error("base specifier has no base name");
 		AccessKind base_access = flavor == NAMED_CLASS ?
 			ACCESS_PRIVATE : ACCESS_PUBLIC;
+		const bool virtual_base =
+			FindChild(base_specifier, "virtual") != kNoNode;
 		const NodeId access = FindChild(base_specifier, "access-specifier");
 		if (access != kNoNode)
 		{
@@ -288,7 +290,8 @@ bool SemanticAnalyzer::CollectClassDirectBases(NodeId clause, ScopeId scope,
 				!CanAccessMember(base_lookup.type_declaration,
 					base_lookup.naming_class))
 				throw std::runtime_error("inaccessible direct base type");
-			direct_bases->push_back(DirectBaseEdge(base, base_access));
+			direct_bases->push_back(DirectBaseEdge(
+				base, base_access, virtual_base));
 		}
 	}
 	if (!saw_base_specifier)
