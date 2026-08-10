@@ -2405,8 +2405,8 @@ ExpressionInfo SemanticAnalyzer::MaterializeDiscardedClassResult(
 	const DumpKind kind = dump_.nodes[value.node].kind;
 	const TypeRecord discarded_type = program_->types.Get(
 		program_->types.RemoveTopCv(value.type));
-	if (kind == DUMP_TEMPORARY_OBJECT &&
-		discarded_type.kind == TYPE_ARRAY)
+	if (kind == DUMP_TEMPORARY_OBJECT && (discarded_type.kind == TYPE_ARRAY ||
+		 IsClassEntity(*program_, EntityOf(value.type))))
 	{
 		dump_.nodes[value.node].discarded_materialization = true;
 		return value;

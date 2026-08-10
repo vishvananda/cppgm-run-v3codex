@@ -2,69 +2,51 @@
 
 ## Stage Design and Spec Alignment
 
-PA22 extends the shared typed path
-`SyntaxArena -> Program/SemanticAnalyzer -> SemanticGraphView -> GraphLowerer -> LowIR`.
-Canonical entity, type, binding, template-pattern, and specialization IDs own
-identity. Retained syntax owns lexical source provenance; indexed lookup,
-substitution, completion, demand, and emission remain separate operations. LowIR
-consumes selected typed facts without textual keys, semantic reconstruction, or a
-second lookup path.
-
-The latest durable decision is that a captureless closure is an explicit entity fact
-keyed by `(lambda syntax ID, enclosing canonical function ID)`. Its typed call
-operator, local ABI context, and ordinal flow through deduction and demand. Closure
-participation is stored once on the complete canonical function-template
-specialization; any result-boundary exception belongs to that callable rather than
-the returned class. Return cleanup is derived from typed temporary/call nesting and
-published as an explicit managed-lifetime fact, never inferred from a closure kind,
-generated name, or LowIR shape.
-
-This aligns the landed PA22 surface with `spec.md` §§2–6 and 8–10: O(1) canonical
-identity, indexed lookup, retained substitution ownership, demand-driven completion,
-typed lowering, explicit provenance, bounded candidate work, and observable work
-counters. PA22 does not add PA23 SFINAE/substitution-failure completion or the §7
-object backend.
+PA22 extends `SyntaxArena -> Program/SemanticAnalyzer -> SemanticGraphView ->
+GraphLowerer -> LowIR`. Canonical IDs own types, declarations, template arguments,
+specializations, and selected call/conversion facts; retained syntax owns source
+provenance. Completion and emission are monotonic demand operations, and lowering
+consumes typed facts without lookup or rendered keys. This is the PA22 portion of
+`spec.md` §§2–6 and 8–10; PA23 deduction/SFINAE and the §7 object backend remain out
+of scope.
 
 ## Current Failure Map
 
-Current result: **304/310** (checkpoint-audit baseline 304). The six remaining
-failures are owned by alias specialization/result emission (2), hidden-friend and
-constructor reuse lowering (2), local-static initialization staging (1), and
-copy-assignment/member-template scalar conversion (1). The audit changed none of
-these failure groups.
+Checkpoint baseline: **304/310**; current: **305/310**. Specialized-member scalar
+conversion owns the forward-alias and copy-assignment diffs (2); class-value
+destination transfer owns the hidden-friend and friend-constructor diffs (2);
+local-static constant/dynamic classification owns the remaining diff (1).
 
 ## Active Checkpoint
 
-**Next: alias specialization/result ownership.** Trace the two alias failures from
-canonical alias entity and use-scope bindings through selected class specialization,
-pack/result type, member layout, demand, and typed LowIR emission. Preserve one
-canonical result identity and source-use ordering without rendered type keys or
-unrelated declaration scans (`spec.md` §§2–6, 8–10). Expected work is O(canonical
-alias arguments + demanded specialization members). Validate both focused aliases,
-nearby alias/template-template cases, PA22, prior stages, file audit, and 16/32/64
-alias-specialization scaling.
+**Next: specialized-member scalar conversion facts.** Publish the selected integral
+conversion once for an assignment whose member type comes from a class-template
+specialization, and let assignment lowering consume that fact without re-deriving it
+from type spelling or owner names (`spec.md` §§2.7, 4.1, 6.4–6.7, 9.3–9.6). Owner:
+`SemanticAnalyzer::ApplyTarget`/assignment construction; flow: typed conversion fact
+to `GraphLowerer`. Expected work is O(1) per analyzed assignment. Validate both
+focused widening-literal cases, nearby member/alias/template overload cases, PA22,
+PA1–PA21, file audit, and 16/32/64 specialized-member assignments.
 
 ## Performance Evidence
 
-Five-run medians for 16/32/64 distinct captureless macro expansions:
+Five-run medians for 16/32/64 distinct pack elements, each constructing one discarded
+`I<T>` specialization:
 
-| Closures | Nodes / temp visits | Requests / hits | Functions / instructions | Peak MiB | Semantic / lowering ms |
+| Elements | Nodes / edges / temp visits | Requests / hits | Demand pushes / functions / instructions | Semantic peak / typed MiB | Semantic / lowering ms |
 |---:|---:|---:|---:|---:|---:|
-| 16 | 431 / 265 | 16 / 0 | 33 / 238 | 0.274 | 1.723 / 0.752 |
-| 32 | 847 / 521 | 32 / 0 | 65 / 462 | 0.532 | 3.187 / 1.236 |
-| 64 | 1679 / 1033 | 64 / 0 | 129 / 910 | 1.007 | 6.806 / 2.306 |
+| 16 | 128 / 127 / 135 | 19 / 2 | 17 / 18 / 100 | 0.407 / 0.045 | 1.903 / 0.542 |
+| 32 | 240 / 239 / 263 | 35 / 2 | 33 / 34 / 196 | 0.762 / 0.090 | 3.194 / 0.832 |
+| 64 | 464 / 463 / 519 | 67 / 2 | 65 / 66 / 388 | 1.514 / 0.179 | 6.558 / 1.616 |
 
-Every work/storage series is linear. Zero hits are expected because every expansion
-is a distinct syntax identity; the focused retained-body case reports two requests,
-zero hits, and ABI discriminators 0/1. A 16/32/64 nested-return family separately
-reported nodes 115/195/355, temporary visits 79/143/271, cleanup entries 17/33/65,
-instructions 138/250/474, and semantic/lowering medians
-0.392/0.534/0.779 and 0.276/0.325/0.480 ms.
+All work, output, and storage series are linear; the two cache hits are fixed reuse of
+the pack owner rather than repeated per-element work.
 
 ## Completed Checkpoints
 
 | Checkpoint | Durable result |
 |---|---|
 | PA22 specialization graph through typed zero/address and conditional lifetime | Canonical template entities, retained environments, indexed lookup, monotonic demand, and typed lowering advanced PA22 from 82 to 300 while PA1–PA21 remained 2329/2329. |
-| Retained call/declaration acceptance (`c230676a`, audit repaired) | Return-independent but mutually comparable parameter ordering, explicit inactive-anonymous-union provenance, and typed aggregate-prvalue materialization advanced 300 to 303; the checkpoint audit preserved 303/310, prior 2329/2329, linear 16/32/64 evidence, and a passing file audit. |
-| Canonical captureless closures (`cc87146e`, audit repaired) | Indexed closure entities, callable-owned ABI exceptions, and graph-derived managed cleanup advanced 303 to 304; audit preserves PA22 304/310, PA1–PA21 2329/2329, linear scaling, and file-audit pass. |
+| Retained call/declaration acceptance (`c230676a`, audit repaired) | Comparable parameter ordering, inactive-union provenance, and typed aggregate-prvalue materialization advanced 300 to 303 with linear scaling and prior stages clean. |
+| Canonical captureless closures (`cc87146e`, audit repaired) | Indexed closure entities, callable-owned ABI exceptions, and graph-derived managed cleanup advanced 303 to 304 with PA1–PA21 at 2329/2329 and the audit clean. |
+| Instantiated discarded-result ownership and ordered demand | Typed discarded provenance plus source-order DFS demand advanced 304 to 305; 24 focused/adjacent tests, PA1–PA21 (2329/2329), linear 16/32/64 scaling, and file audit pass. |

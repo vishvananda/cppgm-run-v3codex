@@ -199,52 +199,70 @@ void SemanticAnalyzer::DemandMaterializedConstructorActions(
 {
 	if (node >= dump_.nodes.size())
 		throw std::logic_error("invalid materialized-constructor demand root");
-	std::vector<std::uint32_t> pending(1, node);
+	struct Visit
+	{
+		std::uint32_t node, next_edge;
+		bool entered;
+
+		explicit Visit(std::uint32_t node_value)
+			: node(node_value), next_edge(kNoDumpEdge), entered(false) {}
+	};
+	std::vector<Visit> pending(1, Visit(node));
 	while (!pending.empty())
 	{
-		const std::uint32_t current = pending.back();
-		pending.pop_back();
+		Visit& visit = pending.back();
+		const std::uint32_t current = visit.node;
 		DumpNode& record = dump_.nodes[current];
-		if (demand_calls && record.kind == DUMP_CALL_EXPRESSION &&
-			record.first_edge != kNoDumpEdge)
+		if (!visit.entered)
 		{
-			const DumpNode& callee = dump_.nodes[
-				dump_.edges[record.first_edge].child];
-			if (callee.kind == DUMP_CALLEE && callee.binding != kNoBinding)
+			visit.entered = true;
+			visit.next_edge = record.first_edge;
+			if (demand_calls && record.kind == DUMP_CALL_EXPRESSION &&
+				record.first_edge != kNoDumpEdge)
 			{
-				const BindingId binding =
-					program_->bindings[callee.binding].canonical;
-				if (binding < function_fact_by_binding_.size() &&
-					function_fact_by_binding_[binding] != kNoDumpEdge &&
-					!GetFunction(binding).defined)
+				const DumpNode& callee = dump_.nodes[
+					dump_.edges[record.first_edge].child];
+				if (callee.kind == DUMP_CALLEE && callee.binding != kNoBinding)
 				{
-					GetMutableFunction(binding).deferred = true;
-					DemandRuntimeFunction(binding);
+					const BindingId binding =
+						program_->bindings[callee.binding].canonical;
+					if (binding < function_fact_by_binding_.size() &&
+						function_fact_by_binding_[binding] != kNoDumpEdge &&
+						!GetFunction(binding).defined)
+					{
+						GetMutableFunction(binding).deferred = true;
+						DemandRuntimeFunction(binding);
+					}
 				}
 			}
+			if (record.kind == DUMP_TEMPORARY_OBJECT &&
+				record.pending_constructor_demand)
+			{
+				if (record.first_edge == kNoDumpEdge ||
+					dump_.edges[record.first_edge].next != kNoDumpEdge)
+					throw std::logic_error(
+						"materialized constructor has invalid recipe");
+				const DumpNode& recipe = dump_.nodes[
+					dump_.edges[record.first_edge].child];
+				const DumpNode& action = recipe.kind == DUMP_BRACED_INIT_LIST &&
+					recipe.value_constructor != kNoDumpEdge ?
+						dump_.nodes[recipe.value_constructor] : recipe;
+				if (action.kind != DUMP_CONSTRUCTOR_ACTION ||
+					action.binding == kNoBinding)
+					throw std::logic_error(
+						"materialized constructor demand has no action");
+				record.pending_constructor_demand = false;
+				DemandConstructorDefinition(action.binding);
+			}
 		}
-		if (record.kind == DUMP_TEMPORARY_OBJECT &&
-			record.pending_constructor_demand)
+		if (visit.next_edge == kNoDumpEdge)
 		{
-			if (record.first_edge == kNoDumpEdge ||
-				dump_.edges[record.first_edge].next != kNoDumpEdge)
-				throw std::logic_error(
-					"materialized constructor has invalid recipe");
-			const DumpNode& recipe = dump_.nodes[
-				dump_.edges[record.first_edge].child];
-			const DumpNode& action = recipe.kind == DUMP_BRACED_INIT_LIST &&
-				recipe.value_constructor != kNoDumpEdge ?
-				dump_.nodes[recipe.value_constructor] : recipe;
-			if (action.kind != DUMP_CONSTRUCTOR_ACTION ||
-				action.binding == kNoBinding)
-				throw std::logic_error(
-					"materialized constructor demand has no action");
-			record.pending_constructor_demand = false;
-			DemandConstructorDefinition(action.binding);
+			pending.pop_back();
+			continue;
 		}
-		for (std::uint32_t edge = record.first_edge; edge != kNoDumpEdge;
-			edge = dump_.edges[edge].next)
-			pending.push_back(dump_.edges[edge].child);
+		const std::uint32_t edge = visit.next_edge;
+		visit.next_edge = dump_.edges[edge].next;
+		pending.push_back(Visit(dump_.edges[edge].child));
 	}
 }
 
