@@ -575,8 +575,10 @@ void SemanticAnalyzer::DeduceFunctionTemplatePatterns(
 				}
 				if (template_parameter.pack)
 				{
-					if (parameter_index + 1 != pattern.parameters.size())
-						continue;
+					// Explicit function-template arguments bind to a pack even
+					// when later template parameters are inferred from the call.
+					// There is no syntax for skipping the pack to name a later
+					// parameter, so the pack owns the remaining explicit list.
 					while (explicit_index < explicit_count)
 					{
 						const TemplateArgument explicit_argument =

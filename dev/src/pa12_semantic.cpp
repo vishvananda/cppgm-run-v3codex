@@ -1330,6 +1330,16 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 		}
 		if (cast_type != kNoType)
 		{
+			const TypeRecord cast_record = program_->types.Get(cast_type);
+			if (cast_record.kind == TYPE_ARRAY && arguments_node != kNoNode &&
+				arena_->IsTag(arguments_node, "braced-init-list"))
+			{
+				ExpressionInfo initialized = AnalyzeBracedInit(
+					arguments_node, scope, cast_type);
+				initialized = MaterializeTemporary(initialized);
+				return target == kNoType ? initialized :
+					ApplyTarget(initialized, target);
+			}
 			if (IsClassObjectType(cast_type))
 				return AnalyzeClassFunctionalCast(cast_type, scope,
 					argument_syntax, arguments_node, target);
@@ -1349,7 +1359,6 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 					CONVERSION_INVALID)
 				return ApplyTarget(
 					ApplyExplicitConversion(operand, cast_type), target);
-			const TypeRecord cast_record = program_->types.Get(cast_type);
 			const ValueCategory cast_category =
 				cast_record.kind == TYPE_LVALUE_REFERENCE ? VALUE_LVALUE :
 				cast_record.kind == TYPE_RVALUE_REFERENCE ? VALUE_XVALUE :

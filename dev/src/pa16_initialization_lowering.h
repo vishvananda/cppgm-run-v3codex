@@ -27,11 +27,16 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		const LowType type = derived.LowerStorageType(
 			derived.arena_.nodes[node].type);
+		const TypeRecord object_type = derived.program_.types.Get(
+			derived.program_.types.RemoveTopCv(
+				derived.arena_.nodes[node].type));
+		const char* discarded_name = object_type.kind == TYPE_ARRAY ?
+			"discardarr" : "discard";
 		return Operand(derived.EnsureGeneratedSlot(node,
 			derived.arena_.nodes[node].reference_call_materialization ? "refcall" :
 			derived.arena_.nodes[node].argument_materialization ? "arg" :
 			derived.arena_.nodes[node].discarded_materialization ?
-				"discard" : "tmpobj", type), type);
+				discarded_name : "tmpobj", type), type);
 	}
 
 	Operand PrepareTemporaryObjectStorage(std::uint32_t node)
@@ -188,7 +193,46 @@ protected:
 			else if (derived.arena_.nodes[children[0]].kind == DUMP_BRACED_INIT_LIST)
 			{
 				const DumpNode& initializer = derived.arena_.nodes[children[0]];
-				if (initializer.value_constructor != kNoDumpEdge)
+				const TypeRecord temporary_type = derived.program_.types.Get(
+					derived.program_.types.RemoveTopCv(
+						derived.arena_.nodes[node].type));
+				if (temporary_type.kind == TYPE_ARRAY)
+				{
+					const NodeChildren values = derived.Children(children[0]);
+					if (temporary_type.bound == 0 ||
+						values.size() > temporary_type.bound)
+						throw std::runtime_error(
+							"invalid temporary array initializer");
+					if (derived.IsClassObjectType(temporary_type.child) ||
+						derived.IsArrayType(temporary_type.child))
+						derived.LowerRuntimeArrayValues(
+							derived.arena_.nodes[node].type,
+							children[0], destination);
+					else
+					{
+						const LowType element = derived.LowerExpressionType(
+							temporary_type.child);
+						const std::size_t element_size =
+							derived.program_.SizeOf(temporary_type.child);
+						for (std::size_t i = 0;
+							i < static_cast<std::size_t>(temporary_type.bound); ++i)
+						{
+							Operand element_address = destination;
+							if (i != 0)
+								element_address = derived.IndexAddress(
+									LowI8(), destination,
+									Operand(i * element_size, LowI64()), false);
+							Instruction store(Instruction::STORE);
+							store.type = element;
+							store.first = i < values.size() ?
+								derived.LowerConvertedValue(values[i], element) :
+								Operand(0, element);
+							store.second = element_address;
+							derived.Emit(store);
+						}
+					}
+				}
+				else if (initializer.value_constructor != kNoDumpEdge)
 					derived.LowerConstructorAction(
 						initializer.value_constructor, destination, true);
 				else derived.LowerAggregateActions(children[0], destination, path,

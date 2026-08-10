@@ -2347,7 +2347,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeDeleteExpression(NodeId node,
 ExpressionInfo SemanticAnalyzer::MaterializeTemporary(
 	const ExpressionInfo& initializer)
 {
-	if (!IsClassEntity(*program_, EntityOf(initializer.type)))
+	const TypeRecord initial_type = program_->types.Get(
+		program_->types.RemoveTopCv(initializer.type));
+	if (!IsClassEntity(*program_, EntityOf(initializer.type)) &&
+		initial_type.kind != TYPE_ARRAY)
 		return initializer;
 	TypeId object_type = initializer.type;
 	const TypeRecord& outer = program_->types.Get(object_type);
@@ -2394,6 +2397,14 @@ ExpressionInfo SemanticAnalyzer::MaterializeDiscardedClassResult(
 	ExpressionInfo value)
 {
 	const DumpKind kind = dump_.nodes[value.node].kind;
+	const TypeRecord discarded_type = program_->types.Get(
+		program_->types.RemoveTopCv(value.type));
+	if (kind == DUMP_TEMPORARY_OBJECT &&
+		discarded_type.kind == TYPE_ARRAY)
+	{
+		dump_.nodes[value.node].discarded_materialization = true;
+		return value;
+	}
 	if (value.category == VALUE_PRVALUE &&
 		IsClassEntity(*program_, EntityOf(value.type)) &&
 		(kind == DUMP_CALL_EXPRESSION ||

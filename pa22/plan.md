@@ -2,126 +2,79 @@
 
 ## Stage Design and Spec Alignment
 
-PA22 extends the existing typed path
+PA22 extends the existing typed pipeline
 `SyntaxArena -> Program/SemanticAnalyzer -> SemanticGraphView -> GraphLowerer -> LowIR`.
-Canonical class/function/alias specialization tables own identity; retained patterns
-own lexical syntax and indexed declaration state; selection, completion, semantic
-use, demand, and source-oriented emission remain separate monotonic states. Member,
-friend, nested, primary, partial, and explicit definitions route through stable owner
-and pattern ordinals rather than textual keys.
+Canonical class, function, and alias tables own specialization identity; retained
+patterns own lexical syntax and source scope; lookup, completion, semantic demand,
+and emission remain separate monotonic states. Concrete member replay uses indexed
+owner/pattern identities rather than textual specialization keys.
 
-Function-template patterns now retain ordinary, constructor, and conversion roles
-explicitly. Declaration-side function-parameter names/defaults survive an
-out-of-class definition and map through trailing parameter-pack expansion before a
-specialization is declared. Class-valued call results and conversion targets are
-completed only when overload/conversion use demands their members; canonical shells
-remain memoized and incomplete until that boundary.
+Pack expansion is element-scoped: an outer expansion collects only packs it owns,
+while nested declarator packs establish a new boundary. Function-template explicit
+arguments bind to the first reachable pack and later parameters remain available
+for call deduction. A retained member-template call may reconnect to indexed
+patterns owned by the active concrete class, but does not reopen namespace lookup
+from the instantiation context. Array list-casts become typed temporary-object
+actions and lower through the existing temporary-storage boundary.
 
-Retained callable replay now combines lexical nonmember candidates with only the
-active concrete member owner's inheritance lineage. Qualified inherited calls carry
-their naming-class projection separately from the selected function owner's object
-conversion, preserving lookup provenance through typed lowering.
-
-Shape-keyed class specializations that encounter an unresolved dependent base enter
-a terminal deferred state; concrete substitutions use distinct canonical keys.
-Derived-to-base reference casts preserve xvalue storage identity, and empty-class
-copy elision is limited to aggregate-member and base-subobject initialization.
-
-Explicit nested class specializations resolve their terminal template marker in the
-completed enclosing specialization's member scope. Nested template class values
-carry special-member ABI facts through named-return and call boundaries; nontrivial
-temporary destruction enters the existing staged full-expression cleanup flow.
-
-Dependent `typename` primaries retain their structured qualified-name syntax until
-semantic replay. An unparenthesized member access in `decltype` resolves to the
-selected member's declared type; category-based reference formation remains limited
-to parenthesized and other expression forms.
-
-Retained validation defers qualified template arguments that mention source-ordered
-local values. Materialized runtime constructor demand is provisional until the
-temporary survives class-value transfer; constexpr demand remains immediate. Pack
-parameters replay through per-element scopes so cv/declarator structure is retained,
-and delegating initializer packs use the canonical prepared-argument path.
-
-This follows `spec.md` §§2–6, 8–10: canonical typed identity, indexed/provenance-aware
-lookup, retained substitution scope, demand-driven completion, typed lowering,
-bounded side storage, and observable work counters. It adds no PA23 SFINAE behavior
-and does not pull in the §7 object backend.
+This applies `spec.md` §§2–6 and 8–10: canonical typed identity, provenance-aware
+indexed lookup, retained substitution scopes, demand-driven completion, typed
+lowering, bounded side storage, and observable work counters. It adds no PA23
+SFINAE behavior and does not pull in the §7 object backend.
 
 ## Current Failure Map
 
-Current result: **258/310**. The remaining 52 failures have one primary owner each:
-member/friend callable ownership, body replay, lookup, and access 22;
-alias/template-template/pack integration 17; dependent deduction, conversion, and
-lowering 8; explicit specialization/instantiation integration 3; residual partial
-ordering/replay 2.
+Current result: **262/310**. The remaining 48 failures group by primary owner:
+member/friend/function-template ownership, replay, access, overload, and demand 28;
+alias/template-template/non-type-pack construction and qualified type lookup 18;
+partial-specialization selection/order replay 2.
 
 ## Active Checkpoint
 
-**Nested pack and dependent template-id deduction.** Owner: the outer retained pack
-pattern owns expansion syntax and source scope; each concrete function/class
-specialization owns canonical element arguments and deduction state. Data flow:
-outer pack selection -> nested expansion boundaries -> element scope -> structured
-template-id argument -> overload/deduction -> typed action. Apply `spec.md` §§2–6 and
-8–9: distinguish nested from unexpanded packs, retain value/type argument kind, and
-memoize canonical deduction. Expected work is O(pattern nodes + expanded elements +
-candidates), with indexed pack lookup. Validate outer type-pack nesting, array casts,
-template-id/`decltype` deduction, dependent non-type pack expressions, PA22, through
-PA21, audit, and 16/32/64 scaling.
+**Qualified alias and template-id pack replay.** Requirements: preserve canonical
+type/integral/template argument kind and lexical value scope through alias expansion;
+resolve structured `typename` paths through inline-namespace using edges and concrete
+class owners (`spec.md` §§2–6, 8–9). Owner and flow: retained alias/template-id syntax
+-> expansion element scope -> canonical alias arguments -> indexed namespace/class
+lookup -> demanded member type -> typed use. Expected work is
+O(pattern nodes + expanded elements + visited lookup edges + specialization
+requests), with canonical specialization memoization. Validate inline-namespace
+qualified packs, alias non-type packs and expressions, template-template arity,
+PA22, through PA21, audit, and direct 16/32/64 scaling.
 
 ## Performance Evidence
 
-Five-run 16/32/64 independent active-owner replay medians initially exposed sibling
-specialization accumulation: semantic time 6.415/13.171/30.211 ms, overload
-candidates 320/1152/4352, and specialization requests 288/1088/4224. Filtering
-retained member patterns/candidates to the active inheritance lineage reduced these
-to 3.719/6.850/13.823 ms, 80/160/320 candidates, and 48/96/192 requests. Peak stage
-storage is 0.724/1.442/2.877 MB; lookup queries are 670/1326/2638, scope visits
-1079/2135/4247, demand pushes 48/96/192, and emissions 32/64/128. Representative
-work and storage now scale linearly; lexical nonmember candidates remain available
-for using declarations and ADL.
+All entries are five-run 16/32/64 medians; times are semantic milliseconds and
+storage is peak-stage MB.
 
-Five-run 16/32/64 qualified dependent-base replay medians are
-3.472/6.228/11.842 ms semantic time and 0.593/1.128/2.254 MB peak stage storage.
-Lookup queries are 608/1184/2336, edge visits 16/32/64, specialization requests
-112/224/448, overload candidates and demand emissions 16/32/64. Partial-shape
-materialization and deduction stay constant at 1 and 15: terminal shape deferral
-prevents repeated completion while concrete specialization work scales linearly.
+| Representative path | Time | Storage | Work evidence |
+|---|---:|---:|---|
+| Active-owner callable replay | 3.719/6.850/13.823 | 0.724/1.442/2.877 | candidates 80/160/320; requests 48/96/192 |
+| Qualified dependent-base replay | 3.472/6.228/11.842 | 0.593/1.128/2.254 | lookups 608/1184/2336; requests 112/224/448 |
+| Nested explicit specialization | 1.447/2.753/5.341 | 0.371/0.737/1.471 | lookups 341/677/1349; layouts 32/64/128 |
+| Dependent primary/member `decltype` | 6.682/13.086/26.165 | 1.263/2.426/4.817 | lookups 1354/2650/5242; deduction 160/320/640 |
+| Retained locals/concrete packs | 7.464/14.329/28.251 | 1.428/2.844/5.649 | lookups 1807/3567/7087; requests 241/481/961 |
+| Direct retained deduction + array pack | 2.613/6.618/7.578 | 0.573/0.917/1.823 | lookups 443/827/1595; requests 52/100/196; instructions 55/103/199; candidates fixed at 2 |
 
-Five-run 16/32/64 independent nested explicit-specialization medians are
-1.447/2.753/5.341 ms semantic time and 0.371/0.737/1.471 MB peak stage storage.
-Lookup queries are 341/677/1349, scope visits 32/64/128, specialization requests
-48/96/192 with 16/32/64 cache hits, and layouts 32/64/128. Enclosing-owner
-resolution and terminal member-scope lookup therefore scale linearly.
-
-Five-run 16/32/64 combined dependent-primary and member-`decltype` replay medians
-are 6.682/13.086/26.165 ms semantic time and 1.263/2.426/4.817 MB peak stage storage.
-Lookup queries are 1354/2650/5242, scope visits 890/1738/3434, specialization
-requests 162/322/642 with 63/127/255 cache hits, partial deduction visits
-160/320/640, and demand emissions 48/96/192. Work and storage remain linear.
-
-Five-run 16/32/64 retained-local transfer plus concrete pack replay medians are
-7.464/14.329/28.251 ms semantic time and 1.428/2.844/5.649 MB peak stage storage.
-Lookup queries are 1807/3567/7087, scope visits 1340/2652/5276, specialization
-requests 241/481/961 with 175/351/703 cache hits, temporary dependency visits
-438/870/1734, and demand emissions 35/67/131. Provisional-demand traversal and
-per-element substitution therefore remain linear.
+The current direct-pack benchmark excludes recursive index-sequence construction;
+lookup, specialization, storage, and emitted-instruction counters scale linearly.
 
 ## Completed Checkpoints
 
 | Checkpoint | Result |
 |---|---|
-| `5d70a120` + `26eafabe` canonical partial selection | Stable owner/revision/substitution and pack identity; PA22 82 -> 112, prior 2329/2329. |
-| `da807b9f` member-template attachment | Indexed member calls, retained late definitions, and template-head identity; PA22 112 -> 145. |
-| `b0f34797` alias/template entity graph | Typed alias cache, template-template identity, proxy deduction, defaults/packs; PA22 145 -> 192. |
-| `88ab9ab1` explicit specialization/instantiation | Canonical targets, extern suppression, definition demand, and class state transitions; PA22 192 -> 208. |
-| `03b7bf00` friend-template ownership | Namespace/member owners, hidden ADL edges, grant propagation, and protected access; PA22 208 -> 221. |
-| `403c1ff5` partial-member ownership | Exact primary/partial routing and naming-class access provenance; PA22 221 -> 229. |
-| `c52d6734` nested owner routing | Staged nested transfer, lexical overlays, and structured terminal lookup; PA22 229 -> 234. |
-| `98e953dd` explicit-member replacement | In-place primary replacement, semantic-use reset guard, and explicit shell publication; PA22 234 -> 240. |
-| Callable role, metadata, and demand boundary | Constructor/conversion role split, declaration metadata inheritance with pack mapping, and demanded result/target completion; PA22 240 -> 245, prior 2329/2329, audit pass. |
-| Dependent callable replay and lookup provenance | Active-owner/base lookup with lexical using/ADL retention, open-class deferral, qualified projection provenance, and linear owner filtering; PA22 245 -> 248, prior 2329/2329, audit pass. |
-| Qualified and nested callable owner replay | Terminal dependent-base shape deferral, current-owner lookup, base-reference xvalues, and scoped empty-subobject elision; PA22 248 -> 251, prior 2329/2329, audit pass. |
-| Nested explicit specialization and prvalue lifecycle | Enclosing member-scope target lookup, nested nontrivial value ABI, and staged temporary cleanup; PA22 251 -> 253, prior 2329/2329, audit pass. |
-| Dependent primary and member-`decltype` typing | Structured leading-`typename` primaries and declared-type member `decltype`; PA22 253 -> 255, prior 2329/2329, audit pass; linear 16/32/64 replay. |
-| Retained local transfer and concrete pack replay | Local-value deferral, typed aggregate transfer, monotonic surviving-temporary demand, cv-aware pack parameters, and delegating argument expansion; PA22 255 -> 258, prior 2329/2329, audit pass; linear 16/32/64 replay. |
+| Canonical partial selection (`5d70a120`, `26eafabe`) | Stable owner/revision/substitution and pack identity; PA22 82 -> 112. |
+| Member-template attachment (`da807b9f`) | Indexed member calls, retained definitions, and template-head identity; 112 -> 145. |
+| Alias/template entity graph (`b0f34797`) | Typed alias cache, template-template identity, defaults, packs, and proxy deduction; 145 -> 192. |
+| Explicit specialization/instantiation (`88ab9ab1`) | Canonical targets, extern suppression, demand, and class transitions; 192 -> 208. |
+| Friend-template ownership (`03b7bf00`) | Namespace/member owners, hidden ADL, grants, and protected access; 208 -> 221. |
+| Partial-member ownership (`403c1ff5`) | Primary/partial routing and naming-class provenance; 221 -> 229. |
+| Nested owner routing (`c52d6734`) | Nested transfer, lexical overlays, and terminal structured lookup; 229 -> 234. |
+| Explicit-member replacement (`98e953dd`) | In-place replacement, reset guard, and explicit shell publication; 234 -> 240. |
+| Callable metadata and demand | Callable roles, declaration metadata inheritance, parameter-pack mapping, and result completion; 240 -> 245. |
+| Dependent callable provenance | Active owner/base filtering with lexical using/ADL retention and qualified projection; 245 -> 248. |
+| Qualified/nested callable replay | Terminal base-shape deferral, base-reference xvalues, and scoped empty-subobject elision; 248 -> 251. |
+| Nested specialization/prvalue lifecycle | Enclosing member lookup, nested value ABI, and staged temporary cleanup; 251 -> 253. |
+| Dependent primary/member `decltype` | Structured leading `typename` and declared-type member `decltype`; 253 -> 255. |
+| Retained locals/concrete packs (`4edd7339`) | Local-value deferral, aggregate transfer, provisional demand, pack scopes, and delegation replay; 255 -> 258. |
+| Nested packs/function-template replay | Nested expansion boundaries, direct kind validation, explicit pack allocation, active-class retained lookup, and array-temporary lowering; 258 -> 262, prior 2329/2329, audit pass. |

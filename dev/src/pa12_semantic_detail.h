@@ -403,6 +403,8 @@ private:
 		std::vector<ExpressionInfo>* arguments);
 	void CollectPackExpansionNames(NodeId node, ScopeId scope,
 		std::vector<NameId>* names) const;
+	void CollectPackExpansionNamesImpl(NodeId node, ScopeId scope,
+		std::vector<NameId>* names, bool root) const;
 	bool ExpandPackElementScopes(NodeId pattern, ScopeId scope,
 		std::vector<ScopeId>* element_scopes);
 	void BindLexicalTypeNames(NodeId pattern, ScopeId lexical_owner,

@@ -375,8 +375,18 @@ void RetainedTemplateValidator::ValidateKnownTemplateArgumentKinds(
 				const TemplateParameter& destination =
 					TemplateParameterForArgument(pattern.parameters, argument);
 				const NodeId syntax = arguments[argument];
-				const TemplateParameter* source =
-					TemplateParameterUsedBy(syntax);
+				const NodeId type_id = analyzer_.arena_->IsTag(
+					syntax, "type-id") ? syntax :
+					analyzer_.FindChild(syntax, "type-id");
+				const NodeId specifiers = type_id == kNoNode ? kNoNode :
+					analyzer_.FindChild(type_id, "type-specifier-seq");
+				const NodeId direct_name = specifiers == kNoNode ? kNoNode :
+					analyzer_.FirstSemanticChild(specifiers);
+				const TemplateParameter* source = direct_name == kNoNode ? 0 :
+					TemplateParameterUsedBy(direct_name);
+				const NameId direct_id = direct_name == kNoNode ? 0 :
+					analyzer_.program_->names.UseInterned(
+						analyzer_.arena_->SemanticPayloadId(direct_name));
 				const NodeId abstract = analyzer_.FindChild(
 					syntax, "abstract-declarator");
 				const NodeId declarator = abstract == kNoNode ?
@@ -384,7 +394,7 @@ void RetainedTemplateValidator::ValidateKnownTemplateArgumentKinds(
 				const bool direct_type_pack = declarator != kNoNode &&
 					analyzer_.FindChild(
 						declarator, "parameter-pack") != kNoNode;
-				if (source && source->pack &&
+				if (source && direct_id == source->name && source->pack &&
 					direct_type_pack &&
 					source->kind != destination.kind)
 					throw std::runtime_error(
@@ -1247,6 +1257,28 @@ void SemanticAnalyzer::CompleteFunctionCallTemplateCandidates(NodeId callee,
 		retained_call_template_sets_.Find(callee);
 	std::vector<std::size_t> patterns = retained_templates ?
 		retained_templates->Copy() : std::vector<std::size_t>();
+	NamePath retained_name = StructuredNamePath(callee);
+	if (retained_name.Empty()) retained_name = ParseNamePath(spelling);
+	if (current_class_context_ != kNoEntity && !retained_name.Empty() &&
+		!retained_name.global && retained_name.Size() == 1)
+	{
+		const ScopeId member_scope =
+			program_->entities[current_class_context_].member_scope;
+		if (member_scope != kNoScope)
+		{
+			const std::uint64_t key =
+				(static_cast<std::uint64_t>(member_scope) << 32) |
+				retained_name.Last();
+			const CompactIndexSequence* active_patterns =
+				template_function_sets_.Find(key);
+			if (active_patterns)
+				for (std::size_t i = 0; i < active_patterns->Size(); ++i)
+					if (std::find(patterns.begin(), patterns.end(),
+						(*active_patterns)[i]) == patterns.end())
+						patterns.push_back((*active_patterns)[i]);
+			*naming_class = current_class_context_;
+		}
+	}
 	if (current_function_context_ != kNoBinding)
 	{
 		const FunctionInfo& current = GetFunction(current_function_context_);

@@ -109,9 +109,23 @@ NameId SemanticAnalyzer::FunctionParameterPackName(NodeId declarator)
 void SemanticAnalyzer::CollectPackExpansionNames(NodeId node, ScopeId scope,
 	std::vector<NameId>* names) const
 {
+	CollectPackExpansionNamesImpl(node, scope, names, true);
+}
+
+void SemanticAnalyzer::CollectPackExpansionNamesImpl(NodeId node, ScopeId scope,
+	std::vector<NameId>* names, bool root) const
+{
 	if (node == kNoNode ||
 		arena_->IsTag(node, "pack-expansion-expression") ||
 		arena_->IsTag(node, "sizeof-pack-expression")) return;
+	if (!root && arena_->IsTag(node, "type-id"))
+	{
+		NodeId declarator = FindChild(node, "abstract-declarator");
+		if (declarator == kNoNode)
+			declarator = FindChild(node, "declarator");
+		if (declarator != kNoNode &&
+			FindChild(declarator, "parameter-pack") != kNoNode) return;
+	}
 	const bool can_name_pack =
 		arena_->IsTag(node, "id-expression") ||
 		arena_->IsTag(node, "type-name") ||
@@ -135,7 +149,8 @@ void SemanticAnalyzer::CollectPackExpansionNames(NodeId node, ScopeId scope,
 	}
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
-		CollectPackExpansionNames(arena_->EdgeChild(edge), scope, names);
+		CollectPackExpansionNamesImpl(
+			arena_->EdgeChild(edge), scope, names, false);
 }
 
 bool SemanticAnalyzer::ExpandPackElementScopes(NodeId pattern, ScopeId scope,
@@ -155,7 +170,10 @@ bool SemanticAnalyzer::ExpandPackElementScopes(NodeId pattern, ScopeId scope,
 			length = packs[source].size();
 		else if (length != packs[source].size())
 			throw std::runtime_error(
-				"pack expansion operands have different lengths");
+				"pack expansion operands have different lengths at " +
+				program_->names.Get(names[source]) + ": " +
+				std::to_string(length) + " versus " +
+				std::to_string(packs[source].size()));
 	}
 	element_scopes->reserve(element_scopes->size() + length);
 	for (std::size_t element = 0; element < length; ++element)
