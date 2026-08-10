@@ -2846,6 +2846,7 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		stats_->unwind_cleanup_action_visits =
 			unwind_cleanup_action_visits_;
 		stats_->temporary_dependency_visits = temporary_dependency_visits_;
+		stats_->materialized_demand_visits = materialized_demand_visits_;
 		stats_->nonthrowing_action_visits = nonthrowing_action_visits_;
 		PublishStaticConstantEvaluationStats();
 		stats_->empty_destructor_chain_visits = empty_destructor_chain_visits_;

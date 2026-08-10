@@ -215,6 +215,7 @@ void SemanticAnalyzer::DemandMaterializedConstructorActions(
 		DumpNode& record = dump_.nodes[current];
 		if (!visit.entered)
 		{
+			++materialized_demand_visits_;
 			visit.entered = true;
 			visit.next_edge = record.first_edge;
 			if (demand_calls && record.kind == DUMP_CALL_EXPRESSION &&

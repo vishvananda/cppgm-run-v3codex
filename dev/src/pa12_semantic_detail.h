@@ -92,6 +92,7 @@ public:
 		  unwind_cleanup_scope_visits_(0),
 		  unwind_cleanup_action_visits_(0),
 		  temporary_dependency_visits_(0),
+		  materialized_demand_visits_(0),
 		  nonthrowing_action_visits_(0),
 		  static_constant_initializer_visits_(0),
 		  static_constant_dependency_edges_(0),
@@ -1366,6 +1367,7 @@ private:
 	std::size_t unwind_cleanup_scope_visits_;
 	std::size_t unwind_cleanup_action_visits_;
 	std::size_t temporary_dependency_visits_;
+	std::size_t materialized_demand_visits_;
 	mutable std::size_t nonthrowing_action_visits_;
 	std::size_t static_constant_initializer_visits_;
 	std::size_t static_constant_dependency_edges_;

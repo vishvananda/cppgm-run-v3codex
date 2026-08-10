@@ -732,6 +732,8 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << semantic.unwind_cleanup_action_visits
 			 << " temporary_dependency_visits="
 			 << semantic.temporary_dependency_visits
+			 << " materialized_demand_visits="
+			 << semantic.materialized_demand_visits
 			 << " nonthrowing_action_visits="
 			 << semantic.nonthrowing_action_visits
 			 << " static_constant_initializer_visits="
