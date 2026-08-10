@@ -304,6 +304,41 @@ ExpressionInfo SemanticAnalyzer::ApplyMemberObjectTarget(
 	return value;
 }
 
+bool SemanticAnalyzer::ApplyQualifiedMemberNamingTarget(ExpressionInfo* value,
+	EntityId naming_class, BindingId member)
+{
+	if (!value || naming_class == kNoEntity || member == kNoBinding ||
+		member >= program_->bindings.size()) return false;
+	const FunctionInfo& function = GetFunction(member);
+	const EntityId function_owner = EntityOf(function.member_owner);
+	TypeId source = program_->types.RemoveTopCv(EffectiveType(value->type));
+	const TypeRecord source_record = program_->types.Get(source);
+	if (source_record.kind == TYPE_POINTER)
+		source = program_->types.RemoveTopCv(source_record.child);
+	const EntityId source_class = EntityOf(source);
+	if (source_class == kNoEntity || function_owner == kNoEntity ||
+		source_class == naming_class || naming_class == function_owner ||
+		!program_->IsBaseOf(naming_class, source_class) ||
+		!program_->IsBaseOf(function_owner, naming_class)) return false;
+	TypeId naming_type = program_->entities[naming_class].type;
+	const TypeRecord function_type = program_->types.Get(function.type);
+	if ((function_type.cv & CV_CONST) != 0)
+		naming_type = program_->types.Qualify(naming_type, CV_CONST);
+	if ((function_type.cv & CV_VOLATILE) != 0)
+		naming_type = program_->types.Qualify(naming_type, CV_VOLATILE);
+	const TypeId target = program_->types.Pointer(naming_type);
+	ObjectConversionFact conversion;
+	conversion.rank = MemberObjectConversion(*value, target, member);
+	const std::size_t projections = BaseProjectionCount(value->type, target);
+	if (conversion.rank != CONVERSION_DERIVED_TO_BASE ||
+		projections == std::numeric_limits<std::size_t>::max() ||
+		projections > std::numeric_limits<std::uint32_t>::max()) return false;
+	conversion.base_projection_count =
+		static_cast<std::uint32_t>(projections);
+	*value = ApplyMemberObjectTarget(*value, target, member, &conversion);
+	return true;
+}
+
 ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 {
 	const NodeId type_id = FindChild(node, "type-id");

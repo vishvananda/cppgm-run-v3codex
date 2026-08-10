@@ -500,10 +500,12 @@ void SemanticAnalyzer::ConfigureSynthesizedStoragePrefix(EntityId entity,
 		const BindingRecord& member = program_->bindings[members[i]];
 		bool is_const = false;
 		bool is_reference = false;
-		(void)SubobjectClass(
+		const EntityId subobject = SubobjectClass(
 			*program_, member.type, &is_const, &is_reference);
 		(void)is_const;
-		if (is_reference)
+		const bool empty_subobject = subobject != kNoEntity &&
+			program_->entities[subobject].empty_class;
+		if (is_reference || empty_subobject)
 		{
 			function->synthesized_memberwise_copy = true;
 			if (member.member_offset == 0) return;
@@ -934,7 +936,7 @@ void SemanticAnalyzer::AddSynthesizedAssignmentBody(
 
 	if (function.trivial_special_member &&
 		owner.direct_base == kNoEntity && !owner.empty_class &&
-		!has_bit_fields)
+		!function.synthesized_memberwise_copy && !has_bit_fields)
 	{
 		const std::uint32_t step = MakeDump(
 			DUMP_SPECIAL_MEMBER_SUBOBJECT_ACTION, owner.type);

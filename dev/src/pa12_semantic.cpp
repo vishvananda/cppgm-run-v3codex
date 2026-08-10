@@ -1091,8 +1091,13 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 		if (!object) throw std::logic_error("selected member call has no object");
 		const TypeId object_parameter =
 			program_->types.Parameters(callable_type)[0];
+		ExpressionInfo qualified_object = *object;
+		const bool split_qualified_projection = suppress_virtual_dispatch &&
+			ApplyQualifiedMemberNamingTarget(
+				&qualified_object, naming_class, selected);
 		converted_object = ApplyMemberObjectTarget(
-			*object, object_parameter, selected, object_conversion);
+			qualified_object, object_parameter, selected,
+			split_qualified_projection ? 0 : object_conversion);
 		dump_.Add(call, converted_object.node);
 		constexpr_receiver = &converted_object;
 	}

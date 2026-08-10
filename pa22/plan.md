@@ -17,6 +17,11 @@ specialization is declared. Class-valued call results and conversion targets are
 completed only when overload/conversion use demands their members; canonical shells
 remain memoized and incomplete until that boundary.
 
+Retained callable replay now combines lexical nonmember candidates with only the
+active concrete member owner's inheritance lineage. Qualified inherited calls carry
+their naming-class projection separately from the selected function owner's object
+conversion, preserving lookup provenance through typed lowering.
+
 This follows `spec.md` §§2–6, 8–10: canonical typed identity, indexed/provenance-aware
 lookup, retained substitution scope, demand-driven completion, typed lowering,
 bounded side storage, and observable work counters. It adds no PA23 SFINAE behavior
@@ -24,40 +29,36 @@ and does not pull in the §7 object backend.
 
 ## Current Failure Map
 
-Current result: **245/310**. The remaining 65 failures have one primary owner each:
-member/friend callable ownership, body replay, lookup, and access 29;
+Current result: **248/310**. The remaining 62 failures have one primary owner each:
+member/friend callable ownership, body replay, lookup, and access 26;
 alias/template-template/pack integration 20; dependent deduction, conversion, and
 lowering 10; explicit specialization/instantiation integration 4; residual partial
 ordering/replay 2.
 
 ## Active Checkpoint
 
-**Dependent callable replay and lookup provenance.** Owner: each instantiated
-function owns one lexical template-argument overlay, while its concrete member owner
-and naming class own access and indexed candidate lookup. Data flow: retained body ->
-specialization lexical scope -> dependent member/unqualified name replay -> indexed
-member/base/using and ADL edges -> overload selection -> demand and typed emission.
-Apply `spec.md` §§3–6 and 9: preserve naming-class and ordinary-vs-ADL provenance,
-defer bodies past open classes, and cache replay per specialization. Expected work is
-O(body nodes + owner depth + visited name/ADL edges + viable candidates), with no
-unrelated-template scan. Validate open-class body deferral, local-using plus ADL,
-dependent base/super calls, using-imported members, nested member templates, PA22,
-through PA21, audit, and 16/32/64 indexed-owner probes.
+**Qualified and nested callable owner replay.** Owner: the concrete specialization's
+member scope owns lookup, retained lexical scopes own nonmember visibility, and the
+canonical callable owns demand/emission. Data flow: retained qualified/nested syntax
+-> substituted scope carriers -> indexed active-owner/base/using lookup -> overload
+and access -> demand -> typed lowering. Apply `spec.md` §§3–6 and 9: preserve owner
+and naming-class provenance, make nested/current-owner substitution monotonic, and
+avoid whole-template scans. Expected work is O(body nodes + qualifier components +
+owner depth + visited lookup edges + viable candidates). Validate local-qualified
+argument replay, nested current-owner and member templates, using-imported active
+owners, out-of-class copy assignment, PA22, through PA21, audit, and 16/32/64 probes.
 
 ## Performance Evidence
 
-Five-run medians for 16/32/64 independent calls whose result specialization is
-initially blocked by its open class owner are 3.818/7.596/14.498 ms semantic time and
-0.904/1.799/3.588 MB peak stage storage. Layouts are 32/64/128, specialization
-requests 144/288/576, cache hits 112/224/448, overload candidates 272/544/1088, and
-demand pushes/emissions 48/96/192. Time, storage, and every representative counter
-scale linearly; result/target completion revisits only the demanded canonical shell.
-
-Earlier audited 16/32/64 probes likewise showed linear retained-member, alias,
-explicit-instantiation, hidden-friend, exact-owner, and nested-owner construction.
-Exact explicit-member replacement kept selected candidates, demand, and emission
-constant as unrelated concrete owners grew; the known all-pairs partial-registration
-deduction counter remains a later optimization target.
+Five-run 16/32/64 independent active-owner replay medians initially exposed sibling
+specialization accumulation: semantic time 6.415/13.171/30.211 ms, overload
+candidates 320/1152/4352, and specialization requests 288/1088/4224. Filtering
+retained member patterns/candidates to the active inheritance lineage reduced these
+to 3.719/6.850/13.823 ms, 80/160/320 candidates, and 48/96/192 requests. Peak stage
+storage is 0.724/1.442/2.877 MB; lookup queries are 670/1326/2638, scope visits
+1079/2135/4247, demand pushes 48/96/192, and emissions 32/64/128. Representative
+work and storage now scale linearly; lexical nonmember candidates remain available
+for using declarations and ADL.
 
 ## Completed Checkpoints
 
@@ -72,3 +73,4 @@ deduction counter remains a later optimization target.
 | `c52d6734` nested owner routing | Staged nested transfer, lexical overlays, and structured terminal lookup; PA22 229 -> 234. |
 | `98e953dd` explicit-member replacement | In-place primary replacement, semantic-use reset guard, and explicit shell publication; PA22 234 -> 240. |
 | Callable role, metadata, and demand boundary | Constructor/conversion role split, declaration metadata inheritance with pack mapping, and demanded result/target completion; PA22 240 -> 245, prior 2329/2329, audit pass. |
+| Dependent callable replay and lookup provenance | Active-owner/base lookup with lexical using/ADL retention, open-class deferral, qualified projection provenance, and linear owner filtering; PA22 245 -> 248, prior 2329/2329, audit pass. |

@@ -1228,7 +1228,82 @@ void SemanticAnalyzer::CompleteFunctionCallTemplateCandidates(NodeId callee,
 	if (current_function_context_ != kNoBinding)
 	{
 		const FunctionInfo& current = GetFunction(current_function_context_);
-		if (current.template_pattern != kNoDumpEdge &&
+		const BindingRecord& current_binding =
+			program_->bindings[current_function_context_];
+		NamePath active_name = StructuredNamePath(callee);
+		if (active_name.Empty()) active_name = ParseNamePath(spelling);
+		if (current.member_owner != kNoType &&
+			!active_name.Empty() && !active_name.global &&
+			current_binding.member_owner != kNoEntity)
+		{
+			const EntityId active_entity = current_binding.member_owner;
+			patterns.erase(std::remove_if(patterns.begin(), patterns.end(),
+				[this, active_entity](std::size_t pattern_index) {
+					const FunctionTemplatePattern& pattern =
+						function_templates_[pattern_index];
+					const EntityId owner = pattern.static_member ? kNoEntity :
+						program_->EntityForScope(pattern.owner);
+					return owner != kNoEntity && owner != active_entity &&
+						!program_->IsBaseOf(owner, active_entity);
+				}), patterns.end());
+			candidates->erase(std::remove_if(candidates->begin(), candidates->end(),
+				[this, active_entity](BindingId candidate) {
+					const BindingRecord& declaration =
+						program_->bindings[candidate];
+					const EntityId owner = declaration.static_member_function ?
+						kNoEntity : declaration.member_owner;
+					return owner != kNoEntity && owner != active_entity &&
+						!program_->IsBaseOf(owner, active_entity);
+				}), candidates->end());
+			const ScopeId active_owner =
+				program_->entities[active_entity].member_scope;
+			if (active_name.Size() > 1 && active_owner != kNoScope)
+			{
+				const LookupResult qualifier = program_->LookupDirect(
+					active_owner, active_name[0], LOOKUP_SCOPE_CARRIER);
+				if (qualifier.type != kNoType ||
+					qualifier.name_space != kNoScope)
+				{
+					patterns = FindStructuredFunctionTemplates(callee, scope);
+					*candidates = FunctionCallCandidates(
+						scope, spelling, naming_class, callee);
+					const LookupResult active_lookup = LookupStructuredName(
+						callee, scope, LOOKUP_FUNCTION_TEMPLATE);
+					if (active_lookup.naming_class != kNoEntity)
+						*naming_class = active_lookup.naming_class;
+				}
+			}
+			if (active_name.Size() == 1)
+			{
+				const LookupResult active_lookup = active_owner == kNoScope ?
+					LookupResult() : LookupPath(
+						active_owner, active_name, LOOKUP_FUNCTION_TEMPLATE);
+				if (active_lookup.naming_class != kNoEntity)
+				{
+					*naming_class = active_lookup.naming_class;
+					const NameId name = active_name.Last();
+					for (std::size_t owner = 0;
+						owner < active_lookup.FunctionTemplateOwnerCount(); ++owner)
+					{
+						const std::uint64_t key =
+							(static_cast<std::uint64_t>(
+								active_lookup.FunctionTemplateOwnerAt(owner)) << 32) |
+							name;
+						const CompactIndexSequence* active_patterns =
+							template_function_sets_.Find(key);
+						if (!active_patterns) continue;
+						for (std::size_t i = 0;
+							i < active_patterns->Size(); ++i)
+							if (std::find(patterns.begin(), patterns.end(),
+								(*active_patterns)[i]) == patterns.end())
+								patterns.push_back((*active_patterns)[i]);
+					}
+				}
+			}
+		}
+		if (!active_name.Empty() && !active_name.global &&
+			active_name.Size() == 1 &&
+			current.template_pattern != kNoDumpEdge &&
 			current.template_pattern < function_templates_.size() &&
 			function_templates_[current.template_pattern].name ==
 				program_->names.Intern(spelling) &&

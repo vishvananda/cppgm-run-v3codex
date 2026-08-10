@@ -618,7 +618,13 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 				argument, left_parameters[a], right_parameters[a]);
 			if (preference != 0) return preference > 0;
 		}
-		return false;
+		const FunctionInfo& left_function = GetFunction(candidates[left]);
+		const FunctionInfo& right_function = GetFunction(candidates[right]);
+		const int template_preference = CompareFunctionTemplateConstraints(
+			left_function, right_function);
+		if (template_preference != 0) return template_preference > 0;
+		return !left_function.template_specialization &&
+			right_function.template_specialization;
 	};
 	std::size_t champion = candidates.size();
 	std::size_t viable_count = 0;

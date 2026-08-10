@@ -958,6 +958,8 @@ private:
 	ExpressionInfo ApplyMemberObjectTarget(ExpressionInfo value,
 		TypeId target, BindingId member,
 		const ObjectConversionFact* conversion_fact = 0);
+	bool ApplyQualifiedMemberNamingTarget(ExpressionInfo* value,
+		EntityId naming_class, BindingId member);
 	ConversionRank Conversion(TypeId source, ValueCategory category,
 		bool integer_zero, TypeId target) const;
 	ConversionRank Conversion(const ExpressionInfo& source, TypeId target) const;

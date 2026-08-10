@@ -200,11 +200,50 @@ bool SemanticAnalyzer::AnalyzeAmbiguousDirectInitializer(
 	const NodeId call_name = arena_->EdgeChild(call_edge);
 	const std::string call_spelling = PayloadSource(call_name);
 	const NamePath structured = StructuredNamePath(call_name);
+	const NodeId call_declarator = FindChild(provisional, "declarator");
+	if (call_declarator == kNoNode)
+	{
+		const LookupResult value = structured.Empty() ?
+			LookupSpelling(scope, call_spelling, LOOKUP_ORDINARY) :
+			LookupStructuredName(call_name, scope, LOOKUP_ORDINARY);
+		if (value.ordinary == kNoBinding) return false;
+		const SpecInfo spec = BuildSpecifiers(specifiers, scope,
+			program_->names.Get(variable_name), true);
+		const LookupResult occupied =
+			program_->LookupDirect(scope, variable_name, LOOKUP_ORDINARY);
+		if (occupied.ordinary != kNoBinding)
+			throw std::runtime_error("duplicate local variable");
+		const BindingId binding = program_->AddBinding(scope, BIND_VARIABLE,
+			variable_name, spec.type);
+		PublishVariableDeclarationFacts(binding, scope, variable_name,
+			spec.type, spec, true);
+		std::vector<NodeId> argument_syntax(1, call_name);
+		std::vector<ExpressionInfo> arguments(1,
+			AnalyzeNamedValue(call_spelling, scope, kNoType, call_name));
+		ExpressionInfo initializer;
+		if (IsClassObjectType(spec.type))
+		{
+			initializer.node = BuildConstructorAction(spec.type, scope,
+				argument_syntax, false, false, false, true, kNoNode,
+				&arguments);
+			initializer.type = spec.type;
+			initializer.category = VALUE_PRVALUE;
+		}
+		else initializer = ApplyTarget(arguments[0], spec.type);
+		const std::uint32_t owner = MakeDump(DUMP_SIMPLE_DECLARATION);
+		const std::uint32_t variable = MakeDump(DUMP_VARIABLE, spec.type,
+			VALUE_NONE, variable_name, binding);
+		dump_.Add(variable, initializer.node);
+		dump_.Add(owner, variable);
+		dump_.Add(output_parent, owner);
+		AddLifetimeObligation(scope, binding, spec.type);
+		AppendFullExpressionDestructionActions(initializer.node, owner);
+		return true;
+	}
 	if (FunctionCallCandidates(scope, call_spelling, 0, call_name).empty() &&
 		(structured.Empty() ? FindFunctionTemplates(scope, call_spelling) :
 		 FindFunctionTemplates(scope, structured)).empty())
 		return false;
-	const NodeId call_declarator = FindChild(provisional, "declarator");
 	const NodeId call_clause = call_declarator == kNoNode ? kNoNode :
 		FindChild(call_declarator, "parameter-clause");
 	const std::uint32_t argument_edge = call_clause == kNoNode ? kNoEdge :
