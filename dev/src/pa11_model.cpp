@@ -611,6 +611,7 @@ BindingRecord::BindingRecord()
 	  constant(false), nonthrowing(false), unnamed_namespace_linkage(false),
 	  thread_local_storage(false),
 	  non_static_data_member(false), mutable_member(false), bit_field(false),
+	  anonymous_union_storage(false),
 	  static_member_function(false),
 	  has_default_member_initializer(false), conversion_function(false),
 	  constructor(false),

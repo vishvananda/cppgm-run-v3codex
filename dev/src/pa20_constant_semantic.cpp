@@ -369,6 +369,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 	const std::vector<ExpressionInfo>* prepared_arguments)
 {
 	const EntityId cast_entity = EntityOf(cast_type);
+	const bool reference_target = target != kNoType &&
+		(program_->types.Get(target).kind == TYPE_LVALUE_REFERENCE ||
+		 program_->types.Get(target).kind == TYPE_RVALUE_REFERENCE);
 	if (argument_syntax.size() == 1)
 	{
 		const ExpressionInfo operand = prepared_arguments ?
@@ -405,6 +408,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 				cast_type, result.node, true);
 			return MaterializeTemporary(result);
 		}
+		if (reference_target) result = MaterializeTemporary(result);
 		return ApplyTarget(result, target);
 	}
 	if (program_->entities[cast_entity].is_aggregate && argument_syntax.empty())
@@ -431,6 +435,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 			dump_.nodes[constructor].value_initialization = true;
 			dump_.nodes[result.node].value_constructor = constructor;
 		}
+		if (reference_target) result = MaterializeTemporary(result);
 		return ApplyTarget(result, target);
 	}
 	ExpressionInfo result;

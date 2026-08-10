@@ -108,7 +108,7 @@ int SemanticAnalyzer::CompareFunctionTemplateConstraints(
 	const FunctionInfo& left, const FunctionInfo& right) const
 {
 	if (!left.template_specialization || !right.template_specialization ||
-		left.type != right.type || left.template_pattern == kNoDumpEdge ||
+		left.template_pattern == kNoDumpEdge ||
 		right.template_pattern == kNoDumpEdge ||
 		left.template_pattern >= function_templates_.size() ||
 		right.template_pattern >= function_templates_.size())

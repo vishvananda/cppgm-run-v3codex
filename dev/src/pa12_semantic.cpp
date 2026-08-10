@@ -1985,6 +1985,7 @@ void SemanticAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 			const NameId storage_name = program_->names.Intern(generated.str());
 			const BindingId storage = program_->AddBinding(scope, BIND_VARIABLE,
 				storage_name, type);
+			program_->bindings[storage].anonymous_union_storage = true;
 			const std::uint32_t simple = MakeDump(DUMP_SIMPLE_DECLARATION);
 			const std::uint32_t variable = MakeDump(DUMP_VARIABLE, type,
 				VALUE_NONE, storage_name, storage);

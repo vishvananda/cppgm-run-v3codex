@@ -53,23 +53,25 @@ SFINAE behavior and does not pull in the §7 object backend.
 
 ## Current Failure Map
 
-Current result: **300/310**. The 10 remaining failures group by shared behavior
-and owner: retained expression/declaration rejection 4; empty-class call/result
+Current result: **303/310**. The 7 remaining failures group by shared behavior
+and owner: canonical captureless-closure semantics 1; empty-class call/result
 transfer 2; member projection/scalar immediate conversion 2; retained emission
 naming/order 1; local-static oracle staging 1.
 
 ## Active Checkpoint
 
-**Retained expression/declaration acceptance (four mapped failures).**
-Requirements: dependent expressions retain syntax, owner, lookup provenance, and
-parameter kinds until concrete replay; nondependent lazy definitions and anonymous
-storage use canonical declarations without premature overload or constructor
-rejection (`spec.md` §§2–6, 8–9). Owner and flow: retained syntax/source scope ->
-substitution and indexed lookup -> one concrete semantic graph -> demand. Expected
-work is O(retained nodes + concrete candidates), with one replay per canonical
-specialization and no namespace rescan. Validate the lazy constexpr-header,
-anonymous-union storage, chained member-template lambda, and shadowed non-type
-member-template cases; then PA22, through PA21, audit, and 16/32/64 replay scaling.
+**Canonical captureless-closure semantics (one substantial mapped failure).**
+Requirements: each concrete lambda expression owns a canonical closure entity and
+const call operator; retained non-primary function bodies preserve distinct source
+occurrences even when token anchors collide; closure identity participates in
+template deduction, demand, lowering, and ABI metadata (`spec.md` §§2–6, 8–10).
+Owner and flow: retained lambda syntax plus concrete body/source identity -> closure
+entity and call-operator declaration -> template argument deduction -> demanded
+body graph -> typed object/call lowering and ABI name. Expected work is O(lambda
+syntax/body nodes + concrete closure instantiations), with indexed identity and no
+body or namespace rescan. Validate the chained two-lambda member-template case,
+focused captureless construction/call cases, PA22, through PA21, audit, and
+16/32/64 closure scaling.
 
 ## Performance Evidence
 
@@ -97,6 +99,7 @@ storage is peak-stage MB.
 | Specialized static definition demand | 1.469/2.523/4.784 | 0.305/0.602/1.196 | lookups 367/719/1423; requests 48/96/192; demand/static visits 16/32/64; globals 17/33/65 |
 | Class-scope type/conversion materialization | 28.627/49.773/97.823 | 2.383/4.569/9.108 | lookups 2775/5431/10743; ADL declarations 128/256/512; candidates 672/1344/2688; requests 336/672/1344; demand 32/64/128 |
 | Typed zero/address/conditional lifetime | 4.476/6.053/14.448 | 0.499/0.945/1.876 | lowered nodes 262/518/1030; instructions 328/648/1288; conditional lifetime slots fixed at 0 |
+| Retained call/declaration acceptance | 7.788/14.449/29.725 | 1.717/3.330/6.567 | semantic nodes 756/1508/3012; order comparisons 96/192/384; member actions 16/32/64; requests 177/353/705; instructions 322/642/1282 |
 
 The alias benchmark confirms linear specialization requests and constexpr call/step
 counts. Its recursive variadic `cx_plus` evaluator retains 440/1648/6368 local-index
@@ -142,6 +145,10 @@ The typed-value benchmark repeats empty value initialization, literal-zero point
 calls, copy-constructor defaults, and trivial conditional temporaries. Nodes,
 instructions, and storage scale linearly; lowering medians are
 0.746/2.826/3.702 ms, and no unused conditional-lifetime state is allocated.
+The retained-call benchmark combines return-independent function-template ordering,
+inactive anonymous-union storage, and class-prvalue reference defaults across
+16/32/64 distinct specializations. Every work counter, semantic/lowering time
+(7.788/14.449/29.725 and 1.582/2.855/5.553 ms), and peak storage scales linearly.
 
 ## Completed Checkpoints
 
@@ -175,3 +182,4 @@ instructions, and storage scale linearly; lowering medians are
 | Specialization-owned static initialization | Pack-aware ABI identity, initializer-pack replay, structured constexpr pointers, exact retained-definition demand, and explicit-specialization suppression; 288 -> 291, prior 2329/2329, audit pass. |
 | Dependent class-scope type/conversion materialization | Same-class casts, objectless unevaluated members, ellipsis converting constructors, nested qualification ordering, and indexed ADL direct candidates; 291 -> 294, prior 2329/2329, audit pass. |
 | Typed zero/address and conditional lifetime | Lexical null/default provenance, context-sensitive pointer materialization, empty-padding elision, and cleanup-driven lifetime state; 294 -> 300, prior 2329/2329, audit pass. |
+| Retained call/declaration acceptance | Return-independent parameter ordering, inactive anonymous-union storage provenance, and reference-bound aggregate prvalues; 300 -> 303, prior 2329/2329, audit pass. |

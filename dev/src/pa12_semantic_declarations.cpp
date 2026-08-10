@@ -429,6 +429,7 @@ bool SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 					storage_record.member_owner = entity;
 					storage_record.access = member_access;
 					storage_record.non_static_data_member = true;
+					storage_record.anonymous_union_storage = true;
 					storage_record.member_ordinal = static_cast<std::uint32_t>(
 						entity_data_members_[entity].size());
 					entity_data_members_[entity].push_back(storage);
