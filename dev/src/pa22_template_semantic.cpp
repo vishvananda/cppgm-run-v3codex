@@ -821,6 +821,44 @@ std::size_t SemanticAnalyzer::FindAliasTemplateIndex(
 		NoAliasTemplatePattern();
 }
 
+bool SemanticAnalyzer::IsUnqualifiedAliasTemplateName(
+	ScopeId scope, const NamePath& path)
+{
+	if (path.Empty() || path.global || path.Size() != 1) return false;
+	const LookupResult marker = LookupSpelling(
+		scope, program_->names.Get(path.Last()), LOOKUP_TYPE);
+	return FindAliasTemplateIndex(marker, path.Last()) !=
+		NoAliasTemplatePattern();
+}
+
+LookupResult SemanticAnalyzer::LookupStructuredTypeSpecifier(
+	NodeId syntax, ScopeId scope, TypeId deferred_type)
+{
+	const NamePath path = StructuredNamePath(syntax);
+	if (deferred_type != kNoType && (path.global || path.Size() > 1 ||
+		IsUnqualifiedAliasTemplateName(scope, path)))
+	{
+		LookupResult deferred;
+		deferred.type = deferred_type;
+		return deferred;
+	}
+	LookupResult found;
+	try
+	{
+		found = LookupStructuredName(syntax, scope, LOOKUP_TYPE);
+	}
+	catch (const std::runtime_error&)
+	{
+		if (deferred_type == kNoType) throw;
+		found.type = deferred_type;
+		return found;
+	}
+	if (deferred_type != kNoType && found.type != kNoType &&
+		!FunctionTemplateTypeIsDependent(found.type))
+		found.type = deferred_type;
+	return found;
+}
+
 TypeId SemanticAnalyzer::InstantiateAliasTemplate(std::size_t index,
 	const std::vector<TemplateArgument>& arguments)
 {

@@ -1296,6 +1296,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 		if (callee_path.Empty()) callee_path = ParseNamePath(spelling);
 		const bool qualified_callee = callee_path.global || callee_path.Size() > 1;
 		ExpressionInfo builtin;
+		if (spelling == "__builtin_invoke") return AnalyzeBuiltinInvoke(scope, argument_syntax, arguments_analyzed ? &analyzed_arguments : 0, target);
 		if (TryAnalyzeImmediateBuiltinCall(
 			spelling, scope, argument_syntax, target, &builtin))
 			return builtin;
@@ -1873,7 +1874,7 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 			arena_->IsTag(specifier, "decltype-specifier") ||
 			(arena_->IsTag(specifier, "decl-specifier") &&
 			 FirstSemanticChild(specifier) != kNoNode) ||
-			(structured != kNoNode && StructuredNamePath(structured).Size() > 1);
+			structured != kNoNode;
 		if (deferred_shape &&
 			SyntaxUsesAnyIdentifier(*arena_, specifier, parameter_names))
 			deferred_dependent_result = true;

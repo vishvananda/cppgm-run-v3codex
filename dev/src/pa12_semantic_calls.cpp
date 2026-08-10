@@ -98,6 +98,75 @@ private:
 
 }
 
+ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinInvoke(ScopeId scope,
+	const std::vector<NodeId>& argument_syntax,
+	const std::vector<ExpressionInfo>* analyzed_arguments, TypeId target)
+{
+	if (argument_syntax.empty())
+		return CandidateExpressionFailure(
+			"__builtin_invoke requires a callable argument");
+	if (analyzed_arguments &&
+		analyzed_arguments->size() != argument_syntax.size())
+		throw std::logic_error("preanalyzed invoke argument shape is invalid");
+	std::vector<ExpressionInfo> values;
+	if (analyzed_arguments) values = *analyzed_arguments;
+	else
+	{
+		values.reserve(argument_syntax.size());
+		for (std::size_t i = 0; i < argument_syntax.size(); ++i)
+			values.push_back(AnalyzeExpression(argument_syntax[i], scope));
+	}
+	if (CandidateSubstitutionFailed()) return ExpressionInfo();
+
+	ExpressionInfo callable_expression = values.front();
+	std::vector<NodeId> operand_syntax(
+		argument_syntax.begin() + 1, argument_syntax.end());
+	std::vector<ExpressionInfo> operands(values.begin() + 1, values.end());
+	ExpressionInfo class_call;
+	if (TryAnalyzeCallOperator(scope, callable_expression, operand_syntax,
+		&operands, target, &class_call)) return class_call;
+	if (TryAnalyzeCallSurrogate(scope, callable_expression, operands,
+		target, &class_call)) return class_call;
+
+	TypeId function_type = program_->types.RemoveTopCv(
+		EffectiveType(callable_expression.type));
+	TypeRecord callable = program_->types.Get(function_type);
+	if (callable.kind == TYPE_POINTER)
+	{
+		function_type = callable.child;
+		callable = program_->types.Get(function_type);
+	}
+	if (callable.kind != TYPE_FUNCTION)
+		return CandidateExpressionFailure(
+			"__builtin_invoke argument is not callable");
+	if (operands.size() < callable.parameter_count ||
+		(!callable.variadic && operands.size() != callable.parameter_count))
+		return CandidateExpressionFailure("__builtin_invoke arity mismatch");
+	const TypeId* parameter_data = program_->types.Parameters(function_type);
+	const TypeId result_type = callable.child;
+	const TypeRecord returned = program_->types.Get(result_type);
+	const ValueCategory category = returned.kind == TYPE_LVALUE_REFERENCE ?
+		VALUE_LVALUE : returned.kind == TYPE_RVALUE_REFERENCE ?
+		VALUE_XVALUE : VALUE_PRVALUE;
+	const std::uint32_t call = MakeDump(
+		DUMP_CALL_EXPRESSION, result_type, category);
+	dump_.Add(call, callable_expression.node);
+	for (std::size_t argument = 0; argument < operands.size(); ++argument)
+	{
+		ExpressionInfo converted = operands[argument];
+		if (argument < callable.parameter_count)
+			converted = ApplyCallArgument(converted, parameter_data[argument]);
+		if (CandidateSubstitutionFailed()) return ExpressionInfo();
+		dump_.Add(call, converted.node);
+	}
+	ExpressionInfo result;
+	result.node = call;
+	result.type = result_type;
+	result.category = category;
+	++expression_count_;
+	return ApplyTarget(result, target);
+}
+
 bool SemanticAnalyzer::TryAnalyzeImmediateBuiltinCall(
 	const std::string& spelling, ScopeId scope,
 	const std::vector<NodeId>& argument_syntax, TypeId target,

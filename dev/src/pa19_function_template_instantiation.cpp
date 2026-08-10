@@ -448,8 +448,8 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	else if (pattern.conversion_template)
 		shape_spec.type = BuildTypeId(
 			FindChild(declarator, "conversion-type-id"), shape_scope);
-	else shape_spec = BuildSpecifiers(specifiers, shape_scope,
-		std::string(), true, false, dependent_result_shape);
+	else shape_spec = BuildSpecifiers(specifiers, shape_scope, std::string(), true, false, dependent_result_shape);
+	pattern.deferred_result_formation = dependent_result_shape != kNoType && shape_spec.type == dependent_result_shape;
 	EntityId friend_owner = kNoEntity;
 	const bool qualified_friend = path.global || path.Size() > 1;
 	if (shape_spec.is_friend)
@@ -780,6 +780,24 @@ DeclaratorInfo SemanticAnalyzer::BuildFunctionTemplateSpecializationDeclarator(
 			spec->type = BuildTypeId(
 				FindChild(pattern.declarator, "conversion-type-id"),
 				template_scope);
+		else if (pattern.deferred_result_formation)
+		{
+			// Forming a candidate's retained alias result does not demand the
+			// body of a terminal class specialization. Qualified lookup still
+			// completes non-terminal carriers, and selected uses demand layout.
+			++class_template_completion_suppressed_depth_;
+			try
+			{
+				*spec = BuildSpecifiers(pattern.specifiers, template_scope,
+					std::string(), true);
+			}
+			catch (...)
+			{
+				--class_template_completion_suppressed_depth_;
+				throw;
+			}
+			--class_template_completion_suppressed_depth_;
+		}
 		else *spec = BuildSpecifiers(pattern.specifiers, template_scope,
 			std::string(), true);
 		if (spec->type == kNoType && CandidateSubstitutionActive() &&

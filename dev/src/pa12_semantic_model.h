@@ -854,6 +854,7 @@ struct FunctionTemplatePattern
 	bool constructor_template;
 	bool conversion_template;
 	bool explicit_member_definition;
+	bool deferred_result_formation;
 
 	FunctionTemplatePattern()
 		: owner(kNoScope), lexical_scope(kNoScope), name(0),
@@ -867,7 +868,7 @@ struct FunctionTemplatePattern
 		  nonthrowing(false), dependent_exception_specification(false),
 		  function_parameter_pack(false), static_member(false),
 		  constructor_template(false), conversion_template(false),
-		  explicit_member_definition(false) {}
+		  explicit_member_definition(false), deferred_result_formation(false) {}
 };
 
 struct FunctionTemplateDeduction
@@ -915,10 +916,12 @@ struct ClassTemplatePartialPattern
 	std::vector<TemplateArgument> canonical_arguments;
 	std::uint8_t canonical_argument_state;
 	std::uint32_t revision;
+	bool concrete_replay_required;
 
 	ClassTemplatePartialPattern()
 		: lexical_scope(kNoScope), declaration(kNoNode),
-		  canonical_argument_state(0), revision(1) {}
+		  canonical_argument_state(0), revision(1),
+		  concrete_replay_required(false) {}
 };
 
 struct ClassTemplatePartialSelection

@@ -1244,10 +1244,26 @@ TypeId SemanticAnalyzer::BuildCanonicalTemplateTypeArgument(NodeId type_id,
 	ScopeId source_scope,
 	const std::unordered_set<NameId>* dependent_names)
 {
-	const bool nondeduced = dependent_names != 0 &&
+	const bool source_dependent = dependent_names != 0 &&
+		SyntaxUsesTemplateParameter(*arena_, type_id, *dependent_names);
+	const bool nondeduced = source_dependent &&
 		TypeIdNamesDependentQualifiedType(
 			*arena_, type_id, *dependent_names);
-	if (!nondeduced) return BuildTypeId(type_id, source_scope);
+	if (!nondeduced)
+	{
+		try
+		{
+			return BuildTypeId(type_id, source_scope);
+		}
+		catch (const std::runtime_error&)
+		{
+			// A dependent partial argument is only a shape at declaration time.
+			// Failure to form it against the synthetic shape parameters does not
+			// reject the declaration: selection replays the retained syntax after
+			// deduction and treats a concrete failure as candidate-local SFINAE.
+			if (!source_dependent) throw;
+		}
+	}
 	if (class_template_nondeduced_type_shape_ == kNoType)
 	{
 		const NameId name = program_->names.Intern(

@@ -207,6 +207,9 @@ private:
 		const std::vector<TemplateParameter>& parameters);
 	std::size_t FindAliasTemplateIndex(
 		const LookupResult& found, NameId requested) const;
+	bool IsUnqualifiedAliasTemplateName(ScopeId scope, const NamePath& path);
+	LookupResult LookupStructuredTypeSpecifier(
+		NodeId syntax, ScopeId scope, TypeId deferred_type);
 	TypeId InstantiateAliasTemplate(std::size_t index,
 		const std::vector<TemplateArgument>& arguments);
 	bool BuildTemplateTemplateArgument(NodeId syntax, ScopeId scope,
@@ -703,6 +706,9 @@ private:
 		BindingId binding, std::uint32_t initializer);
 	void PublishStaticConstantEvaluationStats() const;
 	ExpressionInfo AnalyzeCall(NodeId node, ScopeId scope, TypeId target);
+	ExpressionInfo AnalyzeBuiltinInvoke(ScopeId scope,
+		const std::vector<NodeId>& argument_syntax,
+		const std::vector<ExpressionInfo>* analyzed_arguments, TypeId target);
 	bool TryAnalyzeImmediateBuiltinCall(const std::string& spelling,
 		ScopeId scope, const std::vector<NodeId>& argument_syntax,
 		TypeId target, ExpressionInfo* result);

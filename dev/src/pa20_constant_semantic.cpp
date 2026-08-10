@@ -1,4 +1,5 @@
 #include "pa12_semantic_detail.h"
+#include "exceptions.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -478,7 +479,7 @@ void SemanticAnalyzer::AnalyzeStaticAssert(NodeId node, ScopeId scope)
 		throw std::runtime_error(
 			"static_assert requires an integral constant expression");
 	if (condition.value == 0)
-		throw std::runtime_error("static assertion failed");
+		throw HardSemanticError("static assertion failed");
 }
 
 }

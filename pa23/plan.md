@@ -3,70 +3,58 @@
 ## Stage Design and Spec Alignment
 
 PA23 completes C++11 function-template deduction, partial ordering, and
-substitution failure while retaining the PA19-PA22 typed semantic graph and
-PA15 typed LowIR path. `spec.md` section 1 requires a single parser branch per
-source region; sections 2-5 require canonical specialization identity, compact
-candidate-local failure, and precise request states; section 6 requires
-lowering to consume selected declarations, conversions, and ABI facts; section
-9 requires work proportional to participating shapes and candidates. Ownership
-is therefore: cached token lookahead for grammar disambiguation, `TypeTable`
-for canonical type structure, deduction/explicit binding for candidate frames,
-declaration-owned contexts for default syntax, instantiation for complete
-specialization and request states, overload resolution for selection facts,
-and lowering for direct consumption only. Default contexts retain declaring
-scope and template head; request keys retain canonical arguments and required
-pack partitions; failed immediate substitution cannot publish an invalid type
-or declaration.
+substitution failure on the retained PA19-PA22 semantic graph and PA15 typed
+LowIR path. `spec.md` sections 1-6 require one parsed branch, canonical
+specialization identity, declaration-owned retained syntax, candidate-local
+failure, demand-driven completion, and lowering that consumes selected facts;
+section 9 requires work proportional to participating shapes and candidates.
+`TypeTable` owns canonical structure, template patterns own source syntax and
+lexical context, deduction/overload resolution own candidate frames and
+selection, instantiation owns request state and completion, and lowering does
+not rediscover template semantics.
 
 ## Current Failure Map
 
-Current result: 223/401 pass: 222/400 handout tests plus the 1/1 course audit;
-178 handout tests fail (156 false rejections, 1 false acceptance, 21 LowIR
-mismatches), with 19 gains and no regressions from the 203/400 audit baseline.
-The remaining failures group by primary owner: core call/address/constructor
-deduction (`100-*`: 21), partial ordering over typed patterns (`200-*`: 13),
-SFINAE/dependent replay and demand (`300-*`: 97), canonical non-type arguments
-and conversion deduction (`400-*`: 20), and composed lookup/alias/class paths
-(`500-*`: 27).
+Current result is 248/401, up from the turn baseline of 223/401 with no
+regressions. The remaining 153 failures group by primary owner and observed
+kind: call/address/constructor deduction (`100-*`: 18 exits, 2 LowIR), typed
+partial ordering (`200-*`: 11 exits, 2 LowIR), immediate substitution and
+demand (`300-*`: 70 exits, 9 LowIR), canonical non-type/conversion arguments
+(`400-*`: 18 exits, 1 LowIR), and composed lookup/alias/class paths (`500-*`:
+13 exits, 9 LowIR).
 
 ## Active Checkpoint
 
-The next substantial checkpoint is completing candidate-local dependent type
-formation for class-template partial selection. N3485 14.5.5 and 14.8.2
-require substituted dependent qualified
-types, alias/`void_t` arguments, and invalid immediate `decltype` calls to
-select or discard each partial without escaping as a hard error. Retained class
-partial patterns own syntax; canonical argument binding overlays own concrete
-types; partial selection owns success/failure state; completion and lowering
-consume only the selected specialization. This follows `spec.md` sections 2-6
-and 9: canonical keys, narrow monotonic request states, candidate-local expected
-failure, no eager body demand, and O(pattern nodes plus indexed partial
-candidates) work with O(1)-average cached lookup. Validate first with
-`300-void-t-detector`,
-`300-decltype-call-substitution-failure-partial-specialization`, and invalid
-qualified-member fallbacks, then the dependent alias and array-bound partial
-groups; run PA23 and through-PA22 reports and measure repeated valid and failed
-partial probes.
+Next is the retained function-pattern -> typed partial-order boundary. N3485
+13.3.3, 14.8.2.4, and 14.8.2.5 require transformed function types,
+reference/cv adjustments, pack participation, and forwarding-reference rules
+to rank only viable specializations. `FunctionTemplatePattern` owns normalized
+parameter syntax; deduction produces canonical bindings and conversion facts;
+`DeduceFunctionTemplatePatterns` owns pairwise ordering; overload resolution
+consumes the winner. Expected work is O(pattern nodes plus participating
+candidates squared) for pairwise ordering, with O(1)-average specialization
+lookup. Validate the complete `200-*` set plus constructor, member assignment,
+fixed/default tail, inner-pack, and earlier-PA guards; measure doubling
+candidate/shape sets before the full PA23, through-PA22, and audit gates.
 
 ## Performance Evidence
 
-For 1,024/2,048/4,096 repeated valid default-construction probes,
-specialization requests are 4,096/8,192/16,384, overload-candidate visits are
-5,123/10,243/20,483, deduction visits are 2,048/4,096/8,192, peak bytes are
-7,762,775/15,509,719/31,003,607, and three-run semantic medians are
-38.8/79.0/159.1 ms. Failed probes issue 3,072/6,144/12,288 requests, visit
-4,099/8,195/16,387 candidates, materialize the invalid default once, record
-2,047/4,095/8,191 failure-cache hits, use
-7,764,295/15,513,031/31,010,503 bytes, and take 38.4/78.6/155.2 ms. Requests,
-visits, memory, and time scale linearly; the failed path no longer pays C++
-exception-unwinding cost. PA1-PA22 are 2,639/2,639 and file audit passes with
-13 inherited advisories.
+For 128/256/512 unique retained `void_t` partial probes, valid replay performs
+128/256/512 candidate checks, 768/1,536/3,072 deduction visits, and one shape
+materialization with 128/256/512 shape-cache hits; semantic storage is
+6.61/13.20/26.40 MB and analysis time is 31.1/63.6/129.3 ms. Failed replay
+performs 128/256/512 checks, 384/768/1,536 deduction visits, the same one
+materialization and cache-hit counts, uses 6.01/12.02/24.03 MB, and takes
+32.8/68.6/135.7 ms. Requests, visits, memory, and time scale linearly with no
+repeated shape materialization. Final uncontended gates are PA1-PA22
+2,639/2,639 and a passing file audit with 13 inherited warnings.
 
 ## Completed Checkpoints
 
 | Checkpoint | Result |
 | --- | --- |
-| Direct array-extent NTTP deduction and current-call candidate ownership | Ordinary, repeated, hidden-friend, constructor, range, and guarded deduction pass; PA23 169 -> 177. Audit moved filtering to the nontemplate source index and replaced template-aware lowering with a semantic conversion fact; exact baseline preserved and scaling is linear. |
-| Retained non-deduced qualified types and compound array bounds | Qualified-id deduction, conversion replay, partial ordering, dependent rebind, explicit specialization, and compact nested-array lowering pass; PA23 177 -> 186 with no regressions. Required `typename`, normalized redeclaration identity, exact candidate-local skipping, and linear scaling are retained facts. |
-| Defaulted function-template materialization and substitution failure | Defaults bind in their declaration-owned contexts before complete canonical identity; normalized dependent results preserve overloads, duplicate defaults are rejected, and explicit request states memoize success, failure, and recursion. PA23 186 -> 210 handout passes plus one course regression, with no audit-baseline regressions and linear success/failure scaling. |
-| Explicit-call immediate expression substitution and variadic class boundary | Cached token lookahead selects one parse; explicit and deduced candidate frames carry compact failure through defaults, declarators, lookup, construction, and expression checks; selected ellipsis class arguments carry a semantic storage fact into lowering. PA23 211 -> 223 overall with 12 gains, the 223 checkpoint baseline preserved, zero throws across representative candidate probes, and linear valid/failed scaling. |
+| Array-extent NTTP deduction and candidate ownership | Ordinary/repeated/hidden-friend/constructor probes pass; PA23 169 -> 177, exact baseline retained, linear scaling. |
+| Non-deduced qualified types and compound array bounds | Qualified replay, ordering, rebind, and compact array lowering pass; 177 -> 186, no regressions, linear scaling. |
+| Defaulted function-template materialization | Declaration-owned defaults and explicit request states pass; 186 -> 211 overall with linear success/failure scaling. |
+| Explicit-call expression substitution and variadic class boundary | Candidate failure spans defaults through expressions and lowering consumes ellipsis storage facts; 211 -> 223, no regressions, linear scaling. |
+| Concrete replay of retained class-partial type arguments | Dependent alias/`void_t`/array/`decltype` patterns replay after deduction; builtin invoke preserves call result facts, hard body errors escape SFINAE, and candidate result formation is demand-driven; 223 -> 248, no regressions, linear replay scaling. |

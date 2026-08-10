@@ -1108,6 +1108,28 @@ void SemanticAnalyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 		(void)MaterializeTemplatePartialArguments(owner.parameters,
 			partial.parameters, partial.arguments, partial.lexical_scope,
 			&partial.canonical_arguments, &partial.canonical_argument_state);
+		std::unordered_set<NameId> dependent_names;
+		for (std::size_t parameter = 0;
+			parameter < partial.parameters.size(); ++parameter)
+			if (partial.parameters[parameter].name != 0)
+				dependent_names.insert(partial.parameters[parameter].name);
+		const std::size_t paired_arguments = std::min(
+			partial.arguments.size(), partial.canonical_arguments.size());
+		for (std::size_t argument = 0; argument < paired_arguments; ++argument)
+		{
+			const TemplateArgument& shape = partial.canonical_arguments[argument];
+			const bool shape_dependent = shape.IsDependent() ||
+				(shape.kind == TEMPLATE_ARGUMENT_TYPE &&
+				 FunctionTemplateTypeIsDependent(shape.type));
+			if (SyntaxUsesAnyTemplateParameter(
+					partial.arguments[argument], dependent_names) &&
+				(!shape_dependent ||
+				 shape.type == class_template_nondeduced_type_shape_))
+			{
+				partial.concrete_replay_required = true;
+				break;
+			}
+		}
 		for (std::size_t i = 0; i < owner.partial_specializations.size(); ++i)
 		{
 			ClassTemplatePartialPattern& prior = owner.partial_specializations[i];
@@ -2300,7 +2322,7 @@ std::size_t SemanticAnalyzer::SelectClassTemplatePartial(
 		FunctionTemplateDeduction bindings(candidate.parameters);
 		if (!MatchTemplatePartialArguments(candidate.parameters,
 			candidate.canonical_arguments, arguments, &bindings)) continue;
-		bool replay_nondeduced = false;
+		bool replay_nondeduced = candidate.concrete_replay_required;
 		for (std::size_t argument = 0;
 			argument < candidate.canonical_arguments.size(); ++argument)
 			if (candidate.canonical_arguments[argument].kind ==
