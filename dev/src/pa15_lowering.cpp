@@ -2258,7 +2258,7 @@ private:
 		const Operand storage = StorageFor(
 			record.binding, LowerStorageType(record.type));
 		LowerRuntimeArrayValues(record.type, variable_children[0],
-			AddressOfStorage(storage));
+			AddressOfStorage(storage), true);
 	}
 
 	void LowerBoundAggregateArrayActions(BindingId object, TypeId array_type,
@@ -2351,20 +2351,8 @@ private:
 		const std::size_t element_size = program_.SizeOf(array.child);
 		for (std::size_t i = 0; i < static_cast<std::size_t>(array.bound); ++i)
 		{
-			Operand displacement(static_cast<std::int64_t>(i), LowI64());
-			if (element_size != 1)
-			{
-				const Operand scaled = Temp(LowI64());
-				Instruction multiply(Instruction::BINARY);
-				multiply.dest = scaled.id;
-				multiply.op = LOW_OP_MUL;
-				multiply.type = LowI64();
-				multiply.first = displacement;
-				multiply.second = Operand(
-					static_cast<std::int64_t>(element_size), LowI64());
-				Emit(multiply);
-				displacement = scaled;
-			}
+			const Operand displacement(static_cast<std::int64_t>(
+				i * element_size), LowI64());
 			const Operand destination = compact_addressing && i == 0 ? base :
 				IndexAddress(LowI8(), base, displacement, true);
 			if (i < values.size())
@@ -2380,7 +2368,7 @@ private:
 		{
 			if (arena_.nodes[node].kind != DUMP_BRACED_INIT_LIST)
 				throw std::runtime_error("nested runtime array requires braces");
-			LowerRuntimeArrayValues(type, node, destination);
+			LowerRuntimeArrayValues(type, node, destination, true);
 			return;
 		}
 		if (IsClassObjectType(type))

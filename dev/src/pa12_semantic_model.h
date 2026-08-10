@@ -248,12 +248,15 @@ struct ParameterInfo
 	TypeId declared_type;
 	TypeId function_type;
 	NodeId default_argument;
+	NodeId nondeduced_type_syntax;
 	ScopeId default_scope;
+	bool nondeduced;
 	ParameterInfo(NameId name_value, TypeId declared_value,
 		TypeId function_value)
 		: name(name_value), pack_name(0), declared_type(declared_value),
 		  function_type(function_value), default_argument(kNoNode),
-		  default_scope(kNoScope) {}
+		  nondeduced_type_syntax(kNoNode), default_scope(kNoScope),
+		  nondeduced(false) {}
 };
 
 struct DeclaratorInfo
@@ -820,6 +823,8 @@ struct FunctionTemplatePattern
 	std::vector<TemplateParameter> parameters;
 	std::vector<NameId> function_parameter_names;
 	std::vector<NodeId> function_parameter_defaults;
+	std::vector<NodeId> function_parameter_nondeduced_syntax;
+	std::vector<std::uint8_t> function_parameter_nondeduced;
 	std::vector<BindingId> specialization_bindings;
 	std::vector<TemplateArgument> specialization_arguments;
 	std::vector<std::uint32_t> specialization_argument_offsets;

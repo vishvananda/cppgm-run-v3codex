@@ -54,6 +54,7 @@ public:
 		  dump_(graph.dump), root_(graph.root),
 		  class_polymorphism_(graph.class_polymorphism),
 		  function_template_dependent_result_shape_(kNoType),
+		  function_template_nondeduced_type_shape_(kNoType),
 		  class_template_nondeduced_type_shape_(kNoType),
 		  class_template_member_replay_depth_(0),
 		  explicit_member_template_replay_depth_(0),
@@ -340,9 +341,18 @@ private:
 	DeclaratorInfo BuildDeclarator(NodeId node, TypeId base, ScopeId scope,
 		bool placeholder_auto = false,
 		bool member_implicit_object = false,
-		bool defer_trailing_return = false);
+		bool defer_trailing_return = false,
+		const std::unordered_set<NameId>* template_parameter_names = 0);
 	std::vector<ParameterInfo> BuildParameters(NodeId node, ScopeId scope,
-		bool* variadic);
+		bool* variadic,
+		const std::unordered_set<NameId>* template_parameter_names = 0);
+	bool SyntaxUsesAnyTemplateParameter(NodeId node,
+		const std::unordered_set<NameId>& names) const;
+	bool IsDirectTemplateParameterExpression(NodeId node,
+		const std::unordered_set<NameId>& names) const;
+	bool HasDependentQualifiedType(NodeId node,
+		const std::unordered_set<NameId>& names) const;
+	TypeId FunctionTemplateNondeducedTypeShape();
 	NameId DeclaratorName(NodeId node);
 	NamePath DeclaratorNamePath(NodeId node);
 	NodeId DeclaratorNameStructure(NodeId node) const;
@@ -1242,6 +1252,7 @@ private:
 	std::vector<TypeId> function_template_shape_parameters_;
 	std::vector<TypeId> dependent_template_argument_shapes_;
 	TypeId function_template_dependent_result_shape_;
+	TypeId function_template_nondeduced_type_shape_;
 	TypeId class_template_nondeduced_type_shape_;
 	mutable std::vector<std::uint8_t> function_template_dependency_cache_;
 	IndexedSequenceTable template_function_sets_;

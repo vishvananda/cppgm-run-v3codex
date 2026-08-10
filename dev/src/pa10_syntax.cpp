@@ -674,12 +674,10 @@ private:
 		active_non_type_parameter_names_;
 	std::vector<TextId> current_classes_;
 };
-NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id,
-	std::string* first_type)
+NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id, std::string* first_type)
 {
 	const Mark mark = Checkpoint();
-	const NodeId sequence = arena_.Make(for_type_id ?
-		"type-specifier-seq" : "decl-specifier-seq");
+	const NodeId sequence = arena_.Make(for_type_id ? "type-specifier-seq" : "decl-specifier-seq");
 	bool consumed = false;
 	bool saw_type = false;
 	bool saw_user_type = false;
@@ -757,8 +755,10 @@ NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id,
 				Rollback(mark);
 				return kNoNode;
 			}
-			arena_.Add(sequence, MakeStructuredNode(for_type_id ?
-				"type-name" : "decl-specifier", name, structure));
+			const NodeId dependent_type = MakeStructuredNode(for_type_id ?
+				"type-name" : "decl-specifier", name, structure);
+			arena_.AddFlags(dependent_type, SYNTAX_FLAG_TYPENAME);
+			arena_.Add(sequence, dependent_type);
 			if (first_type && first_type->empty()) *first_type = name;
 			consumed = true;
 			saw_type = true;

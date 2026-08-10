@@ -66,8 +66,21 @@ bool EquivalentNormalizedTemplateSyntax(const SyntaxArena& arena,
 		{
 			if (left_parameter != right_parameter) return false;
 		}
-		else if (left_name != right_name ||
-			arena.Payload(left_node) != arena.Payload(right_node)) return false;
+		else
+		{
+			bool structured_wrapper = false;
+			if (arena.IsTag(left_node, "decl-specifier"))
+				for (std::uint32_t edge = arena.FirstEdge(left_node);
+					edge != kNoEdge; edge = arena.NextEdge(edge))
+					if (arena.IsTag(
+						arena.EdgeChild(edge), "structured-type-name"))
+					{
+						structured_wrapper = true;
+						break;
+					}
+			if (!structured_wrapper && (left_name != right_name ||
+				arena.Payload(left_node) != arena.Payload(right_node))) return false;
+		}
 		std::uint32_t left_edge = arena.FirstEdge(left_node);
 		std::uint32_t right_edge = arena.FirstEdge(right_node);
 		while (left_edge != kNoEdge && right_edge != kNoEdge)
@@ -110,11 +123,30 @@ bool EquivalentFunctionTemplateParameterLists(const SyntaxArena& arena,
 	return true;
 }
 
+bool EquivalentFunctionTemplateNondeducedShapes(const SyntaxArena& arena,
+	const FunctionTemplatePattern& left,
+	const FunctionTemplatePattern& right)
+{
+	if (left.function_parameter_nondeduced_syntax.size() !=
+		right.function_parameter_nondeduced_syntax.size()) return false;
+	for (std::size_t i = 0;
+		i < left.function_parameter_nondeduced_syntax.size(); ++i)
+		if (!EquivalentNormalizedTemplateSyntax(arena,
+				left.function_parameter_nondeduced_syntax[i],
+				right.function_parameter_nondeduced_syntax[i],
+				left.parameters, right.parameters)) return false;
+	return true;
+}
+
 void CaptureFunctionParameterMetadata(FunctionTemplatePattern* pattern,
 	const DeclaratorInfo& declarator)
 {
 	pattern->function_parameter_names.reserve(declarator.parameters.size());
 	pattern->function_parameter_defaults.reserve(declarator.parameters.size());
+	pattern->function_parameter_nondeduced_syntax.reserve(
+		declarator.parameters.size());
+	pattern->function_parameter_nondeduced.reserve(
+		declarator.parameters.size());
 	for (std::size_t parameter = 0;
 		parameter < declarator.parameters.size(); ++parameter)
 	{
@@ -122,6 +154,10 @@ void CaptureFunctionParameterMetadata(FunctionTemplatePattern* pattern,
 			declarator.parameters[parameter].name);
 		pattern->function_parameter_defaults.push_back(
 			declarator.parameters[parameter].default_argument);
+		pattern->function_parameter_nondeduced_syntax.push_back(
+			declarator.parameters[parameter].nondeduced_type_syntax);
+		pattern->function_parameter_nondeduced.push_back(
+			declarator.parameters[parameter].nondeduced ? 1 : 0);
 	}
 }
 
@@ -131,7 +167,9 @@ void InheritFunctionParameterMetadata(FunctionTemplatePattern* retained,
 	if (retained->function_parameter_names.size() !=
 			incoming->function_parameter_names.size() ||
 		retained->function_parameter_defaults.size() !=
-			incoming->function_parameter_defaults.size())
+			incoming->function_parameter_defaults.size() ||
+		retained->function_parameter_nondeduced !=
+			incoming->function_parameter_nondeduced)
 		throw std::runtime_error("function template parameter count mismatch");
 	FunctionTemplatePattern* destination = incoming_is_definition ?
 		incoming : retained;
@@ -271,9 +309,11 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	const ScopeId shape_scope = NewScope(pattern.lexical_scope,
 		SCOPE_TEMPLATE_PARAMETERS, 0,
 		ScopePrefixId(pattern.lexical_scope));
+	std::unordered_set<NameId> parameter_names;
 	for (std::size_t p = 0; p < parameters.size(); ++p)
 	{
 		if (parameters[p].name == 0) continue;
+		parameter_names.insert(parameters[p].name);
 		if (parameters[p].kind == TEMPLATE_ARGUMENT_TYPE)
 			program_->AddBinding(shape_scope, BIND_TYPE_ALIAS,
 				parameters[p].name, function_template_shape_parameters_[p]);
@@ -340,7 +380,7 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	if (member_owner != kNoEntity) current_class_context_ = member_owner;
 	DeclaratorInfo shape_declarator = BuildDeclarator(declarator,
 		shape_spec.type, shape_scope, false, nonstatic_member,
-		defer_trailing_return);
+		defer_trailing_return, &parameter_names);
 	current_class_context_ = previous_class;
 	if (!program_->types.IsFunction(shape_declarator.type))
 		throw std::runtime_error(
@@ -381,7 +421,9 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 				function_templates_[candidate];
 			if (EquivalentFunctionTemplateParameterLists(*arena_,
 					prior.parameters, pattern.parameters) &&
-				prior.shape_type == pattern.shape_type)
+				prior.shape_type == pattern.shape_type &&
+				EquivalentFunctionTemplateNondeducedShapes(
+					*arena_, prior, pattern))
 			{
 				prior_index = candidate;
 				break;

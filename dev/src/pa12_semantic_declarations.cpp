@@ -1910,7 +1910,8 @@ NameId SemanticAnalyzer::DeclaratorName(NodeId node)
 }
 
 std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
-	ScopeId scope, bool* variadic)
+	ScopeId scope, bool* variadic,
+	const std::unordered_set<NameId>* template_parameter_names)
 {
 	std::vector<ParameterInfo> result;
 	*variadic = false;
@@ -1928,6 +1929,10 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 		if (!arena_->IsTag(child, "parameter-declaration")) continue;
 		const NodeId specifiers = FindChild(child, "decl-specifier-seq");
 		const NodeId declarator = FindChild(child, "declarator");
+		const bool nondeduced_type = template_parameter_names != 0 &&
+			HasDependentQualifiedType(specifiers, *template_parameter_names);
+		const TypeId deferred_type = nondeduced_type ?
+			FunctionTemplateNondeducedTypeShape() : kNoType;
 		const bool declared_pack = declarator != kNoNode &&
 			FindChild(declarator, "parameter-pack") != kNoNode;
 		if (declared_pack)
@@ -1941,9 +1946,11 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 				for (std::size_t i = 0; i < element_scopes.size(); ++i)
 				{
 					const SpecInfo element_spec = BuildSpecifiers(
-						specifiers, element_scopes[i], std::string(), true);
+						specifiers, element_scopes[i], std::string(), true,
+						false, deferred_type);
 					const DeclaratorInfo parsed = BuildDeclarator(
-						declarator, element_spec.type, element_scopes[i]);
+						declarator, element_spec.type, element_scopes[i], false,
+						false, false, template_parameter_names);
 					const NameId element_name = parameter_pack_name == 0 ? 0 :
 						i == 0 ? parameter_pack_name : program_->names.Intern(
 							parameter_pack_spelling + "__pack" +
@@ -1951,13 +1958,16 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 					ParameterInfo parameter(element_name, parsed.type,
 						AdjustParameterType(parsed.type));
 					parameter.pack_name = parameter_pack_name;
+					parameter.nondeduced = nondeduced_type;
+					parameter.nondeduced_type_syntax = nondeduced_type ?
+						specifiers : kNoNode;
 					result.push_back(parameter);
 				}
 				continue;
 			}
 		}
 		const SpecInfo spec = BuildSpecifiers(specifiers, parameter_scope,
-			std::string(), declarator != kNoNode);
+			std::string(), declarator != kNoNode, false, deferred_type);
 		NameId name = 0;
 		TypeId declared = spec.type;
 		if (declarator != kNoNode)
@@ -2004,7 +2014,8 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 			{
 				const DeclaratorInfo parsed =
 					BuildDeclarator(declarator, spec.type, parameter_scope,
-						spec.placeholder_auto);
+						spec.placeholder_auto, false, false,
+						template_parameter_names);
 				name = parsed.name;
 				declared = parsed.type;
 			}
@@ -2013,6 +2024,9 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 		}
 		result.push_back(ParameterInfo(name, declared,
 			AdjustParameterType(declared)));
+		result.back().nondeduced = nondeduced_type;
+		result.back().nondeduced_type_syntax = nondeduced_type ?
+			specifiers : kNoNode;
 		if (declared_pack) result.back().pack_name = name;
 		if (name != 0)
 			program_->AddBinding(parameter_scope, BIND_PARAMETER,
@@ -2035,7 +2049,8 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 
 DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 	ScopeId scope, bool placeholder_auto, bool member_implicit_object,
-	bool defer_trailing_return)
+	bool defer_trailing_return,
+	const std::unordered_set<NameId>* template_parameter_names)
 {
 	DeclaratorInfo result;
 	result.name = DeclaratorName(node);
@@ -2106,7 +2121,7 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 			{
 				trailing_parameter_clause = suffixes[i];
 				trailing_parameters = BuildParameters(suffixes[i], scope,
-					&trailing_variadic);
+					&trailing_variadic, template_parameter_names);
 				break;
 			}
 		ScopeId return_scope = scope;
@@ -2150,6 +2165,15 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 			std::uint64_t bound = 0;
 			if (bound_node != kNoNode)
 			{
+				if (template_parameter_names != 0 &&
+					SyntaxUsesAnyTemplateParameter(
+						bound_node, *template_parameter_names) &&
+					!IsDirectTemplateParameterExpression(
+						bound_node, *template_parameter_names))
+				{
+					type = program_->types.Array(type, 0);
+					continue;
+				}
 				++constant_expression_required_depth_;
 				ExpressionInfo expression;
 				try
@@ -2195,7 +2219,8 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 				parameters = trailing_parameters;
 				variadic = trailing_variadic;
 			}
-			else parameters = BuildParameters(suffix, scope, &variadic);
+			else parameters = BuildParameters(suffix, scope, &variadic,
+				template_parameter_names);
 			std::vector<TypeId> function_parameters;
 			for (std::size_t p = 0; p < parameters.size(); ++p)
 				function_parameters.push_back(parameters[p].function_type);
@@ -2207,7 +2232,8 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 	if (nested != kNoNode)
 	{
 		DeclaratorInfo inner = BuildDeclarator(nested, type, scope,
-			false, member_implicit_object, defer_trailing_return);
+			false, member_implicit_object, defer_trailing_return,
+			template_parameter_names);
 		if (!result.parameters.empty()) inner.parameters = result.parameters;
 		return inner;
 	}

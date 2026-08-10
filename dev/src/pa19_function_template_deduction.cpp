@@ -22,6 +22,15 @@ bool SemanticAnalyzer::FunctionTemplateTypeIsDependent(TypeId type) const
 		function_template_dependency_cache_[type] = 2;
 		return true;
 	}
+	if (type == function_template_nondeduced_type_shape_ &&
+		type != kNoType)
+	{
+		if (function_template_dependency_cache_.size() <= type)
+			function_template_dependency_cache_.resize(
+				static_cast<std::size_t>(type) + 1, 0);
+		function_template_dependency_cache_[type] = 2;
+		return true;
+	}
 	for (std::size_t i = 0; i < function_template_shape_parameters_.size(); ++i)
 		if (type == function_template_shape_parameters_[i])
 		{
@@ -130,10 +139,14 @@ int SemanticAnalyzer::CompareFunctionTemplateConstraints(
 		bool right_accepts_left = true;
 		for (std::size_t i = 0; i < left_shape.parameter_count; ++i)
 		{
-			left_accepts_right = left_accepts_right &&
-				FunctionTemplatePatternAccepts(left_types[i], right_types[i]);
-			right_accepts_left = right_accepts_left &&
-				FunctionTemplatePatternAccepts(right_types[i], left_types[i]);
+			if (i >= left_pattern.function_parameter_nondeduced.size() ||
+				left_pattern.function_parameter_nondeduced[i] == 0)
+				left_accepts_right = left_accepts_right &&
+					FunctionTemplatePatternAccepts(left_types[i], right_types[i]);
+			if (i >= right_pattern.function_parameter_nondeduced.size() ||
+				right_pattern.function_parameter_nondeduced[i] == 0)
+				right_accepts_left = right_accepts_left &&
+					FunctionTemplatePatternAccepts(right_types[i], left_types[i]);
 		}
 		if (right_accepts_left != left_accepts_right)
 			return right_accepts_left ? 1 : -1;
@@ -718,8 +731,13 @@ void SemanticAnalyzer::DeduceFunctionTemplatePatterns(
 			if (arguments[a].type == kNoType) continue;
 			const bool pack_element = pattern.function_parameter_pack &&
 				a >= fixed_function_parameters;
-			TypeId parameter = parameters[pack_element ?
-				fixed_function_parameters : a];
+			const std::size_t function_parameter = pack_element ?
+				fixed_function_parameters : a;
+			if (function_parameter <
+					pattern.function_parameter_nondeduced.size() &&
+				pattern.function_parameter_nondeduced[function_parameter] != 0)
+				continue;
+			TypeId parameter = parameters[function_parameter];
 			TypeId argument = EffectiveType(arguments[a].type);
 			const TypeRecord& parameter_record =
 				program_->types.Get(parameter);

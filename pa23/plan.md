@@ -19,44 +19,42 @@ specializations deduced for that call by canonical declaration identity.
 
 ## Current Failure Map
 
-Current result: 177/400 pass; 223 fail (205 false rejections, 3 false
-acceptances, 15 LowIR mismatches). The audit preserves the exact checkpoint
-pass/fail set and the improvement from the 169/400 checkpoint-start baseline.
+Current result: 186/400 pass; 214 fail (197 false rejections, 2 false
+acceptances, 15 LowIR mismatches), with no regressions and nine gains from the
+177/400 turn baseline. The audit preserves the exact checkpoint pass/fail set.
 The remaining failures group by primary owner: core call/address/constructor
-deduction (`100-*`: 24), partial ordering over typed patterns (`200-*`: 17),
-SFINAE/dependent replay and demand (`300-*`: 129), canonical non-type arguments
-and conversion deduction (`400-*`: 22), and composed lookup/alias/class paths
+deduction (`100-*`: 22), partial ordering over typed patterns (`200-*`: 13),
+SFINAE/dependent replay and demand (`300-*`: 127), canonical non-type arguments
+and conversion deduction (`400-*`: 21), and composed lookup/alias/class paths
 (`500-*`: 31).
 
 ## Active Checkpoint
 
-Next, represent qualified-id and compound-expression non-deduced contexts as
-typed retained substitution facts. N3485 14.8.2.5 requires a qualified type
-such as `typename Wrap<T>::type` not to deduce `T`, while an expression bound
-such as `N - 1` is checked only after another parameter has established `N`.
-The declarator/type builder owns the canonical non-deduced shape and the
-function-template candidate owns replay against its completed binding overlay.
-Work must be O(retained shape nodes) once per participating candidate without
-completing unrelated class bodies. Start with
-`200-nondeduced-context-only-bad` and
-`400-array-bound-expression-is-nondeduced`, then cover the related qualified
-type and substitution-failure groups.
+Materialize defaulted function-template arguments after deduction and before
+specialization-key construction. N3485 14.8.2 requires every parameter to be
+deduced, explicit, or defaulted, while 14.8.3 makes immediate-context default
+substitution failure discard only that candidate. Candidate deduction owns a
+parent-linked binding overlay populated in parameter order; instantiation sees
+only a complete canonical argument list and typed offsets. Work must be
+O(template parameters plus demanded default syntax) once per candidate, with
+success/failure cached by the complete specialization key. Start with
+`100-defaulted-nontype-deduction-overrides-default`, then the defaulted
+`enable_if` call/constructor and owner-scope groups.
 
 ## Performance Evidence
 
-On generated 1,024/2,048/4,096-call unique-bound probes,
-`function_candidate_index_visits` is 0/0/0, `overload_candidates` is
-1,024/2,048/4,096, `function_template_deduction_visits` is
-4,096/8,192/16,384, and semantic peak bytes are
-20,109,886/40,244,801/80,547,396. Three-run semantic medians are
-85.2/177.5/369.0 ms; before selecting the nontemplate source index, the 4,096
-case took 1,141.8 ms because every call copied prior implicit specializations.
-Checkpoint tests are 7/7, the exact PA23 pass set is 177/400, PA1-PA22 are
-2,639/2,639, and the PA23 `dev/src` file audit passes with 13 inherited
-advisory warnings.
+On generated 1,024/2,048/4,096-call qualified-parameter probes,
+`overload_candidates` is 1,024/2,048/4,096,
+`function_template_deduction_visits` is 2,048/4,096/8,192, semantic peak bytes
+are 2,430,329/4,823,297/9,609,239, and three-run semantic medians are
+14.1/26.4/52.9 ms. Constant multidimensional initialization now emits direct
+byte offsets (13 rather than 33 temporaries in the checkpoint probe). PA23 is
+186/400, the nine gained cases are 9/9, PA1-PA22 are 2,639/2,639, and file audit
+passes with 13 inherited advisory warnings.
 
 ## Completed Checkpoints
 
 | Checkpoint | Result |
 | --- | --- |
 | Direct array-extent NTTP deduction and current-call candidate ownership | Ordinary, repeated, hidden-friend, constructor, range, and guarded deduction pass; PA23 169 -> 177. Audit moved filtering to the nontemplate source index and replaced template-aware lowering with a semantic conversion fact; exact baseline preserved and scaling is linear. |
+| Retained non-deduced qualified types and compound array bounds | Qualified-id deduction, conversion replay, partial ordering, dependent rebind, explicit specialization, and compact nested-array lowering pass; PA23 177 -> 186 with no regressions. Required `typename`, normalized redeclaration identity, exact candidate-local skipping, and linear scaling are retained facts. |
