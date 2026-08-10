@@ -996,9 +996,19 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 		{
 			NodeId type_id = arena_->IsTag(source, "type-id") ? source :
 				FindChild(source, "type-id");
-			if (type_id == kNoNode) return false;
-			argument.type = BuildCanonicalTemplateTypeArgument(
-				type_id, source_scope, dependent_names);
+			if (type_id != kNoNode)
+				argument.type = BuildCanonicalTemplateTypeArgument(
+					type_id, source_scope, dependent_names);
+			else if (arena_->IsTag(source, "id-expression"))
+			{
+				const NodeId structure = FindChild(
+					source, "structured-type-name");
+				const LookupResult found = structure != kNoNode ?
+					LookupStructuredName(source, source_scope, LOOKUP_TYPE) :
+					LookupSpelling(source_scope, PayloadSource(source), LOOKUP_TYPE);
+				argument.type = found.type;
+			}
+			else return false;
 			if (argument.type == kNoType) return false;
 		}
 		else if (parameter.kind == TEMPLATE_ARGUMENT_TEMPLATE)

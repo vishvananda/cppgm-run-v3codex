@@ -267,7 +267,7 @@ protected:
 		return kNoNode;
 	}
 
-	bool StartsKnownMemberTemplateCall()
+	bool StartsKnownMemberTemplateId()
 	{
 		Derived& parser = static_cast<Derived&>(*this);
 		if (!parser.AtIdentifier() || !parser.AtOffset(1, OP_LT) ||
@@ -277,7 +277,8 @@ protected:
 		++parser.position_;
 		const std::size_t opener = parser.position_;
 		TryConsumeTemplateArguments();
-		const bool result = parser.position_ > opener && parser.At(OP_LPAREN);
+		const bool result = parser.position_ > opener &&
+			(parser.At(OP_LPAREN) || parser.At(OP_COLON2));
 		parser.Rollback(mark);
 		return result;
 	}
@@ -310,7 +311,9 @@ protected:
 				static_cast<std::uint16_t>(OP_LT);
 		if (!qualified_template_id && last != parser.tokens_.size() &&
 			parser.HasNameFact(parser.tokens_[last].spelling,
-				Derived::kKnownNonTemplate)) return false;
+				Derived::kKnownNonTemplate) &&
+			!parser.HasNameFact(parser.tokens_[last].spelling,
+				Derived::kKnownType)) return false;
 		return last != parser.tokens_.size() &&
 			(parser.HasNameFact(parser.tokens_[last].spelling,
 				Derived::kKnownType) || parser.IsLikelyTypeIdentifier(last) ||

@@ -419,11 +419,14 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 		ParseNamePath(member_spelling) : StructuredNamePath(member_structure);
 	const NameId name = member_path.Last();
 	const bool explicitly_qualified =
-		member_path.global || member_path.Size() > 1;
-	LookupResult found = program_->LookupMember(
-		entity, name, LOOKUP_ORDINARY);
-	const LookupResult template_found = program_->LookupMember(
-		entity, name, LOOKUP_FUNCTION_TEMPLATE);
+		(member_path.global || member_path.Size() > 1) &&
+		member_spelling.compare(0, 8, "operator") != 0;
+	LookupResult found = explicitly_qualified ? LookupStructuredName(
+		identifier, scope, LOOKUP_ORDINARY) :
+		program_->LookupMember(entity, name, LOOKUP_ORDINARY);
+	const LookupResult template_found = explicitly_qualified ?
+		LookupStructuredName(identifier, scope, LOOKUP_FUNCTION_TEMPLATE) :
+		program_->LookupMember(entity, name, LOOKUP_FUNCTION_TEMPLATE);
 	if (found.ordinary == kNoBinding &&
 		member_spelling.compare(0, 8, "operator") == 0)
 	{

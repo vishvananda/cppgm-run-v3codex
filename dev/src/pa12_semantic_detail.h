@@ -544,9 +544,11 @@ private:
 		const std::vector<ExpressionInfo>& arguments,
 		NodeId syntax = kNoNode);
 	void DemandFunction(BindingId binding);
+	void DemandRuntimeFunction(BindingId binding);
 	void DemandDefaultConstructor(EntityId entity);
 	void DemandConstructorDefinition(BindingId binding);
-	void DemandMaterializedConstructorActions(std::uint32_t node);
+	void DemandMaterializedConstructorActions(std::uint32_t node,
+		bool demand_calls = false);
 	bool ShouldDemandResolvedCall(BindingId binding, bool folded,
 		bool compile_time_only) const;
 	void PublishInlineFunctionFacts(BindingId binding, bool inline_specifier);
@@ -1173,6 +1175,7 @@ private:
 	// move while semantic construction is re-entrant.
 	std::deque<FunctionTemplatePattern> function_templates_;
 	std::vector<TypeId> function_template_shape_parameters_;
+	std::vector<TypeId> dependent_template_argument_shapes_;
 	TypeId function_template_dependent_result_shape_;
 	TypeId class_template_nondeduced_type_shape_;
 	mutable std::vector<std::uint8_t> function_template_dependency_cache_;

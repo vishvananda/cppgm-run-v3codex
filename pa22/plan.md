@@ -30,6 +30,11 @@ through typed boundaries. Partial deduction records pack participation even when
 zero elements bind, and matches concrete incomplete specializations through their
 canonical template heads without demanding layout. Qualified C-style cast type-ids
 enter that same typed path.
+Dependent qualified declarations retain rooted template-ids, conversion-name
+boundaries, and member qualifications. Shape construction gives unknown dependent
+member templates unique non-deduced markers; concrete replay performs exact owner
+lookup, derived-to-base deduction, reference operand layout, and runtime declaration
+demand before typed lowering.
 
 This applies `spec.md` §§2–6 and 8–10: canonical typed identity, provenance-aware
 indexed lookup, retained substitution scopes, demand-driven completion, typed
@@ -38,23 +43,23 @@ SFINAE behavior and does not pull in the §7 object backend.
 
 ## Current Failure Map
 
-Current result: **278/310**. The 32 remaining failures group by primary owner:
-member/function/friend retained replay, access, overload, and demand 22;
-alias/template-template/dependent type and non-type scope replay 8; object/static
-storage and emission 2.
+Current result: **285/310**. The 25 remaining failures group by primary owner:
+callable/friend/partial-member reconciliation, access, and overload 11;
+alias/dependent-type owner and source-scope replay 9; constexpr/static/object
+storage and emission 5.
 
 ## Active Checkpoint
 
-**Dependent qualified declaration replay.** Requirements: retain rooted/base/member
-qualification plus cv/ref and `decltype` shapes until concrete owner substitution,
-then perform exact lookup, access, overload, and demand (`spec.md` §§2–6, 8–10).
-Owner and flow: retained declaration/expression -> substitute qualified owner
-segments -> indexed canonical-scope lookup -> access/overload -> definition demand
--> typed lowering. Expected work is O(instantiations * (qualification segments +
-candidates + matched parameters)), with canonical owner and lookup caches. Validate
-CRTP reference casts, dependent-base rvalue assignment, const-dereference overloads,
-member template-template arguments, rooted static data/NTTP definitions, PA22,
-through PA21, audit, and 16/32/64 owner scaling.
+**Canonical callable declaration reconciliation.** Requirements: all declarations,
+definitions, explicit specializations, and friend grants for one callable converge
+on one canonical identity before access, overload, demand, and emission (`spec.md`
+§§2–6, 8–10). Owner and flow: retained callable declaration -> substituted owner ->
+indexed declaration chain -> canonical binding/access facts -> overload and demand
+-> typed lowering. Expected work is O(declarations + uses * candidates), with
+binding-indexed state and overload caches. Validate hidden/existing friends,
+explicit-specialization use locations, partial/member-template cv and conversion
+selection, wrong-arity noncompletion, PA22, through PA21, audit, and 16/32/64
+declaration-chain scaling.
 
 ## Performance Evidence
 
@@ -77,6 +82,7 @@ storage is peak-stage MB.
 | Dependent qualified-type replay | 4.170/7.961/15.067 | 0.851/1.713/3.501 | scopes 340/660/1300; lookups 880/1728/3424; requests 82/162/322; candidates 16/32/64; deduction 96/192/384 |
 | Repeated-pack/incomplete-head ordering | 12.134/23.043/46.103 | 2.109/4.331/8.592 | candidates 96/192/384; comparisons 32/64/128; deduction 1333/2645/5269; requests 730/1450/2890 |
 | Dependent call replay/constructor demand | 3.052/4.072/6.903 | 0.506/0.696/1.038 | candidates 133/245/469; requests 156/300/588; cache hits 144/288/576; lookups 775/1335/2455; demand pushes fixed at 13 |
+| Dependent qualified declaration replay | 9.819/19.353/38.468 | 1.662/3.025/6.022 | lookups 1894/3702/7318; requests 311/615/1223; candidates 401/801/1601; demand pushes 66/130/258 |
 
 The alias benchmark confirms linear specialization requests and constexpr call/step
 counts. Its recursive variadic `cx_plus` evaluator retains 440/1648/6368 local-index
@@ -100,6 +106,9 @@ template-template heads; work, elapsed time, and storage remain linear.
 The call benchmark repeats incomplete-pointee calls, later member-template address
 binding, and evaluated braced call objects. Candidate visits, requests, lookups,
 time, and storage scale linearly; canonical demand is constant after first use.
+The qualified-declaration benchmark recursively demands 16/32/64 distinct owner
+specializations with one dependent qualified-base assignment each. Lookup,
+specialization, candidate, demand, elapsed-time, and storage growth are linear.
 
 ## Completed Checkpoints
 
@@ -128,3 +137,4 @@ time, and storage scale linearly; canonical demand is constant after first use.
 | Dependent qualified member-type replay | Top-level dependent owner qualifications are non-deduced during shape construction and exactly replayed after concrete binding; 272 -> 273, prior 2329/2329, audit pass. |
 | Partial ordering and incomplete template heads | Empty repeated packs retain deduction identity; concrete incomplete heads match without layout demand; 273 -> 275, prior 2329/2329, audit pass. |
 | Dependent function-template call replay | Incomplete pointee shells avoid layout demand, class validation predeclares later member-template heads, and evaluated braced temporaries demand their selected constructors; 275 -> 278, prior 2329/2329, audit pass. |
+| Dependent qualified declaration replay | Rooted/template-id retention, qualified member lookup, derived-base deduction, reference layout, dependent template markers, and external-callee demand; 278 -> 285, prior 2329/2329, audit pass. |

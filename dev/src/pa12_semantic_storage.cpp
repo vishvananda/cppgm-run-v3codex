@@ -55,6 +55,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		constructor_initializer_touched_.capacity() * sizeof(BindingId) +
 		function_templates_.size() * sizeof(FunctionTemplatePattern) +
 		function_template_shape_parameters_.capacity() * sizeof(TypeId) +
+		dependent_template_argument_shapes_.capacity() * sizeof(TypeId) +
 		template_function_sets_.StorageBytes() +
 		template_argument_pack_bindings_.StorageBytes() +
 		template_argument_pack_values_.capacity() * sizeof(TemplateArgument) +

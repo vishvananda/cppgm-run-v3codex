@@ -34,7 +34,8 @@ bool EquivalentAliasTemplateParameters(
 
 }
 
-void SemanticAnalyzer::DemandMaterializedConstructorActions(std::uint32_t node)
+void SemanticAnalyzer::DemandMaterializedConstructorActions(
+	std::uint32_t node, bool demand_calls)
 {
 	if (node >= dump_.nodes.size())
 		throw std::logic_error("invalid materialized-constructor demand root");
@@ -44,6 +45,24 @@ void SemanticAnalyzer::DemandMaterializedConstructorActions(std::uint32_t node)
 		const std::uint32_t current = pending.back();
 		pending.pop_back();
 		DumpNode& record = dump_.nodes[current];
+		if (demand_calls && record.kind == DUMP_CALL_EXPRESSION &&
+			record.first_edge != kNoDumpEdge)
+		{
+			const DumpNode& callee = dump_.nodes[
+				dump_.edges[record.first_edge].child];
+			if (callee.kind == DUMP_CALLEE && callee.binding != kNoBinding)
+			{
+				const BindingId binding =
+					program_->bindings[callee.binding].canonical;
+				if (binding < function_fact_by_binding_.size() &&
+					function_fact_by_binding_[binding] != kNoDumpEdge &&
+					!GetFunction(binding).defined)
+				{
+					GetMutableFunction(binding).deferred = true;
+					DemandRuntimeFunction(binding);
+				}
+			}
+		}
 		if (record.kind == DUMP_TEMPORARY_OBJECT &&
 			record.pending_constructor_demand)
 		{
@@ -342,6 +361,36 @@ bool SemanticAnalyzer::BuildTemplateTemplateArgument(NodeId syntax,
 	const LookupResult found = structured == kNoNode ?
 		LookupSpelling(scope, PayloadSource(name), LOOKUP_TYPE) :
 		LookupStructuredName(name, scope, LOOKUP_TYPE);
+	if (found.type == kNoType && structured != kNoNode)
+	{
+		const NamePath path = StructuredNamePath(structured);
+		NamePath owner_path;
+		owner_path.global = path.global;
+		if (!path.Empty()) owner_path.Push(path[0]);
+		const TypeId owner = LookupPath(scope, owner_path, LOOKUP_TYPE).type;
+		for (std::size_t ordinal = 0;
+			ordinal < function_template_shape_parameters_.size(); ++ordinal)
+			if (owner == function_template_shape_parameters_[ordinal])
+			{
+				if (dependent_template_argument_shapes_.size() <= name)
+					dependent_template_argument_shapes_.resize(
+						static_cast<std::size_t>(name) + 1, kNoType);
+				TypeId& shape = dependent_template_argument_shapes_[name];
+				if (shape == kNoType)
+				{
+					const NameId shape_name = program_->names.Intern(
+						"__dependent_member_template_shape_" +
+						std::to_string(name));
+					const EntityId entity = program_->NewEntity(shape_name,
+						NAMED_TEMPLATE_PARAMETER, false, kNoType,
+						program_->GlobalScope(), shape_name);
+					shape = program_->types.Named(entity);
+				}
+				*argument = TemplateArgument(TEMPLATE_ARGUMENT_TEMPLATE, shape,
+					0, static_cast<std::uint32_t>(ordinal));
+				return true;
+			}
+	}
 	if (found.type == kNoType) return false;
 	if (found.type_declaration != kNoBinding &&
 		!CanAccessMember(found.type_declaration, found.naming_class))

@@ -417,16 +417,15 @@ bool SemanticAnalyzer::DeduceFunctionTemplatePackType(TypeId pattern,
 		if (pattern == argument) return true;
 		const EntityId pattern_entity = pattern_record.entity;
 		const EntityId argument_entity = argument_record.entity;
-		if (pattern_entity >= class_template_pattern_by_entity_.size() ||
-			argument_entity >= class_template_pattern_by_entity_.size())
+		if (pattern_entity >= class_template_pattern_by_entity_.size())
 			return false;
 		const std::uint32_t class_pattern =
 			class_template_pattern_by_entity_[pattern_entity];
-		const std::uint32_t argument_pattern =
-			class_template_pattern_by_entity_[argument_entity];
-		if (class_pattern == kNoDumpEdge || argument_pattern == kNoDumpEdge ||
-			class_pattern >= class_templates_.size() ||
-			argument_pattern >= class_templates_.size())
+		const std::uint32_t argument_pattern = argument_entity <
+			class_template_pattern_by_entity_.size() ?
+			class_template_pattern_by_entity_[argument_entity] : kNoDumpEdge;
+		if (class_pattern == kNoDumpEdge ||
+			class_pattern >= class_templates_.size())
 			return false;
 		const ClassTemplatePattern& pattern_template =
 			class_templates_[class_pattern];
@@ -435,7 +434,9 @@ bool SemanticAnalyzer::DeduceFunctionTemplatePackType(TypeId pattern,
 			const std::size_t ordinal =
 				pattern_template.template_parameter_ordinal;
 			if (ordinal >= parameters.size() ||
-				parameters[ordinal].kind != TEMPLATE_ARGUMENT_TEMPLATE)
+				parameters[ordinal].kind != TEMPLATE_ARGUMENT_TEMPLATE ||
+				argument_pattern == kNoDumpEdge ||
+				argument_pattern >= class_templates_.size())
 				return false;
 			const ClassTemplatePattern& argument_template =
 				class_templates_[argument_pattern];

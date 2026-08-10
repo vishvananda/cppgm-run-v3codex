@@ -2691,6 +2691,11 @@ void SemanticAnalyzer::DemandFunction(BindingId binding)
 {
 	if (binding == kNoBinding || unevaluated_depth_ != 0 ||
 		constexpr_evaluation_depth_ != 0) return;
+	DemandRuntimeFunction(binding);
+}
+void SemanticAnalyzer::DemandRuntimeFunction(BindingId binding)
+{
+	if (binding == kNoBinding) return;
 	binding = program_->bindings[binding].canonical;
 	DemandClassTemplateMemberDefinitions(program_->bindings[binding].member_owner);
 	program_->bindings[binding].emission_demanded |= program_->bindings[binding].inline_function;
@@ -2866,7 +2871,7 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 		current_return_type_ = previous_return;
 		current_class_context_ = previous_class;
 		current_function_context_ = previous_function;
-		DemandMaterializedConstructorActions(function);
+		DemandMaterializedConstructorActions(function, true);
 	}
 	GetMutableFunction(binding).demand_state = 3;
 	++demanded_function_emissions_;

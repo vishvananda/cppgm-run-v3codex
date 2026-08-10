@@ -1099,10 +1099,7 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 					  tokens_[position_ + 1].Kind() ==
 						static_cast<std::uint16_t>(KW_ENUM) ||
 					  IsLikelyTypeIdentifier(position_ + 1) ||
-					  (tokens_[position_ + 1].Kind() == kIdentifierToken &&
-					   position_ + 2 < tokens_.size() &&
-					   tokens_[position_ + 2].Kind() ==
-						static_cast<std::uint16_t>(OP_COLON2))));
+					  QualifiedStartsTypeAt(position_ + 1)));
 			if (!parameter_like) break;
 			const NodeId parameters = ParseParameterClause();
 			arena_.Add(result, parameters);
@@ -1510,8 +1507,8 @@ NodeId Parser::ParsePostfixSuffixes(NodeId value) {
 			std::string member;
 			NodeId structure = kNoNode;
 			const bool qualified_member = AtIdentifier() && AtOffset(1, OP_COLON2);
-			const bool known_template_member = StartsKnownMemberTemplateCall();
-			if (!ParseName(&member, qualified_member, true,
+			const bool known_template_member = StartsKnownMemberTemplateId();
+			if (!ParseName(&member, qualified_member || known_template_member, true,
 				dependent_template || qualified_member || known_template_member,
 				&structure))
 				throw Error("expected member name");
