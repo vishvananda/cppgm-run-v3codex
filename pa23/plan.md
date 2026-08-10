@@ -15,27 +15,29 @@ not rediscover template semantics.
 
 ## Current Failure Map
 
-Current result is 289/401, up from this turn's 284 and stage baseline of 223
-with no regressions; all `200-*` tests pass. The remaining 112 failures group
-by primary owner and observed kind: call/address/constructor deduction
-(`100-*`: 1 exit, 1 LowIR), immediate substitution and demand (`300-*`: 61
-exits, 10 LowIR), canonical non-type/conversion arguments (`400-*`: 17 exits,
-1 LowIR), and composed lookup/alias/class paths (`500-*`: 12 exits, 9 LowIR).
+Current result is 292/401, up from this checkpoint's 289 and stage baseline of
+223 with no regressions; all `100-*` and `200-*` tests pass. The remaining 109
+failures group by primary owner and observed kind: immediate substitution and
+demand (`300-*`: 61 exits, 9 LowIR), canonical non-type/conversion arguments
+(`400-*`: 17 exits, 1 LowIR), and composed lookup/alias/class paths (`500-*`:
+12 exits, 9 LowIR).
 
 ## Active Checkpoint
 
-The next checkpoint closes the two remaining `100-*` boundaries: deduction
-through a namespace-qualified alias parameter on an inherited member template,
-and preservation of reference-to-array cv/default facts through LowIR. N3485
-8.3.5 and 14.8.2.1 require deduction against the canonical parameter before
-function adjustment while retaining the selected declaration's exact boundary
-type. Alias/template lookup owns the source pattern and inherited using edge;
-deduction owns canonical arguments; initialization/lowering consume the chosen
-array-reference parameter without reconstructing it. Expected work is O(C*S+E)
-for C candidates, retained shape S, and E array elements, with specialization
-keys on pattern plus canonical arguments. Validate both direct targets, related
-inherited-alias and array-cv/default guards, all `100-*`, PA1-PA22, and audit;
-measure doubled candidate counts and array extents.
+The next checkpoint owns candidate-local immediate-context result formation in
+the `300-*` group, beginning with dependent call/template-id trailing returns,
+nested aliases, and equivalent qualified result declarations. `spec.md`
+sections 3-6 require declaration-owned syntax and lexical context, substitution
+in an isolated candidate frame, failure confined to the immediate context, and
+completion only after selection. Function-template result formation owns the
+flow from retained result syntax through scoped lookup and canonical
+substitution to candidate viability; instantiation consumes the selected facts
+without repeating lookup. Expected work is O(C*(S+L)) for C candidates,
+retained shape S, and participating lookup L, memoized by pattern, canonical
+arguments, and lookup context. Validate the focused bad-mixed-dependent,
+nested-alias, qualified-result, and hidden-friend probes, then all `300-*`,
+PA1-PA22, and audit; measure doubled candidate counts and dependent-result
+depths.
 
 ## Performance Evidence
 
@@ -47,16 +49,13 @@ expected O(candidates * elements) traversal without superlinear cache churn.
 For 64/128/256/512 ordinary overloads, function-template deduction visits were
 256/512/1,024/2,048, peak semantic storage was 0.78/1.55/3.10/6.19 MB, and wall
 time was 0.00/0.01/0.02/0.04 s. For 8/16/32/64/128 positional member-initializer
-pack elements, semantic nodes were 68/108/188/348/668, candidate-index visits
-9/17/33/65/129, peak stage storage 0.11/0.15/0.25/0.43/0.85 MB, and all three
-wall runs were below 0.01 s, confirming linear produced-element work. Final
-candidate-prefix probes at 16/32/64/128 candidates took
-0.00/0.00/0.01/0.01-0.02 s with peak RSS 5.9/6.6/6.9/8.4 MB; nested-array
-depths 16/32/64/128 all took under 0.01 s and at most 6.6 MB. Final gates are
-PA1-PA22 2,639/2,639, PA23 289/401, zero regressions, and audit pass with 13
-inherited warnings. For 16/32/64/128 omitted-argument explicit specializations,
-three runs took 0.00/0.00/0.01/0.01 s and at most 7.5 MB; retained trailing
-result depths 16/32/64/128 took 0.00/0.00/0.00/0.01 s and at most 7.2 MB.
+pack elements, semantic nodes were 68/108/188/348/668 and all three wall runs
+were below 0.01 s. Candidate-prefix and retained-result depth probes through
+128 took at most 0.02 s and 8.4 MB. For 16/32/64/128 simultaneously viable
+inherited-using candidates, three runs took 0.00/0.01/0.01/0.02-0.03 s with
+peak RSS 6.6/7.1/7.5/8.7 MB; reference-to-array extents 64/128/256/512 all took
+under 0.01 s and at most 6.4 MB. Final gates are PA1-PA22 2,639/2,639, PA23
+292/401, zero regressions, and audit pass with 13 inherited warnings.
 
 ## Completed Checkpoints
 
@@ -75,3 +74,4 @@ result depths 16/32/64/128 took 0.00/0.00/0.00/0.01 s and at most 7.2 MB.
 | Typed pack-expansion initialization and constexpr union state | Scalar/member init consumes one typed positional sequence, empty constructor packs participate, special-member template specifiers persist, and constexpr unions retain only the active member; six gains, 273 -> 279, no regressions, linear scaling. |
 | Canonical explicit-prefix, array-cv, and reference-result flow | Incomplete prefixes leave later packs unbound, cv subtraction preserves array shape, and class lvalue conditionals lower through reference addresses; five gains, 279 -> 284, no regressions, linear scaling. |
 | Explicit template identity and specialization result replay | Type/function explicit-ids retain syntax, complete types deduce omitted arguments, inherited defaults and selected bodies replay, synthesized constructors stay out of ordinary lookup, and aggregate returns keep one lowering identity; 284 -> 289, no regressions, linear specialization/depth scaling. |
+| Inherited-using identity and reference/base lowering | Access-owned specialization aliases, local-signature preference, array-reference stores, and nonempty-base value initialization pass; all `100-*` pass, 289 -> 292, no regressions, linear/flat scaling. |

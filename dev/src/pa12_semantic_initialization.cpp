@@ -1369,6 +1369,10 @@ void SemanticAnalyzer::AddBaseInitializationAction(EntityId entity,
 	{
 		const FunctionInfo& selected =
 			GetFunction(dump_.nodes[constructor].binding);
+		if (initializer != kNoNode &&
+			arena_->IsTag(initializer, "paren-argument-list") &&
+			arguments.empty() && selected.implicit_constructor)
+			dump_.nodes[constructor].value_initialization = true;
 		const EntityId selected_owner =
 			program_->bindings[selected.binding].member_owner;
 		const bool demanded_template_base = !pack_expanded &&

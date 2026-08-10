@@ -177,6 +177,10 @@ private:
 		EntityId owner, bool hidden);
 	void PublishFunctionTemplateFriendGrants(
 		const FunctionTemplatePattern& pattern, BindingId specialization);
+	void RecordFunctionTemplateUsing(ScopeId owner, NameId name,
+		std::size_t pattern, AccessKind access);
+	BindingId MaterializeFunctionTemplateUsing(ScopeId owner, NameId name,
+		std::size_t pattern, BindingId specialization);
 	bool AnalyzeFriendClassTemplate(NodeId target, ScopeId scope,
 		const std::vector<TemplateParameter>& parameters);
 	void RegisterClassTemplateFriend(std::size_t pattern, EntityId owner);
@@ -1269,6 +1273,7 @@ private:
 	IndexedSequenceTable friend_function_grants_;
 	FunctionSignatureTable function_declarations_;
 	FunctionSignatureTable using_function_declarations_;
+	FunctionSignatureTable function_template_specialization_declarations_;
 	FunctionSignatureTable member_ref_qualifier_shapes_;
 	std::vector<std::uint32_t> function_fact_by_binding_;
 	std::vector<FunctionInfo> functions_;
@@ -1315,6 +1320,16 @@ private:
 	TypeId class_template_nondeduced_type_shape_;
 	mutable std::vector<std::uint8_t> function_template_dependency_cache_;
 	IndexedSequenceTable template_function_sets_;
+	struct FunctionTemplateUsingFact
+	{
+		std::uint32_t pattern;
+		AccessKind access;
+		FunctionTemplateUsingFact(std::uint32_t pattern_value,
+			AccessKind access_value)
+			: pattern(pattern_value), access(access_value) {}
+	};
+	IndexedSequenceTable function_template_using_fact_sets_;
+	std::vector<FunctionTemplateUsingFact> function_template_using_facts_;
 	IndexedSequenceTable template_argument_pack_bindings_;
 	std::vector<TemplateArgument> template_argument_pack_values_;
 	IndexedSequenceTable function_parameter_pack_bindings_;

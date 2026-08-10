@@ -1386,6 +1386,15 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 		parsed.type, parsed.parameters, pattern.defined, true,
 		member_owner == kNoEntity ? spec.storage_class : STORAGE_CLASS_NONE,
 		pattern.language_linkage, nonthrowing, pattern.ordinary_visible);
+	const BindingId canonical_binding =
+		program_->bindings[binding].canonical;
+	const FunctionSignatureKey declaration_key(pattern.owner, pattern.name,
+		GetFunction(canonical_binding).signature);
+	++function_signature_lookups_;
+	if (function_template_specialization_declarations_.Find(
+		declaration_key) == kNoBinding)
+		function_template_specialization_declarations_.Insert(
+			declaration_key, canonical_binding);
 	BindingRecord& binding_record = program_->bindings[binding];
 	for (std::size_t i = 0;
 		i < completed.size() && !binding_record.closure_template_specialization;
@@ -1466,6 +1475,84 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 			parameter_offsets.begin(), parameter_offsets.end());
 	}
 	return binding;
+}
+
+void SemanticAnalyzer::RecordFunctionTemplateUsing(ScopeId owner,
+	NameId name, std::size_t pattern, AccessKind access)
+{
+	if (pattern > std::numeric_limits<std::uint32_t>::max())
+		throw std::runtime_error("too many function template patterns");
+	const std::uint64_t key =
+		(static_cast<std::uint64_t>(owner) << 32) | name;
+	CompactIndexSequence& indexed =
+		function_template_using_fact_sets_.Ensure(key);
+	for (std::size_t i = 0; i < indexed.Size(); ++i)
+	{
+		const std::size_t fact = indexed[i];
+		if (fact >= function_template_using_facts_.size())
+			throw std::logic_error(
+				"function template using fact index is invalid");
+		if (function_template_using_facts_[fact].pattern == pattern)
+			return;
+	}
+	if (function_template_using_facts_.size() >
+		std::numeric_limits<std::uint32_t>::max())
+		throw std::runtime_error("too many function template using facts");
+	indexed.Push(function_template_using_facts_.size());
+	function_template_using_facts_.push_back(FunctionTemplateUsingFact(
+		static_cast<std::uint32_t>(pattern), access));
+}
+
+BindingId SemanticAnalyzer::MaterializeFunctionTemplateUsing(ScopeId owner,
+	NameId name, std::size_t pattern, BindingId specialization)
+{
+	if (specialization == kNoBinding ||
+		specialization >= program_->bindings.size() ||
+		pattern >= function_templates_.size())
+		throw std::logic_error(
+			"invalid function template using specialization");
+	const std::uint64_t key =
+		(static_cast<std::uint64_t>(owner) << 32) | name;
+	const CompactIndexSequence* indexed =
+		function_template_using_fact_sets_.Find(key);
+	if (!indexed) return specialization;
+	const FunctionTemplateUsingFact* selected = 0;
+	for (std::size_t i = 0; i < indexed->Size(); ++i)
+	{
+		const std::size_t fact = (*indexed)[i];
+		if (fact >= function_template_using_facts_.size())
+			throw std::logic_error(
+				"function template using fact index is invalid");
+		if (function_template_using_facts_[fact].pattern == pattern)
+		{
+			selected = &function_template_using_facts_[fact];
+			break;
+		}
+	}
+	if (!selected) return specialization;
+	const FunctionInfo& function = GetFunction(specialization);
+	const FunctionSignatureKey signature_key(owner, name, function.signature);
+	++function_signature_lookups_;
+	if (function_template_specialization_declarations_.Find(
+		signature_key) != kNoBinding)
+		return kNoBinding;
+	++function_signature_lookups_;
+	if (function_declarations_.Find(signature_key) != kNoBinding)
+		return kNoBinding;
+	++function_signature_lookups_;
+	const BindingId old = using_function_declarations_.Find(signature_key);
+	if (old != kNoBinding) return old;
+	const BindingId alias = program_->AddBinding(owner, BIND_FUNCTION, name,
+		function.type, false, 0, NAMED_NONE, 0, specialization);
+	PublishUsingAccess(alias, specialization, selected->access);
+	CompactIndexSequence& aliases = function_sets_.Ensure(key);
+	CompactIndexSequence& ordinary_aliases =
+		ordinary_function_sets_.Ensure(key);
+	aliases.Push(alias);
+	ordinary_aliases.Push(alias);
+	IndexEnumOperatorCandidate(alias);
+	using_function_declarations_.Insert(signature_key, alias);
+	return alias;
 }
 
 }

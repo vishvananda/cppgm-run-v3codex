@@ -5,6 +5,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace cppgm
@@ -616,6 +617,7 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 			}
 	}
 	std::vector<std::size_t> template_patterns;
+	std::unordered_map<std::size_t, ScopeId> template_pattern_owners;
 	for (std::size_t owner = 0;
 		owner < template_found.FunctionTemplateOwnerCount(); ++owner)
 	{
@@ -626,7 +628,11 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 		const CompactIndexSequence* indexed = template_function_sets_.Find(key);
 		if (!indexed) continue;
 		for (std::size_t pattern = 0; pattern < indexed->Size(); ++pattern)
+		{
 			template_patterns.push_back((*indexed)[pattern]);
+			template_pattern_owners.insert(std::make_pair(
+				static_cast<std::size_t>((*indexed)[pattern]), template_owner));
+		}
 	}
 	const bool ordinary_functions = found.ordinary != kNoBinding &&
 		program_->bindings[found.ordinary].kind == BIND_FUNCTION;
@@ -664,13 +670,21 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 			&specializations, 0, 0, scope, &argument_syntax);
 		for (std::size_t i = 0; i < specializations.size(); ++i)
 		{
+			BindingId candidate = specializations[i];
+			const std::size_t pattern = GetFunction(candidate).template_pattern;
+			const std::unordered_map<std::size_t, ScopeId>::const_iterator owner =
+				template_pattern_owners.find(pattern);
+			if (owner != template_pattern_owners.end())
+				candidate = MaterializeFunctionTemplateUsing(
+					owner->second, name, pattern, candidate);
+			if (candidate == kNoBinding) continue;
 			const BindingId canonical =
-				program_->bindings[specializations[i]].canonical;
+				program_->bindings[candidate].canonical;
 			bool present = false;
 			for (std::size_t prior = 0; prior < candidates.size(); ++prior)
 				if (program_->bindings[candidates[prior]].canonical == canonical)
 					present = true;
-			if (!present) candidates.push_back(specializations[i]);
+			if (!present) candidates.push_back(candidate);
 		}
 	}
 	if (candidates.empty()) return false;

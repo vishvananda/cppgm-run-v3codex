@@ -151,7 +151,14 @@ protected:
 				"base initialization is outside a constructor");
 		NodeChildren constructor;
 		constructor.Push(children[0]);
-		if (derived.IsTrivialConstructorAction(action.type, constructor)) return;
+		const bool trivial =
+			derived.IsTrivialConstructorAction(action.type, constructor);
+		const bool value_initialization =
+			derived.arena_.nodes[children[0]].value_initialization;
+		const EntityId base = derived.ClassEntity(action.type);
+		const bool empty_base = base != kNoEntity &&
+			derived.program_.entities[base].empty_class;
+		if (trivial && (!value_initialization || empty_base)) return;
 		if (children.size() > 1)
 			derived.BeginFullExpressionCleanup(children, 1);
 		const Operand object = derived.LoadStorage(
@@ -161,7 +168,11 @@ protected:
 				object, action.direct_base_offset) :
 			derived.ProjectBaseSubobjects(object,
 				action.base_projection_count);
-		derived.LowerConstructorAction(children[0], destination, false, true);
+		if (value_initialization && !empty_base)
+			derived.EmitZeroInitialization(action.type, destination);
+		if (!trivial)
+			derived.LowerConstructorAction(
+				children[0], destination, false, true);
 		if (children.size() > 1)
 			derived.CompleteFullExpressionCleanup();
 	}
@@ -354,6 +365,7 @@ protected:
 			return;
 		}
 		if (value.kind == DUMP_BRACED_INIT_LIST &&
+			!derived.IsReferenceType(action.type) &&
 			derived.IsArrayType(action.type))
 		{
 			ConstructorMemberPath path;

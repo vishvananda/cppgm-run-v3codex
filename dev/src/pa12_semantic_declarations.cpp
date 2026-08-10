@@ -2509,8 +2509,13 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 		CompactIndexSequence& template_aliases =
 			template_function_sets_.Ensure(key);
 		for (std::size_t i = 0; i < template_patterns.size(); ++i)
+		{
 			if (!template_aliases.Contains(template_patterns[i]))
 				template_aliases.Push(template_patterns[i]);
+			if (class_owner != kNoEntity)
+				RecordFunctionTemplateUsing(
+					scope, name, template_patterns[i], access);
+		}
 		if (!template_patterns.empty())
 			program_->PublishFunctionTemplateName(scope, name);
 		CompactIndexSequence& aliases = function_sets_.Ensure(key);
