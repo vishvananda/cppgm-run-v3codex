@@ -1319,6 +1319,14 @@ NodeId Parser::ParsePrimaryExpression()
 		return MakeTokenNode("keyword-literal", token);
 	}
 	if (At(OP_LBRACE)) return ParseBracedInitList();
+	if (Match(KW_TYPENAME))
+	{
+		std::string name;
+		NodeId structure = kNoNode;
+		if (!ParseName(&name, true, true, true, &structure))
+			throw Error("expected dependent type name");
+		return MakeStructuredNode("id-expression", name, structure);
+	}
 	if (At(OP_LSQUARE))
 	{
 		const std::size_t capture_first = position_;

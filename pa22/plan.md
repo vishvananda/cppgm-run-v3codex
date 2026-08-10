@@ -32,6 +32,11 @@ completed enclosing specialization's member scope. Nested template class values
 carry special-member ABI facts through named-return and call boundaries; nontrivial
 temporary destruction enters the existing staged full-expression cleanup flow.
 
+Dependent `typename` primaries retain their structured qualified-name syntax until
+semantic replay. An unparenthesized member access in `decltype` resolves to the
+selected member's declared type; category-based reference formation remains limited
+to parenthesized and other expression forms.
+
 This follows `spec.md` §§2–6, 8–10: canonical typed identity, indexed/provenance-aware
 lookup, retained substitution scope, demand-driven completion, typed lowering,
 bounded side storage, and observable work counters. It adds no PA23 SFINAE behavior
@@ -39,24 +44,24 @@ and does not pull in the §7 object backend.
 
 ## Current Failure Map
 
-Current result: **253/310**. The remaining 57 failures have one primary owner each:
+Current result: **255/310**. The remaining 55 failures have one primary owner each:
 member/friend callable ownership, body replay, lookup, and access 23;
-alias/template-template/pack integration 20; dependent deduction, conversion, and
+alias/template-template/pack integration 18; dependent deduction, conversion, and
 lowering 9; explicit specialization/instantiation integration 3; residual partial
 ordering/replay 2.
 
 ## Active Checkpoint
 
-**Nested retained declarator and alias replay.** Owner: the selected nested
-primary/partial pattern owns source-ordered aliases and retained declarators; the
-canonical concrete nested specialization owns substituted types and demand state.
-Data flow: selected nested pattern -> lexical alias overlay -> parameter/default
-substitution -> dependent qualified-id parsing -> callable body demand. Apply
-`spec.md` §§2–6 and 8–9: retain syntax until substitution, preserve lexical source
-order, and publish only canonical typed results. Expected work is O(retained nodes +
-selected arguments + demanded body), with indexed alias lookup and memoized
-specializations. Validate parameter-alias defaults, sibling alias source order,
-nonprimary chained member replay, PA22, through PA21, audit, and scaling.
+**Retained local qualified-id and class-value replay.** Owner: the retained function
+body owns source-ordered local declarators; its canonical specialization owns typed
+local bindings and demand state. Data flow: local declaration -> substitution overlay
+-> dependent template argument/`decltype` -> initialization recipe -> demand and
+lowering. Apply `spec.md` §§2–6 and 8–9: defer lookup until locals exist, preserve
+declared type separately from value category, and demand only runtime-visible
+actions. Expected work is O(retained body nodes + local bindings + emitted actions),
+with indexed lookup and memoized specialization. Validate explicit member-`decltype`
+arguments, nested pack functional casts, local qualified replay, PA22, through PA21,
+audit, and 16/32/64 scaling.
 
 ## Performance Evidence
 
@@ -83,6 +88,12 @@ Lookup queries are 341/677/1349, scope visits 32/64/128, specialization requests
 48/96/192 with 16/32/64 cache hits, and layouts 32/64/128. Enclosing-owner
 resolution and terminal member-scope lookup therefore scale linearly.
 
+Five-run 16/32/64 combined dependent-primary and member-`decltype` replay medians
+are 6.682/13.086/26.165 ms semantic time and 1.263/2.426/4.817 MB peak stage storage.
+Lookup queries are 1354/2650/5242, scope visits 890/1738/3434, specialization
+requests 162/322/642 with 63/127/255 cache hits, partial deduction visits
+160/320/640, and demand emissions 48/96/192. Work and storage remain linear.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result |
@@ -99,3 +110,4 @@ resolution and terminal member-scope lookup therefore scale linearly.
 | Dependent callable replay and lookup provenance | Active-owner/base lookup with lexical using/ADL retention, open-class deferral, qualified projection provenance, and linear owner filtering; PA22 245 -> 248, prior 2329/2329, audit pass. |
 | Qualified and nested callable owner replay | Terminal dependent-base shape deferral, current-owner lookup, base-reference xvalues, and scoped empty-subobject elision; PA22 248 -> 251, prior 2329/2329, audit pass. |
 | Nested explicit specialization and prvalue lifecycle | Enclosing member-scope target lookup, nested nontrivial value ABI, and staged temporary cleanup; PA22 251 -> 253, prior 2329/2329, audit pass. |
+| Dependent primary and member-`decltype` typing | Structured leading-`typename` primaries and declared-type member `decltype`; PA22 253 -> 255, prior 2329/2329, audit pass; linear 16/32/64 replay. |

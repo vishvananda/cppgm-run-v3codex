@@ -740,6 +740,8 @@ TypeId SemanticAnalyzer::DecltypeType(NodeId node, ScopeId scope)
 		parenthesized = true;
 		node = FirstSemanticChild(node);
 	}
+	const bool unparenthesized_member = !parenthesized &&
+		arena_->IsTag(node, "member-expression");
 	if (arena_->IsTag(node, "id-expression"))
 	{
 		const LookupResult found = LookupSpelling(scope,
@@ -764,6 +766,8 @@ TypeId SemanticAnalyzer::DecltypeType(NodeId node, ScopeId scope)
 		throw;
 	}
 	--unevaluated_depth_;
+	if (unparenthesized_member && expression.binding != kNoBinding)
+		return program_->bindings[expression.binding].type;
 	if (expression.category == VALUE_LVALUE)
 		return program_->types.Reference(TYPE_LVALUE_REFERENCE,
 			EffectiveType(expression.type));
