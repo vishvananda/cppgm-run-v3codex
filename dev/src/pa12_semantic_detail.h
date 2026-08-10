@@ -920,6 +920,8 @@ private:
 	bool HasControlDependentTemporary(std::uint32_t node);
 	void AppendFullExpressionDestructionActions(std::uint32_t expression,
 		std::uint32_t output_parent);
+	void StageNestedTemplateTemporaryCleanup(std::uint32_t expression,
+		std::uint32_t statement, ScopeId scope);
 	void AppendUnwindDestructionActions(ScopeId scope,
 		std::uint32_t output_parent);
 	void AddNamespaceObjectAction(std::uint32_t variable, BindingId object,

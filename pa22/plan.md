@@ -27,6 +27,11 @@ a terminal deferred state; concrete substitutions use distinct canonical keys.
 Derived-to-base reference casts preserve xvalue storage identity, and empty-class
 copy elision is limited to aggregate-member and base-subobject initialization.
 
+Explicit nested class specializations resolve their terminal template marker in the
+completed enclosing specialization's member scope. Nested template class values
+carry special-member ABI facts through named-return and call boundaries; nontrivial
+temporary destruction enters the existing staged full-expression cleanup flow.
+
 This follows `spec.md` §§2–6, 8–10: canonical typed identity, indexed/provenance-aware
 lookup, retained substitution scope, demand-driven completion, typed lowering,
 bounded side storage, and observable work counters. It adds no PA23 SFINAE behavior
@@ -34,25 +39,24 @@ and does not pull in the §7 object backend.
 
 ## Current Failure Map
 
-Current result: **251/310**. The remaining 59 failures have one primary owner each:
+Current result: **253/310**. The remaining 57 failures have one primary owner each:
 member/friend callable ownership, body replay, lookup, and access 23;
 alias/template-template/pack integration 20; dependent deduction, conversion, and
-lowering 10; explicit specialization/instantiation integration 4; residual partial
+lowering 9; explicit specialization/instantiation integration 3; residual partial
 ordering/replay 2.
 
 ## Active Checkpoint
 
-**Nested member specialization definition replay.** Owner: the canonical nested
-class/member specialization owns identity, its selected primary/partial owns retained
-syntax, and the concrete enclosing class owns lookup and access. Data flow: nested
-definition -> enclosing-owner substitution -> selected specialization scope ->
-parameter/default replay -> callable demand -> class-value lowering. Apply `spec.md`
-§§2–6 and 8–9: keep nested owner selection monotonic, preserve lexical aliases and
-defaults, and separate semantic completion from output demand. Expected work is
-O(definition nodes + enclosing depth + selected-pattern arguments + demanded body
-nodes), with indexed lookup and memoized canonical keys. Validate nested explicit
-specialization, parameter-alias defaults, sibling alias source order, chained member
-templates/lambda anchors, prvalue output, PA22, through PA21, audit, and scaling.
+**Nested retained declarator and alias replay.** Owner: the selected nested
+primary/partial pattern owns source-ordered aliases and retained declarators; the
+canonical concrete nested specialization owns substituted types and demand state.
+Data flow: selected nested pattern -> lexical alias overlay -> parameter/default
+substitution -> dependent qualified-id parsing -> callable body demand. Apply
+`spec.md` §§2–6 and 8–9: retain syntax until substitution, preserve lexical source
+order, and publish only canonical typed results. Expected work is O(retained nodes +
+selected arguments + demanded body), with indexed alias lookup and memoized
+specializations. Validate parameter-alias defaults, sibling alias source order,
+nonprimary chained member replay, PA22, through PA21, audit, and scaling.
 
 ## Performance Evidence
 
@@ -73,6 +77,12 @@ Lookup queries are 608/1184/2336, edge visits 16/32/64, specialization requests
 materialization and deduction stay constant at 1 and 15: terminal shape deferral
 prevents repeated completion while concrete specialization work scales linearly.
 
+Five-run 16/32/64 independent nested explicit-specialization medians are
+1.447/2.753/5.341 ms semantic time and 0.371/0.737/1.471 MB peak stage storage.
+Lookup queries are 341/677/1349, scope visits 32/64/128, specialization requests
+48/96/192 with 16/32/64 cache hits, and layouts 32/64/128. Enclosing-owner
+resolution and terminal member-scope lookup therefore scale linearly.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result |
@@ -88,3 +98,4 @@ prevents repeated completion while concrete specialization work scales linearly.
 | Callable role, metadata, and demand boundary | Constructor/conversion role split, declaration metadata inheritance with pack mapping, and demanded result/target completion; PA22 240 -> 245, prior 2329/2329, audit pass. |
 | Dependent callable replay and lookup provenance | Active-owner/base lookup with lexical using/ADL retention, open-class deferral, qualified projection provenance, and linear owner filtering; PA22 245 -> 248, prior 2329/2329, audit pass. |
 | Qualified and nested callable owner replay | Terminal dependent-base shape deferral, current-owner lookup, base-reference xvalues, and scoped empty-subobject elision; PA22 248 -> 251, prior 2329/2329, audit pass. |
+| Nested explicit specialization and prvalue lifecycle | Enclosing member-scope target lookup, nested nontrivial value ABI, and staged temporary cleanup; PA22 251 -> 253, prior 2329/2329, audit pass. |

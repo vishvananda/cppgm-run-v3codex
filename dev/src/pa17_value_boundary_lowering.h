@@ -81,7 +81,8 @@ protected:
 			derived.program_.entities[object.entity];
 		const std::size_t size = derived.program_.SizeOf(object_type);
 		const bool dependent_empty_value = entity.empty_class &&
-			entity.template_argument_count != 0;
+			entity.template_argument_count != 0 && (entity.enclosing_class ==
+			pa11::kNoEntity || !entity.indirect_class_value_abi);
 		return !dependent_empty_value && (size > 16 ||
 			(size < 16 && entity.indirect_class_value_abi));
 	}

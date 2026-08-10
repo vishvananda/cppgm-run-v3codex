@@ -165,6 +165,12 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 		structured_path.Push(program_->names.UseInterned(
 			arena_->SemanticPayloadId(child)));
 	}
+	const bool member_class_template_specialization =
+		(arena_->IsTag(target, "class-specifier") ||
+		 arena_->IsTag(target, "class-forward-declaration")) &&
+		!components.empty() && FindChild(components.back(),
+			"template-type-argument-list") != kNoNode;
+	ScopeId explicit_member_owner_scope = kNoScope;
 	for (std::size_t component = 0;
 		component + 1 < components.size(); ++component)
 	{
@@ -198,10 +204,13 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 			program_->entities[entity].member_scope == kNoScope)
 			throw std::runtime_error(
 				"explicit member specialization has incomplete owner");
+		explicit_member_owner_scope = program_->entities[entity].member_scope;
 		if (owner < class_template_explicit_specialization_states_.size() &&
-			class_template_explicit_specialization_states_[owner] != 0)
+			class_template_explicit_specialization_states_[owner] != 0 &&
+			!member_class_template_specialization)
 			throw std::runtime_error(
 				"member of an explicit class specialization has a template header");
+		if (member_class_template_specialization) continue;
 		const ScopeId definition_scope = NewScope(
 			program_->entities[entity].member_scope,
 			SCOPE_TEMPLATE_PARAMETERS, 0,
@@ -314,7 +323,16 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 	if (arena_->IsTag(target, "class-specifier") ||
 		arena_->IsTag(target, "class-forward-declaration"))
 	{
-		const LookupResult found = LookupPath(scope, primary, LOOKUP_TYPE);
+		LookupResult found;
+		if (member_class_template_specialization &&
+			explicit_member_owner_scope != kNoScope)
+		{
+			NamePath terminal;
+			terminal.Push(primary.Last());
+			found = program_->LookupQualified(
+				explicit_member_owner_scope, terminal, LOOKUP_TYPE);
+		}
+		else found = LookupPath(scope, primary, LOOKUP_TYPE);
 		const std::size_t pattern_index =
 			FindClassTemplateIndex(found, primary.Last());
 		if (pattern_index == std::numeric_limits<std::size_t>::max())

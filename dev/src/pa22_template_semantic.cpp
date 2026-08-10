@@ -34,6 +34,25 @@ bool EquivalentAliasTemplateParameters(
 
 }
 
+void SemanticAnalyzer::StageNestedTemplateTemporaryCleanup(
+	std::uint32_t expression, std::uint32_t statement, ScopeId scope)
+{
+	for (std::uint32_t edge = dump_.nodes[statement].first_edge;
+		edge != kNoDumpEdge; edge = dump_.edges[edge].next)
+	{
+		const DumpNode& action = dump_.nodes[dump_.edges[edge].child];
+		if (action.kind != DUMP_DESTRUCTOR_ACTION ||
+			action.lifetime_object == kNoDumpEdge) continue;
+		const EntityId entity = DestructedEntity(action.operand_type);
+		if (entity == kNoEntity ||
+			program_->entities[entity].template_argument_count == 0 ||
+			program_->entities[entity].enclosing_class == kNoEntity) continue;
+		MarkFullExpressionCalls(expression);
+		AppendUnwindDestructionActions(scope, statement);
+		return;
+	}
+}
+
 void SemanticAnalyzer::SelectClassTemplateMemberOwner(
 	std::size_t pattern_index, ClassTemplateMemberPattern* member)
 {

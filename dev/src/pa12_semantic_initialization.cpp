@@ -357,10 +357,10 @@ void SemanticAnalyzer::FinalizeNamedReturnSlot(std::uint32_t function)
 	const EntityRecord& class_record = program_->entities[entity];
 	const std::size_t size = program_->SizeOf(result);
 	const bool dependent_empty_value = class_record.empty_class &&
-		class_record.template_argument_count != 0;
+		class_record.template_argument_count != 0 && (class_record.enclosing_class ==
+		kNoEntity || !class_record.indirect_class_value_abi);
 	const bool indirect = !dependent_empty_value && (size > 16 ||
 		(size < 16 && class_record.indirect_class_value_abi));
-
 	std::vector<std::uint32_t> pending(1, function);
 	std::vector<std::uint32_t> return_edges;
 	std::vector<std::uint32_t> sources;
