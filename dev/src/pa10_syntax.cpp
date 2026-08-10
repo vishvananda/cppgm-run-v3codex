@@ -1509,7 +1509,7 @@ NodeId Parser::ParsePostfixSuffixes(NodeId value) {
 			std::string member;
 			NodeId structure = kNoNode;
 			const bool qualified_member = AtIdentifier() && AtOffset(1, OP_COLON2);
-			const bool known_template_member = StartsKnownMemberTemplateId();
+			const bool known_template_member = StartsKnownTemplateId();
 			if (!ParseName(&member, qualified_member || known_template_member, true,
 				dependent_template || qualified_member || known_template_member,
 				&structure))
@@ -1574,16 +1574,12 @@ NodeId Parser::ParseUnaryExpression()
 		if (AtIdentifier() && (IsLikelyTypeIdentifier(position_) ||
 			(AtOffset(1, OP_LT) && HasNameFact(tokens_[position_].spelling,
 				kKnownTemplate))) &&
+			!StartsKnownTemplateId(true) &&
 			!AtOffset(1, OP_LPAREN) && (!AtOffset(1, OP_COLON2) ||
 				QualifiedStartsType())) prefer_type = true;
 		if (kind == KW_NOEXCEPT) prefer_type = false;
 		if (prefer_type) {
-			const Mark type_mark = Checkpoint();
-			if (!ParseTypeId(trait) || !At(OP_RPAREN)) {
-				Rollback(type_mark); const NodeId operand = ParseExpression();
-				if (operand == kNoNode) throw Error("expected trait operand");
-				arena_.Add(trait, operand);
-			}
+			if (!ParseTypeId(trait)) throw Error("expected trait type-id");
 		}
 		else {
 			const NodeId operand = ParseExpression();

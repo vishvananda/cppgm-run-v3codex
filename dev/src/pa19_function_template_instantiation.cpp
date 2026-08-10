@@ -782,10 +782,14 @@ DeclaratorInfo SemanticAnalyzer::BuildFunctionTemplateSpecializationDeclarator(
 				template_scope);
 		else *spec = BuildSpecifiers(pattern.specifiers, template_scope,
 			std::string(), true);
-		parsed = BuildDeclarator(pattern.declarator, spec->type,
-			template_scope, false, *member_owner != kNoEntity &&
-				!pattern.static_member &&
-				spec->storage_class != STORAGE_CLASS_STATIC);
+		if (spec->type == kNoType && CandidateSubstitutionActive() &&
+			!CandidateSubstitutionFailed())
+			RecordCandidateSubstitutionFailure();
+		if (!CandidateSubstitutionFailed() && spec->type != kNoType)
+			parsed = BuildDeclarator(pattern.declarator, spec->type,
+				template_scope, false, *member_owner != kNoEntity &&
+					!pattern.static_member &&
+					spec->storage_class != STORAGE_CLASS_STATIC);
 	}
 	catch (...)
 	{
@@ -793,6 +797,7 @@ DeclaratorInfo SemanticAnalyzer::BuildFunctionTemplateSpecializationDeclarator(
 		throw;
 	}
 	current_class_context_ = previous_class;
+	if (CandidateSubstitutionFailed() || spec->type == kNoType) return parsed;
 	const std::size_t metadata_count =
 		pattern.function_parameter_names.size();
 	if (metadata_count != pattern.function_parameter_defaults.size())
@@ -1107,6 +1112,8 @@ bool SemanticAnalyzer::MaterializeFunctionTemplateDefaults(
 			{
 				argument.type = ResolveTemplateParameterType(
 					source_parameter, default_scope);
+				if (CandidateSubstitutionFailed() || argument.type == kNoType)
+					return false;
 				++constant_expression_required_depth_;
 				ExpressionInfo value;
 				try
@@ -1120,9 +1127,17 @@ bool SemanticAnalyzer::MaterializeFunctionTemplateDefaults(
 					throw;
 				}
 				--constant_expression_required_depth_;
+				if (CandidateSubstitutionFailed()) return false;
 				if (!value.constant || !IsIntegral(value.type, true))
+				{
+					if (CandidateSubstitutionActive())
+					{
+						RecordCandidateSubstitutionFailure();
+						return false;
+					}
 					throw std::runtime_error(
 						"default non-type function template argument is not constant");
+				}
 				argument.value = NormalizeIntegralConstant(
 					argument.type, value.value);
 			}
@@ -1240,6 +1255,13 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 				request_key, TEMPLATE_REQUEST_FAILED);
 		return kNoBinding;
 	}
+	if (CandidateSubstitutionFailed() || parsed.type == kNoType)
+	{
+		if (needs_defaults)
+			function_template_default_requests_.SetRequest(
+				request_key, TEMPLATE_REQUEST_FAILED);
+		return kNoBinding;
+	}
 	bool nonthrowing = pattern.nonthrowing;
 	try
 	{
@@ -1252,6 +1274,23 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 			function_template_default_requests_.SetRequest(
 				request_key, TEMPLATE_REQUEST_FAILED);
 		return kNoBinding;
+	}
+	if (CandidateSubstitutionActive())
+	{
+		const TypeRecord& function_type = program_->types.Get(parsed.type);
+		const TypeId* parameters = program_->types.Parameters(parsed.type);
+		for (std::size_t i = 0; i < function_type.parameter_count; ++i)
+		{
+			const TypeRecord& shape = program_->types.Get(
+				program_->types.RemoveTopCv(parameters[i]));
+			if (shape.kind != TYPE_NAMED ||
+				!program_->entities[shape.entity].abstract_class) continue;
+			RecordCandidateSubstitutionFailure();
+			if (needs_defaults)
+				function_template_default_requests_.SetRequest(
+					request_key, TEMPLATE_REQUEST_FAILED);
+			return kNoBinding;
+		}
 	}
 	const BindingId binding = DeclareFunction(pattern.owner, pattern.name,
 		parsed.type, parsed.parameters, pattern.defined, true,

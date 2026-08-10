@@ -435,6 +435,12 @@ private:
 		ScopeId lexical_scope, std::vector<TemplateArgument>* arguments,
 		bool require_complete = true,
 		const std::unordered_set<NameId>* dependent_names = 0);
+	bool CandidateSubstitutionActive() const;
+	bool CandidateSubstitutionFailed() const;
+	void RecordCandidateSubstitutionFailure();
+	ExpressionInfo CandidateSubstitutionFailure();
+	BindingId CandidateOverloadFailure(const char* message);
+	ExpressionInfo CandidateExpressionFailure(const char* message);
 	TypeId BuildCanonicalTemplateTypeArgument(NodeId type_id,
 		ScopeId source_scope,
 		const std::unordered_set<NameId>* dependent_names);
@@ -1308,6 +1314,7 @@ private:
 	std::size_t class_template_member_replay_depth_;
 	std::size_t explicit_member_template_replay_depth_;
 	std::size_t class_template_completion_suppressed_depth_;
+	std::vector<std::uint8_t> candidate_substitution_failures_;
 	std::vector<NodeId> deferred_class_definition_by_entity_;
 	std::vector<ScopeId> deferred_class_scope_by_entity_;
 	std::vector<std::uint32_t> injected_fact_by_binding_;

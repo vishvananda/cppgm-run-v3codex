@@ -881,8 +881,15 @@ TypeId SemanticAnalyzer::ResolveTemplateParameterType(
 	if (!parameter.dependent_type) return parameter.value_type;
 	const SpecInfo spec = BuildSpecifiers(parameter.specifiers, parameter_scope,
 		std::string(), parameter.declarator != kNoNode);
+	if (CandidateSubstitutionFailed()) return kNoType;
 	const TypeId type = parameter.declarator == kNoNode ? spec.type :
 		BuildDeclarator(parameter.declarator, spec.type, parameter_scope).type;
+	if (CandidateSubstitutionFailed()) return kNoType;
+	if (type == kNoType && CandidateSubstitutionActive())
+	{
+		RecordCandidateSubstitutionFailure();
+		return kNoType;
+	}
 	if (!IsIntegral(type, true) && !FunctionTemplateTypeIsDependent(type))
 		throw std::runtime_error(
 			"non-type template parameter does not have integral type");
@@ -1042,6 +1049,8 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 		{
 			argument.type = ResolveTemplateParameterType(
 				parameter, parameter_scope);
+			if (CandidateSubstitutionFailed() || argument.type == kNoType)
+				return false;
 			const bool dependent_target =
 				FunctionTemplateTypeIsDependent(argument.type);
 			ExpressionInfo expression;
@@ -1101,6 +1110,7 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 				}
 				--constant_expression_required_depth_;
 			}
+			if (CandidateSubstitutionFailed()) return false;
 			if (!IsIntegral(expression.type, true))
 				throw std::runtime_error(
 					"non-type template argument is not an integral constant");

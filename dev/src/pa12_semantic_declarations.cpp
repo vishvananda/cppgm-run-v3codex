@@ -1737,9 +1737,16 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 				structured_name, scope, LOOKUP_TYPE);
 			result.type = found.type;
 			if (result.type == kNoType)
+			{
+				if (CandidateSubstitutionActive())
+				{
+					RecordCandidateSubstitutionFailure();
+					return result;
+				}
 				throw std::runtime_error(
 					"structured template type was not found: " +
 					PayloadSource(child));
+			}
 			if (found.type_declaration != kNoBinding &&
 				!CanAccessMember(found.type_declaration, found.naming_class))
 				throw std::runtime_error("inaccessible member type");
@@ -1752,6 +1759,7 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 			if (deferred_type != kNoType)
 			{ result.type = deferred_type; continue; }
 			result.type = DecltypeType(FirstSemanticChild(child), scope);
+			if (CandidateSubstitutionFailed()) return result;
 			const NodeId qualified = FindChild(child, "qualified-type-name");
 			if (qualified != kNoNode)
 			{
@@ -1871,6 +1879,7 @@ TypeId SemanticAnalyzer::BuildTypeId(NodeId node, ScopeId scope)
 		specifiers = FindChild(node, "decl-specifier-seq");
 	const SpecInfo spec = BuildSpecifiers(
 		specifiers, scope, std::string(), false, true);
+	if (CandidateSubstitutionFailed()) return kNoType;
 	NodeId declarator = FindChild(node, "abstract-declarator");
 	if (declarator == kNoNode) declarator = FindChild(node, "declarator");
 	return declarator == kNoNode ? spec.type :
@@ -1948,9 +1957,11 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 					const SpecInfo element_spec = BuildSpecifiers(
 						specifiers, element_scopes[i], std::string(), true,
 						false, deferred_type);
+					if (CandidateSubstitutionFailed()) return result;
 					const DeclaratorInfo parsed = BuildDeclarator(
 						declarator, element_spec.type, element_scopes[i], false,
 						false, false, template_parameter_names);
+					if (CandidateSubstitutionFailed()) return result;
 					const NameId element_name = parameter_pack_name == 0 ? 0 :
 						i == 0 ? parameter_pack_name : program_->names.Intern(
 							parameter_pack_spelling + "__pack" +
@@ -1968,6 +1979,7 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 		}
 		const SpecInfo spec = BuildSpecifiers(specifiers, parameter_scope,
 			std::string(), declarator != kNoNode, false, deferred_type);
+		if (CandidateSubstitutionFailed()) return result;
 		NameId name = 0;
 		TypeId declared = spec.type;
 		if (declarator != kNoNode)
@@ -2018,9 +2030,13 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 						template_parameter_names);
 				name = parsed.name;
 				declared = parsed.type;
+				if (CandidateSubstitutionFailed()) return result;
 			}
 			if (declared_pack)
 				*variadic = true;
+		}
+		if (declared == kNoType && CandidateSubstitutionActive()) {
+			RecordCandidateSubstitutionFailure(); return result;
 		}
 		result.push_back(ParameterInfo(name, declared,
 			AdjustParameterType(declared)));
@@ -2054,6 +2070,11 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 {
 	DeclaratorInfo result;
 	result.name = DeclaratorName(node);
+	if (base == kNoType && CandidateSubstitutionActive())
+	{
+		if (!CandidateSubstitutionFailed()) RecordCandidateSubstitutionFailure();
+		return result;
+	}
 	TypeId type = base;
 	const NodeId trailing = FindChild(node, "trailing-return-type");
 	std::vector<NodeId> suffixes;
@@ -2224,6 +2245,17 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 			std::vector<TypeId> function_parameters;
 			for (std::size_t p = 0; p < parameters.size(); ++p)
 				function_parameters.push_back(parameters[p].function_type);
+			bool invalid_substitution = type == kNoType;
+			for (std::size_t p = 0; p < function_parameters.size(); ++p)
+				if (function_parameters[p] == kNoType)
+					invalid_substitution = true;
+			if (CandidateSubstitutionFailed() || invalid_substitution)
+			{
+				if (invalid_substitution && CandidateSubstitutionActive() &&
+					!CandidateSubstitutionFailed())
+					RecordCandidateSubstitutionFailure();
+				return result;
+			}
 			type = program_->types.Function(type, function_parameters, variadic,
 				function_cv, function_ref);
 			result.parameters = parameters;

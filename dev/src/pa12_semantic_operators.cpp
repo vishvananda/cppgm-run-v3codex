@@ -103,7 +103,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 			(IsPointer(result_type) &&
 			 IsVoid(program_->types.Get(
 				 program_->types.RemoveTopCv(result_type)).child)))
+		{
+			if (CandidateSubstitutionActive())
+				return CandidateSubstitutionFailure();
 			throw std::runtime_error("invalid increment operand");
+		}
 		category = postfix ? VALUE_PRVALUE : VALUE_LVALUE;
 		constant = false;
 		if (constexpr_evaluation_depth_ != 0 &&
@@ -253,6 +257,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBinary(NodeId node, ScopeId scope)
 	const NodeId left_syntax = arena_->EdgeChild(first_edge);
 	const NodeId right_syntax = arena_->EdgeChild(second_edge);
 	ExpressionInfo left = AnalyzeExpression(left_syntax, scope);
+	if (CandidateSubstitutionFailed()) return left;
 	const std::string operation = PayloadSource(node);
 	const bool short_circuit = left.constant &&
 		((operation == "&&" && !ExpressionTruth(left)) ||
@@ -261,7 +266,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBinary(NodeId node, ScopeId scope)
 	ExpressionInfo right;
 	try
 	{
-		right = AnalyzeExpression(right_syntax, scope);
+			right = AnalyzeExpression(right_syntax, scope);
 	}
 	catch (...)
 	{
@@ -269,6 +274,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBinary(NodeId node, ScopeId scope)
 		throw;
 	}
 	if (short_circuit) --constant_evaluation_suppressed_depth_;
+	if (CandidateSubstitutionFailed()) return right;
 	return BuildBinaryExpression(operation, arena_->Payload(node),
 		left_syntax, right_syntax, left, right, scope);
 }
@@ -363,14 +369,22 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 		if (IsPointer(Decay(left.type)) && IsIntegral(right.type))
 		{
 			if (IsVoid(program_->types.Get(Decay(left.type)).child))
+			{
+				if (CandidateSubstitutionActive())
+					return CandidateSubstitutionFailure();
 				throw std::runtime_error("arithmetic on pointer to void");
+			}
 			result_type = Decay(left.type);
 		}
 		else if (operation == "+" && IsIntegral(left.type) &&
 			IsPointer(Decay(right.type)))
 		{
 			if (IsVoid(program_->types.Get(Decay(right.type)).child))
+			{
+				if (CandidateSubstitutionActive())
+					return CandidateSubstitutionFailure();
 				throw std::runtime_error("arithmetic on pointer to void");
+			}
 			result_type = Decay(right.type);
 		}
 		else if (operation == "-" && IsPointer(Decay(left.type)) &&
@@ -378,7 +392,11 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 		{
 			if (IsVoid(program_->types.Get(Decay(left.type)).child) ||
 				IsVoid(program_->types.Get(Decay(right.type)).child))
+			{
+				if (CandidateSubstitutionActive())
+					return CandidateSubstitutionFailure();
 				throw std::runtime_error("subtraction on pointer to void");
+			}
 			result_type = program_->types.Fundamental(FUND_LONG_INT);
 		}
 		else if (IsArithmetic(left.type) && IsArithmetic(right.type))

@@ -12,6 +12,47 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+bool SemanticAnalyzer::CandidateSubstitutionActive() const
+{
+	return !candidate_substitution_failures_.empty();
+}
+
+bool SemanticAnalyzer::CandidateSubstitutionFailed() const
+{
+	return CandidateSubstitutionActive() &&
+		candidate_substitution_failures_.back() != 0;
+}
+
+void SemanticAnalyzer::RecordCandidateSubstitutionFailure()
+{
+	if (!CandidateSubstitutionActive())
+		throw std::logic_error("candidate substitution failure has no owner");
+	candidate_substitution_failures_.back() = 1;
+}
+
+ExpressionInfo SemanticAnalyzer::CandidateSubstitutionFailure()
+{
+	RecordCandidateSubstitutionFailure();
+	return ExpressionInfo();
+}
+
+BindingId SemanticAnalyzer::CandidateOverloadFailure(const char* message)
+{
+	if (CandidateSubstitutionActive())
+	{
+		RecordCandidateSubstitutionFailure();
+		return kNoBinding;
+	}
+	throw std::runtime_error(message);
+}
+
+ExpressionInfo SemanticAnalyzer::CandidateExpressionFailure(
+	const char* message)
+{
+	if (CandidateSubstitutionActive()) return CandidateSubstitutionFailure();
+	throw std::runtime_error(message);
+}
+
 namespace
 {
 
@@ -540,6 +581,11 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 	const BindingId selected = SelectOverload(scope, argument_syntax,
 		arguments, candidates, &object_pointer, &object_conversion,
 		&argument_conversions);
+	if (selected == kNoBinding)
+	{
+		*result = ExpressionInfo();
+		return true;
+	}
 	*result = BuildResolvedCall(selected, scope, argument_syntax,
 		arguments, &object_pointer, target, found.naming_class,
 		&object_conversion, &argument_conversions,
@@ -662,28 +708,16 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 				if (pattern.parameters[parameter].pack)
 					has_template_parameter_pack = true;
 			std::vector<TemplateArgument> arguments;
-			bool built_arguments = false;
-			if (!has_template_parameter_pack)
+			candidate_substitution_failures_.push_back(0);
+			const bool built_arguments = !has_template_parameter_pack &&
+				BuildTemplateArguments(pattern.parameters, explicit_syntax,
+					scope, pattern.lexical_scope, &arguments);
+			const BindingId candidate = built_arguments ?
+				InstantiateFunctionTemplate(patterns[i], arguments) : kNoBinding;
+			const bool substitution_failed = CandidateSubstitutionFailed();
+			candidate_substitution_failures_.pop_back();
+			if (built_arguments && !substitution_failed)
 			{
-				try
-				{
-					built_arguments = BuildTemplateArguments(
-						pattern.parameters, explicit_syntax,
-						scope, pattern.lexical_scope, &arguments);
-				}
-				catch (const std::runtime_error&)
-				{
-					// Explicit arguments and defaults are substituted per
-					// candidate.  An invalid immediate type or expression drops
-					// this candidate; overload resolution diagnoses only if no
-					// viable candidate remains.
-					built_arguments = false;
-				}
-			}
-			if (built_arguments)
-			{
-				const BindingId candidate = InstantiateFunctionTemplate(
-					patterns[i], arguments);
 				if (candidate != kNoBinding &&
 					std::find(explicit_candidates.begin(),
 						explicit_candidates.end(), candidate) ==
@@ -794,7 +828,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 			&object, scope, arena_->EdgeChild(first));
 	const EntityId entity = EntityOf(owner_type);
 	if (entity == kNoEntity || program_->entities[entity].member_scope == kNoScope)
+	{
+		if (CandidateSubstitutionActive())
+			return CandidateSubstitutionFailure();
 		throw std::runtime_error("member access on non-class object");
+	}
 	const NodeId identifier = arena_->EdgeChild(second);
 	const NodeId member_structure = FindChild(
 		identifier, "structured-type-name");
@@ -804,9 +842,17 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	const LookupResult found = program_->LookupMember(
 		entity, name, LOOKUP_ORDINARY);
 	if (found.ordinary == kNoBinding)
+	{
+		if (CandidateSubstitutionActive())
+			return CandidateSubstitutionFailure();
 		throw std::runtime_error("unknown class member");
+	}
 	if (!CanAccessMember(found.ordinary, found.naming_class, entity))
+	{
+		if (CandidateSubstitutionActive())
+			return CandidateSubstitutionFailure();
 		throw std::runtime_error("inaccessible class member");
+	}
 	const EntityId member_owner =
 		program_->bindings[found.ordinary].member_owner;
 	const bool member_function =

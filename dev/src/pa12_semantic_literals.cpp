@@ -766,6 +766,7 @@ TypeId SemanticAnalyzer::DecltypeType(NodeId node, ScopeId scope)
 		throw;
 	}
 	--unevaluated_depth_;
+	if (CandidateSubstitutionFailed()) return kNoType;
 	if (unparenthesized_member && expression.binding != kNoBinding)
 		return program_->bindings[expression.binding].type;
 	if (expression.category == VALUE_LVALUE)

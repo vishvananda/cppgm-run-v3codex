@@ -466,8 +466,10 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 			if (selected_conversions)
 				selection.CopyConversions(selected_conversions);
 			const FunctionInfo& constructor = GetFunction(selection.selected);
-			if (quiet && copy_initialization && constructor.explicit_constructor)
-				return kNoBinding;
+			if (quiet && (constructor.deleted_constructor ||
+				constructor.deleted_special_member ||
+				(copy_initialization && constructor.explicit_constructor) ||
+				!CanAccessMember(selection.selected))) return kNoBinding;
 			if (!quiet)
 			{
 				if (constructor.deleted_constructor ||
@@ -636,9 +638,12 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 	}
 	if (viable_count == 0 && quiet) return kNoBinding;
 	if (viable_count == 0)
+	{
+		if (quiet) return kNoBinding;
 		throw std::runtime_error("no viable constructor for " +
 			std::to_string(arity) + " argument(s) from " +
 			std::to_string(candidates.size()) + " candidate(s)");
+	}
 	if (viable_count != 1)
 		for (std::size_t c = 0; c < candidates.size(); ++c)
 			if (c != champion && viable[c] && !better(champion, c))
@@ -661,8 +666,10 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 			CachedConstructorSelection(selected, selected_facts));
 		selection_index->Ensure(selection_key).Push(index);
 	}
-	if (quiet && copy_initialization && constructor.explicit_constructor)
-		return kNoBinding;
+	if (quiet && (constructor.deleted_constructor ||
+		constructor.deleted_special_member ||
+		(copy_initialization && constructor.explicit_constructor) ||
+		!CanAccessMember(selected))) return kNoBinding;
 	if (!quiet &&
 		(constructor.deleted_constructor || constructor.deleted_special_member))
 		throw std::runtime_error("selected constructor is deleted");
@@ -746,8 +753,13 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 	std::vector<CallConversionFact> selected_conversions;
 	BindingId selected = SelectConstructor(scope, argument_syntax,
 		arguments, candidates, copy_initialization, list_initialization,
-		&selected_conversions, false, source_list,
+		&selected_conversions, CandidateSubstitutionActive(), source_list,
 		program_->types.RemoveTopCv(EffectiveType(type)));
+	if (selected == kNoBinding)
+	{
+		RecordCandidateSubstitutionFailure();
+		return kNoDumpEdge;
+	}
 	const BindingId complete_constructor = selected;
 	if (base_subobject) selected = EnsureConstructorBaseEntry(selected);
 	const FunctionInfo constructor = GetFunction(selected);

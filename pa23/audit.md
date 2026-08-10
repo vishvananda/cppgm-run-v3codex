@@ -2,46 +2,45 @@
 
 ## Current Checkpoint Review
 
-The landed `ef0fa8c5` increment correctly moved function-template defaults
-between deduction and canonical specialization creation, but its request alias
-represented successful bindings only. Repeated invalid defaults were rebuilt,
-recursive demand had no in-progress state, and the merged declaration record
-could accept a duplicate default or discard a default when an alpha-renamed
-definition replaced the template head. The same coarse declaration identity
-also merged complementary dependent result types. Those were correctness and
-repeated-work defects in the checkpoint's `spec.md` sections 2--5 ownership
-path, not later expression-SFINAE work.
+The landed `63596fc7` increment produced the intended 12 gains in immediate
+expression substitution and variadic class calls, but three ownership defects
+crossed the checkpoint boundary. `sizeof(f<T>())` first parsed its operand as a
+type-id, rolled back, and parsed it again as an expression; ordinary SFINAE
+rejections unwound `std::runtime_error` through explicit and deduced candidate
+paths; and lowering rediscovered an ellipsis class argument from function arity
+and value type. These violated `spec.md` sections 1, 3, and 6 even though the
+223/401 checkpoint baseline passed.
 
-Declaration insertion now gives each default a retained context containing its
-declaring lexical scope and parameter head. Redeclarations map parameters to
-those contexts, reject a second default, and let a definition adopt its own
-names without changing earlier default lookup. Dependent result syntax is
-normalized by template-parameter ordinal at insertion, so alpha-equivalent
-declarations merge while complementary result constraints remain separate
-overloads. The audit regression composes defaults added by two differently
-named declarations and forms one canonical `int, int` specialization.
+Trait disambiguation now uses the parser's bounded, cached token-only template
+angle scan and selects exactly one grammar branch. No abandoned type-id tree or
+second expression parse is created. Semantic candidate frames now own compact
+failure state across explicit argument binding, deduction, default
+materialization, declarator/type formation, member and overload lookup,
+construction, `decltype`, `noexcept`, and invalid operator checks. Invalid
+types stop at each typed boundary before reaching canonical type construction
+or declaration publication; hard errors outside candidate substitution retain
+their diagnostic behavior.
 
-Candidate replay uses a flat canonical request table keyed by template
-identity, incomplete canonical arguments, and required pack partitions. Its
-monotonic states are in-progress, success, and expected failure; only requests
-whose missing parameters already own defaults are cached, so a later default
-declaration cannot stale an earlier incomplete result. Successful requests
-alias the complete specialization key, failed and recursive requests return a
-candidate discard, and lowering continues to consume the selected typed
-binding without lookup or template-specific recovery.
+The selected call node now records `variadic_class_argument` alongside its
+materialization fact. PA15 lowering consumes that bit directly when choosing
+the class-object storage path and no longer reconstructs template or ABI
+semantics from arity and type. The candidate-frame capacity is included in
+semantic storage telemetry.
 
-On 1,024/2,048/4,096 repeated failed-default calls, default materializations
-remain 1/1/1, failure-cache hits are 2,047/4,095/8,191, candidate-index visits
-are 1,024/2,048/4,096, deduction visits are 2,048/4,096/8,192, and semantic
-peak bytes are 2,331,968/4,625,728/9,213,248. Three-run semantic medians are
-13.0/25.2/49.5 ms. Together with the landed successful-request probe, this
-shows linear participating-candidate work and no repeated default substitution
-for either disposition.
+At 1,024/2,048/4,096 repeated valid and failed probes, deduction visits are
+2,048/4,096/8,192 and overload-candidate visits are respectively
+5,123/10,243/20,483 and 4,099/8,195/16,387. Each disposition materializes its
+default once; failed-request cache hits are 2,047/4,095/8,191. Peak semantic
+bytes are 7,762,775/15,509,719/31,003,607 for valid probes and
+7,764,295/15,513,031/31,010,503 for failed probes. Three-run semantic medians
+are 38.8/79.0/159.1 ms and 38.4/78.6/155.2 ms. The failed medians were
+59.4/117.3/238.1 ms before the audit, so removing exception unwinding materially
+reduced rejection cost while preserving linear work and memory.
 
-The handout suite is 210/400: seven gains and no regression from the 203/400
-turn baseline. The declaration-context course regression is 1/1, PA1--PA22 are
-2,639/2,639, and the PA23 file audit passes with the same 13 inherited
-header-division advisories. `git diff --check` also passes.
+The required PA23 report remains 223/401, PA1--PA22 remain 2,639/2,639, and the
+file audit passes with the same 13 inherited header-division advisories. All 12
+landed gains plus two baseline-sensitive substitution cases complete under
+`gdb catch throw` with no C++ throw, and `git diff --check` passes.
 
 ## Checkpoint Audit Ledger
 
@@ -49,3 +48,4 @@ header-division advisories. `git diff --check` also passes.
 | --- | --- |
 | Direct array-extent NTTP deduction (`b6d38290`, this audit) | Canonical bound deduction and ordinary typed lowering pass; candidate ownership was repaired at the source index and scales linearly; baseline preserved. |
 | Defaulted function-template substitution (`ef0fa8c5`, this audit) | Declaration-owned default contexts, normalized dependent-result identity, and complete request states repair redeclaration correctness and repeated failed work; PA23 203 -> 210 with no regressions and linear success/failure scaling. |
+| Immediate expression substitution and variadic class calls (`63596fc7`, this audit) | Single-branch parsing, compact explicit/deduced candidate failure, and a semantic variadic-class fact replace reparsing, exception control flow, and lowering reconstruction; PA23 stays 223/401 with linear scaling. |

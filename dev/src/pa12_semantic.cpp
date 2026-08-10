@@ -501,6 +501,7 @@ ConversionRank SemanticAnalyzer::Conversion(const ExpressionInfo& source,
 ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 	TypeId target, ConversionRank known_conversion)
 {
+	if (value.type == kNoType && CandidateSubstitutionFailed()) return value;
 	if (target == kNoType)
 	{
 		RecordExpressionFacts(value);
@@ -1014,13 +1015,13 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 		}
 		if (better(c, champion)) champion = c;
 	}
-	if (viable_count == 0) throw std::runtime_error("no viable overload");
+	if (viable_count == 0) return CandidateOverloadFailure("no viable overload");
 	if (viable_count != 1)
 		for (std::size_t other = 0; other < candidates.size(); ++other)
 		{
 			if (other == champion || !viable[other]) continue;
 			if (!better(champion, other))
-				throw std::runtime_error("ambiguous overload");
+				return CandidateOverloadFailure("ambiguous overload");
 		}
 	if (object_conversion && object)
 	{
@@ -1056,7 +1057,11 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	bool suppress_virtual_dispatch)
 {
 	if (GetFunction(selected).deleted_special_member)
+	{
+		if (CandidateSubstitutionActive())
+			return CandidateSubstitutionFailure();
 		throw std::runtime_error("selected special member is deleted");
+	}
 	EntityId object_class = kNoEntity;
 	if (object)
 	{
@@ -1067,7 +1072,11 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 		object_class = EntityOf(object_type);
 	}
 	if (!CanAccessMember(selected, naming_class, object_class))
+	{
+		if (CandidateSubstitutionActive())
+			return CandidateSubstitutionFailure();
 		throw std::runtime_error("inaccessible member function");
+	}
 	const FunctionInfo function = GetFunction(selected);
 	const bool nonstatic_member = function.member_owner != kNoType &&
 		!program_->bindings[selected].static_member_function;
@@ -1137,6 +1146,7 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 			if (dump_.nodes[argument.node].kind != DUMP_TEMPORARY_OBJECT)
 				argument = MaterializeTemporary(argument);
 			dump_.nodes[argument.node].argument_materialization = true;
+			dump_.nodes[argument.node].variadic_class_argument = true;
 		}
 		dump_.Add(call, argument.node);
 	}
@@ -1355,6 +1365,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 			const BindingId selected = SelectOverload(scope, argument_syntax,
 				analyzed_arguments, candidates, object,
 				object ? &object_conversion : 0, &argument_conversions);
+			if (selected == kNoBinding) return ExpressionInfo();
 			return BuildResolvedCall(selected, scope, argument_syntax,
 				analyzed_arguments, object, target, function_naming_class,
 				object ? &object_conversion : 0, &argument_conversions,
@@ -1408,9 +1419,17 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 			++expression_count_;
 			return ApplyTarget(result, target);
 		}
-		if (retained_lookup) throw std::runtime_error("retained call has no viable function");
+		NamePath explicit_base;
+		std::vector<NodeId> explicit_arguments;
+		if (CandidateSubstitutionActive() &&
+			CollectExplicitTemplateArguments(direct_callee_syntax,
+				&explicit_base, &explicit_arguments))
+			return CandidateSubstitutionFailure();
+		if (retained_lookup) return CandidateExpressionFailure(
+			"retained call has no viable function");
 	}
 	ExpressionInfo callee = AnalyzeExpression(callee_syntax, scope);
+	if (CandidateSubstitutionFailed()) return ExpressionInfo();
 	if (!arguments_analyzed)
 	{
 		for (std::size_t i = 0; i < argument_syntax.size(); ++i)

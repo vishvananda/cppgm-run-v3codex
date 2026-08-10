@@ -267,7 +267,7 @@ protected:
 		return kNoNode;
 	}
 
-	bool StartsKnownMemberTemplateId()
+	bool StartsKnownTemplateId(bool call_only = false)
 	{
 		Derived& parser = static_cast<Derived&>(*this);
 		if (!parser.AtIdentifier() || !parser.AtOffset(1, OP_LT) ||
@@ -278,7 +278,7 @@ protected:
 		const std::size_t opener = parser.position_;
 		TryConsumeTemplateArguments();
 		const bool result = parser.position_ > opener &&
-			(parser.At(OP_LPAREN) || parser.At(OP_COLON2));
+			(parser.At(OP_LPAREN) || (!call_only && parser.At(OP_COLON2)));
 		parser.Rollback(mark);
 		return result;
 	}

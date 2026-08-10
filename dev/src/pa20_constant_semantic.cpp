@@ -239,6 +239,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNoexcept(NodeId node, ScopeId scope)
 	}
 	--constant_evaluation_suppressed_depth_;
 	--unevaluated_depth_;
+	if (CandidateSubstitutionFailed()) return ExpressionInfo();
 	const bool nonthrowing = InitializationActionsAreNonthrowing(analyzed.node);
 	ExpressionInfo result = MakeLiteral(
 		program_->types.Fundamental(FUND_BOOL),
@@ -445,6 +446,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 		arguments_node != kNoNode &&
 		arena_->IsTag(arguments_node, "braced-init-list") ?
 			arguments_node : kNoNode, prepared_arguments);
+	if (result.node == kNoDumpEdge) return ExpressionInfo();
 	result.type = cast_type;
 	result.category = VALUE_PRVALUE;
 	if (argument_syntax.empty() &&

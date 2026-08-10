@@ -156,6 +156,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		associated_scope_marks_.capacity() * sizeof(std::uint32_t) +
 		associated_type_marks_.capacity() * sizeof(std::uint32_t) +
 		candidate_marks_.capacity() * sizeof(std::uint32_t) +
+		candidate_substitution_failures_.capacity() * sizeof(std::uint8_t) +
 		empty_destructor_chain_cache_.capacity() * sizeof(std::uint8_t) +
 		pack_alignment_stack_.capacity() * sizeof(std::size_t);
 	for (std::size_t i = 0; i < functions_.size(); ++i)

@@ -804,9 +804,13 @@ void SemanticAnalyzer::DeduceFunctionTemplatePatterns(
 			if (!valid || canonical.size() >
 				std::numeric_limits<std::uint32_t>::max()) continue;
 			offsets.push_back(static_cast<std::uint32_t>(canonical.size()));
+			candidate_substitution_failures_.push_back(0);
 			const BindingId specialization =
 				InstantiateFunctionTemplate(patterns[p], canonical, offsets);
-			if (specializations && specialization != kNoBinding)
+			const bool substitution_failed = CandidateSubstitutionFailed();
+			candidate_substitution_failures_.pop_back();
+			if (specializations && specialization != kNoBinding &&
+				!substitution_failed)
 				specializations->push_back(specialization);
 		}
 	}
@@ -894,8 +898,13 @@ void SemanticAnalyzer::DeduceFunctionTemplatePatternsWithExplicitSyntax(
 				break;
 			}
 		std::vector<TemplateArgument> canonical;
-		if (!BuildTemplateArguments(explicit_parameters, explicit_syntax,
-			use_scope, pattern.lexical_scope, &canonical, false)) continue;
+		candidate_substitution_failures_.push_back(0);
+		const bool built = BuildTemplateArguments(explicit_parameters,
+			explicit_syntax, use_scope, pattern.lexical_scope,
+			&canonical, false);
+		const bool substitution_failed = CandidateSubstitutionFailed();
+		candidate_substitution_failures_.pop_back();
+		if (!built || substitution_failed) continue;
 		const std::vector<std::size_t> one_pattern(1, patterns[i]);
 		DeduceFunctionTemplatePatterns(one_pattern, arguments,
 			specializations, 0, &canonical);
