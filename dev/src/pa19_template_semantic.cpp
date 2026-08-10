@@ -1703,11 +1703,13 @@ bool SemanticAnalyzer::MaterializeTemplatePartialArguments(
 	}
 	const ScopeId shape_scope = NewScope(lexical_scope,
 		SCOPE_TEMPLATE_PARAMETERS, 0, ScopePrefixId(lexical_scope));
+	std::unordered_set<NameId> dependent_names;
 	for (std::size_t parameter = 0;
 		parameter < partial_parameters.size(); ++parameter)
 	{
 		const TemplateParameter& record = partial_parameters[parameter];
 		if (record.name == 0) continue;
+		dependent_names.insert(record.name);
 		if (record.kind == TEMPLATE_ARGUMENT_TYPE)
 			program_->AddBinding(shape_scope, BIND_TYPE_ALIAS, record.name,
 				function_template_shape_parameters_[parameter]);
@@ -1723,7 +1725,7 @@ bool SemanticAnalyzer::MaterializeTemplatePartialArguments(
 	try
 	{
 		built = BuildTemplateArguments(primary_parameters, syntax, shape_scope,
-			lexical_scope, arguments);
+			lexical_scope, arguments, true, &dependent_names);
 	}
 	catch (...)
 	{
@@ -1849,6 +1851,8 @@ bool SemanticAnalyzer::DeduceTemplatePartialType(TypeId pattern,
 	FunctionTemplateDeduction* deduced) const
 {
 	++template_partial_deduction_visits_;
+	if (pattern == class_template_nondeduced_type_shape_ &&
+		pattern != kNoType) return true;
 	for (std::size_t i = 0;
 		i < function_template_shape_parameters_.size() &&
 		i < parameters.size(); ++i)
@@ -2166,6 +2170,43 @@ std::size_t SemanticAnalyzer::SelectClassTemplatePartial(
 		FunctionTemplateDeduction bindings(candidate.parameters);
 		if (!MatchTemplatePartialArguments(candidate.parameters,
 			candidate.canonical_arguments, arguments, &bindings)) continue;
+		bool replay_nondeduced = false;
+		for (std::size_t argument = 0;
+			argument < candidate.canonical_arguments.size(); ++argument)
+			if (candidate.canonical_arguments[argument].kind ==
+					TEMPLATE_ARGUMENT_TYPE &&
+				candidate.canonical_arguments[argument].type ==
+					class_template_nondeduced_type_shape_)
+				replay_nondeduced = true;
+		if (replay_nondeduced)
+		{
+			const ScopeId substitution_scope = NewScope(
+				candidate.lexical_scope, SCOPE_TEMPLATE_PARAMETERS, 0,
+				ScopePrefixId(candidate.lexical_scope));
+			for (std::size_t parameter = 0;
+				parameter < candidate.parameters.size(); ++parameter)
+				if (candidate.parameters[parameter].pack)
+					BindTemplateArgumentPack(substitution_scope,
+						candidate.parameters[parameter],
+						bindings.pack_arguments[parameter], 0,
+						bindings.pack_arguments[parameter].size());
+				else BindTemplateArgument(substitution_scope,
+					candidate.parameters[parameter],
+					bindings.fixed_arguments[parameter]);
+			std::vector<TemplateArgument> replayed;
+			bool valid = false;
+			try
+			{
+				valid = BuildTemplateArguments(pattern.parameters,
+					candidate.arguments, substitution_scope,
+					candidate.lexical_scope, &replayed);
+			}
+			catch (const std::runtime_error&)
+			{
+				valid = false;
+			}
+			if (!valid || replayed != arguments) continue;
+		}
 		matches.push_back(candidate_index);
 	}
 	if (matches.empty()) return NoTemplatePattern();

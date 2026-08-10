@@ -11,6 +11,7 @@
 #include <iosfwd>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace cppgm
@@ -33,6 +34,7 @@ public:
 		  graph_consumer_(graph_consumer), render_output_(render_output),
 		  root_(kNoDumpEdge),
 		  function_template_dependent_result_shape_(kNoType),
+		  class_template_nondeduced_type_shape_(kNoType),
 		  class_template_member_replay_depth_(0),
 		  explicit_member_template_replay_depth_(0),
 		  current_language_linkage_(LANGUAGE_LINKAGE_CPP),
@@ -384,7 +386,11 @@ private:
 	bool BuildTemplateArguments(const std::vector<TemplateParameter>& parameters,
 		const std::vector<NodeId>& syntax, ScopeId use_scope,
 		ScopeId lexical_scope, std::vector<TemplateArgument>* arguments,
-		bool require_complete = true);
+		bool require_complete = true,
+		const std::unordered_set<NameId>* dependent_names = 0);
+	TypeId BuildCanonicalTemplateTypeArgument(NodeId type_id,
+		ScopeId source_scope,
+		const std::unordered_set<NameId>* dependent_names);
 	TypeId ResolveTemplateParameterType(const TemplateParameter& parameter,
 		ScopeId parameter_scope);
 	void BindTemplateArgument(ScopeId scope,
@@ -1165,6 +1171,7 @@ private:
 	std::deque<FunctionTemplatePattern> function_templates_;
 	std::vector<TypeId> function_template_shape_parameters_;
 	TypeId function_template_dependent_result_shape_;
+	TypeId class_template_nondeduced_type_shape_;
 	mutable std::vector<std::uint8_t> function_template_dependency_cache_;
 	IndexedSequenceTable template_function_sets_;
 	IndexedSequenceTable template_argument_pack_bindings_;

@@ -21,7 +21,9 @@ probe; explicit calls with a pack defer specialization until deduction supplies 
 remaining elements. Parser facts are
 block scoped, so an unqualified local value can shadow a template without
 corrupting qualified lookup. Dependent qualified result shapes stay retained until
-substitution, while direct template-ids still resolve to canonical concrete types.
+substitution; partial patterns mark dependent owner qualifications as non-deduced,
+then replay them exactly after other arguments bind concrete parameters. Direct
+template-ids still resolve to canonical concrete types.
 Static initializers demanded while type-checking a skipped logical arm evaluate as
 independent constant roots. Array list-casts and scalar value initialization lower
 through typed boundaries.
@@ -33,24 +35,24 @@ SFINAE behavior and does not pull in the §7 object backend.
 
 ## Current Failure Map
 
-Current result: **272/310**. All 38 remaining failures group by primary owner:
+Current result: **273/310**. All 37 remaining failures group by primary owner:
 member/friend/function-template ownership, replay, access, overload, and demand 28;
-alias/template-template/non-type-pack construction and qualified type lookup 8;
+alias/template-template/non-type-pack construction and qualified type lookup 7;
 partial-specialization selection/order replay 2. The alias group now concentrates
-on lexical value binding, dependent member-type materialization, expansion result
-folding, and qualified dependent template syntax.
+on lexical value binding, expansion result folding, and qualified dependent
+template syntax.
 
 ## Active Checkpoint
 
-**Dependent qualified member-type replay.** Requirements: retain a qualified member
-type whose owner is a dependent class-template specialization, then resolve it only
-after concrete substitution and completion (`spec.md` §§2–6, 8–9). Owner and flow:
-retained type syntax -> substitution scope -> canonical owner specialization ->
-demanded class completion -> qualified member lookup -> typed alias/base/member use.
-Expected work is O(type-pattern nodes + visited lookup edges + specialization and
-partial-deduction visits), with one lookup result per canonical owner. Validate
-`common<T,U>::type`, nested `make_void`, adjacent conditional-base/member aliases,
-PA22, through PA21, audit, and direct 16/32/64 scaling.
+**Partial-specialization ordering replay.** Requirements: compare viable partials
+using canonical parameter/argument shapes, including repeated packs and concrete
+template heads, without confusing arity-incomplete candidates (`spec.md` §§2–6,
+8–9). Owner and flow: canonical actual arguments -> candidate deduction ->
+pairwise partial ordering -> selected substitution owner -> demanded definition.
+Expected work is O(candidate argument visits + viable-candidate² ordering), with
+shape and specialization caches preventing repeated materialization. Validate
+repeated-pack ordering, incomplete template-template arity, concrete heads, PA22,
+through PA21, audit, and direct 16/32/64 candidate/pack scaling.
 
 ## Performance Evidence
 
@@ -70,6 +72,7 @@ storage is peak-stage MB.
 | Template-proxy call replay | 9.827/13.611/20.620 | 1.139/1.573/2.512 | lookups 1398/2166/3702; scopes 685/941/1453; access 1008/1776/3312; requests fixed at 96 |
 | Alias-partial canonical forwarding | 5.449/8.808/15.663 | 1.564/2.492/4.750 | lookups 1849/3337/6313; requests 307/563/1075; deduction 672/1184/2208; candidates fixed at 16 |
 | Short-circuit static demand | 12.335/25.270/63.085 | 3.349/6.762/17.015 | expressions 945/1761/3393; lookups 3040/6104/14536; requests 957/1773/3405; deduction 849/2161/6321 |
+| Dependent qualified-type replay | 4.170/7.961/15.067 | 0.851/1.713/3.501 | scopes 340/660/1300; lookups 880/1728/3424; requests 82/162/322; candidates 16/32/64; deduction 96/192/384 |
 
 The alias benchmark confirms linear specialization requests and constexpr call/step
 counts. Its recursive variadic `cx_plus` evaluator retains 440/1648/6368 local-index
@@ -85,6 +88,9 @@ The short-circuit benchmark uses 16 independently prefixed recursive folds and o
 shared suffix family. Canonical completion has no retry cascade; the superlinear
 time/storage follows the existing trailing-pack partial matcher, whose suffix
 deduction visits grow quadratically (849/2161/6321).
+The qualified-type benchmark instantiates 16/32/64 independent concrete owners.
+Candidate replay, deduction, lookup, time, and storage all scale linearly, showing
+one exact post-substitution validation per canonical partial request.
 
 ## Completed Checkpoints
 
@@ -110,3 +116,4 @@ deduction visits grow quadratically (849/2161/6321).
 | Template-proxy call replay | Pattern-directed canonical explicit arguments preserve template proxies and non-trailing pack allocation; 268 -> 269, prior 2329/2329, audit pass. |
 | Alias-partial specialization replay | Symbolic alias-pack forwarding preserves canonical expansion identity for non-type partial deduction and base/member replay; 269 -> 271, prior 2329/2329, audit pass. |
 | Short-circuit constant-demand isolation | Skipped-arm suppression no longer contaminates independently demanded static initializers; direct and alias recursive folds pass; 271 -> 272, prior 2329/2329, audit pass. |
+| Dependent qualified member-type replay | Top-level dependent owner qualifications are non-deduced during shape construction and exactly replayed after concrete binding; 272 -> 273, prior 2329/2329, audit pass. |

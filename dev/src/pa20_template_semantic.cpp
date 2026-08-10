@@ -28,6 +28,44 @@ bool SyntaxUsesTemplateParameter(const SyntaxArena& arena, NodeId node,
 	return false;
 }
 
+bool TypeIdNamesDependentQualifiedType(const SyntaxArena& arena,
+	NodeId type_id, const std::unordered_set<NameId>& names)
+{
+	NodeId specifiers = kNoNode;
+	for (std::uint32_t edge = arena.FirstEdge(type_id); edge != kNoEdge;
+		edge = arena.NextEdge(edge))
+		if (arena.IsTag(arena.EdgeChild(edge), "type-specifier-seq"))
+		{
+			specifiers = arena.EdgeChild(edge);
+			break;
+		}
+	for (std::uint32_t edge = specifiers == kNoNode ? kNoEdge :
+		arena.FirstEdge(specifiers); edge != kNoEdge;
+		edge = arena.NextEdge(edge))
+	{
+		const NodeId specifier = arena.EdgeChild(edge);
+		NodeId structure = kNoNode;
+		for (std::uint32_t child = arena.FirstEdge(specifier);
+			child != kNoEdge; child = arena.NextEdge(child))
+			if (arena.IsTag(arena.EdgeChild(child), "structured-type-name"))
+			{
+				structure = arena.EdgeChild(child);
+				break;
+			}
+		if (structure == kNoNode) continue;
+		std::vector<NodeId> components;
+		for (std::uint32_t component = arena.FirstEdge(structure);
+			component != kNoEdge; component = arena.NextEdge(component))
+			if (arena.IsTag(arena.EdgeChild(component), "name-component"))
+				components.push_back(arena.EdgeChild(component));
+		for (std::size_t component = 0;
+			component + 1 < components.size(); ++component)
+			if (SyntaxUsesTemplateParameter(
+				arena, components[component], names)) return true;
+	}
+	return false;
+}
+
 std::string ExplicitArgumentPresentation(const Program& program,
 	const TemplateArgument& argument)
 {
@@ -917,7 +955,7 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 	const std::vector<TemplateParameter>& parameters,
 	const std::vector<NodeId>& syntax, ScopeId use_scope,
 	ScopeId lexical_scope, std::vector<TemplateArgument>* arguments,
-	bool require_complete)
+	bool require_complete, const std::unordered_set<NameId>* dependent_names)
 {
 	const bool has_pack = HasTrailingTemplateParameterPack(parameters);
 	const std::size_t fixed = FixedTemplateParameterCount(parameters);
@@ -959,8 +997,8 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 			NodeId type_id = arena_->IsTag(source, "type-id") ? source :
 				FindChild(source, "type-id");
 			if (type_id == kNoNode) return false;
-			argument.type = BuildTypeId(type_id,
-				source_scope);
+			argument.type = BuildCanonicalTemplateTypeArgument(
+				type_id, source_scope, dependent_names);
 			if (argument.type == kNoType) return false;
 		}
 		else if (parameter.kind == TEMPLATE_ARGUMENT_TEMPLATE)
@@ -1158,6 +1196,26 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 		BindTemplateArgumentPack(parameter_scope, parameters.back(),
 			*arguments, fixed, arguments->size());
 	return true;
+}
+
+TypeId SemanticAnalyzer::BuildCanonicalTemplateTypeArgument(NodeId type_id,
+	ScopeId source_scope,
+	const std::unordered_set<NameId>* dependent_names)
+{
+	const bool nondeduced = dependent_names != 0 &&
+		TypeIdNamesDependentQualifiedType(
+			*arena_, type_id, *dependent_names);
+	if (!nondeduced) return BuildTypeId(type_id, source_scope);
+	if (class_template_nondeduced_type_shape_ == kNoType)
+	{
+		const NameId name = program_->names.Intern(
+			"__class_template_nondeduced_type_shape");
+		const EntityId entity = program_->NewEntity(name,
+			NAMED_TYPENAME_PARAMETER, false, kNoType,
+			program_->GlobalScope(), name);
+		class_template_nondeduced_type_shape_ = program_->types.Named(entity);
+	}
+	return class_template_nondeduced_type_shape_;
 }
 
 std::vector<TemplateArgument> SemanticAnalyzer::TypeTemplateArguments(
