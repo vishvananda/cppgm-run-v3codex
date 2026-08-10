@@ -325,28 +325,31 @@ bool SemanticAnalyzer::DemandRuntimeInitializerFunctions(
 		const std::uint32_t current = pending.back();
 		pending.pop_back();
 		++runtime_initializer_visits_;
-		const DumpNode& action = dump_.nodes[current];
+		const DumpKind kind = dump_.nodes[current].kind;
+		const BindingId binding = dump_.nodes[current].binding;
+		const BindingId selected_binding =
+			dump_.nodes[current].selected_binding;
+		const std::uint32_t first_edge = dump_.nodes[current].first_edge;
 		if (!function_addresses_only &&
-			(action.kind == DUMP_CALL_EXPRESSION ||
-			action.kind == DUMP_CONSTRUCTOR_ACTION) &&
-			action.binding != kNoBinding)
-			DemandFunction(action.binding);
-		else if (action.kind == DUMP_ID_EXPRESSION &&
-			action.binding != kNoBinding &&
-			program_->bindings[action.binding].kind == BIND_FUNCTION)
+			(kind == DUMP_CALL_EXPRESSION ||
+			kind == DUMP_CONSTRUCTOR_ACTION) &&
+			binding != kNoBinding)
+			DemandFunction(binding);
+		else if (kind == DUMP_ID_EXPRESSION && binding != kNoBinding &&
+			program_->bindings[binding].kind == BIND_FUNCTION)
 		{
-			DemandFunction(action.binding);
 			const BindingRecord& addressed =
-				program_->bindings[action.binding];
+				program_->bindings[binding];
 			specialization_owned_address = specialization_owned_address ||
 				addressed.template_argument_count != 0 ||
 				IsClassTemplateSpecializationContext(addressed.member_owner);
+			DemandFunction(binding);
 		}
 		else if (!function_addresses_only &&
-			action.kind == DUMP_CLASS_VALUE_TRANSFER &&
-			action.selected_binding != kNoBinding)
-			DemandFunction(action.selected_binding);
-		for (std::uint32_t edge = action.first_edge;
+			kind == DUMP_CLASS_VALUE_TRANSFER &&
+			selected_binding != kNoBinding)
+			DemandFunction(selected_binding);
+		for (std::uint32_t edge = first_edge;
 			edge != kNoDumpEdge; edge = dump_.edges[edge].next)
 			pending.push_back(dump_.edges[edge].child);
 	}

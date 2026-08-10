@@ -37,7 +37,7 @@ class LocalStaticLowering
 {
 protected:
 	std::string LocalStaticSymbolName(const LocalStaticObjectAction& action,
-		bool weak) const
+		bool weak, bool presentation) const
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
 		if (action.function >= derived.function_symbols_.size() ||
@@ -58,8 +58,9 @@ protected:
 			derived.program_.names.Get(
 				derived.program_.bindings[action.object].name));
 		std::string name = "__local_static__" + function_identity + "__";
-		if (weak && action.specialization_owned_recipe &&
-			action.source_line != 0)
+		if (presentation && weak && action.specialization_owned_recipe &&
+			action.source_file != 0 && action.source_line != 0 &&
+			action.source_column != 0)
 		{
 			const std::string source = " at " +
 				derived.program_.names.Get(action.source_file) + ":" +
@@ -88,10 +89,13 @@ protected:
 				derived.program_.bindings[action.function];
 			const bool weak = function.weak_odr ||
 				function.template_argument_count != 0;
-			const std::string name = LocalStaticSymbolName(action, weak);
+			const std::string name =
+				LocalStaticSymbolName(action, weak, true);
+			const std::string object_name = weak ? "@" +
+				LocalStaticSymbolName(action, weak, false) : std::string();
 			const SymbolId symbol = derived.AddSyntheticSymbol(
 				Symbol::GLOBAL_SYMBOL, name,
-				weak ? "@" + name : std::string(), !weak);
+				object_name, !weak);
 			Symbol& record = derived.output_.symbols[symbol];
 			record.weak_linkage = weak;
 			record.definition_emitted = true;
@@ -145,9 +149,14 @@ protected:
 					function.template_argument_count != 0;
 				const std::string guard_name =
 					derived.output_.symbols[symbol].name + "__guard";
+				const std::string& object_name =
+					derived.output_.symbols[symbol].object_name;
+				const std::string guard_object_name = weak &&
+					!object_name.empty() ? object_name + "__guard" :
+					std::string();
 				const SymbolId guard_symbol = derived.AddSyntheticSymbol(
 					Symbol::GLOBAL_SYMBOL, guard_name,
-					weak ? "@" + guard_name : std::string(), !weak);
+					guard_object_name, !weak);
 				Symbol& guard_record = derived.output_.symbols[guard_symbol];
 				guard_record.weak_linkage = weak;
 				guard_record.definition_emitted = true;

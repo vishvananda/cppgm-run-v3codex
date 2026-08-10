@@ -35,16 +35,17 @@ SyntaxToken::SyntaxToken(std::uint16_t kind_value, TextId spelling_value,
 	std::uint32_t literal_fact, TextId source_file_value,
 	std::uint32_t source_line_value, std::uint32_t source_column_value)
 	: kind_and_literal_fact(0), spelling(spelling_value),
-	  source_line(source_line_value), source_file(0), source_column(0)
+	  source_line(0), source_file(0), source_column(0)
 {
 	if (kind_value > 0xffU)
 		throw std::logic_error("syntax token kind exceeds packed identity");
-	if (source_file_value > std::numeric_limits<std::uint16_t>::max() ||
-		source_column_value > std::numeric_limits<std::uint16_t>::max())
-		throw std::runtime_error(
-			"source provenance exceeds compact syntax token range");
-	source_file = static_cast<std::uint16_t>(source_file_value);
-	source_column = static_cast<std::uint16_t>(source_column_value);
+	if (source_file_value <= std::numeric_limits<std::uint16_t>::max() &&
+		source_column_value <= std::numeric_limits<std::uint16_t>::max())
+	{
+		source_line = source_line_value;
+		source_file = static_cast<std::uint16_t>(source_file_value);
+		source_column = static_cast<std::uint16_t>(source_column_value);
+	}
 	const std::uint32_t encoded_fact = literal_fact == kNoLiteralFact ? 0 :
 		literal_fact + 1;
 	if (encoded_fact > 0xffffffU)
@@ -69,10 +70,16 @@ SyntaxTokenSink::SyntaxTokenSink(StringTable& strings)
 void SyntaxTokenSink::SetSourceLocation(const std::string& file,
 	std::size_t line, std::size_t column)
 {
+	const TextId source_file = strings_.Intern(file);
 	if (line > std::numeric_limits<std::uint32_t>::max() ||
-		column > std::numeric_limits<std::uint32_t>::max())
-		throw std::runtime_error("source location exceeds compact syntax range");
-	source_file_ = strings_.Intern(file);
+		column > std::numeric_limits<std::uint16_t>::max() ||
+		source_file > std::numeric_limits<std::uint16_t>::max())
+	{
+		source_file_ = 0;
+		source_line_ = source_column_ = 0;
+		return;
+	}
+	source_file_ = source_file;
 	source_line_ = static_cast<std::uint32_t>(line);
 	source_column_ = static_cast<std::uint32_t>(column);
 }

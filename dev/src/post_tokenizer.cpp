@@ -842,16 +842,17 @@ public:
 	PostTokenAnalyzer(IPostTokenStream& output, PostTokenizationStats* stats)
 		: output_(output), stats_(stats), pending_encoding_(ENCODING_ORDINARY),
 		  pending_valid_(true), pending_string_tokens_(0),
-		  pending_string_bytes_(0), current_file_(0), current_line_(0),
-		  current_column_(0), pending_line_(0), pending_column_(0)
+		  pending_string_bytes_(0), current_line_(0), current_column_(0),
+		  has_current_location_(false), pending_line_(0), pending_column_(0)
 	{}
 
 	void SetSourceLocation(const std::string& file,
 		std::size_t line, std::size_t column)
 	{
-		current_file_ = &file;
+		if (current_file_ != file) current_file_ = file;
 		current_line_ = line;
 		current_column_ = column;
+		has_current_location_ = true;
 		output_.SetSourceLocation(file, line, column);
 	}
 
@@ -955,9 +956,9 @@ public:
 private:
 	void RestoreCurrentLocation()
 	{
-		if (current_file_)
+		if (has_current_location_)
 			output_.SetSourceLocation(
-				*current_file_, current_line_, current_column_);
+				current_file_, current_line_, current_column_);
 	}
 
 	void CountPreprocessingToken()
@@ -1092,9 +1093,9 @@ private:
 	void QueueString(const std::string& source)
 	{
 		CountPreprocessingToken();
-		if (pending_string_tokens_ == 0 && current_file_)
+		if (pending_string_tokens_ == 0 && has_current_location_)
 		{
-			pending_file_ = *current_file_;
+			pending_file_ = current_file_;
 			pending_line_ = current_line_;
 			pending_column_ = current_column_;
 		}
@@ -1226,8 +1227,9 @@ private:
 	bool pending_valid_;
 	std::size_t pending_string_tokens_;
 	std::size_t pending_string_bytes_;
-	const std::string* current_file_;
+	std::string current_file_;
 	std::size_t current_line_, current_column_;
+	bool has_current_location_;
 	std::string pending_file_;
 	std::size_t pending_line_, pending_column_;
 };

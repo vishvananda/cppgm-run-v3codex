@@ -117,26 +117,29 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAggregateInit(TypeId type,
 		throw std::logic_error("aggregate is missing its member index");
 	const std::uint32_t list = MakeDump(DUMP_BRACED_INIT_LIST,
 		type, VALUE_LVALUE);
-	const std::vector<BindingId>& members = entity_data_members_[entity];
 	const std::size_t member_count =
 		program_->entities[entity].flavor == NAMED_UNION ?
-			(members.empty() ? 0 : 1) : members.size();
+			(entity_data_members_[entity].empty() ? 0 : 1) :
+			entity_data_members_[entity].size();
 	std::vector<ConstexprObjectElement> constant_elements;
 	constant_elements.reserve(member_count);
 	bool constant_object = true;
 	for (std::size_t i = 0; i < member_count; ++i)
 	{
-		const BindingId member_id = members[i];
-		const BindingRecord& member = program_->bindings[member_id];
+		// Element analysis may instantiate a class and grow both owner vectors.
+		// Retain compact member facts, not references into either vector.
+		const BindingId member_id = entity_data_members_[entity][i];
+		const TypeId member_type = program_->bindings[member_id].type;
+		const NameId member_name = program_->bindings[member_id].name;
 		const std::uint32_t action = MakeDump(DUMP_INITIALIZER_ACTION,
-			member.type, VALUE_NONE, member.name, member_id);
+			member_type, VALUE_NONE, member_name, member_id);
 		const ExpressionInfo value = AnalyzeAggregateElement(
-			member.type, scope, element_edge);
+			member_type, scope, element_edge);
 		if (value.node != kNoDumpEdge) dump_.Add(action, value.node);
 		ConstexprObjectElement element(
 			member_id, ConstexprScalarValue(static_cast<std::int64_t>(0)));
 		if (constant_object && BuildConstexprObjectElement(
-			member.type, member_id, value, &element))
+			member_type, member_id, value, &element))
 			constant_elements.push_back(element);
 		else constant_object = false;
 		dump_.Add(list, action);

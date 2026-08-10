@@ -1023,9 +1023,9 @@ struct NamespaceObjectAction
 };
 
 // A block-scope static owns persistent storage independently of an invocation.
-// Its declaration ordinal is scoped by the canonical function identity, so
-// retained template syntax gives each declaration and specialization exactly
-// one stable object identity without reconstructing source text.
+// Its declaration ordinal is scoped by the canonical function identity and is
+// the stable emission identity. Compact source provenance is presentation data
+// only; it must not participate in semantic or ABI identity.
 struct LocalStaticObjectAction
 {
 	BindingId object, function;
