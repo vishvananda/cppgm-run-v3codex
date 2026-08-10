@@ -451,6 +451,9 @@ private:
 		const std::vector<TemplateParameter>& partial_parameters,
 		const std::vector<NodeId>& syntax, ScopeId lexical_scope,
 		std::vector<TemplateArgument>* arguments, std::uint8_t* state);
+	bool EquivalentNondeducedTypeArgumentShape(NodeId left,
+		const std::vector<TemplateParameter>& left_parameters, NodeId right,
+		const std::vector<TemplateParameter>& right_parameters);
 	bool MatchTemplatePartialArguments(
 		const std::vector<TemplateParameter>& parameters,
 		const std::vector<TemplateArgument>& pattern_arguments,
@@ -774,6 +777,7 @@ private:
 		TypeId target, EntityId naming_class);
 	void AnalyzeClassMember(NodeId node, ScopeId scope, TypeId owner_type,
 		AccessKind access);
+	bool IsCallableDeclaration(NodeId node) const;
 	void ValidateOrdinaryMemberFunctionBodies(EntityId entity);
 	void ValidateOrdinaryMemberFunctionBody(BindingId function);
 	void ValidateStaticAssertionsInBlock(NodeId block, ScopeId scope,

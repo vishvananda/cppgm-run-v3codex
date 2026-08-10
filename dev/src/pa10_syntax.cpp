@@ -414,7 +414,7 @@ private:
 		bool retained_arguments = false;
 		if (structure) *structure = kNoNode;
 		if (terminal_identifier) *terminal_identifier = 0;
-		bool operator_component = false;
+		bool operator_component = false; NodeId operator_arguments = kNoNode;
 		if (At(KW_OPERATOR) && allow_operator)
 		{
 			operator_component = true;
@@ -458,9 +458,10 @@ private:
 		if (allow_template_arguments)
 		{
 			const NodeId arguments = TryConsumeTemplateArguments(structure != 0);
-			if (structure && arguments != kNoNode && !component_arguments.empty())
+			if (structure && arguments != kNoNode)
 			{
-				component_arguments.back() = arguments;
+				if (operator_component) operator_arguments = arguments;
+				else if (!component_arguments.empty()) component_arguments.back() = arguments;
 				retained_arguments = true;
 			}
 		}
@@ -501,10 +502,10 @@ private:
 				{
 					const NodeId arguments =
 						TryConsumeTemplateArguments(structure != 0);
-					if (structure && arguments != kNoNode &&
-						!component_arguments.empty())
+					if (structure && arguments != kNoNode)
 					{
-						component_arguments.back() = arguments;
+						if (operator_component) operator_arguments = arguments;
+						else if (!component_arguments.empty()) component_arguments.back() = arguments;
 						retained_arguments = true;
 					}
 				}
@@ -526,9 +527,9 @@ private:
 			const std::size_t operation = text->rfind("::operator");
 			const std::string terminal = operation == std::string::npos ? *text : text->substr(operation + 2);
 			std::string canonical;
-			for (std::size_t i = 0; i < terminal.size(); ++i)
+			for (std::size_t i = 0; i < terminal.size() && (operator_arguments == kNoNode || terminal[i] != '<'); ++i)
 				if (!std::isspace(static_cast<unsigned char>(terminal[i]))) canonical += terminal[i];
-			component_names.push_back(strings_.Intern(canonical)); component_arguments.push_back(kNoNode);
+			component_names.push_back(strings_.Intern(canonical)); component_arguments.push_back(operator_arguments);
 		}
 		if (structure && (retained_arguments || global ||
 			component_names.size() > 1))
@@ -1098,10 +1099,12 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 						static_cast<std::uint16_t>(KW_STRUCT) ||
 					  tokens_[position_ + 1].Kind() ==
 						static_cast<std::uint16_t>(KW_ENUM) ||
-					  IsLikelyTypeIdentifier(position_ + 1) ||
-					  QualifiedStartsTypeAt(position_ + 1)));
+					  (!StartsQualifiedCallArgument() && (IsLikelyTypeIdentifier(position_ + 1) ||
+					   QualifiedStartsTypeAt(position_ + 1)))));
 			if (!parameter_like) break;
-			const NodeId parameters = ParseParameterClause();
+			const Mark parameter_mark = Checkpoint(); NodeId parameters = kNoNode;
+			try { parameters = ParseParameterClause(); }
+			catch (const std::runtime_error&) { Rollback(parameter_mark); if (abstract || !consumed) throw; break; }
 			arena_.Add(result, parameters);
 			consumed = true;
 			while (true)

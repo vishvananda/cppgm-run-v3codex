@@ -1027,6 +1027,37 @@ bool SemanticAnalyzer::AnalyzeFriendClassTemplate(NodeId target,
 	return true;
 }
 
+bool SemanticAnalyzer::EquivalentNondeducedTypeArgumentShape(NodeId left,
+	const std::vector<TemplateParameter>& left_parameters, NodeId right,
+	const std::vector<TemplateParameter>& right_parameters)
+{
+	NodeId left_type = arena_->IsTag(left, "type-id") ? left :
+		FindChild(left, "type-id");
+	NodeId right_type = arena_->IsTag(right, "type-id") ? right :
+		FindChild(right, "type-id");
+	const NodeId left_specs = FindChild(left_type, "type-specifier-seq");
+	const NodeId right_specs = FindChild(right_type, "type-specifier-seq");
+	const NodeId left_name = FirstSemanticChild(left_specs);
+	const NodeId right_name = FirstSemanticChild(right_specs);
+	const NamePath left_path = StructuredNamePath(left_name);
+	const NamePath right_path = StructuredNamePath(right_name);
+	if (left_path.global != right_path.global ||
+		left_path.Size() != right_path.Size() || left_path.Empty()) return false;
+	for (std::size_t component = 0; component < left_path.Size(); ++component)
+	{
+		if (left_path[component] == right_path[component]) continue;
+		std::size_t left_parameter = left_parameters.size();
+		std::size_t right_parameter = right_parameters.size();
+		for (std::size_t p = 0; p < left_parameters.size(); ++p)
+			if (left_parameters[p].name == left_path[component]) left_parameter = p;
+		for (std::size_t p = 0; p < right_parameters.size(); ++p)
+			if (right_parameters[p].name == right_path[component]) right_parameter = p;
+		if (left_parameter != right_parameter ||
+			left_parameter == left_parameters.size()) return false;
+	}
+	return true;
+}
+
 void SemanticAnalyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 	const std::vector<TemplateParameter>& parameters,
 	AccessKind member_access)
@@ -1064,6 +1095,18 @@ void SemanticAnalyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 				!MatchTemplatePartialArguments(partial.parameters,
 					partial.canonical_arguments, prior.canonical_arguments,
 					&new_from_prior)) continue;
+			bool same_nondeduced_shapes = true;
+			for (std::size_t argument = 0;
+				argument < partial.canonical_arguments.size(); ++argument)
+				if (partial.canonical_arguments[argument].kind ==
+						TEMPLATE_ARGUMENT_TYPE &&
+					partial.canonical_arguments[argument].type ==
+						class_template_nondeduced_type_shape_ &&
+					!EquivalentNondeducedTypeArgumentShape(
+						prior.arguments[argument], prior.parameters,
+						partial.arguments[argument], partial.parameters))
+					same_nondeduced_shapes = false;
+			if (!same_nondeduced_shapes) continue;
 			const bool prior_definition =
 				(arena_->Flags(prior.declaration) & SYNTAX_FLAG_DEFINITION) != 0;
 			const bool definition =

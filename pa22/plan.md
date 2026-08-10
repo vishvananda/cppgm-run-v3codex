@@ -43,23 +43,22 @@ SFINAE behavior and does not pull in the §7 object backend.
 
 ## Current Failure Map
 
-Current result: **285/310**. The 25 remaining failures group by primary owner:
-callable/friend/partial-member reconciliation, access, and overload 11;
-alias/dependent-type owner and source-scope replay 9; constexpr/static/object
-storage and emission 5.
+Current result: **288/310**. The 22 remaining failures group by primary owner:
+callable/friend access, overload, and empty-object lowering 8; alias/dependent-type
+owner and source-scope replay 9; constexpr/static/object storage and emission 5.
 
 ## Active Checkpoint
 
-**Canonical callable declaration reconciliation.** Requirements: all declarations,
-definitions, explicit specializations, and friend grants for one callable converge
-on one canonical identity before access, overload, demand, and emission (`spec.md`
-§§2–6, 8–10). Owner and flow: retained callable declaration -> substituted owner ->
-indexed declaration chain -> canonical binding/access facts -> overload and demand
--> typed lowering. Expected work is O(declarations + uses * candidates), with
-binding-indexed state and overload caches. Validate hidden/existing friends,
-explicit-specialization use locations, partial/member-template cv and conversion
-selection, wrong-arity noncompletion, PA22, through PA21, audit, and 16/32/64
-declaration-chain scaling.
+**Retained alias/member source-scope replay.** Requirements: an alias binds its
+canonical target identity while retaining the declaration's lexical scope and
+dependent owner path; concrete substitution performs exact owner/member lookup
+without completing unrelated shells (`spec.md` §§2–6, 8–10). Owner and flow:
+alias declaration -> canonical alias entity plus retained scope/path -> concrete
+template arguments -> indexed owner lookup -> typed result -> demand/lowering.
+Expected work is O(alias declarations + concrete uses * path depth), with one cache
+entry per canonical argument tuple and no textual rescans. Validate the nine alias
+and dependent-type failures, adjacent nested-owner/pack/partial tests, PA22, through
+PA21, audit, and 16/32/64 source-scope replay scaling.
 
 ## Performance Evidence
 
@@ -83,6 +82,7 @@ storage is peak-stage MB.
 | Repeated-pack/incomplete-head ordering | 12.134/23.043/46.103 | 2.109/4.331/8.592 | candidates 96/192/384; comparisons 32/64/128; deduction 1333/2645/5269; requests 730/1450/2890 |
 | Dependent call replay/constructor demand | 3.052/4.072/6.903 | 0.506/0.696/1.038 | candidates 133/245/469; requests 156/300/588; cache hits 144/288/576; lookups 775/1335/2455; demand pushes fixed at 13 |
 | Dependent qualified declaration replay | 9.819/19.353/38.468 | 1.662/3.025/6.022 | lookups 1894/3702/7318; requests 311/615/1223; candidates 401/801/1601; demand pushes 66/130/258 |
+| Canonical callable declarations | 3.314/6.275/12.513 | 0.647/1.288/2.570 | lookups 526/1038/2062; candidates 80/160/320; requests 64/128/256; demand pushes 32/64/128 |
 
 The alias benchmark confirms linear specialization requests and constexpr call/step
 counts. Its recursive variadic `cx_plus` evaluator retains 440/1648/6368 local-index
@@ -109,6 +109,10 @@ time, and storage scale linearly; canonical demand is constant after first use.
 The qualified-declaration benchmark recursively demands 16/32/64 distinct owner
 specializations with one dependent qualified-base assignment each. Lookup,
 specialization, candidate, demand, elapsed-time, and storage growth are linear.
+The callable benchmark constructs 16/32/64 distinct owners, each with one unused
+ill-formed return-class shell and one selected one-argument member template. Every
+work counter, semantic time, and peak storage scales linearly; partial deduction is
+zero because overload arity rejects the shell before template deduction.
 
 ## Completed Checkpoints
 
@@ -138,3 +142,4 @@ specialization, candidate, demand, elapsed-time, and storage growth are linear.
 | Partial ordering and incomplete template heads | Empty repeated packs retain deduction identity; concrete incomplete heads match without layout demand; 273 -> 275, prior 2329/2329, audit pass. |
 | Dependent function-template call replay | Incomplete pointee shells avoid layout demand, class validation predeclares later member-template heads, and evaluated braced temporaries demand their selected constructors; 275 -> 278, prior 2329/2329, audit pass. |
 | Dependent qualified declaration replay | Rooted/template-id retention, qualified member lookup, derived-base deduction, reference layout, dependent template markers, and external-callee demand; 278 -> 285, prior 2329/2329, audit pass. |
+| Canonical callable declaration reconciliation | Qualified/direct-init disambiguation, return-class shells, retained non-deduced partial paths, and explicit template-id friend grants; 285 -> 288, prior 2329/2329, audit pass. |

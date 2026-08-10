@@ -1026,6 +1026,20 @@ EntityId SemanticAnalyzer::EntityOf(TypeId type) const
 	return record.kind == TYPE_NAMED ? record.entity : kNoEntity;
 }
 
+bool SemanticAnalyzer::IsCallableDeclaration(NodeId node) const
+{
+	if (arena_->IsTag(node, "function-definition")) return true;
+	const NodeId list = FindChild(node, "init-declarator-list");
+	for (std::uint32_t edge = list == kNoNode ? kNoEdge : arena_->FirstEdge(list);
+		edge != kNoEdge; edge = arena_->NextEdge(edge))
+	{
+		const NodeId declarator = FindChild(arena_->EdgeChild(edge), "declarator");
+		if (declarator != kNoNode &&
+			FindChild(declarator, "parameter-clause") != kNoNode) return true;
+	}
+	return false;
+}
+
 void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 	TypeId owner_type, AccessKind access)
 {
@@ -1042,7 +1056,12 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		AnalyzeFriendClass(node, scope, owner_type);
 		return;
 	}
-	const SpecInfo spec = BuildSpecifiers(specifiers, scope, std::string(), true);
+	const bool callable_declaration = IsCallableDeclaration(node);
+	if (callable_declaration) ++class_template_completion_suppressed_depth_;
+	SpecInfo spec;
+	try { spec = BuildSpecifiers(specifiers, scope, std::string(), true); }
+	catch (...) { if (callable_declaration) --class_template_completion_suppressed_depth_; throw; }
+	if (callable_declaration) --class_template_completion_suppressed_depth_;
 	if (spec.is_friend)
 	{
 		const NodeId declarators = FindChild(node, "init-declarator-list");

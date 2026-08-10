@@ -56,6 +56,30 @@ void SemanticAnalyzer::AnalyzeFriendFunction(NodeId node,
 			ResolveOwner(class_scope, declared_name) : friend_owner;
 		if (declared_owner == kNoScope)
 			throw std::runtime_error("qualified friend owner not found");
+		const NodeId identifier = FindChild(declarators[i], "identifier");
+		NamePath template_base;
+		std::vector<NodeId> explicit_arguments;
+		if (CollectExplicitTemplateArguments(
+			identifier, &template_base, &explicit_arguments))
+		{
+			const std::vector<BindingId> targets =
+				FunctionTemplateTargetCandidates(class_scope,
+					program_->names.Get(template_base.Last()), parsed.type,
+					identifier);
+			if (targets.size() != 1)
+				throw std::runtime_error(
+					"friend template-id does not select one specialization");
+			const BindingId binding =
+				program_->bindings[targets[0]].canonical;
+			FunctionInfo& info = GetMutableFunction(binding);
+			if (info.friend_of == kNoEntity) info.friend_of = owner_entity;
+			const std::uint64_t access_key =
+				(static_cast<std::uint64_t>(owner_entity) << 32) | binding;
+			CompactIndexSequence& grants =
+				friend_function_grants_.Ensure(access_key);
+			if (grants.Size() == 0) grants.Push(0);
+			continue;
+		}
 		if (qualified_friend)
 		{
 			const TypeRecord declared_type = program_->types.Get(parsed.type);

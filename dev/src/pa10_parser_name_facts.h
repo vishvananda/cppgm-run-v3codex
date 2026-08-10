@@ -283,6 +283,25 @@ protected:
 		return result;
 	}
 
+	bool StartsQualifiedCallArgument()
+	{
+		Derived& parser = static_cast<Derived&>(*this);
+		if (parser.position_ + 1 >= parser.tokens_.size() ||
+			parser.tokens_[parser.position_ + 1].Kind() != kIdentifierToken)
+			return false;
+		const typename Derived::Mark mark = parser.Checkpoint();
+		++parser.position_;
+		std::string name;
+		TextId terminal = 0;
+		const bool parsed = parser.ParseName(
+			&name, true, true, true, 0, &terminal);
+		const bool result = parsed && name.find("::") != std::string::npos &&
+			parser.At(OP_LPAREN) &&
+			!parser.HasNameFact(terminal, Derived::kKnownType);
+		parser.Rollback(mark);
+		return result;
+	}
+
 	bool QualifiedStartsTypeAt(std::size_t scan) const
 	{
 		const Derived& parser = static_cast<const Derived&>(*this);
