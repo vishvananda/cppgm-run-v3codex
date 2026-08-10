@@ -22,7 +22,9 @@ remaining elements. Parser facts are
 block scoped, so an unqualified local value can shadow a template without
 corrupting qualified lookup. Dependent qualified result shapes stay retained until
 substitution, while direct template-ids still resolve to canonical concrete types.
-Array list-casts and scalar value initialization lower through typed boundaries.
+Static initializers demanded while type-checking a skipped logical arm evaluate as
+independent constant roots. Array list-casts and scalar value initialization lower
+through typed boundaries.
 
 This applies `spec.md` §§2–6 and 8–10: canonical typed identity, provenance-aware
 indexed lookup, retained substitution scopes, demand-driven completion, typed
@@ -31,23 +33,23 @@ SFINAE behavior and does not pull in the §7 object backend.
 
 ## Current Failure Map
 
-Current result: **271/310**. All 39 remaining failures group by primary owner:
+Current result: **272/310**. All 38 remaining failures group by primary owner:
 member/friend/function-template ownership, replay, access, overload, and demand 28;
-alias/template-template/non-type-pack construction and qualified type lookup 9;
+alias/template-template/non-type-pack construction and qualified type lookup 8;
 partial-specialization selection/order replay 2. The alias group now concentrates
 on lexical value binding, dependent member-type materialization, expansion result
 folding, and qualified dependent template syntax.
 
 ## Active Checkpoint
 
-**Dependent alias/member-type materialization.** Requirements: replay alias pack
-folds in the concrete element scopes and defer qualified dependent member types
-until their owner specialization is complete (`spec.md` §§2–6, 8–9). Owner and
-flow: retained alias/member syntax -> concrete substitution scope -> canonical
-owner specialization -> demanded member lookup -> typed constant/type use. Expected
-work is O(pattern nodes + pack elements + visited lookup edges + specialization
-requests), with one memoized result per canonical argument vector. Validate alias
-expansion folding, `common<T,U>::type`, adjacent conditional-base/member aliases,
+**Dependent qualified member-type replay.** Requirements: retain a qualified member
+type whose owner is a dependent class-template specialization, then resolve it only
+after concrete substitution and completion (`spec.md` §§2–6, 8–9). Owner and flow:
+retained type syntax -> substitution scope -> canonical owner specialization ->
+demanded class completion -> qualified member lookup -> typed alias/base/member use.
+Expected work is O(type-pattern nodes + visited lookup edges + specialization and
+partial-deduction visits), with one lookup result per canonical owner. Validate
+`common<T,U>::type`, nested `make_void`, adjacent conditional-base/member aliases,
 PA22, through PA21, audit, and direct 16/32/64 scaling.
 
 ## Performance Evidence
@@ -67,6 +69,7 @@ storage is peak-stage MB.
 | Compound non-type pack replay | 13.216/24.053/47.324 | 1.516/2.908/5.708 | lookups 1348/2372/4420; scopes 677/1189/2213; nodes 2118/4166/8262; requests fixed at 96 |
 | Template-proxy call replay | 9.827/13.611/20.620 | 1.139/1.573/2.512 | lookups 1398/2166/3702; scopes 685/941/1453; access 1008/1776/3312; requests fixed at 96 |
 | Alias-partial canonical forwarding | 5.449/8.808/15.663 | 1.564/2.492/4.750 | lookups 1849/3337/6313; requests 307/563/1075; deduction 672/1184/2208; candidates fixed at 16 |
+| Short-circuit static demand | 12.335/25.270/63.085 | 3.349/6.762/17.015 | expressions 945/1761/3393; lookups 3040/6104/14536; requests 957/1773/3405; deduction 849/2161/6321 |
 
 The alias benchmark confirms linear specialization requests and constexpr call/step
 counts. Its recursive variadic `cx_plus` evaluator retains 440/1648/6368 local-index
@@ -78,6 +81,10 @@ while argument-scope lookup, time, and storage grow linearly.
 The alias-partial benchmark uses 16 independent outer specializations. Candidate
 count stays fixed while canonical requests, deduction visits, lookup, time, and
 storage track the forwarded 16/32/64-element pack without replay multiplication.
+The short-circuit benchmark uses 16 independently prefixed recursive folds and one
+shared suffix family. Canonical completion has no retry cascade; the superlinear
+time/storage follows the existing trailing-pack partial matcher, whose suffix
+deduction visits grow quadratically (849/2161/6321).
 
 ## Completed Checkpoints
 
@@ -102,3 +109,4 @@ storage track the forwarded 16/32/64-element pack without replay multiplication.
 | Compound non-type pack replay | Recursive pack discovery and ordered element scopes for comma/void/qualified-base expressions; 265 -> 268, prior 2329/2329, audit pass. |
 | Template-proxy call replay | Pattern-directed canonical explicit arguments preserve template proxies and non-trailing pack allocation; 268 -> 269, prior 2329/2329, audit pass. |
 | Alias-partial specialization replay | Symbolic alias-pack forwarding preserves canonical expansion identity for non-type partial deduction and base/member replay; 269 -> 271, prior 2329/2329, audit pass. |
+| Short-circuit constant-demand isolation | Skipped-arm suppression no longer contaminates independently demanded static initializers; direct and alias recursive folds pass; 271 -> 272, prior 2329/2329, audit pass. |

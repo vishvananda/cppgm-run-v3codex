@@ -1111,8 +1111,25 @@ bool SemanticAnalyzer::HasConstantInitializerFact(
 ExpressionInfo SemanticAnalyzer::AnalyzeInClassStaticInitializer(
 	NodeId initializer, ScopeId scope, TypeId type)
 {
-	return AnalyzeConstantAwareVariableInitializer(
-		initializer, scope, type, false, true, true);
+	// A short-circuited arm is still semantically analyzed and may demand a
+	// class specialization while looking up a static constant.  That class's
+	// own initializer is an independent constant-evaluation root; inheriting the
+	// arm's suppression would incorrectly publish it as nonconstant.
+	const std::size_t outer_suppression =
+		constant_evaluation_suppressed_depth_;
+	constant_evaluation_suppressed_depth_ = 0;
+	try
+	{
+		ExpressionInfo result = AnalyzeConstantAwareVariableInitializer(
+			initializer, scope, type, false, true, true);
+		constant_evaluation_suppressed_depth_ = outer_suppression;
+		return result;
+	}
+	catch (...)
+	{
+		constant_evaluation_suppressed_depth_ = outer_suppression;
+		throw;
+	}
 }
 
 void SemanticAnalyzer::InheritVariableRedeclarationFacts(BindingId binding)
