@@ -536,6 +536,8 @@ private:
 		const std::vector<TypeId>& arguments);
 	BindingId InstantiateClassTemplate(std::size_t pattern,
 		const std::vector<TemplateArgument>& arguments);
+	BindingId ReuseClassTemplateSpecialization(
+		std::size_t pattern, BindingId specialization);
 	std::size_t SelectClassTemplatePartial(ClassTemplatePattern& pattern,
 		const std::vector<TemplateArgument>& arguments,
 		FunctionTemplateDeduction* bindings);

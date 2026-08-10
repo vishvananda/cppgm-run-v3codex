@@ -24,29 +24,31 @@ lowering fact.
 
 ## Current Failure Map
 
-The original suite remains at its 315/404 checkpoint baseline; the audit guard
-makes the combined report 316/405, with no regression and all `100-*` and
-`200-*` tests passing. The complete remaining set groups by shared behavior and
-primary owner: candidate result/default substitution, dependent lookup, and
-demand timing (`300-*`: 45 exits, 8 LowIR); canonical non-type arguments,
+The current report is 320/405, four gains over the turn baseline with all
+`100-*` and `200-*` tests passing. The complete remaining set groups by shared
+behavior and primary owner: candidate result/default substitution, dependent
+lookup, and demand timing (`300-*`: 41 exits, 8 LowIR); canonical non-type arguments,
 conversion templates, and overload ownership (`400-*`: 16 exits, 2 LowIR);
 and composed alias/class/member lookup, pack replay, and selected-fact lowering
-(`500-*`: 8 exits, 10 LowIR). These groups account for all 89 failures.
+(`500-*`: 8 exits, 10 LowIR). These groups account for all 85 failures; lexical
+call shadowing, recursive detector requests, invalid surrogate input, and
+ellipsis conversion recipe ownership have left the map.
 
 ## Active Checkpoint
 
-Dependent callable replay and re-entrant detector demand are the next stable
-boundary. Retained call syntax and canonical argument/object types flow through
-indexed ordinary/member/ADL lookup into one overload candidate sequence;
-candidate frames own failure while specialization request states own recursive
-observation. `spec.md` sections 2-5 require canonical object cv identity,
-explicit lookup edges, complete candidate keys, in-progress observation, and
-no global retry; section 6 requires the selected call/conversion facts to reach
-lowering unchanged; section 9 bounds work to O(C*(A+L)) for participating
-candidates C, argument count A, and visited lookup edges L. Validate mutable
-versus const call operators, recursive streamable/swappable detectors, call
-surrogates, positive/fallback/hard-error pairs, all remaining `300-*`, PA23,
-PA1-PA22, and file audit; measure doubled call sets and recursion depth.
+Constructor and conversion-function template participation is the next stable
+boundary. Canonical source/target and implicit-object types must flow through
+template deduction into the ordinary constructor/conversion candidate sequence;
+candidate frames own failed result/default formation, overload selection owns
+the winning conversion facts, and initialization/lowering consume that selection
+without body demand or lookup replay. `spec.md` sections 2-4 require canonical
+specialization and object identity, complete candidate inspection, and
+candidate-local rejection; sections 5-6 require narrow demand and selected-fact
+lowering; section 9 bounds work to O(C*A) for candidates C and arguments A.
+Validate forwarding versus const-reference constructors, initial-sequence
+ranking, nontemplate copy/move and conversion preference, object/owner-dependent
+conversion results, unselected-body timing, all remaining `300-*`, PA23,
+PA1-PA22, and file audit; measure doubled constructor/conversion candidate sets.
 
 ## Performance Evidence
 
@@ -60,10 +62,16 @@ base chains of depth 16/32/64/128 take 34/66/130/258 typed path visits,
 8/16/32/64 units take 256/512/1,024/2,048 candidates,
 832/1,664/3,328/6,656 specialization requests,
 1,341,484/2,668,404/5,142,620/10,271,148 peak bytes, and
-7.87/15.91/30.42/61.87 ms medians. Candidate work, graph work, storage, and
-time are linear. Gates are PA1-PA22 2,639/2,639, original PA23 315/404 and
-combined 316/405 with no regressions, and file-audit pass with 13 inherited
-warnings.
+7.87/15.91/30.42/61.87 ms medians. For 8/16/32/64 independent callable units,
+candidates are 96/192/384/768, specialization requests 112/224/448/896,
+deduction visits 96/192/384/768, lookups 1,221/2,437/4,869/9,733, peak bytes
+1,316,475/2,571,681/5,129,121/10,246,209, and medians
+6.94/13.92/27.31/56.60 ms. Detector base depths 8/16/32/64 visit
+16/32/64/128 lookup edges and 177/241/369/625 lookups with five candidates and
+11 requests flat; peak bytes are 243,267/302,575/446,765/779,629 and medians
+1.51/1.63/2.17/3.01 ms. Work, storage, and time are linear; all four repaired
+probes are ASan/UBSan-clean. Gates are PA1-PA22 2,639/2,639, PA23 320/405, and
+file-audit pass with 13 inherited warnings.
 
 ## Completed Checkpoints
 
@@ -86,3 +94,4 @@ warnings.
 | Declaration-time result lookup and canonical identity | Deferred results retain canonical type/namespace roots and first-declaration call candidates through redeclaration and substitution; fixed qualifiers validate immediately, recursive calls stay bounded, original PA23 292 -> 296 (298/403 with audit guards), no regressions, linear candidate/depth scaling. |
 | Candidate-local alias, call-surrogate, and detector replay | Nested aliases defer without body demand, explicit invalid types use typed candidate failure and monotonic alias states without exception control flow, retained `decltype` bases replay by syntax identity, and ellipsis fallbacks participate; landed 298 -> 307, audited full report 308/404, no regressions, linear failure scaling. |
 | Candidate-local expression validity and typed exceptional facts | Abstract construction/allocation, narrowing, virtual-base casts, scalar pseudo-destruction, and `void()` dispatch use scoped typed facts; the audit unified complete-object pointer arithmetic and typed comparison/arithmetic failure before lowering; original 308 -> 315, audit guard 316/405, no regressions, linear candidate/path scaling. |
+| Dependent callable replay and re-entrant detector demand | Lexical value/type depth selects callable objects correctly; canonical class requests expose scoped in-progress state; invalid callees stay candidate-local; ellipsis conversions publish typed recipes; 316 -> 320, no regressions, sanitizer-clean, linear call/depth scaling. |

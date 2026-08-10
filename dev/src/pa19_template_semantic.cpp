@@ -20,6 +20,40 @@ std::size_t NoTemplatePattern()
 	return std::numeric_limits<std::size_t>::max();
 }
 
+class ScopedTemplateRequest
+{
+public:
+	ScopedTemplateRequest() : table_(0), key_(), active_(false) {}
+	~ScopedTemplateRequest()
+	{
+		if (active_) table_->ResetInProgressRequest(key_);
+	}
+	void Begin(TemplateSpecializationTable* table,
+		const TemplateSpecializationKey& key)
+	{
+		if (active_ || table == 0)
+			throw std::logic_error("invalid scoped template request");
+		table_ = table;
+		key_ = key;
+		table_->SetRequest(key_, TEMPLATE_REQUEST_IN_PROGRESS);
+		active_ = true;
+	}
+	void Complete(BindingId binding)
+	{
+		if (!active_)
+			throw std::logic_error("inactive template request completion");
+		table_->SetRequest(key_, TEMPLATE_REQUEST_SUCCEEDED, binding);
+		active_ = false;
+	}
+
+private:
+	ScopedTemplateRequest(const ScopedTemplateRequest&);
+	ScopedTemplateRequest& operator=(const ScopedTemplateRequest&);
+	TemplateSpecializationTable* table_;
+	TemplateSpecializationKey key_;
+	bool active_;
+};
+
 bool ClassTemplateArgumentsAreLayoutReady(const Program& program,
 	const std::vector<TemplateArgument>& arguments)
 {
@@ -2437,6 +2471,39 @@ std::size_t SemanticAnalyzer::SelectClassTemplatePartial(
 	return result;
 }
 
+BindingId SemanticAnalyzer::ReuseClassTemplateSpecialization(
+	std::size_t index, BindingId binding)
+{
+	if (index >= class_templates_.size() || binding == kNoBinding)
+		throw std::logic_error("invalid cached class specialization");
+	const ClassTemplatePattern& pattern = class_templates_[index];
+	const bool has_pack = HasTrailingTemplateParameterPack(pattern.parameters);
+	const std::size_t fixed = FixedTemplateParameterCount(pattern.parameters);
+	const EntityId entity = EntityOf(program_->bindings[binding].type);
+	if (entity == kNoEntity)
+		throw std::logic_error("cached class specialization has no entity");
+	const EntityRecord& record = program_->entities[entity];
+	const std::size_t first = record.template_argument_begin;
+	const std::size_t count = record.template_argument_count;
+	if ((!has_pack && count != pattern.parameters.size()) ||
+		(has_pack && count < fixed) ||
+		first > program_->template_arguments.size() || count >
+			program_->template_arguments.size() - first)
+		throw std::logic_error(
+			"cached class specialization arguments are invalid");
+	const std::vector<TemplateArgument> arguments =
+		StoredTemplateArguments(first, count);
+	if (class_template_completion_suppressed_depth_ == 0 &&
+		(binding >= class_template_specialization_states_.size() ||
+		 class_template_specialization_states_[binding] == 0) &&
+		ClassTemplateArgumentsAreLayoutReady(*program_, arguments))
+		CompleteClassTemplateSpecialization(index, binding, arguments);
+	if (binding < class_template_specialization_states_.size() &&
+		class_template_specialization_states_[binding] == 2)
+		ApplyClassTemplateMemberDefinitions(index, binding, arguments);
+	return binding;
+}
+
 BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 	const std::vector<TemplateArgument>& supplied_arguments)
 {
@@ -2450,36 +2517,21 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 	++template_specialization_requests_;
 	const TemplateSpecializationKey request_key = CanonicalTemplateSpecializationKey(
 		index, supplied_arguments);
-	BindingId old = class_template_instantiations_.Find(request_key);
-	if (old != kNoBinding)
+	BindingId old = kNoBinding;
+	const TemplateRequestState request_state =
+		class_template_instantiations_.FindRequest(request_key, &old);
+	if (request_state == TEMPLATE_REQUEST_SUCCEEDED)
 	{
 		++template_specialization_cache_hits_;
-		const EntityId entity = EntityOf(program_->bindings[old].type);
-		if (entity == kNoEntity)
-			throw std::logic_error("cached class specialization has no entity");
-		const EntityRecord& record = program_->entities[entity];
-		const std::size_t first = record.template_argument_begin;
-		const std::size_t count = record.template_argument_count;
-		if ((!has_pack && count != pattern.parameters.size()) ||
-			(has_pack && count < fixed) ||
-			first > program_->template_arguments.size() || count >
-				program_->template_arguments.size() - first)
-			throw std::logic_error(
-				"cached class specialization arguments are invalid");
-		const std::vector<TemplateArgument> cached_arguments =
-			StoredTemplateArguments(first, count);
-		if (class_template_completion_suppressed_depth_ == 0 &&
-			(old >= class_template_specialization_states_.size() ||
-			 class_template_specialization_states_[old] == 0) &&
-			ClassTemplateArgumentsAreLayoutReady(*program_, cached_arguments))
-			CompleteClassTemplateSpecialization(
-				index, old, cached_arguments);
-		if (old < class_template_specialization_states_.size() &&
-			class_template_specialization_states_[old] == 2)
-			ApplyClassTemplateMemberDefinitions(
-				index, old, cached_arguments);
-		return old;
+		return ReuseClassTemplateSpecialization(index, old);
 	}
+	if (request_state != TEMPLATE_REQUEST_NOT_STARTED)
+	{
+		++template_specialization_cache_hits_;
+		return kNoBinding;
+	}
+	ScopedTemplateRequest request_guard;
+	request_guard.Begin(&class_template_instantiations_, request_key);
 	std::vector<TemplateArgument> arguments = supplied_arguments;
 	for (std::size_t i = 0; i < arguments.size(); ++i)
 		if (arguments[i].kind !=
@@ -2538,21 +2590,25 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 	}
 	const TemplateSpecializationKey key = CanonicalTemplateSpecializationKey(
 		index, arguments);
-	old = class_template_instantiations_.Find(key);
-	if (old != kNoBinding)
+	ScopedTemplateRequest specialization_guard;
+	TemplateRequestState specialization_state = TEMPLATE_REQUEST_IN_PROGRESS;
+	if (!(key == request_key))
+		specialization_state =
+			class_template_instantiations_.FindRequest(key, &old);
+	if (specialization_state == TEMPLATE_REQUEST_SUCCEEDED)
 	{
 		++template_specialization_cache_hits_;
-		if (arguments != supplied_arguments)
-			class_template_instantiations_.Insert(request_key, old);
-		if (class_template_completion_suppressed_depth_ == 0 &&
-			(old >= class_template_specialization_states_.size() ||
-			 class_template_specialization_states_[old] == 0) &&
-			ClassTemplateArgumentsAreLayoutReady(*program_, arguments))
-			CompleteClassTemplateSpecialization(index, old, arguments);
-		if (old < class_template_specialization_states_.size() &&
-			class_template_specialization_states_[old] == 2)
-			ApplyClassTemplateMemberDefinitions(index, old, arguments);
-		return old;
+		request_guard.Complete(old);
+		return ReuseClassTemplateSpecialization(index, old);
+	}
+	if (!(key == request_key))
+	{
+		if (specialization_state != TEMPLATE_REQUEST_NOT_STARTED)
+		{
+			++template_specialization_cache_hits_;
+			return kNoBinding;
+		}
+		specialization_guard.Begin(&class_template_instantiations_, key);
 	}
 	if (pattern.template_parameter_proxy)
 	{
@@ -2580,9 +2636,12 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 				static_cast<std::size_t>(entity) + 1, kNoDumpEdge);
 		class_template_pattern_by_entity_[entity] =
 			static_cast<std::uint32_t>(index);
-		class_template_instantiations_.Insert(key, binding);
-		if (arguments != supplied_arguments)
-			class_template_instantiations_.Insert(request_key, binding);
+		if (key == request_key) request_guard.Complete(binding);
+		else
+		{
+			specialization_guard.Complete(binding);
+			request_guard.Complete(binding);
+		}
 		pattern.specialization_bindings.push_back(binding);
 		PublishClassTemplateFriendGrants(pattern, entity);
 		return binding;
@@ -2643,9 +2702,12 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 			&specialization.template_argument_begin,
 			&specialization.template_argument_count);
 	const BindingId binding = program_->entities[entity].declaration;
-	class_template_instantiations_.Insert(key, binding);
-	if (arguments != supplied_arguments)
-		class_template_instantiations_.Insert(request_key, binding);
+	if (key == request_key) request_guard.Complete(binding);
+	else
+	{
+		specialization_guard.Complete(binding);
+		request_guard.Complete(binding);
+	}
 	pattern.specialization_bindings.push_back(binding);
 	PublishClassTemplateFriendGrants(pattern, entity);
 	if (class_template_specialization_states_.size() <= binding)

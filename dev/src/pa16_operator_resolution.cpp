@@ -1021,6 +1021,7 @@ ExpressionInfo SemanticAnalyzer::BuildConvertingArgument(
 	const std::uint32_t action = MakeDump(DUMP_CONSTRUCTOR_ACTION,
 		AdaptMemberFunctionType(constructor_binding), VALUE_NONE,
 		constructor.display_name, constructor_binding);
+	dump_.nodes[action].operand_type = object_type;
 	std::vector<ExpressionInfo> constexpr_arguments;
 	constexpr_arguments.reserve(function.parameter_count);
 	if (function.parameter_count == 0)
@@ -1699,6 +1700,7 @@ bool SemanticAnalyzer::TryAnalyzeCallSurrogate(ScopeId scope,
 	const std::vector<ExpressionInfo>& arguments, TypeId target,
 	ExpressionInfo* result)
 {
+	if (callee.type == kNoType) return false;
 	const EntityId entity = EntityOf(callee.type);
 	if (entity == kNoEntity) return false;
 	std::vector<BindingId> conversions;

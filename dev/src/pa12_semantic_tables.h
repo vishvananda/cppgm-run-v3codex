@@ -254,6 +254,7 @@ public:
 		BindingId* binding) const;
 	void SetRequest(const TemplateSpecializationKey& key,
 		TemplateRequestState state, BindingId binding = kNoBinding);
+	void ResetInProgressRequest(const TemplateSpecializationKey& key);
 	std::size_t StorageBytes() const;
 
 private:

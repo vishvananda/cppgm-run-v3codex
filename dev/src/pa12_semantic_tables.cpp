@@ -499,7 +499,8 @@ void TemplateSpecializationTable::SetRequest(
 						"failed template request changed result");
 				return;
 			}
-			if (state == TEMPLATE_REQUEST_IN_PROGRESS) return;
+			if (entry.state == TEMPLATE_REQUEST_IN_PROGRESS &&
+				state == TEMPLATE_REQUEST_IN_PROGRESS) return;
 			entry.binding = binding;
 			entry.state = state;
 			return;
@@ -510,6 +511,28 @@ void TemplateSpecializationTable::SetRequest(
 		throw std::runtime_error("too many template specializations");
 	entries_.push_back(Entry(key, binding, state));
 	slots_[slot] = static_cast<std::uint32_t>(entries_.size());
+}
+
+void TemplateSpecializationTable::ResetInProgressRequest(
+	const TemplateSpecializationKey& key)
+{
+	const std::size_t mask = slots_.size() - 1;
+	std::size_t slot = TemplateSpecializationHash()(key) & mask;
+	while (slots_[slot] != 0)
+	{
+		Entry& entry = entries_[slots_[slot] - 1];
+		if (entry.key == key)
+		{
+			if (entry.state != TEMPLATE_REQUEST_IN_PROGRESS)
+				throw std::logic_error(
+					"cannot reset a completed template request");
+			entry.binding = kNoBinding;
+			entry.state = TEMPLATE_REQUEST_NOT_STARTED;
+			return;
+		}
+		slot = (slot + 1) & mask;
+	}
+	throw std::logic_error("cannot reset an unknown template request");
 }
 
 void TemplateSpecializationTable::Rehash(std::size_t capacity)

@@ -1417,6 +1417,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 	}
 	ExpressionInfo callee = AnalyzeExpression(callee_syntax, scope);
 	if (CandidateSubstitutionFailed()) return ExpressionInfo();
+	if (callee.type == kNoType) return CandidateExpressionFailure("call has no resolved callee type");
 	if (!arguments_analyzed)
 	{
 		for (std::size_t i = 0; i < argument_syntax.size(); ++i)
