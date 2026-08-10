@@ -925,6 +925,25 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 	arguments->reserve(std::max(parameters.size(), syntax.size()));
 	const ScopeId parameter_scope = NewScope(lexical_scope,
 		SCOPE_TEMPLATE_PARAMETERS, 0, ScopePrefixId(lexical_scope));
+	const auto forwarded_symbolic_elements = [&](NodeId source,
+		ScopeId source_scope, std::size_t count,
+		std::vector<std::uint8_t>* symbolic)
+	{
+		symbolic->assign(count, 0);
+		std::vector<NameId> names;
+		CollectPackExpansionNames(source, source_scope, &names);
+		for (std::size_t name = 0; name < names.size(); ++name)
+		{
+			std::vector<TemplateArgument> pack;
+			if (!LookupTemplateArgumentPack(
+				source_scope, names[name], &pack)) continue;
+			if (pack.size() != count)
+				throw std::logic_error(
+					"forwarded template pack length changed during expansion");
+			for (std::size_t element = 0; element < count; ++element)
+				(*symbolic)[element] |= pack[element].pack_expansion ? 1U : 0U;
+		}
+	};
 	const auto append_argument = [&](NodeId source,
 		ScopeId source_scope) -> bool
 	{
@@ -1059,12 +1078,16 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 				arguments->back().pack_expansion = true;
 				continue;
 			}
+			std::vector<std::uint8_t> symbolic;
+			forwarded_symbolic_elements(
+				operand, use_scope, element_scopes.size(), &symbolic);
 			for (std::size_t element = 0;
 				element < element_scopes.size(); ++element)
 			{
 				if (arguments->size() >= fixed && !has_pack) return false;
 				if (!append_argument(
 					operand, element_scopes[element])) return false;
+				arguments->back().pack_expansion = symbolic[element] != 0;
 			}
 			continue;
 		}
@@ -1094,6 +1117,9 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 			arguments->back().pack_expansion = true;
 			continue;
 		}
+		std::vector<std::uint8_t> symbolic;
+		forwarded_symbolic_elements(
+			type_id, use_scope, element_scopes.size(), &symbolic);
 		for (std::size_t element = 0; element < element_scopes.size(); ++element)
 		{
 			if (arguments->size() >= fixed && !has_pack) return false;
@@ -1105,12 +1131,17 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 				TemplateArgument argument(TEMPLATE_ARGUMENT_TYPE,
 					BuildTypeId(type_id, element_scopes[element]));
 				if (argument.type == kNoType) return false;
+				argument.pack_expansion = symbolic[element] != 0;
 				arguments->push_back(argument);
 				if (arguments->size() <= fixed)
 					BindTemplateArgument(parameter_scope, destination, argument);
 			}
-			else if (!append_argument(syntax[i], element_scopes[element]))
-				return false;
+			else
+			{
+				if (!append_argument(syntax[i], element_scopes[element]))
+					return false;
+				arguments->back().pack_expansion = symbolic[element] != 0;
+			}
 		}
 	}
 	while (require_complete && arguments->size() < fixed)

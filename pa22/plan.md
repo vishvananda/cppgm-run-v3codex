@@ -12,8 +12,10 @@ owner/pattern identities rather than textual specialization keys.
 Pack expansion is element-scoped: an outer expansion collects only packs it owns,
 while nested declarator packs establish a new boundary. Compound non-type expansion
 operands recursively discover their packs, then replay once in each ordered element
-scope. Function-template explicit arguments bind to the first reachable pack and
-later parameters remain available for call deduction. Their syntax is interpreted
+scope. A symbolic pack exemplar keeps its expansion marker when an alias forwards
+it into another canonical template-id. Function-template explicit arguments bind
+to the first reachable pack and later parameters remain available for call
+deduction. Their syntax is interpreted
 against each candidate's canonical type/value/template kinds instead of a type-only
 probe; explicit calls with a pack defer specialization until deduction supplies the
 remaining elements. Parser facts are
@@ -29,25 +31,24 @@ SFINAE behavior and does not pull in the §7 object backend.
 
 ## Current Failure Map
 
-Current result: **269/310**. All 41 remaining failures group by primary owner:
+Current result: **271/310**. All 39 remaining failures group by primary owner:
 member/friend/function-template ownership, replay, access, overload, and demand 28;
-alias/template-template/non-type-pack construction and qualified type lookup 11;
+alias/template-template/non-type-pack construction and qualified type lookup 9;
 partial-specialization selection/order replay 2. The alias group now concentrates
-on partial non-type packs, lexical value binding, dependent member-type
-materialization, and qualified dependent template syntax.
+on lexical value binding, dependent member-type materialization, expansion result
+folding, and qualified dependent template syntax.
 
 ## Active Checkpoint
 
-**Alias-partial specialization replay.** Requirements: bind non-type packs selected
-by a partial into base/member replay; preserve canonical alias arguments across that
-selection; resolve dependent member types only after the concrete owner is selected
-(`spec.md` §§2–6, 8–9). Owner and flow: retained alias/partial syntax -> canonical
-arguments -> partial deduction scope -> selected concrete owner -> demanded
-base/member/alias type -> typed use. Expected work is O(pattern nodes + argument
-elements + visited lookup edges + partial candidates + specialization requests),
-with memoized concrete specializations. Validate alias non-type partial bases and
-patterns, expansion through aliases, `common<T,U>::type`, PA22, through PA21, audit,
-and direct 16/32/64 scaling.
+**Dependent alias/member-type materialization.** Requirements: replay alias pack
+folds in the concrete element scopes and defer qualified dependent member types
+until their owner specialization is complete (`spec.md` §§2–6, 8–9). Owner and
+flow: retained alias/member syntax -> concrete substitution scope -> canonical
+owner specialization -> demanded member lookup -> typed constant/type use. Expected
+work is O(pattern nodes + pack elements + visited lookup edges + specialization
+requests), with one memoized result per canonical argument vector. Validate alias
+expansion folding, `common<T,U>::type`, adjacent conditional-base/member aliases,
+PA22, through PA21, audit, and direct 16/32/64 scaling.
 
 ## Performance Evidence
 
@@ -65,6 +66,7 @@ storage is peak-stage MB.
 | Alias non-type expression replay | 2.682/5.871/18.499 | 0.518/1.339/4.875 | lookups 486/1118/3150; requests 70/134/262; constexpr calls 17/33/65; steps 34/66/130 |
 | Compound non-type pack replay | 13.216/24.053/47.324 | 1.516/2.908/5.708 | lookups 1348/2372/4420; scopes 677/1189/2213; nodes 2118/4166/8262; requests fixed at 96 |
 | Template-proxy call replay | 9.827/13.611/20.620 | 1.139/1.573/2.512 | lookups 1398/2166/3702; scopes 685/941/1453; access 1008/1776/3312; requests fixed at 96 |
+| Alias-partial canonical forwarding | 5.449/8.808/15.663 | 1.564/2.492/4.750 | lookups 1849/3337/6313; requests 307/563/1075; deduction 672/1184/2208; candidates fixed at 16 |
 
 The alias benchmark confirms linear specialization requests and constexpr call/step
 counts. Its recursive variadic `cx_plus` evaluator retains 440/1648/6368 local-index
@@ -73,6 +75,9 @@ not multiply specialization work. The compound-pack benchmark uses 16 independen
 specializations; its element scopes, nodes, lookups, time, and storage scale linearly.
 The template-proxy benchmark likewise keeps specialization and signature work fixed
 while argument-scope lookup, time, and storage grow linearly.
+The alias-partial benchmark uses 16 independent outer specializations. Candidate
+count stays fixed while canonical requests, deduction visits, lookup, time, and
+storage track the forwarded 16/32/64-element pack without replay multiplication.
 
 ## Completed Checkpoints
 
@@ -96,3 +101,4 @@ while argument-scope lookup, time, and storage grow linearly.
 | Qualified alias/template-id replay | Pack calls defer to deduction, qualified result shapes defer lookup, block-local parser shadows stay scoped, and floating value-init stays typed; 262 -> 265, prior 2329/2329, audit pass. |
 | Compound non-type pack replay | Recursive pack discovery and ordered element scopes for comma/void/qualified-base expressions; 265 -> 268, prior 2329/2329, audit pass. |
 | Template-proxy call replay | Pattern-directed canonical explicit arguments preserve template proxies and non-trailing pack allocation; 268 -> 269, prior 2329/2329, audit pass. |
+| Alias-partial specialization replay | Symbolic alias-pack forwarding preserves canonical expansion identity for non-type partial deduction and base/member replay; 269 -> 271, prior 2329/2329, audit pass. |
