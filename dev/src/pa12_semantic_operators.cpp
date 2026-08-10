@@ -11,6 +11,33 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+bool SemanticAnalyzer::IsPointerToCompleteObject(TypeId type)
+{
+	type = program_->types.RemoveTopCv(EffectiveType(type));
+	const TypeRecord pointer = program_->types.Get(type);
+	if (pointer.kind != TYPE_POINTER) return false;
+	type = pointer.child;
+	while (true)
+	{
+		type = program_->types.RemoveTopCv(type);
+		const TypeRecord record = program_->types.Get(type);
+		if (record.kind != TYPE_ARRAY)
+		{
+			if (record.kind == TYPE_FUNDAMENTAL)
+				return record.fundamental != FUND_VOID;
+			if (record.kind == TYPE_POINTER ||
+				record.kind == TYPE_MEMBER_POINTER) return true;
+			if (record.kind != TYPE_NAMED) return false;
+			EnsureClassDefinition(type);
+			return program_->entities[record.entity].complete;
+		}
+		if (record.bound == 0 ||
+			record.dependent_bound_parameter != kNoTemplateParameter)
+			return false;
+		type = record.child;
+	}
+}
+
 ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 	TypeId target)
 {
@@ -101,8 +128,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 		if (!IsModifiableLvalue(operand) ||
 			(!IsArithmetic(result_type) && !IsPointer(result_type)) ||
 			(IsPointer(result_type) &&
-			 IsVoid(program_->types.Get(
-				 program_->types.RemoveTopCv(result_type)).child)))
+			 !IsPointerToCompleteObject(result_type)))
 		{
 			if (CandidateSubstitutionActive())
 				return CandidateSubstitutionFailure();
@@ -279,6 +305,83 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBinary(NodeId node, ScopeId scope)
 		left_syntax, right_syntax, left, right, scope);
 }
 
+bool SemanticAnalyzer::PrepareBuiltinComparison(const std::string& operation,
+	ExpressionInfo* left, ExpressionInfo* right, TypeId* operand_type)
+{
+	const bool equality = operation == "==" || operation == "!=";
+	const TypeId left_unqualified = program_->types.RemoveTopCv(
+		EffectiveType(left->type));
+	const TypeId right_unqualified = program_->types.RemoveTopCv(
+		EffectiveType(right->type));
+	const EntityId comparison_enum = left_unqualified == right_unqualified ?
+		EntityOf(left_unqualified) : kNoEntity;
+	if (comparison_enum != kNoEntity &&
+		(program_->entities[comparison_enum].flavor == NAMED_ENUM ||
+		 program_->entities[comparison_enum].flavor == NAMED_ENUM_CLASS))
+		*operand_type = left_unqualified;
+	else if (IsArithmetic(left->type) && IsArithmetic(right->type))
+		*operand_type = CommonArithmeticType(left->type, right->type);
+	else if (IsNullptr(left->type) && IsNullptr(right->type) && equality)
+		*operand_type = left_unqualified;
+	else if (IsPointer(Decay(left->type)) && IsPointer(Decay(right->type)))
+	{
+		const TypeId left_pointer = Decay(left->type);
+		const TypeId right_pointer = Decay(right->type);
+		const ConversionRank right_to_left = Conversion(*right, left_pointer);
+		const ConversionRank left_to_right = Conversion(*left, right_pointer);
+		if (right_to_left != CONVERSION_INVALID &&
+			(left_to_right == CONVERSION_INVALID ||
+			 right_to_left <= left_to_right))
+		{
+			*operand_type = left_pointer;
+			*right = ApplyTarget(*right, left_pointer);
+		}
+		else if (left_to_right != CONVERSION_INVALID)
+		{
+			*operand_type = right_pointer;
+			*left = ApplyTarget(*left, right_pointer);
+		}
+		else
+		{
+			(void)CandidateExpressionFailure(
+				"invalid pointer comparison operands");
+			return false;
+		}
+	}
+	else if (IsPointer(Decay(left->type)) &&
+		((right->integer_literal_zero && equality) || IsNullptr(right->type)))
+		SetExpressionAddress(right, NullConstexprAddress());
+	else if (IsPointer(Decay(right->type)) &&
+		((left->integer_literal_zero && equality) || IsNullptr(left->type)))
+		SetExpressionAddress(left, NullConstexprAddress());
+	else
+	{
+		(void)CandidateExpressionFailure("invalid comparison operands");
+		return false;
+	}
+	return true;
+}
+
+TypeId SemanticAnalyzer::PrepareBuiltinArithmetic(
+	const std::string& operation, const ExpressionInfo& left,
+	const ExpressionInfo& right)
+{
+	const bool integral_only = operation == "%" || operation == "<<" ||
+		operation == ">>" || operation == "&" || operation == "|" ||
+		operation == "^";
+	if ((integral_only &&
+		(!IsIntegral(left.type) || !IsIntegral(right.type))) ||
+		(!integral_only &&
+		 (!IsArithmetic(left.type) || !IsArithmetic(right.type))))
+	{
+		(void)CandidateExpressionFailure("invalid binary arithmetic operands");
+		return kNoType;
+	}
+	return operation == "<<" || operation == ">>" ?
+		IntegralPromotionType(left.type) :
+		CommonArithmeticType(left.type, right.type);
+}
+
 ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 	const std::string& operation, const std::string& display_operation,
 	NodeId left_syntax, NodeId right_syntax, ExpressionInfo left,
@@ -314,48 +417,8 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 	else if (operation == "==" || operation == "!=" || operation == "<" ||
 		operation == ">" || operation == "<=" || operation == ">=")
 	{
-		const bool equality = operation == "==" || operation == "!=";
-		const TypeId left_unqualified = program_->types.RemoveTopCv(
-			EffectiveType(left.type));
-		const TypeId right_unqualified = program_->types.RemoveTopCv(
-			EffectiveType(right.type));
-		const EntityId comparison_enum = left_unqualified == right_unqualified ?
-			EntityOf(left_unqualified) : kNoEntity;
-		if (comparison_enum != kNoEntity &&
-			(program_->entities[comparison_enum].flavor == NAMED_ENUM ||
-			 program_->entities[comparison_enum].flavor == NAMED_ENUM_CLASS))
-			operand_type = left_unqualified;
-		else if (IsArithmetic(left.type) && IsArithmetic(right.type))
-			operand_type = CommonArithmeticType(left.type, right.type);
-		else if (IsNullptr(left.type) && IsNullptr(right.type) && equality)
-			operand_type = left_unqualified;
-		else if (IsPointer(Decay(left.type)) && IsPointer(Decay(right.type)))
-		{
-			const TypeId left_pointer = Decay(left.type);
-			const TypeId right_pointer = Decay(right.type);
-			const ConversionRank right_to_left = Conversion(right, left_pointer);
-			const ConversionRank left_to_right = Conversion(left, right_pointer);
-			if (right_to_left != CONVERSION_INVALID &&
-				(left_to_right == CONVERSION_INVALID ||
-				 right_to_left <= left_to_right))
-			{
-				operand_type = left_pointer;
-				right = ApplyTarget(right, left_pointer);
-			}
-			else if (left_to_right != CONVERSION_INVALID)
-			{
-				operand_type = right_pointer;
-				left = ApplyTarget(left, right_pointer);
-			}
-			else throw std::runtime_error("invalid pointer comparison operands");
-		}
-		else if (IsPointer(Decay(left.type)) &&
-			((right.integer_literal_zero && equality) || IsNullptr(right.type)))
-			SetExpressionAddress(&right, NullConstexprAddress());
-		else if (IsPointer(Decay(right.type)) &&
-			((left.integer_literal_zero && equality) || IsNullptr(left.type)))
-			SetExpressionAddress(&left, NullConstexprAddress());
-		else throw std::runtime_error("invalid comparison operands");
+		if (!PrepareBuiltinComparison(
+			operation, &left, &right, &operand_type)) return ExpressionInfo();
 		result_type = program_->types.Fundamental(FUND_BOOL);
 	}
 	else if (operation == ",")
@@ -368,34 +431,37 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 	{
 		if (IsPointer(Decay(left.type)) && IsIntegral(right.type))
 		{
-			if (IsVoid(program_->types.Get(Decay(left.type)).child))
+			if (!IsPointerToCompleteObject(Decay(left.type)))
 			{
 				if (CandidateSubstitutionActive())
 					return CandidateSubstitutionFailure();
-				throw std::runtime_error("arithmetic on pointer to void");
+				throw std::runtime_error(
+					"arithmetic on pointer to incomplete or non-object type");
 			}
 			result_type = Decay(left.type);
 		}
 		else if (operation == "+" && IsIntegral(left.type) &&
 			IsPointer(Decay(right.type)))
 		{
-			if (IsVoid(program_->types.Get(Decay(right.type)).child))
+			if (!IsPointerToCompleteObject(Decay(right.type)))
 			{
 				if (CandidateSubstitutionActive())
 					return CandidateSubstitutionFailure();
-				throw std::runtime_error("arithmetic on pointer to void");
+				throw std::runtime_error(
+					"arithmetic on pointer to incomplete or non-object type");
 			}
 			result_type = Decay(right.type);
 		}
 		else if (operation == "-" && IsPointer(Decay(left.type)) &&
 			IsPointer(Decay(right.type)))
 		{
-			if (IsVoid(program_->types.Get(Decay(left.type)).child) ||
-				IsVoid(program_->types.Get(Decay(right.type)).child))
+			if (!IsPointerToCompleteObject(Decay(left.type)) ||
+				!IsPointerToCompleteObject(Decay(right.type)))
 			{
 				if (CandidateSubstitutionActive())
 					return CandidateSubstitutionFailure();
-				throw std::runtime_error("subtraction on pointer to void");
+				throw std::runtime_error(
+					"subtraction on pointer to incomplete or non-object type");
 			}
 			result_type = program_->types.Fundamental(FUND_LONG_INT);
 		}
@@ -405,17 +471,9 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 	}
 	else
 	{
-		const bool integral_only = operation == "%" || operation == "<<" ||
-			operation == ">>" || operation == "&" || operation == "|" ||
-			operation == "^";
-		if ((integral_only && (!IsIntegral(left.type) || !IsIntegral(right.type))) ||
-			(!integral_only && (!IsArithmetic(left.type) ||
-			 !IsArithmetic(right.type))))
-			throw std::runtime_error("invalid binary arithmetic operands");
-		if (operation == "<<" || operation == ">>") result_type =
-			operand_type = IntegralPromotionType(left.type);
-		else result_type = operand_type =
-			CommonArithmeticType(left.type, right.type);
+		result_type = operand_type =
+			PrepareBuiltinArithmetic(operation, left, right);
+		if (result_type == kNoType) return ExpressionInfo();
 	}
 	const std::uint32_t expression = MakeDump(DUMP_BINARY_EXPRESSION,
 		result_type, result_category,

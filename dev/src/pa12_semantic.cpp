@@ -1504,11 +1504,12 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 	if (!IsModifiableLvalue(left))
 		return CandidateExpressionFailure(
 			"assignment requires modifiable lvalue");
-	const bool pointer_add = IsPointer(left.type) &&
+	const bool pointer_add = IsPointerToCompleteObject(left.type) &&
 		(operation == "+=" || operation == "-=") && IsIntegral(right.type);
 	const bool reverse_pointer_add = operation == "+=" &&
 		program_->types.RemoveTopCv(EffectiveType(left.type)) ==
-			program_->types.Fundamental(FUND_BOOL) && IsPointer(right.type);
+			program_->types.Fundamental(FUND_BOOL) &&
+		IsPointerToCompleteObject(Decay(right.type));
 	if (operation != "=")
 	{
 		const bool additive = operation == "+=" || operation == "-=";
@@ -1617,8 +1618,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSubscript(NodeId node, ScopeId scope)
 		std::swap(left, right);
 	const TypeId pointer_type = Decay(left.type);
 	const TypeRecord pointer = program_->types.Get(pointer_type);
-	if (pointer.kind != TYPE_POINTER || !IsIntegral(right.type))
-		throw std::runtime_error("invalid subscript operands");
+	if (pointer.kind != TYPE_POINTER || !IsIntegral(right.type) ||
+		!IsPointerToCompleteObject(pointer_type))
+		return CandidateExpressionFailure("invalid subscript operands");
 	const std::uint32_t expression = MakeDump(DUMP_SUBSCRIPT_EXPRESSION,
 		pointer.child, VALUE_LVALUE);
 	dump_.Add(expression, left.node);

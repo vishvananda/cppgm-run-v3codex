@@ -17,16 +17,21 @@ and compare canonical declaration or namespace identity thereafter. Canonical
 type construction exposes typed no-throw validity to candidate frames, alias
 requests retain distinct expected- and hard-failure states, and retained
 `decltype` bases are selected by syntax identity rather than payload text.
+Expression validity records canonical virtual-base and exceptional-action
+facts; one complete-object pointer-arithmetic owner supplies binary, increment,
+subscript, and compound forms before a selected assignment publishes its typed
+lowering fact.
 
 ## Current Failure Map
 
-Current result is 315/404, up seven from the turn baseline with no regressions;
-all `100-*` and `200-*` tests pass. The complete remaining set groups by shared
-behavior and primary owner: candidate result/default substitution, dependent
-lookup, and demand timing (`300-*`: 45 exits, 8 LowIR); canonical non-type
-arguments, conversion templates, and overload ownership (`400-*`: 16 exits,
-2 LowIR); and composed alias/class/member lookup, pack replay, and selected-fact
-lowering (`500-*`: 8 exits, 10 LowIR). These groups account for all 89 failures.
+The original suite remains at its 315/404 checkpoint baseline; the audit guard
+makes the combined report 316/405, with no regression and all `100-*` and
+`200-*` tests passing. The complete remaining set groups by shared behavior and
+primary owner: candidate result/default substitution, dependent lookup, and
+demand timing (`300-*`: 45 exits, 8 LowIR); canonical non-type arguments,
+conversion templates, and overload ownership (`400-*`: 16 exits, 2 LowIR);
+and composed alias/class/member lookup, pack replay, and selected-fact lowering
+(`500-*`: 8 exits, 10 LowIR). These groups account for all 89 failures.
 
 ## Active Checkpoint
 
@@ -48,12 +53,17 @@ PA1-PA22, and file audit; measure doubled call sets and recursion depth.
 For 8/16/32/64 independent abstract-expression units, candidates are
 16/32/64/128, specialization requests 80/160/320/640, deduction visits
 32/64/128/256, and lookups 336/672/1,344/2,688; three-run semantic medians are
-1.99/3.70/6.95/13.20 ms and per-unit peak storage stays 57,488 bytes. Virtual
+1.97/3.65/6.89/13.32 ms and per-unit peak storage stays 57,488 bytes. Virtual
 base chains of depth 16/32/64/128 take 34/66/130/258 typed path visits,
 164/292/548/1,060 lookups, 165,575/297,811/585,639/1,147,815 peak bytes, and
-0.87/1.30/2.10/3.96 ms medians. Candidate work, graph work, storage, and time
-are linear. Gates are PA1-PA22 2,639/2,639, PA23 315/404 with no regressions,
-and file-audit pass with 13 inherited warnings.
+0.88/1.26/2.10/3.88 ms medians. Complete/incomplete-pointer probe groups at
+8/16/32/64 units take 256/512/1,024/2,048 candidates,
+832/1,664/3,328/6,656 specialization requests,
+1,341,484/2,668,404/5,142,620/10,271,148 peak bytes, and
+7.87/15.91/30.42/61.87 ms medians. Candidate work, graph work, storage, and
+time are linear. Gates are PA1-PA22 2,639/2,639, original PA23 315/404 and
+combined 316/405 with no regressions, and file-audit pass with 13 inherited
+warnings.
 
 ## Completed Checkpoints
 
@@ -75,4 +85,4 @@ and file-audit pass with 13 inherited warnings.
 | Inherited-using identity and reference/base lowering | Access-owned specialization aliases, local-signature preference, array-reference stores, and nonempty-base value initialization pass; all `100-*` pass, 289 -> 292, no regressions, linear/flat scaling. |
 | Declaration-time result lookup and canonical identity | Deferred results retain canonical type/namespace roots and first-declaration call candidates through redeclaration and substitution; fixed qualifiers validate immediately, recursive calls stay bounded, original PA23 292 -> 296 (298/403 with audit guards), no regressions, linear candidate/depth scaling. |
 | Candidate-local alias, call-surrogate, and detector replay | Nested aliases defer without body demand, explicit invalid types use typed candidate failure and monotonic alias states without exception control flow, retained `decltype` bases replay by syntax identity, and ellipsis fallbacks participate; landed 298 -> 307, audited full report 308/404, no regressions, linear failure scaling. |
-| Candidate-local expression validity and typed exceptional facts | Abstract construction/allocation, narrowing, virtual-base casts, compound operators, scalar pseudo-destruction, and `void()` dispatch use typed facts and scoped failure; 308 -> 315, no regressions, linear candidate/path scaling. |
+| Candidate-local expression validity and typed exceptional facts | Abstract construction/allocation, narrowing, virtual-base casts, scalar pseudo-destruction, and `void()` dispatch use scoped typed facts; the audit unified complete-object pointer arithmetic and typed comparison/arithmetic failure before lowering; original 308 -> 315, audit guard 316/405, no regressions, linear candidate/path scaling. |

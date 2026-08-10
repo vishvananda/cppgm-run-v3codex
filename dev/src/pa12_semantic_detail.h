@@ -846,6 +846,10 @@ private:
 	ExpressionInfo AnalyzeUnary(NodeId node, ScopeId scope,
 		TypeId target = kNoType);
 	ExpressionInfo AnalyzeBinary(NodeId node, ScopeId scope);
+	bool PrepareBuiltinComparison(const std::string& operation,
+		ExpressionInfo* left, ExpressionInfo* right, TypeId* operand_type);
+	TypeId PrepareBuiltinArithmetic(const std::string& operation,
+		const ExpressionInfo& left, const ExpressionInfo& right);
 	ExpressionInfo BuildBinaryExpression(const std::string& operation,
 		const std::string& display_operation, NodeId left_syntax,
 		NodeId right_syntax, ExpressionInfo left, ExpressionInfo right,
@@ -1149,6 +1153,7 @@ private:
 	bool IsFloating(TypeId type) const;
 	bool IsArithmetic(TypeId type) const;
 	bool IsPointer(TypeId type) const;
+	bool IsPointerToCompleteObject(TypeId type);
 	bool IsNullptr(TypeId type) const;
 	bool IsVoid(TypeId type) const;
 	bool IsConst(TypeId type) const;
