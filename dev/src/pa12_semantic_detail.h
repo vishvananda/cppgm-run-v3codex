@@ -37,6 +37,7 @@ public:
 		  class_template_nondeduced_type_shape_(kNoType),
 		  class_template_member_replay_depth_(0),
 		  explicit_member_template_replay_depth_(0),
+		  class_template_completion_suppressed_depth_(0),
 		  current_language_linkage_(LANGUAGE_LINKAGE_CPP),
 		  current_return_type_(kNoType), current_class_context_(kNoEntity),
 		  current_function_context_(kNoBinding),
@@ -543,6 +544,8 @@ private:
 		const std::vector<ExpressionInfo>& arguments,
 		NodeId syntax = kNoNode);
 	void DemandFunction(BindingId binding);
+	void DemandDefaultConstructor(EntityId entity);
+	void DemandConstructorDefinition(BindingId binding);
 	void DemandMaterializedConstructorActions(std::uint32_t node);
 	bool ShouldDemandResolvedCall(BindingId binding, bool folded,
 		bool compile_time_only) const;
@@ -1211,6 +1214,7 @@ private:
 	std::vector<BindingId> demanded_class_template_member_definitions_;
 	std::size_t class_template_member_replay_depth_;
 	std::size_t explicit_member_template_replay_depth_;
+	std::size_t class_template_completion_suppressed_depth_;
 	std::vector<NodeId> deferred_class_definition_by_entity_;
 	std::vector<ScopeId> deferred_class_scope_by_entity_;
 	std::vector<std::uint32_t> injected_fact_by_binding_;

@@ -357,7 +357,18 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		AnalyzeParenthesizedValueBinaryCast(
 			type_id, operand_node, scope, &parenthesized_binary))
 		return parenthesized_binary;
-	const TypeId target = BuildTypeId(type_id, scope);
+	++class_template_completion_suppressed_depth_;
+	TypeId target = kNoType;
+	try
+	{
+		target = BuildTypeId(type_id, scope);
+	}
+	catch (...)
+	{
+		--class_template_completion_suppressed_depth_;
+		throw;
+	}
+	--class_template_completion_suppressed_depth_;
 	// Expression analysis can intern more types and reallocate TypeTable storage.
 	// Keep the cast shape by value across the recursive operand analysis.
 	const TypeRecord target_record = program_->types.Get(target);
@@ -379,6 +390,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		constructed_target = target_record.child;
 	constructed_target = program_->types.RemoveTopCv(constructed_target);
 	const EntityId constructed_entity = EntityOf(constructed_target);
+	if (constructed_entity != kNoEntity &&
+		target_record.kind != TYPE_LVALUE_REFERENCE &&
+		target_record.kind != TYPE_RVALUE_REFERENCE)
+		EnsureClassDefinition(constructed_target);
 	const TypeId operand_object_type = program_->types.RemoveTopCv(
 		EffectiveType(operand.type));
 	const EntityId operand_entity = EntityOf(operand_object_type);

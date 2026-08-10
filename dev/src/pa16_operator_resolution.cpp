@@ -1178,7 +1178,7 @@ ExpressionInfo SemanticAnalyzer::ApplyCallArgument(
 				{
 					action.elide_empty_constructor = false;
 					if (action.binding != kNoBinding)
-						DemandFunction(action.binding);
+						DemandConstructorDefinition(action.binding);
 				}
 			}
 			for (std::uint32_t edge = action.first_edge;

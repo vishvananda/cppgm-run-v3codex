@@ -1,4 +1,5 @@
 #include "pa15_lowering_support.h"
+#include "pa12_semantic_model.h"
 #include "post_tokenizer.h"
 
 #include <algorithm>
@@ -7,6 +8,20 @@ namespace cppgm
 {
 namespace pa15_lowering_support
 {
+
+bool IsIncompletePointeeNullPointerCast(const pa11::Program& program,
+	const pa12_semantic_detail::DumpNode& source, pa11::TypeId target)
+{
+	target = program.types.RemoveTopCv(target);
+	const pa11::TypeRecord& target_record = program.types.Get(target);
+	if (target_record.kind != pa11::TYPE_POINTER) return false;
+	const pa11::TypeId pointee = program.types.RemoveTopCv(target_record.child);
+	const pa11::TypeRecord& pointee_record = program.types.Get(pointee);
+	return pointee_record.kind == pa11::TYPE_NAMED &&
+		!program.entities[pointee_record.entity].complete &&
+		source.kind == pa12_semantic_detail::DUMP_LITERAL && source.constant &&
+		source.constant_value == 0;
+}
 
 FlatIdMap::FlatIdMap() : slots_(16, 0) {}
 

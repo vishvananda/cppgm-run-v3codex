@@ -2371,13 +2371,16 @@ ExpressionInfo SemanticAnalyzer::MaterializeTemporary(
 		 GetFunction(action.binding).delegated_constructor == kNoBinding);
 	if (action.kind == DUMP_CONSTRUCTOR_ACTION &&
 		action.binding != kNoBinding &&
-		!compile_time_only)
+		!compile_time_only && unevaluated_depth_ == 0)
 	{
 		if (constant_expression_required_depth_ != 0 ||
 			constexpr_evaluation_depth_ != 0)
 			DemandFunction(action.binding);
 		else dump_.nodes[temporary].pending_constructor_demand = true;
 	}
+	else if (action.kind == DUMP_BRACED_INIT_LIST &&
+		action.value_constructor != kNoDumpEdge && unevaluated_depth_ == 0)
+		dump_.nodes[temporary].pending_constructor_demand = true;
 	ExpressionInfo result = initializer;
 	result.node = temporary;
 	result.type = object_type;
@@ -2433,6 +2436,22 @@ ExpressionInfo SemanticAnalyzer::MaterializeDiscardedClassResult(
 	return value;
 }
 
+void SemanticAnalyzer::DemandDefaultConstructor(EntityId entity)
+{
+	if (entity == kNoEntity) return;
+	if (default_constructor_demand_states_.size() <= entity)
+		default_constructor_demand_states_.resize(
+			static_cast<std::size_t>(entity) + 1, 0);
+	if (default_constructor_demand_states_[entity] != 0) return;
+	default_constructor_demand_states_[entity] = 1;
+	demanded_default_constructor_entities_.push_back(entity);
+	++demand_worklist_pushes_;
+}
+void SemanticAnalyzer::DemandConstructorDefinition(BindingId binding)
+{
+	DemandFunction(binding);
+}
+
 void SemanticAnalyzer::AddDefaultConstructor(std::uint32_t variable,
 	BindingId binding, TypeId type)
 {
@@ -2475,15 +2494,7 @@ void SemanticAnalyzer::AddDefaultConstructor(std::uint32_t variable,
 		dump_.Add(call, address);
 		dump_.Add(action, call);
 		expression_count_ += 2;
-		if (default_constructor_demand_states_.size() <= entity)
-			default_constructor_demand_states_.resize(
-				static_cast<std::size_t>(entity) + 1, 0);
-		if (default_constructor_demand_states_[entity] == 0)
-		{
-			default_constructor_demand_states_[entity] = 1;
-			demanded_default_constructor_entities_.push_back(entity);
-			++demand_worklist_pushes_;
-		}
+		DemandDefaultConstructor(entity);
 	}
 	dump_.Add(variable, action);
 }

@@ -11,6 +11,10 @@
 
 namespace cppgm
 {
+namespace pa12_semantic_detail
+{
+struct DumpNode;
+}
 namespace pa15_lowering_support
 {
 
@@ -19,6 +23,8 @@ std::string SanitizeSymbol(const std::string& name);
 std::vector<unsigned char> DecodeStringLiteral(const std::string& spelling);
 std::int64_t CanonicalIntegerImmediate(std::int64_t value,
 	std::uint8_t width, bool is_signed);
+bool IsIncompletePointeeNullPointerCast(const pa11::Program& program,
+	const pa12_semantic_detail::DumpNode& source, pa11::TypeId target);
 
 class FlatIdMap
 {

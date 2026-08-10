@@ -2331,7 +2331,8 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 				"cached class specialization arguments are invalid");
 		const std::vector<TemplateArgument> cached_arguments =
 			StoredTemplateArguments(first, count);
-		if ((old >= class_template_specialization_states_.size() ||
+		if (class_template_completion_suppressed_depth_ == 0 &&
+			(old >= class_template_specialization_states_.size() ||
 			 class_template_specialization_states_[old] == 0) &&
 			ClassTemplateArgumentsAreLayoutReady(*program_, cached_arguments))
 			CompleteClassTemplateSpecialization(
@@ -2408,7 +2409,8 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 		++template_specialization_cache_hits_;
 		if (arguments != supplied_arguments)
 			class_template_instantiations_.Insert(request_key, old);
-		if ((old >= class_template_specialization_states_.size() ||
+		if (class_template_completion_suppressed_depth_ == 0 &&
+			(old >= class_template_specialization_states_.size() ||
 			 class_template_specialization_states_[old] == 0) &&
 			ClassTemplateArgumentsAreLayoutReady(*program_, arguments))
 			CompleteClassTemplateSpecialization(index, old, arguments);
@@ -2526,7 +2528,8 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 		selection.bindings.pack_deduction_started.swap(
 			partial_bindings.pack_deduction_started);
 	}
-	if (ClassTemplateArgumentsAreLayoutReady(*program_, arguments))
+	if (class_template_completion_suppressed_depth_ == 0 &&
+		ClassTemplateArgumentsAreLayoutReady(*program_, arguments))
 		CompleteClassTemplateSpecialization(index, binding, arguments);
 	return binding;
 }

@@ -570,6 +570,30 @@ void RetainedTemplateValidator::PredeclareClassMembers(NodeId node,
 				Declare(scope, analyzer_.DeclaratorName(declarator),
 					RETAINED_VALUE_NAME, true);
 		}
+		else if (analyzer_.arena_->IsTag(member, "template-declaration"))
+		{
+			NodeId target = kNoNode;
+			for (std::uint32_t target_edge =
+					analyzer_.arena_->FirstEdge(member);
+				target_edge != kNoEdge;
+				target_edge = analyzer_.arena_->NextEdge(target_edge))
+			{
+				const NodeId child = analyzer_.arena_->EdgeChild(target_edge);
+				if (!analyzer_.arena_->IsTag(
+					child, "template-parameter-clause")) target = child;
+			}
+			if (target == kNoNode) continue;
+			if (analyzer_.arena_->IsTag(target, "simple-declaration"))
+				PredeclareClassSimple(target, scope);
+			else
+			{
+				const NodeId declarator =
+					analyzer_.FindChild(target, "declarator");
+				if (declarator != kNoNode)
+					Declare(scope, analyzer_.DeclaratorName(declarator),
+						RETAINED_VALUE_NAME, true);
+			}
+		}
 	}
 }
 
@@ -1077,10 +1101,13 @@ void RetainedTemplateValidator::Run()
 	const ScopeId semantic = analyzer_.NewScope(lexical_scope_,
 		SCOPE_TEMPLATE_PARAMETERS, 0,
 		analyzer_.ScopePrefixId(lexical_scope_));
+	const bool current_class =
+		analyzer_.program_->KindOfScope(lexical_scope_) == SCOPE_CLASS;
+	const bool defer_members =
+		IsQualifiedMemberDefinition(target_) || current_class;
 	const std::size_t root = AddScope(semantic,
 		std::numeric_limits<std::size_t>::max(),
-		IsQualifiedMemberDefinition(target_), false,
-		IsQualifiedMemberDefinition(target_));
+		defer_members, false, defer_members);
 	for (std::size_t i = 0; i < parameters_.size(); ++i)
 		DeclareParameter(root, parameters_[i]);
 	ValidateKnownTemplateArgumentKinds(target_, semantic);

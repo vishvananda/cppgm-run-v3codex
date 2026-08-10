@@ -1346,8 +1346,15 @@ private:
 			else if (record.base_projection_count != 0)
 				result = LowerProjectedClassPointer(
 					children[0], record.base_projection_count);
-			else result = LowerInitializerConvertedValue(children[0],
-				LowerExpressionType(record.type));
+			else
+			{
+				const DumpNode& source = arena_.nodes[children[0]];
+				result = IsIncompletePointeeNullPointerCast(
+					program_, source, record.type) ?
+					Operand(0, LowerExpressionType(record.type)) :
+					LowerInitializerConvertedValue(children[0],
+						LowerExpressionType(record.type));
+			}
 		}
 		else if (record.kind == DUMP_CONDITIONAL_EXPRESSION)
 			result = LowerConditional(node, record, children);

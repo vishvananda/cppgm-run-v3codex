@@ -51,14 +51,17 @@ void SemanticAnalyzer::DemandMaterializedConstructorActions(std::uint32_t node)
 				dump_.edges[record.first_edge].next != kNoDumpEdge)
 				throw std::logic_error(
 					"materialized constructor has invalid recipe");
-			const DumpNode& action = dump_.nodes[
+			const DumpNode& recipe = dump_.nodes[
 				dump_.edges[record.first_edge].child];
+			const DumpNode& action = recipe.kind == DUMP_BRACED_INIT_LIST &&
+				recipe.value_constructor != kNoDumpEdge ?
+				dump_.nodes[recipe.value_constructor] : recipe;
 			if (action.kind != DUMP_CONSTRUCTOR_ACTION ||
 				action.binding == kNoBinding)
 				throw std::logic_error(
 					"materialized constructor demand has no action");
 			record.pending_constructor_demand = false;
-			DemandFunction(action.binding);
+			DemandConstructorDefinition(action.binding);
 		}
 		for (std::uint32_t edge = record.first_edge; edge != kNoDumpEdge;
 			edge = dump_.edges[edge].next)

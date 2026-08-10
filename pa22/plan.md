@@ -38,23 +38,23 @@ SFINAE behavior and does not pull in the §7 object backend.
 
 ## Current Failure Map
 
-Current result: **275/310**. All 35 remaining failures group by primary owner:
-member/friend/function-template ownership, replay, access, overload, and demand 28;
-alias/template-template/non-type-pack construction and qualified type lookup 7.
-The alias group concentrates on lexical value binding, expansion result folding,
-and qualified dependent template syntax.
+Current result: **278/310**. The 32 remaining failures group by primary owner:
+member/function/friend retained replay, access, overload, and demand 22;
+alias/template-template/dependent type and non-type scope replay 8; object/static
+storage and emission 2.
 
 ## Active Checkpoint
 
-**Dependent function-template call replay.** Requirements: retain cv/ref,
-incomplete-pointee, and member-owner shapes until concrete call deduction, then
-perform one canonical overload selection and demand only the winner (`spec.md`
-§§2–6, 8–10). Owner and flow: retained call syntax -> concrete owner/ADL lookup ->
-canonical candidate deduction -> overload ranking -> definition demand -> typed
-lowering. Expected work is O(call sites * candidates * parameter visits), with
-indexed candidate sets and specialization caches. Validate incomplete pointer
-arguments, const/member overloads, braced call operators, function-signature
-partial owners, PA22, through PA21, audit, and 16/32/64 call/candidate scaling.
+**Dependent qualified declaration replay.** Requirements: retain rooted/base/member
+qualification plus cv/ref and `decltype` shapes until concrete owner substitution,
+then perform exact lookup, access, overload, and demand (`spec.md` §§2–6, 8–10).
+Owner and flow: retained declaration/expression -> substitute qualified owner
+segments -> indexed canonical-scope lookup -> access/overload -> definition demand
+-> typed lowering. Expected work is O(instantiations * (qualification segments +
+candidates + matched parameters)), with canonical owner and lookup caches. Validate
+CRTP reference casts, dependent-base rvalue assignment, const-dereference overloads,
+member template-template arguments, rooted static data/NTTP definitions, PA22,
+through PA21, audit, and 16/32/64 owner scaling.
 
 ## Performance Evidence
 
@@ -76,6 +76,7 @@ storage is peak-stage MB.
 | Short-circuit static demand | 12.335/25.270/63.085 | 3.349/6.762/17.015 | expressions 945/1761/3393; lookups 3040/6104/14536; requests 957/1773/3405; deduction 849/2161/6321 |
 | Dependent qualified-type replay | 4.170/7.961/15.067 | 0.851/1.713/3.501 | scopes 340/660/1300; lookups 880/1728/3424; requests 82/162/322; candidates 16/32/64; deduction 96/192/384 |
 | Repeated-pack/incomplete-head ordering | 12.134/23.043/46.103 | 2.109/4.331/8.592 | candidates 96/192/384; comparisons 32/64/128; deduction 1333/2645/5269; requests 730/1450/2890 |
+| Dependent call replay/constructor demand | 3.052/4.072/6.903 | 0.506/0.696/1.038 | candidates 133/245/469; requests 156/300/588; cache hits 144/288/576; lookups 775/1335/2455; demand pushes fixed at 13 |
 
 The alias benchmark confirms linear specialization requests and constexpr call/step
 counts. Its recursive variadic `cx_plus` evaluator retains 440/1648/6368 local-index
@@ -96,6 +97,9 @@ Candidate replay, deduction, lookup, time, and storage all scale linearly, showi
 one exact post-substitution validation per canonical partial request.
 The ordering benchmark combines equal/unequal repeated packs with incomplete
 template-template heads; work, elapsed time, and storage remain linear.
+The call benchmark repeats incomplete-pointee calls, later member-template address
+binding, and evaluated braced call objects. Candidate visits, requests, lookups,
+time, and storage scale linearly; canonical demand is constant after first use.
 
 ## Completed Checkpoints
 
@@ -123,3 +127,4 @@ template-template heads; work, elapsed time, and storage remain linear.
 | Short-circuit constant-demand isolation | Skipped-arm suppression no longer contaminates independently demanded static initializers; direct and alias recursive folds pass; 271 -> 272, prior 2329/2329, audit pass. |
 | Dependent qualified member-type replay | Top-level dependent owner qualifications are non-deduced during shape construction and exactly replayed after concrete binding; 272 -> 273, prior 2329/2329, audit pass. |
 | Partial ordering and incomplete template heads | Empty repeated packs retain deduction identity; concrete incomplete heads match without layout demand; 273 -> 275, prior 2329/2329, audit pass. |
+| Dependent function-template call replay | Incomplete pointee shells avoid layout demand, class validation predeclares later member-template heads, and evaluated braced temporaries demand their selected constructors; 275 -> 278, prior 2329/2329, audit pass. |
