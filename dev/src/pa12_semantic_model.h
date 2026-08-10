@@ -264,8 +264,10 @@ struct DeclaratorInfo
 {
 	NameId name;
 	TypeId type;
+	ScopeId trailing_return_scope;
 	std::vector<ParameterInfo> parameters;
-	DeclaratorInfo() : name(0), type(kNoType) {}
+	DeclaratorInfo()
+		: name(0), type(kNoType), trailing_return_scope(kNoScope) {}
 };
 
 enum ConstexprScalarKind

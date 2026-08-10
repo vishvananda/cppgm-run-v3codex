@@ -362,6 +362,13 @@ private:
 		const std::unordered_set<NameId>& names) const;
 	bool HasDependentQualifiedType(NodeId node,
 		const std::unordered_set<NameId>& names) const;
+	void ValidateDeferredFunctionTemplateResult(NodeId node, ScopeId scope,
+		const std::unordered_set<NameId>& dependent_names);
+	void ValidateFunctionTemplatePatternResults(
+		const FunctionTemplatePattern& pattern,
+		const DeclaratorInfo& declarator, ScopeId shape_scope,
+		const std::unordered_set<NameId>& parameter_names,
+		bool defer_trailing_return);
 	TypeId FunctionTemplateNondeducedTypeShape();
 	NameId DeclaratorName(NodeId node);
 	NamePath DeclaratorNamePath(NodeId node);

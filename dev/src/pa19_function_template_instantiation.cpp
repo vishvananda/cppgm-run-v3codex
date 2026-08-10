@@ -85,10 +85,21 @@ std::size_t TemplateParameterOrdinal(
 	return parameters.size();
 }
 
+std::uint32_t NextComparableTemplateSyntaxEdge(const SyntaxArena& arena,
+	std::uint32_t edge, bool ignore_global_qualifier)
+{
+	while (edge != kNoEdge && ignore_global_qualifier &&
+		arena.IsTag(arena.EdgeChild(edge), "global-qualifier"))
+		edge = arena.NextEdge(edge);
+	return edge;
+}
+
 bool EquivalentNormalizedTemplateSyntax(const SyntaxArena& arena,
 	NodeId left, NodeId right,
 	const std::vector<TemplateParameter>& left_parameters,
-	const std::vector<TemplateParameter>& right_parameters)
+	const std::vector<TemplateParameter>& right_parameters,
+	NodeId left_global_owner = kNoNode,
+	NodeId right_global_owner = kNoNode)
 {
 	// A dependent non-type parameter type is not always safe to materialize
 	// against an incomplete shape type. Compare the retained parsed structure
@@ -129,14 +140,20 @@ bool EquivalentNormalizedTemplateSyntax(const SyntaxArena& arena,
 			if (!structured_wrapper && (left_name != right_name ||
 				arena.Payload(left_node) != arena.Payload(right_node))) return false;
 		}
-		std::uint32_t left_edge = arena.FirstEdge(left_node);
-		std::uint32_t right_edge = arena.FirstEdge(right_node);
+		const bool ignore_global_qualifier =
+			left_node == left_global_owner && right_node == right_global_owner;
+		std::uint32_t left_edge = NextComparableTemplateSyntaxEdge(arena,
+			arena.FirstEdge(left_node), ignore_global_qualifier);
+		std::uint32_t right_edge = NextComparableTemplateSyntaxEdge(arena,
+			arena.FirstEdge(right_node), ignore_global_qualifier);
 		while (left_edge != kNoEdge && right_edge != kNoEdge)
 		{
 			pending.push_back(std::make_pair(
 				arena.EdgeChild(left_edge), arena.EdgeChild(right_edge)));
-			left_edge = arena.NextEdge(left_edge);
-			right_edge = arena.NextEdge(right_edge);
+			left_edge = NextComparableTemplateSyntaxEdge(
+				arena, arena.NextEdge(left_edge), ignore_global_qualifier);
+			right_edge = NextComparableTemplateSyntaxEdge(
+				arena, arena.NextEdge(right_edge), ignore_global_qualifier);
 		}
 		if (left_edge != right_edge) return false;
 	}
@@ -197,6 +214,78 @@ bool IsFunctionOnlyDeclSpecifier(const SyntaxArena& arena, NodeId node)
 		spelling == "thread_local" || spelling == "mutable";
 }
 
+NodeId FirstStructuredResultName(const SyntaxArena& arena, NodeId root)
+{
+	if (root == kNoNode) return kNoNode;
+	std::vector<NodeId> pending(1, root);
+	while (!pending.empty())
+	{
+		const NodeId node = pending.back();
+		pending.pop_back();
+		if (arena.IsTag(node, "structured-type-name")) return node;
+		for (std::uint32_t edge = arena.FirstEdge(node); edge != kNoEdge;
+			edge = arena.NextEdge(edge))
+			pending.push_back(arena.EdgeChild(edge));
+	}
+	return kNoNode;
+}
+
+bool StructuredResultRoot(const SyntaxArena& arena, NodeId structure,
+	NameId* name, bool* global)
+{
+	if (structure == kNoNode || !name || !global) return false;
+	*global = false;
+	for (std::uint32_t edge = arena.FirstEdge(structure); edge != kNoEdge;
+		edge = arena.NextEdge(edge))
+	{
+		const NodeId child = arena.EdgeChild(edge);
+		if (arena.IsTag(child, "global-qualifier")) *global = true;
+		else if (arena.IsTag(child, "name-component"))
+		{
+			*name = arena.SemanticPayloadId(child);
+			return *name != 0;
+		}
+	}
+	return false;
+}
+
+bool EquivalentResultRootLookup(Program& program, const SyntaxArena& arena,
+	const FunctionTemplatePattern& left,
+	const FunctionTemplatePattern& right,
+	NodeId* left_structure, NodeId* right_structure)
+{
+	if (!left_structure || !right_structure) return false;
+	*left_structure = kNoNode;
+	*right_structure = kNoNode;
+	const NodeId left_result = left.trailing_return_syntax != kNoNode ?
+		left.trailing_return_syntax : left.specifiers;
+	const NodeId right_result = right.trailing_return_syntax != kNoNode ?
+		right.trailing_return_syntax : right.specifiers;
+	const NodeId found_left_structure =
+		FirstStructuredResultName(arena, left_result);
+	const NodeId found_right_structure =
+		FirstStructuredResultName(arena, right_result);
+	NameId left_name = 0, right_name = 0;
+	bool left_global = false, right_global = false;
+	if (!StructuredResultRoot(arena, found_left_structure,
+			&left_name, &left_global) ||
+		!StructuredResultRoot(arena, found_right_structure,
+			&right_name, &right_global) ||
+		left_global == right_global || left_name != right_name)
+		return false;
+	const LookupResult left_found = left_global ?
+		program.LookupDirect(program.GlobalScope(), left_name, LOOKUP_TYPE) :
+		program.LookupName(left.lexical_scope, left_name, LOOKUP_TYPE);
+	const LookupResult right_found = right_global ?
+		program.LookupDirect(program.GlobalScope(), right_name, LOOKUP_TYPE) :
+		program.LookupName(right.lexical_scope, right_name, LOOKUP_TYPE);
+	if (left_found.type == kNoType ||
+		left_found.type != right_found.type) return false;
+	*left_structure = found_left_structure;
+	*right_structure = found_right_structure;
+	return true;
+}
+
 std::uint32_t NextDependentResultEdge(
 	const SyntaxArena& arena, std::uint32_t edge)
 {
@@ -206,10 +295,15 @@ std::uint32_t NextDependentResultEdge(
 	return edge;
 }
 
-bool EquivalentDependentFunctionTemplateResults(const SyntaxArena& arena,
+bool EquivalentDependentFunctionTemplateResults(Program& program,
+	const SyntaxArena& arena,
 	const FunctionTemplatePattern& left,
 	const FunctionTemplatePattern& right)
 {
+	NodeId left_global_owner = kNoNode;
+	NodeId right_global_owner = kNoNode;
+	(void)EquivalentResultRootLookup(program, arena, left, right,
+		&left_global_owner, &right_global_owner);
 	std::uint32_t left_edge = NextDependentResultEdge(arena,
 		left.specifiers == kNoNode ? kNoEdge : arena.FirstEdge(left.specifiers));
 	std::uint32_t right_edge = NextDependentResultEdge(arena,
@@ -218,7 +312,8 @@ bool EquivalentDependentFunctionTemplateResults(const SyntaxArena& arena,
 	{
 		if (!EquivalentNormalizedTemplateSyntax(arena,
 			arena.EdgeChild(left_edge), arena.EdgeChild(right_edge),
-			left.parameters, right.parameters)) return false;
+			left.parameters, right.parameters,
+			left_global_owner, right_global_owner)) return false;
 		left_edge = NextDependentResultEdge(
 			arena, arena.NextEdge(left_edge));
 		right_edge = NextDependentResultEdge(
@@ -227,7 +322,8 @@ bool EquivalentDependentFunctionTemplateResults(const SyntaxArena& arena,
 	if (left_edge != right_edge) return false;
 	return EquivalentNormalizedTemplateSyntax(arena,
 		left.trailing_return_syntax, right.trailing_return_syntax,
-		left.parameters, right.parameters);
+		left.parameters, right.parameters,
+		left_global_owner, right_global_owner);
 }
 
 void CaptureFunctionParameterMetadata(FunctionTemplatePattern* pattern,
@@ -443,8 +539,7 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	pattern.name = path.Last();
 	pattern.specifiers = specifiers;
 	pattern.declarator = declarator;
-	pattern.definition_body = definition ?
-		FindChild(target, "compound-statement") : kNoNode;
+	pattern.definition_body = definition ? FindChild(target, "compound-statement") : kNoNode;
 	pattern.constructor_initializer = definition ?
 		FindChild(target, "ctor-initializer") : kNoNode;
 	pattern.parameters = parameters;
@@ -550,10 +645,11 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 		shape_spec.storage_class == STORAGE_CLASS_STATIC;
 	const EntityId previous_class = current_class_context_;
 	if (member_owner != kNoEntity) current_class_context_ = member_owner;
-	DeclaratorInfo shape_declarator = BuildDeclarator(declarator,
-		shape_spec.type, shape_scope, false, nonstatic_member,
-		defer_trailing_return, &parameter_names);
+	DeclaratorInfo shape_declarator = BuildDeclarator(declarator, shape_spec.type,
+		shape_scope, false, nonstatic_member, defer_trailing_return, &parameter_names);
 	current_class_context_ = previous_class;
+	ValidateFunctionTemplatePatternResults(pattern, shape_declarator, shape_scope,
+		parameter_names, defer_trailing_return);
 	if (!program_->types.IsFunction(shape_declarator.type))
 		throw std::runtime_error(
 			"function template has non-function declaration");
@@ -584,8 +680,8 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	InitializeFunctionTemplatePackShape(&pattern, shape_declarator);
 	if (ConstructorTemplateMayAcceptNoArguments(pattern))
 		program_->entities[member_owner].default_constructible = true;
-	const std::uint64_t key =
-		(static_cast<std::uint64_t>(pattern.owner) << 32) | pattern.name;
+	const std::uint64_t key = (static_cast<std::uint64_t>(pattern.owner) << 32) |
+		pattern.name;
 	const CompactIndexSequence* prior_patterns =
 		template_function_sets_.Find(key);
 	std::size_t prior_index = function_templates_.size();
@@ -606,7 +702,7 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 					*arena_, prior, pattern) &&
 				(!dependent_result ||
 				 EquivalentDependentFunctionTemplateResults(
-					*arena_, prior, pattern)))
+					*program_, *arena_, prior, pattern)))
 			{
 				prior_index = candidate;
 				break;

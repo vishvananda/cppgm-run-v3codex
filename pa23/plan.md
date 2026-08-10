@@ -15,29 +15,28 @@ not rediscover template semantics.
 
 ## Current Failure Map
 
-Current result is 292/401, up from this checkpoint's 289 and stage baseline of
-223 with no regressions; all `100-*` and `200-*` tests pass. The remaining 109
+Current result is 295/401, up from this checkpoint's 292 and stage baseline of
+223 with no regressions; all `100-*` and `200-*` tests pass. The remaining 106
 failures group by primary owner and observed kind: immediate substitution and
-demand (`300-*`: 61 exits, 9 LowIR), canonical non-type/conversion arguments
+demand (`300-*`: 58 exits, 9 LowIR), canonical non-type/conversion arguments
 (`400-*`: 17 exits, 1 LowIR), and composed lookup/alias/class paths (`500-*`:
 12 exits, 9 LowIR).
 
 ## Active Checkpoint
 
-The next checkpoint owns candidate-local immediate-context result formation in
-the `300-*` group, beginning with dependent call/template-id trailing returns,
-nested aliases, and equivalent qualified result declarations. `spec.md`
-sections 3-6 require declaration-owned syntax and lexical context, substitution
-in an isolated candidate frame, failure confined to the immediate context, and
-completion only after selection. Function-template result formation owns the
-flow from retained result syntax through scoped lookup and canonical
-substitution to candidate viability; instantiation consumes the selected facts
-without repeating lookup. Expected work is O(C*(S+L)) for C candidates,
-retained shape S, and participating lookup L, memoized by pattern, canonical
-arguments, and lookup context. Validate the focused bad-mixed-dependent,
-nested-alias, qualified-result, and hidden-friend probes, then all `300-*`,
-PA1-PA22, and audit; measure doubled candidate counts and dependent-result
-depths.
+The next checkpoint owns concrete candidate-result replay in the `300-*`
+group, beginning with dependent `enable_if` values, invalid alias formation,
+member-call probes, and detector fallbacks. `spec.md` sections 3-6 require
+retained syntax and lexical/use contexts, canonical argument substitution in
+an isolated candidate frame, immediate-context failure without body demand,
+and selected facts reused by instantiation. Result formation owns the flow from
+pattern plus canonical arguments through alias/class lookup to candidate
+viability; the request cache owns the resulting success/failure state.
+Expected work is O(C*(S+L+A)) for C candidates, retained shape S, lookup L, and
+participating alias edges A, memoized by pattern, canonical arguments, and
+lookup context. Validate focused enable-if, invalid-alias, member-call, and
+detector probes, then all `300-*`, PA1-PA22, and audit; measure doubled
+candidate counts and retained-result/alias depths.
 
 ## Performance Evidence
 
@@ -54,8 +53,11 @@ were below 0.01 s. Candidate-prefix and retained-result depth probes through
 128 took at most 0.02 s and 8.4 MB. For 16/32/64/128 simultaneously viable
 inherited-using candidates, three runs took 0.00/0.01/0.01/0.02-0.03 s with
 peak RSS 6.6/7.1/7.5/8.7 MB; reference-to-array extents 64/128/256/512 all took
-under 0.01 s and at most 6.4 MB. Final gates are PA1-PA22 2,639/2,639, PA23
-292/401, zero regressions, and audit pass with 13 inherited warnings.
+under 0.01 s and at most 6.4 MB. For 16/32/64/128 simultaneously formed
+dependent-result candidates, three runs took 0.00/0.00/0.01/0.02 s with peak
+RSS 6.6/7.3/8.0/9.0 MB; retained-result depths 64/128/256/512 all took under
+0.01 s and at most 6.7 MB. Final gates are PA1-PA22 2,639/2,639, PA23 295/401,
+zero regressions, and audit pass with 13 inherited warnings.
 
 ## Completed Checkpoints
 
@@ -75,3 +77,4 @@ under 0.01 s and at most 6.4 MB. Final gates are PA1-PA22 2,639/2,639, PA23
 | Canonical explicit-prefix, array-cv, and reference-result flow | Incomplete prefixes leave later packs unbound, cv subtraction preserves array shape, and class lvalue conditionals lower through reference addresses; five gains, 279 -> 284, no regressions, linear scaling. |
 | Explicit template identity and specialization result replay | Type/function explicit-ids retain syntax, complete types deduce omitted arguments, inherited defaults and selected bodies replay, synthesized constructors stay out of ordinary lookup, and aggregate returns keep one lowering identity; 284 -> 289, no regressions, linear specialization/depth scaling. |
 | Inherited-using identity and reference/base lowering | Access-owned specialization aliases, local-signature preference, array-reference stores, and nonempty-base value initialization pass; all `100-*` pass, 289 -> 292, no regressions, linear/flat scaling. |
+| Declaration-time result lookup and canonical identity | Deferred results validate nondependent calls/templates once in their retained scope and equivalent global/unqualified roots merge by resolved entity; 292 -> 295, no regressions, linear result/candidate scaling. |

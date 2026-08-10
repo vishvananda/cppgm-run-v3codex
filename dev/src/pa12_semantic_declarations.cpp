@@ -2167,6 +2167,7 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 					program_->types.Pointer(object));
 			}
 		}
+		result.trailing_return_scope = return_scope;
 		if (!defer_trailing_return)
 		{
 			const NodeId return_type = FindChild(trailing, "type-id");
@@ -2268,6 +2269,8 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 			false, member_implicit_object, defer_trailing_return,
 			template_parameter_names);
 		if (!result.parameters.empty()) inner.parameters = result.parameters;
+		if (inner.trailing_return_scope == kNoScope)
+			inner.trailing_return_scope = result.trailing_return_scope;
 		return inner;
 	}
 	result.type = type;
