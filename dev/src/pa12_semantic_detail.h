@@ -354,6 +354,9 @@ private:
 		bool member_implicit_object = false,
 		bool defer_trailing_return = false,
 		const std::unordered_set<NameId>* template_parameter_names = 0);
+	TypeId BuildArrayDeclaratorType(NodeId suffix, TypeId element,
+		ScopeId scope,
+		const std::unordered_set<NameId>* template_parameter_names);
 	std::vector<ParameterInfo> BuildParameters(NodeId node, ScopeId scope,
 		bool* variadic,
 		const std::unordered_set<NameId>* template_parameter_names = 0);
@@ -466,6 +469,7 @@ private:
 	bool CandidateSubstitutionActive() const;
 	bool CandidateSubstitutionFailed() const;
 	void RecordCandidateSubstitutionFailure();
+	TypeId CandidateTypeFormation(TypeId type, const char* message);
 	ExpressionInfo CandidateSubstitutionFailure();
 	BindingId CandidateOverloadFailure(const char* message);
 	ExpressionInfo CandidateExpressionFailure(const char* message);

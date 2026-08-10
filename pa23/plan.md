@@ -13,18 +13,22 @@ lexical context plus first-declaration result lookup facts, deduction and
 overload resolution own candidate frames and selection, instantiation owns
 request state and completion, and lowering does not rediscover template
 semantics. Equivalent result declarations remap retained facts once by syntax
-and compare canonical declaration or namespace identity thereafter.
+and compare canonical declaration or namespace identity thereafter. Canonical
+type construction exposes typed no-throw validity to candidate frames, alias
+requests retain distinct expected- and hard-failure states, and retained
+`decltype` bases are selected by syntax identity rather than payload text.
 
 ## Current Failure Map
 
-Current result is 307/403 including two audit guards, or 305/401 on the original
-suite, up from this checkpoint's 298 with no regressions; all `100-*` and
-`200-*` tests pass. The complete remaining set groups by shared behavior and
-primary owner: candidate result/default substitution, dependent lookup, and
-demand timing (`300-*`: 52 exits, 8 LowIR); canonical non-type arguments,
-conversion templates, and overload ownership (`400-*`: 16 exits, 2 LowIR);
-and composed alias/class/member lookup, pack replay, and selected-fact lowering
-(`500-*`: 8 exits, 10 LowIR). These groups account for all 96 failures.
+Current result is 308/404 including three audit guards, or 305/401 on the
+original suite. The landed checkpoint's 307/403 baseline is preserved with no
+regression; all `100-*` and `200-*` tests pass. The complete remaining set
+groups by shared behavior and primary owner: candidate result/default
+substitution, dependent lookup, and demand timing (`300-*`: 52 exits, 8
+LowIR); canonical non-type arguments, conversion templates, and overload
+ownership (`400-*`: 16 exits, 2 LowIR); and composed alias/class/member lookup,
+pack replay, and selected-fact lowering (`500-*`: 8 exits, 10 LowIR). These
+groups account for all 96 failures.
 
 ## Active Checkpoint
 
@@ -41,14 +45,14 @@ all `300-*`, PA1-PA22, and audit; measure doubled expression and candidate sets.
 
 ## Performance Evidence
 
-Candidate sets of 8/16/32/64 produce 10/18/34/66 overload candidates,
-52/100/196/388 deduction visits, 191/335/623/1,199 lookup queries,
-243,222/382,001/680,617/1,352,625 peak semantic bytes, and three-run medians of
-1.24/1.92/3.19/6.00 ms. Alias depths 8/16/32/64 produce 18/26/42/74 requests,
-161/265/473/889 lookups, 190,043/217,916/410,644/799,840 peak bytes, and
-0.99/1.37/2.14/3.75 ms medians. Work and storage are linear in participating
-candidates/alias edges. Final gates are PA1-PA22 2,639/2,639, PA23 307/403 with
-zero regressions, and file-audit pass with 13 inherited warnings.
+Independent invalid-alias sets of 16/32/64/128 produce 16/32/64/128 overload
+visits, 176/352/704/1,408 specialization requests, 96/192/384/768 cache hits,
+32/64/128/256 deduction visits, 844/1,660/3,292/6,556 lookups, and
+727,475/1,446,883/2,887,131/5,766,323 peak semantic bytes. Three-run semantic
+medians are 4.08/7.89/15.35/30.90 ms. Work, storage, and time are linear in
+participating failures, and representative failed paths have no C++ unwind.
+Final gates are PA1-PA22 2,639/2,639, PA23 308/404 with zero regressions, and
+file-audit pass with 13 inherited warnings.
 
 ## Completed Checkpoints
 
@@ -69,4 +73,4 @@ zero regressions, and file-audit pass with 13 inherited warnings.
 | Explicit template identity and specialization result replay | Type/function explicit-ids retain syntax, complete types deduce omitted arguments, inherited defaults and selected bodies replay, synthesized constructors stay out of ordinary lookup, and aggregate returns keep one lowering identity; 284 -> 289, no regressions, linear specialization/depth scaling. |
 | Inherited-using identity and reference/base lowering | Access-owned specialization aliases, local-signature preference, array-reference stores, and nonempty-base value initialization pass; all `100-*` pass, 289 -> 292, no regressions, linear/flat scaling. |
 | Declaration-time result lookup and canonical identity | Deferred results retain canonical type/namespace roots and first-declaration call candidates through redeclaration and substitution; fixed qualifiers validate immediately, recursive calls stay bounded, original PA23 292 -> 296 (298/403 with audit guards), no regressions, linear candidate/depth scaling. |
-| Candidate-local alias, call-surrogate, and detector replay | Nested dependent alias shapes defer without body demand, explicit alias failures discard one candidate, retained `decltype` bases replay parsed calls, and ellipsis fallbacks participate; 298 -> 307, nine gains, no regressions, linear candidate/alias scaling. |
+| Candidate-local alias, call-surrogate, and detector replay | Nested aliases defer without body demand, explicit invalid types use typed candidate failure and monotonic alias states without exception control flow, retained `decltype` bases replay by syntax identity, and ellipsis fallbacks participate; landed 298 -> 307, audited full report 308/404, no regressions, linear failure scaling. |

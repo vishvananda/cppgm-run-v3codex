@@ -70,12 +70,14 @@ LookupResult SemanticAnalyzer::ResolveClassDirectBase(
 	const NodeId structured = FindChild(base_name, "structured-type-name");
 	if (structured != kNoNode)
 		result.type = ResolveStructuredTypeName(structured, scope);
-	else if (PayloadSource(base_name).compare(0, 8, "decltype") == 0)
+	else
 	{
 		const NodeId expression = FirstSemanticChild(base_name);
-		if (expression != kNoNode) result.type = DecltypeType(expression, scope);
+		if (expression != kNoNode)
+			result.type = DecltypeType(expression, scope);
+		else result = LookupSpelling(
+			scope, arena_->Payload(base_name), LOOKUP_TYPE);
 	}
-	else result = LookupSpelling(scope, arena_->Payload(base_name), LOOKUP_TYPE);
 	return result;
 }
 

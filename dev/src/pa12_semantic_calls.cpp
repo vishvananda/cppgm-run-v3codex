@@ -51,6 +51,15 @@ void SemanticAnalyzer::RecordCandidateSubstitutionFailure()
 	candidate_substitution_failures_.back() = 1;
 }
 
+TypeId SemanticAnalyzer::CandidateTypeFormation(
+	TypeId type, const char* message)
+{
+	if (type != kNoType) return type;
+	if (!CandidateSubstitutionActive()) throw std::runtime_error(message);
+	RecordCandidateSubstitutionFailure();
+	return kNoType;
+}
+
 ExpressionInfo SemanticAnalyzer::CandidateSubstitutionFailure()
 {
 	RecordCandidateSubstitutionFailure();
@@ -817,25 +826,11 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 				function_templates_[patterns[i]];
 			std::vector<TemplateArgument> arguments;
 			candidate_substitution_failures_.push_back(0);
-			bool built_arguments = false;
-			BindingId candidate = kNoBinding;
-			try
-			{
-				built_arguments = BuildTemplateArguments(
-					pattern.parameters, explicit_syntax,
-					scope, pattern.lexical_scope, &arguments);
-				if (built_arguments)
-					candidate = InstantiateFunctionTemplate(
-						patterns[i], arguments);
-			}
-			catch (const std::runtime_error&)
-			{
-				// Explicit template-id formation is an immediate substitution
-				// context.  Invalid alias products (pointer-to-reference,
-				// reference-to-void, array-of-void, and the like) discard only
-				// this candidate; a final no-viable result remains a hard error.
-				RecordCandidateSubstitutionFailure();
-			}
+			const bool built_arguments = BuildTemplateArguments(
+				pattern.parameters, explicit_syntax,
+				scope, pattern.lexical_scope, &arguments);
+			const BindingId candidate = built_arguments ?
+				InstantiateFunctionTemplate(patterns[i], arguments) : kNoBinding;
 			const bool substitution_failed = CandidateSubstitutionFailed();
 			candidate_substitution_failures_.pop_back();
 			if (built_arguments && !substitution_failed)

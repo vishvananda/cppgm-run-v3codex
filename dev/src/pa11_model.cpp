@@ -316,22 +316,25 @@ TypeId TypeTable::Unary(TypeKind kind, TypeId child)
 	return Intern(candidate, 0, 0);
 }
 
-TypeId TypeTable::Qualify(TypeId type, std::uint8_t cv)
+TypeId TypeTable::TryQualify(TypeId type, std::uint8_t cv)
 {
 	if (cv == CV_NONE) return type;
 	const TypeRecord& record = Get(type);
 	if (record.kind == TYPE_ARRAY)
+	{
+		const TypeId qualified_child = TryQualify(record.child, cv);
+		if (qualified_child == kNoType) return kNoType;
 		return record.dependent_bound_parameter == kNoTemplateParameter ?
-			Array(Qualify(record.child, cv), record.bound) :
-			DependentArray(Qualify(record.child, cv),
+			TryArray(qualified_child, record.bound) :
+			TryDependentArray(qualified_child,
 				record.dependent_bound_type,
 				record.dependent_bound_parameter);
+	}
 	if (record.kind == TYPE_LVALUE_REFERENCE ||
 		record.kind == TYPE_RVALUE_REFERENCE) return type;
-	if (record.kind == TYPE_FUNCTION)
-		throw std::runtime_error("cv-qualified function type");
+	if (record.kind == TYPE_FUNCTION) return kNoType;
 	if (record.kind == TYPE_QUALIFIED)
-		return Qualify(record.child,
+		return TryQualify(record.child,
 			static_cast<std::uint8_t>(record.cv | cv));
 	TypeRecord candidate;
 	candidate.kind = TYPE_QUALIFIED;
@@ -340,19 +343,33 @@ TypeId TypeTable::Qualify(TypeId type, std::uint8_t cv)
 	return Intern(candidate, 0, 0);
 }
 
-TypeId TypeTable::Pointer(TypeId type)
+TypeId TypeTable::Qualify(TypeId type, std::uint8_t cv)
 {
-	if (IsReference(type))
-		throw std::runtime_error("pointer to reference type");
+	const TypeId result = TryQualify(type, cv);
+	if (result == kNoType)
+		throw std::runtime_error("cv-qualified function type");
+	return result;
+}
+
+TypeId TypeTable::TryPointer(TypeId type)
+{
+	if (IsReference(type)) return kNoType;
 	return Unary(TYPE_POINTER, type);
 }
 
-TypeId TypeTable::MemberPointer(TypeId owner, TypeId member)
+TypeId TypeTable::Pointer(TypeId type)
+{
+	const TypeId result = TryPointer(type);
+	if (result == kNoType)
+		throw std::runtime_error("pointer to reference type");
+	return result;
+}
+
+TypeId TypeTable::TryMemberPointer(TypeId owner, TypeId member)
 {
 	owner = RemoveTopCv(owner);
 	const TypeRecord& class_type = Get(owner);
-	if (class_type.kind != TYPE_NAMED)
-		throw std::runtime_error("member pointer owner is not a class");
+	if (class_type.kind != TYPE_NAMED) return kNoType;
 	TypeRecord candidate;
 	candidate.kind = TYPE_MEMBER_POINTER;
 	candidate.child = member;
@@ -361,7 +378,15 @@ TypeId TypeTable::MemberPointer(TypeId owner, TypeId member)
 	return Intern(candidate, 0, 0);
 }
 
-TypeId TypeTable::Reference(TypeKind kind, TypeId type)
+TypeId TypeTable::MemberPointer(TypeId owner, TypeId member)
+{
+	const TypeId result = TryMemberPointer(owner, member);
+	if (result == kNoType)
+		throw std::runtime_error("member pointer owner is not a class");
+	return result;
+}
+
+TypeId TypeTable::TryReference(TypeKind kind, TypeId type)
 {
 	if (kind != TYPE_LVALUE_REFERENCE && kind != TYPE_RVALUE_REFERENCE)
 		throw std::logic_error("invalid reference kind");
@@ -372,18 +397,26 @@ TypeId TypeTable::Reference(TypeKind kind, TypeId type)
 		return Unary(kind == TYPE_LVALUE_REFERENCE ? TYPE_LVALUE_REFERENCE :
 			TYPE_RVALUE_REFERENCE, record.child);
 	if (record.kind == TYPE_FUNDAMENTAL && record.fundamental == FUND_VOID)
-		throw std::runtime_error("reference to void type");
+		return kNoType;
 	return Unary(kind, type);
 }
 
-TypeId TypeTable::Array(TypeId type, std::uint64_t bound)
+TypeId TypeTable::Reference(TypeKind kind, TypeId type)
+{
+	const TypeId result = TryReference(kind, type);
+	if (result == kNoType)
+		throw std::runtime_error("reference to void type");
+	return result;
+}
+
+TypeId TypeTable::TryArray(TypeId type, std::uint64_t bound)
 {
 	const TypeRecord& record = Get(type);
 	if (record.kind == TYPE_LVALUE_REFERENCE ||
 		record.kind == TYPE_RVALUE_REFERENCE || record.kind == TYPE_FUNCTION ||
 		(record.kind == TYPE_FUNDAMENTAL &&
 		 record.fundamental == FUND_VOID))
-		throw std::runtime_error("invalid array element type");
+		return kNoType;
 	TypeRecord candidate;
 	candidate.kind = TYPE_ARRAY;
 	candidate.child = type;
@@ -391,7 +424,15 @@ TypeId TypeTable::Array(TypeId type, std::uint64_t bound)
 	return Intern(candidate, 0, 0);
 }
 
-TypeId TypeTable::DependentArray(TypeId type, TypeId bound_type,
+TypeId TypeTable::Array(TypeId type, std::uint64_t bound)
+{
+	const TypeId result = TryArray(type, bound);
+	if (result == kNoType)
+		throw std::runtime_error("invalid array element type");
+	return result;
+}
+
+TypeId TypeTable::TryDependentArray(TypeId type, TypeId bound_type,
 	std::uint32_t parameter)
 {
 	if (parameter == kNoTemplateParameter)
@@ -401,7 +442,7 @@ TypeId TypeTable::DependentArray(TypeId type, TypeId bound_type,
 		record.kind == TYPE_RVALUE_REFERENCE || record.kind == TYPE_FUNCTION ||
 		(record.kind == TYPE_FUNDAMENTAL &&
 		 record.fundamental == FUND_VOID))
-		throw std::runtime_error("invalid dependent array element type");
+		return kNoType;
 	TypeRecord candidate;
 	candidate.kind = TYPE_ARRAY;
 	candidate.child = type;
@@ -410,13 +451,22 @@ TypeId TypeTable::DependentArray(TypeId type, TypeId bound_type,
 	return Intern(candidate, 0, 0);
 }
 
-TypeId TypeTable::Function(TypeId result,
+TypeId TypeTable::DependentArray(TypeId type, TypeId bound_type,
+	std::uint32_t parameter)
+{
+	const TypeId result = TryDependentArray(type, bound_type, parameter);
+	if (result == kNoType)
+		throw std::runtime_error("invalid dependent array element type");
+	return result;
+}
+
+TypeId TypeTable::TryFunction(TypeId result,
 	const std::vector<TypeId>& parameters, bool variadic, std::uint8_t cv,
 	std::uint8_t ref_qualifier)
 {
 	const TypeRecord& returned = Get(result);
 	if (returned.kind == TYPE_ARRAY || returned.kind == TYPE_FUNCTION)
-		throw std::runtime_error("invalid function return type");
+		return kNoType;
 	if (parameters.size() > std::numeric_limits<std::uint32_t>::max())
 		throw std::runtime_error("too many function parameters");
 	TypeRecord candidate;
@@ -429,6 +479,17 @@ TypeId TypeTable::Function(TypeId result,
 	candidate.ref_qualifier = ref_qualifier;
 	return Intern(candidate, parameters.empty() ? 0 : &parameters[0],
 		parameters.size());
+}
+
+TypeId TypeTable::Function(TypeId result,
+	const std::vector<TypeId>& parameters, bool variadic, std::uint8_t cv,
+	std::uint8_t ref_qualifier)
+{
+	const TypeId type = TryFunction(
+		result, parameters, variadic, cv, ref_qualifier);
+	if (type == kNoType)
+		throw std::runtime_error("invalid function return type");
+	return type;
 }
 
 TypeId TypeTable::RemoveTopCv(TypeId type) const

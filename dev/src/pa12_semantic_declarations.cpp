@@ -2082,11 +2082,14 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 		if (arena_->IsTag(child, "ptr-operator"))
 		{
 			const std::string operation = PayloadSource(child);
-			if (operation == "*") type = program_->types.Pointer(type);
+			if (operation == "*") type = CandidateTypeFormation(
+				program_->types.TryPointer(type), "pointer to reference type");
 			else if (operation == "&")
-				type = program_->types.Reference(TYPE_LVALUE_REFERENCE, type);
+				type = CandidateTypeFormation(program_->types.TryReference(
+					TYPE_LVALUE_REFERENCE, type), "reference to void type");
 			else if (operation == "&&")
-				type = program_->types.Reference(TYPE_RVALUE_REFERENCE, type);
+				type = CandidateTypeFormation(program_->types.TryReference(
+					TYPE_RVALUE_REFERENCE, type), "reference to void type");
 			else if (operation.size() > 3 &&
 				operation.compare(operation.size() - 3, 3, "::*") == 0)
 			{
@@ -2095,10 +2098,14 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 				const LookupResult owner = LookupSpelling(scope, owner_name,
 					LOOKUP_TYPE);
 				if (owner.type == kNoType)
-					throw std::runtime_error("member pointer owner not found");
-				type = program_->types.MemberPointer(owner.type, type);
+					type = CandidateTypeFormation(
+						kNoType, "member pointer owner not found");
+				else type = CandidateTypeFormation(
+					program_->types.TryMemberPointer(owner.type, type),
+					"member pointer owner is not a class");
 			}
 			else throw std::runtime_error("invalid pointer operator");
+			if (CandidateSubstitutionFailed()) return result;
 		}
 		else if (arena_->IsTag(child, "cv-qualifier"))
 		{
@@ -2106,7 +2113,10 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 			const std::uint8_t flag = qualifier == "const" ?
 				CV_CONST : CV_VOLATILE;
 			if (saw_function_suffix) function_cv |= flag;
-			else type = program_->types.Qualify(type, flag);
+			else type = CandidateTypeFormation(
+				program_->types.TryQualify(type, flag),
+				"cv-qualified function type");
+			if (CandidateSubstitutionFailed()) return result;
 		}
 		else if (arena_->IsTag(child, "ref-qualifier"))
 		{
@@ -2183,54 +2193,9 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 		const NodeId suffix = suffixes[i - 1];
 		if (arena_->IsTag(suffix, "array-suffix"))
 		{
-			const NodeId bound_node = FirstSemanticChild(suffix);
-			std::uint64_t bound = 0;
-			if (bound_node != kNoNode)
-			{
-				if (template_parameter_names != 0 &&
-					SyntaxUsesAnyTemplateParameter(
-						bound_node, *template_parameter_names) &&
-					!IsDirectTemplateParameterExpression(
-						bound_node, *template_parameter_names))
-				{
-					type = program_->types.Array(type, 0);
-					continue;
-				}
-				++constant_expression_required_depth_;
-				ExpressionInfo expression;
-				try
-				{
-					expression = AnalyzeExpression(bound_node, scope);
-					--constant_expression_required_depth_;
-				}
-				catch (...)
-				{
-					--constant_expression_required_depth_;
-					throw;
-				}
-				if (!expression.constant)
-				{
-					if (expression.binding == kNoBinding ||
-						expression.binding >= program_->bindings.size())
-						throw std::runtime_error("invalid array bound");
-					const BindingRecord& binding =
-						program_->bindings[expression.binding];
-					if (binding.kind != BIND_PARAMETER || binding.constant ||
-						program_->KindOfScope(binding.owner) !=
-							SCOPE_TEMPLATE_PARAMETERS || binding.value < 0 ||
-						static_cast<std::uint64_t>(binding.value) >=
-							kNoTemplateParameter)
-						throw std::runtime_error("invalid array bound");
-					type = program_->types.DependentArray(type,
-						program_->types.RemoveTopCv(expression.type),
-						static_cast<std::uint32_t>(binding.value));
-					continue;
-				}
-				if (expression.value <= 0)
-					throw std::runtime_error("invalid array bound");
-				bound = static_cast<std::uint64_t>(expression.value);
-			}
-			type = program_->types.Array(type, bound);
+			type = BuildArrayDeclaratorType(
+				suffix, type, scope, template_parameter_names);
+			if (CandidateSubstitutionFailed()) return result;
 		}
 		else
 		{
@@ -2257,8 +2222,10 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 					RecordCandidateSubstitutionFailure();
 				return result;
 			}
-			type = program_->types.Function(type, function_parameters, variadic,
-				function_cv, function_ref);
+			type = CandidateTypeFormation(program_->types.TryFunction(
+				type, function_parameters, variadic, function_cv, function_ref),
+				"invalid function return type");
+			if (CandidateSubstitutionFailed()) return result;
 			result.parameters = parameters;
 		}
 	}

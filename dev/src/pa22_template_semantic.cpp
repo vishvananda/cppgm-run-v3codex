@@ -18,6 +18,15 @@ std::size_t NoAliasTemplatePattern()
 	return std::numeric_limits<std::size_t>::max();
 }
 
+enum AliasTemplateInstantiationState
+{
+	ALIAS_TEMPLATE_NOT_STARTED,
+	ALIAS_TEMPLATE_IN_PROGRESS,
+	ALIAS_TEMPLATE_SUCCEEDED,
+	ALIAS_TEMPLATE_EXPECTED_FAILURE,
+	ALIAS_TEMPLATE_HARD_FAILURE
+};
+
 bool EquivalentAliasTemplateParameters(
 	const std::vector<TemplateParameter>& left,
 	const std::vector<TemplateParameter>& right)
@@ -886,11 +895,20 @@ TypeId SemanticAnalyzer::InstantiateAliasTemplate(std::size_t index,
 				"alias specialization has no completion state");
 		const std::uint8_t state =
 			alias_template_instantiation_states_[binding];
-		if (state == 1)
+		if (state == ALIAS_TEMPLATE_IN_PROGRESS)
 			throw std::runtime_error("recursive alias template specialization");
-		if (state == 3)
+		if (state == ALIAS_TEMPLATE_EXPECTED_FAILURE)
+		{
+			if (CandidateSubstitutionActive())
+			{
+				RecordCandidateSubstitutionFailure();
+				return kNoType;
+			}
 			throw std::runtime_error("invalid alias template specialization");
-		if (state != 2)
+		}
+		if (state == ALIAS_TEMPLATE_HARD_FAILURE)
+			throw std::runtime_error("invalid alias template specialization");
+		if (state != ALIAS_TEMPLATE_SUCCEEDED)
 			throw std::logic_error(
 				"alias specialization has an invalid completion state");
 		return program_->bindings[binding].type;
@@ -901,7 +919,8 @@ TypeId SemanticAnalyzer::InstantiateAliasTemplate(std::size_t index,
 	if (alias_template_instantiation_states_.size() <= binding)
 		alias_template_instantiation_states_.resize(
 			static_cast<std::size_t>(binding) + 1, 0);
-	alias_template_instantiation_states_[binding] = 1;
+	alias_template_instantiation_states_[binding] =
+		ALIAS_TEMPLATE_IN_PROGRESS;
 	alias_template_instantiations_.Insert(key, binding);
 
 	const ScopeId substitution_scope = NewScope(pattern.lexical_scope,
@@ -933,16 +952,31 @@ TypeId SemanticAnalyzer::InstantiateAliasTemplate(std::size_t index,
 			throw;
 		}
 		--class_template_completion_suppressed_depth_;
+		if (CandidateSubstitutionFailed())
+		{
+			alias_template_instantiation_states_[binding] =
+				ALIAS_TEMPLATE_EXPECTED_FAILURE;
+			return kNoType;
+		}
 		if (result == kNoType)
-			throw std::runtime_error(
-				"alias template specialization has no result type");
+		{
+			if (!CandidateSubstitutionActive())
+				throw std::runtime_error(
+					"alias template specialization has no result type");
+			RecordCandidateSubstitutionFailure();
+			alias_template_instantiation_states_[binding] =
+				ALIAS_TEMPLATE_EXPECTED_FAILURE;
+			return kNoType;
+		}
 		program_->bindings[binding].type = result;
-		alias_template_instantiation_states_[binding] = 2;
+		alias_template_instantiation_states_[binding] =
+			ALIAS_TEMPLATE_SUCCEEDED;
 		return result;
 	}
 	catch (...)
 	{
-		alias_template_instantiation_states_[binding] = 3;
+		alias_template_instantiation_states_[binding] =
+			ALIAS_TEMPLATE_HARD_FAILURE;
 		throw;
 	}
 }

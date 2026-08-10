@@ -188,13 +188,23 @@ public:
 	TypeTable();
 	TypeId Fundamental(FundamentalKind kind);
 	TypeId Named(EntityId entity);
+	TypeId TryQualify(TypeId type, std::uint8_t cv);
 	TypeId Qualify(TypeId type, std::uint8_t cv);
+	TypeId TryPointer(TypeId type);
 	TypeId Pointer(TypeId type);
+	TypeId TryMemberPointer(TypeId owner, TypeId member);
 	TypeId MemberPointer(TypeId owner, TypeId member);
+	TypeId TryReference(TypeKind kind, TypeId type);
 	TypeId Reference(TypeKind kind, TypeId type);
+	TypeId TryArray(TypeId type, std::uint64_t bound);
 	TypeId Array(TypeId type, std::uint64_t bound);
+	TypeId TryDependentArray(TypeId type, TypeId bound_type,
+		std::uint32_t parameter);
 	TypeId DependentArray(TypeId type, TypeId bound_type,
 		std::uint32_t parameter);
+	TypeId TryFunction(TypeId result, const std::vector<TypeId>& parameters,
+		bool variadic, std::uint8_t cv = CV_NONE,
+		std::uint8_t ref_qualifier = FUNCTION_REF_NONE);
 	TypeId Function(TypeId result, const std::vector<TypeId>& parameters,
 		bool variadic, std::uint8_t cv = CV_NONE,
 		std::uint8_t ref_qualifier = FUNCTION_REF_NONE);
