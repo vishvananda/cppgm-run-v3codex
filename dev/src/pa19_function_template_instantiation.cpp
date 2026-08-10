@@ -214,75 +214,25 @@ bool IsFunctionOnlyDeclSpecifier(const SyntaxArena& arena, NodeId node)
 		spelling == "thread_local" || spelling == "mutable";
 }
 
-NodeId FirstStructuredResultName(const SyntaxArena& arena, NodeId root)
-{
-	if (root == kNoNode) return kNoNode;
-	std::vector<NodeId> pending(1, root);
-	while (!pending.empty())
-	{
-		const NodeId node = pending.back();
-		pending.pop_back();
-		if (arena.IsTag(node, "structured-type-name")) return node;
-		for (std::uint32_t edge = arena.FirstEdge(node); edge != kNoEdge;
-			edge = arena.NextEdge(edge))
-			pending.push_back(arena.EdgeChild(edge));
-	}
-	return kNoNode;
-}
-
-bool StructuredResultRoot(const SyntaxArena& arena, NodeId structure,
-	NameId* name, bool* global)
-{
-	if (structure == kNoNode || !name || !global) return false;
-	*global = false;
-	for (std::uint32_t edge = arena.FirstEdge(structure); edge != kNoEdge;
-		edge = arena.NextEdge(edge))
-	{
-		const NodeId child = arena.EdgeChild(edge);
-		if (arena.IsTag(child, "global-qualifier")) *global = true;
-		else if (arena.IsTag(child, "name-component"))
-		{
-			*name = arena.SemanticPayloadId(child);
-			return *name != 0;
-		}
-	}
-	return false;
-}
-
-bool EquivalentResultRootLookup(Program& program, const SyntaxArena& arena,
-	const FunctionTemplatePattern& left,
+bool EquivalentResultRootLookup(const FunctionTemplatePattern& left,
 	const FunctionTemplatePattern& right,
 	NodeId* left_structure, NodeId* right_structure)
 {
 	if (!left_structure || !right_structure) return false;
 	*left_structure = kNoNode;
 	*right_structure = kNoNode;
-	const NodeId left_result = left.trailing_return_syntax != kNoNode ?
-		left.trailing_return_syntax : left.specifiers;
-	const NodeId right_result = right.trailing_return_syntax != kNoNode ?
-		right.trailing_return_syntax : right.specifiers;
-	const NodeId found_left_structure =
-		FirstStructuredResultName(arena, left_result);
-	const NodeId found_right_structure =
-		FirstStructuredResultName(arena, right_result);
-	NameId left_name = 0, right_name = 0;
-	bool left_global = false, right_global = false;
-	if (!StructuredResultRoot(arena, found_left_structure,
-			&left_name, &left_global) ||
-		!StructuredResultRoot(arena, found_right_structure,
-			&right_name, &right_global) ||
-		left_global == right_global || left_name != right_name)
+	if (left.result_root_structure == kNoNode ||
+		right.result_root_structure == kNoNode ||
+		left.result_root_global == right.result_root_global ||
+		left.result_root_name == 0 ||
+		left.result_root_name != right.result_root_name ||
+		!((left.result_root_declaration != kNoBinding &&
+		   left.result_root_declaration == right.result_root_declaration) ||
+		  (left.result_root_namespace != kNoScope &&
+		   left.result_root_namespace == right.result_root_namespace)))
 		return false;
-	const LookupResult left_found = left_global ?
-		program.LookupDirect(program.GlobalScope(), left_name, LOOKUP_TYPE) :
-		program.LookupName(left.lexical_scope, left_name, LOOKUP_TYPE);
-	const LookupResult right_found = right_global ?
-		program.LookupDirect(program.GlobalScope(), right_name, LOOKUP_TYPE) :
-		program.LookupName(right.lexical_scope, right_name, LOOKUP_TYPE);
-	if (left_found.type == kNoType ||
-		left_found.type != right_found.type) return false;
-	*left_structure = found_left_structure;
-	*right_structure = found_right_structure;
+	*left_structure = left.result_root_structure;
+	*right_structure = right.result_root_structure;
 	return true;
 }
 
@@ -295,14 +245,13 @@ std::uint32_t NextDependentResultEdge(
 	return edge;
 }
 
-bool EquivalentDependentFunctionTemplateResults(Program& program,
-	const SyntaxArena& arena,
+bool EquivalentDependentFunctionTemplateResults(const SyntaxArena& arena,
 	const FunctionTemplatePattern& left,
 	const FunctionTemplatePattern& right)
 {
 	NodeId left_global_owner = kNoNode;
 	NodeId right_global_owner = kNoNode;
-	(void)EquivalentResultRootLookup(program, arena, left, right,
+	(void)EquivalentResultRootLookup(left, right,
 		&left_global_owner, &right_global_owner);
 	std::uint32_t left_edge = NextDependentResultEdge(arena,
 		left.specifiers == kNoNode ? kNoEdge : arena.FirstEdge(left.specifiers));
@@ -447,6 +396,129 @@ void MergeFunctionTemplateDefaults(FunctionTemplatePattern* retained,
 					incoming.parameters[i].default_argument;
 }
 
+}
+
+void SemanticAnalyzer::InheritFunctionTemplateResultLookups(
+	const FunctionTemplatePattern& source,
+	FunctionTemplatePattern* destination)
+{
+	if (!destination)
+		throw std::logic_error("function template result lookup has no target");
+	NodeId source_global_owner = kNoNode;
+	NodeId destination_global_owner = kNoNode;
+	(void)EquivalentResultRootLookup(source, *destination,
+		&source_global_owner, &destination_global_owner);
+	std::vector<std::pair<NodeId, NodeId> > pending;
+	std::uint32_t source_specifier = NextDependentResultEdge(*arena_,
+		source.specifiers == kNoNode ? kNoEdge :
+		arena_->FirstEdge(source.specifiers));
+	std::uint32_t destination_specifier = NextDependentResultEdge(*arena_,
+		destination->specifiers == kNoNode ? kNoEdge :
+		arena_->FirstEdge(destination->specifiers));
+	while (source_specifier != kNoEdge && destination_specifier != kNoEdge)
+	{
+		pending.push_back(std::make_pair(arena_->EdgeChild(source_specifier),
+			arena_->EdgeChild(destination_specifier)));
+		source_specifier = NextDependentResultEdge(
+			*arena_, arena_->NextEdge(source_specifier));
+		destination_specifier = NextDependentResultEdge(
+			*arena_, arena_->NextEdge(destination_specifier));
+	}
+	if (source_specifier != destination_specifier)
+		throw std::logic_error(
+			"equivalent function template result specifiers diverged");
+	pending.push_back(std::make_pair(source.trailing_return_syntax,
+		destination->trailing_return_syntax));
+	std::vector<FunctionTemplateResultLookupFact> remapped;
+	remapped.reserve(source.result_lookup_facts.size());
+	while (!pending.empty())
+	{
+		const NodeId left = pending.back().first;
+		const NodeId right = pending.back().second;
+		pending.pop_back();
+		if (left == kNoNode || right == kNoNode)
+		{
+			if (left != right)
+				throw std::logic_error(
+					"equivalent function template result shape diverged");
+			continue;
+		}
+		CopyRetainedCallLookup(left, right);
+		const std::vector<FunctionTemplateResultLookupFact>::const_iterator fact =
+			std::lower_bound(source.result_lookup_facts.begin(),
+				source.result_lookup_facts.end(), left,
+				[](const FunctionTemplateResultLookupFact& candidate,
+					NodeId syntax) { return candidate.syntax < syntax; });
+		if (fact != source.result_lookup_facts.end() && fact->syntax == left)
+		{
+			FunctionTemplateResultLookupFact inherited = *fact;
+			inherited.syntax = right;
+			remapped.push_back(inherited);
+		}
+		const bool ignore_global_qualifier =
+			left == source_global_owner && right == destination_global_owner;
+		std::uint32_t left_edge = NextComparableTemplateSyntaxEdge(
+			*arena_, arena_->FirstEdge(left), ignore_global_qualifier);
+		std::uint32_t right_edge = NextComparableTemplateSyntaxEdge(
+			*arena_, arena_->FirstEdge(right), ignore_global_qualifier);
+		while (left_edge != kNoEdge && right_edge != kNoEdge)
+		{
+			pending.push_back(std::make_pair(
+				arena_->EdgeChild(left_edge), arena_->EdgeChild(right_edge)));
+			left_edge = NextComparableTemplateSyntaxEdge(*arena_,
+				arena_->NextEdge(left_edge), ignore_global_qualifier);
+			right_edge = NextComparableTemplateSyntaxEdge(*arena_,
+				arena_->NextEdge(right_edge), ignore_global_qualifier);
+		}
+		if (left_edge != right_edge)
+			throw std::logic_error(
+				"equivalent function template result edge count diverged");
+	}
+	if (remapped.size() != source.result_lookup_facts.size())
+		throw std::logic_error(
+			"function template result lookup remap is incomplete");
+	std::sort(remapped.begin(), remapped.end(),
+		[](const FunctionTemplateResultLookupFact& left,
+			const FunctionTemplateResultLookupFact& right) {
+			return left.syntax < right.syntax;
+		});
+	destination->result_lookup_facts.swap(remapped);
+	destination->result_root_declaration = source.result_root_declaration;
+	destination->result_root_namespace = source.result_root_namespace;
+}
+
+void SemanticAnalyzer::AdoptFunctionTemplateDefinition(
+	std::size_t pattern_index, FunctionTemplatePattern* retained,
+	FunctionTemplatePattern* incoming, bool explicit_member_definition)
+{
+	if (!retained || !incoming)
+		throw std::logic_error("function template definition has no pattern");
+	if (retained->defined && (!explicit_member_definition ||
+		retained->explicit_member_definition))
+		throw std::runtime_error("duplicate function template definition");
+	retained->lexical_scope = incoming->lexical_scope;
+	retained->specifiers = incoming->specifiers;
+	retained->declarator = incoming->declarator;
+	retained->trailing_return_syntax = incoming->trailing_return_syntax;
+	retained->result_lookup_facts.swap(incoming->result_lookup_facts);
+	retained->result_root_structure = incoming->result_root_structure;
+	retained->result_root_name = incoming->result_root_name;
+	retained->result_root_declaration = incoming->result_root_declaration;
+	retained->result_root_namespace = incoming->result_root_namespace;
+	retained->result_root_global = incoming->result_root_global;
+	retained->definition_body = incoming->definition_body;
+	retained->constructor_initializer = incoming->constructor_initializer;
+	retained->function_parameter_names = incoming->function_parameter_names;
+	retained->function_parameter_defaults = incoming->function_parameter_defaults;
+	retained->language_linkage = incoming->language_linkage;
+	retained->static_member = retained->static_member || incoming->static_member;
+	retained->definition_in_class = incoming->definition_in_class;
+	retained->explicit_member_definition =
+		retained->explicit_member_definition || explicit_member_definition;
+	if (incoming->lexical_scope == incoming->owner)
+		retained->member_access = incoming->member_access;
+	retained->defined = true;
+	UpgradeFunctionTemplateSpecializations(pattern_index);
 }
 
 void SemanticAnalyzer::AppendConstructorTemplateCandidates(
@@ -648,7 +720,7 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	DeclaratorInfo shape_declarator = BuildDeclarator(declarator, shape_spec.type,
 		shape_scope, false, nonstatic_member, defer_trailing_return, &parameter_names);
 	current_class_context_ = previous_class;
-	ValidateFunctionTemplatePatternResults(pattern, shape_declarator, shape_scope,
+	ValidateFunctionTemplatePatternResults(&pattern, shape_declarator, shape_scope,
 		parameter_names, defer_trailing_return);
 	if (!program_->types.IsFunction(shape_declarator.type))
 		throw std::runtime_error(
@@ -702,7 +774,7 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 					*arena_, prior, pattern) &&
 				(!dependent_result ||
 				 EquivalentDependentFunctionTemplateResults(
-					*program_, *arena_, prior, pattern)))
+					*arena_, prior, pattern)))
 			{
 				prior_index = candidate;
 				break;
@@ -711,6 +783,9 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	if (prior_index != function_templates_.size())
 	{
 		FunctionTemplatePattern& prior = function_templates_[prior_index];
+		if (definition && (prior.deferred_result_formation ||
+			prior.trailing_return_syntax != kNoNode))
+			InheritFunctionTemplateResultLookups(prior, &pattern);
 		MergeFunctionTemplateSpecifierFacts(&prior, pattern);
 		InheritFunctionParameterMetadata(&prior, &pattern, definition);
 		MergeFunctionTemplateDefaults(&prior, pattern, definition);
@@ -730,31 +805,8 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 			program_->PublishFunctionTemplateName(prior.owner, prior.name);
 		}
 		if (definition)
-		{
-			if (prior.defined && (!explicit_member_definition ||
-				prior.explicit_member_definition))
-				throw std::runtime_error(
-					"duplicate function template definition");
-			prior.lexical_scope = pattern.lexical_scope;
-			prior.specifiers = pattern.specifiers;
-			prior.declarator = pattern.declarator;
-			prior.trailing_return_syntax = pattern.trailing_return_syntax;
-			prior.definition_body = pattern.definition_body;
-			prior.constructor_initializer = pattern.constructor_initializer;
-			prior.function_parameter_names =
-				pattern.function_parameter_names;
-			prior.function_parameter_defaults =
-				pattern.function_parameter_defaults;
-			prior.language_linkage = pattern.language_linkage;
-			prior.static_member = prior.static_member || pattern.static_member;
-			prior.definition_in_class = pattern.definition_in_class;
-			prior.explicit_member_definition =
-				prior.explicit_member_definition || explicit_member_definition;
-			if (pattern.lexical_scope == pattern.owner)
-				prior.member_access = pattern.member_access;
-			prior.defined = true;
-			UpgradeFunctionTemplateSpecializations(prior_index);
-		}
+			AdoptFunctionTemplateDefinition(prior_index, &prior, &pattern,
+				explicit_member_definition);
 		return;
 	}
 	if (explicit_member_definition)
@@ -926,7 +978,10 @@ DeclaratorInfo SemanticAnalyzer::BuildFunctionTemplateSpecializationDeclarator(
 		*member_owner : pattern.friend_owners.empty() ? kNoEntity :
 		pattern.friend_owners.front();
 	const EntityId previous_class = current_class_context_;
+	const FunctionTemplatePattern* previous_result_pattern =
+		active_function_template_result_pattern_;
 	if (semantic_owner != kNoEntity) current_class_context_ = semantic_owner;
+	active_function_template_result_pattern_ = &pattern;
 	DeclaratorInfo parsed;
 	try
 	{
@@ -976,9 +1031,11 @@ DeclaratorInfo SemanticAnalyzer::BuildFunctionTemplateSpecializationDeclarator(
 	catch (...)
 	{
 		current_class_context_ = previous_class;
+		active_function_template_result_pattern_ = previous_result_pattern;
 		throw;
 	}
 	current_class_context_ = previous_class;
+	active_function_template_result_pattern_ = previous_result_pattern;
 	if (CandidateSubstitutionFailed() || spec->type == kNoType) return parsed;
 	const std::size_t metadata_count =
 		pattern.function_parameter_names.size();

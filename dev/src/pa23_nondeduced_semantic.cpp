@@ -1,5 +1,6 @@
 #include "pa12_semantic_detail.h"
 
+#include <algorithm>
 #include <limits>
 #include <stdexcept>
 #include <unordered_set>
@@ -9,6 +10,32 @@ namespace cppgm
 {
 namespace pa12_semantic_detail
 {
+
+namespace
+{
+
+NodeId FirstResultStructure(const SyntaxArena& arena, NodeId root)
+{
+	if (root == kNoNode) return kNoNode;
+	std::vector<NodeId> pending(1, root);
+	for (std::size_t next = 0; next < pending.size(); ++next)
+	{
+		const NodeId node = pending[next];
+		if (arena.IsTag(node, "structured-type-name")) return node;
+		for (std::uint32_t edge = arena.FirstEdge(node); edge != kNoEdge;
+			edge = arena.NextEdge(edge))
+			pending.push_back(arena.EdgeChild(edge));
+	}
+	return kNoNode;
+}
+
+bool ResultLookupFactLess(const FunctionTemplateResultLookupFact& fact,
+	NodeId syntax)
+{
+	return fact.syntax < syntax;
+}
+
+}
 
 bool SemanticAnalyzer::SyntaxUsesAnyTemplateParameter(NodeId node,
 	const std::unordered_set<NameId>& names) const
@@ -63,9 +90,10 @@ bool SemanticAnalyzer::HasDependentQualifiedType(NodeId node,
 }
 
 void SemanticAnalyzer::ValidateDeferredFunctionTemplateResult(NodeId node,
-	ScopeId scope, const std::unordered_set<NameId>& dependent_names)
+	ScopeId scope, FunctionTemplatePattern* pattern,
+	const std::unordered_set<NameId>& dependent_names)
 {
-	if (node == kNoNode || scope == kNoScope)
+	if (node == kNoNode || scope == kNoScope || !pattern)
 		throw std::logic_error("deferred function result has no lookup context");
 	std::vector<NodeId> pending(1, node);
 	while (!pending.empty())
@@ -77,20 +105,59 @@ void SemanticAnalyzer::ValidateDeferredFunctionTemplateResult(NodeId node,
 			const NodeId callee = FirstSemanticChild(current);
 			const NodeId arguments = FindChild(current, "argument-list");
 			if (arguments != kNoNode && callee != kNoNode &&
-				arena_->IsTag(callee, "id-expression") &&
-				FindChild(callee, "structured-type-name") == kNoNode &&
-				!SyntaxUsesAnyTemplateParameter(arguments, dependent_names))
+				arena_->IsTag(callee, "id-expression"))
 			{
 				const NameId name = arena_->SemanticPayloadId(callee);
-				if (name != 0 && dependent_names.count(name) == 0)
+				const NodeId structure = FindChild(
+					callee, "structured-type-name");
+				const bool local_dependent = structure == kNoNode &&
+					dependent_names.count(name) != 0;
+				const bool dependent =
+					SyntaxUsesAnyTemplateParameter(arguments, dependent_names) ||
+					SyntaxUsesAnyTemplateParameter(callee, dependent_names);
+				bool dependent_qualifier = false;
+				if (structure != kNoNode)
 				{
-					const LookupResult found = LookupSpelling(
-						scope, PayloadSource(callee), LOOKUP_ORDINARY);
-					if (found.ordinary == kNoBinding &&
-						!found.HasFunctionTemplateLookup())
+					std::vector<NodeId> components;
+					for (std::uint32_t edge = arena_->FirstEdge(structure);
+						edge != kNoEdge; edge = arena_->NextEdge(edge))
+						if (arena_->IsTag(
+							arena_->EdgeChild(edge), "name-component"))
+							components.push_back(arena_->EdgeChild(edge));
+					for (std::size_t component = 0;
+						component + 1 < components.size(); ++component)
+						dependent_qualifier = dependent_qualifier ||
+							SyntaxUsesAnyTemplateParameter(
+								components[component], dependent_names);
+				}
+				const bool qualified = structure != kNoNode &&
+					(FindChild(structure, "global-qualifier") != kNoNode ||
+					 StructuredNamePath(structure).Size() > 1);
+				const bool replayable =
+					!local_dependent && !dependent_qualifier;
+				if (replayable)
+				{
+					const LookupResult found = structure == kNoNode ?
+						program_->LookupName(scope, name, LOOKUP_ORDINARY) :
+						LookupStructuredName(callee, scope, LOOKUP_ORDINARY);
+					const std::vector<std::size_t> templates =
+						structure == kNoNode ?
+							FindFunctionTemplates(scope, PayloadSource(callee)) :
+							FindFunctionTemplates(
+								scope, StructuredNamePath(callee));
+					const bool has_functions = found.ordinary != kNoBinding &&
+						program_->bindings[found.ordinary].kind == BIND_FUNCTION;
+					if (has_functions || !templates.empty() ||
+						(dependent && !qualified))
+						RecordRetainedCallLookup(callee, scope,
+							PayloadSource(callee), dependent && !qualified);
+					if ((!dependent || qualified) &&
+						found.ordinary == kNoBinding &&
+						templates.empty())
 					{
-						const LookupResult type = LookupSpelling(
-							scope, PayloadSource(callee), LOOKUP_TYPE);
+						const LookupResult type = structure == kNoNode ?
+							program_->LookupName(scope, name, LOOKUP_TYPE) :
+							LookupStructuredName(callee, scope, LOOKUP_TYPE);
 						if (type.type == kNoType)
 							throw std::runtime_error(
 								"non-dependent result call was not declared");
@@ -141,6 +208,17 @@ void SemanticAnalyzer::ValidateDeferredFunctionTemplateResult(NodeId node,
 						 found.type == kNoType && found.name_space == kNoScope))
 						throw std::runtime_error(
 							"non-dependent result type was not declared");
+					pattern->result_lookup_facts.push_back(
+						FunctionTemplateResultLookupFact(component_node, found));
+					if (structure == pattern->result_root_structure && component == 0)
+					{
+						pattern->result_root_name = name;
+						pattern->result_root_global = FindChild(
+							structure, "global-qualifier") != kNoNode;
+						pattern->result_root_declaration =
+							found.type_declaration_canonical;
+						pattern->result_root_namespace = found.name_space;
+					}
 					if (template_arguments != kNoNode)
 					{
 						const std::size_t no_template =
@@ -184,25 +262,62 @@ void SemanticAnalyzer::ValidateDeferredFunctionTemplateResult(NodeId node,
 }
 
 void SemanticAnalyzer::ValidateFunctionTemplatePatternResults(
-	const FunctionTemplatePattern& pattern,
+	FunctionTemplatePattern* pattern,
 	const DeclaratorInfo& declarator, ScopeId shape_scope,
 	const std::unordered_set<NameId>& parameter_names,
 	bool defer_trailing_return)
 {
-	if (pattern.deferred_result_formation)
+	if (!pattern) throw std::logic_error("function template result has no owner");
+	const NodeId result = pattern->trailing_return_syntax != kNoNode ?
+		pattern->trailing_return_syntax : pattern->specifiers;
+	pattern->result_root_structure = FirstResultStructure(*arena_, result);
+	if (pattern->deferred_result_formation)
 		ValidateDeferredFunctionTemplateResult(
-			pattern.specifiers, shape_scope, parameter_names);
-	if (!defer_trailing_return || pattern.trailing_return_syntax == kNoNode ||
-		declarator.trailing_return_scope == kNoScope) return;
-	std::unordered_set<NameId> dependent_names = parameter_names;
-	for (std::size_t parameter = 0;
-		parameter < declarator.parameters.size(); ++parameter)
-		if (declarator.parameters[parameter].name != 0 &&
-			FunctionTemplateTypeIsDependent(
-				declarator.parameters[parameter].declared_type))
-			dependent_names.insert(declarator.parameters[parameter].name);
-	ValidateDeferredFunctionTemplateResult(pattern.trailing_return_syntax,
-		declarator.trailing_return_scope, dependent_names);
+			pattern->specifiers, shape_scope, pattern, parameter_names);
+	if (defer_trailing_return && pattern->trailing_return_syntax != kNoNode &&
+		declarator.trailing_return_scope != kNoScope)
+	{
+		std::unordered_set<NameId> dependent_names = parameter_names;
+		for (std::size_t parameter = 0;
+			parameter < declarator.parameters.size(); ++parameter)
+			if (declarator.parameters[parameter].name != 0 &&
+				FunctionTemplateTypeIsDependent(
+					declarator.parameters[parameter].declared_type))
+				dependent_names.insert(declarator.parameters[parameter].name);
+		ValidateDeferredFunctionTemplateResult(pattern->trailing_return_syntax,
+			declarator.trailing_return_scope, pattern, dependent_names);
+	}
+	std::sort(pattern->result_lookup_facts.begin(),
+		pattern->result_lookup_facts.end(),
+		[](const FunctionTemplateResultLookupFact& left,
+			const FunctionTemplateResultLookupFact& right) {
+			return left.syntax < right.syntax;
+		});
+	pattern->result_lookup_facts.erase(std::unique(
+		pattern->result_lookup_facts.begin(), pattern->result_lookup_facts.end(),
+		[](const FunctionTemplateResultLookupFact& left,
+			const FunctionTemplateResultLookupFact& right) {
+			return left.syntax == right.syntax;
+		}), pattern->result_lookup_facts.end());
+}
+
+bool SemanticAnalyzer::FindFunctionTemplateResultLookup(NodeId syntax,
+	LookupResult* result) const
+{
+	if (!result || !active_function_template_result_pattern_) return false;
+	const std::vector<FunctionTemplateResultLookupFact>& facts =
+		active_function_template_result_pattern_->result_lookup_facts;
+	const std::vector<FunctionTemplateResultLookupFact>::const_iterator found =
+		std::lower_bound(facts.begin(), facts.end(), syntax,
+			ResultLookupFactLess);
+	if (found == facts.end() || found->syntax != syntax) return false;
+	result->type = found->type;
+	result->type_declaration = found->declaration;
+	result->type_declaration_canonical = found->declaration == kNoBinding ?
+		kNoBinding : program_->bindings[found->declaration].canonical;
+	result->name_space = found->name_space;
+	result->naming_class = found->naming_class;
+	return true;
 }
 
 TypeId SemanticAnalyzer::FunctionTemplateNondeducedTypeShape()

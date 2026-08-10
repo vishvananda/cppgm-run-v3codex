@@ -37,6 +37,12 @@ void CompactIndexSequence::Push(std::size_t value)
 	++size_;
 }
 
+void CompactIndexSequence::Clear()
+{
+	overflow_.clear();
+	size_ = 0;
+}
+
 std::vector<std::size_t> CompactIndexSequence::Copy() const
 {
 	std::vector<std::size_t> result;

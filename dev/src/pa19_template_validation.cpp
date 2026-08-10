@@ -1155,6 +1155,43 @@ void SemanticAnalyzer::PublishRetainedCallLookup(NodeId callee,
 	}
 }
 
+void SemanticAnalyzer::CopyRetainedCallLookup(
+	NodeId source, NodeId destination)
+{
+	if (source == destination || source >= retained_call_lookup_states_.size() ||
+		(retained_call_lookup_states_[source] &
+			RETAINED_CALL_LOOKUP_PUBLISHED) == 0) return;
+	const CompactIndexSequence* source_functions =
+		retained_call_function_sets_.Find(source);
+	const CompactIndexSequence* source_templates =
+		retained_call_template_sets_.Find(source);
+	const std::vector<std::size_t> functions = source_functions ?
+		source_functions->Copy() : std::vector<std::size_t>();
+	const std::vector<std::size_t> templates = source_templates ?
+		source_templates->Copy() : std::vector<std::size_t>();
+	if (retained_call_lookup_states_.size() <= destination)
+	{
+		retained_call_lookup_states_.resize(
+			static_cast<std::size_t>(destination) + 1, 0);
+		retained_call_naming_classes_.resize(
+			static_cast<std::size_t>(destination) + 1, kNoEntity);
+	}
+	retained_call_lookup_states_[destination] =
+		retained_call_lookup_states_[source];
+	retained_call_naming_classes_[destination] =
+		retained_call_naming_classes_[source];
+	CompactIndexSequence& destination_functions =
+		retained_call_function_sets_.Ensure(destination);
+	destination_functions.Clear();
+	for (std::size_t i = 0; i < functions.size(); ++i)
+		destination_functions.Push(functions[i]);
+	CompactIndexSequence& destination_templates =
+		retained_call_template_sets_.Ensure(destination);
+	destination_templates.Clear();
+	for (std::size_t i = 0; i < templates.size(); ++i)
+		destination_templates.Push(templates[i]);
+}
+
 void SemanticAnalyzer::RecordRetainedCallLookup(NodeId callee, ScopeId scope,
 	const std::string& spelling, bool adl_eligible)
 {

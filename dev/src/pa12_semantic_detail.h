@@ -56,6 +56,7 @@ public:
 		  function_template_dependent_result_shape_(kNoType),
 		  function_template_nondeduced_type_shape_(kNoType),
 		  class_template_nondeduced_type_shape_(kNoType),
+		  active_function_template_result_pattern_(0),
 		  class_template_member_replay_depth_(0),
 		  explicit_member_template_replay_depth_(0),
 		  class_template_completion_suppressed_depth_(0),
@@ -363,12 +364,23 @@ private:
 	bool HasDependentQualifiedType(NodeId node,
 		const std::unordered_set<NameId>& names) const;
 	void ValidateDeferredFunctionTemplateResult(NodeId node, ScopeId scope,
+		FunctionTemplatePattern* pattern,
 		const std::unordered_set<NameId>& dependent_names);
 	void ValidateFunctionTemplatePatternResults(
-		const FunctionTemplatePattern& pattern,
+		FunctionTemplatePattern* pattern,
 		const DeclaratorInfo& declarator, ScopeId shape_scope,
 		const std::unordered_set<NameId>& parameter_names,
 		bool defer_trailing_return);
+	bool FindFunctionTemplateResultLookup(NodeId syntax,
+		LookupResult* result) const;
+	void InheritFunctionTemplateResultLookups(
+		const FunctionTemplatePattern& source,
+		FunctionTemplatePattern* destination);
+	void AdoptFunctionTemplateDefinition(std::size_t pattern,
+		FunctionTemplatePattern* retained,
+		FunctionTemplatePattern* incoming,
+		bool explicit_member_definition);
+	void CopyRetainedCallLookup(NodeId source, NodeId destination);
 	TypeId FunctionTemplateNondeducedTypeShape();
 	NameId DeclaratorName(NodeId node);
 	NamePath DeclaratorNamePath(NodeId node);
@@ -1325,6 +1337,7 @@ private:
 	TypeId function_template_dependent_result_shape_;
 	TypeId function_template_nondeduced_type_shape_;
 	TypeId class_template_nondeduced_type_shape_;
+	const FunctionTemplatePattern* active_function_template_result_pattern_;
 	mutable std::vector<std::uint8_t> function_template_dependency_cache_;
 	IndexedSequenceTable template_function_sets_;
 	struct FunctionTemplateUsingFact

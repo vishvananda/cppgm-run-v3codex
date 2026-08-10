@@ -800,6 +800,21 @@ struct FunctionTemplateDefaultContext
 	FunctionTemplateDefaultContext() : lexical_scope(kNoScope) {}
 };
 
+struct FunctionTemplateResultLookupFact
+{
+	NodeId syntax;
+	TypeId type;
+	BindingId declaration;
+	ScopeId name_space;
+	EntityId naming_class;
+
+	FunctionTemplateResultLookupFact(NodeId syntax_value,
+		const LookupResult& result)
+		: syntax(syntax_value), type(result.type),
+		  declaration(result.type_declaration),
+		  name_space(result.name_space), naming_class(result.naming_class) {}
+};
+
 inline bool HasTrailingTemplateParameterPack(
 	const std::vector<TemplateParameter>& parameters)
 {
@@ -839,6 +854,12 @@ struct FunctionTemplatePattern
 	std::vector<NodeId> function_parameter_defaults;
 	std::vector<NodeId> function_parameter_nondeduced_syntax;
 	std::vector<std::uint8_t> function_parameter_nondeduced;
+	std::vector<FunctionTemplateResultLookupFact> result_lookup_facts;
+	NodeId result_root_structure;
+	NameId result_root_name;
+	BindingId result_root_declaration;
+	ScopeId result_root_namespace;
+	bool result_root_global;
 	std::vector<BindingId> specialization_bindings;
 	std::vector<TemplateArgument> specialization_arguments;
 	std::vector<std::uint32_t> specialization_argument_offsets;
@@ -868,6 +889,9 @@ struct FunctionTemplatePattern
 		  definition_body(kNoNode),
 		  constructor_initializer(kNoNode),
 		  shape_type(kNoType), required_parameter_count(0),
+		  result_root_structure(kNoNode), result_root_name(0),
+		  result_root_declaration(kNoBinding),
+		  result_root_namespace(kNoScope), result_root_global(false),
 		  language_linkage(LANGUAGE_LINKAGE_CPP), member_access(ACCESS_PUBLIC),
 		  defined(false), ordinary_visible(true), definition_in_class(false),
 		  nonthrowing(false), dependent_exception_specification(false),

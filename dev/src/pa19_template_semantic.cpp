@@ -430,7 +430,11 @@ LookupResult SemanticAnalyzer::LookupStructuredName(NodeId syntax,
 			argument_list != kNoNode ? LOOKUP_TYPE :
 			terminal ? kind : LOOKUP_SCOPE_CARRIER;
 		LookupResult found;
-		if (carrier == kNoScope)
+		if (FindFunctionTemplateResultLookup(component_node, &found))
+		{
+			// Non-dependent result names retain the declaration-time lookup.
+		}
+		else if (carrier == kNoScope)
 		{
 			NamePath unqualified;
 			unqualified.Push(component);

@@ -2,45 +2,44 @@
 
 ## Current Checkpoint Review
 
-The landed `63596fc7` increment produced the intended 12 gains in immediate
-expression substitution and variadic class calls, but three ownership defects
-crossed the checkpoint boundary. `sizeof(f<T>())` first parsed its operand as a
-type-id, rolled back, and parsed it again as an expression; ordinary SFINAE
-rejections unwound `std::runtime_error` through explicit and deduced candidate
-paths; and lowering rediscovered an ellipsis class argument from function arity
-and value type. These violated `spec.md` sections 1, 3, and 6 even though the
-223/401 checkpoint baseline passed.
+The landed `bf4b7a83` increment correctly rejected three unknown nondependent
+result names and moved PA23 from 292 to 295, but its lookup ownership was not
+safe. Redeclaration comparison looked up an earlier result again in the current
+scope, declaration validation retained no type or call identity, and a fixed
+qualified call with dependent template arguments escaped validation. A later
+declaration could therefore change the first declaration's meaning, contrary
+to N3485 14.5.6.1 and 14.6 and `spec.md` sections 2--4.
 
-Trait disambiguation now uses the parser's bounded, cached token-only template
-angle scan and selects exactly one grammar branch. No abandoned type-id tree or
-second expression parse is created. Semantic candidate frames now own compact
-failure state across explicit argument binding, deduction, default
-materialization, declarator/type formation, member and overload lookup,
-construction, `decltype`, `noexcept`, and invalid operator checks. Invalid
-types stop at each typed boundary before reaching canonical type construction
-or declaration publication; hard errors outside candidate substitution retain
-their diagnostic behavior.
+`FunctionTemplatePattern` now owns a compact sorted set of declaration-time
+result facts: syntax identity, canonical type declaration or namespace,
+access context, and the existing retained call candidate sequence plus ADL
+eligibility. Redeclaration equivalence compares the recorded canonical root;
+when a definition replaces declaration syntax, one bounded syntax walk remaps
+the first declaration's facts. Substitution activates that pattern-owned view,
+so structured type formation and call analysis consume retained identities
+without a new lookup or a global syntax cache. Fixed nondependent qualifiers
+are validated immediately, while genuinely dependent qualifiers remain
+deferred.
 
-The selected call node now records `variadic_class_argument` alongside its
-materialization fact. PA15 lowering consumes that bit directly when choosing
-the class-object storage path and no longer reconstructs template or ABI
-semantics from arity and type. The candidate-frame capacity is included in
-semantic storage telemetry.
+The complete path is now retained syntax and trailing-return scope, then
+declaration-owned lookup facts, canonical redeclaration merge, candidate-local
+substitution, and ordinary typed lowering. The existing recursive dependent
+call probe now passes because its first candidate set is stable. Added audit
+guards cover later type shadowing, namespace/global qualification, later
+overloads, and an unknown fixed-qualified dependent call.
 
-At 1,024/2,048/4,096 repeated valid and failed probes, deduction visits are
-2,048/4,096/8,192 and overload-candidate visits are respectively
-5,123/10,243/20,483 and 4,099/8,195/16,387. Each disposition materializes its
-default once; failed-request cache hits are 2,047/4,095/8,191. Peak semantic
-bytes are 7,762,775/15,509,719/31,003,607 for valid probes and
-7,764,295/15,513,031/31,010,503 for failed probes. Three-run semantic medians
-are 38.8/79.0/159.1 ms and 38.4/78.6/155.2 ms. The failed medians were
-59.4/117.3/238.1 ms before the audit, so removing exception unwinding materially
-reduced rejection cost while preserving linear work and memory.
+For 32/64/128/256 paired first-lookup call and type declarations, lookup queries
+are 954/1,882/3,738/7,450, deduction visits are 128/256/512/1,024, peak semantic
+bytes are 1,586,723/3,158,951/6,038,783/12,061,031, and three-run semantic
+medians are 6.87/13.12/25.84/51.59 ms. Nested retained-result depths
+16/32/64/128 use 76/124/220/412 lookups and 90,279/133,607/308,466/694,579
+peak bytes, with medians 0.79/1.20/2.12/4.78 ms. The counters and memory track
+participating declarations and syntax depth without unrelated lookup growth.
 
-The required PA23 report remains 223/401, PA1--PA22 remain 2,639/2,639, and the
-file audit passes with the same 13 inherited header-division advisories. All 12
-landed gains plus two baseline-sensitive substitution cases complete under
-`gdb catch throw` with no C++ throw, and `git diff --check` passes.
+The original PA23 suite is 296/401; with two audit guards the report is
+298/403, above the 295/401 turn-start baseline with no regression. PA1--PA22
+are 2,639/2,639, the file audit passes with the same 13 inherited advisories,
+and `git diff --check` passes.
 
 ## Checkpoint Audit Ledger
 
@@ -49,3 +48,4 @@ landed gains plus two baseline-sensitive substitution cases complete under
 | Direct array-extent NTTP deduction (`b6d38290`, this audit) | Canonical bound deduction and ordinary typed lowering pass; candidate ownership was repaired at the source index and scales linearly; baseline preserved. |
 | Defaulted function-template substitution (`ef0fa8c5`, this audit) | Declaration-owned default contexts, normalized dependent-result identity, and complete request states repair redeclaration correctness and repeated failed work; PA23 203 -> 210 with no regressions and linear success/failure scaling. |
 | Immediate expression substitution and variadic class calls (`63596fc7`, this audit) | Single-branch parsing, compact explicit/deduced candidate failure, and a semantic variadic-class fact replace reparsing, exception control flow, and lowering reconstruction; PA23 stays 223/401 with linear scaling. |
+| Declaration-time result lookup (`bf4b7a83`, this audit) | Pattern-owned canonical type/call facts preserve first-declaration lookup through redeclaration and substitution; original PA23 292 -> 296 with no regressions and linear candidate/depth evidence. |

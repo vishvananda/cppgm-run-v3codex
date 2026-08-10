@@ -211,6 +211,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 				sizeof(NodeId) +
 			function_templates_[i].function_parameter_nondeduced.capacity() *
 				sizeof(std::uint8_t) +
+			function_templates_[i].result_lookup_facts.capacity() *
+				sizeof(FunctionTemplateResultLookupFact) +
 			function_templates_[i].specialization_bindings.capacity() *
 				sizeof(BindingId) +
 			function_templates_[i].specialization_arguments.capacity() *

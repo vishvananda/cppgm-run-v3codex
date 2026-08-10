@@ -76,6 +76,7 @@ public:
 	std::size_t operator[](std::size_t index) const;
 	bool Contains(std::size_t value) const;
 	void Push(std::size_t value);
+	void Clear();
 	std::vector<std::size_t> Copy() const;
 	std::size_t StorageBytes() const;
 
