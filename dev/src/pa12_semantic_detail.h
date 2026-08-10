@@ -988,7 +988,7 @@ private:
 	void RecordExpressionFacts(const ExpressionInfo& value);
 	ExpressionInfo ApplyTarget(ExpressionInfo value, TypeId target,
 		ConversionRank known_conversion = CONVERSION_INVALID);
-	TypeId ConvertedSpecializedMemberAssignmentTarget(
+	bool HasTargetTypedSpecializedMemberImmediate(
 		const ExpressionInfo& destination,
 		const ExpressionInfo& value) const;
 	ConversionRank MemberObjectConversion(const ExpressionInfo& source,

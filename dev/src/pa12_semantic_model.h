@@ -94,8 +94,7 @@ const std::uint32_t kNoDumpEdge =
 struct DumpNode
 {
 	DumpKind kind;
-	TypeId type, converted_scalar_target;
-	TypeId operand_type;
+	TypeId type, operand_type;
 	ValueCategory category;
 	NameId text;
 	BindingId binding, object_binding, selected_binding;
@@ -113,6 +112,7 @@ struct DumpNode
 	std::uint32_t storage_transfer_alignment;
 	bool constant;
 	bool integer_literal_zero;
+	bool target_typed_scalar_immediate;
 	bool integer_narrowing_conversion;
 	bool enum_arithmetic_conversion;
 	bool template_layout_constant;
@@ -144,8 +144,7 @@ struct DumpNode
 	bool has_direct_base_offset;
 
 	explicit DumpNode(DumpKind value)
-		: kind(value), type(kNoType), converted_scalar_target(kNoType),
-		  operand_type(kNoType),
+		: kind(value), type(kNoType), operand_type(kNoType),
 		  category(VALUE_NONE), text(0), binding(kNoBinding),
 		  object_binding(kNoBinding), selected_binding(kNoBinding),
 		  constant_value(0), array_count(0), storage_transfer_size(0),
@@ -157,6 +156,7 @@ struct DumpNode
 		  virtual_slot(kNoDumpEdge),
 		  storage_transfer_alignment(0),
 		  constant(false), integer_literal_zero(false),
+		  target_typed_scalar_immediate(false),
 		  integer_narrowing_conversion(false),
 		  enum_arithmetic_conversion(false), template_layout_constant(false),
 		  boolean_conversion(false), user_conversion_call(false),

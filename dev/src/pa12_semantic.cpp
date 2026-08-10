@@ -1510,8 +1510,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 	const TypeId result_type = EffectiveType(left.type);
 	const std::uint32_t expression = MakeDump(DUMP_ASSIGNMENT_EXPRESSION,
 		result_type, VALUE_LVALUE, program_->names.Intern(arena_->Payload(node)));
-	dump_.nodes[expression].converted_scalar_target =
-		ConvertedSpecializedMemberAssignmentTarget(left, right);
+	dump_.nodes[expression].target_typed_scalar_immediate =
+		HasTargetTypedSpecializedMemberImmediate(left, right);
 	if (operation != "=" && !pointer_add)
 		dump_.nodes[expression].operand_type =
 			CommonArithmeticType(left.type, right.type);

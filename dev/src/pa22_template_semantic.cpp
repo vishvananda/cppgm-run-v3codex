@@ -53,25 +53,27 @@ std::string LambdaIdentityComponent(const std::string& context,
 
 }
 
-TypeId SemanticAnalyzer::ConvertedSpecializedMemberAssignmentTarget(
+bool SemanticAnalyzer::HasTargetTypedSpecializedMemberImmediate(
 	const ExpressionInfo& destination, const ExpressionInfo& value) const
 {
-	if (value.converted_scalar_target == kNoType || !value.constant ||
+	if (value.converted_scalar_target == kNoType ||
 		destination.node >= dump_.nodes.size() ||
-		value.node >= dump_.nodes.size()) return kNoType;
+		value.node >= dump_.nodes.size()) return false;
 	const DumpNode& source = dump_.nodes[value.node];
 	const DumpNode& target = dump_.nodes[destination.node];
-	if (source.kind != DUMP_LITERAL || source.enum_arithmetic_conversion ||
+	if (source.kind != DUMP_LITERAL || !source.constant ||
+		source.enum_arithmetic_conversion ||
 		target.kind != DUMP_MEMBER_EXPRESSION ||
 		target.binding == kNoBinding ||
-		target.binding >= program_->bindings.size()) return kNoType;
+		target.binding >= program_->bindings.size()) return false;
 	const EntityId owner = program_->bindings[target.binding].member_owner;
 	if (owner == kNoEntity || owner >= program_->entities.size() ||
-		program_->entities[owner].template_argument_count == 0) return kNoType;
+		program_->entities[owner].template_argument_count == 0) return false;
 	const TypeId destination_type = program_->types.RemoveTopCv(
 		EffectiveType(destination.type));
-	return destination_type == value.converted_scalar_target ?
-		destination_type : kNoType;
+	return IsIntegral(source.type, true) &&
+		IsIntegral(destination_type, true) &&
+		destination_type == value.converted_scalar_target;
 }
 
 ExpressionInfo SemanticAnalyzer::AnalyzeCapturelessLambda(NodeId node,
