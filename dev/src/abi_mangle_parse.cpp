@@ -509,6 +509,11 @@ AbiTemplateArgument parse_argument(const vector<string> & words)
     argument.kind = ABI_TEMPLATE_ARGUMENT_ENTITY;
     argument.entity_ref = words[3];
     argument.address_of = true;
+  } else if(form == "entity-reference") {
+    require(words.size() == 4, "entity reference takes one entity id");
+    argument.kind = ABI_TEMPLATE_ARGUMENT_ENTITY;
+    argument.entity_ref = words[3];
+    argument.address_of = false;
   } else if(form == "member-external-address") {
     require(words.size() >= 12, "member external address has invalid operands");
     argument.kind = ABI_TEMPLATE_ARGUMENT_MEMBER_EXTERNAL_ENTITY;
@@ -944,7 +949,10 @@ string definition_text(const AbiDefinitionRecord & definition)
     if(argument.kind == ABI_TEMPLATE_ARGUMENT_TEMPLATE_PARAMETER_TEMPLATE) {
       return result + "template-param-template " + std::to_string(argument.index);
     }
-    if(argument.kind == ABI_TEMPLATE_ARGUMENT_ENTITY) return result + "entity-address " + argument.entity_ref;
+    if(argument.kind == ABI_TEMPLATE_ARGUMENT_ENTITY) {
+      return result + (argument.address_of ? "entity-address " :
+                                             "entity-reference ") + argument.entity_ref;
+    }
     if(argument.kind == ABI_TEMPLATE_ARGUMENT_MEMBER_EXTERNAL_ENTITY) {
       result += "member-external-address " + argument.symbol + " " + type_text(argument.type)
                 + " " + argument.name + " " + bool_text(argument.member_is_function)

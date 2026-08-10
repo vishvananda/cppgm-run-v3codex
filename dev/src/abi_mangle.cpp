@@ -1214,10 +1214,11 @@ private:
       case ABI_TEMPLATE_ARGUMENT_TEMPLATE_PARAMETER_TEMPLATE:
         output_ += template_parameter(argument.index); return;
       case ABI_TEMPLATE_ARGUMENT_ENTITY:
-        output_ += 'X';
-        if(argument.address_of) output_ += "ad";
-        encode_entity_reference(graph_.strings.get(argument.entity));
-        output_ += 'E';
+        if(argument.address_of) {
+          output_ += "Xad";
+          encode_entity_reference(graph_.strings.get(argument.entity));
+          output_ += 'E';
+        } else encode_entity_reference(graph_.strings.get(argument.entity));
         return;
       case ABI_TEMPLATE_ARGUMENT_MEMBER_EXTERNAL_ENTITY:
         output_ += "XadL" + graph_.strings.get(argument.symbol) + "EE";

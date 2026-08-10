@@ -24,30 +24,30 @@ lowering fact.
 
 ## Current Failure Map
 
-The report is 334/405, with every `100-*` and `200-*` test passing. The 71
+The report is 343/405, with every `100-*` and `200-*` test passing. The 62
 remaining failures group by owner: retained result/default/member lookup and
-candidate-local substitution (`300-*`: 31 exits), canonical NTTP and template-
-argument/candidate identity (`400-*`: 13 exits), and composed owner/pack replay
-(`500-*`: 4 exits). The other 23 are selected-fact lowering or ABI-shape
-mismatches (`300/400/500`: 10/2/11). Dependent alias parameter retention,
-defaulted member replay, and leading/trailing result redeclaration have left the
-map.
+candidate-local substitution (`300-*`: 31 exits), template pack/default
+partition and constructor participation (`400-*`: 4 exits), and composed
+owner/pack replay (`500-*`: 4 exits). The other 23 are selected-fact lowering
+or ABI-shape mismatches (`300/400/500`: 10/2/11). Canonical object, reference,
+function, static-member, and null pointer NTTP identity has left the map.
 
 ## Active Checkpoint
 
-Canonical NTTP and template-argument identity is the next stable boundary.
-Remaining failures mix pointer/reference/static-member arguments, dependent
-casts and defaults, pack arity, and template-template aliases. Per `spec.md`
-sections 2-5, argument formation must produce a typed canonical value in the
-candidate frame; substitution and constant evaluation validate it without
-publishing failed state, and the specialization key owns the accepted identity.
-Only selected specialization facts reach lowering (`spec.md` section 6).
-Index requests by pattern and canonical argument sequence, with expected
-O(C*A) formation and O(1) average cache access for C candidates and A arguments,
-not scans of unrelated specializations. Validate all `400-*`, pointer and
-reference NTTPs, static members, null casts, dependent defaults, pack mismatch,
-template-template arity, PA23, PA1-PA22, and file audit; measure doubled argument
-lists and repeated canonical requests.
+Template pack/default partition and constructor candidate participation is the
+next stable boundary. The six remaining `400-*` failures cover packs before
+defaulted NTTPs, mismatched expansion sizes, unnamed non-type packs, inherited
+constructor templates, invocability lowering, and template-template default
+arity. Per `spec.md` sections 3-5, declaration-owned parameter shape feeds one
+candidate-local argument partition; deduction, default substitution, arity
+validation, and partial ordering consume that partition without mutating the
+template pattern. Selected facts alone reach lowering (`spec.md` section 6).
+The template argument builder and function-template deduction owner carry the
+data into constructor participation and overload resolution. Expected work is
+O(C*(A+P)) for C candidates, A arguments, and P parameters, with indexed
+specialization lookup. Validate all remaining `400-*`, nearby `300-*`/`500-*`
+pack and constructor guards, PA23, PA1-PA22, and file audit; measure doubled
+pack widths and candidate counts.
 
 ## Performance Evidence
 
@@ -76,9 +76,15 @@ candidates are 32/64/128/256, requests and deduction visits are
 candidates are 16/32/64/128, requests 105/209/417/833, lookups
 428/788/1,508/2,948, peak bytes 604,038/1,040,877/2,056,813/3,795,309, and
 three-run semantic medians 3.26/5.70/10.70/21.00 ms. Work, storage, and time are
-linear; repaired owner/result probes, the 64-owner case, and the distinct
-`decltype`/`noexcept` temporary contexts are ASan/UBSan-clean. Gates are PA1-PA22
-2,639/2,639, PA23 334/405, and file-audit pass with 13 inherited warnings.
+linear. Pointer-like NTTP groups of 8/16/32/64 entities make 24/48/96/192
+specialization requests, 40/80/160/320 canonical-list requests, and
+246/486/966/1,926 lookups; peak bytes are
+241,231/457,028/906,506/1,806,076 and three-run semantic medians are
+1.13/1.89/3.54/6.93 ms. Canonical hash/cache work, storage, and time remain
+linear; repaired owner/result and pointer/reference/function/null NTTP probes,
+the 64-entity case, and distinct `decltype`/`noexcept` contexts are
+ASan/UBSan-clean. Gates are PA1-PA22 2,639/2,639, PA23 343/405, and file-audit
+pass with 13 inherited warnings.
 
 ## Completed Checkpoints
 
@@ -104,3 +110,4 @@ linear; repaired owner/result probes, the 64-owner case, and the distinct
 | Dependent callable replay and re-entrant detector demand | Lexical value/type depth selects callable objects correctly; canonical class requests expose scoped in-progress state; invalid callees stay candidate-local; ellipsis conversions publish typed recipes; 316 -> 320, no regressions, sanitizer-clean, linear call/depth scaling. |
 | Constructor and conversion-function template participation | Entity-owned conversion patterns feed target deduction; constructor templates join conversion ranking; dependent `decltype` and template-template targets retain shape identity; selected class results materialize without disturbing constexpr objects; 320 -> 330, no regressions, sanitizer-clean, linear owner-local scaling. |
 | Dependent owner-qualified alias/member/default replay | Alias results retain non-deduced shapes, target matching validates deferred positions after deduction, equivalent leading/trailing results remap first-declaration facts by canonical identity, and `decltype`/`noexcept` keep distinct temporary semantics; 330 -> 334, no regressions, sanitizer-clean, linear owner scaling. |
+| Canonical pointer/reference/function NTTP identity | Canonical source bindings and null identity survive hashed specialization keys, constexpr replay, LowIR identity, and entity/reference ABI encoding; local statics fail and selected function addresses create demand; 334 -> 343, no regressions, sanitizer-clean, linear identity scaling. |

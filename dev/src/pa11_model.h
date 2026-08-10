@@ -45,17 +45,21 @@ struct TemplateArgument
 	TemplateArgumentKind kind;
 	TypeId type;
 	std::int64_t value;
+	BindingId value_binding;
 	std::uint32_t dependent_parameter;
 	bool pack_expansion;
 
 	TemplateArgument()
 		: kind(TEMPLATE_ARGUMENT_TYPE), type(kNoType), value(0),
+		  value_binding(kNoBinding),
 		  dependent_parameter(kNoTemplateParameter), pack_expansion(false) {}
 	TemplateArgument(TemplateArgumentKind kind_value, TypeId type_value,
 		std::int64_t integral_value = 0,
 		std::uint32_t dependent_parameter_value = kNoTemplateParameter,
-		bool pack_expansion_value = false)
+		bool pack_expansion_value = false,
+		BindingId value_binding_value = kNoBinding)
 		: kind(kind_value), type(type_value), value(integral_value),
+		  value_binding(value_binding_value),
 		  dependent_parameter(dependent_parameter_value),
 		  pack_expansion(pack_expansion_value) {}
 	bool IsDependent() const
@@ -65,7 +69,7 @@ struct TemplateArgument
 	bool operator==(const TemplateArgument& other) const
 	{
 		return kind == other.kind && type == other.type &&
-			value == other.value &&
+			value == other.value && value_binding == other.value_binding &&
 			dependent_parameter == other.dependent_parameter &&
 			pack_expansion == other.pack_expansion;
 	}

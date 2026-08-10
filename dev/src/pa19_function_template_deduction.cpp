@@ -687,7 +687,8 @@ bool SemanticAnalyzer::DeduceFunctionTemplatePackArgument(
 	if (pattern.kind == TEMPLATE_ARGUMENT_TYPE)
 		return DeduceFunctionTemplatePackType(
 			pattern.type, argument.type, parameters, deduced);
-	return pattern.type == argument.type && pattern.value == argument.value;
+	return pattern.type == argument.type && pattern.value == argument.value &&
+		pattern.value_binding == argument.value_binding;
 }
 
 bool SemanticAnalyzer::DeduceFunctionTemplatePackType(TypeId pattern,

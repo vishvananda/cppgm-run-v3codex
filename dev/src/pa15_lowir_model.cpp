@@ -256,7 +256,9 @@ IdentityTypeId EmissionIdentityTable::InternStoredTemplateArgument(
 	IdentityTypeKey key;
 	key.kind = TYPE_INVALID;
 	key.child = cache[type];
-	key.bound = static_cast<std::uint64_t>(source.value);
+	key.bound = source.value_binding == kNoBinding ?
+		static_cast<std::uint64_t>(source.value) :
+		(1ULL << 63) | source.value_binding;
 	return InternTypeKey(key);
 }
 

@@ -469,6 +469,9 @@ private:
 		ScopeId lexical_scope, std::vector<TemplateArgument>* arguments,
 		bool require_complete = true,
 		const std::unordered_set<NameId>* dependent_names = 0);
+	bool IsNonTypeTemplateParameterType(TypeId type) const;
+	bool FormNonTypeTemplateArgumentValue(ExpressionInfo expression,
+		TemplateArgument* argument);
 	bool CandidateSubstitutionActive() const;
 	bool CandidateSubstitutionFailed() const;
 	void RecordCandidateSubstitutionFailure();
@@ -850,6 +853,8 @@ private:
 	void AppendHiddenFriendCandidates(EntityId owner, NameId name,
 		const std::vector<ExpressionInfo>& arguments, bool enum_operator_only,
 		std::vector<BindingId>* candidates);
+	ExpressionInfo AnalyzeUnaryOperand(NodeId syntax, ScopeId scope,
+		TypeId target, const std::string& operation);
 	ExpressionInfo AnalyzeUnary(NodeId node, ScopeId scope,
 		TypeId target = kNoType);
 	ExpressionInfo AnalyzeBinary(NodeId node, ScopeId scope);

@@ -1080,6 +1080,7 @@ TemplateArgumentListId Program::InternTemplateArgumentList(
 		hash = MixHash(hash, arguments[i].kind);
 		hash = MixHash(hash, arguments[i].type);
 		hash = MixHash(hash, static_cast<std::uint64_t>(arguments[i].value));
+		hash = MixHash(hash, arguments[i].value_binding);
 		hash = MixHash(hash, arguments[i].dependent_parameter);
 		hash = MixHash(hash, arguments[i].pack_expansion ? 1 : 0);
 	}

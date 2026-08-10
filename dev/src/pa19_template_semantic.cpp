@@ -260,6 +260,19 @@ std::string CanonicalTemplateArgumentPresentation(const Program& program,
 			<< argument.dependent_parameter << ')';
 		return result.str();
 	}
+	if (argument.value_binding != kNoBinding)
+	{
+		if (argument.value_binding >= program.bindings.size())
+			throw std::logic_error("template argument binding is invalid");
+		const BindingRecord& binding =
+			program.bindings[argument.value_binding];
+		std::string result = program.names.Get(binding.qualified_name != 0 ?
+			binding.qualified_name : binding.name);
+		const TypeRecord& type = program.types.Get(
+			program.types.RemoveTopCv(argument.type));
+		if (type.kind == TYPE_POINTER) result.insert(result.begin(), '&');
+		return result;
+	}
 	const TypeId type = program.types.RemoveTopCv(argument.type);
 	const TypeRecord& record = program.types.Get(type);
 	if (record.kind == TYPE_FUNDAMENTAL &&
@@ -1996,6 +2009,7 @@ bool SemanticAnalyzer::DeduceTemplatePartialArgument(
 		return DeduceTemplatePartialType(
 			pattern.type, argument.type, parameters, deduced);
 	if (pattern.value == argument.value &&
+		pattern.value_binding == argument.value_binding &&
 		FunctionTemplateTypeIsDependent(pattern.type))
 		return DeduceTemplatePartialType(
 			pattern.type, argument.type, parameters, deduced);
@@ -2579,11 +2593,9 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 				throw;
 			}
 			--constant_expression_required_depth_;
-			if (!expression.constant || !IsIntegral(expression.type, true))
+			if (!FormNonTypeTemplateArgumentValue(expression, &argument))
 				throw std::runtime_error(
 					"default non-type template argument is not constant");
-			argument.value = NormalizeIntegralConstant(
-				argument.type, expression.value);
 		}
 		arguments.push_back(argument);
 		BindTemplateArgument(argument_scope, parameter, argument);

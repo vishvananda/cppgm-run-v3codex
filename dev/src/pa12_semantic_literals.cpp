@@ -689,7 +689,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 		constant_expression_required_depth_ == 0 &&
 		(target == kNoType || !program_->types.IsReference(target)))
 		return ApplyTarget(MaterializeConstexprAddress(
-			constant_address, EffectiveType(binding.type)), target);
+			constant_address, binding.type), target);
 	const std::uint32_t injected_fact =
 		found.ordinary < injected_fact_by_binding_.size() ?
 		injected_fact_by_binding_[found.ordinary] : kNoDumpEdge;

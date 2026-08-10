@@ -86,6 +86,19 @@ std::string ExplicitArgumentPresentation(const Program& program,
 		}
 		return result;
 	}
+	if (argument.value_binding != kNoBinding)
+	{
+		if (argument.value_binding >= program.bindings.size())
+			throw std::logic_error("template argument binding is invalid");
+		const BindingRecord& binding =
+			program.bindings[argument.value_binding];
+		std::string result = program.names.Get(binding.qualified_name != 0 ?
+			binding.qualified_name : binding.name);
+		const TypeRecord& type = program.types.Get(
+			program.types.RemoveTopCv(argument.type));
+		if (type.kind == TYPE_POINTER) result.insert(result.begin(), '&');
+		return result;
+	}
 	const TypeId type = program.types.RemoveTopCv(argument.type);
 	const TypeRecord& record = program.types.Get(type);
 	if (record.kind == TYPE_FUNDAMENTAL &&
@@ -800,8 +813,12 @@ BindingId SemanticAnalyzer::InstantiateVariableTemplate(
 	std::ostringstream generated;
 	generated << "__variable_template_" << primary_index << '_';
 	for (std::size_t i = 0; i < arguments.size(); ++i)
+	{
 		generated << arguments[i].kind << '_' << arguments[i].type << '_'
 			<< arguments[i].value << '_';
+		if (arguments[i].value_binding != kNoBinding)
+			generated << 'b' << arguments[i].value_binding << '_';
+	}
 	const NameId name = program_->names.Intern(generated.str());
 	const BindingId binding = program_->AddBinding(
 		selected.owner, BIND_VARIABLE, name, parsed.type);
@@ -837,6 +854,64 @@ BindingId SemanticAnalyzer::InstantiateVariableTemplate(
 	}
 	variable_template_instantiations_.Insert(key, binding);
 	return binding;
+}
+
+bool SemanticAnalyzer::IsNonTypeTemplateParameterType(TypeId type) const
+{
+	type = program_->types.RemoveTopCv(type);
+	const TypeRecord& record = program_->types.Get(type);
+	return record.kind == TYPE_POINTER ||
+		record.kind == TYPE_LVALUE_REFERENCE || IsIntegral(type, true);
+}
+
+bool SemanticAnalyzer::FormNonTypeTemplateArgumentValue(
+	ExpressionInfo expression, TemplateArgument* argument)
+{
+	if (!argument || argument->kind != TEMPLATE_ARGUMENT_INTEGRAL)
+		throw std::logic_error("invalid non-type template argument destination");
+	const TypeId type = program_->types.RemoveTopCv(argument->type);
+	const TypeRecord& record = program_->types.Get(type);
+	if (record.kind != TYPE_POINTER && record.kind != TYPE_LVALUE_REFERENCE)
+	{
+		if (!expression.constant || !IsIntegral(expression.type, true))
+			return false;
+		argument->value = FunctionTemplateTypeIsDependent(type) ?
+			expression.value : NormalizeIntegralConstant(type, expression.value);
+		return true;
+	}
+	std::uint32_t address = record.kind == TYPE_LVALUE_REFERENCE ?
+		expression.constexpr_lvalue_address : ExpressionAddress(expression);
+	if (address == kNoConstexprAddress &&
+		record.kind == TYPE_LVALUE_REFERENCE)
+		address = LvalueAddress(&expression);
+	if (address == kNoConstexprAddress && record.kind == TYPE_POINTER &&
+		expression.constant && expression.value == 0)
+		address = NullConstexprAddress();
+	const ConstexprAddressValue* value = ConstexprAddressAt(address);
+	if (!value || value->offset != 0 ||
+		(value->kind != CONSTEXPR_ADDRESS_NULL &&
+		 value->kind != CONSTEXPR_ADDRESS_BINDING &&
+		 value->kind != CONSTEXPR_ADDRESS_FUNCTION) ||
+		(record.kind == TYPE_LVALUE_REFERENCE &&
+		 value->kind == CONSTEXPR_ADDRESS_NULL)) return false;
+	if (value->kind != CONSTEXPR_ADDRESS_NULL)
+	{
+		if (value->identity >= program_->bindings.size())
+			throw std::logic_error("template argument address binding is invalid");
+		const BindingId source = program_->bindings[
+			static_cast<BindingId>(value->identity)].canonical;
+		for (ScopeId owner = program_->bindings[source].owner;
+			owner != kNoScope; owner = program_->ParentScope(owner))
+		{
+			if (program_->KindOfScope(owner) == SCOPE_FUNCTION) return false;
+			if (program_->KindOfScope(owner) == SCOPE_NAMESPACE) break;
+		}
+		argument->value_binding = source;
+		if (value->kind == CONSTEXPR_ADDRESS_FUNCTION)
+			DemandFunction(source);
+	}
+	argument->value = 0;
+	return true;
 }
 
 void SemanticAnalyzer::ParseTemplateParameters(NodeId list, ScopeId scope,
@@ -889,9 +964,9 @@ void SemanticAnalyzer::ParseTemplateParameters(NodeId list, ScopeId scope,
 					BuildDeclarator(record.declarator, spec.type, scope).type;
 				record.value_type =
 					program_->types.RemoveTopCv(record.value_type);
-				if (!IsIntegral(record.value_type, true))
+				if (!IsNonTypeTemplateParameterType(record.value_type))
 					throw std::runtime_error(
-						"non-type template parameter is not integral");
+						"invalid non-type template parameter type");
 			}
 		}
 		else throw std::runtime_error(
@@ -945,9 +1020,10 @@ TypeId SemanticAnalyzer::ResolveTemplateParameterType(
 		RecordCandidateSubstitutionFailure();
 		return kNoType;
 	}
-	if (!IsIntegral(type, true) && !FunctionTemplateTypeIsDependent(type))
+	if (!IsNonTypeTemplateParameterType(type) &&
+		!FunctionTemplateTypeIsDependent(type))
 		throw std::runtime_error(
-			"non-type template parameter does not have integral type");
+			"invalid non-type template parameter type");
 	return program_->types.RemoveTopCv(type);
 }
 
@@ -964,8 +1040,38 @@ void SemanticAnalyzer::BindTemplateArgument(ScopeId scope,
 	else if (argument.IsDependent())
 		program_->AddBinding(scope, BIND_PARAMETER, parameter.name,
 			argument.type, false, argument.dependent_parameter);
-	else program_->AddBinding(scope, BIND_PARAMETER, parameter.name,
-			argument.type, true, argument.value);
+	else
+	{
+		const BindingId binding = program_->AddBinding(scope, BIND_PARAMETER,
+			parameter.name, argument.type, true, argument.value);
+		const TypeId type = program_->types.RemoveTopCv(argument.type);
+		const TypeRecord& shape = program_->types.Get(type);
+		if (shape.kind != TYPE_POINTER &&
+			shape.kind != TYPE_LVALUE_REFERENCE) return;
+		std::uint32_t address = kNoConstexprAddress;
+		if (argument.value_binding == kNoBinding)
+			address = NullConstexprAddress();
+		else
+		{
+			if (argument.value_binding >= program_->bindings.size())
+				throw std::logic_error(
+					"template argument binding identity is invalid");
+			const BindingRecord& source =
+				program_->bindings[argument.value_binding];
+			const bool function = source.kind == BIND_FUNCTION;
+			const TypeRecord& storage = program_->types.Get(
+				program_->types.RemoveTopCv(EffectiveType(source.type)));
+			const std::int64_t extent = function ||
+				(storage.kind == TYPE_ARRAY && storage.bound == 0) ? 0 :
+				static_cast<std::int64_t>(
+					program_->SizeOf(EffectiveType(source.type)));
+			address = InternConstexprAddress(ConstexprAddressValue(
+				function ? CONSTEXPR_ADDRESS_FUNCTION :
+					CONSTEXPR_ADDRESS_BINDING,
+				argument.value_binding, 0, 0, extent));
+		}
+		PublishBindingAddress(binding, address);
+	}
 }
 
 void SemanticAnalyzer::BindTemplateArgumentPack(ScopeId scope,
@@ -1220,13 +1326,7 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 				--constant_expression_required_depth_;
 			}
 			if (CandidateSubstitutionFailed()) return false;
-			if (!IsIntegral(expression.type, true))
-				throw std::runtime_error(
-					"non-type template argument is not an integral constant");
-			if (expression.constant)
-				argument.value = dependent_target ? expression.value :
-					NormalizeIntegralConstant(argument.type, expression.value);
-			else if (expression.binding != kNoBinding &&
+			if (!expression.constant && expression.binding != kNoBinding &&
 				expression.binding < program_->bindings.size() &&
 				program_->bindings[expression.binding].kind == BIND_PARAMETER &&
 				!program_->bindings[expression.binding].constant &&
@@ -1243,7 +1343,8 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 				argument.dependent_parameter =
 					static_cast<std::uint32_t>(parameter);
 			}
-			else throw std::runtime_error(
+			else if (!FormNonTypeTemplateArgumentValue(expression, &argument))
+				throw std::runtime_error(
 				"non-type template argument is not an integral constant: " +
 				PayloadSource(source));
 		}

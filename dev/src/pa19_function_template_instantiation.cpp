@@ -1500,7 +1500,7 @@ bool SemanticAnalyzer::MaterializeFunctionTemplateDefaults(
 				}
 				--constant_expression_required_depth_;
 				if (CandidateSubstitutionFailed()) return false;
-				if (!value.constant || !IsIntegral(value.type, true))
+				if (!FormNonTypeTemplateArgumentValue(value, &argument))
 				{
 					if (CandidateSubstitutionActive())
 					{
@@ -1510,8 +1510,6 @@ bool SemanticAnalyzer::MaterializeFunctionTemplateDefaults(
 					throw std::runtime_error(
 						"default non-type function template argument is not constant");
 				}
-				argument.value = NormalizeIntegralConstant(
-					argument.type, value.value);
 			}
 			for (std::size_t retained = 0;
 				retained < default_scopes.size(); ++retained)

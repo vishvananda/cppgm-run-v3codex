@@ -38,6 +38,21 @@ bool SemanticAnalyzer::IsPointerToCompleteObject(TypeId type)
 	}
 }
 
+ExpressionInfo SemanticAnalyzer::AnalyzeUnaryOperand(NodeId syntax,
+	ScopeId scope, TypeId target, const std::string& operation)
+{
+	try
+	{
+		return AnalyzeExpression(syntax, scope, target);
+	}
+	catch (const std::runtime_error&)
+	{
+		if (CandidateSubstitutionActive() && operation == "&" &&
+			target != kNoType) return CandidateSubstitutionFailure();
+		throw;
+	}
+}
+
 ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 	TypeId target)
 {
@@ -54,8 +69,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 			operand_target = target_record.child;
 	}
 	const NodeId operand_syntax = FirstSemanticChild(node);
-	ExpressionInfo operand = AnalyzeExpression(operand_syntax, scope,
-		operand_target);
+	ExpressionInfo operand = AnalyzeUnaryOperand(
+		operand_syntax, scope, operand_target, operation);
+	if (CandidateSubstitutionFailed()) return operand;
 	// Preserve an unresolved overload set until a surrounding call or
 	// constructor supplies the function-pointer target.  The target-directed
 	// replay consumes the retained syntax and publishes one selected binding.

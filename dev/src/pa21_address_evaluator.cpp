@@ -365,7 +365,7 @@ ExpressionInfo SemanticAnalyzer::MaterializeConstexprAddress(
 	const TypeRecord shape = program_->types.Get(
 		program_->types.RemoveTopCv(base.type));
 	if (program_->types.IsReference(type)) return ApplyTarget(base, type);
-	if (shape.kind == TYPE_ARRAY || shape.kind == TYPE_FUNCTION)
+	if (shape.kind == TYPE_FUNCTION)
 		return ApplyTarget(base, type);
 	ExpressionInfo result;
 	result.node = MakeDump(DUMP_UNARY_EXPRESSION, EffectiveType(type),

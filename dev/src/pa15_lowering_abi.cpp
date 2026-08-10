@@ -42,6 +42,50 @@ public:
 		return id;
 	}
 
+	std::string AddEntity(pa11::BindingId source)
+	{
+		using namespace abi_mangle;
+		using namespace pa11;
+		if (source == kNoBinding || source >= program_.bindings.size())
+			throw std::logic_error("ABI template argument entity is invalid");
+		source = program_.bindings[source].canonical;
+		const BindingRecord& binding = program_.bindings[source];
+		const std::string id = "__cppgm_abi_entity_argument_" +
+			std::to_string(next_argument_++);
+		AbiFactRecord definition;
+		definition.set_kind(ABI_FACT_RECORD_DEFINITION);
+		definition.definition.id = id;
+		definition.definition.set_kind(ABI_DEFINITION_ENTITY);
+		AbiEntityFact& entity = definition.definition.entity;
+		if (binding.kind == BIND_FUNCTION)
+		{
+			entity.kind = ABI_ENTITY_FACT_FUNCTION;
+			entity.function.kind = ABI_FUNCTION_TARGET_PATH;
+			entity.function.qualified_name = program_.names.Get(
+				binding.qualified_name != 0 ?
+					binding.qualified_name : binding.name);
+			const TypeRecord& function = program_.types.Get(binding.type);
+			const TypeId* parameters =
+				program_.types.Parameters(binding.type);
+			for (std::size_t i = 0; i < function.parameter_count; ++i)
+				entity.function.signature_parameter_types.push_back(
+					MakeType(parameters[i]));
+		}
+		else
+		{
+			entity.kind = ABI_ENTITY_FACT_VARIABLE;
+			entity.qualified_name = program_.names.Get(
+				binding.qualified_name != 0 ?
+					binding.qualified_name : binding.name);
+			entity.internal_linkage =
+				binding.storage_class == STORAGE_CLASS_STATIC &&
+				binding.member_owner == kNoEntity &&
+				!binding.unnamed_namespace_linkage;
+		}
+		facts_.records.push_back(definition);
+		return id;
+	}
+
 	std::string AddTemplateArgument(std::size_t argument)
 	{
 		using namespace abi_mangle;
@@ -62,10 +106,21 @@ public:
 		definition.definition.set_kind(ABI_DEFINITION_TEMPLATE_ARGUMENT);
 		AbiTemplateArgument& target =
 			definition.definition.template_argument;
-		target.kind = ABI_TEMPLATE_ARGUMENT_VALUE;
-		target.value_type = MakeType(source.type);
-		target.has_value_type = true;
-		target.value = source.value;
+		if (source.value_binding != kNoBinding)
+		{
+			target.kind = ABI_TEMPLATE_ARGUMENT_ENTITY;
+			target.entity_ref = AddEntity(source.value_binding);
+			const TypeRecord& type = program_.types.Get(
+				program_.types.RemoveTopCv(source.type));
+			target.address_of = type.kind == TYPE_POINTER;
+		}
+		else
+		{
+			target.kind = ABI_TEMPLATE_ARGUMENT_VALUE;
+			target.value_type = MakeType(source.type);
+			target.has_value_type = true;
+			target.value = source.value;
+		}
 		facts_.records.push_back(definition);
 		return id;
 	}
