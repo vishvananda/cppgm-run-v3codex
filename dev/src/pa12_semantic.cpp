@@ -2770,11 +2770,18 @@ void SemanticAnalyzer::Render()
 	RenderNode(root_, 0);
 }
 
+SemanticGraphView SemanticGraphStorage::View() const
+{
+	return SemanticGraphView(program, dump, namespace_objects,
+		local_static_objects, aggregate_helpers, class_polymorphism, root);
+}
+
 void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 {
 	arena_ = &arena;
-	Program program(arena.SharedStrings());
-	program_ = &program;
+	if (&arena.SharedStrings() != &strings_)
+		throw std::logic_error("semantic analyzer does not own syntax strings");
+	Program& program = *program_;
 	scope_prefixes_.resize(static_cast<std::size_t>(program.GlobalScope()) + 1, 0);
 	scope_prefix_segments_.resize(
 		static_cast<std::size_t>(program.GlobalScope()) + 1, 0);
@@ -2820,9 +2827,6 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 	}
 	const std::chrono::steady_clock::time_point render_started =
 		std::chrono::steady_clock::now();
-	if (graph_consumer_) graph_consumer_->Consume(SemanticGraphView(program,
-		dump_, namespace_objects_, local_static_objects_, aggregate_helpers_,
-		class_polymorphism_, root_));
 	if (render_output_) Render();
 	if (stats_)
 	{
@@ -2899,6 +2903,18 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 			template_specialization_requests_;
 		stats_->template_specialization_cache_hits =
 			template_specialization_cache_hits_;
+		stats_->template_argument_list_requests =
+			program.template_argument_list_requests;
+		stats_->template_argument_list_cache_hits =
+			program.template_argument_list_cache_hits;
+		stats_->template_argument_list_index_probes =
+			program.template_argument_list_index_probes;
+		stats_->template_partition_requests =
+			template_argument_partitions_.Requests();
+		stats_->template_partition_cache_hits =
+			template_argument_partitions_.CacheHits();
+		stats_->template_partition_index_probes =
+			template_argument_partitions_.IndexProbes();
 		stats_->template_partial_candidates = template_partial_candidates_;
 		stats_->template_partial_order_comparisons =
 			template_partial_order_comparisons_;
@@ -2940,7 +2956,7 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 			std::chrono::duration_cast<std::chrono::nanoseconds>(
 				finished - render_started).count());
 	}
-	program_ = 0;
+	arena_ = 0;
 }
 }
 }

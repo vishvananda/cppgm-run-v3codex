@@ -20,11 +20,14 @@ typedef std::uint32_t TypeId;
 typedef std::uint32_t ScopeId;
 typedef std::uint32_t EntityId;
 typedef std::uint32_t BindingId;
+typedef std::uint32_t TemplateArgumentListId;
 
 const TypeId kNoType = std::numeric_limits<TypeId>::max();
 const ScopeId kNoScope = std::numeric_limits<ScopeId>::max();
 const EntityId kNoEntity = std::numeric_limits<EntityId>::max();
 const BindingId kNoBinding = std::numeric_limits<BindingId>::max();
+const TemplateArgumentListId kNoTemplateArgumentList =
+	std::numeric_limits<TemplateArgumentListId>::max();
 const std::uint32_t kNoTemplateParameter =
 	std::numeric_limits<std::uint32_t>::max();
 
@@ -332,6 +335,7 @@ struct EntityRecord
 	ScopeId owner, member_scope;
 	EntityId direct_base, enclosing_class;
 	BindingId local_context;
+	TemplateArgumentListId template_argument_list;
 	std::uint32_t template_argument_begin, template_argument_count,
 		template_argument_pack_begin;
 	std::uint32_t direct_base_begin, direct_base_count;
@@ -366,6 +370,7 @@ struct BindingRecord
 	std::uint64_t member_offset, requested_alignment;
 	std::uint32_t bit_offset, bit_width, bit_storage_bits;
 	std::uint32_t overload_ordinal, member_ordinal;
+	TemplateArgumentListId template_argument_list;
 	std::uint32_t template_argument_begin, template_argument_count;
 	NamedFlavor display_flavor;
 	NameId display_type_name;
@@ -449,6 +454,9 @@ public:
 	void AddNamespaceAlias(ScopeId owner, NameId name, ScopeId target);
 	void AddUsingEdge(ScopeId owner, ScopeId target);
 	void PublishFunctionTemplateName(ScopeId owner, NameId name);
+	TemplateArgumentListId InternTemplateArgumentList(
+		const std::vector<TemplateArgument>& arguments,
+		std::uint32_t* first = 0, std::uint32_t* count = 0);
 	EntityId NewEntity(NameId name, NamedFlavor flavor, bool complete,
 		TypeId underlying = kNoType, ScopeId owner = kNoScope,
 		NameId identity_name = 0);
@@ -512,12 +520,16 @@ public:
 	std::size_t lookup_cache_invalidation_pushes;
 	mutable std::size_t name_index_probes;
 	std::size_t using_index_probes;
+	std::size_t template_argument_list_requests;
+	std::size_t template_argument_list_cache_hits;
+	std::size_t template_argument_list_index_probes;
 
 private:
 	struct ScopeRecord; struct NameEntry;
 	struct UsingEdge; struct UsingNameRelation; struct ScopeVisibleName;
 	struct ChildEdge;
 	struct LookupCacheEntry; struct LookupCache;
+	struct TemplateArgumentListRecord;
 	NameEntry* EnsureEntry(ScopeId scope, NameId name);
 	const NameEntry* FindEntry(ScopeId scope, NameId name) const;
 	void RehashEntries(std::size_t capacity);
@@ -555,6 +567,7 @@ private:
 		std::size_t* max_depth, std::size_t* stack_storage_bytes,
 		std::size_t* rendered_type_nodes) const;
 	std::size_t FundamentalSize(FundamentalKind kind) const;
+	void RehashTemplateArgumentLists(std::size_t capacity);
 
 	std::vector<ScopeRecord> scopes_;
 	std::vector<ChildEdge> child_edges_;
@@ -569,6 +582,8 @@ private:
 	std::uint32_t using_name_invalidation_generation_;
 	std::vector<NameEntry> entries_;
 	std::vector<std::uint32_t> entry_slots_;
+	std::vector<TemplateArgumentListRecord> template_argument_lists_;
+	std::vector<std::uint32_t> template_argument_list_slots_;
 	std::vector<std::uint32_t> lookup_marks_;
 	std::vector<ScopeId> lookup_worklist_;
 	std::uint32_t lookup_generation_;

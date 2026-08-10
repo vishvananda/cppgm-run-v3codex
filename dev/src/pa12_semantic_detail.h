@@ -25,19 +25,42 @@ using namespace pa11;
 struct BracedInitializationContext;
 class RetainedTemplateValidator;
 
+struct SemanticGraphStorage
+{
+	InternedStringTable strings;
+	Program program;
+	DumpArena dump;
+	std::vector<NamespaceObjectAction> namespace_objects;
+	std::vector<LocalStaticObjectAction> local_static_objects;
+	std::vector<AggregateHelperInfo> aggregate_helpers;
+	std::vector<ClassPolymorphismFacts> class_polymorphism;
+	std::uint32_t root;
+
+	SemanticGraphStorage()
+		: strings(), program(strings), root(kNoDumpEdge) {}
+	SemanticGraphView View() const;
+};
+
 class SemanticAnalyzer : public SyntaxTreeConsumer
 {
 public:
-	SemanticAnalyzer(std::ostream& output, SemanticAnalysisStats* stats,
-		SemanticGraphConsumer* graph_consumer = 0, bool render_output = true)
-		: arena_(0), output_(output), stats_(stats), program_(0),
-		  graph_consumer_(graph_consumer), render_output_(render_output),
-		  root_(kNoDumpEdge),
+	SemanticAnalyzer(SemanticGraphStorage& graph, std::ostream& output,
+		SemanticAnalysisStats* stats, bool retain_lowering_facts = false,
+		bool render_output = true)
+		: arena_(0), output_(output), stats_(stats), strings_(graph.strings),
+		  program_(&graph.program),
+		  retain_lowering_facts_(retain_lowering_facts),
+		  render_output_(render_output),
+		  dump_(graph.dump), root_(graph.root),
+		  class_polymorphism_(graph.class_polymorphism),
 		  function_template_dependent_result_shape_(kNoType),
 		  class_template_nondeduced_type_shape_(kNoType),
 		  class_template_member_replay_depth_(0),
 		  explicit_member_template_replay_depth_(0),
 		  class_template_completion_suppressed_depth_(0),
+		  namespace_objects_(graph.namespace_objects),
+		  local_static_objects_(graph.local_static_objects),
+		  aggregate_helpers_(graph.aggregate_helpers),
 		  current_language_linkage_(LANGUAGE_LINKAGE_CPP),
 		  current_return_type_(kNoType), current_class_context_(kNoEntity),
 		  current_function_context_(kNoBinding),
@@ -102,6 +125,7 @@ public:
 		  anonymous_enum_count_(0), local_type_count_(0) {}
 
 	void Consume(const SyntaxArena& arena, NodeId root);
+	InternedStringTable& SharedStrings() { return strings_; }
 
 private:
 	friend class RetainedTemplateValidator;
@@ -434,7 +458,15 @@ private:
 	std::vector<TemplateArgument> StoredTemplateArguments(
 		std::size_t first, std::size_t count) const;
 	TemplateArgument StoredTemplateArgument(std::size_t index) const;
+	TemplateSpecializationKey CanonicalTemplateSpecializationKey(
+		std::size_t pattern,
+		const std::vector<TemplateArgument>& arguments);
+	TemplateSpecializationKey CanonicalTemplateSpecializationKey(
+		std::size_t pattern,
+		const std::vector<TemplateArgument>& arguments,
+		const std::vector<std::uint32_t>& parameter_offsets);
 	void StoreTemplateArguments(const std::vector<TemplateArgument>& arguments,
+		TemplateArgumentListId* identity,
 		std::uint32_t* first, std::uint32_t* count);
 	TypeId ResolveStructuredTypeName(NodeId name, ScopeId scope);
 	std::size_t FindClassTemplate(ScopeId scope,
@@ -1138,12 +1170,13 @@ private:
 	const SyntaxArena* arena_;
 	std::ostream& output_;
 	SemanticAnalysisStats* stats_;
+	InternedStringTable& strings_;
 	Program* program_;
-	SemanticGraphConsumer* graph_consumer_;
+	bool retain_lowering_facts_;
 	bool render_output_;
-	DumpArena dump_;
+	DumpArena& dump_;
 	std::vector<std::uint32_t> string_literal_units_;
-	std::uint32_t root_;
+	std::uint32_t& root_;
 	std::vector<NameId> scope_prefixes_;
 	std::vector<NameId> scope_prefix_segments_;
 	std::vector<ScopeId> scope_parents_;
@@ -1172,7 +1205,7 @@ private:
 	std::vector<std::vector<BindingId> > entity_constructors_;
 	std::vector<std::vector<BindingId> > entity_conversion_functions_;
 	std::vector<std::vector<BindingId> > entity_member_functions_;
-	std::vector<ClassPolymorphismFacts> class_polymorphism_;
+	std::vector<ClassPolymorphismFacts>& class_polymorphism_;
 	std::vector<std::uint32_t> virtual_slot_by_binding_;
 	std::vector<std::uint32_t> variable_node_by_binding_;
 	std::vector<ClassSpecialMemberFacts> class_special_members_;
@@ -1213,6 +1246,7 @@ private:
 	IndexedSequenceTable retained_call_template_sets_;
 	std::vector<std::uint8_t> retained_call_lookup_states_;
 	std::vector<EntityId> retained_call_naming_classes_;
+	TemplateArgumentPartitionTable template_argument_partitions_;
 	TemplateSpecializationTable template_instantiations_;
 	IndexedSequenceTable lambda_closure_index_;
 	std::vector<LambdaClosureFact> lambda_closures_;
@@ -1254,10 +1288,10 @@ private:
 	std::vector<InjectedMemberInfo> injected_members_;
 	std::vector<std::vector<LifetimeObligation> > scope_lifetimes_;
 	std::vector<ScopeId> nearest_lifetime_scopes_;
-	std::vector<NamespaceObjectAction> namespace_objects_;
-	std::vector<LocalStaticObjectAction> local_static_objects_;
+	std::vector<NamespaceObjectAction>& namespace_objects_;
+	std::vector<LocalStaticObjectAction>& local_static_objects_;
 	std::vector<std::uint32_t> local_static_count_by_function_;
-	std::vector<AggregateHelperInfo> aggregate_helpers_;
+	std::vector<AggregateHelperInfo>& aggregate_helpers_;
 	FunctionSignatureTable aggregate_helper_index_;
 	std::vector<ScopeId> break_cleanup_stops_;
 	std::vector<ScopeId> continue_cleanup_stops_;

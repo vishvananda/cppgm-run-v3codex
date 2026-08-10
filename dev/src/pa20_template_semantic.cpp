@@ -400,7 +400,8 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 					"dependent explicit class specialization");
 
 		++template_specialization_requests_;
-		const TemplateSpecializationKey key(pattern_index, arguments);
+		const TemplateSpecializationKey key =
+			CanonicalTemplateSpecializationKey(pattern_index, arguments);
 		BindingId binding = class_template_instantiations_.Find(key);
 		TypeId type = kNoType;
 		EntityId entity = kNoEntity;
@@ -460,6 +461,7 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 					"explicit class specialization has no declaration");
 			binding = program_->entities[entity].declaration;
 			StoreTemplateArguments(arguments,
+				&program_->entities[entity].template_argument_list,
 				&program_->entities[entity].template_argument_begin,
 				&program_->entities[entity].template_argument_count);
 			if (class_template_pattern_by_entity_.size() <= entity)
@@ -475,6 +477,7 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 		}
 		if (program_->entities[entity].template_argument_begin == kNoBinding)
 			StoreTemplateArguments(arguments,
+				&program_->entities[entity].template_argument_list,
 				&program_->entities[entity].template_argument_begin,
 				&program_->entities[entity].template_argument_count);
 		program_->entities[entity].template_argument_pack_begin =
@@ -634,7 +637,8 @@ BindingId SemanticAnalyzer::InstantiateVariableTemplate(
 		scope, primary.lexical_scope, &arguments)) return kNoBinding;
 
 	++template_specialization_requests_;
-	const TemplateSpecializationKey key(primary_index, arguments);
+	const TemplateSpecializationKey key =
+		CanonicalTemplateSpecializationKey(primary_index, arguments);
 	BindingId cached = variable_template_instantiations_.Find(key);
 	if (cached != kNoBinding)
 	{
@@ -753,6 +757,7 @@ BindingId SemanticAnalyzer::InstantiateVariableTemplate(
 	BindingRecord& record = program_->bindings[binding];
 	record.storage_class = spec.storage_class;
 	StoreTemplateArguments(arguments,
+		&record.template_argument_list,
 		&record.template_argument_begin, &record.template_argument_count);
 	bool dependent = false;
 	for (std::size_t i = 0; i < arguments.size(); ++i)
@@ -1279,23 +1284,30 @@ TemplateArgument SemanticAnalyzer::StoredTemplateArgument(
 			TEMPLATE_ARGUMENT_TYPE, program_->template_arguments[index]);
 }
 
+TemplateSpecializationKey SemanticAnalyzer::CanonicalTemplateSpecializationKey(
+	std::size_t pattern, const std::vector<TemplateArgument>& arguments)
+{
+	return TemplateSpecializationKey(pattern,
+		program_->InternTemplateArgumentList(arguments));
+}
+
+TemplateSpecializationKey SemanticAnalyzer::CanonicalTemplateSpecializationKey(
+	std::size_t pattern, const std::vector<TemplateArgument>& arguments,
+	const std::vector<std::uint32_t>& parameter_offsets)
+{
+	return TemplateSpecializationKey(pattern,
+		program_->InternTemplateArgumentList(arguments),
+		template_argument_partitions_.Intern(parameter_offsets));
+}
+
 void SemanticAnalyzer::StoreTemplateArguments(
-	const std::vector<TemplateArgument>& arguments, std::uint32_t* first,
+	const std::vector<TemplateArgument>& arguments,
+	TemplateArgumentListId* identity, std::uint32_t* first,
 	std::uint32_t* count)
 {
-	if (program_->template_arguments.size() !=
-		program_->canonical_template_arguments.size())
-		throw std::logic_error("canonical template argument storage diverged");
-	if (program_->template_arguments.size() >
-		std::numeric_limits<std::uint32_t>::max() - arguments.size())
-		throw std::runtime_error("too many template arguments");
-	*first = static_cast<std::uint32_t>(program_->template_arguments.size());
-	*count = static_cast<std::uint32_t>(arguments.size());
-	for (std::size_t i = 0; i < arguments.size(); ++i)
-		program_->template_arguments.push_back(arguments[i].type);
-	program_->canonical_template_arguments.insert(
-		program_->canonical_template_arguments.end(),
-		arguments.begin(), arguments.end());
+	if (!identity || !first || !count)
+		throw std::logic_error("template argument owner is incomplete");
+	*identity = program_->InternTemplateArgumentList(arguments, first, count);
 }
 
 bool SemanticAnalyzer::ClassTemplateHasNonTypeParameter(EntityId entity) const

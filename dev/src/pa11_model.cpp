@@ -574,6 +574,7 @@ EntityRecord::EntityRecord()
 	: name(0), identity_name(0), owner(kNoScope), member_scope(kNoScope),
 	  direct_base(kNoEntity), enclosing_class(kNoEntity),
 	  local_context(kNoBinding),
+	  template_argument_list(kNoTemplateArgumentList),
 	  template_argument_begin(kNoBinding), template_argument_count(0),
 	  template_argument_pack_begin(kNoTemplateParameter),
 	  direct_base_begin(0), direct_base_count(0),
@@ -603,6 +604,7 @@ BindingRecord::BindingRecord()
 	  member_offset(0), requested_alignment(0), bit_offset(0), bit_width(0),
 	  bit_storage_bits(0),
 	  overload_ordinal(0), member_ordinal(kNoBinding),
+	  template_argument_list(kNoTemplateArgumentList),
 	  template_argument_begin(0), template_argument_count(0),
 	  display_flavor(NAMED_NONE), display_type_name(0),
 		  canonical(kNoBinding), value(0), operator_kind(OPERATOR_NONE),
@@ -961,21 +963,113 @@ struct Program::LookupCache
 	std::size_t StorageBytes() const;
 };
 
+struct Program::TemplateArgumentListRecord
+{
+	std::uint32_t first, count;
+	std::size_t hash;
+
+	TemplateArgumentListRecord(std::uint32_t first_value,
+		std::uint32_t count_value, std::size_t hash_value)
+		: first(first_value), count(count_value), hash(hash_value) {}
+};
+
 Program::Program(InternedStringTable& strings)
 	: names(strings), lookup_queries(0), lookup_scope_visits(0),
 	  lookup_edge_visits(0), lookup_cache_hits(0), lookup_cache_misses(0),
 	  lookup_cache_invalidations(0), lookup_cache_dependency_edges(0),
 	  lookup_cache_invalidation_pushes(0),
 	  name_index_probes(0), using_index_probes(0),
+	  template_argument_list_requests(0),
+	  template_argument_list_cache_hits(0),
+	  template_argument_list_index_probes(0),
 	  using_edge_slots_(64, 0), visible_name_slots_(64, 0),
 	  using_name_relation_slots_(64, 0),
 	  using_name_invalidation_generation_(0), entry_slots_(64, 0),
+	  template_argument_list_slots_(32, 0),
 	  lookup_generation_(1),
 	  lookup_dependency_generation_(0), lookup_pending_generation_(0),
 	  collecting_lookup_dependencies_(false),
 	  lookup_cache_(new LookupCache())
 {
 	NewScope(kNoScope, SCOPE_NAMESPACE, names.Intern("<global>"));
+}
+
+void Program::RehashTemplateArgumentLists(std::size_t capacity)
+{
+	std::vector<std::uint32_t> replacement(capacity, 0);
+	const std::size_t mask = capacity - 1;
+	for (std::size_t i = 0; i < template_argument_lists_.size(); ++i)
+	{
+		std::size_t slot = template_argument_lists_[i].hash & mask;
+		while (replacement[slot] != 0) slot = (slot + 1) & mask;
+		replacement[slot] = static_cast<std::uint32_t>(i + 1);
+	}
+	template_argument_list_slots_.swap(replacement);
+}
+
+TemplateArgumentListId Program::InternTemplateArgumentList(
+	const std::vector<TemplateArgument>& arguments,
+	std::uint32_t* first, std::uint32_t* count)
+{
+	++template_argument_list_requests;
+	std::size_t hash = MixHash(0, arguments.size());
+	for (std::size_t i = 0; i < arguments.size(); ++i)
+	{
+		hash = MixHash(hash, arguments[i].kind);
+		hash = MixHash(hash, arguments[i].type);
+		hash = MixHash(hash, static_cast<std::uint64_t>(arguments[i].value));
+		hash = MixHash(hash, arguments[i].dependent_parameter);
+		hash = MixHash(hash, arguments[i].pack_expansion ? 1 : 0);
+	}
+	if ((template_argument_lists_.size() + 1) * 10 >
+		template_argument_list_slots_.size() * 7)
+		RehashTemplateArgumentLists(template_argument_list_slots_.size() * 2);
+	const std::size_t mask = template_argument_list_slots_.size() - 1;
+	std::size_t slot = hash & mask;
+	while (template_argument_list_slots_[slot] != 0)
+	{
+		++template_argument_list_index_probes;
+		const TemplateArgumentListId id =
+			template_argument_list_slots_[slot] - 1;
+		const TemplateArgumentListRecord& record =
+			template_argument_lists_[id];
+		bool equal = record.hash == hash && record.count == arguments.size();
+		for (std::size_t i = 0; equal && i < arguments.size(); ++i)
+			equal = canonical_template_arguments[record.first + i] ==
+				arguments[i];
+		if (equal)
+		{
+			++template_argument_list_cache_hits;
+			if (first) *first = record.first;
+			if (count) *count = record.count;
+			return id;
+		}
+		slot = (slot + 1) & mask;
+	}
+	++template_argument_list_index_probes;
+	if (template_argument_lists_.size() >= kNoTemplateArgumentList ||
+		arguments.size() > std::numeric_limits<std::uint32_t>::max() ||
+		template_arguments.size() >
+			std::numeric_limits<std::uint32_t>::max() - arguments.size())
+		throw std::runtime_error("too many canonical template argument lists");
+	if (template_arguments.size() != canonical_template_arguments.size())
+		throw std::logic_error("canonical template argument storage diverged");
+	const std::uint32_t range_first =
+		static_cast<std::uint32_t>(template_arguments.size());
+	const std::uint32_t range_count =
+		static_cast<std::uint32_t>(arguments.size());
+	for (std::size_t i = 0; i < arguments.size(); ++i)
+		template_arguments.push_back(arguments[i].type);
+	canonical_template_arguments.insert(canonical_template_arguments.end(),
+		arguments.begin(), arguments.end());
+	const TemplateArgumentListId id = static_cast<TemplateArgumentListId>(
+		template_argument_lists_.size());
+	template_argument_lists_.push_back(TemplateArgumentListRecord(
+		range_first, range_count, hash));
+	template_argument_list_slots_[slot] = id + 1;
+	if (first) *first = range_first;
+	if (count) *count = range_count;
+	return id;
 }
 
 Program::~Program()
@@ -1436,6 +1530,7 @@ void Program::ResetClassDefinition(EntityId entity)
 	reset.owner = old.owner;
 	reset.enclosing_class = old.enclosing_class;
 	reset.local_context = old.local_context;
+	reset.template_argument_list = old.template_argument_list;
 	reset.template_argument_begin = old.template_argument_begin;
 	reset.template_argument_count = old.template_argument_count;
 	reset.template_argument_pack_begin = old.template_argument_pack_begin;
@@ -2774,6 +2869,9 @@ std::size_t Program::StorageBytes() const
 		using_name_invalidation_marks_.capacity() * sizeof(std::uint32_t) +
 		entries_.capacity() * sizeof(NameEntry) +
 		entry_slots_.capacity() * sizeof(std::uint32_t) +
+		template_argument_lists_.capacity() *
+			sizeof(TemplateArgumentListRecord) +
+		template_argument_list_slots_.capacity() * sizeof(std::uint32_t) +
 		lookup_marks_.capacity() * sizeof(std::uint32_t) +
 		lookup_worklist_.capacity() * sizeof(ScopeId) +
 		lookup_dependency_marks_.capacity() * sizeof(std::uint32_t) +

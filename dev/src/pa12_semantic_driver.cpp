@@ -1,5 +1,7 @@
 #include "pa12_semantic_detail.h"
 
+#include "pa10_syntax_driver_detail.h"
+
 #include <chrono>
 #include <ostream>
 #include <streambuf>
@@ -43,9 +45,10 @@ void WriteSemanticTranslationUnit(const std::string& path,
 		std::chrono::steady_clock::now();
 	if (stats) *stats = SemanticAnalysisStats();
 	SyntaxStats syntax;
-	pa12_semantic_detail::SemanticAnalyzer analyzer(output, stats);
-	ConsumeSyntaxTranslationUnit(path, source, options, analyzer,
-		stats ? &syntax : 0);
+	pa12_semantic_detail::SemanticGraphStorage graph;
+	pa12_semantic_detail::SemanticAnalyzer analyzer(graph, output, stats);
+	pa10_syntax_detail::RunSyntaxTranslationUnit(path, source, options,
+		0, &analyzer, stats ? &syntax : 0, &analyzer.SharedStrings());
 	PublishDriverStats(source, syntax, started, stats);
 }
 
@@ -60,10 +63,16 @@ void ConsumeSemanticTranslationUnit(const std::string& path,
 	SyntaxStats syntax;
 	NullStreamBuffer sink_buffer;
 	std::ostream sink(&sink_buffer);
-	pa12_semantic_detail::SemanticAnalyzer analyzer(sink, stats,
-		&consumer, false);
-	ConsumeSyntaxTranslationUnit(path, source, options, analyzer,
-		stats ? &syntax : 0);
+	pa12_semantic_detail::SemanticGraphStorage graph;
+	{
+		pa12_semantic_detail::SemanticAnalyzer analyzer(graph, sink, stats,
+			true, false);
+		pa10_syntax_detail::RunSyntaxTranslationUnit(path, source, options,
+			0, &analyzer, stats ? &syntax : 0, &analyzer.SharedStrings());
+	}
+	// Token, parser, syntax, substitution, lookup, and demand scratch are dead.
+	// The typed next phase borrows only the canonical graph owner.
+	consumer.Consume(graph.View());
 	PublishDriverStats(source, syntax, started, stats);
 }
 
@@ -99,7 +108,12 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 	  virtual_slot_lookups(0), vtable_demands(0), access_checks(0),
 	  access_path_visits(0), access_grant_probes(0),
 	  template_specialization_requests(0),
-	  template_specialization_cache_hits(0), template_partial_candidates(0),
+	  template_specialization_cache_hits(0),
+	  template_argument_list_requests(0),
+	  template_argument_list_cache_hits(0),
+	  template_argument_list_index_probes(0), template_partition_requests(0),
+	  template_partition_cache_hits(0), template_partition_index_probes(0),
+	  template_partial_candidates(0),
 	  template_partial_order_comparisons(0),
 	  template_partial_shape_materializations(0),
 	  template_partial_shape_cache_hits(0),

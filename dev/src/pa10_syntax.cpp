@@ -2947,14 +2947,14 @@ NodeId Parser::ParseDeclaration(bool in_class)
 
 namespace pa10_syntax_detail
 {
-
 void RunSyntaxTranslationUnit(const std::string& path,
 	const std::string& source, const PreprocessingOptions& options,
-	std::ostream* output, SyntaxTreeConsumer* consumer, SyntaxStats* stats)
+	std::ostream* output, SyntaxTreeConsumer* consumer, SyntaxStats* stats,
+	InternedStringTable* retained_strings)
 {
 	const std::chrono::steady_clock::time_point started = std::chrono::steady_clock::now();
 	if (stats) *stats = SyntaxStats();
-	StringTable strings;
+	StringTable local_strings; StringTable& strings = retained_strings ? *retained_strings : local_strings;
 	SyntaxTokenSink sink(strings);
 	PreprocessFile(path, source, sink, options,
 		stats ? &stats->preprocessing : 0);

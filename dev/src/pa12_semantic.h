@@ -77,6 +77,12 @@ struct SemanticAnalysisStats
 	std::size_t access_grant_probes;
 	std::size_t template_specialization_requests;
 	std::size_t template_specialization_cache_hits;
+	std::size_t template_argument_list_requests;
+	std::size_t template_argument_list_cache_hits;
+	std::size_t template_argument_list_index_probes;
+	std::size_t template_partition_requests;
+	std::size_t template_partition_cache_hits;
+	std::size_t template_partition_index_probes;
 	std::size_t template_partial_candidates;
 	std::size_t template_partial_order_comparisons;
 	std::size_t template_partial_shape_materializations;

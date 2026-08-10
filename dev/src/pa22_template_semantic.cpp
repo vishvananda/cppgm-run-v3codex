@@ -294,7 +294,7 @@ bool SemanticAnalyzer::TryBuildElidedClassValueTransfer(TypeId type,
 	const ExpressionInfo& source, BindingId selected_constructor,
 	ExpressionInfo* result)
 {
-	if (!graph_consumer_ || result == 0 || source.node >= dump_.nodes.size() ||
+	if (!retain_lowering_facts_ || result == 0 || source.node >= dump_.nodes.size() ||
 		selected_constructor == kNoBinding) return false;
 	const FunctionInfo& constructor = GetFunction(selected_constructor);
 	if (constructor.special_member != SPECIAL_MEMBER_COPY_CONSTRUCTOR &&
@@ -837,7 +837,8 @@ TypeId SemanticAnalyzer::InstantiateAliasTemplate(std::size_t index,
 			return kNoType;
 
 	++template_specialization_requests_;
-	const TemplateSpecializationKey key(index, arguments);
+	const TemplateSpecializationKey key =
+		CanonicalTemplateSpecializationKey(index, arguments);
 	BindingId binding = alias_template_instantiations_.Find(key);
 	if (binding != kNoBinding)
 	{

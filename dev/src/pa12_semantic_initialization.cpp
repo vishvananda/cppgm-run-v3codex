@@ -449,7 +449,7 @@ ExpressionInfo SemanticAnalyzer::BuildDirectClassValueTransfer(
 	const ExpressionInfo& source, TypeId target,
 	BindingId selected_constructor)
 {
-	if (!graph_consumer_) return source;
+	if (!retain_lowering_facts_) return source;
 	bool validated_special_member = false;
 	if (selected_constructor != kNoBinding)
 	{

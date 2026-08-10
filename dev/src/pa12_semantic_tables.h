@@ -170,25 +170,59 @@ private:
 	std::vector<std::uint32_t> slots_;
 };
 
+typedef std::uint32_t TemplateArgumentPartitionId;
+
+const TemplateArgumentPartitionId kEmptyTemplateArgumentPartition = 0;
+
+class TemplateArgumentPartitionTable
+{
+public:
+	TemplateArgumentPartitionTable();
+	TemplateArgumentPartitionId Intern(
+		const std::vector<std::uint32_t>& offsets);
+	std::size_t Requests() const;
+	std::size_t CacheHits() const;
+	std::size_t IndexProbes() const;
+	std::size_t StorageBytes() const;
+
+private:
+	struct Entry
+	{
+		std::uint32_t first, count;
+		std::size_t hash;
+		Entry(std::uint32_t first_value, std::uint32_t count_value,
+			std::size_t hash_value)
+			: first(first_value), count(count_value), hash(hash_value) {}
+	};
+	void Rehash(std::size_t capacity);
+	std::vector<std::uint32_t> offsets_;
+	std::vector<Entry> entries_;
+	std::vector<std::uint32_t> slots_;
+	std::size_t requests_, cache_hits_, index_probes_;
+};
+
 struct TemplateSpecializationKey
 {
 	std::size_t pattern;
-	std::vector<TemplateArgument> arguments;
-	std::vector<std::uint32_t> parameter_offsets;
+	TemplateArgumentListId arguments;
+	TemplateArgumentPartitionId partition;
 
-	TemplateSpecializationKey() : pattern(0) {}
+	TemplateSpecializationKey()
+		: pattern(0), arguments(kNoTemplateArgumentList),
+		  partition(kEmptyTemplateArgumentPartition) {}
 	TemplateSpecializationKey(std::size_t pattern_value,
-		const std::vector<TemplateArgument>& argument_values)
-		: pattern(pattern_value), arguments(argument_values) {}
-	TemplateSpecializationKey(std::size_t pattern_value,
-		const std::vector<TemplateArgument>& argument_values,
-		const std::vector<std::uint32_t>& offset_values)
+		TemplateArgumentListId argument_values)
 		: pattern(pattern_value), arguments(argument_values),
-		  parameter_offsets(offset_values) {}
+		  partition(kEmptyTemplateArgumentPartition) {}
+	TemplateSpecializationKey(std::size_t pattern_value,
+		TemplateArgumentListId argument_values,
+		TemplateArgumentPartitionId offset_values)
+		: pattern(pattern_value), arguments(argument_values),
+		  partition(offset_values) {}
 	bool operator==(const TemplateSpecializationKey& other) const
 	{
 		return pattern == other.pattern && arguments == other.arguments &&
-			parameter_offsets == other.parameter_offsets;
+			partition == other.partition;
 	}
 };
 
@@ -196,22 +230,8 @@ struct TemplateSpecializationHash
 {
 	std::size_t operator()(const TemplateSpecializationKey& key) const
 	{
-		std::size_t result = key.pattern;
-		for (std::size_t i = 0; i < key.arguments.size(); ++i)
-		{
-			result = MixHash(result, key.arguments[i].kind);
-			result = MixHash(result, key.arguments[i].type);
-			result = MixHash(result,
-				static_cast<std::uint64_t>(key.arguments[i].value));
-			result = MixHash(result,
-				key.arguments[i].dependent_parameter);
-			result = MixHash(result,
-				key.arguments[i].pack_expansion ? 1 : 0);
-		}
-		result = MixHash(result, key.parameter_offsets.size());
-		for (std::size_t i = 0; i < key.parameter_offsets.size(); ++i)
-			result = MixHash(result, key.parameter_offsets[i]);
-		return result;
+		return MixHash(MixHash(key.pattern, key.arguments),
+			key.partition);
 	}
 };
 

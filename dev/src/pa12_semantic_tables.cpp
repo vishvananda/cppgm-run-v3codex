@@ -321,6 +321,92 @@ std::size_t FunctionSignatureTable::StorageBytes() const
 		slots_.capacity() * sizeof(std::uint32_t);
 }
 
+TemplateArgumentPartitionTable::TemplateArgumentPartitionTable()
+	: slots_(32, 0), requests_(0), cache_hits_(0), index_probes_(0)
+{
+	// Empty partitions are common to class, alias, and variable templates.
+	// Reserve identity zero so those hot keys need no interner probe.
+	entries_.push_back(Entry(0, 0, MixHash(0, 0)));
+	slots_[entries_[0].hash & (slots_.size() - 1)] = 1;
+}
+
+void TemplateArgumentPartitionTable::Rehash(std::size_t capacity)
+{
+	std::vector<std::uint32_t> replacement(capacity, 0);
+	const std::size_t mask = capacity - 1;
+	for (std::size_t i = 0; i < entries_.size(); ++i)
+	{
+		std::size_t slot = entries_[i].hash & mask;
+		while (replacement[slot] != 0) slot = (slot + 1) & mask;
+		replacement[slot] = static_cast<std::uint32_t>(i + 1);
+	}
+	slots_.swap(replacement);
+}
+
+TemplateArgumentPartitionId TemplateArgumentPartitionTable::Intern(
+	const std::vector<std::uint32_t>& offsets)
+{
+	if (offsets.empty()) return kEmptyTemplateArgumentPartition;
+	++requests_;
+	std::size_t hash = MixHash(0, offsets.size());
+	for (std::size_t i = 0; i < offsets.size(); ++i)
+		hash = MixHash(hash, offsets[i]);
+	if ((entries_.size() + 1) * 10 > slots_.size() * 7)
+		Rehash(slots_.size() * 2);
+	const std::size_t mask = slots_.size() - 1;
+	std::size_t slot = hash & mask;
+	while (slots_[slot] != 0)
+	{
+		++index_probes_;
+		const TemplateArgumentPartitionId id = slots_[slot] - 1;
+		const Entry& entry = entries_[id];
+		bool equal = entry.hash == hash && entry.count == offsets.size();
+		for (std::size_t i = 0; equal && i < offsets.size(); ++i)
+			equal = offsets_[entry.first + i] == offsets[i];
+		if (equal)
+		{
+			++cache_hits_;
+			return id;
+		}
+		slot = (slot + 1) & mask;
+	}
+	++index_probes_;
+	if (entries_.size() >= std::numeric_limits<std::uint32_t>::max() ||
+		offsets_.size() >
+			std::numeric_limits<std::uint32_t>::max() - offsets.size())
+		throw std::runtime_error("too many template argument partitions");
+	const TemplateArgumentPartitionId id =
+		static_cast<TemplateArgumentPartitionId>(entries_.size());
+	const std::uint32_t first = static_cast<std::uint32_t>(offsets_.size());
+	offsets_.insert(offsets_.end(), offsets.begin(), offsets.end());
+	entries_.push_back(Entry(first,
+		static_cast<std::uint32_t>(offsets.size()), hash));
+	slots_[slot] = id + 1;
+	return id;
+}
+
+std::size_t TemplateArgumentPartitionTable::Requests() const
+{
+	return requests_;
+}
+
+std::size_t TemplateArgumentPartitionTable::CacheHits() const
+{
+	return cache_hits_;
+}
+
+std::size_t TemplateArgumentPartitionTable::IndexProbes() const
+{
+	return index_probes_;
+}
+
+std::size_t TemplateArgumentPartitionTable::StorageBytes() const
+{
+	return offsets_.capacity() * sizeof(std::uint32_t) +
+		entries_.capacity() * sizeof(Entry) +
+		slots_.capacity() * sizeof(std::uint32_t);
+}
+
 TemplateSpecializationTable::Entry::Entry(
 	const TemplateSpecializationKey& key_value, BindingId binding_value)
 	: key(key_value), binding(binding_value)
@@ -384,13 +470,8 @@ void TemplateSpecializationTable::Rehash(std::size_t capacity)
 
 std::size_t TemplateSpecializationTable::StorageBytes() const
 {
-	std::size_t bytes = entries_.capacity() * sizeof(Entry) +
+	return entries_.capacity() * sizeof(Entry) +
 		slots_.capacity() * sizeof(std::uint32_t);
-	for (std::size_t i = 0; i < entries_.size(); ++i)
-		bytes += entries_[i].key.arguments.capacity() * sizeof(TemplateArgument) +
-			entries_[i].key.parameter_offsets.capacity() *
-				sizeof(std::uint32_t);
-	return bytes;
 }
 
 }

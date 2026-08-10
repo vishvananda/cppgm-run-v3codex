@@ -867,8 +867,9 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	const std::vector<std::uint32_t>& identity_offsets =
 		FunctionTemplateNeedsPartitionIdentity(pattern.parameters) ?
 			parameter_offsets : no_identity_offsets;
-	const TemplateSpecializationKey request_key(
-		index, arguments, identity_offsets);
+	const TemplateSpecializationKey request_key =
+		CanonicalTemplateSpecializationKey(
+			index, arguments, identity_offsets);
 	BindingId old = template_instantiations_.Find(request_key);
 	if (old != kNoBinding)
 	{
@@ -962,8 +963,9 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 		}
 		BindTemplateArgument(default_scope, parameter, argument);
 	}
-	const TemplateSpecializationKey cache_key(
-		index, completed, identity_offsets);
+	const TemplateSpecializationKey cache_key =
+		CanonicalTemplateSpecializationKey(
+			index, completed, identity_offsets);
 	if (completed != arguments)
 	{
 		old = template_instantiations_.Find(cache_key);
@@ -1020,6 +1022,7 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 		pattern, binding, member_owner, parsed.type);
 	if (binding_record.template_argument_count == 0)
 		StoreTemplateArguments(completed,
+			&binding_record.template_argument_list,
 			&binding_record.template_argument_begin,
 			&binding_record.template_argument_count);
 	ValidateFunctionRefQualifier(binding);

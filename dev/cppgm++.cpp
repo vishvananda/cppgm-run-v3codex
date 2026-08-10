@@ -631,6 +631,18 @@ int run_emit_semantics_mode(const vector<string> & args)
            << stats.template_specialization_requests
            << " template_specialization_cache_hits="
            << stats.template_specialization_cache_hits
+		   << " template_argument_list_requests="
+		   << stats.template_argument_list_requests
+		   << " template_argument_list_cache_hits="
+		   << stats.template_argument_list_cache_hits
+		   << " template_argument_list_index_probes="
+		   << stats.template_argument_list_index_probes
+		   << " template_partition_requests="
+		   << stats.template_partition_requests
+		   << " template_partition_cache_hits="
+		   << stats.template_partition_cache_hits
+		   << " template_partition_index_probes="
+		   << stats.template_partition_index_probes
 		   << " template_partial_candidates="
 		   << stats.template_partial_candidates
 		   << " template_partial_order_comparisons="
@@ -790,6 +802,18 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << semantic.template_specialization_requests
 			 << " template_specialization_cache_hits="
 			 << semantic.template_specialization_cache_hits
+			 << " template_argument_list_requests="
+			 << semantic.template_argument_list_requests
+			 << " template_argument_list_cache_hits="
+			 << semantic.template_argument_list_cache_hits
+			 << " template_argument_list_index_probes="
+			 << semantic.template_argument_list_index_probes
+			 << " template_partition_requests="
+			 << semantic.template_partition_requests
+			 << " template_partition_cache_hits="
+			 << semantic.template_partition_cache_hits
+			 << " template_partition_index_probes="
+			 << semantic.template_partition_index_probes
 			 << " template_partial_candidates="
 			 << semantic.template_partial_candidates
 			 << " template_partial_order_comparisons="

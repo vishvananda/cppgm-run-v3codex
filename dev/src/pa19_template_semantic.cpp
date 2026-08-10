@@ -2389,7 +2389,8 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 	if (!has_pack && supplied_arguments.size() > pattern.parameters.size())
 		return kNoBinding;
 	++template_specialization_requests_;
-	const TemplateSpecializationKey request_key(index, supplied_arguments);
+	const TemplateSpecializationKey request_key = CanonicalTemplateSpecializationKey(
+		index, supplied_arguments);
 	BindingId old = class_template_instantiations_.Find(request_key);
 	if (old != kNoBinding)
 	{
@@ -2427,9 +2428,7 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 			return kNoBinding;
 	ScopeId argument_scope = kNoScope;
 	if (arguments.size() < fixed)
-	{
 		argument_scope = BindClassTemplateArguments(pattern, arguments);
-	}
 	for (std::size_t i = arguments.size(); i < fixed; ++i)
 	{
 		const TemplateParameter& parameter = pattern.parameters[i];
@@ -2478,8 +2477,8 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 		arguments.push_back(argument);
 		BindTemplateArgument(argument_scope, parameter, argument);
 	}
-
-	const TemplateSpecializationKey key(index, arguments);
+	const TemplateSpecializationKey key = CanonicalTemplateSpecializationKey(
+		index, arguments);
 	old = class_template_instantiations_.Find(key);
 	if (old != kNoBinding)
 	{
@@ -2509,6 +2508,7 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 		const BindingId binding = program_->AddBinding(pattern.owner,
 			BIND_TYPE, name, type, false, 0, NAMED_TYPENAME_PARAMETER);
 		StoreTemplateArguments(arguments,
+			&program_->entities[entity].template_argument_list,
 			&program_->entities[entity].template_argument_begin,
 			&program_->entities[entity].template_argument_count);
 		program_->entities[entity].template_argument_pack_begin =
@@ -2528,7 +2528,6 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 		PublishClassTemplateFriendGrants(pattern, entity);
 		return binding;
 	}
-
 	FunctionTemplateDeduction partial_bindings(pattern.parameters);
 	const std::size_t selected_partial = SelectClassTemplatePartial(
 		pattern, arguments, &partial_bindings);
@@ -2581,6 +2580,7 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 		!ClassTemplateArgumentsAreLayoutReady(*program_, arguments);
 	if (specialization.template_argument_begin == kNoBinding)
 		StoreTemplateArguments(arguments,
+			&specialization.template_argument_list,
 			&specialization.template_argument_begin,
 			&specialization.template_argument_count);
 	const BindingId binding = program_->entities[entity].declaration;
