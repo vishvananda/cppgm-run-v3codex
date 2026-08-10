@@ -325,10 +325,22 @@ void SemanticAnalyzer::AppendConstructorTemplateCandidates(
 			patterns.push_back((*indexed)[i]);
 	std::vector<BindingId> specializations;
 	DeduceFunctionTemplatePatterns(patterns, arguments, &specializations);
+	std::vector<BindingId> inherited_sources;
 	for (std::size_t i = 0; i < specializations.size(); ++i)
-		if (std::find(candidates->begin(), candidates->end(),
+	{
+		const EntityId source = EntityOf(
+			GetFunction(specializations[i]).member_owner);
+		if (source != entity)
+			inherited_sources.push_back(specializations[i]);
+		else if (std::find(candidates->begin(), candidates->end(),
 			specializations[i]) == candidates->end())
 			candidates->push_back(specializations[i]);
+	}
+	const std::size_t first_inherited = entity_constructors_[entity].size();
+	InheritConstructors(entity, inherited_sources);
+	for (std::size_t i = first_inherited;
+		i < entity_constructors_[entity].size(); ++i)
+		candidates->push_back(entity_constructors_[entity][i]);
 }
 
 void SemanticAnalyzer::PublishFunctionTemplateFriendGrants(

@@ -2494,24 +2494,8 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 			FindFunctionTemplates(scope, target);
 	if (!functions.empty() || !template_patterns.empty())
 	{
-		if (!functions.empty() && template_patterns.empty() &&
-			class_owner != kNoEntity &&
-			program_->entities[class_owner].direct_base != kNoEntity)
-		{
-			const EntityId base = program_->entities[class_owner].direct_base;
-			bool constructor_set = using_target_owner ==
-				program_->entities[base].member_scope &&
-				(name == program_->entities[base].identity_name ||
-				 names_owner_alias);
-			for (std::size_t i = 0; i < functions.size(); ++i)
-				constructor_set = constructor_set &&
-					GetFunction(functions[i]).constructor;
-			if (constructor_set)
-			{
-				InheritConstructors(class_owner, functions);
-				return;
-			}
-		}
+		if (TryInheritConstructors(class_owner, scope, using_target_owner,
+			name, names_owner_alias, functions, template_patterns)) return;
 		const std::uint64_t key =
 			(static_cast<std::uint64_t>(scope) << 32) | name;
 		CompactIndexSequence& template_aliases =

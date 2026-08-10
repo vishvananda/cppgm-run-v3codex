@@ -949,6 +949,10 @@ private:
 	std::size_t RequestedAlignment(NodeId node, ScopeId scope);
 	void InheritConstructors(EntityId entity,
 		const std::vector<BindingId>& constructors);
+	bool TryInheritConstructors(EntityId entity, ScopeId scope,
+		ScopeId target_owner, NameId target_name, bool names_owner_alias,
+		const std::vector<BindingId>& constructors,
+		const std::vector<std::size_t>& template_patterns);
 	BindingId EnsureConstructorBaseEntry(BindingId constructor);
 	BindingId EnsureDestructorBaseEntry(BindingId destructor);
 	void EnsureStaticMemberStorage(BindingId member,

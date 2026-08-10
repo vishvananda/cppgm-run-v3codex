@@ -187,6 +187,18 @@ std::string CanonicalTemplateArgumentPresentation(const Program& program,
 		argument.kind == TEMPLATE_ARGUMENT_TEMPLATE)
 	{
 		const TypeRecord& type = program.types.Get(argument.type);
+		if (type.kind == TYPE_QUALIFIED)
+		{
+			// Keep specialization presentation in declarator order.  Program
+			// diagnostics render cv-qualification as a prefix, but emission
+			// identities historically spell a template argument as `T const`
+			// (and `T volatile`), matching the source/ABI-facing convention.
+			std::string result = TemplateArgumentTypeName(
+				program.RenderType(type.child));
+			if ((type.cv & CV_CONST) != 0) result += " const";
+			if ((type.cv & CV_VOLATILE) != 0) result += " volatile";
+			return result;
+		}
 		if (type.kind == TYPE_FUNCTION)
 		{
 			std::string result = TemplateArgumentTypeName(

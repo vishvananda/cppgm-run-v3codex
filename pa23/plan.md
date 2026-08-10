@@ -15,29 +15,26 @@ not rediscover template semantics.
 
 ## Current Failure Map
 
-Current result is 263/401, up from the turn baseline of 255/401 and stage
-baseline of 223/401 with no regressions. The remaining 138 failures group by
-primary owner and observed kind: call/address/constructor deduction (`100-*`:
-17 exits, 2 LowIR), typed partial ordering (`200-*`: 2 exits, 1 LowIR),
-immediate substitution and demand (`300-*`: 66 exits, 9 LowIR), canonical
-non-type/conversion arguments (`400-*`: 18 exits, 1 LowIR), and composed
-lookup/alias/class paths (`500-*`:
-13 exits, 9 LowIR).
+Current result is 266/401, up from the turn baseline of 263 and stage baseline
+of 223 with no regressions; all `200-*` tests pass. The remaining 135 failures
+group by primary owner and observed kind: call/address/constructor deduction
+(`100-*`: 17 exits, 2 LowIR), immediate substitution and demand (`300-*`: 66
+exits, 9 LowIR), canonical non-type/conversion arguments (`400-*`: 18 exits,
+1 LowIR), and composed lookup/alias/class paths (`500-*`: 13 exits, 9 LowIR).
 
 ## Active Checkpoint
 
-The final three `200-*` failures share the member-template candidate lifecycle:
-inherited-constructor publication, member-operator ordering through dependent
-aliases, and canonical virtual-member emission. N3485 10.3, 12.9, 14.7.1,
-14.8.2.4, and 14.8.3 require inherited declarations to retain their template
-owner and forwarding shape, typed aliases to constrain partial ordering, and
-selected virtual definitions to demand one canonical specialization. Class
-specializations own member publication and base/using edges; deduction owns
-candidate-local bindings; overload resolution records the winner; demand owns
-definition and vtable emission. Expected work is O(inherited edges plus
-candidate shape nodes), O(1)-average canonical lookup, and one emission per
-selected binding. Validate all three failures, the complete passing `200-*`
-set, PA1-PA22, and audit; measure doubled inherited/member candidate sets.
+The remaining `100-*` failures share the first deduction boundary: explicit
+template-id calls/addresses, overload-set arguments, and array/braced/pack
+parameter shapes. N3485 14.8.1, 14.8.2.1, 14.8.2.5, and 14.8.3 require explicit
+arguments to seed one candidate-local frame before argument deduction, with
+non-deduced contexts and overload sets resolved before specialization demand.
+Retained template patterns own syntax and lexical scope; candidate collection
+owns viable declarations; deduction owns fixed/pack bindings; overload owns
+selection; demand and lowering consume only the winner. Expected work is
+O(candidate shape nodes plus participating pack elements), with O(1)-average
+specialization lookup. Validate representative call/address/array groups, all
+`100-*`, PA1-PA22, and audit; measure doubled candidate and pack shapes.
 
 ## Performance Evidence
 
@@ -47,9 +44,11 @@ For 64/128/256 repeated concrete default requests, specialization requests are
 of 16/32/64, deduction visits are 51/99/195, requests 53/101/197, peak memory
 0.19/0.31/0.54 MB, and time 0.96/1.31/2.04 ms. Incremental dependency tracking,
 identity caches, work, and storage scale linearly. Earlier pack, overload, and
-retained-partial probes also scaled linearly. Final gates are PA1-PA22
-2,639/2,639, PA23 263/401, zero regressions, and audit pass with 13 inherited
-warnings.
+retained-partial probes also scaled linearly. For 256 inherited-constructor
+calls over 16/32/64 template candidates, wall time is 0.03/0.04/0.06 s and peak
+RSS is 9.3/9.7/10.5 MB, consistent with linear candidate-set growth. Final
+gates are PA1-PA22 2,639/2,639, PA23 266/401, zero regressions, and audit pass
+with 13 inherited warnings.
 
 ## Completed Checkpoints
 
@@ -62,3 +61,4 @@ warnings.
 | Concrete replay of retained class-partial type arguments | Dependent alias/`void_t`/array/`decltype` patterns replay after deduction; builtin invoke preserves call result facts, hard body errors escape SFINAE, and candidate result formation is demand-driven; 223 -> 248, no regressions, linear replay scaling. |
 | Typed function-pack deduction and partial ordering | Inner/trailing/empty/repeated packs, active defaulted tails, and direct `T&`/forwarding-`T&&` ordering pass; 248 -> 255, seven gains, no regressions, linear pack/candidate scaling. |
 | Dependent class defaults and lazy type identity | Symbolic defaults retain canonical non-deduced facts, aliases avoid eager layout, explicit uses demand completion, re-entrant layout retains stable owners (ASan-clean), and typed ordering selects correctly; 255 -> 263, eight gains, no regressions, linear scaling. |
+| Inherited member-template ordering and virtual emission | Constructor-template using edges synthesize derived wrappers, exact reference ranks expose typed partial ordering, and canonical RTTI/vtable symbols emit once; all 46 `200-*` pass, 263 -> 266, no regressions, linear candidate scaling. |

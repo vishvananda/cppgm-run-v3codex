@@ -195,19 +195,41 @@ private:
 			program_, program_.entities[entity].type);
 	}
 
-	SymbolId AddPolymorphicGlobal(const std::string& name)
+	bool VtableHasWeakLinkage(EntityId entity) const
+	{
+		const EntityRecord& owner = program_.entities[entity];
+		if (owner.template_argument_count != 0 ||
+			IsFunctionLocalEntity(program_, entity)) return true;
+		const ClassPolymorphismFacts& facts =
+			graph_.class_polymorphism[entity];
+		for (std::size_t slot = 0; slot < facts.slots.size(); ++slot)
+		{
+			const BindingRecord& function = program_.bindings[
+				facts.slots[slot].function];
+			if (function.pure_virtual || function.inline_function) continue;
+			// A non-inline key function uniquely owns an ordinary class's
+			// vtable.  Template specializations remain vague-linkage entities.
+			return function.weak_odr;
+		}
+		return true;
+	}
+
+	SymbolId AddPolymorphicGlobal(const std::string& name,
+		const std::string& object_name, bool weak)
 	{
 		const SymbolId symbol = AddSyntheticSymbol(
-			Symbol::GLOBAL_SYMBOL, name, std::string(), false);
+			Symbol::GLOBAL_SYMBOL, name, object_name, false);
+		output_.symbols[symbol].weak_linkage = weak;
 		output_.symbols[symbol].definition_emitted = true;
 		output_.symbols[symbol].referenced = true;
 		return symbol;
 	}
 
-	SymbolId AddExternalRtti(const std::string& name)
+	SymbolId AddExternalRtti(const std::string& name,
+		const std::string& object_name)
 	{
 		const SymbolId symbol = AddSyntheticSymbol(
-			Symbol::GLOBAL_SYMBOL, name, std::string(), false);
+			Symbol::GLOBAL_SYMBOL, name, object_name, false);
 		output_.symbols[symbol].declaration_emitted = true;
 		output_.symbols[symbol].referenced = true;
 		GlobalDeclaration declaration;
@@ -267,8 +289,9 @@ private:
 				state_.class_rtti_demanded[dependency] = 1;
 				dependency = program_.entities[dependency].direct_base;
 			}
-			state_.class_vtable_symbols[entity] =
-				AddPolymorphicGlobal(VtableName(entity));
+			state_.class_vtable_symbols[entity] = AddPolymorphicGlobal(
+				VtableName(entity), "_ZTV" + TypeInfoEncoding(entity),
+				VtableHasWeakLinkage(entity));
 			for (std::size_t slot = 0; slot < facts.slots.size(); ++slot)
 			{
 				if (program_.bindings[facts.slots[slot].function].pure_virtual)
@@ -310,21 +333,25 @@ private:
 			const std::string stem = local.empty() ? ClassStem(entity) : local;
 			const std::string flavor = local.empty() ?
 				ClassFlavor(entity) : "type";
+			const std::string encoding = TypeInfoEncoding(entity);
 			state_.class_type_name_symbols[entity] = AddPolymorphicGlobal(
 				(local.empty() ? "__typeinfo_name__" : "__typeinfo_name_") +
-				flavor + "_" + stem);
+				flavor + "_" + stem, "_ZTS" + encoding, true);
 			state_.class_rtti_symbols[entity] = AddPolymorphicGlobal(
-				"__rtti_" + flavor + "_" + stem);
+				"__rtti_" + flavor + "_" + stem, "_ZTI" + encoding, true);
 		}
 		if (need_root_rtti)
 			state_.rtti_class_symbol = AddExternalRtti(
-				"__external_rtti_vtable____class_type_info");
+				"__external_rtti_vtable____class_type_info",
+				"_ZTVN10__cxxabiv117__class_type_infoE");
 		if (need_si_rtti)
 			state_.rtti_si_symbol = AddExternalRtti(
-				"__external_rtti_vtable____si_class_type_info");
+				"__external_rtti_vtable____si_class_type_info",
+				"_ZTVN10__cxxabiv120__si_class_type_infoE");
 		if (need_vmi_rtti)
 			state_.rtti_vmi_symbol = AddExternalRtti(
-				"__external_rtti_vtable____vmi_class_type_info");
+				"__external_rtti_vtable____vmi_class_type_info",
+				"_ZTVN10__cxxabiv121__vmi_class_type_infoE");
 	}
 
 	void AddAddressItem(Global* global, SymbolId symbol, std::int64_t offset = 0)

@@ -385,8 +385,9 @@ ConversionRank SemanticAnalyzer::Conversion(TypeId source,
 			const std::uint8_t target_cv = target_top.kind == TYPE_QUALIFIED ?
 				target_top.cv : CV_NONE;
 			if ((source_cv & ~target_cv) != 0) return CONVERSION_INVALID;
-			return lvalue_reference && category != VALUE_LVALUE ?
-				CONVERSION_STANDARD : CONVERSION_EXACT;
+			// Same-type temporary materialization changes representation, not
+			// the exact-match rank of a const lvalue-reference binding.
+			return CONVERSION_EXACT;
 		}
 		if (QualificationConversion(EffectiveType(source), target_record.child))
 			return !lvalue_reference && category == VALUE_LVALUE ?

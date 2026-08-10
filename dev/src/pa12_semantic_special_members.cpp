@@ -92,6 +92,40 @@ void SemanticAnalyzer::InheritConstructors(EntityId entity,
 	}
 }
 
+bool SemanticAnalyzer::TryInheritConstructors(EntityId entity, ScopeId scope,
+	ScopeId target_owner, NameId target_name, bool names_owner_alias,
+	const std::vector<BindingId>& constructors,
+	const std::vector<std::size_t>& template_patterns)
+{
+	if (entity == kNoEntity ||
+		program_->entities[entity].direct_base == kNoEntity) return false;
+	const EntityId base = program_->entities[entity].direct_base;
+	bool constructor_set =
+		target_owner == program_->entities[base].member_scope &&
+		(target_name == program_->entities[base].identity_name ||
+		 names_owner_alias);
+	for (std::size_t i = 0; i < constructors.size(); ++i)
+		constructor_set = constructor_set &&
+			GetFunction(constructors[i]).constructor;
+	for (std::size_t i = 0; i < template_patterns.size(); ++i)
+		constructor_set = constructor_set &&
+			template_patterns[i] < function_templates_.size() &&
+			function_templates_[template_patterns[i]].constructor_template;
+	if (!constructor_set) return false;
+
+	InheritConstructors(entity, constructors);
+	const NameId derived_name = program_->entities[entity].identity_name;
+	const std::uint64_t key =
+		(static_cast<std::uint64_t>(scope) << 32) | derived_name;
+	CompactIndexSequence& inherited = template_function_sets_.Ensure(key);
+	for (std::size_t i = 0; i < template_patterns.size(); ++i)
+		if (!inherited.Contains(template_patterns[i]))
+			inherited.Push(template_patterns[i]);
+	if (!template_patterns.empty())
+		program_->PublishFunctionTemplateName(scope, derived_name);
+	return true;
+}
+
 BindingId SemanticAnalyzer::EnsureConstructorBaseEntry(BindingId constructor)
 {
 	constructor = program_->bindings[constructor].canonical;
