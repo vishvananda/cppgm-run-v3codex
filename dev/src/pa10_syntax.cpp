@@ -1384,7 +1384,7 @@ NodeId Parser::ParsePrimaryExpression()
 			At(KW_STRUCT) || At(KW_CLASS) || At(KW_UNION) ||
 			(position_ < tokens_.size() &&
 			 IsFundamentalKind(tokens_[position_].Kind())) ||
-			IsLikelyTypeIdentifier(position_);
+			IsLikelyTypeIdentifier(position_) || QualifiedStartsType();
 		if (type_like && ParseTypeId(cast) && Match(OP_RPAREN) &&
 			!At(OP_SEMICOLON) && !At(OP_COMMA) && !At(OP_RPAREN) &&
 			!At(OP_RSQUARE) && !At(OP_COLON))

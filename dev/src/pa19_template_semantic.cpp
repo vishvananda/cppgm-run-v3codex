@@ -36,6 +36,39 @@ bool ClassTemplateArgumentsAreLayoutReady(const Program& program,
 	return true;
 }
 
+bool TypeContainsDependentTemplateShape(const Program& program, TypeId type,
+	std::size_t depth)
+{
+	if (type == kNoType || depth > program.types.Size()) return true;
+	type = program.types.RemoveTopCv(type);
+	const TypeRecord& record = program.types.Get(type);
+	if (record.kind == TYPE_POINTER || record.kind == TYPE_LVALUE_REFERENCE ||
+		record.kind == TYPE_RVALUE_REFERENCE || record.kind == TYPE_ARRAY ||
+		record.kind == TYPE_MEMBER_POINTER)
+		return TypeContainsDependentTemplateShape(
+			program, record.child, depth + 1);
+	if (record.kind != TYPE_NAMED) return false;
+	const EntityRecord& entity = program.entities[record.entity];
+	if (entity.flavor == NAMED_TYPENAME_PARAMETER ||
+		entity.flavor == NAMED_TEMPLATE_PARAMETER) return true;
+	const std::size_t first = entity.template_argument_begin;
+	const std::size_t count = entity.template_argument_count;
+	if (first == kNoBinding) return false;
+	if (first > program.canonical_template_arguments.size() ||
+		count > program.canonical_template_arguments.size() - first)
+		return true;
+	for (std::size_t i = 0; i < count; ++i)
+	{
+		const TemplateArgument& argument =
+			program.canonical_template_arguments[first + i];
+		if (argument.IsDependent()) return true;
+		if (argument.kind == TEMPLATE_ARGUMENT_TYPE &&
+			TypeContainsDependentTemplateShape(
+				program, argument.type, depth + 1)) return true;
+	}
+	return false;
+}
+
 bool ClassTemplateArgumentsAllowPartialSelection(const Program& program,
 	const std::vector<TemplateArgument>& arguments)
 {
@@ -48,12 +81,14 @@ bool ClassTemplateArgumentsAllowPartialSelection(const Program& program,
 		if (record.kind != TYPE_NAMED) continue;
 		const EntityRecord& entity = program.entities[record.entity];
 		if (entity.complete) continue;
-		// Shape parameters and deferred dependent specializations are not
-		// complete keys. An ordinary forward-declared class is nevertheless a
-		// valid actual argument for partial-specialization matching.
+		// Shape parameters and specializations whose stored arguments are still
+		// dependent are not complete keys.  Completion itself is not required:
+		// a concrete specialization preserves a stable head and argument list.
 		if (entity.flavor == NAMED_TYPENAME_PARAMETER ||
 			entity.flavor == NAMED_TEMPLATE_PARAMETER ||
-			entity.deferred_template_completion) return false;
+			(entity.deferred_template_completion &&
+			 TypeContainsDependentTemplateShape(program, argument, 0)))
+			return false;
 	}
 	return true;
 }
@@ -1490,6 +1525,8 @@ void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
 				refreshed.pack_arguments);
 			selection->bindings.pack_deduction_positions.swap(
 				refreshed.pack_deduction_positions);
+			selection->bindings.pack_deduction_started.swap(
+				refreshed.pack_deduction_started);
 			selection->revision = selected.revision;
 		}
 		const FunctionTemplateDeduction& bindings = selection->bindings;
@@ -1941,16 +1978,19 @@ bool SemanticAnalyzer::DeduceTemplatePartialType(TypeId pattern,
 		{
 			const std::size_t prior_size =
 				deduced->pack_arguments[pack_parameter].size();
+			const bool prior_started =
+				deduced->pack_deduction_started[pack_parameter] != 0;
 			deduced->pack_deduction_positions[pack_parameter] = 0;
 			for (std::size_t i = fixed_parameters;
 				i < argument_record.parameter_count; ++i)
 				if (!DeduceTemplatePartialType(
 					pattern_types[pattern_record.parameter_count - 1],
 					argument_types[i], parameters, deduced)) return false;
-			if ((prior_size != 0 &&
+			if ((prior_started &&
 				 deduced->pack_arguments[pack_parameter].size() != prior_size) ||
 				deduced->pack_deduction_positions[pack_parameter] !=
 					deduced->pack_arguments[pack_parameter].size()) return false;
+			deduced->pack_deduction_started[pack_parameter] = 1;
 		}
 		return true;
 	}
@@ -2039,6 +2079,8 @@ bool SemanticAnalyzer::DeduceTemplatePartialType(TypeId pattern,
 					argument_owner.template_argument_count - remaining;
 				const std::size_t prior_size =
 					deduced->pack_arguments[dependent].size();
+				const bool prior_started =
+					deduced->pack_deduction_started[dependent] != 0;
 				deduced->pack_deduction_positions[dependent] = 0;
 				while (argument_index < last)
 					if (!DeduceTemplatePartialArgument(item,
@@ -2046,10 +2088,11 @@ bool SemanticAnalyzer::DeduceTemplatePartialType(TypeId pattern,
 							argument_owner.template_argument_begin +
 							argument_index++), parameters,
 						deduced)) return false;
-				if ((prior_size != 0 &&
+				if ((prior_started &&
 					 deduced->pack_arguments[dependent].size() != prior_size) ||
 					deduced->pack_deduction_positions[dependent] !=
 						deduced->pack_arguments[dependent].size()) return false;
+				deduced->pack_deduction_started[dependent] = 1;
 				++pattern_index;
 				continue;
 			}
@@ -2108,10 +2151,20 @@ bool SemanticAnalyzer::MatchTemplatePartialArguments(
 				pattern_arguments.size() - pattern_index - 1;
 			if (argument_index + remaining > arguments.size()) return false;
 			const std::size_t last = arguments.size() - remaining;
+			const std::size_t prior_size =
+				bindings->pack_arguments[dependent].size();
+			const bool prior_started =
+				bindings->pack_deduction_started[dependent] != 0;
+			bindings->pack_deduction_positions[dependent] = 0;
 			while (argument_index < last)
 				if (!DeduceTemplatePartialArgument(item,
 					arguments[argument_index++], parameters, bindings))
 					return false;
+			if ((prior_started &&
+				 bindings->pack_arguments[dependent].size() != prior_size) ||
+				bindings->pack_deduction_positions[dependent] !=
+					bindings->pack_arguments[dependent].size()) return false;
+			bindings->pack_deduction_started[dependent] = 1;
 			++pattern_index;
 			continue;
 		}
@@ -2470,6 +2523,8 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 			partial_bindings.pack_arguments);
 		selection.bindings.pack_deduction_positions.swap(
 			partial_bindings.pack_deduction_positions);
+		selection.bindings.pack_deduction_started.swap(
+			partial_bindings.pack_deduction_started);
 	}
 	if (ClassTemplateArgumentsAreLayoutReady(*program_, arguments))
 		CompleteClassTemplateSpecialization(index, binding, arguments);

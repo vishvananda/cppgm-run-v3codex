@@ -241,7 +241,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 				sizeof(TemplateArgument) +
 			bindings.pack_arguments.capacity() *
 				sizeof(std::vector<TemplateArgument>) +
-			bindings.pack_deduction_positions.capacity() * sizeof(std::size_t);
+			bindings.pack_deduction_positions.capacity() * sizeof(std::size_t) +
+			bindings.pack_deduction_started.capacity() * sizeof(std::uint8_t);
 		for (std::size_t pack = 0;
 			pack < bindings.pack_arguments.size(); ++pack)
 			bytes += bindings.pack_arguments[pack].capacity() *

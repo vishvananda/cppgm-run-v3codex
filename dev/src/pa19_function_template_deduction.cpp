@@ -422,9 +422,35 @@ bool SemanticAnalyzer::DeduceFunctionTemplatePackType(TypeId pattern,
 			return false;
 		const std::uint32_t class_pattern =
 			class_template_pattern_by_entity_[pattern_entity];
-		if (class_pattern == kNoDumpEdge || class_pattern >= class_templates_.size())
+		const std::uint32_t argument_pattern =
+			class_template_pattern_by_entity_[argument_entity];
+		if (class_pattern == kNoDumpEdge || argument_pattern == kNoDumpEdge ||
+			class_pattern >= class_templates_.size() ||
+			argument_pattern >= class_templates_.size())
 			return false;
-		if (class_pattern != class_template_pattern_by_entity_[argument_entity])
+		const ClassTemplatePattern& pattern_template =
+			class_templates_[class_pattern];
+		if (pattern_template.template_parameter_proxy)
+		{
+			const std::size_t ordinal =
+				pattern_template.template_parameter_ordinal;
+			if (ordinal >= parameters.size() ||
+				parameters[ordinal].kind != TEMPLATE_ARGUMENT_TEMPLATE)
+				return false;
+			const ClassTemplatePattern& argument_template =
+				class_templates_[argument_pattern];
+			if (!TemplateTemplateParameterMatches(
+				parameters[ordinal].template_parameters,
+				argument_template.parameters)) return false;
+			if (!DeduceFunctionTemplatePackArgument(
+				TemplateArgument(TEMPLATE_ARGUMENT_TEMPLATE,
+					program_->entities[pattern_template.marker_entity].type,
+					0, static_cast<std::uint32_t>(ordinal)),
+				TemplateArgument(TEMPLATE_ARGUMENT_TEMPLATE,
+					program_->entities[argument_template.marker_entity].type),
+				parameters, deduced)) return false;
+		}
+		else if (class_pattern != argument_pattern)
 		{
 			const EntityRecord& derived = program_->entities[argument_entity];
 			for (std::size_t base = 0; base < derived.direct_base_count; ++base)
@@ -454,7 +480,7 @@ bool SemanticAnalyzer::DeduceFunctionTemplatePackType(TypeId pattern,
 			StoredTemplateArguments(argument_owner.template_argument_begin,
 				argument_owner.template_argument_count);
 		const std::vector<TemplateParameter>& class_parameters =
-			class_templates_[class_pattern].parameters;
+			pattern_template.parameters;
 		std::size_t pattern_index = 0, argument_index = 0;
 		while (pattern_index < pattern_arguments.size())
 		{
@@ -489,15 +515,18 @@ bool SemanticAnalyzer::DeduceFunctionTemplatePackType(TypeId pattern,
 				const std::size_t last = argument_arguments.size() - remaining;
 				const std::size_t prior_size =
 					deduced->pack_arguments[dependent].size();
+				const bool prior_started =
+					deduced->pack_deduction_started[dependent] != 0;
 				deduced->pack_deduction_positions[dependent] = 0;
 				while (argument_index < last)
 					if (!DeduceFunctionTemplatePackArgument(pattern_argument,
 						argument_arguments[argument_index++], parameters,
 						deduced)) return false;
-				if ((prior_size != 0 &&
+				if ((prior_started &&
 					 deduced->pack_arguments[dependent].size() != prior_size) ||
 					deduced->pack_deduction_positions[dependent] !=
 						deduced->pack_arguments[dependent].size()) return false;
+				deduced->pack_deduction_started[dependent] = 1;
 				++pattern_index;
 				continue;
 			}

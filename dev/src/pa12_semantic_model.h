@@ -849,12 +849,14 @@ struct FunctionTemplateDeduction
 	std::vector<TemplateArgument> fixed_arguments;
 	std::vector<std::vector<TemplateArgument> > pack_arguments;
 	std::vector<std::size_t> pack_deduction_positions;
+	std::vector<std::uint8_t> pack_deduction_started;
 
 	FunctionTemplateDeduction() {}
 	explicit FunctionTemplateDeduction(
 		const std::vector<TemplateParameter>& parameters)
 		: fixed_arguments(parameters.size()), pack_arguments(parameters.size()),
-		  pack_deduction_positions(parameters.size(), 0)
+		  pack_deduction_positions(parameters.size(), 0),
+		  pack_deduction_started(parameters.size(), 0)
 	{
 		for (std::size_t i = 0; i < parameters.size(); ++i)
 			fixed_arguments[i].kind = parameters[i].kind;
