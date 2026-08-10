@@ -1297,7 +1297,6 @@ NodeId Parser::ParseBracedInitList()
 	Expect(OP_RBRACE);
 	return list;
 }
-
 NodeId Parser::ParsePackExpansion(NodeId value)
 {
 	if (!Match(OP_DOTS)) return value;
@@ -1568,24 +1567,25 @@ NodeId Parser::ParseUnaryExpression()
 		}
 		Expect(OP_LPAREN);
 		bool prefer_type = kind == KW_ALIGNOF;
-		if (At(KW_CONST) || At(KW_VOLATILE) || At(KW_DECLTYPE))
-			prefer_type = true;
+		if (At(KW_CONST) || At(KW_VOLATILE) || At(KW_DECLTYPE)) prefer_type = true;
 		if (At(KW_STRUCT) || At(KW_CLASS) || At(KW_UNION) ||
-			(position_ < tokens_.size() &&
-			 IsFundamentalKind(tokens_[position_].Kind()))) prefer_type = true;
+			(position_ < tokens_.size() && IsFundamentalKind(
+				tokens_[position_].Kind()))) prefer_type = true;
 		if (AtIdentifier() && (IsLikelyTypeIdentifier(position_) ||
 			(AtOffset(1, OP_LT) && HasNameFact(tokens_[position_].spelling,
 				kKnownTemplate))) &&
-			!AtOffset(1, OP_LPAREN) &&
-			(!AtOffset(1, OP_COLON2) || QualifiedStartsType()))
-			prefer_type = true;
+			!AtOffset(1, OP_LPAREN) && (!AtOffset(1, OP_COLON2) ||
+				QualifiedStartsType())) prefer_type = true;
 		if (kind == KW_NOEXCEPT) prefer_type = false;
-		if (prefer_type)
-		{
-			if (!ParseTypeId(trait)) throw Error("expected trait type-id");
+		if (prefer_type) {
+			const Mark type_mark = Checkpoint();
+			if (!ParseTypeId(trait) || !At(OP_RPAREN)) {
+				Rollback(type_mark); const NodeId operand = ParseExpression();
+				if (operand == kNoNode) throw Error("expected trait operand");
+				arena_.Add(trait, operand);
+			}
 		}
-		else
-		{
+		else {
 			const NodeId operand = ParseExpression();
 			if (operand == kNoNode) throw Error("expected trait operand");
 			arena_.Add(trait, operand);

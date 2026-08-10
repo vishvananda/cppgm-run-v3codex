@@ -662,9 +662,25 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 				if (pattern.parameters[parameter].pack)
 					has_template_parameter_pack = true;
 			std::vector<TemplateArgument> arguments;
-			if (!has_template_parameter_pack && BuildTemplateArguments(
-				pattern.parameters, explicit_syntax,
-				scope, pattern.lexical_scope, &arguments))
+			bool built_arguments = false;
+			if (!has_template_parameter_pack)
+			{
+				try
+				{
+					built_arguments = BuildTemplateArguments(
+						pattern.parameters, explicit_syntax,
+						scope, pattern.lexical_scope, &arguments);
+				}
+				catch (const std::runtime_error&)
+				{
+					// Explicit arguments and defaults are substituted per
+					// candidate.  An invalid immediate type or expression drops
+					// this candidate; overload resolution diagnoses only if no
+					// viable candidate remains.
+					built_arguments = false;
+				}
+			}
+			if (built_arguments)
 			{
 				const BindingId candidate = InstantiateFunctionTemplate(
 					patterns[i], arguments);

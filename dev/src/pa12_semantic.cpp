@@ -1132,6 +1132,12 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 					&(*argument_conversions)[a] : 0);
 			constexpr_arguments.push_back(argument);
 		}
+		else if (IsClassObjectType(argument.type))
+		{
+			if (dump_.nodes[argument.node].kind != DUMP_TEMPORARY_OBJECT)
+				argument = MaterializeTemporary(argument);
+			dump_.nodes[argument.node].argument_materialization = true;
+		}
 		dump_.Add(call, argument.node);
 	}
 	for (std::size_t a = arguments.size();

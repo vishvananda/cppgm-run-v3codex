@@ -20,42 +20,42 @@ request keys contain canonical arguments and required pack partitions.
 
 ## Current Failure Map
 
-Current handout result: 210/400 pass; 190 fail (169 false rejections, 1 false
-acceptance, 20 LowIR mismatches), with seven gains and no regressions from the
-203/400 audit baseline. The course audit regression is 1/1.
+Current result: 223/401 pass: 222/400 handout tests plus the 1/1 course audit;
+178 handout tests fail (156 false rejections, 1 false acceptance, 21 LowIR
+mismatches), with 19 gains and no regressions from the 203/400 audit baseline.
 The remaining failures group by primary owner: core call/address/constructor
-deduction (`100-*`: 22), partial ordering over typed patterns (`200-*`: 13),
-SFINAE/dependent replay and demand (`300-*`: 107), canonical non-type arguments
+deduction (`100-*`: 21), partial ordering over typed patterns (`200-*`: 13),
+SFINAE/dependent replay and demand (`300-*`: 97), canonical non-type arguments
 and conversion deduction (`400-*`: 20), and composed lookup/alias/class paths
-(`500-*`: 28).
+(`500-*`: 27).
 
 ## Active Checkpoint
 
-Represent dependent `decltype` and unevaluated call validity as typed
-candidate-local substitution. N3485 14.8.2 paragraphs 7-8 require lexical
-substitution through general expressions and make only invalid immediate
-function-type expressions deduction failures. Expression analysis owns the
-typed result or invalid-substitution status; indexed overload lookup owns call
-candidates; function-template replay consumes the result without demanding an
-unselected body. Retain expression syntax only until its concrete binding
-overlay exists, then cache by canonical specialization plus expression node.
-Work must be O(retained expression nodes plus participating indexed candidates).
-Start with `300-decltype-default-type-arg-construction-sfinae`, the invalid
-operator probes, and dependent call/return replay groups. The still-failing
-`100-defaulted-nontype-deduction-overrides-default` belongs here because
-deduction establishes both values but the dependent result expression `A + B`
-is not yet replayed; it is not a default-selection failure.
+Complete candidate-local dependent type formation for class-template partial
+selection. N3485 14.5.5 and 14.8.2 require substituted dependent qualified
+types, alias/`void_t` arguments, and invalid immediate `decltype` calls to
+select or discard each partial without escaping as a hard error. Retained class
+partial patterns own syntax; canonical argument binding overlays own concrete
+types; partial selection owns success/failure state; completion and lowering
+consume only the selected specialization. This follows `spec.md` sections 2-6
+and 9: canonical keys, narrow monotonic request states, candidate-local expected
+failure, no eager body demand, and O(pattern nodes plus indexed partial
+candidates) work with O(1)-average cached lookup. Validate first with
+`300-void-t-detector`, `300-decltype-call-substitution-failure-partial-specialization`,
+and invalid qualified-member fallbacks, then the dependent alias and array-bound
+partial groups; run pa23 and through-pa22 reports and measure repeated valid and
+failed partial probes.
 
 ## Performance Evidence
 
-For 1,024/2,048/4,096 repeated successful defaulted calls, specialization
-requests are 2,049/4,097/8,193 with 2,047/4,095/8,191 cache hits and semantic
-medians of 9.9/18.6/36.8 ms. For equally sized failed-default probes, default
-materializations remain 1/1/1 while failure-cache hits are
-2,047/4,095/8,191; candidate visits are 1,024/2,048/4,096, deduction visits are
-2,048/4,096/8,192, peak bytes are 2,331,968/4,625,728/9,213,248, and semantic
-medians are 13.0/25.2/49.5 ms. PA1-PA22 are 2,639/2,639 and file audit passes
-with 13 inherited advisories.
+For 1,024/2,048/4,096 repeated successful explicit default-construction probes,
+specialization requests are 4,096/8,192/16,384, deduction visits are
+2,048/4,096/8,192, peak bytes are 7,697,241/15,378,649/30,741,465, and semantic
+medians are 38.7/77.3/157.6 ms. Failed probes materialize the invalid default
+once at every size, record 2,047/4,095/8,191 failure-cache hits, use
+7,698,761/15,381,961/30,748,361 peak bytes, and take 59.4/117.3/238.1 ms.
+Requests, candidate/deduction visits, memory, and time scale linearly. PA1-PA22
+are 2,639/2,639 and file audit passes with 13 inherited advisories.
 
 ## Completed Checkpoints
 
@@ -64,3 +64,4 @@ with 13 inherited advisories.
 | Direct array-extent NTTP deduction and current-call candidate ownership | Ordinary, repeated, hidden-friend, constructor, range, and guarded deduction pass; PA23 169 -> 177. Audit moved filtering to the nontemplate source index and replaced template-aware lowering with a semantic conversion fact; exact baseline preserved and scaling is linear. |
 | Retained non-deduced qualified types and compound array bounds | Qualified-id deduction, conversion replay, partial ordering, dependent rebind, explicit specialization, and compact nested-array lowering pass; PA23 177 -> 186 with no regressions. Required `typename`, normalized redeclaration identity, exact candidate-local skipping, and linear scaling are retained facts. |
 | Defaulted function-template materialization and substitution failure | Defaults bind in their declaration-owned contexts before complete canonical identity; normalized dependent results preserve overloads, duplicate defaults are rejected, and explicit request states memoize success, failure, and recursion. PA23 186 -> 210 handout passes plus one course regression, with no audit-baseline regressions and linear success/failure scaling. |
+| Explicit-call immediate expression substitution and variadic class boundary | Ambiguous `sizeof(f<T>())` parses once as an expression, invalid default `decltype` construction/operators drop only their candidate, `void*` arithmetic is rejected, and selected ellipsis class arguments carry materialization facts into lowering. PA23 211 -> 223 overall with 12 gains, no regressions, and linear valid/failed scaling. |

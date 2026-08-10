@@ -99,7 +99,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 	else if (operation == "++" || operation == "--")
 	{
 		if (!IsModifiableLvalue(operand) ||
-			(!IsArithmetic(result_type) && !IsPointer(result_type)))
+			(!IsArithmetic(result_type) && !IsPointer(result_type)) ||
+			(IsPointer(result_type) &&
+			 IsVoid(program_->types.Get(
+				 program_->types.RemoveTopCv(result_type)).child)))
 			throw std::runtime_error("invalid increment operand");
 		category = postfix ? VALUE_PRVALUE : VALUE_LVALUE;
 		constant = false;
@@ -358,13 +361,26 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 	else if (operation == "+" || operation == "-")
 	{
 		if (IsPointer(Decay(left.type)) && IsIntegral(right.type))
+		{
+			if (IsVoid(program_->types.Get(Decay(left.type)).child))
+				throw std::runtime_error("arithmetic on pointer to void");
 			result_type = Decay(left.type);
+		}
 		else if (operation == "+" && IsIntegral(left.type) &&
 			IsPointer(Decay(right.type)))
+		{
+			if (IsVoid(program_->types.Get(Decay(right.type)).child))
+				throw std::runtime_error("arithmetic on pointer to void");
 			result_type = Decay(right.type);
+		}
 		else if (operation == "-" && IsPointer(Decay(left.type)) &&
 			IsPointer(Decay(right.type)))
+		{
+			if (IsVoid(program_->types.Get(Decay(left.type)).child) ||
+				IsVoid(program_->types.Get(Decay(right.type)).child))
+				throw std::runtime_error("subtraction on pointer to void");
 			result_type = program_->types.Fundamental(FUND_LONG_INT);
+		}
 		else if (IsArithmetic(left.type) && IsArithmetic(right.type))
 			result_type = operand_type = CommonArithmeticType(left.type, right.type);
 		else throw std::runtime_error("invalid additive operands");

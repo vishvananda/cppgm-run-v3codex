@@ -1750,7 +1750,13 @@ private:
 			const bool reference = i - 1 < function_type.parameter_count && IsReferenceType(parameters[i - 1]);
 			argument_references.Push(i - 1 < function_type.parameter_count ?
 				BoundaryCallPassing(parameters[i - 1]) : Instruction::CALL_PASS_VALUE);
-			if (!reference && arena_.nodes[children[i]].class_argument_staging)
+			const bool variadic_class_argument =
+				i - 1 >= function_type.parameter_count &&
+				IsClassValueType(arena_.nodes[children[i]].type);
+			if (variadic_class_argument)
+				arguments.Push(LowerStorage(children[i]));
+			else if (!reference &&
+				arena_.nodes[children[i]].class_argument_staging)
 				arguments.Push(LowerClassArgumentStaging(
 					children[i], parameters[i - 1]));
 			else if (reference)
