@@ -272,6 +272,8 @@ void SemanticAnalyzer::AddLocalStaticObjectAction(std::uint32_t variable,
 	local_static_objects_.push_back(LocalStaticObjectAction(object,
 		function, type, variable, initializer, destructor_action, ordinal,
 		constant_initialized));
+	if (initializer != kNoDumpEdge)
+		DemandRuntimeInitializerFunctions(initializer, true);
 }
 
 void SemanticAnalyzer::RegisterVariableLifetimeAndStorage(ScopeId scope,
@@ -303,7 +305,7 @@ void SemanticAnalyzer::RegisterVariableLifetimeAndStorage(ScopeId scope,
 }
 
 void SemanticAnalyzer::DemandRuntimeInitializerFunctions(
-	std::uint32_t initializer)
+	std::uint32_t initializer, bool function_addresses_only)
 {
 	std::vector<std::uint32_t> pending(1, initializer);
 	while (!pending.empty())
@@ -311,11 +313,17 @@ void SemanticAnalyzer::DemandRuntimeInitializerFunctions(
 		const std::uint32_t current = pending.back();
 		pending.pop_back();
 		const DumpNode& action = dump_.nodes[current];
-		if ((action.kind == DUMP_CALL_EXPRESSION ||
+		if (!function_addresses_only &&
+			(action.kind == DUMP_CALL_EXPRESSION ||
 			action.kind == DUMP_CONSTRUCTOR_ACTION) &&
 			action.binding != kNoBinding)
 			DemandFunction(action.binding);
-		else if (action.kind == DUMP_CLASS_VALUE_TRANSFER &&
+		else if (action.kind == DUMP_ID_EXPRESSION &&
+			action.binding != kNoBinding &&
+			program_->bindings[action.binding].kind == BIND_FUNCTION)
+			DemandFunction(action.binding);
+		else if (!function_addresses_only &&
+			action.kind == DUMP_CLASS_VALUE_TRANSFER &&
 			action.selected_binding != kNoBinding)
 			DemandFunction(action.selected_binding);
 		for (std::uint32_t edge = action.first_edge;

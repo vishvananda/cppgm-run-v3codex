@@ -855,7 +855,10 @@ private:
   string mangle_target(const AbiTargetRecord & target,
                        const vector<const AbiFunctionRecord *> & records)
   {
+    const bool structured_variable = target.kind == ABI_TARGET_FACT_VARIABLE
+                                     && target.function.kind == ABI_FUNCTION_TARGET_ENCODING;
     const bool accepts_function_records = target.kind == ABI_TARGET_FACT_FUNCTION
+                                          || structured_variable
                                           || target.kind == ABI_TARGET_FACT_THUNK
                                           || target.kind == ABI_TARGET_FACT_VIRTUAL_BASE_THUNK;
     require(records.empty() || accepts_function_records,
@@ -878,7 +881,11 @@ private:
     }
     if(target.kind == ABI_TARGET_FACT_VARIABLE) {
       output_ += "_Z";
-      encode_object_name(target.qualified_name, target.internal_linkage);
+      if(structured_variable) {
+        encode_structured_object(collect_function_facts(records));
+      } else {
+        encode_object_name(target.qualified_name, target.internal_linkage);
+      }
       return output_;
     }
     if(target.kind == ABI_TARGET_FACT_TYPEINFO
@@ -1501,6 +1508,16 @@ private:
 
   void encode_structured_nonlocal(const FunctionFacts & facts)
   {
+    const bool is_template = encode_structured_nonlocal_name(facts);
+    if(is_template && !facts.result_types.empty()
+       && !(facts.terminal && facts.terminal->kind == ABI_FUNCTION_RECORD_CONVERSION_TERMINAL)) {
+      encode_type(facts.result_types.front());
+    }
+    encode_bare_parameters(facts.parameters, facts.variadic);
+  }
+
+  bool encode_structured_nonlocal_name(const FunctionFacts & facts)
+  {
     bool std_prefix = false;
     vector<const AbiFunctionRecord *> components;
     for(const AbiFunctionRecord * record : facts.components) {
@@ -1537,11 +1554,19 @@ private:
                              || (!components.empty()
                                  && components.back()->kind == ABI_FUNCTION_RECORD_NAME_TEMPLATE
                                  && !components.back()->argument_refs.empty());
-    if(is_template && !facts.result_types.empty()
-       && !(facts.terminal && facts.terminal->kind == ABI_FUNCTION_RECORD_CONVERSION_TERMINAL)) {
-      encode_type(facts.result_types.front());
-    }
-    encode_bare_parameters(facts.parameters, facts.variadic);
+    return is_template;
+  }
+
+  void encode_structured_object(const FunctionFacts & facts)
+  {
+    require(facts.local == nullptr && facts.lambda == nullptr
+            && facts.namespace_lambda == nullptr,
+            "structured ABI variable cannot have a local function context");
+    require(facts.terminal == nullptr && facts.qualifiers.empty()
+            && facts.parameters.empty() && facts.result_types.empty()
+            && !facts.variadic,
+            "structured ABI variable has function-only name facts");
+    encode_structured_nonlocal_name(facts);
   }
 
   void encode_structured_template_arguments(const AbiFunctionRecord * final,

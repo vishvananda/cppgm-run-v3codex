@@ -44,6 +44,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		constructor_base_entry_by_binding_.capacity() * sizeof(BindingId) +
 		destructor_base_entry_by_binding_.capacity() * sizeof(BindingId) +
 		static_member_storage_by_binding_.capacity() * sizeof(std::uint32_t) +
+		explicit_static_member_specialization_states_.capacity() *
+			sizeof(std::uint8_t) +
 		static_constant_initializers_by_binding_.capacity() *
 			sizeof(StaticConstantInitializerFact) +
 		static_constant_dependency_owner_marks_.capacity() *
@@ -66,6 +68,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		retained_call_naming_classes_.capacity() * sizeof(EntityId) +
 		template_instantiations_.StorageBytes() +
 		class_templates_.size() * sizeof(ClassTemplatePattern) +
+		demanded_static_member_definitions_.StorageBytes() +
 		alias_templates_.capacity() * sizeof(AliasTemplatePattern) +
 		alias_template_pattern_by_entity_.capacity() * sizeof(std::uint32_t) +
 		alias_template_instantiations_.StorageBytes() +

@@ -768,7 +768,8 @@ private:
 	ExpressionInfo MaterializeDiscardedClassResult(ExpressionInfo value);
 	ExpressionInfo AnalyzeClassFunctionalCast(TypeId cast_type, ScopeId scope,
 		const std::vector<NodeId>& argument_syntax, NodeId arguments_node,
-		TypeId target);
+		TypeId target,
+		const std::vector<ExpressionInfo>* prepared_arguments = 0);
 	ExpressionInfo ApplyClassObjectTarget(ExpressionInfo value, TypeId target);
 	bool TryFoldConstantClassConversion(const ExpressionInfo& value,
 		BindingId conversion, TypeId target, std::int64_t* result);
@@ -954,7 +955,8 @@ private:
 	void RegisterVariableLifetimeAndStorage(ScopeId scope, bool local,
 		bool declaration_only, std::uint32_t variable, BindingId object,
 		TypeId type, bool constant_initialized);
-	void DemandRuntimeInitializerFunctions(std::uint32_t initializer);
+	void DemandRuntimeInitializerFunctions(std::uint32_t initializer,
+		bool function_addresses_only = false);
 	void AppendScopeDestructionActions(ScopeId scope,
 		std::uint32_t output_parent, ScopeId stop_exclusive = kNoScope);
 	std::uint32_t MakeDestructorAction(TypeId type, BindingId destructor,
@@ -1159,6 +1161,7 @@ private:
 	std::vector<BindingId> constructor_base_entry_by_binding_;
 	std::vector<BindingId> destructor_base_entry_by_binding_;
 	std::vector<std::uint32_t> static_member_storage_by_binding_;
+	std::vector<std::uint8_t> explicit_static_member_specialization_states_;
 	struct StaticConstantInitializerFact
 	{
 		std::uint32_t initializer;
@@ -1193,6 +1196,7 @@ private:
 	std::vector<EntityId> retained_call_naming_classes_;
 	TemplateSpecializationTable template_instantiations_;
 	std::deque<ClassTemplatePattern> class_templates_;
+	IndexedSequenceTable demanded_static_member_definitions_;
 	std::vector<AliasTemplatePattern> alias_templates_;
 	std::vector<std::uint32_t> alias_template_pattern_by_entity_;
 	TemplateSpecializationTable alias_template_instantiations_;

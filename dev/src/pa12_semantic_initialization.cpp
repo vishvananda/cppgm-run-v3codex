@@ -722,8 +722,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeVariableInitializer(
 			for (std::uint32_t argument = arena_->FirstEdge(expression);
 				argument != kNoEdge; argument = arena_->NextEdge(argument))
 				arguments.push_back(arena_->EdgeChild(argument));
-			initializer.node = BuildConstructorAction(
-				type, scope, arguments, false, false);
+			std::vector<ExpressionInfo> prepared;
+			const bool expanded = ExpandCallArgumentPacks(arguments, scope, &arguments, &prepared);
+			initializer.node = BuildConstructorAction(type, scope, arguments, false, false, false, true, kNoNode, expanded ? &prepared : 0);
 		}
 		else if (expression != kNoNode &&
 			arena_->IsTag(expression, "braced-init-list") &&
@@ -779,12 +780,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeVariableInitializer(
 					for (std::uint32_t argument = arena_->FirstEdge(argument_list);
 						argument != kNoEdge; argument = arena_->NextEdge(argument))
 						arguments.push_back(arena_->EdgeChild(argument));
-				initializer.node = BuildConstructorAction(
-					type, scope, arguments, false, argument_list != kNoNode &&
-					arena_->IsTag(argument_list, "braced-init-list"), false, true,
-					argument_list != kNoNode &&
-					arena_->IsTag(argument_list, "braced-init-list") ?
-						argument_list : kNoNode);
+				std::vector<ExpressionInfo> prepared;
+				const bool expanded = ExpandCallArgumentPacks(arguments, scope, &arguments, &prepared);
+				const NodeId braced = argument_list != kNoNode && arena_->IsTag(argument_list, "braced-init-list") ? argument_list : kNoNode;
+				initializer.node = BuildConstructorAction(type, scope, arguments, false,
+					braced != kNoNode, false, true, braced, expanded ? &prepared : 0);
 			}
 		}
 		else if (expression != kNoNode &&

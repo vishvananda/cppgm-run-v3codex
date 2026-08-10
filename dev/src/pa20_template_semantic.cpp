@@ -277,6 +277,18 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 				throw std::runtime_error(
 					"explicit member specialization is not a function");
 			AnalyzeSimple(target, definition_scope, root_, false, true, true);
+			const LookupResult specialized = program_->LookupDirect(
+				program_->entities[entity].member_scope, parsed.name,
+				LOOKUP_ORDINARY);
+			if (specialized.ordinary == kNoBinding)
+				throw std::logic_error(
+					"explicit static member specialization lost its binding");
+			const BindingId canonical =
+				program_->bindings[specialized.ordinary].canonical;
+			if (explicit_static_member_specialization_states_.size() <= canonical)
+				explicit_static_member_specialization_states_.resize(
+					static_cast<std::size_t>(canonical) + 1, 0);
+			explicit_static_member_specialization_states_[canonical] = 1;
 			return true;
 		}
 
@@ -465,6 +477,11 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 			StoreTemplateArguments(arguments,
 				&program_->entities[entity].template_argument_begin,
 				&program_->entities[entity].template_argument_count);
+		program_->entities[entity].template_argument_pack_begin =
+			HasTrailingTemplateParameterPack(pattern.parameters) ?
+				static_cast<std::uint32_t>(
+					FixedTemplateParameterCount(pattern.parameters)) :
+				kNoTemplateParameter;
 		if (class_template_pattern_by_entity_.size() <= entity)
 			class_template_pattern_by_entity_.resize(
 				static_cast<std::size_t>(entity) + 1, kNoDumpEdge);

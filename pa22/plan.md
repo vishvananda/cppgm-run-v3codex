@@ -30,6 +30,11 @@ through typed boundaries. Partial deduction records pack participation even when
 zero elements bind, and matches concrete incomplete specializations through their
 canonical template heads without demanding layout. Qualified C-style cast type-ids
 enter that same typed path.
+Concrete specializations retain the fixed/pack ABI boundary; static member globals
+use structured owner identity and weak ODR emission. Initializer argument packs are
+expanded before constructor selection, function ids decay under pointer targets,
+and runtime constant use demands only indexed retained definitions while explicit
+member specializations suppress primary replay.
 Dependent qualified declarations retain rooted template-ids, conversion-name
 boundaries, and member qualifications. Shape construction gives unknown dependent
 member templates unique non-deduced markers; concrete replay performs exact owner
@@ -43,22 +48,23 @@ SFINAE behavior and does not pull in the §7 object backend.
 
 ## Current Failure Map
 
-Current result: **288/310**. The 22 remaining failures group by primary owner:
-callable/friend access, overload, and empty-object lowering 8; alias/dependent-type
-owner and source-scope replay 9; constexpr/static/object storage and emission 5.
+Current result: **291/310**. The 19 remaining failures group by actual phase owner:
+specialization-local-static initialization presentation 1;
+dependent declaration/lookup/overload rejection 7; typed materialization,
+conversion, empty-object, and lifetime lowering 11.
 
 ## Active Checkpoint
 
-**Retained alias/member source-scope replay.** Requirements: an alias binds its
-canonical target identity while retaining the declaration's lexical scope and
-dependent owner path; concrete substitution performs exact owner/member lookup
-without completing unrelated shells (`spec.md` §§2–6, 8–10). Owner and flow:
-alias declaration -> canonical alias entity plus retained scope/path -> concrete
-template arguments -> indexed owner lookup -> typed result -> demand/lowering.
-Expected work is O(alias declarations + concrete uses * path depth), with one cache
-entry per canonical argument tuple and no textual rescans. Validate the nine alias
-and dependent-type failures, adjacent nested-owner/pack/partial tests, PA22, through
-PA21, audit, and 16/32/64 source-scope replay scaling.
+**Dependent declaration and owner-lookup replay.** Requirements: dependent member
+typedefs, aliases, qualified declarations, and overload candidates retain canonical
+owner identity plus lexical source scope; concrete substitution resolves each owner
+path once and rejects invalid candidates before lowering (`spec.md` §§2–6, 8–10).
+Owner and flow: retained declaration/path -> canonical argument tuple -> indexed
+owner/member lookup -> typed declaration or candidate set -> demand -> lowering.
+Expected work is O(replayed declarations + owner-path edges + viable candidates),
+with no textual specialization scan or unrelated shell completion. Validate the
+seven declaration/lookup/overload failures, adjacent nested-owner/partial/friend
+tests, PA22, through PA21, audit, and 16/32/64 independent-owner scaling.
 
 ## Performance Evidence
 
@@ -83,6 +89,7 @@ storage is peak-stage MB.
 | Dependent call replay/constructor demand | 3.052/4.072/6.903 | 0.506/0.696/1.038 | candidates 133/245/469; requests 156/300/588; cache hits 144/288/576; lookups 775/1335/2455; demand pushes fixed at 13 |
 | Dependent qualified declaration replay | 9.819/19.353/38.468 | 1.662/3.025/6.022 | lookups 1894/3702/7318; requests 311/615/1223; candidates 401/801/1601; demand pushes 66/130/258 |
 | Canonical callable declarations | 3.314/6.275/12.513 | 0.647/1.288/2.570 | lookups 526/1038/2062; candidates 80/160/320; requests 64/128/256; demand pushes 32/64/128 |
+| Specialized static definition demand | 1.469/2.523/4.784 | 0.305/0.602/1.196 | lookups 367/719/1423; requests 48/96/192; demand/static visits 16/32/64; globals 17/33/65 |
 
 The alias benchmark confirms linear specialization requests and constexpr call/step
 counts. Its recursive variadic `cx_plus` evaluator retains 440/1648/6368 local-index
@@ -113,6 +120,11 @@ The callable benchmark constructs 16/32/64 distinct owners, each with one unused
 ill-formed return-class shell and one selected one-argument member template. Every
 work counter, semantic time, and peak storage scales linearly; partial deduction is
 zero because overload arity rejects the shell before template deduction.
+The static-definition benchmark takes the address of 16/32/64 specialized integral
+members with retained out-of-class definitions. Demand, initializer visits, globals,
+lookup, specialization requests, time, and storage all scale linearly. The remaining
+local-static fixture differs only because its oracle stages function-address
+constants dynamically; the compiler keeps C++11 constant initialization.
 
 ## Completed Checkpoints
 
@@ -143,3 +155,4 @@ zero because overload arity rejects the shell before template deduction.
 | Dependent function-template call replay | Incomplete pointee shells avoid layout demand, class validation predeclares later member-template heads, and evaluated braced temporaries demand their selected constructors; 275 -> 278, prior 2329/2329, audit pass. |
 | Dependent qualified declaration replay | Rooted/template-id retention, qualified member lookup, derived-base deduction, reference layout, dependent template markers, and external-callee demand; 278 -> 285, prior 2329/2329, audit pass. |
 | Canonical callable declaration reconciliation | Qualified/direct-init disambiguation, return-class shells, retained non-deduced partial paths, and explicit template-id friend grants; 285 -> 288, prior 2329/2329, audit pass. |
+| Specialization-owned static initialization | Pack-aware ABI identity, initializer-pack replay, structured constexpr pointers, exact retained-definition demand, and explicit-specialization suppression; 288 -> 291, prior 2329/2329, audit pass. |

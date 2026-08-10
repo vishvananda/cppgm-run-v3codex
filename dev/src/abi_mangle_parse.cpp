@@ -623,6 +623,10 @@ AbiTargetRecord parse_target(const vector<string> & words)
     target.kind = ABI_TARGET_FACT_FUNCTION;
     target.c_linkage = form == "c-function";
     target.function = parse_function_target(words, 1);
+  } else if(form == "structured-variable") {
+    require(words.size() == 1, "structured variable target takes no path");
+    target.kind = ABI_TARGET_FACT_VARIABLE;
+    target.function.kind = ABI_FUNCTION_TARGET_ENCODING;
   } else if(form == "variable") {
     require(words.size() == 2, "variable target takes one name");
     target.kind = ABI_TARGET_FACT_VARIABLE;
@@ -1028,7 +1032,10 @@ string target_text(const AbiTargetRecord & target)
     return string(target.c_linkage ? "c-function " : "function ")
            + function_target_text(target.function);
   }
-  if(target.kind == ABI_TARGET_FACT_VARIABLE) return "variable " + target.qualified_name;
+  if(target.kind == ABI_TARGET_FACT_VARIABLE) {
+    return target.function.kind == ABI_FUNCTION_TARGET_ENCODING ?
+             "structured-variable" : "variable " + target.qualified_name;
+  }
   if(target.kind == ABI_TARGET_FACT_TYPEINFO) return "typeinfo " + type_text(target.type);
   if(target.kind == ABI_TARGET_FACT_TYPEINFO_NAME) {
     return "typeinfo-name " + type_text(target.type);

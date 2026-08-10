@@ -1236,7 +1236,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 						"invalid in-class static data member initializer");
 				const ExpressionInfo value = AnalyzeInClassStaticInitializer(
 					FindChild(item, "initializer"), scope, member_type);
-				if (!value.constant)
+				if (!HasConstantInitializerFact(value))
 					throw std::runtime_error(
 						"nonconstant in-class static data member initializer");
 				const TypeRecord declared_array = program_->types.Get(
@@ -2563,7 +2563,40 @@ void SemanticAnalyzer::EnsureStaticMemberStorage(BindingId member, bool constant
 	// An in-class integral constant does not require storage until an
 	// out-of-class definition supplies it. Pure constant-expression uses keep
 	// the canonical member fact and must not manufacture an undefined global.
-	if (binding.constant && !constant_storage) return;
+	// A runtime use may still be folded, so consult the retained definition
+	// index instead of using the folded expression shape as the demand signal.
+	if (binding.constant && !constant_storage)
+	{
+		if (constant_expression_required_depth_ != 0) return;
+		if (member < explicit_static_member_specialization_states_.size() &&
+			explicit_static_member_specialization_states_[member] != 0)
+			return;
+		bool retained_definition = false;
+		for (EntityId entity = binding.member_owner;
+			entity != kNoEntity; entity = program_->entities[entity].enclosing_class)
+		{
+			if (entity >= class_template_pattern_by_entity_.size()) continue;
+			const std::size_t pattern = class_template_pattern_by_entity_[entity];
+			if (pattern == kNoDumpEdge) continue;
+			if (pattern >= class_templates_.size())
+				throw std::logic_error("static member definition owner is invalid");
+			const BindingId specialization =
+				program_->entities[entity].declaration;
+			if (specialization <
+				class_template_explicit_specialization_states_.size() &&
+				class_template_explicit_specialization_states_[specialization] != 0)
+				break;
+			if (pattern > std::numeric_limits<std::uint32_t>::max())
+				throw std::logic_error("static member definition index overflow");
+			const std::uint64_t key =
+				(static_cast<std::uint64_t>(pattern) << 32) | binding.name;
+			const CompactIndexSequence* definitions =
+				demanded_static_member_definitions_.Find(key);
+			retained_definition = definitions && definitions->Size() != 0;
+			break;
+		}
+		if (!retained_definition) return;
+	}
 	// Preserve the already-instantiated class spelling before replaying a
 	// dependent out-of-class definition, whose substituted expression spelling
 	// may be equivalent but less canonical (for example, `1` versus `true`).

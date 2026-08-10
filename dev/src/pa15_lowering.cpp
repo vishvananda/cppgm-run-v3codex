@@ -262,8 +262,11 @@ private:
 		const std::string& proposed_name, const std::string& object_name)
 	{
 		const BindingRecord& binding = program_.bindings[node.binding];
+		const bool class_template_member = binding.member_owner != kNoEntity &&
+			program_.entities[binding.member_owner].template_argument_count;
 		const bool weak_odr = !binding.explicit_instantiation_suppressed &&
 			(binding.weak_odr ||
+			 class_template_member ||
 			(kind == Symbol::FUNCTION_SYMBOL &&
 			 binding.template_argument_count != 0));
 		const bool local_member = pa18_lowering_detail::IsFunctionLocalEntity(
@@ -272,8 +275,6 @@ private:
 			(binding.storage_class == STORAGE_CLASS_STATIC &&
 			 binding.member_owner == kNoEntity);
 		const bool c_linkage = binding.language_linkage == LANGUAGE_LINKAGE_C;
-		const bool class_template_member = binding.member_owner != kNoEntity &&
-			program_.entities[binding.member_owner].template_argument_count;
 		SymbolIdentity identity;
 		identity.kind = kind;
 		identity.path = class_template_member ? output_.identities.InternClassMemberPath(

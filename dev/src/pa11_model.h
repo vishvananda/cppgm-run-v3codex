@@ -332,7 +332,8 @@ struct EntityRecord
 	ScopeId owner, member_scope;
 	EntityId direct_base, enclosing_class;
 	BindingId local_context;
-	std::uint32_t template_argument_begin, template_argument_count;
+	std::uint32_t template_argument_begin, template_argument_count,
+		template_argument_pack_begin;
 	std::uint32_t direct_base_begin, direct_base_count;
 	NamedFlavor flavor;
 	TypeId type, underlying;

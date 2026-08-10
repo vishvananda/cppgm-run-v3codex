@@ -170,7 +170,27 @@ std::string CanonicalTemplateArgumentPresentation(const Program& program,
 {
 	if (argument.kind == TEMPLATE_ARGUMENT_TYPE ||
 		argument.kind == TEMPLATE_ARGUMENT_TEMPLATE)
+	{
+		const TypeRecord& type = program.types.Get(argument.type);
+		if (type.kind == TYPE_FUNCTION)
+		{
+			std::string result = TemplateArgumentTypeName(
+				program.RenderType(type.child)) + "(";
+			const TypeId* parameters = program.types.Parameters(argument.type);
+			for (std::size_t i = 0; i < type.parameter_count; ++i)
+			{
+				if (i != 0) result += ", ";
+				result += TemplateArgumentTypeName(program.RenderType(parameters[i]));
+			}
+			if (type.variadic)
+			{
+				if (type.parameter_count != 0) result += ", ";
+				result += "...";
+			}
+			return result + ')';
+		}
 		return TemplateArgumentTypeName(program.RenderType(argument.type));
+	}
 	if (argument.IsDependent())
 	{
 		std::ostringstream result;
@@ -782,8 +802,16 @@ bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,
 	const bool demand_definition =
 		arena_->IsTag(described_declaration, "simple-declaration");
 	if (demand_definition)
+	{
+		if (pattern_index > std::numeric_limits<std::uint32_t>::max())
+			throw std::runtime_error("too many class template patterns");
+		const std::uint64_t key =
+			(static_cast<std::uint64_t>(pattern_index) << 32) | path.Last();
+		demanded_static_member_definitions_.Ensure(key).Push(
+			class_templates_[pattern_index].demanded_member_definitions.size());
 		class_templates_[pattern_index].demanded_member_definitions.push_back(
 			member);
+	}
 	else class_templates_[pattern_index].member_definitions.push_back(member);
 	const std::vector<BindingId> specializations =
 		member.concrete_owner == kNoBinding ?
@@ -1609,6 +1637,12 @@ void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
 		pattern.name, true, program_->bindings[binding].name,
 		specialization_emission_name);
 	const EntityId entity = EntityOf(completed);
+	if (entity != kNoEntity)
+		program_->entities[entity].template_argument_pack_begin =
+			HasTrailingTemplateParameterPack(pattern.parameters) ?
+				static_cast<std::uint32_t>(
+					FixedTemplateParameterCount(pattern.parameters)) :
+				kNoTemplateParameter;
 	if (entity == kNoEntity || !program_->entities[entity].complete)
 	{
 		if (entity != kNoEntity &&
@@ -2477,6 +2511,11 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 		StoreTemplateArguments(arguments,
 			&program_->entities[entity].template_argument_begin,
 			&program_->entities[entity].template_argument_count);
+		program_->entities[entity].template_argument_pack_begin =
+			HasTrailingTemplateParameterPack(pattern.parameters) ?
+				static_cast<std::uint32_t>(
+					FixedTemplateParameterCount(pattern.parameters)) :
+				kNoTemplateParameter;
 		if (class_template_pattern_by_entity_.size() <= entity)
 			class_template_pattern_by_entity_.resize(
 				static_cast<std::size_t>(entity) + 1, kNoDumpEdge);
@@ -2532,6 +2571,11 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 	class_template_pattern_by_entity_[entity] =
 		static_cast<std::uint32_t>(index);
 	EntityRecord& specialization = program_->entities[entity];
+	specialization.template_argument_pack_begin =
+		HasTrailingTemplateParameterPack(pattern.parameters) ?
+			static_cast<std::uint32_t>(
+				FixedTemplateParameterCount(pattern.parameters)) :
+			kNoTemplateParameter;
 	specialization.deferred_template_completion =
 		!specialization.complete &&
 		!ClassTemplateArgumentsAreLayoutReady(*program_, arguments);

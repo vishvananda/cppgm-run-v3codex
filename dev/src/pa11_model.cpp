@@ -575,6 +575,7 @@ EntityRecord::EntityRecord()
 	  direct_base(kNoEntity), enclosing_class(kNoEntity),
 	  local_context(kNoBinding),
 	  template_argument_begin(kNoBinding), template_argument_count(0),
+	  template_argument_pack_begin(kNoTemplateParameter),
 	  direct_base_begin(0), direct_base_count(0),
 	  flavor(NAMED_NONE), type(kNoType),
 	  underlying(kNoType), declaration(kNoBinding),
@@ -1433,6 +1434,7 @@ void Program::ResetClassDefinition(EntityId entity)
 	reset.local_context = old.local_context;
 	reset.template_argument_begin = old.template_argument_begin;
 	reset.template_argument_count = old.template_argument_count;
+	reset.template_argument_pack_begin = old.template_argument_pack_begin;
 	reset.flavor = old.flavor;
 	reset.type = old.type;
 	reset.declaration = old.declaration;

@@ -70,6 +70,26 @@ public:
 		return id;
 	}
 
+	std::string AddTemplateArgumentPack(std::size_t first, std::size_t count)
+	{
+		using namespace abi_mangle;
+		if (first > program_.template_arguments.size() ||
+			count > program_.template_arguments.size() - first)
+			throw std::logic_error("ABI template argument pack range is invalid");
+		const std::string id = "__cppgm_abi_pack_argument_" +
+			std::to_string(next_argument_++);
+		AbiFactRecord definition;
+		definition.set_kind(ABI_FACT_RECORD_DEFINITION);
+		definition.definition.id = id;
+		definition.definition.set_kind(ABI_DEFINITION_TEMPLATE_ARGUMENT);
+		definition.definition.template_argument.kind = ABI_TEMPLATE_ARGUMENT_PACK;
+		for (std::size_t argument = 0; argument < count; ++argument)
+			definition.definition.template_argument.argument_refs.push_back(
+				AddTemplateArgument(first + argument));
+		facts_.records.push_back(definition);
+		return id;
+	}
+
 	std::string AddLocalContext(pa11::BindingId binding)
 	{
 		using namespace abi_mangle;
@@ -225,8 +245,16 @@ public:
 						program_.template_arguments.size() - first)
 					throw std::logic_error(
 						"class template ABI argument range is invalid");
-				for (std::size_t i = 0; i < entity.template_argument_count; ++i)
+				const std::size_t pack = entity.template_argument_pack_begin;
+				const std::size_t fixed = pack == kNoTemplateParameter ?
+					entity.template_argument_count : pack;
+				if (fixed > entity.template_argument_count)
+					throw std::logic_error("class template ABI pack offset is invalid");
+				for (std::size_t i = 0; i < fixed; ++i)
 					result.argument_refs.push_back(AddTemplateArgument(first + i));
+				if (pack != kNoTemplateParameter)
+					result.argument_refs.push_back(AddTemplateArgumentPack(
+						first + fixed, entity.template_argument_count - fixed));
 			}
 			return result;
 		}
@@ -289,10 +317,18 @@ bool AppendClassTemplateOwner(const pa11::Program& program,
 			component.function.kind = ABI_FUNCTION_RECORD_NAME_TEMPLATE;
 			component.function.complete_substitution = "-";
 			component.function.standard_substitution = "-";
-			for (std::size_t argument = 0;
-				argument < entity.template_argument_count; ++argument)
+			const std::size_t pack = entity.template_argument_pack_begin;
+			const std::size_t fixed = pack == kNoTemplateParameter ?
+				entity.template_argument_count : pack;
+			if (fixed > entity.template_argument_count)
+				throw std::logic_error("class template ABI pack offset is invalid");
+			for (std::size_t argument = 0; argument < fixed; ++argument)
 				component.function.argument_refs.push_back(
 					builder->AddTemplateArgument(first + argument));
+			if (pack != kNoTemplateParameter)
+				component.function.argument_refs.push_back(
+					builder->AddTemplateArgumentPack(first + fixed,
+						entity.template_argument_count - fixed));
 		}
 		else component.function.kind = ABI_FUNCTION_RECORD_NAME_SOURCE;
 		facts->records.push_back(component);
@@ -619,16 +655,32 @@ std::string MangleVariable(const pa11::Program& program,
 		return program.names.Get(binding.name);
 	AbiFactFile file;
 	file.cases.push_back(AbiFactCase());
+	AbiFactBuilder facts(program, file.cases[0]);
+	const bool structured_class_owner = binding.member_owner != kNoEntity &&
+		program.entities[binding.member_owner].template_argument_count != 0;
 	AbiFactRecord target;
 	target.set_kind(ABI_FACT_RECORD_TARGET);
 	target.target.kind = ABI_TARGET_FACT_VARIABLE;
+	target.target.function.kind = structured_class_owner ?
+		ABI_FUNCTION_TARGET_ENCODING : ABI_FUNCTION_TARGET_PATH;
 	target.target.internal_linkage =
 		binding.storage_class == STORAGE_CLASS_STATIC &&
 		binding.member_owner == kNoEntity &&
 		!binding.unnamed_namespace_linkage;
-	target.target.qualified_name = program.names.Get(
-		binding.qualified_name != 0 ? binding.qualified_name : node.text);
+	if (!structured_class_owner)
+		target.target.qualified_name = program.names.Get(
+			binding.qualified_name != 0 ? binding.qualified_name : node.text);
 	file.cases[0].records.push_back(target);
+	if (structured_class_owner)
+	{
+		if (!AppendClassTemplateOwner(program, binding, &facts, &file.cases[0]))
+			throw std::logic_error("class template ABI variable owner was lost");
+		AbiFactRecord member;
+		member.set_kind(ABI_FACT_RECORD_FUNCTION);
+		member.function.kind = ABI_FUNCTION_RECORD_NAME_SOURCE;
+		member.function.name = program.names.Get(binding.name);
+		file.cases[0].records.push_back(member);
+	}
 	std::string result = mangle_fact_file(file);
 	if (!result.empty() && result[result.size() - 1] == '\n')
 		result.resize(result.size() - 1);

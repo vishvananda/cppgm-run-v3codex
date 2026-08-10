@@ -745,7 +745,18 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 			return local;
 		ExpressionInfo function_id;
 		if (AnalyzeFunctionId(node, scope, target, &function_id))
-			return function_id;
+		{
+			TypeId target_shape = target == kNoType ? kNoType :
+				program_->types.RemoveTopCv(target);
+			if (target_shape != kNoType &&
+				(program_->types.Get(target_shape).kind == TYPE_LVALUE_REFERENCE ||
+				 program_->types.Get(target_shape).kind == TYPE_RVALUE_REFERENCE))
+				target_shape = program_->types.Get(target_shape).child;
+			const TypeKind target_kind = target_shape == kNoType ? TYPE_FUNDAMENTAL :
+				program_->types.Get(target_shape).kind;
+			return target_kind == TYPE_POINTER || target_kind == TYPE_MEMBER_POINTER ?
+				ApplyTarget(function_id, target) : function_id;
+		}
 		return AnalyzeNamedValue(spelling, scope, target, node);
 	}
 	if (arena_->IsTag(node, "call-expression"))
@@ -1238,7 +1249,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 		target, &member_call)) return member_call;
 	if (AnalyzeDirectMemberCall(callee_syntax, scope, argument_syntax,
 		target, &member_call)) return member_call;
-	if (ExpandCallArgumentPacks(argument_syntax, scope, &argument_syntax, &analyzed_arguments)) arguments_analyzed = true;
+	if (ExpandCallArgumentPacks(argument_syntax, scope,
+		&argument_syntax, &analyzed_arguments)) arguments_analyzed = true;
 	std::size_t constexpr_callee_local = 0;
 	const bool local_callable =
 		arena_->IsTag(direct_callee_syntax, "id-expression") &&
@@ -1342,7 +1354,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 			}
 			if (IsClassObjectType(cast_type))
 				return AnalyzeClassFunctionalCast(cast_type, scope,
-					argument_syntax, arguments_node, target);
+					argument_syntax, arguments_node, target,
+					arguments_analyzed ? &analyzed_arguments : 0);
 			if (argument_syntax.size() > 1)
 				throw std::runtime_error("too many functional cast arguments");
 			if (argument_syntax.empty())

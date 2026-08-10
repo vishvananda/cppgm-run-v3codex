@@ -364,13 +364,14 @@ void SemanticAnalyzer::ValidateOrdinaryMemberFunctionBodies(EntityId entity)
 
 ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 	ScopeId scope, const std::vector<NodeId>& argument_syntax,
-	NodeId arguments_node, TypeId target)
+	NodeId arguments_node, TypeId target,
+	const std::vector<ExpressionInfo>* prepared_arguments)
 {
 	const EntityId cast_entity = EntityOf(cast_type);
 	if (argument_syntax.size() == 1)
 	{
-		const ExpressionInfo operand =
-			AnalyzeExpression(argument_syntax[0], scope);
+		const ExpressionInfo operand = prepared_arguments ?
+			(*prepared_arguments)[0] : AnalyzeExpression(argument_syntax[0], scope);
 		if (operand.type != kNoType && EntityOf(operand.type) != kNoEntity &&
 			ConvertingFunction(operand, cast_type, true).rank !=
 				CONVERSION_INVALID)
@@ -437,7 +438,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 		arena_->IsTag(arguments_node, "braced-init-list"), false, true,
 		arguments_node != kNoNode &&
 		arena_->IsTag(arguments_node, "braced-init-list") ?
-			arguments_node : kNoNode);
+			arguments_node : kNoNode, prepared_arguments);
 	result.type = cast_type;
 	result.category = VALUE_PRVALUE;
 	if (argument_syntax.empty() &&
