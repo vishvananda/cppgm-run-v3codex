@@ -93,6 +93,7 @@ public:
 		  template_partial_shape_materializations_(0),
 		  template_partial_shape_cache_hits_(0),
 		  template_partial_deduction_visits_(0),
+		  function_template_deduction_visits_(0),
 		  lambda_closure_requests_(0), lambda_closure_cache_hits_(0),
 		  constexpr_call_requests_(0), constexpr_call_cache_hits_(0),
 		  constexpr_local_index_probes_(0),
@@ -1380,6 +1381,7 @@ private:
 	std::size_t template_partial_shape_materializations_;
 	std::size_t template_partial_shape_cache_hits_;
 	mutable std::size_t template_partial_deduction_visits_;
+	mutable std::size_t function_template_deduction_visits_;
 	std::size_t lambda_closure_requests_;
 	std::size_t lambda_closure_cache_hits_;
 	std::size_t constexpr_call_requests_;

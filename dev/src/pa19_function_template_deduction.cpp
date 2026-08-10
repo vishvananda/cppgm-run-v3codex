@@ -249,6 +249,7 @@ bool SemanticAnalyzer::FunctionTemplatePatternAccepts(
 bool SemanticAnalyzer::DeduceFunctionTemplateType(TypeId pattern,
 	TypeId argument, std::vector<TypeId>* deduced) const
 {
+	++function_template_deduction_visits_;
 	for (std::size_t i = 0;
 		i < function_template_shape_parameters_.size() && i < deduced->size(); ++i)
 		if (pattern == function_template_shape_parameters_[i])
@@ -402,6 +403,7 @@ bool SemanticAnalyzer::DeduceFunctionTemplatePackType(TypeId pattern,
 	TypeId argument, const std::vector<TemplateParameter>& parameters,
 	FunctionTemplateDeduction* deduced) const
 {
+	++function_template_deduction_visits_;
 	for (std::size_t i = 0;
 		i < function_template_shape_parameters_.size() &&
 		i < parameters.size(); ++i)
@@ -436,10 +438,34 @@ bool SemanticAnalyzer::DeduceFunctionTemplatePackType(TypeId pattern,
 		return DeduceFunctionTemplatePackType(pattern_record.child,
 			argument_record.child, parameters, deduced);
 	case TYPE_ARRAY:
-		return (pattern_record.bound == 0 ||
-			pattern_record.bound == argument_record.bound) &&
-			DeduceFunctionTemplatePackType(pattern_record.child,
-				argument_record.child, parameters, deduced);
+	{
+		if (pattern_record.dependent_bound_parameter != kNoTemplateParameter)
+		{
+			const std::size_t dependent =
+				pattern_record.dependent_bound_parameter;
+			if (dependent >= parameters.size() ||
+				parameters[dependent].kind != TEMPLATE_ARGUMENT_INTEGRAL ||
+				argument_record.bound == 0 ||
+				argument_record.dependent_bound_parameter !=
+					kNoTemplateParameter)
+				return false;
+			const TemplateArgument pattern_bound(TEMPLATE_ARGUMENT_INTEGRAL,
+				pattern_record.dependent_bound_type, 0,
+				static_cast<std::uint32_t>(dependent));
+			const TemplateArgument argument_bound(TEMPLATE_ARGUMENT_INTEGRAL,
+				pattern_record.dependent_bound_type,
+				NormalizeIntegralConstant(pattern_record.dependent_bound_type,
+					static_cast<std::int64_t>(argument_record.bound)));
+			if (!DeduceFunctionTemplatePackArgument(pattern_bound,
+				argument_bound, parameters, deduced)) return false;
+		}
+		else if (argument_record.dependent_bound_parameter !=
+			kNoTemplateParameter ||
+			(pattern_record.bound != 0 &&
+			 pattern_record.bound != argument_record.bound)) return false;
+		return DeduceFunctionTemplatePackType(pattern_record.child,
+			argument_record.child, parameters, deduced);
+	}
 	case TYPE_FUNCTION:
 	{
 		if (pattern_record.parameter_count != argument_record.parameter_count ||

@@ -653,6 +653,8 @@ int run_emit_semantics_mode(const vector<string> & args)
 		   << stats.template_partial_shape_cache_hits
 			   << " template_partial_deduction_visits="
 			   << stats.template_partial_deduction_visits
+			   << " function_template_deduction_visits="
+			   << stats.function_template_deduction_visits
 			   << " lambda_closure_requests="
 			   << stats.lambda_closure_requests
 			   << " lambda_closure_cache_hits="
@@ -824,6 +826,8 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << semantic.template_partial_shape_cache_hits
 				 << " template_partial_deduction_visits="
 				 << semantic.template_partial_deduction_visits
+				 << " function_template_deduction_visits="
+				 << semantic.function_template_deduction_visits
 				 << " lambda_closure_requests="
 				 << semantic.lambda_closure_requests
 				 << " lambda_closure_cache_hits="

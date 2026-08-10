@@ -285,6 +285,8 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 				semantic_stats.template_partial_shape_cache_hits;
 			semantic.template_partial_deduction_visits +=
 				semantic_stats.template_partial_deduction_visits;
+			semantic.function_template_deduction_visits +=
+				semantic_stats.function_template_deduction_visits;
 			semantic.lambda_closure_requests +=
 				semantic_stats.lambda_closure_requests;
 			semantic.lambda_closure_cache_hits +=

@@ -1253,6 +1253,11 @@ void SemanticAnalyzer::CompleteFunctionCallTemplateCandidates(NodeId callee,
 		DeduceFunctionTemplates(scope, spelling, arguments, callee);
 		*candidates = FunctionCallCandidates(
 			scope, spelling, naming_class, callee);
+		if (!has_explicit_syntax)
+			candidates->erase(std::remove_if(candidates->begin(), candidates->end(),
+				[this](BindingId candidate) {
+					return GetFunction(candidate).template_specialization;
+				}), candidates->end());
 		for (std::size_t i = 0; i < specializations.size(); ++i)
 		{
 			const BindingId canonical =
@@ -1388,6 +1393,11 @@ void SemanticAnalyzer::CompleteFunctionCallTemplateCandidates(NodeId callee,
 			arguments, explicit_syntax, scope, &specializations);
 	else
 		DeduceFunctionTemplatePatterns(patterns, arguments, &specializations);
+	if (!has_explicit_syntax)
+		candidates->erase(std::remove_if(candidates->begin(), candidates->end(),
+			[this](BindingId candidate) {
+				return GetFunction(candidate).template_specialization;
+			}), candidates->end());
 	for (std::size_t i = 0; i < specializations.size(); ++i)
 	{
 		const BindingId canonical =

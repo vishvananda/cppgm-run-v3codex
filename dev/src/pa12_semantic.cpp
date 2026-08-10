@@ -2924,6 +2924,8 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 			template_partial_shape_cache_hits_;
 		stats_->template_partial_deduction_visits =
 			template_partial_deduction_visits_;
+		stats_->function_template_deduction_visits =
+			function_template_deduction_visits_;
 		stats_->lambda_closure_requests = lambda_closure_requests_;
 		stats_->lambda_closure_cache_hits = lambda_closure_cache_hits_;
 		stats_->constexpr_call_requests = constexpr_call_requests_;
