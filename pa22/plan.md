@@ -8,48 +8,48 @@ specializations, and selected call/conversion facts; retained syntax owns source
 provenance. Completion and emission are monotonic demand operations, and lowering
 consumes typed facts without lookup or rendered keys.
 
-The latest durable increment preserves an existing materialized class/array node when
-its result is discarded and publishes that role on the node. Its selected constructor
-remains a canonical binding. A bounded source-edge-order DFS over each completed
-translation-unit/function graph schedules first demand, while binding-indexed states
-own identity and deduplication; LowIR order remains presentation. The release counter
-`materialized_demand_visits` observes this traversal directly. This is the PA22 portion
-of `spec.md` §§2–6 and 8–10; PA23 deduction/SFINAE and the §7 object backend remain out
-of scope.
+The latest durable increment extends the canonical specialization graph to assignment
+conversion facts: semantic analysis owns the selected target and publishes whether a
+converted constant is already a target-typed immediate; `GraphLowerer` consumes that
+fact without template lookup or rendered-type reconstruction. This is the PA22 portion
+of `spec.md` §§2.7, 4.1, 6.4–6.7, and 9.3–9.6. PA23 deduction/SFINAE and the §7 object
+backend remain out of scope.
 
 ## Current Failure Map
 
-Checkpoint baseline: **304/310**; current: **305/310**. Specialized-member scalar
-conversion owns the forward-alias and copy-assignment diffs (2); class-value
-destination transfer owns the hidden-friend and friend-constructor diffs (2);
-local-static constant/dynamic classification owns the remaining diff (1). None
-crosses the audited discarded-result or demand-scheduling path.
+Turn-start baseline: **305/310**; current: **307/310**. Specialized-member scalar
+conversion is complete (2). Class-value destination transfer owns the hidden-friend
+and friend-constructor diffs (2); local-static constant/dynamic classification owns
+the remaining diff (1). The remaining groups are independent at class initialization
+and local-static planning boundaries.
 
 ## Active Checkpoint
 
-**Next: specialized-member scalar conversion facts.** Publish the selected integral
-conversion once for an assignment whose member type comes from a class-template
-specialization, and let assignment lowering consume that fact without re-deriving it
-from type spelling or owner names (`spec.md` §§2.7, 4.1, 6.4–6.7, 9.3–9.6). Owner:
-`SemanticAnalyzer::ApplyTarget`/assignment construction; flow: typed conversion fact
-to `GraphLowerer`. Expected work is O(1) per analyzed assignment. Validate both
-focused widening-literal cases, nearby member/alias/template overload cases, PA22,
-PA1–PA21, file audit, and 16/32/64 specialized-member assignments.
+**Next: class-value destination transfer.** Preserve the selected constructor/call and
+the destination object identity when a class prvalue initializes a local object, so
+`GraphLowerer` consumes one typed transfer rather than dropping or reconstructing the
+call (`spec.md` §§2.7, 3.5, 4.1–4.8, 6.4–6.7, 9.3–9.6). Owner:
+`FinalizeVariableInitializer`/class-value transfer construction; flow: selected
+`BindingId`, source object, and destination identity -> transfer node -> ordinary
+class-value lowering. Expected work is O(1) per initialization plus already-required
+argument lowering. Validate both remaining class-value cases, adjacent copy-elision
+and friend-template cases, PA22, PA1–PA21, file audit, and 16/32/64 transfers.
 
 ## Performance Evidence
 
-Five-run medians for 16/32/64 distinct pointer-to-array pack elements, each
-constructing one discarded `I<T>` specialization:
+Five-run medians for 16/32/64 literal assignments to `long` members of one canonical
+`perf_box<long>` specialization:
 
-| Elements | Demand visits / edges / temporary visits | Requests / hits | Demand pushes / functions / instructions | Semantic peak / typed MiB | Semantic / lowering ms |
+| Assignments | Semantic nodes / edges / demand visits | Specialization requests / hits | Conversion checks / instructions | Semantic peak / typed bytes | Semantic / lowering ms |
 |---:|---:|---:|---:|---:|---:|
-| 16 | 128 / 127 / 135 | 19 / 2 | 17 / 18 / 100 | 0.277 / 0.046 | 1.644 / 0.553 |
-| 32 | 240 / 239 / 263 | 35 / 2 | 33 / 34 / 196 | 0.538 / 0.091 | 2.757 / 0.886 |
-| 64 | 464 / 463 / 519 | 67 / 2 | 65 / 66 / 388 | 1.070 / 0.180 | 4.878 / 1.679 |
+| 16 | 200 / 199 / 197 | 16 / 15 | 17 / 65 | 124051 / 17983 | 0.630 / 0.113 |
+| 32 | 392 / 391 / 389 | 32 / 31 | 33 / 129 | 234083 / 34351 | 0.965 / 0.171 |
+| 64 | 776 / 775 / 773 | 64 / 63 | 65 / 257 | 454851 / 67087 | 1.668 / 0.286 |
 
-Every work, output, storage, and time series is linear. Demand visits equal reachable
-nodes and edges are exactly one fewer, proving one traversal of each completed tree;
-the two cache hits are fixed reuse of the pack owner rather than per-element replay.
+Every work, output, storage, and time series is linear. Each declaration performs one
+specialization request, all after the first are O(1) cache hits, conversion checks are
+`n + 1`, and instructions are `4n + 1`; the added canonical `TypeId` fact introduces
+no retry, scan, or output-dependent lookup.
 
 ## Completed Checkpoints
 
@@ -59,3 +59,4 @@ the two cache hits are fixed reuse of the pack owner rather than per-element rep
 | Retained call/declaration acceptance (`c230676a`, audit repaired) | Comparable parameter ordering, inactive-union provenance, and typed aggregate-prvalue materialization advanced 300 to 303 with linear scaling and prior stages clean. |
 | Canonical captureless closures (`cc87146e`, audit repaired) | Indexed closure entities, callable-owned ABI exceptions, and graph-derived managed cleanup advanced 303 to 304 with PA1–PA21 at 2329/2329 and the audit clean. |
 | Instantiated discarded-result provenance and ordered demand (`605d7e99`, audit repaired) | Typed discarded provenance plus canonical, source-order demand advanced 304 to 305; direct traversal telemetry, 23 focused/adjacent tests, PA1–PA21 (2329/2329), linear 16/32/64 scaling, and file audit pass. |
+| Specialized-member scalar conversion facts | Canonical conversion targets and destination-owned immediate facts advanced 305 to 307; focused 2/2, PA1–PA21 (2329/2329), linear 16/32/64 scaling, and file audit pass. |

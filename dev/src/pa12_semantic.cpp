@@ -532,6 +532,11 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 		conversion_target_record.fundamental == FUND_BOOL;
 	const TypeRecord& conversion_source_record =
 		program_->types.Get(conversion_source);
+	value.converted_scalar_target = kNoType;
+	if (conversion_source != conversion_target &&
+		(IsIntegral(conversion_source, true) || IsFloating(conversion_source)) &&
+		(IsIntegral(conversion_target, true) || IsFloating(conversion_target)))
+		value.converted_scalar_target = conversion_target;
 	const bool reference_target = target_record.kind == TYPE_LVALUE_REFERENCE ||
 		target_record.kind == TYPE_RVALUE_REFERENCE;
 	const std::uint32_t source_object = ExpressionObject(value);
@@ -1505,6 +1510,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 	const TypeId result_type = EffectiveType(left.type);
 	const std::uint32_t expression = MakeDump(DUMP_ASSIGNMENT_EXPRESSION,
 		result_type, VALUE_LVALUE, program_->names.Intern(arena_->Payload(node)));
+	dump_.nodes[expression].converted_scalar_target =
+		ConvertedSpecializedMemberAssignmentTarget(left, right);
 	if (operation != "=" && !pointer_add)
 		dump_.nodes[expression].operand_type =
 			CommonArithmeticType(left.type, right.type);

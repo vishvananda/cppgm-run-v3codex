@@ -328,6 +328,12 @@ public:
 		Operand value;
 		if (op == "=")
 		{
+			if (record.converted_scalar_target != kNoType &&
+				derived.program_.types.RemoveTopCv(
+					record.converted_scalar_target) !=
+				derived.program_.types.RemoveTopCv(record.type))
+				throw std::logic_error(
+					"assignment conversion target does not match destination");
 			bool union_member = false;
 			const DumpNode& destination = derived.arena_.nodes[children[0]];
 			if (destination.kind == DUMP_MEMBER_EXPRESSION &&
@@ -340,6 +346,7 @@ public:
 			}
 			value = derived.LowerConvertedValue(children[1], type,
 				union_member ||
+				record.converted_scalar_target != kNoType ||
 				derived.CanonicalizeImmediateConversion(children[1]));
 			storage = derived.LowerStorage(children[0]);
 		}

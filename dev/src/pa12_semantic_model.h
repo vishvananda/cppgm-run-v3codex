@@ -94,7 +94,7 @@ const std::uint32_t kNoDumpEdge =
 struct DumpNode
 {
 	DumpKind kind;
-	TypeId type;
+	TypeId type, converted_scalar_target;
 	TypeId operand_type;
 	ValueCategory category;
 	NameId text;
@@ -144,7 +144,8 @@ struct DumpNode
 	bool has_direct_base_offset;
 
 	explicit DumpNode(DumpKind value)
-		: kind(value), type(kNoType), operand_type(kNoType),
+		: kind(value), type(kNoType), converted_scalar_target(kNoType),
+		  operand_type(kNoType),
 		  category(VALUE_NONE), text(0), binding(kNoBinding),
 		  object_binding(kNoBinding), selected_binding(kNoBinding),
 		  constant_value(0), array_count(0), storage_transfer_size(0),
@@ -393,7 +394,7 @@ struct ConstexprObjectValue
 struct ExpressionInfo
 {
 	std::uint32_t node;
-	TypeId type;
+	TypeId type, converted_scalar_target;
 	ValueCategory category;
 	BindingId binding;
 	std::size_t constexpr_local;
@@ -408,7 +409,8 @@ struct ExpressionInfo
 	std::uint32_t string_unit_count;
 
 	ExpressionInfo()
-		: node(kNoDumpEdge), type(kNoType), category(VALUE_PRVALUE),
+		: node(kNoDumpEdge), type(kNoType),
+		  converted_scalar_target(kNoType), category(VALUE_PRVALUE),
 		  binding(kNoBinding),
 		  constexpr_local(std::numeric_limits<std::size_t>::max()),
 		  constant(false), value(0), floating_constant(false),

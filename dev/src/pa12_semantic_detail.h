@@ -988,6 +988,9 @@ private:
 	void RecordExpressionFacts(const ExpressionInfo& value);
 	ExpressionInfo ApplyTarget(ExpressionInfo value, TypeId target,
 		ConversionRank known_conversion = CONVERSION_INVALID);
+	TypeId ConvertedSpecializedMemberAssignmentTarget(
+		const ExpressionInfo& destination,
+		const ExpressionInfo& value) const;
 	ConversionRank MemberObjectConversion(const ExpressionInfo& source,
 		TypeId target, BindingId member) const;
 	ExpressionInfo ApplyMemberObjectTarget(ExpressionInfo value,
