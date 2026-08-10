@@ -901,26 +901,11 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 				}
 				else
 				{
-					std::vector<BindingId> argument_functions = FunctionCandidates(
-							scope, arena_->Payload(argument_syntax[a]), 0,
-							argument_syntax[a]);
-					TypeId desired = program_->types.RemoveTopCv(parameters[a]);
-					if (program_->types.Get(desired).kind == TYPE_POINTER)
-						desired = program_->types.Get(desired).child;
-					const std::vector<BindingId> target_templates =
-						FunctionTemplateTargetCandidates(scope,
-							arena_->Payload(argument_syntax[a]), desired, argument_syntax[a]);
-					for (std::size_t f = 0; f < target_templates.size(); ++f)
-						if (std::find(argument_functions.begin(),
-							argument_functions.end(), target_templates[f]) ==
-							argument_functions.end())
-							argument_functions.push_back(target_templates[f]);
-					std::size_t matches = 0;
-					for (std::size_t f = 0; f < argument_functions.size(); ++f)
-						if (GetFunction(argument_functions[f]).type == desired)
-							++matches;
-					rank = matches == 1 ?
-						CONVERSION_EXACT : CONVERSION_INVALID;
+					const CallConversionFact conversion =
+						UntypedCallArgumentConversion(
+							argument_syntax[a], scope, parameters[a]);
+					conversions[c * explicit_arity + a] = conversion;
+					rank = conversion.rank;
 				}
 			}
 			ranks[c * arity + explicit_offset + a] = rank;
@@ -1135,8 +1120,10 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 		if (a < function_type.parameter_count)
 		{
 			if (argument.type == kNoType)
-				argument = AnalyzeExpression(argument_syntax[a], scope,
-					parameters[a]);
+				argument = MaterializeCallArgument(
+					argument_syntax[a], scope, parameters[a], argument,
+					argument_conversions && a < argument_conversions->size() ?
+						&(*argument_conversions)[a] : 0);
 			else argument = ApplyCallArgument(argument, parameters[a],
 				argument_conversions && a < argument_conversions->size() ?
 					&(*argument_conversions)[a] : 0);
@@ -1259,20 +1246,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 		if (direct_callee_syntax == kNoNode)
 			throw std::runtime_error("empty parenthesized callee");
 	}
-	NodeId arguments_node = FindChild(node, "argument-list");
-	if (arguments_node == kNoNode)
-		arguments_node = FindChild(node, "braced-init-list");
-	if (arguments_node == kNoNode)
-	{
-		std::uint32_t edge = arena_->FirstEdge(node);
-		if (edge != kNoEdge) edge = arena_->NextEdge(edge);
-		if (edge != kNoEdge) arguments_node = arena_->EdgeChild(edge);
-	}
-	std::vector<NodeId> argument_syntax;
-	if (arguments_node != kNoNode)
-		for (std::uint32_t argument = arena_->FirstEdge(arguments_node);
-			argument != kNoEdge; argument = arena_->NextEdge(argument))
-			argument_syntax.push_back(arena_->EdgeChild(argument));
+	NodeId arguments_node = kNoNode;
+	std::vector<NodeId> argument_syntax =
+		CollectCallArgumentSyntax(node, &arguments_node);
+	if (NeedsBracedCallContext(argument_syntax))
+		return AnalyzeCallInBracedContext(node, scope, target);
 	std::vector<ExpressionInfo> analyzed_arguments;
 	bool arguments_analyzed = false;
 	ExpressionInfo member_call;
@@ -1307,7 +1285,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 			direct_callee_syntax, scope, spelling, &function_naming_class, &retained_lookup);
 		if (!arguments_analyzed)
 			for (std::size_t i = 0; i < argument_syntax.size(); ++i)
-				analyzed_arguments.push_back(AnalyzeExpression(argument_syntax[i], scope));
+				analyzed_arguments.push_back(
+					AnalyzeUntypedCallArgument(argument_syntax[i], scope));
 		arguments_analyzed = true;
 		const TypeId cast_type = ResolveFunctionalCastType(scope, spelling,
 			direct_callee_syntax);
@@ -1436,7 +1415,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 	{
 		for (std::size_t i = 0; i < argument_syntax.size(); ++i)
 			analyzed_arguments.push_back(
-				AnalyzeExpression(argument_syntax[i], scope));
+				AnalyzeUntypedCallArgument(argument_syntax[i], scope));
 		arguments_analyzed = true;
 	}
 	ExpressionInfo call_operator;
@@ -1478,7 +1457,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 		ExpressionInfo argument = arguments_analyzed ? analyzed_arguments[a] :
 			AnalyzeExpression(argument_syntax[a], scope);
 		if (a < callable.parameter_count)
-			argument = ApplyCallArgument(argument, parameters[a]);
+			argument = MaterializeCallArgument(
+				argument_syntax[a], scope, parameters[a], argument);
 		dump_.Add(call, argument.node);
 	}
 	ExpressionInfo result;

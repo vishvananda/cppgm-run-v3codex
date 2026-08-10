@@ -718,6 +718,8 @@ private:
 		BindingId binding, std::uint32_t initializer);
 	void PublishStaticConstantEvaluationStats() const;
 	ExpressionInfo AnalyzeCall(NodeId node, ScopeId scope, TypeId target);
+	std::vector<NodeId> CollectCallArgumentSyntax(
+		NodeId call, NodeId* arguments_node) const;
 	ExpressionInfo AnalyzeBuiltinInvoke(ScopeId scope,
 		const std::vector<NodeId>& argument_syntax,
 		const std::vector<ExpressionInfo>* analyzed_arguments, TypeId target);
@@ -979,6 +981,16 @@ private:
 		const std::vector<ExpressionInfo>& arguments,
 		std::vector<BindingId>* candidates);
 	void PrepareBracedInitialization(NodeId list, ScopeId scope);
+	bool NeedsBracedCallContext(
+		const std::vector<NodeId>& arguments) const;
+	ExpressionInfo AnalyzeCallInBracedContext(
+		NodeId call, ScopeId scope, TypeId target);
+	ExpressionInfo AnalyzeUntypedCallArgument(NodeId argument, ScopeId scope);
+	CallConversionFact UntypedCallArgumentConversion(
+		NodeId argument, ScopeId scope, TypeId target);
+	ExpressionInfo MaterializeCallArgument(NodeId syntax, ScopeId scope,
+		TypeId target, const ExpressionInfo& prepared,
+		const CallConversionFact* conversion = 0);
 	bool ReusePreparedBracedExpression(NodeId node, TypeId target,
 		ExpressionInfo* result);
 	CallConversionFact BracedInitializationConversion(

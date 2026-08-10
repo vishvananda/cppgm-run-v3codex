@@ -15,40 +15,38 @@ not rediscover template semantics.
 
 ## Current Failure Map
 
-Current result is 266/401, up from the turn baseline of 263 and stage baseline
-of 223 with no regressions; all `200-*` tests pass. The remaining 135 failures
+Current result is 269/401, up from the turn baseline of 266 and stage baseline
+of 223 with no regressions; all `200-*` tests pass. The remaining 132 failures
 group by primary owner and observed kind: call/address/constructor deduction
-(`100-*`: 17 exits, 2 LowIR), immediate substitution and demand (`300-*`: 66
+(`100-*`: 14 exits, 2 LowIR), immediate substitution and demand (`300-*`: 66
 exits, 9 LowIR), canonical non-type/conversion arguments (`400-*`: 18 exits,
 1 LowIR), and composed lookup/alias/class paths (`500-*`: 13 exits, 9 LowIR).
 
 ## Active Checkpoint
 
-The remaining `100-*` failures share the first deduction boundary: explicit
-template-id calls/addresses, overload-set arguments, and array/braced/pack
-parameter shapes. N3485 14.8.1, 14.8.2.1, 14.8.2.5, and 14.8.3 require explicit
-arguments to seed one candidate-local frame before argument deduction, with
-non-deduced contexts and overload sets resolved before specialization demand.
-Retained template patterns own syntax and lexical scope; candidate collection
-owns viable declarations; deduction owns fixed/pack bindings; overload owns
-selection; demand and lowering consume only the winner. Expected work is
-O(candidate shape nodes plus participating pack elements), with O(1)-average
-specialization lookup. Validate representative call/address/array groups, all
-`100-*`, PA1-PA22, and audit; measure doubled candidate and pack shapes.
+Three remaining `100-*` failures share the function-designator boundary:
+explicit template-ids and overload sets used as call arguments must remain
+candidate sets until a parameter target supplies a function type. N3485 13.4,
+14.8.1, and 14.8.2.1 require explicit arguments to form viable template
+specializations, a unique target-compatible function to participate in
+deduction, and an unresolved set to remain non-deduced. Parsed id-expressions
+own explicit syntax; target-aware function lookup owns specialization and
+ordinary-overload candidates; deduction owns uniqueness; call conversion
+records the selected canonical binding for lowering. Expected work is
+O(overloads * deduction shape), cached per `(syntax,target)`. Validate the
+explicit-address, user-conversion, and unique-overload failures, free/member
+function-pointer guards, all `100-*`, PA1-PA22, and audit; measure doubled
+overload sets.
 
 ## Performance Evidence
 
-For 64/128/256 repeated concrete default requests, specialization requests are
-384/768/1,536 with 382/766/1,534 cache hits; peak semantic memory is
-0.54/1.06/2.09 MB and time is 2.69/5.17/9.74 ms. For dependent-default chains
-of 16/32/64, deduction visits are 51/99/195, requests 53/101/197, peak memory
-0.19/0.31/0.54 MB, and time 0.96/1.31/2.04 ms. Incremental dependency tracking,
-identity caches, work, and storage scale linearly. Earlier pack, overload, and
-retained-partial probes also scaled linearly. For 256 inherited-constructor
-calls over 16/32/64 template candidates, wall time is 0.03/0.04/0.06 s and peak
-RSS is 9.3/9.7/10.5 MB, consistent with linear candidate-set growth. Final
-gates are PA1-PA22 2,639/2,639, PA23 266/401, zero regressions, and audit pass
-with 13 inherited warnings.
+Earlier default, pack, overload, retained-partial, and inherited-constructor
+probes scale linearly in their participating requests/candidates. For braced
+overload sets with both candidates and list elements doubled through
+32/64/128/256, three runs each took 0.01/0.04/0.15/0.59-0.61 s, matching the
+expected O(candidates * elements) traversal without superlinear cache churn.
+Final gates are PA1-PA22 2,639/2,639, PA23 269/401, zero regressions, and audit
+pass with 13 inherited warnings.
 
 ## Completed Checkpoints
 
@@ -62,3 +60,4 @@ with 13 inherited warnings.
 | Typed function-pack deduction and partial ordering | Inner/trailing/empty/repeated packs, active defaulted tails, and direct `T&`/forwarding-`T&&` ordering pass; 248 -> 255, seven gains, no regressions, linear pack/candidate scaling. |
 | Dependent class defaults and lazy type identity | Symbolic defaults retain canonical non-deduced facts, aliases avoid eager layout, explicit uses demand completion, re-entrant layout retains stable owners (ASan-clean), and typed ordering selects correctly; 255 -> 263, eight gains, no regressions, linear scaling. |
 | Inherited member-template ordering and virtual emission | Constructor-template using edges synthesize derived wrappers, exact reference ranks expose typed partial ordering, and canonical RTTI/vtable symbols emit once; all 46 `200-*` pass, 263 -> 266, no regressions, linear candidate scaling. |
+| Contextual braced-call deduction and materialization | Lists stay untyped through deduction, rank per selected parameter, materialize scalar/class/array arguments once, and preserve constexpr temporary lifetime; three gains, 266 -> 269, no regressions, O(candidates * elements). |

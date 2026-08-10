@@ -457,7 +457,7 @@ bool SemanticAnalyzer::ExpandCallArgumentPacks(
 		if (!arena_->IsTag(input[i], "pack-expansion-expression"))
 		{
 			syntax->push_back(input[i]);
-			arguments->push_back(AnalyzeExpression(input[i], scope));
+			arguments->push_back(AnalyzeUntypedCallArgument(input[i], scope));
 			continue;
 		}
 		ExpandExpressionPack(input[i], scope, syntax, arguments);

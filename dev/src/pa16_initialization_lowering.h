@@ -34,7 +34,8 @@ protected:
 			"discardarr" : "discard";
 		return Operand(derived.EnsureGeneratedSlot(node,
 			derived.arena_.nodes[node].reference_call_materialization ? "refcall" :
-			derived.arena_.nodes[node].argument_materialization ? "arg" :
+			derived.arena_.nodes[node].argument_materialization ?
+				(object_type.kind == TYPE_ARRAY ? "argarr" : "arg") :
 			derived.arena_.nodes[node].discarded_materialization ?
 				discarded_name : "tmpobj", type), type);
 	}

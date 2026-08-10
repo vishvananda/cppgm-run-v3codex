@@ -1811,9 +1811,24 @@ bool SemanticAnalyzer::AddConstexprInvocationArguments(
 		const TypeId type = ParameterBindingType(parameter);
 		const bool reference = program_->types.IsReference(type);
 		const bool pointer = IsPointer(EffectiveType(type));
-		const std::uint32_t address = reference ?
+		std::uint32_t address = reference ?
 			arguments[i].constexpr_lvalue_address :
 			ExpressionAddress(arguments[i]);
+		const bool scalar_temporary = reference &&
+			address == kNoConstexprAddress &&
+			arguments[i].category != VALUE_LVALUE && arguments[i].constant &&
+			(IsIntegral(EffectiveType(type), true) ||
+			 IsFloating(EffectiveType(type)));
+		if (scalar_temporary)
+		{
+			const TypeId object_type = program_->types.RemoveTopCv(
+				EffectiveType(type));
+			const std::int64_t extent = static_cast<std::int64_t>(
+				program_->SizeOf(object_type));
+			address = InternConstexprAddress(ConstexprAddressValue(
+				CONSTEXPR_ADDRESS_LOCAL, next_constexpr_storage_identity_++,
+				0, 0, extent));
+		}
 		if (reference && address == kNoConstexprAddress) return false;
 		const std::uint32_t object = ExpressionObject(arguments[i]);
 		bool added = false;
@@ -1822,6 +1837,11 @@ bool SemanticAnalyzer::AddConstexprInvocationArguments(
 		{
 			added = AddConstexprAddressLocal(parameter.name,
 				parameter.pack_name, type, address, &local);
+			if (added && reference && arguments[i].constant &&
+				(IsIntegral(EffectiveType(type), true) ||
+				 IsFloating(EffectiveType(type))))
+				constexpr_locals_[local].value = ConvertScalarConstant(
+					arguments[i].type, type, ExpressionScalar(arguments[i]));
 			if (added && object != kNoConstexprObject &&
 				ExpressionCompleteObject(arguments[i]) != kNoConstexprObject)
 			{
@@ -2445,9 +2465,12 @@ bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 			argument.scalar = ConvertScalarConstant(
 				arguments[i].type, type, ExpressionScalar(arguments[i]));
 		}
-		if (argument.kind == 0 ||
-			(reference &&
-			 !(argument.kind & CONSTEXPR_CALL_ARGUMENT_ADDRESS))) return false;
+		const bool scalar_temporary = reference &&
+			arguments[i].category != VALUE_LVALUE &&
+			(argument.kind & CONSTEXPR_CALL_ARGUMENT_SCALAR);
+		if (argument.kind == 0 || (reference &&
+			!(argument.kind & CONSTEXPR_CALL_ARGUMENT_ADDRESS) &&
+			!scalar_temporary)) return false;
 		key.arguments.push_back(argument);
 	}
 

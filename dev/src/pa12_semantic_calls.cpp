@@ -12,6 +12,26 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+std::vector<NodeId> SemanticAnalyzer::CollectCallArgumentSyntax(
+	NodeId call, NodeId* arguments_node) const
+{
+	*arguments_node = FindChild(call, "argument-list");
+	if (*arguments_node == kNoNode)
+		*arguments_node = FindChild(call, "braced-init-list");
+	if (*arguments_node == kNoNode)
+	{
+		std::uint32_t edge = arena_->FirstEdge(call);
+		if (edge != kNoEdge) edge = arena_->NextEdge(edge);
+		if (edge != kNoEdge) *arguments_node = arena_->EdgeChild(edge);
+	}
+	std::vector<NodeId> result;
+	if (*arguments_node != kNoNode)
+		for (std::uint32_t argument = arena_->FirstEdge(*arguments_node);
+			argument != kNoEdge; argument = arena_->NextEdge(argument))
+			result.push_back(arena_->EdgeChild(argument));
+	return result;
+}
+
 bool SemanticAnalyzer::CandidateSubstitutionActive() const
 {
 	return !candidate_substitution_failures_.empty();
@@ -492,7 +512,8 @@ bool SemanticAnalyzer::AnalyzeBuiltinCall(const std::string& spelling,
 		throw std::runtime_error("invalid builtin function call arity");
 	std::vector<ExpressionInfo> arguments;
 	for (std::size_t i = 0; i < argument_syntax.size(); ++i)
-		arguments.push_back(AnalyzeExpression(argument_syntax[i], scope));
+		arguments.push_back(
+			AnalyzeUntypedCallArgument(argument_syntax[i], scope));
 	*result = BuildResolvedCall(binding, scope, argument_syntax,
 		arguments, 0, target);
 	return true;
@@ -624,7 +645,8 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 	else object_pointer.category = VALUE_LVALUE;
 	std::vector<ExpressionInfo> arguments;
 	for (std::size_t i = 0; i < argument_syntax.size(); ++i)
-		arguments.push_back(AnalyzeExpression(argument_syntax[i], scope));
+		arguments.push_back(
+			AnalyzeUntypedCallArgument(argument_syntax[i], scope));
 	if (!template_patterns.empty())
 	{
 		NamePath syntax_base;

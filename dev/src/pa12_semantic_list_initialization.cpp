@@ -94,6 +94,159 @@ const ExpressionInfo* FindPreparedExpression(
 
 }
 
+bool SemanticAnalyzer::NeedsBracedCallContext(
+	const std::vector<NodeId>& arguments) const
+{
+	if (braced_initialization_context_) return false;
+	for (std::size_t i = 0; i < arguments.size(); ++i)
+		if (arena_->IsTag(arguments[i], "braced-init-list")) return true;
+	return false;
+}
+
+ExpressionInfo SemanticAnalyzer::AnalyzeCallInBracedContext(
+	NodeId call, ScopeId scope, TypeId target)
+{
+	BracedInitializationContext context;
+	ScopedBracedInitializationContext braced_scope(
+		braced_initialization_context_, &context);
+	return AnalyzeCall(call, scope, target);
+}
+
+ExpressionInfo SemanticAnalyzer::AnalyzeUntypedCallArgument(
+	NodeId argument, ScopeId scope)
+{
+	if (!arena_->IsTag(argument, "braced-init-list"))
+		return AnalyzeExpression(argument, scope);
+	if (!braced_initialization_context_)
+		throw std::logic_error("braced call argument has no fact context");
+	PrepareBracedInitialization(argument, scope);
+	return ExpressionInfo();
+}
+
+CallConversionFact SemanticAnalyzer::UntypedCallArgumentConversion(
+	NodeId argument, ScopeId scope, TypeId target)
+{
+	if (arena_->IsTag(argument, "braced-init-list"))
+		return BracedInitializationConversion(argument, scope, target);
+	CallConversionFact result;
+	std::vector<BindingId> functions = FunctionCandidates(
+		scope, arena_->Payload(argument), 0, argument);
+	TypeId desired = program_->types.RemoveTopCv(target);
+	if (program_->types.Get(desired).kind == TYPE_POINTER)
+		desired = program_->types.Get(desired).child;
+	const std::vector<BindingId> templates = FunctionTemplateTargetCandidates(
+		scope, arena_->Payload(argument), desired, argument);
+	for (std::size_t i = 0; i < templates.size(); ++i)
+		if (std::find(functions.begin(), functions.end(), templates[i]) ==
+			functions.end()) functions.push_back(templates[i]);
+	std::size_t matches = 0;
+	for (std::size_t i = 0; i < functions.size(); ++i)
+		if (GetFunction(functions[i]).type == desired) ++matches;
+	result.rank = matches == 1 ? CONVERSION_EXACT : CONVERSION_INVALID;
+	return result;
+}
+
+ExpressionInfo SemanticAnalyzer::MaterializeCallArgument(NodeId syntax,
+	ScopeId scope, TypeId target, const ExpressionInfo& prepared,
+	const CallConversionFact* conversion)
+{
+	if (prepared.type != kNoType)
+		return ApplyCallArgument(prepared, target, conversion);
+	if (!arena_->IsTag(syntax, "braced-init-list"))
+		return AnalyzeExpression(syntax, scope, target);
+	const TypeRecord parameter = program_->types.Get(target);
+	const TypeId list_target = parameter.kind == TYPE_LVALUE_REFERENCE ||
+		parameter.kind == TYPE_RVALUE_REFERENCE ? parameter.child : target;
+	ExpressionInfo argument = AnalyzeBracedCallArgument(
+		syntax, scope, list_target);
+	argument.category = VALUE_PRVALUE;
+	dump_.nodes[argument.node].category = VALUE_PRVALUE;
+	const EntityId entity = EntityOf(list_target);
+	if (entity != kNoEntity && program_->entities[entity].is_aggregate &&
+		dump_.nodes[argument.node].kind == DUMP_BRACED_INIT_LIST)
+		argument.node = BuildAggregateConstructionAction(
+			list_target, argument.node);
+	const TypeRecord list_object = program_->types.Get(
+		program_->types.RemoveTopCv(list_target));
+	if (list_object.kind == TYPE_ARRAY)
+		argument = MaterializeTemporary(argument);
+	return ApplyCallArgument(argument, target,
+		list_object.kind == TYPE_ARRAY ? conversion : 0);
+}
+
+ExpressionInfo SemanticAnalyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
+	TypeId target)
+{
+	if (target == kNoType) throw std::runtime_error("untyped braced-init-list");
+	EnsureClassDefinition(target);
+	ExpressionInfo expanded;
+	if (TryAnalyzeExpandedBracedInit(node, scope, target, &expanded))
+		return expanded;
+	TypeId type = target;
+	const TypeRecord array = program_->types.Get(
+		program_->types.RemoveTopCv(type));
+	const EntityId class_entity = EntityOf(type);
+	if (IsClassEntity(*program_, class_entity))
+	{
+		if (!program_->entities[class_entity].is_aggregate)
+		{
+			std::vector<NodeId> arguments;
+			for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
+				edge = arena_->NextEdge(edge))
+				arguments.push_back(arena_->EdgeChild(edge));
+			ExpressionInfo result;
+			result.node = BuildConstructorAction(type, scope, arguments,
+				false, true, false, true, node);
+			result.type = type;
+			result.category = VALUE_NONE;
+			SetExpressionDumpObject(&result);
+			return result;
+		}
+		std::uint32_t element_edge = arena_->FirstEdge(node);
+		ExpressionInfo result = AnalyzeAggregateInit(type, scope, &element_edge);
+		if (element_edge != kNoEdge)
+			throw std::runtime_error("excess aggregate initializer elements");
+		return result;
+	}
+	if (array.kind == TYPE_ARRAY)
+	{
+		std::uint32_t element_edge = arena_->FirstEdge(node);
+		ExpressionInfo result = AnalyzeArrayAggregateInit(type, scope,
+			&element_edge);
+		if (element_edge != kNoEdge)
+			throw std::runtime_error("excess array initializer elements");
+		return result;
+	}
+	TypeId element = type;
+	std::vector<ExpressionInfo> values;
+	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		ExpressionInfo value = AnalyzeExpression(arena_->EdgeChild(edge), scope,
+			element);
+		if (IsIntegral(element, true) && IsArithmetic(value.type) &&
+			!IsIntegral(value.type, true))
+			throw std::runtime_error("narrowing list-initialization conversion");
+		values.push_back(value);
+	}
+	const std::uint32_t list = MakeDump(DUMP_BRACED_INIT_LIST, type,
+		VALUE_LVALUE);
+	for (std::size_t i = 0; i < values.size(); ++i) dump_.Add(list, values[i].node);
+	ExpressionInfo result;
+	result.node = list;
+	result.type = type;
+	result.category = VALUE_LVALUE;
+	if (values.empty() && IsArithmetic(type))
+	{
+		dump_.nodes[list].value_initialization = true;
+		SetExpressionScalar(&result, NormalizeScalarConstant(type,
+			ConstexprScalarValue(static_cast<std::int64_t>(0))));
+	}
+	RecordExpressionFacts(result);
+	++expression_count_;
+	return result;
+}
+
 void SemanticAnalyzer::PrepareBracedInitialization(NodeId list, ScopeId scope)
 {
 	if (!braced_initialization_context_ || list == kNoNode ||
