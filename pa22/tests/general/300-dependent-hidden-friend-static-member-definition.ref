@@ -7,7 +7,10 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^entry:
     %t1 = addr $it
     %t2 = addr $next
-    %t3 = addr $next
+    %t3 = addr $it
+    %t4 = call obj<1x1> @operator_(1, %t3)
+    copyobj 1x1 %t4, %t2
+    %t5 = addr $next
     return i32 0
 }
 function @hidden_friend_current_instantiation__compare() -> u8 [binding=strong, object=_ZN35hidden_friend_current_instantiation7compareEv] {

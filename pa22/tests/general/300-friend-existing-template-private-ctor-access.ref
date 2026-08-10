@@ -10,7 +10,11 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t1 = addr $s
     call void @n__basic_string_char__n__traits_char___n__alloc_char____basic_string(%t1)
     %t2 = addr $x
-    %t3 = addr $x
+    %t3 = addr @__strlit__1
+    %t4 = addr $s
+    %t5 = call obj<1x1> @n__operator_(%t3, %t4)
+    copyobj 1x1 %t5, %t2
+    %t6 = addr $x
     return i32 0
 }
 function @n__basic_string_char__n__traits_char___n__alloc_char____basic_string(%this : ptr) -> void [binding=weak, object=_ZN1n12basic_stringIcNS_6traitsIcEENS_5allocIcEEEC1Ev] {
