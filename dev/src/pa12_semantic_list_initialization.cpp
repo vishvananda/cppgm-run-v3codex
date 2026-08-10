@@ -707,7 +707,8 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 		throw std::logic_error("constructor action has non-class type");
 	bool has_braced_argument = false;
 	for (std::size_t i = 0; i < argument_syntax.size(); ++i)
-		if (arena_->IsTag(argument_syntax[i], "braced-init-list"))
+		if (argument_syntax[i] != kNoNode &&
+			arena_->IsTag(argument_syntax[i], "braced-init-list"))
 			has_braced_argument = true;
 	if (!braced_initialization_context_ && has_braced_argument)
 	{
@@ -720,7 +721,8 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 	}
 	if (braced_initialization_context_)
 		for (std::size_t i = 0; i < argument_syntax.size(); ++i)
-			if (arena_->IsTag(argument_syntax[i], "braced-init-list"))
+			if (argument_syntax[i] != kNoNode &&
+				arena_->IsTag(argument_syntax[i], "braced-init-list"))
 				PrepareBracedInitialization(argument_syntax[i], scope);
 	std::vector<ExpressionInfo> arguments;
 	if (prepared_arguments)

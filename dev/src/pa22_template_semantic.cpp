@@ -34,6 +34,70 @@ bool EquivalentAliasTemplateParameters(
 
 }
 
+void SemanticAnalyzer::DemandMaterializedConstructorActions(std::uint32_t node)
+{
+	if (node >= dump_.nodes.size())
+		throw std::logic_error("invalid materialized-constructor demand root");
+	std::vector<std::uint32_t> pending(1, node);
+	while (!pending.empty())
+	{
+		const std::uint32_t current = pending.back();
+		pending.pop_back();
+		DumpNode& record = dump_.nodes[current];
+		if (record.kind == DUMP_TEMPORARY_OBJECT &&
+			record.pending_constructor_demand)
+		{
+			if (record.first_edge == kNoDumpEdge ||
+				dump_.edges[record.first_edge].next != kNoDumpEdge)
+				throw std::logic_error(
+					"materialized constructor has invalid recipe");
+			const DumpNode& action = dump_.nodes[
+				dump_.edges[record.first_edge].child];
+			if (action.kind != DUMP_CONSTRUCTOR_ACTION ||
+				action.binding == kNoBinding)
+				throw std::logic_error(
+					"materialized constructor demand has no action");
+			record.pending_constructor_demand = false;
+			DemandFunction(action.binding);
+		}
+		for (std::uint32_t edge = record.first_edge; edge != kNoDumpEdge;
+			edge = dump_.edges[edge].next)
+			pending.push_back(dump_.edges[edge].child);
+	}
+}
+
+bool SemanticAnalyzer::TryBuildElidedClassValueTransfer(TypeId type,
+	const ExpressionInfo& source, BindingId selected_constructor,
+	ExpressionInfo* result)
+{
+	if (!graph_consumer_ || result == 0 || source.node >= dump_.nodes.size() ||
+		selected_constructor == kNoBinding) return false;
+	const FunctionInfo& constructor = GetFunction(selected_constructor);
+	if (constructor.special_member != SPECIAL_MEMBER_COPY_CONSTRUCTOR &&
+		constructor.special_member != SPECIAL_MEMBER_MOVE_CONSTRUCTOR) return false;
+	const DumpNode& materialized = dump_.nodes[source.node];
+	if (materialized.kind != DUMP_TEMPORARY_OBJECT ||
+		materialized.reference_call_materialization ||
+		materialized.first_edge == kNoDumpEdge ||
+		dump_.edges[materialized.first_edge].next != kNoDumpEdge) return false;
+	const std::uint32_t recipe_node = dump_.edges[materialized.first_edge].child;
+	const DumpNode& recipe = dump_.nodes[recipe_node];
+	const TypeId recipe_type = recipe.kind == DUMP_CONSTRUCTOR_ACTION ?
+		recipe.operand_type : recipe.type;
+	if (program_->types.RemoveTopCv(EffectiveType(recipe_type)) !=
+		program_->types.RemoveTopCv(EffectiveType(type)) ||
+		recipe.explicit_user_conversion_call) return false;
+	const bool conversion_result = recipe.user_conversion_call &&
+		!recipe.explicit_user_conversion_call;
+	if (!constructor.trivial_special_member && !conversion_result) return false;
+	ExpressionInfo direct;
+	direct.node = recipe_node;
+	direct.type = recipe_type;
+	direct.category = VALUE_PRVALUE;
+	*result = BuildDirectClassValueTransfer(direct, type, selected_constructor);
+	return true;
+}
+
 void SemanticAnalyzer::StageNestedTemplateTemporaryCleanup(
 	std::uint32_t expression, std::uint32_t statement, ScopeId scope)
 {

@@ -83,6 +83,7 @@ private:
 	bool HasBaseClass(NodeId node) const;
 	bool SyntaxUsesTemplateParameter(NodeId node) const;
 	bool SyntaxUsesRetainedType(NodeId node, std::size_t scope) const;
+	bool SyntaxUsesRetainedValue(NodeId node, std::size_t scope) const;
 	void Visit(NodeId node, std::size_t scope, bool unknown_callee = false);
 	void VisitChildren(NodeId node, std::size_t scope);
 	void VisitClass(NodeId node, std::size_t scope);
@@ -310,6 +311,26 @@ bool RetainedTemplateValidator::SyntaxUsesRetainedType(
 	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
 		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
 		if (SyntaxUsesRetainedType(
+			analyzer_.arena_->EdgeChild(edge), scope)) return true;
+	return false;
+}
+
+bool RetainedTemplateValidator::SyntaxUsesRetainedValue(
+	NodeId node, std::size_t scope) const
+{
+	if (node == kNoNode) return false;
+	if (analyzer_.arena_->IsTag(node, "id-expression") &&
+		analyzer_.FindChild(node, "structured-type-name") == kNoNode)
+	{
+		const NamePath path = analyzer_.ParseNamePath(
+			analyzer_.PayloadSource(node));
+		if (!path.global && path.Size() == 1 &&
+			(LookupLocal(scope, path.Last()) & RETAINED_VALUE_NAME) != 0)
+			return true;
+	}
+	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
+		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+		if (SyntaxUsesRetainedValue(
 			analyzer_.arena_->EdgeChild(edge), scope)) return true;
 	return false;
 }
@@ -708,6 +729,7 @@ void RetainedTemplateValidator::VisitIdExpression(NodeId node,
 	{
 		if (SyntaxUsesTemplateParameter(node)) return;
 		if (SyntaxUsesRetainedType(node, scope)) return;
+		if (SyntaxUsesRetainedValue(node, scope)) return;
 		if (!path.global &&
 			(LookupLocal(scope, path[0]) & RETAINED_TYPE_NAME) != 0)
 			return;

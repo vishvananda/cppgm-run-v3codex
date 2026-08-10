@@ -129,6 +129,7 @@ struct DumpNode
 	bool argument_materialization;
 	bool discarded_materialization;
 	bool reference_call_materialization;
+	bool pending_constructor_demand;
 	bool class_argument_staging;
 	bool direct_return_slot;
 	bool declaration_only;
@@ -161,7 +162,8 @@ struct DumpNode
 		  value_initialization(false), elide_empty_constructor(false),
 		  trivial_special_member_action(false), storage_unit_transfer(false),
 		  argument_materialization(false), discarded_materialization(false),
-		  reference_call_materialization(false), class_argument_staging(false),
+		  reference_call_materialization(false), pending_constructor_demand(false),
+		  class_argument_staging(false),
 		  direct_return_slot(false), declaration_only(false),
 		  unwind_only(false), full_expression_staging(false),
 		  conditionally_constructed(false),

@@ -110,13 +110,13 @@ void SemanticAnalyzer::CollectPackExpansionNames(NodeId node, ScopeId scope,
 	std::vector<NameId>* names) const
 {
 	if (node == kNoNode ||
-		arena_->IsTag(node, "pack-expansion-expression")) return;
+		arena_->IsTag(node, "pack-expansion-expression") ||
+		arena_->IsTag(node, "sizeof-pack-expression")) return;
 	const bool can_name_pack =
 		arena_->IsTag(node, "id-expression") ||
 		arena_->IsTag(node, "type-name") ||
 		arena_->IsTag(node, "decl-specifier") ||
-		arena_->IsTag(node, "name-component") ||
-		arena_->IsTag(node, "sizeof-pack-expression");
+		arena_->IsTag(node, "name-component");
 	if (can_name_pack)
 	{
 		const std::string spelling = PayloadSource(node);

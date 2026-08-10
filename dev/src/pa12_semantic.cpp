@@ -2749,6 +2749,7 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 	for (std::uint32_t edge = arena.FirstEdge(root); edge != kNoEdge;
 		edge = arena.NextEdge(edge))
 		AnalyzeDeclaration(arena.EdgeChild(edge), program.GlobalScope(), root_, false);
+	DemandMaterializedConstructorActions(root_);
 	if (function_templates_.empty() && class_templates_.empty())
 		for (std::size_t i = 0; i < hidden_friend_anchor_by_entity_.size(); ++i)
 			if (hidden_friend_anchor_by_entity_[i] != kNoBinding &&

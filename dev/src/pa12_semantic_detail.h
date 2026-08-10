@@ -530,6 +530,7 @@ private:
 		const std::vector<ExpressionInfo>& arguments,
 		NodeId syntax = kNoNode);
 	void DemandFunction(BindingId binding);
+	void DemandMaterializedConstructorActions(std::uint32_t node);
 	bool ShouldDemandResolvedCall(BindingId binding, bool folded,
 		bool compile_time_only) const;
 	void PublishInlineFunctionFacts(BindingId binding, bool inline_specifier);

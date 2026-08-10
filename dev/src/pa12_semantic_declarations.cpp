@@ -1906,24 +1906,18 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 			FindChild(declarator, "parameter-pack") != kNoNode;
 		if (declared_pack)
 		{
-			const NodeId spelling_node = specifiers == kNoNode ? kNoNode :
-				FirstSemanticChild(specifiers);
-			const NameId type_pack_name = spelling_node == kNoNode ? 0 :
-				program_->names.Intern(PayloadSource(spelling_node));
-			std::vector<TemplateArgument> pack;
-			if (type_pack_name != 0 &&
-				LookupTemplateArgumentPack(scope, type_pack_name, &pack))
+			std::vector<ScopeId> element_scopes;
+			if (ExpandPackElementScopes(child, parameter_scope, &element_scopes))
 			{
 				const NameId parameter_pack_name = DeclaratorName(declarator);
 				const std::string parameter_pack_spelling = parameter_pack_name == 0 ?
 					std::string() : program_->names.Get(parameter_pack_name);
-				for (std::size_t i = 0; i < pack.size(); ++i)
+				for (std::size_t i = 0; i < element_scopes.size(); ++i)
 				{
-					if (pack[i].kind != TEMPLATE_ARGUMENT_TYPE)
-						throw std::runtime_error(
-							"function type pack contains a value argument");
+					const SpecInfo element_spec = BuildSpecifiers(
+						specifiers, element_scopes[i], std::string(), true);
 					const DeclaratorInfo parsed = BuildDeclarator(
-						declarator, pack[i].type, parameter_scope);
+						declarator, element_spec.type, element_scopes[i]);
 					const NameId element_name = parameter_pack_name == 0 ? 0 :
 						i == 0 ? parameter_pack_name : program_->names.Intern(
 							parameter_pack_spelling + "__pack" +
@@ -2866,6 +2860,7 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 		current_return_type_ = previous_return;
 		current_class_context_ = previous_class;
 		current_function_context_ = previous_function;
+		DemandMaterializedConstructorActions(function);
 	}
 	GetMutableFunction(binding).demand_state = 3;
 	++demanded_function_emissions_;

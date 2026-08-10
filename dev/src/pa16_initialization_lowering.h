@@ -102,7 +102,10 @@ protected:
 		}
 		if (source.kind == DUMP_CONSTRUCTOR_ACTION)
 		{
-			derived.LowerConstructorAction(children[0], destination);
+			if (source.value_initialization)
+				EmitZeroInitialization(action.type, destination);
+			if (!IsTrivialConstructorAction(action.type, children))
+				derived.LowerConstructorAction(children[0], destination);
 			return;
 		}
 		if (source.kind == DUMP_BRACED_INIT_LIST)
@@ -525,11 +528,17 @@ protected:
 		const AggregatePath& path, const Operand& retained_destination)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		if (values.size() != 1 ||
-			derived.arena_.nodes[values[0]].kind != DUMP_CONSTRUCTOR_ACTION)
-			return false;
+		if (values.size() != 1) return false;
+		const DumpKind kind = derived.arena_.nodes[values[0]].kind;
+		if (kind != DUMP_CONSTRUCTOR_ACTION &&
+			kind != DUMP_CLASS_VALUE_TRANSFER) return false;
 		const Operand destination = retained_destination.kind == Operand::NONE ?
 			derived.ProjectAggregatePath(root, path) : retained_destination;
+		if (kind == DUMP_CLASS_VALUE_TRANSFER)
+		{
+			derived.LowerClassValueTransfer(values[0], destination);
+			return true;
+		}
 		if (derived.arena_.nodes[values[0]].elide_empty_constructor) return true;
 		if (derived.arena_.nodes[values[0]].value_initialization)
 			EmitZeroInitialization(action.type, destination);

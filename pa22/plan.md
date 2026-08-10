@@ -37,6 +37,12 @@ semantic replay. An unparenthesized member access in `decltype` resolves to the
 selected member's declared type; category-based reference formation remains limited
 to parenthesized and other expression forms.
 
+Retained validation defers qualified template arguments that mention source-ordered
+local values. Materialized runtime constructor demand is provisional until the
+temporary survives class-value transfer; constexpr demand remains immediate. Pack
+parameters replay through per-element scopes so cv/declarator structure is retained,
+and delegating initializer packs use the canonical prepared-argument path.
+
 This follows `spec.md` §§2–6, 8–10: canonical typed identity, indexed/provenance-aware
 lookup, retained substitution scope, demand-driven completion, typed lowering,
 bounded side storage, and observable work counters. It adds no PA23 SFINAE behavior
@@ -44,24 +50,24 @@ and does not pull in the §7 object backend.
 
 ## Current Failure Map
 
-Current result: **255/310**. The remaining 55 failures have one primary owner each:
-member/friend callable ownership, body replay, lookup, and access 23;
-alias/template-template/pack integration 18; dependent deduction, conversion, and
-lowering 9; explicit specialization/instantiation integration 3; residual partial
+Current result: **258/310**. The remaining 52 failures have one primary owner each:
+member/friend callable ownership, body replay, lookup, and access 22;
+alias/template-template/pack integration 17; dependent deduction, conversion, and
+lowering 8; explicit specialization/instantiation integration 3; residual partial
 ordering/replay 2.
 
 ## Active Checkpoint
 
-**Retained local qualified-id and class-value replay.** Owner: the retained function
-body owns source-ordered local declarators; its canonical specialization owns typed
-local bindings and demand state. Data flow: local declaration -> substitution overlay
--> dependent template argument/`decltype` -> initialization recipe -> demand and
-lowering. Apply `spec.md` §§2–6 and 8–9: defer lookup until locals exist, preserve
-declared type separately from value category, and demand only runtime-visible
-actions. Expected work is O(retained body nodes + local bindings + emitted actions),
-with indexed lookup and memoized specialization. Validate explicit member-`decltype`
-arguments, nested pack functional casts, local qualified replay, PA22, through PA21,
-audit, and 16/32/64 scaling.
+**Nested pack and dependent template-id deduction.** Owner: the outer retained pack
+pattern owns expansion syntax and source scope; each concrete function/class
+specialization owns canonical element arguments and deduction state. Data flow:
+outer pack selection -> nested expansion boundaries -> element scope -> structured
+template-id argument -> overload/deduction -> typed action. Apply `spec.md` §§2–6 and
+8–9: distinguish nested from unexpanded packs, retain value/type argument kind, and
+memoize canonical deduction. Expected work is O(pattern nodes + expanded elements +
+candidates), with indexed pack lookup. Validate outer type-pack nesting, array casts,
+template-id/`decltype` deduction, dependent non-type pack expressions, PA22, through
+PA21, audit, and 16/32/64 scaling.
 
 ## Performance Evidence
 
@@ -94,6 +100,13 @@ Lookup queries are 1354/2650/5242, scope visits 890/1738/3434, specialization
 requests 162/322/642 with 63/127/255 cache hits, partial deduction visits
 160/320/640, and demand emissions 48/96/192. Work and storage remain linear.
 
+Five-run 16/32/64 retained-local transfer plus concrete pack replay medians are
+7.464/14.329/28.251 ms semantic time and 1.428/2.844/5.649 MB peak stage storage.
+Lookup queries are 1807/3567/7087, scope visits 1340/2652/5276, specialization
+requests 241/481/961 with 175/351/703 cache hits, temporary dependency visits
+438/870/1734, and demand emissions 35/67/131. Provisional-demand traversal and
+per-element substitution therefore remain linear.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result |
@@ -111,3 +124,4 @@ requests 162/322/642 with 63/127/255 cache hits, partial deduction visits
 | Qualified and nested callable owner replay | Terminal dependent-base shape deferral, current-owner lookup, base-reference xvalues, and scoped empty-subobject elision; PA22 248 -> 251, prior 2329/2329, audit pass. |
 | Nested explicit specialization and prvalue lifecycle | Enclosing member-scope target lookup, nested nontrivial value ABI, and staged temporary cleanup; PA22 251 -> 253, prior 2329/2329, audit pass. |
 | Dependent primary and member-`decltype` typing | Structured leading-`typename` primaries and declared-type member `decltype`; PA22 253 -> 255, prior 2329/2329, audit pass; linear 16/32/64 replay. |
+| Retained local transfer and concrete pack replay | Local-value deferral, typed aggregate transfer, monotonic surviving-temporary demand, cv-aware pack parameters, and delegating argument expansion; PA22 255 -> 258, prior 2329/2329, audit pass; linear 16/32/64 replay. |

@@ -122,39 +122,6 @@ BindingId SemanticAnalyzer::ValidateClassValueConstruction(TypeId type,
 		ConstructorCandidates(entity), copy_initialization, false, 0, false, kNoNode, type);
 }
 
-bool SemanticAnalyzer::TryBuildElidedClassValueTransfer(TypeId type,
-	const ExpressionInfo& source, BindingId selected_constructor,
-	ExpressionInfo* result)
-{
-	if (!graph_consumer_ || result == 0 || source.node >= dump_.nodes.size() ||
-		selected_constructor == kNoBinding)
-		return false;
-	const FunctionInfo& constructor = GetFunction(selected_constructor);
-	if (constructor.special_member != SPECIAL_MEMBER_COPY_CONSTRUCTOR &&
-		constructor.special_member != SPECIAL_MEMBER_MOVE_CONSTRUCTOR)
-		return false;
-	const DumpNode& materialized = dump_.nodes[source.node];
-	if (materialized.kind != DUMP_TEMPORARY_OBJECT ||
-		materialized.reference_call_materialization ||
-		materialized.first_edge == kNoDumpEdge ||
-		dump_.edges[materialized.first_edge].next != kNoDumpEdge)
-		return false;
-	const std::uint32_t recipe_node =
-		dump_.edges[materialized.first_edge].child;
-	const DumpNode& recipe_record = dump_.nodes[recipe_node];
-	if (recipe_record.explicit_user_conversion_call) return false;
-	const bool conversion_result = recipe_record.user_conversion_call &&
-		!recipe_record.explicit_user_conversion_call;
-	if (!constructor.trivial_special_member && !conversion_result) return false;
-	ExpressionInfo recipe;
-	recipe.node = recipe_node;
-	recipe.type = recipe_record.type;
-	recipe.category = VALUE_PRVALUE;
-	*result = BuildDirectClassValueTransfer(
-		recipe, type, selected_constructor);
-	return true;
-}
-
 std::uint32_t SemanticAnalyzer::BuildClassValueConstructorAction(TypeId type,
 	const ExpressionInfo& source, bool copy_initialization, bool demand)
 {
@@ -1231,6 +1198,11 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 						argument_edge = arena_->NextEdge(argument_edge))
 						arguments.push_back(arena_->EdgeChild(argument_edge));
 				else arguments.push_back(value);
+				const std::vector<NodeId> original_arguments = arguments;
+				std::vector<ExpressionInfo> prepared_arguments;
+				const bool expanded_arguments = ExpandCallArgumentPacks(
+					original_arguments, initializer_scope, &arguments,
+					&prepared_arguments);
 				const TypeId owner_type = program_->entities[entity].type;
 				const std::uint32_t action = MakeDump(
 					DUMP_DELEGATING_INITIALIZER_ACTION, owner_type,
@@ -1240,7 +1212,8 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 				const std::uint32_t delegate = BuildConstructorAction(owner_type,
 					initializer_scope, arguments, false, list_initialization,
 					base_entry, true,
-					list_initialization ? value : kNoNode);
+					list_initialization ? value : kNoNode,
+					expanded_arguments ? &prepared_arguments : 0);
 				RecordDelegatingConstructor(
 					constructor.binding, dump_.nodes[delegate].binding);
 				dump_.Add(action, delegate);
@@ -2396,7 +2369,12 @@ ExpressionInfo SemanticAnalyzer::MaterializeTemporary(
 	if (action.kind == DUMP_CONSTRUCTOR_ACTION &&
 		action.binding != kNoBinding &&
 		!compile_time_only)
-		DemandFunction(action.binding);
+	{
+		if (constant_expression_required_depth_ != 0 ||
+			constexpr_evaluation_depth_ != 0)
+			DemandFunction(action.binding);
+		else dump_.nodes[temporary].pending_constructor_demand = true;
+	}
 	ExpressionInfo result = initializer;
 	result.node = temporary;
 	result.type = object_type;
