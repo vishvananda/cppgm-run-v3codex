@@ -1051,29 +1051,20 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 			const NodeId operand = FirstSemanticChild(syntax[i]);
 			if (operand == kNoNode)
 				throw std::runtime_error("empty template argument pack expansion");
-			const NameId source_name = program_->names.Intern(
-				PayloadSource(operand));
-			std::vector<TemplateArgument> expanded;
-			if (!LookupTemplateArgumentPack(use_scope, source_name, &expanded))
+			std::vector<ScopeId> element_scopes;
+			if (!ExpandPackElementScopes(
+				operand, use_scope, &element_scopes))
 			{
 				if (!append_argument(operand, use_scope)) return false;
 				arguments->back().pack_expansion = true;
 				continue;
 			}
-			for (std::size_t element = 0; element < expanded.size(); ++element)
+			for (std::size_t element = 0;
+				element < element_scopes.size(); ++element)
 			{
 				if (arguments->size() >= fixed && !has_pack) return false;
-				const TemplateParameter& destination =
-					TemplateParameterForArgument(parameters, arguments->size());
-				if (destination.kind != expanded[element].kind) return false;
-				const ScopeId element_scope = NewScope(use_scope,
-					SCOPE_TEMPLATE_PARAMETERS, 0, ScopePrefixId(use_scope));
-				TemplateParameter source_parameter;
-				source_parameter.name = source_name;
-				source_parameter.kind = expanded[element].kind;
-				BindTemplateArgument(element_scope, source_parameter,
-					expanded[element]);
-				if (!append_argument(operand, element_scope)) return false;
+				if (!append_argument(
+					operand, element_scopes[element])) return false;
 			}
 			continue;
 		}
