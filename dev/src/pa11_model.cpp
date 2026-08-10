@@ -1466,6 +1466,26 @@ BindingId Program::AddBinding(ScopeId owner, BindingKind kind, NameId name,
 	return binding;
 }
 
+BindingId Program::AddUnindexedBinding(ScopeId owner, BindingKind kind,
+	NameId name, TypeId type, BindingId canonical)
+{
+	if (bindings.size() >= kNoBinding)
+		throw std::runtime_error("too many PA11 bindings");
+	const BindingId binding = static_cast<BindingId>(bindings.size());
+	bindings.push_back(BindingRecord());
+	BindingRecord& record = bindings.back();
+	record.owner = owner;
+	record.kind = kind;
+	record.name = name;
+	record.type = type;
+	record.canonical = canonical == kNoBinding ? binding : canonical;
+	ScopeRecord& scope = scopes_[owner];
+	if (scope.first_binding == kNoBinding) scope.first_binding = binding;
+	else bindings[scope.last_binding].next = binding;
+	scope.last_binding = binding;
+	return binding;
+}
+
 bool Program::IsStaticDataMember(BindingId binding) const
 {
 	if (binding == kNoBinding || binding >= bindings.size()) return false;

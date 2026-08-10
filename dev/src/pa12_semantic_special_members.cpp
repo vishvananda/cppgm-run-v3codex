@@ -599,7 +599,7 @@ BindingId SemanticAnalyzer::DeclareImplicitCopyMoveConstructor(
 		parameter_name, parameter_type, parameter_type));
 	const BindingId constructor = DeclareFunction(owner.member_scope,
 		owner.identity_name, function_type, parameters, true, false,
-		STORAGE_CLASS_NONE, LANGUAGE_LINKAGE_CPP, nonthrowing);
+		STORAGE_CLASS_NONE, LANGUAGE_LINKAGE_CPP, nonthrowing, false);
 	BindingRecord& declaration = program_->bindings[constructor];
 	declaration.member_owner = entity;
 	declaration.access = ACCESS_PUBLIC;

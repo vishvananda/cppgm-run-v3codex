@@ -33,6 +33,18 @@ inline bool IsDeclSpecifierKeyword(std::uint16_t kind)
 	}
 }
 
+inline bool IsTypeSpecifierStartKind(std::uint16_t kind)
+{
+	if (IsDeclSpecifierKeyword(kind)) return true;
+	if (kind >= kSimpleTokenCount) return false;
+	switch (static_cast<SimpleTokenKind>(kind))
+	{
+	case KW_DECLTYPE: case KW_TYPENAME: case KW_CLASS: case KW_STRUCT:
+	case KW_UNION: case KW_ENUM: return true;
+	default: return false;
+	}
+}
+
 inline bool IsAssignmentOperator(std::uint16_t kind)
 {
 	if (kind >= kSimpleTokenCount) return false;

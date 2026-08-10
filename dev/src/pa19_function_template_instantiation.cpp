@@ -538,8 +538,8 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 		false : IsNonthrowing(declarator, pattern.owner);
 	pattern.trailing_return_syntax = FindChild(declarator, "trailing-return-type");
 	const bool defer_trailing_return = pattern.trailing_return_syntax != kNoNode &&
-		PayloadSource(pattern.trailing_return_syntax).compare(
-			0, 8, "decltype") == 0;
+		(PayloadSource(pattern.trailing_return_syntax).find("decltype") == 0 ||
+		 SyntaxUsesAnyTemplateParameter(pattern.trailing_return_syntax, parameter_names));
 	const EntityId member_owner = program_->EntityForScope(pattern.owner);
 	if (special_member_template && member_owner == kNoEntity)
 		throw std::runtime_error(

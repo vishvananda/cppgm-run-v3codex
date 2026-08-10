@@ -941,7 +941,7 @@ BindingId SemanticAnalyzer::EnsureImplicitConstructor(EntityId entity)
 		program_->types.Fundamental(FUND_VOID), std::vector<TypeId>(), false);
 	const BindingId constructor = DeclareFunction(owner.member_scope, name,
 		type, std::vector<ParameterInfo>(), true, false, STORAGE_CLASS_NONE,
-		LANGUAGE_LINKAGE_CPP, owner.trivial_default_constructor);
+		LANGUAGE_LINKAGE_CPP, owner.trivial_default_constructor, false);
 	BindingRecord& binding = program_->bindings[constructor];
 	binding.member_owner = entity;
 	binding.constructor = true;
@@ -2283,8 +2283,13 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 	if (HasInternalLinkageScope(owner)) storage_class = STORAGE_CLASS_STATIC;
 	const LookupResult occupied =
 		program_->LookupDirect(owner, name, LOOKUP_ORDINARY);
+	const EntityId owner_entity = program_->EntityForScope(owner);
+	const bool synthesized_constructor_name = !ordinary_visible &&
+		owner_entity != kNoEntity &&
+		program_->entities[owner_entity].identity_name == name;
 	if (occupied.ordinary != kNoBinding &&
-		program_->bindings[occupied.ordinary].kind != BIND_FUNCTION)
+		program_->bindings[occupied.ordinary].kind != BIND_FUNCTION &&
+		!synthesized_constructor_name)
 		throw std::runtime_error("function conflicts with ordinary binding");
 	const TypeRecord declared_type = program_->types.Get(type);
 	if (declared_type.kind != TYPE_FUNCTION)
@@ -2339,9 +2344,11 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 		if (definition && existing.defined)
 			throw std::runtime_error("duplicate function definition");
 	}
-	const BindingId declaration = program_->AddBinding(owner, BIND_FUNCTION,
-		name, type, false, 0, NAMED_NONE, 0, canonical,
-		false);
+	const BindingId declaration = ordinary_visible ?
+		program_->AddBinding(owner, BIND_FUNCTION, name, type, false, 0,
+			NAMED_NONE, 0, canonical, false) :
+		program_->AddUnindexedBinding(
+			owner, BIND_FUNCTION, name, type, canonical);
 	BindingRecord& declaration_record = program_->bindings[declaration];
 	declaration_record.storage_class = storage_class;
 	declaration_record.language_linkage = language_linkage;
@@ -2470,7 +2477,12 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 		(target_structure != kNoNode ?
 			LookupStructuredName(target_node, scope, LOOKUP_TYPE) :
 			LookupPath(scope, path, LOOKUP_TYPE)) : LookupResult();
-	if (ordinary.ordinary == kNoBinding && type.type != kNoType)
+	const std::vector<std::size_t> template_patterns =
+		target_structure != kNoNode ? FindFunctionTemplates(
+			scope, StructuredNamePath(target_structure)) :
+			FindFunctionTemplates(scope, target);
+	if (ordinary.ordinary == kNoBinding && type.type != kNoType &&
+		template_patterns.empty())
 	{
 		if (type.type_declaration != kNoBinding &&
 			!CanAccessMember(type.type_declaration, type.naming_class))
@@ -2488,10 +2500,6 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 	std::vector<BindingId> functions = UsingFunctionCandidates(
 		scope, path, target, &using_target_owner, &names_owner_alias,
 		target_node);
-	const std::vector<std::size_t> template_patterns =
-		target_structure != kNoNode ? FindFunctionTemplates(
-			scope, StructuredNamePath(target_structure)) :
-			FindFunctionTemplates(scope, target);
 	if (!functions.empty() || !template_patterns.empty())
 	{
 		if (TryInheritConstructors(class_owner, scope, using_target_owner,

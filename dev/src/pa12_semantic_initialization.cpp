@@ -567,27 +567,8 @@ void SemanticAnalyzer::AnalyzeReturnStatement(NodeId node, ScopeId scope,
 			DUMP_BRACED_INIT_LIST &&
 			program_->entities[returned_record.entity].is_aggregate)
 		{
-			const bool retained_specialization =
-				current_function_context_ != kNoBinding &&
-				GetFunction(current_function_context_).template_specialization;
-			bool has_boundary_member = retained_specialization;
-			for (std::uint32_t edge = dump_.nodes[value.node].first_edge;
-				edge != kNoDumpEdge; edge = dump_.edges[edge].next)
-			{
-				const DumpNode& action =
-					dump_.nodes[dump_.edges[edge].child];
-				const TypeKind kind = program_->types.Get(action.type).kind;
-				if (kind == TYPE_LVALUE_REFERENCE ||
-					kind == TYPE_RVALUE_REFERENCE ||
-					IsClassEntity(*program_, EntityOf(action.type)))
-				{
-					has_boundary_member = true;
-					break;
-				}
-			}
-			if (has_boundary_member)
-				value.node = BuildAggregateConstructionAction(
-					returned_object, value.node);
+			value.node = BuildAggregateConstructionAction(
+				returned_object, value.node);
 		}
 		if (class_return && dump_.nodes[value.node].kind ==
 			DUMP_CONDITIONAL_EXPRESSION &&

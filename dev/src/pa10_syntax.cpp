@@ -981,7 +981,7 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 		 IsLikelyTypeIdentifier(position_ + 1) ||
 		 QualifiedStartsTypeAt(position_ + 1) ||
 		 (position_ + 1 < tokens_.size() &&
-		  IsDeclSpecifierKeyword(tokens_[position_ + 1].Kind())));
+		  IsTypeSpecifierStartKind(tokens_[position_ + 1].Kind())));
 	if (!abstract_function_suffix && Match(OP_LPAREN))
 	{
 		const NodeId nested_declarator = arena_.Make("nested-declarator");
@@ -1089,16 +1089,8 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 			const bool parameter_like = AtOffset(1, OP_RPAREN) ||
 				AtOffset(1, OP_DOTS) ||
 				(position_ + 1 < tokens_.size() &&
-					 (IsDeclSpecifierKeyword(tokens_[position_ + 1].Kind()) ||
-					  IsFundamentalKind(tokens_[position_ + 1].Kind()) ||
-					  tokens_[position_ + 1].Kind() ==
-						static_cast<std::uint16_t>(KW_DECLTYPE) ||
-					  tokens_[position_ + 1].Kind() ==
-						static_cast<std::uint16_t>(KW_TYPENAME) ||
-					  tokens_[position_ + 1].Kind() ==
-						static_cast<std::uint16_t>(KW_STRUCT) ||
-					  tokens_[position_ + 1].Kind() ==
-						static_cast<std::uint16_t>(KW_ENUM) ||
+					 (IsTypeSpecifierStartKind(
+						tokens_[position_ + 1].Kind()) ||
 					  (!StartsQualifiedCallArgument() && (IsLikelyTypeIdentifier(position_ + 1) ||
 					   QualifiedStartsTypeAt(position_ + 1)))));
 			if (!parameter_like) break;

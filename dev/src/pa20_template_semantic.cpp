@@ -185,23 +185,24 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 		FindChild(target, "structured-type-name") :
 		declarator == kNoNode ? kNoNode :
 		DeclaratorNameStructure(declarator);
-	if (structure == kNoNode) return false;
-
 	// A concrete out-of-class member specialization names its class template-id
 	// before the terminal member.  Complete that canonical owner once and feed
 	// the declaration through the ordinary member-definition boundary.
 	std::vector<NodeId> components;
 	NamePath structured_path;
-	structured_path.global =
-		FindChild(structure, "global-qualifier") != kNoNode;
-	for (std::uint32_t edge = arena_->FirstEdge(structure);
-		edge != kNoEdge; edge = arena_->NextEdge(edge))
+	if (structure != kNoNode)
 	{
-		const NodeId child = arena_->EdgeChild(edge);
-		if (!arena_->IsTag(child, "name-component")) continue;
-		components.push_back(child);
-		structured_path.Push(program_->names.UseInterned(
-			arena_->SemanticPayloadId(child)));
+		structured_path.global =
+			FindChild(structure, "global-qualifier") != kNoNode;
+		for (std::uint32_t edge = arena_->FirstEdge(structure);
+			edge != kNoEdge; edge = arena_->NextEdge(edge))
+		{
+			const NodeId child = arena_->EdgeChild(edge);
+			if (!arena_->IsTag(child, "name-component")) continue;
+			components.push_back(child);
+			structured_path.Push(program_->names.UseInterned(
+				arena_->SemanticPayloadId(child)));
+		}
 	}
 	const bool member_class_template_specialization =
 		(arena_->IsTag(target, "class-specifier") ||
@@ -346,7 +347,18 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 		state |= target_definition ? 2 : 1;
 		FunctionInfo& function = GetMutableFunction(selected);
 		function.explicit_specialization = true;
-		function.parameters = parsed.parameters;
+		std::vector<ParameterInfo> specialization_parameters = parsed.parameters;
+		if (specialization_parameters.size() == function.parameters.size())
+			for (std::size_t parameter = 0;
+				parameter < specialization_parameters.size(); ++parameter)
+				if (specialization_parameters[parameter].default_argument == kNoNode)
+				{
+					specialization_parameters[parameter].default_argument =
+						function.parameters[parameter].default_argument;
+					specialization_parameters[parameter].default_scope =
+						function.parameters[parameter].default_scope;
+				}
+		function.parameters = specialization_parameters;
 		function.defined = target_definition;
 		function.deferred = true;
 		function.definition_body = target_definition ?
@@ -367,8 +379,17 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 
 	NamePath primary;
 	std::vector<NodeId> argument_syntax;
-	if (!CollectExplicitTemplateArguments(
-		structure, &primary, &argument_syntax)) return false;
+	const bool explicit_template_id = structure != kNoNode &&
+		CollectExplicitTemplateArguments(
+			structure, &primary, &argument_syntax);
+	if (!explicit_template_id)
+	{
+		if (arena_->IsTag(target, "class-specifier") ||
+			arena_->IsTag(target, "class-forward-declaration") ||
+			declarator == kNoNode) return false;
+		primary = DeclaratorNamePath(declarator);
+		if (primary.Empty()) return false;
+	}
 
 	if (arena_->IsTag(target, "class-specifier") ||
 		arena_->IsTag(target, "class-forward-declaration"))
@@ -519,32 +540,55 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 	const DeclaratorInfo parsed = BuildDeclarator(
 		declarator, spec.type, scope);
 	if (!program_->types.IsFunction(parsed.type)) return false;
-	const std::vector<std::size_t> patterns =
-		FindFunctionTemplates(scope, primary);
 	BindingId selected = kNoBinding;
-	for (std::size_t i = 0; i < patterns.size(); ++i)
+	if (!explicit_template_id)
 	{
-		const FunctionTemplatePattern& pattern = function_templates_[patterns[i]];
-		std::vector<TemplateArgument> arguments;
-		if (!BuildTemplateArguments(pattern.parameters, argument_syntax,
-			scope, pattern.lexical_scope, &arguments)) continue;
-		std::vector<std::uint32_t> offsets;
-		if (!BuildFunctionTemplateArgumentOffsets(
-			pattern.parameters, arguments.size(), &offsets)) continue;
-		const BindingId candidate = InstantiateFunctionTemplate(
-			patterns[i], arguments, offsets);
-		if (candidate == kNoBinding) continue;
-		TypeId specialization_type = parsed.type;
-		if (spec.is_constexpr)
-			specialization_type = ApplyConstexprMemberFunctionType(
-				specialization_type,
-				program_->bindings[candidate].member_owner,
-				program_->bindings[candidate].static_member_function);
-		if (GetFunction(candidate).type != specialization_type) continue;
-		if (selected != kNoBinding && selected != candidate)
-			throw std::runtime_error(
-				"ambiguous explicit function specialization");
-		selected = candidate;
+		const NodeId identifier = FindChild(declarator, "identifier");
+		const NodeId name_syntax = structure != kNoNode ? structure : identifier;
+		if (name_syntax == kNoNode) return false;
+		const std::vector<BindingId> candidates =
+			FunctionTemplateTargetCandidates(scope,
+				program_->names.Get(primary.Last()), parsed.type, name_syntax);
+		for (std::size_t i = 0; i < candidates.size(); ++i)
+		{
+			const BindingId candidate =
+				program_->bindings[candidates[i]].canonical;
+			if (GetFunction(candidate).type != parsed.type) continue;
+			if (selected != kNoBinding && selected != candidate)
+				throw std::runtime_error(
+					"ambiguous explicit function specialization");
+			selected = candidate;
+		}
+	}
+	else
+	{
+		const std::vector<std::size_t> patterns =
+			FindFunctionTemplates(scope, primary);
+		for (std::size_t i = 0; i < patterns.size(); ++i)
+		{
+			const FunctionTemplatePattern& pattern =
+				function_templates_[patterns[i]];
+			std::vector<TemplateArgument> arguments;
+			if (!BuildTemplateArguments(pattern.parameters, argument_syntax,
+				scope, pattern.lexical_scope, &arguments)) continue;
+			std::vector<std::uint32_t> offsets;
+			if (!BuildFunctionTemplateArgumentOffsets(
+				pattern.parameters, arguments.size(), &offsets)) continue;
+			const BindingId candidate = InstantiateFunctionTemplate(
+				patterns[i], arguments, offsets);
+			if (candidate == kNoBinding) continue;
+			TypeId specialization_type = parsed.type;
+			if (spec.is_constexpr)
+				specialization_type = ApplyConstexprMemberFunctionType(
+					specialization_type,
+					program_->bindings[candidate].member_owner,
+					program_->bindings[candidate].static_member_function);
+			if (GetFunction(candidate).type != specialization_type) continue;
+			if (selected != kNoBinding && selected != candidate)
+				throw std::runtime_error(
+					"ambiguous explicit function specialization");
+			selected = candidate;
+		}
 	}
 	if (selected == kNoBinding)
 		throw std::runtime_error(
@@ -567,7 +611,18 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 	function.explicit_specialization = true;
 	if (spec.is_constexpr)
 		ValidateConstexprCallableType(function.type, false);
-	function.parameters = parsed.parameters;
+	std::vector<ParameterInfo> specialization_parameters = parsed.parameters;
+	if (specialization_parameters.size() == function.parameters.size())
+		for (std::size_t parameter = 0;
+			parameter < specialization_parameters.size(); ++parameter)
+			if (specialization_parameters[parameter].default_argument == kNoNode)
+			{
+				specialization_parameters[parameter].default_argument =
+					function.parameters[parameter].default_argument;
+				specialization_parameters[parameter].default_scope =
+					function.parameters[parameter].default_scope;
+			}
+	function.parameters = specialization_parameters;
 	function.constexpr_function =
 		function.constexpr_function || spec.is_constexpr;
 	function.defined = target_definition;

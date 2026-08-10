@@ -2,6 +2,7 @@
 #define CPPGM_PA10_PARSER_NAME_FACTS_H
 
 #include "pa10_syntax_model.h"
+#include "pa10_parser_token_classification.h"
 
 #include <cstddef>
 #include <limits>
@@ -114,8 +115,25 @@ protected:
 		const bool explicitly_templated = opener >= 2 &&
 			parser.tokens_[opener - 2].Kind() ==
 				static_cast<std::uint16_t>(KW_TEMPLATE);
+		const std::uint16_t first_argument_kind = opener + 1 <
+			parser.tokens_.size() ? parser.tokens_[opener + 1].Kind() : 0;
+		const bool fundamental_type_argument =
+			IsFundamentalKind(first_argument_kind) &&
+			(opener + 2 >= parser.tokens_.size() ||
+			 parser.tokens_[opener + 2].Kind() !=
+				static_cast<std::uint16_t>(OP_LPAREN));
+		const bool unambiguous_type_argument = fundamental_type_argument ||
+			first_argument_kind == static_cast<std::uint16_t>(KW_TYPENAME) ||
+			first_argument_kind == static_cast<std::uint16_t>(KW_DECLTYPE) ||
+			first_argument_kind == static_cast<std::uint16_t>(KW_CLASS) ||
+			first_argument_kind == static_cast<std::uint16_t>(KW_STRUCT) ||
+			first_argument_kind == static_cast<std::uint16_t>(KW_UNION) ||
+			first_argument_kind == static_cast<std::uint16_t>(KW_ENUM) ||
+			first_argument_kind == static_cast<std::uint16_t>(KW_CONST) ||
+			first_argument_kind == static_cast<std::uint16_t>(KW_VOLATILE);
 		if (!qualified_candidate && known_non_template &&
-			(!known_template || active_non_type_parameter))
+			(!known_template || active_non_type_parameter) &&
+			!unambiguous_type_argument)
 		{
 			parser.angle_matches_[opener].close = no_match;
 			parser.angle_matches_[opener].fact_revision =
@@ -123,6 +141,7 @@ protected:
 			return kNoNode;
 		}
 		const bool trusted = qualified_candidate || known_template ||
+			unambiguous_type_argument ||
 			(!known_non_template && candidate.find('T') != std::string::npos);
 		const typename Derived::Mark mark = parser.Checkpoint();
 		++parser.position_;

@@ -15,29 +15,27 @@ not rediscover template semantics.
 
 ## Current Failure Map
 
-Current result is 284/401, up from this turn's 279 and stage baseline of 223
-with no regressions; all `200-*` tests pass. The remaining 117 failures group
+Current result is 289/401, up from this turn's 284 and stage baseline of 223
+with no regressions; all `200-*` tests pass. The remaining 112 failures group
 by primary owner and observed kind: call/address/constructor deduction
-(`100-*`: 4 exits, 2 LowIR), immediate substitution and demand (`300-*`: 62
-exits, 9 LowIR), canonical non-type/conversion arguments (`400-*`: 18 exits,
+(`100-*`: 1 exit, 1 LowIR), immediate substitution and demand (`300-*`: 61
+exits, 10 LowIR), canonical non-type/conversion arguments (`400-*`: 17 exits,
 1 LowIR), and composed lookup/alias/class paths (`500-*`: 12 exits, 9 LowIR).
 
 ## Active Checkpoint
 
-The next `100-*` checkpoint is explicit function-template identity and result
-replay: dependent trailing-return calls, explicit member template-ids, and
-explicit specializations whose argument is formed from the complete function
-type must retain the selected primary/specialization through lowering. N3485
-14.2, 14.7.3, 14.8.1, and 14.8.2 require explicit-id lookup to exclude a
-same-type non-template, specialization matching to include return-type
-substitution where required, and dependent qualified template-ids to replay in
-their concrete lexical scope. Retained patterns own syntax and source scope;
-lookup produces candidate-local identities; specialization matching owns the
-canonical complete function type; demand and lowering consume only the chosen
-binding. Expected work is O(C*S) for C candidates of retained shape size S,
-with cache keys on pattern plus canonical arguments. Validate the four direct
-targets, qualified alias/member guards, all `100-*`, PA1-PA22, and audit;
-measure doubled explicit specializations and trailing-result shape depth.
+The next checkpoint closes the two remaining `100-*` boundaries: deduction
+through a namespace-qualified alias parameter on an inherited member template,
+and preservation of reference-to-array cv/default facts through LowIR. N3485
+8.3.5 and 14.8.2.1 require deduction against the canonical parameter before
+function adjustment while retaining the selected declaration's exact boundary
+type. Alias/template lookup owns the source pattern and inherited using edge;
+deduction owns canonical arguments; initialization/lowering consume the chosen
+array-reference parameter without reconstructing it. Expected work is O(C*S+E)
+for C candidates, retained shape S, and E array elements, with specialization
+keys on pattern plus canonical arguments. Validate both direct targets, related
+inherited-alias and array-cv/default guards, all `100-*`, PA1-PA22, and audit;
+measure doubled candidate counts and array extents.
 
 ## Performance Evidence
 
@@ -55,8 +53,10 @@ wall runs were below 0.01 s, confirming linear produced-element work. Final
 candidate-prefix probes at 16/32/64/128 candidates took
 0.00/0.00/0.01/0.01-0.02 s with peak RSS 5.9/6.6/6.9/8.4 MB; nested-array
 depths 16/32/64/128 all took under 0.01 s and at most 6.6 MB. Final gates are
-PA1-PA22 2,639/2,639, PA23 284/401, zero regressions, and audit pass with 13
-inherited warnings.
+PA1-PA22 2,639/2,639, PA23 289/401, zero regressions, and audit pass with 13
+inherited warnings. For 16/32/64/128 omitted-argument explicit specializations,
+three runs took 0.00/0.00/0.01/0.01 s and at most 7.5 MB; retained trailing
+result depths 16/32/64/128 took 0.00/0.00/0.00/0.01 s and at most 7.2 MB.
 
 ## Completed Checkpoints
 
@@ -74,3 +74,4 @@ inherited warnings.
 | Target-aware function-designator deduction | Explicit-fixed parameters defer to conversion, ordinary overloads trial-deduce in isolated state, address conversion applies normal non-template preference, and selected syntax replays once; four gains, 269 -> 273, no regressions, linear overload scaling. |
 | Typed pack-expansion initialization and constexpr union state | Scalar/member init consumes one typed positional sequence, empty constructor packs participate, special-member template specifiers persist, and constexpr unions retain only the active member; six gains, 273 -> 279, no regressions, linear scaling. |
 | Canonical explicit-prefix, array-cv, and reference-result flow | Incomplete prefixes leave later packs unbound, cv subtraction preserves array shape, and class lvalue conditionals lower through reference addresses; five gains, 279 -> 284, no regressions, linear scaling. |
+| Explicit template identity and specialization result replay | Type/function explicit-ids retain syntax, complete types deduce omitted arguments, inherited defaults and selected bodies replay, synthesized constructors stay out of ordinary lookup, and aggregate returns keep one lowering identity; 284 -> 289, no regressions, linear specialization/depth scaling. |
