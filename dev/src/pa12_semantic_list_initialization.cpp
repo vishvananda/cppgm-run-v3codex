@@ -129,6 +129,11 @@ CallConversionFact SemanticAnalyzer::UntypedCallArgumentConversion(
 	if (arena_->IsTag(argument, "braced-init-list"))
 		return BracedInitializationConversion(argument, scope, target);
 	CallConversionFact result;
+	if (HasUniqueFunctionAddressTarget(scope, argument, target))
+	{
+		result.rank = CONVERSION_EXACT;
+		return result;
+	}
 	std::vector<BindingId> functions = FunctionCandidates(
 		scope, arena_->Payload(argument), 0, argument);
 	TypeId desired = program_->types.RemoveTopCv(target);

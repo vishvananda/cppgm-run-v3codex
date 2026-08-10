@@ -404,6 +404,7 @@ private:
 		bool* retained_lookup);
 	void CompleteFunctionCallTemplateCandidates(NodeId callee, ScopeId scope,
 		const std::string& spelling,
+		const std::vector<NodeId>& argument_syntax,
 		const std::vector<ExpressionInfo>& arguments, bool retained_lookup,
 		std::vector<BindingId>* candidates, EntityId* naming_class);
 	bool RetainedCallAllowsArgumentDependentLookup(NodeId callee) const;
@@ -586,6 +587,9 @@ private:
 		std::vector<std::uint32_t>* offsets) const;
 	void UpgradeFunctionTemplateSpecializations(std::size_t pattern);
 	bool FunctionTemplateTypeIsDependent(TypeId type) const;
+	bool FunctionTemplateTypeUsesUnspecifiedParameter(TypeId type,
+		const std::vector<TemplateParameter>& parameters,
+		const std::vector<std::uint8_t>& explicitly_specified) const;
 	std::size_t FunctionTemplateShapePackParameter(TypeId type,
 		const std::vector<TemplateParameter>& parameters) const;
 	bool FunctionTemplatePatternAccepts(TypeId pattern,
@@ -608,6 +612,10 @@ private:
 		const TemplateArgument& pattern, const TemplateArgument& argument,
 		const std::vector<TemplateParameter>& parameters,
 		FunctionTemplateDeduction* deduced) const;
+	bool DeduceFunctionTemplateOverloadArgument(TypeId parameter,
+		NodeId syntax, ScopeId scope,
+		const std::vector<TemplateParameter>& parameters,
+		FunctionTemplateDeduction* deduced);
 	std::size_t RequiredFunctionParameterCount(
 		const std::vector<ParameterInfo>& parameters) const;
 	int CompareFunctionTemplateConstraints(
@@ -617,12 +625,15 @@ private:
 		const std::vector<ExpressionInfo>& arguments,
 		std::vector<BindingId>* specializations = 0,
 		const std::vector<TypeId>* explicit_arguments = 0,
-		const std::vector<TemplateArgument>* canonical_explicit_arguments = 0);
+		const std::vector<TemplateArgument>* canonical_explicit_arguments = 0,
+		ScopeId argument_scope = kNoScope,
+		const std::vector<NodeId>* argument_syntax = 0);
 	void DeduceFunctionTemplatePatternsWithExplicitSyntax(
 		const std::vector<std::size_t>& patterns,
 		const std::vector<ExpressionInfo>& arguments,
 		const std::vector<NodeId>& explicit_syntax, ScopeId use_scope,
-		std::vector<BindingId>* specializations);
+		std::vector<BindingId>* specializations,
+		const std::vector<NodeId>* argument_syntax = 0);
 	void DeduceFunctionTemplates(ScopeId scope, const std::string& spelling,
 		const std::vector<ExpressionInfo>& arguments,
 		NodeId syntax = kNoNode);

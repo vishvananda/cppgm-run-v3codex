@@ -113,6 +113,67 @@ bool SemanticAnalyzer::FunctionTemplateTypeIsDependent(TypeId type) const
 	return dependent;
 }
 
+bool SemanticAnalyzer::FunctionTemplateTypeUsesUnspecifiedParameter(
+	TypeId type, const std::vector<TemplateParameter>& parameters,
+	const std::vector<std::uint8_t>& explicitly_specified) const
+{
+	for (std::size_t i = 0; i < parameters.size() &&
+		i < function_template_shape_parameters_.size(); ++i)
+		if (type == function_template_shape_parameters_[i])
+			return parameters[i].pack || i >= explicitly_specified.size() ||
+				explicitly_specified[i] == 0;
+	if (type == function_template_dependent_result_shape_ ||
+		type == function_template_nondeduced_type_shape_)
+		return false;
+	const TypeRecord& record = program_->types.Get(type);
+	if (record.kind == TYPE_QUALIFIED || record.kind == TYPE_POINTER ||
+		record.kind == TYPE_LVALUE_REFERENCE ||
+		record.kind == TYPE_RVALUE_REFERENCE ||
+		record.kind == TYPE_MEMBER_POINTER)
+		return FunctionTemplateTypeUsesUnspecifiedParameter(
+			record.child, parameters, explicitly_specified);
+	if (record.kind == TYPE_ARRAY)
+	{
+		const std::size_t bound = record.dependent_bound_parameter;
+		if (bound != kNoTemplateParameter && bound < parameters.size() &&
+			(parameters[bound].pack || bound >= explicitly_specified.size() ||
+			 explicitly_specified[bound] == 0)) return true;
+		return FunctionTemplateTypeUsesUnspecifiedParameter(
+			record.child, parameters, explicitly_specified);
+	}
+	if (record.kind == TYPE_FUNCTION)
+	{
+		if (FunctionTemplateTypeUsesUnspecifiedParameter(
+			record.child, parameters, explicitly_specified)) return true;
+		const TypeId* function_parameters = program_->types.Parameters(type);
+		for (std::size_t i = 0; i < record.parameter_count; ++i)
+			if (FunctionTemplateTypeUsesUnspecifiedParameter(
+				function_parameters[i], parameters, explicitly_specified))
+				return true;
+		return false;
+	}
+	if (record.kind != TYPE_NAMED) return false;
+	const EntityRecord& entity = program_->entities[record.entity];
+	if (entity.template_argument_begin == kNoBinding) return false;
+	const std::vector<TemplateArgument> arguments = StoredTemplateArguments(
+		entity.template_argument_begin, entity.template_argument_count);
+	for (std::size_t i = 0; i < arguments.size(); ++i)
+	{
+		if (arguments[i].IsDependent())
+		{
+			const std::size_t parameter = arguments[i].dependent_parameter;
+			if (parameter < parameters.size() &&
+				(parameters[parameter].pack ||
+				 parameter >= explicitly_specified.size() ||
+				 explicitly_specified[parameter] == 0)) return true;
+		}
+		if (arguments[i].kind == TEMPLATE_ARGUMENT_TYPE &&
+			FunctionTemplateTypeUsesUnspecifiedParameter(
+				arguments[i].type, parameters, explicitly_specified)) return true;
+	}
+	return false;
+}
+
 std::size_t SemanticAnalyzer::FunctionTemplateShapePackParameter(TypeId type,
 	const std::vector<TemplateParameter>& parameters) const
 {
@@ -867,12 +928,75 @@ std::size_t SemanticAnalyzer::RequiredFunctionParameterCount(
 	return required;
 }
 
+bool SemanticAnalyzer::DeduceFunctionTemplateOverloadArgument(
+	TypeId parameter, NodeId syntax, ScopeId scope,
+	const std::vector<TemplateParameter>& parameters,
+	FunctionTemplateDeduction* deduced)
+{
+	while (syntax != kNoNode &&
+		arena_->IsTag(syntax, "parenthesized-expression"))
+		syntax = FirstSemanticChild(syntax);
+	if (syntax != kNoNode && arena_->IsTag(syntax, "unary-expression") &&
+		PayloadSource(syntax) == "&")
+		syntax = FirstSemanticChild(syntax);
+	while (syntax != kNoNode &&
+		arena_->IsTag(syntax, "parenthesized-expression"))
+		syntax = FirstSemanticChild(syntax);
+	if (syntax == kNoNode || !arena_->IsTag(syntax, "id-expression"))
+		return false;
+
+	const std::string spelling = arena_->Payload(syntax);
+	NamePath explicit_base;
+	std::vector<NodeId> explicit_syntax;
+	const bool explicit_id = CollectExplicitTemplateArguments(
+		syntax, &explicit_base, &explicit_syntax);
+	if (!explicit_id)
+	{
+		const NamePath structured = StructuredNamePath(syntax);
+		const std::vector<std::size_t> templates = structured.Empty() ?
+			FindFunctionTemplates(scope, spelling) :
+			FindStructuredFunctionTemplates(syntax, scope);
+		if (!templates.empty()) return false;
+	}
+	const std::vector<BindingId> candidates =
+		FunctionCandidates(scope, spelling, 0, syntax);
+	FunctionTemplateDeduction selected;
+	std::size_t matches = 0;
+	const TypeRecord shape = program_->types.Get(
+		program_->types.RemoveTopCv(parameter));
+	for (std::size_t i = 0; i < candidates.size(); ++i)
+	{
+		const FunctionInfo& function = GetFunction(candidates[i]);
+		TypeId argument = kNoType;
+		if (shape.kind == TYPE_POINTER && function.member_owner == kNoType)
+			argument = program_->types.Pointer(function.type);
+		else if (shape.kind == TYPE_FUNCTION &&
+			function.member_owner == kNoType)
+			argument = function.type;
+		else if (shape.kind == TYPE_MEMBER_POINTER &&
+			function.member_owner != kNoType)
+			argument = program_->types.MemberPointer(
+				function.member_owner, function.type);
+		if (argument == kNoType) continue;
+		FunctionTemplateDeduction trial = *deduced;
+		if (!DeduceFunctionTemplatePackType(
+			parameter, argument, parameters, &trial)) continue;
+		selected = trial;
+		if (++matches != 1) return false;
+	}
+	if (matches != 1) return false;
+	*deduced = selected;
+	return true;
+}
+
 void SemanticAnalyzer::DeduceFunctionTemplatePatterns(
 	const std::vector<std::size_t>& patterns,
 	const std::vector<ExpressionInfo>& arguments,
 	std::vector<BindingId>* specializations,
 	const std::vector<TypeId>* explicit_arguments,
-	const std::vector<TemplateArgument>* canonical_explicit_arguments)
+	const std::vector<TemplateArgument>* canonical_explicit_arguments,
+	ScopeId argument_scope,
+	const std::vector<NodeId>* argument_syntax)
 {
 	for (std::size_t p = 0; p < patterns.size(); ++p)
 	{
@@ -892,6 +1016,8 @@ void SemanticAnalyzer::DeduceFunctionTemplatePatterns(
 		const TypeId* parameters =
 			program_->types.Parameters(pattern.shape_type);
 		FunctionTemplateDeduction deduced(pattern.parameters);
+		std::vector<std::uint8_t> explicitly_specified(
+			pattern.parameters.size(), 0);
 		bool valid = true;
 		if (explicit_arguments && canonical_explicit_arguments)
 			throw std::logic_error(
@@ -947,6 +1073,7 @@ void SemanticAnalyzer::DeduceFunctionTemplatePatterns(
 					break;
 				}
 				deduced.fixed_arguments[parameter_index] = explicit_argument;
+				explicitly_specified[parameter_index] = 1;
 			}
 			if (explicit_index != explicit_count) valid = false;
 		}
@@ -959,9 +1086,30 @@ void SemanticAnalyzer::DeduceFunctionTemplatePatterns(
 				parameters[fixed_function_parameters], pattern.parameters);
 		for (std::size_t a = 0; a < arguments.size() && valid; ++a)
 		{
-			if (arguments[a].type == kNoType) continue;
 			const bool pack_element = pattern.function_parameter_pack &&
 				a >= fixed_function_parameters;
+			if (arguments[a].type == kNoType)
+			{
+				const std::size_t function_parameter = pack_element ?
+					fixed_function_parameters : a;
+				if (!pack_element && argument_syntax &&
+					a < argument_syntax->size() &&
+					function_parameter < function_type.parameter_count &&
+					(function_parameter >=
+						pattern.function_parameter_nondeduced.size() ||
+					 pattern.function_parameter_nondeduced[function_parameter] == 0))
+				{
+					TypeId parameter = parameters[function_parameter];
+					const TypeRecord top = program_->types.Get(parameter);
+					parameter = top.kind == TYPE_LVALUE_REFERENCE ||
+						top.kind == TYPE_RVALUE_REFERENCE ? top.child :
+						program_->types.RemoveTopCv(parameter);
+					(void)DeduceFunctionTemplateOverloadArgument(parameter,
+						(*argument_syntax)[a], argument_scope,
+						pattern.parameters, &deduced);
+				}
+				continue;
+			}
 			if (pack_element && !outer_pack_sequence_started &&
 				outer_pack_parameter < pattern.parameters.size())
 			{
@@ -979,6 +1127,10 @@ void SemanticAnalyzer::DeduceFunctionTemplatePatterns(
 				pattern.function_parameter_nondeduced[function_parameter] != 0)
 				continue;
 			TypeId parameter = parameters[function_parameter];
+			if ((explicit_arguments || canonical_explicit_arguments) &&
+				FunctionTemplateTypeIsDependent(parameter) &&
+				!FunctionTemplateTypeUsesUnspecifiedParameter(parameter,
+					pattern.parameters, explicitly_specified)) continue;
 			TypeId argument = EffectiveType(arguments[a].type);
 			const TypeRecord& parameter_record =
 				program_->types.Get(parameter);
@@ -1141,7 +1293,8 @@ void SemanticAnalyzer::DeduceFunctionTemplatePatternsWithExplicitSyntax(
 	const std::vector<std::size_t>& patterns,
 	const std::vector<ExpressionInfo>& arguments,
 	const std::vector<NodeId>& explicit_syntax, ScopeId use_scope,
-	std::vector<BindingId>* specializations)
+	std::vector<BindingId>* specializations,
+	const std::vector<NodeId>* argument_syntax)
 {
 	for (std::size_t i = 0; i < patterns.size(); ++i)
 	{
@@ -1167,7 +1320,7 @@ void SemanticAnalyzer::DeduceFunctionTemplatePatternsWithExplicitSyntax(
 		if (!built || substitution_failed) continue;
 		const std::vector<std::size_t> one_pattern(1, patterns[i]);
 		DeduceFunctionTemplatePatterns(one_pattern, arguments,
-			specializations, 0, &canonical);
+			specializations, 0, &canonical, use_scope, argument_syntax);
 	}
 }
 
@@ -1215,9 +1368,9 @@ bool SemanticAnalyzer::HasUniqueFunctionAddressTarget(
 	while (syntax != kNoNode &&
 		arena_->IsTag(syntax, "parenthesized-expression"))
 		syntax = FirstSemanticChild(syntax);
-	if (syntax == kNoNode || !arena_->IsTag(syntax, "unary-expression") ||
-		PayloadSource(syntax) != "&") return false;
-	syntax = FirstSemanticChild(syntax);
+	if (syntax != kNoNode && arena_->IsTag(syntax, "unary-expression") &&
+		PayloadSource(syntax) == "&")
+		syntax = FirstSemanticChild(syntax);
 	while (syntax != kNoNode &&
 		arena_->IsTag(syntax, "parenthesized-expression"))
 		syntax = FirstSemanticChild(syntax);
@@ -1250,8 +1403,22 @@ bool SemanticAnalyzer::HasUniqueFunctionAddressTarget(
 	{
 		if (GetFunction(candidates[i]).type != desired) continue;
 		const BindingId canonical = program_->bindings[candidates[i]].canonical;
-		if (selected != kNoBinding && selected != canonical) return false;
-		selected = canonical;
+		if (selected == kNoBinding || selected == canonical)
+		{
+			selected = canonical;
+			continue;
+		}
+		const FunctionInfo& prior = GetFunction(selected);
+		const FunctionInfo& candidate = GetFunction(canonical);
+		if (prior.template_specialization != candidate.template_specialization)
+		{
+			if (prior.template_specialization) selected = canonical;
+			continue;
+		}
+		const int preference =
+			CompareFunctionTemplateConstraints(candidate, prior);
+		if (preference > 0) selected = canonical;
+		else if (preference == 0) return false;
 	}
 	return selected != kNoBinding;
 }

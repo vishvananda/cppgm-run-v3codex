@@ -277,7 +277,8 @@ void SemanticAnalyzer::AppendArgumentDependentCandidates(NameId name,
 {
 	BeginAssociatedLookup();
 	for (std::size_t i = 0; i < arguments.size(); ++i)
-		AddAssociatedType(arguments[i].type);
+		if (arguments[i].type != kNoType)
+			AddAssociatedType(arguments[i].type);
 	for (std::size_t i = 0; i < associated_entities_.size(); ++i)
 	{
 		const EntityId entity = associated_entities_[i];

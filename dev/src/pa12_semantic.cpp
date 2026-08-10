@@ -1294,7 +1294,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 				spelling, scope, cast_type, direct_callee_syntax, candidates);
 		if (!type_precedes_functions)
 			CompleteFunctionCallTemplateCandidates(direct_callee_syntax, scope,
-				spelling, analyzed_arguments, retained_lookup, &candidates,
+				spelling, argument_syntax, analyzed_arguments, retained_lookup,
+				&candidates,
 				&function_naming_class);
 		if (!type_precedes_functions &&
 			!parenthesized_callee && !qualified_callee)

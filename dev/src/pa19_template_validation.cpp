@@ -1210,6 +1210,7 @@ std::vector<BindingId> SemanticAnalyzer::RetainedFunctionCallCandidates(
 
 void SemanticAnalyzer::CompleteFunctionCallTemplateCandidates(NodeId callee,
 	ScopeId scope, const std::string& spelling,
+	const std::vector<NodeId>& argument_syntax,
 	const std::vector<ExpressionInfo>& arguments, bool retained_lookup,
 	std::vector<BindingId>* candidates, EntityId* naming_class)
 {
@@ -1250,9 +1251,10 @@ void SemanticAnalyzer::CompleteFunctionCallTemplateCandidates(NodeId callee,
 		std::vector<BindingId> specializations;
 		if (has_explicit_syntax)
 			DeduceFunctionTemplatePatternsWithExplicitSyntax(patterns,
-				arguments, explicit_syntax, scope, &specializations);
+				arguments, explicit_syntax, scope, &specializations,
+				&argument_syntax);
 		else DeduceFunctionTemplatePatterns(patterns, arguments,
-			&specializations);
+			&specializations, 0, 0, scope, &argument_syntax);
 		DeduceFunctionTemplates(scope, spelling, arguments, callee);
 		for (std::size_t i = 0; i < specializations.size(); ++i)
 		{
@@ -1387,9 +1389,11 @@ void SemanticAnalyzer::CompleteFunctionCallTemplateCandidates(NodeId callee,
 	std::vector<BindingId> specializations;
 	if (has_explicit_syntax)
 		DeduceFunctionTemplatePatternsWithExplicitSyntax(patterns,
-			arguments, explicit_syntax, scope, &specializations);
+			arguments, explicit_syntax, scope, &specializations,
+			&argument_syntax);
 	else
-		DeduceFunctionTemplatePatterns(patterns, arguments, &specializations);
+		DeduceFunctionTemplatePatterns(patterns, arguments, &specializations,
+			0, 0, scope, &argument_syntax);
 	for (std::size_t i = 0; i < specializations.size(); ++i)
 	{
 		const BindingId canonical =

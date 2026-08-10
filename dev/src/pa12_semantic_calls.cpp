@@ -658,9 +658,10 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 		std::vector<BindingId> specializations;
 		if (has_explicit_syntax)
 			DeduceFunctionTemplatePatternsWithExplicitSyntax(template_patterns,
-				arguments, explicit_syntax, scope, &specializations);
+				arguments, explicit_syntax, scope, &specializations,
+				&argument_syntax);
 		else DeduceFunctionTemplatePatterns(template_patterns, arguments,
-			&specializations);
+			&specializations, 0, 0, scope, &argument_syntax);
 		for (std::size_t i = 0; i < specializations.size(); ++i)
 		{
 			const BindingId canonical =
