@@ -361,8 +361,9 @@ private:
 		const std::unordered_set<NameId>& names) const;
 	bool IsDirectTemplateParameterExpression(NodeId node,
 		const std::unordered_set<NameId>& names) const;
+	LookupResult ResolveClassDirectBase(NodeId base_name, ScopeId scope);
 	bool HasDependentQualifiedType(NodeId node,
-		const std::unordered_set<NameId>& names) const;
+		const std::unordered_set<NameId>& names, ScopeId scope);
 	void ValidateDeferredFunctionTemplateResult(NodeId node, ScopeId scope,
 		FunctionTemplatePattern* pattern,
 		const std::unordered_set<NameId>& dependent_names);

@@ -1019,7 +1019,7 @@ void SemanticAnalyzer::DeduceFunctionTemplatePatterns(
 			function_type.parameter_count - 1 : function_type.parameter_count;
 		if (function_type.kind != TYPE_FUNCTION ||
 			arguments.size() < pattern.required_parameter_count ||
-			(!pattern.function_parameter_pack &&
+			(!pattern.function_parameter_pack && !function_type.variadic &&
 			 arguments.size() > function_type.parameter_count)) continue;
 		const TypeId* parameters =
 			program_->types.Parameters(pattern.shape_type);
@@ -1094,6 +1094,11 @@ void SemanticAnalyzer::DeduceFunctionTemplatePatterns(
 				parameters[fixed_function_parameters], pattern.parameters);
 		for (std::size_t a = 0; a < arguments.size() && valid; ++a)
 		{
+			// An ellipsis accepts trailing call operands but contributes no
+			// deduction constraint. Explicit template arguments may still make
+			// the function-template specialization complete.
+			if (!pattern.function_parameter_pack && function_type.variadic &&
+				a >= function_type.parameter_count) continue;
 			const bool pack_element = pattern.function_parameter_pack &&
 				a >= fixed_function_parameters;
 			if (arguments[a].type == kNoType)

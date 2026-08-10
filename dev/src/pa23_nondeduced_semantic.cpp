@@ -63,29 +63,66 @@ bool SemanticAnalyzer::IsDirectTemplateParameterExpression(NodeId node,
 		names.count(arena_->SemanticPayloadId(node)) != 0;
 }
 
+LookupResult SemanticAnalyzer::ResolveClassDirectBase(
+	NodeId base_name, ScopeId scope)
+{
+	LookupResult result;
+	const NodeId structured = FindChild(base_name, "structured-type-name");
+	if (structured != kNoNode)
+		result.type = ResolveStructuredTypeName(structured, scope);
+	else if (PayloadSource(base_name).compare(0, 8, "decltype") == 0)
+	{
+		const NodeId expression = FirstSemanticChild(base_name);
+		if (expression != kNoNode) result.type = DecltypeType(expression, scope);
+	}
+	else result = LookupSpelling(scope, arena_->Payload(base_name), LOOKUP_TYPE);
+	return result;
+}
+
 bool SemanticAnalyzer::HasDependentQualifiedType(NodeId node,
-	const std::unordered_set<NameId>& names) const
+	const std::unordered_set<NameId>& names, ScopeId scope)
 {
 	if (node == kNoNode) return false;
 	if (arena_->IsTag(node, "decltype-specifier") &&
 		SyntaxUsesAnyTemplateParameter(node, names)) return true;
-	if (arena_->IsTag(node, "decl-specifier") &&
-		arena_->HasDirectChildTag(node, "structured-type-name") &&
-		(arena_->Flags(node) & SYNTAX_FLAG_TYPENAME) == 0) return false;
-	if (arena_->IsTag(node, "structured-type-name"))
+	const bool type_spelling = arena_->IsTag(node, "decl-specifier") ||
+		arena_->IsTag(node, "type-name");
+	const NodeId structure = type_spelling ?
+		FindChild(node, "structured-type-name") : kNoNode;
+	if (structure != kNoNode)
 	{
 		std::vector<NodeId> components;
-		for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
-			edge = arena_->NextEdge(edge))
+		for (std::uint32_t edge = arena_->FirstEdge(structure);
+			edge != kNoEdge; edge = arena_->NextEdge(edge))
 			if (arena_->IsTag(arena_->EdgeChild(edge), "name-component"))
 				components.push_back(arena_->EdgeChild(edge));
-		for (std::size_t i = 0; i + 1 < components.size(); ++i)
-			if (SyntaxUsesAnyTemplateParameter(components[i], names)) return true;
+		if ((arena_->Flags(node) & SYNTAX_FLAG_TYPENAME) != 0)
+			for (std::size_t i = 0; i + 1 < components.size(); ++i)
+				if (SyntaxUsesAnyTemplateParameter(components[i], names))
+					return true;
+		const NamePath path = StructuredNamePath(structure);
+		if (!components.empty() && IsUnqualifiedAliasTemplateName(scope, path))
+		{
+			const NodeId arguments = FindChild(
+				components.back(), "template-type-argument-list");
+			if (arguments != kNoNode)
+				for (std::uint32_t edge = arena_->FirstEdge(arguments);
+					edge != kNoEdge; edge = arena_->NextEdge(edge))
+					if (HasDependentQualifiedType(
+						arena_->EdgeChild(edge), names, scope)) return true;
+		}
 		return false;
 	}
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
-		if (HasDependentQualifiedType(arena_->EdgeChild(edge), names)) return true;
+	{
+		const NodeId child = arena_->EdgeChild(edge);
+		// A terminal alias-id such as void_t<typename T::member> is itself a
+		// non-deduced context even though the outer decl-specifier does not use
+		// `typename`. Search its retained arguments for an actual dependent type
+		// form; a value path such as trait<T>::value remains an expression.
+		if (HasDependentQualifiedType(child, names, scope)) return true;
+	}
 	return false;
 }
 

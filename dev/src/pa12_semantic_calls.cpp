@@ -815,18 +815,27 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 		{
 			const FunctionTemplatePattern& pattern =
 				function_templates_[patterns[i]];
-			bool has_template_parameter_pack = false;
-			for (std::size_t parameter = 0;
-				parameter < pattern.parameters.size(); ++parameter)
-				if (pattern.parameters[parameter].pack)
-					has_template_parameter_pack = true;
 			std::vector<TemplateArgument> arguments;
 			candidate_substitution_failures_.push_back(0);
-			const bool built_arguments = !has_template_parameter_pack &&
-				BuildTemplateArguments(pattern.parameters, explicit_syntax,
+			bool built_arguments = false;
+			BindingId candidate = kNoBinding;
+			try
+			{
+				built_arguments = BuildTemplateArguments(
+					pattern.parameters, explicit_syntax,
 					scope, pattern.lexical_scope, &arguments);
-			const BindingId candidate = built_arguments ?
-				InstantiateFunctionTemplate(patterns[i], arguments) : kNoBinding;
+				if (built_arguments)
+					candidate = InstantiateFunctionTemplate(
+						patterns[i], arguments);
+			}
+			catch (const std::runtime_error&)
+			{
+				// Explicit template-id formation is an immediate substitution
+				// context.  Invalid alias products (pointer-to-reference,
+				// reference-to-void, array-of-void, and the like) discard only
+				// this candidate; a final no-viable result remains a hard error.
+				RecordCandidateSubstitutionFailure();
+			}
 			const bool substitution_failed = CandidateSubstitutionFailed();
 			candidate_substitution_failures_.pop_back();
 			if (built_arguments && !substitution_failed)
@@ -839,6 +848,17 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 			}
 			else
 			{
+				bool type_only_prefix =
+					explicit_syntax.size() <= pattern.parameters.size();
+				for (std::size_t argument = 0;
+					argument < explicit_syntax.size() && type_only_prefix; ++argument)
+					type_only_prefix =
+						pattern.parameters[argument].kind == TEMPLATE_ARGUMENT_TYPE;
+				// The retained-specialization fallback below has a TypeId key.
+				// A template-template or non-type explicit prefix was already
+				// handled by the typed candidate frame and must not be reparsed as
+				// a type after that candidate is discarded.
+				if (!type_only_prefix) continue;
 				NamePath type_base;
 				std::vector<TypeId> explicit_arguments;
 				if (!ParseExplicitTemplateArguments(

@@ -2516,20 +2516,30 @@ NodeId Parser::ParseClass(bool require_semicolon)
 				arena_.Add(base, arena_.Make("virtual", "KW_VIRTUAL:virtual"));
 			std::string base_name;
 			NodeId base_structure = kNoNode;
+			NodeId decltype_expression = kNoNode;
 			if (At(KW_DECLTYPE))
 			{
 				const std::size_t first = position_++;
 				Expect(OP_LPAREN);
-				const NodeId ignored = ParseExpression();
-				if (ignored == kNoNode)
+				decltype_expression = ParseExpression();
+				if (decltype_expression == kNoNode)
 					throw Error("expected decltype base expression");
 				Expect(OP_RPAREN);
 				base_name = JoinSpellings(first, position_);
 			}
 			else if (!ParseName(&base_name, true, true, true, &base_structure))
 				throw Error("expected base name");
-			arena_.Add(base,
-				MakeStructuredNode("base-name", base_name, base_structure));
+			const NodeId base_name_node =
+				MakeStructuredNode("base-name", base_name, base_structure);
+			if (decltype_expression != kNoNode)
+			{
+				// Retain the parsed dependent expression for specialization replay
+				// without changing the established source AST presentation.
+				arena_.AddFlags(
+					decltype_expression, SYNTAX_FLAG_SEMANTIC_ONLY);
+				arena_.Add(base_name_node, decltype_expression);
+			}
+			arena_.Add(base, base_name_node);
 			if (Match(OP_DOTS))
 				arena_.Add(base, arena_.Make(
 					"pack-expansion", "OP_DOTS:..."));

@@ -17,44 +17,38 @@ and compare canonical declaration or namespace identity thereafter.
 
 ## Current Failure Map
 
-Current result is 298/403 including two audit guards, or 296/401 on the original
-suite, up from this checkpoint's 292 and stage baseline of 223 with no
-regressions; all `100-*` and `200-*` tests pass. The remaining 105
-failures group by primary owner and observed kind: immediate substitution and
-demand (`300-*`: 57 exits, 9 LowIR), canonical non-type/conversion arguments
-(`400-*`: 17 exits, 1 LowIR), and composed lookup/alias/class paths (`500-*`:
-12 exits, 9 LowIR).
+Current result is 307/403 including two audit guards, or 305/401 on the original
+suite, up from this checkpoint's 298 with no regressions; all `100-*` and
+`200-*` tests pass. The complete remaining set groups by shared behavior and
+primary owner: candidate result/default substitution, dependent lookup, and
+demand timing (`300-*`: 52 exits, 8 LowIR); canonical non-type arguments,
+conversion templates, and overload ownership (`400-*`: 16 exits, 2 LowIR);
+and composed alias/class/member lookup, pack replay, and selected-fact lowering
+(`500-*`: 8 exits, 10 LowIR). These groups account for all 96 failures.
 
 ## Active Checkpoint
 
-The next checkpoint owns concrete candidate-result replay in the `300-*`
-group, beginning with dependent `enable_if` values, invalid alias formation,
-member-call probes, and detector fallbacks. `spec.md` sections 3-6 require
-retained syntax and lexical/use contexts, canonical argument substitution in
-an isolated candidate frame, immediate-context failure without body demand,
-and selected facts reused by instantiation. Result formation owns the flow from
-pattern plus canonical arguments through alias/class lookup to candidate
-viability; the request cache owns the resulting success/failure state.
-Expected work is O(C*(S+L+A)) for C candidates, retained shape S, lookup L, and
-participating alias edges A, memoized by pattern, canonical arguments, and
-lookup context. Validate focused enable-if, invalid-alias, member-call, and
-detector probes, then all `300-*`, PA1-PA22, and audit; measure doubled
-candidate counts and retained-result/alias depths. First-declaration lookup is
-now an input fact to this checkpoint rather than work result formation repeats.
+The next checkpoint owns candidate-local expression validity in the remaining
+`300-*` set: abstract construction, narrowing, cast legality, overloaded
+operators, pseudo-destructors, and `noexcept` probes. `spec.md` sections 2-5
+require canonical expression facts, isolated expected failure, and cached
+demand; section 6 requires lowering to consume only the selected facts, and
+section 9 requires O(C*(E+L)) work for C candidates, dependent expression size
+E, and indexed lookup L. Expression analysis owns typed validity, overload
+resolution owns candidate discard, and instantiation/lowering consume the
+winner without reanalysis. Validate focused positive/fallback/hard-error pairs,
+all `300-*`, PA1-PA22, and audit; measure doubled expression and candidate sets.
 
 ## Performance Evidence
 
-Earlier deduction, pack, overload, and inherited-member probes remain linear in
-participating requests and produced elements. The audited first-lookup path was
-measured directly: for 32/64/128/256 paired retained call/type declarations,
-lookup queries are 954/1,882/3,738/7,450, deduction visits are
-128/256/512/1,024, peak semantic bytes are
-1,586,723/3,158,951/6,038,783/12,061,031, and three-run semantic medians are
-6.87/13.12/25.84/51.59 ms. At nested result depths 16/32/64/128, lookup queries
-are 76/124/220/412, peak bytes are 90,279/133,607/308,466/694,579, and medians
-are 0.79/1.20/2.12/4.78 ms. Final gates are PA1-PA22 2,639/2,639, original
-PA23 296/401 and full PA23 298/403, zero regressions, and file-audit pass with
-13 inherited warnings.
+Candidate sets of 8/16/32/64 produce 10/18/34/66 overload candidates,
+52/100/196/388 deduction visits, 191/335/623/1,199 lookup queries,
+243,222/382,001/680,617/1,352,625 peak semantic bytes, and three-run medians of
+1.24/1.92/3.19/6.00 ms. Alias depths 8/16/32/64 produce 18/26/42/74 requests,
+161/265/473/889 lookups, 190,043/217,916/410,644/799,840 peak bytes, and
+0.99/1.37/2.14/3.75 ms medians. Work and storage are linear in participating
+candidates/alias edges. Final gates are PA1-PA22 2,639/2,639, PA23 307/403 with
+zero regressions, and file-audit pass with 13 inherited warnings.
 
 ## Completed Checkpoints
 
@@ -75,3 +69,4 @@ PA23 296/401 and full PA23 298/403, zero regressions, and file-audit pass with
 | Explicit template identity and specialization result replay | Type/function explicit-ids retain syntax, complete types deduce omitted arguments, inherited defaults and selected bodies replay, synthesized constructors stay out of ordinary lookup, and aggregate returns keep one lowering identity; 284 -> 289, no regressions, linear specialization/depth scaling. |
 | Inherited-using identity and reference/base lowering | Access-owned specialization aliases, local-signature preference, array-reference stores, and nonempty-base value initialization pass; all `100-*` pass, 289 -> 292, no regressions, linear/flat scaling. |
 | Declaration-time result lookup and canonical identity | Deferred results retain canonical type/namespace roots and first-declaration call candidates through redeclaration and substitution; fixed qualifiers validate immediately, recursive calls stay bounded, original PA23 292 -> 296 (298/403 with audit guards), no regressions, linear candidate/depth scaling. |
+| Candidate-local alias, call-surrogate, and detector replay | Nested dependent alias shapes defer without body demand, explicit alias failures discard one candidate, retained `decltype` bases replay parsed calls, and ellipsis fallbacks participate; 298 -> 307, nine gains, no regressions, linear candidate/alias scaling. |

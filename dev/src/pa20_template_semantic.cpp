@@ -1140,9 +1140,40 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 					FirstSemanticChild(specifiers);
 				const NodeId declarator = FindChild(
 					source, "abstract-declarator");
+				const NodeId retained_declarator = declarator != kNoNode ?
+					declarator : FindChild(source, "declarator");
+				const NodeId call_clause = retained_declarator == kNoNode ?
+					kNoNode : FindChild(retained_declarator, "parameter-clause");
 				const bool retained_pack_name = declarator != kNoNode &&
 					FindChild(declarator, "parameter-pack") != kNoNode;
 				if (name != kNoNode && arena_->IsTag(name, "type-name") &&
+					call_clause != kNoNode &&
+					FirstSemanticChild(call_clause) == kNoNode)
+				{
+					// The parser's declaration/expression ambiguity preserves
+					// `qualified_template_id()` as a type-id with an empty function
+					// declarator.  In a non-type argument this is a call expression;
+					// replay it from the retained name and declarator structure.
+					const std::vector<NodeId> no_argument_syntax;
+					const std::vector<ExpressionInfo> no_arguments;
+					++constant_expression_required_depth_;
+					bool formed = false;
+					try
+					{
+						formed = AnalyzeRetainedNamedCall(name,
+							PayloadSource(name), source_scope,
+							no_argument_syntax, no_arguments,
+							argument.type, &expression);
+					}
+					catch (...)
+					{
+						--constant_expression_required_depth_;
+						throw;
+					}
+					--constant_expression_required_depth_;
+					if (!formed) return false;
+				}
+				else if (name != kNoNode && arena_->IsTag(name, "type-name") &&
 					(declarator == kNoNode || retained_pack_name))
 					expression = AnalyzeNamedValue(PayloadSource(name),
 						source_scope, argument.type, name);

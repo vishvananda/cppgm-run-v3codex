@@ -267,14 +267,12 @@ bool SemanticAnalyzer::CollectClassDirectBases(NodeId clause, ScopeId scope,
 		else base_scopes.push_back(scope);
 		for (std::size_t element = 0; element < base_scopes.size(); ++element)
 		{
-			LookupResult base_lookup;
-			const NodeId structured_base = FindChild(
-				base_name, "structured-type-name");
-			base_lookup.type = structured_base == kNoNode ? kNoType :
-				ResolveStructuredTypeName(structured_base, base_scopes[element]);
-			if (base_lookup.type == kNoType && structured_base == kNoNode)
-				base_lookup = LookupSpelling(base_scopes[element],
-					arena_->Payload(base_name), LOOKUP_TYPE);
+			const LookupResult base_lookup = ResolveClassDirectBase(
+				base_name, base_scopes[element]);
+			if (base_lookup.type == kNoType && CandidateSubstitutionFailed())
+				return false;
+			if (base_lookup.type == kNoType)
+				throw std::runtime_error("direct base type was not found");
 			EnsureClassDefinition(base_lookup.type);
 			const EntityId base = EntityOf(base_lookup.type);
 			if (base == kNoEntity || !program_->entities[base].complete ||
@@ -1933,7 +1931,8 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 		const NodeId specifiers = FindChild(child, "decl-specifier-seq");
 		const NodeId declarator = FindChild(child, "declarator");
 		const bool nondeduced_type = template_parameter_names != 0 &&
-			HasDependentQualifiedType(specifiers, *template_parameter_names);
+			HasDependentQualifiedType(
+				specifiers, *template_parameter_names, parameter_scope);
 		const TypeId deferred_type = nondeduced_type ?
 			FunctionTemplateNondeducedTypeShape() : kNoType;
 		const bool declared_pack = declarator != kNoNode &&
