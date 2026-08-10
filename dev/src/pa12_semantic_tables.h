@@ -235,12 +235,24 @@ struct TemplateSpecializationHash
 	}
 };
 
+enum TemplateRequestState
+{
+	TEMPLATE_REQUEST_NOT_STARTED,
+	TEMPLATE_REQUEST_IN_PROGRESS,
+	TEMPLATE_REQUEST_SUCCEEDED,
+	TEMPLATE_REQUEST_FAILED
+};
+
 class TemplateSpecializationTable
 {
 public:
 	TemplateSpecializationTable();
 	BindingId Find(const TemplateSpecializationKey& key) const;
 	void Insert(const TemplateSpecializationKey& key, BindingId binding);
+	TemplateRequestState FindRequest(const TemplateSpecializationKey& key,
+		BindingId* binding) const;
+	void SetRequest(const TemplateSpecializationKey& key,
+		TemplateRequestState state, BindingId binding = kNoBinding);
 	std::size_t StorageBytes() const;
 
 private:
@@ -248,7 +260,9 @@ private:
 	{
 		TemplateSpecializationKey key;
 		BindingId binding;
-		Entry(const TemplateSpecializationKey& key_value, BindingId binding_value);
+		TemplateRequestState state;
+		Entry(const TemplateSpecializationKey& key_value,
+			BindingId binding_value, TemplateRequestState state_value);
 	};
 	void Rehash(std::size_t capacity);
 	std::vector<Entry> entries_;

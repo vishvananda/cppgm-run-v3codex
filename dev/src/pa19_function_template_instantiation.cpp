@@ -138,6 +138,50 @@ bool EquivalentFunctionTemplateNondeducedShapes(const SyntaxArena& arena,
 	return true;
 }
 
+bool IsFunctionOnlyDeclSpecifier(const SyntaxArena& arena, NodeId node)
+{
+	if (!arena.IsTag(node, "decl-specifier")) return false;
+	const std::string& spelling = arena.Payload(node);
+	return spelling == "friend" || spelling == "inline" ||
+		spelling == "constexpr" || spelling == "virtual" ||
+		spelling == "explicit" || spelling == "static" ||
+		spelling == "extern" || spelling == "register" ||
+		spelling == "thread_local" || spelling == "mutable";
+}
+
+std::uint32_t NextDependentResultEdge(
+	const SyntaxArena& arena, std::uint32_t edge)
+{
+	while (edge != kNoEdge &&
+		IsFunctionOnlyDeclSpecifier(arena, arena.EdgeChild(edge)))
+		edge = arena.NextEdge(edge);
+	return edge;
+}
+
+bool EquivalentDependentFunctionTemplateResults(const SyntaxArena& arena,
+	const FunctionTemplatePattern& left,
+	const FunctionTemplatePattern& right)
+{
+	std::uint32_t left_edge = NextDependentResultEdge(arena,
+		left.specifiers == kNoNode ? kNoEdge : arena.FirstEdge(left.specifiers));
+	std::uint32_t right_edge = NextDependentResultEdge(arena,
+		right.specifiers == kNoNode ? kNoEdge : arena.FirstEdge(right.specifiers));
+	while (left_edge != kNoEdge && right_edge != kNoEdge)
+	{
+		if (!EquivalentNormalizedTemplateSyntax(arena,
+			arena.EdgeChild(left_edge), arena.EdgeChild(right_edge),
+			left.parameters, right.parameters)) return false;
+		left_edge = NextDependentResultEdge(
+			arena, arena.NextEdge(left_edge));
+		right_edge = NextDependentResultEdge(
+			arena, arena.NextEdge(right_edge));
+	}
+	if (left_edge != right_edge) return false;
+	return EquivalentNormalizedTemplateSyntax(arena,
+		left.trailing_return_syntax, right.trailing_return_syntax,
+		left.parameters, right.parameters);
+}
+
 void CaptureFunctionParameterMetadata(FunctionTemplatePattern* pattern,
 	const DeclaratorInfo& declarator)
 {
@@ -185,6 +229,78 @@ void InheritFunctionParameterMetadata(FunctionTemplatePattern* retained,
 			destination->function_parameter_defaults[parameter] =
 				source.function_parameter_defaults[parameter];
 	}
+}
+
+void CaptureFunctionTemplateDefaultContexts(FunctionTemplatePattern* pattern)
+{
+	pattern->default_context_by_parameter.assign(
+		pattern->parameters.size(), kNoDumpEdge);
+	bool has_default = false;
+	for (std::size_t i = 0; i < pattern->parameters.size(); ++i)
+		has_default = has_default ||
+			pattern->parameters[i].default_argument != kNoNode;
+	if (!has_default) return;
+	FunctionTemplateDefaultContext context;
+	context.lexical_scope = pattern->lexical_scope;
+	context.parameters = pattern->parameters;
+	pattern->default_contexts.push_back(context);
+	for (std::size_t i = 0; i < pattern->parameters.size(); ++i)
+		if (pattern->parameters[i].default_argument != kNoNode)
+			pattern->default_context_by_parameter[i] = 0;
+}
+
+void MergeFunctionTemplateDefaults(FunctionTemplatePattern* retained,
+	const FunctionTemplatePattern& incoming, bool incoming_is_definition)
+{
+	if (retained->parameters.size() != incoming.parameters.size() ||
+		retained->default_context_by_parameter.size() !=
+			retained->parameters.size() ||
+		incoming.default_context_by_parameter.size() !=
+			incoming.parameters.size())
+		throw std::logic_error("function template default metadata mismatch");
+	for (std::size_t i = 0; i < retained->parameters.size(); ++i)
+		if (retained->parameters[i].default_argument != kNoNode &&
+			incoming.parameters[i].default_argument != kNoNode)
+			throw std::runtime_error("duplicate default template argument");
+
+	std::vector<std::uint32_t> remapped(
+		incoming.default_contexts.size(), kNoDumpEdge);
+	for (std::size_t i = 0; i < retained->parameters.size(); ++i)
+	{
+		if (incoming.parameters[i].default_argument == kNoNode) continue;
+		const std::uint32_t source =
+			incoming.default_context_by_parameter[i];
+		if (source == kNoDumpEdge ||
+			source >= incoming.default_contexts.size())
+			throw std::logic_error(
+				"function template default has no declaration context");
+		if (remapped[source] == kNoDumpEdge)
+		{
+			if (retained->default_contexts.size() >= kNoDumpEdge)
+				throw std::runtime_error(
+					"too many function template default contexts");
+			remapped[source] = static_cast<std::uint32_t>(
+				retained->default_contexts.size());
+			retained->default_contexts.push_back(
+				incoming.default_contexts[source]);
+		}
+		retained->default_context_by_parameter[i] = remapped[source];
+	}
+
+	if (incoming_is_definition)
+	{
+		std::vector<TemplateParameter> merged = incoming.parameters;
+		for (std::size_t i = 0; i < merged.size(); ++i)
+			if (merged[i].default_argument == kNoNode)
+				merged[i].default_argument =
+					retained->parameters[i].default_argument;
+		retained->parameters.swap(merged);
+	}
+	else
+		for (std::size_t i = 0; i < retained->parameters.size(); ++i)
+			if (retained->parameters[i].default_argument == kNoNode)
+				retained->parameters[i].default_argument =
+					incoming.parameters[i].default_argument;
 }
 
 }
@@ -364,10 +480,10 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 		throw std::runtime_error("function template owner not found");
 	pattern.nonthrowing = dependent_exception_specification ?
 		false : IsNonthrowing(declarator, pattern.owner);
-	const NodeId trailing_return =
-		FindChild(declarator, "trailing-return-type");
-	const bool defer_trailing_return = trailing_return != kNoNode &&
-		PayloadSource(trailing_return).compare(0, 8, "decltype") == 0;
+	pattern.trailing_return_syntax = FindChild(declarator, "trailing-return-type");
+	const bool defer_trailing_return = pattern.trailing_return_syntax != kNoNode &&
+		PayloadSource(pattern.trailing_return_syntax).compare(
+			0, 8, "decltype") == 0;
 	const EntityId member_owner = program_->EntityForScope(pattern.owner);
 	if (special_member_template && member_owner == kNoEntity)
 		throw std::runtime_error(
@@ -393,6 +509,7 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 		ValidateConstexprCallableType(shape_declarator.type, false);
 	pattern.shape_type = shape_declarator.type;
 	CaptureFunctionParameterMetadata(&pattern, shape_declarator);
+	CaptureFunctionTemplateDefaultContexts(&pattern);
 	if (pattern.constructor_template && pattern.name !=
 		program_->entities[member_owner].identity_name)
 		throw std::runtime_error(
@@ -419,11 +536,18 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 			const std::size_t candidate = (*prior_patterns)[p];
 			const FunctionTemplatePattern& prior =
 				function_templates_[candidate];
+			const bool dependent_result =
+				function_template_dependent_result_shape_ != kNoType &&
+				program_->types.Get(prior.shape_type).child ==
+					function_template_dependent_result_shape_;
 			if (EquivalentFunctionTemplateParameterLists(*arena_,
 					prior.parameters, pattern.parameters) &&
 				prior.shape_type == pattern.shape_type &&
 				EquivalentFunctionTemplateNondeducedShapes(
-					*arena_, prior, pattern))
+					*arena_, prior, pattern) &&
+				(!dependent_result ||
+				 EquivalentDependentFunctionTemplateResults(
+					*arena_, prior, pattern)))
 			{
 				prior_index = candidate;
 				break;
@@ -433,11 +557,7 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	{
 		FunctionTemplatePattern& prior = function_templates_[prior_index];
 		InheritFunctionParameterMetadata(&prior, &pattern, definition);
-		for (std::size_t d = 0; d < parameters.size(); ++d)
-			if (prior.parameters[d].default_argument == kNoNode &&
-				parameters[d].default_argument != kNoNode)
-				prior.parameters[d].default_argument =
-					parameters[d].default_argument;
+		MergeFunctionTemplateDefaults(&prior, pattern, definition);
 		prior.required_parameter_count = std::min(
 			prior.required_parameter_count, pattern.required_parameter_count);
 		if (prior.nonthrowing != pattern.nonthrowing ||
@@ -462,9 +582,9 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 			prior.lexical_scope = pattern.lexical_scope;
 			prior.specifiers = pattern.specifiers;
 			prior.declarator = pattern.declarator;
+			prior.trailing_return_syntax = pattern.trailing_return_syntax;
 			prior.definition_body = pattern.definition_body;
 			prior.constructor_initializer = pattern.constructor_initializer;
-			prior.parameters = pattern.parameters;
 			prior.function_parameter_names =
 				pattern.function_parameter_names;
 			prior.function_parameter_defaults =
@@ -891,7 +1011,27 @@ bool SemanticAnalyzer::MaterializeFunctionTemplateDefaults(
 	if (!completed)
 		throw std::logic_error("missing completed function template arguments");
 	*completed = arguments;
-	ScopeId default_scope = kNoScope;
+	if (pattern.default_context_by_parameter.size() !=
+		pattern.parameters.size())
+		throw std::logic_error(
+			"function template default context map is truncated");
+	std::vector<ScopeId> default_scopes(
+		pattern.default_contexts.size(), kNoScope);
+	const auto bind_completed = [&](ScopeId scope,
+		const FunctionTemplateDefaultContext& context,
+		std::size_t parameter_index)
+	{
+		if (parameter_index >= context.parameters.size())
+			throw std::logic_error(
+				"function template default context has wrong arity");
+		const std::size_t first = parameter_offsets[parameter_index];
+		const std::size_t last = parameter_offsets[parameter_index + 1];
+		if (context.parameters[parameter_index].pack)
+			BindTemplateArgumentPack(scope,
+				context.parameters[parameter_index], *completed, first, last);
+		else BindTemplateArgument(scope, context.parameters[parameter_index],
+			(*completed)[first]);
+	};
 	try
 	{
 		for (std::size_t parameter_index = 0;
@@ -905,41 +1045,52 @@ bool SemanticAnalyzer::MaterializeFunctionTemplateDefaults(
 			{
 				for (std::size_t argument = first; argument < last; ++argument)
 					if ((*completed)[argument].type == kNoType) return false;
-				if (default_scope != kNoScope)
-					BindTemplateArgumentPack(default_scope, parameter,
-						*completed, first, last);
+				for (std::size_t context = 0;
+					context < default_scopes.size(); ++context)
+					if (default_scopes[context] != kNoScope)
+						bind_completed(default_scopes[context],
+							pattern.default_contexts[context], parameter_index);
 				continue;
 			}
 			TemplateArgument& argument = (*completed)[first];
 			if (argument.type != kNoType)
 			{
-				if (default_scope != kNoScope)
-					BindTemplateArgument(default_scope, parameter, argument);
+				for (std::size_t context = 0;
+					context < default_scopes.size(); ++context)
+					if (default_scopes[context] != kNoScope)
+						bind_completed(default_scopes[context],
+							pattern.default_contexts[context], parameter_index);
 				continue;
 			}
 			if (parameter.default_argument == kNoNode) return false;
+			const std::uint32_t context_index =
+				pattern.default_context_by_parameter[parameter_index];
+			if (context_index == kNoDumpEdge ||
+				context_index >= pattern.default_contexts.size())
+				throw std::logic_error(
+					"function template default has no retained context");
+			const FunctionTemplateDefaultContext& context =
+				pattern.default_contexts[context_index];
+			if (context.parameters.size() != pattern.parameters.size())
+				throw std::logic_error(
+					"function template default context has wrong arity");
+			ScopeId& default_scope = default_scopes[context_index];
 			if (default_scope == kNoScope)
 			{
-				default_scope = NewScope(pattern.lexical_scope,
+				default_scope = NewScope(context.lexical_scope,
 					SCOPE_TEMPLATE_PARAMETERS, 0,
-					ScopePrefixId(pattern.lexical_scope));
+					ScopePrefixId(context.lexical_scope));
 				for (std::size_t prior = 0; prior < parameter_index; ++prior)
-				{
-					const std::size_t prior_first = parameter_offsets[prior];
-					const std::size_t prior_last = parameter_offsets[prior + 1];
-					if (pattern.parameters[prior].pack)
-						BindTemplateArgumentPack(default_scope,
-							pattern.parameters[prior], *completed,
-							prior_first, prior_last);
-					else BindTemplateArgument(default_scope,
-						pattern.parameters[prior], (*completed)[prior_first]);
-				}
+					bind_completed(default_scope, context, prior);
 			}
-			NodeId source = FirstSemanticChild(parameter.default_argument);
+			const TemplateParameter& source_parameter =
+				context.parameters[parameter_index];
+			NodeId source = FirstSemanticChild(
+				source_parameter.default_argument);
 			if (source == kNoNode)
 				throw std::logic_error(
 					"empty function template default argument");
-			if (parameter.kind == TEMPLATE_ARGUMENT_TYPE)
+			if (source_parameter.kind == TEMPLATE_ARGUMENT_TYPE)
 			{
 				NodeId type_id = arena_->IsTag(source, "type-id") ? source :
 					FindChild(source, "type-id");
@@ -947,15 +1098,15 @@ bool SemanticAnalyzer::MaterializeFunctionTemplateDefaults(
 				argument.type = BuildTypeId(type_id, default_scope);
 				if (argument.type == kNoType) return false;
 			}
-			else if (parameter.kind == TEMPLATE_ARGUMENT_TEMPLATE)
+			else if (source_parameter.kind == TEMPLATE_ARGUMENT_TEMPLATE)
 			{
 				if (!BuildTemplateTemplateArgument(
-					source, default_scope, parameter, &argument)) return false;
+					source, default_scope, source_parameter, &argument)) return false;
 			}
 			else
 			{
 				argument.type = ResolveTemplateParameterType(
-					parameter, default_scope);
+					source_parameter, default_scope);
 				++constant_expression_required_depth_;
 				ExpressionInfo value;
 				try
@@ -975,7 +1126,11 @@ bool SemanticAnalyzer::MaterializeFunctionTemplateDefaults(
 				argument.value = NormalizeIntegralConstant(
 					argument.type, value.value);
 			}
-			BindTemplateArgument(default_scope, parameter, argument);
+			for (std::size_t retained = 0;
+				retained < default_scopes.size(); ++retained)
+				if (default_scopes[retained] != kNoScope)
+					bind_completed(default_scopes[retained],
+						pattern.default_contexts[retained], parameter_index);
 		}
 	}
 	catch (const std::runtime_error&)
@@ -1017,24 +1172,43 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 		parameter < pattern.parameters.size(); ++parameter)
 		if (!pattern.parameters[parameter].pack &&
 			arguments[parameter_offsets[parameter]].type == kNoType)
+		{
 			needs_defaults = true;
+			if (pattern.parameters[parameter].default_argument == kNoNode)
+				return kNoBinding;
+		}
 	TemplateSpecializationKey request_key;
 	if (needs_defaults)
 	{
 		request_key = CanonicalTemplateSpecializationKey(
 			index, arguments, identity_offsets);
-		const BindingId requested =
-			function_template_default_requests_.Find(request_key);
-		if (requested != kNoBinding)
+		BindingId requested = kNoBinding;
+		const TemplateRequestState request_state =
+			function_template_default_requests_.FindRequest(
+				request_key, &requested);
+		if (request_state != TEMPLATE_REQUEST_NOT_STARTED)
 		{
 			++template_specialization_cache_hits_;
-			return requested;
+			++function_template_default_request_cache_hits_;
+			if (request_state != TEMPLATE_REQUEST_SUCCEEDED)
+				++function_template_default_failure_cache_hits_;
+			return request_state == TEMPLATE_REQUEST_SUCCEEDED ?
+				requested : kNoBinding;
 		}
+		function_template_default_requests_.SetRequest(
+			request_key, TEMPLATE_REQUEST_IN_PROGRESS);
+		++function_template_default_materializations_;
 	}
 
 	std::vector<TemplateArgument> completed;
 	if (!MaterializeFunctionTemplateDefaults(
-		pattern, arguments, parameter_offsets, &completed)) return kNoBinding;
+		pattern, arguments, parameter_offsets, &completed))
+	{
+		if (needs_defaults)
+			function_template_default_requests_.SetRequest(
+				request_key, TEMPLATE_REQUEST_FAILED);
+		return kNoBinding;
+	}
 	const TemplateSpecializationKey cache_key =
 		CanonicalTemplateSpecializationKey(
 			index, completed, identity_offsets);
@@ -1043,7 +1217,8 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	{
 		++template_specialization_cache_hits_;
 		if (needs_defaults)
-			function_template_default_requests_.Insert(request_key, old);
+			function_template_default_requests_.SetRequest(
+				request_key, TEMPLATE_REQUEST_SUCCEEDED, old);
 		return old;
 	}
 
@@ -1060,11 +1235,24 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	}
 	catch (const std::runtime_error&)
 	{
+		if (needs_defaults)
+			function_template_default_requests_.SetRequest(
+				request_key, TEMPLATE_REQUEST_FAILED);
 		return kNoBinding;
 	}
-	const bool nonthrowing = pattern.dependent_exception_specification ?
-		IsNonthrowing(pattern.declarator, template_scope) :
-		pattern.nonthrowing;
+	bool nonthrowing = pattern.nonthrowing;
+	try
+	{
+		if (pattern.dependent_exception_specification)
+			nonthrowing = IsNonthrowing(pattern.declarator, template_scope);
+	}
+	catch (const std::runtime_error&)
+	{
+		if (needs_defaults)
+			function_template_default_requests_.SetRequest(
+				request_key, TEMPLATE_REQUEST_FAILED);
+		return kNoBinding;
+	}
 	const BindingId binding = DeclareFunction(pattern.owner, pattern.name,
 		parsed.type, parsed.parameters, pattern.defined, true,
 		member_owner == kNoEntity ? spec.storage_class : STORAGE_CLASS_NONE,
@@ -1124,7 +1312,8 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	PublishFunctionTemplateFriendGrants(pattern, binding);
 	template_instantiations_.Insert(cache_key, binding);
 	if (needs_defaults)
-		function_template_default_requests_.Insert(request_key, binding);
+		function_template_default_requests_.SetRequest(
+			request_key, TEMPLATE_REQUEST_SUCCEEDED, binding);
 	FunctionTemplatePattern& mutable_pattern = function_templates_[index];
 	if (mutable_pattern.specialization_arguments.size() >
 		std::numeric_limits<std::uint32_t>::max())

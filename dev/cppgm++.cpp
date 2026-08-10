@@ -633,6 +633,12 @@ int run_emit_semantics_mode(const vector<string> & args)
            << stats.template_specialization_requests
            << " template_specialization_cache_hits="
            << stats.template_specialization_cache_hits
+		   << " function_template_default_materializations="
+		   << stats.function_template_default_materializations
+		   << " function_template_default_request_cache_hits="
+		   << stats.function_template_default_request_cache_hits
+		   << " function_template_default_failure_cache_hits="
+		   << stats.function_template_default_failure_cache_hits
 		   << " template_argument_list_requests="
 		   << stats.template_argument_list_requests
 		   << " template_argument_list_cache_hits="
@@ -808,6 +814,12 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << semantic.template_specialization_requests
 			 << " template_specialization_cache_hits="
 			 << semantic.template_specialization_cache_hits
+			 << " function_template_default_materializations="
+			 << semantic.function_template_default_materializations
+			 << " function_template_default_request_cache_hits="
+			 << semantic.function_template_default_request_cache_hits
+			 << " function_template_default_failure_cache_hits="
+			 << semantic.function_template_default_failure_cache_hits
 			 << " template_argument_list_requests="
 			 << semantic.template_argument_list_requests
 			 << " template_argument_list_cache_hits="

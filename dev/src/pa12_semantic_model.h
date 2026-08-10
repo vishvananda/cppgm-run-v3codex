@@ -789,6 +789,14 @@ struct TemplateParameter
 		  default_argument(kNoNode), dependent_type(false), pack(false) {}
 };
 
+struct FunctionTemplateDefaultContext
+{
+	ScopeId lexical_scope;
+	std::vector<TemplateParameter> parameters;
+
+	FunctionTemplateDefaultContext() : lexical_scope(kNoScope) {}
+};
+
 inline bool HasTrailingTemplateParameterPack(
 	const std::vector<TemplateParameter>& parameters)
 {
@@ -816,11 +824,14 @@ struct FunctionTemplatePattern
 	NameId name;
 	NodeId specifiers;
 	NodeId declarator;
+	NodeId trailing_return_syntax;
 	NodeId definition_body;
 	NodeId constructor_initializer;
 	TypeId shape_type;
 	std::size_t required_parameter_count;
 	std::vector<TemplateParameter> parameters;
+	std::vector<std::uint32_t> default_context_by_parameter;
+	std::vector<FunctionTemplateDefaultContext> default_contexts;
 	std::vector<NameId> function_parameter_names;
 	std::vector<NodeId> function_parameter_defaults;
 	std::vector<NodeId> function_parameter_nondeduced_syntax;
@@ -846,7 +857,8 @@ struct FunctionTemplatePattern
 	FunctionTemplatePattern()
 		: owner(kNoScope), lexical_scope(kNoScope), name(0),
 		  specifiers(kNoNode),
-		  declarator(kNoNode), definition_body(kNoNode),
+		  declarator(kNoNode), trailing_return_syntax(kNoNode),
+		  definition_body(kNoNode),
 		  constructor_initializer(kNoNode),
 		  shape_type(kNoType), required_parameter_count(0),
 		  language_linkage(LANGUAGE_LINKAGE_CPP), member_access(ACCESS_PUBLIC),

@@ -90,6 +90,9 @@ public:
 		  access_grant_probes_(0),
 		  template_specialization_requests_(0),
 		  template_specialization_cache_hits_(0),
+		  function_template_default_materializations_(0),
+		  function_template_default_request_cache_hits_(0),
+		  function_template_default_failure_cache_hits_(0),
 		  template_partial_candidates_(0),
 		  template_partial_order_comparisons_(0),
 		  template_partial_shape_materializations_(0),
@@ -1399,6 +1402,9 @@ private:
 	mutable std::size_t access_grant_probes_;
 	std::size_t template_specialization_requests_;
 	std::size_t template_specialization_cache_hits_;
+	std::size_t function_template_default_materializations_;
+	std::size_t function_template_default_request_cache_hits_;
+	std::size_t function_template_default_failure_cache_hits_;
 	mutable std::size_t template_partial_candidates_;
 	mutable std::size_t template_partial_order_comparisons_;
 	std::size_t template_partial_shape_materializations_;

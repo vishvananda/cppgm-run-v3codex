@@ -2905,6 +2905,12 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 			template_specialization_requests_;
 		stats_->template_specialization_cache_hits =
 			template_specialization_cache_hits_;
+		stats_->function_template_default_materializations =
+			function_template_default_materializations_;
+		stats_->function_template_default_request_cache_hits =
+			function_template_default_request_cache_hits_;
+		stats_->function_template_default_failure_cache_hits =
+			function_template_default_failure_cache_hits_;
 		stats_->template_argument_list_requests =
 			program.template_argument_list_requests;
 		stats_->template_argument_list_cache_hits =

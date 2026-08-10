@@ -408,8 +408,9 @@ std::size_t TemplateArgumentPartitionTable::StorageBytes() const
 }
 
 TemplateSpecializationTable::Entry::Entry(
-	const TemplateSpecializationKey& key_value, BindingId binding_value)
-	: key(key_value), binding(binding_value)
+	const TemplateSpecializationKey& key_value, BindingId binding_value,
+	TemplateRequestState state_value)
+	: key(key_value), binding(binding_value), state(state_value)
 {
 }
 
@@ -426,7 +427,9 @@ BindingId TemplateSpecializationTable::Find(
 	while (slots_[slot] != 0)
 	{
 		const Entry& entry = entries_[slots_[slot] - 1];
-		if (entry.key == key) return entry.binding;
+		if (entry.key == key)
+			return entry.state == TEMPLATE_REQUEST_SUCCEEDED ?
+				entry.binding : kNoBinding;
 		slot = (slot + 1) & mask;
 	}
 	return kNoBinding;
@@ -435,6 +438,37 @@ BindingId TemplateSpecializationTable::Find(
 void TemplateSpecializationTable::Insert(
 	const TemplateSpecializationKey& key, BindingId binding)
 {
+	SetRequest(key, TEMPLATE_REQUEST_SUCCEEDED, binding);
+}
+
+TemplateRequestState TemplateSpecializationTable::FindRequest(
+	const TemplateSpecializationKey& key, BindingId* binding) const
+{
+	if (binding) *binding = kNoBinding;
+	const std::size_t mask = slots_.size() - 1;
+	std::size_t slot = TemplateSpecializationHash()(key) & mask;
+	while (slots_[slot] != 0)
+	{
+		const Entry& entry = entries_[slots_[slot] - 1];
+		if (entry.key == key)
+		{
+			if (binding) *binding = entry.binding;
+			return entry.state;
+		}
+		slot = (slot + 1) & mask;
+	}
+	return TEMPLATE_REQUEST_NOT_STARTED;
+}
+
+void TemplateSpecializationTable::SetRequest(
+	const TemplateSpecializationKey& key, TemplateRequestState state,
+	BindingId binding)
+{
+	if (state == TEMPLATE_REQUEST_NOT_STARTED)
+		throw std::logic_error("cannot store an unstarted template request");
+	if (state == TEMPLATE_REQUEST_SUCCEEDED && binding == kNoBinding)
+		throw std::logic_error("successful template request has no binding");
+	if (state != TEMPLATE_REQUEST_SUCCEEDED) binding = kNoBinding;
 	if ((entries_.size() + 1) * 10 > slots_.size() * 7)
 		Rehash(slots_.size() * 2);
 	const std::size_t mask = slots_.size() - 1;
@@ -444,14 +478,31 @@ void TemplateSpecializationTable::Insert(
 		Entry& entry = entries_[slots_[slot] - 1];
 		if (entry.key == key)
 		{
+			if (entry.state == TEMPLATE_REQUEST_SUCCEEDED)
+			{
+				if (state != TEMPLATE_REQUEST_SUCCEEDED ||
+					entry.binding != binding)
+					throw std::logic_error(
+						"completed template request changed result");
+				return;
+			}
+			if (entry.state == TEMPLATE_REQUEST_FAILED)
+			{
+				if (state != TEMPLATE_REQUEST_FAILED)
+					throw std::logic_error(
+						"failed template request changed result");
+				return;
+			}
+			if (state == TEMPLATE_REQUEST_IN_PROGRESS) return;
 			entry.binding = binding;
+			entry.state = state;
 			return;
 		}
 		slot = (slot + 1) & mask;
 	}
 	if (entries_.size() >= std::numeric_limits<std::uint32_t>::max())
 		throw std::runtime_error("too many template specializations");
-	entries_.push_back(Entry(key, binding));
+	entries_.push_back(Entry(key, binding, state));
 	slots_[slot] = static_cast<std::uint32_t>(entries_.size());
 }
 

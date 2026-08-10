@@ -191,8 +191,13 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 			aggregate_helpers_[i].trivial_member_constructors.capacity() *
 				sizeof(std::uint8_t);
 	for (std::size_t i = 0; i < function_templates_.size(); ++i)
+	{
 		bytes += function_templates_[i].parameters.capacity() *
 				sizeof(TemplateParameter) +
+			function_templates_[i].default_context_by_parameter.capacity() *
+				sizeof(std::uint32_t) +
+			function_templates_[i].default_contexts.capacity() *
+				sizeof(FunctionTemplateDefaultContext) +
 			function_templates_[i].function_parameter_names.capacity() *
 				sizeof(NameId) +
 			function_templates_[i].function_parameter_defaults.capacity() *
@@ -210,6 +215,19 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 			function_templates_[i].specialization_parameter_offsets.capacity() *
 				sizeof(std::uint32_t) +
 			function_templates_[i].friend_owners.capacity() * sizeof(EntityId);
+		for (std::size_t context = 0;
+			context < function_templates_[i].default_contexts.size(); ++context)
+		{
+			bytes += function_templates_[i].default_contexts[context].
+				parameters.capacity() * sizeof(TemplateParameter);
+			const std::vector<TemplateParameter>& parameters =
+				function_templates_[i].default_contexts[context].parameters;
+			for (std::size_t parameter = 0;
+				parameter < parameters.size(); ++parameter)
+				bytes += parameters[parameter].template_parameters.capacity() *
+					sizeof(TemplateParameter);
+		}
+	}
 	for (std::size_t i = 0; i < class_templates_.size(); ++i)
 	{
 		bytes += class_templates_[i].parameters.capacity() *
