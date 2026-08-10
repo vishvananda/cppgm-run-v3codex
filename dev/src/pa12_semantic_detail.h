@@ -585,8 +585,19 @@ private:
 		std::vector<std::uint32_t>* offsets) const;
 	void UpgradeFunctionTemplateSpecializations(std::size_t pattern);
 	bool FunctionTemplateTypeIsDependent(TypeId type) const;
+	std::size_t FunctionTemplateShapePackParameter(TypeId type,
+		const std::vector<TemplateParameter>& parameters) const;
 	bool FunctionTemplatePatternAccepts(TypeId pattern,
-		TypeId exemplar) const;
+		TypeId exemplar,
+		const std::vector<TemplateParameter>& pattern_parameters,
+		const std::vector<TemplateParameter>& exemplar_parameters) const;
+	bool FunctionTemplateArgumentPatternAccepts(
+		const TemplateArgument& pattern, const TemplateArgument& exemplar,
+		const std::vector<TemplateParameter>& pattern_parameters,
+		const std::vector<TemplateParameter>& exemplar_parameters) const;
+	bool FunctionTemplateParameterListAccepts(
+		const FunctionTemplatePattern& pattern,
+		const FunctionTemplatePattern& exemplar) const;
 	bool DeduceFunctionTemplateType(TypeId pattern, TypeId argument,
 		std::vector<TypeId>* deduced) const;
 	bool DeduceFunctionTemplatePackType(TypeId pattern, TypeId argument,

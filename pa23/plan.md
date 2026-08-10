@@ -15,39 +15,42 @@ not rediscover template semantics.
 
 ## Current Failure Map
 
-Current result is 248/401, up from the turn baseline of 223/401 with no
-regressions. The remaining 153 failures group by primary owner and observed
-kind: call/address/constructor deduction (`100-*`: 18 exits, 2 LowIR), typed
-partial ordering (`200-*`: 11 exits, 2 LowIR), immediate substitution and
-demand (`300-*`: 70 exits, 9 LowIR), canonical non-type/conversion arguments
-(`400-*`: 18 exits, 1 LowIR), and composed lookup/alias/class paths (`500-*`:
+Current result is 255/401, up from the turn baseline of 248/401 and stage
+baseline of 223/401 with no regressions. The remaining 146 failures group by
+primary owner and observed kind: call/address/constructor deduction (`100-*`:
+17 exits, 2 LowIR), typed partial ordering (`200-*`: 6 exits, 1 LowIR),
+immediate substitution and demand (`300-*`: 70 exits, 9 LowIR), canonical
+non-type/conversion arguments (`400-*`: 18 exits, 1 LowIR), and composed
+lookup/alias/class paths (`500-*`:
 13 exits, 9 LowIR).
 
 ## Active Checkpoint
 
-Next is the retained function-pattern -> typed partial-order boundary. N3485
-13.3.3, 14.8.2.4, and 14.8.2.5 require transformed function types,
-reference/cv adjustments, pack participation, and forwarding-reference rules
-to rank only viable specializations. `FunctionTemplatePattern` owns normalized
-parameter syntax; deduction produces canonical bindings and conversion facts;
-`DeduceFunctionTemplatePatterns` owns pairwise ordering; overload resolution
-consumes the winner. Expected work is O(pattern nodes plus participating
-candidates squared) for pairwise ordering, with O(1)-average specialization
-lookup. Validate the complete `200-*` set plus constructor, member assignment,
-fixed/default tail, inner-pack, and earlier-PA guards; measure doubling
-candidate/shape sets before the full PA23, through-PA22, and audit gates.
+The seven remaining `200-*` failures split into class/default typed formation
+(4), inherited/member candidate publication (2), and emission identity (1).
+The next checkpoint owns the first group at retained class-template arguments
+-> specialization completion -> function-pattern ordering. N3485 14.5.7,
+14.7.1, 14.7.3, 14.8.2.4, and 14.8.2.5 require defaults to materialize in the
+declaration context, dependent aliases to preserve specialization identity,
+and template-template shapes to participate in bidirectional ordering. Class
+patterns own defaults and retained syntax; specialization requests own
+canonical argument partitions and completion state; qualified lookup exposes
+formed aliases; function ordering consumes typed results. Expected work is
+O(arguments plus qualified lookup) per cached request and O(pattern nodes) per
+ordering comparison. Validate the four class/default `200-*` failures, the
+seven newly passing ordering cases, PA1-PA22, and audit; measure repeated
+defaulted requests and doubled template-template argument lists.
 
 ## Performance Evidence
 
-For 128/256/512 unique retained `void_t` partial probes, valid replay performs
-128/256/512 candidate checks, 768/1,536/3,072 deduction visits, and one shape
-materialization with 128/256/512 shape-cache hits; semantic storage is
-6.61/13.20/26.40 MB and analysis time is 31.1/63.6/129.3 ms. Failed replay
-performs 128/256/512 checks, 384/768/1,536 deduction visits, the same one
-materialization and cache-hit counts, uses 6.01/12.02/24.03 MB, and takes
-32.8/68.6/135.7 ms. Requests, visits, memory, and time scale linearly with no
-repeated shape materialization. Final uncontended gates are PA1-PA22
-2,639/2,639 and a passing file audit with 13 inherited warnings.
+For trailing packs of 32/64/128 elements, deduction visits are 132/260/516,
+ordering comparisons remain 2, peak semantic memory is 0.35/0.66/1.31 MB, and
+semantic time is 1.22/1.89/3.37 ms. For 17/33/65 viable overload candidates,
+ordering comparisons are 32/64/128, deduction visits 32/64/128, peak memory
+0.39/0.75/1.48 MB, and semantic time 2.01/3.68/6.86 ms. Counts and storage are
+linear with no expansion-product search. The prior retained-partial probe also
+scaled linearly through 512 patterns. Final gates are PA1-PA22 2,639/2,639,
+PA23 255/401, zero regressions, and audit pass with 13 inherited warnings.
 
 ## Completed Checkpoints
 
@@ -58,3 +61,4 @@ repeated shape materialization. Final uncontended gates are PA1-PA22
 | Defaulted function-template materialization | Declaration-owned defaults and explicit request states pass; 186 -> 211 overall with linear success/failure scaling. |
 | Explicit-call expression substitution and variadic class boundary | Candidate failure spans defaults through expressions and lowering consumes ellipsis storage facts; 211 -> 223, no regressions, linear scaling. |
 | Concrete replay of retained class-partial type arguments | Dependent alias/`void_t`/array/`decltype` patterns replay after deduction; builtin invoke preserves call result facts, hard body errors escape SFINAE, and candidate result formation is demand-driven; 223 -> 248, no regressions, linear replay scaling. |
+| Typed function-pack deduction and partial ordering | Inner/trailing/empty/repeated packs, active defaulted tails, and direct `T&`/forwarding-`T&&` ordering pass; 248 -> 255, seven gains, no regressions, linear pack/candidate scaling. |

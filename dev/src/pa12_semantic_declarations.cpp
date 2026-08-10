@@ -2143,11 +2143,18 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 		{
 			return_scope = NewScope(scope, SCOPE_FUNCTION, result.name,
 				ScopePrefixId(scope));
+			BindFunctionParameterPackElement(return_scope,
+				FunctionParameterPackName(trailing_parameter_clause), kNoBinding);
 			for (std::size_t i = 0; i < trailing_parameters.size(); ++i)
 				if (trailing_parameters[i].name != 0)
-					program_->AddBinding(return_scope, BIND_PARAMETER,
+				{
+					const BindingId parameter = program_->AddBinding(
+						return_scope, BIND_PARAMETER,
 						trailing_parameters[i].name,
 						ParameterBindingType(trailing_parameters[i]));
+					BindFunctionParameterPackElement(return_scope,
+						trailing_parameters[i].pack_name, parameter);
+				}
 			if (member_implicit_object && current_class_context_ != kNoEntity)
 			{
 				TypeId object =

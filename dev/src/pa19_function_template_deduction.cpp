@@ -113,6 +113,118 @@ bool SemanticAnalyzer::FunctionTemplateTypeIsDependent(TypeId type) const
 	return dependent;
 }
 
+std::size_t SemanticAnalyzer::FunctionTemplateShapePackParameter(TypeId type,
+	const std::vector<TemplateParameter>& parameters) const
+{
+	for (std::size_t i = 0; i < parameters.size() &&
+		i < function_template_shape_parameters_.size(); ++i)
+		if (parameters[i].pack &&
+			type == function_template_shape_parameters_[i]) return i;
+	const TypeRecord& record = program_->types.Get(type);
+	if (record.kind == TYPE_QUALIFIED || record.kind == TYPE_POINTER ||
+		record.kind == TYPE_LVALUE_REFERENCE ||
+		record.kind == TYPE_RVALUE_REFERENCE || record.kind == TYPE_ARRAY ||
+		record.kind == TYPE_MEMBER_POINTER)
+		return FunctionTemplateShapePackParameter(record.child, parameters);
+	if (record.kind == TYPE_FUNCTION)
+	{
+		const TypeId* function_parameters = program_->types.Parameters(type);
+		for (std::size_t i = 0; i < record.parameter_count; ++i)
+		{
+			const std::size_t found = FunctionTemplateShapePackParameter(
+				function_parameters[i], parameters);
+			if (found != parameters.size()) return found;
+		}
+	}
+	if (record.kind == TYPE_NAMED)
+	{
+		const EntityRecord& entity = program_->entities[record.entity];
+		if (entity.template_argument_begin != kNoBinding)
+		{
+			const std::vector<TemplateArgument> arguments =
+				StoredTemplateArguments(entity.template_argument_begin,
+					entity.template_argument_count);
+			for (std::size_t i = 0; i < arguments.size(); ++i)
+			{
+				if (arguments[i].IsDependent() &&
+					arguments[i].dependent_parameter < parameters.size() &&
+					parameters[arguments[i].dependent_parameter].pack)
+					return arguments[i].dependent_parameter;
+				if (arguments[i].kind == TEMPLATE_ARGUMENT_TYPE)
+				{
+					const std::size_t found =
+						FunctionTemplateShapePackParameter(
+							arguments[i].type, parameters);
+					if (found != parameters.size()) return found;
+				}
+			}
+		}
+	}
+	return parameters.size();
+}
+
+bool SemanticAnalyzer::FunctionTemplateArgumentPatternAccepts(
+	const TemplateArgument& pattern, const TemplateArgument& exemplar,
+	const std::vector<TemplateParameter>& pattern_parameters,
+	const std::vector<TemplateParameter>& exemplar_parameters) const
+{
+	if (pattern.kind != exemplar.kind) return false;
+	if (pattern.kind == TEMPLATE_ARGUMENT_TYPE)
+		return FunctionTemplatePatternAccepts(pattern.type, exemplar.type,
+			pattern_parameters, exemplar_parameters);
+	if (pattern.IsDependent() &&
+		pattern.dependent_parameter < pattern_parameters.size()) return true;
+	return pattern == exemplar;
+}
+
+bool SemanticAnalyzer::FunctionTemplateParameterListAccepts(
+	const FunctionTemplatePattern& pattern,
+	const FunctionTemplatePattern& exemplar) const
+{
+	const TypeRecord& pattern_type = program_->types.Get(pattern.shape_type);
+	const TypeRecord& exemplar_type = program_->types.Get(exemplar.shape_type);
+	if (pattern_type.kind != TYPE_FUNCTION ||
+		exemplar_type.kind != TYPE_FUNCTION) return false;
+	const TypeId* pattern_types = program_->types.Parameters(pattern.shape_type);
+	const TypeId* exemplar_types = program_->types.Parameters(exemplar.shape_type);
+	const std::size_t pattern_fixed = pattern_type.parameter_count -
+		(pattern.function_parameter_pack ? 1 : 0);
+	const std::size_t exemplar_fixed = exemplar_type.parameter_count -
+		(exemplar.function_parameter_pack ? 1 : 0);
+	const std::size_t common = std::min(pattern_fixed, exemplar_fixed);
+	for (std::size_t i = 0; i < common; ++i)
+		if ((i >= pattern.function_parameter_nondeduced.size() ||
+			pattern.function_parameter_nondeduced[i] == 0) &&
+			!FunctionTemplatePatternAccepts(pattern_types[i], exemplar_types[i],
+				pattern.parameters, exemplar.parameters)) return false;
+	if (pattern_fixed > exemplar_fixed &&
+		pattern.required_parameter_count > exemplar_fixed) return false;
+	if (pattern_fixed < exemplar_fixed)
+	{
+		if (!pattern.function_parameter_pack)
+			return !exemplar.function_parameter_pack &&
+				exemplar.required_parameter_count <= pattern_fixed;
+		const std::size_t pack_index = pattern_fixed;
+		if (pack_index >= pattern.function_parameter_nondeduced.size() ||
+			pattern.function_parameter_nondeduced[pack_index] == 0)
+			for (std::size_t i = pattern_fixed; i < exemplar_fixed; ++i)
+				if (!FunctionTemplatePatternAccepts(pattern_types[pack_index],
+					exemplar_types[i], pattern.parameters,
+					exemplar.parameters)) return false;
+	}
+	if (exemplar.function_parameter_pack)
+	{
+		if (!pattern.function_parameter_pack) return false;
+		const std::size_t pack_index = pattern_fixed;
+		if ((pack_index >= pattern.function_parameter_nondeduced.size() ||
+			pattern.function_parameter_nondeduced[pack_index] == 0) &&
+			!FunctionTemplatePatternAccepts(pattern_types[pack_index],
+				exemplar_types[exemplar_fixed], pattern.parameters,
+				exemplar.parameters)) return false;
+	}
+	return true;
+}
+
 int SemanticAnalyzer::CompareFunctionTemplateConstraints(
 	const FunctionInfo& left, const FunctionInfo& right) const
 {
@@ -126,33 +238,54 @@ int SemanticAnalyzer::CompareFunctionTemplateConstraints(
 		function_templates_[left.template_pattern];
 	const FunctionTemplatePattern& right_pattern =
 		function_templates_[right.template_pattern];
-	const TypeRecord left_shape = program_->types.Get(left_pattern.shape_type);
-	const TypeRecord right_shape = program_->types.Get(right_pattern.shape_type);
+	const bool left_accepts_right = FunctionTemplateParameterListAccepts(
+		left_pattern, right_pattern);
+	const bool right_accepts_left = FunctionTemplateParameterListAccepts(
+		right_pattern, left_pattern);
+	if (right_accepts_left != left_accepts_right)
+		return right_accepts_left ? 1 : -1;
+	const TypeRecord& left_shape = program_->types.Get(left_pattern.shape_type);
+	const TypeRecord& right_shape = program_->types.Get(right_pattern.shape_type);
+	const TypeRecord& left_actual = program_->types.Get(left.type);
+	const TypeRecord& right_actual = program_->types.Get(right.type);
 	if (left_shape.kind == TYPE_FUNCTION && right_shape.kind == TYPE_FUNCTION &&
-		left_shape.parameter_count == right_shape.parameter_count)
+		left_actual.kind == TYPE_FUNCTION && right_actual.kind == TYPE_FUNCTION &&
+		left_shape.parameter_count == right_shape.parameter_count &&
+		left_actual.parameter_count == right_actual.parameter_count)
 	{
-		const TypeId* left_types =
-			program_->types.Parameters(left_pattern.shape_type);
-		const TypeId* right_types =
-			program_->types.Parameters(right_pattern.shape_type);
-		bool left_accepts_right = true;
-		bool right_accepts_left = true;
+		const TypeId* left_types = program_->types.Parameters(left_pattern.shape_type);
+		const TypeId* right_types = program_->types.Parameters(right_pattern.shape_type);
+		const TypeId* left_actual_types = program_->types.Parameters(left.type);
+		const TypeId* right_actual_types = program_->types.Parameters(right.type);
+		const auto direct_template_reference = [this](TypeId reference,
+			TypeKind reference_kind,
+			const FunctionTemplatePattern& pattern) -> bool
+		{
+			const TypeRecord& record = program_->types.Get(reference);
+			if (record.kind != reference_kind) return false;
+			for (std::size_t parameter = 0;
+				parameter < pattern.parameters.size() && parameter <
+					function_template_shape_parameters_.size(); ++parameter)
+				if (record.child == function_template_shape_parameters_[parameter])
+					return pattern.parameters[parameter].kind ==
+						TEMPLATE_ARGUMENT_TYPE &&
+						!pattern.parameters[parameter].pack;
+			return false;
+		};
 		for (std::size_t i = 0; i < left_shape.parameter_count; ++i)
 		{
-			if (i >= left_pattern.function_parameter_nondeduced.size() ||
-				left_pattern.function_parameter_nondeduced[i] == 0)
-				left_accepts_right = left_accepts_right &&
-					FunctionTemplatePatternAccepts(left_types[i], right_types[i]);
-			if (i >= right_pattern.function_parameter_nondeduced.size() ||
-				right_pattern.function_parameter_nondeduced[i] == 0)
-				right_accepts_left = right_accepts_left &&
-					FunctionTemplatePatternAccepts(right_types[i], left_types[i]);
+			if (left_actual_types[i] != right_actual_types[i]) continue;
+			if (direct_template_reference(left_types[i], TYPE_LVALUE_REFERENCE,
+				left_pattern) && direct_template_reference(right_types[i],
+				TYPE_RVALUE_REFERENCE, right_pattern))
+				return 1;
+			if (direct_template_reference(right_types[i], TYPE_LVALUE_REFERENCE,
+				right_pattern) && direct_template_reference(left_types[i],
+				TYPE_RVALUE_REFERENCE, left_pattern))
+				return -1;
 		}
-		if (right_accepts_left != left_accepts_right)
-			return right_accepts_left ? 1 : -1;
-		if (!left_accepts_right) return 0;
 	}
-	else return 0;
+	if (!left_accepts_right) return 0;
 	const std::size_t left_parameters = left_pattern.parameters.size();
 	const std::size_t right_parameters = right_pattern.parameters.size();
 	if (left_parameters == right_parameters) return 0;
@@ -163,9 +296,11 @@ int SemanticAnalyzer::CompareFunctionTemplateConstraints(
 }
 
 bool SemanticAnalyzer::FunctionTemplatePatternAccepts(
-	TypeId pattern, TypeId exemplar) const
+	TypeId pattern, TypeId exemplar,
+	const std::vector<TemplateParameter>& pattern_parameters,
+	const std::vector<TemplateParameter>& exemplar_parameters) const
 {
-	for (std::size_t i = 0;
+	for (std::size_t i = 0; i < pattern_parameters.size() &&
 		i < function_template_shape_parameters_.size(); ++i)
 		if (pattern == function_template_shape_parameters_[i]) return true;
 	if (pattern == exemplar) return true;
@@ -176,81 +311,113 @@ bool SemanticAnalyzer::FunctionTemplatePatternAccepts(
 	{
 	case TYPE_QUALIFIED:
 		return (pattern_record.cv & ~exemplar_record.cv) == 0 &&
-			FunctionTemplatePatternAccepts(
-				pattern_record.child, exemplar_record.child);
+			FunctionTemplatePatternAccepts(pattern_record.child,
+				exemplar_record.child, pattern_parameters, exemplar_parameters);
 	case TYPE_POINTER:
 	case TYPE_LVALUE_REFERENCE:
 	case TYPE_RVALUE_REFERENCE:
-		return FunctionTemplatePatternAccepts(
-			pattern_record.child, exemplar_record.child);
+		return FunctionTemplatePatternAccepts(pattern_record.child,
+			exemplar_record.child, pattern_parameters, exemplar_parameters);
 	case TYPE_ARRAY:
 		return pattern_record.bound == exemplar_record.bound &&
-			FunctionTemplatePatternAccepts(
-				pattern_record.child, exemplar_record.child);
+			FunctionTemplatePatternAccepts(pattern_record.child,
+				exemplar_record.child, pattern_parameters, exemplar_parameters);
 	case TYPE_FUNCTION:
 	{
-		if (pattern_record.parameter_count != exemplar_record.parameter_count ||
-			pattern_record.variadic != exemplar_record.variadic ||
-			pattern_record.cv != exemplar_record.cv ||
+		if (pattern_record.cv != exemplar_record.cv ||
 			pattern_record.ref_qualifier != exemplar_record.ref_qualifier ||
-			!FunctionTemplatePatternAccepts(
-				pattern_record.child, exemplar_record.child)) return false;
-		const TypeId* pattern_parameters = program_->types.Parameters(pattern);
-		const TypeId* exemplar_parameters = program_->types.Parameters(exemplar);
-		for (std::size_t i = 0; i < pattern_record.parameter_count; ++i)
-			if (!FunctionTemplatePatternAccepts(
-				pattern_parameters[i], exemplar_parameters[i])) return false;
+			!FunctionTemplatePatternAccepts(pattern_record.child,
+				exemplar_record.child, pattern_parameters,
+				exemplar_parameters)) return false;
+		const TypeId* pattern_types = program_->types.Parameters(pattern);
+		const TypeId* exemplar_types = program_->types.Parameters(exemplar);
+		const bool pattern_pack = pattern_record.variadic &&
+			pattern_record.parameter_count != 0 &&
+			FunctionTemplateShapePackParameter(
+				pattern_types[pattern_record.parameter_count - 1],
+				pattern_parameters) != pattern_parameters.size();
+		const bool exemplar_pack = exemplar_record.variadic &&
+			exemplar_record.parameter_count != 0 &&
+			FunctionTemplateShapePackParameter(
+				exemplar_types[exemplar_record.parameter_count - 1],
+				exemplar_parameters) != exemplar_parameters.size();
+		if (!pattern_pack && pattern_record.variadic != exemplar_record.variadic)
+			return false;
+		const std::size_t pattern_fixed = pattern_record.parameter_count -
+			(pattern_pack ? 1 : 0);
+		const std::size_t exemplar_fixed = exemplar_record.parameter_count -
+			(exemplar_pack ? 1 : 0);
+		const std::size_t common = std::min(pattern_fixed, exemplar_fixed);
+		for (std::size_t i = 0; i < common; ++i)
+			if (!FunctionTemplatePatternAccepts(pattern_types[i],
+				exemplar_types[i], pattern_parameters,
+				exemplar_parameters)) return false;
+		if (pattern_fixed > exemplar_fixed) return false;
+		if (pattern_fixed < exemplar_fixed)
+		{
+			if (!pattern_pack) return false;
+			for (std::size_t i = pattern_fixed; i < exemplar_fixed; ++i)
+				if (!FunctionTemplatePatternAccepts(
+					pattern_types[pattern_fixed], exemplar_types[i],
+					pattern_parameters, exemplar_parameters)) return false;
+		}
+		if (exemplar_pack)
+			return pattern_pack && FunctionTemplatePatternAccepts(
+				pattern_types[pattern_fixed], exemplar_types[exemplar_fixed],
+				pattern_parameters, exemplar_parameters);
 		return true;
 	}
 	case TYPE_MEMBER_POINTER:
 		return pattern_record.entity == exemplar_record.entity &&
-			FunctionTemplatePatternAccepts(
-				pattern_record.child, exemplar_record.child);
+			FunctionTemplatePatternAccepts(pattern_record.child,
+				exemplar_record.child, pattern_parameters, exemplar_parameters);
 	case TYPE_NAMED:
 	{
 		const EntityId pattern_entity = pattern_record.entity;
 		const EntityId exemplar_entity = exemplar_record.entity;
 		if (pattern_entity >= class_template_pattern_by_entity_.size() ||
-			exemplar_entity >= class_template_pattern_by_entity_.size())
-			return false;
+			exemplar_entity >= class_template_pattern_by_entity_.size()) return false;
 		const std::uint32_t pattern_template =
 			class_template_pattern_by_entity_[pattern_entity];
-		if (pattern_template == kNoDumpEdge ||
-			pattern_template !=
-				class_template_pattern_by_entity_[exemplar_entity])
-			return false;
-		const EntityRecord& pattern_owner =
-			program_->entities[pattern_entity];
-		const EntityRecord& exemplar_owner =
-			program_->entities[exemplar_entity];
-		const std::size_t count = pattern_owner.template_argument_count;
-		if (exemplar_owner.template_argument_count != count) return false;
-		if (count == 0) return true;
-		if (pattern_owner.template_argument_begin >
-				program_->template_arguments.size() ||
-			exemplar_owner.template_argument_begin >
-				program_->template_arguments.size() ||
-			count > program_->template_arguments.size() -
-				pattern_owner.template_argument_begin ||
-			count > program_->template_arguments.size() -
-				exemplar_owner.template_argument_begin)
-			return false;
-		for (std::size_t i = 0; i < count; ++i)
+		if (pattern_template == kNoDumpEdge || pattern_template !=
+			class_template_pattern_by_entity_[exemplar_entity]) return false;
+		const EntityRecord& pattern_owner = program_->entities[pattern_entity];
+		const EntityRecord& exemplar_owner = program_->entities[exemplar_entity];
+		if (pattern_owner.template_argument_begin == kNoBinding ||
+			exemplar_owner.template_argument_begin == kNoBinding) return false;
+		const std::vector<TemplateArgument> pattern_arguments =
+			StoredTemplateArguments(pattern_owner.template_argument_begin,
+				pattern_owner.template_argument_count);
+		const std::vector<TemplateArgument> exemplar_arguments =
+			StoredTemplateArguments(exemplar_owner.template_argument_begin,
+				exemplar_owner.template_argument_count);
+		std::size_t pattern_index = 0, exemplar_index = 0;
+		while (pattern_index < pattern_arguments.size())
 		{
-			const TemplateArgument pattern_argument = StoredTemplateArgument(
-				pattern_owner.template_argument_begin + i);
-			const TemplateArgument exemplar_argument = StoredTemplateArgument(
-				exemplar_owner.template_argument_begin + i);
-			if (pattern_argument.kind != exemplar_argument.kind) return false;
-			if (pattern_argument.kind == TEMPLATE_ARGUMENT_TYPE)
+			const TemplateArgument& pattern_argument =
+				pattern_arguments[pattern_index];
+			if (pattern_argument.pack_expansion && pattern_argument.IsDependent())
 			{
-				if (!FunctionTemplatePatternAccepts(pattern_argument.type,
-					exemplar_argument.type)) return false;
+				const std::size_t remaining =
+					pattern_arguments.size() - pattern_index - 1;
+				if (exemplar_index + remaining > exemplar_arguments.size())
+					return false;
+				const std::size_t last = exemplar_arguments.size() - remaining;
+				while (exemplar_index < last)
+					if (!FunctionTemplateArgumentPatternAccepts(pattern_argument,
+						exemplar_arguments[exemplar_index++], pattern_parameters,
+						exemplar_parameters)) return false;
+				++pattern_index;
+				continue;
 			}
-			else if (pattern_argument != exemplar_argument &&
-				!pattern_argument.IsDependent()) return false;
+			if (exemplar_index >= exemplar_arguments.size() ||
+				!FunctionTemplateArgumentPatternAccepts(pattern_argument,
+					exemplar_arguments[exemplar_index], pattern_parameters,
+					exemplar_parameters)) return false;
+			++pattern_index;
+			++exemplar_index;
 		}
-		return true;
+		return exemplar_index == exemplar_arguments.size();
 	}
 	case TYPE_FUNDAMENTAL:
 	case TYPE_INVALID:
@@ -481,17 +648,45 @@ bool SemanticAnalyzer::DeduceFunctionTemplatePackType(TypeId pattern,
 	}
 	case TYPE_FUNCTION:
 	{
-		if (pattern_record.parameter_count != argument_record.parameter_count ||
-			pattern_record.variadic != argument_record.variadic ||
-			pattern_record.cv != argument_record.cv ||
+		if (pattern_record.cv != argument_record.cv ||
 			pattern_record.ref_qualifier != argument_record.ref_qualifier ||
 			!DeduceFunctionTemplatePackType(pattern_record.child,
 				argument_record.child, parameters, deduced)) return false;
 		const TypeId* pattern_parameters = program_->types.Parameters(pattern);
 		const TypeId* argument_parameters = program_->types.Parameters(argument);
-		for (std::size_t i = 0; i < pattern_record.parameter_count; ++i)
+		const std::size_t pack_parameter = pattern_record.variadic &&
+			pattern_record.parameter_count != 0 ?
+			FunctionTemplateShapePackParameter(
+				pattern_parameters[pattern_record.parameter_count - 1],
+				parameters) : parameters.size();
+		if (pack_parameter == parameters.size())
+		{
+			if (pattern_record.parameter_count != argument_record.parameter_count ||
+				pattern_record.variadic != argument_record.variadic) return false;
+			for (std::size_t i = 0; i < pattern_record.parameter_count; ++i)
+				if (!DeduceFunctionTemplatePackType(pattern_parameters[i],
+					argument_parameters[i], parameters, deduced)) return false;
+			return true;
+		}
+		const std::size_t fixed = pattern_record.parameter_count - 1;
+		if (argument_record.variadic || argument_record.parameter_count < fixed)
+			return false;
+		for (std::size_t i = 0; i < fixed; ++i)
 			if (!DeduceFunctionTemplatePackType(pattern_parameters[i],
 				argument_parameters[i], parameters, deduced)) return false;
+		const std::size_t prior_size =
+			deduced->pack_arguments[pack_parameter].size();
+		const bool prior_started =
+			deduced->pack_deduction_started[pack_parameter] != 0;
+		deduced->pack_deduction_positions[pack_parameter] = 0;
+		for (std::size_t i = fixed; i < argument_record.parameter_count; ++i)
+			if (!DeduceFunctionTemplatePackType(pattern_parameters[fixed],
+				argument_parameters[i], parameters, deduced)) return false;
+		if ((prior_started &&
+			deduced->pack_arguments[pack_parameter].size() != prior_size) ||
+			deduced->pack_deduction_positions[pack_parameter] !=
+				deduced->pack_arguments[pack_parameter].size()) return false;
+		deduced->pack_deduction_started[pack_parameter] = 1;
 		return true;
 	}
 	case TYPE_MEMBER_POINTER:
@@ -726,11 +921,28 @@ void SemanticAnalyzer::DeduceFunctionTemplatePatterns(
 			}
 			if (explicit_index != explicit_count) valid = false;
 		}
+		std::size_t outer_pack_parameter = pattern.parameters.size();
+		std::size_t outer_pack_prior_size = 0;
+		bool outer_pack_prior_started = false;
+		bool outer_pack_sequence_started = false;
+		if (pattern.function_parameter_pack)
+			outer_pack_parameter = FunctionTemplateShapePackParameter(
+				parameters[fixed_function_parameters], pattern.parameters);
 		for (std::size_t a = 0; a < arguments.size() && valid; ++a)
 		{
 			if (arguments[a].type == kNoType) continue;
 			const bool pack_element = pattern.function_parameter_pack &&
 				a >= fixed_function_parameters;
+			if (pack_element && !outer_pack_sequence_started &&
+				outer_pack_parameter < pattern.parameters.size())
+			{
+				outer_pack_prior_size =
+					deduced.pack_arguments[outer_pack_parameter].size();
+				outer_pack_prior_started =
+					deduced.pack_deduction_started[outer_pack_parameter] != 0;
+				deduced.pack_deduction_positions[outer_pack_parameter] = 0;
+				outer_pack_sequence_started = true;
+			}
 			const std::size_t function_parameter = pack_element ?
 				fixed_function_parameters : a;
 			if (function_parameter <
@@ -766,6 +978,25 @@ void SemanticAnalyzer::DeduceFunctionTemplatePatterns(
 			}
 			valid = DeduceFunctionTemplatePackType(
 				parameter, argument, pattern.parameters, &deduced);
+		}
+		if (valid && pattern.function_parameter_pack &&
+			outer_pack_parameter < pattern.parameters.size())
+		{
+			if (!outer_pack_sequence_started)
+			{
+				outer_pack_prior_size =
+					deduced.pack_arguments[outer_pack_parameter].size();
+				outer_pack_prior_started =
+					deduced.pack_deduction_started[outer_pack_parameter] != 0;
+				deduced.pack_deduction_positions[outer_pack_parameter] = 0;
+			}
+			valid = (!outer_pack_prior_started ||
+				deduced.pack_arguments[outer_pack_parameter].size() ==
+					outer_pack_prior_size) &&
+				deduced.pack_deduction_positions[outer_pack_parameter] ==
+					deduced.pack_arguments[outer_pack_parameter].size();
+			if (valid)
+				deduced.pack_deduction_started[outer_pack_parameter] = 1;
 		}
 		if (valid)
 		{
