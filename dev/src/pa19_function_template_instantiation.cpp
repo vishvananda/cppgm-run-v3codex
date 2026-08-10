@@ -882,6 +882,109 @@ void SemanticAnalyzer::PublishFunctionTemplateSpecialMemberRole(
 		conversions.end()) conversions.push_back(binding);
 }
 
+bool SemanticAnalyzer::MaterializeFunctionTemplateDefaults(
+	const FunctionTemplatePattern& pattern,
+	const std::vector<TemplateArgument>& arguments,
+	const std::vector<std::uint32_t>& parameter_offsets,
+	std::vector<TemplateArgument>* completed)
+{
+	if (!completed)
+		throw std::logic_error("missing completed function template arguments");
+	*completed = arguments;
+	ScopeId default_scope = kNoScope;
+	try
+	{
+		for (std::size_t parameter_index = 0;
+			parameter_index < pattern.parameters.size(); ++parameter_index)
+		{
+			const TemplateParameter& parameter =
+				pattern.parameters[parameter_index];
+			const std::size_t first = parameter_offsets[parameter_index];
+			const std::size_t last = parameter_offsets[parameter_index + 1];
+			if (parameter.pack)
+			{
+				for (std::size_t argument = first; argument < last; ++argument)
+					if ((*completed)[argument].type == kNoType) return false;
+				if (default_scope != kNoScope)
+					BindTemplateArgumentPack(default_scope, parameter,
+						*completed, first, last);
+				continue;
+			}
+			TemplateArgument& argument = (*completed)[first];
+			if (argument.type != kNoType)
+			{
+				if (default_scope != kNoScope)
+					BindTemplateArgument(default_scope, parameter, argument);
+				continue;
+			}
+			if (parameter.default_argument == kNoNode) return false;
+			if (default_scope == kNoScope)
+			{
+				default_scope = NewScope(pattern.lexical_scope,
+					SCOPE_TEMPLATE_PARAMETERS, 0,
+					ScopePrefixId(pattern.lexical_scope));
+				for (std::size_t prior = 0; prior < parameter_index; ++prior)
+				{
+					const std::size_t prior_first = parameter_offsets[prior];
+					const std::size_t prior_last = parameter_offsets[prior + 1];
+					if (pattern.parameters[prior].pack)
+						BindTemplateArgumentPack(default_scope,
+							pattern.parameters[prior], *completed,
+							prior_first, prior_last);
+					else BindTemplateArgument(default_scope,
+						pattern.parameters[prior], (*completed)[prior_first]);
+				}
+			}
+			NodeId source = FirstSemanticChild(parameter.default_argument);
+			if (source == kNoNode)
+				throw std::logic_error(
+					"empty function template default argument");
+			if (parameter.kind == TEMPLATE_ARGUMENT_TYPE)
+			{
+				NodeId type_id = arena_->IsTag(source, "type-id") ? source :
+					FindChild(source, "type-id");
+				if (type_id == kNoNode) return false;
+				argument.type = BuildTypeId(type_id, default_scope);
+				if (argument.type == kNoType) return false;
+			}
+			else if (parameter.kind == TEMPLATE_ARGUMENT_TEMPLATE)
+			{
+				if (!BuildTemplateTemplateArgument(
+					source, default_scope, parameter, &argument)) return false;
+			}
+			else
+			{
+				argument.type = ResolveTemplateParameterType(
+					parameter, default_scope);
+				++constant_expression_required_depth_;
+				ExpressionInfo value;
+				try
+				{
+					value = AnalyzeExpression(
+						source, default_scope, argument.type);
+				}
+				catch (...)
+				{
+					--constant_expression_required_depth_;
+					throw;
+				}
+				--constant_expression_required_depth_;
+				if (!value.constant || !IsIntegral(value.type, true))
+					throw std::runtime_error(
+						"default non-type function template argument is not constant");
+				argument.value = NormalizeIntegralConstant(
+					argument.type, value.value);
+			}
+			BindTemplateArgument(default_scope, parameter, argument);
+		}
+	}
+	catch (const std::runtime_error&)
+	{
+		return false;
+	}
+	return true;
+}
+
 BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	const std::vector<TemplateArgument>& arguments,
 	const std::vector<std::uint32_t>& parameter_offsets)
@@ -909,122 +1012,56 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	const std::vector<std::uint32_t>& identity_offsets =
 		FunctionTemplateNeedsPartitionIdentity(pattern.parameters) ?
 			parameter_offsets : no_identity_offsets;
-	const TemplateSpecializationKey request_key =
-		CanonicalTemplateSpecializationKey(
-			index, arguments, identity_offsets);
-	BindingId old = template_instantiations_.Find(request_key);
-	if (old != kNoBinding)
+	bool needs_defaults = false;
+	for (std::size_t parameter = 0;
+		parameter < pattern.parameters.size(); ++parameter)
+		if (!pattern.parameters[parameter].pack &&
+			arguments[parameter_offsets[parameter]].type == kNoType)
+			needs_defaults = true;
+	TemplateSpecializationKey request_key;
+	if (needs_defaults)
 	{
-		++template_specialization_cache_hits_;
-		return old;
+		request_key = CanonicalTemplateSpecializationKey(
+			index, arguments, identity_offsets);
+		const BindingId requested =
+			function_template_default_requests_.Find(request_key);
+		if (requested != kNoBinding)
+		{
+			++template_specialization_cache_hits_;
+			return requested;
+		}
 	}
 
-	std::vector<TemplateArgument> completed = arguments;
-	ScopeId default_scope = kNoScope;
-	for (std::size_t parameter_index = 0;
-		parameter_index < pattern.parameters.size(); ++parameter_index)
-	{
-		const TemplateParameter& parameter =
-			pattern.parameters[parameter_index];
-		const std::size_t first = parameter_offsets[parameter_index];
-		const std::size_t last = parameter_offsets[parameter_index + 1];
-		if (parameter.pack)
-		{
-			for (std::size_t argument = first; argument < last; ++argument)
-				if (completed[argument].type == kNoType) return kNoBinding;
-			if (default_scope != kNoScope)
-				BindTemplateArgumentPack(default_scope, parameter,
-					completed, first, last);
-			continue;
-		}
-		TemplateArgument& argument = completed[first];
-		if (argument.type != kNoType)
-		{
-			if (default_scope != kNoScope)
-				BindTemplateArgument(default_scope, parameter, argument);
-			continue;
-		}
-		if (parameter.default_argument == kNoNode) return kNoBinding;
-		if (default_scope == kNoScope)
-		{
-			default_scope = NewScope(pattern.lexical_scope,
-				SCOPE_TEMPLATE_PARAMETERS, 0,
-				ScopePrefixId(pattern.lexical_scope));
-			for (std::size_t prior = 0; prior < parameter_index; ++prior)
-			{
-				const std::size_t prior_first = parameter_offsets[prior];
-				const std::size_t prior_last = parameter_offsets[prior + 1];
-				if (pattern.parameters[prior].pack)
-					BindTemplateArgumentPack(default_scope,
-						pattern.parameters[prior], completed,
-						prior_first, prior_last);
-				else BindTemplateArgument(default_scope,
-					pattern.parameters[prior], completed[prior_first]);
-			}
-		}
-		NodeId source = FirstSemanticChild(parameter.default_argument);
-		if (source == kNoNode)
-			throw std::runtime_error(
-				"empty function template default argument");
-		if (parameter.kind == TEMPLATE_ARGUMENT_TYPE)
-		{
-			NodeId type_id = arena_->IsTag(source, "type-id") ? source :
-				FindChild(source, "type-id");
-			if (type_id == kNoNode) return kNoBinding;
-			argument.type = BuildTypeId(type_id, default_scope);
-			if (argument.type == kNoType) return kNoBinding;
-		}
-		else if (parameter.kind == TEMPLATE_ARGUMENT_TEMPLATE)
-		{
-			if (!BuildTemplateTemplateArgument(
-				source, default_scope, parameter, &argument))
-				return kNoBinding;
-		}
-		else
-		{
-			argument.type = ResolveTemplateParameterType(
-				parameter, default_scope);
-			++constant_expression_required_depth_;
-			ExpressionInfo value;
-			try
-			{
-				value = AnalyzeExpression(
-					source, default_scope, argument.type);
-			}
-			catch (...)
-			{
-				--constant_expression_required_depth_;
-				throw;
-			}
-			--constant_expression_required_depth_;
-			if (!value.constant || !IsIntegral(value.type, true))
-				throw std::runtime_error(
-					"default non-type function template argument is not constant");
-			argument.value = NormalizeIntegralConstant(
-				argument.type, value.value);
-		}
-		BindTemplateArgument(default_scope, parameter, argument);
-	}
+	std::vector<TemplateArgument> completed;
+	if (!MaterializeFunctionTemplateDefaults(
+		pattern, arguments, parameter_offsets, &completed)) return kNoBinding;
 	const TemplateSpecializationKey cache_key =
 		CanonicalTemplateSpecializationKey(
 			index, completed, identity_offsets);
-	if (completed != arguments)
+	BindingId old = template_instantiations_.Find(cache_key);
+	if (old != kNoBinding)
 	{
-		old = template_instantiations_.Find(cache_key);
-		if (old != kNoBinding)
-		{
-			++template_specialization_cache_hits_;
-			template_instantiations_.Insert(request_key, old);
-			return old;
-		}
+		++template_specialization_cache_hits_;
+		if (needs_defaults)
+			function_template_default_requests_.Insert(request_key, old);
+		return old;
 	}
 
-	const ScopeId template_scope =
-		BindFunctionTemplateArguments(pattern, completed, parameter_offsets);
+	ScopeId template_scope = kNoScope;
 	SpecInfo spec;
 	EntityId member_owner = kNoEntity;
-	DeclaratorInfo parsed = BuildFunctionTemplateSpecializationDeclarator(
-		pattern, template_scope, &spec, &member_owner);
+	DeclaratorInfo parsed;
+	try
+	{
+		template_scope = BindFunctionTemplateArguments(
+			pattern, completed, parameter_offsets);
+		parsed = BuildFunctionTemplateSpecializationDeclarator(
+			pattern, template_scope, &spec, &member_owner);
+	}
+	catch (const std::runtime_error&)
+	{
+		return kNoBinding;
+	}
 	const bool nonthrowing = pattern.dependent_exception_specification ?
 		IsNonthrowing(pattern.declarator, template_scope) :
 		pattern.nonthrowing;
@@ -1086,8 +1123,8 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	if (pattern.defined) function.definition_body = pattern.definition_body;
 	PublishFunctionTemplateFriendGrants(pattern, binding);
 	template_instantiations_.Insert(cache_key, binding);
-	if (completed != arguments)
-		template_instantiations_.Insert(request_key, binding);
+	if (needs_defaults)
+		function_template_default_requests_.Insert(request_key, binding);
 	FunctionTemplatePattern& mutable_pattern = function_templates_[index];
 	if (mutable_pattern.specialization_arguments.size() >
 		std::numeric_limits<std::uint32_t>::max())

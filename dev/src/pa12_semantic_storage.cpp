@@ -69,6 +69,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		retained_call_naming_classes_.capacity() * sizeof(EntityId) +
 		template_argument_partitions_.StorageBytes() +
 		template_instantiations_.StorageBytes() +
+		function_template_default_requests_.StorageBytes() +
 		lambda_closure_index_.StorageBytes() +
 		lambda_closures_.capacity() * sizeof(LambdaClosureFact) +
 		lambda_count_by_function_.capacity() * sizeof(std::uint32_t) +

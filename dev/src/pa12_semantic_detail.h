@@ -552,6 +552,11 @@ private:
 	BindingId InstantiateFunctionTemplate(std::size_t pattern,
 		const std::vector<TemplateArgument>& arguments,
 		const std::vector<std::uint32_t>& parameter_offsets);
+	bool MaterializeFunctionTemplateDefaults(
+		const FunctionTemplatePattern& pattern,
+		const std::vector<TemplateArgument>& arguments,
+		const std::vector<std::uint32_t>& parameter_offsets,
+		std::vector<TemplateArgument>* completed);
 	ScopeId BindFunctionTemplateArguments(
 		const FunctionTemplatePattern& pattern,
 		const std::vector<TemplateArgument>& arguments,
@@ -1265,6 +1270,7 @@ private:
 	std::vector<EntityId> retained_call_naming_classes_;
 	TemplateArgumentPartitionTable template_argument_partitions_;
 	TemplateSpecializationTable template_instantiations_;
+	TemplateSpecializationTable function_template_default_requests_;
 	IndexedSequenceTable lambda_closure_index_;
 	std::vector<LambdaClosureFact> lambda_closures_;
 	std::vector<std::uint32_t> lambda_count_by_function_;
