@@ -875,9 +875,10 @@ void SemanticAnalyzer::AddMemberInitializationAction(BindingId member_id,
 	const BindingRecord& member = program_->bindings[member_id];
 	const EntityId member_entity = DestructedEntity(member.type);
 	const TypeKind member_kind = program_->types.Get(member.type).kind;
-	const bool class_member = member_kind != TYPE_LVALUE_REFERENCE && member_kind != TYPE_RVALUE_REFERENCE &&
-		IsClassEntity(*program_, member_entity);
-	if (initializer == kNoNode && member.anonymous_union_storage && program_->entities[member_entity].union_default_member == kNoBinding) return;
+	const bool class_member = member_kind != TYPE_LVALUE_REFERENCE &&
+		member_kind != TYPE_RVALUE_REFERENCE && IsClassEntity(*program_, member_entity);
+	if (initializer == kNoNode && member.anonymous_union_storage &&
+		program_->entities[member_entity].union_default_member == kNoBinding) return;
 	if (initializer == kNoNode && (member_kind == TYPE_LVALUE_REFERENCE ||
 		member_kind == TYPE_RVALUE_REFERENCE))
 		throw std::runtime_error("reference member is not initialized");
@@ -896,7 +897,6 @@ void SemanticAnalyzer::AddMemberInitializationAction(BindingId member_id,
 		initializer = FirstSemanticChild(initializer);
 	const std::uint32_t action = MakeDump(DUMP_INITIALIZER_ACTION,
 		member.type, VALUE_NONE, member.name, member_id);
-
 	if (class_member)
 	{
 		std::uint32_t value = kNoDumpEdge;

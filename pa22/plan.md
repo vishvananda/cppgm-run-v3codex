@@ -2,184 +2,69 @@
 
 ## Stage Design and Spec Alignment
 
-PA22 extends the existing typed pipeline
+PA22 extends the shared typed path
 `SyntaxArena -> Program/SemanticAnalyzer -> SemanticGraphView -> GraphLowerer -> LowIR`.
-Canonical class, function, and alias tables own specialization identity; retained
-patterns own lexical syntax and source scope; lookup, completion, semantic demand,
-and emission remain separate monotonic states. Concrete member replay uses indexed
-owner/pattern identities rather than textual specialization keys.
+Canonical entity, type, binding, template-pattern, and specialization IDs own
+identity. Retained syntax owns lexical source provenance; indexed lookup,
+substitution, completion, demand, and emission remain separate operations. LowIR
+consumes selected typed facts without textual keys, semantic reconstruction, or a
+second lookup path.
 
-Pack expansion is element-scoped: an outer expansion collects only packs it owns,
-while nested declarator packs establish a new boundary. Compound non-type expansion
-operands recursively discover their packs, then replay once in each ordered element
-scope. A symbolic pack exemplar keeps its expansion marker when an alias forwards
-it into another canonical template-id. Function-template explicit arguments bind
-to the first reachable pack and later parameters remain available for call
-deduction. Their syntax is interpreted
-against each candidate's canonical type/value/template kinds instead of a type-only
-probe; explicit calls with a pack defer specialization until deduction supplies the
-remaining elements. Parser facts are
-block scoped, so an unqualified local value can shadow a template without
-corrupting qualified lookup. Dependent qualified result shapes stay retained until
-substitution; partial patterns mark dependent owner qualifications as non-deduced,
-then replay them exactly after other arguments bind concrete parameters. Direct
-template-ids still resolve to canonical concrete types.
-Static initializers demanded while type-checking a skipped logical arm evaluate as
-independent constant roots. Array list-casts and scalar value initialization lower
-through typed boundaries. Partial deduction records pack participation even when
-zero elements bind, and matches concrete incomplete specializations through their
-canonical template heads without demanding layout. Qualified C-style cast type-ids
-enter that same typed path.
-Concrete specializations retain the fixed/pack ABI boundary; static member globals
-use structured owner identity and weak ODR emission. Initializer argument packs are
-expanded before constructor selection, function ids decay under pointer targets,
-and runtime constant use demands only indexed retained definitions while explicit
-member specializations suppress primary replay.
-Dependent qualified declarations retain rooted template-ids, conversion-name
-boundaries, and member qualifications. Shape construction gives unknown dependent
-member templates unique non-deduced markers; concrete replay performs exact owner
-lookup, derived-to-base deduction, reference operand layout, and runtime declaration
-demand before typed lowering.
-Same-class pointer casts bypass base-access checks, unevaluated implicit members keep
-typed binding facts without runtime objects, and ellipsis-only converting
-constructors participate in surrogate calls. Nested qualification ordering covers
-array elements. ADL merges deduced templates with an indexed direct non-template
-slice, preserving source-point using imports without rescanning prior instantiations.
+The latest durable decisions are that anonymous-union storage carries an explicit
+binding fact rather than being recognized by its generated name; function-template
+ordering ignores result types but compares only candidate-local canonical parameter
+patterns; and a reference-bound aggregate prvalue is materialized as a typed
+temporary before target binding. Ordering's equality-constraint fallback is valid
+only after both parameter patterns accept each other, including canonical arguments
+of the same class-template entity.
 
-This applies `spec.md` §§2–6 and 8–10: canonical typed identity, provenance-aware
-indexed lookup, retained substitution scopes, demand-driven completion, typed
-lowering, bounded side storage, and observable work counters. It adds no PA23
-SFINAE behavior and does not pull in the §7 object backend.
+This aligns the landed PA22 surface with `spec.md` §§2–6 and 8–10: O(1) canonical
+identity, indexed lookup, retained substitution ownership, demand-driven completion,
+typed lowering, explicit provenance, bounded candidate work, and observable work
+counters. PA22 does not add PA23 SFINAE/substitution-failure completion or the §7
+object backend.
 
 ## Current Failure Map
 
-Current result: **303/310**. The 7 remaining failures group by shared behavior
-and owner: canonical captureless-closure semantics 1; empty-class call/result
-transfer 2; member projection/scalar immediate conversion 2; retained emission
-naming/order 1; local-static oracle staging 1.
+Current result: **303/310**. The seven remaining failures are owned by canonical
+captureless-closure identity (1), alias/empty-class result transfer (2), hidden-friend
+and constructor-access lowering (2), retained emission naming/order (1), and the
+local-static oracle staging difference (1). None crosses the audited retained-call,
+inactive-union, or aggregate-reference ownership paths.
 
 ## Active Checkpoint
 
-**Canonical captureless-closure semantics (one substantial mapped failure).**
-Requirements: each concrete lambda expression owns a canonical closure entity and
-const call operator; retained non-primary function bodies preserve distinct source
-occurrences even when token anchors collide; closure identity participates in
-template deduction, demand, lowering, and ABI metadata (`spec.md` §§2–6, 8–10).
-Owner and flow: retained lambda syntax plus concrete body/source identity -> closure
-entity and call-operator declaration -> template argument deduction -> demanded
-body graph -> typed object/call lowering and ABI name. Expected work is O(lambda
-syntax/body nodes + concrete closure instantiations), with indexed identity and no
-body or namespace rescan. Validate the chained two-lambda member-template case,
-focused captureless construction/call cases, PA22, through PA21, audit, and
-16/32/64 closure scaling.
+**Canonical captureless-closure semantics (one substantial mapped failure).** Each
+concrete lambda expression must own a canonical closure entity and const call
+operator. Retained non-primary bodies must distinguish source occurrences even when
+collapsed token anchors coincide, and closure identity must survive deduction,
+demand, typed lowering, and ABI metadata (`spec.md` §§2–6, 8–10).
+
+Owner flow: retained lambda syntax plus concrete body/source identity -> closure
+entity and call-operator declaration -> template argument deduction -> demanded body
+graph -> typed object/call lowering and ABI name. Expected work is O(retained lambda
+nodes + concrete closure instantiations), with no body or namespace rescan. Validate
+the chained two-lambda member-template case, focused captureless construction/call
+cases, PA22, through PA21, file audit, and 16/32/64 closure scaling.
 
 ## Performance Evidence
 
-All entries are five-run 16/32/64 medians; times are semantic milliseconds and
-storage is peak-stage MB.
+Five-run 16/32/64 medians for a combined retained-call family are below. The family
+uses distinct canonical specializations and exercises equality-constrained ordering
+with different result types, inactive anonymous-union storage, and reference-bound
+empty aggregates.
 
-| Representative path | Time | Storage | Work evidence |
-|---|---:|---:|---|
-| Active-owner callable replay | 3.719/6.850/13.823 | 0.724/1.442/2.877 | candidates 80/160/320; requests 48/96/192 |
-| Qualified dependent-base replay | 3.472/6.228/11.842 | 0.593/1.128/2.254 | lookups 608/1184/2336; requests 112/224/448 |
-| Nested explicit specialization | 1.447/2.753/5.341 | 0.371/0.737/1.471 | lookups 341/677/1349; layouts 32/64/128 |
-| Dependent primary/member `decltype` | 6.682/13.086/26.165 | 1.263/2.426/4.817 | lookups 1354/2650/5242; deduction 160/320/640 |
-| Retained locals/concrete packs | 7.464/14.329/28.251 | 1.428/2.844/5.649 | lookups 1807/3567/7087; requests 241/481/961 |
-| Direct retained deduction + array pack | 2.613/6.618/7.578 | 0.573/0.917/1.823 | lookups 443/827/1595; requests 52/100/196; instructions 55/103/199; candidates fixed at 2 |
-| Alias non-type expression replay | 2.682/5.871/18.499 | 0.518/1.339/4.875 | lookups 486/1118/3150; requests 70/134/262; constexpr calls 17/33/65; steps 34/66/130 |
-| Compound non-type pack replay | 13.216/24.053/47.324 | 1.516/2.908/5.708 | lookups 1348/2372/4420; scopes 677/1189/2213; nodes 2118/4166/8262; requests fixed at 96 |
-| Template-proxy call replay | 9.827/13.611/20.620 | 1.139/1.573/2.512 | lookups 1398/2166/3702; scopes 685/941/1453; access 1008/1776/3312; requests fixed at 96 |
-| Alias-partial canonical forwarding | 5.449/8.808/15.663 | 1.564/2.492/4.750 | lookups 1849/3337/6313; requests 307/563/1075; deduction 672/1184/2208; candidates fixed at 16 |
-| Short-circuit static demand | 12.335/25.270/63.085 | 3.349/6.762/17.015 | expressions 945/1761/3393; lookups 3040/6104/14536; requests 957/1773/3405; deduction 849/2161/6321 |
-| Dependent qualified-type replay | 4.170/7.961/15.067 | 0.851/1.713/3.501 | scopes 340/660/1300; lookups 880/1728/3424; requests 82/162/322; candidates 16/32/64; deduction 96/192/384 |
-| Repeated-pack/incomplete-head ordering | 12.134/23.043/46.103 | 2.109/4.331/8.592 | candidates 96/192/384; comparisons 32/64/128; deduction 1333/2645/5269; requests 730/1450/2890 |
-| Dependent call replay/constructor demand | 3.052/4.072/6.903 | 0.506/0.696/1.038 | candidates 133/245/469; requests 156/300/588; cache hits 144/288/576; lookups 775/1335/2455; demand pushes fixed at 13 |
-| Dependent qualified declaration replay | 9.819/19.353/38.468 | 1.662/3.025/6.022 | lookups 1894/3702/7318; requests 311/615/1223; candidates 401/801/1601; demand pushes 66/130/258 |
-| Canonical callable declarations | 3.314/6.275/12.513 | 0.647/1.288/2.570 | lookups 526/1038/2062; candidates 80/160/320; requests 64/128/256; demand pushes 32/64/128 |
-| Specialized static definition demand | 1.469/2.523/4.784 | 0.305/0.602/1.196 | lookups 367/719/1423; requests 48/96/192; demand/static visits 16/32/64; globals 17/33/65 |
-| Class-scope type/conversion materialization | 28.627/49.773/97.823 | 2.383/4.569/9.108 | lookups 2775/5431/10743; ADL declarations 128/256/512; candidates 672/1344/2688; requests 336/672/1344; demand 32/64/128 |
-| Typed zero/address/conditional lifetime | 4.476/6.053/14.448 | 0.499/0.945/1.876 | lowered nodes 262/518/1030; instructions 328/648/1288; conditional lifetime slots fixed at 0 |
-| Retained call/declaration acceptance | 7.788/14.449/29.725 | 1.717/3.330/6.567 | semantic nodes 756/1508/3012; order comparisons 96/192/384; member actions 16/32/64; requests 177/353/705; instructions 322/642/1282 |
+| Semantic ms | Lowering ms | Peak semantic MiB | Representative work (16/32/64) |
+|---:|---:|---:|---|
+| 8.819/16.746/32.872 | 2.177/4.294/8.455 | 1.661/3.029/6.008 | nodes 1027/2035/4051; candidates 353/705/1409; order comparisons 96/192/384; member actions 16/32/64; requests 261/517/1029; demand pushes 97/193/385; instructions 442/874/1738 |
 
-The alias benchmark confirms linear specialization requests and constexpr call/step
-counts. Its recursive variadic `cx_plus` evaluator retains 440/1648/6368 local-index
-probes, explaining the quadratic storage/time component; alias replay itself does
-not multiply specialization work. The compound-pack benchmark uses 16 independent
-specializations; its element scopes, nodes, lookups, time, and storage scale linearly.
-The template-proxy benchmark likewise keeps specialization and signature work fixed
-while argument-scope lookup, time, and storage grow linearly.
-The alias-partial benchmark uses 16 independent outer specializations. Candidate
-count stays fixed while canonical requests, deduction visits, lookup, time, and
-storage track the forwarded 16/32/64-element pack without replay multiplication.
-The short-circuit benchmark uses 16 independently prefixed recursive folds and one
-shared suffix family. Canonical completion has no retry cascade; the superlinear
-time/storage follows the existing trailing-pack partial matcher, whose suffix
-deduction visits grow quadratically (849/2161/6321).
-The qualified-type benchmark instantiates 16/32/64 independent concrete owners.
-Candidate replay, deduction, lookup, time, and storage all scale linearly, showing
-one exact post-substitution validation per canonical partial request.
-The ordering benchmark combines equal/unequal repeated packs with incomplete
-template-template heads; work, elapsed time, and storage remain linear.
-The call benchmark repeats incomplete-pointee calls, later member-template address
-binding, and evaluated braced call objects. Candidate visits, requests, lookups,
-time, and storage scale linearly; canonical demand is constant after first use.
-The qualified-declaration benchmark recursively demands 16/32/64 distinct owner
-specializations with one dependent qualified-base assignment each. Lookup,
-specialization, candidate, demand, elapsed-time, and storage growth are linear.
-The callable benchmark constructs 16/32/64 distinct owners, each with one unused
-ill-formed return-class shell and one selected one-argument member template. Every
-work counter, semantic time, and peak storage scales linearly; partial deduction is
-zero because overload arity rejects the shell before template deduction.
-The static-definition benchmark takes the address of 16/32/64 specialized integral
-members with retained out-of-class definitions. Demand, initializer visits, globals,
-lookup, specialization requests, time, and storage all scale linearly. The remaining
-local-static fixture differs only because its oracle stages function-address
-constants dynamically; the compiler keeps C++11 constant initialization.
-The class-scope benchmark combines independent selected partials, member `decltype`,
-same-class casts, callable surrogates, and nested array qualification. Its initial
-shared-ADL merge accumulated 1512/4816/16800 candidates; the indexed direct
-non-template slice reduces that to 672/1344/2688 while preserving source-point using
-imports. Lookup, specialization, deduction, demand, elapsed time, and storage scale
-linearly in the final five-run medians.
-The typed-value benchmark repeats empty value initialization, literal-zero pointer
-calls, copy-constructor defaults, and trivial conditional temporaries. Nodes,
-instructions, and storage scale linearly; lowering medians are
-0.746/2.826/3.702 ms, and no unused conditional-lifetime state is allocated.
-The retained-call benchmark combines return-independent function-template ordering,
-inactive anonymous-union storage, and class-prvalue reference defaults across
-16/32/64 distinct specializations. Every work counter, semantic/lowering time
-(7.788/14.449/29.725 and 1.582/2.855/5.553 ms), and peak storage scales linearly.
+Every work counter and storage series is linear. The comparator visits only the two
+candidate parameter shapes and their canonical class-template arguments; it neither
+scans unrelated declarations nor uses result types as semantic keys.
 
 ## Completed Checkpoints
 
-| Checkpoint | Result |
+| Checkpoint | Durable result |
 |---|---|
-| Canonical partial selection (`5d70a120`, `26eafabe`) | Stable owner/revision/substitution and pack identity; PA22 82 -> 112. |
-| Member-template attachment (`da807b9f`) | Indexed member calls, retained definitions, and template-head identity; 112 -> 145. |
-| Alias/template entity graph (`b0f34797`) | Typed alias cache, template-template identity, defaults, packs, and proxy deduction; 145 -> 192. |
-| Explicit specialization/instantiation (`88ab9ab1`) | Canonical targets, extern suppression, demand, and class transitions; 192 -> 208. |
-| Friend-template ownership (`03b7bf00`) | Namespace/member owners, hidden ADL, grants, and protected access; 208 -> 221. |
-| Partial-member ownership (`403c1ff5`) | Primary/partial routing and naming-class provenance; 221 -> 229. |
-| Nested owner routing (`c52d6734`) | Nested transfer, lexical overlays, and terminal structured lookup; 229 -> 234. |
-| Explicit-member replacement (`98e953dd`) | In-place replacement, reset guard, and explicit shell publication; 234 -> 240. |
-| Callable metadata and demand | Callable roles, declaration metadata inheritance, parameter-pack mapping, and result completion; 240 -> 245. |
-| Dependent callable provenance | Active owner/base filtering with lexical using/ADL retention and qualified projection; 245 -> 248. |
-| Qualified/nested callable replay | Terminal base-shape deferral, base-reference xvalues, and scoped empty-subobject elision; 248 -> 251. |
-| Nested specialization/prvalue lifecycle | Enclosing member lookup, nested value ABI, and staged temporary cleanup; 251 -> 253. |
-| Dependent primary/member `decltype` | Structured leading `typename` and declared-type member `decltype`; 253 -> 255. |
-| Retained locals/concrete packs (`4edd7339`) | Local-value deferral, aggregate transfer, provisional demand, pack scopes, and delegation replay; 255 -> 258. |
-| Nested packs/function-template replay | Nested expansion boundaries, direct kind validation, explicit pack allocation, active-class retained lookup, and array-temporary lowering; 258 -> 262, prior 2329/2329, audit pass. |
-| Qualified alias/template-id replay | Pack calls defer to deduction, qualified result shapes defer lookup, block-local parser shadows stay scoped, and floating value-init stays typed; 262 -> 265, prior 2329/2329, audit pass. |
-| Compound non-type pack replay | Recursive pack discovery and ordered element scopes for comma/void/qualified-base expressions; 265 -> 268, prior 2329/2329, audit pass. |
-| Template-proxy call replay | Pattern-directed canonical explicit arguments preserve template proxies and non-trailing pack allocation; 268 -> 269, prior 2329/2329, audit pass. |
-| Alias-partial specialization replay | Symbolic alias-pack forwarding preserves canonical expansion identity for non-type partial deduction and base/member replay; 269 -> 271, prior 2329/2329, audit pass. |
-| Short-circuit constant-demand isolation | Skipped-arm suppression no longer contaminates independently demanded static initializers; direct and alias recursive folds pass; 271 -> 272, prior 2329/2329, audit pass. |
-| Dependent qualified member-type replay | Top-level dependent owner qualifications are non-deduced during shape construction and exactly replayed after concrete binding; 272 -> 273, prior 2329/2329, audit pass. |
-| Partial ordering and incomplete template heads | Empty repeated packs retain deduction identity; concrete incomplete heads match without layout demand; 273 -> 275, prior 2329/2329, audit pass. |
-| Dependent function-template call replay | Incomplete pointee shells avoid layout demand, class validation predeclares later member-template heads, and evaluated braced temporaries demand their selected constructors; 275 -> 278, prior 2329/2329, audit pass. |
-| Dependent qualified declaration replay | Rooted/template-id retention, qualified member lookup, derived-base deduction, reference layout, dependent template markers, and external-callee demand; 278 -> 285, prior 2329/2329, audit pass. |
-| Canonical callable declaration reconciliation | Qualified/direct-init disambiguation, return-class shells, retained non-deduced partial paths, and explicit template-id friend grants; 285 -> 288, prior 2329/2329, audit pass. |
-| Specialization-owned static initialization | Pack-aware ABI identity, initializer-pack replay, structured constexpr pointers, exact retained-definition demand, and explicit-specialization suppression; 288 -> 291, prior 2329/2329, audit pass. |
-| Dependent class-scope type/conversion materialization | Same-class casts, objectless unevaluated members, ellipsis converting constructors, nested qualification ordering, and indexed ADL direct candidates; 291 -> 294, prior 2329/2329, audit pass. |
-| Typed zero/address and conditional lifetime | Lexical null/default provenance, context-sensitive pointer materialization, empty-padding elision, and cleanup-driven lifetime state; 294 -> 300, prior 2329/2329, audit pass. |
-| Retained call/declaration acceptance | Return-independent parameter ordering, inactive anonymous-union storage provenance, and reference-bound aggregate prvalues; 300 -> 303, prior 2329/2329, audit pass. |
+| PA22 specialization graph through typed zero/address and conditional lifetime | Canonical template entities, retained environments, indexed lookup, monotonic demand, and typed lowering advanced PA22 from 82 to 300 while PA1–PA21 remained 2329/2329. |
+| Retained call/declaration acceptance (`c230676a`, audit repaired) | Return-independent but mutually comparable parameter ordering, explicit inactive-anonymous-union provenance, and typed aggregate-prvalue materialization advanced 300 to 303; the checkpoint audit preserved 303/310, prior 2329/2329, linear 16/32/64 evidence, and a passing file audit. |

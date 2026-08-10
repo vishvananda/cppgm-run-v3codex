@@ -137,12 +137,14 @@ int SemanticAnalyzer::CompareFunctionTemplateConstraints(
 		}
 		if (right_accepts_left != left_accepts_right)
 			return right_accepts_left ? 1 : -1;
+		if (!left_accepts_right) return 0;
 	}
+	else return 0;
 	const std::size_t left_parameters = left_pattern.parameters.size();
 	const std::size_t right_parameters = right_pattern.parameters.size();
 	if (left_parameters == right_parameters) return 0;
-	// Equal instantiated signatures expose equality constraints in the pattern:
-	// fewer independent type parameters means the pattern accepted a strict
+	// Mutually accepting parameter patterns expose equality constraints: fewer
+	// independent template parameters means the pattern accepted a strict
 	// subset of the argument combinations accepted by the other candidate.
 	return left_parameters < right_parameters ? 1 : -1;
 }
@@ -192,6 +194,51 @@ bool SemanticAnalyzer::FunctionTemplatePatternAccepts(
 			FunctionTemplatePatternAccepts(
 				pattern_record.child, exemplar_record.child);
 	case TYPE_NAMED:
+	{
+		const EntityId pattern_entity = pattern_record.entity;
+		const EntityId exemplar_entity = exemplar_record.entity;
+		if (pattern_entity >= class_template_pattern_by_entity_.size() ||
+			exemplar_entity >= class_template_pattern_by_entity_.size())
+			return false;
+		const std::uint32_t pattern_template =
+			class_template_pattern_by_entity_[pattern_entity];
+		if (pattern_template == kNoDumpEdge ||
+			pattern_template !=
+				class_template_pattern_by_entity_[exemplar_entity])
+			return false;
+		const EntityRecord& pattern_owner =
+			program_->entities[pattern_entity];
+		const EntityRecord& exemplar_owner =
+			program_->entities[exemplar_entity];
+		const std::size_t count = pattern_owner.template_argument_count;
+		if (exemplar_owner.template_argument_count != count) return false;
+		if (count == 0) return true;
+		if (pattern_owner.template_argument_begin >
+				program_->template_arguments.size() ||
+			exemplar_owner.template_argument_begin >
+				program_->template_arguments.size() ||
+			count > program_->template_arguments.size() -
+				pattern_owner.template_argument_begin ||
+			count > program_->template_arguments.size() -
+				exemplar_owner.template_argument_begin)
+			return false;
+		for (std::size_t i = 0; i < count; ++i)
+		{
+			const TemplateArgument pattern_argument = StoredTemplateArgument(
+				pattern_owner.template_argument_begin + i);
+			const TemplateArgument exemplar_argument = StoredTemplateArgument(
+				exemplar_owner.template_argument_begin + i);
+			if (pattern_argument.kind != exemplar_argument.kind) return false;
+			if (pattern_argument.kind == TEMPLATE_ARGUMENT_TYPE)
+			{
+				if (!FunctionTemplatePatternAccepts(pattern_argument.type,
+					exemplar_argument.type)) return false;
+			}
+			else if (pattern_argument != exemplar_argument &&
+				!pattern_argument.IsDependent()) return false;
+		}
+		return true;
+	}
 	case TYPE_FUNDAMENTAL:
 	case TYPE_INVALID:
 		return false;

@@ -2,45 +2,43 @@
 
 ## Current Checkpoint Review
 
-The bounded review covers landed checkpoint `da807b9f`: nested template-head
-retention, canonical class-owner attachment, function-template registration,
-member/static/constructor call deduction, late definition upgrade, and ordinary
-LowIR demand. The source is parsed once into the translation-unit `SyntaxArena`;
-member patterns retain compact node IDs in stable deques, class owners and arguments
-use canonical IDs, and specialization caches use pattern identity plus canonical
-arguments and pack partitions. Indexed owner/name lookup feeds the selected binding
-through the existing conversion, demand, and typed lowering path. There is no token
-reparse, rendered semantic key, global template scan, external compiler, or alternate
-lowering route. The parser's added call-shaped template probe uses a bounded rollback
-and retains no abandoned tree.
+The bounded review covers landed checkpoint `c230676a`: return-independent
+function-template ordering, inactive anonymous-union construction, and
+reference-bound aggregate prvalues. It does not claim the next captureless-closure
+checkpoint. The three landed PA22 cases remain fixed and the full stage remains at
+its 303/310 pass baseline.
 
-The audit found one identity/candidate leak across that complete path. Registration
-treated equal function types and equal template-parameter counts as one declaration,
-so distinct type and non-type member-template heads merged. After one explicit call,
-its materialized specialization also remained in the ordinary member set and could
-compete in a later call with different explicit arguments. Registration now compares
-parameter kind, pack shape, canonical fixed value type, and normalized retained syntax
-for dependent value-parameter types; names normalize to parameter ordinals, so renamed
-redeclarations still attach. Direct calls discard cached template specializations from
-ordinary candidates and reconstruct only the specializations valid for the current
-template-id and arguments. Stable pattern IDs remain the specialization owner, while
-the normalized syntax walk is short-lived declaration work rather than a hot lookup
-or textual key.
+The ordering path is retained function-template syntax -> canonical pattern and
+argument IDs -> viable candidate-local comparison -> selected binding and conversion
+facts -> ordinary demand/lowering. The audit reproduced one correctness leak: after
+result-type equality was removed, the legacy “fewer template parameters” fallback
+could select one of two mutually incomparable parameter patterns. The comparator now
+permits that equality-constraint fallback only when both patterns accept each other;
+canonical arguments of the same class-template entity are compared structurally by
+typed identity. A crossed `box<T>, int` versus `box<int>, U` probe is rejected as
+ambiguous, while `box<T>, box<T>` remains preferred to `box<T>, box<U>` even with
+different result types. The earlier PA19 nested-type ordering regression also passes.
 
-Representative 16/32/64-specialization families sharing one retained out-of-class
-member template produced five-run median semantic times of 3.02/5.55/10.78 ms and
-peak semantic storage of 0.53/1.05/2.10 MiB. Requests were 80/160/320, cache hits
-48/96/192, overload candidates 32/64/128, and both demand pushes and emitted
-functions 16/32/64. The exact doubling supports linear related-owner attachment and
-call filtering; no unrelated-template growth or repeated emission appeared.
+The other paths retain explicit ownership facts. Class- and block-scope anonymous
+unions mark their canonical synthetic storage binding; constructor action building
+skips only absent initialization of storage with no default active member, matching
+N3485 §12.6.2 without a generated-name shortcut. Aggregate functional casts inspect
+the canonical reference target and publish a typed temporary before binding, so
+lifetime and lowering consume the same semantic node. These paths add no token
+reparse, rendered semantic key, global lookup, external compiler, or alternate LowIR
+route.
 
-Validation preserves every landed result: the original PA22 failure set is unchanged,
-the audit regression passes, and the report is 145/310 versus the 144/309 turn-start
-baseline. The ten focused attachment/identity cases pass, PA1–PA21 pass 2329/2329,
-and the PA22 file audit passes with only the same 13 header-division advisories. The
-remaining similarly named failures fall at later owners such as explicit-specialization
-replacement, nested class/alias graphs, dependent-call timing/deduction, or LowIR
-presentation and do not reopen this attachment identity path.
+A five-run 16/32/64 combined family produced semantic medians of
+8.819/16.746/32.872 ms, lowering medians of 2.177/4.294/8.455 ms, and peak semantic
+storage of 1.661/3.029/6.008 MiB. Semantic nodes were 1027/2035/4051, overload
+candidates 353/705/1409, order comparisons 96/192/384, constructor member actions
+16/32/64, specialization requests 261/517/1029, demand pushes 97/193/385, and
+instructions 442/874/1738. The representative work and storage are linear, with no
+unrelated-candidate scan or repeated emission signal.
+
+Validation preserves the checkpoint baseline: PA22 is 303/310 with the same seven
+next-owner failures, PA1–PA21 pass 2329/2329, and the PA22 file audit passes with only
+the pre-existing 13 header-division advisories.
 
 ## Checkpoint Audit Ledger
 
@@ -48,3 +46,4 @@ presentation and do not reopen this attachment identity path.
 |---|---|---|
 | `5d70a120` canonical partial-specialization selection | Pass after checkpoint repair | Selected owner/revision/substitution survives shell completion; canonical typed identity and pack shape are retained; PA22 103 -> 111 with no regressions, prior 2329/2329, file audit pass. |
 | `da807b9f` member-template attachment | Pass after checkpoint repair | Distinct template heads retain identity and each explicit call rebuilds its current specialization set; focused 10/10, PA22 145/310 with the original failures unchanged, prior 2329/2329, linear 16/32/64 evidence, file audit pass. |
+| `c230676a` retained call/declaration acceptance | Pass after checkpoint repair | Mutually comparable typed parameter patterns, explicit anonymous-union provenance, and typed aggregate-prvalue lifetime preserve PA22 303/310 and prior 2329/2329; 16/32/64 work is linear and file audit passes. |
