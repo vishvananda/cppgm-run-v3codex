@@ -1213,31 +1213,16 @@ void SemanticAnalyzer::CompleteFunctionCallTemplateCandidates(NodeId callee,
 				patterns = FindFunctionTemplates(scope, structured);
 		}
 		if (patterns.empty()) return;
-		NamePath base;
-		std::vector<TypeId> explicit_arguments;
-		const bool explicit_id = ParseExplicitTemplateArguments(
-			callee, scope, &base, &explicit_arguments);
 		NamePath syntax_base;
 		std::vector<NodeId> explicit_syntax;
 		const bool has_explicit_syntax = CollectExplicitTemplateArguments(
 			callee, &syntax_base, &explicit_syntax);
 		std::vector<BindingId> specializations;
-		if (has_explicit_syntax && !explicit_id)
-		{
-			for (std::size_t i = 0; i < patterns.size(); ++i)
-			{
-				const FunctionTemplatePattern& pattern =
-					function_templates_[patterns[i]];
-				std::vector<TemplateArgument> canonical;
-				if (!BuildTemplateArguments(pattern.parameters, explicit_syntax,
-					scope, pattern.lexical_scope, &canonical, false)) continue;
-				std::vector<std::size_t> one_pattern(1, patterns[i]);
-				DeduceFunctionTemplatePatterns(one_pattern, arguments,
-					&specializations, 0, &canonical);
-			}
-		}
+		if (has_explicit_syntax)
+			DeduceFunctionTemplatePatternsWithExplicitSyntax(patterns,
+				arguments, explicit_syntax, scope, &specializations);
 		else DeduceFunctionTemplatePatterns(patterns, arguments,
-			&specializations, explicit_id ? &explicit_arguments : 0);
+			&specializations);
 		DeduceFunctionTemplates(scope, spelling, arguments, callee);
 		*candidates = FunctionCallCandidates(
 			scope, spelling, naming_class, callee);
@@ -1366,31 +1351,16 @@ void SemanticAnalyzer::CompleteFunctionCallTemplateCandidates(NodeId callee,
 			patterns.push_back(current.template_pattern);
 	}
 	if (patterns.empty()) return;
-	NamePath base;
-	std::vector<TypeId> explicit_arguments;
-	const bool explicit_id = ParseExplicitTemplateArguments(
-		callee, scope, &base, &explicit_arguments);
 	std::vector<BindingId> specializations;
 	NamePath syntax_base;
 	std::vector<NodeId> explicit_syntax;
 	const bool has_explicit_syntax = CollectExplicitTemplateArguments(
 		callee, &syntax_base, &explicit_syntax);
-	if (has_explicit_syntax && !explicit_id)
-	{
-		for (std::size_t i = 0; i < patterns.size(); ++i)
-		{
-			const FunctionTemplatePattern& pattern = function_templates_[patterns[i]];
-			std::vector<TemplateArgument> canonical;
-			if (!BuildTemplateArguments(pattern.parameters, explicit_syntax,
-				scope, pattern.lexical_scope, &canonical, false)) continue;
-			std::vector<std::size_t> one_pattern(1, patterns[i]);
-			DeduceFunctionTemplatePatterns(one_pattern, arguments,
-				&specializations, 0, &canonical);
-		}
-	}
+	if (has_explicit_syntax)
+		DeduceFunctionTemplatePatternsWithExplicitSyntax(patterns,
+			arguments, explicit_syntax, scope, &specializations);
 	else
-	DeduceFunctionTemplatePatterns(patterns, arguments, &specializations,
-		explicit_id ? &explicit_arguments : 0);
+		DeduceFunctionTemplatePatterns(patterns, arguments, &specializations);
 	for (std::size_t i = 0; i < specializations.size(); ++i)
 	{
 		const BindingId canonical =

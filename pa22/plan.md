@@ -13,12 +13,14 @@ Pack expansion is element-scoped: an outer expansion collects only packs it owns
 while nested declarator packs establish a new boundary. Compound non-type expansion
 operands recursively discover their packs, then replay once in each ordered element
 scope. Function-template explicit arguments bind to the first reachable pack and
-later parameters remain available for call deduction; explicit calls with a pack
-defer specialization until deduction supplies the remaining elements. Parser facts
-are block scoped, so an unqualified local value can shadow a template without
+later parameters remain available for call deduction. Their syntax is interpreted
+against each candidate's canonical type/value/template kinds instead of a type-only
+probe; explicit calls with a pack defer specialization until deduction supplies the
+remaining elements. Parser facts are
+block scoped, so an unqualified local value can shadow a template without
 corrupting qualified lookup. Dependent qualified result shapes stay retained until
-substitution, while direct template-ids still resolve to canonical concrete types. Array list-casts and
-scalar value initialization lower through typed temporary/value boundaries.
+substitution, while direct template-ids still resolve to canonical concrete types.
+Array list-casts and scalar value initialization lower through typed boundaries.
 
 This applies `spec.md` §§2–6 and 8–10: canonical typed identity, provenance-aware
 indexed lookup, retained substitution scopes, demand-driven completion, typed
@@ -27,25 +29,25 @@ SFINAE behavior and does not pull in the §7 object backend.
 
 ## Current Failure Map
 
-Current result: **268/310**. All 42 remaining failures group by primary owner:
+Current result: **269/310**. All 41 remaining failures group by primary owner:
 member/friend/function-template ownership, replay, access, overload, and demand 28;
-alias/template-template/non-type-pack construction and qualified type lookup 12;
+alias/template-template/non-type-pack construction and qualified type lookup 11;
 partial-specialization selection/order replay 2. The alias group now concentrates
-on template-template proxies, partial non-type packs, lexical value binding, and
-dependent member-type materialization.
+on partial non-type packs, lexical value binding, dependent member-type
+materialization, and qualified dependent template syntax.
 
 ## Active Checkpoint
 
-**Template-proxy and alias-partial replay.** Requirements: preserve canonical
-template-template identity through `F<T...>` alias use; bind non-type packs selected
-by a partial into base/member replay; resolve dependent member types only after the
-concrete owner is selected (`spec.md` §§2–6, 8–9). Owner and flow: retained
-alias/partial syntax -> canonical template proxy and arguments -> partial deduction
-scope -> selected concrete owner -> demanded base/member/alias type -> typed use.
-Expected work is O(pattern nodes + argument elements + visited lookup edges + partial
-candidates + specialization requests), with memoized concrete specializations.
-Validate `F<T...>`, alias non-type partial bases/patterns, expansion through aliases,
-`common<T,U>::type`, PA22, through PA21, audit, and direct 16/32/64 scaling.
+**Alias-partial specialization replay.** Requirements: bind non-type packs selected
+by a partial into base/member replay; preserve canonical alias arguments across that
+selection; resolve dependent member types only after the concrete owner is selected
+(`spec.md` §§2–6, 8–9). Owner and flow: retained alias/partial syntax -> canonical
+arguments -> partial deduction scope -> selected concrete owner -> demanded
+base/member/alias type -> typed use. Expected work is O(pattern nodes + argument
+elements + visited lookup edges + partial candidates + specialization requests),
+with memoized concrete specializations. Validate alias non-type partial bases and
+patterns, expansion through aliases, `common<T,U>::type`, PA22, through PA21, audit,
+and direct 16/32/64 scaling.
 
 ## Performance Evidence
 
@@ -62,12 +64,15 @@ storage is peak-stage MB.
 | Direct retained deduction + array pack | 2.613/6.618/7.578 | 0.573/0.917/1.823 | lookups 443/827/1595; requests 52/100/196; instructions 55/103/199; candidates fixed at 2 |
 | Alias non-type expression replay | 2.682/5.871/18.499 | 0.518/1.339/4.875 | lookups 486/1118/3150; requests 70/134/262; constexpr calls 17/33/65; steps 34/66/130 |
 | Compound non-type pack replay | 13.216/24.053/47.324 | 1.516/2.908/5.708 | lookups 1348/2372/4420; scopes 677/1189/2213; nodes 2118/4166/8262; requests fixed at 96 |
+| Template-proxy call replay | 9.827/13.611/20.620 | 1.139/1.573/2.512 | lookups 1398/2166/3702; scopes 685/941/1453; access 1008/1776/3312; requests fixed at 96 |
 
 The alias benchmark confirms linear specialization requests and constexpr call/step
 counts. Its recursive variadic `cx_plus` evaluator retains 440/1648/6368 local-index
 probes, explaining the quadratic storage/time component; alias replay itself does
 not multiply specialization work. The compound-pack benchmark uses 16 independent
 specializations; its element scopes, nodes, lookups, time, and storage scale linearly.
+The template-proxy benchmark likewise keeps specialization and signature work fixed
+while argument-scope lookup, time, and storage grow linearly.
 
 ## Completed Checkpoints
 
@@ -90,3 +95,4 @@ specializations; its element scopes, nodes, lookups, time, and storage scale lin
 | Nested packs/function-template replay | Nested expansion boundaries, direct kind validation, explicit pack allocation, active-class retained lookup, and array-temporary lowering; 258 -> 262, prior 2329/2329, audit pass. |
 | Qualified alias/template-id replay | Pack calls defer to deduction, qualified result shapes defer lookup, block-local parser shadows stay scoped, and floating value-init stays typed; 262 -> 265, prior 2329/2329, audit pass. |
 | Compound non-type pack replay | Recursive pack discovery and ordered element scopes for comma/void/qualified-base expressions; 265 -> 268, prior 2329/2329, audit pass. |
+| Template-proxy call replay | Pattern-directed canonical explicit arguments preserve template proxies and non-trailing pack allocation; 268 -> 269, prior 2329/2329, audit pass. |

@@ -528,6 +528,11 @@ private:
 		std::vector<BindingId>* specializations = 0,
 		const std::vector<TypeId>* explicit_arguments = 0,
 		const std::vector<TemplateArgument>* canonical_explicit_arguments = 0);
+	void DeduceFunctionTemplatePatternsWithExplicitSyntax(
+		const std::vector<std::size_t>& patterns,
+		const std::vector<ExpressionInfo>& arguments,
+		const std::vector<NodeId>& explicit_syntax, ScopeId use_scope,
+		std::vector<BindingId>* specializations);
 	void DeduceFunctionTemplates(ScopeId scope, const std::string& spelling,
 		const std::vector<ExpressionInfo>& arguments,
 		NodeId syntax = kNoNode);

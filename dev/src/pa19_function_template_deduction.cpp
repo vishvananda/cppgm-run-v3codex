@@ -696,9 +696,9 @@ void SemanticAnalyzer::DeduceFunctionTemplates(ScopeId scope,
 	const std::vector<ExpressionInfo>& arguments, NodeId syntax)
 {
 	NamePath structured_base;
-	std::vector<TypeId> explicit_arguments;
-	const bool structured_explicit = ParseExplicitTemplateArguments(
-		syntax, scope, &structured_base, &explicit_arguments);
+	std::vector<NodeId> explicit_syntax;
+	const bool structured_explicit = CollectExplicitTemplateArguments(
+		syntax, &structured_base, &explicit_syntax);
 	const bool explicit_id = structured_explicit;
 	if (!structured_explicit) structured_base = StructuredNamePath(syntax);
 	const bool structured_name = !structured_base.Empty();
@@ -719,8 +719,11 @@ void SemanticAnalyzer::DeduceFunctionTemplates(ScopeId scope,
 		if (!found) continue;
 		const std::vector<std::size_t> patterns = found->Copy();
 		std::vector<BindingId> specializations;
-		DeduceFunctionTemplatePatterns(patterns, arguments, &specializations,
-			explicit_id ? &explicit_arguments : 0);
+		if (explicit_id)
+			DeduceFunctionTemplatePatternsWithExplicitSyntax(patterns,
+				arguments, explicit_syntax, scope, &specializations);
+		else DeduceFunctionTemplatePatterns(
+			patterns, arguments, &specializations);
 		for (std::size_t i = 0; i < specializations.size(); ++i)
 		{
 			const BindingId source = specializations[i];
@@ -746,6 +749,35 @@ void SemanticAnalyzer::DeduceFunctionTemplates(ScopeId scope,
 			IndexEnumOperatorCandidate(alias);
 			using_function_declarations_.Insert(signature_key, alias);
 		}
+	}
+}
+
+void SemanticAnalyzer::DeduceFunctionTemplatePatternsWithExplicitSyntax(
+	const std::vector<std::size_t>& patterns,
+	const std::vector<ExpressionInfo>& arguments,
+	const std::vector<NodeId>& explicit_syntax, ScopeId use_scope,
+	std::vector<BindingId>* specializations)
+{
+	for (std::size_t i = 0; i < patterns.size(); ++i)
+	{
+		if (patterns[i] >= function_templates_.size())
+			throw std::logic_error("invalid function template candidate");
+		const FunctionTemplatePattern& pattern =
+			function_templates_[patterns[i]];
+		std::vector<TemplateParameter> explicit_parameters = pattern.parameters;
+		for (std::size_t parameter = 0;
+			parameter < explicit_parameters.size(); ++parameter)
+			if (explicit_parameters[parameter].pack)
+			{
+				explicit_parameters.resize(parameter + 1);
+				break;
+			}
+		std::vector<TemplateArgument> canonical;
+		if (!BuildTemplateArguments(explicit_parameters, explicit_syntax,
+			use_scope, pattern.lexical_scope, &canonical, false)) continue;
+		const std::vector<std::size_t> one_pattern(1, patterns[i]);
+		DeduceFunctionTemplatePatterns(one_pattern, arguments,
+			specializations, 0, &canonical);
 	}
 }
 

@@ -480,10 +480,6 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 		arguments.push_back(AnalyzeExpression(argument_syntax[i], scope));
 	if (!template_patterns.empty())
 	{
-		NamePath explicit_base;
-		std::vector<TypeId> explicit_arguments;
-		const bool explicit_id = ParseExplicitTemplateArguments(
-			identifier, scope, &explicit_base, &explicit_arguments);
 		NamePath syntax_base;
 		std::vector<NodeId> explicit_syntax;
 		const bool has_explicit_syntax = CollectExplicitTemplateArguments(
@@ -491,23 +487,11 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 		if (has_explicit_syntax)
 			candidates.clear();
 		std::vector<BindingId> specializations;
-		if (has_explicit_syntax && !explicit_id)
-		{
-			for (std::size_t i = 0; i < template_patterns.size(); ++i)
-			{
-				const FunctionTemplatePattern& pattern =
-					function_templates_[template_patterns[i]];
-				std::vector<TemplateArgument> canonical;
-				if (!BuildTemplateArguments(pattern.parameters, explicit_syntax,
-					scope, pattern.lexical_scope, &canonical, false)) continue;
-				std::vector<std::size_t> one_pattern(
-					1, template_patterns[i]);
-				DeduceFunctionTemplatePatterns(one_pattern, arguments,
-					&specializations, 0, &canonical);
-			}
-		}
+		if (has_explicit_syntax)
+			DeduceFunctionTemplatePatternsWithExplicitSyntax(template_patterns,
+				arguments, explicit_syntax, scope, &specializations);
 		else DeduceFunctionTemplatePatterns(template_patterns, arguments,
-			&specializations, explicit_id ? &explicit_arguments : 0);
+			&specializations);
 		for (std::size_t i = 0; i < specializations.size(); ++i)
 		{
 			const BindingId canonical =
