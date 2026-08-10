@@ -168,6 +168,9 @@ struct IPostTokenStream
 {
 	// Sources, suffixes, prefixes, and byte ranges are borrowed callback data.
 	// A consumer that needs them after return must retain its own typed facts.
+	virtual void SetSourceLocation(const std::string& file,
+		std::size_t line, std::size_t column)
+		{ (void)file; (void)line; (void)column; }
 	virtual void EmitInvalid(const std::string& source) = 0;
 	virtual void EmitSimple(const std::string& source,
 		SimpleTokenKind kind) = 0;
@@ -229,6 +232,8 @@ public:
 	~PostTokenizationSession();
 
 	void FlushPendingTokens();
+	void SetSourceLocation(const std::string& file,
+		std::size_t line, std::size_t column);
 
 	void emit_whitespace_sequence();
 	void emit_new_line();

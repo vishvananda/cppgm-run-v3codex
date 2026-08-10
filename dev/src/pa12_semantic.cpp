@@ -2238,8 +2238,12 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 				AddDefaultConstructor(variable, binding, parsed.type);
 		}
 		dump_.Add(owner, variable);
+		const NameId source_file = arena_->SourceLine(item) == 0 ? 0 :
+			program_->names.Intern(arena_->SourceFile(item));
 		RegisterVariableLifetimeAndStorage(scope, local, declaration_only,
-			variable, binding, parsed.type,
+			variable, binding, parsed.type, source_file,
+			static_cast<std::uint32_t>(arena_->SourceLine(item)),
+			static_cast<std::uint32_t>(arena_->SourceColumn(item)),
 			has_initializer && HasConstantInitializerFact(initializer));
 		if (local && has_initializer)
 		{
@@ -2855,6 +2859,7 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		stats_->temporary_dependency_visits = temporary_dependency_visits_;
 		stats_->materialized_demand_visits = materialized_demand_visits_;
 		stats_->nonthrowing_action_visits = nonthrowing_action_visits_;
+		stats_->runtime_initializer_visits = runtime_initializer_visits_;
 		PublishStaticConstantEvaluationStats();
 		stats_->empty_destructor_chain_visits = empty_destructor_chain_visits_;
 		stats_->empty_destructor_chain_cache_hits = empty_destructor_chain_cache_hits_;

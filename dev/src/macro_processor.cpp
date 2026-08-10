@@ -57,7 +57,7 @@ struct Token
 	std::uint64_t origin;
 	SpellingId source_file;
 	SpellingId physical_file;
-	std::size_t source_line;
+	std::size_t source_line, source_column;
 	std::size_t matching_distance;
 	bool leading_space;
 	bool from_variadic;
@@ -67,7 +67,8 @@ struct Token
 	Token()
 		: kind(TK_PLACEMARKER), spelling(0), borrowed_spelling(0), paint(0),
 		  blocked(0), origin(0), source_file(0), physical_file(0),
-		  source_line(0), matching_distance(0), leading_space(false),
+		  source_line(0), source_column(0), matching_distance(0),
+		  leading_space(false),
 		  from_variadic(false), parameter_origin(false), matching_comma(false)
 	{}
 
@@ -75,7 +76,7 @@ struct Token
 		bool has_leading_space)
 		: kind(token_kind), spelling(token_spelling), borrowed_spelling(0),
 		  paint(0), blocked(0), origin(0), source_file(0), physical_file(0),
-		  source_line(0), matching_distance(0),
+		  source_line(0), source_column(0), matching_distance(0),
 		  leading_space(has_leading_space), from_variadic(false),
 		  parameter_origin(false), matching_comma(false)
 	{}
@@ -84,7 +85,8 @@ struct Token
 		bool has_leading_space)
 		: kind(token_kind), spelling(0), owned_spelling(token_spelling),
 		  borrowed_spelling(0), paint(0), blocked(0), origin(0),
-		  source_file(0), physical_file(0), source_line(0), matching_distance(0),
+		  source_file(0), physical_file(0), source_line(0), source_column(0),
+		  matching_distance(0),
 		  leading_space(has_leading_space), from_variadic(false),
 		  parameter_origin(false), matching_comma(false)
 	{}
@@ -580,7 +582,7 @@ struct SourceFrame
 	SpellingId presumed_file;
 	std::size_t physical_base;
 	std::size_t presumed_base;
-	std::size_t current_physical_line;
+	std::size_t current_physical_line, current_physical_column;
 	std::size_t conditional_base;
 	bool line_override;
 	std::size_t override_line;
@@ -588,7 +590,8 @@ struct SourceFrame
 
 	SourceFrame()
 		: physical_file(0), presumed_file(0), physical_base(1),
-		  presumed_base(1), current_physical_line(1), conditional_base(0),
+		  presumed_base(1), current_physical_line(1), current_physical_column(1),
+		  conditional_base(0),
 		  line_override(false), override_line(1), override_file(0)
 	{}
 };
@@ -706,12 +709,14 @@ public:
 	GeneratedTokenCollector(SpellingTable& spellings,
 		PaintId paint, PaintId blocked, std::uint64_t origin,
 		bool parameter_origin, bool leading_space, SpellingId source_file,
-		SpellingId physical_file, std::size_t source_line)
+		SpellingId physical_file, std::size_t source_line,
+		std::size_t source_column)
 		: spellings_(spellings), paint_(paint),
 		  blocked_(blocked), origin_(origin),
 		  parameter_origin_(parameter_origin),
 		  leading_space_(leading_space), source_file_(source_file),
-		  physical_file_(physical_file), source_line_(source_line), count_(0)
+		  physical_file_(physical_file), source_line_(source_line),
+		  source_column_(source_column), count_(0)
 	{}
 
 	void emit_whitespace_sequence() {}
@@ -778,6 +783,7 @@ private:
 		result_.source_file = source_file_;
 		result_.physical_file = physical_file_;
 		result_.source_line = source_line_;
+		result_.source_column = source_column_;
 		result_.parameter_origin = parameter_origin_;
 	}
 
@@ -789,7 +795,7 @@ private:
 	bool leading_space_;
 	SpellingId source_file_;
 	SpellingId physical_file_;
-	std::size_t source_line_;
+	std::size_t source_line_, source_column_;
 	std::size_t count_;
 	Token result_;
 };
@@ -831,6 +837,15 @@ public:
 	{
 		if (full_preprocessing_ && !sources_.empty())
 			sources_.back().current_physical_line = line;
+	}
+
+	void set_source_location(std::size_t line, std::size_t column)
+	{
+		if (full_preprocessing_ && !sources_.empty())
+		{
+			sources_.back().current_physical_line = line;
+			sources_.back().current_physical_column = column;
+		}
 	}
 
 	void emit_whitespace_sequence()
@@ -1106,6 +1121,7 @@ private:
 			token.source_file = source.presumed_file;
 			token.physical_file = source.physical_file;
 			token.source_line = PresumedLine(source);
+			token.source_column = source.current_physical_column;
 		}
 		line_.push_back(std::move(token));
 		line_spelling_bytes_ += line_.back().owned_spelling.size();
@@ -1143,6 +1159,7 @@ private:
 		result.source_file = source.source_file;
 		result.physical_file = source.physical_file;
 		result.source_line = source.source_line;
+		result.source_column = source.source_column;
 		result.matching_distance = source.matching_distance;
 		result.leading_space = source.leading_space;
 		result.from_variadic = source.from_variadic;
@@ -1325,6 +1342,7 @@ private:
 			value.source_file = token.source_file;
 			value.physical_file = token.physical_file;
 			value.source_line = token.source_line;
+			value.source_column = token.source_column;
 			expression->push_back(std::move(value));
 			i = next - 1;
 		}
@@ -1966,7 +1984,7 @@ private:
 		const std::vector<Token>& raw_tokens, bool leading_space,
 		PaintId paint, PaintId blocked, std::uint64_t origin,
 		SpellingId source_file, SpellingId physical_file,
-		std::size_t source_line)
+		std::size_t source_line, std::size_t source_column)
 	{
 		std::string spelling("\"");
 		for (std::size_t i = 0; i < argument.raw_size; ++i)
@@ -1993,6 +2011,7 @@ private:
 		result.source_file = source_file;
 		result.physical_file = physical_file;
 		result.source_line = source_line;
+		result.source_column = source_column;
 		return result;
 	}
 
@@ -2017,7 +2036,7 @@ private:
 					pending->arguments[parameter.parameter], pending->raw_tokens,
 					replacement.token.leading_space, direct_paint,
 					head.blocked, origin, head.source_file, head.physical_file,
-					head.source_line), &paste_pending, result);
+					head.source_line, head.source_column), &paste_pending, result);
 				continue;
 			}
 			if (IsOperator(replacement.token, "##"))
@@ -2086,6 +2105,7 @@ private:
 			literal.source_file = head.source_file;
 			literal.physical_file = head.physical_file;
 			literal.source_line = head.source_line;
+			literal.source_column = head.source_column;
 			literal.parameter_origin = false;
 			AppendReplacementToken(std::move(literal), &paste_pending, result);
 		}
@@ -2170,7 +2190,7 @@ private:
 			paints_.Merge(left.blocked, right.blocked), left.origin,
 			left.parameter_origin && right.parameter_origin,
 			left.leading_space, left.source_file, left.physical_file,
-			left.source_line);
+			left.source_line, left.source_column);
 		TokenizeGeneratedPreprocessingToken(spelling, collector);
 		if (stats_)
 		{
@@ -2290,6 +2310,7 @@ private:
 		result.source_file = head.source_file;
 		result.physical_file = head.physical_file;
 		result.source_line = head.source_line;
+		result.source_column = head.source_column;
 		return result;
 	}
 
@@ -2591,6 +2612,10 @@ private:
 				return;
 			}
 		}
+		if (token.source_file != 0)
+			post_tokens_.SetSourceLocation(
+				spellings_.Get(token.source_file), token.source_line,
+				token.source_column);
 		FeedPreprocessingToken(token, post_tokens_);
 	}
 

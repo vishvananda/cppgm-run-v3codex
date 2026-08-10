@@ -2958,7 +2958,7 @@ void RunSyntaxTranslationUnit(const std::string& path,
 	SyntaxTokenSink sink(strings);
 	PreprocessFile(path, source, sink, options,
 		stats ? &stats->preprocessing : 0);
-	SyntaxArena arena(strings, sink.LiteralFacts());
+	SyntaxArena arena(strings, sink.Tokens(), sink.LiteralFacts());
 	Parser parser(sink.Tokens(), strings, arena, stats);
 	const std::chrono::steady_clock::time_point parse_started = std::chrono::steady_clock::now();
 	const NodeId root = parser.ParseTranslationUnit();

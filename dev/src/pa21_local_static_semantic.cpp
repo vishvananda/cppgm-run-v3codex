@@ -241,12 +241,17 @@ void SemanticAnalyzer::ValidateConstexprClassDeclarations(
 
 void SemanticAnalyzer::AddLocalStaticObjectAction(std::uint32_t variable,
 	BindingId object, TypeId type, std::uint32_t initializer,
-	bool constant_initialized)
+	NameId source_file, std::uint32_t source_line,
+	std::uint32_t source_column, bool constant_initialized)
 {
 	if (current_function_context_ == kNoBinding)
 		throw std::logic_error("local static object has no function owner");
 	const BindingId function =
 		program_->bindings[current_function_context_].canonical;
+	const BindingRecord& function_record = program_->bindings[function];
+	const bool specialized_function =
+		function_record.template_argument_count != 0 ||
+		IsClassTemplateSpecializationContext(function_record.member_owner);
 	if (local_static_count_by_function_.size() <= function)
 		local_static_count_by_function_.resize(
 			static_cast<std::size_t>(function) + 1, 0);
@@ -269,16 +274,22 @@ void SemanticAnalyzer::AddLocalStaticObjectAction(std::uint32_t variable,
 		if (!program_->entities[entity].trivial_destructor)
 			destructor_action = MakeDestructorAction(type, destructor, object);
 	}
+	const bool specialized_addresses = initializer != kNoDumpEdge &&
+		DemandRuntimeInitializerFunctions(initializer, true);
+	const bool specialization_owned_recipe = constant_initialized &&
+		specialized_function && specialized_addresses &&
+		IsClassObjectType(type);
 	local_static_objects_.push_back(LocalStaticObjectAction(object,
 		function, type, variable, initializer, destructor_action, ordinal,
-		constant_initialized));
-	if (initializer != kNoDumpEdge)
-		DemandRuntimeInitializerFunctions(initializer, true);
+		source_file, source_line, source_column,
+		constant_initialized, specialization_owned_recipe));
 }
 
 void SemanticAnalyzer::RegisterVariableLifetimeAndStorage(ScopeId scope,
 	bool local, bool declaration_only, std::uint32_t variable,
-	BindingId object, TypeId type, bool constant_initialized)
+	BindingId object, TypeId type, NameId source_file,
+	std::uint32_t source_line, std::uint32_t source_column,
+	bool constant_initialized)
 {
 	const StorageClass storage = program_->bindings[object].storage_class;
 	if (local && storage == STORAGE_CLASS_NONE)
@@ -292,7 +303,7 @@ void SemanticAnalyzer::RegisterVariableLifetimeAndStorage(ScopeId scope,
 		const std::uint32_t initializer = edge == kNoDumpEdge ?
 			kNoDumpEdge : dump_.edges[edge].child;
 		AddLocalStaticObjectAction(variable, object, type, initializer,
-			constant_initialized);
+			source_file, source_line, source_column, constant_initialized);
 		return;
 	}
 	if (!local && !declaration_only)
@@ -304,14 +315,16 @@ void SemanticAnalyzer::RegisterVariableLifetimeAndStorage(ScopeId scope,
 	}
 }
 
-void SemanticAnalyzer::DemandRuntimeInitializerFunctions(
+bool SemanticAnalyzer::DemandRuntimeInitializerFunctions(
 	std::uint32_t initializer, bool function_addresses_only)
 {
+	bool specialization_owned_address = false;
 	std::vector<std::uint32_t> pending(1, initializer);
 	while (!pending.empty())
 	{
 		const std::uint32_t current = pending.back();
 		pending.pop_back();
+		++runtime_initializer_visits_;
 		const DumpNode& action = dump_.nodes[current];
 		if (!function_addresses_only &&
 			(action.kind == DUMP_CALL_EXPRESSION ||
@@ -321,7 +334,14 @@ void SemanticAnalyzer::DemandRuntimeInitializerFunctions(
 		else if (action.kind == DUMP_ID_EXPRESSION &&
 			action.binding != kNoBinding &&
 			program_->bindings[action.binding].kind == BIND_FUNCTION)
+		{
 			DemandFunction(action.binding);
+			const BindingRecord& addressed =
+				program_->bindings[action.binding];
+			specialization_owned_address = specialization_owned_address ||
+				addressed.template_argument_count != 0 ||
+				IsClassTemplateSpecializationContext(addressed.member_owner);
+		}
 		else if (!function_addresses_only &&
 			action.kind == DUMP_CLASS_VALUE_TRANSFER &&
 			action.selected_binding != kNoBinding)
@@ -330,6 +350,7 @@ void SemanticAnalyzer::DemandRuntimeInitializerFunctions(
 			edge != kNoDumpEdge; edge = dump_.edges[edge].next)
 			pending.push_back(dump_.edges[edge].child);
 	}
+	return specialization_owned_address;
 }
 
 }

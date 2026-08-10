@@ -26,17 +26,25 @@ const std::uint32_t kNoEdge = std::numeric_limits<std::uint32_t>::max();
 
 static_assert(static_cast<unsigned int>(OP_ARROW) + 7 <= 0xffU,
 	"syntax token kinds must fit the packed identity byte");
-static_assert(sizeof(SyntaxToken) == 8,
-	"syntax tokens must remain a pair of compact 32-bit words");
+static_assert(sizeof(SyntaxToken) == 16,
+	"syntax token provenance must remain four compact 32-bit words");
 static_assert(sizeof(SyntaxLiteralFact) == 16,
 	"scalar literal facts must remain compact");
 
 SyntaxToken::SyntaxToken(std::uint16_t kind_value, TextId spelling_value,
-	std::uint32_t literal_fact)
-	: kind_and_literal_fact(0), spelling(spelling_value)
+	std::uint32_t literal_fact, TextId source_file_value,
+	std::uint32_t source_line_value, std::uint32_t source_column_value)
+	: kind_and_literal_fact(0), spelling(spelling_value),
+	  source_line(source_line_value), source_file(0), source_column(0)
 {
 	if (kind_value > 0xffU)
 		throw std::logic_error("syntax token kind exceeds packed identity");
+	if (source_file_value > std::numeric_limits<std::uint16_t>::max() ||
+		source_column_value > std::numeric_limits<std::uint16_t>::max())
+		throw std::runtime_error(
+			"source provenance exceeds compact syntax token range");
+	source_file = static_cast<std::uint16_t>(source_file_value);
+	source_column = static_cast<std::uint16_t>(source_column_value);
 	const std::uint32_t encoded_fact = literal_fact == kNoLiteralFact ? 0 :
 		literal_fact + 1;
 	if (encoded_fact > 0xffffffU)
@@ -55,7 +63,26 @@ std::uint32_t SyntaxToken::LiteralFact() const
 	return encoded == 0 ? kNoLiteralFact : encoded - 1;
 }
 
-SyntaxTokenSink::SyntaxTokenSink(StringTable& strings) : strings_(strings) {}
+SyntaxTokenSink::SyntaxTokenSink(StringTable& strings)
+	: strings_(strings), source_file_(0), source_line_(0), source_column_(0) {}
+
+void SyntaxTokenSink::SetSourceLocation(const std::string& file,
+	std::size_t line, std::size_t column)
+{
+	if (line > std::numeric_limits<std::uint32_t>::max() ||
+		column > std::numeric_limits<std::uint32_t>::max())
+		throw std::runtime_error("source location exceeds compact syntax range");
+	source_file_ = strings_.Intern(file);
+	source_line_ = static_cast<std::uint32_t>(line);
+	source_column_ = static_cast<std::uint32_t>(column);
+}
+
+SyntaxToken SyntaxTokenSink::LocatedToken(std::uint16_t kind,
+	TextId spelling, std::uint32_t literal_fact) const
+{
+	return SyntaxToken(kind, spelling, literal_fact,
+		source_file_, source_line_, source_column_);
+}
 
 void SyntaxTokenSink::EmitInvalid(const std::string& source)
 {
@@ -75,17 +102,17 @@ void SyntaxTokenSink::EmitSimple(const std::string& source,
 	if (kind == OP_RSHIFT)
 	{
 		const TextId close = strings_.Intern(">");
-		tokens_.push_back(SyntaxToken(kRShiftFirstToken, close));
-		tokens_.push_back(SyntaxToken(kRShiftSecondToken, close));
+		tokens_.push_back(LocatedToken(kRShiftFirstToken, close));
+		tokens_.push_back(LocatedToken(kRShiftSecondToken, close));
 		return;
 	}
-	tokens_.push_back(SyntaxToken(static_cast<std::uint16_t>(kind),
+	tokens_.push_back(LocatedToken(static_cast<std::uint16_t>(kind),
 		strings_.Intern(source)));
 }
 
 void SyntaxTokenSink::EmitIdentifier(const std::string& source)
 {
-	tokens_.push_back(SyntaxToken(kIdentifierToken, strings_.Intern(source)));
+	tokens_.push_back(LocatedToken(kIdentifierToken, strings_.Intern(source)));
 }
 
 void SyntaxTokenSink::EmitLiteral(const std::string& source, FundamentalType type,
@@ -127,18 +154,18 @@ void SyntaxTokenSink::EmitUserDefinedFloating(const std::string& source,
 
 void SyntaxTokenSink::EmitPragmaPackPush(std::size_t alignment)
 {
-	tokens_.push_back(SyntaxToken(kPragmaPackPushToken,
+	tokens_.push_back(LocatedToken(kPragmaPackPushToken,
 		strings_.Intern(std::to_string(alignment))));
 }
 
 void SyntaxTokenSink::EmitPragmaPackPop()
 {
-	tokens_.push_back(SyntaxToken(kPragmaPackPopToken, 0));
+	tokens_.push_back(LocatedToken(kPragmaPackPopToken, 0));
 }
 
 void SyntaxTokenSink::EmitEof()
 {
-	tokens_.push_back(SyntaxToken(kEofToken, strings_.Intern(std::string())));
+	tokens_.push_back(LocatedToken(kEofToken, strings_.Intern(std::string())));
 }
 
 const std::vector<SyntaxToken>& SyntaxTokenSink::Tokens() const
@@ -159,7 +186,7 @@ std::size_t SyntaxTokenSink::StorageBytes() const
 
 void SyntaxTokenSink::EmitLiteralSpelling(const std::string& source)
 {
-	tokens_.push_back(SyntaxToken(kLiteralToken, strings_.Intern(source)));
+	tokens_.push_back(LocatedToken(kLiteralToken, strings_.Intern(source)));
 }
 
 void SyntaxTokenSink::EmitScalarLiteral(const std::string& source,
@@ -178,7 +205,7 @@ void SyntaxTokenSink::EmitScalarLiteral(const std::string& source,
 	const std::uint32_t fact =
 		static_cast<std::uint32_t>(literal_facts_.size());
 	literal_facts_.push_back(SyntaxLiteralFact(type, value, value_valid));
-	tokens_.push_back(SyntaxToken(
+	tokens_.push_back(LocatedToken(
 		kLiteralToken, strings_.Intern(source), fact));
 }
 
@@ -194,8 +221,9 @@ SyntaxEdge::SyntaxEdge(NodeId child_value) : child(child_value), next(kNoEdge)
 }
 
 SyntaxArena::SyntaxArena(StringTable& strings,
+	const std::vector<SyntaxToken>& tokens,
 	const std::vector<SyntaxLiteralFact>& literal_facts)
-	: strings_(strings), literal_facts_(literal_facts),
+	: strings_(strings), tokens_(tokens), literal_facts_(literal_facts),
 	  rollback_edge_base_(0) {}
 
 NodeId SyntaxArena::Make(const char* tag)
@@ -497,6 +525,24 @@ std::size_t SyntaxArena::TokenFirst(NodeId node) const
 std::size_t SyntaxArena::TokenLast(NodeId node) const
 {
 	return nodes_[node].token_last;
+}
+
+const std::string& SyntaxArena::SourceFile(NodeId node) const
+{
+	const std::size_t token = nodes_[node].token_first;
+	return strings_.Get(token < tokens_.size() ? tokens_[token].source_file : 0);
+}
+
+std::size_t SyntaxArena::SourceLine(NodeId node) const
+{
+	const std::size_t token = nodes_[node].token_first;
+	return token < tokens_.size() ? tokens_[token].source_line : 0;
+}
+
+std::size_t SyntaxArena::SourceColumn(NodeId node) const
+{
+	const std::size_t token = nodes_[node].token_first;
+	return token < tokens_.size() ? tokens_[token].source_column : 0;
 }
 
 void SyntaxArena::AddFlags(NodeId node, std::uint16_t flags)

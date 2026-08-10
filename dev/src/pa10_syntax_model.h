@@ -47,9 +47,13 @@ struct SyntaxToken
 {
 	std::uint32_t kind_and_literal_fact;
 	TextId spelling;
+	std::uint32_t source_line;
+	std::uint16_t source_file, source_column;
 
 	SyntaxToken(std::uint16_t kind_value, TextId spelling_value,
-		std::uint32_t literal_fact = kNoLiteralFact);
+		std::uint32_t literal_fact = kNoLiteralFact,
+		TextId source_file_value = 0, std::uint32_t source_line_value = 0,
+		std::uint32_t source_column_value = 0);
 	std::uint16_t Kind() const;
 	std::uint32_t LiteralFact() const;
 };
@@ -58,6 +62,8 @@ class SyntaxTokenSink : public IPostTokenStream
 {
 public:
 	explicit SyntaxTokenSink(StringTable& strings);
+	void SetSourceLocation(const std::string& file,
+		std::size_t line, std::size_t column);
 	void EmitInvalid(const std::string& source);
 	void EmitSimple(const std::string& source, SimpleTokenKind kind);
 	void EmitIdentifier(const std::string& source);
@@ -82,11 +88,15 @@ public:
 	std::size_t StorageBytes() const;
 
 private:
+	SyntaxToken LocatedToken(std::uint16_t kind, TextId spelling,
+		std::uint32_t literal_fact = kNoLiteralFact) const;
 	void EmitLiteralSpelling(const std::string& source);
 	void EmitScalarLiteral(const std::string& source, FundamentalType type,
 		const void* data, std::size_t size);
 
 	StringTable& strings_;
+	TextId source_file_;
+	std::uint32_t source_line_, source_column_;
 	std::vector<SyntaxToken> tokens_;
 	std::vector<SyntaxLiteralFact> literal_facts_;
 };
@@ -124,7 +134,7 @@ struct SyntaxEdge
 class SyntaxArena
 {
 public:
-	SyntaxArena(StringTable& strings,
+	SyntaxArena(StringTable& strings, const std::vector<SyntaxToken>& tokens,
 		const std::vector<SyntaxLiteralFact>& literal_facts);
 	NodeId Make(const char* tag);
 	NodeId Make(const char* tag, const std::string& payload);
@@ -159,6 +169,9 @@ public:
 	void SetTokenRange(NodeId node, std::size_t first, std::size_t last);
 	std::size_t TokenFirst(NodeId node) const;
 	std::size_t TokenLast(NodeId node) const;
+	const std::string& SourceFile(NodeId node) const;
+	std::size_t SourceLine(NodeId node) const;
+	std::size_t SourceColumn(NodeId node) const;
 	void AddFlags(NodeId node, std::uint16_t flags);
 	std::uint16_t Flags(NodeId node) const;
 	StringTable& SharedStrings() const;
@@ -175,6 +188,7 @@ private:
 	};
 
 	StringTable& strings_;
+	const std::vector<SyntaxToken>& tokens_;
 	const std::vector<SyntaxLiteralFact>& literal_facts_;
 	std::vector<SyntaxNode> nodes_;
 	std::vector<SyntaxEdge> edges_;

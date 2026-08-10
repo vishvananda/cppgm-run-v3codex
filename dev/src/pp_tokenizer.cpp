@@ -65,11 +65,11 @@ struct CodePointRange
 struct LocatedCodePoint
 {
 	int value;
-	std::size_t line;
+	std::size_t line, column;
 
 	LocatedCodePoint(int code_point = kEndOfFile,
-		std::size_t source_line = 1)
-		: value(code_point), line(source_line)
+		std::size_t source_line = 1, std::size_t source_column = 1)
+		: value(code_point), line(source_line), column(source_column)
 	{}
 };
 
@@ -201,7 +201,7 @@ public:
 	PhysicalCursor(const std::string& source, PPTokenizationStats* stats)
 		: source_(source), position_(0), saw_character_(false),
 		  last_code_point_(kEndOfFile), emitted_final_newline_(false),
-		  line_(1), stats_(stats)
+		  line_(1), column_(1), stats_(stats)
 	{
 		if (source_.size() >= 3 &&
 			static_cast<unsigned char>(source_[0]) == 0xEF &&
@@ -216,21 +216,29 @@ public:
 		{
 			const int code_point = DecodeOne();
 			const std::size_t source_line = line_;
+			const std::size_t source_column = column_;
 			if (code_point == '\n')
+			{
 				++line_;
+				column_ = 1;
+			}
+			else ++column_;
 			saw_character_ = true;
 			last_code_point_ = code_point;
 			if (stats_)
 				++stats_->decoded_code_points;
-			return LocatedCodePoint(code_point, source_line);
+			return LocatedCodePoint(code_point, source_line, source_column);
 		}
 		if (saw_character_ && last_code_point_ != '\n' &&
 			!emitted_final_newline_)
 		{
 			emitted_final_newline_ = true;
-			return LocatedCodePoint('\n', line_++);
+			const LocatedCodePoint result('\n', line_, column_);
+			++line_;
+			column_ = 1;
+			return result;
 		}
-		return LocatedCodePoint(kEndOfFile, line_);
+		return LocatedCodePoint(kEndOfFile, line_, column_);
 	}
 
 private:
@@ -288,7 +296,7 @@ private:
 	bool saw_character_;
 	int last_code_point_;
 	bool emitted_final_newline_;
-	std::size_t line_;
+	std::size_t line_, column_;
 	PPTokenizationStats* stats_;
 };
 
@@ -315,7 +323,7 @@ public:
 	TranslationCursor(const std::string& source, PPTokenizationStats* stats,
 		bool apply_translation)
 		: physical_(source, stats), suppress_ucn_once_(false), stats_(stats),
-		  apply_translation_(apply_translation), last_line_(1)
+		  apply_translation_(apply_translation), last_line_(1), last_column_(1)
 	{}
 
 	int Next()
@@ -324,6 +332,7 @@ public:
 		{
 			const LocatedCodePoint current = physical_.Next();
 			last_line_ = current.line;
+			last_column_ = current.column;
 			CountTranslated(current.value);
 			return current.value;
 		}
@@ -333,6 +342,7 @@ public:
 			if (current.value != '\\' || PeekUCN().value != '\n')
 			{
 				last_line_ = current.line;
+				last_column_ = current.column;
 				CountTranslated(current.value);
 				return current.value;
 			}
@@ -341,6 +351,7 @@ public:
 	}
 
 	std::size_t LastLine() const { return last_line_; }
+	std::size_t LastColumn() const { return last_column_; }
 
 	int NextRawCodePoint()
 	{
@@ -349,6 +360,7 @@ public:
 			throw std::logic_error("raw mode entered with translated lookahead");
 		const LocatedCodePoint result = physical_.Next();
 		last_line_ = result.line;
+		last_column_ = result.column;
 		CountTranslated(result.value);
 		return result.value;
 	}
@@ -391,7 +403,7 @@ private:
 			return current;
 		TakePhysical();
 		TakePhysical();
-		return LocatedCodePoint(replacement, current.line);
+		return LocatedCodePoint(replacement, current.line, current.column);
 	}
 
 	LocatedCodePoint TakePhase1()
@@ -439,7 +451,8 @@ private:
 		if (value > 0x10FFFF || (value >= 0xD800 && value <= 0xDFFF) ||
 			(value < 0xA0 && value != '$' && value != '@' && value != '`'))
 			throw std::runtime_error("invalid universal character value");
-		return LocatedCodePoint(static_cast<int>(value), current.line);
+		return LocatedCodePoint(
+			static_cast<int>(value), current.line, current.column);
 	}
 
 	LocatedCodePoint TakeUCN()
@@ -465,7 +478,7 @@ private:
 	bool suppress_ucn_once_;
 	PPTokenizationStats* stats_;
 	bool apply_translation_;
-	std::size_t last_line_;
+	std::size_t last_line_, last_column_;
 };
 
 bool IsNamedOperator(const std::string& spelling)
@@ -498,8 +511,9 @@ public:
 			if (Peek(0) == '\n')
 			{
 				const std::size_t line = PeekLine(0);
+				const std::size_t column = PeekColumn(0);
 				Take();
-				output_.set_source_line(line);
+				output_.set_source_location(line, column);
 				EmitNewLine();
 			}
 			else if (ScanWhitespaceAndComments())
@@ -535,6 +549,7 @@ private:
 				return kEndOfFile;
 			lookahead_.push_back(translation_.Next());
 			lookahead_lines_.push_back(translation_.LastLine());
+			lookahead_columns_.push_back(translation_.LastColumn());
 		}
 		return lookahead_[offset];
 	}
@@ -546,6 +561,7 @@ private:
 		const int result = lookahead_.front();
 		lookahead_.pop_front();
 		lookahead_lines_.pop_front();
+		lookahead_columns_.pop_front();
 		return result;
 	}
 
@@ -555,6 +571,12 @@ private:
 		return lookahead_lines_[offset];
 	}
 
+	std::size_t PeekColumn(std::size_t offset)
+	{
+		Peek(offset);
+		return lookahead_columns_[offset];
+	}
+
 	void AppendTake(std::string* spelling)
 	{
 		AppendUTF8(Take(), spelling);
@@ -562,7 +584,7 @@ private:
 
 	std::string& StartTokenSpelling()
 	{
-		output_.set_source_line(PeekLine(0));
+		output_.set_source_location(PeekLine(0), PeekColumn(0));
 		spelling_.clear();
 		return spelling_;
 	}
@@ -968,6 +990,7 @@ private:
 	PPTokenizationStats* stats_;
 	FixedQueue<int, 4> lookahead_;
 	FixedQueue<std::size_t, 4> lookahead_lines_;
+	FixedQueue<std::size_t, 4> lookahead_columns_;
 	std::string spelling_;
 	bool at_line_start_;
 	HeaderContext header_context_;

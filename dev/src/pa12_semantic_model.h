@@ -1032,18 +1032,26 @@ struct LocalStaticObjectAction
 	TypeId type;
 	std::uint32_t variable, initializer, destructor;
 	std::uint32_t declaration_ordinal;
-	bool constant_initialized;
+	NameId source_file;
+	std::uint32_t source_line, source_column;
+	bool constant_initialized, specialization_owned_recipe;
 
 	LocalStaticObjectAction(BindingId object_value, BindingId function_value,
 		TypeId type_value, std::uint32_t variable_value,
 		std::uint32_t initializer_value, std::uint32_t destructor_value,
 		std::uint32_t declaration_ordinal_value,
-		bool constant_initialized_value)
+		NameId source_file_value, std::uint32_t source_line_value,
+		std::uint32_t source_column_value,
+		bool constant_initialized_value,
+		bool specialization_owned_recipe_value)
 		: object(object_value), function(function_value), type(type_value),
 		  variable(variable_value), initializer(initializer_value),
 		  destructor(destructor_value),
 		  declaration_ordinal(declaration_ordinal_value),
-		  constant_initialized(constant_initialized_value) {}
+		  source_file(source_file_value), source_line(source_line_value),
+		  source_column(source_column_value),
+		  constant_initialized(constant_initialized_value),
+		  specialization_owned_recipe(specialization_owned_recipe_value) {}
 };
 
 // A lowering-only aggregate helper has a canonical typed identity but is not a

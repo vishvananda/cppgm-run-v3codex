@@ -54,10 +54,22 @@ protected:
 			function_identity = "function_symbol_" +
 				HexLocalStaticSymbolComponent(object);
 		}
-		std::string name = "__local_static__" + function_identity + "__" +
-			"decl" + std::to_string(action.declaration_ordinal) + "__" +
-			SanitizeSymbol(derived.program_.names.Get(
+		const std::string object_name = SanitizeSymbol(
+			derived.program_.names.Get(
 				derived.program_.bindings[action.object].name));
+		std::string name = "__local_static__" + function_identity + "__";
+		if (weak && action.specialization_owned_recipe &&
+			action.source_line != 0)
+		{
+			const std::string source = " at " +
+				derived.program_.names.Get(action.source_file) + ":" +
+				std::to_string(action.source_line) + ":" +
+				std::to_string(action.source_column);
+			name += object_name + "__source" +
+				HexLocalStaticSymbolComponent(source);
+		}
+		else name += "decl" + std::to_string(action.declaration_ordinal) +
+			"__" + object_name;
 		return name;
 	}
 
@@ -113,7 +125,8 @@ protected:
 						static_cast<std::uint32_t>(i));
 			}
 			else if (!derived.IsClassObjectType(action.type) ||
-				action.constant_initialized)
+				(action.constant_initialized &&
+				 !action.specialization_owned_recipe))
 				static_initialized = derived.static_initializers_.Lower(
 					initializer, false, &global,
 					&derived.needs_global_class_initializer_);

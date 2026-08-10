@@ -94,6 +94,7 @@ public:
 		  temporary_dependency_visits_(0),
 		  materialized_demand_visits_(0),
 		  nonthrowing_action_visits_(0),
+		  runtime_initializer_visits_(0),
 		  static_constant_initializer_visits_(0),
 		  static_constant_dependency_edges_(0),
 		  empty_destructor_chain_visits_(0),
@@ -959,11 +960,14 @@ private:
 	void AddNamespaceObjectAction(std::uint32_t variable, BindingId object,
 		TypeId type, std::uint32_t initializer);
 	void AddLocalStaticObjectAction(std::uint32_t variable, BindingId object,
-		TypeId type, std::uint32_t initializer, bool constant_initialized);
+		TypeId type, std::uint32_t initializer, NameId source_file,
+		std::uint32_t source_line, std::uint32_t source_column,
+		bool constant_initialized);
 	void RegisterVariableLifetimeAndStorage(ScopeId scope, bool local,
 		bool declaration_only, std::uint32_t variable, BindingId object,
-		TypeId type, bool constant_initialized);
-	void DemandRuntimeInitializerFunctions(std::uint32_t initializer,
+		TypeId type, NameId source_file, std::uint32_t source_line,
+		std::uint32_t source_column, bool constant_initialized);
+	bool DemandRuntimeInitializerFunctions(std::uint32_t initializer,
 		bool function_addresses_only = false);
 	void AppendScopeDestructionActions(ScopeId scope,
 		std::uint32_t output_parent, ScopeId stop_exclusive = kNoScope);
@@ -1372,6 +1376,7 @@ private:
 	std::size_t temporary_dependency_visits_;
 	std::size_t materialized_demand_visits_;
 	mutable std::size_t nonthrowing_action_visits_;
+	std::size_t runtime_initializer_visits_;
 	std::size_t static_constant_initializer_visits_;
 	std::size_t static_constant_dependency_edges_;
 	mutable std::size_t empty_destructor_chain_visits_;

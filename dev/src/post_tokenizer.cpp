@@ -842,8 +842,18 @@ public:
 	PostTokenAnalyzer(IPostTokenStream& output, PostTokenizationStats* stats)
 		: output_(output), stats_(stats), pending_encoding_(ENCODING_ORDINARY),
 		  pending_valid_(true), pending_string_tokens_(0),
-		  pending_string_bytes_(0)
+		  pending_string_bytes_(0), current_file_(0), current_line_(0),
+		  current_column_(0), pending_line_(0), pending_column_(0)
 	{}
+
+	void SetSourceLocation(const std::string& file,
+		std::size_t line, std::size_t column)
+	{
+		current_file_ = &file;
+		current_line_ = line;
+		current_column_ = column;
+		output_.SetSourceLocation(file, line, column);
+	}
 
 	void emit_whitespace_sequence() {}
 	void emit_new_line() {}
@@ -851,6 +861,7 @@ public:
 	void emit_header_name(const std::string& data)
 	{
 		FlushStrings();
+		RestoreCurrentLocation();
 		CountPreprocessingToken();
 		EmitInvalid(data);
 	}
@@ -858,6 +869,7 @@ public:
 	void emit_identifier(const std::string& data)
 	{
 		FlushStrings();
+		RestoreCurrentLocation();
 		CountPreprocessingToken();
 		SimpleTokenKind kind;
 		if (FindSimple(data, &kind))
@@ -875,6 +887,7 @@ public:
 	void emit_pp_number(const std::string& data)
 	{
 		FlushStrings();
+		RestoreCurrentLocation();
 		CountPreprocessingToken();
 		EmitNumber(data);
 	}
@@ -882,6 +895,7 @@ public:
 	void emit_character_literal(const std::string& data)
 	{
 		FlushStrings();
+		RestoreCurrentLocation();
 		CountPreprocessingToken();
 		EmitCharacter(data, false);
 	}
@@ -889,6 +903,7 @@ public:
 	void emit_user_defined_character_literal(const std::string& data)
 	{
 		FlushStrings();
+		RestoreCurrentLocation();
 		CountPreprocessingToken();
 		EmitCharacter(data, true);
 	}
@@ -906,6 +921,7 @@ public:
 	void emit_preprocessing_op_or_punc(const std::string& data)
 	{
 		FlushStrings();
+		RestoreCurrentLocation();
 		CountPreprocessingToken();
 		SimpleTokenKind kind;
 		if (FindSimple(data, &kind))
@@ -920,6 +936,7 @@ public:
 	void emit_non_whitespace_char(const std::string& data)
 	{
 		FlushStrings();
+		RestoreCurrentLocation();
 		CountPreprocessingToken();
 		EmitInvalid(data);
 	}
@@ -936,6 +953,13 @@ public:
 	}
 
 private:
+	void RestoreCurrentLocation()
+	{
+		if (current_file_)
+			output_.SetSourceLocation(
+				*current_file_, current_line_, current_column_);
+	}
+
 	void CountPreprocessingToken()
 	{
 		if (stats_)
@@ -1068,6 +1092,12 @@ private:
 	void QueueString(const std::string& source)
 	{
 		CountPreprocessingToken();
+		if (pending_string_tokens_ == 0 && current_file_)
+		{
+			pending_file_ = *current_file_;
+			pending_line_ = current_line_;
+			pending_column_ = current_column_;
+		}
 		if (pending_string_tokens_ != 0)
 			pending_source_.push_back(' ');
 		const std::size_t source_begin = pending_source_.size();
@@ -1142,6 +1172,9 @@ private:
 	{
 		if (pending_string_tokens_ == 0)
 			return;
+		if (!pending_file_.empty())
+			output_.SetSourceLocation(
+				pending_file_, pending_line_, pending_column_);
 		if (stats_)
 			++stats_->string_sequences;
 		pending_bytes_.clear();
@@ -1179,6 +1212,8 @@ private:
 		pending_valid_ = true;
 		pending_string_tokens_ = 0;
 		pending_string_bytes_ = 0;
+		pending_file_.clear();
+		pending_line_ = pending_column_ = 0;
 	}
 
 	IPostTokenStream& output_;
@@ -1191,6 +1226,10 @@ private:
 	bool pending_valid_;
 	std::size_t pending_string_tokens_;
 	std::size_t pending_string_bytes_;
+	const std::string* current_file_;
+	std::size_t current_line_, current_column_;
+	std::string pending_file_;
+	std::size_t pending_line_, pending_column_;
 };
 
 }
@@ -1218,6 +1257,12 @@ PostTokenizationSession::~PostTokenizationSession()
 void PostTokenizationSession::FlushPendingTokens()
 {
 	impl_->analyzer.FlushPendingTokens();
+}
+
+void PostTokenizationSession::SetSourceLocation(const std::string& file,
+	std::size_t line, std::size_t column)
+{
+	impl_->analyzer.SetSourceLocation(file, line, column);
 }
 
 void PostTokenizationSession::emit_whitespace_sequence()
