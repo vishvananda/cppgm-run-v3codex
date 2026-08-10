@@ -1259,7 +1259,8 @@ private:
 				Emit(copy);
 			}
 			else if (IsFloating(type))
-				result = FloatingOperand(program_.names.Get(record.text), type);
+				result = FloatingOperand(record.value_initialization ?
+					"0.0" : program_.names.Get(record.text), type);
 			else
 			{
 				if (!record.constant)

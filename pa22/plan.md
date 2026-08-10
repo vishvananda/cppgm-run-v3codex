@@ -12,10 +12,12 @@ owner/pattern identities rather than textual specialization keys.
 Pack expansion is element-scoped: an outer expansion collects only packs it owns,
 while nested declarator packs establish a new boundary. Function-template explicit
 arguments bind to the first reachable pack and later parameters remain available
-for call deduction. A retained member-template call may reconnect to indexed
-patterns owned by the active concrete class, but does not reopen namespace lookup
-from the instantiation context. Array list-casts become typed temporary-object
-actions and lower through the existing temporary-storage boundary.
+for call deduction; explicit calls with a pack defer specialization until call
+deduction supplies the remaining elements. Parser value/type facts are block scoped,
+so an unqualified local value can shadow a template without corrupting qualified
+lookup. Dependent qualified result shapes stay retained until substitution, while
+direct template-ids still resolve to canonical concrete types. Array list-casts and
+scalar value initialization lower through typed temporary/value boundaries.
 
 This applies `spec.md` §§2–6 and 8–10: canonical typed identity, provenance-aware
 indexed lookup, retained substitution scopes, demand-driven completion, typed
@@ -24,23 +26,26 @@ SFINAE behavior and does not pull in the §7 object backend.
 
 ## Current Failure Map
 
-Current result: **262/310**. The remaining 48 failures group by primary owner:
+Current result: **265/310**. All 45 remaining failures group by primary owner:
 member/friend/function-template ownership, replay, access, overload, and demand 28;
-alias/template-template/non-type-pack construction and qualified type lookup 18;
-partial-specialization selection/order replay 2.
+alias/template-template/non-type-pack construction and qualified type lookup 15;
+partial-specialization selection/order replay 2. The alias group now concentrates
+on comma/void pack expressions, lexical value binding, dependent member types, and
+partial-shape materialization rather than parser call/type ambiguity.
 
 ## Active Checkpoint
 
-**Qualified alias and template-id pack replay.** Requirements: preserve canonical
-type/integral/template argument kind and lexical value scope through alias expansion;
-resolve structured `typename` paths through inline-namespace using edges and concrete
-class owners (`spec.md` §§2–6, 8–9). Owner and flow: retained alias/template-id syntax
--> expansion element scope -> canonical alias arguments -> indexed namespace/class
-lookup -> demanded member type -> typed use. Expected work is
-O(pattern nodes + expanded elements + visited lookup edges + specialization
-requests), with canonical specialization memoization. Validate inline-namespace
-qualified packs, alias non-type packs and expressions, template-template arity,
-PA22, through PA21, audit, and direct 16/32/64 scaling.
+**Non-type pack binding and partial-shape replay.** Requirements: retain lexical
+bindings for value packs through comma/void and nested alias expressions; preserve
+type/value/template argument kind while selecting a partial; resolve dependent member
+types only after concrete owner selection (`spec.md` §§2–6, 8–9). Owner and flow:
+retained expression/partial syntax -> element substitution scope -> canonical
+arguments -> partial deduction and owner selection -> demanded member/alias type ->
+typed use. Expected work is O(pattern nodes + expanded elements + visited lookup
+edges + partial candidates + specialization requests), with memoized concrete
+specializations. Validate the `B`/`Pred`/`I2` comma-expression cases, shadowed
+non-type aliases, `common<T,U>::type`, template-template arity, PA22, through PA21,
+audit, and direct 16/32/64 scaling.
 
 ## Performance Evidence
 
@@ -55,9 +60,12 @@ storage is peak-stage MB.
 | Dependent primary/member `decltype` | 6.682/13.086/26.165 | 1.263/2.426/4.817 | lookups 1354/2650/5242; deduction 160/320/640 |
 | Retained locals/concrete packs | 7.464/14.329/28.251 | 1.428/2.844/5.649 | lookups 1807/3567/7087; requests 241/481/961 |
 | Direct retained deduction + array pack | 2.613/6.618/7.578 | 0.573/0.917/1.823 | lookups 443/827/1595; requests 52/100/196; instructions 55/103/199; candidates fixed at 2 |
+| Alias non-type expression replay | 2.682/5.871/18.499 | 0.518/1.339/4.875 | lookups 486/1118/3150; requests 70/134/262; constexpr calls 17/33/65; steps 34/66/130 |
 
-The current direct-pack benchmark excludes recursive index-sequence construction;
-lookup, specialization, storage, and emitted-instruction counters scale linearly.
+The alias benchmark confirms linear specialization requests and constexpr call/step
+counts. Its recursive variadic `cx_plus` evaluator retains 440/1648/6368 local-index
+probes, explaining the quadratic storage/time component; alias replay itself does
+not multiply specialization work.
 
 ## Completed Checkpoints
 
@@ -78,3 +86,4 @@ lookup, specialization, storage, and emitted-instruction counters scale linearly
 | Dependent primary/member `decltype` | Structured leading `typename` and declared-type member `decltype`; 253 -> 255. |
 | Retained locals/concrete packs (`4edd7339`) | Local-value deferral, aggregate transfer, provisional demand, pack scopes, and delegation replay; 255 -> 258. |
 | Nested packs/function-template replay | Nested expansion boundaries, direct kind validation, explicit pack allocation, active-class retained lookup, and array-temporary lowering; 258 -> 262, prior 2329/2329, audit pass. |
+| Qualified alias/template-id replay | Pack calls defer to deduction, qualified result shapes defer lookup, block-local parser shadows stay scoped, and floating value-init stays typed; 262 -> 265, prior 2329/2329, audit pass. |

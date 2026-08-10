@@ -1705,11 +1705,17 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 			FindChild(child, "structured-type-name");
 		if (structured_name != kNoNode)
 		{
+			const NamePath structured_path =
+				StructuredNamePath(structured_name);
+			if (deferred_type != kNoType &&
+				(structured_path.global || structured_path.Size() > 1))
+			{
+				result.type = deferred_type;
+				continue;
+			}
 			const LookupResult found = LookupStructuredName(
 				structured_name, scope, LOOKUP_TYPE);
 			result.type = found.type;
-			if (result.type == kNoType && deferred_type != kNoType)
-				result.type = deferred_type;
 			if (result.type == kNoType)
 				throw std::runtime_error(
 					"structured template type was not found: " +

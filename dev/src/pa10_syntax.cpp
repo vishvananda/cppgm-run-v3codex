@@ -25,8 +25,8 @@ public:
 	Parser(const std::vector<SyntaxToken>& tokens, StringTable& strings,
 		SyntaxArena& arena, SyntaxStats* stats)
 		: tokens_(tokens), strings_(strings), arena_(arena), stats_(stats),
-		  position_(0), angle_stop_depth_(0),
-		  retained_template_argument_depth_(0), name_fact_revision_(1),
+		  position_(0), angle_stop_depth_(0), compound_depth_(0), retained_template_argument_depth_(0),
+		  name_fact_revision_(1),
 		  angle_matches_(tokens.size())
 	{
 		if (tokens.size() >= std::numeric_limits<std::uint32_t>::max() - 1)
@@ -564,6 +564,7 @@ private:
 		if (!AtIdentifier()) return false;
 		if (AtOffset(1, OP_LBRACE)) return false;
 		const TextId name = tokens_[position_].spelling;
+		if (!HasNameFact(name, kKnownType) && AtOffset(1, OP_LPAREN)) return false;
 		if (HasNameFact(name, kKnownTemplate) &&
 			!HasNameFact(name, kActiveNonTypeParameter)) return true;
 		if (HasNameFact(name, kKnownNonTemplate) &&
@@ -663,9 +664,7 @@ private:
 	StringTable& strings_;
 	SyntaxArena& arena_;
 	SyntaxStats* stats_;
-	std::size_t position_;
-	std::size_t angle_stop_depth_;
-	std::size_t retained_template_argument_depth_;
+	std::size_t position_, angle_stop_depth_, compound_depth_, retained_template_argument_depth_;
 	std::uint32_t name_fact_revision_;
 	std::vector<std::uint8_t> name_facts_;
 	std::vector<NameFactChange> name_fact_changes_;
@@ -1807,7 +1806,7 @@ NodeId Parser::ParseCondition(SimpleTokenKind terminator)
 NodeId Parser::ParseCompoundStatement()
 {
 	if (!Match(OP_LBRACE)) return kNoNode;
-	const std::size_t fact_mark = name_fact_changes_.size();
+	++compound_depth_; const std::size_t fact_mark = name_fact_changes_.size();
 	const NodeId compound = arena_.Make("compound-statement");
 	while (!At(OP_RBRACE))
 	{
@@ -1834,7 +1833,7 @@ NodeId Parser::ParseCompoundStatement()
 		arena_.Add(compound, item);
 	}
 	Expect(OP_RBRACE);
-	RestoreNameFacts(fact_mark);
+	RestoreNameFacts(fact_mark); --compound_depth_;
 	return compound;
 }
 
@@ -2854,6 +2853,7 @@ NodeId Parser::ParseSimpleOrFunction(bool, bool)
 			if (!names[i].empty())
 			{
 				SetNameFact(names[i], kKnownType, false);
+				if (compound_depth_) SetNameFact(names[i], kActiveNonTypeParameter);
 				SetNameFact(names[i], kKnownNonTemplate);
 			}
 	}

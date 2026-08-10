@@ -640,8 +640,14 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 		{
 			const FunctionTemplatePattern& pattern =
 				function_templates_[patterns[i]];
+			bool has_template_parameter_pack = false;
+			for (std::size_t parameter = 0;
+				parameter < pattern.parameters.size(); ++parameter)
+				if (pattern.parameters[parameter].pack)
+					has_template_parameter_pack = true;
 			std::vector<TemplateArgument> arguments;
-			if (BuildTemplateArguments(pattern.parameters, explicit_syntax,
+			if (!has_template_parameter_pack && BuildTemplateArguments(
+				pattern.parameters, explicit_syntax,
 				scope, pattern.lexical_scope, &arguments))
 			{
 				const BindingId candidate = InstantiateFunctionTemplate(
