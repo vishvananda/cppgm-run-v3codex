@@ -94,7 +94,9 @@ protected:
 			if (record.kind == DUMP_TEMPORARY_OBJECT &&
 				record.argument_materialization &&
 				(variable_initializer || union_argument ||
-				 record.full_expression_staging) &&
+				 (record.full_expression_staging &&
+				  (temporary_entity == kNoEntity ||
+				   !derived.program_.entities[temporary_entity].lambda_closure))) &&
 				derived.generated_slots_[current] == kNoLowId)
 				(void)derived.EnsureGeneratedSlot(current, "arg",
 					derived.LowerStorageType(record.type));

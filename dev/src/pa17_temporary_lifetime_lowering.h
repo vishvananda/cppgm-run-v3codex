@@ -175,6 +175,8 @@ protected:
 		derived.conditional_cleanup_dispatches_.Clear();
 		derived.conditional_cleanup_tails_.Clear();
 		derived.runtime_lifetime_temporaries_.Clear();
+		derived.full_expression_cleanup_ready_ = false;
+		derived.full_expression_deferred_cleanup_ = false;
 		derived.conditional_cleanup_resume_ = kNoLowId;
 	}
 
@@ -287,7 +289,9 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (derived.full_expression_cleanup_active_ &&
-			derived.full_expression_cleanup_dispatch_ == kNoLowId)
+			derived.full_expression_cleanup_dispatch_ == kNoLowId &&
+			(!derived.full_expression_deferred_cleanup_ ||
+			 derived.full_expression_cleanup_ready_))
 			StartFullExpressionCleanupSegment();
 	}
 
@@ -465,6 +469,22 @@ protected:
 		derived.full_expression_cleanup_end_ = kNoLowId;
 		derived.full_expression_cleanup_dispatch_reused_ = false;
 		derived.full_expression_linked_cleanup_dispatch_ = kNoLowId;
+		derived.full_expression_cleanup_ready_ = false;
+		derived.full_expression_deferred_cleanup_ = false;
+		for (std::size_t i = 0;
+			i < derived.full_expression_cleanup_actions_.size(); ++i)
+		{
+			const DumpNode& action = derived.arena_.nodes[
+				derived.full_expression_cleanup_actions_[i]];
+			if (action.managed_full_expression_cleanup)
+				derived.full_expression_deferred_cleanup_ = true;
+			if (action.unwind_only ||
+				(action.lifetime_object != kNoDumpEdge &&
+				 (derived.arena_.nodes[action.lifetime_object].
+					conditionally_constructed ||
+				  derived.temporary_initialized_[action.lifetime_object])))
+				derived.full_expression_cleanup_ready_ = true;
+		}
 		derived.full_expression_uses_linked_dispatch_ =
 			derived.full_expression_cleanup_actions_.size() >
 				kInlineCleanupActionBudget;
@@ -478,6 +498,66 @@ protected:
 		if (!derived.full_expression_cleanup_active_)
 			throw std::logic_error(
 				"temporary transition outside full expression");
+		if (!derived.full_expression_deferred_cleanup_)
+		{
+			if (derived.full_expression_cleanup_dispatch_ != kNoLowId)
+				CloseFullExpressionCleanupSegment();
+			if (derived.full_expression_uses_linked_dispatch_ &&
+				derived.full_expression_linked_action_cursor_ != 0)
+			{
+				const std::uint32_t action =
+					derived.full_expression_cleanup_actions_[
+						derived.full_expression_linked_action_cursor_ - 1];
+				if (derived.arena_.nodes[action].lifetime_object == temporary)
+				{
+					--derived.full_expression_linked_action_cursor_;
+					derived.full_expression_linked_cleanup_dispatch_ =
+						InternCleanupAction(action,
+							derived.full_expression_linked_cleanup_dispatch_);
+				}
+			}
+			derived.full_expression_cleanup_dispatch_ = kNoLowId;
+			StartFullExpressionCleanupSegment();
+			return;
+		}
+		bool tracked = false;
+		if (derived.full_expression_uses_linked_dispatch_)
+		{
+			if (derived.full_expression_linked_action_cursor_ != 0)
+			{
+				const std::uint32_t action =
+					derived.full_expression_cleanup_actions_[
+						derived.full_expression_linked_action_cursor_ - 1];
+				tracked = derived.arena_.nodes[action].lifetime_object == temporary;
+			}
+		}
+		else
+		{
+			// The inline path is deliberately bounded by
+			// kInlineCleanupActionBudget.  Trivial temporaries have no cleanup
+			// action and cannot become a new cleanup boundary.
+			for (std::size_t i = 0;
+				i < derived.full_expression_cleanup_actions_.size(); ++i)
+				if (derived.arena_.nodes[
+					derived.full_expression_cleanup_actions_[i]].lifetime_object ==
+						temporary)
+				{
+					tracked = true;
+					break;
+				}
+		}
+		if (!tracked)
+		{
+			if (!derived.full_expression_cleanup_ready_ &&
+				derived.full_expression_cleanup_dispatch_ != kNoLowId)
+			{
+				CloseFullExpressionCleanupSegment();
+				derived.full_expression_cleanup_dispatch_ = kNoLowId;
+				derived.full_expression_cleanup_end_ = kNoLowId;
+			}
+			return;
+		}
+		derived.full_expression_cleanup_ready_ = true;
 		if (derived.full_expression_cleanup_dispatch_ != kNoLowId)
 			CloseFullExpressionCleanupSegment();
 		if (derived.full_expression_uses_linked_dispatch_)
@@ -497,7 +577,6 @@ protected:
 			}
 		}
 		derived.full_expression_cleanup_dispatch_ = kNoLowId;
-		StartFullExpressionCleanupSegment();
 	}
 
 	void CompleteFullExpressionCleanup()
@@ -523,6 +602,8 @@ protected:
 		derived.full_expression_cleanup_end_ = kNoLowId;
 		derived.full_expression_cleanup_dispatch_reused_ = false;
 		derived.full_expression_linked_cleanup_dispatch_ = kNoLowId;
+		derived.full_expression_cleanup_ready_ = false;
+		derived.full_expression_deferred_cleanup_ = false;
 		derived.full_expression_tracks_lifetime_state_ = false;
 		derived.full_expression_uses_linked_dispatch_ = false;
 		derived.runtime_lifetime_cleanup_dispatch_ = kNoLowId;
@@ -584,6 +665,8 @@ protected:
 		derived.full_expression_cleanup_end_ = kNoLowId;
 		derived.full_expression_cleanup_dispatch_reused_ = false;
 		derived.full_expression_linked_cleanup_dispatch_ = kNoLowId;
+		derived.full_expression_cleanup_ready_ = false;
+		derived.full_expression_deferred_cleanup_ = false;
 		derived.full_expression_tracks_lifetime_state_ = false;
 		derived.full_expression_uses_linked_dispatch_ = false;
 		derived.runtime_lifetime_cleanup_dispatch_ = kNoLowId;

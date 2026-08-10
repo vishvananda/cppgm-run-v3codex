@@ -761,6 +761,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 	}
 	if (arena_->IsTag(node, "call-expression"))
 		return AnalyzeCall(node, scope, target);
+	if (arena_->IsTag(node, "lambda-expression"))
+		return AnalyzeCapturelessLambda(node, scope, target);
 	if (arena_->IsTag(node, "unary-expression") ||
 		arena_->IsTag(node, "postfix-expression"))
 		return ApplyTarget(AnalyzeUnary(node, scope, target), target);
@@ -1096,6 +1098,7 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	ExpressionInfo converted_object;
 	const ExpressionInfo* constexpr_receiver = object;
 	std::vector<ExpressionInfo> constexpr_arguments;
+	bool closure_argument = false;
 	constexpr_arguments.reserve(function_type.parameter_count);
 	if (function.member_owner != kNoType)
 	{
@@ -1125,6 +1128,10 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 					&(*argument_conversions)[a] : 0);
 			constexpr_arguments.push_back(argument);
 		}
+		const EntityId argument_entity = EntityOf(EffectiveType(argument.type));
+		if (argument_entity != kNoEntity &&
+			program_->entities[argument_entity].lambda_closure)
+			closure_argument = true;
 		dump_.Add(call, argument.node);
 	}
 	for (std::size_t a = arguments.size();
@@ -1141,6 +1148,10 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 		dump_.Add(call, argument.node);
 		constexpr_arguments.push_back(argument);
 	}
+	const EntityId result_entity = EntityOf(result_type);
+	if (closure_argument && result_entity != kNoEntity &&
+		program_->entities[result_entity].indirect_class_value_abi)
+		program_->entities[result_entity].closure_forced_indirect_value_abi = true;
 	ExpressionInfo result;
 	result.node = call;
 	result.type = result_type;
@@ -2887,6 +2898,8 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 			template_partial_shape_cache_hits_;
 		stats_->template_partial_deduction_visits =
 			template_partial_deduction_visits_;
+		stats_->lambda_closure_requests = lambda_closure_requests_;
+		stats_->lambda_closure_cache_hits = lambda_closure_cache_hits_;
 		stats_->constexpr_call_requests = constexpr_call_requests_;
 		stats_->constexpr_call_cache_hits = constexpr_call_cache_hits_;
 		stats_->constexpr_local_index_probes =

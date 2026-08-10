@@ -70,6 +70,7 @@ public:
 		  template_partial_shape_materializations_(0),
 		  template_partial_shape_cache_hits_(0),
 		  template_partial_deduction_visits_(0),
+		  lambda_closure_requests_(0), lambda_closure_cache_hits_(0),
 		  constexpr_call_requests_(0), constexpr_call_cache_hits_(0),
 		  constexpr_local_index_probes_(0),
 		  constexpr_scope_index_probes_(0),
@@ -563,6 +564,8 @@ private:
 
 	ExpressionInfo AnalyzeExpression(NodeId node, ScopeId scope,
 		TypeId target = kNoType);
+	ExpressionInfo AnalyzeCapturelessLambda(NodeId node, ScopeId scope,
+		TypeId target);
 	ExpressionInfo AnalyzeNamedValue(const std::string& spelling,
 		ScopeId scope, TypeId target = kNoType, NodeId syntax = kNoNode);
 	BindingId SelectOverload(ScopeId scope,
@@ -947,6 +950,8 @@ private:
 		std::uint32_t output_parent);
 	void StageNestedTemplateTemporaryCleanup(std::uint32_t expression,
 		std::uint32_t statement, ScopeId scope);
+	void StageLambdaReturnTemporaryCleanup(std::uint32_t expression,
+		std::uint32_t statement);
 	void AppendUnwindDestructionActions(ScopeId scope,
 		std::uint32_t output_parent);
 	void AddNamespaceObjectAction(std::uint32_t variable, BindingId object,
@@ -1200,6 +1205,9 @@ private:
 	std::vector<std::uint8_t> retained_call_lookup_states_;
 	std::vector<EntityId> retained_call_naming_classes_;
 	TemplateSpecializationTable template_instantiations_;
+	IndexedSequenceTable lambda_closure_index_;
+	std::vector<LambdaClosureFact> lambda_closures_;
+	std::vector<std::uint32_t> lambda_count_by_function_;
 	std::deque<ClassTemplatePattern> class_templates_;
 	IndexedSequenceTable demanded_static_member_definitions_;
 	std::vector<AliasTemplatePattern> alias_templates_;
@@ -1329,6 +1337,8 @@ private:
 	std::size_t template_partial_shape_materializations_;
 	std::size_t template_partial_shape_cache_hits_;
 	mutable std::size_t template_partial_deduction_visits_;
+	std::size_t lambda_closure_requests_;
+	std::size_t lambda_closure_cache_hits_;
 	std::size_t constexpr_call_requests_;
 	std::size_t constexpr_call_cache_hits_;
 	mutable std::size_t constexpr_local_index_probes_;

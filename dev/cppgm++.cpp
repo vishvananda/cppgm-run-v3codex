@@ -639,9 +639,13 @@ int run_emit_semantics_mode(const vector<string> & args)
 		   << stats.template_partial_shape_materializations
 		   << " template_partial_shape_cache_hits="
 		   << stats.template_partial_shape_cache_hits
-		   << " template_partial_deduction_visits="
-		   << stats.template_partial_deduction_visits
-           << " constexpr_call_requests=" << stats.constexpr_call_requests
+			   << " template_partial_deduction_visits="
+			   << stats.template_partial_deduction_visits
+			   << " lambda_closure_requests="
+			   << stats.lambda_closure_requests
+			   << " lambda_closure_cache_hits="
+			   << stats.lambda_closure_cache_hits
+	           << " constexpr_call_requests=" << stats.constexpr_call_requests
            << " constexpr_call_cache_hits=" << stats.constexpr_call_cache_hits
            << " constexpr_local_index_probes="
            << stats.constexpr_local_index_probes
@@ -790,9 +794,13 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << semantic.template_partial_shape_materializations
 			 << " template_partial_shape_cache_hits="
 			 << semantic.template_partial_shape_cache_hits
-			 << " template_partial_deduction_visits="
-			 << semantic.template_partial_deduction_visits
-			 << " constexpr_call_requests="
+				 << " template_partial_deduction_visits="
+				 << semantic.template_partial_deduction_visits
+				 << " lambda_closure_requests="
+				 << semantic.lambda_closure_requests
+				 << " lambda_closure_cache_hits="
+				 << semantic.lambda_closure_cache_hits
+				 << " constexpr_call_requests="
 			 << semantic.constexpr_call_requests
 			 << " constexpr_call_cache_hits="
 			 << semantic.constexpr_call_cache_hits

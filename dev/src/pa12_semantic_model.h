@@ -136,6 +136,7 @@ struct DumpNode
 	bool declaration_only;
 	bool unwind_only;
 	bool full_expression_staging;
+	bool managed_full_expression_cleanup;
 	bool conditionally_constructed;
 	bool default_argument;
 	bool control_dependent_temporary;
@@ -169,6 +170,7 @@ struct DumpNode
 		  class_argument_staging(false),
 		  direct_return_slot(false), declaration_only(false),
 		  unwind_only(false), full_expression_staging(false),
+		  managed_full_expression_cleanup(false),
 		  conditionally_constructed(false),
 		  default_argument(false),
 		  control_dependent_temporary(false), virtual_call(false),
@@ -939,6 +941,24 @@ struct AliasTemplatePattern
 		: owner(kNoScope), lexical_scope(kNoScope),
 		  specialization_scope(kNoScope), name(0), declaration(kNoNode),
 		  type_id(kNoNode), marker_entity(kNoEntity) {}
+};
+
+// A closure expression is canonical only within its concrete enclosing
+// function. Retained syntax can be replayed for more than one function-template
+// specialization, so syntax identity alone is not a complete semantic key.
+struct LambdaClosureFact
+{
+	NodeId syntax;
+	BindingId function, call_operator;
+	EntityId entity;
+	std::uint32_t ordinal;
+
+	LambdaClosureFact(NodeId syntax_value, BindingId function_value,
+		EntityId entity_value, BindingId call_operator_value,
+		std::uint32_t ordinal_value)
+		: syntax(syntax_value), function(function_value),
+		  call_operator(call_operator_value), entity(entity_value),
+		  ordinal(ordinal_value) {}
 };
 
 struct ClassTemplatePattern

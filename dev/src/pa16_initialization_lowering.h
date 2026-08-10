@@ -188,7 +188,8 @@ protected:
 			throw std::runtime_error("invalid temporary object action");
 		const bool initialize = derived.temporary_initialized_[node] == 0;
 		if (!initialize) return derived.temporary_addresses_[node];
-		if (initialize && derived.temporary_addresses_[node].kind == Operand::NONE)
+		if (derived.temporary_addresses_[node].kind == Operand::NONE &&
+			!derived.full_expression_deferred_cleanup_)
 			derived.EnsureFullExpressionCleanupSegment();
 		const Operand destination = PrepareTemporaryObjectStorage(node);
 		if (initialize)

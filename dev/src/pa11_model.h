@@ -349,6 +349,9 @@ struct EntityRecord
 		indirect_class_value_abi, polymorphic_class, abstract_class;
 	bool nonlinear_base_graph;
 	bool deferred_template_completion;
+	bool lambda_closure;
+	bool closure_forced_indirect_value_abi;
+	std::uint32_t lambda_ordinal;
 
 	EntityRecord();
 };

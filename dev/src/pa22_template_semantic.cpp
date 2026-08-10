@@ -1,7 +1,9 @@
 #include "pa12_semantic_detail.h"
 
 #include <algorithm>
+#include <cctype>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 
 namespace cppgm
@@ -32,6 +34,164 @@ bool EquivalentAliasTemplateParameters(
 	return true;
 }
 
+std::string LambdaIdentityComponent(const std::string& context,
+	std::size_t token_first, std::size_t token_last, std::uint32_t ordinal)
+{
+	std::string result("__lambda_");
+	result.reserve(result.size() + context.size() + 48);
+	for (std::size_t i = 0; i < context.size(); ++i)
+	{
+		const unsigned char value = static_cast<unsigned char>(context[i]);
+		result += std::isalnum(value) || value == '_' ?
+			static_cast<char>(value) : '_';
+	}
+	std::ostringstream suffix;
+	suffix << "_t" << token_first << '_' << token_last << "_n" << ordinal;
+	result += suffix.str();
+	return result;
+}
+
+}
+
+ExpressionInfo SemanticAnalyzer::AnalyzeCapturelessLambda(NodeId node,
+	ScopeId scope, TypeId target)
+{
+	++lambda_closure_requests_;
+	const NodeId introducer = FindChild(node, "lambda-introducer");
+	if (introducer == kNoNode || PayloadSource(introducer) != "[]")
+		throw std::runtime_error(
+			"only captureless lambda expressions are supported in PA22");
+	const NodeId declarator = FindChild(node, "lambda-declarator");
+	bool mutable_call = false;
+	bool nonthrowing = false;
+	if (declarator != kNoNode)
+	{
+		const NodeId parameters = FindChild(declarator, "parameter-clause");
+		if (parameters == kNoNode || FirstSemanticChild(parameters) != kNoNode)
+			throw std::runtime_error(
+				"lambda parameters are outside the PA22 captureless subset");
+		if (FindChild(declarator, "trailing-return-type") != kNoNode)
+			throw std::runtime_error(
+				"lambda trailing return types are outside the PA22 subset");
+		mutable_call = FindChild(declarator, "lambda-specifier") != kNoNode;
+		const NodeId exception = FindChild(
+			declarator, "noexcept-specification");
+		if (exception != kNoNode)
+		{
+			if (FirstSemanticChild(exception) != kNoNode)
+				throw std::runtime_error(
+					"dependent lambda noexcept is outside the PA22 subset");
+			nonthrowing = true;
+		}
+	}
+	const NodeId body = FindChild(node, "compound-statement");
+	if (body == kNoNode)
+		throw std::logic_error("lambda expression has no retained body");
+	if (current_function_context_ == kNoBinding)
+		throw std::runtime_error("lambda expression has no function context");
+	const BindingId enclosing = program_->bindings[
+		current_function_context_].canonical;
+	const std::uint64_t key =
+		(static_cast<std::uint64_t>(enclosing) << 32) | node;
+	const CompactIndexSequence* indexed = lambda_closure_index_.Find(key);
+	std::size_t fact_index = 0;
+	if (indexed)
+	{
+		if (indexed->Size() != 1)
+			throw std::logic_error("ambiguous canonical lambda closure fact");
+		fact_index = (*indexed)[0];
+		if (fact_index >= lambda_closures_.size() ||
+			lambda_closures_[fact_index].syntax != node ||
+			lambda_closures_[fact_index].function != enclosing)
+			throw std::logic_error("corrupt canonical lambda closure index");
+		++lambda_closure_cache_hits_;
+	}
+	else
+	{
+		if (lambda_count_by_function_.size() <= enclosing)
+			lambda_count_by_function_.resize(
+				static_cast<std::size_t>(enclosing) + 1, 0);
+		const std::uint32_t ordinal =
+			lambda_count_by_function_[enclosing]++;
+		ScopeId namespace_owner = scope;
+		while (namespace_owner != kNoScope &&
+			program_->KindOfScope(namespace_owner) != SCOPE_NAMESPACE)
+			namespace_owner = program_->ParentScope(namespace_owner);
+		if (namespace_owner == kNoScope)
+			throw std::logic_error("lambda closure has no namespace owner");
+		const BindingRecord& context = program_->bindings[enclosing];
+		const std::string context_name = program_->names.Get(
+			context.qualified_name != 0 ? context.qualified_name : context.name);
+		const std::string leaf_spelling = LambdaIdentityComponent(context_name,
+			arena_->TokenFirst(node), arena_->TokenLast(node), ordinal);
+		const NameId leaf = program_->names.Intern(leaf_spelling);
+		const NameId emission = EmissionName(namespace_owner, leaf);
+		const EntityId entity = program_->NewEntity(emission, NAMED_CLASS, true,
+			kNoType, namespace_owner, leaf);
+		EntityRecord& closure = program_->entities[entity];
+		closure.local_context = enclosing;
+		closure.lambda_closure = true;
+		closure.lambda_ordinal = ordinal;
+		closure.object_size = 1;
+		closure.object_alignment = 1;
+		closure.natural_alignment = 1;
+		closure.layout_complete = true;
+		closure.destructible = true;
+		closure.trivial_destructor = true;
+		closure.empty_class = true;
+		const TypeId closure_type = closure.type;
+		const NameId member_prefix = program_->names.Intern(
+			program_->names.Get(emission) + "::");
+		const ScopeId member_scope = NewScope(namespace_owner, SCOPE_CLASS,
+			leaf, member_prefix);
+		program_->SetEntityScope(entity, member_scope);
+		program_->SetTypeName(member_scope, leaf, closure_type);
+		const BindingId injected = program_->AddBinding(member_scope,
+			BIND_TYPE, leaf, closure_type, false, 0, NAMED_CLASS);
+		program_->bindings[injected].member_owner = entity;
+		if (entity_data_members_.size() <= entity)
+			entity_data_members_.resize(static_cast<std::size_t>(entity) + 1);
+		if (entity_layout_members_.size() <= entity)
+			entity_layout_members_.resize(static_cast<std::size_t>(entity) + 1);
+		if (entity_constructors_.size() <= entity)
+			entity_constructors_.resize(static_cast<std::size_t>(entity) + 1);
+		const TypeId void_type = program_->types.Fundamental(FUND_VOID);
+		const TypeId call_type = program_->types.Function(void_type,
+			std::vector<TypeId>(), false, mutable_call ? CV_NONE : CV_CONST);
+		const NameId call_name = program_->names.Intern("operator()");
+		const BindingId call_operator = DeclareFunction(member_scope, call_name,
+			call_type, std::vector<ParameterInfo>(), true, false,
+			STORAGE_CLASS_NONE, LANGUAGE_LINKAGE_CPP, nonthrowing);
+		BindingRecord& call_binding = program_->bindings[call_operator];
+		call_binding.member_owner = entity;
+		call_binding.access = ACCESS_PUBLIC;
+		FunctionInfo& call = GetMutableFunction(call_operator);
+		call.member_owner = closure_type;
+		call.lexical_scope = scope;
+		call.definition_body = body;
+		call.deferred = true;
+		call.definition_in_class = true;
+		RegisterClassMemberFunction(entity, call_operator);
+		PublishInlineFunctionFacts(call_operator, true);
+		(void)EnsureImplicitDestructor(entity);
+		fact_index = lambda_closures_.size();
+		lambda_closures_.push_back(LambdaClosureFact(node, enclosing, entity,
+			call_operator, ordinal));
+		lambda_closure_index_.Ensure(key).Push(fact_index);
+	}
+	const TypeId closure_type =
+		program_->entities[lambda_closures_[fact_index].entity].type;
+	const std::uint32_t initializer = MakeDump(
+		DUMP_BRACED_INIT_LIST, closure_type, VALUE_PRVALUE);
+	const std::uint32_t temporary = MakeDump(
+		DUMP_TEMPORARY_OBJECT, closure_type, VALUE_XVALUE);
+	dump_.Add(temporary, initializer);
+	ExpressionInfo result;
+	result.node = temporary;
+	result.type = closure_type;
+	result.category = VALUE_XVALUE;
+	expression_count_ += 2;
+	return ApplyTarget(result, target);
 }
 
 void SemanticAnalyzer::DemandMaterializedConstructorActions(
@@ -136,6 +296,39 @@ void SemanticAnalyzer::StageNestedTemplateTemporaryCleanup(
 		MarkFullExpressionCalls(expression);
 		AppendUnwindDestructionActions(scope, statement);
 		return;
+	}
+}
+
+void SemanticAnalyzer::StageLambdaReturnTemporaryCleanup(
+	std::uint32_t expression, std::uint32_t statement)
+{
+	std::vector<std::uint32_t> pending(1, expression);
+	bool has_closure = false;
+	while (!pending.empty() && !has_closure)
+	{
+		const std::uint32_t node = pending.back();
+		pending.pop_back();
+		++temporary_dependency_visits_;
+		const DumpNode& record = dump_.nodes[node];
+		if (record.kind == DUMP_TEMPORARY_OBJECT)
+		{
+			const EntityId entity = EntityOf(EffectiveType(record.type));
+			has_closure = entity != kNoEntity &&
+				program_->entities[entity].lambda_closure;
+		}
+		for (std::uint32_t edge = record.first_edge;
+			!has_closure && edge != kNoDumpEdge; edge = dump_.edges[edge].next)
+			pending.push_back(dump_.edges[edge].child);
+	}
+	if (!has_closure) return;
+	MarkFullExpressionCalls(expression);
+	for (std::uint32_t edge = dump_.nodes[statement].first_edge;
+		edge != kNoDumpEdge; edge = dump_.edges[edge].next)
+	{
+		DumpNode& action = dump_.nodes[dump_.edges[edge].child];
+		if (action.kind == DUMP_DESTRUCTOR_ACTION &&
+			action.full_expression_staging)
+			action.managed_full_expression_cleanup = true;
 	}
 }
 

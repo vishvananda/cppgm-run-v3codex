@@ -80,6 +80,8 @@ struct SemanticAnalysisStats
 	std::size_t template_partial_shape_materializations;
 	std::size_t template_partial_shape_cache_hits;
 	std::size_t template_partial_deduction_visits;
+	std::size_t lambda_closure_requests;
+	std::size_t lambda_closure_cache_hits;
 	std::size_t constexpr_call_requests;
 	std::size_t constexpr_call_cache_hits;
 	std::size_t constexpr_local_index_probes;

@@ -51,6 +51,7 @@ protected:
 		std::size_t full_expression_cleanup_end = first_cleanup;
 		NodeChildren full_expression_actions;
 		bool conditional_full_expression = false;
+		bool explicitly_managed_full_expression = false;
 		while (full_expression_cleanup_end < children.size())
 		{
 			const DumpNode& action =
@@ -60,12 +61,15 @@ protected:
 				break;
 			full_expression_actions.Push(children[full_expression_cleanup_end]);
 			if (action.lifetime_object != kNoDumpEdge &&
-				derived.arena_.nodes[action.lifetime_object].
-					conditionally_constructed)
+				derived.arena_.nodes[action.lifetime_object].conditionally_constructed)
 				conditional_full_expression = true;
+			if (action.managed_full_expression_cleanup)
+				explicitly_managed_full_expression = true;
 			++full_expression_cleanup_end;
 		}
-		if (conditional_full_expression)
+		const bool managed_full_expression = conditional_full_expression ||
+			explicitly_managed_full_expression;
+		if (managed_full_expression)
 			derived.BeginFullExpressionCleanup(full_expression_actions, 0);
 		Operand result_value;
 		if (has_value)
@@ -221,9 +225,9 @@ protected:
 					!preserve_unsigned_conversion);
 			}
 		}
-		if (conditional_full_expression)
+		if (managed_full_expression)
 			derived.CompleteFullExpressionCleanup();
-		const std::size_t remaining_cleanup = conditional_full_expression ?
+		const std::size_t remaining_cleanup = managed_full_expression ?
 			full_expression_cleanup_end : first_cleanup;
 		for (std::size_t i = remaining_cleanup; i < children.size(); ++i)
 		{

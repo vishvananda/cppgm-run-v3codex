@@ -81,7 +81,8 @@ public:
 		  full_expression_cleanup_active_(false), full_expression_cleanup_dispatch_(kNoLowId),
 		  full_expression_cleanup_end_(kNoLowId), full_expression_linked_cleanup_dispatch_(kNoLowId),
 		  full_expression_cleanup_dispatch_reused_(false), full_expression_tracks_lifetime_state_(false),
-		  full_expression_uses_linked_dispatch_(false), full_expression_linked_action_cursor_(0), runtime_lifetime_cleanup_dispatch_(kNoLowId), conditional_cleanup_resume_(kNoLowId),
+		  full_expression_uses_linked_dispatch_(false), full_expression_cleanup_ready_(false), full_expression_deferred_cleanup_(false),
+		  full_expression_linked_action_cursor_(0), runtime_lifetime_cleanup_dispatch_(kNoLowId), conditional_cleanup_resume_(kNoLowId),
 		  source_types_(program_),
 		  static_initializers_(program_, arena_, output_, stats_,
 			function_symbols_, global_symbols_, literal_symbols_,
@@ -1775,6 +1776,7 @@ private:
 			if (record.virtual_call && i == 1)
 				virtual_object = arguments[arguments.size() - 1];
 		}
+		if (full_expression_cleanup_active_ && full_expression_deferred_cleanup_) EnsureFullExpressionCleanupSegment();
 		if (record.virtual_call)
 		{
 			if (virtual_object.kind == Operand::NONE ||
@@ -1794,7 +1796,6 @@ private:
 		Emit(call);
 		return RetainFullExpressionCallResult(node, record, result);
 	}
-
 	void AttachCallArguments(Instruction* call, const CallArguments& arguments,
 		const CallArgumentFlags& references)
 	{
@@ -1815,7 +1816,6 @@ private:
 			output_.call_argument_references.push_back(references[i]);
 		}
 	}
-
 	Operand LowerConditional(std::uint32_t node, const DumpNode& record,
 		const NodeChildren& children)
 	{
@@ -2977,7 +2977,7 @@ private:
 	BlockId destructor_return_target_;
 	bool destructor_return_routes_to_epilogue_, full_expression_cleanup_active_;
 	BlockId full_expression_cleanup_dispatch_, full_expression_cleanup_end_, full_expression_linked_cleanup_dispatch_;
-	bool full_expression_cleanup_dispatch_reused_, full_expression_tracks_lifetime_state_, full_expression_uses_linked_dispatch_;
+	bool full_expression_cleanup_dispatch_reused_, full_expression_tracks_lifetime_state_, full_expression_uses_linked_dispatch_, full_expression_cleanup_ready_, full_expression_deferred_cleanup_;
 	std::size_t full_expression_linked_action_cursor_;
 	BlockId runtime_lifetime_cleanup_dispatch_, conditional_cleanup_resume_;
 	std::vector<std::uint32_t> full_expression_cleanup_actions_, full_expression_segment_actions_;

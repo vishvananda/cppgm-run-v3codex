@@ -10,13 +10,12 @@ substitution, completion, demand, and emission remain separate operations. LowIR
 consumes selected typed facts without textual keys, semantic reconstruction, or a
 second lookup path.
 
-The latest durable decisions are that anonymous-union storage carries an explicit
-binding fact rather than being recognized by its generated name; function-template
-ordering ignores result types but compares only candidate-local canonical parameter
-patterns; and a reference-bound aggregate prvalue is materialized as a typed
-temporary before target binding. Ordering's equality-constraint fallback is valid
-only after both parameter patterns accept each other, including canonical arguments
-of the same class-template entity.
+The latest durable decision is that a captureless closure is an explicit entity
+fact keyed by `(lambda syntax ID, enclosing canonical function ID)`. Its typed call
+operator, local ABI context, and ordinal flow through deduction and demand; a class
+result whose nontrivial ABI is exposed by a closure-specialized call carries an
+explicit boundary fact. Closure-bearing return cleanup is likewise marked in the
+semantic graph instead of inferred from generated names or LowIR shapes.
 
 This aligns the landed PA22 surface with `spec.md` §§2–6 and 8–10: O(1) canonical
 identity, indexed lookup, retained substitution ownership, demand-driven completion,
@@ -26,41 +25,35 @@ object backend.
 
 ## Current Failure Map
 
-Current result: **303/310**. The seven remaining failures are owned by canonical
-captureless-closure identity (1), alias/empty-class result transfer (2), hidden-friend
-and constructor-access lowering (2), retained emission naming/order (1), and the
-local-static oracle staging difference (1). None crosses the audited retained-call,
-inactive-union, or aggregate-reference ownership paths.
+Current result: **304/310** (turn baseline 303). The six remaining failures are
+owned by alias specialization/result emission (2), hidden-friend and constructor
+reuse lowering (2), local-static oracle staging (1), and copy-assignment/member-
+template overload conversion (1). The closure failure is closed without changing
+these groups.
 
 ## Active Checkpoint
 
-**Canonical captureless-closure semantics (one substantial mapped failure).** Each
-concrete lambda expression must own a canonical closure entity and const call
-operator. Retained non-primary bodies must distinguish source occurrences even when
-collapsed token anchors coincide, and closure identity must survive deduction,
-demand, typed lowering, and ABI metadata (`spec.md` §§2–6, 8–10).
-
-Owner flow: retained lambda syntax plus concrete body/source identity -> closure
-entity and call-operator declaration -> template argument deduction -> demanded body
-graph -> typed object/call lowering and ABI name. Expected work is O(retained lambda
-nodes + concrete closure instantiations), with no body or namespace rescan. Validate
-the chained two-lambda member-template case, focused captureless construction/call
-cases, PA22, through PA21, file audit, and 16/32/64 closure scaling.
+**Closed: canonical captureless-closure semantics.** Retained lambda syntax plus the
+canonical enclosing function now indexes one closure fact, which owns the entity,
+const call operator, template argument identity, demanded body, typed lowering, and
+ABI context. Two occurrences with collapsed token anchors remain distinct. Work is
+O(retained lambda nodes + concrete closures), with O(1)-average indexed fact lookup;
+the focused oracle passes, PA22 advances to 304, PA1–PA21 remain 2329/2329, and the
+file audit passes.
 
 ## Performance Evidence
 
-Five-run 16/32/64 medians for a combined retained-call family are below. The family
-uses distinct canonical specializations and exercises equality-constrained ordering
-with different result types, inactive anonymous-union storage, and reference-bound
-empty aggregates.
+Five-run medians for 16/32/64 distinct captureless macro expansions:
 
-| Semantic ms | Lowering ms | Peak semantic MiB | Representative work (16/32/64) |
-|---:|---:|---:|---|
-| 8.819/16.746/32.872 | 2.177/4.294/8.455 | 1.661/3.029/6.008 | nodes 1027/2035/4051; candidates 353/705/1409; order comparisons 96/192/384; member actions 16/32/64; requests 261/517/1029; demand pushes 97/193/385; instructions 442/874/1738 |
+| Closures | Semantic nodes | Closure requests/hits | Semantic ms | Lowering ms |
+|---:|---:|---:|---:|---:|
+| 16 | 221 | 16/0 | 1.945 | 0.795 |
+| 32 | 429 | 32/0 | 3.483 | 1.202 |
+| 64 | 845 | 64/0 | 5.067 | 2.942 |
 
-Every work counter and storage series is linear. The comparator visits only the two
-candidate parameter shapes and their canonical class-template arguments; it neither
-scans unrelated declarations nor uses result types as semantic keys.
+Nodes and requests grow linearly; zero hits are expected because every expansion is
+a distinct syntax identity. The checked two-lambda retained-template case reports
+two requests, zero hits, and distinct closure ordinals.
 
 ## Completed Checkpoints
 
@@ -68,3 +61,4 @@ scans unrelated declarations nor uses result types as semantic keys.
 |---|---|
 | PA22 specialization graph through typed zero/address and conditional lifetime | Canonical template entities, retained environments, indexed lookup, monotonic demand, and typed lowering advanced PA22 from 82 to 300 while PA1–PA21 remained 2329/2329. |
 | Retained call/declaration acceptance (`c230676a`, audit repaired) | Return-independent but mutually comparable parameter ordering, explicit inactive-anonymous-union provenance, and typed aggregate-prvalue materialization advanced 300 to 303; the checkpoint audit preserved 303/310, prior 2329/2329, linear 16/32/64 evidence, and a passing file audit. |
+| Canonical captureless closures | Indexed per-function closure facts, typed call operators, closure-aware ABI boundaries, and scoped return cleanup advanced 303 to 304; PA1–PA21 are 2329/2329 and audit/scaling checks pass. |

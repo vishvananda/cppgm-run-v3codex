@@ -315,7 +315,6 @@ ExpressionInfo SemanticAnalyzer::RetargetClassConditional(
 	no.binding = dump_.nodes[children[2]].binding;
 	return BuildClassConditional(children[0], yes, no, type, true);
 }
-
 void SemanticAnalyzer::FinalizeNamedReturnSlot(std::uint32_t function)
 {
 	const TypeId result = program_->types.Get(dump_.nodes[function].type).child;
@@ -324,8 +323,8 @@ void SemanticAnalyzer::FinalizeNamedReturnSlot(std::uint32_t function)
 	const EntityRecord& class_record = program_->entities[entity];
 	const std::size_t size = program_->SizeOf(result);
 	const bool dependent_empty_value = class_record.empty_class &&
-		class_record.template_argument_count != 0 && (class_record.enclosing_class ==
-		kNoEntity || !class_record.indirect_class_value_abi);
+		class_record.template_argument_count != 0 && !class_record.closure_forced_indirect_value_abi && (class_record.enclosing_class == kNoEntity ||
+		 !class_record.indirect_class_value_abi);
 	const bool indirect = !dependent_empty_value && (size > 16 ||
 		(size < 16 && class_record.indirect_class_value_abi));
 	std::vector<std::uint32_t> pending(1, function);
@@ -653,6 +652,7 @@ void SemanticAnalyzer::AnalyzeReturnStatement(NodeId node, ScopeId scope,
 		}
 		dump_.Add(statement, value.node);
 		AppendFullExpressionDestructionActions(value.node, statement);
+		StageLambdaReturnTemporaryCleanup(value.node, statement);
 	}
 	AppendScopeDestructionActions(scope, statement);
 }

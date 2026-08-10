@@ -591,7 +591,8 @@ EntityRecord::EntityRecord()
 	  is_aggregate(false), empty_class(false), indirect_class_value_abi(false),
 	  polymorphic_class(false), abstract_class(false),
 	  nonlinear_base_graph(false),
-	  deferred_template_completion(false)
+	  deferred_template_completion(false), lambda_closure(false),
+	  closure_forced_indirect_value_abi(false), lambda_ordinal(0)
 {
 }
 
