@@ -1352,10 +1352,9 @@ private:
 			{
 				const DumpNode& source = arena_.nodes[children[0]];
 				const LowType type = LowerExpressionType(record.type);
-				if (!LowerTemplateParameterConstantCast(record, children[0], &result))
-					result = IsIncompletePointeeNullPointerCast(program_, source,
-						record.type) ? Operand(0, type) :
-						LowerInitializerConvertedValue(children[0], type);
+				result = IsIncompletePointeeNullPointerCast(program_, source,
+					record.type) ? Operand(0, type) :
+					LowerInitializerConvertedValue(children[0], type);
 			}
 		}
 		else if (record.kind == DUMP_CONDITIONAL_EXPRESSION)

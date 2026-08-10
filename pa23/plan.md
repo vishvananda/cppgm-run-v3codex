@@ -10,49 +10,53 @@ selection facts (section 3), specialization keys and narrow demand states
 (section 4), direct typed lowering (section 6), and semantic work proportional
 to participating type shapes and candidates (section 9). Ownership remains:
 `TypeTable` for canonical type structure, function-template deduction for
-candidate-local bindings, instantiation for canonical specialization facts,
-overload resolution for selection, and lowering for consuming the selected
-binding without replay.
+candidate-local bindings, declaration publication for separate all-function
+and nontemplate indexes, instantiation for canonical specialization facts,
+overload resolution for selection, and lowering for consuming typed conversion
+and selected-binding facts without replay. A direct dependent array extent is
+normalized into the candidate binding environment; call completion merges only
+specializations deduced for that call by canonical declaration identity.
 
 ## Current Failure Map
 
 Current result: 177/400 pass; 223 fail (205 false rejections, 3 false
-acceptances, 15 LowIR mismatches), improved from the 169/400 turn-start
-baseline. The complete remaining set groups by staged behavior and primary
-owner: core call/address/constructor deduction (`100-*`, deduction and
-instantiation: 24), function-template partial ordering (`200-*`, ordering over
-typed patterns: 17), SFINAE/dependent replay and demand (`300-*`, substitution
-and candidate state: 129), non-type/conversion edge cases (`400-*`, canonical
-arguments and conversion deduction: 22), and composed cross-owner behavior
-(`500-*`, deduction through lookup/aliases/classes: 31).
+acceptances, 15 LowIR mismatches). The audit preserves the exact checkpoint
+pass/fail set and the improvement from the 169/400 checkpoint-start baseline.
+The remaining failures group by primary owner: core call/address/constructor
+deduction (`100-*`: 24), partial ordering over typed patterns (`200-*`: 17),
+SFINAE/dependent replay and demand (`300-*`: 129), canonical non-type arguments
+and conversion deduction (`400-*`: 22), and composed lookup/alias/class paths
+(`500-*`: 31).
 
 ## Active Checkpoint
 
 Next, represent qualified-id and compound-expression non-deduced contexts as
-typed retained substitution facts. N3485 14.8.2.5 requires qualified types such
-as `typename Wrap<T>::type` not to deduce `T`, while a bound such as `N - 1`
-must be checked after `N` is deduced elsewhere. Ownership is the declarator/type
-builder plus function-template candidate substitution; the data flow is parsed
-dependent syntax to a canonical non-deduced shape, then candidate-local replay
-against the completed binding environment. Expected work is O(retained shape
-nodes) once per candidate and must not instantiate unrelated class bodies.
-Validation starts with `200-nondeduced-context-only-bad` and
-`400-array-bound-expression-is-nondeduced`, then the related qualified-type and
-SFINAE groups.
+typed retained substitution facts. N3485 14.8.2.5 requires a qualified type
+such as `typename Wrap<T>::type` not to deduce `T`, while an expression bound
+such as `N - 1` is checked only after another parameter has established `N`.
+The declarator/type builder owns the canonical non-deduced shape and the
+function-template candidate owns replay against its completed binding overlay.
+Work must be O(retained shape nodes) once per participating candidate without
+completing unrelated class bodies. Start with
+`200-nondeduced-context-only-bad` and
+`400-array-bound-expression-is-nondeduced`, then cover the related qualified
+type and substitution-failure groups.
 
 ## Performance Evidence
 
-Generated unique-bound call probes show linear checkpoint work. For 32/64/128
-calls, `function_template_deduction_visits` is 128/256/512,
-`overload_candidates` is 32/64/128, semantic peak bytes are
-378766/749094/1489189, and semantic time is 1.94/3.60/7.20 ms. Before filtering
-previous implicit specializations from each new call, candidate visits were
-528/2080/8256; current-call candidate ownership removes that quadratic scan.
-Required validation: checkpoint tests 7/7, pa23 177/400, prior stages
-2639/2639, and the pa23 `dev/src` file audit pass.
+On generated 1,024/2,048/4,096-call unique-bound probes,
+`function_candidate_index_visits` is 0/0/0, `overload_candidates` is
+1,024/2,048/4,096, `function_template_deduction_visits` is
+4,096/8,192/16,384, and semantic peak bytes are
+20,109,886/40,244,801/80,547,396. Three-run semantic medians are
+85.2/177.5/369.0 ms; before selecting the nontemplate source index, the 4,096
+case took 1,141.8 ms because every call copied prior implicit specializations.
+Checkpoint tests are 7/7, the exact PA23 pass set is 177/400, PA1-PA22 are
+2,639/2,639, and the PA23 `dev/src` file audit passes with 13 inherited
+advisory warnings.
 
 ## Completed Checkpoints
 
 | Checkpoint | Result |
 | --- | --- |
-| Direct array-extent NTTP deduction and current-call candidate ownership | Ordinary, repeated, hidden-friend, constructor, range, and guarded deduction pass; pa23 169 -> 177; scaling linear. |
+| Direct array-extent NTTP deduction and current-call candidate ownership | Ordinary, repeated, hidden-friend, constructor, range, and guarded deduction pass; PA23 169 -> 177. Audit moved filtering to the nontemplate source index and replaced template-aware lowering with a semantic conversion fact; exact baseline preserved and scaling is linear. |

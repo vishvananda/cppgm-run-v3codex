@@ -1172,12 +1172,12 @@ void SemanticAnalyzer::RecordRetainedCallLookup(NodeId callee, ScopeId scope,
 		}
 	const bool explicit_template_id = terminal_component != kNoNode &&
 		FindChild(terminal_component, "template-type-argument-list") != kNoNode;
-	if (!explicit_template_id)
-		functions = FunctionCallCandidates(
-			scope, spelling, &naming_class, callee);
 	const std::vector<std::size_t> templates = structure != kNoNode ?
 		FindFunctionTemplates(scope, StructuredNamePath(callee)) :
 		FindFunctionTemplates(scope, spelling);
+	if (!explicit_template_id)
+		functions = FunctionCallCandidates(scope, spelling, &naming_class, callee,
+			!templates.empty());
 	PublishRetainedCallLookup(callee, functions, templates, naming_class,
 		adl_eligible);
 }
@@ -1191,7 +1191,7 @@ std::vector<BindingId> SemanticAnalyzer::RetainedFunctionCallCandidates(
 			RETAINED_CALL_LOOKUP_PUBLISHED) != 0;
 	if (!*retained_lookup)
 		return FunctionCallCandidates(
-			scope, spelling, naming_class, callee);
+			scope, spelling, naming_class, callee, true);
 	*naming_class = retained_call_naming_classes_[callee];
 	std::vector<BindingId> result;
 	const CompactIndexSequence* retained_functions =
@@ -1200,7 +1200,10 @@ std::vector<BindingId> SemanticAnalyzer::RetainedFunctionCallCandidates(
 	{
 		result.reserve(retained_functions->Size());
 		for (std::size_t i = 0; i < retained_functions->Size(); ++i)
+		{
+			++function_candidate_index_visits_;
 			result.push_back(static_cast<BindingId>((*retained_functions)[i]));
+		}
 	}
 	return result;
 }
@@ -1251,13 +1254,6 @@ void SemanticAnalyzer::CompleteFunctionCallTemplateCandidates(NodeId callee,
 		else DeduceFunctionTemplatePatterns(patterns, arguments,
 			&specializations);
 		DeduceFunctionTemplates(scope, spelling, arguments, callee);
-		*candidates = FunctionCallCandidates(
-			scope, spelling, naming_class, callee);
-		if (!has_explicit_syntax)
-			candidates->erase(std::remove_if(candidates->begin(), candidates->end(),
-				[this](BindingId candidate) {
-					return GetFunction(candidate).template_specialization;
-				}), candidates->end());
 		for (std::size_t i = 0; i < specializations.size(); ++i)
 		{
 			const BindingId canonical =
@@ -1274,6 +1270,10 @@ void SemanticAnalyzer::CompleteFunctionCallTemplateCandidates(NodeId callee,
 		retained_call_template_sets_.Find(callee);
 	std::vector<std::size_t> patterns = retained_templates ?
 		retained_templates->Copy() : std::vector<std::size_t>();
+	NamePath syntax_base;
+	std::vector<NodeId> explicit_syntax;
+	const bool has_explicit_syntax = CollectExplicitTemplateArguments(
+		callee, &syntax_base, &explicit_syntax);
 	NamePath retained_name = StructuredNamePath(callee);
 	if (retained_name.Empty()) retained_name = ParseNamePath(spelling);
 	if (current_class_context_ != kNoEntity && !retained_name.Empty() &&
@@ -1337,7 +1337,8 @@ void SemanticAnalyzer::CompleteFunctionCallTemplateCandidates(NodeId callee,
 				{
 					patterns = FindStructuredFunctionTemplates(callee, scope);
 					*candidates = FunctionCallCandidates(
-						scope, spelling, naming_class, callee);
+						scope, spelling, naming_class, callee,
+						!has_explicit_syntax);
 					const LookupResult active_lookup = LookupStructuredName(
 						callee, scope, LOOKUP_FUNCTION_TEMPLATE);
 					if (active_lookup.naming_class != kNoEntity)
@@ -1384,20 +1385,11 @@ void SemanticAnalyzer::CompleteFunctionCallTemplateCandidates(NodeId callee,
 	}
 	if (patterns.empty()) return;
 	std::vector<BindingId> specializations;
-	NamePath syntax_base;
-	std::vector<NodeId> explicit_syntax;
-	const bool has_explicit_syntax = CollectExplicitTemplateArguments(
-		callee, &syntax_base, &explicit_syntax);
 	if (has_explicit_syntax)
 		DeduceFunctionTemplatePatternsWithExplicitSyntax(patterns,
 			arguments, explicit_syntax, scope, &specializations);
 	else
 		DeduceFunctionTemplatePatterns(patterns, arguments, &specializations);
-	if (!has_explicit_syntax)
-		candidates->erase(std::remove_if(candidates->begin(), candidates->end(),
-			[this](BindingId candidate) {
-				return GetFunction(candidate).template_specialization;
-			}), candidates->end());
 	for (std::size_t i = 0; i < specializations.size(); ++i)
 	{
 		const BindingId canonical =

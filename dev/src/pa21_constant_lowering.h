@@ -42,21 +42,6 @@ protected:
 			record.kind == DUMP_MEMBER_EXPRESSION);
 	}
 
-	bool LowerTemplateParameterConstantCast(const DumpNode& cast,
-		std::uint32_t child, Operand* result) const
-	{
-		const Derived& derived = static_cast<const Derived&>(*this);
-		const DumpNode& source = derived.arena_.nodes[child];
-		const LowType target = derived.LowerExpressionType(cast.type);
-		if (!cast.constant || !IsInteger(target) || !source.constant ||
-			source.kind != DUMP_ID_EXPRESSION || source.binding == kNoBinding ||
-			source.binding >= derived.program_.bindings.size() ||
-			derived.program_.bindings[source.binding].kind != BIND_PARAMETER)
-			return false;
-		*result = Operand(cast.constant_value, target);
-		return true;
-	}
-
 	Operand LowerCanonicalCondition(std::uint32_t node)
 	{
 		Derived& derived = static_cast<Derived&>(*this);

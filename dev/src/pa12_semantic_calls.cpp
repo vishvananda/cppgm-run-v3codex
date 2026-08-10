@@ -498,12 +498,8 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 		dump_.nodes[object.node].kind != DUMP_TEMPORARY_OBJECT)
 		object = MaterializeTemporary(object);
 	std::vector<BindingId> candidates = ordinary_functions ?
-		FunctionSet(found.ordinary) : std::vector<BindingId>();
-	if (!template_patterns.empty())
-		candidates.erase(std::remove_if(candidates.begin(), candidates.end(),
-			[this](BindingId candidate) {
-				return GetFunction(candidate).template_specialization;
-			}), candidates.end());
+		FunctionSet(found.ordinary, !template_patterns.empty()) :
+		std::vector<BindingId>();
 	ExpressionInfo object_pointer = object;
 	if (!arrow)
 	{
@@ -640,7 +636,8 @@ bool SemanticAnalyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 }
 
 std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
-	const std::string& spelling, EntityId* naming_class, NodeId syntax)
+	const std::string& spelling, EntityId* naming_class, NodeId syntax,
+	bool exclude_template_specializations)
 {
 	if (naming_class) *naming_class = kNoEntity;
 	std::string lookup_name = spelling;
@@ -731,7 +728,8 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 		return std::vector<BindingId>();
 	std::vector<BindingId> collected;
 	for (std::size_t i = 0; i < found.OrdinaryCount(); ++i)
-		AppendFunctionSet(found.OrdinaryAt(i), &collected);
+		AppendFunctionSet(found.OrdinaryAt(i), &collected,
+			exclude_template_specializations);
 	CandidateIdentitySet seen;
 	std::vector<BindingId> result;
 	result.reserve(collected.size());
@@ -743,10 +741,11 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 
 std::vector<BindingId> SemanticAnalyzer::FunctionCallCandidates(
 	ScopeId scope, const std::string& spelling, EntityId* naming_class,
-	NodeId syntax)
+	NodeId syntax, bool exclude_template_specializations)
 {
 	std::vector<BindingId> result =
-		FunctionCandidates(scope, spelling, naming_class, syntax);
+		FunctionCandidates(scope, spelling, naming_class, syntax,
+			exclude_template_specializations);
 	result.erase(std::remove_if(result.begin(), result.end(),
 		[this](BindingId candidate) {
 			return GetFunction(candidate).constructor;
@@ -881,15 +880,16 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	return result;
 }
 
-std::vector<BindingId> SemanticAnalyzer::FunctionSet(BindingId binding)
+std::vector<BindingId> SemanticAnalyzer::FunctionSet(BindingId binding,
+	bool exclude_template_specializations)
 {
 	std::vector<BindingId> result;
-	AppendFunctionSet(binding, &result);
+	AppendFunctionSet(binding, &result, exclude_template_specializations);
 	return result;
 }
 
 void SemanticAnalyzer::AppendFunctionSet(BindingId binding,
-	std::vector<BindingId>* result)
+	std::vector<BindingId>* result, bool exclude_template_specializations)
 {
 	if (binding == kNoBinding || binding >= program_->bindings.size() ||
 		program_->bindings[binding].kind != BIND_FUNCTION)
@@ -897,11 +897,14 @@ void SemanticAnalyzer::AppendFunctionSet(BindingId binding,
 	const BindingRecord& record = program_->bindings[binding];
 	const std::uint64_t key = (static_cast<std::uint64_t>(record.owner) << 32) |
 		record.name;
-	const CompactIndexSequence* set = ordinary_function_sets_.Find(key);
+	const CompactIndexSequence* set = exclude_template_specializations ?
+		ordinary_nontemplate_function_sets_.Find(key) :
+		ordinary_function_sets_.Find(key);
 	if (!set) return;
 	if (result->empty()) result->reserve(set->Size());
 	for (std::size_t i = 0; i < set->Size(); ++i)
 	{
+		++function_candidate_index_visits_;
 		const BindingId candidate = static_cast<BindingId>((*set)[i]);
 		const BindingRecord& candidate_record = program_->bindings[candidate];
 		if (candidate_record.access_owner != kNoEntity &&

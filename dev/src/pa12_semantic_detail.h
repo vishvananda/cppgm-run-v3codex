@@ -77,6 +77,7 @@ public:
 		  expression_count_(0),
 		  associated_generation_(0), candidate_generation_(0),
 		  associated_scope_visits_(0), associated_declaration_visits_(0),
+		  function_candidate_index_visits_(0),
 		  overload_candidates_(0), overload_order_comparisons_(0),
 		  conversion_checks_(0), call_conversion_cache_hits_(0),
 		  call_conversion_cache_misses_(0), braced_fact_cache_hits_(0),
@@ -372,14 +373,16 @@ private:
 		TypeId left, TypeId right) const;
 	std::vector<BindingId> FunctionCandidates(ScopeId scope,
 		const std::string& spelling, EntityId* naming_class = 0,
-		NodeId syntax = kNoNode);
+		NodeId syntax = kNoNode,
+		bool exclude_template_specializations = false);
 	std::vector<BindingId> UsingFunctionCandidates(ScopeId scope,
 		const NamePath& path, const std::string& spelling,
 		ScopeId* target_owner, bool* names_owner_alias,
 		NodeId syntax = kNoNode);
 	std::vector<BindingId> FunctionCallCandidates(ScopeId scope,
 		const std::string& spelling, EntityId* naming_class = 0,
-		NodeId syntax = kNoNode);
+		NodeId syntax = kNoNode,
+		bool exclude_template_specializations = false);
 	std::vector<BindingId> RetainedFunctionCallCandidates(NodeId callee,
 		ScopeId scope, const std::string& spelling, EntityId* naming_class,
 		bool* retained_lookup);
@@ -388,9 +391,11 @@ private:
 		const std::vector<ExpressionInfo>& arguments, bool retained_lookup,
 		std::vector<BindingId>* candidates, EntityId* naming_class);
 	bool RetainedCallAllowsArgumentDependentLookup(NodeId callee) const;
-	std::vector<BindingId> FunctionSet(BindingId binding);
+	std::vector<BindingId> FunctionSet(BindingId binding,
+		bool exclude_template_specializations = false);
 	void AppendFunctionSet(BindingId binding,
-		std::vector<BindingId>* result);
+		std::vector<BindingId>* result,
+		bool exclude_template_specializations = false);
 	std::vector<std::size_t> FindFunctionTemplates(ScopeId scope,
 		const std::string& spelling);
 	std::vector<std::size_t> FindFunctionTemplates(ScopeId scope,
@@ -1357,6 +1362,7 @@ private:
 	std::uint32_t candidate_generation_;
 	std::size_t associated_scope_visits_;
 	std::size_t associated_declaration_visits_;
+	std::size_t function_candidate_index_visits_;
 	std::size_t overload_candidates_;
 	std::size_t overload_order_comparisons_;
 	mutable std::size_t conversion_checks_;

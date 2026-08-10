@@ -233,6 +233,8 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 				semantic_stats.associated_scope_visits;
 			semantic.associated_declaration_visits +=
 				semantic_stats.associated_declaration_visits;
+			semantic.function_candidate_index_visits +=
+				semantic_stats.function_candidate_index_visits;
 			semantic.overload_candidates += semantic_stats.overload_candidates;
 			semantic.overload_order_comparisons +=
 				semantic_stats.overload_order_comparisons;

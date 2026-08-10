@@ -605,6 +605,8 @@ int run_emit_semantics_mode(const vector<string> & args)
            << stats.associated_scope_visits
            << " associated_declaration_visits="
            << stats.associated_declaration_visits
+           << " function_candidate_index_visits="
+           << stats.function_candidate_index_visits
            << " overload_candidates=" << stats.overload_candidates
            << " overload_order_comparisons="
            << stats.overload_order_comparisons
@@ -777,6 +779,8 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << semantic.associated_scope_visits
 			 << " associated_declaration_visits="
 			 << semantic.associated_declaration_visits
+			 << " function_candidate_index_visits="
+			 << semantic.function_candidate_index_visits
 			 << " overload_candidates=" << semantic.overload_candidates
 			 << " overload_order_comparisons="
 			 << semantic.overload_order_comparisons

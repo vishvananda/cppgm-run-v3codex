@@ -575,6 +575,12 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		}
 	}
 	dump_.Add(cast, operand.node);
+	if (program_->types.RemoveTopCv(target) !=
+			program_->types.Fundamental(FUND_BOOL) &&
+		IsIntegral(target, true) && IsIntegral(operand.type, true) &&
+		program_->SizeOf(program_->types.RemoveTopCv(target)) <
+		program_->SizeOf(program_->types.RemoveTopCv(EffectiveType(operand.type))))
+		dump_.nodes[operand.node].integer_narrowing_conversion = true;
 	ExpressionInfo result;
 	result.node = cast;
 	result.type = target;

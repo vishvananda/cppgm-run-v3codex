@@ -2882,6 +2882,8 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		stats_->associated_scope_visits = associated_scope_visits_;
 		stats_->associated_declaration_visits =
 			associated_declaration_visits_;
+		stats_->function_candidate_index_visits =
+			function_candidate_index_visits_;
 		stats_->overload_candidates = overload_candidates_;
 		stats_->overload_order_comparisons = overload_order_comparisons_;
 		stats_->conversion_checks = conversion_checks_;
