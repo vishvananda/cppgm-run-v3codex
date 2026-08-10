@@ -2875,7 +2875,8 @@ private:
 	{
 		const DumpNode& record = arena_.nodes[node];
 		const NodeChildren children = Children(node);
-		if (record.kind == DUMP_LITERAL && record.constant)
+		if (record.constant &&
+			(record.kind == DUMP_LITERAL || children.empty()))
 		{ EmitJump(record.constant_value ? true_block : false_block); return; }
 		if (record.kind == DUMP_BINARY_EXPRESSION && children.size() == 2)
 		{

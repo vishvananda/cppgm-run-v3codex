@@ -952,6 +952,8 @@ void SemanticAnalyzer::ParseTemplateParameters(NodeId list, ScopeId scope,
 			record.kind = TEMPLATE_ARGUMENT_INTEGRAL;
 			record.specifiers = FindChild(parameter, "decl-specifier-seq");
 			record.declarator = FindChild(parameter, "declarator");
+			record.pack = record.pack || (record.declarator != kNoNode &&
+				arena_->HasDescendantTag(record.declarator, "parameter-pack"));
 			record.name = record.declarator == kNoNode ? 0 :
 				DeclaratorName(record.declarator);
 			record.dependent_type = SyntaxUsesTemplateParameter(

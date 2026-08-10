@@ -61,6 +61,32 @@ bool ConstructorTemplateMayAcceptNoArguments(
 	return true;
 }
 
+NodeId DirectChild(const SyntaxArena& arena, NodeId node, const char* tag)
+{
+	for (std::uint32_t edge = arena.FirstEdge(node); edge != kNoEdge;
+		edge = arena.NextEdge(edge))
+		if (arena.IsTag(arena.EdgeChild(edge), tag))
+			return arena.EdgeChild(edge);
+	return kNoNode;
+}
+
+void RecordConstructorTemplateDeclaration(const SyntaxArena& arena,
+	Program* program, EntityId owner_id, NodeId target, bool definition)
+{
+	EntityRecord& owner = program->entities[owner_id];
+	owner.has_user_declared_constructor = true;
+	const NodeId initializer = DirectChild(arena, target, "initializer");
+	const NodeId special = initializer == kNoNode ? kNoNode :
+		DirectChild(arena, initializer, "special-initializer");
+	const bool explicitly_defaulted = special != kNoNode &&
+		arena.Payload(special) == "default";
+	const bool deleted = special != kNoNode &&
+		arena.Payload(special) == "delete";
+	owner.has_user_provided_constructor |=
+		definition || (!explicitly_defaulted && !deleted);
+	owner.is_aggregate = false;
+}
+
 void ApplyFunctionTemplateSpecifierFacts(
 	const FunctionTemplatePattern& pattern, SpecInfo* spec)
 {
@@ -867,10 +893,8 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 		throw std::runtime_error(
 			"invalid conversion function template declarator");
 	if (pattern.constructor_template)
-	{
-		program_->entities[member_owner].has_user_declared_constructor = true;
-		program_->entities[member_owner].is_aggregate = false;
-	}
+		RecordConstructorTemplateDeclaration(*arena_, program_, member_owner,
+			target, definition);
 	InitializeFunctionTemplatePackShape(&pattern, shape_declarator);
 	if (ConstructorTemplateMayAcceptNoArguments(pattern))
 		program_->entities[member_owner].default_constructible = true;
@@ -1061,6 +1085,65 @@ bool SemanticAnalyzer::BuildFunctionTemplateArgumentOffsets(
 	if (cursor != argument_count ||
 		cursor > std::numeric_limits<std::uint32_t>::max()) return false;
 	offsets->push_back(static_cast<std::uint32_t>(cursor));
+	return true;
+}
+
+bool SemanticAnalyzer::BuildExplicitFunctionTemplateArguments(
+	const FunctionTemplatePattern& pattern,
+	const std::vector<NodeId>& syntax, ScopeId use_scope,
+	std::vector<TemplateArgument>* arguments,
+	std::vector<std::uint32_t>* parameter_offsets)
+{
+	std::size_t first_pack = pattern.parameters.size();
+	for (std::size_t parameter = 0;
+		parameter < pattern.parameters.size(); ++parameter)
+		if (pattern.parameters[parameter].pack)
+		{
+			first_pack = parameter;
+			break;
+		}
+	if (!FunctionTemplateNeedsPartitionIdentity(pattern.parameters))
+	{
+		parameter_offsets->clear();
+		return BuildTemplateArguments(pattern.parameters, syntax, use_scope,
+			pattern.lexical_scope, arguments);
+	}
+
+	const std::vector<TemplateParameter> explicit_parameters(
+		pattern.parameters.begin(), pattern.parameters.begin() + first_pack + 1);
+	std::vector<TemplateArgument> explicit_arguments;
+	if (!BuildTemplateArguments(explicit_parameters, syntax, use_scope,
+		pattern.lexical_scope, &explicit_arguments, false) ||
+		explicit_arguments.size() < first_pack) return false;
+	arguments->clear();
+	parameter_offsets->clear();
+	arguments->reserve(explicit_arguments.size() +
+		pattern.parameters.size() - first_pack - 1);
+	parameter_offsets->reserve(pattern.parameters.size() + 1);
+	for (std::size_t parameter = 0;
+		parameter < pattern.parameters.size(); ++parameter)
+	{
+		if (arguments->size() > std::numeric_limits<std::uint32_t>::max())
+			return false;
+		parameter_offsets->push_back(
+			static_cast<std::uint32_t>(arguments->size()));
+		if (parameter < first_pack)
+			arguments->push_back(explicit_arguments[parameter]);
+		else if (parameter == first_pack)
+			arguments->insert(arguments->end(),
+				explicit_arguments.begin() + first_pack,
+				explicit_arguments.end());
+		else if (!pattern.parameters[parameter].pack)
+		{
+			TemplateArgument argument;
+			argument.kind = pattern.parameters[parameter].kind;
+			arguments->push_back(argument);
+		}
+	}
+	if (arguments->size() > std::numeric_limits<std::uint32_t>::max())
+		return false;
+	parameter_offsets->push_back(
+		static_cast<std::uint32_t>(arguments->size()));
 	return true;
 }
 

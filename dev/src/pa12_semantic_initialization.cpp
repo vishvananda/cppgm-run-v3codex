@@ -1,6 +1,7 @@
 #include "pa12_semantic_detail.h"
 #include "post_tokenizer.h"
 
+#include <algorithm>
 #include <limits>
 #include <stdexcept>
 namespace cppgm
@@ -40,8 +41,12 @@ bool SemanticAnalyzer::IsClassObjectType(TypeId type) const
 bool SemanticAnalyzer::EmptyDefaultConstructorChain(BindingId constructor,
 	std::vector<BindingId>* base_entries)
 {
-	for (std::size_t depth = 0; depth <= program_->entities.size(); ++depth)
+	std::vector<BindingId> pending(1, constructor);
+	std::vector<std::uint8_t> visited(program_->entities.size(), 0);
+	while (!pending.empty())
 	{
+		constructor = pending.back();
+		pending.pop_back();
 		const FunctionInfo& info = GetFunction(constructor);
 		const BindingRecord& binding = program_->bindings[constructor];
 		if (!info.constructor || !info.parameters.empty() ||
@@ -52,6 +57,8 @@ bool SemanticAnalyzer::EmptyDefaultConstructorChain(BindingId constructor,
 		const EntityId entity = binding.member_owner;
 		if (entity == kNoEntity || entity >= entity_data_members_.size())
 			return false;
+		if (visited[entity] != 0) continue;
+		visited[entity] = 1;
 		if (program_->entities[entity].polymorphic_class) return false;
 		const std::vector<BindingId>& members = entity_data_members_[entity];
 		for (std::size_t i = 0; i < members.size(); ++i)
@@ -67,43 +74,68 @@ bool SemanticAnalyzer::EmptyDefaultConstructorChain(BindingId constructor,
 				member_type = member_record->child;
 				member_record = &program_->types.Get(member_type);
 			}
-			if (member_record->kind == TYPE_NAMED)
+			if (member_record->kind != TYPE_NAMED) continue;
+			const EntityRecord& subobject =
+				program_->entities[member_record->entity];
+			if (subobject.flavor != NAMED_STRUCT &&
+				subobject.flavor != NAMED_CLASS &&
+				subobject.flavor != NAMED_UNION) continue;
+			if (subobject.trivial_default_constructor) continue;
+			if (member_record->entity >= entity_constructors_.size()) return false;
+			BindingId selected = kNoBinding;
+			const std::vector<BindingId>& candidates =
+				entity_constructors_[member_record->entity];
+			for (std::size_t candidate = 0;
+				candidate < candidates.size(); ++candidate)
 			{
-				const EntityRecord& subobject =
-					program_->entities[member_record->entity];
-				if ((subobject.flavor == NAMED_STRUCT ||
-					subobject.flavor == NAMED_CLASS ||
-					subobject.flavor == NAMED_UNION) &&
-					!subobject.trivial_default_constructor)
-					return false;
+				const FunctionInfo& function = GetFunction(candidates[candidate]);
+				std::size_t required = function.parameters.size();
+				while (required != 0 &&
+					function.parameters[required - 1].default_argument != kNoNode)
+					--required;
+				if (!function.constructor || function.deleted_constructor ||
+					required != 0) continue;
+				if (selected != kNoBinding) return false;
+				selected = candidates[candidate];
 			}
+			if (selected == kNoBinding) return false;
+			if (std::find(base_entries->begin(), base_entries->end(), selected) ==
+				base_entries->end()) base_entries->push_back(selected);
+			pending.push_back(selected);
 		}
-		const EntityId base = program_->entities[entity].direct_base;
-		if (base == kNoEntity) return true;
-		if (base >= entity_constructors_.size()) return false;
-		BindingId next = kNoBinding;
-		const std::vector<BindingId>& candidates = entity_constructors_[base];
-		for (std::size_t i = 0; i < candidates.size(); ++i)
+		for (std::size_t base_index = 0;
+			base_index < program_->entities[entity].direct_base_count; ++base_index)
 		{
-			const FunctionInfo& candidate = GetFunction(candidates[i]);
-			std::size_t required = candidate.parameters.size();
-			while (required != 0 &&
-				candidate.parameters[required - 1].default_argument != kNoNode)
-				--required;
-			if (!candidate.constructor || candidate.deleted_constructor ||
-				required != 0)
-				continue;
-			if (next != kNoBinding) return false;
-			next = candidates[i];
+			const EntityId base = program_->DirectBase(entity, base_index).entity;
+			if (program_->entities[base].trivial_default_constructor) continue;
+			if (base >= entity_constructors_.size()) return false;
+			BindingId next = kNoBinding;
+			const std::vector<BindingId>& candidates = entity_constructors_[base];
+			for (std::size_t i = 0; i < candidates.size(); ++i)
+			{
+				const FunctionInfo& candidate = GetFunction(candidates[i]);
+				std::size_t required = candidate.parameters.size();
+				while (required != 0 &&
+					candidate.parameters[required - 1].default_argument != kNoNode)
+					--required;
+				if (!candidate.constructor || candidate.deleted_constructor ||
+					required != 0) continue;
+				if (next != kNoBinding) return false;
+				next = candidates[i];
+			}
+			if (next == kNoBinding) return false;
+			const FunctionInfo& next_info = GetFunction(next);
+			if (!(next_info.implicit_constructor &&
+				program_->entities[base].trivial_default_constructor))
+			{
+				const BindingId entry = EnsureConstructorBaseEntry(next);
+				if (std::find(base_entries->begin(), base_entries->end(), entry) ==
+					base_entries->end()) base_entries->push_back(entry);
+			}
+			pending.push_back(next);
 		}
-		if (next == kNoBinding) return false;
-		const FunctionInfo& next_info = GetFunction(next);
-		if (!(next_info.implicit_constructor &&
-			program_->entities[base].trivial_default_constructor))
-			base_entries->push_back(EnsureConstructorBaseEntry(next));
-		constructor = next;
 	}
-	throw std::logic_error("cyclic default-constructor chain");
+	return true;
 }
 
 BindingId SemanticAnalyzer::ValidateClassValueConstruction(TypeId type,

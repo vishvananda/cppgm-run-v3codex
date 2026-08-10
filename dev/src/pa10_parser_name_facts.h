@@ -321,6 +321,20 @@ protected:
 		return result;
 	}
 
+	bool StartsQualifiedCallExpression()
+	{
+		Derived& parser = static_cast<Derived&>(*this);
+		if (!parser.AtIdentifier() && !parser.At(OP_COLON2)) return false;
+		const typename Derived::Mark mark = parser.Checkpoint();
+		std::string name;
+		const bool parsed = parser.ParseName(
+			&name, true, true, true, 0, 0);
+		const bool result = parsed && name.find("::") != std::string::npos &&
+			parser.At(OP_LPAREN);
+		parser.Rollback(mark);
+		return result;
+	}
+
 	bool QualifiedStartsTypeAt(std::size_t scan) const
 	{
 		const Derived& parser = static_cast<const Derived&>(*this);

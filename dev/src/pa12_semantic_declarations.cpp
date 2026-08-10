@@ -2449,7 +2449,7 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 		(target_structure != kNoNode ?
 			LookupStructuredName(target_node, scope, LOOKUP_TYPE) :
 			LookupPath(scope, path, LOOKUP_TYPE)) : LookupResult();
-	const std::vector<std::size_t> template_patterns =
+	std::vector<std::size_t> template_patterns =
 		target_structure != kNoNode ? FindFunctionTemplates(
 			scope, StructuredNamePath(target_structure)) :
 			FindFunctionTemplates(scope, target);
@@ -2472,6 +2472,16 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 	std::vector<BindingId> functions = UsingFunctionCandidates(
 		scope, path, target, &using_target_owner, &names_owner_alias,
 		target_node);
+	if (template_patterns.empty() && using_target_owner != kNoScope)
+	{
+		const std::uint64_t direct_key =
+			(static_cast<std::uint64_t>(using_target_owner) << 32) | name;
+		const CompactIndexSequence* direct_templates =
+			template_function_sets_.Find(direct_key);
+		if (direct_templates)
+			for (std::size_t i = 0; i < direct_templates->Size(); ++i)
+				template_patterns.push_back((*direct_templates)[i]);
+	}
 	if (!functions.empty() || !template_patterns.empty())
 	{
 		if (TryInheritConstructors(class_owner, scope, using_target_owner,

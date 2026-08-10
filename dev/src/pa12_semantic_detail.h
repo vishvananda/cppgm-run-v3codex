@@ -621,6 +621,11 @@ private:
 		const std::vector<TemplateParameter>& parameters,
 		std::size_t argument_count,
 		std::vector<std::uint32_t>* offsets) const;
+	bool BuildExplicitFunctionTemplateArguments(
+		const FunctionTemplatePattern& pattern,
+		const std::vector<NodeId>& syntax, ScopeId use_scope,
+		std::vector<TemplateArgument>* arguments,
+		std::vector<std::uint32_t>* parameter_offsets);
 	void UpgradeFunctionTemplateSpecializations(std::size_t pattern);
 	bool FunctionTemplateTypeIsDependent(TypeId type) const;
 	bool FunctionTemplateTypeUsesUnspecifiedParameter(TypeId type,

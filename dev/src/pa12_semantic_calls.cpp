@@ -854,12 +854,15 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 			const FunctionTemplatePattern& pattern =
 				function_templates_[patterns[i]];
 			std::vector<TemplateArgument> arguments;
+			std::vector<std::uint32_t> parameter_offsets;
 			candidate_substitution_failures_.push_back(0);
-			const bool built_arguments = BuildTemplateArguments(
-				pattern.parameters, explicit_syntax,
-				scope, pattern.lexical_scope, &arguments);
-			const BindingId candidate = built_arguments ?
-				InstantiateFunctionTemplate(patterns[i], arguments) : kNoBinding;
+			const bool built_arguments = BuildExplicitFunctionTemplateArguments(
+				pattern, explicit_syntax, scope, &arguments, &parameter_offsets);
+			const BindingId candidate = !built_arguments ? kNoBinding :
+				parameter_offsets.empty() ?
+				InstantiateFunctionTemplate(patterns[i], arguments) :
+				InstantiateFunctionTemplate(
+					patterns[i], arguments, parameter_offsets);
 			const bool substitution_failed = CandidateSubstitutionFailed();
 			candidate_substitution_failures_.pop_back();
 			if (built_arguments && !substitution_failed)

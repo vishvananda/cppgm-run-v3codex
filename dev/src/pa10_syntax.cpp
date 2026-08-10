@@ -1567,6 +1567,7 @@ NodeId Parser::ParseUnaryExpression()
 			(AtOffset(1, OP_LT) && HasNameFact(tokens_[position_].spelling,
 				kKnownTemplate))) &&
 			!StartsKnownTemplateId(true) &&
+			!StartsQualifiedCallExpression() &&
 			!AtOffset(1, OP_LPAREN) && (!AtOffset(1, OP_COLON2) ||
 				QualifiedStartsType())) prefer_type = true;
 		if (kind == KW_NOEXCEPT) prefer_type = false;

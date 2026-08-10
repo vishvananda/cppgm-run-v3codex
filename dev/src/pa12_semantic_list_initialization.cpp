@@ -976,14 +976,15 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 	std::vector<ExpressionInfo> constexpr_arguments;
 	constexpr_arguments.reserve(function_type.parameter_count);
 	std::vector<BindingId> empty_base_entries;
-	if (((constructor.defaulted_constructor &&
-		  program_->entities[entity].empty_class) ||
-		 (constructor.implicit_constructor &&
-		  program_->entities[entity].direct_base != kNoEntity &&
-		  !program_->entities[
-			program_->entities[entity].direct_base].trivial_default_constructor)) &&
-		argument_syntax.empty() &&
-		EmptyDefaultConstructorChain(selected, &empty_base_entries))
+	const bool empty_constructor_chain = argument_syntax.empty() &&
+		(constructor.defaulted_constructor || constructor.implicit_constructor) &&
+		EmptyDefaultConstructorChain(selected, &empty_base_entries);
+	const bool elide_defaulted_empty = constructor.defaulted_constructor &&
+		program_->entities[entity].empty_class;
+	const bool elide_implicit_subobject_chain = constructor.implicit_constructor &&
+		!empty_base_entries.empty();
+	if (empty_constructor_chain &&
+		(elide_defaulted_empty || elide_implicit_subobject_chain))
 	{
 		dump_.nodes[action].elide_empty_constructor = true;
 		if (preserve_constant_initializer_recipe_depth_ == 0)
