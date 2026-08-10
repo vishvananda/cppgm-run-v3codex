@@ -11,6 +11,30 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+namespace
+{
+
+TypeId RemoveFunctionParameterCv(TypeTable* types, TypeId type,
+	std::uint8_t cv)
+{
+	const TypeRecord record = types->Get(type);
+	if (record.kind == TYPE_ARRAY)
+	{
+		const TypeId child = RemoveFunctionParameterCv(types, record.child, cv);
+		if (child == record.child) return type;
+		return record.dependent_bound_parameter == kNoTemplateParameter ?
+			types->Array(child, record.bound) :
+			types->DependentArray(child, record.dependent_bound_type,
+				record.dependent_bound_parameter);
+	}
+	if (record.kind != TYPE_QUALIFIED) return type;
+	const std::uint8_t remaining = static_cast<std::uint8_t>(record.cv & ~cv);
+	return remaining == CV_NONE ? record.child :
+		types->Qualify(record.child, remaining);
+}
+
+}
+
 bool SemanticAnalyzer::FunctionTemplateTypeIsDependent(TypeId type) const
 {
 	if (type == function_template_dependent_result_shape_ &&
@@ -531,17 +555,9 @@ bool SemanticAnalyzer::DeduceFunctionTemplateType(TypeId pattern,
 	const TypeRecord& pattern_record = program_->types.Get(pattern);
 	if (pattern_record.kind == TYPE_QUALIFIED)
 	{
-		const TypeRecord& argument_record = program_->types.Get(argument);
-		if (argument_record.kind != TYPE_QUALIFIED)
-			return DeduceFunctionTemplateType(pattern_record.child,
-				argument, deduced);
-		const std::uint8_t extra_cv = static_cast<std::uint8_t>(
-			argument_record.cv & ~pattern_record.cv);
-		TypeId adjusted = argument_record.child;
-		if (extra_cv != CV_NONE)
-			adjusted = program_->types.Qualify(adjusted, extra_cv);
 		return DeduceFunctionTemplateType(pattern_record.child,
-			adjusted, deduced);
+			RemoveFunctionParameterCv(
+				&program_->types, argument, pattern_record.cv), deduced);
 	}
 	const TypeRecord& argument_record = program_->types.Get(argument);
 	if (pattern_record.kind != argument_record.kind) return false;
@@ -686,17 +702,9 @@ bool SemanticAnalyzer::DeduceFunctionTemplatePackType(TypeId pattern,
 	const TypeRecord& pattern_record = program_->types.Get(pattern);
 	if (pattern_record.kind == TYPE_QUALIFIED)
 	{
-		const TypeRecord& argument_record = program_->types.Get(argument);
-		if (argument_record.kind != TYPE_QUALIFIED)
-			return DeduceFunctionTemplatePackType(pattern_record.child,
-				argument, parameters, deduced);
-		const std::uint8_t extra_cv = static_cast<std::uint8_t>(
-			argument_record.cv & ~pattern_record.cv);
-		TypeId adjusted = argument_record.child;
-		if (extra_cv != CV_NONE)
-			adjusted = program_->types.Qualify(adjusted, extra_cv);
 		return DeduceFunctionTemplatePackType(pattern_record.child,
-			adjusted, parameters, deduced);
+			RemoveFunctionParameterCv(
+				&program_->types, argument, pattern_record.cv), parameters, deduced);
 	}
 	const TypeRecord& argument_record = program_->types.Get(argument);
 	if (pattern_record.kind != argument_record.kind) return false;

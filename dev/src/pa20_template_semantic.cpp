@@ -1289,7 +1289,7 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 	}
 	if (require_complete && !has_pack &&
 		arguments->size() != parameters.size()) return false;
-	if (has_pack)
+	if (has_pack && arguments->size() >= fixed)
 		BindTemplateArgumentPack(parameter_scope, parameters.back(),
 			*arguments, fixed, arguments->size());
 	return true;

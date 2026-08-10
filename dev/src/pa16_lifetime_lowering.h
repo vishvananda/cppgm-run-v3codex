@@ -106,6 +106,7 @@ protected:
 			}
 			else if (derived.arena_.nodes[children[0]].kind ==
 				DUMP_CONDITIONAL_EXPRESSION &&
+				!derived.current_result_reference_ &&
 				derived.IsClassObjectType(derived.arena_.nodes[children[0]].type))
 			{
 				if (derived.current_indirect_result_)
