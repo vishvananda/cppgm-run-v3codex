@@ -12,40 +12,38 @@ participating candidates, arguments, parameters, and subobject edges.
 
 ## Current Failure Map
 
-The report is 356/405, with all `100-*`, `200-*`, and `400-*` tests passing.
-The 49 remaining failures group into retained call/result/default/member
-lookup and candidate-local substitution (`300-*`: 22 exits, 12 LowIR) and
-composed owner/pack replay (`500-*`: 4 exits, 11 LowIR). Lazy alias identity,
-forward-shell completion, late partial selection, and wrapped dependent-result
-identity have left the map.
+The report is 359/405, with all `100-*`, `200-*`, and `400-*` tests passing.
+The 46 remaining failures group into retained result/default/member lookup and
+candidate-local substitution (`300-*`: 19 exits, 12 LowIR) and composed
+owner/pack replay (`500-*`: 4 exits, 11 LowIR). Explicit argument-kind
+isolation and alias-expanded result redeclaration identity have left the map.
 
 ## Active Checkpoint
 
-Retained explicit-call candidate frames and nested alias result equivalence are
-the next stable boundary. The related `300-*` failures include explicit kind
-mismatch, equivalent alias/direct results, nested alias calls, out-of-class
-member-template bodies, and inherited member lookup. Per `spec.md` sections
-3-5, retained syntax and lexical scope own lookup identity; deduction creates
-one isolated candidate environment; result/default replay consumes that
-environment; failed formation removes only that candidate. Call completion
-owns the flow from indexed retained overload sets through explicit arguments,
-result validation, specialization demand, and selected typed facts. Expected
-work is O(C*(A+P+L)) for C candidates, A arguments, P parameters, and L indexed
-lookup edges. Validate the grouped explicit/alias/member cases, crash guards,
-PA23, PA1-PA22, sanitizer stress, and audit; measure doubled candidate and
-owner-chain counts.
+Nested alias call materialization and out-of-class member replay are the next
+stable boundary. The related `300-*` failures include instantiated-owner alias
+calls, nested alias deduction, out-of-class SFINAE member bodies, retained
+member overload sets, and inherited member lookup. Per `spec.md` sections 3-6,
+patterns own lexical lookup and definition syntax; one specialization owns the
+concrete alias/member environment; demand publishes selected callable and
+constructor facts; lowering consumes that typed identity exactly once. Member
+definition replay owns the flow from indexed owner lookup through alias
+substitution, selected specialization demand, and typed object materialization.
+Expected work is O(C*(A+P+L)+M), where M is the selected body/member graph.
+Validate the grouped nested-owner cases, constructor/lowering guards, PA23,
+PA1-PA22, sanitizers, and audit; measure doubled owner depth and call counts.
 
 ## Performance Evidence
 
 Prior doubled-size probes across deduction, lookup, completion, and lowering
-showed linear work and storage. For the preceding pack checkpoint, width
-8/16/32/64 medians were 0.01/0.02/0.03/0.05 s and candidate-count medians were
-0.02/0.03/0.06/0.12 s. For this checkpoint, 128/256/512/1,024 dormant alias
-shells took three-run wall medians 0.01/0.01/0.03/0.06 s and peak RSS
-7,044/7,924/9,940/13,480 KiB. The five gains, neighboring trailing-result and
-new-expression guards, and 1,024-shell case are ASan/UBSan-clean. Gates are
-PA1-PA22 2,639/2,639, PA23 356/405, and file-audit pass with 13 inherited
-warnings.
+showed linear work and storage. For this checkpoint, 16 redeclarations behind
+8/16/32/64 preceding candidates took three-run wall medians
+0.01/0.02/0.04/0.10 s and peak RSS 7,084/7,672/8,528/10,764 KiB. For 256
+redeclarations through alias depths 1/2/4/8, medians were
+0.04/0.04/0.04/0.05 s and peak RSS stayed 8,472/8,500/8,472/8,516 KiB. Both
+alias/direct orientations, a distinct-overload guard, the three gains, and
+maximum-scale cases are ASan/UBSan-clean. Gates are PA1-PA22 2,639/2,639,
+PA23 359/405, and file-audit pass with 13 inherited warnings.
 
 ## Completed Checkpoints
 
@@ -74,3 +72,4 @@ warnings.
 | Canonical pointer/reference/function NTTP identity | Canonical source bindings and null identity survive hashed specialization keys, constexpr replay, LowIR identity, and entity/reference ABI encoding; local statics fail and selected function addresses create demand; 334 -> 343, no regressions, sanitizer-clean, linear identity scaling. |
 | Template pack/default partition and constructor participation | Per-parameter offsets preserve non-terminal packs and defaults; unnamed NTTP packs, inherited constructors, empty subobject chains, qualified `sizeof` calls, and constant leaves retain typed ownership; all `400-*` pass, 343 -> 351, no regressions, sanitizer-clean, linear scaling. |
 | Demand-owned class-template shells and wrapped result identity | Typedef/using aliases retain shells without eager body replay; concrete layout and qualified lookup own demand; definition upgrades retry only pending shells and refresh late partial selection; wrapped deferred results preserve overload identity; 351 -> 356, no regressions, sanitizer-clean, linear scaling. |
+| Retained explicit-kind frames and alias-expanded result identity | Known type syntax drops non-type candidates without poisoning enclosing replay; alias defaults and packs expand to declaration-bound canonical keys; lookup facts remap across alias/direct redeclarations while distinct overloads remain separate; 356 -> 359, no regressions, sanitizer-clean, bounded scaling. |

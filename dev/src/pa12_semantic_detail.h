@@ -618,6 +618,9 @@ private:
 	DeclaratorInfo BuildFunctionTemplateSpecializationDeclarator(
 		const FunctionTemplatePattern& pattern, ScopeId template_scope,
 		SpecInfo* spec, EntityId* member_owner);
+	bool EquivalentExpandedFunctionTemplateResults(
+		const FunctionTemplatePattern& left,
+		const FunctionTemplatePattern& right);
 	void PublishFunctionTemplateSpecialMemberRole(
 		const FunctionTemplatePattern& pattern, BindingId binding,
 		EntityId member_owner, TypeId function_type);

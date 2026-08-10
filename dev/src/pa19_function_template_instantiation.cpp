@@ -527,9 +527,16 @@ void SemanticAnalyzer::InheritFunctionTemplateResultLookups(
 			pending.clear();
 		}
 	}
+	bool expanded_equivalent = false;
 	if (mapping_diverged)
 	{
-		remapped.clear();
+		expanded_equivalent =
+			EquivalentExpandedFunctionTemplateResults(source, *destination);
+		// An expanded definition has lookup nodes absent from the alias-id (or
+		// vice versa). Preserve those destination facts, while replacing every
+		// directly corresponding node with first-declaration identity below.
+		if (expanded_equivalent) remapped = destination_facts;
+		else remapped.clear();
 		std::vector<std::uint8_t> used(destination_facts.size(), 0);
 		for (std::size_t i = 0; i < source.result_lookup_facts.size(); ++i)
 		{
@@ -558,12 +565,25 @@ void SemanticAnalyzer::InheritFunctionTemplateResultLookups(
 				}
 			}
 			if (match == destination_facts.size())
+			{
+				bool expanded_type = false;
+				if (expanded_equivalent &&
+					source_fact.declaration != kNoBinding)
+				{
+					const BindingKind kind =
+						program_->bindings[source_fact.declaration].kind;
+					expanded_type =
+						kind == BIND_TYPE || kind == BIND_TYPE_ALIAS;
+				}
+				if (expanded_type) continue;
 				throw std::logic_error(
 					"equivalent function template result lookup diverged");
+			}
 			used[match] = 1;
 			FunctionTemplateResultLookupFact inherited = source_fact;
 			inherited.syntax = destination_facts[match].syntax;
-			remapped.push_back(inherited);
+			if (expanded_equivalent) remapped[match] = inherited;
+			else remapped.push_back(inherited);
 		}
 
 		const auto collect_calls = [this](
@@ -609,7 +629,8 @@ void SemanticAnalyzer::InheritFunctionTemplateResultLookups(
 			CopyRetainedCallLookup(source_calls[i], destination_calls[match]);
 		}
 	}
-	if (remapped.size() != source.result_lookup_facts.size())
+	if (!expanded_equivalent &&
+		remapped.size() != source.result_lookup_facts.size())
 		throw std::logic_error(
 			"function template result lookup remap is incomplete");
 	std::sort(remapped.begin(), remapped.end(),
@@ -934,7 +955,8 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 					*arena_, prior, pattern) &&
 				(!dependent_result ||
 				 EquivalentDependentFunctionTemplateResults(
-					*arena_, prior, pattern)))
+					*arena_, prior, pattern) ||
+				 EquivalentExpandedFunctionTemplateResults(prior, pattern)))
 			{
 				prior_index = candidate;
 				break;

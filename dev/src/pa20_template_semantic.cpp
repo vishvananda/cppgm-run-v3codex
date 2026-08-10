@@ -1255,6 +1255,16 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 				const bool retained_pack_name = declarator != kNoNode &&
 					FindChild(declarator, "parameter-pack") != kNoNode;
 				if (name != kNoNode && arena_->IsTag(name, "type-name") &&
+					retained_declarator == kNoNode)
+				{
+					const NodeId structure = FindChild(
+						name, "structured-type-name");
+					const LookupResult known_type = structure == kNoNode ?
+						LookupSpelling(source_scope, PayloadSource(name), LOOKUP_TYPE) :
+						LookupStructuredName(name, source_scope, LOOKUP_TYPE);
+					if (known_type.type != kNoType) return false;
+				}
+				if (name != kNoNode && arena_->IsTag(name, "type-name") &&
 					call_clause != kNoNode &&
 					FirstSemanticChild(call_clause) == kNoNode)
 				{
