@@ -2222,14 +2222,18 @@ private:
 		const NodeChildren values = Children(variable_children[0]);
 		const TypeRecord& array = program_.types.Get(
 			ExpressionObjectType(record.type));
-		if (array.kind != TYPE_ARRAY || array.bound == 0 ||
+		if (array.kind != TYPE_ARRAY ||
+			(array.bound == 0 && !values.empty()) ||
 			values.size() > array.bound)
 			throw std::runtime_error("invalid PA15 bounded array initializer");
 		if (!lowering_namespace_object_ &&
 			!IsClassObjectType(array.child) && !IsArrayType(array.child))
 		{
-			const Operand base = AddressOfStorage(StorageFor(record.binding,
-				LowerStorageType(record.type)));
+			const LowType storage = array.bound == 0 ?
+				LowObject(1, program_.AlignOf(array.child)) :
+				LowerStorageType(record.type);
+			const Operand base = AddressOfStorage(
+				StorageFor(record.binding, storage));
 			const LowType element = LowerExpressionType(array.child);
 			const std::size_t element_size = program_.SizeOf(array.child);
 			for (std::size_t i = 0; i < static_cast<std::size_t>(array.bound); ++i)

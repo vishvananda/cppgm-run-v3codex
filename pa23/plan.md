@@ -15,40 +15,42 @@ and subobjects.
 
 ## Current Failure Map
 
-The report is 375/406, with all `100-*`, `200-*`, and `400-*` tests passing.
-The 31 failures are 12 exits and 19 LowIR mismatches (`300-*`: 16; `500-*`:
-15). They group by owner into retained alias/default/pack/member-result replay
-(16), deduction/partial-order/non-deduced and array conversion (7), and
-constructor or conversion-function participation/lowering (8).
+The report is 377/406, with all `100-*`, `200-*`, and `400-*` tests passing.
+The 29 failures are 12 exits and 17 LowIR mismatches (`300-*`: 15; `500-*`:
+14). By shared behavior and owner they are retained pack/default/alias and
+member-result replay (11), deduction/non-deduced/partial ordering (7),
+constructor or conversion-function participation and ABI facts (7), and typed
+initializer/emission finalization (4).
 
 ## Active Checkpoint
 
-Defaulted value/pack replay through aliases and dependent result formation is
-the next substantial stable boundary and owns the largest remaining cluster
-(16 failures). Per `spec.md` sections 3-6, declarations own default syntax and
-lexical scope, explicit/deduced argument partitions own pack offsets,
-candidate frames own recoverable substitution failure, and lowering consumes
-only the selected typed result. The flow is canonical pattern plus argument
-key -> pack partition -> scoped defaults -> alias/result substitution ->
-selected candidate fact. Expected work is O(C*(A+P+R)) for C candidates, A
-arguments, P parameters, and R replayed syntax edges, with specialization and
-default requests cached by canonical key. Validate empty/nonempty packs,
-dependent bool/NTTP defaults, nested aliases, short-circuit failure, LowIR
-identity, unaffected deduction/constructor guards, scaling, sanitizers, PA23,
-PA1-PA22, and audit.
+Dependent candidate result/default replay is the next substantial stable
+boundary and owns 11 failures spanning structured `sizeof...`, alias results,
+constructor-pack defaults, current-specialization defaults, short-circuit
+SFINAE, inherited/member templates, and qualified member results. Per
+`spec.md` sections 2-6 and 9, declaration syntax and lexical owners remain
+retained; canonical specializations own argument partitions and monotonic
+completion; candidate frames own recoverable substitution failure; only the
+selected typed result crosses demand and LowIR. The flow is retained result or
+default -> indexed specialization overlay -> candidate-local substitution ->
+selected declaration -> demand/lowering. Expected work is O(P+A+C*(F+D)+E)
+for parameters P, arguments A, participating candidates C, deduction facts F,
+dependent replay edges D, and expanded elements E, with O(1)-average indexed
+lookup and no global retry. Validate zero/nonzero packs, nested aliases,
+declaration/member/default scopes, short-circuit failure, selected-only demand,
+1/2/4/8 scaling, sanitizers, PA23, PA1-PA22, and file audit.
 
 ## Performance Evidence
 
-For the landed 1/2/4/8 dependent-result elements and hidden-friend owners,
-deduction visits were 10/20/40/80 and 8/16/32/64, while associated declaration
-visits were 2/4/8/16 and hidden-friend typed storage stayed 1,735 bytes. The
-audit's twice-queried 1/2/4/8 dependent exception specializations performed
-exactly 1/2/4/8 evaluations and 3/6/12/24 cache hits; lookups were
-17/29/53/101, typed LowIR storage stayed 1,735 bytes, and semantic medians were
-0.317/0.370/0.464/0.689 ms. Participating-edge work is linear and repeated
-exception queries are memoized. The landed gains and audit re-entry guards are
-ASan/UBSan-clean. Gates are PA1-PA22 2,639/2,639, PA23 375/406 with the same 31
-failures, and file-audit pass with 13 inherited warnings.
+For 1/2/4/8 expanded array elements, semantic nodes were 32/39/53/81,
+lowered nodes 15/19/27/43, temporary dependency visits 16/24/40/72,
+materialized-demand visits 26/30/38/54, and instructions 10/12/16/24.
+Specialization requests stayed 7, argument-list requests 12, and deduction
+visits 4; typed storage was 5,651/6,161/7,181/10,245 bytes. Semantic time was
+0.728/0.756/0.780/0.896 ms and lowering 0.231/0.228/0.282/0.331 ms in single
+runs. Work is flat or linear in elements, with bounded vector-capacity steps.
+The changed PA22/PA23 paths are ASan/UBSan-clean. Gates are PA1-PA22 clean,
+PA23 377/406 (29 failures), and file-audit pass with 13 inherited warnings.
 
 ## Completed Checkpoints
 
@@ -82,3 +84,4 @@ failures, and file-audit pass with 13 inherited warnings.
 | Retained member publication and nested demand boundary | Function declarations validate in parameter scopes, nested definitions remain demand-owned, and inherited variable templates use cached base lookup; five gains, 363 -> 368, no regressions, sanitizer-clean, linear scaling. |
 | Typed designator publication and specialization-owned hidden friends | Outer shapes publish in retained scopes, compound NTTPs defer, deferred results substitute after target deduction, and hidden definitions keep owner-local identity/indexing; three gains, 368 -> 371, no regressions, sanitizer-clean, linear candidate/owner scaling. |
 | Dependent call/result replay and ADL specialization demand | Parameter-dependent results and aliases retain indexed call facts; ADL completes supplied owners; the audit separated exception demand, memoized its state, and repaired canonical post-reentry publication and qualified-name detection; original 371 -> 374, combined 375/406, no regressions, sanitizer-clean, linear scaling. |
+| Zero-cardinality expansion lowering and constexpr static demand | Empty unknown-bound arrays reserve one aligned byte without elements; value-only retained `constexpr` members stay undemanded while PA22 non-`constexpr` demand remains; 375 -> 377, sanitizer-clean, linear scaling. |

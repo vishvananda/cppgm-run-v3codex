@@ -1041,6 +1041,8 @@ private:
 	BindingId EnsureDestructorBaseEntry(BindingId destructor);
 	void EnsureStaticMemberStorage(BindingId member,
 		bool constant_storage = false);
+	bool RetainedStaticMemberDefinitionRequiresStorage(
+		std::size_t pattern, const CompactIndexSequence* definitions);
 	void DemandStaticConstantInitializerDependencies(BindingId member);
 	BindingId EnsureImplicitConstructor(EntityId entity);
 	BindingId EnsureImplicitDestructor(EntityId entity);

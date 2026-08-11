@@ -61,6 +61,19 @@ protected:
 					Slot slot;
 					slot.name = name;
 					slot.type = derived.LowerStorageType(record.type);
+					const TypeRecord& source_type = derived.program_.types.Get(
+						derived.program_.types.RemoveTopCv(record.type));
+					if (record.kind == DUMP_VARIABLE &&
+						source_type.kind == TYPE_ARRAY && source_type.bound == 0)
+					{
+						const NodeChildren initializer = derived.Children(current);
+						if (initializer.size() == 1 &&
+							derived.arena_.nodes[initializer[0]].kind ==
+								DUMP_BRACED_INIT_LIST &&
+							derived.Children(initializer[0]).empty())
+							slot.type = LowObject(1,
+								derived.program_.AlignOf(source_type.child));
+					}
 					derived.function_->slots.push_back(slot);
 				}
 				if (record.kind == DUMP_PARAMETER)

@@ -2626,6 +2626,7 @@ void SemanticAnalyzer::EnsureStaticMemberStorage(BindingId member, bool constant
 			explicit_static_member_specialization_states_[member] != 0)
 			return;
 		bool retained_definition = false;
+		bool retained_nonconstexpr_definition = false;
 		for (EntityId entity = binding.member_owner;
 			entity != kNoEntity; entity = program_->entities[entity].enclosing_class)
 		{
@@ -2647,9 +2648,12 @@ void SemanticAnalyzer::EnsureStaticMemberStorage(BindingId member, bool constant
 			const CompactIndexSequence* definitions =
 				demanded_static_member_definitions_.Find(key);
 			retained_definition = definitions && definitions->Size() != 0;
+			retained_nonconstexpr_definition =
+				RetainedStaticMemberDefinitionRequiresStorage(
+					pattern, definitions);
 			break;
 		}
-		if (!retained_definition) return;
+		if (!retained_definition || !retained_nonconstexpr_definition) return;
 	}
 	// Preserve the already-instantiated class spelling before replaying a
 	// dependent out-of-class definition, whose substituted expression spelling
