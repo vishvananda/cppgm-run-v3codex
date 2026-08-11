@@ -24,6 +24,7 @@
 #include "pa18_polymorphism_lowering.h"
 #include "pa21_constant_lowering.h"
 #include "pa21_local_static_lowering.h"
+#include "pa25_range_for_lowering.h"
 #include <algorithm>
 #include <limits>
 #include <ostream>
@@ -57,7 +58,8 @@ class GraphLowerer :
 	private pa16_lowering_detail::SlotPlanning<GraphLowerer>,
 	private pa17_lowering_detail::TemporaryLifetimeLowering<GraphLowerer>,
 	private pa21_lowering_detail::ConstantLowering<GraphLowerer>,
-	private pa21_lowering_detail::LocalStaticLowering<GraphLowerer>
+	private pa21_lowering_detail::LocalStaticLowering<GraphLowerer>,
+	private pa25_lowering_detail::RangeForLowering<GraphLowerer>
 {
 public:
 	GraphLowerer(const SemanticGraphView& graph, TypedProgram& output,
@@ -165,6 +167,7 @@ private:
 	friend class pa17_lowering_detail::TemporaryLifetimeLowering<GraphLowerer>;
 	friend class pa21_lowering_detail::ConstantLowering<GraphLowerer>;
 	friend class pa21_lowering_detail::LocalStaticLowering<GraphLowerer>;
+	friend class pa25_lowering_detail::RangeForLowering<GraphLowerer>;
 	enum StatementTaskKind : std::uint8_t
 	{
 		STATEMENT_NODE,
@@ -2025,7 +2028,6 @@ private:
 		}
 		throw std::logic_error("invalid PA15 statement task");
 	}
-
 	void PopLoopTargets()
 	{
 		if (break_targets_.empty() || continue_targets_.empty())
@@ -2033,11 +2035,12 @@ private:
 		continue_targets_.pop_back();
 		break_targets_.pop_back();
 	}
-
 	void LowerVariableInitialization(const DumpNode& record,
 		const NodeChildren& children,
 		const Operand& retained_destination = Operand())
 	{
+		if (LowerScalarCallReferenceInitialization(record, children,
+			retained_destination)) return;
 		if (!IsReferenceType(record.type) &&
 			IsClassObjectType(record.type) && children.size() == 1 &&
 			arena_.nodes[children[0]].kind == DUMP_CONDITIONAL_EXPRESSION)
@@ -2214,7 +2217,6 @@ private:
 		}
 		throw std::runtime_error("statement is outside the active PA15 checkpoint");
 	}
-
 	void LowerArrayInitializer(const DumpNode& record,
 		const NodeChildren& variable_children)
 	{
@@ -2272,7 +2274,6 @@ private:
 		LowerRuntimeArrayValues(record.type, variable_children[0],
 			AddressOfStorage(storage), true);
 	}
-
 	void LowerBoundAggregateArrayActions(BindingId object, TypeId array_type,
 		std::size_t element_index, std::uint32_t list_node,
 		AggregatePath* path)
@@ -2987,7 +2988,6 @@ private:
 	pa15_lowering_detail::SourceTypeLowering source_types_;
 	pa16_lowering_detail::StaticInitializerLowering static_initializers_;
 };
-
 }
 namespace pa15_lowering_detail
 {

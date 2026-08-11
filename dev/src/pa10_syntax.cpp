@@ -3,6 +3,7 @@
 #include "pa10_syntax_model.h"
 #include "pa10_parser_name_facts.h"
 #include "pa10_parser_token_classification.h"
+#include "pa25_range_for_syntax.h"
 #include <algorithm>
 #include <chrono>
 #include <cctype>
@@ -18,9 +19,10 @@ namespace cppgm
 namespace
 {
 using namespace pa10_syntax_detail;
-class Parser : private ParserNameFacts<Parser>
+class Parser : private ParserNameFacts<Parser>, private pa25_syntax_detail::RangeForSyntax<Parser>
 {
 friend class ParserNameFacts<Parser>;
+friend class pa25_syntax_detail::RangeForSyntax<Parser>;
 public:
 	Parser(const std::vector<SyntaxToken>& tokens, StringTable& strings,
 		SyntaxArena& arena, SyntaxStats* stats)
@@ -1832,7 +1834,6 @@ NodeId Parser::ParseCompoundStatement()
 	RestoreNameFacts(fact_mark); --compound_depth_;
 	return compound;
 }
-
 NodeId Parser::ParseStatement()
 {
 	SkipAttributes();
@@ -1927,8 +1928,10 @@ NodeId Parser::ParseStatement()
 	if (Match(KW_FOR))
 	{
 		const std::size_t for_fact_mark = name_fact_changes_.size();
-		const NodeId statement = arena_.Make("for-statement");
 		Expect(OP_LPAREN);
+		const NodeId range_statement = TryParseRangeForStatement(for_fact_mark);
+		if (range_statement != kNoNode) return range_statement;
+		const NodeId statement = arena_.Make("for-statement");
 		const NodeId initial = arena_.Make("for-init-statement");
 		NodeId initial_value = kNoNode;
 		const Mark declaration_mark = Checkpoint();
@@ -2060,7 +2063,6 @@ NodeId Parser::ParseStatement()
 	arena_.Add(statement, expression);
 	return statement;
 }
-
 NodeId Parser::ParseNamespace()
 {
 	bool is_inline = Match(KW_INLINE);
@@ -2095,7 +2097,6 @@ NodeId Parser::ParseNamespace()
 	Expect(OP_RBRACE);
 	return declaration;
 }
-
 NodeId Parser::ParseUsing()
 {
 	if (!Match(KW_USING)) return kNoNode;
@@ -2137,7 +2138,6 @@ NodeId Parser::ParseUsing()
 		MakeStructuredNode("target", target, structure));
 	return declaration;
 }
-
 NodeId Parser::ParseNestedTemplateParameterClause()
 {
 	const NodeId clause = arena_.Make("template-parameter-clause");

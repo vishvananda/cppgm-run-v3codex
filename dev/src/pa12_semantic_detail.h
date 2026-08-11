@@ -315,6 +315,26 @@ private:
 		std::uint32_t output_parent);
 	void AnalyzeSubstatement(NodeId node, ScopeId scope,
 		std::uint32_t output_parent);
+	void AnalyzeRangeFor(NodeId node, ScopeId scope,
+		std::uint32_t output_parent);
+	NameId NextRangeForHiddenName(const char* prefix);
+	ExpressionInfo MakeRangeForBindingExpression(BindingId binding);
+	BindingId AddRangeForLocal(ScopeId scope, std::uint32_t output_parent,
+		NameId name, TypeId type, ExpressionInfo initializer,
+		bool array_initializer = false);
+	void FinishRangeForLocalInitializer(ScopeId scope,
+		std::uint32_t declaration, TypeId type,
+		const ExpressionInfo& initializer);
+	ExpressionInfo AnalyzeRangeForUnary(const char* operation,
+		const char* display, ExpressionInfo operand, ScopeId scope);
+	ExpressionInfo AnalyzeRangeForSubscript(ExpressionInfo range,
+		ExpressionInfo index, ScopeId scope);
+	ExpressionInfo AnalyzeRangeForMemberCall(ExpressionInfo object,
+		ScopeId scope, const LookupResult& found);
+	ExpressionInfo AnalyzeRangeForAdlCall(ExpressionInfo object,
+		ScopeId scope, NameId name);
+	void AddRangeForLoopVariable(NodeId declaration,
+		ExpressionInfo initializer, ScopeId scope, std::uint32_t output_parent);
 	void AnalyzeCondition(NodeId node, ScopeId scope,
 		std::uint32_t output_parent, bool switch_condition);
 	ConstexprFlow EvaluateConstexprCompound(NodeId node, ScopeId scope,
@@ -1702,6 +1722,7 @@ private:
 	mutable std::size_t empty_destructor_chain_cache_hits_;
 	std::size_t anonymous_enum_count_;
 	std::size_t local_type_count_;
+	std::vector<std::uint32_t> range_for_hidden_count_by_function_;
 };
 
 }

@@ -1,0 +1,512 @@
+#include "pa12_semantic_detail.h"
+
+#include <limits>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+namespace cppgm
+{
+namespace pa12_semantic_detail
+{
+
+NameId SemanticAnalyzer::NextRangeForHiddenName(const char* prefix)
+{
+	if (current_function_context_ == kNoBinding)
+		throw std::logic_error("range-for is not owned by a function");
+	if (range_for_hidden_count_by_function_.size() <= current_function_context_)
+		range_for_hidden_count_by_function_.resize(
+			static_cast<std::size_t>(current_function_context_) + 1, 0);
+	std::uint32_t& count =
+		range_for_hidden_count_by_function_[current_function_context_];
+	if (count == std::numeric_limits<std::uint32_t>::max())
+		throw std::runtime_error("too many range-for hidden objects");
+	return program_->names.Intern(std::string(prefix) +
+		std::to_string(++count));
+}
+
+ExpressionInfo SemanticAnalyzer::MakeRangeForBindingExpression(
+	BindingId binding)
+{
+	if (binding >= program_->bindings.size())
+		throw std::logic_error("invalid range-for binding");
+	const BindingRecord& record = program_->bindings[binding];
+	ExpressionInfo result;
+	result.type = EffectiveType(record.type);
+	result.category = VALUE_LVALUE;
+	result.binding = binding;
+	result.node = MakeDump(DUMP_ID_EXPRESSION, result.type,
+		VALUE_LVALUE, record.name, binding);
+	++expression_count_;
+	return result;
+}
+
+BindingId SemanticAnalyzer::AddRangeForLocal(ScopeId scope,
+	std::uint32_t output_parent, NameId name, TypeId type,
+	ExpressionInfo initializer, bool array_initializer)
+{
+	EnsureClassDefinition(type);
+	if (!array_initializer)
+	{
+		const DumpKind kind = dump_.nodes[initializer.node].kind;
+		if (IsClassObjectType(type) && kind == DUMP_TEMPORARY_OBJECT &&
+			dump_.nodes[initializer.node].first_edge != kNoDumpEdge &&
+			dump_.edges[dump_.nodes[initializer.node].first_edge].next ==
+				kNoDumpEdge)
+		{
+			const std::uint32_t recipe = dump_.edges[
+				dump_.nodes[initializer.node].first_edge].child;
+			if (dump_.nodes[recipe].kind == DUMP_CONSTRUCTOR_ACTION &&
+				dump_.nodes[recipe].operand_type ==
+					program_->types.RemoveTopCv(EffectiveType(type)))
+			{
+				initializer.node = recipe;
+				initializer.type = type;
+				initializer.category = VALUE_NONE;
+			}
+		}
+		else if (IsClassObjectType(type) &&
+			initializer.category == VALUE_PRVALUE &&
+			kind == DUMP_CALL_EXPRESSION &&
+			!dump_.nodes[initializer.node].explicit_user_conversion_call)
+		{
+			const BindingId selected =
+				ValidateClassValueConstruction(type, initializer);
+			initializer = BuildDirectClassValueTransfer(
+				initializer, type, selected);
+		}
+		else if (IsClassObjectType(type) &&
+			program_->types.RemoveTopCv(EffectiveType(initializer.type)) ==
+				program_->types.RemoveTopCv(EffectiveType(type)))
+		{
+			initializer.node = BuildClassValueConstructorAction(type, initializer);
+			initializer.type = type;
+			initializer.category = VALUE_NONE;
+		}
+		else initializer = ApplyTarget(initializer, type);
+		initializer = FinalizeVariableInitializer(
+			initializer, type, EntityOf(type), true);
+	}
+	const BindingId binding = program_->AddBinding(
+		scope, BIND_VARIABLE, name, type);
+	SpecInfo spec;
+	PublishVariableDeclarationFacts(binding, scope, name, type, spec, true);
+	PublishVariableInitializer(binding, type, spec, initializer, false);
+	const std::uint32_t declaration = MakeDump(DUMP_SIMPLE_DECLARATION);
+	const std::uint32_t variable = MakeDump(
+		DUMP_VARIABLE, type, VALUE_NONE, name, binding);
+	dump_.nodes[variable].storage_size =
+		dump_.nodes[initializer.node].storage_size;
+	dump_.nodes[variable].storage_alignment =
+		dump_.nodes[initializer.node].storage_alignment;
+	dump_.Add(variable, initializer.node);
+	dump_.Add(declaration, variable);
+	dump_.Add(output_parent, declaration);
+	RegisterVariableLifetimeAndStorage(scope, true, false, variable,
+		binding, type, 0, 0, 0, HasConstantInitializerFact(initializer));
+	FinishRangeForLocalInitializer(scope, declaration, type, initializer);
+	return binding;
+}
+
+void SemanticAnalyzer::FinishRangeForLocalInitializer(ScopeId scope,
+	std::uint32_t declaration, TypeId type,
+	const ExpressionInfo& initializer)
+{
+	const TypeKind kind = program_->types.Get(type).kind;
+	if (kind != TYPE_LVALUE_REFERENCE && kind != TYPE_RVALUE_REFERENCE)
+	{
+		AppendFullExpressionDestructionActions(initializer.node, declaration);
+		return;
+	}
+	std::vector<std::uint32_t> temporaries;
+	CollectTemporaryObjects(initializer.node, &temporaries);
+	if (temporaries.empty()) return;
+	AddTemporaryLifetimeObligation(scope, temporaries.back());
+	for (std::size_t i = temporaries.size() - 1; i != 0; --i)
+	{
+		const std::uint32_t action =
+			MakeTemporaryDestructorAction(temporaries[i - 1]);
+		if (action != kNoDumpEdge) dump_.Add(declaration, action);
+	}
+}
+
+ExpressionInfo SemanticAnalyzer::AnalyzeRangeForUnary(const char* operation,
+	const char* display, ExpressionInfo operand, ScopeId scope)
+{
+	std::vector<NodeId> syntax(1, kNoNode);
+	std::vector<ExpressionInfo> operands(1, operand);
+	ExpressionInfo overloaded;
+	if (TryAnalyzeOverloadedOperator(operation, scope, syntax, operands,
+		false, kNoType, &overloaded)) return overloaded;
+	(void)ApplyBuiltinUnaryConversion(operation, &operand);
+	TypeId result_type = EffectiveType(operand.type);
+	ValueCategory category = VALUE_PRVALUE;
+	if (std::string(operation) == "*")
+	{
+		const TypeId pointer_type = Decay(result_type);
+		const TypeRecord& pointer = program_->types.Get(pointer_type);
+		if (pointer.kind != TYPE_POINTER)
+			throw std::runtime_error("range iterator is not dereferenceable");
+		result_type = pointer.child;
+		category = VALUE_LVALUE;
+	}
+	else if (std::string(operation) == "++")
+	{
+		if (!IsModifiableLvalue(operand) ||
+			(!IsArithmetic(result_type) && !IsPointer(result_type)) ||
+			(IsPointer(result_type) && !IsPointerToCompleteObject(result_type)))
+			throw std::runtime_error("range iterator is not incrementable");
+		category = VALUE_LVALUE;
+	}
+	else throw std::logic_error("invalid range-for unary operation");
+	const std::uint32_t expression = MakeDump(DUMP_UNARY_EXPRESSION,
+		result_type, category, program_->names.Intern(display));
+	dump_.Add(expression, operand.node);
+	ExpressionInfo result;
+	result.node = expression;
+	result.type = result_type;
+	result.category = category;
+	++expression_count_;
+	return result;
+}
+
+ExpressionInfo SemanticAnalyzer::AnalyzeRangeForSubscript(
+	ExpressionInfo range, ExpressionInfo index, ScopeId)
+{
+	(void)ApplyBuiltinBinaryConversions("[]", &range, &index);
+	if (!IsPointer(Decay(range.type)) && IsPointer(Decay(index.type)))
+		std::swap(range, index);
+	const TypeId pointer_type = Decay(range.type);
+	const TypeRecord& pointer = program_->types.Get(pointer_type);
+	if (pointer.kind != TYPE_POINTER || !IsIntegral(index.type) ||
+		!IsPointerToCompleteObject(pointer_type))
+		throw std::runtime_error("invalid bounded range subscript");
+	const std::uint32_t expression = MakeDump(DUMP_SUBSCRIPT_EXPRESSION,
+		pointer.child, VALUE_LVALUE);
+	dump_.Add(expression, range.node);
+	dump_.Add(expression, index.node);
+	ExpressionInfo result;
+	result.node = expression;
+	result.type = pointer.child;
+	result.category = VALUE_LVALUE;
+	++expression_count_;
+	return result;
+}
+
+ExpressionInfo SemanticAnalyzer::AnalyzeRangeForMemberCall(
+	ExpressionInfo object, ScopeId scope, const LookupResult& found)
+{
+	if (found.ordinary == kNoBinding ||
+		program_->bindings[found.ordinary].kind != BIND_FUNCTION)
+		throw std::runtime_error("range member does not name a function");
+	std::vector<BindingId> candidates = FunctionSet(found.ordinary);
+	if (candidates.empty())
+		throw std::runtime_error("range member has no callable candidates");
+	if (object.category == VALUE_PRVALUE &&
+		dump_.nodes[object.node].kind != DUMP_TEMPORARY_OBJECT)
+		object = MaterializeTemporary(object);
+	ExpressionInfo object_pointer = MakeImplicitObjectPointer(object);
+	const std::vector<NodeId> argument_syntax;
+	const std::vector<ExpressionInfo> arguments;
+	ObjectConversionFact object_conversion;
+	std::vector<CallConversionFact> argument_conversions;
+	const BindingId selected = SelectOverload(scope, argument_syntax,
+		arguments, candidates, &object_pointer, &object_conversion,
+		&argument_conversions);
+	if (selected == kNoBinding)
+		throw std::runtime_error("range member call is ambiguous");
+	DemandRetainedRuntimeCalls(object.node);
+	return BuildResolvedCall(selected, scope, argument_syntax, arguments,
+		&object_pointer, kNoType, found.naming_class, &object_conversion,
+		&argument_conversions);
+}
+
+ExpressionInfo SemanticAnalyzer::AnalyzeRangeForAdlCall(
+	ExpressionInfo object, ScopeId scope, NameId name)
+{
+	std::vector<NodeId> argument_syntax(1, kNoNode);
+	std::vector<ExpressionInfo> arguments(1, object);
+	std::vector<BindingId> candidates;
+	CompleteArgumentDependentCallCandidates(name, 0, scope,
+		argument_syntax, arguments, false, &candidates);
+	if (candidates.empty())
+		throw std::runtime_error("range ADL call has no candidates");
+	std::vector<CallConversionFact> argument_conversions;
+	const BindingId selected = SelectOverload(scope, argument_syntax,
+		arguments, candidates, 0, 0, &argument_conversions);
+	if (selected == kNoBinding)
+		throw std::runtime_error("range ADL call is ambiguous");
+	return BuildResolvedCall(selected, scope, argument_syntax, arguments,
+		0, kNoType, kNoEntity, 0, &argument_conversions);
+}
+
+void SemanticAnalyzer::AddRangeForLoopVariable(NodeId declaration,
+	ExpressionInfo initializer, ScopeId scope, std::uint32_t output_parent)
+{
+	const NodeId specifiers = FindChild(declaration, "decl-specifier-seq");
+	const NodeId declarator = FindChild(declaration, "declarator");
+	if (specifiers == kNoNode || declarator == kNoNode)
+		throw std::runtime_error("invalid range declaration");
+	const SpecInfo spec = BuildSpecifiers(
+		specifiers, scope, std::string(), true);
+	DeclaratorInfo parsed;
+	if (!spec.placeholder_auto)
+		parsed = BuildDeclarator(declarator, spec.type, scope);
+	else
+	{
+		std::string pointer_operator;
+		for (std::uint32_t edge = arena_->FirstEdge(declarator);
+			edge != kNoEdge; edge = arena_->NextEdge(edge))
+		{
+			const NodeId child = arena_->EdgeChild(edge);
+			if (!arena_->IsTag(child, "ptr-operator")) continue;
+			if (!pointer_operator.empty())
+				throw std::runtime_error(
+					"compound placeholder range declarator");
+			pointer_operator = PayloadSource(child);
+		}
+		TypeId base = EffectiveType(initializer.type);
+		if (pointer_operator.empty()) base = Decay(initializer.type);
+		else if (pointer_operator == "&")
+		{
+			if (initializer.category != VALUE_LVALUE &&
+				(spec.placeholder_cv & CV_CONST) == 0)
+				throw std::runtime_error("auto& range variable needs an lvalue");
+		}
+		else if (pointer_operator == "&&")
+		{
+			if (initializer.category == VALUE_LVALUE &&
+				spec.placeholder_cv == CV_NONE)
+				base = program_->types.Reference(TYPE_LVALUE_REFERENCE, base);
+		}
+		else if (pointer_operator == "*")
+		{
+			const TypeRecord& pointer = program_->types.Get(
+				Decay(initializer.type));
+			if (pointer.kind != TYPE_POINTER)
+				throw std::runtime_error("auto* range variable needs a pointer");
+			base = pointer.child;
+		}
+		else throw std::runtime_error(
+			"unsupported placeholder range declarator");
+		base = program_->types.Qualify(base, spec.placeholder_cv);
+		parsed = BuildDeclarator(declarator, base, scope);
+	}
+	if (parsed.name == 0)
+		throw std::runtime_error("unnamed range variable");
+	const TypeKind declared_kind = program_->types.Get(parsed.type).kind;
+	if ((declared_kind == TYPE_LVALUE_REFERENCE ||
+		 declared_kind == TYPE_RVALUE_REFERENCE) &&
+		initializer.category == VALUE_PRVALUE &&
+		dump_.nodes[initializer.node].kind == DUMP_CALL_EXPRESSION &&
+		!IsClassObjectType(initializer.type))
+		dump_.nodes[initializer.node].reference_call_materialization = true;
+	initializer = ApplyTarget(initializer, parsed.type);
+	initializer = FinalizeVariableInitializer(
+		initializer, parsed.type, EntityOf(parsed.type), true);
+	const BindingId binding = program_->AddBinding(
+		scope, BIND_VARIABLE, parsed.name, parsed.type);
+	PublishVariableDeclarationFacts(
+		binding, scope, parsed.name, parsed.type, spec, true);
+	PublishVariableInitializer(binding, parsed.type, spec, initializer, false);
+	const std::uint32_t simple = MakeDump(DUMP_SIMPLE_DECLARATION);
+	const std::uint32_t variable = MakeDump(DUMP_VARIABLE, parsed.type,
+		VALUE_NONE, parsed.name, binding);
+	dump_.Add(variable, initializer.node);
+	dump_.Add(simple, variable);
+	dump_.Add(output_parent, simple);
+	RegisterVariableLifetimeAndStorage(scope, true, false, variable,
+		binding, parsed.type, 0, 0, 0,
+		HasConstantInitializerFact(initializer));
+	FinishRangeForLocalInitializer(scope, simple, parsed.type, initializer);
+}
+
+void SemanticAnalyzer::AnalyzeRangeFor(NodeId node, ScopeId scope,
+	std::uint32_t output_parent)
+{
+	const NodeId declaration = FindChild(node, "range-declaration");
+	const NodeId initializer_node = FindChild(node, "range-initializer");
+	const NodeId initializer_syntax = FirstSemanticChild(initializer_node);
+	if (declaration == kNoNode || initializer_syntax == kNoNode)
+		throw std::runtime_error("invalid range-for statement");
+	NodeId body_syntax = kNoNode;
+	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId child = arena_->EdgeChild(edge);
+		if (child != declaration && child != initializer_node)
+			body_syntax = child;
+	}
+	if (body_syntax == kNoNode)
+		throw std::runtime_error("range-for statement has no body");
+
+	const ScopeId control = NewScope(
+		scope, SCOPE_BLOCK, 0, ScopePrefixId(scope));
+	const std::uint32_t statement = MakeDump(DUMP_FOR_STATEMENT);
+	const std::uint32_t init = MakeDump(DUMP_FOR_INIT_STATEMENT);
+	dump_.Add(statement, init);
+	dump_.Add(output_parent, statement);
+
+	ExpressionInfo range;
+	TypeId range_type = kNoType;
+	const bool braced = arena_->IsTag(initializer_syntax, "braced-init-list");
+	if (braced)
+	{
+		std::vector<ExpressionInfo> elements;
+		for (std::uint32_t edge = arena_->FirstEdge(initializer_syntax);
+			edge != kNoEdge; edge = arena_->NextEdge(edge))
+			elements.push_back(AnalyzeExpression(
+				arena_->EdgeChild(edge), control));
+		if (elements.empty())
+			throw std::runtime_error("empty braced range has no element type");
+		const TypeId element_type = Decay(elements[0].type);
+		range_type = program_->types.Array(element_type, elements.size());
+		const std::uint32_t list = MakeDump(
+			DUMP_BRACED_INIT_LIST, range_type, VALUE_LVALUE);
+		for (std::size_t i = 0; i < elements.size(); ++i)
+			dump_.Add(list, ApplyTarget(elements[i], element_type).node);
+		ExpressionInfo list_value;
+		list_value.node = list;
+		list_value.type = range_type;
+		list_value.category = VALUE_LVALUE;
+		++expression_count_;
+		const NameId name = NextRangeForHiddenName("__range");
+		const BindingId binding = AddRangeForLocal(
+			control, init, name, range_type, list_value, true);
+		range = MakeRangeForBindingExpression(binding);
+	}
+	else
+	{
+		range = AnalyzeExpression(initializer_syntax, control);
+		range_type = program_->types.RemoveTopCv(EffectiveType(range.type));
+		const TypeRecord& shape = program_->types.Get(range_type);
+		const bool stable_lvalue = range.category == VALUE_LVALUE &&
+			dump_.nodes[range.node].kind == DUMP_ID_EXPRESSION;
+		if (!stable_lvalue && shape.kind != TYPE_ARRAY)
+		{
+			const NameId name = NextRangeForHiddenName("__range");
+			const TypeId storage_type = range.category == VALUE_LVALUE ?
+				program_->types.Reference(TYPE_LVALUE_REFERENCE,
+					EffectiveType(range.type)) : EffectiveType(range.type);
+			const BindingId binding = AddRangeForLocal(
+				control, init, name, storage_type, range);
+			range = MakeRangeForBindingExpression(binding);
+			range_type = program_->types.RemoveTopCv(
+				EffectiveType(storage_type));
+		}
+	}
+
+	ExpressionInfo element;
+	const TypeRecord& range_shape = program_->types.Get(range_type);
+	if (range_shape.kind == TYPE_ARRAY)
+	{
+		ExpressionInfo zero = MakeLiteral(
+			program_->types.Fundamental(FUND_INT),
+			program_->names.Intern("0"));
+		zero.constant = true;
+		zero.value = 0;
+		RecordExpressionFacts(zero);
+		const NameId index_name = NextRangeForHiddenName("__idx");
+		const BindingId index_binding = AddRangeForLocal(control, init,
+			index_name, program_->types.Fundamental(FUND_INT), zero);
+		ExpressionInfo index_for_condition =
+			MakeRangeForBindingExpression(index_binding);
+		ExpressionInfo bound = MakeLiteral(
+			program_->types.Fundamental(FUND_INT),
+			program_->names.Intern(std::to_string(range_shape.bound)));
+		bound.constant = true;
+		bound.value = static_cast<std::int64_t>(range_shape.bound);
+		RecordExpressionFacts(bound);
+		ExpressionInfo condition_value = BuildBinaryExpression("<", "OP_LT:<",
+			kNoNode, kNoNode, index_for_condition, bound, control);
+		const std::uint32_t condition = MakeDump(DUMP_CONDITION);
+		dump_.nodes[condition].full_expression_staging = true;
+		dump_.Add(condition, condition_value.node);
+		dump_.Add(statement, condition);
+
+		ExpressionInfo index_for_element =
+			MakeRangeForBindingExpression(index_binding);
+		element = AnalyzeRangeForSubscript(
+			range, index_for_element, control);
+		ExpressionInfo index_for_iteration =
+			MakeRangeForBindingExpression(index_binding);
+		const ExpressionInfo increment = AnalyzeRangeForUnary(
+			"++", "OP_INC:++", index_for_iteration, control);
+		const std::uint32_t iteration = MakeDump(DUMP_ITERATION);
+		dump_.Add(iteration, increment.node);
+		dump_.Add(statement, iteration);
+	}
+	else
+	{
+		const EntityId entity = EntityOf(range_type);
+		if (entity == kNoEntity)
+			throw std::runtime_error("range expression is neither array nor class");
+		EnsureClassDefinition(range_type);
+		const NameId begin_name = program_->names.Intern("begin");
+		const NameId end_name = program_->names.Intern("end");
+		const LookupResult member_begin = program_->LookupMember(
+			entity, begin_name, LOOKUP_ORDINARY);
+		const LookupResult member_end = program_->LookupMember(
+			entity, end_name, LOOKUP_ORDINARY);
+		const bool member_range = member_begin.ordinary != kNoBinding &&
+			member_end.ordinary != kNoBinding;
+		ExpressionInfo begin_value = member_range ?
+			AnalyzeRangeForMemberCall(range, control, member_begin) :
+			AnalyzeRangeForAdlCall(range, control, begin_name);
+		const NameId begin_hidden = NextRangeForHiddenName("__begin");
+		const BindingId begin_binding = AddRangeForLocal(control, init,
+			begin_hidden, Decay(begin_value.type), begin_value);
+		ExpressionInfo end_value = member_range ?
+			AnalyzeRangeForMemberCall(range, control, member_end) :
+			AnalyzeRangeForAdlCall(range, control, end_name);
+		const NameId end_hidden = NextRangeForHiddenName("__end");
+		const BindingId end_binding = AddRangeForLocal(control, init,
+			end_hidden, Decay(end_value.type), end_value);
+
+		ExpressionInfo condition_value = BuildBinaryExpression("!=", "OP_NE:!=",
+			kNoNode, kNoNode, MakeRangeForBindingExpression(begin_binding),
+			MakeRangeForBindingExpression(end_binding), control);
+		const std::uint32_t condition = MakeDump(DUMP_CONDITION);
+		dump_.nodes[condition].full_expression_staging = true;
+		dump_.Add(condition, condition_value.node);
+		dump_.Add(statement, condition);
+		element = AnalyzeRangeForUnary("*", "OP_STAR:*",
+			MakeRangeForBindingExpression(begin_binding), control);
+		const ExpressionInfo increment = AnalyzeRangeForUnary("++", "OP_INC:++",
+			MakeRangeForBindingExpression(begin_binding), control);
+		const std::uint32_t iteration = MakeDump(DUMP_ITERATION);
+		dump_.Add(iteration, increment.node);
+		dump_.Add(statement, iteration);
+	}
+
+	const ScopeId body_scope = NewScope(
+		control, SCOPE_BLOCK, 0, ScopePrefixId(control));
+	const std::uint32_t body = MakeDump(DUMP_COMPOUND_STATEMENT);
+	dump_.Add(statement, body);
+	AddRangeForLoopVariable(declaration, element, body_scope, body);
+	++loop_depth_;
+	break_cleanup_stops_.push_back(control);
+	continue_cleanup_stops_.push_back(control);
+	if (arena_->IsTag(body_syntax, "compound-statement"))
+	{
+		for (std::uint32_t edge = arena_->FirstEdge(body_syntax);
+			edge != kNoEdge; edge = arena_->NextEdge(edge))
+		{
+			const NodeId child = arena_->EdgeChild(edge);
+			if (IsDeclaration(child))
+				AnalyzeDeclaration(child, body_scope, body, true);
+			else AnalyzeStatement(child, body_scope, body);
+		}
+	}
+	else if (IsDeclaration(body_syntax))
+		AnalyzeDeclaration(body_syntax, body_scope, body, true);
+	else AnalyzeStatement(body_syntax, body_scope, body);
+	continue_cleanup_stops_.pop_back();
+	break_cleanup_stops_.pop_back();
+	--loop_depth_;
+	AppendScopeDestructionActions(body_scope, body, control);
+	AppendScopeDestructionActions(control, output_parent, scope);
+}
+
+}
+}

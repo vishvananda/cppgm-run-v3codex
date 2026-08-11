@@ -2628,6 +2628,11 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 		AppendScopeDestructionActions(control, output_parent, scope);
 		return;
 	}
+	if (arena_->IsTag(node, "range-for-statement"))
+	{
+		AnalyzeRangeFor(node, scope, output_parent);
+		return;
+	}
 	if (arena_->IsTag(node, "switch-statement"))
 	{
 		const ScopeId control = NewScope(scope, SCOPE_BLOCK, 0,

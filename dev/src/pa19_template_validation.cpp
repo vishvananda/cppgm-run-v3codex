@@ -964,6 +964,32 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 		VisitSizeof(node, scope);
 		return;
 	}
+	if (analyzer_.arena_->IsTag(node, "range-for-statement"))
+	{
+		const std::size_t control = AddChildScope(scope, SCOPE_BLOCK);
+		const NodeId declaration = analyzer_.FindChild(
+			node, "range-declaration");
+		const NodeId initializer = analyzer_.FindChild(
+			node, "range-initializer");
+		if (declaration == kNoNode || initializer == kNoNode)
+			throw std::runtime_error("invalid retained range-for statement");
+		Visit(initializer, control);
+		Visit(declaration, control);
+		const NodeId declarator = analyzer_.FindChild(
+			declaration, "declarator");
+		if (declarator == kNoNode)
+			throw std::runtime_error("retained range declaration has no declarator");
+		Declare(control, analyzer_.DeclaratorName(declarator),
+			RETAINED_VALUE_NAME);
+		for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
+			edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+		{
+			const NodeId child = analyzer_.arena_->EdgeChild(edge);
+			if (child != declaration && child != initializer)
+				Visit(child, control);
+		}
+		return;
+	}
 	if (analyzer_.arena_->IsTag(node, "compound-statement"))
 	{
 		const std::size_t block = AddChildScope(scope, SCOPE_BLOCK);

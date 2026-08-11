@@ -153,6 +153,12 @@ protected:
 				if (result.kind != LOW_VOID)
 					(void)derived.EnsureGeneratedSlot(current, "call", result);
 			}
+			if (record.kind == DUMP_CALL_EXPRESSION &&
+				record.reference_call_materialization &&
+				record.category == VALUE_PRVALUE &&
+				!derived.UsesIndirectClassResult(record.type, record.binding))
+				(void)derived.EnsureGeneratedSlot(current, "tmpref",
+					derived.LowerStorageType(record.type));
 			const NodeChildren children = derived.Children(current);
 			if (variable_initializer)
 				PlanConstructorReferenceArgumentSlots(record, children);
@@ -225,9 +231,13 @@ protected:
 			}
 			for (std::size_t i = children.size(); i != 0; --i)
 			{
+				const bool range_condition_arguments =
+					record.kind == DUMP_CONDITION &&
+					record.full_expression_staging;
 				pending.push_back(children[i - 1]);
 				under_variable.push_back(variable_initializer ||
-					record.kind == DUMP_VARIABLE ? 1 : 0);
+					record.kind == DUMP_VARIABLE ||
+					range_condition_arguments ? 1 : 0);
 				const DumpNode& child =
 					derived.arena_.nodes[children[i - 1]];
 				const bool expression_call =
@@ -236,6 +246,7 @@ protected:
 				if (expression_call && derived.stats_)
 					++derived.stats_->slot_implicit_object_fact_reads;
 				const bool plan_child_arguments = expression_arguments ||
+					range_condition_arguments ||
 					(expression_call && !child.temporary_implicit_object);
 				plan_expression_arguments.push_back(
 					plan_child_arguments ? 1 : 0);
