@@ -954,7 +954,8 @@ bool SemanticAnalyzer::FormNonTypeTemplateArgumentValue(
 
 void SemanticAnalyzer::ParseTemplateParameters(NodeId list, ScopeId scope,
 	std::vector<TemplateParameter>* parameters,
-	std::vector<NameId>* names, std::vector<NodeId>* defaults)
+	std::vector<NameId>* names, std::vector<NodeId>* defaults,
+	const std::unordered_set<NameId>* enclosing_dependent_names)
 {
 	std::unordered_set<NameId> prior_names;
 	if (list == kNoNode) return;
@@ -979,7 +980,7 @@ void SemanticAnalyzer::ParseTemplateParameters(NodeId list, ScopeId scope,
 				std::vector<NodeId> nested_defaults;
 				ParseTemplateParameters(nested_list, scope,
 					&record.template_parameters, &nested_names,
-					&nested_defaults);
+					&nested_defaults, enclosing_dependent_names);
 			}
 			const NodeId identifier = FindChild(parameter, "identifier");
 			record.name = identifier == kNoNode ? 0 :
@@ -996,6 +997,12 @@ void SemanticAnalyzer::ParseTemplateParameters(NodeId list, ScopeId scope,
 				DeclaratorName(record.declarator);
 			record.dependent_type = SyntaxUsesTemplateParameter(
 				*arena_, record.specifiers, prior_names);
+			if (!record.dependent_type && enclosing_dependent_names)
+				record.dependent_type = SyntaxUsesTemplateParameter(
+					*arena_, record.specifiers, *enclosing_dependent_names) ||
+					(record.declarator != kNoNode &&
+					 SyntaxUsesTemplateParameter(*arena_, record.declarator,
+						*enclosing_dependent_names));
 			if (!record.dependent_type)
 			{
 				const SpecInfo spec = BuildSpecifiers(record.specifiers,

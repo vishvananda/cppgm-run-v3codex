@@ -18,48 +18,45 @@ address/reference formation owns explicit emission demand.
 
 ## Current Failure Map
 
-The report is 378/407, with all `100-*`, `200-*`, and `400-*` tests passing.
-The 29 failures are 11 exits and 18 LowIR mismatches (`300-*`: 15; `500-*`:
-14). By shared behavior and owner they are retained pack/default/alias and
-member-result replay (11), deduction/non-deduced/partial ordering (7),
+The report is 380/407, with all `100-*`, `200-*`, and `400-*` tests passing.
+The 27 failures are 9 exits and 18 LowIR mismatches (`300-*`: 14; `500-*`:
+13). By shared behavior and owner they are retained default/alias and
+member-result replay (9), deduction/non-deduced/partial ordering (7),
 constructor or conversion-function participation and ABI facts (7), and typed
 initializer/emission finalization (4).
 
 ## Active Checkpoint
 
-Dependent candidate result/default replay is the next substantial stable
-boundary and owns 11 failures spanning structured `sizeof...`, alias results,
-constructor-pack defaults, current-specialization defaults, short-circuit
-SFINAE, inherited/member templates, and qualified member results. Per
-`spec.md` sections 2-6 and 9, declaration syntax and lexical owners remain
-retained; canonical specializations own argument partitions and monotonic
-completion; candidate frames own recoverable substitution failure; only the
-selected typed result crosses demand and LowIR. The flow is retained result or
-default -> indexed specialization overlay -> candidate-local substitution ->
+Candidate-default and member-result replay is the next substantial stable
+boundary and owns nine failures spanning alias results, constructor-pack
+defaults, short-circuit SFINAE, inherited/member templates, and qualified
+member results. Per `spec.md` sections 2-6 and 9, template patterns own retained
+defaults and lexical roots, canonical specialization scopes own argument
+partitions, candidate frames own recoverable substitution failure, and lowering
+receives only the selected typed declaration. The flow is retained default or
+result -> indexed specialization overlay -> candidate-local substitution ->
 selected declaration -> demand/lowering. Expected work is O(P+A+C*(F+D)+E)
 for parameters P, arguments A, participating candidates C, deduction facts F,
 dependent replay edges D, and expanded elements E, with O(1)-average indexed
-lookup and no global retry. Validate zero/nonzero packs, nested aliases,
-declaration/member/default scopes, short-circuit failure, selected-only demand,
-1/2/4/8 scaling, sanitizers, PA23, PA1-PA22, and file audit.
+lookup, one replay per complete key, and no global retry. Validate nested aliases
+and constructor defaults, short-circuit failure, selected-only demand, 1/2/4/8
+scaling, sanitizers, PA23, PA1-PA22, and file audit.
 
 ## Performance Evidence
 
-For 1/2/4/8 expanded array elements, semantic nodes were 32/39/53/81,
-lowered nodes 15/19/27/43, temporary dependency visits 16/24/40/72,
-materialized-demand visits 26/30/38/54, and instructions 10/12/16/24.
-Specialization requests stayed 7, argument-list requests 12, and deduction
-visits 4; typed storage was 5,651/6,161/7,181/10,245 bytes. A current empty
-expansion probe records 25 semantic nodes, 11 lowered nodes, 22 materialized
-demand visits, 9 instructions, 5,618 typed-storage bytes, and no globals. The
-static-demand guard records 59 semantic nodes and emits exactly two globals for
-two address/reference demands while two value-only `constexpr`
-specializations emit none; the qualified static pack probe also emits none.
-The storage handoff generalizes existing `DumpNode` fields, so node size does
-not grow. Work is flat or linear in elements and indexed retained definitions,
-without use-site AST scans. The five affected PA21-PA23 probes are
-ASan/UBSan-clean. Gates are PA1-PA22 2,639/2,639, PA23 378/407 with the same 29
-failures, and file-audit pass with 13 inherited warnings.
+For 1/2/4/8 dependent braced constructions in a class base list, tokens were
+94/114/154/234, template scans 3/5/9/17, scanned tokens 21/40/78/154, and the
+maximum scan stayed 17 tokens; parser checkpoints were 192/210/246/318 and
+measured parse time was 105/89/106/130 microseconds. The class-body probe is a
+single forward scan over disjoint balanced brace regions. For enclosing packs
+of 1/2/4/8 types, semantic nodes stayed 27, specialization requests 9, default
+materializations 1, and partial-deduction visits 8; typed storage was
+3,958/3,977/4,015/4,091 bytes and peak stage storage
+108,346/108,687/109,033/109,773 bytes. Work is flat or linear in represented
+syntax and arguments, with concrete pack evaluation deferred to one indexed
+specialization scope. PA23 is 380/407, two gains with no current-stage
+regression; PA1-PA22 are 2,639/2,639 and file audit passes with 13 inherited
+warnings.
 
 ## Completed Checkpoints
 
@@ -94,3 +91,4 @@ failures, and file-audit pass with 13 inherited warnings.
 | Typed designator publication and specialization-owned hidden friends | Outer shapes publish in retained scopes, compound NTTPs defer, deferred results substitute after target deduction, and hidden definitions keep owner-local identity/indexing; three gains, 368 -> 371, no regressions, sanitizer-clean, linear candidate/owner scaling. |
 | Dependent call/result replay and ADL specialization demand | Parameter-dependent results and aliases retain indexed call facts; ADL completes supplied owners; the audit separated exception demand, memoized its state, and repaired canonical post-reentry publication and qualified-name detection; original 371 -> 374, combined 375/406, no regressions, sanitizer-clean, linear scaling. |
 | Zero-cardinality expansion lowering and static-member demand | Typed size/alignment drives automatic, global, and local-static storage without element lifetime actions; retained value-use policy and explicit address/reference demand replace syntax reopening; original 375 -> 377, audit guard 378/407, no regressions, sanitizer-clean, linear scaling. |
+| Retained enclosing-pack dependency and dependent braced construction | Nested parameter types defer enclosing-pack semantics to specialization replay; qualified/template calls bypass speculative type formation; class lookahead crosses balanced initializer braces once; 378 -> 380, no regressions, flat/linear scaling. |

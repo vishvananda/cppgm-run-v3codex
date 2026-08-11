@@ -203,7 +203,8 @@ private:
 		AccessKind member_access);
 	void ParseTemplateParameters(NodeId list, ScopeId scope,
 		std::vector<TemplateParameter>* parameters,
-		std::vector<NameId>* names, std::vector<NodeId>* defaults);
+		std::vector<NameId>* names, std::vector<NodeId>* defaults,
+		const std::unordered_set<NameId>* enclosing_dependent_names = 0);
 	void AnalyzeExplicitInstantiation(NodeId node, ScopeId scope,
 		bool definition);
 	bool AnalyzeExplicitFunctionInstantiation(NodeId target, ScopeId scope,

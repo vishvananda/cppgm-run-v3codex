@@ -972,7 +972,8 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 		std::vector<NameId> names;
 		std::vector<NodeId> defaults;
 		analyzer_.ParseTemplateParameters(list,
-			scopes_[scope].semantic_scope, &parameters, &names, &defaults);
+			scopes_[scope].semantic_scope, &parameters, &names, &defaults,
+			&parameter_names_);
 		const std::size_t template_scope = AddChildScope(
 			scope, SCOPE_TEMPLATE_PARAMETERS, DefersUnknownMembers(scope));
 		std::vector<NameId> introduced;

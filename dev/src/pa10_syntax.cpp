@@ -550,7 +550,7 @@ private:
 		}
 		return true;
 	}
-	bool TemplateArgumentStartsType() const
+	bool TemplateArgumentStartsType()
 	{
 		if (At(KW_TYPENAME) || At(KW_DECLTYPE) || At(KW_CLASS) ||
 			At(KW_STRUCT) || At(KW_UNION) || At(KW_ENUM) || At(KW_CONST) ||
@@ -561,7 +561,7 @@ private:
 				AtOffset(2, OP_RPAREN);
 		if (At(OP_COLON2) ||
 			(AtIdentifier() && AtOffset(1, OP_COLON2)))
-			return QualifiedStartsType();
+			return !StartsQualifiedCallExpression() && QualifiedStartsType();
 		if (!AtIdentifier()) return false;
 		if (AtOffset(1, OP_LBRACE)) return false;
 		const TextId name = tokens_[position_].spelling;
@@ -1315,7 +1315,10 @@ NodeId Parser::ParsePrimaryExpression()
 		NodeId structure = kNoNode;
 		if (!ParseName(&name, true, true, true, &structure))
 			throw Error("expected dependent type name");
-		return MakeStructuredNode("id-expression", name, structure);
+		const NodeId result = MakeStructuredNode(
+			"id-expression", name, structure);
+		arena_.AddFlags(result, SYNTAX_FLAG_TYPENAME);
+		return result;
 	}
 	if (At(OP_LSQUARE))
 	{
@@ -1439,7 +1442,8 @@ NodeId Parser::ParsePostfixSuffixes(NodeId value) {
 	while (true) {
 		if (At(OP_LBRACE) && arena_.IsTag(value, "id-expression") &&
 			(HasNameFact(strings_.Intern(arena_.Payload(value)), kKnownType) ||
-			 arena_.FirstEdge(value) != kNoEdge)) {
+			 arena_.FirstEdge(value) != kNoEdge ||
+			 (arena_.Flags(value) & SYNTAX_FLAG_TYPENAME) != 0)) {
 			const NodeId call = arena_.Make("call-expression");
 			arena_.Add(call, value); arena_.Add(call, ParseBracedInitList());
 			value = call; continue;
@@ -2693,35 +2697,18 @@ bool Parser::StartsStandaloneClassDeclaration()
 	bool result = At(OP_SEMICOLON);
 	if (At(OP_COLON))
 	{
-		std::size_t scan = position_;
-		while (scan < tokens_.size() &&
-			tokens_[scan].Kind() != static_cast<std::uint16_t>(OP_LBRACE) &&
-			tokens_[scan].Kind() != static_cast<std::uint16_t>(OP_SEMICOLON))
-			++scan;
-		if (scan < tokens_.size() &&
-			tokens_[scan].Kind() == static_cast<std::uint16_t>(OP_LBRACE))
-			position_ = scan;
-	}
-	if (At(OP_LBRACE))
-	{
-		std::size_t scan = position_;
-		std::size_t depth = 0;
-		for (; scan < tokens_.size(); ++scan)
+		while (!At(OP_SEMICOLON) && !AtEof())
 		{
-			if (tokens_[scan].Kind() == static_cast<std::uint16_t>(OP_LBRACE))
-				++depth;
-			else if (tokens_[scan].Kind() == static_cast<std::uint16_t>(OP_RBRACE))
-			{
-				if (--depth == 0)
-				{
-					++scan;
-					break;
-				}
-			}
+			while (!At(OP_LBRACE) && !At(OP_SEMICOLON) && !AtEof())
+				++position_;
+			if (At(OP_LBRACE) && !SkipBalanced(OP_LBRACE, OP_RBRACE)) break;
+			if (AtIdentifier() || At(OP_STAR) || At(OP_AMP) || At(OP_LAND) ||
+				At(OP_LPAREN) || At(OP_LSQUARE)) break;
 		}
-		result = scan < tokens_.size() &&
-			tokens_[scan].Kind() == static_cast<std::uint16_t>(OP_SEMICOLON);
+		result = At(OP_SEMICOLON);
 	}
+	else if (At(OP_LBRACE))
+		result = SkipBalanced(OP_LBRACE, OP_RBRACE) && At(OP_SEMICOLON);
 	Rollback(mark);
 	return result;
 }
