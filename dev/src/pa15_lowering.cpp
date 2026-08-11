@@ -2419,7 +2419,7 @@ private:
 		const Operand storage = StorageFor(variable.binding,
 			LowerStorageType(variable.type));
 		if (LowerClassValueInitialization(variable, initializer, storage)) return;
-		if (NeedsAggregateStorageAddress(lowering_namespace_object_, AggregateHasLeaf(initializer), program_.bindings[variable.binding]))
+		if (NeedsClassInitializerStorageAddress(variable, initializer))
 			(void)AddressOfStorage(storage);
 		AggregatePath path;
 		LowerAggregateActions(initializer, storage, &path, Operand());

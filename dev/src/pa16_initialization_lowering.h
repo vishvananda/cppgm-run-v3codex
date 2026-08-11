@@ -22,6 +22,19 @@ template <class Derived>
 class InitializationLowering
 {
 public:
+	bool NeedsClassInitializerStorageAddress(
+		const DumpNode& variable, std::uint32_t initializer) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		const EntityId entity = derived.ClassEntity(variable.type);
+		const bool closure = entity != kNoEntity &&
+			derived.program_.entities[entity].lambda_closure;
+		return closure || NeedsAggregateStorageAddress(
+			derived.lowering_namespace_object_,
+			derived.AggregateHasLeaf(initializer),
+			derived.program_.bindings[variable.binding]);
+	}
+
 	bool ElidesEmptyConversionCallTransfer(
 		const DumpNode& action, const NodeChildren& children) const
 	{

@@ -105,28 +105,6 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCapturelessLambda(NodeId node,
 		throw std::runtime_error(
 			"only captureless lambda expressions are supported in PA22");
 	const NodeId declarator = FindChild(node, "lambda-declarator");
-	bool mutable_call = false;
-	bool nonthrowing = false;
-	if (declarator != kNoNode)
-	{
-		const NodeId parameters = FindChild(declarator, "parameter-clause");
-		if (parameters == kNoNode || FirstSemanticChild(parameters) != kNoNode)
-			throw std::runtime_error(
-				"lambda parameters are outside the PA22 captureless subset");
-		if (FindChild(declarator, "trailing-return-type") != kNoNode)
-			throw std::runtime_error(
-				"lambda trailing return types are outside the PA22 subset");
-		mutable_call = FindChild(declarator, "lambda-specifier") != kNoNode;
-		const NodeId exception = FindChild(
-			declarator, "noexcept-specification");
-		if (exception != kNoNode)
-		{
-			if (FirstSemanticChild(exception) != kNoNode)
-				throw std::runtime_error(
-					"dependent lambda noexcept is outside the PA22 subset");
-			nonthrowing = true;
-		}
-	}
 	const NodeId body = FindChild(node, "compound-statement");
 	if (body == kNoNode)
 		throw std::logic_error("lambda expression has no retained body");
@@ -151,6 +129,33 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCapturelessLambda(NodeId node,
 	}
 	else
 	{
+		bool mutable_call = false;
+		bool nonthrowing = false;
+		bool variadic_call = false;
+		std::vector<ParameterInfo> call_parameters;
+		NodeId parameter_clause = kNoNode;
+		NodeId trailing_return = kNoNode;
+		if (declarator != kNoNode)
+		{
+			parameter_clause = FindChild(declarator, "parameter-clause");
+			if (parameter_clause == kNoNode)
+				throw std::logic_error(
+					"lambda declarator has no parameter clause");
+			call_parameters = BuildParameters(
+				parameter_clause, scope, &variadic_call);
+			trailing_return = FindChild(declarator, "trailing-return-type");
+			mutable_call =
+				FindChild(declarator, "lambda-specifier") != kNoNode;
+			const NodeId exception = FindChild(
+				declarator, "noexcept-specification");
+			if (exception != kNoNode)
+			{
+				if (FirstSemanticChild(exception) != kNoNode)
+					throw std::runtime_error(
+						"dependent lambda noexcept is outside the PA22 subset");
+				nonthrowing = true;
+			}
+		}
 		if (lambda_count_by_function_.size() <= enclosing)
 			lambda_count_by_function_.resize(
 				static_cast<std::size_t>(enclosing) + 1, 0);
@@ -198,12 +203,38 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCapturelessLambda(NodeId node,
 			entity_layout_members_.resize(static_cast<std::size_t>(entity) + 1);
 		if (entity_constructors_.size() <= entity)
 			entity_constructors_.resize(static_cast<std::size_t>(entity) + 1);
-		const TypeId void_type = program_->types.Fundamental(FUND_VOID);
-		const TypeId call_type = program_->types.Function(void_type,
-			std::vector<TypeId>(), false, mutable_call ? CV_NONE : CV_CONST);
 		const NameId call_name = program_->names.Intern("operator()");
+		TypeId result_type = program_->types.Fundamental(FUND_VOID);
+		if (trailing_return != kNoNode)
+		{
+			const ScopeId return_scope = NewScope(scope, SCOPE_FUNCTION,
+				call_name, ScopePrefixId(scope));
+			BindFunctionParameterPackElement(return_scope,
+				FunctionParameterPackName(parameter_clause), kNoBinding);
+			for (std::size_t i = 0; i < call_parameters.size(); ++i)
+				if (call_parameters[i].name != 0)
+				{
+					const BindingId parameter = program_->AddBinding(return_scope,
+						BIND_PARAMETER, call_parameters[i].name,
+						ParameterBindingType(call_parameters[i]));
+					BindFunctionParameterPackElement(return_scope,
+						call_parameters[i].pack_name, parameter);
+				}
+			const NodeId type_id = FindChild(trailing_return, "type-id");
+			if (type_id == kNoNode)
+				throw std::runtime_error(
+					"lambda trailing return type is missing its type-id");
+			result_type = BuildTypeId(type_id, return_scope);
+		}
+		std::vector<TypeId> parameter_types;
+		parameter_types.reserve(call_parameters.size());
+		for (std::size_t i = 0; i < call_parameters.size(); ++i)
+			parameter_types.push_back(call_parameters[i].function_type);
+		const TypeId call_type = program_->types.Function(result_type,
+			parameter_types, variadic_call,
+			mutable_call ? CV_NONE : CV_CONST);
 		const BindingId call_operator = DeclareFunction(member_scope, call_name,
-			call_type, std::vector<ParameterInfo>(), true, false,
+			call_type, call_parameters, true, false,
 			STORAGE_CLASS_NONE, LANGUAGE_LINKAGE_CPP, nonthrowing);
 		BindingRecord& call_binding = program_->bindings[call_operator];
 		call_binding.member_owner = entity;
@@ -214,6 +245,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCapturelessLambda(NodeId node,
 		call.definition_body = body;
 		call.deferred = true;
 		call.definition_in_class = true;
+		if (trailing_return == kNoNode)
+			call.placeholder_return_kind = PLACEHOLDER_DECLARATOR_VALUE;
 		RegisterClassMemberFunction(entity, call_operator);
 		PublishInlineFunctionFacts(call_operator, true);
 		(void)EnsureImplicitDestructor(entity);
@@ -221,19 +254,18 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCapturelessLambda(NodeId node,
 		lambda_closures_.push_back(LambdaClosureFact(node, enclosing, entity,
 			call_operator, ordinal));
 		lambda_closure_index_.Ensure(key).Push(fact_index);
+		if (trailing_return == kNoNode)
+			AnalyzeRetainedPlaceholderFunctionBody(call_operator);
 	}
 	const TypeId closure_type =
 		program_->entities[lambda_closures_[fact_index].entity].type;
 	const std::uint32_t initializer = MakeDump(
 		DUMP_BRACED_INIT_LIST, closure_type, VALUE_PRVALUE);
-	const std::uint32_t temporary = MakeDump(
-		DUMP_TEMPORARY_OBJECT, closure_type, VALUE_XVALUE);
-	dump_.Add(temporary, initializer);
 	ExpressionInfo result;
-	result.node = temporary;
+	result.node = initializer;
 	result.type = closure_type;
-	result.category = VALUE_XVALUE;
-	expression_count_ += 2;
+	result.category = VALUE_PRVALUE;
+	++expression_count_;
 	return ApplyTarget(result, target);
 }
 
