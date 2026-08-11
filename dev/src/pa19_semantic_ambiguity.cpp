@@ -63,21 +63,8 @@ bool SemanticAnalyzer::AnalyzeRetainedNamedCall(
 	EntityId naming_class = kNoEntity;
 	std::vector<BindingId> candidates =
 		FunctionCallCandidates(scope, spelling, &naming_class, name_syntax);
-	NamePath structured_base;
-	std::vector<TypeId> explicit_arguments;
-	const bool structured_explicit = ParseExplicitTemplateArguments(
-		name_syntax, scope, &structured_base, &explicit_arguments);
-	if (!structured_explicit)
-		structured_base = StructuredNamePath(name_syntax);
-	const bool has_templates = !structured_base.Empty() ?
-		!FindFunctionTemplates(scope, structured_base).empty() :
-		!FindFunctionTemplates(scope, spelling).empty();
-	if (has_templates)
-	{
-		DeduceFunctionTemplates(scope, spelling, arguments, name_syntax);
-		candidates = FunctionCallCandidates(
-			scope, spelling, &naming_class, name_syntax);
-	}
+	CompleteFunctionCallTemplateCandidates(name_syntax, scope, spelling,
+		argument_syntax, arguments, false, &candidates, &naming_class);
 	if (candidates.empty()) return false;
 	bool has_member_candidate = false;
 	for (std::size_t i = 0; i < candidates.size(); ++i)

@@ -18,34 +18,34 @@ demanded nodes (section 9).
 
 ## Current Failure Map
 
-Current state: **401/422** pa24 tests (turn start: 399/422); all **3,049/3,049**
+Current state: **403/422** pa24 tests (turn start: 401/422); all **3,049/3,049**
 tests through pa23 pass.
 
 | Shared behavior and owner | Count | Complete failing set (test basename) |
 | --- | ---: | --- |
-| Deduction, candidate SFINAE, overload ordering, and conversion/initialization selection (`pa19` deduction/instantiation + ordinary call/initialization) | 11 | `member-operator-template-reference-pattern-partial-order`, `constructor-template-const-ref-enable-if-conversion`, `static-cast-rvalue-ref-skips-conversion-operator`, `concrete-enable-if-nontype-parameter-type-sfinae`, `constructor-template-default-constraint-previous-param`, `dependent-typename-member-enable-if-return`, `defaulted-class-template-argument-pack-prefix-deduction`, `constructor-default-pack-partial-ordering`, `trailing-return-expression-sfinae-default-param`, `conversion-function-template-top-cv-sequence`, `out-of-class-conversion-operator-definition` |
+| Deduction, candidate SFINAE, overload ordering, and conversion/initialization selection (`pa19` deduction/instantiation + ordinary call/initialization) | 9 | `member-operator-template-reference-pattern-partial-order`, `constructor-template-const-ref-enable-if-conversion`, `static-cast-rvalue-ref-skips-conversion-operator`, `constructor-template-default-constraint-previous-param`, `dependent-typename-member-enable-if-return`, `defaulted-class-template-argument-pack-prefix-deduction`, `trailing-return-expression-sfinae-default-param`, `conversion-function-template-top-cv-sequence`, `out-of-class-conversion-operator-definition` |
 | Dependent owner/current-specialization, alias, function-type, and pack replay through demand/lowering (`pa19`/`pa22`/`pa23`) | 10 | `alias-template-partial-specialization-default-dependent-arg`, `decorated-template-id-type-argument-pack-replay`, `dependent-function-type-member-specialization`, `member-template-result-pack-preserves-nested-function-pointer-owner`, `out-of-class-partial-member-template-owner-parameter-alias`, `forwarding-pack-function-type-enable-if`, `partial-member-template-trailing-result-scope`, `source-namespace-base-sfinae-chain`, `defaulted-nested-class-argument-partial-specialization`, `defaulted-template-arg-partial-base-completion` |
 
 ## Active Checkpoint
 
-**Retained current-specialization dependency — completed.** A bare primary
-template name in an in-class member signature or qualified out-of-class member
-definition denotes the current specialization. The retained validation scope
-now owns that fact as a canonical `NameId` type declaration: class scopes
-publish their injected name, while qualified members resolve their canonical
-class-template owner and publish its primary name. Validation therefore defers
-the dependent lookup; concrete replay resolves the existing specialization
-through ordinary typed lookup.
+**Default-expression candidate completion and partial ordering — completed.**
+Function-template defaults replay in their declaration-owned substitution
+scope. A qualified static call reached through an alias-specialized owner must
+use semantic structured-owner lookup and the ordinary candidate-completion path;
+after viability, candidate patterns own fixed/required counts and trailing-pack
+facts. Bidirectional comparison lets an empty exemplar pack fit a competing
+pattern's entirely defaulted suffix, while the reverse still has to deduce the
+structured first parameter.
 
-This applies `spec.md` sections 2-5 and 9: primary markers and specializations
-retain distinct identities, retained dependency facts stay scope-owned, and
-validation does not instantiate before concrete bindings exist. Publication is
-O(1)-average and lookup is O(H), where H is retained lexical depth, with no
-specialization creation or global scan. Validation removes
-`common-type-current-specialization-member-return` and
-`defaulted-enable-if-template-parameter-selection`, neighboring injected-name
-and out-of-class-member cases, a current-specialization reference-width probe,
-the full PA24/prior reports, and the file audit.
+This applies `spec.md` sections 3-5 and 9: lookup and partial ordering consume
+canonical owner/candidate facts after substitution, expected rejection remains
+local, and defaults do not introduce an alternate overload path. Candidate
+completion is O(S + C) for structured owner depth S and owner-local candidates
+C; pairwise comparison is O(P), leaving selection O(C^2 P). Validation removes
+`concrete-enable-if-nontype-parameter-type-sfinae` and
+`constructor-default-pack-partial-ordering`, neighboring default/pack and
+constructor ordering tests, a candidate-width scaling probe, the full PA24 and
+through-PA23 reports, and the file audit.
 
 ## Performance Evidence
 
@@ -76,6 +76,12 @@ median 11.535/11.672/11.657/11.779/12.386/13.077/14.761 ms (nine runs each
 after warm-up). Validation time remains linear in the number of retained
 member signatures; each class/qualified owner publishes one scope fact.
 
+Qualified default-expression candidate width 1/2/4/8/16/32 produced lookup
+scope visits 55/60/70/90/130/210, while viable overload candidates stayed at
+three, specialization requests at 12, and default materializations at one.
+Median semantic times were 1.509/1.544/1.602/1.660/1.923/2.318 ms (nine runs);
+owner lookup and time remain linear and rejected arities do not enter ordering.
+
 ## Completed Checkpoints
 
 | Checkpoint | Commit | Disposition |
@@ -84,4 +90,5 @@ member signatures; each class/qualified owner publishes one scope fact.
 | Canonical non-type arguments, designators, static-value demand, and variable-template lowering identity | `6b06e092` | Fifteen failures removed; 391/422 pa24, 3,049/3,049 through pa23, audit pass. |
 | Typed construction-entry demand and nontrivial empty-result ABI | `6a1a66c7` | Four failures removed; 395/422 pa24, 3,049/3,049 through pa23, linear depth probe. |
 | Explicit-id ADL and candidate-local deleted/dependent invalidity | `4c694582` | Four failures removed; 399/422 pa24, 3,049/3,049 through pa23, linear ADL-width probe. |
-| Retained current-specialization dependency | this commit | Two failures removed; 401/422 pa24, 3,049/3,049 through pa23, linear reference-width probe. |
+| Retained current-specialization dependency | `739eab0f` | Two failures removed; 401/422 pa24, 3,049/3,049 through pa23, linear reference-width probe. |
+| Default-expression candidate completion and partial ordering | this commit | Two failures removed; 403/422 pa24, 3,049/3,049 through pa23, linear candidate-width probe. |

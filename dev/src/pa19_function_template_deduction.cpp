@@ -329,7 +329,14 @@ bool SemanticAnalyzer::FunctionTemplateParameterListAccepts(
 	}
 	if (exemplar.function_parameter_pack)
 	{
-		if (!pattern.function_parameter_pack) return false;
+		if (!pattern.function_parameter_pack)
+		{
+			// The compared specializations are already viable for the same
+			// use.  Exemplar pack elements fit the pattern's fixed suffix and
+			// any unmatched suffix is entirely defaulted; requiring another pack
+			// here loses the structured-prefix ordering relation.
+			return pattern.required_parameter_count <= exemplar_fixed;
+		}
 		const std::size_t pack_index = pattern_fixed;
 		if ((pack_index >= pattern.function_parameter_nondeduced.size() ||
 			pattern.function_parameter_nondeduced[pack_index] == 0) &&
