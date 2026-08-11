@@ -523,6 +523,8 @@ public:
 		LookupKind kind);
 	LookupResult LookupQualified(ScopeId owner, const NamePath& name,
 		LookupKind kind);
+	LookupResult LookupQualifiedCandidate(ScopeId owner, const NamePath& name,
+		LookupKind kind, bool* ambiguous);
 	ScopeId ResolveScope(ScopeId current, const NamePath& name);
 	ScopeId ScopeForType(TypeId type) const;
 	ScopeId ParentScope(ScopeId scope) const;
@@ -586,9 +588,11 @@ private:
 	void InvalidateLookupScope(ScopeId scope);
 	LookupResult DirectLookup(ScopeId scope, NameId name,
 		LookupKind kind) const;
-	void MergeLookup(LookupResult* result,
-		const LookupResult& candidate) const;
+	bool MergeLookup(LookupResult* result,
+		const LookupResult& candidate, bool tolerate_ambiguity = false) const;
 	LookupResult LookupGraph(ScopeId scope, NameId name, LookupKind kind);
+	LookupResult LookupGraphCandidate(ScopeId scope, NameId name,
+		LookupKind kind, bool* ambiguous);
 	LookupResult LookupUnqualified(ScopeId scope, NameId name,
 		LookupKind kind);
 	ScopeId CarrierScope(const LookupResult& result) const;

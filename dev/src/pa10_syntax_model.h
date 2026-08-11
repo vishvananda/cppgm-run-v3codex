@@ -150,8 +150,10 @@ public:
 		std::size_t* max_depth, std::size_t* stack_storage_bytes) const;
 	std::size_t Nodes() const;
 	std::size_t Edges() const;
+	TextId TagId(NodeId node) const;
 	const std::string& Tag(NodeId node) const;
 	bool IsTag(NodeId node, const char* tag) const;
+	TextId PayloadId(NodeId node) const;
 	const std::string& Payload(NodeId node) const;
 	const std::string& SemanticPayload(NodeId node) const;
 	TextId SemanticPayloadId(NodeId node) const;

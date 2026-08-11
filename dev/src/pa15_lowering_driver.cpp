@@ -300,6 +300,20 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 				semantic_stats.template_partition_cache_hits;
 			semantic.template_partition_index_probes +=
 				semantic_stats.template_partition_index_probes;
+			semantic.function_template_result_identity_requests +=
+				semantic_stats.function_template_result_identity_requests;
+			semantic.function_template_result_identity_cache_hits +=
+				semantic_stats.function_template_result_identity_cache_hits;
+			semantic.function_template_result_identity_index_probes +=
+				semantic_stats.function_template_result_identity_index_probes;
+			semantic.function_template_result_identity_atom_visits +=
+				semantic_stats.function_template_result_identity_atom_visits;
+			semantic.function_template_result_identity_syntax_visits +=
+				semantic_stats.function_template_result_identity_syntax_visits;
+			semantic.function_template_result_identity_environment_probes +=
+				semantic_stats.function_template_result_identity_environment_probes;
+			semantic.function_template_result_identity_alias_expansions +=
+				semantic_stats.function_template_result_identity_alias_expansions;
 			semantic.template_partial_candidates +=
 				semantic_stats.template_partial_candidates;
 			semantic.template_partial_order_comparisons +=

@@ -667,6 +667,20 @@ int run_emit_semantics_mode(const vector<string> & args)
 		   << stats.template_partition_cache_hits
 		   << " template_partition_index_probes="
 		   << stats.template_partition_index_probes
+		   << " function_template_result_identity_requests="
+		   << stats.function_template_result_identity_requests
+		   << " function_template_result_identity_cache_hits="
+		   << stats.function_template_result_identity_cache_hits
+		   << " function_template_result_identity_index_probes="
+		   << stats.function_template_result_identity_index_probes
+		   << " function_template_result_identity_atom_visits="
+		   << stats.function_template_result_identity_atom_visits
+		   << " function_template_result_identity_syntax_visits="
+		   << stats.function_template_result_identity_syntax_visits
+		   << " function_template_result_identity_environment_probes="
+		   << stats.function_template_result_identity_environment_probes
+		   << " function_template_result_identity_alias_expansions="
+		   << stats.function_template_result_identity_alias_expansions
 		   << " template_partial_candidates="
 		   << stats.template_partial_candidates
 		   << " template_partial_order_comparisons="
@@ -868,6 +882,20 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << semantic.template_partition_cache_hits
 			 << " template_partition_index_probes="
 			 << semantic.template_partition_index_probes
+			 << " function_template_result_identity_requests="
+			 << semantic.function_template_result_identity_requests
+			 << " function_template_result_identity_cache_hits="
+			 << semantic.function_template_result_identity_cache_hits
+			 << " function_template_result_identity_index_probes="
+			 << semantic.function_template_result_identity_index_probes
+			 << " function_template_result_identity_atom_visits="
+			 << semantic.function_template_result_identity_atom_visits
+			 << " function_template_result_identity_syntax_visits="
+			 << semantic.function_template_result_identity_syntax_visits
+			 << " function_template_result_identity_environment_probes="
+			 << semantic.function_template_result_identity_environment_probes
+			 << " function_template_result_identity_alias_expansions="
+			 << semantic.function_template_result_identity_alias_expansions
 			 << " template_partial_candidates="
 			 << semantic.template_partial_candidates
 			 << " template_partial_order_comparisons="

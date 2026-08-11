@@ -202,6 +202,37 @@ private:
 	std::size_t requests_, cache_hits_, index_probes_;
 };
 
+// Canonical identity for alias-expanded dependent function results. The
+// sequence contains typed compact atoms (node kinds, interned names, canonical
+// declarations, and structural delimiters), never rendered source text.
+class FunctionTemplateResultIdentityTable
+{
+public:
+	FunctionTemplateResultIdentityTable();
+	FunctionTemplateResultIdentityId Intern(
+		const std::vector<std::uint64_t>& atoms);
+	std::size_t Requests() const;
+	std::size_t CacheHits() const;
+	std::size_t IndexProbes() const;
+	std::size_t AtomVisits() const;
+	std::size_t StorageBytes() const;
+
+private:
+	struct Entry
+	{
+		std::uint32_t first, count;
+		std::size_t hash;
+		Entry(std::uint32_t first_value, std::uint32_t count_value,
+			std::size_t hash_value)
+			: first(first_value), count(count_value), hash(hash_value) {}
+	};
+	void Rehash(std::size_t capacity);
+	std::vector<std::uint64_t> atoms_;
+	std::vector<Entry> entries_;
+	std::vector<std::uint32_t> slots_;
+	std::size_t requests_, cache_hits_, index_probes_, atom_visits_;
+};
+
 struct TemplateSpecializationKey
 {
 	std::size_t pattern;

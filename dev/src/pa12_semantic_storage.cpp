@@ -74,6 +74,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		retained_call_lookup_states_.capacity() * sizeof(std::uint8_t) +
 		retained_call_naming_classes_.capacity() * sizeof(EntityId) +
 		template_argument_partitions_.StorageBytes() +
+		function_template_result_identities_.StorageBytes() +
 		template_instantiations_.StorageBytes() +
 		function_template_default_requests_.StorageBytes() +
 		lambda_closure_index_.StorageBytes() +

@@ -95,6 +95,13 @@ struct SemanticAnalysisStats
 	std::size_t template_partition_requests;
 	std::size_t template_partition_cache_hits;
 	std::size_t template_partition_index_probes;
+	std::size_t function_template_result_identity_requests;
+	std::size_t function_template_result_identity_cache_hits;
+	std::size_t function_template_result_identity_index_probes;
+	std::size_t function_template_result_identity_atom_visits;
+	std::size_t function_template_result_identity_syntax_visits;
+	std::size_t function_template_result_identity_environment_probes;
+	std::size_t function_template_result_identity_alias_expansions;
 	std::size_t template_partial_candidates;
 	std::size_t template_partial_order_comparisons;
 	std::size_t template_partial_shape_materializations;

@@ -839,6 +839,10 @@ struct FunctionTemplateResultLookupFact
 		  name_space(result.name_space), naming_class(result.naming_class) {}
 };
 
+typedef std::uint32_t FunctionTemplateResultIdentityId;
+const FunctionTemplateResultIdentityId kNoFunctionTemplateResultIdentity =
+	std::numeric_limits<FunctionTemplateResultIdentityId>::max();
+
 inline bool HasTrailingTemplateParameterPack(
 	const std::vector<TemplateParameter>& parameters)
 {
@@ -883,7 +887,9 @@ struct FunctionTemplatePattern
 	NameId result_root_name;
 	BindingId result_root_declaration;
 	ScopeId result_root_namespace;
+	FunctionTemplateResultIdentityId expanded_result_identity;
 	bool result_root_global;
+	bool expanded_result_has_alias;
 	std::vector<BindingId> specialization_bindings;
 	std::vector<TemplateArgument> specialization_arguments;
 	std::vector<std::uint32_t> specialization_argument_offsets;
@@ -915,7 +921,9 @@ struct FunctionTemplatePattern
 		  shape_type(kNoType), required_parameter_count(0),
 		  result_root_structure(kNoNode), result_root_name(0),
 		  result_root_declaration(kNoBinding),
-		  result_root_namespace(kNoScope), result_root_global(false),
+		  result_root_namespace(kNoScope),
+		  expanded_result_identity(kNoFunctionTemplateResultIdentity),
+		  result_root_global(false), expanded_result_has_alias(false),
 		  language_linkage(LANGUAGE_LINKAGE_CPP), member_access(ACCESS_PUBLIC),
 		  defined(false), ordinary_visible(true), definition_in_class(false),
 		  nonthrowing(false), dependent_exception_specification(false),

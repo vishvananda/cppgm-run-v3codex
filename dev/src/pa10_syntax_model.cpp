@@ -384,6 +384,11 @@ const std::string& SyntaxArena::Tag(NodeId node) const
 	return strings_.Get(nodes_[node].tag);
 }
 
+TextId SyntaxArena::TagId(NodeId node) const
+{
+	return nodes_[node].tag;
+}
+
 bool SyntaxArena::IsTag(NodeId node, const char* tag) const
 {
 	return nodes_[node].tag == strings_.Intern(tag);
@@ -392,6 +397,11 @@ bool SyntaxArena::IsTag(NodeId node, const char* tag) const
 const std::string& SyntaxArena::Payload(NodeId node) const
 {
 	return strings_.Get(nodes_[node].payload);
+}
+
+TextId SyntaxArena::PayloadId(NodeId node) const
+{
+	return nodes_[node].payload;
 }
 
 const std::string& SyntaxArena::SemanticPayload(NodeId node) const

@@ -626,16 +626,33 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 	if (name_edge == kNoEdge)
 		throw std::runtime_error("invalid member call expression");
 	ExpressionInfo object = AnalyzeExpression(arena_->EdgeChild(object_edge), scope);
+	if (CandidateSubstitutionFailed())
+	{
+		*result = ExpressionInfo();
+		return true;
+	}
 	const bool arrow = PayloadSource(callee) == "->";
 	TypeId owner_type = EffectiveType(object.type);
 	if (arrow)
 		owner_type = ResolveArrowOperand(
 			&object, scope, arena_->EdgeChild(object_edge));
+	if (CandidateSubstitutionFailed())
+	{
+		*result = ExpressionInfo();
+		return true;
+	}
 	EnsureClassDefinition(owner_type);
 	const EntityId entity = EntityOf(owner_type);
 	if (entity == kNoEntity ||
 		program_->entities[entity].member_scope == kNoScope)
+	{
+		if (CandidateSubstitutionActive())
+		{
+			*result = CandidateSubstitutionFailure();
+			return true;
+		}
 		throw std::runtime_error("member call on non-class object");
+	}
 	const NodeId identifier = arena_->EdgeChild(name_edge);
 	const std::string member_spelling = arena_->Payload(identifier);
 	const NodeId member_structure = FindChild(

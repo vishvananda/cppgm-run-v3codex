@@ -164,16 +164,30 @@ bool SemanticAnalyzer::ExpandPackElementScopes(NodeId pattern, ScopeId scope,
 	for (std::size_t source = 0; source < names.size(); ++source)
 	{
 		if (!LookupTemplateArgumentPack(scope, names[source], &packs[source]))
+		{
+			if (CandidateSubstitutionActive())
+			{
+				RecordCandidateSubstitutionFailure();
+				return false;
+			}
 			throw std::runtime_error(
 				"declaration pack expansion requires a template parameter pack");
+		}
 		if (length == std::numeric_limits<std::size_t>::max())
 			length = packs[source].size();
 		else if (length != packs[source].size())
+		{
+			if (CandidateSubstitutionActive())
+			{
+				RecordCandidateSubstitutionFailure();
+				return false;
+			}
 			throw std::runtime_error(
 				"pack expansion operands have different lengths at " +
 				program_->names.Get(names[source]) + ": " +
 				std::to_string(length) + " versus " +
 				std::to_string(packs[source].size()));
+		}
 	}
 	element_scopes->reserve(element_scopes->size() + length);
 	for (std::size_t element = 0; element < length; ++element)
@@ -229,7 +243,14 @@ void SemanticAnalyzer::ExpandExpressionPack(NodeId expansion, ScopeId scope,
 	std::vector<NameId> names;
 	CollectPackExpansionNames(operand, scope, &names);
 	if (names.empty())
+	{
+		if (CandidateSubstitutionActive())
+		{
+			RecordCandidateSubstitutionFailure();
+			return;
+		}
 		throw std::runtime_error("pack expansion contains no unexpanded pack");
+	}
 	std::vector<std::vector<TemplateArgument> > template_packs(names.size());
 	std::vector<std::vector<BindingId> > function_packs(names.size());
 	std::vector<std::vector<std::size_t> > constexpr_packs(names.size());
@@ -253,8 +274,15 @@ void SemanticAnalyzer::ExpandExpressionPack(NodeId expansion, ScopeId scope,
 		if (length == std::numeric_limits<std::size_t>::max())
 			length = source_length;
 		else if (length != source_length)
+		{
+			if (CandidateSubstitutionActive())
+			{
+				RecordCandidateSubstitutionFailure();
+				return;
+			}
 			throw std::runtime_error(
 				"pack expansion operands have different lengths");
+		}
 	}
 	for (std::size_t element = 0; element < length; ++element)
 	{
@@ -302,6 +330,7 @@ void SemanticAnalyzer::ExpandExpressionPack(NodeId expansion, ScopeId scope,
 		syntax->push_back(kNoNode);
 		expressions->push_back(AnalyzeExpression(operand, element_scope));
 		if (needs_constexpr_block) PopConstexprBlock();
+		if (CandidateSubstitutionFailed()) return;
 	}
 }
 
@@ -327,6 +356,11 @@ bool SemanticAnalyzer::TryAnalyzeExpandedBracedInit(
 		{
 			syntax.push_back(child);
 			values.push_back(AnalyzeExpression(child, scope));
+		}
+		if (CandidateSubstitutionFailed())
+		{
+			*result = ExpressionInfo();
+			return true;
 		}
 	}
 	TypeId object = program_->types.RemoveTopCv(target);
@@ -471,9 +505,11 @@ bool SemanticAnalyzer::ExpandCallArgumentPacks(
 		{
 			syntax->push_back(input[i]);
 			arguments->push_back(AnalyzeUntypedCallArgument(input[i], scope));
+			if (CandidateSubstitutionFailed()) return true;
 			continue;
 		}
 		ExpandExpressionPack(input[i], scope, syntax, arguments);
+		if (CandidateSubstitutionFailed()) return true;
 	}
 	return true;
 }

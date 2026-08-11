@@ -1126,6 +1126,7 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 			else argument = ApplyCallArgument(argument, parameters[a],
 				argument_conversions && a < argument_conversions->size() ?
 					&(*argument_conversions)[a] : 0);
+			if (CandidateSubstitutionFailed()) return ExpressionInfo();
 			constexpr_arguments.push_back(argument);
 		}
 		else if (IsClassObjectType(argument.type))
@@ -1257,13 +1258,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 		target, &member_call)) return member_call;
 	if (AnalyzeDirectMemberCall(callee_syntax, scope, argument_syntax,
 		target, &member_call)) return member_call;
-	if (ExpandCallArgumentPacks(argument_syntax, scope,
-		&argument_syntax, &analyzed_arguments)) arguments_analyzed = true;
+	if (ExpandCallArgumentPacks(argument_syntax, scope, &argument_syntax,
+		&analyzed_arguments)) arguments_analyzed = true;
+	if (CandidateSubstitutionFailed()) return ExpressionInfo();
 	std::size_t constexpr_callee_local = 0;
 	const bool local_callable =
 		arena_->IsTag(direct_callee_syntax, "id-expression") &&
-		FindChild(direct_callee_syntax, "structured-type-name") == kNoNode &&
-		arena_->Payload(direct_callee_syntax).find("::") == std::string::npos &&
+		FindChild(direct_callee_syntax, "structured-type-name") == kNoNode && arena_->Payload(direct_callee_syntax).find("::") == std::string::npos &&
 		FindConstexprLocal(program_->names.Intern(
 			arena_->Payload(direct_callee_syntax)), &constexpr_callee_local);
 	if (arena_->IsTag(direct_callee_syntax, "id-expression") &&
@@ -1411,8 +1412,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 			CollectExplicitTemplateArguments(direct_callee_syntax,
 				&explicit_base, &explicit_arguments))
 			return CandidateSubstitutionFailure();
-		if (retained_lookup) return CandidateExpressionFailure(
-			"retained call has no viable function");
+		if (retained_lookup) return CandidateExpressionFailure("retained call has no viable function");
 	}
 	ExpressionInfo callee = AnalyzeExpression(callee_syntax, scope);
 	if (CandidateSubstitutionFailed()) return ExpressionInfo();
@@ -1465,6 +1465,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 		if (a < callable.parameter_count)
 			argument = MaterializeCallArgument(
 				argument_syntax[a], scope, parameters[a], argument);
+		if (CandidateSubstitutionFailed()) return ExpressionInfo();
 		dump_.Add(call, argument.node);
 	}
 	ExpressionInfo result;
@@ -1678,91 +1679,6 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSubscript(NodeId node, ScopeId scope)
 			RecordExpressionFacts(result);
 		}
 	}
-	++expression_count_;
-	return result;
-}
-
-ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
-{
-	const NodeId operand = FirstSemanticChild(node);
-	if (operand == kNoNode) throw std::runtime_error("empty sizeof");
-	TypeId measured = kNoType;
-	if (arena_->IsTag(operand, "type-id"))
-	{
-		const NodeId specifiers = FindChild(operand, "type-specifier-seq");
-		const NodeId name = specifiers == kNoNode ? kNoNode :
-			FirstSemanticChild(specifiers);
-		const NodeId declarator = FindChild(operand, "abstract-declarator");
-		const NodeId clause = declarator == kNoNode ? kNoNode :
-			FindChild(declarator, "parameter-clause");
-		NamePath base;
-		std::vector<TypeId> explicit_arguments;
-		const bool ambiguous_function_call = name != kNoNode &&
-			arena_->IsTag(name, "type-name") && clause != kNoNode &&
-			FirstSemanticChild(clause) == kNoNode &&
-			ParseExplicitTemplateArguments(
-				name, scope, &base, &explicit_arguments);
-		if (ambiguous_function_call)
-		{
-			const std::vector<std::size_t> patterns =
-				FindFunctionTemplates(scope, base);
-			std::vector<BindingId> candidates;
-			const std::vector<ExpressionInfo> no_arguments;
-			DeduceFunctionTemplatePatterns(patterns, no_arguments,
-				&candidates, &explicit_arguments);
-			if (candidates.size() == 1)
-				measured = program_->types.Get(
-					GetFunction(candidates[0]).type).child;
-			else if (!candidates.empty())
-				throw std::runtime_error(
-					"ambiguous function template in sizeof expression");
-		}
-		if (measured == kNoType) measured = BuildTypeId(operand, scope);
-	}
-	else if (arena_->IsTag(operand, "id-expression"))
-	{
-		const std::string spelling = arena_->Payload(operand);
-		const NodeId structure = FindChild(operand, "structured-type-name");
-		const LookupResult ordinary = structure != kNoNode ?
-			LookupStructuredName(operand, scope, LOOKUP_ORDINARY) :
-			LookupSpelling(scope, spelling, LOOKUP_ORDINARY);
-		if (ordinary.ordinary == kNoBinding)
-		{
-			const LookupResult type = structure != kNoNode ?
-				LookupStructuredName(operand, scope, LOOKUP_TYPE) :
-				LookupSpelling(scope, spelling, LOOKUP_TYPE);
-			if (type.type != kNoType) measured = type.type;
-		}
-		else measured = EffectiveType(
-			program_->bindings[ordinary.ordinary].type);
-	}
-	if (measured == kNoType)
-	{
-		++unevaluated_depth_;
-		try
-		{
-			measured = EffectiveType(AnalyzeExpression(operand, scope).type);
-		}
-		catch (...)
-		{
-			--unevaluated_depth_;
-			throw;
-		}
-		--unevaluated_depth_;
-	}
-	measured = EffectiveType(measured);
-	EnsureClassDefinition(measured);
-	const bool alignment_query = arena_->IsTag(node, "type-trait-expression");
-	const std::size_t value = alignment_query ? program_->AlignOf(measured) :
-		program_->SizeOf(measured);
-	ExpressionInfo result;
-	result.type = program_->types.Fundamental(FUND_UNSIGNED_LONG_INT);
-	result.node = MakeDump(DUMP_SIZEOF_EXPRESSION, result.type, VALUE_PRVALUE);
-	dump_.nodes[result.node].template_layout_constant =
-		IsClassTemplateSpecializationContext(EntityOf(measured));
-	result.constant = true;
-	result.value = static_cast<std::int64_t>(value);
-	RecordExpressionFacts(result);
 	++expression_count_;
 	return result;
 }
@@ -2949,6 +2865,14 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 			template_argument_partitions_.CacheHits();
 		stats_->template_partition_index_probes =
 			template_argument_partitions_.IndexProbes();
+		stats_->function_template_result_identity_requests =
+			function_template_result_identities_.Requests();
+		stats_->function_template_result_identity_cache_hits =
+			function_template_result_identities_.CacheHits();
+		stats_->function_template_result_identity_index_probes =
+			function_template_result_identities_.IndexProbes();
+		stats_->function_template_result_identity_atom_visits =
+			function_template_result_identities_.AtomVisits();
 		stats_->template_partial_candidates = template_partial_candidates_;
 		stats_->template_partial_order_comparisons =
 			template_partial_order_comparisons_;

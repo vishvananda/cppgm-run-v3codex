@@ -2041,6 +2041,7 @@ bool SemanticAnalyzer::PlanConstexprConstructorInitializers(
 		if (!positional_base_pack)
 			CollectConstructorInitializers(constructor, entity,
 				constructor.lexical_scope, &syntax, &scopes, &expanded);
+		if (CandidateSubstitutionFailed()) return false;
 
 		const std::vector<BindingId>& members = entity_data_members_[entity];
 		for (std::size_t index = 0; index < syntax.size(); ++index)

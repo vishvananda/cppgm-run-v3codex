@@ -649,7 +649,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 	}
 	else found = LookupSpelling(scope, spelling, LOOKUP_ORDINARY);
 	if (found.ordinary == kNoBinding)
+	{
+		if (CandidateSubstitutionActive()) return CandidateSubstitutionFailure();
 		throw std::runtime_error("unknown expression name: " + spelling);
+	}
 	const BindingRecord& binding = program_->bindings[found.ordinary];
 	if (found.ordinary < variable_template_bindings_.size() &&
 		variable_template_bindings_[found.ordinary] != 0 && binding.constant &&
@@ -670,9 +673,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 		return ApplyTarget(result, target);
 	}
 	if (binding.kind != BIND_VARIABLE && binding.kind != BIND_PARAMETER)
-		throw std::runtime_error("name does not denote a value");
+		return CandidateExpressionFailure("name does not denote a value");
 	if (!CanAccessMember(found.ordinary, found.naming_class))
-		throw std::runtime_error("inaccessible member object");
+		return CandidateExpressionFailure("inaccessible member object");
 	MarkClassTemplateSpecializationUse(binding.member_owner);
 	if (binding.non_static_data_member)
 		return AnalyzeImplicitDataMember(found.ordinary, scope, target,

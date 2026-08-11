@@ -956,15 +956,27 @@ LookupResult SemanticAnalyzer::LookupStructuredTypeSpecifier(
 		return deferred;
 	}
 	LookupResult found;
-	try
-	{
+	if (deferred_type == kNoType)
 		found = LookupStructuredName(syntax, scope, LOOKUP_TYPE);
-	}
-	catch (const std::runtime_error&)
+	else
 	{
-		if (deferred_type == kNoType) throw;
-		found.type = deferred_type;
-		return found;
+		candidate_substitution_failures_.push_back(0);
+		try
+		{
+			found = LookupStructuredName(syntax, scope, LOOKUP_TYPE);
+		}
+		catch (...)
+		{
+			candidate_substitution_failures_.pop_back();
+			throw;
+		}
+		const bool formation_failed = CandidateSubstitutionFailed();
+		candidate_substitution_failures_.pop_back();
+		if (formation_failed)
+		{
+			found.type = deferred_type;
+			return found;
+		}
 	}
 	if (deferred_type != kNoType && found.type != kNoType &&
 		!FunctionTemplateTypeIsDependent(found.type))

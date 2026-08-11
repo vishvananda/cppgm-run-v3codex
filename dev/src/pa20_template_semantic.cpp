@@ -1398,9 +1398,16 @@ bool SemanticAnalyzer::AppendTemplateArgument(
 				static_cast<std::uint32_t>(parameter_index);
 		}
 		else if (!FormNonTypeTemplateArgumentValue(expression, &argument))
+		{
+			if (CandidateSubstitutionActive())
+			{
+				RecordCandidateSubstitutionFailure();
+				return false;
+			}
 			throw std::runtime_error(
 				"non-type template argument is not an integral constant: " +
 				PayloadSource(source));
+		}
 	}
 	arguments->push_back(argument);
 	if (arguments->size() <= fixed)
@@ -1458,6 +1465,7 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 			if (!ExpandPackElementScopes(
 				operand, use_scope, &element_scopes))
 			{
+				if (CandidateSubstitutionFailed()) return false;
 				if (!append_argument(
 					operand, use_scope, dependent_names, false)) return false;
 				arguments->back().pack_expansion = true;
@@ -1495,6 +1503,7 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 		std::vector<ScopeId> element_scopes;
 		if (!ExpandPackElementScopes(type_id, use_scope, &element_scopes))
 		{
+			if (CandidateSubstitutionFailed()) return false;
 			// A retained pack has one symbolic exemplar. The concrete
 			// specialization later replays the same syntax against its ordered
 			// pack environment. This also covers a non-type pack parsed as the
@@ -1587,12 +1596,13 @@ TypeId SemanticAnalyzer::BuildCanonicalTemplateTypeArgument(NodeId type_id,
 			*arena_, type_id, *dependent_names);
 	if (!nondeduced)
 	{
+		if (source_dependent) candidate_substitution_failures_.push_back(0);
+		TypeId result = kNoType;
 		try
 		{
 			// A template argument needs canonical type identity, not the layout
 			// of every class specialization named inside that identity.
 			++class_template_completion_suppressed_depth_;
-			TypeId result = kNoType;
 			try
 			{
 				result = BuildTypeId(type_id, source_scope);
@@ -1603,17 +1613,21 @@ TypeId SemanticAnalyzer::BuildCanonicalTemplateTypeArgument(NodeId type_id,
 				throw;
 			}
 			--class_template_completion_suppressed_depth_;
-			return result;
 		}
-		catch (const std::runtime_error&)
+		catch (...)
 		{
-			// A dependent partial argument is only a shape at declaration time.
-			// Failure to form it against the synthetic shape parameters does not
-			// reject the declaration: selection replays the retained syntax after
-			// deduction and treats a concrete failure as candidate-local SFINAE.
-			if (!source_dependent) throw;
+			if (source_dependent)
+				candidate_substitution_failures_.pop_back();
+			throw;
 		}
+		if (!source_dependent) return result;
+		const bool substitution_failed = CandidateSubstitutionFailed();
+		candidate_substitution_failures_.pop_back();
+		if (!substitution_failed && result != kNoType) return result;
 	}
+	// A dependent partial argument is only a shape at declaration time.
+	// Failure to form it against synthetic shape parameters does not reject the
+	// declaration; selection replays the retained syntax after deduction.
 	return ClassTemplateNondeducedTypeShape();
 }
 

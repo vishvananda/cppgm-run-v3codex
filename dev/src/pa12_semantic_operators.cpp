@@ -11,6 +11,53 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+bool SemanticAnalyzer::IsMeasurableObjectType(
+	TypeId type, bool alignment_query)
+{
+	std::size_t multiplier = 1;
+	while (true)
+	{
+		type = program_->types.RemoveTopCv(EffectiveType(type));
+		const TypeRecord record = program_->types.Get(type);
+		if (record.kind == TYPE_ARRAY)
+		{
+			if (!alignment_query &&
+				(record.dependent_bound_parameter != kNoTemplateParameter ||
+				 record.bound == 0 ||
+				 record.bound > std::numeric_limits<std::size_t>::max() ||
+				 multiplier > std::numeric_limits<std::size_t>::max() /
+					static_cast<std::size_t>(record.bound)))
+				return false;
+			if (!alignment_query)
+				multiplier *= static_cast<std::size_t>(record.bound);
+			type = record.child;
+			continue;
+		}
+		if (record.kind == TYPE_FUNDAMENTAL)
+			return record.fundamental != FUND_VOID;
+		if (record.kind == TYPE_POINTER ||
+			record.kind == TYPE_LVALUE_REFERENCE ||
+			record.kind == TYPE_RVALUE_REFERENCE ||
+			record.kind == TYPE_MEMBER_POINTER)
+			return true;
+		if (record.kind != TYPE_NAMED) return false;
+		EnsureClassDefinition(type);
+		const EntityRecord& entity = program_->entities[record.entity];
+		if (!entity.complete) return false;
+		if (entity.flavor == NAMED_ENUM || entity.flavor == NAMED_ENUM_CLASS)
+		{
+			type = entity.underlying;
+			continue;
+		}
+		const std::uint64_t extent = alignment_query ?
+			entity.object_alignment : entity.object_size;
+		if (!entity.layout_complete || extent == 0) return false;
+		return alignment_query ||
+			multiplier <= std::numeric_limits<std::size_t>::max() /
+				static_cast<std::size_t>(extent);
+	}
+}
+
 bool SemanticAnalyzer::IsPointerToCompleteObject(TypeId type)
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
@@ -38,19 +85,94 @@ bool SemanticAnalyzer::IsPointerToCompleteObject(TypeId type)
 	}
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeUnaryOperand(NodeId syntax,
-	ScopeId scope, TypeId target, const std::string& operation)
+ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 {
-	try
+	const NodeId operand = FirstSemanticChild(node);
+	if (operand == kNoNode) throw std::runtime_error("empty sizeof");
+	TypeId measured = kNoType;
+	if (arena_->IsTag(operand, "type-id"))
 	{
-		return AnalyzeExpression(syntax, scope, target);
+		const NodeId specifiers = FindChild(operand, "type-specifier-seq");
+		const NodeId name = specifiers == kNoNode ? kNoNode :
+			FirstSemanticChild(specifiers);
+		const NodeId declarator = FindChild(operand, "abstract-declarator");
+		const NodeId clause = declarator == kNoNode ? kNoNode :
+			FindChild(declarator, "parameter-clause");
+		NamePath base;
+		std::vector<TypeId> explicit_arguments;
+		const bool ambiguous_function_call = name != kNoNode &&
+			arena_->IsTag(name, "type-name") && clause != kNoNode &&
+			FirstSemanticChild(clause) == kNoNode &&
+			ParseExplicitTemplateArguments(
+				name, scope, &base, &explicit_arguments);
+		if (ambiguous_function_call)
+		{
+			const std::vector<std::size_t> patterns =
+				FindFunctionTemplates(scope, base);
+			std::vector<BindingId> candidates;
+			const std::vector<ExpressionInfo> no_arguments;
+			DeduceFunctionTemplatePatterns(patterns, no_arguments,
+				&candidates, &explicit_arguments);
+			if (candidates.size() == 1)
+				measured = program_->types.Get(
+					GetFunction(candidates[0]).type).child;
+			else if (!candidates.empty())
+				throw std::runtime_error(
+					"ambiguous function template in sizeof expression");
+		}
+		if (measured == kNoType) measured = BuildTypeId(operand, scope);
 	}
-	catch (const std::runtime_error&)
+	else if (arena_->IsTag(operand, "id-expression"))
 	{
-		if (CandidateSubstitutionActive() && operation == "&" &&
-			target != kNoType) return CandidateSubstitutionFailure();
-		throw;
+		const std::string spelling = arena_->Payload(operand);
+		const NodeId structure = FindChild(operand, "structured-type-name");
+		const LookupResult ordinary = structure != kNoNode ?
+			LookupStructuredName(operand, scope, LOOKUP_ORDINARY) :
+			LookupSpelling(scope, spelling, LOOKUP_ORDINARY);
+		if (ordinary.ordinary == kNoBinding)
+		{
+			const LookupResult type = structure != kNoNode ?
+				LookupStructuredName(operand, scope, LOOKUP_TYPE) :
+				LookupSpelling(scope, spelling, LOOKUP_TYPE);
+			if (type.type != kNoType) measured = type.type;
+		}
+		else measured = EffectiveType(
+			program_->bindings[ordinary.ordinary].type);
 	}
+	if (measured == kNoType)
+	{
+		++unevaluated_depth_;
+		try
+		{
+			measured = EffectiveType(AnalyzeExpression(operand, scope).type);
+		}
+		catch (...)
+		{
+			--unevaluated_depth_;
+			throw;
+		}
+		--unevaluated_depth_;
+	}
+	const bool alignment_query = arena_->IsTag(node, "type-trait-expression");
+	if (CandidateSubstitutionFailed() || measured == kNoType)
+		return ExpressionInfo();
+	measured = EffectiveType(measured);
+	if (!IsMeasurableObjectType(measured, alignment_query))
+		return CandidateExpressionFailure(
+			alignment_query ? "invalid alignof operand type" :
+			"invalid sizeof operand type");
+	const std::size_t value = alignment_query ? program_->AlignOf(measured) :
+		program_->SizeOf(measured);
+	ExpressionInfo result;
+	result.type = program_->types.Fundamental(FUND_UNSIGNED_LONG_INT);
+	result.node = MakeDump(DUMP_SIZEOF_EXPRESSION, result.type, VALUE_PRVALUE);
+	dump_.nodes[result.node].template_layout_constant =
+		IsClassTemplateSpecializationContext(EntityOf(measured));
+	result.constant = true;
+	result.value = static_cast<std::int64_t>(value);
+	RecordExpressionFacts(result);
+	++expression_count_;
+	return result;
 }
 
 ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
@@ -69,8 +191,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 			operand_target = target_record.child;
 	}
 	const NodeId operand_syntax = FirstSemanticChild(node);
-	ExpressionInfo operand = AnalyzeUnaryOperand(
-		operand_syntax, scope, operand_target, operation);
+	ExpressionInfo operand = AnalyzeExpression(
+		operand_syntax, scope, operand_target);
 	if (CandidateSubstitutionFailed()) return operand;
 	// Preserve an unresolved overload set until a surrounding call or
 	// constructor supplies the function-pointer target.  The target-directed

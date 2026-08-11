@@ -1020,8 +1020,11 @@ void SemanticAnalyzer::CollectConstructorInitializers(
 		std::vector<ScopeId> element_scopes;
 		if (!ExpandPackElementScopes(
 			initializer, function_scope, &element_scopes))
+		{
+			if (CandidateSubstitutionFailed()) return;
 			throw std::runtime_error(
 				"constructor pack expansion contains no unexpanded pack");
+		}
 		for (std::size_t element = 0;
 			element < element_scopes.size(); ++element)
 		{
@@ -1057,6 +1060,7 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 	std::vector<std::uint8_t> initializer_expanded;
 	CollectConstructorInitializers(constructor, entity, function_scope,
 		&initializer_syntax, &initializer_scopes, &initializer_expanded);
+	if (CandidateSubstitutionFailed()) return;
 	const std::size_t initializer_count = initializer_syntax.size();
 	if (constructor.inherited_constructor_source != kNoBinding)
 	{

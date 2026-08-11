@@ -228,6 +228,7 @@ bool SemanticAnalyzer::CollectClassDirectBases(NodeId clause, ScopeId scope,
 		{
 			if (!ExpandPackElementScopes(base_name, scope, &base_scopes))
 			{
+				if (CandidateSubstitutionFailed()) return false;
 				const NameId pack_name = program_->names.Intern(
 					PayloadSource(base_name));
 				if (entity >= class_template_pattern_by_entity_.size() ||
@@ -1943,20 +1944,19 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 		const NodeId specifiers = FindChild(child, "decl-specifier-seq");
 		const NodeId declarator = FindChild(child, "declarator");
 		const bool nondeduced_type = template_parameter_names != 0 &&
-			HasDependentQualifiedType(
-				specifiers, *template_parameter_names, parameter_scope);
-		const TypeId deferred_type = nondeduced_type ?
-			FunctionTemplateNondeducedTypeShape() : kNoType;
+			HasDependentQualifiedType(specifiers, *template_parameter_names, parameter_scope);
+		const TypeId deferred_type = nondeduced_type ? FunctionTemplateNondeducedTypeShape() : kNoType;
 		const bool declared_pack = declarator != kNoNode &&
 			FindChild(declarator, "parameter-pack") != kNoNode;
 		if (declared_pack)
 		{
 			std::vector<ScopeId> element_scopes;
-			if (ExpandPackElementScopes(child, parameter_scope, &element_scopes))
+			const bool expanded = ExpandPackElementScopes(child, parameter_scope, &element_scopes);
+			if (CandidateSubstitutionFailed()) return result;
+			if (expanded)
 			{
 				const NameId parameter_pack_name = DeclaratorName(declarator);
-				const std::string parameter_pack_spelling = parameter_pack_name == 0 ?
-					std::string() : program_->names.Get(parameter_pack_name);
+				const std::string parameter_pack_spelling = parameter_pack_name == 0 ? std::string() : program_->names.Get(parameter_pack_name);
 				for (std::size_t i = 0; i < element_scopes.size(); ++i)
 				{
 					const SpecInfo element_spec = BuildSpecifiers(

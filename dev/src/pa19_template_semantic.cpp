@@ -493,7 +493,18 @@ LookupResult SemanticAnalyzer::LookupStructuredName(NodeId syntax,
 		{
 			NamePath direct;
 			direct.Push(component);
-			found = program_->LookupQualified(
+			if (CandidateSubstitutionActive())
+			{
+				bool ambiguous = false;
+				found = program_->LookupQualifiedCandidate(
+					carrier, direct, component_kind, &ambiguous);
+				if (ambiguous)
+				{
+					RecordCandidateSubstitutionFailure();
+					return LookupResult();
+				}
+			}
+			else found = program_->LookupQualified(
 				carrier, direct, component_kind);
 		}
 		if (argument_list == kNoNode &&
@@ -2452,16 +2463,21 @@ std::size_t SemanticAnalyzer::SelectClassTemplatePartial(
 					bindings.fixed_arguments[parameter]);
 			std::vector<TemplateArgument> replayed;
 			bool valid = false;
+			candidate_substitution_failures_.push_back(0);
 			try
 			{
 				valid = BuildTemplateArguments(pattern.parameters,
 					candidate.arguments, substitution_scope,
 					candidate.lexical_scope, &replayed);
 			}
-			catch (const std::runtime_error&)
+			catch (...)
 			{
-				valid = false;
+				candidate_substitution_failures_.pop_back();
+				throw;
 			}
+			const bool substitution_failed = CandidateSubstitutionFailed();
+			candidate_substitution_failures_.pop_back();
+			if (substitution_failed) valid = false;
 			if (!valid || replayed != arguments) continue;
 		}
 		matches.push_back(candidate_index);

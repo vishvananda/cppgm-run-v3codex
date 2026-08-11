@@ -1134,7 +1134,7 @@ ExpressionInfo SemanticAnalyzer::ApplyCallArgument(
 		CallConversion(value, target, 0, 0);
 	bool converted_by_function = false;
 	if (resolved.rank == CONVERSION_INVALID)
-		throw std::runtime_error("invalid implicit call conversion");
+		return CandidateExpressionFailure("invalid implicit call conversion");
 	if (resolved.rank == CONVERSION_USER_DEFINED)
 	{
 		if (resolved.conversion_function != kNoBinding)

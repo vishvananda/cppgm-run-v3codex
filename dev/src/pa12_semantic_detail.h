@@ -667,6 +667,8 @@ private:
 	bool EquivalentExpandedFunctionTemplateResults(
 		const FunctionTemplatePattern& left,
 		const FunctionTemplatePattern& right);
+	void InternExpandedFunctionTemplateResult(
+		FunctionTemplatePattern* pattern);
 	void PublishFunctionTemplateSpecialMemberRole(
 		const FunctionTemplatePattern& pattern, BindingId binding,
 		EntityId member_owner, TypeId function_type);
@@ -921,8 +923,6 @@ private:
 	void AppendHiddenFriendCandidates(EntityId owner, NameId name,
 		const std::vector<ExpressionInfo>& arguments, bool enum_operator_only,
 		std::vector<BindingId>* candidates);
-	ExpressionInfo AnalyzeUnaryOperand(NodeId syntax, ScopeId scope,
-		TypeId target, const std::string& operation);
 	ExpressionInfo AnalyzeUnary(NodeId node, ScopeId scope,
 		TypeId target = kNoType);
 	ExpressionInfo AnalyzeBinary(NodeId node, ScopeId scope);
@@ -1240,6 +1240,7 @@ private:
 	bool IsFloating(TypeId type) const;
 	bool IsArithmetic(TypeId type) const;
 	bool IsPointer(TypeId type) const;
+	bool IsMeasurableObjectType(TypeId type, bool alignment_query);
 	bool IsPointerToCompleteObject(TypeId type);
 	bool IsNullptr(TypeId type) const;
 	bool IsVoid(TypeId type) const;
@@ -1476,6 +1477,7 @@ private:
 	std::vector<std::uint8_t> retained_call_lookup_states_;
 	std::vector<EntityId> retained_call_naming_classes_;
 	TemplateArgumentPartitionTable template_argument_partitions_;
+	FunctionTemplateResultIdentityTable function_template_result_identities_;
 	TemplateSpecializationTable template_instantiations_;
 	TemplateSpecializationTable function_template_default_requests_;
 	IndexedSequenceTable lambda_closure_index_;

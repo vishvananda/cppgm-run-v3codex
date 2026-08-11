@@ -1653,7 +1653,9 @@ bool SemanticAnalyzer::AnalyzeFunctionId(NodeId node, ScopeId scope,
 					CompareFunctionTemplateConstraints(candidate, prior);
 				if (preference > 0) { selected = candidates[i]; continue; }
 				if (preference < 0) continue;
-				throw std::runtime_error("ambiguous overloaded function id");
+				*result = CandidateExpressionFailure(
+					"ambiguous overloaded function id");
+				return true;
 			}
 			selected = candidates[i];
 			if (desired == kNoType && candidates.size() != 1)
@@ -1663,9 +1665,16 @@ bool SemanticAnalyzer::AnalyzeFunctionId(NodeId node, ScopeId scope,
 			}
 		}
 	if (selected == kNoBinding)
-		throw std::runtime_error("no target-matching overloaded function");
+	{
+		*result = CandidateExpressionFailure(
+			"no target-matching overloaded function");
+		return true;
+	}
 	if (!CanAccessMember(selected, naming_class))
-		throw std::runtime_error("inaccessible member function");
+	{
+		*result = CandidateExpressionFailure("inaccessible member function");
+		return true;
+	}
 	const FunctionInfo& function = GetFunction(selected);
 	const BindingId emission_binding =
 		program_->bindings[selected].canonical;

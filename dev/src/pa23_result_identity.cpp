@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <functional>
 #include <limits>
-#include <string>
+#include <utility>
 #include <vector>
 
 namespace cppgm
@@ -17,8 +17,8 @@ struct ResultSyntaxEnvironment;
 
 struct ResultSyntaxReference
 {
-	// Alias expansion borrows immutable syntax and carries only the lexical
-	// scope and substitution environment that give that syntax meaning.
+	// Alias expansion borrows immutable syntax. Environments are immutable,
+	// parent-linked overlays whose lifetime is one identity-formation request.
 	NodeId node;
 	ScopeId scope;
 	const ResultSyntaxEnvironment* environment;
@@ -30,77 +30,110 @@ struct ResultSyntaxReference
 		  environment(environment_value) {}
 };
 
-struct ResultSyntaxBinding
+struct ResultSyntaxEnvironment
 {
+	const ResultSyntaxEnvironment* parent;
 	NameId name;
 	std::vector<ResultSyntaxReference> values;
 
-	explicit ResultSyntaxBinding(NameId name_value = 0) : name(name_value) {}
-};
-
-struct ResultSyntaxEnvironment
-{
-	std::vector<ResultSyntaxBinding> bindings;
+	ResultSyntaxEnvironment(const ResultSyntaxEnvironment* parent_value,
+		NameId name_value)
+		: parent(parent_value), name(name_value) {}
 };
 
 const std::vector<ResultSyntaxReference>* FindResultSyntaxBinding(
-	const ResultSyntaxEnvironment* environment, NameId name)
+	const ResultSyntaxEnvironment* environment, NameId name,
+	const std::vector<NameId>& indexed_names, std::size_t* probes)
 {
 	if (!environment || name == 0) return 0;
-	for (std::size_t i = 0; i < environment->bindings.size(); ++i)
-		if (environment->bindings[i].name == name)
-			return &environment->bindings[i].values;
+	std::size_t first = 0, last = indexed_names.size();
+	while (first != last)
+	{
+		if (probes) ++*probes;
+		const std::size_t middle = first + (last - first) / 2;
+		if (indexed_names[middle] < name) first = middle + 1;
+		else last = middle;
+	}
+	if (first == indexed_names.size() || indexed_names[first] != name)
+		return 0;
+	for (const ResultSyntaxEnvironment* frame = environment;
+		frame; frame = frame->parent)
+	{
+		if (probes) ++*probes;
+		if (frame->name == name) return &frame->values;
+	}
 	return 0;
 }
 
-void AppendCanonicalField(std::string* output, const std::string& value)
+void IndexResultSyntaxBinding(std::vector<NameId>* names, NameId name)
 {
-	output->append(std::to_string(value.size()));
-	output->push_back(':');
-	output->append(value);
+	if (name == 0) return;
+	const std::vector<NameId>::iterator position = std::lower_bound(
+		names->begin(), names->end(), name);
+	if (position == names->end() || *position != name)
+		names->insert(position, name);
+}
+
+enum ResultIdentityAtomKind
+{
+	RESULT_IDENTITY_NODE_BEGIN = 1,
+	RESULT_IDENTITY_NODE_PAYLOAD,
+	RESULT_IDENTITY_NODE_END,
+	RESULT_IDENTITY_PARAMETER,
+	RESULT_IDENTITY_SUBSTITUTION_BEGIN,
+	RESULT_IDENTITY_SUBSTITUTION_END,
+	RESULT_IDENTITY_QUALIFIED_BEGIN,
+	RESULT_IDENTITY_QUALIFIED_END,
+	RESULT_IDENTITY_COMPONENT,
+	RESULT_IDENTITY_DECLARATION,
+	RESULT_IDENTITY_ENTITY,
+	RESULT_IDENTITY_ARGUMENTS_BEGIN,
+	RESULT_IDENTITY_ARGUMENTS_END
+};
+
+std::uint64_t ResultIdentityAtom(ResultIdentityAtomKind kind,
+	std::uint64_t value = 0)
+{
+	return (static_cast<std::uint64_t>(kind) << 56) |
+		(value & 0x00ffffffffffffffULL);
 }
 
 }
 
-bool SemanticAnalyzer::EquivalentExpandedFunctionTemplateResults(
-	const FunctionTemplatePattern& left,
-	const FunctionTemplatePattern& right)
+void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
+	FunctionTemplatePattern* pattern)
 {
-	if (left.result_root_structure == kNoNode ||
-		right.result_root_structure == kNoNode) return false;
-	const auto root_names_alias = [this](
-		const FunctionTemplatePattern& pattern) {
-		NamePath name;
-		std::vector<NodeId> arguments;
-		if (!CollectExplicitTemplateArguments(
-			pattern.result_root_structure, &name, &arguments)) return false;
-		const LookupResult marker = LookupPath(
-			pattern.lexical_scope, name, LOOKUP_TYPE);
-		return FindAliasTemplateIndex(marker, name.Last()) <
-			alias_templates_.size();
-	};
-	if (!root_names_alias(left) && !root_names_alias(right)) return false;
-	// Declaration insertion already scans the owner-local overload set. Keep
-	// each fallback comparison bounded by the translation unit's retained graph
-	// even when aliases duplicate parameters or recurse through other aliases.
+	if (!pattern || pattern->result_root_structure == kNoNode) return;
 	const std::size_t nodes = arena_->Nodes();
 	const std::size_t visit_limit = nodes >
 		(std::numeric_limits<std::size_t>::max() - 64) / 4 ?
 		std::numeric_limits<std::size_t>::max() : nodes * 4 + 64;
+	std::size_t environment_probes = 0;
+	std::vector<NameId> environment_names;
+	std::vector<std::pair<NameId, std::size_t> > root_parameters;
+	for (std::size_t parameter = 0;
+		parameter < pattern->parameters.size(); ++parameter)
+		if (pattern->parameters[parameter].name != 0)
+			root_parameters.push_back(std::make_pair(
+				pattern->parameters[parameter].name, parameter));
+	std::sort(root_parameters.begin(), root_parameters.end());
 
-	typedef std::function<bool(const ResultSyntaxReference&, std::string*,
-		std::size_t*, std::size_t*)> RenderFunction;
-	RenderFunction render;
-	const FunctionTemplatePattern* active_root = 0;
+	typedef std::function<bool(const ResultSyntaxReference&,
+		std::vector<std::uint64_t>*, std::size_t*, std::size_t*)>
+		BuildFunction;
+	BuildFunction build;
 
-	const auto root_parameter = [this](NameId name,
-		const FunctionTemplatePattern& pattern) -> std::size_t {
-		for (std::size_t i = 0; i < pattern.parameters.size(); ++i)
-			if (pattern.parameters[i].name == name) return i;
-		return pattern.parameters.size();
+	const auto root_parameter = [&root_parameters, pattern](NameId name)
+		-> std::size_t {
+		const std::vector<std::pair<NameId, std::size_t> >::const_iterator found =
+			std::lower_bound(root_parameters.begin(), root_parameters.end(),
+				std::make_pair(name, static_cast<std::size_t>(0)));
+		return found != root_parameters.end() && found->first == name ?
+			found->second : pattern->parameters.size();
 	};
 
-	const auto direct_pack = [this](const ResultSyntaxReference& reference)
+	const auto direct_pack = [this, &environment_names, &environment_probes](
+		const ResultSyntaxReference& reference)
 		-> const std::vector<ResultSyntaxReference>* {
 		if (reference.node == kNoNode || !reference.environment) return 0;
 		NodeId type = arena_->IsTag(reference.node, "type-id") ?
@@ -121,14 +154,17 @@ bool SemanticAnalyzer::EquivalentExpandedFunctionTemplateResults(
 				FindChild(declarator, "parameter-pack") != kNoNode &&
 				direct_name != 0)
 				return FindResultSyntaxBinding(
-					reference.environment, direct_name);
+					reference.environment, direct_name, environment_names,
+					&environment_probes);
 		}
 		if (!arena_->IsTag(reference.node, "pack-expansion-expression"))
 			return 0;
 		const NodeId operand = FirstSemanticChild(reference.node);
 		const NameId name = operand == kNoNode ? 0 :
 			arena_->SemanticPayloadId(operand);
-		return FindResultSyntaxBinding(reference.environment, name);
+		return FindResultSyntaxBinding(
+			reference.environment, name, environment_names,
+			&environment_probes);
 	};
 
 	const auto collect_arguments = [this, &direct_pack](NodeId list,
@@ -146,31 +182,36 @@ bool SemanticAnalyzer::EquivalentExpandedFunctionTemplateResults(
 		}
 	};
 
-	render = [this, &active_root, &root_parameter, &collect_arguments,
-		&render, visit_limit](const ResultSyntaxReference& reference,
-		std::string* output, std::size_t* visits,
+	build = [this, pattern, &root_parameter, &collect_arguments,
+		&environment_names, &environment_probes, &build, visit_limit](
+		const ResultSyntaxReference& reference,
+		std::vector<std::uint64_t>* atoms, std::size_t* visits,
 		std::size_t* expansions) -> bool {
 		if (++*visits > visit_limit || reference.node == kNoNode) return false;
 		const NameId semantic_name =
 			arena_->SemanticPayloadId(reference.node);
 		const std::vector<ResultSyntaxReference>* substitution =
-			FindResultSyntaxBinding(reference.environment, semantic_name);
+			FindResultSyntaxBinding(reference.environment, semantic_name,
+				environment_names, &environment_probes);
 		if (substitution)
 		{
-			if (substitution->size() != 1) output->append("S[");
+			if (substitution->size() != 1)
+				atoms->push_back(ResultIdentityAtom(
+					RESULT_IDENTITY_SUBSTITUTION_BEGIN,
+					substitution->size()));
 			for (std::size_t i = 0; i < substitution->size(); ++i)
-				if (!render((*substitution)[i], output, visits, expansions))
+				if (!build((*substitution)[i], atoms, visits, expansions))
 					return false;
-			if (substitution->size() != 1) output->push_back(']');
+			if (substitution->size() != 1)
+				atoms->push_back(ResultIdentityAtom(
+					RESULT_IDENTITY_SUBSTITUTION_END));
 			return true;
 		}
-		if (!active_root) return false;
-		const FunctionTemplatePattern& root = *active_root;
-		const std::size_t parameter = root_parameter(semantic_name, root);
-		if (parameter < root.parameters.size())
+		const std::size_t parameter = root_parameter(semantic_name);
+		if (parameter < pattern->parameters.size())
 		{
-			output->append("P");
-			output->append(std::to_string(parameter));
+			atoms->push_back(ResultIdentityAtom(
+				RESULT_IDENTITY_PARAMETER, parameter));
 			return true;
 		}
 
@@ -186,19 +227,20 @@ bool SemanticAnalyzer::EquivalentExpandedFunctionTemplateResults(
 			{
 				const NameId name = arena_->SemanticPayloadId(components[0]);
 				const std::vector<ResultSyntaxReference>* bound =
-					FindResultSyntaxBinding(reference.environment, name);
+					FindResultSyntaxBinding(reference.environment, name,
+						environment_names, &environment_probes);
 				if (bound)
 				{
 					for (std::size_t i = 0; i < bound->size(); ++i)
-						if (!render((*bound)[i], output, visits, expansions))
+						if (!build((*bound)[i], atoms, visits, expansions))
 							return false;
 					return true;
 				}
-				const std::size_t ordinal = root_parameter(name, root);
-				if (ordinal < root.parameters.size())
+				const std::size_t ordinal = root_parameter(name);
+				if (ordinal < pattern->parameters.size())
 				{
-					output->append("P");
-					output->append(std::to_string(ordinal));
+					atoms->push_back(ResultIdentityAtom(
+						RESULT_IDENTITY_PARAMETER, ordinal));
 					return true;
 				}
 			}
@@ -214,65 +256,70 @@ bool SemanticAnalyzer::EquivalentExpandedFunctionTemplateResults(
 					marker, alias_name.Last());
 				if (alias < alias_templates_.size())
 				{
-					const AliasTemplatePattern& pattern = alias_templates_[alias];
+					const AliasTemplatePattern& alias_pattern =
+						alias_templates_[alias];
 					std::vector<ResultSyntaxReference> arguments;
 					const NodeId terminal_list = FindChild(
 						components.back(), "template-type-argument-list");
 					collect_arguments(terminal_list, reference, &arguments);
-					ResultSyntaxEnvironment environment;
-					environment.bindings.reserve(pattern.parameters.size());
+					std::vector<ResultSyntaxEnvironment> frames;
+					frames.reserve(alias_pattern.parameters.size());
+					const ResultSyntaxEnvironment* environment =
+						reference.environment;
 					std::size_t argument = 0;
-					for (std::size_t p = 0; p < pattern.parameters.size(); ++p)
+					for (std::size_t p = 0;
+						p < alias_pattern.parameters.size(); ++p)
 					{
-						environment.bindings.push_back(
-							ResultSyntaxBinding(pattern.parameters[p].name));
-						ResultSyntaxBinding& binding = environment.bindings.back();
-						if (pattern.parameters[p].pack)
+						frames.push_back(ResultSyntaxEnvironment(
+							environment, alias_pattern.parameters[p].name));
+						IndexResultSyntaxBinding(&environment_names,
+							alias_pattern.parameters[p].name);
+						ResultSyntaxEnvironment& frame = frames.back();
+						if (alias_pattern.parameters[p].pack)
 						{
-							binding.values.insert(binding.values.end(),
+							frame.values.insert(frame.values.end(),
 								arguments.begin() + argument, arguments.end());
 							argument = arguments.size();
 						}
 						else if (argument < arguments.size())
-							binding.values.push_back(arguments[argument++]);
-						else if (pattern.parameters[p].default_argument != kNoNode)
-							binding.values.push_back(ResultSyntaxReference(
-								pattern.parameters[p].default_argument,
-								pattern.lexical_scope, &environment));
+							frame.values.push_back(arguments[argument++]);
+						else if (alias_pattern.parameters[p].default_argument !=
+							kNoNode)
+							frame.values.push_back(ResultSyntaxReference(
+								alias_pattern.parameters[p].default_argument,
+								alias_pattern.lexical_scope, environment));
 						else return false;
+						environment = &frame;
 					}
 					if (argument != arguments.size()) return false;
 					++*expansions;
-					return render(ResultSyntaxReference(pattern.type_id,
-						pattern.lexical_scope, &environment), output,
+					return build(ResultSyntaxReference(alias_pattern.type_id,
+						alias_pattern.lexical_scope, environment), atoms,
 						visits, expansions);
 				}
 			}
 
-			// Bind canonical declaration identity as well as spelling. Equal alias
-			// expansions from different lexical owners must remain distinct.
-			output->append("Q{");
-			if (FindChild(reference.node, "global-qualifier") != kNoNode)
-				output->append("G;");
+			atoms->push_back(ResultIdentityAtom(
+				RESULT_IDENTITY_QUALIFIED_BEGIN,
+				FindChild(reference.node, "global-qualifier") != kNoNode));
 			for (std::size_t c = 0; c < components.size(); ++c)
 			{
 				const NameId name = arena_->SemanticPayloadId(components[c]);
-				const LookupResult marker = LookupSpelling(reference.scope,
-					program_->names.Get(name), LOOKUP_TYPE);
-				output->append("C");
-				AppendCanonicalField(output, program_->names.Get(name));
+				NamePath component_path;
+				component_path.Push(name);
+				const LookupResult marker = LookupPath(
+					reference.scope, component_path, LOOKUP_TYPE);
+				atoms->push_back(ResultIdentityAtom(
+					RESULT_IDENTITY_COMPONENT, name));
 				if (marker.type_declaration != kNoBinding)
-				{
-					output->append("D");
-					output->append(std::to_string(program_->bindings[
-						marker.type_declaration].canonical));
-				}
+					atoms->push_back(ResultIdentityAtom(
+						RESULT_IDENTITY_DECLARATION,
+						program_->bindings[
+							marker.type_declaration].canonical));
 				else if (marker.type != kNoType &&
 					EntityOf(marker.type) != kNoEntity)
-				{
-					output->append("E");
-					output->append(std::to_string(EntityOf(marker.type)));
-				}
+					atoms->push_back(ResultIdentityAtom(
+						RESULT_IDENTITY_ENTITY, EntityOf(marker.type)));
 				const NodeId list = FindChild(
 					components[c], "template-type-argument-list");
 				if (list == kNoNode) continue;
@@ -280,43 +327,53 @@ bool SemanticAnalyzer::EquivalentExpandedFunctionTemplateResults(
 				collect_arguments(list, reference, &arguments);
 				const std::size_t class_index =
 					FindClassTemplateIndex(marker, name);
-				ResultSyntaxEnvironment defaults;
+				std::vector<ResultSyntaxEnvironment> defaults;
 				if (class_index < class_templates_.size())
 				{
-					const ClassTemplatePattern& pattern =
+					const ClassTemplatePattern& class_pattern =
 						class_templates_[class_index];
-					defaults.bindings.reserve(pattern.parameters.size());
+					defaults.reserve(class_pattern.parameters.size());
+					const ResultSyntaxEnvironment* environment =
+						reference.environment;
 					std::size_t argument = 0;
-					for (std::size_t p = 0; p < pattern.parameters.size(); ++p)
+					for (std::size_t p = 0;
+						p < class_pattern.parameters.size(); ++p)
 					{
-						defaults.bindings.push_back(
-							ResultSyntaxBinding(pattern.parameters[p].name));
-						ResultSyntaxBinding& binding = defaults.bindings.back();
-						if (pattern.parameters[p].pack)
+						defaults.push_back(ResultSyntaxEnvironment(
+							environment, class_pattern.parameters[p].name));
+						IndexResultSyntaxBinding(&environment_names,
+							class_pattern.parameters[p].name);
+						ResultSyntaxEnvironment& frame = defaults.back();
+						if (class_pattern.parameters[p].pack)
 						{
-							binding.values.insert(binding.values.end(),
+							frame.values.insert(frame.values.end(),
 								arguments.begin() + argument, arguments.end());
 							argument = arguments.size();
 						}
 						else if (argument < arguments.size())
-							binding.values.push_back(arguments[argument++]);
-						else if (pattern.parameters[p].default_argument != kNoNode)
+							frame.values.push_back(arguments[argument++]);
+						else if (class_pattern.parameters[p].default_argument !=
+							kNoNode)
 						{
 							ResultSyntaxReference value(
-								pattern.parameters[p].default_argument,
-								pattern.lexical_scope, &defaults);
-							binding.values.push_back(value);
+								class_pattern.parameters[p].default_argument,
+								class_pattern.lexical_scope, environment);
+							frame.values.push_back(value);
 							arguments.push_back(value);
 						}
+						environment = &frame;
 					}
 				}
-				output->push_back('[');
+				atoms->push_back(ResultIdentityAtom(
+					RESULT_IDENTITY_ARGUMENTS_BEGIN));
 				for (std::size_t a = 0; a < arguments.size(); ++a)
-					if (!render(arguments[a], output, visits, expansions))
+					if (!build(arguments[a], atoms, visits, expansions))
 						return false;
-				output->push_back(']');
+				atoms->push_back(ResultIdentityAtom(
+					RESULT_IDENTITY_ARGUMENTS_END));
 			}
-			output->push_back('}');
+			atoms->push_back(ResultIdentityAtom(
+				RESULT_IDENTITY_QUALIFIED_END));
 			return true;
 		}
 
@@ -332,37 +389,50 @@ bool SemanticAnalyzer::EquivalentExpandedFunctionTemplateResults(
 				reference.node, "structured-type-name"));
 		if (!transparent)
 		{
-			output->push_back('(');
-			AppendCanonicalField(output, arena_->Tag(reference.node));
+			atoms->push_back(ResultIdentityAtom(
+				RESULT_IDENTITY_NODE_BEGIN, arena_->TagId(reference.node)));
 			const bool structured = arena_->HasDirectChildTag(
 				reference.node, "structured-type-name");
-			const std::string payload = structured ? std::string() :
-				semantic_name == 0 ? arena_->Payload(reference.node) :
-				program_->names.Get(semantic_name);
-			AppendCanonicalField(output, payload);
+			const std::uint64_t payload = structured ? 0 :
+				semantic_name == 0 ? arena_->PayloadId(reference.node) :
+				semantic_name;
+			atoms->push_back(ResultIdentityAtom(
+				RESULT_IDENTITY_NODE_PAYLOAD, payload));
 		}
 		for (std::uint32_t edge = arena_->FirstEdge(reference.node);
 			edge != kNoEdge; edge = arena_->NextEdge(edge))
-			if (!render(ResultSyntaxReference(arena_->EdgeChild(edge),
-				reference.scope, reference.environment), output,
+			if (!build(ResultSyntaxReference(arena_->EdgeChild(edge),
+				reference.scope, reference.environment), atoms,
 				visits, expansions)) return false;
-		if (!transparent) output->push_back(')');
+		if (!transparent)
+			atoms->push_back(ResultIdentityAtom(RESULT_IDENTITY_NODE_END));
 		return true;
 	};
 
-	std::string left_key, right_key;
-	std::size_t left_visits = 0, right_visits = 0;
-	std::size_t left_expansions = 0, right_expansions = 0;
-	active_root = &left;
-	const bool left_formed = render(ResultSyntaxReference(
-		left.result_root_structure, left.lexical_scope),
-		&left_key, &left_visits, &left_expansions);
-	active_root = &right;
-	const bool right_formed = render(ResultSyntaxReference(
-		right.result_root_structure, right.lexical_scope),
-		&right_key, &right_visits, &right_expansions);
-	if (!left_formed || !right_formed) return false;
-	return left_expansions + right_expansions != 0 && left_key == right_key;
+	std::vector<std::uint64_t> atoms;
+	std::size_t visits = 0, expansions = 0;
+	if (!build(ResultSyntaxReference(pattern->result_root_structure,
+		pattern->lexical_scope), &atoms, &visits, &expansions)) return;
+	if (stats_)
+	{
+		stats_->function_template_result_identity_syntax_visits += visits;
+		stats_->function_template_result_identity_environment_probes +=
+			environment_probes;
+		stats_->function_template_result_identity_alias_expansions += expansions;
+	}
+	pattern->expanded_result_identity =
+		function_template_result_identities_.Intern(atoms);
+	pattern->expanded_result_has_alias = expansions != 0;
+}
+
+bool SemanticAnalyzer::EquivalentExpandedFunctionTemplateResults(
+	const FunctionTemplatePattern& left,
+	const FunctionTemplatePattern& right)
+{
+	return (left.expanded_result_has_alias ||
+		right.expanded_result_has_alias) &&
+		left.expanded_result_identity != kNoFunctionTemplateResultIdentity &&
+		left.expanded_result_identity == right.expanded_result_identity;
 }
 
 }

@@ -413,6 +413,101 @@ std::size_t TemplateArgumentPartitionTable::StorageBytes() const
 		slots_.capacity() * sizeof(std::uint32_t);
 }
 
+FunctionTemplateResultIdentityTable::
+	FunctionTemplateResultIdentityTable()
+	: slots_(32, 0), requests_(0), cache_hits_(0), index_probes_(0),
+	  atom_visits_(0)
+{
+}
+
+void FunctionTemplateResultIdentityTable::Rehash(std::size_t capacity)
+{
+	std::vector<std::uint32_t> replacement(capacity, 0);
+	const std::size_t mask = capacity - 1;
+	for (std::size_t i = 0; i < entries_.size(); ++i)
+	{
+		std::size_t slot = entries_[i].hash & mask;
+		while (replacement[slot] != 0) slot = (slot + 1) & mask;
+		replacement[slot] = static_cast<std::uint32_t>(i + 1);
+	}
+	slots_.swap(replacement);
+}
+
+FunctionTemplateResultIdentityId FunctionTemplateResultIdentityTable::Intern(
+	const std::vector<std::uint64_t>& atoms)
+{
+	if (atoms.empty()) return kNoFunctionTemplateResultIdentity;
+	++requests_;
+	atom_visits_ += atoms.size();
+	std::size_t hash = MixHash(0, atoms.size());
+	for (std::size_t i = 0; i < atoms.size(); ++i)
+		hash = MixHash(hash, atoms[i]);
+	if ((entries_.size() + 1) * 10 > slots_.size() * 7)
+		Rehash(slots_.size() * 2);
+	const std::size_t mask = slots_.size() - 1;
+	std::size_t slot = hash & mask;
+	while (slots_[slot] != 0)
+	{
+		++index_probes_;
+		const FunctionTemplateResultIdentityId id = slots_[slot] - 1;
+		const Entry& entry = entries_[id];
+		bool equal = entry.hash == hash && entry.count == atoms.size();
+		for (std::size_t i = 0; equal && i < atoms.size(); ++i)
+		{
+			++atom_visits_;
+			equal = atoms_[entry.first + i] == atoms[i];
+		}
+		if (equal)
+		{
+			++cache_hits_;
+			return id;
+		}
+		slot = (slot + 1) & mask;
+	}
+	++index_probes_;
+	if (entries_.size() >= kNoFunctionTemplateResultIdentity ||
+		atoms.size() > std::numeric_limits<std::uint32_t>::max() ||
+		atoms_.size() >
+			std::numeric_limits<std::uint32_t>::max() - atoms.size())
+		throw std::runtime_error(
+			"too many canonical function-template result identities");
+	const FunctionTemplateResultIdentityId id =
+		static_cast<FunctionTemplateResultIdentityId>(entries_.size());
+	const std::uint32_t first = static_cast<std::uint32_t>(atoms_.size());
+	atoms_.insert(atoms_.end(), atoms.begin(), atoms.end());
+	entries_.push_back(Entry(first,
+		static_cast<std::uint32_t>(atoms.size()), hash));
+	slots_[slot] = id + 1;
+	return id;
+}
+
+std::size_t FunctionTemplateResultIdentityTable::Requests() const
+{
+	return requests_;
+}
+
+std::size_t FunctionTemplateResultIdentityTable::CacheHits() const
+{
+	return cache_hits_;
+}
+
+std::size_t FunctionTemplateResultIdentityTable::IndexProbes() const
+{
+	return index_probes_;
+}
+
+std::size_t FunctionTemplateResultIdentityTable::AtomVisits() const
+{
+	return atom_visits_;
+}
+
+std::size_t FunctionTemplateResultIdentityTable::StorageBytes() const
+{
+	return atoms_.capacity() * sizeof(std::uint64_t) +
+		entries_.capacity() * sizeof(Entry) +
+		slots_.capacity() * sizeof(std::uint32_t);
+}
+
 TemplateSpecializationTable::Entry::Entry(
 	const TemplateSpecializationKey& key_value, BindingId binding_value,
 	TemplateRequestState state_value)

@@ -1860,50 +1860,56 @@ LookupResult Program::DirectLookup(ScopeId scope, NameId name,
 	return result;
 }
 
-void Program::MergeLookup(LookupResult* result,
-	const LookupResult& candidate) const
+bool Program::MergeLookup(LookupResult* result,
+	const LookupResult& candidate, bool tolerate_ambiguity) const
 {
-	if (candidate.Empty()) return;
+	if (candidate.Empty()) return true;
 	if (candidate.HasFunctionTemplateLookup())
 	{
 		if (!result->HasFunctionTemplateLookup())
 		{
 			*result = candidate;
-			return;
+			return true;
 		}
 		for (std::size_t i = 0;
 			i < candidate.FunctionTemplateOwnerCount(); ++i)
 			result->AddFunctionTemplateOwner(
 				candidate.FunctionTemplateOwnerAt(i));
-		return;
+		return true;
 	}
 	if (candidate.HasVariableTemplateLookup())
 	{
 		if (!result->HasVariableTemplateLookup())
 		{
 			*result = candidate;
-			return;
+			return true;
 		}
 		for (std::size_t i = 0;
 			i < candidate.VariableTemplateOwnerCount(); ++i)
 			result->AddVariableTemplateOwner(
 				candidate.VariableTemplateOwnerAt(i));
-		return;
+		return true;
 	}
 	if (result->Empty())
 	{
 		*result = candidate;
-		return;
+		return true;
 	}
 	if (result->name_space != candidate.name_space ||
 		result->type != candidate.type ||
 		result->type_declaration_canonical !=
 			candidate.type_declaration_canonical)
+	{
+		if (tolerate_ambiguity) return false;
 		throw std::runtime_error("ambiguous PA11 lookup");
+	}
 	if (result->ordinary == kNoBinding && candidate.ordinary == kNoBinding)
-		return;
+		return true;
 	if (result->ordinary == kNoBinding || candidate.ordinary == kNoBinding)
+	{
+		if (tolerate_ambiguity) return false;
 		throw std::runtime_error("ambiguous PA11 lookup");
+	}
 	const bool result_functions =
 		bindings[result->ordinary].kind == BIND_FUNCTION;
 	const bool candidate_functions =
@@ -1913,16 +1919,25 @@ void Program::MergeLookup(LookupResult* result,
 		if (result->OrdinaryCount() == 1 && candidate.OrdinaryCount() == 1 &&
 			bindings[result->ordinary].canonical ==
 				bindings[candidate.ordinary].canonical)
-			return;
+			return true;
+		if (tolerate_ambiguity) return false;
 		throw std::runtime_error("ambiguous PA11 lookup");
 	}
 	for (std::size_t i = 0; i < candidate.OrdinaryCount(); ++i)
 		result->AddOrdinary(candidate.OrdinaryAt(i));
+	return true;
 }
 
 LookupResult Program::LookupGraph(ScopeId scope, NameId name,
 	LookupKind kind)
 {
+	return LookupGraphCandidate(scope, name, kind, 0);
+}
+
+LookupResult Program::LookupGraphCandidate(ScopeId scope, NameId name,
+	LookupKind kind, bool* ambiguous)
+{
+	if (ambiguous) *ambiguous = false;
 	RecordLookupDependency(scope);
 	const EntityId scope_entity = scopes_[scope].entity;
 	const EntityId naming_class = scope_entity != kNoEntity &&
@@ -1982,7 +1997,11 @@ LookupResult Program::LookupGraph(ScopeId scope, NameId name,
 		const LookupResult direct = DirectLookup(current, name, kind);
 		if (!direct.Empty())
 		{
-			MergeLookup(&result, direct);
+			if (!MergeLookup(&result, direct, ambiguous != 0))
+			{
+				*ambiguous = true;
+				return LookupResult();
+			}
 			continue;
 		}
 		const EntityId current_entity = scopes_[current].entity;
@@ -2485,16 +2504,24 @@ LookupResult Program::LookupMember(EntityId entity, NameId name,
 LookupResult Program::LookupQualified(ScopeId owner, const NamePath& name,
 	LookupKind kind)
 {
+	return LookupQualifiedCandidate(owner, name, kind, 0);
+}
+
+LookupResult Program::LookupQualifiedCandidate(ScopeId owner,
+	const NamePath& name, LookupKind kind, bool* ambiguous)
+{
+	if (ambiguous) *ambiguous = false;
 	++lookup_queries;
 	if (name.Empty() || owner == kNoScope) return LookupResult();
 	for (std::size_t i = 0; i + 1 < name.Size(); ++i)
 	{
-		const LookupResult carrier =
-			LookupGraph(owner, name[i], LOOKUP_SCOPE_CARRIER);
+		const LookupResult carrier = LookupGraphCandidate(
+			owner, name[i], LOOKUP_SCOPE_CARRIER, ambiguous);
+		if (ambiguous && *ambiguous) return LookupResult();
 		owner = CarrierScope(carrier);
 		if (owner == kNoScope) return LookupResult();
 	}
-	return LookupGraph(owner, name.Last(), kind);
+	return LookupGraphCandidate(owner, name.Last(), kind, ambiguous);
 }
 
 ScopeId Program::ResolveScope(ScopeId current, const NamePath& name)

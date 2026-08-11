@@ -369,6 +369,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		throw;
 	}
 	--class_template_completion_suppressed_depth_;
+	if (CandidateSubstitutionFailed() || target == kNoType)
+		return ExpressionInfo();
 	// Expression analysis can intern more types and reallocate TypeTable storage.
 	// Keep the cast shape by value across the recursive operand analysis.
 	const TypeRecord target_record = program_->types.Get(target);
@@ -383,6 +385,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		function_pointer_target ||
 		unqualified_target_record.kind == TYPE_MEMBER_POINTER ?
 		target : kNoType);
+	if (CandidateSubstitutionFailed()) return ExpressionInfo();
 	const std::string cast_kind = arena_->Payload(node);
 	TypeId constructed_target = target;
 	if (target_record.kind == TYPE_LVALUE_REFERENCE ||

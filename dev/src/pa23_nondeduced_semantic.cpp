@@ -424,6 +424,7 @@ void SemanticAnalyzer::ValidateFunctionTemplatePatternResults(
 			const FunctionTemplateResultLookupFact& right) {
 			return left.syntax == right.syntax;
 		}), pattern->result_lookup_facts.end());
+	InternExpandedFunctionTemplateResult(pattern);
 }
 
 bool SemanticAnalyzer::FindFunctionTemplateResultLookup(NodeId syntax,

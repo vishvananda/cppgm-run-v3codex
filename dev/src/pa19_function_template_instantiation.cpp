@@ -161,55 +161,6 @@ std::size_t TemplateParameterOrdinal(
 	return parameters.size();
 }
 
-std::string NormalizeTemplateOwnerPayload(Program* program, ScopeId scope,
-	const std::vector<TemplateParameter>& parameters,
-	const std::string& source)
-{
-	// Structured template-ids are retained as one payload by the parser. Map
-	// inner parameters to ordinals and owner aliases to canonical type identity.
-	std::string result;
-	result.reserve(source.size());
-	for (std::size_t cursor = 0; cursor < source.size();)
-	{
-		const unsigned char first =
-			static_cast<unsigned char>(source[cursor]);
-		const bool identifier = (first >= 'a' && first <= 'z') ||
-			(first >= 'A' && first <= 'Z') || first == '_';
-		if (!identifier)
-		{
-			result += source[cursor++];
-			continue;
-		}
-		std::size_t end = cursor + 1;
-		while (end < source.size())
-		{
-			const unsigned char character =
-				static_cast<unsigned char>(source[end]);
-			if (!((character >= 'a' && character <= 'z') ||
-				(character >= 'A' && character <= 'Z') ||
-				(character >= '0' && character <= '9') || character == '_'))
-				break;
-			++end;
-		}
-		const std::string token = source.substr(cursor, end - cursor);
-		const NameId name = program->names.Intern(token);
-		const std::size_t parameter =
-			TemplateParameterOrdinal(parameters, name);
-		if (parameter < parameters.size())
-			result += "$p" + std::to_string(parameter);
-		else
-		{
-			const LookupResult lookup =
-				program->LookupName(scope, name, LOOKUP_TYPE);
-			if (lookup.type != kNoType)
-				result += "$t" + std::to_string(lookup.type);
-			else result += token;
-		}
-		cursor = end;
-	}
-	return result;
-}
-
 std::uint32_t NextComparableTemplateSyntaxEdge(const SyntaxArena& arena,
 	std::uint32_t edge, bool ignore_global_qualifier)
 {
@@ -239,7 +190,7 @@ bool EquivalentNormalizedTemplateSyntax(const SyntaxArena& arena,
 		const NodeId left_node = pending.back().first;
 		const NodeId right_node = pending.back().second;
 		pending.pop_back();
-		if (arena.Tag(left_node) != arena.Tag(right_node)) return false;
+		if (arena.TagId(left_node) != arena.TagId(right_node)) return false;
 		const NameId left_name = arena.SemanticPayloadId(left_node);
 		const NameId right_name = arena.SemanticPayloadId(right_node);
 		const std::size_t left_parameter = TemplateParameterOrdinal(
@@ -255,17 +206,17 @@ bool EquivalentNormalizedTemplateSyntax(const SyntaxArena& arena,
 		else
 		{
 			bool structured_wrapper = false;
-			if (arena.IsTag(left_node, "decl-specifier"))
-				for (std::uint32_t edge = arena.FirstEdge(left_node);
-					edge != kNoEdge; edge = arena.NextEdge(edge))
-					if (arena.IsTag(
-						arena.EdgeChild(edge), "structured-type-name"))
-					{
-						structured_wrapper = true;
-						break;
-					}
+			for (std::uint32_t edge = arena.FirstEdge(left_node);
+				edge != kNoEdge; edge = arena.NextEdge(edge))
+				if (arena.IsTag(
+					arena.EdgeChild(edge), "structured-type-name"))
+				{
+					structured_wrapper = true;
+					break;
+				}
 			const bool spelling_differs = left_name != right_name ||
-				arena.Payload(left_node) != arena.Payload(right_node);
+				(left_name == 0 && right_name == 0 &&
+				 arena.PayloadId(left_node) != arena.PayloadId(right_node));
 			bool equivalent_owner_type = false;
 			if (!structured_wrapper && spelling_differs && program &&
 				left_name != 0 && right_name != 0 &&
@@ -277,12 +228,6 @@ bool EquivalentNormalizedTemplateSyntax(const SyntaxArena& arena,
 					right_scope, right_name, LOOKUP_TYPE);
 				equivalent_owner_type = left_lookup.type != kNoType &&
 					left_lookup.type == right_lookup.type;
-				if (!equivalent_owner_type)
-					equivalent_owner_type = NormalizeTemplateOwnerPayload(
-						program, left_scope, left_parameters,
-						arena.Payload(left_node)) ==
-						NormalizeTemplateOwnerPayload(program, right_scope,
-							right_parameters, arena.Payload(right_node));
 			}
 			if (!structured_wrapper && spelling_differs &&
 				!equivalent_owner_type) return false;
@@ -772,7 +717,9 @@ void SemanticAnalyzer::AdoptFunctionTemplateDefinition(
 	retained->result_root_name = incoming->result_root_name;
 	retained->result_root_declaration = incoming->result_root_declaration;
 	retained->result_root_namespace = incoming->result_root_namespace;
+	retained->expanded_result_identity = incoming->expanded_result_identity;
 	retained->result_root_global = incoming->result_root_global;
+	retained->expanded_result_has_alias = incoming->expanded_result_has_alias;
 	retained->definition_body = incoming->definition_body;
 	retained->constructor_initializer = incoming->constructor_initializer;
 	retained->function_parameter_names = incoming->function_parameter_names;
@@ -1693,118 +1640,111 @@ bool SemanticAnalyzer::MaterializeFunctionTemplateDefaults(
 		else BindTemplateArgument(scope, context.parameters[parameter_index],
 			(*completed)[first]);
 	};
-	try
+	for (std::size_t parameter_index = 0;
+		parameter_index < pattern.parameters.size(); ++parameter_index)
 	{
-		for (std::size_t parameter_index = 0;
-			parameter_index < pattern.parameters.size(); ++parameter_index)
+		const TemplateParameter& parameter =
+			pattern.parameters[parameter_index];
+		const std::size_t first = parameter_offsets[parameter_index];
+		const std::size_t last = parameter_offsets[parameter_index + 1];
+		if (parameter.pack)
 		{
-			const TemplateParameter& parameter =
-				pattern.parameters[parameter_index];
-			const std::size_t first = parameter_offsets[parameter_index];
-			const std::size_t last = parameter_offsets[parameter_index + 1];
-			if (parameter.pack)
-			{
-				for (std::size_t argument = first; argument < last; ++argument)
-					if ((*completed)[argument].type == kNoType) return false;
-				for (std::size_t context = 0;
-					context < default_scopes.size(); ++context)
-					if (default_scopes[context] != kNoScope)
-						bind_completed(default_scopes[context],
-							pattern.default_contexts[context], parameter_index);
-				continue;
-			}
-			TemplateArgument& argument = (*completed)[first];
-			if (argument.type != kNoType)
-			{
-				for (std::size_t context = 0;
-					context < default_scopes.size(); ++context)
-					if (default_scopes[context] != kNoScope)
-						bind_completed(default_scopes[context],
-							pattern.default_contexts[context], parameter_index);
-				continue;
-			}
-			if (parameter.default_argument == kNoNode) return false;
-			const std::uint32_t context_index =
-				pattern.default_context_by_parameter[parameter_index];
-			if (context_index == kNoDumpEdge ||
-				context_index >= pattern.default_contexts.size())
-				throw std::logic_error(
-					"function template default has no retained context");
-			const FunctionTemplateDefaultContext& context =
-				pattern.default_contexts[context_index];
-			if (context.parameters.size() != pattern.parameters.size())
-				throw std::logic_error(
-					"function template default context has wrong arity");
-			ScopeId& default_scope = default_scopes[context_index];
-			if (default_scope == kNoScope)
-			{
-				default_scope = NewScope(context.lexical_scope,
-					SCOPE_TEMPLATE_PARAMETERS, 0,
-					ScopePrefixId(context.lexical_scope));
-				for (std::size_t prior = 0; prior < parameter_index; ++prior)
-					bind_completed(default_scope, context, prior);
-			}
-			const TemplateParameter& source_parameter =
-				context.parameters[parameter_index];
-			NodeId source = FirstSemanticChild(
-				source_parameter.default_argument);
-			if (source == kNoNode)
-				throw std::logic_error(
-					"empty function template default argument");
-			if (source_parameter.kind == TEMPLATE_ARGUMENT_TYPE)
-			{
-				NodeId type_id = arena_->IsTag(source, "type-id") ? source :
-					FindChild(source, "type-id");
-				if (type_id == kNoNode) return false;
-				argument.type = BuildTypeId(type_id, default_scope);
-				if (argument.type == kNoType) return false;
-			}
-			else if (source_parameter.kind == TEMPLATE_ARGUMENT_TEMPLATE)
-			{
-				if (!BuildTemplateTemplateArgument(
-					source, default_scope, source_parameter, &argument)) return false;
-			}
-			else
-			{
-				argument.type = ResolveTemplateParameterType(
-					source_parameter, default_scope);
-				if (CandidateSubstitutionFailed() || argument.type == kNoType)
-					return false;
-				++constant_expression_required_depth_;
-				ExpressionInfo value;
-				try
-				{
-					value = AnalyzeExpression(
-						source, default_scope, argument.type);
-				}
-				catch (...)
-				{
-					--constant_expression_required_depth_;
-					throw;
-				}
-				--constant_expression_required_depth_;
-				if (CandidateSubstitutionFailed()) return false;
-				if (!FormNonTypeTemplateArgumentValue(value, &argument))
-				{
-					if (CandidateSubstitutionActive())
-					{
-						RecordCandidateSubstitutionFailure();
-						return false;
-					}
-					throw std::runtime_error(
-						"default non-type function template argument is not constant");
-				}
-			}
-			for (std::size_t retained = 0;
-				retained < default_scopes.size(); ++retained)
-				if (default_scopes[retained] != kNoScope)
-					bind_completed(default_scopes[retained],
-						pattern.default_contexts[retained], parameter_index);
+			for (std::size_t argument = first; argument < last; ++argument)
+				if ((*completed)[argument].type == kNoType) return false;
+			for (std::size_t context = 0;
+				context < default_scopes.size(); ++context)
+				if (default_scopes[context] != kNoScope)
+					bind_completed(default_scopes[context],
+						pattern.default_contexts[context], parameter_index);
+			continue;
 		}
-	}
-	catch (const std::runtime_error&)
-	{
-		return false;
+		TemplateArgument& argument = (*completed)[first];
+		if (argument.type != kNoType)
+		{
+			for (std::size_t context = 0;
+				context < default_scopes.size(); ++context)
+				if (default_scopes[context] != kNoScope)
+					bind_completed(default_scopes[context],
+						pattern.default_contexts[context], parameter_index);
+			continue;
+		}
+		if (parameter.default_argument == kNoNode) return false;
+		const std::uint32_t context_index =
+			pattern.default_context_by_parameter[parameter_index];
+		if (context_index == kNoDumpEdge ||
+			context_index >= pattern.default_contexts.size())
+			throw std::logic_error(
+				"function template default has no retained context");
+		const FunctionTemplateDefaultContext& context =
+			pattern.default_contexts[context_index];
+		if (context.parameters.size() != pattern.parameters.size())
+			throw std::logic_error(
+				"function template default context has wrong arity");
+		ScopeId& default_scope = default_scopes[context_index];
+		if (default_scope == kNoScope)
+		{
+			default_scope = NewScope(context.lexical_scope,
+				SCOPE_TEMPLATE_PARAMETERS, 0,
+				ScopePrefixId(context.lexical_scope));
+			for (std::size_t prior = 0; prior < parameter_index; ++prior)
+				bind_completed(default_scope, context, prior);
+		}
+		const TemplateParameter& source_parameter =
+			context.parameters[parameter_index];
+		NodeId source = FirstSemanticChild(
+			source_parameter.default_argument);
+		if (source == kNoNode)
+			throw std::logic_error(
+				"empty function template default argument");
+		if (source_parameter.kind == TEMPLATE_ARGUMENT_TYPE)
+		{
+			NodeId type_id = arena_->IsTag(source, "type-id") ? source :
+				FindChild(source, "type-id");
+			if (type_id == kNoNode) return false;
+			argument.type = BuildTypeId(type_id, default_scope);
+			if (argument.type == kNoType) return false;
+		}
+		else if (source_parameter.kind == TEMPLATE_ARGUMENT_TEMPLATE)
+		{
+			if (!BuildTemplateTemplateArgument(
+				source, default_scope, source_parameter, &argument)) return false;
+		}
+		else
+		{
+			argument.type = ResolveTemplateParameterType(
+				source_parameter, default_scope);
+			if (CandidateSubstitutionFailed() || argument.type == kNoType)
+				return false;
+			++constant_expression_required_depth_;
+			ExpressionInfo value;
+			try
+			{
+				value = AnalyzeExpression(
+					source, default_scope, argument.type);
+			}
+			catch (...)
+			{
+				--constant_expression_required_depth_;
+				throw;
+			}
+			--constant_expression_required_depth_;
+			if (CandidateSubstitutionFailed()) return false;
+			if (!FormNonTypeTemplateArgumentValue(value, &argument))
+			{
+				if (CandidateSubstitutionActive())
+				{
+					RecordCandidateSubstitutionFailure();
+					return false;
+				}
+				throw std::runtime_error(
+					"default non-type function template argument is not constant");
+			}
+		}
+		for (std::size_t retained = 0;
+			retained < default_scopes.size(); ++retained)
+			if (default_scopes[retained] != kNoScope)
+				bind_completed(default_scopes[retained],
+					pattern.default_contexts[retained], parameter_index);
 	}
 	return true;
 }
@@ -1902,12 +1842,12 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 		parsed = BuildFunctionTemplateSpecializationDeclarator(
 			pattern, template_scope, &spec, &member_owner);
 	}
-	catch (const std::runtime_error&)
+	catch (...)
 	{
 		if (needs_defaults)
 			function_template_default_requests_.SetRequest(
 				request_key, TEMPLATE_REQUEST_FAILED);
-		return kNoBinding;
+		throw;
 	}
 	if (CandidateSubstitutionFailed() || parsed.type == kNoType)
 	{
