@@ -533,24 +533,24 @@ private:
 		output_.symbols[global.symbol].thread_local_storage = thread_local_object;
 		if (thread_local_object)
 			thread_local_objects_.push_back(action_index);
+		bool keep_global_class_address = false;
 		if (!SetExplicitVariableZero(record, &global) &&
 			!static_initializers_.Lower(action, thread_local_object, &global,
-			&needs_global_class_initializer_))
+			&needs_global_class_initializer_, &keep_global_class_address))
 		{
 			static_initializers_.SetZero(action.type, &global);
 			if (thread_local_object)
-			{
 				thread_local_dynamic_[action_index] = 1;
-			}
-			else dynamic_initializers_.push_back(action_index);
+			else namespace_initializers_.push_back(std::make_pair(action_index, true));
 		}
+		else if (keep_global_class_address) namespace_initializers_.push_back(
+			std::make_pair(action_index, false));
 		if (action.destructor != kNoDumpEdge &&
 			!program_.bindings[action.object].thread_local_storage)
 			dynamic_finalizers_.push_back(action_index);
 		if (stats_) ++stats_->globals;
 		return global;
 	}
-
 	SymbolId AddSyntheticSymbol(Symbol::Kind kind, const std::string& proposed,
 		const std::string& object_name, bool internal)
 	{
@@ -2921,7 +2921,7 @@ private:
 	std::vector<SymbolId> literal_symbols_;
 	std::vector<std::uint8_t> temporary_initialized_;
 	std::vector<Operand> temporary_addresses_;
-	std::vector<std::uint32_t> dynamic_initializers_;
+	std::vector<std::pair<std::uint32_t, bool> > namespace_initializers_;
 	std::vector<std::uint32_t> dynamic_finalizers_;
 	std::vector<std::uint32_t> thread_local_objects_;
 	std::vector<SymbolId> thread_local_declarations_;

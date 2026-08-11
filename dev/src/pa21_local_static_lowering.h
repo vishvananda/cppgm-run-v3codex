@@ -186,7 +186,7 @@ protected:
 	void EmitDynamicInitializer()
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		if (derived.dynamic_initializers_.empty() &&
+		if (derived.namespace_initializers_.empty() &&
 			derived.local_static_eager_initializers_.empty() &&
 			!derived.needs_global_class_initializer_) return;
 		const std::string proposed = "__cppgm_init";
@@ -205,9 +205,21 @@ protected:
 		result.initializer = true;
 		derived.BeginSyntheticFunction(&result);
 		derived.lowering_namespace_object_ = true;
-		for (std::size_t i = 0; i < derived.dynamic_initializers_.size(); ++i)
-			derived.LowerStatementNode(derived.graph_.namespace_objects[
-				derived.dynamic_initializers_[i]].variable);
+		for (std::size_t i = 0; i < derived.namespace_initializers_.size(); ++i)
+		{
+			const std::uint32_t action_index =
+				derived.namespace_initializers_[i].first;
+			const NamespaceObjectAction& action =
+				derived.graph_.namespace_objects[action_index];
+			if (derived.namespace_initializers_[i].second)
+				derived.LowerStatementNode(action.variable);
+			else
+			{
+				const DumpNode& variable = derived.arena_.nodes[action.variable];
+				derived.AddressOfStorage(derived.StorageFor(action.object,
+					derived.LowerVariableStorage(variable)));
+			}
+		}
 		for (std::size_t i = 0;
 			i < derived.local_static_eager_initializers_.size(); ++i)
 		{

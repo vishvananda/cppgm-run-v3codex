@@ -18,37 +18,27 @@ demanded nodes (section 9).
 
 ## Current Failure Map
 
-Current state: **413/422** pa24 tests (checkpoint start: 410/422; goal start:
+Current state: **415/422** pa24 tests (checkpoint start: 413/422; goal start:
 368/422); all **3,049/3,049** tests through pa23 pass.
 
 | Shared behavior and owner | Count | Complete failing set (test basename) |
 | --- | ---: | --- |
-| Deduction, candidate SFINAE, overload ordering, and conversion/initialization selection (`pa19` deduction/instantiation + ordinary call/initialization) | 4 | `member-operator-template-reference-pattern-partial-order`, `constructor-template-const-ref-enable-if-conversion`, `defaulted-class-template-argument-pack-prefix-deduction`, `trailing-return-expression-sfinae-default-param` |
-| Dependent owner/current-specialization, alias, function-type, and pack replay through demand/lowering (`pa19`/`pa22`/`pa23`) | 5 | `alias-template-partial-specialization-default-dependent-arg`, `member-template-result-pack-preserves-nested-function-pointer-owner`, `out-of-class-partial-member-template-owner-parameter-alias`, `defaulted-nested-class-argument-partial-specialization`, `defaulted-template-arg-partial-base-completion` |
+| Canonical class defaults, alias expansion, and pack-prefix deduction (`pa19`/`pa20`) | 2 | `alias-template-partial-specialization-default-dependent-arg`, `defaulted-class-template-argument-pack-prefix-deduction` |
+| Function deduction, candidate SFINAE, and partial ordering (`pa19` deduction + ordinary overload resolution) | 3 | `member-operator-template-reference-pattern-partial-order`, `constructor-template-const-ref-enable-if-conversion`, `trailing-return-expression-sfinae-default-param` |
+| Demanded local-static emission identity through retained member owners (`pa22`/`pa23` + typed emission) | 2 | `member-template-result-pack-preserves-nested-function-pointer-owner`, `out-of-class-partial-member-template-owner-parameter-alias` |
 
 ## Active Checkpoint
 
-**Canonical empty-value lifecycle demand and lowering — completed.** PA12
-initialization owns selected constructor actions and the cached empty-chain
-proof; PA16 lowering and slot planning own the payload boundary. The flow is
-`selected call or namespace initializer -> typed action/category/provenance ->
-demand -> LowIR`. Destination-owned trivial empty copies omit a
-reference-valued call source, and direct empty transfers omit a user-conversion
-call only for a trivially default-constructible target. Prvalue producers,
-nontrivial empty-layout targets, returns, arguments, temporaries, aggregates,
-and bases retain evaluation. Unnamed-namespace template specializations whose
-default-constructor chain proves empty do not demand unused complete/base
-entries; ordinary namespace-class ABI emission remains unchanged.
-
-This applies `spec.md` sections 4-6, 8, and 9: demand stays monotonic and
-binding-owned, and lowering consumes selected typed facts without lookup.
-Transfer classification is O(1); the existing canonical empty-chain query is
-O(E) for E newly visited subobject edges and O(1) average on a cache hit.
-Validation removed `forwarding-pack-function-type-enable-if`,
-`out-of-class-conversion-operator-definition`, and
-`source-namespace-base-sfinae-chain`; PA16 ordinary namespace, PA17 empty-copy,
-PA22 return/empty-base, and PA23 nontrivial conversion controls pass, as do the
-full PA24, through-PA23, audit, and scaling gates.
+**Canonical class defaults and pack-prefix deduction.** The PA19/PA20
+specialization-argument owner must materialize omitted primary defaults before
+alias expansion and partial deduction. Data flows as `retained template-id ->
+canonical primary parameter/default environment -> complete argument key ->
+alias target / partial-specialization deduction`; no lowering phase may repair
+an incomplete key. This applies `spec.md` sections 2-5 and 9: canonical keys
+are complete, environments remain parent-linked, and work is O(P + A + C) for
+primary parameters, materialized arguments, and owner-local partial candidates.
+Validate both remaining class-template fixtures, default-chain and pack-prefix
+controls through PA23, full reports, audit, and a parameter-width probe.
 
 ## Performance Evidence
 
@@ -118,6 +108,12 @@ and demand pushes 5/9/17/33/65/129/257. Seven-run median semantic/lowering
 times were 1.016/0.235, 1.401/0.266, 2.149/0.369, 3.465/0.543, 6.112/0.938,
 11.710/1.719, and 24.724/3.347 ms; all owner-local work remains linear.
 
+Nested empty construction-transfer depths 1/2/4/8/16/32/64 produced semantic
+nodes 40/60/100/180/340/660/1300, demand visits 25/34/52/88/160/304/592,
+and instructions 18/22/30/46/78/142/270. Seven-run median semantic/lowering
+times were 0.579/0.210, 0.701/0.234, 0.958/0.251, 1.478/0.349, 2.378/0.504,
+4.349/0.815, and 8.819/1.453 ms; recipe traversal and demand remain linear.
+
 ## Completed Checkpoints
 
 | Checkpoint | Commit | Disposition |
@@ -132,4 +128,5 @@ times were 1.016/0.235, 1.401/0.266, 2.149/0.369, 3.465/0.543, 6.112/0.938,
 | Destination-consistent default/value construction lowering | `5be465c9` | Two failures removed; 406/422 pa24, 3,049/3,049 through pa23, constant trivial-array extent probe. |
 | Identity-only typed declaration emission | `6a107535` | Two failures removed; 408/422 pa24, 3,049/3,049 through pa23, linear declaration-width probe. |
 | Direct-reference classification and runtime conversion-object materialization | `f3724c7e` | Two failures removed; 410/422 pa24, 3,049/3,049 through pa23, constant candidate count across conversion width. |
-| Empty-value lifecycle demand and destination-owned lowering | this commit | Three failures removed; 413/422 pa24, 3,049/3,049 through pa23, linear empty-transfer/object scaling. |
+| Empty-value lifecycle demand and destination-owned lowering | `6a238d0f` | Three failures removed; 413/422 pa24, 3,049/3,049 through pa23, linear empty-transfer/object scaling. |
+| Type-preserving class-argument staging and nested empty-recipe consumption | this commit | Two failures removed; 415/422 pa24, 3,049/3,049 through pa23, linear nested-construction scaling. |

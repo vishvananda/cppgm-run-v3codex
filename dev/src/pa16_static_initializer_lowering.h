@@ -31,7 +31,8 @@ public:
 
 	bool Lower(const pa12_semantic_detail::NamespaceObjectAction& action,
 		bool thread_local_object, pa15_lowir_detail::Global* global,
-		bool* needs_global_class_initializer);
+		bool* needs_global_class_initializer,
+		bool* keep_global_class_address = 0);
 	void SetZero(pa11::TypeId type, pa15_lowir_detail::Global* global);
 	bool HasConstantAddress(std::uint32_t node);
 	pa15_lowir_detail::SymbolId EnsureStringLiteral(std::uint32_t node);
@@ -42,6 +43,7 @@ private:
 	pa15_lowering_support::NodeChildren Children(std::uint32_t node) const;
 	bool IsTrivialConstructorAction(pa11::TypeId type,
 		const pa15_lowering_support::NodeChildren& children) const;
+	bool IsEmptyConstructionTransferRecipe(std::uint32_t node) const;
 	bool SymbolForBinding(pa11::BindingId binding,
 		pa15_lowir_detail::SymbolId* symbol);
 	bool ResolveConstantAddress(std::uint32_t node,

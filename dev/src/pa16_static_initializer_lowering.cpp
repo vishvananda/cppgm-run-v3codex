@@ -50,6 +50,42 @@ bool StaticInitializerLowering::IsTrivialConstructorAction(TypeId type,
 	return program_.entities[record.entity].trivial_default_constructor;
 }
 
+bool StaticInitializerLowering::IsEmptyConstructionTransferRecipe(
+	std::uint32_t node) const
+{
+	std::vector<std::uint32_t> pending(1, node);
+	std::size_t constructor_actions = 0;
+	while (!pending.empty())
+	{
+		const std::uint32_t current = pending.back();
+		pending.pop_back();
+		const DumpNode& record = arena_.nodes[current];
+		const NodeChildren children = Children(current);
+		if (record.kind == DUMP_CONSTRUCTOR_ACTION ||
+			record.kind == DUMP_CLASS_VALUE_TRANSFER)
+		{
+			if (record.kind == DUMP_CONSTRUCTOR_ACTION)
+				++constructor_actions;
+			const TypeId type = record.kind == DUMP_CONSTRUCTOR_ACTION ?
+				record.operand_type : record.type;
+			if (type == kNoType) return false;
+			const TypeRecord& top = program_.types.Get(type);
+			if ((top.cv & CV_VOLATILE) != 0) return false;
+			const TypeRecord& object = program_.types.Get(
+				types_.ExpressionObject(type));
+			if (object.kind != TYPE_NAMED ||
+				!program_.entities[object.entity].empty_class)
+				return false;
+		}
+		else if (record.kind != DUMP_TEMPORARY_OBJECT &&
+			record.kind != DUMP_BRACED_INIT_LIST)
+			return false;
+		for (std::size_t i = 0; i < children.size(); ++i)
+			pending.push_back(children[i]);
+	}
+	return constructor_actions > 1;
+}
+
 bool StaticInitializerLowering::SymbolForBinding(BindingId binding,
 	SymbolId* symbol)
 {
@@ -269,6 +305,18 @@ bool StaticInitializerLowering::AppendValue(TypeId type, std::uint32_t node,
 	if (types_.IsClassObject(type))
 	{
 		if (node != kNoDumpEdge &&
+			arena_.nodes[node].kind == DUMP_CLASS_VALUE_TRANSFER)
+		{
+			const NodeChildren values = Children(node);
+			const TypeRecord& object = program_.types.Get(
+				types_.ExpressionObject(type));
+			return values.size() == 1 && object.kind == TYPE_NAMED &&
+				program_.entities[object.entity].empty_class &&
+				IsEmptyConstructionTransferRecipe(node) &&
+				AppendValue(type, values[0], items, substitutions,
+					allow_constructor);
+		}
+		if (node != kNoDumpEdge &&
 			arena_.nodes[node].kind == DUMP_CONSTRUCTOR_ACTION)
 			return allow_constructor && AppendConstructorValue(type, node, items);
 		if (node == kNoDumpEdge ||
@@ -386,9 +434,19 @@ bool StaticInitializerLowering::AppendConstructorValue(TypeId type,
 	bool require_vptr)
 {
 	const DumpNode& action = arena_.nodes[action_node];
+	const TypeRecord& object = program_.types.Get(
+		types_.ExpressionObject(type));
+	if (!require_vptr && object.kind == TYPE_NAMED &&
+		program_.entities[object.entity].empty_class &&
+		(action.trivial_special_member_action || action.elide_empty_constructor))
+	{
+		AppendZero(program_.SizeOf(type), items);
+		return true;
+	}
 	if (action.binding == kNoBinding ||
 		action.binding >= function_definitions_.size() ||
-		function_definitions_[action.binding] == kNoDumpEdge) return false;
+		function_definitions_[action.binding] == kNoDumpEdge)
+		return false;
 	const std::uint32_t function_node = function_definitions_[action.binding];
 	const NodeChildren function_children = Children(function_node);
 	const NodeChildren arguments = Children(action_node);
@@ -500,9 +558,9 @@ void StaticInitializerLowering::SetZero(TypeId type, Global* global)
 
 bool StaticInitializerLowering::Lower(const NamespaceObjectAction& action,
 	bool thread_local_object, Global* global,
-	bool* needs_global_class_initializer)
+	bool* needs_global_class_initializer, bool* keep_global_class_address)
 {
-	(void)needs_global_class_initializer;
+	if (keep_global_class_address) *keep_global_class_address = false;
 	if (types_.IsReference(action.type)) return false;
 	if (action.initializer == kNoDumpEdge)
 	{
@@ -544,12 +602,26 @@ bool StaticInitializerLowering::Lower(const NamespaceObjectAction& action,
 	{
 		global->initializer_kind = Global::STRUCTURED_VALUE;
 		const std::size_t old_size = global->items.size();
+		const TypeRecord& object = program_.types.Get(
+			types_.ExpressionObject(action.type));
+		const bool empty_recipe = initializer.kind == DUMP_CLASS_VALUE_TRANSFER &&
+			object.kind == TYPE_NAMED &&
+			program_.entities[object.entity].empty_class &&
+			IsEmptyConstructionTransferRecipe(action.initializer);
 		if (AppendValue(action.type, action.initializer, &global->items))
 		{
 			const BindingRecord& binding = program_.bindings[action.object];
 			if (!thread_local_object && types_.IsClassObject(action.type) &&
 				binding.variable_template_specialization)
 				return false;
+			if (empty_recipe && keep_global_class_address &&
+				!thread_local_object &&
+				!program_.entities[object.entity].deferred_template_completion &&
+				!binding.unnamed_namespace_linkage)
+			{
+				*needs_global_class_initializer = true;
+				*keep_global_class_address = true;
+			}
 			return true;
 		}
 		global->items.resize(old_size);

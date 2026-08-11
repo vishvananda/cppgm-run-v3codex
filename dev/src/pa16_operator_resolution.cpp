@@ -1273,13 +1273,27 @@ ExpressionInfo SemanticAnalyzer::ApplyCallArgument(
 			dump_.nodes[value.node].first_edge != kNoDumpEdge &&
 			dump_.edges[dump_.nodes[value.node].first_edge].next == kNoDumpEdge)
 		{
+			const DumpNode& wrapper = dump_.nodes[value.node];
+			if (wrapper.binding == kNoBinding) break;
+			const FunctionInfo& wrapper_function = GetFunction(wrapper.binding);
+			if (wrapper_function.special_member !=
+					SPECIAL_MEMBER_COPY_CONSTRUCTOR &&
+				wrapper_function.special_member !=
+					SPECIAL_MEMBER_MOVE_CONSTRUCTOR &&
+				!wrapper.trivial_special_member_action)
+				break;
 			std::uint32_t child =
 				dump_.edges[dump_.nodes[value.node].first_edge].child;
 			if (dump_.nodes[child].kind == DUMP_TEMPORARY_OBJECT &&
 				dump_.nodes[child].first_edge != kNoDumpEdge &&
 				dump_.edges[dump_.nodes[child].first_edge].next == kNoDumpEdge)
 				child = dump_.edges[dump_.nodes[child].first_edge].child;
-			if (dump_.nodes[child].kind != DUMP_CONSTRUCTOR_ACTION) break;
+			const DumpNode& child_action = dump_.nodes[child];
+			if (child_action.kind != DUMP_CONSTRUCTOR_ACTION ||
+				child_action.operand_type == kNoType ||
+				program_->types.RemoveTopCv(
+					EffectiveType(child_action.operand_type)) != target_object)
+				break;
 			value.node = child;
 			value.category = VALUE_PRVALUE;
 		}
