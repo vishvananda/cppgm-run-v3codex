@@ -18,27 +18,24 @@ demanded nodes (section 9).
 
 ## Current Failure Map
 
-Current state: **421/422** pa24 tests (checkpoint start: 419/422; goal start:
+Current state: **422/422** pa24 tests (checkpoint start: 421/422; goal start:
 368/422); all **3,049/3,049** tests through pa23 pass.
 
 | Shared behavior and owner | Count | Complete failing set (test basename) |
 | --- | ---: | --- |
-| Reference-temporary slot planning order (`pa16`/`pa17` typed lowering) | 1 | `constructor-template-const-ref-enable-if-conversion` |
+| None | 0 | — |
 
 ## Active Checkpoint
 
-**Evaluation-ordered reference-temporary slots.** The typed slot planner owns
-one append-only order for automatic objects and expression materializations.
-For a declaration with a reference-binding initializer, its initializer's
-materialized argument slot must precede the later declaration object while
-preserving canonical semantic identities. Data flows as `selected declaration
--> initializer evaluation/materialization -> reference-transfer action -> slot
-plan -> LowIR slots`. This applies `spec.md` sections 6, 8, and 9: lowering
-consumes typed semantic actions in evaluation order, stores compact IDs in
-translation-unit arenas, and visits each action once. Expected work is O(D + E)
-for D declarations and E initializer actions, with O(1)-average slot lookup.
-Validate the remaining constructor-template fixture, declaration/reference
-controls, PA16-PA23 reports, full reports, audit, and a declaration-width probe.
+**Stage complete.** Evaluation-ordered reference-temporary slots closed the
+final checkpoint. The typed slot planner now records scalar constructor
+arguments bound to references while visiting the selected constructor action,
+so data flows as `declaration slot -> initializer reference materialization ->
+later declaration slot -> LowIR` without lowering-time allocation. This applies
+`spec.md` sections 6, 8, and 9: typed actions drive lowering in evaluation order,
+compact slot IDs remain translation-unit-owned, and each constructor argument
+is visited once. Full PA24, through-PA23, audit, and linear width evidence are
+the completion validation.
 
 ## Performance Evidence
 
@@ -136,6 +133,12 @@ requests, and 2/4/8/16/32/64/128 globals. Five-run median semantic times were
 0.443/0.575/0.817/1.246/2.156/3.931/7.830 ms; pattern storage is shared and
 specialization-local identity work remains linear.
 
+Reference-bound constructor declaration widths 1/2/4/8/16/32/64 produced
+2/4/8/16/32/64/128 main slots, 10/13/19/31/55/103/199 lowered nodes, and
+13/17/25/41/73/137/265 instructions. Five-run median lowering times were
+0.147/0.152/0.166/0.171/0.178/0.225/0.323 ms; the slot prepass and emitted work
+remain linear in declarations and selected constructor arguments.
+
 ## Completed Checkpoints
 
 | Checkpoint | Commit | Disposition |
@@ -154,4 +157,5 @@ specialization-local identity work remains linear.
 | Type-preserving class-argument staging and nested empty-recipe consumption | `dfe38634` | Two failures removed; 415/422 pa24, 3,049/3,049 through pa23, linear nested-construction scaling. |
 | Declaration-ordered retained arguments and fixed-primary pack spans | `30fe0986` | Two failures removed; 417/422 pa24, 3,049/3,049 through pa23, linear default-suffix scaling. |
 | Candidate-local member-call formation and retained receiver demand | `f18a8293` | Two failures removed; 419/422 pa24, 3,049/3,049 through pa23, audit pass, linear failure-width and receiver-depth scaling. |
-| Retained function-template ABI recipes and local-static owner identity | this commit | Two failures removed; 421/422 pa24, focused PA21-PA22 controls pass, linear specialization-width scaling. |
+| Retained function-template ABI recipes and local-static owner identity | `5db862b8` | Two failures removed; 421/422 pa24, focused PA21-PA23 controls pass, linear specialization-width scaling. |
+| Evaluation-ordered constructor reference-argument slots | this commit | Final failure removed; 422/422 pa24, linear declaration-width scaling. |

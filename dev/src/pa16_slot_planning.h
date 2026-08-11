@@ -51,6 +51,32 @@ protected:
 		return true;
 	}
 
+	void PlanConstructorReferenceArgumentSlots(const DumpNode& action,
+		const NodeChildren& children)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (action.kind != DUMP_CONSTRUCTOR_ACTION) return;
+		const TypeRecord& function_type = derived.program_.types.Get(action.type);
+		if (function_type.kind != TYPE_FUNCTION ||
+			function_type.parameter_count == 0)
+			throw std::logic_error(
+				"constructor slot plan has invalid function type");
+		const TypeId* parameters =
+			derived.program_.types.Parameters(action.type);
+		for (std::size_t argument = 0; argument < children.size(); ++argument)
+		{
+			const std::size_t parameter = argument + 1;
+			if (parameter >= function_type.parameter_count ||
+				!derived.IsReferenceType(parameters[parameter])) continue;
+			const DumpNode& source = derived.arena_.nodes[children[argument]];
+			if (source.kind == DUMP_TEMPORARY_OBJECT ||
+				source.category == VALUE_LVALUE || source.category == VALUE_XVALUE ||
+				derived.IsClassObjectType(source.type)) continue;
+			(void)derived.EnsureGeneratedSlot(children[argument], "refarg",
+				derived.LowerExpressionType(parameters[parameter]));
+		}
+	}
+
 	void CollectSlots(std::uint32_t node)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
@@ -128,6 +154,8 @@ protected:
 					(void)derived.EnsureGeneratedSlot(current, "call", result);
 			}
 			const NodeChildren children = derived.Children(current);
+			if (variable_initializer)
+				PlanConstructorReferenceArgumentSlots(record, children);
 			if (record.kind == DUMP_RETURN_STATEMENT && !children.empty() &&
 				!derived.current_indirect_result_ &&
 				derived.current_result_.kind == LOW_OBJECT)
