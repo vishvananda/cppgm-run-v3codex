@@ -116,11 +116,13 @@ protected:
 			const SymbolId symbol = derived.global_symbols_[action.object];
 			Global global;
 			global.symbol = symbol;
-			global.type = derived.LowerStorageType(action.type);
+			const DumpNode& variable = derived.arena_.nodes[action.variable];
+			global.type = derived.LowerVariableStorage(variable);
 			const NamespaceObjectAction initializer(action.object, action.type,
 				action.variable, action.initializer, action.destructor);
-			bool static_initialized = false;
-			if (derived.IsReferenceType(action.type))
+			bool static_initialized =
+				derived.SetExplicitVariableZero(variable, &global);
+			if (!static_initialized && derived.IsReferenceType(action.type))
 			{
 				derived.static_initializers_.SetZero(action.type, &global);
 				if (derived.static_initializers_.HasConstantAddress(
@@ -128,9 +130,10 @@ protected:
 					derived.local_static_eager_initializers_.push_back(
 						static_cast<std::uint32_t>(i));
 			}
-			else if (!derived.IsClassObjectType(action.type) ||
+			else if (!static_initialized &&
+				(!derived.IsClassObjectType(action.type) ||
 				(action.constant_initialized &&
-				 !action.specialization_owned_recipe))
+				 !action.specialization_owned_recipe)))
 				static_initialized = derived.static_initializers_.Lower(
 					initializer, false, &global,
 					&derived.needs_global_class_initializer_);

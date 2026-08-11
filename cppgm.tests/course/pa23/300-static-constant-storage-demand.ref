@@ -1,0 +1,46 @@
+global @values_5___plain : i32 [binding=weak, object=_ZN6valuesILi5EE5plainE] = 5
+
+global @values_5___cx : i32 [binding=weak, object=_ZN6valuesILi5EE2cxE] = 6
+
+function @read(%pointer : ptr, %reference : ptr [pass=reference]) -> i32 [binding=strong, object=_Z4readPKiRS_] {
+  slot $pointer : ptr
+  slot $reference : ptr
+
+  block ^entry:
+    store ptr %pointer, $pointer
+    store ptr %reference, $reference
+    %t1 = load ptr $pointer
+    %t2 = load i32 %t1
+    %t3 = load ptr $reference
+    %t4 = load i32 %t3
+    %t5 = binary add i32 %t2, %t4
+    return i32 %t5
+}
+
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $folded : i32
+  slot $cond__1 : i32
+
+  block ^entry:
+    %t1 = binary add i32 4, 8
+    store i32 %t1, $folded
+    %t2 = load i32 $folded
+    %t3 = addr @values_5___plain
+    %t4 = addr @values_5___cx
+    %t5 = call i32 @read(%t3, %t4)
+    %t6 = binary add i32 %t2, %t5
+    %t7 = cmp eq i32 %t6, 23
+    branch %t7, ^cond_then_1, ^cond_else_2
+
+  block ^cond_then_1:
+    store i32 0, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_else_2:
+    store i32 1, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_end_3:
+    %t8 = load i32 $cond__1
+    return i32 %t8
+}

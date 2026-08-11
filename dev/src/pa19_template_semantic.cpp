@@ -881,6 +881,9 @@ bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,
 
 	const bool demand_definition =
 		arena_->IsTag(described_declaration, "simple-declaration");
+	member.value_use_requires_storage = demand_definition &&
+		!HasDeclSpecifier(FindChild(
+			described_declaration, "decl-specifier-seq"), "constexpr");
 	if (demand_definition)
 	{
 		if (pattern_index > std::numeric_limits<std::uint32_t>::max())

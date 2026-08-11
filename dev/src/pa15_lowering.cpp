@@ -519,7 +519,7 @@ private:
 		const DumpNode& record = arena_.nodes[node];
 		Global global;
 		global.symbol = global_symbols_[record.binding];
-		global.type = LowerStorageType(record.type);
+		global.type = LowerVariableStorage(record);
 		const BindingId canonical = program_.bindings[record.binding].canonical;
 		const std::uint32_t action_index = canonical < namespace_action_.size() ?
 			namespace_action_[canonical] : kNoDumpEdge;
@@ -533,7 +533,8 @@ private:
 		output_.symbols[global.symbol].thread_local_storage = thread_local_object;
 		if (thread_local_object)
 			thread_local_objects_.push_back(action_index);
-		if (!static_initializers_.Lower(action, thread_local_object, &global,
+		if (!SetExplicitVariableZero(record, &global) &&
+			!static_initializers_.Lower(action, thread_local_object, &global,
 			&needs_global_class_initializer_))
 		{
 			static_initializers_.SetZero(action.type, &global);
@@ -2223,17 +2224,21 @@ private:
 		const TypeRecord& array = program_.types.Get(
 			ExpressionObjectType(record.type));
 		if (array.kind != TYPE_ARRAY ||
-			(array.bound == 0 && !values.empty()) ||
+			(array.bound == 0 &&
+			 (record.storage_size == 0 || !values.empty())) ||
 			values.size() > array.bound)
 			throw std::runtime_error("invalid PA15 bounded array initializer");
+		if (array.bound == 0)
+		{
+			(void)AddressOfStorage(StorageFor(
+				record.binding, LowerVariableStorage(record)));
+			return;
+		}
 		if (!lowering_namespace_object_ &&
 			!IsClassObjectType(array.child) && !IsArrayType(array.child))
 		{
-			const LowType storage = array.bound == 0 ?
-				LowObject(1, program_.AlignOf(array.child)) :
-				LowerStorageType(record.type);
 			const Operand base = AddressOfStorage(
-				StorageFor(record.binding, storage));
+				StorageFor(record.binding, LowerVariableStorage(record)));
 			const LowType element = LowerExpressionType(array.child);
 			const std::size_t element_size = program_.SizeOf(array.child);
 			for (std::size_t i = 0; i < static_cast<std::size_t>(array.bound); ++i)

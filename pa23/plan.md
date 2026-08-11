@@ -11,12 +11,15 @@ states, and lowering consumes selected facts. Dependent exception
 specifications use monotonic per-specialization completion and canonical
 post-reentry publication. Lookup and specialization remain indexed, with work
 proportional to participating candidates, arguments, parameters, demand edges,
-and subobjects.
+and subobjects. Zero-cardinality pack initialization publishes one typed
+storage contract for declaration, lifetime, and lowering consumers. Retained
+static-member definitions publish their value-use storage policy once, while
+address/reference formation owns explicit emission demand.
 
 ## Current Failure Map
 
-The report is 377/406, with all `100-*`, `200-*`, and `400-*` tests passing.
-The 29 failures are 12 exits and 17 LowIR mismatches (`300-*`: 15; `500-*`:
+The report is 378/407, with all `100-*`, `200-*`, and `400-*` tests passing.
+The 29 failures are 11 exits and 18 LowIR mismatches (`300-*`: 15; `500-*`:
 14). By shared behavior and owner they are retained pack/default/alias and
 member-result replay (11), deduction/non-deduced/partial ordering (7),
 constructor or conversion-function participation and ABI facts (7), and typed
@@ -46,11 +49,17 @@ For 1/2/4/8 expanded array elements, semantic nodes were 32/39/53/81,
 lowered nodes 15/19/27/43, temporary dependency visits 16/24/40/72,
 materialized-demand visits 26/30/38/54, and instructions 10/12/16/24.
 Specialization requests stayed 7, argument-list requests 12, and deduction
-visits 4; typed storage was 5,651/6,161/7,181/10,245 bytes. Semantic time was
-0.728/0.756/0.780/0.896 ms and lowering 0.231/0.228/0.282/0.331 ms in single
-runs. Work is flat or linear in elements, with bounded vector-capacity steps.
-The changed PA22/PA23 paths are ASan/UBSan-clean. Gates are PA1-PA22 clean,
-PA23 377/406 (29 failures), and file-audit pass with 13 inherited warnings.
+visits 4; typed storage was 5,651/6,161/7,181/10,245 bytes. A current empty
+expansion probe records 25 semantic nodes, 11 lowered nodes, 22 materialized
+demand visits, 9 instructions, 5,618 typed-storage bytes, and no globals. The
+static-demand guard records 59 semantic nodes and emits exactly two globals for
+two address/reference demands while two value-only `constexpr`
+specializations emit none; the qualified static pack probe also emits none.
+The storage handoff generalizes existing `DumpNode` fields, so node size does
+not grow. Work is flat or linear in elements and indexed retained definitions,
+without use-site AST scans. The five affected PA21-PA23 probes are
+ASan/UBSan-clean. Gates are PA1-PA22 2,639/2,639, PA23 378/407 with the same 29
+failures, and file-audit pass with 13 inherited warnings.
 
 ## Completed Checkpoints
 
@@ -84,4 +93,4 @@ PA23 377/406 (29 failures), and file-audit pass with 13 inherited warnings.
 | Retained member publication and nested demand boundary | Function declarations validate in parameter scopes, nested definitions remain demand-owned, and inherited variable templates use cached base lookup; five gains, 363 -> 368, no regressions, sanitizer-clean, linear scaling. |
 | Typed designator publication and specialization-owned hidden friends | Outer shapes publish in retained scopes, compound NTTPs defer, deferred results substitute after target deduction, and hidden definitions keep owner-local identity/indexing; three gains, 368 -> 371, no regressions, sanitizer-clean, linear candidate/owner scaling. |
 | Dependent call/result replay and ADL specialization demand | Parameter-dependent results and aliases retain indexed call facts; ADL completes supplied owners; the audit separated exception demand, memoized its state, and repaired canonical post-reentry publication and qualified-name detection; original 371 -> 374, combined 375/406, no regressions, sanitizer-clean, linear scaling. |
-| Zero-cardinality expansion lowering and constexpr static demand | Empty unknown-bound arrays reserve one aligned byte without elements; value-only retained `constexpr` members stay undemanded while PA22 non-`constexpr` demand remains; 375 -> 377, sanitizer-clean, linear scaling. |
+| Zero-cardinality expansion lowering and static-member demand | Typed size/alignment drives automatic, global, and local-static storage without element lifetime actions; retained value-use policy and explicit address/reference demand replace syntax reopening; original 375 -> 377, audit guard 378/407, no regressions, sanitizer-clean, linear scaling. |

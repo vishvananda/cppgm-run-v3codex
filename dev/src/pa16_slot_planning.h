@@ -5,6 +5,8 @@
 #include "pa15_lowering_support.h"
 
 #include <cstdint>
+#include <limits>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -21,6 +23,34 @@ template <class Derived>
 class SlotPlanning
 {
 protected:
+	LowType LowerVariableStorage(const DumpNode& record) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		if (record.storage_size == 0)
+			return derived.LowerStorageType(record.type);
+		if (record.kind != DUMP_VARIABLE || record.storage_alignment == 0 ||
+			record.storage_size > std::numeric_limits<std::size_t>::max())
+			throw std::logic_error("invalid explicit object storage fact");
+		const TypeRecord& source = derived.program_.types.Get(
+			derived.program_.types.RemoveTopCv(record.type));
+		if (source.kind != TYPE_ARRAY || source.bound != 0)
+			throw std::logic_error(
+				"explicit object storage requires an unbounded array");
+		return LowObject(static_cast<std::size_t>(record.storage_size),
+			record.storage_alignment);
+	}
+
+	bool SetExplicitVariableZero(const DumpNode& record, Global* global) const
+	{
+		if (record.storage_size == 0) return false;
+		global->initializer_kind = Global::STRUCTURED_VALUE;
+		Global::DataItem zero;
+		zero.kind = Global::DataItem::ZERO_ITEM;
+		zero.zero_bytes = static_cast<std::size_t>(record.storage_size);
+		global->items.push_back(zero);
+		return true;
+	}
+
 	void CollectSlots(std::uint32_t node)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
@@ -60,20 +90,9 @@ protected:
 						static_cast<SlotId>(derived.function_->slots.size());
 					Slot slot;
 					slot.name = name;
-					slot.type = derived.LowerStorageType(record.type);
-					const TypeRecord& source_type = derived.program_.types.Get(
-						derived.program_.types.RemoveTopCv(record.type));
-					if (record.kind == DUMP_VARIABLE &&
-						source_type.kind == TYPE_ARRAY && source_type.bound == 0)
-					{
-						const NodeChildren initializer = derived.Children(current);
-						if (initializer.size() == 1 &&
-							derived.arena_.nodes[initializer[0]].kind ==
-								DUMP_BRACED_INIT_LIST &&
-							derived.Children(initializer[0]).empty())
-							slot.type = LowObject(1,
-								derived.program_.AlignOf(source_type.child));
-					}
+					slot.type = record.kind == DUMP_VARIABLE ?
+						derived.LowerVariableStorage(record) :
+						derived.LowerStorageType(record.type);
 					derived.function_->slots.push_back(slot);
 				}
 				if (record.kind == DUMP_PARAMETER)

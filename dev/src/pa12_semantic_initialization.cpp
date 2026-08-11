@@ -2449,7 +2449,8 @@ void SemanticAnalyzer::AddDefaultConstructor(std::uint32_t variable,
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
 	const TypeRecord object_type = program_->types.Get(type);
-	const EntityId entity = DestructedEntity(type);
+	const EntityId entity = dump_.nodes[variable].storage_size == 0 ?
+		DestructedEntity(type) : kNoEntity;
 	if (entity == kNoEntity) return;
 	const NamedFlavor flavor = program_->entities[entity].flavor;
 	if (flavor != NAMED_STRUCT && flavor != NAMED_CLASS &&
@@ -2856,7 +2857,8 @@ void SemanticAnalyzer::AddNamespaceObjectAction(std::uint32_t variable,
 	BindingId object, TypeId type, std::uint32_t initializer)
 {
 	std::uint32_t destructor_action = kNoDumpEdge;
-	const EntityId entity = DestructedEntity(type);
+	const EntityId entity = dump_.nodes[variable].storage_size == 0 ?
+		DestructedEntity(type) : kNoEntity;
 	if (entity != kNoEntity)
 	{
 		EnsureClassDefinition(type);

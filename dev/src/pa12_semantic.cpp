@@ -2246,7 +2246,11 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			program_->bindings[binding].storage_class == STORAGE_CLASS_EXTERN;
 		const std::uint32_t variable = MakeDump(DUMP_VARIABLE, parsed.type,
 			VALUE_NONE, parsed.name, binding);
-		if (has_initializer) dump_.Add(variable, initializer.node);
+		if (has_initializer) {
+			dump_.nodes[variable].storage_size = dump_.nodes[initializer.node].storage_size;
+			dump_.nodes[variable].storage_alignment = dump_.nodes[initializer.node].storage_alignment;
+			dump_.Add(variable, initializer.node);
+		}
 		else if (!declaration_only && DestructedEntity(parsed.type) != kNoEntity)
 		{
 			const EntityId object = DestructedEntity(parsed.type);

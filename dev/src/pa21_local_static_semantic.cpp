@@ -261,7 +261,8 @@ void SemanticAnalyzer::AddLocalStaticObjectAction(std::uint32_t variable,
 		throw std::runtime_error("too many local static declarations");
 	const std::uint32_t ordinal = declaration_ordinal++;
 	std::uint32_t destructor_action = kNoDumpEdge;
-	const EntityId entity = DestructedEntity(type);
+	const EntityId entity = dump_.nodes[variable].storage_size == 0 ?
+		DestructedEntity(type) : kNoEntity;
 	if (entity != kNoEntity)
 	{
 		if (!program_->entities[entity].destructible)
@@ -294,7 +295,8 @@ void SemanticAnalyzer::RegisterVariableLifetimeAndStorage(ScopeId scope,
 	const StorageClass storage = program_->bindings[object].storage_class;
 	if (local && storage == STORAGE_CLASS_NONE)
 	{
-		AddLifetimeObligation(scope, object, type);
+		if (dump_.nodes[variable].storage_size == 0)
+			AddLifetimeObligation(scope, object, type);
 		return;
 	}
 	if (local && storage == STORAGE_CLASS_STATIC)

@@ -826,9 +826,9 @@ void SemanticAnalyzer::AddSynthesizedConstructorBody(
 	{
 		const std::uint32_t prefix = MakeDump(
 			DUMP_SPECIAL_MEMBER_SUBOBJECT_ACTION, owner.type);
-		dump_.nodes[prefix].storage_transfer_size =
+		dump_.nodes[prefix].storage_size =
 			function.synthesized_prefix_size;
-		dump_.nodes[prefix].storage_transfer_alignment =
+		dump_.nodes[prefix].storage_alignment =
 			function.synthesized_prefix_alignment;
 		dump_.Add(construction, prefix);
 	}
@@ -958,9 +958,9 @@ void SemanticAnalyzer::AddSynthesizedAssignmentBody(
 	{
 		const std::uint32_t prefix = MakeDump(
 			DUMP_SPECIAL_MEMBER_SUBOBJECT_ACTION, owner.type);
-		dump_.nodes[prefix].storage_transfer_size =
+		dump_.nodes[prefix].storage_size =
 			function.synthesized_prefix_size;
-		dump_.nodes[prefix].storage_transfer_alignment =
+		dump_.nodes[prefix].storage_alignment =
 			function.synthesized_prefix_alignment;
 		dump_.Add(assignment, prefix);
 	}

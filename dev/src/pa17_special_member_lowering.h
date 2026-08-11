@@ -279,7 +279,7 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		if (step.kind != DUMP_SPECIAL_MEMBER_SUBOBJECT_ACTION)
 			throw std::logic_error("invalid synthesized construction step");
-		if (step.storage_transfer_size != 0)
+		if (step.storage_size != 0)
 		{
 			const Operand destination = LoadAssignmentObject(
 				derived.current_this_binding_);
@@ -287,8 +287,8 @@ protected:
 				construction.object_binding);
 			Instruction copy(Instruction::COPY_OBJECT);
 			copy.type = LowObject(
-				static_cast<std::size_t>(step.storage_transfer_size),
-				step.storage_transfer_alignment);
+				static_cast<std::size_t>(step.storage_size),
+				step.storage_alignment);
 			copy.first = source;
 			copy.second = destination;
 			derived.Emit(copy);
@@ -375,7 +375,7 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		if (step.kind != DUMP_SPECIAL_MEMBER_SUBOBJECT_ACTION)
 			throw std::logic_error("invalid synthesized assignment step");
-		if (step.storage_transfer_size != 0)
+		if (step.storage_size != 0)
 		{
 			const Operand destination = LoadAssignmentObject(
 				derived.current_this_binding_);
@@ -383,8 +383,8 @@ protected:
 				LoadAssignmentObject(assignment.object_binding);
 			Instruction copy(Instruction::COPY_OBJECT);
 			copy.type = LowObject(
-				static_cast<std::size_t>(step.storage_transfer_size),
-				step.storage_transfer_alignment);
+				static_cast<std::size_t>(step.storage_size),
+				step.storage_alignment);
 			copy.first = source;
 			copy.second = destination;
 			derived.Emit(copy);

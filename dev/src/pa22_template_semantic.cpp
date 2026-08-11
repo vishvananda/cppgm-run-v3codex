@@ -534,6 +534,8 @@ bool SemanticAnalyzer::RouteClassTemplateMemberDefinition(
 	ClassTemplateMemberPattern routed;
 	routed.lexical_scope = lexical_scope;
 	routed.declaration = target;
+	routed.value_use_requires_storage =
+		definition.value_use_requires_storage;
 	routed.parameters.swap(parameters);
 	routed.nested_owner_path.assign(
 		definition.nested_owner_path.begin() + component + 1,
@@ -1109,45 +1111,6 @@ bool SemanticAnalyzer::AnalyzeExplicitFunctionInstantiation(
 	binding.object_output_root = true;
 	DemandFunction(selected);
 	return true;
-}
-
-bool SemanticAnalyzer::RetainedStaticMemberDefinitionRequiresStorage(
-	std::size_t pattern, const CompactIndexSequence* definitions)
-{
-	for (std::size_t i = 0; definitions && i < definitions->Size(); ++i)
-	{
-		const std::size_t index = (*definitions)[i];
-		if (index >= class_templates_[pattern].
-			demanded_member_definitions.size())
-			throw std::logic_error(
-				"static member definition index is invalid");
-		NodeId declaration = class_templates_[pattern].
-			demanded_member_definitions[index].declaration;
-		while (arena_->IsTag(declaration, "template-declaration"))
-		{
-			const NodeId clause = FindChild(
-				declaration, "template-parameter-clause");
-			NodeId target = kNoNode;
-			for (std::uint32_t edge = arena_->FirstEdge(declaration);
-				edge != kNoEdge; edge = arena_->NextEdge(edge))
-			{
-				const NodeId child = arena_->EdgeChild(edge);
-				if (child != clause) target = child;
-			}
-			if (target == kNoNode) break;
-			declaration = target;
-		}
-		const NodeId specifiers = FindChild(
-			declaration, "decl-specifier-seq");
-		bool is_constexpr = false;
-		for (std::uint32_t edge = specifiers == kNoNode ? kNoEdge :
-			arena_->FirstEdge(specifiers); edge != kNoEdge;
-			edge = arena_->NextEdge(edge))
-			if (PayloadSource(arena_->EdgeChild(edge)) == "constexpr")
-				is_constexpr = true;
-		if (!is_constexpr) return true;
-	}
-	return false;
 }
 
 }

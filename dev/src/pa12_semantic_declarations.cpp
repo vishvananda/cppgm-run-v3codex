@@ -2614,11 +2614,9 @@ void SemanticAnalyzer::EnsureStaticMemberStorage(BindingId member, bool constant
 	if (binding.kind != BIND_VARIABLE ||
 		binding.member_owner == kNoEntity || binding.non_static_data_member)
 		return;
-	// An in-class integral constant does not require storage until an
-	// out-of-class definition supplies it. Pure constant-expression uses keep
-	// the canonical member fact and must not manufacture an undefined global.
-	// A runtime use may still be folded, so consult the retained definition
-	// index instead of using the folded expression shape as the demand signal.
+	// The retained definition owns the value-use storage policy as a compact
+	// semantic fact.  Address/reference formation bypasses that policy with an
+	// explicit storage demand from LvalueAddress.
 	if (binding.constant && !constant_storage)
 	{
 		if (constant_expression_required_depth_ != 0) return;
@@ -2626,7 +2624,7 @@ void SemanticAnalyzer::EnsureStaticMemberStorage(BindingId member, bool constant
 			explicit_static_member_specialization_states_[member] != 0)
 			return;
 		bool retained_definition = false;
-		bool retained_nonconstexpr_definition = false;
+		bool value_use_requires_storage = false;
 		for (EntityId entity = binding.member_owner;
 			entity != kNoEntity; entity = program_->entities[entity].enclosing_class)
 		{
@@ -2648,12 +2646,20 @@ void SemanticAnalyzer::EnsureStaticMemberStorage(BindingId member, bool constant
 			const CompactIndexSequence* definitions =
 				demanded_static_member_definitions_.Find(key);
 			retained_definition = definitions && definitions->Size() != 0;
-			retained_nonconstexpr_definition =
-				RetainedStaticMemberDefinitionRequiresStorage(
-					pattern, definitions);
+			for (std::size_t i = 0; definitions && i < definitions->Size(); ++i)
+			{
+				const std::size_t index = (*definitions)[i];
+				if (index >= class_templates_[pattern].
+					demanded_member_definitions.size())
+					throw std::logic_error(
+						"static member definition index is invalid");
+				if (class_templates_[pattern].demanded_member_definitions[index].
+					value_use_requires_storage)
+					value_use_requires_storage = true;
+			}
 			break;
 		}
-		if (!retained_definition || !retained_nonconstexpr_definition) return;
+		if (!retained_definition || !value_use_requires_storage) return;
 	}
 	// Preserve the already-instantiated class spelling before replaying a
 	// dependent out-of-class definition, whose substituted expression spelling

@@ -97,6 +97,12 @@ void SemanticAnalyzer::PublishBindingAddress(BindingId binding,
 
 std::uint32_t SemanticAnalyzer::LvalueAddress(ExpressionInfo* expression)
 {
+	if (constant_expression_required_depth_ == 0 &&
+		constexpr_evaluation_depth_ == 0 && unevaluated_depth_ == 0 &&
+		expression->binding != kNoBinding &&
+		expression->binding < program_->bindings.size() &&
+		program_->IsStaticDataMember(expression->binding))
+		EnsureStaticMemberStorage(expression->binding, true);
 	if (ConstexprAddressAt(expression->constexpr_lvalue_address))
 		return expression->constexpr_lvalue_address;
 	if (expression->constexpr_local < constexpr_locals_.size())

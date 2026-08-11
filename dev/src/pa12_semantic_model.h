@@ -100,7 +100,7 @@ struct DumpNode
 	BindingId binding, object_binding, selected_binding;
 	std::int64_t constant_value;
 	std::uint64_t array_count;
-	std::uint64_t storage_transfer_size;
+	std::uint64_t storage_size;
 	std::uint64_t direct_base_offset;
 	std::uint32_t first_edge;
 	std::uint32_t last_edge;
@@ -109,7 +109,7 @@ struct DumpNode
 	std::uint32_t value_constructor;
 	std::uint32_t lifetime_object;
 	std::uint32_t virtual_slot;
-	std::uint32_t storage_transfer_alignment;
+	std::uint32_t storage_alignment;
 	bool constant;
 	bool integer_literal_zero;
 	bool target_typed_scalar_immediate;
@@ -150,14 +150,14 @@ struct DumpNode
 		: kind(value), type(kNoType), operand_type(kNoType),
 		  category(VALUE_NONE), text(0), binding(kNoBinding),
 		  object_binding(kNoBinding), selected_binding(kNoBinding),
-		  constant_value(0), array_count(0), storage_transfer_size(0),
+		  constant_value(0), array_count(0), storage_size(0),
 		  direct_base_offset(0),
 		  first_edge(kNoDumpEdge),
 		  last_edge(kNoDumpEdge), base_projection_count(0),
 		  aggregate_helper(kNoDumpEdge), value_constructor(kNoDumpEdge),
 		  lifetime_object(kNoDumpEdge),
 		  virtual_slot(kNoDumpEdge),
-		  storage_transfer_alignment(0),
+		  storage_alignment(0),
 		  constant(false), integer_literal_zero(false),
 		  target_typed_scalar_immediate(false),
 		  integer_narrowing_conversion(false),
@@ -948,11 +948,15 @@ struct ClassTemplateMemberPattern
 	std::vector<TemplateArgument> canonical_owner_arguments;
 	std::vector<NameId> nested_owner_path;
 	std::vector<NodeId> nested_owner_argument_lists;
+	// Captured when the retained definition is first classified.  Value-use
+	// demand must not reopen retained syntax to distinguish const from constexpr.
+	bool value_use_requires_storage;
 
 	ClassTemplateMemberPattern()
 		: lexical_scope(kNoScope), declaration(kNoNode),
 		  concrete_owner(kNoBinding),
-		  owner_partial_pattern(kNoDumpEdge) {}
+		  owner_partial_pattern(kNoDumpEdge),
+		  value_use_requires_storage(false) {}
 };
 
 struct ClassTemplatePartialPattern

@@ -397,6 +397,19 @@ bool SemanticAnalyzer::TryAnalyzeExpandedBracedInit(
 			program_->types.Array(record.child, count) : target;
 		const std::uint32_t list = MakeDump(
 			DUMP_BRACED_INIT_LIST, initialized, VALUE_LVALUE);
+		if (record.bound == 0 && count == 0)
+		{
+			// A zero-cardinality expansion has no element object.  Keep its
+			// compact storage contract on the typed semantic result so lowering
+			// does not have to rediscover it from initializer syntax.
+			const std::size_t alignment = program_->AlignOf(record.child);
+			if (alignment > std::numeric_limits<std::uint32_t>::max())
+				throw std::runtime_error(
+					"zero-cardinality array alignment is too large");
+			dump_.nodes[list].storage_size = 1;
+			dump_.nodes[list].storage_alignment =
+				static_cast<std::uint32_t>(alignment);
+		}
 		std::vector<ConstexprObjectElement> constant_elements;
 		constant_elements.reserve(count);
 		bool constant_object = true;
