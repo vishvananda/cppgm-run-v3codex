@@ -638,6 +638,17 @@ private:
 		const std::vector<TypeId>& arguments);
 	BindingId InstantiateClassTemplate(std::size_t pattern,
 		const std::vector<TemplateArgument>& arguments);
+	bool IsInitializerListType(TypeId type,
+		TypeId* element_type = 0) const;
+	bool IsStandardInitializerListTemplate(NameId name, ScopeId owner,
+		const std::vector<TemplateParameter>& parameters) const;
+	void ConfigureInitializerListSpecialization(TypeId type);
+	ExpressionInfo AnalyzeInitializerList(
+		NodeId list, ScopeId scope, TypeId type);
+	ExpressionInfo BuildInitializerListFromValues(TypeId type,
+		const std::vector<ExpressionInfo>& values);
+	bool DeduceInitializerListElementType(
+		NodeId list, ScopeId scope, TypeId* element_type);
 	BindingId ReuseClassTemplateSpecialization(
 		std::size_t pattern, BindingId specialization);
 	std::size_t SelectClassTemplatePartial(ClassTemplatePattern& pattern,
@@ -868,6 +879,9 @@ private:
 		BindingId selected_constructor = kNoBinding);
 	ExpressionInfo AnalyzeVariableInitializer(NodeId initializer,
 		ScopeId scope, TypeId type, bool local);
+	bool TryAnalyzeInitializerListVariable(NodeId expression, ScopeId scope,
+		TypeId type, EntityId class_entity, bool local,
+		ExpressionInfo* initializer);
 	bool TryAnalyzeClassExpressionInitializer(NodeId expression, ScopeId scope,
 		TypeId type, ExpressionInfo* initializer);
 	ExpressionInfo AnalyzeConstantAwareVariableInitializer(NodeId initializer,
@@ -1182,9 +1196,15 @@ private:
 		std::vector<CallConversionFact>* selected_conversions = 0,
 		bool quiet = false, NodeId source_list = kNoNode,
 		TypeId initialized_type = kNoType);
+	BindingId SelectInitializerListConstructorPhase(ScopeId scope,
+		NodeId source_list, const std::vector<NodeId>& argument_syntax,
+		const std::vector<BindingId>& candidates, bool copy_initialization,
+		std::vector<CallConversionFact>* selected_conversions, bool quiet);
 	void AppendConstructorTemplateCandidates(TypeId initialized_type,
 		const std::vector<ExpressionInfo>& arguments,
-		std::vector<BindingId>* candidates);
+		std::vector<BindingId>* candidates,
+		const std::vector<NodeId>* argument_syntax = 0,
+		ScopeId argument_scope = kNoScope);
 	void PrepareBracedInitialization(NodeId list, ScopeId scope);
 	bool NeedsBracedCallContext(
 		const std::vector<NodeId>& arguments) const;
@@ -1196,6 +1216,8 @@ private:
 	ExpressionInfo MaterializeCallArgument(NodeId syntax, ScopeId scope,
 		TypeId target, const ExpressionInfo& prepared,
 		const CallConversionFact* conversion = 0);
+	ExpressionInfo MaterializeBracedConstructorArgument(
+		NodeId syntax, ScopeId scope, TypeId parameter_type);
 	bool ReusePreparedBracedExpression(NodeId node, TypeId target,
 		ExpressionInfo* result);
 	CallConversionFact BracedInitializationConversion(
@@ -1244,6 +1266,8 @@ private:
 		bool allow_elision = true);
 	void AddTemporaryLifetimeObligation(ScopeId scope,
 		std::uint32_t temporary);
+	void ExtendInitializerListVariableLifetime(TypeId type, ScopeId scope,
+		std::uint32_t initializer, bool control_dependent);
 	bool CollectTemporaryObjects(std::uint32_t node,
 		std::vector<std::uint32_t>* temporaries,
 		bool conditionally_evaluated = false);

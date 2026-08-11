@@ -769,6 +769,11 @@ protected:
 			derived.LowerRuntimeObjectValue(record.type, node, destination);
 			return;
 		}
+		if (record.kind == DUMP_INITIALIZER_LIST)
+		{
+			derived.LowerInitializerListObject(node, destination);
+			return;
+		}
 		derived.EmitClassObjectCopy(record.type,
 			derived.AddressOfStorage(derived.LowerStorage(node)), destination);
 	}

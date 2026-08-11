@@ -794,7 +794,8 @@ void SemanticAnalyzer::AdoptFunctionTemplateDefinition(
 
 void SemanticAnalyzer::AppendConstructorTemplateCandidates(
 	TypeId initialized_type, const std::vector<ExpressionInfo>& arguments,
-	std::vector<BindingId>* candidates)
+	std::vector<BindingId>* candidates,
+	const std::vector<NodeId>* argument_syntax, ScopeId argument_scope)
 {
 	const EntityId entity = initialized_type == kNoType ?
 		kNoEntity : EntityOf(initialized_type);
@@ -811,7 +812,8 @@ void SemanticAnalyzer::AppendConstructorTemplateCandidates(
 		if (function_templates_[(*indexed)[i]].constructor_template)
 			patterns.push_back((*indexed)[i]);
 	std::vector<BindingId> specializations;
-	DeduceFunctionTemplatePatterns(patterns, arguments, &specializations);
+	DeduceFunctionTemplatePatterns(patterns, arguments, &specializations,
+		0, 0, argument_scope, argument_syntax);
 	std::vector<BindingId> inherited_sources;
 	for (std::size_t i = 0; i < specializations.size(); ++i)
 	{

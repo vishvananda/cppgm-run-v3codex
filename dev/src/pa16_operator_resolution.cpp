@@ -1328,7 +1328,9 @@ ExpressionInfo SemanticAnalyzer::ApplyCallArgument(
 			const std::uint32_t edge = dump_.nodes[value.node].first_edge;
 			const std::uint32_t child = dump_.edges[edge].child;
 			if (dump_.nodes[child].kind == DUMP_CONSTRUCTOR_ACTION ||
-				dump_.nodes[child].kind == DUMP_TEMPORARY_OBJECT)
+				dump_.nodes[child].kind == DUMP_TEMPORARY_OBJECT ||
+				(IsInitializerListType(target_object) &&
+				 dump_.nodes[child].kind == DUMP_INITIALIZER_LIST))
 			{
 				value.node = child;
 				value.category = VALUE_PRVALUE;
@@ -1350,10 +1352,24 @@ ExpressionInfo SemanticAnalyzer::ApplyCallArgument(
 				break;
 			std::uint32_t child =
 				dump_.edges[dump_.nodes[value.node].first_edge].child;
+			if (IsInitializerListType(target_object) &&
+				dump_.nodes[child].kind == DUMP_INITIALIZER_LIST)
+			{
+				value.node = child;
+				value.category = VALUE_PRVALUE;
+				break;
+			}
 			if (dump_.nodes[child].kind == DUMP_TEMPORARY_OBJECT &&
 				dump_.nodes[child].first_edge != kNoDumpEdge &&
 				dump_.edges[dump_.nodes[child].first_edge].next == kNoDumpEdge)
 				child = dump_.edges[dump_.nodes[child].first_edge].child;
+			if (IsInitializerListType(target_object) &&
+				dump_.nodes[child].kind == DUMP_INITIALIZER_LIST)
+			{
+				value.node = child;
+				value.category = VALUE_PRVALUE;
+				break;
+			}
 			const DumpNode& child_action = dump_.nodes[child];
 			if (child_action.kind != DUMP_CONSTRUCTOR_ACTION ||
 				child_action.operand_type == kNoType ||
@@ -1375,7 +1391,8 @@ ExpressionInfo SemanticAnalyzer::ApplyCallArgument(
 			dump_.nodes[value.node].value_initialization &&
 			dump_.nodes[value.node].value_constructor != kNoDumpEdge)
 			value.node = dump_.nodes[value.node].value_constructor;
-		else if (dump_.nodes[value.node].kind != DUMP_CONSTRUCTOR_ACTION)
+		else if (dump_.nodes[value.node].kind != DUMP_CONSTRUCTOR_ACTION &&
+			dump_.nodes[value.node].kind != DUMP_INITIALIZER_LIST)
 			value.node = BuildClassValueConstructorAction(target, value);
 		if (dump_.nodes[value.node].kind == DUMP_CONSTRUCTOR_ACTION &&
 			dump_.nodes[value.node].binding != kNoBinding &&

@@ -139,7 +139,9 @@ protected:
 			return derived.UsesIndirectClassParameter(target) ? temporary : slot;
 		}
 		const Operand destination = derived.AddressOfStorage(slot);
-		if (derived.arena_.nodes[node].kind == DUMP_CLASS_VALUE_TRANSFER)
+		if (derived.arena_.nodes[node].kind == DUMP_INITIALIZER_LIST)
+			derived.LowerInitializerListObject(node, destination);
+		else if (derived.arena_.nodes[node].kind == DUMP_CLASS_VALUE_TRANSFER)
 			derived.LowerClassValueTransfer(node, destination);
 		else if (derived.arena_.nodes[node].kind == DUMP_CONSTRUCTOR_ACTION)
 		{

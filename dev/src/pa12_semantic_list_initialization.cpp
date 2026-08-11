@@ -174,6 +174,13 @@ ExpressionInfo SemanticAnalyzer::MaterializeCallArgument(NodeId syntax,
 		syntax, scope, list_target);
 	argument.category = VALUE_PRVALUE;
 	dump_.nodes[argument.node].category = VALUE_PRVALUE;
+	if ((parameter.kind == TYPE_LVALUE_REFERENCE ||
+		parameter.kind == TYPE_RVALUE_REFERENCE) &&
+		dump_.nodes[argument.node].kind == DUMP_INITIALIZER_LIST)
+	{
+		argument = MaterializeTemporary(argument);
+		dump_.nodes[argument.node].argument_materialization = true;
+	}
 	const EntityId entity = EntityOf(list_target);
 	if (entity != kNoEntity && program_->entities[entity].is_aggregate &&
 		dump_.nodes[argument.node].kind == DUMP_BRACED_INIT_LIST)
@@ -191,6 +198,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 	TypeId target)
 {
 	if (target == kNoType) throw std::runtime_error("untyped braced-init-list");
+	if (IsInitializerListType(target))
+		return AnalyzeInitializerList(node, scope, target);
 	EnsureClassDefinition(target);
 	ExpressionInfo expanded;
 	if (TryAnalyzeExpandedBracedInit(node, scope, target, &expanded))
@@ -201,7 +210,19 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 	const EntityId class_entity = EntityOf(type);
 	if (IsClassEntity(*program_, class_entity))
 	{
-		if (!program_->entities[class_entity].is_aggregate)
+		bool use_constructors = !program_->entities[class_entity].is_aggregate;
+		const std::vector<BindingId> candidates =
+			ConstructorCandidates(class_entity);
+		for (std::size_t i = 0; !use_constructors && i < candidates.size(); ++i)
+		{
+			const FunctionInfo& candidate = GetFunction(candidates[i]);
+			const TypeRecord& function = program_->types.Get(candidate.type);
+			if (candidate.constructor && function.parameter_count != 0 &&
+				IsInitializerListType(
+					program_->types.Parameters(candidate.type)[0]))
+				use_constructors = true;
+		}
+		if (use_constructors)
 		{
 			std::vector<NodeId> arguments;
 			for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
@@ -506,7 +527,37 @@ CallConversionFact SemanticAnalyzer::BracedInitializationConversion(
 		object = program_->types.RemoveTopCv(top.child);
 	const TypeRecord record = program_->types.Get(object);
 
-	if (record.kind == TYPE_ARRAY)
+	TypeId initializer_element = kNoType;
+	if (IsInitializerListType(object, &initializer_element))
+	{
+		result.rank = CONVERSION_EXACT;
+		for (std::size_t i = 0; i < elements.size(); ++i)
+		{
+			CallConversionFact element;
+			if (arena_->IsTag(elements[i], "braced-init-list"))
+				element = BracedInitializationConversion(
+					elements[i], scope, initializer_element);
+			else
+			{
+				const ExpressionInfo* source = FindPreparedExpression(
+					*braced_initialization_context_, elements[i]);
+				if (!source) return invalid;
+				element = CallConversion(*source, initializer_element,
+					&braced_initialization_context_->leaf_conversions,
+					elements[i]);
+				if (IsBracedNarrowing(
+					*source, initializer_element, &element))
+					element.rank = CONVERSION_INVALID;
+			}
+			if (element.rank == CONVERSION_INVALID)
+			{
+				result.rank = CONVERSION_INVALID;
+				break;
+			}
+			result.rank = std::max(result.rank, element.rank);
+		}
+	}
+	else if (record.kind == TYPE_ARRAY)
 	{
 		if (record.bound != 0 && elements.size() > record.bound)
 			result.rank = CONVERSION_INVALID;
@@ -674,11 +725,13 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 		++braced_fact_cache_misses_;
 	}
 	std::vector<BindingId> candidates(input_candidates);
-	const std::vector<ExpressionInfo> deduction_arguments =
+	AppendConstructorTemplateCandidates(initialized_type,
 		copy_initialization && !list_initialization ?
-		LambdaConstructorDeductionArguments(arguments) : arguments;
-	AppendConstructorTemplateCandidates(
-		initialized_type, deduction_arguments, &candidates);
+			LambdaConstructorDeductionArguments(arguments) : arguments, &candidates,
+		&argument_syntax, scope);
+	const BindingId list_phase = list_initialization ? SelectInitializerListConstructorPhase(
+		scope, source_list, argument_syntax, candidates, copy_initialization, selected_conversions, quiet) : kNoBinding;
+	if (list_phase != kNoBinding) return list_phase;
 	const std::size_t arity = argument_syntax.size();
 	if (arity != 0 && candidates.size() >
 		std::numeric_limits<std::size_t>::max() / arity)
@@ -878,6 +931,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBracedCallArgument(
 	NodeId list, ScopeId scope, TypeId target)
 {
 	const TypeId object = program_->types.RemoveTopCv(EffectiveType(target));
+	if (IsInitializerListType(object))
+		return AnalyzeInitializerList(list, scope, object);
 	EnsureClassDefinition(object);
 	const EntityId entity = EntityOf(object);
 	if (IsClassEntity(*program_, entity) &&
@@ -916,7 +971,7 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 		}
 		throw std::runtime_error("cannot construct an abstract class value");
 	}
-	bool has_braced_argument = false;
+	bool has_braced_argument = list_initialization && source_list != kNoNode;
 	for (std::size_t i = 0; i < argument_syntax.size(); ++i)
 		if (argument_syntax[i] != kNoNode &&
 			arena_->IsTag(argument_syntax[i], "braced-init-list"))
@@ -931,10 +986,14 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 			source_list, prepared_arguments);
 	}
 	if (braced_initialization_context_)
+	{
+		if (list_initialization && source_list != kNoNode)
+			PrepareBracedInitialization(source_list, scope);
 		for (std::size_t i = 0; i < argument_syntax.size(); ++i)
 			if (argument_syntax[i] != kNoNode &&
 				arena_->IsTag(argument_syntax[i], "braced-init-list"))
 				PrepareBracedInitialization(argument_syntax[i], scope);
+	}
 	std::vector<ExpressionInfo> arguments;
 	if (prepared_arguments)
 	{
@@ -964,6 +1023,18 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 		RecordCandidateSubstitutionFailure();
 		return kNoDumpEdge;
 	}
+	std::vector<NodeId> selected_argument_syntax(argument_syntax);
+	const FunctionInfo& selected_function = GetFunction(selected);
+	const TypeRecord& selected_type =
+		program_->types.Get(selected_function.type);
+	if (list_initialization && source_list != kNoNode &&
+		selected_type.parameter_count != 0 &&
+		IsInitializerListType(
+			program_->types.Parameters(selected_function.type)[0]))
+	{
+		selected_argument_syntax.assign(1, source_list);
+		arguments.assign(1, ExpressionInfo());
+	}
 	const BindingId complete_constructor = selected;
 	const bool promoted_deferred_base_entry = base_subobject &&
 		selected < constructor_base_entry_by_binding_.size() &&
@@ -979,7 +1050,7 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 			parameter_data + function_type.parameter_count);
 	bool first_argument_converted = false;
 	bool materialized_conversion_result = false;
-	if (argument_syntax.size() == 1 && !parameters.empty() &&
+	if (selected_argument_syntax.size() == 1 && !parameters.empty() &&
 		arguments[0].type != kNoType)
 	{
 		arguments[0] = ApplyCallArgument(arguments[0], parameters[0],
@@ -1014,7 +1085,7 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 	std::vector<ExpressionInfo> constexpr_arguments;
 	constexpr_arguments.reserve(function_type.parameter_count);
 	std::vector<BindingId> empty_base_entries;
-	const bool empty_constructor_chain = argument_syntax.empty() &&
+	const bool empty_constructor_chain = selected_argument_syntax.empty() &&
 		(constructor.defaulted_constructor || constructor.implicit_constructor) &&
 		EmptyDefaultConstructorChain(selected, &empty_base_entries);
 	const bool elide_defaulted_empty = constructor.defaulted_constructor &&
@@ -1031,34 +1102,20 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 			for (std::size_t i = 0; i < empty_base_entries.size(); ++i)
 				DemandFunction(empty_base_entries[i]);
 	}
-	for (std::size_t a = 0; a < argument_syntax.size(); ++a)
+	for (std::size_t a = 0; a < selected_argument_syntax.size(); ++a)
 	{
 		ExpressionInfo argument = arguments[a];
 		if (a < function_type.parameter_count)
 		{
 			if (argument.type == kNoType)
 			{
-				if (arena_->IsTag(argument_syntax[a], "braced-init-list"))
+				if (arena_->IsTag(selected_argument_syntax[a], "braced-init-list"))
 				{
-					const TypeRecord parameter =
-						program_->types.Get(parameters[a]);
-					const TypeId list_target =
-						parameter.kind == TYPE_LVALUE_REFERENCE ||
-						parameter.kind == TYPE_RVALUE_REFERENCE ?
-						parameter.child : parameters[a];
-					argument = AnalyzeBracedCallArgument(
-						argument_syntax[a], scope, list_target);
-					argument.category = VALUE_PRVALUE;
-					dump_.nodes[argument.node].category = VALUE_PRVALUE;
-					const EntityId list_entity = EntityOf(list_target);
-					if (list_entity != kNoEntity &&
-						program_->entities[list_entity].is_aggregate &&
-						dump_.nodes[argument.node].kind == DUMP_BRACED_INIT_LIST)
-						argument.node = BuildAggregateConstructionAction(
-							list_target, argument.node);
+					argument = MaterializeBracedConstructorArgument(
+						selected_argument_syntax[a], scope, parameters[a]);
 				}
 				else argument = AnalyzeExpression(
-					argument_syntax[a], scope, parameters[a]);
+					selected_argument_syntax[a], scope, parameters[a]);
 				argument = ApplyCallArgument(argument, parameters[a]);
 			}
 			else if (!(a == 0 && first_argument_converted))
@@ -1070,7 +1127,7 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 		if (a < function_type.parameter_count)
 			constexpr_arguments.push_back(argument);
 	}
-	for (std::size_t a = argument_syntax.size();
+	for (std::size_t a = selected_argument_syntax.size();
 		a < function_type.parameter_count; ++a)
 	{
 		if (a >= constructor.parameters.size() ||

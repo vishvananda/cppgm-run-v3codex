@@ -434,6 +434,18 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 		program_->entities[cast_entity].abstract_class)
 		return CandidateExpressionFailure(
 			"cannot construct an abstract class value");
+	bool has_initializer_list_constructor = false;
+	const std::vector<BindingId> cast_constructors =
+		ConstructorCandidates(cast_entity);
+	for (std::size_t i = 0; i < cast_constructors.size(); ++i)
+	{
+		const FunctionInfo& constructor = GetFunction(cast_constructors[i]);
+		const TypeRecord& function = program_->types.Get(constructor.type);
+		if (constructor.constructor && function.parameter_count != 0 &&
+			IsInitializerListType(
+				program_->types.Parameters(constructor.type)[0]))
+			has_initializer_list_constructor = true;
+	}
 	const bool reference_target = target != kNoType &&
 		(program_->types.Get(target).kind == TYPE_LVALUE_REFERENCE ||
 		 program_->types.Get(target).kind == TYPE_RVALUE_REFERENCE);
@@ -452,6 +464,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 		}
 	}
 	if (program_->entities[cast_entity].is_aggregate &&
+		!program_->entities[cast_entity].has_user_provided_constructor &&
+		!has_initializer_list_constructor &&
 		arguments_node != kNoNode &&
 		arena_->IsTag(arguments_node, "braced-init-list"))
 	{
@@ -488,6 +502,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 		return ApplyTarget(result, target);
 	}
 	if (program_->entities[cast_entity].is_aggregate &&
+		!program_->entities[cast_entity].has_user_provided_constructor &&
+		!has_initializer_list_constructor &&
 		arguments_node != kNoNode &&
 		!argument_syntax.empty() &&
 		!arena_->IsTag(arguments_node, "braced-init-list"))
@@ -517,7 +533,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 		if (reference_target) result = MaterializeTemporary(result);
 		return ApplyTarget(result, target);
 	}
-	if (program_->entities[cast_entity].is_aggregate && argument_syntax.empty())
+	if (program_->entities[cast_entity].is_aggregate &&
+		!program_->entities[cast_entity].has_user_provided_constructor &&
+		!has_initializer_list_constructor &&
+		argument_syntax.empty())
 	{
 		if (target == kNoType)
 		{

@@ -2192,11 +2192,10 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			has_initializer && HasConstantInitializerFact(initializer));
 		if (local && has_initializer)
 		{
-			const TypeKind declared_kind = program_->types.Get(parsed.type).kind;
-			const bool control_dependent =
-				HasControlDependentTemporary(initializer.node);
-			if ((declared_kind == TYPE_LVALUE_REFERENCE ||
-					 declared_kind == TYPE_RVALUE_REFERENCE) &&
+			const bool control_dependent = HasControlDependentTemporary(initializer.node);
+			ExtendInitializerListVariableLifetime(
+				parsed.type, scope, initializer.node, control_dependent);
+			if (program_->types.IsReference(parsed.type) &&
 				!control_dependent)
 			{
 				std::vector<std::uint32_t> temporaries;

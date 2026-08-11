@@ -25,6 +25,7 @@
 #include "pa21_constant_lowering.h"
 #include "pa21_local_static_lowering.h"
 #include "pa25_range_for_lowering.h"
+#include "pa26_initializer_list_lowering.h"
 #include "pa26_rtti_lowering.h"
 #include <algorithm>
 #include <limits>
@@ -61,6 +62,7 @@ class GraphLowerer :
 	private pa21_lowering_detail::ConstantLowering<GraphLowerer>,
 	private pa21_lowering_detail::LocalStaticLowering<GraphLowerer>,
 	private pa25_lowering_detail::RangeForLowering<GraphLowerer>,
+	private pa26_lowering_detail::InitializerListLowering<GraphLowerer>,
 	private pa26_lowering_detail::RttiLowering<GraphLowerer>
 {
 public:
@@ -171,6 +173,7 @@ private:
 	friend class pa21_lowering_detail::ConstantLowering<GraphLowerer>;
 	friend class pa21_lowering_detail::LocalStaticLowering<GraphLowerer>;
 	friend class pa25_lowering_detail::RangeForLowering<GraphLowerer>;
+	friend class pa26_lowering_detail::InitializerListLowering<GraphLowerer>;
 	friend class pa26_lowering_detail::RttiLowering<GraphLowerer>;
 	enum StatementTaskKind : std::uint8_t
 	{
@@ -1300,6 +1303,10 @@ private:
 				LowerExpressionType(record.type));
 		else if (record.kind == DUMP_MEMBER_EXPRESSION)
 			result = LowerMemberValue(node, record, children);
+		else if (record.kind == DUMP_INITIALIZER_LIST_BEGIN ||
+			record.kind == DUMP_INITIALIZER_LIST_SIZE ||
+			record.kind == DUMP_INITIALIZER_LIST)
+			result = LowerInitializerListValue(node, record, children);
 		else if (record.kind == DUMP_SIZEOF_EXPRESSION)
 		{
 			if (!record.constant)
@@ -2056,6 +2063,7 @@ private:
 				StorageFor(record.binding, type)), true);
 			return;
 		}
+		if (LowerInitializerListVariable(record, children)) return;
 		if (children.size() == 1 && arena_.nodes[children[0]].kind ==
 			DUMP_CONSTRUCTOR_ARRAY_ACTION)
 		{
@@ -2374,6 +2382,7 @@ private:
 	void LowerRuntimeObjectValue(TypeId type, std::uint32_t node,
 		const Operand& destination)
 	{
+		if (LowerInitializerListRuntimeValue(node, destination)) return;
 		const TypeRecord& record = program_.types.Get(ExpressionObjectType(type));
 		if (record.kind == TYPE_ARRAY)
 		{
@@ -2394,20 +2403,6 @@ private:
 		Instruction store(Instruction::STORE);
 		store.type = LowerExpressionType(type);
 		store.first = LowerConvertedValue(node, store.type, false);
-		store.second = destination;
-		Emit(store);
-	}
-	void LowerRuntimeZeroValue(TypeId type, const Operand& destination)
-	{
-		const TypeRecord& record = program_.types.Get(ExpressionObjectType(type));
-		if (record.kind == TYPE_ARRAY || IsClassObjectType(type))
-			throw std::runtime_error(
-				"omitted runtime aggregate element is outside the checkpoint");
-		Instruction store(Instruction::STORE);
-		store.type = LowerExpressionType(type);
-		store.first = store.type.kind == LOW_PTR ?
-			Operand::NullPointer(store.type) : IsFloating(store.type) ?
-			FloatingOperand("0.0", store.type) : Operand(0, store.type);
 		store.second = destination;
 		Emit(store);
 	}

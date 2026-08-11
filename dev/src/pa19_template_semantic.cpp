@@ -1378,6 +1378,7 @@ void SemanticAnalyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 	pattern.declaration = declaration;
 	pattern.parameters = parameters;
 	pattern.defined = definition;
+	pattern.initializer_list_template = IsStandardInitializerListTemplate(name, owner, parameters);
 	const NameId marker_name = EmissionName(owner, name);
 	pattern.marker_entity = program_->NewEntity(marker_name,
 		NAMED_TEMPLATE_PARAMETER, false, kNoType, owner, name);
@@ -2598,6 +2599,9 @@ BindingId SemanticAnalyzer::ReuseClassTemplateSpecialization(
 		binding < class_template_specialization_states_.size() &&
 		class_template_specialization_states_[binding] == 2)
 		ApplyClassTemplateMemberDefinitions(index, binding, arguments);
+	if (pattern.initializer_list_template)
+		ConfigureInitializerListSpecialization(
+			program_->bindings[binding].type);
 	return binding;
 }
 
@@ -2834,6 +2838,8 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 	if (class_template_completion_suppressed_depth_ == 0 &&
 		ClassTemplateArgumentsAreLayoutReady(*program_, arguments))
 		CompleteClassTemplateSpecialization(index, binding, arguments);
+	if (pattern.initializer_list_template)
+		ConfigureInitializerListSpecialization(shell);
 	return binding;
 }
 

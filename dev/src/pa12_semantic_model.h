@@ -71,6 +71,9 @@ enum DumpKind
 	DUMP_CAST_EXPRESSION,
 	DUMP_TYPEID_EXPRESSION,
 	DUMP_DYNAMIC_CAST_EXPRESSION,
+	DUMP_INITIALIZER_LIST,
+	DUMP_INITIALIZER_LIST_BEGIN,
+	DUMP_INITIALIZER_LIST_SIZE,
 	DUMP_BRACED_INIT_LIST,
 	DUMP_AGGREGATE_CONSTRUCTION_ACTION,
 	DUMP_CLASS_VALUE_TRANSFER,
@@ -134,6 +137,7 @@ struct DumpNode
 	bool discarded_materialization;
 	bool reference_call_materialization;
 	bool range_for_materialization;
+	bool initializer_list_backing;
 	bool contains_temporary_object;
 	bool temporary_implicit_object;
 	bool pending_constructor_demand;
@@ -182,6 +186,7 @@ struct DumpNode
 		  trivial_special_member_action(false), storage_unit_transfer(false),
 		  argument_materialization(false), discarded_materialization(false),
 		  reference_call_materialization(false), range_for_materialization(false),
+		  initializer_list_backing(false),
 		  contains_temporary_object(value == DUMP_TEMPORARY_OBJECT),
 		  temporary_implicit_object(false), pending_constructor_demand(false),
 		  pending_runtime_call_demand(false),
@@ -1179,12 +1184,13 @@ struct ClassTemplatePattern
 	std::uint32_t template_parameter_ordinal;
 	bool defined;
 	bool template_parameter_proxy;
+	bool initializer_list_template;
 
 	ClassTemplatePattern()
 		: owner(kNoScope), lexical_scope(kNoScope), name(0),
 		  declaration(kNoNode), marker_entity(kNoEntity),
 		  template_parameter_ordinal(kNoTemplateParameter), defined(false),
-		  template_parameter_proxy(false) {}
+		  template_parameter_proxy(false), initializer_list_template(false) {}
 };
 
 struct InjectedMemberInfo

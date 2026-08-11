@@ -1024,6 +1024,30 @@ bool SemanticAnalyzer::DeduceFunctionTemplateOverloadArgument(
 	const std::vector<TemplateParameter>& parameters,
 	FunctionTemplateDeduction* deduced)
 {
+	TypeId list_element = kNoType;
+	if (syntax != kNoNode && arena_->IsTag(syntax, "braced-init-list") &&
+		IsInitializerListType(parameter, &list_element))
+	{
+		FunctionTemplateDeduction trial = *deduced;
+		bool saw_element = false;
+		for (std::uint32_t edge = arena_->FirstEdge(syntax); edge != kNoEdge;
+			edge = arena_->NextEdge(edge))
+		{
+			const NodeId element_syntax = arena_->EdgeChild(edge);
+			ExpressionInfo element;
+			if (!ReusePreparedBracedExpression(
+				element_syntax, kNoType, &element))
+				element = AnalyzeExpression(element_syntax, scope);
+			const TypeId argument = program_->types.RemoveTopCv(
+				Decay(element.type));
+			if (!DeduceFunctionTemplatePackType(
+				list_element, argument, parameters, &trial)) return false;
+			saw_element = true;
+		}
+		if (!saw_element) return false;
+		*deduced = trial;
+		return true;
+	}
 	while (syntax != kNoNode &&
 		arena_->IsTag(syntax, "parenthesized-expression"))
 		syntax = FirstSemanticChild(syntax);

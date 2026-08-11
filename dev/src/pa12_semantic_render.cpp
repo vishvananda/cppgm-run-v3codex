@@ -111,6 +111,20 @@ void SemanticAnalyzer::RenderLine(const DumpNode& node, std::size_t depth)
 			<< program_->RenderType(node.type) << " source="
 			<< program_->RenderType(node.operand_type);
 		break;
+	case DUMP_INITIALIZER_LIST:
+		output_ << "initializer-list " << category << ' '
+			<< program_->RenderType(node.type) << " element="
+			<< program_->RenderType(node.operand_type) << " count="
+			<< node.array_count;
+		break;
+	case DUMP_INITIALIZER_LIST_BEGIN:
+		output_ << "initializer-list-begin " << category << ' '
+			<< program_->RenderType(node.type);
+		break;
+	case DUMP_INITIALIZER_LIST_SIZE:
+		output_ << "initializer-list-size " << category << ' '
+			<< program_->RenderType(node.type);
+		break;
 	case DUMP_BRACED_INIT_LIST:
 		output_ << "braced-init-list " << category << ' '
 			<< program_->RenderType(node.type); break;

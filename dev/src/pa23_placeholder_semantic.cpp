@@ -49,7 +49,47 @@ DeclaratorInfo SemanticAnalyzer::BuildVariableDeclarator(
 				"placeholder direct-initializer requires one expression");
 		expression = first;
 	}
-	if (expression == kNoNode || arena_->IsTag(expression, "braced-init-list"))
+	if (expression != kNoNode && arena_->IsTag(expression, "braced-init-list"))
+	{
+		std::vector<NodeId> syntax;
+		for (std::uint32_t edge = arena_->FirstEdge(expression);
+			edge != kNoEdge; edge = arena_->NextEdge(edge))
+			syntax.push_back(arena_->EdgeChild(edge));
+		std::vector<ExpressionInfo> values;
+		std::vector<NodeId> expanded_syntax = syntax;
+		if (!ExpandCallArgumentPacks(
+			syntax, scope, &expanded_syntax, &values))
+		{
+			values.reserve(syntax.size());
+			for (std::size_t i = 0; i < syntax.size(); ++i)
+				values.push_back(AnalyzeExpression(syntax[i], scope));
+		}
+		if (values.empty())
+			throw std::runtime_error("empty placeholder initializer-list");
+		TypeId element = program_->types.RemoveTopCv(Decay(values[0].type));
+		for (std::size_t i = 1; i < values.size(); ++i)
+			if (program_->types.RemoveTopCv(Decay(values[i].type)) != element)
+				throw std::runtime_error(
+					"placeholder initializer-list has inconsistent element types");
+		const std::size_t pattern =
+			FindClassTemplate(scope, "std::initializer_list");
+		if (pattern >= class_templates_.size())
+			throw std::runtime_error("std::initializer_list is not declared");
+		const BindingId specialization = InstantiateClassTemplate(
+			pattern, std::vector<TypeId>(1, element));
+		if (specialization == kNoBinding)
+			throw std::runtime_error(
+				"unable to form std::initializer_list specialization");
+		TypeId list_type = program_->bindings[specialization].type;
+		ConfigureInitializerListSpecialization(list_type);
+		DeclaratorInfo parsed = BuildDeclarator(declarator,
+			program_->types.Qualify(list_type, spec.placeholder_cv), scope);
+		*prepared_initializer = BuildInitializerListFromValues(
+			parsed.type, values);
+		prepared_initializer->type = parsed.type;
+		return parsed;
+	}
+	if (expression == kNoNode)
 		throw std::runtime_error(
 			"placeholder list deduction is outside the PA23 boundary");
 	const bool require_constant = spec.is_constexpr || !local ||

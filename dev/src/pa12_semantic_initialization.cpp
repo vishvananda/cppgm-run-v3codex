@@ -600,6 +600,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeVariableInitializer(
 	const TypeKind declared_kind = program_->types.Get(type).kind;
 	const TypeRecord declared = program_->types.Get(type);
 	ExpressionInfo initializer;
+	if (TryAnalyzeInitializerListVariable(expression, scope, type,
+		class_entity, local, &initializer)) return initializer;
 	if (declared_kind == TYPE_ARRAY && expression != kNoNode &&
 		arena_->IsTag(expression, "literal") &&
 		arena_->Payload(expression).find('"') != std::string::npos)
@@ -2513,6 +2515,7 @@ std::uint32_t SemanticAnalyzer::MakeTemporaryDestructorAction(
 		dump_.nodes[temporary].kind != DUMP_TEMPORARY_OBJECT)
 		throw std::logic_error("temporary destruction has no object identity");
 	const TypeId type = dump_.nodes[temporary].type;
+	if (IsInitializerListType(type)) return kNoDumpEdge;
 	const EntityId entity = DestructedEntity(type);
 	if (entity == kNoEntity) return kNoDumpEdge;
 	if (!program_->entities[entity].destructible)
@@ -2738,6 +2741,7 @@ ScopeId SemanticAnalyzer::CompoundCleanupStop(ScopeId scope) const
 void SemanticAnalyzer::AddLifetimeObligation(ScopeId scope,
 	BindingId object, TypeId type, bool allow_elision)
 {
+	if (IsInitializerListType(type)) return;
 	const EntityId entity = DestructedEntity(type);
 	if (entity == kNoEntity) return;
 	EnsureClassDefinition(type);

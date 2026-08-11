@@ -571,7 +571,8 @@ SemanticAnalyzer::LambdaConstructorDeductionArguments(
 	const std::vector<ExpressionInfo>& arguments)
 {
 	std::vector<ExpressionInfo> result(arguments);
-	if (result.size() != 1 || !IsCapturelessLambdaType(result[0].type))
+	if (result.size() != 1 || result[0].type == kNoType ||
+		!IsCapturelessLambdaType(result[0].type))
 		return result;
 	// PA25 copy-initialization exposes the invocation-pointer conversion before
 	// constructor-template deduction; overload ranking still uses the closure.

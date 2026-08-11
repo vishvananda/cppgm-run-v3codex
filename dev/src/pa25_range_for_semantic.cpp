@@ -424,7 +424,58 @@ void SemanticAnalyzer::AnalyzeRangeFor(NodeId node, ScopeId scope,
 
 	ExpressionInfo element;
 	const TypeRecord& range_shape = program_->types.Get(range_type);
-	if (range_shape.kind == TYPE_ARRAY)
+	TypeId initializer_list_element = kNoType;
+	if (IsInitializerListType(range_type, &initializer_list_element))
+	{
+		ExpressionInfo zero = MakeLiteral(
+			program_->types.Fundamental(FUND_INT),
+			program_->names.Intern("0"));
+		zero.constant = true;
+		zero.value = 0;
+		RecordExpressionFacts(zero);
+		const NameId index_name = NextRangeForHiddenName("__idx");
+		const BindingId index_binding = AddRangeForLocal(control, init,
+			index_name, program_->types.Fundamental(FUND_INT), zero);
+
+		ExpressionInfo size;
+		// The retained count is lowered as the ABI's signed machine-width index;
+		// this keeps the established PA25 range comparison conversion path.
+		size.type = program_->types.Fundamental(FUND_LONG_INT);
+		size.category = VALUE_PRVALUE;
+		size.node = MakeDump(DUMP_INITIALIZER_LIST_SIZE,
+			size.type, size.category);
+		dump_.Add(size.node, range.node);
+		RecordExpressionFacts(size);
+		++expression_count_;
+		ExpressionInfo condition_value = BuildBinaryExpression("<", "OP_LT:<",
+			kNoNode, kNoNode, MakeRangeForBindingExpression(index_binding),
+			size, control);
+		const std::uint32_t condition = MakeDump(DUMP_CONDITION);
+		dump_.nodes[condition].full_expression_staging = true;
+		dump_.Add(condition, condition_value.node);
+		FinishRangeForFullExpression(control, condition, condition_value);
+		dump_.Add(statement, condition);
+
+		ExpressionInfo begin;
+		begin.type = program_->types.Pointer(program_->types.Qualify(
+			initializer_list_element, CV_CONST));
+		begin.category = VALUE_PRVALUE;
+		begin.node = MakeDump(DUMP_INITIALIZER_LIST_BEGIN,
+			begin.type, begin.category);
+		dump_.Add(begin.node, range.node);
+		RecordExpressionFacts(begin);
+		++expression_count_;
+		element = AnalyzeRangeForSubscript(begin,
+			MakeRangeForBindingExpression(index_binding), control);
+		const ExpressionInfo increment = MaterializeDiscardedClassResult(
+			AnalyzeRangeForUnary("++", "OP_INC:++",
+				MakeRangeForBindingExpression(index_binding), control));
+		const std::uint32_t iteration = MakeDump(DUMP_ITERATION);
+		dump_.Add(iteration, increment.node);
+		FinishRangeForFullExpression(control, iteration, increment);
+		dump_.Add(statement, iteration);
+	}
+	else if (range_shape.kind == TYPE_ARRAY)
 	{
 		ExpressionInfo zero = MakeLiteral(
 			program_->types.Fundamental(FUND_INT),

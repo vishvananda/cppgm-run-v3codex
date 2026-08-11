@@ -169,6 +169,7 @@ protected:
 				const DumpKind result_kind =
 					derived.arena_.nodes[children[0]].kind;
 				if (result_kind == DUMP_BRACED_INIT_LIST ||
+					result_kind == DUMP_INITIALIZER_LIST ||
 					result_kind == DUMP_CONDITIONAL_EXPRESSION ||
 					result_kind == DUMP_CLASS_VALUE_TRANSFER ||
 					result_kind == DUMP_AGGREGATE_CONSTRUCTION_ACTION ||
@@ -185,6 +186,11 @@ protected:
 				children.size() == 1 &&
 				derived.arena_.nodes[children[0]].kind == DUMP_CALL_EXPRESSION &&
 				!derived.arena_.nodes[children[0]].contains_temporary_object;
+			if (record.kind == DUMP_TEMPORARY_OBJECT &&
+				record.initializer_list_backing && variable_initializer &&
+				derived.generated_slots_[current] == kNoLowId)
+				(void)derived.EnsureGeneratedSlot(current, "initlist",
+					derived.LowerStorageType(record.type));
 			if (record.kind == DUMP_TEMPORARY_OBJECT &&
 				(record.argument_materialization ||
 				 preplan_standalone_discard ||

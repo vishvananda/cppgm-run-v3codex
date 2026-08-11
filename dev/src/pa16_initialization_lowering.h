@@ -61,6 +61,7 @@ protected:
 			"discardarr" : "discard";
 		return Operand(derived.EnsureGeneratedSlot(node,
 			derived.arena_.nodes[node].reference_call_materialization ? "refcall" :
+			derived.arena_.nodes[node].initializer_list_backing ? "initlist" :
 			derived.arena_.nodes[node].argument_materialization ?
 				(object_type.kind == TYPE_ARRAY ? "argarr" : "arg") :
 			derived.arena_.nodes[node].discarded_materialization ?
@@ -287,7 +288,8 @@ protected:
 							i < static_cast<std::size_t>(temporary_type.bound); ++i)
 						{
 							Operand element_address = destination;
-							if (i != 0)
+							if (i != 0 &&
+								!derived.arena_.nodes[node].initializer_list_backing)
 								element_address = derived.IndexAddress(
 									LowI8(), destination,
 									Operand(i * element_size, LowI64()), false);
@@ -296,6 +298,11 @@ protected:
 							store.first = i < values.size() ?
 								derived.LowerConvertedValue(values[i], element) :
 								Operand(0, element);
+							if (i != 0 &&
+								derived.arena_.nodes[node].initializer_list_backing)
+								element_address = derived.IndexAddress(
+									LowI8(), destination,
+									Operand(i * element_size, LowI64()), false);
 							store.second = element_address;
 							derived.Emit(store);
 						}
@@ -310,6 +317,9 @@ protected:
 			else if (derived.arena_.nodes[children[0]].kind ==
 				DUMP_AGGREGATE_CONSTRUCTION_ACTION)
 				derived.LowerAggregateConstructionAction(children[0], destination);
+			else if (derived.arena_.nodes[children[0]].kind ==
+				DUMP_INITIALIZER_LIST)
+				derived.LowerInitializerListObject(children[0], destination);
 			else if (derived.arena_.nodes[children[0]].kind == DUMP_CALL_EXPRESSION)
 			{
 				const DumpNode& call = derived.arena_.nodes[children[0]];
