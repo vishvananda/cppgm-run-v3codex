@@ -552,7 +552,8 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 		((!reference_target &&
 		  (conversion_source_record.kind == TYPE_ARRAY ||
 		   conversion_source_record.kind == TYPE_FUNCTION)) ||
-		 (reference_target && (constant_expression_required_depth_ != 0 ||
+		 (reference_target && unevaluated_depth_ == 0 &&
+		  (constant_expression_required_depth_ != 0 ||
 		  constexpr_evaluation_depth_ != 0))))
 		source_address = LvalueAddress(&value);
 	const bool source_is_bool =
@@ -1423,7 +1424,6 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 		for (std::size_t i = 0; i < argument_syntax.size(); ++i)
 			analyzed_arguments.push_back(
 				AnalyzeUntypedCallArgument(argument_syntax[i], scope));
-		arguments_analyzed = true;
 	}
 	ExpressionInfo call_operator;
 	if (TryAnalyzeCallOperator(scope, callee, argument_syntax,
@@ -1444,8 +1444,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 		return CandidateExpressionFailure("called object is not callable");
 	if (argument_syntax.size() < callable.parameter_count || (!callable.variadic && argument_syntax.size() != callable.parameter_count))
 		return CandidateExpressionFailure("indirect call arity mismatch");
-	ExpressionInfo constexpr_call; if (TryAnalyzeConstexprIndirectCall(&callee, scope, argument_syntax,
-		analyzed_arguments, target, &constexpr_call)) return constexpr_call;
+	ExpressionInfo constexpr_call;
+	if (TryAnalyzeConstexprIndirectCall(&callee, scope, argument_syntax,
+		analyzed_arguments, target,
+		&constexpr_call)) return constexpr_call;
 	const TypeId* parameter_data = program_->types.Parameters(function_type);
 	std::vector<TypeId> parameters;
 	if (callable.parameter_count != 0)
@@ -1461,8 +1463,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 	dump_.Add(call, callee.node);
 	for (std::size_t a = 0; a < argument_syntax.size(); ++a)
 	{
-		ExpressionInfo argument = arguments_analyzed ? analyzed_arguments[a] :
-			AnalyzeExpression(argument_syntax[a], scope);
+		ExpressionInfo argument = analyzed_arguments[a];
 		if (a < callable.parameter_count)
 			argument = MaterializeCallArgument(
 				argument_syntax[a], scope, parameters[a], argument);

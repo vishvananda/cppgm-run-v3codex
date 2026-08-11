@@ -49,6 +49,29 @@ bool SemanticAnalyzer::SyntaxUsesAnyTemplateParameter(NodeId node,
 	return false;
 }
 
+bool SemanticAnalyzer::FunctionTemplateResultUsesDependentParameter(
+	NodeId declarator, NodeId result,
+	const std::unordered_set<NameId>& template_names)
+{
+	if (declarator == kNoNode || result == kNoNode) return false;
+	const NodeId clause = FindChild(declarator, "parameter-clause");
+	if (clause == kNoNode) return false;
+	std::unordered_set<NameId> dependent_parameters;
+	for (std::uint32_t edge = arena_->FirstEdge(clause); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId parameter = arena_->EdgeChild(edge);
+		if (!arena_->IsTag(parameter, "parameter-declaration") ||
+			!SyntaxUsesAnyTemplateParameter(parameter, template_names)) continue;
+		const NodeId parameter_declarator = FindChild(parameter, "declarator");
+		if (parameter_declarator == kNoNode) continue;
+		const NameId name = DeclaratorName(parameter_declarator);
+		if (name != 0) dependent_parameters.insert(name);
+	}
+	return !dependent_parameters.empty() &&
+		SyntaxUsesAnyTemplateParameter(result, dependent_parameters);
+}
+
 bool SemanticAnalyzer::IsDirectTemplateParameterExpression(NodeId node,
 	const std::unordered_set<NameId>& names) const
 {

@@ -179,6 +179,10 @@ private:
 	std::size_t FindPriorFunctionTemplatePattern(
 		const FunctionTemplatePattern& pattern, EntityId friend_owner,
 		bool qualified_friend, bool definition);
+	ScopeId FunctionTemplateExceptionScope(
+		const FunctionTemplatePattern& pattern,
+		const DeclaratorInfo& declarator, ScopeId template_scope,
+		EntityId member_owner);
 	TypeId DependentFunctionTemplateResultShape();
 	void RegisterFunctionTemplateFriend(std::size_t pattern,
 		EntityId owner, bool hidden);
@@ -371,6 +375,8 @@ private:
 		const std::unordered_set<NameId>* template_parameter_names = 0);
 	bool SyntaxUsesAnyTemplateParameter(NodeId node,
 		const std::unordered_set<NameId>& names) const;
+	bool FunctionTemplateResultUsesDependentParameter(NodeId declarator,
+		NodeId result, const std::unordered_set<NameId>& template_names);
 	bool IsDirectTemplateParameterExpression(NodeId node,
 		const std::unordered_set<NameId>& names) const;
 	LookupResult ResolveClassDirectBase(NodeId base_name, ScopeId scope);

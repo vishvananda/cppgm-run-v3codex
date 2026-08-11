@@ -1174,7 +1174,8 @@ void RetainedTemplateValidator::Run()
 			static_cast<std::int64_t>(i));
 	}
 	ValidateKnownTemplateArgumentKinds(target_, semantic);
-	if (!definition) return;
+	if (!definition && !analyzer_.arena_->IsTag(target_, "alias-declaration"))
+		return;
 	Visit(target_, root);
 }
 

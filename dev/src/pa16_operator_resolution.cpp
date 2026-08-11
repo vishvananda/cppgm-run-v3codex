@@ -275,6 +275,9 @@ void SemanticAnalyzer::AppendArgumentDependentCandidates(NameId name,
 	const std::vector<ExpressionInfo>& arguments,
 	std::vector<BindingId>* candidates, bool enum_operator_only)
 {
+	for (std::size_t i = 0; i < arguments.size(); ++i)
+		if (arguments[i].type != kNoType)
+			EnsureClassDefinition(EffectiveType(arguments[i].type));
 	BeginAssociatedLookup();
 	for (std::size_t i = 0; i < arguments.size(); ++i)
 		if (arguments[i].type != kNoType)

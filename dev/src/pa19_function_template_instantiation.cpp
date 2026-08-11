@@ -894,6 +894,36 @@ std::size_t SemanticAnalyzer::FindPriorFunctionTemplatePattern(
 	return function_templates_.size();
 }
 
+ScopeId SemanticAnalyzer::FunctionTemplateExceptionScope(
+	const FunctionTemplatePattern& pattern,
+	const DeclaratorInfo& declarator, ScopeId template_scope,
+	EntityId member_owner)
+{
+	if (declarator.trailing_return_scope != kNoScope)
+		return declarator.trailing_return_scope;
+	const ScopeId scope = NewScope(template_scope, SCOPE_FUNCTION,
+		declarator.name, ScopePrefixId(template_scope));
+	BindFunctionParameterPackElement(
+		scope, FunctionParameterPackName(pattern.declarator), kNoBinding);
+	for (std::size_t i = 0; i < declarator.parameters.size(); ++i)
+	{
+		const ParameterInfo& parameter = declarator.parameters[i];
+		const BindingId binding = program_->AddBinding(scope, BIND_PARAMETER,
+			parameter.name, ParameterBindingType(parameter));
+		BindFunctionParameterPackElement(scope, parameter.pack_name, binding);
+	}
+	if (member_owner != kNoEntity && !pattern.static_member)
+	{
+		TypeId object = program_->entities[member_owner].type;
+		const TypeRecord& function = program_->types.Get(declarator.type);
+		if (function.cv != CV_NONE)
+			object = program_->types.Qualify(object, function.cv);
+		program_->AddBinding(scope, BIND_PARAMETER,
+			program_->names.Intern("this"), program_->types.Pointer(object));
+	}
+	return scope;
+}
+
 void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	ScopeId scope, AccessKind member_access,
 	const std::vector<TemplateParameter>& parameters, NodeId specifiers,
@@ -966,9 +996,12 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 			static_cast<std::int64_t>(p));
 	}
 	const NodeId trailing_return = FindChild(declarator, "trailing-return-type");
-	if (dependent_result_shape == kNoType && trailing_return != kNoNode &&
+	const bool dependent_trailing_return = trailing_return != kNoNode &&
 		(PayloadSource(trailing_return).find("decltype") == 0 ||
-		 SyntaxUsesAnyTemplateParameter(trailing_return, parameter_names)))
+		 SyntaxUsesAnyTemplateParameter(trailing_return, parameter_names) ||
+		 FunctionTemplateResultUsesDependentParameter(
+			declarator, trailing_return, parameter_names));
+	if (dependent_result_shape == kNoType && dependent_trailing_return)
 		dependent_result_shape = DependentFunctionTemplateResultShape();
 	SpecInfo shape_spec;
 	if (pattern.constructor_template)
@@ -1013,9 +1046,7 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	pattern.nonthrowing = dependent_exception_specification ?
 		false : IsNonthrowing(declarator, pattern.owner);
 	pattern.trailing_return_syntax = FindChild(declarator, "trailing-return-type");
-	const bool defer_trailing_return = pattern.trailing_return_syntax != kNoNode &&
-		(PayloadSource(pattern.trailing_return_syntax).find("decltype") == 0 ||
-		 SyntaxUsesAnyTemplateParameter(pattern.trailing_return_syntax, parameter_names));
+	const bool defer_trailing_return = dependent_trailing_return;
 	const EntityId member_owner = program_->EntityForScope(pattern.owner);
 	if (special_member_template && member_owner == kNoEntity)
 		throw std::runtime_error(
@@ -1856,7 +1887,9 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	try
 	{
 		if (pattern.dependent_exception_specification)
-			nonthrowing = IsNonthrowing(pattern.declarator, template_scope);
+			nonthrowing = IsNonthrowing(pattern.declarator,
+				FunctionTemplateExceptionScope(
+					pattern, parsed, template_scope, member_owner));
 	}
 	catch (const std::runtime_error&)
 	{
