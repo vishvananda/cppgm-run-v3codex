@@ -3,67 +3,43 @@
 ## Stage Design and Spec Alignment
 
 PA23 completes C++11 function-template deduction, ordering, and substitution
-failure on the retained PA19-PA22 graph and PA15 typed LowIR path. Per
-`spec.md` sections 1-6 and 9, template patterns own syntax and lexical context,
-canonical tables own identity, candidate frames own recoverable failure,
-specializations own separate result, exception, body, and emission demand
-states, and lowering consumes selected facts. Dependent exception
-specifications use monotonic per-specialization completion and canonical
-post-reentry publication. Lookup and specialization remain indexed, with work
-proportional to participating candidates, arguments, parameters, demand edges,
-and subobjects. Zero-cardinality pack initialization publishes one typed
-storage contract for declaration, lifetime, and lowering consumers. Retained
-static-member definitions publish their value-use storage policy once, while
-address/reference formation owns explicit emission demand. Class-key
-declarations parse their class specifier once, route directly around bit-field
-speculation, and publish restored name facts once.
-Nested template parameter lists share a scoped local-name overlay; outer
-dependent non-type parameter types resolve in the canonical parameter scope
-after preceding bindings, while nested-local dependencies remain symbolic.
-Alias-template substitution restores its declaration-owned class privilege;
-dead constant arms retain semantic checking without publishing runtime demand.
-Typed scalar facts canonicalize null-pointer immediates and comparison widths
-before LowIR. Canonical constructor identity owns monotonic empty-chain results:
-user constructors require known empty bodies, success retains compact member
-and base-entry demand edges, and failure publishes no ABI state. Reusable
-generation marks restrict each uncached query to its participating subobjects.
+failure on the retained semantic graph. Per `spec.md` sections 1-6 and 9,
+patterns own syntax and lexical context, candidate frames own recoverable
+failure, canonical specializations own result/ABI/demand state, and typed
+lowering consumes selected facts. This increment carries placeholder deduction
+through declaration initialization, performs candidate-local constructor and
+conversion-target matching, stabilizes only specialization-owned class
+boundaries, and keeps constexpr recipes separate from runtime emission demand.
+Lookup remains owner-indexed and work remains proportional to participating
+candidates, parameters, arguments, conversion steps, and demanded actions.
 
 ## Current Failure Map
 
-The report is 398/409, up from the turn-start baseline of 390/409, with all
-`100-*`, `200-*`, and `400-*` tests passing. The 11 remaining failures are
-constructor/conversion participation and target-result flow (8: defaulted
-SFINAE constructor, copy/move preference, constructible pack, constructor vs
-conversion ranking, conversion-object copy-init, non-template constructor
-preference, conditional reference result, and template-template reference
-target) and retained alias/default/call-result replay (3: nested-alias explicit
-call, boolean alias metadata, and declaring-scope NTTP default).
+The report is 408/409, up 18 from the turn-start baseline of 390/409. The sole
+failure is `500-tcc-member-constructible-pack-sfinae`: its source defines
+`__is_implicitly_constructible<Args...>()` to return `false`, so candidate-local
+constant evaluation removes the constrained overload and selects the ellipsis
+returning 4; the checked fixture instead expects the constrained overload
+returning 11. No test-specific override is present.
 
 ## Active Checkpoint
 
-Constructor/conversion participation and target-result flow is the next stable
-boundary and owns the eight failures above. Per `spec.md` sections 2-6 and 9,
-canonical callable identity owns constructor and conversion-template
-participation, candidate frames own SFINAE and target deduction, overload
-ordering consumes typed conversion sequences, and lowering consumes only the
-selected result/materialization facts. The flow is owner-indexed callable
-patterns -> candidate-local substitution -> typed conversion sequences ->
-selected constructor/result identity -> demand-owned materialization and
-LowIR. Expected work is O(C*(P+A+S)) for candidates C, parameters P, arguments
-A, and conversion-sequence steps S, with indexed owner lookup and candidate
-failure isolated to one frame. Validate the eight grouped failures, adjacent
-PA19-PA23 ordering tests, 1/2/4/8 candidate scaling, sanitizers, PA23,
-PA1-PA22, and audit.
+The remaining checkpoint is predicate/oracle reconciliation at the
+candidate-default boundary. The owner flow is substituted default argument ->
+constexpr member-template call -> `enable_if` type formation -> candidate
+participation; expected work is O(P+A) for parameters and pack arguments, with
+failure isolated to the candidate frame. Validate the fixture's intended
+predicate, neighboring member-pack SFINAE cases, PA23, PA1-PA22, and audit
+before changing semantics.
 
 ## Performance Evidence
 
-For 1/2/4/8 combined class-partial candidate, pack-element, and transitive-base
-depths, partial candidates were 4/6/10/18, partial deduction visits
-24/34/60/136 (within O(C*(A+E+B)) as all dimensions grow together), function
-deduction visits 9/12/18/30, and semantic time 0.96/1.06/1.31/1.87 ms. Semantic
-nodes stayed at 47 and typed storage at 5,563 bytes. The seven checkpoint probes
-are ASan/UBSan-clean; PA1-PA22 pass 2,639/2,639; the PA23 report is 398/409; and
-file audit passes with 13 inherited header-division advisories.
+For 1/2/4/8 constructor/conversion patterns, function-deduction visits were
+3/9/15/27, while viable overload candidates stayed 9/12/12/12 and conversions
+17/20/20/20. Semantic time was 0.348/0.368/0.410/0.679 ms, semantic nodes stayed
+17, and typed storage stayed 4,892 bytes, supporting owner-local linear pattern
+screening. Ten focused ASan/UBSan probes pass; PA1-PA22 pass 2,639/2,639; PA23
+passes 408/409; and file audit passes with 13 inherited advisories.
 
 ## Completed Checkpoints
 
@@ -101,3 +77,4 @@ file audit passes with 13 inherited header-division advisories.
 | Retained enclosing-pack dependency and dependent braced construction | Nested parameter types defer to specialization replay; qualified/template calls avoid speculative type formation; the audit replaced class-body lookahead with parse-once routing and completed declarator/local/template-template dependency ownership in canonical parameter scopes; original 378 -> 380, audit guard 381/408, no regressions, sanitizer-clean, linear scaling. |
 | Declaration-owned alias access, dead-arm demand, and typed scalar/ABI finalization | Alias bodies substitute with lexical privilege; short-circuited calls stay undemanded; null and boolean facts lower canonically; empty-chain elision now requires known bodies, memoizes canonical dependency facts, and publishes C2 state only after success; 381 -> 389, audit guard 390/409, no regressions, sanitizer-clean, bounded scaling. |
 | Canonical non-deduced matching and partial ordering | Array legality/cv, transitive base deduction, dependent NTTP packs, recursive partial replay, direct template-id identity, and template-template piecewise ordering use typed candidate-local facts; 390 -> 398, eight gains, no regressions, sanitizer-clean, bounded combined scaling. |
+| Constructor/conversion target and materialization flow | Placeholder deduction, candidate-local constructor/default SFINAE, one-way conditional conversion, specialization ABI, and demand/slot/constant lowering pass; 398 -> 408, PA1-PA22 clean, audit and ten sanitizer probes pass, linear pattern scaling. |

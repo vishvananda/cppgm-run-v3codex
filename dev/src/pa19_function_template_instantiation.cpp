@@ -2006,6 +2006,8 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 		spec.inline_specifier || constexpr_specialization ||
 		function.definition_in_class);
 	function.template_pattern = static_cast<std::uint32_t>(index);
+	PublishStableFunctionTemplateResultAbi(
+		pattern, parsed.type, member_owner, canonical_binding);
 	function.parameter_pack_name = FunctionParameterPackName(pattern.declarator);
 	function.deferred = true;
 	function.lexical_scope = template_scope;

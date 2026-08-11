@@ -390,6 +390,10 @@ private:
 		bool member_implicit_object = false,
 		bool defer_trailing_return = false,
 		const std::unordered_set<NameId>* template_parameter_names = 0);
+	DeclaratorInfo BuildVariableDeclarator(NodeId item, NodeId declarator,
+		const SpecInfo& spec, ScopeId scope, bool local);
+	bool TakePreparedPlaceholderVariableInitializer(
+		NodeId item, ExpressionInfo* initializer);
 	TypeId BuildArrayDeclaratorType(NodeId suffix, TypeId element,
 		ScopeId scope,
 		const std::unordered_set<NameId>* template_parameter_names);
@@ -808,6 +812,11 @@ private:
 		bool preserve_recipe = false);
 	bool ShouldProbeConstantInitialization(bool local, const SpecInfo& spec,
 		TypeId type) const;
+	bool ShouldPreserveRuntimeInitializerRecipe(bool local,
+		const SpecInfo& spec, TypeId type, NodeId initializer) const;
+	void PublishVariableInitializer(BindingId binding, TypeId type,
+		const SpecInfo& spec, const ExpressionInfo& initializer,
+		bool preserve_runtime_recipe);
 	bool HasConstantInitializerFact(const ExpressionInfo& initializer) const;
 	ExpressionInfo AnalyzeInClassStaticInitializer(NodeId initializer,
 		ScopeId scope, TypeId type);
@@ -930,6 +939,8 @@ private:
 	void AppendParenthesizedCallArguments(NodeId node,
 		std::vector<NodeId>* arguments) const;
 	ExpressionInfo AnalyzeConditional(NodeId node, ScopeId scope);
+	void ApplyConditionalClassConversion(
+		ExpressionInfo* yes, ExpressionInfo* no);
 	ExpressionInfo BuildClassConditional(std::uint32_t condition,
 		const ExpressionInfo& yes, const ExpressionInfo& no, TypeId type,
 		bool preserve_xvalue);
@@ -1061,6 +1072,10 @@ private:
 	std::size_t RequestedAlignment(NodeId node, ScopeId scope);
 	void InheritConstructors(EntityId entity,
 		const std::vector<BindingId>& constructors);
+	bool HasConstructorTemplatePattern(EntityId entity) const;
+	void PublishStableFunctionTemplateResultAbi(
+		const FunctionTemplatePattern& pattern, TypeId function_type,
+		EntityId member_owner, BindingId canonical_binding);
 	bool TryInheritConstructors(EntityId entity, ScopeId scope,
 		ScopeId target_owner, NameId target_name, bool names_owner_alias,
 		const std::vector<BindingId>& constructors,
@@ -1303,6 +1318,9 @@ private:
 		TypeId type);
 	bool MaterializeConstantDefinitionInitializer(BindingId binding,
 		TypeId* type, ExpressionInfo* initializer);
+	bool PreferMaterializedConstantDefinition(BindingId canonical) const;
+	void PublishInClassStaticDefinitionPolicy(BindingId binding, TypeId type,
+		const SpecInfo& spec, NodeId initializer);
 	bool ScalarTruth(const ConstexprScalarValue& value) const;
 	ConstexprScalarValue ApplyConstantScalarBinary(
 		const std::string& operation, const ConstexprScalarValue& left,
@@ -1411,7 +1429,9 @@ private:
 	{
 		std::uint32_t initializer;
 		std::vector<BindingId> function_dependencies;
-		StaticConstantInitializerFact() : initializer(kNoDumpEdge) {}
+		bool prefer_materialized_definition;
+		StaticConstantInitializerFact()
+			: initializer(kNoDumpEdge), prefer_materialized_definition(false) {}
 	};
 	// Canonical member identity owns the immutable initializer recipe and only
 	// the callable edges needed if an ODR-use later demands storage.
@@ -1528,6 +1548,8 @@ private:
 	std::unordered_multimap<std::size_t, std::uint32_t>
 		constexpr_object_index_;
 	std::vector<std::uint32_t> constexpr_object_by_dump_;
+	std::unordered_map<NodeId, ExpressionInfo>
+		prepared_placeholder_initializers_;
 	std::vector<std::uint32_t> constexpr_scratch_object_by_dump_;
 	DumpArena constexpr_scratch_dump_;
 	std::unordered_map<ConstexprCallKey, ConstexprCallFact,

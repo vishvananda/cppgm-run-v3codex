@@ -161,9 +161,14 @@ bool SemanticAnalyzer::MaterializeConstantDefinitionInitializer(
 {
 	if (!program_->bindings[binding].constant) return false;
 	const BindingId canonical = program_->bindings[binding].canonical;
+	const std::uint32_t object = BindingObject(binding);
+	const std::uint32_t address = BindingAddress(binding);
+	const bool prefer_materialized =
+		PreferMaterializedConstantDefinition(canonical) &&
+		(address != kNoConstexprAddress || object != kNoConstexprObject);
 	if (canonical < static_constant_initializers_by_binding_.size() &&
 		static_constant_initializers_by_binding_[canonical].initializer !=
-			kNoDumpEdge)
+			kNoDumpEdge && !prefer_materialized)
 	{
 		const std::uint32_t node =
 			static_constant_initializers_by_binding_[canonical].initializer;
@@ -177,8 +182,6 @@ bool SemanticAnalyzer::MaterializeConstantDefinitionInitializer(
 		SetExpressionDumpObject(initializer);
 		return true;
 	}
-	const std::uint32_t object = BindingObject(binding);
-	const std::uint32_t address = BindingAddress(binding);
 	if (address != kNoConstexprAddress)
 	{
 		*initializer = MaterializeConstexprAddress(address, *type);

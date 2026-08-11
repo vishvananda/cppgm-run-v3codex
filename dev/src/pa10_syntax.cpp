@@ -1230,7 +1230,7 @@ NodeId Parser::ParseExpression(int minimum_precedence)
 			const NodeId middle = ParseExpression(1);
 			if (middle == kNoNode) throw Error("expected conditional operand");
 			Expect(OP_COLON);
-			const NodeId right = ParseExpression(3);
+			const NodeId right = ParseExpression(2);
 			if (right == kNoNode) throw Error("expected conditional operand");
 			const NodeId conditional = arena_.Make("conditional-expression");
 			arena_.Add(conditional, left);
@@ -2913,6 +2913,14 @@ NodeId Parser::ParseDeclaration(bool in_class)
 		const Mark class_mark = Checkpoint();
 		const std::size_t specifier_first = position_;
 		const NodeId class_specifier = ParseClass(false);
+		const NodeId specifiers = arena_.Make("decl-specifier-seq");
+		arena_.Add(specifiers, class_specifier);
+		while (At(KW_CONST) || At(KW_VOLATILE))
+		{
+			const std::size_t qualifier = position_++;
+			arena_.Add(specifiers,
+				MakeTokenNode("decl-specifier", qualifier));
+		}
 		const std::size_t specifier_last = position_;
 		if (Match(OP_SEMICOLON))
 		{
@@ -2920,8 +2928,6 @@ NodeId Parser::ParseDeclaration(bool in_class)
 				class_specifier, specifier_first, position_);
 			return class_specifier;
 		}
-		const NodeId specifiers = arena_.Make("decl-specifier-seq");
-		arena_.Add(specifiers, class_specifier);
 		return FinishSimpleOrFunction(class_mark,
 			specifier_first, specifier_last, specifiers);
 	}

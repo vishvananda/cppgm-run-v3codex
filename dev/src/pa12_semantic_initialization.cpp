@@ -258,10 +258,14 @@ void SemanticAnalyzer::FinalizeNamedReturnSlot(std::uint32_t function)
 	const bool forced_indirect = function_binding != kNoBinding &&
 		program_->bindings[program_->bindings[function_binding].canonical].force_indirect_class_result_abi;
 	const bool dependent_empty_value = class_record.empty_class &&
-		class_record.template_argument_count != 0 && !forced_indirect && (class_record.enclosing_class == kNoEntity ||
+		class_record.template_argument_count != 0 && !forced_indirect &&
+		((class_record.enclosing_class == kNoEntity &&
+		  class_record.default_constructible) ||
 		 !class_record.indirect_class_value_abi);
-	const bool indirect = !dependent_empty_value && (size > 16 ||
-		(size < 16 && class_record.indirect_class_value_abi));
+	const bool indirect = !dependent_empty_value && (forced_indirect ||
+		size > 16 || ((size < 16 || (size == 16 &&
+		class_record.template_argument_count != 0)) &&
+		class_record.indirect_class_value_abi));
 	std::vector<std::uint32_t> pending(1, function);
 	std::vector<std::uint32_t> return_edges;
 	std::vector<std::uint32_t> sources;
@@ -2263,6 +2267,9 @@ ExpressionInfo SemanticAnalyzer::MaterializeTemporary(
 		 GetFunction(action.binding).delegated_constructor == kNoBinding);
 	if (action.kind == DUMP_CONSTRUCTOR_ACTION &&
 		action.binding != kNoBinding &&
+		!action.trivial_special_member_action &&
+		!(ExpressionObject(initializer) != kNoConstexprObject &&
+		  GetFunction(action.binding).implicit_special_member) &&
 		!compile_time_only && unevaluated_depth_ == 0)
 	{
 		if (constant_expression_required_depth_ != 0 ||

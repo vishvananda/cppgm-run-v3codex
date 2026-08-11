@@ -332,10 +332,26 @@ bool SemanticAnalyzer::DemandRuntimeInitializerFunctions(
 		const BindingId selected_binding =
 			dump_.nodes[current].selected_binding;
 		const std::uint32_t first_edge = dump_.nodes[current].first_edge;
+		const bool trivial_constructor = kind == DUMP_CONSTRUCTOR_ACTION &&
+			binding != kNoBinding &&
+			GetFunction(binding).trivial_special_member;
+		bool elided_implicit_transfer = false;
+		if (kind == DUMP_CONSTRUCTOR_ACTION && binding != kNoBinding &&
+			GetFunction(binding).defaulted_special_member &&
+			first_edge != kNoDumpEdge)
+		{
+			const DumpNode& source =
+				dump_.nodes[dump_.edges[first_edge].child];
+			elided_implicit_transfer = source.category != VALUE_LVALUE &&
+				program_->types.RemoveTopCv(EffectiveType(source.type)) ==
+				program_->types.RemoveTopCv(
+					EffectiveType(dump_.nodes[current].operand_type));
+		}
 		if (!function_addresses_only &&
 			(kind == DUMP_CALL_EXPRESSION ||
 			kind == DUMP_CONSTRUCTOR_ACTION) &&
-			binding != kNoBinding)
+			binding != kNoBinding && !trivial_constructor &&
+			!elided_implicit_transfer)
 			DemandFunction(binding);
 		else if (kind == DUMP_ID_EXPRESSION && binding != kNoBinding &&
 			program_->bindings[binding].kind == BIND_FUNCTION)
@@ -349,7 +365,8 @@ bool SemanticAnalyzer::DemandRuntimeInitializerFunctions(
 		}
 		else if (!function_addresses_only &&
 			kind == DUMP_CLASS_VALUE_TRANSFER &&
-			selected_binding != kNoBinding)
+			selected_binding != kNoBinding &&
+			!GetFunction(selected_binding).defaulted_special_member)
 			DemandFunction(selected_binding);
 		for (std::uint32_t edge = first_edge;
 			edge != kNoDumpEdge; edge = dump_.edges[edge].next)

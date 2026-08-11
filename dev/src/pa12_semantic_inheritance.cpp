@@ -813,10 +813,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeConditional(NodeId node, ScopeId scope)
 		edge = arena_->NextEdge(edge)) children.push_back(arena_->EdgeChild(edge));
 	if (children.size() != 3) throw std::runtime_error("invalid conditional");
 	ExpressionInfo condition = AnalyzeExpression(children[0], scope);
+	const bool class_condition = IsClassObjectType(condition.type);
 	if (!IsArithmetic(condition.type) && !IsPointer(Decay(condition.type)) &&
 		!IsNullptr(condition.type))
-		condition = ApplyExplicitConversion(condition,
-			program_->types.Fundamental(FUND_BOOL));
+		condition = ApplyContextualBool(condition);
 	const bool known_condition = condition.constant;
 	const bool condition_truth = known_condition &&
 		ScalarTruth(ExpressionScalar(condition));
@@ -846,6 +846,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeConditional(NodeId node, ScopeId scope)
 		throw;
 	}
 	if (suppress_no) --constant_evaluation_suppressed_depth_;
+	ApplyConditionalClassConversion(&yes, &no);
 	TypeId type = kNoType;
 	ValueCategory category = VALUE_PRVALUE;
 	const TypeId yes_object = program_->types.RemoveTopCv(
@@ -927,6 +928,14 @@ ExpressionInfo SemanticAnalyzer::AnalyzeConditional(NodeId node, ScopeId scope)
 		if (no.integer_literal_zero || IsNullptr(no.type))
 			SetExpressionAddress(&no, NullConstexprAddress());
 		else no = ApplyTarget(no, type);
+	}
+	if (class_condition && known_condition &&
+		dump_.nodes[condition.node].kind == DUMP_LITERAL)
+	{
+		ExpressionInfo selected = condition_truth ? yes : no;
+		selected = ApplyTarget(selected, type);
+		selected.category = category;
+		return selected;
 	}
 	const std::uint32_t expression = MakeDump(DUMP_CONDITIONAL_EXPRESSION,
 		type, category);

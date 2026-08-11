@@ -1261,8 +1261,9 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 						program_->types.Qualify(value.type, CV_CONST) : value.type;
 					program_->bindings[member].type = member_type;
 				}
-				PublishConstantVariableInitializer(
-					member, member_type, spec, value);
+				PublishConstantVariableInitializer(member, member_type, spec, value);
+				PublishInClassStaticDefinitionPolicy(member, member_type, spec,
+					FindChild(item, "initializer"));
 			}
 			else if (!non_static_data_member && spec.is_constexpr)
 				throw std::runtime_error(
@@ -1840,6 +1841,7 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 	{
 		if (result.placeholder_auto)
 		{
+			result.placeholder_cv = cv;
 			result.type = program_->types.Fundamental(FUND_VOID);
 			return result;
 		}

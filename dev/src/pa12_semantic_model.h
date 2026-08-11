@@ -234,13 +234,14 @@ struct SpecInfo
 	bool is_friend;
 	bool inline_specifier;
 	bool placeholder_auto;
+	std::uint8_t placeholder_cv;
 	bool thread_local_storage;
 	bool mutable_member;
 	bool virtual_specifier;
 	SpecInfo() : type(kNoType), storage_class(STORAGE_CLASS_NONE),
 		is_typedef(false), is_constexpr(false), is_friend(false),
 		inline_specifier(false),
-		placeholder_auto(false),
+		placeholder_auto(false), placeholder_cv(CV_NONE),
 		thread_local_storage(false), mutable_member(false),
 		virtual_specifier(false) {}
 };

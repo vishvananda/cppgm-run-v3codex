@@ -287,7 +287,22 @@ bool StaticInitializerLowering::AppendValue(TypeId type, std::uint32_t node,
 			AppendZero(static_cast<std::size_t>(member.member_offset) - cursor,
 				items);
 			const NodeChildren values = Children(actions[i]);
-			if (values.empty()) AppendZero(program_.SizeOf(action.type), items);
+			if (values.empty())
+			{
+				const LowType member_type =
+					types_.LowerExpression(action.type);
+				if (IsFloating(member_type))
+				{
+					Global::DataItem zero;
+					zero.kind = Global::DataItem::FLOATING_ITEM;
+					zero.type = member_type;
+					zero.floating_spelling = output_.literals.Intern(
+						member_type.kind == LOW_F32 ? "0.0F" :
+						member_type.kind == LOW_F80 ? "0.0L" : "0.0");
+					items->push_back(zero);
+				}
+				else AppendZero(program_.SizeOf(action.type), items);
+			}
 			else if (values.size() != 1 ||
 				!AppendValue(action.type, values[0], items, substitutions, false))
 				return false;

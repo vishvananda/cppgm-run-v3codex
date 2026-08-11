@@ -1306,12 +1306,19 @@ void SemanticAnalyzer::RecordStaticConstantInitializer(
 void SemanticAnalyzer::DemandStaticConstantInitializerDependencies(
 	BindingId member)
 {
+	const bool materialized_constant = member != kNoBinding &&
+		member < program_->bindings.size() &&
+		program_->bindings[member].constant &&
+		(BindingObject(member) != kNoConstexprObject ||
+		 BindingAddress(member) != kNoConstexprAddress);
 	member = program_->bindings[member].canonical;
 	if (member >= static_constant_initializers_by_binding_.size()) return;
 	const std::vector<BindingId>& dependencies =
 		static_constant_initializers_by_binding_[member].function_dependencies;
 	for (std::size_t i = 0; i < dependencies.size(); ++i)
-		DemandFunction(dependencies[i]);
+		if (!materialized_constant ||
+			!GetFunction(dependencies[i]).trivial_special_member)
+			DemandFunction(dependencies[i]);
 }
 
 void SemanticAnalyzer::PublishStaticConstantEvaluationStats() const
@@ -1368,7 +1375,8 @@ void SemanticAnalyzer::PublishConstantVariableInitializer(BindingId binding,
 		(IsIntegral(type, true) || IsFloating(type)) && !initializer.constant)
 		throw std::runtime_error(
 			"constexpr scalar initializer is not constant");
-	if (spec.is_constexpr && aggregate_object_type &&
+	if (spec.is_constexpr && !program_->types.IsReference(type) &&
+		aggregate_object_type &&
 		initializer_object == kNoConstexprObject)
 		throw std::runtime_error(
 			"constexpr object initializer is not constant");

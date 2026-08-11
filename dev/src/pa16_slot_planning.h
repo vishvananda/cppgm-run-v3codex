@@ -51,17 +51,47 @@ protected:
 		return true;
 	}
 
+	bool CallUsesTemporaryImplicitObject(std::uint32_t node) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		const DumpNode& call = derived.arena_.nodes[node];
+		if (call.kind != DUMP_CALL_EXPRESSION ||
+			call.binding == kNoBinding ||
+			call.binding >= derived.program_.bindings.size()) return false;
+		const BindingRecord& binding = derived.program_.bindings[call.binding];
+		if (binding.member_owner == kNoEntity || binding.static_member_function)
+			return false;
+		const NodeChildren children = derived.Children(node);
+		if (children.size() < 2) return false;
+		std::vector<std::uint32_t> pending(1, children[1]);
+		while (!pending.empty())
+		{
+			const std::uint32_t current = pending.back();
+			pending.pop_back();
+			if (derived.arena_.nodes[current].kind == DUMP_TEMPORARY_OBJECT)
+				return true;
+			const NodeChildren nested = derived.Children(current);
+			for (std::size_t i = 0; i < nested.size(); ++i)
+				pending.push_back(nested[i]);
+		}
+		return false;
+	}
+
 	void CollectSlots(std::uint32_t node)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		std::vector<std::uint32_t> pending(1, node);
 		std::vector<std::uint8_t> under_variable(1, 0);
+		std::vector<std::uint8_t> plan_expression_arguments(1, 0);
 		while (!pending.empty())
 		{
 			const std::uint32_t current = pending.back();
 			pending.pop_back();
 			const bool variable_initializer = under_variable.back() != 0;
 			under_variable.pop_back();
+			const bool expression_arguments =
+				plan_expression_arguments.back() != 0;
+			plan_expression_arguments.pop_back();
 			const DumpNode& record = derived.arena_.nodes[current];
 			const bool persistent_variable = record.kind == DUMP_VARIABLE &&
 				record.binding != kNoBinding &&
@@ -123,15 +153,39 @@ protected:
 				if (result.kind != LOW_VOID)
 					(void)derived.EnsureGeneratedSlot(current, "call", result);
 			}
+			const NodeChildren children = derived.Children(current);
+			if (record.kind == DUMP_RETURN_STATEMENT && !children.empty() &&
+				!derived.current_indirect_result_ &&
+				derived.current_result_.kind == LOW_OBJECT)
+			{
+				const DumpKind result_kind =
+					derived.arena_.nodes[children[0]].kind;
+				if (result_kind == DUMP_BRACED_INIT_LIST ||
+					result_kind == DUMP_CONDITIONAL_EXPRESSION ||
+					result_kind == DUMP_CLASS_VALUE_TRANSFER ||
+					result_kind == DUMP_AGGREGATE_CONSTRUCTION_ACTION ||
+					result_kind == DUMP_CONSTRUCTOR_ACTION)
+					(void)derived.EnsureDirectReturnSlot(children[0]);
+			}
 			if (record.kind == DUMP_TEMPORARY_OBJECT &&
 				record.argument_materialization &&
-				(variable_initializer || union_argument ||
+				(variable_initializer || expression_arguments || union_argument ||
 				 (record.full_expression_staging &&
 				  !record.managed_full_expression_cleanup)) &&
 				derived.generated_slots_[current] == kNoLowId)
 				(void)derived.EnsureGeneratedSlot(current, "arg",
 					derived.LowerStorageType(record.type));
+			const bool indirect_result_transfer =
+				record.kind == DUMP_CLASS_VALUE_TRANSFER &&
+				children.size() == 1 &&
+				derived.arena_.nodes[children[0]].kind == DUMP_CALL_EXPRESSION &&
+				derived.UsesIndirectClassResult(
+					derived.arena_.nodes[children[0]].type,
+					derived.arena_.nodes[children[0]].binding);
 			if (record.class_argument_staging && variable_initializer &&
+				!(record.kind == DUMP_CALL_EXPRESSION &&
+				  derived.UsesIndirectClassResult(record.type, record.binding)) &&
+				!indirect_result_transfer &&
 				derived.generated_slots_[current] == kNoLowId)
 			{
 				const TypeId staging_type =
@@ -142,7 +196,6 @@ protected:
 						"arg" : "argobj",
 					derived.LowerStorageType(staging_type));
 			}
-			const NodeChildren children = derived.Children(current);
 			if (record.kind == DUMP_NEW_EXPRESSION && record.array_action &&
 				!children.empty())
 			{
@@ -170,6 +223,13 @@ protected:
 				pending.push_back(children[i - 1]);
 				under_variable.push_back(variable_initializer ||
 					record.kind == DUMP_VARIABLE ? 1 : 0);
+				const bool plan_child_arguments = expression_arguments ||
+					(record.kind == DUMP_EXPRESSION_STATEMENT &&
+					 derived.arena_.nodes[children[i - 1]].kind ==
+						DUMP_CALL_EXPRESSION &&
+					 !CallUsesTemporaryImplicitObject(children[i - 1]));
+				plan_expression_arguments.push_back(
+					plan_child_arguments ? 1 : 0);
 			}
 		}
 	}

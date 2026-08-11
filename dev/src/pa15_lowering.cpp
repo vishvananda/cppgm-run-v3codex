@@ -1563,18 +1563,18 @@ private:
 		subtract.first = left;
 		subtract.second = right;
 		Emit(subtract);
+		const std::size_t element_size = program_.SizeOf(PointeeType(arena_.nodes[left_node].type));
+		if (element_size == 1) return bytes;
 		const Operand result = Temp(LowI64());
 		Instruction divide(Instruction::BINARY);
 		divide.dest = result.id;
 		divide.op = LOW_OP_DIV;
 		divide.type = LowI64();
 		divide.first = bytes;
-		divide.second = Operand(static_cast<std::int64_t>(
-			program_.SizeOf(PointeeType(arena_.nodes[left_node].type))), LowI64());
+		divide.second = Operand(static_cast<std::int64_t>(element_size), LowI64());
 		Emit(divide);
 		return result;
 	}
-
 	Operand ApplyPointerOffset(const Operand& base, const Operand& raw_offset,
 		TypeId element_type, bool subtract)
 	{

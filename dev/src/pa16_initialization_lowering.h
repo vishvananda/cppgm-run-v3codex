@@ -138,6 +138,11 @@ protected:
 					action.type, children[0], destination);
 			return;
 		}
+		if (source.kind == DUMP_AGGREGATE_CONSTRUCTION_ACTION)
+		{
+			derived.LowerAggregateConstructionAction(children[0], destination);
+			return;
+		}
 		EmitClassObjectCopy(action.type,
 			LowerClassTransferSource(children[0]), destination);
 	}

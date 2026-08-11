@@ -176,8 +176,20 @@ bool SemanticAnalyzer::TryFoldConstantClassConversion(
 	const EntityRecord& object = program_->entities[entity];
 	if (!object.empty_class || !object.trivial_default_constructor ||
 		!object.trivial_destructor) return false;
-	const FunctionInfo& function = GetFunction(conversion);
-	if (!function.conversion_function || !function.constexpr_function ||
+	FunctionInfo function = GetFunction(conversion);
+	if (function.conversion_function && function.definition_body == kNoNode &&
+		entity < class_template_pattern_by_entity_.size() &&
+		class_template_pattern_by_entity_[entity] != kNoDumpEdge)
+	{
+		DemandClassTemplateMemberDefinitions(entity);
+		const BindingId specialization =
+			program_->entities[entity].declaration;
+		if (specialization != kNoBinding && specialization <
+			class_template_member_definition_demand_states_.size())
+			ApplyDemandedClassTemplateMemberDefinitions(specialization);
+		function = GetFunction(conversion);
+	}
+	if (!function.conversion_function ||
 		function.definition_body == kNoNode ||
 		program_->types.RemoveTopCv(EffectiveType(function.conversion_target)) !=
 		program_->types.RemoveTopCv(EffectiveType(target))) return false;
@@ -221,6 +233,20 @@ ExpressionInfo SemanticAnalyzer::ApplyContextualBool(ExpressionInfo value)
 		value = ApplyTarget(value, boolean);
 		value.type = boolean;
 		return value;
+	}
+	const CallConversionFact conversion =
+		ConvertingFunction(value, boolean, true);
+	std::int64_t constant = 0;
+	if (conversion.conversion_function != kNoBinding &&
+		!GetFunction(conversion.conversion_function).explicit_conversion &&
+		TryFoldConstantClassConversion(
+			value, conversion.conversion_function, boolean, &constant))
+	{
+		ExpressionInfo folded = MakeLiteral(boolean, InternNumber(constant));
+		folded.constant = true;
+		folded.value = constant;
+		RecordExpressionFacts(folded);
+		return folded;
 	}
 	return ApplyExplicitConversion(value, boolean);
 }
@@ -418,10 +444,21 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 			dump_.nodes[result.node].value_initialization = true;
 			dump_.nodes[result.node].value_constructor = constructor;
 		}
-		if (target == kNoType)
+		const TypeId effective_target = target == kNoType ? kNoType :
+			program_->types.RemoveTopCv(EffectiveType(target));
+		const bool distinct_target = effective_target != kNoType &&
+			effective_target !=
+				program_->types.RemoveTopCv(EffectiveType(cast_type));
+		if (target == kNoType || distinct_target)
 		{
 			result.node = BuildAggregateConstructionAction(
 				cast_type, result.node, true);
+			result.category = VALUE_PRVALUE;
+			if (distinct_target)
+			{
+				if (reference_target) result = MaterializeTemporary(result);
+				return ApplyTarget(result, target);
+			}
 			return materialize_if_evaluated(result);
 		}
 		if (reference_target) result = MaterializeTemporary(result);

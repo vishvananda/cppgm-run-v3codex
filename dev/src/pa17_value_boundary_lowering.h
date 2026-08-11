@@ -93,10 +93,13 @@ protected:
 		const bool dependent_empty_value = entity.empty_class &&
 			entity.template_argument_count != 0 &&
 			!forced_indirect &&
-			(entity.enclosing_class == pa11::kNoEntity ||
+			((entity.enclosing_class == pa11::kNoEntity &&
+			  entity.default_constructible) ||
 			 !entity.indirect_class_value_abi);
-		return !dependent_empty_value && (size > 16 ||
-			(size < 16 && entity.indirect_class_value_abi));
+		return !dependent_empty_value && (forced_indirect || size > 16 ||
+			((size < 16 || (size == 16 &&
+			  entity.template_argument_count != 0)) &&
+			 entity.indirect_class_value_abi));
 	}
 
 	bool UsesIndirectClassParameter(pa11::TypeId type) const
@@ -114,7 +117,8 @@ protected:
 			!derived.program_.entities[object.entity].complete)
 			return false;
 		const std::size_t size = derived.program_.SizeOf(object_type);
-		return size != 16 &&
+		return (size != 16 ||
+			derived.program_.entities[object.entity].template_argument_count != 0) &&
 			derived.program_.entities[object.entity].indirect_class_value_abi;
 	}
 

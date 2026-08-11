@@ -2144,8 +2144,8 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			throw std::runtime_error("variable owner not found");
 		const ScopeId semantic_scope = qualified_lexical_scope ?
 			scope : declaration_scope;
-		DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type,
-			semantic_scope);
+		DeclaratorInfo parsed = BuildVariableDeclarator(
+			item, declarator, spec, semantic_scope, local);
 		parsed.name = declared_path.Last();
 		if (parsed.name == 0) throw std::runtime_error("unnamed declaration");
 		if (spec.is_typedef)
@@ -2203,23 +2203,21 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		{
 			const bool require_constant =
 				ShouldProbeConstantInitialization(local, spec, parsed.type);
-			const bool preserve_runtime_recipe = !local && spec.is_constexpr &&
-				IsClassObjectType(parsed.type) &&
-				FindChild(initializer_node, "paren-initializer") != kNoNode &&
-				arena_->HasDescendantTag(initializer_node, "call-expression");
-			initializer = AnalyzeConstantAwareVariableInitializer(initializer_node,
-				semantic_scope, parsed.type, local, require_constant,
-				preserve_runtime_recipe);
+			const bool preserve_runtime_recipe =
+				ShouldPreserveRuntimeInitializerRecipe(local, spec,
+					parsed.type, initializer_node);
+			if (!TakePreparedPlaceholderVariableInitializer(item, &initializer))
+				initializer = AnalyzeConstantAwareVariableInitializer(initializer_node,
+					semantic_scope, parsed.type, local, require_constant,
+					preserve_runtime_recipe);
 			if (program_->types.Get(parsed.type).kind == TYPE_ARRAY &&
 				program_->types.Get(parsed.type).bound == 0)
 			{
 				parsed.type = initializer.type;
 				program_->bindings[binding].type = parsed.type;
 			}
-			PublishConstantVariableInitializer(
-				binding, parsed.type, spec, initializer);
-			if (preserve_runtime_recipe)
-				DemandRuntimeInitializerFunctions(initializer.node);
+			PublishVariableInitializer(binding, parsed.type, spec,
+				initializer, preserve_runtime_recipe);
 		}
 		else if (constexpr_class_default)
 		{
