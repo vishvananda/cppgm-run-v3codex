@@ -900,6 +900,7 @@ struct FunctionTemplatePattern
 	BindingId result_root_declaration;
 	ScopeId result_root_namespace;
 	FunctionTemplateResultIdentityId expanded_result_identity;
+	FunctionTemplateAbiRecipeId abi_recipe;
 	bool result_root_global;
 	bool expanded_result_has_alias;
 	std::vector<BindingId> specialization_bindings;
@@ -936,6 +937,7 @@ struct FunctionTemplatePattern
 		  result_root_declaration(kNoBinding),
 		  result_root_namespace(kNoScope),
 		  expanded_result_identity(kNoFunctionTemplateResultIdentity),
+		  abi_recipe(kNoFunctionTemplateAbiRecipe),
 		  result_root_global(false), expanded_result_has_alias(false),
 		  language_linkage(LANGUAGE_LINKAGE_CPP), member_access(ACCESS_PUBLIC),
 		  defined(false), ordinary_visible(true), definition_in_class(false),
@@ -1137,6 +1139,7 @@ struct LocalStaticObjectAction
 	NameId source_file;
 	std::uint32_t source_line, source_column;
 	bool constant_initialized, specialization_owned_recipe;
+	bool source_identity_presentation;
 
 	LocalStaticObjectAction(BindingId object_value, BindingId function_value,
 		TypeId type_value, std::uint32_t variable_value,
@@ -1145,7 +1148,8 @@ struct LocalStaticObjectAction
 		NameId source_file_value, std::uint32_t source_line_value,
 		std::uint32_t source_column_value,
 		bool constant_initialized_value,
-		bool specialization_owned_recipe_value)
+		bool specialization_owned_recipe_value,
+		bool source_identity_presentation_value)
 		: object(object_value), function(function_value), type(type_value),
 		  variable(variable_value), initializer(initializer_value),
 		  destructor(destructor_value),
@@ -1153,7 +1157,8 @@ struct LocalStaticObjectAction
 		  source_file(source_file_value), source_line(source_line_value),
 		  source_column(source_column_value),
 		  constant_initialized(constant_initialized_value),
-		  specialization_owned_recipe(specialization_owned_recipe_value) {}
+		  specialization_owned_recipe(specialization_owned_recipe_value),
+		  source_identity_presentation(source_identity_presentation_value) {}
 };
 
 // A lowering-only aggregate helper has a canonical typed identity but is not a

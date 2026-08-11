@@ -376,8 +376,35 @@ struct EntityRecord
 	bool explicit_template_specialization;
 	bool lambda_closure;
 	std::uint32_t lambda_ordinal;
+	std::uint32_t template_parameter_ordinal;
 
 	EntityRecord();
+};
+
+typedef std::uint32_t FunctionTemplateAbiRecipeId;
+const FunctionTemplateAbiRecipeId kNoFunctionTemplateAbiRecipe =
+	std::numeric_limits<FunctionTemplateAbiRecipeId>::max();
+
+struct FunctionTemplateAbiRecipe
+{
+	TypeId function_type;
+	std::uint32_t parameter_shape_begin, template_parameter_count;
+	bool template_parameter_pack;
+	bool function_parameter_pack;
+	bool overloaded_pattern;
+
+	FunctionTemplateAbiRecipe(TypeId function_type_value = kNoType,
+		std::uint32_t parameter_shape_begin_value = 0,
+		std::uint32_t template_parameter_count_value = 0,
+		bool template_parameter_pack_value = false,
+		bool function_parameter_pack_value = false,
+		bool overloaded_pattern_value = false)
+		: function_type(function_type_value),
+		  parameter_shape_begin(parameter_shape_begin_value),
+		  template_parameter_count(template_parameter_count_value),
+		  template_parameter_pack(template_parameter_pack_value),
+		  function_parameter_pack(function_parameter_pack_value),
+		  overloaded_pattern(overloaded_pattern_value) {}
 };
 
 struct BindingRecord
@@ -393,6 +420,7 @@ struct BindingRecord
 	std::uint32_t overload_ordinal, member_ordinal;
 	TemplateArgumentListId template_argument_list;
 	std::uint32_t template_argument_begin, template_argument_count;
+	FunctionTemplateAbiRecipeId function_template_abi_recipe;
 	NamedFlavor display_flavor;
 	NameId display_type_name;
 	BindingId canonical;
@@ -553,6 +581,8 @@ public:
 	std::vector<BindingRecord> bindings;
 	std::vector<TypeId> template_arguments;
 	std::vector<TemplateArgument> canonical_template_arguments;
+	std::vector<TypeId> function_template_parameter_shapes;
+	std::vector<FunctionTemplateAbiRecipe> function_template_abi_recipes;
 	std::size_t lookup_queries, lookup_scope_visits, lookup_edge_visits;
 	std::size_t lookup_cache_hits, lookup_cache_misses;
 	std::size_t lookup_cache_invalidations, lookup_cache_dependency_edges;

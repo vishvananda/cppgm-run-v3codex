@@ -58,7 +58,7 @@ protected:
 			derived.program_.names.Get(
 				derived.program_.bindings[action.object].name));
 		std::string name = "__local_static__" + function_identity + "__";
-		if (presentation && weak && action.specialization_owned_recipe &&
+		if (presentation && weak && action.source_identity_presentation &&
 			action.source_file != 0 && action.source_line != 0 &&
 			action.source_column != 0)
 		{

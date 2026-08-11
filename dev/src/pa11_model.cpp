@@ -655,7 +655,7 @@ EntityRecord::EntityRecord()
 	  nonlinear_base_graph(false),
 	  deferred_template_completion(false),
 	  explicit_template_specialization(false), lambda_closure(false),
-	  lambda_ordinal(0)
+	  lambda_ordinal(0), template_parameter_ordinal(kNoTemplateParameter)
 {
 }
 
@@ -668,6 +668,7 @@ BindingRecord::BindingRecord()
 	  overload_ordinal(0), member_ordinal(kNoBinding),
 	  template_argument_list(kNoTemplateArgumentList),
 	  template_argument_begin(0), template_argument_count(0),
+	  function_template_abi_recipe(kNoFunctionTemplateAbiRecipe),
 	  display_flavor(NAMED_NONE), display_type_name(0),
 		  canonical(kNoBinding), value(0), operator_kind(OPERATOR_NONE),
 		  builtin_function(BUILTIN_FUNCTION_NONE),
@@ -2908,7 +2909,10 @@ std::size_t Program::StorageBytes() const
 		entities.capacity() * sizeof(EntityRecord) +
 		bindings.capacity() * sizeof(BindingRecord) +
 		template_arguments.capacity() * sizeof(TypeId) +
-		canonical_template_arguments.capacity() * sizeof(TemplateArgument);
+		canonical_template_arguments.capacity() * sizeof(TemplateArgument) +
+		function_template_parameter_shapes.capacity() * sizeof(TypeId) +
+		function_template_abi_recipes.capacity() *
+			sizeof(FunctionTemplateAbiRecipe);
 	return bytes;
 }
 

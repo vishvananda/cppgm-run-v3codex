@@ -18,29 +18,27 @@ demanded nodes (section 9).
 
 ## Current Failure Map
 
-Current state: **419/422** pa24 tests (checkpoint start: 417/422; goal start:
+Current state: **421/422** pa24 tests (checkpoint start: 419/422; goal start:
 368/422); all **3,049/3,049** tests through pa23 pass.
 
 | Shared behavior and owner | Count | Complete failing set (test basename) |
 | --- | ---: | --- |
 | Reference-temporary slot planning order (`pa16`/`pa17` typed lowering) | 1 | `constructor-template-const-ref-enable-if-conversion` |
-| Demanded local-static emission identity through retained member owners (`pa22`/`pa23` + typed emission) | 2 | `member-template-result-pack-preserves-nested-function-pointer-owner`, `out-of-class-partial-member-template-owner-parameter-alias` |
 
 ## Active Checkpoint
 
-**Demanded local-static emission identity through retained member owners.**
-PA22/PA23 specialization replay owns the instantiated lexical environment;
-semantic declaration owns the canonical local-static object, and typed emission
-must consume that object identity rather than a retained parameter alias. Data
-flows as `selected member specialization -> instantiated function scope ->
-local-static declaration -> canonical storage/emission binding -> LowIR symbol`.
-This applies `spec.md` sections 2-6, 8, and 9: identities are translation-unit
-owned, replay environments are parent linked, demand is monotonic, and lowering
-uses the selected canonical binding. Expected work is O(I + U) for I newly
-instantiated local declarations and U demanded uses, with hash-indexed identity
-reuse. Validate both local-static fixtures, nested member-result and partial-
-owner alias controls through PA23, the full reports, audit, and a demanded-use
-width probe.
+**Evaluation-ordered reference-temporary slots.** The typed slot planner owns
+one append-only order for automatic objects and expression materializations.
+For a declaration with a reference-binding initializer, its initializer's
+materialized argument slot must precede the later declaration object while
+preserving canonical semantic identities. Data flows as `selected declaration
+-> initializer evaluation/materialization -> reference-transfer action -> slot
+plan -> LowIR slots`. This applies `spec.md` sections 6, 8, and 9: lowering
+consumes typed semantic actions in evaluation order, stores compact IDs in
+translation-unit arenas, and visits each action once. Expected work is O(D + E)
+for D declarations and E initializer actions, with O(1)-average slot lookup.
+Validate the remaining constructor-template fixture, declaration/reference
+controls, PA16-PA23 reports, full reports, audit, and a declaration-width probe.
 
 ## Performance Evidence
 
@@ -132,6 +130,12 @@ requests, and 362/592/1,052/1,972/3,812/7,492/14,852 lookup-scope visits.
 Seven-run median semantic times were 2.237/3.037/4.776/8.146/14.873/28.775/
 57.541 ms; candidate-local failure formation remains linear in request width.
 
+Shared ABI-recipe specialization widths 1/2/4/8/16/32/64 produced 29/53/101/
+197/389/773/1,541 semantic nodes, 6/12/24/48/96/192/384 specialization
+requests, and 2/4/8/16/32/64/128 globals. Five-run median semantic times were
+0.443/0.575/0.817/1.246/2.156/3.931/7.830 ms; pattern storage is shared and
+specialization-local identity work remains linear.
+
 ## Completed Checkpoints
 
 | Checkpoint | Commit | Disposition |
@@ -149,4 +153,5 @@ Seven-run median semantic times were 2.237/3.037/4.776/8.146/14.873/28.775/
 | Empty-value lifecycle demand and destination-owned lowering | `6a238d0f` | Three failures removed; 413/422 pa24, 3,049/3,049 through pa23, linear empty-transfer/object scaling. |
 | Type-preserving class-argument staging and nested empty-recipe consumption | `dfe38634` | Two failures removed; 415/422 pa24, 3,049/3,049 through pa23, linear nested-construction scaling. |
 | Declaration-ordered retained arguments and fixed-primary pack spans | `30fe0986` | Two failures removed; 417/422 pa24, 3,049/3,049 through pa23, linear default-suffix scaling. |
-| Candidate-local member-call formation and retained receiver demand | this commit | Two failures removed; 419/422 pa24, 3,049/3,049 through pa23, audit pass, linear failure-width and receiver-depth scaling. |
+| Candidate-local member-call formation and retained receiver demand | `f18a8293` | Two failures removed; 419/422 pa24, 3,049/3,049 through pa23, audit pass, linear failure-width and receiver-depth scaling. |
+| Retained function-template ABI recipes and local-static owner identity | this commit | Two failures removed; 421/422 pa24, focused PA21-PA22 controls pass, linear specialization-width scaling. |

@@ -28,6 +28,62 @@ bool FunctionTemplateNeedsPartitionIdentity(
 	return packs > 1;
 }
 
+FunctionTemplateAbiRecipeId PublishFunctionTemplateAbiRecipe(Program* program,
+	const std::vector<TemplateParameter>& parameters,
+	const std::vector<TypeId>& parameter_shapes,
+	const FunctionTemplatePattern& pattern)
+{
+	if (parameters.size() > std::numeric_limits<std::uint32_t>::max() ||
+		program->function_template_parameter_shapes.size() >
+			std::numeric_limits<std::uint32_t>::max() - parameters.size() ||
+		program->function_template_abi_recipes.size() >=
+			kNoFunctionTemplateAbiRecipe)
+		throw std::runtime_error("too many function template ABI recipes");
+	const std::uint32_t shape_begin = static_cast<std::uint32_t>(
+		program->function_template_parameter_shapes.size());
+	for (std::size_t parameter = 0; parameter < parameters.size(); ++parameter)
+	{
+		const TypeId shape = parameter_shapes[parameter];
+		program->function_template_parameter_shapes.push_back(shape);
+		const TypeRecord& shape_record = program->types.Get(shape);
+		if (shape_record.kind != TYPE_NAMED) continue;
+		EntityRecord& entity = program->entities[shape_record.entity];
+		if (entity.template_parameter_ordinal != kNoTemplateParameter &&
+			entity.template_parameter_ordinal != parameter)
+			throw std::logic_error(
+				"function template ABI proxy ordinal diverged");
+		entity.template_parameter_ordinal =
+			static_cast<std::uint32_t>(parameter);
+	}
+	const FunctionTemplateAbiRecipeId recipe =
+		static_cast<FunctionTemplateAbiRecipeId>(
+			program->function_template_abi_recipes.size());
+	program->function_template_abi_recipes.push_back(
+		FunctionTemplateAbiRecipe(pattern.shape_type, shape_begin,
+			static_cast<std::uint32_t>(parameters.size()),
+			HasTrailingTemplateParameterPack(parameters) &&
+				!FunctionTemplateNeedsPartitionIdentity(parameters),
+			pattern.function_parameter_pack));
+	return recipe;
+}
+
+void MarkOverloadedFunctionTemplateAbiRecipes(Program* program,
+	const std::deque<FunctionTemplatePattern>& patterns,
+	const CompactIndexSequence& overloads)
+{
+	if (overloads.Size() <= 1) return;
+	for (std::size_t overload = 0; overload < overloads.Size(); ++overload)
+	{
+		const FunctionTemplateAbiRecipeId recipe =
+			patterns[overloads[overload]].abi_recipe;
+		if (recipe == kNoFunctionTemplateAbiRecipe ||
+			recipe >= program->function_template_abi_recipes.size())
+			throw std::logic_error(
+				"function template overload has no ABI recipe");
+		program->function_template_abi_recipes[recipe].overloaded_pattern = true;
+	}
+}
+
 bool TypeContainsDependentResultShape(const TypeTable& types, TypeId type,
 	TypeId dependent_result)
 {
@@ -918,17 +974,18 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	pattern.name = path.Last();
 	pattern.specifiers = specifiers;
 	pattern.declarator = declarator;
-	pattern.definition_body = definition ? FindChild(target, "compound-statement") : kNoNode;
-	pattern.constructor_initializer = definition ?
-		FindChild(target, "ctor-initializer") : kNoNode;
+	pattern.definition_body = definition ?
+		FindChild(target, "compound-statement") : kNoNode;
+	pattern.constructor_initializer = definition ? FindChild(
+		target, "ctor-initializer") : kNoNode;
 	pattern.parameters = parameters;
 	pattern.language_linkage = current_language_linkage_;
 	pattern.member_access = member_access;
 	pattern.defined = definition;
-	pattern.conversion_template = special_member_template &&
-		FindChild(declarator, "conversion-type-id") != kNoNode;
-	pattern.constructor_template = special_member_template &&
-		!pattern.conversion_template;
+	pattern.conversion_template = special_member_template && FindChild(
+		declarator, "conversion-type-id") != kNoNode;
+	pattern.constructor_template =
+		special_member_template && !pattern.conversion_template;
 	NodeId declaration_initializer = FindChild(target, "initializer");
 	const NodeId declarator_list = FindChild(target, "init-declarator-list");
 	for (std::uint32_t edge = declarator_list == kNoNode ? kNoEdge :
@@ -1123,11 +1180,16 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	if (friend_owner != kNoEntity && qualified_friend)
 		throw std::runtime_error(
 			"qualified friend function template was not declared");
+	pattern.abi_recipe = PublishFunctionTemplateAbiRecipe(program_, parameters,
+		function_template_shape_parameters_, pattern);
 	const std::size_t index = function_templates_.size();
 	function_templates_.push_back(pattern);
 	const std::uint64_t key =
 		(static_cast<std::uint64_t>(pattern.owner) << 32) | pattern.name;
-	template_function_sets_.Ensure(key).Push(index);
+	CompactIndexSequence& overloads = template_function_sets_.Ensure(key);
+	overloads.Push(index);
+	MarkOverloadedFunctionTemplateAbiRecipes(
+		program_, function_templates_, overloads);
 	if (pattern.conversion_template)
 	{
 		if (entity_conversion_function_templates_.size() <= member_owner)
@@ -1908,6 +1970,13 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 		function_template_specialization_declarations_.Insert(
 			declaration_key, canonical_binding);
 	BindingRecord& binding_record = program_->bindings[binding];
+	if (pattern.abi_recipe == kNoFunctionTemplateAbiRecipe ||
+		pattern.abi_recipe >= program_->function_template_abi_recipes.size())
+		throw std::logic_error(
+			"function template specialization has no ABI recipe");
+	binding_record.function_template_abi_recipe = pattern.abi_recipe;
+	program_->bindings[canonical_binding].function_template_abi_recipe =
+		pattern.abi_recipe;
 	for (std::size_t i = 0;
 		i < completed.size() && !binding_record.closure_template_specialization;
 		++i)

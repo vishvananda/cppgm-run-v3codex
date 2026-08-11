@@ -280,10 +280,25 @@ void SemanticAnalyzer::AddLocalStaticObjectAction(std::uint32_t variable,
 	const bool specialization_owned_recipe = constant_initialized &&
 		specialized_function && specialized_addresses &&
 		IsClassObjectType(type);
+	const FunctionTemplateAbiRecipeId recipe =
+		function_record.function_template_abi_recipe;
+	if (recipe != kNoFunctionTemplateAbiRecipe &&
+		recipe >= program_->function_template_abi_recipes.size())
+		throw std::logic_error("local static function has invalid ABI recipe");
+	const bool recipe_source_identity =
+		recipe != kNoFunctionTemplateAbiRecipe &&
+		(program_->function_template_abi_recipes[recipe].overloaded_pattern ||
+		 program_->function_template_abi_recipes[recipe].
+			template_parameter_pack ||
+		 program_->function_template_abi_recipes[recipe].
+			function_parameter_pack);
+	const bool source_identity_presentation = specialization_owned_recipe ||
+		(specialized_function && recipe_source_identity);
 	local_static_objects_.push_back(LocalStaticObjectAction(object,
 		function, type, variable, initializer, destructor_action, ordinal,
 		source_file, source_line, source_column,
-		constant_initialized, specialization_owned_recipe));
+		constant_initialized, specialization_owned_recipe,
+		source_identity_presentation));
 }
 
 void SemanticAnalyzer::RegisterVariableLifetimeAndStorage(ScopeId scope,
