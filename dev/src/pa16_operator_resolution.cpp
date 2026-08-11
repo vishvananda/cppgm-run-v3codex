@@ -1025,6 +1025,24 @@ int SemanticAnalyzer::CompareCallConversions(
 	return 0;
 }
 
+ExpressionInfo SemanticAnalyzer::PrepareConversionFunctionObject(
+	ExpressionInfo value, BindingId conversion_function)
+{
+	if (!retain_lowering_facts_ || conversion_function == kNoBinding ||
+		GetFunction(conversion_function).constexpr_function ||
+		!IsClassObjectType(value.type) || value.node >= dump_.nodes.size())
+		return value;
+	const DumpKind kind = dump_.nodes[value.node].kind;
+	if (kind == DUMP_TEMPORARY_OBJECT ||
+		(kind != DUMP_CONSTRUCTOR_ACTION &&
+		 kind != DUMP_BRACED_INIT_LIST &&
+		 kind != DUMP_AGGREGATE_CONSTRUCTION_ACTION &&
+		 kind != DUMP_CLASS_VALUE_TRANSFER))
+		return value;
+	value.category = VALUE_PRVALUE;
+	return MaterializeTemporary(value);
+}
+
 ExpressionInfo SemanticAnalyzer::ApplyExplicitConversion(
 	ExpressionInfo value, TypeId target)
 {
@@ -1040,7 +1058,9 @@ ExpressionInfo SemanticAnalyzer::ApplyExplicitConversion(
 	object_conversion.rank = conversion.conversion_object_rank;
 	object_conversion.base_projection_count =
 		conversion.conversion_base_projection_count;
-	const ExpressionInfo object = MakeImplicitObjectPointer(value);
+	const ExpressionInfo object = MakeImplicitObjectPointer(
+		PrepareConversionFunctionObject(
+			value, conversion.conversion_function));
 	const std::vector<NodeId> syntax;
 	const std::vector<ExpressionInfo> arguments;
 	return BuildResolvedCall(conversion.conversion_function, kNoScope,
@@ -1202,7 +1222,9 @@ ExpressionInfo SemanticAnalyzer::ApplyCallArgument(
 			object_conversion.rank = resolved.conversion_object_rank;
 			object_conversion.base_projection_count =
 				resolved.conversion_base_projection_count;
-			const ExpressionInfo object = MakeImplicitObjectPointer(value);
+			const ExpressionInfo object = MakeImplicitObjectPointer(
+				PrepareConversionFunctionObject(
+					value, resolved.conversion_function));
 			value = BuildResolvedCall(resolved.conversion_function, kNoScope,
 				syntax, arguments, &object, target, kNoEntity,
 				&object_conversion, 0);

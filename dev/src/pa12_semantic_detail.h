@@ -808,6 +808,8 @@ private:
 		const ExpressionInfo& left, ExpressionInfo* right);
 	ExpressionInfo ApplyCallArgument(ExpressionInfo value, TypeId target,
 		const CallConversionFact* conversion = 0);
+	ExpressionInfo PrepareConversionFunctionObject(
+		ExpressionInfo value, BindingId conversion_function);
 	ExpressionInfo ApplyExplicitConversion(ExpressionInfo value, TypeId target);
 	ExpressionInfo ApplyContextualBool(ExpressionInfo value);
 	ExpressionInfo BuildConvertingArgument(const ExpressionInfo& source,

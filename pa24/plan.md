@@ -18,35 +18,39 @@ demanded nodes (section 9).
 
 ## Current Failure Map
 
-Current state: **408/422** pa24 tests (turn start: 406/422); all **3,049/3,049**
+Current state: **410/422** pa24 tests (turn start: 408/422); all **3,049/3,049**
 tests through pa23 pass.
 
 | Shared behavior and owner | Count | Complete failing set (test basename) |
 | --- | ---: | --- |
-| Deduction, candidate SFINAE, overload ordering, and conversion/initialization selection (`pa19` deduction/instantiation + ordinary call/initialization) | 7 | `member-operator-template-reference-pattern-partial-order`, `constructor-template-const-ref-enable-if-conversion`, `static-cast-rvalue-ref-skips-conversion-operator`, `defaulted-class-template-argument-pack-prefix-deduction`, `trailing-return-expression-sfinae-default-param`, `conversion-function-template-top-cv-sequence`, `out-of-class-conversion-operator-definition` |
+| Deduction, candidate SFINAE, overload ordering, and conversion/initialization selection (`pa19` deduction/instantiation + ordinary call/initialization) | 5 | `member-operator-template-reference-pattern-partial-order`, `constructor-template-const-ref-enable-if-conversion`, `defaulted-class-template-argument-pack-prefix-deduction`, `trailing-return-expression-sfinae-default-param`, `out-of-class-conversion-operator-definition` |
 | Dependent owner/current-specialization, alias, function-type, and pack replay through demand/lowering (`pa19`/`pa22`/`pa23`) | 7 | `alias-template-partial-specialization-default-dependent-arg`, `member-template-result-pack-preserves-nested-function-pointer-owner`, `out-of-class-partial-member-template-owner-parameter-alias`, `forwarding-pack-function-type-enable-if`, `source-namespace-base-sfinae-chain`, `defaulted-nested-class-argument-partial-specialization`, `defaulted-template-arg-partial-base-completion` |
 
 ## Active Checkpoint
 
-**Identity-only declaration emission — completed.** A demanded callable's
-canonical `FunctionInfo` and binding own declaration identity and function
-type. An undefined declaration has no body environment to replay: semantic
-graph emission for typed lowering publishes only its declaration node, while
-PA15 enumerates the canonical function type and synthesizes stable `argN`
-presentation names. Source parameter bindings, lifetime obligations, and
-function scopes are created only for definitions that consume them. The PA12
-human-readable semantic view retains its source parameter children as part of
-that stage's output contract.
+**Direct-reference and class-conversion materialization — completed.** The
+cast target and operand own direct reference compatibility and value-category
+facts; these are classified before conversion-function lookup. A same-type
+`static_cast<T&&>` reclassifies the source as an xvalue without selecting a
+user conversion. When a selected runtime conversion function needs a class
+prvalue as its implicit object, semantic lowering owns one addressable
+temporary even if an object fact exists. Constexpr conversion functions retain
+their fold-only graph; only non-constexpr runtime conversion calls materialize
+the recipe. Top-level cv remains on the function boundary while object storage
+uses its canonical unqualified class type.
 
-This applies `spec.md` sections 4-6, 8, and 9: declaration demand remains a
-monotonic identity fact, no alternate body path is introduced, and lowering
-consumes the selected typed declaration. Semantic declaration-shell work is
-O(1) after selection instead of O(P) scope/binding replay; unavoidable typed
-boundary lowering and rendering remain O(P) in parameter count. Validation
-removed `decorated-template-id-type-argument-pack-replay` and
-`partial-member-template-trailing-result-scope`; the PA12 declaration-view
-regression case, neighboring definitions, a declaration-width probe, the full
-PA24 and through-PA23 reports, and the file audit cover the boundary.
+This applies `spec.md` sections 3-6, 8, and 9: conversions consume canonical
+types and selected callable identities, materialization is a typed semantic
+fact, and lowering does not rediscover source syntax. Direct-reference
+classification is O(1) and avoids O(C) conversion-candidate scans; required
+user conversion remains O(C), and temporary lowering is O(1) plus required
+object initialization. Validation removed
+`static-cast-rvalue-ref-skips-conversion-operator` and
+`conversion-function-template-top-cv-sequence`; the neighboring out-of-class
+conversion fixture remains an empty-result-elision issue. The PA21 constexpr
+conversion regression case, earlier cast/conversion suites, a same-type cast
+candidate-width probe, the full PA24 and through-PA23 reports, and the file
+audit cover the boundary.
 
 ## Performance Evidence
 
@@ -102,6 +106,13 @@ deduction visits 2/4/8/16/32/64/128, output bytes 249/268/306/382/540/860/
 over nine runs. Typed declaration work remains linear in canonical parameter
 width without replaying a declaration body environment.
 
+Same-type rvalue-reference casts with 1/2/4/8/16/32/64 visible conversion
+operators kept overload candidates at four and demand pushes at one. Semantic
+nodes were 33/34/36/40/48/64/96, template requests 1/2/4/8/16/32/64, and
+median semantic times 0.415/0.436/0.511/0.585/0.694/0.997/1.573 ms over nine
+runs. Total declaration work is linear, while direct-reference classification
+avoids a conversion-candidate-width scan.
+
 ## Completed Checkpoints
 
 | Checkpoint | Commit | Disposition |
@@ -114,4 +125,5 @@ width without replaying a declaration body environment.
 | Default-expression candidate completion and partial ordering | `b555a4eb` | Two failures removed; 403/422 pa24, 3,049/3,049 through pa23, linear candidate-width probe. |
 | Nonterminal dependent template-id and prior-parameter retention | `9ab41503` | One failure removed; 404/422 pa24, 3,049/3,049 through pa23, linear constraint-width probe. |
 | Destination-consistent default/value construction lowering | `5be465c9` | Two failures removed; 406/422 pa24, 3,049/3,049 through pa23, constant trivial-array extent probe. |
-| Identity-only typed declaration emission | this commit | Two failures removed; 408/422 pa24, 3,049/3,049 through pa23, linear declaration-width probe. |
+| Identity-only typed declaration emission | `6a107535` | Two failures removed; 408/422 pa24, 3,049/3,049 through pa23, linear declaration-width probe. |
+| Direct-reference classification and runtime conversion-object materialization | this commit | Two failures removed; 410/422 pa24, 3,049/3,049 through pa23, constant candidate count across conversion width. |

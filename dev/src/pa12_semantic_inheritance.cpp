@@ -417,6 +417,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		(target_record.kind == TYPE_LVALUE_REFERENCE ||
 		 target_record.kind == TYPE_RVALUE_REFERENCE) &&
 		Conversion(operand, target) != CONVERSION_INVALID;
+	const bool direct_rvalue_reclassification =
+		target_record.kind == TYPE_RVALUE_REFERENCE &&
+		SimilarUnqualified(EffectiveType(operand.type), target_record.child);
 	const bool constructor_cast = constructed_entity != kNoEntity &&
 		(program_->entities[constructed_entity].flavor == NAMED_STRUCT ||
 		 program_->entities[constructed_entity].flavor == NAMED_CLASS ||
@@ -448,7 +451,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		}
 		return initialized;
 	}
-	if (EntityOf(operand.type) != kNoEntity &&
+	if (!direct_reference_cast && !direct_rvalue_reclassification &&
+		!static_reference_downcast && !static_reference_base_cast &&
+		EntityOf(operand.type) != kNoEntity &&
 		ConvertingFunction(operand, target, true).rank != CONVERSION_INVALID)
 		return ApplyExplicitConversion(operand, target);
 	if (!IsVoid(target) && !IsArithmetic(target) && !IsPointer(target) &&
