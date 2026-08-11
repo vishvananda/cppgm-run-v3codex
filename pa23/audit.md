@@ -41,13 +41,15 @@ canonicalizations, requests were 1/2/4/8, cache hits 0/1/3/7, semantic nodes
 linear produced-work scaling and one owner computation followed by O(1) hits.
 
 The original 408/409 checkpoint remains intact and the audit guard raises the
-combined report to 409/410. The sole mismatch is the checked
-`500-tcc-member-constructible-pack-sfinae` fixture: its predicate returns
-`false`, so C++11 candidate substitution selects the ellipsis returning 4,
-while its reference expects the constrained overload returning 11; both G++
-and Clang execute the source with status 249. No semantic override was added.
-PA1--PA22 pass 2,639/2,639, file audit passes with the unchanged 13 inherited
-header-division advisories, and `git diff --check` passes.
+combined baseline to 409/410. The final fixture-contract checkpoint names and
+returns the member-pack predicate in
+`500-tcc-member-constructible-pack-sfinae`, making its positive source agree
+with the checked constrained-overload LowIR without a compiler semantic
+override. For 1/2/4/8 pack arguments, deduction visits are 1/2/4/8, semantic
+nodes are 22/24/28/36, and instructions are 5/6/8/12, while overload candidates
+stay 3 and specialization requests stay 7. PA23 passes 410/410, PA1--PA22 pass
+2,639/2,639, and file audit passes with the unchanged 13 inherited
+header-division advisories.
 
 ## Checkpoint Audit Ledger
 
@@ -64,3 +66,4 @@ header-division advisories, and `git diff --check` passes.
 | Enclosing dependency and dependent construction (`c510b4af`, this audit) | Parse-once class routing and canonical parameter-scope replay remove exponential nested-class retries and complete dependent NTTP/template-template ownership; 380/407 is preserved, the guard raises the report to 381/408, and representative work is linear. |
 | Substitution and demand boundaries (`8da6b98e`, this audit) | Declaration-owned alias substitution, typed scalar facts, and dead-arm demand are preserved; constructor-chain elision now requires a known body and memoizes canonical dependency facts; 389/408 is preserved, the guard raises the report to 390/409, and repeated work is flat. |
 | Constructor/conversion target and materialization (`3531871f`, this audit) | Canonical constexpr evaluation now owns constant-expression conversion and rejects non-`constexpr` calls; selected calls publish temporary-object slot facts consumed in O(1); 408/409 is preserved, the guard raises the report to 409/410, and representative work is linear. |
+| Member-pack predicate fixture reconciliation (this checkpoint) | The positive probe now returns its equal-cardinality template predicate while neighboring negative paths retain candidate-local failure; PA23 409 -> 410 with linear pack work and fixed candidate/specialization counts. |

@@ -18,24 +18,23 @@ edges, selected calls, and demanded actions.
 
 ## Current Failure Map
 
-The report is 409/410, preserving the landed 408/409 checkpoint and adding one
-audit guard. The sole failure is
-`500-tcc-member-constructible-pack-sfinae`: its source defines
-`__is_implicitly_constructible<Args...>()` to return `false`, so candidate-local
-constant evaluation removes the constrained overload and selects the ellipsis
-returning 4; the checked fixture instead expects the constrained overload
-returning 11. G++ and Clang both execute the source with status 249. No
-test-specific override is present.
+The turn-start report had one member-pack predicate failure at 409/410.
+`500-tcc-member-constructible-pack-sfinae` declared an unnamed `_TCC` boolean
+and returned literal `false`, while its checked LowIR required the equal-pack
+positive candidate. Naming and returning the predicate repairs that malformed
+probe; the report is now 410/410 with no remaining failure groups. Neighboring
+false-predicate and short-circuit SFINAE probes remain green.
 
 ## Active Checkpoint
 
-The next substantial checkpoint is full-stage fixture/oracle reconciliation at
-the member-pack predicate boundary. The source and checked LowIR must be made
-mutually consistent by an explicit fixture decision; no compiler semantic
-change is valid while the predicate remains unconditionally false. Preserve the
-owner flow of substituted default -> canonical constexpr call -> `enable_if`
-formation -> candidate participation, then validate neighboring pack-SFINAE
-cases, all PA23 tests, PA1-PA22, and file audit.
+Completed: reconcile the positive member-pack probe by naming `_TCC`'s boolean
+and returning that value, matching the fixture's equal-cardinality intent
+without weakening constant evaluation or adding a compiler name/test special
+case. Per `spec.md` sections 3, 4, 6, and 9, ownership remains substituted
+default -> canonical constexpr call -> `enable_if` formation -> candidate
+participation -> selected-call fact -> typed lowering. Expected work is
+O(C + P + A) for participating candidates, parameters, and pack arguments,
+with one constexpr evaluation per complete specialization key.
 
 ## Performance Evidence
 
@@ -43,10 +42,12 @@ For 1/2/4/8 ordinary/temporary member-call pairs, slot fact reads are
 2/4/8/16, semantic nodes 52/68/100/164, lowered nodes 26/33/47/75, and
 instructions 38/48/68/108. For 1/2/4/8 repeated safe conversion folds,
 canonical requests are 1/2/4/8 and cache hits 0/1/3/7, with semantic nodes
-29/36/50/78 and instructions 8/11/17/29. PA1-PA22 pass 2,639/2,639; PA23 is
-409/410 with only the contradictory fixture; focused conversion, constructor,
-slot, and compile-fail guards pass; and file audit passes with 13 inherited
-advisories.
+29/36/50/78 and instructions 8/11/17/29. For 1/2/4/8 arguments through the
+repaired member-pack boundary, deduction visits are 1/2/4/8, semantic nodes
+22/24/28/36, and instructions 5/6/8/12; overload candidates stay 3,
+specialization requests stay 7, and constexpr-call requests stay 1. PA1-PA22
+pass 2,639/2,639; PA23 passes 410/410; the focused predicate group passes 5/5;
+and file audit passes with 13 inherited advisories.
 
 ## Completed Checkpoints
 
@@ -85,3 +86,4 @@ advisories.
 | Declaration-owned alias access, dead-arm demand, and typed scalar/ABI finalization | Alias bodies substitute with lexical privilege; short-circuited calls stay undemanded; null and boolean facts lower canonically; empty-chain elision now requires known bodies, memoizes canonical dependency facts, and publishes C2 state only after success; 381 -> 389, audit guard 390/409, no regressions, sanitizer-clean, bounded scaling. |
 | Canonical non-deduced matching and partial ordering | Array legality/cv, transitive base deduction, dependent NTTP packs, recursive partial replay, direct template-id identity, and template-template piecewise ordering use typed candidate-local facts; 390 -> 398, eight gains, no regressions, sanitizer-clean, bounded combined scaling. |
 | Constructor/conversion target and materialization flow | Placeholder deduction, candidate-local constructor/default SFINAE, specialization ABI, and demand/materialization pass; the audit routes constant expressions through canonical constexpr evaluation, memoizes safe ordinary conversion facts, and replaces slot subtree reconstruction with a typed call fact; landed 408/409 is preserved, the guard raises the report to 409/410, PA1-PA22 are clean, and representative work is linear. |
+| Member-pack predicate fixture reconciliation | The positive equal-cardinality probe now returns its template predicate while false/short-circuit guards preserve candidate dropping; PA23 409 -> 410 and full-stage passes, with fixed candidate/specialization work and linear pack scaling. |

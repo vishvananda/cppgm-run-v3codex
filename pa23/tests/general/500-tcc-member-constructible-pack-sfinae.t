@@ -7,11 +7,11 @@ struct enable_if<true, T> {
   typedef T type;
 };
 
-template<bool>
+template<bool B>
 struct _TCC {
   template<class... Args>
   static constexpr bool __is_implicitly_constructible() {
-    return false;
+    return B;
   }
 };
 
