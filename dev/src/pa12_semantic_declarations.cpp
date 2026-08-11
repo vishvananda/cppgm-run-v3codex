@@ -1929,10 +1929,9 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 {
 	std::vector<ParameterInfo> result;
 	*variadic = false;
-	const ScopeId parameter_scope = NewScope(scope, SCOPE_FUNCTION, 0,
-		ScopePrefixId(scope));
-	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
-		edge = arena_->NextEdge(edge))
+	const ScopeId parameter_scope = NewScope(scope, SCOPE_FUNCTION, 0, ScopePrefixId(scope));
+	std::unordered_set<NameId> dependent_parameter_names = template_parameter_names ? *template_parameter_names : std::unordered_set<NameId>();
+	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge; edge = arena_->NextEdge(edge))
 	{
 		const NodeId child = arena_->EdgeChild(edge);
 		if (arena_->IsTag(child, "parameter-pack"))
@@ -1944,10 +1943,9 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 		const NodeId specifiers = FindChild(child, "decl-specifier-seq");
 		const NodeId declarator = FindChild(child, "declarator");
 		const bool nondeduced_type = template_parameter_names != 0 &&
-			HasDependentQualifiedType(specifiers, *template_parameter_names, parameter_scope);
+			HasDependentQualifiedType(specifiers, dependent_parameter_names, parameter_scope);
 		const TypeId deferred_type = nondeduced_type ? FunctionTemplateNondeducedTypeShape() : kNoType;
-		const bool declared_pack = declarator != kNoNode &&
-			FindChild(declarator, "parameter-pack") != kNoNode;
+		const bool declared_pack = declarator != kNoNode && FindChild(declarator, "parameter-pack") != kNoNode;
 		if (declared_pack)
 		{
 			std::vector<ScopeId> element_scopes;
@@ -1979,6 +1977,8 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 						specifiers : kNoNode;
 					result.push_back(parameter);
 				}
+				if (parameter_pack_name != 0 && !result.empty() && FunctionTemplateTypeIsDependent(result.back().declared_type))
+					dependent_parameter_names.insert(parameter_pack_name);
 				continue;
 			}
 		}
@@ -2037,8 +2037,7 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 				declared = parsed.type;
 				if (CandidateSubstitutionFailed()) return result;
 			}
-			if (declared_pack)
-				*variadic = true;
+			if (declared_pack) *variadic = true;
 		}
 		if (declared == kNoType && CandidateSubstitutionActive()) {
 			RecordCandidateSubstitutionFailure(); return result;
@@ -2049,6 +2048,7 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 		result.back().nondeduced_type_syntax = nondeduced_type ?
 			specifiers : kNoNode;
 		if (declared_pack) result.back().pack_name = name;
+		if (name != 0 && FunctionTemplateTypeIsDependent(declared)) dependent_parameter_names.insert(name);
 		if (name != 0)
 			program_->AddBinding(parameter_scope, BIND_PARAMETER,
 				name, declared);

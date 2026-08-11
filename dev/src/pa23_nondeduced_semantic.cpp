@@ -146,10 +146,11 @@ bool SemanticAnalyzer::HasDependentQualifiedType(NodeId node,
 				if (SyntaxUsesAnyTemplateParameter(components[i], names))
 					return true;
 		const NamePath path = StructuredNamePath(structure);
-		if (!components.empty())
+		for (std::size_t component = 0;
+			component < components.size(); ++component)
 		{
 			const NodeId arguments = FindChild(
-				components.back(), "template-type-argument-list");
+				components[component], "template-type-argument-list");
 			if (arguments != kNoNode)
 				for (std::uint32_t edge = arena_->FirstEdge(arguments);
 					edge != kNoEdge; edge = arena_->NextEdge(edge))
@@ -181,14 +182,6 @@ bool SemanticAnalyzer::HasDependentQualifiedType(NodeId node,
 				if (HasDependentQualifiedType(pattern.type_id, alias_names,
 					pattern.lexical_scope, alias_depth + 1)) return true;
 			}
-			const NodeId arguments = FindChild(
-				components.back(), "template-type-argument-list");
-			if (arguments != kNoNode)
-				for (std::uint32_t edge = arena_->FirstEdge(arguments);
-					edge != kNoEdge; edge = arena_->NextEdge(edge))
-					if (HasDependentQualifiedType(
-						arena_->EdgeChild(edge), names, scope,
-						alias_depth)) return true;
 		}
 		return false;
 	}
