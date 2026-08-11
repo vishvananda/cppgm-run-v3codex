@@ -20,6 +20,14 @@ bool IsClassEntity(const Program& program, EntityId entity)
 		flavor == NAMED_UNION;
 }
 
+bool ChainsUserConversion(const FunctionInfo& constructor,
+	const CallConversionFact& conversion)
+{
+	return conversion.constructor != kNoBinding &&
+		(constructor.special_member == SPECIAL_MEMBER_COPY_CONSTRUCTOR ||
+		 constructor.special_member == SPECIAL_MEMBER_MOVE_CONSTRUCTOR);
+}
+
 std::uint64_t BracedFactKey(NodeId node, TypeId type)
 {
 	return (static_cast<std::uint64_t>(node) << 32) | type;
@@ -666,8 +674,11 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 		++braced_fact_cache_misses_;
 	}
 	std::vector<BindingId> candidates(input_candidates);
+	const std::vector<ExpressionInfo> deduction_arguments =
+		copy_initialization && !list_initialization ?
+		LambdaConstructorDeductionArguments(arguments) : arguments;
 	AppendConstructorTemplateCandidates(
-		initialized_type, arguments, &candidates);
+		initialized_type, deduction_arguments, &candidates);
 	const std::size_t arity = argument_syntax.size();
 	if (arity != 0 && candidates.size() >
 		std::numeric_limits<std::size_t>::max() / arity)
@@ -736,6 +747,8 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 				{
 					conversion = CallConversion(arguments[a], parameters[a],
 						&conversion_cache, a);
+					if (ChainsUserConversion(constructor, conversion))
+						conversion = CallConversionFact();
 					if (list_initialization && source_list != kNoNode &&
 						IsBracedNarrowing(
 							arguments[a], parameters[a], &conversion))

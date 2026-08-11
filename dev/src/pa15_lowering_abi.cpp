@@ -620,6 +620,7 @@ bool IsFunctionEmissionDemanded(const pa11::Program& program,
 {
 	using namespace pa11;
 	if (node.binding == kNoBinding) return false;
+	if (node.declaration_only) return true;
 	const BindingId binding = program.bindings[node.binding].canonical;
 	return !program.bindings[binding].inline_function ||
 		program.bindings[binding].emission_demanded;

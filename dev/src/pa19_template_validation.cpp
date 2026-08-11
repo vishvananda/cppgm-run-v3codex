@@ -964,6 +964,21 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 		VisitSizeof(node, scope);
 		return;
 	}
+	if (analyzer_.arena_->IsTag(node, "lambda-expression"))
+	{
+		const std::size_t lambda_scope = AddChildScope(
+			scope, SCOPE_FUNCTION, DefersUnknownMembers(scope));
+		const NodeId declarator = analyzer_.FindChild(
+			node, "lambda-declarator");
+		if (declarator != kNoNode)
+		{
+			BindFunctionParameters(declarator, lambda_scope);
+			VisitChildren(declarator, lambda_scope);
+		}
+		const NodeId body = analyzer_.FindChild(node, "compound-statement");
+		if (body != kNoNode) Visit(body, lambda_scope);
+		return;
+	}
 	if (analyzer_.arena_->IsTag(node, "range-for-statement"))
 	{
 		const std::size_t control = AddChildScope(scope, SCOPE_BLOCK);

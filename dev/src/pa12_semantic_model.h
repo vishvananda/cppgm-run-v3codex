@@ -740,6 +740,11 @@ struct FunctionInfo
 	// A lambda inherits access privileges through this lexical edge without
 	// inheriting the enclosing function's implicit object.
 	BindingId lexical_access_function;
+	// Captures are canonical closure-owned members.  A call operator borrows a
+	// contiguous range and, when present, the member storing the enclosing
+	// object pointer.
+	std::uint32_t lambda_capture_begin, lambda_capture_count;
+	BindingId lambda_this_capture_member;
 	// A dependent exception specification is a specialization-owned demand
 	// fact, separate from declaration formation and body/emission demand.
 	ScopeId lexical_scope, exception_specification_scope;
@@ -791,6 +796,8 @@ struct FunctionInfo
 		  member_owner(kNoType),
 		  friend_of(kNoEntity), lambda_invocation_function(kNoBinding),
 		  lexical_access_function(kNoBinding),
+		  lambda_capture_begin(0), lambda_capture_count(0),
+		  lambda_this_capture_member(kNoBinding),
 		  lexical_scope(kNoScope),
 		  exception_specification_scope(kNoScope),
 		  definition_body(kNoNode), constructor_initializer(kNoNode),
@@ -1105,6 +1112,21 @@ struct AliasTemplatePattern
 		  type_id(kNoNode), marker_entity(kNoEntity) {}
 };
 
+struct LambdaCaptureFact
+{
+	NameId name, pack_name;
+	BindingId source, member;
+	TypeId value_type;
+	bool captures_this;
+
+	LambdaCaptureFact(NameId name_value, NameId pack_name_value,
+		BindingId source_value, BindingId member_value, TypeId value_type_value,
+		bool captures_this_value)
+		: name(name_value), pack_name(pack_name_value), source(source_value),
+		  member(member_value), value_type(value_type_value),
+		  captures_this(captures_this_value) {}
+};
+
 // A closure expression is canonical only within its concrete enclosing
 // function. Retained syntax can be replayed for more than one function-template
 // specialization, so syntax identity alone is not a complete semantic key.
@@ -1115,19 +1137,21 @@ struct LambdaClosureFact
 		conversion_function;
 	ScopeId namespace_owner;
 	EntityId entity;
-	std::uint32_t ordinal;
+	std::uint32_t ordinal, capture_begin, capture_count;
 
 	LambdaClosureFact(NodeId syntax_value, BindingId function_value,
 		ScopeId namespace_owner_value, EntityId entity_value,
 		BindingId call_operator_value, BindingId invocation_function_value,
 		BindingId conversion_function_value,
-		std::uint32_t ordinal_value)
+		std::uint32_t ordinal_value, std::uint32_t capture_begin_value,
+		std::uint32_t capture_count_value)
 		: syntax(syntax_value), function(function_value),
 		  call_operator(call_operator_value),
 		  invocation_function(invocation_function_value),
 		  conversion_function(conversion_function_value),
 		  namespace_owner(namespace_owner_value), entity(entity_value),
-		  ordinal(ordinal_value) {}
+		  ordinal(ordinal_value), capture_begin(capture_begin_value),
+		  capture_count(capture_count_value) {}
 };
 
 struct ClassTemplatePattern

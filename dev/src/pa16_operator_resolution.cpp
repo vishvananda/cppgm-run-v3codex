@@ -458,7 +458,10 @@ CallConversionFact SemanticAnalyzer::ConvertingConstructor(
 
 	std::vector<BindingId> candidates = ConstructorCandidates(object.entity);
 	const std::vector<ExpressionInfo> arguments(1, source);
-	AppendConstructorTemplateCandidates(target, arguments, &candidates);
+	const std::vector<ExpressionInfo> deduction_arguments =
+		LambdaConstructorDeductionArguments(arguments);
+	AppendConstructorTemplateCandidates(
+		target, deduction_arguments, &candidates);
 	BindingId selected = kNoBinding;
 	ConversionRank best = CONVERSION_INVALID;
 	CallConversionFact best_argument_conversion;

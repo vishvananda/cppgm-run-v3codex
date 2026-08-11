@@ -1053,7 +1053,8 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 	const EntityId entity = program_->bindings[constructor.binding].member_owner;
 	if (entity == kNoEntity || entity >= entity_data_members_.size())
 		throw std::logic_error("constructor is missing its member index");
-	const std::vector<BindingId>& members = entity_data_members_[entity];
+	// Snapshot member order across re-entrant lambda entity construction.
+	const std::vector<BindingId> members = entity_data_members_[entity];
 	if (constructor_initializer_scratch_.size() < members.size())
 		constructor_initializer_scratch_.resize(members.size(), kNoNode);
 	constructor_initializer_touched_.clear();

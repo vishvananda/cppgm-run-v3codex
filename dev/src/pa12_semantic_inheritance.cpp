@@ -781,10 +781,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeImplicitDataMember(
 		program_->LookupName(scope, this_name, LOOKUP_ORDINARY);
 	if (this_lookup.ordinary == kNoBinding)
 		throw std::runtime_error("non-static member requires an object");
-	const BindingRecord& this_binding =
-		program_->bindings[this_lookup.ordinary];
 	TypeId member_type = binding.type;
-	TypeId object_type = EffectiveType(this_binding.type);
+	const ExpressionInfo this_expression = AnalyzeThisExpression(scope);
+	TypeId object_type = EffectiveType(this_expression.type);
 	const TypeRecord object_pointer = program_->types.Get(
 		program_->types.RemoveTopCv(object_type));
 	const EntityId object_class = object_pointer.kind == TYPE_POINTER ?
@@ -797,27 +796,25 @@ ExpressionInfo SemanticAnalyzer::AnalyzeImplicitDataMember(
 		if (pointee.kind == TYPE_QUALIFIED && !binding.mutable_member)
 			member_type = program_->types.Qualify(member_type, pointee.cv);
 	}
-	const std::uint32_t object = MakeDump(DUMP_ID_EXPRESSION,
-		this_binding.type, VALUE_LVALUE, this_name, this_lookup.ordinary);
 	const std::uint32_t member = MakeDump(DUMP_MEMBER_EXPRESSION,
 		member_type, VALUE_LVALUE, binding.name, member_binding);
-	if (current_class_context_ == kNoEntity)
+	if (object_class == kNoEntity)
 		throw std::logic_error("implicit member has no class context");
 	const std::size_t projections = BaseProjectionCount(
-		program_->entities[current_class_context_].type,
+		program_->entities[object_class].type,
 		program_->entities[binding.member_owner].type);
 	if (projections == std::numeric_limits<std::size_t>::max() ||
 		projections > std::numeric_limits<std::uint32_t>::max())
 		throw std::logic_error("implicit member has no bounded base path");
 	dump_.nodes[member].base_projection_count =
 		static_cast<std::uint32_t>(projections);
-	dump_.Add(member, object);
+	dump_.Add(member, this_expression.node);
 	ExpressionInfo result;
 	result.node = member;
 	result.type = member_type;
 	result.category = VALUE_LVALUE;
 	result.binding = member_binding;
-	expression_count_ += 2;
+	++expression_count_;
 	return ApplyTarget(result, target);
 }
 

@@ -2893,14 +2893,13 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 	const FunctionInfo info = GetFunction(binding);
 	const ScopeId function_scope = NewScope(info.lexical_scope, SCOPE_FUNCTION,
 		program_->bindings[info.binding].name, ScopePrefixId(info.owner));
-	std::vector<BindingId> parameter_bindings;
-	BindFunctionParameterPackElement(
-		function_scope, info.parameter_pack_name, kNoBinding);
+	std::vector<BindingId> parameter_bindings; BindingId this_binding = kNoBinding;
+	BindFunctionParameterPackElement(function_scope, info.parameter_pack_name, kNoBinding);
 	if (member)
 	{
 		const TypeId this_type = program_->types.Parameters(output_type)[0];
 		const NameId this_name = program_->names.Intern("this");
-		const BindingId this_binding = program_->AddBinding(function_scope,
+		this_binding = program_->AddBinding(function_scope,
 			BIND_PARAMETER, this_name, this_type);
 		dump_.Add(function, MakeDump(DUMP_PARAMETER, this_type,
 			VALUE_NONE, this_name, this_binding));
@@ -2918,6 +2917,7 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 		AddLifetimeObligation(function_scope, parameter_binding,
 			parameter.function_type, false);
 	}
+	InstallLambdaCaptureBindings(function_scope, this_binding, info);
 	if (!emit_definition)
 	{
 		GetMutableFunction(binding).demand_state = 3;

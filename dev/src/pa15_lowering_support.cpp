@@ -16,6 +16,27 @@ bool NeedsAggregateStorageAddress(bool namespace_object, bool has_leaf,
 		(namespace_object && binding.variable_template_specialization);
 }
 
+pa11::EntityId LambdaClosureEntity(
+	const pa11::Program& program, pa11::TypeId type)
+{
+	type = program.types.RemoveTopCv(type);
+	const pa11::TypeRecord& record = program.types.Get(type);
+	if (record.kind != pa11::TYPE_NAMED ||
+		record.entity >= program.entities.size() ||
+		!program.entities[record.entity].lambda_closure)
+		return pa11::kNoEntity;
+	return record.entity;
+}
+
+bool IsLambdaCaptureMember(
+	const pa11::Program& program, pa11::BindingId binding)
+{
+	const pa11::BindingRecord& member = program.bindings[binding];
+	return member.member_offset == 0 && member.member_owner != pa11::kNoEntity &&
+		member.member_owner < program.entities.size() &&
+		program.entities[member.member_owner].lambda_closure;
+}
+
 bool IsNullPointerLiteralCast(const pa11::Program& program,
 	const pa12_semantic_detail::DumpNode& source, pa11::TypeId target)
 {

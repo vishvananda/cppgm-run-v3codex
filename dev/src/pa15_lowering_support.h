@@ -29,6 +29,10 @@ bool IsIntNullPointerLiteralCast(const pa11::Program& program,
 	const pa12_semantic_detail::DumpNode& source, pa11::TypeId target);
 bool NeedsAggregateStorageAddress(bool namespace_object, bool has_leaf,
 	const pa11::BindingRecord& binding);
+pa11::EntityId LambdaClosureEntity(
+	const pa11::Program& program, pa11::TypeId type);
+bool IsLambdaCaptureMember(
+	const pa11::Program& program, pa11::BindingId binding);
 
 class FlatIdMap
 {

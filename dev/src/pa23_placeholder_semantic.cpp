@@ -1,5 +1,7 @@
 #include "pa12_semantic_detail.h"
 
+#include <algorithm>
+
 namespace cppgm
 {
 namespace pa12_semantic_detail
@@ -305,12 +307,13 @@ void SemanticAnalyzer::AnalyzeRetainedPlaceholderFunctionBody(
 		ScopePrefixId(requested.owner));
 	BindFunctionParameterPackElement(
 		function_scope, requested.parameter_pack_name, kNoBinding);
+	BindingId this_binding = kNoBinding;
 	if (member)
 	{
 		const TypeId this_type =
 			program_->types.Parameters(provisional_output)[0];
 		const NameId this_name = program_->names.Intern("this");
-		const BindingId this_binding = program_->AddBinding(function_scope,
+		this_binding = program_->AddBinding(function_scope,
 			BIND_PARAMETER, this_name, this_type);
 		dump_.Add(detached, MakeDump(DUMP_PARAMETER, this_type,
 			VALUE_NONE, this_name, this_binding));
@@ -328,6 +331,7 @@ void SemanticAnalyzer::AnalyzeRetainedPlaceholderFunctionBody(
 		AddLifetimeObligation(function_scope, parameter_binding,
 			parameter.function_type, false);
 	}
+	InstallLambdaCaptureBindings(function_scope, this_binding, requested);
 
 	const TypeId previous_return = current_return_type_;
 	const EntityId previous_class = current_class_context_;
@@ -369,6 +373,51 @@ void SemanticAnalyzer::AnalyzeRetainedPlaceholderFunctionBody(
 	completed.placeholder_body_state = PLACEHOLDER_BODY_SUCCEEDED;
 	dump_.nodes[detached].type = member ?
 		AdaptMemberFunctionType(function) : completed.type;
+
+	const EntityId member_entity = completed.member_owner == kNoType ?
+		kNoEntity : EntityOf(completed.member_owner);
+	if (member_entity != kNoEntity &&
+		program_->entities[member_entity].lambda_closure)
+	{
+		// A non-generic lambda body is semantically completed even when the call
+		// operator itself is never emitted.  Retain declarations for undefined
+		// functions referenced by that detached body; lowering cannot discover
+		// those dependencies by walking the translation-unit root.
+		std::vector<std::uint32_t> pending(1, detached);
+		std::vector<BindingId> published;
+		while (!pending.empty())
+		{
+			const std::uint32_t current = pending.back();
+			pending.pop_back();
+			const DumpNode record = dump_.nodes[current];
+			if (record.kind == DUMP_CALL_EXPRESSION &&
+				record.binding != kNoBinding)
+			{
+				const BindingId dependency =
+					program_->bindings[record.binding].canonical;
+				if (std::find(published.begin(), published.end(), dependency) ==
+					published.end() &&
+					dependency < function_fact_by_binding_.size() &&
+					function_fact_by_binding_[dependency] != kNoDumpEdge &&
+					!GetFunction(dependency).defined)
+				{
+					const FunctionInfo& referenced = GetFunction(dependency);
+					const TypeId declaration_type = referenced.member_owner == kNoType ?
+						referenced.type : AdaptMemberFunctionType(dependency);
+					const std::uint32_t declaration = MakeDump(
+						DUMP_FUNCTION_DECLARATION,
+						declaration_type, VALUE_NONE,
+						referenced.display_name, dependency);
+					dump_.nodes[declaration].declaration_only = true;
+					dump_.Add(root_, declaration);
+					published.push_back(dependency);
+				}
+			}
+			for (std::uint32_t edge = record.first_edge;
+				edge != kNoDumpEdge; edge = dump_.edges[edge].next)
+				pending.push_back(dump_.edges[edge].child);
+		}
+	}
 }
 
 void SemanticAnalyzer::ApplyConditionalClassConversion(

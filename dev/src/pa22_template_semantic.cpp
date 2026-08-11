@@ -71,6 +71,58 @@ std::string LambdaIdentityComponent(const std::string& context,
 	return result;
 }
 
+struct LambdaCaptureSyntax
+{
+	bool default_reference, captures_this;
+	std::vector<std::string> references;
+
+	LambdaCaptureSyntax()
+		: default_reference(false), captures_this(false) {}
+};
+
+std::string TrimLambdaCapture(const std::string& value)
+{
+	std::size_t first = 0;
+	while (first < value.size() &&
+		std::isspace(static_cast<unsigned char>(value[first]))) ++first;
+	std::size_t last = value.size();
+	while (last > first &&
+		std::isspace(static_cast<unsigned char>(value[last - 1]))) --last;
+	return value.substr(first, last - first);
+}
+
+LambdaCaptureSyntax ParseLambdaCaptureSyntax(const std::string& source)
+{
+	if (source.size() < 2 || source.front() != '[' || source.back() != ']')
+		throw std::runtime_error("invalid lambda capture introducer");
+	LambdaCaptureSyntax result;
+	const std::string body = source.substr(1, source.size() - 2);
+	std::size_t first = 0;
+	while (first < body.size())
+	{
+		const std::size_t comma = body.find(',', first);
+		const std::size_t last = comma == std::string::npos ?
+			body.size() : comma;
+		const std::string item = TrimLambdaCapture(
+			body.substr(first, last - first));
+		if (item == "&")
+		{
+			if (result.default_reference)
+				throw std::runtime_error("duplicate lambda capture default");
+			result.default_reference = true;
+		}
+		else if (item == "this") result.captures_this = true;
+		else if (item.size() > 1 && item[0] == '&')
+			result.references.push_back(TrimLambdaCapture(item.substr(1)));
+		else if (!item.empty())
+			throw std::runtime_error(
+				"PA25 supports only by-reference and this lambda captures");
+		if (comma == std::string::npos) break;
+		first = comma + 1;
+	}
+	return result;
+}
+
 }
 
 bool SemanticAnalyzer::HasTargetTypedSpecializedMemberImmediate(
@@ -96,14 +148,15 @@ bool SemanticAnalyzer::HasTargetTypedSpecializedMemberImmediate(
 		destination_type == value.converted_scalar_target;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeCapturelessLambda(NodeId node,
+ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 	ScopeId scope, TypeId target)
 {
 	++lambda_closure_requests_;
 	const NodeId introducer = FindChild(node, "lambda-introducer");
-	if (introducer == kNoNode || PayloadSource(introducer) != "[]")
-		throw std::runtime_error(
-			"only captureless lambda expressions are supported in PA22");
+	if (introducer == kNoNode)
+		throw std::runtime_error("lambda expression has no capture introducer");
+	const LambdaCaptureSyntax capture_syntax =
+		ParseLambdaCaptureSyntax(PayloadSource(introducer));
 	const NodeId declarator = FindChild(node, "lambda-declarator");
 	const NodeId body = FindChild(node, "compound-statement");
 	if (body == kNoNode)
@@ -167,7 +220,151 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCapturelessLambda(NodeId node,
 				nonthrowing = true;
 			}
 		}
-		std::uint32_t ordinal = 0;
+		std::vector<BindingId> capture_sources;
+		std::vector<NameId> capture_pack_names;
+		bool captures_this = capture_syntax.captures_this;
+		const auto automatic_capture = [this](BindingId binding) -> bool
+		{
+			if (binding == kNoBinding || binding >= program_->bindings.size())
+				return false;
+			const BindingRecord& record = program_->bindings[binding];
+			if (record.kind == BIND_PARAMETER) return true;
+			if (record.kind != BIND_VARIABLE ||
+				record.storage_class == STORAGE_CLASS_STATIC ||
+				record.thread_local_storage) return false;
+			for (ScopeId owner = record.owner; owner != kNoScope;
+				owner = program_->ParentScope(owner))
+			{
+				const ScopeKind kind = program_->KindOfScope(owner);
+				if (kind == SCOPE_FUNCTION) return true;
+				if (kind == SCOPE_NAMESPACE || kind == SCOPE_CLASS) return false;
+			}
+			return false;
+		};
+		const auto append_capture = [&capture_sources, &capture_pack_names,
+			&automatic_capture](BindingId source, NameId pack_name)
+		{
+			if (!automatic_capture(source)) return;
+			if (std::find(capture_sources.begin(), capture_sources.end(), source) !=
+				capture_sources.end()) return;
+			capture_sources.push_back(source);
+			capture_pack_names.push_back(pack_name);
+		};
+		const auto append_named_capture = [this, scope, &append_capture](
+			NameId name, bool required)
+		{
+			std::vector<BindingId> pack;
+			if (LookupFunctionParameterPack(scope, name, &pack))
+			{
+				for (std::size_t i = 0; i < pack.size(); ++i)
+					append_capture(pack[i], name);
+				return;
+			}
+			const LookupResult found = program_->LookupName(
+				scope, name, LOOKUP_ORDINARY);
+			if (found.ordinary != kNoBinding)
+			{
+				append_capture(found.ordinary, 0);
+				return;
+			}
+			if (required)
+				throw std::runtime_error("lambda capture name was not found");
+		};
+		for (std::size_t i = 0; i < capture_syntax.references.size(); ++i)
+			append_named_capture(program_->names.Intern(
+				capture_syntax.references[i]), true);
+
+		if (capture_syntax.default_reference)
+		{
+			std::unordered_set<NameId> parameter_names;
+			for (std::size_t i = 0; i < call_parameters.size(); ++i)
+			{
+				if (call_parameters[i].name != 0)
+					parameter_names.insert(call_parameters[i].name);
+				if (call_parameters[i].pack_name != 0)
+					parameter_names.insert(call_parameters[i].pack_name);
+			}
+			std::vector<NodeId> pending(1, body);
+			while (!pending.empty())
+			{
+				const NodeId current = pending.back();
+				pending.pop_back();
+				if (arena_->IsTag(current, "lambda-introducer"))
+				{
+					const LambdaCaptureSyntax nested =
+						ParseLambdaCaptureSyntax(PayloadSource(current));
+					captures_this = captures_this || nested.captures_this;
+					for (std::size_t i = 0; i < nested.references.size(); ++i)
+						append_named_capture(program_->names.Intern(
+							nested.references[i]), false);
+				}
+				else if (arena_->IsTag(current, "keyword-literal") &&
+					PayloadSource(current) == "this") captures_this = true;
+				else if (arena_->IsTag(current, "id-expression"))
+				{
+					NamePath path = StructuredNamePath(current);
+					if (path.Empty()) path = ParseNamePath(PayloadSource(current));
+					if (!path.global && path.Size() == 1 &&
+						parameter_names.count(path.Last()) == 0)
+					{
+						std::vector<BindingId> pack;
+						if (LookupFunctionParameterPack(scope, path.Last(), &pack))
+						{
+							for (std::size_t i = 0; i < pack.size(); ++i)
+								append_capture(pack[i], path.Last());
+						}
+						const LookupResult found =
+							FindChild(current, "structured-type-name") != kNoNode ?
+							LookupStructuredName(current, scope, LOOKUP_ORDINARY) :
+							program_->LookupName(scope, path.Last(), LOOKUP_ORDINARY);
+						for (std::size_t i = 0; i < found.OrdinaryCount(); ++i)
+						{
+							const BindingId binding = found.OrdinaryAt(i);
+							if (automatic_capture(binding))
+								append_capture(binding, 0);
+							const BindingRecord& record =
+								program_->bindings[binding];
+							if (record.member_owner != kNoEntity &&
+								((record.kind == BIND_FUNCTION &&
+								  !record.static_member_function) ||
+								 record.non_static_data_member))
+								captures_this = true;
+						}
+						const std::vector<std::size_t> templates =
+							FindFunctionTemplates(scope, path);
+						for (std::size_t i = 0; i < templates.size(); ++i)
+							if (program_->EntityForScope(
+								function_templates_[templates[i]].owner) != kNoEntity)
+								captures_this = true;
+					}
+				}
+				for (std::uint32_t edge = arena_->FirstEdge(current);
+					edge != kNoEdge; edge = arena_->NextEdge(edge))
+					pending.push_back(arena_->EdgeChild(edge));
+			}
+		}
+		TypeId this_capture_type = kNoType;
+		if (captures_this)
+		{
+			const NameId this_name = program_->names.Intern("this");
+			const LookupResult found_this = program_->LookupName(
+				scope, this_name, LOOKUP_ORDINARY);
+			if (found_this.ordinary == kNoBinding)
+				throw std::runtime_error("this lambda capture has no object");
+			this_capture_type = EffectiveType(
+				program_->bindings[found_this.ordinary].type);
+			if (current_function_context_ != kNoBinding)
+			{
+				const FunctionInfo& context = GetFunction(
+					program_->bindings[current_function_context_].canonical);
+				if (context.lambda_this_capture_member != kNoBinding)
+					this_capture_type = EffectiveType(program_->bindings[
+						context.lambda_this_capture_member].type);
+			}
+			if (!IsPointer(this_capture_type))
+				throw std::logic_error("this lambda capture is not a pointer");
+		}
+			std::uint32_t ordinal = 0;
 		if (enclosing != kNoBinding)
 		{
 			if (lambda_count_by_function_.size() <= enclosing)
@@ -208,13 +405,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCapturelessLambda(NodeId node,
 		closure.local_context = enclosing;
 		closure.lambda_closure = true;
 		closure.lambda_ordinal = ordinal;
-		closure.object_size = 1;
-		closure.object_alignment = 1;
-		closure.natural_alignment = 1;
-		closure.layout_complete = true;
 		closure.destructible = true;
 		closure.trivial_destructor = true;
-		closure.empty_class = true;
 		const TypeId closure_type = closure.type;
 		const NameId member_prefix = program_->names.Intern(
 			program_->names.Get(emission) + "::");
@@ -231,6 +423,57 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCapturelessLambda(NodeId node,
 			entity_layout_members_.resize(static_cast<std::size_t>(entity) + 1);
 		if (entity_constructors_.size() <= entity)
 			entity_constructors_.resize(static_cast<std::size_t>(entity) + 1);
+		if (class_special_members_.size() <= entity)
+			class_special_members_.resize(static_cast<std::size_t>(entity) + 1);
+		const std::uint32_t capture_begin = static_cast<std::uint32_t>(
+			lambda_captures_.size());
+		BindingId this_capture_member = kNoBinding;
+		if (captures_this)
+		{
+			const NameId name = program_->names.Intern("__this_capture");
+			this_capture_member = program_->AddBinding(member_scope,
+				BIND_VARIABLE, name, this_capture_type, false, 0, NAMED_NONE,
+				0, kNoBinding, false);
+			BindingRecord& member = program_->bindings[this_capture_member];
+			member.member_owner = entity;
+			member.access = ACCESS_PRIVATE;
+			member.non_static_data_member = true;
+			member.member_ordinal = static_cast<std::uint32_t>(
+				entity_data_members_[entity].size());
+			entity_data_members_[entity].push_back(this_capture_member);
+			entity_layout_members_[entity].push_back(
+				ClassLayoutMember(this_capture_member, this_capture_type));
+			lambda_captures_.push_back(LambdaCaptureFact(name, 0, kNoBinding,
+				this_capture_member, this_capture_type, true));
+		}
+		for (std::size_t i = 0; i < capture_sources.size(); ++i)
+		{
+			const BindingRecord& source =
+				program_->bindings[capture_sources[i]];
+			const TypeId value_type = EffectiveType(source.type);
+			const TypeId member_type = program_->types.Reference(
+				TYPE_LVALUE_REFERENCE, value_type);
+			const BindingId member_id = program_->AddBinding(member_scope,
+				BIND_VARIABLE, source.name, member_type, false, 0, NAMED_NONE,
+				0, kNoBinding, false);
+			BindingRecord& member = program_->bindings[member_id];
+			member.member_owner = entity;
+			member.access = ACCESS_PRIVATE;
+			member.non_static_data_member = true;
+			member.member_ordinal = static_cast<std::uint32_t>(
+				entity_data_members_[entity].size());
+			entity_data_members_[entity].push_back(member_id);
+			entity_layout_members_[entity].push_back(
+				ClassLayoutMember(member_id, member_type));
+			lambda_captures_.push_back(LambdaCaptureFact(source.name,
+				capture_pack_names[i], capture_sources[i], member_id,
+				value_type, false));
+		}
+		const std::uint32_t capture_count = static_cast<std::uint32_t>(
+			lambda_captures_.size() - capture_begin);
+		closure.lambda_capture_count = capture_count;
+		CompleteClassLayout(entity);
+		closure.is_aggregate = false;
 		const NameId call_name = program_->names.Intern("operator()");
 		TypeId result_type = program_->types.Fundamental(FUND_VOID);
 		if (trailing_return != kNoNode)
@@ -275,76 +518,144 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCapturelessLambda(NodeId node,
 		call.deferred = true;
 		call.definition_in_class = true;
 		call.parameter_pack_name = call_parameter_pack_name;
+		call.lambda_capture_begin = capture_begin;
+		call.lambda_capture_count = capture_count;
+		call.lambda_this_capture_member = this_capture_member;
 		if (trailing_return == kNoNode)
 			call.placeholder_return_kind = PLACEHOLDER_DECLARATOR_VALUE;
 		RegisterClassMemberFunction(entity, call_operator);
 		if (enclosing != kNoBinding)
 			PublishInlineFunctionFacts(call_operator, true);
 		(void)EnsureImplicitDestructor(entity);
+		(void)DeclareImplicitCopyMoveConstructor(
+			entity, SPECIAL_MEMBER_COPY_CONSTRUCTOR);
 		if (trailing_return == kNoNode)
 			AnalyzeRetainedPlaceholderFunctionBody(call_operator);
 
-		const FunctionInfo& completed_call = GetFunction(call_operator);
-		const TypeRecord& completed_call_type =
-			program_->types.Get(completed_call.type);
-		std::vector<TypeId> invocation_parameters;
-		const TypeId* completed_parameters =
-			program_->types.Parameters(completed_call.type);
-		if (completed_call_type.parameter_count != 0)
-			invocation_parameters.assign(completed_parameters,
-				completed_parameters + completed_call_type.parameter_count);
-		const TypeId invocation_type = program_->types.Function(
-			completed_call_type.child, invocation_parameters,
-			completed_call_type.variadic);
-		const BindingId invocation_function = DeclareFunction(namespace_owner,
-			leaf, invocation_type, call_parameters, true, false,
-			STORAGE_CLASS_STATIC, LANGUAGE_LINKAGE_CPP, nonthrowing, false);
-		FunctionInfo& invocation = GetMutableFunction(invocation_function);
-		invocation.lexical_access_function = enclosing;
-		invocation.lexical_scope = scope;
-		invocation.definition_body = body;
-		invocation.deferred = true;
-		invocation.parameter_pack_name = call_parameter_pack_name;
+		BindingId invocation_function = kNoBinding;
+		BindingId conversion_function = kNoBinding;
+		if (capture_count == 0)
+		{
+			const FunctionInfo& completed_call = GetFunction(call_operator);
+			const TypeRecord& completed_call_type =
+				program_->types.Get(completed_call.type);
+			std::vector<TypeId> invocation_parameters;
+			const TypeId* completed_parameters =
+				program_->types.Parameters(completed_call.type);
+			if (completed_call_type.parameter_count != 0)
+				invocation_parameters.assign(completed_parameters,
+					completed_parameters + completed_call_type.parameter_count);
+			const TypeId invocation_type = program_->types.Function(
+				completed_call_type.child, invocation_parameters,
+				completed_call_type.variadic);
+			invocation_function = DeclareFunction(namespace_owner,
+				leaf, invocation_type, call_parameters, true, false,
+				STORAGE_CLASS_STATIC, LANGUAGE_LINKAGE_CPP, nonthrowing, false);
+			FunctionInfo& invocation = GetMutableFunction(invocation_function);
+			invocation.lexical_access_function = enclosing;
+			invocation.lexical_scope = scope;
+			invocation.definition_body = body;
+			invocation.deferred = true;
+			invocation.parameter_pack_name = call_parameter_pack_name;
 
-		const TypeId conversion_target =
-			program_->types.Pointer(invocation_type);
-		const TypeId conversion_type = program_->types.Function(
-			conversion_target, std::vector<TypeId>(), false, CV_CONST);
-		const NameId conversion_name = program_->names.Intern(
-			"operator __cppgm_captureless_lambda_pointer");
-		const BindingId conversion_function = DeclareFunction(member_scope,
-			conversion_name, conversion_type, std::vector<ParameterInfo>(),
-			true, false, STORAGE_CLASS_NONE, LANGUAGE_LINKAGE_CPP,
-			nonthrowing, false);
-		BindingRecord& conversion_binding =
-			program_->bindings[conversion_function];
-		conversion_binding.member_owner = entity;
-		conversion_binding.access = ACCESS_PUBLIC;
-		conversion_binding.conversion_function = true;
-		conversion_binding.conversion_target = conversion_target;
-		FunctionInfo& conversion = GetMutableFunction(conversion_function);
-		conversion.member_owner = closure_type;
-		conversion.conversion_function = true;
-		conversion.conversion_target = conversion_target;
-		conversion.lambda_invocation_function = invocation_function;
-		conversion.lexical_access_function = enclosing;
-		conversion.lexical_scope = scope;
-		RegisterClassMemberFunction(entity, conversion_function);
-		if (entity_conversion_functions_.size() <= entity)
-			entity_conversion_functions_.resize(
-				static_cast<std::size_t>(entity) + 1);
-		entity_conversion_functions_[entity].push_back(conversion_function);
+			const TypeId conversion_target =
+				program_->types.Pointer(invocation_type);
+			const TypeId conversion_type = program_->types.Function(
+				conversion_target, std::vector<TypeId>(), false, CV_CONST);
+			const NameId conversion_name = program_->names.Intern(
+				"operator __cppgm_captureless_lambda_pointer");
+			conversion_function = DeclareFunction(member_scope,
+				conversion_name, conversion_type, std::vector<ParameterInfo>(),
+				true, false, STORAGE_CLASS_NONE, LANGUAGE_LINKAGE_CPP,
+				nonthrowing, false);
+			BindingRecord& conversion_binding =
+				program_->bindings[conversion_function];
+			conversion_binding.member_owner = entity;
+			conversion_binding.access = ACCESS_PUBLIC;
+			conversion_binding.conversion_function = true;
+			conversion_binding.conversion_target = conversion_target;
+			FunctionInfo& conversion = GetMutableFunction(conversion_function);
+			conversion.member_owner = closure_type;
+			conversion.conversion_function = true;
+			conversion.conversion_target = conversion_target;
+			conversion.lambda_invocation_function = invocation_function;
+			conversion.lexical_access_function = enclosing;
+			conversion.lexical_scope = scope;
+			RegisterClassMemberFunction(entity, conversion_function);
+			if (entity_conversion_functions_.size() <= entity)
+				entity_conversion_functions_.resize(
+					static_cast<std::size_t>(entity) + 1);
+			entity_conversion_functions_[entity].push_back(conversion_function);
+		}
 
 		fact_index = lambda_closures_.size();
 		lambda_closures_.push_back(LambdaClosureFact(node, enclosing,
 			namespace_owner, entity, call_operator, invocation_function,
-			conversion_function, ordinal));
+			conversion_function, ordinal, capture_begin, capture_count));
 		lambda_closure_index_.Ensure(key).Push(fact_index);
 	}
-	const TypeId closure_type =
-		program_->entities[lambda_closures_[fact_index].entity].type;
+	const LambdaClosureFact& fact = lambda_closures_[fact_index];
+	const TypeId closure_type = program_->entities[fact.entity].type;
 	const std::uint32_t initializer = MakeDump(
 		DUMP_BRACED_INIT_LIST, closure_type, VALUE_PRVALUE);
+	for (std::uint32_t i = 0; i < fact.capture_count; ++i)
+	{
+		const std::size_t capture_index =
+			static_cast<std::size_t>(fact.capture_begin) + i;
+		if (capture_index >= lambda_captures_.size())
+			throw std::logic_error("lambda capture range is invalid");
+		const LambdaCaptureFact& capture = lambda_captures_[capture_index];
+		const BindingRecord& member = program_->bindings[capture.member];
+		const std::uint32_t action = MakeDump(DUMP_INITIALIZER_ACTION,
+			member.type, VALUE_NONE, member.name, capture.member);
+		ExpressionInfo source;
+		if (capture.captures_this) source = AnalyzeThisExpression(scope);
+		else
+		{
+			if (capture.source == kNoBinding ||
+				capture.source >= program_->bindings.size())
+				throw std::logic_error("lambda capture source is invalid");
+			const std::uint32_t injected_fact =
+				capture.source < injected_fact_by_binding_.size() ?
+				injected_fact_by_binding_[capture.source] : kNoDumpEdge;
+			if (injected_fact != kNoDumpEdge)
+			{
+				const InjectedMemberInfo& injected =
+					injected_members_[injected_fact];
+				const BindingRecord& storage =
+					program_->bindings[injected.storage];
+				const BindingRecord& captured_member =
+					program_->bindings[injected.member];
+				const std::uint32_t storage_node = MakeDump(
+					DUMP_ID_EXPRESSION, storage.type, VALUE_LVALUE,
+					storage.name, injected.storage);
+				const std::uint32_t member_node = MakeDump(
+					DUMP_MEMBER_EXPRESSION, capture.value_type, VALUE_LVALUE,
+					captured_member.name, injected.member);
+				dump_.Add(member_node, storage_node);
+				source.node = member_node;
+				source.type = capture.value_type;
+				source.category = VALUE_LVALUE;
+				source.binding = injected.member;
+				expression_count_ += 2;
+			}
+			else
+			{
+				const BindingRecord& captured =
+					program_->bindings[capture.source];
+				const BindingId source_binding = captured.kind == BIND_PARAMETER ?
+					captured.canonical : capture.source;
+				source.node = MakeDump(DUMP_ID_EXPRESSION, capture.value_type,
+					VALUE_LVALUE, captured.name, source_binding);
+				source.type = capture.value_type;
+				source.category = VALUE_LVALUE;
+				source.binding = source_binding;
+				++expression_count_;
+			}
+		}
+		dump_.Add(initializer, action);
+		dump_.Add(action, source.node);
+	}
 	ExpressionInfo result;
 	result.node = initializer;
 	result.type = closure_type;
@@ -359,7 +670,61 @@ bool SemanticAnalyzer::IsCapturelessLambdaType(TypeId type) const
 	const TypeRecord& record = program_->types.Get(type);
 	return record.kind == TYPE_NAMED &&
 		record.entity < program_->entities.size() &&
-		program_->entities[record.entity].lambda_closure;
+		program_->entities[record.entity].lambda_closure &&
+		program_->entities[record.entity].lambda_capture_count == 0;
+}
+
+std::vector<ExpressionInfo>
+SemanticAnalyzer::LambdaConstructorDeductionArguments(
+	const std::vector<ExpressionInfo>& arguments)
+{
+	std::vector<ExpressionInfo> result(arguments);
+	if (result.size() != 1 || !IsCapturelessLambdaType(result[0].type))
+		return result;
+	// PA25 copy-initialization exposes the invocation-pointer conversion before
+	// constructor-template deduction; overload ranking still uses the closure.
+	std::vector<TypeId> targets;
+	AppendBuiltinConversionTargets(result[0], &targets);
+	for (std::size_t i = 0; i < targets.size(); ++i)
+	{
+		const TypeId candidate = Decay(targets[i]);
+		const TypeRecord& pointer = program_->types.Get(candidate);
+		if (pointer.kind != TYPE_POINTER ||
+			!program_->types.IsFunction(pointer.child)) continue;
+		result[0].type = candidate;
+		result[0].category = VALUE_PRVALUE;
+		break;
+	}
+	return result;
+}
+
+void SemanticAnalyzer::InstallLambdaCaptureBindings(ScopeId scope,
+	BindingId this_binding, const FunctionInfo& function)
+{
+	if (function.lambda_capture_count == 0) return;
+	if (this_binding == kNoBinding)
+		throw std::logic_error("capturing lambda call has no closure object");
+	for (std::uint32_t i = 0; i < function.lambda_capture_count; ++i)
+	{
+		const std::size_t capture_index =
+			static_cast<std::size_t>(function.lambda_capture_begin) + i;
+		if (capture_index >= lambda_captures_.size())
+			throw std::logic_error("lambda call capture range is invalid");
+		const LambdaCaptureFact& capture = lambda_captures_[capture_index];
+		if (capture.captures_this) continue;
+		const BindingId alias = program_->AddBinding(scope, BIND_VARIABLE,
+			capture.name, capture.value_type, false, 0, NAMED_NONE, 0,
+			kNoBinding, false);
+		if (injected_fact_by_binding_.size() <= alias)
+			injected_fact_by_binding_.resize(
+				static_cast<std::size_t>(alias) + 1, kNoDumpEdge);
+		injected_fact_by_binding_[alias] =
+			static_cast<std::uint32_t>(injected_members_.size());
+		injected_members_.push_back(
+			InjectedMemberInfo(this_binding, capture.member));
+		BindFunctionParameterPackElement(
+			scope, capture.pack_name, alias);
+	}
 }
 
 ExpressionInfo SemanticAnalyzer::BuildLambdaInvocationPointer(

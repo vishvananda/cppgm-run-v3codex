@@ -768,7 +768,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 	if (arena_->IsTag(node, "call-expression"))
 		return AnalyzeCall(node, scope, target);
 	if (arena_->IsTag(node, "lambda-expression"))
-		return AnalyzeCapturelessLambda(node, scope, target);
+		return AnalyzeLambdaExpression(node, scope, target);
 	if (arena_->IsTag(node, "unary-expression") ||
 		arena_->IsTag(node, "postfix-expression"))
 		return ApplyTarget(AnalyzeUnary(node, scope, target), target);
@@ -1332,16 +1332,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 					scope, this_name, LOOKUP_ORDINARY);
 				if (found_this.ordinary != kNoBinding)
 				{
-					const BindingRecord& this_binding =
-						program_->bindings[found_this.ordinary];
-					implicit_object.type = EffectiveType(this_binding.type);
-					implicit_object.category = VALUE_LVALUE;
-					implicit_object.binding = found_this.ordinary;
-					implicit_object.node = MakeDump(DUMP_ID_EXPRESSION,
-						implicit_object.type, VALUE_LVALUE, this_name,
-						found_this.ordinary);
+					implicit_object = AnalyzeThisExpression(scope);
 					object = &implicit_object;
-					++expression_count_;
 				}
 			}
 			ObjectConversionFact object_conversion;
@@ -1996,8 +1988,8 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 	if (local && AnalyzeQualifiedAssignmentStatement(
 		node, scope, output_parent))
 		return;
-	if (local && AnalyzeAmbiguousCallStatement(node, scope, output_parent))
-		return;
+	if (local && (AnalyzeAmbiguousCallStatement(node, scope, output_parent) ||
+		AnalyzeAmbiguousRelationalDeclaration(node, scope, output_parent))) return;
 	if (local && AnalyzeAmbiguousDirectInitializer(
 		node, scope, output_parent))
 		return;

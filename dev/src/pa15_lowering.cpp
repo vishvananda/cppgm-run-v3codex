@@ -360,8 +360,8 @@ private:
 			function_definition_[record.binding] = node;
 			IndexBitFieldStorageTransferOwner(node);
 		}
-		else if (function_declaration_[record.binding] == kNoDumpEdge)
-			function_declaration_[record.binding] = node;
+		else if (function_declaration_[record.binding] == kNoDumpEdge) function_declaration_[record.binding] = node;
+		if (record.declaration_only) output_.symbols[function_symbols_[record.binding]].referenced = true;
 	}
 	void ScanTop(std::uint32_t node)
 	{
@@ -424,8 +424,8 @@ private:
 					function_definition_[record.binding] == kNoDumpEdge &&
 					function_declaration_[record.binding] == current)
 				{
-						const SymbolId symbol = function_symbols_[record.binding];
-						if (!output_.symbols[symbol].declaration_emitted)
+					const SymbolId symbol = function_symbols_[record.binding];
+					if (!output_.symbols[symbol].declaration_emitted)
 						{
 							output_.declarations.push_back(LowerDeclaration(current));
 							output_.symbols[symbol].declaration_emitted = true;
@@ -2419,10 +2419,9 @@ private:
 		const Operand storage = StorageFor(variable.binding,
 			LowerStorageType(variable.type));
 		if (LowerClassValueInitialization(variable, initializer, storage)) return;
-		if (NeedsClassInitializerStorageAddress(variable, initializer))
-			(void)AddressOfStorage(storage);
-		AggregatePath path;
-		LowerAggregateActions(initializer, storage, &path, Operand());
+		Operand retained_address; if (NeedsClassInitializerStorageAddress(variable, initializer)) retained_address = AddressOfStorage(storage);
+		AggregatePath path; LowerAggregateActions(initializer, storage, &path,
+			LambdaClosureEntity(program_, variable.type) == kNoEntity ? Operand() : retained_address);
 	}
 	bool AggregateHasLeaf(std::uint32_t list_node) const
 	{
@@ -2488,6 +2487,7 @@ private:
 	Operand ProjectAggregateMember(const Operand& base, BindingId binding)
 	{
 		const BindingRecord& member = program_.bindings[binding];
+		if (IsLambdaCaptureMember(program_, binding)) return base;
 		const Operand projected = Temp(LowPtr());
 		Instruction index(Instruction::INDEX);
 		index.dest = projected.id;

@@ -1704,12 +1704,16 @@ private:
 
   void encode_local_type(const TypeNode & type)
   {
-    encode_local_prefix(graph_.strings.get(type.context));
-    if(type.kind == ABI_TYPE_LAMBDA_CLOSURE) {
-      output_ += "UlvE" + graph_.strings.get(type.discriminator) + '_';
+    // Resolving the local function context can lazily canonicalize its
+    // signature types and grow FactGraph::types.  Preserve this node instead
+    // of retaining a reference into that re-entrant vector.
+    const TypeNode stable = type;
+    encode_local_prefix(graph_.strings.get(stable.context));
+    if(stable.kind == ABI_TYPE_LAMBDA_CLOSURE) {
+      output_ += "UlvE" + graph_.strings.get(stable.discriminator) + '_';
     } else {
-      output_ += source_name(graph_.strings.get(type.symbol))
-                 + discriminator(graph_.strings.get(type.discriminator));
+      output_ += source_name(graph_.strings.get(stable.symbol))
+                 + discriminator(graph_.strings.get(stable.discriminator));
     }
   }
 

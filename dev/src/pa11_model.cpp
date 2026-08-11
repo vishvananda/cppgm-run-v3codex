@@ -657,7 +657,8 @@ EntityRecord::EntityRecord()
 	  nonlinear_base_graph(false),
 	  deferred_template_completion(false),
 	  explicit_template_specialization(false), lambda_closure(false),
-	  lambda_ordinal(0), template_parameter_ordinal(kNoTemplateParameter)
+	  lambda_ordinal(0), lambda_capture_count(0),
+	  template_parameter_ordinal(kNoTemplateParameter)
 {
 }
 

@@ -79,6 +79,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		function_template_default_requests_.StorageBytes() +
 		lambda_closure_index_.StorageBytes() +
 		lambda_closures_.capacity() * sizeof(LambdaClosureFact) +
+		lambda_captures_.capacity() * sizeof(LambdaCaptureFact) +
 		lambda_count_by_function_.capacity() * sizeof(std::uint32_t) +
 		lambda_count_by_namespace_.capacity() * sizeof(std::uint32_t) +
 		range_for_hidden_count_by_function_.capacity() * sizeof(std::uint32_t) +

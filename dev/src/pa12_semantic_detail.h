@@ -294,6 +294,8 @@ private:
 		const SpecInfo& spec, DeclaratorInfo parsed);
 	bool AnalyzeAmbiguousCallStatement(NodeId node, ScopeId scope,
 		std::uint32_t output_parent);
+	bool AnalyzeAmbiguousRelationalDeclaration(NodeId node, ScopeId scope,
+		std::uint32_t output_parent);
 	bool AnalyzeAmbiguousDirectInitializer(NodeId node, ScopeId scope,
 		std::uint32_t output_parent);
 	void PublishVariableDeclarationFacts(BindingId binding,
@@ -795,11 +797,15 @@ private:
 
 	ExpressionInfo AnalyzeExpression(NodeId node, ScopeId scope,
 		TypeId target = kNoType);
-	ExpressionInfo AnalyzeCapturelessLambda(NodeId node, ScopeId scope,
+	ExpressionInfo AnalyzeLambdaExpression(NodeId node, ScopeId scope,
 		TypeId target);
+	void InstallLambdaCaptureBindings(ScopeId scope, BindingId this_binding,
+		const FunctionInfo& function);
 	ExpressionInfo BuildLambdaInvocationPointer(BindingId conversion_function,
 		TypeId target);
 	bool IsCapturelessLambdaType(TypeId type) const;
+	std::vector<ExpressionInfo> LambdaConstructorDeductionArguments(
+		const std::vector<ExpressionInfo>& arguments);
 	ExpressionInfo AnalyzeNamedValue(const std::string& spelling,
 		ScopeId scope, TypeId target = kNoType, NodeId syntax = kNoNode);
 	BindingId SelectOverload(ScopeId scope,
@@ -1542,6 +1548,7 @@ private:
 	TemplateSpecializationTable function_template_default_requests_;
 	IndexedSequenceTable lambda_closure_index_;
 	std::vector<LambdaClosureFact> lambda_closures_;
+	std::vector<LambdaCaptureFact> lambda_captures_;
 	std::vector<std::uint32_t> lambda_count_by_function_;
 	std::vector<std::uint32_t> lambda_count_by_namespace_;
 	std::deque<ClassTemplatePattern> class_templates_;

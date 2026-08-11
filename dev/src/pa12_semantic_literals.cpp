@@ -593,6 +593,32 @@ ExpressionInfo SemanticAnalyzer::AnalyzeThisExpression(ScopeId scope)
 		++expression_count_;
 		return result;
 	}
+	if (current_function_context_ != kNoBinding)
+	{
+		const FunctionInfo& function = GetFunction(
+			program_->bindings[current_function_context_].canonical);
+		if (function.lambda_this_capture_member != kNoBinding)
+		{
+			const BindingRecord& storage =
+				program_->bindings[found.ordinary];
+			const BindingRecord& member = program_->bindings[
+				function.lambda_this_capture_member];
+			const TypeId type = EffectiveType(member.type);
+			const std::uint32_t object = MakeDump(DUMP_ID_EXPRESSION,
+				storage.type, VALUE_LVALUE, name, found.ordinary);
+			const std::uint32_t projected = MakeDump(DUMP_MEMBER_EXPRESSION,
+				type, VALUE_PRVALUE, member.name,
+				function.lambda_this_capture_member);
+			dump_.Add(projected, object);
+			ExpressionInfo result;
+			result.type = type;
+			result.category = VALUE_PRVALUE;
+			result.binding = function.lambda_this_capture_member;
+			result.node = projected;
+			expression_count_ += 2;
+			return result;
+		}
+	}
 	const BindingRecord& binding = program_->bindings[found.ordinary];
 	ExpressionInfo result;
 	result.type = EffectiveType(binding.type);
@@ -775,9 +801,12 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 			(address && address->kind == CONSTEXPR_ADDRESS_FUNCTION);
 		return ApplyTarget(result, target);
 	}
-	const std::uint32_t injected_fact =
+	std::uint32_t injected_fact =
 		found.ordinary < injected_fact_by_binding_.size() ?
 		injected_fact_by_binding_[found.ordinary] : kNoDumpEdge;
+	if (injected_fact == kNoDumpEdge && binding.canonical != kNoBinding &&
+		binding.canonical < injected_fact_by_binding_.size())
+		injected_fact = injected_fact_by_binding_[binding.canonical];
 	if (injected_fact != kNoDumpEdge)
 	{
 		const InjectedMemberInfo& injected = injected_members_[injected_fact];
