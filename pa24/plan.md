@@ -18,31 +18,29 @@ demanded nodes (section 9).
 
 ## Current Failure Map
 
-Current state: **417/422** pa24 tests (checkpoint start: 415/422; goal start:
+Current state: **419/422** pa24 tests (checkpoint start: 417/422; goal start:
 368/422); all **3,049/3,049** tests through pa23 pass.
 
 | Shared behavior and owner | Count | Complete failing set (test basename) |
 | --- | ---: | --- |
-| Candidate-local member-template formation, ordering, and demand (`pa19` deduction/instantiation) | 2 | `member-operator-template-reference-pattern-partial-order`, `trailing-return-expression-sfinae-default-param` |
 | Reference-temporary slot planning order (`pa16`/`pa17` typed lowering) | 1 | `constructor-template-const-ref-enable-if-conversion` |
 | Demanded local-static emission identity through retained member owners (`pa22`/`pa23` + typed emission) | 2 | `member-template-result-pack-preserves-nested-function-pointer-owner`, `out-of-class-partial-member-template-owner-parameter-alias` |
 
 ## Active Checkpoint
 
-**Candidate-local member-template formation and demand.** PA19 candidate
-substitution owns default parameters and dependent trailing results; partial
-ordering owns the selected specialization identity, and demand consumes only
-that identity. Data flows as `retained signature -> candidate substitution
-scope -> expected-failure/viable result -> partial order -> selected binding ->
-body demand`. A failed trailing-return call must remain candidate-local, and an
-unselected forwarding/reference pattern must not publish an emitted body. This
-applies `spec.md` sections 3-5 and 9: expected failures are narrow typed facts,
-cache keys include the substitution environment, and body demand stays
-monotonic and selected-binding-owned. Expected work is O(C * (A + S)) for C
-owner-local candidates, A deduced arguments, and S substituted signature
-nodes, with no unselected body replay. Validate both selected fixtures,
-member-reference ordering and trailing-result SFINAE controls through PA23,
-full reports, audit, and a candidate-width probe.
+**Demanded local-static emission identity through retained member owners.**
+PA22/PA23 specialization replay owns the instantiated lexical environment;
+semantic declaration owns the canonical local-static object, and typed emission
+must consume that object identity rather than a retained parameter alias. Data
+flows as `selected member specialization -> instantiated function scope ->
+local-static declaration -> canonical storage/emission binding -> LowIR symbol`.
+This applies `spec.md` sections 2-6, 8, and 9: identities are translation-unit
+owned, replay environments are parent linked, demand is monotonic, and lowering
+uses the selected canonical binding. Expected work is O(I + U) for I newly
+instantiated local declarations and U demanded uses, with hash-indexed identity
+reuse. Validate both local-static fixtures, nested member-result and partial-
+owner alias controls through PA23, the full reports, audit, and a demanded-use
+width probe.
 
 ## Performance Evidence
 
@@ -123,6 +121,17 @@ Materialized default-suffix widths 1/2/4/8/16/32/64 produced deduction visits
 argument-list requests at 11. Seven-run median semantic times were 0.610/0.637/
 0.656/0.718/0.811/1.066/1.390 ms; the suffix anchor is one linear reverse pass.
 
+Retained non-static receiver depths 1/2/4/8/16/32/64 produced 32/40/56/88/
+152/280/536 demand visits and 28/32/40/56/88/152/280 semantic nodes; demand
+pushes stayed at three. Seven-run median semantic times were 0.251/0.261/0.268/
+0.298/0.365/0.523/0.810 ms, showing one scan per newly retained call node.
+
+Dependent trailing-result failure widths 1/2/4/8/16/32/64 produced 9/18/36/
+72/144/288/576 deduction visits, 54/100/192/376/744/1,480/2,952 specialization
+requests, and 362/592/1,052/1,972/3,812/7,492/14,852 lookup-scope visits.
+Seven-run median semantic times were 2.237/3.037/4.776/8.146/14.873/28.775/
+57.541 ms; candidate-local failure formation remains linear in request width.
+
 ## Completed Checkpoints
 
 | Checkpoint | Commit | Disposition |
@@ -139,4 +148,5 @@ argument-list requests at 11. Seven-run median semantic times were 0.610/0.637/
 | Direct-reference classification and runtime conversion-object materialization | `f3724c7e` | Two failures removed; 410/422 pa24, 3,049/3,049 through pa23, constant candidate count across conversion width. |
 | Empty-value lifecycle demand and destination-owned lowering | `6a238d0f` | Three failures removed; 413/422 pa24, 3,049/3,049 through pa23, linear empty-transfer/object scaling. |
 | Type-preserving class-argument staging and nested empty-recipe consumption | `dfe38634` | Two failures removed; 415/422 pa24, 3,049/3,049 through pa23, linear nested-construction scaling. |
-| Declaration-ordered retained arguments and fixed-primary pack spans | this commit | Two failures removed; 417/422 pa24, 3,049/3,049 through pa23, linear default-suffix scaling. |
+| Declaration-ordered retained arguments and fixed-primary pack spans | `30fe0986` | Two failures removed; 417/422 pa24, 3,049/3,049 through pa23, linear default-suffix scaling. |
+| Candidate-local member-call formation and retained receiver demand | this commit | Two failures removed; 419/422 pa24, 3,049/3,049 through pa23, audit pass, linear failure-width and receiver-depth scaling. |

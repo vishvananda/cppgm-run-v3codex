@@ -134,6 +134,8 @@ struct DumpNode
 	bool contains_temporary_object;
 	bool temporary_implicit_object;
 	bool pending_constructor_demand;
+	bool pending_runtime_call_demand;
+	bool runtime_call_demand_scanned;
 	bool class_argument_staging;
 	bool variadic_class_argument;
 	bool direct_return_slot;
@@ -177,6 +179,8 @@ struct DumpNode
 		  reference_call_materialization(false),
 		  contains_temporary_object(value == DUMP_TEMPORARY_OBJECT),
 		  temporary_implicit_object(false), pending_constructor_demand(false),
+		  pending_runtime_call_demand(false),
+		  runtime_call_demand_scanned(false),
 		  class_argument_staging(false), variadic_class_argument(false),
 		  direct_return_slot(false), declaration_only(false),
 		  unwind_only(false), full_expression_staging(false),

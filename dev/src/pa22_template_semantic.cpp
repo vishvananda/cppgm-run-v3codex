@@ -310,6 +310,47 @@ void SemanticAnalyzer::DemandMaterializedConstructorActions(
 	}
 }
 
+void SemanticAnalyzer::DemandRetainedRuntimeCalls(std::uint32_t node)
+{
+	if (node >= dump_.nodes.size())
+		throw std::logic_error("invalid retained-call demand root");
+	std::vector<std::uint32_t> pending(1, node);
+	while (!pending.empty())
+	{
+		const std::uint32_t current = pending.back();
+		pending.pop_back();
+		DumpNode& record = dump_.nodes[current];
+		if (record.runtime_call_demand_scanned) continue;
+		record.runtime_call_demand_scanned = true;
+		++materialized_demand_visits_;
+		if (record.kind == DUMP_CALL_EXPRESSION &&
+			record.pending_runtime_call_demand)
+		{
+			record.pending_runtime_call_demand = false;
+			if (record.first_edge != kNoDumpEdge)
+			{
+				const DumpNode& callee = dump_.nodes[
+					dump_.edges[record.first_edge].child];
+				if (callee.kind == DUMP_CALLEE && callee.binding != kNoBinding)
+				{
+					const BindingId binding =
+						program_->bindings[callee.binding].canonical;
+					if (binding < function_fact_by_binding_.size() &&
+						function_fact_by_binding_[binding] != kNoDumpEdge)
+					{
+						if (!GetFunction(binding).defined)
+							GetMutableFunction(binding).deferred = true;
+						DemandRuntimeFunction(binding);
+					}
+				}
+			}
+		}
+		for (std::uint32_t edge = record.first_edge;
+			edge != kNoDumpEdge; edge = dump_.edges[edge].next)
+			pending.push_back(dump_.edges[edge].child);
+	}
+}
+
 bool SemanticAnalyzer::TryBuildElidedClassValueTransfer(TypeId type,
 	const ExpressionInfo& source, BindingId selected_constructor,
 	ExpressionInfo* result)

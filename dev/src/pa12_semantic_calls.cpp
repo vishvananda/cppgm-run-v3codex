@@ -625,7 +625,18 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 		arena_->NextEdge(object_edge);
 	if (name_edge == kNoEdge)
 		throw std::runtime_error("invalid member call expression");
-	ExpressionInfo object = AnalyzeExpression(arena_->EdgeChild(object_edge), scope);
+	++resolved_call_demand_suppressed_depth_;
+	ExpressionInfo object;
+	try
+	{
+		object = AnalyzeExpression(arena_->EdgeChild(object_edge), scope);
+	}
+	catch (...)
+	{
+		--resolved_call_demand_suppressed_depth_;
+		throw;
+	}
+	--resolved_call_demand_suppressed_depth_;
 	if (CandidateSubstitutionFailed())
 	{
 		*result = ExpressionInfo();
@@ -708,7 +719,12 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 	}
 	const bool ordinary_functions = found.ordinary != kNoBinding &&
 		program_->bindings[found.ordinary].kind == BIND_FUNCTION;
-	if (!ordinary_functions && template_patterns.empty()) return false;
+	if (!ordinary_functions && template_patterns.empty())
+	{
+		if (!CandidateSubstitutionActive()) return false;
+		*result = CandidateSubstitutionFailure();
+		return true;
+	}
 	if (!arrow && object.category == VALUE_PRVALUE &&
 		dump_.nodes[object.node].kind != DUMP_TEMPORARY_OBJECT)
 		object = MaterializeTemporary(object);
@@ -759,7 +775,12 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 			if (!present) candidates.push_back(candidate);
 		}
 	}
-	if (candidates.empty()) return false;
+	if (candidates.empty())
+	{
+		if (!CandidateSubstitutionActive()) return false;
+		*result = CandidateSubstitutionFailure();
+		return true;
+	}
 	ObjectConversionFact object_conversion;
 	std::vector<CallConversionFact> argument_conversions;
 	const BindingId selected = SelectOverload(scope, argument_syntax,
@@ -770,6 +791,8 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 		*result = ExpressionInfo();
 		return true;
 	}
+	if (!program_->bindings[selected].static_member_function)
+		DemandRetainedRuntimeCalls(object.node);
 	*result = BuildResolvedCall(selected, scope, argument_syntax,
 		arguments, &object_pointer, target, found.naming_class,
 		&object_conversion, &argument_conversions,

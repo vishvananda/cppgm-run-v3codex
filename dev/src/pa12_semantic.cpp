@@ -1229,9 +1229,11 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 		!(nonstatic_member && constant_initializer_required_depth_ != 0 &&
 		  (!constexpr_has_scalar ||
 		   local_constant_initializer_depth_ != 0));
-	if (ShouldDemandResolvedCall(
-		selected, folded_call, compile_time_only_call))
-		DemandFunction(selected);
+	const bool demand_call = ShouldDemandResolvedCall(
+		selected, folded_call, compile_time_only_call);
+	if (resolved_call_demand_suppressed_depth_ != 0)
+		dump_.nodes[call].pending_runtime_call_demand = demand_call;
+	else if (demand_call) DemandFunction(selected);
 	++expression_count_;
 	return ApplyTarget(result, target);
 }
