@@ -383,12 +383,26 @@ public:
 			const EntityRecord& entity = program_.entities[record->entity];
 			if (entity.lambda_closure)
 			{
-				if (entity.local_context == kNoBinding)
-					throw std::logic_error(
-						"lambda closure ABI type has no function context");
-				result.kind = ABI_TYPE_LAMBDA_CLOSURE;
-				result.context_ref = AddLocalContext(entity.local_context);
-				result.discriminator = std::to_string(entity.lambda_ordinal);
+				if (entity.local_context != kNoBinding)
+				{
+					result.kind = ABI_TYPE_LAMBDA_CLOSURE;
+					result.context_ref = AddLocalContext(entity.local_context);
+					result.discriminator = std::to_string(entity.lambda_ordinal);
+				}
+				else
+				{
+					std::vector<NameId> path;
+					program_.BuildEmissionPath(
+						entity.owner, entity.identity_name, &path);
+					if (path.empty())
+						throw std::logic_error(
+							"namespace lambda ABI type has no identity path");
+					result.kind = ABI_TYPE_NAMESPACE_LAMBDA;
+					result.name = program_.names.Get(path.back());
+					for (std::size_t i = 0; i + 1 < path.size(); ++i)
+						result.namespace_qualifiers.push_back(
+							program_.names.Get(path[i]));
+				}
 			}
 			else if (entity.local_context != kNoBinding)
 			{
@@ -711,6 +725,64 @@ void AppendFunctionTemplateArgumentsAndResult(const pa11::Program& program,
 	output->records.push_back(result);
 }
 
+std::string MangleLambdaCallOperator(const pa11::Program& program,
+	const pa11::BindingRecord& binding,
+	const pa11::EntityRecord& lambda)
+{
+	using namespace abi_mangle;
+	using namespace pa11;
+	if (binding.operator_kind != OPERATOR_CALL)
+		throw std::logic_error("invalid lambda call-operator ABI identity");
+	AbiFactFile file;
+	file.cases.push_back(AbiFactCase());
+	AbiFactBuilder facts(program, file.cases[0]);
+	AbiFactRecord lambda_target;
+	lambda_target.set_kind(ABI_FACT_RECORD_TARGET);
+	lambda_target.target.kind = ABI_TARGET_FACT_FUNCTION;
+	AbiFunctionTarget& function = lambda_target.target.function;
+	if (lambda.local_context != kNoBinding)
+	{
+		function.kind = ABI_FUNCTION_TARGET_LAMBDA;
+		function.context_ref = facts.AddLocalContext(lambda.local_context);
+		function.discriminator = std::to_string(lambda.lambda_ordinal);
+	}
+	else
+	{
+		std::vector<NameId> path;
+		program.BuildEmissionPath(lambda.owner, lambda.identity_name, &path);
+		if (path.empty())
+			throw std::logic_error(
+				"namespace lambda call operator has no identity path");
+		function.kind = ABI_FUNCTION_TARGET_NAMESPACE_LAMBDA;
+		function.source_name = program.names.Get(path.back());
+		for (std::size_t i = 0; i + 1 < path.size(); ++i)
+			function.namespace_qualifiers.push_back(program.names.Get(path[i]));
+		const TypeRecord& declared = program.types.Get(binding.type);
+		AbiFactRecord qualifier;
+		qualifier.set_kind(ABI_FACT_RECORD_FUNCTION);
+		qualifier.function.kind = ABI_FUNCTION_RECORD_QUALIFIER;
+		if ((declared.cv & CV_CONST) != 0)
+			qualifier.function.qualifiers.push_back(
+				ABI_FUNCTION_QUALIFIER_CONST);
+		if ((declared.cv & CV_VOLATILE) != 0)
+			qualifier.function.qualifiers.push_back(
+				ABI_FUNCTION_QUALIFIER_VOLATILE);
+		if (!qualifier.function.qualifiers.empty())
+			file.cases[0].records.push_back(qualifier);
+	}
+	function.terminal = "operator-call";
+	const TypeRecord& lambda_type = program.types.Get(binding.type);
+	const TypeId* lambda_parameters = program.types.Parameters(binding.type);
+	for (std::size_t i = 0; i < lambda_type.parameter_count; ++i)
+		function.signature_parameter_types.push_back(
+			facts.MakeType(lambda_parameters[i]));
+	file.cases[0].records.push_back(lambda_target);
+	std::string result = mangle_fact_file(file);
+	if (!result.empty() && result[result.size() - 1] == '\n')
+		result.resize(result.size() - 1);
+	return result;
+}
+
 std::string MangleFunction(const pa11::Program& program,
 	const pa12_semantic_detail::DumpNode& node,
 	bool force_constructor_base_entry)
@@ -742,35 +814,13 @@ std::string MangleFunction(const pa11::Program& program,
 	if (binding.language_linkage == LANGUAGE_LINKAGE_C &&
 		binding.storage_class != STORAGE_CLASS_STATIC)
 		return program.names.Get(binding.name);
-	AbiFactFile file;
-	file.cases.push_back(AbiFactCase());
-	AbiFactBuilder facts(program, file.cases[0]);
 	const EntityRecord* lambda = binding.member_owner == kNoEntity ? 0 :
 		&program.entities[binding.member_owner];
 	if (lambda && lambda->lambda_closure)
-	{
-		if (lambda->local_context == kNoBinding ||
-			binding.operator_kind != OPERATOR_CALL)
-			throw std::logic_error("invalid lambda call-operator ABI identity");
-		AbiFactRecord lambda_target;
-		lambda_target.set_kind(ABI_FACT_RECORD_TARGET);
-		lambda_target.target.kind = ABI_TARGET_FACT_FUNCTION;
-		AbiFunctionTarget& function = lambda_target.target.function;
-		function.kind = ABI_FUNCTION_TARGET_LAMBDA;
-		function.context_ref = facts.AddLocalContext(lambda->local_context);
-		function.discriminator = std::to_string(lambda->lambda_ordinal);
-		function.terminal = "operator-call";
-		const TypeRecord& lambda_type = program.types.Get(binding.type);
-		const TypeId* lambda_parameters = program.types.Parameters(binding.type);
-		for (std::size_t i = 0; i < lambda_type.parameter_count; ++i)
-			function.signature_parameter_types.push_back(
-				facts.MakeType(lambda_parameters[i]));
-		file.cases[0].records.push_back(lambda_target);
-		std::string result = mangle_fact_file(file);
-		if (!result.empty() && result[result.size() - 1] == '\n')
-			result.resize(result.size() - 1);
-		return result;
-	}
+		return MangleLambdaCallOperator(program, binding, *lambda);
+	AbiFactFile file;
+	file.cases.push_back(AbiFactCase());
+	AbiFactBuilder facts(program, file.cases[0]);
 	const FunctionTemplateAbiRecipe* recipe = 0;
 	if (binding.function_template_abi_recipe != kNoFunctionTemplateAbiRecipe)
 	{

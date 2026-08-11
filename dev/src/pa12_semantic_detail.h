@@ -797,6 +797,9 @@ private:
 		TypeId target = kNoType);
 	ExpressionInfo AnalyzeCapturelessLambda(NodeId node, ScopeId scope,
 		TypeId target);
+	ExpressionInfo BuildLambdaInvocationPointer(BindingId conversion_function,
+		TypeId target);
+	bool IsCapturelessLambdaType(TypeId type) const;
 	ExpressionInfo AnalyzeNamedValue(const std::string& spelling,
 		ScopeId scope, TypeId target = kNoType, NodeId syntax = kNoNode);
 	BindingId SelectOverload(ScopeId scope,
@@ -1540,6 +1543,7 @@ private:
 	IndexedSequenceTable lambda_closure_index_;
 	std::vector<LambdaClosureFact> lambda_closures_;
 	std::vector<std::uint32_t> lambda_count_by_function_;
+	std::vector<std::uint32_t> lambda_count_by_namespace_;
 	std::deque<ClassTemplatePattern> class_templates_;
 	IndexedSequenceTable demanded_static_member_definitions_;
 	std::vector<AliasTemplatePattern> alias_templates_;

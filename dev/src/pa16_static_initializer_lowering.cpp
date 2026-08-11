@@ -604,10 +604,16 @@ bool StaticInitializerLowering::Lower(const NamespaceObjectAction& action,
 		const std::size_t old_size = global->items.size();
 		const TypeRecord& object = program_.types.Get(
 			types_.ExpressionObject(action.type));
-		const bool empty_recipe = initializer.kind == DUMP_CLASS_VALUE_TRANSFER &&
+		const bool empty_lambda_recipe =
+			initializer.kind == DUMP_BRACED_INIT_LIST &&
 			object.kind == TYPE_NAMED &&
-			program_.entities[object.entity].empty_class &&
-			IsEmptyConstructionTransferRecipe(action.initializer);
+			program_.entities[object.entity].lambda_closure &&
+			Children(action.initializer).empty();
+		const bool empty_recipe = empty_lambda_recipe ||
+			(initializer.kind == DUMP_CLASS_VALUE_TRANSFER &&
+			 object.kind == TYPE_NAMED &&
+			 program_.entities[object.entity].empty_class &&
+			 IsEmptyConstructionTransferRecipe(action.initializer));
 		if (AppendValue(action.type, action.initializer, &global->items))
 		{
 			const BindingRecord& binding = program_.bindings[action.object];

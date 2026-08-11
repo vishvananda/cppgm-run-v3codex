@@ -13,11 +13,12 @@ analyzed only after specialization cache publication, and republish their
 completed function type/ABI before lowering demand. Class completion publishes
 generic result and parameter ABI facts; template patterns retain dependent
 result identity, and canonical function bindings retain only callable-specific
-overrides. Each captureless closure has one canonical syntax/enclosing-function
-key and owns its call parameters, declaration-level pack identity, result/body
-state, and lexical parent-function access edge. Access follows only indexed
-lexical/member/friend facts and does not import an uncaptured implicit object.
-Return-slot planning and PA15 consume those facts directly.
+overrides. Each captureless closure has one canonical syntax/context key and
+owns its call parameters, result/body state, lexical access edge, static
+invocation binding, and implicit pointer-conversion fact; namespace closures
+also own source and emission identities. Access follows only indexed
+lexical/member/friend facts. Return-slot planning and PA15 consume those facts
+directly.
 Full-expression and scope lifetime actions use the shared typed cleanup path;
 LowIR text remains only the requested output view.
 
@@ -30,41 +31,37 @@ to syntax, actual candidates, and emitted IR).
 
 ## Current Failure Map
 
-The original PA25 set remains 102/132, up from the pre-checkpoint 90/132; three
-passing audit regressions make the current report 105/135. The remaining 30
-failures group by first owner: captureless invocation-function/pointer
-conversion and namespace identity; capture field/layout and nested capture
-lookup; closure transfer/special-member viability through templates; broader
-template-pack substitution; and one independent retained local-declaration /
-nested class-template parse ambiguity. Lexical private access now reaches the
-deferred invocation-function output path rather than failing semantic analysis.
+The current report is 115/135, up from 105/135. The remaining 20 failures group
+by first owner: capture field/layout and nested capture lookup (12); closure
+copy/move transfer and special-member viability through templated calls,
+constructors, and assignment (4); retained lambda parameter-pack binding (2);
+one deferred hidden-friend dependent lookup; and one independent retained
+local-declaration/nested-class-template parse ambiguity.
 
 ## Active Checkpoint
 
-The next substantial checkpoint is captureless invocation-function and
-pointer-conversion ownership. PA12 will attach one canonical static invocation
-binding and one implicit conversion fact to each eligible closure, including
-namespace-scope identity. Overload resolution will consume that conversion
-through the indexed class candidate set, and PA15 will lower the selected
-invocation binding directly. This applies `spec.md` sections 2-5 (canonical identity, indexed
-selection, complete cache keys, and monotonic demand), 6 (selected typed facts
-crossing into lowering), 8 (closure-owned facts), and 9. Expected complexity is
-O(parameters + selected candidates + demanded body + emitted IR) once per
-closure, with O(1)-average binding/fact lookup. Validate direct prvalue calls,
-function-pointer initialization/unary `+`/comparison, wrapper conversion,
-global lambdas, lexical-access interaction, and template-specialized closures
-before the complete PA25, PA1-24, scaling, and audit gates.
+The next substantial checkpoint is the supported by-reference-local and `this`
+closure object model, bundled with closure copy/move transfer. PA12 owns parsed
+capture identities, canonical reference/pointer fields, layout, lexical lookup
+edges, and implicit special-member facts; template calls and PA15 consume those
+facts without name or layout reconstruction. This applies `spec.md` sections 1
+(single parse), 2-5 (canonical identity, indexed lookup, complete demand keys),
+6 (typed lowering), 8 (closure-owned storage/lifetimes), and 9. Expected work is
+O(captures + referenced names + viable special-member candidates + body + IR)
+per demanded closure, with O(1)-average capture/binding lookup. Validate explicit
+and default reference capture, explicit/implicit `this`, nested capture chains,
+template argument transfer, constructor/assignment selection, and cleanup before
+the complete PA25, PA1-24, scaling, and audit gates.
 
 ## Performance Evidence
 
-For 16/64/256 sibling captureless closures performing private-member access,
-tokens were 471/1,719/6,711, semantic nodes 348/1,308/5,148, closure requests
-16/64/256, access path visits 32/128/512, and access-grant probes
-64/256/1,024. Demand pushes/emissions were 18/66/258, functions 19/67/259,
-instructions 223/847/3,343, and typed storage
-66,195/256,323/1,017,459 bytes. Five-run median semantic time was
-1.495/4.799/18.736 ms and lowering time 0.459/1.222/4.426 ms; work, storage,
-and time track closures and emitted IR.
+For 16/64/256 sibling captureless closures converted to function pointers,
+tokens were 461/1,805/7,181, semantic nodes 359/1,415/5,639, closure requests
+and overload candidates 16/64/256, conversion checks 258/1,026/4,098, demand
+pushes/emissions 16/64/256, instructions 131/515/2,051, and typed storage
+42,500/167,156/666,404 bytes. Five-run median semantic time was
+1.515/5.141/20.101 ms and lowering time 0.296/0.866/3.096 ms; all counted work,
+storage, and time track closures and emitted IR.
 
 ## Completed Checkpoints
 
@@ -76,3 +73,4 @@ and time track closures and emitted IR.
 | Selected class conversions and typed value boundaries plus checkpoint audit | One-class conditional construction; single-parse canonical conversion targets; modifiable lvalue-reference increment; semantic-owned direct derived parameter ABI | Checkpoint and neighbors 10/10; PA25 baseline 83/128 preserved plus audit 2/2 (85/130); PA1-24 3,471/3,471; file audit passes; 16/64/256 candidates scale linearly |
 | Function-template placeholder results and deduced class-value locals plus checkpoint audit | Canonical four-state retained-body demand; cache-before-analysis; completed canonical result publication; semantic-owned generic class-result ABI and dependent-pattern/function override facts; selected same-type class transfer | Shipped PA25 88/130 (+1 audit repair), audit regressions 2/2 for 90/132; PA1-24 3,471/3,471; file audit and diff checks pass; 16/64/256 specializations scale linearly |
 | Ordinary captureless call-operator formation plus checkpoint audit | Canonical closure key; parameter/default and zero-pack facts; scoped explicit and four-state implicit results; cache-before-body analysis; lexical access edge without implicit-object capture; direct typed call/body lowering; empty closure storage identity | Original PA25 102/132 (+12) preserved plus audit 3/3 for 105/135; focused 8/8; PA1-24 3,471/3,471; runtime and file audit pass; 16/64/256 closure/access scaling is linear |
+| Captureless invocation and pointer-conversion ownership | Canonical static invoker and conversion binding; retained constructor-argument conversion; direct temporary surrogate calls; stored call operators; namespace lambda ABI/init identity | PA25 115/135 (+10); focused 11/11; PA1-24 3,471/3,471; file audit pass; 16/64/256 conversion scaling is linear |

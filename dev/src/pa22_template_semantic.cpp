@@ -108,12 +108,19 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCapturelessLambda(NodeId node,
 	const NodeId body = FindChild(node, "compound-statement");
 	if (body == kNoNode)
 		throw std::logic_error("lambda expression has no retained body");
-	if (current_function_context_ == kNoBinding)
-		throw std::runtime_error("lambda expression has no function context");
-	const BindingId enclosing = program_->bindings[
-		current_function_context_].canonical;
+	ScopeId namespace_owner = scope;
+	while (namespace_owner != kNoScope &&
+		program_->KindOfScope(namespace_owner) != SCOPE_NAMESPACE)
+		namespace_owner = program_->ParentScope(namespace_owner);
+	if (namespace_owner == kNoScope)
+		throw std::logic_error("lambda closure has no namespace owner");
+	const BindingId enclosing = current_function_context_ == kNoBinding ?
+		kNoBinding : program_->bindings[current_function_context_].canonical;
+	const std::uint32_t context_key = enclosing == kNoBinding ?
+		(static_cast<std::uint32_t>(namespace_owner) | 0x80000000u) :
+		static_cast<std::uint32_t>(enclosing);
 	const std::uint64_t key =
-		(static_cast<std::uint64_t>(enclosing) << 32) | node;
+		(static_cast<std::uint64_t>(context_key) << 32) | node;
 	const CompactIndexSequence* indexed = lambda_closure_index_.Find(key);
 	std::size_t fact_index = 0;
 	if (indexed)
@@ -123,7 +130,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCapturelessLambda(NodeId node,
 		fact_index = (*indexed)[0];
 		if (fact_index >= lambda_closures_.size() ||
 			lambda_closures_[fact_index].syntax != node ||
-			lambda_closures_[fact_index].function != enclosing)
+			lambda_closures_[fact_index].function != enclosing ||
+			lambda_closures_[fact_index].namespace_owner != namespace_owner)
 			throw std::logic_error("corrupt canonical lambda closure index");
 		++lambda_closure_cache_hits_;
 	}
@@ -159,26 +167,43 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCapturelessLambda(NodeId node,
 				nonthrowing = true;
 			}
 		}
-		if (lambda_count_by_function_.size() <= enclosing)
-			lambda_count_by_function_.resize(
-				static_cast<std::size_t>(enclosing) + 1, 0);
-		const std::uint32_t ordinal =
-			lambda_count_by_function_[enclosing]++;
-		ScopeId namespace_owner = scope;
-		while (namespace_owner != kNoScope &&
-			program_->KindOfScope(namespace_owner) != SCOPE_NAMESPACE)
-			namespace_owner = program_->ParentScope(namespace_owner);
-		if (namespace_owner == kNoScope)
-			throw std::logic_error("lambda closure has no namespace owner");
-		const BindingRecord& context = program_->bindings[enclosing];
-		const std::string context_name = program_->names.Get(
-			context.qualified_name != 0 ? context.qualified_name : context.name);
-		const std::string leaf_spelling = LambdaIdentityComponent(context_name,
-			arena_->TokenFirst(node), arena_->TokenLast(node), ordinal);
+		std::uint32_t ordinal = 0;
+		if (enclosing != kNoBinding)
+		{
+			if (lambda_count_by_function_.size() <= enclosing)
+				lambda_count_by_function_.resize(
+					static_cast<std::size_t>(enclosing) + 1, 0);
+			ordinal = lambda_count_by_function_[enclosing]++;
+		}
+		else
+		{
+			if (lambda_count_by_namespace_.size() <= namespace_owner)
+				lambda_count_by_namespace_.resize(
+					static_cast<std::size_t>(namespace_owner) + 1, 0);
+			ordinal = lambda_count_by_namespace_[namespace_owner]++;
+		}
+		std::string leaf_spelling;
+		NameId identity_leaf = 0;
+		if (enclosing != kNoBinding)
+		{
+			const BindingRecord& context = program_->bindings[enclosing];
+			const std::string context_name = program_->names.Get(
+				context.qualified_name != 0 ?
+					context.qualified_name : context.name);
+			leaf_spelling = LambdaIdentityComponent(context_name,
+				arena_->TokenFirst(node), arena_->TokenLast(node), ordinal);
+		}
+		else
+		{
+			leaf_spelling = "__" + std::to_string(ordinal);
+			identity_leaf = program_->names.Intern(
+				"$_" + std::to_string(ordinal));
+		}
 		const NameId leaf = program_->names.Intern(leaf_spelling);
 		const NameId emission = EmissionName(namespace_owner, leaf);
 		const EntityId entity = program_->NewEntity(emission, NAMED_CLASS, true,
-			kNoType, namespace_owner, leaf);
+			kNoType, namespace_owner,
+			identity_leaf == 0 ? leaf : identity_leaf);
 		EntityRecord& closure = program_->entities[entity];
 		closure.local_context = enclosing;
 		closure.lambda_closure = true;
@@ -253,14 +278,68 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCapturelessLambda(NodeId node,
 		if (trailing_return == kNoNode)
 			call.placeholder_return_kind = PLACEHOLDER_DECLARATOR_VALUE;
 		RegisterClassMemberFunction(entity, call_operator);
-		PublishInlineFunctionFacts(call_operator, true);
+		if (enclosing != kNoBinding)
+			PublishInlineFunctionFacts(call_operator, true);
 		(void)EnsureImplicitDestructor(entity);
-		fact_index = lambda_closures_.size();
-		lambda_closures_.push_back(LambdaClosureFact(node, enclosing, entity,
-			call_operator, ordinal));
-		lambda_closure_index_.Ensure(key).Push(fact_index);
 		if (trailing_return == kNoNode)
 			AnalyzeRetainedPlaceholderFunctionBody(call_operator);
+
+		const FunctionInfo& completed_call = GetFunction(call_operator);
+		const TypeRecord& completed_call_type =
+			program_->types.Get(completed_call.type);
+		std::vector<TypeId> invocation_parameters;
+		const TypeId* completed_parameters =
+			program_->types.Parameters(completed_call.type);
+		if (completed_call_type.parameter_count != 0)
+			invocation_parameters.assign(completed_parameters,
+				completed_parameters + completed_call_type.parameter_count);
+		const TypeId invocation_type = program_->types.Function(
+			completed_call_type.child, invocation_parameters,
+			completed_call_type.variadic);
+		const BindingId invocation_function = DeclareFunction(namespace_owner,
+			leaf, invocation_type, call_parameters, true, false,
+			STORAGE_CLASS_STATIC, LANGUAGE_LINKAGE_CPP, nonthrowing, false);
+		FunctionInfo& invocation = GetMutableFunction(invocation_function);
+		invocation.lexical_access_function = enclosing;
+		invocation.lexical_scope = scope;
+		invocation.definition_body = body;
+		invocation.deferred = true;
+		invocation.parameter_pack_name = call_parameter_pack_name;
+
+		const TypeId conversion_target =
+			program_->types.Pointer(invocation_type);
+		const TypeId conversion_type = program_->types.Function(
+			conversion_target, std::vector<TypeId>(), false, CV_CONST);
+		const NameId conversion_name = program_->names.Intern(
+			"operator __cppgm_captureless_lambda_pointer");
+		const BindingId conversion_function = DeclareFunction(member_scope,
+			conversion_name, conversion_type, std::vector<ParameterInfo>(),
+			true, false, STORAGE_CLASS_NONE, LANGUAGE_LINKAGE_CPP,
+			nonthrowing, false);
+		BindingRecord& conversion_binding =
+			program_->bindings[conversion_function];
+		conversion_binding.member_owner = entity;
+		conversion_binding.access = ACCESS_PUBLIC;
+		conversion_binding.conversion_function = true;
+		conversion_binding.conversion_target = conversion_target;
+		FunctionInfo& conversion = GetMutableFunction(conversion_function);
+		conversion.member_owner = closure_type;
+		conversion.conversion_function = true;
+		conversion.conversion_target = conversion_target;
+		conversion.lambda_invocation_function = invocation_function;
+		conversion.lexical_access_function = enclosing;
+		conversion.lexical_scope = scope;
+		RegisterClassMemberFunction(entity, conversion_function);
+		if (entity_conversion_functions_.size() <= entity)
+			entity_conversion_functions_.resize(
+				static_cast<std::size_t>(entity) + 1);
+		entity_conversion_functions_[entity].push_back(conversion_function);
+
+		fact_index = lambda_closures_.size();
+		lambda_closures_.push_back(LambdaClosureFact(node, enclosing,
+			namespace_owner, entity, call_operator, invocation_function,
+			conversion_function, ordinal));
+		lambda_closure_index_.Ensure(key).Push(fact_index);
 	}
 	const TypeId closure_type =
 		program_->entities[lambda_closures_[fact_index].entity].type;
@@ -270,6 +349,40 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCapturelessLambda(NodeId node,
 	result.node = initializer;
 	result.type = closure_type;
 	result.category = VALUE_PRVALUE;
+	++expression_count_;
+	return ApplyTarget(result, target);
+}
+
+bool SemanticAnalyzer::IsCapturelessLambdaType(TypeId type) const
+{
+	type = program_->types.RemoveTopCv(EffectiveType(type));
+	const TypeRecord& record = program_->types.Get(type);
+	return record.kind == TYPE_NAMED &&
+		record.entity < program_->entities.size() &&
+		program_->entities[record.entity].lambda_closure;
+}
+
+ExpressionInfo SemanticAnalyzer::BuildLambdaInvocationPointer(
+	BindingId conversion_function, TypeId target)
+{
+	const FunctionInfo& conversion = GetFunction(conversion_function);
+	const BindingId invocation = conversion.lambda_invocation_function;
+	if (invocation == kNoBinding || invocation >= program_->bindings.size())
+		throw std::logic_error(
+			"captureless lambda conversion has no invocation function");
+	const BindingId canonical = program_->bindings[invocation].canonical;
+	const FunctionInfo& callable = GetFunction(canonical);
+	ExpressionInfo result;
+	result.type = callable.type;
+	result.category = VALUE_LVALUE;
+	result.binding = canonical;
+	result.node = MakeDump(DUMP_ID_EXPRESSION, callable.type, VALUE_LVALUE,
+		program_->bindings[canonical].name, canonical);
+	// This address is the semantic result of the closure conversion.  Keep an
+	// indirect source call indirect even though the pointed-to function is
+	// known, so the selected conversion remains visible to typed lowering.
+	result.indirect_constant_designator = true;
+	DemandFunction(canonical);
 	++expression_count_;
 	return ApplyTarget(result, target);
 }

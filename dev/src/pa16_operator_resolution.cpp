@@ -461,6 +461,7 @@ CallConversionFact SemanticAnalyzer::ConvertingConstructor(
 	AppendConstructorTemplateCandidates(target, arguments, &candidates);
 	BindingId selected = kNoBinding;
 	ConversionRank best = CONVERSION_INVALID;
+	CallConversionFact best_argument_conversion;
 	bool ambiguous = false;
 	for (std::size_t i = 0; i < candidates.size(); ++i)
 	{
@@ -470,6 +471,7 @@ CallConversionFact SemanticAnalyzer::ConvertingConstructor(
 		if (!constructor.constructor || constructor.explicit_constructor)
 			continue;
 		ConversionRank rank = CONVERSION_INVALID;
+		CallConversionFact argument_conversion;
 		if (function.parameter_count == 0)
 		{
 			if (!function.variadic) continue;
@@ -482,14 +484,25 @@ CallConversionFact SemanticAnalyzer::ConvertingConstructor(
 				constructor.parameters[required - 1].default_argument != kNoNode)
 				--required;
 			if (required > 1) continue;
-			rank = Conversion(
-				source, program_->types.Parameters(constructor.type)[0]);
+			const TypeId parameter =
+				program_->types.Parameters(constructor.type)[0];
+			rank = Conversion(source, parameter);
+			if (rank == CONVERSION_INVALID && IsCapturelessLambdaType(source.type))
+			{
+				argument_conversion =
+					ConvertingFunction(source, parameter, false);
+				if (argument_conversion.conversion_function != kNoBinding &&
+					GetFunction(argument_conversion.conversion_function).
+						lambda_invocation_function != kNoBinding)
+					rank = argument_conversion.rank;
+			}
 			if (rank == CONVERSION_INVALID) continue;
 		}
 		if (selected == kNoBinding || rank < best)
 		{
 			selected = candidates[i];
 			best = rank;
+			best_argument_conversion = argument_conversion;
 			ambiguous = false;
 		}
 		else if (rank == best)
@@ -501,6 +514,7 @@ CallConversionFact SemanticAnalyzer::ConvertingConstructor(
 				if (!constructor.template_specialization)
 				{
 					selected = candidates[i];
+					best_argument_conversion = argument_conversion;
 					ambiguous = false;
 				}
 			}
@@ -511,6 +525,7 @@ CallConversionFact SemanticAnalyzer::ConvertingConstructor(
 				if (preference > 0)
 				{
 					selected = candidates[i];
+					best_argument_conversion = argument_conversion;
 					ambiguous = false;
 				}
 				else if (preference == 0) ambiguous = true;
@@ -521,6 +536,14 @@ CallConversionFact SemanticAnalyzer::ConvertingConstructor(
 	result.rank = CONVERSION_USER_DEFINED;
 	result.constructor = selected;
 	result.constructor_argument_rank = best;
+	result.constructor_argument_conversion_function =
+		best_argument_conversion.conversion_function;
+	result.constructor_argument_conversion_result_rank =
+		best_argument_conversion.conversion_result_rank;
+	result.constructor_argument_conversion_object_rank =
+		best_argument_conversion.conversion_object_rank;
+	result.constructor_argument_conversion_base_projection_count =
+		best_argument_conversion.conversion_base_projection_count;
 	return result;
 }
 
@@ -1181,6 +1204,14 @@ ExpressionInfo SemanticAnalyzer::BuildConvertingArgument(
 	{
 		CallConversionFact parameter_conversion;
 		parameter_conversion.rank = conversion.constructor_argument_rank;
+		parameter_conversion.conversion_function =
+			conversion.constructor_argument_conversion_function;
+		parameter_conversion.conversion_result_rank =
+			conversion.constructor_argument_conversion_result_rank;
+		parameter_conversion.conversion_object_rank =
+			conversion.constructor_argument_conversion_object_rank;
+		parameter_conversion.conversion_base_projection_count =
+			conversion.constructor_argument_conversion_base_projection_count;
 		ExpressionInfo converted = ApplyCallArgument(
 			source, parameters[0], &parameter_conversion);
 		dump_.Add(action, converted.node);
@@ -1244,6 +1275,10 @@ ExpressionInfo SemanticAnalyzer::ApplyCallArgument(
 	{
 		if (resolved.conversion_function != kNoBinding)
 		{
+			if (GetFunction(resolved.conversion_function).
+				lambda_invocation_function != kNoBinding)
+				return BuildLambdaInvocationPointer(
+					resolved.conversion_function, target);
 			const std::vector<NodeId> syntax;
 			const std::vector<ExpressionInfo> arguments;
 			ObjectConversionFact object_conversion;
@@ -1997,30 +2032,56 @@ bool SemanticAnalyzer::TryAnalyzeCallSurrogate(ScopeId scope,
 			throw std::runtime_error("ambiguous callable surrogate");
 
 	const Candidate& selected = candidates[champion];
-	ExpressionInfo selected_callee = callee;
-	if (selected_callee.category == VALUE_PRVALUE &&
-		dump_.nodes[selected_callee.node].kind != DUMP_TEMPORARY_OBJECT)
-		selected_callee = MaterializeTemporary(selected_callee);
-	ExpressionInfo object = MakeImplicitObjectPointer(selected_callee);
-	ObjectConversionFact object_conversion;
-	object_conversion.rank = selected.object_rank;
-	if (selected.object_rank == CONVERSION_DERIVED_TO_BASE)
+	ExpressionInfo converted;
+	const FunctionInfo& selected_conversion = GetFunction(selected.binding);
+	if (selected_conversion.lambda_invocation_function != kNoBinding)
 	{
-		if (selected.object_distance ==
-				std::numeric_limits<std::size_t>::max() ||
-			selected.object_distance >
-				std::numeric_limits<std::uint32_t>::max())
-			throw std::logic_error(
-				"callable surrogate has no bounded object path");
-		object_conversion.base_projection_count =
-			static_cast<std::uint32_t>(selected.object_distance);
+		CallConversionFact conversion;
+		conversion.rank = CONVERSION_USER_DEFINED;
+		conversion.conversion_function = selected.binding;
+		conversion.conversion_result_rank = CONVERSION_EXACT;
+		conversion.conversion_object_rank = selected.object_rank;
+		if (selected.object_rank == CONVERSION_DERIVED_TO_BASE)
+		{
+			if (selected.object_distance ==
+					std::numeric_limits<std::size_t>::max() ||
+				selected.object_distance >
+					std::numeric_limits<std::uint32_t>::max())
+				throw std::logic_error(
+					"callable surrogate has no bounded object path");
+			conversion.conversion_base_projection_count =
+				static_cast<std::uint32_t>(selected.object_distance);
+		}
+		converted = ApplyCallArgument(
+			callee, selected_conversion.conversion_target, &conversion);
 	}
-	const std::vector<NodeId> no_syntax;
-	const std::vector<ExpressionInfo> no_arguments;
-	ExpressionInfo converted = BuildResolvedCall(selected.binding,
-		scope, no_syntax, no_arguments, &object, kNoType,
-		program_->bindings[selected.binding].member_owner,
-		&object_conversion, 0);
+	else
+	{
+		ExpressionInfo selected_callee = callee;
+		if (selected_callee.category == VALUE_PRVALUE &&
+			dump_.nodes[selected_callee.node].kind != DUMP_TEMPORARY_OBJECT)
+			selected_callee = MaterializeTemporary(selected_callee);
+		ExpressionInfo object = MakeImplicitObjectPointer(selected_callee);
+		ObjectConversionFact object_conversion;
+		object_conversion.rank = selected.object_rank;
+		if (selected.object_rank == CONVERSION_DERIVED_TO_BASE)
+		{
+			if (selected.object_distance ==
+					std::numeric_limits<std::size_t>::max() ||
+				selected.object_distance >
+					std::numeric_limits<std::uint32_t>::max())
+				throw std::logic_error(
+					"callable surrogate has no bounded object path");
+			object_conversion.base_projection_count =
+				static_cast<std::uint32_t>(selected.object_distance);
+		}
+		const std::vector<NodeId> no_syntax;
+		const std::vector<ExpressionInfo> no_arguments;
+		converted = BuildResolvedCall(selected.binding,
+			scope, no_syntax, no_arguments, &object, kNoType,
+			program_->bindings[selected.binding].member_owner,
+			&object_conversion, 0);
+	}
 	std::vector<CallConversionFact> selected_argument_facts;
 	selected_argument_facts.reserve(arguments.size());
 	for (std::size_t a = 0; a < arguments.size(); ++a)

@@ -676,17 +676,30 @@ struct CallConversionFact
 	ConversionRank rank;
 	BindingId constructor;
 	BindingId conversion_function;
+	// A converting constructor normally owns a standard first-argument
+	// conversion.  The captureless-lambda conversion is the one PA25 path
+	// where that selected argument conversion is itself represented by a
+	// callable semantic fact; retain it instead of repeating class lookup
+	// while constructing the argument.
+	BindingId constructor_argument_conversion_function;
 	ConversionRank constructor_argument_rank;
+	ConversionRank constructor_argument_conversion_result_rank;
+	ConversionRank constructor_argument_conversion_object_rank;
 	ConversionRank conversion_result_rank;
 	ConversionRank conversion_object_rank;
+	std::uint32_t constructor_argument_conversion_base_projection_count;
 	std::uint32_t conversion_base_projection_count;
 
 	CallConversionFact()
 		: rank(CONVERSION_INVALID), constructor(kNoBinding),
 		  conversion_function(kNoBinding),
+		  constructor_argument_conversion_function(kNoBinding),
 		  constructor_argument_rank(CONVERSION_INVALID),
+		  constructor_argument_conversion_result_rank(CONVERSION_INVALID),
+		  constructor_argument_conversion_object_rank(CONVERSION_INVALID),
 		  conversion_result_rank(CONVERSION_INVALID),
 		  conversion_object_rank(CONVERSION_INVALID),
+		  constructor_argument_conversion_base_projection_count(0),
 		  conversion_base_projection_count(0) {}
 };
 
@@ -720,6 +733,10 @@ struct FunctionInfo
 	NameId parameter_pack_name;
 	TypeId member_owner;
 	EntityId friend_of;
+	// The implicit conversion of an eligible captureless closure owns the
+	// corresponding static invocation function.  Calls and lowering consume
+	// this binding directly instead of reconstructing it from a lambda name.
+	BindingId lambda_invocation_function;
 	// A lambda inherits access privileges through this lexical edge without
 	// inheriting the enclosing function's implicit object.
 	BindingId lexical_access_function;
@@ -772,7 +789,8 @@ struct FunctionInfo
 		  owner(kNoScope), type(kNoType), signature(kNoType),
 		  conversion_target(kNoType), display_name(0), parameter_pack_name(0),
 		  member_owner(kNoType),
-		  friend_of(kNoEntity), lexical_access_function(kNoBinding),
+		  friend_of(kNoEntity), lambda_invocation_function(kNoBinding),
+		  lexical_access_function(kNoBinding),
 		  lexical_scope(kNoScope),
 		  exception_specification_scope(kNoScope),
 		  definition_body(kNoNode), constructor_initializer(kNoNode),
@@ -1093,15 +1111,22 @@ struct AliasTemplatePattern
 struct LambdaClosureFact
 {
 	NodeId syntax;
-	BindingId function, call_operator;
+	BindingId function, call_operator, invocation_function,
+		conversion_function;
+	ScopeId namespace_owner;
 	EntityId entity;
 	std::uint32_t ordinal;
 
 	LambdaClosureFact(NodeId syntax_value, BindingId function_value,
-		EntityId entity_value, BindingId call_operator_value,
+		ScopeId namespace_owner_value, EntityId entity_value,
+		BindingId call_operator_value, BindingId invocation_function_value,
+		BindingId conversion_function_value,
 		std::uint32_t ordinal_value)
 		: syntax(syntax_value), function(function_value),
-		  call_operator(call_operator_value), entity(entity_value),
+		  call_operator(call_operator_value),
+		  invocation_function(invocation_function_value),
+		  conversion_function(conversion_function_value),
+		  namespace_owner(namespace_owner_value), entity(entity_value),
 		  ordinal(ordinal_value) {}
 };
 

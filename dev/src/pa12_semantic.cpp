@@ -1426,14 +1426,15 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 				AnalyzeUntypedCallArgument(argument_syntax[i], scope));
 	}
 	ExpressionInfo call_operator;
+	if (IsCapturelessLambdaType(callee.type) &&
+		dump_.nodes[callee.node].kind == DUMP_BRACED_INIT_LIST &&
+		TryAnalyzeCallSurrogate(scope, callee, analyzed_arguments,
+			target, &call_operator)) return call_operator;
 	if (TryAnalyzeCallOperator(scope, callee, argument_syntax,
-		&analyzed_arguments, target, &call_operator))
-		return call_operator;
+		&analyzed_arguments, target, &call_operator)) return call_operator;
 	if (TryAnalyzeCallSurrogate(scope, callee, analyzed_arguments,
-		target, &call_operator))
-		return call_operator;
-	TypeId function_type = program_->types.RemoveTopCv(
-		EffectiveType(callee.type));
+		target, &call_operator)) return call_operator;
+	TypeId function_type = program_->types.RemoveTopCv(EffectiveType(callee.type));
 	TypeRecord callable = program_->types.Get(function_type);
 	if (callable.kind == TYPE_POINTER)
 	{
