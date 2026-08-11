@@ -401,13 +401,11 @@ private:
 	void ApplyPlaceholderDeclaratorOperator(
 		const std::string& operation, DeclaratorInfo* declarator) const;
 	DeclaratorInfo BuildVariableDeclarator(NodeId item, NodeId declarator,
-		const SpecInfo& spec, ScopeId scope, bool local);
+		const SpecInfo& spec, ScopeId scope, bool local,
+		ExpressionInfo* prepared_initializer);
 	DeclaratorInfo BuildMemberDeclarator(NodeId item, NodeId declarator,
-		const SpecInfo& spec, ScopeId scope, bool definition);
-	bool TakePreparedPlaceholderVariableInitializer(
-		NodeId item, ExpressionInfo* initializer);
-	ExpressionInfo AnalyzeClassMemberInitializer(
-		NodeId item, ScopeId scope, TypeId type);
+		const SpecInfo& spec, ScopeId scope, bool definition,
+		ExpressionInfo* prepared_initializer);
 	void ConfigurePlaceholderFunctionReturn(BindingId function,
 		const DeclaratorInfo& declarator, std::uint8_t placeholder_cv);
 	TypeId DeducePlaceholderFunctionReturnType(
@@ -1589,8 +1587,6 @@ private:
 	std::unordered_multimap<std::size_t, std::uint32_t>
 		constexpr_object_index_;
 	std::vector<std::uint32_t> constexpr_object_by_dump_;
-	std::unordered_map<NodeId, ExpressionInfo>
-		prepared_placeholder_initializers_;
 	std::vector<std::uint32_t> constexpr_scratch_object_by_dump_;
 	DumpArena constexpr_scratch_dump_;
 	std::unordered_map<ConstexprCallKey, ConstexprCallFact,

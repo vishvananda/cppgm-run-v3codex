@@ -1030,7 +1030,6 @@ const std::vector<BindingId>& SemanticAnalyzer::ConstructorCandidates(
 		throw std::logic_error("class is missing its constructor index");
 	return entity_constructors_[entity];
 }
-
 void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 	TypeId owner_type, AccessKind access)
 {
@@ -1078,7 +1077,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		if (spec.thread_local_storage)
 			throw std::runtime_error("thread_local member function");
 		const NodeId declarator = FindChild(node, "declarator");
-		DeclaratorInfo parsed = BuildMemberDeclarator(node, declarator, spec, scope, true);
+		DeclaratorInfo parsed = BuildMemberDeclarator(node, declarator, spec, scope, true, 0);
 		const EntityId owner_entity = EntityOf(owner_type);
 		if (spec.is_constexpr)
 			parsed.type = ApplyConstexprMemberFunctionType(parsed.type,
@@ -1123,7 +1122,8 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		const NodeId item = arena_->EdgeChild(edge);
 		const NodeId declarator = FindChild(item, "declarator");
 		if (declarator == kNoNode) continue;
-		DeclaratorInfo parsed = BuildMemberDeclarator(item, declarator, spec, scope, false);
+		ExpressionInfo placeholder_initializer;
+		DeclaratorInfo parsed = BuildMemberDeclarator(item, declarator, spec, scope, false, &placeholder_initializer);
 		if (spec.is_typedef)
 		{
 			const BindingId alias = program_->AddBinding(scope, BIND_TYPE_ALIAS,
@@ -1223,7 +1223,9 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 					!(IsConst(member_type) && IsIntegral(member_type, true)))
 					throw std::runtime_error(
 						"invalid in-class static data member initializer");
-				const ExpressionInfo value = AnalyzeClassMemberInitializer(item, scope, member_type);
+				const ExpressionInfo value = spec.placeholder_auto ? placeholder_initializer :
+					AnalyzeInClassStaticInitializer(
+						FindChild(item, "initializer"), scope, member_type);
 				if (!HasConstantInitializerFact(value))
 					throw std::runtime_error(
 						"nonconstant in-class static data member initializer");
@@ -2851,7 +2853,6 @@ TypeId SemanticAnalyzer::AdaptMemberFunctionType(BindingId binding)
 	return program_->types.Function(member_type.child, parameters,
 		member_type.variadic);
 }
-
 void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 {
 	binding = program_->bindings[binding].canonical;
@@ -2860,15 +2861,15 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 	FunctionInfo& state = GetMutableFunction(binding);
 	if (state.demand_state >= 2) return;
 	state.demand_state = 2;
-	const FunctionInfo info = GetFunction(binding);
-	const bool emit_definition = info.defined &&
+	const FunctionInfo& initial = GetFunction(binding);
+	const bool emit_definition = initial.defined &&
 		!program_->bindings[binding].explicit_instantiation_suppressed;
-	const bool member = info.member_owner != kNoType;
+	const bool member = initial.member_owner != kNoType;
 	const TypeId output_type = member ?
-		AdaptMemberFunctionType(info.binding) : info.type;
+		AdaptMemberFunctionType(initial.binding) : initial.type;
 	const std::uint32_t function = MakeDump(emit_definition ?
 		DUMP_FUNCTION_DEFINITION : DUMP_FUNCTION_DECLARATION,
-		output_type, VALUE_NONE, info.display_name, info.binding);
+		output_type, VALUE_NONE, initial.display_name, initial.binding);
 	dump_.Add(root_, function);
 	if (!emit_definition && (retain_lowering_facts_ || member ||
 		program_->bindings[binding].explicit_instantiation_suppressed))
@@ -2878,10 +2879,10 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 		return;
 	}
 	if (emit_definition &&
-		info.retained_definition_semantics != kNoDumpEdge)
+		initial.retained_definition_semantics != kNoDumpEdge)
 	{
 		for (std::uint32_t edge = dump_.nodes[
-			info.retained_definition_semantics].first_edge;
+			initial.retained_definition_semantics].first_edge;
 			edge != kNoDumpEdge; edge = dump_.edges[edge].next)
 			dump_.Add(function, dump_.edges[edge].child);
 		DemandMaterializedConstructorActions(function, true);
@@ -2889,6 +2890,7 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 		++demanded_function_emissions_;
 		return;
 	}
+	const FunctionInfo info = GetFunction(binding);
 	const ScopeId function_scope = NewScope(info.lexical_scope, SCOPE_FUNCTION,
 		program_->bindings[info.binding].name, ScopePrefixId(info.owner));
 	std::vector<BindingId> parameter_bindings;

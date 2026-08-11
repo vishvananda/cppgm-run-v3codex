@@ -25,10 +25,13 @@ void SemanticAnalyzer::ApplyPlaceholderDeclaratorOperator(
 
 DeclaratorInfo SemanticAnalyzer::BuildVariableDeclarator(
 	NodeId item, NodeId declarator, const SpecInfo& spec, ScopeId scope,
-	bool local)
+	bool local, ExpressionInfo* prepared_initializer)
 {
 	if (!spec.placeholder_auto)
 		return BuildDeclarator(declarator, spec.type, scope);
+	if (!prepared_initializer)
+		throw std::logic_error(
+			"placeholder variable deduction has no result owner");
 	NodeId initializer = FindChild(item, "initializer");
 	if (initializer == kNoNode)
 		throw std::runtime_error("placeholder variable requires initializer");
@@ -49,7 +52,7 @@ DeclaratorInfo SemanticAnalyzer::BuildVariableDeclarator(
 			"placeholder list deduction is outside the PA23 boundary");
 	const bool require_constant = spec.is_constexpr || !local ||
 		spec.storage_class == STORAGE_CLASS_STATIC ||
-		spec.placeholder_cv != CV_NONE;
+		(spec.placeholder_cv & CV_CONST) != 0;
 	const bool preserve_recipe = !local && spec.is_constexpr &&
 		arena_->HasDescendantTag(initializer, "conditional-expression");
 	if (require_constant)
@@ -98,7 +101,8 @@ DeclaratorInfo SemanticAnalyzer::BuildVariableDeclarator(
 		}
 		else if (pointer_operator == "&&")
 		{
-			if (value.category == VALUE_LVALUE)
+			if (value.category == VALUE_LVALUE &&
+				spec.placeholder_cv == CV_NONE)
 				base = program_->types.Reference(TYPE_LVALUE_REFERENCE, base);
 		}
 		else if (pointer_operator == "*")
@@ -124,44 +128,24 @@ DeclaratorInfo SemanticAnalyzer::BuildVariableDeclarator(
 		throw;
 	}
 	release_context();
-	prepared_placeholder_initializers_[item] = value;
+	*prepared_initializer = value;
 	return parsed;
 }
 
 DeclaratorInfo SemanticAnalyzer::BuildMemberDeclarator(NodeId item,
-	NodeId declarator, const SpecInfo& spec, ScopeId scope, bool definition)
+	NodeId declarator, const SpecInfo& spec, ScopeId scope, bool definition,
+	ExpressionInfo* prepared_initializer)
 {
 	const bool function = definition ||
 		FindChild(declarator, "parameter-clause") != kNoNode;
 	DeclaratorInfo parsed = spec.placeholder_auto && !function ?
-		BuildVariableDeclarator(item, declarator, spec, scope, false) :
+		BuildVariableDeclarator(item, declarator, spec, scope, false,
+			prepared_initializer) :
 		BuildDeclarator(declarator, spec.type, scope, spec.placeholder_auto,
 			spec.storage_class != STORAGE_CLASS_STATIC && function);
 	parsed.placeholder_return_cv = spec.placeholder_cv;
 	return parsed;
 }
-
-bool SemanticAnalyzer::TakePreparedPlaceholderVariableInitializer(
-	NodeId item, ExpressionInfo* initializer)
-{
-	std::unordered_map<NodeId, ExpressionInfo>::iterator found =
-		prepared_placeholder_initializers_.find(item);
-	if (found == prepared_placeholder_initializers_.end()) return false;
-	*initializer = found->second;
-	prepared_placeholder_initializers_.erase(found);
-	return true;
-}
-
-ExpressionInfo SemanticAnalyzer::AnalyzeClassMemberInitializer(
-	NodeId item, ScopeId scope, TypeId type)
-{
-	ExpressionInfo value;
-	if (!TakePreparedPlaceholderVariableInitializer(item, &value))
-		value = AnalyzeInClassStaticInitializer(
-			FindChild(item, "initializer"), scope, type);
-	return value;
-}
-
 void SemanticAnalyzer::ConfigurePlaceholderFunctionReturn(BindingId function,
 	const DeclaratorInfo& declarator, std::uint8_t placeholder_cv)
 {
@@ -222,7 +206,9 @@ TypeId SemanticAnalyzer::DeducePlaceholderFunctionReturnType(
 			base = program_->types.Qualify(
 				base, function.placeholder_return_cv);
 		return program_->types.Reference(
-			expression->category == VALUE_LVALUE ? TYPE_LVALUE_REFERENCE :
+			expression->category == VALUE_LVALUE &&
+				function.placeholder_return_cv == CV_NONE ?
+				TYPE_LVALUE_REFERENCE :
 				TYPE_RVALUE_REFERENCE, base);
 	case PLACEHOLDER_DECLARATOR_NONE:
 		break;
@@ -275,7 +261,7 @@ void SemanticAnalyzer::AnalyzeRetainedPlaceholderFunctionBody(
 	BindingId function)
 {
 	function = program_->bindings[function].canonical;
-	const FunctionInfo initial = GetFunction(function);
+	const FunctionInfo& initial = GetFunction(function);
 	if (initial.placeholder_return_kind == PLACEHOLDER_DECLARATOR_NONE ||
 		initial.retained_definition_semantics != kNoDumpEdge)
 		return;

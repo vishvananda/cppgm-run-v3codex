@@ -2074,8 +2074,8 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			throw std::runtime_error("variable owner not found");
 		const ScopeId semantic_scope = qualified_lexical_scope ?
 			scope : declaration_scope;
-		DeclaratorInfo parsed = BuildVariableDeclarator(
-			item, declarator, spec, semantic_scope, local);
+		ExpressionInfo placeholder_initializer;
+		DeclaratorInfo parsed = BuildVariableDeclarator(item, declarator, spec, semantic_scope, local, &placeholder_initializer);
 		parsed.name = declared_path.Last();
 		if (parsed.name == 0) throw std::runtime_error("unnamed declaration");
 		if (spec.is_typedef)
@@ -2136,7 +2136,9 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			const bool preserve_runtime_recipe =
 				ShouldPreserveRuntimeInitializerRecipe(local, spec,
 					parsed.type, initializer_node);
-			if (!TakePreparedPlaceholderVariableInitializer(item, &initializer))
+			if (spec.placeholder_auto)
+				initializer = placeholder_initializer;
+			else
 				initializer = AnalyzeConstantAwareVariableInitializer(initializer_node,
 					semantic_scope, parsed.type, local, require_constant,
 					preserve_runtime_recipe);
@@ -2404,14 +2406,16 @@ void SemanticAnalyzer::AnalyzeCondition(NodeId node, ScopeId scope,
 	{
 		const NodeId declarator = FindChild(declaration_node, "declarator");
 		const SpecInfo spec = BuildSpecifiers(specifiers, scope, std::string(), true);
-		DeclaratorInfo parsed = BuildVariableDeclarator(
-			declaration_node, declarator, spec, scope, true);
+		ExpressionInfo placeholder_initializer;
+		DeclaratorInfo parsed = BuildVariableDeclarator(declaration_node,
+			declarator, spec, scope, true, &placeholder_initializer);
 		const BindingId binding = program_->AddBinding(scope, BIND_VARIABLE,
 			parsed.name, parsed.type);
 		const NodeId initializer = FindChild(declaration_node, "initializer");
 		ExpressionInfo value;
-		if (!TakePreparedPlaceholderVariableInitializer(
-			declaration_node, &value))
+		if (spec.placeholder_auto)
+			value = placeholder_initializer;
+		else
 			value = AnalyzeVariableInitializer(initializer,
 				scope, parsed.type, true);
 		if (constexpr_evaluation_depth_ != 0 && value.constant &&

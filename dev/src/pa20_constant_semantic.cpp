@@ -413,9 +413,10 @@ void SemanticAnalyzer::ValidateOrdinaryMemberFunctionBodies(EntityId entity)
 		class_template_pattern_by_entity_[entity] != kNoDumpEdge)
 		return;
 	if (entity >= entity_member_functions_.size()) return;
-	const std::vector<BindingId> functions = entity_member_functions_[entity];
-	for (std::size_t i = 0; i < functions.size(); ++i)
-		ValidateOrdinaryMemberFunctionBody(functions[i]);
+	const std::size_t function_count = entity_member_functions_[entity].size();
+	for (std::size_t i = 0; i < function_count; ++i)
+		ValidateOrdinaryMemberFunctionBody(
+			entity_member_functions_[entity][i]);
 }
 
 ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
