@@ -18,36 +18,34 @@ demanded nodes (section 9).
 
 ## Current Failure Map
 
-Current state: **399/422** pa24 tests (turn start: 395/422); all **3,049/3,049**
+Current state: **401/422** pa24 tests (turn start: 399/422); all **3,049/3,049**
 tests through pa23 pass.
 
 | Shared behavior and owner | Count | Complete failing set (test basename) |
 | --- | ---: | --- |
-| Deduction, candidate SFINAE, overload ordering, and conversion/initialization selection (`pa19` deduction/instantiation + ordinary call/initialization) | 12 | `member-operator-template-reference-pattern-partial-order`, `constructor-template-const-ref-enable-if-conversion`, `defaulted-enable-if-template-parameter-selection`, `static-cast-rvalue-ref-skips-conversion-operator`, `concrete-enable-if-nontype-parameter-type-sfinae`, `constructor-template-default-constraint-previous-param`, `dependent-typename-member-enable-if-return`, `defaulted-class-template-argument-pack-prefix-deduction`, `constructor-default-pack-partial-ordering`, `trailing-return-expression-sfinae-default-param`, `conversion-function-template-top-cv-sequence`, `out-of-class-conversion-operator-definition` |
-| Dependent owner/current-specialization, alias, function-type, and pack replay through demand/lowering (`pa19`/`pa22`/`pa23`) | 11 | `alias-template-partial-specialization-default-dependent-arg`, `common-type-current-specialization-member-return`, `decorated-template-id-type-argument-pack-replay`, `dependent-function-type-member-specialization`, `member-template-result-pack-preserves-nested-function-pointer-owner`, `out-of-class-partial-member-template-owner-parameter-alias`, `forwarding-pack-function-type-enable-if`, `partial-member-template-trailing-result-scope`, `source-namespace-base-sfinae-chain`, `defaulted-nested-class-argument-partial-specialization`, `defaulted-template-arg-partial-base-completion` |
+| Deduction, candidate SFINAE, overload ordering, and conversion/initialization selection (`pa19` deduction/instantiation + ordinary call/initialization) | 11 | `member-operator-template-reference-pattern-partial-order`, `constructor-template-const-ref-enable-if-conversion`, `static-cast-rvalue-ref-skips-conversion-operator`, `concrete-enable-if-nontype-parameter-type-sfinae`, `constructor-template-default-constraint-previous-param`, `dependent-typename-member-enable-if-return`, `defaulted-class-template-argument-pack-prefix-deduction`, `constructor-default-pack-partial-ordering`, `trailing-return-expression-sfinae-default-param`, `conversion-function-template-top-cv-sequence`, `out-of-class-conversion-operator-definition` |
+| Dependent owner/current-specialization, alias, function-type, and pack replay through demand/lowering (`pa19`/`pa22`/`pa23`) | 10 | `alias-template-partial-specialization-default-dependent-arg`, `decorated-template-id-type-argument-pack-replay`, `dependent-function-type-member-specialization`, `member-template-result-pack-preserves-nested-function-pointer-owner`, `out-of-class-partial-member-template-owner-parameter-alias`, `forwarding-pack-function-type-enable-if`, `partial-member-template-trailing-result-scope`, `source-namespace-base-sfinae-chain`, `defaulted-nested-class-argument-partial-specialization`, `defaulted-template-arg-partial-base-completion` |
 
 ## Active Checkpoint
 
-**Explicit template-id ADL and candidate-local invalidity — completed.** The retained call
-owns its explicit template-argument syntax and ADL eligibility; associated
-namespace and hidden-friend lookup must deduce with that same canonical prefix.
-The selected `FunctionInfo` owns a durable deleted declaration fact, and a
-deleted selection becomes candidate-local substitution failure before any call
-node or emission demand is published. Dependent non-type partial arguments use
-a nondeduced declaration shape and replay once with concrete bindings, keeping
-invalid `sizeof` expressions inside that same failure boundary.
+**Retained current-specialization dependency — completed.** A bare primary
+template name in an in-class member signature or qualified out-of-class member
+definition denotes the current specialization. The retained validation scope
+now owns that fact as a canonical `NameId` type declaration: class scopes
+publish their injected name, while qualified members resolve their canonical
+class-template owner and publish its primary name. Validation therefore defers
+the dependent lookup; concrete replay resolves the existing specialization
+through ordinary typed lookup.
 
-This applies `spec.md` sections 3-6 and 9: associated lookup is owner-indexed,
-explicit arguments participate in the specialization key, failures remain in
-the candidate frame, duplicate declarations/candidates are canonicalized, and
-lowering only sees a viable selected declaration. Expected work is O(A + S +
-C), for argument-associated entities A, associated scopes S, and owner-local
-candidates C, with each canonical candidate deduplicated once. Validation
-removes `adl-explicit-template-id-call`, both
-`deleted-function-template-*-sfinae` tests, and
-`incomplete-sizeof-partial-specialization-sfinae`; neighboring explicit-id,
-hidden-friend, deleted-call, and partial-replay behavior, the full through-PA23
-gate, PA24 report, audit, and associated-scope width scaling cover the boundary.
+This applies `spec.md` sections 2-5 and 9: primary markers and specializations
+retain distinct identities, retained dependency facts stay scope-owned, and
+validation does not instantiate before concrete bindings exist. Publication is
+O(1)-average and lookup is O(H), where H is retained lexical depth, with no
+specialization creation or global scan. Validation removes
+`common-type-current-specialization-member-return` and
+`defaulted-enable-if-template-parameter-selection`, neighboring injected-name
+and out-of-class-member cases, a current-specialization reference-width probe,
+the full PA24/prior reports, and the file audit.
 
 ## Performance Evidence
 
@@ -73,6 +71,11 @@ throughout with median compile times 4.145/4.165/4.274/4.603/5.091/6.286/
 8.597 ms (nine runs each after warm-up). Lookup time remains linear in the
 deduplicated associated-scope count.
 
+Retained current-specialization reference width 1/2/4/8/16/32/64 compiled in
+median 11.535/11.672/11.657/11.779/12.386/13.077/14.761 ms (nine runs each
+after warm-up). Validation time remains linear in the number of retained
+member signatures; each class/qualified owner publishes one scope fact.
+
 ## Completed Checkpoints
 
 | Checkpoint | Commit | Disposition |
@@ -80,4 +83,5 @@ deduplicated associated-scope count.
 | Explicit specialization identity and definition publication | `62f37ef1` | Eight failures removed; 376/422 pa24, 3,049/3,049 through pa23, audit pass. |
 | Canonical non-type arguments, designators, static-value demand, and variable-template lowering identity | `6b06e092` | Fifteen failures removed; 391/422 pa24, 3,049/3,049 through pa23, audit pass. |
 | Typed construction-entry demand and nontrivial empty-result ABI | `6a1a66c7` | Four failures removed; 395/422 pa24, 3,049/3,049 through pa23, linear depth probe. |
-| Explicit-id ADL and candidate-local deleted/dependent invalidity | this commit | Four failures removed; 399/422 pa24, 3,049/3,049 through pa23, linear ADL-width probe. |
+| Explicit-id ADL and candidate-local deleted/dependent invalidity | `4c694582` | Four failures removed; 399/422 pa24, 3,049/3,049 through pa23, linear ADL-width probe. |
+| Retained current-specialization dependency | this commit | Two failures removed; 401/422 pa24, 3,049/3,049 through pa23, linear reference-width probe. |

@@ -617,6 +617,12 @@ void RetainedTemplateValidator::VisitClass(NodeId node, std::size_t scope)
 	if (HasBaseClass(node) && !dependent_base)
 		scopes_[class_scope].unmodeled_fixed_base = true;
 	PredeclareClassMembers(node, class_scope);
+	// Retained class scopes have no concrete EntityId, but still own the
+	// injected class name as a dependent type.
+	const std::string injected_spelling = analyzer_.arena_->Payload(node);
+	if (!injected_spelling.empty())
+		Declare(class_scope, analyzer_.program_->names.Intern(injected_spelling),
+			RETAINED_TYPE_NAME, true);
 	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
 		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
 	{
@@ -1139,11 +1145,30 @@ void RetainedTemplateValidator::Run()
 		analyzer_.ScopePrefixId(lexical_scope_));
 	const bool current_class =
 		analyzer_.program_->KindOfScope(lexical_scope_) == SCOPE_CLASS;
+	const bool qualified_member = IsQualifiedMemberDefinition(target_);
 	const bool defer_members =
-		IsQualifiedMemberDefinition(target_) || current_class;
+		qualified_member || current_class;
 	const std::size_t root = AddScope(semantic,
 		std::numeric_limits<std::size_t>::max(),
 		defer_members, false, defer_members);
+	if (qualified_member)
+	{
+		const NodeId declarator = analyzer_.FindChild(target_, "declarator");
+		NamePath owner;
+		const NodeId structure =
+			analyzer_.DeclaratorNameStructure(declarator);
+		if (structure != kNoNode)
+			owner = analyzer_.StructuredNamePath(structure);
+		else owner = analyzer_.DeclaratorNamePath(declarator);
+		if (!owner.Empty()) owner.Pop();
+		// Only a canonical class-template owner contributes an injected name;
+		// a namespace-qualified function does not gain a current class.
+		const std::size_t pattern =
+			analyzer_.FindClassTemplate(lexical_scope_, owner);
+		if (pattern < analyzer_.class_templates_.size())
+			Declare(root, analyzer_.class_templates_[pattern].name,
+				RETAINED_TYPE_NAME);
+	}
 	while (analyzer_.function_template_shape_parameters_.size() <
 		parameters_.size())
 	{
