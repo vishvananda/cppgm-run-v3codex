@@ -791,6 +791,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 	if (arena_->IsTag(node, "type-trait-expression") &&
 		PayloadSource(node) == "noexcept")
 		return ApplyTarget(AnalyzeNoexcept(node, scope), target);
+	if (arena_->IsTag(node, "type-trait-expression") &&
+		PayloadSource(node) == "typeid")
+		return ApplyTarget(AnalyzeTypeid(node, scope), target);
 	if (arena_->IsTag(node, "braced-init-list"))
 		return AnalyzeBracedInit(node, scope, target);
 	if (arena_->IsTag(node, "new-expression")) return AnalyzeNewExpression(node, scope, target);

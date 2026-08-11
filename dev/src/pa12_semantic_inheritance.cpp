@@ -394,6 +394,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		target : kNoType);
 	if (CandidateSubstitutionFailed()) return ExpressionInfo();
 	const std::string cast_kind = arena_->Payload(node);
+	ExpressionInfo dynamic_result;
+	if (cast_kind.find("DYNAMIC") != std::string::npos &&
+		TryAnalyzeDynamicCast(target, operand, &dynamic_result))
+		return dynamic_result;
 	TypeId constructed_target = target;
 	if (target_record.kind == TYPE_LVALUE_REFERENCE ||
 		target_record.kind == TYPE_RVALUE_REFERENCE)

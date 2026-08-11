@@ -69,6 +69,8 @@ enum DumpKind
 	DUMP_SIZEOF_EXPRESSION,
 	DUMP_ASSIGNMENT_EXPRESSION,
 	DUMP_CAST_EXPRESSION,
+	DUMP_TYPEID_EXPRESSION,
+	DUMP_DYNAMIC_CAST_EXPRESSION,
 	DUMP_BRACED_INIT_LIST,
 	DUMP_AGGREGATE_CONSTRUCTION_ACTION,
 	DUMP_CLASS_VALUE_TRANSFER,
@@ -151,6 +153,8 @@ struct DumpNode
 	bool has_direct_base_offset;
 	bool pseudo_destructor_call;
 	bool reverse_pointer_compound_assignment;
+	bool dynamic_type_query;
+	bool dynamic_cast_reference;
 
 	explicit DumpNode(DumpKind value)
 		: kind(value), type(kNoType), operand_type(kNoType),
@@ -190,7 +194,8 @@ struct DumpNode
 		  default_argument(false),
 		  control_dependent_temporary(false), virtual_call(false),
 		  has_direct_base_offset(false), pseudo_destructor_call(false),
-		  reverse_pointer_compound_assignment(false) {}
+		  reverse_pointer_compound_assignment(false),
+		  dynamic_type_query(false), dynamic_cast_reference(false) {}
 };
 
 struct DumpEdge

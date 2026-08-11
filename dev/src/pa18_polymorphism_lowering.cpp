@@ -22,6 +22,10 @@ using namespace pa15_lowering_support;
 PolymorphismLoweringState::PolymorphismLoweringState()
 	: pure_virtual_symbol(kNoLowId), rtti_class_symbol(kNoLowId),
 	  rtti_si_symbol(kNoLowId), rtti_vmi_symbol(kNoLowId),
+	  rtti_fundamental_symbol(kNoLowId), rtti_pointer_symbol(kNoLowId),
+	  rtti_enum_symbol(kNoLowId), dynamic_cast_symbol(kNoLowId),
+	  bad_cast_symbol(kNoLowId), bad_typeid_symbol(kNoLowId),
+	  need_dynamic_cast(false), need_bad_cast(false), need_bad_typeid(false),
 	  source_function_first(0)
 {
 }
@@ -57,6 +61,7 @@ public:
 	void Prepare()
 	{
 		InitializeState();
+		CollectRttiDemands();
 		RegisterSymbols();
 		EmitGlobals();
 	}
@@ -70,11 +75,17 @@ private:
 		state_.class_rtti_symbols.assign(count, kNoLowId);
 		state_.class_type_name_symbols.assign(count, kNoLowId);
 		state_.class_rtti_demanded.assign(count, 0);
+		state_.type_rtti_symbols.assign(program_.types.Size(), kNoLowId);
+		state_.type_name_symbols.assign(program_.types.Size(), kNoLowId);
+		state_.type_rtti_demanded.assign(program_.types.Size(), 0);
 		state_.deleting_destructor_symbols.assign(count, kNoLowId);
 		state_.deallocation_bindings.assign(count, kNoBinding);
 		state_.complete_destructor_bindings.assign(count, kNoBinding);
 		state_.base_destructor_bindings.assign(count, kNoBinding);
 		state_.deleting_destructor_calls_complete.assign(count, 0);
+		state_.need_dynamic_cast = false;
+		state_.need_bad_cast = false;
+		state_.need_bad_typeid = false;
 		for (BindingId binding = 0; binding < program_.bindings.size(); ++binding)
 		{
 			const BindingRecord& candidate = program_.bindings[binding];
@@ -121,6 +132,82 @@ private:
 		}
 	}
 
+	TypeId RttiType(TypeId type) const
+	{
+		const TypeRecord* record = &program_.types.Get(type);
+		if (record->kind == TYPE_LVALUE_REFERENCE ||
+			record->kind == TYPE_RVALUE_REFERENCE)
+		{
+			type = record->child;
+			record = &program_.types.Get(type);
+		}
+		while (record->kind == TYPE_QUALIFIED)
+		{
+			type = record->child;
+			record = &program_.types.Get(type);
+		}
+		return type;
+	}
+
+	void DemandRtti(TypeId requested)
+	{
+		std::vector<TypeId> pending(1, RttiType(requested));
+		while (!pending.empty())
+		{
+			const TypeId type = pending.back();
+			pending.pop_back();
+			if (type >= state_.type_rtti_demanded.size())
+				throw std::logic_error("RTTI demand type is out of range");
+			if (state_.type_rtti_demanded[type]) continue;
+			state_.type_rtti_demanded[type] = 1;
+			const TypeRecord& record = program_.types.Get(type);
+			if (record.kind == TYPE_POINTER)
+				pending.push_back(RttiType(record.child));
+			else if (record.kind == TYPE_NAMED)
+			{
+				const EntityRecord& entity = program_.entities[record.entity];
+				if (entity.flavor == NAMED_STRUCT ||
+					entity.flavor == NAMED_CLASS ||
+					entity.flavor == NAMED_UNION)
+				{
+					state_.class_rtti_demanded[record.entity] = 1;
+					if (entity.direct_base != kNoEntity)
+						pending.push_back(program_.entities[
+							entity.direct_base].type);
+				}
+			}
+		}
+	}
+
+	TypeId DynamicCastTarget(const DumpNode& record) const
+	{
+		TypeId type = RttiType(record.type);
+		const TypeRecord& shape = program_.types.Get(type);
+		return RttiType(shape.kind == TYPE_POINTER ? shape.child : type);
+	}
+
+	void CollectRttiDemands()
+	{
+		for (std::uint32_t node = 0; node < graph_.arena.nodes.size(); ++node)
+		{
+			const DumpNode& record = graph_.arena.nodes[node];
+			if (record.kind == DUMP_TYPEID_EXPRESSION)
+			{
+				DemandRtti(record.operand_type);
+				state_.need_bad_typeid = state_.need_bad_typeid ||
+					record.dynamic_type_query;
+			}
+			else if (record.kind == DUMP_DYNAMIC_CAST_EXPRESSION)
+			{
+				DemandRtti(record.operand_type);
+				DemandRtti(DynamicCastTarget(record));
+				state_.need_dynamic_cast = true;
+				state_.need_bad_cast = state_.need_bad_cast ||
+					record.dynamic_cast_reference;
+			}
+		}
+	}
+
 	bool HasUninlinedDestructorWork(std::uint32_t root) const
 	{
 		std::vector<std::uint32_t> pending(1, root);
@@ -157,7 +244,21 @@ private:
 
 	std::string ClassStem(EntityId entity) const
 	{
-		return SanitizeSymbol(program_.names.Get(program_.entities[entity].name));
+		std::string spelling = program_.names.Get(
+			program_.entities[entity].name);
+		const char* dependent_prefixes[] = {
+			"template parameter ", "template_parameter_"
+		};
+		for (std::size_t prefix = 0;
+			prefix != sizeof dependent_prefixes / sizeof *dependent_prefixes;
+			++prefix) {
+			const std::string marker(dependent_prefixes[prefix]);
+			for (std::size_t position = spelling.find(marker);
+				position != std::string::npos;
+				position = spelling.find(marker, position))
+				spelling.erase(position, marker.size());
+		}
+		return SanitizeSymbol(spelling);
 	}
 
 	std::string LocalTypeEncoding(EntityId entity) const
@@ -237,6 +338,51 @@ private:
 		declaration.typed = false;
 		output_.global_declarations.push_back(declaration);
 		return symbol;
+	}
+
+	SymbolId AddExternalRuntime(const std::string& name,
+		const std::string& object_name, const LowType& result,
+		const std::vector<LowType>& parameters, bool noreturn)
+	{
+		const SymbolId symbol = AddSyntheticSymbol(
+			Symbol::FUNCTION_SYMBOL, name, object_name, false);
+		Symbol& record = output_.symbols[symbol];
+		record.c_linkage = true;
+		record.declaration_emitted = true;
+		record.referenced = true;
+		record.noreturn = noreturn;
+		if (noreturn) record.effects = Symbol::EFFECTS_READNONE;
+		FunctionDeclaration declaration;
+		declaration.symbol = symbol;
+		declaration.result = result;
+		for (std::size_t i = 0; i < parameters.size(); ++i)
+		{
+			Parameter parameter;
+			parameter.name = "arg" + std::to_string(i);
+			parameter.type = parameters[i];
+			declaration.parameters.push_back(parameter);
+		}
+		output_.declarations.push_back(declaration);
+		return symbol;
+	}
+
+	bool IsClassRttiType(TypeId type, EntityId* entity = 0) const
+	{
+		const TypeRecord& record = program_.types.Get(type);
+		if (record.kind != TYPE_NAMED) return false;
+		const NamedFlavor flavor = program_.entities[record.entity].flavor;
+		if (flavor != NAMED_STRUCT && flavor != NAMED_CLASS &&
+			flavor != NAMED_UNION) return false;
+		if (entity) *entity = record.entity;
+		return true;
+	}
+
+	std::string RttiPresentationStem(TypeId type) const
+	{
+		const TypeRecord& record = program_.types.Get(type);
+		if (record.kind == TYPE_FUNDAMENTAL)
+			return SanitizeSymbol(program_.RenderType(type));
+		return "type_" + pa15_lowering_abi::MangleType(program_, type);
 	}
 
 	void RegisterPureVirtual(BindingId prototype)
@@ -329,16 +475,50 @@ private:
 				record.direct_base_offset == 0);
 			need_vmi_rtti = need_vmi_rtti || (record.direct_base != kNoEntity &&
 				record.direct_base_offset != 0);
-			const std::string local = LocalTypeEncoding(entity);
-			const std::string stem = local.empty() ? ClassStem(entity) : local;
-			const std::string flavor = local.empty() ?
-				ClassFlavor(entity) : "type";
 			const std::string encoding = TypeInfoEncoding(entity);
+			const std::string local = LocalTypeEncoding(entity);
+			const bool generic_type = !local.empty() || !record.layout_complete;
+			const std::string stem = !local.empty() ? local :
+				generic_type ? encoding : ClassStem(entity);
+			const std::string flavor = generic_type ?
+				"type" : ClassFlavor(entity);
 			state_.class_type_name_symbols[entity] = AddPolymorphicGlobal(
-				(local.empty() ? "__typeinfo_name__" : "__typeinfo_name_") +
+				(generic_type ? "__typeinfo_name_" : "__typeinfo_name__") +
 				flavor + "_" + stem, "_ZTS" + encoding, true);
 			state_.class_rtti_symbols[entity] = AddPolymorphicGlobal(
 				"__rtti_" + flavor + "_" + stem, "_ZTI" + encoding, true);
+			const TypeId type = record.type;
+			if (type < state_.type_rtti_symbols.size())
+			{
+				state_.type_name_symbols[type] =
+					state_.class_type_name_symbols[entity];
+				state_.type_rtti_symbols[type] =
+					state_.class_rtti_symbols[entity];
+			}
+		}
+		bool need_fundamental_rtti = false;
+		bool need_pointer_rtti = false;
+		bool need_enum_rtti = false;
+		for (TypeId type = 0; type < state_.type_rtti_demanded.size(); ++type)
+		{
+			if (!state_.type_rtti_demanded[type] ||
+				state_.type_rtti_symbols[type] != kNoLowId) continue;
+			const TypeRecord& record = program_.types.Get(type);
+			need_fundamental_rtti = need_fundamental_rtti ||
+				record.kind == TYPE_FUNDAMENTAL;
+			need_pointer_rtti = need_pointer_rtti ||
+				record.kind == TYPE_POINTER;
+			need_enum_rtti = need_enum_rtti ||
+				(record.kind == TYPE_NAMED && !IsClassRttiType(type));
+			const std::string encoding =
+				pa15_lowering_abi::MangleType(program_, type);
+			const std::string stem = RttiPresentationStem(type);
+			state_.type_name_symbols[type] = AddPolymorphicGlobal(
+				std::string("__typeinfo_name_") +
+				(record.kind == TYPE_FUNDAMENTAL ? "_" : "") + stem,
+				"_ZTS" + encoding, true);
+			state_.type_rtti_symbols[type] = AddPolymorphicGlobal(
+				"__rtti_" + stem, "_ZTI" + encoding, true);
 		}
 		if (need_root_rtti)
 			state_.rtti_class_symbol = AddExternalRtti(
@@ -352,6 +532,31 @@ private:
 			state_.rtti_vmi_symbol = AddExternalRtti(
 				"__external_rtti_vtable____vmi_class_type_info",
 				"_ZTVN10__cxxabiv121__vmi_class_type_infoE");
+		if (need_fundamental_rtti)
+			state_.rtti_fundamental_symbol = AddExternalRtti(
+				"__external_rtti_vtable____fundamental_type_info",
+				"_ZTVN10__cxxabiv123__fundamental_type_infoE");
+		if (need_pointer_rtti)
+			state_.rtti_pointer_symbol = AddExternalRtti(
+				"__external_rtti_vtable____pointer_type_info",
+				"_ZTVN10__cxxabiv119__pointer_type_infoE");
+		if (need_enum_rtti)
+			state_.rtti_enum_symbol = AddExternalRtti(
+				"__external_rtti_vtable____enum_type_info",
+				"_ZTVN10__cxxabiv116__enum_type_infoE");
+		if (state_.need_dynamic_cast)
+			state_.dynamic_cast_symbol = AddExternalRuntime(
+				"__external_runtime____dynamic_cast", "__dynamic_cast",
+				LowPtr(), std::vector<LowType>{
+					LowPtr(), LowPtr(), LowPtr(), LowI64()}, false);
+		if (state_.need_bad_cast)
+			state_.bad_cast_symbol = AddExternalRuntime(
+				"__external_runtime____cxa_bad_cast", "__cxa_bad_cast",
+				LowVoid(), std::vector<LowType>(), true);
+		if (state_.need_bad_typeid)
+			state_.bad_typeid_symbol = AddExternalRuntime(
+				"__external_runtime____cxa_bad_typeid", "__cxa_bad_typeid",
+				LowVoid(), std::vector<LowType>(), true);
 	}
 
 	void AddAddressItem(Global* global, SymbolId symbol, std::int64_t offset = 0)
@@ -411,6 +616,57 @@ private:
 					state_.class_rtti_symbols[record.direct_base]);
 				AddIntegerItem(&rtti, LowI64(), static_cast<std::int64_t>(
 					record.direct_base_offset * 256 + 2));
+			}
+			output_.globals.push_back(rtti);
+			if (stats_) stats_->globals += 2;
+		}
+
+		for (TypeId type = 0; type < state_.type_rtti_demanded.size(); ++type)
+		{
+			if (!state_.type_rtti_demanded[type] || IsClassRttiType(type))
+				continue;
+			const TypeRecord& record = program_.types.Get(type);
+			Global name;
+			name.symbol = state_.type_name_symbols[type];
+			name.initializer_kind = Global::STRUCTURED_VALUE;
+			const std::string encoding =
+				pa15_lowering_abi::MangleType(program_, type);
+			for (std::size_t i = 0; i < encoding.size(); ++i)
+				AddIntegerItem(&name, LowI8(),
+					static_cast<unsigned char>(encoding[i]));
+			AddIntegerItem(&name, LowI8(), 0);
+			output_.globals.push_back(name);
+
+			Global rtti;
+			rtti.symbol = state_.type_rtti_symbols[type];
+			rtti.initializer_kind = Global::STRUCTURED_VALUE;
+			const SymbolId runtime = record.kind == TYPE_FUNDAMENTAL ?
+				state_.rtti_fundamental_symbol : record.kind == TYPE_POINTER ?
+				state_.rtti_pointer_symbol : state_.rtti_enum_symbol;
+			if (runtime == kNoLowId)
+				throw std::logic_error("demanded RTTI kind has no ABI runtime");
+			AddAddressItem(&rtti, runtime, 16);
+			AddAddressItem(&rtti, state_.type_name_symbols[type]);
+			if (record.kind == TYPE_POINTER)
+			{
+				std::uint32_t flags = 0;
+				const TypeRecord& pointee = program_.types.Get(record.child);
+				if (pointee.kind == TYPE_QUALIFIED)
+				{
+					if ((pointee.cv & CV_CONST) != 0) flags |= 1;
+					if ((pointee.cv & CV_VOLATILE) != 0) flags |= 2;
+				}
+				const TypeId child = RttiType(record.child);
+				EntityId child_entity = kNoEntity;
+				if (IsClassRttiType(child, &child_entity) &&
+					!program_.entities[child_entity].layout_complete)
+					flags |= 8;
+				AddIntegerItem(&rtti, LowI32(), flags);
+				if (child >= state_.type_rtti_symbols.size() ||
+					state_.type_rtti_symbols[child] == kNoLowId)
+					throw std::logic_error(
+						"pointer RTTI pointee was not demanded");
+				AddAddressItem(&rtti, state_.type_rtti_symbols[child]);
 			}
 			output_.globals.push_back(rtti);
 			if (stats_) stats_->globals += 2;

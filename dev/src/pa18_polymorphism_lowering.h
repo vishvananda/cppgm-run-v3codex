@@ -21,6 +21,9 @@ struct PolymorphismLoweringState
 	std::vector<pa15_lowir_detail::SymbolId> class_rtti_symbols;
 	std::vector<pa15_lowir_detail::SymbolId> class_type_name_symbols;
 	std::vector<std::uint8_t> class_rtti_demanded;
+	std::vector<pa15_lowir_detail::SymbolId> type_rtti_symbols;
+	std::vector<pa15_lowir_detail::SymbolId> type_name_symbols;
+	std::vector<std::uint8_t> type_rtti_demanded;
 	std::vector<pa15_lowir_detail::SymbolId> deleting_destructor_symbols;
 	std::vector<pa11::BindingId> deallocation_bindings;
 	std::vector<pa11::BindingId> complete_destructor_bindings;
@@ -30,6 +33,15 @@ struct PolymorphismLoweringState
 	pa15_lowir_detail::SymbolId rtti_class_symbol;
 	pa15_lowir_detail::SymbolId rtti_si_symbol;
 	pa15_lowir_detail::SymbolId rtti_vmi_symbol;
+	pa15_lowir_detail::SymbolId rtti_fundamental_symbol;
+	pa15_lowir_detail::SymbolId rtti_pointer_symbol;
+	pa15_lowir_detail::SymbolId rtti_enum_symbol;
+	pa15_lowir_detail::SymbolId dynamic_cast_symbol;
+	pa15_lowir_detail::SymbolId bad_cast_symbol;
+	pa15_lowir_detail::SymbolId bad_typeid_symbol;
+	bool need_dynamic_cast;
+	bool need_bad_cast;
+	bool need_bad_typeid;
 	std::size_t source_function_first;
 
 	PolymorphismLoweringState();

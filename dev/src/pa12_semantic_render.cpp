@@ -101,6 +101,16 @@ void SemanticAnalyzer::RenderLine(const DumpNode& node, std::size_t depth)
 			<< program_->RenderType(node.type);
 		if (node.text != 0) output_ << ' ' << program_->names.Get(node.text);
 		break;
+	case DUMP_TYPEID_EXPRESSION:
+		output_ << "typeid-expression " << category << ' '
+			<< program_->RenderType(node.type) << " queried="
+			<< program_->RenderType(node.operand_type);
+		break;
+	case DUMP_DYNAMIC_CAST_EXPRESSION:
+		output_ << "dynamic-cast-expression " << category << ' '
+			<< program_->RenderType(node.type) << " source="
+			<< program_->RenderType(node.operand_type);
+		break;
 	case DUMP_BRACED_INIT_LIST:
 		output_ << "braced-init-list " << category << ' '
 			<< program_->RenderType(node.type); break;

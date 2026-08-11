@@ -25,6 +25,7 @@
 #include "pa21_constant_lowering.h"
 #include "pa21_local_static_lowering.h"
 #include "pa25_range_for_lowering.h"
+#include "pa26_rtti_lowering.h"
 #include <algorithm>
 #include <limits>
 #include <ostream>
@@ -59,7 +60,8 @@ class GraphLowerer :
 	private pa17_lowering_detail::TemporaryLifetimeLowering<GraphLowerer>,
 	private pa21_lowering_detail::ConstantLowering<GraphLowerer>,
 	private pa21_lowering_detail::LocalStaticLowering<GraphLowerer>,
-	private pa25_lowering_detail::RangeForLowering<GraphLowerer>
+	private pa25_lowering_detail::RangeForLowering<GraphLowerer>,
+	private pa26_lowering_detail::RttiLowering<GraphLowerer>
 {
 public:
 	GraphLowerer(const SemanticGraphView& graph, TypedProgram& output,
@@ -169,6 +171,7 @@ private:
 	friend class pa21_lowering_detail::ConstantLowering<GraphLowerer>;
 	friend class pa21_lowering_detail::LocalStaticLowering<GraphLowerer>;
 	friend class pa25_lowering_detail::RangeForLowering<GraphLowerer>;
+	friend class pa26_lowering_detail::RttiLowering<GraphLowerer>;
 	enum StatementTaskKind : std::uint8_t
 	{
 		STATEMENT_NODE,
@@ -207,20 +210,13 @@ private:
 		return result;
 	}
 	LowType LowerType(TypeId type) const { return source_types_.Lower(type); }
-	bool IsReferenceType(TypeId type) const
-		{ return source_types_.IsReference(type); }
-	TypeId RemoveReference(TypeId type) const
-		{ return source_types_.RemoveReference(type); }
-	TypeId RemoveTopQualifiers(TypeId type) const
-		{ return source_types_.RemoveTopQualifiers(type); }
-	TypeId ExpressionObjectType(TypeId type) const
-		{ return source_types_.ExpressionObject(type); }
-	bool IsArrayType(TypeId type) const
-		{ return source_types_.IsArray(type); }
-	bool IsFunctionType(TypeId type) const
-		{ return source_types_.IsFunction(type); }
-	bool IsClassObjectType(TypeId type) const
-		{ return source_types_.IsClassObject(type); }
+	bool IsReferenceType(TypeId type) const { return source_types_.IsReference(type); }
+	TypeId RemoveReference(TypeId type) const { return source_types_.RemoveReference(type); }
+	TypeId RemoveTopQualifiers(TypeId type) const { return source_types_.RemoveTopQualifiers(type); }
+	TypeId ExpressionObjectType(TypeId type) const { return source_types_.ExpressionObject(type); }
+	bool IsArrayType(TypeId type) const { return source_types_.IsArray(type); }
+	bool IsFunctionType(TypeId type) const { return source_types_.IsFunction(type); }
+	bool IsClassObjectType(TypeId type) const { return source_types_.IsClassObject(type); }
 	EntityId ClassEntity(TypeId type) const
 	{
 		type = program_.types.RemoveTopCv(ExpressionObjectType(type));
@@ -241,22 +237,17 @@ private:
 		}
 		return shape->kind == TYPE_NAMED ? shape->entity : kNoEntity;
 	}
-	LowType LowerExpressionType(TypeId type) const
-		{ return source_types_.LowerExpression(type); }
-	LowType LowerStorageType(TypeId type) const
-		{ return source_types_.LowerStorage(type); }
-	TypeId ArrayElementType(TypeId type) const
-		{ return source_types_.ArrayElement(type); }
-	bool IsPointerLikeType(TypeId type) const
-		{ return source_types_.IsPointerLike(type); }
+	LowType LowerExpressionType(TypeId type) const { return source_types_.LowerExpression(type); }
+	LowType LowerStorageType(TypeId type) const { return source_types_.LowerStorage(type); }
+	TypeId ArrayElementType(TypeId type) const { return source_types_.ArrayElement(type); }
+	bool IsPointerLikeType(TypeId type) const { return source_types_.IsPointerLike(type); }
 	LowType NullPointerExpectation(std::uint32_t node,
 		const LowType& target) const
 	{
 		return target.kind == LOW_PTR &&
 			source_types_.IsNullptr(arena_.nodes[node].type) ? target : LowType();
 	}
-	TypeId PointeeType(TypeId type) const
-		{ return source_types_.Pointee(type); }
+	TypeId PointeeType(TypeId type) const { return source_types_.Pointee(type); }
 	LowType LowerBoundaryResult(TypeId type) const {
 		const TypeId unqualified = program_.types.RemoveTopCv(type);
 		const TypeRecord& record = program_.types.Get(unqualified);
@@ -1049,6 +1040,11 @@ private:
 	Operand LowerStorage(std::uint32_t node)
 	{
 		const DumpNode& record = arena_.nodes[node];
+		const NodeChildren children = Children(node);
+		if (record.kind == DUMP_TYPEID_EXPRESSION)
+			return LowerTypeid(record, children);
+		if (record.kind == DUMP_DYNAMIC_CAST_EXPRESSION)
+			return LowerDynamicCast(node, record, children);
 		if (record.kind == DUMP_SPECIAL_MEMBER_CONSTRUCTION_ACTION)
 			return LowerSpecialMemberConstruction(node);
 		if (record.kind == DUMP_SPECIAL_MEMBER_ASSIGNMENT_ACTION)
@@ -1071,7 +1067,6 @@ private:
 		if (record.kind == DUMP_LITERAL && IsArrayType(record.type))
 			return Operand(Operand::GLOBAL,
 				static_initializers_.EnsureStringLiteral(node), LowPtr());
-		const NodeChildren children = Children(node);
 		if (record.kind == DUMP_TEMPORARY_OBJECT)
 		{
 			AggregatePath path;
@@ -1239,7 +1234,11 @@ private:
 		const DumpNode& record = arena_.nodes[node];
 		const NodeChildren children = Children(node);
 		Operand result;
-		if ((record.category == VALUE_LVALUE || record.category == VALUE_XVALUE) &&
+		if (record.kind == DUMP_TYPEID_EXPRESSION)
+			result = LowerTypeid(record, children);
+		else if (record.kind == DUMP_DYNAMIC_CAST_EXPRESSION)
+			result = LowerDynamicCast(node, record, children);
+		else if ((record.category == VALUE_LVALUE || record.category == VALUE_XVALUE) &&
 			IsArrayType(record.type))
 			result = record.kind == DUMP_LITERAL ?
 				AddressOfStorage(LowerStorage(node)) :

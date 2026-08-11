@@ -131,6 +131,37 @@ public:
 				program_.template_arguments[argument], function, recipe);
 		const TemplateArgument& source =
 			program_.canonical_template_arguments[argument];
+		if (source.kind == TEMPLATE_ARGUMENT_TEMPLATE)
+		{
+			const std::string id = "__cppgm_abi_template_argument_" +
+				std::to_string(next_argument_++);
+			AbiFactRecord definition;
+			definition.set_kind(ABI_FACT_RECORD_DEFINITION);
+			definition.definition.id = id;
+			definition.definition.set_kind(ABI_DEFINITION_TEMPLATE_ARGUMENT);
+			AbiTemplateArgument& target =
+				definition.definition.template_argument;
+			if (source.dependent_parameter != kNoTemplateParameter)
+			{
+				target.kind =
+					ABI_TEMPLATE_ARGUMENT_TEMPLATE_PARAMETER_TEMPLATE;
+				target.index = source.dependent_parameter;
+			}
+			else
+			{
+				// The canonical marker type carries the template's indexed
+				// qualified path.  Encoding it as a type argument gives the
+				// Itanium substitution order used for a template-name argument,
+				// without introducing a value-expression wrapper.  Keep the
+				// template-name identity separate from its qualified path: both
+				// are substitution candidates in the ABI grammar.
+				target.kind = ABI_TEMPLATE_ARGUMENT_TYPE;
+				target.type = MakeType(source.type, function, recipe);
+				target.type.substitution = id;
+			}
+			facts_.records.push_back(definition);
+			return id;
+		}
 		const std::string id = "__cppgm_abi_value_argument_" +
 			std::to_string(next_argument_++);
 		AbiFactRecord definition;
@@ -349,7 +380,8 @@ public:
 			{
 				modifier.kind = ABI_TYPE_ARRAY;
 				modifier.array_bound.kind = ABI_ARRAY_BOUND_VALUE;
-				modifier.array_bound.value = std::to_string(record->bound);
+				if (record->bound != 0)
+					modifier.array_bound.value = std::to_string(record->bound);
 			}
 			else modifier.kind = record->kind == TYPE_POINTER ? ABI_TYPE_POINTER :
 				record->kind == TYPE_LVALUE_REFERENCE ? ABI_TYPE_LVALUE_REFERENCE :

@@ -381,6 +381,7 @@ public:
     } else if(source.kind == ABI_TYPE_NAME_OR_REFERENCE || source.kind == ABI_TYPE_NAMED) {
       node.kind = ABI_TYPE_NAMED;
       node.path = paths.intern(source.name);
+	  if(!source.substitution.empty()) node.substitution = strings.intern(source.substitution);
     } else {
       if(!source.name.empty()) node.symbol = strings.intern(source.name);
       if((source.kind == ABI_TYPE_TEMPLATE_SPECIALIZATION
@@ -977,8 +978,9 @@ private:
           if(type.is_const) output_ += 'K';
         } else if(type.kind == ABI_TYPE_VENDOR_QUALIFIED) {
           output_ += 'U' + source_name(graph_.strings.get(type.symbol));
-        } else {
-          output_ += 'A' + graph_.strings.get(type.symbol) + '_';
+		} else {
+		  output_ += type.symbol == NO_ID ? "A_" :
+			  'A' + graph_.strings.get(type.symbol) + '_';
         }
         pending.push_back(key);
         id = type.children.at(0);
@@ -1015,8 +1017,9 @@ private:
         output_ += 'U' + source_name(graph_.strings.get(type.symbol));
         encode_type(type.children.at(0));
         return;
-      case ABI_TYPE_ARRAY:
-        output_ += 'A' + graph_.strings.get(type.symbol) + '_';
+	  case ABI_TYPE_ARRAY:
+		output_ += type.symbol == NO_ID ? "A_" :
+			'A' + graph_.strings.get(type.symbol) + '_';
         encode_type(type.children.at(0));
         return;
       case ABI_TYPE_BUILTIN_TRANSFORM:

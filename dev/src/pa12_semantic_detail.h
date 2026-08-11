@@ -1002,6 +1002,13 @@ private:
 		ScopeId scope);
 	ExpressionInfo AnalyzeAssignment(NodeId node, ScopeId scope);
 	ExpressionInfo AnalyzeCast(NodeId node, ScopeId scope);
+	ExpressionInfo AnalyzeTypeid(NodeId node, ScopeId scope);
+	bool TryAnalyzeTypeidComparison(const std::string& operation,
+		const std::string& display_operation, NodeId left_syntax,
+		NodeId right_syntax, const ExpressionInfo& left,
+		const ExpressionInfo& right, ScopeId scope, ExpressionInfo* result);
+	bool TryAnalyzeDynamicCast(TypeId target, const ExpressionInfo& operand,
+		ExpressionInfo* result);
 	bool AnalyzeParenthesizedFunctionTemplateCast(NodeId type_id,
 		NodeId operand, ScopeId scope, ExpressionInfo* result);
 	bool AnalyzeParenthesizedValueBinaryCast(NodeId type_id,

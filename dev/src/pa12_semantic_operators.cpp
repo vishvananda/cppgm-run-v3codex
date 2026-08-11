@@ -550,6 +550,7 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 	NodeId left_syntax, NodeId right_syntax, ExpressionInfo left,
 	ExpressionInfo right, ScopeId scope)
 {
+	ExpressionInfo typeid_comparison; if (TryAnalyzeTypeidComparison(operation, display_operation, left_syntax, right_syntax, left, right, scope, &typeid_comparison)) return typeid_comparison;
 	std::vector<NodeId> overloaded_syntax;
 	overloaded_syntax.push_back(left_syntax);
 	overloaded_syntax.push_back(right_syntax);
