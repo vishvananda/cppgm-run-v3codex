@@ -126,7 +126,7 @@ private:
 		std::vector<IdentityTypeId>& cache, std::vector<PendingType>& pending);
 	IdentityTypeKey MakeTypeKey(const Program& program,
 		const TypeRecord& source, TypeId type,
-		const std::vector<IdentityTypeId>& cache);
+		std::vector<IdentityTypeId>& cache);
 	IdentityTypeId InternStoredTemplateArgument(const Program& program,
 		std::size_t argument, const std::vector<IdentityTypeId>& cache);
 	IdentityPathId InternPathKey(const IdentityPathKey& key);

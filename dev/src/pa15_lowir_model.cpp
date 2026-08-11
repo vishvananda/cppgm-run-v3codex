@@ -181,8 +181,17 @@ void EmissionIdentityTable::PushTypeDependencies(const Program& program,
 	{
 		const EntityRecord& entity = program.entities[source.entity];
 		if (entity.local_context != kNoBinding)
-			PushDependency(program.bindings[entity.local_context].type,
-				cache, pending);
+		{
+			const TypeId context_type =
+				program.bindings[entity.local_context].type;
+			const TypeRecord& context = program.types.Get(context_type);
+			if (context.kind != TYPE_FUNCTION)
+				throw std::logic_error(
+					"local type context has non-function type");
+			const TypeId* parameters = program.types.Parameters(context_type);
+			for (std::size_t i = 0; i < context.parameter_count; ++i)
+				PushDependency(parameters[i], cache, pending);
+		}
 		const std::size_t first = entity.template_argument_begin;
 		const std::size_t count = entity.template_argument_count;
 		if (count != 0 &&
@@ -202,7 +211,7 @@ void EmissionIdentityTable::PushTypeDependencies(const Program& program,
 
 IdentityTypeKey EmissionIdentityTable::MakeTypeKey(const Program& program,
 	const TypeRecord& source, TypeId type,
-	const std::vector<IdentityTypeId>& cache)
+	std::vector<IdentityTypeId>& cache)
 {
 	IdentityTypeKey key;
 	key.kind = source.kind;
@@ -220,7 +229,8 @@ IdentityTypeKey EmissionIdentityTable::MakeTypeKey(const Program& program,
 			const BindingRecord& context =
 				program.bindings[entity.local_context];
 			key.local_context = InternPath(program, context.owner, context.name);
-			key.local_context_signature = cache[context.type];
+			key.local_context_signature =
+				InternFunctionSignature(program, context.type, cache);
 		}
 		const std::size_t first = entity.template_argument_begin;
 		for (std::size_t i = 0; i < entity.template_argument_count; ++i)

@@ -810,8 +810,15 @@ ExpressionInfo SemanticAnalyzer::AnalyzeImplicitDataMember(
 	if (projections == std::numeric_limits<std::size_t>::max() ||
 		projections > std::numeric_limits<std::uint32_t>::max())
 		throw std::logic_error("implicit member has no bounded base path");
-	dump_.nodes[member].base_projection_count =
-		static_cast<std::uint32_t>(projections);
+	const bool captured_object = current_function_context_ != kNoBinding &&
+		GetFunction(program_->bindings[
+			current_function_context_].canonical).
+			lambda_this_capture_member == this_expression.binding;
+	if (captured_object &&
+		projections == std::numeric_limits<std::uint32_t>::max())
+		throw std::logic_error("captured object projection count overflow");
+	dump_.nodes[member].base_projection_count = static_cast<std::uint32_t>(
+		projections + (captured_object ? 1 : 0));
 	dump_.Add(member, this_expression.node);
 	ExpressionInfo result;
 	result.node = member;

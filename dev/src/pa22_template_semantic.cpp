@@ -161,6 +161,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 		}
 		std::vector<BindingId> capture_sources;
 		std::vector<NameId> capture_pack_names;
+		std::vector<std::uint8_t> capture_reference_modes;
 		bool captures_this = capture_uses.captures_this;
 		const auto automatic_capture = [this](BindingId binding) -> bool
 		{
@@ -181,21 +182,25 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 			return false;
 		};
 		const auto append_capture = [&capture_sources, &capture_pack_names,
-			&automatic_capture](BindingId source, NameId pack_name)
+			&capture_reference_modes, &automatic_capture](BindingId source,
+				NameId pack_name, bool by_reference)
 		{
 			if (!automatic_capture(source)) return;
 			capture_sources.push_back(source);
 			capture_pack_names.push_back(pack_name);
+			capture_reference_modes.push_back(by_reference ? 1 : 0);
 		};
 		for (std::size_t i = 0; i < capture_uses.name_count; ++i)
 		{
 			const NameId name = lambda_capture_uses_.NameAt(capture_uses, i);
+			const bool by_reference =
+				lambda_capture_uses_.IsReferenceAt(capture_uses, i);
 			std::vector<BindingId> pack;
 			if (LookupFunctionParameterPack(scope, name, &pack))
 			{
 				for (std::size_t pack_index = 0;
 					pack_index < pack.size(); ++pack_index)
-					append_capture(pack[pack_index], name);
+					append_capture(pack[pack_index], name, by_reference);
 				continue;
 			}
 			const LookupResult found = program_->LookupName(
@@ -204,7 +209,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 				found_index < found.OrdinaryCount(); ++found_index)
 			{
 				const BindingId binding = found.OrdinaryAt(found_index);
-				if (automatic_capture(binding)) append_capture(binding, 0);
+				if (automatic_capture(binding))
+					append_capture(binding, 0, by_reference);
 				const BindingRecord& record = program_->bindings[binding];
 				if (record.member_owner != kNoEntity &&
 					((record.kind == BIND_FUNCTION &&
@@ -322,15 +328,16 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 			entity_layout_members_[entity].push_back(
 				ClassLayoutMember(this_capture_member, this_capture_type));
 			lambda_captures_.push_back(LambdaCaptureFact(name, 0, kNoBinding,
-				this_capture_member, this_capture_type, true));
+				this_capture_member, this_capture_type, true, false));
 		}
 		for (std::size_t i = 0; i < capture_sources.size(); ++i)
 		{
 			const BindingRecord& source =
 				program_->bindings[capture_sources[i]];
 			const TypeId value_type = EffectiveType(source.type);
-			const TypeId member_type = program_->types.Reference(
-				TYPE_LVALUE_REFERENCE, value_type);
+			const bool by_reference = capture_reference_modes[i] != 0;
+			const TypeId member_type = by_reference ? program_->types.Reference(
+				TYPE_LVALUE_REFERENCE, value_type) : value_type;
 			const BindingId member_id = program_->AddBinding(member_scope,
 				BIND_VARIABLE, source.name, member_type, false, 0, NAMED_NONE,
 				0, kNoBinding, false);
@@ -345,7 +352,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 				ClassLayoutMember(member_id, member_type));
 			lambda_captures_.push_back(LambdaCaptureFact(source.name,
 				capture_pack_names[i], capture_sources[i], member_id,
-				value_type, false));
+				value_type, false, by_reference));
 		}
 		const std::uint32_t capture_count = static_cast<std::uint32_t>(
 			lambda_captures_.size() - capture_begin);
@@ -531,6 +538,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 				++expression_count_;
 			}
 		}
+		if (!capture.by_reference && IsClassObjectType(member.type))
+		{
+			source.node = BuildClassValueConstructorAction(
+				member.type, source, true, true);
+			source.type = member.type;
+			source.category = VALUE_PRVALUE;
+		}
 		dump_.Add(initializer, action);
 		dump_.Add(action, source.node);
 	}
@@ -590,8 +604,12 @@ void SemanticAnalyzer::InstallLambdaCaptureBindings(ScopeId scope,
 			throw std::logic_error("lambda call capture range is invalid");
 		const LambdaCaptureFact& capture = lambda_captures_[capture_index];
 		if (capture.captures_this) continue;
+		TypeId alias_type = capture.value_type;
+		if (!capture.by_reference &&
+			(program_->types.Get(function.type).cv & CV_CONST) != 0)
+			alias_type = program_->types.Qualify(alias_type, CV_CONST);
 		const BindingId alias = program_->AddBinding(scope, BIND_VARIABLE,
-			capture.name, capture.value_type, false, 0, NAMED_NONE, 0,
+			capture.name, alias_type, false, 0, NAMED_NONE, 0,
 			kNoBinding, false);
 		if (injected_fact_by_binding_.size() <= alias)
 			injected_fact_by_binding_.resize(

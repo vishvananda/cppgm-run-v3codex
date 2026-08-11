@@ -129,6 +129,16 @@ bool LambdaCaptureUseTable::IsExplicitAt(
 	return explicit_names_[static_cast<std::size_t>(fact.name_begin) + index] != 0;
 }
 
+bool LambdaCaptureUseTable::IsReferenceAt(
+	const Fact& fact, std::size_t index) const
+{
+	if (index >= fact.name_count ||
+		static_cast<std::size_t>(fact.name_begin) + index >=
+			reference_names_.size())
+		throw std::logic_error("lambda capture mode index is invalid");
+	return reference_names_[static_cast<std::size_t>(fact.name_begin) + index] != 0;
+}
+
 void LambdaCaptureUseTable::AddBound(NameId name)
 {
 	if (name == 0) return;
@@ -362,8 +372,10 @@ void LambdaCaptureUseTable::Build(std::uint32_t fact,
 	++depth_;
 	std::vector<NameId> free_names;
 	std::vector<NameId> explicit_names;
+	std::vector<std::uint8_t> explicit_reference;
 	bool captures_this = false;
 	bool default_reference = false;
+	bool has_default = false;
 	try
 	{
 		const NodeId lambda = facts_[fact].syntax;
@@ -381,7 +393,13 @@ void LambdaCaptureUseTable::Build(std::uint32_t fact,
 					const NodeId capture = arena.EdgeChild(capture_edge);
 					if (arena.IsTag(capture,
 						"lambda-capture-default-reference"))
+					{
 						default_reference = true;
+						has_default = true;
+					}
+					else if (arena.IsTag(capture,
+						"lambda-capture-default-copy"))
+						has_default = true;
 					else if (arena.IsTag(capture, "lambda-capture-this"))
 					{
 						if (captures_this)
@@ -397,13 +415,16 @@ void LambdaCaptureUseTable::Build(std::uint32_t fact,
 						const NameId name = arena.SemanticPayloadId(capture);
 						free_names.push_back(name);
 						explicit_names.push_back(name);
+						explicit_reference.push_back(1);
 					}
-					else if (arena.IsTag(capture,
-							"lambda-capture-default-copy") ||
-						arena.IsTag(capture, "lambda-capture-copy") ||
+					else if (arena.IsTag(capture, "lambda-capture-copy") ||
 						arena.IsTag(capture, "lambda-capture-copy-pack"))
-						throw std::runtime_error(
-							"PA25 supports only by-reference and this lambda captures");
+					{
+						const NameId name = arena.SemanticPayloadId(capture);
+						free_names.push_back(name);
+						explicit_names.push_back(name);
+						explicit_reference.push_back(0);
+					}
 				}
 			}
 			else if (arena.IsTag(child, "lambda-declarator"))
@@ -426,7 +447,7 @@ void LambdaCaptureUseTable::Build(std::uint32_t fact,
 			}
 			else if (arena.IsTag(child, "compound-statement")) body = child;
 		}
-		if (default_reference && body != kNoNode)
+		if (has_default && body != kNoNode)
 			Walk(body, arena, &free_names, &captures_this);
 		++dedup_generation_;
 		if (dedup_generation_ == 0)
@@ -459,7 +480,11 @@ void LambdaCaptureUseTable::Build(std::uint32_t fact,
 		completed.captures_this = captures_this;
 		names_.insert(names_.end(), free_names.begin(), free_names.end());
 		for (std::size_t i = 0; i < free_names.size(); ++i)
+		{
 			explicit_names_.push_back(i < explicit_names.size() ? 1 : 0);
+			reference_names_.push_back(i < explicit_reference.size() ?
+				explicit_reference[i] : default_reference ? 1 : 0);
+		}
 		name_uses_ += free_names.size();
 		states_[fact] = 2;
 	}
@@ -487,6 +512,7 @@ std::size_t LambdaCaptureUseTable::StorageBytes() const
 		slots_.capacity() * sizeof(std::uint32_t) +
 		names_.capacity() * sizeof(NameId) +
 		explicit_names_.capacity() * sizeof(std::uint8_t) +
+		reference_names_.capacity() * sizeof(std::uint8_t) +
 		bound_heads_.capacity() * sizeof(std::uint32_t) +
 		bound_stack_.capacity() * sizeof(BoundName) +
 		dedup_marks_.capacity() * sizeof(std::uint32_t);

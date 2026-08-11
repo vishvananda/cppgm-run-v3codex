@@ -29,6 +29,7 @@ public:
 		pa10_syntax_detail::NodeId lambda);
 	pa11::NameId NameAt(const Fact& fact, std::size_t index) const;
 	bool IsExplicitAt(const Fact& fact, std::size_t index) const;
+	bool IsReferenceAt(const Fact& fact, std::size_t index) const;
 	std::size_t Requests() const;
 	std::size_t CacheHits() const;
 	std::size_t SyntaxVisits() const;
@@ -78,6 +79,7 @@ private:
 	std::vector<std::uint32_t> slots_;
 	std::vector<pa11::NameId> names_;
 	std::vector<std::uint8_t> explicit_names_;
+	std::vector<std::uint8_t> reference_names_;
 	std::vector<std::uint32_t> bound_heads_;
 	std::vector<BoundName> bound_stack_;
 	std::vector<std::uint32_t> dedup_marks_;

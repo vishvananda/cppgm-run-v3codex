@@ -1122,14 +1122,15 @@ struct LambdaCaptureFact
 	NameId name, pack_name;
 	BindingId source, member;
 	TypeId value_type;
-	bool captures_this;
+	bool captures_this, by_reference;
 
 	LambdaCaptureFact(NameId name_value, NameId pack_name_value,
 		BindingId source_value, BindingId member_value, TypeId value_type_value,
-		bool captures_this_value)
+		bool captures_this_value, bool by_reference_value)
 		: name(name_value), pack_name(pack_name_value), source(source_value),
 		  member(member_value), value_type(value_type_value),
-		  captures_this(captures_this_value) {}
+		  captures_this(captures_this_value),
+		  by_reference(by_reference_value) {}
 };
 
 // A closure expression is canonical only within its concrete enclosing
