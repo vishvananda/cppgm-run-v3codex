@@ -18,39 +18,37 @@ demanded nodes (section 9).
 
 ## Current Failure Map
 
-Current state: **410/422** pa24 tests (turn start: 408/422); all **3,049/3,049**
-tests through pa23 pass.
+Current state: **413/422** pa24 tests (checkpoint start: 410/422; goal start:
+368/422); all **3,049/3,049** tests through pa23 pass.
 
 | Shared behavior and owner | Count | Complete failing set (test basename) |
 | --- | ---: | --- |
-| Deduction, candidate SFINAE, overload ordering, and conversion/initialization selection (`pa19` deduction/instantiation + ordinary call/initialization) | 5 | `member-operator-template-reference-pattern-partial-order`, `constructor-template-const-ref-enable-if-conversion`, `defaulted-class-template-argument-pack-prefix-deduction`, `trailing-return-expression-sfinae-default-param`, `out-of-class-conversion-operator-definition` |
-| Dependent owner/current-specialization, alias, function-type, and pack replay through demand/lowering (`pa19`/`pa22`/`pa23`) | 7 | `alias-template-partial-specialization-default-dependent-arg`, `member-template-result-pack-preserves-nested-function-pointer-owner`, `out-of-class-partial-member-template-owner-parameter-alias`, `forwarding-pack-function-type-enable-if`, `source-namespace-base-sfinae-chain`, `defaulted-nested-class-argument-partial-specialization`, `defaulted-template-arg-partial-base-completion` |
+| Deduction, candidate SFINAE, overload ordering, and conversion/initialization selection (`pa19` deduction/instantiation + ordinary call/initialization) | 4 | `member-operator-template-reference-pattern-partial-order`, `constructor-template-const-ref-enable-if-conversion`, `defaulted-class-template-argument-pack-prefix-deduction`, `trailing-return-expression-sfinae-default-param` |
+| Dependent owner/current-specialization, alias, function-type, and pack replay through demand/lowering (`pa19`/`pa22`/`pa23`) | 5 | `alias-template-partial-specialization-default-dependent-arg`, `member-template-result-pack-preserves-nested-function-pointer-owner`, `out-of-class-partial-member-template-owner-parameter-alias`, `defaulted-nested-class-argument-partial-specialization`, `defaulted-template-arg-partial-base-completion` |
 
 ## Active Checkpoint
 
-**Direct-reference and class-conversion materialization — completed.** The
-cast target and operand own direct reference compatibility and value-category
-facts; these are classified before conversion-function lookup. A same-type
-`static_cast<T&&>` reclassifies the source as an xvalue without selecting a
-user conversion. When a selected runtime conversion function needs a class
-prvalue as its implicit object, semantic lowering owns one addressable
-temporary even if an object fact exists. Constexpr conversion functions retain
-their fold-only graph; only non-constexpr runtime conversion calls materialize
-the recipe. Top-level cv remains on the function boundary while object storage
-uses its canonical unqualified class type.
+**Canonical empty-value lifecycle demand and lowering — completed.** PA12
+initialization owns selected constructor actions and the cached empty-chain
+proof; PA16 lowering and slot planning own the payload boundary. The flow is
+`selected call or namespace initializer -> typed action/category/provenance ->
+demand -> LowIR`. Destination-owned trivial empty copies omit a
+reference-valued call source, and direct empty transfers omit a user-conversion
+call only for a trivially default-constructible target. Prvalue producers,
+nontrivial empty-layout targets, returns, arguments, temporaries, aggregates,
+and bases retain evaluation. Unnamed-namespace template specializations whose
+default-constructor chain proves empty do not demand unused complete/base
+entries; ordinary namespace-class ABI emission remains unchanged.
 
-This applies `spec.md` sections 3-6, 8, and 9: conversions consume canonical
-types and selected callable identities, materialization is a typed semantic
-fact, and lowering does not rediscover source syntax. Direct-reference
-classification is O(1) and avoids O(C) conversion-candidate scans; required
-user conversion remains O(C), and temporary lowering is O(1) plus required
-object initialization. Validation removed
-`static-cast-rvalue-ref-skips-conversion-operator` and
-`conversion-function-template-top-cv-sequence`; the neighboring out-of-class
-conversion fixture remains an empty-result-elision issue. The PA21 constexpr
-conversion regression case, earlier cast/conversion suites, a same-type cast
-candidate-width probe, the full PA24 and through-PA23 reports, and the file
-audit cover the boundary.
+This applies `spec.md` sections 4-6, 8, and 9: demand stays monotonic and
+binding-owned, and lowering consumes selected typed facts without lookup.
+Transfer classification is O(1); the existing canonical empty-chain query is
+O(E) for E newly visited subobject edges and O(1) average on a cache hit.
+Validation removed `forwarding-pack-function-type-enable-if`,
+`out-of-class-conversion-operator-definition`, and
+`source-namespace-base-sfinae-chain`; PA16 ordinary namespace, PA17 empty-copy,
+PA22 return/empty-base, and PA23 nontrivial conversion controls pass, as do the
+full PA24, through-PA23, audit, and scaling gates.
 
 ## Performance Evidence
 
@@ -113,6 +111,13 @@ median semantic times 0.415/0.436/0.511/0.585/0.694/0.997/1.573 ms over nine
 runs. Total declaration work is linear, while direct-reference classification
 avoids a conversion-candidate-width scan.
 
+Repeated empty reference-transfer and namespace-object widths
+1/2/4/8/16/32/64 produced functions 4/6/10/18/34/66/130, globals and
+empty-chain visits 1/2/4/8/16/32/64, instructions 12/21/39/75/147/291/579,
+and demand pushes 5/9/17/33/65/129/257. Seven-run median semantic/lowering
+times were 1.016/0.235, 1.401/0.266, 2.149/0.369, 3.465/0.543, 6.112/0.938,
+11.710/1.719, and 24.724/3.347 ms; all owner-local work remains linear.
+
 ## Completed Checkpoints
 
 | Checkpoint | Commit | Disposition |
@@ -126,4 +131,5 @@ avoids a conversion-candidate-width scan.
 | Nonterminal dependent template-id and prior-parameter retention | `9ab41503` | One failure removed; 404/422 pa24, 3,049/3,049 through pa23, linear constraint-width probe. |
 | Destination-consistent default/value construction lowering | `5be465c9` | Two failures removed; 406/422 pa24, 3,049/3,049 through pa23, constant trivial-array extent probe. |
 | Identity-only typed declaration emission | `6a107535` | Two failures removed; 408/422 pa24, 3,049/3,049 through pa23, linear declaration-width probe. |
-| Direct-reference classification and runtime conversion-object materialization | this commit | Two failures removed; 410/422 pa24, 3,049/3,049 through pa23, constant candidate count across conversion width. |
+| Direct-reference classification and runtime conversion-object materialization | `f3724c7e` | Two failures removed; 410/422 pa24, 3,049/3,049 through pa23, constant candidate count across conversion width. |
+| Empty-value lifecycle demand and destination-owned lowering | this commit | Three failures removed; 413/422 pa24, 3,049/3,049 through pa23, linear empty-transfer/object scaling. |

@@ -2052,7 +2052,7 @@ private:
 		{
 			const LowType type = LowerStorageType(record.type);
 			LowerClassValueTransfer(children[0], AddressOfStorage(
-				StorageFor(record.binding, type)));
+				StorageFor(record.binding, type)), true);
 			return;
 		}
 		if (children.size() == 1 && arena_.nodes[children[0]].kind ==

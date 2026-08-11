@@ -21,6 +21,20 @@ using namespace pa15_lowering_support;
 template <class Derived>
 class InitializationLowering
 {
+public:
+	bool ElidesEmptyConversionCallTransfer(
+		const DumpNode& action, const NodeChildren& children) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		if (action.kind != DUMP_CLASS_VALUE_TRANSFER || children.size() != 1)
+			return false;
+		const DumpNode& source = derived.arena_.nodes[children[0]];
+		const EntityId entity = derived.ClassEntity(action.type);
+		return source.kind == DUMP_CALL_EXPRESSION &&
+			source.user_conversion_call && entity != kNoEntity &&
+			derived.program_.entities[entity].empty_class &&
+			derived.program_.entities[entity].trivial_default_constructor;
+	}
 protected:
 	Operand TemporaryObjectStorageSlot(std::uint32_t node)
 	{
@@ -87,7 +101,8 @@ protected:
 	}
 
 	void LowerClassValueTransfer(std::uint32_t node,
-		const Operand& destination)
+		const Operand& destination,
+		bool elide_empty_call_source = false)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		const DumpNode& action = derived.arena_.nodes[node];
@@ -101,6 +116,9 @@ protected:
 			throw std::logic_error(
 				"class-value transfer has no selected constructor fact");
 		const DumpNode& source = derived.arena_.nodes[children[0]];
+		if (elide_empty_call_source &&
+			derived.ElidesEmptyConversionCallTransfer(action, children))
+			return;
 		if (source.kind == DUMP_CONDITIONAL_EXPRESSION)
 		{
 			derived.LowerClassConditionalResult(children[0], destination);
@@ -108,7 +126,8 @@ protected:
 		}
 		if (source.kind == DUMP_CLASS_VALUE_TRANSFER)
 		{
-			derived.LowerClassValueTransfer(children[0], destination);
+			derived.LowerClassValueTransfer(
+				children[0], destination, elide_empty_call_source);
 			return;
 		}
 		if (source.kind == DUMP_CALL_EXPRESSION)
@@ -528,7 +547,8 @@ protected:
 		if (derived.arena_.nodes[children[0]].value_initialization)
 			EmitZeroInitialization(variable.type, destination);
 		if (!IsTrivialConstructorAction(variable.type, children))
-			derived.LowerConstructorAction(children[0], destination);
+			derived.LowerConstructorAction(
+				children[0], destination, false, false, true);
 		return true;
 	}
 

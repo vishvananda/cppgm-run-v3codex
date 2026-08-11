@@ -991,7 +991,9 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 		(elide_defaulted_empty || elide_implicit_subobject_chain))
 	{
 		dump_.nodes[action].elide_empty_constructor = true;
-		if (preserve_constant_initializer_recipe_depth_ == 0)
+		if (preserve_constant_initializer_recipe_depth_ == 0 &&
+			(program_->KindOfScope(scope) != SCOPE_NAMESPACE ||
+			 !IsClassTemplateSpecializationEntity(entity)))
 			for (std::size_t i = 0; i < empty_base_entries.size(); ++i)
 				DemandFunction(empty_base_entries[i]);
 	}

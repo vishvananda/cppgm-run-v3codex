@@ -2781,9 +2781,19 @@ void SemanticAnalyzer::AddNamespaceObjectAction(std::uint32_t variable,
 			initializer != kNoDumpEdge &&
 			dump_.nodes[initializer].kind == DUMP_CONSTRUCTOR_ACTION)
 		{
-			const BindingId constructor = dump_.nodes[initializer].binding;
-			DemandFunction(EnsureConstructorBaseEntry(constructor));
-			DemandFunction(constructor);
+			const DumpNode& action = dump_.nodes[initializer];
+			std::vector<BindingId> empty_dependencies;
+			const bool empty_chain = action.binding != kNoBinding &&
+				EmptyDefaultConstructorChain(
+					action.binding, &empty_dependencies);
+			const bool elided_template_chain = empty_chain &&
+				IsClassTemplateSpecializationEntity(entity);
+			if (!elided_template_chain && !action.elide_empty_constructor &&
+				!action.trivial_special_member_action)
+			{
+				DemandFunction(EnsureConstructorBaseEntry(action.binding));
+				DemandFunction(action.binding);
+			}
 		}
 		if (!program_->entities[entity].destructible)
 			throw std::runtime_error("namespace object type is not destructible");

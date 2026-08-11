@@ -27,7 +27,8 @@ class ConstructorActionLowering
 protected:
 	void LowerConstructorAction(std::uint32_t node,
 		const Operand& destination, bool force_empty = false,
-		bool elide_direct_empty_source = false)
+		bool elide_direct_empty_source = false,
+		bool elide_empty_call_source = false)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		const DumpNode& action = derived.arena_.nodes[node];
@@ -52,7 +53,12 @@ protected:
 				const bool projected_id = source.kind == DUMP_CAST_EXPRESSION &&
 					source.base_projection_count != 0 && source_children.size() == 1 &&
 					derived.arena_.nodes[source_children[0]].kind == DUMP_ID_EXPRESSION;
-				if ((!direct_id || !elide_direct_empty_source) && !projected_id)
+				const bool elided_reference_call = elide_empty_call_source &&
+					source.kind == DUMP_CALL_EXPRESSION &&
+					(source.category == VALUE_LVALUE ||
+					 source.category == VALUE_XVALUE);
+				if (!elided_reference_call &&
+					((!direct_id || !elide_direct_empty_source) && !projected_id))
 					(void)derived.LowerClassTransferSource(children[0]);
 				return;
 			}

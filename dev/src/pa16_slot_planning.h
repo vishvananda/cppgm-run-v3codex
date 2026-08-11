@@ -156,10 +156,13 @@ protected:
 				derived.UsesIndirectClassResult(
 					derived.arena_.nodes[children[0]].type,
 					derived.arena_.nodes[children[0]].binding);
+			const bool empty_call_transfer =
+				derived.ElidesEmptyConversionCallTransfer(record, children);
 			if (record.class_argument_staging && variable_initializer &&
 				!(record.kind == DUMP_CALL_EXPRESSION &&
 				  derived.UsesIndirectClassResult(record.type, record.binding)) &&
 				!indirect_result_transfer &&
+				!empty_call_transfer &&
 				derived.generated_slots_[current] == kNoLowId)
 			{
 				const TypeId staging_type =
