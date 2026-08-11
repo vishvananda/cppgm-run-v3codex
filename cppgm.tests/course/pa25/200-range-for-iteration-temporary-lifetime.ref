@@ -1,0 +1,214 @@
+global @destructions : i32 [binding=strong, object=_Z12destructions] = zero
+
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $range : obj<8x4>
+  slot $sum : i32
+  slot $__begin1 : obj<8x8>
+  slot $__end2 : obj<8x8>
+  slot $value : i32
+  slot $discard__1 : obj<1x1>
+  slot $cond__2 : i32
+  slot $land__3 : i64
+
+  block ^entry:
+    %t1 = addr $range
+    %t2 = addr $range
+    %t3 = index i8 [projection=field] %t2, 0
+    %t4 = unary decay ptr %t3
+    %t5 = index i32 [projection=array_element] %t4, 0
+    store i32 4, %t5
+    %t6 = addr $range
+    %t7 = index i8 [projection=field] %t6, 0
+    %t8 = unary decay ptr %t7
+    %t9 = index i32 [projection=array_element] %t8, 1
+    store i32 5, %t9
+    store i32 0, $sum
+    %t10 = addr $__begin1
+    %t11 = addr $range
+    %t12 = call obj<8x8> @Range__begin(%t11)
+    copyobj 8x8 %t12, %t10
+    %t13 = addr $__end2
+    %t14 = addr $range
+    %t15 = call obj<8x8> @Range__end(%t14)
+    copyobj 8x8 %t15, %t13
+    jump ^for_cond_1
+
+  block ^for_cond_1:
+    %t16 = addr $__begin1
+    %t17 = addr $__end2
+    %t18 = call u8 @Iterator__operator__(%t16, %t17)
+    branch %t18, ^for_body_2, ^for_end_4
+
+  block ^for_body_2:
+    %t19 = addr $__begin1
+    %t20 = call ptr @Iterator__operator_(%t19)
+    %t21 = load i32 %t20
+    store i32 %t21, $value
+    %t22 = load i32 $sum
+    %t23 = load i32 $value
+    %t24 = binary add i32 %t22, %t23
+    store i32 %t24, $sum
+    jump ^for_iter_3
+
+  block ^for_iter_3:
+    eh_try ^call_unwind_dispatch_5
+    %t25 = addr $discard__1
+    %t26 = addr $__begin1
+    call void @Iterator__operator____sym2(%t25, %t26)
+    eh_end
+    jump ^call_unwind_end_6
+
+  block ^call_unwind_dispatch_5:
+    resume
+
+  block ^call_unwind_end_6:
+    eh_try ^call_unwind_dispatch_7
+    call void @Step___Step(%t25)
+    eh_end
+    jump ^call_unwind_end_8
+
+  block ^call_unwind_dispatch_7:
+    call void @Step___Step(%t25)
+    resume
+
+  block ^call_unwind_end_8:
+    jump ^for_cond_1
+
+  block ^for_end_4:
+    %t27 = load i32 @destructions
+    %t28 = cmp eq i32 %t27, 2
+    branch %t28, ^land_rhs_12, ^land_short_13
+
+  block ^land_rhs_12:
+    %t29 = load i32 $sum
+    %t30 = cmp eq i32 %t29, 9
+    %t31 = cmp ne i64 %t30, 0
+    store i64 %t31, $land__3
+    jump ^land_end_14
+
+  block ^land_short_13:
+    store i64 0, $land__3
+    jump ^land_end_14
+
+  block ^land_end_14:
+    %t32 = load i64 $land__3
+    branch %t32, ^cond_then_9, ^cond_else_10
+
+  block ^cond_then_9:
+    store i32 0, $cond__2
+    jump ^cond_end_11
+
+  block ^cond_else_10:
+    store i32 1, $cond__2
+    jump ^cond_end_11
+
+  block ^cond_end_11:
+    %t33 = load i32 $cond__2
+    return i32 %t33
+}
+
+function @Range__begin(%this : ptr) -> obj<8x8> [binding=weak, object=_ZN5Range5beginEv] {
+  slot $this : ptr
+  slot $retobj__1 : obj<8x8>
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = addr $retobj__1
+    %t2 = load ptr $this
+    %t3 = index i8 [projection=field] %t2, 0
+    %t4 = unary decay ptr %t3
+    call void @Iterator__Iterator__aggregate(%t1, %t4)
+    return obj<8x8> $retobj__1
+}
+
+function @Range__end(%this : ptr) -> obj<8x8> [binding=weak, object=_ZN5Range3endEv] {
+  slot $this : ptr
+  slot $retobj__1 : obj<8x8>
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = addr $retobj__1
+    %t2 = load ptr $this
+    %t3 = index i8 [projection=field] %t2, 0
+    %t4 = unary decay ptr %t3
+    %t5 = binary mul i64 2, 4
+    %t6 = index i8 %t4, %t5
+    call void @Iterator__Iterator__aggregate(%t1, %t6)
+    return obj<8x8> $retobj__1
+}
+
+function @Iterator__operator__(%this : ptr, %other : ptr [pass=reference]) -> u8 [binding=weak, object=_ZNK8IteratorneERKS_] {
+  slot $this : ptr
+  slot $other : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    store ptr %other, $other
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=field] %t1, 0
+    %t3 = load ptr %t2
+    %t4 = load ptr $other
+    %t5 = index i8 [projection=field] %t4, 0
+    %t6 = load ptr %t5
+    %t7 = cmp ne ptr %t3, %t6
+    return u8 %t7
+}
+
+function @Iterator__operator_(%this : ptr) -> ptr [binding=weak, object=_ZNK8IteratordeEv] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=field] %t1, 0
+    %t3 = load ptr %t2
+    return ptr %t3
+}
+
+function @Iterator__operator____sym2(%ret : ptr [pass=indirect_result], %this : ptr) -> void [binding=weak, object=_ZN8IteratorppEv] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=field] %t1, 0
+    %t3 = load ptr %t2
+    %t4 = binary mul i64 1, 4
+    %t5 = index i8 %t3, %t4
+    store ptr %t5, %t2
+    call void @Step__Step(%ret)
+    return void
+}
+
+function @Step___Step(%this : ptr) -> void [binding=strong, object=_ZN4StepD1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load i32 @destructions
+    %t2 = binary add i32 %t1, 1
+    store i32 %t2, @destructions
+    return void
+}
+
+function @Step__Step(%this : ptr) -> void [binding=weak, object=_ZN4StepC1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+
+function @Iterator__Iterator__aggregate(%this : ptr, %current : ptr) -> void [unwind=no, binding=strong] {
+  slot $this : ptr
+  slot $current : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    store ptr %current, $current
+    %t1 = load ptr $current
+    %t2 = load ptr $this
+    %t3 = index i8 [projection=field] %t2, 0
+    store ptr %t1, %t3
+    return void
+}

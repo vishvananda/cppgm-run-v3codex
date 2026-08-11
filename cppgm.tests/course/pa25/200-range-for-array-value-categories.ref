@@ -1,0 +1,115 @@
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $prvalue_sum : i32
+  slot $__range1 : ptr
+  slot $__idx2 : i32
+  slot $value : i32
+  slot $values : obj<8x4>
+  slot $xvalue_sum : i32
+  slot $__range3 : ptr
+  slot $__idx4 : i32
+  slot $value__shadow2 : ptr
+  slot $tmpobj__1 : obj<8x4>
+  slot $cond__2 : i32
+  slot $land__3 : i64
+
+  block ^entry:
+    store i32 0, $prvalue_sum
+    %t1 = addr $tmpobj__1
+    store i32 1, %t1
+    %t2 = index i8 %t1, 4
+    store i32 2, %t2
+    store ptr %t1, $__range1
+    store i32 0, $__idx2
+    jump ^for_cond_1
+
+  block ^for_cond_1:
+    %t3 = load i32 $__idx2
+    %t4 = cmp lt i32 %t3, 2
+    branch %t4, ^for_body_2, ^for_end_4
+
+  block ^for_body_2:
+    %t5 = load ptr $__range1
+    %t6 = unary decay ptr %t5
+    %t7 = load i32 $__idx2
+    %t8 = index i32 [projection=array_element] %t6, %t7
+    %t9 = load i32 %t8
+    store i32 %t9, $value
+    %t10 = load i32 $prvalue_sum
+    %t11 = load i32 $value
+    %t12 = binary add i32 %t10, %t11
+    store i32 %t12, $prvalue_sum
+    jump ^for_iter_3
+
+  block ^for_iter_3:
+    %t13 = load i32 $__idx2
+    %t14 = binary add i32 %t13, 1
+    store i32 %t14, $__idx2
+    jump ^for_cond_1
+
+  block ^for_end_4:
+    %t15 = addr $values
+    store i32 3, %t15
+    %t16 = index i8 %t15, 4
+    store i32 4, %t16
+    store i32 0, $xvalue_sum
+    %t17 = addr $values
+    store ptr %t17, $__range3
+    store i32 0, $__idx4
+    jump ^for_cond_5
+
+  block ^for_cond_5:
+    %t18 = load i32 $__idx4
+    %t19 = cmp lt i32 %t18, 2
+    branch %t19, ^for_body_6, ^for_end_8
+
+  block ^for_body_6:
+    %t20 = load ptr $__range3
+    %t21 = unary decay ptr %t20
+    %t22 = load i32 $__idx4
+    %t23 = index i32 [projection=array_element] %t21, %t22
+    store ptr %t23, $value__shadow2
+    %t24 = load i32 $xvalue_sum
+    %t25 = load ptr $value__shadow2
+    %t26 = load i32 %t25
+    %t27 = binary add i32 %t24, %t26
+    store i32 %t27, $xvalue_sum
+    jump ^for_iter_7
+
+  block ^for_iter_7:
+    %t28 = load i32 $__idx4
+    %t29 = binary add i32 %t28, 1
+    store i32 %t29, $__idx4
+    jump ^for_cond_5
+
+  block ^for_end_8:
+    %t30 = load i32 $prvalue_sum
+    %t31 = cmp eq i32 %t30, 3
+    branch %t31, ^land_rhs_12, ^land_short_13
+
+  block ^land_rhs_12:
+    %t32 = load i32 $xvalue_sum
+    %t33 = cmp eq i32 %t32, 7
+    %t34 = cmp ne i64 %t33, 0
+    store i64 %t34, $land__3
+    jump ^land_end_14
+
+  block ^land_short_13:
+    store i64 0, $land__3
+    jump ^land_end_14
+
+  block ^land_end_14:
+    %t35 = load i64 $land__3
+    branch %t35, ^cond_then_9, ^cond_else_10
+
+  block ^cond_then_9:
+    store i32 0, $cond__2
+    jump ^cond_end_11
+
+  block ^cond_else_10:
+    store i32 1, $cond__2
+    jump ^cond_end_11
+
+  block ^cond_end_11:
+    %t36 = load i32 $cond__2
+    return i32 %t36
+}

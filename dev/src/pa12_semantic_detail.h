@@ -325,6 +325,8 @@ private:
 	void FinishRangeForLocalInitializer(ScopeId scope,
 		std::uint32_t declaration, TypeId type,
 		const ExpressionInfo& initializer);
+	void FinishRangeForFullExpression(ScopeId scope,
+		std::uint32_t owner, const ExpressionInfo& expression);
 	ExpressionInfo AnalyzeRangeForUnary(const char* operation,
 		const char* display, ExpressionInfo operand, ScopeId scope);
 	ExpressionInfo AnalyzeRangeForSubscript(ExpressionInfo range,

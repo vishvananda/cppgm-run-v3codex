@@ -2,72 +2,60 @@
 
 ## Current Checkpoint Review
 
-Checkpoint `583b174a` (ordinary placeholder results) passes after audit repair.
-The landed increment establishes ordinary variable, condition, static-member,
-and visible non-template function/member placeholder results without changing
-the 46/121 shipped-test baseline or any earlier assignment.
+Checkpoint `b985f854` (range-for statements) passes after audit repair. The
+landed increment adds one PA10 range syntax node, PA12 range/iterator operation
+selection and lifetime facts, retained-template validation, and direct PA15
+lowering through the existing typed loop CFG.
 
-The audit found and fixed three checkpoint-level issues across the complete
-ownership path:
+The audit found and fixed three issues along that ownership path:
 
-1. Cv-qualified `auto&&` variables and function results incorrectly used the
-   cv-unqualified forwarding-reference collapse and accepted lvalue
-   initializers. Deduction now forms a cv-qualified rvalue-reference target and
-   the shared conversion owner rejects the invalid binding.
-2. Local `volatile auto` entered constant-initializer evaluation merely because
-   it had a cv qualifier. A constexpr call was folded and its runtime demand
-   removed, unlike the equivalent explicit declaration at `-O0`. Constant
-   probing now follows the const-qualified case; volatile-auto and explicit
-   volatile LowIR are identical in the checked reducer.
-3. Typed placeholder initializers crossed declaration ownership through a
-   node-based `unordered_map`, and retained member analysis/emission deep-copied
-   `FunctionInfo` parameter vectors. The initializer is now returned directly
-   to its immediate declaration owner, member validation uses a fixed-prefix
-   indexed walk, and retained bodies are borrowed until the point that semantic
-   demand may invalidate references.
+1. Declaration-form ordinary `for` initializers were parsed speculatively as
+   range declarations and then parsed again. A bounded, allocation-free
+   delimiter lookahead now selects the range grammar; each source region builds
+   one syntax subtree and abandoned semantic name facts are not created.
+2. Range materialization did not preserve every value category. A
+   non-identifier array lvalue bypassed the hidden binding and ran its source
+   call once per iteration; array prvalues failed conversion; and genuine
+   array/class xvalues could enter by-value class transfer. Unstable glvalues
+   now bind one canonical lvalue/rvalue reference, array prvalues materialize
+   once with lifetime extension, and owned class prvalues retain direct
+   storage/elision.
+3. Manually built range conditions and iterations skipped ordinary
+   full-expression finalization. Class prvalues returned by iterator
+   `operator++` were allocated but never destroyed. Range conditions and
+   discarded increments now use the shared temporary collection, cleanup,
+   unwind, and slot-planning facts.
 
-The nontrivial declaration trace is source bytes -> shared interned
-tokens/syntax -> one initializer analysis -> decay/reference deduction ->
-canonical `TypeId` plus `ExpressionInfo` returned directly to the declaration
-owner -> binding and typed semantic variable -> binding-indexed PA15 slot/call
-lowering -> direct `TypedProgram` LowIR. No spelling, rendered type, or lookup
-is reconstructed after deduction.
+The array reducer traces source bytes -> bounded range delimiter scan -> one
+`range-for-statement` syntax node -> one call analysis -> canonical
+array-reference `TypeId` and hidden binding -> counted-loop semantic nodes ->
+binding-indexed slots and direct typed LowIR. The call is in the loop
+initializer, not the body. The retained-template trace keeps one parsed range
+body, validates its control/loop-variable scope, substitutes only its dependent
+facts when demanded, retains selected operations on call nodes, and emits the
+demanded specialization once. Lowering performs no syntax replay, name lookup,
+or text round trip.
 
-The demanded-member trace is parsed member body -> canonical `FunctionInfo`
-with not-deduced/deduced result state -> one body analysis at class completion
--> retained typed parameter/body nodes -> deduplicated function demand -> the
-same body nodes attached to one emission unit -> direct typed lowering. A
-function-template/auto-variable reducer additionally followed canonical
-template selection and one demanded specialization through LowIR, then through
-the README's secondary `lowir2cy86`/`cy86` path to an x86-64 ELF executable
-that returned zero. PA29 native lowering remains a later staged surface.
+Seven-run medians for 16/64/256 repeated member ranges recorded 358/982/3,478
+tokens, 701/2,573/10,061 semantic nodes, 203/731/2,843 overload candidates,
+450/1,554/5,970 lookup queries, 465/1,665/6,465 instructions, and peak semantic
+storage of 353,997/1,229,663/4,637,012 bytes. Semantic time was
+1.482/4.391/16.269 ms and lowering time 0.522/1.400/5.083 ms. Required work and
+storage track expanded syntax, actual candidates, and emitted loops without a
+superlinear trend.
 
-No relevant string key, source/test shortcut, global retry, textual in-process
-transport, lowering-time semantic search, timeout-adjacent path, or unresolved
-correctness/performance/file-audit issue remains in this checkpoint. The 14
-file-audit warnings are unchanged inherited header-division advisories; there
-are no fatal findings.
-
-Representative scaling used classes with 25/100/400 placeholder-result
-members. Seven-run medians recorded semantic nodes 144/519/2,019, function
-signature probes 97/322/1,222, dependency visits 29/104/404, peak stage bytes
-140,200/459,189/1,531,297, and semantic time 0.551/1.441/4.830 ms. Demand stayed
-at two pushes and one member emission, while lowering stayed at two functions,
-six instructions, and 0.119-0.179 ms. This supports linear member analysis and
-constant emitted work rather than repeated body analysis or whole-class replay.
-
-Validation:
-
-- Focused shipped and audit regressions: 15/15 pass.
-- `make test-report ACTIVE_TEST_REPORT_PAS='pa25'`: 50/125; all original 46
-  passes and all four audit regressions pass, with the same 75 unfinished-stage
-  failures.
-- Prior-through-PA24 gate: 3,471/3,471 pass across all 24 stages.
-- `perl scripts/cppgm_file_audit.pl --stage pa25 --paths dev/src`: pass with 14
-  inherited nonfatal advisories.
+No relevant source/test shortcut, global retry, lowering-time semantic search,
+textual transport, timeout-adjacent behavior, or unresolved checkpoint-owned
+correctness/performance/file-audit issue remains. All three audit reducers pass
+through `lowir2cy86`/`cy86` and execute with status zero; PA29 native lowering
+is a later staged surface. Validation preserved all 64 turn-start PA25 passes,
+added three passing audit regressions (67/128), preserved PA1-24 at
+3,471/3,471, and passed the file audit with the same 14 inherited nonfatal
+header-division advisories.
 
 ## Checkpoint Audit Ledger
 
 | Checkpoint | Audit disposition |
 |---|---|
 | Ordinary placeholder results (`583b174a`) | Pass after cv-reference, runtime-demand, direct-ownership, and retained-body copy repairs; shipped baseline and all earlier stages preserved; linear scaling and file audit verified. |
+| Range-for statements (`b985f854`) | Pass after single-parse dispatch, category-correct one-time range binding, and condition/iteration cleanup repairs; 67/128 PA25 and 3,471/3,471 earlier tests preserved; linear scaling and file audit verified. |

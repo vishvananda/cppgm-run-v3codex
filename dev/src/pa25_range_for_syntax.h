@@ -4,6 +4,7 @@
 #include "pa10_syntax_model.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 
 namespace cppgm
@@ -17,24 +18,71 @@ template <class Derived>
 class RangeForSyntax
 {
 protected:
+	bool StartsRangeForStatement() const
+	{
+		const Derived& parser = static_cast<const Derived&>(*this);
+		std::size_t parentheses = 0;
+		std::size_t brackets = 0;
+		std::size_t braces = 0;
+		std::size_t conditionals = 0;
+		for (std::size_t position = parser.position_;
+			position < parser.tokens_.size(); ++position)
+		{
+			const std::uint16_t kind = parser.tokens_[position].Kind();
+			if (kind == static_cast<std::uint16_t>(OP_LPAREN)) ++parentheses;
+			else if (kind == static_cast<std::uint16_t>(OP_LSQUARE)) ++brackets;
+			else if (kind == static_cast<std::uint16_t>(OP_LBRACE)) ++braces;
+			else if (kind == static_cast<std::uint16_t>(OP_RPAREN))
+			{
+				if (parentheses == 0)
+					return false;
+				--parentheses;
+			}
+			else if (kind == static_cast<std::uint16_t>(OP_RSQUARE))
+			{
+				if (brackets == 0) return false;
+				--brackets;
+			}
+			else if (kind == static_cast<std::uint16_t>(OP_RBRACE))
+			{
+				if (braces == 0) return false;
+				--braces;
+			}
+			if (parentheses != 0 || brackets != 0 || braces != 0) continue;
+			if (kind == static_cast<std::uint16_t>(OP_QMARK))
+			{
+				++conditionals;
+				continue;
+			}
+			if (kind == static_cast<std::uint16_t>(OP_COLON))
+			{
+				if (conditionals != 0)
+				{
+					--conditionals;
+					continue;
+				}
+				return true;
+			}
+			if (kind == static_cast<std::uint16_t>(OP_SEMICOLON) ||
+				kind == kEofToken)
+				return false;
+		}
+		return false;
+	}
+
 	NodeId TryParseRangeForStatement(std::size_t fact_mark)
 	{
 		Derived& parser = static_cast<Derived&>(*this);
-		const auto range_mark = parser.Checkpoint();
+		if (!StartsRangeForStatement()) return kNoNode;
 		const NodeId specifiers = parser.ParseDeclSpecifierSeq(false);
 		if (specifiers == kNoNode)
-		{
-			parser.Rollback(range_mark);
-			return kNoNode;
-		}
+			throw parser.Error("expected range declaration specifiers");
 		std::string name;
 		const NodeId declarator = parser.ParseDeclarator(false, &name);
 		parser.SkipAttributes();
-		if (declarator == kNoNode || !parser.Match(OP_COLON))
-		{
-			parser.Rollback(range_mark);
-			return kNoNode;
-		}
+		if (declarator == kNoNode)
+			throw parser.Error("expected range declarator");
+		parser.Expect(OP_COLON);
 		const NodeId statement = parser.arena_.Make("range-for-statement");
 		const NodeId declaration = parser.arena_.Make("range-declaration");
 		parser.arena_.Add(declaration, specifiers);

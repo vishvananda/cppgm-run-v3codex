@@ -46,10 +46,14 @@ BindingId SemanticAnalyzer::AddRangeForLocal(ScopeId scope,
 	ExpressionInfo initializer, bool array_initializer)
 {
 	EnsureClassDefinition(type);
+	const TypeKind declared_kind = program_->types.Get(type).kind;
+	const bool reference = declared_kind == TYPE_LVALUE_REFERENCE ||
+		declared_kind == TYPE_RVALUE_REFERENCE;
 	if (!array_initializer)
 	{
 		const DumpKind kind = dump_.nodes[initializer.node].kind;
-		if (IsClassObjectType(type) && kind == DUMP_TEMPORARY_OBJECT &&
+		if (!reference && IsClassObjectType(type) &&
+			kind == DUMP_TEMPORARY_OBJECT &&
 			dump_.nodes[initializer.node].first_edge != kNoDumpEdge &&
 			dump_.edges[dump_.nodes[initializer.node].first_edge].next ==
 				kNoDumpEdge)
@@ -65,7 +69,7 @@ BindingId SemanticAnalyzer::AddRangeForLocal(ScopeId scope,
 				initializer.category = VALUE_NONE;
 			}
 		}
-		else if (IsClassObjectType(type) &&
+		else if (!reference && IsClassObjectType(type) &&
 			initializer.category == VALUE_PRVALUE &&
 			kind == DUMP_CALL_EXPRESSION &&
 			!dump_.nodes[initializer.node].explicit_user_conversion_call)
@@ -75,7 +79,7 @@ BindingId SemanticAnalyzer::AddRangeForLocal(ScopeId scope,
 			initializer = BuildDirectClassValueTransfer(
 				initializer, type, selected);
 		}
-		else if (IsClassObjectType(type) &&
+		else if (!reference && IsClassObjectType(type) &&
 			program_->types.RemoveTopCv(EffectiveType(initializer.type)) ==
 				program_->types.RemoveTopCv(EffectiveType(type)))
 		{
@@ -128,6 +132,16 @@ void SemanticAnalyzer::FinishRangeForLocalInitializer(ScopeId scope,
 			MakeTemporaryDestructorAction(temporaries[i - 1]);
 		if (action != kNoDumpEdge) dump_.Add(declaration, action);
 	}
+}
+
+void SemanticAnalyzer::FinishRangeForFullExpression(ScopeId scope,
+	std::uint32_t owner, const ExpressionInfo& expression)
+{
+	const std::size_t edge_count = dump_.edges.size();
+	AppendFullExpressionDestructionActions(expression.node, owner);
+	if (dump_.edges.size() == edge_count) return;
+	MarkFullExpressionCalls(expression.node);
+	AppendUnwindDestructionActions(scope, owner);
 }
 
 ExpressionInfo SemanticAnalyzer::AnalyzeRangeForUnary(const char* operation,
@@ -379,15 +393,24 @@ void SemanticAnalyzer::AnalyzeRangeFor(NodeId node, ScopeId scope,
 	{
 		range = AnalyzeExpression(initializer_syntax, control);
 		range_type = program_->types.RemoveTopCv(EffectiveType(range.type));
-		const TypeRecord& shape = program_->types.Get(range_type);
+		const TypeKind range_kind = program_->types.Get(range_type).kind;
+		if (range.category == VALUE_PRVALUE &&
+			range_kind == TYPE_ARRAY)
+			range = MaterializeTemporary(range);
 		const bool stable_lvalue = range.category == VALUE_LVALUE &&
 			dump_.nodes[range.node].kind == DUMP_ID_EXPRESSION;
-		if (!stable_lvalue && shape.kind != TYPE_ARRAY)
+		if (!stable_lvalue)
 		{
 			const NameId name = NextRangeForHiddenName("__range");
-			const TypeId storage_type = range.category == VALUE_LVALUE ?
-				program_->types.Reference(TYPE_LVALUE_REFERENCE,
-					EffectiveType(range.type)) : EffectiveType(range.type);
+			TypeId storage_type = EffectiveType(range.type);
+			if (range.category == VALUE_LVALUE)
+				storage_type = program_->types.Reference(
+					TYPE_LVALUE_REFERENCE, storage_type);
+			else if (range.category == VALUE_XVALUE &&
+				(range_kind == TYPE_ARRAY ||
+				 dump_.nodes[range.node].kind != DUMP_TEMPORARY_OBJECT))
+				storage_type = program_->types.Reference(
+					TYPE_RVALUE_REFERENCE, storage_type);
 			const BindingId binding = AddRangeForLocal(
 				control, init, name, storage_type, range);
 			range = MakeRangeForBindingExpression(binding);
@@ -422,6 +445,7 @@ void SemanticAnalyzer::AnalyzeRangeFor(NodeId node, ScopeId scope,
 		const std::uint32_t condition = MakeDump(DUMP_CONDITION);
 		dump_.nodes[condition].full_expression_staging = true;
 		dump_.Add(condition, condition_value.node);
+		FinishRangeForFullExpression(control, condition, condition_value);
 		dump_.Add(statement, condition);
 
 		ExpressionInfo index_for_element =
@@ -430,10 +454,12 @@ void SemanticAnalyzer::AnalyzeRangeFor(NodeId node, ScopeId scope,
 			range, index_for_element, control);
 		ExpressionInfo index_for_iteration =
 			MakeRangeForBindingExpression(index_binding);
-		const ExpressionInfo increment = AnalyzeRangeForUnary(
-			"++", "OP_INC:++", index_for_iteration, control);
+		const ExpressionInfo increment = MaterializeDiscardedClassResult(
+			AnalyzeRangeForUnary(
+				"++", "OP_INC:++", index_for_iteration, control));
 		const std::uint32_t iteration = MakeDump(DUMP_ITERATION);
 		dump_.Add(iteration, increment.node);
+		FinishRangeForFullExpression(control, iteration, increment);
 		dump_.Add(statement, iteration);
 	}
 	else
@@ -469,13 +495,16 @@ void SemanticAnalyzer::AnalyzeRangeFor(NodeId node, ScopeId scope,
 		const std::uint32_t condition = MakeDump(DUMP_CONDITION);
 		dump_.nodes[condition].full_expression_staging = true;
 		dump_.Add(condition, condition_value.node);
+		FinishRangeForFullExpression(control, condition, condition_value);
 		dump_.Add(statement, condition);
 		element = AnalyzeRangeForUnary("*", "OP_STAR:*",
 			MakeRangeForBindingExpression(begin_binding), control);
-		const ExpressionInfo increment = AnalyzeRangeForUnary("++", "OP_INC:++",
-			MakeRangeForBindingExpression(begin_binding), control);
+		const ExpressionInfo increment = MaterializeDiscardedClassResult(
+			AnalyzeRangeForUnary("++", "OP_INC:++",
+				MakeRangeForBindingExpression(begin_binding), control));
 		const std::uint32_t iteration = MakeDump(DUMP_ITERATION);
 		dump_.Add(iteration, increment.node);
+		FinishRangeForFullExpression(control, iteration, increment);
 		dump_.Add(statement, iteration);
 	}
 
