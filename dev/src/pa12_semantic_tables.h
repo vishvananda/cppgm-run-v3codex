@@ -68,6 +68,21 @@ struct EnumOperatorCandidateHash
 	}
 };
 
+// Request-local canonical binding set. Open addressing keeps the candidate
+// path contiguous and preserves first-seen overload order without node-based
+// allocation.
+class FlatBindingIdSet
+{
+public:
+	FlatBindingIdSet();
+	bool Insert(BindingId binding);
+
+private:
+	void Rehash(std::size_t capacity);
+	std::vector<std::uint32_t> slots_;
+	std::size_t size_;
+};
+
 class CompactIndexSequence
 {
 public:

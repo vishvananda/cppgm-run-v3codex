@@ -4,7 +4,6 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
-#include <unordered_set>
 #include <vector>
 
 namespace cppgm
@@ -413,13 +412,13 @@ void SemanticAnalyzer::CompleteArgumentDependentCallCandidates(NameId name,
 	// Candidate formation is reentrant: substituting an ADL template can start
 	// a nested collection and advance the scratch generation. Canonicalize at
 	// this call boundary so the outer set does not inherit duplicate entries.
-	std::unordered_set<BindingId> seen;
+	FlatBindingIdSet seen;
 	std::vector<BindingId> canonical;
 	canonical.reserve(combined.size());
 	for (std::size_t i = 0; i < combined.size(); ++i)
 	{
 		const BindingId binding = program_->bindings[combined[i]].canonical;
-		if (seen.insert(binding).second) canonical.push_back(combined[i]);
+		if (seen.Insert(binding)) canonical.push_back(combined[i]);
 	}
 	candidates->swap(canonical);
 }

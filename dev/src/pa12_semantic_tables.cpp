@@ -8,6 +8,44 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+FlatBindingIdSet::FlatBindingIdSet()
+	: slots_(8, 0), size_(0)
+{
+}
+
+bool FlatBindingIdSet::Insert(BindingId binding)
+{
+	if (binding == kNoBinding)
+		throw std::logic_error("invalid canonical binding identity");
+	if ((size_ + 1) * 10 > slots_.size() * 7)
+		Rehash(slots_.size() * 2);
+	const std::size_t mask = slots_.size() - 1;
+	std::size_t slot = MixHash(0, binding) & mask;
+	while (slots_[slot] != 0)
+	{
+		if (slots_[slot] - 1 == binding) return false;
+		slot = (slot + 1) & mask;
+	}
+	slots_[slot] = binding + 1;
+	++size_;
+	return true;
+}
+
+void FlatBindingIdSet::Rehash(std::size_t capacity)
+{
+	std::vector<std::uint32_t> replacement(capacity, 0);
+	const std::size_t mask = capacity - 1;
+	for (std::size_t i = 0; i < slots_.size(); ++i)
+	{
+		if (slots_[i] == 0) continue;
+		const BindingId binding = slots_[i] - 1;
+		std::size_t slot = MixHash(0, binding) & mask;
+		while (replacement[slot] != 0) slot = (slot + 1) & mask;
+		replacement[slot] = binding + 1;
+	}
+	slots_.swap(replacement);
+}
+
 CompactIndexSequence::CompactIndexSequence()
 	: inline_values_(), size_(0)
 {

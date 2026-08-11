@@ -100,51 +100,6 @@ std::uint8_t SemanticAnalyzer::ArrayElementCv(TypeId type) const
 	return record.kind == TYPE_ARRAY ? ArrayElementCv(record.child) : CV_NONE;
 }
 
-namespace
-{
-
-class CandidateIdentitySet
-{
-public:
-	CandidateIdentitySet() : slots_(8, 0), size_(0) {}
-	bool Insert(BindingId binding)
-	{
-		if ((size_ + 1) * 10 > slots_.size() * 7)
-			Rehash(slots_.size() * 2);
-		const std::size_t mask = slots_.size() - 1;
-		std::size_t slot = MixHash(0, binding) & mask;
-		while (slots_[slot] != 0)
-		{
-			if (slots_[slot] - 1 == binding) return false;
-			slot = (slot + 1) & mask;
-		}
-		slots_[slot] = binding + 1;
-		++size_;
-		return true;
-	}
-
-private:
-	void Rehash(std::size_t capacity)
-	{
-		std::vector<std::uint32_t> replacement(capacity, 0);
-		const std::size_t mask = capacity - 1;
-		for (std::size_t i = 0; i < slots_.size(); ++i)
-		{
-			if (slots_[i] == 0) continue;
-			const BindingId binding = slots_[i] - 1;
-			std::size_t slot = MixHash(0, binding) & mask;
-			while (replacement[slot] != 0) slot = (slot + 1) & mask;
-			replacement[slot] = binding + 1;
-		}
-		slots_.swap(replacement);
-	}
-
-	std::vector<std::uint32_t> slots_;
-	std::size_t size_;
-};
-
-}
-
 ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinInvoke(ScopeId scope,
 	const std::vector<NodeId>& argument_syntax,
 	const std::vector<ExpressionInfo>* analyzed_arguments, TypeId target)
@@ -998,7 +953,7 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 	for (std::size_t i = 0; i < found.OrdinaryCount(); ++i)
 		AppendFunctionSet(found.OrdinaryAt(i), &collected,
 			exclude_template_specializations);
-	CandidateIdentitySet seen;
+	FlatBindingIdSet seen;
 	std::vector<BindingId> result;
 	result.reserve(collected.size());
 	for (std::size_t i = 0; i < collected.size(); ++i)

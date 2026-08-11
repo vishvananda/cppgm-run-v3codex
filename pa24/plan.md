@@ -1,161 +1,120 @@
-# PA24 Implementation Plan
+# PA24 Final Audit Plan
 
 ## Stage Design and Spec Alignment
 
-PA24 composes the PA19-PA23 template engine through the canonical semantic
-graph and typed LowIR path. Retained syntax is parsed once; template,
-specialization, argument, scope, declaration, and emission identities own
-replay and demand facts. No textual transport or alternate lowering path is
-introduced.
+PA24 composes the PA19-PA23 template engine through one canonical semantic
+graph and the existing typed LowIR model. Source bytes are preprocessed into
+the compact PA10 token/syntax representation required by the assignment, each
+region is parsed once, and semantic analysis records interned names, canonical
+types and arguments, selected declarations and conversions, specialization
+states, lifetime actions, ABI recipes, and explicit emission demand. The
+analyzer and all parser, syntax, lookup, substitution, and demand scratch are
+destroyed before a borrowed `SemanticGraphView` is lowered synchronously into
+`TypedProgram`; LowIR text is rendered once as the requested stage output.
 
-Relevant `spec.md` requirements are O(1)-average canonical identity and
-owner-indexed lookup (sections 2-3), complete specialization keys, monotonic
-facts, parent-linked environments, dependent-only replay, and demanded bodies
-(section 4), deduplicated work (section 5), lowering from selected declaration
-and emission identities (section 6), translation-unit-owned storage (section
-8), and work proportional to owner-local candidates, arguments, and newly
-demanded nodes (section 9).
+The production `spec.md` checklist is adapted at two declared PA24 boundaries.
+The README explicitly requires the PA10 AST, so the compact token vector and
+one syntax arena coexist with semantic construction instead of an integrated
+parser/semantic cursor; there is no duplicate parsed tree and syntax does not
+cross the lowering boundary. PA24 ends at LowIR, so machine-IR, ELF, and direct
+object-writer checks are outside this stage. Within the available surface,
+canonical keys, owner-indexed lookup, monotonic specialization states,
+parent-linked substitution scopes, dependent-only replay, explicit demand
+queues, direct typed lowering, phase-local ownership, and self-containment are
+all present.
 
-## Current Failure Map
+Representative demanded data flows as follows:
 
-Current state: **422/422** pa24 tests (checkpoint start: 421/422; goal start:
-368/422); all **3,049/3,049** tests through pa23 pass.
-
-| Shared behavior and owner | Count | Complete failing set (test basename) |
-| --- | ---: | --- |
-| None | 0 | — |
-
-## Active Checkpoint
-
-**Stage complete.** Evaluation-ordered reference-temporary slots closed the
-final checkpoint. The typed slot planner now records scalar constructor
-arguments bound to references while visiting the selected constructor action,
-so data flows as `declaration slot -> initializer reference materialization ->
-later declaration slot -> LowIR` without lowering-time allocation. This applies
-`spec.md` sections 6, 8, and 9: typed actions drive lowering in evaluation order,
-compact slot IDs remain translation-unit-owned, and each constructor argument
-is visited once. Full PA24, through-PA23, audit, and linear width evidence are
-the completion validation.
+- A qualified class-scope variable-template use is retained as a typed pattern,
+  found through its owner/name index, selected and substituted under canonical
+  arguments, memoized by `TemplateSpecializationKey`, published as one binding
+  with static-member and initializer facts, then lowered as a typed global.
+- The constructor/SFINAE integration case retains dependent defaults and ABI
+  recipes on the pattern, deduces canonical arguments and pack partitions,
+  records candidate-local failure, selected conversions, and constructor
+  action identity, queues only the selected definition, plans reference-bound
+  scalar slots in declaration evaluation order, and lowers the recorded action
+  directly to typed calls and object storage.
 
 ## Performance Evidence
 
-Explicit-specialization definition/redeclaration scale 1/2/4/8/16/32 produced
-template requests 4/7/13/25/49/97, cache hits 3/5/9/17/33/65, lookup-scope
-visits 9/10/12/16/24/40, and semantic times 0.326/0.373/0.550/0.800/1.314/
-2.306 ms; demand pushes stayed at one.
-
-Qualified member-variable-template NTTP scale 1/2/4/8/16/32 produced template
-requests 4/8/16/32/64/128, cache hits 1/2/4/8/16/32, canonical argument-list
-requests 9/18/36/72/144/288 with hits 7/14/28/56/112/224, lookup-scope visits
-23/41/77/149/293/581, demand pushes 1/2/4/8/16/32, and semantic times
-0.504/0.657/1.107/1.627/2.855/5.368 ms. Counts and time remain linear in the
-number of distinct requested specializations.
-
-Recursive base-constructor depth 1/2/4/8/16/32/64 emitted 3/4/6/10/18/34/66
-functions with median compile times 3.787/4.046/4.147/4.664/5.397/7.362/
-10.825 ms (nine runs each after warm-up). Emission and time remain linear in
-the number of selected constructor entries.
-
-Explicit-id ADL width 2/3/5/9/17/33/65 associated scopes emitted two functions
-throughout with median compile times 4.145/4.165/4.274/4.603/5.091/6.286/
-8.597 ms (nine runs each after warm-up). Lookup time remains linear in the
-deduplicated associated-scope count.
-
-Retained current-specialization reference width 1/2/4/8/16/32/64 compiled in
-median 11.535/11.672/11.657/11.779/12.386/13.077/14.761 ms (nine runs each
-after warm-up). Validation time remains linear in the number of retained
-member signatures; each class/qualified owner publishes one scope fact.
-
-Qualified default-expression candidate width 1/2/4/8/16/32 produced lookup
-scope visits 55/60/70/90/130/210, while viable overload candidates stayed at
-three, specialization requests at 12, and default materializations at one.
-Median semantic times were 1.509/1.544/1.602/1.660/1.923/2.318 ms (nine runs);
-owner lookup and time remain linear and rejected arities do not enter ordering.
-
-Dependent qualified-constraint width 1/2/4/8/16/32 produced 92/99/113/141/
-197/309 lookup-scope visits and 13/18/28/48/88/168 specialization requests,
-with 7/12/22/42/82/162 cache hits. Deduction visits stayed at six; median
-semantic times were 1.127/1.299/1.481/1.967/2.997/4.923 ms over nine runs,
-showing linear retained-syntax work and cache reuse of repeated concrete work.
-
-Trivial default-initialized array extents 1/2/4/8/16/32/64/128 emitted 12
-instructions, one function, zero default-constructor definitions, and 16
-materialized-demand visits throughout. Median lowering times were 0.062/0.058/
-0.053/0.056/0.051/0.055/0.050/0.055 ms over nine runs; no-op construction work
-is independent of extent, while nontrivial arrays retain the linear loop path.
-
-Undefined function-specialization widths 1/2/4/8/16/32/64 kept demand pushes
-and declaration emissions at one. Semantic nodes were 8/9/11/15/23/39/71,
-deduction visits 2/4/8/16/32/64/128, output bytes 249/268/306/382/540/860/
-1500, and median semantic times 0.223/0.239/0.250/0.270/0.314/0.410/0.567 ms
-over nine runs. Typed declaration work remains linear in canonical parameter
-width without replaying a declaration body environment.
-
-Same-type rvalue-reference casts with 1/2/4/8/16/32/64 visible conversion
-operators kept overload candidates at four and demand pushes at one. Semantic
-nodes were 33/34/36/40/48/64/96, template requests 1/2/4/8/16/32/64, and
-median semantic times 0.415/0.436/0.511/0.585/0.694/0.997/1.573 ms over nine
-runs. Total declaration work is linear, while direct-reference classification
-avoids a conversion-candidate-width scan.
-
-Repeated empty reference-transfer and namespace-object widths
-1/2/4/8/16/32/64 produced functions 4/6/10/18/34/66/130, globals and
-empty-chain visits 1/2/4/8/16/32/64, instructions 12/21/39/75/147/291/579,
-and demand pushes 5/9/17/33/65/129/257. Seven-run median semantic/lowering
-times were 1.016/0.235, 1.401/0.266, 2.149/0.369, 3.465/0.543, 6.112/0.938,
-11.710/1.719, and 24.724/3.347 ms; all owner-local work remains linear.
-
-Nested empty construction-transfer depths 1/2/4/8/16/32/64 produced semantic
-nodes 40/60/100/180/340/660/1300, demand visits 25/34/52/88/160/304/592,
-and instructions 18/22/30/46/78/142/270. Seven-run median semantic/lowering
-times were 0.579/0.210, 0.701/0.234, 0.958/0.251, 1.478/0.349, 2.378/0.504,
-4.349/0.815, and 8.819/1.453 ms; recipe traversal and demand remain linear.
-
-Materialized default-suffix widths 1/2/4/8/16/32/64 produced deduction visits
-12/15/21/33/57/105/201 while semantic nodes stayed at 26 and canonical
-argument-list requests at 11. Seven-run median semantic times were 0.610/0.637/
-0.656/0.718/0.811/1.066/1.390 ms; the suffix anchor is one linear reverse pass.
-
-Retained non-static receiver depths 1/2/4/8/16/32/64 produced 32/40/56/88/
-152/280/536 demand visits and 28/32/40/56/88/152/280 semantic nodes; demand
-pushes stayed at three. Seven-run median semantic times were 0.251/0.261/0.268/
-0.298/0.365/0.523/0.810 ms, showing one scan per newly retained call node.
-
-Dependent trailing-result failure widths 1/2/4/8/16/32/64 produced 9/18/36/
-72/144/288/576 deduction visits, 54/100/192/376/744/1,480/2,952 specialization
-requests, and 362/592/1,052/1,972/3,812/7,492/14,852 lookup-scope visits.
-Seven-run median semantic times were 2.237/3.037/4.776/8.146/14.873/28.775/
-57.541 ms; candidate-local failure formation remains linear in request width.
-
-Shared ABI-recipe specialization widths 1/2/4/8/16/32/64 produced 29/53/101/
-197/389/773/1,541 semantic nodes, 6/12/24/48/96/192/384 specialization
-requests, and 2/4/8/16/32/64/128 globals. Five-run median semantic times were
-0.443/0.575/0.817/1.246/2.156/3.931/7.830 ms; pattern storage is shared and
-specialization-local identity work remains linear.
-
-Reference-bound constructor declaration widths 1/2/4/8/16/32/64 produced
-2/4/8/16/32/64/128 main slots, 10/13/19/31/55/103/199 lowered nodes, and
-13/17/25/41/73/137/265 instructions. Five-run median lowering times were
-0.147/0.152/0.166/0.171/0.178/0.225/0.323 ms; the slot prepass and emitted work
-remain linear in declarations and selected constructor arguments.
-
-## Completed Checkpoints
-
-| Checkpoint | Commit | Disposition |
+| Workload | Measured evidence | Conclusion |
 | --- | --- | --- |
-| Explicit specialization identity and definition publication | `62f37ef1` | Eight failures removed; 376/422 pa24, 3,049/3,049 through pa23, audit pass. |
-| Canonical non-type arguments, designators, static-value demand, and variable-template lowering identity | `6b06e092` | Fifteen failures removed; 391/422 pa24, 3,049/3,049 through pa23, audit pass. |
-| Typed construction-entry demand and nontrivial empty-result ABI | `6a1a66c7` | Four failures removed; 395/422 pa24, 3,049/3,049 through pa23, linear depth probe. |
-| Explicit-id ADL and candidate-local deleted/dependent invalidity | `4c694582` | Four failures removed; 399/422 pa24, 3,049/3,049 through pa23, linear ADL-width probe. |
-| Retained current-specialization dependency | `739eab0f` | Two failures removed; 401/422 pa24, 3,049/3,049 through pa23, linear reference-width probe. |
-| Default-expression candidate completion and partial ordering | `b555a4eb` | Two failures removed; 403/422 pa24, 3,049/3,049 through pa23, linear candidate-width probe. |
-| Nonterminal dependent template-id and prior-parameter retention | `9ab41503` | One failure removed; 404/422 pa24, 3,049/3,049 through pa23, linear constraint-width probe. |
-| Destination-consistent default/value construction lowering | `5be465c9` | Two failures removed; 406/422 pa24, 3,049/3,049 through pa23, constant trivial-array extent probe. |
-| Identity-only typed declaration emission | `6a107535` | Two failures removed; 408/422 pa24, 3,049/3,049 through pa23, linear declaration-width probe. |
-| Direct-reference classification and runtime conversion-object materialization | `f3724c7e` | Two failures removed; 410/422 pa24, 3,049/3,049 through pa23, constant candidate count across conversion width. |
-| Empty-value lifecycle demand and destination-owned lowering | `6a238d0f` | Three failures removed; 413/422 pa24, 3,049/3,049 through pa23, linear empty-transfer/object scaling. |
-| Type-preserving class-argument staging and nested empty-recipe consumption | `dfe38634` | Two failures removed; 415/422 pa24, 3,049/3,049 through pa23, linear nested-construction scaling. |
-| Declaration-ordered retained arguments and fixed-primary pack spans | `30fe0986` | Two failures removed; 417/422 pa24, 3,049/3,049 through pa23, linear default-suffix scaling. |
-| Candidate-local member-call formation and retained receiver demand | `f18a8293` | Two failures removed; 419/422 pa24, 3,049/3,049 through pa23, audit pass, linear failure-width and receiver-depth scaling. |
-| Retained function-template ABI recipes and local-static owner identity | `5db862b8` | Two failures removed; 421/422 pa24, focused PA21-PA23 controls pass, linear specialization-width scaling. |
-| Evaluation-ordered constructor reference-argument slots | `4f832f86` | Final failure removed; 422/422 pa24, linear declaration-width scaling. |
+| Full checked-in PA24 source sweep | 422 inputs in 8.8 s; slowest process 27.3 ms including startup. The five slowest semantic phases were 8.74-13.48 ms; lowering was at most 0.45 ms and rendering at most 0.06 ms. | No unexplained test outlier or lowering/rendering retry path. |
+| Competing explicit-id ADL, width 1/2/4/8/16/32/64/128 | Associated scopes 2/3/5/9/17/33/65/129; declarations 2/3/5/9/17/33/65/129; overload visits 8/12/20/36/68/132/260/516; conversion checks 10/16/28/52/100/196/388/772; seven-run median semantic time 0.600/0.721/0.903/1.212/1.847/3.147/5.939/11.365 ms. | The shared flat candidate set grows geometrically; lookup, candidate, conversion, storage, and time follow semantic width. |
+| Canonical specialization integration | Explicit-specialization widths 1-32 produced 4-97 requests and 3-65 hits; qualified variable-template NTTP widths 1-32 produced 4-128 requests, 1-32 demand pushes, and 0.50-5.37 ms semantic time. | Complete-key lookup and newly demanded specialization work remain linear. |
+| Candidate failure and deferred defaults | Trailing-result failure widths 1-64 produced 9-576 deduction visits and 54-2,952 requests in 2.24-57.54 ms; default-suffix widths 1-64 produced 12-201 deduction visits while semantic nodes stayed at 26. | Candidate-local failure and selected-only default materialization avoid global replay. |
+| Construction, lifecycle, and ABI lowering | Empty transfer and nested-construction series were linear through width/depth 64; trivial arrays kept 12 instructions through extent 128; ABI-recipe widths 1-64 took 0.44-7.83 ms; reference-slot widths 1-64 produced 2-128 slots and lowering time 0.147-0.323 ms. | Demand, recipe traversal, and typed emission are proportional to selected actions and output. |
+
+The slowest checked-in case had 3,247 declarations, 2,962 lookup queries, 439
+specialization requests, 1,086 partial-deduction visits, and a 13.48 ms semantic
+phase. The largest partial-replay case had 1,298 deduction visits and 11.12 ms
+semantic time. These counters explain the observed time; neither case shows a
+whole-program retry or a broad lowering scan.
+
+## Architecture Review
+
+- Representation and ownership: source ownership is explicit; one PA10 syntax
+  arena feeds one canonical graph; analyzer scratch dies before direct typed
+  lowering; no text is rendered and parsed back.
+- Identity and lookup: hot semantic relationships use compact `NameId`,
+  `TypeId`, `ScopeId`, `BindingId`, entity, template-argument-list, partition,
+  and emission IDs. Structured ABI recipes own semantics; mangled strings are
+  output metadata. Lookup follows lexical/associated owner indexes.
+- Templates and repeated work: complete specialization keys contain pattern,
+  canonical argument-list, and pack-partition identity. Request states
+  distinguish not-started, in-progress, success, and failure; completion,
+  member replay, default, exception, and emission facts have separate owners.
+  Substitution scopes are parent-linked overlays and only retained dependent
+  syntax is replayed.
+- Scheduling: class-member, constructor, and function demand are deduplicated
+  stable-ID queues drained by monotonic cursors. No retry-until-stable scan or
+  translation-unit cache flush was found.
+- Lowering: selected bindings, conversion/reference facts, object identities,
+  layouts, lifetime actions, ABI recipes, and demand order cross the graph
+  boundary. Slot planning and emission consume typed nodes without source
+  lookup, mangled-name reconstruction, LowIR reparsing, or fake semantic nodes.
+- Allocation and scaling: canonical tables and the repaired request-local
+  candidate set are vector-backed open-addressed structures. Temporary
+  collections are phase-local and geometrically grown; release telemetry
+  exposes phase bytes/times, lookup/candidate work, specialization/cache work,
+  demand edges, and IR size.
+- Self-containment: the production frontend source set contains no host or
+  reference compiler invocation, cached-answer path, filename dispatch, or
+  expected-output recognition.
+
+## Final Architecture Review
+
+The audit found one PA24 architecture defect: reentrant ADL canonicalization
+used a node-allocating `std::unordered_set<BindingId>` even though ordinary
+function-candidate deduplication already had a private flat ID set. Both paths
+now use one shared `FlatBindingIdSet` with contiguous slots, open addressing,
+geometric growth, and first-seen order. Focused reentrant/explicit-id ADL tests,
+the full PA24 suite, and width-128 competing-candidate measurements pass.
+
+No open PA24 correctness, architecture, performance, self-containment, or
+file-audit blocker remains. The file audit reports only nonfatal existing-header
+division advisories; the shared set implementation is in a `.cpp` file.
+
+## Checkpoint Ledger
+
+| Checkpoint | Commit | Final disposition |
+| --- | --- | --- |
+| Explicit specialization identity and definition publication | `62f37ef1` | Canonical ownership preserved; eight failures removed. |
+| Canonical NTTP/designator/static-value and variable-template identity | `6b06e092` | Typed values and storage demand preserved; fifteen failures removed. |
+| Construction-entry demand and nontrivial empty-result ABI | `6a1a66c7` | Selected constructor demand remains monotonic and linear. |
+| Explicit-id ADL and candidate-local invalidity | `4c694582` | Strengthened by the final shared flat candidate set. |
+| Retained current-specialization dependency | `739eab0f` | Owner facts remain typed and width-linear. |
+| Default-expression candidate completion and ordering | `b555a4eb` | Unselected defaults stay unmaterialized. |
+| Dependent qualified parameter/result retention | `9ab41503` | Prior-parameter dependence survives replay. |
+| Destination-consistent default/value construction | `5be465c9` | Trivial arrays avoid extent-proportional no-op work. |
+| Identity-only typed declaration emission | `6a107535` | Declarations lower without body/environment reconstruction. |
+| Direct reference conversions and runtime materialization | `f3724c7e` | Conversion candidate count stays bounded by the actual lookup set. |
+| Empty-value lifecycle demand and destination ownership | `6a238d0f` | Empty transfer/object work remains linear. |
+| Nested class construction recipes | `dfe38634` | Type and recipe identity survive nested lowering. |
+| Pack deduction before class defaults | `30fe0986` | Pack partitions and default suffixes remain canonical. |
+| Candidate-local calls and retained receiver demand | `f18a8293` | Failure and runtime demand remain request-local. |
+| Function-template ABI recipes and local-static owner identity | `5db862b8` | Structured pattern ABI and local owner identity lower once. |
+| Evaluation-ordered constructor reference slots | `4f832f86` | The final PA24 failure was removed with a linear typed prepass. |
+| Stage-plan completion | `d32e64a6` | Reconciled with this independent audit and final ledger. |
+| Final full-stage architecture audit | current audit | Flat candidate deduplication, end-to-end traces, profiling, file audit, and through-stage validation complete. |
