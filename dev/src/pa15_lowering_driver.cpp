@@ -273,6 +273,12 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 				semantic_stats.function_template_default_request_cache_hits;
 			semantic.function_template_default_failure_cache_hits +=
 				semantic_stats.function_template_default_failure_cache_hits;
+			semantic.function_template_exception_specification_requests +=
+				semantic_stats.function_template_exception_specification_requests;
+			semantic.function_template_exception_specification_cache_hits +=
+				semantic_stats.function_template_exception_specification_cache_hits;
+			semantic.function_template_exception_specification_evaluations +=
+				semantic_stats.function_template_exception_specification_evaluations;
 			semantic.template_argument_list_requests +=
 				semantic_stats.template_argument_list_requests;
 			semantic.template_argument_list_cache_hits +=

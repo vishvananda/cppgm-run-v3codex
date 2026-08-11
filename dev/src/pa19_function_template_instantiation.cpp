@@ -896,28 +896,26 @@ std::size_t SemanticAnalyzer::FindPriorFunctionTemplatePattern(
 
 ScopeId SemanticAnalyzer::FunctionTemplateExceptionScope(
 	const FunctionTemplatePattern& pattern,
-	const DeclaratorInfo& declarator, ScopeId template_scope,
-	EntityId member_owner)
+	const FunctionInfo& function)
 {
-	if (declarator.trailing_return_scope != kNoScope)
-		return declarator.trailing_return_scope;
-	const ScopeId scope = NewScope(template_scope, SCOPE_FUNCTION,
-		declarator.name, ScopePrefixId(template_scope));
+	const ScopeId scope = NewScope(function.lexical_scope, SCOPE_FUNCTION,
+		program_->bindings[function.binding].name,
+		ScopePrefixId(function.lexical_scope));
 	BindFunctionParameterPackElement(
-		scope, FunctionParameterPackName(pattern.declarator), kNoBinding);
-	for (std::size_t i = 0; i < declarator.parameters.size(); ++i)
+		scope, function.parameter_pack_name, kNoBinding);
+	for (std::size_t i = 0; i < function.parameters.size(); ++i)
 	{
-		const ParameterInfo& parameter = declarator.parameters[i];
+		const ParameterInfo& parameter = function.parameters[i];
 		const BindingId binding = program_->AddBinding(scope, BIND_PARAMETER,
 			parameter.name, ParameterBindingType(parameter));
 		BindFunctionParameterPackElement(scope, parameter.pack_name, binding);
 	}
-	if (member_owner != kNoEntity && !pattern.static_member)
+	if (function.member_owner != kNoType && !pattern.static_member)
 	{
-		TypeId object = program_->entities[member_owner].type;
-		const TypeRecord& function = program_->types.Get(declarator.type);
-		if (function.cv != CV_NONE)
-			object = program_->types.Qualify(object, function.cv);
+		TypeId object = function.member_owner;
+		const TypeRecord& function_type = program_->types.Get(function.type);
+		if (function_type.cv != CV_NONE)
+			object = program_->types.Qualify(object, function_type.cv);
 		program_->AddBinding(scope, BIND_PARAMETER,
 			program_->names.Intern("this"), program_->types.Pointer(object));
 	}
@@ -1883,21 +1881,9 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 				request_key, TEMPLATE_REQUEST_FAILED);
 		return kNoBinding;
 	}
-	bool nonthrowing = pattern.nonthrowing;
-	try
-	{
-		if (pattern.dependent_exception_specification)
-			nonthrowing = IsNonthrowing(pattern.declarator,
-				FunctionTemplateExceptionScope(
-					pattern, parsed, template_scope, member_owner));
-	}
-	catch (const std::runtime_error&)
-	{
-		if (needs_defaults)
-			function_template_default_requests_.SetRequest(
-				request_key, TEMPLATE_REQUEST_FAILED);
-		return kNoBinding;
-	}
+	const ScopeId exception_specification_scope =
+		pattern.dependent_exception_specification ?
+		parsed.trailing_return_scope : kNoScope;
 	if (CandidateSubstitutionActive())
 	{
 		const TypeRecord& function_type = program_->types.Get(parsed.type);
@@ -1918,7 +1904,7 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	const BindingId binding = DeclareFunction(pattern.owner, pattern.name,
 		parsed.type, parsed.parameters, pattern.defined, true,
 		member_owner == kNoEntity ? spec.storage_class : STORAGE_CLASS_NONE,
-		pattern.language_linkage, nonthrowing, pattern.ordinary_visible);
+		pattern.language_linkage, pattern.nonthrowing, pattern.ordinary_visible);
 	const BindingId canonical_binding =
 		program_->bindings[binding].canonical;
 	const FunctionSignatureKey declaration_key(pattern.owner, pattern.name,
@@ -1966,6 +1952,13 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	ValidateFunctionRefQualifier(binding);
 	ValidateNonmemberOperator(binding);
 	FunctionInfo& function = GetMutableFunction(binding);
+	if (pattern.dependent_exception_specification)
+	{
+		function.exception_specification_scope =
+			exception_specification_scope;
+		function.exception_specification_state =
+			EXCEPTION_SPECIFICATION_DEFERRED;
+	}
 	const bool constexpr_specialization = spec.is_constexpr &&
 		IsConstexprCallableType(parsed.type, pattern.constructor_template);
 	function.constexpr_function =
@@ -2008,6 +2001,84 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 			parameter_offsets.begin(), parameter_offsets.end());
 	}
 	return binding;
+}
+
+void SemanticAnalyzer::EnsureFunctionExceptionSpecification(BindingId binding)
+{
+	if (binding == kNoBinding) return;
+	binding = program_->bindings[binding].canonical;
+	const ExceptionSpecificationState state =
+		GetFunction(binding).exception_specification_state;
+	if (state == EXCEPTION_SPECIFICATION_FIXED) return;
+	++function_template_exception_specification_requests_;
+	if (state == EXCEPTION_SPECIFICATION_SUCCEEDED)
+	{
+		++function_template_exception_specification_cache_hits_;
+		return;
+	}
+	if (state == EXCEPTION_SPECIFICATION_FAILED)
+	{
+		++function_template_exception_specification_cache_hits_;
+		throw std::runtime_error(
+			"invalid dependent function exception specification");
+	}
+	if (state == EXCEPTION_SPECIFICATION_IN_PROGRESS)
+		throw std::runtime_error(
+			"recursive dependent function exception specification");
+	GetMutableFunction(binding).exception_specification_state =
+		EXCEPTION_SPECIFICATION_IN_PROGRESS;
+	++function_template_exception_specification_evaluations_;
+	const FunctionInfo function = GetFunction(binding);
+	try
+	{
+		if (function.inherited_constructor_source != kNoBinding &&
+			function.template_pattern == kNoDumpEdge)
+		{
+			const BindingId source = program_->bindings[
+				function.inherited_constructor_source].canonical;
+			EnsureFunctionExceptionSpecification(source);
+			program_->bindings[binding].nonthrowing =
+				program_->bindings[source].nonthrowing;
+		}
+		else
+		{
+			if (function.template_pattern >= function_templates_.size())
+				throw std::logic_error(
+					"deferred exception specification has no owner");
+			ScopeId scope = function.exception_specification_scope;
+			if (scope == kNoScope)
+			{
+				scope = FunctionTemplateExceptionScope(
+					function_templates_[function.template_pattern], function);
+				GetMutableFunction(binding).exception_specification_scope = scope;
+			}
+			const bool nonthrowing = IsNonthrowing(
+				function_templates_[function.template_pattern].declarator,
+				scope);
+			program_->bindings[binding].nonthrowing = nonthrowing;
+		}
+	}
+	catch (const std::runtime_error&)
+	{
+		GetMutableFunction(binding).exception_specification_state =
+			EXCEPTION_SPECIFICATION_FAILED;
+		throw;
+	}
+	catch (...)
+	{
+		GetMutableFunction(binding).exception_specification_state =
+			EXCEPTION_SPECIFICATION_DEFERRED;
+		throw;
+	}
+	GetMutableFunction(binding).exception_specification_state =
+		EXCEPTION_SPECIFICATION_SUCCEEDED;
+}
+
+bool SemanticAnalyzer::FunctionIsNonthrowing(BindingId binding)
+{
+	if (binding == kNoBinding) return false;
+	EnsureFunctionExceptionSpecification(binding);
+	return program_->bindings[program_->bindings[binding].canonical].nonthrowing;
 }
 
 void SemanticAnalyzer::RecordFunctionTemplateUsing(ScopeId owner,

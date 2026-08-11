@@ -381,10 +381,13 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 		function.lexical_scope = definition_scope;
 		function.constexpr_function = function.constexpr_function ||
 			member_spec.is_constexpr;
-		BindingRecord& selected_binding = program_->bindings[selected];
-		selected_binding.explicit_instantiation_suppressed = false;
-		selected_binding.nonthrowing = IsNonthrowing(
-			declarator, definition_scope);
+		const bool nonthrowing = IsNonthrowing(declarator, definition_scope);
+		program_->bindings[selected].explicit_instantiation_suppressed = false;
+		program_->bindings[selected].nonthrowing = nonthrowing;
+		FunctionInfo& completed = GetMutableFunction(selected);
+		completed.exception_specification_scope = kNoScope;
+		completed.exception_specification_state =
+			EXCEPTION_SPECIFICATION_FIXED;
 		PublishInlineFunctionFacts(selected,
 			member_spec.inline_specifier || member_spec.is_constexpr);
 		return true;
@@ -641,8 +644,12 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 	function.defined = target_definition;
 	function.deferred = true;
 	function.definition_body = FindChild(target, "compound-statement");
-	program_->bindings[selected].nonthrowing =
-		IsNonthrowing(declarator, scope);
+	const bool nonthrowing = IsNonthrowing(declarator, scope);
+	program_->bindings[selected].nonthrowing = nonthrowing;
+	FunctionInfo& completed = GetMutableFunction(selected);
+	completed.exception_specification_scope = kNoScope;
+	completed.exception_specification_state =
+		EXCEPTION_SPECIFICATION_FIXED;
 	program_->bindings[selected].explicit_instantiation_suppressed = false;
 	PublishInlineFunctionFacts(
 		selected, spec.inline_specifier || spec.is_constexpr);

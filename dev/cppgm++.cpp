@@ -641,6 +641,12 @@ int run_emit_semantics_mode(const vector<string> & args)
 		   << stats.function_template_default_request_cache_hits
 		   << " function_template_default_failure_cache_hits="
 		   << stats.function_template_default_failure_cache_hits
+		   << " function_template_exception_specification_requests="
+		   << stats.function_template_exception_specification_requests
+		   << " function_template_exception_specification_cache_hits="
+		   << stats.function_template_exception_specification_cache_hits
+		   << " function_template_exception_specification_evaluations="
+		   << stats.function_template_exception_specification_evaluations
 		   << " template_argument_list_requests="
 		   << stats.template_argument_list_requests
 		   << " template_argument_list_cache_hits="
@@ -824,6 +830,12 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << semantic.function_template_default_request_cache_hits
 			 << " function_template_default_failure_cache_hits="
 			 << semantic.function_template_default_failure_cache_hits
+			 << " function_template_exception_specification_requests="
+			 << semantic.function_template_exception_specification_requests
+			 << " function_template_exception_specification_cache_hits="
+			 << semantic.function_template_exception_specification_cache_hits
+			 << " function_template_exception_specification_evaluations="
+			 << semantic.function_template_exception_specification_evaluations
 			 << " template_argument_list_requests="
 			 << semantic.template_argument_list_requests
 			 << " template_argument_list_cache_hits="

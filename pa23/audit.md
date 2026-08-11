@@ -2,44 +2,51 @@
 
 ## Current Checkpoint Review
 
-The landed `84a3f7c5` increment moved the report from 308/404 to 315/404 by
-making abstract construction/allocation, narrowing, virtual-base downcasts,
-compound assignment, pseudo-destruction, and `void()` expression validity
-candidate-local. It records virtual-base syntax on canonical base edges,
-retains the reverse pointer-add fact for lowering, and exposes virtual-path
-visits. The audit found one defect in that increment: its new `bool += pointer`
-path treated every pointer as arithmetic-capable, so `void*`, function
-pointers, pointers to incomplete classes, and pointers to unknown-bound arrays
-incorrectly remained viable. The lowering-special-case flag was therefore
-being published without the complete-object precondition required by the
-language, contrary to `spec.md` sections 2, 3, 6, and 10.
+The landed `e218b8dc` increment moved PA23 from 371/405 to 374/405. Its three
+gains retain parameter-dependent calls in trailing results, replay dependent
+`noexcept` in a function-parameter scope, publish calls inside aliases, avoid
+constexpr execution in unevaluated operands, and complete supplied class
+specialization owners before indexed ADL finds hidden friends. The path is
+retained syntax and lexical scope -> canonical specialization and parameter
+facts -> lexical/ADL candidate indexes -> selected call fact -> ordinary
+constexpr or LowIR consumers.
 
-Pointer arithmetic now has one typed semantic owner that applies array decay,
-walks canonical cv/array structure, demands a named definition only where
-completeness is semantically required, and accepts only a pointer to a complete
-object. Binary addition/subtraction, increment, subscript, and both compound
-directions use that owner; invalid candidate expressions record compact failure
-without publishing the lowering flag. The same file audit exposed an oversized
-binary-expression owner, so comparison and arithmetic validation were split
-into typed helpers and their expected failures now use the same no-throw
-candidate result. The selected valid assignment alone carries the reverse-add
-fact into LowIR lowering; there is no string dispatch, lookup replay, or test
-recognition on this path.
+The audit found three connected defects. Function-specialization formation
+eagerly substituted dependent exception specifications and converted an
+invalid specification into candidate rejection, although N3485 14.8.2 requires
+that substitution only when the function is instantiated. This merged
+declaration and exception demand, repeated work without a completion state,
+and rejected a valid dormant specialization. The new result-dependence probe
+also used spelling alone, so a qualified value could become dependent merely
+by matching a function-parameter name. Finally, direct publication of an
+`IsNonthrowing` result could retain a binding-vector reference across re-entrant
+class completion and write through invalidated storage. These violate
+`spec.md` sections 2-5, 8-10.
 
-For 8/16/32/64 independent complete/incomplete-pointer probe groups, overload
-candidates are 256/512/1,024/2,048, specialization requests
-832/1,664/3,328/6,656, deduction visits 96/192/384/768, and lookups
-1,837/3,653/7,285/14,549. Peak semantic bytes are
-1,341,484/2,668,404/5,142,620/10,271,148 and three-run semantic medians are
-7.87/15.91/30.42/61.87 ms. Virtual chains of depth 16/32/64/128 take
-34/66/130/258 path visits and 0.88/1.26/2.10/3.88 ms. Candidate work, graph
-work, storage, and time are linear in the participating candidates and edges;
-the complete-object failure guard also finishes under `gdb catch throw`
-without a C++ throw.
+Each specialization now owns a monotonic fixed/deferred/in-progress/succeeded/
+failed exception-specification state and a lazily created parameter scope.
+Only `noexcept` inspection, constexpr definition use, runtime/emission demand,
+or an inherited constructor dependency requests the fact; subsequent users
+read the canonical binding through the completed state. Re-entrant analysis
+computes into a local value before identity-based publication, and action
+walkers copy transient dump records before requesting nested facts. Result
+dependence recognizes only unqualified parameter id-expressions. No lowering
+fallback, text round trip, global retry, exception-as-expected-control-flow,
+or source/test recognition remains on the affected path.
 
-The original checkpoint remains 315/404 and the audit guard makes the combined
-report 316/405, with all 89 prior failures unchanged and no timeout. PA1--PA22
-pass 2,639/2,639, the file audit passes with the same 13 inherited
+For 1/2/4/8 demanded NTTP specializations queried twice, exception requests
+were 4/8/16/32, cache hits 3/6/12/24, and evaluations exactly 1/2/4/8. Scopes
+were 16/25/43/79, lookups 17/29/53/101, overload candidates 2/4/8/16,
+specialization requests 6/12/24/48, and specialization hits 5/10/20/40;
+typed LowIR storage stayed 1,735 bytes. Three-run semantic medians were
+0.317/0.370/0.464/0.689 ms. Work and retained lowering storage therefore track
+the demanded specialization/call edges, while repeated queries consume the
+memoized fact.
+
+The original 374/405 checkpoint remains intact and the audit guard makes the
+combined report 375/406, with the same 31 prior failures and no timeout.
+The landed three gains and audit demand/re-entrancy guards are ASan/UBSan-clean;
+PA1--PA22 pass 2,639/2,639, file audit passes with the same 13 inherited
 header-division advisories, and `git diff --check` passes.
 
 ## Checkpoint Audit Ledger
@@ -52,3 +59,4 @@ header-division advisories, and `git diff --check` passes.
 | Declaration-time result lookup (`bf4b7a83`, this audit) | Pattern-owned canonical type/call facts preserve first-declaration lookup through redeclaration and substitution; original PA23 292 -> 296 with no regressions and linear candidate/depth evidence. |
 | Candidate-local alias and detector replay (`94a33b59`, this audit) | Typed no-throw formation and monotonic alias failure states replace broad exception handling; retained base syntax replaces spelling dispatch; 307/403 is preserved and failure scaling is linear. |
 | Candidate-local expression validity (`84a3f7c5`, this audit) | Shared complete-object pointer arithmetic repairs the reverse compound path; typed comparison/arithmetic failure preserves candidate ownership; original 315/404 is intact, the audit guard passes, and candidate/path scaling is linear. |
+| Dependent call/result replay (`e218b8dc`, this audit) | Demand-owned exception states, canonical post-reentry publication, and qualified value identity repair the landed call/ADL increment; original 374/405 is intact, the audit guard passes, and demanded work scales linearly. |

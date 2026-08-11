@@ -2342,6 +2342,7 @@ bool SemanticAnalyzer::TryEvaluateConstexprConstructor(BindingId function,
 		(!info.constexpr_function && !info.defaulted_constructor &&
 		 !info.implicit_constructor) ||
 		arguments.size() != info.parameters.size()) return false;
+	EnsureFunctionExceptionSpecification(function);
 	const EntityId entity = program_->bindings[function].member_owner;
 	if (entity == kNoEntity || entity >= entity_data_members_.size()) return false;
 	if ((info.defaulted_constructor || info.implicit_constructor) &&
@@ -2484,6 +2485,7 @@ bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 		(nonstatic_member && receiver_object == kNoConstexprObject &&
 		 receiver_address == kNoConstexprAddress))
 		return false;
+	EnsureFunctionExceptionSpecification(function);
 	++constexpr_call_requests_;
 
 	ConstexprCallKey key;

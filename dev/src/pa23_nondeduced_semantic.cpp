@@ -49,6 +49,21 @@ bool SemanticAnalyzer::SyntaxUsesAnyTemplateParameter(NodeId node,
 	return false;
 }
 
+bool SemanticAnalyzer::SyntaxUsesUnqualifiedValueName(NodeId node,
+	const std::unordered_set<NameId>& names) const
+{
+	if (node == kNoNode) return false;
+	if (arena_->IsTag(node, "id-expression") &&
+		FindChild(node, "structured-type-name") == kNoNode &&
+		PayloadSource(node).find("::") == std::string::npos &&
+		names.count(arena_->SemanticPayloadId(node)) != 0) return true;
+	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+		if (SyntaxUsesUnqualifiedValueName(
+			arena_->EdgeChild(edge), names)) return true;
+	return false;
+}
+
 bool SemanticAnalyzer::FunctionTemplateResultUsesDependentParameter(
 	NodeId declarator, NodeId result,
 	const std::unordered_set<NameId>& template_names)
@@ -69,7 +84,7 @@ bool SemanticAnalyzer::FunctionTemplateResultUsesDependentParameter(
 		if (name != 0) dependent_parameters.insert(name);
 	}
 	return !dependent_parameters.empty() &&
-		SyntaxUsesAnyTemplateParameter(result, dependent_parameters);
+		SyntaxUsesUnqualifiedValueName(result, dependent_parameters);
 }
 
 bool SemanticAnalyzer::IsDirectTemplateParameterExpression(NodeId node,

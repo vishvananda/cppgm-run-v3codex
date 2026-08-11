@@ -95,6 +95,9 @@ public:
 		  function_template_default_materializations_(0),
 		  function_template_default_request_cache_hits_(0),
 		  function_template_default_failure_cache_hits_(0),
+		  function_template_exception_specification_requests_(0),
+		  function_template_exception_specification_cache_hits_(0),
+		  function_template_exception_specification_evaluations_(0),
 		  template_partial_candidates_(0),
 		  template_partial_order_comparisons_(0),
 		  template_partial_shape_materializations_(0),
@@ -181,8 +184,7 @@ private:
 		bool qualified_friend, bool definition);
 	ScopeId FunctionTemplateExceptionScope(
 		const FunctionTemplatePattern& pattern,
-		const DeclaratorInfo& declarator, ScopeId template_scope,
-		EntityId member_owner);
+		const FunctionInfo& function);
 	TypeId DependentFunctionTemplateResultShape();
 	void RegisterFunctionTemplateFriend(std::size_t pattern,
 		EntityId owner, bool hidden);
@@ -374,6 +376,8 @@ private:
 		bool* variadic,
 		const std::unordered_set<NameId>* template_parameter_names = 0);
 	bool SyntaxUsesAnyTemplateParameter(NodeId node,
+		const std::unordered_set<NameId>& names) const;
+	bool SyntaxUsesUnqualifiedValueName(NodeId node,
 		const std::unordered_set<NameId>& names) const;
 	bool FunctionTemplateResultUsesDependentParameter(NodeId declarator,
 		NodeId result, const std::unordered_set<NameId>& template_names);
@@ -696,6 +700,8 @@ private:
 		NodeId syntax = kNoNode);
 	void DemandFunction(BindingId binding);
 	void DemandRuntimeFunction(BindingId binding);
+	void EnsureFunctionExceptionSpecification(BindingId binding);
+	bool FunctionIsNonthrowing(BindingId binding);
 	void DemandDefaultConstructor(EntityId entity);
 	void DemandConstructorDefinition(BindingId binding);
 	void DemandMaterializedConstructorActions(std::uint32_t node,
@@ -1106,7 +1112,7 @@ private:
 		bool pack_expanded = false);
 	void AddMemberInitializationAction(BindingId member, NodeId initializer,
 		ScopeId scope, std::uint32_t body);
-	bool InitializationActionsAreNonthrowing(std::uint32_t body) const;
+	bool InitializationActionsAreNonthrowing(std::uint32_t body);
 	void AddDefaultConstructor(std::uint32_t variable, BindingId binding,
 		TypeId type);
 	void AddDestructorSubobjectActions(EntityId entity, std::uint32_t body);
@@ -1538,6 +1544,9 @@ private:
 	std::size_t function_template_default_materializations_;
 	std::size_t function_template_default_request_cache_hits_;
 	std::size_t function_template_default_failure_cache_hits_;
+	std::size_t function_template_exception_specification_requests_;
+	std::size_t function_template_exception_specification_cache_hits_;
+	std::size_t function_template_exception_specification_evaluations_;
 	mutable std::size_t template_partial_candidates_;
 	mutable std::size_t template_partial_order_comparisons_;
 	std::size_t template_partial_shape_materializations_;

@@ -82,6 +82,12 @@ void SemanticAnalyzer::InheritConstructors(EntityId entity,
 		info.explicit_constructor = source.explicit_constructor;
 		info.deleted_constructor = source.deleted_constructor;
 		info.inherited_constructor_source = source_base_entry;
+		if (source.exception_specification_state !=
+				EXCEPTION_SPECIFICATION_FIXED &&
+			source.exception_specification_state !=
+				EXCEPTION_SPECIFICATION_SUCCEEDED)
+			info.exception_specification_state =
+				EXCEPTION_SPECIFICATION_DEFERRED;
 		info.deferred = !info.deleted_constructor;
 		entity_constructors_[entity].push_back(inherited);
 		std::size_t required = info.parameters.size();

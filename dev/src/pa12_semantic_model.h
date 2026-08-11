@@ -660,6 +660,15 @@ enum SpecialMemberKind
 	SPECIAL_MEMBER_MOVE_ASSIGNMENT
 };
 
+enum ExceptionSpecificationState
+{
+	EXCEPTION_SPECIFICATION_FIXED,
+	EXCEPTION_SPECIFICATION_DEFERRED,
+	EXCEPTION_SPECIFICATION_IN_PROGRESS,
+	EXCEPTION_SPECIFICATION_SUCCEEDED,
+	EXCEPTION_SPECIFICATION_FAILED
+};
+
 struct FunctionInfo
 {
 	BindingId binding;
@@ -672,7 +681,9 @@ struct FunctionInfo
 	NameId parameter_pack_name;
 	TypeId member_owner;
 	EntityId friend_of;
-	ScopeId lexical_scope;
+	// A dependent exception specification is a specialization-owned demand
+	// fact, separate from declaration formation and body/emission demand.
+	ScopeId lexical_scope, exception_specification_scope;
 	std::vector<ParameterInfo> parameters;
 	NodeId definition_body, constructor_initializer;
 	std::uint32_t template_pattern;
@@ -704,6 +715,7 @@ struct FunctionInfo
 	std::uint32_t synthesized_prefix_alignment;
 	std::uint32_t synthesized_prefix_members;
 	bool ordinary_visible;
+	ExceptionSpecificationState exception_specification_state;
 	std::uint8_t demand_state;
 	FunctionInfo()
 		: binding(kNoBinding), inherited_constructor_source(kNoBinding),
@@ -712,6 +724,7 @@ struct FunctionInfo
 		  conversion_target(kNoType), display_name(0), parameter_pack_name(0),
 		  member_owner(kNoType),
 		  friend_of(kNoEntity), lexical_scope(kNoScope),
+		  exception_specification_scope(kNoScope),
 		  definition_body(kNoNode), constructor_initializer(kNoNode),
 		  template_pattern(kNoDumpEdge),
 		  defined(false), deferred(false), definition_in_class(false),
@@ -728,6 +741,7 @@ struct FunctionInfo
 		  synthesized_prefix_size(0),
 		  synthesized_prefix_alignment(0), synthesized_prefix_members(0),
 		  ordinary_visible(true),
+		  exception_specification_state(EXCEPTION_SPECIFICATION_FIXED),
 		  demand_state(0) {}
 };
 

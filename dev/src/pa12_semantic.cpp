@@ -2929,6 +2929,12 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 			function_template_default_request_cache_hits_;
 		stats_->function_template_default_failure_cache_hits =
 			function_template_default_failure_cache_hits_;
+		stats_->function_template_exception_specification_requests =
+			function_template_exception_specification_requests_;
+		stats_->function_template_exception_specification_cache_hits =
+			function_template_exception_specification_cache_hits_;
+		stats_->function_template_exception_specification_evaluations =
+			function_template_exception_specification_evaluations_;
 		stats_->template_argument_list_requests =
 			program.template_argument_list_requests;
 		stats_->template_argument_list_cache_hits =

@@ -2803,6 +2803,7 @@ void SemanticAnalyzer::DemandRuntimeFunction(BindingId binding)
 {
 	if (binding == kNoBinding) return;
 	binding = program_->bindings[binding].canonical;
+	EnsureFunctionExceptionSpecification(binding);
 	DemandClassTemplateMemberDefinitions(program_->bindings[binding].member_owner);
 	program_->bindings[binding].emission_demanded |= program_->bindings[binding].inline_function;
 	if ((program_->bindings[binding].constructor ||

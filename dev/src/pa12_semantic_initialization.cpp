@@ -1433,7 +1433,7 @@ void SemanticAnalyzer::AddBaseInitializationAction(EntityId entity,
 }
 
 bool SemanticAnalyzer::InitializationActionsAreNonthrowing(
-	std::uint32_t body) const
+	std::uint32_t body)
 {
 	std::vector<std::uint32_t> pending(1, body);
 	while (!pending.empty())
@@ -1441,12 +1441,11 @@ bool SemanticAnalyzer::InitializationActionsAreNonthrowing(
 		const std::uint32_t node = pending.back();
 		pending.pop_back();
 		++nonthrowing_action_visits_;
-		const DumpNode& record = dump_.nodes[node];
+		const DumpNode record = dump_.nodes[node];
 		if (record.pseudo_destructor_call) continue;
 		if (record.kind == DUMP_CONSTRUCTOR_ACTION)
 		{
-			if (record.binding == kNoBinding ||
-				!program_->bindings[record.binding].nonthrowing)
+			if (!FunctionIsNonthrowing(record.binding))
 				return false;
 		}
 		else if (record.kind == DUMP_TEMPORARY_OBJECT)
@@ -1456,38 +1455,36 @@ bool SemanticAnalyzer::InitializationActionsAreNonthrowing(
 				!program_->entities[entity].trivial_destructor)
 			{
 				const BindingId destructor = DestructorForType(record.type);
-				if (destructor == kNoBinding ||
-					!program_->bindings[destructor].nonthrowing)
+				if (!FunctionIsNonthrowing(destructor))
 					return false;
 			}
 		}
 		else if (record.kind == DUMP_DESTRUCTOR_ACTION)
 		{
-			if (record.binding == kNoBinding ||
-				!program_->bindings[record.binding].nonthrowing)
+			if (!FunctionIsNonthrowing(record.binding))
 				return false;
 		}
 		else if (record.kind == DUMP_CALL_EXPRESSION)
 		{
-			bool known_nonthrowing = record.binding != kNoBinding &&
-				program_->bindings[record.binding].nonthrowing;
+			bool known_nonthrowing = FunctionIsNonthrowing(record.binding);
 			for (std::uint32_t edge = record.first_edge; edge != kNoDumpEdge;
 				edge = dump_.edges[edge].next)
 			{
-				const DumpNode& child = dump_.nodes[dump_.edges[edge].child];
-				if (child.kind == DUMP_CALLEE && child.binding != kNoBinding &&
-					program_->bindings[child.binding].nonthrowing)
-					known_nonthrowing = true;
+				const DumpNode child = dump_.nodes[dump_.edges[edge].child];
+				if (child.kind == DUMP_CALLEE && child.binding != kNoBinding)
+				{
+					if (FunctionIsNonthrowing(child.binding))
+						known_nonthrowing = true;
+				}
 			}
 			if (!known_nonthrowing) return false;
 		}
 		else if (record.kind == DUMP_DELETE_EXPRESSION)
 		{
-			if (record.binding == kNoBinding ||
-				!program_->bindings[record.binding].nonthrowing)
+			if (!FunctionIsNonthrowing(record.binding))
 				return false;
 			if (record.selected_binding != kNoBinding &&
-				!program_->bindings[record.selected_binding].nonthrowing)
+				!FunctionIsNonthrowing(record.selected_binding))
 				return false;
 		}
 		for (std::uint32_t edge = record.first_edge; edge != kNoDumpEdge;
@@ -2240,8 +2237,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
 		nonallocating_placement = placement.kind == TYPE_POINTER &&
 			IsVoid(placement.child);
 	}
+	const bool allocation_nonthrowing = FunctionIsNonthrowing(selected);
 	dump_.nodes[result_node].allocation_may_return_null =
-		program_->bindings[selected].nonthrowing && !nonallocating_placement;
+		allocation_nonthrowing && !nonallocating_placement;
 	dump_.Add(result_node, allocation.node);
 	if (construction != kNoDumpEdge) dump_.Add(result_node, construction);
 	ExpressionInfo result;
