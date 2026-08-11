@@ -2915,6 +2915,13 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 			function_template_deduction_visits_;
 		stats_->lambda_closure_requests = lambda_closure_requests_;
 		stats_->lambda_closure_cache_hits = lambda_closure_cache_hits_;
+		stats_->lambda_capture_summary_requests =
+			lambda_capture_uses_.Requests();
+		stats_->lambda_capture_summary_cache_hits =
+			lambda_capture_uses_.CacheHits();
+		stats_->lambda_capture_syntax_visits =
+			lambda_capture_uses_.SyntaxVisits();
+		stats_->lambda_capture_name_uses = lambda_capture_uses_.NameUses();
 		stats_->constexpr_call_requests = constexpr_call_requests_;
 		stats_->constexpr_call_cache_hits = constexpr_call_cache_hits_;
 		stats_->constant_conversion_fact_requests = constant_conversion_fact_requests_;

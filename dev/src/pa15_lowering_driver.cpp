@@ -136,6 +136,18 @@ void CoalesceLifecycleFunctions(TypedProgram* program,
 			program->functions.begin() + initializer + 1);
 }
 
+void AccumulateLambdaCaptureStats(SemanticAnalysisStats* target,
+	const SemanticAnalysisStats& source)
+{
+	target->lambda_capture_summary_requests +=
+		source.lambda_capture_summary_requests;
+	target->lambda_capture_summary_cache_hits +=
+		source.lambda_capture_summary_cache_hits;
+	target->lambda_capture_syntax_visits +=
+		source.lambda_capture_syntax_visits;
+	target->lambda_capture_name_uses += source.lambda_capture_name_uses;
+}
+
 }
 
 LowIRLoweringStats::LowIRLoweringStats()
@@ -330,6 +342,7 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 				semantic_stats.lambda_closure_requests;
 			semantic.lambda_closure_cache_hits +=
 				semantic_stats.lambda_closure_cache_hits;
+			AccumulateLambdaCaptureStats(&semantic, semantic_stats);
 			semantic.constexpr_call_requests +=
 				semantic_stats.constexpr_call_requests;
 			semantic.constexpr_call_cache_hits +=

@@ -1,65 +1,88 @@
-# PA25 Checkpoint Audit
+# PA25 Final Audit
 
-## Current Checkpoint Review
+## Final Findings
 
-Checkpoint `60cd11b4` (ordinary captureless call-operator formation) passes
-after audit repair. The landed increment keys each closure by canonical
-enclosing function and retained syntax, publishes its entity and call operator
-before implicit-result body analysis, retains canonical parameter/default and
-result facts, and lowers the selected member call and retained body directly.
-The lambda expression is a typed prvalue initializer; empty closure storage is
-owned by the ordinary class-initialization path.
+1. Resolved architecture blocker: PA10 stored each lambda introducer as opaque
+   text and PA22 reparsed it. This violated the one-parse rule and made strings
+   semantic transport.
+2. Resolved performance blocker: every default-reference closure rescanned its
+   complete nested body, allocated a node-based parameter-name set, and
+   repeated enclosing lookups. Deep nested lambdas showed rapidly increasing
+   subtree work, semantic time, and peak storage.
+3. Resolved identity/scaling blocker: local closure presentation names embedded
+   the complete enclosing closure name recursively, causing avoidable LowIR
+   symbol and line growth. Explicit-capture classification and duplicate
+   suppression also had quadratic linear-search loops.
+4. No additional blocker was found in placeholder deduction, retained-template
+   demand, range materialization/lifetime, aggregate actions, class conversion
+   selection, typed class-value boundaries, ABI handoff, lowering ownership, or
+   production self-containment.
 
-The audit found two correctness defects in retained call-operator facts. First,
-only expanded `ParameterInfo` records carried a function-parameter-pack name.
-An empty expansion therefore published no name, and `sizeof...(args)` failed
-when the retained body was analyzed. The call operator now owns the
-declaration-level pack identity independently of its zero or more elements.
-Second, body analysis changed the current class to the closure and lost the
-enclosing member function's access privilege. Importing the enclosing `this`
-would be incorrect for a captureless closure, so each call operator now retains
-an explicit lexical parent-function edge. Access checks walk only that edge
-chain and its member-owner/indexed friend facts; they do not supply an implicit
-object. Explicit private-member access succeeds, while uncaptured implicit
-`this` remains rejected.
+## Changes
 
-The demanded template trace is source bytes -> one parsed retained template
-body -> canonical function specialization -> closure key -> published closure,
-parameter-pack, and lexical-access facts -> one four-state implicit-result body
-analysis -> indexed empty-pack lookup -> canonical result `TypeId` -> retained
-typed body -> demand worklist -> direct typed LowIR. The non-template access
-trace uses the same closure fact, follows one lexical function edge to the
-enclosing member owner, retains the selected field binding, and lowers without
-lookup replay. The two positive regressions execute through LowIR/CY86 with
-status zero; a negative regression confirms that the access edge does not
-capture `this`.
+- Added PA25 lambda-introducer syntax ownership. PA10 now emits semantic-only,
+  interned facts for capture defaults, named reference/pack captures, copy forms,
+  and `this`, while retaining the existing public syntax rendering.
+- Added `LambdaCaptureUseTable`, keyed by lambda `NodeId`, with explicit
+  unstarted/in-progress/succeeded/failed states, open-addressed indexing,
+  contiguous name facts, lexical bound-name tracking, source-order deduplication,
+  nested-summary reuse, direct explicit flags, and storage/work counters.
+- Changed PA22 closure formation to consume the structured summary and canonical
+  IDs directly. Named sources, parameter packs, implicit member/`this` use, and
+  nested capture propagation still resolve through ordinary semantic lookup.
+- Replaced recursively rendered local closure identity with a compact binding,
+  token, and ordinal presentation component. Canonical ABI mangling remains
+  based on local context and lambda ordinal.
+- Rejected duplicate explicit named and `this` captures and added a course
+  regression. Removed per-capture linear classification and duplicate scans.
+- Exposed summary request/hit, syntax-visit, name-use, and storage telemetry in
+  semantic and LowIR frontend statistics.
 
-For 16/64/256 sibling captureless closures performing private-member access,
-tokens were 471/1,719/6,711 and semantic nodes 348/1,308/5,148. Closure requests
-were 16/64/256, access path visits 32/128/512, access-grant probes
-64/256/1,024, and demand pushes/emissions 18/66/258. Functions were 19/67/259,
-instructions 223/847/3,343, and typed storage
-66,195/256,323/1,017,459 bytes. Five-run median semantic time was
-1.495/4.799/18.736 ms and lowering time 0.459/1.222/4.426 ms. Work, storage,
-and time track closures and emitted IR without a translation-unit scan or
-quadratic trend.
+## Performance Evidence
 
-No relevant source/test shortcut, whole-program retry, lowering-time semantic
-search, text transport, timeout behavior, incomplete checkpoint key, or
-unresolved checkpoint-owned correctness, performance, or file-audit issue
-remains. The original PA25 set remains 102/132; three audit regressions produce
-105/135. Focused checkpoint and audit coverage is 8/8, PA1-24 pass
-3,471/3,471, and file audit passes with 15 inherited nonfatal division
-advisories. The remaining PA25 failures belong to invocation/pointer conversion,
-capture layout and lookup, closure special members, broader pack substitution,
-namespace identity, or the independent retained local-declaration parse path.
+Before repair, empty nested `[&]` closures at depths 16/32/64/128 performed
+3,312/24,032/183,232/1,431,424 scope visits; semantic time rose to
+2.46/9.62/48.46/307.55 ms and depth-128 peak semantic storage reached 55.4 MB.
 
-## Checkpoint Audit Ledger
+After repair, depth 16/64/256 empty nesting performed 153/633/2,553 capture
+syntax visits, 0 name uses, and produced 5,592/22,379/90,214 LowIR bytes with
+43,263/173,086/692,669 typed-storage bytes. Median semantic times were
+1.378/5.881/47.598 ms. The matching real-free-use family recorded exactly
+16/64/256 name uses and 7,532/29,900/120,178 LowIR bytes. Wide explicit lists
+of 16/64/256 names took 0.594/1.531/5.805 ms with 103/391/1,543 lookup-scope
+visits. Output line length remained bounded at 108-144 bytes.
 
-| Checkpoint | Audit disposition |
+Counter profiling attributes the residual pathological nesting cost to the
+sum of ordinary lexical parent-scope edges, not repeated capture-subtree scans.
+An attempted generic lookup dependency-cache change increased cache storage and
+misses without reducing those visits, so it was reverted.
+
+## Validation
+
+- PA25 focused aggregate/conversion/range/capture checks: 10/10 pass.
+- Focused nested/pack capture checks after the final scaling cleanup: 5/5 pass.
+- PA25 local plus course suite: 136/136 pass (121 local, 15 course).
+- Duplicate explicit reference-capture regression: expected failure passes.
+- Range-prvalue lifetime and capturing-template-pack traces: valid LowIR,
+  PA13 LowIR-to-CY86 success, PA9 x86-64 Linux ELF success, execution status 0.
+- PA29 adapter observation: explicit status 86 (`not yet implemented`) before
+  MIR emission; no PA25 data-dependent failure.
+- `perl scripts/cppgm_file_audit.pl --stage pa25 --paths dev/src`: pass with
+  the same 15 inherited nonfatal header-division warnings.
+- `make test-report-through-pa25`: pass, 3,607/3,607 tests and 25/25
+  tracked stages.
+- `git diff --check`: pass.
+
+## Checkpoint Ledger
+
+| Checkpoint | Audit result |
 |---|---|
-| Ordinary placeholder results (`583b174a`) | Pass after cv-reference, runtime-demand, direct-ownership, and retained-body copy repairs; shipped baseline and all earlier stages preserved; linear scaling and file audit verified. |
-| Range-for statements (`b985f854`) | Pass after single-parse dispatch, category-correct one-time range binding, and condition/iteration cleanup repairs; 67/128 PA25 and 3,471/3,471 earlier tests preserved; linear scaling and file audit verified. |
-| Selected class conversions (`cec97359`) | Pass after single-parse canonical conversion targets, semantic-owned parameter ABI, and modifiable-reference filtering; 85/130 PA25 and 3,471/3,471 earlier tests preserved; linear scaling and file audit verified. |
-| Function-template placeholder results (`2e7bf454`) | Pass after canonical dependent-result identity and semantic-owned class-result ABI repair; shipped PA25 is 88/130, audit regressions 2/2, PA1-24 3,471/3,471; linear scaling and file audit verified. |
-| Ordinary captureless call operators (`60cd11b4`) | Pass after empty-pack identity and lexical access-edge repairs; original PA25 102/132 plus audit 3/3, PA1-24 3,471/3,471, runtime, linear scaling, and file audit verified. |
+| Ordinary placeholders (`583b174a`, `7737d2a5`) | Pass: canonical placeholder results, direct initializer ownership, retained visible bodies. |
+| Range-for (`b985f854`, `db9bf14a`) | Pass: bounded parse dispatch, one range evaluation, selected member/ADL calls, complete cleanup. |
+| Aggregates (`ece08579`) | Pass: member-order actions, omitted zero initialization, nested arrays, typed helper ABI. |
+| Class conversions (`cec97359`, `c3651ce0`) | Pass: canonical targets, selected conversion functions, modifiable references, class-value boundaries. |
+| Template placeholder results (`2e7bf454`, `1d508e97`) | Pass: cache-before-body analysis, four-state demand, canonical type/ABI publication. |
+| Captureless call operators (`60cd11b4`, `ade1022b`) | Pass: canonical closure key/body, pack identity, lexical access without implicit capture. |
+| Captureless pointer conversion (`440c7070`) | Pass: semantic-owned static invoker and conversion fact, direct lowering. |
+| By-reference/`this` captures (`7c963c77`) | Pass after final audit: canonical layout/aliases and nested propagation; text reparse, repeated subtree scans, and recursive presentation names removed. |
+| Final PA-wide audit | Pass: findings closed, performance measured, executable traces and required gates validated. |

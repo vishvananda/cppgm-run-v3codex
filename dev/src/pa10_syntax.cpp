@@ -3,6 +3,7 @@
 #include "pa10_syntax_model.h"
 #include "pa10_parser_name_facts.h"
 #include "pa10_parser_token_classification.h"
+#include "pa25_lambda_capture_syntax.h"
 #include "pa25_range_for_syntax.h"
 #include <algorithm>
 #include <chrono>
@@ -19,9 +20,12 @@ namespace cppgm
 namespace
 {
 using namespace pa10_syntax_detail;
-class Parser : private ParserNameFacts<Parser>, private pa25_syntax_detail::RangeForSyntax<Parser>
+class Parser : private ParserNameFacts<Parser>,
+	private pa25_syntax_detail::LambdaCaptureSyntax<Parser>,
+	private pa25_syntax_detail::RangeForSyntax<Parser>
 {
 friend class ParserNameFacts<Parser>;
+friend class pa25_syntax_detail::LambdaCaptureSyntax<Parser>;
 friend class pa25_syntax_detail::RangeForSyntax<Parser>;
 public:
 	Parser(const std::vector<SyntaxToken>& tokens, StringTable& strings,
@@ -1328,19 +1332,8 @@ NodeId Parser::ParsePrimaryExpression()
 	}
 	if (At(OP_LSQUARE))
 	{
-		const std::size_t capture_first = position_;
-		++position_;
-		std::size_t depth = 1;
-		while (position_ < tokens_.size() && depth != 0)
-		{
-			if (At(OP_LSQUARE)) ++depth;
-			else if (At(OP_RSQUARE)) --depth;
-			++position_;
-		}
-		if (depth != 0) throw Error("unterminated lambda capture");
 		const NodeId lambda = arena_.Make("lambda-expression");
-		arena_.Add(lambda, arena_.Make("lambda-introducer",
-			JoinSpellings(capture_first, position_)));
+		arena_.Add(lambda, ParseLambdaIntroducer());
 		if (At(OP_LPAREN))
 		{
 			const NodeId declarator = arena_.Make("lambda-declarator");

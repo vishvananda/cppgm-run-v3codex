@@ -1,7 +1,6 @@
 #include "pa12_semantic_detail.h"
 
 #include <algorithm>
-#include <cctype>
 #include <limits>
 #include <sstream>
 #include <stdexcept>
@@ -54,73 +53,13 @@ bool EquivalentAliasTemplateParameters(
 	return true;
 }
 
-std::string LambdaIdentityComponent(const std::string& context,
+std::string LambdaIdentityComponent(BindingId context,
 	std::size_t token_first, std::size_t token_last, std::uint32_t ordinal)
 {
-	std::string result("__lambda_");
-	result.reserve(result.size() + context.size() + 48);
-	for (std::size_t i = 0; i < context.size(); ++i)
-	{
-		const unsigned char value = static_cast<unsigned char>(context[i]);
-		result += std::isalnum(value) || value == '_' ?
-			static_cast<char>(value) : '_';
-	}
 	std::ostringstream suffix;
-	suffix << "_t" << token_first << '_' << token_last << "_n" << ordinal;
-	result += suffix.str();
-	return result;
-}
-
-struct LambdaCaptureSyntax
-{
-	bool default_reference, captures_this;
-	std::vector<std::string> references;
-
-	LambdaCaptureSyntax()
-		: default_reference(false), captures_this(false) {}
-};
-
-std::string TrimLambdaCapture(const std::string& value)
-{
-	std::size_t first = 0;
-	while (first < value.size() &&
-		std::isspace(static_cast<unsigned char>(value[first]))) ++first;
-	std::size_t last = value.size();
-	while (last > first &&
-		std::isspace(static_cast<unsigned char>(value[last - 1]))) --last;
-	return value.substr(first, last - first);
-}
-
-LambdaCaptureSyntax ParseLambdaCaptureSyntax(const std::string& source)
-{
-	if (source.size() < 2 || source.front() != '[' || source.back() != ']')
-		throw std::runtime_error("invalid lambda capture introducer");
-	LambdaCaptureSyntax result;
-	const std::string body = source.substr(1, source.size() - 2);
-	std::size_t first = 0;
-	while (first < body.size())
-	{
-		const std::size_t comma = body.find(',', first);
-		const std::size_t last = comma == std::string::npos ?
-			body.size() : comma;
-		const std::string item = TrimLambdaCapture(
-			body.substr(first, last - first));
-		if (item == "&")
-		{
-			if (result.default_reference)
-				throw std::runtime_error("duplicate lambda capture default");
-			result.default_reference = true;
-		}
-		else if (item == "this") result.captures_this = true;
-		else if (item.size() > 1 && item[0] == '&')
-			result.references.push_back(TrimLambdaCapture(item.substr(1)));
-		else if (!item.empty())
-			throw std::runtime_error(
-				"PA25 supports only by-reference and this lambda captures");
-		if (comma == std::string::npos) break;
-		first = comma + 1;
-	}
-	return result;
+	suffix << "__lambda_f" << context << "_t" << token_first << '_'
+		<< token_last << "_n" << ordinal;
+	return suffix.str();
 }
 
 }
@@ -155,8 +94,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 	const NodeId introducer = FindChild(node, "lambda-introducer");
 	if (introducer == kNoNode)
 		throw std::runtime_error("lambda expression has no capture introducer");
-	const LambdaCaptureSyntax capture_syntax =
-		ParseLambdaCaptureSyntax(PayloadSource(introducer));
+	const pa25_semantic_detail::LambdaCaptureUseTable::Fact& capture_uses =
+		lambda_capture_uses_.FindOrBuild(*arena_, node);
 	const NodeId declarator = FindChild(node, "lambda-declarator");
 	const NodeId body = FindChild(node, "compound-statement");
 	if (body == kNoNode)
@@ -222,7 +161,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 		}
 		std::vector<BindingId> capture_sources;
 		std::vector<NameId> capture_pack_names;
-		bool captures_this = capture_syntax.captures_this;
+		bool captures_this = capture_uses.captures_this;
 		const auto automatic_capture = [this](BindingId binding) -> bool
 		{
 			if (binding == kNoBinding || binding >= program_->bindings.size())
@@ -245,103 +184,46 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 			&automatic_capture](BindingId source, NameId pack_name)
 		{
 			if (!automatic_capture(source)) return;
-			if (std::find(capture_sources.begin(), capture_sources.end(), source) !=
-				capture_sources.end()) return;
 			capture_sources.push_back(source);
 			capture_pack_names.push_back(pack_name);
 		};
-		const auto append_named_capture = [this, scope, &append_capture](
-			NameId name, bool required)
+		for (std::size_t i = 0; i < capture_uses.name_count; ++i)
 		{
+			const NameId name = lambda_capture_uses_.NameAt(capture_uses, i);
 			std::vector<BindingId> pack;
 			if (LookupFunctionParameterPack(scope, name, &pack))
 			{
-				for (std::size_t i = 0; i < pack.size(); ++i)
-					append_capture(pack[i], name);
-				return;
+				for (std::size_t pack_index = 0;
+					pack_index < pack.size(); ++pack_index)
+					append_capture(pack[pack_index], name);
+				continue;
 			}
 			const LookupResult found = program_->LookupName(
 				scope, name, LOOKUP_ORDINARY);
-			if (found.ordinary != kNoBinding)
+			for (std::size_t found_index = 0;
+				found_index < found.OrdinaryCount(); ++found_index)
 			{
-				append_capture(found.ordinary, 0);
-				return;
+				const BindingId binding = found.OrdinaryAt(found_index);
+				if (automatic_capture(binding)) append_capture(binding, 0);
+				const BindingRecord& record = program_->bindings[binding];
+				if (record.member_owner != kNoEntity &&
+					((record.kind == BIND_FUNCTION &&
+					  !record.static_member_function) ||
+					 record.non_static_data_member))
+					captures_this = true;
 			}
-			if (required)
+			NamePath path;
+			path.Push(name);
+			const std::vector<std::size_t> templates =
+				FindFunctionTemplates(scope, path);
+			for (std::size_t template_index = 0;
+				template_index < templates.size(); ++template_index)
+				if (program_->EntityForScope(
+					function_templates_[templates[template_index]].owner) !=
+					kNoEntity) captures_this = true;
+			if (found.Empty() && templates.empty() &&
+				lambda_capture_uses_.IsExplicitAt(capture_uses, i))
 				throw std::runtime_error("lambda capture name was not found");
-		};
-		for (std::size_t i = 0; i < capture_syntax.references.size(); ++i)
-			append_named_capture(program_->names.Intern(
-				capture_syntax.references[i]), true);
-
-		if (capture_syntax.default_reference)
-		{
-			std::unordered_set<NameId> parameter_names;
-			for (std::size_t i = 0; i < call_parameters.size(); ++i)
-			{
-				if (call_parameters[i].name != 0)
-					parameter_names.insert(call_parameters[i].name);
-				if (call_parameters[i].pack_name != 0)
-					parameter_names.insert(call_parameters[i].pack_name);
-			}
-			std::vector<NodeId> pending(1, body);
-			while (!pending.empty())
-			{
-				const NodeId current = pending.back();
-				pending.pop_back();
-				if (arena_->IsTag(current, "lambda-introducer"))
-				{
-					const LambdaCaptureSyntax nested =
-						ParseLambdaCaptureSyntax(PayloadSource(current));
-					captures_this = captures_this || nested.captures_this;
-					for (std::size_t i = 0; i < nested.references.size(); ++i)
-						append_named_capture(program_->names.Intern(
-							nested.references[i]), false);
-				}
-				else if (arena_->IsTag(current, "keyword-literal") &&
-					PayloadSource(current) == "this") captures_this = true;
-				else if (arena_->IsTag(current, "id-expression"))
-				{
-					NamePath path = StructuredNamePath(current);
-					if (path.Empty()) path = ParseNamePath(PayloadSource(current));
-					if (!path.global && path.Size() == 1 &&
-						parameter_names.count(path.Last()) == 0)
-					{
-						std::vector<BindingId> pack;
-						if (LookupFunctionParameterPack(scope, path.Last(), &pack))
-						{
-							for (std::size_t i = 0; i < pack.size(); ++i)
-								append_capture(pack[i], path.Last());
-						}
-						const LookupResult found =
-							FindChild(current, "structured-type-name") != kNoNode ?
-							LookupStructuredName(current, scope, LOOKUP_ORDINARY) :
-							program_->LookupName(scope, path.Last(), LOOKUP_ORDINARY);
-						for (std::size_t i = 0; i < found.OrdinaryCount(); ++i)
-						{
-							const BindingId binding = found.OrdinaryAt(i);
-							if (automatic_capture(binding))
-								append_capture(binding, 0);
-							const BindingRecord& record =
-								program_->bindings[binding];
-							if (record.member_owner != kNoEntity &&
-								((record.kind == BIND_FUNCTION &&
-								  !record.static_member_function) ||
-								 record.non_static_data_member))
-								captures_this = true;
-						}
-						const std::vector<std::size_t> templates =
-							FindFunctionTemplates(scope, path);
-						for (std::size_t i = 0; i < templates.size(); ++i)
-							if (program_->EntityForScope(
-								function_templates_[templates[i]].owner) != kNoEntity)
-								captures_this = true;
-					}
-				}
-				for (std::uint32_t edge = arena_->FirstEdge(current);
-					edge != kNoEdge; edge = arena_->NextEdge(edge))
-					pending.push_back(arena_->EdgeChild(edge));
-			}
 		}
 		TypeId this_capture_type = kNoType;
 		if (captures_this)
@@ -383,11 +265,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 		NameId identity_leaf = 0;
 		if (enclosing != kNoBinding)
 		{
-			const BindingRecord& context = program_->bindings[enclosing];
-			const std::string context_name = program_->names.Get(
-				context.qualified_name != 0 ?
-					context.qualified_name : context.name);
-			leaf_spelling = LambdaIdentityComponent(context_name,
+			leaf_spelling = LambdaIdentityComponent(enclosing,
 				arena_->TokenFirst(node), arena_->TokenLast(node), ordinal);
 		}
 		else

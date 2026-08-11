@@ -110,6 +110,10 @@ struct SemanticAnalysisStats
 	std::size_t function_template_deduction_visits;
 	std::size_t lambda_closure_requests;
 	std::size_t lambda_closure_cache_hits;
+	std::size_t lambda_capture_summary_requests;
+	std::size_t lambda_capture_summary_cache_hits;
+	std::size_t lambda_capture_syntax_visits;
+	std::size_t lambda_capture_name_uses;
 	std::size_t constexpr_call_requests;
 	std::size_t constexpr_call_cache_hits;
 	std::size_t constant_conversion_fact_requests;

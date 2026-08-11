@@ -697,6 +697,14 @@ int run_emit_semantics_mode(const vector<string> & args)
 			   << stats.lambda_closure_requests
 			   << " lambda_closure_cache_hits="
 			   << stats.lambda_closure_cache_hits
+			   << " lambda_capture_summary_requests="
+			   << stats.lambda_capture_summary_requests
+			   << " lambda_capture_summary_cache_hits="
+			   << stats.lambda_capture_summary_cache_hits
+			   << " lambda_capture_syntax_visits="
+			   << stats.lambda_capture_syntax_visits
+			   << " lambda_capture_name_uses="
+			   << stats.lambda_capture_name_uses
 	           << " constexpr_call_requests=" << stats.constexpr_call_requests
 	           << " constexpr_call_cache_hits=" << stats.constexpr_call_cache_hits
 	           << " constant_conversion_fact_requests="
@@ -912,6 +920,14 @@ int run_emit_lowir_mode(const vector<string> & args)
 				 << semantic.lambda_closure_requests
 				 << " lambda_closure_cache_hits="
 				 << semantic.lambda_closure_cache_hits
+				 << " lambda_capture_summary_requests="
+				 << semantic.lambda_capture_summary_requests
+				 << " lambda_capture_summary_cache_hits="
+				 << semantic.lambda_capture_summary_cache_hits
+				 << " lambda_capture_syntax_visits="
+				 << semantic.lambda_capture_syntax_visits
+				 << " lambda_capture_name_uses="
+				 << semantic.lambda_capture_name_uses
 				 << " constexpr_call_requests="
 			 << semantic.constexpr_call_requests
 				 << " constexpr_call_cache_hits="

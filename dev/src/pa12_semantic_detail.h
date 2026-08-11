@@ -6,6 +6,7 @@
 #include "pa12_semantic.h"
 #include "pa12_semantic_model.h"
 #include "pa12_semantic_tables.h"
+#include "pa25_lambda_capture_semantic.h"
 
 #include <deque>
 #include <iosfwd>
@@ -1547,6 +1548,7 @@ private:
 	TemplateSpecializationTable template_instantiations_;
 	TemplateSpecializationTable function_template_default_requests_;
 	IndexedSequenceTable lambda_closure_index_;
+	pa25_semantic_detail::LambdaCaptureUseTable lambda_capture_uses_;
 	std::vector<LambdaClosureFact> lambda_closures_;
 	std::vector<LambdaCaptureFact> lambda_captures_;
 	std::vector<std::uint32_t> lambda_count_by_function_;
