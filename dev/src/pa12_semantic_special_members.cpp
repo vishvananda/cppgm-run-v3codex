@@ -1141,6 +1141,13 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 	info.lexical_scope = semantic_scope;
 	if (defer_demand)
 		program_->bindings[special].inline_function = true;
+	bool inline_specifier = false;
+	if (member_specifiers != kNoNode)
+		for (std::uint32_t edge = arena_->FirstEdge(member_specifiers);
+			edge != kNoEdge; edge = arena_->NextEdge(edge))
+			if (PayloadSource(arena_->EdgeChild(edge)) == "inline")
+				inline_specifier = true;
+	PublishInlineFunctionFacts(special, inline_specifier);
 	if (info.member_owner != program_->entities[entity].type)
 		throw std::runtime_error(
 			"qualified special member definition has no member declaration");
@@ -1207,13 +1214,7 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 	{
 		ValidateConstexprConstructorDefinition(info);
 		program_->entities[entity].has_user_provided_constructor = true;
-		const BindingId class_declaration =
-			program_->entities[entity].declaration;
-		const bool explicit_class_specialization =
-			class_declaration <
-				class_template_explicit_specialization_states_.size() &&
-			class_template_explicit_specialization_states_[class_declaration] != 0;
-		if ((defer_demand || explicit_class_specialization) &&
+		if ((defer_demand || inline_specifier) &&
 			program_->entities[entity].direct_base == kNoEntity)
 		{
 			if (constructor_base_entry_by_binding_.size() <= special)

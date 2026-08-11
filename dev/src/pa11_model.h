@@ -373,6 +373,7 @@ struct EntityRecord
 		indirect_class_value_abi, polymorphic_class, abstract_class;
 	bool nonlinear_base_graph;
 	bool deferred_template_completion;
+	bool explicit_template_specialization;
 	bool lambda_closure;
 	std::uint32_t lambda_ordinal;
 

@@ -425,6 +425,8 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 	if (arena_->IsTag(target, "class-specifier") ||
 		arena_->IsTag(target, "class-forward-declaration"))
 	{
+		const bool target_definition =
+			(arena_->Flags(target) & SYNTAX_FLAG_DEFINITION) != 0;
 		LookupResult found;
 		if (member_class_template_specialization &&
 			explicit_member_owner_scope != kNoScope)
@@ -483,18 +485,30 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 				 (class_template_member_definition_demand_states_[binding] & 1U) != 0) ||
 				(binding < class_template_explicit_instantiation_states_.size() &&
 				 class_template_explicit_instantiation_states_[binding] != 0);
+			const std::uint8_t prior_explicit_state =
+				binding < class_template_explicit_specialization_states_.size() ?
+				class_template_explicit_specialization_states_[binding] : 0;
+			if (target_definition && (prior_explicit_state & 2U) != 0)
+				throw std::runtime_error(
+					"duplicate explicit class specialization definition");
 			if (program_->entities[entity].complete)
 			{
-				if (demanded)
+				if (prior_explicit_state != 0 && !target_definition)
+				{
+					// A declaration after the explicit definition redeclares the
+					// same specialization; it does not replace its member graph.
+				}
+				else if (demanded)
 					throw std::runtime_error(
 						"explicit specialization follows completed instantiation");
-				ResetClassTemplateSpecializationDefinition(binding);
+				else ResetClassTemplateSpecializationDefinition(binding);
 			}
-			CompleteClassDefinition(target, specialization_scope, type, entity,
-				flavor, pattern.owner, declaration.name, declaration.name,
-				pattern.owner, pattern.name, program_->names.Intern(
-					ExplicitClassSpecializationName(
-						*program_, pattern.name, arguments)));
+			if (target_definition && !program_->entities[entity].complete)
+				CompleteClassDefinition(target, specialization_scope, type, entity,
+					flavor, pattern.owner, declaration.name, declaration.name,
+					pattern.owner, pattern.name, program_->names.Intern(
+						ExplicitClassSpecializationName(
+							*program_, pattern.name, arguments)));
 		}
 		else
 		{
@@ -524,7 +538,7 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 			class_template_instantiations_.Insert(key, binding);
 			pattern.specialization_bindings.push_back(binding);
 			(void)AnalyzeClass(target, specialization_scope, std::string(),
-				false, name, pattern.owner, pattern.name, true,
+				false, name, pattern.owner, pattern.name, target_definition,
 				program_->names.Intern(name));
 		}
 		if (program_->entities[entity].template_argument_begin == kNoBinding)
@@ -559,17 +573,32 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 		if (class_template_explicit_specialization_states_.size() <= binding)
 			class_template_explicit_specialization_states_.resize(
 				static_cast<std::size_t>(binding) + 1, 0);
-		class_template_explicit_specialization_states_[binding] = 1;
+		class_template_explicit_specialization_states_[binding] |=
+			target_definition ? 2U : 1U;
+		program_->entities[entity].explicit_template_specialization = true;
 		return true;
 	}
 
 	if (declarator == kNoNode) return false;
 	const NodeId specifiers = FindChild(target, "decl-specifier-seq");
 	if (specifiers == kNoNode) return false;
+	ScopeId specialization_semantic_scope = scope;
+	if (structure != kNoNode && structured_path.Size() > 1)
+	{
+		const ScopeId qualified_owner = ResolveOwner(scope, structured_path);
+		if (qualified_owner != kNoScope)
+			specialization_semantic_scope = qualified_owner;
+	}
+	const EntityId previous_class_context = current_class_context_;
+	const EntityId specialization_class =
+		program_->EntityForScope(specialization_semantic_scope);
+	if (specialization_class != kNoEntity)
+		current_class_context_ = specialization_class;
 	const SpecInfo spec = BuildSpecifiers(
-		specifiers, scope, std::string(), true);
+		specifiers, specialization_semantic_scope, std::string(), true);
 	const DeclaratorInfo parsed = BuildDeclarator(
-		declarator, spec.type, scope);
+		declarator, spec.type, specialization_semantic_scope);
+	current_class_context_ = previous_class_context;
 	if (!program_->types.IsFunction(parsed.type)) return false;
 	BindingId selected = kNoBinding;
 	if (!explicit_template_id)
@@ -659,7 +688,9 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 	function.defined = target_definition;
 	function.deferred = true;
 	function.definition_body = FindChild(target, "compound-statement");
-	const bool nonthrowing = IsNonthrowing(declarator, scope);
+	function.lexical_scope = specialization_semantic_scope;
+	const bool nonthrowing = IsNonthrowing(
+		declarator, specialization_semantic_scope);
 	program_->bindings[selected].nonthrowing = nonthrowing;
 	FunctionInfo& completed = GetMutableFunction(selected);
 	completed.exception_specification_scope = kNoScope;
@@ -668,6 +699,7 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 	program_->bindings[selected].explicit_instantiation_suppressed = false;
 	PublishInlineFunctionFacts(
 		selected, spec.inline_specifier || spec.is_constexpr);
+	if (target_definition) DemandFunction(selected);
 	ValidateFunctionRefQualifier(selected);
 	ValidateNonmemberOperator(selected);
 	return true;

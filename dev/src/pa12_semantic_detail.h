@@ -282,6 +282,8 @@ private:
 		std::uint32_t output_parent, bool local,
 		bool qualified_lexical_scope = false,
 		bool demanded_template_storage = false);
+	ScopeId ResolveStructuredDeclaratorOwner(
+		NodeId declarator, ScopeId scope);
 	void AnalyzeSimpleFunctionDeclaration(NodeId item, NodeId declarator,
 		ScopeId syntax_scope, ScopeId declaration_scope,
 		std::uint32_t output_parent, const NamePath& declared_path,
@@ -446,6 +448,8 @@ private:
 		StorageClass storage_class = STORAGE_CLASS_NONE,
 		LanguageLinkage language_linkage = LANGUAGE_LINKAGE_CPP,
 		bool nonthrowing = false, bool ordinary_visible = true);
+	void MergeFunctionRedeclarationParameters(FunctionInfo* function,
+		const std::vector<ParameterInfo>& parameters, bool definition);
 	void AnalyzeFriendFunction(NodeId node, ScopeId class_scope,
 		TypeId owner_type, const SpecInfo& spec);
 	void AnalyzeFriendClass(NodeId node, ScopeId class_scope,

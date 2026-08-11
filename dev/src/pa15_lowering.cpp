@@ -40,7 +40,6 @@ using namespace pa15_lowir_detail;
 using namespace pa15_lowering_support;
 const std::size_t kAggregateProjectionReplayLimit = 8;
 typedef SmallSequence<BindingId, kAggregateProjectionReplayLimit> AggregatePath;
-
 class GraphLowerer :
 	private pa15_lowering_detail::ControlFlowLowering<GraphLowerer>,
 	private pa18_lowering_detail::PolymorphismActionLowering<GraphLowerer>,
@@ -265,9 +264,11 @@ private:
 		const BindingRecord& binding = program_.bindings[node.binding];
 		const bool class_template_member = binding.member_owner != kNoEntity &&
 			program_.entities[binding.member_owner].template_argument_count;
+		const bool primary_template_member = class_template_member &&
+			!program_.entities[binding.member_owner].explicit_template_specialization;
 		const bool weak_odr = !binding.explicit_instantiation_suppressed &&
 			(binding.weak_odr ||
-			 class_template_member ||
+			 primary_template_member ||
 			(kind == Symbol::FUNCTION_SYMBOL &&
 			 binding.template_argument_count != 0));
 		const bool local_member = pa18_lowering_detail::IsFunctionLocalEntity(
@@ -490,7 +491,6 @@ private:
 				pending.push_back(children[i - 1]);
 		}
 	}
-
 	FunctionDeclaration LowerDeclaration(std::uint32_t node) const
 	{
 		const DumpNode& record = arena_.nodes[node];

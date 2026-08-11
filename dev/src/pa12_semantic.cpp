@@ -2014,11 +2014,19 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			NamePath owner_path = DeclaratorNamePath(declarator);
 			if (owner_path.global || owner_path.Size() > 1)
 			{
-				owner_path.Pop();
-				const LookupResult owner_type = LookupPath(scope, owner_path,
-					LOOKUP_TYPE);
-				if (owner_type.type != kNoType)
-					declaration_class_context = EntityOf(owner_type.type);
+				const ScopeId structured_owner =
+					ResolveStructuredDeclaratorOwner(declarator, scope);
+				if (structured_owner != kNoScope)
+					declaration_class_context =
+						program_->EntityForScope(structured_owner);
+				else
+				{
+					owner_path.Pop();
+					const LookupResult owner_type = LookupPath(scope, owner_path,
+						LOOKUP_TYPE);
+					if (owner_type.type != kNoType)
+						declaration_class_context = EntityOf(owner_type.type);
+				}
 			}
 		}
 	}
@@ -2052,8 +2060,12 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		const NodeId declarator = FindChild(item, "declarator");
 		if (declarator == kNoNode) throw std::runtime_error("missing declarator");
 		const NamePath declared_path = DeclaratorNamePath(declarator);
+		const ScopeId structured_declaration_scope = qualified_lexical_scope ?
+			kNoScope : ResolveStructuredDeclaratorOwner(declarator, scope);
 		const ScopeId declaration_scope =
 			qualified_lexical_scope ? program_->ParentScope(scope) :
+			structured_declaration_scope != kNoScope ?
+				structured_declaration_scope :
 			declared_path.global || declared_path.Size() > 1 ?
 				ResolveOwner(scope, declared_path) : scope;
 		if (declaration_scope == kNoScope)

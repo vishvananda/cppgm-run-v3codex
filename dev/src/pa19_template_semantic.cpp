@@ -2543,12 +2543,20 @@ BindingId SemanticAnalyzer::ReuseClassTemplateSpecialization(
 			"cached class specialization arguments are invalid");
 	const std::vector<TemplateArgument> arguments =
 		StoredTemplateArguments(first, count);
+	// An explicit specialization owns its member declarations and definitions.
+	// A lookup cache hit must not attach retained out-of-class definitions from
+	// the primary template to that independently defined class.
+	const bool explicit_specialization =
+		binding < class_template_explicit_specialization_states_.size() &&
+		class_template_explicit_specialization_states_[binding] != 0;
 	if (class_template_completion_suppressed_depth_ == 0 &&
+		!explicit_specialization &&
 		(binding >= class_template_specialization_states_.size() ||
 		 class_template_specialization_states_[binding] == 0) &&
 		ClassTemplateArgumentsAreLayoutReady(*program_, arguments))
 		CompleteClassTemplateSpecialization(index, binding, arguments);
-	if (binding < class_template_specialization_states_.size() &&
+	if (!explicit_specialization &&
+		binding < class_template_specialization_states_.size() &&
 		class_template_specialization_states_[binding] == 2)
 		ApplyClassTemplateMemberDefinitions(index, binding, arguments);
 	return binding;
