@@ -1050,6 +1050,7 @@ bool SemanticAnalyzer::RetainVariableTemplate(NodeId declaration,
 		throw std::runtime_error("too many variable templates");
 	variable_templates_.push_back(pattern);
 	variable_template_sets_.Ensure(key).Push(index);
+	program_->PublishVariableTemplateName(owner, name);
 	return true;
 }
 

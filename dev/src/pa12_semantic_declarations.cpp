@@ -381,14 +381,22 @@ bool SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 			else if (arena_->IsTag(member, "class-specifier") ||
 				arena_->IsTag(member, "class-forward-declaration"))
 			{
-				const bool deferred_definition =
-					arena_->IsTag(member, "class-specifier") &&
+				const EntityId enclosing =
+					program_->entities[current_class_context_].enclosing_class;
+				const bool nested_in_specialization = enclosing != kNoEntity &&
+					IsClassTemplateSpecializationContext(enclosing);
+				const bool incomplete_pattern_arguments =
 					current_class_context_ <
 						class_template_pattern_by_entity_.size() &&
 					class_template_pattern_by_entity_[current_class_context_] !=
 						kNoDumpEdge &&
 					!ClassTemplateSpecializationArgumentsComplete(
 						current_class_context_);
+				// Replay a specialization's first nested class, but leave class
+				// definitions below that boundary demand-owned.
+				const bool deferred_definition =
+					arena_->IsTag(member, "class-specifier") &&
+					(nested_in_specialization || incomplete_pattern_arguments);
 				const TypeId nested_type = AnalyzeClass(member, member_scope,
 					std::string(),
 					arena_->IsTag(member, "class-forward-declaration"),

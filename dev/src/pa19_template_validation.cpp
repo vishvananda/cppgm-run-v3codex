@@ -666,7 +666,30 @@ void RetainedTemplateValidator::VisitSimple(NodeId node, std::size_t scope,
 						FindParameterClause(declarator) != kNoNode);
 			}
 	}
-	VisitChildren(node, scope);
+	const NodeId list = analyzer_.FindChild(node, "init-declarator-list");
+	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
+		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+	{
+		const NodeId child = analyzer_.arena_->EdgeChild(edge);
+		if (child != list) Visit(child, scope);
+	}
+	if (list == kNoNode) return;
+	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(list);
+		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+	{
+		const NodeId item = analyzer_.arena_->EdgeChild(edge);
+		const NodeId declarator = analyzer_.FindChild(item, "declarator");
+		if (declarator == kNoNode ||
+			FindParameterClause(declarator) == kNoNode)
+		{
+			Visit(item, scope);
+			continue;
+		}
+		const std::size_t function_scope =
+			AddChildScope(scope, SCOPE_FUNCTION);
+		BindFunctionParameters(declarator, function_scope);
+		Visit(item, function_scope);
+	}
 }
 
 void RetainedTemplateValidator::VisitUsing(NodeId node, std::size_t scope)
@@ -852,7 +875,8 @@ void RetainedTemplateValidator::VisitIdExpression(NodeId node,
 		return;
 	}
 	if (DefersUnknownMembers(scope)) return;
-	throw std::runtime_error("unknown nondependent name in template definition");
+	throw std::runtime_error(
+		"unknown nondependent name in template definition: " + spelling);
 }
 
 void RetainedTemplateValidator::VisitSizeof(NodeId node, std::size_t scope)

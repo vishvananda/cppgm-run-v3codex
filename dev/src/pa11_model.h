@@ -439,17 +439,26 @@ struct LookupResult
 	std::size_t FunctionTemplateOwnerCount() const;
 	ScopeId FunctionTemplateOwnerAt(std::size_t index) const;
 	void AddFunctionTemplateOwner(ScopeId owner);
+	bool HasVariableTemplateLookup() const;
+	void BeginVariableTemplateLookup();
+	std::size_t VariableTemplateOwnerCount() const;
+	ScopeId VariableTemplateOwnerAt(std::size_t index) const;
+	void AddVariableTemplateOwner(ScopeId owner);
 	std::size_t DynamicStorageBytes() const;
 
 private:
+	std::size_t TemplateOwnerCount() const;
+	ScopeId TemplateOwnerAt(std::size_t index) const;
+	void AddTemplateOwner(ScopeId owner);
 	BindingId extra_ordinary_inline_[2];
 	std::vector<BindingId> extra_ordinary_overflow_;
 	std::size_t extra_ordinary_count_;
-	ScopeId function_template_owner_;
-	ScopeId extra_function_template_owner_inline_[2];
-	std::vector<ScopeId> extra_function_template_owner_overflow_;
-	std::size_t extra_function_template_owner_count_;
+	ScopeId template_owner_;
+	ScopeId extra_template_owner_inline_[2];
+	std::vector<ScopeId> extra_template_owner_overflow_;
+	std::size_t extra_template_owner_count_;
 	bool function_template_lookup_;
+	bool variable_template_lookup_;
 };
 
 enum LookupKind
@@ -458,7 +467,8 @@ enum LookupKind
 	LOOKUP_TYPE,
 	LOOKUP_ORDINARY,
 	LOOKUP_SCOPE_CARRIER,
-	LOOKUP_FUNCTION_TEMPLATE
+	LOOKUP_FUNCTION_TEMPLATE,
+	LOOKUP_VARIABLE_TEMPLATE
 };
 
 class Program
@@ -474,6 +484,7 @@ public:
 	void AddNamespaceAlias(ScopeId owner, NameId name, ScopeId target);
 	void AddUsingEdge(ScopeId owner, ScopeId target);
 	void PublishFunctionTemplateName(ScopeId owner, NameId name);
+	void PublishVariableTemplateName(ScopeId owner, NameId name);
 	TemplateArgumentListId InternTemplateArgumentList(
 		const std::vector<TemplateArgument>& arguments,
 		std::uint32_t* first = 0, std::uint32_t* count = 0);

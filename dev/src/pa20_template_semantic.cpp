@@ -679,6 +679,37 @@ std::vector<std::size_t> SemanticAnalyzer::FindVariableTemplates(
 			result.push_back((*found)[i]);
 		break;
 	}
+	if (!result.empty()) return result;
+	// Keep the lexical index as the ordinary explicit-template-id fast path.
+	// Enter the shared lookup graph only when a class base can own the name.
+	bool inherited_lookup = false;
+	for (ScopeId owner = scope; owner != kNoScope;
+		owner = program_->ParentScope(owner))
+	{
+		if (program_->KindOfScope(owner) != SCOPE_CLASS) continue;
+		const EntityId entity = program_->EntityForScope(owner);
+		if (entity != kNoEntity &&
+			program_->entities[entity].direct_base_count != 0)
+		{
+			inherited_lookup = true;
+			break;
+		}
+	}
+	if (!inherited_lookup) return result;
+	const LookupResult lookup = program_->Lookup(
+		scope, path, LOOKUP_VARIABLE_TEMPLATE);
+	for (std::size_t owner_index = 0;
+		owner_index < lookup.VariableTemplateOwnerCount(); ++owner_index)
+	{
+		const ScopeId owner =
+			lookup.VariableTemplateOwnerAt(owner_index);
+		const std::uint64_t key =
+			(static_cast<std::uint64_t>(owner) << 32) | path.Last();
+		const CompactIndexSequence* found = variable_template_sets_.Find(key);
+		if (found)
+			for (std::size_t i = 0; i < found->Size(); ++i)
+				result.push_back((*found)[i]);
+	}
 	return result;
 }
 

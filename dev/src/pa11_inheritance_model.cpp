@@ -1,6 +1,7 @@
 #include "pa11_model.h"
 
 #include <cstdint>
+#include <stdexcept>
 #include <vector>
 
 namespace cppgm
@@ -62,6 +63,168 @@ struct PendingBase
 		: entity(entity_), saw_virtual(saw_virtual_) {}
 };
 
+}
+
+LookupResult::LookupResult()
+	: name_space(kNoScope), type(kNoType), type_declaration(kNoBinding),
+	  type_declaration_canonical(kNoBinding),
+	  ordinary(kNoBinding), ordinary_declaration(kNoBinding),
+	  naming_class(kNoEntity), extra_ordinary_inline_(),
+	  extra_ordinary_overflow_(), extra_ordinary_count_(0),
+	  template_owner_(kNoScope), extra_template_owner_inline_(),
+	  extra_template_owner_overflow_(), extra_template_owner_count_(0),
+	  function_template_lookup_(false), variable_template_lookup_(false)
+{
+}
+
+bool LookupResult::Empty() const
+{
+	return name_space == kNoScope && type == kNoType && ordinary == kNoBinding &&
+		!function_template_lookup_ && !variable_template_lookup_;
+}
+
+std::size_t LookupResult::OrdinaryCount() const
+{
+	return ordinary == kNoBinding ? 0 : extra_ordinary_count_ + 1;
+}
+
+BindingId LookupResult::OrdinaryAt(std::size_t index) const
+{
+	if (index == 0) return ordinary;
+	--index;
+	if (index >= extra_ordinary_count_)
+		throw std::logic_error("ordinary lookup candidate index is out of range");
+	return extra_ordinary_count_ <= 2 ? extra_ordinary_inline_[index] :
+		extra_ordinary_overflow_[index];
+}
+
+void LookupResult::AddOrdinary(BindingId binding)
+{
+	if (binding == kNoBinding)
+		throw std::logic_error("ordinary lookup candidate has no identity");
+	if (ordinary == kNoBinding)
+	{
+		ordinary = binding;
+		return;
+	}
+	if (extra_ordinary_count_ < 2 && extra_ordinary_overflow_.empty())
+		extra_ordinary_inline_[extra_ordinary_count_] = binding;
+	else
+	{
+		if (extra_ordinary_overflow_.empty())
+		{
+			extra_ordinary_overflow_.reserve(4);
+			extra_ordinary_overflow_.insert(extra_ordinary_overflow_.end(),
+				extra_ordinary_inline_, extra_ordinary_inline_ + 2);
+		}
+		extra_ordinary_overflow_.push_back(binding);
+	}
+	++extra_ordinary_count_;
+}
+
+bool LookupResult::HasFunctionTemplateLookup() const
+{
+	return function_template_lookup_;
+}
+
+void LookupResult::BeginFunctionTemplateLookup()
+{
+	function_template_lookup_ = true;
+}
+
+std::size_t LookupResult::FunctionTemplateOwnerCount() const
+{
+	return TemplateOwnerCount();
+}
+
+ScopeId LookupResult::FunctionTemplateOwnerAt(std::size_t index) const
+{
+	return TemplateOwnerAt(index);
+}
+
+void LookupResult::AddFunctionTemplateOwner(ScopeId owner)
+{
+	function_template_lookup_ = true;
+	AddTemplateOwner(owner);
+}
+
+bool LookupResult::HasVariableTemplateLookup() const
+{
+	return variable_template_lookup_;
+}
+
+void LookupResult::BeginVariableTemplateLookup()
+{
+	variable_template_lookup_ = true;
+}
+
+std::size_t LookupResult::VariableTemplateOwnerCount() const
+{
+	return TemplateOwnerCount();
+}
+
+ScopeId LookupResult::VariableTemplateOwnerAt(std::size_t index) const
+{
+	return TemplateOwnerAt(index);
+}
+
+void LookupResult::AddVariableTemplateOwner(ScopeId owner)
+{
+	variable_template_lookup_ = true;
+	AddTemplateOwner(owner);
+}
+
+std::size_t LookupResult::TemplateOwnerCount() const
+{
+	return template_owner_ == kNoScope ? 0 :
+		extra_template_owner_count_ + 1;
+}
+
+ScopeId LookupResult::TemplateOwnerAt(std::size_t index) const
+{
+	if (index == 0 && template_owner_ != kNoScope)
+		return template_owner_;
+	if (template_owner_ == kNoScope || --index >=
+		extra_template_owner_count_)
+		throw std::logic_error("template owner index is out of range");
+	return extra_template_owner_count_ <= 2 ?
+		extra_template_owner_inline_[index] :
+		extra_template_owner_overflow_[index];
+}
+
+void LookupResult::AddTemplateOwner(ScopeId owner)
+{
+	if (owner == kNoScope)
+		throw std::logic_error("template lookup owner is missing");
+	for (std::size_t i = 0; i < TemplateOwnerCount(); ++i)
+		if (TemplateOwnerAt(i) == owner) return;
+	if (template_owner_ == kNoScope)
+	{
+		template_owner_ = owner;
+		return;
+	}
+	if (extra_template_owner_count_ < 2 &&
+		extra_template_owner_overflow_.empty())
+		extra_template_owner_inline_[extra_template_owner_count_] = owner;
+	else
+	{
+		if (extra_template_owner_overflow_.empty())
+		{
+			extra_template_owner_overflow_.reserve(4);
+			extra_template_owner_overflow_.insert(
+				extra_template_owner_overflow_.end(),
+				extra_template_owner_inline_,
+				extra_template_owner_inline_ + 2);
+		}
+		extra_template_owner_overflow_.push_back(owner);
+	}
+	++extra_template_owner_count_;
+}
+
+std::size_t LookupResult::DynamicStorageBytes() const
+{
+	return extra_ordinary_overflow_.capacity() * sizeof(BindingId) +
+		extra_template_owner_overflow_.capacity() * sizeof(ScopeId);
 }
 
 bool Program::HasVirtualBasePath(EntityId derived, EntityId base) const

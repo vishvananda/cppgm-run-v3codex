@@ -260,11 +260,17 @@ void SemanticAnalyzer::ValidateDeferredFunctionTemplateResult(NodeId node,
 						found = LookupPath(scope, direct, kind);
 					else found = program_->LookupQualified(
 						carrier, direct, kind);
+					const bool inherited_variable_template =
+						kind == LOOKUP_TYPE && found.type == kNoType &&
+						template_arguments != kNoNode &&
+						!FindVariableTemplates(scope, direct).empty();
+					if (inherited_variable_template) break;
 					if ((kind == LOOKUP_TYPE && found.type == kNoType) ||
 						(kind == LOOKUP_SCOPE_CARRIER &&
 						 found.type == kNoType && found.name_space == kNoScope))
 						throw std::runtime_error(
-							"non-dependent result type was not declared");
+							"non-dependent result type was not declared: " +
+							program_->names.Get(name));
 					pattern->result_lookup_facts.push_back(
 						FunctionTemplateResultLookupFact(component_node, found));
 					if (structure == pattern->result_root_structure && component == 0)

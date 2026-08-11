@@ -689,131 +689,6 @@ BindingRecord::BindingRecord()
 {
 }
 
-LookupResult::LookupResult()
-	: name_space(kNoScope), type(kNoType), type_declaration(kNoBinding),
-	  type_declaration_canonical(kNoBinding),
-	  ordinary(kNoBinding), ordinary_declaration(kNoBinding),
-	  naming_class(kNoEntity), extra_ordinary_inline_(),
-	  extra_ordinary_overflow_(), extra_ordinary_count_(0),
-	  function_template_owner_(kNoScope),
-	  extra_function_template_owner_inline_(),
-	  extra_function_template_owner_overflow_(),
-	  extra_function_template_owner_count_(0),
-	  function_template_lookup_(false)
-{
-}
-
-bool LookupResult::Empty() const
-{
-	return name_space == kNoScope && type == kNoType && ordinary == kNoBinding &&
-		!function_template_lookup_;
-}
-
-std::size_t LookupResult::OrdinaryCount() const
-{
-	return ordinary == kNoBinding ? 0 : extra_ordinary_count_ + 1;
-}
-
-BindingId LookupResult::OrdinaryAt(std::size_t index) const
-{
-	if (index == 0) return ordinary;
-	--index;
-	if (index >= extra_ordinary_count_)
-		throw std::logic_error("ordinary lookup candidate index is out of range");
-	return extra_ordinary_count_ <= 2 ? extra_ordinary_inline_[index] :
-		extra_ordinary_overflow_[index];
-}
-
-void LookupResult::AddOrdinary(BindingId binding)
-{
-	if (binding == kNoBinding)
-		throw std::logic_error("ordinary lookup candidate has no identity");
-	if (ordinary == kNoBinding)
-	{
-		ordinary = binding;
-		return;
-	}
-	if (extra_ordinary_count_ < 2 && extra_ordinary_overflow_.empty())
-		extra_ordinary_inline_[extra_ordinary_count_] = binding;
-	else
-	{
-		if (extra_ordinary_overflow_.empty())
-		{
-			extra_ordinary_overflow_.reserve(4);
-			extra_ordinary_overflow_.insert(extra_ordinary_overflow_.end(),
-				extra_ordinary_inline_, extra_ordinary_inline_ + 2);
-		}
-		extra_ordinary_overflow_.push_back(binding);
-	}
-	++extra_ordinary_count_;
-}
-
-bool LookupResult::HasFunctionTemplateLookup() const
-{
-	return function_template_lookup_;
-}
-
-void LookupResult::BeginFunctionTemplateLookup()
-{
-	function_template_lookup_ = true;
-}
-
-std::size_t LookupResult::FunctionTemplateOwnerCount() const
-{
-	return function_template_owner_ == kNoScope ? 0 :
-		extra_function_template_owner_count_ + 1;
-}
-
-ScopeId LookupResult::FunctionTemplateOwnerAt(std::size_t index) const
-{
-	if (index == 0 && function_template_owner_ != kNoScope)
-		return function_template_owner_;
-	if (function_template_owner_ == kNoScope || --index >=
-		extra_function_template_owner_count_)
-		throw std::logic_error(
-			"function-template owner index is out of range");
-	return extra_function_template_owner_count_ <= 2 ?
-		extra_function_template_owner_inline_[index] :
-		extra_function_template_owner_overflow_[index];
-}
-
-void LookupResult::AddFunctionTemplateOwner(ScopeId owner)
-{
-	if (owner == kNoScope)
-		throw std::logic_error("function-template lookup owner is missing");
-	function_template_lookup_ = true;
-	for (std::size_t i = 0; i < FunctionTemplateOwnerCount(); ++i)
-		if (FunctionTemplateOwnerAt(i) == owner) return;
-	if (function_template_owner_ == kNoScope)
-	{
-		function_template_owner_ = owner;
-		return;
-	}
-	if (extra_function_template_owner_count_ < 2 &&
-		extra_function_template_owner_overflow_.empty())
-		extra_function_template_owner_inline_[
-			extra_function_template_owner_count_] = owner;
-	else
-	{
-		if (extra_function_template_owner_overflow_.empty())
-		{
-			extra_function_template_owner_overflow_.reserve(4);
-			extra_function_template_owner_overflow_.insert(
-				extra_function_template_owner_overflow_.end(),
-				extra_function_template_owner_inline_,
-				extra_function_template_owner_inline_ + 2);
-		}
-		extra_function_template_owner_overflow_.push_back(owner);
-	}
-	++extra_function_template_owner_count_;
-}
-
-std::size_t LookupResult::DynamicStorageBytes() const
-{
-	return extra_ordinary_overflow_.capacity() * sizeof(BindingId) +
-		extra_function_template_owner_overflow_.capacity() * sizeof(ScopeId);
-}
-
 struct Program::ScopeRecord
 {
 	ScopeId parent;
@@ -848,12 +723,12 @@ struct Program::NameEntry
 	TypeId type;
 	BindingId type_declaration;
 	BindingId ordinary;
-	bool function_template;
+	bool function_template, variable_template;
 
 	NameEntry()
 		: scope(kNoScope), name(0), name_space(kNoScope), type(kNoType),
 		  type_declaration(kNoBinding), ordinary(kNoBinding),
-		  function_template(false) {}
+		  function_template(false), variable_template(false) {}
 };
 
 struct Program::UsingEdge
@@ -1276,6 +1151,14 @@ void Program::PublishFunctionTemplateName(ScopeId owner, NameId name)
 	NameEntry* entry = EnsureEntry(owner, name);
 	if (entry->function_template) return;
 	entry->function_template = true;
+	InvalidateLookupName(owner, name);
+}
+
+void Program::PublishVariableTemplateName(ScopeId owner, NameId name)
+{
+	NameEntry* entry = EnsureEntry(owner, name);
+	if (entry->variable_template) return;
+	entry->variable_template = true;
 	InvalidateLookupName(owner, name);
 }
 
@@ -1966,6 +1849,14 @@ LookupResult Program::DirectLookup(ScopeId scope, NameId name,
 		if (entry->function_template)
 			result.AddFunctionTemplateOwner(scope);
 	}
+	if (kind == LOOKUP_VARIABLE_TEMPLATE &&
+		(entry->ordinary != kNoBinding || entry->type != kNoType ||
+		 entry->variable_template))
+	{
+		result.BeginVariableTemplateLookup();
+		if (entry->variable_template)
+			result.AddVariableTemplateOwner(scope);
+	}
 	return result;
 }
 
@@ -1984,6 +1875,19 @@ void Program::MergeLookup(LookupResult* result,
 			i < candidate.FunctionTemplateOwnerCount(); ++i)
 			result->AddFunctionTemplateOwner(
 				candidate.FunctionTemplateOwnerAt(i));
+		return;
+	}
+	if (candidate.HasVariableTemplateLookup())
+	{
+		if (!result->HasVariableTemplateLookup())
+		{
+			*result = candidate;
+			return;
+		}
+		for (std::size_t i = 0;
+			i < candidate.VariableTemplateOwnerCount(); ++i)
+			result->AddVariableTemplateOwner(
+				candidate.VariableTemplateOwnerAt(i));
 		return;
 	}
 	if (result->Empty())

@@ -916,7 +916,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeVariableInitializer(
 void SemanticAnalyzer::AddMemberInitializationAction(BindingId member_id,
 	NodeId initializer, ScopeId scope, std::uint32_t body)
 {
-	const BindingRecord& member = program_->bindings[member_id];
+	const BindingRecord member = program_->bindings[member_id];
 	const EntityId member_entity = DestructedEntity(member.type);
 	const TypeKind member_kind = program_->types.Get(member.type).kind;
 	const bool class_member = member_kind != TYPE_LVALUE_REFERENCE &&
