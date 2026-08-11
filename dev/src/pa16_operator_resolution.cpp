@@ -675,6 +675,34 @@ bool SemanticAnalyzer::ApplyBuiltinUnaryConversion(
 		*operand = ApplyCallArgument(*operand, boolean, &conversion);
 		return true;
 	}
+	if (operation == "++" || operation == "--")
+	{
+		std::vector<BindingId> functions;
+		AppendConversionFunctions(EntityOf(operand->type), &functions);
+		TypeId selected_target = kNoType;
+		for (std::size_t i = 0; i < functions.size(); ++i)
+		{
+			const FunctionInfo& function = GetFunction(functions[i]);
+			if (!function.conversion_function || function.explicit_conversion)
+				continue;
+			const TypeRecord converted =
+				program_->types.Get(function.conversion_target);
+			if (converted.kind != TYPE_LVALUE_REFERENCE) continue;
+			const TypeId target = EffectiveType(converted.child);
+			if (!IsArithmetic(target) &&
+				(!IsPointer(target) || !IsPointerToCompleteObject(target)))
+				continue;
+			if (selected_target == kNoType)
+				selected_target = function.conversion_target;
+			else if (selected_target != function.conversion_target) return false;
+		}
+		if (selected_target == kNoType) return false;
+		const CallConversionFact conversion =
+			ConvertingFunction(*operand, selected_target, false);
+		if (conversion.rank == CONVERSION_INVALID) return false;
+		*operand = ApplyCallArgument(*operand, selected_target, &conversion);
+		return true;
+	}
 	std::vector<TypeId> results;
 	AppendBuiltinConversionTargets(*operand, &results);
 	std::vector<TypeId> targets;

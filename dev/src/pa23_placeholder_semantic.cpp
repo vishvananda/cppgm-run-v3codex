@@ -340,7 +340,41 @@ void SemanticAnalyzer::ApplyConditionalClassConversion(
 	const TypeId no_type = EffectiveType(no->type);
 	if (program_->types.RemoveTopCv(yes_type) ==
 		program_->types.RemoveTopCv(no_type)) return;
-	if (!IsClassObjectType(yes_type) || !IsClassObjectType(no_type)) return;
+	const bool yes_class = IsClassObjectType(yes_type);
+	const bool no_class = IsClassObjectType(no_type);
+	if (!yes_class && !no_class) return;
+	if (yes_class != no_class)
+	{
+		const TypeId class_target = yes_class ? yes_type : no_type;
+		const ExpressionInfo& nonclass = yes_class ? *no : *yes;
+		const TypeId nonclass_type = yes_class ? no_type : yes_type;
+		const TypeId nonclass_target = nonclass.category == VALUE_LVALUE ?
+			program_->types.Reference(TYPE_LVALUE_REFERENCE, nonclass_type) :
+			nonclass.category == VALUE_XVALUE ?
+			program_->types.Reference(TYPE_RVALUE_REFERENCE, nonclass_type) :
+			nonclass_type;
+		const CallConversionFact class_to_nonclass = CallConversion(
+			yes_class ? *yes : *no, nonclass_target, 0, 0);
+		const CallConversionFact nonclass_to_class = CallConversion(
+			nonclass, class_target, 0, 1);
+		const bool convert_class =
+			class_to_nonclass.rank != CONVERSION_INVALID;
+		const bool convert_nonclass =
+			nonclass_to_class.rank != CONVERSION_INVALID;
+		if (convert_class == convert_nonclass) return;
+		if (convert_class)
+		{
+			if (yes_class) *yes = ApplyCallArgument(
+				*yes, nonclass_target, &class_to_nonclass);
+			else *no = ApplyCallArgument(
+				*no, nonclass_target, &class_to_nonclass);
+		}
+		else if (yes_class) *no = ApplyCallArgument(
+			*no, class_target, &nonclass_to_class);
+		else *yes = ApplyCallArgument(
+			*yes, class_target, &nonclass_to_class);
+		return;
+	}
 	const TypeId yes_target = yes->category == VALUE_LVALUE ?
 		program_->types.Reference(TYPE_LVALUE_REFERENCE, yes_type) :
 		yes->category == VALUE_XVALUE ?

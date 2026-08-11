@@ -625,6 +625,31 @@ std::vector<BindingId> SemanticAnalyzer::UsingFunctionCandidates(
 	ScopeId scope, const NamePath& path, const std::string& spelling,
 	ScopeId* target_owner, bool* names_owner_alias, NodeId syntax)
 {
+	const std::size_t conversion = spelling.rfind("::operator ");
+	if (conversion != std::string::npos)
+	{
+		*target_owner = ResolveScopeSpelling(
+			scope, spelling.substr(0, conversion));
+		*names_owner_alias = false;
+		const TypeId target = ResolveFunctionalCastType(scope,
+			spelling.substr(conversion + 11), kNoNode);
+		const EntityId entity = *target_owner == kNoScope ? kNoEntity :
+			program_->EntityForScope(*target_owner);
+		std::vector<BindingId> candidates;
+		if (entity != kNoEntity) AppendConversionFunctions(entity, &candidates);
+		std::vector<BindingId> functions;
+		const TypeId canonical_target = target == kNoType ? kNoType :
+			program_->types.RemoveTopCv(EffectiveType(target));
+		for (std::size_t i = 0; i < candidates.size(); ++i)
+		{
+			const FunctionInfo& function = GetFunction(candidates[i]);
+			if (function.conversion_function && canonical_target != kNoType &&
+				program_->types.RemoveTopCv(EffectiveType(
+					function.conversion_target)) == canonical_target)
+				functions.push_back(candidates[i]);
+		}
+		return functions;
+	}
 	std::vector<BindingId> functions =
 		FunctionCandidates(scope, spelling, 0, syntax);
 	const NodeId structure = syntax == kNoNode ? kNoNode :

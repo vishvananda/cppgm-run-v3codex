@@ -19,37 +19,37 @@ IR).
 
 ## Current Failure Map
 
-This checkpoint started at 67/128 and now passes 79/128 with every baseline
-pass preserved. The 12 list/aggregate/array failures are closed. The remaining
-49 failures group by first owner: deferred function-template result deduction
-(1), class conversions and value transfer (4), lambda closure synthesis/calls
-(41), and retained-template recovery (3). The lambda/range case remains charged
-to lambda because closure synthesis fails before its range body is analyzed.
+This checkpoint started at 79/128 and now passes 83/128 with every baseline
+pass preserved. The four class-conversion/value-transfer failures are closed.
+The remaining 45 failures group by first owner: deferred function-template
+result deduction (1), lambda closure synthesis/calls (41), and retained-template
+recovery (3). The lambda/range case remains charged to lambda because closure
+synthesis fails before its range body is analyzed.
 
 ## Active Checkpoint
 
-Close the four class-conversion/value-transfer failures at the selected
-conversion and typed value-boundary interface. PA12 owns canonical constructor
-and conversion-function lookup, reference result categories, alias-resolved
-types, and the selected conversion sequence; PA15-PA17 consume those facts to
-lower direct-object parameters and copy boundaries without replaying lookup.
-Relevant `spec.md` requirements are sections 2 (canonical identities), 3
-(indexed lookup and retained selected conversions), 6 (typed lowering), 8
-(phase-local ownership), and 9 (work proportional to actual candidates and
-emitted actions). Expected complexity is O(actual candidates + selected
-conversion steps + emitted actions), with no whole-program scan. Validate the
-four failures, adjacent passing constructor/conversion/value-boundary cases,
-PA1-24, PA25-local progress, and file audit.
+Close the four function-template result and retained-recovery failures at the
+on-demand specialization boundary. PA19/PA23 own canonical function result
+identity, specialization lookup, retained-body ownership, and dependency demand;
+PA12 publishes the completed typed graph and PA15 lowers it without reparsing or
+replaying deduction. Relevant `spec.md` requirements are sections 2 (canonical
+declaration/type identity), 4 (retained syntax instantiated on demand), 6
+(direct typed lowering), 8 (explicit lifetime and cache ownership), and 9 (work
+proportional to retained syntax, requested specializations, dependency edges,
+and emitted IR). Expected complexity is O(retained syntax + requested
+specializations + dependency edges + emitted actions), with indexed identity
+lookups and no translation-unit scan. Validate all four failures, adjacent
+passing result-deduction/lifecycle cases, PA1-24, PA25 progress, and file audit.
 
 ## Performance Evidence
 
-For 16/64/256-element aggregate-array cases, tokens were 266/938/3,626,
-semantic nodes 177/657/2,577, conversion checks 87/327/1,287, and emitted
-instructions 186/666/2,586; function-signature lookups stayed at 22. Five-run
-median semantic time was 0.424/0.984/3.192 ms and lowering time
-0.151/0.286/1.212 ms. Typed storage was 39,536/143,360/558,656 bytes and peak
-semantic storage 88,362/241,194/895,531 bytes. Work and storage follow expanded
-elements and emitted actions without an aggregate-member rescan trend.
+For 16/64/256 conversion-function candidates resolved by one canonical-target
+using-declaration, tokens were 199/727/2,839, declarations 166/598/2,326,
+lookup queries 173/605/2,333, signature probes 274/994/3,874, and access checks
+26/74/266. Five-run median semantic time was 0.746/2.364/9.390 ms; peak semantic
+storage was 172,576/662,834/2,632,566 bytes. Lowering stayed at
+0.036/0.043/0.090 ms with no emitted functions. Candidate work and storage track
+the declaration set without a whole-program or quadratic lookup trend.
 
 ## Completed Checkpoints
 
@@ -58,3 +58,4 @@ elements and emitted actions without an aggregate-member rescan trend.
 | Ordinary placeholder deduction and checkpoint audit | Canonical variable/function results; condition/static-member auto; one retained member body; cv-reference correctness; direct initializer ownership; no placeholder-path deep copies | Shipped PA25 46/121 preserved; audit regressions 4/4; local PA25 50/125; PA1-24 3,471/3,471; file audit pass |
 | Range-for statement closure and audit | Single-parse dispatch; category-correct one-time range materialization; counted array/braced paths; selected member/ADL and iterator facts; retained templates; complete condition/iteration lifetimes; direct typed CFG lowering | Range-owned 13/13 plus audit 3/3; PA25 67/128 (+17 from pre-range); PA1-24 3,471/3,471; reducer executables, file audit, and diff checks pass |
 | Target-directed list, aggregate, and array initialization | Fundamental `T{...}`; adjacent strings; braced char arrays and reference viability; direct/omitted aggregate plans; canonical helper-prefix reuse; nested array members; class boundary copies; array temporary identity | Checkpoint 12/12; PA25 79/128 (+12); PA1-24 3,471/3,471; file audit and diff checks pass; 16/64/256 scaling is linear in elements and emitted actions |
+| Selected class conversions and typed value boundaries | One-class conditional construction; lvalue-reference conversion for built-in increment; canonical-target conversion using; direct derived payload parameter copy | Checkpoint 4/4 and neighbors 11/11; PA25 83/128 (+4); PA1-24 3,471/3,471; file audit and diff checks pass; 16/64/256 candidates scale linearly |
