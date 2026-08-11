@@ -13,6 +13,14 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+void SemanticAnalyzer::PublishCallImplicitObject(
+	std::uint32_t call, std::uint32_t object)
+{
+	dump_.Add(call, object);
+	dump_.nodes[call].temporary_implicit_object =
+		dump_.nodes[object].contains_temporary_object;
+}
+
 std::vector<NodeId> SemanticAnalyzer::CollectCallArgumentSyntax(
 	NodeId call, NodeId* arguments_node) const
 {

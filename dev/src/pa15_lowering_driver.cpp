@@ -141,6 +141,7 @@ void CoalesceLifecycleFunctions(TypedProgram* program,
 LowIRLoweringStats::LowIRLoweringStats()
 	: source_bytes(0), semantic(), lowered_nodes(0), functions(0), globals(0),
 	  blocks(0), instructions(0), binding_index_probes(0),
+	  slot_implicit_object_fact_reads(0),
 	  virtual_calls(0), vptr_stores(0), vtable_slots(0),
 	  deleting_destructors(0),
 	  cleanup_dispatch_probes(0), cleanup_dispatch_cache_hits(0),
@@ -319,6 +320,10 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 				semantic_stats.constexpr_call_requests;
 			semantic.constexpr_call_cache_hits +=
 				semantic_stats.constexpr_call_cache_hits;
+			semantic.constant_conversion_fact_requests +=
+				semantic_stats.constant_conversion_fact_requests;
+			semantic.constant_conversion_fact_cache_hits +=
+				semantic_stats.constant_conversion_fact_cache_hits;
 			semantic.constexpr_local_index_probes +=
 				semantic_stats.constexpr_local_index_probes;
 			semantic.constexpr_scope_index_probes +=

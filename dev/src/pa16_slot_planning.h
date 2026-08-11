@@ -51,32 +51,6 @@ protected:
 		return true;
 	}
 
-	bool CallUsesTemporaryImplicitObject(std::uint32_t node) const
-	{
-		const Derived& derived = static_cast<const Derived&>(*this);
-		const DumpNode& call = derived.arena_.nodes[node];
-		if (call.kind != DUMP_CALL_EXPRESSION ||
-			call.binding == kNoBinding ||
-			call.binding >= derived.program_.bindings.size()) return false;
-		const BindingRecord& binding = derived.program_.bindings[call.binding];
-		if (binding.member_owner == kNoEntity || binding.static_member_function)
-			return false;
-		const NodeChildren children = derived.Children(node);
-		if (children.size() < 2) return false;
-		std::vector<std::uint32_t> pending(1, children[1]);
-		while (!pending.empty())
-		{
-			const std::uint32_t current = pending.back();
-			pending.pop_back();
-			if (derived.arena_.nodes[current].kind == DUMP_TEMPORARY_OBJECT)
-				return true;
-			const NodeChildren nested = derived.Children(current);
-			for (std::size_t i = 0; i < nested.size(); ++i)
-				pending.push_back(nested[i]);
-		}
-		return false;
-	}
-
 	void CollectSlots(std::uint32_t node)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
@@ -223,11 +197,15 @@ protected:
 				pending.push_back(children[i - 1]);
 				under_variable.push_back(variable_initializer ||
 					record.kind == DUMP_VARIABLE ? 1 : 0);
+				const DumpNode& child =
+					derived.arena_.nodes[children[i - 1]];
+				const bool expression_call =
+					record.kind == DUMP_EXPRESSION_STATEMENT &&
+					child.kind == DUMP_CALL_EXPRESSION;
+				if (expression_call && derived.stats_)
+					++derived.stats_->slot_implicit_object_fact_reads;
 				const bool plan_child_arguments = expression_arguments ||
-					(record.kind == DUMP_EXPRESSION_STATEMENT &&
-					 derived.arena_.nodes[children[i - 1]].kind ==
-						DUMP_CALL_EXPRESSION &&
-					 !CallUsesTemporaryImplicitObject(children[i - 1]));
+					(expression_call && !child.temporary_implicit_object);
 				plan_expression_arguments.push_back(
 					plan_child_arguments ? 1 : 0);
 			}

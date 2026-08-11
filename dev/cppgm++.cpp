@@ -684,8 +684,12 @@ int run_emit_semantics_mode(const vector<string> & args)
 			   << " lambda_closure_cache_hits="
 			   << stats.lambda_closure_cache_hits
 	           << " constexpr_call_requests=" << stats.constexpr_call_requests
-           << " constexpr_call_cache_hits=" << stats.constexpr_call_cache_hits
-           << " constexpr_local_index_probes="
+	           << " constexpr_call_cache_hits=" << stats.constexpr_call_cache_hits
+	           << " constant_conversion_fact_requests="
+	           << stats.constant_conversion_fact_requests
+	           << " constant_conversion_fact_cache_hits="
+	           << stats.constant_conversion_fact_cache_hits
+	           << " constexpr_local_index_probes="
            << stats.constexpr_local_index_probes
            << " constexpr_scope_index_probes="
            << stats.constexpr_scope_index_probes
@@ -882,8 +886,12 @@ int run_emit_lowir_mode(const vector<string> & args)
 				 << semantic.lambda_closure_cache_hits
 				 << " constexpr_call_requests="
 			 << semantic.constexpr_call_requests
-			 << " constexpr_call_cache_hits="
+				 << " constexpr_call_cache_hits="
 			 << semantic.constexpr_call_cache_hits
+			 << " constant_conversion_fact_requests="
+			 << semantic.constant_conversion_fact_requests
+			 << " constant_conversion_fact_cache_hits="
+			 << semantic.constant_conversion_fact_cache_hits
 			 << " constexpr_local_index_probes="
 			 << semantic.constexpr_local_index_probes
 			 << " constexpr_scope_index_probes="
@@ -908,6 +916,8 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << " blocks=" << stats.blocks
 			 << " instructions=" << stats.instructions
 			 << " binding_index_probes=" << stats.binding_index_probes
+			 << " slot_implicit_object_fact_reads="
+			 << stats.slot_implicit_object_fact_reads
 			 << " virtual_calls=" << stats.virtual_calls
 			 << " vptr_stores=" << stats.vptr_stores
 			 << " vtable_slots=" << stats.vtable_slots

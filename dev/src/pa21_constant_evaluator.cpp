@@ -2463,7 +2463,24 @@ bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 	const ExpressionInfo* receiver)
 {
 	function = program_->bindings[function].canonical;
-	const FunctionInfo info = GetFunction(function);
+	FunctionInfo info = GetFunction(function);
+	if (info.constexpr_function && info.definition_body == kNoNode &&
+		info.member_owner != kNoType)
+	{
+		const EntityId owner = EntityOf(info.member_owner);
+		if (owner != kNoEntity &&
+			owner < class_template_pattern_by_entity_.size() &&
+			class_template_pattern_by_entity_[owner] != kNoDumpEdge)
+		{
+			DemandClassTemplateMemberDefinitions(owner);
+			const BindingId specialization =
+				program_->entities[owner].declaration;
+			if (specialization != kNoBinding && specialization <
+				class_template_member_definition_demand_states_.size())
+				ApplyDemandedClassTemplateMemberDefinitions(specialization);
+			info = GetFunction(function);
+		}
+	}
 	const TypeId result_type = program_->types.Get(info.type).child;
 	const bool nonstatic_member = info.member_owner != kNoType &&
 		!program_->bindings[function].static_member_function;

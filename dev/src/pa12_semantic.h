@@ -105,6 +105,8 @@ struct SemanticAnalysisStats
 	std::size_t lambda_closure_cache_hits;
 	std::size_t constexpr_call_requests;
 	std::size_t constexpr_call_cache_hits;
+	std::size_t constant_conversion_fact_requests;
+	std::size_t constant_conversion_fact_cache_hits;
 	std::size_t constexpr_local_index_probes;
 	std::size_t constexpr_scope_index_probes;
 	std::size_t constexpr_object_projection_visits;

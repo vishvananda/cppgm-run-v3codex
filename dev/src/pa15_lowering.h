@@ -30,6 +30,7 @@ struct LowIRLoweringStats
 	std::size_t blocks;
 	std::size_t instructions;
 	std::size_t binding_index_probes;
+	std::size_t slot_implicit_object_fact_reads;
 	std::size_t virtual_calls;
 	std::size_t vptr_stores;
 	std::size_t vtable_slots;

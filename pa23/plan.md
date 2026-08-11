@@ -6,40 +6,47 @@ PA23 completes C++11 function-template deduction, ordering, and substitution
 failure on the retained semantic graph. Per `spec.md` sections 1-6 and 9,
 patterns own syntax and lexical context, candidate frames own recoverable
 failure, canonical specializations own result/ABI/demand state, and typed
-lowering consumes selected facts. This increment carries placeholder deduction
-through declaration initialization, performs candidate-local constructor and
-conversion-target matching, stabilizes only specialization-owned class
-boundaries, and keeps constexpr recipes separate from runtime emission demand.
-Lookup remains owner-indexed and work remains proportional to participating
-candidates, parameters, arguments, conversion steps, and demanded actions.
+lowering consumes selected facts. Placeholder deduction flows through
+declaration initialization; constructor and conversion targets are matched in
+candidate-local frames; specialization owners publish result, ABI, constexpr,
+and demand facts. Constant-expression conversion uses the generic canonical
+call evaluator, while safe ordinary constant-return facts are memoized at the
+canonical function. Semantic construction publishes temporary implicit-object
+facts and slot lowering consumes them directly. Lookup remains owner-indexed
+and work is proportional to participating candidates, arguments, semantic
+edges, selected calls, and demanded actions.
 
 ## Current Failure Map
 
-The report is 408/409, up 18 from the turn-start baseline of 390/409. The sole
-failure is `500-tcc-member-constructible-pack-sfinae`: its source defines
+The report is 409/410, preserving the landed 408/409 checkpoint and adding one
+audit guard. The sole failure is
+`500-tcc-member-constructible-pack-sfinae`: its source defines
 `__is_implicitly_constructible<Args...>()` to return `false`, so candidate-local
 constant evaluation removes the constrained overload and selects the ellipsis
 returning 4; the checked fixture instead expects the constrained overload
-returning 11. No test-specific override is present.
+returning 11. G++ and Clang both execute the source with status 249. No
+test-specific override is present.
 
 ## Active Checkpoint
 
-The remaining checkpoint is predicate/oracle reconciliation at the
-candidate-default boundary. The owner flow is substituted default argument ->
-constexpr member-template call -> `enable_if` type formation -> candidate
-participation; expected work is O(P+A) for parameters and pack arguments, with
-failure isolated to the candidate frame. Validate the fixture's intended
-predicate, neighboring member-pack SFINAE cases, PA23, PA1-PA22, and audit
-before changing semantics.
+The next substantial checkpoint is full-stage fixture/oracle reconciliation at
+the member-pack predicate boundary. The source and checked LowIR must be made
+mutually consistent by an explicit fixture decision; no compiler semantic
+change is valid while the predicate remains unconditionally false. Preserve the
+owner flow of substituted default -> canonical constexpr call -> `enable_if`
+formation -> candidate participation, then validate neighboring pack-SFINAE
+cases, all PA23 tests, PA1-PA22, and file audit.
 
 ## Performance Evidence
 
-For 1/2/4/8 constructor/conversion patterns, function-deduction visits were
-3/9/15/27, while viable overload candidates stayed 9/12/12/12 and conversions
-17/20/20/20. Semantic time was 0.348/0.368/0.410/0.679 ms, semantic nodes stayed
-17, and typed storage stayed 4,892 bytes, supporting owner-local linear pattern
-screening. Ten focused ASan/UBSan probes pass; PA1-PA22 pass 2,639/2,639; PA23
-passes 408/409; and file audit passes with 13 inherited advisories.
+For 1/2/4/8 ordinary/temporary member-call pairs, slot fact reads are
+2/4/8/16, semantic nodes 52/68/100/164, lowered nodes 26/33/47/75, and
+instructions 38/48/68/108. For 1/2/4/8 repeated safe conversion folds,
+canonical requests are 1/2/4/8 and cache hits 0/1/3/7, with semantic nodes
+29/36/50/78 and instructions 8/11/17/29. PA1-PA22 pass 2,639/2,639; PA23 is
+409/410 with only the contradictory fixture; focused conversion, constructor,
+slot, and compile-fail guards pass; and file audit passes with 13 inherited
+advisories.
 
 ## Completed Checkpoints
 
@@ -77,4 +84,4 @@ passes 408/409; and file audit passes with 13 inherited advisories.
 | Retained enclosing-pack dependency and dependent braced construction | Nested parameter types defer to specialization replay; qualified/template calls avoid speculative type formation; the audit replaced class-body lookahead with parse-once routing and completed declarator/local/template-template dependency ownership in canonical parameter scopes; original 378 -> 380, audit guard 381/408, no regressions, sanitizer-clean, linear scaling. |
 | Declaration-owned alias access, dead-arm demand, and typed scalar/ABI finalization | Alias bodies substitute with lexical privilege; short-circuited calls stay undemanded; null and boolean facts lower canonically; empty-chain elision now requires known bodies, memoizes canonical dependency facts, and publishes C2 state only after success; 381 -> 389, audit guard 390/409, no regressions, sanitizer-clean, bounded scaling. |
 | Canonical non-deduced matching and partial ordering | Array legality/cv, transitive base deduction, dependent NTTP packs, recursive partial replay, direct template-id identity, and template-template piecewise ordering use typed candidate-local facts; 390 -> 398, eight gains, no regressions, sanitizer-clean, bounded combined scaling. |
-| Constructor/conversion target and materialization flow | Placeholder deduction, candidate-local constructor/default SFINAE, one-way conditional conversion, specialization ABI, and demand/slot/constant lowering pass; 398 -> 408, PA1-PA22 clean, audit and ten sanitizer probes pass, linear pattern scaling. |
+| Constructor/conversion target and materialization flow | Placeholder deduction, candidate-local constructor/default SFINAE, specialization ABI, and demand/materialization pass; the audit routes constant expressions through canonical constexpr evaluation, memoizes safe ordinary conversion facts, and replaces slot subtree reconstruction with a typed call fact; landed 408/409 is preserved, the guard raises the report to 409/410, PA1-PA22 are clean, and representative work is linear. |

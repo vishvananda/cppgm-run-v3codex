@@ -2,49 +2,52 @@
 
 ## Current Checkpoint Review
 
-The landed `8da6b98e` increment moved PA23 from 381/408 to 389/408. It restores
-declaration-owned access while substituting alias templates, keeps calls in
-discarded constant arms out of runtime demand, retains typed null/comparison
-facts through LowIR, and delays constructor C2 publication until an entire
-speculative empty chain succeeds. The eight gains cover constructor/default
-pack replay, dependent current-specialization defaults, member-template alias
-and result SFINAE, and unqualified member-template multi-deduction. Earlier
-assignments remained clean at the checkpoint boundary.
+The landed `3531871f` increment moved PA23 from 398/409 to 408/409. It carries
+placeholder deduction through variable initialization, completes constructor
+and conversion-template participation, records specialization result ABI and
+materialization facts, and extends conditional/reference and slot lowering.
+The ten gains cover defaulted constructor SFINAE, copy/move and non-template
+preference, conversion-object copy initialization, conditional reference
+results, template-template conversion targets, and adjacent alias/default
+replay. PA1--PA22 were clean at the checkpoint boundary.
 
-The audit traced constructor selection through `BuildConstructorAction`,
-`EmptyDefaultConstructorChain`, C1/C2 demand, and typed LowIR emission. The
-elision query treated a merely declared user constructor as an empty body,
-which removed both its containing implicit constructor and the required member
-call. Each query also allocated and cleared an entity-sized visited array, and
-identical successful or failed chains were recomputed. This violated the
-semantic-fact ownership, complete cache-key, explicit demand-edge, and
-proportional-work requirements in `spec.md` sections 2, 4, 5, 6, and 9.
+The audit traced class contextual conversion from overload selection through
+constant evaluation, specialization-member demand, selected call publication,
+and LowIR. `TryFoldConstantClassConversion` interpreted a retained return body
+and bypassed the generic evaluator without requiring a `constexpr` function;
+it therefore accepted a non-`constexpr` conversion in a constant expression.
+Constant-expression conversion now uses the canonical constexpr call engine,
+which demands a missing class-template member definition at its specialization
+owner and enforces the declaration's `constexpr` fact. The safe ordinary O0
+constant-return canonicalization is separate and memoized by canonical function
+identity. A compile-fail guard proves the timing boundary; no candidate failure
+is converted into a hard error or exception-based control path.
 
-Canonical constructor identity now owns a monotonic unknown/conservative-
-failure/proven-empty fact. A user constructor is elidable only when its
-definition body is known and empty; implicit and defaulted constructors retain
-their language-owned status. A successful fact stores the flattened member and
-base-entry dependency IDs, while reusable generation marks and scratch vectors
-visit only the participating subobject graph. ABI base entries and dependency
-facts are still published only after complete success. Lowering consumes those
-typed IDs through the existing demand path, and the scalar path has no
-competing fallback. There is no source-text dispatch, whole-program retry,
-global invalidation, or exception-based candidate control flow on the repaired
-path.
+The lowering audit traced expression-statement class arguments through member
+object conversion, temporary materialization, slot planning, and call lowering.
+Slot planning had rediscovered whether the implicit object contained a
+temporary by walking its semantic subtree. Semantic construction now propagates
+one typed containment bit per edge and publishes the selected call's implicit-
+object fact; lowering performs one O(1) fact read, exposed by a release counter.
+The path has no source/test spelling dispatch, whole-program retry, global
+invalidation, or textual reconstruction.
 
-For 1/2/4/8 repeated proven-empty and declaration-only object pairs amid 16
-unrelated classes, requests were 2/4/8/16 and cache hits 0/2/6/14; entity visits
-were 3/3/3/3, dependency-edge visits 2/2/2/2, worklist pushes 3/3/3/3, and
-emissions 3/3/3/3. Tokens grew 131/137/149/173, semantic nodes
-21/27/39/63, and typed storage 6,413/7,085/8,429/11,117 bytes. Thus repeated
-queries replay compact dependency IDs, and unrelated declarations do not enter
-the elision work.
+For 1/2/4/8 ordinary and temporary-object call pairs, fact reads were
+2/4/8/16, semantic nodes 52/68/100/164, lowered nodes 26/33/47/75,
+instructions 38/48/68/108, and typed storage
+12,703/15,124/19,966/29,650 bytes. For 1/2/4/8 repeated safe conversion
+canonicalizations, requests were 1/2/4/8, cache hits 0/1/3/7, semantic nodes
+29/36/50/78, and instructions 8/11/17/29. The counters and output sizes support
+linear produced-work scaling and one owner computation followed by O(1) hits.
 
-The original 389/408 checkpoint remains intact; the declaration-only guard
-makes the combined report 390/409 with the same 19 prior failures. The nine
-affected-path probes pass under ASan/UBSan. PA1--PA22 pass 2,639/2,639, file
-audit passes with the same 13 inherited header-division advisories, and
-`git diff --check` passes.
+The original 408/409 checkpoint remains intact and the audit guard raises the
+combined report to 409/410. The sole mismatch is the checked
+`500-tcc-member-constructible-pack-sfinae` fixture: its predicate returns
+`false`, so C++11 candidate substitution selects the ellipsis returning 4,
+while its reference expects the constrained overload returning 11; both G++
+and Clang execute the source with status 249. No semantic override was added.
+PA1--PA22 pass 2,639/2,639, file audit passes with the unchanged 13 inherited
+header-division advisories, and `git diff --check` passes.
 
 ## Checkpoint Audit Ledger
 
@@ -60,3 +63,4 @@ audit passes with the same 13 inherited header-division advisories, and
 | Zero-cardinality expansion and static-member demand (`1d55437f`, this audit) | Typed size/alignment now owns all storage and lifetime paths; retained definition policy and explicit address/reference demand replace syntax reopening; 377/406 is preserved, the audit guard raises the report to 378/407, and representative work is linear. |
 | Enclosing dependency and dependent construction (`c510b4af`, this audit) | Parse-once class routing and canonical parameter-scope replay remove exponential nested-class retries and complete dependent NTTP/template-template ownership; 380/407 is preserved, the guard raises the report to 381/408, and representative work is linear. |
 | Substitution and demand boundaries (`8da6b98e`, this audit) | Declaration-owned alias substitution, typed scalar facts, and dead-arm demand are preserved; constructor-chain elision now requires a known body and memoizes canonical dependency facts; 389/408 is preserved, the guard raises the report to 390/409, and repeated work is flat. |
+| Constructor/conversion target and materialization (`3531871f`, this audit) | Canonical constexpr evaluation now owns constant-expression conversion and rejects non-`constexpr` calls; selected calls publish temporary-object slot facts consumed in O(1); 408/409 is preserved, the guard raises the report to 409/410, and representative work is linear. |

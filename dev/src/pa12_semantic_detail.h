@@ -106,6 +106,8 @@ public:
 		  function_template_deduction_visits_(0),
 		  lambda_closure_requests_(0), lambda_closure_cache_hits_(0),
 		  constexpr_call_requests_(0), constexpr_call_cache_hits_(0),
+		  constant_conversion_fact_requests_(0),
+		  constant_conversion_fact_cache_hits_(0),
 		  constexpr_local_index_probes_(0),
 		  constexpr_scope_index_probes_(0),
 		  constexpr_object_projection_visits_(0),
@@ -767,6 +769,8 @@ private:
 		const ObjectConversionFact* object_conversion = 0,
 		const std::vector<CallConversionFact>* argument_conversions = 0,
 		bool suppress_virtual_dispatch = false);
+	void PublishCallImplicitObject(
+		std::uint32_t call, std::uint32_t object);
 	CallConversionFact CallConversion(const ExpressionInfo& source,
 		TypeId target, CallConversionTable* cache, std::size_t source_ordinal);
 	int CompareCallConversions(const CallConversionFact& left,
@@ -1554,6 +1558,8 @@ private:
 	DumpArena constexpr_scratch_dump_;
 	std::unordered_map<ConstexprCallKey, ConstexprCallFact,
 		ConstexprCallKeyHash> constexpr_call_facts_;
+	std::unordered_map<BindingId, std::int64_t>
+		constant_conversion_return_values_;
 	std::vector<EntityId> associated_entities_;
 	std::vector<ScopeId> associated_scopes_;
 	std::vector<TypeId> associated_type_scratch_;
@@ -1622,6 +1628,8 @@ private:
 	std::size_t lambda_closure_cache_hits_;
 	std::size_t constexpr_call_requests_;
 	std::size_t constexpr_call_cache_hits_;
+	std::size_t constant_conversion_fact_requests_;
+	std::size_t constant_conversion_fact_cache_hits_;
 	mutable std::size_t constexpr_local_index_probes_;
 	mutable std::size_t constexpr_scope_index_probes_;
 	mutable std::size_t constexpr_object_projection_visits_;

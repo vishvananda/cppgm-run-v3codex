@@ -1110,7 +1110,7 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 		converted_object = ApplyMemberObjectTarget(
 			qualified_object, object_parameter, selected,
 			split_qualified_projection ? 0 : object_conversion);
-		dump_.Add(call, converted_object.node);
+		PublishCallImplicitObject(call, converted_object.node);
 		constexpr_receiver = &converted_object;
 	}
 	for (std::size_t a = 0; a < arguments.size(); ++a)
@@ -2964,6 +2964,8 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		stats_->lambda_closure_cache_hits = lambda_closure_cache_hits_;
 		stats_->constexpr_call_requests = constexpr_call_requests_;
 		stats_->constexpr_call_cache_hits = constexpr_call_cache_hits_;
+		stats_->constant_conversion_fact_requests = constant_conversion_fact_requests_;
+		stats_->constant_conversion_fact_cache_hits = constant_conversion_fact_cache_hits_;
 		stats_->constexpr_local_index_probes =
 			constexpr_local_index_probes_;
 		stats_->constexpr_scope_index_probes =

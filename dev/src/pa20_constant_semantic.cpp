@@ -171,11 +171,18 @@ bool SemanticAnalyzer::TryFoldConstantClassConversion(
 	const ExpressionInfo& value, BindingId conversion, TypeId target,
 	std::int64_t* result)
 {
+	// Constant-expression evaluation belongs to the generic evaluator, which
+	// enforces the constexpr declaration requirement.  This owner-local fact is
+	// only an O0 canonicalization for an otherwise observable ordinary call.
+	if (constant_expression_required_depth_ != 0 ||
+		constexpr_evaluation_depth_ != 0) return false;
+	++constant_conversion_fact_requests_;
 	const EntityId entity = EntityOf(value.type);
 	if (entity == kNoEntity || !IsIntegral(target, true)) return false;
 	const EntityRecord& object = program_->entities[entity];
 	if (!object.empty_class || !object.trivial_default_constructor ||
 		!object.trivial_destructor) return false;
+	conversion = program_->bindings[conversion].canonical;
 	FunctionInfo function = GetFunction(conversion);
 	if (function.conversion_function && function.definition_body == kNoNode &&
 		entity < class_template_pattern_by_entity_.size() &&
@@ -193,6 +200,14 @@ bool SemanticAnalyzer::TryFoldConstantClassConversion(
 		function.definition_body == kNoNode ||
 		program_->types.RemoveTopCv(EffectiveType(function.conversion_target)) !=
 		program_->types.RemoveTopCv(EffectiveType(target))) return false;
+	const std::unordered_map<BindingId, std::int64_t>::const_iterator cached =
+		constant_conversion_return_values_.find(conversion);
+	if (cached != constant_conversion_return_values_.end())
+	{
+		++constant_conversion_fact_cache_hits_;
+		*result = cached->second;
+		return true;
+	}
 	NodeId statement = kNoNode;
 	for (std::uint32_t edge = arena_->FirstEdge(function.definition_body);
 		edge != kNoEdge; edge = arena_->NextEdge(edge))
@@ -216,6 +231,8 @@ bool SemanticAnalyzer::TryFoldConstantClassConversion(
 	if (member.kind != BIND_VARIABLE || member.non_static_data_member ||
 		!member.constant || !IsIntegral(member.type, true)) return false;
 	*result = NormalizeIntegralConstant(target, member.value);
+	constant_conversion_return_values_.insert(
+		std::make_pair(conversion, *result));
 	return true;
 }
 

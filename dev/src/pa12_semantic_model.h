@@ -130,6 +130,8 @@ struct DumpNode
 	bool argument_materialization;
 	bool discarded_materialization;
 	bool reference_call_materialization;
+	bool contains_temporary_object;
+	bool temporary_implicit_object;
 	bool pending_constructor_demand;
 	bool class_argument_staging;
 	bool variadic_class_argument;
@@ -170,7 +172,9 @@ struct DumpNode
 		  value_initialization(false), elide_empty_constructor(false),
 		  trivial_special_member_action(false), storage_unit_transfer(false),
 		  argument_materialization(false), discarded_materialization(false),
-		  reference_call_materialization(false), pending_constructor_demand(false),
+		  reference_call_materialization(false),
+		  contains_temporary_object(value == DUMP_TEMPORARY_OBJECT),
+		  temporary_implicit_object(false), pending_constructor_demand(false),
 		  class_argument_staging(false), variadic_class_argument(false),
 		  direct_return_slot(false), declaration_only(false),
 		  unwind_only(false), full_expression_staging(false),
@@ -210,6 +214,8 @@ public:
 		DumpNode& owner = nodes[parent];
 		owner.template_layout_constant = owner.template_layout_constant ||
 			nodes[child].template_layout_constant;
+		owner.contains_temporary_object = owner.contains_temporary_object ||
+			nodes[child].contains_temporary_object;
 		if (owner.first_edge == kNoDumpEdge) owner.first_edge = edge;
 		else edges[owner.last_edge].next = edge;
 		owner.last_edge = edge;
