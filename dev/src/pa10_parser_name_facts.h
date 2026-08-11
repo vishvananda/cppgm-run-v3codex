@@ -384,23 +384,37 @@ protected:
 	void PublishClassNameFacts(std::size_t mark)
 	{
 		Derived& parser = static_cast<Derived&>(*this);
-		std::vector<TextId> types, templates, non_templates;
+		struct PublishedFact
+		{
+			TextId name;
+			std::uint8_t facts;
+			PublishedFact(TextId name_value, std::uint8_t facts_value)
+				: name(name_value), facts(facts_value) {}
+		};
+		std::vector<PublishedFact> published;
 		for (std::size_t i = mark; i < parser.name_fact_changes_.size(); ++i)
 		{
 			const TextId name = parser.name_fact_changes_[i].name;
-			if (parser.HasNameFact(name, Derived::kKnownType)) types.push_back(name);
-			if (parser.HasNameFact(name, Derived::kKnownTemplate))
-				templates.push_back(name);
-			if (parser.HasNameFact(name, Derived::kKnownNonTemplate))
-				non_templates.push_back(name);
+			const std::uint8_t facts = name < parser.name_facts_.size() ?
+				static_cast<std::uint8_t>(parser.name_facts_[name] &
+					(Derived::kKnownType | Derived::kKnownTemplate |
+					 Derived::kKnownNonTemplate)) : 0;
+			if (facts != 0) published.push_back(PublishedFact(name, facts));
 		}
 		parser.RestoreNameFacts(mark);
-		for (std::size_t i = 0; i < types.size(); ++i)
-			parser.SetNameFact(types[i], Derived::kKnownType);
-		for (std::size_t i = 0; i < templates.size(); ++i)
-			parser.SetNameFact(templates[i], Derived::kKnownTemplate);
-		for (std::size_t i = 0; i < non_templates.size(); ++i)
-			parser.SetNameFact(non_templates[i], Derived::kKnownNonTemplate);
+		for (std::size_t i = 0; i < published.size(); ++i)
+		{
+			const TextId name = published[i].name;
+			if (name >= parser.name_facts_.size())
+				parser.name_facts_.resize(name + 1, 0);
+			const std::uint8_t before = parser.name_facts_[name];
+			const std::uint8_t after = static_cast<std::uint8_t>(
+				before | published[i].facts);
+			if (before == after) continue;
+			parser.name_facts_[name] = after;
+			parser.AdvanceNameFactRevision();
+			if (parser.stats_) ++parser.stats_->parser_fact_changes;
+		}
 	}
 };
 

@@ -641,6 +641,9 @@ private:
 	NodeId ParseEnum(bool require_semicolon = true);
 	NodeId ParseStaticAssert();
 	NodeId ParseSimpleOrFunction(bool in_class, bool special_only = false);
+	NodeId FinishSimpleOrFunction(const Mark& mark,
+		std::size_t specifier_first, std::size_t specifier_last,
+		NodeId specifiers);
 	NodeId ParseSpecialMember(bool definition);
 	NodeId ParseCompoundStatement();
 	NodeId ParseStatement();
@@ -659,7 +662,6 @@ private:
 	NodeId ParseCtorInitializer();
 	NodeId ParseCondition(SimpleTokenKind terminator = OP_RPAREN);
 	int BinaryPrecedence(std::uint16_t kind) const;
-	bool StartsStandaloneClassDeclaration();
 	bool StartsStandaloneEnumDeclaration() const;
 	const std::vector<SyntaxToken>& tokens_;
 	StringTable& strings_;
@@ -2576,6 +2578,18 @@ NodeId Parser::ParseClass(bool require_semicolon)
 			arena_.Add(declaration, special_member);
 			continue;
 		}
+		if (At(KW_CLASS) || At(KW_STRUCT) || At(KW_UNION))
+		{
+			// A class type cannot be a bit-field type.  Route class-key
+			// members directly to declaration parsing so a nested class body
+			// is not parsed speculatively and then replayed after rollback.
+			NodeId member = ParseDeclaration(true);
+			if (member == kNoNode) throw Error("expected class member");
+			for (std::size_t i = 0; i < member_alignments.size(); ++i)
+				arena_.Add(member, member_alignments[i]);
+			arena_.Add(declaration, member);
+			continue;
+		}
 		const Mark bit_field_mark = Checkpoint();
 		const NodeId bit_field = arena_.Make("bit-field-declaration");
 		const NodeId bit_specifiers = ParseDeclSpecifierSeq(false);
@@ -2682,37 +2696,6 @@ NodeId Parser::ParseEnum(bool require_semicolon)
 	return declaration;
 }
 
-bool Parser::StartsStandaloneClassDeclaration()
-{
-	const Mark mark = Checkpoint();
-	++position_;
-	SkipAttributes();
-	std::string ignored;
-	if (!At(OP_LBRACE))
-	{
-		const Mark name_mark = Checkpoint();
-		if (!ParseName(&ignored, true)) Rollback(name_mark);
-	}
-	SkipAttributes();
-	bool result = At(OP_SEMICOLON);
-	if (At(OP_COLON))
-	{
-		while (!At(OP_SEMICOLON) && !AtEof())
-		{
-			while (!At(OP_LBRACE) && !At(OP_SEMICOLON) && !AtEof())
-				++position_;
-			if (At(OP_LBRACE) && !SkipBalanced(OP_LBRACE, OP_RBRACE)) break;
-			if (AtIdentifier() || At(OP_STAR) || At(OP_AMP) || At(OP_LAND) ||
-				At(OP_LPAREN) || At(OP_LSQUARE)) break;
-		}
-		result = At(OP_SEMICOLON);
-	}
-	else if (At(OP_LBRACE))
-		result = SkipBalanced(OP_LBRACE, OP_RBRACE) && At(OP_SEMICOLON);
-	Rollback(mark);
-	return result;
-}
-
 bool Parser::StartsStandaloneEnumDeclaration() const
 {
 	std::size_t scan = position_ + 1;
@@ -2758,14 +2741,21 @@ NodeId Parser::ParseSimpleOrFunction(bool, bool)
 {
 	const Mark mark = Checkpoint();
 	const std::size_t specifier_first = position_;
-	std::string first_type;
-	const NodeId specifiers = ParseDeclSpecifierSeq(false, &first_type);
+	const NodeId specifiers = ParseDeclSpecifierSeq(false);
 	if (specifiers == kNoNode)
 	{
 		Rollback(mark);
 		return kNoNode;
 	}
 	const std::size_t specifier_last = position_;
+	return FinishSimpleOrFunction(
+		mark, specifier_first, specifier_last, specifiers);
+}
+
+NodeId Parser::FinishSimpleOrFunction(const Mark& mark,
+	std::size_t specifier_first, std::size_t specifier_last,
+	NodeId specifiers)
+{
 	bool is_typedef = false;
 	for (std::size_t i = specifier_first; i < specifier_last; ++i)
 		if (tokens_[i].Kind() == static_cast<std::uint16_t>(KW_TYPEDEF))
@@ -2915,8 +2905,26 @@ NodeId Parser::ParseDeclaration(bool in_class)
 		}
 		return declaration;
 	}
-	if ((At(KW_CLASS) || At(KW_STRUCT) || At(KW_UNION)) &&
-		StartsStandaloneClassDeclaration()) return ParseClass();
+	if (At(KW_CLASS) || At(KW_STRUCT) || At(KW_UNION))
+	{
+		// Parse a class-specifier exactly once.  If no declarator follows,
+		// preserve the established standalone AST shape; otherwise hand the
+		// already-parsed specifier to the ordinary declaration tail.
+		const Mark class_mark = Checkpoint();
+		const std::size_t specifier_first = position_;
+		const NodeId class_specifier = ParseClass(false);
+		const std::size_t specifier_last = position_;
+		if (Match(OP_SEMICOLON))
+		{
+			arena_.SetTokenRange(
+				class_specifier, specifier_first, position_);
+			return class_specifier;
+		}
+		const NodeId specifiers = arena_.Make("decl-specifier-seq");
+		arena_.Add(specifiers, class_specifier);
+		return FinishSimpleOrFunction(class_mark,
+			specifier_first, specifier_last, specifiers);
+	}
 	if (At(KW_ENUM)) return in_class ?
 		ParseSimpleOrFunction(in_class) :
 		(StartsStandaloneEnumDeclaration() ? ParseEnum() :

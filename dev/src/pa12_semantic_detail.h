@@ -205,6 +205,11 @@ private:
 		std::vector<TemplateParameter>* parameters,
 		std::vector<NameId>* names, std::vector<NodeId>* defaults,
 		const std::unordered_set<NameId>* enclosing_dependent_names = 0);
+	void ParseTemplateParametersWithDependentNames(NodeId list, ScopeId scope,
+		std::vector<TemplateParameter>* parameters,
+		std::vector<NameId>* names, std::vector<NodeId>* defaults,
+		std::unordered_set<NameId>* visible_local_names,
+		const std::unordered_set<NameId>* enclosing_dependent_names);
 	void AnalyzeExplicitInstantiation(NodeId node, ScopeId scope,
 		bool definition);
 	bool AnalyzeExplicitFunctionInstantiation(NodeId target, ScopeId scope,
@@ -232,9 +237,19 @@ private:
 		const std::vector<TemplateArgument>& arguments);
 	bool BuildTemplateTemplateArgument(NodeId syntax, ScopeId scope,
 		const TemplateParameter& parameter, TemplateArgument* argument);
+	bool BuildTemplateTemplateArgument(NodeId syntax, ScopeId lookup_scope,
+		ScopeId parameter_scope, const TemplateParameter& parameter,
+		TemplateArgument* argument);
 	bool TemplateTemplateParameterMatches(
 		const std::vector<TemplateParameter>& parameter,
 		const std::vector<TemplateParameter>& argument) const;
+	bool TemplateTemplateParameterMatchesAtScope(
+		const std::vector<TemplateParameter>& parameter,
+		const std::vector<TemplateParameter>& argument, ScopeId scope);
+	bool TemplateTemplateParameterMatchesAtScope(
+		const std::vector<TemplateParameter>& parameter,
+		const std::vector<TemplateParameter>& argument, ScopeId scope,
+		std::unordered_set<NameId>* local_names);
 	TypeId CreateTemplateTemplateParameterProxy(ScopeId scope,
 		const TemplateParameter& parameter, std::size_t ordinal);
 	bool RetainVariableTemplate(NodeId declaration, ScopeId scope,
@@ -487,6 +502,12 @@ private:
 		ScopeId lexical_scope, std::vector<TemplateArgument>* arguments,
 		bool require_complete = true,
 		const std::unordered_set<NameId>* dependent_names = 0);
+	bool AppendTemplateArgument(
+		const std::vector<TemplateParameter>& parameters, NodeId source,
+		ScopeId source_scope, ScopeId parameter_scope,
+		const std::unordered_set<NameId>* source_dependent_names,
+		bool default_argument, bool has_pack, std::size_t fixed,
+		std::vector<TemplateArgument>* arguments);
 	bool IsNonTypeTemplateParameterType(TypeId type) const;
 	bool FormNonTypeTemplateArgumentValue(ExpressionInfo expression,
 		TemplateArgument* argument);

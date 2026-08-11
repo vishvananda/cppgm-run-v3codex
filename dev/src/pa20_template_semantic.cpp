@@ -28,6 +28,21 @@ bool SyntaxUsesTemplateParameter(const SyntaxArena& arena, NodeId node,
 	return false;
 }
 
+bool SyntaxUsesTemplateParameter(const SyntaxArena& arena, NodeId node,
+	const std::unordered_set<NameId>& local_names,
+	const std::unordered_set<NameId>* enclosing_names)
+{
+	if (local_names.count(arena.SemanticPayloadId(node)) != 0 ||
+		(enclosing_names &&
+		 enclosing_names->count(arena.SemanticPayloadId(node)) != 0))
+		return true;
+	for (std::uint32_t edge = arena.FirstEdge(node); edge != kNoEdge;
+		edge = arena.NextEdge(edge))
+		if (SyntaxUsesTemplateParameter(arena, arena.EdgeChild(edge),
+			local_names, enclosing_names)) return true;
+	return false;
+}
+
 bool TypeIdNamesDependentQualifiedType(const SyntaxArena& arena,
 	NodeId type_id, const std::unordered_set<NameId>& names)
 {
@@ -957,7 +972,19 @@ void SemanticAnalyzer::ParseTemplateParameters(NodeId list, ScopeId scope,
 	std::vector<NameId>* names, std::vector<NodeId>* defaults,
 	const std::unordered_set<NameId>* enclosing_dependent_names)
 {
-	std::unordered_set<NameId> prior_names;
+	std::unordered_set<NameId> visible_local_names;
+	ParseTemplateParametersWithDependentNames(list, scope, parameters,
+		names, defaults, &visible_local_names, enclosing_dependent_names);
+}
+
+void SemanticAnalyzer::ParseTemplateParametersWithDependentNames(
+	NodeId list, ScopeId scope,
+	std::vector<TemplateParameter>* parameters,
+	std::vector<NameId>* names, std::vector<NodeId>* defaults,
+	std::unordered_set<NameId>* visible_local_names,
+	const std::unordered_set<NameId>* enclosing_dependent_names)
+{
+	std::vector<NameId> introduced_names;
 	if (list == kNoNode) return;
 	for (std::uint32_t edge = arena_->FirstEdge(list); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
@@ -978,9 +1005,10 @@ void SemanticAnalyzer::ParseTemplateParameters(NodeId list, ScopeId scope,
 					FindChild(nested_clause, "template-parameter-list");
 				std::vector<NameId> nested_names;
 				std::vector<NodeId> nested_defaults;
-				ParseTemplateParameters(nested_list, scope,
+				ParseTemplateParametersWithDependentNames(nested_list, scope,
 					&record.template_parameters, &nested_names,
-					&nested_defaults, enclosing_dependent_names);
+					&nested_defaults, visible_local_names,
+					enclosing_dependent_names);
 			}
 			const NodeId identifier = FindChild(parameter, "identifier");
 			record.name = identifier == kNoNode ? 0 :
@@ -996,13 +1024,11 @@ void SemanticAnalyzer::ParseTemplateParameters(NodeId list, ScopeId scope,
 			record.name = record.declarator == kNoNode ? 0 :
 				DeclaratorName(record.declarator);
 			record.dependent_type = SyntaxUsesTemplateParameter(
-				*arena_, record.specifiers, prior_names);
-			if (!record.dependent_type && enclosing_dependent_names)
-				record.dependent_type = SyntaxUsesTemplateParameter(
-					*arena_, record.specifiers, *enclosing_dependent_names) ||
-					(record.declarator != kNoNode &&
-					 SyntaxUsesTemplateParameter(*arena_, record.declarator,
-						*enclosing_dependent_names));
+				*arena_, record.specifiers, *visible_local_names,
+				enclosing_dependent_names) ||
+				(record.declarator != kNoNode &&
+				 SyntaxUsesTemplateParameter(*arena_, record.declarator,
+					*visible_local_names, enclosing_dependent_names));
 			if (!record.dependent_type)
 			{
 				const SpecInfo spec = BuildSpecifiers(record.specifiers,
@@ -1026,8 +1052,12 @@ void SemanticAnalyzer::ParseTemplateParameters(NodeId list, ScopeId scope,
 		parameters->push_back(record);
 		names->push_back(record.name);
 		defaults->push_back(record.default_argument);
-		if (record.name != 0) prior_names.insert(record.name);
+		if (record.name != 0 &&
+			visible_local_names->insert(record.name).second)
+			introduced_names.push_back(record.name);
 	}
+	for (std::size_t i = 0; i < introduced_names.size(); ++i)
+		visible_local_names->erase(introduced_names[i]);
 }
 
 bool SemanticAnalyzer::CollectExplicitTemplateArguments(NodeId syntax,
@@ -1193,6 +1223,190 @@ bool SemanticAnalyzer::LookupFunctionParameterPack(ScopeId scope, NameId name,
 	return false;
 }
 
+bool SemanticAnalyzer::AppendTemplateArgument(
+	const std::vector<TemplateParameter>& parameters, NodeId source,
+	ScopeId source_scope, ScopeId parameter_scope,
+	const std::unordered_set<NameId>* source_dependent_names,
+	bool default_argument, bool has_pack, std::size_t fixed,
+	std::vector<TemplateArgument>* arguments)
+{
+	if (arguments->size() >= fixed && !has_pack) return false;
+	const TemplateParameter& parameter =
+		TemplateParameterForArgument(parameters, arguments->size());
+	if (source == kNoNode)
+		throw std::runtime_error("empty template argument");
+	TemplateArgument argument;
+	argument.kind = parameter.kind;
+	const bool retained_default = default_argument &&
+		source_dependent_names != 0 &&
+		SyntaxUsesTemplateParameter(
+			*arena_, source, *source_dependent_names) &&
+		!IsDirectTemplateParameterExpression(
+			source, *source_dependent_names);
+	if (parameter.kind == TEMPLATE_ARGUMENT_TYPE)
+	{
+		NodeId type_id = arena_->IsTag(source, "type-id") ? source :
+			FindChild(source, "type-id");
+		if (type_id != kNoNode)
+			argument.type = BuildCanonicalTemplateTypeArgument(
+				type_id, source_scope, source_dependent_names);
+		else if (arena_->IsTag(source, "id-expression"))
+		{
+			const NodeId structure = FindChild(
+				source, "structured-type-name");
+			const LookupResult found = structure != kNoNode ?
+				LookupStructuredName(source, source_scope, LOOKUP_TYPE) :
+				LookupSpelling(source_scope, PayloadSource(source), LOOKUP_TYPE);
+			argument.type = found.type;
+		}
+		else return false;
+		if (argument.type == kNoType) return false;
+	}
+	else if (parameter.kind == TEMPLATE_ARGUMENT_TEMPLATE)
+	{
+		if (!BuildTemplateTemplateArgument(
+			source, source_scope, parameter_scope, parameter, &argument))
+		{
+			if (!retained_default) return false;
+			argument.type = ClassTemplateNondeducedTypeShape();
+			argument.dependent_parameter = kNondeducedTemplateParameter;
+		}
+	}
+	else
+	{
+		argument.type = ResolveTemplateParameterType(parameter, parameter_scope);
+		if (CandidateSubstitutionFailed() || argument.type == kNoType)
+			return false;
+		if (retained_default)
+		{
+			argument.dependent_parameter = kNondeducedTemplateParameter;
+			arguments->push_back(argument);
+			if (arguments->size() <= fixed)
+				BindTemplateArgument(parameter_scope, parameter, argument);
+			return true;
+		}
+		const bool dependent_target =
+			FunctionTemplateTypeIsDependent(argument.type);
+		ExpressionInfo expression;
+		if (arena_->IsTag(source, "type-id"))
+		{
+			const NodeId specifiers = FindChild(source, "type-specifier-seq");
+			const NodeId name = specifiers == kNoNode ? kNoNode :
+				FirstSemanticChild(specifiers);
+			const NodeId declarator = FindChild(source, "abstract-declarator");
+			const NodeId retained_declarator = declarator != kNoNode ?
+				declarator : FindChild(source, "declarator");
+			const NodeId call_clause = retained_declarator == kNoNode ?
+				kNoNode : FindChild(retained_declarator, "parameter-clause");
+			const bool retained_pack_name = declarator != kNoNode &&
+				FindChild(declarator, "parameter-pack") != kNoNode;
+			if (name != kNoNode && arena_->IsTag(name, "type-name") &&
+				retained_declarator == kNoNode)
+			{
+				const NodeId structure = FindChild(name, "structured-type-name");
+				const LookupResult known_type = structure == kNoNode ?
+					LookupSpelling(source_scope, PayloadSource(name), LOOKUP_TYPE) :
+					LookupStructuredName(name, source_scope, LOOKUP_TYPE);
+				if (known_type.type != kNoType) return false;
+			}
+			if (name != kNoNode && arena_->IsTag(name, "type-name") &&
+				call_clause != kNoNode &&
+				FirstSemanticChild(call_clause) == kNoNode)
+			{
+				// The parser's declaration/expression ambiguity preserves
+				// `qualified_template_id()` as a type-id with an empty function
+				// declarator. In a non-type argument this is a call expression.
+				const std::vector<NodeId> no_argument_syntax;
+				const std::vector<ExpressionInfo> no_arguments;
+				++constant_expression_required_depth_;
+				bool formed = false;
+				try
+				{
+					formed = AnalyzeRetainedNamedCall(name,
+						PayloadSource(name), source_scope,
+						no_argument_syntax, no_arguments,
+						argument.type, &expression);
+				}
+				catch (...)
+				{
+					--constant_expression_required_depth_;
+					throw;
+				}
+				--constant_expression_required_depth_;
+				if (!formed) return false;
+			}
+			else if (name != kNoNode && arena_->IsTag(name, "type-name") &&
+				(declarator == kNoNode || retained_pack_name))
+				expression = AnalyzeNamedValue(PayloadSource(name),
+					source_scope, argument.type, name);
+			else if (name != kNoNode &&
+				arena_->IsTag(name, "decltype-specifier") &&
+				FindChild(source, "abstract-declarator") == kNoNode)
+			{
+				const TypeId qualifier = program_->types.RemoveTopCv(
+					EffectiveType(DecltypeType(
+						FirstSemanticChild(name), source_scope)));
+				EnsureClassDefinition(qualifier);
+				const ScopeId carrier = program_->ScopeForType(qualifier);
+				const NodeId qualified = FindChild(name, "qualified-type-name");
+				const LookupResult found = carrier == kNoScope ||
+					qualified == kNoNode ? LookupResult() :
+					LookupStructuredName(qualified, carrier, LOOKUP_ORDINARY);
+				if (found.ordinary == kNoBinding ||
+					!program_->bindings[found.ordinary].constant) return false;
+				expression = MakeLiteral(
+					program_->bindings[found.ordinary].type,
+					InternNumber(program_->bindings[found.ordinary].value));
+				expression.constant = true;
+				expression.value = program_->bindings[found.ordinary].value;
+			}
+			else return false;
+		}
+		else
+		{
+			++constant_expression_required_depth_;
+			try
+			{
+				expression = AnalyzeExpression(source, source_scope,
+					dependent_target ? kNoType : argument.type);
+			}
+			catch (...)
+			{
+				--constant_expression_required_depth_;
+				throw;
+			}
+			--constant_expression_required_depth_;
+		}
+		if (CandidateSubstitutionFailed()) return false;
+		if (!expression.constant && expression.binding != kNoBinding &&
+			expression.binding < program_->bindings.size() &&
+			program_->bindings[expression.binding].kind == BIND_PARAMETER &&
+			!program_->bindings[expression.binding].constant &&
+			program_->KindOfScope(
+				program_->bindings[expression.binding].owner) ==
+				SCOPE_TEMPLATE_PARAMETERS)
+		{
+			const std::int64_t parameter_index =
+				program_->bindings[expression.binding].value;
+			if (parameter_index < 0 ||
+				static_cast<std::uint64_t>(parameter_index) >=
+				kNoTemplateParameter)
+				throw std::logic_error(
+					"dependent template argument index is invalid");
+			argument.dependent_parameter =
+				static_cast<std::uint32_t>(parameter_index);
+		}
+		else if (!FormNonTypeTemplateArgumentValue(expression, &argument))
+			throw std::runtime_error(
+				"non-type template argument is not an integral constant: " +
+				PayloadSource(source));
+	}
+	arguments->push_back(argument);
+	if (arguments->size() <= fixed)
+		BindTemplateArgument(parameter_scope, parameter, argument);
+	return true;
+}
+
 bool SemanticAnalyzer::BuildTemplateArguments(
 	const std::vector<TemplateParameter>& parameters,
 	const std::vector<NodeId>& syntax, ScopeId use_scope,
@@ -1228,192 +1442,9 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 		const std::unordered_set<NameId>* source_dependent_names,
 		bool default_argument) -> bool
 	{
-		if (arguments->size() >= fixed && !has_pack) return false;
-		const TemplateParameter& parameter =
-			TemplateParameterForArgument(parameters, arguments->size());
-		if (source == kNoNode)
-			throw std::runtime_error("empty template argument");
-		TemplateArgument argument;
-		argument.kind = parameter.kind;
-		const bool retained_default = default_argument &&
-			source_dependent_names != 0 &&
-			SyntaxUsesTemplateParameter(
-				*arena_, source, *source_dependent_names) &&
-			!IsDirectTemplateParameterExpression(
-				source, *source_dependent_names);
-		if (parameter.kind == TEMPLATE_ARGUMENT_TYPE)
-		{
-			NodeId type_id = arena_->IsTag(source, "type-id") ? source :
-				FindChild(source, "type-id");
-			if (type_id != kNoNode)
-				argument.type = BuildCanonicalTemplateTypeArgument(
-					type_id, source_scope, source_dependent_names);
-			else if (arena_->IsTag(source, "id-expression"))
-			{
-				const NodeId structure = FindChild(
-					source, "structured-type-name");
-				const LookupResult found = structure != kNoNode ?
-					LookupStructuredName(source, source_scope, LOOKUP_TYPE) :
-					LookupSpelling(source_scope, PayloadSource(source), LOOKUP_TYPE);
-				argument.type = found.type;
-			}
-			else return false;
-			if (argument.type == kNoType) return false;
-		}
-		else if (parameter.kind == TEMPLATE_ARGUMENT_TEMPLATE)
-		{
-			if (!BuildTemplateTemplateArgument(
-				source, source_scope, parameter, &argument))
-			{
-				if (!retained_default) return false;
-				argument.type = ClassTemplateNondeducedTypeShape();
-				argument.dependent_parameter =
-					kNondeducedTemplateParameter;
-			}
-		}
-		else
-		{
-			argument.type = ResolveTemplateParameterType(
-				parameter, parameter_scope);
-			if (CandidateSubstitutionFailed() || argument.type == kNoType)
-				return false;
-			if (retained_default)
-			{
-				argument.dependent_parameter =
-					kNondeducedTemplateParameter;
-				arguments->push_back(argument);
-				if (arguments->size() <= fixed)
-					BindTemplateArgument(
-						parameter_scope, parameter, argument);
-				return true;
-			}
-			const bool dependent_target =
-				FunctionTemplateTypeIsDependent(argument.type);
-			ExpressionInfo expression;
-			if (arena_->IsTag(source, "type-id"))
-			{
-				const NodeId specifiers = FindChild(source,
-					"type-specifier-seq");
-				const NodeId name = specifiers == kNoNode ? kNoNode :
-					FirstSemanticChild(specifiers);
-				const NodeId declarator = FindChild(
-					source, "abstract-declarator");
-				const NodeId retained_declarator = declarator != kNoNode ?
-					declarator : FindChild(source, "declarator");
-				const NodeId call_clause = retained_declarator == kNoNode ?
-					kNoNode : FindChild(retained_declarator, "parameter-clause");
-				const bool retained_pack_name = declarator != kNoNode &&
-					FindChild(declarator, "parameter-pack") != kNoNode;
-				if (name != kNoNode && arena_->IsTag(name, "type-name") &&
-					retained_declarator == kNoNode)
-				{
-					const NodeId structure = FindChild(
-						name, "structured-type-name");
-					const LookupResult known_type = structure == kNoNode ?
-						LookupSpelling(source_scope, PayloadSource(name), LOOKUP_TYPE) :
-						LookupStructuredName(name, source_scope, LOOKUP_TYPE);
-					if (known_type.type != kNoType) return false;
-				}
-				if (name != kNoNode && arena_->IsTag(name, "type-name") &&
-					call_clause != kNoNode &&
-					FirstSemanticChild(call_clause) == kNoNode)
-				{
-					// The parser's declaration/expression ambiguity preserves
-					// `qualified_template_id()` as a type-id with an empty function
-					// declarator.  In a non-type argument this is a call expression;
-					// replay it from the retained name and declarator structure.
-					const std::vector<NodeId> no_argument_syntax;
-					const std::vector<ExpressionInfo> no_arguments;
-					++constant_expression_required_depth_;
-					bool formed = false;
-					try
-					{
-						formed = AnalyzeRetainedNamedCall(name,
-							PayloadSource(name), source_scope,
-							no_argument_syntax, no_arguments,
-							argument.type, &expression);
-					}
-					catch (...)
-					{
-						--constant_expression_required_depth_;
-						throw;
-					}
-					--constant_expression_required_depth_;
-					if (!formed) return false;
-				}
-				else if (name != kNoNode && arena_->IsTag(name, "type-name") &&
-					(declarator == kNoNode || retained_pack_name))
-					expression = AnalyzeNamedValue(PayloadSource(name),
-						source_scope, argument.type, name);
-				else if (name != kNoNode &&
-					arena_->IsTag(name, "decltype-specifier") &&
-					FindChild(source, "abstract-declarator") == kNoNode)
-				{
-					const TypeId qualifier = program_->types.RemoveTopCv(
-						EffectiveType(DecltypeType(
-							FirstSemanticChild(name), source_scope)));
-					EnsureClassDefinition(qualifier);
-					const ScopeId carrier = program_->ScopeForType(qualifier);
-					const NodeId qualified = FindChild(
-						name, "qualified-type-name");
-					const LookupResult found = carrier == kNoScope ||
-						qualified == kNoNode ? LookupResult() :
-						LookupStructuredName(
-							qualified, carrier, LOOKUP_ORDINARY);
-					if (found.ordinary == kNoBinding ||
-						!program_->bindings[found.ordinary].constant)
-						return false;
-					expression = MakeLiteral(
-						program_->bindings[found.ordinary].type,
-						InternNumber(program_->bindings[found.ordinary].value));
-					expression.constant = true;
-					expression.value =
-						program_->bindings[found.ordinary].value;
-				}
-				else return false;
-			}
-			else
-			{
-				++constant_expression_required_depth_;
-				try
-				{
-					expression = AnalyzeExpression(source, source_scope,
-						dependent_target ? kNoType : argument.type);
-				}
-				catch (...)
-				{
-					--constant_expression_required_depth_;
-					throw;
-				}
-				--constant_expression_required_depth_;
-			}
-			if (CandidateSubstitutionFailed()) return false;
-			if (!expression.constant && expression.binding != kNoBinding &&
-				expression.binding < program_->bindings.size() &&
-				program_->bindings[expression.binding].kind == BIND_PARAMETER &&
-				!program_->bindings[expression.binding].constant &&
-				program_->KindOfScope(
-					program_->bindings[expression.binding].owner) ==
-					SCOPE_TEMPLATE_PARAMETERS)
-			{
-				const std::int64_t parameter =
-					program_->bindings[expression.binding].value;
-				if (parameter < 0 || static_cast<std::uint64_t>(parameter) >=
-					kNoTemplateParameter)
-					throw std::logic_error(
-						"dependent template argument index is invalid");
-				argument.dependent_parameter =
-					static_cast<std::uint32_t>(parameter);
-			}
-			else if (!FormNonTypeTemplateArgumentValue(expression, &argument))
-				throw std::runtime_error(
-				"non-type template argument is not an integral constant: " +
-				PayloadSource(source));
-		}
-		arguments->push_back(argument);
-		if (arguments->size() <= fixed)
-			BindTemplateArgument(parameter_scope, parameter, argument);
-		return true;
+		return AppendTemplateArgument(parameters, source, source_scope,
+			parameter_scope, source_dependent_names, default_argument,
+			has_pack, fixed, arguments);
 	};
 	for (std::size_t i = 0; i < syntax.size(); ++i)
 	{

@@ -2,50 +2,51 @@
 
 ## Current Checkpoint Review
 
-The landed `1d55437f` increment moved PA23 from 375/406 to 377/406. Its two
-gains lower an empty pack-expanded unknown-bound array as one aligned byte with
-no elements and keep qualified pack-expanded `constexpr` member values on the
-constant path without emitting backing globals. Earlier assignments remained
-clean at the checkpoint boundary.
+The landed `c510b4af` increment moved PA23 from 378/407 to 380/407. It retains
+enclosing-pack dependency through nested template parameter types and parses
+dependent qualified/braced constructions needed by the two new passing tests.
+Earlier assignments remained clean at the checkpoint boundary.
 
-The audit found two ownership violations in that increment. Slot planning and
-array lowering independently inferred the zero-cardinality storage layout from
-initializer syntax, so the same ABI fact had competing owners and global,
-automatic, and local-static paths could diverge. Static-member value demand
-also reopened retained declaration syntax and compared `constexpr` spelling at
-each use. This bypassed the retained semantic graph, repeated AST work, and
-briefly regressed PA21 compile-time-only demand and PA22 non-`constexpr`
-value-use behavior. Both violate `spec.md` sections 2-5, 8-10.
+The audit found two ownership violations in the increment's affected paths.
+Parser disambiguation scanned an entire class body before parsing it, while a
+class-key member could first be parsed speculatively as a bit-field and then as
+a declaration. Nested classes therefore replayed complete subtrees at every
+level. Template parameter dependency detection separately considered an
+enclosing-name set for specifiers but omitted declarators, preceding local
+parameters, and their nested template-template ownership; matching then
+compared an outer-dependent symbolic type directly with a concrete argument.
+These behaviors violated the parse-once, retained-context, canonical-scope, and
+bounded-work requirements in `spec.md` sections 2-5 and 8-10.
 
-Pack semantic analysis now publishes size/alignment on the typed braced result,
-declaration analysis transfers that fact to the variable, and shared slot,
-global, local-static, initializer, and lifetime consumers use it directly.
-Zero-cardinality objects reserve storage but create no element construction or
-destruction actions. Separately, retained member definitions capture a compact
-value-use storage policy when first classified and preserve it through nested
-owner routing. `EnsureStaticMemberStorage` reads only that indexed fact;
-runtime address/reference formation supplies explicit storage demand, while
-compile-time-only evaluation does not manufacture emission demand. No lowering
-syntax inspection, retained-syntax reopening, filename recognition, global
-retry, or exception control flow remains on either affected path.
+Class-key declarations and members now enter `ParseClass` once and continue
+through a shared declarator tail only when the parsed class specifier is not a
+standalone declaration. Class publication restores the speculative fact frame
+and commits the resulting facts directly, without propagating change history
+through every enclosing class. Template parameter parsing uses one mutable
+local-name overlay plus the enclosing set, checks both specifiers and
+declarators, and carries that overlay through nested template-template lists.
+Template-template matching resolves outer-dependent non-type parameter types
+in the canonical parameter scope after preceding bindings are installed while
+leaving nested-local dependencies symbolic. Argument formation remains a
+single bounded owner helper. No body prescan, subtree replay, source spelling
+dispatch, global retry, or exception-based candidate control flow remains on
+the repaired paths.
 
-The landed 1/2/4/8 array scaling remains linear: semantic nodes
-32/39/53/81, lowered nodes 15/19/27/43, temporary-dependency visits
-16/24/40/72, materialized-demand visits 26/30/38/54, and instructions
-10/12/16/24. A current zero-cardinality probe used 25 semantic nodes, 11
-lowered nodes, 22 demand visits, 9 instructions, 5,618 typed-storage bytes, and
-no globals. The static-demand guard used 59 semantic nodes and emitted exactly
-the two address/reference-demanded globals despite two value-only `constexpr`
-specializations; the landed qualified-pack probe emitted none. Existing
-`DumpNode` storage fields were generalized, so the storage handoff adds no node
-size. Work remains proportional to expanded elements and indexed retained
-definitions, without an AST-depth factor at use sites.
+Before repair, nested-class depths 8 and 16 caused 6,272 and 1,605,632 parser
+checkpoints, and depth 32 exceeded ten seconds. At depths
+8/16/32/64/128/256 after repair, tokens were 53/93/173/333/653/1,293 and
+checkpoints were 119/199/359/679/1,319/2,599; rollbacks and fact changes were
+also linear. For 1/2/4/8 dependent function-pointer and template-template
+parameter pairs, semantic nodes were 18/21/27/39, specialization requests
+2/3/5/9, argument-list requests 6/9/15/27, candidate visits 1/2/4/8, and typed
+storage 4,196/4,204/4,220/4,252 bytes. Thus work is proportional to represented
+syntax, parameters, and indexed requests rather than nesting products.
 
-The original 377/406 checkpoint remains intact; the audit guard makes the
-combined report 378/407 with the same 29 prior failures. PA1--PA22 pass
-2,639/2,639, the five affected-path probes are ASan/UBSan-clean, file audit
-passes with the same 13 inherited header-division advisories, and
-`git diff --check` passes.
+The original 380/407 checkpoint remains intact; the ownership guard makes the
+combined report 381/408 with the same 27 prior failures. PA1--PA22 pass
+2,639/2,639, PA10 passes 157/157 under ASan/UBSan together with the five
+affected-path probes, file audit passes with the same 13 inherited
+header-division advisories, and `git diff --check` passes.
 
 ## Checkpoint Audit Ledger
 
@@ -59,3 +60,4 @@ passes with the same 13 inherited header-division advisories, and
 | Candidate-local expression validity (`84a3f7c5`, this audit) | Shared complete-object pointer arithmetic repairs the reverse compound path; typed comparison/arithmetic failure preserves candidate ownership; original 315/404 is intact, the audit guard passes, and candidate/path scaling is linear. |
 | Dependent call/result replay (`e218b8dc`, this audit) | Demand-owned exception states, canonical post-reentry publication, and qualified value identity repair the landed call/ADL increment; original 374/405 is intact, the audit guard passes, and demanded work scales linearly. |
 | Zero-cardinality expansion and static-member demand (`1d55437f`, this audit) | Typed size/alignment now owns all storage and lifetime paths; retained definition policy and explicit address/reference demand replace syntax reopening; 377/406 is preserved, the audit guard raises the report to 378/407, and representative work is linear. |
+| Enclosing dependency and dependent construction (`c510b4af`, this audit) | Parse-once class routing and canonical parameter-scope replay remove exponential nested-class retries and complete dependent NTTP/template-template ownership; 380/407 is preserved, the guard raises the report to 381/408, and representative work is linear. |

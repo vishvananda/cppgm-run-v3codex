@@ -14,11 +14,16 @@ proportional to participating candidates, arguments, parameters, demand edges,
 and subobjects. Zero-cardinality pack initialization publishes one typed
 storage contract for declaration, lifetime, and lowering consumers. Retained
 static-member definitions publish their value-use storage policy once, while
-address/reference formation owns explicit emission demand.
+address/reference formation owns explicit emission demand. Class-key
+declarations parse their class specifier once, route directly around bit-field
+speculation, and publish restored name facts once.
+Nested template parameter lists share a scoped local-name overlay; outer
+dependent non-type parameter types resolve in the canonical parameter scope
+after preceding bindings, while nested-local dependencies remain symbolic.
 
 ## Current Failure Map
 
-The report is 380/407, with all `100-*`, `200-*`, and `400-*` tests passing.
+The report is 381/408, with all `100-*`, `200-*`, and `400-*` tests passing.
 The 27 failures are 9 exits and 18 LowIR mismatches (`300-*`: 14; `500-*`:
 13). By shared behavior and owner they are retained default/alias and
 member-result replay (9), deduction/non-deduced/partial ordering (7),
@@ -44,19 +49,19 @@ scaling, sanitizers, PA23, PA1-PA22, and file audit.
 
 ## Performance Evidence
 
-For 1/2/4/8 dependent braced constructions in a class base list, tokens were
-94/114/154/234, template scans 3/5/9/17, scanned tokens 21/40/78/154, and the
-maximum scan stayed 17 tokens; parser checkpoints were 192/210/246/318 and
-measured parse time was 105/89/106/130 microseconds. The class-body probe is a
-single forward scan over disjoint balanced brace regions. For enclosing packs
-of 1/2/4/8 types, semantic nodes stayed 27, specialization requests 9, default
-materializations 1, and partial-deduction visits 8; typed storage was
-3,958/3,977/4,015/4,091 bytes and peak stage storage
-108,346/108,687/109,033/109,773 bytes. Work is flat or linear in represented
-syntax and arguments, with concrete pack evaluation deferred to one indexed
-specialization scope. PA23 is 380/407, two gains with no current-stage
-regression; PA1-PA22 are 2,639/2,639 and file audit passes with 13 inherited
-warnings.
+Before the audit repair, nested-class depths 8 and 16 caused 6,272 and
+1,605,632 parser checkpoints, and depth 32 exceeded ten seconds. For depths
+8/16/32/64/128/256 after parse-once routing, tokens were
+53/93/173/333/653/1,293, checkpoints 119/199/359/679/1,319/2,599, rollbacks
+79/135/247/471/919/1,815, and fact changes 19/35/67/131/259/515. For 1/2/4/8
+dependent function-pointer and template-template parameter pairs, semantic
+nodes were 18/21/27/39, specialization requests 2/3/5/9, argument-list
+requests and index probes 6/9/15/27, candidate visits 1/2/4/8, and typed storage
+4,196/4,204/4,220/4,252 bytes. Work is linear in represented syntax,
+parameters, and indexed requests. PA23 is 381/408: the original 380/407 remains
+intact and the audit guard passes. PA1-PA22 are 2,639/2,639, PA10 and five
+affected-path probes are ASan/UBSan-clean, and file audit passes with 13
+inherited warnings.
 
 ## Completed Checkpoints
 
@@ -91,4 +96,4 @@ warnings.
 | Typed designator publication and specialization-owned hidden friends | Outer shapes publish in retained scopes, compound NTTPs defer, deferred results substitute after target deduction, and hidden definitions keep owner-local identity/indexing; three gains, 368 -> 371, no regressions, sanitizer-clean, linear candidate/owner scaling. |
 | Dependent call/result replay and ADL specialization demand | Parameter-dependent results and aliases retain indexed call facts; ADL completes supplied owners; the audit separated exception demand, memoized its state, and repaired canonical post-reentry publication and qualified-name detection; original 371 -> 374, combined 375/406, no regressions, sanitizer-clean, linear scaling. |
 | Zero-cardinality expansion lowering and static-member demand | Typed size/alignment drives automatic, global, and local-static storage without element lifetime actions; retained value-use policy and explicit address/reference demand replace syntax reopening; original 375 -> 377, audit guard 378/407, no regressions, sanitizer-clean, linear scaling. |
-| Retained enclosing-pack dependency and dependent braced construction | Nested parameter types defer enclosing-pack semantics to specialization replay; qualified/template calls bypass speculative type formation; class lookahead crosses balanced initializer braces once; 378 -> 380, no regressions, flat/linear scaling. |
+| Retained enclosing-pack dependency and dependent braced construction | Nested parameter types defer to specialization replay; qualified/template calls avoid speculative type formation; the audit replaced class-body lookahead with parse-once routing and completed declarator/local/template-template dependency ownership in canonical parameter scopes; original 378 -> 380, audit guard 381/408, no regressions, sanitizer-clean, linear scaling. |

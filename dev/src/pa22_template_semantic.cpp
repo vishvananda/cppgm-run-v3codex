@@ -18,6 +18,17 @@ std::size_t NoAliasTemplatePattern()
 	return std::numeric_limits<std::size_t>::max();
 }
 
+bool SyntaxUsesTemplateParameter(const SyntaxArena& arena, NodeId node,
+	const std::unordered_set<NameId>& names)
+{
+	if (names.count(arena.SemanticPayloadId(node)) != 0) return true;
+	for (std::uint32_t edge = arena.FirstEdge(node); edge != kNoEdge;
+		edge = arena.NextEdge(edge))
+		if (SyntaxUsesTemplateParameter(
+			arena, arena.EdgeChild(edge), names)) return true;
+	return false;
+}
+
 enum AliasTemplateInstantiationState
 {
 	ALIAS_TEMPLATE_NOT_STARTED,
@@ -631,9 +642,97 @@ bool SemanticAnalyzer::TemplateTemplateParameterMatches(
 	return true;
 }
 
+bool SemanticAnalyzer::TemplateTemplateParameterMatchesAtScope(
+	const std::vector<TemplateParameter>& expected,
+	const std::vector<TemplateParameter>& actual, ScopeId scope)
+{
+	std::unordered_set<NameId> local_names;
+	return TemplateTemplateParameterMatchesAtScope(
+		expected, actual, scope, &local_names);
+}
+
+bool SemanticAnalyzer::TemplateTemplateParameterMatchesAtScope(
+	const std::vector<TemplateParameter>& expected,
+	const std::vector<TemplateParameter>& actual, ScopeId scope,
+	std::unordered_set<NameId>* local_names)
+{
+	const bool expected_pack = HasTrailingTemplateParameterPack(expected);
+	const std::size_t fixed = FixedTemplateParameterCount(expected);
+	if (actual.size() < fixed) return false;
+	std::vector<NameId> introduced_names;
+	for (std::size_t i = 0; i < fixed; ++i)
+	{
+		if (expected[i].kind != actual[i].kind ||
+			expected[i].pack != actual[i].pack) return false;
+		if (expected[i].kind == TEMPLATE_ARGUMENT_INTEGRAL)
+		{
+			if (!expected[i].dependent_type)
+			{
+				if (actual[i].dependent_type ||
+					expected[i].value_type != actual[i].value_type)
+					return false;
+			}
+			else
+			{
+				const bool locally_dependent = SyntaxUsesTemplateParameter(
+					*arena_, expected[i].specifiers, *local_names) ||
+					(expected[i].declarator != kNoNode &&
+					 SyntaxUsesTemplateParameter(
+						*arena_, expected[i].declarator, *local_names));
+				if (locally_dependent)
+				{
+					if (!actual[i].dependent_type) return false;
+				}
+				else
+				{
+					const TypeId resolved = ResolveTemplateParameterType(
+						expected[i], scope);
+					if (CandidateSubstitutionFailed() || resolved == kNoType ||
+						actual[i].dependent_type ||
+						resolved != actual[i].value_type) return false;
+				}
+			}
+		}
+		if (expected[i].kind == TEMPLATE_ARGUMENT_TEMPLATE &&
+			!TemplateTemplateParameterMatchesAtScope(
+				expected[i].template_parameters,
+				actual[i].template_parameters, scope, local_names)) return false;
+		if (expected[i].name != 0 && local_names->insert(
+			expected[i].name).second)
+			introduced_names.push_back(expected[i].name);
+	}
+	bool result = true;
+	if (expected_pack)
+	{
+		for (std::size_t i = fixed; i < actual.size(); ++i)
+			if (actual[i].kind != expected.back().kind) result = false;
+	}
+	else
+	{
+		if (actual.size() < expected.size()) result = false;
+		for (std::size_t i = fixed; result && i < expected.size(); ++i)
+			if (expected[i].kind != actual[i].kind ||
+				expected[i].pack != actual[i].pack) result = false;
+		for (std::size_t i = expected.size(); result && i < actual.size(); ++i)
+			if (!actual[i].pack && actual[i].default_argument == kNoNode)
+				result = false;
+	}
+	for (std::size_t i = 0; i < introduced_names.size(); ++i)
+		local_names->erase(introduced_names[i]);
+	return result;
+}
+
 bool SemanticAnalyzer::BuildTemplateTemplateArgument(NodeId syntax,
 	ScopeId scope, const TemplateParameter& parameter,
 	TemplateArgument* argument)
+{
+	return BuildTemplateTemplateArgument(
+		syntax, scope, scope, parameter, argument);
+}
+
+bool SemanticAnalyzer::BuildTemplateTemplateArgument(NodeId syntax,
+	ScopeId lookup_scope, ScopeId parameter_scope,
+	const TemplateParameter& parameter, TemplateArgument* argument)
 {
 	NodeId type_id = arena_->IsTag(syntax, "type-id") ? syntax :
 		FindChild(syntax, "type-id");
@@ -644,15 +743,16 @@ bool SemanticAnalyzer::BuildTemplateTemplateArgument(NodeId syntax,
 	if (name == kNoNode) return false;
 	const NodeId structured = FindChild(name, "structured-type-name");
 	const LookupResult found = structured == kNoNode ?
-		LookupSpelling(scope, PayloadSource(name), LOOKUP_TYPE) :
-		LookupStructuredName(name, scope, LOOKUP_TYPE);
+		LookupSpelling(lookup_scope, PayloadSource(name), LOOKUP_TYPE) :
+		LookupStructuredName(name, lookup_scope, LOOKUP_TYPE);
 	if (found.type == kNoType && structured != kNoNode)
 	{
 		const NamePath path = StructuredNamePath(structured);
 		NamePath owner_path;
 		owner_path.global = path.global;
 		if (!path.Empty()) owner_path.Push(path[0]);
-		const TypeId owner = LookupPath(scope, owner_path, LOOKUP_TYPE).type;
+		const TypeId owner = LookupPath(
+			lookup_scope, owner_path, LOOKUP_TYPE).type;
 		for (std::size_t ordinal = 0;
 			ordinal < function_template_shape_parameters_.size(); ++ordinal)
 			if (owner == function_template_shape_parameters_[ordinal])
@@ -692,8 +792,8 @@ bool SemanticAnalyzer::BuildTemplateTemplateArgument(NodeId syntax,
 		actual = &class_templates_[class_index].parameters;
 	else if (alias_index != NoAliasTemplatePattern())
 		actual = &alias_templates_[alias_index].parameters;
-	if (!actual || !TemplateTemplateParameterMatches(
-		parameter.template_parameters, *actual)) return false;
+	if (!actual || !TemplateTemplateParameterMatchesAtScope(
+		parameter.template_parameters, *actual, parameter_scope)) return false;
 	argument->kind = TEMPLATE_ARGUMENT_TEMPLATE;
 	argument->type = found.type;
 	if (class_index != NoAliasTemplatePattern() &&
