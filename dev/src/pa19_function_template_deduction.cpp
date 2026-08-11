@@ -923,16 +923,52 @@ bool SemanticAnalyzer::DeduceFunctionTemplatePackType(TypeId pattern,
 				dependent = pattern_argument.dependent_parameter;
 			const bool expansion = pattern_argument.pack_expansion &&
 				dependent < parameters.size() &&
-				parameters[dependent].pack && !class_parameters.empty() &&
-				TemplateParameterForArgument(class_parameters,
-					pattern_index).pack;
+				parameters[dependent].pack;
 			if (expansion)
 			{
-				const std::size_t remaining =
-					pattern_arguments.size() - pattern_index - 1;
-				if (argument_index + remaining > argument_arguments.size())
-					return false;
-				const std::size_t last = argument_arguments.size() - remaining;
+				const bool destination_pack = !class_parameters.empty() &&
+					TemplateParameterForArgument(
+						class_parameters, pattern_index).pack;
+				std::size_t last = argument_arguments.size();
+				if (destination_pack)
+				{
+					const std::size_t remaining =
+						pattern_arguments.size() - pattern_index - 1;
+					if (argument_index + remaining > argument_arguments.size())
+						return false;
+					last = argument_arguments.size() - remaining;
+				}
+				else
+				{
+					// Canonical class arguments already contain omitted defaults.
+					// Anchor that suffix once so this function pack consumes only
+					// the preceding fixed-primary argument span.
+					if (pattern_arguments.size() != argument_arguments.size())
+						return search_bases();
+					FunctionTemplateDeduction suffix = direct;
+					last = pattern_arguments.size();
+					while (last > pattern_index + 1)
+					{
+						++function_template_deduction_visits_;
+						const TemplateArgument& suffix_pattern =
+							pattern_arguments[last - 1];
+						if (suffix_pattern.pack_expansion) break;
+						FunctionTemplateDeduction trial = suffix;
+						const bool dependent_suffix =
+							suffix_pattern.IsDependent() ||
+							(suffix_pattern.kind == TEMPLATE_ARGUMENT_TYPE &&
+							 FunctionTemplateTypeIsDependent(suffix_pattern.type));
+						const bool matches = dependent_suffix ?
+							DeduceFunctionTemplatePackArgument(suffix_pattern,
+								argument_arguments[last - 1], parameters, &trial) :
+							suffix_pattern == argument_arguments[last - 1];
+						if (!matches)
+							break;
+						suffix = trial;
+						--last;
+					}
+					direct = suffix;
+				}
 				const std::size_t prior_size =
 					direct.pack_arguments[dependent].size();
 				const bool prior_started =
@@ -945,9 +981,14 @@ bool SemanticAnalyzer::DeduceFunctionTemplatePackType(TypeId pattern,
 				if ((prior_started &&
 					 direct.pack_arguments[dependent].size() != prior_size) ||
 					direct.pack_deduction_positions[dependent] !=
-						direct.pack_arguments[dependent].size()) return search_bases();
+					 direct.pack_arguments[dependent].size()) return search_bases();
 				direct.pack_deduction_started[dependent] = 1;
-				++pattern_index;
+				if (!destination_pack)
+				{
+					pattern_index = pattern_arguments.size();
+					argument_index = argument_arguments.size();
+				}
+				else ++pattern_index;
 				continue;
 			}
 			if (argument_index >= argument_arguments.size() ||

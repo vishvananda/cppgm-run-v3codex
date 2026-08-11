@@ -910,6 +910,8 @@ void RetainedTemplateValidator::VisitSizeof(NodeId node, std::size_t scope)
 			analyzer_.ParseNamePath(spelling) :
 			analyzer_.StructuredNamePath(structure);
 		if (SyntaxUsesTemplateParameter(operand)) return;
+		if (SyntaxUsesRetainedType(operand, scope) ||
+			SyntaxUsesRetainedValue(operand, scope)) return;
 		if (!path.Empty() && !path.global && path.Size() == 1)
 		{
 			const std::uint8_t local = LookupLocal(scope, path.Last());

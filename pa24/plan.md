@@ -18,27 +18,31 @@ demanded nodes (section 9).
 
 ## Current Failure Map
 
-Current state: **415/422** pa24 tests (checkpoint start: 413/422; goal start:
+Current state: **417/422** pa24 tests (checkpoint start: 415/422; goal start:
 368/422); all **3,049/3,049** tests through pa23 pass.
 
 | Shared behavior and owner | Count | Complete failing set (test basename) |
 | --- | ---: | --- |
-| Canonical class defaults, alias expansion, and pack-prefix deduction (`pa19`/`pa20`) | 2 | `alias-template-partial-specialization-default-dependent-arg`, `defaulted-class-template-argument-pack-prefix-deduction` |
-| Function deduction, candidate SFINAE, and partial ordering (`pa19` deduction + ordinary overload resolution) | 3 | `member-operator-template-reference-pattern-partial-order`, `constructor-template-const-ref-enable-if-conversion`, `trailing-return-expression-sfinae-default-param` |
+| Candidate-local member-template formation, ordering, and demand (`pa19` deduction/instantiation) | 2 | `member-operator-template-reference-pattern-partial-order`, `trailing-return-expression-sfinae-default-param` |
+| Reference-temporary slot planning order (`pa16`/`pa17` typed lowering) | 1 | `constructor-template-const-ref-enable-if-conversion` |
 | Demanded local-static emission identity through retained member owners (`pa22`/`pa23` + typed emission) | 2 | `member-template-result-pack-preserves-nested-function-pointer-owner`, `out-of-class-partial-member-template-owner-parameter-alias` |
 
 ## Active Checkpoint
 
-**Canonical class defaults and pack-prefix deduction.** The PA19/PA20
-specialization-argument owner must materialize omitted primary defaults before
-alias expansion and partial deduction. Data flows as `retained template-id ->
-canonical primary parameter/default environment -> complete argument key ->
-alias target / partial-specialization deduction`; no lowering phase may repair
-an incomplete key. This applies `spec.md` sections 2-5 and 9: canonical keys
-are complete, environments remain parent-linked, and work is O(P + A + C) for
-primary parameters, materialized arguments, and owner-local partial candidates.
-Validate both remaining class-template fixtures, default-chain and pack-prefix
-controls through PA23, full reports, audit, and a parameter-width probe.
+**Candidate-local member-template formation and demand.** PA19 candidate
+substitution owns default parameters and dependent trailing results; partial
+ordering owns the selected specialization identity, and demand consumes only
+that identity. Data flows as `retained signature -> candidate substitution
+scope -> expected-failure/viable result -> partial order -> selected binding ->
+body demand`. A failed trailing-return call must remain candidate-local, and an
+unselected forwarding/reference pattern must not publish an emitted body. This
+applies `spec.md` sections 3-5 and 9: expected failures are narrow typed facts,
+cache keys include the substitution environment, and body demand stays
+monotonic and selected-binding-owned. Expected work is O(C * (A + S)) for C
+owner-local candidates, A deduced arguments, and S substituted signature
+nodes, with no unselected body replay. Validate both selected fixtures,
+member-reference ordering and trailing-result SFINAE controls through PA23,
+full reports, audit, and a candidate-width probe.
 
 ## Performance Evidence
 
@@ -114,6 +118,11 @@ and instructions 18/22/30/46/78/142/270. Seven-run median semantic/lowering
 times were 0.579/0.210, 0.701/0.234, 0.958/0.251, 1.478/0.349, 2.378/0.504,
 4.349/0.815, and 8.819/1.453 ms; recipe traversal and demand remain linear.
 
+Materialized default-suffix widths 1/2/4/8/16/32/64 produced deduction visits
+12/15/21/33/57/105/201 while semantic nodes stayed at 26 and canonical
+argument-list requests at 11. Seven-run median semantic times were 0.610/0.637/
+0.656/0.718/0.811/1.066/1.390 ms; the suffix anchor is one linear reverse pass.
+
 ## Completed Checkpoints
 
 | Checkpoint | Commit | Disposition |
@@ -129,4 +138,5 @@ times were 0.579/0.210, 0.701/0.234, 0.958/0.251, 1.478/0.349, 2.378/0.504,
 | Identity-only typed declaration emission | `6a107535` | Two failures removed; 408/422 pa24, 3,049/3,049 through pa23, linear declaration-width probe. |
 | Direct-reference classification and runtime conversion-object materialization | `f3724c7e` | Two failures removed; 410/422 pa24, 3,049/3,049 through pa23, constant candidate count across conversion width. |
 | Empty-value lifecycle demand and destination-owned lowering | `6a238d0f` | Three failures removed; 413/422 pa24, 3,049/3,049 through pa23, linear empty-transfer/object scaling. |
-| Type-preserving class-argument staging and nested empty-recipe consumption | this commit | Two failures removed; 415/422 pa24, 3,049/3,049 through pa23, linear nested-construction scaling. |
+| Type-preserving class-argument staging and nested empty-recipe consumption | `dfe38634` | Two failures removed; 415/422 pa24, 3,049/3,049 through pa23, linear nested-construction scaling. |
+| Declaration-ordered retained arguments and fixed-primary pack spans | this commit | Two failures removed; 417/422 pa24, 3,049/3,049 through pa23, linear default-suffix scaling. |
