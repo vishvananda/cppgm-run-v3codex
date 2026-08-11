@@ -158,4 +158,4 @@ remain linear in declarations and selected constructor arguments.
 | Declaration-ordered retained arguments and fixed-primary pack spans | `30fe0986` | Two failures removed; 417/422 pa24, 3,049/3,049 through pa23, linear default-suffix scaling. |
 | Candidate-local member-call formation and retained receiver demand | `f18a8293` | Two failures removed; 419/422 pa24, 3,049/3,049 through pa23, audit pass, linear failure-width and receiver-depth scaling. |
 | Retained function-template ABI recipes and local-static owner identity | `5db862b8` | Two failures removed; 421/422 pa24, focused PA21-PA23 controls pass, linear specialization-width scaling. |
-| Evaluation-ordered constructor reference-argument slots | this commit | Final failure removed; 422/422 pa24, linear declaration-width scaling. |
+| Evaluation-ordered constructor reference-argument slots | `4f832f86` | Final failure removed; 422/422 pa24, linear declaration-width scaling. |
