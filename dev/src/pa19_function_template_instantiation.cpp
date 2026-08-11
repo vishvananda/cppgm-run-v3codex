@@ -1118,8 +1118,7 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	current_class_context_ = previous_class;
 	ValidateFunctionTemplatePatternResults(&pattern, shape_declarator, shape_scope,
 		parameter_names, defer_trailing_return);
-	if (!program_->types.IsFunction(shape_declarator.type))
-		throw std::runtime_error(
+	if (!program_->types.IsFunction(shape_declarator.type)) throw std::runtime_error(
 			"function template has non-function declaration");
 	if (shape_spec.is_constexpr && !pattern.constructor_template)
 		shape_declarator.type = ApplyConstexprMemberFunctionType(
@@ -1130,6 +1129,7 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 		ValidateConstexprCallableType(
 			shape_declarator.type, pattern.constructor_template);
 	pattern.shape_type = shape_declarator.type;
+	pattern.result_type_dependent = FunctionTemplateTypeIsDependent(program_->types.Get(pattern.shape_type).child);
 	CaptureFunctionParameterMetadata(&pattern, shape_declarator);
 	CaptureFunctionTemplateDefaultContexts(&pattern);
 	if (pattern.constructor_template && pattern.name !=

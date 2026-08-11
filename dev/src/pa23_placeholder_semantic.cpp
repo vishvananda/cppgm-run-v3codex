@@ -443,13 +443,17 @@ void SemanticAnalyzer::PublishStableFunctionTemplateResultAbi(
 		program_->entities[entity].empty_class &&
 		entity < class_special_members_.size() &&
 		class_special_members_[entity].user_copy_constructor;
-	const bool dependent_result = member_owner == kNoEntity &&
+	const bool deferred_nonmember_result = member_owner == kNoEntity &&
 		program_->entities[entity].has_user_provided_constructor &&
 		(program_->entities[entity].empty_class ? nontrivial_empty_result :
 		 pattern.deferred_result_formation);
+	const bool dependent_move_result = pattern.result_type_dependent &&
+		!program_->entities[entity].empty_class &&
+		entity < class_special_members_.size() &&
+		class_special_members_[entity].user_move_constructor;
 	const bool conversion_result = pattern.conversion_template &&
 		program_->entities[entity].template_argument_count == 0;
-	if (dependent_result || conversion_result)
+	if (deferred_nonmember_result || dependent_move_result || conversion_result)
 		program_->bindings[canonical_binding].
 			force_indirect_class_result_abi = true;
 }

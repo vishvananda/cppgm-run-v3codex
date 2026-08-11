@@ -2,52 +2,53 @@
 
 ## Current Checkpoint Review
 
-Checkpoint `cec97359` (selected class conversions and typed value boundaries)
-passes after audit repair. The landed increment adds one-class conditional
-construction, conversion-to-lvalue-reference increment, conversion-function
-using lookup through aliases, and direct transfer for the supported small
-derived parameter boundary.
+Checkpoint `2e7bf454` (function-template placeholder results and deduced
+class-value locals) passes after audit repair. The landed increment publishes a
+specialization before analyzing its retained placeholder body, uses a canonical
+four-state body fact, republishes the deduced function type and result ABI, and
+retains the selected same-class transfer needed by `auto` locals.
 
-The audit found and repaired three defects on that ownership path. PA10 first
-scanned conversion-type syntax as a name and PA12/PA19 later reconstructed the
-using target with `rfind` and string slices. Conversion targets are now retained
-as one parsed `conversion-type-id`; PA19 builds one canonical `TypeId`, visits
-only the named base conversion set, and matches by identity. The derived direct
-parameter exception was also recomputed in PA17 from size, inheritance, and
-lifecycle properties. PA12 special-member completion now publishes a distinct
-`indirect_class_parameter_abi` fact beside the class transfer facts, while PA17
-consumes it directly for both function headers and calls. Finally, built-in
-increment candidate formation admitted `const T&` conversion results, so a
-nonmodifiable alternative could suppress a valid `T&`; those results are now
-filtered before target selection.
+The audit found one correctness and architecture defect on the completed-result
+path. Semantic return-slot finalization and PA17 lowering independently rebuilt
+class-result ABI policy from layout and lifecycle properties. In addition, the
+callable override used `deferred_result_formation`, which identifies results
+that cannot initially be formed but not an already-formed dependent result such
+as `pair_like<T, U>`. The caller and callee therefore selected a direct
+`obj<16x8>` boundary for the dependent-owner lifecycle case instead of its
+required indirect result. Class special-member completion now publishes the
+generic result-boundary fact once; each function-template pattern retains one
+dependent-result bit; and only the canonical function binding owns a required
+callable-specific override. Return-slot planning and lowering consume those
+facts by identity. The previously failing dependent-owner case now matches its
+checked LowIR.
 
-The demanded-template trace is source bytes -> one PA10 conversion target ->
-canonical `AtomicBase<char>` and `char` identities -> indexed conversion members
-of that base chain -> selected conversion binding and object projection -> one
-demanded member specialization -> direct typed call lowering. The derived-value
-trace is completed class layout/special members -> one published parameter ABI
-fact -> constructor-selected staging object -> matching caller/callee boundary
-metadata -> typed `obj<4x4>` LowIR. Conditional construction similarly retains
-the selected constructor on its arm; lowering performs no lookup, type-spelling
-recovery, syntax replay, or LowIR text round trip.
+The demanded trace is source bytes -> one retained template pattern and body ->
+canonical specialization key -> cache publication -> one in-progress body
+transition -> canonical placeholder result `TypeId` -> updated function/binding
+type and result ABI -> retained typed semantic edges -> demand worklist -> direct
+typed LowIR. Cache hits observe success without reanalyzing the body; recursive
+deduction observes in-progress and fails immediately. The added regressions
+cover repeated cache hits, `auto*`, `auto&`, collapsing `auto&&`, and recursive
+deduction. The positive regression also executes through LowIR/CY86 with status
+zero.
 
-For 16/64/256 conversion-function candidates resolved by one canonical-target
-using-declaration, tokens were 211/787/3,091, declarations 69/213/789, lookup
-queries 73/217/793, signature probes 82/226/802, access checks 25/73/265, and
-peak semantic storage 102,152/333,672/1,319,100 bytes. Five-run median semantic
-time was 0.437/1.118/3.783 ms and lowering time 0.033/0.034/0.052 ms, with no
-emitted functions. Work and storage follow the actual declaration/candidate set
-without a whole-program or quadratic trend.
+For 16/64/256 distinct `constexpr auto` specializations and their trivial token
+types, tokens were 197/677/2,597 and semantic nodes 260/1,028/4,100.
+Specialization requests were 81/321/1,281 with 48/192/768 cache hits; demand
+pushes and emissions were 32/128/512, functions 33/129/513, instructions
+112/448/1,792, and typed storage 55,413/219,573/877,149 bytes. Five-run median
+semantic time was 2.045/6.782/27.001 ms and lowering time
+0.850/2.662/10.529 ms. Work, storage, and time track demanded specializations
+and emitted IR without a translation-unit scan or quadratic trend.
 
-No relevant source/test shortcut, global retry, lowering-time semantic search,
-textual transport, timeout-adjacent behavior, or unresolved checkpoint-owned
-correctness, performance, or file-audit issue remains. The landed 83/128 PA25
-baseline is intact and both audit regressions pass, producing 85/130 with the
-same 45 pre-existing failures. Focused checkpoint and neighboring cases pass
-10/10, PA10 passes 157/157, PA1-24 pass 3,471/3,471, and file audit passes with
-15 nonfatal inherited division advisories. Both reducers produce accepted
-LowIR; the modifiable-reference reducer also executes through the secondary
-CY86 path with status zero.
+No relevant source/test shortcut, whole-program retry, lowering-time semantic
+search, text transport, timeout behavior, duplicate ABI reconstruction, or
+unresolved checkpoint-owned correctness, performance, or file-audit issue
+remains. The one non-lambda failure is a pre-existing local-declaration/template
+parse ambiguity and does not enter this ownership path. Shipped PA25 improves
+from 87/130 to 88/130; the two audit regressions produce 90/132. PA1-24 pass
+3,471/3,471, and file audit passes with 15 inherited nonfatal division
+advisories.
 
 ## Checkpoint Audit Ledger
 
@@ -56,3 +57,4 @@ CY86 path with status zero.
 | Ordinary placeholder results (`583b174a`) | Pass after cv-reference, runtime-demand, direct-ownership, and retained-body copy repairs; shipped baseline and all earlier stages preserved; linear scaling and file audit verified. |
 | Range-for statements (`b985f854`) | Pass after single-parse dispatch, category-correct one-time range binding, and condition/iteration cleanup repairs; 67/128 PA25 and 3,471/3,471 earlier tests preserved; linear scaling and file audit verified. |
 | Selected class conversions (`cec97359`) | Pass after single-parse canonical conversion targets, semantic-owned parameter ABI, and modifiable-reference filtering; 85/130 PA25 and 3,471/3,471 earlier tests preserved; linear scaling and file audit verified. |
+| Function-template placeholder results (`2e7bf454`) | Pass after canonical dependent-result identity and semantic-owned class-result ABI repair; shipped PA25 is 88/130, audit regressions 2/2, PA1-24 3,471/3,471; linear scaling and file audit verified. |

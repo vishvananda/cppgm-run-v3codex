@@ -80,7 +80,6 @@ protected:
 			return false;
 		const pa11::EntityRecord& entity =
 			derived.program_.entities[object.entity];
-		const std::size_t size = derived.program_.SizeOf(object_type);
 		if (function != pa11::kNoBinding)
 		{
 			if (function >= derived.program_.bindings.size())
@@ -90,16 +89,7 @@ protected:
 		}
 		const bool forced_indirect = function != pa11::kNoBinding &&
 			derived.program_.bindings[function].force_indirect_class_result_abi;
-		const bool dependent_empty_value = entity.empty_class &&
-			entity.template_argument_count != 0 &&
-			!forced_indirect &&
-			((entity.enclosing_class == pa11::kNoEntity &&
-			  entity.default_constructible) ||
-			 !entity.indirect_class_value_abi);
-		return !dependent_empty_value && (forced_indirect || size > 16 ||
-			((size < 16 || (size == 16 &&
-			  entity.template_argument_count != 0)) &&
-			 entity.indirect_class_value_abi));
+		return forced_indirect || entity.indirect_class_result_abi;
 	}
 
 	bool UsesIndirectClassParameter(pa11::TypeId type) const

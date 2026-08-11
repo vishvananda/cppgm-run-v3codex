@@ -253,19 +253,11 @@ void SemanticAnalyzer::FinalizeNamedReturnSlot(std::uint32_t function)
 	const EntityId entity = EntityOf(result);
 	if (!IsClassEntity(*program_, entity)) return;
 	const EntityRecord& class_record = program_->entities[entity];
-	const std::size_t size = program_->SizeOf(result);
 	const BindingId function_binding = dump_.nodes[function].binding;
 	const bool forced_indirect = function_binding != kNoBinding &&
 		program_->bindings[program_->bindings[function_binding].canonical].force_indirect_class_result_abi;
-	const bool dependent_empty_value = class_record.empty_class &&
-		class_record.template_argument_count != 0 && !forced_indirect &&
-		((class_record.enclosing_class == kNoEntity &&
-		  class_record.default_constructible) ||
-		 !class_record.indirect_class_value_abi);
-	const bool indirect = !dependent_empty_value && (forced_indirect ||
-		size > 16 || ((size < 16 || (size == 16 &&
-		class_record.template_argument_count != 0)) &&
-		class_record.indirect_class_value_abi));
+	const bool indirect = forced_indirect ||
+		class_record.indirect_class_result_abi;
 	std::vector<std::uint32_t> pending(1, function);
 	std::vector<std::uint32_t> return_edges;
 	std::vector<std::uint32_t> sources;

@@ -1,0 +1,57 @@
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $x : i32
+
+  block ^entry:
+    store i32 1, $x
+    %t1 = addr $x
+    %t2 = call ptr @lvalue(%t1)
+    store i32 2, %t2
+    %t3 = addr $x
+    %t4 = call ptr @pointer(%t3)
+    store i32 3, %t4
+    %t5 = addr $x
+    %t6 = call ptr @collapse(%t5)
+    store i32 4, %t6
+    %t7 = load i32 $x
+    %t8 = call i32 @value(%t7)
+    %t9 = call i32 @value(0)
+    %t10 = binary add i32 %t8, %t9
+    %t11 = binary sub i32 %t10, 4
+    return i32 %t11
+}
+
+function @lvalue(%input : ptr [pass=reference]) -> ptr [binding=weak, object=_Z6lvalueIiERT_S0_] {
+  slot $input : ptr
+
+  block ^entry:
+    store ptr %input, $input
+    %t1 = load ptr $input
+    return ptr %t1
+}
+
+function @pointer(%input : ptr) -> ptr [binding=weak, object=_Z7pointerIiEPT_S0_] {
+  slot $input : ptr
+
+  block ^entry:
+    store ptr %input, $input
+    %t1 = load ptr $input
+    return ptr %t1
+}
+
+function @collapse(%input : ptr [pass=reference]) -> ptr [binding=weak, object=_Z8collapseIiERT_S0_] {
+  slot $input : ptr
+
+  block ^entry:
+    store ptr %input, $input
+    %t1 = load ptr $input
+    return ptr %t1
+}
+
+function @value(%input : i32) -> i32 [binding=weak, object=_Z5valueIiET_T_] {
+  slot $input : i32
+
+  block ^entry:
+    store i32 %input, $input
+    %t1 = load i32 $input
+    return i32 %t1
+}

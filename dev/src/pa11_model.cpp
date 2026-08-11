@@ -651,6 +651,7 @@ EntityRecord::EntityRecord()
 	  trivial_default_constructor(false), has_user_declared_destructor(false),
 	  destructible(true), trivial_destructor(true), has_direct_base(false),
 	  is_aggregate(false), empty_class(false), indirect_class_value_abi(false),
+	  indirect_class_result_abi(false),
 	  indirect_class_parameter_abi(false), polymorphic_class(false),
 	  abstract_class(false),
 	  nonlinear_base_graph(false),

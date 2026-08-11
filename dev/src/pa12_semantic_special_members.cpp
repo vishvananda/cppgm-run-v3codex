@@ -799,12 +799,22 @@ void SemanticAnalyzer::CompleteClassSpecialMembers(EntityId entity)
 	class_record.indirect_class_value_abi =
 		(nontrivial_copy && nontrivial_move) ||
 		!class_record.trivial_destructor;
-	// Publish the parameter boundary beside the transfer/lifecycle facts so
-	// lowering does not reconstruct ABI policy from class properties.
 	if (!class_record.layout_complete)
-		throw std::logic_error("class parameter ABI requires completed layout");
+		throw std::logic_error("class boundary ABI requires completed layout");
 	const std::size_t object_size =
 		static_cast<std::size_t>(class_record.object_size);
+	const bool dependent_empty_value = class_record.empty_class &&
+		class_record.template_argument_count != 0 &&
+		((class_record.enclosing_class == kNoEntity &&
+		  class_record.default_constructible) ||
+		 !class_record.indirect_class_value_abi);
+	class_record.indirect_class_result_abi = !dependent_empty_value &&
+		(object_size > 16 ||
+		 ((object_size < 16 || (object_size == 16 &&
+		   class_record.template_argument_count != 0)) &&
+		  class_record.indirect_class_value_abi));
+	// Publish parameter passing beside result passing and transfer/lifecycle
+	// facts so lowering consumes class ABI decisions by entity identity.
 	const bool direct_derived_payload = class_record.has_direct_base &&
 		class_record.template_argument_count == 0 &&
 		class_record.trivial_destructor && object_size <= 16;

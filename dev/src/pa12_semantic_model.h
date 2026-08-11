@@ -956,6 +956,7 @@ struct FunctionTemplatePattern
 	bool inline_specifier;
 	bool explicit_member_definition;
 	bool deferred_result_formation;
+	bool result_type_dependent;
 	bool deleted_function;
 
 	FunctionTemplatePattern()
@@ -979,6 +980,7 @@ struct FunctionTemplatePattern
 		  constexpr_specifier(false), explicit_specifier(false),
 		  inline_specifier(false),
 		  explicit_member_definition(false), deferred_result_formation(false),
+		  result_type_dependent(false),
 		  deleted_function(false) {}
 };
 

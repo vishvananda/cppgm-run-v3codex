@@ -370,7 +370,8 @@ struct EntityRecord
 		trivial_default_constructor, has_user_declared_destructor,
 		destructible, trivial_destructor,
 		has_direct_base, is_aggregate, empty_class,
-		indirect_class_value_abi, indirect_class_parameter_abi,
+		indirect_class_value_abi, indirect_class_result_abi,
+		indirect_class_parameter_abi,
 		polymorphic_class, abstract_class;
 	bool nonlinear_base_graph;
 	bool deferred_template_completion;
