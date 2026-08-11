@@ -1211,6 +1211,7 @@ private:
 	ConversionRank Conversion(TypeId source, ValueCategory category,
 		bool integer_zero, TypeId target) const;
 	ConversionRank Conversion(const ExpressionInfo& source, TypeId target) const;
+	std::uint8_t ArrayElementCv(TypeId type) const;
 	bool QualificationConversion(TypeId source, TypeId target) const;
 	bool SimilarUnqualified(TypeId source, TypeId target) const;
 	TypeId EffectiveType(TypeId type) const;

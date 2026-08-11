@@ -83,6 +83,15 @@ ExpressionInfo SemanticAnalyzer::CandidateExpressionFailure(
 	throw std::runtime_error(message);
 }
 
+std::uint8_t SemanticAnalyzer::ArrayElementCv(TypeId type) const
+{
+	const TypeRecord& record = program_->types.Get(type);
+	if (record.kind == TYPE_QUALIFIED)
+		return static_cast<std::uint8_t>(
+			record.cv | ArrayElementCv(record.child));
+	return record.kind == TYPE_ARRAY ? ArrayElementCv(record.child) : CV_NONE;
+}
+
 namespace
 {
 
@@ -369,7 +378,8 @@ int SemanticAnalyzer::CompareReferenceBindings(
 			program_->types.Get(right).child : right;
 		const bool left_similar = SimilarUnqualified(source, left_target);
 		const bool right_similar = SimilarUnqualified(source, right_target);
-		if (left_similar && right_similar)
+		if ((left_similar && right_similar) ||
+			SimilarUnqualified(left_target, right_target))
 		{
 			const auto qualification_subset = [this](TypeId less,
 				TypeId more) -> bool

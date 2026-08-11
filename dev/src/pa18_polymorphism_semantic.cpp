@@ -237,18 +237,6 @@ void SemanticAnalyzer::CompleteClassPolymorphism(EntityId entity)
 		physical_slot += width;
 	}
 	facts.complete = true;
-	for (std::size_t member_index = 0; member_index < members.size();
-		++member_index)
-	{
-		const BindingId member = program_->bindings[members[member_index]].canonical;
-		if (program_->bindings[member].virtual_function &&
-			!program_->bindings[member].pure_virtual &&
-			GetFunction(member).defined)
-		{
-			MarkVtableDemand(entity);
-			break;
-		}
-	}
 }
 
 void SemanticAnalyzer::MarkVtableDemand(EntityId entity)

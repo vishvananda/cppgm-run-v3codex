@@ -43,6 +43,41 @@ bool TypeContainsDependentResultShape(const TypeTable& types, TypeId type,
 	return false;
 }
 
+bool TypeContainsAbstractArrayElement(const Program& program, TypeId type,
+	std::size_t depth)
+{
+	if (type == kNoType || depth > program.types.Size()) return false;
+	const TypeRecord& record = program.types.Get(type);
+	if (record.kind == TYPE_QUALIFIED || record.kind == TYPE_POINTER ||
+		record.kind == TYPE_LVALUE_REFERENCE ||
+		record.kind == TYPE_RVALUE_REFERENCE || record.kind == TYPE_ARRAY ||
+		record.kind == TYPE_MEMBER_POINTER)
+	{
+		TypeId element = record.child;
+		if (record.kind == TYPE_ARRAY)
+		{
+			while (program.types.Get(element).kind == TYPE_QUALIFIED ||
+				program.types.Get(element).kind == TYPE_ARRAY)
+				element = program.types.Get(element).child;
+			const TypeRecord& shape = program.types.Get(element);
+			if (shape.kind == TYPE_NAMED &&
+				program.entities[shape.entity].abstract_class) return true;
+		}
+		return TypeContainsAbstractArrayElement(
+			program, record.child, depth + 1);
+	}
+	if (record.kind == TYPE_FUNCTION)
+	{
+		if (TypeContainsAbstractArrayElement(
+			program, record.child, depth + 1)) return true;
+		const TypeId* parameters = program.types.Parameters(type);
+		for (std::size_t i = 0; i < record.parameter_count; ++i)
+			if (TypeContainsAbstractArrayElement(
+				program, parameters[i], depth + 1)) return true;
+	}
+	return false;
+}
+
 bool CaptureFunctionTemplateSpecifierFacts(const SyntaxArena& arena,
 	const Program& program, NodeId specifiers, FunctionTemplatePattern* pattern)
 {
@@ -1892,8 +1927,10 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 		{
 			const TypeRecord& shape = program_->types.Get(
 				program_->types.RemoveTopCv(parameters[i]));
-			if (shape.kind != TYPE_NAMED ||
-				!program_->entities[shape.entity].abstract_class) continue;
+			if ((shape.kind != TYPE_NAMED ||
+				 !program_->entities[shape.entity].abstract_class) &&
+				!TypeContainsAbstractArrayElement(
+					*program_, parameters[i], 0)) continue;
 			RecordCandidateSubstitutionFailure();
 			if (needs_defaults)
 				function_template_default_requests_.SetRequest(

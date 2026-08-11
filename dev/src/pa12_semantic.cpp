@@ -464,12 +464,10 @@ ConversionRank SemanticAnalyzer::Conversion(TypeId source,
 		if (pointee.kind == TYPE_FUNDAMENTAL &&
 			pointee.fundamental == FUND_VOID)
 		{
-			const TypeRecord source_cv = program_->types.Get(source_pointer.child);
-			const TypeRecord target_cv = program_->types.Get(target_pointer.child);
-			const std::uint8_t scv = source_cv.kind == TYPE_QUALIFIED ?
-				source_cv.cv : CV_NONE;
-			const std::uint8_t tcv = target_cv.kind == TYPE_QUALIFIED ?
-				target_cv.cv : CV_NONE;
+			// Preserve array element cv through object-pointer-to-void conversion;
+			// otherwise a pointer to an array could silently discard const.
+			const std::uint8_t scv = ArrayElementCv(source_pointer.child);
+			const std::uint8_t tcv = ArrayElementCv(target_pointer.child);
 			return (scv & ~tcv) == 0 ? CONVERSION_STANDARD : CONVERSION_INVALID;
 		}
 		return QualificationConversion(from, to) ?
@@ -2364,7 +2362,9 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 		current_class_context_ = previous_class;
 		return;
 	}
-	if (program_->bindings[binding].virtual_function)
+	if (program_->bindings[binding].virtual_function &&
+		structured_owner != kNoScope &&
+		!program_->bindings[binding].inline_function)
 		MarkVtableDemand(program_->bindings[binding].member_owner);
 	function.deferred = spec.is_constexpr;
 	if (function.deferred)

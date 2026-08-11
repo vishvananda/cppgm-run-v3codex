@@ -496,8 +496,23 @@ bool SemanticAnalyzer::FunctionTemplatePatternAccepts(
 			exemplar_entity >= class_template_pattern_by_entity_.size()) return false;
 		const std::uint32_t pattern_template =
 			class_template_pattern_by_entity_[pattern_entity];
-		if (pattern_template == kNoDumpEdge || pattern_template !=
-			class_template_pattern_by_entity_[exemplar_entity]) return false;
+		const std::uint32_t exemplar_template =
+			class_template_pattern_by_entity_[exemplar_entity];
+		if (pattern_template == kNoDumpEdge ||
+			exemplar_template == kNoDumpEdge ||
+			pattern_template >= class_templates_.size() ||
+			exemplar_template >= class_templates_.size()) return false;
+		const ClassTemplatePattern& pattern_template_record =
+			class_templates_[pattern_template];
+		const ClassTemplatePattern& exemplar_template_record =
+			class_templates_[exemplar_template];
+		if (pattern_template_record.template_parameter_proxy)
+		{
+			if (!TemplateTemplateParameterMatches(
+				pattern_template_record.parameters,
+				exemplar_template_record.parameters)) return false;
+		}
+		else if (pattern_template != exemplar_template) return false;
 		const EntityRecord& pattern_owner = program_->entities[pattern_entity];
 		const EntityRecord& exemplar_owner = program_->entities[exemplar_entity];
 		if (pattern_owner.template_argument_begin == kNoBinding ||
@@ -513,7 +528,15 @@ bool SemanticAnalyzer::FunctionTemplatePatternAccepts(
 		{
 			const TemplateArgument& pattern_argument =
 				pattern_arguments[pattern_index];
-			if (pattern_argument.pack_expansion && pattern_argument.IsDependent())
+			std::size_t expansion_parameter = pattern_parameters.size();
+			if (pattern_argument.kind == TEMPLATE_ARGUMENT_TYPE)
+				expansion_parameter = FunctionTemplateShapePackParameter(
+					pattern_argument.type, pattern_parameters);
+			else if (pattern_argument.IsDependent())
+				expansion_parameter = pattern_argument.dependent_parameter;
+			if (pattern_argument.pack_expansion &&
+				expansion_parameter < pattern_parameters.size() &&
+				pattern_parameters[expansion_parameter].pack)
 			{
 				const std::size_t remaining =
 					pattern_arguments.size() - pattern_index - 1;
@@ -814,6 +837,27 @@ bool SemanticAnalyzer::DeduceFunctionTemplatePackType(TypeId pattern,
 			return false;
 		const ClassTemplatePattern& pattern_template =
 			class_templates_[class_pattern];
+		const auto search_bases = [this, pattern, argument_entity,
+			&parameters, deduced]() -> bool
+		{
+			const EntityRecord& derived = program_->entities[argument_entity];
+			for (std::size_t base = 0; base < derived.direct_base_count; ++base)
+			{
+				const EntityId base_entity =
+					program_->DirectBase(argument_entity, base).entity;
+				if (base_entity == kNoEntity ||
+					base_entity >= program_->entities.size()) continue;
+				FunctionTemplateDeduction trial = *deduced;
+				if (DeduceFunctionTemplatePackType(pattern,
+					program_->entities[base_entity].type, parameters, &trial))
+				{
+					*deduced = trial;
+					return true;
+				}
+			}
+			return false;
+		};
+		FunctionTemplateDeduction direct = *deduced;
 		if (pattern_template.template_parameter_proxy)
 		{
 			const std::size_t ordinal =
@@ -834,27 +878,10 @@ bool SemanticAnalyzer::DeduceFunctionTemplatePackType(TypeId pattern,
 					0, static_cast<std::uint32_t>(ordinal)),
 				TemplateArgument(TEMPLATE_ARGUMENT_TEMPLATE,
 					program_->entities[argument_template.marker_entity].type),
-				parameters, deduced)) return false;
+				parameters, &direct)) return false;
 		}
 		else if (class_pattern != argument_pattern)
-		{
-			const EntityRecord& derived = program_->entities[argument_entity];
-			for (std::size_t base = 0; base < derived.direct_base_count; ++base)
-			{
-				const EntityId base_entity =
-					program_->DirectBase(argument_entity, base).entity;
-				if (base_entity == kNoEntity ||
-					base_entity >= program_->entities.size()) continue;
-				FunctionTemplateDeduction trial = *deduced;
-				if (DeduceFunctionTemplatePackType(pattern,
-					program_->entities[base_entity].type, parameters, &trial))
-				{
-					*deduced = trial;
-					return true;
-				}
-			}
-			return false;
-		}
+			return search_bases();
 		const EntityRecord& pattern_owner = program_->entities[pattern_entity];
 		const EntityRecord& argument_owner = program_->entities[argument_entity];
 		if (pattern_owner.template_argument_begin == kNoBinding ||
@@ -900,30 +927,32 @@ bool SemanticAnalyzer::DeduceFunctionTemplatePackType(TypeId pattern,
 					return false;
 				const std::size_t last = argument_arguments.size() - remaining;
 				const std::size_t prior_size =
-					deduced->pack_arguments[dependent].size();
+					direct.pack_arguments[dependent].size();
 				const bool prior_started =
-					deduced->pack_deduction_started[dependent] != 0;
-				deduced->pack_deduction_positions[dependent] = 0;
+					direct.pack_deduction_started[dependent] != 0;
+				direct.pack_deduction_positions[dependent] = 0;
 				while (argument_index < last)
 					if (!DeduceFunctionTemplatePackArgument(pattern_argument,
 						argument_arguments[argument_index++], parameters,
-						deduced)) return false;
+						&direct)) return search_bases();
 				if ((prior_started &&
-					 deduced->pack_arguments[dependent].size() != prior_size) ||
-					deduced->pack_deduction_positions[dependent] !=
-						deduced->pack_arguments[dependent].size()) return false;
-				deduced->pack_deduction_started[dependent] = 1;
+					 direct.pack_arguments[dependent].size() != prior_size) ||
+					direct.pack_deduction_positions[dependent] !=
+						direct.pack_arguments[dependent].size()) return search_bases();
+				direct.pack_deduction_started[dependent] = 1;
 				++pattern_index;
 				continue;
 			}
 			if (argument_index >= argument_arguments.size() ||
 				!DeduceFunctionTemplatePackArgument(pattern_argument,
-					argument_arguments[argument_index], parameters, deduced))
-				return false;
+					argument_arguments[argument_index], parameters, &direct))
+				return search_bases();
 			++pattern_index;
 			++argument_index;
 		}
-		return argument_index == argument_arguments.size();
+		if (argument_index != argument_arguments.size()) return search_bases();
+		*deduced = direct;
+		return true;
 	}
 	case TYPE_FUNDAMENTAL:
 	case TYPE_INVALID:

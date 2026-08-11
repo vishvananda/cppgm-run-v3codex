@@ -162,6 +162,8 @@ bool SemanticAnalyzer::HasDependentQualifiedType(NodeId node,
 						SyntaxUsesAnyTemplateParameter(argument, names) &&
 						!IsDirectTemplateParameterExpression(direct, names))
 						return true;
+					if (HasDependentQualifiedType(
+						argument, names, scope, alias_depth)) return true;
 				}
 		}
 		if (!components.empty() && IsUnqualifiedAliasTemplateName(scope, path))

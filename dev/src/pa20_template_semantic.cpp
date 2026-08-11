@@ -1338,7 +1338,8 @@ bool SemanticAnalyzer::AppendTemplateArgument(
 			else if (name != kNoNode && arena_->IsTag(name, "type-name") &&
 				(declarator == kNoNode || retained_pack_name))
 				expression = AnalyzeNamedValue(PayloadSource(name),
-					source_scope, argument.type, name);
+					source_scope,
+					dependent_target ? kNoType : argument.type, name);
 			else if (name != kNoNode &&
 				arena_->IsTag(name, "decltype-specifier") &&
 				FindChild(source, "abstract-declarator") == kNoNode)

@@ -30,54 +30,40 @@ generation marks restrict each uncached query to its participating subobjects.
 
 ## Current Failure Map
 
-The report is 390/409, with all `100-*`, `200-*`, and `400-*` tests passing.
-The 19 failures are 9 exits and 10 LowIR mismatches (`300-*`: 13; `500-*`: 6).
-By shared behavior and owner they are deduction/non-deduced/partial ordering
-(7), constructor or conversion-function participation (7), and retained
-result/default/candidate replay (5). The denominator includes the passing
-declaration-only constructor-demand audit guard; the landed 389/408 baseline
-and its failure set are unchanged.
+The report is 398/409, up from the turn-start baseline of 390/409, with all
+`100-*`, `200-*`, and `400-*` tests passing. The 11 remaining failures are
+constructor/conversion participation and target-result flow (8: defaulted
+SFINAE constructor, copy/move preference, constructible pack, constructor vs
+conversion ranking, conversion-object copy-init, non-template constructor
+preference, conditional reference result, and template-template reference
+target) and retained alias/default/call-result replay (3: nested-alias explicit
+call, boolean alias metadata, and declaring-scope NTTP default).
 
 ## Active Checkpoint
 
-Canonical non-deduced matching and partial ordering is the next substantial
-stable boundary and owns seven failures spanning abstract/array parameter
-SFINAE, transitive-base deduction, dependent NTTP packs, recursive partial
-completion, direct template-id matching, and fixed/variadic template-template
-ordering. Per `spec.md` sections 2-5 and 9, canonical parameter shapes and the
-candidate deduction frame own bindings; class-partial selection owns recursive
-completion; ordering consumes complete typed deductions without rendered-name
-fallbacks. The flow is candidate parameter shape -> indexed deduction facts ->
-complete canonical arguments -> candidate-local substitution -> typed ordering
-result. Expected work is O(C*(P+A+E)) for participating candidates C,
-parameters P, arguments A, and expanded elements E, with O(1)-average identity
-lookup and one completion per specialization key. Validate all seven grouped
-failures, 1/2/4/8 candidate/pack scaling, sanitizers, PA23, PA1-PA22, and audit.
+Constructor/conversion participation and target-result flow is the next stable
+boundary and owns the eight failures above. Per `spec.md` sections 2-6 and 9,
+canonical callable identity owns constructor and conversion-template
+participation, candidate frames own SFINAE and target deduction, overload
+ordering consumes typed conversion sequences, and lowering consumes only the
+selected result/materialization facts. The flow is owner-indexed callable
+patterns -> candidate-local substitution -> typed conversion sequences ->
+selected constructor/result identity -> demand-owned materialization and
+LowIR. Expected work is O(C*(P+A+S)) for candidates C, parameters P, arguments
+A, and conversion-sequence steps S, with indexed owner lookup and candidate
+failure isolated to one frame. Validate the eight grouped failures, adjacent
+PA19-PA23 ordering tests, 1/2/4/8 candidate scaling, sanitizers, PA23,
+PA1-PA22, and audit.
 
 ## Performance Evidence
 
-Before the audit repair, nested-class depths 8 and 16 caused 6,272 and
-1,605,632 parser checkpoints, and depth 32 exceeded ten seconds. For depths
-8/16/32/64/128/256 after parse-once routing, tokens were
-53/93/173/333/653/1,293, checkpoints 119/199/359/679/1,319/2,599, rollbacks
-79/135/247/471/919/1,815, and fact changes 19/35/67/131/259/515. For 1/2/4/8
-dependent function-pointer and template-template parameter pairs, semantic
-nodes were 18/21/27/39, specialization requests 2/3/5/9, argument-list
-requests and index probes 6/9/15/27, candidate visits 1/2/4/8, and typed storage
-4,196/4,204/4,220/4,252 bytes. For the completed alias/default/demand boundary,
-1/2/4/8 member-alias specializations produced semantic nodes 27/46/84/160,
-specialization requests 14/28/56/112, default materializations 1/2/4/8, access
-checks 31/60/118/234, emissions 1/2/4/8, and 4,597/6,720/12,214/23,522 typed
-bytes. Argument-list probes were 22/41/80/274 (1.0-1.8 per request, reflecting
-bounded small-table collisions); semantic time was 1.03/1.22/1.66/2.43 ms.
-For 1/2/4/8 repeated proven-empty and declaration-only constructor pairs amid
-16 unrelated classes, empty-chain requests were 2/4/8/16, cache hits
-0/2/6/14, entity visits 3/3/3/3, dependency
-edges 2/2/2/2, worklist pushes 3/3/3/3, and emissions 3/3/3/3; semantic nodes
-were 21/27/39/63 and typed storage 6,413/7,085/8,429/11,117 bytes. The audit
-guard raises the combined report to 390/409 without changing the 19 prior
-failures, and all nine affected probes are ASan/UBSan-clean. PA1-PA22 pass
-2,639/2,639; file audit passes with 13 inherited header-division advisories.
+For 1/2/4/8 combined class-partial candidate, pack-element, and transitive-base
+depths, partial candidates were 4/6/10/18, partial deduction visits
+24/34/60/136 (within O(C*(A+E+B)) as all dimensions grow together), function
+deduction visits 9/12/18/30, and semantic time 0.96/1.06/1.31/1.87 ms. Semantic
+nodes stayed at 47 and typed storage at 5,563 bytes. The seven checkpoint probes
+are ASan/UBSan-clean; PA1-PA22 pass 2,639/2,639; the PA23 report is 398/409; and
+file audit passes with 13 inherited header-division advisories.
 
 ## Completed Checkpoints
 
@@ -114,3 +100,4 @@ failures, and all nine affected probes are ASan/UBSan-clean. PA1-PA22 pass
 | Zero-cardinality expansion lowering and static-member demand | Typed size/alignment drives automatic, global, and local-static storage without element lifetime actions; retained value-use policy and explicit address/reference demand replace syntax reopening; original 375 -> 377, audit guard 378/407, no regressions, sanitizer-clean, linear scaling. |
 | Retained enclosing-pack dependency and dependent braced construction | Nested parameter types defer to specialization replay; qualified/template calls avoid speculative type formation; the audit replaced class-body lookahead with parse-once routing and completed declarator/local/template-template dependency ownership in canonical parameter scopes; original 378 -> 380, audit guard 381/408, no regressions, sanitizer-clean, linear scaling. |
 | Declaration-owned alias access, dead-arm demand, and typed scalar/ABI finalization | Alias bodies substitute with lexical privilege; short-circuited calls stay undemanded; null and boolean facts lower canonically; empty-chain elision now requires known bodies, memoizes canonical dependency facts, and publishes C2 state only after success; 381 -> 389, audit guard 390/409, no regressions, sanitizer-clean, bounded scaling. |
+| Canonical non-deduced matching and partial ordering | Array legality/cv, transitive base deduction, dependent NTTP packs, recursive partial replay, direct template-id identity, and template-template piecewise ordering use typed candidate-local facts; 390 -> 398, eight gains, no regressions, sanitizer-clean, bounded combined scaling. |

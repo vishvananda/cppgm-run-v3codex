@@ -1297,6 +1297,7 @@ void SemanticAnalyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 			throw std::runtime_error(
 				"class template parameter count mismatch");
 		std::vector<TemplateParameter> merged = parameters;
+		bool contributes_default = false;
 		for (std::size_t i = 0; i < parameters.size(); ++i)
 		{
 			if (prior.parameters[i].kind != parameters[i].kind)
@@ -1314,7 +1315,13 @@ void SemanticAnalyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 			if (merged[i].default_argument == kNoNode)
 				merged[i].default_argument =
 					prior.parameters[i].default_argument;
+			else if (prior.parameters[i].default_argument == kNoNode)
+				contributes_default = true;
 		}
+		// Parameter names are local to a redeclaration.  A friend declaration
+		// with no new defaults must not replace the definition-owned parameter
+		// environment used to replay that definition.
+		if (!definition && !contributes_default) return;
 		prior.parameters.swap(merged);
 		if (!definition) return;
 		if (prior.defined)

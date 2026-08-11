@@ -946,8 +946,10 @@ LookupResult SemanticAnalyzer::LookupStructuredTypeSpecifier(
 	NodeId syntax, ScopeId scope, TypeId deferred_type)
 {
 	const NamePath path = StructuredNamePath(syntax);
+	const bool nondeduced_parameter = deferred_type != kNoType &&
+		deferred_type == function_template_nondeduced_type_shape_;
 	if (deferred_type != kNoType && (path.global || path.Size() > 1 ||
-		IsUnqualifiedAliasTemplateName(scope, path)))
+		nondeduced_parameter || IsUnqualifiedAliasTemplateName(scope, path)))
 	{
 		LookupResult deferred;
 		deferred.type = deferred_type;

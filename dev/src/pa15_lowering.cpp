@@ -944,9 +944,9 @@ private:
 		Emit(load);
 		return result;
 	}
-
 	Operand AddressOfStorage(const Operand& storage)
 	{
+		if (storage.kind == Operand::INTEGER && storage.type.kind == LOW_PTR) return storage;
 		if (storage.kind == Operand::TEMP ||
 			(storage.kind == Operand::PARAMETER && storage.type.kind == LOW_PTR))
 		{
