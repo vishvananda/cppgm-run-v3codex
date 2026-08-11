@@ -720,6 +720,9 @@ struct FunctionInfo
 	NameId parameter_pack_name;
 	TypeId member_owner;
 	EntityId friend_of;
+	// A lambda inherits access privileges through this lexical edge without
+	// inheriting the enclosing function's implicit object.
+	BindingId lexical_access_function;
 	// A dependent exception specification is a specialization-owned demand
 	// fact, separate from declaration formation and body/emission demand.
 	ScopeId lexical_scope, exception_specification_scope;
@@ -769,7 +772,8 @@ struct FunctionInfo
 		  owner(kNoScope), type(kNoType), signature(kNoType),
 		  conversion_target(kNoType), display_name(0), parameter_pack_name(0),
 		  member_owner(kNoType),
-		  friend_of(kNoEntity), lexical_scope(kNoScope),
+		  friend_of(kNoEntity), lexical_access_function(kNoBinding),
+		  lexical_scope(kNoScope),
 		  exception_specification_scope(kNoScope),
 		  definition_body(kNoNode), constructor_initializer(kNoNode),
 		  retained_definition_semantics(kNoDumpEdge),

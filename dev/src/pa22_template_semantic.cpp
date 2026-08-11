@@ -133,6 +133,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCapturelessLambda(NodeId node,
 		bool nonthrowing = false;
 		bool variadic_call = false;
 		std::vector<ParameterInfo> call_parameters;
+		NameId call_parameter_pack_name = 0;
 		NodeId parameter_clause = kNoNode;
 		NodeId trailing_return = kNoNode;
 		if (declarator != kNoNode)
@@ -143,6 +144,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCapturelessLambda(NodeId node,
 					"lambda declarator has no parameter clause");
 			call_parameters = BuildParameters(
 				parameter_clause, scope, &variadic_call);
+			call_parameter_pack_name =
+				FunctionParameterPackName(parameter_clause);
 			trailing_return = FindChild(declarator, "trailing-return-type");
 			mutable_call =
 				FindChild(declarator, "lambda-specifier") != kNoNode;
@@ -210,7 +213,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCapturelessLambda(NodeId node,
 			const ScopeId return_scope = NewScope(scope, SCOPE_FUNCTION,
 				call_name, ScopePrefixId(scope));
 			BindFunctionParameterPackElement(return_scope,
-				FunctionParameterPackName(parameter_clause), kNoBinding);
+				call_parameter_pack_name, kNoBinding);
 			for (std::size_t i = 0; i < call_parameters.size(); ++i)
 				if (call_parameters[i].name != 0)
 				{
@@ -241,10 +244,12 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCapturelessLambda(NodeId node,
 		call_binding.access = ACCESS_PUBLIC;
 		FunctionInfo& call = GetMutableFunction(call_operator);
 		call.member_owner = closure_type;
+		call.lexical_access_function = enclosing;
 		call.lexical_scope = scope;
 		call.definition_body = body;
 		call.deferred = true;
 		call.definition_in_class = true;
+		call.parameter_pack_name = call_parameter_pack_name;
 		if (trailing_return == kNoNode)
 			call.placeholder_return_kind = PLACEHOLDER_DECLARATOR_VALUE;
 		RegisterClassMemberFunction(entity, call_operator);

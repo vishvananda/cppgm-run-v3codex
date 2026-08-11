@@ -30,14 +30,21 @@ bool SemanticAnalyzer::HasClassPrivilege(EntityId owner) const
 		++access_grant_probes_;
 		if (friend_class_grants_.Find(key)) return true;
 	}
-	if (current_function_context_ != kNoBinding)
+	for (BindingId function = current_function_context_;
+		function != kNoBinding;)
 	{
-		const BindingId function = program_->bindings[
-			current_function_context_].canonical;
+		function = program_->bindings[function].canonical;
+		const EntityId member_owner = program_->bindings[function].member_owner;
+		for (EntityId context = member_owner; context != kNoEntity;
+			context = program_->entities[context].enclosing_class)
+			if (context == owner) return true;
 		const std::uint64_t key =
 			(static_cast<std::uint64_t>(owner) << 32) | function;
 		++access_grant_probes_;
 		if (friend_function_grants_.Find(key)) return true;
+		if (function >= function_fact_by_binding_.size() ||
+			function_fact_by_binding_[function] == kNoDumpEdge) break;
+		function = GetFunction(function).lexical_access_function;
 	}
 	return false;
 }

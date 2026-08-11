@@ -2,53 +2,57 @@
 
 ## Current Checkpoint Review
 
-Checkpoint `2e7bf454` (function-template placeholder results and deduced
-class-value locals) passes after audit repair. The landed increment publishes a
-specialization before analyzing its retained placeholder body, uses a canonical
-four-state body fact, republishes the deduced function type and result ABI, and
-retains the selected same-class transfer needed by `auto` locals.
+Checkpoint `60cd11b4` (ordinary captureless call-operator formation) passes
+after audit repair. The landed increment keys each closure by canonical
+enclosing function and retained syntax, publishes its entity and call operator
+before implicit-result body analysis, retains canonical parameter/default and
+result facts, and lowers the selected member call and retained body directly.
+The lambda expression is a typed prvalue initializer; empty closure storage is
+owned by the ordinary class-initialization path.
 
-The audit found one correctness and architecture defect on the completed-result
-path. Semantic return-slot finalization and PA17 lowering independently rebuilt
-class-result ABI policy from layout and lifecycle properties. In addition, the
-callable override used `deferred_result_formation`, which identifies results
-that cannot initially be formed but not an already-formed dependent result such
-as `pair_like<T, U>`. The caller and callee therefore selected a direct
-`obj<16x8>` boundary for the dependent-owner lifecycle case instead of its
-required indirect result. Class special-member completion now publishes the
-generic result-boundary fact once; each function-template pattern retains one
-dependent-result bit; and only the canonical function binding owns a required
-callable-specific override. Return-slot planning and lowering consume those
-facts by identity. The previously failing dependent-owner case now matches its
-checked LowIR.
+The audit found two correctness defects in retained call-operator facts. First,
+only expanded `ParameterInfo` records carried a function-parameter-pack name.
+An empty expansion therefore published no name, and `sizeof...(args)` failed
+when the retained body was analyzed. The call operator now owns the
+declaration-level pack identity independently of its zero or more elements.
+Second, body analysis changed the current class to the closure and lost the
+enclosing member function's access privilege. Importing the enclosing `this`
+would be incorrect for a captureless closure, so each call operator now retains
+an explicit lexical parent-function edge. Access checks walk only that edge
+chain and its member-owner/indexed friend facts; they do not supply an implicit
+object. Explicit private-member access succeeds, while uncaptured implicit
+`this` remains rejected.
 
-The demanded trace is source bytes -> one retained template pattern and body ->
-canonical specialization key -> cache publication -> one in-progress body
-transition -> canonical placeholder result `TypeId` -> updated function/binding
-type and result ABI -> retained typed semantic edges -> demand worklist -> direct
-typed LowIR. Cache hits observe success without reanalyzing the body; recursive
-deduction observes in-progress and fails immediately. The added regressions
-cover repeated cache hits, `auto*`, `auto&`, collapsing `auto&&`, and recursive
-deduction. The positive regression also executes through LowIR/CY86 with status
-zero.
+The demanded template trace is source bytes -> one parsed retained template
+body -> canonical function specialization -> closure key -> published closure,
+parameter-pack, and lexical-access facts -> one four-state implicit-result body
+analysis -> indexed empty-pack lookup -> canonical result `TypeId` -> retained
+typed body -> demand worklist -> direct typed LowIR. The non-template access
+trace uses the same closure fact, follows one lexical function edge to the
+enclosing member owner, retains the selected field binding, and lowers without
+lookup replay. The two positive regressions execute through LowIR/CY86 with
+status zero; a negative regression confirms that the access edge does not
+capture `this`.
 
-For 16/64/256 distinct `constexpr auto` specializations and their trivial token
-types, tokens were 197/677/2,597 and semantic nodes 260/1,028/4,100.
-Specialization requests were 81/321/1,281 with 48/192/768 cache hits; demand
-pushes and emissions were 32/128/512, functions 33/129/513, instructions
-112/448/1,792, and typed storage 55,413/219,573/877,149 bytes. Five-run median
-semantic time was 2.045/6.782/27.001 ms and lowering time
-0.850/2.662/10.529 ms. Work, storage, and time track demanded specializations
-and emitted IR without a translation-unit scan or quadratic trend.
+For 16/64/256 sibling captureless closures performing private-member access,
+tokens were 471/1,719/6,711 and semantic nodes 348/1,308/5,148. Closure requests
+were 16/64/256, access path visits 32/128/512, access-grant probes
+64/256/1,024, and demand pushes/emissions 18/66/258. Functions were 19/67/259,
+instructions 223/847/3,343, and typed storage
+66,195/256,323/1,017,459 bytes. Five-run median semantic time was
+1.495/4.799/18.736 ms and lowering time 0.459/1.222/4.426 ms. Work, storage,
+and time track closures and emitted IR without a translation-unit scan or
+quadratic trend.
 
 No relevant source/test shortcut, whole-program retry, lowering-time semantic
-search, text transport, timeout behavior, duplicate ABI reconstruction, or
+search, text transport, timeout behavior, incomplete checkpoint key, or
 unresolved checkpoint-owned correctness, performance, or file-audit issue
-remains. The one non-lambda failure is a pre-existing local-declaration/template
-parse ambiguity and does not enter this ownership path. Shipped PA25 improves
-from 87/130 to 88/130; the two audit regressions produce 90/132. PA1-24 pass
+remains. The original PA25 set remains 102/132; three audit regressions produce
+105/135. Focused checkpoint and audit coverage is 8/8, PA1-24 pass
 3,471/3,471, and file audit passes with 15 inherited nonfatal division
-advisories.
+advisories. The remaining PA25 failures belong to invocation/pointer conversion,
+capture layout and lookup, closure special members, broader pack substitution,
+namespace identity, or the independent retained local-declaration parse path.
 
 ## Checkpoint Audit Ledger
 
@@ -58,3 +62,4 @@ advisories.
 | Range-for statements (`b985f854`) | Pass after single-parse dispatch, category-correct one-time range binding, and condition/iteration cleanup repairs; 67/128 PA25 and 3,471/3,471 earlier tests preserved; linear scaling and file audit verified. |
 | Selected class conversions (`cec97359`) | Pass after single-parse canonical conversion targets, semantic-owned parameter ABI, and modifiable-reference filtering; 85/130 PA25 and 3,471/3,471 earlier tests preserved; linear scaling and file audit verified. |
 | Function-template placeholder results (`2e7bf454`) | Pass after canonical dependent-result identity and semantic-owned class-result ABI repair; shipped PA25 is 88/130, audit regressions 2/2, PA1-24 3,471/3,471; linear scaling and file audit verified. |
+| Ordinary captureless call operators (`60cd11b4`) | Pass after empty-pack identity and lexical access-edge repairs; original PA25 102/132 plus audit 3/3, PA1-24 3,471/3,471, runtime, linear scaling, and file audit verified. |
