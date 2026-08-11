@@ -588,8 +588,15 @@ void SemanticAnalyzer::AnalyzeReturnStatement(NodeId node, ScopeId scope,
 					value.node = recipe;
 			}
 		}
+		const bool concrete_empty_template_aggregate = class_return &&
+			dump_.nodes[value.node].kind == DUMP_BRACED_INIT_LIST &&
+			dump_.nodes[value.node].first_edge == kNoDumpEdge &&
+			program_->entities[returned_record.entity].is_aggregate &&
+			program_->entities[returned_record.entity].template_argument_count != 0;
 		if (class_return && dump_.nodes[value.node].kind ==
-			DUMP_BRACED_INIT_LIST && dump_.nodes[value.node].value_initialization)
+			DUMP_BRACED_INIT_LIST &&
+			(dump_.nodes[value.node].value_initialization ||
+			 concrete_empty_template_aggregate))
 		{
 			value.node = BuildDefaultConstructorAction(returned_object, scope);
 			value.type = returned_object;

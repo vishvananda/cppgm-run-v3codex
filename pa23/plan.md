@@ -12,38 +12,37 @@ participating candidates, arguments, parameters, and subobject edges.
 
 ## Current Failure Map
 
-The report is 359/405, with all `100-*`, `200-*`, and `400-*` tests passing.
-The 46 remaining failures group into retained result/default/member lookup and
-candidate-local substitution (`300-*`: 19 exits, 12 LowIR) and composed
-owner/pack replay (`500-*`: 4 exits, 11 LowIR). Explicit argument-kind
-isolation and alias-expanded result redeclaration identity have left the map.
+The report is 363/405, with all `100-*`, `200-*`, and `400-*` tests passing.
+The 42 remaining failures group into retained result/default/member lookup and
+candidate-local substitution (`300-*`: 19 exits, 8 LowIR) and composed
+owner/pack replay (`500-*`: 4 exits, 11 LowIR). Concrete empty returns and
+alias-expanded out-of-class bodies have left the map.
 
 ## Active Checkpoint
 
-Nested alias call materialization and out-of-class member replay are the next
-stable boundary. The related `300-*` failures include instantiated-owner alias
-calls, nested alias deduction, out-of-class SFINAE member bodies, retained
-member overload sets, and inherited member lookup. Per `spec.md` sections 3-6,
-patterns own lexical lookup and definition syntax; one specialization owns the
-concrete alias/member environment; demand publishes selected callable and
-constructor facts; lowering consumes that typed identity exactly once. Member
-definition replay owns the flow from indexed owner lookup through alias
-substitution, selected specialization demand, and typed object materialization.
-Expected work is O(C*(A+P+L)+M), where M is the selected body/member graph.
-Validate the grouped nested-owner cases, constructor/lowering guards, PA23,
-PA1-PA22, sanitizers, and audit; measure doubled owner depth and call counts.
+Retained member-overload publication through class completion is the next
+stable boundary. It groups the surviving member-overload-set, lazy nested-class,
+and inherited/member-template lookup exits. Per `spec.md` sections 3-6, a
+retained class pattern owns declaration order and lexical lookup; one concrete
+specialization publishes every ordinary/member-template candidate to its direct
+indexes; selection alone demands a body and lowering consumes the selected
+binding. The flow is retained body -> specialization scope -> indexed overload
+set -> deduction/ranking -> selected demand. Expected work is O(D+C*(A+P)+M)
+for D published declarations and M selected-body nodes, without rescanning all
+specializations. Validate overload survival, nested completion, inherited
+lookup, unselected-body guards, PA23, PA1-PA22, sanitizers, audit, and doubled
+declaration/candidate counts.
 
 ## Performance Evidence
 
 Prior doubled-size probes across deduction, lookup, completion, and lowering
-showed linear work and storage. For this checkpoint, 16 redeclarations behind
-8/16/32/64 preceding candidates took three-run wall medians
-0.01/0.02/0.04/0.10 s and peak RSS 7,084/7,672/8,528/10,764 KiB. For 256
-redeclarations through alias depths 1/2/4/8, medians were
-0.04/0.04/0.04/0.05 s and peak RSS stayed 8,472/8,500/8,472/8,516 KiB. Both
-alias/direct orientations, a distinct-overload guard, the three gains, and
-maximum-scale cases are ASan/UBSan-clean. Gates are PA1-PA22 2,639/2,639,
-PA23 359/405, and file-audit pass with 13 inherited warnings.
+showed linear work and storage. Here owner alias depths 1/2/4/8 held lookup at
+229, typed storage at 23,418 bytes, and three-run semantic medians at
+1.213/1.212/1.168/1.210 ms. For 8/16/32/64 selected calls, lookup was
+165/229/357/613, storage 14,682/23,418/40,890/75,834 bytes, and medians
+1.128/1.196/1.374/1.812 ms. All gains, unselected and distinct-overload guards,
+and the maximum probe are ASan/UBSan-clean. Gates are PA1-PA22 2,639/2,639,
+PA23 363/405, and file-audit pass with 13 inherited warnings.
 
 ## Completed Checkpoints
 
@@ -73,3 +72,4 @@ PA23 359/405, and file-audit pass with 13 inherited warnings.
 | Template pack/default partition and constructor participation | Per-parameter offsets preserve non-terminal packs and defaults; unnamed NTTP packs, inherited constructors, empty subobject chains, qualified `sizeof` calls, and constant leaves retain typed ownership; all `400-*` pass, 343 -> 351, no regressions, sanitizer-clean, linear scaling. |
 | Demand-owned class-template shells and wrapped result identity | Typedef/using aliases retain shells without eager body replay; concrete layout and qualified lookup own demand; definition upgrades retry only pending shells and refresh late partial selection; wrapped deferred results preserve overload identity; 351 -> 356, no regressions, sanitizer-clean, linear scaling. |
 | Retained explicit-kind frames and alias-expanded result identity | Known type syntax drops non-type candidates without poisoning enclosing replay; alias defaults and packs expand to declaration-bound canonical keys; lookup facts remap across alias/direct redeclarations while distinct overloads remain separate; 356 -> 359, no regressions, sanitizer-clean, bounded scaling. |
+| Nested-owner return materialization and alias-expanded member-definition identity | Concrete empty specialization returns demand one implicit constructor; owner aliases normalize to canonical types for out-of-class redeclaration matching; four gains, 359 -> 363, no regressions, sanitizer-clean, flat alias-depth and linear call scaling. |

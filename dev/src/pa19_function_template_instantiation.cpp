@@ -126,6 +126,55 @@ std::size_t TemplateParameterOrdinal(
 	return parameters.size();
 }
 
+std::string NormalizeTemplateOwnerPayload(Program* program, ScopeId scope,
+	const std::vector<TemplateParameter>& parameters,
+	const std::string& source)
+{
+	// Structured template-ids are retained as one payload by the parser. Map
+	// inner parameters to ordinals and owner aliases to canonical type identity.
+	std::string result;
+	result.reserve(source.size());
+	for (std::size_t cursor = 0; cursor < source.size();)
+	{
+		const unsigned char first =
+			static_cast<unsigned char>(source[cursor]);
+		const bool identifier = (first >= 'a' && first <= 'z') ||
+			(first >= 'A' && first <= 'Z') || first == '_';
+		if (!identifier)
+		{
+			result += source[cursor++];
+			continue;
+		}
+		std::size_t end = cursor + 1;
+		while (end < source.size())
+		{
+			const unsigned char character =
+				static_cast<unsigned char>(source[end]);
+			if (!((character >= 'a' && character <= 'z') ||
+				(character >= 'A' && character <= 'Z') ||
+				(character >= '0' && character <= '9') || character == '_'))
+				break;
+			++end;
+		}
+		const std::string token = source.substr(cursor, end - cursor);
+		const NameId name = program->names.Intern(token);
+		const std::size_t parameter =
+			TemplateParameterOrdinal(parameters, name);
+		if (parameter < parameters.size())
+			result += "$p" + std::to_string(parameter);
+		else
+		{
+			const LookupResult lookup =
+				program->LookupName(scope, name, LOOKUP_TYPE);
+			if (lookup.type != kNoType)
+				result += "$t" + std::to_string(lookup.type);
+			else result += token;
+		}
+		cursor = end;
+	}
+	return result;
+}
+
 std::uint32_t NextComparableTemplateSyntaxEdge(const SyntaxArena& arena,
 	std::uint32_t edge, bool ignore_global_qualifier)
 {
@@ -140,11 +189,13 @@ bool EquivalentNormalizedTemplateSyntax(const SyntaxArena& arena,
 	const std::vector<TemplateParameter>& left_parameters,
 	const std::vector<TemplateParameter>& right_parameters,
 	NodeId left_global_owner = kNoNode,
-	NodeId right_global_owner = kNoNode)
+	NodeId right_global_owner = kNoNode,
+	Program* program = 0, ScopeId left_scope = kNoScope,
+	ScopeId right_scope = kNoScope)
 {
 	// A dependent non-type parameter type is not always safe to materialize
-	// against an incomplete shape type. Compare the retained parsed structure
-	// once at declaration insertion, normalizing parameter names to ordinals.
+	// against an incomplete shape type. Compare the retained parsed structure,
+	// normalizing parameters and concrete owner aliases without demanding it.
 	if (left == kNoNode || right == kNoNode) return left == right;
 	std::vector<std::pair<NodeId, NodeId> > pending(
 		1, std::make_pair(left, right));
@@ -178,8 +229,28 @@ bool EquivalentNormalizedTemplateSyntax(const SyntaxArena& arena,
 						structured_wrapper = true;
 						break;
 					}
-			if (!structured_wrapper && (left_name != right_name ||
-				arena.Payload(left_node) != arena.Payload(right_node))) return false;
+			const bool spelling_differs = left_name != right_name ||
+				arena.Payload(left_node) != arena.Payload(right_node);
+			bool equivalent_owner_type = false;
+			if (!structured_wrapper && spelling_differs && program &&
+				left_name != 0 && right_name != 0 &&
+				left_scope != kNoScope && right_scope != kNoScope)
+			{
+				const LookupResult left_lookup = program->LookupName(
+					left_scope, left_name, LOOKUP_TYPE);
+				const LookupResult right_lookup = program->LookupName(
+					right_scope, right_name, LOOKUP_TYPE);
+				equivalent_owner_type = left_lookup.type != kNoType &&
+					left_lookup.type == right_lookup.type;
+				if (!equivalent_owner_type)
+					equivalent_owner_type = NormalizeTemplateOwnerPayload(
+						program, left_scope, left_parameters,
+						arena.Payload(left_node)) ==
+						NormalizeTemplateOwnerPayload(program, right_scope,
+							right_parameters, arena.Payload(right_node));
+			}
+			if (!structured_wrapper && spelling_differs &&
+				!equivalent_owner_type) return false;
 		}
 		const bool ignore_global_qualifier =
 			left_node == left_global_owner && right_node == right_global_owner;
@@ -203,7 +274,9 @@ bool EquivalentNormalizedTemplateSyntax(const SyntaxArena& arena,
 
 bool EquivalentFunctionTemplateParameterLists(const SyntaxArena& arena,
 	const std::vector<TemplateParameter>& left,
-	const std::vector<TemplateParameter>& right)
+	const std::vector<TemplateParameter>& right,
+	Program* program = 0, ScopeId left_scope = kNoScope,
+	ScopeId right_scope = kNoScope)
 {
 	if (left.size() != right.size()) return false;
 	for (std::size_t i = 0; i < left.size(); ++i)
@@ -212,7 +285,8 @@ bool EquivalentFunctionTemplateParameterLists(const SyntaxArena& arena,
 			return false;
 		if (left[i].kind == TEMPLATE_ARGUMENT_TEMPLATE &&
 			!EquivalentFunctionTemplateParameterLists(arena,
-				left[i].template_parameters, right[i].template_parameters))
+				left[i].template_parameters, right[i].template_parameters,
+				program, left_scope, right_scope))
 			return false;
 		if (left[i].kind != TEMPLATE_ARGUMENT_INTEGRAL) continue;
 		if (left[i].dependent_type != right[i].dependent_type) return false;
@@ -222,9 +296,11 @@ bool EquivalentFunctionTemplateParameterLists(const SyntaxArena& arena,
 			continue;
 		}
 		if (!EquivalentNormalizedTemplateSyntax(arena,
-				left[i].specifiers, right[i].specifiers, left, right) ||
+				left[i].specifiers, right[i].specifiers, left, right,
+				kNoNode, kNoNode, program, left_scope, right_scope) ||
 			!EquivalentNormalizedTemplateSyntax(arena,
-				left[i].declarator, right[i].declarator, left, right)) return false;
+				left[i].declarator, right[i].declarator, left, right,
+				kNoNode, kNoNode, program, left_scope, right_scope)) return false;
 	}
 	return true;
 }
@@ -949,7 +1025,8 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 				program_->types, program_->types.Get(prior.shape_type).child,
 				function_template_dependent_result_shape_);
 			if (EquivalentFunctionTemplateParameterLists(*arena_,
-					prior.parameters, pattern.parameters) &&
+					prior.parameters, pattern.parameters, program_,
+					prior.lexical_scope, pattern.lexical_scope) &&
 				prior.shape_type == pattern.shape_type &&
 				EquivalentFunctionTemplateNondeducedShapes(
 					*arena_, prior, pattern) &&
