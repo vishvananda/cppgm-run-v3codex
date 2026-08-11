@@ -398,10 +398,24 @@ private:
 		bool member_implicit_object = false,
 		bool defer_trailing_return = false,
 		const std::unordered_set<NameId>* template_parameter_names = 0);
+	void ApplyPlaceholderDeclaratorOperator(
+		const std::string& operation, DeclaratorInfo* declarator) const;
 	DeclaratorInfo BuildVariableDeclarator(NodeId item, NodeId declarator,
 		const SpecInfo& spec, ScopeId scope, bool local);
+	DeclaratorInfo BuildMemberDeclarator(NodeId item, NodeId declarator,
+		const SpecInfo& spec, ScopeId scope, bool definition);
 	bool TakePreparedPlaceholderVariableInitializer(
 		NodeId item, ExpressionInfo* initializer);
+	ExpressionInfo AnalyzeClassMemberInitializer(
+		NodeId item, ScopeId scope, TypeId type);
+	void ConfigurePlaceholderFunctionReturn(BindingId function,
+		const DeclaratorInfo& declarator, std::uint8_t placeholder_cv);
+	TypeId DeducePlaceholderFunctionReturnType(
+		const FunctionInfo& function, const ExpressionInfo* expression);
+	void PublishPlaceholderFunctionReturn(
+		BindingId function, const ExpressionInfo* expression);
+	void CompletePlaceholderFunctionReturn(BindingId function);
+	void AnalyzeRetainedPlaceholderFunctionBody(BindingId function);
 	TypeId BuildArrayDeclaratorType(NodeId suffix, TypeId element,
 		ScopeId scope,
 		const std::unordered_set<NameId>* template_parameter_names);

@@ -260,6 +260,15 @@ struct SpecInfo
 		virtual_specifier(false) {}
 };
 
+enum PlaceholderDeclaratorKind
+{
+	PLACEHOLDER_DECLARATOR_NONE,
+	PLACEHOLDER_DECLARATOR_VALUE,
+	PLACEHOLDER_DECLARATOR_POINTER,
+	PLACEHOLDER_DECLARATOR_LVALUE_REFERENCE,
+	PLACEHOLDER_DECLARATOR_RVALUE_REFERENCE
+};
+
 struct ParameterInfo
 {
 	NameId name;
@@ -283,9 +292,13 @@ struct DeclaratorInfo
 	NameId name;
 	TypeId type;
 	ScopeId trailing_return_scope;
+	PlaceholderDeclaratorKind placeholder_return_kind;
+	std::uint8_t placeholder_return_cv;
 	std::vector<ParameterInfo> parameters;
 	DeclaratorInfo()
-		: name(0), type(kNoType), trailing_return_scope(kNoScope) {}
+		: name(0), type(kNoType), trailing_return_scope(kNoScope),
+		  placeholder_return_kind(PLACEHOLDER_DECLARATOR_NONE),
+		  placeholder_return_cv(CV_NONE) {}
 };
 
 enum ConstexprScalarKind
@@ -703,7 +716,12 @@ struct FunctionInfo
 	ScopeId lexical_scope, exception_specification_scope;
 	std::vector<ParameterInfo> parameters;
 	NodeId definition_body, constructor_initializer;
+	std::uint32_t retained_definition_semantics;
 	std::uint32_t template_pattern;
+	TypeId placeholder_return_type;
+	PlaceholderDeclaratorKind placeholder_return_kind;
+	std::uint8_t placeholder_return_cv;
+	bool placeholder_return_deduced;
 	bool defined;
 	bool deferred;
 	bool definition_in_class;
@@ -744,7 +762,10 @@ struct FunctionInfo
 		  friend_of(kNoEntity), lexical_scope(kNoScope),
 		  exception_specification_scope(kNoScope),
 		  definition_body(kNoNode), constructor_initializer(kNoNode),
-		  template_pattern(kNoDumpEdge),
+		  retained_definition_semantics(kNoDumpEdge),
+		  template_pattern(kNoDumpEdge), placeholder_return_type(kNoType),
+		  placeholder_return_kind(PLACEHOLDER_DECLARATOR_NONE),
+		  placeholder_return_cv(CV_NONE), placeholder_return_deduced(false),
 		  defined(false), deferred(false), definition_in_class(false),
 		  template_specialization(false), explicit_specialization(false),
 		  deleted_function(false),

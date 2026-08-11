@@ -5,6 +5,24 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+void SemanticAnalyzer::ApplyPlaceholderDeclaratorOperator(
+	const std::string& operation, DeclaratorInfo* declarator) const
+{
+	if (declarator->placeholder_return_kind != PLACEHOLDER_DECLARATOR_VALUE)
+		throw std::runtime_error(
+			"compound placeholder function result declarator");
+	if (operation == "*")
+		declarator->placeholder_return_kind = PLACEHOLDER_DECLARATOR_POINTER;
+	else if (operation == "&")
+		declarator->placeholder_return_kind =
+			PLACEHOLDER_DECLARATOR_LVALUE_REFERENCE;
+	else if (operation == "&&")
+		declarator->placeholder_return_kind =
+			PLACEHOLDER_DECLARATOR_RVALUE_REFERENCE;
+	else throw std::runtime_error(
+		"unsupported placeholder function result declarator");
+}
+
 DeclaratorInfo SemanticAnalyzer::BuildVariableDeclarator(
 	NodeId item, NodeId declarator, const SpecInfo& spec, ScopeId scope,
 	bool local)
@@ -110,6 +128,19 @@ DeclaratorInfo SemanticAnalyzer::BuildVariableDeclarator(
 	return parsed;
 }
 
+DeclaratorInfo SemanticAnalyzer::BuildMemberDeclarator(NodeId item,
+	NodeId declarator, const SpecInfo& spec, ScopeId scope, bool definition)
+{
+	const bool function = definition ||
+		FindChild(declarator, "parameter-clause") != kNoNode;
+	DeclaratorInfo parsed = spec.placeholder_auto && !function ?
+		BuildVariableDeclarator(item, declarator, spec, scope, false) :
+		BuildDeclarator(declarator, spec.type, scope, spec.placeholder_auto,
+			spec.storage_class != STORAGE_CLASS_STATIC && function);
+	parsed.placeholder_return_cv = spec.placeholder_cv;
+	return parsed;
+}
+
 bool SemanticAnalyzer::TakePreparedPlaceholderVariableInitializer(
 	NodeId item, ExpressionInfo* initializer)
 {
@@ -119,6 +150,201 @@ bool SemanticAnalyzer::TakePreparedPlaceholderVariableInitializer(
 	*initializer = found->second;
 	prepared_placeholder_initializers_.erase(found);
 	return true;
+}
+
+ExpressionInfo SemanticAnalyzer::AnalyzeClassMemberInitializer(
+	NodeId item, ScopeId scope, TypeId type)
+{
+	ExpressionInfo value;
+	if (!TakePreparedPlaceholderVariableInitializer(item, &value))
+		value = AnalyzeInClassStaticInitializer(
+			FindChild(item, "initializer"), scope, type);
+	return value;
+}
+
+void SemanticAnalyzer::ConfigurePlaceholderFunctionReturn(BindingId function,
+	const DeclaratorInfo& declarator, std::uint8_t placeholder_cv)
+{
+	if (declarator.placeholder_return_kind == PLACEHOLDER_DECLARATOR_NONE)
+		return;
+	FunctionInfo& fact = GetMutableFunction(function);
+	if (fact.placeholder_return_kind != PLACEHOLDER_DECLARATOR_NONE &&
+		(fact.placeholder_return_kind != declarator.placeholder_return_kind ||
+		 fact.placeholder_return_cv != placeholder_cv))
+		throw std::runtime_error(
+			"conflicting placeholder function return declarator");
+	fact.placeholder_return_kind = declarator.placeholder_return_kind;
+	fact.placeholder_return_cv = placeholder_cv;
+}
+
+TypeId SemanticAnalyzer::DeducePlaceholderFunctionReturnType(
+	const FunctionInfo& function, const ExpressionInfo* expression)
+{
+	if (!expression)
+	{
+		if (function.placeholder_return_kind != PLACEHOLDER_DECLARATOR_VALUE)
+			throw std::runtime_error(
+				"reference or pointer placeholder function returns no value");
+		return program_->types.Fundamental(FUND_VOID);
+	}
+	TypeId base = EffectiveType(expression->type);
+	switch (function.placeholder_return_kind)
+	{
+	case PLACEHOLDER_DECLARATOR_VALUE:
+		base = Decay(expression->type);
+		if (function.placeholder_return_cv != CV_NONE)
+			base = program_->types.Qualify(
+				base, function.placeholder_return_cv);
+		return base;
+	case PLACEHOLDER_DECLARATOR_POINTER:
+	{
+		const TypeId pointer = Decay(expression->type);
+		const TypeRecord& shape = program_->types.Get(pointer);
+		if (shape.kind != TYPE_POINTER)
+			throw std::runtime_error(
+				"auto* function return requires a pointer expression");
+		base = shape.child;
+		if (function.placeholder_return_cv != CV_NONE)
+			base = program_->types.Qualify(
+				base, function.placeholder_return_cv);
+		return program_->types.Pointer(base);
+	}
+	case PLACEHOLDER_DECLARATOR_LVALUE_REFERENCE:
+		if (expression->category != VALUE_LVALUE)
+			throw std::runtime_error(
+				"auto& function return requires an lvalue expression");
+		if (function.placeholder_return_cv != CV_NONE)
+			base = program_->types.Qualify(
+				base, function.placeholder_return_cv);
+		return program_->types.Reference(TYPE_LVALUE_REFERENCE, base);
+	case PLACEHOLDER_DECLARATOR_RVALUE_REFERENCE:
+		if (function.placeholder_return_cv != CV_NONE)
+			base = program_->types.Qualify(
+				base, function.placeholder_return_cv);
+		return program_->types.Reference(
+			expression->category == VALUE_LVALUE ? TYPE_LVALUE_REFERENCE :
+				TYPE_RVALUE_REFERENCE, base);
+	case PLACEHOLDER_DECLARATOR_NONE:
+		break;
+	}
+	throw std::logic_error("placeholder return deduction has no placeholder");
+}
+
+void SemanticAnalyzer::PublishPlaceholderFunctionReturn(
+	BindingId function, const ExpressionInfo* expression)
+{
+	function = program_->bindings[function].canonical;
+	FunctionInfo& fact = GetMutableFunction(function);
+	if (fact.placeholder_return_kind == PLACEHOLDER_DECLARATOR_NONE)
+		throw std::logic_error(
+			"placeholder result published for an ordinary function");
+	const TypeId deduced =
+		DeducePlaceholderFunctionReturnType(fact, expression);
+	if (fact.placeholder_return_deduced)
+	{
+		if (fact.placeholder_return_type != deduced)
+			throw std::runtime_error(
+				"inconsistent placeholder function return types");
+		current_return_type_ = fact.placeholder_return_type;
+		return;
+	}
+	const TypeRecord old_type = program_->types.Get(fact.type);
+	const TypeId* old_parameters = program_->types.Parameters(fact.type);
+	std::vector<TypeId> parameters;
+	if (old_type.parameter_count != 0)
+		parameters.assign(old_parameters,
+			old_parameters + old_type.parameter_count);
+	const TypeId completed = program_->types.Function(deduced, parameters,
+		old_type.variadic, old_type.cv, old_type.ref_qualifier);
+	fact.type = completed;
+	fact.placeholder_return_type = deduced;
+	fact.placeholder_return_deduced = true;
+	program_->bindings[function].type = completed;
+	current_return_type_ = deduced;
+}
+
+void SemanticAnalyzer::CompletePlaceholderFunctionReturn(BindingId function)
+{
+	FunctionInfo& fact = GetMutableFunction(function);
+	if (fact.placeholder_return_kind != PLACEHOLDER_DECLARATOR_NONE &&
+		!fact.placeholder_return_deduced)
+		PublishPlaceholderFunctionReturn(function, 0);
+}
+
+void SemanticAnalyzer::AnalyzeRetainedPlaceholderFunctionBody(
+	BindingId function)
+{
+	function = program_->bindings[function].canonical;
+	const FunctionInfo initial = GetFunction(function);
+	if (initial.placeholder_return_kind == PLACEHOLDER_DECLARATOR_NONE ||
+		initial.retained_definition_semantics != kNoDumpEdge)
+		return;
+	if (!initial.defined || initial.definition_body == kNoNode)
+		throw std::runtime_error(
+			"placeholder function return requires a visible definition");
+
+	const bool member = initial.member_owner != kNoType;
+	const TypeId provisional_output = member ?
+		AdaptMemberFunctionType(function) : initial.type;
+	const std::uint32_t detached = MakeDump(DUMP_FUNCTION_DEFINITION,
+		provisional_output, VALUE_NONE, initial.display_name, initial.binding);
+	const ScopeId function_scope = NewScope(initial.lexical_scope,
+		SCOPE_FUNCTION, program_->bindings[initial.binding].name,
+		ScopePrefixId(initial.owner));
+	BindFunctionParameterPackElement(
+		function_scope, initial.parameter_pack_name, kNoBinding);
+	if (member)
+	{
+		const TypeId this_type =
+			program_->types.Parameters(provisional_output)[0];
+		const NameId this_name = program_->names.Intern("this");
+		const BindingId this_binding = program_->AddBinding(function_scope,
+			BIND_PARAMETER, this_name, this_type);
+		dump_.Add(detached, MakeDump(DUMP_PARAMETER, this_type,
+			VALUE_NONE, this_name, this_binding));
+	}
+	for (std::size_t i = 0; i < initial.parameters.size(); ++i)
+	{
+		const ParameterInfo& parameter = initial.parameters[i];
+		const BindingId parameter_binding = program_->AddBinding(function_scope,
+			BIND_PARAMETER, parameter.name, ParameterBindingType(parameter));
+		BindFunctionParameterPackElement(
+			function_scope, parameter.pack_name, parameter_binding);
+		dump_.Add(detached, MakeDump(DUMP_PARAMETER,
+			parameter.function_type, VALUE_NONE,
+			parameter.name, parameter_binding));
+		AddLifetimeObligation(function_scope, parameter_binding,
+			parameter.function_type, false);
+	}
+
+	const TypeId previous_return = current_return_type_;
+	const EntityId previous_class = current_class_context_;
+	const BindingId previous_function = current_function_context_;
+	current_return_type_ = initial.placeholder_return_deduced ?
+		initial.placeholder_return_type : kNoType;
+	current_class_context_ = initial.friend_of != kNoEntity ?
+		initial.friend_of : program_->bindings[initial.binding].member_owner;
+	current_function_context_ = function;
+	try
+	{
+		AnalyzeCompound(initial.definition_body, function_scope, detached);
+		CompletePlaceholderFunctionReturn(function);
+		FinalizeNamedReturnSlot(detached);
+	}
+	catch (...)
+	{
+		current_return_type_ = previous_return;
+		current_class_context_ = previous_class;
+		current_function_context_ = previous_function;
+		throw;
+	}
+	current_return_type_ = previous_return;
+	current_class_context_ = previous_class;
+	current_function_context_ = previous_function;
+	FunctionInfo& completed = GetMutableFunction(function);
+	completed.retained_definition_semantics = detached;
+	dump_.nodes[detached].type = member ?
+		AdaptMemberFunctionType(function) : completed.type;
 }
 
 void SemanticAnalyzer::ApplyConditionalClassConversion(

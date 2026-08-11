@@ -2258,7 +2258,8 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 		throw std::runtime_error(
 			"virtual specifier is only allowed in a class definition");
 	DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type,
-		semantic_scope);
+		semantic_scope, spec.placeholder_auto);
+	parsed.placeholder_return_cv = spec.placeholder_cv;
 	parsed.name = path.Last();
 	if (!program_->types.IsFunction(parsed.type))
 		throw std::runtime_error("function definition has non-function type");
@@ -2272,6 +2273,8 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 		current_language_linkage_, IsNonthrowing(declarator, semantic_scope));
 	PublishInlineFunctionFacts(
 		binding, spec.inline_specifier || spec.is_constexpr);
+	ConfigurePlaceholderFunctionReturn(
+		binding, parsed, spec.placeholder_cv);
 	ValidateFunctionRefQualifier(binding);
 	ValidateNonmemberOperator(binding);
 	FunctionInfo& function = GetMutableFunction(binding);
@@ -2297,6 +2300,7 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	function.deferred = spec.is_constexpr;
 	if (function.deferred)
 	{
+		AnalyzeRetainedPlaceholderFunctionBody(binding);
 		current_class_context_ = previous_class;
 		return;
 	}
@@ -2332,7 +2336,9 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	}
 	const TypeId previous_return = current_return_type_;
 	const BindingId previous_function = current_function_context_;
-	current_return_type_ = program_->types.Get(parsed.type).child;
+	current_return_type_ = parsed.placeholder_return_kind ==
+		PLACEHOLDER_DECLARATOR_NONE ?
+		program_->types.Get(parsed.type).child : kNoType;
 	current_class_context_ = function.friend_of != kNoEntity ?
 		function.friend_of : program_->bindings[binding].member_owner;
 	current_function_context_ = program_->bindings[binding].canonical;
@@ -2340,8 +2346,11 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	if (body != kNoNode)
 	{
 		AnalyzeCompound(body, function_scope, output_node);
+		CompletePlaceholderFunctionReturn(binding);
 		FinalizeNamedReturnSlot(output_node);
 	}
+	dump_.nodes[output_node].type = member ?
+		AdaptMemberFunctionType(binding) : GetFunction(binding).type;
 	current_return_type_ = previous_return;
 	current_class_context_ = previous_class;
 	current_function_context_ = previous_function;
@@ -2395,12 +2404,16 @@ void SemanticAnalyzer::AnalyzeCondition(NodeId node, ScopeId scope,
 	{
 		const NodeId declarator = FindChild(declaration_node, "declarator");
 		const SpecInfo spec = BuildSpecifiers(specifiers, scope, std::string(), true);
-		DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type, scope);
+		DeclaratorInfo parsed = BuildVariableDeclarator(
+			declaration_node, declarator, spec, scope, true);
 		const BindingId binding = program_->AddBinding(scope, BIND_VARIABLE,
 			parsed.name, parsed.type);
 		const NodeId initializer = FindChild(declaration_node, "initializer");
-		ExpressionInfo value = AnalyzeVariableInitializer(initializer,
-			scope, parsed.type, true);
+		ExpressionInfo value;
+		if (!TakePreparedPlaceholderVariableInitializer(
+			declaration_node, &value))
+			value = AnalyzeVariableInitializer(initializer,
+				scope, parsed.type, true);
 		if (constexpr_evaluation_depth_ != 0 && value.constant &&
 			IsIntegral(parsed.type, true))
 		{

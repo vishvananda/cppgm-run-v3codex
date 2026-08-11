@@ -424,13 +424,25 @@ void SemanticAnalyzer::AnalyzeReturnStatement(NodeId node, ScopeId scope,
 	const std::uint32_t statement = MakeDump(DUMP_RETURN_STATEMENT);
 	dump_.Add(output_parent, statement);
 	const NodeId expression = FirstSemanticChild(node);
+	const bool placeholder_return = current_function_context_ != kNoBinding &&
+		GetFunction(current_function_context_).placeholder_return_kind !=
+			PLACEHOLDER_DECLARATOR_NONE;
 	if (expression == kNoNode)
 	{
+		if (placeholder_return)
+			PublishPlaceholderFunctionReturn(current_function_context_, 0);
 		if (!IsVoid(current_return_type_))
 			throw std::runtime_error("missing return value");
 	}
 	else
 	{
+		ExpressionInfo value;
+		if (placeholder_return)
+		{
+			value = AnalyzeExpression(expression, scope);
+			PublishPlaceholderFunctionReturn(
+				current_function_context_, &value);
+		}
 		const TypeId returned_object = program_->types.RemoveTopCv(
 			EffectiveType(current_return_type_));
 		const TypeRecord& returned_record = program_->types.Get(returned_object);
@@ -444,9 +456,13 @@ void SemanticAnalyzer::AnalyzeReturnStatement(NodeId node, ScopeId scope,
 			 program_->entities[returned_record.entity].flavor == NAMED_UNION);
 		const bool direct_syntax = arena_->IsTag(expression, "call-expression") ||
 			arena_->IsTag(expression, "braced-init-list");
-		ExpressionInfo value = AnalyzeExpression(expression, scope,
-			IsVoid(current_return_type_) || (class_return && !direct_syntax) ?
-			kNoType : current_return_type_);
+		if (!placeholder_return)
+			value = AnalyzeExpression(expression, scope,
+				IsVoid(current_return_type_) ||
+					(class_return && !direct_syntax) ?
+					kNoType : current_return_type_);
+		else if (!IsVoid(current_return_type_) && !class_return)
+			value = ApplyTarget(value, current_return_type_);
 		if (IsVoid(current_return_type_) && !IsVoid(value.type))
 			throw std::runtime_error("void function returns a value");
 		if (class_return && dump_.nodes[value.node].kind ==

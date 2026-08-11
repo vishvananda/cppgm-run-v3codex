@@ -103,5 +103,26 @@ TypeId SemanticAnalyzer::BuildArrayDeclaratorType(NodeId suffix,
 		"invalid dependent array element type");
 }
 
+EntityId SemanticAnalyzer::EntityOf(TypeId type) const
+{
+	type = program_->types.RemoveTopCv(EffectiveType(type));
+	const TypeRecord record = program_->types.Get(type);
+	return record.kind == TYPE_NAMED ? record.entity : kNoEntity;
+}
+
+bool SemanticAnalyzer::IsCallableDeclaration(NodeId node) const
+{
+	if (arena_->IsTag(node, "function-definition")) return true;
+	const NodeId list = FindChild(node, "init-declarator-list");
+	for (std::uint32_t edge = list == kNoNode ? kNoEdge : arena_->FirstEdge(list);
+		edge != kNoEdge; edge = arena_->NextEdge(edge))
+	{
+		const NodeId declarator = FindChild(arena_->EdgeChild(edge), "declarator");
+		if (declarator != kNoNode &&
+			FindChild(declarator, "parameter-clause") != kNoNode) return true;
+	}
+	return false;
+}
+
 }
 }

@@ -1031,27 +1031,6 @@ const std::vector<BindingId>& SemanticAnalyzer::ConstructorCandidates(
 	return entity_constructors_[entity];
 }
 
-EntityId SemanticAnalyzer::EntityOf(TypeId type) const
-{
-	type = program_->types.RemoveTopCv(EffectiveType(type));
-	const TypeRecord record = program_->types.Get(type);
-	return record.kind == TYPE_NAMED ? record.entity : kNoEntity;
-}
-
-bool SemanticAnalyzer::IsCallableDeclaration(NodeId node) const
-{
-	if (arena_->IsTag(node, "function-definition")) return true;
-	const NodeId list = FindChild(node, "init-declarator-list");
-	for (std::uint32_t edge = list == kNoNode ? kNoEdge : arena_->FirstEdge(list);
-		edge != kNoEdge; edge = arena_->NextEdge(edge))
-	{
-		const NodeId declarator = FindChild(arena_->EdgeChild(edge), "declarator");
-		if (declarator != kNoNode &&
-			FindChild(declarator, "parameter-clause") != kNoNode) return true;
-	}
-	return false;
-}
-
 void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 	TypeId owner_type, AccessKind access)
 {
@@ -1099,8 +1078,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		if (spec.thread_local_storage)
 			throw std::runtime_error("thread_local member function");
 		const NodeId declarator = FindChild(node, "declarator");
-		DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type, scope,
-			false, spec.storage_class != STORAGE_CLASS_STATIC);
+		DeclaratorInfo parsed = BuildMemberDeclarator(node, declarator, spec, scope, true);
 		const EntityId owner_entity = EntityOf(owner_type);
 		if (spec.is_constexpr)
 			parsed.type = ApplyConstexprMemberFunctionType(parsed.type,
@@ -1114,6 +1092,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 			parsed.type, parsed.parameters, true, false, STORAGE_CLASS_NONE,
 			current_language_linkage_, IsNonthrowing(declarator, scope));
 		FunctionInfo& info = GetMutableFunction(function);
+		ConfigurePlaceholderFunctionReturn(function, parsed, spec.placeholder_cv);
 		info.constexpr_function = info.constexpr_function || constexpr_function;
 		BindingRecord& binding = program_->bindings[function];
 		binding.member_owner = owner_entity;
@@ -1144,9 +1123,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		const NodeId item = arena_->EdgeChild(edge);
 		const NodeId declarator = FindChild(item, "declarator");
 		if (declarator == kNoNode) continue;
-		DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type, scope,
-			false, spec.storage_class != STORAGE_CLASS_STATIC &&
-				FindChild(declarator, "parameter-clause") != kNoNode);
+		DeclaratorInfo parsed = BuildMemberDeclarator(item, declarator, spec, scope, false);
 		if (spec.is_typedef)
 		{
 			const BindingId alias = program_->AddBinding(scope, BIND_TYPE_ALIAS,
@@ -1172,6 +1149,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 				parsed.type, parsed.parameters, false, false, STORAGE_CLASS_NONE,
 				current_language_linkage_, IsNonthrowing(declarator, scope));
 			BindingRecord& binding = program_->bindings[function];
+			ConfigurePlaceholderFunctionReturn(function, parsed, spec.placeholder_cv);
 			binding.member_owner = EntityOf(owner_type);
 			binding.access = access;
 			binding.static_member_function =
@@ -1245,8 +1223,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 					!(IsConst(member_type) && IsIntegral(member_type, true)))
 					throw std::runtime_error(
 						"invalid in-class static data member initializer");
-				const ExpressionInfo value = AnalyzeInClassStaticInitializer(
-					FindChild(item, "initializer"), scope, member_type);
+				const ExpressionInfo value = AnalyzeClassMemberInitializer(item, scope, member_type);
 				if (!HasConstantInitializerFact(value))
 					throw std::runtime_error(
 						"nonconstant in-class static data member initializer");
@@ -2082,6 +2059,8 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 	}
 	TypeId type = base;
 	const NodeId trailing = FindChild(node, "trailing-return-type");
+	const bool deduced_placeholder = placeholder_auto && trailing == kNoNode;
+	if (deduced_placeholder) result.placeholder_return_kind = PLACEHOLDER_DECLARATOR_VALUE;
 	std::vector<NodeId> suffixes;
 	NodeId nested = kNoNode;
 	std::uint8_t function_cv = CV_NONE;
@@ -2094,6 +2073,11 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 		if (arena_->IsTag(child, "ptr-operator"))
 		{
 			const std::string operation = PayloadSource(child);
+			if (deduced_placeholder && !saw_function_suffix)
+			{
+				ApplyPlaceholderDeclaratorOperator(operation, &result);
+				continue;
+			}
 			if (operation == "*") type = CandidateTypeFormation(
 				program_->types.TryPointer(type), "pointer to reference type");
 			else if (operation == "&")
@@ -2198,8 +2182,6 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 			type = BuildTypeId(return_type, return_scope);
 		}
 	}
-	else if (placeholder_auto)
-		throw std::runtime_error("auto requires a trailing return type in PA16");
 	for (std::size_t i = suffixes.size(); i != 0; --i)
 	{
 		const NodeId suffix = suffixes[i - 1];
@@ -2249,9 +2231,13 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 		if (!result.parameters.empty()) inner.parameters = result.parameters;
 		if (inner.trailing_return_scope == kNoScope)
 			inner.trailing_return_scope = result.trailing_return_scope;
+		if (inner.placeholder_return_kind == PLACEHOLDER_DECLARATOR_NONE)
+			inner.placeholder_return_kind = result.placeholder_return_kind;
 		return inner;
 	}
 	result.type = type;
+	if (deduced_placeholder && !program_->types.IsFunction(result.type))
+		throw std::runtime_error("placeholder return deduction requires a function definition");
 	return result;
 }
 
@@ -2887,6 +2873,18 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 	if (!emit_definition && (retain_lowering_facts_ || member ||
 		program_->bindings[binding].explicit_instantiation_suppressed))
 	{
+		GetMutableFunction(binding).demand_state = 3;
+		++demanded_function_emissions_;
+		return;
+	}
+	if (emit_definition &&
+		info.retained_definition_semantics != kNoDumpEdge)
+	{
+		for (std::uint32_t edge = dump_.nodes[
+			info.retained_definition_semantics].first_edge;
+			edge != kNoDumpEdge; edge = dump_.edges[edge].next)
+			dump_.Add(function, dump_.edges[edge].child);
+		DemandMaterializedConstructorActions(function, true);
 		GetMutableFunction(binding).demand_state = 3;
 		++demanded_function_emissions_;
 		return;

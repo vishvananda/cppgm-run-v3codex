@@ -353,6 +353,11 @@ void SemanticAnalyzer::ValidateOrdinaryMemberFunctionBody(BindingId function)
 {
 	FunctionInfo& info = GetMutableFunction(function);
 	if (!info.defined || info.definition_body == kNoNode) return;
+	if (info.placeholder_return_kind != PLACEHOLDER_DECLARATOR_NONE)
+	{
+		AnalyzeRetainedPlaceholderFunctionBody(function);
+		return;
+	}
 	std::unordered_set<NodeId> visited;
 	if (!SyntaxContainsTag(*arena_, info.definition_body,
 		"static-assert-declaration", &visited)) return;
