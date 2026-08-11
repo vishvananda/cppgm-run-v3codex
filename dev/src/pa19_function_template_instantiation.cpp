@@ -845,6 +845,55 @@ TypeId SemanticAnalyzer::DependentFunctionTemplateResultShape()
 	return function_template_dependent_result_shape_;
 }
 
+std::size_t SemanticAnalyzer::FindPriorFunctionTemplatePattern(
+	const FunctionTemplatePattern& pattern, EntityId friend_owner,
+	bool qualified_friend, bool definition)
+{
+	const std::uint64_t key =
+		(static_cast<std::uint64_t>(pattern.owner) << 32) | pattern.name;
+	const CompactIndexSequence* candidates = template_function_sets_.Find(key);
+	// A hidden definition normally redeclares only within its class
+	// specialization.  A published namespace declaration remains eligible.
+	if (friend_owner != kNoEntity && !qualified_friend && definition)
+	{
+		NamePath direct;
+		direct.Push(pattern.name);
+		const LookupResult visible = program_->LookupQualified(
+			pattern.owner, direct, LOOKUP_FUNCTION_TEMPLATE);
+		if (visible.FunctionTemplateOwnerCount() == 0)
+		{
+			const std::uint64_t hidden_key =
+				(static_cast<std::uint64_t>(friend_owner) << 32) |
+				pattern.name;
+			candidates = hidden_friend_template_sets_.Find(hidden_key);
+		}
+	}
+	if (!candidates) return function_templates_.size();
+	for (std::size_t p = 0; p < candidates->Size(); ++p)
+	{
+		const std::size_t candidate = (*candidates)[p];
+		const FunctionTemplatePattern& prior = function_templates_[candidate];
+		const bool distinct_hidden_owner = friend_owner != kNoEntity &&
+			!qualified_friend && definition && prior.definition_in_class &&
+			std::find(prior.friend_owners.begin(), prior.friend_owners.end(),
+				friend_owner) == prior.friend_owners.end();
+		if (distinct_hidden_owner) continue;
+		const bool dependent_result = TypeContainsDependentResultShape(
+			program_->types, program_->types.Get(prior.shape_type).child,
+			function_template_dependent_result_shape_);
+		if (EquivalentFunctionTemplateParameterLists(*arena_, prior.parameters,
+				pattern.parameters, program_, prior.lexical_scope,
+				pattern.lexical_scope) &&
+			prior.shape_type == pattern.shape_type &&
+			EquivalentFunctionTemplateNondeducedShapes(*arena_, prior, pattern) &&
+			(!dependent_result ||
+			 EquivalentDependentFunctionTemplateResults(*arena_, prior, pattern) ||
+			 EquivalentExpandedFunctionTemplateResults(prior, pattern)))
+			return candidate;
+	}
+	return function_templates_.size();
+}
+
 void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	ScopeId scope, AccessKind member_access,
 	const std::vector<TemplateParameter>& parameters, NodeId specifiers,
@@ -1010,35 +1059,8 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	InitializeFunctionTemplatePackShape(&pattern, shape_declarator);
 	if (ConstructorTemplateMayAcceptNoArguments(pattern))
 		program_->entities[member_owner].default_constructible = true;
-	const std::uint64_t key = (static_cast<std::uint64_t>(pattern.owner) << 32) |
-		pattern.name;
-	const CompactIndexSequence* prior_patterns =
-		template_function_sets_.Find(key);
-	std::size_t prior_index = function_templates_.size();
-	if (prior_patterns)
-		for (std::size_t p = 0; p < prior_patterns->Size(); ++p)
-		{
-			const std::size_t candidate = (*prior_patterns)[p];
-			const FunctionTemplatePattern& prior =
-				function_templates_[candidate];
-			const bool dependent_result = TypeContainsDependentResultShape(
-				program_->types, program_->types.Get(prior.shape_type).child,
-				function_template_dependent_result_shape_);
-			if (EquivalentFunctionTemplateParameterLists(*arena_,
-					prior.parameters, pattern.parameters, program_,
-					prior.lexical_scope, pattern.lexical_scope) &&
-				prior.shape_type == pattern.shape_type &&
-				EquivalentFunctionTemplateNondeducedShapes(
-					*arena_, prior, pattern) &&
-				(!dependent_result ||
-				 EquivalentDependentFunctionTemplateResults(
-					*arena_, prior, pattern) ||
-				 EquivalentExpandedFunctionTemplateResults(prior, pattern)))
-			{
-				prior_index = candidate;
-				break;
-			}
-		}
+	const std::size_t prior_index = FindPriorFunctionTemplatePattern(
+		pattern, friend_owner, qualified_friend, definition);
 	if (prior_index != function_templates_.size())
 	{
 		FunctionTemplatePattern& prior = function_templates_[prior_index];
@@ -1076,6 +1098,8 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 			"qualified friend function template was not declared");
 	const std::size_t index = function_templates_.size();
 	function_templates_.push_back(pattern);
+	const std::uint64_t key =
+		(static_cast<std::uint64_t>(pattern.owner) << 32) | pattern.name;
 	template_function_sets_.Ensure(key).Push(index);
 	if (pattern.conversion_template)
 	{

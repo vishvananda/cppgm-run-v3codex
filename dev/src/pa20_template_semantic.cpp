@@ -997,7 +997,12 @@ void SemanticAnalyzer::ParseTemplateParameters(NodeId list, ScopeId scope,
 					BuildDeclarator(record.declarator, spec.type, scope).type;
 				record.value_type =
 					program_->types.RemoveTopCv(record.value_type);
-				if (!IsNonTypeTemplateParameterType(record.value_type))
+				if (FunctionTemplateTypeIsDependent(record.value_type))
+				{
+					record.dependent_type = true;
+					record.value_type = kNoType;
+				}
+				else if (!IsNonTypeTemplateParameterType(record.value_type))
 					throw std::runtime_error(
 						"invalid non-type template parameter type");
 			}

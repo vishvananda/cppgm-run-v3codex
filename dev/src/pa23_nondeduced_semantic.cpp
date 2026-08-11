@@ -108,6 +108,24 @@ bool SemanticAnalyzer::HasDependentQualifiedType(NodeId node,
 				if (SyntaxUsesAnyTemplateParameter(components[i], names))
 					return true;
 		const NamePath path = StructuredNamePath(structure);
+		if (!components.empty())
+		{
+			const NodeId arguments = FindChild(
+				components.back(), "template-type-argument-list");
+			if (arguments != kNoNode)
+				for (std::uint32_t edge = arena_->FirstEdge(arguments);
+					edge != kNoEdge; edge = arena_->NextEdge(edge))
+				{
+					const NodeId argument = arena_->EdgeChild(edge);
+					NodeId direct = argument;
+					if (arena_->IsTag(direct, "pack-expansion-expression"))
+						direct = FirstSemanticChild(direct);
+					if (!arena_->IsTag(argument, "type-id") &&
+						SyntaxUsesAnyTemplateParameter(argument, names) &&
+						!IsDirectTemplateParameterExpression(direct, names))
+						return true;
+				}
+		}
 		if (!components.empty() && IsUnqualifiedAliasTemplateName(scope, path))
 		{
 			const LookupResult marker = LookupSpelling(

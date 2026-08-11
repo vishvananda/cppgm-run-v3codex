@@ -176,6 +176,9 @@ private:
 		NodeId declarator, bool definition, bool special_member_template,
 		TypeId dependent_result_shape,
 		bool dependent_exception_specification);
+	std::size_t FindPriorFunctionTemplatePattern(
+		const FunctionTemplatePattern& pattern, EntityId friend_owner,
+		bool qualified_friend, bool definition);
 	TypeId DependentFunctionTemplateResultShape();
 	void RegisterFunctionTemplateFriend(std::size_t pattern,
 		EntityId owner, bool hidden);

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -866,6 +867,16 @@ void RetainedTemplateValidator::VisitIdExpression(NodeId node,
 		if (unknown_callee) return;
 		throw std::runtime_error("type name used as retained value");
 	}
+	const std::vector<std::size_t> templates =
+		analyzer_.FindFunctionTemplates(
+			scopes_[scope].semantic_scope, path);
+	if (!templates.empty())
+	{
+		if (unknown_callee)
+			analyzer_.RecordRetainedCallLookup(node,
+				scopes_[scope].semantic_scope, spelling, true);
+		return;
+	}
 	if (unknown_callee)
 	{
 		if (!HasUnmodeledFixedBase(scope) &&
@@ -1132,8 +1143,36 @@ void RetainedTemplateValidator::Run()
 	const std::size_t root = AddScope(semantic,
 		std::numeric_limits<std::size_t>::max(),
 		defer_members, false, defer_members);
+	while (analyzer_.function_template_shape_parameters_.size() <
+		parameters_.size())
+	{
+		std::ostringstream generated;
+		generated << "__retained_template_parameter_shape_"
+			<< analyzer_.function_template_shape_parameters_.size();
+		const NameId name = analyzer_.program_->names.Intern(generated.str());
+		const EntityId entity = analyzer_.program_->NewEntity(name,
+			NAMED_TYPENAME_PARAMETER, false, kNoType,
+			analyzer_.program_->GlobalScope(), name);
+		analyzer_.function_template_shape_parameters_.push_back(
+			analyzer_.program_->types.Named(entity));
+	}
 	for (std::size_t i = 0; i < parameters_.size(); ++i)
+	{
 		DeclareParameter(root, parameters_[i]);
+		if (parameters_[i].name == 0) continue;
+		if (parameters_[i].kind == TEMPLATE_ARGUMENT_TYPE)
+			analyzer_.program_->AddBinding(semantic, BIND_TYPE_ALIAS,
+				parameters_[i].name,
+				analyzer_.function_template_shape_parameters_[i]);
+		else if (parameters_[i].kind == TEMPLATE_ARGUMENT_TEMPLATE)
+			analyzer_.CreateTemplateTemplateParameterProxy(
+				semantic, parameters_[i], i);
+		else analyzer_.program_->AddBinding(semantic, BIND_PARAMETER,
+			parameters_[i].name, parameters_[i].dependent_type ?
+				analyzer_.program_->types.Fundamental(FUND_INT) :
+				parameters_[i].value_type, false,
+			static_cast<std::int64_t>(i));
+	}
 	ValidateKnownTemplateArgumentKinds(target_, semantic);
 	if (!definition) return;
 	Visit(target_, root);

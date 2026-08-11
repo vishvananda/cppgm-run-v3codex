@@ -1483,7 +1483,9 @@ std::vector<BindingId> SemanticAnalyzer::FunctionTemplateTargetCandidates(
 				parameter < parameters.size(); ++parameter)
 				if (pattern.function_parameter_nondeduced[parameter] != 0)
 					parameters[parameter] = shape_parameters[parameter];
-			deduction_target = program_->types.Function(desired.child,
+			const TypeId result = pattern.deferred_result_formation ?
+				shape.child : desired.child;
+			deduction_target = program_->types.Function(result,
 				parameters, desired.variadic, desired.cv,
 				desired.ref_qualifier);
 		}
