@@ -1,0 +1,70 @@
+function @take_direct(%direct : obj<4x4>) -> i32 [binding=strong, object=_Z11take_direct6Direct] {
+  slot $direct : obj<4x4>
+
+  block ^entry:
+    %t1 = addr $direct
+    copyobj 4x4 %direct, %t1
+    %t2 = addr $direct
+    %t3 = index i8 [projection=base_subobject] %t2, 0
+    %t4 = index i8 [projection=field] %t3, 0
+    %t5 = load i32 %t4
+    return i32 %t5
+}
+
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $direct : obj<4x4>
+  slot $cond__1 : i32
+  slot $argobj__2 : obj<4x4>
+
+  block ^entry:
+    %t1 = addr $direct
+    call void @Direct__Direct(%t1, 9)
+    %t2 = addr $argobj__2
+    %t3 = addr $direct
+    call void @Direct__Direct__ov2(%t2, %t3)
+    %t4 = call i32 @take_direct($argobj__2)
+    %t5 = cmp eq i32 %t4, 9
+    branch %t5, ^cond_then_1, ^cond_else_2
+
+  block ^cond_then_1:
+    store i32 0, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_else_2:
+    store i32 1, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_end_3:
+    %t6 = load i32 $cond__1
+    return i32 %t6
+}
+
+function @Direct__Direct(%this : ptr, %initial : i32) -> void [binding=weak, object=_ZN6DirectC1Ei] {
+  slot $this : ptr
+  slot $initial : i32
+
+  block ^entry:
+    store ptr %this, $this
+    store i32 %initial, $initial
+    %t1 = load i32 $initial
+    %t2 = load ptr $this
+    %t3 = index i8 [projection=base_subobject] %t2, 0
+    %t4 = index i8 [projection=field] %t3, 0
+    store i32 %t1, %t4
+    return void
+}
+
+function @Direct__Direct__ov2(%this : ptr, %other : ptr [pass=reference]) -> void [binding=weak, object=_ZN6DirectC1ERKS_] {
+  slot $this : ptr
+  slot $other : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    store ptr %other, $other
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=base_subobject] %t1, 0
+    %t3 = load ptr $other
+    %t4 = index i8 [projection=base_subobject] %t3, 0
+    copyobj 4x4 %t4, %t2
+    return void
+}

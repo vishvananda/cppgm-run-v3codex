@@ -116,21 +116,13 @@ protected:
 		if (object.kind != pa11::TYPE_NAMED ||
 			!derived.program_.entities[object.entity].complete)
 			return false;
-		const std::size_t size = derived.program_.SizeOf(object_type);
 		const pa11::EntityRecord& entity =
 			derived.program_.entities[object.entity];
 		const bool aggregate_parameter = object.entity <
 			derived.aggregate_parameter_entities_.size() &&
 			derived.aggregate_parameter_entities_[object.entity] != 0;
-		// A completed small derived payload can cross the direct object boundary;
-		// aggregate helpers retain their explicit by-address construction ABI.
-		const bool direct_derived_payload = !aggregate_parameter &&
-			entity.has_direct_base && entity.template_argument_count == 0 &&
-			entity.trivial_destructor && size <= 16;
-		return !direct_derived_payload &&
-			(aggregate_parameter || size != 16 ||
-			 entity.template_argument_count != 0) &&
-			entity.indirect_class_value_abi;
+		return entity.indirect_class_parameter_abi ||
+			(aggregate_parameter && entity.indirect_class_value_abi);
 	}
 
 	std::uint8_t BoundaryCallPassing(pa11::TypeId type) const

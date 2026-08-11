@@ -1,0 +1,63 @@
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $counter : obj<8x4>
+  slot $cond__1 : i32
+  slot $land__2 : i64
+
+  block ^entry:
+    %t1 = addr $counter
+    %t2 = addr $counter
+    %t3 = index i8 [projection=field] %t2, 0
+    store i32 4, %t3
+    %t4 = addr $counter
+    %t5 = index i8 [projection=field] %t4, 4
+    store i32 19, %t5
+    %t6 = addr $counter
+    %t7 = call ptr @Counter__operatorint_(%t6)
+    %t8 = load i32 %t7
+    %t9 = binary add i32 %t8, 1
+    store i32 %t9, %t7
+    %t10 = addr $counter
+    %t11 = index i8 [projection=field] %t10, 0
+    %t12 = load i32 %t11
+    %t13 = cmp eq i32 %t12, 5
+    branch %t13, ^land_rhs_4, ^land_short_5
+
+  block ^land_rhs_4:
+    %t14 = addr $counter
+    %t15 = index i8 [projection=field] %t14, 4
+    %t16 = load i32 %t15
+    %t17 = cmp eq i32 %t16, 19
+    %t18 = cmp ne i64 %t17, 0
+    store i64 %t18, $land__2
+    jump ^land_end_6
+
+  block ^land_short_5:
+    store i64 0, $land__2
+    jump ^land_end_6
+
+  block ^land_end_6:
+    %t19 = load i64 $land__2
+    branch %t19, ^cond_then_1, ^cond_else_2
+
+  block ^cond_then_1:
+    store i32 0, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_else_2:
+    store i32 1, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_end_3:
+    %t20 = load i32 $cond__1
+    return i32 %t20
+}
+
+function @Counter__operatorint_(%this : ptr) -> ptr [binding=weak, object=_ZN7CountercvRiEv] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=field] %t1, 0
+    return ptr %t2
+}

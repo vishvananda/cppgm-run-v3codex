@@ -396,23 +396,73 @@ private:
 			name.find('T') != std::string::npos ||
 			name.find('Y') != std::string::npos ||
 			name.find('E') != std::string::npos; }
-	bool ParseConversionTypeName()
-	{ while (At(KW_CONST) || At(KW_VOLATILE)) ++position_;
+	bool ParseConversionTypeName(NodeId* retained = 0)
+	{
+		NodeId conversion = kNoNode, specifiers = kNoNode,
+			declarator = kNoNode;
+		if (retained)
+		{ *retained = kNoNode; conversion = arena_.Make("conversion-type-id");
+			arena_.AddFlags(conversion, SYNTAX_FLAG_SEMANTIC_ONLY);
+			specifiers = arena_.Make("decl-specifier-seq"); }
+		while (At(KW_CONST) || At(KW_VOLATILE))
+		{ const std::size_t qualifier = position_++;
+			if (retained) arena_.Add(specifiers,
+				MakeTokenNode("decl-specifier", qualifier)); }
 		if (position_ < tokens_.size() &&
 			IsFundamentalKind(tokens_[position_].Kind()))
-		{ do ++position_;
+		{
+			do { const std::size_t fundamental = position_++;
+				if (retained) arena_.Add(specifiers,
+					MakeTokenNode("decl-specifier", fundamental)); }
 			while (position_ < tokens_.size() &&
-				IsFundamentalKind(tokens_[position_].Kind())); }
+				IsFundamentalKind(tokens_[position_].Kind()));
+		}
 		else
-		{ std::string ignored;
-			if (!ParseName(&ignored, true, false, true)) return false; }
-		while (At(KW_CONST) || At(KW_VOLATILE)) ++position_;
-		while (Match(OP_STAR) || Match(OP_AMP) || Match(OP_LAND))
-			while (At(KW_CONST) || At(KW_VOLATILE)) ++position_;
-		return true; }
-	bool ParseName(std::string* text, bool allow_qualified = true,
-		bool allow_operator = true, bool allow_template_arguments = true,
-		NodeId* structure = 0, TextId* terminal_identifier = 0)
+		{
+			std::string name;
+			NodeId structure = kNoNode;
+			if (!ParseName(&name, true, false, true,
+				retained ? &structure : 0)) return false;
+			if (retained)
+			{
+				const bool decorated = name.find("::") != std::string::npos ||
+					name.find('<') != std::string::npos || name.find("decltype") == 0;
+				const NodeId type = arena_.Make("decl-specifier",
+					decorated ? name : "TT_IDENTIFIER:" + name);
+				arena_.SetSemanticPayload(type, strings_.Intern(name));
+				if (structure != kNoNode) arena_.Add(type, structure);
+				arena_.Add(specifiers, type);
+			}
+		}
+		while (At(KW_CONST) || At(KW_VOLATILE))
+		{ const std::size_t qualifier = position_++;
+			if (retained) arena_.Add(specifiers,
+				MakeTokenNode("decl-specifier", qualifier)); }
+		while (At(OP_STAR) || At(OP_AMP) || At(OP_LAND))
+		{
+			const std::size_t operation = position_++;
+			if (retained)
+			{
+				if (declarator == kNoNode)
+					declarator = arena_.Make("abstract-declarator");
+				arena_.Add(declarator,
+					MakeTokenNode("ptr-operator", operation));
+			}
+			while (At(KW_CONST) || At(KW_VOLATILE))
+			{ const std::size_t qualifier = position_++;
+				if (retained) arena_.Add(declarator,
+					MakeTokenNode("cv-qualifier", qualifier)); }
+		}
+		if (retained)
+		{ arena_.Add(conversion, specifiers);
+			if (declarator != kNoNode) arena_.Add(conversion, declarator);
+			*retained = conversion; }
+		return true;
+	}
+	bool ParseName(std::string* text, bool allow_qualified = true, bool allow_operator = true,
+		bool allow_template_arguments = true,
+		NodeId* structure = 0, TextId* terminal_identifier = 0,
+		NodeId* conversion_type = 0)
 	{
 		const Mark mark = Checkpoint();
 		const std::size_t first = position_;
@@ -422,6 +472,7 @@ private:
 		bool retained_arguments = false;
 		if (structure) *structure = kNoNode;
 		if (terminal_identifier) *terminal_identifier = 0;
+		if (conversion_type) *conversion_type = kNoNode;
 		bool operator_component = false; NodeId operator_arguments = kNoNode;
 		if (At(KW_OPERATOR) && allow_operator)
 		{
@@ -439,7 +490,7 @@ private:
 			}
 			else if (!ParseOperatorFunctionSuffix())
 			{
-				if (!ParseConversionTypeName())
+				if (!ParseConversionTypeName(conversion_type))
 				{
 					Rollback(mark);
 					return false;
@@ -484,7 +535,7 @@ private:
 					operator_component = true;
 					++position_;
 					if (!ParseOperatorFunctionSuffix() &&
-						!ParseConversionTypeName())
+						!ParseConversionTypeName(conversion_type))
 					{
 						Rollback(mark);
 						return false;
@@ -1016,70 +1067,14 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 	else if (!abstract)
 	{
 		const Mark name_mark = Checkpoint();
-		const std::size_t name_first = position_;
 		std::string parsed_name;
 		NodeId name_structure = kNoNode;
-		if (ParseName(&parsed_name, true, true, true, &name_structure))
+		NodeId conversion_type = kNoNode;
+		if (ParseName(&parsed_name, true, true, true, &name_structure, 0,
+			&conversion_type))
 		{
-			const std::size_t name_last = position_;
-			std::size_t conversion = name_last;
-			for (std::size_t i = name_first; i < name_last; ++i)
-				if (tokens_[i].Kind() ==
-					static_cast<std::uint16_t>(KW_OPERATOR)) conversion = i;
-			const bool conversion_name = conversion + 1 < name_last &&
-				!IsOperatorNameToken(tokens_[conversion + 1].Kind()) &&
-				!(tokens_[conversion + 1].Kind() == kRShiftFirstToken &&
-				  conversion + 2 < name_last &&
-				  tokens_[conversion + 2].Kind() == kRShiftSecondToken) &&
-				tokens_[conversion + 1].Kind() !=
-					static_cast<std::uint16_t>(OP_LPAREN) &&
-				tokens_[conversion + 1].Kind() !=
-					static_cast<std::uint16_t>(OP_LSQUARE) &&
-				tokens_[conversion + 1].Kind() !=
-					static_cast<std::uint16_t>(KW_NEW) &&
-				tokens_[conversion + 1].Kind() !=
-					static_cast<std::uint16_t>(KW_DELETE) &&
-				tokens_[conversion + 1].Kind() != kLiteralToken;
-			if (conversion_name)
-			{
-				position_ = conversion + 1;
-				const NodeId conversion_type =
-					arena_.Make("conversion-type-id");
-				arena_.AddFlags(conversion_type, SYNTAX_FLAG_SEMANTIC_ONLY);
-				const NodeId specifiers = ParseDeclSpecifierSeq(false);
-				if (specifiers == kNoNode)
-				{
-					Rollback(mark);
-					return kNoNode;
-				}
-				arena_.Add(conversion_type, specifiers);
-				const NodeId conversion_declarator =
-					arena_.Make("abstract-declarator");
-				bool has_declarator = false;
-				while (position_ < name_last)
-				{
-					const std::size_t operation = position_;
-					if (!Match(OP_STAR) && !Match(OP_AMP) && !Match(OP_LAND))
-					{
-						Rollback(mark);
-						return kNoNode;
-					}
-					arena_.Add(conversion_declarator,
-						MakeTokenNode("ptr-operator", operation));
-					has_declarator = true;
-					while (position_ < name_last &&
-						(At(KW_CONST) || At(KW_VOLATILE)))
-					{
-						const std::size_t qualifier = position_++;
-						arena_.Add(conversion_declarator,
-							MakeTokenNode("cv-qualifier", qualifier));
-					}
-				}
-				if (has_declarator)
-					arena_.Add(conversion_type, conversion_declarator);
+			if (conversion_type != kNoNode)
 				arena_.Add(result, conversion_type);
-				position_ = name_last;
-			}
 			if (name) *name = parsed_name;
 			arena_.Add(result, MakeStructuredNode(
 				"identifier", parsed_name, name_structure));
@@ -2130,12 +2125,17 @@ NodeId Parser::ParseUsing()
 	Rollback(alias_mark);
 	std::string target;
 	NodeId structure = kNoNode;
-	if (!ParseName(&target, true, true, true, &structure))
+	NodeId conversion_type = kNoNode;
+	if (!ParseName(&target, true, true, true, &structure, 0,
+		&conversion_type))
 		throw Error("expected using target");
 	Expect(OP_SEMICOLON);
 	const NodeId declaration = arena_.Make("using-declaration");
-	arena_.Add(declaration,
-		MakeStructuredNode("target", target, structure));
+	const NodeId target_node =
+		MakeStructuredNode("target", target, structure);
+	if (conversion_type != kNoNode)
+		arena_.Add(target_node, conversion_type);
+	arena_.Add(declaration, target_node);
 	return declaration;
 }
 NodeId Parser::ParseNestedTemplateParameterClause()

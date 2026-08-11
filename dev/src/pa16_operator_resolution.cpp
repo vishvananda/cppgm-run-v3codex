@@ -688,6 +688,7 @@ bool SemanticAnalyzer::ApplyBuiltinUnaryConversion(
 			const TypeRecord converted =
 				program_->types.Get(function.conversion_target);
 			if (converted.kind != TYPE_LVALUE_REFERENCE) continue;
+			if (IsConst(converted.child)) continue;
 			const TypeId target = EffectiveType(converted.child);
 			if (!IsArithmetic(target) &&
 				(!IsPointer(target) || !IsPointerToCompleteObject(target)))

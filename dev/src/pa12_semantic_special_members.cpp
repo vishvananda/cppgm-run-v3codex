@@ -795,9 +795,22 @@ void SemanticAnalyzer::CompleteClassSpecialMembers(EntityId entity)
 	const bool nontrivial_move = facts.move_constructor == kNoBinding ||
 		!GetFunction(facts.move_constructor).trivial_special_member;
 	// PA17 may use a direct boundary when either available transfer is trivial.
-	program_->entities[entity].indirect_class_value_abi =
+	EntityRecord& class_record = program_->entities[entity];
+	class_record.indirect_class_value_abi =
 		(nontrivial_copy && nontrivial_move) ||
-		!program_->entities[entity].trivial_destructor;
+		!class_record.trivial_destructor;
+	// Publish the parameter boundary beside the transfer/lifecycle facts so
+	// lowering does not reconstruct ABI policy from class properties.
+	if (!class_record.layout_complete)
+		throw std::logic_error("class parameter ABI requires completed layout");
+	const std::size_t object_size =
+		static_cast<std::size_t>(class_record.object_size);
+	const bool direct_derived_payload = class_record.has_direct_base &&
+		class_record.template_argument_count == 0 &&
+		class_record.trivial_destructor && object_size <= 16;
+	class_record.indirect_class_parameter_abi =
+		class_record.indirect_class_value_abi && !direct_derived_payload &&
+		(object_size != 16 || class_record.template_argument_count != 0);
 	ConfigureSynthesizedStoragePrefix(
 		entity, &GetMutableFunction(facts.copy_constructor));
 	if (facts.move_constructor != kNoBinding)
