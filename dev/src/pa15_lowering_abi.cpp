@@ -326,6 +326,12 @@ public:
 					pending.push_back(parameters[i]);
 				continue;
 			}
+			if (record.kind == TYPE_MEMBER_POINTER)
+			{
+				pending.push_back(record.child);
+				pending.push_back(static_cast<TypeId>(record.bound));
+				continue;
+			}
 			if (record.kind != TYPE_NAMED) continue;
 			const EntityRecord& entity = program_.entities[record.entity];
 			if (entity.template_argument_count == 0) continue;
@@ -408,6 +414,14 @@ public:
 				result.types.push_back(
 					MakeType(parameters[i], function, recipe));
 			result.variadic = record->variadic;
+			return result;
+		}
+		if (record->kind == TYPE_MEMBER_POINTER)
+		{
+			result.kind = ABI_TYPE_MEMBER_POINTER;
+			result.types.push_back(MakeType(
+				static_cast<TypeId>(record->bound), function, recipe));
+			result.types.push_back(MakeType(record->child, function, recipe));
 			return result;
 		}
 		if (record->kind == TYPE_NAMED)

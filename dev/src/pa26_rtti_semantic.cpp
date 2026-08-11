@@ -1,5 +1,6 @@
 #include "pa12_semantic_detail.h"
 
+#include <cstdint>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -20,10 +21,17 @@ bool IsClassFlavor(NamedFlavor flavor)
 		flavor == NAMED_UNION;
 }
 
+std::uint8_t TopCv(const Program& program, TypeId type)
+{
+	const TypeRecord& record = program.types.Get(type);
+	return record.kind == TYPE_QUALIFIED ? record.cv : CV_NONE;
+}
+
 }
 
 ExpressionInfo SemanticAnalyzer::AnalyzeTypeid(NodeId node, ScopeId scope)
 {
+	const bool enclosing_unevaluated = unevaluated_depth_ != 0;
 	const LookupResult type_info = LookupSpelling(
 		scope, "::std::type_info", LOOKUP_TYPE);
 	if (type_info.type == kNoType)
@@ -55,23 +63,39 @@ ExpressionInfo SemanticAnalyzer::AnalyzeTypeid(NodeId node, ScopeId scope)
 		if (operand_syntax == kNoNode)
 			throw std::runtime_error("typeid expression has no operand");
 		++unevaluated_depth_;
+		++conditionally_evaluated_operand_depth_;
+		++resolved_call_demand_suppressed_depth_;
 		try
 		{
 			operand = AnalyzeExpression(operand_syntax, scope);
 		}
 		catch (...)
 		{
+			--resolved_call_demand_suppressed_depth_;
+			--conditionally_evaluated_operand_depth_;
 			--unevaluated_depth_;
 			throw;
 		}
+		--resolved_call_demand_suppressed_depth_;
+		--conditionally_evaluated_operand_depth_;
 		--unevaluated_depth_;
 		if (CandidateSubstitutionFailed()) return ExpressionInfo();
 		queried = program_->types.RemoveTopCv(EffectiveType(operand.type));
 		const EntityId entity = EntityOf(queried);
-		dynamic = operand.category == VALUE_LVALUE &&
+		dynamic = !enclosing_unevaluated &&
+			operand.category == VALUE_LVALUE &&
 			entity != kNoEntity &&
 			program_->entities[entity].polymorphic_class;
-		if (dynamic) MarkVtableDemand(entity);
+		if (dynamic)
+		{
+			// The operand is potentially evaluated only after its static type is
+			// known. Calls were retained with deferred demand while that fact was
+			// established; publish their runtime demand exactly for this branch.
+			DemandRetainedRuntimeCalls(operand.node);
+			DemandMaterializedConstructorActions(operand.node);
+			DemandConditionallyEvaluatedConstructors(operand.node);
+			MarkVtableDemand(entity);
+		}
 	}
 	if (CandidateSubstitutionFailed() || queried == kNoType)
 		return ExpressionInfo();
@@ -136,24 +160,47 @@ bool SemanticAnalyzer::TryAnalyzeTypeidComparison(
 	return true;
 }
 
+void SemanticAnalyzer::DemandConditionallyEvaluatedConstructors(
+	std::uint32_t root)
+{
+	if (root >= dump_.nodes.size())
+		throw std::logic_error("invalid conditionally evaluated demand root");
+	std::vector<std::uint32_t> pending(1, root);
+	while (!pending.empty())
+	{
+		const std::uint32_t node = pending.back();
+		pending.pop_back();
+		const DumpNode& record = dump_.nodes[node];
+		if ((record.kind == DUMP_CONSTRUCTOR_ACTION ||
+			 record.kind == DUMP_SPECIAL_MEMBER_CONSTRUCTION_ACTION) &&
+			record.binding != kNoBinding &&
+			!record.trivial_special_member_action)
+			DemandConstructorDefinition(record.binding);
+		for (std::uint32_t edge = record.first_edge;
+			edge != kNoDumpEdge; edge = dump_.edges[edge].next)
+			pending.push_back(dump_.edges[edge].child);
+	}
+}
+
 bool SemanticAnalyzer::TryAnalyzeDynamicCast(TypeId target,
 	const ExpressionInfo& operand, ExpressionInfo* result)
 {
 	const TypeRecord& target_record = program_->types.Get(target);
 	const bool reference = target_record.kind == TYPE_LVALUE_REFERENCE ||
 		target_record.kind == TYPE_RVALUE_REFERENCE;
-	TypeId target_object = reference ? target_record.child :
+	TypeId target_object_with_cv = reference ? target_record.child :
 		program_->types.RemoveTopCv(target);
 	const TypeRecord& target_shape = program_->types.Get(
-		program_->types.RemoveTopCv(target_object));
+		program_->types.RemoveTopCv(target_object_with_cv));
 	if (!reference && target_shape.kind != TYPE_POINTER)
 		throw std::runtime_error("dynamic_cast target is not a pointer or reference");
-	if (!reference) target_object = target_shape.child;
+	if (!reference) target_object_with_cv = target_shape.child;
+	TypeId target_object = target_object_with_cv;
 	target_object = program_->types.RemoveTopCv(target_object);
 
-	TypeId source_object = kNoType;
+	TypeId source_object_with_cv = kNoType;
 	if (reference)
-		source_object = program_->types.RemoveTopCv(EffectiveType(operand.type));
+		source_object_with_cv = EffectiveType(operand.type);
 	else
 	{
 		const TypeId source_pointer =
@@ -161,8 +208,10 @@ bool SemanticAnalyzer::TryAnalyzeDynamicCast(TypeId target,
 		const TypeRecord& source_shape = program_->types.Get(source_pointer);
 		if (source_shape.kind != TYPE_POINTER)
 			throw std::runtime_error("dynamic_cast source is not a pointer");
-		source_object = program_->types.RemoveTopCv(source_shape.child);
+		source_object_with_cv = source_shape.child;
 	}
+	const TypeId source_object =
+		program_->types.RemoveTopCv(source_object_with_cv);
 
 	const EntityId source_entity = EntityOf(source_object);
 	const EntityId target_entity = EntityOf(target_object);
@@ -170,15 +219,24 @@ bool SemanticAnalyzer::TryAnalyzeDynamicCast(TypeId target,
 		!IsClassFlavor(program_->entities[source_entity].flavor) ||
 		!IsClassFlavor(program_->entities[target_entity].flavor))
 		throw std::runtime_error("dynamic_cast requires class operands");
+	if ((TopCv(*program_, source_object_with_cv) &
+		~TopCv(*program_, target_object_with_cv)) != 0)
+		throw std::runtime_error("dynamic_cast removes cv-qualification");
+	EnsureClassDefinition(source_object);
+	EnsureClassDefinition(target_object);
 
 	// Identity and derived-to-base conversions need no runtime RTTI query and
 	// retain the existing cast path (including base projection facts).
-	if (source_entity == target_entity ||
-		program_->IsBaseOf(target_entity, source_entity))
+	if (source_entity == target_entity)
 		return false;
+	if (program_->IsBaseOf(target_entity, source_entity))
+	{
+		if (!BaseConversionAllowed(source_entity, target_entity))
+			throw std::runtime_error(
+				"dynamic_cast names an inaccessible base");
+		return false;
+	}
 
-	EnsureClassDefinition(source_object);
-	EnsureClassDefinition(target_object);
 	if (!program_->entities[source_entity].polymorphic_class)
 		throw std::runtime_error("dynamic_cast source is not polymorphic");
 	if (program_->entities[source_entity].nonlinear_base_graph ||

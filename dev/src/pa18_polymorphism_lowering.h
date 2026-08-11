@@ -36,6 +36,9 @@ struct PolymorphismLoweringState
 	pa15_lowir_detail::SymbolId rtti_fundamental_symbol;
 	pa15_lowir_detail::SymbolId rtti_pointer_symbol;
 	pa15_lowir_detail::SymbolId rtti_enum_symbol;
+	pa15_lowir_detail::SymbolId rtti_array_symbol;
+	pa15_lowir_detail::SymbolId rtti_function_symbol;
+	pa15_lowir_detail::SymbolId rtti_member_pointer_symbol;
 	pa15_lowir_detail::SymbolId dynamic_cast_symbol;
 	pa15_lowir_detail::SymbolId bad_cast_symbol;
 	pa15_lowir_detail::SymbolId bad_typeid_symbol;

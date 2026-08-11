@@ -966,6 +966,11 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << " vptr_stores=" << stats.vptr_stores
 			 << " vtable_slots=" << stats.vtable_slots
 			 << " deleting_destructors=" << stats.deleting_destructors
+			 << " rtti_graph_nodes_visited="
+			 << stats.rtti_graph_nodes_visited
+			 << " rtti_demand_requests=" << stats.rtti_demand_requests
+			 << " rtti_types_demanded=" << stats.rtti_types_demanded
+			 << " rtti_symbol_lookups=" << stats.rtti_symbol_lookups
 			 << " cleanup_dispatch_probes="
 			 << stats.cleanup_dispatch_probes
 			 << " cleanup_dispatch_cache_hits="

@@ -44,6 +44,7 @@ protected:
 	Operand RttiAddress(TypeId requested)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
+		if (derived.stats_) ++derived.stats_->rtti_symbol_lookups;
 		const TypeId type = CanonicalRttiType(requested);
 		if (type >= derived.polymorphism_.type_rtti_symbols.size() ||
 			derived.polymorphism_.type_rtti_symbols[type] == kNoLowId)

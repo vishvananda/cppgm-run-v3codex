@@ -1,0 +1,164 @@
+declare global @__external_rtti_vtable____class_type_info [binding=strong, object=_ZTVN10__cxxabiv117__class_type_infoE]
+
+declare global @__external_rtti_vtable____fundamental_type_info [binding=strong, object=_ZTVN10__cxxabiv123__fundamental_type_infoE]
+
+declare global @__external_rtti_vtable____array_type_info [binding=strong, object=_ZTVN10__cxxabiv117__array_type_infoE]
+
+declare global @__external_rtti_vtable____function_type_info [binding=strong, object=_ZTVN10__cxxabiv120__function_type_infoE]
+
+declare global @__external_rtti_vtable____pointer_to_member_type_info [binding=strong, object=_ZTVN10__cxxabiv129__pointer_to_member_type_infoE]
+
+global @__typeinfo_name__class_std__type_info [binding=weak, object=_ZTSSt9type_info] = {
+  i8 83
+  i8 116
+  i8 57
+  i8 116
+  i8 121
+  i8 112
+  i8 101
+  i8 95
+  i8 105
+  i8 110
+  i8 102
+  i8 111
+  i8 0
+}
+
+global @__rtti_class_std__type_info [binding=weak, object=_ZTISt9type_info] = {
+  ptr addr @__external_rtti_vtable____class_type_info + 16
+  ptr addr @__typeinfo_name__class_std__type_info
+}
+
+global @__typeinfo_name__struct_owner [binding=weak, object=_ZTS5owner] = {
+  i8 53
+  i8 111
+  i8 119
+  i8 110
+  i8 101
+  i8 114
+  i8 0
+}
+
+global @__rtti_struct_owner [binding=weak, object=_ZTI5owner] = {
+  ptr addr @__external_rtti_vtable____class_type_info + 16
+  ptr addr @__typeinfo_name__struct_owner
+}
+
+global @__typeinfo_name__int [binding=weak, object=_ZTSi] = {
+  i8 105
+  i8 0
+}
+
+global @__rtti_int [binding=weak, object=_ZTIi] = {
+  ptr addr @__external_rtti_vtable____fundamental_type_info + 16
+  ptr addr @__typeinfo_name__int
+}
+
+global @__typeinfo_name_type_FivE [binding=weak, object=_ZTSFivE] = {
+  i8 70
+  i8 105
+  i8 118
+  i8 69
+  i8 0
+}
+
+global @__rtti_type_FivE [binding=weak, object=_ZTIFivE] = {
+  ptr addr @__external_rtti_vtable____function_type_info + 16
+  ptr addr @__typeinfo_name_type_FivE
+}
+
+global @__typeinfo_name_type_A3_i [binding=weak, object=_ZTSA3_i] = {
+  i8 65
+  i8 51
+  i8 95
+  i8 105
+  i8 0
+}
+
+global @__rtti_type_A3_i [binding=weak, object=_ZTIA3_i] = {
+  ptr addr @__external_rtti_vtable____array_type_info + 16
+  ptr addr @__typeinfo_name_type_A3_i
+}
+
+global @__typeinfo_name_type_M5owneri [binding=weak, object=_ZTSM5owneri] = {
+  i8 77
+  i8 53
+  i8 111
+  i8 119
+  i8 110
+  i8 101
+  i8 114
+  i8 105
+  i8 0
+}
+
+global @__rtti_type_M5owneri [binding=weak, object=_ZTIM5owneri] = {
+  ptr addr @__external_rtti_vtable____pointer_to_member_type_info + 16
+  ptr addr @__typeinfo_name_type_M5owneri
+  i32 0
+  ptr addr @__rtti_int
+  ptr addr @__rtti_struct_owner
+}
+
+function @probe(%value : ptr [pass=reference]) -> i32 [binding=strong, object=_Z5probeR11polymorphic] {
+  slot $value : ptr
+  slot $land__1 : i64
+  slot $land__2 : i64
+  slot $land__3 : i64
+
+  block ^entry:
+    store ptr %value, $value
+    %t1 = addr @__rtti_type_FivE
+    %t2 = addr @__rtti_type_FivE
+    %t3 = cmp eq ptr %t1, %t2
+    branch %t3, ^land_rhs_7, ^land_short_8
+
+  block ^land_rhs_7:
+    %t4 = addr @__rtti_type_A3_i
+    %t5 = addr @__rtti_type_A3_i
+    %t6 = cmp eq ptr %t4, %t5
+    %t7 = cmp ne i64 %t6, 0
+    store i64 %t7, $land__3
+    jump ^land_end_9
+
+  block ^land_short_8:
+    store i64 0, $land__3
+    jump ^land_end_9
+
+  block ^land_end_9:
+    %t8 = load i64 $land__3
+    branch %t8, ^land_rhs_4, ^land_short_5
+
+  block ^land_rhs_4:
+    %t9 = addr @__rtti_type_M5owneri
+    %t10 = addr @__rtti_type_M5owneri
+    %t11 = cmp eq ptr %t9, %t10
+    %t12 = cmp ne i64 %t11, 0
+    store i64 %t12, $land__2
+    jump ^land_end_6
+
+  block ^land_short_5:
+    store i64 0, $land__2
+    jump ^land_end_6
+
+  block ^land_end_6:
+    %t13 = load i64 $land__2
+    branch %t13, ^land_rhs_1, ^land_short_2
+
+  block ^land_rhs_1:
+    %t14 = addr @__rtti_class_std__type_info
+    %t15 = addr @__rtti_class_std__type_info
+    %t16 = cmp eq ptr %t14, %t15
+    %t17 = cmp ne i64 %t16, 0
+    store i64 %t17, $land__1
+    jump ^land_end_3
+
+  block ^land_short_2:
+    store i64 0, $land__1
+    jump ^land_end_3
+
+  block ^land_end_3:
+    %t18 = load i64 $land__1
+    %t19 = convert zext i32 u8 %t18
+    return i32 %t19
+}

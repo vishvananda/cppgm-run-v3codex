@@ -35,6 +35,10 @@ struct LowIRLoweringStats
 	std::size_t vptr_stores;
 	std::size_t vtable_slots;
 	std::size_t deleting_destructors;
+	std::size_t rtti_graph_nodes_visited;
+	std::size_t rtti_demand_requests;
+	std::size_t rtti_types_demanded;
+	std::size_t rtti_symbol_lookups;
 	std::size_t cleanup_dispatch_probes;
 	std::size_t cleanup_dispatch_cache_hits;
 	std::size_t cleanup_dispatch_entries;

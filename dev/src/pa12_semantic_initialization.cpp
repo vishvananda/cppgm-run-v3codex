@@ -2325,12 +2325,14 @@ ExpressionInfo SemanticAnalyzer::MaterializeTemporary(
 		ExpressionObject(initializer) != kNoConstexprObject &&
 		(action.binding == kNoBinding ||
 		 GetFunction(action.binding).delegated_constructor == kNoBinding);
+	const bool may_be_evaluated = unevaluated_depth_ == 0 ||
+		conditionally_evaluated_operand_depth_ != 0;
 	if (action.kind == DUMP_CONSTRUCTOR_ACTION &&
 		action.binding != kNoBinding &&
 		!action.trivial_special_member_action &&
 		!(ExpressionObject(initializer) != kNoConstexprObject &&
 		  GetFunction(action.binding).implicit_special_member) &&
-		!compile_time_only && unevaluated_depth_ == 0)
+		!compile_time_only && may_be_evaluated)
 	{
 		if (constant_expression_required_depth_ != 0 ||
 			constexpr_evaluation_depth_ != 0)
@@ -2338,7 +2340,7 @@ ExpressionInfo SemanticAnalyzer::MaterializeTemporary(
 		else dump_.nodes[temporary].pending_constructor_demand = true;
 	}
 	else if (action.kind == DUMP_BRACED_INIT_LIST &&
-		action.value_constructor != kNoDumpEdge && unevaluated_depth_ == 0)
+		action.value_constructor != kNoDumpEdge && may_be_evaluated)
 		dump_.nodes[temporary].pending_constructor_demand = true;
 	ExpressionInfo result = initializer;
 	result.node = temporary;

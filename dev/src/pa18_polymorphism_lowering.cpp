@@ -23,7 +23,9 @@ PolymorphismLoweringState::PolymorphismLoweringState()
 	: pure_virtual_symbol(kNoLowId), rtti_class_symbol(kNoLowId),
 	  rtti_si_symbol(kNoLowId), rtti_vmi_symbol(kNoLowId),
 	  rtti_fundamental_symbol(kNoLowId), rtti_pointer_symbol(kNoLowId),
-	  rtti_enum_symbol(kNoLowId), dynamic_cast_symbol(kNoLowId),
+	  rtti_enum_symbol(kNoLowId), rtti_array_symbol(kNoLowId),
+	  rtti_function_symbol(kNoLowId), rtti_member_pointer_symbol(kNoLowId),
+	  dynamic_cast_symbol(kNoLowId),
 	  bad_cast_symbol(kNoLowId), bad_typeid_symbol(kNoLowId),
 	  need_dynamic_cast(false), need_bad_cast(false), need_bad_typeid(false),
 	  source_function_first(0)
@@ -151,6 +153,7 @@ private:
 
 	void DemandRtti(TypeId requested)
 	{
+		if (stats_) ++stats_->rtti_demand_requests;
 		std::vector<TypeId> pending(1, RttiType(requested));
 		while (!pending.empty())
 		{
@@ -160,9 +163,15 @@ private:
 				throw std::logic_error("RTTI demand type is out of range");
 			if (state_.type_rtti_demanded[type]) continue;
 			state_.type_rtti_demanded[type] = 1;
+			if (stats_) ++stats_->rtti_types_demanded;
 			const TypeRecord& record = program_.types.Get(type);
 			if (record.kind == TYPE_POINTER)
 				pending.push_back(RttiType(record.child));
+			else if (record.kind == TYPE_MEMBER_POINTER)
+			{
+				pending.push_back(RttiType(record.child));
+				pending.push_back(RttiType(record.bound));
+			}
 			else if (record.kind == TYPE_NAMED)
 			{
 				const EntityRecord& entity = program_.entities[record.entity];
@@ -188,8 +197,19 @@ private:
 
 	void CollectRttiDemands()
 	{
-		for (std::uint32_t node = 0; node < graph_.arena.nodes.size(); ++node)
+		if (graph_.root >= graph_.arena.nodes.size())
+			throw std::logic_error("RTTI demand graph has no root");
+		std::vector<std::uint8_t> visited(graph_.arena.nodes.size(), 0);
+		std::vector<std::uint32_t> pending(1, graph_.root);
+		while (!pending.empty())
 		{
+			const std::uint32_t node = pending.back();
+			pending.pop_back();
+			if (node >= graph_.arena.nodes.size())
+				throw std::logic_error("RTTI demand graph edge is out of range");
+			if (visited[node]) continue;
+			visited[node] = 1;
+			if (stats_) ++stats_->rtti_graph_nodes_visited;
 			const DumpNode& record = graph_.arena.nodes[node];
 			if (record.kind == DUMP_TYPEID_EXPRESSION)
 			{
@@ -205,6 +225,9 @@ private:
 				state_.need_bad_cast = state_.need_bad_cast ||
 					record.dynamic_cast_reference;
 			}
+			for (std::uint32_t edge = record.first_edge;
+				edge != kNoDumpEdge; edge = graph_.arena.edges[edge].next)
+				pending.push_back(graph_.arena.edges[edge].child);
 		}
 	}
 
@@ -499,6 +522,9 @@ private:
 		bool need_fundamental_rtti = false;
 		bool need_pointer_rtti = false;
 		bool need_enum_rtti = false;
+		bool need_array_rtti = false;
+		bool need_function_rtti = false;
+		bool need_member_pointer_rtti = false;
 		for (TypeId type = 0; type < state_.type_rtti_demanded.size(); ++type)
 		{
 			if (!state_.type_rtti_demanded[type] ||
@@ -510,6 +536,17 @@ private:
 				record.kind == TYPE_POINTER;
 			need_enum_rtti = need_enum_rtti ||
 				(record.kind == TYPE_NAMED && !IsClassRttiType(type));
+			need_array_rtti = need_array_rtti || record.kind == TYPE_ARRAY;
+			need_function_rtti = need_function_rtti ||
+				record.kind == TYPE_FUNCTION;
+			need_member_pointer_rtti = need_member_pointer_rtti ||
+				record.kind == TYPE_MEMBER_POINTER;
+			if (record.kind != TYPE_FUNDAMENTAL &&
+				record.kind != TYPE_POINTER && record.kind != TYPE_ARRAY &&
+				record.kind != TYPE_FUNCTION &&
+				record.kind != TYPE_MEMBER_POINTER &&
+				!(record.kind == TYPE_NAMED && !IsClassRttiType(type)))
+				throw std::logic_error("demanded RTTI type has no ABI category");
 			const std::string encoding =
 				pa15_lowering_abi::MangleType(program_, type);
 			const std::string stem = RttiPresentationStem(type);
@@ -544,6 +581,18 @@ private:
 			state_.rtti_enum_symbol = AddExternalRtti(
 				"__external_rtti_vtable____enum_type_info",
 				"_ZTVN10__cxxabiv116__enum_type_infoE");
+		if (need_array_rtti)
+			state_.rtti_array_symbol = AddExternalRtti(
+				"__external_rtti_vtable____array_type_info",
+				"_ZTVN10__cxxabiv117__array_type_infoE");
+		if (need_function_rtti)
+			state_.rtti_function_symbol = AddExternalRtti(
+				"__external_rtti_vtable____function_type_info",
+				"_ZTVN10__cxxabiv120__function_type_infoE");
+		if (need_member_pointer_rtti)
+			state_.rtti_member_pointer_symbol = AddExternalRtti(
+				"__external_rtti_vtable____pointer_to_member_type_info",
+				"_ZTVN10__cxxabiv129__pointer_to_member_type_infoE");
 		if (state_.need_dynamic_cast)
 			state_.dynamic_cast_symbol = AddExternalRuntime(
 				"__external_runtime____dynamic_cast", "__dynamic_cast",
@@ -642,12 +691,16 @@ private:
 			rtti.initializer_kind = Global::STRUCTURED_VALUE;
 			const SymbolId runtime = record.kind == TYPE_FUNDAMENTAL ?
 				state_.rtti_fundamental_symbol : record.kind == TYPE_POINTER ?
-				state_.rtti_pointer_symbol : state_.rtti_enum_symbol;
+				state_.rtti_pointer_symbol : record.kind == TYPE_ARRAY ?
+				state_.rtti_array_symbol : record.kind == TYPE_FUNCTION ?
+				state_.rtti_function_symbol : record.kind == TYPE_MEMBER_POINTER ?
+				state_.rtti_member_pointer_symbol : state_.rtti_enum_symbol;
 			if (runtime == kNoLowId)
 				throw std::logic_error("demanded RTTI kind has no ABI runtime");
 			AddAddressItem(&rtti, runtime, 16);
 			AddAddressItem(&rtti, state_.type_name_symbols[type]);
-			if (record.kind == TYPE_POINTER)
+			if (record.kind == TYPE_POINTER ||
+				record.kind == TYPE_MEMBER_POINTER)
 			{
 				std::uint32_t flags = 0;
 				const TypeRecord& pointee = program_.types.Get(record.child);
@@ -661,12 +714,30 @@ private:
 				if (IsClassRttiType(child, &child_entity) &&
 					!program_.entities[child_entity].layout_complete)
 					flags |= 8;
+				TypeId context = kNoType;
+				if (record.kind == TYPE_MEMBER_POINTER)
+				{
+					context = RttiType(record.bound);
+					EntityId context_entity = kNoEntity;
+					if (IsClassRttiType(context, &context_entity) &&
+						!program_.entities[context_entity].layout_complete)
+						flags |= 16;
+				}
 				AddIntegerItem(&rtti, LowI32(), flags);
 				if (child >= state_.type_rtti_symbols.size() ||
 					state_.type_rtti_symbols[child] == kNoLowId)
 					throw std::logic_error(
 						"pointer RTTI pointee was not demanded");
 				AddAddressItem(&rtti, state_.type_rtti_symbols[child]);
+				if (record.kind == TYPE_MEMBER_POINTER)
+				{
+					if (context >= state_.type_rtti_symbols.size() ||
+						state_.type_rtti_symbols[context] == kNoLowId)
+						throw std::logic_error(
+							"member-pointer RTTI context was not demanded");
+					AddAddressItem(&rtti,
+						state_.type_rtti_symbols[context]);
+				}
 			}
 			output_.globals.push_back(rtti);
 			if (stats_) stats_->globals += 2;

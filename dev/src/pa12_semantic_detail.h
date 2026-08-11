@@ -71,6 +71,7 @@ public:
 		  current_pack_alignment_(0),
 		  loop_depth_(0), switch_depth_(0), unevaluated_depth_(0),
 		  decltype_operand_depth_(0),
+		  conditionally_evaluated_operand_depth_(0),
 		  constant_evaluation_suppressed_depth_(0),
 		  resolved_call_demand_suppressed_depth_(0),
 		  constant_expression_required_depth_(0),
@@ -787,6 +788,7 @@ private:
 	void DemandMaterializedConstructorActions(std::uint32_t node,
 		bool demand_calls = false);
 	void DemandRetainedRuntimeCalls(std::uint32_t node);
+	void DemandConditionallyEvaluatedConstructors(std::uint32_t node);
 	bool ShouldDemandResolvedCall(BindingId binding, bool folded,
 		bool compile_time_only) const;
 	void PublishInlineFunctionFacts(BindingId binding, bool inline_specifier);
@@ -1657,6 +1659,7 @@ private:
 	std::size_t switch_depth_;
 	std::size_t unevaluated_depth_;
 	std::size_t decltype_operand_depth_;
+	std::size_t conditionally_evaluated_operand_depth_;
 	std::size_t constant_evaluation_suppressed_depth_;
 	std::size_t resolved_call_demand_suppressed_depth_;
 	std::size_t constant_expression_required_depth_;
