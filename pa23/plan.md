@@ -23,15 +23,20 @@ after preceding bindings, while nested-local dependencies remain symbolic.
 Alias-template substitution restores its declaration-owned class privilege;
 dead constant arms retain semantic checking without publishing runtime demand.
 Typed scalar facts canonicalize null-pointer immediates and comparison widths
-before LowIR, while failed empty-constructor-chain queries publish no ABI state.
+before LowIR. Canonical constructor identity owns monotonic empty-chain results:
+user constructors require known empty bodies, success retains compact member
+and base-entry demand edges, and failure publishes no ABI state. Reusable
+generation marks restrict each uncached query to its participating subobjects.
 
 ## Current Failure Map
 
-The report is 389/408, with all `100-*`, `200-*`, and `400-*` tests passing.
+The report is 390/409, with all `100-*`, `200-*`, and `400-*` tests passing.
 The 19 failures are 9 exits and 10 LowIR mismatches (`300-*`: 13; `500-*`: 6).
 By shared behavior and owner they are deduction/non-deduced/partial ordering
 (7), constructor or conversion-function participation (7), and retained
-result/default/candidate replay (5).
+result/default/candidate replay (5). The denominator includes the passing
+declaration-only constructor-demand audit guard; the landed 389/408 baseline
+and its failure set are unchanged.
 
 ## Active Checkpoint
 
@@ -65,9 +70,14 @@ specialization requests 14/28/56/112, default materializations 1/2/4/8, access
 checks 31/60/118/234, emissions 1/2/4/8, and 4,597/6,720/12,214/23,522 typed
 bytes. Argument-list probes were 22/41/80/274 (1.0-1.8 per request, reflecting
 bounded small-table collisions); semantic time was 1.03/1.22/1.66/2.43 ms.
-PA23 is 389/408, eight above the turn baseline with no regressions; eight
-affected probes are ASan/UBSan-clean. PA1-PA22 and file-audit evidence is
-refreshed at each checkpoint exit.
+For 1/2/4/8 repeated proven-empty and declaration-only constructor pairs amid
+16 unrelated classes, empty-chain requests were 2/4/8/16, cache hits
+0/2/6/14, entity visits 3/3/3/3, dependency
+edges 2/2/2/2, worklist pushes 3/3/3/3, and emissions 3/3/3/3; semantic nodes
+were 21/27/39/63 and typed storage 6,413/7,085/8,429/11,117 bytes. The audit
+guard raises the combined report to 390/409 without changing the 19 prior
+failures, and all nine affected probes are ASan/UBSan-clean. PA1-PA22 pass
+2,639/2,639; file audit passes with 13 inherited header-division advisories.
 
 ## Completed Checkpoints
 
@@ -103,4 +113,4 @@ refreshed at each checkpoint exit.
 | Dependent call/result replay and ADL specialization demand | Parameter-dependent results and aliases retain indexed call facts; ADL completes supplied owners; the audit separated exception demand, memoized its state, and repaired canonical post-reentry publication and qualified-name detection; original 371 -> 374, combined 375/406, no regressions, sanitizer-clean, linear scaling. |
 | Zero-cardinality expansion lowering and static-member demand | Typed size/alignment drives automatic, global, and local-static storage without element lifetime actions; retained value-use policy and explicit address/reference demand replace syntax reopening; original 375 -> 377, audit guard 378/407, no regressions, sanitizer-clean, linear scaling. |
 | Retained enclosing-pack dependency and dependent braced construction | Nested parameter types defer to specialization replay; qualified/template calls avoid speculative type formation; the audit replaced class-body lookahead with parse-once routing and completed declarator/local/template-template dependency ownership in canonical parameter scopes; original 378 -> 380, audit guard 381/408, no regressions, sanitizer-clean, linear scaling. |
-| Declaration-owned alias access, dead-arm demand, and typed scalar/ABI finalization | Alias bodies substitute with lexical privilege; short-circuited calls stay undemanded; null and boolean facts lower canonically; failed empty-chain queries do not mutate deferred C1/C2 state; 381 -> 389, no regressions, sanitizer-clean, linear scaling. |
+| Declaration-owned alias access, dead-arm demand, and typed scalar/ABI finalization | Alias bodies substitute with lexical privilege; short-circuited calls stay undemanded; null and boolean facts lower canonically; empty-chain elision now requires known bodies, memoizes canonical dependency facts, and publishes C2 state only after success; 381 -> 389, audit guard 390/409, no regressions, sanitizer-clean, bounded scaling. |

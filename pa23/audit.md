@@ -2,51 +2,49 @@
 
 ## Current Checkpoint Review
 
-The landed `c510b4af` increment moved PA23 from 378/407 to 380/407. It retains
-enclosing-pack dependency through nested template parameter types and parses
-dependent qualified/braced constructions needed by the two new passing tests.
-Earlier assignments remained clean at the checkpoint boundary.
+The landed `8da6b98e` increment moved PA23 from 381/408 to 389/408. It restores
+declaration-owned access while substituting alias templates, keeps calls in
+discarded constant arms out of runtime demand, retains typed null/comparison
+facts through LowIR, and delays constructor C2 publication until an entire
+speculative empty chain succeeds. The eight gains cover constructor/default
+pack replay, dependent current-specialization defaults, member-template alias
+and result SFINAE, and unqualified member-template multi-deduction. Earlier
+assignments remained clean at the checkpoint boundary.
 
-The audit found two ownership violations in the increment's affected paths.
-Parser disambiguation scanned an entire class body before parsing it, while a
-class-key member could first be parsed speculatively as a bit-field and then as
-a declaration. Nested classes therefore replayed complete subtrees at every
-level. Template parameter dependency detection separately considered an
-enclosing-name set for specifiers but omitted declarators, preceding local
-parameters, and their nested template-template ownership; matching then
-compared an outer-dependent symbolic type directly with a concrete argument.
-These behaviors violated the parse-once, retained-context, canonical-scope, and
-bounded-work requirements in `spec.md` sections 2-5 and 8-10.
+The audit traced constructor selection through `BuildConstructorAction`,
+`EmptyDefaultConstructorChain`, C1/C2 demand, and typed LowIR emission. The
+elision query treated a merely declared user constructor as an empty body,
+which removed both its containing implicit constructor and the required member
+call. Each query also allocated and cleared an entity-sized visited array, and
+identical successful or failed chains were recomputed. This violated the
+semantic-fact ownership, complete cache-key, explicit demand-edge, and
+proportional-work requirements in `spec.md` sections 2, 4, 5, 6, and 9.
 
-Class-key declarations and members now enter `ParseClass` once and continue
-through a shared declarator tail only when the parsed class specifier is not a
-standalone declaration. Class publication restores the speculative fact frame
-and commits the resulting facts directly, without propagating change history
-through every enclosing class. Template parameter parsing uses one mutable
-local-name overlay plus the enclosing set, checks both specifiers and
-declarators, and carries that overlay through nested template-template lists.
-Template-template matching resolves outer-dependent non-type parameter types
-in the canonical parameter scope after preceding bindings are installed while
-leaving nested-local dependencies symbolic. Argument formation remains a
-single bounded owner helper. No body prescan, subtree replay, source spelling
-dispatch, global retry, or exception-based candidate control flow remains on
-the repaired paths.
+Canonical constructor identity now owns a monotonic unknown/conservative-
+failure/proven-empty fact. A user constructor is elidable only when its
+definition body is known and empty; implicit and defaulted constructors retain
+their language-owned status. A successful fact stores the flattened member and
+base-entry dependency IDs, while reusable generation marks and scratch vectors
+visit only the participating subobject graph. ABI base entries and dependency
+facts are still published only after complete success. Lowering consumes those
+typed IDs through the existing demand path, and the scalar path has no
+competing fallback. There is no source-text dispatch, whole-program retry,
+global invalidation, or exception-based candidate control flow on the repaired
+path.
 
-Before repair, nested-class depths 8 and 16 caused 6,272 and 1,605,632 parser
-checkpoints, and depth 32 exceeded ten seconds. At depths
-8/16/32/64/128/256 after repair, tokens were 53/93/173/333/653/1,293 and
-checkpoints were 119/199/359/679/1,319/2,599; rollbacks and fact changes were
-also linear. For 1/2/4/8 dependent function-pointer and template-template
-parameter pairs, semantic nodes were 18/21/27/39, specialization requests
-2/3/5/9, argument-list requests 6/9/15/27, candidate visits 1/2/4/8, and typed
-storage 4,196/4,204/4,220/4,252 bytes. Thus work is proportional to represented
-syntax, parameters, and indexed requests rather than nesting products.
+For 1/2/4/8 repeated proven-empty and declaration-only object pairs amid 16
+unrelated classes, requests were 2/4/8/16 and cache hits 0/2/6/14; entity visits
+were 3/3/3/3, dependency-edge visits 2/2/2/2, worklist pushes 3/3/3/3, and
+emissions 3/3/3/3. Tokens grew 131/137/149/173, semantic nodes
+21/27/39/63, and typed storage 6,413/7,085/8,429/11,117 bytes. Thus repeated
+queries replay compact dependency IDs, and unrelated declarations do not enter
+the elision work.
 
-The original 380/407 checkpoint remains intact; the ownership guard makes the
-combined report 381/408 with the same 27 prior failures. PA1--PA22 pass
-2,639/2,639, PA10 passes 157/157 under ASan/UBSan together with the five
-affected-path probes, file audit passes with the same 13 inherited
-header-division advisories, and `git diff --check` passes.
+The original 389/408 checkpoint remains intact; the declaration-only guard
+makes the combined report 390/409 with the same 19 prior failures. The nine
+affected-path probes pass under ASan/UBSan. PA1--PA22 pass 2,639/2,639, file
+audit passes with the same 13 inherited header-division advisories, and
+`git diff --check` passes.
 
 ## Checkpoint Audit Ledger
 
@@ -61,3 +59,4 @@ header-division advisories, and `git diff --check` passes.
 | Dependent call/result replay (`e218b8dc`, this audit) | Demand-owned exception states, canonical post-reentry publication, and qualified value identity repair the landed call/ADL increment; original 374/405 is intact, the audit guard passes, and demanded work scales linearly. |
 | Zero-cardinality expansion and static-member demand (`1d55437f`, this audit) | Typed size/alignment now owns all storage and lifetime paths; retained definition policy and explicit address/reference demand replace syntax reopening; 377/406 is preserved, the audit guard raises the report to 378/407, and representative work is linear. |
 | Enclosing dependency and dependent construction (`c510b4af`, this audit) | Parse-once class routing and canonical parameter-scope replay remove exponential nested-class retries and complete dependent NTTP/template-template ownership; 380/407 is preserved, the guard raises the report to 381/408, and representative work is linear. |
+| Substitution and demand boundaries (`8da6b98e`, this audit) | Declaration-owned alias substitution, typed scalar facts, and dead-arm demand are preserved; constructor-chain elision now requires a known body and memoizes canonical dependency facts; 389/408 is preserved, the guard raises the report to 390/409, and repeated work is flat. |

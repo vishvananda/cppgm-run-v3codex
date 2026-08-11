@@ -584,6 +584,14 @@ int run_emit_semantics_mode(const vector<string> & args)
 		   << stats.unwind_cleanup_scope_visits
 		   << " unwind_cleanup_action_visits="
 		   << stats.unwind_cleanup_action_visits
+		   << " empty_constructor_chain_requests="
+		   << stats.empty_constructor_chain_requests
+		   << " empty_constructor_chain_cache_hits="
+		   << stats.empty_constructor_chain_cache_hits
+		   << " empty_constructor_chain_entity_visits="
+		   << stats.empty_constructor_chain_entity_visits
+		   << " empty_constructor_chain_dependency_edges="
+		   << stats.empty_constructor_chain_dependency_edges
 		   << " empty_destructor_chain_visits="
 		   << stats.empty_destructor_chain_visits
 		   << " empty_destructor_chain_cache_hits="
@@ -772,6 +780,14 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << semantic.static_constant_initializer_visits
 			 << " static_constant_dependency_edges="
 			 << semantic.static_constant_dependency_edges
+			 << " empty_constructor_chain_requests="
+			 << semantic.empty_constructor_chain_requests
+			 << " empty_constructor_chain_cache_hits="
+			 << semantic.empty_constructor_chain_cache_hits
+			 << " empty_constructor_chain_entity_visits="
+			 << semantic.empty_constructor_chain_entity_visits
+			 << " empty_constructor_chain_dependency_edges="
+			 << semantic.empty_constructor_chain_dependency_edges
 			 << " empty_destructor_chain_visits="
 			 << semantic.empty_destructor_chain_visits
 			 << " empty_destructor_chain_cache_hits="

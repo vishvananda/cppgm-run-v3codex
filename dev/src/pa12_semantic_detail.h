@@ -118,6 +118,11 @@ public:
 		  special_member_fact_lookups_(0),
 		  special_member_subobject_visits_(0),
 		  zero_offset_subobject_generation_(0),
+		  empty_constructor_chain_generation_(0),
+		  empty_constructor_chain_requests_(0),
+		  empty_constructor_chain_cache_hits_(0),
+		  empty_constructor_chain_entity_visits_(0),
+		  empty_constructor_chain_dependency_edges_(0),
 		  constructor_member_action_visits_(0),
 		  constructor_base_action_visits_(0),
 		  constructor_delegation_action_visits_(0),
@@ -815,6 +820,7 @@ private:
 	void RecordStaticConstantInitializer(
 		BindingId binding, std::uint32_t initializer);
 	void PublishStaticConstantEvaluationStats() const;
+	void PublishInitializationStats() const;
 	ExpressionInfo AnalyzeCall(NodeId node, ScopeId scope, TypeId target);
 	std::vector<NodeId> CollectCallArgumentSyntax(
 		NodeId call, NodeId* arguments_node) const;
@@ -1384,6 +1390,20 @@ private:
 	std::vector<BindingId> implicit_constructor_by_entity_;
 	std::vector<BindingId> constructor_base_entry_by_binding_;
 	std::vector<BindingId> destructor_base_entry_by_binding_;
+	// Canonical constructor identity owns this monotonic elision fact.  A
+	// failure remains a correct conservative result after later declarations;
+	// success is published only from complete class facts and known bodies.
+	std::vector<std::uint8_t> empty_constructor_chain_states_;
+	std::vector<std::uint32_t>
+		empty_constructor_chain_dependency_begins_;
+	std::vector<std::uint32_t>
+		empty_constructor_chain_dependency_counts_;
+	std::vector<BindingId> empty_constructor_chain_dependencies_;
+	std::vector<std::uint32_t> empty_constructor_chain_entity_marks_;
+	std::vector<std::uint32_t> empty_constructor_chain_binding_marks_;
+	std::vector<BindingId> empty_constructor_chain_pending_;
+	std::vector<BindingId> empty_constructor_chain_member_dependencies_;
+	std::vector<BindingId> empty_constructor_chain_base_dependencies_;
 	std::vector<std::uint32_t> static_member_storage_by_binding_;
 	std::vector<std::uint8_t> explicit_static_member_specialization_states_;
 	struct StaticConstantInitializerFact
@@ -1595,6 +1615,11 @@ private:
 	mutable std::size_t special_member_fact_lookups_;
 	mutable std::size_t special_member_subobject_visits_;
 	std::uint32_t zero_offset_subobject_generation_;
+	std::uint32_t empty_constructor_chain_generation_;
+	std::size_t empty_constructor_chain_requests_;
+	std::size_t empty_constructor_chain_cache_hits_;
+	std::size_t empty_constructor_chain_entity_visits_;
+	std::size_t empty_constructor_chain_dependency_edges_;
 	std::size_t constructor_member_action_visits_;
 	std::size_t constructor_base_action_visits_;
 	std::size_t constructor_delegation_action_visits_;

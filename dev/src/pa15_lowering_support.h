@@ -27,8 +27,6 @@ bool IsNullPointerLiteralCast(const pa11::Program& program,
 	const pa12_semantic_detail::DumpNode& source, pa11::TypeId target);
 bool IsIntNullPointerLiteralCast(const pa11::Program& program,
 	const pa12_semantic_detail::DumpNode& source, pa11::TypeId target);
-bool IsIncompletePointeeNullPointerCast(const pa11::Program& program,
-	const pa12_semantic_detail::DumpNode& source, pa11::TypeId target);
 
 class FlatIdMap
 {

@@ -28,19 +28,6 @@ bool IsIntNullPointerLiteralCast(const pa11::Program& program,
 		IsNullPointerLiteralCast(program, source, target);
 }
 
-bool IsIncompletePointeeNullPointerCast(const pa11::Program& program,
-	const pa12_semantic_detail::DumpNode& source, pa11::TypeId target)
-{
-	target = program.types.RemoveTopCv(target);
-	const pa11::TypeRecord& target_record = program.types.Get(target);
-	if (target_record.kind != pa11::TYPE_POINTER ||
-		!source.integer_literal_zero) return false;
-	const pa11::TypeId pointee = program.types.RemoveTopCv(target_record.child);
-	const pa11::TypeRecord& pointee_record = program.types.Get(pointee);
-	return pointee_record.kind == pa11::TYPE_NAMED &&
-		!program.entities[pointee_record.entity].complete;
-}
-
 FlatIdMap::FlatIdMap() : slots_(16, 0) {}
 
 std::size_t FlatIdMap::Hash(std::uint32_t key)

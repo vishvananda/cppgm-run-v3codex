@@ -163,6 +163,21 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		associated_type_marks_.capacity() * sizeof(std::uint32_t) +
 		candidate_marks_.capacity() * sizeof(std::uint32_t) +
 		candidate_substitution_failures_.capacity() * sizeof(std::uint8_t) +
+		empty_constructor_chain_states_.capacity() * sizeof(std::uint8_t) +
+		empty_constructor_chain_dependency_begins_.capacity() *
+			sizeof(std::uint32_t) +
+		empty_constructor_chain_dependency_counts_.capacity() *
+			sizeof(std::uint32_t) +
+		empty_constructor_chain_dependencies_.capacity() * sizeof(BindingId) +
+		empty_constructor_chain_entity_marks_.capacity() *
+			sizeof(std::uint32_t) +
+		empty_constructor_chain_binding_marks_.capacity() *
+			sizeof(std::uint32_t) +
+		empty_constructor_chain_pending_.capacity() * sizeof(BindingId) +
+		empty_constructor_chain_member_dependencies_.capacity() *
+			sizeof(BindingId) +
+		empty_constructor_chain_base_dependencies_.capacity() *
+			sizeof(BindingId) +
 		empty_destructor_chain_cache_.capacity() * sizeof(std::uint8_t) +
 		pack_alignment_stack_.capacity() * sizeof(std::size_t);
 	for (std::size_t i = 0; i < functions_.size(); ++i)

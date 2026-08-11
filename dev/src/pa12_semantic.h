@@ -45,6 +45,10 @@ struct SemanticAnalysisStats
 	std::size_t runtime_initializer_visits;
 	std::size_t static_constant_initializer_visits;
 	std::size_t static_constant_dependency_edges;
+	std::size_t empty_constructor_chain_requests;
+	std::size_t empty_constructor_chain_cache_hits;
+	std::size_t empty_constructor_chain_entity_visits;
+	std::size_t empty_constructor_chain_dependency_edges;
 	std::size_t empty_destructor_chain_visits;
 	std::size_t empty_destructor_chain_cache_hits;
 	std::size_t namespace_object_actions;
