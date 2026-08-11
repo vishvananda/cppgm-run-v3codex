@@ -20,32 +20,34 @@ speculation, and publish restored name facts once.
 Nested template parameter lists share a scoped local-name overlay; outer
 dependent non-type parameter types resolve in the canonical parameter scope
 after preceding bindings, while nested-local dependencies remain symbolic.
+Alias-template substitution restores its declaration-owned class privilege;
+dead constant arms retain semantic checking without publishing runtime demand.
+Typed scalar facts canonicalize null-pointer immediates and comparison widths
+before LowIR, while failed empty-constructor-chain queries publish no ABI state.
 
 ## Current Failure Map
 
-The report is 381/408, with all `100-*`, `200-*`, and `400-*` tests passing.
-The 27 failures are 9 exits and 18 LowIR mismatches (`300-*`: 14; `500-*`:
-13). By shared behavior and owner they are retained default/alias and
-member-result replay (9), deduction/non-deduced/partial ordering (7),
-constructor or conversion-function participation and ABI facts (7), and typed
-initializer/emission finalization (4).
+The report is 389/408, with all `100-*`, `200-*`, and `400-*` tests passing.
+The 19 failures are 9 exits and 10 LowIR mismatches (`300-*`: 13; `500-*`: 6).
+By shared behavior and owner they are deduction/non-deduced/partial ordering
+(7), constructor or conversion-function participation (7), and retained
+result/default/candidate replay (5).
 
 ## Active Checkpoint
 
-Candidate-default and member-result replay is the next substantial stable
-boundary and owns nine failures spanning alias results, constructor-pack
-defaults, short-circuit SFINAE, inherited/member templates, and qualified
-member results. Per `spec.md` sections 2-6 and 9, template patterns own retained
-defaults and lexical roots, canonical specialization scopes own argument
-partitions, candidate frames own recoverable substitution failure, and lowering
-receives only the selected typed declaration. The flow is retained default or
-result -> indexed specialization overlay -> candidate-local substitution ->
-selected declaration -> demand/lowering. Expected work is O(P+A+C*(F+D)+E)
-for parameters P, arguments A, participating candidates C, deduction facts F,
-dependent replay edges D, and expanded elements E, with O(1)-average indexed
-lookup, one replay per complete key, and no global retry. Validate nested aliases
-and constructor defaults, short-circuit failure, selected-only demand, 1/2/4/8
-scaling, sanitizers, PA23, PA1-PA22, and file audit.
+Canonical non-deduced matching and partial ordering is the next substantial
+stable boundary and owns seven failures spanning abstract/array parameter
+SFINAE, transitive-base deduction, dependent NTTP packs, recursive partial
+completion, direct template-id matching, and fixed/variadic template-template
+ordering. Per `spec.md` sections 2-5 and 9, canonical parameter shapes and the
+candidate deduction frame own bindings; class-partial selection owns recursive
+completion; ordering consumes complete typed deductions without rendered-name
+fallbacks. The flow is candidate parameter shape -> indexed deduction facts ->
+complete canonical arguments -> candidate-local substitution -> typed ordering
+result. Expected work is O(C*(P+A+E)) for participating candidates C,
+parameters P, arguments A, and expanded elements E, with O(1)-average identity
+lookup and one completion per specialization key. Validate all seven grouped
+failures, 1/2/4/8 candidate/pack scaling, sanitizers, PA23, PA1-PA22, and audit.
 
 ## Performance Evidence
 
@@ -57,11 +59,15 @@ Before the audit repair, nested-class depths 8 and 16 caused 6,272 and
 dependent function-pointer and template-template parameter pairs, semantic
 nodes were 18/21/27/39, specialization requests 2/3/5/9, argument-list
 requests and index probes 6/9/15/27, candidate visits 1/2/4/8, and typed storage
-4,196/4,204/4,220/4,252 bytes. Work is linear in represented syntax,
-parameters, and indexed requests. PA23 is 381/408: the original 380/407 remains
-intact and the audit guard passes. PA1-PA22 are 2,639/2,639, PA10 and five
-affected-path probes are ASan/UBSan-clean, and file audit passes with 13
-inherited warnings.
+4,196/4,204/4,220/4,252 bytes. For the completed alias/default/demand boundary,
+1/2/4/8 member-alias specializations produced semantic nodes 27/46/84/160,
+specialization requests 14/28/56/112, default materializations 1/2/4/8, access
+checks 31/60/118/234, emissions 1/2/4/8, and 4,597/6,720/12,214/23,522 typed
+bytes. Argument-list probes were 22/41/80/274 (1.0-1.8 per request, reflecting
+bounded small-table collisions); semantic time was 1.03/1.22/1.66/2.43 ms.
+PA23 is 389/408, eight above the turn baseline with no regressions; eight
+affected probes are ASan/UBSan-clean. PA1-PA22 and file-audit evidence is
+refreshed at each checkpoint exit.
 
 ## Completed Checkpoints
 
@@ -97,3 +103,4 @@ inherited warnings.
 | Dependent call/result replay and ADL specialization demand | Parameter-dependent results and aliases retain indexed call facts; ADL completes supplied owners; the audit separated exception demand, memoized its state, and repaired canonical post-reentry publication and qualified-name detection; original 371 -> 374, combined 375/406, no regressions, sanitizer-clean, linear scaling. |
 | Zero-cardinality expansion lowering and static-member demand | Typed size/alignment drives automatic, global, and local-static storage without element lifetime actions; retained value-use policy and explicit address/reference demand replace syntax reopening; original 375 -> 377, audit guard 378/407, no regressions, sanitizer-clean, linear scaling. |
 | Retained enclosing-pack dependency and dependent braced construction | Nested parameter types defer to specialization replay; qualified/template calls avoid speculative type formation; the audit replaced class-body lookahead with parse-once routing and completed declarator/local/template-template dependency ownership in canonical parameter scopes; original 378 -> 380, audit guard 381/408, no regressions, sanitizer-clean, linear scaling. |
+| Declaration-owned alias access, dead-arm demand, and typed scalar/ABI finalization | Alias bodies substitute with lexical privilege; short-circuited calls stay undemanded; null and boolean facts lower canonically; failed empty-chain queries do not mutate deferred C1/C2 state; 381 -> 389, no regressions, sanitizer-clean, linear scaling. |

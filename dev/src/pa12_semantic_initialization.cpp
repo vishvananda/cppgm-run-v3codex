@@ -42,6 +42,7 @@ bool SemanticAnalyzer::EmptyDefaultConstructorChain(BindingId constructor,
 	std::vector<BindingId>* base_entries)
 {
 	std::vector<BindingId> pending(1, constructor);
+	std::vector<BindingId> base_constructors;
 	std::vector<std::uint8_t> visited(program_->entities.size(), 0);
 	while (!pending.empty())
 	{
@@ -127,13 +128,18 @@ bool SemanticAnalyzer::EmptyDefaultConstructorChain(BindingId constructor,
 			const FunctionInfo& next_info = GetFunction(next);
 			if (!(next_info.implicit_constructor &&
 				program_->entities[base].trivial_default_constructor))
-			{
-				const BindingId entry = EnsureConstructorBaseEntry(next);
-				if (std::find(base_entries->begin(), base_entries->end(), entry) ==
-					base_entries->end()) base_entries->push_back(entry);
-			}
+				base_constructors.push_back(next);
 			pending.push_back(next);
 		}
+	}
+	// This routine is also a speculative elision query.  Publish ABI entries
+	// only after the complete chain has proved empty; a failed query must not
+	// change which constructor entry a later real base-subobject call demands.
+	for (std::size_t i = 0; i < base_constructors.size(); ++i)
+	{
+		const BindingId entry =
+			EnsureConstructorBaseEntry(base_constructors[i]);
+		base_entries->push_back(entry);
 	}
 	return true;
 }

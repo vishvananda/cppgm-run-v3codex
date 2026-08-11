@@ -140,7 +140,8 @@ BindingId SemanticAnalyzer::EnsureConstructorBaseEntry(BindingId constructor)
 	if (constructor_base_entry_by_binding_.size() <= constructor)
 		constructor_base_entry_by_binding_.resize(
 			static_cast<std::size_t>(constructor) + 1, kNoBinding);
-	if (constructor_base_entry_by_binding_[constructor] != kNoBinding)
+	if (constructor_base_entry_by_binding_[constructor] != kNoBinding &&
+		constructor_base_entry_by_binding_[constructor] != constructor)
 		return constructor_base_entry_by_binding_[constructor];
 	const BindingRecord source_binding = program_->bindings[constructor];
 	const FunctionInfo source_info = GetFunction(constructor);

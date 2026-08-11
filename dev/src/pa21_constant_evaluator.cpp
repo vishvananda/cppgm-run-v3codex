@@ -1325,6 +1325,7 @@ void SemanticAnalyzer::PublishStaticConstantEvaluationStats() const
 bool SemanticAnalyzer::ShouldDemandResolvedCall(BindingId binding,
 	bool folded, bool compile_time_only) const
 {
+	if (constant_evaluation_suppressed_depth_ != 0) return false;
 	if (constexpr_evaluation_depth_ != 0) return false;
 	if (!folded && !compile_time_only) return true;
 	if (preserve_constant_initializer_recipe_depth_ == 0) return false;

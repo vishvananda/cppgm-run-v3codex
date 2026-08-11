@@ -46,7 +46,7 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		const Operand value = derived.LowerCondition(node);
-		const Operand truth = derived.Temp(LowI64());
+		const Operand truth = derived.Temp(LowU8());
 		Instruction compare(Instruction::CMP);
 		compare.dest = truth.id;
 		compare.op = LOW_OP_NE;

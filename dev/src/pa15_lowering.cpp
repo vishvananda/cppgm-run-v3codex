@@ -1353,7 +1353,7 @@ private:
 			{
 				const DumpNode& source = arena_.nodes[children[0]];
 				const LowType type = LowerExpressionType(record.type);
-				result = IsIncompletePointeeNullPointerCast(program_, source,
+				result = IsIntNullPointerLiteralCast(program_, source,
 					record.type) ? Operand(0, type) :
 					LowerInitializerConvertedValue(children[0], type);
 			}

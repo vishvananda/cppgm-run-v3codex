@@ -1041,8 +1041,13 @@ TypeId SemanticAnalyzer::InstantiateAliasTemplate(std::size_t index,
 	{
 		// Alias substitution establishes a canonical type identity; it does not
 		// by itself require the aliased class layout.  Qualified components in
-		// the retained type-id still demand their carriers through lookup.
+		// the retained type-id still demand their carriers through lookup.  Name
+		// access in the retained type-id belongs to the alias declaration, not to
+		// whichever use happened to request this specialization.
 		++class_template_completion_suppressed_depth_;
+		const EntityId previous_class = current_class_context_;
+		const EntityId alias_owner = program_->EntityForScope(pattern.owner);
+		current_class_context_ = alias_owner;
 		TypeId result = kNoType;
 		try
 		{
@@ -1050,9 +1055,11 @@ TypeId SemanticAnalyzer::InstantiateAliasTemplate(std::size_t index,
 		}
 		catch (...)
 		{
+			current_class_context_ = previous_class;
 			--class_template_completion_suppressed_depth_;
 			throw;
 		}
+		current_class_context_ = previous_class;
 		--class_template_completion_suppressed_depth_;
 		if (CandidateSubstitutionFailed())
 		{

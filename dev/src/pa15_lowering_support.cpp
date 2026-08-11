@@ -18,6 +18,16 @@ bool IsNullPointerLiteralCast(const pa11::Program& program,
 	return source.integer_literal_zero;
 }
 
+bool IsIntNullPointerLiteralCast(const pa11::Program& program,
+	const pa12_semantic_detail::DumpNode& source, pa11::TypeId target)
+{
+	const pa11::TypeRecord source_type = program.types.Get(
+		program.types.RemoveTopCv(source.type));
+	return source_type.kind == pa11::TYPE_FUNDAMENTAL &&
+		source_type.fundamental == pa11::FUND_INT &&
+		IsNullPointerLiteralCast(program, source, target);
+}
+
 bool IsIncompletePointeeNullPointerCast(const pa11::Program& program,
 	const pa12_semantic_detail::DumpNode& source, pa11::TypeId target)
 {

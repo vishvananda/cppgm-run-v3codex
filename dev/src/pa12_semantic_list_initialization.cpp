@@ -931,6 +931,10 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 		return kNoDumpEdge;
 	}
 	const BindingId complete_constructor = selected;
+	const bool promoted_deferred_base_entry = base_subobject &&
+		selected < constructor_base_entry_by_binding_.size() &&
+		constructor_base_entry_by_binding_[selected] == selected &&
+		!program_->bindings[selected].constructor_base_entry;
 	if (base_subobject) selected = EnsureConstructorBaseEntry(selected);
 	const FunctionInfo constructor = GetFunction(selected);
 	const TypeRecord function_type = program_->types.Get(constructor.type);
@@ -1068,7 +1072,8 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 		 !dump_.nodes[action].trivial_special_member_action) &&
 		!(constructor.implicit_constructor &&
 		program_->entities[entity].trivial_default_constructor))
-		DemandFunction(selected);
+		DemandFunction(promoted_deferred_base_entry ?
+			complete_constructor : selected);
 	if (demand && base_subobject &&
 		preserve_constant_initializer_recipe_depth_ == 0 &&
 		current_class_context_ != kNoEntity &&
