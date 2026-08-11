@@ -217,7 +217,12 @@ protected:
 		{
 			derived.EnsureFullExpressionCleanupSegment();
 			if (derived.arena_.nodes[children[0]].kind == DUMP_CONSTRUCTOR_ACTION)
+			{
+				if (derived.arena_.nodes[children[0]].value_initialization)
+					derived.EmitZeroInitialization(
+						derived.arena_.nodes[node].type, destination);
 				derived.LowerConstructorAction(children[0], destination);
+			}
 			else if (derived.arena_.nodes[children[0]].kind == DUMP_BRACED_INIT_LIST)
 			{
 				const DumpNode& initializer = derived.arena_.nodes[children[0]];

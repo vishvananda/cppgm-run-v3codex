@@ -150,7 +150,7 @@ protected:
 
 	void LowerLoopConstructorArray(std::uint32_t element_action,
 		BindingId object_binding, TypeId array_type, TypeId element_type,
-		std::size_t count, BindingId destructor)
+		std::size_t count, BindingId destructor, bool trivial)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (count > static_cast<std::size_t>(
@@ -198,7 +198,10 @@ protected:
 			derived.EmitEhTarget(Instruction::EH_TRY, cleanup);
 		const Operand element = BoundFlatArrayElementAddress(
 			object_binding, array_type, element_type, index);
-		derived.LowerConstructorAction(element_action, element);
+		if (derived.arena_.nodes[element_action].value_initialization)
+			derived.EmitZeroInitialization(element_type, element);
+		if (!trivial)
+			derived.LowerConstructorAction(element_action, element);
 		if (cleanup_needed) derived.Emit(Instruction(Instruction::EH_END));
 		const Operand next = derived.Temp(LowI64());
 		Instruction increment(Instruction::BINARY);
@@ -264,14 +267,19 @@ protected:
 		std::uint32_t element_node = kNoDumpEdge;
 		DescribeConstructorArray(node, &count, &element_type, &element_node);
 		const DumpNode& element_action = derived.arena_.nodes[element_node];
-		const bool cleanup_needed = action.binding != kNoBinding &&
+		NodeChildren constructor;
+		constructor.Push(element_node);
+		const bool trivial =
+			derived.IsTrivialConstructorAction(element_type, constructor);
+		if (trivial && !element_action.value_initialization) return;
+		const bool cleanup_needed = !trivial && action.binding != kNoBinding &&
 			(element_action.binding == kNoBinding ||
 			 !derived.program_.bindings[element_action.binding].nonthrowing);
 		if (count > kConstructorArrayCleanupInlineLimit)
 		{
 			LowerLoopConstructorArray(element_node, object_binding,
 				action.operand_type, element_type, count,
-				cleanup_needed ? action.binding : kNoBinding);
+				cleanup_needed ? action.binding : kNoBinding, trivial);
 			return;
 		}
 		for (std::size_t i = 0; i < count; ++i)
@@ -287,7 +295,10 @@ protected:
 			}
 			const Operand element = BoundFlatArrayElementAddress(
 				object_binding, action.operand_type, element_type, i);
-			derived.LowerConstructorAction(element_node, element);
+			if (element_action.value_initialization)
+				derived.EmitZeroInitialization(element_type, element);
+			if (!trivial)
+				derived.LowerConstructorAction(element_node, element);
 			if (dispatch != kNoLowId)
 			{
 				derived.Emit(Instruction(Instruction::EH_END));
