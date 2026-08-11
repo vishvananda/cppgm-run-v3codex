@@ -18,34 +18,35 @@ demanded nodes (section 9).
 
 ## Current Failure Map
 
-Current state: **406/422** pa24 tests (turn start: 404/422); all **3,049/3,049**
+Current state: **408/422** pa24 tests (turn start: 406/422); all **3,049/3,049**
 tests through pa23 pass.
 
 | Shared behavior and owner | Count | Complete failing set (test basename) |
 | --- | ---: | --- |
 | Deduction, candidate SFINAE, overload ordering, and conversion/initialization selection (`pa19` deduction/instantiation + ordinary call/initialization) | 7 | `member-operator-template-reference-pattern-partial-order`, `constructor-template-const-ref-enable-if-conversion`, `static-cast-rvalue-ref-skips-conversion-operator`, `defaulted-class-template-argument-pack-prefix-deduction`, `trailing-return-expression-sfinae-default-param`, `conversion-function-template-top-cv-sequence`, `out-of-class-conversion-operator-definition` |
-| Dependent owner/current-specialization, alias, function-type, and pack replay through demand/lowering (`pa19`/`pa22`/`pa23`) | 9 | `alias-template-partial-specialization-default-dependent-arg`, `decorated-template-id-type-argument-pack-replay`, `member-template-result-pack-preserves-nested-function-pointer-owner`, `out-of-class-partial-member-template-owner-parameter-alias`, `forwarding-pack-function-type-enable-if`, `partial-member-template-trailing-result-scope`, `source-namespace-base-sfinae-chain`, `defaulted-nested-class-argument-partial-specialization`, `defaulted-template-arg-partial-base-completion` |
+| Dependent owner/current-specialization, alias, function-type, and pack replay through demand/lowering (`pa19`/`pa22`/`pa23`) | 7 | `alias-template-partial-specialization-default-dependent-arg`, `member-template-result-pack-preserves-nested-function-pointer-owner`, `out-of-class-partial-member-template-owner-parameter-alias`, `forwarding-pack-function-type-enable-if`, `source-namespace-base-sfinae-chain`, `defaulted-nested-class-argument-partial-specialization`, `defaulted-template-arg-partial-base-completion` |
 
 ## Active Checkpoint
 
-**Destination-consistent default/value construction lowering — completed.**
-The semantic constructor action owns canonical binding, object type, and
-value-initialization mode; the class entity owns trivial-default-constructor
-facts. Every lowering destination must consume those same facts. A bounded
-array skips element calls for default-initialized trivial classes, while a
-value-initialized temporary zeroes its complete destination before invoking a
-non-user-provided implicit constructor. Neither path synthesizes an alternate
-constructor identity.
+**Identity-only declaration emission — completed.** A demanded callable's
+canonical `FunctionInfo` and binding own declaration identity and function
+type. An undefined declaration has no body environment to replay: semantic
+graph emission for typed lowering publishes only its declaration node, while
+PA15 enumerates the canonical function type and synthesizes stable `argN`
+presentation names. Source parameter bindings, lifetime obligations, and
+function scopes are created only for definitions that consume them. The PA12
+human-readable semantic view retains its source parameter children as part of
+that stage's output contract.
 
-This applies `spec.md` sections 4-6, 8, and 9: demand and selected-entry facts
-remain monotonic and identity-based, lowering consumes typed semantic actions,
-and work is proportional to required initialized storage. The array triviality
-test is O(1) and avoids O(N) no-op calls; nontrivial construction remains O(N),
-and zero-initialization remains O(object bytes). Validation removes
-`dependent-typename-member-enable-if-return` and
-`dependent-function-type-member-specialization`; neighboring array and
-value-initialization cases, a trivial-array extent probe, the full PA24 and
-through-PA23 reports, and the file audit cover the boundary.
+This applies `spec.md` sections 4-6, 8, and 9: declaration demand remains a
+monotonic identity fact, no alternate body path is introduced, and lowering
+consumes the selected typed declaration. Semantic declaration-shell work is
+O(1) after selection instead of O(P) scope/binding replay; unavoidable typed
+boundary lowering and rendering remain O(P) in parameter count. Validation
+removed `decorated-template-id-type-argument-pack-replay` and
+`partial-member-template-trailing-result-scope`; the PA12 declaration-view
+regression case, neighboring definitions, a declaration-width probe, the full
+PA24 and through-PA23 reports, and the file audit cover the boundary.
 
 ## Performance Evidence
 
@@ -94,6 +95,13 @@ materialized-demand visits throughout. Median lowering times were 0.062/0.058/
 0.053/0.056/0.051/0.055/0.050/0.055 ms over nine runs; no-op construction work
 is independent of extent, while nontrivial arrays retain the linear loop path.
 
+Undefined function-specialization widths 1/2/4/8/16/32/64 kept demand pushes
+and declaration emissions at one. Semantic nodes were 8/9/11/15/23/39/71,
+deduction visits 2/4/8/16/32/64/128, output bytes 249/268/306/382/540/860/
+1500, and median semantic times 0.223/0.239/0.250/0.270/0.314/0.410/0.567 ms
+over nine runs. Typed declaration work remains linear in canonical parameter
+width without replaying a declaration body environment.
+
 ## Completed Checkpoints
 
 | Checkpoint | Commit | Disposition |
@@ -105,4 +113,5 @@ is independent of extent, while nontrivial arrays retain the linear loop path.
 | Retained current-specialization dependency | `739eab0f` | Two failures removed; 401/422 pa24, 3,049/3,049 through pa23, linear reference-width probe. |
 | Default-expression candidate completion and partial ordering | `b555a4eb` | Two failures removed; 403/422 pa24, 3,049/3,049 through pa23, linear candidate-width probe. |
 | Nonterminal dependent template-id and prior-parameter retention | `9ab41503` | One failure removed; 404/422 pa24, 3,049/3,049 through pa23, linear constraint-width probe. |
-| Destination-consistent default/value construction lowering | this commit | Two failures removed; 406/422 pa24, 3,049/3,049 through pa23, constant trivial-array extent probe. |
+| Destination-consistent default/value construction lowering | `5be465c9` | Two failures removed; 406/422 pa24, 3,049/3,049 through pa23, constant trivial-array extent probe. |
+| Identity-only typed declaration emission | this commit | Two failures removed; 408/422 pa24, 3,049/3,049 through pa23, linear declaration-width probe. |

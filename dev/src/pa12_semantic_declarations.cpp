@@ -2884,7 +2884,7 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 		DUMP_FUNCTION_DEFINITION : DUMP_FUNCTION_DECLARATION,
 		output_type, VALUE_NONE, info.display_name, info.binding);
 	dump_.Add(root_, function);
-	if (!emit_definition && (member ||
+	if (!emit_definition && (retain_lowering_facts_ || member ||
 		program_->bindings[binding].explicit_instantiation_suppressed))
 	{
 		GetMutableFunction(binding).demand_state = 3;
