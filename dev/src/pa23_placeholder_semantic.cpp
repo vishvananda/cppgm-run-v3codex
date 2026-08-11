@@ -148,28 +148,21 @@ void SemanticAnalyzer::ApplyConditionalClassConversion(
 	else *no = ApplyCallArgument(*no, yes_target, &no_to_yes);
 }
 
-bool SemanticAnalyzer::HasConstructorTemplatePattern(EntityId entity) const
-{
-	const EntityRecord& owner = program_->entities[entity];
-	const std::uint64_t key =
-		(static_cast<std::uint64_t>(owner.member_scope) << 32) |
-		owner.identity_name;
-	const CompactIndexSequence* patterns = template_function_sets_.Find(key);
-	for (std::size_t i = 0; patterns && i < patterns->Size(); ++i)
-		if (function_templates_[(*patterns)[i]].constructor_template) return true;
-	return false;
-}
-
 void SemanticAnalyzer::PublishStableFunctionTemplateResultAbi(
 	const FunctionTemplatePattern& pattern, TypeId function_type,
 	EntityId member_owner, BindingId canonical_binding)
 {
 	const TypeId result = program_->types.Get(function_type).child;
 	const EntityId entity = EntityOf(result);
-	if (entity == kNoEntity || program_->entities[entity].empty_class) return;
-	const bool dependent_result = pattern.deferred_result_formation &&
-		member_owner == kNoEntity &&
-		program_->entities[entity].has_user_provided_constructor;
+	if (entity == kNoEntity) return;
+	const bool nontrivial_empty_result =
+		program_->entities[entity].empty_class &&
+		entity < class_special_members_.size() &&
+		class_special_members_[entity].user_copy_constructor;
+	const bool dependent_result = member_owner == kNoEntity &&
+		program_->entities[entity].has_user_provided_constructor &&
+		(program_->entities[entity].empty_class ? nontrivial_empty_result :
+		 pattern.deferred_result_formation);
 	const bool conversion_result = pattern.conversion_template &&
 		program_->entities[entity].template_argument_count == 0;
 	if (dependent_result || conversion_result)

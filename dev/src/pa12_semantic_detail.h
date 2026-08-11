@@ -1083,7 +1083,6 @@ private:
 	std::size_t RequestedAlignment(NodeId node, ScopeId scope);
 	void InheritConstructors(EntityId entity,
 		const std::vector<BindingId>& constructors);
-	bool HasConstructorTemplatePattern(EntityId entity) const;
 	void PublishStableFunctionTemplateResultAbi(
 		const FunctionTemplatePattern& pattern, TypeId function_type,
 		EntityId member_owner, BindingId canonical_binding);

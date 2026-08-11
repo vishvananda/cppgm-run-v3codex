@@ -1322,13 +1322,17 @@ void SemanticAnalyzer::AddBaseInitializationAction(EntityId entity,
 			dump_.nodes[constructor].value_initialization = true;
 		const EntityId selected_owner =
 			program_->bindings[selected.binding].member_owner;
-		const bool demanded_template_base = !pack_expanded &&
-			initializer != kNoNode && !arguments.empty() &&
+		const bool demanded_owned_base_entry = !pack_expanded &&
+			initializer != kNoNode &&
+			(!IsClassTemplateSpecializationEntity(entity) ||
+			 selected.special_member == SPECIAL_MEMBER_COPY_CONSTRUCTOR ||
+			 selected.special_member == SPECIAL_MEMBER_MOVE_CONSTRUCTOR ||
+			 arguments.size() > 1) &&
 			IsClassTemplateSpecializationEntity(selected_owner);
 		const bool demanded_constexpr_vptr_base =
 			selected_owner != kNoEntity && selected.constexpr_function &&
 			program_->entities[selected_owner].polymorphic_class;
-		if ((demanded_template_base || demanded_constexpr_vptr_base) &&
+		if ((demanded_owned_base_entry || demanded_constexpr_vptr_base) &&
 			!selected.implicit_constructor && !selected.defaulted_constructor &&
 			selected.complete_constructor != kNoBinding)
 			DemandFunction(selected.complete_constructor);

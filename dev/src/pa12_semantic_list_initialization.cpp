@@ -1076,17 +1076,6 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 			complete_constructor : selected);
 	if (demand && base_subobject &&
 		preserve_constant_initializer_recipe_depth_ == 0 &&
-		argument_syntax.empty() &&
-		HasConstructorTemplatePattern(entity) &&
-		GetFunction(complete_constructor).template_pattern == kNoDumpEdge &&
-		GetFunction(complete_constructor).inherited_constructor_source ==
-			kNoBinding &&
-		IsClassTemplateSpecializationEntity(constructor_owner) &&
-		!GetFunction(complete_constructor).implicit_constructor &&
-		!GetFunction(complete_constructor).defaulted_constructor)
-		DemandFunction(complete_constructor);
-	if (demand && base_subobject &&
-		preserve_constant_initializer_recipe_depth_ == 0 &&
 		current_class_context_ != kNoEntity &&
 		program_->entities[current_class_context_].polymorphic_class &&
 		(!program_->entities[entity].polymorphic_class ||
