@@ -774,8 +774,24 @@ BindingId SemanticAnalyzer::InstantiateVariableTemplate(
 	std::vector<NodeId> argument_syntax;
 	if (!CollectExplicitTemplateArguments(
 		syntax, &path, &argument_syntax)) return kNoBinding;
-	const std::vector<std::size_t> related =
-		FindVariableTemplates(scope, path);
+	std::vector<std::size_t> related;
+	const NodeId structure = FindChild(syntax, "structured-type-name");
+	if (structure == kNoNode) related = FindVariableTemplates(scope, path);
+	else
+	{
+		const LookupResult found = LookupStructuredName(
+			syntax, scope, LOOKUP_VARIABLE_TEMPLATE);
+		for (std::size_t owner = 0;
+			owner < found.VariableTemplateOwnerCount(); ++owner)
+		{
+			const std::uint64_t key =
+				(static_cast<std::uint64_t>(
+					found.VariableTemplateOwnerAt(owner)) << 32) | path.Last();
+			const CompactIndexSequence* indexed = variable_template_sets_.Find(key);
+			for (std::size_t i = 0; indexed && i < indexed->Size(); ++i)
+				related.push_back((*indexed)[i]);
+		}
+	}
 	std::size_t primary_index = variable_templates_.size();
 	for (std::size_t i = 0; i < related.size(); ++i)
 		if (!variable_templates_[related[i]].partial_specialization)
@@ -895,27 +911,27 @@ BindingId SemanticAnalyzer::InstantiateVariableTemplate(
 	if (spec.is_constexpr && !IsConstexprLiteralType(parsed.type))
 		throw std::runtime_error(
 			"constexpr variable template does not have literal type");
-	std::ostringstream generated;
-	generated << "__variable_template_" << primary_index << '_';
-	for (std::size_t i = 0; i < arguments.size(); ++i)
-	{
-		generated << arguments[i].kind << '_' << arguments[i].type << '_'
-			<< arguments[i].value << '_';
-		if (arguments[i].value_binding != kNoBinding)
-			generated << 'b' << arguments[i].value_binding << '_';
-	}
-	const NameId name = program_->names.Intern(generated.str());
-	const BindingId binding = program_->AddBinding(
-		selected.owner, BIND_VARIABLE, name, parsed.type);
+	const BindingId binding = program_->AddUnindexedBinding(
+		selected.owner, BIND_VARIABLE, primary.name, parsed.type);
 	if (variable_template_bindings_.size() <= binding)
 		variable_template_bindings_.resize(
 			static_cast<std::size_t>(binding) + 1, 0);
 	variable_template_bindings_[binding] = 1;
 	BindingRecord& record = program_->bindings[binding];
 	record.storage_class = spec.storage_class;
+	record.member_owner = program_->EntityForScope(selected.owner);
+	record.weak_odr = true;
+	record.variable_template_specialization = true;
 	StoreTemplateArguments(arguments,
 		&record.template_argument_list,
 		&record.template_argument_begin, &record.template_argument_count);
+	if (record.member_owner != kNoEntity)
+	{
+		const NameId specialization_name = program_->names.Intern(
+			ExplicitClassSpecializationName(*program_, primary.name, arguments));
+		record.qualified_name = EmissionName(selected.owner, specialization_name);
+	}
+	else record.qualified_name = EmissionName(selected.owner, primary.name);
 	bool dependent = false;
 	for (std::size_t i = 0; i < arguments.size(); ++i)
 		if (arguments[i].IsDependent() ||
@@ -928,13 +944,33 @@ BindingId SemanticAnalyzer::InstantiateVariableTemplate(
 		if (selected.initializer == kNoNode)
 			throw std::runtime_error(
 				"variable template specialization has no initializer");
-		const ExpressionInfo initializer = AnalyzeVariableInitializer(
-			selected.initializer, substitution_scope, parsed.type, false);
-		if (initializer.constant &&
-			(spec.is_constexpr || (IsConst(parsed.type) &&
-			 IsIntegral(parsed.type, true))))
+		ExpressionInfo initializer =
+			AnalyzeConstantAwareVariableInitializer(selected.initializer,
+				substitution_scope, parsed.type, false, spec.is_constexpr, true);
+		PublishVariableInitializer(binding, parsed.type, spec,
+			initializer, false);
+		PublishCanonicalBindingConstant(binding);
+		const std::uint32_t object = ExpressionObject(initializer);
+		if (spec.is_constexpr && object != kNoConstexprObject &&
+			IsClassObjectType(parsed.type))
+			initializer = MaterializeConstexprObject(object, parsed.type);
+		if (IsClassObjectType(parsed.type) ||
+			!program_->bindings[binding].constant)
 		{
-			PublishBindingScalar(binding, ExpressionScalar(initializer));
+			const std::uint32_t variable = MakeDump(DUMP_VARIABLE,
+				parsed.type, VALUE_NONE, primary.name, binding);
+			dump_.Add(variable, initializer.node);
+			dump_.Add(root_, variable);
+			if (record.member_owner != kNoEntity)
+			{
+				if (static_member_storage_by_binding_.size() <= binding)
+					static_member_storage_by_binding_.resize(
+						static_cast<std::size_t>(binding) + 1, kNoDumpEdge);
+				static_member_storage_by_binding_[binding] = variable;
+			}
+			RegisterVariableLifetimeAndStorage(selected.owner, false, false,
+				variable, binding, parsed.type, 0, 0, 0,
+				HasConstantInitializerFact(initializer));
 		}
 	}
 	variable_template_instantiations_.Insert(key, binding);
@@ -1067,8 +1103,7 @@ void SemanticAnalyzer::ParseTemplateParametersWithDependentNames(
 					scope, std::string(), record.declarator != kNoNode);
 				record.value_type = record.declarator == kNoNode ? spec.type :
 					BuildDeclarator(record.declarator, spec.type, scope).type;
-				record.value_type =
-					program_->types.RemoveTopCv(record.value_type);
+				record.value_type = AdjustParameterType(record.value_type);
 				if (FunctionTemplateTypeIsDependent(record.value_type))
 				{
 					record.dependent_type = true;
@@ -1126,7 +1161,7 @@ TypeId SemanticAnalyzer::ResolveTemplateParameterType(
 	const SpecInfo spec = BuildSpecifiers(parameter.specifiers, parameter_scope,
 		std::string(), parameter.declarator != kNoNode);
 	if (CandidateSubstitutionFailed()) return kNoType;
-	const TypeId type = parameter.declarator == kNoNode ? spec.type :
+	TypeId type = parameter.declarator == kNoNode ? spec.type :
 		BuildDeclarator(parameter.declarator, spec.type, parameter_scope).type;
 	if (CandidateSubstitutionFailed()) return kNoType;
 	if (type == kNoType && CandidateSubstitutionActive())
@@ -1134,11 +1169,12 @@ TypeId SemanticAnalyzer::ResolveTemplateParameterType(
 		RecordCandidateSubstitutionFailure();
 		return kNoType;
 	}
+	type = AdjustParameterType(type);
 	if (!IsNonTypeTemplateParameterType(type) &&
 		!FunctionTemplateTypeIsDependent(type))
 		throw std::runtime_error(
 			"invalid non-type template parameter type");
-	return program_->types.RemoveTopCv(type);
+	return type;
 }
 
 void SemanticAnalyzer::BindTemplateArgument(ScopeId scope,
@@ -1271,8 +1307,13 @@ bool SemanticAnalyzer::AppendTemplateArgument(
 	argument.kind = parameter.kind;
 	const bool retained_default = default_argument &&
 		source_dependent_names != 0 &&
-		SyntaxUsesTemplateParameter(
-			*arena_, source, *source_dependent_names) &&
+		(SyntaxUsesTemplateParameter(
+			*arena_, source, *source_dependent_names) ||
+		 (parameter.kind == TEMPLATE_ARGUMENT_INTEGRAL &&
+		  (SyntaxUsesTemplateParameter(*arena_, parameter.specifiers,
+			*source_dependent_names) ||
+		   (parameter.declarator != kNoNode && SyntaxUsesTemplateParameter(
+			*arena_, parameter.declarator, *source_dependent_names))))) &&
 		!IsDirectTemplateParameterExpression(
 			source, *source_dependent_names);
 	if (parameter.kind == TEMPLATE_ARGUMENT_TYPE)
@@ -1306,17 +1347,18 @@ bool SemanticAnalyzer::AppendTemplateArgument(
 	}
 	else
 	{
-		argument.type = ResolveTemplateParameterType(parameter, parameter_scope);
-		if (CandidateSubstitutionFailed() || argument.type == kNoType)
-			return false;
 		if (retained_default)
 		{
+			argument.type = FunctionTemplateNondeducedTypeShape();
 			argument.dependent_parameter = kNondeducedTemplateParameter;
 			arguments->push_back(argument);
 			if (arguments->size() <= fixed)
 				BindTemplateArgument(parameter_scope, parameter, argument);
 			return true;
 		}
+		argument.type = ResolveTemplateParameterType(parameter, parameter_scope);
+		if (CandidateSubstitutionFailed() || argument.type == kNoType)
+			return false;
 		const bool dependent_target =
 			FunctionTemplateTypeIsDependent(argument.type);
 		ExpressionInfo expression;

@@ -412,6 +412,8 @@ struct BindingRecord
 		inline_function, virtual_function, pure_virtual, final_virtual,
 		override_specifier, weak_odr, object_output_root, emission_demanded;
 	bool explicit_instantiation_suppressed;
+	bool template_parameter_constant;
+	bool variable_template_specialization;
 	// A canonical callable specialization owns boundary exceptions that cannot
 	// be inferred from its result type alone.  Keeping this on the binding
 	// prevents one call site from mutating the ABI of every function returning

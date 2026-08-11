@@ -545,7 +545,13 @@ bool StaticInitializerLowering::Lower(const NamespaceObjectAction& action,
 		global->initializer_kind = Global::STRUCTURED_VALUE;
 		const std::size_t old_size = global->items.size();
 		if (AppendValue(action.type, action.initializer, &global->items))
+		{
+			const BindingRecord& binding = program_.bindings[action.object];
+			if (!thread_local_object && types_.IsClassObject(action.type) &&
+				binding.variable_template_specialization)
+				return false;
 			return true;
+		}
 		global->items.resize(old_size);
 		return false;
 	}

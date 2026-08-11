@@ -286,7 +286,7 @@ private:
 		identity.signature = kind == Symbol::FUNCTION_SYMBOL && !c_linkage ?
 			output_.identities.InternFunctionSignature(program_, binding.type,
 				identity_type_cache_) : kNoLowId;
-		identity.template_arguments = kind == Symbol::FUNCTION_SYMBOL ?
+		identity.template_arguments = kind == Symbol::FUNCTION_SYMBOL || binding.variable_template_specialization ?
 			output_.identities.InternBindingTemplateArguments(program_, binding,
 				identity_type_cache_) : kNoLowId;
 		identity.owner_template_arguments = class_template_member ?
@@ -347,9 +347,9 @@ private:
 			const std::string entry_name = binding.constructor_base_entry ?
 				name + "__base_entry" : binding.destructor_base_entry ?
 				name + "__base_entry" : name;
-			function_symbols_[record.binding] = InternSymbol(record,
-				Symbol::FUNCTION_SYMBOL, entry_name,
+			function_symbols_[record.binding] = InternSymbol(record, Symbol::FUNCTION_SYMBOL, entry_name,
 				pa15_lowering_abi::MangleFunction(program_, record));
+			pa15_lowering_abi::ApplyLifecycleSymbolMetadata(program_, record, &output_, function_symbols_[record.binding]);
 		}
 		if (record.kind == DUMP_FUNCTION_DEFINITION)
 		{
@@ -2419,7 +2419,7 @@ private:
 		const Operand storage = StorageFor(variable.binding,
 			LowerStorageType(variable.type));
 		if (LowerClassValueInitialization(variable, initializer, storage)) return;
-		if (!lowering_namespace_object_ && AggregateHasLeaf(initializer))
+		if (NeedsAggregateStorageAddress(lowering_namespace_object_, AggregateHasLeaf(initializer), program_.bindings[variable.binding]))
 			(void)AddressOfStorage(storage);
 		AggregatePath path;
 		LowerAggregateActions(initializer, storage, &path, Operand());

@@ -1344,6 +1344,11 @@ bool SemanticAnalyzer::ShouldDemandResolvedCall(BindingId binding,
 void SemanticAnalyzer::PublishConstantVariableInitializer(BindingId binding,
 	TypeId type, const SpecInfo& spec, const ExpressionInfo& initializer)
 {
+	program_->bindings[binding].template_parameter_constant =
+		dump_.nodes[initializer.node].template_parameter_constant;
+	program_->bindings[program_->bindings[binding].canonical].
+		template_parameter_constant =
+		program_->bindings[binding].template_parameter_constant;
 	RecordStaticConstantInitializer(binding, initializer.node);
 	const TypeId object_type_id = program_->types.RemoveTopCv(
 		EffectiveType(type));

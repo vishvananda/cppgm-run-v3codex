@@ -221,6 +221,9 @@ private:
 		bool definition);
 	bool AnalyzeExplicitFunctionInstantiation(NodeId target, ScopeId scope,
 		bool definition);
+	bool AnalyzeExplicitVariableInstantiation(NodeId target, ScopeId scope,
+		bool definition);
+	bool ConstructorSubobjectsAreEmpty(BindingId constructor);
 	void ValidateRetainedTemplateDefinition(NodeId target, ScopeId scope,
 		const std::vector<TemplateParameter>& parameters);
 	void RecordRetainedCallLookup(NodeId callee, ScopeId scope,

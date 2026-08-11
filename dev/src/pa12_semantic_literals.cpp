@@ -653,6 +653,79 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 		if (CandidateSubstitutionActive()) return CandidateSubstitutionFailure();
 		throw std::runtime_error("unknown expression name: " + spelling);
 	}
+	if (program_->bindings[found.ordinary].kind == BIND_VARIABLE &&
+		program_->bindings[found.ordinary].member_owner != kNoEntity &&
+		!program_->bindings[found.ordinary].non_static_data_member &&
+		!program_->bindings[found.ordinary].constant &&
+		(constant_expression_required_depth_ != 0 || unevaluated_depth_ != 0) &&
+		(IsIntegral(program_->bindings[found.ordinary].type, true) ||
+		 IsFloating(program_->bindings[found.ordinary].type)))
+	{
+		for (EntityId owner = program_->bindings[found.ordinary].member_owner;
+			owner != kNoEntity; owner = program_->entities[owner].enclosing_class)
+		{
+			if (owner >= class_template_pattern_by_entity_.size() ||
+				class_template_pattern_by_entity_[owner] == kNoDumpEdge) continue;
+			const BindingId specialization =
+				program_->entities[owner].declaration;
+			DemandClassTemplateMemberDefinitions(owner);
+			if (specialization != kNoBinding && specialization <
+				class_template_member_definition_demand_states_.size())
+				ApplyDemandedClassTemplateMemberDefinitions(specialization);
+			break;
+		}
+		found = syntax != kNoNode &&
+			FindChild(syntax, "structured-type-name") != kNoNode ?
+			LookupStructuredName(syntax, scope, LOOKUP_ORDINARY) :
+			LookupSpelling(scope, spelling, LOOKUP_ORDINARY);
+		if (found.ordinary == kNoBinding)
+			throw std::runtime_error(
+				"static member definition replay lost its declaration");
+	}
+	std::size_t qualified_component_count = 0;
+	std::size_t first_template_component =
+		std::numeric_limits<std::size_t>::max();
+	const NodeId structured_name = syntax == kNoNode ? kNoNode :
+		FindChild(syntax, "structured-type-name");
+	for (std::uint32_t edge = structured_name == kNoNode ? kNoEdge :
+		arena_->FirstEdge(structured_name); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId component = arena_->EdgeChild(edge);
+		if (arena_->IsTag(component, "name-component"))
+		{
+			if (first_template_component ==
+					std::numeric_limits<std::size_t>::max() &&
+				FindChild(component, "template-type-argument-list") != kNoNode)
+				first_template_component = qualified_component_count;
+			++qualified_component_count;
+		}
+	}
+	const bool intermediate_template_qualifier =
+		first_template_component != std::numeric_limits<std::size_t>::max() &&
+		first_template_component + 2 < qualified_component_count;
+	if (intermediate_template_qualifier &&
+		program_->bindings[found.ordinary].kind == BIND_VARIABLE &&
+		program_->bindings[found.ordinary].member_owner != kNoEntity &&
+		!program_->bindings[found.ordinary].non_static_data_member &&
+		program_->bindings[found.ordinary].constant &&
+		(IsIntegral(program_->bindings[found.ordinary].type, true) ||
+		 IsFloating(program_->bindings[found.ordinary].type)))
+	{
+		for (EntityId owner = program_->bindings[found.ordinary].member_owner;
+			owner != kNoEntity; owner = program_->entities[owner].enclosing_class)
+		{
+			if (owner >= class_template_pattern_by_entity_.size() ||
+				class_template_pattern_by_entity_[owner] == kNoDumpEdge) continue;
+			const BindingId specialization =
+				program_->entities[owner].declaration;
+			DemandClassTemplateMemberDefinitions(owner);
+			if (specialization != kNoBinding && specialization <
+				class_template_member_definition_demand_states_.size())
+				ApplyDemandedClassTemplateMemberDefinitions(specialization);
+			break;
+		}
+	}
 	const BindingRecord& binding = program_->bindings[found.ordinary];
 	if (found.ordinary < variable_template_bindings_.size() &&
 		variable_template_bindings_[found.ordinary] != 0 && binding.constant &&
@@ -691,8 +764,16 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 	if (constant_address != kNoConstexprAddress &&
 		constant_expression_required_depth_ == 0 &&
 		(target == kNoType || !program_->types.IsReference(target)))
-		return ApplyTarget(MaterializeConstexprAddress(
-			constant_address, binding.type), target);
+	{
+		ExpressionInfo result = MaterializeConstexprAddress(
+			constant_address, binding.type);
+		const ConstexprAddressValue* address =
+			ConstexprAddressAt(constant_address);
+		result.indirect_constant_designator =
+			binding.kind == BIND_PARAMETER ||
+			(address && address->kind == CONSTEXPR_ADDRESS_FUNCTION);
+		return ApplyTarget(result, target);
+	}
 	const std::uint32_t injected_fact =
 		found.ordinary < injected_fact_by_binding_.size() ?
 		injected_fact_by_binding_[found.ordinary] : kNoDumpEdge;
@@ -721,6 +802,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 	result.binding = value_binding;
 	result.node = MakeDump(DUMP_ID_EXPRESSION, result.type,
 		result.category, program_->names.Intern(spelling), value_binding);
+	dump_.nodes[result.node].template_parameter_constant =
+		(binding.kind == BIND_PARAMETER && binding.constant) ||
+		binding.template_parameter_constant;
 	if (binding.constant)
 		SetExpressionBindingConstant(&result, found.ordinary);
 	dump_.nodes[result.node].constant = result.constant &&
@@ -745,7 +829,11 @@ TypeId SemanticAnalyzer::DecltypeType(NodeId node, ScopeId scope)
 	}
 	const bool unparenthesized_member = !parenthesized &&
 		arena_->IsTag(node, "member-expression");
-	if (arena_->IsTag(node, "id-expression"))
+	const bool unparenthesized_id = !parenthesized &&
+		arena_->IsTag(node, "id-expression");
+	if (arena_->IsTag(node, "id-expression") &&
+		FindChild(node, "structured-type-name") == kNoNode &&
+		arena_->Payload(node).find("::") == std::string::npos)
 	{
 		const LookupResult found = LookupSpelling(scope,
 			arena_->Payload(node), LOOKUP_ORDINARY);
@@ -773,7 +861,8 @@ TypeId SemanticAnalyzer::DecltypeType(NodeId node, ScopeId scope)
 	--decltype_operand_depth_;
 	--unevaluated_depth_;
 	if (CandidateSubstitutionFailed()) return kNoType;
-	if (unparenthesized_member && expression.binding != kNoBinding)
+	if ((unparenthesized_member || unparenthesized_id) &&
+		expression.binding != kNoBinding)
 		return program_->bindings[expression.binding].type;
 	if (expression.category == VALUE_LVALUE)
 		return program_->types.Reference(TYPE_LVALUE_REFERENCE,

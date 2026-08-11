@@ -159,6 +159,7 @@ struct TypeNode
   size_t expression = NO_ID;
   size_t context = NO_ID;
   size_t discriminator = NO_ID;
+  size_t substitution = NO_ID;
   size_t index = 0;
   AbiArrayBoundKind bound_kind = ABI_ARRAY_BOUND_VALUE;
   bool is_const = false;
@@ -176,6 +177,7 @@ struct TypeNode
     return kind == other.kind && symbol == other.symbol && path == other.path
            && expression == other.expression && context == other.context
            && discriminator == other.discriminator
+           && substitution == other.substitution
            && index == other.index && bound_kind == other.bound_kind
            && is_const == other.is_const && is_volatile == other.is_volatile
            && variadic == other.variadic && substitutable == other.substitutable
@@ -193,6 +195,7 @@ size_t type_hash(const TypeNode & type)
   hash = mix_hash(hash, type.expression);
   hash = mix_hash(hash, type.context);
   hash = mix_hash(hash, type.discriminator);
+  hash = mix_hash(hash, type.substitution);
   hash = mix_hash(hash, type.index);
   hash = mix_hash(hash, static_cast<size_t>(type.bound_kind));
   hash = mix_hash(hash, type.is_const | (type.is_volatile << 1) | (type.variadic << 2)
@@ -391,6 +394,7 @@ public:
       if(!source.expression_ref.empty()) node.expression = resolve_expression_ref(source.expression_ref);
       if(!source.context_ref.empty()) node.context = strings.intern(source.context_ref);
       if(!source.discriminator.empty()) node.discriminator = strings.intern(source.discriminator);
+      if(!source.substitution.empty()) node.substitution = strings.intern(source.substitution);
       node.index = source.index;
       node.bound_kind = source.array_bound.kind;
       if(!source.array_bound.value.empty()) node.symbol = strings.intern(source.array_bound.value);
@@ -949,7 +953,9 @@ private:
         output_ += template_parameter(type.index);
         break;
       }
-      const SubstitutionKey key = type.kind == ABI_TYPE_NAMED && type.tags.empty()
+      const SubstitutionKey key = type.substitution != NO_ID
+                                    ? SubstitutionKey{SUBSTITUTION_EXPLICIT, type.substitution}
+                                    : type.kind == ABI_TYPE_NAMED && type.tags.empty()
                                     ? SubstitutionKey{SUBSTITUTION_PATH, type.path}
                                     : SubstitutionKey{SUBSTITUTION_TYPE, id};
       if(substitutions_.emit_if_known(key, output_)) break;
@@ -1099,7 +1105,9 @@ private:
   void encode_prefix_type(size_t id)
   {
     const TypeNode & type = graph_.type(id);
-    const SubstitutionKey key = type.kind == ABI_TYPE_NAMED && type.tags.empty()
+    const SubstitutionKey key = type.substitution != NO_ID
+                                  ? SubstitutionKey{SUBSTITUTION_EXPLICIT, type.substitution}
+                                  : type.kind == ABI_TYPE_NAMED && type.tags.empty()
                                   ? SubstitutionKey{SUBSTITUTION_PATH, type.path}
                                   : SubstitutionKey{SUBSTITUTION_TYPE, id};
     if(substitutions_.emit_if_known(key, output_)) return;

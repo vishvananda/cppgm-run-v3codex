@@ -406,6 +406,7 @@ std::size_t TypedStorageBytes(const TypedProgram& program)
 		program.declarations.capacity() * sizeof(FunctionDeclaration) +
 		program.globals.capacity() * sizeof(Global) +
 		program.functions.capacity() * sizeof(Function) +
+		program.object_aliases.capacity() * sizeof(ObjectAlias) +
 		program.call_arguments.capacity() * sizeof(Operand) +
 		program.call_argument_references.capacity() * sizeof(std::uint8_t) +
 		program.switch_case_values.capacity() * sizeof(std::int64_t) +
@@ -417,6 +418,8 @@ std::size_t TypedStorageBytes(const TypedProgram& program)
 	for (std::size_t i = 0; i < program.symbols.size(); ++i)
 		bytes += program.symbols[i].name.capacity() +
 			program.symbols[i].object_name.capacity();
+	for (std::size_t i = 0; i < program.object_aliases.size(); ++i)
+		bytes += program.object_aliases[i].object_name.capacity();
 	for (std::size_t i = 0; i < program.globals.size(); ++i)
 		bytes += program.globals[i].items.capacity() * sizeof(Global::DataItem);
 	for (std::size_t i = 0; i < program.declarations.size(); ++i)

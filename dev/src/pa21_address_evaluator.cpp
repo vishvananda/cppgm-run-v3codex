@@ -235,6 +235,7 @@ bool SemanticAnalyzer::TryAnalyzeConstexprIndirectCall(ExpressionInfo* callee,
 	const std::vector<CallConversionFact>* argument_conversions)
 {
 	if (unevaluated_depth_ != 0) return false;
+	if (callee->indirect_constant_designator) return false;
 	std::uint32_t callable_address = ExpressionAddress(*callee);
 	if (callable_address == kNoConstexprAddress)
 		callable_address = callee->constexpr_lvalue_address;

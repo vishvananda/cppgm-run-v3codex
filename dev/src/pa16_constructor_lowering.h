@@ -155,6 +155,8 @@ protected:
 			derived.IsTrivialConstructorAction(action.type, constructor);
 		const bool value_initialization =
 			derived.arena_.nodes[children[0]].value_initialization;
+		if (derived.arena_.nodes[children[0]].elide_empty_constructor)
+			return;
 		const EntityId base = derived.ClassEntity(action.type);
 		const bool empty_base = base != kNoEntity &&
 			derived.program_.entities[base].empty_class;

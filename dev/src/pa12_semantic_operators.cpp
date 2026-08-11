@@ -120,6 +120,31 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 				throw std::runtime_error(
 					"ambiguous function template in sizeof expression");
 		}
+		if (measured == kNoType && name != kNoNode &&
+			arena_->IsTag(name, "type-name"))
+		{
+			const NodeId structure = FindChild(name, "structured-type-name");
+			const LookupResult value = structure != kNoNode ?
+				LookupStructuredName(name, scope, LOOKUP_ORDINARY) :
+				LookupSpelling(scope, PayloadSource(name), LOOKUP_ORDINARY);
+			if (value.ordinary != kNoBinding)
+			{
+				measured = EffectiveType(
+					program_->bindings[value.ordinary].type);
+				for (std::uint32_t edge = declarator == kNoNode ? kNoEdge :
+					arena_->FirstEdge(declarator); edge != kNoEdge;
+					edge = arena_->NextEdge(edge))
+					if (arena_->IsTag(arena_->EdgeChild(edge), "array-suffix"))
+					{
+						const TypeRecord array = program_->types.Get(
+							program_->types.RemoveTopCv(measured));
+						if (array.kind != TYPE_ARRAY)
+							throw std::runtime_error(
+								"sizeof subscript recovery requires an array");
+						measured = array.child;
+					}
+			}
+		}
 		if (measured == kNoType) measured = BuildTypeId(operand, scope);
 	}
 	else if (arena_->IsTag(operand, "id-expression"))

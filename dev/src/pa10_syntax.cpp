@@ -565,6 +565,7 @@ private:
 		if (!AtIdentifier()) return false;
 		if (AtOffset(1, OP_LBRACE)) return false;
 		const TextId name = tokens_[position_].spelling;
+		if (HasNameFact(name, kActiveNonTypeParameter)) return false;
 		if (!HasNameFact(name, kKnownType) && AtOffset(1, OP_LPAREN)) return false;
 		if (HasNameFact(name, kKnownTemplate) &&
 			!HasNameFact(name, kActiveNonTypeParameter)) return true;
@@ -2944,7 +2945,6 @@ NodeId Parser::ParseDeclaration(bool in_class)
 }
 
 }
-
 namespace pa10_syntax_detail
 {
 void RunSyntaxTranslationUnit(const std::string& path,

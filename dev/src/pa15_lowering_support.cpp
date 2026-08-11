@@ -9,6 +9,13 @@ namespace cppgm
 namespace pa15_lowering_support
 {
 
+bool NeedsAggregateStorageAddress(bool namespace_object, bool has_leaf,
+	const pa11::BindingRecord& binding)
+{
+	return (!namespace_object && has_leaf) ||
+		(namespace_object && binding.variable_template_specialization);
+}
+
 bool IsNullPointerLiteralCast(const pa11::Program& program,
 	const pa12_semantic_detail::DumpNode& source, pa11::TypeId target)
 {

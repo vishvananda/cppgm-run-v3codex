@@ -102,6 +102,7 @@ protected:
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
 		const DumpNode& source_node = derived.arena_.nodes[node];
+		if (source_node.template_parameter_constant) return false;
 		if (!selected || source_node.kind != DUMP_LITERAL) return selected;
 		const LowType source = derived.LowerExpressionType(source_node.type);
 		if (!IsInteger(source) || !IsInteger(target)) return selected;

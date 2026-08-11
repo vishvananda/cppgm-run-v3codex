@@ -473,9 +473,10 @@ LookupResult SemanticAnalyzer::LookupStructuredName(NodeId syntax,
 			arena_->SemanticPayloadId(component_node));
 		const NodeId argument_list = FindChild(
 			component_node, "template-type-argument-list");
-		const bool terminal_function_template = terminal &&
-			kind == LOOKUP_FUNCTION_TEMPLATE;
-		const LookupKind component_kind = terminal_function_template ? kind :
+		const bool terminal_template = terminal &&
+			(kind == LOOKUP_FUNCTION_TEMPLATE ||
+			 kind == LOOKUP_VARIABLE_TEMPLATE);
+		const LookupKind component_kind = terminal_template ? kind :
 			argument_list != kNoNode ? LOOKUP_TYPE :
 			terminal ? kind : LOOKUP_SCOPE_CARRIER;
 		LookupResult found;
@@ -512,7 +513,7 @@ LookupResult SemanticAnalyzer::LookupStructuredName(NodeId syntax,
 			!CanAccessMember(found.type_declaration, found.naming_class))
 			throw std::runtime_error("inaccessible qualified type");
 
-		if (argument_list != kNoNode && !terminal_function_template)
+		if (argument_list != kNoNode && !terminal_template)
 		{
 			std::vector<NodeId> argument_syntax;
 			for (std::uint32_t edge = arena_->FirstEdge(argument_list);
@@ -1794,6 +1795,18 @@ void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
 		program_->entities[entity].deferred_template_completion = false;
 	class_template_specialization_states_[binding] = 2;
 	ApplyClassTemplateMemberDefinitions(index, binding, arguments);
+	bool retained_value_storage = false;
+	for (std::size_t member = 0;
+		member < pattern.demanded_member_definitions.size(); ++member)
+		if (pattern.demanded_member_definitions[member].value_use_requires_storage)
+		{
+			retained_value_storage = true;
+			break;
+		}
+	if (!CandidateSubstitutionActive() && retained_value_storage &&
+		entity < entity_conversion_functions_.size() &&
+		!entity_conversion_functions_[entity].empty())
+		DemandClassTemplateMemberDefinitions(entity);
 	QueueClassTemplateMemberDefinitions(index, binding);
 }
 
@@ -2845,6 +2858,8 @@ void SemanticAnalyzer::AnalyzeExplicitInstantiation(NodeId node,
 		!arena_->IsTag(target, "class-specifier"))
 	{
 		if (AnalyzeExplicitFunctionInstantiation(target, scope, definition))
+			return;
+		if (AnalyzeExplicitVariableInstantiation(target, scope, definition))
 			return;
 		throw std::runtime_error(
 			"explicit instantiation target is not a supported template");

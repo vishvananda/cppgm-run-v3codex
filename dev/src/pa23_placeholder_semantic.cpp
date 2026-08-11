@@ -218,6 +218,11 @@ void SemanticAnalyzer::PublishVariableInitializer(BindingId binding,
 	TypeId type, const SpecInfo& spec, const ExpressionInfo& initializer,
 	bool preserve_runtime_recipe)
 {
+	program_->bindings[binding].template_parameter_constant =
+		dump_.nodes[initializer.node].template_parameter_constant;
+	program_->bindings[program_->bindings[binding].canonical].
+		template_parameter_constant =
+		program_->bindings[binding].template_parameter_constant;
 	if (!(preserve_runtime_recipe && program_->types.IsReference(type)))
 		PublishConstantVariableInitializer(binding, type, spec, initializer);
 	if (!preserve_runtime_recipe && spec.is_constexpr &&

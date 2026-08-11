@@ -451,6 +451,8 @@ void WriteSymbolMetadata(std::ostream& output, const Symbol& symbol,
 	if (!symbol.object_name.empty()) output << ", object=" << symbol.object_name;
 	if (entry) output << ", keep_alias=yes";
 	if (symbol.object_output_root) output << ", object_root=yes";
+	if (function && symbol.trivial_lifecycle)
+		output << ", trivial_lifecycle=yes";
 	output << ']';
 }
 
@@ -575,6 +577,16 @@ void RenderProgram(const TypedProgram& program, std::ostream& output)
 			}
 		}
 		output << "}\n";
+		wrote = true;
+	}
+	for (std::size_t i = 0; i < program.object_aliases.size(); ++i)
+	{
+		const ObjectAlias& alias = program.object_aliases[i];
+		if (alias.target >= program.symbols.size())
+			throw std::logic_error("invalid PA15 object alias target");
+		if (wrote) output << '\n';
+		output << "alias object " << alias.object_name << " = @" <<
+			program.symbols[alias.target].name << '\n';
 		wrote = true;
 	}
 }

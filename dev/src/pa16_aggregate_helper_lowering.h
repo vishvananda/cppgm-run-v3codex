@@ -232,8 +232,9 @@ protected:
 			else if (reference)
 				arguments.Push(derived.AddressOfStorage(
 					derived.LowerStorage(children[i])));
-			else arguments.Push(derived.Convert(
-				derived.LowerValue(children[i]), expected));
+			else arguments.Push(expected.kind == LOW_OBJECT ?
+				derived.Convert(derived.LowerValue(children[i]), expected) :
+				derived.LowerInitializerConvertedValue(children[i], expected));
 			references.Push(reference ? 1 : 0);
 		}
 		derived.output_.symbols[

@@ -1,6 +1,7 @@
 #include "pa15_lowering_abi.h"
 
 #include "abi_mangle.h"
+#include "pa15_lowir_model.h"
 
 #include <stdexcept>
 #include <string>
@@ -10,6 +11,32 @@ namespace cppgm
 {
 namespace pa15_lowering_abi
 {
+
+void ApplyLifecycleSymbolMetadata(const pa11::Program& program,
+	const pa12_semantic_detail::DumpNode& node,
+	pa15_lowir_detail::TypedProgram* output,
+	pa15_lowir_detail::SymbolId symbol)
+{
+	using namespace pa11;
+	using namespace pa15_lowir_detail;
+	const BindingRecord& binding = program.bindings[node.binding];
+	const TypeRecord& function = program.types.Get(node.type);
+	if (function.kind != TYPE_FUNCTION)
+		throw std::logic_error("lifecycle ABI metadata has non-function type");
+	const bool trivial_constructor = binding.constructor &&
+		!binding.constructor_base_entry && binding.member_owner != kNoEntity &&
+		function.parameter_count == 1 &&
+		program.entities[binding.member_owner].trivial_default_constructor;
+	const bool trivial_destructor = binding.destructor &&
+		binding.member_owner != kNoEntity && function.parameter_count == 1 &&
+		program.entities[binding.member_owner].trivial_destructor;
+	Symbol& record = output->symbols[symbol];
+	record.trivial_lifecycle = trivial_constructor || trivial_destructor;
+	if (!trivial_constructor) return;
+	const std::string alias = MangleFunction(program, node, true);
+	if (!alias.empty() && alias != record.object_name)
+		output->object_aliases.push_back(ObjectAlias(alias, symbol));
+}
 
 namespace
 {
@@ -296,6 +323,8 @@ public:
 			else
 			{
 				result.kind = ABI_TYPE_TEMPLATE_SPECIALIZATION;
+				result.substitution = "__cppgm_abi_class_" +
+					std::to_string(record->entity);
 				std::vector<NameId> path;
 				program_.BuildEmissionPath(entity.owner, entity.identity_name, &path);
 				for (std::size_t i = 0; i < path.size(); ++i)
@@ -354,7 +383,7 @@ public:
 
 bool AppendClassTemplateOwner(const pa11::Program& program,
 	const pa11::BindingRecord& binding, AbiFactBuilder* builder,
-	abi_mangle::AbiFactCase* facts)
+	abi_mangle::AbiFactCase* facts, bool retain_complete_substitution)
 {
 	using namespace abi_mangle;
 	using namespace pa11;
@@ -379,7 +408,9 @@ bool AppendClassTemplateOwner(const pa11::Program& program,
 		if (i + 1 == path.size())
 		{
 			component.function.kind = ABI_FUNCTION_RECORD_NAME_TEMPLATE;
-			component.function.complete_substitution = "-";
+			component.function.complete_substitution =
+				retain_complete_substitution ? "__cppgm_abi_class_" +
+					std::to_string(binding.member_owner) : "-";
 			component.function.standard_substitution = "-";
 			const std::size_t pack = entity.template_argument_pack_begin;
 			const std::size_t fixed = pack == kNoTemplateParameter ?
@@ -532,7 +563,8 @@ void ApplyBuiltinParameterMetadata(pa15_lowir_detail::Parameter* parameter,
 }
 
 std::string MangleFunction(const pa11::Program& program,
-	const pa12_semantic_detail::DumpNode& node)
+	const pa12_semantic_detail::DumpNode& node,
+	bool force_constructor_base_entry)
 {
 	using namespace abi_mangle;
 	using namespace pa11;
@@ -604,7 +636,7 @@ std::string MangleFunction(const pa11::Program& program,
 		target.target.function.qualified_name = qualified;
 	file.cases[0].records.push_back(target);
 	if (structured_class_owner &&
-		!AppendClassTemplateOwner(program, binding, &facts, &file.cases[0]))
+		!AppendClassTemplateOwner(program, binding, &facts, &file.cases[0], true))
 		throw std::logic_error("class template ABI owner was lost");
 	const TypeRecord& function_type = program.types.Get(node.type);
 	const TypeId* parameters = program.types.Parameters(node.type);
@@ -697,7 +729,8 @@ std::string MangleFunction(const pa11::Program& program,
 		AbiFactRecord terminal;
 		terminal.set_kind(ABI_FACT_RECORD_FUNCTION);
 		terminal.function.kind = ABI_FUNCTION_RECORD_TERMINAL;
-		terminal.function.terminal = binding.constructor_base_entry ?
+		terminal.function.terminal =
+			binding.constructor_base_entry || force_constructor_base_entry ?
 			"constructor-base" : "constructor-complete";
 		file.cases[0].records.push_back(terminal);
 	}
@@ -748,6 +781,8 @@ std::string MangleVariable(const pa11::Program& program,
 	AbiFactBuilder facts(program, file.cases[0]);
 	const bool structured_class_owner = binding.member_owner != kNoEntity &&
 		program.entities[binding.member_owner].template_argument_count != 0;
+	const bool member_variable_template = structured_class_owner &&
+		binding.variable_template_specialization;
 	AbiFactRecord target;
 	target.set_kind(ABI_FACT_RECORD_TARGET);
 	target.target.kind = ABI_TARGET_FACT_VARIABLE;
@@ -763,13 +798,33 @@ std::string MangleVariable(const pa11::Program& program,
 	file.cases[0].records.push_back(target);
 	if (structured_class_owner)
 	{
-		if (!AppendClassTemplateOwner(program, binding, &facts, &file.cases[0]))
+		if (!AppendClassTemplateOwner(
+			program, binding, &facts, &file.cases[0], false))
 			throw std::logic_error("class template ABI variable owner was lost");
 		AbiFactRecord member;
 		member.set_kind(ABI_FACT_RECORD_FUNCTION);
 		member.function.kind = ABI_FUNCTION_RECORD_NAME_SOURCE;
 		member.function.name = program.names.Get(binding.name);
 		file.cases[0].records.push_back(member);
+	}
+	if (member_variable_template && binding.template_argument_count != 0)
+	{
+		const std::size_t first = binding.template_argument_begin;
+		const std::size_t count = binding.template_argument_count;
+		if (first > program.template_arguments.size() ||
+			count > program.template_arguments.size() - first)
+			throw std::logic_error(
+				"variable template argument range is invalid during mangling");
+		for (std::size_t i = 0; i < count; ++i)
+		{
+			const std::string argument_id = facts.AddTemplateArgument(first + i);
+			AbiFactRecord argument;
+			argument.set_kind(ABI_FACT_RECORD_FUNCTION);
+			argument.function.kind =
+				ABI_FUNCTION_RECORD_FUNCTION_TEMPLATE_ARGUMENT;
+			argument.function.argument_refs.push_back(argument_id);
+			file.cases[0].records.push_back(argument);
+		}
 	}
 	std::string result = mangle_fact_file(file);
 	if (!result.empty() && result[result.size() - 1] == '\n')

@@ -935,7 +935,6 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 	completed_owner.empty_class = empty_class;
 	completed_owner.layout_complete = true;
 }
-
 BindingId SemanticAnalyzer::EnsureImplicitConstructor(EntityId entity)
 {
 	if (entity >= implicit_constructor_by_entity_.size())
@@ -955,6 +954,7 @@ BindingId SemanticAnalyzer::EnsureImplicitConstructor(EntityId entity)
 	BindingRecord& binding = program_->bindings[constructor];
 	binding.member_owner = entity;
 	binding.constructor = true;
+	binding.overload_ordinal = 1;
 	FunctionInfo& info = GetMutableFunction(constructor);
 	info.member_owner = owner.type;
 	info.constructor = true;
@@ -2674,8 +2674,8 @@ void SemanticAnalyzer::EnsureStaticMemberStorage(BindingId member, bool constant
 	if (static_member_storage_by_binding_.size() <= member)
 		static_member_storage_by_binding_.resize(
 			static_cast<std::size_t>(member) + 1, kNoDumpEdge);
-	if (static_member_storage_by_binding_[member] != kNoDumpEdge) return;
 	DemandStaticConstantInitializerDependencies(member);
+	if (static_member_storage_by_binding_[member] != kNoDumpEdge) return;
 	if (root_ == kNoDumpEdge)
 		throw std::logic_error("static member storage has no translation unit");
 	const std::uint32_t declaration = MakeDump(DUMP_VARIABLE,

@@ -203,6 +203,15 @@ private:
 	std::vector<std::size_t> values_;
 };
 
+struct ObjectAlias
+{
+	std::string object_name;
+	SymbolId target;
+
+	ObjectAlias(const std::string& object_name_value, SymbolId target_value)
+		: object_name(object_name_value), target(target_value) {}
+};
+
 struct TypedProgram
 {
 	std::vector<Symbol> symbols;
@@ -210,6 +219,7 @@ struct TypedProgram
 	std::vector<FunctionDeclaration> declarations;
 	std::vector<Global> globals;
 	std::vector<Function> functions;
+	std::vector<ObjectAlias> object_aliases;
 	std::vector<Operand> call_arguments;
 	std::vector<std::uint8_t> call_argument_references;
 	std::vector<std::int64_t> switch_case_values;

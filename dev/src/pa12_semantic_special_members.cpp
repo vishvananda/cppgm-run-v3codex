@@ -1214,8 +1214,10 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 	{
 		ValidateConstexprConstructorDefinition(info);
 		program_->entities[entity].has_user_provided_constructor = true;
-		if ((defer_demand || inline_specifier) &&
-			program_->entities[entity].direct_base == kNoEntity)
+		bool shared_base_entry = program_->entities[entity].direct_base == kNoEntity;
+		if (!shared_base_entry && (defer_demand || inline_specifier))
+			shared_base_entry = ConstructorSubobjectsAreEmpty(special);
+		if ((defer_demand || inline_specifier) && shared_base_entry)
 		{
 			if (constructor_base_entry_by_binding_.size() <= special)
 				constructor_base_entry_by_binding_.resize(

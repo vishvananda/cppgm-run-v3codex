@@ -116,6 +116,7 @@ struct DumpNode
 	bool integer_narrowing_conversion;
 	bool enum_arithmetic_conversion;
 	bool template_layout_constant;
+	bool template_parameter_constant;
 	bool boolean_conversion;
 	bool user_conversion_call;
 	bool explicit_user_conversion_call;
@@ -164,6 +165,7 @@ struct DumpNode
 		  target_typed_scalar_immediate(false),
 		  integer_narrowing_conversion(false),
 		  enum_arithmetic_conversion(false), template_layout_constant(false),
+		  template_parameter_constant(false),
 		  boolean_conversion(false), user_conversion_call(false),
 		  explicit_user_conversion_call(false),
 		  allocation_may_return_null(false),
@@ -214,6 +216,8 @@ public:
 		DumpNode& owner = nodes[parent];
 		owner.template_layout_constant = owner.template_layout_constant ||
 			nodes[child].template_layout_constant;
+		owner.template_parameter_constant = owner.template_parameter_constant ||
+			nodes[child].template_parameter_constant;
 		owner.contains_temporary_object = owner.contains_temporary_object ||
 			nodes[child].contains_temporary_object;
 		if (owner.first_edge == kNoDumpEdge) owner.first_edge = edge;
@@ -421,6 +425,7 @@ struct ExpressionInfo
 	std::uint32_t constexpr_object, constexpr_complete_object;
 	std::uint32_t constexpr_address, constexpr_lvalue_address;
 	bool integer_literal_zero;
+	bool indirect_constant_designator;
 	std::uint32_t string_unit_begin;
 	std::uint32_t string_unit_count;
 
@@ -434,7 +439,8 @@ struct ExpressionInfo
 		  constexpr_complete_object(kNoConstexprObject),
 		  constexpr_address(kNoConstexprAddress),
 		  constexpr_lvalue_address(kNoConstexprAddress),
-		  integer_literal_zero(false), string_unit_begin(kNoDumpEdge),
+		  integer_literal_zero(false), indirect_constant_designator(false),
+		  string_unit_begin(kNoDumpEdge),
 		  string_unit_count(0) {}
 };
 
