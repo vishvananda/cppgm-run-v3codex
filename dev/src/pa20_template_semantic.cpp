@@ -1295,7 +1295,7 @@ bool SemanticAnalyzer::AppendTemplateArgument(
 	const std::vector<TemplateParameter>& parameters, NodeId source,
 	ScopeId source_scope, ScopeId parameter_scope,
 	const std::unordered_set<NameId>* source_dependent_names,
-	bool default_argument, bool has_pack, std::size_t fixed,
+	bool has_pack, std::size_t fixed,
 	std::vector<TemplateArgument>* arguments)
 {
 	if (arguments->size() >= fixed && !has_pack) return false;
@@ -1305,8 +1305,7 @@ bool SemanticAnalyzer::AppendTemplateArgument(
 		throw std::runtime_error("empty template argument");
 	TemplateArgument argument;
 	argument.kind = parameter.kind;
-	const bool retained_default = default_argument &&
-		source_dependent_names != 0 &&
+	const bool retained_dependent = source_dependent_names != 0 &&
 		(SyntaxUsesTemplateParameter(
 			*arena_, source, *source_dependent_names) ||
 		 (parameter.kind == TEMPLATE_ARGUMENT_INTEGRAL &&
@@ -1340,14 +1339,14 @@ bool SemanticAnalyzer::AppendTemplateArgument(
 		if (!BuildTemplateTemplateArgument(
 			source, source_scope, parameter_scope, parameter, &argument))
 		{
-			if (!retained_default) return false;
+			if (!retained_dependent) return false;
 			argument.type = ClassTemplateNondeducedTypeShape();
 			argument.dependent_parameter = kNondeducedTemplateParameter;
 		}
 	}
 	else
 	{
-		if (retained_default)
+		if (retained_dependent)
 		{
 			argument.type = FunctionTemplateNondeducedTypeShape();
 			argument.dependent_parameter = kNondeducedTemplateParameter;
@@ -1521,12 +1520,10 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 		}
 	};
 	const auto append_argument = [&](NodeId source, ScopeId source_scope,
-		const std::unordered_set<NameId>* source_dependent_names,
-		bool default_argument) -> bool
+		const std::unordered_set<NameId>* source_dependent_names) -> bool
 	{
 		return AppendTemplateArgument(parameters, source, source_scope,
-			parameter_scope, source_dependent_names, default_argument,
-			has_pack, fixed, arguments);
+			parameter_scope, source_dependent_names, has_pack, fixed, arguments);
 	};
 	for (std::size_t i = 0; i < syntax.size(); ++i)
 	{
@@ -1541,7 +1538,7 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 			{
 				if (CandidateSubstitutionFailed()) return false;
 				if (!append_argument(
-					operand, use_scope, dependent_names, false)) return false;
+					operand, use_scope, dependent_names)) return false;
 				arguments->back().pack_expansion = true;
 				continue;
 			}
@@ -1553,7 +1550,7 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 			{
 				if (arguments->size() >= fixed && !has_pack) return false;
 				if (!append_argument(operand, element_scopes[element],
-					dependent_names, false)) return false;
+					dependent_names)) return false;
 				arguments->back().pack_expansion = symbolic[element] != 0;
 			}
 			continue;
@@ -1569,7 +1566,7 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 		if (!expansion)
 		{
 			if (!append_argument(
-				syntax[i], use_scope, dependent_names, false)) return false;
+				syntax[i], use_scope, dependent_names)) return false;
 			continue;
 		}
 		const TemplateArgumentKind destination_kind =
@@ -1583,7 +1580,7 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 			// pack environment. This also covers a non-type pack parsed as the
 			// ambiguous type-id spelling `Name...`.
 			if (!append_argument(
-				syntax[i], use_scope, dependent_names, false)) return false;
+				syntax[i], use_scope, dependent_names)) return false;
 			arguments->back().pack_expansion = true;
 			continue;
 		}
@@ -1609,7 +1606,7 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 			else
 			{
 				if (!append_argument(syntax[i], element_scopes[element],
-					dependent_names, false))
+					dependent_names))
 					return false;
 				arguments->back().pack_expansion = symbolic[element] != 0;
 			}
@@ -1641,7 +1638,7 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 		const std::unordered_set<NameId>* default_names =
 			default_dependent_names.empty() ? 0 : &default_dependent_names;
 		if (!append_argument(
-			source, parameter_scope, default_names, true)) return false;
+			source, parameter_scope, default_names)) return false;
 		const TemplateArgument& appended = (*arguments)[parameter_index];
 		const bool dependent = appended.IsDependent() ||
 			((appended.kind == TEMPLATE_ARGUMENT_TYPE ||

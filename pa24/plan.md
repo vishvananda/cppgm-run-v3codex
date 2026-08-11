@@ -18,34 +18,36 @@ demanded nodes (section 9).
 
 ## Current Failure Map
 
-Current state: **395/422** pa24 tests (turn start: 391/422); all **3,049/3,049**
+Current state: **399/422** pa24 tests (turn start: 395/422); all **3,049/3,049**
 tests through pa23 pass.
 
 | Shared behavior and owner | Count | Complete failing set (test basename) |
 | --- | ---: | --- |
-| Deduction, candidate SFINAE, overload ordering, and conversion/initialization selection (`pa19` deduction/instantiation + ordinary call/initialization) | 16 | `adl-explicit-template-id-call`, `member-operator-template-reference-pattern-partial-order`, `constructor-template-const-ref-enable-if-conversion`, `defaulted-enable-if-template-parameter-selection`, `incomplete-sizeof-partial-specialization-sfinae`, `static-cast-rvalue-ref-skips-conversion-operator`, `concrete-enable-if-nontype-parameter-type-sfinae`, `constructor-template-default-constraint-previous-param`, `dependent-typename-member-enable-if-return`, `defaulted-class-template-argument-pack-prefix-deduction`, `constructor-default-pack-partial-ordering`, both `deleted-function-template-*-sfinae`, `trailing-return-expression-sfinae-default-param`, `conversion-function-template-top-cv-sequence`, `out-of-class-conversion-operator-definition` |
+| Deduction, candidate SFINAE, overload ordering, and conversion/initialization selection (`pa19` deduction/instantiation + ordinary call/initialization) | 12 | `member-operator-template-reference-pattern-partial-order`, `constructor-template-const-ref-enable-if-conversion`, `defaulted-enable-if-template-parameter-selection`, `static-cast-rvalue-ref-skips-conversion-operator`, `concrete-enable-if-nontype-parameter-type-sfinae`, `constructor-template-default-constraint-previous-param`, `dependent-typename-member-enable-if-return`, `defaulted-class-template-argument-pack-prefix-deduction`, `constructor-default-pack-partial-ordering`, `trailing-return-expression-sfinae-default-param`, `conversion-function-template-top-cv-sequence`, `out-of-class-conversion-operator-definition` |
 | Dependent owner/current-specialization, alias, function-type, and pack replay through demand/lowering (`pa19`/`pa22`/`pa23`) | 11 | `alias-template-partial-specialization-default-dependent-arg`, `common-type-current-specialization-member-return`, `decorated-template-id-type-argument-pack-replay`, `dependent-function-type-member-specialization`, `member-template-result-pack-preserves-nested-function-pointer-owner`, `out-of-class-partial-member-template-owner-parameter-alias`, `forwarding-pack-function-type-enable-if`, `partial-member-template-trailing-result-scope`, `source-namespace-base-sfinae-chain`, `defaulted-nested-class-argument-partial-specialization`, `defaulted-template-arg-partial-base-completion` |
 
 ## Active Checkpoint
 
-**Typed construction-entry demand and class-result ABI — completed.** The
-selected constructor now owns base-object demand; its containing owner,
-special-member role, and argument shape are the only facts that may retain the
-complete-object sibling. This replaces class-template/empty-argument
-heuristics that demanded unused complete entries. Function-template class
-results separately derive stable indirect-result ABI from the instantiated
-class's copy-special-member fact, including nontrivial empty classes.
+**Explicit template-id ADL and candidate-local invalidity — completed.** The retained call
+owns its explicit template-argument syntax and ADL eligibility; associated
+namespace and hidden-friend lookup must deduce with that same canonical prefix.
+The selected `FunctionInfo` owns a durable deleted declaration fact, and a
+deleted selection becomes candidate-local substitution failure before any call
+node or emission demand is published. Dependent non-type partial arguments use
+a nondeduced declaration shape and replay once with concrete bindings, keeping
+invalid `sizeof` expressions inside that same failure boundary.
 
-This applies `spec.md` sections 2, 4, 6, and 9: canonical selected declarations
-own facts, emission demand is a separate monotonic state, and lowering consumes
-the recorded entry and ABI facts without selection or name lookup. Entry
-classification is O(1) per constructor action and demand remains O(D) for new
-nodes. Validation removes `constructor-template-parameter-shadows-instantiated-type`,
-`dependent-bool-base-trait-type-argument`,
-`dependent-function-type-pack-expansion-ctor-init`, and
-`function-template-empty-pack-trailing-default`; neighboring PA19/PA22/PA23
-constructor and empty-result cases, the full earlier-stage gate, PA24 report,
-audit, and constructor-depth scaling cover the boundaries.
+This applies `spec.md` sections 3-6 and 9: associated lookup is owner-indexed,
+explicit arguments participate in the specialization key, failures remain in
+the candidate frame, duplicate declarations/candidates are canonicalized, and
+lowering only sees a viable selected declaration. Expected work is O(A + S +
+C), for argument-associated entities A, associated scopes S, and owner-local
+candidates C, with each canonical candidate deduplicated once. Validation
+removes `adl-explicit-template-id-call`, both
+`deleted-function-template-*-sfinae` tests, and
+`incomplete-sizeof-partial-specialization-sfinae`; neighboring explicit-id,
+hidden-friend, deleted-call, and partial-replay behavior, the full through-PA23
+gate, PA24 report, audit, and associated-scope width scaling cover the boundary.
 
 ## Performance Evidence
 
@@ -66,10 +68,16 @@ functions with median compile times 3.787/4.046/4.147/4.664/5.397/7.362/
 10.825 ms (nine runs each after warm-up). Emission and time remain linear in
 the number of selected constructor entries.
 
+Explicit-id ADL width 2/3/5/9/17/33/65 associated scopes emitted two functions
+throughout with median compile times 4.145/4.165/4.274/4.603/5.091/6.286/
+8.597 ms (nine runs each after warm-up). Lookup time remains linear in the
+deduplicated associated-scope count.
+
 ## Completed Checkpoints
 
 | Checkpoint | Commit | Disposition |
 | --- | --- | --- |
 | Explicit specialization identity and definition publication | `62f37ef1` | Eight failures removed; 376/422 pa24, 3,049/3,049 through pa23, audit pass. |
 | Canonical non-type arguments, designators, static-value demand, and variable-template lowering identity | `6b06e092` | Fifteen failures removed; 391/422 pa24, 3,049/3,049 through pa23, audit pass. |
-| Typed construction-entry demand and nontrivial empty-result ABI | this commit | Four failures removed; 395/422 pa24, 3,049/3,049 through pa23, linear depth probe. |
+| Typed construction-entry demand and nontrivial empty-result ABI | `6a1a66c7` | Four failures removed; 395/422 pa24, 3,049/3,049 through pa23, linear depth probe. |
+| Explicit-id ADL and candidate-local deleted/dependent invalidity | this commit | Four failures removed; 399/422 pa24, 3,049/3,049 through pa23, linear ADL-width probe. |

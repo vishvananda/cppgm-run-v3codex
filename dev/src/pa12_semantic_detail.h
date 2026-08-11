@@ -524,7 +524,7 @@ private:
 		const std::vector<TemplateParameter>& parameters, NodeId source,
 		ScopeId source_scope, ScopeId parameter_scope,
 		const std::unordered_set<NameId>* source_dependent_names,
-		bool default_argument, bool has_pack, std::size_t fixed,
+		bool has_pack, std::size_t fixed,
 		std::vector<TemplateArgument>* arguments);
 	bool IsNonTypeTemplateParameterType(TypeId type) const;
 	bool FormNonTypeTemplateArgumentValue(ExpressionInfo expression,
@@ -886,7 +886,15 @@ private:
 		ExpressionInfo* result);
 	void AppendArgumentDependentCandidates(NameId name,
 		const std::vector<ExpressionInfo>& arguments,
-		std::vector<BindingId>* candidates, bool enum_operator_only = false);
+		std::vector<BindingId>* candidates, bool enum_operator_only = false,
+		const std::vector<NodeId>* explicit_syntax = 0,
+		ScopeId use_scope = kNoScope,
+		const std::vector<NodeId>* argument_syntax = 0);
+	void CompleteArgumentDependentCallCandidates(NameId name,
+		const std::vector<NodeId>* explicit_syntax, ScopeId use_scope,
+		const std::vector<NodeId>& argument_syntax,
+		const std::vector<ExpressionInfo>& arguments,
+		bool suppress_adl, std::vector<BindingId>* candidates);
 	bool TryAnalyzeOverloadedOperator(const std::string& operation,
 		ScopeId scope, const std::vector<NodeId>& operand_syntax,
 		const std::vector<ExpressionInfo>& operands, bool member_only,
@@ -929,7 +937,10 @@ private:
 		std::vector<BindingId>* candidates);
 	void AppendHiddenFriendCandidates(EntityId owner, NameId name,
 		const std::vector<ExpressionInfo>& arguments, bool enum_operator_only,
-		std::vector<BindingId>* candidates);
+		std::vector<BindingId>* candidates,
+		const std::vector<NodeId>* explicit_syntax = 0,
+		ScopeId use_scope = kNoScope,
+		const std::vector<NodeId>* argument_syntax = 0);
 	ExpressionInfo AnalyzeUnary(NodeId node, ScopeId scope,
 		TypeId target = kNoType);
 	ExpressionInfo AnalyzeBinary(NodeId node, ScopeId scope);

@@ -38,7 +38,11 @@ void SemanticAnalyzer::AnalyzeSimpleFunctionDeclaration(NodeId item,
 		!declared_path.global && declared_path.Size() <= 1);
 	const NodeId special = function_initializer == kNoNode ? kNoNode :
 		FindChild(function_initializer, "special-initializer");
-	if (special != kNoNode && arena_->Payload(special) == "delete") return;
+	if (special != kNoNode && arena_->Payload(special) == "delete")
+	{
+		GetMutableFunction(function).deleted_function = true;
+		return;
+	}
 	const std::uint32_t declaration = MakeDump(DUMP_FUNCTION_DECLARATION,
 		parsed.type, VALUE_NONE, GetFunction(function).display_name, function);
 	dump_.Add(output_parent, declaration);

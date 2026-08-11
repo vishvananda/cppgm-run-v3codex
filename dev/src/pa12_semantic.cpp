@@ -1041,11 +1041,12 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	const std::vector<CallConversionFact>* argument_conversions,
 	bool suppress_virtual_dispatch)
 {
-	if (GetFunction(selected).deleted_special_member)
+	if (GetFunction(selected).deleted_function ||
+		GetFunction(selected).deleted_special_member)
 	{
 		if (CandidateSubstitutionActive())
 			return CandidateSubstitutionFailure();
-		throw std::runtime_error("selected special member is deleted");
+		throw std::runtime_error("selected function is deleted");
 	}
 	EntityId object_class = kNoEntity;
 	if (object)
@@ -1272,6 +1273,12 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 	{
 		const std::string spelling = arena_->Payload(direct_callee_syntax);
 		NamePath callee_path = StructuredNamePath(direct_callee_syntax);
+		NamePath explicit_template_base;
+		std::vector<NodeId> explicit_template_syntax;
+		const bool explicit_template_id = CollectExplicitTemplateArguments(
+			direct_callee_syntax, &explicit_template_base,
+			&explicit_template_syntax);
+		if (explicit_template_id) callee_path = explicit_template_base;
 		if (callee_path.Empty()) callee_path = ParseNamePath(spelling);
 		const bool qualified_callee = callee_path.global || callee_path.Size() > 1;
 		ExpressionInfo builtin;
@@ -1300,20 +1307,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 		if (!type_precedes_functions &&
 			!parenthesized_callee && !qualified_callee)
 		{
-			BeginCandidateCollection();
-			std::vector<BindingId> combined;
-			bool suppress_adl = retained_lookup &&
-				!RetainedCallAllowsArgumentDependentLookup(direct_callee_syntax);
-			for (std::size_t i = 0; i < candidates.size(); ++i)
-			{
-				AddCandidate(candidates[i], &combined);
-				if (GetFunction(candidates[i]).member_owner != kNoType)
-					suppress_adl = true;
-			}
-			if (!suppress_adl)
-				AppendArgumentDependentCandidates(program_->names.Intern(spelling),
-					analyzed_arguments, &combined);
-			candidates.swap(combined);
+			const NameId adl_name = explicit_template_id ?
+				explicit_template_base.Last() : program_->names.Intern(spelling);
+			CompleteArgumentDependentCallCandidates(adl_name,
+				explicit_template_id ? &explicit_template_syntax : 0, scope,
+				argument_syntax, analyzed_arguments, retained_lookup &&
+				!RetainedCallAllowsArgumentDependentLookup(direct_callee_syntax),
+				&candidates);
 		}
 		if (!type_precedes_functions && !candidates.empty())
 		{

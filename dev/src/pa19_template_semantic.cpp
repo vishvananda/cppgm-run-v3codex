@@ -1220,6 +1220,7 @@ void SemanticAnalyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 			if (SyntaxUsesAnyTemplateParameter(
 					partial.arguments[argument], dependent_names) &&
 				(!shape_dependent ||
+				 shape.IsNondeduced() ||
 				 shape.type == class_template_nondeduced_type_shape_))
 			{
 				partial.concrete_replay_required = true;

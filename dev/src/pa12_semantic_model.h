@@ -705,6 +705,7 @@ struct FunctionInfo
 	bool definition_in_class;
 	bool template_specialization;
 	bool explicit_specialization;
+	bool deleted_function;
 	bool constructor;
 	bool implicit_constructor;
 	bool defaulted_constructor;
@@ -742,6 +743,7 @@ struct FunctionInfo
 		  template_pattern(kNoDumpEdge),
 		  defined(false), deferred(false), definition_in_class(false),
 		  template_specialization(false), explicit_specialization(false),
+		  deleted_function(false),
 		  constructor(false), implicit_constructor(false),
 		  defaulted_constructor(false), deleted_constructor(false),
 		  explicit_constructor(false), conversion_function(false),
@@ -917,6 +919,7 @@ struct FunctionTemplatePattern
 	bool inline_specifier;
 	bool explicit_member_definition;
 	bool deferred_result_formation;
+	bool deleted_function;
 
 	FunctionTemplatePattern()
 		: owner(kNoScope), lexical_scope(kNoScope), name(0),
@@ -937,7 +940,8 @@ struct FunctionTemplatePattern
 		  constructor_template(false), conversion_template(false),
 		  constexpr_specifier(false), explicit_specifier(false),
 		  inline_specifier(false),
-		  explicit_member_definition(false), deferred_result_formation(false) {}
+		  explicit_member_definition(false), deferred_result_formation(false),
+		  deleted_function(false) {}
 };
 
 struct FunctionTemplateDeduction

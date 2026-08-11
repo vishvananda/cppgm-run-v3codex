@@ -4,6 +4,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace cppgm
@@ -242,11 +243,13 @@ void SemanticAnalyzer::AppendDirectFunctionCandidates(ScopeId owner,
 void SemanticAnalyzer::AppendHiddenFriendCandidates(EntityId owner,
 	NameId name, const std::vector<ExpressionInfo>& arguments,
 	bool enum_operator_only,
-	std::vector<BindingId>* candidates)
+	std::vector<BindingId>* candidates,
+	const std::vector<NodeId>* explicit_syntax, ScopeId use_scope,
+	const std::vector<NodeId>* argument_syntax)
 {
 	const std::uint64_t key = (static_cast<std::uint64_t>(owner) << 32) | name;
 	const CompactIndexSequence* functions = hidden_friend_sets_.Find(key);
-	if (functions)
+	if (functions && !explicit_syntax)
 		for (std::size_t i = 0; i < functions->Size(); ++i)
 		{
 			++associated_declaration_visits_;
@@ -261,7 +264,16 @@ void SemanticAnalyzer::AppendHiddenFriendCandidates(EntityId owner,
 	const std::vector<std::size_t> patterns = indexed_patterns->Copy();
 	associated_declaration_visits_ += patterns.size();
 	std::vector<BindingId> specializations;
-	DeduceFunctionTemplatePatterns(patterns, arguments, &specializations);
+	if (explicit_syntax)
+	{
+		if (use_scope == kNoScope || !argument_syntax)
+			throw std::logic_error(
+				"explicit hidden-friend deduction has no use context");
+		DeduceFunctionTemplatePatternsWithExplicitSyntax(patterns,
+			arguments, *explicit_syntax, use_scope, &specializations,
+			argument_syntax);
+	}
+	else DeduceFunctionTemplatePatterns(patterns, arguments, &specializations);
 	for (std::size_t i = 0; i < specializations.size(); ++i)
 	{
 		const BindingId binding = specializations[i];
@@ -273,8 +285,15 @@ void SemanticAnalyzer::AppendHiddenFriendCandidates(EntityId owner,
 
 void SemanticAnalyzer::AppendArgumentDependentCandidates(NameId name,
 	const std::vector<ExpressionInfo>& arguments,
-	std::vector<BindingId>* candidates, bool enum_operator_only)
+	std::vector<BindingId>* candidates, bool enum_operator_only,
+	const std::vector<NodeId>* explicit_syntax, ScopeId use_scope,
+	const std::vector<NodeId>* argument_syntax)
 {
+	const bool has_explicit_syntax = explicit_syntax != 0;
+	if (has_explicit_syntax &&
+		(use_scope == kNoScope || !argument_syntax))
+		throw std::logic_error(
+			"explicit ADL deduction has no use context");
 	for (std::size_t i = 0; i < arguments.size(); ++i)
 		if (arguments[i].type != kNoType)
 			EnsureClassDefinition(EffectiveType(arguments[i].type));
@@ -348,7 +367,11 @@ void SemanticAnalyzer::AppendArgumentDependentCandidates(NameId name,
 			}
 			associated_declaration_visits_ += patterns.size();
 			std::vector<BindingId> specializations;
-			DeduceFunctionTemplatePatterns(patterns, arguments,
+			if (has_explicit_syntax)
+				DeduceFunctionTemplatePatternsWithExplicitSyntax(patterns,
+					arguments, *explicit_syntax, use_scope, &specializations,
+					argument_syntax);
+			else DeduceFunctionTemplatePatterns(patterns, arguments,
 				&specializations);
 			for (std::size_t specialization = 0;
 				specialization < specializations.size(); ++specialization)
@@ -359,12 +382,46 @@ void SemanticAnalyzer::AppendArgumentDependentCandidates(NameId name,
 		if (enum_operator_only)
 			AppendIndexedEnumOperatorCandidates(
 				associated_scopes_[i], name, arguments, candidates);
-		else AppendDirectFunctionCandidates(
+		else if (!has_explicit_syntax) AppendDirectFunctionCandidates(
 			associated_scopes_[i], name, template_patterns != 0, candidates);
 	}
 	for (std::size_t i = 0; i < associated_entities_.size(); ++i)
 		AppendHiddenFriendCandidates(associated_entities_[i], name,
-			arguments, enum_operator_only, candidates);
+			arguments, enum_operator_only, candidates,
+			explicit_syntax, use_scope,
+			argument_syntax);
+}
+
+void SemanticAnalyzer::CompleteArgumentDependentCallCandidates(NameId name,
+	const std::vector<NodeId>* explicit_syntax, ScopeId use_scope,
+	const std::vector<NodeId>& argument_syntax,
+	const std::vector<ExpressionInfo>& arguments,
+	bool suppress_adl, std::vector<BindingId>* candidates)
+{
+	BeginCandidateCollection();
+	std::vector<BindingId> combined;
+	for (std::size_t i = 0; i < candidates->size(); ++i)
+	{
+		AddCandidate((*candidates)[i], &combined);
+		if (GetFunction((*candidates)[i]).member_owner != kNoType)
+			suppress_adl = true;
+	}
+	if (!suppress_adl)
+		AppendArgumentDependentCandidates(name, arguments, &combined, false,
+			explicit_syntax, use_scope, &argument_syntax);
+
+	// Candidate formation is reentrant: substituting an ADL template can start
+	// a nested collection and advance the scratch generation. Canonicalize at
+	// this call boundary so the outer set does not inherit duplicate entries.
+	std::unordered_set<BindingId> seen;
+	std::vector<BindingId> canonical;
+	canonical.reserve(combined.size());
+	for (std::size_t i = 0; i < combined.size(); ++i)
+	{
+		const BindingId binding = program_->bindings[combined[i]].canonical;
+		if (seen.insert(binding).second) canonical.push_back(combined[i]);
+	}
+	candidates->swap(canonical);
 }
 
 CallConversionFact SemanticAnalyzer::ConvertingConstructor(

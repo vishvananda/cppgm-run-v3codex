@@ -150,6 +150,7 @@ void MergeFunctionTemplateSpecifierFacts(FunctionTemplatePattern* retained,
 	retained->constexpr_specifier |= incoming.constexpr_specifier;
 	retained->explicit_specifier |= incoming.explicit_specifier;
 	retained->inline_specifier |= incoming.inline_specifier;
+	retained->deleted_function |= incoming.deleted_function;
 }
 
 std::size_t TemplateParameterOrdinal(
@@ -928,6 +929,21 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 		FindChild(declarator, "conversion-type-id") != kNoNode;
 	pattern.constructor_template = special_member_template &&
 		!pattern.conversion_template;
+	NodeId declaration_initializer = FindChild(target, "initializer");
+	const NodeId declarator_list = FindChild(target, "init-declarator-list");
+	for (std::uint32_t edge = declarator_list == kNoNode ? kNoEdge :
+		arena_->FirstEdge(declarator_list);
+		edge != kNoEdge && declaration_initializer == kNoNode;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId item = arena_->EdgeChild(edge);
+		if (FindChild(item, "declarator") == declarator)
+			declaration_initializer = FindChild(item, "initializer");
+	}
+	const NodeId special_initializer = declaration_initializer == kNoNode ?
+		kNoNode : FindChild(declaration_initializer, "special-initializer");
+	pattern.deleted_function = special_initializer != kNoNode &&
+		arena_->Payload(special_initializer) == "delete";
 	pattern.dependent_exception_specification =
 		dependent_exception_specification;
 	const bool explicit_member_definition = definition &&
@@ -1929,6 +1945,8 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	ValidateFunctionRefQualifier(binding);
 	ValidateNonmemberOperator(binding);
 	FunctionInfo& function = GetMutableFunction(binding);
+	function.deleted_function =
+		function.deleted_function || pattern.deleted_function;
 	if (pattern.dependent_exception_specification)
 	{
 		function.exception_specification_scope =
