@@ -397,6 +397,9 @@ void SemanticAnalyzer::AnalyzeRangeFor(NodeId node, ScopeId scope,
 		if (range.category == VALUE_PRVALUE &&
 			range_kind == TYPE_ARRAY)
 			range = MaterializeTemporary(range);
+		if (range_kind == TYPE_ARRAY &&
+			dump_.nodes[range.node].kind == DUMP_TEMPORARY_OBJECT)
+			dump_.nodes[range.node].range_for_materialization = true;
 		const bool stable_lvalue = range.category == VALUE_LVALUE &&
 			dump_.nodes[range.node].kind == DUMP_ID_EXPRESSION;
 		if (!stable_lvalue)

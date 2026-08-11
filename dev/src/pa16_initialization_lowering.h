@@ -51,7 +51,11 @@ protected:
 			derived.arena_.nodes[node].argument_materialization ?
 				(object_type.kind == TYPE_ARRAY ? "argarr" : "arg") :
 			derived.arena_.nodes[node].discarded_materialization ?
-				discarded_name : "tmpobj", type), type);
+				discarded_name :
+				(object_type.kind == TYPE_ARRAY &&
+				 !derived.arena_.nodes[node].range_for_materialization ?
+					"arraytmp" : "tmpobj"),
+			type), type);
 	}
 
 	Operand PrepareTemporaryObjectStorage(std::uint32_t node)

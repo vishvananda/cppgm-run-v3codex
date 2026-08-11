@@ -1387,17 +1387,78 @@ bool DecodeStringLiteralCodeUnits(const std::string& source,
 {
 	if (!type || !units)
 		throw std::logic_error("missing typed string literal destination");
-	StringPart parsed;
-	if (!ParseStringPart(source, &parsed) ||
-		parsed.suffix_begin != parsed.suffix_end)
-		return false;
+	std::vector<StringPart> parts;
+	StringEncoding encoding = ENCODING_ORDINARY;
+	std::size_t position = 0;
+	while (position < source.size())
+	{
+		while (position < source.size() && source[position] == ' ') ++position;
+		if (position == source.size()) break;
+		const std::size_t token_begin = position;
+		if (source.compare(position, 2, "u8") == 0) position += 2;
+		else if (source[position] == 'u' || source[position] == 'U' ||
+			source[position] == 'L') ++position;
+		const bool raw = position < source.size() && source[position] == 'R';
+		if (raw) ++position;
+		if (position >= source.size() || source[position] != '"') return false;
+		if (raw)
+		{
+			const std::size_t delimiter_begin = position + 1;
+			const std::size_t open = source.find('(', delimiter_begin);
+			if (open == std::string::npos || open - delimiter_begin > 16)
+				return false;
+			const std::string delimiter = source.substr(
+				delimiter_begin, open - delimiter_begin);
+			const std::string close = ")" + delimiter + "\"";
+			const std::size_t close_position = source.find(close, open + 1);
+			if (close_position == std::string::npos) return false;
+			position = close_position + close.size();
+		}
+		else
+		{
+			++position;
+			bool closed = false;
+			while (position < source.size())
+			{
+				if (source[position] == '\\')
+				{
+					position += 2;
+					continue;
+				}
+				if (source[position++] == '"')
+				{
+					closed = true;
+					break;
+				}
+			}
+			if (!closed) return false;
+		}
+		while (position < source.size() && source[position] != ' ') ++position;
+		const std::string token = source.substr(token_begin,
+			position - token_begin);
+		StringPart parsed;
+		if (!ParseStringPart(token, &parsed) ||
+			parsed.suffix_begin != parsed.suffix_end)
+			return false;
+		if (parsed.encoding != ENCODING_ORDINARY)
+		{
+			if (encoding != ENCODING_ORDINARY && encoding != parsed.encoding)
+				return false;
+			encoding = parsed.encoding;
+		}
+		parsed.content_begin += token_begin;
+		parsed.content_end += token_begin;
+		parts.push_back(parsed);
+	}
+	if (parts.empty()) return false;
 	std::vector<unsigned char> bytes;
 	std::size_t count = 0;
-	if (!DecodeStringPart(source, parsed.content_begin, parsed.content_end,
-		parsed.raw, parsed.encoding, &bytes, &count) ||
-		!AppendStringUnit(0, parsed.encoding, &bytes, &count))
-		return false;
-	const std::size_t width = EncodingWidth(parsed.encoding);
+	for (std::size_t i = 0; i < parts.size(); ++i)
+		if (!DecodeStringPart(source, parts[i].content_begin,
+			parts[i].content_end, parts[i].raw, encoding, &bytes, &count))
+			return false;
+	if (!AppendStringUnit(0, encoding, &bytes, &count)) return false;
+	const std::size_t width = EncodingWidth(encoding);
 	if (bytes.size() != count * width) return false;
 	units->clear();
 	units->reserve(count);
@@ -1409,7 +1470,7 @@ bool DecodeStringLiteralCodeUnits(const std::string& source,
 				bytes[unit * width + byte]) << (byte * 8);
 		units->push_back(value);
 	}
-	*type = EncodingType(parsed.encoding);
+	*type = EncodingType(encoding);
 	return true;
 }
 

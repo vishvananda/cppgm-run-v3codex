@@ -1581,6 +1581,7 @@ private:
 	std::vector<std::uint32_t> local_static_count_by_function_;
 	std::vector<AggregateHelperInfo>& aggregate_helpers_;
 	FunctionSignatureTable aggregate_helper_index_;
+	std::vector<std::uint32_t> widest_aggregate_helper_by_entity_;
 	std::vector<ScopeId> break_cleanup_stops_;
 	std::vector<ScopeId> continue_cleanup_stops_;
 	std::vector<EntityId> demanded_default_constructor_entities_;

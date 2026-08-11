@@ -487,6 +487,36 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 		if (reference_target) result = MaterializeTemporary(result);
 		return ApplyTarget(result, target);
 	}
+	if (program_->entities[cast_entity].is_aggregate &&
+		arguments_node != kNoNode &&
+		!argument_syntax.empty() &&
+		!arena_->IsTag(arguments_node, "braced-init-list"))
+	{
+		std::uint32_t element_edge = arena_->FirstEdge(arguments_node);
+		ExpressionInfo result = AnalyzeAggregateInit(
+			cast_type, scope, &element_edge);
+		if (element_edge != kNoEdge)
+			throw std::runtime_error("excess aggregate initializer elements");
+		result.node = BuildAggregateConstructionAction(
+			cast_type, result.node, true);
+		result.category = VALUE_PRVALUE;
+		const TypeId effective_target = target == kNoType ? kNoType :
+			program_->types.RemoveTopCv(EffectiveType(target));
+		const bool distinct_target = effective_target != kNoType &&
+			effective_target !=
+				program_->types.RemoveTopCv(EffectiveType(cast_type));
+		if (target == kNoType || distinct_target)
+		{
+			if (distinct_target)
+			{
+				if (reference_target) result = MaterializeTemporary(result);
+				return ApplyTarget(result, target);
+			}
+			return materialize_if_evaluated(result);
+		}
+		if (reference_target) result = MaterializeTemporary(result);
+		return ApplyTarget(result, target);
+	}
 	if (program_->entities[cast_entity].is_aggregate && argument_syntax.empty())
 	{
 		if (target == kNoType)

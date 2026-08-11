@@ -182,6 +182,12 @@ private:
 		return position_ < tokens_.size() &&
 			tokens_[position_].Kind() == kLiteralToken;
 	}
+	static bool IsFundamentalTypeSpelling(const std::string& spelling)
+	{
+		static const char* const names[] = {"bool", "char", "char16_t", "char32_t", "double", "float", "int", "long", "short", "signed", "unsigned", "void", "wchar_t"};
+		for (std::size_t i = 0; i < sizeof(names) / sizeof(names[0]); ++i) if (spelling == names[i]) return true;
+		return false;
+	}
 	bool AtEof() const
 	{
 		return position_ < tokens_.size() &&
@@ -1447,6 +1453,7 @@ NodeId Parser::ParsePostfixSuffixes(NodeId value) {
 	while (true) {
 		if (At(OP_LBRACE) && arena_.IsTag(value, "id-expression") &&
 			(HasNameFact(strings_.Intern(arena_.Payload(value)), kKnownType) ||
+			 IsFundamentalTypeSpelling(arena_.Payload(value)) ||
 			 arena_.FirstEdge(value) != kNoEdge ||
 			 (arena_.Flags(value) & SYNTAX_FLAG_TYPENAME) != 0)) {
 			const NodeId call = arena_.Make("call-expression");
@@ -1465,15 +1472,8 @@ NodeId Parser::ParsePostfixSuffixes(NodeId value) {
 					SimpleTokenKindName(static_cast<SimpleTokenKind>(candidate)) +
 					std::string()) function_style = true;
 			// Fundamental token names are uppercase enum labels; compare the
-			// source spellings directly for the function-style cast view.
-			static const char* const fundamental_names[] = {
-				"bool", "char", "char16_t", "char32_t", "double", "float",
-				"int", "long", "short", "signed", "unsigned", "void",
-				"wchar_t"
-			};
-			for (std::size_t i = 0; i < sizeof(fundamental_names) /
-				sizeof(fundamental_names[0]); ++i)
-				if (callee == fundamental_names[i]) function_style = true;
+			// source spelling for the function-style cast view as well.
+			if (IsFundamentalTypeSpelling(callee)) function_style = true;
 			const NodeId arguments = arena_.Make(function_style ?
 				"paren-argument-list" : "argument-list");
 			if (!At(OP_RPAREN)) {

@@ -437,6 +437,7 @@ bool SemanticAnalyzer::TryAnalyzeUserDefinedStringLiteral(
 	}
 	if (close >= spelling.size() || close + 1 == spelling.size()) return false;
 	const std::string suffix = spelling.substr(close + 1);
+	if (!suffix.empty() && suffix[0] == ' ') return false;
 	if (suffix.empty() || suffix[0] != '_')
 		throw std::runtime_error("invalid user-defined literal suffix");
 	const std::string function_name = "operator\"\"" + suffix;

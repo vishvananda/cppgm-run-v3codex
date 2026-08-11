@@ -125,6 +125,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		local_static_count_by_function_.capacity() * sizeof(std::uint32_t) +
 		aggregate_helpers_.capacity() * sizeof(AggregateHelperInfo) +
 		aggregate_helper_index_.StorageBytes() +
+		widest_aggregate_helper_by_entity_.capacity() * sizeof(std::uint32_t) +
 		break_cleanup_stops_.capacity() * sizeof(ScopeId) +
 		continue_cleanup_stops_.capacity() * sizeof(ScopeId) +
 		demanded_default_constructor_entities_.capacity() * sizeof(EntityId) +

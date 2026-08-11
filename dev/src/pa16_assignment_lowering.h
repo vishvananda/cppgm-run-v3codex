@@ -296,9 +296,9 @@ public:
 					throw std::runtime_error(
 						"bit-field compound assignment has no operand type");
 				const LowType operation_type = derived.LowerType(record.operand_type);
-				left = derived.Convert(left, operation_type, false);
 				const Operand right = derived.LowerConvertedValue(
 					children[1], operation_type, false);
+				left = derived.Convert(left, operation_type, false);
 				value = derived.Temp(operation_type);
 				Instruction binary(Instruction::BINARY);
 				binary.dest = value.id;
@@ -376,9 +376,9 @@ public:
 				throw std::runtime_error(
 					"compound assignment is missing its PA12 operand type");
 			const LowType operation_type = derived.LowerType(record.operand_type);
-			left = derived.Convert(left, operation_type, false);
 			const Operand right = derived.LowerConvertedValue(
 				children[1], operation_type, false);
+			left = derived.Convert(left, operation_type, false);
 			value = derived.Temp(operation_type);
 			Instruction binary(Instruction::BINARY);
 			binary.dest = value.id;

@@ -216,8 +216,18 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 	if (array.kind == TYPE_ARRAY)
 	{
 		std::uint32_t element_edge = arena_->FirstEdge(node);
-		ExpressionInfo result = AnalyzeArrayAggregateInit(type, scope,
-			&element_edge);
+		const TypeRecord array_element = program_->types.Get(
+			program_->types.RemoveTopCv(array.child));
+		const bool string_array = element_edge != kNoEdge &&
+			array_element.kind == TYPE_FUNDAMENTAL &&
+			array_element.fundamental == FUND_CHAR &&
+			arena_->NextEdge(element_edge) == kNoEdge &&
+			arena_->IsTag(arena_->EdgeChild(element_edge), "literal") &&
+			arena_->Payload(arena_->EdgeChild(element_edge)).find('"') !=
+				std::string::npos;
+		ExpressionInfo result = string_array ?
+			AnalyzeAggregateElement(type, scope, &element_edge) :
+			AnalyzeArrayAggregateInit(type, scope, &element_edge);
 		if (element_edge != kNoEdge)
 			throw std::runtime_error("excess array initializer elements");
 		return result;
@@ -472,10 +482,21 @@ CallConversionFact SemanticAnalyzer::BracedInitializationConversion(
 
 	TypeId object = program_->types.RemoveTopCv(target);
 	const TypeRecord top = program_->types.Get(object);
+	CallConversionFact result;
+	TypeId referred = top.child;
+	while (top.kind == TYPE_LVALUE_REFERENCE &&
+		program_->types.Get(program_->types.RemoveTopCv(referred)).kind ==
+			TYPE_ARRAY)
+		referred = program_->types.Get(
+			program_->types.RemoveTopCv(referred)).child;
+	if (top.kind == TYPE_LVALUE_REFERENCE && !IsConst(referred))
+	{
+		braced_initialization_context_->braced_conversions.Insert(key, result);
+		return result;
+	}
 	if (top.kind == TYPE_LVALUE_REFERENCE || top.kind == TYPE_RVALUE_REFERENCE)
 		object = program_->types.RemoveTopCv(top.child);
 	const TypeRecord record = program_->types.Get(object);
-	CallConversionFact result;
 
 	if (record.kind == TYPE_ARRAY)
 	{

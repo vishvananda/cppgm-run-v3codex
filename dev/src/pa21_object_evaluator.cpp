@@ -156,6 +156,45 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAggregateInit(TypeId type,
 	return result;
 }
 
+ExpressionInfo SemanticAnalyzer::BuildLocalAggregateArrayActions(
+	const ExpressionInfo& initializer)
+{
+	const TypeRecord array = program_->types.Get(
+		program_->types.RemoveTopCv(initializer.type));
+	const EntityId element = array.kind == TYPE_ARRAY ?
+		EntityOf(array.child) : kNoEntity;
+	if (array.kind != TYPE_ARRAY || element == kNoEntity ||
+		!program_->entities[element].is_aggregate ||
+		dump_.nodes[initializer.node].kind != DUMP_BRACED_INIT_LIST)
+		return initializer;
+	bool has_array_member = false;
+	if (element < entity_data_members_.size())
+		for (std::size_t i = 0; i < entity_data_members_[element].size(); ++i)
+			has_array_member = has_array_member || program_->types.Get(
+				program_->types.RemoveTopCv(program_->bindings[
+					entity_data_members_[element][i]].type)).kind == TYPE_ARRAY;
+	if (!has_array_member)
+		for (std::uint32_t edge = dump_.nodes[initializer.node].first_edge;
+			edge != kNoDumpEdge; edge = dump_.edges[edge].next)
+			for (std::uint32_t member = dump_.nodes[
+				dump_.edges[edge].child].first_edge; member != kNoDumpEdge;
+				member = dump_.edges[member].next)
+				if (dump_.nodes[dump_.edges[member].child].first_edge == kNoDumpEdge)
+					return initializer;
+	for (std::uint32_t edge = dump_.nodes[initializer.node].first_edge;
+		edge != kNoDumpEdge; edge = dump_.edges[edge].next)
+	{
+		const std::uint32_t element_node = dump_.edges[edge].child;
+		if (dump_.nodes[element_node].kind != DUMP_BRACED_INIT_LIST)
+			throw std::logic_error(
+				"aggregate array element has no action list");
+		const std::uint32_t replacement =
+			BuildAggregateConstructionAction(array.child, element_node, true);
+		dump_.edges[edge].child = replacement;
+	}
+	return initializer;
+}
+
 bool SemanticAnalyzer::MaterializeConstantDefinitionInitializer(
 	BindingId binding, TypeId* type, ExpressionInfo* initializer)
 {

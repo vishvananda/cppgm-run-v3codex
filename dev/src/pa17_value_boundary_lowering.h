@@ -117,7 +117,10 @@ protected:
 			!derived.program_.entities[object.entity].complete)
 			return false;
 		const std::size_t size = derived.program_.SizeOf(object_type);
-		return (size != 16 ||
+		const bool aggregate_parameter = object.entity <
+			derived.aggregate_parameter_entities_.size() &&
+			derived.aggregate_parameter_entities_[object.entity] != 0;
+		return (aggregate_parameter || size != 16 ||
 			derived.program_.entities[object.entity].template_argument_count != 0) &&
 			derived.program_.entities[object.entity].indirect_class_value_abi;
 	}

@@ -132,6 +132,7 @@ public:
 			program_.entities.size(), 0);
 		aggregate_helper_symbols_.resize(
 			graph_.aggregate_helpers.size(), kNoLowId);
+		IndexAggregateParameterEntities(&aggregate_parameter_entities_);
 	}
 	void Lower()
 	{
@@ -503,7 +504,6 @@ private:
 			&declaration.variadic);
 		return declaration;
 	}
-
 	GlobalDeclaration LowerGlobalDeclaration(std::uint32_t node) const
 	{
 		const DumpNode& record = arena_.nodes[node];
@@ -516,7 +516,6 @@ private:
 		if (declaration.typed) declaration.type = LowerStorageType(record.type);
 		return declaration;
 	}
-
 	Global LowerGlobal(std::uint32_t node)
 	{
 		const DumpNode& record = arena_.nodes[node];
@@ -2954,6 +2953,7 @@ private:
 	std::vector<std::uint8_t> bit_field_storage_transfer_owners_;
 	FlatIdMap class_value_boundary_types_;
 	std::vector<SymbolId> aggregate_helper_symbols_;
+	std::vector<std::uint8_t> aggregate_parameter_entities_;
 	std::vector<BlockId> break_targets_;
 	std::vector<BlockId> continue_targets_;
 	std::vector<StatementTask> statement_tasks_;

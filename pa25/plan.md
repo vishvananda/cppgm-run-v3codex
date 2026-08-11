@@ -19,34 +19,37 @@ IR).
 
 ## Current Failure Map
 
-The audit turn started at 64/125. The checkpoint now passes 67/128: every
-turn-start pass remains, and all three audit regressions pass. The unchanged 61
-failures group by first owner: deferred function-template result deduction (1),
-list/aggregate/array initialization (12), class conversions and value transfer
-(4), lambda closure synthesis/calls (41), and retained-template recovery (3).
-The lambda/range case remains charged to lambda because closure synthesis fails
-before its range body is analyzed.
+This checkpoint started at 67/128 and now passes 79/128 with every baseline
+pass preserved. The 12 list/aggregate/array failures are closed. The remaining
+49 failures group by first owner: deferred function-template result deduction
+(1), class conversions and value transfer (4), lambda closure synthesis/calls
+(41), and retained-template recovery (3). The lambda/range case remains charged
+to lambda because closure synthesis fails before its range body is analyzed.
 
-## Next Substantial Checkpoint
+## Active Checkpoint
 
-Close the 12 list/aggregate/array initialization failures as one ownership
-checkpoint. PA12 should canonicalize direct-braced targets, bounded array and
-nested aggregate element plans, omitted-tail zero initialization, and string
-literal array facts once; PA15 should consume those plans without reconstructing
-shape or replaying initialization lookup. Preserve the ordinary placeholder and
-range paths. Complexity must be O(initializer syntax + aggregate elements +
-emitted actions), with no per-element whole-aggregate rescans. Validate the
-current 12-case cluster plus nested arrays, omitted class tails, and direct
-braced scalar expressions before moving to class conversions or lambdas.
+Close the four class-conversion/value-transfer failures at the selected
+conversion and typed value-boundary interface. PA12 owns canonical constructor
+and conversion-function lookup, reference result categories, alias-resolved
+types, and the selected conversion sequence; PA15-PA17 consume those facts to
+lower direct-object parameters and copy boundaries without replaying lookup.
+Relevant `spec.md` requirements are sections 2 (canonical identities), 3
+(indexed lookup and retained selected conversions), 6 (typed lowering), 8
+(phase-local ownership), and 9 (work proportional to actual candidates and
+emitted actions). Expected complexity is O(actual candidates + selected
+conversion steps + emitted actions), with no whole-program scan. Validate the
+four failures, adjacent passing constructor/conversion/value-boundary cases,
+PA1-24, PA25-local progress, and file audit.
 
 ## Performance Evidence
 
-Seven-run medians for 16/64/256 repeated member ranges produced 358/982/3,478
-tokens, 701/2,573/10,061 semantic nodes, 203/731/2,843 overload candidates,
-450/1,554/5,970 lookup queries, and 465/1,665/6,465 instructions. Semantic time
-was 1.482/4.391/16.269 ms, lowering time 0.522/1.400/5.083 ms, and peak semantic
-storage 353,997/1,229,663/4,637,012 bytes. Work and storage track expanded
-syntax, actual candidates, and emitted-loop growth without a superlinear trend.
+For 16/64/256-element aggregate-array cases, tokens were 266/938/3,626,
+semantic nodes 177/657/2,577, conversion checks 87/327/1,287, and emitted
+instructions 186/666/2,586; function-signature lookups stayed at 22. Five-run
+median semantic time was 0.424/0.984/3.192 ms and lowering time
+0.151/0.286/1.212 ms. Typed storage was 39,536/143,360/558,656 bytes and peak
+semantic storage 88,362/241,194/895,531 bytes. Work and storage follow expanded
+elements and emitted actions without an aggregate-member rescan trend.
 
 ## Completed Checkpoints
 
@@ -54,3 +57,4 @@ syntax, actual candidates, and emitted-loop growth without a superlinear trend.
 |---|---|---|
 | Ordinary placeholder deduction and checkpoint audit | Canonical variable/function results; condition/static-member auto; one retained member body; cv-reference correctness; direct initializer ownership; no placeholder-path deep copies | Shipped PA25 46/121 preserved; audit regressions 4/4; local PA25 50/125; PA1-24 3,471/3,471; file audit pass |
 | Range-for statement closure and audit | Single-parse dispatch; category-correct one-time range materialization; counted array/braced paths; selected member/ADL and iterator facts; retained templates; complete condition/iteration lifetimes; direct typed CFG lowering | Range-owned 13/13 plus audit 3/3; PA25 67/128 (+17 from pre-range); PA1-24 3,471/3,471; reducer executables, file audit, and diff checks pass |
+| Target-directed list, aggregate, and array initialization | Fundamental `T{...}`; adjacent strings; braced char arrays and reference viability; direct/omitted aggregate plans; canonical helper-prefix reuse; nested array members; class boundary copies; array temporary identity | Checkpoint 12/12; PA25 79/128 (+12); PA1-24 3,471/3,471; file audit and diff checks pass; 16/64/256 scaling is linear in elements and emitted actions |

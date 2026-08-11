@@ -22,6 +22,23 @@ template <class Derived>
 class AggregateHelperLowering
 {
 protected:
+	void IndexAggregateParameterEntities(std::vector<std::uint8_t>* result) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		result->assign(derived.program_.entities.size(), 0);
+		for (std::size_t h = 0; h < derived.graph_.aggregate_helpers.size(); ++h)
+		{
+			const AggregateHelperInfo& helper =
+				derived.graph_.aggregate_helpers[h];
+			for (std::size_t m = 0; m < helper.parameter_member_count; ++m)
+			{
+				const EntityId entity = derived.ClassEntity(
+					derived.program_.bindings[helper.members[m]].type);
+				if (entity != kNoEntity) (*result)[entity] = 1;
+			}
+		}
+	}
+
 	void RegisterAggregateHelpers()
 	{
 		Derived& derived = static_cast<Derived&>(*this);
@@ -56,7 +73,9 @@ protected:
 			const TypeId* source_parameters =
 				derived.program_.types.Parameters(helper.function_type);
 			if (function_type.kind != TYPE_FUNCTION ||
-				function_type.parameter_count != helper.members.size() + 1 ||
+				helper.parameter_member_count > helper.members.size() ||
+				function_type.parameter_count !=
+					helper.parameter_member_count + 1 ||
 				helper.member_constructors.size() != helper.members.size() ||
 				helper.trivial_member_constructors.size() != helper.members.size())
 				throw std::logic_error("aggregate helper has invalid function type");
@@ -88,6 +107,15 @@ protected:
 			for (std::size_t p = 0; p < result.parameters.size(); ++p)
 			{
 				if (result.parameters[p].by_address) continue;
+				if (p != 0 && derived.IsClassValueType(source_parameters[p]))
+				{
+					derived.EmitClassObjectCopy(source_parameters[p],
+						Operand(static_cast<ParameterId>(p),
+							result.parameters[p].type),
+						derived.AddressOfStorage(Operand(
+							static_cast<SlotId>(p), result.slots[p].type)));
+					continue;
+				}
 				Instruction store(Instruction::STORE);
 				store.type = result.parameters[p].type;
 				store.first = Operand(static_cast<ParameterId>(p), store.type);
@@ -98,6 +126,25 @@ protected:
 			{
 				const BindingId member = helper.members[m];
 				const BindingId constructor = helper.member_constructors[m];
+				if (m >= helper.parameter_member_count)
+				{
+					if (constructor != kNoBinding)
+						throw std::logic_error(
+							"omitted aggregate class member has no value plan");
+					const Operand object = derived.LoadStorage(
+						Operand(static_cast<SlotId>(0), LowPtr()), LowPtr());
+					const Operand destination =
+						derived.ProjectAggregateMember(object, member);
+					if (derived.program_.bindings[member].bit_field)
+						derived.InitializeBitField(member,
+							Operand(0, derived.LowerExpressionType(
+								derived.program_.bindings[member].type)),
+							destination, derived.LowerExpressionType(
+								derived.program_.bindings[member].type));
+					else derived.EmitZeroInitialization(
+						derived.program_.bindings[member].type, destination);
+					continue;
+				}
 				if (constructor != kNoBinding)
 				{
 					const Operand object = derived.LoadStorage(
@@ -194,7 +241,8 @@ protected:
 		const NodeChildren children = derived.Children(node);
 		if (function_type.kind != TYPE_FUNCTION ||
 			function_type.parameter_count != children.size() + 1 ||
-			children.size() != helper.members.size())
+			children.size() != helper.parameter_member_count ||
+			helper.parameter_member_count > helper.members.size())
 			throw std::logic_error("aggregate helper boundary mismatch");
 		Instruction call(Instruction::CALL);
 		call.type = LowVoid();

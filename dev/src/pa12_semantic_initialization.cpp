@@ -1574,31 +1574,53 @@ std::uint32_t SemanticAnalyzer::BuildAggregateConstructionAction(TypeId type,
 	if (!IsClassEntity(*program_, entity) ||
 		!program_->entities[entity].is_aggregate)
 		throw std::logic_error("aggregate helper has non-aggregate type");
+	std::vector<std::uint32_t> actions;
+	for (std::uint32_t edge = dump_.nodes[aggregate_list].first_edge; edge != kNoDumpEdge; edge = dump_.edges[edge].next)
+		actions.push_back(dump_.edges[edge].child);
+	std::size_t parameter_member_count = 0;
+	for (std::size_t i = 0; i < actions.size(); ++i)
+	{
+		const DumpNode& action = dump_.nodes[actions[i]];
+		if (action.kind != DUMP_INITIALIZER_ACTION || action.binding == kNoBinding)
+			throw std::logic_error("aggregate helper has invalid member action");
+		if (action.first_edge != kNoDumpEdge)
+		{
+			if (dump_.edges[action.first_edge].next != kNoDumpEdge)
+				throw std::runtime_error("aggregate helper member has multiple values");
+			parameter_member_count = i + 1;
+		}
+		const TypeKind kind = program_->types.Get(program_->types.RemoveTopCv(action.type)).kind;
+		if (kind == TYPE_ARRAY && !allow_array_members)
+			return aggregate_list;
+	}
+	if (parameter_member_count > std::numeric_limits<std::uint32_t>::max()) throw
+		std::runtime_error("aggregate helper parameter prefix is too large");
 	std::vector<std::uint32_t> values;
 	std::vector<BindingId> members;
 	std::vector<BindingId> member_constructors;
 	std::vector<std::uint8_t> trivial_member_constructors;
 	std::vector<TypeId> parameter_types;
-	for (std::uint32_t edge = dump_.nodes[aggregate_list].first_edge;
-		edge != kNoDumpEdge; edge = dump_.edges[edge].next)
+	const auto make_zero_value = [this](TypeId value_type) -> std::uint32_t
 	{
-		const std::uint32_t action_node = dump_.edges[edge].child;
-		const DumpNode& action = dump_.nodes[action_node];
-		if (action.kind != DUMP_INITIALIZER_ACTION ||
-			action.binding == kNoBinding)
-			throw std::logic_error("aggregate helper has invalid member action");
-		if (action.first_edge == kNoDumpEdge) return aggregate_list;
-		if (dump_.edges[action.first_edge].next != kNoDumpEdge)
-			throw std::runtime_error(
-				"aggregate helper member has multiple values");
-		const std::uint32_t value = dump_.edges[action.first_edge].child;
-		const TypeKind kind = program_->types.Get(
-			program_->types.RemoveTopCv(action.type)).kind;
-		if (kind == TYPE_ARRAY && !allow_array_members)
-			return aggregate_list;
+		ExpressionInfo zero = MakeLiteral(value_type,
+			InternNumber(static_cast<std::int64_t>(0)));
+		zero.constant = true;
+		zero.value = 0;
+		dump_.nodes[zero.node].constant = true;
+		dump_.nodes[zero.node].constant_value = 0;
+		dump_.nodes[zero.node].value_initialization = true;
+		RecordExpressionFacts(zero);
+		return zero.node;
+	};
+	for (std::size_t i = 0; i < actions.size(); ++i)
+	{
+		const DumpNode& action = dump_.nodes[actions[i]];
+		const TypeKind kind = program_->types.Get(program_->types.RemoveTopCv(action.type)).kind;
 		if (kind == TYPE_ARRAY && allow_array_members)
 		{
-			std::vector<std::uint32_t> pending(1, value);
+			if (action.first_edge == kNoDumpEdge)
+				throw std::logic_error("omitted aggregate array has no value plan");
+			std::vector<std::uint32_t> pending(1, dump_.edges[action.first_edge].child);
 			while (!pending.empty())
 			{
 				const std::uint32_t current = pending.back();
@@ -1611,20 +1633,27 @@ std::uint32_t SemanticAnalyzer::BuildAggregateConstructionAction(TypeId type,
 			}
 		}
 		members.push_back(action.binding);
-		const TypeId adjusted = AdjustParameterType(action.type);
-		parameter_types.push_back(adjusted);
-		ExpressionInfo argument;
-		argument.node = value;
-		argument.type = dump_.nodes[value].type;
-		argument.category = dump_.nodes[value].category;
-		argument.binding = dump_.nodes[value].binding;
-		if (IsClassEntity(*program_, EntityOf(action.type)))
+		if (i < parameter_member_count)
 		{
-			argument.type = action.type;
-			argument.category = VALUE_PRVALUE;
+			std::uint32_t value = kNoDumpEdge;
+			if (action.first_edge != kNoDumpEdge)
+				value = dump_.edges[action.first_edge].child;
+			else value = make_zero_value(action.type);
+			const TypeId adjusted = AdjustParameterType(action.type);
+			parameter_types.push_back(adjusted);
+			ExpressionInfo argument;
+			argument.node = value;
+			argument.type = dump_.nodes[value].type;
+			argument.category = dump_.nodes[value].category;
+			argument.binding = dump_.nodes[value].binding;
+			if (IsClassEntity(*program_, EntityOf(action.type)))
+			{
+				argument.type = action.type;
+				argument.category = VALUE_PRVALUE;
+			}
+			values.push_back(IsClassEntity(*program_, EntityOf(action.type)) ?
+				ApplyCallArgument(argument, adjusted).node : value);
 		}
-		values.push_back(IsClassEntity(*program_, EntityOf(action.type)) ?
-			ApplyCallArgument(argument, adjusted).node : value);
 		BindingId constructor = kNoBinding;
 		if (IsClassEntity(*program_, EntityOf(action.type)))
 		{
@@ -1643,6 +1672,35 @@ std::uint32_t SemanticAnalyzer::BuildAggregateConstructionAction(TypeId type,
 			GetFunction(constructor).trivial_special_member ? 1 : 0);
 	}
 	if (members.empty()) return aggregate_list;
+	if (entity >= widest_aggregate_helper_by_entity_.size())
+		widest_aggregate_helper_by_entity_.resize(entity + 1, kNoDumpEdge);
+	const std::uint32_t widest = widest_aggregate_helper_by_entity_[entity];
+	if (widest != kNoDumpEdge)
+	{
+		if (widest >= aggregate_helpers_.size())
+			throw std::logic_error("aggregate helper owner index is invalid");
+		const AggregateHelperInfo& prior = aggregate_helpers_[widest];
+		if (prior.members != members ||
+			prior.member_constructors != member_constructors ||
+			prior.trivial_member_constructors != trivial_member_constructors)
+			throw std::logic_error("aggregate helper owner plan changed");
+		if (prior.parameter_member_count > parameter_member_count)
+		{
+			for (std::size_t i = parameter_member_count;
+				i < prior.parameter_member_count; ++i)
+			{
+				const DumpNode& action = dump_.nodes[actions[i]];
+				if (action.first_edge != kNoDumpEdge ||
+					IsClassEntity(*program_, EntityOf(action.type)) ||
+					program_->types.Get(
+						program_->types.RemoveTopCv(action.type)).kind == TYPE_ARRAY)
+					throw std::logic_error("cannot synthesize aggregate argument");
+				values.push_back(make_zero_value(action.type));
+				parameter_types.push_back(AdjustParameterType(action.type));
+			}
+			parameter_member_count = prior.parameter_member_count;
+		}
+	}
 	const EntityRecord& owner = program_->entities[entity];
 	std::vector<TypeId> boundary_types;
 	boundary_types.reserve(parameter_types.size() + 1);
@@ -1661,15 +1719,25 @@ std::uint32_t SemanticAnalyzer::BuildAggregateConstructionAction(TypeId type,
 			throw std::runtime_error("too many aggregate helper identities");
 		helper = static_cast<std::uint32_t>(aggregate_helpers_.size());
 		aggregate_helpers_.push_back(AggregateHelperInfo(
-			entity, type, function_type, members, member_constructors,
+			entity, type, function_type,
+			static_cast<std::uint32_t>(parameter_member_count), members,
+			member_constructors,
 			trivial_member_constructors));
 		aggregate_helper_index_.Insert(key,
 			static_cast<BindingId>(helper));
+		const std::uint32_t previous =
+			widest_aggregate_helper_by_entity_[entity];
+		if (previous == kNoDumpEdge ||
+			aggregate_helpers_[previous].parameter_member_count <
+				parameter_member_count)
+			widest_aggregate_helper_by_entity_[entity] = helper;
 	}
 	else
 	{
 		helper = static_cast<std::uint32_t>(encoded);
 		if (helper >= aggregate_helpers_.size() ||
+			aggregate_helpers_[helper].parameter_member_count !=
+				parameter_member_count ||
 			aggregate_helpers_[helper].members != members ||
 			aggregate_helpers_[helper].member_constructors !=
 				member_constructors ||
@@ -1684,31 +1752,6 @@ std::uint32_t SemanticAnalyzer::BuildAggregateConstructionAction(TypeId type,
 		dump_.Add(call, values[i]);
 	++expression_count_;
 	return call;
-}
-
-ExpressionInfo SemanticAnalyzer::BuildLocalAggregateArrayActions(
-	const ExpressionInfo& initializer)
-{
-	const TypeRecord array = program_->types.Get(
-		program_->types.RemoveTopCv(initializer.type));
-	const EntityId element = array.kind == TYPE_ARRAY ?
-		EntityOf(array.child) : kNoEntity;
-	if (array.kind != TYPE_ARRAY || !IsClassEntity(*program_, element) ||
-		!program_->entities[element].is_aggregate ||
-		dump_.nodes[initializer.node].kind != DUMP_BRACED_INIT_LIST)
-		return initializer;
-	for (std::uint32_t edge = dump_.nodes[initializer.node].first_edge;
-		edge != kNoDumpEdge; edge = dump_.edges[edge].next)
-	{
-		const std::uint32_t element_node = dump_.edges[edge].child;
-		if (dump_.nodes[element_node].kind != DUMP_BRACED_INIT_LIST)
-			throw std::logic_error(
-				"aggregate array element has no action list");
-		const std::uint32_t replacement =
-			BuildAggregateConstructionAction(array.child, element_node);
-		dump_.edges[edge].child = replacement;
-	}
-	return initializer;
 }
 
 BindingId SemanticAnalyzer::SelectUsualDeallocation(ScopeId scope,

@@ -131,6 +131,7 @@ struct DumpNode
 	bool argument_materialization;
 	bool discarded_materialization;
 	bool reference_call_materialization;
+	bool range_for_materialization;
 	bool contains_temporary_object;
 	bool temporary_implicit_object;
 	bool pending_constructor_demand;
@@ -176,7 +177,7 @@ struct DumpNode
 		  value_initialization(false), elide_empty_constructor(false),
 		  trivial_special_member_action(false), storage_unit_transfer(false),
 		  argument_materialization(false), discarded_materialization(false),
-		  reference_call_materialization(false),
+		  reference_call_materialization(false), range_for_materialization(false),
 		  contains_temporary_object(value == DUMP_TEMPORARY_OBJECT),
 		  temporary_implicit_object(false), pending_constructor_demand(false),
 		  pending_runtime_call_demand(false),
@@ -1184,23 +1185,29 @@ struct LocalStaticObjectAction
 
 // A lowering-only aggregate helper has a canonical typed identity but is not a
 // C++ constructor declaration and therefore never participates in lookup.
-// The explicit parameters correspond one-for-one with members; the hidden
-// object parameter is already present in function_type.
+// The explicit parameters correspond to the member prefix ending at the last
+// non-omitted initializer.  `members` retains the complete declaration-order
+// plan so lowering can zero-initialize an omitted trailing scalar/array tail;
+// the hidden object parameter is already present in function_type.
 struct AggregateHelperInfo
 {
 	EntityId entity;
 	TypeId object_type;
 	TypeId function_type;
+	std::uint32_t parameter_member_count;
 	std::vector<BindingId> members;
 	std::vector<BindingId> member_constructors;
 	std::vector<std::uint8_t> trivial_member_constructors;
 
 	AggregateHelperInfo(EntityId entity_value, TypeId object_type_value,
-		TypeId function_type_value, const std::vector<BindingId>& members_value,
+		TypeId function_type_value, std::uint32_t parameter_member_count_value,
+		const std::vector<BindingId>& members_value,
 		const std::vector<BindingId>& member_constructors_value,
 		const std::vector<std::uint8_t>& trivial_member_constructors_value)
 		: entity(entity_value), object_type(object_type_value),
-		  function_type(function_type_value), members(members_value),
+		  function_type(function_type_value),
+		  parameter_member_count(parameter_member_count_value),
+		  members(members_value),
 		  member_constructors(member_constructors_value),
 		  trivial_member_constructors(trivial_member_constructors_value) {}
 };
