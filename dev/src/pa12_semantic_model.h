@@ -270,6 +270,14 @@ enum PlaceholderDeclaratorKind
 	PLACEHOLDER_DECLARATOR_RVALUE_REFERENCE
 };
 
+enum PlaceholderBodyState
+{
+	PLACEHOLDER_BODY_NOT_STARTED,
+	PLACEHOLDER_BODY_IN_PROGRESS,
+	PLACEHOLDER_BODY_SUCCEEDED,
+	PLACEHOLDER_BODY_FAILED
+};
+
 struct ParameterInfo
 {
 	NameId name;
@@ -723,6 +731,7 @@ struct FunctionInfo
 	PlaceholderDeclaratorKind placeholder_return_kind;
 	std::uint8_t placeholder_return_cv;
 	bool placeholder_return_deduced;
+	PlaceholderBodyState placeholder_body_state;
 	bool defined;
 	bool deferred;
 	bool definition_in_class;
@@ -767,6 +776,7 @@ struct FunctionInfo
 		  template_pattern(kNoDumpEdge), placeholder_return_type(kNoType),
 		  placeholder_return_kind(PLACEHOLDER_DECLARATOR_NONE),
 		  placeholder_return_cv(CV_NONE), placeholder_return_deduced(false),
+		  placeholder_body_state(PLACEHOLDER_BODY_NOT_STARTED),
 		  defined(false), deferred(false), definition_in_class(false),
 		  template_specialization(false), explicit_specialization(false),
 		  deleted_function(false),

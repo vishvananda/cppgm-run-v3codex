@@ -119,6 +119,20 @@ DeclaratorInfo SemanticAnalyzer::BuildVariableDeclarator(
 		if (spec.is_constexpr)
 			parsed.type = program_->types.Qualify(parsed.type, CV_CONST);
 		value = ApplyTarget(value, parsed.type);
+		const TypeRecord& declared = program_->types.Get(parsed.type);
+		if (declared.kind != TYPE_LVALUE_REFERENCE &&
+			declared.kind != TYPE_RVALUE_REFERENCE &&
+			IsClassObjectType(parsed.type) && value.category == VALUE_PRVALUE &&
+			dump_.nodes[value.node].kind == DUMP_CALL_EXPRESSION &&
+			!dump_.nodes[value.node].explicit_user_conversion_call &&
+			program_->types.RemoveTopCv(EffectiveType(value.type)) ==
+				program_->types.RemoveTopCv(EffectiveType(parsed.type)))
+		{
+			const BindingId selected =
+				ValidateClassValueConstruction(parsed.type, value);
+			value = BuildDirectClassValueTransfer(
+				value, parsed.type, selected);
+		}
 		value = FinalizeVariableInitializer(
 			value, parsed.type, EntityOf(parsed.type), local);
 	}
@@ -261,24 +275,36 @@ void SemanticAnalyzer::AnalyzeRetainedPlaceholderFunctionBody(
 	BindingId function)
 {
 	function = program_->bindings[function].canonical;
-	const FunctionInfo& initial = GetFunction(function);
-	if (initial.placeholder_return_kind == PLACEHOLDER_DECLARATOR_NONE ||
-		initial.retained_definition_semantics != kNoDumpEdge)
+	FunctionInfo& requested = GetMutableFunction(function);
+	if (requested.placeholder_return_kind == PLACEHOLDER_DECLARATOR_NONE)
 		return;
-	if (!initial.defined || initial.definition_body == kNoNode)
+	if (requested.placeholder_body_state == PLACEHOLDER_BODY_SUCCEEDED ||
+		requested.retained_definition_semantics != kNoDumpEdge)
+	{
+		requested.placeholder_body_state = PLACEHOLDER_BODY_SUCCEEDED;
+		return;
+	}
+	if (requested.placeholder_body_state == PLACEHOLDER_BODY_IN_PROGRESS)
+		throw std::runtime_error(
+			"recursive placeholder function return deduction");
+	if (requested.placeholder_body_state == PLACEHOLDER_BODY_FAILED)
+		throw std::runtime_error(
+			"placeholder function return deduction previously failed");
+	if (!requested.defined || requested.definition_body == kNoNode)
 		throw std::runtime_error(
 			"placeholder function return requires a visible definition");
+	requested.placeholder_body_state = PLACEHOLDER_BODY_IN_PROGRESS;
 
-	const bool member = initial.member_owner != kNoType;
+	const bool member = requested.member_owner != kNoType;
 	const TypeId provisional_output = member ?
-		AdaptMemberFunctionType(function) : initial.type;
+		AdaptMemberFunctionType(function) : requested.type;
 	const std::uint32_t detached = MakeDump(DUMP_FUNCTION_DEFINITION,
-		provisional_output, VALUE_NONE, initial.display_name, initial.binding);
-	const ScopeId function_scope = NewScope(initial.lexical_scope,
-		SCOPE_FUNCTION, program_->bindings[initial.binding].name,
-		ScopePrefixId(initial.owner));
+		provisional_output, VALUE_NONE, requested.display_name, requested.binding);
+	const ScopeId function_scope = NewScope(requested.lexical_scope,
+		SCOPE_FUNCTION, program_->bindings[requested.binding].name,
+		ScopePrefixId(requested.owner));
 	BindFunctionParameterPackElement(
-		function_scope, initial.parameter_pack_name, kNoBinding);
+		function_scope, requested.parameter_pack_name, kNoBinding);
 	if (member)
 	{
 		const TypeId this_type =
@@ -289,9 +315,9 @@ void SemanticAnalyzer::AnalyzeRetainedPlaceholderFunctionBody(
 		dump_.Add(detached, MakeDump(DUMP_PARAMETER, this_type,
 			VALUE_NONE, this_name, this_binding));
 	}
-	for (std::size_t i = 0; i < initial.parameters.size(); ++i)
+	for (std::size_t i = 0; i < requested.parameters.size(); ++i)
 	{
-		const ParameterInfo& parameter = initial.parameters[i];
+		const ParameterInfo& parameter = requested.parameters[i];
 		const BindingId parameter_binding = program_->AddBinding(function_scope,
 			BIND_PARAMETER, parameter.name, ParameterBindingType(parameter));
 		BindFunctionParameterPackElement(
@@ -306,19 +332,27 @@ void SemanticAnalyzer::AnalyzeRetainedPlaceholderFunctionBody(
 	const TypeId previous_return = current_return_type_;
 	const EntityId previous_class = current_class_context_;
 	const BindingId previous_function = current_function_context_;
-	current_return_type_ = initial.placeholder_return_deduced ?
-		initial.placeholder_return_type : kNoType;
-	current_class_context_ = initial.friend_of != kNoEntity ?
-		initial.friend_of : program_->bindings[initial.binding].member_owner;
+	current_return_type_ = requested.placeholder_return_deduced ?
+		requested.placeholder_return_type : kNoType;
+	current_class_context_ = requested.friend_of != kNoEntity ?
+		requested.friend_of : program_->bindings[requested.binding].member_owner;
 	current_function_context_ = function;
 	try
 	{
-		AnalyzeCompound(initial.definition_body, function_scope, detached);
+		AnalyzeCompound(requested.definition_body, function_scope, detached);
 		CompletePlaceholderFunctionReturn(function);
+		const FunctionInfo& completed = GetFunction(function);
+		const bool declared_constexpr = completed.constexpr_function ||
+			(completed.template_pattern < function_templates_.size() &&
+			 function_templates_[completed.template_pattern].constexpr_specifier);
+		if (declared_constexpr)
+			ValidateConstexprCallableType(completed.type, false);
 		FinalizeNamedReturnSlot(detached);
 	}
 	catch (...)
 	{
+		GetMutableFunction(function).placeholder_body_state =
+			PLACEHOLDER_BODY_FAILED;
 		current_return_type_ = previous_return;
 		current_class_context_ = previous_class;
 		current_function_context_ = previous_function;
@@ -329,6 +363,10 @@ void SemanticAnalyzer::AnalyzeRetainedPlaceholderFunctionBody(
 	current_function_context_ = previous_function;
 	FunctionInfo& completed = GetMutableFunction(function);
 	completed.retained_definition_semantics = detached;
+	if (completed.template_pattern < function_templates_.size() &&
+		function_templates_[completed.template_pattern].constexpr_specifier)
+		completed.constexpr_function = true;
+	completed.placeholder_body_state = PLACEHOLDER_BODY_SUCCEEDED;
 	dump_.nodes[detached].type = member ?
 		AdaptMemberFunctionType(function) : completed.type;
 }
@@ -414,6 +452,17 @@ void SemanticAnalyzer::PublishStableFunctionTemplateResultAbi(
 	if (dependent_result || conversion_result)
 		program_->bindings[canonical_binding].
 			force_indirect_class_result_abi = true;
+}
+
+void SemanticAnalyzer::CompleteFunctionTemplatePlaceholderResult(
+	std::size_t pattern, BindingId binding, EntityId member_owner)
+{
+	if (GetFunction(binding).placeholder_return_kind ==
+		PLACEHOLDER_DECLARATOR_NONE) return;
+	AnalyzeRetainedPlaceholderFunctionBody(binding);
+	const BindingId canonical = program_->bindings[binding].canonical;
+	PublishStableFunctionTemplateResultAbi(function_templates_[pattern],
+		GetFunction(binding).type, member_owner, canonical);
 }
 
 bool SemanticAnalyzer::ShouldPreserveRuntimeInitializerRecipe(bool local,

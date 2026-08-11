@@ -1135,6 +1135,8 @@ private:
 	void PublishStableFunctionTemplateResultAbi(
 		const FunctionTemplatePattern& pattern, TypeId function_type,
 		EntityId member_owner, BindingId canonical_binding);
+	void CompleteFunctionTemplatePlaceholderResult(std::size_t pattern,
+		BindingId binding, EntityId member_owner);
 	bool TryInheritConstructors(EntityId entity, ScopeId scope,
 		ScopeId target_owner, NameId target_name, bool names_owner_alias,
 		const std::vector<BindingId>& constructors,

@@ -175,14 +175,36 @@ protected:
 					result_kind == DUMP_CONSTRUCTOR_ACTION)
 					(void)derived.EnsureDirectReturnSlot(children[0]);
 			}
+			const bool constructed_variable_temporary = variable_initializer &&
+				children.size() == 1 && derived.arena_.nodes[children[0]].kind ==
+					DUMP_CONSTRUCTOR_ACTION;
+			const bool preplan_standalone_discard =
+				record.discarded_materialization &&
+				(temporary_entity == kNoEntity ||
+				 !derived.program_.entities[temporary_entity].empty_class) &&
+				children.size() == 1 &&
+				derived.arena_.nodes[children[0]].kind == DUMP_CALL_EXPRESSION &&
+				!derived.arena_.nodes[children[0]].contains_temporary_object;
 			if (record.kind == DUMP_TEMPORARY_OBJECT &&
-				record.argument_materialization &&
+				(record.argument_materialization ||
+				 preplan_standalone_discard ||
+				 (record.temporary_implicit_object && variable_initializer) ||
+				 constructed_variable_temporary) &&
 				(variable_initializer || expression_arguments || union_argument ||
+				 record.discarded_materialization ||
 				 (record.full_expression_staging &&
 				  !record.managed_full_expression_cleanup)) &&
 				derived.generated_slots_[current] == kNoLowId)
-				(void)derived.EnsureGeneratedSlot(current, "arg",
+			{
+				const TypeRecord& temporary = derived.program_.types.Get(
+					derived.program_.types.RemoveTopCv(record.type));
+				const char* name = record.discarded_materialization ?
+					(temporary.kind == TYPE_ARRAY ? "discardarr" : "discard") :
+					record.argument_materialization ? "arg" :
+					constructed_variable_temporary ? "tmpobj" : "arg";
+				(void)derived.EnsureGeneratedSlot(current, name,
 					derived.LowerStorageType(record.type));
+			}
 			const bool indirect_result_transfer =
 				record.kind == DUMP_CLASS_VALUE_TRANSFER &&
 				children.size() == 1 &&

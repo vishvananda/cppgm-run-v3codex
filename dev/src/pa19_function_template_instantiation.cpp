@@ -1067,7 +1067,9 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	if (dependent_result_shape != kNoType && shape_spec.placeholder_auto &&
 		trailing_return != kNoNode)
 		shape_spec.type = dependent_result_shape;
-	pattern.deferred_result_formation = dependent_result_shape != kNoType && shape_spec.type == dependent_result_shape;
+	pattern.deferred_result_formation = (dependent_result_shape != kNoType &&
+		shape_spec.type == dependent_result_shape) ||
+		(shape_spec.placeholder_auto && trailing_return == kNoNode);
 	EntityId friend_owner = kNoEntity;
 	const bool qualified_friend = path.global || path.Size() > 1;
 	if (shape_spec.is_friend)
@@ -1111,7 +1113,8 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	const EntityId previous_class = current_class_context_;
 	if (member_owner != kNoEntity) current_class_context_ = member_owner;
 	DeclaratorInfo shape_declarator = BuildDeclarator(declarator, shape_spec.type,
-		shape_scope, false, nonstatic_member, defer_trailing_return, &parameter_names);
+		shape_scope, shape_spec.placeholder_auto, nonstatic_member,
+		defer_trailing_return, &parameter_names);
 	current_class_context_ = previous_class;
 	ValidateFunctionTemplatePatternResults(&pattern, shape_declarator, shape_scope,
 		parameter_names, defer_trailing_return);
@@ -1122,7 +1125,8 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 		shape_declarator.type = ApplyConstexprMemberFunctionType(
 			shape_declarator.type, member_owner,
 			shape_spec.storage_class == STORAGE_CLASS_STATIC);
-	if (shape_spec.is_constexpr)
+	if (shape_spec.is_constexpr && shape_declarator.placeholder_return_kind ==
+		PLACEHOLDER_DECLARATOR_NONE)
 		ValidateConstexprCallableType(
 			shape_declarator.type, pattern.constructor_template);
 	pattern.shape_type = shape_declarator.type;
@@ -1461,10 +1465,11 @@ DeclaratorInfo SemanticAnalyzer::BuildFunctionTemplateSpecializationDeclarator(
 			!CandidateSubstitutionFailed())
 			RecordCandidateSubstitutionFailure();
 		if (!CandidateSubstitutionFailed() && spec->type != kNoType)
-			parsed = BuildDeclarator(pattern.declarator, spec->type,
-				template_scope, false, *member_owner != kNoEntity &&
-					!pattern.static_member &&
-					spec->storage_class != STORAGE_CLASS_STATIC);
+				parsed = BuildDeclarator(pattern.declarator, spec->type,
+					template_scope, spec->placeholder_auto,
+					*member_owner != kNoEntity &&
+						!pattern.static_member &&
+						spec->storage_class != STORAGE_CLASS_STATIC);
 	}
 	catch (...)
 	{
@@ -1578,6 +1583,8 @@ void SemanticAnalyzer::UpgradeFunctionTemplateSpecializations(
 			pattern, template_scope, &spec, &member_owner);
 		FunctionInfo& function = GetMutableFunction(
 			specializations[specialization]);
+		ConfigurePlaceholderFunctionReturn(function.binding, parsed,
+			spec.placeholder_cv);
 		if (function.explicit_specialization) continue;
 		if (function.type != parsed.type)
 			throw std::runtime_error(
@@ -1601,6 +1608,8 @@ void SemanticAnalyzer::UpgradeFunctionTemplateSpecializations(
 		PublishInlineFunctionFacts(function.binding,
 			spec.inline_specifier || constexpr_specialization ||
 			function.definition_in_class);
+		CompleteFunctionTemplatePlaceholderResult(
+			index, function.binding, member_owner);
 	}
 }
 
@@ -1903,6 +1912,7 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	if (old != kNoBinding)
 	{
 		++template_specialization_cache_hits_;
+		AnalyzeRetainedPlaceholderFunctionBody(old);
 		if (needs_defaults)
 			function_template_default_requests_.SetRequest(
 				request_key, TEMPLATE_REQUEST_SUCCEEDED, old);
@@ -1960,10 +1970,8 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 		parsed.type, parsed.parameters, pattern.defined, true,
 		member_owner == kNoEntity ? spec.storage_class : STORAGE_CLASS_NONE,
 		pattern.language_linkage, pattern.nonthrowing, pattern.ordinary_visible);
-	const BindingId canonical_binding =
-		program_->bindings[binding].canonical;
-	const FunctionSignatureKey declaration_key(pattern.owner, pattern.name,
-		GetFunction(canonical_binding).signature);
+	const BindingId canonical_binding = program_->bindings[binding].canonical;
+	const FunctionSignatureKey declaration_key(pattern.owner, pattern.name, GetFunction(canonical_binding).signature);
 	++function_signature_lookups_;
 	if (function_template_specialization_declarations_.Find(
 		declaration_key) == kNoBinding)
@@ -2014,6 +2022,7 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	ValidateFunctionRefQualifier(binding);
 	ValidateNonmemberOperator(binding);
 	FunctionInfo& function = GetMutableFunction(binding);
+	ConfigurePlaceholderFunctionReturn(binding, parsed, spec.placeholder_cv);
 	function.deleted_function =
 		function.deleted_function || pattern.deleted_function;
 	if (pattern.dependent_exception_specification)
@@ -2023,7 +2032,8 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 		function.exception_specification_state =
 			EXCEPTION_SPECIFICATION_DEFERRED;
 	}
-	const bool constexpr_specialization = spec.is_constexpr &&
+	const bool constexpr_specialization = spec.is_constexpr && parsed.placeholder_return_kind ==
+		PLACEHOLDER_DECLARATOR_NONE &&
 		IsConstexprCallableType(parsed.type, pattern.constructor_template);
 	function.constexpr_function =
 		function.constexpr_function || constexpr_specialization;
@@ -2033,8 +2043,8 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 		spec.inline_specifier || constexpr_specialization ||
 		function.definition_in_class);
 	function.template_pattern = static_cast<std::uint32_t>(index);
-	PublishStableFunctionTemplateResultAbi(
-		pattern, parsed.type, member_owner, canonical_binding);
+	PublishStableFunctionTemplateResultAbi(pattern, parsed.type,
+		member_owner, canonical_binding);
 	function.parameter_pack_name = FunctionParameterPackName(pattern.declarator);
 	function.deferred = true;
 	function.lexical_scope = template_scope;
@@ -2066,6 +2076,7 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 			mutable_pattern.specialization_parameter_offsets.end(),
 			parameter_offsets.begin(), parameter_offsets.end());
 	}
+	CompleteFunctionTemplatePlaceholderResult(index, binding, member_owner);
 	return binding;
 }
 

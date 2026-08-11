@@ -8,6 +8,9 @@ lookahead is bounded and allocation-free; selected syntax regions are parsed
 once. Placeholder/range initializers and conversion targets are analyzed once;
 canonical `TypeId`, selected-operation, conversion, and class-boundary ABI facts
 remain at their semantic owner, and PA15 consumes those identities directly.
+Demanded placeholder-template bodies use a canonical monotonic state, are
+analyzed only after specialization cache publication, and republish their
+completed function type/ABI before lowering demand.
 Full-expression and scope lifetime actions use the shared typed cleanup path;
 LowIR text remains only the requested output view.
 
@@ -20,37 +23,39 @@ IR).
 
 ## Current Failure Map
 
-The landed checkpoint's 83/128 baseline remains intact; two audit regressions
-now produce 85/130. The same 45 failures remain and group by first owner:
-deferred function-template result deduction (1), lambda closure synthesis/calls
-(41), and retained-template recovery (3). The lambda/range case remains charged
-to lambda because closure synthesis fails before its range body is analyzed.
+PA25 is 87/130, up from the turn-start 85/130. The complete 43-failure set now
+groups by first owner: lambda closure synthesis, capture binding, call/conversion,
+and closure special-member facts (41); retained nested class-template member
+lookup (1); and dependent-owner class result ABI publication (1). The
+lambda/range case remains charged to lambda because closure synthesis fails
+before its range body is analyzed.
 
 ## Active Checkpoint
 
-The next substantial checkpoint closes the four function-template result and
-retained-recovery failures at the on-demand specialization boundary. PA19/PA23
-own canonical function result identity, specialization lookup, retained-body
-ownership, and dependency demand; PA12 publishes the completed typed graph and
-PA15 lowers it without reparsing or replaying deduction. Relevant `spec.md`
-requirements are sections 2 (canonical declaration/type identity), 4 (retained
-syntax instantiated on demand), 6 (direct typed lowering), 8 (explicit lifetime
-and cache ownership), and 9 (work proportional to retained syntax, requested
-specializations, dependency edges, and emitted IR). Expected complexity is
-O(retained syntax + requested specializations + dependency edges + emitted
-actions), with indexed identity lookups and no translation-unit scan. Validate
-all four failures, adjacent passing result-deduction/lifecycle cases, PA1-24,
-PA25 progress, and file audit.
+The next substantial checkpoint is canonical lambda closure synthesis and call
+ownership. PA12 will own one closure entity per lambda syntax/environment,
+capture fields, synthesized call operator, conversion/special-member facts, and
+selected call; PA19 will retain template-dependent environments and instantiate
+only demanded call bodies; PA15 will consume closure layout, capture projection,
+and direct call/conversion facts. This applies `spec.md` sections 2-4 (canonical
+identity, indexed lookup, demand), 5 (monotonic cached facts), 6 (typed direct
+lowering), 8 (explicit owner boundaries), and 9 (observable proportional work).
+Expected complexity is O(lambda syntax + captures + actual candidates + demanded
+body syntax + emitted IR), with O(1)-average closure/specialization lookup and no
+translation-unit scan. Validate captureless calls/conversions first, then local,
+member, nested, capturing, template, range-body, and trait cases; rerun PA1-24,
+the full PA25 report, scaling counters, and file audit.
 
 ## Performance Evidence
 
-For 16/64/256 conversion-function candidates resolved by one retained
-canonical-target using-declaration, tokens were 211/787/3,091, declarations
-69/213/789, lookup queries 73/217/793, signature probes 82/226/802, and access
-checks 25/73/265. Five-run median semantic time was 0.437/1.118/3.783 ms; peak
-semantic storage was 102,152/333,672/1,319,100 bytes. Lowering stayed at
-0.033/0.034/0.052 ms with no emitted functions. Candidate work and storage track
-the declaration set without a whole-program or quadratic lookup trend.
+For 16/64/256 demanded `constexpr auto` function-template specializations,
+tokens were 135/471/1,815 and semantic nodes 179/707/2,819. Specialization
+requests were 48/192/768 with 32/128/512 cache hits; demand pushes and demanded
+emissions were exactly 16/64/256, functions 17/65/257, and instructions
+48/192/768. Typed storage was 22,872/89,352/355,428 bytes. Five-run median
+semantic time was 0.893/2.715/10.364 ms and lowering time 0.304/0.856/3.031 ms.
+Demand, retained-body analysis, storage, and emitted IR scale with requested
+specializations without a translation-unit scan or quadratic trend.
 
 ## Completed Checkpoints
 
@@ -60,3 +65,4 @@ the declaration set without a whole-program or quadratic lookup trend.
 | Range-for statement closure and audit | Single-parse dispatch; category-correct one-time range materialization; counted array/braced paths; selected member/ADL and iterator facts; retained templates; complete condition/iteration lifetimes; direct typed CFG lowering | Range-owned 13/13 plus audit 3/3; PA25 67/128 (+17 from pre-range); PA1-24 3,471/3,471; reducer executables, file audit, and diff checks pass |
 | Target-directed list, aggregate, and array initialization | Fundamental `T{...}`; adjacent strings; braced char arrays and reference viability; direct/omitted aggregate plans; canonical helper-prefix reuse; nested array members; class boundary copies; array temporary identity | Checkpoint 12/12; PA25 79/128 (+12); PA1-24 3,471/3,471; file audit and diff checks pass; 16/64/256 scaling is linear in elements and emitted actions |
 | Selected class conversions and typed value boundaries plus checkpoint audit | One-class conditional construction; single-parse canonical conversion targets; modifiable lvalue-reference increment; semantic-owned direct derived parameter ABI | Checkpoint and neighbors 10/10; PA25 baseline 83/128 preserved plus audit 2/2 (85/130); PA1-24 3,471/3,471; file audit passes; 16/64/256 candidates scale linearly |
+| Function-template placeholder results and deduced class-value locals | Canonical four-state retained-body demand; cache-before-analysis; completed result/ABI publication; selected same-type class transfer and source-order storage facts | Checkpoint and neighbors 5/5; PA25 87/130 (+2); PA1-24 3,471/3,471; file audit and diff checks pass; 16/64/256 specializations scale linearly |
