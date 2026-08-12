@@ -228,6 +228,24 @@ bool SemanticAnalyzer::TryAnalyzeMemberPointerApplication(
 	}
 	const bool function_member = program_->types.IsFunction(pointer.child);
 	TypeId result_type = pointer.child;
+	if (function_member)
+	{
+		ExpressionInfo invocation_object = object_expression;
+		if (operation == "->*") invocation_object.category = VALUE_LVALUE;
+		const TypeRecord& function_type = program_->types.Get(pointer.child);
+		const bool ref_qualifier_viable =
+			function_type.ref_qualifier == FUNCTION_REF_NONE ||
+			(function_type.ref_qualifier == FUNCTION_REF_LVALUE ?
+				invocation_object.category == VALUE_LVALUE :
+				invocation_object.category != VALUE_LVALUE);
+		if (!ref_qualifier_viable ||
+			(object_cv & ~function_type.cv) != 0)
+		{
+			*result = CandidateExpressionFailure(
+				"member function pointer object is not viable");
+			return true;
+		}
+	}
 	if (!function_member && object_cv != CV_NONE)
 		result_type = program_->types.Qualify(result_type, object_cv);
 	const ValueCategory category = function_member ? VALUE_LVALUE :

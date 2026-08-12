@@ -1771,6 +1771,7 @@ bool SemanticAnalyzer::AnalyzeFunctionId(NodeId node, ScopeId scope,
 	EntityId naming_class = kNoEntity;
 	std::vector<BindingId> candidates =
 		FunctionCandidates(scope, spelling, &naming_class, node);
+	if (CandidateSubstitutionFailed()) return true;
 	NamePath structured_base;
 	std::vector<TypeId> explicit_arguments;
 	const bool explicit_template_id = ParseExplicitTemplateArguments(
@@ -1817,6 +1818,41 @@ bool SemanticAnalyzer::AnalyzeFunctionId(NodeId node, ScopeId scope,
 	{
 		result->binding = candidates.empty() ? kNoBinding : candidates[0];
 		return true;
+	}
+	if (member_target != kNoType &&
+		FindChild(node, "structured-type-name") != kNoNode)
+	{
+		const ScopeId naming_scope = naming_class == kNoEntity ? kNoScope :
+			program_->entities[naming_class].member_scope;
+		const NameId member_name = StructuredNamePath(node).Last();
+		const LookupResult direct_templates = naming_scope == kNoScope ?
+			LookupResult() : program_->LookupDirect(
+				naming_scope, member_name, LOOKUP_FUNCTION_TEMPLATE);
+		const bool direct_template =
+			direct_templates.FunctionTemplateOwnerCount() != 0;
+		if (direct_template)
+			candidates.erase(std::remove_if(candidates.begin(), candidates.end(),
+				[this, naming_scope](BindingId candidate) {
+					return program_->bindings[candidate].owner != naming_scope;
+				}), candidates.end());
+		const LookupResult colliding_type =
+			LookupStructuredName(node, scope, LOOKUP_TYPE);
+		if (CandidateSubstitutionFailed()) return true;
+		ScopeId candidate_owner = kNoScope;
+		bool ambiguous_bases = false;
+		for (std::size_t i = 0; !direct_template && i < candidates.size(); ++i)
+		{
+			const ScopeId owner = program_->bindings[candidates[i]].owner;
+			if (candidate_owner == kNoScope) candidate_owner = owner;
+			else if (candidate_owner != owner) ambiguous_bases = true;
+		}
+		if ((!direct_template && colliding_type.type != kNoType) ||
+			ambiguous_bases)
+		{
+			*result = CandidateExpressionFailure(
+				"ambiguous member address lookup");
+			return true;
+		}
 	}
 	if (candidates.empty()) return false;
 	BindingId selected = kNoBinding;
@@ -1867,7 +1903,10 @@ bool SemanticAnalyzer::AnalyzeFunctionId(NodeId node, ScopeId scope,
 			"no target-matching overloaded function");
 		return true;
 	}
-	if (!CanAccessMember(selected, naming_class))
+	const EntityId member_object = member_target == kNoType ? kNoEntity :
+		EntityOf(static_cast<TypeId>(
+			program_->types.Get(member_target).bound));
+	if (!CanAccessMember(selected, naming_class, member_object))
 	{
 		*result = CandidateExpressionFailure("inaccessible member function");
 		return true;

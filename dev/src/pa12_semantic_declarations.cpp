@@ -2448,8 +2448,8 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 			LookupStructuredName(target_node, scope, LOOKUP_TYPE) :
 			LookupPath(scope, path, LOOKUP_TYPE)) : LookupResult();
 	std::vector<std::size_t> template_patterns =
-		target_structure != kNoNode ? FindFunctionTemplates(
-			scope, StructuredNamePath(target_structure)) :
+		target_structure != kNoNode ? FindStructuredFunctionTemplates(
+			target_node, scope) :
 			FindFunctionTemplates(scope, target);
 	if (ordinary.ordinary == kNoBinding && type.type != kNoType &&
 		template_patterns.empty())

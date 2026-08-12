@@ -852,8 +852,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 	ExpressionInfo result;
 	const BindingId value_binding = binding.kind == BIND_PARAMETER ?
 		binding.canonical : found.ordinary;
+	const bool nonreference_nttp =
+		binding.kind == BIND_PARAMETER && binding.constant &&
+		!program_->types.IsReference(binding.type);
 	result.type = EffectiveType(binding.type);
-	result.category = VALUE_LVALUE;
+	result.category = nonreference_nttp ? VALUE_PRVALUE : VALUE_LVALUE;
 	result.binding = value_binding;
 	result.node = MakeDump(DUMP_ID_EXPRESSION, result.type,
 		result.category, program_->names.Intern(spelling), value_binding);
