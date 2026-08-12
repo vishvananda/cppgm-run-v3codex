@@ -2250,7 +2250,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 				const bool static_storage = program_->bindings[binding].storage_class == STORAGE_CLASS_STATIC;
 				AppendFullExpressionDestructionActions(initializer.node, owner, static_storage);
 				if (control_dependent && dump_.edges.size() != edge_count &&
-					!InitializationActionsAreNonthrowing(initializer.node))
+					RequiresManagedConditionalFullExpression(initializer.node, edge_count))
 				{
 					dump_.nodes[owner].full_expression_staging = true;
 					MarkFullExpressionCalls(initializer.node);
@@ -2263,7 +2263,6 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 	}
 	current_class_context_ = previous_class_context;
 }
-
 void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	std::uint32_t output_parent, bool deferred_member_definition)
 {
@@ -2389,7 +2388,6 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	current_class_context_ = previous_class;
 	current_function_context_ = previous_function;
 }
-
 void SemanticAnalyzer::AnalyzeCompound(NodeId node, ScopeId scope,
 	std::uint32_t output_parent)
 {

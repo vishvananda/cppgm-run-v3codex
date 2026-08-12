@@ -35,12 +35,15 @@ std::uint32_t SemanticAnalyzer::MakeTemporaryDestructorAction(
 		!dump_.nodes[temporary].projected_subobject_temporary)
 		return kNoDumpEdge;
 	const std::uint32_t action = MakeDestructorAction(
-		type, destructor, kNoBinding);
+		type, destructor, kNoBinding, 0, false);
 	dump_.nodes[action].lifetime_object = temporary;
 	dump_.nodes[action].lifetime_branch_owner =
 		dump_.nodes[temporary].lifetime_branch_owner;
 	dump_.nodes[action].lifetime_branch_child =
 		dump_.nodes[temporary].lifetime_branch_child;
+	if (current_function_context_ == kNoBinding ||
+		dump_.nodes[action].lifetime_branch_owner == kNoDumpEdge)
+		DemandFunction(destructor);
 	return action;
 }
 
@@ -141,6 +144,120 @@ void SemanticAnalyzer::AppendFullExpressionDestructionActions(
 		dump_.nodes[output_parent].full_expression_staging = true;
 		MarkFullExpressionCalls(expression, true);
 	}
+}
+
+void SemanticAnalyzer::FinalizeStaticallyUnreachableBranchCleanup(
+	std::uint32_t function_definition)
+{
+	if (function_definition == kNoDumpEdge ||
+		function_definition >= dump_.nodes.size()) return;
+	if (++branch_cleanup_scan_epoch_ == 0)
+	{
+		branch_cleanup_node_epochs_.assign(
+			branch_cleanup_node_epochs_.size(), 0);
+		branch_cleanup_binding_epochs_.assign(
+			branch_cleanup_binding_epochs_.size(), 0);
+		branch_cleanup_scan_epoch_ = 1;
+	}
+	const std::uint32_t epoch = branch_cleanup_scan_epoch_;
+	branch_cleanup_node_epochs_.resize(dump_.nodes.size(), 0);
+	branch_cleanup_binding_epochs_.resize(program_->bindings.size(), 0);
+	branch_cleanup_binding_uses_.resize(program_->bindings.size(), 0);
+	branch_cleanup_literal_truth_.resize(program_->bindings.size(), -1);
+	std::vector<std::uint32_t> pending(1, function_definition);
+	std::vector<std::uint32_t> actions;
+	while (!pending.empty())
+	{
+		const std::uint32_t node = pending.back();
+		pending.pop_back();
+		if (node >= dump_.nodes.size() ||
+			branch_cleanup_node_epochs_[node] == epoch) continue;
+		branch_cleanup_node_epochs_[node] = epoch;
+		const DumpNode& record = dump_.nodes[node];
+		if (record.kind == DUMP_ID_EXPRESSION &&
+			record.binding != kNoBinding &&
+			record.binding < branch_cleanup_binding_uses_.size())
+		{
+			if (branch_cleanup_binding_epochs_[record.binding] != epoch)
+			{
+				branch_cleanup_binding_epochs_[record.binding] = epoch;
+				branch_cleanup_binding_uses_[record.binding] = 0;
+				branch_cleanup_literal_truth_[record.binding] = -1;
+			}
+			if (branch_cleanup_binding_uses_[record.binding] !=
+				std::numeric_limits<std::uint32_t>::max())
+				++branch_cleanup_binding_uses_[record.binding];
+		}
+		if (record.kind == DUMP_DESTRUCTOR_ACTION &&
+			record.lifetime_branch_owner != kNoDumpEdge &&
+			record.lifetime_branch_child != kNoDumpEdge)
+			actions.push_back(node);
+		if (record.kind == DUMP_VARIABLE && record.binding != kNoBinding &&
+			record.binding < branch_cleanup_literal_truth_.size() &&
+			program_->bindings[record.binding].kind == BIND_VARIABLE &&
+			program_->bindings[record.binding].storage_class == STORAGE_CLASS_NONE &&
+			IsIntegral(record.type, true) && record.first_edge != kNoDumpEdge &&
+			dump_.edges[record.first_edge].next == kNoDumpEdge)
+		{
+			if (branch_cleanup_binding_epochs_[record.binding] != epoch)
+			{
+				branch_cleanup_binding_epochs_[record.binding] = epoch;
+				branch_cleanup_binding_uses_[record.binding] = 0;
+				branch_cleanup_literal_truth_[record.binding] = -1;
+			}
+			const DumpNode& initializer =
+				dump_.nodes[dump_.edges[record.first_edge].child];
+			if (initializer.kind == DUMP_LITERAL && initializer.constant)
+				branch_cleanup_literal_truth_[record.binding] =
+					initializer.constant_value == 0 ? 0 : 1;
+		}
+		for (std::uint32_t edge = record.first_edge; edge != kNoDumpEdge;
+			edge = dump_.edges[edge].next)
+			pending.push_back(dump_.edges[edge].child);
+	}
+	for (std::size_t i = 0; i < actions.size(); ++i)
+	{
+		DumpNode& action = dump_.nodes[actions[i]];
+		const std::uint32_t owner = action.lifetime_branch_owner;
+		if (owner >= dump_.nodes.size() ||
+			dump_.nodes[owner].kind != DUMP_CONDITIONAL_EXPRESSION) continue;
+		std::uint32_t children[3] = { kNoDumpEdge, kNoDumpEdge, kNoDumpEdge };
+		std::size_t count = 0;
+		for (std::uint32_t edge = dump_.nodes[owner].first_edge;
+			edge != kNoDumpEdge && count != 3; edge = dump_.edges[edge].next)
+			children[count++] = dump_.edges[edge].child;
+		if (count != 3 || children[0] >= dump_.nodes.size()) continue;
+		const DumpNode& condition = dump_.nodes[children[0]];
+		if (condition.kind != DUMP_ID_EXPRESSION ||
+			condition.binding == kNoBinding ||
+			condition.binding >= branch_cleanup_binding_uses_.size() ||
+			branch_cleanup_binding_epochs_[condition.binding] != epoch ||
+			branch_cleanup_binding_uses_[condition.binding] != 1 ||
+			branch_cleanup_literal_truth_[condition.binding] < 0) continue;
+		const bool truth =
+			branch_cleanup_literal_truth_[condition.binding] != 0;
+		action.lifetime_branch_statically_unreachable =
+			(!truth && action.lifetime_branch_child == children[1]) ||
+			(truth && action.lifetime_branch_child == children[2]);
+	}
+	for (std::size_t i = 0; i < actions.size(); ++i)
+		if (!dump_.nodes[actions[i]].lifetime_branch_statically_unreachable)
+			DemandFunction(dump_.nodes[actions[i]].binding);
+}
+
+bool SemanticAnalyzer::RequiresManagedConditionalFullExpression(
+	std::uint32_t expression, std::size_t first_edge)
+{
+	if (!InitializationActionsAreNonthrowing(expression)) return true;
+	for (std::size_t edge = first_edge; edge < dump_.edges.size(); ++edge)
+	{
+		const DumpNode& action = dump_.nodes[dump_.edges[edge].child];
+		if (action.kind == DUMP_DESTRUCTOR_ACTION &&
+			action.lifetime_object != kNoDumpEdge &&
+			dump_.nodes[action.lifetime_object].conditionally_constructed)
+			return true;
+	}
+	return false;
 }
 
 bool SemanticAnalyzer::CollectTemporaryObjects(std::uint32_t node,

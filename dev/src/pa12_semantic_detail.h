@@ -145,7 +145,8 @@ public:
 		  static_constant_dependency_edges_(0),
 		  empty_destructor_chain_visits_(0),
 		  empty_destructor_chain_cache_hits_(0),
-		  anonymous_enum_count_(0), local_type_count_(0) {}
+		  anonymous_enum_count_(0), local_type_count_(0),
+		  branch_cleanup_scan_epoch_(0) {}
 
 	void Consume(const SyntaxArena& arena, NodeId root);
 	InternedStringTable& SharedStrings() { return strings_; }
@@ -1305,6 +1306,10 @@ private:
 	void AppendFullExpressionDestructionActions(std::uint32_t expression,
 		std::uint32_t output_parent,
 		bool preserve_nontrivial_actions = false);
+	void FinalizeStaticallyUnreachableBranchCleanup(
+		std::uint32_t function_definition);
+	bool RequiresManagedConditionalFullExpression(
+		std::uint32_t expression, std::size_t first_edge);
 	std::uint32_t PublishVariableInitializerActions(std::uint32_t variable,
 		BindingId binding, TypeId type, const ExpressionInfo& initializer,
 		bool has_initializer, bool declaration_only,
@@ -1343,7 +1348,8 @@ private:
 	void AppendScopeDestructionActions(ScopeId scope,
 		std::uint32_t output_parent, ScopeId stop_exclusive = kNoScope);
 	std::uint32_t MakeDestructorAction(TypeId type, BindingId destructor,
-		BindingId object, std::uint32_t base_projections = 0);
+		BindingId object, std::uint32_t base_projections = 0,
+		bool demand = true);
 	std::uint32_t MakeTemporaryDestructorAction(std::uint32_t temporary,
 		BindingId destructor = kNoBinding,
 		bool preserve_nontrivial_action = false);
@@ -1829,6 +1835,11 @@ private:
 	std::size_t anonymous_enum_count_;
 	std::size_t local_type_count_;
 	std::vector<std::uint32_t> range_for_hidden_count_by_function_;
+	std::vector<std::uint32_t> branch_cleanup_node_epochs_;
+	std::vector<std::uint32_t> branch_cleanup_binding_epochs_;
+	std::vector<std::uint32_t> branch_cleanup_binding_uses_;
+	std::vector<std::int8_t> branch_cleanup_literal_truth_;
+	std::uint32_t branch_cleanup_scan_epoch_;
 };
 
 }

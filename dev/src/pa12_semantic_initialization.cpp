@@ -255,6 +255,7 @@ ExpressionInfo SemanticAnalyzer::RetargetClassConditional(
 }
 void SemanticAnalyzer::FinalizeNamedReturnSlot(std::uint32_t function)
 {
+	FinalizeStaticallyUnreachableBranchCleanup(function);
 	const TypeId result = program_->types.Get(dump_.nodes[function].type).child;
 	const EntityId entity = EntityOf(result);
 	if (!IsClassEntity(*program_, entity)) return;
@@ -2578,7 +2579,8 @@ void SemanticAnalyzer::EmitDefaultConstructor(EntityId entity)
 }
 
 std::uint32_t SemanticAnalyzer::MakeDestructorAction(TypeId type,
-	BindingId destructor, BindingId object, std::uint32_t base_projections)
+	BindingId destructor, BindingId object, std::uint32_t base_projections,
+	bool demand)
 {
 	if (destructor == kNoBinding ||
 		!program_->bindings[destructor].destructor)
@@ -2592,7 +2594,7 @@ std::uint32_t SemanticAnalyzer::MakeDestructorAction(TypeId type,
 	dump_.nodes[action].operand_type = type;
 	dump_.nodes[action].object_binding = object;
 	dump_.nodes[action].base_projection_count = base_projections;
-	DemandFunction(destructor);
+	if (demand) DemandFunction(destructor);
 	return action;
 }
 

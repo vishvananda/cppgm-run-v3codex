@@ -2885,6 +2885,7 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 			initial.retained_definition_semantics].first_edge;
 			edge != kNoDumpEdge; edge = dump_.edges[edge].next)
 			dump_.Add(function, dump_.edges[edge].child);
+		FinalizeStaticallyUnreachableBranchCleanup(function);
 		DemandMaterializedConstructorActions(function, true);
 		GetMutableFunction(binding).demand_state = 3;
 		++demanded_function_emissions_;
@@ -2995,6 +2996,5 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 	GetMutableFunction(binding).demand_state = 3;
 	++demanded_function_emissions_;
 }
-
 }
 }

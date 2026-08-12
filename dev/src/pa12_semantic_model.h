@@ -170,6 +170,7 @@ struct DumpNode
 	bool eager_full_expression_cleanup;
 	bool enclosing_lifetime_cleanup;
 	bool conditionally_constructed;
+	bool lifetime_branch_statically_unreachable;
 	bool default_argument;
 	bool control_dependent_temporary;
 	bool projected_subobject_temporary;
@@ -224,6 +225,7 @@ struct DumpNode
 		  eager_full_expression_cleanup(false),
 		  enclosing_lifetime_cleanup(false),
 		  conditionally_constructed(false),
+		  lifetime_branch_statically_unreachable(false),
 		  default_argument(false),
 		  control_dependent_temporary(false),
 		  projected_subobject_temporary(false), virtual_call(false),
