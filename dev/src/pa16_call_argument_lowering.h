@@ -27,14 +27,22 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		const Operand value = derived.LowerValue(node);
+		Operand truth_value = value;
+		const TypeId source_type = derived.program_.types.RemoveTopCv(
+			derived.arena_.nodes[node].type);
+		const TypeRecord& source = derived.program_.types.Get(source_type);
+		if (source.kind == TYPE_MEMBER_POINTER &&
+			derived.program_.types.IsFunction(source.child))
+			truth_value = derived.Convert(value, LowU64(), false);
 		const Operand boolean = derived.Temp(LowU8());
 		Instruction compare(Instruction::CMP);
 		compare.dest = boolean.id;
 		compare.op = LOW_OP_NE;
-		compare.type = value.type;
-		compare.first = value;
-		compare.second = IsFloating(value.type) ?
-			derived.FloatingOperand("0.0", value.type) : Operand(0, value.type);
+		compare.type = truth_value.type;
+		compare.first = truth_value;
+		compare.second = IsFloating(truth_value.type) ?
+			derived.FloatingOperand("0.0", truth_value.type) :
+			Operand(0, truth_value.type);
 		derived.Emit(compare);
 		const Operand result = derived.Temp(target);
 		Instruction copy(Instruction::COPY);

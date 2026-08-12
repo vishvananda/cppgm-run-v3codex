@@ -116,6 +116,34 @@ ConversionRank SemanticAnalyzer::MemberPointerConversion(
 	return CONVERSION_INVALID;
 }
 
+bool SemanticAnalyzer::MemberPointerBaseAdjustment(
+	TypeId source, TypeId target, std::uint64_t* adjustment) const
+{
+	source = program_->types.RemoveTopCv(EffectiveType(source));
+	target = program_->types.RemoveTopCv(EffectiveType(target));
+	const TypeRecord& from = program_->types.Get(source);
+	const TypeRecord& to = program_->types.Get(target);
+	if (from.kind != TYPE_MEMBER_POINTER || to.kind != TYPE_MEMBER_POINTER ||
+		!SimilarUnqualified(from.child, to.child)) return false;
+	const EntityId base = EntityOf(static_cast<TypeId>(from.bound));
+	const EntityId derived = EntityOf(static_cast<TypeId>(to.bound));
+	if (base == kNoEntity || derived == kNoEntity) return false;
+	if (base == derived)
+	{
+		if (adjustment) *adjustment = 0;
+		return true;
+	}
+	std::size_t distance = 0;
+	std::uint64_t offset = 0;
+	bool ambiguous = false;
+	++access_path_visits_;
+	if (!program_->QueryBasePath(derived, base, &distance, 0, &offset,
+		&ambiguous) || distance == 0 || ambiguous ||
+		!BaseConversionAllowed(derived, base)) return false;
+	if (adjustment) *adjustment = offset;
+	return true;
+}
+
 bool SemanticAnalyzer::ApplyMemberPointerTarget(
 	ExpressionInfo* value, TypeId source, TypeId target)
 {
@@ -142,6 +170,38 @@ bool SemanticAnalyzer::ApplyMemberPointerTarget(
 		return true;
 	}
 	if (from.kind != TYPE_MEMBER_POINTER) return false;
+	std::uint64_t adjustment = 0;
+	if (!MemberPointerBaseAdjustment(source, target, &adjustment))
+		return false;
+	if (adjustment > static_cast<std::uint64_t>(
+		std::numeric_limits<std::int64_t>::max()))
+		throw std::runtime_error("member pointer adjustment is too large");
+	if (adjustment != 0)
+	{
+		if (value->constant)
+		{
+			ConstexprScalarValue scalar = ExpressionScalar(*value);
+			if (ScalarTruth(scalar))
+			{
+				if (scalar.integral > std::numeric_limits<std::int64_t>::max() -
+					static_cast<std::int64_t>(adjustment))
+					throw std::runtime_error(
+						"member pointer adjustment is too large");
+				scalar.integral += static_cast<std::int64_t>(adjustment);
+			}
+			SetExpressionScalar(value, scalar);
+		}
+		const std::uint32_t cast = MakeDump(
+			DUMP_CAST_EXPRESSION, target, VALUE_PRVALUE);
+		dump_.nodes[cast].member_pointer_conversion = true;
+		dump_.nodes[cast].base_projection_offset = adjustment;
+		dump_.nodes[cast].has_base_projection_offset = true;
+		dump_.Add(cast, value->node);
+		value->node = cast;
+		value->category = VALUE_PRVALUE;
+		if (!value->constant) value->binding = kNoBinding;
+		++expression_count_;
+	}
 	value->type = target;
 	dump_.nodes[value->node].type = target;
 	return true;
@@ -163,15 +223,24 @@ bool SemanticAnalyzer::FormMemberPointerAddress(
 	if (member.member_owner == kNoEntity)
 		throw std::runtime_error(
 			"member pointer address does not name a member");
-	if (member.non_static_data_member &&
-		member.member_offset >= static_cast<std::uint64_t>(
-			std::numeric_limits<std::int64_t>::max()))
-		throw std::runtime_error("data member pointer offset is too large");
+	const TypeId source = program_->types.MemberPointer(
+		program_->entities[member.member_owner].type, member.type);
+	std::uint64_t adjustment = 0;
+	if (!MemberPointerBaseAdjustment(source, shape, &adjustment)) return false;
+	const std::uint64_t member_offset = member.non_static_data_member ?
+		member.member_offset : 0;
+	if (adjustment > static_cast<std::uint64_t>(
+			std::numeric_limits<std::int64_t>::max()) ||
+		member_offset > static_cast<std::uint64_t>(
+			std::numeric_limits<std::int64_t>::max()) - adjustment -
+			(member.non_static_data_member ? 1 : 0))
+		throw std::runtime_error("member pointer offset is too large");
 	*result_type = shape;
 	*constant = true;
 	*selected = member.canonical;
 	*scalar = ConstexprScalarValue(*selected, member.non_static_data_member ?
-		static_cast<std::int64_t>(member.member_offset + 1) : 0);
+		static_cast<std::int64_t>(adjustment + member_offset + 1) :
+		static_cast<std::int64_t>(adjustment));
 	return true;
 }
 
@@ -277,17 +346,25 @@ bool SemanticAnalyzer::TryAnalyzeMemberPointerApplication(
 	result->indirect_constant_designator =
 		right.indirect_constant_designator;
 	BindingId selected = kNoBinding;
+	ConstexprScalarValue pointer_value;
+	bool has_pointer_value = false;
 	if (right.constant)
 	{
-		const ConstexprScalarValue value = ExpressionScalar(right);
-		if (value.kind == CONSTEXPR_SCALAR_MEMBER_POINTER)
-			selected = value.member_pointer;
+		pointer_value = ExpressionScalar(right);
+		has_pointer_value =
+			pointer_value.kind == CONSTEXPR_SCALAR_MEMBER_POINTER;
+		if (has_pointer_value) selected = pointer_value.member_pointer;
 	}
 	if (selected != kNoBinding && selected < program_->bindings.size())
 	{
 		selected = program_->bindings[selected].canonical;
 		const BindingRecord& member = program_->bindings[selected];
-		if (member.member_owner == owner &&
+		std::size_t member_distance = 0;
+		bool member_path_ambiguous = false;
+		const bool compatible_owner = member.member_owner == owner ||
+			program_->QueryBasePath(owner, member.member_owner,
+				&member_distance, 0, 0, &member_path_ambiguous);
+		if (compatible_owner && !member_path_ambiguous &&
 			(member.non_static_data_member || member.kind == BIND_FUNCTION))
 		{
 			result->binding = selected;
@@ -303,33 +380,38 @@ bool SemanticAnalyzer::TryAnalyzeMemberPointerApplication(
 			std::uint32_t object_address = operation == "->*" ?
 				ExpressionAddress(object_expression) :
 				LvalueAddress(&object_expression);
+			if (projection_offset != 0 &&
+				object_address != kNoConstexprAddress &&
+				projection_offset <= static_cast<std::uint64_t>(
+					std::numeric_limits<std::int64_t>::max()))
+				object_address = OffsetConstexprAddress(object_address,
+					static_cast<std::int64_t>(projection_offset), false);
 			if (function_member)
 			{
+				if (has_pointer_value && pointer_value.integral != 0 &&
+					object_address != kNoConstexprAddress)
+					object_address = OffsetConstexprAddress(object_address,
+						pointer_value.integral, false);
 				if (object_address != kNoConstexprAddress)
 					SetExpressionAddress(result, object_address);
-				if (object_value != kNoConstexprObject &&
+				const std::uint32_t member_object = ProjectConstexprObject(
+					object_value, program_->entities[member.member_owner].type);
+				if (member_object != kNoConstexprObject &&
 					complete_object != kNoConstexprObject)
 					SetExpressionSubobject(
-						result, object_value, complete_object);
+						result, member_object, complete_object);
 			}
 			else
 			{
-				if (projection_offset != 0 &&
-					object_address != kNoConstexprAddress &&
-					projection_offset <= static_cast<std::uint64_t>(
-						std::numeric_limits<std::int64_t>::max()))
-					object_address = OffsetConstexprAddress(object_address,
-						static_cast<std::int64_t>(projection_offset), false);
 				const ConstexprObjectElement* element =
 					ConstexprClassMemberAt(object_value, selected);
 				if (element) SetExpressionObjectElement(result, *element);
-				if (object_address != kNoConstexprAddress &&
-					member.member_offset <= static_cast<std::uint64_t>(
-						std::numeric_limits<std::int64_t>::max()))
+				if (has_pointer_value && pointer_value.integral > 0 &&
+					object_address != kNoConstexprAddress)
 				{
 					const std::uint32_t member_address = OffsetConstexprAddress(
 						object_address,
-						static_cast<std::int64_t>(member.member_offset), true,
+						pointer_value.integral - 1, true,
 						static_cast<std::int64_t>(program_->SizeOf(
 							EffectiveType(member.type))));
 					if (member_address != kNoConstexprAddress)

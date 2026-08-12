@@ -611,6 +611,10 @@ int run_emit_semantics_mode(const vector<string> & args)
            << stats.lookup_cache_dependency_edges
            << " lookup_cache_invalidation_pushes="
            << stats.lookup_cache_invalidation_pushes
+           << " base_path_queries=" << stats.base_path_queries
+           << " base_path_cache_hits=" << stats.base_path_cache_hits
+           << " base_path_cache_misses=" << stats.base_path_cache_misses
+           << " base_path_edge_visits=" << stats.base_path_edge_visits
            << " virtual_base_path_visits="
            << stats.virtual_base_path_visits
            << " associated_scope_visits="
@@ -837,6 +841,13 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << semantic.lookup_cache_dependency_edges
 			 << " lookup_cache_invalidation_pushes="
 			 << semantic.lookup_cache_invalidation_pushes
+			 << " base_path_queries=" << semantic.base_path_queries
+			 << " base_path_cache_hits="
+			 << semantic.base_path_cache_hits
+			 << " base_path_cache_misses="
+			 << semantic.base_path_cache_misses
+			 << " base_path_edge_visits="
+			 << semantic.base_path_edge_visits
 			 << " virtual_base_path_visits="
 			 << semantic.virtual_base_path_visits
 			 << " associated_scope_visits="

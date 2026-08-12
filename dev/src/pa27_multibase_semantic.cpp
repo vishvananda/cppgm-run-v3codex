@@ -8,6 +8,53 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+std::uint32_t SemanticAnalyzer::BuildInheritedConstructorBaseAction(
+	const FunctionInfo& constructor, EntityId entity,
+	const std::vector<BindingId>& parameters, std::size_t* base_ordinal)
+{
+	if (!base_ordinal || constructor.inherited_constructor_source == kNoBinding)
+		throw std::logic_error("missing inherited constructor source");
+	const BindingId source = constructor.inherited_constructor_source;
+	const EntityId base = program_->bindings[source].member_owner;
+	const std::size_t base_count = program_->entities[entity].direct_base_count;
+	*base_ordinal = base_count;
+	for (std::size_t ordinal = 0; ordinal < base_count; ++ordinal)
+		if (program_->DirectBase(entity, ordinal).entity == base)
+		{
+			*base_ordinal = ordinal;
+			break;
+		}
+	if (*base_ordinal == base_count)
+		throw std::logic_error("inherited constructor has no direct base");
+	const FunctionInfo& source_info = GetFunction(source);
+	const std::uint32_t base_action = MakeDump(
+		DUMP_BASE_INITIALIZER_ACTION, program_->entities[base].type,
+		VALUE_NONE, program_->entities[base].identity_name);
+	dump_.nodes[base_action].base_projection_count = 1;
+	dump_.nodes[base_action].direct_base_offset =
+		program_->DirectBase(entity, *base_ordinal).offset;
+	dump_.nodes[base_action].has_direct_base_offset = true;
+	const std::uint32_t call = MakeDump(DUMP_CONSTRUCTOR_ACTION,
+		AdaptMemberFunctionType(source), VALUE_NONE,
+		source_info.display_name, source);
+	if (parameters.size() != source_info.parameters.size())
+		throw std::logic_error(
+			"inherited constructor parameter fact mismatch");
+	for (std::size_t i = 0; i < parameters.size(); ++i)
+	{
+		const BindingRecord& parameter = program_->bindings[parameters[i]];
+		const TypeId type = EffectiveType(parameter.type);
+		dump_.Add(call, MakeDump(DUMP_ID_EXPRESSION, type,
+			VALUE_LVALUE, parameter.name, parameters[i]));
+		++expression_count_;
+	}
+	DemandFunction(source);
+	dump_.Add(base_action, call);
+	++constructor_base_action_visits_;
+	++expression_count_;
+	return base_action;
+}
+
 LookupResult SemanticAnalyzer::LookupExplicitUnqualifiedTemplateName(
 	ScopeId scope, NameId name, LookupKind kind)
 {

@@ -1,66 +1,75 @@
-# PA27 Plan
+# PA27 Final Audit Plan
 
-## Stage Design and Spec Alignment
+## Current Stage Design and Spec Alignment
 
-PA27 extends the PA26 pipeline in place:
+PA27 extends the PA26 typed pipeline in place:
 
-`syntax -> canonical owner/member value -> selected binding/base path -> typed LowIR`
+`syntax -> canonical class/member identities -> base-edge/layout facts -> typed semantic actions -> typed LowIR`
 
-Per `spec.md` sections 2-4 and 6, member-pointer owners, targets, null state,
-constexpr payloads, access, and base paths are semantic facts; lowering consumes
-them without lookup or rendered-name parsing. Sections 8-9 require work
-proportional to syntax, class edges, candidates, constexpr steps, and lowered
-nodes. Virtual member-pointer ABI and multi-vptr RTTI remain outside PA27.
+Direct nonvirtual bases are dense `DirectBaseEdge` facts carrying entity,
+access, and offset. `QueryBasePath` owns reachability, unique-subobject,
+public-path, selected-edge, distance, and total-offset queries. Its flat cache is
+keyed by derived/base identity and graph version and distinguishes partial
+reachability facts from completed ambiguity/access facts. Lowering consumes
+recorded offsets, bindings, conversions, and lifecycle actions; it performs no
+name lookup or text parsing.
 
-## Current Failure Map
-
-The stage baseline was **19/96**, this turn started at **88/96**, and PA27 is
-now **96/96**. The closed turn set grouped as follows:
-
-| Tests | Shared behavior | Owner | Result |
-|---:|---|---|---|
-| 5 | member-pointer NTTP category, ambiguity, access, and invocation SFINAE | PA19-PA27 substitution | pass |
-| 1 | qualified friend-template access through a secondary base | PA12/PA22 access | pass |
-| 1 | structured `using` member-template publication and hiding | PA11/PA19 lookup | pass |
-| 1 | direct member-template hiding and canonical NTTP target selection | PA19 lookup/identity | pass |
-
-## Active Checkpoint
-
-**Lookup/publication closure (complete; exit validation).** `spec.md` sections
-2-4 require canonical identity and candidate-local failure, with direct member
-declarations hiding inherited names before overload filtering. Owners are the
-structured-name carrier scope and canonical binding; data flows through direct
-and graph lookup, substitution, access, then lowering. Work is O(structured
-syntax + visited base/using edges + viable candidates), using indexed scopes
-and signatures. Validation is the exact PA27 report, through-PA26 report,
-representative frontend counters, file audit, diff checks, and a clean commit.
+Data member pointers use the offset-plus-one null encoding. Function member
+pointers use an `i128` target/adjustment pair. Base-to-derived conversion adds
+the selected base offset only for a non-null target; application adjusts the
+object before field access or indirect call. This preserves the PA27 rule that
+the target, not the adjustment word, determines nullness. Virtual inheritance,
+polymorphic multiple inheritance, and multi-vptr RTTI remain PA28 boundaries.
 
 ## Performance Evidence
 
-`CPPGM_FRONTEND_STATS=1` measurements on Linux x86_64:
+`CPPGM_FRONTEND_STATS=1` and `/usr/bin/time` witnesses on Linux x86_64:
 
-| Witness | Evidence |
-|---|---:|
-| declarators 64/128/256 | parser storage 18,578 / 37,010 / 73,874 B |
-| overloads 32/64/128 | candidate visits 128 / 256 / 512; deduction visits 129 / 257 / 513 |
-| forwarded member pointers | 30 constexpr calls, 8 cache hits, 31 steps, depth 3, 11 object projections |
-| dependent NTTP target | 3 candidate-index visits, 17 deduction visits, 13 specialization requests/8 hits |
-| retained recollection | 5 candidate-index visits, 8 deduction visits, 18 specialization requests/10 hits |
-| ambiguous member NTTP | 237 lookup queries, 248 scope visits, 40 edge visits, 9 candidate-index visits |
-| structured using chain | 424 lookup queries, 619 scope visits, 170 edge visits, 53 specialization requests/39 hits |
-| qualified friend through second base | 157 lookup queries, 163 scope visits, 4 edge visits, 18 access-path visits |
-
-The scaling witnesses remain linear; the final cases traverse only indexed
-lookup/base edges and reuse canonical specialization caches.
-
-## Completed Checkpoints
-
-| Checkpoint | Result | Validation |
+| Witness | Sizes | Work / semantic time |
 |---|---|---|
-| Multi-base projection and single-vptr `dynamic_cast<void*>` | explicit offsets, lookup, pack bases, lifecycle | PA27 30/96; through PA26 3717/3717 |
-| Member-pointer syntax, values, and runtime application | owner parsing, null/address ABI, conversions, indirect calls, data NTTPs | PA27 60/96; through PA26 3717/3717 |
-| Dependent owner deduction and target replay | partial matching, overloaded addresses, packs, retained demand | PA27 74/96; linear overload witness; audit pass |
-| Object semantics, constexpr forwarding, and static relocation | cv/ref categories, prvalues, canonical payloads, demand, relocation | PA27 83/96; through PA26 3717/3717; audit pass |
-| Retained scopes, dependent targets, and NTTP execution identity | publication, target deduction, member identity, lowering | PA27 88/96; through PA26 3717/3717; audit pass |
-| Member-pointer substitution viability | NTTP prvalues, base/type ambiguity, protected objects, strict `.*` ref qualification | PA27 93/96; 5/5 focused |
-| Lookup/publication closure | direct hiding, structured using owner, secondary-base friend access | PA27 96/96; 3/3 focused |
+| layered repeated diamond | depth 128/256/512/1024 | 899/1,795/3,587/7,171 base-edge visits; 12.3/24.0/48.7/102.8 ms |
+| unique fan-in chain | depth 2,048/4,096/8,192 | 24,576/49,152/98,304 base queries; 133.2/284.8/600.7 ms |
+| unique fan-in storage | depth 2,048/4,096/8,192 | 33.8/67.6/135.3 MB semantic storage |
+
+The original layered-diamond enumerator took about 288 ms at depth 20 and
+grew exponentially. The final query is iterative DAG memoization with capped
+path multiplicity; both stress families now scale linearly in graph/query
+work. Base-path query/hit/miss/edge counters are published in semantic and
+LowIR frontend telemetry.
+
+## Architecture Review
+
+- Representation: canonical IDs and typed edges cross phase boundaries; no
+  semantic equality or lowering decision is keyed by rendered text.
+- Lookup/access: multi-base lookup remains indexed; access and protected-object
+  checks traverse selected or bounded DAG edges rather than `direct_base`.
+- Templates/demand: member-pointer NTTP identity remains the canonical binding
+  plus scalar adjustment; conversion-function template discovery and ADL visit
+  every reachable direct base with deduplication.
+- Lowering: data/function target and adjustment facts flow directly into typed
+  LowIR. No lowering re-lookup, compiler shell-out, reference-binary call, or
+  test-specific source recognition was found.
+- Allocation/scaling: the base-path cache is flat storage, traversal scratch is
+  reused, path counts saturate at two, and no inheritance path is enumerated.
+- Ownership: the PA27 base-path engine is isolated in
+  `pa27_base_path_model.cpp`; file-audit size/function blockers were removed.
+
+## Final Architecture Review
+
+All PA27 correctness, scaling, self-containment, and file-audit blockers found
+by the independent review are closed. The checked `dynamic_cast<void*>` oracle
+retains a dormant runtime-fallback block for LowIR compatibility, but the
+active single-vptr path always consumes the vtable offset-to-top fact and does
+not rely on that block. The 20 file-audit warnings are inherited header-division
+advisories; there are no fatal findings.
+
+## Checkpoint Ledger
+
+| Checkpoint | Result | Evidence |
+|---|---|---|
+| Baseline reconstruction | complete | README, `spec.md`, six PA27 commits, changed source, tests, prior 3,813-test log |
+| End-to-end semantic trace | complete | later-base layout, inherited constructor, access, member-pointer, template, and RTTI paths traced |
+| Correctness closure | complete | ambiguity rejection, protected/friend paths, later-base data/function adjustments, null-preserving conversion |
+| Performance closure | complete | exponential path enumeration and eager ancestor-overlap walk replaced; linear witnesses above |
+| Architecture/file closure | complete | dedicated PA27 base-path module; required file audit passes |
+| Validation | complete | PA27 97/97; through PA27 3,814/3,814; 27/27 stages |

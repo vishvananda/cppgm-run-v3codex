@@ -101,6 +101,11 @@ public:
 	{
 		return index < InlineCount ? inline_[index] : overflow_[index - InlineCount];
 	}
+	Value& operator[](std::size_t index)
+	{
+		return index < InlineCount ? inline_[index] :
+			overflow_[index - InlineCount];
+	}
 
 private:
 	Value inline_[InlineCount];

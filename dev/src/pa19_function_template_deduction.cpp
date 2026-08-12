@@ -4,6 +4,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace cppgm
@@ -1135,13 +1136,26 @@ void SemanticAnalyzer::AppendConversionFunctionTemplateCandidates(
 	EntityId entity, TypeId target, std::vector<BindingId>* candidates)
 {
 	if (!candidates || target == kNoType) return;
-	while (entity != kNoEntity)
+	std::vector<EntityId> pending(1, entity);
+	std::vector<EntityId> owners;
+	std::unordered_set<EntityId> visited;
+	while (!pending.empty())
 	{
+		entity = pending.back();
+		pending.pop_back();
+		if (entity == kNoEntity || entity >= program_->entities.size() ||
+			!visited.insert(entity).second) continue;
+		owners.push_back(entity);
+		const EntityRecord& record = program_->entities[entity];
+		for (std::size_t base = record.direct_base_count;
+			base != 0; --base)
+			pending.push_back(program_->DirectBase(entity, base - 1).entity);
+	}
+	for (std::size_t owner = 0; owner < owners.size(); ++owner)
+	{
+		entity = owners[owner];
 		if (entity >= entity_conversion_function_templates_.size())
-		{
-			entity = program_->entities[entity].direct_base;
 			continue;
-		}
 		const std::vector<std::size_t>& patterns =
 			entity_conversion_function_templates_[entity];
 		for (std::size_t p = 0; p < patterns.size(); ++p)
@@ -1221,7 +1235,6 @@ void SemanticAnalyzer::AppendConversionFunctionTemplateCandidates(
 					candidates->end())
 				candidates->push_back(specialization);
 		}
-		entity = program_->entities[entity].direct_base;
 	}
 }
 

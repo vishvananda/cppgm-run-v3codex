@@ -49,15 +49,35 @@ protected:
 					Instruction constant(Instruction::CONST);
 					constant.dest = result.id;
 					constant.type = LowI64();
-					constant.first = Operand(static_cast<std::int64_t>(
-						member.member_offset + 1), LowI64());
+					constant.first = Operand(record.constant_value, LowI64());
 					derived.Emit(constant);
 					return result;
 				}
 				const Operand address = derived.AddressOfStorage(
 					derived.LowerStorage(children[0]));
-				return derived.Convert(derived.Convert(address, LowU64()),
-					LowI128(), false);
+				Operand encoded = derived.Convert(
+					derived.Convert(address, LowU64()), LowI128(), false);
+				if (record.constant_value != 0)
+				{
+					const Operand shifted = derived.Temp(LowI128());
+					Instruction shift(Instruction::BINARY);
+					shift.dest = shifted.id;
+					shift.op = LOW_OP_SHL;
+					shift.type = LowI128();
+					shift.first = Operand(record.constant_value, LowI128());
+					shift.second = Operand(64, LowI128());
+					derived.Emit(shift);
+					const Operand combined = derived.Temp(LowI128());
+					Instruction add(Instruction::BINARY);
+					add.dest = combined.id;
+					add.op = LOW_OP_ADD;
+					add.type = LowI128();
+					add.first = encoded;
+					add.second = shifted;
+					derived.Emit(add);
+					encoded = combined;
+				}
+				return encoded;
 			}
 			return derived.AddressOfStorage(derived.LowerStorage(children[0]));
 		}

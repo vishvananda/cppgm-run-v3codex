@@ -248,15 +248,21 @@ protected:
 			}
 			else
 			{
-				const Operand value = derived.LowerValue(children[0],
-					derived.current_result_.kind == LOW_PTR ?
-					derived.current_result_ : LowType());
+				const bool boolean_conversion =
+					derived.arena_.nodes[children[0]].boolean_conversion;
+				const Operand value = boolean_conversion ?
+					derived.LowerConvertedValue(children[0],
+						derived.current_result_, false) :
+					derived.LowerValue(children[0],
+						derived.current_result_.kind == LOW_PTR ?
+						derived.current_result_ : LowType());
 				const bool preserve_unsigned_conversion =
 					value.kind == Operand::INTEGER && IsInteger(value.type) &&
 					IsInteger(derived.current_result_) && value.type.is_signed &&
 					!derived.current_result_.is_signed &&
 					value.type.width < derived.current_result_.width;
-				result_value = derived.Convert(value, derived.current_result_,
+				result_value = boolean_conversion ? value : derived.Convert(
+					value, derived.current_result_,
 					!preserve_unsigned_conversion);
 			}
 		}

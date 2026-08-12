@@ -177,8 +177,7 @@ LowIRLoweringStats::LowIRLoweringStats()
 }
 
 void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
-	const PreprocessingOptions& options, std::ostream& output,
-	LowIRLoweringStats* stats)
+	const PreprocessingOptions& options, std::ostream& output, LowIRLoweringStats* stats)
 {
 	if (sources.empty()) throw std::runtime_error("no PA15 source inputs");
 	if (stats) *stats = LowIRLoweringStats();
@@ -187,8 +186,8 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 	{
 		GraphConsumer consumer(program, stats, i);
 		SemanticAnalysisStats semantic_stats;
-		ConsumeSemanticTranslationUnit(sources[i].path, sources[i].source,
-			options, consumer, stats ? &semantic_stats : 0);
+		ConsumeSemanticTranslationUnit(sources[i].path, sources[i].source, options,
+			consumer, stats ? &semantic_stats : 0);
 		if (stats)
 		{
 			SemanticAnalysisStats& semantic = stats->semantic;
@@ -256,12 +255,13 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 			semantic.lookup_edge_visits += semantic_stats.lookup_edge_visits;
 			semantic.lookup_cache_hits += semantic_stats.lookup_cache_hits;
 			semantic.lookup_cache_misses += semantic_stats.lookup_cache_misses;
-			semantic.lookup_cache_invalidations +=
-				semantic_stats.lookup_cache_invalidations;
-			semantic.lookup_cache_dependency_edges +=
-				semantic_stats.lookup_cache_dependency_edges;
-			semantic.lookup_cache_invalidation_pushes +=
-				semantic_stats.lookup_cache_invalidation_pushes;
+			semantic.lookup_cache_invalidations += semantic_stats.lookup_cache_invalidations;
+			semantic.lookup_cache_dependency_edges += semantic_stats.lookup_cache_dependency_edges;
+			semantic.lookup_cache_invalidation_pushes += semantic_stats.lookup_cache_invalidation_pushes;
+			semantic.base_path_queries += semantic_stats.base_path_queries;
+			semantic.base_path_cache_hits += semantic_stats.base_path_cache_hits;
+			semantic.base_path_cache_misses += semantic_stats.base_path_cache_misses;
+			semantic.base_path_edge_visits += semantic_stats.base_path_edge_visits;
 			semantic.virtual_base_path_visits +=
 				semantic_stats.virtual_base_path_visits;
 			semantic.associated_scope_visits +=
@@ -402,8 +402,7 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 		stats->lowering_nanoseconds += static_cast<std::uint64_t>(
 			std::chrono::duration_cast<std::chrono::nanoseconds>(
 				std::chrono::steady_clock::now() - coalesce_started).count());
-	const std::chrono::steady_clock::time_point render_started =
-		std::chrono::steady_clock::now();
+	const std::chrono::steady_clock::time_point render_started = std::chrono::steady_clock::now();
 	CountingStreamBuffer buffer(output.rdbuf());
 	std::ostream rendered(&buffer);
 	RenderLowIRProgram(program, rendered);

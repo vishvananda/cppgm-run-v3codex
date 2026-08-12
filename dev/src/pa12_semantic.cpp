@@ -10,10 +10,7 @@
 #include <string>
 #include <unordered_set>
 #include <vector>
-namespace cppgm
-{
-namespace pa12_semantic_detail
-{
+namespace cppgm { namespace pa12_semantic_detail {
 namespace
 {
 bool SyntaxUsesAnyIdentifier(const SyntaxArena& arena, NodeId node,
@@ -2882,6 +2879,10 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 			program.lookup_cache_dependency_edges;
 		stats_->lookup_cache_invalidation_pushes =
 			program.lookup_cache_invalidation_pushes;
+		stats_->base_path_queries = program.base_path_queries;
+		stats_->base_path_cache_hits = program.base_path_cache_hits;
+		stats_->base_path_cache_misses = program.base_path_cache_misses;
+		stats_->base_path_edge_visits = program.base_path_edge_visits;
 		stats_->virtual_base_path_visits = program.virtual_base_path_visits;
 		stats_->associated_scope_visits = associated_scope_visits_;
 		stats_->associated_declaration_visits =

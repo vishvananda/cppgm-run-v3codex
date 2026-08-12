@@ -7,10 +7,7 @@
 #include <string>
 #include <utility>
 #include <vector>
-namespace cppgm
-{
-namespace pa12_semantic_detail
-{
+namespace cppgm { namespace pa12_semantic_detail {
 namespace
 {
 std::size_t AlignUp(std::size_t value, std::size_t alignment)
@@ -625,6 +622,9 @@ const EntityRecord* SemanticAnalyzer::InitializeClassBaseLayout(
 			*size = offset + static_cast<std::size_t>(base->object_size);
 		}
 		edge.offset = offset;
+		owner.has_nonzero_base_subobject_offset =
+			owner.has_nonzero_base_subobject_offset || offset != 0 ||
+			base->has_nonzero_base_subobject_offset;
 		if (base_index == 0) owner.direct_base_offset = offset;
 		*natural_alignment = std::max(*natural_alignment, base_alignment);
 		*alignment = std::max(*alignment, effective_base_alignment);

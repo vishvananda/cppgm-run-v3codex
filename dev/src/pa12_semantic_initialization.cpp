@@ -1098,37 +1098,11 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 		&initializer_syntax, &initializer_scopes, &initializer_expanded);
 	if (CandidateSubstitutionFailed()) return;
 	const std::size_t initializer_count = initializer_syntax.size();
+	std::size_t inherited_base_ordinal = base_count;
+	std::uint32_t inherited_base_action = kNoDumpEdge;
 	if (constructor.inherited_constructor_source != kNoBinding)
-	{
-		const EntityId base = program_->entities[entity].direct_base;
-		if (base == kNoEntity)
-			throw std::logic_error("inherited constructor has no direct base");
-		const BindingId source = constructor.inherited_constructor_source;
-		const FunctionInfo& source_info = GetFunction(source);
-		const std::uint32_t base_action = MakeDump(
-			DUMP_BASE_INITIALIZER_ACTION, program_->entities[base].type,
-			VALUE_NONE, program_->entities[base].identity_name);
-		dump_.nodes[base_action].base_projection_count = 1;
-		const std::uint32_t call = MakeDump(DUMP_CONSTRUCTOR_ACTION,
-			AdaptMemberFunctionType(source), VALUE_NONE,
-			source_info.display_name, source);
-		if (parameters.size() != source_info.parameters.size())
-			throw std::logic_error(
-				"inherited constructor parameter fact mismatch");
-		for (std::size_t i = 0; i < parameters.size(); ++i)
-		{
-			const BindingRecord& parameter = program_->bindings[parameters[i]];
-			const TypeId type = EffectiveType(parameter.type);
-			dump_.Add(call, MakeDump(DUMP_ID_EXPRESSION, type,
-				VALUE_LVALUE, parameter.name, parameters[i]));
-			++expression_count_;
-		}
-		DemandFunction(source);
-		dump_.Add(base_action, call);
-		dump_.Add(body, base_action);
-		++constructor_base_action_visits_;
-		++expression_count_;
-	}
+		inherited_base_action = BuildInheritedConstructorBaseAction(
+			constructor, entity, parameters, &inherited_base_ordinal);
 	else if (!initializer_syntax.empty())
 	{
 		for (std::size_t initializer_index = 0;
@@ -1264,13 +1238,17 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 				initializer_expanded[initializer_index];
 		}
 	}
-	if (constructor.inherited_constructor_source == kNoBinding)
-		for (std::size_t base_ordinal = 0;
-			base_ordinal < base_count; ++base_ordinal)
+	for (std::size_t base_ordinal = 0;
+		base_ordinal < base_count; ++base_ordinal)
+	{
+		if (base_ordinal == inherited_base_ordinal)
+			dump_.Add(body, inherited_base_action);
+		else
 			AddBaseInitializationAction(entity, base_ordinal,
 				base_initializers[base_ordinal],
 				base_initializer_scopes[base_ordinal], body,
 				base_initializer_expanded[base_ordinal] != 0);
+	}
 	if (program_->entities[entity].polymorphic_class)
 		dump_.Add(body, MakeDump(DUMP_VPTR_INITIALIZATION_ACTION,
 			program_->entities[entity].type));

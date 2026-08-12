@@ -177,6 +177,7 @@ struct DumpNode
 	bool control_dependent_temporary;
 	bool projected_subobject_temporary;
 	bool virtual_call;
+	bool member_pointer_conversion;
 	bool has_base_projection_offset;
 	bool has_direct_base_offset;
 	bool pseudo_destructor_call;
@@ -233,6 +234,7 @@ struct DumpNode
 		  default_argument(false),
 		  control_dependent_temporary(false),
 		  projected_subobject_temporary(false), virtual_call(false),
+		  member_pointer_conversion(false),
 		  has_base_projection_offset(false),
 		  has_direct_base_offset(false), pseudo_destructor_call(false),
 		  reverse_pointer_compound_assignment(false),

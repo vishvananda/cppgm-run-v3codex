@@ -23,6 +23,16 @@ template <class Derived>
 class MemberPointerLowering
 {
 protected:
+	struct MemberPointerCallOperands
+	{
+		Operand object;
+		Operand callee;
+
+		MemberPointerCallOperands(const Operand& object_value,
+			const Operand& callee_value)
+			: object(object_value), callee(callee_value) {}
+	};
+
 	bool IsMemberPointerApplication(const DumpNode& node) const
 	{
 		if (node.kind != DUMP_BINARY_EXPRESSION) return false;
@@ -53,9 +63,84 @@ protected:
 		index.first = object;
 		index.second = Operand(static_cast<std::int64_t>(
 			application.base_projection_offset), LowI64());
-		index.projection = INDEX_PROJECTION_FIELD;
+		index.projection = INDEX_PROJECTION_BASE_SUBOBJECT;
 		derived.Emit(index);
 		return projected;
+	}
+
+	Operand MemberFunctionPointerAdjustment(const Operand& encoded)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const Operand shifted = derived.Temp(LowI128());
+		Instruction shift(Instruction::BINARY);
+		shift.dest = shifted.id;
+		shift.op = LOW_OP_SHR;
+		shift.type = LowI128();
+		shift.first = encoded;
+		shift.second = Operand(64, LowI128());
+		derived.Emit(shift);
+		return derived.Convert(shifted, LowI64(), false);
+	}
+
+	Operand LowerMemberPointerConversion(const DumpNode& conversion,
+		const NodeChildren& children)
+	{
+		if (children.size() != 1 || !conversion.member_pointer_conversion ||
+			!conversion.has_base_projection_offset)
+			throw std::runtime_error("invalid member pointer conversion");
+		Derived& derived = static_cast<Derived&>(*this);
+		const TypeRecord& target = derived.program_.types.Get(
+			derived.program_.types.RemoveTopCv(conversion.type));
+		if (target.kind != TYPE_MEMBER_POINTER)
+			throw std::runtime_error("member pointer conversion has no target");
+		const bool function_member =
+			derived.program_.types.IsFunction(target.child);
+		const LowType value_type = function_member ? LowI128() : LowI64();
+		const Operand value = derived.LowerValue(children[0], value_type);
+		const Operand low_word = function_member ?
+			derived.Convert(value, LowU64(), false) : value;
+		const Operand nonnull = derived.Temp(LowU8());
+		Instruction compare(Instruction::CMP);
+		compare.dest = nonnull.id;
+		compare.op = LOW_OP_NE;
+		compare.type = low_word.type;
+		compare.first = low_word;
+		compare.second = Operand(0, low_word.type);
+		derived.Emit(compare);
+		const Operand widened = derived.Convert(nonnull, LowI64(), false);
+		const Operand adjustment = derived.Temp(LowI64());
+		Instruction multiply(Instruction::BINARY);
+		multiply.dest = adjustment.id;
+		multiply.op = LOW_OP_MUL;
+		multiply.type = LowI64();
+		multiply.first = widened;
+		multiply.second = Operand(static_cast<std::int64_t>(
+			conversion.base_projection_offset), LowI64());
+		derived.Emit(multiply);
+		Operand added = adjustment;
+		if (function_member)
+		{
+			const Operand adjustment128 = derived.Convert(
+				adjustment, LowI128(), false);
+			const Operand shifted = derived.Temp(LowI128());
+			Instruction shift(Instruction::BINARY);
+			shift.dest = shifted.id;
+			shift.op = LOW_OP_SHL;
+			shift.type = LowI128();
+			shift.first = adjustment128;
+			shift.second = Operand(64, LowI128());
+			derived.Emit(shift);
+			added = shifted;
+		}
+		const Operand result = derived.Temp(value_type);
+		Instruction add(Instruction::BINARY);
+		add.dest = result.id;
+		add.op = LOW_OP_ADD;
+		add.type = value_type;
+		add.first = value;
+		add.second = added;
+		derived.Emit(add);
+		return result;
 	}
 
 	Operand LowerMemberPointerStorage(const DumpNode& application,
@@ -83,21 +168,53 @@ protected:
 		return result;
 	}
 
-	Operand LowerMemberPointerCallee(const DumpNode& application,
-		const NodeChildren& children)
+	MemberPointerCallOperands LowerMemberPointerCall(
+		const DumpNode& application,
+		const NodeChildren& children, const Operand& object_value)
 	{
 		if (children.size() != 2 || !IsMemberPointerApplication(application))
 			throw std::runtime_error("invalid member function pointer application");
 		Derived& derived = static_cast<Derived&>(*this);
+		Operand object = object_value;
 		const DumpNode& designator = derived.arena_.nodes[children[1]];
+		Operand callee;
+		Operand adjustment(0, LowI64());
+		const TypeRecord& pointer_type = derived.program_.types.Get(
+			derived.program_.types.RemoveTopCv(application.operand_type));
+		const EntityId pointer_owner = pointer_type.kind == TYPE_MEMBER_POINTER ?
+			derived.BaseEntityForType(static_cast<TypeId>(pointer_type.bound)) :
+			kNoEntity;
+		const bool owner_may_adjust = pointer_owner != kNoEntity &&
+			derived.program_.entities[pointer_owner].
+				has_nonzero_base_subobject_offset;
 		if (designator.binding != kNoBinding &&
 			designator.binding < derived.program_.bindings.size() &&
 			derived.program_.bindings[designator.binding].kind == BIND_FUNCTION)
-			return derived.AddressOfStorage(
+		{
+			callee = derived.AddressOfStorage(
 				derived.LowerStorage(children[1]));
-		const Operand encoded = derived.LowerValue(children[1], LowI128());
-		return derived.Convert(derived.Convert(encoded, LowU64(), false),
-			LowPtr(), false);
+			adjustment = Operand(designator.constant_value, LowI64());
+		}
+		else
+		{
+			const Operand encoded = derived.LowerValue(children[1], LowI128());
+			if (owner_may_adjust)
+				adjustment = MemberFunctionPointerAdjustment(encoded);
+			callee = derived.Convert(
+				derived.Convert(encoded, LowU64(), false), LowPtr(), false);
+		}
+		if (adjustment.kind == Operand::INTEGER &&
+			adjustment.integer_value == 0)
+			return MemberPointerCallOperands(object, callee);
+		const Operand adjusted = derived.Temp(LowPtr());
+		Instruction index(Instruction::INDEX);
+		index.dest = adjusted.id;
+		index.type = LowI8();
+		index.first = object;
+		index.second = adjustment;
+		index.projection = INDEX_PROJECTION_BASE_SUBOBJECT;
+		derived.Emit(index);
+		return MemberPointerCallOperands(adjusted, callee);
 	}
 };
 

@@ -334,8 +334,10 @@ void SemanticAnalyzer::AppendArgumentDependentCandidates(NameId name,
 					AddAssociatedType(
 						program_->template_arguments[first + argument]);
 		}
-		if (record.direct_base != kNoEntity)
-			AddAssociatedEntity(record.direct_base);
+		for (std::size_t base = 0;
+			base < record.direct_base_count; ++base)
+			AddAssociatedEntity(
+				program_->DirectBase(entity, base).entity);
 		ScopeId owner = record.owner;
 		while (owner != kNoScope &&
 			program_->KindOfScope(owner) != SCOPE_NAMESPACE)

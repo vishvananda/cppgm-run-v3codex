@@ -151,6 +151,13 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		constexpr_member_pointer_by_binding_.capacity() * sizeof(BindingId) +
 		constexpr_object_by_binding_.capacity() * sizeof(std::uint32_t) +
 		constexpr_address_by_binding_.capacity() * sizeof(std::uint32_t) +
+		access_base_path_scratch_.capacity() * sizeof(std::uint32_t) +
+		protected_object_unprivileged_marks_.capacity() *
+			sizeof(std::uint32_t) +
+		protected_object_privileged_marks_.capacity() *
+			sizeof(std::uint32_t) +
+		protected_object_path_scratch_.capacity() *
+			sizeof(std::pair<EntityId, bool>) +
 		constexpr_addresses_.capacity() * sizeof(ConstexprAddressValue) +
 		constexpr_address_index_.bucket_count() * sizeof(void*) +
 		constexpr_address_index_.size() *

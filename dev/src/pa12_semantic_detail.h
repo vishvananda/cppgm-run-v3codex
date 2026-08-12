@@ -94,6 +94,7 @@ public:
 		  virtual_slot_lookups_(0), vtable_demands_(0),
 		  access_checks_(0), access_path_visits_(0),
 		  access_grant_probes_(0),
+		  protected_object_path_generation_(0),
 		  template_specialization_requests_(0),
 		  template_specialization_cache_hits_(0),
 		  function_template_default_materializations_(0),
@@ -1297,6 +1298,10 @@ private:
 	void AddConstructorMemberActions(const FunctionInfo& constructor,
 		ScopeId function_scope, const std::vector<BindingId>& parameters,
 		std::uint32_t body);
+	std::uint32_t BuildInheritedConstructorBaseAction(
+		const FunctionInfo& constructor, EntityId entity,
+		const std::vector<BindingId>& parameters,
+		std::size_t* base_ordinal);
 	void CollectConstructorInitializers(const FunctionInfo& constructor,
 		EntityId entity, ScopeId function_scope,
 		std::vector<NodeId>* syntax, std::vector<ScopeId>* scopes,
@@ -1405,6 +1410,8 @@ private:
 		TypeId target) const;
 	bool ApplyMemberPointerTarget(ExpressionInfo* value, TypeId source,
 		TypeId target);
+	bool MemberPointerBaseAdjustment(TypeId source, TypeId target,
+		std::uint64_t* adjustment) const;
 	bool HasTargetTypedSpecializedMemberImmediate(
 		const ExpressionInfo& destination,
 		const ExpressionInfo& value) const;
@@ -1815,6 +1822,12 @@ private:
 	mutable std::size_t access_checks_;
 	mutable std::size_t access_path_visits_;
 	mutable std::size_t access_grant_probes_;
+	mutable std::vector<std::uint32_t> access_base_path_scratch_;
+	mutable std::vector<std::uint32_t> protected_object_unprivileged_marks_;
+	mutable std::vector<std::uint32_t> protected_object_privileged_marks_;
+	mutable std::vector<std::pair<EntityId, bool> >
+		protected_object_path_scratch_;
+	mutable std::uint32_t protected_object_path_generation_;
 	std::size_t template_specialization_requests_;
 	std::size_t template_specialization_cache_hits_;
 	std::size_t function_template_default_materializations_;

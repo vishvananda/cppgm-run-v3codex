@@ -37,10 +37,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
-namespace cppgm
-{
-namespace
-{
+namespace cppgm { namespace {
 using namespace pa11;
 using namespace pa12_semantic_detail;
 using namespace pa15_lowir_detail;
@@ -1226,10 +1223,14 @@ private:
 	Operand LowerCondition(std::uint32_t node)
 	{
 		const DumpNode& record = arena_.nodes[node];
-		const TypeRecord& source = program_.types.Get(
-			program_.types.RemoveTopCv(record.type));
-		if (record.boolean_conversion && source.kind != TYPE_MEMBER_POINTER)
+		if (record.boolean_conversion)
+		{
+			const TypeId source_type = program_.types.RemoveTopCv(record.type);
+			const TypeRecord& source = program_.types.Get(source_type);
+			if (source.kind == TYPE_MEMBER_POINTER)
+				return LowerValue(node);
 			return LowerBooleanConversion(node, LowU8());
+		}
 		Operand value = LowerValue(node);
 		if (IsBooleanType(record.type) || !IsFloating(value.type))
 			return value;
@@ -1359,7 +1360,9 @@ private:
 		else if (record.kind == DUMP_CAST_EXPRESSION)
 		{
 			if (children.size() != 1) throw std::runtime_error("invalid semantic cast");
-			if (LowerExpressionType(record.type).kind == LOW_VOID)
+			if (record.member_pointer_conversion)
+				result = LowerMemberPointerConversion(record, children);
+			else if (LowerExpressionType(record.type).kind == LOW_VOID)
 			{
 				const DumpNode& source = arena_.nodes[children[0]];
 				if ((source.category == VALUE_LVALUE ||
@@ -1684,9 +1687,15 @@ private:
 		}
 		const bool member_pointer_call =
 			IsMemberPointerApplication(callee);
+		Operand member_pointer_callee;
+		std::size_t member_pointer_argument =
+			std::numeric_limits<std::size_t>::max();
 		if (member_pointer_call)
 		{
-			arguments.Push(MemberPointerObject(callee, Children(children[0])));
+			const NodeChildren application_children = Children(children[0]);
+			member_pointer_argument = arguments.size();
+			arguments.Push(MemberPointerObject(
+				callee, application_children));
 			argument_references.Push(Instruction::CALL_PASS_VALUE);
 		}
 		for (std::size_t i = 1; i < children.size(); ++i)
@@ -1722,6 +1731,14 @@ private:
 			if (record.virtual_call && i == 1)
 				virtual_object = arguments[arguments.size() - 1];
 		}
+		if (member_pointer_call)
+		{
+			const MemberPointerCallOperands lowered = LowerMemberPointerCall(
+				callee, Children(children[0]),
+				arguments[member_pointer_argument]);
+			arguments[member_pointer_argument] = lowered.object;
+			member_pointer_callee = lowered.callee;
+		}
 		if (full_expression_cleanup_active_ && full_expression_deferred_cleanup_) EnsureFullExpressionCleanupSegment();
 		if (record.virtual_call)
 		{
@@ -1731,8 +1748,7 @@ private:
 			call.first = LowerVirtualCallee(record, virtual_object);
 		}
 		else if (!direct) call.first = member_pointer_call ?
-			LowerMemberPointerCallee(callee, Children(children[0])) :
-			LowerValue(children[0], LowPtr());
+			member_pointer_callee : LowerValue(children[0], LowPtr());
 		AttachCallArguments(&call, arguments, argument_references);
 		if (call.type.kind == LOW_VOID)
 		{

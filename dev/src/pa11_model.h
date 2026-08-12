@@ -374,6 +374,7 @@ struct EntityRecord
 		indirect_class_parameter_abi,
 		polymorphic_class, abstract_class;
 	bool nonlinear_base_graph;
+	bool has_nonzero_base_subobject_offset;
 	bool deferred_template_completion;
 	bool explicit_template_specialization;
 	bool lambda_closure;
@@ -547,7 +548,8 @@ public:
 	bool HasVirtualBasePath(EntityId derived, EntityId base) const;
 	bool QueryBasePath(EntityId derived, EntityId base,
 		std::size_t* distance, bool* all_public,
-		std::uint64_t* offset = 0, bool* ambiguous = 0) const;
+		std::uint64_t* offset = 0, bool* ambiguous = 0,
+		std::vector<std::uint32_t>* direct_base_ordinals = 0) const;
 	LookupResult Lookup(ScopeId current, const NamePath& name,
 		LookupKind kind);
 	LookupResult LookupName(ScopeId current, NameId name, LookupKind kind);
@@ -592,6 +594,9 @@ public:
 	std::size_t lookup_cache_hits, lookup_cache_misses;
 	std::size_t lookup_cache_invalidations, lookup_cache_dependency_edges;
 	std::size_t lookup_cache_invalidation_pushes;
+	mutable std::size_t base_path_queries, base_path_cache_hits,
+		base_path_cache_misses;
+	mutable std::size_t base_path_edge_visits;
 	mutable std::size_t virtual_base_path_visits;
 	mutable std::size_t name_index_probes;
 	std::size_t using_index_probes;
@@ -605,6 +610,34 @@ private:
 	struct ChildEdge;
 	struct LookupCacheEntry; struct LookupCache;
 	struct TemplateArgumentListRecord;
+	struct BasePathState
+	{
+		std::uint32_t generation;
+		std::size_t distance;
+		std::uint64_t offset;
+		std::uint32_t first_base;
+		std::uint8_t path_count;
+		bool complete, all_public;
+		BasePathState();
+	};
+	struct BasePathFrame
+	{
+		EntityId entity;
+		std::uint32_t next_base;
+		BasePathFrame(EntityId entity_value = kNoEntity,
+			std::uint32_t next_base_value = 0);
+	};
+	struct BasePathCacheEntry
+	{
+		EntityId derived, base;
+		std::uint32_t version;
+		std::size_t distance;
+		std::uint64_t offset;
+		bool found, all_public, ambiguous, complete;
+		BasePathCacheEntry(EntityId derived_value = kNoEntity,
+			EntityId base_value = kNoEntity,
+			std::uint32_t version_value = 0);
+	};
 	NameEntry* EnsureEntry(ScopeId scope, NameId name);
 	const NameEntry* FindEntry(ScopeId scope, NameId name) const;
 	void RehashEntries(std::size_t capacity);
@@ -647,6 +680,14 @@ private:
 		std::size_t* rendered_type_nodes) const;
 	std::size_t FundamentalSize(FundamentalKind kind) const;
 	void RehashTemplateArgumentLists(std::size_t capacity);
+	void RehashBasePathCache(std::size_t capacity) const;
+	bool FindBasePathCache(EntityId derived, EntityId base,
+		bool* found, std::size_t* distance, bool* all_public,
+		std::uint64_t* offset, bool* ambiguous,
+		bool require_complete) const;
+	void StoreBasePathCache(EntityId derived, EntityId base, bool found,
+		std::size_t distance, bool all_public, std::uint64_t offset,
+		bool ambiguous, bool complete) const;
 
 	std::vector<ScopeRecord> scopes_;
 	std::vector<ChildEdge> child_edges_;
@@ -678,6 +719,12 @@ private:
 	std::vector<std::uint8_t> base_jump_counts_;
 	std::vector<std::uint32_t> base_depths_;
 	std::vector<std::uint32_t> deepest_nonpublic_base_depths_;
+	mutable std::vector<BasePathState> base_path_states_;
+	mutable std::vector<BasePathFrame> base_path_scratch_;
+	mutable std::uint32_t base_path_generation_;
+	mutable std::vector<BasePathCacheEntry> base_path_cache_entries_;
+	mutable std::vector<std::uint32_t> base_path_cache_slots_;
+	std::vector<std::uint32_t> base_graph_versions_;
 	std::uint32_t lookup_dependency_generation_;
 	std::uint32_t lookup_pending_generation_;
 	bool collecting_lookup_dependencies_;

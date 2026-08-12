@@ -655,6 +655,7 @@ EntityRecord::EntityRecord()
 	  indirect_class_parameter_abi(false), polymorphic_class(false),
 	  abstract_class(false),
 	  nonlinear_base_graph(false),
+	  has_nonzero_base_subobject_offset(false),
 	  deferred_template_completion(false),
 	  explicit_template_specialization(false), lambda_closure(false),
 	  lambda_ordinal(0), lambda_capture_count(0),
@@ -921,6 +922,8 @@ Program::Program(InternedStringTable& strings)
 	  lookup_edge_visits(0), lookup_cache_hits(0), lookup_cache_misses(0),
 	  lookup_cache_invalidations(0), lookup_cache_dependency_edges(0),
 	  lookup_cache_invalidation_pushes(0),
+	  base_path_queries(0), base_path_cache_hits(0),
+	  base_path_cache_misses(0), base_path_edge_visits(0),
 	  virtual_base_path_visits(0),
 	  name_index_probes(0), using_index_probes(0),
 	  template_argument_list_requests(0),
@@ -931,6 +934,8 @@ Program::Program(InternedStringTable& strings)
 	  using_name_invalidation_generation_(0), entry_slots_(64, 0),
 	  template_argument_list_slots_(32, 0),
 	  lookup_generation_(1),
+	  base_path_generation_(0),
+	  base_path_cache_slots_(64, 0),
 	  lookup_dependency_generation_(0), lookup_pending_generation_(0),
 	  collecting_lookup_dependencies_(false),
 	  lookup_cache_(new LookupCache())
@@ -1339,6 +1344,7 @@ EntityId Program::NewEntity(NameId name, NamedFlavor flavor, bool complete,
 	base_jump_counts_.push_back(0);
 	base_depths_.push_back(0);
 	deepest_nonpublic_base_depths_.push_back(0);
+	base_graph_versions_.push_back(1);
 	EntityRecord& record = entities.back();
 	record.name = name;
 	record.identity_name = identity_name == 0 ? name : identity_name;
@@ -1516,6 +1522,8 @@ void Program::ResetClassDefinition(EntityId entity)
 	base_jump_counts_[entity] = 0;
 	base_depths_[entity] = 0;
 	deepest_nonpublic_base_depths_[entity] = 0;
+	if (++base_graph_versions_[entity] == 0)
+		base_graph_versions_[entity] = 1;
 }
 
 ScopeId Program::ParentScope(ScopeId scope) const
@@ -1585,6 +1593,8 @@ void Program::SetDirectBases(EntityId derived,
 	record.direct_base_begin = static_cast<std::uint32_t>(direct_bases.size());
 	record.direct_base_count = static_cast<std::uint32_t>(bases.size());
 	direct_bases.insert(direct_bases.end(), bases.begin(), bases.end());
+	if (++base_graph_versions_[derived] == 0)
+		base_graph_versions_[derived] = 1;
 	if (bases.empty()) return;
 	record.direct_base = bases[0].entity;
 	record.base_access = bases[0].access;
@@ -1639,98 +1649,9 @@ DirectBaseEdge& Program::MutableDirectBase(EntityId derived,
 {
 	if (derived >= entities.size() || ordinal >= entities[derived].direct_base_count)
 		throw std::logic_error("invalid direct base edge mutation");
+	if (++base_graph_versions_[derived] == 0)
+		base_graph_versions_[derived] = 1;
 	return direct_bases[entities[derived].direct_base_begin + ordinal];
-}
-
-bool Program::IsBaseOf(EntityId base, EntityId derived) const
-{
-	return QueryBasePath(derived, base, 0, 0);
-}
-
-bool Program::QueryBasePath(EntityId derived, EntityId base,
-	std::size_t* distance, bool* all_public, std::uint64_t* offset,
-	bool* ambiguous) const
-{
-	if (base == kNoEntity || derived == kNoEntity ||
-		base >= entities.size() || derived >= entities.size()) return false;
-	if (ambiguous) *ambiguous = false;
-	if (entities[derived].nonlinear_base_graph)
-	{
-		struct PendingBase
-		{
-			EntityId entity;
-			std::size_t distance;
-			std::uint64_t offset;
-			bool all_public;
-			PendingBase(EntityId entity_, std::size_t distance_,
-				std::uint64_t offset_, bool public_)
-				: entity(entity_), distance(distance_), offset(offset_),
-				  all_public(public_) {}
-		};
-		std::vector<PendingBase> pending;
-		pending.push_back(PendingBase(derived, 0, 0, true));
-		bool found = false;
-		while (!pending.empty())
-		{
-			const PendingBase current = pending.back();
-			pending.pop_back();
-			if (current.entity == base)
-			{
-				if (!found)
-				{
-					if (distance) *distance = current.distance;
-					if (all_public) *all_public = current.all_public;
-					if (offset) *offset = current.offset;
-					found = true;
-					if (!ambiguous) return true;
-				}
-				else *ambiguous = true;
-				continue;
-			}
-			const EntityRecord& current_record = entities[current.entity];
-			for (std::size_t i = current_record.direct_base_count; i != 0; --i)
-			{
-				const DirectBaseEdge& edge = DirectBase(current.entity, i - 1);
-				if (current.offset >
-					std::numeric_limits<std::uint64_t>::max() - edge.offset)
-					throw std::logic_error("base-subobject offset overflow");
-				pending.push_back(PendingBase(edge.entity,
-					current.distance + 1,
-					current.offset + edge.offset,
-					current.all_public && edge.access == ACCESS_PUBLIC));
-			}
-		}
-		return found;
-	}
-	if (base_depths_[derived] < base_depths_[base]) return false;
-	const std::uint32_t difference =
-		base_depths_[derived] - base_depths_[base];
-	EntityId current = derived;
-	std::uint32_t remaining = difference;
-	for (std::size_t level = 0; remaining != 0 && current != kNoEntity;
-		++level, remaining >>= 1)
-		if ((remaining & 1) != 0)
-			current = level < base_jump_counts_[current] ?
-				base_jumps_[base_jump_offsets_[current] + level] : kNoEntity;
-	if (current != base) return false;
-	if (distance) *distance = difference;
-	if (all_public) *all_public =
-		deepest_nonpublic_base_depths_[derived] <= base_depths_[base];
-	if (offset)
-	{
-		std::uint64_t total = 0;
-		current = derived;
-		for (std::uint32_t step = 0; step < difference; ++step)
-		{
-			const DirectBaseEdge& edge = DirectBase(current, 0);
-			if (total > std::numeric_limits<std::uint64_t>::max() - edge.offset)
-				throw std::logic_error("base-subobject offset overflow");
-			total += edge.offset;
-			current = edge.entity;
-		}
-		*offset = total;
-	}
-	return true;
 }
 
 Program::NameEntry* Program::EnsureEntry(ScopeId scope, NameId name)
@@ -2978,6 +2899,11 @@ std::size_t Program::StorageBytes() const
 		base_jump_counts_.capacity() * sizeof(std::uint8_t) +
 		base_depths_.capacity() * sizeof(std::uint32_t) +
 		deepest_nonpublic_base_depths_.capacity() * sizeof(std::uint32_t) +
+		base_path_states_.capacity() * sizeof(BasePathState) +
+		base_path_scratch_.capacity() * sizeof(BasePathFrame) +
+		base_path_cache_entries_.capacity() * sizeof(BasePathCacheEntry) +
+		base_path_cache_slots_.capacity() * sizeof(std::uint32_t) +
+		base_graph_versions_.capacity() * sizeof(std::uint32_t) +
 		lookup_cache_->StorageBytes() +
 		entities.capacity() * sizeof(EntityRecord) +
 		bindings.capacity() * sizeof(BindingRecord) +

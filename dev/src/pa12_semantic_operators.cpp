@@ -207,11 +207,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 	return result;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
-	TypeId target)
+ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId target)
 {
-	const bool postfix = arena_->IsTag(node, "postfix-expression");
-	const std::string operation = PayloadSource(node);
+	const bool postfix = arena_->IsTag(node, "postfix-expression"); const std::string operation = PayloadSource(node);
 	const NodeId operand_syntax = FirstSemanticChild(node);
 	const TypeId address_context_target = UnaryAddressContextTarget(
 		operation, target, operand_syntax, scope);
@@ -219,9 +217,6 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 		UnaryAddressOperandTarget(operation, address_context_target);
 	ExpressionInfo operand = AnalyzeExpression(operand_syntax, scope, operand_target);
 	if (CandidateSubstitutionFailed()) return operand;
-	// Preserve an unresolved overload set until a surrounding call or
-	// constructor supplies the function-pointer target.  The target-directed
-	// replay consumes the retained syntax and publishes one selected binding.
 	if (operand.type == kNoType)
 	{
 		if (operation == "&" && target == kNoType) return operand;
@@ -242,8 +237,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 	ExpressionInfo overloaded;
 	if (TryAnalyzeOverloadedOperator(operation, scope, overloaded_syntax,
 		overloaded_operands, false, target, &overloaded)) return overloaded;
-	const std::uint32_t operand_object = ExpressionObject(operand);
-	const std::uint32_t operand_complete_object = ExpressionCompleteObject(operand);
+	const std::uint32_t operand_object = ExpressionObject(operand),
+		operand_complete_object = ExpressionCompleteObject(operand);
 	(void)ApplyBuiltinUnaryConversion(operation, &operand);
 	const TypeId address_target = MemberPointerAddressTarget(
 		operand, operand_syntax, address_context_target);
@@ -273,8 +268,12 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 		if (operand.category != VALUE_LVALUE)
 			throw std::runtime_error("address-of requires lvalue");
 		if (member_pointer_address)
-			(void)FormMemberPointerAddress(operand, address_target, &result_type,
-				&constant, &scalar, &selected_member);
+		{
+			if (!FormMemberPointerAddress(operand, address_target, &result_type,
+				&constant, &scalar, &selected_member))
+				return CandidateExpressionFailure(
+					"invalid member pointer address conversion");
+		}
 		else
 		{
 			result_type = program_->types.Pointer(result_type);

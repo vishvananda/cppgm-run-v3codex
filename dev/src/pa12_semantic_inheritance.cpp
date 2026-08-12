@@ -1,7 +1,9 @@
 #include "pa12_semantic_detail.h"
 
+#include <algorithm>
 #include <limits>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 namespace cppgm
@@ -61,13 +63,48 @@ bool SemanticAnalyzer::HasProtectedObjectPrivilege(EntityId owner,
 	EntityId object_class) const
 {
 	if (owner == kNoEntity || object_class == kNoEntity) return false;
-	bool privileged = false;
-	for (EntityId current = object_class; current != kNoEntity;
-		current = program_->entities[current].direct_base)
+	if (protected_object_unprivileged_marks_.size() <
+		program_->entities.size())
 	{
+		protected_object_unprivileged_marks_.resize(
+			program_->entities.size(), 0);
+		protected_object_privileged_marks_.resize(
+			program_->entities.size(), 0);
+	}
+	if (protected_object_path_generation_ ==
+		std::numeric_limits<std::uint32_t>::max())
+	{
+		std::fill(protected_object_unprivileged_marks_.begin(),
+			protected_object_unprivileged_marks_.end(), 0);
+		std::fill(protected_object_privileged_marks_.begin(),
+			protected_object_privileged_marks_.end(), 0);
+		protected_object_path_generation_ = 0;
+	}
+	const std::uint32_t generation = ++protected_object_path_generation_;
+	protected_object_path_scratch_.clear();
+	protected_object_path_scratch_.push_back(
+		std::make_pair(object_class, false));
+	while (!protected_object_path_scratch_.empty())
+	{
+		EntityId current = protected_object_path_scratch_.back().first;
+		bool privileged = protected_object_path_scratch_.back().second;
+		protected_object_path_scratch_.pop_back();
 		++access_path_visits_;
 		if (HasClassPrivilege(current)) privileged = true;
-		if (current == owner) return privileged;
+		if (current == owner)
+		{
+			if (privileged) return true;
+			continue;
+		}
+		std::vector<std::uint32_t>& marks = privileged ?
+			protected_object_privileged_marks_ :
+			protected_object_unprivileged_marks_;
+		if (marks[current] == generation) continue;
+		marks[current] = generation;
+		const EntityRecord& record = program_->entities[current];
+		for (std::size_t base = 0; base < record.direct_base_count; ++base)
+			protected_object_path_scratch_.push_back(std::make_pair(
+				program_->DirectBase(current, base).entity, privileged));
 	}
 	return false;
 }
@@ -98,11 +135,14 @@ bool SemanticAnalyzer::CanAccessMember(BindingId member,
 	if (owner == kNoEntity) return true;
 	if (naming_class == kNoEntity) naming_class = owner;
 	bool all_public = false;
+	bool ambiguous_path = false;
 	const bool has_base_path = program_->QueryBasePath(
-		naming_class, owner, 0, &all_public);
-	if (binding.access == ACCESS_PUBLIC && has_base_path && all_public)
+		naming_class, owner, 0, &all_public, 0, &ambiguous_path);
+	if (binding.access == ACCESS_PUBLIC && has_base_path &&
+		(!ambiguous_path || !object_member) && all_public)
 		return true;
-	if (binding.access == ACCESS_PRIVATE && has_base_path && all_public &&
+	if (binding.access == ACCESS_PRIVATE && has_base_path &&
+		(!ambiguous_path || !object_member) && all_public &&
 		HasClassPrivilege(owner))
 		return true;
 	EntityId privilege_anchor = kNoEntity;
@@ -113,21 +153,27 @@ bool SemanticAnalyzer::CanAccessMember(BindingId member,
 			privilege_anchor = context;
 			break;
 		}
-	for (EntityId current = naming_class; current != owner;
-		current = program_->entities[current].direct_base)
+	if (!has_base_path || (ambiguous_path && object_member)) return false;
+	if (!program_->QueryBasePath(naming_class, owner, 0, 0, 0,
+		0, &access_base_path_scratch_)) return false;
+	EntityId current = naming_class;
+	for (std::size_t step = 0;
+		step < access_base_path_scratch_.size(); ++step)
 	{
-		if (current == kNoEntity) return false;
 		++access_path_visits_;
 		if (HasClassPrivilege(current)) privilege_anchor = current;
-		const EntityRecord& derived = program_->entities[current];
-		if (derived.direct_base == kNoEntity) return false;
-		if (derived.base_access == ACCESS_PUBLIC) continue;
-		if (HasClassPrivilege(current)) continue;
-		if (derived.base_access == ACCESS_PROTECTED &&
+		const EntityId derived_class = current;
+		const DirectBaseEdge& edge = program_->DirectBase(
+			current, access_base_path_scratch_[step]);
+		current = edge.entity;
+		if (edge.access == ACCESS_PUBLIC) continue;
+		if (HasClassPrivilege(derived_class)) continue;
+		if (edge.access == ACCESS_PROTECTED &&
 			privilege_anchor != kNoEntity &&
-			AccessIsBaseOf(current, privilege_anchor)) continue;
+			AccessIsBaseOf(derived_class, privilege_anchor)) continue;
 		return false;
 	}
+	if (current != owner) return false;
 	if (HasClassPrivilege(owner)) privilege_anchor = owner;
 	if (binding.access == ACCESS_PUBLIC) return true;
 	if (binding.access == ACCESS_PRIVATE)
@@ -153,6 +199,8 @@ bool SemanticAnalyzer::BaseConversionAllowed(EntityId derived,
 		derived, base, &distance, &all_public, 0, &ambiguous) ||
 		distance == 0 || ambiguous) return false;
 	if (all_public) return true;
+	if (!program_->QueryBasePath(derived, base, 0, 0, 0, 0,
+		&access_base_path_scratch_)) return false;
 	EntityId privilege_anchor = kNoEntity;
 	for (EntityId context = current_class_context_; context != kNoEntity;
 		context = program_->entities[context].enclosing_class)
@@ -161,20 +209,24 @@ bool SemanticAnalyzer::BaseConversionAllowed(EntityId derived,
 			privilege_anchor = context;
 			break;
 		}
-	for (EntityId current = derived; current != base;
-		current = program_->entities[current].direct_base)
+	EntityId current = derived;
+	for (std::size_t step = 0;
+		step < access_base_path_scratch_.size(); ++step)
 	{
-		if (current == kNoEntity) return false;
 		++access_path_visits_;
 		if (HasClassPrivilege(current)) privilege_anchor = current;
-		const AccessKind access = program_->entities[current].base_access;
+		const EntityId derived_class = current;
+		const DirectBaseEdge& edge = program_->DirectBase(
+			current, access_base_path_scratch_[step]);
+		const AccessKind access = edge.access;
+		current = edge.entity;
 		if (access == ACCESS_PUBLIC) continue;
-		if (HasClassPrivilege(current)) continue;
+		if (HasClassPrivilege(derived_class)) continue;
 		if (access == ACCESS_PROTECTED && privilege_anchor != kNoEntity &&
-			AccessIsBaseOf(current, privilege_anchor)) continue;
+			AccessIsBaseOf(derived_class, privilege_anchor)) continue;
 		return false;
 	}
-	return true;
+	return current == base;
 }
 
 std::size_t SemanticAnalyzer::BaseConversionDistance(TypeId source,
@@ -200,8 +252,10 @@ std::size_t SemanticAnalyzer::BaseConversionDistance(TypeId source,
 	if (derived == kNoEntity || base == kNoEntity)
 		return std::numeric_limits<std::size_t>::max();
 	std::size_t distance = 0;
+	bool ambiguous = false;
 	++access_path_visits_;
-	return program_->QueryBasePath(derived, base, &distance, 0) ? distance :
+	return program_->QueryBasePath(
+		derived, base, &distance, 0, 0, &ambiguous) && !ambiguous ? distance :
 		std::numeric_limits<std::size_t>::max();
 }
 
@@ -229,9 +283,10 @@ std::size_t SemanticAnalyzer::BaseProjectionCount(TypeId source,
 		return std::numeric_limits<std::size_t>::max();
 	std::size_t distance = 0;
 	std::uint64_t selected_offset = 0;
+	bool ambiguous = false;
 	++access_path_visits_;
 	if (!program_->QueryBasePath(
-		derived, base, &distance, 0, &selected_offset))
+		derived, base, &distance, 0, &selected_offset, &ambiguous) || ambiguous)
 		return std::numeric_limits<std::size_t>::max();
 	if (offset) *offset = selected_offset;
 	return distance == 0 ? 0 : 1;
