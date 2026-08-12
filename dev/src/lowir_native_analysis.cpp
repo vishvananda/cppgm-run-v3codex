@@ -56,6 +56,9 @@ unsigned instruction_clobber_mask(const Instruction & instruction)
     return register_mask(XR_RAX);
   if(instruction.kind == Instruction::IK_SWITCH)
     return register_mask(XR_RAX) | register_mask(XR_RCX);
+  if(instruction.kind == Instruction::IK_VA_START)
+    return register_mask(XR_RAX) | register_mask(XR_RCX) |
+      register_mask(XR_RDX);
   return 0;
 }
 
@@ -97,6 +100,7 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
       note_instruction_operands(facts, instruction, position);
       if(!instruction.dest.empty()) facts.definition[instruction.dest] = position;
       if(instruction.kind == Instruction::IK_CALL) facts.calls.push_back(position);
+      if(instruction.kind == Instruction::IK_VA_START) facts.has_va_start = true;
     }
   }
 

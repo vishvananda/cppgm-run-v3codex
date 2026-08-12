@@ -742,6 +742,9 @@ private:
       out.kind = op == "atomic_thread_fence" ? Instruction::IK_ATOMIC_THREAD_FENCE :
                  Instruction::IK_ATOMIC_SIGNAL_FENCE;
       out.first = operand();
+    } else if(op == "va_start") {
+      out.kind = Instruction::IK_VA_START;
+      out.first = operand();
     } else if(op == "call") {
       expect("void"); parse_call(out, true);
     } else if(op == "copyobj" || op == "zeroinit") parse_bulk(out, op);
@@ -1042,6 +1045,14 @@ private:
     }
     if(kind == Instruction::IK_RETURN && !same_lowir_type(ins.type, function.return_type))
       throw ParseError("return type does not match function");
+    if(kind == Instruction::IK_VA_START) {
+      if(function.boundary.arity != CAM_VARIADIC)
+        throw ParseError("va_start requires a variadic function");
+      const TypeIndex::const_iterator value = values.find(ins.first.text);
+      if(ins.first.kind != Operand::OP_TEMP || value == values.end() ||
+         value->second->kind != LTK_PTR)
+        throw ParseError("va_start requires a pointer value");
+    }
     if((kind == Instruction::IK_EH_TRY || kind == Instruction::IK_EH_CLEANUP))
       validate_target(ins.first, blocks);
   }

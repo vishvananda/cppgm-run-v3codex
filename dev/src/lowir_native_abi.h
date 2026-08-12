@@ -15,6 +15,7 @@ struct FunctionSignature
 {
   const std::vector<lowir_model::LowirParameter> * params = 0;
   const lowir_model::LowType * return_type = 0;
+  const lowir_model::FunctionBoundaryMetadata * boundary = 0;
 };
 
 typedef std::unordered_map<std::string, FunctionSignature> FunctionSignatureIndex;
@@ -40,13 +41,24 @@ struct Piece
 struct Plan
 {
   std::vector<Piece> pieces;
+  std::size_t stack_argument_bytes = 0;
   std::size_t stack_bytes = 0;
+};
+
+struct VariadicState
+{
+  std::size_t gp_offset = 0;
+  std::size_t fp_offset = 48;
+  std::size_t overflow_arg_offset = 16;
 };
 
 const lowir_model::LowType & object_chunk_type(std::size_t remaining);
 std::size_t frame_storage_size(const lowir_model::LowType & type);
 X64Register argument_register(std::size_t index);
 Plan classify(const std::vector<lowir_model::LowirParameter> & parameters);
+std::size_t xmm_register_count(const Plan & plan);
+VariadicState variadic_state(
+    const std::vector<lowir_model::LowirParameter> & named_parameters);
 
 }  // namespace abi
 }  // namespace lowir_native

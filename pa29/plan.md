@@ -16,27 +16,26 @@ layout is O(output + relocations).
 | Group | Tests | Shared behavior and owner |
 | --- | ---: | --- |
 | Wide scalar and atomic ABI | 2 | i128 call chunks and compare-exchange; ABI classifier, selector, encoder |
-| Variadic register-save state | 2 | GPR/XMM `va_start` state and caller vector count; ABI and frame lowering |
 | Global metadata and storage | 2 | Read-only extra sections and direct TLS; global lowering and ELF layout |
 | Exact entry/call/slot shape | 3 | Constructor entry, six-register indirect call, and promoted slot; selector |
 | CFG/allocation conformance | 16 | Thirteen canonical control-flow/liveness cases and three behavioral spill/home shapes; analysis and allocator |
 
-One hundred fifty-eight of 183 tests now pass. The 25 failures are grouped by first
-stable owning boundary; scalar atomics, aggregate ABI, and floating runtime are complete.
+One hundred sixty of 183 tests now pass. The 23 failures are grouped by first stable
+owning boundary; scalar atomics, variadics, aggregate ABI, and floating runtime are complete.
 
 ## Active Checkpoint
 
-Implement the SysV variadic register-save boundary required by `spec.md` sections 6-9
-and PA29's ABI contract. LowIR call-boundary arity and argument types flow through
-`lowir_native_abi` classification: callers set the XMM-argument count in `al`, while
-variadic callees materialize bounded GPR/XMM save areas and initialize `va_start`'s
-`gp_offset`, `fp_offset`, `overflow_arg_area`, and `reg_save_area`. ABI classification
-owns register/stack positions, the selector owns frame bindings and prologue stores,
-and existing MIR/ELF typed moves own encoding. Work remains O(parameters + arguments +
-instructions), with constant-size SysV register-save areas. Validate both remaining
-variadic anchors, adjacent indirect/mixed-call and register-home cases, full PA29,
-through-PA28, and file audit; measure a generated variadic-call family. i128, globals,
-and residual CFG/allocation conformance remain later checkpoints.
+Implement the PA29 i128 scalar/atomic boundary required by `spec.md` sections 6-9 and
+the checked wide-integer fixtures. The parser/type model owns a 16-byte, 16-aligned i128;
+the selector keeps values as stable two-limb frame facts and lowers constants, copies,
+loads/stores, equality, and calls without pretending one GPR owns the value. The ABI
+classifier owns paired GPR or whole-value stack placement, including literal expansion.
+Typed MIR exposes limb movement and fixed `rdx:rax` expected / `rcx:rbx` desired state;
+the ELF encoder owns aligned `lock cmpxchg16b`, while ordinary scalar atomics remain on
+their existing path. Work remains O(instructions + operands), with O(1) two-limb work per
+i128 operation and no width-dependent allocator search. Validate both i128 anchors,
+adjacent aggregate/scalar atomic anchors, full PA29, through-PA28, and file audit; measure
+a generated wide-value family. Globals and residual CFG/allocation conformance remain later.
 
 ## Performance Evidence
 
@@ -93,6 +92,14 @@ instructions became 2,705/27,005/135,005 MIR instructions and
 was 0.01/0.07/0.39 s, and peak RSS was 6,172/24,252/103,468 KiB, showing linear counts
 and approximately linear time/space with O(1) fixed-register work per operation.
 
+The variadic boundary was measured with 100/1,000/5,000 callee/caller pairs, each
+materializing `va_start` and one floating variadic call. 501/5,001/25,001 LowIR
+instructions became 3,005/30,005/150,005 MIR instructions, with
+24,356/242,156/1,210,156-byte executables and 101/1,001/5,001 fixups. Lowering took
+2.99/31.77/157.66 ms, wall time was 0.00/0.06/0.34 s, and peak RSS was
+5,920/22,224/93,472 KiB, showing approximately linear classification, save-area MIR,
+encoding, and storage growth.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result | Evidence |
@@ -105,3 +112,4 @@ and approximately linear time/space with O(1) fixed-register work per operation.
 | SysV aggregate ABI and bulk storage | Complete | Typed one/two-eightbyte register classification, whole-object stack rollback, parameter/result homes and aliases, pass-mode address materialization, slot-safe bulk operations, and padded returns; all 19 focused object/pass-mode anchors pass; full PA29 139/183 (+21); aggregate scaling above |
 | x87/f80 scalar and ABI path | Complete | Frame-backed f80 SSA, aligned stack parameters, `st0` returns, exact literals/globals, balanced arithmetic/comparisons, signed/unsigned conversions, implicit width conversion, and shared ABI ownership; all eight f80 anchors plus adjacent u32 conversion pass; full PA29 148/183 (+9); x87 scaling above |
 | Scalar atomics and fences | Complete | Typed TSO loads/stores, seq-cst exchange/store, locked fetch-add/compare-exchange, expected writeback, narrow normalization, fixed-clobber analysis, direct encoding, and bounded allocator/MIR modules; all 10 scalar atomic anchors pass; full PA29 158/183 (+10); atomic scaling above |
+| SysV variadic register-save state | Complete | Parsed/validated `va_start`, propagated arity, caller `al` XMM counts, demanded 176-byte GPR/XMM saves, classified list offsets, and explicit MIR field initialization; both behavior anchors pass; full PA29 160/183 (+2); variadic scaling above |

@@ -3,6 +3,7 @@
 #include "lowir_native_analysis.h"
 #include "lowir_native_mir.h"
 #include "lowir_native_registers.h"
+#include "lowir_native_varargs.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -126,6 +127,7 @@ public:
     target_.name = source.name;
     target_.return_type = source.return_type.text;
     discover_parameter_slot_aliases();
+    plan_variadic_register_save();
     bind_parameters();
     plan_slots();
   }
@@ -182,6 +184,8 @@ private:
   bool uses_scalar_float_ = false;
   bool has_xmm_call_scratch_ = false;
   long long xmm_call_scratch_ = 0;
+  long long variadic_register_save_offset_ = 0;
+  abi::VariadicState variadic_state_;
 
   long long allocate_frame_binding(mir_model::MirFrameBinding::Kind kind,
                                    const std::string & name,
@@ -196,6 +200,19 @@ private:
     binding.type = type.text;
     target_.frame_bindings.push_back(binding);
     return binding.offset;
+  }
+
+  void plan_variadic_register_save()
+  {
+    if(!facts_.has_va_start) return;
+    if(source_.boundary.arity != lowir_model::CAM_VARIADIC)
+      throw std::runtime_error("va_start in non-variadic function");
+    variadic_state_ = abi::variadic_state(source_.params);
+    variadic_register_save_offset_ = allocate_frame_binding(
+      mir_model::MirFrameBinding::FB_TEMP, "%va-register-save",
+      varargs::register_save_type());
+    varargs::append_register_save(variadic_register_save_offset_, parameter_moves_);
+    uses_scalar_float_ = true;
   }
 
   void discover_parameter_slot_aliases()
@@ -682,6 +699,18 @@ private:
           next.second.text == destination;
     }
     return false;
+  }
+
+  bool address_is_next_va_start(const lowir_model::LowirBlock & block,
+                                std::size_t instruction_index,
+                                const std::string & destination) const
+  {
+    if(instruction_index + 1 >= block.instructions.size() ||
+       facts_.uses.find(destination) == facts_.uses.end() ||
+       facts_.uses.find(destination)->second != 1) return false;
+    const Instruction & next = block.instructions[instruction_index + 1];
+    return next.kind == Instruction::IK_VA_START &&
+      next.first.kind == Operand::OP_TEMP && next.first.text == destination;
   }
 
   bool address_is_object_result_destination(const lowir_model::LowirBlock & block,
@@ -2028,6 +2057,17 @@ private:
     consume(instruction.first);
   }
 
+  void emit_va_start(const Instruction & instruction,
+                     std::vector<MirInstruction> & out)
+  {
+    if(!variadic_register_save_offset_)
+      throw std::runtime_error("va_start register-save area is unavailable");
+    emit_operand_address(out, XR_RCX, instruction.first);
+    varargs::append_va_start(
+      variadic_state_, variadic_register_save_offset_, out);
+    consume(instruction.first);
+  }
+
   void emit_bulk(const Instruction & instruction,
                  std::vector<MirInstruction> & out)
   {
@@ -2084,6 +2124,17 @@ private:
       parameters.push_back(parameter);
     }
     return parameters;
+  }
+
+  bool call_is_variadic(const Instruction & instruction) const
+  {
+    if(instruction.has_call_signature)
+      return instruction.call_boundary.arity == lowir_model::CAM_VARIADIC;
+    if(instruction.first.kind != Operand::OP_GLOBAL) return false;
+    const FunctionSignatureIndex::const_iterator found =
+      signatures_.find(instruction.first.text);
+    return found != signatures_.end() && found->second.boundary &&
+      found->second.boundary->arity == lowir_model::CAM_VARIADIC;
   }
 
   bool argument_needs_address(const lowir_model::LowirParameter & parameter,
@@ -2360,8 +2411,13 @@ private:
                                   addressable, needs_address, out);
     emit_extended_register_arguments(instruction, parameters, plan,
                                      addressable, needs_address, out);
+    const bool variadic = call_is_variadic(instruction);
+    if(variadic)
+      append_move(out, reg_operand(XR_RAX),
+                  immediate(static_cast<long long>(abi::xmm_register_count(plan))));
     MirInstruction call = machine_instruction(direct ?
       MirInstruction::MI_CALL : MirInstruction::MI_CALL_INDIRECT);
+    call.call_variadic = variadic;
     append_operand(call, direct ?
       named_operand(MirOperand::OP_SYMBOL, instruction.first.text) :
       reg_operand(XR_R10));
@@ -2448,12 +2504,21 @@ private:
     if(mixed_float) emit_parallel_xmm_moves(instruction, out);
     else emit_deferred_stack_addresses(instruction, out);
 
+    const bool variadic = call_is_variadic(instruction);
+    if(variadic) {
+      const abi::Plan plan = abi::classify(parameters);
+      append_move(out, reg_operand(XR_RAX),
+                  immediate(static_cast<long long>(abi::xmm_register_count(plan))));
+    }
+
     if(direct) {
       MirInstruction call = machine_instruction(MirInstruction::MI_CALL);
+      call.call_variadic = variadic;
       append_operand(call, named_operand(MirOperand::OP_SYMBOL, instruction.first.text));
       out.push_back(call);
     } else {
       MirInstruction call = machine_instruction(MirInstruction::MI_CALL_INDIRECT);
+      call.call_variadic = variadic;
       append_operand(call, reg_operand(XR_R10));
       out.push_back(call);
     }
@@ -2631,6 +2696,8 @@ private:
         if(address_is_next_call_argument(block, instruction_index, instruction.dest) ||
            address_is_next_atomic_expected(block, instruction_index,
                                            instruction.dest) ||
+           address_is_next_va_start(block, instruction_index,
+                                    instruction.dest) ||
            address_is_next_bulk_operand(block, instruction_index, instruction.dest) ||
            address_is_immediately_stored(block, instruction_index,
                                          instruction.dest) ||
@@ -2729,6 +2796,8 @@ private:
     } else if(instruction.kind == Instruction::IK_ATOMIC_THREAD_FENCE ||
               instruction.kind == Instruction::IK_ATOMIC_SIGNAL_FENCE) {
       emit_atomic_fence(instruction, out);
+    } else if(instruction.kind == Instruction::IK_VA_START) {
+      emit_va_start(instruction, out);
     } else if(instruction.kind == Instruction::IK_INDEX) {
       emit_index(instruction, out);
     } else if(instruction.kind == Instruction::IK_BINARY) {
@@ -2888,12 +2957,14 @@ mir_model::MirProgram lower_program(const lowir_model::LowirProgram & program,
     FunctionSignature signature;
     signature.params = &program.function_declarations[i].params;
     signature.return_type = &program.function_declarations[i].return_type;
+    signature.boundary = &program.function_declarations[i].boundary;
     signatures[program.function_declarations[i].name] = signature;
   }
   for(std::size_t i = 0; i < program.functions.size(); ++i) {
     FunctionSignature signature;
     signature.params = &program.functions[i].params;
     signature.return_type = &program.functions[i].return_type;
+    signature.boundary = &program.functions[i].boundary;
     signatures[program.functions[i].name] = signature;
   }
   for(std::size_t i = 0; i < program.functions.size(); ++i)

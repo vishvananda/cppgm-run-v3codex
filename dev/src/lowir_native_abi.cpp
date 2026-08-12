@@ -114,8 +114,30 @@ Plan classify(const std::vector<lowir_model::LowirParameter> & parameters)
     }
     plan.pieces.push_back(piece);
   }
+  plan.stack_argument_bytes = stack_offset;
   plan.stack_bytes = align_up(stack_offset, 16);
   return plan;
+}
+
+std::size_t xmm_register_count(const Plan & plan)
+{
+  std::size_t count = 0;
+  for(std::size_t i = 0; i < plan.pieces.size(); ++i)
+    if(plan.pieces[i].location == PL_XMM) ++count;
+  return count;
+}
+
+VariadicState variadic_state(
+    const std::vector<lowir_model::LowirParameter> & named_parameters)
+{
+  const Plan plan = classify(named_parameters);
+  VariadicState state;
+  for(std::size_t i = 0; i < plan.pieces.size(); ++i) {
+    if(plan.pieces[i].location == PL_GPR) state.gp_offset += 8;
+    else if(plan.pieces[i].location == PL_XMM) state.fp_offset += 16;
+  }
+  state.overflow_arg_offset += plan.stack_argument_bytes;
+  return state;
 }
 
 }  // namespace abi
