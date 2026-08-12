@@ -18,6 +18,7 @@ struct FunctionFacts
   std::unordered_map<std::string, std::size_t> first_use;
   std::unordered_map<std::string, std::size_t> last_use;
   std::unordered_map<std::string, std::size_t> definition;
+  std::unordered_set<std::string> parameters;
   std::vector<std::size_t> calls;
   std::unordered_set<std::string> live_across_call;
   std::unordered_set<std::string> edge_live;
@@ -27,6 +28,9 @@ struct FunctionFacts
   std::unordered_set<std::string> direct_compare_rax_values;
   std::unordered_set<std::string> direct_branch_call_results;
   std::unordered_set<std::string> zero_index_parameters;
+  std::unordered_set<std::string> forwarded_parameters_across_call;
+  std::unordered_set<std::string> switch_parameters;
+  std::unordered_set<std::string> destructive_parameters;
   std::unordered_map<std::string, const lowir_model::Instruction *>
     deferred_branch_comparisons;
   std::unordered_map<std::string, unsigned> live_across_clobbers;
@@ -41,6 +45,7 @@ struct StorageFacts
   std::unordered_map<std::string, std::string> promoted_parameter_slots;
   std::unordered_map<std::string, std::string> forwarded_parameter_slots;
   std::unordered_set<std::string> promoted_parameters;
+  std::unordered_set<std::string> promoted_parameters_across_call;
   std::unordered_set<std::string> dead_slot_only_parameters;
   std::unordered_set<std::string> tls_store_inputs;
 };

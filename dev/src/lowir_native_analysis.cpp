@@ -116,6 +116,7 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
   std::size_t position = 0;
   for(std::size_t i = 0; i < function.params.size(); ++i) {
     facts.definition[function.params[i].name] = 0;
+    facts.parameters.insert(function.params[i].name);
     parameter_names.insert(function.params[i].name);
   }
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
@@ -140,6 +141,14 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
          instruction.second.kind == Operand::OP_INTEGER &&
          instruction.second.text == "0")
         facts.zero_index_parameters.insert(instruction.first.text);
+      if(instruction.kind == Instruction::IK_SWITCH &&
+         instruction.first.kind == Operand::OP_TEMP &&
+         parameter_names.count(instruction.first.text))
+        facts.switch_parameters.insert(instruction.first.text);
+      if(instruction.kind == Instruction::IK_BINARY &&
+         instruction.first.kind == Operand::OP_TEMP &&
+         parameter_names.count(instruction.first.text))
+        facts.destructive_parameters.insert(instruction.first.text);
       if(instruction.kind == Instruction::IK_CALL) facts.calls.push_back(position);
       if(instruction.kind == Instruction::IK_VA_START) facts.has_va_start = true;
       if((instruction.kind == Instruction::IK_ATOMIC_LOAD ||
@@ -190,6 +199,7 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
         if(comparison->second + 1 != j || definition == definitions.end()) continue;
         const Instruction & producer = instructions[definition->second];
         if(producer.kind != Instruction::IK_LOAD ||
+           !lowir_model::same_lowir_type(producer.type, source.type) ||
            (producer.first.kind != Operand::OP_SLOT &&
             producer.first.kind != Operand::OP_GLOBAL) ||
            facts.uses.find(producer.dest) == facts.uses.end() ||
@@ -315,6 +325,18 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
           live.insert(instruction.args[k].text);
     }
   }
+  for(std::size_t i = 0; i < block_count; ++i)
+    for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
+      const Instruction & instruction = function.blocks[i].instructions[j];
+      if(instruction.kind == Instruction::IK_INDEX &&
+         parameter_names.count(instruction.first.text) &&
+         facts.live_across_call.count(instruction.dest))
+        facts.forwarded_parameters_across_call.insert(instruction.first.text);
+    }
+  for(std::unordered_set<std::string>::iterator value =
+        facts.destructive_parameters.begin(); value != facts.destructive_parameters.end(); )
+    if(facts.uses[*value] != 1) value = facts.destructive_parameters.erase(value);
+    else ++value;
   return facts;
 }
 
@@ -344,7 +366,7 @@ StorageFacts analyze_storage(
          lowir_model::same_lowir_type(function.params[parameter->second].type,
                                       function.slots[s].second))
         object_slots[slot] = parameter->second;
-    } else if(function_facts.calls.empty() && function.blocks.size() == 1) {
+    } else if(function.blocks.size() == 1) {
       scalar_slots[slot] = s;
     }
   }
@@ -353,6 +375,9 @@ StorageFacts analyze_storage(
   {
     bool initialized = false;
     bool loaded = false;
+    std::size_t load_count = 0;
+    std::size_t store_position = 0;
+    std::size_t load_position = 0;
     bool valid = true;
     bool read_through = true;
     std::size_t parameter = static_cast<std::size_t>(-1);
@@ -427,11 +452,14 @@ StorageFacts analyze_storage(
                                           function.slots[scalar->second].second)) {
             state.initialized = true;
             state.parameter = parameter->second;
+            state.store_position = i;
           } else {
             state.valid = false;
           }
         } else if(state.initialized && instruction.kind == Instruction::IK_LOAD && first) {
           state.loaded = true;
+          ++state.load_count;
+          state.load_position = i;
           state.loaded_name = instruction.dest;
         } else if(first || second || third) {
           state.valid = false;
@@ -462,14 +490,21 @@ StorageFacts analyze_storage(
   }
   for(std::unordered_map<std::string, ScalarSlotState>::const_iterator state =
         scalar_states.begin(); state != scalar_states.end(); ++state) {
-    if(!state->second.valid || !state->second.initialized || !state->second.loaded)
+    if(!state->second.valid || !state->second.initialized || !state->second.loaded ||
+       (!function_facts.calls.empty() && state->second.load_count != 1))
       continue;
     const std::string & parameter = function.params[state->second.parameter].name;
+    if(!function_facts.calls.empty() && function_facts.uses.find(parameter)->second != 1)
+      continue;
     if(state->second.read_through)
       facts.promoted_parameter_slots[state->first] = parameter;
     else
       facts.forwarded_parameter_slots[state->first] = parameter;
     facts.promoted_parameters.insert(parameter);
+    for(std::size_t call = 0; call < function_facts.calls.size(); ++call)
+      if(state->second.store_position < function_facts.calls[call] &&
+         function_facts.calls[call] < state->second.load_position)
+        facts.promoted_parameters_across_call.insert(parameter);
   }
   return facts;
 }
