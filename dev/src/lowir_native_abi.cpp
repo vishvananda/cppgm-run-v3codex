@@ -37,6 +37,19 @@ std::size_t frame_storage_size(const lowir_model::LowType & type)
   return align_up(type.storage_size, 8);
 }
 
+std::size_t direct_parameter_bytes(
+    const std::vector<lowir_model::LowirParameter> & parameters)
+{
+  std::size_t bytes = 0;
+  for(std::size_t i = 0; i < parameters.size(); ++i) {
+    if(parameters[i].metadata.passing != lowir_model::PPM_DIRECT) continue;
+    if(parameters[i].type.kind == lowir_model::LTK_OBJECT)
+      bytes += align_up(parameters[i].type.storage_size, 8);
+    else bytes += parameters[i].type.kind == lowir_model::LTK_I128 ? 16 : 8;
+  }
+  return bytes;
+}
+
 X64Register argument_register(std::size_t index)
 {
   static const X64Register registers[] = {
@@ -55,6 +68,33 @@ Plan classify(const std::vector<lowir_model::LowirParameter> & parameters)
   std::size_t stack_offset = 0;
   for(std::size_t i = 0; i < parameters.size(); ++i) {
     const lowir_model::LowType & type = parameters[i].type;
+    if(type.kind == lowir_model::LTK_I128) {
+      const bool in_registers = gpr_index + 2 <= 6;
+      if(in_registers) {
+        for(std::size_t chunk = 0; chunk < 2; ++chunk) {
+          Piece piece;
+          piece.parameter_index = i;
+          piece.chunk_offset = chunk * 8;
+          piece.type = lowir_model::builtin_lowir_type(lowir_model::LTK_I64);
+          piece.location = PL_GPR;
+          piece.reg = argument_register(gpr_index++);
+          plan.pieces.push_back(piece);
+        }
+      } else {
+        stack_offset = align_up(stack_offset, 16);
+        for(std::size_t chunk = 0; chunk < 2; ++chunk) {
+          Piece piece;
+          piece.parameter_index = i;
+          piece.chunk_offset = chunk * 8;
+          piece.type = lowir_model::builtin_lowir_type(lowir_model::LTK_I64);
+          piece.location = PL_STACK;
+          piece.stack_offset = stack_offset + chunk * 8;
+          plan.pieces.push_back(piece);
+        }
+        stack_offset += 16;
+      }
+      continue;
+    }
     if(type.kind == lowir_model::LTK_F80) {
       Piece piece;
       piece.parameter_index = i;

@@ -1,0 +1,51 @@
+#pragma once
+
+#include <string>
+#include <vector>
+
+#include "lowir_model.h"
+#include "mir_model.h"
+
+namespace lowir_native {
+namespace wide {
+
+bool is_integer(const lowir_model::LowType & type);
+
+struct Words
+{
+  unsigned long long low = 0;
+  unsigned long long high = 0;
+};
+
+struct Value
+{
+  bool immediate = false;
+  Words words;
+  mir_model::MirOperand storage;
+};
+
+Value literal_value(const std::string & text);
+Value storage_value(const mir_model::MirOperand & storage);
+
+void append_word_to_register(const Value & value, std::size_t chunk,
+                             X64Register destination, X64Register scratch,
+                             std::vector<mir_model::MirInstruction> & out);
+void append_word_store(const mir_model::MirOperand & destination,
+                       const Value & value, std::size_t chunk,
+                       X64Register value_register, X64Register scratch,
+                       std::vector<mir_model::MirInstruction> & out);
+void append_copy(const mir_model::MirOperand & destination, const Value & source,
+                 std::vector<mir_model::MirInstruction> & out);
+void append_compare(const Value & left, const Value & right, bool equal,
+                    std::vector<mir_model::MirInstruction> & out);
+void append_atomic_load(const mir_model::MirOperand & object,
+                        const mir_model::MirOperand & destination,
+                        std::vector<mir_model::MirInstruction> & out);
+void append_atomic_compare_exchange(
+    const mir_model::MirOperand & object,
+    const mir_model::MirOperand & expected,
+    const Value & desired,
+    std::vector<mir_model::MirInstruction> & out);
+
+}  // namespace wide
+}  // namespace lowir_native

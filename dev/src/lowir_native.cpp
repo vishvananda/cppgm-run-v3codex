@@ -2,8 +2,10 @@
 #include "lowir_native_abi.h"
 #include "lowir_native_analysis.h"
 #include "lowir_native_mir.h"
+#include "lowir_native_program.h"
 #include "lowir_native_registers.h"
 #include "lowir_native_varargs.h"
+#include "lowir_native_wide.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -126,6 +128,7 @@ public:
   {
     target_.name = source.name;
     target_.return_type = source.return_type.text;
+    if(facts_.has_i128_atomic) registers_.reserve(XR_RBX);
     discover_parameter_slot_aliases();
     plan_variadic_register_save();
     bind_parameters();
@@ -145,11 +148,8 @@ public:
     }
     target_.callee_saved_regs = registers_.preserves();
     target_.scratch_bytes = uses_scalar_float_ ? 48 : 0;
-    std::size_t direct_parameter_bytes = 0;
-    for(std::size_t i = 0; i < source_.params.size(); ++i)
-      if(source_.params[i].metadata.passing == lowir_model::PPM_DIRECT)
-        direct_parameter_bytes += source_.params[i].type.kind == lowir_model::LTK_OBJECT ?
-          align_up(source_.params[i].type.storage_size, 8) : 8;
+    const std::size_t direct_parameter_bytes =
+      abi::direct_parameter_bytes(source_.params);
     if(uses_scalar_float_) {
       const std::size_t float_frame_bytes = source_.params.empty() ? frame_bytes_ :
         std::max<std::size_t>(frame_bytes_, 16);
@@ -186,7 +186,6 @@ private:
   long long xmm_call_scratch_ = 0;
   long long variadic_register_save_offset_ = 0;
   abi::VariadicState variadic_state_;
-
   long long allocate_frame_binding(mir_model::MirFrameBinding::Kind kind,
                                    const std::string & name,
                                    const LowType & type)
@@ -407,7 +406,8 @@ private:
         source_.params[piece.parameter_index];
       mir_model::MirParamBinding binding;
       binding.name = parameter.name;
-      binding.type = parameter.type.kind == lowir_model::LTK_OBJECT ?
+      binding.type = parameter.type.kind == lowir_model::LTK_OBJECT ||
+        wide::is_integer(parameter.type) ?
         piece.type.text : parameter.type.text;
       binding.chunk_offset = static_cast<long long>(piece.chunk_offset);
       const MirOperand home = frame_operand(
@@ -442,6 +442,7 @@ private:
   {
     for(std::size_t i = 0; i < source_.params.size(); ++i) {
       if(source_.params[i].type.kind != lowir_model::LTK_OBJECT &&
+         !wide::is_integer(source_.params[i].type) &&
          !is_extended_float(source_.params[i].type)) continue;
       bind_aggregate_parameters();
       return;
@@ -844,6 +845,13 @@ private:
     return dereference(XR_RCX);
   }
 
+  wide::Value wide_value(const Operand & operand) const
+  {
+    if(operand.kind == Operand::OP_INTEGER)
+      return wide::literal_value(operand.text);
+    return wide::storage_value(resolve(operand));
+  }
+
   bool can_reuse(const Operand & operand) const
   {
     if(operand.kind != Operand::OP_TEMP) return false;
@@ -1006,7 +1014,8 @@ private:
       values_.find(operand.text);
     if(found == values_.end()) throw std::runtime_error("missing address value");
     const MirOperand & location = found->second.location;
-    if(found->second.frame_address || found->second.type.kind == lowir_model::LTK_OBJECT) {
+    if(found->second.frame_address || found->second.type.kind == lowir_model::LTK_OBJECT ||
+       wide::is_integer(found->second.type)) {
       if(location.kind == MirOperand::OP_FRAME || location.kind == MirOperand::OP_DEREF) {
         append_address(out, destination, location);
         return;
@@ -1489,6 +1498,19 @@ private:
   void emit_compare_value(const Instruction & instruction,
                           std::vector<MirInstruction> & out)
   {
+    if(wide::is_integer(instruction.type)) {
+      if(instruction.op != "eq" && instruction.op != "ne")
+        throw std::runtime_error("i128 comparison supports equality predicates only");
+      wide::append_compare(wide_value(instruction.first),
+                           wide_value(instruction.second), instruction.op == "eq", out);
+      const MirOperand destination = reg_operand(allocate_result(instruction.dest, out));
+      append_move(out, destination, reg_operand(XR_R10));
+      consume(instruction.first);
+      consume(instruction.second);
+      define(instruction.dest,
+        lowir_model::builtin_lowir_type(lowir_model::LTK_I64), destination);
+      return;
+    }
     if(!is_integer_or_pointer(instruction.type))
       throw std::runtime_error("integer selector received non-integer comparison");
     const MirOperand left = resolve(instruction.first);
@@ -1518,6 +1540,13 @@ private:
 
   void emit_copy(const Instruction & instruction, std::vector<MirInstruction> & out)
   {
+    if(wide::is_integer(instruction.type)) {
+      const MirOperand destination = allocate_temp_home(instruction.dest, instruction.type);
+      wide::append_copy(destination, wide_value(instruction.first), out);
+      consume(instruction.first);
+      define(instruction.dest, instruction.type, destination);
+      return;
+    }
     if(is_floating(instruction.type)) {
       emit_float_copy(instruction, out);
       return;
@@ -1924,6 +1953,15 @@ private:
                         std::vector<MirInstruction> & out)
   {
     atomic_order(instruction.args.at(0));
+    if(wide::is_integer(instruction.type)) {
+      const MirOperand destination = allocate_temp_home(instruction.dest, instruction.type);
+      wide::append_atomic_load(materialized_storage(instruction.first, out),
+                               destination, out);
+      consume(instruction.first);
+      consume(instruction.args[0]);
+      define(instruction.dest, instruction.type, destination);
+      return;
+    }
     const MirOperand destination = result_is_immediate_return(
       block, instruction_index, instruction.dest) ? reg_operand(XR_RAX) :
       reg_operand(allocate_result(instruction.dest, out));
@@ -2011,6 +2049,22 @@ private:
   {
     atomic_order(instruction.args.at(0));
     atomic_order(instruction.args.at(1));
+    if(wide::is_integer(instruction.type)) {
+      emit_operand_address(out, XR_R10, instruction.second);
+      wide::append_atomic_compare_exchange(
+        materialized_storage(instruction.first, out), dereference(XR_R10),
+        wide_value(instruction.third), out);
+      const MirOperand destination = reg_operand(allocate_result(instruction.dest, out));
+      append_move(out, destination, reg_operand(XR_RAX));
+      consume(instruction.first);
+      consume(instruction.second);
+      consume(instruction.third);
+      consume(instruction.args[0]);
+      consume(instruction.args[1]);
+      define(instruction.dest,
+        lowir_model::builtin_lowir_type(lowir_model::LTK_I64), destination);
+      return;
+    }
     std::vector<GprMove> moves;
     moves.push_back(atomic_move(XR_RCX, instruction.first));
     moves.push_back(atomic_move(XR_RDX, instruction.second));
@@ -2149,14 +2203,17 @@ private:
   {
     if(!instruction.call_returns_void &&
        (instruction.type.kind == lowir_model::LTK_OBJECT ||
+        wide::is_integer(instruction.type) ||
         is_extended_float(instruction.type))) return true;
     for(std::size_t i = 0; i < parameters.size(); ++i)
       if(parameters[i].type.kind == lowir_model::LTK_OBJECT ||
+         wide::is_integer(parameters[i].type) ||
          is_extended_float(parameters[i].type) ||
          parameters[i].metadata.passing != lowir_model::PPM_DIRECT)
         return true;
     for(std::size_t i = 0; i < instruction.args.size(); ++i)
-      if(operand_type(instruction.args[i]).kind == lowir_model::LTK_OBJECT) return true;
+      if(operand_type(instruction.args[i]).kind == lowir_model::LTK_OBJECT ||
+         wide::is_integer(operand_type(instruction.args[i]))) return true;
     return false;
   }
 
@@ -2186,6 +2243,11 @@ private:
       const Operand & argument = instruction.args[piece.parameter_index];
       const MirOperand destination = dereference(
         XR_RSP, static_cast<long long>(piece.stack_offset));
+      if(wide::is_integer(parameters[piece.parameter_index].type)) {
+        wide::append_word_store(destination, wide_value(argument),
+                                piece.chunk_offset / 8, XR_R11, XR_R10, out);
+        continue;
+      }
       if(parameters[piece.parameter_index].type.kind == lowir_model::LTK_OBJECT) {
         if(piece.chunk_offset) continue;
         append_address(out, XR_RDI,
@@ -2241,7 +2303,17 @@ private:
         GprMove move;
         move.destination = piece.reg;
         move.type = piece.type;
-        if(parameters[piece.parameter_index].type.kind == lowir_model::LTK_OBJECT) {
+        if(wide::is_integer(parameters[piece.parameter_index].type)) {
+          if(argument.kind == Operand::OP_INTEGER) {
+            const wide::Value value = wide_value(argument);
+            move.source = immediate(static_cast<long long>(piece.chunk_offset ?
+              value.words.high : value.words.low));
+          } else {
+            move.object_chunk = true;
+            move.object_source = argument;
+            move.chunk_offset = piece.chunk_offset;
+          }
+        } else if(parameters[piece.parameter_index].type.kind == lowir_model::LTK_OBJECT) {
           move.object_chunk = true;
           move.object_source = argument;
           move.chunk_offset = piece.chunk_offset;
@@ -2671,6 +2743,12 @@ private:
     active_instruction_ = &instruction;
     if(position_ == skipped_position_) return;
     if(instruction.kind == Instruction::IK_CONST) {
+      if(wide::is_integer(instruction.type)) {
+        const MirOperand destination = allocate_temp_home(instruction.dest, instruction.type);
+        wide::append_copy(destination, wide::literal_value(instruction.first.text), out);
+        define(instruction.dest, instruction.type, destination);
+        return;
+      }
       if(is_floating(instruction.type)) {
         emit_float_const(instruction, out);
         return;
@@ -2738,6 +2816,14 @@ private:
          pointer_globals_.count(instruction.first.text))
         values_[instruction.dest].pointer_global_cell = instruction.first.text;
     } else if(instruction.kind == Instruction::IK_LOAD) {
+      if(wide::is_integer(instruction.type)) {
+        const MirOperand destination = allocate_temp_home(instruction.dest, instruction.type);
+        wide::append_copy(destination,
+          wide::storage_value(materialized_storage(instruction.first, out)), out);
+        consume(instruction.first);
+        define(instruction.dest, instruction.type, destination);
+        return;
+      }
       if(is_floating(instruction.type)) {
         emit_float_load(instruction, out);
         return;
@@ -2772,6 +2858,13 @@ private:
         emit_float_store(instruction, out);
         return;
       }
+      if(wide::is_integer(instruction.type)) {
+        wide::append_copy(materialized_storage(instruction.second, out),
+                          wide_value(instruction.first), out);
+        consume(instruction.first);
+        consume(instruction.second);
+        return;
+      }
       MirInstruction store = machine_instruction(MirInstruction::MI_STORE, instruction.type.text);
       MirOperand value = resolve(instruction.first);
       if(value.kind != MirOperand::OP_REG) {
@@ -2803,7 +2896,9 @@ private:
     } else if(instruction.kind == Instruction::IK_BINARY) {
       emit_binary(instruction, out);
     } else if(instruction.kind == Instruction::IK_CMP) {
-      if(is_floating(instruction.type) &&
+      if(wide::is_integer(instruction.type))
+        emit_compare_value(instruction, out);
+      else if(is_floating(instruction.type) &&
          comparison_feeds_branch(block, instruction_index, instruction))
         emit_float_direct_compare_branch(
           instruction, block.instructions[instruction_index + 1], out);
@@ -2840,97 +2935,6 @@ private:
   }
 };
 
-mir_model::MirGlobalDefinition lower_global(const lowir_model::LowirGlobalDefinition & source)
-{
-  mir_model::MirGlobalDefinition target;
-  target.name = source.name;
-  target.readonly = source.storage == lowir_model::GSM_READONLY;
-  target.thread_local_storage = source.storage == lowir_model::GSM_THREAD_LOCAL;
-  if(source.structured) {
-    target.storage_kind = mir_model::MirGlobalDefinition::GS_DATA;
-    for(std::size_t i = 0; i < source.data_items.size(); ++i) {
-      const lowir_model::LowirGlobalDefinition::DataItem & item = source.data_items[i];
-      mir_model::MirGlobalDefinition::DataItem lowered;
-      lowered.type = item.type.text;
-      if(item.kind == lowir_model::LowirGlobalDefinition::DataItem::ITEM_ZERO) {
-        lowered.kind = mir_model::MirGlobalDefinition::DataItem::ITEM_ZERO;
-        lowered.zero_bytes = item.zero_bytes;
-      } else if(item.kind == lowir_model::LowirGlobalDefinition::DataItem::ITEM_ADDR) {
-        lowered.kind = mir_model::MirGlobalDefinition::DataItem::ITEM_ADDR;
-        lowered.symbol = item.symbol;
-        lowered.addr_addend = item.addr_addend;
-      } else if(item.type.kind >= lowir_model::LTK_F32 &&
-                item.type.kind <= lowir_model::LTK_F80) {
-        lowered.kind = mir_model::MirGlobalDefinition::DataItem::ITEM_FLOAT;
-        lowered.literal_text = item.literal_operand.text;
-      } else {
-        lowered.kind = mir_model::MirGlobalDefinition::DataItem::ITEM_INTEGER;
-        lowered.int_value = integer_literal(item.literal_operand.text);
-      }
-      target.data_items.push_back(lowered);
-    }
-  } else {
-    target.storage_kind = mir_model::MirGlobalDefinition::GS_SCALAR;
-    target.type = source.type.text;
-    if(source.init_kind == lowir_model::LowirGlobalDefinition::INIT_ADDR) {
-      target.init_kind = mir_model::MirGlobalDefinition::GI_ADDR;
-      target.symbol = source.init_operand.text;
-      target.addr_addend = source.addr_addend;
-    } else if(is_floating(source.type)) {
-      target.init_kind = mir_model::MirGlobalDefinition::GI_FLOAT;
-      target.literal_text = source.init_kind == lowir_model::LowirGlobalDefinition::INIT_ZERO ?
-        (source.type.kind == lowir_model::LTK_F32 ? "0.0f" :
-         (source.type.kind == lowir_model::LTK_F80 ? "0.0L" : "0.0")) :
-        source.init_operand.text;
-    } else {
-      target.init_kind = mir_model::MirGlobalDefinition::GI_INTEGER;
-      target.int_value = source.init_kind == lowir_model::LowirGlobalDefinition::INIT_ZERO ?
-        0 : integer_literal(source.init_operand.text);
-    }
-  }
-  return target;
-}
-
-void append_startup_call(std::vector<MirInstruction> & startup,
-                         const std::string & name)
-{
-  MirInstruction call = machine_instruction(MirInstruction::MI_CALL);
-  append_operand(call, named_operand(MirOperand::OP_SYMBOL, name));
-  startup.push_back(call);
-}
-
-void lower_startup(const lowir_model::LowirProgram & source,
-                   mir_model::MirProgram & target)
-{
-  std::string entry;
-  std::string init;
-  std::string fini;
-  for(std::size_t i = 0; i < source.functions.size(); ++i) {
-    const lowir_model::LowirFunction & function = source.functions[i];
-    if(function.metadata.role == lowir_model::SR_ENTRY) entry = function.name;
-    if(function.metadata.role == lowir_model::SR_INIT) init = function.name;
-    if(function.metadata.role == lowir_model::SR_FINI) fini = function.name;
-  }
-  if(entry.empty()) {
-    for(std::size_t i = 0; i < source.functions.size(); ++i) {
-      if(source.functions[i].name == "@main") entry = source.functions[i].name;
-      if(init.empty() && source.functions[i].name == "@__cppgm_init") init = source.functions[i].name;
-      if(fini.empty() && source.functions[i].name == "@__cppgm_fini") fini = source.functions[i].name;
-    }
-  }
-  if(entry.empty()) return;
-  if(!init.empty()) append_startup_call(target.startup, init);
-  append_startup_call(target.startup, entry);
-  if(!fini.empty()) {
-    append_move(target.startup, reg_operand(XR_R12), reg_operand(XR_RAX));
-    append_startup_call(target.startup, fini);
-    append_move(target.startup, reg_operand(XR_RDI), reg_operand(XR_R12));
-  } else {
-    append_move(target.startup, reg_operand(XR_RDI), reg_operand(XR_RAX));
-  }
-  target.startup.push_back(machine_instruction(MirInstruction::MI_EXIT));
-}
-
 }  // namespace
 
 mir_model::MirProgram lower_program(const lowir_model::LowirProgram & program,
@@ -2940,7 +2944,7 @@ mir_model::MirProgram lower_program(const lowir_model::LowirProgram & program,
   if(target != "linux") throw std::runtime_error("unsupported native target: " + target);
   mir_model::MirProgram result;
   result.target = target;
-  lower_startup(program, result);
+  program_lowering::lower_startup(program, result);
   std::unordered_set<std::string> pointer_globals;
   for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
     if(program.global_declarations[i].has_type &&
@@ -2951,7 +2955,7 @@ mir_model::MirProgram lower_program(const lowir_model::LowirProgram & program,
        program.globals[i].type.kind == lowir_model::LTK_PTR)
       pointer_globals.insert(program.globals[i].name);
   for(std::size_t i = 0; i < program.globals.size(); ++i)
-    result.globals.push_back(lower_global(program.globals[i]));
+    result.globals.push_back(program_lowering::lower_global(program.globals[i]));
   FunctionSignatureIndex signatures;
   for(std::size_t i = 0; i < program.function_declarations.size(); ++i) {
     FunctionSignature signature;

@@ -54,6 +54,8 @@ struct VariadicState
 
 const lowir_model::LowType & object_chunk_type(std::size_t remaining);
 std::size_t frame_storage_size(const lowir_model::LowType & type);
+std::size_t direct_parameter_bytes(
+    const std::vector<lowir_model::LowirParameter> & parameters);
 X64Register argument_register(std::size_t index);
 Plan classify(const std::vector<lowir_model::LowirParameter> & parameters);
 std::size_t xmm_register_count(const Plan & plan);

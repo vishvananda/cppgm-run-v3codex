@@ -121,7 +121,7 @@ LowType parse_type_text(const std::string & text)
   static const std::pair<const char *, LowTypeKind> names[] = {
     {"void", LTK_VOID}, {"i1", LTK_I1}, {"i8", LTK_I8}, {"u8", LTK_U8},
     {"i16", LTK_I16}, {"u16", LTK_U16}, {"i32", LTK_I32},
-    {"u32", LTK_U32}, {"i64", LTK_I64}, {"f32", LTK_F32},
+    {"u32", LTK_U32}, {"i64", LTK_I64}, {"i128", LTK_I128}, {"f32", LTK_F32},
     {"f64", LTK_F64}, {"f80", LTK_F80}, {"ptr", LTK_PTR}
   };
   for(std::size_t i = 0; i < sizeof(names) / sizeof(names[0]); ++i) {
@@ -145,7 +145,8 @@ LowType parse_type_text(const std::string & text)
 
 std::size_t integer_width(const LowType & type)
 {
-  return type.kind >= LTK_I1 && type.kind <= LTK_I64 ? type.bit_width : 0;
+  return (type.kind >= LTK_I1 && type.kind <= LTK_I64) || type.kind == LTK_I128 ?
+    type.bit_width : 0;
 }
 
 std::size_t float_width(const LowType & type)
@@ -1170,6 +1171,7 @@ const LowType & builtin_lowir_type(LowTypeKind kind)
   static const LowType i32_type = make_builtin_type("i32", LTK_I32, 32, 4, 4);
   static const LowType u32_type = make_builtin_type("u32", LTK_U32, 32, 4, 4);
   static const LowType i64_type = make_builtin_type("i64", LTK_I64, 64, 8, 8);
+  static const LowType i128_type = make_builtin_type("i128", LTK_I128, 128, 16, 16);
   static const LowType f32_type = make_builtin_type("f32", LTK_F32, 32, 4, 4);
   static const LowType f64_type = make_builtin_type("f64", LTK_F64, 64, 8, 8);
   static const LowType f80_type = make_builtin_type("f80", LTK_F80, 80, 16, 16);
@@ -1185,6 +1187,7 @@ const LowType & builtin_lowir_type(LowTypeKind kind)
   case LTK_I32: return i32_type;
   case LTK_U32: return u32_type;
   case LTK_I64: return i64_type;
+  case LTK_I128: return i128_type;
   case LTK_F32: return f32_type;
   case LTK_F64: return f64_type;
   case LTK_F80: return f80_type;

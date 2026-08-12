@@ -40,7 +40,8 @@ enum LowTypeKind
   LTK_F64,
   LTK_F80,
   LTK_PTR,
-  LTK_OBJECT
+  LTK_OBJECT,
+  LTK_I128
 };
 
 struct LowType

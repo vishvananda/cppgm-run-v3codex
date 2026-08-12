@@ -2,114 +2,68 @@
 
 ## Stage Design and Spec Alignment
 
-PA29 owns the direct `LowIR -> typed MIR -> x86-64 ELF` boundary. `lowir_parse`
-owns PA13 syntax and structural validation; `lowir_native` owns one-pass
-per-function instruction selection, bounded register/frame state, and startup/data
-lowering; `mir_model` owns the deterministic debug view; `mir_elf` owns encoding,
-fixups, and executable layout. This follows `spec.md` sections 6-9: typed facts
-cross phase boundaries, MIR is serialized only as a view, native emission consumes
-the same MIR, per-function work is O(instructions + operands), and final fixup/data
-layout is O(output + relocations).
+PA29 owns `LowIR -> typed MIR -> x86-64 ELF`. `lowir_parse` validates the PA13
+text boundary; ABI, analysis, wide-value, varargs, and program modules own bounded
+facts; `lowir_native` selects per function; `mir_model` is the deterministic view;
+and `lowir_native_elf` encodes the same MIR. This follows `spec.md` sections 6-9:
+typed facts cross explicit phase boundaries, values are represented according to
+their ABI/storage class, allocation is demand-driven, and lowering plus fixups is
+O(instructions + operands + output).
 
 ## Current Failure Map
 
 | Group | Tests | Shared behavior and owner |
 | --- | ---: | --- |
-| Wide scalar and atomic ABI | 2 | i128 call chunks and compare-exchange; ABI classifier, selector, encoder |
-| Global metadata and storage | 2 | Read-only extra sections and direct TLS; global lowering and ELF layout |
-| Exact entry/call/slot shape | 3 | Constructor entry, six-register indirect call, and promoted slot; selector |
-| CFG/allocation conformance | 16 | Thirteen canonical control-flow/liveness cases and three behavioral spill/home shapes; analysis and allocator |
+| Global metadata and storage | 2 | Read-only extra sections and direct TLS; program/global lowering and ELF layout |
+| Exact entry/call/slot shape | 3 | Constructor entry, six-register indirect call, promoted slot; selector |
+| CFG/allocation conformance | 16 | Thirteen canonical liveness cases and three spill/home shapes; analysis and allocator |
 
-One hundred sixty of 183 tests now pass. The 23 failures are grouped by first stable
-owning boundary; scalar atomics, variadics, aggregate ABI, and floating runtime are complete.
+One hundred sixty-two of 183 tests pass. Wide integers, scalar atomics, variadics,
+aggregate ABI, and floating runtime are complete.
 
 ## Active Checkpoint
 
-Implement the PA29 i128 scalar/atomic boundary required by `spec.md` sections 6-9 and
-the checked wide-integer fixtures. The parser/type model owns a 16-byte, 16-aligned i128;
-the selector keeps values as stable two-limb frame facts and lowers constants, copies,
-loads/stores, equality, and calls without pretending one GPR owns the value. The ABI
-classifier owns paired GPR or whole-value stack placement, including literal expansion.
-Typed MIR exposes limb movement and fixed `rdx:rax` expected / `rcx:rbx` desired state;
-the ELF encoder owns aligned `lock cmpxchg16b`, while ordinary scalar atomics remain on
-their existing path. Work remains O(instructions + operands), with O(1) two-limb work per
-i128 operation and no width-dependent allocator search. Validate both i128 anchors,
-adjacent aggregate/scalar atomic anchors, full PA29, through-PA28, and file audit; measure
-a generated wide-value family. Globals and residual CFG/allocation conformance remain later.
+Reconcile the 19 selector/CFG failures at the stable per-function analysis and
+allocation boundary, bundling the three exact-shape cases with their shared
+liveness/home ownership. Required spec properties are monotone CFG liveness,
+explicit fixed-register clobbers, stable frame homes, demand-only materialization,
+and deterministic MIR without test-specific rewrites. Data flows from parsed blocks
+through `FunctionFacts` into register/frame selection and then typed MIR. Expected
+work is O(blocks + edges + instructions + live-fact insertions), with bounded GPR/XMM
+choice sets. Validate grouped diffs, behavioral anchors, full PA29, through-PA28,
+and file audit; measure a representative high-pressure CFG family. The two global
+metadata/storage cases remain a separate ELF-boundary checkpoint.
 
 ## Performance Evidence
 
-Generated independent leaf programs at 100/1,000/5,000 functions produced
-205/2,005/10,005 MIR instructions and 1,756/16,156/80,156-byte executables.
-Lowering took 0.175/1.859/9.349 ms, wall time 0.00/0.01/0.04 s, and peak RSS
-4,084/6,380/16,180 KiB. Counts and observed time/space scale approximately
-linearly; each case had one final startup fixup.
+| Path | 100 / 1,000 / 5,000 workload evidence | Result |
+| --- | --- | --- |
+| Foundation leaves | 0.175 / 1.859 / 9.349 ms lower; 4,084 / 6,380 / 16,180 KiB RSS | Linear counts/time/space |
+| Integer/frame | 1.248 / 11.781 / 61.354 ms; 1,303 / 13,003 / 65,003 MIR | Linear mixed slot/branch lowering |
+| GPR ABI | 0.00 / 0.03 / 0.14 s; 12,372 / 121,272 / 605,272-byte output | Six-register work bounded; stack work linear |
+| SSE | 0.00 / 0.03 / 0.13 s; 4,864 / 11,116 / 40,100 KiB RSS | Linear scalar-float lowering |
+| CFG allocator | 0.00 / 0.01 / 0.08 s; 1,303 / 13,003 / 65,003 MIR | Linear block/edge propagation |
+| Aggregate ABI | 4.43 / 46.73 / 259.91 ms; 3,805 / 38,005 / 190,005 MIR | Linear classification and encoding |
+| x87/f80 | 1.56 / 14.64 / 76.75 ms; 34,449 / 342,249 / 1,710,249-byte output | Linear with bounded x87 depth |
+| Scalar atomics | 4.06 / 33.48 / 172.00 ms; 2,705 / 27,005 / 135,005 MIR | O(1) fixed-register work per operation |
+| Variadics | 2.99 / 31.77 / 157.66 ms; 3,005 / 30,005 / 150,005 MIR | Linear save-area/classification growth |
+| i128 values | 2.08 / 19.85 / 100.12 ms; 2,305 / 23,005 / 115,005 MIR; 5,412 / 16,268 / 64,296 KiB RSS | Linear two-limb lowering; O(1) work per value |
 
-The integer/frame selector was measured with 100/1,000/5,000 functions, each
-containing a slot, narrow load/add, compare, and branch: 700/7,000/35,000 LowIR
-instructions became 1,303/13,003/65,003 MIR instructions and
-9,540/94,140/470,140-byte executables. Lowering took 1.248/11.781/61.354 ms,
-wall time 0.00/0.04/0.21 s, and RSS 5,136/15,516/61,780 KiB, providing linear
-count and approximately linear time/space evidence for the new analysis paths.
-
-The GPR ABI path was measured with 100/1,000/5,000 wrappers making eight-argument
-calls. Lowering took 0.00/0.03/0.14 s, peak RSS was 4,844/12,692/47,608 KiB, and
-the executables were 12,372/121,272/605,272 bytes. Register parallelization is
-bounded by six ABI GPRs and stack placement is linear in excess arguments, matching
-the observed approximately linear scaling.
-
-The scalar SSE path was measured with 100/1,000/5,000 f64-heavy functions, each
-performing a constant, add, multiply, comparison, and return. Lowering took
-0.00/0.03/0.13 s, peak RSS was 4,864/11,116/40,100 KiB, and executables were
-10,556/104,156/520,156 bytes, providing approximately linear time, space, and
-output-size evidence for XMM selection and direct SSE encoding.
-
-The CFG allocator was measured on 100/1,000/5,000-block value chains. Dirty
-predecessor propagation plus edge-safe allocation took 0.00/0.01/0.08 s, peak
-RSS was 4,340/8,496/26,112 KiB, and executables were 1,659/15,159/75,159 bytes.
-Observed time, space, and output size scale approximately linearly; work is
-proportional to instructions, CFG edges, and newly propagated live facts.
-
-The aggregate ABI path was measured with 100/1,000/5,000 groups of a two-eightbyte
-return, straddling stack argument, and wrapper call: 1,002/10,002/50,002 LowIR
-instructions became 3,805/38,005/190,005 MIR instructions. Lowering took
-4.43/46.73/259.91 ms, wall time 0.01/0.10/0.62 s, RSS was
-6,716/31,968/143,336 KiB, and output was 31,151/310,151/1,550,151 bytes,
-showing approximately linear classification, lowering, and encoding.
-
-The x87 path was measured with 100/1,000/5,000 f80-heavy functions performing
-constant, add, unsigned conversion, compare, and return: 604/6,004/30,004 LowIR
-instructions became 918/9,018/45,018 MIR instructions. Lowering took
-1.56/14.64/76.75 ms, wall time 0.00/0.04/0.23 s, RSS was
-5,440/15,072/58,044 KiB, and output was 34,449/342,249/1,710,249 bytes.
-All generated executables returned zero, and count/time/space scaled approximately
-linearly with bounded x87 depth.
-
-The scalar atomic path was measured with 100/1,000/5,000 functions exercising load,
-store, exchange, fetch-add, compare-exchange, and a fence. 1,001/10,001/50,001 LowIR
-instructions became 2,705/27,005/135,005 MIR instructions and
-14,464/143,168/715,168-byte executables. Lowering took 4.06/33.48/172.00 ms, wall time
-was 0.01/0.07/0.39 s, and peak RSS was 6,172/24,252/103,468 KiB, showing linear counts
-and approximately linear time/space with O(1) fixed-register work per operation.
-
-The variadic boundary was measured with 100/1,000/5,000 callee/caller pairs, each
-materializing `va_start` and one floating variadic call. 501/5,001/25,001 LowIR
-instructions became 3,005/30,005/150,005 MIR instructions, with
-24,356/242,156/1,210,156-byte executables and 101/1,001/5,001 fixups. Lowering took
-2.99/31.77/157.66 ms, wall time was 0.00/0.06/0.34 s, and peak RSS was
-5,920/22,224/93,472 KiB, showing approximately linear classification, save-area MIR,
-encoding, and storage growth.
+The i128 family used 100/1,000/5,000 two-limb parameter, constant, equality, and
+return functions. Outputs were 14,356/142,156/710,156 bytes and wall times were
+0.00/0.03/0.19 s, corroborating the internal timings.
 
 ## Completed Checkpoints
 
 | Checkpoint | Result | Evidence |
 | --- | --- | --- |
-| Foundation typed MIR and direct ELF | Complete | Strict `100-*` plus malformed input 9/9; full PA29 10/183 (one additional behavior pass); 5,000-function scaling evidence above |
-| Integer, pointer, and frame selection | Complete | 27 focused integer/frame anchors pass; full PA29 47/183; 5,000-function mixed slot/branch scaling evidence above |
-| GPR ABI and stack calls | Complete | Parallel six-register moves, stack arguments/homes, call-safe values, stable temp homes, and slot-address rematerialization; strict stack-address anchor passes; full PA29 51/183 (+4); call-heavy scaling above |
-| Scalar f32/f64 and XMM ABI | Complete | SSE arithmetic, ordered/value comparisons, conversions, globals, direct/indirect mixed calls, returns, call-crossing homes, and exact decimal rounding; focused scalar anchors pass; full PA29 94/183 (+43); float-heavy scaling above |
-| CFG liveness and reactive spilling | Complete | Dirty predecessor worklist, call/fixed-clobber facts, incoming-register ownership, edge-safe reuse, stable GPR/XMM homes, variable indices, narrow reloads, and parallel XMM cycles; full PA29 118/183 (+24); 5,000-block scaling above |
-| SysV aggregate ABI and bulk storage | Complete | Typed one/two-eightbyte register classification, whole-object stack rollback, parameter/result homes and aliases, pass-mode address materialization, slot-safe bulk operations, and padded returns; all 19 focused object/pass-mode anchors pass; full PA29 139/183 (+21); aggregate scaling above |
-| x87/f80 scalar and ABI path | Complete | Frame-backed f80 SSA, aligned stack parameters, `st0` returns, exact literals/globals, balanced arithmetic/comparisons, signed/unsigned conversions, implicit width conversion, and shared ABI ownership; all eight f80 anchors plus adjacent u32 conversion pass; full PA29 148/183 (+9); x87 scaling above |
-| Scalar atomics and fences | Complete | Typed TSO loads/stores, seq-cst exchange/store, locked fetch-add/compare-exchange, expected writeback, narrow normalization, fixed-clobber analysis, direct encoding, and bounded allocator/MIR modules; all 10 scalar atomic anchors pass; full PA29 158/183 (+10); atomic scaling above |
-| SysV variadic register-save state | Complete | Parsed/validated `va_start`, propagated arity, caller `al` XMM counts, demanded 176-byte GPR/XMM saves, classified list offsets, and explicit MIR field initialization; both behavior anchors pass; full PA29 160/183 (+2); variadic scaling above |
+| Foundation typed MIR and direct ELF | Complete | Full PA29 10/183; 5,000-function scaling |
+| Integer, pointer, and frame selection | Complete | Full PA29 47/183; mixed slot/branch scaling |
+| GPR ABI and stack calls | Complete | Full PA29 51/183; call-heavy scaling |
+| Scalar f32/f64 and XMM ABI | Complete | Full PA29 94/183; float-heavy scaling |
+| CFG liveness and reactive spilling | Complete | Full PA29 118/183; 5,000-block scaling |
+| SysV aggregate ABI and bulk storage | Complete | Full PA29 139/183; all 19 anchors and aggregate scaling |
+| x87/f80 scalar and ABI path | Complete | Full PA29 148/183; all eight anchors and x87 scaling |
+| Scalar atomics and fences | Complete | Full PA29 158/183; all 10 anchors and atomic scaling |
+| SysV variadic register-save state | Complete | Full PA29 160/183; both anchors and variadic scaling |
+| i128 scalar/atomic ABI | Complete | Exact MIR and runtime for both anchors; full PA29 162/183; i128 scaling above |

@@ -11,6 +11,11 @@ using lowir_model::Operand;
 
 unsigned instruction_clobber_mask(const Instruction & instruction)
 {
+  const bool wide = instruction.type.kind == lowir_model::LTK_I128;
+  if(wide && (instruction.kind == Instruction::IK_CONST ||
+              instruction.kind == Instruction::IK_COPY))
+    return register_mask(XR_RAX) | register_mask(XR_RDX) |
+      register_mask(XR_R11);
   if(instruction.kind == Instruction::IK_CALL)
     return register_mask(XR_RAX) | register_mask(XR_RCX) |
       register_mask(XR_RDX) | register_mask(XR_RSI) |
@@ -36,13 +41,23 @@ unsigned instruction_clobber_mask(const Instruction & instruction)
      instruction.second.kind != Operand::OP_INTEGER)
     return register_mask(XR_RDX);
   if(instruction.kind == Instruction::IK_CMP)
-    return register_mask(XR_RAX) | register_mask(XR_RDX);
+    return wide ? register_mask(XR_RAX) | register_mask(XR_RCX) |
+      register_mask(XR_RDX) | register_mask(XR_RSI) |
+      register_mask(XR_R10) | register_mask(XR_R11) :
+      register_mask(XR_RAX) | register_mask(XR_RDX);
   if(instruction.kind == Instruction::IK_STORE)
-    return register_mask(XR_RAX) | register_mask(XR_RCX);
+    return wide ? register_mask(XR_RAX) | register_mask(XR_RCX) |
+      register_mask(XR_RDX) | register_mask(XR_R11) :
+      register_mask(XR_RAX) | register_mask(XR_RCX);
   if(instruction.kind == Instruction::IK_LOAD)
-    return register_mask(XR_RCX);
+    return wide ? register_mask(XR_RAX) | register_mask(XR_RCX) |
+      register_mask(XR_RDX) | register_mask(XR_R11) :
+      register_mask(XR_RCX);
   if(instruction.kind == Instruction::IK_ATOMIC_LOAD)
-    return register_mask(XR_RCX);
+    return wide ?
+      register_mask(XR_RAX) | register_mask(XR_RBX) |
+      register_mask(XR_RCX) | register_mask(XR_RDX) |
+      register_mask(XR_R11) : register_mask(XR_RCX);
   if(instruction.kind == Instruction::IK_ATOMIC_STORE ||
      instruction.kind == Instruction::IK_ATOMIC_EXCHANGE)
     return register_mask(XR_RAX) | register_mask(XR_RCX);
@@ -51,7 +66,10 @@ unsigned instruction_clobber_mask(const Instruction & instruction)
       register_mask(XR_RDX);
   if(instruction.kind == Instruction::IK_ATOMIC_COMPARE_EXCHANGE)
     return register_mask(XR_RAX) | register_mask(XR_RCX) |
-      register_mask(XR_RDX) | register_mask(XR_RSI);
+      register_mask(XR_RDX) | register_mask(XR_RSI) |
+      (wide ?
+       register_mask(XR_RBX) | register_mask(XR_R10) |
+       register_mask(XR_R11) : 0);
   if(instruction.kind == Instruction::IK_BRANCH)
     return register_mask(XR_RAX);
   if(instruction.kind == Instruction::IK_SWITCH)
@@ -101,6 +119,10 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
       if(!instruction.dest.empty()) facts.definition[instruction.dest] = position;
       if(instruction.kind == Instruction::IK_CALL) facts.calls.push_back(position);
       if(instruction.kind == Instruction::IK_VA_START) facts.has_va_start = true;
+      if((instruction.kind == Instruction::IK_ATOMIC_LOAD ||
+          instruction.kind == Instruction::IK_ATOMIC_COMPARE_EXCHANGE) &&
+         instruction.type.kind == lowir_model::LTK_I128)
+        facts.has_i128_atomic = true;
     }
   }
 

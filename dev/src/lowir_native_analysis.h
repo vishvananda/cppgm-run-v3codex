@@ -23,6 +23,7 @@ struct FunctionFacts
   std::unordered_set<std::string> edge_live;
   std::unordered_map<std::string, unsigned> live_across_clobbers;
   bool has_va_start = false;
+  bool has_i128_atomic = false;
 };
 
 unsigned register_mask(X64Register reg);

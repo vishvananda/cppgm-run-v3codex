@@ -194,6 +194,12 @@ std::string instruction_text(const Instruction & instruction)
     render_operands(out, instruction);
     return out.str();
   }
+  if(instruction.opcode == Instruction::MI_LOCK_CMPXCHG16B) {
+    out << "lock_cmpxchg16b";
+    render_operands(out, instruction);
+    out << ", expected=rdx:rax, desired=rcx:rbx";
+    return out.str();
+  }
   if(instruction.opcode == Instruction::MI_SHL_CL ||
      instruction.opcode == Instruction::MI_SHR_CL ||
      instruction.opcode == Instruction::MI_SAR_CL) {
@@ -211,7 +217,6 @@ std::string instruction_text(const Instruction & instruction)
       instruction.opcode == Instruction::MI_LOCK_XADD ||
       instruction.opcode == Instruction::MI_XCHG ||
       instruction.opcode == Instruction::MI_LOCK_CMPXCHG ||
-      instruction.opcode == Instruction::MI_LOCK_CMPXCHG16B ||
       instruction.opcode == Instruction::MI_CMP ||
       instruction.opcode == Instruction::MI_SEXT ||
       instruction.opcode == Instruction::MI_ZEXT) && !instruction.type.empty())

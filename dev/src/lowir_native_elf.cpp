@@ -48,7 +48,7 @@ public:
   void align(std::size_t alignment)
   {
     if(!alignment) throw std::logic_error("zero data alignment");
-    while(bytes_.size() % alignment) byte(0);
+    while((kContentOffset + bytes_.size()) % alignment) byte(0);
   }
 
   void label(const std::string & name)
@@ -1276,6 +1276,19 @@ bool emit_atomic_instruction(CodeBuffer & out,
     if(!function) throw std::logic_error("atomic compare-exchange outside function");
     emit_atomic_memory(out, instruction, *function, true, true, 0xb0, 0xb1);
     return true;
+  case mir_model::MirInstruction::MI_LOCK_CMPXCHG16B: {
+    if(!function) throw std::logic_error("atomic i128 compare-exchange outside function");
+    require_operands(instruction, 1);
+    X64Register base = XR_RBP;
+    long long displacement = 0;
+    float_address(out, instruction.operands[0], *function, base, displacement);
+    out.byte(0xf0);
+    emit_rex(out, true, XR_RCX, base);
+    out.byte(0x0f);
+    out.byte(0xc7);
+    emit_memory_modrm(out, 1, base, displacement);
+    return true;
+  }
   default:
     return false;
   }
@@ -1531,13 +1544,20 @@ std::size_t type_size(const std::string & type)
   if(type == "i16" || type == "u16") return 2;
   if(type == "i32" || type == "u32" || type == "f32") return 4;
   if(type == "i64" || type == "f64" || type == "ptr") return 8;
+  if(type == "i128") return 16;
   if(type == "f80") return 16;
   throw std::logic_error("unsupported native data type: " + type);
 }
 
 void emit_integer_data(CodeBuffer & out, long long value, std::size_t size)
 {
-  out.little(static_cast<std::uint64_t>(value), static_cast<unsigned>(size));
+  if(size <= 8) {
+    out.little(static_cast<std::uint64_t>(value), static_cast<unsigned>(size));
+    return;
+  }
+  if(size != 16) throw std::logic_error("unsupported wide integer data size");
+  out.little(static_cast<std::uint64_t>(value), 8);
+  out.little(value < 0 ? UINT64_MAX : 0, 8);
 }
 
 void emit_float_data(CodeBuffer & out, const std::string & text,
