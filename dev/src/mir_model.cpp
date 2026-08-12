@@ -109,15 +109,16 @@ const char * opcode_name(Instruction::Opcode opcode)
   case Instruction::MI_BSWAP: return "bswap";
   case Instruction::MI_CMP: return "cmp";
   case Instruction::MI_TEST: return "test";
+  case Instruction::MI_SETCC: return "setcc";
   case Instruction::MI_MOVZX: return "movzx";
   case Instruction::MI_SEXT: return "sext";
   case Instruction::MI_ZEXT: return "zext";
   case Instruction::MI_CQO: return "cqo";
   case Instruction::MI_IDIV: return "idiv";
   case Instruction::MI_DIV: return "div";
-  case Instruction::MI_SHL_CL: return "shl_cl";
-  case Instruction::MI_SHR_CL: return "shr_cl";
-  case Instruction::MI_SAR_CL: return "sar_cl";
+  case Instruction::MI_SHL_CL: return "shl";
+  case Instruction::MI_SHR_CL: return "shr";
+  case Instruction::MI_SAR_CL: return "sar";
   case Instruction::MI_CALL: return "call";
   case Instruction::MI_CALL_INDIRECT: return "call";
   case Instruction::MI_JMP: return "jmp";
@@ -161,10 +162,25 @@ std::string instruction_text(const Instruction & instruction)
     render_operands(out, instruction);
     return out.str();
   }
+  if(instruction.opcode == Instruction::MI_SETCC) {
+    out << "set" << condition_suffix(instruction.condition);
+    render_operands(out, instruction);
+    return out.str();
+  }
+  if(instruction.opcode == Instruction::MI_SHL_CL ||
+     instruction.opcode == Instruction::MI_SHR_CL ||
+     instruction.opcode == Instruction::MI_SAR_CL) {
+    out << opcode_name(instruction.opcode);
+    render_operands(out, instruction);
+    out << ", cl";
+    return out.str();
+  }
   out << opcode_name(instruction.opcode);
   if((instruction.opcode == Instruction::MI_LOAD ||
       instruction.opcode == Instruction::MI_STORE ||
-      instruction.opcode == Instruction::MI_CMP) && !instruction.type.empty())
+      instruction.opcode == Instruction::MI_CMP ||
+      instruction.opcode == Instruction::MI_SEXT ||
+      instruction.opcode == Instruction::MI_ZEXT) && !instruction.type.empty())
     out << '.' << instruction.type;
   render_operands(out, instruction);
   return out.str();
@@ -196,15 +212,15 @@ void render_global(std::ostringstream & out, const GlobalDefinition & global)
     return;
   }
   out << "  storage scalar " << global.type << '\n';
-  out << "  init " << global.type << ' ';
+  out << "  init ";
   if(global.init_kind == GlobalDefinition::GI_ADDR) {
     out << "addr " << global.symbol;
     if(global.addr_addend > 0) out << '+' << global.addr_addend;
     else if(global.addr_addend < 0) out << global.addr_addend;
   } else if(global.init_kind == GlobalDefinition::GI_FLOAT) {
-    out << global.literal_text;
+    out << global.type << ' ' << global.literal_text;
   } else {
-    out << global.int_value;
+    out << global.type << ' ' << global.int_value;
   }
   out << '\n';
 }

@@ -15,28 +15,28 @@ layout is O(output + relocations).
 
 | Group | Tests | Shared behavior and owner |
 | --- | ---: | --- |
-| Advanced strict MIR | 27 | Exact floating, atomic, object ABI, TLS/section, and stack-address forms; selector and encoder |
-| Structural MIR | 59 | Width-aware scalar/floating selection, ABI classification, direct branches, slots, and calls; selector and ABI lowering |
-| Behavior/pressure | 87 | Calls, loops, spills, object chunks, atomics, and liveness under pressure; allocator, frame planner, and encoder |
+| Advanced strict MIR | 24 | Exact floating, atomic, object ABI, TLS/section, and call/frame forms; selector and encoder |
+| Structural MIR | 35 | Floating selection, ABI classification, call liveness, and frame promotion; selector and ABI lowering |
+| Behavior/pressure | 77 | Calls, loops, spills, object chunks, atomics, and liveness under pressure; allocator, frame planner, and encoder |
 
-Ten of 183 tests now pass. The 173 failures above are divided by their first
+Forty-seven of 183 tests now pass. The 136 failures above are divided by their first
 stable owning boundary; unsupported forms fail normally rather than stopping at
 the driver scaffold.
 
 ## Active Checkpoint
 
-Implement the integer selection boundary: `copy`, width-aware integer/pointer
-unary and binary operations, signed/unsigned comparisons, compare-as-value, and
-direct compare-fed branches, including narrow normalization and pointer index /
-difference forms. The owner is per-function LowIR-to-MIR selection with typed
-width/predicate facts flowing to the existing encoder; the allocator may choose
-locations but must preserve direct-branch shape.
+Implement the GPR call/allocation boundary: classify direct scalar and supported
+object chunks across register/stack arguments and results; plan parameter homes,
+parallel call moves, caller-clobber preservation, and reactive spills; and retain
+values correctly across calls, branches, joins, and loop backedges. MIR frame
+metadata and native prologue/epilogue emission must consume one shared frame plan.
 
-This applies `spec.md` 6-7 and PA29 requirements 6-8, 11, and 13-15. Selection,
-last-use updates, and encoding remain O(instructions + operands), with one typed
-predicate/width decision per operation. Validate the strict unsigned anchors,
-the structural integer/pointer/direct-branch families, full PA29 report,
-through-PA28 report, and file audit.
+This applies `spec.md` 7-9 and PA29 requirement 9. Liveness and allocation must be
+linear or near-linear in MIR size, with block worklists/edge facts rather than
+whole-function retries; frame growth is geometric/monotonic and each value gets
+at most one stable spill home. Validate strict six-register/stack/object-call
+anchors, structural call/frame cases, behavior pressure families, full PA29,
+through-PA28, and file audit.
 
 ## Performance Evidence
 
@@ -46,8 +46,16 @@ Lowering took 0.175/1.859/9.349 ms, wall time 0.00/0.01/0.04 s, and peak RSS
 4,084/6,380/16,180 KiB. Counts and observed time/space scale approximately
 linearly; each case had one final startup fixup.
 
+The integer/frame selector was measured with 100/1,000/5,000 functions, each
+containing a slot, narrow load/add, compare, and branch: 700/7,000/35,000 LowIR
+instructions became 1,303/13,003/65,003 MIR instructions and
+9,540/94,140/470,140-byte executables. Lowering took 1.248/11.781/61.354 ms,
+wall time 0.00/0.04/0.21 s, and RSS 5,136/15,516/61,780 KiB, providing linear
+count and approximately linear time/space evidence for the new analysis paths.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result | Evidence |
 | --- | --- | --- |
 | Foundation typed MIR and direct ELF | Complete | Strict `100-*` plus malformed input 9/9; full PA29 10/183 (one additional behavior pass); 5,000-function scaling evidence above |
+| Integer, pointer, and frame selection | Complete | 27 focused integer/frame anchors pass; full PA29 47/183; 5,000-function mixed slot/branch scaling evidence above |

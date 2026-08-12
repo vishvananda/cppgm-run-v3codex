@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <stdexcept>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace lowir_native {
@@ -59,6 +60,14 @@ MirOperand dereference(X64Register reg, long long offset = 0)
   return out;
 }
 
+MirOperand frame_operand(long long offset)
+{
+  MirOperand out;
+  out.kind = MirOperand::OP_FRAME;
+  out.offset = offset;
+  return out;
+}
+
 MirInstruction machine_instruction(MirInstruction::Opcode opcode,
                                    const std::string & type = std::string())
 {
@@ -91,11 +100,44 @@ bool is_callee_saved(X64Register reg)
          reg == XR_R14 || reg == XR_R15;
 }
 
+bool is_signed_integer(const LowType & type)
+{
+  return type.kind == lowir_model::LTK_I8 || type.kind == lowir_model::LTK_I16 ||
+         type.kind == lowir_model::LTK_I32 || type.kind == lowir_model::LTK_I64;
+}
+
+bool is_integer_or_pointer(const LowType & type)
+{
+  return (type.kind >= lowir_model::LTK_I1 && type.kind <= lowir_model::LTK_I64) ||
+         type.kind == lowir_model::LTK_PTR;
+}
+
+X86Condition predicate_condition(const std::string & predicate)
+{
+  if(predicate == "eq") return XC_E;
+  if(predicate == "ne") return XC_NE;
+  if(predicate == "lt") return XC_L;
+  if(predicate == "le") return XC_LE;
+  if(predicate == "gt") return XC_G;
+  if(predicate == "ge") return XC_GE;
+  if(predicate == "ult") return XC_B;
+  if(predicate == "ule") return XC_BE;
+  if(predicate == "ugt") return XC_A;
+  if(predicate == "uge") return XC_AE;
+  throw std::runtime_error("unsupported integer comparison predicate: " + predicate);
+}
+
+std::size_t align_up(std::size_t value, std::size_t alignment)
+{
+  return (value + alignment - 1) / alignment * alignment;
+}
+
 struct ValueFact
 {
   MirOperand location;
   LowType type;
   bool parameter = false;
+  std::string pointer_global_cell;
 };
 
 struct FunctionFacts
@@ -205,11 +247,14 @@ private:
 class FunctionLowerer
 {
 public:
-  explicit FunctionLowerer(const lowir_model::LowirFunction & source)
-    : source_(source), facts_(analyze_function(source)), position_(0)
+  FunctionLowerer(const lowir_model::LowirFunction & source,
+                  const std::unordered_set<std::string> & pointer_globals)
+    : source_(source), pointer_globals_(pointer_globals),
+      facts_(analyze_function(source)), position_(0)
   {
     target_.name = source.name;
     target_.return_type = source.return_type.text;
+    plan_slots();
     bind_parameters();
   }
 
@@ -225,19 +270,41 @@ public:
       target_.blocks.push_back(block);
     }
     target_.callee_saved_regs = registers_.preserves();
-    target_.stack_size = std::max(target_.callee_saved_regs.size() * 16,
-                                  source_.params.empty() ? std::size_t(0) : std::size_t(16));
+    target_.stack_size = align_up(std::max(std::max(target_.callee_saved_regs.size() * 8,
+                                                    source_.params.size() * 8),
+                                           frame_bytes_), 16);
     return target_;
   }
 
 private:
   const lowir_model::LowirFunction & source_;
+  const std::unordered_set<std::string> & pointer_globals_;
   FunctionFacts facts_;
   mir_model::MirFunction target_;
   RegisterPool registers_;
   std::unordered_map<std::string, ValueFact> values_;
+  std::unordered_map<std::string, long long> slot_offsets_;
   std::vector<MirInstruction> parameter_moves_;
   std::size_t position_;
+  std::size_t skipped_position_ = static_cast<std::size_t>(-1);
+  std::size_t frame_bytes_ = 0;
+
+  void plan_slots()
+  {
+    for(std::size_t i = 0; i < source_.slots.size(); ++i) {
+      const std::string & name = source_.slots[i].first;
+      const LowType & type = source_.slots[i].second;
+      frame_bytes_ = align_up(frame_bytes_, type.alignment);
+      frame_bytes_ += type.storage_size;
+      slot_offsets_[name] = -static_cast<long long>(frame_bytes_);
+      mir_model::MirFrameBinding binding;
+      binding.kind = mir_model::MirFrameBinding::FB_SLOT;
+      binding.name = name;
+      binding.offset = slot_offsets_[name];
+      binding.type = type.text;
+      target_.frame_bindings.push_back(binding);
+    }
+  }
 
   static X64Register argument_register(std::size_t index)
   {
@@ -302,6 +369,60 @@ private:
     return next.kind == Instruction::IK_RETURN && next.first.text == destination;
   }
 
+  bool result_is_immediate_unary_not_branch(const lowir_model::LowirBlock & block,
+                                            std::size_t instruction_index,
+                                            const std::string & destination) const
+  {
+    if(instruction_index + 2 >= block.instructions.size() ||
+       facts_.uses.find(destination) == facts_.uses.end() ||
+       facts_.uses.find(destination)->second != 1) return false;
+    const Instruction & unary = block.instructions[instruction_index + 1];
+    const Instruction & branch = block.instructions[instruction_index + 2];
+    return unary.kind == Instruction::IK_UNARY && unary.op == "not" &&
+      unary.first.text == destination && branch.kind == Instruction::IK_BRANCH &&
+      branch.first.text == unary.dest;
+  }
+
+  bool address_is_immediately_loaded(const lowir_model::LowirBlock & block,
+                                     std::size_t instruction_index,
+                                     const std::string & destination) const
+  {
+    if(instruction_index + 1 >= block.instructions.size()) return false;
+    const Instruction & next = block.instructions[instruction_index + 1];
+    return next.kind == Instruction::IK_LOAD && next.first.text == destination &&
+           facts_.uses.find(destination) != facts_.uses.end() &&
+           facts_.uses.find(destination)->second == 1;
+  }
+
+  X64Register direct_slot_address_register(const lowir_model::LowirBlock & block,
+                                           std::size_t instruction_index,
+                                           const std::string & destination) const
+  {
+    for(std::size_t i = instruction_index + 1;
+        i < block.instructions.size() && i <= instruction_index + 2; ++i) {
+      const Instruction & comparison = block.instructions[i];
+      if(comparison.kind != Instruction::IK_CMP) continue;
+      if(!comparison_feeds_branch(block, i, comparison)) break;
+      if(comparison.first.text == destination) return XR_RAX;
+      if(comparison.second.text == destination) return XR_RDX;
+    }
+    return XR_RSP;
+  }
+
+  bool slot_load_feeds_direct_compare(const lowir_model::LowirBlock & block,
+                                      std::size_t instruction_index,
+                                      const Instruction & load) const
+  {
+    if(load.first.kind != Operand::OP_SLOT ||
+       instruction_index + 2 >= block.instructions.size()) return false;
+    const Instruction & comparison = block.instructions[instruction_index + 1];
+    return comparison.kind == Instruction::IK_CMP &&
+      comparison.first.text == load.dest &&
+      comparison_feeds_branch(block, instruction_index + 1, comparison) &&
+      facts_.uses.find(load.dest) != facts_.uses.end() &&
+      facts_.uses.find(load.dest)->second == 1;
+  }
+
   MirOperand resolve(const Operand & operand) const
   {
     if(operand.kind == Operand::OP_TEMP) {
@@ -322,6 +443,12 @@ private:
   {
     if(operand.kind == Operand::OP_GLOBAL)
       return named_operand(MirOperand::OP_GLOBAL, operand.text);
+    if(operand.kind == Operand::OP_SLOT) {
+      const std::unordered_map<std::string, long long>::const_iterator found =
+        slot_offsets_.find(operand.text);
+      if(found == slot_offsets_.end()) throw std::runtime_error("missing frame slot");
+      return frame_operand(found->second);
+    }
     const MirOperand address = resolve(operand);
     if(address.kind != MirOperand::OP_REG)
       throw std::runtime_error("storage address is not register-resident");
@@ -369,26 +496,297 @@ private:
     values_[name] = value;
   }
 
+  bool result_crosses_call(const std::string & name) const
+  {
+    return facts_.last_use.count(name) && crosses_call(name);
+  }
+
+  void normalize_integer(const LowType & type, const MirOperand & destination,
+                         std::vector<MirInstruction> & out)
+  {
+    if(type.kind == lowir_model::LTK_PTR || type.bit_width >= 64) return;
+    const std::string width_type = "i" + std::to_string(type.bit_width);
+    MirInstruction normalize = machine_instruction(is_signed_integer(type) ?
+      MirInstruction::MI_SEXT : MirInstruction::MI_ZEXT, width_type);
+    append_operand(normalize, destination);
+    out.push_back(normalize);
+  }
+
+  MirOperand binary_destination(const Instruction & instruction,
+                                const MirOperand & left,
+                                std::vector<MirInstruction> & out,
+                                bool allow_same_instruction_duplicate = false)
+  {
+    const bool duplicate_last_use = allow_same_instruction_duplicate &&
+      instruction.first.kind == Operand::OP_TEMP &&
+      instruction.first.text == instruction.second.text &&
+      facts_.uses.find(instruction.first.text) != facts_.uses.end() &&
+      facts_.uses.find(instruction.first.text)->second == 2 &&
+      !values_.find(instruction.first.text)->second.parameter;
+    const bool safe_reuse = (can_reuse(instruction.first) || duplicate_last_use) &&
+      (!result_crosses_call(instruction.dest) || is_callee_saved(left.reg));
+    if(safe_reuse) return left;
+    const MirOperand destination = reg_operand(allocate_result(instruction.dest));
+    append_move(out, destination, left);
+    return destination;
+  }
+
+  void emit_division(const Instruction & instruction, const MirOperand & destination,
+                     const MirOperand & right, std::vector<MirInstruction> & out)
+  {
+    append_move(out, reg_operand(XR_RDX), right);
+    append_move(out, reg_operand(XR_RCX), reg_operand(XR_RDX));
+    append_move(out, reg_operand(XR_RAX), destination);
+    const bool unsigned_operation = instruction.op == "udiv" || instruction.op == "umod";
+    if(unsigned_operation) append_move(out, reg_operand(XR_RDX), immediate(0));
+    else out.push_back(machine_instruction(MirInstruction::MI_CQO));
+    MirInstruction divide = machine_instruction(unsigned_operation ?
+      MirInstruction::MI_DIV : MirInstruction::MI_IDIV);
+    append_operand(divide, reg_operand(XR_RCX));
+    out.push_back(divide);
+    const bool remainder = instruction.op == "mod" || instruction.op == "umod";
+    append_move(out, destination, reg_operand(remainder ? XR_RDX : XR_RAX));
+  }
+
+  void emit_shift(const Instruction & instruction, const MirOperand & destination,
+                  const MirOperand & right, std::vector<MirInstruction> & out)
+  {
+    append_move(out, reg_operand(XR_RDX), right);
+    append_move(out, reg_operand(XR_RCX), reg_operand(XR_RDX));
+    MirInstruction::Opcode opcode = MirInstruction::MI_SHL_CL;
+    if(instruction.op == "shr") opcode = MirInstruction::MI_SAR_CL;
+    else if(instruction.op == "ushr") opcode = MirInstruction::MI_SHR_CL;
+    MirInstruction shift = machine_instruction(opcode);
+    append_operand(shift, destination);
+    out.push_back(shift);
+  }
+
   void emit_binary(const Instruction & instruction,
                    std::vector<MirInstruction> & out)
   {
-    if(instruction.op != "add")
-      throw std::runtime_error("foundation binary operation is not implemented: " + instruction.op);
+    if(!is_integer_or_pointer(instruction.type))
+      throw std::runtime_error("integer selector received non-integer binary operation");
     const MirOperand left = resolve(instruction.first);
-    const MirOperand right = resolve(instruction.second);
-    MirOperand destination;
-    if(can_reuse(instruction.first)) destination = left;
-    else {
-      destination = reg_operand(allocate_result(instruction.dest));
-      append_move(out, destination, left);
+    MirOperand right = resolve(instruction.second);
+    const MirOperand destination = binary_destination(instruction, left, out, true);
+    const bool bitwise = instruction.op == "and" || instruction.op == "or" ||
+                         instruction.op == "xor";
+    if(right.kind == MirOperand::OP_IMM &&
+       (bitwise || right.imm < INT32_MIN || right.imm > INT32_MAX)) {
+      append_move(out, reg_operand(XR_RDX), right);
+      right = reg_operand(XR_RDX);
     }
-    MirInstruction add = machine_instruction(MirInstruction::MI_ADD);
-    append_operand(add, destination);
-    append_operand(add, right);
-    out.push_back(add);
+    MirInstruction::Opcode opcode = MirInstruction::MI_ADD;
+    if(instruction.op == "sub") opcode = MirInstruction::MI_SUB;
+    else if(instruction.op == "mul") opcode = MirInstruction::MI_IMUL;
+    else if(instruction.op == "and") opcode = MirInstruction::MI_AND;
+    else if(instruction.op == "or") opcode = MirInstruction::MI_OR;
+    else if(instruction.op == "xor") opcode = MirInstruction::MI_XOR;
+    else if(instruction.op == "div" || instruction.op == "mod" ||
+            instruction.op == "udiv" || instruction.op == "umod") {
+      emit_division(instruction, destination, right, out);
+      normalize_integer(instruction.type, destination, out);
+      consume(instruction.first, destination.reg);
+      consume(instruction.second, destination.reg);
+      define(instruction.dest, instruction.type, destination);
+      return;
+    } else if(instruction.op == "shl" || instruction.op == "shr" ||
+              instruction.op == "ushr") {
+      emit_shift(instruction, destination, right, out);
+      normalize_integer(instruction.type, destination, out);
+      consume(instruction.first, destination.reg);
+      consume(instruction.second, destination.reg);
+      define(instruction.dest, instruction.type, destination);
+      return;
+    } else if(instruction.op != "add") {
+      throw std::runtime_error("integer binary operation is not implemented: " + instruction.op);
+    }
+    MirInstruction operation = machine_instruction(opcode, instruction.type.text);
+    append_operand(operation, destination);
+    append_operand(operation, right);
+    out.push_back(operation);
+    normalize_integer(instruction.type, destination, out);
     consume(instruction.first, destination.reg);
     consume(instruction.second, destination.reg);
     define(instruction.dest, instruction.type, destination);
+  }
+
+  bool comparison_feeds_branch(const lowir_model::LowirBlock & block,
+                               std::size_t instruction_index,
+                               const Instruction & comparison) const
+  {
+    if(instruction_index + 1 >= block.instructions.size() ||
+       facts_.uses.find(comparison.dest) == facts_.uses.end() ||
+       facts_.uses.find(comparison.dest)->second != 1) return false;
+    const Instruction & branch = block.instructions[instruction_index + 1];
+    return branch.kind == Instruction::IK_BRANCH && branch.first.text == comparison.dest;
+  }
+
+  MirOperand direct_compare_left(const Operand & operand,
+                                 std::vector<MirInstruction> & out)
+  {
+    const MirOperand source = resolve(operand);
+    if(source.kind == MirOperand::OP_REG || source.kind == MirOperand::OP_FRAME ||
+       source.kind == MirOperand::OP_GLOBAL || source.kind == MirOperand::OP_DEREF)
+      return source;
+    append_move(out, reg_operand(XR_RAX), source);
+    return reg_operand(XR_RAX);
+  }
+
+  MirOperand direct_compare_right(const Operand & operand, const LowType & type,
+                                  std::vector<MirInstruction> & out)
+  {
+    const MirOperand source = resolve(operand);
+    if(source.kind == MirOperand::OP_IMM && type.bit_width >= 32 &&
+       (type.bit_width < 64 || (source.imm >= INT32_MIN && source.imm <= INT32_MAX)))
+      return source;
+    if(source.kind == MirOperand::OP_REG) return source;
+    append_move(out, reg_operand(XR_RDX), source);
+    return reg_operand(XR_RDX);
+  }
+
+  void emit_direct_compare_branch(const Instruction & comparison,
+                                  const Instruction & branch,
+                                  std::vector<MirInstruction> & out)
+  {
+    MirOperand left = direct_compare_left(comparison.first, out);
+    const MirOperand unresolved_right = resolve(comparison.second);
+    if(unresolved_right.kind == MirOperand::OP_IMM && comparison.type.bit_width == 64 &&
+       (unresolved_right.imm < INT32_MIN || unresolved_right.imm > INT32_MAX) &&
+       (left.kind != MirOperand::OP_REG || left.reg != XR_RAX)) {
+      append_move(out, reg_operand(XR_RAX), left);
+      left = reg_operand(XR_RAX);
+    }
+    const MirOperand right = direct_compare_right(comparison.second, comparison.type, out);
+    MirInstruction compare = machine_instruction(MirInstruction::MI_CMP,
+                                                 comparison.type.text);
+    append_operand(compare, left);
+    append_operand(compare, right);
+    out.push_back(compare);
+    MirInstruction jump_true = machine_instruction(MirInstruction::MI_JCC);
+    jump_true.condition = predicate_condition(comparison.op);
+    append_operand(jump_true, named_operand(MirOperand::OP_LABEL, branch.second.text));
+    out.push_back(jump_true);
+    MirInstruction jump_false = machine_instruction(MirInstruction::MI_JMP);
+    append_operand(jump_false, named_operand(MirOperand::OP_LABEL, branch.third.text));
+    out.push_back(jump_false);
+    consume(comparison.first);
+    consume(comparison.second);
+    skipped_position_ = position_ + 1;
+  }
+
+  void emit_compare_value(const Instruction & instruction,
+                          std::vector<MirInstruction> & out)
+  {
+    if(!is_integer_or_pointer(instruction.type))
+      throw std::runtime_error("integer selector received non-integer comparison");
+    const MirOperand left = resolve(instruction.first);
+    const MirOperand destination = binary_destination(instruction, left, out);
+    MirOperand right = resolve(instruction.second);
+    if(right.kind != MirOperand::OP_REG) {
+      append_move(out, reg_operand(XR_RDX), right);
+      right = reg_operand(XR_RDX);
+    }
+    MirInstruction compare = machine_instruction(MirInstruction::MI_CMP,
+                                                 instruction.type.text);
+    append_operand(compare, destination);
+    append_operand(compare, right);
+    out.push_back(compare);
+    MirInstruction set = machine_instruction(MirInstruction::MI_SETCC);
+    set.condition = predicate_condition(instruction.op);
+    append_operand(set, destination);
+    out.push_back(set);
+    MirInstruction extend = machine_instruction(MirInstruction::MI_MOVZX);
+    append_operand(extend, destination);
+    append_operand(extend, destination);
+    out.push_back(extend);
+    consume(instruction.first, destination.reg);
+    consume(instruction.second, destination.reg);
+    define(instruction.dest, lowir_model::builtin_lowir_type(lowir_model::LTK_I64), destination);
+  }
+
+  void emit_copy(const Instruction & instruction, std::vector<MirInstruction> & out)
+  {
+    const MirOperand source = resolve(instruction.first);
+    MirOperand destination;
+    if(can_reuse(instruction.first)) destination = source;
+    else {
+      destination = reg_operand(allocate_result(instruction.dest));
+      append_move(out, destination, source);
+    }
+    consume(instruction.first, destination.reg);
+    define(instruction.dest, instruction.type, destination);
+  }
+
+  void emit_unary_value(const Instruction & instruction,
+                        std::vector<MirInstruction> & out)
+  {
+    if(!is_integer_or_pointer(instruction.type))
+      throw std::runtime_error("integer selector received non-integer unary operation");
+    if(instruction.op == "decay") {
+      emit_copy(instruction, out);
+      return;
+    }
+    const MirOperand source = resolve(instruction.first);
+    const MirOperand destination = binary_destination(instruction, source, out);
+    if(instruction.op == "not") {
+      MirInstruction compare = machine_instruction(MirInstruction::MI_CMP,
+                                                   instruction.type.text);
+      append_operand(compare, destination);
+      append_operand(compare, immediate(0));
+      out.push_back(compare);
+      MirInstruction set = machine_instruction(MirInstruction::MI_SETCC);
+      set.condition = XC_E;
+      append_operand(set, destination);
+      out.push_back(set);
+      MirInstruction extend = machine_instruction(MirInstruction::MI_MOVZX);
+      append_operand(extend, destination);
+      append_operand(extend, destination);
+      out.push_back(extend);
+    } else {
+      MirInstruction::Opcode opcode = MirInstruction::MI_NEG;
+      if(instruction.op == "bitnot") opcode = MirInstruction::MI_NOT;
+      else if(instruction.op == "bswap") opcode = MirInstruction::MI_BSWAP;
+      else if(instruction.op != "neg")
+        throw std::runtime_error("integer unary operation is not implemented: " + instruction.op);
+      MirInstruction operation = machine_instruction(opcode, instruction.type.text);
+      append_operand(operation, destination);
+      out.push_back(operation);
+      normalize_integer(instruction.type, destination, out);
+    }
+    consume(instruction.first, destination.reg);
+    define(instruction.dest, instruction.op == "not" ?
+      lowir_model::builtin_lowir_type(lowir_model::LTK_I64) : instruction.type,
+      destination);
+  }
+
+  bool unary_not_feeds_branch(const lowir_model::LowirBlock & block,
+                              std::size_t instruction_index,
+                              const Instruction & instruction) const
+  {
+    return instruction.op == "not" &&
+      comparison_feeds_branch(block, instruction_index, instruction);
+  }
+
+  void emit_direct_unary_not_branch(const Instruction & instruction,
+                                    const Instruction & branch,
+                                    std::vector<MirInstruction> & out)
+  {
+    const MirOperand value = direct_compare_left(instruction.first, out);
+    MirInstruction compare = machine_instruction(MirInstruction::MI_CMP,
+                                                 instruction.type.text);
+    append_operand(compare, value);
+    append_operand(compare, immediate(0));
+    out.push_back(compare);
+    MirInstruction jump_true = machine_instruction(MirInstruction::MI_JCC);
+    jump_true.condition = XC_E;
+    append_operand(jump_true, named_operand(MirOperand::OP_LABEL, branch.second.text));
+    out.push_back(jump_true);
+    MirInstruction jump_false = machine_instruction(MirInstruction::MI_JMP);
+    append_operand(jump_false, named_operand(MirOperand::OP_LABEL, branch.third.text));
+    out.push_back(jump_false);
+    consume(instruction.first);
+    skipped_position_ = position_ + 1;
   }
 
   void emit_index(const Instruction & instruction,
@@ -422,15 +820,31 @@ private:
   {
     if(instruction.args.size() > 6)
       throw std::runtime_error("foundation call has stack arguments");
+    const bool direct = instruction.first.kind == Operand::OP_GLOBAL;
+    if(!direct) {
+      std::string pointer_cell;
+      if(instruction.first.kind == Operand::OP_TEMP) {
+        const std::unordered_map<std::string, ValueFact>::const_iterator value =
+          values_.find(instruction.first.text);
+        if(value != values_.end()) pointer_cell = value->second.pointer_global_cell;
+      }
+      if(!pointer_cell.empty()) {
+        MirInstruction load = machine_instruction(MirInstruction::MI_LOAD, "ptr");
+        append_operand(load, reg_operand(XR_R10));
+        append_operand(load, named_operand(MirOperand::OP_GLOBAL, pointer_cell));
+        out.push_back(load);
+      } else {
+        append_move(out, reg_operand(XR_R10), resolve(instruction.first));
+      }
+    }
     for(std::size_t i = 0; i < instruction.args.size(); ++i)
       append_move(out, reg_operand(argument_register(i)), resolve(instruction.args[i]));
 
-    if(instruction.first.kind == Operand::OP_GLOBAL) {
+    if(direct) {
       MirInstruction call = machine_instruction(MirInstruction::MI_CALL);
       append_operand(call, named_operand(MirOperand::OP_SYMBOL, instruction.first.text));
       out.push_back(call);
     } else {
-      append_move(out, reg_operand(XR_R10), resolve(instruction.first));
       MirInstruction call = machine_instruction(MirInstruction::MI_CALL_INDIRECT);
       append_operand(call, reg_operand(XR_R10));
       out.push_back(call);
@@ -440,7 +854,9 @@ private:
 
     if(!instruction.call_returns_void) {
       MirOperand location = reg_operand(XR_RAX);
-      if(!result_is_immediate_return(block, instruction_index, instruction.dest)) {
+      if(!result_is_immediate_return(block, instruction_index, instruction.dest) &&
+         !result_is_immediate_unary_not_branch(block, instruction_index,
+                                               instruction.dest)) {
         location = reg_operand(allocate_result(instruction.dest));
         append_move(out, location, reg_operand(XR_RAX));
       }
@@ -503,29 +919,61 @@ private:
                          std::vector<MirInstruction> & out)
   {
     const Instruction & instruction = block.instructions[instruction_index];
+    if(position_ == skipped_position_) return;
     if(instruction.kind == Instruction::IK_CONST) {
       const MirOperand destination = reg_operand(allocate_result(instruction.dest));
       append_move(out, destination, immediate(integer_literal(instruction.first.text)));
       define(instruction.dest, instruction.type, destination);
+    } else if(instruction.kind == Instruction::IK_COPY) {
+      emit_copy(instruction, out);
     } else if(instruction.kind == Instruction::IK_ADDR) {
-      const MirOperand destination = reg_operand(allocate_result(instruction.dest));
-      append_move(out, destination, resolve(instruction.first));
-      define(instruction.dest, lowir_model::builtin_lowir_type(lowir_model::LTK_PTR), destination);
-    } else if(instruction.kind == Instruction::IK_LOAD) {
       MirOperand destination;
-      if(result_is_immediate_return(block, instruction_index, instruction.dest))
+      if(instruction.first.kind == Operand::OP_SLOT) {
+        const X64Register compare_register = direct_slot_address_register(
+          block, instruction_index, instruction.dest);
+        if(compare_register != XR_RSP) destination = reg_operand(compare_register);
+        else destination = address_is_immediately_loaded(block, instruction_index,
+                                                         instruction.dest) ?
+          reg_operand(XR_RCX) : reg_operand(allocate_result(instruction.dest));
+        MirInstruction lea = machine_instruction(MirInstruction::MI_LEA);
+        append_operand(lea, destination);
+        append_operand(lea, storage(instruction.first));
+        out.push_back(lea);
+      } else {
+        destination = reg_operand(allocate_result(instruction.dest));
+        append_move(out, destination, resolve(instruction.first));
+      }
+      define(instruction.dest, lowir_model::builtin_lowir_type(lowir_model::LTK_PTR), destination);
+      if(instruction.first.kind == Operand::OP_GLOBAL &&
+         pointer_globals_.count(instruction.first.text))
+        values_[instruction.dest].pointer_global_cell = instruction.first.text;
+    } else if(instruction.kind == Instruction::IK_LOAD) {
+      if(slot_load_feeds_direct_compare(block, instruction_index, instruction)) {
+        define(instruction.dest, instruction.type, storage(instruction.first));
+        return;
+      }
+      MirOperand destination;
+      if(result_is_immediate_return(block, instruction_index, instruction.dest) &&
+         (instruction.type.kind == lowir_model::LTK_PTR || instruction.type.bit_width == 64))
         destination = reg_operand(XR_RAX);
       else destination = reg_operand(allocate_result(instruction.dest));
       MirInstruction load = machine_instruction(MirInstruction::MI_LOAD, instruction.type.text);
       append_operand(load, destination);
       append_operand(load, storage(instruction.first));
       out.push_back(load);
+      if(is_integer_or_pointer(instruction.type))
+        normalize_integer(instruction.type, destination, out);
       consume(instruction.first, destination.reg);
       define(instruction.dest, instruction.type, destination);
     } else if(instruction.kind == Instruction::IK_STORE) {
       MirInstruction store = machine_instruction(MirInstruction::MI_STORE, instruction.type.text);
       append_operand(store, storage(instruction.second));
-      append_operand(store, resolve(instruction.first));
+      MirOperand value = resolve(instruction.first);
+      if(value.kind != MirOperand::OP_REG) {
+        append_move(out, reg_operand(XR_RAX), value);
+        value = reg_operand(XR_RAX);
+      }
+      append_operand(store, value);
       out.push_back(store);
       consume(instruction.first);
       consume(instruction.second);
@@ -533,6 +981,15 @@ private:
       emit_index(instruction, out);
     } else if(instruction.kind == Instruction::IK_BINARY) {
       emit_binary(instruction, out);
+    } else if(instruction.kind == Instruction::IK_CMP) {
+      if(comparison_feeds_branch(block, instruction_index, instruction))
+        emit_direct_compare_branch(instruction, block.instructions[instruction_index + 1], out);
+      else emit_compare_value(instruction, out);
+    } else if(instruction.kind == Instruction::IK_UNARY) {
+      if(unary_not_feeds_branch(block, instruction_index, instruction))
+        emit_direct_unary_not_branch(instruction,
+          block.instructions[instruction_index + 1], out);
+      else emit_unary_value(instruction, out);
     } else if(instruction.kind == Instruction::IK_CALL) {
       emit_call(instruction, block, instruction_index, out);
     } else if(instruction.kind == Instruction::IK_COPYOBJ ||
@@ -663,10 +1120,19 @@ mir_model::MirProgram lower_program(const lowir_model::LowirProgram & program,
   mir_model::MirProgram result;
   result.target = target;
   lower_startup(program, result);
+  std::unordered_set<std::string> pointer_globals;
+  for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
+    if(program.global_declarations[i].has_type &&
+       program.global_declarations[i].type.kind == lowir_model::LTK_PTR)
+      pointer_globals.insert(program.global_declarations[i].name);
+  for(std::size_t i = 0; i < program.globals.size(); ++i)
+    if(!program.globals[i].structured &&
+       program.globals[i].type.kind == lowir_model::LTK_PTR)
+      pointer_globals.insert(program.globals[i].name);
   for(std::size_t i = 0; i < program.globals.size(); ++i)
     result.globals.push_back(lower_global(program.globals[i]));
   for(std::size_t i = 0; i < program.functions.size(); ++i)
-    result.functions.push_back(FunctionLowerer(program.functions[i]).lower());
+    result.functions.push_back(FunctionLowerer(program.functions[i], pointer_globals).lower());
   result.object_aliases.reserve(program.object_aliases.size());
   for(std::size_t i = 0; i < program.object_aliases.size(); ++i) {
     mir_model::MirObjectAlias alias;
