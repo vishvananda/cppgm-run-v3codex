@@ -90,8 +90,9 @@ bool SemanticAnalyzer::ConstructorSubobjectsAreEmpty(BindingId constructor)
 }
 
 ScopeId SemanticAnalyzer::ResolveStructuredDeclaratorOwner(
-	NodeId declarator, ScopeId scope)
+	NodeId declarator, ScopeId scope, bool routed_owner)
 {
+	if (routed_owner) return program_->ParentScope(scope);
 	const NamePath path = DeclaratorNamePath(declarator);
 	const NodeId structure = DeclaratorNameStructure(declarator);
 	if (structure == kNoNode || (!path.global && path.Size() <= 1))

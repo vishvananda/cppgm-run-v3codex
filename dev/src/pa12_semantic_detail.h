@@ -296,7 +296,7 @@ private:
 		bool qualified_lexical_scope = false,
 		bool demanded_template_storage = false);
 	ScopeId ResolveStructuredDeclaratorOwner(
-		NodeId declarator, ScopeId scope);
+		NodeId declarator, ScopeId scope, bool routed_owner = false);
 	void AnalyzeSimpleFunctionDeclaration(NodeId item, NodeId declarator,
 		ScopeId syntax_scope, ScopeId declaration_scope,
 		std::uint32_t output_parent, const NamePath& declared_path,

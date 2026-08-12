@@ -89,6 +89,12 @@ protected:
 		if (children.size() != 2 || !IsMemberPointerApplication(application))
 			throw std::runtime_error("invalid member function pointer application");
 		Derived& derived = static_cast<Derived&>(*this);
+		const DumpNode& designator = derived.arena_.nodes[children[1]];
+		if (designator.binding != kNoBinding &&
+			designator.binding < derived.program_.bindings.size() &&
+			derived.program_.bindings[designator.binding].kind == BIND_FUNCTION)
+			return derived.AddressOfStorage(
+				derived.LowerStorage(children[1]));
 		const Operand encoded = derived.LowerValue(children[1], LowI128());
 		return derived.Convert(derived.Convert(encoded, LowU64(), false),
 			LowPtr(), false);

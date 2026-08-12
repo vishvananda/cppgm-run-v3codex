@@ -256,6 +256,8 @@ bool SemanticAnalyzer::TryAnalyzeMemberPointerApplication(
 	result->node = expression;
 	result->type = result_type;
 	result->category = category;
+	result->indirect_constant_designator =
+		right.indirect_constant_designator;
 	BindingId selected = kNoBinding;
 	if (right.constant)
 	{
@@ -271,6 +273,11 @@ bool SemanticAnalyzer::TryAnalyzeMemberPointerApplication(
 			(member.non_static_data_member || member.kind == BIND_FUNCTION))
 		{
 			result->binding = selected;
+			if (function_member && right.indirect_constant_designator &&
+				constant_evaluation_suppressed_depth_ == 0 &&
+				constant_expression_required_depth_ == 0 &&
+				constexpr_evaluation_depth_ == 0)
+				DemandFunction(selected);
 			const std::uint32_t object_value =
 				ExpressionObject(object_expression);
 			const std::uint32_t complete_object =

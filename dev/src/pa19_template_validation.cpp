@@ -154,7 +154,18 @@ void RetainedTemplateValidator::Declare(std::size_t scope, NameId name,
 	std::uint8_t& present = scopes_[scope].names[name];
 	if ((present & kind) != 0 && !allow_existing)
 		throw std::runtime_error("duplicate retained template declaration");
+	const bool newly_declared = (present & kind) == 0;
 	present |= static_cast<std::uint8_t>(kind);
+	if (kind == RETAINED_TYPE_NAME && newly_declared)
+	{
+		// Nested template-parameter parsing uses the validator's synthetic
+		// semantic scope.  Mirror validation-only class type declarations there
+		// so an earlier typedef/alias/injected name is visible at that boundary;
+		// concrete replay will publish its canonical substituted type.
+		analyzer_.program_->AddBinding(scopes_[scope].semantic_scope,
+			BIND_TYPE_ALIAS, name,
+			analyzer_.program_->types.Fundamental(FUND_INT));
+	}
 }
 
 std::uint8_t RetainedTemplateValidator::LookupLocal(std::size_t scope,

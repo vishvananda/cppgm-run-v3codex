@@ -2049,8 +2049,8 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			NamePath owner_path = DeclaratorNamePath(declarator);
 			if (owner_path.global || owner_path.Size() > 1)
 			{
-				const ScopeId structured_owner =
-					ResolveStructuredDeclaratorOwner(declarator, scope);
+				const ScopeId structured_owner = ResolveStructuredDeclaratorOwner(
+					declarator, scope, qualified_lexical_scope);
 				if (structured_owner != kNoScope)
 					declaration_class_context =
 						program_->EntityForScope(structured_owner);
@@ -2066,8 +2066,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		}
 	}
 	const EntityId previous_class_context = current_class_context_;
-	if (declaration_class_context != kNoEntity)
-		current_class_context_ = declaration_class_context;
+	if (declaration_class_context != kNoEntity) current_class_context_ = declaration_class_context;
 	const bool identity_only = HasDeclSpecifier(specifiers, "typedef");
 	const SpecInfo spec = identity_only ? BuildIdentityOnlySpecifiers(
 		specifiers, scope, hint, list != kNoNode) :
@@ -2193,6 +2192,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			has_initializer = true;
 		}
 		PublishCanonicalBindingConstant(binding);
+		if (demanded_template_storage) DemandStaticConstantInitializerDependencies(binding);
 		const bool deferred_template_constant_storage = !has_initializer &&
 			qualified_lexical_scope && program_->bindings[binding].constant &&
 			!demanded_template_storage &&

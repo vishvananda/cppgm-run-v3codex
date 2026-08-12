@@ -862,6 +862,14 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 		binding.template_parameter_constant;
 	if (binding.constant)
 		SetExpressionBindingConstant(&result, found.ordinary);
+	if (binding.kind == BIND_PARAMETER && binding.constant &&
+		IsMemberPointer(binding.type) && result.binding != kNoBinding &&
+		result.binding < program_->bindings.size() &&
+		program_->bindings[result.binding].kind == BIND_FUNCTION)
+	{
+		result.indirect_constant_designator = true;
+		dump_.nodes[result.node].binding = result.binding;
+	}
 	dump_.nodes[result.node].constant = result.constant &&
 		result.constexpr_object == kNoConstexprObject &&
 		result.constexpr_address == kNoConstexprAddress;

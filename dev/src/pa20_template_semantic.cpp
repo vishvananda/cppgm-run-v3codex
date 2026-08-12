@@ -1209,6 +1209,12 @@ void SemanticAnalyzer::BindTemplateArgument(ScopeId scope,
 			parameter.name, argument.type, true, argument.value);
 		const TypeId type = program_->types.RemoveTopCv(argument.type);
 		const TypeRecord& shape = program_->types.Get(type);
+		if (shape.kind == TYPE_MEMBER_POINTER)
+		{
+			PublishBindingScalar(binding, ConstexprScalarValue(
+				argument.value_binding, argument.value));
+			return;
+		}
 		if (shape.kind != TYPE_POINTER &&
 			shape.kind != TYPE_LVALUE_REFERENCE) return;
 		std::uint32_t address = kNoConstexprAddress;

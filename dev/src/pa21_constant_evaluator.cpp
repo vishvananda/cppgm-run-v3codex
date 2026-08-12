@@ -1321,11 +1321,12 @@ void SemanticAnalyzer::RecordStaticConstantInitializer(
 			throw std::logic_error(
 				"static constant initializer is out of range");
 		const DumpNode& record = dump_.nodes[node];
-		// Scalar constants are consumed directly by static lowering. Their
-		// evaluation-only call trees do not create runtime emission demand.
+		// Scalar constants published on the binding are consumed directly by
+		// static lowering. A merely constant pointer recipe still names the
+		// function whose address its demanded storage must emit.
 		if (record.constant && (IsIntegral(record.type, true) ||
-			IsFloating(record.type) || IsPointer(record.type) ||
-			IsNullptr(record.type) || IsMemberPointer(record.type)))
+			IsFloating(record.type) || IsNullptr(record.type) ||
+			IsMemberPointer(record.type)))
 			continue;
 
 		BindingId dependency = kNoBinding;
@@ -1362,18 +1363,12 @@ void SemanticAnalyzer::RecordStaticConstantInitializer(
 void SemanticAnalyzer::DemandStaticConstantInitializerDependencies(
 	BindingId member)
 {
-	const bool materialized_constant = member != kNoBinding &&
-		member < program_->bindings.size() &&
-		program_->bindings[member].constant &&
-		(BindingObject(member) != kNoConstexprObject ||
-		 BindingAddress(member) != kNoConstexprAddress);
 	member = program_->bindings[member].canonical;
 	if (member >= static_constant_initializers_by_binding_.size()) return;
 	const std::vector<BindingId>& dependencies =
 		static_constant_initializers_by_binding_[member].function_dependencies;
 	for (std::size_t i = 0; i < dependencies.size(); ++i)
-		if (!materialized_constant ||
-			!GetFunction(dependencies[i]).trivial_special_member)
+		if (!GetFunction(dependencies[i]).trivial_special_member)
 			DemandFunction(dependencies[i]);
 }
 

@@ -1571,9 +1571,9 @@ std::vector<BindingId> SemanticAnalyzer::FunctionTemplateTargetCandidates(
 	ScopeId scope, const std::string& spelling, TypeId target, NodeId syntax)
 {
 	NamePath structured_base;
-	std::vector<TypeId> explicit_arguments;
-	const bool structured_explicit = ParseExplicitTemplateArguments(
-		syntax, scope, &structured_base, &explicit_arguments);
+	std::vector<NodeId> explicit_syntax;
+	const bool structured_explicit = CollectExplicitTemplateArguments(
+		syntax, &structured_base, &explicit_syntax);
 	const bool explicit_id = structured_explicit;
 	if (!structured_explicit) structured_base = StructuredNamePath(syntax);
 	std::vector<std::size_t> patterns = !structured_base.Empty() ?
@@ -1587,13 +1587,34 @@ std::vector<BindingId> SemanticAnalyzer::FunctionTemplateTargetCandidates(
 		if (patterns[i] >= function_templates_.size())
 			throw std::logic_error("invalid target function template candidate");
 		const FunctionTemplatePattern& pattern = function_templates_[patterns[i]];
-		if (explicit_id &&
-			explicit_arguments.size() > pattern.parameters.size())
-			continue;
-		std::vector<TypeId> deduced(pattern.parameters.size(), kNoType);
+		FunctionTemplateDeduction deduced(pattern.parameters);
 		if (explicit_id)
-			std::copy(explicit_arguments.begin(), explicit_arguments.end(),
-				deduced.begin());
+		{
+			std::vector<TemplateArgument> explicit_arguments;
+			candidate_substitution_failures_.push_back(0);
+			const bool built = BuildTemplateArguments(pattern.parameters,
+				explicit_syntax, scope, pattern.lexical_scope,
+				&explicit_arguments, false);
+			const bool substitution_failed = CandidateSubstitutionFailed();
+			candidate_substitution_failures_.pop_back();
+			if (!built || substitution_failed) continue;
+			std::size_t argument = 0;
+			for (std::size_t parameter = 0;
+				parameter < pattern.parameters.size() &&
+				argument < explicit_arguments.size(); ++parameter)
+			{
+				if (pattern.parameters[parameter].pack)
+				{
+					while (argument < explicit_arguments.size())
+						deduced.pack_arguments[parameter].push_back(
+							explicit_arguments[argument++]);
+					break;
+				}
+				deduced.fixed_arguments[parameter] =
+					explicit_arguments[argument++];
+			}
+			if (argument != explicit_arguments.size()) continue;
+		}
 		TypeId deduction_target = target;
 		const TypeRecord& shape = program_->types.Get(pattern.shape_type);
 		const TypeRecord& desired = program_->types.Get(target);
@@ -1617,12 +1638,50 @@ std::vector<BindingId> SemanticAnalyzer::FunctionTemplateTargetCandidates(
 				parameters, desired.variadic, desired.cv,
 				desired.ref_qualifier);
 		}
-		if (!DeduceFunctionTemplateType(
-			pattern.shape_type, deduction_target, &deduced))
+		if (!DeduceFunctionTemplatePackType(pattern.shape_type,
+			deduction_target, pattern.parameters, &deduced))
 			continue;
-		const BindingId candidate =
-			InstantiateFunctionTemplate(patterns[i], deduced);
+		std::vector<TemplateArgument> canonical;
+		std::vector<std::uint32_t> offsets;
+		offsets.reserve(pattern.parameters.size() + 1);
+		bool valid = true;
+		for (std::size_t parameter = 0;
+			parameter < pattern.parameters.size(); ++parameter)
+		{
+			if (canonical.size() >
+				std::numeric_limits<std::uint32_t>::max())
+			{
+				valid = false;
+				break;
+			}
+			offsets.push_back(static_cast<std::uint32_t>(canonical.size()));
+			if (pattern.parameters[parameter].pack)
+				canonical.insert(canonical.end(),
+					deduced.pack_arguments[parameter].begin(),
+					deduced.pack_arguments[parameter].end());
+			else
+			{
+				TemplateArgument argument = deduced.fixed_arguments[parameter];
+				argument.kind = pattern.parameters[parameter].kind;
+				if (argument.type == kNoType &&
+					pattern.parameters[parameter].default_argument == kNoNode)
+				{
+					valid = false;
+					break;
+				}
+				canonical.push_back(argument);
+			}
+		}
+		if (!valid || canonical.size() >
+			std::numeric_limits<std::uint32_t>::max()) continue;
+		offsets.push_back(static_cast<std::uint32_t>(canonical.size()));
+		candidate_substitution_failures_.push_back(0);
+		const BindingId candidate = InstantiateFunctionTemplate(
+			patterns[i], canonical, offsets);
+		const bool substitution_failed = CandidateSubstitutionFailed();
+		candidate_substitution_failures_.pop_back();
 		if (candidate != kNoBinding &&
+			!substitution_failed &&
 			std::find(result.begin(), result.end(), candidate) == result.end())
 			result.push_back(candidate);
 	}
