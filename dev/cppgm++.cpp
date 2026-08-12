@@ -981,6 +981,8 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << stats.conditional_lifetime_slots
 			 << " conditional_lifetime_marks="
 			 << stats.conditional_lifetime_marks
+			 << " branch_cleanup_actions="
+			 << stats.branch_cleanup_actions
 			 << " typed_storage_bytes=" << stats.typed_storage_bytes
 			 << " semantic_peak_stage_bytes="
 			 << semantic.peak_stage_storage_bytes

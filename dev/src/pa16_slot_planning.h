@@ -147,9 +147,14 @@ protected:
 				const std::string operation = StripOperationPrefix(
 					derived.program_.names.Get(record.text));
 				if (operation == "&&" || operation == "||")
-					(void)derived.EnsureGeneratedSlot(current,
-						operation == "&&" ? "land" : "lor",
-						pa15_lowir_detail::LowI64());
+				{
+					const NodeChildren logical_children = derived.Children(current);
+					if (logical_children.empty() ||
+						!derived.FoldNamedLogicalConstant(logical_children[0]))
+						(void)derived.EnsureGeneratedSlot(current,
+							operation == "&&" ? "land" : "lor",
+							pa15_lowir_detail::LowI64());
+				}
 			}
 			if (record.kind == DUMP_CALL_EXPRESSION &&
 				record.full_expression_staging &&

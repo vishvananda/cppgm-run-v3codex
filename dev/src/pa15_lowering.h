@@ -44,6 +44,7 @@ struct LowIRLoweringStats
 	std::size_t cleanup_dispatch_entries;
 	std::size_t conditional_lifetime_slots;
 	std::size_t conditional_lifetime_marks;
+	std::size_t branch_cleanup_actions;
 	std::size_t typed_storage_bytes;
 	std::size_t output_bytes;
 	std::uint64_t lowering_nanoseconds;

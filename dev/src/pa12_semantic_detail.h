@@ -1292,8 +1292,11 @@ private:
 	bool HasActiveInitializerListBacking(ScopeId scope) const;
 	void MarkInitializerListLifetimeCalls(std::uint32_t node);
 	bool CollectTemporaryObjects(std::uint32_t node,
-		std::vector<std::uint32_t>* temporaries,
-		bool conditionally_evaluated = false);
+		std::vector<std::uint32_t>* temporaries);
+	bool CollectTemporaryObjectsImpl(std::uint32_t node,
+		std::vector<std::uint32_t>* temporaries, bool conditionally_evaluated,
+		std::uint32_t branch_owner, std::uint32_t branch_child,
+		std::size_t branch_depth);
 	void MarkFullExpressionCalls(std::uint32_t node,
 		bool managed_cleanup = false);
 	bool HasControlDependentTemporary(std::uint32_t node);

@@ -13,12 +13,11 @@ observable linear work, and no textual, lookup-recovery, or external fallback.
 
 ## Current Failure Map
 
-Current result is **86/110**, preserving the audit turn baseline and six passes
-above the checkpoint parent.
+Current result is **90/110**, four passes above the turn-start baseline.
 
 | Owner | Failing | Shared behavior |
 |---|---:|---|
-| PA12/PA17 lifetime and EH lowering | 17 | aggregate/call ownership, conditional and logical paths, static/default arguments, parameter teardown |
+| PA12/PA17 lifetime and EH lowering | 13 | aggregate/call ownership, conditional initialization, static/default arguments, parameter teardown |
 | lambda/template identity and RTTI presentation | 4 | stable closure specialization identity, fallback emission, ABI names |
 | object construction/access | 1 | protected empty-base constructor scope |
 | aggregate control flow | 1 | empty indirect result through `switch` |
@@ -26,33 +25,28 @@ above the checkpoint parent.
 
 ## Active Checkpoint
 
-Next, complete full-expression cleanup and result retention across nested `&&`,
-`||`, and conditional control flow. The PA26 assignment boundary and `spec.md`
-sections 2, 5, 6, 8, and 9 require PA12 to attach each temporary to its evaluated
-arm and immutable cleanup action, while PA17 owns branch-local cleanup segments,
-outer logical result slots, and action-sequence interning. Expected work is
-O(expression nodes + evaluated cleanup actions + control-flow edges), with O(1)
-average action/context cache probes. Validate both short-circuit RHS fixtures,
-the condition-RHS fixture, nested logical result retention, nested short-circuit
-cleanup, and the conditional-expression temporary fixture; measure nested depth
-and sibling-arm scaling before all gates.
+Complete class-value parameter ownership across the call ABI boundary. The PA26
+assignment boundary and `spec.md` sections 2, 6, 8, and 9 require PA12 to publish
+the selected copy construction and transfer owner once; PA16 owns caller argument
+staging and callee prologue materialization, while PA17 consumes the transferred
+destruction and unwind facts. Work must be O(arguments + constructed subobjects +
+cleanup actions), without rescanning functions or reconstructing types. Validate
+class-value caller cleanup transfer, indirect-parameter prologue copy, and class
+array constructor-failure cleanup; measure argument-count and array-bound scaling.
 
 ## Performance Evidence
 
-Repeated polymorphic class throws with one live guard per typed handler exercise
-canonical special-member facts, selected construction, RTTI demand, lexical
-unwind routing, and typed emission:
+Root-guard siblings use indexed branch cleanup; deeper guards retain runtime
+lifetime state. Both paths scale linearly:
 
-| Throws | Semantic nodes | Special-member visits | Demand pushes/emissions | Blocks | Instructions | Typed storage | Semantic / lowering |
-|---:|---:|---:|---:|---:|---:|---:|---:|
-| 16 | 371 | 10 | 10/9 | 148 | 799 | 169,362 B | 1.08 / 0.62 ms |
-| 32 | 675 | 10 | 10/9 | 276 | 1,471 | 297,474 B | 1.61 / 0.83 ms |
-| 64 | 1,283 | 10 | 10/9 | 532 | 2,815 | 553,698 B | 2.97 / 1.43 ms |
-| 128 | 2,499 | 10 | 10/9 | 1,044 | 5,503 | 1,066,220 B | 5.69 / 2.60 ms |
-
-Nodes, blocks, instructions, storage, and phase time scale linearly; class
-special-member evaluation and constructor/destructor emission demand stay
-constant as throw sites grow.
+| Shape | N | Nodes / visits | Branch actions / slots | Dispatch entries | Blocks / instructions | Storage | Semantic / lowering |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| root siblings | 8 | 146 / 85 | 8 / 0 | 9 | 73 / 240 | 52,207 B | 0.67 / 0.36 ms |
+| root siblings | 32 | 482 / 301 | 32 / 0 | 33 | 265 / 888 | 179,927 B | 1.51 / 0.58 ms |
+| root siblings | 128 | 1,826 / 1,165 | 128 / 0 | 129 | 1,033 / 3,480 | 690,847 B | 5.08 / 1.94 ms |
+| nested fallback | 8 | 87 / 75 | 0 / 8 | 8 | 75 / 280 | 60,666 B | 0.47 / 0.35 ms |
+| nested fallback | 32 | 255 / 243 | 0 / 32 | 32 | 267 / 1,024 | 215,146 B | 0.99 / 0.66 ms |
+| nested fallback | 128 | 927 / 915 | 0 / 128 | 128 | 1,035 / 4,000 | 833,320 B | 2.44 / 1.84 ms |
 
 ## Completed Checkpoints
 
@@ -66,3 +60,4 @@ constant as throw sites grow.
 | Scalar source-exception foundation | Typed throw/handler facts, scalar/ellipsis catches, rethrow, runtime roles | +8; PA26 75/110; focused 8/8; nested handlers linear to 127 |
 | Lexical unwind snapshots and handler continuation | Live-action snapshots, segmented exits, dispatch interning | +5; PA26 80/110; focused 9/9; calls/handlers linear through 256/64 |
 | Class exception objects and typed-handler routing | Canonical polymorphic special-member facts, selected direct construction/destructor transfer, temporary retirement, projection-safe call ABI | +6; PA26 86/110; focused 6/6 plus PA18 projection witness; through PA25 3,607/3,607; file/audit pass; throws linear to 128 |
+| Guard-edge full-expression cleanup | Root guard/child identities, branch-local destruction, retained nested logical values, runtime fallback | +4; PA26 90/110; focused logical 4/4; through PA25 3,607/3,607; audit pass; both paths linear to 128 |

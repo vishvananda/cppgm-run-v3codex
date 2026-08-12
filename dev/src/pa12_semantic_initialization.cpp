@@ -2552,43 +2552,11 @@ std::uint32_t SemanticAnalyzer::MakeTemporaryDestructorAction(
 	const std::uint32_t action = MakeDestructorAction(
 		type, destructor, kNoBinding);
 	dump_.nodes[action].lifetime_object = temporary;
+	dump_.nodes[action].lifetime_branch_owner =
+		dump_.nodes[temporary].lifetime_branch_owner;
+	dump_.nodes[action].lifetime_branch_child =
+		dump_.nodes[temporary].lifetime_branch_child;
 	return action;
-}
-
-bool SemanticAnalyzer::CollectTemporaryObjects(std::uint32_t node,
-	std::vector<std::uint32_t>* temporaries, bool conditionally_evaluated)
-{
-	if (node == kNoDumpEdge || node >= dump_.nodes.size()) return false;
-	++temporary_dependency_visits_;
-	DumpNode& record = dump_.nodes[node];
-	if (record.kind == DUMP_CONDITIONAL_ARM) return false;
-	bool short_circuit = false;
-	if (record.kind == DUMP_BINARY_EXPRESSION && record.text != 0)
-	{
-		const std::string& operation = program_->names.Get(record.text);
-		short_circuit = operation.find("&&") != std::string::npos ||
-			operation.find("||") != std::string::npos;
-	}
-	bool control_dependent = record.kind == DUMP_CONDITIONAL_EXPRESSION ||
-		short_circuit;
-	std::size_t child_index = 0;
-	for (std::uint32_t edge = record.first_edge; edge != kNoDumpEdge;
-		edge = dump_.edges[edge].next, ++child_index)
-	{
-		const bool branch_only =
-			(short_circuit && child_index == 1) ||
-			(record.kind == DUMP_CONDITIONAL_EXPRESSION && child_index != 0);
-		control_dependent = CollectTemporaryObjects(
-			dump_.edges[edge].child, temporaries,
-			conditionally_evaluated || branch_only) || control_dependent;
-	}
-	if (record.kind == DUMP_TEMPORARY_OBJECT)
-	{
-		if (conditionally_evaluated) record.conditionally_constructed = true;
-		if (control_dependent) record.control_dependent_temporary = true;
-		temporaries->push_back(node);
-	}
-	return control_dependent;
 }
 
 void SemanticAnalyzer::MarkFullExpressionCalls(std::uint32_t node, bool managed_cleanup)

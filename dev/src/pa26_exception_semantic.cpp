@@ -8,6 +8,75 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+bool SemanticAnalyzer::CollectTemporaryObjects(std::uint32_t node,
+	std::vector<std::uint32_t>* temporaries)
+{
+	if (node == kNoDumpEdge || node >= dump_.nodes.size()) return false;
+	const DumpNode& root = dump_.nodes[node];
+	bool direct_branch_root = root.kind == DUMP_CONDITIONAL_EXPRESSION;
+	if (root.kind == DUMP_BINARY_EXPRESSION && root.text != 0)
+	{
+		const std::string& operation = program_->names.Get(root.text);
+		direct_branch_root = operation.find("&&") != std::string::npos ||
+			operation.find("||") != std::string::npos;
+	}
+	return CollectTemporaryObjectsImpl(node, temporaries, false,
+		direct_branch_root ? node : kNoDumpEdge, kNoDumpEdge, 0);
+}
+
+bool SemanticAnalyzer::CollectTemporaryObjectsImpl(std::uint32_t node,
+	std::vector<std::uint32_t>* temporaries, bool conditionally_evaluated,
+	std::uint32_t branch_owner, std::uint32_t branch_child,
+	std::size_t branch_depth)
+{
+	if (node == kNoDumpEdge || node >= dump_.nodes.size()) return false;
+	++temporary_dependency_visits_;
+	DumpNode& record = dump_.nodes[node];
+	if (record.kind == DUMP_CONDITIONAL_ARM) return false;
+	bool short_circuit = false;
+	if (record.kind == DUMP_BINARY_EXPRESSION && record.text != 0)
+	{
+		const std::string& operation = program_->names.Get(record.text);
+		short_circuit = operation.find("&&") != std::string::npos ||
+			operation.find("||") != std::string::npos;
+	}
+	bool control_dependent = record.kind == DUMP_CONDITIONAL_EXPRESSION ||
+		short_circuit;
+	std::size_t child_index = 0;
+	for (std::uint32_t edge = record.first_edge; edge != kNoDumpEdge;
+		edge = dump_.edges[edge].next, ++child_index)
+	{
+		const std::uint32_t child = dump_.edges[edge].child;
+		const bool branch_only =
+			(short_circuit && child_index == 1) ||
+			(record.kind == DUMP_CONDITIONAL_EXPRESSION && child_index != 0);
+		control_dependent = CollectTemporaryObjectsImpl(child, temporaries,
+			conditionally_evaluated || branch_only, branch_owner,
+			branch_only && branch_depth == 0 ? child : branch_child,
+			branch_depth + (branch_only ? 1 : 0)) || control_dependent;
+	}
+	if (record.kind == DUMP_TEMPORARY_OBJECT)
+	{
+		record.lifetime_branch_owner = kNoDumpEdge;
+		record.lifetime_branch_child = kNoDumpEdge;
+		if (conditionally_evaluated)
+		{
+			record.conditionally_constructed = true;
+			// One root guard edge gives lowering a stable path-local cleanup
+			// boundary. Deeper dependence retains runtime lifetime state.
+			if (branch_owner != kNoDumpEdge && branch_depth == 1 &&
+				branch_child != kNoDumpEdge)
+			{
+				record.lifetime_branch_owner = branch_owner;
+				record.lifetime_branch_child = branch_child;
+			}
+		}
+		if (control_dependent) record.control_dependent_temporary = true;
+		temporaries->push_back(node);
+	}
+	return control_dependent;
+}
+
 bool SemanticAnalyzer::AnalyzeExceptionStatement(NodeId node, ScopeId scope,
 	std::uint32_t output_parent)
 {

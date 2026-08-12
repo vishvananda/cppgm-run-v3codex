@@ -160,7 +160,7 @@ LowIRLoweringStats::LowIRLoweringStats()
 	  rtti_symbol_lookups(0),
 	  cleanup_dispatch_probes(0), cleanup_dispatch_cache_hits(0),
 	  cleanup_dispatch_entries(0), conditional_lifetime_slots(0),
-	  conditional_lifetime_marks(0),
+	  conditional_lifetime_marks(0), branch_cleanup_actions(0),
 	  typed_storage_bytes(0), output_bytes(0), lowering_nanoseconds(0),
 	  render_nanoseconds(0)
 {

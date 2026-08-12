@@ -116,6 +116,8 @@ struct DumpNode
 	std::uint32_t aggregate_helper;
 	std::uint32_t value_constructor;
 	std::uint32_t lifetime_object;
+	std::uint32_t lifetime_branch_owner;
+	std::uint32_t lifetime_branch_child;
 	std::uint32_t virtual_slot;
 	std::uint32_t storage_alignment;
 	bool constant;
@@ -177,6 +179,8 @@ struct DumpNode
 		  last_edge(kNoDumpEdge), base_projection_count(0),
 		  aggregate_helper(kNoDumpEdge), value_constructor(kNoDumpEdge),
 		  lifetime_object(kNoDumpEdge),
+		  lifetime_branch_owner(kNoDumpEdge),
+		  lifetime_branch_child(kNoDumpEdge),
 		  virtual_slot(kNoDumpEdge),
 		  storage_alignment(0),
 		  constant(false), integer_literal_zero(false),

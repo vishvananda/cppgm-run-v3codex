@@ -18,6 +18,7 @@
 #include "pa16_static_initializer_lowering.h"
 #include "pa16_slot_planning.h"
 #include "pa17_bit_field_value_lowering.h"
+#include "pa17_control_expression_lowering.h"
 #include "pa17_value_boundary_lowering.h"
 #include "pa17_special_member_lowering.h"
 #include "pa17_temporary_lifetime_lowering.h"
@@ -48,6 +49,7 @@ class GraphLowerer :
 	private pa15_lowering_detail::ControlFlowLowering<GraphLowerer>,
 	private pa18_lowering_detail::PolymorphismActionLowering<GraphLowerer>,
 	private pa17_lowering_detail::BitFieldValueLowering<GraphLowerer>,
+	private pa17_lowering_detail::ControlExpressionLowering<GraphLowerer>,
 	private pa17_lowering_detail::ValueBoundaryLowering<GraphLowerer>,
 	private pa17_lowering_detail::SpecialMemberLowering<GraphLowerer>,
 	private pa16_lowering_detail::AssignmentLowering<GraphLowerer>,
@@ -82,7 +84,8 @@ public:
 		  full_expression_cleanup_active_(false), full_expression_cleanup_dispatch_(kNoLowId),
 		  full_expression_cleanup_end_(kNoLowId), full_expression_linked_cleanup_dispatch_(kNoLowId),
 		  full_expression_cleanup_dispatch_reused_(false), full_expression_tracks_lifetime_state_(false),
-		  full_expression_uses_linked_dispatch_(false), full_expression_cleanup_ready_(false), full_expression_deferred_cleanup_(false),
+		  full_expression_uses_linked_dispatch_(false), full_expression_uses_branch_cleanup_(false),
+		  full_expression_cleanup_ready_(false), full_expression_deferred_cleanup_(false),
 		  full_expression_linked_action_cursor_(0), runtime_lifetime_cleanup_dispatch_(kNoLowId), conditional_cleanup_resume_(kNoLowId),
 		  source_types_(program_),
 		  static_initializers_(program_, arena_, output_, stats_,
@@ -94,6 +97,8 @@ public:
 		literal_symbols_.resize(arena_.nodes.size(), kNoLowId);
 		temporary_initialized_.resize(arena_.nodes.size(), 0);
 		temporary_addresses_.resize(arena_.nodes.size());
+		full_expression_branch_cleanup_next_.resize(
+			arena_.nodes.size(), kNoDumpEdge);
 		function_definition_.resize(program_.bindings.size(), kNoDumpEdge);
 		function_declaration_.resize(program_.bindings.size(), kNoDumpEdge);
 		global_node_.resize(program_.bindings.size(), kNoDumpEdge);
@@ -154,6 +159,7 @@ private:
 	friend class pa15_lowering_detail::ControlFlowLowering<GraphLowerer>;
 	friend class pa18_lowering_detail::PolymorphismActionLowering<GraphLowerer>;
 	friend class pa17_lowering_detail::BitFieldValueLowering<GraphLowerer>;
+	friend class pa17_lowering_detail::ControlExpressionLowering<GraphLowerer>;
 	friend class pa17_lowering_detail::ValueBoundaryLowering<GraphLowerer>;
 	friend class pa17_lowering_detail::SpecialMemberLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::AssignmentLowering<GraphLowerer>;
@@ -1494,64 +1500,6 @@ private:
 		Emit(instruction);
 		return result;
 	}
-	Operand LowerLogical(std::uint32_t node, const NodeChildren& children,
-		bool conjunction)
-	{
-		const DumpNode& left_record = arena_.nodes[children[0]];
-		if (FoldNamedLogicalConstant(children[0]))
-		{
-			const bool left_truth = left_record.constant_value != 0;
-			if ((conjunction && !left_truth) || (!conjunction && left_truth))
-				return Operand(left_truth ? 1 : 0, LowU8());
-			return LowerCanonicalCondition(children[1]);
-		}
-		const Operand slot(EnsureGeneratedSlot(node,
-			conjunction ? "land" : "lor", LowI64()), LowI64());
-		const char* prefix = conjunction ? "land" : "lor";
-		const BlockId rhs_block = AddBlock(NewLabel(std::string(prefix) + "_rhs"));
-		const BlockId short_block = AddBlock(NewLabel(std::string(prefix) + "_short"));
-		const BlockId end_block = AddBlock(NewLabel(std::string(prefix) + "_end"));
-		const Operand left = LowerCondition(children[0]);
-		if (full_expression_cleanup_active_)
-			PauseFullExpressionCleanupSegment();
-		EmitBranch(left, conjunction ? rhs_block : short_block,
-			conjunction ? short_block : rhs_block);
-		SelectBlock(rhs_block);
-		const Operand right = LowerCondition(children[1]);
-		const Operand truth = Temp(LowI64());
-		Instruction compare(Instruction::CMP);
-		compare.dest = truth.id;
-		compare.op = LOW_OP_NE;
-		compare.type = right.type.kind == LOW_PTR ? right.type : LowI64();
-		compare.first = right;
-		compare.second = right.type.kind == LOW_PTR ?
-			Operand(0, right.type) : Operand(0, LowI64());
-		Emit(compare);
-		Instruction rhs_store(Instruction::STORE);
-		rhs_store.type = LowI64();
-		rhs_store.first = truth;
-		rhs_store.second = slot;
-		Emit(rhs_store);
-		if (full_expression_cleanup_active_)
-			PauseFullExpressionCleanupSegment();
-		EmitJump(end_block);
-		SelectBlock(short_block);
-		Instruction short_store(Instruction::STORE);
-		short_store.type = LowI64();
-		short_store.first = Operand(conjunction ? 0 : 1, LowI64());
-		short_store.second = slot;
-		Emit(short_store);
-		EmitJump(end_block);
-		SelectBlock(end_block);
-		const Operand result = Temp(LowU8());
-		Instruction load(Instruction::LOAD);
-		load.dest = result.id;
-		load.type = LowI64();
-		load.first = slot;
-		Emit(load);
-		return result;
-	}
-
 	Operand LowerPointerOffset(std::uint32_t base_node,
 		std::uint32_t offset_node, bool subtract)
 	{
@@ -1834,7 +1782,7 @@ private:
 		if (children.size() != 3) throw std::runtime_error("invalid semantic conditional");
 		const LowType type = LowerExpressionType(record.type);
 		if (type.kind == LOW_VOID)
-			return LowerDiscardedConditional(children);
+			return LowerDiscardedConditional(node, children);
 		const Operand slot(EnsureGeneratedSlot(node, "cond", type), type);
 		const BlockId then_block = AddBlock(NewLabel("cond_then"));
 		const BlockId else_block = AddBlock(NewLabel("cond_else"));
@@ -1846,6 +1794,7 @@ private:
 		yes_store.first = LowerConvertedValue(children[1], type, false);
 		yes_store.second = slot;
 		Emit(yes_store);
+		LowerBranchCleanupActions(node, children[1]);
 		EmitJump(end_block);
 		SelectBlock(else_block);
 		Instruction no_store(Instruction::STORE);
@@ -1853,6 +1802,7 @@ private:
 		no_store.first = LowerConvertedValue(children[2], type, false);
 		no_store.second = slot;
 		Emit(no_store);
+		LowerBranchCleanupActions(node, children[2]);
 		EmitJump(end_block);
 		SelectBlock(end_block);
 		const Operand result = Temp(type);
@@ -1864,7 +1814,8 @@ private:
 		return result;
 	}
 
-	Operand LowerDiscardedConditional(const NodeChildren& children)
+	Operand LowerDiscardedConditional(std::uint32_t node,
+		const NodeChildren& children)
 	{
 		const BlockId then_block = AddBlock(NewLabel("discard_cond_then"));
 		const BlockId else_block = AddBlock(NewLabel("discard_cond_else"));
@@ -1872,9 +1823,11 @@ private:
 		EmitBranch(LowerCondition(children[0]), then_block, else_block);
 		SelectBlock(then_block);
 		(void)LowerValue(children[1]);
+		LowerBranchCleanupActions(node, children[1]);
 		EmitJump(end_block);
 		SelectBlock(else_block);
 		(void)LowerValue(children[2]);
+		LowerBranchCleanupActions(node, children[2]);
 		EmitJump(end_block);
 		SelectBlock(end_block);
 		return Operand(0, LowVoid());
@@ -1897,6 +1850,7 @@ private:
 		yes_store.first = AddressOfStorage(LowerStorage(children[1]));
 		yes_store.second = slot;
 		Emit(yes_store);
+		LowerBranchCleanupActions(node, children[1]);
 		EmitJump(end_block);
 		SelectBlock(else_block);
 		Instruction no_store(Instruction::STORE);
@@ -1904,6 +1858,7 @@ private:
 		no_store.first = AddressOfStorage(LowerStorage(children[2]));
 		no_store.second = slot;
 		Emit(no_store);
+		LowerBranchCleanupActions(node, children[2]);
 		EmitJump(end_block);
 		SelectBlock(end_block);
 		return LoadStorage(slot, LowPtr());
@@ -2978,12 +2933,14 @@ private:
 	BlockId destructor_return_target_;
 	bool destructor_return_routes_to_epilogue_, full_expression_cleanup_active_;
 	BlockId full_expression_cleanup_dispatch_, full_expression_cleanup_end_, full_expression_linked_cleanup_dispatch_;
-	bool full_expression_cleanup_dispatch_reused_, full_expression_tracks_lifetime_state_, full_expression_uses_linked_dispatch_, full_expression_cleanup_ready_, full_expression_deferred_cleanup_;
+	bool full_expression_cleanup_dispatch_reused_, full_expression_tracks_lifetime_state_, full_expression_uses_linked_dispatch_, full_expression_uses_branch_cleanup_, full_expression_cleanup_ready_, full_expression_deferred_cleanup_;
 	std::size_t full_expression_linked_action_cursor_;
 	BlockId runtime_lifetime_cleanup_dispatch_, conditional_cleanup_resume_;
 	std::vector<std::uint32_t> full_expression_cleanup_actions_, full_expression_segment_actions_;
 	pa17_lowering_detail::CleanupDispatchCache full_expression_cleanup_dispatches_;
 	FlatIdMap conditional_cleanup_dispatches_, conditional_cleanup_tails_, runtime_lifetime_temporaries_;
+	FlatIdMap full_expression_branch_cleanup_heads_, full_expression_branch_cleanup_tails_;
+	std::vector<std::uint32_t> full_expression_branch_cleanup_next_;
 	std::vector<IdentityTypeId> identity_type_cache_;
 	pa15_lowering_detail::SourceTypeLowering source_types_;
 	pa16_lowering_detail::StaticInitializerLowering static_initializers_;
