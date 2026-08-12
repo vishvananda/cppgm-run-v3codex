@@ -15,28 +15,28 @@ layout is O(output + relocations).
 
 | Group | Tests | Shared behavior and owner |
 | --- | ---: | --- |
-| Unsupported lowering | 66 | x87/f80, atomic, object ABI, TLS, and pressure forms rejected before MIR/ELF; selector, ABI classifier, and encoder |
-| MIR conformance | 18 | Seven exact and eleven canonical frame, forwarding, and CFG-liveness mismatches; selector and allocator |
-| Runtime correctness | 5 | Copy/index, sunk-call, shift, and loop-value failures; allocator and frame planner |
+| Unsupported lowering | 35 | Object ABI, x87/f80, atomics, TLS, and varargs rejected before complete MIR/ELF; ABI classifier, selector, and encoder |
+| MIR conformance | 26 | Twelve exact and fourteen canonical allocation, frame, section, and ABI-shape mismatches; selector and allocator |
+| Runtime correctness | 4 | Aggregate register/stack chunks and by-value slot addresses; ABI classifier and call lowering |
 
-Ninety-four of 183 tests now pass. The 89 failures are grouped by first stable
+One hundred eighteen of 183 tests now pass. The 65 failures are grouped by first stable
 owning boundary; unsupported forms fail normally rather than at the driver.
 
 ## Active Checkpoint
 
-Implement CFG-aware liveness and reactive spilling at the MIR allocation
-boundary. `lowir_native` owns block use/def and live-in/live-out facts, stable
-register/frame locations, call/edge preservation, and reload/rematerialization;
-the selected MIR and frame plan continue to flow unchanged into the serializer
-and direct ELF encoder.
+Implement the SysV aggregate ABI and bulk-storage boundary. Typed LowIR object
+size/alignment and parameter pass metadata flow into a per-call chunk plan;
+`lowir_native` owns INTEGER/SSE/register/stack classification, indirect-result
+and by-address homes, object result aliases, and copy/zero address materialization.
+MIR frame facts then remain the sole input to serialization and native encoding.
 
-This applies `spec.md` sections 7-9 and PA29 requirements 8-9. Build use/def once,
-solve liveness with a dirty predecessor worklist, and allocate in O(MIR + CFG
-edges) expected time; each value receives at most one monotonic spill home and
-no whole-function retry is permitted. Validate branch/loop/call pressure,
-conditional and switch edges, spilled narrow/pointer/index cases, full PA29,
-through-PA28, and file audit. x87, atomics, and object classification remain
-separate later checkpoints.
+This applies `spec.md` sections 6-9 and PA29's typed-MIR, ABI, frame, and direct
+ELF requirements. Classification is O(parameters + bounded ABI chunks), frame
+growth is monotonic, and bulk operations are O(copied bytes) without whole-program
+retries or host-toolchain fallback. Validate strict object-call/result anchors,
+register/stack straddling, small and wide object results, pass-mode aliases,
+bulk-copy slot addresses, full PA29, through-PA28, and file audit. x87, atomics,
+TLS, and varargs remain separate later checkpoints.
 
 ## Performance Evidence
 
@@ -65,6 +65,12 @@ performing a constant, add, multiply, comparison, and return. Lowering took
 10,556/104,156/520,156 bytes, providing approximately linear time, space, and
 output-size evidence for XMM selection and direct SSE encoding.
 
+The CFG allocator was measured on 100/1,000/5,000-block value chains. Dirty
+predecessor propagation plus edge-safe allocation took 0.00/0.01/0.08 s, peak
+RSS was 4,340/8,496/26,112 KiB, and executables were 1,659/15,159/75,159 bytes.
+Observed time, space, and output size scale approximately linearly; work is
+proportional to instructions, CFG edges, and newly propagated live facts.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result | Evidence |
@@ -73,3 +79,4 @@ output-size evidence for XMM selection and direct SSE encoding.
 | Integer, pointer, and frame selection | Complete | 27 focused integer/frame anchors pass; full PA29 47/183; 5,000-function mixed slot/branch scaling evidence above |
 | GPR ABI and stack calls | Complete | Parallel six-register moves, stack arguments/homes, call-safe values, stable temp homes, and slot-address rematerialization; strict stack-address anchor passes; full PA29 51/183 (+4); call-heavy scaling above |
 | Scalar f32/f64 and XMM ABI | Complete | SSE arithmetic, ordered/value comparisons, conversions, globals, direct/indirect mixed calls, returns, call-crossing homes, and exact decimal rounding; focused scalar anchors pass; full PA29 94/183 (+43); float-heavy scaling above |
+| CFG liveness and reactive spilling | Complete | Dirty predecessor worklist, call/fixed-clobber facts, incoming-register ownership, edge-safe reuse, stable GPR/XMM homes, variable indices, narrow reloads, and parallel XMM cycles; full PA29 118/183 (+24); 5,000-block scaling above |

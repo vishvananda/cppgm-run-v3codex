@@ -749,6 +749,33 @@ void emit_memory_compare(CodeBuffer & out,
   }
 }
 
+void emit_register_memory_compare(CodeBuffer & out,
+                                  const mir_model::MirInstruction & instruction,
+                                  const mir_model::MirFunction & function)
+{
+  require_operands(instruction, 2);
+  const X64Register destination = require_register(instruction.operands[0]);
+  const mir_model::MirOperand & address = instruction.operands[1];
+  X64Register base = XR_RBP;
+  long long displacement = 0;
+  if(address.kind == mir_model::MirOperand::OP_FRAME) {
+    displacement = actual_frame_offset(function, address.offset);
+  } else if(address.kind == mir_model::MirOperand::OP_DEREF) {
+    base = address.reg;
+    displacement = address.offset;
+  } else if(address.kind == mir_model::MirOperand::OP_GLOBAL) {
+    emit_symbol_move(out, XR_R11, address.text);
+    base = XR_R11;
+  } else {
+    throw std::logic_error("unsupported register-memory compare address");
+  }
+  const unsigned width = type_width(instruction.type);
+  emit_size_prefix(out, width);
+  emit_rex(out, width == 64, destination, base, width == 8);
+  out.byte(width == 8 ? 0x3a : 0x3b);
+  emit_memory_modrm(out, destination, base, displacement);
+}
+
 void emit_imultiply(CodeBuffer & out, const mir_model::MirInstruction & instruction)
 {
   require_operands(instruction, 2);
@@ -977,6 +1004,12 @@ void emit_instruction(CodeBuffer & out,
         instruction.operands[0].kind == mir_model::MirOperand::OP_DEREF)) {
       if(!function) throw std::logic_error("memory compare outside function");
       emit_memory_compare(out, instruction, *function);
+    } else if(instruction.operands.size() == 2 &&
+              (instruction.operands[1].kind == mir_model::MirOperand::OP_FRAME ||
+               instruction.operands[1].kind == mir_model::MirOperand::OP_DEREF ||
+               instruction.operands[1].kind == mir_model::MirOperand::OP_GLOBAL)) {
+      if(!function) throw std::logic_error("memory compare outside function");
+      emit_register_memory_compare(out, instruction, *function);
     } else {
       emit_alu(out, instruction, 0x39, 7, type_width(instruction.type));
     }
