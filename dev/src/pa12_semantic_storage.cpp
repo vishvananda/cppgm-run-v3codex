@@ -123,7 +123,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		scope_lifetimes_.capacity() *
 			sizeof(std::vector<LifetimeObligation>) +
 		nearest_lifetime_scopes_.capacity() * sizeof(ScopeId) +
-		scope_nontrivial_object_lifetimes_.capacity() * sizeof(std::uint32_t) +
+		scope_nontrivial_object_lifetime_prefixes_.capacity() *
+			sizeof(std::uint32_t) +
 		namespace_objects_.capacity() * sizeof(NamespaceObjectAction) +
 		local_static_objects_.capacity() * sizeof(LocalStaticObjectAction) +
 		local_static_count_by_function_.capacity() * sizeof(std::uint32_t) +

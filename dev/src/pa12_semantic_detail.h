@@ -136,6 +136,7 @@ public:
 		  lexical_cleanup_action_visits_(0),
 		  unwind_cleanup_scope_visits_(0),
 		  unwind_cleanup_action_visits_(0),
+		  enclosing_lifetime_queries_(0),
 		  temporary_dependency_visits_(0),
 		  materialized_demand_visits_(0),
 		  nonthrowing_action_visits_(0),
@@ -1670,7 +1671,9 @@ private:
 	std::vector<InjectedMemberInfo> injected_members_;
 	std::vector<std::vector<LifetimeObligation> > scope_lifetimes_;
 	std::vector<ScopeId> nearest_lifetime_scopes_;
-	std::vector<std::uint32_t> scope_nontrivial_object_lifetimes_;
+	// Children copy the active automatic-object count on scope entry; local
+	// declarations increment only their scope's compact prefix entry.
+	std::vector<std::uint32_t> scope_nontrivial_object_lifetime_prefixes_;
 	std::vector<NamespaceObjectAction>& namespace_objects_;
 	std::vector<LocalStaticObjectAction>& local_static_objects_;
 	std::vector<std::uint32_t> local_static_count_by_function_;
@@ -1814,6 +1817,7 @@ private:
 	std::size_t lexical_cleanup_action_visits_;
 	std::size_t unwind_cleanup_scope_visits_;
 	std::size_t unwind_cleanup_action_visits_;
+	mutable std::size_t enclosing_lifetime_queries_;
 	std::size_t temporary_dependency_visits_;
 	std::size_t materialized_demand_visits_;
 	mutable std::size_t nonthrowing_action_visits_;

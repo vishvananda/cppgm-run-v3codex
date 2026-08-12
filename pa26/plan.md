@@ -8,18 +8,19 @@ construction/destruction, lifetime, and ordered unwind facts. PA18 owns demanded
 ABI RTTI/runtime symbols; PA15 and its PA16/PA17/PA26 mixins consume those facts
 per function. Runtime initializer roots are published before destination
 lifetime registration, selected class-value ownership crosses the typed call
-boundary once, and aggregate/array construction retains explicit projected
-destinations and partial-construction state. Builtin logical nodes publish
-compact control identity; root branch cleanup uses complete `(owner, child)`
-keys and deeper dependence uses runtime lifetime slots. This follows `spec.md`
-sections 2, 4-6, and 8-10: compact identity, monotonic fact ownership, direct
-typed lowering, bounded phase-local state, observable work, and no textual,
-lookup-recovery, whole-program retry, or external fallback.
+boundary once, and nested default arguments retain one marked semantic subtree.
+Aggregate/array construction keeps projected destinations and explicit partial
+state. Builtin logical nodes publish compact control identity; root branch
+cleanup uses complete `(owner, child)` keys, deeper dependence uses runtime
+lifetime slots, and each scope publishes a cumulative nontrivial-object prefix
+for O(1) enclosing-lifetime queries. This follows `spec.md` sections 2, 4-6,
+and 8-10: compact identity, monotonic facts, direct typed lowering, bounded
+phase-local state, observable work, and no textual, lookup-recovery,
+whole-program retry, or external fallback.
 
 ## Current Failure Map
 
-Turn-start result was **94/110**; the current result is **101/110** and all
-earlier stages pass **3,607/3,607**.
+The current result is **101/110**, and all earlier stages pass **3,607/3,607**.
 
 | Owner | Failing | Shared behavior |
 |---|---:|---|
@@ -29,7 +30,7 @@ earlier stages pass **3,607/3,607**.
 | aggregate control flow | 1 | empty indirect result through `switch` |
 | typeid object conversion | 1 | cv/reference stripping without a spurious copy |
 
-## Active Checkpoint
+## Next Substantial Checkpoint
 
 Unify branch-owned conditional cleanup with subobject construction scope. PA26
 goal 5 and `spec.md` sections 2, 5, 6, 8, and 9 require PA12 to publish the
@@ -43,26 +44,25 @@ array-reference cleanup failures, then both stage reports and the file audit.
 
 ## Performance Evidence
 
-Five-run current-binary medians show proportional class-value argument work and
-bound-independent array-new LowIR. `Visits` is the published
-`temporary_dependency_visits` counter; `NT visits` is
-`nonthrowing_action_visits`.
+Current-binary five-run medians retain bounded cleanup work. `Queries` is the
+audited `enclosing_lifetime_queries` counter; `visits` and `NT` are temporary
+dependency and nonthrowing-action visits.
 
-| Shape | N | Nodes / visits / NT visits | Instructions | Typed storage | Semantic / lowering |
+| Witness | Nodes / queries / visits / NT | Instructions | Dispatch probes / entries | Typed storage | Semantic / lowering |
 |---|---:|---:|---:|---:|---:|
-| class-value arguments | 8 | 25 / 18 / 1 | 27 | 9,955 B | 0.317 / 0.211 ms |
-| class-value arguments | 32 | 73 / 66 / 1 | 99 | 29,443 B | 0.497 / 0.328 ms |
-| class-value arguments | 128 | 265 / 258 / 1 | 387 | 107,395 B | 1.091 / 0.865 ms |
-| class-array bound | 8 / 128 / 2,048 | 14 / 5 / 2 each | 35 each | 10,881 B each | 0.195-0.202 / 0.160-0.173 ms |
+| nested default argument | 99 / 3 / 88 / 25 | 134 | 9 / 9 | 38,343 B | 0.649 / 0.330 ms |
+| shared non-LIFO dispatch | 42 / 1 / 25 / 6 | 50 | 4 / 3 | 18,985 B | 0.438 / 0.252 ms |
+| guarded local static | 127 / 2 / 75 / 87 | 132 | 3 / 3 | 39,864 B | 0.723 / 0.346 ms |
 
-Final checkpoint witnesses retain bounded visits and one probe per emitted or
-reused cleanup frontier:
+A nested-scope family holds one outer destructible object and adds `N` nested
+literal-initialized scalars. The pre-audit parent walk implies quadratic probes;
+the scope-prefix query and all checkpoint-owned counters remain proportional.
 
-| Witness | Nodes / visits / NT visits | Instructions | Dispatch probes / entries | Typed storage | Lowering |
-|---|---:|---:|---:|---:|---:|
-| nested default argument | 99 / 88 / 25 | 134 | 9 / 9 | 38,343 B | 0.320 ms |
-| shared non-LIFO dispatch | 42 / 25 / 6 | 50 | 4 / 3 | 18,985 B | 0.252 ms |
-| guarded local static | 127 / 75 / 87 | 132 | 3 / 3 | 39,864 B | 0.332 ms |
+| N | Old parent probes / queries | Nodes / visits | Instructions | Typed storage | Semantic / lowering |
+|---:|---:|---:|---:|---:|---:|
+| 32 | 562 / 33 | 140 / 65 | 37 | 14,112 B | 0.562 / 0.185 ms |
+| 128 | 8,386 / 129 | 524 / 257 | 133 | 47,808 B | 1.526 / 0.297 ms |
+| 512 | 131,842 / 513 | 2,060 / 1,025 | 517 | 182,592 B | 5.754 / 0.915 ms |
 
 ## Completed Checkpoints
 
@@ -78,4 +78,4 @@ reused cleanup frontier:
 | Class exception objects and typed-handler routing | Canonical polymorphic special-member facts, selected direct construction/destructor transfer, temporary retirement, projection-safe call ABI | +6; PA26 86/110; focused 6/6 plus PA18 projection witness; through PA25 3,607/3,607; file/audit pass; throws linear to 128 |
 | Guard-edge full-expression cleanup | Typed logical facts, complete root guard/child identity, branch-local destruction, retained nested values, runtime fallback | +4; PA26 90/110; focused 4/4 plus ELF/template witnesses; through PA25 3,607/3,607; file/audit pass; both paths linear to 128 |
 | Construction and call-ABI ownership | Runtime/default initializer staging, member/array source handlers, transferred class parameters | +4; PA26 94/110; focused 5/5; through PA25 3,607/3,607; audit pass; corrected counters show arguments linear to 128 and array IR fixed through 2,048 |
-| Nested call and full-expression lifetime frontier | Evaluated member/special-member demand, default-subtree identity, eager typed regions, retained destinations, guarded-static and aggregate cleanup | +7; PA26 101/110; focused 7/7; through PA25 3,607/3,607; audit pass; bounded checkpoint witnesses above |
+| Nested call and full-expression lifetime frontier | Evaluated member/special-member demand, default-subtree identity, eager typed regions, retained destinations, guarded-static and aggregate cleanup | +7; PA26 101/110; focused 7/7 and five ELF witnesses; through PA25 3,607/3,607; file/audit pass; O(1) scope-prefix queries through 512 |

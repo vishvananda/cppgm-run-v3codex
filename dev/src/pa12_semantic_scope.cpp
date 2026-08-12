@@ -70,12 +70,18 @@ ScopeId SemanticAnalyzer::NewScope(ScopeId parent, ScopeKind kind,
 		scope_parents_.resize(static_cast<std::size_t>(scope) + 1, kNoScope);
 		nearest_lifetime_scopes_.resize(
 			static_cast<std::size_t>(scope) + 1, kNoScope);
+		scope_nontrivial_object_lifetime_prefixes_.resize(
+			static_cast<std::size_t>(scope) + 1, 0);
 	}
 	scope_prefixes_[scope] = prefix;
 	scope_parents_[scope] = parent;
 	nearest_lifetime_scopes_[scope] = parent != kNoScope &&
 		parent < nearest_lifetime_scopes_.size() ?
 		nearest_lifetime_scopes_[parent] : kNoScope;
+	scope_nontrivial_object_lifetime_prefixes_[scope] =
+		parent != kNoScope &&
+		parent < scope_nontrivial_object_lifetime_prefixes_.size() ?
+			scope_nontrivial_object_lifetime_prefixes_[parent] : 0;
 	return scope;
 }
 

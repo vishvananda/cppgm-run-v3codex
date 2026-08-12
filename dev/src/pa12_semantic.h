@@ -39,6 +39,7 @@ struct SemanticAnalysisStats
 	std::size_t lexical_cleanup_action_visits;
 	std::size_t unwind_cleanup_scope_visits;
 	std::size_t unwind_cleanup_action_visits;
+	std::size_t enclosing_lifetime_queries;
 	std::size_t temporary_dependency_visits;
 	std::size_t materialized_demand_visits;
 	std::size_t nonthrowing_action_visits;

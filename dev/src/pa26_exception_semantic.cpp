@@ -319,14 +319,18 @@ bool SemanticAnalyzer::HasUnwindDestructionActions(ScopeId scope,
 bool SemanticAnalyzer::HasEnclosingNontrivialObjectLifetime(
 	ScopeId scope, ScopeId stop_exclusive) const
 {
-	for (ScopeId current = scope;
-		current != kNoScope && current != stop_exclusive;
-		current = current < scope_parents_.size() ?
-			scope_parents_[current] : kNoScope)
-		if (current < scope_nontrivial_object_lifetimes_.size() &&
-			scope_nontrivial_object_lifetimes_[current] != 0)
-			return true;
-	return false;
+	++enclosing_lifetime_queries_;
+	const std::uint32_t active =
+		scope < scope_nontrivial_object_lifetime_prefixes_.size() ?
+			scope_nontrivial_object_lifetime_prefixes_[scope] : 0;
+	const std::uint32_t stopped =
+		stop_exclusive != kNoScope &&
+		stop_exclusive < scope_nontrivial_object_lifetime_prefixes_.size() ?
+			scope_nontrivial_object_lifetime_prefixes_[stop_exclusive] : 0;
+	if (active < stopped)
+		throw std::logic_error(
+			"enclosing lifetime prefix is not monotonic");
+	return active != stopped;
 }
 
 ExpressionInfo SemanticAnalyzer::AnalyzeThrowExpression(

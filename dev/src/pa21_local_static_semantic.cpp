@@ -319,10 +319,10 @@ void SemanticAnalyzer::RegisterVariableLifetimeAndStorage(ScopeId scope,
 		if (entity != kNoEntity &&
 			!program_->entities[entity].trivial_destructor)
 		{
-			if (scope_nontrivial_object_lifetimes_.size() <= scope)
-				scope_nontrivial_object_lifetimes_.resize(
+			if (scope_nontrivial_object_lifetime_prefixes_.size() <= scope)
+				scope_nontrivial_object_lifetime_prefixes_.resize(
 					static_cast<std::size_t>(scope) + 1, 0);
-			++scope_nontrivial_object_lifetimes_[scope];
+			++scope_nontrivial_object_lifetime_prefixes_[scope];
 		}
 		return;
 	}

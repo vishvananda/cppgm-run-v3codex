@@ -1858,10 +1858,15 @@ void SemanticAnalyzer::AnalyzeNamespace(NodeId node, ScopeId scope,
 		scope_prefixes_.resize(static_cast<std::size_t>(child) + 1, 0);
 		scope_prefix_segments_.resize(static_cast<std::size_t>(child) + 1, 0);
 		scope_parents_.resize(static_cast<std::size_t>(child) + 1, kNoScope);
+		scope_nontrivial_object_lifetime_prefixes_.resize(
+			static_cast<std::size_t>(child) + 1, 0);
 		scope_prefixes_[child] = unnamed ? ScopePrefixId(scope) :
 			std::numeric_limits<NameId>::max();
 		scope_prefix_segments_[child] = unnamed ? 0 : name;
 		scope_parents_[child] = scope;
+		scope_nontrivial_object_lifetime_prefixes_[child] =
+			scope < scope_nontrivial_object_lifetime_prefixes_.size() ?
+				scope_nontrivial_object_lifetime_prefixes_[scope] : 0;
 	}
 	if (unnamed) program_->AddUsingEdge(scope, child);
 	const std::uint32_t output_node = MakeDump(DUMP_NAMESPACE, kNoType,
@@ -2783,6 +2788,8 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		static_cast<std::size_t>(program.GlobalScope()) + 1, 0);
 	scope_parents_.resize(static_cast<std::size_t>(program.GlobalScope()) + 1,
 		kNoScope);
+	scope_nontrivial_object_lifetime_prefixes_.resize(
+		static_cast<std::size_t>(program.GlobalScope()) + 1, 0);
 	program.AddBinding(program.GlobalScope(), BIND_TYPE_ALIAS,
 		program.names.Intern("nullptr_t"),
 		program.types.Fundamental(FUND_NULLPTR_T));
@@ -2856,6 +2863,7 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 			unwind_cleanup_scope_visits_;
 		stats_->unwind_cleanup_action_visits =
 			unwind_cleanup_action_visits_;
+		stats_->enclosing_lifetime_queries = enclosing_lifetime_queries_;
 		stats_->temporary_dependency_visits = temporary_dependency_visits_;
 		stats_->materialized_demand_visits = materialized_demand_visits_;
 		stats_->nonthrowing_action_visits = nonthrowing_action_visits_;

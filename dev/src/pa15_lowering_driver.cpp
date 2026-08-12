@@ -215,8 +215,8 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 				semantic_stats.unwind_cleanup_scope_visits;
 			semantic.unwind_cleanup_action_visits +=
 				semantic_stats.unwind_cleanup_action_visits;
-			semantic.temporary_dependency_visits +=
-				semantic_stats.temporary_dependency_visits;
+			semantic.enclosing_lifetime_queries += semantic_stats.enclosing_lifetime_queries;
+			semantic.temporary_dependency_visits += semantic_stats.temporary_dependency_visits;
 			semantic.materialized_demand_visits +=
 				semantic_stats.materialized_demand_visits;
 			semantic.nonthrowing_action_visits +=
