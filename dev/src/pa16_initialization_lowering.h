@@ -54,6 +54,9 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		const LowType type = derived.LowerStorageType(
 			derived.arena_.nodes[node].type);
+		const Operand namespace_backing =
+			derived.NamespaceInitializerListBackingStorage(node, type);
+		if (namespace_backing.kind != Operand::NONE) return namespace_backing;
 		const TypeRecord object_type = derived.program_.types.Get(
 			derived.program_.types.RemoveTopCv(
 				derived.arena_.nodes[node].type));
@@ -273,7 +276,12 @@ protected:
 						values.size() > temporary_type.bound)
 						throw std::runtime_error(
 							"invalid temporary array initializer");
-					if (derived.IsClassObjectType(temporary_type.child) ||
+					if (derived.arena_.nodes[node].initializer_list_backing &&
+						derived.IsClassObjectType(temporary_type.child))
+						derived.LowerInitializerListBackingArray(node,
+							derived.arena_.nodes[node].type,
+							children[0], destination);
+					else if (derived.IsClassObjectType(temporary_type.child) ||
 						derived.IsArrayType(temporary_type.child))
 						derived.LowerRuntimeArrayValues(
 							derived.arena_.nodes[node].type,

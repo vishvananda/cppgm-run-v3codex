@@ -192,6 +192,7 @@ protected:
 				(void)derived.EnsureGeneratedSlot(current, "initlist",
 					derived.LowerStorageType(record.type));
 			if (record.kind == DUMP_TEMPORARY_OBJECT &&
+				!record.elided_temporary_storage &&
 				(record.argument_materialization ||
 				 preplan_standalone_discard ||
 				 (record.temporary_implicit_object && variable_initializer) ||
@@ -221,6 +222,7 @@ protected:
 			const bool empty_call_transfer =
 				derived.ElidesEmptyConversionCallTransfer(record, children);
 			if (record.class_argument_staging && variable_initializer &&
+				!derived.ElidesNestedTemporaryConstruction(record, children) &&
 				!(record.kind == DUMP_CALL_EXPRESSION &&
 				  derived.UsesIndirectClassResult(record.type, record.binding)) &&
 				!indirect_result_transfer &&

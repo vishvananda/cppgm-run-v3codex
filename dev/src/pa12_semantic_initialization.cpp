@@ -1593,6 +1593,7 @@ std::uint32_t SemanticAnalyzer::BuildAggregateConstructionAction(TypeId type,
 	std::vector<std::uint32_t> values;
 	std::vector<BindingId> members;
 	std::vector<BindingId> member_constructors;
+	std::vector<BindingId> member_destructors;
 	std::vector<std::uint8_t> trivial_member_constructors;
 	std::vector<TypeId> parameter_types;
 	const auto make_zero_value = [this](TypeId value_type) -> std::uint32_t
@@ -1649,9 +1650,10 @@ std::uint32_t SemanticAnalyzer::BuildAggregateConstructionAction(TypeId type,
 			values.push_back(IsClassEntity(*program_, EntityOf(action.type)) ?
 				ApplyCallArgument(argument, adjusted).node : value);
 		}
-		BindingId constructor = kNoBinding;
+		BindingId constructor = kNoBinding, destructor = kNoBinding;
 		if (IsClassEntity(*program_, EntityOf(action.type)))
 		{
+			const EntityId member_entity = EntityOf(action.type);
 			constructor = ConstructorForSubobject(
 				action.type, SPECIAL_MEMBER_MOVE_CONSTRUCTOR);
 			if (constructor == kNoBinding ||
@@ -1661,8 +1663,18 @@ std::uint32_t SemanticAnalyzer::BuildAggregateConstructionAction(TypeId type,
 					"aggregate member has no usable value constructor");
 			if (!GetFunction(constructor).trivial_special_member)
 				DemandFunction(constructor);
+			if (!program_->entities[member_entity].trivial_destructor)
+			{
+				destructor = DestructorForType(action.type);
+				if (destructor == kNoBinding || GetFunction(destructor).deleted_destructor ||
+					!CanAccessMember(destructor, member_entity))
+					throw std::runtime_error(
+						"aggregate member is not destructible");
+				DemandFunction(destructor);
+			}
 		}
 		member_constructors.push_back(constructor);
+		member_destructors.push_back(destructor);
 		trivial_member_constructors.push_back(constructor != kNoBinding &&
 			GetFunction(constructor).trivial_special_member ? 1 : 0);
 	}
@@ -1677,6 +1689,7 @@ std::uint32_t SemanticAnalyzer::BuildAggregateConstructionAction(TypeId type,
 		const AggregateHelperInfo& prior = aggregate_helpers_[widest];
 		if (prior.members != members ||
 			prior.member_constructors != member_constructors ||
+			prior.member_destructors != member_destructors ||
 			prior.trivial_member_constructors != trivial_member_constructors)
 			throw std::logic_error("aggregate helper owner plan changed");
 		if (prior.parameter_member_count > parameter_member_count)
@@ -1716,8 +1729,7 @@ std::uint32_t SemanticAnalyzer::BuildAggregateConstructionAction(TypeId type,
 		aggregate_helpers_.push_back(AggregateHelperInfo(
 			entity, type, function_type,
 			static_cast<std::uint32_t>(parameter_member_count), members,
-			member_constructors,
-			trivial_member_constructors));
+			member_constructors, member_destructors, trivial_member_constructors));
 		aggregate_helper_index_.Insert(key,
 			static_cast<BindingId>(helper));
 		const std::uint32_t previous =
@@ -1736,6 +1748,8 @@ std::uint32_t SemanticAnalyzer::BuildAggregateConstructionAction(TypeId type,
 			aggregate_helpers_[helper].members != members ||
 			aggregate_helpers_[helper].member_constructors !=
 				member_constructors ||
+			aggregate_helpers_[helper].member_destructors !=
+				member_destructors ||
 			aggregate_helpers_[helper].trivial_member_constructors !=
 				trivial_member_constructors)
 			throw std::logic_error("aggregate helper identity collision");
@@ -2830,6 +2844,7 @@ void SemanticAnalyzer::AddNamespaceObjectAction(std::uint32_t variable,
 	BindingId object, TypeId type, std::uint32_t initializer)
 {
 	std::uint32_t destructor_action = kNoDumpEdge;
+	std::uint32_t initializer_list_backing = kNoDumpEdge;
 	const EntityId entity = dump_.nodes[variable].storage_size == 0 ?
 		DestructedEntity(type) : kNoEntity;
 	if (entity != kNoEntity)
@@ -2863,9 +2878,12 @@ void SemanticAnalyzer::AddNamespaceObjectAction(std::uint32_t variable,
 		if (!program_->entities[entity].trivial_destructor)
 			destructor_action = MakeDestructorAction(type, destructor, object);
 	}
+	destructor_action = PrepareNamespaceInitializerListLifetime(type,
+		initializer, destructor_action, &initializer_list_backing);
 	namespace_objects_.push_back(NamespaceObjectAction(object, type, variable,
-		initializer, destructor_action));
+		initializer, destructor_action, initializer_list_backing));
 }
+
 void SemanticAnalyzer::AppendScopeDestructionActions(ScopeId scope,
 	std::uint32_t output_parent, ScopeId stop_exclusive)
 {

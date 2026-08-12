@@ -295,7 +295,9 @@ protected:
 			const NamespaceObjectAction& action =
 				derived.graph_.namespace_objects[
 					derived.dynamic_finalizers_[i - 1]];
-			derived.LowerDestructorAction(
+			if (action.initializer_list_backing != kNoDumpEdge)
+				derived.LowerNamespaceInitializerListBackingDestructor(action);
+			else derived.LowerDestructorAction(
 				derived.arena_.nodes[action.destructor]);
 		}
 		for (std::size_t i = derived.local_static_finalizers_.size();

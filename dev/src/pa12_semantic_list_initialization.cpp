@@ -1157,6 +1157,23 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 		dump_.Add(action, argument.node);
 		constexpr_arguments.push_back(argument);
 	}
+	if (dump_.nodes[action].trivial_special_member_action &&
+		dump_.nodes[action].first_edge != kNoDumpEdge &&
+		dump_.edges[dump_.nodes[action].first_edge].next == kNoDumpEdge)
+	{
+		const std::uint32_t source =
+			dump_.edges[dump_.nodes[action].first_edge].child;
+		if (dump_.nodes[source].kind == DUMP_TEMPORARY_OBJECT &&
+			dump_.nodes[source].first_edge != kNoDumpEdge &&
+			dump_.edges[dump_.nodes[source].first_edge].next == kNoDumpEdge)
+		{
+			const DumpNode& recipe = dump_.nodes[
+				dump_.edges[dump_.nodes[source].first_edge].child];
+			if (recipe.kind == DUMP_CONSTRUCTOR_ACTION &&
+				recipe.operand_type == dump_.nodes[action].operand_type)
+				dump_.nodes[source].elided_temporary_storage = true;
+		}
+	}
 	std::uint32_t constexpr_object = kNoConstexprObject;
 	if (constant_evaluation_suppressed_depth_ == 0 &&
 		(constant_expression_required_depth_ != 0 ||

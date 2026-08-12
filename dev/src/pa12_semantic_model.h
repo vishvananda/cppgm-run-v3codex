@@ -138,12 +138,14 @@ struct DumpNode
 	bool reference_call_materialization;
 	bool range_for_materialization;
 	bool initializer_list_backing;
+	bool initializer_list_lifetime_observation;
 	bool contains_temporary_object;
 	bool temporary_implicit_object;
 	bool pending_constructor_demand;
 	bool pending_runtime_call_demand;
 	bool runtime_call_demand_scanned;
 	bool class_argument_staging;
+	bool elided_temporary_storage;
 	bool variadic_class_argument;
 	bool direct_return_slot;
 	bool declaration_only;
@@ -187,11 +189,13 @@ struct DumpNode
 		  argument_materialization(false), discarded_materialization(false),
 		  reference_call_materialization(false), range_for_materialization(false),
 		  initializer_list_backing(false),
+		  initializer_list_lifetime_observation(false),
 		  contains_temporary_object(value == DUMP_TEMPORARY_OBJECT),
 		  temporary_implicit_object(false), pending_constructor_demand(false),
 		  pending_runtime_call_demand(false),
 		  runtime_call_demand_scanned(false),
-		  class_argument_staging(false), variadic_class_argument(false),
+		  class_argument_staging(false), elided_temporary_storage(false),
+		  variadic_class_argument(false),
 		  direct_return_slot(false), declaration_only(false),
 		  unwind_only(false), full_expression_staging(false),
 		  managed_full_expression_cleanup(false),
@@ -1221,12 +1225,15 @@ struct NamespaceObjectAction
 	BindingId object;
 	TypeId type;
 	std::uint32_t variable, initializer, destructor;
+	std::uint32_t initializer_list_backing;
 
 	NamespaceObjectAction(BindingId object_value, TypeId type_value,
 		std::uint32_t variable_value, std::uint32_t initializer_value,
-		std::uint32_t destructor_value)
+		std::uint32_t destructor_value,
+		std::uint32_t initializer_list_backing_value = kNoDumpEdge)
 		: object(object_value), type(type_value), variable(variable_value),
-		  initializer(initializer_value), destructor(destructor_value) {}
+		  initializer(initializer_value), destructor(destructor_value),
+		  initializer_list_backing(initializer_list_backing_value) {}
 };
 
 // A block-scope static owns persistent storage independently of an invocation.
@@ -1278,18 +1285,21 @@ struct AggregateHelperInfo
 	std::uint32_t parameter_member_count;
 	std::vector<BindingId> members;
 	std::vector<BindingId> member_constructors;
+	std::vector<BindingId> member_destructors;
 	std::vector<std::uint8_t> trivial_member_constructors;
 
 	AggregateHelperInfo(EntityId entity_value, TypeId object_type_value,
 		TypeId function_type_value, std::uint32_t parameter_member_count_value,
 		const std::vector<BindingId>& members_value,
 		const std::vector<BindingId>& member_constructors_value,
+		const std::vector<BindingId>& member_destructors_value,
 		const std::vector<std::uint8_t>& trivial_member_constructors_value)
 		: entity(entity_value), object_type(object_type_value),
 		  function_type(function_type_value),
 		  parameter_member_count(parameter_member_count_value),
 		  members(members_value),
 		  member_constructors(member_constructors_value),
+		  member_destructors(member_destructors_value),
 		  trivial_member_constructors(trivial_member_constructors_value) {}
 };
 

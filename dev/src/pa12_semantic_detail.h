@@ -644,6 +644,11 @@ private:
 	bool IsStandardInitializerListTemplate(NameId name, ScopeId owner,
 		const std::vector<TemplateParameter>& parameters) const;
 	void ConfigureInitializerListSpecialization(TypeId type);
+	void ConfigureInitializerListBackingLifetime(
+		std::uint32_t backing, TypeId element_type);
+	std::uint32_t PrepareNamespaceInitializerListLifetime(TypeId type,
+		std::uint32_t initializer, std::uint32_t destructor,
+		std::uint32_t* backing);
 	ExpressionInfo AnalyzeInitializerList(
 		NodeId list, ScopeId scope, TypeId type);
 	ExpressionInfo BuildInitializerListFromValues(TypeId type,
@@ -1272,8 +1277,12 @@ private:
 		bool allow_elision = true);
 	void AddTemporaryLifetimeObligation(ScopeId scope,
 		std::uint32_t temporary);
-	void ExtendInitializerListVariableLifetime(TypeId type, ScopeId scope,
+	bool ExtendInitializerListVariableLifetime(TypeId type, ScopeId scope,
 		std::uint32_t initializer, bool control_dependent);
+	std::uint32_t InitializerListBackingTemporary(
+		TypeId type, std::uint32_t initializer) const;
+	bool HasActiveInitializerListBacking(ScopeId scope) const;
+	void MarkInitializerListLifetimeCalls(std::uint32_t node);
 	bool CollectTemporaryObjects(std::uint32_t node,
 		std::vector<std::uint32_t>* temporaries,
 		bool conditionally_evaluated = false);

@@ -22,6 +22,21 @@ template <class Derived>
 class AggregateHelperLowering
 {
 protected:
+	bool AggregateConstructionOwnsNontrivialParameters(
+		std::uint32_t node) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		const DumpNode& action = derived.arena_.nodes[node];
+		if (action.kind != DUMP_AGGREGATE_CONSTRUCTION_ACTION ||
+			action.aggregate_helper >= derived.graph_.aggregate_helpers.size())
+			return false;
+		const AggregateHelperInfo& helper =
+			derived.graph_.aggregate_helpers[action.aggregate_helper];
+		for (std::size_t i = 0; i < helper.parameter_member_count; ++i)
+			if (helper.member_destructors[i] != kNoBinding) return true;
+		return false;
+	}
+
 	void IndexAggregateParameterEntities(std::vector<std::uint8_t>* result) const
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
@@ -77,6 +92,7 @@ protected:
 				function_type.parameter_count !=
 					helper.parameter_member_count + 1 ||
 				helper.member_constructors.size() != helper.members.size() ||
+				helper.member_destructors.size() != helper.members.size() ||
 				helper.trivial_member_constructors.size() != helper.members.size())
 				throw std::logic_error("aggregate helper has invalid function type");
 			Function result;
@@ -214,6 +230,17 @@ protected:
 					store.second = destination;
 					derived.Emit(store);
 				}
+			}
+			for (std::size_t m = helper.parameter_member_count; m != 0; --m)
+			{
+				const BindingId destructor = helper.member_destructors[m - 1];
+				if (destructor == kNoBinding) continue;
+				const Parameter& parameter = result.parameters[m];
+				const Operand object = parameter.by_address ?
+					Operand(static_cast<ParameterId>(m), LowPtr()) :
+					derived.AddressOfStorage(Operand(
+						static_cast<SlotId>(m), result.slots[m].type));
+				derived.EmitDestructorCall(destructor, object);
 			}
 			derived.Emit(Instruction(Instruction::RETURN_VOID));
 			derived.EndSyntheticFunction(result);

@@ -2198,7 +2198,8 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		if (local && has_initializer)
 		{
 			const bool control_dependent = HasControlDependentTemporary(initializer.node);
-			ExtendInitializerListVariableLifetime(
+			const bool extended_initializer_list =
+				ExtendInitializerListVariableLifetime(
 				parsed.type, scope, initializer.node, control_dependent);
 			if (program_->types.IsReference(parsed.type) &&
 				!control_dependent)
@@ -2216,7 +2217,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 					}
 				}
 			}
-			else
+			else if (!extended_initializer_list)
 			{
 				const std::size_t edge_count = dump_.edges.size();
 				AppendFullExpressionDestructionActions(initializer.node, owner);
@@ -2481,8 +2482,15 @@ void SemanticAnalyzer::AnalyzeCondition(NodeId node, ScopeId scope,
 	const std::uint32_t first = dump_.nodes[condition].first_edge;
 	if (first != kNoDumpEdge && dump_.edges[first].next != kNoDumpEdge)
 	{
+		dump_.nodes[condition].full_expression_staging = true;
 		MarkFullExpressionCalls(value.node);
 		AppendUnwindDestructionActions(scope, condition);
+	}
+	else if (HasActiveInitializerListBacking(scope))
+	{
+		dump_.nodes[condition].full_expression_staging = true;
+		dump_.nodes[condition].initializer_list_lifetime_observation = true;
+		MarkInitializerListLifetimeCalls(value.node);
 	}
 }
 

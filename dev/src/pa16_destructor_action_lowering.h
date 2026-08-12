@@ -187,6 +187,7 @@ protected:
 		if (action.kind != DUMP_DESTRUCTOR_ACTION ||
 			action.binding == kNoBinding || action.operand_type == kNoType)
 			throw std::logic_error("invalid destructor action");
+		if (derived.LowerInitializerListTemporaryDestructor(action)) return;
 		const TypeRecord& outer = derived.program_.types.Get(
 			derived.RemoveTopQualifiers(action.operand_type));
 		if (outer.kind == TYPE_ARRAY && action.object_binding != kNoBinding)

@@ -25,6 +25,23 @@ template <class Derived>
 class ConstructorActionLowering
 {
 protected:
+	bool ElidesNestedTemporaryConstruction(
+		const DumpNode& action, const NodeChildren& children) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		if (!action.trivial_special_member_action || children.size() != 1)
+			return false;
+		const DumpNode& source = derived.arena_.nodes[children[0]];
+		const NodeChildren source_children = derived.Children(children[0]);
+		return source.kind == DUMP_TEMPORARY_OBJECT &&
+			source.elided_temporary_storage &&
+			source_children.size() == 1 &&
+			derived.arena_.nodes[source_children[0]].kind ==
+				DUMP_CONSTRUCTOR_ACTION &&
+			derived.arena_.nodes[source_children[0]].operand_type ==
+				action.operand_type;
+	}
+
 	void LowerConstructorAction(std::uint32_t node,
 		const Operand& destination, bool force_empty = false,
 		bool elide_direct_empty_source = false,
@@ -43,20 +60,25 @@ protected:
 				!derived.IsClassObjectType(action.operand_type))
 				throw std::logic_error(
 					"invalid trivial special-member construction");
+			const DumpNode& source_record = derived.arena_.nodes[children[0]];
+			const NodeChildren source_children = derived.Children(children[0]);
+			if (ElidesNestedTemporaryConstruction(action, children))
+			{
+				derived.LowerConstructorAction(source_children[0], destination);
+				return;
+			}
 			const TypeRecord& object = derived.program_.types.Get(
 				derived.ExpressionObjectType(action.operand_type));
 			if (derived.program_.entities[object.entity].empty_class)
 			{
-				const DumpNode& source = derived.arena_.nodes[children[0]];
-				const NodeChildren source_children = derived.Children(children[0]);
-				const bool direct_id = source.kind == DUMP_ID_EXPRESSION;
-				const bool projected_id = source.kind == DUMP_CAST_EXPRESSION &&
-					source.base_projection_count != 0 && source_children.size() == 1 &&
+				const bool direct_id = source_record.kind == DUMP_ID_EXPRESSION;
+				const bool projected_id = source_record.kind == DUMP_CAST_EXPRESSION &&
+					source_record.base_projection_count != 0 && source_children.size() == 1 &&
 					derived.arena_.nodes[source_children[0]].kind == DUMP_ID_EXPRESSION;
 				const bool elided_reference_call = elide_empty_call_source &&
-					source.kind == DUMP_CALL_EXPRESSION &&
-					(source.category == VALUE_LVALUE ||
-					 source.category == VALUE_XVALUE);
+					source_record.kind == DUMP_CALL_EXPRESSION &&
+					(source_record.category == VALUE_LVALUE ||
+					 source_record.category == VALUE_XVALUE);
 				if (!elided_reference_call &&
 					((!direct_id || !elide_direct_empty_source) && !projected_id))
 					(void)derived.LowerClassTransferSource(children[0]);

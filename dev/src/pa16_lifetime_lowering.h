@@ -151,6 +151,14 @@ protected:
 			else if (derived.arena_.nodes[children[0]].kind ==
 				DUMP_AGGREGATE_CONSTRUCTION_ACTION)
 			{
+				const bool protect =
+					derived.AggregateConstructionOwnsNontrivialParameters(children[0]);
+				const BlockId dispatch = protect ? derived.AddBlock(
+					derived.NewLabel("call_unwind_dispatch")) : BlockId(kNoLowId);
+				const BlockId end = protect ? derived.AddBlock(
+					derived.NewLabel("call_unwind_end")) : BlockId(kNoLowId);
+				if (protect)
+					derived.EmitEhTarget(Instruction::EH_TRY, dispatch);
 				if (derived.current_indirect_result_)
 				{
 					const Operand destination(
@@ -168,6 +176,14 @@ protected:
 				}
 				else throw std::logic_error(
 					"aggregate construction return has a non-object boundary");
+				if (protect)
+				{
+					derived.Emit(Instruction(Instruction::EH_END));
+					derived.EmitJump(end);
+					derived.SelectBlock(dispatch);
+					derived.Emit(Instruction(Instruction::RESUME));
+					derived.SelectBlock(end);
+				}
 			}
 			else if (derived.arena_.nodes[children[0]].kind ==
 				DUMP_CONSTRUCTOR_ACTION)

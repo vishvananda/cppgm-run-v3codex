@@ -117,14 +117,92 @@ bool SemanticAnalyzer::TryAnalyzeInitializerListVariable(NodeId expression,
 	return true;
 }
 
-void SemanticAnalyzer::ExtendInitializerListVariableLifetime(TypeId type,
+bool SemanticAnalyzer::ExtendInitializerListVariableLifetime(TypeId type,
 	ScopeId scope, std::uint32_t initializer, bool control_dependent)
 {
-	if (!IsInitializerListType(type) || control_dependent) return;
+	if (!IsInitializerListType(type) || control_dependent) return false;
 	std::vector<std::uint32_t> temporaries;
 	CollectTemporaryObjects(initializer, &temporaries);
-	if (!temporaries.empty())
-		AddTemporaryLifetimeObligation(scope, temporaries.back());
+	if (temporaries.empty()) return false;
+	AddTemporaryLifetimeObligation(scope, temporaries.back());
+	return true;
+}
+
+std::uint32_t SemanticAnalyzer::InitializerListBackingTemporary(
+	TypeId type, std::uint32_t initializer) const
+{
+	if (!IsInitializerListType(type) || initializer == kNoDumpEdge ||
+		initializer >= dump_.nodes.size() ||
+		dump_.nodes[initializer].kind != DUMP_INITIALIZER_LIST)
+		return kNoDumpEdge;
+	const std::uint32_t edge = dump_.nodes[initializer].first_edge;
+	if (edge == kNoDumpEdge || dump_.edges[edge].next != kNoDumpEdge)
+		return kNoDumpEdge;
+	const std::uint32_t backing = dump_.edges[edge].child;
+	return dump_.nodes[backing].kind == DUMP_TEMPORARY_OBJECT ?
+		backing : kNoDumpEdge;
+}
+
+bool SemanticAnalyzer::HasActiveInitializerListBacking(ScopeId scope) const
+{
+	for (ScopeId current = scope; current != kNoScope; )
+	{
+		if (current < scope_lifetimes_.size())
+		{
+			const std::vector<LifetimeObligation>& obligations =
+				scope_lifetimes_[current];
+			for (std::size_t i = 0; i < obligations.size(); ++i)
+			{
+				const std::uint32_t temporary = obligations[i].temporary;
+				if (temporary != kNoDumpEdge &&
+					dump_.nodes[temporary].initializer_list_backing)
+					return true;
+			}
+		}
+		if (current >= scope_parents_.size()) return false;
+		current = scope_parents_[current];
+	}
+	return false;
+}
+
+void SemanticAnalyzer::MarkInitializerListLifetimeCalls(std::uint32_t node)
+{
+	if (node == kNoDumpEdge || node >= dump_.nodes.size()) return;
+	DumpNode& record = dump_.nodes[node];
+	if (record.kind == DUMP_CALL_EXPRESSION)
+		record.full_expression_staging = true;
+	for (std::uint32_t edge = record.first_edge; edge != kNoDumpEdge;
+		edge = dump_.edges[edge].next)
+		MarkInitializerListLifetimeCalls(dump_.edges[edge].child);
+}
+
+void SemanticAnalyzer::ConfigureInitializerListBackingLifetime(
+	std::uint32_t backing, TypeId element_type)
+{
+	const EntityId entity = DestructedEntity(element_type);
+	if (entity == kNoEntity || program_->entities[entity].trivial_destructor)
+		return;
+	const BindingId destructor = DestructorForType(element_type);
+	if (destructor == kNoBinding || GetFunction(destructor).deleted_destructor)
+		throw std::runtime_error(
+			"initializer-list element is not destructible");
+	dump_.nodes[backing].selected_binding = destructor;
+	DemandFunction(destructor);
+}
+
+std::uint32_t SemanticAnalyzer::PrepareNamespaceInitializerListLifetime(
+	TypeId type, std::uint32_t initializer, std::uint32_t destructor,
+	std::uint32_t* backing)
+{
+	*backing = InitializerListBackingTemporary(type, initializer);
+	if (*backing == kNoDumpEdge) return destructor;
+	const std::uint32_t backing_destructor =
+		MakeTemporaryDestructorAction(*backing);
+	if (backing_destructor == kNoDumpEdge) return destructor;
+	if (destructor != kNoDumpEdge)
+		throw std::runtime_error(
+			"initializer-list object has two namespace destructors");
+	return backing_destructor;
 }
 
 BindingId SemanticAnalyzer::SelectInitializerListConstructorPhase(
@@ -235,6 +313,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeInitializerList(
 			throw std::runtime_error("excess initializer-list elements");
 		backing = MaterializeTemporary(backing);
 		dump_.nodes[backing.node].initializer_list_backing = true;
+		ConfigureInitializerListBackingLifetime(backing.node, element);
 		dump_.Add(object, backing.node);
 	}
 	ExpressionInfo result;
@@ -272,6 +351,7 @@ ExpressionInfo SemanticAnalyzer::BuildInitializerListFromValues(
 		backing.category = VALUE_LVALUE;
 		backing = MaterializeTemporary(backing);
 		dump_.nodes[backing.node].initializer_list_backing = true;
+		ConfigureInitializerListBackingLifetime(backing.node, element);
 		dump_.Add(object, backing.node);
 	}
 	ExpressionInfo result;

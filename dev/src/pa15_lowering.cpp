@@ -524,6 +524,7 @@ private:
 			throw std::logic_error("global definition has no namespace action fact");
 		const NamespaceObjectAction& action =
 			graph_.namespace_objects[action_index];
+		RegisterNamespaceInitializerListBacking(action);
 		const bool thread_local_object =
 			program_.bindings[action.object].thread_local_storage;
 		output_.symbols[global.symbol].thread_local_storage = thread_local_object;
@@ -690,6 +691,7 @@ private:
 		generated_slot_ordinal_ = 0;
 		ResetControlFlowReachability();
 		ResetFullExpressionFunctionState();
+		ResetInitializerListFunctionState();
 		break_targets_.clear();
 		continue_targets_.clear();
 		label_blocks_.Clear();
@@ -805,6 +807,7 @@ private:
 		ResetControlFlowReachability();
 		ResetLifetimeFunctionState();
 		ResetFullExpressionFunctionState();
+		ResetInitializerListFunctionState();
 		parameter_slot_index_ = current_indirect_result_ ? 1 : 0;
 		current_this_binding_ = kNoBinding;
 		current_member_owner_ = record.binding == kNoBinding ? kNoEntity :
@@ -2860,9 +2863,10 @@ private:
 		if (arena_.nodes[condition_children[0]].kind ==
 			DUMP_CONDITION_DECLARATION)
 			EmitBranch(LowerControlCondition(condition), then_block, else_block);
-		else if (condition_children.size() != 1)
-			EmitFullExpressionConditionBranch(
-				condition_children, then_block, else_block);
+		else if (condition_children.size() != 1 ||
+			arena_.nodes[condition].full_expression_staging)
+			EmitFullExpressionConditionBranch(condition_children, then_block, else_block,
+				InitializerListLifetimeObservationDispatch(condition));
 		else EmitConditionBranch(condition_children[0], then_block, else_block);
 		SelectBlock(then_block);
 		StatementTask after(STATEMENT_IF_AFTER_THEN);
@@ -2902,9 +2906,10 @@ private:
 				return;
 			}
 		}
-		EmitBranch(LowerCondition(node), true_block, false_block);
+		const Operand value = LowerCondition(node);
+		if (full_expression_cleanup_active_) PauseFullExpressionCleanupSegment();
+		EmitBranch(value, true_block, false_block);
 	}
-
 	const SemanticGraphView& graph_;
 	const Program& program_;
 	const DumpArena& arena_;
@@ -2915,6 +2920,7 @@ private:
 	std::vector<SymbolId> literal_symbols_;
 	std::vector<std::uint8_t> temporary_initialized_;
 	std::vector<Operand> temporary_addresses_;
+	pa26_lowering_detail::InitializerListLoweringState initializer_lists_;
 	std::vector<std::pair<std::uint32_t, bool> > namespace_initializers_;
 	std::vector<std::uint32_t> dynamic_finalizers_;
 	std::vector<std::uint32_t> thread_local_objects_;
