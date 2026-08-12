@@ -1088,6 +1088,9 @@ void emit_memory_compare(CodeBuffer & out,
   } else if(address.kind == mir_model::MirOperand::OP_DEREF) {
     base = address.reg;
     displacement = address.offset;
+  } else if(address.kind == mir_model::MirOperand::OP_GLOBAL) {
+    emit_symbol_move(out, XR_R11, address.text);
+    base = XR_R11;
   } else {
     throw std::logic_error("unsupported memory compare address");
   }
@@ -1412,7 +1415,8 @@ void emit_instruction(CodeBuffer & out,
   case mir_model::MirInstruction::MI_CMP:
     if(instruction.operands.size() == 2 &&
        (instruction.operands[0].kind == mir_model::MirOperand::OP_FRAME ||
-        instruction.operands[0].kind == mir_model::MirOperand::OP_DEREF)) {
+        instruction.operands[0].kind == mir_model::MirOperand::OP_DEREF ||
+        instruction.operands[0].kind == mir_model::MirOperand::OP_GLOBAL)) {
       if(!function) throw std::logic_error("memory compare outside function");
       emit_memory_compare(out, instruction, *function);
     } else if(instruction.operands.size() == 2 &&

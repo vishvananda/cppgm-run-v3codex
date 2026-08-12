@@ -15,24 +15,23 @@ O(instructions + operands + output).
 | Group | Tests | Shared behavior and owner |
 | --- | ---: | --- |
 | ABI setup and result homes | 2 | Six-register indirect call and eight-argument stack call; ABI selector |
-| Direct branch demand | 7 | Integer/floating compare-fed branches and call results; demand and selector |
 | Cross-call parameter identity | 2 | Forwarded/indexed pointers through calls and switch edges; liveness |
 | Allocation placement/pressure | 5 | Adjacent slots, leaf placement, and three behavioral reactive-spill cases; allocator |
 
-One hundred sixty-seven of 183 tests pass. Storage metadata/materialization, wide
-integers, scalar atomics, variadics, aggregate ABI, and floating runtime are complete.
+One hundred seventy-four of 183 tests pass. Direct branch demand, storage
+materialization, wide integers, atomics, variadics, aggregate ABI, and floating
+runtime are complete.
 
 ## Active Checkpoint
 
-Eliminate the seven direct-branch-demand failures at the analysis/selection
-boundary. Per `spec.md` sections 7 and 9, compare/branch fusion and call-result
-forwarding must consume cached per-function use, edge-liveness, and clobber facts;
-they must not preserve a temporary merely because it appears in a later block.
-`lowir_native_analysis` owns the facts, the selector owns local fusion and placement,
-and the allocator consumes the resulting live intervals. Analysis and selection
-remain O(instructions + CFG edges), with O(1)-average fact lookup. Validate all seven
-anchors, neighboring branch/call tests, full PA29, through-PA28, file audit, and
-100/1,000/5,000-block scaling.
+Eliminate the five allocation-placement/pressure failures at the function-local
+allocator boundary. Per `spec.md` sections 7-9, fixed-register clobbers, frame
+homes, and spill ownership must derive from cached typed liveness; allocation must
+react to real pressure without leaking a home or preserving dead setup. Analysis
+owns intervals/clobbers, the selector owns instruction constraints, and
+`RegisterPool` owns bounded physical availability. Work remains O(instructions +
+CFG edges) with a constant-size register choice set. Validate all five anchors,
+neighboring ABI/branch cases, full PA29, through-PA28, file audit, and pressure scaling.
 
 ## Performance Evidence
 
@@ -49,6 +48,7 @@ anchors, neighboring branch/call tests, full PA29, through-PA28, file audit, and
 | Variadics | 2.99 / 31.77 / 157.66 ms; 3,005 / 30,005 / 150,005 MIR | Linear save-area/classification growth |
 | i128 values | 2.08 / 19.85 / 100.12 ms; 2,305 / 23,005 / 115,005 MIR; 5,412 / 16,268 / 64,296 KiB RSS | Linear two-limb lowering; O(1) work per value |
 | Storage facts | 1.00 / 9.42 / 52.77 ms lower; 305 / 3,005 / 15,005 MIR; 7,028 / 12,244 / 47,104 KiB RSS | Linear readonly/TLS plus parameter-shadow workload |
+| Branch demand | 0.65 / 5.54 / 34.81 ms lower; 410 / 4,010 / 20,010 MIR; 6,824 / 9,980 / 35,640 KiB RSS | Linear CFG worklist and deferred compare lowering |
 
 The i128 family used 100/1,000/5,000 two-limb parameter, constant, equality, and
 return functions. Outputs were 14,356/142,156/710,156 bytes and wall times were
@@ -69,3 +69,4 @@ return functions. Outputs were 14,356/142,156/710,156 bytes and wall times were
 | SysV variadic register-save state | Complete | Full PA29 160/183; both anchors and variadic scaling |
 | i128 scalar/atomic ABI | Complete | Exact MIR and runtime for both anchors; full PA29 162/183; i128 scaling above |
 | Storage identity and deferred materialization | Complete | Five anchors exact/runtime; full PA29 167/183; through-PA28 3,857/3,857; storage scaling above |
+| Direct branch demand and result forwarding | Complete | All seven anchors exact/runtime; full PA29 174/183; branch scaling above |

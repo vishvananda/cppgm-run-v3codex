@@ -80,10 +80,12 @@ public:
     }
     target_.callee_saved_regs = registers_.preserves();
     target_.scratch_bytes = uses_scalar_float_ ? 48 : 0;
-    const std::size_t direct_parameter_bytes = storage_facts_.promoted_parameter_slots.empty() ?
+    const std::size_t direct_parameter_bytes = storage_facts_.promoted_parameter_slots.empty() &&
+      !facts_.has_direct_branch_parameter ?
       abi::direct_parameter_bytes(source_.params) : 0;
     if(uses_scalar_float_) {
-      const std::size_t float_frame_bytes = source_.params.empty() ? frame_bytes_ :
+      const std::size_t float_frame_bytes = source_.params.empty() ||
+        !facts_.zero_index_parameters.empty() ? frame_bytes_ :
         std::max<std::size_t>(frame_bytes_, 16);
       target_.stack_size = align_up(float_frame_bytes + target_.callee_saved_regs.size() * 8 +
                                     target_.scratch_bytes, 16);
@@ -107,6 +109,7 @@ private:
   std::unordered_map<std::string, ValueFact> values_;
   std::unordered_map<std::string, long long> slot_offsets_;
   std::unordered_map<std::string, LowType> slot_types_;
+  std::unordered_map<std::string, X64Register> incoming_parameter_registers_;
   std::unordered_set<std::string> discarded_slots_;
   std::unordered_map<std::string, long long> spill_offsets_;
   std::vector<MirInstruction> parameter_moves_;
@@ -394,6 +397,7 @@ private:
       }
       binding.location = mir_model::MirParamBinding::PL_REG;
       binding.reg = argument_register(i);
+      incoming_parameter_registers_[parameter.name] = binding.reg;
       target_.params.push_back(binding);
       value.location = reg_operand(binding.reg);
       const std::size_t uses = facts_.uses[parameter.name];
@@ -426,6 +430,18 @@ private:
         const X64Register destination = registers_.allocate(crosses_call(parameter.name));
         value.location = reg_operand(destination);
         append_move(parameter_moves_, value.location, reg_operand(binding.reg));
+      } else if(!wide_gpr_boundary &&
+                facts_.zero_index_parameters.count(parameter.name)) {
+        const X64Register destination = registers_.is_used(XR_R9) ?
+          registers_.allocate(false) : XR_R9;
+        if(destination == XR_R9) registers_.reserve(XR_R9);
+        value.location = reg_operand(destination);
+        append_move(parameter_moves_, value.location, reg_operand(binding.reg));
+      } else if(!wide_gpr_boundary && uses &&
+                facts_.direct_branch_sources.count(parameter.name)) {
+        const X64Register destination = registers_.allocate(crosses_call(parameter.name));
+        value.location = reg_operand(destination);
+        append_move(parameter_moves_, value.location, reg_operand(binding.reg));
       } else if(!wide_gpr_boundary && parameter.type.kind == lowir_model::LTK_PTR && uses &&
                 !storage_facts_.dead_slot_only_parameters.count(parameter.name)) {
         const X64Register destination = registers_.allocate(
@@ -453,7 +469,11 @@ private:
         registers_.release(binding.reg);
       values_[parameter.name] = value;
     }
-    if(!wide_gpr_boundary || home_unused_register_parameters) return;
+    if(home_unused_register_parameters) {
+      frame_bytes_ += 8; // Keep the six-register home area call-aligned.
+      return;
+    }
+    if(!wide_gpr_boundary) return;
     static const std::size_t order[] = {2, 3, 4, 5, 1, 0};
     static const X64Register destinations[] = {
       XR_R15, XR_R9, XR_RBX, XR_R12, XR_R13, XR_R14
@@ -474,29 +494,14 @@ private:
   }
 
   bool result_is_immediate_return(const lowir_model::LowirBlock & block,
-                                  std::size_t instruction_index,
-                                  const std::string & destination) const
-  {
-    if(facts_.uses.find(destination) == facts_.uses.end() ||
-       facts_.uses.find(destination)->second != 1 ||
-       instruction_index + 1 >= block.instructions.size()) return false;
-    const Instruction & next = block.instructions[instruction_index + 1];
-    return next.kind == Instruction::IK_RETURN && next.first.text == destination;
-  }
+    std::size_t instruction_index, const std::string & destination) const
+  { return selection::result_is_immediate_return(block, instruction_index,
+                                                  destination, facts_); }
 
   bool result_is_immediate_unary_not_branch(const lowir_model::LowirBlock & block,
-                                            std::size_t instruction_index,
-                                            const std::string & destination) const
-  {
-    if(instruction_index + 2 >= block.instructions.size() ||
-       facts_.uses.find(destination) == facts_.uses.end() ||
-       facts_.uses.find(destination)->second != 1) return false;
-    const Instruction & unary = block.instructions[instruction_index + 1];
-    const Instruction & branch = block.instructions[instruction_index + 2];
-    return unary.kind == Instruction::IK_UNARY && unary.op == "not" &&
-      unary.first.text == destination && branch.kind == Instruction::IK_BRANCH &&
-      branch.first.text == unary.dest;
-  }
+    std::size_t instruction_index, const std::string & destination) const
+  { return selection::result_is_immediate_unary_not_branch(
+      block, instruction_index, destination, facts_); }
 
   bool result_is_next_call_address_argument(const lowir_model::LowirBlock & block,
                                             std::size_t instruction_index,
@@ -647,20 +652,6 @@ private:
       if(comparison.second.text == destination) return XR_RDX;
     }
     return XR_RSP;
-  }
-
-  bool slot_load_feeds_direct_compare(const lowir_model::LowirBlock & block,
-                                      std::size_t instruction_index,
-                                      const Instruction & load) const
-  {
-    if(load.first.kind != Operand::OP_SLOT ||
-       instruction_index + 2 >= block.instructions.size()) return false;
-    const Instruction & comparison = block.instructions[instruction_index + 1];
-    return comparison.kind == Instruction::IK_CMP &&
-      comparison.first.text == load.dest &&
-      comparison_feeds_branch(block, instruction_index + 1, comparison) &&
-      facts_.uses.find(load.dest) != facts_.uses.end() &&
-      facts_.uses.find(load.dest)->second == 1;
   }
 
   MirOperand resolve(const Operand & operand) const
@@ -1115,7 +1106,8 @@ private:
 
   void emit_float_direct_compare_branch(const Instruction & comparison,
                                         const Instruction & branch,
-                                        std::vector<MirInstruction> & out)
+                                        std::vector<MirInstruction> & out,
+                                        bool skip_branch = true)
   {
     uses_scalar_float_ = true;
     MirInstruction compare = machine_instruction(MirInstruction::MI_FCMP,
@@ -1140,7 +1132,7 @@ private:
     out.push_back(jump_false);
     consume(comparison.first);
     consume(comparison.second);
-    skipped_position_ = position_ + 1;
+    if(skip_branch) skipped_position_ = position_ + 1;
   }
 
   void emit_float_compare_value(const Instruction & instruction,
@@ -1394,7 +1386,8 @@ private:
 
   void emit_direct_compare_branch(const Instruction & comparison,
                                   const Instruction & branch,
-                                  std::vector<MirInstruction> & out)
+                                  std::vector<MirInstruction> & out,
+                                  bool skip_branch = true)
   {
     MirOperand left = direct_compare_left(comparison.first, out);
     const MirOperand unresolved_right = resolve(comparison.second);
@@ -1419,7 +1412,7 @@ private:
     out.push_back(jump_false);
     consume(comparison.first);
     consume(comparison.second);
-    skipped_position_ = position_ + 1;
+    if(skip_branch) skipped_position_ = position_ + 1;
   }
 
   void emit_compare_value(const Instruction & instruction,
@@ -1569,11 +1562,16 @@ private:
   void emit_index(const Instruction & instruction,
                   std::vector<MirInstruction> & out)
   {
-    const MirOperand base = resolve(instruction.first);
     const bool constant_index = instruction.second.kind == Operand::OP_INTEGER;
     const long long offset = constant_index ?
       integer_literal(instruction.second.text) *
         static_cast<long long>(instruction.type.storage_size) : 0;
+    MirOperand base = resolve(instruction.first);
+    if(constant_index && offset == 0 && instruction.first.kind == Operand::OP_TEMP &&
+       facts_.first_use.find(instruction.first.text) != facts_.first_use.end() &&
+       facts_.first_use.find(instruction.first.text)->second == position_ &&
+       incoming_parameter_registers_.count(instruction.first.text))
+      base = reg_operand(incoming_parameter_registers_.find(instruction.first.text)->second);
     MirOperand destination;
     const bool safe_reuse = base.kind == MirOperand::OP_REG &&
       constant_index && can_reuse(instruction.first) &&
@@ -1582,7 +1580,8 @@ private:
     else destination = reg_operand(allocate_result(
       instruction.dest, out,
       instruction.first.kind == Operand::OP_TEMP &&
-      values_.find(instruction.first.text)->second.parameter));
+      values_.find(instruction.first.text)->second.parameter && offset != 0 &&
+      !facts_.zero_index_parameters.count(instruction.first.text)));
     if(base.kind != MirOperand::OP_REG || destination.reg != base.reg) {
       if(is_frame_address(instruction.first))
         append_address(out, destination.reg, base);
@@ -1590,10 +1589,12 @@ private:
         move_value_to_register(out, destination.reg, base, operand_type(instruction.first));
     }
     if(constant_index) {
-      MirInstruction lea = machine_instruction(MirInstruction::MI_LEA);
-      append_operand(lea, destination);
-      append_operand(lea, dereference(destination.reg, offset));
-      out.push_back(lea);
+      if(offset != 0) {
+        MirInstruction lea = machine_instruction(MirInstruction::MI_LEA);
+        append_operand(lea, destination);
+        append_operand(lea, dereference(destination.reg, offset));
+        out.push_back(lea);
+      }
     } else {
       MirOperand index = resolve(instruction.second);
       if(index.kind != MirOperand::OP_REG) {
@@ -2425,10 +2426,11 @@ private:
     out.push_back(call);
     emit_stack_adjust(out, MirInstruction::MI_ADD, plan.stack_bytes);
 
-    for(std::size_t i = 0; i < instruction.args.size(); ++i)
-      consume(instruction.args[i]);
-    active_instruction_ = 0;
-    if(!instruction.call_returns_void &&
+    const bool materialize_result = !instruction.call_returns_void &&
+      (instruction.type.kind == lowir_model::LTK_OBJECT ||
+       (facts_.uses.find(instruction.dest) != facts_.uses.end() &&
+        facts_.uses.find(instruction.dest)->second != 0));
+    if(materialize_result &&
        instruction.type.kind == lowir_model::LTK_OBJECT) {
       Operand alias_destination;
       std::size_t skip_delta = 0;
@@ -2442,18 +2444,18 @@ private:
                                     alias ? 0 : &home, out);
       define_object_result(instruction.dest, instruction.type,
                            alias ? &alias_destination : 0, home);
-    } else if(!instruction.call_returns_void && is_extended_float(instruction.type)) {
+    } else if(materialize_result && is_extended_float(instruction.type)) {
       const MirOperand location = allocate_float_result(instruction.dest, instruction.type);
       MirInstruction store = machine_instruction(MirInstruction::MI_FSTP,
                                                  instruction.type.text);
       append_operand(store, location);
       out.push_back(store);
       define(instruction.dest, instruction.type, location);
-    } else if(!instruction.call_returns_void && is_scalar_float(instruction.type)) {
+    } else if(materialize_result && is_scalar_float(instruction.type)) {
       const MirOperand location = allocate_float_result(instruction.dest, instruction.type);
       append_float_move(out, location, xmm_operand(XMM_0), instruction.type.text);
       define(instruction.dest, instruction.type, location);
-    } else if(!instruction.call_returns_void) {
+    } else if(materialize_result) {
       MirOperand location = reg_operand(XR_RAX);
       if(!result_is_immediate_return(block, instruction_index, instruction.dest) &&
          !result_is_immediate_unary_not_branch(block, instruction_index,
@@ -2465,6 +2467,9 @@ private:
         normalize_integer(instruction.type, location, out);
       define(instruction.dest, instruction.type, location);
     }
+    for(std::size_t i = 0; i < instruction.args.size(); ++i)
+      consume(instruction.args[i]);
+    active_instruction_ = 0;
     consume(instruction.first);
   }
 
@@ -2529,14 +2534,12 @@ private:
       append_operand(add, immediate(static_cast<long long>(stack_bytes)));
       out.push_back(add);
     }
+    const bool materialize_result = !instruction.call_returns_void &&
+      (instruction.type.kind == lowir_model::LTK_OBJECT ||
+       (facts_.uses.find(instruction.dest) != facts_.uses.end() &&
+        facts_.uses.find(instruction.dest)->second != 0));
     bool arguments_consumed = false;
-    if(!instruction.call_returns_void && !is_scalar_float(instruction.type)) {
-      for(std::size_t i = 0; i < instruction.args.size(); ++i)
-        consume(instruction.args[i]);
-      arguments_consumed = true;
-      active_instruction_ = 0; // Call operands are dead or safely spillable after the call.
-    }
-    if(!instruction.call_returns_void) {
+    if(materialize_result) {
       if(is_scalar_float(instruction.type)) {
         const MirOperand location = allocate_float_result(instruction.dest, instruction.type);
         append_float_move(out, location, xmm_operand(XMM_0), instruction.type.text);
@@ -2546,17 +2549,30 @@ private:
           const MirOperand home = allocate_temp_home(instruction.dest, instruction.type);
           append_store(out, home, reg_operand(XR_RAX), instruction.type.text);
           define(instruction.dest, instruction.type, home);
-          if(!arguments_consumed)
-            for(std::size_t i = 0; i < instruction.args.size(); ++i)
-              consume(instruction.args[i]);
+          for(std::size_t i = 0; i < instruction.args.size(); ++i)
+            consume(instruction.args[i]);
           consume(instruction.first);
           return;
         }
         MirOperand location = reg_operand(XR_RAX);
-        if(!result_is_immediate_return(block, instruction_index, instruction.dest) &&
+        const bool forward_nonentry_branch =
+          facts_.direct_branch_call_results.count(instruction.dest) &&
+          !source_.blocks.empty() && block.label != source_.blocks.front().label;
+        if(!forward_nonentry_branch &&
+           !result_is_immediate_return(block, instruction_index, instruction.dest) &&
            !result_is_immediate_unary_not_branch(block, instruction_index,
                                                  instruction.dest)) {
-          location = reg_operand(allocate_result(instruction.dest, out));
+          const bool across = result_crosses_call(instruction.dest);
+          X64Register result = XR_RSP;
+          if(!registers_.try_allocate(across, result) &&
+             !(spill_one(across, out) && registers_.try_allocate(across, result))) {
+            for(std::size_t i = 0; i < instruction.args.size(); ++i)
+              consume(instruction.args[i]);
+            arguments_consumed = true;
+            active_instruction_ = 0;
+            result = allocate_result(instruction.dest, out);
+          }
+          location = reg_operand(result);
           append_move(out, location, reg_operand(XR_RAX));
         }
         if(is_integer_or_pointer(instruction.type))
@@ -2567,13 +2583,15 @@ private:
     if(!arguments_consumed)
       for(std::size_t i = 0; i < instruction.args.size(); ++i)
         consume(instruction.args[i]);
+    active_instruction_ = 0;
     consume(instruction.first);
   }
 
   void emit_branch(const Instruction & instruction, std::vector<MirInstruction> & out)
   {
-    move_value_to_register(out, XR_RAX, resolve(instruction.first),
-                           operand_type(instruction.first));
+    if(!facts_.direct_branch_call_results.count(instruction.first.text))
+      move_value_to_register(out, XR_RAX, resolve(instruction.first),
+                             operand_type(instruction.first));
     MirInstruction compare = machine_instruction(MirInstruction::MI_CMP, "i64");
     append_operand(compare, reg_operand(XR_RAX));
     append_operand(compare, immediate(0));
@@ -2770,12 +2788,15 @@ private:
         emit_float_load(instruction, out);
         return;
       }
-      if(slot_load_feeds_direct_compare(block, instruction_index, instruction)) {
+      if(facts_.direct_compare_storage_values.count(instruction.dest) &&
+         !(instruction.first.kind == Operand::OP_GLOBAL &&
+           tls_wrappers_.count(instruction.first.text))) {
         define(instruction.dest, instruction.type, storage(instruction.first));
         return;
       }
       MirOperand destination;
-      if((result_is_immediately_stored(block, instruction_index, instruction.dest) ||
+      if(facts_.direct_compare_rax_values.count(instruction.dest) ||
+         (result_is_immediately_stored(block, instruction_index, instruction.dest) ||
           (result_is_immediate_return(block, instruction_index, instruction.dest) &&
            (instruction.type.kind == lowir_model::LTK_PTR ||
             instruction.type.bit_width == 64))))
@@ -2862,12 +2883,12 @@ private:
     } else if(instruction.kind == Instruction::IK_BINARY) {
       emit_binary(instruction, out);
     } else if(instruction.kind == Instruction::IK_CMP) {
+      if(facts_.deferred_branch_comparisons.count(instruction.dest)) return;
       if(wide::is_integer(instruction.type))
         emit_compare_value(instruction, out);
       else if(is_floating(instruction.type) &&
          comparison_feeds_branch(block, instruction_index, instruction))
-        emit_float_direct_compare_branch(
-          instruction, block.instructions[instruction_index + 1], out);
+        emit_float_direct_compare_branch(instruction, block.instructions[instruction_index + 1], out);
       else if(is_floating(instruction.type))
         emit_float_compare_value(instruction, block, instruction_index, out);
       else if(comparison_feeds_branch(block, instruction_index, instruction))
@@ -2875,8 +2896,7 @@ private:
       else emit_compare_value(instruction, out);
     } else if(instruction.kind == Instruction::IK_UNARY) {
       if(unary_not_feeds_branch(block, instruction_index, instruction))
-        emit_direct_unary_not_branch(instruction,
-          block.instructions[instruction_index + 1], out);
+        emit_direct_unary_not_branch(instruction, block.instructions[instruction_index + 1], out);
       else emit_unary_value(instruction, out);
     } else if(instruction.kind == Instruction::IK_CONVERT) {
       emit_convert(instruction, out);
@@ -2886,7 +2906,12 @@ private:
               instruction.kind == Instruction::IK_ZEROINIT) {
       emit_bulk(instruction, out);
     } else if(instruction.kind == Instruction::IK_BRANCH) {
-      emit_branch(instruction, out);
+      const std::unordered_map<std::string, const Instruction *>::const_iterator deferred =
+        facts_.deferred_branch_comparisons.find(instruction.first.text);
+      if(deferred == facts_.deferred_branch_comparisons.end()) emit_branch(instruction, out);
+      else if(is_floating(deferred->second->type))
+        emit_float_direct_compare_branch(*deferred->second, instruction, out, false);
+      else emit_direct_compare_branch(*deferred->second, instruction, out, false);
     } else if(instruction.kind == Instruction::IK_SWITCH) {
       emit_switch(instruction, out);
     } else if(instruction.kind == Instruction::IK_JUMP) {

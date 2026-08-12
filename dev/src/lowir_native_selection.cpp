@@ -80,5 +80,33 @@ std::size_t align_up(std::size_t value, std::size_t alignment)
   return (value + alignment - 1) / alignment * alignment;
 }
 
+bool result_is_immediate_return(const lowir_model::LowirBlock & block,
+                                std::size_t instruction_index,
+                                const std::string & destination,
+                                const analysis::FunctionFacts & facts)
+{
+  if(facts.uses.find(destination) == facts.uses.end() ||
+     facts.uses.find(destination)->second != 1 ||
+     instruction_index + 1 >= block.instructions.size()) return false;
+  const lowir_model::Instruction & next = block.instructions[instruction_index + 1];
+  return next.kind == lowir_model::Instruction::IK_RETURN &&
+    next.first.text == destination;
+}
+
+bool result_is_immediate_unary_not_branch(
+    const lowir_model::LowirBlock & block, std::size_t instruction_index,
+    const std::string & destination, const analysis::FunctionFacts & facts)
+{
+  if(instruction_index + 2 >= block.instructions.size() ||
+     facts.uses.find(destination) == facts.uses.end() ||
+     facts.uses.find(destination)->second != 1) return false;
+  const lowir_model::Instruction & unary = block.instructions[instruction_index + 1];
+  const lowir_model::Instruction & branch = block.instructions[instruction_index + 2];
+  return unary.kind == lowir_model::Instruction::IK_UNARY && unary.op == "not" &&
+    unary.first.text == destination &&
+    branch.kind == lowir_model::Instruction::IK_BRANCH &&
+    branch.first.text == unary.dest;
+}
+
 }  // namespace selection
 }  // namespace lowir_native

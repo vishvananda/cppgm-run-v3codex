@@ -1,5 +1,6 @@
 #include "lowir_native_analysis.h"
 
+#include <algorithm>
 #include <deque>
 
 namespace lowir_native {
@@ -111,9 +112,12 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
   FunctionFacts facts;
   std::unordered_set<std::string> call_arguments;
   std::unordered_set<std::string> other_uses;
+  std::unordered_set<std::string> parameter_names;
   std::size_t position = 0;
-  for(std::size_t i = 0; i < function.params.size(); ++i)
+  for(std::size_t i = 0; i < function.params.size(); ++i) {
     facts.definition[function.params[i].name] = 0;
+    parameter_names.insert(function.params[i].name);
+  }
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j, ++position) {
       const Instruction & instruction = function.blocks[i].instructions[j];
@@ -130,6 +134,12 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
           else other_uses.insert(instruction.args[k].text);
         }
       if(!instruction.dest.empty()) facts.definition[instruction.dest] = position;
+      if(instruction.kind == Instruction::IK_INDEX &&
+         instruction.first.kind == Operand::OP_TEMP &&
+         parameter_names.count(instruction.first.text) &&
+         instruction.second.kind == Operand::OP_INTEGER &&
+         instruction.second.text == "0")
+        facts.zero_index_parameters.insert(instruction.first.text);
       if(instruction.kind == Instruction::IK_CALL) facts.calls.push_back(position);
       if(instruction.kind == Instruction::IK_VA_START) facts.has_va_start = true;
       if((instruction.kind == Instruction::IK_ATOMIC_LOAD ||
@@ -141,6 +151,72 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
   for(std::unordered_set<std::string>::const_iterator value = call_arguments.begin();
       value != call_arguments.end(); ++value)
     if(!other_uses.count(*value)) facts.only_call_arguments.insert(*value);
+
+  position = 0;
+  for(std::size_t i = 0; i < function.blocks.size(); ++i) {
+    const std::vector<Instruction> & instructions = function.blocks[i].instructions;
+    std::unordered_map<std::string, std::size_t> comparisons;
+    std::unordered_map<std::string, std::size_t> definitions;
+    const std::size_t block_start = position;
+    for(std::size_t j = 0; j < instructions.size(); ++j, ++position) {
+      const Instruction & instruction = instructions[j];
+      if(!instruction.dest.empty()) definitions[instruction.dest] = j;
+      if(instruction.kind == Instruction::IK_CMP)
+        comparisons[instruction.dest] = j;
+      if(instruction.kind != Instruction::IK_BRANCH ||
+         instruction.first.kind != Operand::OP_TEMP) continue;
+      const std::unordered_map<std::string, std::size_t>::const_iterator branch_definition =
+        definitions.find(instruction.first.text);
+      if(branch_definition != definitions.end() &&
+         instructions[branch_definition->second].kind == Instruction::IK_CALL &&
+         facts.uses.find(instruction.first.text) != facts.uses.end() &&
+         facts.uses.find(instruction.first.text)->second == 1)
+        facts.direct_branch_call_results.insert(instruction.first.text);
+      const std::unordered_map<std::string, std::size_t>::const_iterator comparison =
+        comparisons.find(instruction.first.text);
+      if(comparison == comparisons.end() ||
+         facts.uses.find(instruction.first.text) == facts.uses.end() ||
+         facts.uses.find(instruction.first.text)->second != 1) continue;
+      const Instruction & source = instructions[comparison->second];
+      const Operand * operands[] = {&source.first, &source.second};
+      for(std::size_t operand = 0; operand < 2; ++operand) {
+        if(operands[operand]->kind == Operand::OP_TEMP) {
+          facts.direct_branch_sources.insert(operands[operand]->text);
+          if(parameter_names.count(operands[operand]->text))
+            facts.has_direct_branch_parameter = true;
+        }
+        const std::unordered_map<std::string, std::size_t>::const_iterator definition =
+          definitions.find(operands[operand]->text);
+        if(comparison->second + 1 != j || definition == definitions.end()) continue;
+        const Instruction & producer = instructions[definition->second];
+        if(producer.kind != Instruction::IK_LOAD ||
+           (producer.first.kind != Operand::OP_SLOT &&
+            producer.first.kind != Operand::OP_GLOBAL) ||
+           facts.uses.find(producer.dest) == facts.uses.end() ||
+           facts.uses.find(producer.dest)->second != 1) continue;
+        if(definition->second + 1 == comparison->second)
+          facts.direct_compare_storage_values.insert(producer.dest);
+        else if(operand == 0 && definition->second + 2 == comparison->second &&
+                instructions[definition->second + 1].kind == Instruction::IK_LOAD &&
+                source.second.kind == Operand::OP_TEMP &&
+                instructions[definition->second + 1].dest == source.second.text)
+          facts.direct_compare_rax_values.insert(producer.dest);
+      }
+      if(comparison->second + 1 == j) continue;
+      facts.deferred_branch_comparisons[instruction.first.text] = &source;
+      for(std::size_t operand = 0; operand < 2; ++operand) {
+        if(operands[operand]->kind != Operand::OP_TEMP) continue;
+        const std::string & name = operands[operand]->text;
+        facts.last_use[name] = std::max(facts.last_use[name], block_start + j);
+        for(std::size_t k = comparison->second + 1; k < j; ++k) {
+          const unsigned clobbers = instruction_clobber_mask(instructions[k]);
+          facts.live_across_clobbers[name] |= clobbers;
+          if(instructions[k].kind == Instruction::IK_CALL)
+            facts.live_across_call.insert(name);
+        }
+      }
+    }
+  }
 
   typedef std::unordered_set<std::string> ValueSet;
   const std::size_t block_count = function.blocks.size();

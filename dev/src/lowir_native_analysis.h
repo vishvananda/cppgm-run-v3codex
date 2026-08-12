@@ -22,9 +22,17 @@ struct FunctionFacts
   std::unordered_set<std::string> live_across_call;
   std::unordered_set<std::string> edge_live;
   std::unordered_set<std::string> only_call_arguments;
+  std::unordered_set<std::string> direct_branch_sources;
+  std::unordered_set<std::string> direct_compare_storage_values;
+  std::unordered_set<std::string> direct_compare_rax_values;
+  std::unordered_set<std::string> direct_branch_call_results;
+  std::unordered_set<std::string> zero_index_parameters;
+  std::unordered_map<std::string, const lowir_model::Instruction *>
+    deferred_branch_comparisons;
   std::unordered_map<std::string, unsigned> live_across_clobbers;
   bool has_va_start = false;
   bool has_i128_atomic = false;
+  bool has_direct_branch_parameter = false;
 };
 
 struct StorageFacts
