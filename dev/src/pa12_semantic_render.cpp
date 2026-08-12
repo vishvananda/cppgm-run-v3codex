@@ -111,6 +111,17 @@ void SemanticAnalyzer::RenderLine(const DumpNode& node, std::size_t depth)
 			<< program_->RenderType(node.type) << " source="
 			<< program_->RenderType(node.operand_type);
 		break;
+	case DUMP_THROW_EXPRESSION:
+		output_ << "throw-expression " << category;
+		if (node.operand_type != kNoType)
+			output_ << " object=" << program_->RenderType(node.operand_type);
+		break;
+	case DUMP_TRY_STATEMENT: output_ << "try-statement"; break;
+	case DUMP_HANDLER:
+		output_ << "handler";
+		if (node.operand_type != kNoType)
+			output_ << " match=" << program_->RenderType(node.operand_type);
+		break;
 	case DUMP_INITIALIZER_LIST:
 		output_ << "initializer-list " << category << ' '
 			<< program_->RenderType(node.type) << " element="

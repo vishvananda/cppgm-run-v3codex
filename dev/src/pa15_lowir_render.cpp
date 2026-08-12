@@ -334,7 +334,23 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 			throw std::logic_error("invalid PA16 eh_cleanup target");
 		output << "eh_cleanup ^" << function.blocks[instruction.target].label;
 		break;
+	case Instruction::EH_CATCH:
+		output << "eh_catch ";
+		WriteOperand(output, instruction.first, program, function);
+		output << ", " << instruction.second.integer_value;
+		break;
+	case Instruction::EH_CATCH_ALL:
+		output << "eh_catch_all, " << instruction.first.integer_value;
+		break;
 	case Instruction::EH_END: output << "eh_end"; break;
+	case Instruction::EXCEPTION:
+		output << "%t" << instruction.dest << " = exception ";
+		WriteType(output, instruction.type);
+		break;
+	case Instruction::EXCEPTION_SELECTOR:
+		output << "%t" << instruction.dest << " = exception_selector ";
+		WriteType(output, instruction.type);
+		break;
 	case Instruction::RESUME: output << "resume"; break;
 	case Instruction::JUMP:
 		if (instruction.target >= function.blocks.size())
@@ -405,6 +421,24 @@ void WriteSymbolMetadata(std::ostream& output, const Symbol& symbol,
 	{
 		if (separator) output << ", ";
 		output << "return=noreturn";
+		separator = true;
+	}
+	if (function && symbol.runtime_role != Symbol::RUNTIME_ROLE_NONE)
+	{
+		if (separator) output << ", ";
+		const char* role = symbol.runtime_role == Symbol::RUNTIME_ROLE_EH_RESUME ?
+			"eh_resume" :
+			symbol.runtime_role == Symbol::RUNTIME_ROLE_EH_ALLOCATE_EXCEPTION ?
+			"eh_allocate_exception" :
+			symbol.runtime_role == Symbol::RUNTIME_ROLE_EH_BEGIN_CATCH ?
+			"eh_begin_catch" :
+			symbol.runtime_role == Symbol::RUNTIME_ROLE_EH_END_CATCH ?
+			"eh_end_catch" :
+			symbol.runtime_role == Symbol::RUNTIME_ROLE_EH_RETHROW ?
+			"eh_rethrow" :
+			symbol.runtime_role == Symbol::RUNTIME_ROLE_EH_THROW ?
+			"eh_throw" : "eh_personality";
+		output << "role=" << role;
 		separator = true;
 	}
 	if (entry)

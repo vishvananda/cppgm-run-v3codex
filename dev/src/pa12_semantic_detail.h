@@ -69,7 +69,8 @@ public:
 		  current_function_context_(kNoBinding),
 		  braced_initialization_context_(0),
 		  current_pack_alignment_(0),
-		  loop_depth_(0), switch_depth_(0), unevaluated_depth_(0),
+		  loop_depth_(0), switch_depth_(0), exception_handler_depth_(0),
+		  unevaluated_depth_(0),
 		  decltype_operand_depth_(0),
 		  conditionally_evaluated_operand_depth_(0),
 		  constant_evaluation_suppressed_depth_(0),
@@ -1027,6 +1028,13 @@ private:
 		NodeId node, ScopeId scope);
 	ExpressionInfo AnalyzeCast(NodeId node, ScopeId scope);
 	ExpressionInfo AnalyzeTypeid(NodeId node, ScopeId scope);
+	ExpressionInfo AnalyzeThrowExpression(NodeId node, ScopeId scope);
+	bool AnalyzeExceptionStatement(NodeId node, ScopeId scope,
+		std::uint32_t output_parent);
+	void AnalyzeTryStatement(NodeId node, ScopeId scope,
+		std::uint32_t output_parent);
+	void AnalyzeExceptionHandler(NodeId node, ScopeId scope,
+		std::uint32_t output_parent);
 	bool TryAnalyzeTypeidComparison(const std::string& operation,
 		const std::string& display_operation, NodeId left_syntax,
 		NodeId right_syntax, const ExpressionInfo& left,
@@ -1696,6 +1704,7 @@ private:
 	std::vector<std::size_t> pack_alignment_stack_;
 	std::size_t loop_depth_;
 	std::size_t switch_depth_;
+	std::size_t exception_handler_depth_;
 	std::size_t unevaluated_depth_;
 	std::size_t decltype_operand_depth_;
 	std::size_t conditionally_evaluated_operand_depth_;

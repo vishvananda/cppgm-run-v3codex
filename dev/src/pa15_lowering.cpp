@@ -25,6 +25,7 @@
 #include "pa21_constant_lowering.h"
 #include "pa21_local_static_lowering.h"
 #include "pa25_range_for_lowering.h"
+#include "pa26_exception_lowering.h"
 #include "pa26_initializer_list_lowering.h"
 #include "pa26_rtti_lowering.h"
 #include <algorithm>
@@ -62,6 +63,7 @@ class GraphLowerer :
 	private pa21_lowering_detail::ConstantLowering<GraphLowerer>,
 	private pa21_lowering_detail::LocalStaticLowering<GraphLowerer>,
 	private pa25_lowering_detail::RangeForLowering<GraphLowerer>,
+	private pa26_lowering_detail::ExceptionLowering<GraphLowerer>,
 	private pa26_lowering_detail::InitializerListLowering<GraphLowerer>,
 	private pa26_lowering_detail::RttiLowering<GraphLowerer>
 {
@@ -69,18 +71,12 @@ public:
 	GraphLowerer(const SemanticGraphView& graph, TypedProgram& output,
 		LowIRLoweringStats* stats, std::size_t source_ordinal)
 		: graph_(graph), program_(graph.program), arena_(graph.arena),
-		  output_(output), stats_(stats), function_(0), current_block_(0),
-		  current_result_(LowVoid()), current_result_reference_(false),
-		  current_indirect_result_(false),
-		  temp_counter_(0), block_counter_(0), generated_slot_ordinal_(0),
-		  initialized_bit_field_owner_(kNoEntity),
-		  initialized_bit_field_offset_(0),
-		  initialized_bit_field_unit_valid_(false),
-		  source_ordinal_(source_ordinal), needs_global_class_initializer_(false),
-		  lowering_namespace_object_(false),
-		  current_class_value_boundary_(false),
-		  current_this_binding_(kNoBinding),
-		  current_member_owner_(kNoEntity),
+		  output_(output), stats_(stats), function_(0), current_block_(0), current_result_(LowVoid()),
+		  current_result_reference_(false), current_indirect_result_(false),
+		  temp_counter_(0), block_counter_(0), generated_slot_ordinal_(0), initialized_bit_field_owner_(kNoEntity),
+		  initialized_bit_field_offset_(0), initialized_bit_field_unit_valid_(false),
+		  source_ordinal_(source_ordinal), needs_global_class_initializer_(false), lowering_namespace_object_(false),
+		  current_class_value_boundary_(false), current_this_binding_(kNoBinding), current_member_owner_(kNoEntity),
 		  destructor_return_target_(kNoLowId),
 		  destructor_return_routes_to_epilogue_(false),
 		  full_expression_cleanup_active_(false), full_expression_cleanup_dispatch_(kNoLowId),
@@ -173,6 +169,7 @@ private:
 	friend class pa21_lowering_detail::ConstantLowering<GraphLowerer>;
 	friend class pa21_lowering_detail::LocalStaticLowering<GraphLowerer>;
 	friend class pa25_lowering_detail::RangeForLowering<GraphLowerer>;
+	friend class pa26_lowering_detail::ExceptionLowering<GraphLowerer>;
 	friend class pa26_lowering_detail::InitializerListLowering<GraphLowerer>;
 	friend class pa26_lowering_detail::RttiLowering<GraphLowerer>;
 	enum StatementTaskKind : std::uint8_t
@@ -187,7 +184,7 @@ private:
 		STATEMENT_FOR_AFTER_INIT,
 		STATEMENT_FOR_AFTER_BODY,
 		STATEMENT_FOR_AFTER_ITERATION,
-		STATEMENT_SWITCH_AFTER_BODY
+		STATEMENT_SWITCH_AFTER_BODY, STATEMENT_TRY_AFTER_BODY, STATEMENT_HANDLER_AFTER_BODY
 	};
 	struct StatementTask
 	{
@@ -199,10 +196,9 @@ private:
 		BlockId third;
 		StatementTaskKind kind;
 		bool flag;
-		explicit StatementTask(StatementTaskKind kind_value)
-			: node(kNoDumpEdge), auxiliary(kNoDumpEdge), last(kNoDumpEdge),
-			  first(kNoLowId), second(kNoLowId),
-			  third(kNoLowId), kind(kind_value), flag(false) {}
+		explicit StatementTask(StatementTaskKind kind_value) : node(kNoDumpEdge),
+			auxiliary(kNoDumpEdge), last(kNoDumpEdge), first(kNoLowId), second(kNoLowId),
+			third(kNoLowId), kind(kind_value), flag(false) {}
 	};
 	NodeChildren Children(std::uint32_t node) const
 	{
@@ -691,7 +687,7 @@ private:
 		generated_slot_ordinal_ = 0;
 		ResetControlFlowReachability();
 		ResetFullExpressionFunctionState();
-		ResetInitializerListFunctionState();
+		ResetExceptionFunctionState(); ResetInitializerListFunctionState();
 		break_targets_.clear();
 		continue_targets_.clear();
 		label_blocks_.Clear();
@@ -807,7 +803,7 @@ private:
 		ResetControlFlowReachability();
 		ResetLifetimeFunctionState();
 		ResetFullExpressionFunctionState();
-		ResetInitializerListFunctionState();
+		ResetExceptionFunctionState(); ResetInitializerListFunctionState();
 		parameter_slot_index_ = current_indirect_result_ ? 1 : 0;
 		current_this_binding_ = kNoBinding;
 		current_member_owner_ = record.binding == kNoBinding ? kNoEntity :
@@ -1244,6 +1240,8 @@ private:
 			result = LowerTypeid(record, children);
 		else if (record.kind == DUMP_DYNAMIC_CAST_EXPRESSION)
 			result = LowerDynamicCast(node, record, children);
+		else if (record.kind == DUMP_THROW_EXPRESSION) result =
+			LowerThrowExpression(record, children);
 		else if ((record.category == VALUE_LVALUE || record.category == VALUE_XVALUE) &&
 			IsArrayType(record.type))
 			result = record.kind == DUMP_LITERAL ?
@@ -2034,6 +2032,7 @@ private:
 			SelectBlock(task.first);
 			return;
 		}
+		if (RunExceptionStatementTask(task)) return;
 		throw std::logic_error("invalid PA15 statement task");
 	}
 	void PopLoopTargets()
@@ -2164,6 +2163,7 @@ private:
 		if (record.kind == DUMP_DO_STATEMENT) { LowerDo(children); return; }
 		if (record.kind == DUMP_FOR_STATEMENT) { LowerFor(children); return; }
 		if (record.kind == DUMP_SWITCH_STATEMENT) { LowerSwitch(children); return; }
+		if (TryLowerExceptionStatement(node, record, children)) return;
 		if (record.kind == DUMP_CASE_STATEMENT ||
 			record.kind == DUMP_DEFAULT_STATEMENT)
 		{

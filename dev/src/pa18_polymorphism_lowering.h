@@ -24,6 +24,10 @@ struct PolymorphismLoweringState
 	std::vector<pa15_lowir_detail::SymbolId> type_rtti_symbols;
 	std::vector<pa15_lowir_detail::SymbolId> type_name_symbols;
 	std::vector<std::uint8_t> type_rtti_demanded;
+	std::vector<std::uint8_t> exception_type_demanded;
+	std::vector<std::uint8_t> thrown_type_demanded;
+	std::vector<pa15_lowir_detail::SymbolId> exception_rtti_symbols;
+	std::vector<pa15_lowir_detail::SymbolId> exception_object_symbols;
 	std::vector<pa15_lowir_detail::SymbolId> deleting_destructor_symbols;
 	std::vector<pa11::BindingId> deallocation_bindings;
 	std::vector<pa11::BindingId> complete_destructor_bindings;
@@ -42,9 +46,18 @@ struct PolymorphismLoweringState
 	pa15_lowir_detail::SymbolId dynamic_cast_symbol;
 	pa15_lowir_detail::SymbolId bad_cast_symbol;
 	pa15_lowir_detail::SymbolId bad_typeid_symbol;
+	pa15_lowir_detail::SymbolId eh_resume_symbol;
+	pa15_lowir_detail::SymbolId eh_allocate_exception_symbol;
+	pa15_lowir_detail::SymbolId eh_begin_catch_symbol;
+	pa15_lowir_detail::SymbolId eh_end_catch_symbol;
+	pa15_lowir_detail::SymbolId eh_rethrow_symbol;
+	pa15_lowir_detail::SymbolId eh_throw_symbol;
+	pa15_lowir_detail::SymbolId eh_personality_symbol;
 	bool need_dynamic_cast;
 	bool need_bad_cast;
 	bool need_bad_typeid;
+	bool need_exceptions;
+	bool need_rethrow;
 	std::size_t source_function_first;
 
 	PolymorphismLoweringState();

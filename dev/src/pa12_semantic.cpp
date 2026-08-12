@@ -696,6 +696,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 	if (ReusePreparedBracedExpression(node, target, &prepared)) return prepared;
 	if (arena_->IsTag(node, "parenthesized-expression"))
 		return AnalyzeExpression(FirstSemanticChild(node), scope, target);
+	if (arena_->IsTag(node, "throw-expression"))
+		return AnalyzeThrowExpression(node, scope);
 	if (arena_->IsTag(node, "literal"))
 	{
 		std::string spelling = arena_->Payload(node);
@@ -2522,6 +2524,7 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 		}
 		return;
 	}
+	if (AnalyzeExceptionStatement(node, scope, output_parent)) return;
 	if (arena_->IsTag(node, "if-statement"))
 	{
 		const ScopeId control = NewScope(scope, SCOPE_BLOCK, 0,

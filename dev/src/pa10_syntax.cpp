@@ -1228,6 +1228,13 @@ int Parser::BinaryPrecedence(std::uint16_t kind) const
 }
 NodeId Parser::ParseExpression(int minimum_precedence)
 {
+	if (Match(KW_THROW))
+	{
+		const NodeId result = arena_.Make("throw-expression");
+		const NodeId operand = ParseExpression(2);
+		if (operand != kNoNode) arena_.Add(result, operand);
+		return result;
+	}
 	NodeId left = ParseUnaryExpression();
 	if (left == kNoNode) return kNoNode;
 	while (position_ < tokens_.size())

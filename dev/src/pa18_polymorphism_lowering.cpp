@@ -27,7 +27,12 @@ PolymorphismLoweringState::PolymorphismLoweringState()
 	  rtti_function_symbol(kNoLowId), rtti_member_pointer_symbol(kNoLowId),
 	  dynamic_cast_symbol(kNoLowId),
 	  bad_cast_symbol(kNoLowId), bad_typeid_symbol(kNoLowId),
+	  eh_resume_symbol(kNoLowId), eh_allocate_exception_symbol(kNoLowId),
+	  eh_begin_catch_symbol(kNoLowId), eh_end_catch_symbol(kNoLowId),
+	  eh_rethrow_symbol(kNoLowId), eh_throw_symbol(kNoLowId),
+	  eh_personality_symbol(kNoLowId),
 	  need_dynamic_cast(false), need_bad_cast(false), need_bad_typeid(false),
+	  need_exceptions(false), need_rethrow(false),
 	  source_function_first(0)
 {
 }
@@ -80,6 +85,10 @@ private:
 		state_.type_rtti_symbols.assign(program_.types.Size(), kNoLowId);
 		state_.type_name_symbols.assign(program_.types.Size(), kNoLowId);
 		state_.type_rtti_demanded.assign(program_.types.Size(), 0);
+		state_.exception_type_demanded.assign(program_.types.Size(), 0);
+		state_.thrown_type_demanded.assign(program_.types.Size(), 0);
+		state_.exception_rtti_symbols.assign(program_.types.Size(), kNoLowId);
+		state_.exception_object_symbols.assign(program_.types.Size(), kNoLowId);
 		state_.deleting_destructor_symbols.assign(count, kNoLowId);
 		state_.deallocation_bindings.assign(count, kNoBinding);
 		state_.complete_destructor_bindings.assign(count, kNoBinding);
@@ -88,6 +97,8 @@ private:
 		state_.need_dynamic_cast = false;
 		state_.need_bad_cast = false;
 		state_.need_bad_typeid = false;
+		state_.need_exceptions = false;
+		state_.need_rethrow = false;
 		for (BindingId binding = 0; binding < program_.bindings.size(); ++binding)
 		{
 			const BindingRecord& candidate = program_.bindings[binding];
@@ -224,6 +235,29 @@ private:
 				state_.need_dynamic_cast = true;
 				state_.need_bad_cast = state_.need_bad_cast ||
 					record.dynamic_cast_reference;
+			}
+			else if (record.kind == DUMP_THROW_EXPRESSION)
+			{
+				state_.need_exceptions = true;
+				state_.need_rethrow = state_.need_rethrow ||
+					record.operand_type == kNoType;
+				if (record.operand_type != kNoType)
+				{
+					const TypeId type = RttiType(record.operand_type);
+					DemandRtti(type);
+					state_.exception_type_demanded[type] = 1;
+					state_.thrown_type_demanded[type] = 1;
+				}
+			}
+			else if (record.kind == DUMP_HANDLER)
+			{
+				state_.need_exceptions = true;
+				if (record.operand_type != kNoType)
+				{
+					const TypeId type = RttiType(record.operand_type);
+					DemandRtti(type);
+					state_.exception_type_demanded[type] = 1;
+				}
 			}
 			for (std::uint32_t edge = record.first_edge;
 				edge != kNoDumpEdge; edge = graph_.arena.edges[edge].next)
@@ -365,7 +399,8 @@ private:
 
 	SymbolId AddExternalRuntime(const std::string& name,
 		const std::string& object_name, const LowType& result,
-		const std::vector<LowType>& parameters, bool noreturn)
+		const std::vector<LowType>& parameters, bool noreturn,
+		Symbol::RuntimeRole role = Symbol::RUNTIME_ROLE_NONE)
 	{
 		const SymbolId symbol = AddSyntheticSymbol(
 			Symbol::FUNCTION_SYMBOL, name, object_name, false);
@@ -374,7 +409,9 @@ private:
 		record.declaration_emitted = true;
 		record.referenced = true;
 		record.noreturn = noreturn;
-		if (noreturn) record.effects = Symbol::EFFECTS_READNONE;
+		record.runtime_role = role;
+		if (noreturn && role == Symbol::RUNTIME_ROLE_NONE)
+			record.effects = Symbol::EFFECTS_READNONE;
 		FunctionDeclaration declaration;
 		declaration.symbol = symbol;
 		declaration.result = result;
@@ -406,6 +443,15 @@ private:
 		if (record.kind == TYPE_FUNDAMENTAL)
 			return SanitizeSymbol(program_.RenderType(type));
 		return "type_" + pa15_lowering_abi::MangleType(program_, type);
+	}
+
+	bool UsesExternalExceptionRtti(TypeId type) const
+	{
+		const TypeRecord& record = program_.types.Get(type);
+		if (record.kind == TYPE_FUNDAMENTAL) return true;
+		if (record.kind != TYPE_POINTER) return false;
+		const TypeId pointee = program_.types.RemoveTopCv(record.child);
+		return program_.types.Get(pointee).kind == TYPE_FUNDAMENTAL;
 	}
 
 	void RegisterPureVirtual(BindingId prototype)
@@ -593,6 +639,54 @@ private:
 			state_.rtti_member_pointer_symbol = AddExternalRtti(
 				"__external_rtti_vtable____pointer_to_member_type_info",
 				"_ZTVN10__cxxabiv129__pointer_to_member_type_infoE");
+		for (TypeId type = 0;
+			type < state_.exception_type_demanded.size(); ++type)
+		{
+			if (!state_.exception_type_demanded[type]) continue;
+			if (UsesExternalExceptionRtti(type))
+				state_.exception_rtti_symbols[type] = AddExternalRtti(
+					"__external_rtti__" +
+						SanitizeSymbol(program_.RenderType(type)),
+					"_ZTI" + pa15_lowering_abi::MangleType(program_, type));
+			if (!state_.thrown_type_demanded[type]) continue;
+			const std::string name =
+				"__ehobj_" + RttiPresentationStem(type);
+			state_.exception_object_symbols[type] = AddPolymorphicGlobal(
+				name, "@" + name, true);
+		}
+		if (state_.need_exceptions)
+		{
+			state_.eh_resume_symbol = AddExternalRuntime(
+				"__external_runtime___Unwind_Resume", "_Unwind_Resume",
+				LowVoid(), std::vector<LowType>(), true,
+				Symbol::RUNTIME_ROLE_EH_RESUME);
+			state_.eh_allocate_exception_symbol = AddExternalRuntime(
+				"__external_runtime____cxa_allocate_exception",
+				"__cxa_allocate_exception", LowPtr(),
+				std::vector<LowType>{LowI64()}, false,
+				Symbol::RUNTIME_ROLE_EH_ALLOCATE_EXCEPTION);
+			state_.eh_begin_catch_symbol = AddExternalRuntime(
+				"__external_runtime____cxa_begin_catch", "__cxa_begin_catch",
+				LowPtr(), std::vector<LowType>{LowPtr()}, false,
+				Symbol::RUNTIME_ROLE_EH_BEGIN_CATCH);
+			state_.eh_end_catch_symbol = AddExternalRuntime(
+				"__external_runtime____cxa_end_catch", "__cxa_end_catch",
+				LowVoid(), std::vector<LowType>(), false,
+				Symbol::RUNTIME_ROLE_EH_END_CATCH);
+			if (state_.need_rethrow)
+				state_.eh_rethrow_symbol = AddExternalRuntime(
+					"__external_runtime____cxa_rethrow", "__cxa_rethrow",
+					LowVoid(), std::vector<LowType>(), true,
+					Symbol::RUNTIME_ROLE_EH_RETHROW);
+			state_.eh_throw_symbol = AddExternalRuntime(
+				"__external_runtime____cxa_throw", "__cxa_throw", LowVoid(),
+				std::vector<LowType>{LowPtr(), LowPtr(), LowPtr()}, true,
+				Symbol::RUNTIME_ROLE_EH_THROW);
+			state_.eh_personality_symbol = AddExternalRuntime(
+				"__external_runtime____gxx_personality_v0",
+				"__gxx_personality_v0", LowVoid(), std::vector<LowType>(),
+				false, Symbol::RUNTIME_ROLE_EH_PERSONALITY);
+		}
 		if (state_.need_dynamic_cast)
 			state_.dynamic_cast_symbol = AddExternalRuntime(
 				"__external_runtime____dynamic_cast", "__dynamic_cast",
@@ -775,6 +869,19 @@ private:
 					program_.bindings[function].destructor ? 2 : 1;
 			}
 			output_.globals.push_back(vtable);
+			if (stats_) ++stats_->globals;
+		}
+		for (TypeId type = 0; type < state_.thrown_type_demanded.size(); ++type)
+		{
+			if (!state_.thrown_type_demanded[type]) continue;
+			Global object;
+			object.symbol = state_.exception_object_symbols[type];
+			object.initializer_kind = Global::STRUCTURED_VALUE;
+			Global::DataItem zero;
+			zero.kind = Global::DataItem::ZERO_ITEM;
+			zero.zero_bytes = program_.SizeOf(type);
+			object.items.push_back(zero);
+			output_.globals.push_back(object);
 			if (stats_) ++stats_->globals;
 		}
 	}

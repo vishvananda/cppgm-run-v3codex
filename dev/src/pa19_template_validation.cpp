@@ -1005,6 +1005,24 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 		}
 		return;
 	}
+	if (analyzer_.arena_->IsTag(node, "handler"))
+	{
+		const std::size_t handler_scope = AddChildScope(scope, SCOPE_BLOCK);
+		const NodeId declaration = analyzer_.FindChild(
+			node, "exception-declaration");
+		if (declaration != kNoNode)
+		{
+			VisitChildren(declaration, handler_scope);
+			const NodeId declarator = analyzer_.FindChild(
+				declaration, "declarator");
+			if (declarator != kNoNode)
+				Declare(handler_scope, analyzer_.DeclaratorName(declarator),
+					RETAINED_VALUE_NAME);
+		}
+		const NodeId body = analyzer_.FindChild(node, "compound-statement");
+		if (body != kNoNode) Visit(body, handler_scope);
+		return;
+	}
 	if (analyzer_.arena_->IsTag(node, "compound-statement"))
 	{
 		const std::size_t block = AddChildScope(scope, SCOPE_BLOCK);

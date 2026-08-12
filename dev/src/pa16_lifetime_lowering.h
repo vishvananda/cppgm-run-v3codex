@@ -257,6 +257,7 @@ protected:
 				continue;
 			derived.LowerDestructorAction(derived.arena_.nodes[children[i]]);
 		}
+		derived.FinishExceptionControlExit();
 		if (derived.destructor_return_routes_to_epilogue_)
 		{
 			if (derived.destructor_return_target_ == kNoLowId)

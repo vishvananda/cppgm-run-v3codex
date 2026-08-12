@@ -239,7 +239,11 @@ struct Instruction
 		CALL,
 		EH_TRY,
 		EH_CLEANUP,
+		EH_CATCH,
+		EH_CATCH_ALL,
 		EH_END,
+		EXCEPTION,
+		EXCEPTION_SELECTOR,
 		RESUME,
 		JUMP,
 		BRANCH,
@@ -390,6 +394,17 @@ struct Symbol
 	enum Kind { FUNCTION_SYMBOL, GLOBAL_SYMBOL } kind;
 	enum Effects : std::uint8_t { EFFECTS_DEFAULT, EFFECTS_READNONE,
 		EFFECTS_READONLY, EFFECTS_READWRITE } effects;
+	enum RuntimeRole : std::uint8_t
+	{
+		RUNTIME_ROLE_NONE,
+		RUNTIME_ROLE_EH_RESUME,
+		RUNTIME_ROLE_EH_ALLOCATE_EXCEPTION,
+		RUNTIME_ROLE_EH_BEGIN_CATCH,
+		RUNTIME_ROLE_EH_END_CATCH,
+		RUNTIME_ROLE_EH_RETHROW,
+		RUNTIME_ROLE_EH_THROW,
+		RUNTIME_ROLE_EH_PERSONALITY
+	} runtime_role;
 	std::string name;
 	std::string object_name;
 	bool c_linkage;
@@ -409,7 +424,8 @@ struct Symbol
 	Symbol(Kind kind_value, const std::string& name_value,
 		const std::string& object_name_value, bool c_linkage_value,
 		bool internal_linkage_value, bool nonthrowing_value)
-		: kind(kind_value), effects(EFFECTS_DEFAULT), name(name_value),
+		: kind(kind_value), effects(EFFECTS_DEFAULT),
+		  runtime_role(RUNTIME_ROLE_NONE), name(name_value),
 		  object_name(object_name_value),
 		  c_linkage(c_linkage_value), internal_linkage(internal_linkage_value),
 		  weak_linkage(false),
