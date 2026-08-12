@@ -180,10 +180,14 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		Operand inherited;
+		bool adjusted_boundary = false;
 		if (target_entity != kNoEntity &&
-			derived.CurrentVirtualBaseAddressForExpression(
-				child, target_entity, &inherited))
-			return derived.ProjectBaseSubobjectOffset(inherited, 0);
+			derived.CurrentVirtualBasePathAddressForExpression(
+				child, target_entity, &inherited, &adjusted_boundary))
+			return adjusted_boundary &&
+				derived.BoundaryBindingForExpression(child) ==
+					derived.current_this_binding_ ? inherited :
+				derived.ProjectBaseSubobjectOffset(inherited, 0);
 		const DumpNode& source = derived.arena_.nodes[child];
 		const Operand address = derived.IsClassObjectType(source.type) ?
 			derived.AddressOfStorage(derived.LowerStorage(child)) :

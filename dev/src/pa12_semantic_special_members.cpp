@@ -431,7 +431,8 @@ void SemanticAnalyzer::EvaluateSynthesizedConstructor(EntityId entity,
 		throw std::logic_error(
 			"constructor status requested for another member");
 	*deleted = false;
-	*trivial = !program_->entities[entity].polymorphic_class;
+	*trivial = !program_->entities[entity].polymorphic_class &&
+		program_->entities[entity].virtual_base_count == 0;
 	*nonthrowing = true;
 	const EntityRecord& owner = program_->entities[entity];
 	const bool union_object = owner.flavor == NAMED_UNION;
@@ -480,7 +481,7 @@ void SemanticAnalyzer::EvaluateSynthesizedAssignment(EntityId entity,
 	if (!IsAssignmentSpecialMember(kind))
 		throw std::logic_error("assignment status requested for another member");
 	*deleted = false;
-	*trivial = true;
+	*trivial = program_->entities[entity].virtual_base_count == 0;
 	*nonthrowing = true;
 	const EntityRecord& owner = program_->entities[entity];
 	const bool union_object = owner.flavor == NAMED_UNION;
@@ -885,10 +886,21 @@ void SemanticAnalyzer::AddSynthesizedConstructorBody(
 				base_ordinal < owner.direct_base_count; ++base_ordinal)
 			{
 			++special_member_subobject_visits_;
-			const DirectBaseEdge& edge = program_->DirectBase(
-				entity, base_ordinal);
-			const EntityRecord& base =
-				program_->entities[edge.entity];
+				const DirectBaseEdge& edge = program_->DirectBase(
+					entity, base_ordinal);
+				if (program_->bindings[function.binding].constructor_base_entry &&
+					edge.virtual_base)
+				{
+					const BindingId selected = ConstructorForSubobject(
+						program_->entities[edge.entity].type,
+						function.special_member);
+					if (selected != kNoBinding &&
+						!GetFunction(selected).trivial_special_member)
+						DemandFunction(EnsureConstructorBaseEntry(selected));
+					continue;
+				}
+				const EntityRecord& base =
+					program_->entities[edge.entity];
 			BindingId selected = ConstructorForSubobject(
 				base.type, function.special_member);
 			if (selected == kNoBinding)

@@ -106,7 +106,7 @@ public:
 			arena_.nodes.size(), kNoDumpEdge);
 		function_definition_.resize(program_.bindings.size(), kNoDumpEdge);
 		function_declaration_.resize(program_.bindings.size(), kNoDumpEdge);
-		virtual_base_parameter_counts_.resize(program_.bindings.size(), std::numeric_limits<std::size_t>::max());
+		virtual_base_contracts_.Reset(program_.bindings.size());
 		global_node_.resize(program_.bindings.size(), kNoDumpEdge);
 		namespace_action_.resize(program_.bindings.size(), kNoDumpEdge);
 		thread_local_dynamic_.resize(graph_.namespace_objects.size(), 0);
@@ -166,6 +166,7 @@ public:
 private:
 	friend class pa28_lowering_detail::VirtualBaseLowering<GraphLowerer>;
 	friend class pa28_lowering_detail::VirtualBaseBoundaryShape<GraphLowerer>;
+	friend class pa28_lowering_detail::VirtualBaseContractLookup<GraphLowerer>;
 	friend class pa15_lowering_detail::ControlFlowLowering<GraphLowerer>;
 	friend class pa15_lowering_detail::ScalarUnaryLowering<GraphLowerer>;
 	friend class pa18_lowering_detail::PolymorphismActionLowering<GraphLowerer>;
@@ -580,7 +581,6 @@ private:
 			false, internal, false));
 		return symbol;
 	}
-
 	void AddThreadLocalWrapper(const std::string& proposed,
 		const std::string& object_name, SymbolId target, bool internal)
 	{
@@ -2924,7 +2924,7 @@ private:
 	std::vector<std::uint8_t> thread_local_dynamic_;
 	std::vector<std::uint32_t> function_definition_;
 	std::vector<std::uint32_t> function_declaration_;
-	std::vector<std::size_t> virtual_base_parameter_counts_;
+	pa28_lowering_detail::VirtualBaseContractState virtual_base_contracts_;
 	std::vector<std::uint32_t> global_node_;
 	std::vector<std::uint32_t> namespace_action_;
 	std::vector<std::uint32_t> local_static_action_;

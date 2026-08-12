@@ -6,6 +6,7 @@
 #include "pa15_lowering_support.h"
 #include "pa15_lowir_model.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -27,23 +28,93 @@ struct VirtualBaseBoundaryFact
 {
 	BindingId binding;
 	EntityId owner, virtual_base;
+	std::uint64_t static_offset;
 	ParameterId parameter;
 	SlotId slot;
-	bool implicit_object, direct_parameter;
+	bool implicit_object, direct_parameter, static_source;
 
 	VirtualBaseBoundaryFact(BindingId binding_value, EntityId owner_value,
-		EntityId virtual_base_value, ParameterId parameter_value,
-		bool implicit_value, bool direct_value)
+		EntityId virtual_base_value, std::uint64_t static_offset_value,
+		ParameterId parameter_value,
+		bool implicit_value, bool direct_value, bool static_source_value)
 		: binding(binding_value), owner(owner_value),
-		  virtual_base(virtual_base_value), parameter(parameter_value),
+		  virtual_base(virtual_base_value), static_offset(static_offset_value),
+		  parameter(parameter_value),
 		  slot(kNoLowId), implicit_object(implicit_value),
-		  direct_parameter(direct_value) {}
+		  direct_parameter(direct_value), static_source(static_source_value) {}
+};
+
+struct VirtualBaseParameterContract
+{
+	std::uint32_t parameter_ordinal;
+	std::uint32_t carried_begin, carried_count;
+
+	VirtualBaseParameterContract(std::uint32_t parameter_value = 0,
+		std::uint32_t begin_value = 0, std::uint32_t count_value = 0)
+		: parameter_ordinal(parameter_value), carried_begin(begin_value),
+		  carried_count(count_value) {}
 };
 
 template <class Derived>
-class VirtualBaseBoundaryShape
+class VirtualBaseContractLookup
 {
 protected:
+	const VirtualBaseParameterContract* VirtualBaseContract(
+		BindingId binding, std::size_t parameter) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		if (binding == kNoBinding ||
+			binding >= derived.virtual_base_contracts_.begins.size()) return 0;
+		const std::uint32_t begin =
+			derived.virtual_base_contracts_.begins[binding];
+		if (begin == kNoDumpEdge) return 0;
+		const std::uint32_t count =
+			derived.virtual_base_contracts_.counts[binding];
+		for (std::uint32_t i = 0; i < count; ++i)
+		{
+			const VirtualBaseParameterContract& contract =
+				derived.virtual_base_contracts_.parameters[begin + i];
+			if (contract.parameter_ordinal == parameter) return &contract;
+		}
+		return 0;
+	}
+
+	bool CarriesVirtualBase(BindingId binding, std::size_t parameter,
+		std::size_t virtual_base) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		const VirtualBaseParameterContract* contract =
+			VirtualBaseContract(binding, parameter);
+		if (!contract) return true;
+		for (std::uint32_t i = 0; i < contract->carried_count; ++i)
+			if (derived.virtual_base_contracts_.ordinals[
+				contract->carried_begin + i] == virtual_base) return true;
+		return false;
+	}
+};
+
+struct VirtualBaseContractState
+{
+	std::vector<std::size_t> parameter_counts;
+	std::vector<std::uint32_t> begins, counts;
+	std::vector<VirtualBaseParameterContract> parameters;
+	std::vector<std::uint32_t> ordinals, scan_index;
+
+	void Reset(std::size_t binding_count)
+	{
+		parameter_counts.assign(binding_count,
+			std::numeric_limits<std::size_t>::max());
+		begins.assign(binding_count, kNoDumpEdge);
+		counts.assign(binding_count, 0);
+		scan_index.assign(binding_count, kNoDumpEdge);
+	}
+};
+
+template <class Derived>
+class VirtualBaseBoundaryShape : protected VirtualBaseContractLookup<Derived>
+{
+protected:
+	using VirtualBaseContractLookup<Derived>::CarriesVirtualBase;
 	EntityId VirtualBoundaryEntity(TypeId type) const
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
@@ -123,12 +194,34 @@ protected:
 		return !facts.slots.empty() || !facts.views.empty();
 	}
 
+	bool OmitsCopySourceVirtualBases(BindingId binding, TypeId type) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		if (binding == kNoBinding || binding >= derived.program_.bindings.size())
+			return false;
+		const BindingRecord& constructor = derived.program_.bindings[binding];
+		const TypeRecord& function = derived.program_.types.Get(type);
+		if (!constructor.constructor_base_entry ||
+			constructor.member_owner == kNoEntity ||
+			function.kind != TYPE_FUNCTION || function.parameter_count < 2)
+			return false;
+		return VirtualBoundaryEntity(
+			derived.program_.types.Parameters(type)[1]) == constructor.member_owner;
+	}
+
 	std::size_t HiddenVirtualBaseParameterCount(std::uint32_t node) const
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
 		const DumpNode& function = derived.arena_.nodes[node];
+		if (function.binding != kNoBinding &&
+			function.binding < derived.virtual_base_contracts_.parameter_counts.size() &&
+			derived.virtual_base_contracts_.parameter_counts[function.binding] !=
+				std::numeric_limits<std::size_t>::max())
+			return derived.virtual_base_contracts_.parameter_counts[function.binding];
 		const NodeChildren children = derived.Children(node);
 		const bool member = HasImplicitObjectBoundary(function);
+		const bool omit_copy_source =
+			OmitsCopySourceVirtualBases(function.binding, function.type);
 		std::size_t count = 0;
 		std::size_t ordinal = 0;
 		bool saw_parameter = false;
@@ -144,7 +237,8 @@ protected:
 					owner = derived.program_.bindings[
 						function.binding].member_owner;
 			}
-			else owner = VirtualBoundaryEntity(parameter.type);
+			else if (!(omit_copy_source && ordinal == 1))
+				owner = VirtualBoundaryEntity(parameter.type);
 			if (owner != kNoEntity)
 				count += derived.program_.entities[owner].virtual_base_count;
 			++ordinal;
@@ -164,7 +258,8 @@ protected:
 						owner = derived.program_.bindings[
 							function.binding].member_owner;
 				}
-				else owner = VirtualBoundaryEntity(parameters[i]);
+				else if (!(omit_copy_source && i == 1))
+					owner = VirtualBoundaryEntity(parameters[i]);
 				if (owner != kNoEntity)
 					count += derived.program_.entities[owner].virtual_base_count;
 			}
@@ -186,6 +281,8 @@ protected:
 		}
 		const NodeChildren children = derived.Children(node);
 		const bool member = HasImplicitObjectBoundary(function);
+		const bool omit_copy_source =
+			OmitsCopySourceVirtualBases(function.binding, function.type);
 		std::size_t ordinal = 0;
 		std::size_t member_index = 0;
 		std::size_t parameter_index = 0;
@@ -196,7 +293,7 @@ protected:
 			if (source.kind != DUMP_PARAMETER) continue;
 			saw_parameter = true;
 			const bool implicit = member && ordinal == 0;
-			EntityId owner = implicit ?
+			EntityId owner = omit_copy_source && ordinal == 1 ? kNoEntity : implicit ?
 				(IncludesImplicitVirtualBases(function) ?
 				 derived.program_.bindings[function.binding].member_owner :
 				 kNoEntity) : VirtualBoundaryEntity(source.type);
@@ -205,6 +302,8 @@ protected:
 					base < derived.program_.entities[owner].virtual_base_count;
 					++base)
 				{
+					if (!CarriesVirtualBase(
+						function.binding, ordinal, base)) continue;
 					Parameter parameter;
 					parameter.name = implicit ?
 						"__vbptr" + std::to_string(member_index++) :
@@ -222,7 +321,7 @@ protected:
 		for (std::size_t i = 0; i < type.parameter_count; ++i)
 		{
 			const bool implicit = member && i == 0;
-			EntityId owner = implicit ?
+			EntityId owner = omit_copy_source && i == 1 ? kNoEntity : implicit ?
 				(IncludesImplicitVirtualBases(function) ?
 				 derived.program_.bindings[function.binding].member_owner :
 				 kNoEntity) : VirtualBoundaryEntity(source_parameters[i]);
@@ -230,6 +329,7 @@ protected:
 			for (std::size_t base = 0;
 				base < derived.program_.entities[owner].virtual_base_count; ++base)
 			{
+				if (!CarriesVirtualBase(function.binding, i, base)) continue;
 				Parameter parameter;
 				parameter.name = implicit ?
 					"__vbptr" + std::to_string(member_index++) :
@@ -251,6 +351,8 @@ protected:
 	using VirtualBaseBoundaryShape<Derived>::HasImplicitObjectBoundary;
 	using VirtualBaseBoundaryShape<Derived>::IncludesImplicitVirtualBases;
 	using VirtualBaseBoundaryShape<Derived>::IncludesConstructionVtt;
+	using VirtualBaseBoundaryShape<Derived>::OmitsCopySourceVirtualBases;
+	using VirtualBaseBoundaryShape<Derived>::CarriesVirtualBase;
 	using VirtualBaseBoundaryShape<Derived>::HiddenVirtualBaseParameterCount;
 
 	std::size_t CountVirtualBaseParameters(TypeId type,
@@ -269,11 +371,14 @@ protected:
 			binding < derived.program_.bindings.size() &&
 			derived.program_.bindings[binding].member_owner != kNoEntity &&
 			!derived.program_.bindings[binding].static_member_function;
+		const bool omit_copy_source =
+			OmitsCopySourceVirtualBases(binding, type);
 		std::size_t count = 0;
 		for (std::size_t parameter = 0;
 			parameter < function->parameter_count; ++parameter)
 		{
-			const EntityId owner = member && parameter == 0 ?
+			const EntityId owner = omit_copy_source && parameter == 1 ? kNoEntity :
+				member && parameter == 0 ?
 				(IncludesImplicitVirtualBases(binding) ?
 				 derived.program_.bindings[binding].member_owner : kNoEntity) :
 				VirtualBoundaryEntity(parameters[parameter]);
@@ -283,16 +388,161 @@ protected:
 		return count;
 	}
 
+	void RecordVirtualBaseDemand(std::size_t parameter, EntityId owner,
+		EntityId target, std::vector<std::vector<std::uint32_t> >* demanded)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		EntityId anchor = kNoEntity;
+		std::uint64_t relative_offset = 0;
+		if (!VirtualBasePathAnchor(
+			owner, target, &anchor, &relative_offset)) return;
+		(void)relative_offset;
+		const EntityRecord& record = derived.program_.entities[owner];
+		for (std::size_t ordinal = 0;
+			ordinal < record.virtual_base_count; ++ordinal)
+		{
+			if (derived.program_.VirtualBase(owner, ordinal).entity != anchor)
+				continue;
+			std::vector<std::uint32_t>& uses = (*demanded)[parameter];
+			if (std::find(uses.begin(), uses.end(), ordinal) == uses.end())
+				uses.push_back(static_cast<std::uint32_t>(ordinal));
+			return;
+		}
+	}
+
+	void ScanVirtualBaseBoundaryUses(std::uint32_t node,
+		const std::vector<EntityId>& owners, std::vector<std::uint8_t>* forwarded,
+		std::vector<std::vector<std::uint32_t> >* demanded)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		std::vector<std::uint32_t> pending(1, node);
+		while (!pending.empty())
+		{
+			const std::uint32_t current = pending.back();
+			pending.pop_back();
+			if (derived.stats_)
+				++derived.stats_->virtual_base_boundary_scan_nodes;
+			const DumpNode& record = derived.arena_.nodes[current];
+			const NodeChildren children = derived.Children(current);
+			if (record.kind == DUMP_CALL_EXPRESSION ||
+				record.kind == DUMP_CONSTRUCTOR_ACTION)
+			{
+				const std::size_t first =
+					record.kind == DUMP_CALL_EXPRESSION ? 1 : 0;
+				for (std::size_t i = first; i < children.size(); ++i)
+				{
+					const BindingId binding =
+						BoundaryBindingForExpression(children[i]);
+					if (binding == kNoBinding ||
+						binding >= derived.virtual_base_contracts_.scan_index.size())
+						continue;
+					const std::uint32_t parameter =
+						derived.virtual_base_contracts_.scan_index[binding];
+					if (parameter != kNoDumpEdge) (*forwarded)[parameter] = 1;
+				}
+			}
+			if (record.kind == DUMP_MEMBER_EXPRESSION &&
+				record.binding != kNoBinding && !children.empty())
+			{
+				const BindingId binding =
+					BoundaryBindingForExpression(children[0]);
+				if (binding != kNoBinding &&
+					binding < derived.virtual_base_contracts_.scan_index.size())
+				{
+					const std::uint32_t parameter =
+						derived.virtual_base_contracts_.scan_index[binding];
+					if (parameter != kNoDumpEdge && owners[parameter] != kNoEntity)
+						RecordVirtualBaseDemand(parameter, owners[parameter],
+							derived.program_.bindings[record.binding].member_owner,
+							demanded);
+				}
+			}
+			for (std::size_t i = children.size(); i != 0; --i)
+				pending.push_back(children[i - 1]);
+		}
+	}
+
 	void CacheVirtualBaseBoundary(std::uint32_t node)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		const DumpNode& function = derived.arena_.nodes[node];
 		if (function.binding == kNoBinding ||
-			function.binding >= derived.virtual_base_parameter_counts_.size()) return;
+			function.binding >= derived.virtual_base_contracts_.parameter_counts.size()) return;
 		std::size_t& cached =
-			derived.virtual_base_parameter_counts_[function.binding];
+			derived.virtual_base_contracts_.parameter_counts[function.binding];
 		if (cached != std::numeric_limits<std::size_t>::max()) return;
-		cached = CountVirtualBaseParameters(function.type, function.binding);
+		if (function.kind != DUMP_FUNCTION_DEFINITION) return;
+		const NodeChildren children = derived.Children(node);
+		const bool member = HasImplicitObjectBoundary(function);
+		std::vector<BindingId> bindings;
+		std::vector<EntityId> owners;
+		for (std::size_t i = 0; i < children.size(); ++i)
+		{
+			const DumpNode& parameter = derived.arena_.nodes[children[i]];
+			if (parameter.kind != DUMP_PARAMETER) continue;
+			const bool implicit = member && bindings.empty();
+			bindings.push_back(parameter.binding);
+			owners.push_back(implicit ?
+				(IncludesImplicitVirtualBases(function) ?
+				 derived.program_.bindings[function.binding].member_owner : kNoEntity) :
+				VirtualBoundaryEntity(parameter.type));
+		}
+		std::vector<std::uint8_t> forwarded(bindings.size(), 0);
+		std::vector<std::vector<std::uint32_t> > demanded(bindings.size());
+		bool has_virtual_boundary = false;
+		for (std::size_t i = 0; i < owners.size(); ++i)
+			has_virtual_boundary = has_virtual_boundary ||
+				(owners[i] != kNoEntity &&
+				 derived.program_.entities[owners[i]].virtual_base_count != 0);
+		derived.virtual_base_contracts_.begins[function.binding] =
+			static_cast<std::uint32_t>(
+				derived.virtual_base_contracts_.parameters.size());
+		if (!has_virtual_boundary)
+		{
+			derived.virtual_base_contracts_.counts[function.binding] = 0;
+			cached = 0;
+			return;
+		}
+		for (std::size_t i = 0; i < bindings.size(); ++i)
+			if (bindings[i] != kNoBinding)
+				derived.virtual_base_contracts_.scan_index[bindings[i]] =
+					static_cast<std::uint32_t>(i);
+		ScanVirtualBaseBoundaryUses(node, owners, &forwarded, &demanded);
+		for (std::size_t i = 0; i < bindings.size(); ++i)
+			if (bindings[i] != kNoBinding)
+				derived.virtual_base_contracts_.scan_index[bindings[i]] = kNoDumpEdge;
+		const bool omit_copy_source =
+			OmitsCopySourceVirtualBases(function.binding, function.type);
+		cached = 0;
+		for (std::size_t parameter = 0; parameter < owners.size(); ++parameter)
+		{
+			if (owners[parameter] == kNoEntity) continue;
+			const std::uint32_t ordinal_begin = static_cast<std::uint32_t>(
+				derived.virtual_base_contracts_.ordinals.size());
+			const std::size_t available =
+				derived.program_.entities[owners[parameter]].virtual_base_count;
+			const bool carry_all = !(omit_copy_source && parameter == 1) &&
+				((member && parameter == 0) || forwarded[parameter] ||
+				 demanded[parameter].empty());
+			if (carry_all)
+				for (std::size_t base = 0; base < available; ++base)
+					derived.virtual_base_contracts_.ordinals.push_back(
+						static_cast<std::uint32_t>(base));
+			else if (!(omit_copy_source && parameter == 1))
+				derived.virtual_base_contracts_.ordinals.insert(
+					derived.virtual_base_contracts_.ordinals.end(),
+					demanded[parameter].begin(), demanded[parameter].end());
+			const std::uint32_t carried = static_cast<std::uint32_t>(
+				derived.virtual_base_contracts_.ordinals.size() - ordinal_begin);
+			derived.virtual_base_contracts_.parameters.push_back(
+				VirtualBaseParameterContract(static_cast<std::uint32_t>(parameter),
+					ordinal_begin, carried));
+			cached += carried;
+		}
+		derived.virtual_base_contracts_.counts[function.binding] =
+			static_cast<std::uint32_t>(
+				derived.virtual_base_contracts_.parameters.size() -
+				derived.virtual_base_contracts_.begins[function.binding]);
 		if (derived.stats_)
 			derived.stats_->virtual_base_boundary_facts += cached;
 	}
@@ -301,10 +551,10 @@ protected:
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
 		if (binding != kNoBinding &&
-			binding < derived.virtual_base_parameter_counts_.size() &&
-			derived.virtual_base_parameter_counts_[binding] !=
+			binding < derived.virtual_base_contracts_.parameter_counts.size() &&
+			derived.virtual_base_contracts_.parameter_counts[binding] !=
 				std::numeric_limits<std::size_t>::max())
-			return derived.virtual_base_parameter_counts_[binding];
+			return derived.virtual_base_contracts_.parameter_counts[binding];
 		return CountVirtualBaseParameters(type, binding);
 	}
 
@@ -314,11 +564,14 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		current_virtual_base_boundary_.clear();
 		current_construction_vtt_ = kNoLowId;
+		const DumpNode& function = derived.arena_.nodes[node];
 		const std::size_t hidden = HiddenVirtualBaseParameterCount(node);
 		if (hidden > parameters.size())
-			throw std::logic_error("virtual-base boundary parameter mismatch");
+			throw std::logic_error("virtual-base boundary parameter mismatch: " +
+				derived.program_.names.Get(function.text));
 		std::size_t boundary = parameters.size() - hidden;
-		const DumpNode& function = derived.arena_.nodes[node];
+		const bool omit_copy_source =
+			OmitsCopySourceVirtualBases(function.binding, function.type);
 		if (IncludesConstructionVtt(function.binding))
 			current_construction_vtt_ = 1;
 		const NodeChildren children = derived.Children(node);
@@ -329,7 +582,10 @@ protected:
 			const DumpNode& source = derived.arena_.nodes[children[i]];
 			if (source.kind != DUMP_PARAMETER) continue;
 			const bool implicit = member && ordinal == 0;
-			const bool direct = implicit || !SpillVirtualBaseBoundary(source.type);
+			const bool spilled = SpillVirtualBaseBoundary(source.type);
+			const std::size_t source_parameter = ordinal +
+				(derived.current_indirect_result_ ? 1 : 0) +
+				(HasCurrentConstructionVtt() && ordinal != 0 ? 1 : 0);
 			EntityId owner = implicit ?
 				(IncludesImplicitVirtualBases(function) ?
 				 derived.program_.bindings[function.binding].member_owner :
@@ -339,12 +595,20 @@ protected:
 					base < derived.program_.entities[owner].virtual_base_count;
 					++base)
 				{
+					const bool carried = CarriesVirtualBase(
+						function.binding, ordinal, base);
+					const bool static_source =
+						(omit_copy_source && ordinal == 1) || (!carried && spilled);
+					if (!carried && !static_source) continue;
+					const bool direct = carried && (implicit || !spilled);
 					const VirtualBaseLayout& layout =
 						derived.program_.VirtualBase(owner, base);
 					current_virtual_base_boundary_.push_back(
 						VirtualBaseBoundaryFact(source.binding, owner,
-							layout.entity, ParameterId(boundary++), implicit,
-							direct));
+							layout.entity, layout.offset,
+							static_source ? ParameterId(source_parameter) :
+								ParameterId(boundary++), implicit,
+							direct, static_source));
 				}
 			++ordinal;
 		}
@@ -369,21 +633,38 @@ protected:
 		}
 	}
 
+	void MaterializeVirtualBaseBoundaryFact(
+		const VirtualBaseBoundaryFact& fact)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (fact.slot == kNoLowId)
+			throw std::logic_error("virtual-base parameter has no slot");
+		Instruction store(Instruction::STORE);
+		store.type = LowPtr();
+		if (fact.static_source)
+		{
+			const Operand source(fact.parameter, LowPtr());
+			store.first = derived.ProjectBaseSubobjectOffset(
+				source, fact.static_offset);
+		}
+		else store.first = Operand(fact.parameter, LowPtr());
+		store.second = Operand(fact.slot, LowPtr());
+		derived.Emit(store);
+	}
+
 	void MaterializeVirtualBaseBoundaryParameter(const DumpNode& parameter)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
+		for (std::size_t phase = 0; phase != 2; ++phase)
 		for (std::size_t i = 0; i < current_virtual_base_boundary_.size(); ++i)
 		{
 			const VirtualBaseBoundaryFact& fact =
 				current_virtual_base_boundary_[i];
 			if (fact.binding != parameter.binding || fact.direct_parameter) continue;
-			if (fact.slot == kNoLowId)
-				throw std::logic_error("virtual-base parameter has no slot");
-			Instruction store(Instruction::STORE);
-			store.type = LowPtr();
-			store.first = Operand(fact.parameter, LowPtr());
-			store.second = Operand(fact.slot, LowPtr());
-			derived.Emit(store);
+			const bool has_nested_virtual_bases =
+				derived.program_.entities[fact.virtual_base].virtual_base_count != 0;
+			if (has_nested_virtual_bases != (phase != 0)) continue;
+			MaterializeVirtualBaseBoundaryFact(fact);
 		}
 	}
 
@@ -449,6 +730,52 @@ protected:
 	{
 		return CurrentVirtualBaseAddress(
 			BoundaryBindingForExpression(expression), virtual_base, address);
+	}
+
+	bool VirtualBasePathAnchor(EntityId owner, EntityId target,
+		EntityId* anchor, std::uint64_t* relative_offset) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		std::vector<std::uint32_t> path;
+		if (!derived.program_.QueryBasePath(
+			owner, target, 0, 0, 0, 0, &path)) return false;
+		EntityId current = owner;
+		for (std::size_t i = 0; i < path.size(); ++i)
+		{
+			const DirectBaseEdge& edge =
+				derived.program_.DirectBase(current, path[i]);
+			current = edge.entity;
+			if (!edge.virtual_base) continue;
+			*anchor = current;
+			if (current == target) *relative_offset = 0;
+			else if (!derived.program_.FindVirtualBase(
+				current, target, relative_offset)) return false;
+			return true;
+		}
+		return false;
+	}
+
+	bool CurrentVirtualBasePathAddressForExpression(std::uint32_t expression,
+		EntityId target, Operand* address, bool* adjusted = 0)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (adjusted) *adjusted = false;
+		const EntityId owner = derived.BaseEntityForType(
+			derived.arena_.nodes[expression].type);
+		EntityId anchor = kNoEntity;
+		std::uint64_t relative_offset = 0;
+		if (owner != kNoEntity &&
+			VirtualBasePathAnchor(owner, target, &anchor, &relative_offset) &&
+			CurrentVirtualBaseAddressForExpression(expression, anchor, address))
+		{
+			if (relative_offset != 0)
+				*address = derived.ProjectBaseSubobjectOffset(
+					*address, relative_offset);
+			if (adjusted) *adjusted = relative_offset != 0;
+			return true;
+		}
+		return CurrentVirtualBaseAddressForExpression(
+			expression, target, address);
 	}
 
 	bool HasCurrentImplicitVirtualBases() const
@@ -532,6 +859,46 @@ protected:
 		return derived.IndexAddress(LowI8(), view, offset, false);
 	}
 
+	Operand ProjectNullableVirtualBaseAddress(const Operand& view,
+		std::uint64_t offset)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		Slot slot;
+		slot.name = derived.GeneratedSlotName("basecast");
+		slot.type = LowPtr();
+		const Operand result(
+			static_cast<SlotId>(derived.function_->slots.size()), LowPtr());
+		derived.function_->slots.push_back(slot);
+		const BlockId null_block = derived.AddBlock(
+			derived.NewLabel("basecast_null"));
+		const BlockId adjust_block = derived.AddBlock(
+			derived.NewLabel("basecast_adjust"));
+		const BlockId end_block = derived.AddBlock(
+			derived.NewLabel("basecast_end"));
+		const Operand is_null = derived.Temp(LowU8());
+		Instruction compare(Instruction::CMP);
+		compare.dest = is_null.id;
+		compare.op = LOW_OP_EQ;
+		compare.type = LowPtr();
+		compare.first = view;
+		compare.second = Operand(0, LowPtr());
+		derived.Emit(compare);
+		derived.EmitBranch(is_null, null_block, adjust_block);
+		derived.SelectBlock(null_block);
+		Instruction store(Instruction::STORE);
+		store.type = LowPtr();
+		store.first = Operand(0, LowPtr());
+		store.second = result;
+		derived.Emit(store);
+		derived.EmitJump(end_block);
+		derived.SelectBlock(adjust_block);
+		store.first = derived.ProjectBaseSubobjectOffset(view, offset);
+		derived.Emit(store);
+		derived.EmitJump(end_block);
+		derived.SelectBlock(end_block);
+		return derived.LoadStorage(result, LowPtr());
+	}
+
 	bool RuntimeVirtualBaseAddressForExpression(std::uint32_t expression,
 		const Operand& view, EntityId target, Operand* address)
 	{
@@ -577,6 +944,8 @@ protected:
 			 expression_shape.kind == TYPE_RVALUE_REFERENCE) &&
 			derived.program_.types.Get(derived.program_.types.RemoveTopCv(
 				expression_shape.child)).kind == TYPE_POINTER;
+		if (reference_to_pointer && source == owner)
+			return ProjectNullableVirtualBaseAddress(view, layout.offset);
 		bool defined_reference_call = false;
 		if (derived.arena_.nodes[expression].kind == DUMP_CALL_EXPRESSION)
 		{
@@ -592,7 +961,10 @@ protected:
 		const bool known_complete_object = source == owner &&
 			((derived.arena_.nodes[expression].kind == DUMP_ID_EXPRESSION &&
 			  expression_shape.kind == TYPE_NAMED) || reference_to_pointer ||
-			 defined_reference_call);
+			 ((derived.current_this_binding_ != kNoBinding &&
+			 BoundaryBindingForExpression(expression) ==
+				derived.current_this_binding_) ||
+			 defined_reference_call));
 		if (!known_complete_object ||
 			(owner < derived.graph_.class_polymorphism.size() &&
 			(!derived.graph_.class_polymorphism[owner].slots.empty() ||
@@ -602,7 +974,16 @@ protected:
 			return RuntimeVirtualBaseAddress(view, owner, ordinal);
 		if (source == owner &&
 			derived.arena_.nodes[expression].kind != DUMP_CAST_EXPRESSION)
-			return derived.ProjectBaseSubobjectOffset(view, layout.offset);
+		{
+			Operand complete_view = view;
+			if (derived.current_this_binding_ != kNoBinding &&
+				BoundaryBindingForExpression(expression) ==
+				derived.current_this_binding_)
+				complete_view = derived.LoadStorage(derived.StorageFor(
+					derived.current_this_binding_, LowPtr()), LowPtr());
+			return derived.ProjectBaseSubobjectOffset(
+				complete_view, layout.offset);
+		}
 		return RuntimeVirtualBaseAddress(view, owner, ordinal);
 	}
 
@@ -630,16 +1011,36 @@ protected:
 				((!binding->constructor || binding->constructor_base_entry) ?
 				 binding->member_owner : kNoEntity) :
 				(i < function.parameter_count ?
-				 VirtualBoundaryEntity(parameters[i]) : kNoEntity);
+					 VirtualBoundaryEntity(parameters[i]) : kNoEntity);
 			if (owner == kNoEntity) continue;
+			Operand boundary_view = lowered[i];
+			bool reference_to_pointer = false;
+			if (!implicit && i < function.parameter_count)
+			{
+				const TypeRecord& top = derived.program_.types.Get(
+					derived.program_.types.RemoveTopCv(parameters[i]));
+				if ((top.kind == TYPE_LVALUE_REFERENCE ||
+					top.kind == TYPE_RVALUE_REFERENCE) &&
+					derived.program_.types.Get(
+						derived.program_.types.RemoveTopCv(top.child)).kind == TYPE_POINTER)
+				{
+					reference_to_pointer = true;
+					boundary_view = derived.LoadStorage(boundary_view, LowPtr());
+				}
+			}
 			for (std::size_t base = 0;
 				base < derived.program_.entities[owner].virtual_base_count &&
-				hidden_remaining != 0; ++base, --hidden_remaining)
+				hidden_remaining != 0; ++base)
 			{
-				arguments->Push(VirtualBaseCallAddress(
-					call_children[i + 1], lowered[i], owner, base));
+				if (!CarriesVirtualBase(callee.binding, i, base)) continue;
+				arguments->Push(reference_to_pointer ?
+					ProjectNullableVirtualBaseAddress(boundary_view,
+						derived.program_.VirtualBase(owner, base).offset) :
+					VirtualBaseCallAddress(
+						call_children[i + 1], boundary_view, owner, base));
 				references->Push(Instruction::CALL_PASS_VALUE);
 				if (derived.stats_) ++derived.stats_->virtual_base_call_arguments;
+				--hidden_remaining;
 			}
 		}
 	}

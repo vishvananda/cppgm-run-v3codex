@@ -40,7 +40,7 @@ protected:
 				derived.LoadStorage(storage, LowPtr()) : storage;
 		}
 		Operand base, virtual_base;
-		if (derived.CurrentVirtualBaseAddressForExpression(
+		if (derived.CurrentVirtualBasePathAddressForExpression(
 			children[0], member.member_owner, &virtual_base))
 			base = derived.ProjectBaseSubobjectOffset(virtual_base, 0);
 		else
@@ -53,11 +53,18 @@ protected:
 				derived.AddressOfStorage(derived.LowerStorage(children[0]));
 			if (!derived.RuntimeVirtualBaseAddressForExpression(
 				children[0], base, member.member_owner, &virtual_base))
+			{
 				base = derived.ProjectBaseSubobjects(base,
 					record.base_projection_count,
 					derived.arena_.nodes[children[0]].type,
 					record.base_projection_offset,
 					record.has_base_projection_offset);
+				const DumpNode& source = derived.arena_.nodes[children[0]];
+				if (source.kind == DUMP_CALL_EXPRESSION &&
+					derived.IsReferenceType(source.type) &&
+					record.base_projection_count != 0)
+					base = derived.ProjectBaseSubobjectOffset(base, 0);
+			}
 			else base = virtual_base;
 		}
 		const Operand result = derived.Temp(LowPtr());

@@ -190,8 +190,9 @@ protected:
 			const EntityRecord& base_owner = derived.program_.entities[
 				constructor_binding.member_owner];
 			for (std::size_t i = 0; i < base_owner.virtual_base_count &&
-				hidden_remaining != 0; ++i, --hidden_remaining)
+				hidden_remaining != 0; ++i)
 			{
+				if (!derived.CarriesVirtualBase(action.binding, 0, i)) continue;
 				const VirtualBaseLayout& needed = derived.program_.VirtualBase(
 					constructor_binding.member_owner, i);
 				Operand address;
@@ -219,6 +220,7 @@ protected:
 				references.Push(0);
 				if (derived.stats_)
 					++derived.stats_->virtual_base_call_arguments;
+				--hidden_remaining;
 			}
 		}
 		for (std::size_t i = 0; i < children.size(); ++i)
@@ -230,8 +232,10 @@ protected:
 			if (owner == kNoEntity) continue;
 			for (std::size_t base = 0;
 				base < derived.program_.entities[owner].virtual_base_count &&
-				hidden_remaining != 0; ++base, --hidden_remaining)
+				hidden_remaining != 0; ++base)
 			{
+				if (!derived.CarriesVirtualBase(
+					action.binding, parameter, base)) continue;
 				const std::size_t lowered_parameter = parameter +
 					(derived.IncludesConstructionVtt(action.binding) ? 1 : 0);
 				arguments.Push(derived.VirtualBaseCallAddress(
@@ -239,6 +243,7 @@ protected:
 				references.Push(Instruction::CALL_PASS_VALUE);
 				if (derived.stats_)
 					++derived.stats_->virtual_base_call_arguments;
+				--hidden_remaining;
 			}
 		}
 		derived.output_.symbols[
