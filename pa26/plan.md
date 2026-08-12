@@ -3,16 +3,18 @@
 ## Stage Design and Spec Alignment
 
 PA26 is a monotonic extension of the PA25 semantic graph and typed LowIR path.
-PA12 owns canonical types, selected construction/destruction bindings, lifetime
-actions, and ordered unwind snapshots; PA18 owns ABI RTTI/runtime symbols; PA15
-and its PA17/PA26 lowering mixins consume those facts per function. This follows
-`spec.md` sections 2, 4-6, and 8-10: compact identity, demand separated from
-presentation order, direct typed lowering, bounded phase-local state, observable
-linear work, and no textual or external-tool fallback.
+PA12 completes polymorphism before publishing canonical class-special-member,
+construction/destruction, lifetime, and ordered unwind facts. PA18 owns demanded
+ABI RTTI/runtime symbols; PA15 and its PA16/PA17/PA26 mixins consume those facts
+per function, with projected references kept distinct from indirect call-result
+boundaries. This follows `spec.md` sections 2, 4-6, and 8-10: compact identity,
+monotonic fact ownership, direct typed lowering, bounded phase-local state,
+observable linear work, and no textual, lookup-recovery, or external fallback.
 
 ## Current Failure Map
 
-Current result is **86/110**, up from the 80/110 turn baseline.
+Current result is **86/110**, preserving the audit turn baseline and six passes
+above the checkpoint parent.
 
 | Owner | Failing | Shared behavior |
 |---|---:|---|
@@ -37,19 +39,20 @@ and sibling-arm scaling before all gates.
 
 ## Performance Evidence
 
-Repeated class throws with one live guard per typed handler exercise selected
-construction, RTTI demand, lexical unwind routing, and typed emission:
+Repeated polymorphic class throws with one live guard per typed handler exercise
+canonical special-member facts, selected construction, RTTI demand, lexical
+unwind routing, and typed emission:
 
-| Throws | Semantic nodes | Demand pushes/emissions | Blocks | Instructions | Typed storage | Semantic | Lowering |
+| Throws | Semantic nodes | Special-member visits | Demand pushes/emissions | Blocks | Instructions | Typed storage | Semantic / lowering |
 |---:|---:|---:|---:|---:|---:|---:|---:|
-| 16 | 276 | 3/2 | 99 | 394 | 92,145 B | 0.99 ms | 0.37 ms |
-| 32 | 532 | 3/2 | 195 | 778 | 174,800 B | 1.48 ms | 0.51 ms |
-| 64 | 1,044 | 3/2 | 387 | 1,546 | 340,112 B | 2.74 ms | 0.79 ms |
-| 128 | 2,068 | 3/2 | 771 | 3,082 | 670,736 B | 5.18 ms | 1.50 ms |
+| 16 | 371 | 10 | 10/9 | 148 | 799 | 169,362 B | 1.08 / 0.62 ms |
+| 32 | 675 | 10 | 10/9 | 276 | 1,471 | 297,474 B | 1.61 / 0.83 ms |
+| 64 | 1,283 | 10 | 10/9 | 532 | 2,815 | 553,698 B | 2.97 / 1.43 ms |
+| 128 | 2,499 | 10 | 10/9 | 1,044 | 5,503 | 1,066,220 B | 5.69 / 2.60 ms |
 
-Nodes, blocks, instructions, storage, and phase time scale linearly; constructor
-and destructor emission demand stays constant. Earlier repeated-snapshot and
-nested-handler measurements remain linear through 256 calls and 64 handlers.
+Nodes, blocks, instructions, storage, and phase time scale linearly; class
+special-member evaluation and constructor/destructor emission demand stay
+constant as throw sites grow.
 
 ## Completed Checkpoints
 
@@ -62,4 +65,4 @@ nested-handler measurements remain linear through 256 calls and 64 handlers.
 | Initializer-list and aggregate lifecycle | Static backing/finalization, local frontier, parameter teardown | +4; PA26 67/110; focused 4/4; linear to 1,024 |
 | Scalar source-exception foundation | Typed throw/handler facts, scalar/ellipsis catches, rethrow, runtime roles | +8; PA26 75/110; focused 8/8; nested handlers linear to 127 |
 | Lexical unwind snapshots and handler continuation | Live-action snapshots, segmented exits, dispatch interning | +5; PA26 80/110; focused 9/9; calls/handlers linear through 256/64 |
-| Class exception objects and typed-handler routing | Selected direct construction, destructor transfer, polymorphic copy chain, temporary retirement | +6; PA26 86/110; focused 6/6; through PA25 3,607/3,607; audit pass; throws linear to 128 |
+| Class exception objects and typed-handler routing | Canonical polymorphic special-member facts, selected direct construction/destructor transfer, temporary retirement, projection-safe call ABI | +6; PA26 86/110; focused 6/6 plus PA18 projection witness; through PA25 3,607/3,607; file/audit pass; throws linear to 128 |

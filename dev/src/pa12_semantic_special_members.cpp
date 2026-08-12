@@ -422,7 +422,7 @@ void SemanticAnalyzer::EvaluateSynthesizedConstructor(EntityId entity,
 		throw std::logic_error(
 			"constructor status requested for another member");
 	*deleted = false;
-	*trivial = true;
+	*trivial = !program_->entities[entity].polymorphic_class;
 	*nonthrowing = true;
 	const EntityRecord& owner = program_->entities[entity];
 	const bool union_object = owner.flavor == NAMED_UNION;

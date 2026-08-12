@@ -2,7 +2,6 @@
 
 #include <stdexcept>
 #include <string>
-#include <vector>
 
 namespace cppgm
 {
@@ -196,44 +195,6 @@ ExpressionInfo SemanticAnalyzer::AnalyzeThrowExpression(
 		dump_.nodes[initializer].kind == DUMP_CONSTRUCTOR_ACTION)
 	{
 		dump_.nodes[initializer].elide_empty_constructor = false;
-		const EntityId thrown_entity = EntityOf(thrown_type);
-		if (thrown_entity != kNoEntity &&
-			program_->entities[thrown_entity].polymorphic_class)
-		{
-			std::vector<BindingId> polymorphic_chain;
-			BindingId current = dump_.nodes[initializer].binding;
-			while (current != kNoBinding)
-			{
-				const FunctionInfo& function = GetFunction(current);
-				const EntityId owner =
-					program_->bindings[current].member_owner;
-				if ((function.special_member !=
-						SPECIAL_MEMBER_COPY_CONSTRUCTOR &&
-					 function.special_member !=
-						SPECIAL_MEMBER_MOVE_CONSTRUCTOR) ||
-					owner == kNoEntity ||
-					!program_->entities[owner].polymorphic_class)
-					break;
-				polymorphic_chain.push_back(current);
-				const EntityId base = program_->entities[owner].direct_base;
-				current = base == kNoEntity ? kNoBinding :
-					ConstructorForSubobject(
-						program_->entities[base].type,
-						function.special_member);
-			}
-			for (std::size_t i = 0; i < polymorphic_chain.size(); ++i)
-				GetMutableFunction(
-					polymorphic_chain[i]).trivial_special_member = false;
-			for (std::size_t i = polymorphic_chain.size(); i != 0; --i)
-			{
-				FunctionInfo& function =
-					GetMutableFunction(polymorphic_chain[i - 1]);
-				ConfigureSynthesizedStoragePrefix(
-					program_->bindings[function.binding].member_owner,
-					&function);
-			}
-			dump_.nodes[initializer].trivial_special_member_action = false;
-		}
 		DemandFunction(dump_.nodes[initializer].binding);
 	}
 	dump_.Add(result.node, initializer);

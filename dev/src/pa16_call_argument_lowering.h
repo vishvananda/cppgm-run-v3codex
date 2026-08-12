@@ -240,7 +240,10 @@ protected:
 				return derived.LowerStorage(node);
 			return derived.AddressOfStorage(derived.LowerStorage(node));
 		}
-		if (derived.IsClassObjectType(argument.type) &&
+		if (IsProjectedClassReference(node))
+			return derived.LowerValue(node, LowPtr());
+		if (argument.kind == DUMP_CALL_EXPRESSION &&
+			derived.IsClassObjectType(argument.type) &&
 			derived.UsesIndirectClassResult(argument.type, argument.binding))
 		{
 			const LowType type = derived.LowerStorageType(argument.type);
@@ -250,8 +253,6 @@ protected:
 			return derived.LowerCall(node, argument,
 				derived.Children(node), destination);
 		}
-		if (IsProjectedClassReference(node))
-			return derived.LowerValue(node, LowPtr());
 		const LowType type = derived.LowerExpressionType(target);
 		const Operand slot(derived.EnsureGeneratedSlot(
 			node, "refarg", type), type);
