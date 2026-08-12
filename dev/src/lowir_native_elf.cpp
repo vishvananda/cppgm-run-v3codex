@@ -789,6 +789,26 @@ void emit_address_store(CodeBuffer & out, const mir_model::MirOperand & address,
   } else throw std::logic_error("unsupported native store address");
 }
 
+void emit_atomic_memory(CodeBuffer & out,
+                        const mir_model::MirInstruction & instruction,
+                        const mir_model::MirFunction & function,
+                        bool locked, bool escaped,
+                        unsigned byte_opcode, unsigned wide_opcode)
+{
+  require_operands(instruction, 2);
+  X64Register base = XR_RBP;
+  long long displacement = 0;
+  float_address(out, instruction.operands[0], function, base, displacement);
+  const X64Register source = require_register(instruction.operands[1]);
+  const unsigned width = type_width(instruction.type);
+  emit_size_prefix(out, width);
+  if(locked) out.byte(0xf0);
+  emit_rex(out, width == 64, source, base, width == 8);
+  if(escaped) out.byte(0x0f);
+  out.byte(width == 8 ? byte_opcode : wide_opcode);
+  emit_memory_modrm(out, source, base, displacement);
+}
+
 std::pair<std::string, std::string> conversion_types(const std::string & type)
 {
   const std::size_t split = type.find('.');
@@ -1233,10 +1253,39 @@ std::string block_target(const std::string & function_name,
   return function_name + "::" + operand.text;
 }
 
+bool emit_atomic_instruction(CodeBuffer & out,
+                             const mir_model::MirInstruction & instruction,
+                             const mir_model::MirFunction * function)
+{
+  switch(instruction.opcode) {
+  case mir_model::MirInstruction::MI_MFENCE:
+    require_operands(instruction, 0);
+    out.byte(0x0f);
+    out.byte(0xae);
+    out.byte(0xf0);
+    return true;
+  case mir_model::MirInstruction::MI_XCHG:
+    if(!function) throw std::logic_error("atomic exchange outside function");
+    emit_atomic_memory(out, instruction, *function, false, false, 0x86, 0x87);
+    return true;
+  case mir_model::MirInstruction::MI_LOCK_XADD:
+    if(!function) throw std::logic_error("atomic fetch-add outside function");
+    emit_atomic_memory(out, instruction, *function, true, true, 0xc0, 0xc1);
+    return true;
+  case mir_model::MirInstruction::MI_LOCK_CMPXCHG:
+    if(!function) throw std::logic_error("atomic compare-exchange outside function");
+    emit_atomic_memory(out, instruction, *function, true, true, 0xb0, 0xb1);
+    return true;
+  default:
+    return false;
+  }
+}
+
 void emit_instruction(CodeBuffer & out,
                       const mir_model::MirInstruction & instruction,
                       const mir_model::MirFunction * function)
 {
+  if(emit_atomic_instruction(out, instruction, function)) return;
   switch(instruction.opcode) {
   case mir_model::MirInstruction::MI_MOV:
     emit_move(out, instruction);

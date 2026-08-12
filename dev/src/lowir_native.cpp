@@ -1,6 +1,8 @@
 #include "lowir_native.h"
 #include "lowir_native_abi.h"
 #include "lowir_native_analysis.h"
+#include "lowir_native_mir.h"
+#include "lowir_native_registers.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -24,6 +26,10 @@ using abi::FunctionSignatureIndex;
 using analysis::FunctionFacts;
 using analysis::analyze_function;
 using analysis::register_mask;
+using allocation::RegisterPool;
+using allocation::XmmPool;
+using allocation::is_callee_saved;
+using namespace build;
 
 long long integer_literal(const std::string & text)
 {
@@ -34,129 +40,11 @@ long long integer_literal(const std::string & text)
   return value;
 }
 
-MirOperand reg_operand(X64Register reg)
+long long atomic_order(const Operand & operand)
 {
-  MirOperand out;
-  out.kind = MirOperand::OP_REG;
-  out.reg = reg;
-  return out;
-}
-
-MirOperand xmm_operand(XmmRegister xmm)
-{
-  MirOperand out;
-  out.kind = MirOperand::OP_XMM;
-  out.xmm = xmm;
-  return out;
-}
-
-MirOperand immediate(long long value)
-{
-  MirOperand out;
-  out.kind = MirOperand::OP_IMM;
-  out.imm = value;
-  return out;
-}
-
-MirOperand float_immediate(const std::string & text)
-{
-  MirOperand out;
-  out.kind = MirOperand::OP_FLOAT_IMM;
-  out.text = text;
-  return out;
-}
-
-MirOperand named_operand(MirOperand::Kind kind, const std::string & text)
-{
-  MirOperand out;
-  out.kind = kind;
-  out.text = text;
-  return out;
-}
-
-MirOperand dereference(X64Register reg, long long offset = 0)
-{
-  MirOperand out;
-  out.kind = MirOperand::OP_DEREF;
-  out.reg = reg;
-  out.offset = offset;
-  return out;
-}
-
-MirOperand frame_operand(long long offset)
-{
-  MirOperand out;
-  out.kind = MirOperand::OP_FRAME;
-  out.offset = offset;
-  return out;
-}
-
-MirInstruction machine_instruction(MirInstruction::Opcode opcode,
-                                   const std::string & type = std::string())
-{
-  MirInstruction out;
-  out.opcode = opcode;
-  out.type = type;
-  return out;
-}
-
-void append_operand(MirInstruction & instruction, const MirOperand & operand)
-{
-  instruction.operands.push_back(operand);
-}
-
-void append_move(std::vector<MirInstruction> & out,
-                 const MirOperand & destination,
-                 const MirOperand & source)
-{
-  if(destination.kind == MirOperand::OP_REG && source.kind == MirOperand::OP_REG &&
-     destination.reg == source.reg) return;
-  MirInstruction instruction = machine_instruction(MirInstruction::MI_MOV);
-  append_operand(instruction, destination);
-  append_operand(instruction, source);
-  out.push_back(instruction);
-}
-
-void append_load(std::vector<MirInstruction> & out,
-                 const MirOperand & destination,
-                 const MirOperand & source,
-                 const std::string & type)
-{
-  MirInstruction instruction = machine_instruction(MirInstruction::MI_LOAD, type);
-  append_operand(instruction, destination);
-  append_operand(instruction, source);
-  out.push_back(instruction);
-}
-
-void append_store(std::vector<MirInstruction> & out,
-                  const MirOperand & destination,
-                  const MirOperand & source,
-                  const std::string & type)
-{
-  MirInstruction instruction = machine_instruction(MirInstruction::MI_STORE, type);
-  append_operand(instruction, destination);
-  append_operand(instruction, source);
-  out.push_back(instruction);
-}
-
-void append_float_move(std::vector<MirInstruction> & out,
-                       const MirOperand & destination,
-                       const MirOperand & source,
-                       const std::string & type,
-                       bool omit_identity = false)
-{
-  if(omit_identity && destination.kind == MirOperand::OP_XMM &&
-     source.kind == MirOperand::OP_XMM && destination.xmm == source.xmm) return;
-  MirInstruction instruction = machine_instruction(MirInstruction::MI_FMOV, type);
-  append_operand(instruction, destination);
-  append_operand(instruction, source);
-  out.push_back(instruction);
-}
-
-bool is_callee_saved(X64Register reg)
-{
-  return reg == XR_RBX || reg == XR_R12 || reg == XR_R13 ||
-         reg == XR_R14 || reg == XR_R15;
+  if(operand.kind != Operand::OP_INTEGER)
+    throw std::runtime_error("atomic memory order must be an integer literal");
+  return integer_literal(operand.text);
 }
 
 bool is_signed_integer(const LowType & type)
@@ -226,112 +114,6 @@ struct ValueFact
   std::string pointer_global_cell;
 };
 
-class RegisterPool
-{
-public:
-  RegisterPool()
-  {
-    std::fill(used_, used_ + 16, false);
-  }
-
-  void reserve(X64Register reg)
-  {
-    if(used_[static_cast<unsigned>(reg)])
-      throw std::runtime_error("MIR register allocation conflict");
-    used_[static_cast<unsigned>(reg)] = true;
-    remember_preserve(reg);
-  }
-
-  bool is_used(X64Register reg) const
-  {
-    return used_[static_cast<unsigned>(reg)];
-  }
-
-  X64Register allocate(bool across_call)
-  {
-    X64Register result = XR_RSP;
-    if(try_allocate(across_call, result)) return result;
-    throw std::runtime_error("foundation register pool exhausted");
-  }
-
-  bool try_allocate(bool across_call, X64Register & result)
-  {
-    static const X64Register ordinary[] = {
-      XR_R8, XR_R9, XR_RBX, XR_R12, XR_R13, XR_R14, XR_R15
-    };
-    static const X64Register preserved[] = {
-      XR_RBX, XR_R12, XR_R13, XR_R14, XR_R15
-    };
-    const X64Register * choices = across_call ? preserved : ordinary;
-    const std::size_t count = across_call ?
-      sizeof(preserved) / sizeof(preserved[0]) :
-      sizeof(ordinary) / sizeof(ordinary[0]);
-    for(std::size_t i = 0; i < count; ++i) {
-      const unsigned index = static_cast<unsigned>(choices[i]);
-      if(!used_[index]) {
-        used_[index] = true;
-        remember_preserve(choices[i]);
-        result = choices[i];
-        return true;
-      }
-    }
-    return false;
-  }
-
-  void release(X64Register reg)
-  {
-    const unsigned index = static_cast<unsigned>(reg);
-    if(reg == XR_R8 || reg == XR_R9 || is_callee_saved(reg)) used_[index] = false;
-  }
-
-  const std::vector<X64Register> & preserves() const { return preserves_; }
-
-private:
-  bool used_[16];
-  std::vector<X64Register> preserves_;
-
-  void remember_preserve(X64Register reg)
-  {
-    if(is_callee_saved(reg) &&
-       std::find(preserves_.begin(), preserves_.end(), reg) == preserves_.end())
-      preserves_.push_back(reg);
-  }
-};
-
-class XmmPool
-{
-public:
-  XmmPool() { std::fill(used_, used_ + 8, false); }
-
-  XmmRegister allocate()
-  {
-    XmmRegister result = XMM_0;
-    if(try_allocate(result)) return result;
-    throw std::runtime_error("scalar XMM register pool exhausted");
-  }
-
-  bool try_allocate(XmmRegister & result)
-  {
-    // xmm6/xmm7 remain available to the encoder for immediate and memory forms.
-    for(unsigned i = 0; i != 6; ++i) {
-      if(used_[i]) continue;
-      used_[i] = true;
-      result = static_cast<XmmRegister>(i);
-      return true;
-    }
-    return false;
-  }
-
-  void release(XmmRegister xmm)
-  {
-    const unsigned index = static_cast<unsigned>(xmm);
-    if(index < 6) used_[index] = false;
-  }
-
-private:
-  bool used_[8];
-};
-
 class FunctionLowerer
 {
 public:
@@ -373,8 +155,8 @@ public:
                                     target_.scratch_bytes, 16);
     } else
       target_.stack_size = align_up(
-        std::max(std::max(target_.callee_saved_regs.size() * 8,
-                          direct_parameter_bytes), frame_bytes_), 16);
+        std::max(direct_parameter_bytes,
+                 frame_bytes_ + target_.callee_saved_regs.size() * 8), 16);
     return target_;
   }
 
@@ -883,6 +665,22 @@ private:
     for(std::size_t i = 0; i < next.args.size(); ++i)
       if(next.args[i].kind == Operand::OP_TEMP && next.args[i].text == destination)
         return true;
+    return false;
+  }
+
+  bool address_is_next_atomic_expected(const lowir_model::LowirBlock & block,
+                                       std::size_t instruction_index,
+                                       const std::string & destination) const
+  {
+    if(facts_.uses.find(destination) == facts_.uses.end() ||
+       facts_.uses.find(destination)->second != 1) return false;
+    for(std::size_t i = instruction_index + 1;
+        i < block.instructions.size() && i <= instruction_index + 2; ++i) {
+      const Instruction & next = block.instructions[i];
+      if(next.kind == Instruction::IK_ATOMIC_COMPARE_EXCHANGE)
+        return next.second.kind == Operand::OP_TEMP &&
+          next.second.text == destination;
+    }
     return false;
   }
 
@@ -1877,20 +1675,9 @@ private:
     }
   }
 
-  void emit_parallel_gpr_moves(const Instruction & instruction,
+  void emit_parallel_gpr_moves(std::vector<GprMove> moves,
                                std::vector<MirInstruction> & out)
   {
-    std::vector<GprMove> moves;
-    std::size_t gpr_index = 0;
-    for(std::size_t i = 0; i < instruction.args.size() && gpr_index < 6; ++i) {
-      if(is_scalar_float(operand_type(instruction.args[i]))) continue;
-      GprMove move;
-      move.destination = argument_register(gpr_index++);
-      move.source = resolve(instruction.args[i]);
-      move.type = operand_type(instruction.args[i]);
-      move.source_is_address = is_frame_address(instruction.args[i]);
-      moves.push_back(move);
-    }
     std::size_t remaining = moves.size();
     while(remaining) {
       bool progressed = false;
@@ -1913,6 +1700,23 @@ private:
            moves[i].source.reg == saved)
           moves[i].source = reg_operand(XR_R11);
     }
+  }
+
+  void emit_parallel_gpr_moves(const Instruction & instruction,
+                               std::vector<MirInstruction> & out)
+  {
+    std::vector<GprMove> moves;
+    std::size_t gpr_index = 0;
+    for(std::size_t i = 0; i < instruction.args.size() && gpr_index < 6; ++i) {
+      if(is_scalar_float(operand_type(instruction.args[i]))) continue;
+      GprMove move;
+      move.destination = argument_register(gpr_index++);
+      move.source = resolve(instruction.args[i]);
+      move.type = operand_type(instruction.args[i]);
+      move.source_is_address = is_frame_address(instruction.args[i]);
+      moves.push_back(move);
+    }
+    emit_parallel_gpr_moves(moves, out);
   }
 
   bool call_has_scalar_float(const Instruction & instruction) const
@@ -2063,6 +1867,165 @@ private:
       append_store(out, dereference(XR_RSP, static_cast<long long>((i - 6) * 8)),
                    reg_operand(XR_R11), operand_type(instruction.args[i]).text);
     }
+  }
+
+  GprMove atomic_move(X64Register destination, const Operand & source) const
+  {
+    GprMove move;
+    move.destination = destination;
+    move.source = resolve(source);
+    move.type = operand_type(source);
+    move.source_is_address = is_frame_address(source);
+    return move;
+  }
+
+  void append_atomic(MirInstruction::Opcode opcode, const LowType & type,
+                     const MirOperand & address, X64Register source,
+                     std::vector<MirInstruction> & out)
+  {
+    MirInstruction atomic = machine_instruction(opcode, type.text);
+    append_operand(atomic, address);
+    append_operand(atomic, reg_operand(source));
+    out.push_back(atomic);
+  }
+
+  void emit_atomic_load(const Instruction & instruction,
+                        const lowir_model::LowirBlock & block,
+                        std::size_t instruction_index,
+                        std::vector<MirInstruction> & out)
+  {
+    atomic_order(instruction.args.at(0));
+    const MirOperand destination = result_is_immediate_return(
+      block, instruction_index, instruction.dest) ? reg_operand(XR_RAX) :
+      reg_operand(allocate_result(instruction.dest, out));
+    append_load(out, destination, materialized_storage(instruction.first, out),
+                instruction.type.text);
+    normalize_integer(instruction.type, destination, out);
+    consume(instruction.first, destination.reg);
+    consume(instruction.args[0]);
+    define(instruction.dest, instruction.type, destination);
+  }
+
+  void emit_atomic_store(const Instruction & instruction,
+                         std::vector<MirInstruction> & out)
+  {
+    const bool sequential = atomic_order(instruction.args.at(0)) == 5;
+    MirOperand value = resolve(instruction.first);
+    if(sequential || value.kind != MirOperand::OP_REG) {
+      move_value_to_register(out, XR_RAX, value, operand_type(instruction.first));
+      value = reg_operand(XR_RAX);
+    }
+    const MirOperand address = materialized_storage(instruction.second, out);
+    if(sequential)
+      append_atomic(MirInstruction::MI_XCHG, instruction.type,
+                    address, XR_RAX, out);
+    else append_store(out, address, value, instruction.type.text);
+    consume(instruction.first);
+    consume(instruction.second);
+    consume(instruction.args[0]);
+  }
+
+  void emit_atomic_exchange(const Instruction & instruction,
+                            const lowir_model::LowirBlock & block,
+                            std::size_t instruction_index,
+                            std::vector<MirInstruction> & out)
+  {
+    atomic_order(instruction.args.at(0));
+    const MirOperand address = materialized_storage(instruction.first, out);
+    move_value_to_register(out, XR_RAX, resolve(instruction.second), instruction.type);
+    append_atomic(MirInstruction::MI_XCHG, instruction.type, address, XR_RAX, out);
+    MirOperand destination = reg_operand(XR_RAX);
+    if(!result_is_immediate_return(block, instruction_index, instruction.dest)) {
+      destination = reg_operand(allocate_result(instruction.dest, out));
+      append_move(out, destination, reg_operand(XR_RAX));
+    }
+    normalize_integer(instruction.type, destination, out);
+    consume(instruction.first);
+    consume(instruction.second);
+    consume(instruction.args[0]);
+    define(instruction.dest, instruction.type, destination);
+  }
+
+  void emit_atomic_add_fetch(const Instruction & instruction,
+                             const lowir_model::LowirBlock & block,
+                             std::size_t instruction_index,
+                             std::vector<MirInstruction> & out)
+  {
+    atomic_order(instruction.args.at(0));
+    std::vector<GprMove> moves;
+    moves.push_back(atomic_move(XR_RCX, instruction.first));
+    moves.push_back(atomic_move(XR_RDX, instruction.second));
+    moves.push_back(atomic_move(XR_RAX, instruction.second));
+    emit_parallel_gpr_moves(moves, out);
+    append_atomic(MirInstruction::MI_LOCK_XADD, instruction.type,
+                  dereference(XR_RCX), XR_RAX, out);
+    MirInstruction add = machine_instruction(MirInstruction::MI_ADD);
+    append_operand(add, reg_operand(XR_RAX));
+    append_operand(add, reg_operand(XR_RDX));
+    out.push_back(add);
+    MirOperand destination = reg_operand(XR_RAX);
+    if(!result_is_immediate_return(block, instruction_index, instruction.dest)) {
+      destination = reg_operand(allocate_result(instruction.dest, out));
+      append_move(out, destination, reg_operand(XR_RAX));
+    }
+    normalize_integer(instruction.type, destination, out);
+    consume(instruction.first);
+    consume(instruction.second);
+    consume(instruction.args[0]);
+    define(instruction.dest, instruction.type, destination);
+  }
+
+  void emit_atomic_compare_exchange(const Instruction & instruction,
+                                    const lowir_model::LowirBlock & block,
+                                    std::size_t instruction_index,
+                                    std::vector<MirInstruction> & out)
+  {
+    atomic_order(instruction.args.at(0));
+    atomic_order(instruction.args.at(1));
+    std::vector<GprMove> moves;
+    moves.push_back(atomic_move(XR_RCX, instruction.first));
+    moves.push_back(atomic_move(XR_RDX, instruction.second));
+    GprMove desired = atomic_move(XR_RSI, instruction.third);
+    if(desired.source.kind == MirOperand::OP_REG &&
+       (desired.source.reg == XR_RCX || desired.source.reg == XR_RDX)) {
+      append_move(out, reg_operand(XR_R10), desired.source);
+      desired.source = reg_operand(XR_R10);
+    }
+    emit_parallel_gpr_moves(moves, out);
+    append_load(out, reg_operand(XR_RAX), dereference(XR_RDX), instruction.type.text);
+    emit_gpr_move(desired, out);
+    append_atomic(MirInstruction::MI_LOCK_CMPXCHG, instruction.type,
+                  dereference(XR_RCX), XR_RSI, out);
+    append_store(out, dereference(XR_RDX), reg_operand(XR_RAX), instruction.type.text);
+    MirInstruction equal = machine_instruction(MirInstruction::MI_SETCC);
+    equal.condition = XC_E;
+    append_operand(equal, reg_operand(XR_RAX));
+    out.push_back(equal);
+    MirInstruction widen = machine_instruction(MirInstruction::MI_MOVZX);
+    append_operand(widen, reg_operand(XR_RAX));
+    append_operand(widen, reg_operand(XR_RAX));
+    out.push_back(widen);
+    MirOperand destination = reg_operand(XR_RAX);
+    if(!result_is_immediate_return(block, instruction_index, instruction.dest)) {
+      destination = reg_operand(allocate_result(instruction.dest, out));
+      append_move(out, destination, reg_operand(XR_RAX));
+    }
+    consume(instruction.first);
+    consume(instruction.second);
+    consume(instruction.third);
+    consume(instruction.args[0]);
+    consume(instruction.args[1]);
+    define(instruction.dest,
+      lowir_model::builtin_lowir_type(lowir_model::LTK_I64), destination);
+  }
+
+  void emit_atomic_fence(const Instruction & instruction,
+                         std::vector<MirInstruction> & out)
+  {
+    const long long order = atomic_order(instruction.first);
+    if(instruction.kind == Instruction::IK_ATOMIC_THREAD_FENCE && order == 5)
+      out.push_back(machine_instruction(MirInstruction::MI_MFENCE));
+    consume(instruction.first);
   }
 
   void emit_bulk(const Instruction & instruction,
@@ -2652,6 +2615,7 @@ private:
       if(registers_.try_allocate(result_crosses_call(instruction.dest), reg)) {
         destination = reg_operand(reg);
         append_move(out, destination, immediate(integer_literal(instruction.first.text)));
+        normalize_integer(instruction.type, destination, out);
       } else {
         destination = allocate_temp_home(instruction.dest, instruction.type);
         append_move(out, reg_operand(XR_RAX),
@@ -2665,6 +2629,8 @@ private:
       MirOperand destination;
       if(instruction.first.kind == Operand::OP_SLOT) {
         if(address_is_next_call_argument(block, instruction_index, instruction.dest) ||
+           address_is_next_atomic_expected(block, instruction_index,
+                                           instruction.dest) ||
            address_is_next_bulk_operand(block, instruction_index, instruction.dest) ||
            address_is_immediately_stored(block, instruction_index,
                                          instruction.dest) ||
@@ -2750,6 +2716,19 @@ private:
       out.push_back(store);
       consume(instruction.first);
       consume(instruction.second);
+    } else if(instruction.kind == Instruction::IK_ATOMIC_LOAD) {
+      emit_atomic_load(instruction, block, instruction_index, out);
+    } else if(instruction.kind == Instruction::IK_ATOMIC_STORE) {
+      emit_atomic_store(instruction, out);
+    } else if(instruction.kind == Instruction::IK_ATOMIC_EXCHANGE) {
+      emit_atomic_exchange(instruction, block, instruction_index, out);
+    } else if(instruction.kind == Instruction::IK_ATOMIC_ADD_FETCH) {
+      emit_atomic_add_fetch(instruction, block, instruction_index, out);
+    } else if(instruction.kind == Instruction::IK_ATOMIC_COMPARE_EXCHANGE) {
+      emit_atomic_compare_exchange(instruction, block, instruction_index, out);
+    } else if(instruction.kind == Instruction::IK_ATOMIC_THREAD_FENCE ||
+              instruction.kind == Instruction::IK_ATOMIC_SIGNAL_FENCE) {
+      emit_atomic_fence(instruction, out);
     } else if(instruction.kind == Instruction::IK_INDEX) {
       emit_index(instruction, out);
     } else if(instruction.kind == Instruction::IK_BINARY) {

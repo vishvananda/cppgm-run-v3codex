@@ -41,6 +41,17 @@ unsigned instruction_clobber_mask(const Instruction & instruction)
     return register_mask(XR_RAX) | register_mask(XR_RCX);
   if(instruction.kind == Instruction::IK_LOAD)
     return register_mask(XR_RCX);
+  if(instruction.kind == Instruction::IK_ATOMIC_LOAD)
+    return register_mask(XR_RCX);
+  if(instruction.kind == Instruction::IK_ATOMIC_STORE ||
+     instruction.kind == Instruction::IK_ATOMIC_EXCHANGE)
+    return register_mask(XR_RAX) | register_mask(XR_RCX);
+  if(instruction.kind == Instruction::IK_ATOMIC_ADD_FETCH)
+    return register_mask(XR_RAX) | register_mask(XR_RCX) |
+      register_mask(XR_RDX);
+  if(instruction.kind == Instruction::IK_ATOMIC_COMPARE_EXCHANGE)
+    return register_mask(XR_RAX) | register_mask(XR_RCX) |
+      register_mask(XR_RDX) | register_mask(XR_RSI);
   if(instruction.kind == Instruction::IK_BRANCH)
     return register_mask(XR_RAX);
   if(instruction.kind == Instruction::IK_SWITCH)

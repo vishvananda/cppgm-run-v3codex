@@ -97,6 +97,11 @@ const char * opcode_name(Instruction::Opcode opcode)
   case Instruction::MI_MOV: return "mov";
   case Instruction::MI_LOAD: return "load";
   case Instruction::MI_STORE: return "store";
+  case Instruction::MI_MFENCE: return "mfence";
+  case Instruction::MI_LOCK_XADD: return "lock_xadd";
+  case Instruction::MI_XCHG: return "xchg";
+  case Instruction::MI_LOCK_CMPXCHG: return "lock_cmpxchg";
+  case Instruction::MI_LOCK_CMPXCHG16B: return "lock_cmpxchg16b";
   case Instruction::MI_LEA: return "lea";
   case Instruction::MI_FMOV: return "fmov";
   case Instruction::MI_FNEG: return "fneg";
@@ -203,6 +208,10 @@ std::string instruction_text(const Instruction & instruction)
       instruction.opcode == Instruction::MI_FRET ||
       instruction.opcode == Instruction::MI_LOAD ||
       instruction.opcode == Instruction::MI_STORE ||
+      instruction.opcode == Instruction::MI_LOCK_XADD ||
+      instruction.opcode == Instruction::MI_XCHG ||
+      instruction.opcode == Instruction::MI_LOCK_CMPXCHG ||
+      instruction.opcode == Instruction::MI_LOCK_CMPXCHG16B ||
       instruction.opcode == Instruction::MI_CMP ||
       instruction.opcode == Instruction::MI_SEXT ||
       instruction.opcode == Instruction::MI_ZEXT) && !instruction.type.empty())
