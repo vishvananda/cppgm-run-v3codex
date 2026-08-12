@@ -1,5 +1,7 @@
 #include "pa12_semantic_detail.h"
 
+#include <unordered_set>
+
 #include <algorithm>
 #include <limits>
 #include <stdexcept>
@@ -8,6 +10,50 @@ namespace cppgm
 {
 namespace pa12_semantic_detail
 {
+
+bool SemanticAnalyzer::DefaultInitializationOverwritesObject(
+	EntityId entity) const
+{
+	std::vector<EntityId> pending(1, entity);
+	std::unordered_set<EntityId> visited;
+	while (!pending.empty())
+	{
+		entity = pending.back();
+		pending.pop_back();
+		if (entity == kNoEntity || entity >= program_->entities.size())
+			return false;
+		if (!visited.insert(entity).second) continue;
+		const EntityRecord& owner = program_->entities[entity];
+		if (owner.has_user_provided_constructor) return false;
+		if (owner.flavor == NAMED_UNION)
+		{
+			if (owner.union_default_member == kNoBinding ||
+				!program_->bindings[owner.union_default_member].
+					has_default_member_initializer) return false;
+			continue;
+		}
+		for (std::size_t i = 0; i < owner.direct_base_count; ++i)
+			pending.push_back(program_->DirectBase(entity, i).entity);
+		if (entity >= entity_data_members_.size()) continue;
+		for (std::size_t i = 0; i < entity_data_members_[entity].size(); ++i)
+		{
+			const BindingRecord& member =
+				program_->bindings[entity_data_members_[entity][i]];
+			if (member.has_default_member_initializer) continue;
+			TypeId type = program_->types.RemoveTopCv(member.type);
+			const TypeRecord* record = &program_->types.Get(type);
+			while (record->kind == TYPE_ARRAY)
+			{
+				type = program_->types.RemoveTopCv(record->child);
+				record = &program_->types.Get(type);
+			}
+			if (record->kind != TYPE_NAMED || !IsClassObjectType(type))
+				return false;
+			pending.push_back(record->entity);
+		}
+	}
+	return true;
+}
 
 namespace
 {

@@ -33,6 +33,7 @@ std::vector<unsigned char> DecodeStringInitializer(
 }
 
 }
+
 bool SemanticAnalyzer::IsClassObjectType(TypeId type) const
 {
 	return IsClassEntity(*program_, EntityOf(type));
@@ -697,7 +698,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeVariableInitializer(
 				PayloadSource(initializer_node) == "copy", true, false, true,
 				expression);
 			if (arguments.empty() &&
-				!program_->entities[class_entity].has_user_provided_constructor)
+				!program_->entities[class_entity].has_user_provided_constructor &&
+				!DefaultInitializationOverwritesObject(class_entity))
 				dump_.nodes[initializer.node].value_initialization = true;
 		}
 		else if (expression != kNoNode &&
@@ -1577,6 +1579,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAggregateElement(TypeId type,
 			return AnalyzeAggregateInit(type, scope, element_edge);
 		ExpressionInfo result;
 		result.node = BuildDefaultConstructorAction(type, scope);
+		if (!program_->entities[entity].has_user_provided_constructor &&
+			!DefaultInitializationOverwritesObject(entity))
+			dump_.nodes[result.node].value_initialization = true;
 		result.type = type;
 		result.category = VALUE_NONE;
 		return result;

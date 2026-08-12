@@ -41,6 +41,8 @@ bool IsConstexprClassEntity(const Program& program, EntityId entity)
 ConstexprScalarValue SemanticAnalyzer::ExpressionScalar(
 	const ExpressionInfo& value) const
 {
+	if (IsMemberPointer(value.type))
+		return ConstexprScalarValue(value.binding, value.value);
 	return value.floating_constant ?
 		ConstexprScalarValue(value.floating_value) :
 		ConstexprScalarValue(value.value);
@@ -52,10 +54,22 @@ ConstexprScalarValue SemanticAnalyzer::ConvertScalarConstant(
 {
 	source_type = program_->types.RemoveTopCv(EffectiveType(source_type));
 	target_type = program_->types.RemoveTopCv(EffectiveType(target_type));
+	const bool source_member_pointer = IsMemberPointer(source_type);
+	const bool target_member_pointer = IsMemberPointer(target_type);
+	const TypeRecord& target_record = program_->types.Get(target_type);
+	if (source_member_pointer && target_record.kind == TYPE_FUNDAMENTAL &&
+		target_record.fundamental == FUND_BOOL)
+		return ConstexprScalarValue(
+			static_cast<std::int64_t>(ScalarTruth(value)));
+	if (source_member_pointer && target_member_pointer)
+	{
+		if (value.kind != CONSTEXPR_SCALAR_MEMBER_POINTER)
+			throw std::logic_error("invalid member pointer constant");
+		return value;
+	}
 	if ((!IsIntegral(source_type, true) && !IsFloating(source_type)) ||
 		(!IsIntegral(target_type, true) && !IsFloating(target_type)))
 		throw std::logic_error("non-arithmetic scalar constant conversion");
-	const TypeRecord& target_record = program_->types.Get(target_type);
 	if (target_record.kind == TYPE_FUNDAMENTAL &&
 		target_record.fundamental == FUND_BOOL)
 		return ConstexprScalarValue(
@@ -129,8 +143,9 @@ void SemanticAnalyzer::SetExpressionScalar(ExpressionInfo* expression,
 	expression->constexpr_object = kNoConstexprObject;
 	expression->constexpr_complete_object = kNoConstexprObject;
 	expression->constexpr_address = kNoConstexprAddress;
-	expression->floating_constant =
-		value.kind == CONSTEXPR_SCALAR_FLOATING;
+	expression->floating_constant = value.kind == CONSTEXPR_SCALAR_FLOATING;
+	if (value.kind == CONSTEXPR_SCALAR_MEMBER_POINTER)
+		expression->binding = value.member_pointer;
 	if (expression->floating_constant)
 		expression->floating_value = value.floating;
 	else expression->value = value.integral;
@@ -212,6 +227,18 @@ ConstexprScalarValue SemanticAnalyzer::BindingScalar(BindingId binding) const
 	if (!record.constant)
 		throw std::logic_error("binding has no constant value");
 	BindingId owner = binding;
+	if (IsMemberPointer(record.type))
+	{
+		if ((owner >= constexpr_member_pointer_by_binding_.size() ||
+			 constexpr_member_pointer_by_binding_[owner] == kNoBinding) &&
+			record.canonical != binding)
+			owner = record.canonical;
+		const BindingId member =
+			owner < constexpr_member_pointer_by_binding_.size() ?
+			constexpr_member_pointer_by_binding_[owner] : kNoBinding;
+		return ConstexprScalarValue(member,
+			program_->bindings[owner].value);
+	}
 	if ((owner >= floating_constant_fact_by_binding_.size() ||
 		floating_constant_fact_by_binding_[owner] == 0) &&
 		record.canonical != binding)
@@ -257,6 +284,15 @@ void SemanticAnalyzer::PublishBindingScalar(BindingId binding,
 		throw std::logic_error("invalid constant binding publication");
 	BindingRecord& record = program_->bindings[binding];
 	record.constant = true;
+	if (value.kind == CONSTEXPR_SCALAR_MEMBER_POINTER)
+	{
+		record.value = value.integral;
+		if (constexpr_member_pointer_by_binding_.size() <= binding)
+			constexpr_member_pointer_by_binding_.resize(
+				static_cast<std::size_t>(binding) + 1, kNoBinding);
+		constexpr_member_pointer_by_binding_[binding] = value.member_pointer;
+		return;
+	}
 	if (value.kind == CONSTEXPR_SCALAR_INTEGRAL)
 	{
 		record.value = value.integral;
@@ -369,9 +405,11 @@ bool SemanticAnalyzer::BuildConstexprObjectElement(TypeId type,
 		*result = ConstexprObjectElement(member, address, true);
 		return true;
 	}
-	if (IsIntegral(type, true) || IsFloating(type))
+	if (IsIntegral(type, true) || IsFloating(type) || IsMemberPointer(type))
 	{
-		ConstexprScalarValue scalar(static_cast<std::int64_t>(0));
+		ConstexprScalarValue scalar = IsMemberPointer(type) ?
+			ConstexprScalarValue(kNoBinding, static_cast<std::int64_t>(0)) :
+			ConstexprScalarValue(static_cast<std::int64_t>(0));
 		if (value.node != kNoDumpEdge)
 		{
 			if (!value.constant ||
@@ -436,6 +474,9 @@ std::uint32_t SemanticAnalyzer::InternConstexprObject(TypeId type,
 				element.scalar.kind == CONSTEXPR_SCALAR_FLOATING ?
 				std::hash<long double>()(element.scalar.floating) :
 				std::hash<std::int64_t>()(element.scalar.integral));
+			if (element.scalar.kind == CONSTEXPR_SCALAR_MEMBER_POINTER)
+				hash = MixConstexprHash(hash, std::hash<BindingId>()(
+					element.scalar.member_pointer));
 		}
 	}
 	const std::pair<std::unordered_multimap<std::size_t,
@@ -663,6 +704,8 @@ ExpressionInfo SemanticAnalyzer::MaterializeConstexprObject(
 
 bool SemanticAnalyzer::ScalarTruth(const ConstexprScalarValue& value) const
 {
+	if (value.kind == CONSTEXPR_SCALAR_MEMBER_POINTER)
+		return value.member_pointer != kNoBinding || value.integral != 0;
 	return value.kind == CONSTEXPR_SCALAR_FLOATING ?
 		value.floating != 0.0L : value.integral != 0;
 }
@@ -678,6 +721,18 @@ ConstexprScalarValue SemanticAnalyzer::ApplyConstantScalarBinary(
 		return ConstexprScalarValue(static_cast<std::int64_t>(
 			ScalarTruth(left) || ScalarTruth(right)));
 	if (operation == ",") return right;
+	if (left.kind == CONSTEXPR_SCALAR_MEMBER_POINTER ||
+		right.kind == CONSTEXPR_SCALAR_MEMBER_POINTER)
+	{
+		if (left.kind != CONSTEXPR_SCALAR_MEMBER_POINTER ||
+			right.kind != CONSTEXPR_SCALAR_MEMBER_POINTER ||
+			(operation != "==" && operation != "!="))
+			throw std::runtime_error(
+				"unsupported member pointer constant operator");
+		const bool equal = left == right;
+		return ConstexprScalarValue(static_cast<std::int64_t>(
+			operation == "==" ? equal : !equal));
+	}
 	if (operand_type != kNoType && IsFloating(operand_type))
 	{
 		if (left.kind != CONSTEXPR_SCALAR_FLOATING ||
@@ -709,7 +764,7 @@ ConstexprScalarValue SemanticAnalyzer::ApplyConstantScalarBinary(
 NameId SemanticAnalyzer::InternScalar(TypeId type,
 	const ConstexprScalarValue& value)
 {
-	if (value.kind == CONSTEXPR_SCALAR_INTEGRAL)
+	if (value.kind != CONSTEXPR_SCALAR_FLOATING)
 		return InternNumber(value.integral);
 	std::ostringstream spelling;
 	spelling.imbue(std::locale::classic());
@@ -985,7 +1040,8 @@ bool SemanticAnalyzer::TryAnalyzeConstexprLocal(
 			SetExpressionSubobject(
 				result, value.object, value.complete_object);
 		else if (IsIntegral(EffectiveType(value.type), true) ||
-			IsFloating(EffectiveType(value.type)))
+			IsFloating(EffectiveType(value.type)) ||
+			IsMemberPointer(EffectiveType(value.type)))
 			SetExpressionScalar(result, value.value);
 		if (value.address != kNoConstexprAddress)
 			SetExpressionLvalueAddress(result, value.address);
@@ -1269,7 +1325,7 @@ void SemanticAnalyzer::RecordStaticConstantInitializer(
 		// evaluation-only call trees do not create runtime emission demand.
 		if (record.constant && (IsIntegral(record.type, true) ||
 			IsFloating(record.type) || IsPointer(record.type) ||
-			IsNullptr(record.type)))
+			IsNullptr(record.type) || IsMemberPointer(record.type)))
 			continue;
 
 		BindingId dependency = kNoBinding;
@@ -1377,7 +1433,8 @@ void SemanticAnalyzer::PublishConstantVariableInitializer(BindingId binding,
 		throw std::runtime_error(
 			"constexpr pointer/reference initializer is not constant");
 	if (spec.is_constexpr && !program_->types.IsReference(type) &&
-		(IsIntegral(type, true) || IsFloating(type)) && !initializer.constant)
+		(IsIntegral(type, true) || IsFloating(type) || IsMemberPointer(type)) &&
+		!initializer.constant)
 		throw std::runtime_error(
 			"constexpr scalar initializer is not constant");
 	if (spec.is_constexpr && !program_->types.IsReference(type) &&
@@ -1387,11 +1444,14 @@ void SemanticAnalyzer::PublishConstantVariableInitializer(BindingId binding,
 			"constexpr object initializer is not constant");
 	if (!initializer.constant ||
 		(!spec.is_constexpr &&
-		 !(IsConst(type) && (IsIntegral(type, true) || IsFloating(type))) &&
+		 !(IsConst(type) && (IsIntegral(type, true) || IsFloating(type) ||
+			IsMemberPointer(type))) &&
 		 !(constexpr_evaluation_depth_ != 0 &&
-			(IsIntegral(type, true) || IsFloating(type)))))
+			(IsIntegral(type, true) || IsFloating(type) ||
+			 IsMemberPointer(type)))))
 		return;
-	const bool scalar_type = IsIntegral(type, true) || IsFloating(type);
+	const bool scalar_type = IsIntegral(type, true) || IsFloating(type) ||
+		IsMemberPointer(type);
 	if (initializer_address != kNoConstexprAddress)
 	{
 		PublishBindingAddress(binding, initializer_address);
@@ -1504,7 +1564,8 @@ bool SemanticAnalyzer::EvaluateConstexprDeclaration(NodeId node, ScopeId scope)
 								parsed.name, 0, parsed.type, address);
 						else valid =
 							(IsIntegral(parsed.type, true) ||
-							 IsFloating(parsed.type)) &&
+							 IsFloating(parsed.type) ||
+							 IsMemberPointer(parsed.type)) &&
 							AddConstexprLocal(parsed.name, 0, parsed.type,
 								ExpressionScalar(value));
 					}
@@ -1542,6 +1603,7 @@ bool SemanticAnalyzer::EvaluateConstexprCondition(
 		ExpressionInfo evaluated;
 		if (parsed.name == 0 || initializer == kNoNode ||
 			(!IsIntegral(parsed.type, true) && !IsFloating(parsed.type) &&
+			 !IsMemberPointer(parsed.type) &&
 			 !IsPointer(EffectiveType(parsed.type))) ||
 			!AnalyzeConstexprInitializer(
 				initializer, scope, parsed.type, &evaluated) ||
@@ -1558,6 +1620,7 @@ bool SemanticAnalyzer::EvaluateConstexprCondition(
 		!AnalyzeConstexprExpression(first, scope, kNoType, &expression) ||
 		(!IsIntegral(expression.type, true) &&
 		 !IsFloating(expression.type) &&
+		 !IsMemberPointer(expression.type) &&
 		 !IsPointer(EffectiveType(expression.type)))) return false;
 	*value = ExpressionTruth(expression);
 	return true;
@@ -1847,7 +1910,8 @@ bool SemanticAnalyzer::AddConstexprInvocationArguments(
 			address == kNoConstexprAddress &&
 			arguments[i].category != VALUE_LVALUE && arguments[i].constant &&
 			(IsIntegral(EffectiveType(type), true) ||
-			 IsFloating(EffectiveType(type)));
+			 IsFloating(EffectiveType(type)) ||
+			 IsMemberPointer(EffectiveType(type)));
 		if (scalar_temporary)
 		{
 			const TypeId object_type = program_->types.RemoveTopCv(
@@ -1868,7 +1932,8 @@ bool SemanticAnalyzer::AddConstexprInvocationArguments(
 				parameter.pack_name, type, address, &local);
 			if (added && reference && arguments[i].constant &&
 				(IsIntegral(EffectiveType(type), true) ||
-				 IsFloating(EffectiveType(type))))
+				 IsFloating(EffectiveType(type)) ||
+				 IsMemberPointer(EffectiveType(type))))
 				constexpr_locals_[local].value = ConvertScalarConstant(
 					arguments[i].type, type, ExpressionScalar(arguments[i]));
 			if (added && object != kNoConstexprObject &&
@@ -1885,7 +1950,8 @@ bool SemanticAnalyzer::AddConstexprInvocationArguments(
 				ExpressionCompleteObject(arguments[i]), 0);
 		else if (arguments[i].constant &&
 			(IsIntegral(EffectiveType(type), true) ||
-			 IsFloating(EffectiveType(type))))
+			 IsFloating(EffectiveType(type)) ||
+			 IsMemberPointer(EffectiveType(type))))
 			added = AddConstexprLocal(parameter.name, parameter.pack_name, type,
 				ConvertScalarConstant(arguments[i].type, type,
 					ExpressionScalar(arguments[i])));
@@ -1919,15 +1985,18 @@ bool SemanticAnalyzer::AnalyzeConstexprMemberInitializer(
 	std::vector<ExpressionInfo> prepared;
 	const bool expanded = !aggregate_braced && ExpandCallArgumentPacks(
 		syntax, scope, &syntax, &prepared);
-	if (IsIntegral(object_type, true) || IsFloating(object_type))
+	if (IsIntegral(object_type, true) || IsFloating(object_type) ||
+		IsMemberPointer(object_type))
 	{
 		if (syntax.empty())
 		{
 			value->node = kNoDumpEdge;
 			value->type = type;
 			value->category = VALUE_NONE;
-			SetExpressionScalar(value, NormalizeScalarConstant(type,
-				ConstexprScalarValue(static_cast<std::int64_t>(0))));
+			const ConstexprScalarValue zero = IsMemberPointer(object_type) ?
+				ConstexprScalarValue(kNoBinding, static_cast<std::int64_t>(0)) :
+				ConstexprScalarValue(static_cast<std::int64_t>(0));
+			SetExpressionScalar(value, NormalizeScalarConstant(type, zero));
 			return true;
 		}
 		if (syntax.size() != 1) return false;
@@ -2283,7 +2352,8 @@ bool SemanticAnalyzer::EvaluateConstexprConstructorInitializers(
 				const TypeId member_type = program_->types.RemoveTopCv(
 					EffectiveType(member.type));
 				const TypeRecord& member_record = program_->types.Get(member_type);
-				if (IsIntegral(member_type, true) || IsFloating(member_type))
+				if (IsIntegral(member_type, true) || IsFloating(member_type) ||
+					IsMemberPointer(member_type))
 				{
 					valid = constructor.defaulted_constructor ||
 						constructor.implicit_constructor;
@@ -2379,8 +2449,9 @@ bool SemanticAnalyzer::TryEvaluateConstexprConstructor(BindingId function,
 			ExpressionAddress(arguments[i]) == kNoConstexprAddress &&
 			arguments[i].constexpr_lvalue_address == kNoConstexprAddress &&
 			(!arguments[i].constant ||
-			 (!IsIntegral(EffectiveType(type), true) &&
-			  !IsFloating(EffectiveType(type))))) return false;
+				 (!IsIntegral(EffectiveType(type), true) &&
+				  !IsFloating(EffectiveType(type)) &&
+				  !IsMemberPointer(EffectiveType(type))))) return false;
 	}
 	if (constexpr_evaluation_depth_ == 0) constexpr_evaluation_steps_ = 0;
 	if (constexpr_evaluation_depth_ >= kMaxConstexprDepth ||
@@ -2512,7 +2583,8 @@ bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 		IsConstexprClassEntity(*program_, result_object_record.entity);
 	if (!info.constexpr_function || info.definition_body == kNoNode ||
 		(!address_result && !object_result &&
-		 !IsIntegral(result_type, true) && !IsFloating(result_type)) ||
+		 !IsIntegral(result_type, true) && !IsFloating(result_type) &&
+		 !IsMemberPointer(result_type)) ||
 		arguments.size() != info.parameters.size() ||
 		(nonstatic_member && receiver_object == kNoConstexprObject &&
 		 receiver_address == kNoConstexprAddress))
@@ -2542,7 +2614,8 @@ bool SemanticAnalyzer::TryEvaluateConstexprFunction(BindingId function,
 			argument.kind |= CONSTEXPR_CALL_ARGUMENT_ADDRESS;
 		if (arguments[i].constant &&
 			(IsIntegral(EffectiveType(type), true) ||
-			 IsFloating(EffectiveType(type))))
+			 IsFloating(EffectiveType(type)) ||
+			 IsMemberPointer(EffectiveType(type))))
 		{
 			argument.kind |= CONSTEXPR_CALL_ARGUMENT_SCALAR;
 			argument.scalar = ConvertScalarConstant(

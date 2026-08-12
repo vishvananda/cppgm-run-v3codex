@@ -46,6 +46,32 @@ TypeId SemanticAnalyzer::UnaryAddressOperandTarget(
 		shape.child : kNoType;
 }
 
+TypeId SemanticAnalyzer::UnaryAddressContextTarget(
+	const std::string& operation, TypeId target, NodeId operand, ScopeId scope)
+{
+	return operation == "&" && target == kNoType ?
+		MemberPointerAddressSyntaxTarget(operand, scope) : target;
+}
+
+TypeId SemanticAnalyzer::MemberPointerAddressSyntaxTarget(
+	NodeId syntax, ScopeId scope)
+{
+	while (syntax != kNoNode &&
+		arena_->IsTag(syntax, "parenthesized-expression"))
+		syntax = FirstSemanticChild(syntax);
+	if (syntax == kNoNode || !arena_->IsTag(syntax, "id-expression") ||
+		FindChild(syntax, "structured-type-name") == kNoNode)
+		return kNoType;
+	const LookupResult found = LookupStructuredName(
+		syntax, scope, LOOKUP_ORDINARY);
+	if (found.ordinary == kNoBinding) return kNoType;
+	const BindingRecord& binding = program_->bindings[found.ordinary];
+	if (!binding.non_static_data_member || binding.member_owner == kNoEntity)
+		return kNoType;
+	return program_->types.MemberPointer(
+		program_->entities[binding.member_owner].type, binding.type);
+}
+
 TypeId SemanticAnalyzer::MemberPointerAddressTarget(
 	const ExpressionInfo& operand, NodeId syntax, TypeId target) const
 {
@@ -55,6 +81,9 @@ TypeId SemanticAnalyzer::MemberPointerAddressTarget(
 		FindChild(syntax, "structured-type-name") == kNoNode)
 		return kNoType;
 	const BindingRecord& binding = program_->bindings[operand.binding];
+	if (binding.non_static_data_member && binding.member_owner != kNoEntity)
+		return program_->types.MemberPointer(
+			program_->entities[binding.member_owner].type, binding.type);
 	if (binding.kind != BIND_FUNCTION || binding.static_member_function)
 		return kNoType;
 	const FunctionInfo& function = GetFunction(operand.binding);
@@ -109,7 +138,7 @@ bool SemanticAnalyzer::ApplyMemberPointerTarget(
 		dump_.nodes[value->node].null_member_pointer_constant =
 			IsNullptr(source);
 		SetExpressionScalar(value, ConstexprScalarValue(
-			static_cast<std::int64_t>(0)));
+			kNoBinding, static_cast<std::int64_t>(0)));
 		return true;
 	}
 	if (from.kind != TYPE_MEMBER_POINTER) return false;
@@ -140,9 +169,9 @@ bool SemanticAnalyzer::FormMemberPointerAddress(
 		throw std::runtime_error("data member pointer offset is too large");
 	*result_type = shape;
 	*constant = true;
-	*scalar = ConstexprScalarValue(member.non_static_data_member ?
-		static_cast<std::int64_t>(member.member_offset + 1) : 0);
 	*selected = member.canonical;
+	*scalar = ConstexprScalarValue(*selected, member.non_static_data_member ?
+		static_cast<std::int64_t>(member.member_offset + 1) : 0);
 	return true;
 }
 
@@ -162,7 +191,18 @@ bool SemanticAnalyzer::TryAnalyzeMemberPointerApplication(
 			"right operand is not a member pointer");
 		return true;
 	}
-	TypeId object_type = program_->types.RemoveTopCv(EffectiveType(left.type));
+	ExpressionInfo object_expression = left;
+	if (operation == ".*" && object_expression.category == VALUE_PRVALUE &&
+		IsClassObjectType(object_expression.type) &&
+		dump_.nodes[object_expression.node].kind != DUMP_TEMPORARY_OBJECT)
+		object_expression = MaterializeTemporary(object_expression);
+	TypeId qualified_object = EffectiveType(object_expression.type);
+	std::uint8_t object_cv = CV_NONE;
+	const TypeRecord qualified_object_record = program_->types.Get(
+		qualified_object);
+	if (qualified_object_record.kind == TYPE_QUALIFIED)
+		object_cv = qualified_object_record.cv;
+	TypeId object_type = program_->types.RemoveTopCv(qualified_object);
 	if (operation == "->*")
 	{
 		const TypeRecord object_pointer = program_->types.Get(Decay(object_type));
@@ -172,7 +212,10 @@ bool SemanticAnalyzer::TryAnalyzeMemberPointerApplication(
 				"arrow-star requires an object pointer");
 			return true;
 		}
-		object_type = program_->types.RemoveTopCv(object_pointer.child);
+		qualified_object = object_pointer.child;
+		const TypeRecord pointee = program_->types.Get(qualified_object);
+		object_cv = pointee.kind == TYPE_QUALIFIED ? pointee.cv : CV_NONE;
+		object_type = program_->types.RemoveTopCv(qualified_object);
 	}
 	const EntityId object = EntityOf(object_type);
 	const EntityId owner = EntityOf(static_cast<TypeId>(pointer.bound));
@@ -184,16 +227,93 @@ bool SemanticAnalyzer::TryAnalyzeMemberPointerApplication(
 		return true;
 	}
 	const bool function_member = program_->types.IsFunction(pointer.child);
+	TypeId result_type = pointer.child;
+	if (!function_member && object_cv != CV_NONE)
+		result_type = program_->types.Qualify(result_type, object_cv);
 	const ValueCategory category = function_member ? VALUE_LVALUE :
-		left.category == VALUE_LVALUE ? VALUE_LVALUE : VALUE_XVALUE;
+		operation == "->*" || object_expression.category == VALUE_LVALUE ?
+		VALUE_LVALUE : VALUE_XVALUE;
 	const std::uint32_t expression = MakeDump(DUMP_BINARY_EXPRESSION,
-		pointer.child, category, program_->names.Intern(display_operation));
+		result_type, category, program_->names.Intern(display_operation));
 	dump_.nodes[expression].operand_type = pointer_type;
-	dump_.Add(expression, left.node);
+	std::uint64_t projection_offset = 0;
+	const std::size_t projections = object == owner ? 0 :
+		BaseProjectionCount(object_type,
+			program_->entities[owner].type, &projection_offset);
+	if (projections == std::numeric_limits<std::size_t>::max() ||
+		projections > std::numeric_limits<std::uint32_t>::max())
+	{
+		*result = CandidateExpressionFailure(
+			"member pointer object has no unique base path");
+		return true;
+	}
+	dump_.nodes[expression].base_projection_count =
+		static_cast<std::uint32_t>(projections);
+	dump_.nodes[expression].base_projection_offset = projection_offset;
+	dump_.nodes[expression].has_base_projection_offset = true;
+	dump_.Add(expression, object_expression.node);
 	dump_.Add(expression, right.node);
 	result->node = expression;
-	result->type = pointer.child;
+	result->type = result_type;
 	result->category = category;
+	BindingId selected = kNoBinding;
+	if (right.constant)
+	{
+		const ConstexprScalarValue value = ExpressionScalar(right);
+		if (value.kind == CONSTEXPR_SCALAR_MEMBER_POINTER)
+			selected = value.member_pointer;
+	}
+	if (selected != kNoBinding && selected < program_->bindings.size())
+	{
+		selected = program_->bindings[selected].canonical;
+		const BindingRecord& member = program_->bindings[selected];
+		if (member.member_owner == owner &&
+			(member.non_static_data_member || member.kind == BIND_FUNCTION))
+		{
+			result->binding = selected;
+			const std::uint32_t object_value =
+				ExpressionObject(object_expression);
+			const std::uint32_t complete_object =
+				ExpressionCompleteObject(object_expression);
+			std::uint32_t object_address = operation == "->*" ?
+				ExpressionAddress(object_expression) :
+				LvalueAddress(&object_expression);
+			if (function_member)
+			{
+				if (object_address != kNoConstexprAddress)
+					SetExpressionAddress(result, object_address);
+				if (object_value != kNoConstexprObject &&
+					complete_object != kNoConstexprObject)
+					SetExpressionSubobject(
+						result, object_value, complete_object);
+			}
+			else
+			{
+				if (projection_offset != 0 &&
+					object_address != kNoConstexprAddress &&
+					projection_offset <= static_cast<std::uint64_t>(
+						std::numeric_limits<std::int64_t>::max()))
+					object_address = OffsetConstexprAddress(object_address,
+						static_cast<std::int64_t>(projection_offset), false);
+				const ConstexprObjectElement* element =
+					ConstexprClassMemberAt(object_value, selected);
+				if (element) SetExpressionObjectElement(result, *element);
+				if (object_address != kNoConstexprAddress &&
+					member.member_offset <= static_cast<std::uint64_t>(
+						std::numeric_limits<std::int64_t>::max()))
+				{
+					const std::uint32_t member_address = OffsetConstexprAddress(
+						object_address,
+						static_cast<std::int64_t>(member.member_offset), true,
+						static_cast<std::int64_t>(program_->SizeOf(
+							EffectiveType(member.type))));
+					if (member_address != kNoConstexprAddress)
+						SetExpressionLvalueAddress(result, member_address);
+				}
+			}
+		}
+	}
+	RecordExpressionFacts(*result);
 	++expression_count_;
 	return true;
 }

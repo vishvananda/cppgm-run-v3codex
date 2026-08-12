@@ -7,6 +7,7 @@
 
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace cppgm
 {
@@ -36,6 +37,27 @@ template <class Derived>
 class LocalStaticLowering
 {
 protected:
+	bool HasMemberFunctionPointerRelocation(std::uint32_t node) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		std::vector<std::uint32_t> pending(1, node);
+		while (!pending.empty())
+		{
+			const std::uint32_t current = pending.back();
+			pending.pop_back();
+			const DumpNode& record = derived.arena_.nodes[current];
+			const TypeRecord& type = derived.program_.types.Get(
+				derived.program_.types.RemoveTopCv(record.type));
+			if (type.kind == TYPE_MEMBER_POINTER &&
+				derived.program_.types.IsFunction(type.child) &&
+				record.binding != kNoBinding) return true;
+			const NodeChildren children = derived.Children(current);
+			for (std::size_t i = 0; i < children.size(); ++i)
+				pending.push_back(children[i]);
+		}
+		return false;
+	}
+
 	std::string LocalStaticSymbolName(const LocalStaticObjectAction& action,
 		bool weak, bool presentation) const
 	{
@@ -70,7 +92,8 @@ protected:
 				HexLocalStaticSymbolComponent(source);
 		}
 		else if (presentation && !weak && action.initializer != kNoDumpEdge &&
-			derived.arena_.nodes[action.initializer].contains_temporary_object &&
+			(derived.arena_.nodes[action.initializer].contains_temporary_object ||
+			 HasMemberFunctionPointerRelocation(action.initializer)) &&
 			action.source_token_last >= action.source_token_first)
 			name += object_name + "__tokens" +
 				std::to_string(action.source_token_first) + "_" +

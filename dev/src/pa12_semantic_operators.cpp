@@ -212,11 +212,12 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 {
 	const bool postfix = arena_->IsTag(node, "postfix-expression");
 	const std::string operation = PayloadSource(node);
-	const TypeId operand_target =
-		UnaryAddressOperandTarget(operation, target);
 	const NodeId operand_syntax = FirstSemanticChild(node);
-	ExpressionInfo operand = AnalyzeExpression(
-		operand_syntax, scope, operand_target);
+	const TypeId address_context_target = UnaryAddressContextTarget(
+		operation, target, operand_syntax, scope);
+	const TypeId operand_target =
+		UnaryAddressOperandTarget(operation, address_context_target);
+	ExpressionInfo operand = AnalyzeExpression(operand_syntax, scope, operand_target);
 	if (CandidateSubstitutionFailed()) return operand;
 	// Preserve an unresolved overload set until a surrounding call or
 	// constructor supplies the function-pointer target.  The target-directed
@@ -242,11 +243,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 	if (TryAnalyzeOverloadedOperator(operation, scope, overloaded_syntax,
 		overloaded_operands, false, target, &overloaded)) return overloaded;
 	const std::uint32_t operand_object = ExpressionObject(operand);
-	const std::uint32_t operand_complete_object =
-		ExpressionCompleteObject(operand);
+	const std::uint32_t operand_complete_object = ExpressionCompleteObject(operand);
 	(void)ApplyBuiltinUnaryConversion(operation, &operand);
 	const TypeId address_target = MemberPointerAddressTarget(
-		operand, operand_syntax, target);
+		operand, operand_syntax, address_context_target);
 	const bool member_pointer_address =
 		address_target != kNoType && IsMemberPointer(address_target);
 	if (operation == "&" && operand.binding != kNoBinding &&
@@ -273,8 +273,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 		if (operand.category != VALUE_LVALUE)
 			throw std::runtime_error("address-of requires lvalue");
 		if (member_pointer_address)
-			(void)FormMemberPointerAddress(operand, address_target, &result_type, &constant,
-				&scalar, &selected_member);
+			(void)FormMemberPointerAddress(operand, address_target, &result_type,
+				&constant, &scalar, &selected_member);
 		else
 		{
 			result_type = program_->types.Pointer(result_type);

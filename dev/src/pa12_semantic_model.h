@@ -362,7 +362,8 @@ struct DeclaratorInfo
 enum ConstexprScalarKind
 {
 	CONSTEXPR_SCALAR_INTEGRAL,
-	CONSTEXPR_SCALAR_FLOATING
+	CONSTEXPR_SCALAR_FLOATING,
+	CONSTEXPR_SCALAR_MEMBER_POINTER
 };
 
 struct ConstexprScalarValue
@@ -370,18 +371,27 @@ struct ConstexprScalarValue
 	ConstexprScalarKind kind;
 	std::int64_t integral;
 	long double floating;
+	BindingId member_pointer;
 
 	ConstexprScalarValue()
-		: kind(CONSTEXPR_SCALAR_INTEGRAL), integral(0), floating(0.0L) {}
+		: kind(CONSTEXPR_SCALAR_INTEGRAL), integral(0), floating(0.0L),
+		  member_pointer(kNoBinding) {}
 	explicit ConstexprScalarValue(std::int64_t value)
-		: kind(CONSTEXPR_SCALAR_INTEGRAL), integral(value), floating(0.0L) {}
+		: kind(CONSTEXPR_SCALAR_INTEGRAL), integral(value), floating(0.0L),
+		  member_pointer(kNoBinding) {}
 	explicit ConstexprScalarValue(long double value)
-		: kind(CONSTEXPR_SCALAR_FLOATING), integral(0), floating(value) {}
+		: kind(CONSTEXPR_SCALAR_FLOATING), integral(0), floating(value),
+		  member_pointer(kNoBinding) {}
+	ConstexprScalarValue(BindingId member, std::int64_t value)
+		: kind(CONSTEXPR_SCALAR_MEMBER_POINTER), integral(value), floating(0.0L),
+		  member_pointer(member) {}
 
 	bool operator==(const ConstexprScalarValue& other) const
 	{
 		return kind == other.kind && (kind == CONSTEXPR_SCALAR_FLOATING ?
-			floating == other.floating : integral == other.integral);
+			floating == other.floating : integral == other.integral &&
+			(kind != CONSTEXPR_SCALAR_MEMBER_POINTER ||
+			 member_pointer == other.member_pointer));
 	}
 };
 
@@ -664,12 +674,20 @@ struct ConstexprCallKeyHash
 				0x9e3779b9u + (hash << 6) + (hash >> 2);
 			if (argument.kind & CONSTEXPR_CALL_ARGUMENT_SCALAR)
 			{
+				hash ^= std::hash<int>()(
+					static_cast<int>(argument.scalar.kind)) +
+					0x9e3779b9u + (hash << 6) + (hash >> 2);
 				const std::size_t value_hash =
 					argument.scalar.kind == CONSTEXPR_SCALAR_FLOATING ?
 					std::hash<long double>()(argument.scalar.floating) :
 					std::hash<std::int64_t>()(argument.scalar.integral);
 				hash ^= value_hash +
 					0x9e3779b9u + (hash << 6) + (hash >> 2);
+				if (argument.scalar.kind ==
+					CONSTEXPR_SCALAR_MEMBER_POINTER)
+					hash ^= std::hash<BindingId>()(
+						argument.scalar.member_pointer) +
+						0x9e3779b9u + (hash << 6) + (hash >> 2);
 			}
 			if (argument.kind & CONSTEXPR_CALL_ARGUMENT_OBJECT)
 			{

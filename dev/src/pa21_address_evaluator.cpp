@@ -240,6 +240,49 @@ bool SemanticAnalyzer::TryAnalyzeConstexprIndirectCall(ExpressionInfo* callee,
 {
 	if (unevaluated_depth_ != 0) return false;
 	if (callee->indirect_constant_designator) return false;
+	if (callee->binding != kNoBinding &&
+		callee->binding < program_->bindings.size() &&
+		program_->bindings[callee->binding].kind == BIND_FUNCTION &&
+		!program_->bindings[callee->binding].static_member_function &&
+		callee->node < dump_.nodes.size() &&
+		dump_.nodes[callee->node].kind == DUMP_BINARY_EXPRESSION)
+	{
+		const DumpNode& application = dump_.nodes[callee->node];
+		const std::string operation =
+			program_->names.Get(application.text);
+		const bool dot_star = operation.find(".*") != std::string::npos;
+		const bool arrow_star = operation.find("->*") != std::string::npos;
+		if ((dot_star || arrow_star) &&
+			application.first_edge != kNoDumpEdge)
+		{
+			const std::uint32_t object_node =
+				dump_.edges[application.first_edge].child;
+			ExpressionInfo object;
+			object.node = object_node;
+			object.type = dump_.nodes[object_node].type;
+			object.category = dump_.nodes[object_node].category;
+			const std::uint32_t receiver_object = ExpressionObject(*callee);
+			const std::uint32_t receiver_complete =
+				ExpressionCompleteObject(*callee);
+			const std::uint32_t receiver_address = ExpressionAddress(*callee);
+			if (receiver_address != kNoConstexprAddress)
+			{
+				if (arrow_star) SetExpressionAddress(&object, receiver_address);
+				else SetExpressionLvalueAddress(&object, receiver_address);
+			}
+			if (receiver_object != kNoConstexprObject &&
+				receiver_complete != kNoConstexprObject)
+				SetExpressionSubobject(
+					&object, receiver_object, receiver_complete);
+			if (dot_star) object = MakeImplicitObjectPointer(object);
+			const EntityId owner =
+				program_->bindings[callee->binding].member_owner;
+			*result = BuildResolvedCall(callee->binding, scope,
+				argument_syntax, arguments, &object, target, owner, 0,
+				argument_conversions, true);
+			return true;
+		}
+	}
 	std::uint32_t callable_address = ExpressionAddress(*callee);
 	if (callable_address == kNoConstexprAddress)
 		callable_address = callee->constexpr_lvalue_address;
@@ -295,7 +338,8 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprReturn(NodeId expression,
 		*result_complete_object = ExpressionCompleteObject(value);
 		if (value.constant &&
 			(IsIntegral(EffectiveType(value.type), true) ||
-			 IsFloating(EffectiveType(value.type))))
+			 IsFloating(EffectiveType(value.type)) ||
+			 IsMemberPointer(EffectiveType(value.type))))
 		{
 			*result = ExpressionScalar(value);
 			*result_has_scalar = true;
@@ -325,7 +369,8 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprReturn(NodeId expression,
 	else
 	{
 		if (!value.constant ||
-			(!IsIntegral(value.type, true) && !IsFloating(value.type)))
+			(!IsIntegral(value.type, true) && !IsFloating(value.type) &&
+			 !IsMemberPointer(value.type)))
 			return CONSTEXPR_FLOW_INVALID;
 		*result = ConvertScalarConstant(
 			value.type, result_type, ExpressionScalar(value));

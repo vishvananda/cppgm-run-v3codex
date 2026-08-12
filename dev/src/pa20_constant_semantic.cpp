@@ -99,6 +99,8 @@ void SemanticAnalyzer::RecordExpressionFacts(const ExpressionInfo& value)
 		value.constexpr_object == kNoConstexprObject &&
 		(value.constexpr_address == kNoConstexprAddress || null_address);
 	node.integer_literal_zero = value.integer_literal_zero;
+	if (IsMemberPointer(value.type) && node.binding == kNoBinding)
+		node.binding = value.binding;
 	if (!value.floating_constant &&
 		value.constexpr_object == kNoConstexprObject &&
 		(value.constexpr_address == kNoConstexprAddress || null_address))
@@ -184,13 +186,16 @@ bool SemanticAnalyzer::TryFoldConstantClassConversion(
 		!object.trivial_destructor) return false;
 	conversion = program_->bindings[conversion].canonical;
 	FunctionInfo function = GetFunction(conversion);
+	const EntityId conversion_owner =
+		program_->bindings[conversion].member_owner;
 	if (function.conversion_function && function.definition_body == kNoNode &&
-		entity < class_template_pattern_by_entity_.size() &&
-		class_template_pattern_by_entity_[entity] != kNoDumpEdge)
+		conversion_owner != kNoEntity &&
+		conversion_owner < class_template_pattern_by_entity_.size() &&
+		class_template_pattern_by_entity_[conversion_owner] != kNoDumpEdge)
 	{
-		DemandClassTemplateMemberDefinitions(entity);
+		DemandClassTemplateMemberDefinitions(conversion_owner);
 		const BindingId specialization =
-			program_->entities[entity].declaration;
+			program_->entities[conversion_owner].declaration;
 		if (specialization != kNoBinding && specialization <
 			class_template_member_definition_demand_states_.size())
 			ApplyDemandedClassTemplateMemberDefinitions(specialization);
@@ -225,7 +230,31 @@ bool SemanticAnalyzer::TryFoldConstantClassConversion(
 		program_->names.Intern(PayloadSource(expression)) : path.Last();
 	const LookupResult found = program_->LookupMember(
 		entity, name, LOOKUP_ORDINARY);
-	if (found.ordinary == kNoBinding) return false;
+	if (found.ordinary == kNoBinding)
+	{
+		if (conversion_owner == kNoEntity ||
+			conversion_owner >= class_template_pattern_by_entity_.size())
+			return false;
+		const std::size_t pattern =
+			class_template_pattern_by_entity_[conversion_owner];
+		const EntityRecord& owner = program_->entities[conversion_owner];
+		if (pattern == kNoDumpEdge || pattern >= class_templates_.size() ||
+			owner.template_argument_begin == kNoBinding) return false;
+		const std::vector<TemplateParameter>& parameters =
+			class_templates_[pattern].parameters;
+		const std::vector<TemplateArgument> arguments = StoredTemplateArguments(
+			owner.template_argument_begin, owner.template_argument_count);
+		for (std::size_t i = 0; i < parameters.size() && i < arguments.size(); ++i)
+			if (parameters[i].name == name &&
+				arguments[i].kind == TEMPLATE_ARGUMENT_INTEGRAL)
+			{
+				*result = NormalizeIntegralConstant(target, arguments[i].value);
+				constant_conversion_return_values_.insert(
+					std::make_pair(conversion, *result));
+				return true;
+			}
+		return false;
+	}
 	const BindingRecord& member = program_->bindings[
 		program_->bindings[found.ordinary].canonical];
 	if (member.kind != BIND_VARIABLE || member.non_static_data_member ||

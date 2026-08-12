@@ -4,6 +4,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace cppgm
@@ -553,13 +554,21 @@ CallConversionFact SemanticAnalyzer::ConvertingConstructor(
 void SemanticAnalyzer::AppendConversionFunctions(EntityId entity,
 	std::vector<BindingId>* candidates) const
 {
-	while (entity != kNoEntity)
+	std::vector<EntityId> pending(1, entity);
+	std::unordered_set<EntityId> visited;
+	while (!pending.empty())
 	{
+		entity = pending.back();
+		pending.pop_back();
+		if (entity == kNoEntity || entity >= program_->entities.size() ||
+			!visited.insert(entity).second) continue;
 		if (entity < entity_conversion_functions_.size())
 			candidates->insert(candidates->end(),
 				entity_conversion_functions_[entity].begin(),
 				entity_conversion_functions_[entity].end());
-		entity = program_->entities[entity].direct_base;
+		const EntityRecord& record = program_->entities[entity];
+		for (std::size_t i = record.direct_base_count; i != 0; --i)
+			pending.push_back(program_->DirectBase(entity, i - 1).entity);
 	}
 }
 

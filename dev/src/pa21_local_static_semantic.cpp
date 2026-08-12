@@ -67,7 +67,9 @@ bool SemanticAnalyzer::IsConstexprLiteralType(TypeId type) const
 		{
 			const FunctionInfo& constructor = GetFunction(constructors[i]);
 			if ((constructor.constexpr_function ||
-				 constructor.defaulted_constructor) &&
+				 constructor.defaulted_constructor ||
+				 (constructor.implicit_constructor &&
+				  IsConstexprImplicitDefaultConstructor(top.entity))) &&
 				!constructor.deleted_constructor &&
 				constructor.special_member != SPECIAL_MEMBER_COPY_CONSTRUCTOR &&
 				constructor.special_member != SPECIAL_MEMBER_MOVE_CONSTRUCTOR)
@@ -89,6 +91,68 @@ bool SemanticAnalyzer::IsConstexprLiteralType(TypeId type) const
 			if (IsVolatileSubobjectType(member.type) ||
 				!IsConstexprLiteralType(member.type)) return false;
 		}
+	return true;
+}
+
+bool SemanticAnalyzer::IsConstexprDefaultConstructibleType(TypeId type) const
+{
+	const TypeRecord& top = program_->types.Get(type);
+	if (top.kind == TYPE_QUALIFIED || top.kind == TYPE_ARRAY)
+		return IsConstexprDefaultConstructibleType(top.child);
+	if (top.kind != TYPE_NAMED || top.entity >= program_->entities.size())
+		return false;
+	const EntityRecord& entity = program_->entities[top.entity];
+	if (!entity.default_constructible ||
+		(entity.flavor != NAMED_STRUCT && entity.flavor != NAMED_CLASS &&
+		 entity.flavor != NAMED_UNION) ||
+		top.entity >= entity_constructors_.size())
+		return false;
+	const std::vector<BindingId>& constructors =
+		entity_constructors_[top.entity];
+	for (std::size_t i = 0; i < constructors.size(); ++i)
+	{
+		const FunctionInfo& constructor = GetFunction(constructors[i]);
+		if (constructor.deleted_constructor ||
+			constructor.special_member != SPECIAL_MEMBER_NONE)
+			continue;
+		bool default_callable = true;
+		for (std::size_t p = 0; p < constructor.parameters.size(); ++p)
+			if (constructor.parameters[p].default_argument == kNoNode)
+			{
+				default_callable = false;
+				break;
+			}
+		if (!default_callable) continue;
+		if (constructor.constexpr_function) return true;
+		if ((constructor.implicit_constructor ||
+			 constructor.defaulted_constructor) &&
+			IsConstexprImplicitDefaultConstructor(top.entity))
+			return true;
+	}
+	return false;
+}
+
+bool SemanticAnalyzer::IsConstexprImplicitDefaultConstructor(
+	EntityId entity) const
+{
+	if (entity == kNoEntity || entity >= program_->entities.size())
+		return false;
+	const EntityRecord& owner = program_->entities[entity];
+	for (std::size_t i = 0; i < owner.direct_base_count; ++i)
+	{
+		const DirectBaseEdge& base = program_->DirectBase(entity, i);
+		if (base.virtual_base || !IsConstexprDefaultConstructibleType(
+			program_->entities[base.entity].type))
+			return false;
+	}
+	if (entity >= entity_data_members_.size()) return true;
+	for (std::size_t i = 0; i < entity_data_members_[entity].size(); ++i)
+	{
+		const BindingRecord& member =
+			program_->bindings[entity_data_members_[entity][i]];
+		if (member.has_default_member_initializer) continue;
+		if (!IsConstexprDefaultConstructibleType(member.type)) return false;
+	}
 	return true;
 }
 

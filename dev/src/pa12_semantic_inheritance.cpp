@@ -974,12 +974,27 @@ ExpressionInfo SemanticAnalyzer::AnalyzeConditional(NodeId node, ScopeId scope)
 		(IsNullptr(no.type) || no.integer_literal_zero)) type = Decay(yes.type);
 	else if (IsPointer(Decay(no.type)) &&
 		(IsNullptr(yes.type) || yes.integer_literal_zero)) type = Decay(no.type);
+	else if (IsMemberPointer(yes.type) &&
+		(IsNullptr(no.type) || no.integer_literal_zero))
+		type = program_->types.RemoveTopCv(EffectiveType(yes.type));
+	else if (IsMemberPointer(no.type) &&
+		(IsNullptr(yes.type) || yes.integer_literal_zero))
+		type = program_->types.RemoveTopCv(EffectiveType(no.type));
 	else if (IsPointer(Decay(yes.type)) && IsPointer(Decay(no.type)))
 	{
 		if (Conversion(yes, Decay(no.type)) != CONVERSION_INVALID)
 			type = Decay(no.type);
 		else if (Conversion(no, Decay(yes.type)) != CONVERSION_INVALID)
 			type = Decay(yes.type);
+	}
+	else if (IsMemberPointer(yes.type) && IsMemberPointer(no.type))
+	{
+		const TypeId yes_type = program_->types.RemoveTopCv(
+			EffectiveType(yes.type));
+		const TypeId no_type = program_->types.RemoveTopCv(
+			EffectiveType(no.type));
+		if (Conversion(yes, no_type) != CONVERSION_INVALID) type = no_type;
+		else if (Conversion(no, yes_type) != CONVERSION_INVALID) type = yes_type;
 	}
 	if (type == kNoType) throw std::runtime_error("incompatible conditional arms");
 	if (IsPointer(type))
@@ -990,6 +1005,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeConditional(NodeId node, ScopeId scope)
 		if (no.integer_literal_zero || IsNullptr(no.type))
 			SetExpressionAddress(&no, NullConstexprAddress());
 		else no = ApplyTarget(no, type);
+	}
+	else if (IsMemberPointer(type))
+	{
+		yes = ApplyTarget(yes, type);
+		no = ApplyTarget(no, type);
 	}
 	if (class_condition && known_condition &&
 		dump_.nodes[condition.node].kind == DUMP_LITERAL)

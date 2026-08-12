@@ -391,6 +391,21 @@ bool StaticInitializerLowering::AppendValue(TypeId type, std::uint32_t node,
 	const LowType low_type = types_.LowerExpression(type);
 	Global::DataItem item;
 	item.type = low_type;
+	if (type_record.kind == TYPE_MEMBER_POINTER &&
+		program_.types.IsFunction(type_record.child) &&
+		value.binding != kNoBinding &&
+		SymbolForBinding(value.binding, &item.symbol))
+	{
+		item.kind = Global::DataItem::ADDRESS_ITEM;
+		item.type = LowPtr();
+		items->push_back(item);
+		item = Global::DataItem();
+		item.kind = Global::DataItem::INTEGER_ITEM;
+		item.type = LowI64();
+		item.integer_value = value.constant_value;
+		items->push_back(item);
+		return true;
+	}
 	if (IsFloating(low_type) && value.kind == DUMP_LITERAL)
 	{
 		item.kind = Global::DataItem::FLOATING_ITEM;

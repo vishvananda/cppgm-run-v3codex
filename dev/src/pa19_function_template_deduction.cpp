@@ -1838,7 +1838,8 @@ bool SemanticAnalyzer::AnalyzeFunctionId(NodeId node, ScopeId scope,
 	result->binding = emission_binding;
 	result->node = MakeDump(DUMP_ID_EXPRESSION, result->type,
 		result->category, program_->names.Intern(spelling), emission_binding);
-	if (constant_expression_required_depth_ == 0 &&
+	if (constant_evaluation_suppressed_depth_ == 0 &&
+		constant_expression_required_depth_ == 0 &&
 		constexpr_evaluation_depth_ == 0)
 	{
 		if (retain_lowering_facts_ && !function.defined &&

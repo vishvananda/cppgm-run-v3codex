@@ -40,9 +40,22 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		const std::string operation = StripOperationPrefix(
 			derived.program_.names.Get(application.text));
-		return operation == "->*" ?
+		Operand object = operation == "->*" ?
 			derived.LowerValue(children[0], LowPtr()) :
 			derived.AddressOfStorage(derived.LowerStorage(children[0]));
+		if (!application.has_base_projection_offset ||
+			application.base_projection_offset == 0)
+			return object;
+		const Operand projected = derived.Temp(LowPtr());
+		Instruction index(Instruction::INDEX);
+		index.dest = projected.id;
+		index.type = LowI8();
+		index.first = object;
+		index.second = Operand(static_cast<std::int64_t>(
+			application.base_projection_offset), LowI64());
+		index.projection = INDEX_PROJECTION_FIELD;
+		derived.Emit(index);
+		return projected;
 	}
 
 	Operand LowerMemberPointerStorage(const DumpNode& application,

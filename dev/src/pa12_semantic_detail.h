@@ -950,6 +950,8 @@ private:
 		const std::string& spelling, NodeId syntax = kNoNode);
 	bool IsClassObjectType(TypeId type) const;
 	bool IsConstexprLiteralType(TypeId type) const;
+	bool IsConstexprDefaultConstructibleType(TypeId type) const;
+	bool IsConstexprImplicitDefaultConstructor(EntityId entity) const;
 	bool IsVolatileSubobjectType(TypeId type) const;
 	bool IsConstexprCallableType(TypeId type, bool constructor) const;
 	TypeId ApplyConstexprMemberFunctionType(TypeId type, EntityId owner,
@@ -1029,6 +1031,9 @@ private:
 		TypeId target = kNoType);
 	TypeId UnaryAddressOperandTarget(const std::string& operation,
 		TypeId target) const;
+	TypeId UnaryAddressContextTarget(const std::string& operation,
+		TypeId target, NodeId operand, ScopeId scope);
+	TypeId MemberPointerAddressSyntaxTarget(NodeId syntax, ScopeId scope);
 	TypeId MemberPointerAddressTarget(const ExpressionInfo& operand,
 		NodeId operand_syntax, TypeId target) const;
 	bool FormMemberPointerAddress(const ExpressionInfo& operand, TypeId target,
@@ -1088,6 +1093,7 @@ private:
 		std::uint32_t* element_edge);
 	ExpressionInfo AnalyzeAggregateElement(TypeId type, ScopeId scope,
 		std::uint32_t* element_edge);
+	bool DefaultInitializationOverwritesObject(EntityId entity) const;
 	ExpressionInfo AnalyzePreparedAggregateElement(TypeId type, ScopeId scope,
 		std::uint32_t* element_edge);
 	ExpressionInfo AnalyzeAggregateDescent(TypeId type, ScopeId scope,
@@ -1732,9 +1738,10 @@ private:
 	std::vector<ConstexprScopeFact> constexpr_scope_facts_;
 	std::vector<std::size_t> constexpr_type_alias_by_name_;
 	std::vector<ConstexprBlockOffset> constexpr_block_offsets_;
-	// Binding-indexed O(1) access with dense payloads only for floating facts.
+	// Binding-indexed O(1) access with dense payloads for non-integral facts.
 	std::vector<std::uint32_t> floating_constant_fact_by_binding_;
 	std::vector<long double> floating_constant_values_;
+	std::vector<BindingId> constexpr_member_pointer_by_binding_;
 	// Completed object values are immutable and structurally interned. Bindings
 	// carry only a compact object identity; elements remain dense by ordinal.
 	std::vector<std::uint32_t> constexpr_object_by_binding_;
