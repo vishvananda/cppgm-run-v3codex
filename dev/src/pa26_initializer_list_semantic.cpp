@@ -36,6 +36,16 @@ bool SemanticAnalyzer::IsInitializerListType(
 	return true;
 }
 
+bool SemanticAnalyzer::IsInitializerListFunction(TypeId type) const
+{
+	const TypeRecord& function = program_->types.Get(type);
+	if (function.kind != TYPE_FUNCTION) return false;
+	const TypeId* parameters = program_->types.Parameters(type);
+	for (std::size_t i = 0; i < function.parameter_count; ++i)
+		if (IsInitializerListType(parameters[i])) return true;
+	return false;
+}
+
 bool SemanticAnalyzer::IsStandardInitializerListTemplate(NameId name,
 	ScopeId owner, const std::vector<TemplateParameter>& parameters) const
 {
@@ -118,10 +128,11 @@ void SemanticAnalyzer::ExtendInitializerListVariableLifetime(TypeId type,
 }
 
 BindingId SemanticAnalyzer::SelectInitializerListConstructorPhase(
-	ScopeId scope, NodeId source_list,
+	ScopeId scope, TypeId initialized_type, NodeId source_list,
 	const std::vector<NodeId>& argument_syntax,
 	const std::vector<BindingId>& candidates, bool copy_initialization,
-	std::vector<CallConversionFact>* selected_conversions, bool quiet)
+	std::vector<CallConversionFact>* selected_conversions, bool quiet,
+	NodeId* selected_source)
 {
 	if (source_list == kNoNode) return kNoBinding;
 	const bool empty_list = argument_syntax.empty();
@@ -135,26 +146,43 @@ BindingId SemanticAnalyzer::SelectInitializerListConstructorPhase(
 			--required;
 		if (candidate.constructor && required == 0) return kNoBinding;
 	}
-	std::vector<BindingId> initializer_candidates;
-	for (std::size_t c = 0; c < candidates.size(); ++c)
+	const auto select_source = [this, scope, initialized_type, &candidates,
+		copy_initialization, selected_conversions, quiet](NodeId source) -> BindingId
 	{
-		const FunctionInfo& candidate = GetFunction(candidates[c]);
-		const TypeRecord& function = program_->types.Get(candidate.type);
-		if (!candidate.constructor || function.parameter_count == 0) continue;
-		if (IsInitializerListType(
-			program_->types.Parameters(candidate.type)[0]))
-			initializer_candidates.push_back(candidates[c]);
+		const std::vector<NodeId> syntax(1, source);
+		const std::vector<ExpressionInfo> arguments(1);
+		std::vector<BindingId> phase_candidates(candidates);
+		AppendConstructorTemplateCandidates(initialized_type, arguments,
+			&phase_candidates, &syntax, scope);
+		std::vector<BindingId> initializer_candidates;
+		for (std::size_t c = 0; c < phase_candidates.size(); ++c)
+		{
+			const FunctionInfo& candidate = GetFunction(phase_candidates[c]);
+			const TypeRecord& function = program_->types.Get(candidate.type);
+			if (candidate.constructor && function.parameter_count != 0 &&
+				IsInitializerListType(
+					program_->types.Parameters(candidate.type)[0]))
+				initializer_candidates.push_back(phase_candidates[c]);
+		}
+		if (initializer_candidates.empty()) return kNoBinding;
+		std::vector<CallConversionFact> trial_conversions;
+		const BindingId trial = SelectConstructor(scope, syntax, arguments,
+			initializer_candidates, copy_initialization, false,
+			&trial_conversions, true);
+		return trial == kNoBinding ? kNoBinding : SelectConstructor(scope,
+			syntax, arguments, initializer_candidates, copy_initialization,
+			false, selected_conversions, quiet);
+	};
+	BindingId selected = select_source(source_list);
+	NodeId source = source_list;
+	if (selected == kNoBinding && argument_syntax.size() == 1 &&
+		arena_->IsTag(argument_syntax[0], "braced-init-list"))
+	{
+		source = argument_syntax[0];
+		selected = select_source(source);
 	}
-	if (initializer_candidates.empty()) return kNoBinding;
-	const std::vector<NodeId> phase_syntax(1, source_list);
-	const std::vector<ExpressionInfo> phase_arguments(1);
-	std::vector<CallConversionFact> phase_conversions;
-	const BindingId phase = SelectConstructor(scope, phase_syntax,
-		phase_arguments, initializer_candidates, copy_initialization, false,
-		&phase_conversions, true);
-	return phase == kNoBinding ? kNoBinding : SelectConstructor(scope,
-		phase_syntax, phase_arguments, initializer_candidates,
-		copy_initialization, false, selected_conversions, quiet);
+	if (selected != kNoBinding && selected_source) *selected_source = source;
+	return selected;
 }
 
 ExpressionInfo SemanticAnalyzer::MaterializeBracedConstructorArgument(

@@ -942,8 +942,7 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 				 left_rank == CONVERSION_DERIVED_TO_BASE &&
 				 left_distance < right_distance))
 				strictly_better = true;
-			if (left_rank == CONVERSION_USER_DEFINED &&
-				right_rank == CONVERSION_USER_DEFINED &&
+			if (left_rank == right_rank &&
 				a >= (object ? 1u : 0u))
 			{
 				const std::size_t argument = a - (object ? 1u : 0u);
@@ -1483,12 +1482,16 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 	if (second == kNoEdge) throw std::runtime_error("invalid assignment");
 	const NodeId left_syntax = arena_->EdgeChild(first);
 	const NodeId right_syntax = arena_->EdgeChild(second);
+	const std::string operation = PayloadSource(node);
+	const bool braced_assignment = operation == "=" &&
+		arena_->IsTag(right_syntax, "braced-init-list");
+	if (braced_assignment && !braced_initialization_context_)
+		return AnalyzeAssignmentInBracedContext(node, scope);
 	ExpressionInfo left = AnalyzeExpression(left_syntax, scope);
 	if (CandidateSubstitutionFailed()) return left;
-	const std::string operation = PayloadSource(node);
-	ExpressionInfo right = AnalyzeExpression(right_syntax, scope,
-		operation == "=" && arena_->IsTag(right_syntax, "braced-init-list") ?
-			EffectiveType(left.type) : kNoType);
+	ExpressionInfo right = braced_assignment ?
+		AnalyzeUntypedCallArgument(right_syntax, scope) :
+		AnalyzeExpression(right_syntax, scope);
 	if (CandidateSubstitutionFailed()) return right;
 	std::vector<NodeId> overloaded_syntax;
 	overloaded_syntax.push_back(left_syntax);
@@ -1500,6 +1503,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 	if (TryAnalyzeOverloadedOperator(operation, scope, overloaded_syntax,
 		overloaded_operands, operation == "=", kNoType, &overloaded))
 		return overloaded;
+	if (right.type == kNoType && braced_assignment)
+		right = AnalyzeBracedInit(right_syntax, scope, EffectiveType(left.type));
 	(void)ApplyBuiltinAssignmentConversion(operation, left, &right);
 	if (operation == "=") right = ApplyTarget(right, EffectiveType(left.type));
 	if (!IsModifiableLvalue(left))

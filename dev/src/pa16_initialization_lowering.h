@@ -277,7 +277,8 @@ protected:
 						derived.IsArrayType(temporary_type.child))
 						derived.LowerRuntimeArrayValues(
 							derived.arena_.nodes[node].type,
-							children[0], destination);
+							children[0], destination,
+							derived.arena_.nodes[node].initializer_list_backing);
 					else
 					{
 						const LowType element = derived.LowerExpressionType(
@@ -583,8 +584,18 @@ protected:
 		const Operand& destination)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		if (derived.arena_.nodes[node].kind != DUMP_CONSTRUCTOR_ACTION)
-			return false;
+		const DumpKind kind = derived.arena_.nodes[node].kind;
+		if (kind == DUMP_CLASS_VALUE_TRANSFER)
+		{
+			derived.LowerClassValueTransfer(node, destination);
+			return true;
+		}
+		if (kind == DUMP_AGGREGATE_CONSTRUCTION_ACTION)
+		{
+			derived.LowerAggregateConstructionAction(node, destination);
+			return true;
+		}
+		if (kind != DUMP_CONSTRUCTOR_ACTION) return false;
 		if (derived.arena_.nodes[node].value_initialization)
 			EmitZeroInitialization(type, destination);
 		NodeChildren action;

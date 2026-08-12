@@ -699,6 +699,8 @@ struct CallConversionFact
 	ConversionRank conversion_object_rank;
 	std::uint32_t constructor_argument_conversion_base_projection_count;
 	std::uint32_t conversion_base_projection_count;
+	ConversionRank initializer_list_element_rank;
+	bool initializer_list_conversion;
 
 	CallConversionFact()
 		: rank(CONVERSION_INVALID), constructor(kNoBinding),
@@ -710,7 +712,9 @@ struct CallConversionFact
 		  conversion_result_rank(CONVERSION_INVALID),
 		  conversion_object_rank(CONVERSION_INVALID),
 		  constructor_argument_conversion_base_projection_count(0),
-		  conversion_base_projection_count(0) {}
+		  conversion_base_projection_count(0),
+		  initializer_list_element_rank(CONVERSION_INVALID),
+		  initializer_list_conversion(false) {}
 };
 
 enum SpecialMemberKind

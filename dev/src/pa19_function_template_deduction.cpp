@@ -360,14 +360,22 @@ int SemanticAnalyzer::CompareFunctionTemplateConstraints(
 		function_templates_[left.template_pattern];
 	const FunctionTemplatePattern& right_pattern =
 		function_templates_[right.template_pattern];
+	const TypeRecord& left_shape = program_->types.Get(left_pattern.shape_type);
+	const TypeRecord& right_shape = program_->types.Get(right_pattern.shape_type);
+	const bool left_initializer_list = left_shape.kind == TYPE_FUNCTION &&
+		left_shape.parameter_count != 0 && IsInitializerListType(
+			program_->types.Parameters(left_pattern.shape_type)[0]);
+	const bool right_initializer_list = right_shape.kind == TYPE_FUNCTION &&
+		right_shape.parameter_count != 0 && IsInitializerListType(
+			program_->types.Parameters(right_pattern.shape_type)[0]);
+	if (left_initializer_list != right_initializer_list)
+		return left_initializer_list ? 1 : -1;
 	const bool left_accepts_right = FunctionTemplateParameterListAccepts(
 		left_pattern, right_pattern);
 	const bool right_accepts_left = FunctionTemplateParameterListAccepts(
 		right_pattern, left_pattern);
 	if (right_accepts_left != left_accepts_right)
 		return right_accepts_left ? 1 : -1;
-	const TypeRecord& left_shape = program_->types.Get(left_pattern.shape_type);
-	const TypeRecord& right_shape = program_->types.Get(right_pattern.shape_type);
 	const TypeRecord& left_actual = program_->types.Get(left.type);
 	const TypeRecord& right_actual = program_->types.Get(right.type);
 	if (left_shape.kind == TYPE_FUNCTION && right_shape.kind == TYPE_FUNCTION &&

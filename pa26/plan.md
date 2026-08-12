@@ -2,69 +2,62 @@
 
 ## Stage Design and Spec Alignment
 
-PA26 remains a monotonic extension of the shared PA25 pipeline. PA10 parses
-once; PA12 publishes canonical declarations, types/entities, selected
-operations, layouts, lifetimes, template/closure facts, and demand; PA15
-borrows that graph to construct typed LowIR directly. Syntax, semantic dumps,
-ABI names, and LowIR remain output views rather than semantic identity or
-in-process transport.
-
-RTTI queries, lambda captures, and scalar initializer lists now have explicit
-semantic owners. The canonical `std::initializer_list<T>` specialization owns
-its element/layout fact; each braced conversion owns its selected overload and
-element conversions; an ordinary array-temporary recipe owns backing storage
-and lifetime. Calls, `auto`, range-for, slot planning, and lowering consume
-those retained facts without lookup or syntax recovery. This follows
-`spec.md` sections 2-6 and 8-10: canonical identity, direct typed lowering,
-precise demand, explicit ownership, and observable bounded work.
+PA26 remains a monotonic extension of the shared PA25 pipeline. PA12 owns
+canonical types, declarations, overload decisions, template deductions,
+lifetimes, and demand; PA15 consumes that typed graph directly. Initializer-list
+conversion facts now separate list-category preference from element conversion
+rank, retain the selected whole-list source, and publish ordinary class-value or
+aggregate backing recipes. This preserves the `spec.md` sections 2-6 and 8-10
+boundaries: canonical identity, explicit ownership, precise demand, direct typed
+lowering, and bounded observable work.
 
 ## Current Failure Map
 
-Current result is **56/110**, up from **42/110** at this checkpoint's start.
-The complete remaining set is grouped by first owning boundary:
+Current result is **63/110**, up from **56/110** at this checkpoint's start.
 
 | Owner | Failing | Shared behavior |
 |---|---:|---|
-| EH and lifetime lowering | 39 | handlers/throws, unwind snapshots, branch/full-expression cleanup, construction failure |
-| initializer-list and aggregate semantics | 11 | assignment/member/template ranking, nested lists, class-element EH, backing duration |
+| EH and lifetime lowering | 39 | throws/handlers, unwind snapshots, branch/full-expression cleanup, construction failure |
+| initializer-list and aggregate lifetime | 4 | namespace backing duration, element frontier, temporary ownership, direct aggregate destination |
 | lambda/RTTI presentation integration | 2 | closure ABI spelling in RTTI name objects |
 | template emission ordering | 1 | stable anonymous ordering across member-template specializations |
 | object construction lowering | 1 | nontrivial copy in the cv/reference `typeid` fixture |
 
 ## Active Checkpoint
 
-Complete the remaining initializer-list/aggregate boundary. PA12 owns the
-assignment/member overload phase and braced template deduction, recursively
-retains nested list conversions, and exposes per-element construction and
-cleanup recipes. Storage-duration analysis promotes namespace backing arrays;
-PA15 consumes only those facts and emits per-element EH transitions. Data flows
-from canonical specialization element facts through selected callable and
-array recipes to lifetime/slot planning and lowering. Expected work is
-O(candidates + converted elements + constructed elements), with indexed
-specialization and braced-fact reuse. Validate the 10 remaining list cases and
-the adjacent nontrivial aggregate case, measure class-element scaling, then run
-the PA26 report, through-PA25 report, and file audit.
+Complete initializer-list backing ownership and adjacent aggregate lifecycle.
+PA12 storage/lifetime analysis owns namespace promotion, the constructed-element
+frontier, and the backing array's destruction obligation; PA15 must consume
+those facts without recovering syntax, initialize directly into the final
+destination, and emit reverse cleanup for exactly the constructed prefix. Data
+flows from the selected list conversion to the temporary/namespace array recipe,
+then to slot/global planning and EH lowering. Expected work is O(elements), with
+one frontier transition per nontrivial element. Validate the four remaining
+list/aggregate cases, measure nontrivial-element scaling, then run the PA26
+report, through-PA25 report, and file audit.
 
 ## Performance Evidence
 
 Release compiler, three runs per point; timings/RSS are medians. A generated
-`initializer_list<int>` call exercises the production semantic and LowIR path:
+`initializer_list<item>` call with nontrivial class elements exercises the
+completed conversion, demand, backing-array, and lowering path:
 
 | Elements | Conversions | Semantic nodes | Instructions | Semantic | Lowering | Typed storage | RSS |
 |---:|---:|---:|---:|---:|---:|---:|---:|
-| 64 | 130 | 76 | 135 | 0.507 ms | 0.181 ms | 33,435 B | 6,536 KiB |
-| 128 | 258 | 140 | 263 | 0.621 ms | 0.260 ms | 64,155 B | 6,620 KiB |
-| 256 | 514 | 268 | 519 | 0.880 ms | 0.331 ms | 125,595 B | 6,872 KiB |
-| 512 | 1,026 | 524 | 1,031 | 1.436 ms | 0.537 ms | 248,475 B | 6,972 KiB |
+| 64 | 643 | 275 | 141 | 1.096 ms | 0.243 ms | 44,192 B | 6,660 KiB |
+| 128 | 1,283 | 531 | 269 | 1.807 ms | 0.293 ms | 83,360 B | 6,936 KiB |
+| 256 | 2,563 | 1,043 | 525 | 3.039 ms | 0.401 ms | 161,696 B | 7,172 KiB |
+| 512 | 5,123 | 2,067 | 1,037 | 5.603 ms | 0.581 ms | 318,368 B | 7,732 KiB |
 
-From 256 to 512, conversion/node/instruction/storage counts double and
-semantic/lowering time grows 1.63/1.62x. Prior capture scaling was also linear
-through 512 captures, and the former nested-return timeout remains eliminated.
+From 256 to 512, conversion work doubles, node/instruction/storage counts grow
+1.98/1.98/1.97x, and semantic/lowering time grows 1.84/1.45x. Earlier scalar
+list and lambda-capture measurements were likewise linear through 512 items.
 
 ## Completed Checkpoints
 
 | Checkpoint | Result | Validation |
 |---|---|---|
-| Canonical RTTI demand and query lowering | Canonical query/cast identity and ABI RTTI | RTTI 14/17; audit 4/4; PA26 30/110; through PA25 3,607/3,607; audit pass |
-| Lambda capture ownership | Explicit/default value/reference members, class copy/lifetime facts, projected access, cycle-safe identity | 12 new passes; PA26 42/110; timeout removed; through PA25 3,607/3,607; audit pass |
-| Scalar initializer-list interoperation | Canonical specialization/element fact, two-phase construction, backing arrays, references, `auto`, range-for, functional/return materialization | 14 new passes; PA26 56/110; focused checks pass; through PA25 3,607/3,607; audit pass; linear through 512 elements |
+| Canonical RTTI demand and query lowering | Canonical query/cast identity and ABI RTTI | RTTI 14/17; PA26 30/110; through PA25 3,607/3,607; audit pass |
+| Lambda capture ownership | Explicit/default captures, closure members, projected access, cycle-safe identity | 12 new passes; PA26 42/110; timeout removed; through PA25 3,607/3,607; audit pass |
+| Scalar initializer-list interoperation | Canonical specialization, two-phase construction, scalar backing, references, `auto`, range-for | 14 new passes; PA26 56/110; through PA25 3,607/3,607; audit pass; linear to 512 |
+| List overload and class-backing boundary | Separate list/element ranks, whole-list template deduction, selected source, typed class recipes and compact backing addresses | 7 new passes; PA26 63/110; focused 7/7; through PA25 3,607/3,607; audit pass; class scaling linear to 512 |

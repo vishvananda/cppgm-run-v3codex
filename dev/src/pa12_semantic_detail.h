@@ -640,6 +640,7 @@ private:
 		const std::vector<TemplateArgument>& arguments);
 	bool IsInitializerListType(TypeId type,
 		TypeId* element_type = 0) const;
+	bool IsInitializerListFunction(TypeId type) const;
 	bool IsStandardInitializerListTemplate(NameId name, ScopeId owner,
 		const std::vector<TemplateParameter>& parameters) const;
 	void ConfigureInitializerListSpecialization(TypeId type);
@@ -1017,6 +1018,8 @@ private:
 		NodeId right_syntax, ExpressionInfo left, ExpressionInfo right,
 		ScopeId scope);
 	ExpressionInfo AnalyzeAssignment(NodeId node, ScopeId scope);
+	ExpressionInfo AnalyzeAssignmentInBracedContext(
+		NodeId node, ScopeId scope);
 	ExpressionInfo AnalyzeCast(NodeId node, ScopeId scope);
 	ExpressionInfo AnalyzeTypeid(NodeId node, ScopeId scope);
 	bool TryAnalyzeTypeidComparison(const std::string& operation,
@@ -1195,11 +1198,14 @@ private:
 		bool list_initialization,
 		std::vector<CallConversionFact>* selected_conversions = 0,
 		bool quiet = false, NodeId source_list = kNoNode,
-		TypeId initialized_type = kNoType);
+		TypeId initialized_type = kNoType,
+		NodeId* selected_list_source = 0);
 	BindingId SelectInitializerListConstructorPhase(ScopeId scope,
-		NodeId source_list, const std::vector<NodeId>& argument_syntax,
+		TypeId initialized_type, NodeId source_list,
+		const std::vector<NodeId>& argument_syntax,
 		const std::vector<BindingId>& candidates, bool copy_initialization,
-		std::vector<CallConversionFact>* selected_conversions, bool quiet);
+		std::vector<CallConversionFact>* selected_conversions, bool quiet,
+		NodeId* selected_source);
 	void AppendConstructorTemplateCandidates(TypeId initialized_type,
 		const std::vector<ExpressionInfo>& arguments,
 		std::vector<BindingId>* candidates,

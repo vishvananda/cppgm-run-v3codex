@@ -120,6 +120,15 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCallInBracedContext(
 	return AnalyzeCall(call, scope, target);
 }
 
+ExpressionInfo SemanticAnalyzer::AnalyzeAssignmentInBracedContext(
+	NodeId node, ScopeId scope)
+{
+	BracedInitializationContext context;
+	ScopedBracedInitializationContext braced_scope(
+		braced_initialization_context_, &context);
+	return AnalyzeAssignment(node, scope);
+}
+
 ExpressionInfo SemanticAnalyzer::AnalyzeUntypedCallArgument(
 	NodeId argument, ScopeId scope)
 {
@@ -531,6 +540,8 @@ CallConversionFact SemanticAnalyzer::BracedInitializationConversion(
 	if (IsInitializerListType(object, &initializer_element))
 	{
 		result.rank = CONVERSION_EXACT;
+		result.initializer_list_conversion = true;
+		result.initializer_list_element_rank = CONVERSION_EXACT;
 		for (std::size_t i = 0; i < elements.size(); ++i)
 		{
 			CallConversionFact element;
@@ -554,7 +565,8 @@ CallConversionFact SemanticAnalyzer::BracedInitializationConversion(
 				result.rank = CONVERSION_INVALID;
 				break;
 			}
-			result.rank = std::max(result.rank, element.rank);
+			result.initializer_list_element_rank = std::max(
+				result.initializer_list_element_rank, element.rank);
 		}
 	}
 	else if (record.kind == TYPE_ARRAY)
@@ -685,7 +697,8 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 	const std::vector<BindingId>& input_candidates, bool copy_initialization,
 	bool list_initialization,
 	std::vector<CallConversionFact>* selected_conversions,
-	bool quiet, NodeId source_list, TypeId initialized_type)
+	bool quiet, NodeId source_list, TypeId initialized_type,
+	NodeId* selected_list_source)
 {
 	const std::uint64_t selection_key = source_list == kNoNode ||
 		initialized_type == kNoType ? 0 :
@@ -730,7 +743,9 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 			LambdaConstructorDeductionArguments(arguments) : arguments, &candidates,
 		&argument_syntax, scope);
 	const BindingId list_phase = list_initialization ? SelectInitializerListConstructorPhase(
-		scope, source_list, argument_syntax, candidates, copy_initialization, selected_conversions, quiet) : kNoBinding;
+		scope, initialized_type, source_list, argument_syntax, candidates,
+		copy_initialization, selected_conversions, quiet,
+		selected_list_source) : kNoBinding;
 	if (list_phase != kNoBinding) return list_phase;
 	const std::size_t arity = argument_syntax.size();
 	if (arity != 0 && candidates.size() >
@@ -829,8 +844,7 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 				no_worse = false;
 			if (left_conversion.rank < right_conversion.rank)
 				strictly_better = true;
-			if (left_conversion.rank == CONVERSION_USER_DEFINED &&
-				right_conversion.rank == CONVERSION_USER_DEFINED)
+			if (left_conversion.rank == right_conversion.rank)
 			{
 				const int preference = CompareCallConversions(
 					left_conversion, right_conversion);
@@ -1014,10 +1028,12 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 	}
 	const std::vector<BindingId>& candidates = ConstructorCandidates(entity);
 	std::vector<CallConversionFact> selected_conversions;
+	NodeId selected_list_source = source_list;
 	BindingId selected = SelectConstructor(scope, argument_syntax,
 		arguments, candidates, copy_initialization, list_initialization,
 		&selected_conversions, CandidateSubstitutionActive(), source_list,
-		program_->types.RemoveTopCv(EffectiveType(type)));
+		program_->types.RemoveTopCv(EffectiveType(type)),
+		&selected_list_source);
 	if (selected == kNoBinding)
 	{
 		RecordCandidateSubstitutionFailure();
@@ -1032,7 +1048,7 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 		IsInitializerListType(
 			program_->types.Parameters(selected_function.type)[0]))
 	{
-		selected_argument_syntax.assign(1, source_list);
+		selected_argument_syntax.assign(1, selected_list_source);
 		arguments.assign(1, ExpressionInfo());
 	}
 	const BindingId complete_constructor = selected;

@@ -1058,6 +1058,13 @@ CallConversionFact SemanticAnalyzer::ConvertingFunction(
 int SemanticAnalyzer::CompareCallConversions(
 	const CallConversionFact& left, const CallConversionFact& right) const
 {
+	if (left.initializer_list_conversion != right.initializer_list_conversion)
+		return left.initializer_list_conversion ? 1 : -1;
+	if (left.initializer_list_conversion &&
+		left.initializer_list_element_rank !=
+			right.initializer_list_element_rank)
+		return left.initializer_list_element_rank <
+			right.initializer_list_element_rank ? 1 : -1;
 	if (left.rank != CONVERSION_USER_DEFINED ||
 		right.rank != CONVERSION_USER_DEFINED) return 0;
 	if (left.conversion_function != kNoBinding &&
@@ -1612,26 +1619,11 @@ BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
 				else if (a < operand_syntax.size() &&
 					operand_syntax[a] != kNoNode)
 				{
-					TypeId desired =
-						program_->types.RemoveTopCv(parameters[parameter]);
-					if (program_->types.Get(desired).kind == TYPE_POINTER)
-						desired = program_->types.Get(desired).child;
-					std::vector<BindingId> functions = FunctionCandidates(
-						scope, arena_->Payload(operand_syntax[a]), 0,
-						operand_syntax[a]);
-					const std::vector<BindingId> template_functions =
-						FunctionTemplateTargetCandidates(scope,
-							arena_->Payload(operand_syntax[a]), desired,
-							operand_syntax[a]);
-					for (std::size_t f = 0; f < template_functions.size(); ++f)
-						if (std::find(functions.begin(), functions.end(),
-							template_functions[f]) == functions.end())
-							functions.push_back(template_functions[f]);
-					std::size_t matches = 0;
-					for (std::size_t f = 0; f < functions.size(); ++f)
-						if (GetFunction(functions[f]).type == desired) ++matches;
-					rank = matches == 1 ?
-						CONVERSION_EXACT : CONVERSION_INVALID;
+					const CallConversionFact conversion =
+						UntypedCallArgumentConversion(operand_syntax[a], scope,
+							parameters[parameter]);
+					conversions[c * arity + a] = conversion;
+					rank = conversion.rank;
 				}
 				else rank = CONVERSION_INVALID;
 			}
@@ -1662,8 +1654,7 @@ BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
 			if (lrank < rrank ||
 				(lrank == rrank && lrank == CONVERSION_DERIVED_TO_BASE &&
 				 ldistance < rdistance)) strictly_better = true;
-			if (lrank == CONVERSION_USER_DEFINED &&
-				rrank == CONVERSION_USER_DEFINED)
+			if (lrank == rrank)
 			{
 				const int preference = CompareCallConversions(
 					conversions[left * arity + a],
