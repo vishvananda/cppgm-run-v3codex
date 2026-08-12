@@ -15,9 +15,30 @@ namespace cppgm
 namespace pa18_lowering_detail
 {
 
+struct VtableThunkLoweringFact
+{
+	pa15_lowir_detail::SymbolId symbol;
+	pa15_lowir_detail::SymbolId target;
+	pa11::BindingId function;
+	std::int64_t this_adjustment;
+
+	VtableThunkLoweringFact(pa15_lowir_detail::SymbolId symbol_value,
+		pa15_lowir_detail::SymbolId target_value, pa11::BindingId function_value,
+		std::int64_t this_adjustment_value)
+		: symbol(symbol_value), target(target_value), function(function_value),
+		  this_adjustment(this_adjustment_value) {}
+};
+
 struct PolymorphismLoweringState
 {
 	std::vector<pa15_lowir_detail::SymbolId> class_vtable_symbols;
+	std::vector<std::vector<pa15_lowir_detail::SymbolId> >
+		class_view_vtable_symbols;
+	std::vector<std::vector<std::vector<pa15_lowir_detail::SymbolId> > >
+		class_view_slot_symbols;
+	std::vector<std::vector<std::vector<pa15_lowir_detail::SymbolId> > >
+		class_view_deleting_slot_symbols;
+	std::vector<VtableThunkLoweringFact> vtable_thunks;
 	std::vector<pa15_lowir_detail::SymbolId> class_rtti_symbols;
 	std::vector<pa15_lowir_detail::SymbolId> class_type_name_symbols;
 	std::vector<std::uint8_t> class_rtti_demanded;
@@ -81,6 +102,12 @@ void EmitDeletingDestructors(
 	const std::vector<pa15_lowir_detail::SymbolId>& function_symbols,
 	PolymorphismLoweringState* state);
 
+void EmitVtableThunks(
+	const pa12_semantic_detail::SemanticGraphView& graph,
+	pa15_lowir_detail::TypedProgram& output, LowIRLoweringStats* stats,
+	const std::vector<pa15_lowir_detail::SymbolId>& function_symbols,
+	PolymorphismLoweringState* state);
+
 template <class Derived>
 class PolymorphismActionLowering
 {
@@ -136,6 +163,41 @@ protected:
 		store.first = address_point;
 		store.second = object;
 		derived.Emit(store);
+		const pa12_semantic_detail::ClassPolymorphismFacts& facts =
+			derived.graph_.class_polymorphism[entity];
+		for (std::size_t view = 0; view < facts.views.size(); ++view)
+		{
+			if (!facts.views[view].stores_vptr ||
+				entity >= derived.polymorphism_.class_view_vtable_symbols.size() ||
+				view >= derived.polymorphism_.class_view_vtable_symbols[entity].size())
+				continue;
+			const SymbolId view_symbol =
+				derived.polymorphism_.class_view_vtable_symbols[entity][view];
+			if (view_symbol == kNoLowId) continue;
+			if (derived.stats_) ++derived.stats_->vptr_stores;
+			derived.output_.symbols[view_symbol].referenced = true;
+			const Operand view_object = derived.LoadStorage(derived.StorageFor(
+				derived.current_this_binding_, LowPtr()), LowPtr());
+			const Operand subobject = ProjectBaseSubobjectOffset(
+				view_object, facts.views[view].offset);
+			const Operand view_table = derived.Temp(LowPtr());
+			Instruction view_address(Instruction::ADDR);
+			view_address.dest = view_table.id;
+			view_address.first = Operand(Operand::GLOBAL, view_symbol, LowPtr());
+			derived.Emit(view_address);
+			const Operand view_address_point = derived.Temp(LowPtr());
+			Instruction view_index(Instruction::INDEX);
+			view_index.dest = view_address_point.id;
+			view_index.type = LowI8();
+			view_index.first = view_table;
+			view_index.second = Operand(16, LowI64());
+			derived.Emit(view_index);
+			Instruction view_store(Instruction::STORE);
+			view_store.type = LowPtr();
+			view_store.first = view_address_point;
+			view_store.second = subobject;
+			derived.Emit(view_store);
+		}
 	}
 
 	pa15_lowir_detail::Operand ProjectBaseSubobject(
@@ -149,6 +211,13 @@ protected:
 	pa15_lowir_detail::Operand ProjectBaseSubobjectOffset(
 		const pa15_lowir_detail::Operand& object, std::uint64_t offset)
 	{
+		return ProjectBaseSubobjectAdjustment(object,
+			static_cast<std::int64_t>(offset));
+	}
+
+	pa15_lowir_detail::Operand ProjectBaseSubobjectAdjustment(
+		const pa15_lowir_detail::Operand& object, std::int64_t offset)
+	{
 		using namespace pa15_lowir_detail;
 		Derived& derived = static_cast<Derived&>(*this);
 		const Operand projected = derived.Temp(LowPtr());
@@ -156,7 +225,7 @@ protected:
 		index.dest = projected.id;
 		index.type = LowI8();
 		index.first = object;
-		index.second = Operand(static_cast<std::int64_t>(offset), LowI64());
+		index.second = Operand(offset, LowI64());
 		index.projection = INDEX_PROJECTION_BASE_SUBOBJECT;
 		derived.Emit(index);
 		return projected;

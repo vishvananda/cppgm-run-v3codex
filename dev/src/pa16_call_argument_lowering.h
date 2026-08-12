@@ -175,7 +175,8 @@ protected:
 
 	Operand LowerProjectedClassPointer(std::uint32_t child,
 		std::uint32_t projection_count, std::uint64_t projection_offset,
-		bool has_projection_offset, EntityId target_entity = kNoEntity)
+		bool has_projection_offset, EntityId target_entity = kNoEntity,
+		bool inverse_projection = false)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		Operand inherited;
@@ -206,8 +207,13 @@ protected:
 			entity = derived.program_.entities[entity].direct_base;
 		}
 		if (!pointer_source || !adjusted || nonnull_this || known_nonnull_address)
+		{
+			if (inverse_projection)
+				return derived.ProjectBaseSubobjectAdjustment(address,
+					-static_cast<std::int64_t>(projection_offset));
 			return derived.ProjectBaseSubobjects(address, projection_count,
 				source.type, projection_offset, has_projection_offset);
+		}
 
 		const Operand result(derived.EnsureGeneratedSlot(
 			child, "basecast", LowPtr()), LowPtr());
@@ -234,9 +240,11 @@ protected:
 		derived.Emit(store_null);
 		derived.EmitJump(end_block);
 		derived.SelectBlock(adjust_block);
-		const Operand projected = derived.ProjectBaseSubobjects(
-			address, projection_count, source.type,
-			projection_offset, has_projection_offset);
+		const Operand projected = inverse_projection ?
+			derived.ProjectBaseSubobjectAdjustment(address,
+				-static_cast<std::int64_t>(projection_offset)) :
+			derived.ProjectBaseSubobjects(address, projection_count, source.type,
+				projection_offset, has_projection_offset);
 		Instruction store_adjusted(Instruction::STORE);
 		store_adjusted.type = LowPtr();
 		store_adjusted.first = projected;

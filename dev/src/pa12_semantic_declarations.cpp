@@ -479,6 +479,7 @@ bool SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 		}
 		CompleteClassPolymorphism(entity);
 		CompleteClassLayout(entity);
+		FinalizeClassPolymorphismViews(entity);
 		if (entity < entity_constructors_.size())
 			for (std::size_t i = 0;
 				i < entity_constructors_[entity].size(); ++i)
@@ -582,72 +583,6 @@ bool SemanticAnalyzer::ZeroOffsetSubobjectConflict(EntityId base,
 	const std::uint32_t member_marker = ++zero_offset_subobject_generation_;
 	(void)VisitZeroOffsetSubobjects(base, base_marker, base_marker);
 	return VisitZeroOffsetSubobjects(member, member_marker, base_marker);
-}
-
-const EntityRecord* SemanticAnalyzer::InitializeClassBaseLayout(
-	EntityId entity, std::size_t packing_alignment, std::size_t* size,
-	std::size_t* alignment, std::size_t* natural_alignment)
-{
-	EntityRecord& owner = program_->entities[entity];
-	if (!owner.has_user_declared_destructor)
-	{
-		owner.destructible = true;
-		owner.trivial_destructor = true;
-	}
-	if (owner.direct_base_count == 0) return 0;
-	owner.direct_base = kNoEntity;
-	const EntityRecord* primary = 0;
-	for (std::size_t base_index = 0;
-		base_index < owner.direct_base_count; ++base_index)
-	{
-		DirectBaseEdge& edge = program_->MutableDirectBase(entity, base_index);
-		const EntityRecord* base = &program_->entities[edge.entity];
-		if (!base->layout_complete)
-			throw std::runtime_error("direct base layout is incomplete");
-		if (!edge.virtual_base && !primary)
-		{
-			primary = base; owner.direct_base = edge.entity;
-		}
-		const std::size_t base_alignment =
-			static_cast<std::size_t>(base->object_alignment);
-		const std::size_t effective_base_alignment = packing_alignment == 0 ?
-			base_alignment : std::min(base_alignment, packing_alignment);
-		std::size_t offset = 0;
-		if (!edge.virtual_base && !base->empty_class)
-		{
-			if (primary == base && owner.polymorphic_class &&
-				!base->polymorphic_class)
-				offset = AlignUp(std::max<std::size_t>(*size, 8),
-					effective_base_alignment);
-			else offset = AlignUp(*size, effective_base_alignment);
-			const std::size_t raw_base_size = static_cast<std::size_t>(
-				base->nonvirtual_size == 0 ? base->object_size :
-				base->nonvirtual_size);
-			const std::size_t base_size =
-				AlignUp(raw_base_size, effective_base_alignment);
-			if (offset > std::numeric_limits<std::size_t>::max() -
-				base_size)
-				throw std::runtime_error("class layout is too large");
-			*size = offset + base_size;
-		}
-		edge.offset = offset;
-		owner.has_nonzero_base_subobject_offset =
-			owner.has_nonzero_base_subobject_offset || offset != 0 ||
-			base->has_nonzero_base_subobject_offset;
-		if (primary == base) owner.direct_base_offset = offset;
-		if (!edge.virtual_base)
-		{
-			*natural_alignment = std::max(*natural_alignment, base_alignment);
-			*alignment = std::max(*alignment, effective_base_alignment);
-		}
-		if (!base->destructible) owner.destructible = false;
-		if (!base->trivial_destructor) owner.trivial_destructor = false;
-		const BindingId destructor = DestructorForType(base->type);
-		if (destructor == kNoBinding ||
-			!CanAccessMember(destructor, edge.entity))
-			owner.destructible = false;
-	}
-	return primary;
 }
 
 void SemanticAnalyzer::CompleteClassMemberDestructionFacts(EntityId entity,

@@ -505,6 +505,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		 target_record.kind == TYPE_RVALUE_REFERENCE) &&
 		cast_kind.find("STATIC") != std::string::npos &&
 		operand_entity != kNoEntity && constructed_entity != kNoEntity &&
+		operand_entity != constructed_entity &&
 		program_->IsBaseOf(operand_entity, constructed_entity);
 	const bool static_reference_base_cast =
 		(target_record.kind == TYPE_LVALUE_REFERENCE ||
@@ -592,6 +593,21 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		if (static_reference_downcast)
 		{
 			const std::uint32_t complete = ExpressionCompleteObject(operand);
+			std::uint64_t projection_offset = 0;
+			if (!program_->QueryBasePath(constructed_entity, operand_entity,
+				0, 0, &projection_offset))
+				throw std::logic_error("reference downcast has no base path");
+			if (projection_offset != 0)
+			{
+				const std::uint32_t cast = MakeDump(DUMP_CAST_EXPRESSION, target,
+					category, program_->names.Intern(arena_->Payload(node)));
+				dump_.nodes[cast].base_projection_count = 1;
+				dump_.nodes[cast].base_projection_offset = projection_offset;
+				dump_.nodes[cast].has_base_projection_offset = true;
+				dump_.nodes[cast].inverse_base_projection = true;
+				dump_.Add(cast, operand.node);
+				operand.node = cast;
+			}
 			const std::uint32_t projected = ProjectConstexprObject(
 				complete, constructed_target);
 			if (projected != kNoConstexprObject)
@@ -700,6 +716,21 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 				static_cast<std::uint32_t>(projections);
 			dump_.nodes[cast].base_projection_offset = projection_offset;
 			dump_.nodes[cast].has_base_projection_offset = true;
+		}
+		else if (derived != kNoEntity && base != kNoEntity &&
+			derived != base && program_->IsBaseOf(derived, base))
+		{
+			std::uint64_t projection_offset = 0;
+			if (!program_->QueryBasePath(base, derived, 0, 0,
+				&projection_offset))
+				throw std::logic_error("pointer downcast has no base path");
+			if (projection_offset != 0)
+			{
+				dump_.nodes[cast].base_projection_count = 1;
+				dump_.nodes[cast].base_projection_offset = projection_offset;
+				dump_.nodes[cast].has_base_projection_offset = true;
+				dump_.nodes[cast].inverse_base_projection = true;
+			}
 		}
 	}
 	dump_.Add(cast, operand.node);

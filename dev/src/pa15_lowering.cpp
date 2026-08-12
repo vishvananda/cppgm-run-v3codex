@@ -155,6 +155,8 @@ public:
 		EmitTop(graph_.root);
 		pa18_lowering_detail::EmitDeletingDestructors(graph_, output_, stats_,
 			function_symbols_, &polymorphism_);
+		pa18_lowering_detail::EmitVtableThunks(graph_, output_, stats_,
+			function_symbols_, &polymorphism_);
 		EmitAggregateHelpers();
 		EmitThreadLocalInitializers();
 		EmitDynamicInitializer();
@@ -1108,7 +1110,8 @@ private:
 				return LowerProjectedClassPointer(children[0],
 					record.base_projection_count, record.base_projection_offset,
 					record.has_base_projection_offset,
-					BaseEntityForType(record.type));
+					BaseEntityForType(record.type),
+					record.inverse_base_projection);
 			const Operand source = AddressOfStorage(LowerStorage(children[0]));
 			return ProjectBaseSubobjects(source, 0,
 				arena_.nodes[children[0]].type);
@@ -1355,7 +1358,8 @@ private:
 					children[0], record.base_projection_count,
 					record.base_projection_offset,
 					record.has_base_projection_offset,
-					BaseEntityForType(record.type));
+					BaseEntityForType(record.type),
+					record.inverse_base_projection);
 			else
 			{
 				const DumpNode& source = arena_.nodes[children[0]];

@@ -179,6 +179,7 @@ struct DumpNode
 	bool virtual_call;
 	bool member_pointer_conversion;
 	bool has_base_projection_offset;
+	bool inverse_base_projection;
 	bool has_direct_base_offset;
 	bool pseudo_destructor_call;
 	bool reverse_pointer_compound_assignment;
@@ -236,6 +237,7 @@ struct DumpNode
 		  projected_subobject_temporary(false), virtual_call(false),
 		  member_pointer_conversion(false),
 		  has_base_projection_offset(false),
+		  inverse_base_projection(false),
 		  has_direct_base_offset(false), pseudo_destructor_call(false),
 		  reverse_pointer_compound_assignment(false),
 		  dynamic_type_query(false), dynamic_cast_reference(false) {}
@@ -931,15 +933,36 @@ struct VirtualSlotFact
 {
 	BindingId root;
 	BindingId function;
+	std::int64_t this_adjustment;
 
-	VirtualSlotFact() : root(kNoBinding), function(kNoBinding) {}
+	VirtualSlotFact()
+		: root(kNoBinding), function(kNoBinding), this_adjustment(0) {}
 	VirtualSlotFact(BindingId root_value, BindingId function_value)
-		: root(root_value), function(function_value) {}
+		: root(root_value), function(function_value), this_adjustment(0) {}
+};
+
+struct PolymorphicViewFact
+{
+	EntityId entity;
+	std::uint32_t direct_base_ordinal;
+	std::uint64_t relative_offset, offset;
+	bool stores_vptr;
+	std::vector<VirtualSlotFact> slots;
+
+	PolymorphicViewFact(EntityId entity_value = kNoEntity,
+		std::uint32_t direct_base_ordinal_value = 0,
+		std::uint64_t relative_offset_value = 0, bool stores_vptr_value = true)
+		: entity(entity_value),
+		  direct_base_ordinal(direct_base_ordinal_value),
+		  relative_offset(relative_offset_value), offset(0),
+		  stores_vptr(stores_vptr_value) {}
 };
 
 struct ClassPolymorphismFacts
 {
 	std::vector<VirtualSlotFact> slots;
+	std::vector<EntityId> primary_ancestors;
+	std::vector<PolymorphicViewFact> views;
 	bool complete;
 	bool vtable_demanded;
 

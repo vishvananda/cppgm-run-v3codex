@@ -229,8 +229,18 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 	for (std::size_t i = 0; i < entity_member_functions_.size(); ++i)
 		bytes += entity_member_functions_[i].capacity() * sizeof(BindingId);
 	for (std::size_t i = 0; i < class_polymorphism_.size(); ++i)
+	{
 		bytes += class_polymorphism_[i].slots.capacity() *
-			sizeof(VirtualSlotFact);
+			sizeof(VirtualSlotFact) +
+			class_polymorphism_[i].primary_ancestors.capacity() *
+				sizeof(EntityId) +
+			class_polymorphism_[i].views.capacity() *
+				sizeof(PolymorphicViewFact);
+		for (std::size_t view = 0;
+			view < class_polymorphism_[i].views.size(); ++view)
+			bytes += class_polymorphism_[i].views[view].slots.capacity() *
+				sizeof(VirtualSlotFact);
+	}
 	for (std::size_t i = 0; i < scope_lifetimes_.size(); ++i)
 		bytes += scope_lifetimes_[i].capacity() * sizeof(LifetimeObligation);
 	for (std::size_t i = 0; i < aggregate_helpers_.size(); ++i)

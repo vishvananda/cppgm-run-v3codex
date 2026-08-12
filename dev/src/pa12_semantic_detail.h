@@ -1148,6 +1148,7 @@ private:
 	void ConfigureVirtualFunction(BindingId binding, const SpecInfo& spec,
 		NodeId declarator, NodeId initializer);
 	void CompleteClassPolymorphism(EntityId entity);
+	void FinalizeClassPolymorphismViews(EntityId entity);
 	void MarkVtableDemand(EntityId entity);
 	bool CovariantVirtualReturn(TypeId derived, TypeId base) const;
 	FunctionSignatureKey VirtualSignatureKey(BindingId binding) const;
@@ -1208,6 +1209,7 @@ private:
 	const EntityRecord* InitializeClassBaseLayout(EntityId entity,
 		std::size_t packing_alignment, std::size_t* size,
 		std::size_t* alignment, std::size_t* natural_alignment);
+	std::size_t PreferredClassLayoutBaseOrdinal(EntityId entity) const;
 	void CollectVirtualBaseLayouts(EntityId entity,
 		std::vector<VirtualBaseLayout>* layouts);
 	void FinalizeClassVirtualBaseLayout(EntityId entity,
