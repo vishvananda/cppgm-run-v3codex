@@ -137,6 +137,10 @@ protected:
 				derived.program_.entities[temporary_entity].flavor == NAMED_UNION;
 			if (record.kind == DUMP_HANDLER && record.binding != kNoBinding)
 				(void)derived.EnsureGeneratedSlot(current, "catch", LowPtr());
+			if (record.kind == DUMP_THROW_EXPRESSION &&
+				record.full_expression_staging)
+				(void)derived.EnsureGeneratedSlot(
+					current, "throw_alloc", LowPtr());
 			if (record.kind == DUMP_BINARY_EXPRESSION && record.text != 0 &&
 				record.full_expression_staging)
 			{

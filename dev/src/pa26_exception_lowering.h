@@ -48,15 +48,49 @@ protected:
 
 	std::uint32_t ExceptionCleanupContext() const
 	{
-		return !active_exception_regions_.empty() &&
-			active_exception_regions_.back().kind == EXCEPTION_HANDLER_REGION ?
-				active_exception_regions_.back().handler + 1 : 0;
+		if (active_exception_regions_.empty()) return 0;
+		const ExceptionRegionState& region = active_exception_regions_.back();
+		if (region.handler >= (kNoDumpEdge - 2) / 2)
+			throw std::logic_error(
+				"exception cleanup context identity is out of range");
+		return (region.handler + 1) * 2 +
+			(region.kind == EXCEPTION_HANDLER_REGION ? 1 : 0);
+	}
+
+	bool BeginExceptionTryCleanupDispatch()
+	{
+		if (active_exception_regions_.empty() ||
+			active_exception_regions_.back().kind != EXCEPTION_TRY_REGION)
+			return false;
+		Derived& derived = static_cast<Derived&>(*this);
+		EmitHandlerClause(active_exception_regions_.back().handler);
+		derived.Emit(Instruction(Instruction::EH_CLEANUP));
+		return true;
+	}
+
+	void FinishExceptionCleanupDispatch(bool routes_to_try)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (!routes_to_try)
+		{
+			derived.Emit(Instruction(Instruction::RESUME));
+			return;
+		}
+		if (active_exception_regions_.empty() ||
+			active_exception_regions_.back().kind != EXCEPTION_TRY_REGION)
+			throw std::logic_error(
+				"exception cleanup lost its source try region");
+		derived.Emit(Instruction(Instruction::EH_END));
+		derived.Emit(Instruction(Instruction::EH_END));
+		derived.EmitJump(active_exception_regions_.back().entry);
 	}
 
 	void FinishExceptionUnwindCleanupPrefix()
 	{
-		if (ExceptionCleanupContext() == 0) return;
 		Derived& derived = static_cast<Derived&>(*this);
+		if (active_exception_regions_.empty() ||
+			active_exception_regions_.back().kind != EXCEPTION_HANDLER_REGION)
+			return;
 		for (std::size_t i = 0;
 			i < derived.full_expression_segment_actions_.size(); ++i)
 			if (derived.arena_.nodes[
@@ -119,7 +153,7 @@ protected:
 			return true;
 		}
 		if (record.kind != DUMP_THROW_EXPRESSION) return false;
-		(void)LowerThrowExpression(record, children);
+		(void)LowerThrowExpression(node, record, children);
 		return true;
 	}
 
@@ -177,7 +211,7 @@ protected:
 		return result;
 	}
 
-	Operand LowerThrowExpression(const DumpNode& record,
+	Operand LowerThrowExpression(std::uint32_t node, const DumpNode& record,
 		const NodeChildren& children)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
@@ -189,33 +223,90 @@ protected:
 			derived.EmitNoreturnFallback();
 			return Operand(0, LowVoid());
 		}
-		if (children.size() != 1 || record.operand_type == kNoType)
+		if (children.empty() || record.operand_type == kNoType)
 			throw std::logic_error("invalid typed throw expression");
+		const bool owns_cleanup = children.size() != 1 &&
+			!derived.full_expression_cleanup_active_;
+		if (owns_cleanup)
+			derived.BeginFullExpressionCleanup(children, 1, true);
+		if (owns_cleanup) derived.EnsureFullExpressionCleanupSegment();
 		arguments.Push(Operand(static_cast<std::int64_t>(
 			derived.program_.SizeOf(record.operand_type)), LowI64()));
-		const Operand object = EmitExceptionRuntimeCall(
+		Operand object = EmitExceptionRuntimeCall(
 			derived.polymorphism_.eh_allocate_exception_symbol,
 			LowPtr(), arguments);
+		if (owns_cleanup)
+		{
+			const Operand retained(derived.EnsureGeneratedSlot(
+				node, "throw_alloc", LowPtr()), LowPtr());
+			Instruction store(Instruction::STORE);
+			store.type = LowPtr();
+			store.first = object;
+			store.second = retained;
+			derived.Emit(store);
+			derived.PauseFullExpressionCleanupSegment(
+				"throw_alloc_unwind_end");
+			object = derived.LoadStorage(retained, LowPtr());
+		}
 		if (derived.IsClassObjectType(record.operand_type))
-			throw std::runtime_error(
-				"class exception construction is outside this checkpoint");
-		const LowType type = derived.LowerExpressionType(record.operand_type);
-		Instruction store(Instruction::STORE);
-		store.type = type;
-		store.first = derived.LowerValue(children[0], type);
-		store.second = object;
-		derived.Emit(store);
+			LowerExceptionObjectInitializer(children[0], object);
+		else
+		{
+			const LowType type = derived.LowerExpressionType(record.operand_type);
+			Instruction store(Instruction::STORE);
+			store.type = type;
+			store.first = derived.LowerValue(children[0], type);
+			store.second = object;
+			derived.Emit(store);
+		}
+		if (owns_cleanup)
+			(void)derived.RetireFullExpressionNormalActionsBeforeNoreturn();
+		if (owns_cleanup) derived.EnsureFullExpressionCleanupSegment();
 		CallArguments throw_arguments;
 		throw_arguments.Push(object);
 		throw_arguments.Push(ExceptionRttiAddress(record.operand_type));
-		throw_arguments.Push(Operand(0, LowPtr()));
+		Operand destructor(0, LowPtr());
+		if (record.selected_binding != kNoBinding)
+		{
+			if (record.selected_binding >= derived.function_symbols_.size() ||
+				derived.function_symbols_[record.selected_binding] == kNoLowId)
+				throw std::logic_error(
+					"exception destructor has no emitted binding");
+			destructor = derived.AddressOfStorage(Operand(Operand::FUNCTION,
+				derived.function_symbols_[record.selected_binding], LowPtr()));
+		}
+		throw_arguments.Push(destructor);
 		(void)EmitExceptionRuntimeCall(
 			derived.polymorphism_.eh_throw_symbol, LowVoid(), throw_arguments);
+		if (owns_cleanup)
+			derived.FinishNoreturnFullExpressionCleanup();
 		if (!active_exception_regions_.empty() &&
 			active_exception_regions_.back().kind == EXCEPTION_TRY_REGION)
 			derived.Emit(Instruction(Instruction::EH_END));
 		derived.EmitNoreturnFallback();
 		return Operand(0, LowVoid());
+	}
+
+	void LowerExceptionObjectInitializer(std::uint32_t node,
+		const Operand& destination)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const DumpNode& initializer = derived.arena_.nodes[node];
+		if (initializer.kind == DUMP_CONSTRUCTOR_ACTION &&
+			initializer.binding != kNoBinding)
+		{
+			derived.LowerConstructorAction(node, destination, true);
+			return;
+		}
+		const NodeChildren children = derived.Children(node);
+		if ((initializer.kind == DUMP_CLASS_VALUE_TRANSFER ||
+			 initializer.kind == DUMP_TEMPORARY_OBJECT) &&
+			children.size() == 1)
+		{
+			LowerExceptionObjectInitializer(children[0], destination);
+			return;
+		}
+		derived.LowerClassDestination(node, destination);
 	}
 
 	void FinishExceptionControlExit(std::size_t closed_handlers)

@@ -1241,7 +1241,7 @@ private:
 		else if (record.kind == DUMP_DYNAMIC_CAST_EXPRESSION)
 			result = LowerDynamicCast(node, record, children);
 		else if (record.kind == DUMP_THROW_EXPRESSION) result =
-			LowerThrowExpression(record, children);
+			LowerThrowExpression(node, record, children);
 		else if ((record.category == VALUE_LVALUE || record.category == VALUE_XVALUE) &&
 			IsArrayType(record.type))
 			result = record.kind == DUMP_LITERAL ?

@@ -2,6 +2,7 @@
 
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace cppgm
 {
@@ -13,7 +14,17 @@ bool SemanticAnalyzer::AnalyzeExceptionStatement(NodeId node, ScopeId scope,
 {
 	if (arena_->IsTag(node, "throw-statement"))
 	{
-		dump_.Add(output_parent, AnalyzeThrowExpression(node, scope).node);
+		const ExpressionInfo expression = AnalyzeThrowExpression(node, scope);
+		AppendFullExpressionDestructionActions(expression.node, expression.node);
+		StageExceptionalFullExpression(
+			expression.node, expression.node, scope, true);
+		const std::uint32_t first = dump_.nodes[expression.node].first_edge;
+		if (first != kNoDumpEdge && dump_.edges[first].next != kNoDumpEdge)
+		{
+			dump_.nodes[expression.node].full_expression_staging = true;
+			MarkFullExpressionCalls(dump_.edges[first].child, true);
+		}
+		dump_.Add(output_parent, expression.node);
 		return true;
 	}
 	if (!arena_->IsTag(node, "try-block")) return false;
@@ -134,11 +145,12 @@ ExpressionInfo SemanticAnalyzer::AnalyzeThrowExpression(
 		throw std::runtime_error("cannot throw an expression of type void");
 	if (value.type != thrown_type)
 		value = ApplyExplicitConversion(value, thrown_type);
+	BindingId destructor = kNoBinding;
 	const EntityId entity = DestructedEntity(thrown_type);
 	if (entity != kNoEntity &&
 		!program_->entities[entity].trivial_destructor)
 	{
-		const BindingId destructor = DestructorForType(thrown_type);
+		destructor = DestructorForType(thrown_type);
 		if (destructor == kNoBinding ||
 			GetFunction(destructor).deleted_destructor ||
 			!CanAccessMember(destructor, entity))
@@ -150,7 +162,81 @@ ExpressionInfo SemanticAnalyzer::AnalyzeThrowExpression(
 	result.node = MakeDump(DUMP_THROW_EXPRESSION,
 		program_->types.Fundamental(FUND_VOID), VALUE_PRVALUE);
 	dump_.nodes[result.node].operand_type = thrown_type;
-	dump_.Add(result.node, value.node);
+	dump_.nodes[result.node].selected_binding = destructor;
+	std::uint32_t initializer = IsClassObjectType(thrown_type) ?
+		BuildClassValueConstructorAction(
+			thrown_type, value, true, false) : value.node;
+	while (IsClassObjectType(thrown_type))
+	{
+		const DumpNode& candidate = dump_.nodes[initializer];
+		const std::uint32_t edge = candidate.first_edge;
+		if ((candidate.kind == DUMP_CLASS_VALUE_TRANSFER ||
+			 candidate.kind == DUMP_TEMPORARY_OBJECT) &&
+			edge != kNoDumpEdge && dump_.edges[edge].next == kNoDumpEdge)
+		{
+			initializer = dump_.edges[edge].child;
+			continue;
+		}
+		if (candidate.kind != DUMP_CONSTRUCTOR_ACTION ||
+			candidate.binding == kNoBinding || edge == kNoDumpEdge ||
+			dump_.edges[edge].next != kNoDumpEdge)
+			break;
+		const FunctionInfo& selected = GetFunction(candidate.binding);
+		const std::uint32_t temporary = dump_.edges[edge].child;
+		const std::uint32_t recipe =
+			dump_.nodes[temporary].kind == DUMP_TEMPORARY_OBJECT ?
+				dump_.nodes[temporary].first_edge : kNoDumpEdge;
+		if ((selected.special_member != SPECIAL_MEMBER_COPY_CONSTRUCTOR &&
+			 selected.special_member != SPECIAL_MEMBER_MOVE_CONSTRUCTOR) ||
+			recipe == kNoDumpEdge || dump_.edges[recipe].next != kNoDumpEdge)
+			break;
+		initializer = dump_.edges[recipe].child;
+	}
+	if (IsClassObjectType(thrown_type) &&
+		dump_.nodes[initializer].kind == DUMP_CONSTRUCTOR_ACTION)
+	{
+		dump_.nodes[initializer].elide_empty_constructor = false;
+		const EntityId thrown_entity = EntityOf(thrown_type);
+		if (thrown_entity != kNoEntity &&
+			program_->entities[thrown_entity].polymorphic_class)
+		{
+			std::vector<BindingId> polymorphic_chain;
+			BindingId current = dump_.nodes[initializer].binding;
+			while (current != kNoBinding)
+			{
+				const FunctionInfo& function = GetFunction(current);
+				const EntityId owner =
+					program_->bindings[current].member_owner;
+				if ((function.special_member !=
+						SPECIAL_MEMBER_COPY_CONSTRUCTOR &&
+					 function.special_member !=
+						SPECIAL_MEMBER_MOVE_CONSTRUCTOR) ||
+					owner == kNoEntity ||
+					!program_->entities[owner].polymorphic_class)
+					break;
+				polymorphic_chain.push_back(current);
+				const EntityId base = program_->entities[owner].direct_base;
+				current = base == kNoEntity ? kNoBinding :
+					ConstructorForSubobject(
+						program_->entities[base].type,
+						function.special_member);
+			}
+			for (std::size_t i = 0; i < polymorphic_chain.size(); ++i)
+				GetMutableFunction(
+					polymorphic_chain[i]).trivial_special_member = false;
+			for (std::size_t i = polymorphic_chain.size(); i != 0; --i)
+			{
+				FunctionInfo& function =
+					GetMutableFunction(polymorphic_chain[i - 1]);
+				ConfigureSynthesizedStoragePrefix(
+					program_->bindings[function.binding].member_owner,
+					&function);
+			}
+			dump_.nodes[initializer].trivial_special_member_action = false;
+		}
+		DemandFunction(dump_.nodes[initializer].binding);
+	}
+	dump_.Add(result.node, initializer);
 	result.type = program_->types.Fundamental(FUND_VOID);
 	result.category = VALUE_PRVALUE;
 	++expression_count_;

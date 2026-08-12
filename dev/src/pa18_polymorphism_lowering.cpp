@@ -445,6 +445,20 @@ private:
 		return "type_" + pa15_lowering_abi::MangleType(program_, type);
 	}
 
+	std::string ExceptionObjectPresentationStem(TypeId type) const
+	{
+		EntityId entity = kNoEntity;
+		if (!IsClassRttiType(type, &entity))
+			return RttiPresentationStem(type);
+		const EntityRecord& record = program_.entities[entity];
+		const std::string encoding = TypeInfoEncoding(entity);
+		const std::string local = LocalTypeEncoding(entity);
+		const bool generic_type = !local.empty() || !record.layout_complete;
+		const std::string stem = !local.empty() ? local :
+			generic_type ? encoding : ClassStem(entity);
+		return (generic_type ? "type" : ClassFlavor(entity)) + "_" + stem;
+	}
+
 	bool UsesExternalExceptionRtti(TypeId type) const
 	{
 		const TypeRecord& record = program_.types.Get(type);
@@ -650,7 +664,7 @@ private:
 					"_ZTI" + pa15_lowering_abi::MangleType(program_, type));
 			if (!state_.thrown_type_demanded[type]) continue;
 			const std::string name =
-				"__ehobj_" + RttiPresentationStem(type);
+				"__ehobj_" + ExceptionObjectPresentationStem(type);
 			state_.exception_object_symbols[type] = AddPolymorphicGlobal(
 				name, "@" + name, true);
 		}

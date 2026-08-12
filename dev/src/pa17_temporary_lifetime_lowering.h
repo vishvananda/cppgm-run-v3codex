@@ -448,35 +448,101 @@ protected:
 		derived.SelectBlock(done);
 	}
 
-	void PauseFullExpressionCleanupSegment()
+	void PauseFullExpressionCleanupSegment(
+		const char* end_prefix = "call_unwind_end")
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (!derived.full_expression_cleanup_active_ ||
 			derived.full_expression_cleanup_dispatch_ == kNoLowId)
 			return;
-		CloseFullExpressionCleanupSegment();
+		CloseFullExpressionCleanupSegment(end_prefix);
 		derived.full_expression_cleanup_dispatch_ = kNoLowId;
 		derived.full_expression_cleanup_end_ = kNoLowId;
 	}
 
-	void CloseFullExpressionCleanupSegment()
+	void CloseFullExpressionCleanupSegment(
+		const char* end_prefix = "call_unwind_end")
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		derived.Emit(Instruction(Instruction::EH_END));
 		if (derived.full_expression_cleanup_dispatch_reused_) return;
 		const BlockId dispatch = derived.full_expression_cleanup_dispatch_;
 		const BlockId end = derived.AddBlock(
-			derived.NewLabel("call_unwind_end"));
+			derived.NewLabel(end_prefix));
 		derived.full_expression_cleanup_end_ = end;
 		derived.EmitJump(end);
 		derived.SelectBlock(dispatch);
+		const bool routes_to_try =
+			derived.BeginExceptionTryCleanupDispatch();
 		derived.FinishExceptionUnwindCleanupPrefix();
 		for (std::size_t i = 0;
 			i < derived.full_expression_segment_actions_.size(); ++i)
 			LowerFullExpressionDestructorAction(
 				derived.full_expression_segment_actions_[i]);
-		derived.Emit(Instruction(Instruction::RESUME));
+		derived.FinishExceptionCleanupDispatch(routes_to_try);
 		derived.SelectBlock(end);
+	}
+
+	bool RetireFullExpressionNormalActionsBeforeNoreturn()
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		bool has_normal = false;
+		for (std::size_t i = 0;
+			i < derived.full_expression_cleanup_actions_.size(); ++i)
+			if (!derived.arena_.nodes[
+				derived.full_expression_cleanup_actions_[i]].unwind_only)
+				has_normal = true;
+		if (!has_normal) return false;
+		EnsureFullExpressionCleanupSegment();
+		for (std::size_t i = 0;
+			i < derived.full_expression_cleanup_actions_.size(); ++i)
+			if (!derived.arena_.nodes[
+				derived.full_expression_cleanup_actions_[i]].unwind_only)
+				LowerFullExpressionDestructorAction(
+					derived.full_expression_cleanup_actions_[i]);
+		PauseFullExpressionCleanupSegment();
+		std::size_t retained = 0;
+		for (std::size_t i = 0;
+			i < derived.full_expression_cleanup_actions_.size(); ++i)
+			if (derived.arena_.nodes[
+				derived.full_expression_cleanup_actions_[i]].unwind_only)
+				derived.full_expression_cleanup_actions_[retained++] =
+					derived.full_expression_cleanup_actions_[i];
+		derived.full_expression_cleanup_actions_.resize(retained);
+		derived.full_expression_segment_actions_.clear();
+		derived.full_expression_cleanup_ready_ = retained != 0;
+		derived.full_expression_deferred_cleanup_ = false;
+		derived.full_expression_tracks_lifetime_state_ = false;
+		derived.full_expression_uses_linked_dispatch_ = false;
+		derived.runtime_lifetime_cleanup_dispatch_ = kNoLowId;
+		derived.runtime_lifetime_temporaries_.Clear();
+		derived.full_expression_linked_action_cursor_ = 0;
+		return true;
+	}
+
+	void FinishNoreturnFullExpressionCleanup()
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (!derived.full_expression_cleanup_active_)
+			throw std::logic_error(
+				"noreturn cleanup outside full expression");
+		EnsureFullExpressionCleanupSegment();
+		derived.Emit(Instruction(Instruction::EH_END));
+		if (!derived.full_expression_cleanup_dispatch_reused_)
+		{
+			const BlockId source = derived.current_block_;
+			derived.SelectBlock(derived.full_expression_cleanup_dispatch_);
+			const bool routes_to_try =
+				derived.BeginExceptionTryCleanupDispatch();
+			derived.FinishExceptionUnwindCleanupPrefix();
+			for (std::size_t i = 0;
+				i < derived.full_expression_segment_actions_.size(); ++i)
+				LowerFullExpressionDestructorAction(
+					derived.full_expression_segment_actions_[i]);
+			derived.FinishExceptionCleanupDispatch(routes_to_try);
+			derived.SelectBlock(source);
+		}
+		ResetFullExpressionCleanup();
 	}
 
 	void BeginFullExpressionCleanup(const NodeChildren& children,
