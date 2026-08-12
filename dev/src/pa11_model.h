@@ -561,7 +561,7 @@ public:
 	const VirtualBaseLayout& VirtualBase(EntityId derived,
 		std::size_t ordinal) const;
 	bool FindVirtualBase(EntityId derived, EntityId base,
-		std::uint64_t* offset = 0) const;
+		std::uint64_t* offset = 0, std::uint32_t* ordinal = 0) const;
 	bool IsBaseOf(EntityId base, EntityId derived) const;
 	bool HasVirtualBasePath(EntityId derived, EntityId base) const;
 	bool QueryBasePath(EntityId derived, EntityId base,
@@ -617,6 +617,9 @@ public:
 		base_path_cache_misses;
 	mutable std::size_t base_path_edge_visits;
 	mutable std::size_t virtual_base_path_visits;
+	mutable std::size_t virtual_base_layout_lookups;
+	mutable std::size_t virtual_base_layout_probes;
+	std::size_t direct_base_validation_visits;
 	mutable std::size_t name_index_probes;
 	std::size_t using_index_probes;
 	std::size_t template_argument_list_requests;
@@ -656,6 +659,14 @@ private:
 		BasePathCacheEntry(EntityId derived_value = kNoEntity,
 			EntityId base_value = kNoEntity,
 			std::uint32_t version_value = 0);
+	};
+	struct VirtualBaseIndexEntry
+	{
+		EntityId derived, base;
+		std::uint32_t ordinal;
+		VirtualBaseIndexEntry(EntityId derived_value = kNoEntity,
+			EntityId base_value = kNoEntity, std::uint32_t ordinal_value = 0)
+			: derived(derived_value), base(base_value), ordinal(ordinal_value) {}
 	};
 	NameEntry* EnsureEntry(ScopeId scope, NameId name);
 	const NameEntry* FindEntry(ScopeId scope, NameId name) const;
@@ -707,6 +718,9 @@ private:
 	void StoreBasePathCache(EntityId derived, EntityId base, bool found,
 		std::size_t distance, bool all_public, std::uint64_t offset,
 		bool ambiguous, bool complete) const;
+	void RehashVirtualBaseIndex(std::size_t capacity);
+	void IndexVirtualBase(EntityId derived, EntityId base,
+		std::uint32_t ordinal);
 
 	std::vector<ScopeRecord> scopes_;
 	std::vector<ChildEdge> child_edges_;
@@ -738,11 +752,15 @@ private:
 	std::vector<std::uint8_t> base_jump_counts_;
 	std::vector<std::uint32_t> base_depths_;
 	std::vector<std::uint32_t> deepest_nonpublic_base_depths_;
+	std::vector<std::uint32_t> direct_base_input_marks_;
+	std::uint32_t direct_base_input_generation_;
 	mutable std::vector<BasePathState> base_path_states_;
 	mutable std::vector<BasePathFrame> base_path_scratch_;
 	mutable std::uint32_t base_path_generation_;
 	mutable std::vector<BasePathCacheEntry> base_path_cache_entries_;
 	mutable std::vector<std::uint32_t> base_path_cache_slots_;
+	std::vector<VirtualBaseIndexEntry> virtual_base_index_entries_;
+	std::vector<std::uint32_t> virtual_base_index_slots_;
 	std::vector<std::uint32_t> base_graph_versions_;
 	std::uint32_t lookup_dependency_generation_;
 	std::uint32_t lookup_pending_generation_;

@@ -156,6 +156,22 @@ void AccumulateLifetimeQueryStats(SemanticAnalysisStats* target,
 		source.initializer_list_lifetime_queries;
 }
 
+void AccumulateVirtualBaseStats(SemanticAnalysisStats* target,
+	const SemanticAnalysisStats& source)
+{
+	target->virtual_base_layout_edge_visits +=
+		source.virtual_base_layout_edge_visits;
+	target->virtual_base_layout_facts += source.virtual_base_layout_facts;
+	target->virtual_base_layout_lookups += source.virtual_base_layout_lookups;
+	target->virtual_base_layout_probes += source.virtual_base_layout_probes;
+	target->direct_base_validation_visits +=
+		source.direct_base_validation_visits;
+	target->polymorphic_virtual_view_lookups +=
+		source.polymorphic_virtual_view_lookups;
+	target->polymorphic_virtual_view_merges +=
+		source.polymorphic_virtual_view_merges;
+}
+
 }
 
 LowIRLoweringStats::LowIRLoweringStats()
@@ -164,7 +180,12 @@ LowIRLoweringStats::LowIRLoweringStats()
 	  slot_implicit_object_fact_reads(0),
 	  virtual_calls(0), vptr_stores(0), virtual_base_boundary_scan_nodes(0),
 	  virtual_base_boundary_facts(0),
-	  virtual_base_call_arguments(0), vtable_offset_rows(0), vtable_slots(0),
+	  virtual_base_call_arguments(0),
+	  virtual_base_boundary_binding_steps(0),
+	  virtual_base_boundary_binding_cache_hits(0),
+	  virtual_base_boundary_binding_table_growth(0),
+	  vtable_offset_rows(0), vtable_slots(0), vtable_thunk_requests(0),
+	  vtable_thunk_cache_hits(0), vtable_thunk_index_probes(0),
 	  deleting_destructors(0), rtti_graph_nodes_visited(0),
 	  rtti_demand_requests(0), rtti_types_demanded(0),
 	  rtti_symbol_lookups(0), rtti_base_dependency_visits(0),
@@ -205,8 +226,7 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 			semantic.expressions += semantic_stats.expressions;
 			semantic.class_layouts += semantic_stats.class_layouts;
 			semantic.class_layout_member_visits += semantic_stats.class_layout_member_visits;
-			semantic.virtual_base_layout_edge_visits += semantic_stats.virtual_base_layout_edge_visits;
-			semantic.virtual_base_layout_facts += semantic_stats.virtual_base_layout_facts;
+			AccumulateVirtualBaseStats(&semantic, semantic_stats);
 			semantic.class_zero_offset_subobject_visits += semantic_stats.class_zero_offset_subobject_visits;
 			semantic.special_member_fact_lookups +=
 				semantic_stats.special_member_fact_lookups;

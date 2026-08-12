@@ -91,6 +91,9 @@ public:
 		  braced_fact_cache_misses_(0), function_signature_lookups_(0),
 		  polymorphic_classes_(0), virtual_slots_(0),
 		  virtual_signature_lookups_(0), virtual_overrides_(0),
+		  polymorphic_virtual_view_generation_(0),
+		  polymorphic_virtual_view_lookups_(0),
+		  polymorphic_virtual_view_merges_(0),
 		  virtual_slot_lookups_(0), vtable_demands_(0),
 		  access_checks_(0), access_path_visits_(0),
 		  access_grant_probes_(0),
@@ -1150,6 +1153,13 @@ private:
 		NodeId declarator, NodeId initializer);
 	void CompleteClassPolymorphism(EntityId entity);
 	void FinalizeClassPolymorphismViews(EntityId entity);
+	void BeginPolymorphicVirtualViewIndex(
+		const ClassPolymorphismFacts& facts);
+	void AppendPolymorphicView(ClassPolymorphismFacts* facts,
+		const PolymorphicViewFact& view);
+	void MergeSharedVirtualView(PolymorphicViewFact* retained,
+		const PolymorphicViewFact& incoming);
+	void PublishVirtualBaseStats();
 	void MarkVtableDemand(EntityId entity);
 	bool CovariantVirtualReturn(TypeId derived, TypeId base) const;
 	FunctionSignatureKey VirtualSignatureKey(BindingId binding) const;
@@ -1839,6 +1849,11 @@ private:
 	std::size_t virtual_slots_;
 	std::size_t virtual_signature_lookups_;
 	std::size_t virtual_overrides_;
+	std::vector<std::uint32_t> polymorphic_virtual_view_marks_;
+	std::vector<std::uint32_t> polymorphic_virtual_view_indices_;
+	std::uint32_t polymorphic_virtual_view_generation_;
+	std::size_t polymorphic_virtual_view_lookups_;
+	std::size_t polymorphic_virtual_view_merges_;
 	mutable std::size_t virtual_slot_lookups_;
 	std::size_t vtable_demands_;
 	mutable std::size_t access_checks_;

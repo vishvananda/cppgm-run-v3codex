@@ -568,6 +568,12 @@ int run_emit_semantics_mode(const vector<string> & args)
 		   << stats.virtual_base_layout_edge_visits
 		   << " virtual_base_layout_facts="
 		   << stats.virtual_base_layout_facts
+		   << " virtual_base_layout_lookups="
+		   << stats.virtual_base_layout_lookups
+		   << " virtual_base_layout_probes="
+		   << stats.virtual_base_layout_probes
+		   << " direct_base_validation_visits="
+		   << stats.direct_base_validation_visits
 		   << " class_zero_offset_subobject_visits="
            << stats.class_zero_offset_subobject_visits
            << " special_member_fact_lookups="
@@ -643,7 +649,11 @@ int run_emit_semantics_mode(const vector<string> & args)
            << " virtual_slots=" << stats.virtual_slots
            << " virtual_signature_lookups="
            << stats.virtual_signature_lookups
-           << " virtual_overrides=" << stats.virtual_overrides
+		   << " virtual_overrides=" << stats.virtual_overrides
+		   << " polymorphic_virtual_view_lookups="
+		   << stats.polymorphic_virtual_view_lookups
+		   << " polymorphic_virtual_view_merges="
+		   << stats.polymorphic_virtual_view_merges
            << " virtual_slot_lookups=" << stats.virtual_slot_lookups
            << " vtable_demands=" << stats.vtable_demands
            << " access_checks=" << stats.access_checks
@@ -788,6 +798,12 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << semantic.virtual_base_layout_edge_visits
 			 << " virtual_base_layout_facts="
 			 << semantic.virtual_base_layout_facts
+			 << " virtual_base_layout_lookups="
+			 << semantic.virtual_base_layout_lookups
+			 << " virtual_base_layout_probes="
+			 << semantic.virtual_base_layout_probes
+			 << " direct_base_validation_visits="
+			 << semantic.direct_base_validation_visits
 			 << " class_zero_offset_subobject_visits="
 			 << semantic.class_zero_offset_subobject_visits
 			 << " special_member_fact_lookups="
@@ -881,6 +897,10 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << " virtual_signature_lookups="
 			 << semantic.virtual_signature_lookups
 			 << " virtual_overrides=" << semantic.virtual_overrides
+			 << " polymorphic_virtual_view_lookups="
+			 << semantic.polymorphic_virtual_view_lookups
+			 << " polymorphic_virtual_view_merges="
+			 << semantic.polymorphic_virtual_view_merges
 			 << " virtual_slot_lookups="
 			 << semantic.virtual_slot_lookups
 			 << " vtable_demands=" << semantic.vtable_demands
@@ -995,8 +1015,19 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << stats.virtual_base_boundary_facts
 			 << " virtual_base_call_arguments="
 			 << stats.virtual_base_call_arguments
+			 << " virtual_base_boundary_binding_steps="
+			 << stats.virtual_base_boundary_binding_steps
+			 << " virtual_base_boundary_binding_cache_hits="
+			 << stats.virtual_base_boundary_binding_cache_hits
+			 << " virtual_base_boundary_binding_table_growth="
+			 << stats.virtual_base_boundary_binding_table_growth
 			 << " vtable_offset_rows=" << stats.vtable_offset_rows
 			 << " vtable_slots=" << stats.vtable_slots
+			 << " vtable_thunk_requests=" << stats.vtable_thunk_requests
+			 << " vtable_thunk_cache_hits="
+			 << stats.vtable_thunk_cache_hits
+			 << " vtable_thunk_index_probes="
+			 << stats.vtable_thunk_index_probes
 			 << " deleting_destructors=" << stats.deleting_destructors
 			 << " rtti_graph_nodes_visited="
 			 << stats.rtti_graph_nodes_visited

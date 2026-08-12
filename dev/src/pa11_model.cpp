@@ -926,7 +926,9 @@ Program::Program(InternedStringTable& strings)
 	  lookup_cache_invalidation_pushes(0),
 	  base_path_queries(0), base_path_cache_hits(0),
 	  base_path_cache_misses(0), base_path_edge_visits(0),
-	  virtual_base_path_visits(0),
+	  virtual_base_path_visits(0), virtual_base_layout_lookups(0),
+	  virtual_base_layout_probes(0),
+	  direct_base_validation_visits(0),
 	  name_index_probes(0), using_index_probes(0),
 	  template_argument_list_requests(0),
 	  template_argument_list_cache_hits(0),
@@ -936,6 +938,7 @@ Program::Program(InternedStringTable& strings)
 	  using_name_invalidation_generation_(0), entry_slots_(64, 0),
 	  template_argument_list_slots_(32, 0),
 	  lookup_generation_(1),
+	  direct_base_input_generation_(0),
 	  base_path_generation_(0),
 	  base_path_cache_slots_(64, 0),
 	  lookup_dependency_generation_(0), lookup_pending_generation_(0),
@@ -1575,14 +1578,25 @@ void Program::SetDirectBases(EntityId derived,
 	if (record.member_scope != kNoScope)
 		throw std::logic_error(
 			"direct bases must be fixed before publishing the member scope");
+	if (direct_base_input_marks_.size() < entities.size())
+		direct_base_input_marks_.resize(entities.size(), 0);
+	if (direct_base_input_generation_ ==
+		std::numeric_limits<std::uint32_t>::max())
+	{
+		std::fill(direct_base_input_marks_.begin(),
+			direct_base_input_marks_.end(), 0);
+		direct_base_input_generation_ = 0;
+	}
+	const std::uint32_t input_generation = ++direct_base_input_generation_;
 	for (std::size_t i = 0; i < bases.size(); ++i)
 	{
+		++direct_base_validation_visits;
 		const EntityId base = bases[i].entity;
 		if (base >= entities.size() || derived == base)
 			throw std::runtime_error("invalid direct base relationship");
-		for (std::size_t previous = 0; previous < i; ++previous)
-			if (bases[previous].entity == base)
-				throw std::runtime_error("duplicate direct base");
+		if (direct_base_input_marks_[base] == input_generation)
+			throw std::runtime_error("duplicate direct base");
+		direct_base_input_marks_[base] = input_generation;
 		if (IsBaseOf(derived, base))
 			throw std::runtime_error("cyclic class inheritance");
 		if (base_depths_[base] == std::numeric_limits<std::uint32_t>::max())
@@ -1655,51 +1669,6 @@ DirectBaseEdge& Program::MutableDirectBase(EntityId derived,
 	if (++base_graph_versions_[derived] == 0)
 		base_graph_versions_[derived] = 1;
 	return direct_bases[entities[derived].direct_base_begin + ordinal];
-}
-
-void Program::SetVirtualBaseLayouts(EntityId derived,
-	const std::vector<VirtualBaseLayout>& layouts)
-{
-	if (derived >= entities.size())
-		throw std::logic_error("invalid virtual base layout owner");
-	EntityRecord& record = entities[derived];
-	if (record.virtual_base_count != 0)
-		throw std::logic_error("virtual base layouts are already fixed");
-	if (layouts.size() > std::numeric_limits<std::uint32_t>::max() ||
-		virtual_bases.size() > std::numeric_limits<std::uint32_t>::max() -
-			layouts.size())
-		throw std::runtime_error("too many virtual base layouts");
-	record.virtual_base_begin =
-		static_cast<std::uint32_t>(virtual_bases.size());
-	record.virtual_base_count =
-		static_cast<std::uint32_t>(layouts.size());
-	virtual_bases.insert(virtual_bases.end(), layouts.begin(), layouts.end());
-	if (++base_graph_versions_[derived] == 0)
-		base_graph_versions_[derived] = 1;
-}
-
-const VirtualBaseLayout& Program::VirtualBase(EntityId derived,
-	std::size_t ordinal) const
-{
-	if (derived >= entities.size() ||
-		ordinal >= entities[derived].virtual_base_count)
-		throw std::logic_error("invalid virtual base layout query");
-	return virtual_bases[entities[derived].virtual_base_begin + ordinal];
-}
-
-bool Program::FindVirtualBase(EntityId derived, EntityId base,
-	std::uint64_t* offset) const
-{
-	if (derived >= entities.size() || base >= entities.size()) return false;
-	const EntityRecord& record = entities[derived];
-	for (std::size_t i = 0; i < record.virtual_base_count; ++i)
-	{
-		const VirtualBaseLayout& layout = VirtualBase(derived, i);
-		if (layout.entity != base) continue;
-		if (offset) *offset = layout.offset;
-		return true;
-	}
-	return false;
 }
 
 Program::NameEntry* Program::EnsureEntry(ScopeId scope, NameId name)
@@ -2948,10 +2917,13 @@ std::size_t Program::StorageBytes() const
 		base_jump_counts_.capacity() * sizeof(std::uint8_t) +
 		base_depths_.capacity() * sizeof(std::uint32_t) +
 		deepest_nonpublic_base_depths_.capacity() * sizeof(std::uint32_t) +
+		direct_base_input_marks_.capacity() * sizeof(std::uint32_t) +
 		base_path_states_.capacity() * sizeof(BasePathState) +
 		base_path_scratch_.capacity() * sizeof(BasePathFrame) +
 		base_path_cache_entries_.capacity() * sizeof(BasePathCacheEntry) +
 		base_path_cache_slots_.capacity() * sizeof(std::uint32_t) +
+		virtual_base_index_entries_.capacity() * sizeof(VirtualBaseIndexEntry) +
+		virtual_base_index_slots_.capacity() * sizeof(std::uint32_t) +
 		base_graph_versions_.capacity() * sizeof(std::uint32_t) +
 		lookup_cache_->StorageBytes() +
 		entities.capacity() * sizeof(EntityRecord) +

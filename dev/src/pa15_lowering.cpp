@@ -106,7 +106,7 @@ public:
 			arena_.nodes.size(), kNoDumpEdge);
 		function_definition_.resize(program_.bindings.size(), kNoDumpEdge);
 		function_declaration_.resize(program_.bindings.size(), kNoDumpEdge);
-		virtual_base_contracts_.Reset(program_.bindings.size());
+		virtual_base_contracts_.Reset(program_.bindings.size(), arena_.nodes.size());
 		global_node_.resize(program_.bindings.size(), kNoDumpEdge);
 		namespace_action_.resize(program_.bindings.size(), kNoDumpEdge);
 		thread_local_dynamic_.resize(graph_.namespace_objects.size(), 0);

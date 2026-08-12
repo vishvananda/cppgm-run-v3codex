@@ -36,8 +36,14 @@ struct LowIRLoweringStats
 	std::size_t virtual_base_boundary_scan_nodes;
 	std::size_t virtual_base_boundary_facts;
 	std::size_t virtual_base_call_arguments;
+	std::size_t virtual_base_boundary_binding_steps;
+	std::size_t virtual_base_boundary_binding_cache_hits;
+	std::size_t virtual_base_boundary_binding_table_growth;
 	std::size_t vtable_offset_rows;
 	std::size_t vtable_slots;
+	std::size_t vtable_thunk_requests;
+	std::size_t vtable_thunk_cache_hits;
+	std::size_t vtable_thunk_index_probes;
 	std::size_t deleting_destructors;
 	std::size_t rtti_graph_nodes_visited;
 	std::size_t rtti_demand_requests;

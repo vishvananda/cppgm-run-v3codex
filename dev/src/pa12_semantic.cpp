@@ -2838,7 +2838,7 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		stats_->declarations = program.bindings.size() - 1;
 		stats_->expressions = expression_count_;
 		stats_->class_layouts = class_layouts_; stats_->class_layout_member_visits = class_layout_member_visits_;
-		stats_->virtual_base_layout_edge_visits = virtual_base_layout_edge_visits_; stats_->virtual_base_layout_facts = virtual_base_layout_facts_;
+		PublishVirtualBaseStats();
 		stats_->class_zero_offset_subobject_visits =
 			class_zero_offset_subobject_visits_;
 		stats_->special_member_fact_lookups = special_member_fact_lookups_;

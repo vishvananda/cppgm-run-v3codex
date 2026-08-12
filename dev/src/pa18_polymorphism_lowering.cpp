@@ -7,7 +7,6 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
-#include <unordered_map>
 #include <utility>
 
 namespace cppgm
@@ -63,7 +62,7 @@ public:
 		PolymorphismLoweringState* state)
 		: graph_(graph), program_(graph.program), output_(output), stats_(stats),
 		  source_ordinal_(source_ordinal), function_symbols_(function_symbols),
-		  state_(*state), source_types_(program_)
+		  state_(*state), source_types_(program_), adjusted_slot_slots_(32, 0)
 	{
 	}
 
@@ -644,15 +643,59 @@ private:
 			target_name.substr(2);
 	}
 
+	struct AdjustedSlotEntry
+	{
+		SymbolId target, symbol;
+		std::int64_t adjustment;
+
+		AdjustedSlotEntry(SymbolId target_value, std::int64_t adjustment_value,
+			SymbolId symbol_value)
+			: target(target_value), symbol(symbol_value),
+			  adjustment(adjustment_value) {}
+	};
+
+	void RehashAdjustedSlots(std::size_t capacity)
+	{
+		std::vector<std::uint32_t> replacement(capacity, 0);
+		const std::size_t mask = capacity - 1;
+		for (std::size_t i = 0; i < adjusted_slot_entries_.size(); ++i)
+		{
+			const AdjustedSlotEntry& entry = adjusted_slot_entries_[i];
+			std::size_t slot = MixHash(entry.target,
+				static_cast<std::uint64_t>(entry.adjustment)) & mask;
+			while (replacement[slot] != 0) slot = (slot + 1) & mask;
+			replacement[slot] = static_cast<std::uint32_t>(i + 1);
+		}
+		adjusted_slot_slots_.swap(replacement);
+	}
+
 	SymbolId RegisterAdjustedSlot(const VirtualSlotFact& slot,
 		SymbolId target, BindingId function)
 	{
 		if (slot.this_adjustment == 0) return target;
-		const std::string key = std::to_string(target) + ":" +
-			std::to_string(slot.this_adjustment);
-		const std::unordered_map<std::string, SymbolId>::const_iterator found =
-			adjusted_slot_symbols_.find(key);
-		if (found != adjusted_slot_symbols_.end()) return found->second;
+		if (stats_) ++stats_->vtable_thunk_requests;
+		if ((adjusted_slot_entries_.size() + 1) * 10 >
+			adjusted_slot_slots_.size() * 7)
+			RehashAdjustedSlots(adjusted_slot_slots_.size() * 2);
+		const std::size_t mask = adjusted_slot_slots_.size() - 1;
+		std::size_t index = MixHash(target,
+			static_cast<std::uint64_t>(slot.this_adjustment)) & mask;
+		while (adjusted_slot_slots_[index] != 0)
+		{
+			if (stats_) ++stats_->vtable_thunk_index_probes;
+			const AdjustedSlotEntry& entry = adjusted_slot_entries_[
+				adjusted_slot_slots_[index] - 1];
+			if (entry.target == target &&
+				entry.adjustment == slot.this_adjustment)
+			{
+				if (stats_) ++stats_->vtable_thunk_cache_hits;
+				return entry.symbol;
+			}
+			index = (index + 1) & mask;
+		}
+		if (adjusted_slot_entries_.size() >=
+			std::numeric_limits<std::uint32_t>::max())
+			throw std::runtime_error("too many adjusted vtable slots");
 		const std::string direction = slot.this_adjustment < 0 ? "neg" : "pos";
 		const std::uint64_t magnitude = slot.this_adjustment < 0 ?
 			static_cast<std::uint64_t>(-(slot.this_adjustment + 1)) + 1 :
@@ -670,7 +713,10 @@ private:
 		record.referenced = true;
 		state_.vtable_thunks.push_back(VtableThunkLoweringFact(
 			thunk, target, function, slot.this_adjustment));
-		adjusted_slot_symbols_.insert(std::make_pair(key, thunk));
+		adjusted_slot_entries_.push_back(AdjustedSlotEntry(
+			target, slot.this_adjustment, thunk));
+		adjusted_slot_slots_[index] =
+			static_cast<std::uint32_t>(adjusted_slot_entries_.size());
 		return thunk;
 	}
 
@@ -1471,7 +1517,8 @@ private:
 	PolymorphismLoweringState& state_;
 	pa15_lowering_detail::SourceTypeLowering source_types_;
 	std::vector<std::uint8_t> local_function_definitions_;
-	std::unordered_map<std::string, SymbolId> adjusted_slot_symbols_;
+	std::vector<AdjustedSlotEntry> adjusted_slot_entries_;
+	std::vector<std::uint32_t> adjusted_slot_slots_;
 };
 
 class DeletingDestructorBuilder

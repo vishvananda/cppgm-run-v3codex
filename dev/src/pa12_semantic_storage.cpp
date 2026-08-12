@@ -38,6 +38,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		virtual_base_layout_fact_marks_.capacity() * sizeof(std::uint32_t) +
 		virtual_base_layout_scratch_.capacity() *
 			sizeof(std::pair<EntityId, std::uint32_t>) +
+		polymorphic_virtual_view_marks_.capacity() * sizeof(std::uint32_t) +
+		polymorphic_virtual_view_indices_.capacity() * sizeof(std::uint32_t) +
 		entity_constructors_.capacity() * sizeof(std::vector<BindingId>) +
 		entity_conversion_functions_.capacity() *
 			sizeof(std::vector<BindingId>) +

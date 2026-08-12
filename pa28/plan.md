@@ -1,66 +1,104 @@
-# PA28 Implementation Plan
+# PA28 Final Audit Plan
 
-## Stage Design and Spec Alignment
+## Current Stage Design and Spec Alignment
 
-`canonical classes -> complete-object views -> demanded ABI units -> typed LowIR`
+PA28 extends the canonical PA27 pipeline in place:
 
-The stage keeps canonical indexed identities and explicit semantic/lowering
-ownership required by `spec.md`. Layout chooses a primary polymorphic base;
-semantic facts own physical and logical views, slots, final overriders, and
-receiver adjustments; lowering emits only demanded vtables, RTTI, and thunks.
-PA27 single-view programs retain their existing path.
+`source bytes -> token/syntax owner -> canonical semantic graph -> typed LowIR -> terminal LowIR text`
 
-## Current Failure Map
+The PA10 `SyntaxArena` is the assignment-mandated syntax boundary. It and the
+token/parser scratch remain local to semantic construction and die before
+lowering. `SemanticGraphStorage` then owns stable `EntityId`, `TypeId`,
+`BindingId`, layout, polymorphic-view, selected-slot, conversion, RTTI, and
+lifecycle facts. `GraphLowerer` borrows that graph and constructs `TypedProgram`
+objects directly; LowIR text is rendered only as the requested PA28 output and
+is never reparsed or used as an in-process transport.
 
-Current: **42/42 PA28 tests pass** (turn baseline 38/42); PA1-PA27 and audit pass.
-
-| Shared behavior | Owner | Remaining |
-|---|---|---:|
-| None | — | 0 |
-
-## Active Checkpoint
-
-**Stage complete.** The complete/base lifecycle boundary now follows
-`spec.md` §2/§6: semantic facts own canonical physical views, distinct
-destructor identities, and ordered actions; lowering recursively emits demanded
-VTT subtrees and forwards their indexed slices. The most-derived destructor
-alone tears down virtual bases. Discovery remains O(V + E) per class and
-lowering O(A) in emitted actions per §9. The diamond witness, PA28, PA1-PA27,
-audit, and scaling counters all pass.
+Virtual bases are indexed by the canonical `(derived EntityId, base EntityId)`
+pair. Each class owns one deterministic complete-object layout and explicit
+primary, physical secondary, alias, and shared-virtual views. Shared views
+merge final overriders by canonical binding and base identity. Lowering carries
+only demanded virtual-base ordinals across function boundaries, uses explicit
+complete/base constructor and destructor identities, and interns adjusted
+thunks by the typed `(target SymbolId, this adjustment)` key. PA27-only inputs
+do not allocate the PA28 expression-binding cache or virtual-base index.
 
 ## Performance Evidence
 
-`CPPGM_FRONTEND_STATS=1` demand-shaped boundary witnesses:
+Five-run medians compare the preserved pre-audit binary with the audited
+binary on identical generated input. Largest outputs in both families are
+byte-identical.
 
-| Case | Bytes | Lowered nodes | Scan nodes | Carried facts/args | Functions/instructions | semantic/lowering ns | Wall/RSS |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| direct-use layout union | 382 | 24 | 19 | 4/4 | 4/50 | 840,080 / 301,517 | 0.00 s / 6,840 KiB |
-| forwarded prvalue | 369 | 29 | 29 | 9/9 | 5/67 | 964,650 / 307,188 | 0.00 s / 6,848 KiB |
-| reference-to-pointer | 468 | 35 | 30 | 10/10 | 8/82 | 679,697 / 266,302 | 0.00 s / 6,720 KiB |
-| pure destructor ownership | 140 | 17 | 0 | 0/0 | 4/42 | 375,140 / 255,750 | 0.00 s / 6,816 KiB |
-| diamond deleting sequence | 234 | 33 | 0 | 0/0 | 18/288 | 403,623 / 457,160 | 0.00 s / 6,828 KiB |
-| sibling dynamic cast | 210 | 27 | 43 | 10 misses/12 hits | 6/55 | 478,992 / 316,179 | 0.00 s / 6,732 KiB |
-| inverse static cast | 323 | 41 | 66 | 4 misses/13 hits | 7/87 | 540,821 / 335,970 | 0.00 s / 6,880 KiB |
-| multi-level lifecycle | 288 | 54 | 30 | 4 layout/6 boundary | 14/243 | 637,895 / 507,742 | 0.00 s / 6,816 KiB |
+| Witness | Scale | Pre-audit | Audited | Audited work |
+|---|---:|---:|---:|---|
+| nested boundary member chain | 512 | 4.527 ms lowering | 1.729 ms | 514 binding steps, 1,027 hits |
+| nested boundary member chain | 1,024 | 15.124 ms | 3.662 ms | 1,026 steps, 2,051 hits |
+| nested boundary member chain | 2,048 | 55.043 ms | 6.596 ms | 2,050 steps, 4,099 hits |
+| wide direct virtual bases | 1,024 | 43.043 ms semantic | 38.657 ms | 1,024 validations, 9,216 lookups |
+| wide direct virtual bases | 2,048 | 99.173 ms | 78.277 ms | 2,048 validations, 18,432 lookups |
+| wide direct virtual bases | 4,096 | 253.663 ms | 166.780 ms | 4,096 validations, 36,864 lookups |
 
-Only definitions with a virtual-base boundary are scanned once; the layout-union
-callee carries one of three available ordinals while its forwarding caller
-carries all three. Adjusted destructor thunks are interned by target/adjustment
-in expected O(1); reverse-base EH suffixes scale with emitted cleanup volume.
-The multi-level diamond visits 11 layout edges for 4 unique virtual-base facts
-and emits 4 constructor-base plus 4 destructor-subobject actions, 24 vptr
-stores, and 28 vtable offset rows.
+Boundary lookup had been quadratic because every nested member rediscovered
+the same one-child binding path. The lazy node cache makes retained steps and
+table growth linear (520/1,032/2,056 slots). Wide-base validation is now one
+visit per direct edge; canonical virtual-base hash probes are
+4,545/8,907/18,156 for the three scales above.
 
-## Completed Checkpoints
+Representative stage witnesses also show bounded demanded work: the forwarded
+template performs 7 specialization requests with 4 cache hits, scans 29
+boundary nodes, and carries 9 facts/arguments; the multi-level lifecycle visits
+11 layout edges for 4 virtual-base facts, merges one of 3 virtual-view lookups,
+stores 24 vptrs, and emits 28 required offset rows. The destructor-view witness
+performs 4 typed thunk requests with 2 cache hits and 2 probes.
 
-| Checkpoint | Evidence |
+## Architecture Review
+
+- Representation and ownership: source/token/syntax scratch, canonical graph,
+  and typed LowIR have explicit owners and phase deaths. No PA28 text round
+  trip, fake semantic node, compiler shell-out, or reference lookup exists.
+- Identity and lookup: layouts, shared views, slots, hidden contracts, and
+  thunks use compact IDs and typed integer keys. Rendered names are confined to
+  symbol presentation and diagnostics.
+- Templates and demand: template specializations retain canonical argument and
+  environment identities from the shared template engine. PA28 boundary
+  contracts are computed once per defined binding and carry only demanded
+  virtual-base ordinals; the expression cache is lazy and node-indexed.
+- Lowering: calls consume recorded bindings, slots, offsets, receiver
+  adjustments, RTTI hints, VTT slices, and ordered lifecycle actions. Each
+  vtable, VTT, RTTI object, thunk, and destructor entry has a stable typed
+  emission identity.
+- Allocation and scaling: virtual layouts and adjusted thunks use flat
+  open-addressed indexes; shared-view lookup uses reusable epoch tables;
+  boundary discovery memoizes one result per visited semantic node. No
+  retry-all loop or global invalidation was found.
+- Backend adaptation: PA28 terminates at LowIR by contract. Native acceptance
+  is covered by the PA28 checks using the PA29 handoff; direct ELF ownership is
+  therefore outside this stage rather than replaced by a host compiler.
+
+## Final Architecture Review
+
+The independent audit closed one correctness defect and four related
+identity/scaling defects: ambiguous final overriders in a shared virtual base
+were silently order-selected; virtual-base lookup and shared-view deduplication
+rescanned vectors; deep boundary expressions were rediscovered repeatedly;
+direct-base duplicate validation was quadratic; and adjusted thunk caching
+rendered string keys into a node-based map. All now follow their canonical
+semantic or lowering ownership paths. No open correctness, architecture,
+performance, self-containment, timeout, or fatal file-audit issue remains.
+The 21 file-audit findings are advisory inherited header-division warnings,
+including the already checked PA28 CRTP lowering header; no fatal finding
+remains.
+
+## Checkpoint Ledger
+
+| Checkpoint | Final result |
 |---|---|
-| Baseline and ownership map | 1/42; all failures grouped by phase owner |
-| Shared virtual layout and hidden address boundary | 13/42; PA1-PA27 + audit pass |
-| Multi-view facts, adjusted dispatch, primary layout, and inverse casts | 24/42; secondary vtables/vptrs/thunks, multi-base RTTI, logical aliases; PA1-PA27 + audit pass |
-| Virtual-base rows, VTT address points, and converted receivers | 27/42; three focused dispatch/table tests, 3814/3814 prior tests, audit pass |
-| Cached hidden contracts and construction views/VTT forwarding | 31/42; five focused witnesses exact, 3814/3814 prior tests, audit pass |
-| Demand-shaped value/copy ABI and minimal address frontiers | 35/42; four focused witnesses exact, 3814/3814 prior tests, audit pass |
-| Pure and multi-view deleting destructor ABI | 38/42; three focused witnesses exact, hidden lifecycle calls arity-correct, 3814/3814 prior tests, audit pass |
-| Canonical cast control and RTTI hint | 41/42; three focused witnesses exact, 3814/3814 prior tests, audit pass |
-| Complete/base lifecycle split and recursive VTTs | 42/42; diamond lifecycle exact, 3814/3814 prior tests, audit pass |
+| Shared virtual layout and hidden addresses | one deterministic shared layout; canonical indexed queries |
+| Multi-view dispatch and inverse casts | physical/logical views, adjusted receivers, and slots pass |
+| Virtual-base vtable rows | demanded address points and offset rows pass |
+| Construction views and VTT forwarding | recursive subtrees and indexed slices pass |
+| Demand-shaped value/copy ABI | cached per-binding contracts and minimal ordinals pass |
+| Multi-view destructor ABI | complete/base/deleting identities and ordered cleanup pass |
+| Cast control and RTTI views | canonical runtime hint and non-primary RTTI pass |
+| Complete/base lifecycle split | most-derived-only virtual-base lifetime passes |
+| Independent final audit | final-overrider, typed-index, and scaling fixes closed; all gates pass |

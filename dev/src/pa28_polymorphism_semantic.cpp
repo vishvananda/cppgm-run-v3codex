@@ -43,6 +43,122 @@ const std::vector<VirtualSlotFact>& SlotsForView(
 
 }
 
+void SemanticAnalyzer::BeginPolymorphicVirtualViewIndex(
+	const ClassPolymorphismFacts& facts)
+{
+	if (polymorphic_virtual_view_marks_.size() < program_->entities.size())
+	{
+		polymorphic_virtual_view_marks_.resize(program_->entities.size(), 0);
+		polymorphic_virtual_view_indices_.resize(program_->entities.size(), 0);
+	}
+	if (polymorphic_virtual_view_generation_ ==
+		std::numeric_limits<std::uint32_t>::max())
+	{
+		std::fill(polymorphic_virtual_view_marks_.begin(),
+			polymorphic_virtual_view_marks_.end(), 0);
+		polymorphic_virtual_view_generation_ = 0;
+	}
+	const std::uint32_t generation = ++polymorphic_virtual_view_generation_;
+	for (std::size_t i = 0; i < facts.views.size(); ++i)
+	{
+		if (!facts.views[i].virtual_base) continue;
+		polymorphic_virtual_view_marks_[facts.views[i].entity] = generation;
+		polymorphic_virtual_view_indices_[facts.views[i].entity] =
+			static_cast<std::uint32_t>(i);
+	}
+}
+
+void SemanticAnalyzer::MergeSharedVirtualView(PolymorphicViewFact* retained,
+	const PolymorphicViewFact& incoming)
+{
+	if (retained->entity != incoming.entity ||
+		retained->slots.size() != incoming.slots.size())
+		throw std::logic_error("shared virtual views have incompatible slots");
+	for (std::size_t i = 0; i < retained->slots.size(); ++i)
+	{
+		VirtualSlotFact& selected = retained->slots[i];
+		const VirtualSlotFact& candidate = incoming.slots[i];
+		if (program_->bindings[selected.root].canonical !=
+			program_->bindings[candidate.root].canonical)
+			throw std::logic_error("shared virtual slot roots do not match");
+		if (selected.function == kNoBinding)
+		{
+			if (program_->bindings[candidate.function].final_virtual)
+				throw std::runtime_error(
+					"virtual function overrides final function");
+			continue;
+		}
+		const BindingId selected_function =
+			program_->bindings[selected.function].canonical;
+		const BindingId candidate_function =
+			program_->bindings[candidate.function].canonical;
+		if (selected_function == candidate_function) continue;
+		const EntityId selected_owner =
+			program_->bindings[selected_function].member_owner;
+		const EntityId candidate_owner =
+			program_->bindings[candidate_function].member_owner;
+		const bool selected_is_base = selected_owner != kNoEntity &&
+			candidate_owner != kNoEntity &&
+			program_->IsBaseOf(selected_owner, candidate_owner);
+		const bool candidate_is_base = selected_owner != kNoEntity &&
+			candidate_owner != kNoEntity &&
+			program_->IsBaseOf(candidate_owner, selected_owner);
+		if (selected_is_base && !candidate_is_base)
+			selected.function = candidate_function;
+		else if (!candidate_is_base || selected_is_base)
+		{
+			if (program_->bindings[selected_function].final_virtual ||
+				program_->bindings[candidate_function].final_virtual)
+				throw std::runtime_error(
+					"virtual function overrides final function");
+			selected.function = kNoBinding;
+		}
+	}
+}
+
+void SemanticAnalyzer::AppendPolymorphicView(ClassPolymorphismFacts* facts,
+	const PolymorphicViewFact& view)
+{
+	if (!view.virtual_base)
+	{
+		facts->views.push_back(view);
+		return;
+	}
+	++polymorphic_virtual_view_lookups_;
+	const EntityId entity = view.entity;
+	if (entity >= polymorphic_virtual_view_marks_.size())
+		throw std::logic_error("virtual view identity is out of range");
+	if (polymorphic_virtual_view_marks_[entity] ==
+		polymorphic_virtual_view_generation_)
+	{
+		const std::uint32_t index = polymorphic_virtual_view_indices_[entity];
+		if (index >= facts->views.size())
+			throw std::logic_error("virtual view index is invalid");
+		MergeSharedVirtualView(&facts->views[index], view);
+		++polymorphic_virtual_view_merges_;
+		return;
+	}
+	polymorphic_virtual_view_marks_[entity] =
+		polymorphic_virtual_view_generation_;
+	polymorphic_virtual_view_indices_[entity] =
+		static_cast<std::uint32_t>(facts->views.size());
+	facts->views.push_back(view);
+}
+
+void SemanticAnalyzer::PublishVirtualBaseStats()
+{
+	stats_->virtual_base_layout_edge_visits = virtual_base_layout_edge_visits_;
+	stats_->virtual_base_layout_facts = virtual_base_layout_facts_;
+	stats_->virtual_base_layout_lookups = program_->virtual_base_layout_lookups;
+	stats_->virtual_base_layout_probes = program_->virtual_base_layout_probes;
+	stats_->direct_base_validation_visits =
+		program_->direct_base_validation_visits;
+	stats_->polymorphic_virtual_view_lookups =
+		polymorphic_virtual_view_lookups_;
+	stats_->polymorphic_virtual_view_merges =
+		polymorphic_virtual_view_merges_;
+}
+
 std::size_t SemanticAnalyzer::PreferredClassLayoutBaseOrdinal(
 	EntityId entity) const
 {
@@ -130,6 +246,7 @@ void SemanticAnalyzer::CompleteClassPolymorphism(EntityId entity)
 		class_polymorphism_.resize(static_cast<std::size_t>(entity) + 1);
 	ClassPolymorphismFacts& facts = class_polymorphism_[entity];
 	if (facts.complete) return;
+	BeginPolymorphicVirtualViewIndex(facts);
 	EntityRecord& owner = program_->entities[entity];
 	std::size_t primary = owner.direct_base_count;
 	for (std::size_t ordinal = 0; ordinal < owner.direct_base_count; ++ordinal)
@@ -157,7 +274,7 @@ void SemanticAnalyzer::CompleteClassPolymorphism(EntityId entity)
 			PolymorphicViewFact view = inherited.views[i];
 			view.direct_base_ordinal = static_cast<std::uint32_t>(primary);
 			view.relative_offset = inherited.views[i].offset;
-			facts.views.push_back(view);
+			AppendPolymorphicView(&facts, view);
 		}
 	}
 	for (std::size_t ordinal = 0; ordinal < owner.direct_base_count; ++ordinal)
@@ -174,7 +291,7 @@ void SemanticAnalyzer::CompleteClassPolymorphism(EntityId entity)
 			PolymorphicViewFact view(edge.entity,
 				static_cast<std::uint32_t>(ordinal));
 			view.slots = inherited.slots;
-			facts.views.push_back(view);
+			AppendPolymorphicView(&facts, view);
 		}
 		if (!inherited.slots.empty())
 		{
@@ -183,28 +300,15 @@ void SemanticAnalyzer::CompleteClassPolymorphism(EntityId entity)
 				PolymorphicViewFact alias(inherited.primary_ancestors[i],
 					static_cast<std::uint32_t>(ordinal), 0, false);
 				alias.slots = inherited.slots;
-				facts.views.push_back(alias);
+				AppendPolymorphicView(&facts, alias);
 			}
 		}
 		for (std::size_t i = 0; i < inherited.views.size(); ++i)
 		{
-			if (inherited.views[i].virtual_base)
-			{
-				bool shared = false;
-				for (std::size_t existing = 0;
-					existing < facts.views.size(); ++existing)
-					if (facts.views[existing].virtual_base &&
-						facts.views[existing].entity == inherited.views[i].entity)
-					{
-						shared = true;
-						break;
-					}
-				if (shared) continue;
-			}
 			PolymorphicViewFact view = inherited.views[i];
 			view.direct_base_ordinal = static_cast<std::uint32_t>(ordinal);
 			view.relative_offset = inherited.views[i].offset;
-			facts.views.push_back(view);
+			AppendPolymorphicView(&facts, view);
 		}
 	}
 	std::stable_partition(facts.views.begin(), facts.views.end(),
@@ -268,7 +372,8 @@ void SemanticAnalyzer::CompleteClassPolymorphism(EntityId entity)
 			VirtualSlotFact& slot = slots[indexed.slot];
 			if (!VirtualSignatureMatches(member, slot.root))
 				throw std::runtime_error("invalid covariant virtual return type");
-			if (program_->bindings[slot.function].final_virtual)
+			if (slot.function != kNoBinding &&
+				program_->bindings[slot.function].final_virtual)
 				throw std::runtime_error("virtual function overrides final function");
 			slot.function = member;
 			location = indexed.next;
@@ -300,6 +405,8 @@ void SemanticAnalyzer::CompleteClassPolymorphism(EntityId entity)
 		std::uint32_t physical_slot = 0;
 		for (std::size_t slot = 0; slot < slots.size(); ++slot)
 		{
+			if (slots[slot].function == kNoBinding)
+				throw std::runtime_error("no unique final overrider");
 			const BindingId root = program_->bindings[slots[slot].root].canonical;
 			const BindingId function =
 				program_->bindings[slots[slot].function].canonical;
@@ -342,16 +449,15 @@ void SemanticAnalyzer::FinalizeClassPolymorphismViews(EntityId entity)
 		current.virtual_base_ordinal = kNoDumpEdge;
 		current.virtual_base_offsets.clear();
 		current.virtual_call_offsets.clear();
-		for (std::size_t base = 0; base < owner.virtual_base_count; ++base)
+		std::uint64_t virtual_offset = 0;
+		std::uint32_t virtual_ordinal = 0;
+		if (program_->FindVirtualBase(entity, current.entity,
+			&virtual_offset, &virtual_ordinal) &&
+			(inherited_virtual_view || virtual_offset == current.offset))
 		{
-			const VirtualBaseLayout& layout = program_->VirtualBase(entity, base);
-			if (layout.entity == current.entity &&
-				(inherited_virtual_view || layout.offset == current.offset))
-			{
-				current.virtual_base = true;
-				current.virtual_base_ordinal = static_cast<std::uint32_t>(base);
-				current.offset = layout.offset;
-			}
+			current.virtual_base = true;
+			current.virtual_base_ordinal = virtual_ordinal;
+			current.offset = virtual_offset;
 		}
 		const EntityRecord& view_owner = program_->entities[current.entity];
 		for (std::size_t base = 0; base < view_owner.virtual_base_count; ++base)

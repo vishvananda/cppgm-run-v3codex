@@ -99,14 +99,24 @@ struct VirtualBaseContractState
 	std::vector<std::uint32_t> begins, counts;
 	std::vector<VirtualBaseParameterContract> parameters;
 	std::vector<std::uint32_t> ordinals, scan_index;
+	std::vector<BindingId> expression_bindings;
+	std::vector<std::uint8_t> expression_binding_known;
+	std::vector<std::uint32_t> expression_binding_scratch;
+	std::size_t expression_node_count;
 
-	void Reset(std::size_t binding_count)
+	VirtualBaseContractState() : expression_node_count(0) {}
+
+	void Reset(std::size_t binding_count, std::size_t node_count)
 	{
 		parameter_counts.assign(binding_count,
 			std::numeric_limits<std::size_t>::max());
 		begins.assign(binding_count, kNoDumpEdge);
 		counts.assign(binding_count, 0);
 		scan_index.assign(binding_count, kNoDumpEdge);
+		expression_bindings.clear();
+		expression_binding_known.clear();
+		expression_binding_scratch.clear();
+		expression_node_count = node_count;
 	}
 };
 
@@ -671,21 +681,66 @@ protected:
 		}
 	}
 
-	BindingId BoundaryBindingForExpression(std::uint32_t node) const
+	BindingId BoundaryBindingForExpression(std::uint32_t node)
 	{
-		const Derived& derived = static_cast<const Derived&>(*this);
+		Derived& derived = static_cast<Derived&>(*this);
+		VirtualBaseContractState& state = derived.virtual_base_contracts_;
+		if (node >= state.expression_node_count)
+			throw std::logic_error("virtual-base expression is out of range");
+		if (state.expression_bindings.empty())
+		{
+			state.expression_bindings.assign(
+				state.expression_node_count, kNoBinding);
+			state.expression_binding_known.assign(
+				state.expression_node_count, 0);
+			if (derived.stats_)
+				derived.stats_->virtual_base_boundary_binding_table_growth +=
+					state.expression_node_count;
+		}
+		if (state.expression_binding_known[node])
+		{
+			if (derived.stats_)
+				++derived.stats_->virtual_base_boundary_binding_cache_hits;
+			return state.expression_bindings[node];
+		}
+		state.expression_binding_scratch.clear();
+		BindingId result = kNoBinding;
+		std::uint32_t current = node;
 		for (std::size_t depth = 0;
 			depth <= derived.arena_.nodes.size(); ++depth)
 		{
-			const DumpNode& record = derived.arena_.nodes[node];
+			if (state.expression_binding_known[current])
+			{
+				if (derived.stats_)
+					++derived.stats_->virtual_base_boundary_binding_cache_hits;
+				result = state.expression_bindings[current];
+				break;
+			}
+			state.expression_binding_scratch.push_back(current);
+			if (derived.stats_)
+				++derived.stats_->virtual_base_boundary_binding_steps;
+			const DumpNode& record = derived.arena_.nodes[current];
 			if (record.kind == DUMP_ID_EXPRESSION &&
 				record.binding != kNoBinding)
-				return record.binding;
-			const NodeChildren children = derived.Children(node);
+			{
+				result = record.binding;
+				break;
+			}
+			const NodeChildren children = derived.Children(current);
 			if (children.size() != 1) break;
-			node = children[0];
+			current = children[0];
+			if (current >= state.expression_node_count)
+				throw std::logic_error(
+					"virtual-base expression edge is out of range");
 		}
-		return kNoBinding;
+		for (std::size_t i = 0;
+			i < state.expression_binding_scratch.size(); ++i)
+		{
+			const std::uint32_t cached = state.expression_binding_scratch[i];
+			state.expression_bindings[cached] = result;
+			state.expression_binding_known[cached] = 1;
+		}
+		return result;
 	}
 
 	bool CurrentVirtualBaseAddress(BindingId binding, EntityId virtual_base,

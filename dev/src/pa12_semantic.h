@@ -31,6 +31,9 @@ struct SemanticAnalysisStats
 	std::size_t class_layout_member_visits;
 	std::size_t virtual_base_layout_edge_visits;
 	std::size_t virtual_base_layout_facts;
+	std::size_t virtual_base_layout_lookups;
+	std::size_t virtual_base_layout_probes;
+	std::size_t direct_base_validation_visits;
 	std::size_t class_zero_offset_subobject_visits;
 	std::size_t special_member_fact_lookups;
 	std::size_t special_member_subobject_visits;
@@ -84,6 +87,8 @@ struct SemanticAnalysisStats
 	std::size_t virtual_slots;
 	std::size_t virtual_signature_lookups;
 	std::size_t virtual_overrides;
+	std::size_t polymorphic_virtual_view_lookups;
+	std::size_t polymorphic_virtual_view_merges;
 	std::size_t virtual_slot_lookups;
 	std::size_t vtable_demands;
 	std::size_t access_checks;

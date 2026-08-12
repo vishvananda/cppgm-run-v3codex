@@ -145,20 +145,25 @@ void SemanticAnalyzer::AddVirtualBaseInitializationActions(EntityId entity,
 	const std::vector<std::uint8_t>& initializer_expanded, std::uint32_t body)
 {
 	const EntityRecord& owner = program_->entities[entity];
+	std::vector<std::uint32_t> direct_ordinals(owner.virtual_base_count,
+		owner.direct_base_count);
+	for (std::size_t candidate = 0;
+		candidate < owner.direct_base_count; ++candidate)
+	{
+		const DirectBaseEdge& edge = program_->DirectBase(entity, candidate);
+		if (!edge.virtual_base) continue;
+		std::uint32_t virtual_ordinal = 0;
+		if (!program_->FindVirtualBase(
+			entity, edge.entity, 0, &virtual_ordinal))
+			throw std::logic_error("direct virtual base has no layout fact");
+		direct_ordinals[virtual_ordinal] = static_cast<std::uint32_t>(candidate);
+	}
 	for (std::size_t virtual_ordinal = 0;
 		virtual_ordinal < owner.virtual_base_count; ++virtual_ordinal)
 	{
 		const VirtualBaseLayout& layout =
 			program_->VirtualBase(entity, virtual_ordinal);
-		std::size_t direct_ordinal = owner.direct_base_count;
-		for (std::size_t candidate = 0;
-			candidate < owner.direct_base_count; ++candidate)
-		{
-			const DirectBaseEdge& edge = program_->DirectBase(entity, candidate);
-			if (!edge.virtual_base || edge.entity != layout.entity) continue;
-			direct_ordinal = candidate;
-			break;
-		}
+		const std::size_t direct_ordinal = direct_ordinals[virtual_ordinal];
 		if (direct_ordinal != owner.direct_base_count)
 			AddBaseInitializationAction(entity, direct_ordinal,
 				initializers[direct_ordinal], initializer_scopes[direct_ordinal],
