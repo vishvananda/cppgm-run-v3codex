@@ -149,6 +149,9 @@ protected:
 				{
 					derived.PlanVirtualBaseBoundarySlots(record);
 					++derived.parameter_slot_index_;
+					if (derived.HasCurrentConstructionVtt() &&
+						derived.parameter_slot_index_ == 1)
+						++derived.parameter_slot_index_;
 				}
 			}
 			const TypeId temporary_type = record.kind == DUMP_TEMPORARY_OBJECT ?

@@ -120,6 +120,14 @@ protected:
 		CallArgumentFlags references;
 		arguments.Push(destination);
 		references.Push(0);
+		const BindingRecord& constructor_binding =
+			derived.program_.bindings[action.binding];
+		if (derived.IncludesConstructionVtt(action.binding))
+		{
+			arguments.Push(derived.ConstructionVttArgument(
+				complete_entity, constructor_binding.member_owner));
+			references.Push(Instruction::CALL_PASS_VALUE);
+		}
 		for (std::size_t i = 0; i < children.size(); ++i)
 		{
 			const std::size_t parameter = i + 1;
@@ -174,10 +182,8 @@ protected:
 						children[i], expected)));
 			}
 		}
-		const BindingRecord& constructor_binding =
-			derived.program_.bindings[action.binding];
 		std::size_t hidden_remaining =
-			derived.EmittedVirtualBaseParameterCount(action.binding);
+			derived.VirtualBaseParameterCount(action.binding, action.type);
 		if (constructor_binding.constructor_base_entry &&
 			constructor_binding.member_owner != kNoEntity)
 		{
@@ -211,6 +217,8 @@ protected:
 				}
 				arguments.Push(address);
 				references.Push(0);
+				if (derived.stats_)
+					++derived.stats_->virtual_base_call_arguments;
 			}
 		}
 		for (std::size_t i = 0; i < children.size(); ++i)
@@ -224,9 +232,13 @@ protected:
 				base < derived.program_.entities[owner].virtual_base_count &&
 				hidden_remaining != 0; ++base, --hidden_remaining)
 			{
+				const std::size_t lowered_parameter = parameter +
+					(derived.IncludesConstructionVtt(action.binding) ? 1 : 0);
 				arguments.Push(derived.VirtualBaseCallAddress(
-					children[i], arguments[parameter], owner, base));
+					children[i], arguments[lowered_parameter], owner, base));
 				references.Push(Instruction::CALL_PASS_VALUE);
+				if (derived.stats_)
+					++derived.stats_->virtual_base_call_arguments;
 			}
 		}
 		derived.output_.symbols[

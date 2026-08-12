@@ -86,6 +86,10 @@ private:
 		state_.class_view_vtable_symbols.resize(count);
 		state_.class_view_address_points.clear();
 		state_.class_view_address_points.resize(count);
+		state_.class_construction_vtable_symbols.clear();
+		state_.class_construction_vtable_symbols.resize(count);
+		state_.class_construction_vtt_offsets.clear();
+		state_.class_construction_vtt_offsets.resize(count);
 		state_.class_view_slot_symbols.clear();
 		state_.class_view_slot_symbols.resize(count);
 		state_.class_view_deleting_slot_symbols.clear();
@@ -101,6 +105,11 @@ private:
 			state_.class_vtable_address_points[entity] = facts.address_point;
 			state_.class_view_address_points[entity].assign(
 				facts.views.size(), 16);
+			state_.class_construction_vtable_symbols[entity].resize(
+				program_.entities[entity].direct_base_count);
+			state_.class_construction_vtt_offsets[entity].assign(
+				program_.entities[entity].direct_base_count,
+				std::numeric_limits<std::uint64_t>::max());
 			for (std::size_t view = 0; view < facts.views.size(); ++view)
 				state_.class_view_address_points[entity][view] =
 					facts.views[view].address_point;
@@ -646,6 +655,48 @@ private:
 			RegisterAdjustedSlot(source, deleting, function);
 	}
 
+	bool ConstructionBaseEligible(const DirectBaseEdge& edge) const
+	{
+		if (edge.virtual_base ||
+			edge.entity >= graph_.class_polymorphism.size() ||
+			program_.entities[edge.entity].virtual_base_count == 0) return false;
+		const ClassPolymorphismFacts& facts =
+			graph_.class_polymorphism[edge.entity];
+		return !facts.slots.empty() || !facts.views.empty();
+	}
+
+	void RegisterConstructionVtables(EntityId entity)
+	{
+		std::uint64_t vtt_offset = 8;
+		const EntityRecord& complete = program_.entities[entity];
+		for (std::size_t ordinal = 0;
+			ordinal < complete.direct_base_count; ++ordinal)
+		{
+			const DirectBaseEdge& edge = program_.DirectBase(entity, ordinal);
+			if (!ConstructionBaseEligible(edge)) continue;
+			const ClassPolymorphismFacts& base =
+				graph_.class_polymorphism[edge.entity];
+			std::vector<SymbolId>& symbols =
+				state_.class_construction_vtable_symbols[entity][ordinal];
+			std::size_t physical_views = 1;
+			for (std::size_t view = 0; view < base.views.size(); ++view)
+				if (base.views[view].stores_vptr) ++physical_views;
+			symbols.assign(physical_views, kNoLowId);
+			state_.class_construction_vtt_offsets[entity][ordinal] = vtt_offset;
+			for (std::size_t view = 0; view < physical_views; ++view)
+			{
+				const std::string name = ClassStem(entity) +
+					"____construction__" + ClassStem(edge.entity) + "__" +
+					std::to_string(edge.offset) + "__s" +
+					std::to_string(view) + "__vtable";
+				symbols[view] = AddPolymorphicGlobal(name, "@" + name,
+					VtableHasWeakLinkage(entity));
+				vtt_offset += 8;
+			}
+			DemandRtti(program_.entities[edge.entity].type);
+		}
+	}
+
 	void RegisterViewSymbols(EntityId entity,
 		const ClassPolymorphismFacts& facts)
 	{
@@ -682,6 +733,7 @@ private:
 					source.slots[slot]);
 			}
 		}
+		RegisterConstructionVtables(entity);
 	}
 
 	void RegisterSymbols()
@@ -931,7 +983,7 @@ private:
 		global->items.push_back(item);
 	}
 
-	void EmitVtableView(EntityId entity, SymbolId symbol,
+	void EmitVtableView(EntityId entity, EntityId rtti_entity, SymbolId symbol,
 		std::uint64_t offset, const std::vector<VirtualSlotFact>& slots,
 		const std::vector<std::int64_t>& virtual_base_offsets,
 		const std::vector<std::int64_t>& virtual_call_offsets,
@@ -952,7 +1004,7 @@ private:
 			virtual_base_offsets.size() + virtual_call_offsets.size();
 		AddIntegerItem(&vtable, LowI64(),
 			-static_cast<std::int64_t>(offset));
-		AddAddressItem(&vtable, state_.class_rtti_symbols[entity]);
+		AddAddressItem(&vtable, state_.class_rtti_symbols[rtti_entity]);
 		for (std::size_t slot = 0; slot < slots.size(); ++slot)
 		{
 			AddAddressItem(&vtable, targets[slot]);
@@ -967,6 +1019,72 @@ private:
 		if (stats_) ++stats_->globals;
 	}
 
+	void EmitConstructionVtables(EntityId entity)
+	{
+		const EntityRecord& complete = program_.entities[entity];
+		for (std::size_t ordinal = 0;
+			ordinal < complete.direct_base_count; ++ordinal)
+		{
+			const std::vector<SymbolId>& symbols =
+				state_.class_construction_vtable_symbols[entity][ordinal];
+			if (symbols.empty()) continue;
+			const DirectBaseEdge& edge = program_.DirectBase(entity, ordinal);
+			const EntityId base_entity = edge.entity;
+			const EntityRecord& base_owner = program_.entities[base_entity];
+			const ClassPolymorphismFacts& base =
+				graph_.class_polymorphism[base_entity];
+			std::vector<std::int64_t> offsets;
+			for (std::size_t virtual_base = 0;
+				virtual_base < base_owner.virtual_base_count; ++virtual_base)
+			{
+				std::uint64_t complete_offset = 0;
+				if (!program_.FindVirtualBase(entity, program_.VirtualBase(
+					base_entity, virtual_base).entity, &complete_offset))
+					throw std::logic_error(
+						"construction vtable has no complete virtual base");
+				offsets.push_back(static_cast<std::int64_t>(complete_offset) -
+					static_cast<std::int64_t>(edge.offset));
+			}
+			EmitVtableView(base_entity, base_entity, symbols[0], 0,
+				base.slots, offsets, base.virtual_call_offsets,
+				state_.class_view_slot_symbols[base_entity][0],
+				state_.class_view_deleting_slot_symbols[base_entity][0]);
+			std::size_t physical = 1;
+			for (std::size_t view = 0; view < base.views.size(); ++view)
+			{
+				if (!base.views[view].stores_vptr) continue;
+				std::uint64_t complete_view_offset = edge.offset +
+					base.views[view].offset;
+				if (base.views[view].virtual_base && !program_.FindVirtualBase(
+					entity, base.views[view].entity, &complete_view_offset))
+					throw std::logic_error(
+						"construction view has no complete virtual base");
+				std::vector<std::int64_t> view_offsets;
+				const EntityRecord& view_owner =
+					program_.entities[base.views[view].entity];
+				for (std::size_t virtual_base = 0;
+					virtual_base < view_owner.virtual_base_count; ++virtual_base)
+				{
+					std::uint64_t complete_offset = 0;
+					if (!program_.FindVirtualBase(entity, program_.VirtualBase(
+						base.views[view].entity, virtual_base).entity,
+						&complete_offset))
+						throw std::logic_error(
+							"construction view has no nested virtual base");
+					view_offsets.push_back(
+						static_cast<std::int64_t>(complete_offset) -
+						static_cast<std::int64_t>(complete_view_offset));
+				}
+				EmitVtableView(base_entity, base.views[view].entity,
+					symbols[physical++], complete_view_offset - edge.offset,
+					base.views[view].slots, view_offsets,
+					base.views[view].virtual_call_offsets,
+					state_.class_view_slot_symbols[base_entity][view + 1],
+					state_.class_view_deleting_slot_symbols[base_entity][view + 1]);
+			}
+		}
+	}
+
 	void EmitVtt(EntityId entity, const ClassPolymorphismFacts& facts)
 	{
 		const SymbolId symbol = state_.class_vtt_symbols[entity];
@@ -976,6 +1094,25 @@ private:
 		vtt.initializer_kind = Global::STRUCTURED_VALUE;
 		AddAddressItem(&vtt, state_.class_vtable_symbols[entity],
 			static_cast<std::int64_t>(facts.address_point));
+		for (std::size_t ordinal = 0;
+			ordinal < state_.class_construction_vtable_symbols[entity].size();
+			++ordinal)
+		{
+			const std::vector<SymbolId>& construction =
+				state_.class_construction_vtable_symbols[entity][ordinal];
+			if (construction.empty()) continue;
+			const EntityId base = program_.DirectBase(entity, ordinal).entity;
+			const ClassPolymorphismFacts& base_facts =
+				graph_.class_polymorphism[base];
+			std::size_t physical = 0;
+			AddAddressItem(&vtt, construction[physical++],
+				static_cast<std::int64_t>(base_facts.address_point));
+			for (std::size_t view = 0; view < base_facts.views.size(); ++view)
+				if (base_facts.views[view].stores_vptr)
+					AddAddressItem(&vtt, construction[physical++],
+						static_cast<std::int64_t>(
+							base_facts.views[view].address_point));
+		}
 		for (std::size_t view = 0; view < facts.views.size(); ++view)
 		{
 			if (!facts.views[view].stores_vptr) continue;
@@ -1138,14 +1275,15 @@ private:
 				graph_.class_polymorphism[entity];
 			if (!facts.vtable_demanded ||
 				(facts.slots.empty() && facts.views.empty())) continue;
-			EmitVtableView(entity, state_.class_vtable_symbols[entity], 0,
+			EmitVtableView(entity, entity,
+				state_.class_vtable_symbols[entity], 0,
 				facts.slots, facts.virtual_base_offsets,
 				facts.virtual_call_offsets,
 				state_.class_view_slot_symbols[entity][0],
 				state_.class_view_deleting_slot_symbols[entity][0]);
 			for (std::size_t view = 0; view < facts.views.size(); ++view)
 			{
-				EmitVtableView(entity,
+				EmitVtableView(entity, entity,
 					state_.class_view_vtable_symbols[entity][view],
 					facts.views[view].offset, facts.views[view].slots,
 					facts.views[view].virtual_base_offsets,
@@ -1153,6 +1291,7 @@ private:
 					state_.class_view_slot_symbols[entity][view + 1],
 					state_.class_view_deleting_slot_symbols[entity][view + 1]);
 			}
+			EmitConstructionVtables(entity);
 			EmitVtt(entity, facts);
 		}
 		for (TypeId type = 0; type < state_.thrown_type_demanded.size(); ++type)

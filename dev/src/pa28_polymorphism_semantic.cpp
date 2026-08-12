@@ -139,7 +139,8 @@ void SemanticAnalyzer::CompleteClassPolymorphism(EntityId entity)
 			!class_polymorphism_[edge.entity].complete)
 			throw std::logic_error("base polymorphism facts are incomplete");
 		if (!edge.virtual_base && primary == owner.direct_base_count &&
-			!class_polymorphism_[edge.entity].slots.empty())
+			(!class_polymorphism_[edge.entity].slots.empty() ||
+			 !class_polymorphism_[edge.entity].views.empty()))
 			primary = ordinal;
 	}
 	if (primary != owner.direct_base_count)
@@ -310,6 +311,7 @@ void SemanticAnalyzer::FinalizeClassPolymorphismViews(EntityId entity)
 	for (std::size_t view = 0; view < facts.views.size(); ++view)
 	{
 		PolymorphicViewFact& current = facts.views[view];
+		const bool inherited_virtual_view = current.virtual_base;
 		if (current.direct_base_ordinal >=
 			program_->entities[entity].direct_base_count)
 			throw std::logic_error("polymorphic view has no direct-base owner");
@@ -323,10 +325,12 @@ void SemanticAnalyzer::FinalizeClassPolymorphismViews(EntityId entity)
 		for (std::size_t base = 0; base < owner.virtual_base_count; ++base)
 		{
 			const VirtualBaseLayout& layout = program_->VirtualBase(entity, base);
-			if (layout.entity == current.entity && layout.offset == current.offset)
+			if (layout.entity == current.entity &&
+				(inherited_virtual_view || layout.offset == current.offset))
 			{
 				current.virtual_base = true;
 				current.virtual_base_ordinal = static_cast<std::uint32_t>(base);
+				current.offset = layout.offset;
 			}
 		}
 		const EntityRecord& view_owner = program_->entities[current.entity];

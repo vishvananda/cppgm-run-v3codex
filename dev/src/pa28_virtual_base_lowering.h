@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -95,6 +96,33 @@ protected:
 			(!binding.constructor || binding.constructor_base_entry);
 	}
 
+	bool IncludesImplicitVirtualBases(BindingId binding) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		if (binding == kNoBinding || binding >= derived.program_.bindings.size())
+			return false;
+		const BindingRecord& function = derived.program_.bindings[binding];
+		return function.member_owner != kNoEntity &&
+			!function.static_member_function && !function.virtual_function &&
+			(!function.constructor || function.constructor_base_entry);
+	}
+
+	bool IncludesConstructionVtt(BindingId binding) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		if (binding == kNoBinding || binding >= derived.program_.bindings.size())
+			return false;
+		const BindingRecord& function = derived.program_.bindings[binding];
+		if (!function.constructor || !function.constructor_base_entry ||
+			function.member_owner == kNoEntity ||
+			function.member_owner >= derived.graph_.class_polymorphism.size() ||
+			derived.program_.entities[function.member_owner].virtual_base_count == 0)
+			return false;
+		const ClassPolymorphismFacts& facts =
+			derived.graph_.class_polymorphism[function.member_owner];
+		return !facts.slots.empty() || !facts.views.empty();
+	}
+
 	std::size_t HiddenVirtualBaseParameterCount(std::uint32_t node) const
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
@@ -144,21 +172,18 @@ protected:
 		return count;
 	}
 
-	std::size_t EmittedVirtualBaseParameterCount(BindingId binding) const
-	{
-		const Derived& derived = static_cast<const Derived&>(*this);
-		if (binding == kNoBinding || binding >= derived.program_.bindings.size())
-			return 0;
-		std::uint32_t node = derived.function_definition_[binding];
-		if (node == kNoDumpEdge) node = derived.function_declaration_[binding];
-		return node == kNoDumpEdge ? 0 : HiddenVirtualBaseParameterCount(node);
-	}
-
 	void AppendVirtualBaseBoundaryParameters(std::uint32_t node,
 		std::vector<Parameter>* parameters) const
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
 		const DumpNode& function = derived.arena_.nodes[node];
+		if (IncludesConstructionVtt(function.binding))
+		{
+			Parameter vtt;
+			vtt.name = "__vtt";
+			vtt.type = LowPtr();
+			parameters->insert(parameters->begin() + 1, vtt);
+		}
 		const NodeChildren children = derived.Children(node);
 		const bool member = HasImplicitObjectBoundary(function);
 		std::size_t ordinal = 0;
@@ -225,19 +250,77 @@ protected:
 	using VirtualBaseBoundaryShape<Derived>::SpillVirtualBaseBoundary;
 	using VirtualBaseBoundaryShape<Derived>::HasImplicitObjectBoundary;
 	using VirtualBaseBoundaryShape<Derived>::IncludesImplicitVirtualBases;
+	using VirtualBaseBoundaryShape<Derived>::IncludesConstructionVtt;
 	using VirtualBaseBoundaryShape<Derived>::HiddenVirtualBaseParameterCount;
-	using VirtualBaseBoundaryShape<Derived>::EmittedVirtualBaseParameterCount;
+
+	std::size_t CountVirtualBaseParameters(TypeId type,
+		BindingId binding) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		const TypeRecord* function = &derived.program_.types.Get(type);
+		if (function->kind == TYPE_POINTER || function->kind == TYPE_MEMBER_POINTER)
+		{
+			type = function->child;
+			function = &derived.program_.types.Get(type);
+		}
+		if (function->kind != TYPE_FUNCTION) return 0;
+		const TypeId* parameters = derived.program_.types.Parameters(type);
+		const bool member = binding != kNoBinding &&
+			binding < derived.program_.bindings.size() &&
+			derived.program_.bindings[binding].member_owner != kNoEntity &&
+			!derived.program_.bindings[binding].static_member_function;
+		std::size_t count = 0;
+		for (std::size_t parameter = 0;
+			parameter < function->parameter_count; ++parameter)
+		{
+			const EntityId owner = member && parameter == 0 ?
+				(IncludesImplicitVirtualBases(binding) ?
+				 derived.program_.bindings[binding].member_owner : kNoEntity) :
+				VirtualBoundaryEntity(parameters[parameter]);
+			if (owner != kNoEntity)
+				count += derived.program_.entities[owner].virtual_base_count;
+		}
+		return count;
+	}
+
+	void CacheVirtualBaseBoundary(std::uint32_t node)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const DumpNode& function = derived.arena_.nodes[node];
+		if (function.binding == kNoBinding ||
+			function.binding >= derived.virtual_base_parameter_counts_.size()) return;
+		std::size_t& cached =
+			derived.virtual_base_parameter_counts_[function.binding];
+		if (cached != std::numeric_limits<std::size_t>::max()) return;
+		cached = CountVirtualBaseParameters(function.type, function.binding);
+		if (derived.stats_)
+			derived.stats_->virtual_base_boundary_facts += cached;
+	}
+
+	std::size_t VirtualBaseParameterCount(BindingId binding, TypeId type) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		if (binding != kNoBinding &&
+			binding < derived.virtual_base_parameter_counts_.size() &&
+			derived.virtual_base_parameter_counts_[binding] !=
+				std::numeric_limits<std::size_t>::max())
+			return derived.virtual_base_parameter_counts_[binding];
+		return CountVirtualBaseParameters(type, binding);
+	}
 
 	void PrepareVirtualBaseBoundary(std::uint32_t node,
 		const std::vector<Parameter>& parameters)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		current_virtual_base_boundary_.clear();
+		current_construction_vtt_ = kNoLowId;
 		const std::size_t hidden = HiddenVirtualBaseParameterCount(node);
 		if (hidden > parameters.size())
 			throw std::logic_error("virtual-base boundary parameter mismatch");
 		std::size_t boundary = parameters.size() - hidden;
 		const DumpNode& function = derived.arena_.nodes[node];
+		if (IncludesConstructionVtt(function.binding))
+			current_construction_vtt_ = 1;
 		const NodeChildren children = derived.Children(node);
 		const bool member = HasImplicitObjectBoundary(function);
 		std::size_t ordinal = 0;
@@ -375,6 +458,55 @@ protected:
 		return false;
 	}
 
+	bool HasCurrentConstructionVtt() const
+	{
+		return current_construction_vtt_ != kNoLowId;
+	}
+
+	Operand CurrentConstructionVtt() const
+	{
+		if (!HasCurrentConstructionVtt())
+			throw std::logic_error("construction VTT parameter is unavailable");
+		return Operand(current_construction_vtt_, LowPtr());
+	}
+
+	Operand ConstructionVttArgument(EntityId complete, EntityId base)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (complete == kNoEntity)
+		{
+			if (!HasCurrentConstructionVtt())
+				throw std::logic_error("nested base constructor has no VTT");
+			return CurrentConstructionVtt();
+		}
+		if (complete >= derived.polymorphism_.class_vtt_symbols.size() ||
+			derived.polymorphism_.class_vtt_symbols[complete] == kNoLowId)
+			throw std::logic_error("complete constructor has no VTT symbol");
+		std::uint64_t offset = std::numeric_limits<std::uint64_t>::max();
+		const EntityRecord& owner = derived.program_.entities[complete];
+		for (std::size_t ordinal = 0; ordinal < owner.direct_base_count; ++ordinal)
+			if (derived.program_.DirectBase(complete, ordinal).entity == base &&
+				ordinal < derived.polymorphism_.class_construction_vtt_offsets[
+					complete].size())
+			{
+				offset = derived.polymorphism_.class_construction_vtt_offsets[
+					complete][ordinal];
+				break;
+			}
+		if (offset == std::numeric_limits<std::uint64_t>::max())
+			throw std::logic_error("base constructor has no construction VTT slice");
+		const SymbolId symbol =
+			derived.polymorphism_.class_vtt_symbols[complete];
+		derived.output_.symbols[symbol].referenced = true;
+		const Operand table = derived.Temp(LowPtr());
+		Instruction address(Instruction::ADDR);
+		address.dest = table.id;
+		address.first = Operand(Operand::GLOBAL, symbol, LowPtr());
+		derived.Emit(address);
+		return derived.IndexAddress(LowI8(), table,
+			Operand(static_cast<std::int64_t>(offset), LowI64()), false);
+	}
+
 	Operand RuntimeVirtualBaseAddress(const Operand& view, EntityId owner,
 		std::size_t virtual_base_ordinal)
 	{
@@ -382,16 +514,18 @@ protected:
 		if ((view.kind == Operand::INTEGER && view.integer_value == 0) ||
 			view.kind == Operand::NULL_POINTER)
 			return Operand(0, LowPtr());
-		if (owner >= derived.graph_.class_polymorphism.size() ||
-			virtual_base_ordinal >=
-				derived.graph_.class_polymorphism[owner].virtual_base_offsets.size())
-			throw std::logic_error("runtime virtual-base row is unavailable");
 		const Operand vtable = derived.LoadStorage(view, LowPtr());
-		const ClassPolymorphismFacts& facts =
-			derived.graph_.class_polymorphism[owner];
-		const std::int64_t row = -static_cast<std::int64_t>(
-			facts.address_point) + static_cast<std::int64_t>(
-			virtual_base_ordinal) * 8;
+		const bool has_polymorphic_row =
+			owner < derived.graph_.class_polymorphism.size() &&
+			virtual_base_ordinal < derived.graph_.class_polymorphism[
+				owner].virtual_base_offsets.size() &&
+			(!derived.graph_.class_polymorphism[owner].slots.empty() ||
+			 !derived.graph_.class_polymorphism[owner].views.empty());
+		const std::int64_t row = has_polymorphic_row ?
+			-static_cast<std::int64_t>(
+				derived.graph_.class_polymorphism[owner].address_point) +
+				static_cast<std::int64_t>(virtual_base_ordinal) * 8 :
+			-static_cast<std::int64_t>(24 + virtual_base_ordinal * 8);
 		const Operand entry = derived.IndexAddress(
 			LowI8(), vtable, Operand(row, LowI64()), false);
 		const Operand offset = derived.LoadStorage(entry, LowI64());
@@ -434,6 +568,38 @@ protected:
 		if (NullBoundaryExpression(expression)) return view;
 		const EntityId source =
 			derived.BaseEntityForType(derived.arena_.nodes[expression].type);
+		const TypeId expression_type = derived.program_.types.RemoveTopCv(
+			derived.arena_.nodes[expression].type);
+		const TypeRecord& expression_shape =
+			derived.program_.types.Get(expression_type);
+		const bool reference_to_pointer =
+			(expression_shape.kind == TYPE_LVALUE_REFERENCE ||
+			 expression_shape.kind == TYPE_RVALUE_REFERENCE) &&
+			derived.program_.types.Get(derived.program_.types.RemoveTopCv(
+				expression_shape.child)).kind == TYPE_POINTER;
+		bool defined_reference_call = false;
+		if (derived.arena_.nodes[expression].kind == DUMP_CALL_EXPRESSION)
+		{
+			const NodeChildren call = derived.Children(expression);
+			if (!call.empty())
+			{
+				const BindingId callee = derived.arena_.nodes[call[0]].binding;
+				defined_reference_call = callee != kNoBinding &&
+					callee < derived.function_definition_.size() &&
+					derived.function_definition_[callee] != kNoDumpEdge;
+			}
+		}
+		const bool known_complete_object = source == owner &&
+			((derived.arena_.nodes[expression].kind == DUMP_ID_EXPRESSION &&
+			  expression_shape.kind == TYPE_NAMED) || reference_to_pointer ||
+			 defined_reference_call);
+		if (!known_complete_object ||
+			(owner < derived.graph_.class_polymorphism.size() &&
+			(!derived.graph_.class_polymorphism[owner].slots.empty() ||
+			 !derived.graph_.class_polymorphism[owner].views.empty()) &&
+			ordinal < derived.graph_.class_polymorphism[
+				owner].virtual_base_offsets.size()))
+			return RuntimeVirtualBaseAddress(view, owner, ordinal);
 		if (source == owner &&
 			derived.arena_.nodes[expression].kind != DUMP_CAST_EXPRESSION)
 			return derived.ProjectBaseSubobjectOffset(view, layout.offset);
@@ -453,7 +619,7 @@ protected:
 		const BindingRecord* binding = callee.binding == kNoBinding ? 0 :
 			&derived.program_.bindings[callee.binding];
 		std::size_t hidden_remaining =
-			EmittedVirtualBaseParameterCount(callee.binding);
+			VirtualBaseParameterCount(callee.binding, callee.type);
 		if (hidden_remaining == 0) return;
 		const TypeRecord& function = derived.program_.types.Get(callee.type);
 		const TypeId* parameters = derived.program_.types.Parameters(callee.type);
@@ -473,6 +639,7 @@ protected:
 				arguments->Push(VirtualBaseCallAddress(
 					call_children[i + 1], lowered[i], owner, base));
 				references->Push(Instruction::CALL_PASS_VALUE);
+				if (derived.stats_) ++derived.stats_->virtual_base_call_arguments;
 			}
 		}
 	}
@@ -480,9 +647,11 @@ protected:
 	void ResetVirtualBaseBoundary()
 	{
 		current_virtual_base_boundary_.clear();
+		current_construction_vtt_ = kNoLowId;
 	}
 
 	std::vector<VirtualBaseBoundaryFact> current_virtual_base_boundary_;
+	ParameterId current_construction_vtt_;
 };
 
 }

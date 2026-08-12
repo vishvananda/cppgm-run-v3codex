@@ -38,6 +38,10 @@ struct PolymorphismLoweringState
 		class_view_vtable_symbols;
 	std::vector<std::vector<std::uint64_t> > class_view_address_points;
 	std::vector<std::vector<std::vector<pa15_lowir_detail::SymbolId> > >
+		class_construction_vtable_symbols;
+	std::vector<std::vector<std::uint64_t> >
+		class_construction_vtt_offsets;
+	std::vector<std::vector<std::vector<pa15_lowir_detail::SymbolId> > >
 		class_view_slot_symbols;
 	std::vector<std::vector<std::vector<pa15_lowir_detail::SymbolId> > >
 		class_view_deleting_slot_symbols;
@@ -146,25 +150,32 @@ protected:
 			throw std::logic_error("vptr action has no class or vtable");
 		const Operand object = derived.LoadStorage(derived.StorageFor(
 			derived.current_this_binding_, LowPtr()), LowPtr());
-		const SymbolId symbol =
-			derived.polymorphism_.class_vtable_symbols[entity];
-		derived.output_.symbols[symbol].referenced = true;
-		const Operand table = derived.Temp(LowPtr());
-		Instruction address(Instruction::ADDR);
-		address.dest = table.id;
-		address.first = Operand(Operand::GLOBAL, symbol, LowPtr());
-		derived.Emit(address);
-		const std::uint64_t primary_address_point = entity <
-			derived.polymorphism_.class_vtable_address_points.size() ?
-			derived.polymorphism_.class_vtable_address_points[entity] : 16;
-		const Operand address_point = derived.Temp(LowPtr());
-		Instruction index(Instruction::INDEX);
-		index.dest = address_point.id;
-		index.type = LowI8();
-		index.first = table;
-		index.second = Operand(static_cast<std::int64_t>(
-			primary_address_point), LowI64());
-		derived.Emit(index);
+		Operand address_point;
+		if (derived.HasCurrentConstructionVtt())
+			address_point = derived.LoadStorage(
+				derived.CurrentConstructionVtt(), LowPtr());
+		else
+		{
+			const SymbolId symbol =
+				derived.polymorphism_.class_vtable_symbols[entity];
+			derived.output_.symbols[symbol].referenced = true;
+			const Operand table = derived.Temp(LowPtr());
+			Instruction address(Instruction::ADDR);
+			address.dest = table.id;
+			address.first = Operand(Operand::GLOBAL, symbol, LowPtr());
+			derived.Emit(address);
+			const std::uint64_t primary_address_point = entity <
+				derived.polymorphism_.class_vtable_address_points.size() ?
+				derived.polymorphism_.class_vtable_address_points[entity] : 16;
+			address_point = derived.Temp(LowPtr());
+			Instruction index(Instruction::INDEX);
+			index.dest = address_point.id;
+			index.type = LowI8();
+			index.first = table;
+			index.second = Operand(static_cast<std::int64_t>(
+				primary_address_point), LowI64());
+			derived.Emit(index);
+		}
 		Instruction store(Instruction::STORE);
 		store.type = LowPtr();
 		store.first = address_point;
@@ -172,6 +183,7 @@ protected:
 		derived.Emit(store);
 		const pa12_semantic_detail::ClassPolymorphismFacts& facts =
 			derived.graph_.class_polymorphism[entity];
+		std::size_t physical_view = 1;
 		for (std::size_t view = 0; view < facts.views.size(); ++view)
 		{
 			if (!facts.views[view].stores_vptr ||
@@ -182,32 +194,57 @@ protected:
 				derived.polymorphism_.class_view_vtable_symbols[entity][view];
 			if (view_symbol == kNoLowId) continue;
 			if (derived.stats_) ++derived.stats_->vptr_stores;
-			derived.output_.symbols[view_symbol].referenced = true;
-			const Operand view_object = derived.LoadStorage(derived.StorageFor(
-				derived.current_this_binding_, LowPtr()), LowPtr());
-			const Operand subobject = facts.views[view].virtual_base ?
-				ProjectBaseSubobjectOffset(derived.RuntimeVirtualBaseAddress(
-					view_object, entity,
-					facts.views[view].virtual_base_ordinal), 0) :
-				ProjectBaseSubobjectOffset(view_object, facts.views[view].offset);
-			const Operand view_table = derived.Temp(LowPtr());
-			Instruction view_address(Instruction::ADDR);
-			view_address.dest = view_table.id;
-			view_address.first = Operand(Operand::GLOBAL, view_symbol, LowPtr());
-			derived.Emit(view_address);
-			const Operand view_address_point = derived.Temp(LowPtr());
-			Instruction view_index(Instruction::INDEX);
-			view_index.dest = view_address_point.id;
-			view_index.type = LowI8();
-			view_index.first = view_table;
-			view_index.second = Operand(static_cast<std::int64_t>(
-				facts.views[view].address_point), LowI64());
-			derived.Emit(view_index);
+			Operand inherited;
+			Operand subobject;
+			if (facts.views[view].virtual_base &&
+				derived.CurrentVirtualBaseAddress(
+					derived.current_this_binding_, facts.views[view].entity,
+					&inherited))
+				subobject = ProjectBaseSubobjectOffset(inherited, 0);
+			else
+			{
+				const Operand view_object = derived.LoadStorage(derived.StorageFor(
+					derived.current_this_binding_, LowPtr()), LowPtr());
+				subobject = facts.views[view].virtual_base ?
+					ProjectBaseSubobjectOffset(derived.RuntimeVirtualBaseAddress(
+						view_object, entity,
+						facts.views[view].virtual_base_ordinal), 0) :
+					ProjectBaseSubobjectOffset(
+						view_object, facts.views[view].offset);
+			}
+			Operand view_address_point;
+			if (derived.HasCurrentConstructionVtt())
+			{
+				const Operand entry = derived.IndexAddress(LowI8(),
+					derived.CurrentConstructionVtt(),
+					Operand(static_cast<std::int64_t>(physical_view * 8),
+						LowI64()), false);
+				view_address_point = derived.LoadStorage(entry, LowPtr());
+			}
+			else
+			{
+				derived.output_.symbols[view_symbol].referenced = true;
+				const Operand view_table = derived.Temp(LowPtr());
+				Instruction view_address(Instruction::ADDR);
+				view_address.dest = view_table.id;
+				view_address.first = Operand(
+					Operand::GLOBAL, view_symbol, LowPtr());
+				derived.Emit(view_address);
+				view_address_point = derived.Temp(LowPtr());
+				Instruction view_index(Instruction::INDEX);
+				view_index.dest = view_address_point.id;
+				view_index.type = LowI8();
+				view_index.first = view_table;
+				view_index.second = Operand(static_cast<std::int64_t>(
+					facts.views[view].address_point), LowI64());
+				derived.Emit(view_index);
+			}
 			Instruction view_store(Instruction::STORE);
 			view_store.type = LowPtr();
 			view_store.first = view_address_point;
 			view_store.second = subobject;
 			derived.Emit(view_store);
+			++physical_view;
 		}
 	}
 

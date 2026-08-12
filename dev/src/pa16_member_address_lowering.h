@@ -51,11 +51,14 @@ protected:
 				derived.program_.types.Get(object_type).kind == TYPE_POINTER;
 			base = pointer_object ? derived.LowerValue(children[0], LowPtr()) :
 				derived.AddressOfStorage(derived.LowerStorage(children[0]));
-			base = derived.ProjectBaseSubobjects(base,
-				record.base_projection_count,
-				derived.arena_.nodes[children[0]].type,
-				record.base_projection_offset,
-				record.has_base_projection_offset);
+			if (!derived.RuntimeVirtualBaseAddressForExpression(
+				children[0], base, member.member_owner, &virtual_base))
+				base = derived.ProjectBaseSubobjects(base,
+					record.base_projection_count,
+					derived.arena_.nodes[children[0]].type,
+					record.base_projection_offset,
+					record.has_base_projection_offset);
+			else base = virtual_base;
 		}
 		const Operand result = derived.Temp(LowPtr());
 		Instruction index(Instruction::INDEX);

@@ -106,6 +106,7 @@ public:
 			arena_.nodes.size(), kNoDumpEdge);
 		function_definition_.resize(program_.bindings.size(), kNoDumpEdge);
 		function_declaration_.resize(program_.bindings.size(), kNoDumpEdge);
+		virtual_base_parameter_counts_.resize(program_.bindings.size(), std::numeric_limits<std::size_t>::max());
 		global_node_.resize(program_.bindings.size(), kNoDumpEdge);
 		namespace_action_.resize(program_.bindings.size(), kNoDumpEdge);
 		thread_local_dynamic_.resize(graph_.namespace_objects.size(), 0);
@@ -246,8 +247,13 @@ private:
 			return current_member_owner_;
 		TypeId shape_id = program_.types.RemoveTopCv(type);
 		const TypeRecord* shape = &program_.types.Get(shape_id);
-		if (shape->kind == TYPE_LVALUE_REFERENCE ||
-			shape->kind == TYPE_RVALUE_REFERENCE || shape->kind == TYPE_POINTER)
+		while (shape->kind == TYPE_LVALUE_REFERENCE ||
+			shape->kind == TYPE_RVALUE_REFERENCE || shape->kind == TYPE_QUALIFIED)
+		{
+			shape_id = program_.types.RemoveTopCv(shape->child);
+			shape = &program_.types.Get(shape_id);
+		}
+		if (shape->kind == TYPE_POINTER)
 		{
 			shape_id = program_.types.RemoveTopCv(shape->child);
 			shape = &program_.types.Get(shape_id);
@@ -369,6 +375,7 @@ private:
 			IndexBitFieldStorageTransferOwner(node);
 		}
 		else if (function_declaration_[record.binding] == kNoDumpEdge) function_declaration_[record.binding] = node;
+		CacheVirtualBaseBoundary(node);
 		if (record.declaration_only) output_.symbols[function_symbols_[record.binding]].referenced = true;
 	}
 	void ScanTop(std::uint32_t node)
@@ -836,7 +843,9 @@ private:
 			const DumpNode& child = arena_.nodes[children[i]];
 			if (child.kind == DUMP_PARAMETER)
 			{
-				const std::size_t boundary_parameter = parameter_index + (current_indirect_result_ ? 1 : 0);
+				const std::size_t boundary_parameter = parameter_index +
+					(current_indirect_result_ ? 1 : 0) +
+					(HasCurrentConstructionVtt() && parameter_index != 0 ? 1 : 0);
 				if (parameter_index == 0 && record.binding != kNoBinding &&
 					program_.bindings[record.binding].member_owner != kNoEntity &&
 					!program_.bindings[record.binding].static_member_function)
@@ -1716,6 +1725,11 @@ private:
 		for (std::size_t i = lowered_argument_begin;
 			i < arguments.size(); ++i)
 			lowered_boundary_arguments.Push(arguments[i]);
+		const std::size_t boundary_argument_begin = arguments.size();
+		AppendCallVirtualBaseArguments(callee, children,
+			lowered_boundary_arguments, &arguments, &argument_references);
+		call.virtual_base_argument_count = static_cast<std::uint32_t>(
+			arguments.size() - boundary_argument_begin);
 		if (member_pointer_call)
 		{
 			const MemberPointerCallOperands lowered = LowerMemberPointerCall(
@@ -1724,8 +1738,6 @@ private:
 			arguments[member_pointer_argument] = lowered.object;
 			member_pointer_callee = lowered.callee;
 		}
-		AppendCallVirtualBaseArguments(callee, children,
-			lowered_boundary_arguments, &arguments, &argument_references);
 		if (full_expression_cleanup_active_ && full_expression_deferred_cleanup_) EnsureFullExpressionCleanupSegment();
 		if (record.virtual_call)
 		{
@@ -2912,6 +2924,7 @@ private:
 	std::vector<std::uint8_t> thread_local_dynamic_;
 	std::vector<std::uint32_t> function_definition_;
 	std::vector<std::uint32_t> function_declaration_;
+	std::vector<std::size_t> virtual_base_parameter_counts_;
 	std::vector<std::uint32_t> global_node_;
 	std::vector<std::uint32_t> namespace_action_;
 	std::vector<std::uint32_t> local_static_action_;
