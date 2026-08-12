@@ -249,8 +249,12 @@ protected:
 			throw std::runtime_error("invalid temporary object action");
 		const bool initialize = derived.temporary_initialized_[node] == 0;
 		if (!initialize) return derived.temporary_addresses_[node];
+		const bool branch_initializer =
+			derived.arena_.nodes[children[0]].kind ==
+				DUMP_CONDITIONAL_EXPRESSION;
 		derived.ReadyFullExpressionCleanupForTemporary(node);
 		if (derived.temporary_addresses_[node].kind == Operand::NONE &&
+			!branch_initializer &&
 			(!derived.full_expression_deferred_cleanup_ ||
 			 (derived.full_expression_uses_branch_cleanup_ &&
 			  derived.full_expression_cleanup_ready_)))
@@ -258,7 +262,8 @@ protected:
 		const Operand destination = PrepareTemporaryObjectStorage(node);
 		if (initialize)
 		{
-			derived.EnsureFullExpressionCleanupSegment();
+			if (!branch_initializer)
+				derived.EnsureFullExpressionCleanupSegment();
 			if (derived.arena_.nodes[children[0]].kind == DUMP_CONSTRUCTOR_ACTION)
 			{
 				if (derived.arena_.nodes[children[0]].value_initialization)
@@ -678,14 +683,30 @@ protected:
 		const DumpKind kind = derived.arena_.nodes[values[0]].kind;
 		if (kind != DUMP_CONSTRUCTOR_ACTION &&
 			kind != DUMP_CLASS_VALUE_TRANSFER) return false;
+		const BindingId selected_constructor = kind == DUMP_CONSTRUCTOR_ACTION ?
+			derived.arena_.nodes[values[0]].binding :
+			derived.arena_.nodes[values[0]].selected_binding;
+		const bool cleanup_segment =
+			derived.full_expression_cleanup_active_ &&
+			selected_constructor != kNoBinding &&
+			!derived.program_.bindings[selected_constructor].nonthrowing;
+		if (cleanup_segment)
+			derived.EnsureFullExpressionCleanupSegment();
 		const Operand destination = retained_destination.kind == Operand::NONE ?
 			derived.ProjectAggregatePath(root, path) : retained_destination;
 		if (kind == DUMP_CLASS_VALUE_TRANSFER)
 		{
 			derived.LowerClassValueTransfer(values[0], destination);
+			if (cleanup_segment)
+				derived.PauseFullExpressionCleanupSegment();
 			return true;
 		}
-		if (derived.arena_.nodes[values[0]].elide_empty_constructor) return true;
+		if (derived.arena_.nodes[values[0]].elide_empty_constructor)
+		{
+			if (cleanup_segment)
+				derived.PauseFullExpressionCleanupSegment();
+			return true;
+		}
 		if (derived.arena_.nodes[values[0]].value_initialization)
 			EmitZeroInitialization(action.type, destination);
 		NodeChildren constructor;
@@ -693,6 +714,8 @@ protected:
 		if (!IsTrivialConstructorAction(action.type, constructor))
 			derived.LowerConstructorAction(
 				values[0], destination, false, true);
+		if (cleanup_segment)
+			derived.PauseFullExpressionCleanupSegment();
 		return true;
 	}
 };

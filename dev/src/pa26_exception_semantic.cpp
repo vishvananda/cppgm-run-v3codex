@@ -130,6 +130,7 @@ void SemanticAnalyzer::StageExceptionalFullExpression(
 	AppendUnwindDestructionActions(segment, statement, stop);
 	if (dump_.edges.size() == first_edge) return;
 	dump_.nodes[statement].full_expression_staging = true;
+	MarkFullExpressionCalls(expression);
 	for (std::size_t edge = first_edge; edge < dump_.edges.size(); ++edge)
 	{
 		DumpNode& action = dump_.nodes[dump_.edges[edge].child];
@@ -138,15 +139,19 @@ void SemanticAnalyzer::StageExceptionalFullExpression(
 	}
 }
 
-void SemanticAnalyzer::StageAutomaticScalarInitializerException(
+void SemanticAnalyzer::StageAutomaticInitializerException(
 	std::uint32_t expression, std::uint32_t variable, ScopeId scope,
 	BindingId binding, TypeId type, bool eligible)
 {
 	if (!eligible ||
 		program_->bindings[binding].storage_class != STORAGE_CLASS_NONE ||
-		program_->types.IsReference(type) || IsInitializerListType(type) ||
-		IsClassObjectType(type)) return;
-	StageExceptionalFullExpression(expression, variable, scope);
+		program_->types.IsReference(type) || IsInitializerListType(type)) return;
+	if (InitializationActionsAreNonthrowing(expression)) return;
+	const ScopeId stop = exception_cleanup_stops_.empty() ? kNoScope :
+		exception_cleanup_stops_.back();
+	if (!HasUnwindDestructionActions(scope, stop)) return;
+	AppendFullExpressionDestructionActions(expression, variable);
+	StageExceptionalFullExpression(expression, variable, scope, true);
 }
 
 void SemanticAnalyzer::StageControlFullExpression(

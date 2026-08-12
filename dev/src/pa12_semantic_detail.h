@@ -1298,15 +1298,19 @@ private:
 		std::uint32_t branch_owner, std::uint32_t branch_child,
 		std::size_t branch_depth);
 	void MarkFullExpressionCalls(std::uint32_t node,
-		bool managed_cleanup = false);
+		bool managed_cleanup = false, bool allocation_call = false);
 	bool HasControlDependentTemporary(std::uint32_t node);
 	void AppendFullExpressionDestructionActions(std::uint32_t expression,
 		std::uint32_t output_parent);
+	std::uint32_t PublishVariableInitializerActions(std::uint32_t variable,
+		BindingId binding, TypeId type, const ExpressionInfo& initializer,
+		bool has_initializer, bool declaration_only,
+		bool qualified_lexical_scope);
 	bool StageNestedTemplateTemporaryCleanup(std::uint32_t expression,
 		std::uint32_t statement);
 	void StageExceptionalFullExpression(std::uint32_t expression,
 		std::uint32_t statement, ScopeId scope, bool force = false);
-	void StageAutomaticScalarInitializerException(std::uint32_t expression,
+	void StageAutomaticInitializerException(std::uint32_t expression,
 		std::uint32_t variable, ScopeId scope, BindingId binding, TypeId type,
 		bool eligible);
 	void StageControlFullExpression(std::uint32_t expression,

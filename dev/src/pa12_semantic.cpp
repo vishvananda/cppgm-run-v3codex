@@ -2177,22 +2177,16 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			program_->bindings[binding].storage_class == STORAGE_CLASS_EXTERN;
 		const std::uint32_t variable = MakeDump(DUMP_VARIABLE, parsed.type,
 			VALUE_NONE, parsed.name, binding);
-		if (has_initializer) {
-			dump_.nodes[variable].storage_size = dump_.nodes[initializer.node].storage_size;
-			dump_.nodes[variable].storage_alignment = dump_.nodes[initializer.node].storage_alignment;
-			dump_.Add(variable, initializer.node);
-		}
-		else if (!declaration_only && DestructedEntity(parsed.type) != kNoEntity)
-		{
-			const EntityId object = DestructedEntity(parsed.type);
-			if (!qualified_lexical_scope || object == kNoEntity ||
-				!program_->entities[object].trivial_default_constructor)
-				AddDefaultConstructor(variable, binding, parsed.type);
-		}
+		const std::uint32_t runtime_initializer =
+			PublishVariableInitializerActions(variable, binding, parsed.type,
+				initializer, has_initializer, declaration_only,
+				qualified_lexical_scope);
 		dump_.Add(owner, variable);
 		const NameId source_file = arena_->SourceLine(item) == 0 ? 0 : program_->names.Intern(arena_->SourceFile(item));
 		const bool control_dependent = local && has_initializer && HasControlDependentTemporary(initializer.node);
-		StageAutomaticScalarInitializerException(initializer.node, variable, scope, binding, parsed.type, local && has_initializer && !control_dependent);
+		StageAutomaticInitializerException(runtime_initializer, variable, scope,
+			binding, parsed.type,
+			local && runtime_initializer != kNoDumpEdge);
 		RegisterVariableLifetimeAndStorage(scope, local, declaration_only,
 			variable, binding, parsed.type, source_file,
 			static_cast<std::uint32_t>(arena_->SourceLine(item)),
@@ -2219,7 +2213,8 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 					}
 				}
 			}
-			else if (!extended_initializer_list && !dump_.nodes[variable].full_expression_staging)
+			else if (!extended_initializer_list &&
+				!dump_.nodes[variable].full_expression_staging)
 			{
 				const std::size_t edge_count = dump_.edges.size();
 				AppendFullExpressionDestructionActions(initializer.node, owner);

@@ -582,6 +582,8 @@ protected:
 		derived.SelectBlock(end);
 		derived.EmitJump(continuation);
 		derived.SelectBlock(cleanup);
+		const bool routes_to_try =
+			derived.BeginExceptionTryCleanupDispatch();
 		const Operand built = derived.LoadStorage(index_slot, LowI64());
 		if (record.selected_binding != kNoBinding)
 		{
@@ -640,7 +642,7 @@ protected:
 		}
 		EmitArrayDeallocation(record.object_binding, record,
 			raw_pointer, count);
-		derived.Emit(Instruction(Instruction::RESUME));
+		derived.FinishExceptionCleanupDispatch(routes_to_try, false);
 		derived.SelectBlock(continuation);
 	}
 

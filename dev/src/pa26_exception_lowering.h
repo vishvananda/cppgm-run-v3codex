@@ -68,7 +68,8 @@ protected:
 		return true;
 	}
 
-	void FinishExceptionCleanupDispatch(bool routes_to_try)
+	void FinishExceptionCleanupDispatch(bool routes_to_try,
+		bool closes_cleanup_region = true)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (!routes_to_try)
@@ -80,7 +81,8 @@ protected:
 			active_exception_regions_.back().kind != EXCEPTION_TRY_REGION)
 			throw std::logic_error(
 				"exception cleanup lost its source try region");
-		derived.Emit(Instruction(Instruction::EH_END));
+		if (closes_cleanup_region)
+			derived.Emit(Instruction(Instruction::EH_END));
 		derived.Emit(Instruction(Instruction::EH_END));
 		derived.EmitJump(active_exception_regions_.back().entry);
 	}

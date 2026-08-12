@@ -2559,15 +2559,54 @@ std::uint32_t SemanticAnalyzer::MakeTemporaryDestructorAction(
 	return action;
 }
 
-void SemanticAnalyzer::MarkFullExpressionCalls(std::uint32_t node, bool managed_cleanup)
+void SemanticAnalyzer::MarkFullExpressionCalls(std::uint32_t node,
+	bool managed_cleanup, bool allocation_call)
 {
 	if (node == kNoDumpEdge || node >= dump_.nodes.size()) return;
 	DumpNode& record = dump_.nodes[node];
-	record.full_expression_staging = true;
+	bool stage = true;
+	if (allocation_call && record.kind == DUMP_CALL_EXPRESSION &&
+		record.first_edge != kNoDumpEdge)
+	{
+		const DumpNode& callee =
+			dump_.nodes[dump_.edges[record.first_edge].child];
+		stage = callee.kind != DUMP_CALLEE || callee.binding == kNoBinding ||
+			!FunctionIsNonthrowing(callee.binding);
+	}
+	if (stage) record.full_expression_staging = true;
 	if (managed_cleanup && record.kind == DUMP_TEMPORARY_OBJECT) record.managed_full_expression_cleanup = true;
+	bool first = true;
 	for (std::uint32_t edge = record.first_edge; edge != kNoDumpEdge;
 		edge = dump_.edges[edge].next)
-		MarkFullExpressionCalls(dump_.edges[edge].child, managed_cleanup);
+	{
+		MarkFullExpressionCalls(dump_.edges[edge].child, managed_cleanup,
+			record.kind == DUMP_NEW_EXPRESSION && first);
+		first = false;
+	}
+}
+
+std::uint32_t SemanticAnalyzer::PublishVariableInitializerActions(
+	std::uint32_t variable, BindingId binding, TypeId type,
+	const ExpressionInfo& initializer, bool has_initializer,
+	bool declaration_only, bool qualified_lexical_scope)
+{
+	if (has_initializer)
+	{
+		dump_.nodes[variable].storage_size =
+			dump_.nodes[initializer.node].storage_size;
+		dump_.nodes[variable].storage_alignment =
+			dump_.nodes[initializer.node].storage_alignment;
+		dump_.Add(variable, initializer.node);
+		return initializer.node;
+	}
+	const EntityId object = DestructedEntity(type);
+	if (declaration_only || object == kNoEntity ||
+		(qualified_lexical_scope &&
+		 program_->entities[object].trivial_default_constructor))
+		return kNoDumpEdge;
+	AddDefaultConstructor(variable, binding, type);
+	const std::uint32_t edge = dump_.nodes[variable].first_edge;
+	return edge == kNoDumpEdge ? kNoDumpEdge : dump_.edges[edge].child;
 }
 
 bool SemanticAnalyzer::HasControlDependentTemporary(std::uint32_t node)
