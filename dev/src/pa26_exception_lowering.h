@@ -22,6 +22,9 @@ template <class Derived>
 class ExceptionLowering
 {
 protected:
+	ExceptionLowering()
+		: handler_selector_epoch_(0), next_handler_selector_(1) {}
+
 	enum ExceptionRegion : std::uint8_t
 	{
 		EXCEPTION_TRY_REGION,
@@ -40,10 +43,27 @@ protected:
 
 	void ResetExceptionFunctionState()
 	{
+		Derived& derived = static_cast<Derived&>(*this);
 		active_exception_regions_.clear();
-		handler_selectors_.assign(
-			static_cast<Derived&>(*this).arena_.nodes.size(), 0);
+		const std::size_t required = derived.arena_.nodes.size();
+		if (handler_selectors_.size() < required)
+		{
+			if (derived.stats_)
+				derived.stats_->exception_selector_table_growth +=
+					required - handler_selectors_.size();
+			handler_selectors_.resize(required, 0);
+			handler_selector_epochs_.resize(required, 0);
+		}
+		if (++handler_selector_epoch_ == 0)
+		{
+			// Epoch wrap is the only full-table reset. It cannot occur during any
+			// practical translation unit, but retaining the path keeps identity
+			// reuse correct without imposing TU-sized work on every function.
+			handler_selector_epochs_.assign(required, 0);
+			handler_selector_epoch_ = 1;
+		}
 		next_handler_selector_ = 1;
+		if (derived.stats_) ++derived.stats_->exception_selector_resets;
 	}
 
 	std::uint32_t ExceptionCleanupContext() const
@@ -329,8 +349,13 @@ protected:
 	{
 		if (handler >= handler_selectors_.size())
 			throw std::logic_error("exception handler selector is out of range");
-		if (handler_selectors_[handler] == 0)
+		if (handler_selector_epochs_[handler] != handler_selector_epoch_)
+		{
+			handler_selector_epochs_[handler] = handler_selector_epoch_;
 			handler_selectors_[handler] = next_handler_selector_++;
+			Derived& derived = static_cast<Derived&>(*this);
+			if (derived.stats_) ++derived.stats_->exception_selector_assignments;
+		}
 		return handler_selectors_[handler];
 	}
 
@@ -579,7 +604,8 @@ protected:
 private:
 	std::vector<ExceptionRegionState> active_exception_regions_;
 	std::vector<std::uint32_t> handler_selectors_;
-	std::uint32_t next_handler_selector_;
+	std::vector<std::uint32_t> handler_selector_epochs_;
+	std::uint32_t handler_selector_epoch_, next_handler_selector_;
 };
 
 }

@@ -2796,6 +2796,7 @@ void SemanticAnalyzer::AddTemporaryLifetimeObligation(ScopeId scope,
 	nearest_lifetime_scopes_[scope] = scope;
 	scope_lifetimes_[scope].push_back(LifetimeObligation(kNoBinding,
 		cleanup.binding, cleanup.operand_type, temporary));
+	MarkInitializerListLifetimeScope(scope, temporary);
 }
 
 void SemanticAnalyzer::RegisterConditionLifetime(ScopeId scope,

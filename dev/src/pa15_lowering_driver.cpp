@@ -148,6 +148,14 @@ void AccumulateLambdaCaptureStats(SemanticAnalysisStats* target,
 	target->lambda_capture_name_uses += source.lambda_capture_name_uses;
 }
 
+void AccumulateLifetimeQueryStats(SemanticAnalysisStats* target,
+	const SemanticAnalysisStats& source)
+{
+	target->enclosing_lifetime_queries += source.enclosing_lifetime_queries;
+	target->initializer_list_lifetime_queries +=
+		source.initializer_list_lifetime_queries;
+}
+
 }
 
 LowIRLoweringStats::LowIRLoweringStats()
@@ -157,10 +165,12 @@ LowIRLoweringStats::LowIRLoweringStats()
 	  virtual_calls(0), vptr_stores(0), vtable_slots(0),
 	  deleting_destructors(0), rtti_graph_nodes_visited(0),
 	  rtti_demand_requests(0), rtti_types_demanded(0),
-	  rtti_symbol_lookups(0),
+	  rtti_symbol_lookups(0), rtti_base_dependency_visits(0),
 	  cleanup_dispatch_probes(0), cleanup_dispatch_cache_hits(0),
 	  cleanup_dispatch_entries(0), conditional_lifetime_slots(0),
 	  conditional_lifetime_marks(0), branch_cleanup_actions(0),
+	  exception_selector_resets(0), exception_selector_table_growth(0),
+	  exception_selector_assignments(0),
 	  typed_storage_bytes(0), output_bytes(0), lowering_nanoseconds(0),
 	  render_nanoseconds(0)
 {
@@ -215,7 +225,7 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 				semantic_stats.unwind_cleanup_scope_visits;
 			semantic.unwind_cleanup_action_visits +=
 				semantic_stats.unwind_cleanup_action_visits;
-			semantic.enclosing_lifetime_queries += semantic_stats.enclosing_lifetime_queries;
+			AccumulateLifetimeQueryStats(&semantic, semantic_stats);
 			semantic.temporary_dependency_visits += semantic_stats.temporary_dependency_visits;
 			semantic.materialized_demand_visits +=
 				semantic_stats.materialized_demand_visits;

@@ -59,6 +59,17 @@ NameId SemanticAnalyzer::EmissionName(ScopeId owner, NameId name)
 	return program_->names.Intern(rendered);
 }
 
+void SemanticAnalyzer::InitializeInitializerListLifetimeScope(
+	ScopeId scope, ScopeId parent)
+{
+	if (nearest_initializer_list_lifetime_scopes_.size() <= scope)
+		nearest_initializer_list_lifetime_scopes_.resize(
+			static_cast<std::size_t>(scope) + 1, kNoScope);
+	nearest_initializer_list_lifetime_scopes_[scope] = parent != kNoScope &&
+		parent < nearest_initializer_list_lifetime_scopes_.size() ?
+			nearest_initializer_list_lifetime_scopes_[parent] : kNoScope;
+}
+
 ScopeId SemanticAnalyzer::NewScope(ScopeId parent, ScopeKind kind,
 	NameId name, NameId prefix)
 {
@@ -77,7 +88,8 @@ ScopeId SemanticAnalyzer::NewScope(ScopeId parent, ScopeKind kind,
 	scope_parents_[scope] = parent;
 	nearest_lifetime_scopes_[scope] = parent != kNoScope &&
 		parent < nearest_lifetime_scopes_.size() ?
-		nearest_lifetime_scopes_[parent] : kNoScope;
+			nearest_lifetime_scopes_[parent] : kNoScope;
+	InitializeInitializerListLifetimeScope(scope, parent);
 	scope_nontrivial_object_lifetime_prefixes_[scope] =
 		parent != kNoScope &&
 		parent < scope_nontrivial_object_lifetime_prefixes_.size() ?

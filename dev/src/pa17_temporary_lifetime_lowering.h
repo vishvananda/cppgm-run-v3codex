@@ -65,13 +65,15 @@ public:
 		while (slots_[index].occupied)
 			index = (index + 1) & (slots_.size() - 1);
 		slots_[index] = entry;
+		occupied_slots_.push_back(index);
 		++size_;
 	}
 
 	void Clear()
 	{
-		for (std::size_t i = 0; i < slots_.size(); ++i)
-			slots_[i].occupied = false;
+		for (std::size_t i = 0; i < occupied_slots_.size(); ++i)
+			slots_[occupied_slots_[i]].occupied = false;
+		occupied_slots_.clear();
 		words_.clear();
 		size_ = 0;
 	}
@@ -135,6 +137,8 @@ private:
 	void Rehash(std::size_t capacity)
 	{
 		std::vector<Entry> replacement(capacity);
+		std::vector<std::size_t> replacement_occupied;
+		replacement_occupied.reserve(size_);
 		for (std::size_t i = 0; i < slots_.size(); ++i)
 		{
 			if (!slots_[i].occupied) continue;
@@ -143,12 +147,15 @@ private:
 			while (replacement[index].occupied)
 				index = (index + 1) & (capacity - 1);
 			replacement[index] = slots_[i];
+			replacement_occupied.push_back(index);
 		}
 		slots_.swap(replacement);
+		occupied_slots_.swap(replacement_occupied);
 	}
 
 	std::vector<Entry> slots_;
 	std::vector<std::uint64_t> words_;
+	std::vector<std::size_t> occupied_slots_;
 	std::size_t size_;
 };
 

@@ -1864,6 +1864,7 @@ void SemanticAnalyzer::AnalyzeNamespace(NodeId node, ScopeId scope,
 			std::numeric_limits<NameId>::max();
 		scope_prefix_segments_[child] = unnamed ? 0 : name;
 		scope_parents_[child] = scope;
+		InitializeInitializerListLifetimeScope(child, scope);
 		scope_nontrivial_object_lifetime_prefixes_[child] =
 			scope < scope_nontrivial_object_lifetime_prefixes_.size() ?
 				scope_nontrivial_object_lifetime_prefixes_[scope] : 0;
@@ -2862,6 +2863,7 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		stats_->unwind_cleanup_action_visits =
 			unwind_cleanup_action_visits_;
 		stats_->enclosing_lifetime_queries = enclosing_lifetime_queries_;
+		stats_->initializer_list_lifetime_queries = initializer_list_lifetime_queries_;
 		stats_->temporary_dependency_visits = temporary_dependency_visits_;
 		stats_->materialized_demand_visits = materialized_demand_visits_;
 		stats_->nonthrowing_action_visits = nonthrowing_action_visits_;

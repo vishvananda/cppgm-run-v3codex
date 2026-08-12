@@ -2,71 +2,129 @@
 
 ## Stage Design and Spec Alignment
 
-PA26 remains a monotonic extension of the PA25 semantic graph and typed LowIR
-path. PA12 publishes canonical closure, initializer-list, RTTI, exception,
-construction, and lifetime facts; PA15 and its PA16/PA17/PA26 lowering mixins
-consume those facts without lookup recovery. Conditional temporary cleanup uses
-compact `(owner, child)` identity at root guards and runtime state only for
-deeper dependence. Destructor demand follows reachable semantic actions,
-including retained/deferred function bodies. This aligns with `spec.md`
-sections 2, 4-6, and 8-10: stable identity, monotonic demand, explicit phase
-boundaries, typed lowering, bounded phase-local state, and observable work.
+PA26 is complete at **110/110 local/course tests**, with all **3,607** earlier
+tests retained. It extends the existing staged compiler rather than introducing
+a parallel frontend or an alternate lowering route:
 
-## Current Failure Map
+`source -> preprocessing/tokens -> SyntaxArena -> Program + DumpArena ->`
+`SemanticGraphView -> typed LowIR -> LowIR renderer`
 
-The current PA26 report passes **110/110** and the through-PA25 report passes
-**3,607/3,607**. The complete current-PA failure set is empty; file audit also
-passes.
+The syntax/parser/analyzer scratch dies before the graph consumer runs. PA26
+facts cross that boundary as compact node, `TypeId`, `BindingId`, `EntityId`,
+`ScopeId`, branch-owner/child, slot, and symbol identities. The renderer only
+serializes the completed `TypedProgram`; lowering never reparses rendered
+LowIR. The stage ends at typed LowIR, so `spec.md` object/ELF requirements are
+owned by later stages and are not duplicated here.
 
-| Owner | Failing | Shared behavior |
-|---|---:|---|
-| PA26 stage | 0 | All capturing-lambda, initializer-list, RTTI/cast, and exception/lifetime groups pass |
+Representative ownership traces are:
 
-## Active Checkpoint
+- A capturing template lambda is indexed by source syntax plus canonical
+  enclosing/specialization context, publishes capture bindings and closure
+  fields, and lowers retained calls, closure construction, RTTI, and exception
+  actions from those identities.
+- A class-element braced list marks the canonical `std::initializer_list`
+  template specialization, selects list conversions, creates one backing-array
+  temporary, attaches element construction/destruction and unwind actions, and
+  lowers them through typed slots and cleanup blocks.
+- `typeid`/pointer `dynamic_cast` publish canonical queried types and vtable
+  demand. One graph scan closes type and base dependencies before ABI RTTI
+  globals and runtime declarations are emitted.
+- A conditional temporary records its full-expression owner and branch child.
+  PA17 retires path-local cleanup before merge, while PA26 exception lowering
+  maps handler nodes to function-local selectors.
 
-Stage complete. The final checkpoint moved nonthrowing conditional-temporary
-destruction to the constructing arm, conservatively suppresses an unreachable
-arm only for a literal-initialized automatic scalar with one semantic use, and
-defers destructor demand until that reachability fact is final. Retained lambda
-bodies republish reachable demand when attached to their emitted function.
-PA17 consumes the existing branch identity and retires path-local cleanup
-before the merge. Work is O(function nodes + touched bindings + cleanup
-actions), with epoch-indexed scratch reused across functions. Validation is the
-required PA26 report, the full through-PA25 report, true/modified/deferred-lambda
-counterexamples, and file audit.
+This matches `spec.md` sections 2, 4-6, and 8-10: stable identity, monotonic
+on-demand work, explicit phase boundaries, typed lowering, bounded scratch,
+and observable scaling counters.
 
 ## Performance Evidence
 
-The final branch-cleanup witness scales one independent conditional temporary
-per generated function. Medians are from three current-binary runs; node,
-temporary, lifetime-query, and storage growth track case count. Epoch scratch
-grows only when graph/binding indexes grow and is not cleared per function.
+Five-run medians compare the untouched stage tip (`91ce2ec6`) with the audited
+binary on identical generated inputs. Times are internal phase telemetry;
+selected largest LowIR outputs are byte-identical.
 
-| Cases | Semantic nodes | Temporary visits | O(1) lifetime queries | Typed storage | Semantic / lowering |
-|---:|---:|---:|---:|---:|---:|
-| 1 | 36 | 18 | 2 | 10,638 B | 0.361 / 0.213 ms |
-| 16 | 351 | 243 | 32 | 93,581 B | 1.318 / 0.381 ms |
-| 64 | 1,359 | 963 | 128 | 365,453 B | 4.275 / 1.230 ms |
+| Workload | Size | Baseline | Audited | Change | Structural evidence |
+|---|---:|---:|---:|---:|---|
+| Independent conditional functions | 4,096 | 91.659 ms lower | 62.262 ms lower | -32.1% | 4,099 resets; selector table grows once to 65,556 nodes |
+| Single-inheritance RTTI chain | 2,048 | 132.781 ms lower | 92.887 ms lower | -30.0% | 4,095 base-dependency visits (`2N-1`) |
+| Nested negative list-lifetime queries | 4,096 | 54.786 ms semantic | 32.095 ms semantic | -41.4% | 4,096 indexed queries for 4,096 conditions |
 
-Earlier nested-scope evidence remains linear through 512 scopes: 2,060
-semantic nodes, 1,025 temporary visits, 517 instructions, and 513 indexed
-lifetime queries.
+The repaired paths remain linear at intermediate sizes: branch lowering is
+1.937/15.020/62.262 ms for 128/1,024/4,096 functions; RTTI lowering is
+5.035/20.391/92.887 ms for 128/512/2,048 classes; nested-scope semantic time is
+4.371/16.090/32.095 ms for 512/2,048/4,096 scopes.
 
-## Completed Checkpoints
+Independent PA26-surface witnesses also scale with represented work:
 
-| Checkpoint | Result | Validation |
+- Default lambda capture at 32/128/512 names performs 65/257/1,025 syntax
+  visits and records 32/128/512 name uses; semantic time is
+  1.030/3.233/12.469 ms.
+- Class initializer lists at 32/128/512 elements produce 95/287/1,055
+  temporary-dependency visits and 238/718/2,638 instructions; semantic time is
+  0.825/1.388/3.774 ms.
+- 512 independent handlers produce 513 function resets, exactly 512 selector
+  assignments, and one selector-table growth to the 8,198-node graph.
+
+## Architecture Review
+
+The PA-wide `spec.md` checklist was applied to the surfaces present in PA26.
+
+- **Owning representations:** PA26 adds facts to the canonical semantic graph
+  and typed LowIR only. There is no PA26 token/AST/IR duplicate and no textual
+  round trip.
+- **Identity and lookup:** semantic decisions use interned/canonical IDs.
+  Rendered names and ABI mangles are presentation or object-format data, not
+  semantic lookup keys. The recognized `std::initializer_list` name is the
+  required language hook; later checks use its canonical template marker.
+- **Demand and templates:** RTTI, vtables, constructors, destructors, retained
+  lambda bodies, and exception helpers use deduplicated flags, caches, and
+  worklists. Unevaluated `typeid` operands do not publish runtime-call demand.
+- **Lifetimes and EH:** normal, branch, constructor-failure, call-argument,
+  catch-miss, rethrow, and partial-array cleanup share ordered semantic actions
+  and typed dispatch blocks. Function-local lowering state is reset without a
+  whole-graph clear.
+- **Scaling:** graph-wide discovery is one pass; per-function structures touch
+  current entries; scope lifetime predicates are indexed; RTTI ancestry stops
+  at a closed dependency. Counters cover each repaired work dimension.
+- **Self-containment:** implementation does not invoke refs, previous
+  solutions, host compilers, or external processes, and contains no test,
+  filename, fixture, or source-text dispatch.
+- **Scope boundary:** pointer `dynamic_cast`, capturing lambdas without init
+  captures, initializer lists, `typeid`, and PA26 EH/lifetime behavior are
+  covered. Multiple/virtual inheritance casts, `dynamic_cast<void*>`, and init
+  captures remain outside the assignment contract.
+
+Audit fixes removed four ownership-path hazards: TU-sized selector clearing per
+function, retained-capacity cleanup-cache clearing per function, repeated RTTI
+base-chain walks, and lexical-parent scans for initializer-list lifetime
+queries.
+
+## Final Architecture Review
+
+**Pass.** The implementation is monotonic, typed, self-contained, and
+phase-bounded. Every PA26 requirement reaches typed LowIR through canonical
+facts; there is no lookup recovery or text-based fallback in lowering. The
+largest generated witnesses preserve byte-identical LowIR after the audit
+refactors, and no residual superlinear or unexplained hot path appears in the
+instrumented dimensions. No correctness, architecture, performance,
+self-containment, file-audit, or validation blocker remains.
+
+## Checkpoint Ledger
+
+| Checkpoint | Commits | Final audit result |
 |---|---|---|
-| Canonical RTTI demand and query lowering | Canonical query/cast identity and ABI RTTI | PA26 30/110; through PA25 3,607/3,607 |
-| Lambda capture ownership | Explicit/default closure fields and projected access | +12; PA26 42/110 |
-| Scalar initializer-list interoperation | Canonical scalar backing, references, `auto`, range-for | +14; PA26 56/110; linear to 512 |
-| List overload and class-backing boundary | List ranking/deduction and typed class recipes | +7; PA26 63/110 |
-| Initializer-list and aggregate lifecycle | Static/local backing lifetime and parameter teardown | +4; PA26 67/110; linear to 1,024 |
-| Scalar source-exception foundation | Throw/handler facts, catches, rethrow, runtime roles | +8; PA26 75/110; handlers linear to 127 |
-| Lexical unwind snapshots and continuation | Segmented live-action snapshots and dispatch interning | +5; PA26 80/110; linear through 256/64 |
-| Class exception objects and routing | Direct construction/destructor transfer and projection-safe ABI | +6; PA26 86/110; through PA25 clean |
-| Guard-edge full-expression cleanup | Root branch identity, path cleanup, runtime fallback | +4; PA26 90/110; both paths linear to 128 |
-| Construction and call-ABI ownership | Initializer staging, source handlers, transferred parameters | +4; PA26 94/110; arrays linear to 2,048 |
-| Nested call and lifetime frontier | Default-subtree identity, eager regions, guarded-static cleanup | +7; PA26 101/110; indexed scopes to 512 |
-| Canonical lambda specialization identity | Source/context identity and on-demand ABI/RTTI/EH | +4; PA26 105/110 |
-| Projected lifetime and template boundaries | Destination init, projected destruction, polymorphic cleanup | +4; PA26 109/110; through PA25 clean |
-| Conditional initializer lifetime ownership | Reachable branch cleanup, demand publication, unreachable-arm suppression | +1; PA26 110/110; through PA25 3,607/3,607; audit pass |
+| Canonical RTTI demand and query lowering | `9eb277da`, `ffa3ae54` | Pass: canonical categories, evaluated demand, cast legality, typed ABI globals |
+| Lambda capture ownership | `d5267826` | Pass: explicit/default captures, closure fields, projected access |
+| Scalar initializer-list interoperation | `64e76f40` | Pass: scalar backing, references, `auto`, and range-for |
+| List overload and class-backing boundary | `128ba385` | Pass: list ranking/deduction and typed class recipes |
+| Initializer-list and aggregate lifecycle | `43c64bea` | Pass: static/local backing and parameter teardown |
+| Scalar source-exception foundation | `b4f7f936` | Pass: throw/catch/rethrow facts and runtime roles |
+| Lexical unwind snapshots and continuation | `e05062b1`, `8fd4193d` | Pass: ordered snapshots and interned dispatch suffixes |
+| Class exception objects and routing | `336f0c80`, `a5e57e4a` | Pass: direct construction, destructor transfer, typed routing |
+| Guard-edge full-expression cleanup | `e4d47678`, `fc7aead1` | Pass: owner/child identity and path-local retirement |
+| Construction and call-ABI ownership | `17f052a8`, `1faf7b09` | Pass: staged lifetime start, transferred parameters, partial arrays |
+| Nested call and lifetime frontier | `0c9fb54b`, `41b004f2` | Pass: default subtrees, guarded statics, indexed lifetime ownership |
+| Canonical lambda specialization identity | `b6ad3640` | Pass: source/context identity and on-demand ABI/RTTI/EH |
+| Projected lifetime and template boundaries | `b6ad3640` | Pass: projected destruction and polymorphic cleanup |
+| Conditional initializer lifetime ownership | `91ce2ec6` | Pass: reachable-arm cleanup and final demand publication |
+| Full-stage architecture audit | current audit | Pass: four scaling fixes, complete ledger, required gates clean |

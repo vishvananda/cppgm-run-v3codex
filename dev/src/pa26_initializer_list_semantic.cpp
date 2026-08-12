@@ -145,24 +145,19 @@ std::uint32_t SemanticAnalyzer::InitializerListBackingTemporary(
 
 bool SemanticAnalyzer::HasActiveInitializerListBacking(ScopeId scope) const
 {
-	for (ScopeId current = scope; current != kNoScope; )
-	{
-		if (current < scope_lifetimes_.size())
-		{
-			const std::vector<LifetimeObligation>& obligations =
-				scope_lifetimes_[current];
-			for (std::size_t i = 0; i < obligations.size(); ++i)
-			{
-				const std::uint32_t temporary = obligations[i].temporary;
-				if (temporary != kNoDumpEdge &&
-					dump_.nodes[temporary].initializer_list_backing)
-					return true;
-			}
-		}
-		if (current >= scope_parents_.size()) return false;
-		current = scope_parents_[current];
-	}
-	return false;
+	++initializer_list_lifetime_queries_;
+	return scope < nearest_initializer_list_lifetime_scopes_.size() &&
+		nearest_initializer_list_lifetime_scopes_[scope] != kNoScope;
+}
+
+void SemanticAnalyzer::MarkInitializerListLifetimeScope(
+	ScopeId scope, std::uint32_t temporary)
+{
+	if (!dump_.nodes[temporary].initializer_list_backing) return;
+	if (nearest_initializer_list_lifetime_scopes_.size() <= scope)
+		nearest_initializer_list_lifetime_scopes_.resize(
+			static_cast<std::size_t>(scope) + 1, kNoScope);
+	nearest_initializer_list_lifetime_scopes_[scope] = scope;
 }
 
 void SemanticAnalyzer::MarkInitializerListLifetimeCalls(std::uint32_t node)

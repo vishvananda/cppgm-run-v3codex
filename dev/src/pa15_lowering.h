@@ -39,12 +39,16 @@ struct LowIRLoweringStats
 	std::size_t rtti_demand_requests;
 	std::size_t rtti_types_demanded;
 	std::size_t rtti_symbol_lookups;
+	std::size_t rtti_base_dependency_visits;
 	std::size_t cleanup_dispatch_probes;
 	std::size_t cleanup_dispatch_cache_hits;
 	std::size_t cleanup_dispatch_entries;
 	std::size_t conditional_lifetime_slots;
 	std::size_t conditional_lifetime_marks;
 	std::size_t branch_cleanup_actions;
+	std::size_t exception_selector_resets;
+	std::size_t exception_selector_table_growth;
+	std::size_t exception_selector_assignments;
 	std::size_t typed_storage_bytes;
 	std::size_t output_bytes;
 	std::uint64_t lowering_nanoseconds;

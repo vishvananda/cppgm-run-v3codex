@@ -556,6 +556,10 @@ private:
 			for (std::size_t depth = 0; dependency != kNoEntity &&
 				depth <= program_.entities.size(); ++depth)
 			{
+				if (stats_) ++stats_->rtti_base_dependency_visits;
+				// DemandRtti and each earlier vtable root close their full base
+				// suffix, so a demanded ancestor proves that the suffix is complete.
+				if (state_.class_rtti_demanded[dependency]) break;
 				state_.class_rtti_demanded[dependency] = 1;
 				dependency = program_.entities[dependency].direct_base;
 			}

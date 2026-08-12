@@ -584,6 +584,8 @@ int run_emit_semantics_mode(const vector<string> & args)
 		   << stats.unwind_cleanup_scope_visits
 		   << " unwind_cleanup_action_visits="
 		   << stats.unwind_cleanup_action_visits
+		   << " initializer_list_lifetime_queries="
+		   << stats.initializer_list_lifetime_queries
 		   << " empty_constructor_chain_requests="
 		   << stats.empty_constructor_chain_requests
 		   << " empty_constructor_chain_cache_hits="
@@ -796,6 +798,8 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << semantic.unwind_cleanup_action_visits
 			 << " enclosing_lifetime_queries="
 			 << semantic.enclosing_lifetime_queries
+			 << " initializer_list_lifetime_queries="
+			 << semantic.initializer_list_lifetime_queries
 			 << " temporary_dependency_visits="
 			 << semantic.temporary_dependency_visits
 			 << " materialized_demand_visits="
@@ -973,6 +977,8 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << " rtti_demand_requests=" << stats.rtti_demand_requests
 			 << " rtti_types_demanded=" << stats.rtti_types_demanded
 			 << " rtti_symbol_lookups=" << stats.rtti_symbol_lookups
+			 << " rtti_base_dependency_visits="
+			 << stats.rtti_base_dependency_visits
 			 << " cleanup_dispatch_probes="
 			 << stats.cleanup_dispatch_probes
 			 << " cleanup_dispatch_cache_hits="
@@ -985,6 +991,12 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << stats.conditional_lifetime_marks
 			 << " branch_cleanup_actions="
 			 << stats.branch_cleanup_actions
+			 << " exception_selector_resets="
+			 << stats.exception_selector_resets
+			 << " exception_selector_table_growth="
+			 << stats.exception_selector_table_growth
+			 << " exception_selector_assignments="
+			 << stats.exception_selector_assignments
 			 << " typed_storage_bytes=" << stats.typed_storage_bytes
 			 << " semantic_peak_stage_bytes="
 			 << semantic.peak_stage_storage_bytes
