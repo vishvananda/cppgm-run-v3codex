@@ -199,8 +199,8 @@ LowIRLoweringStats::LowIRLoweringStats()
 {
 }
 
-void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
-	const PreprocessingOptions& options, std::ostream& output, LowIRLoweringStats* stats)
+TypedProgram BuildTypedLowIRProgram(const std::vector<LowIRSource>& sources,
+	const PreprocessingOptions& options, LowIRLoweringStats* stats)
 {
 	if (sources.empty()) throw std::runtime_error("no PA15 source inputs");
 	if (stats) *stats = LowIRLoweringStats();
@@ -424,7 +424,18 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 		stats->lowering_nanoseconds += static_cast<std::uint64_t>(
 			std::chrono::duration_cast<std::chrono::nanoseconds>(
 				std::chrono::steady_clock::now() - coalesce_started).count());
-	const std::chrono::steady_clock::time_point render_started = std::chrono::steady_clock::now();
+	if (stats)
+		stats->typed_storage_bytes = TypedStorageBytes(program);
+	return program;
+}
+
+void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
+	const PreprocessingOptions& options, std::ostream& output,
+	LowIRLoweringStats* stats)
+{
+	TypedProgram program = BuildTypedLowIRProgram(sources, options, stats);
+	const std::chrono::steady_clock::time_point render_started =
+		std::chrono::steady_clock::now();
 	CountingStreamBuffer buffer(output.rdbuf());
 	std::ostream rendered(&buffer);
 	RenderLowIRProgram(program, rendered);
@@ -433,7 +444,6 @@ void WriteLowIRProgram(const std::vector<LowIRSource>& sources,
 		throw std::runtime_error("unable to write LowIR output");
 	if (stats)
 	{
-		stats->typed_storage_bytes = TypedStorageBytes(program);
 		stats->output_bytes = buffer.Bytes();
 		stats->render_nanoseconds = static_cast<std::uint64_t>(
 			std::chrono::duration_cast<std::chrono::nanoseconds>(

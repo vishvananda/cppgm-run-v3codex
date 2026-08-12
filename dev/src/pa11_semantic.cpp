@@ -707,6 +707,10 @@ SpecInfo TypeAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 			else if (spelling == "wchar_t") is_wchar = true;
 			else if (spelling == "char16_t") is_char16 = true;
 			else if (spelling == "char32_t") is_char32 = true;
+			else if (spelling == "__int128_t")
+				result.type = program_->types.Fundamental(FUND_INT128);
+			else if (spelling == "__uint128_t")
+				result.type = program_->types.Fundamental(FUND_UINT128);
 			else if (spelling != "extern" && spelling != "static" &&
 				spelling != "thread_local" && spelling != "inline" &&
 				spelling != "virtual")

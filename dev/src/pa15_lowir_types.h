@@ -61,6 +61,7 @@ inline LowType LowU32() { return LowType(LOW_U32, 32, 4, false); }
 inline LowType LowI64() { return LowType(LOW_I64, 64, 8, true); }
 inline LowType LowU64() { return LowType(LOW_I64, 64, 8, false); }
 inline LowType LowI128() { return LowType(LOW_I128, 128, 8, true); }
+inline LowType LowU128() { return LowType(LOW_I128, 128, 8, false); }
 inline LowType LowF32() { return LowType(LOW_F32, 32, 4, true); }
 inline LowType LowF64() { return LowType(LOW_F64, 64, 8, true); }
 inline LowType LowF80() { return LowType(LOW_F80, 80, 16, true); }

@@ -632,6 +632,8 @@ public:
 		case FUND_UNSIGNED_LONG_INT: result.name = "ulong"; break;
 		case FUND_LONG_LONG_INT: result.name = "longlong"; break;
 		case FUND_UNSIGNED_LONG_LONG_INT: result.name = "ulonglong"; break;
+		case FUND_INT128: result.name = "int128"; break;
+		case FUND_UINT128: result.name = "uint128"; break;
 		case FUND_FLOAT: result.name = "float"; break;
 		case FUND_DOUBLE: result.name = "double"; break;
 		case FUND_LONG_DOUBLE: result.name = "longdouble"; break;

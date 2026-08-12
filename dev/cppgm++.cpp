@@ -5,6 +5,10 @@
 #include "pa11_semantic.h"
 #include "pa12_semantic.h"
 #include "pa15_lowering.h"
+#include "pa30_lowir_adapter.h"
+#include "pa30_object.h"
+#include "pa30_elf_object.h"
+#include "lowir_native.h"
 #include "tool_help_text.h"
 
 #include <cstdlib>
@@ -14,6 +18,7 @@
 #include <iterator>
 #include <stdexcept>
 #include <string>
+#include <sys/stat.h>
 #include <vector>
 
 using namespace std;
@@ -40,6 +45,13 @@ enum class DriverMode
 struct DriverInvocation
 {
   DriverMode mode;
+  string output;
+  string target;
+  vector<string> inputs;
+  vector<string> include_paths;
+  vector<string> library_paths;
+  vector<string> libraries;
+  vector<string> predefined_macros;
 
   DriverInvocation()
       : mode(DriverMode::Link)
@@ -234,38 +246,6 @@ SourceOutputInvocation parse_source_output_invocation(
   return invocation;
 }
 
-bool consume_preprocess_option(const vector<string> & args, size_t & i)
-{
-  if(consume_joined_or_separate_option(args, i, "-D", "macro definition")) {
-    return true;
-  }
-  if(consume_joined_or_separate_option(args, i, "-U", "macro name")) {
-    return true;
-  }
-  if(args[i] == "-include") {
-    consume_required_option_argument(args, i, "-include", "file");
-    return true;
-  }
-  return false;
-}
-
-bool consume_search_option(const vector<string> & args, size_t & i)
-{
-  if(consume_joined_or_separate_option(args, i, "-I", "path")) {
-    return true;
-  }
-  if(consume_joined_or_separate_option(args, i, "-isystem", "path")) {
-    return true;
-  }
-  if(consume_joined_or_separate_option(args, i, "-L", "path")) {
-    return true;
-  }
-  if(consume_joined_or_separate_option(args, i, "-l", "library name")) {
-    return true;
-  }
-  return false;
-}
-
 bool consume_dependency_option(const vector<string> & args, size_t & i)
 {
   if(args[i] == "-MMD" || args[i] == "-MD" || args[i] == "-MP") {
@@ -279,41 +259,6 @@ bool consume_dependency_option(const vector<string> & args, size_t & i)
   }
   if(consume_joined_or_separate_option(args, i, "-MQ", "target")) {
     return true;
-  }
-  return false;
-}
-
-bool consume_toolchain_option(const vector<string> & args, size_t & i)
-{
-  if(is_debug_info_flag(args[i])) {
-    return true;
-  }
-  if(is_optimization_flag(args[i])) {
-    return true;
-  }
-  if(args[i] == "--target") {
-    consume_required_option_argument(args, i, "--target", "target");
-    return true;
-  }
-  if(starts_with(args[i], "--target=")) {
-    if(args[i].size() == string("--target=").size()) {
-      throw missing_option_argument("--target", "target");
-    }
-    return true;
-  }
-  if(args[i] == "-std") {
-    consume_required_option_argument(args, i, "-std", "language standard");
-    return true;
-  }
-  if(args[i] == "-stdlib") {
-    consume_required_option_argument(args, i, "-stdlib", "standard library name");
-    return true;
-  }
-  if(starts_with(args[i], "-stdlib=")) {
-    return true;
-  }
-  if(args[i] == "-pthread") {
-    throw logic_error("option not yet supported: -pthread");
   }
   return false;
 }
@@ -336,7 +281,6 @@ DriverInvocation parse_driver_invocation(const vector<string> & args)
   bool compile_only = false;
   bool preprocess_only = false;
   bool explicit_outfile = false;
-  vector<string> inputs;
 
   for(size_t i = 0; i < args.size(); ++i) {
     if(is_query_driver_flag(args[i])) {
@@ -352,29 +296,71 @@ DriverInvocation parse_driver_invocation(const vector<string> & args)
     }
     if(args[i] == "-o") {
       consume_required_option_argument(args, i, "-o", "output file");
+      if(explicit_outfile) {
+        throw logic_error("multiple output files provided");
+      }
       explicit_outfile = true;
+      invocation.output = args[i];
       continue;
     }
-    if(consume_preprocess_option(args, i) ||
-       consume_search_option(args, i) ||
-       consume_dependency_option(args, i) ||
-       consume_toolchain_option(args, i) ||
+    if(args[i] == "-I" || args[i] == "-L" || args[i] == "-l" ||
+       args[i] == "-D") {
+      const string option = args[i];
+      consume_required_option_argument(args, i, option,
+          option == "-I" || option == "-L" ? "path" :
+          option == "-l" ? "library name" : "macro definition");
+      if(option == "-I") invocation.include_paths.push_back(args[i]);
+      else if(option == "-L") invocation.library_paths.push_back(args[i]);
+      else if(option == "-l") invocation.libraries.push_back(args[i]);
+      else invocation.predefined_macros.push_back(args[i]);
+      continue;
+    }
+    if(starts_with(args[i], "-I") && args[i].size() > 2) {
+      invocation.include_paths.push_back(args[i].substr(2));
+      continue;
+    }
+    if(starts_with(args[i], "-L") && args[i].size() > 2) {
+      invocation.library_paths.push_back(args[i].substr(2));
+      continue;
+    }
+    if(starts_with(args[i], "-l") && args[i].size() > 2) {
+      invocation.libraries.push_back(args[i].substr(2));
+      continue;
+    }
+    if(starts_with(args[i], "-D") && args[i].size() > 2) {
+      invocation.predefined_macros.push_back(args[i].substr(2));
+      continue;
+    }
+    if(args[i] == "--target") {
+      consume_required_option_argument(args, i, "--target", "target");
+      if(!invocation.target.empty()) throw logic_error("multiple targets provided");
+      invocation.target = args[i];
+      continue;
+    }
+    if(starts_with(args[i], "--target=")) {
+      if(!invocation.target.empty()) throw logic_error("multiple targets provided");
+      invocation.target = args[i].substr(string("--target=").size());
+      if(invocation.target.empty()) throw missing_option_argument("--target", "target");
+      continue;
+    }
+    if(consume_dependency_option(args, i) ||
+       is_debug_info_flag(args[i]) || is_optimization_flag(args[i]) ||
        is_benign_driver_flag(args[i])) {
       continue;
     }
     if(starts_with(args[i], "-")) {
       throw logic_error("unsupported driver option: " + args[i]);
     }
-    inputs.push_back(args[i]);
+    invocation.inputs.push_back(args[i]);
   }
 
   if(compile_only && preprocess_only) {
     throw logic_error("cannot combine -c and -E");
   }
-  if(inputs.empty()) {
+  if(invocation.inputs.empty()) {
     throw logic_error("invalid usage");
   }
-  if((compile_only || preprocess_only) && explicit_outfile && inputs.size() != 1) {
+  if((compile_only || preprocess_only) && explicit_outfile && invocation.inputs.size() != 1) {
     throw logic_error("cannot specify -o when generating multiple output files");
   }
 
@@ -391,6 +377,128 @@ int run_unimplemented_mode(const char * feature,
   (void)feature;
   (void)owner;
   throw NotImplementedException();
+}
+
+cppgm::PreprocessingOptions make_preprocessing_options();
+
+string normalize_native_target(const string & target)
+{
+  if(target.empty() || target == "linux" ||
+     target == "x86_64-unknown-linux-gnu" ||
+     target == "x86_64-linux-gnu") {
+    return "linux";
+  }
+  throw runtime_error("unsupported native target: " + target);
+}
+
+bool regular_file_exists(const string & path)
+{
+  struct stat data;
+  return stat(path.c_str(), &data) == 0 && S_ISREG(data.st_mode);
+}
+
+string read_source_file(const string & path)
+{
+  ifstream input(path.c_str(), ios::in | ios::binary);
+  if(!input) throw runtime_error("unable to open source file: " + path);
+  return string(istreambuf_iterator<char>(input), istreambuf_iterator<char>());
+}
+
+cppgm::PreprocessingOptions make_driver_preprocessing_options(
+    const DriverInvocation & invocation)
+{
+  cppgm::PreprocessingOptions options = make_preprocessing_options();
+  options.include_search_paths = invocation.include_paths;
+  options.predefined_macros = invocation.predefined_macros;
+  return options;
+}
+
+cppgm::pa30::CompilerObject compile_source_object(
+    const string & path,
+    const DriverInvocation & invocation,
+    const string & target)
+{
+  vector<cppgm::LowIRSource> sources;
+  const string source = read_source_file(path);
+  sources.push_back(cppgm::LowIRSource(path, source));
+  cppgm::LowIRLoweringStats stats;
+  const cppgm::pa15_lowir_detail::TypedProgram typed =
+      cppgm::BuildTypedLowIRProgram(sources,
+          make_driver_preprocessing_options(invocation),
+          getenv("CPPGM_DRIVER_STATS") ? &stats : 0);
+  cppgm::pa30::CompilerObject object;
+  object.target = target;
+  object.lowir = cppgm::AdaptTypedLowIRForNative(typed);
+  object.lowir.source_bytes = source.size();
+  if(getenv("CPPGM_DRIVER_STATS")) object.lowir.token_count = stats.semantic.tokens;
+  return object;
+}
+
+string find_library_object(const DriverInvocation & invocation,
+                           const string & library)
+{
+  for(size_t i = 0; i < invocation.library_paths.size(); ++i) {
+    string path = invocation.library_paths[i];
+    if(!path.empty() && path[path.size() - 1] != '/') path.push_back('/');
+    path += "lib" + library + ".o";
+    if(regular_file_exists(path)) return path;
+  }
+  throw runtime_error("library not found: " + library);
+}
+
+int run_compile_driver(const DriverInvocation & invocation,
+                       const string & target)
+{
+  if(invocation.inputs.size() != 1 || invocation.output.empty())
+    throw logic_error("compile mode requires one input and -o");
+  const cppgm::pa30::CompilerObject object =
+      compile_source_object(invocation.inputs[0], invocation, target);
+  cppgm::pa30::WriteCompilerObject(invocation.output, object);
+  return EXIT_SUCCESS;
+}
+
+int run_link_driver(const DriverInvocation & invocation,
+                    const string & target)
+{
+  if(invocation.output.empty()) throw logic_error("link mode requires -o");
+  vector<cppgm::pa30::CompilerObject> objects;
+  vector<lowir_native::RelocatableObject> foreign_objects;
+  for(size_t i = 0; i < invocation.inputs.size(); ++i) {
+    if(cppgm::pa30::IsCompilerObject(invocation.inputs[i]))
+      objects.push_back(cppgm::pa30::ReadCompilerObject(invocation.inputs[i]));
+    else
+      objects.push_back(compile_source_object(invocation.inputs[i], invocation,
+                                              target));
+  }
+  for(size_t i = 0; i < invocation.libraries.size(); ++i) {
+    const string path = find_library_object(invocation, invocation.libraries[i]);
+    if(cppgm::pa30::IsCompilerObject(path))
+      objects.push_back(cppgm::pa30::ReadCompilerObject(path));
+    else
+      foreign_objects.push_back(cppgm::pa30::ReadElfRelocatableObject(
+          path, foreign_objects.size()));
+  }
+  cppgm::pa30::LinkStats link_stats;
+  const lowir_model::LowirProgram lowir = cppgm::pa30::LinkCompilerObjects(
+      objects, target, getenv("CPPGM_DRIVER_STATS") ? &link_stats : 0);
+  lowir_native::Stats native_stats;
+  const mir_model::MirProgram mir = lowir_native::lower_program(
+      lowir, target, getenv("CPPGM_DRIVER_STATS") ? &native_stats : 0);
+  lowir_native::write_linux_executable(invocation.output, mir, foreign_objects,
+      getenv("CPPGM_DRIVER_STATS") ? &native_stats : 0);
+  if(getenv("CPPGM_DRIVER_STATS")) {
+    cerr << "pa30_driver_stats"
+         << " objects=" << link_stats.objects
+         << " symbols=" << link_stats.symbols
+         << " symbol_probes=" << link_stats.symbol_probes
+         << " definitions=" << link_stats.definitions
+         << " weak_coalesces=" << link_stats.coalesced_weak_definitions
+         << " functions=" << native_stats.functions
+         << " lowir_instructions=" << native_stats.lowir_instructions
+         << " mir_instructions=" << native_stats.mir_instructions
+         << " output_bytes=" << native_stats.output_bytes << '\n';
+  }
+  return EXIT_SUCCESS;
 }
 
 cppgm::PreprocessingOptions make_preprocessing_options()
@@ -1068,15 +1176,16 @@ int run_emit_lowir_mode(const vector<string> & args)
 int run_driver_mode(const vector<string> & args)
 {
   const DriverInvocation invocation = parse_driver_invocation(args);
+  const string target = normalize_native_target(invocation.target);
   switch(invocation.mode) {
   case DriverMode::Query:
     return run_unimplemented_mode("driver query mode", "PA34");
   case DriverMode::Preprocess:
     return run_unimplemented_mode("hosted preprocess driver mode (-E)", "PA34");
   case DriverMode::Compile:
-    return run_unimplemented_mode("compile driver mode (-c)", "PA29");
+    return run_compile_driver(invocation, target);
   case DriverMode::Link:
-    return run_unimplemented_mode("link driver mode", "PA29");
+    return run_link_driver(invocation, target);
   }
   throw logic_error("unreachable driver mode");
 }

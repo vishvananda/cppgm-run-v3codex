@@ -317,6 +317,7 @@ bool is_builtin_name(const string & name)
   static const char * names[] = {
     "void", "bool", "char", "schar", "uchar", "wchar", "char16", "char32",
     "short", "ushort", "int", "uint", "long", "ulong", "longlong", "ulonglong",
+    "int128", "uint128",
     "float", "double", "longdouble", "float128", "complex-float",
     "complex-double", "complex-longdouble", "nullptr"
   };
@@ -746,6 +747,7 @@ string builtin_code(const string & name)
     {"uchar", "h"}, {"wchar", "w"}, {"char16", "Ds"}, {"char32", "Di"},
     {"short", "s"}, {"ushort", "t"}, {"int", "i"}, {"uint", "j"},
     {"long", "l"}, {"ulong", "m"}, {"longlong", "x"}, {"ulonglong", "y"},
+    {"int128", "n"}, {"uint128", "o"},
     {"float", "f"}, {"double", "d"}, {"longdouble", "e"}, {"float128", "g"},
     {"complex-float", "Cf"}, {"complex-double", "Cd"},
     {"complex-longdouble", "Ce"}, {"nullptr", "Dn"}
@@ -1272,7 +1274,7 @@ private:
     if(type.kind == ABI_TYPE_BUILTIN && value < 0) {
       const string & name = graph_.strings.get(type.symbol);
       if(name == "uint") return std::to_string(static_cast<uint32_t>(value));
-      if(name == "ulong" || name == "ulonglong") {
+      if(name == "ulong" || name == "ulonglong" || name == "uint128") {
         return std::to_string(static_cast<uint64_t>(value));
       }
     }

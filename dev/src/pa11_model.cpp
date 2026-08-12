@@ -35,6 +35,8 @@ const char* FundamentalName(FundamentalKind kind)
 	case FUND_WCHAR_T: return "wchar_t";
 	case FUND_CHAR16_T: return "char16_t";
 	case FUND_CHAR32_T: return "char32_t";
+	case FUND_INT128: return "__int128_t";
+	case FUND_UINT128: return "__uint128_t";
 	}
 	throw std::logic_error("invalid fundamental type");
 }
@@ -2564,6 +2566,7 @@ std::size_t Program::FundamentalSize(FundamentalKind kind) const
 	case FUND_LONG_LONG_INT: case FUND_UNSIGNED_LONG_LONG_INT:
 	case FUND_DOUBLE: return 8;
 	case FUND_LONG_DOUBLE: return 16;
+	case FUND_INT128: case FUND_UINT128: return 16;
 	case FUND_NULLPTR_T: return 8;
 	case FUND_VOID: break;
 	}

@@ -125,6 +125,7 @@ bool SemanticAnalyzer::IsUnsignedIntegral(TypeId type) const
 	case FUND_UNSIGNED_INT:
 	case FUND_UNSIGNED_LONG_INT:
 	case FUND_UNSIGNED_LONG_LONG_INT:
+	case FUND_UINT128:
 	case FUND_CHAR16_T:
 	case FUND_CHAR32_T:
 		return true;
@@ -155,7 +156,8 @@ std::int64_t SemanticAnalyzer::NormalizeIntegralConstant(TypeId type,
 {
 	const std::size_t width = IntegralWidth(type);
 	if (width == 1) return value != 0;
-	if (width > 64 || width == 0)
+	if (width > 64) return value;
+	if (width == 0)
 		throw std::logic_error("unsupported integral constant width");
 	std::uint64_t bits = static_cast<std::uint64_t>(value);
 	if (width < 64)

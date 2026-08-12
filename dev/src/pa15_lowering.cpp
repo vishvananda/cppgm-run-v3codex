@@ -1344,10 +1344,10 @@ private:
 		else if (record.kind == DUMP_DELETE_EXPRESSION) result = LowerDeleteExpression(node, record, children);
 		else if (record.kind == DUMP_SPECIAL_MEMBER_CONSTRUCTION_ACTION)
 			result = LowerSpecialMemberConstruction(node);
-		else if (record.kind == DUMP_CAST_EXPRESSION)
-		{
+		else if (record.kind == DUMP_CAST_EXPRESSION) {
 			if (children.size() != 1) throw std::runtime_error("invalid semantic cast");
-			if (record.member_pointer_conversion)
+			if (IsBooleanType(record.type)) result = LowerBooleanConversion(children[0], LowerExpressionType(record.type));
+			else if (record.member_pointer_conversion)
 				result = LowerMemberPointerConversion(record, children);
 			else if (LowerExpressionType(record.type).kind == LOW_VOID)
 			{

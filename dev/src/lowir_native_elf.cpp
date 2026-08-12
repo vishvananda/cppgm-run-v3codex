@@ -59,6 +59,20 @@ public:
       throw std::logic_error("duplicate native label: " + name);
   }
 
+  void label_at(const std::string & name, std::size_t offset)
+  {
+    if(offset > bytes_.size()) throw std::logic_error("native label is out of bounds");
+    if(!labels_.emplace(name, offset).second)
+      throw std::runtime_error("duplicate native symbol: " + name);
+  }
+
+  std::size_t size() const { return bytes_.size(); }
+
+  void append(const std::vector<unsigned char> & bytes)
+  {
+    bytes_.insert(bytes_.end(), bytes.begin(), bytes.end());
+  }
+
   void relative32(const std::string & target)
   {
     Fixup fixup;
@@ -80,6 +94,32 @@ public:
     zeros(8);
   }
 
+  void relative32_at(std::size_t offset, const std::string & target,
+                     long long elf_addend)
+  {
+    if(offset > bytes_.size() || 4 > bytes_.size() - offset)
+      throw std::logic_error("native relative relocation is out of bounds");
+    Fixup fixup;
+    fixup.kind = Fixup::RELATIVE32;
+    fixup.offset = offset;
+    fixup.target = target;
+    fixup.addend = elf_addend + 4;
+    fixups_.push_back(fixup);
+  }
+
+  void absolute64_at(std::size_t offset, const std::string & target,
+                     long long addend)
+  {
+    if(offset > bytes_.size() || 8 > bytes_.size() - offset)
+      throw std::logic_error("native absolute relocation is out of bounds");
+    Fixup fixup;
+    fixup.kind = Fixup::ABSOLUTE64;
+    fixup.offset = offset;
+    fixup.target = target;
+    fixup.addend = addend;
+    fixups_.push_back(fixup);
+  }
+
   void resolve()
   {
     for(std::size_t i = 0; i < fixups_.size(); ++i) {
@@ -89,7 +129,8 @@ public:
       if(target == labels_.end()) throw std::runtime_error("undefined native symbol: " + fixup.target);
       if(fixup.kind == Fixup::RELATIVE32) {
         const std::int64_t delta = static_cast<std::int64_t>(target->second) -
-                                   static_cast<std::int64_t>(fixup.offset + 4);
+                                   static_cast<std::int64_t>(fixup.offset + 4) +
+                                   fixup.addend;
         if(delta < INT32_MIN || delta > INT32_MAX)
           throw std::runtime_error("native branch displacement exceeds rel32");
         patch(fixup.offset, static_cast<std::uint32_t>(delta), 4);
@@ -226,6 +267,137 @@ void emit_stack_adjust(CodeBuffer & out, bool subtract, unsigned bytes)
   emit_modrm(out, 3, subtract ? 5 : 0, XR_RSP);
   if(bytes <= 127) out.byte(bytes);
   else out.little(bytes, 4);
+}
+
+void emit_i128_shift(CodeBuffer & out, mir_model::MirInstruction::Opcode opcode)
+{
+  const std::string high = out.internal_label("i128_shift_high");
+  const std::string done = out.internal_label("i128_shift_done");
+  // cmp rcx, 64; jae high
+  out.byte(0x48); out.byte(0x83); out.byte(0xf9); out.byte(0x40);
+  out.byte(0x0f); out.byte(0x83); out.relative32(high);
+  if(opcode == mir_model::MirInstruction::MI_I128_SHL) {
+    // shld rdx, rax, cl; shl rax, cl
+    out.byte(0x48); out.byte(0x0f); out.byte(0xa5); out.byte(0xc2);
+    out.byte(0x48); out.byte(0xd3); out.byte(0xe0);
+  } else {
+    // shrd rax, rdx, cl; shr/sar rdx, cl
+    out.byte(0x48); out.byte(0x0f); out.byte(0xad); out.byte(0xd0);
+    out.byte(0x48); out.byte(0xd3);
+    out.byte(opcode == mir_model::MirInstruction::MI_I128_SAR ? 0xfa : 0xea);
+  }
+  out.byte(0xe9); out.relative32(done);
+  out.label(high);
+  if(opcode == mir_model::MirInstruction::MI_I128_SHL) {
+    emit_register_move(out, XR_RDX, XR_RAX);
+    out.byte(0x48); out.byte(0xd3); out.byte(0xe2); // shl rdx, cl
+    out.byte(0x48); out.byte(0x31); out.byte(0xc0); // xor rax, rax
+  } else {
+    emit_register_move(out, XR_RAX, XR_RDX);
+    out.byte(0x48); out.byte(0xd3);
+    out.byte(opcode == mir_model::MirInstruction::MI_I128_SAR ? 0xf8 : 0xe8);
+    if(opcode == mir_model::MirInstruction::MI_I128_SAR) {
+      out.byte(0x48); out.byte(0xc1); out.byte(0xfa); out.byte(0x3f);
+    } else {
+      out.byte(0x48); out.byte(0x31); out.byte(0xd2); // xor rdx, rdx
+    }
+  }
+  out.label(done);
+}
+
+void emit_register_alu(CodeBuffer & out, unsigned opcode,
+                       X64Register destination, X64Register source)
+{
+  emit_rex(out, true, source, destination);
+  out.byte(opcode);
+  emit_modrm(out, 3, source, destination);
+}
+
+void emit_condition_jump(CodeBuffer & out, X86Condition condition,
+                         const std::string & target)
+{
+  out.byte(0x0f);
+  out.byte(0x80 + static_cast<unsigned>(condition));
+  out.relative32(target);
+}
+
+void emit_i128_abs(CodeBuffer & out, X64Register low, X64Register high,
+                   X64Register mask)
+{
+  emit_register_alu(out, 0x31, low, mask);   // xor low, mask
+  emit_register_alu(out, 0x31, high, mask);  // xor high, mask
+  emit_register_alu(out, 0x29, low, mask);   // sub low, mask
+  emit_register_alu(out, 0x19, high, mask);  // sbb high, mask
+}
+
+void emit_i128_division(CodeBuffer & out,
+                        mir_model::MirInstruction::Opcode opcode)
+{
+  const bool signed_division = opcode == mir_model::MirInstruction::MI_I128_SDIV ||
+    opcode == mir_model::MirInstruction::MI_I128_SMOD;
+  const bool remainder = opcode == mir_model::MirInstruction::MI_I128_UMOD ||
+    opcode == mir_model::MirInstruction::MI_I128_SMOD;
+  const unsigned scratch_bytes = signed_division ? 32 : 16;
+  emit_stack_adjust(out, true, scratch_bytes);
+
+  if(signed_division) {
+    emit_register_move(out, XR_RDI, XR_RDX);
+    out.byte(0x48); out.byte(0xc1); out.byte(0xff); out.byte(0x3f); // sar rdi,63
+    emit_store(out, XR_RSP, 16, XR_RDI, 64);
+    emit_register_move(out, XR_R10, XR_RSI);
+    out.byte(0x49); out.byte(0xc1); out.byte(0xfa); out.byte(0x3f); // sar r10,63
+    emit_register_move(out, XR_R11, XR_RDI);
+    emit_register_alu(out, 0x31, XR_R11, XR_R10);
+    emit_store(out, XR_RSP, 24, XR_R11, 64);
+    emit_i128_abs(out, XR_RAX, XR_RDX, XR_RDI);
+    emit_i128_abs(out, XR_RCX, XR_RSI, XR_R10);
+  }
+
+  emit_store(out, XR_RSP, 0, XR_RCX, 64);
+  emit_store(out, XR_RSP, 8, XR_RSI, 64);
+  emit_register_alu(out, 0x31, XR_R10, XR_R10); // xor remainder low
+  emit_register_alu(out, 0x31, XR_R11, XR_R11); // xor remainder high
+  emit_immediate_move(out, XR_RCX, 128);
+
+  const std::string loop = out.internal_label("i128_div_loop");
+  const std::string subtract = out.internal_label("i128_div_subtract");
+  const std::string skip = out.internal_label("i128_div_skip");
+  out.label(loop);
+  out.byte(0x48); out.byte(0xd1); out.byte(0xe0); // shl rax,1
+  out.byte(0x48); out.byte(0xd1); out.byte(0xd2); // rcl rdx,1
+  out.byte(0x49); out.byte(0xd1); out.byte(0xd2); // rcl r10,1
+  out.byte(0x49); out.byte(0xd1); out.byte(0xd3); // rcl r11,1
+
+  emit_load(out, XR_RDI, XR_RSP, 8, 64);
+  emit_register_alu(out, 0x39, XR_R11, XR_RDI);
+  emit_condition_jump(out, XC_B, skip);
+  emit_condition_jump(out, XC_A, subtract);
+  emit_load(out, XR_RDI, XR_RSP, 0, 64);
+  emit_register_alu(out, 0x39, XR_R10, XR_RDI);
+  emit_condition_jump(out, XC_B, skip);
+
+  out.label(subtract);
+  emit_load(out, XR_RDI, XR_RSP, 0, 64);
+  emit_register_alu(out, 0x29, XR_R10, XR_RDI);
+  emit_load(out, XR_RDI, XR_RSP, 8, 64);
+  emit_register_alu(out, 0x19, XR_R11, XR_RDI);
+  out.byte(0x48); out.byte(0x83); out.byte(0xc8); out.byte(0x01); // or rax,1
+
+  out.label(skip);
+  out.byte(0x48); out.byte(0xff); out.byte(0xc9); // dec rcx
+  emit_condition_jump(out, XC_NE, loop);
+
+  if(signed_division) {
+    emit_load(out, XR_RDI, XR_RSP, 24, 64);
+    emit_i128_abs(out, XR_RAX, XR_RDX, XR_RDI);
+    emit_load(out, XR_RDI, XR_RSP, 16, 64);
+    emit_i128_abs(out, XR_R10, XR_R11, XR_RDI);
+  }
+  if(remainder) {
+    emit_register_move(out, XR_RAX, XR_R10);
+    emit_register_move(out, XR_RDX, XR_R11);
+  }
+  emit_stack_adjust(out, false, scratch_bytes);
 }
 
 std::size_t function_frame_bytes(const mir_model::MirFunction & function)
@@ -1312,11 +1484,32 @@ bool emit_atomic_instruction(CodeBuffer & out,
   }
 }
 
+bool emit_i128_instruction(CodeBuffer & out,
+                           const mir_model::MirInstruction & instruction)
+{
+  switch(instruction.opcode) {
+  case mir_model::MirInstruction::MI_I128_SHL:
+  case mir_model::MirInstruction::MI_I128_SHR:
+  case mir_model::MirInstruction::MI_I128_SAR:
+    require_operands(instruction, 0);
+    emit_i128_shift(out, instruction.opcode);
+    return true;
+  case mir_model::MirInstruction::MI_I128_UDIV:
+  case mir_model::MirInstruction::MI_I128_UMOD:
+  case mir_model::MirInstruction::MI_I128_SDIV:
+  case mir_model::MirInstruction::MI_I128_SMOD:
+    require_operands(instruction, 0);
+    emit_i128_division(out, instruction.opcode);
+    return true;
+  default:
+    return false;
+  }
+}
+
 void emit_instruction(CodeBuffer & out,
                       const mir_model::MirInstruction & instruction,
-                      const mir_model::MirFunction * function)
-{
-  if(emit_atomic_instruction(out, instruction, function)) return;
+                      const mir_model::MirFunction * function) {
+  if(emit_atomic_instruction(out, instruction, function) || emit_i128_instruction(out, instruction)) return;
   switch(instruction.opcode) {
   case mir_model::MirInstruction::MI_MOV:
     emit_move(out, instruction);
@@ -1426,6 +1619,9 @@ void emit_instruction(CodeBuffer & out,
     return;
   case mir_model::MirInstruction::MI_IMUL:
     emit_imultiply(out, instruction);
+    return;
+  case mir_model::MirInstruction::MI_MUL:
+    emit_divide(out, instruction, 4);
     return;
   case mir_model::MirInstruction::MI_CMP:
     if(instruction.operands.size() == 2 &&
@@ -1643,6 +1839,30 @@ void emit_global(CodeBuffer & out, const mir_model::MirGlobalDefinition & global
   }
 }
 
+void emit_relocatable_objects(
+    CodeBuffer & out, const std::vector<RelocatableObject> & objects)
+{
+  for(std::size_t i = 0; i < objects.size(); ++i) {
+    for(std::size_t j = 0; j < objects[i].sections.size(); ++j) {
+      const RelocatableSection & section = objects[i].sections[j];
+      out.align(section.alignment);
+      const std::size_t base = out.size();
+      out.append(section.bytes);
+      for(std::size_t k = 0; k < section.labels.size(); ++k)
+        out.label_at(section.labels[k].name, base + section.labels[k].offset);
+      for(std::size_t k = 0; k < section.relocations.size(); ++k) {
+        const RelocatableRelocation & relocation = section.relocations[k];
+        if(relocation.kind == RelocatableRelocation::RELATIVE32)
+          out.relative32_at(base + relocation.offset, relocation.target,
+                            relocation.addend);
+        else
+          out.absolute64_at(base + relocation.offset, relocation.target,
+                            relocation.addend);
+      }
+    }
+  }
+}
+
 void put_little(std::vector<unsigned char> & out, std::size_t offset,
                 std::uint64_t value, unsigned count)
 {
@@ -1690,6 +1910,14 @@ void write_linux_executable(const std::string & path,
                             const mir_model::MirProgram & program,
                             Stats * stats)
 {
+  write_linux_executable(path, program, std::vector<RelocatableObject>(), stats);
+}
+
+void write_linux_executable(const std::string & path,
+                            const mir_model::MirProgram & program,
+                            const std::vector<RelocatableObject> & objects,
+                            Stats * stats)
+{
   if(program.target != "linux") throw std::runtime_error("ELF writer requires linux target");
   if(program.startup.empty()) throw std::runtime_error("native executable has no startup entry");
   const std::chrono::steady_clock::time_point encode_start =
@@ -1702,6 +1930,7 @@ void write_linux_executable(const std::string & path,
     emit_function(content, program.functions[i]);
   for(std::size_t i = 0; i < program.globals.size(); ++i)
     emit_global(content, program.globals[i]);
+  emit_relocatable_objects(content, objects);
   content.resolve();
   const std::vector<unsigned char> image = make_elf_image(content);
   const std::chrono::steady_clock::time_point encode_end =

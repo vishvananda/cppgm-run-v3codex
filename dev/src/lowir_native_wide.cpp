@@ -102,7 +102,8 @@ void append_address(std::vector<MirInstruction> & out, X64Register destination,
       append_operand(lea, storage);
       out.push_back(lea);
     }
-  } else throw std::runtime_error("i128 value is not addressable");
+  } else throw std::runtime_error("i128 value is not addressable (MIR operand kind " +
+    std::to_string(static_cast<unsigned>(storage.kind)) + ")");
 }
 
 unsigned long long word(const Words & words, std::size_t chunk)
@@ -156,6 +157,39 @@ void append_equality_part(X64Register left, X64Register right,
   out.push_back(extend);
 }
 
+void append_condition(X64Register destination, X86Condition condition,
+                      std::vector<MirInstruction> & out)
+{
+  MirInstruction set = machine_instruction(MirInstruction::MI_SETCC);
+  set.condition = condition;
+  append_operand(set, reg_operand(destination));
+  out.push_back(set);
+  MirInstruction extend = machine_instruction(MirInstruction::MI_MOVZX);
+  append_operand(extend, reg_operand(destination));
+  append_operand(extend, reg_operand(destination));
+  out.push_back(extend);
+}
+
+void append_register_binary(MirInstruction::Opcode opcode,
+                            X64Register destination, X64Register source,
+                            std::vector<MirInstruction> & out)
+{
+  MirInstruction instruction = machine_instruction(opcode, "i64");
+  append_operand(instruction, reg_operand(destination));
+  append_operand(instruction, reg_operand(source));
+  out.push_back(instruction);
+}
+
+void append_register_immediate(MirInstruction::Opcode opcode,
+                               X64Register destination, long long value,
+                               std::vector<MirInstruction> & out)
+{
+  MirInstruction instruction = machine_instruction(opcode, "i64");
+  append_operand(instruction, reg_operand(destination));
+  append_operand(instruction, immediate(value));
+  out.push_back(instruction);
+}
+
 }  // namespace
 
 bool is_integer(const lowir_model::LowType & type)
@@ -207,23 +241,120 @@ void append_copy(const MirOperand & destination, const Value & source,
   append_pair_store(destination, XR_RAX, XR_RDX, XR_R11, out);
 }
 
-void append_compare(const Value & left, const Value & right, bool equal,
+void append_compare(const Value & left, const Value & right,
+                    const std::string & operation,
                     std::vector<MirInstruction> & out)
 {
   append_pair_to_registers(left, XR_RAX, XR_RDX, XR_R11, out);
   append_pair_to_registers(right, XR_RCX, XR_RSI, XR_R11, out);
-  append_equality_part(XR_RDX, XR_RSI, XR_R10, out);
-  append_equality_part(XR_RAX, XR_RCX, XR_R11, out);
-  MirInstruction combine = machine_instruction(MirInstruction::MI_AND);
-  append_operand(combine, reg_operand(XR_R10));
-  append_operand(combine, reg_operand(XR_R11));
-  out.push_back(combine);
-  if(!equal) {
-    MirInstruction invert = machine_instruction(MirInstruction::MI_XOR);
-    append_operand(invert, reg_operand(XR_R10));
-    append_operand(invert, immediate(1));
-    out.push_back(invert);
+  if(operation == "eq" || operation == "ne") {
+    append_equality_part(XR_RDX, XR_RSI, XR_R10, out);
+    append_equality_part(XR_RAX, XR_RCX, XR_R11, out);
+    append_register_binary(MirInstruction::MI_AND, XR_R10, XR_R11, out);
+    if(operation == "ne")
+      append_register_immediate(MirInstruction::MI_XOR, XR_R10, 1, out);
+    return;
   }
+  const bool less = operation == "lt" || operation == "le" ||
+                    operation == "ult" || operation == "ule";
+  const bool inclusive = operation == "le" || operation == "ge" ||
+                         operation == "ule" || operation == "uge";
+  const bool signed_high = operation == "lt" || operation == "le" ||
+                           operation == "gt" || operation == "ge";
+  if(!less && operation != "gt" && operation != "ge" &&
+     operation != "ugt" && operation != "uge")
+    throw std::runtime_error("unsupported i128 comparison: " + operation);
+
+  MirInstruction low_compare = machine_instruction(MirInstruction::MI_CMP, "i64");
+  append_operand(low_compare, reg_operand(XR_RAX));
+  append_operand(low_compare, reg_operand(XR_RCX));
+  out.push_back(low_compare);
+  append_condition(XR_R10, less ? (inclusive ? XC_BE : XC_B) :
+    (inclusive ? XC_AE : XC_A), out);
+
+  MirInstruction high_compare = machine_instruction(MirInstruction::MI_CMP, "i64");
+  append_operand(high_compare, reg_operand(XR_RDX));
+  append_operand(high_compare, reg_operand(XR_RSI));
+  out.push_back(high_compare);
+  append_condition(XR_R11, XC_E, out);
+  append_register_binary(MirInstruction::MI_AND, XR_R10, XR_R11, out);
+
+  out.push_back(high_compare);
+  X86Condition high_condition;
+  if(less) high_condition = signed_high ? XC_L : XC_B;
+  else high_condition = signed_high ? XC_G : XC_A;
+  append_condition(XR_R11, high_condition, out);
+  append_register_binary(MirInstruction::MI_OR, XR_R10, XR_R11, out);
+}
+
+void append_binary(const MirOperand & destination,
+                   const Value & left, const Value & right,
+                   const std::string & operation,
+                   std::vector<MirInstruction> & out)
+{
+  append_pair_to_registers(left, XR_RAX, XR_RDX, XR_R11, out);
+  append_pair_to_registers(right, XR_RCX, XR_RSI, XR_R11, out);
+  if(operation == "add" || operation == "sub") {
+    append_register_binary(operation == "add" ? MirInstruction::MI_ADD :
+      MirInstruction::MI_SUB, XR_RAX, XR_RCX, out);
+    append_condition(XR_R10, XC_B, out);
+    append_register_binary(operation == "add" ? MirInstruction::MI_ADD :
+      MirInstruction::MI_SUB, XR_RDX, XR_RSI, out);
+    append_register_binary(operation == "add" ? MirInstruction::MI_ADD :
+      MirInstruction::MI_SUB, XR_RDX, XR_R10, out);
+  } else if(operation == "mul") {
+    append_move(out, reg_operand(XR_R10), reg_operand(XR_RAX));
+    append_move(out, reg_operand(XR_RDI), reg_operand(XR_RDX));
+    MirInstruction multiply = machine_instruction(MirInstruction::MI_MUL, "i64");
+    append_operand(multiply, reg_operand(XR_RCX));
+    out.push_back(multiply);
+    append_register_binary(MirInstruction::MI_IMUL, XR_R10, XR_RSI, out);
+    append_register_binary(MirInstruction::MI_ADD, XR_RDX, XR_R10, out);
+    append_register_binary(MirInstruction::MI_IMUL, XR_RDI, XR_RCX, out);
+    append_register_binary(MirInstruction::MI_ADD, XR_RDX, XR_RDI, out);
+  } else if(operation == "and" || operation == "or" || operation == "xor") {
+    MirInstruction::Opcode opcode = operation == "and" ? MirInstruction::MI_AND :
+      operation == "or" ? MirInstruction::MI_OR : MirInstruction::MI_XOR;
+    append_register_binary(opcode, XR_RAX, XR_RCX, out);
+    append_register_binary(opcode, XR_RDX, XR_RSI, out);
+  } else if(operation == "shl" || operation == "shr" || operation == "ushr") {
+    append_word_to_register(right, 0, XR_RCX, XR_R11, out);
+    MirInstruction::Opcode opcode = operation == "shl" ?
+      MirInstruction::MI_I128_SHL : operation == "shr" ?
+      MirInstruction::MI_I128_SAR : MirInstruction::MI_I128_SHR;
+    out.push_back(machine_instruction(opcode));
+  } else if(operation == "div" || operation == "mod" ||
+            operation == "udiv" || operation == "umod") {
+    MirInstruction::Opcode opcode = operation == "div" ?
+      MirInstruction::MI_I128_SDIV : operation == "mod" ?
+      MirInstruction::MI_I128_SMOD : operation == "udiv" ?
+      MirInstruction::MI_I128_UDIV : MirInstruction::MI_I128_UMOD;
+    out.push_back(machine_instruction(opcode));
+  } else {
+    throw std::runtime_error("unsupported i128 binary operation: " + operation);
+  }
+  append_pair_store(destination, XR_RAX, XR_RDX, XR_R11, out);
+}
+
+void append_unary(const MirOperand & destination,
+                  const Value & source, const std::string & operation,
+                  std::vector<MirInstruction> & out)
+{
+  append_pair_to_registers(source, XR_RAX, XR_RDX, XR_R11, out);
+  if(operation == "bitnot" || operation == "neg") {
+    MirInstruction low = machine_instruction(MirInstruction::MI_NOT, "i64");
+    append_operand(low, reg_operand(XR_RAX));
+    out.push_back(low);
+    MirInstruction high = machine_instruction(MirInstruction::MI_NOT, "i64");
+    append_operand(high, reg_operand(XR_RDX));
+    out.push_back(high);
+    if(operation == "neg") {
+      append_register_immediate(MirInstruction::MI_ADD, XR_RAX, 1, out);
+      append_condition(XR_R10, XC_B, out);
+      append_register_binary(MirInstruction::MI_ADD, XR_RDX, XR_R10, out);
+    }
+  } else throw std::runtime_error("unsupported i128 unary operation: " + operation);
+  append_pair_store(destination, XR_RAX, XR_RDX, XR_R11, out);
 }
 
 void append_atomic_load(const MirOperand & object,

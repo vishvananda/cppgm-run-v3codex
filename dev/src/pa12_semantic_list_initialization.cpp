@@ -469,6 +469,7 @@ bool SemanticAnalyzer::IsBracedNarrowing(
 				kind == FUND_UNSIGNED_SHORT_INT || kind == FUND_UNSIGNED_INT ||
 				kind == FUND_UNSIGNED_LONG_INT ||
 				kind == FUND_UNSIGNED_LONG_LONG_INT ||
+				kind == FUND_UINT128 ||
 				kind == FUND_CHAR16_T || kind == FUND_CHAR32_T;
 		};
 		const TypeId from = fundamental_type(source.type);

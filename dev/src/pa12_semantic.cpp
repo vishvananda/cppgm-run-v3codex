@@ -202,7 +202,7 @@ int SemanticAnalyzer::IntegralRank(TypeId type) const
 	case FUND_INT: case FUND_UNSIGNED_INT: case FUND_WCHAR_T:
 	case FUND_CHAR32_T: return 3;
 	case FUND_LONG_INT: case FUND_UNSIGNED_LONG_INT: return 4;
-	case FUND_LONG_LONG_INT: case FUND_UNSIGNED_LONG_LONG_INT: return 5;
+	case FUND_LONG_LONG_INT: case FUND_UNSIGNED_LONG_LONG_INT: return 5; case FUND_INT128: case FUND_UINT128: return 6;
 	default: return -1;
 	}
 }
@@ -258,8 +258,8 @@ TypeId SemanticAnalyzer::CommonArithmeticType(TypeId left, TypeId right) const
 		return program_->types.Fundamental(FUND_UNSIGNED_INT);
 	case FUND_LONG_INT:
 		return program_->types.Fundamental(FUND_UNSIGNED_LONG_INT);
-	case FUND_LONG_LONG_INT:
-		return program_->types.Fundamental(FUND_UNSIGNED_LONG_LONG_INT);
+	case FUND_LONG_LONG_INT: return program_->types.Fundamental(FUND_UNSIGNED_LONG_LONG_INT);
+	case FUND_INT128: return program_->types.Fundamental(FUND_UINT128);
 	default:
 		throw std::logic_error(
 			"usual arithmetic conversion has no unsigned counterpart");

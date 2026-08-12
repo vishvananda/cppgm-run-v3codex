@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "lowir_model.h"
 #include "mir_model.h"
@@ -22,12 +23,43 @@ struct Stats
   std::uint64_t write_nanoseconds = 0;
 };
 
+struct RelocatableLabel
+{
+  std::string name;
+  std::size_t offset = 0;
+};
+
+struct RelocatableRelocation
+{
+  enum Kind { RELATIVE32, ABSOLUTE64 } kind = RELATIVE32;
+  std::size_t offset = 0;
+  std::string target;
+  long long addend = 0;
+};
+
+struct RelocatableSection
+{
+  std::size_t alignment = 1;
+  std::vector<unsigned char> bytes;
+  std::vector<RelocatableLabel> labels;
+  std::vector<RelocatableRelocation> relocations;
+};
+
+struct RelocatableObject
+{
+  std::vector<RelocatableSection> sections;
+};
+
 mir_model::MirProgram lower_program(const lowir_model::LowirProgram & program,
                                     const std::string & target,
                                     Stats * stats = 0);
 
 void write_linux_executable(const std::string & path,
                             const mir_model::MirProgram & program,
+                            Stats * stats = 0);
+void write_linux_executable(const std::string & path,
+                            const mir_model::MirProgram & program,
+                            const std::vector<RelocatableObject> & objects,
                             Stats * stats = 0);
 
 }  // namespace lowir_native

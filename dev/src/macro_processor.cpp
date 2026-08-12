@@ -1,6 +1,7 @@
 #include "macro_processor.h"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdlib>
 #include <cstdint>
@@ -1002,16 +1003,50 @@ private:
 		AddBuiltinObject("__CPPGM__", TK_PP_NUMBER, "201303L");
 		AddBuiltinObject("__cplusplus", TK_PP_NUMBER, "201103L");
 		AddBuiltinObject("__STDC_HOSTED__", TK_PP_NUMBER, "1");
+		AddBuiltinObject("__x86_64__", TK_PP_NUMBER, "1");
+		AddBuiltinObject("__linux__", TK_PP_NUMBER, "1");
 		AddBuiltinObject("__CPPGM_AUTHOR__", TK_STRING,
 			QuoteString(options_.author));
 		AddBuiltinObject("__DATE__", TK_STRING,
 			QuoteString(options_.build_date));
 		AddBuiltinObject("__TIME__", TK_STRING,
 			QuoteString(options_.build_time));
+		for (std::size_t i = 0; i < options_.predefined_macros.size(); ++i)
+			InstallCommandLineMacro(options_.predefined_macros[i]);
 		if (stats_)
 			stats_->peak_retained_replacement_tokens = std::max(
 				stats_->peak_retained_replacement_tokens,
 				retained_replacement_tokens_);
+	}
+
+	void InstallCommandLineMacro(const std::string& definition)
+	{
+		const std::size_t equal = definition.find('=');
+		const std::string name = definition.substr(0, equal);
+		const std::string replacement = equal == std::string::npos ?
+			std::string() : definition.substr(equal + 1);
+		if (name.empty() || !(std::isalpha(static_cast<unsigned char>(name[0])) ||
+			name[0] == '_'))
+			throw std::runtime_error("invalid command-line macro name");
+		for (std::size_t i = 1; i < name.size(); ++i)
+			if (!(std::isalnum(static_cast<unsigned char>(name[i])) ||
+				name[i] == '_'))
+				throw std::runtime_error("invalid command-line macro name");
+		Macro macro;
+		macro.name = spellings_.Intern(name);
+		if (!replacement.empty())
+		{
+			ReplacementToken token;
+			const bool identifier =
+				std::isalpha(static_cast<unsigned char>(replacement[0])) ||
+				replacement[0] == '_';
+			token.token = identifier ?
+				Token(TK_IDENTIFIER, spellings_.Intern(replacement), false) :
+				Token(TK_PP_NUMBER, replacement, false);
+			macro.replacement.push_back(token);
+		}
+		retained_replacement_tokens_ += macro.replacement.size();
+		macros_.Insert(macro.name, std::move(macro));
 	}
 
 	static bool GetFileIdentity(const std::string& path, FileIdentity* result)
@@ -1506,8 +1541,16 @@ private:
 			if (GetFileIdentity(relative, &identity))
 				selected = relative;
 		}
-		if (selected.empty() && GetFileIdentity(next, &identity))
-			selected = next;
+		for (std::size_t i = 0;
+			selected.empty() && i < options_.include_search_paths.size(); ++i)
+		{
+			std::string candidate = options_.include_search_paths[i];
+			if (!candidate.empty() && candidate[candidate.size() - 1] != '/')
+				candidate.push_back('/');
+			candidate += next;
+			if (GetFileIdentity(candidate, &identity)) selected = candidate;
+		}
+		if (selected.empty() && GetFileIdentity(next, &identity)) selected = next;
 		if (selected.empty())
 			throw std::runtime_error("included file not found: " + next);
 		if (once_files_.Find(identity))

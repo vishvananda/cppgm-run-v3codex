@@ -1176,6 +1176,9 @@ private:
   void emit_convert(const Instruction & instruction,
                     std::vector<MirInstruction> & out)
   {
+    const bool source_wide = wide::is_integer(instruction.source_type), destination_wide = wide::is_integer(instruction.type);
+    if(source_wide && is_integer_or_pointer(instruction.type)) { const MirOperand destination = reg_operand(allocate_result(instruction.dest, out)); wide::append_word_to_register(wide_value(instruction.first), 0, destination.reg, XR_R11, out); normalize_integer(instruction.type, destination, out); consume(instruction.first, destination.reg); define(instruction.dest, instruction.type, destination); return; }
+    if(destination_wide && is_integer_or_pointer(instruction.source_type)) { const MirOperand destination = allocate_temp_home(instruction.dest, instruction.type); move_value_to_register(out, XR_RAX, resolve(instruction.first), instruction.source_type); normalize_integer(instruction.source_type, reg_operand(XR_RAX), out); if(instruction.op == "sext") out.push_back(machine_instruction(MirInstruction::MI_CQO)); else append_move(out, reg_operand(XR_RDX), immediate(0)); append_store(out, destination, reg_operand(XR_RAX), "i64"); MirOperand high = destination; high.offset += 8; append_store(out, high, reg_operand(XR_RDX), "i64"); consume(instruction.first); define(instruction.dest, instruction.type, destination); return; }
     const bool source_float = is_floating(instruction.source_type);
     const bool destination_float = is_floating(instruction.type);
     if(source_float || destination_float) {
@@ -1247,6 +1250,7 @@ private:
   void emit_binary(const Instruction & instruction,
                    std::vector<MirInstruction> & out)
   {
+    if(wide::is_integer(instruction.type)) { const MirOperand destination = allocate_temp_home(instruction.dest, instruction.type); wide::append_binary(destination, wide_value(instruction.first), wide_value(instruction.second), instruction.op, out); consume(instruction.first); consume(instruction.second); define(instruction.dest, instruction.type, destination); return; }
     if(is_floating(instruction.type)) {
       emit_float_binary(instruction, out);
       return;
@@ -1393,10 +1397,8 @@ private:
                           std::vector<MirInstruction> & out)
   {
     if(wide::is_integer(instruction.type)) {
-      if(instruction.op != "eq" && instruction.op != "ne")
-        throw std::runtime_error("i128 comparison supports equality predicates only");
       wide::append_compare(wide_value(instruction.first),
-                           wide_value(instruction.second), instruction.op == "eq", out);
+                           wide_value(instruction.second), instruction.op, out);
       const MirOperand destination = reg_operand(allocate_result(instruction.dest, out));
       append_move(out, destination, reg_operand(XR_R10));
       consume(instruction.first);
@@ -1459,6 +1461,7 @@ private:
   void emit_unary_value(const Instruction & instruction,
                         std::vector<MirInstruction> & out)
   {
+    if(wide::is_integer(instruction.type)) { const MirOperand destination = allocate_temp_home(instruction.dest, instruction.type); wide::append_unary(destination, wide_value(instruction.first), instruction.op, out); consume(instruction.first); define(instruction.dest, instruction.type, destination); return; }
     if(is_floating(instruction.type)) {
       emit_float_unary(instruction, out);
       return;
@@ -2386,7 +2389,7 @@ private:
                                     alias ? 0 : &home, out);
       define_object_result(instruction.dest, instruction.type,
                            alias ? &alias_destination : 0, home);
-    } else if(materialize_result && is_extended_float(instruction.type)) {
+    } else if(materialize_result && wide::is_integer(instruction.type)) { const MirOperand home = allocate_temp_home(instruction.dest, instruction.type); append_store(out, home, reg_operand(XR_RAX), "i64"); MirOperand high = home; high.offset += 8; append_store(out, high, reg_operand(XR_RDX), "i64"); define(instruction.dest, instruction.type, home); } else if(materialize_result && is_extended_float(instruction.type)) {
       const MirOperand location = allocate_float_result(instruction.dest, instruction.type);
       MirInstruction store = machine_instruction(MirInstruction::MI_FSTP,
                                                  instruction.type.text);
@@ -2601,7 +2604,9 @@ private:
   {
     const LowType & source_type = instruction.type.kind == lowir_model::LTK_VOID ?
       instruction.type : operand_type(instruction.first);
-    if(instruction.type.kind == lowir_model::LTK_OBJECT) {
+    if(wide::is_integer(instruction.type)) {
+      const wide::Value value = wide_value(instruction.first); wide::append_word_to_register(value, 0, XR_RAX, XR_R11, out); wide::append_word_to_register(value, 1, XR_RDX, XR_R11, out);
+    } else if(instruction.type.kind == lowir_model::LTK_OBJECT) {
       if(instruction.type.storage_size > 16)
         throw std::runtime_error("direct object return exceeds two SysV eightbytes");
       emit_operand_address(out, XR_R11, instruction.first);

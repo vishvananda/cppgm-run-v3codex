@@ -207,12 +207,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 	return result;
 }
 
-ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId target)
-{
+ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId target) {
 	const bool postfix = arena_->IsTag(node, "postfix-expression"); const std::string operation = PayloadSource(node);
 	const NodeId operand_syntax = FirstSemanticChild(node);
-	const TypeId address_context_target = UnaryAddressContextTarget(
-		operation, target, operand_syntax, scope);
+	const TypeId address_context_target = UnaryAddressContextTarget(operation, target, operand_syntax, scope);
 	const TypeId operand_target =
 		UnaryAddressOperandTarget(operation, address_context_target);
 	ExpressionInfo operand = AnalyzeExpression(operand_syntax, scope, operand_target);
@@ -371,6 +369,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId
 			 program_->types.Get(program_->types.RemoveTopCv(result_type)).kind ==
 				TYPE_NAMED))
 			result_type = program_->types.Fundamental(FUND_INT);
+		if (constant && IsIntegral(result_type, true) && IntegralWidth(result_type) > 64) constant = false;
 		if (constant)
 		{
 			if (IsFloating(result_type))
@@ -710,8 +709,8 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 	const bool short_circuit = left.constant &&
 		((operation == "&&" && !ExpressionTruth(left)) ||
 		 (operation == "||" && ExpressionTruth(left)));
-	result.constant = constant_evaluation_suppressed_depth_ == 0 &&
-		(short_circuit || (left.constant && right.constant));
+	result.constant = constant_evaluation_suppressed_depth_ == 0 && (short_circuit || (left.constant && right.constant));
+	if (result.constant && operand_type != kNoType && IsIntegral(operand_type, true) && IntegralWidth(operand_type) > 64) result.constant = false;
 	if (result.constant)
 	{
 		if (operation == ",")

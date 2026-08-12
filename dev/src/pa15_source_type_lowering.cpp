@@ -53,6 +53,8 @@ LowType SourceTypeLowering::Lower(TypeId type) const
 	case FUND_LONG_INT: case FUND_LONG_LONG_INT: return LowI64();
 	case FUND_UNSIGNED_LONG_INT: case FUND_UNSIGNED_LONG_LONG_INT:
 		return LowU64();
+	case FUND_INT128: return LowI128();
+	case FUND_UINT128: return LowU128();
 	case FUND_FLOAT: return LowF32();
 	case FUND_DOUBLE: return LowF64();
 	case FUND_LONG_DOUBLE: return LowF80();

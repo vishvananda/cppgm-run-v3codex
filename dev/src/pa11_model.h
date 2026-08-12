@@ -137,7 +137,9 @@ enum FundamentalKind
 	FUND_NULLPTR_T,
 	FUND_WCHAR_T,
 	FUND_CHAR16_T,
-	FUND_CHAR32_T
+	FUND_CHAR32_T,
+	FUND_INT128,
+	FUND_UINT128
 };
 
 enum TypeKind
