@@ -2443,7 +2443,13 @@ NodeId Parser::ParseSpecialMember(bool)
 		else if (Match(KW_DELETE))
 			arena_.Add(initializer,
 				arena_.Make("special-initializer", "delete"));
-		else throw Error("expected default or delete");
+		else
+		{
+			const NodeId value = ParseExpression(2);
+			if (value == kNoNode)
+				throw Error("expected special member initializer");
+			arena_.Add(initializer, value);
+		}
 		arena_.Add(member, initializer);
 		Expect(OP_SEMICOLON);
 		return member;

@@ -1356,6 +1356,13 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 		const NodeId initializer = FindChild(node, "initializer");
 		const NodeId special = initializer == kNoNode ? kNoNode :
 			FindChild(initializer, "special-initializer");
+		const NodeId initializer_value = initializer == kNoNode ? kNoNode :
+			FirstSemanticChild(initializer);
+		const bool pure = initializer_value != kNoNode &&
+			arena_->IsTag(initializer_value, "literal") &&
+			arena_->Payload(initializer_value) == "0";
+		if (initializer != kNoNode && special == kNoNode && !pure)
+			throw std::runtime_error("invalid destructor initializer");
 		const bool defaulted = special != kNoNode &&
 			arena_->Payload(special) == "default";
 		const bool deleted = special != kNoNode &&

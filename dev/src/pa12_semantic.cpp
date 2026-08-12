@@ -126,7 +126,6 @@ bool SemanticAnalyzer::IsVoid(TypeId type) const
 	return record.kind == TYPE_FUNDAMENTAL &&
 		record.fundamental == FUND_VOID;
 }
-
 bool SemanticAnalyzer::IsNullptr(TypeId type) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
@@ -134,14 +133,12 @@ bool SemanticAnalyzer::IsNullptr(TypeId type) const
 	return record.kind == TYPE_FUNDAMENTAL &&
 		record.fundamental == FUND_NULLPTR_T;
 }
-
 bool SemanticAnalyzer::IsConst(TypeId type) const
 {
 	type = EffectiveType(type);
 	const TypeRecord record = program_->types.Get(type);
 	return record.kind == TYPE_QUALIFIED && (record.cv & CV_CONST) != 0;
 }
-
 FundamentalKind SemanticAnalyzer::FundamentalOf(TypeId type) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
@@ -150,7 +147,6 @@ FundamentalKind SemanticAnalyzer::FundamentalOf(TypeId type) const
 		throw std::logic_error("fundamental kind requested for non-fundamental");
 	return record.fundamental;
 }
-
 bool SemanticAnalyzer::IsIntegral(TypeId type, bool allow_scoped_enum) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
@@ -997,7 +993,6 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 		return !left_function.template_specialization &&
 			right_function.template_specialization;
 	};
-
 	std::size_t viable_count = 0;
 	std::size_t champion = candidates.size();
 	for (std::size_t c = 0; c < candidates.size(); ++c)
@@ -1154,8 +1149,13 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 			argument.category == VALUE_PRVALUE)
 		{
 			const EntityId parameter_entity = EntityOf(parameters[a]);
-			if (parameter_entity != kNoEntity &&
-				!program_->entities[parameter_entity].trivial_destructor)
+			const EntityRecord* parameter_class =
+				parameter_entity == kNoEntity ? 0 :
+					&program_->entities[parameter_entity];
+			if (parameter_class && !parameter_class->trivial_destructor &&
+				!(parameter_class->indirect_class_parameter_abi &&
+				  parameter_class->object_size == 16 &&
+				  parameter_class->template_argument_count == 0))
 				dump_.nodes[call].full_expression_staging = true;
 		}
 	}

@@ -832,8 +832,7 @@ void SemanticAnalyzer::CompleteClassSpecialMembers(EntityId entity)
 		class_record.template_argument_count == 0 &&
 		class_record.trivial_destructor && object_size <= 16;
 	class_record.indirect_class_parameter_abi =
-		class_record.indirect_class_value_abi && !direct_derived_payload &&
-		(object_size != 16 || class_record.template_argument_count != 0);
+		class_record.indirect_class_value_abi && !direct_derived_payload;
 	ConfigureSynthesizedStoragePrefix(
 		entity, &GetMutableFunction(facts.copy_constructor));
 	if (facts.move_constructor != kNoBinding)

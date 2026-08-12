@@ -144,7 +144,7 @@ void SemanticAnalyzer::MarkVtableDemand(EntityId entity)
 		{
 			facts.vtable_demanded = true;
 			++vtable_demands_;
-			bool has_virtual_destructor = false;
+			bool has_owned_virtual_destructor = false;
 			for (std::size_t view = 0; view <= facts.views.size(); ++view)
 			{
 				const std::vector<VirtualSlotFact>& slots = view == 0 ?
@@ -153,11 +153,15 @@ void SemanticAnalyzer::MarkVtableDemand(EntityId entity)
 				{
 					if (!program_->bindings[slots[slot].function].pure_virtual)
 						DemandVtableFunction(slots[slot].function);
-					has_virtual_destructor = has_virtual_destructor ||
-						program_->bindings[slots[slot].function].destructor;
+					const BindingRecord& entry =
+						program_->bindings[slots[slot].function];
+					has_owned_virtual_destructor =
+						has_owned_virtual_destructor ||
+						(entry.destructor && !entry.pure_virtual &&
+						 GetFunction(entry.canonical).defined);
 				}
 			}
-			if (has_virtual_destructor)
+			if (has_owned_virtual_destructor)
 			{
 					BindingId deallocation = kNoBinding;
 					const LookupResult found = program_->LookupMember(current,

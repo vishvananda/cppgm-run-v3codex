@@ -32,6 +32,7 @@ struct VtableThunkLoweringFact
 struct PolymorphismLoweringState
 {
 	std::vector<pa15_lowir_detail::SymbolId> class_vtable_symbols;
+	std::vector<std::uint8_t> class_vtable_external;
 	std::vector<pa15_lowir_detail::SymbolId> class_vtt_symbols;
 	std::vector<std::uint64_t> class_vtable_address_points;
 	std::vector<std::vector<pa15_lowir_detail::SymbolId> >
@@ -235,8 +236,13 @@ protected:
 				view_index.dest = view_address_point.id;
 				view_index.type = LowI8();
 				view_index.first = view_table;
+				const std::uint64_t view_point = entity <
+					derived.polymorphism_.class_view_address_points.size() &&
+					view < derived.polymorphism_.class_view_address_points[entity].size() ?
+					derived.polymorphism_.class_view_address_points[entity][view] :
+					facts.views[view].address_point;
 				view_index.second = Operand(static_cast<std::int64_t>(
-					facts.views[view].address_point), LowI64());
+					view_point), LowI64());
 				derived.Emit(view_index);
 			}
 			Instruction view_store(Instruction::STORE);

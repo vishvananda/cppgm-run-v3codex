@@ -7,6 +7,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <utility>
 
 namespace cppgm
@@ -80,6 +81,7 @@ private:
 		state_.source_function_first = output_.functions.size();
 		const std::size_t count = program_.entities.size();
 		state_.class_vtable_symbols.assign(count, kNoLowId);
+		state_.class_vtable_external.assign(count, 0);
 		state_.class_vtt_symbols.assign(count, kNoLowId);
 		state_.class_vtable_address_points.assign(count, 16);
 		state_.class_view_vtable_symbols.clear();
@@ -144,6 +146,7 @@ private:
 		state_.complete_destructor_bindings.assign(count, kNoBinding);
 		state_.base_destructor_bindings.assign(count, kNoBinding);
 		state_.deleting_destructor_calls_complete.assign(count, 0);
+		local_function_definitions_.assign(program_.bindings.size(), 0);
 		state_.need_dynamic_cast = false;
 		state_.need_bad_cast = false;
 		state_.need_bad_typeid = false;
@@ -179,6 +182,8 @@ private:
 			if (function.kind != DUMP_FUNCTION_DEFINITION ||
 				function.binding == kNoBinding ||
 				function.binding >= program_.bindings.size()) continue;
+			local_function_definitions_[
+				program_.bindings[function.binding].canonical] = 1;
 			const BindingRecord& binding =
 				program_.bindings[function.binding];
 			const EntityId entity = binding.member_owner;
@@ -465,6 +470,25 @@ private:
 		return true;
 	}
 
+	bool VtableIsExternal(EntityId entity) const
+	{
+		const EntityRecord& owner = program_.entities[entity];
+		if (owner.template_argument_count != 0 ||
+			IsFunctionLocalEntity(program_, entity)) return false;
+		const ClassPolymorphismFacts& facts =
+			graph_.class_polymorphism[entity];
+		for (std::size_t slot = 0; slot < facts.slots.size(); ++slot)
+		{
+			const BindingRecord& function = program_.bindings[
+				facts.slots[slot].function];
+			if (function.pure_virtual || function.inline_function) continue;
+			const BindingId canonical = function.canonical;
+			return canonical >= local_function_definitions_.size() ||
+				local_function_definitions_[canonical] == 0;
+		}
+		return false;
+	}
+
 	SymbolId AddPolymorphicGlobal(const std::string& name,
 		const std::string& object_name, bool weak)
 	{
@@ -483,6 +507,21 @@ private:
 			Symbol::GLOBAL_SYMBOL, name, object_name, false);
 		output_.symbols[symbol].declaration_emitted = true;
 		output_.symbols[symbol].referenced = true;
+		GlobalDeclaration declaration;
+		declaration.symbol = symbol;
+		declaration.typed = false;
+		output_.global_declarations.push_back(declaration);
+		return symbol;
+	}
+
+	SymbolId AddExternalVtable(EntityId entity)
+	{
+		const SymbolId symbol = AddSyntheticSymbol(Symbol::GLOBAL_SYMBOL,
+			"__external_vtable__" + ClassStem(entity),
+			"_ZTV" + TypeInfoEncoding(entity), false);
+		Symbol& record = output_.symbols[symbol];
+		record.declaration_emitted = true;
+		record.referenced = true;
 		GlobalDeclaration declaration;
 		declaration.symbol = symbol;
 		declaration.typed = false;
@@ -609,6 +648,11 @@ private:
 		SymbolId target, BindingId function)
 	{
 		if (slot.this_adjustment == 0) return target;
+		const std::string key = std::to_string(target) + ":" +
+			std::to_string(slot.this_adjustment);
+		const std::unordered_map<std::string, SymbolId>::const_iterator found =
+			adjusted_slot_symbols_.find(key);
+		if (found != adjusted_slot_symbols_.end()) return found->second;
 		const std::string direction = slot.this_adjustment < 0 ? "neg" : "pos";
 		const std::uint64_t magnitude = slot.this_adjustment < 0 ?
 			static_cast<std::uint64_t>(-(slot.this_adjustment + 1)) + 1 :
@@ -626,6 +670,7 @@ private:
 		record.referenced = true;
 		state_.vtable_thunks.push_back(VtableThunkLoweringFact(
 			thunk, target, function, slot.this_adjustment));
+		adjusted_slot_symbols_.insert(std::make_pair(key, thunk));
 		return thunk;
 	}
 
@@ -648,6 +693,13 @@ private:
 	{
 		const BindingId function = program_.bindings[source.function].canonical;
 		if (!program_.bindings[function].destructor) return;
+		if (program_.bindings[function].pure_virtual)
+		{
+			RegisterPureVirtual(source.root);
+			state_.class_view_deleting_slot_symbols[entity][view][slot] =
+				state_.pure_virtual_symbol;
+			return;
+		}
 		const SymbolId deleting = state_.deleting_destructor_symbols[entity];
 		if (deleting == kNoLowId)
 			throw std::logic_error("destructor slot has no deleting entry");
@@ -700,6 +752,28 @@ private:
 	void RegisterViewSymbols(EntityId entity,
 		const ClassPolymorphismFacts& facts)
 	{
+		if (VtableIsExternal(entity))
+		{
+			state_.class_vtable_external[entity] = 1;
+			const SymbolId symbol = AddExternalVtable(entity);
+			state_.class_vtable_symbols[entity] = symbol;
+			std::uint64_t offset = facts.address_point;
+			for (std::size_t slot = 0; slot < facts.slots.size(); ++slot)
+				offset += program_.bindings[facts.slots[slot].function].destructor ?
+					16 : 8;
+			for (std::size_t view = 0; view < facts.views.size(); ++view)
+			{
+				state_.class_view_vtable_symbols[entity][view] = symbol;
+				state_.class_view_address_points[entity][view] =
+					offset + facts.views[view].address_point;
+				offset += facts.views[view].address_point;
+				for (std::size_t slot = 0;
+					slot < facts.views[view].slots.size(); ++slot)
+					offset += program_.bindings[
+						facts.views[view].slots[slot].function].destructor ? 16 : 8;
+			}
+			return;
+		}
 		state_.class_vtable_symbols[entity] = AddPolymorphicGlobal(
 			VtableName(entity), "_ZTV" + TypeInfoEncoding(entity),
 			VtableHasWeakLinkage(entity));
@@ -748,12 +822,16 @@ private:
 				graph_.class_polymorphism[entity];
 			if (!facts.vtable_demanded ||
 				(facts.slots.empty() && facts.views.empty())) continue;
-			DemandRtti(program_.entities[entity].type);
+			const bool external = VtableIsExternal(entity);
+			if (!external)
+				DemandRtti(program_.entities[entity].type);
 			for (std::size_t slot = 0; slot < facts.slots.size(); ++slot)
 			{
+				if (external) continue;
 				if (program_.bindings[facts.slots[slot].function].pure_virtual)
 					RegisterPureVirtual(facts.slots[slot].root);
 				if (!program_.bindings[facts.slots[slot].function].destructor ||
+					program_.bindings[facts.slots[slot].function].pure_virtual ||
 					state_.deleting_destructor_symbols[entity] != kNoLowId)
 					continue;
 				const BindingId destructor = program_.bindings[
@@ -1275,6 +1353,8 @@ private:
 				graph_.class_polymorphism[entity];
 			if (!facts.vtable_demanded ||
 				(facts.slots.empty() && facts.views.empty())) continue;
+			if (entity < state_.class_vtable_external.size() &&
+				state_.class_vtable_external[entity]) continue;
 			EmitVtableView(entity, entity,
 				state_.class_vtable_symbols[entity], 0,
 				facts.slots, facts.virtual_base_offsets,
@@ -1317,6 +1397,8 @@ private:
 	const std::vector<SymbolId>& function_symbols_;
 	PolymorphismLoweringState& state_;
 	pa15_lowering_detail::SourceTypeLowering source_types_;
+	std::vector<std::uint8_t> local_function_definitions_;
+	std::unordered_map<std::string, SymbolId> adjusted_slot_symbols_;
 };
 
 class DeletingDestructorBuilder
@@ -1326,7 +1408,7 @@ public:
 		TypedProgram& output, LowIRLoweringStats* stats,
 		const std::vector<SymbolId>& function_symbols,
 		PolymorphismLoweringState* state)
-		: program_(graph.program), output_(output), stats_(stats),
+		: graph_(graph), program_(graph.program), output_(output), stats_(stats),
 		  function_symbols_(function_symbols), state_(*state), function_(0),
 		  current_block_(0), temp_counter_(0), block_counter_(0),
 		  source_types_(program_)
@@ -1467,10 +1549,10 @@ private:
 		Emit(call);
 	}
 
-	void EmitVptrStore(EntityId entity, const Operand& object)
+	void EmitVptrStore(SymbolId symbol, std::uint64_t offset,
+		const Operand& object)
 	{
 		if (stats_) ++stats_->vptr_stores;
-		const SymbolId symbol = state_.class_vtable_symbols[entity];
 		output_.symbols[symbol].referenced = true;
 		const Operand table = Temp(LowPtr());
 		Instruction address(Instruction::ADDR);
@@ -1482,9 +1564,6 @@ private:
 		index.dest = address_point.id;
 		index.type = LowI8();
 		index.first = table;
-		const std::uint64_t offset = entity <
-			state_.class_vtable_address_points.size() ?
-			state_.class_vtable_address_points[entity] : 16;
 		index.second = Operand(static_cast<std::int64_t>(offset), LowI64());
 		Emit(index);
 		Instruction store(Instruction::STORE);
@@ -1494,18 +1573,78 @@ private:
 		Emit(store);
 	}
 
-	Operand ProjectBase(const Operand& object, EntityId entity)
+	void EmitVptrStores(EntityId entity, const Operand& this_slot)
+	{
+		EmitVptrStore(state_.class_vtable_symbols[entity],
+			entity < state_.class_vtable_address_points.size() ?
+				state_.class_vtable_address_points[entity] : 16, Load(this_slot));
+		if (entity >= graph_.class_polymorphism.size()) return;
+		const ClassPolymorphismFacts& facts =
+			graph_.class_polymorphism[entity];
+		for (std::size_t view = 0; view < facts.views.size(); ++view)
+		{
+			if (!facts.views[view].stores_vptr ||
+				view >= state_.class_view_vtable_symbols[entity].size()) continue;
+			std::uint64_t view_offset = facts.views[view].offset;
+			if (facts.views[view].virtual_base && !program_.FindVirtualBase(
+				entity, facts.views[view].entity, &view_offset))
+				throw std::logic_error(
+					"deleting destructor has no virtual-base view");
+			EmitVptrStore(state_.class_view_vtable_symbols[entity][view],
+				state_.class_view_address_points[entity][view],
+				ProjectBase(Load(this_slot), view_offset));
+		}
+	}
+
+	Operand ProjectBase(const Operand& object, std::uint64_t offset)
 	{
 		const Operand projected = Temp(LowPtr());
 		Instruction index(Instruction::INDEX);
 		index.dest = projected.id;
 		index.type = LowI8();
 		index.first = object;
-		index.second = Operand(static_cast<std::int64_t>(
-			program_.entities[entity].direct_base_offset), LowI64());
+		index.second = Operand(static_cast<std::int64_t>(offset), LowI64());
 		index.projection = INDEX_PROJECTION_BASE_SUBOBJECT;
 		Emit(index);
 		return projected;
+	}
+
+	struct BaseDestructorAction
+	{
+		SymbolId symbol;
+		std::uint64_t offset;
+
+		BaseDestructorAction(SymbolId symbol_value, std::uint64_t offset_value)
+			: symbol(symbol_value), offset(offset_value) {}
+	};
+
+	std::vector<BaseDestructorAction> BaseDestructorActions(EntityId entity)
+	{
+		std::vector<BaseDestructorAction> result;
+		const EntityRecord& owner = program_.entities[entity];
+		for (std::size_t ordinal = owner.direct_base_count;
+			ordinal != 0; --ordinal)
+		{
+			const DirectBaseEdge& edge = program_.DirectBase(entity, ordinal - 1);
+			if (program_.entities[edge.entity].trivial_destructor) continue;
+			BindingId binding = state_.base_destructor_bindings[edge.entity];
+			if (binding == kNoBinding)
+				binding = state_.complete_destructor_bindings[edge.entity];
+			if (binding == kNoBinding || binding >= function_symbols_.size() ||
+				function_symbols_[binding] == kNoLowId) continue;
+			result.push_back(BaseDestructorAction(
+				function_symbols_[binding], edge.offset));
+		}
+		return result;
+	}
+
+	void EmitBaseDestructorActions(
+		const std::vector<BaseDestructorAction>& actions, std::size_t begin,
+		const Operand& this_slot)
+	{
+		for (std::size_t i = begin; i < actions.size(); ++i)
+			EmitVoidCall(actions[i].symbol,
+				ProjectBase(Load(this_slot), actions[i].offset));
 	}
 
 	SymbolId OperatorDeleteSymbol() const
@@ -1562,31 +1701,25 @@ private:
 		EmitEhTarget(Instruction::EH_CLEANUP, cleanup);
 		if (call_complete)
 			EmitVoidCall(complete_destructor, Load(this_slot));
-		else EmitVptrStore(entity, Load(this_slot));
+		else EmitVptrStores(entity, this_slot);
 		Emit(Instruction(Instruction::EH_END));
 
-		const EntityId base = program_.entities[entity].direct_base;
-		SymbolId base_destructor = kNoLowId;
-		if (base != kNoEntity)
-		{
-			BindingId base_binding = state_.base_destructor_bindings[base];
-			if (base_binding == kNoBinding)
-				base_binding = state_.complete_destructor_bindings[base];
-			if (base_binding != kNoBinding &&
-				base_binding < function_symbols_.size())
-				base_destructor = function_symbols_[base_binding];
-		}
-		if (!call_complete && base_destructor != kNoLowId)
+		const std::vector<BaseDestructorAction> base_actions =
+			call_complete ? std::vector<BaseDestructorAction>() :
+				BaseDestructorActions(entity);
+		for (std::size_t i = 0; i < base_actions.size(); ++i)
 		{
 			const BlockId suffix_cleanup = AddBlock(
 				NewLabel("destructor_suffix_cleanup"));
 			const BlockId suffix_next = AddBlock(
 				NewLabel("destructor_suffix_next"));
 			EmitEhTarget(Instruction::EH_CLEANUP, suffix_cleanup);
-			EmitVoidCall(base_destructor, ProjectBase(Load(this_slot), entity));
+			EmitVoidCall(base_actions[i].symbol,
+				ProjectBase(Load(this_slot), base_actions[i].offset));
 			Emit(Instruction(Instruction::EH_END));
 			EmitJump(suffix_next);
 			SelectBlock(suffix_cleanup);
+			EmitBaseDestructorActions(base_actions, i + 1, this_slot);
 			EmitDeallocation(deallocation, deallocation_binding,
 				entity, Load(this_slot));
 			Emit(Instruction(Instruction::EH_END));
@@ -1597,9 +1730,7 @@ private:
 			entity, Load(this_slot));
 		EmitJump(end);
 		SelectBlock(cleanup);
-		if (!call_complete && base_destructor != kNoLowId)
-			EmitVoidCall(base_destructor,
-				ProjectBase(Load(this_slot), entity));
+		EmitBaseDestructorActions(base_actions, 0, this_slot);
 		EmitDeallocation(deallocation, deallocation_binding,
 			entity, Load(this_slot));
 		Emit(Instruction(Instruction::EH_END));
@@ -1663,6 +1794,7 @@ private:
 			output_.functions[first + i] = std::move(ordered[i]);
 	}
 
+	const SemanticGraphView& graph_;
 	const Program& program_;
 	TypedProgram& output_;
 	LowIRLoweringStats* stats_;

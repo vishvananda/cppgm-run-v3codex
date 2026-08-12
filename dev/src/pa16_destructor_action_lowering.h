@@ -62,7 +62,8 @@ protected:
 			derived.ProjectBaseSubobjectOffset(object, projection_offset);
 	}
 
-	void EmitDestructorCall(BindingId destructor, const Operand& destination)
+	void EmitDestructorCall(BindingId destructor, const Operand& destination,
+		bool base_subobject = false)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (destructor == kNoBinding ||
@@ -77,6 +78,37 @@ protected:
 		CallArgumentFlags references;
 		arguments.Push(destination);
 		references.Push(0);
+		const BindingRecord& binding = derived.program_.bindings[destructor];
+		std::size_t hidden = derived.VirtualBaseParameterCount(
+			destructor, binding.type);
+		const EntityId owner = binding.member_owner;
+		for (std::size_t base = 0; owner != kNoEntity &&
+			base < derived.program_.entities[owner].virtual_base_count &&
+			hidden != 0; ++base)
+		{
+			if (!derived.CarriesVirtualBase(destructor, 0, base)) continue;
+			const VirtualBaseLayout& needed =
+				derived.program_.VirtualBase(owner, base);
+			Operand address;
+			if (base_subobject)
+			{
+				if (derived.current_this_binding_ == kNoBinding ||
+					!derived.CurrentVirtualBaseAddress(
+						derived.current_this_binding_, needed.entity, &address))
+					throw std::logic_error(
+						"base destructor has no forwarded virtual-base address");
+			}
+			else address = derived.ProjectBaseSubobjectOffset(
+				destination, needed.offset);
+			arguments.Push(address);
+			references.Push(0);
+			if (derived.stats_)
+				++derived.stats_->virtual_base_call_arguments;
+			--hidden;
+		}
+		if (hidden != 0)
+			throw std::logic_error(
+				"destructor call has an incomplete virtual-base contract");
 		derived.output_.symbols[
 			derived.function_symbols_[destructor]].referenced = true;
 		derived.AttachCallArguments(&call, arguments, references);
@@ -84,14 +116,14 @@ protected:
 	}
 
 	void LowerDestructorObject(TypeId type, const Operand& address,
-		BindingId destructor)
+		BindingId destructor, bool base_subobject = false)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		type = derived.RemoveTopQualifiers(type);
 		const TypeRecord& record = derived.program_.types.Get(type);
 		if (record.kind != TYPE_ARRAY)
 		{
-			EmitDestructorCall(destructor, address);
+			EmitDestructorCall(destructor, address, base_subobject);
 			return;
 		}
 		if (record.bound == 0)
@@ -244,6 +276,7 @@ protected:
 			}
 		}
 		Operand destination;
+		bool base_subobject = false;
 		if (action.lifetime_object != kNoDumpEdge)
 			destination = derived.AddressOfStorage(
 				derived.LowerStorage(action.lifetime_object));
@@ -276,8 +309,10 @@ protected:
 				action.base_projection_count, kNoType,
 				action.base_projection_offset,
 				action.has_base_projection_offset);
+			base_subobject = true;
 		}
-		LowerDestructorObject(action.operand_type, destination, action.binding);
+		LowerDestructorObject(action.operand_type, destination, action.binding,
+			base_subobject);
 	}
 };
 
