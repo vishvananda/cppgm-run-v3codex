@@ -106,7 +106,9 @@ protected:
 		const bool managed_full_expression = conditional_full_expression ||
 			explicitly_managed_full_expression || lexical_unwind;
 		if (managed_full_expression)
-			derived.BeginFullExpressionCleanup(full_expression_actions, 0);
+			derived.BeginFullExpressionCleanup(full_expression_actions, 0,
+				has_value && derived.arena_.nodes[children[0]].kind ==
+					DUMP_CONDITIONAL_EXPRESSION);
 		Operand result_value;
 		if (has_value)
 		{

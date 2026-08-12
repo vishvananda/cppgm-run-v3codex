@@ -115,6 +115,7 @@ struct DumpNode
 	NameId text;
 	BindingId binding, object_binding, selected_binding;
 	std::int64_t constant_value;
+	std::int64_t dynamic_cast_hint;
 	std::uint64_t array_count;
 	std::uint64_t storage_size;
 	std::uint64_t direct_base_offset;
@@ -191,7 +192,7 @@ struct DumpNode
 		  category(VALUE_NONE), logical_operation(LOGICAL_OPERATION_NONE),
 		  text(0), binding(kNoBinding),
 		  object_binding(kNoBinding), selected_binding(kNoBinding),
-		  constant_value(0), array_count(0), storage_size(0),
+		  constant_value(0), dynamic_cast_hint(-1), array_count(0), storage_size(0),
 		  direct_base_offset(0), base_projection_offset(0),
 		  first_edge(kNoDumpEdge),
 		  last_edge(kNoDumpEdge), base_projection_count(0),

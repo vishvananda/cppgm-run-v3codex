@@ -203,7 +203,7 @@ protected:
 		arguments.Push(source);
 		arguments.Push(RttiAddress(record.operand_type));
 		arguments.Push(RttiAddress(DynamicCastTargetType(record.type)));
-		arguments.Push(Operand(target_void ? -2 : 0, LowI64()));
+		arguments.Push(Operand(record.dynamic_cast_hint, LowI64()));
 		const Operand casted = EmitRttiRuntimeCall(
 			derived.polymorphism_.dynamic_cast_symbol, LowPtr(), arguments);
 		Instruction save(Instruction::STORE);

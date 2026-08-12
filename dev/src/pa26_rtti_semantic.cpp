@@ -1,6 +1,7 @@
 #include "pa12_semantic_detail.h"
 
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -258,6 +259,27 @@ bool SemanticAnalyzer::TryAnalyzeDynamicCast(TypeId target,
 		DUMP_DYNAMIC_CAST_EXPRESSION, target, category);
 	dump_.nodes[result->node].operand_type = source_object;
 	dump_.nodes[result->node].dynamic_cast_reference = reference;
+	std::int64_t hint = -2;
+	if (!target_void)
+	{
+		std::uint64_t offset = 0;
+		bool all_public = false;
+		bool ambiguous = false;
+		if (program_->QueryBasePath(target_entity, source_entity, 0,
+			&all_public, &offset, &ambiguous))
+		{
+			if (!all_public) hint = -2;
+			else if (program_->HasVirtualBasePath(target_entity, source_entity))
+				hint = -1;
+			else if (ambiguous) hint = -3;
+			else if (offset <= static_cast<std::uint64_t>(
+				std::numeric_limits<std::int64_t>::max()))
+				hint = static_cast<std::int64_t>(offset);
+			else throw std::runtime_error(
+				"dynamic_cast base offset exceeds runtime ABI");
+		}
+	}
+	dump_.nodes[result->node].dynamic_cast_hint = hint;
 	dump_.Add(result->node, operand.node);
 	result->type = target;
 	result->category = category;

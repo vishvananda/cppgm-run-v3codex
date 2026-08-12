@@ -12,25 +12,24 @@ PA27 single-view programs retain their existing path.
 
 ## Current Failure Map
 
-Current: **38/42 PA28 tests pass** (turn baseline 35/42); PA1-PA27 and audit pass.
+Current: **41/42 PA28 tests pass** (turn baseline 38/42); PA1-PA27 and audit pass.
 
 | Shared behavior | Owner | Remaining |
 |---|---|---:|
-| Inverse-cast presentation ordering | cast lowering | 2 |
-| Sibling dynamic cast | RTTI lowering | 1 |
 | Multi-level virtual-base construction/destruction views | lifecycle + VTT lowering | 1 |
 
 ## Active Checkpoint
 
-**Canonical inverse and sibling casts.** Per `spec.md` §2/§6, semantic cast
-facts own the canonical source/destination subobject paths and RTTI identities;
-typed cast lowering consumes those facts without repeating lookup. Apply the
-inverse source adjustment before destination projection for both pointer and
-reference static downcasts, and feed sibling dynamic casts the canonical source
-view plus source/target RTTI. Path discovery is O(P) with indexed identities;
-each lowered cast is O(1), with function-local operands only, per §9. Validate
-the two nonprimary inverse casts and sibling dynamic cast, then PA28, PA1-PA27,
-audit, and cast/RTTI counters.
+**Complete/base lifecycle split.** Per `spec.md` §2/§6, semantic function facts
+own distinct complete- and base-object destructor identities and ordered
+subobject actions; ABI facts own canonical physical views and VTT slices;
+lowering only materializes those demanded identities. Construction/destruction
+data flows from the complete object's canonical layout through nested VTT
+slices and hidden virtual-base addresses, while the most-derived destructor
+alone tears down each virtual base. View/action discovery is O(V + E) once per
+class and lowering is O(A) in emitted lifecycle actions, with indexed identity
+lookups per §9. Validate the multi-level diamond witness, PA28, PA1-PA27, audit,
+and view/action/emission counters.
 
 ## Performance Evidence
 
@@ -43,6 +42,8 @@ audit, and cast/RTTI counters.
 | reference-to-pointer | 468 | 35 | 30 | 10/10 | 8/82 | 679,697 / 266,302 | 0.00 s / 6,720 KiB |
 | pure destructor ownership | 140 | 17 | 0 | 0/0 | 4/42 | 375,140 / 255,750 | 0.00 s / 6,816 KiB |
 | diamond deleting sequence | 234 | 33 | 0 | 0/0 | 18/288 | 403,623 / 457,160 | 0.00 s / 6,828 KiB |
+| sibling dynamic cast | 210 | 27 | 43 | 10 misses/12 hits | 6/55 | 478,992 / 316,179 | 0.00 s / 6,732 KiB |
+| inverse static cast | 323 | 41 | 66 | 4 misses/13 hits | 7/87 | 540,821 / 335,970 | 0.00 s / 6,880 KiB |
 
 Only definitions with a virtual-base boundary are scanned once; the layout-union
 callee carries one of three available ordinals while its forwarding caller
@@ -60,3 +61,4 @@ in expected O(1); reverse-base EH suffixes scale with emitted cleanup volume.
 | Cached hidden contracts and construction views/VTT forwarding | 31/42; five focused witnesses exact, 3814/3814 prior tests, audit pass |
 | Demand-shaped value/copy ABI and minimal address frontiers | 35/42; four focused witnesses exact, 3814/3814 prior tests, audit pass |
 | Pure and multi-view deleting destructor ABI | 38/42; three focused witnesses exact, hidden lifecycle calls arity-correct, 3814/3814 prior tests, audit pass |
+| Canonical cast control and RTTI hint | 41/42; three focused witnesses exact, 3814/3814 prior tests, audit pass |
