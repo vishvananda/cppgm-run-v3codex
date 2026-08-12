@@ -123,6 +123,9 @@ bool Program::QueryBasePath(EntityId derived, EntityId base,
 	if (base == kNoEntity || derived == kNoEntity ||
 		base >= entities.size() || derived >= entities.size()) return false;
 	if (ambiguous) *ambiguous = false;
+	std::uint64_t shared_virtual_offset = 0;
+	const bool shared_virtual =
+		FindVirtualBase(derived, base, &shared_virtual_offset);
 	bool cached_found = false;
 	const bool require_complete = all_public || ambiguous;
 	if (!direct_base_ordinals && FindBasePathCache(derived, base,
@@ -242,8 +245,9 @@ bool Program::QueryBasePath(EntityId derived, EntityId base,
 		}
 		if (distance) *distance = root.distance;
 		if (all_public) *all_public = root.all_public;
-		if (offset) *offset = root.offset;
-		if (ambiguous) *ambiguous = detect_ambiguity && root.path_count == 2;
+		if (offset) *offset = shared_virtual ? shared_virtual_offset : root.offset;
+		if (ambiguous) *ambiguous = !shared_virtual &&
+			detect_ambiguity && root.path_count == 2;
 		if (direct_base_ordinals)
 		{
 			EntityId current = derived;
@@ -261,8 +265,10 @@ bool Program::QueryBasePath(EntityId derived, EntityId base,
 			}
 		}
 		StoreBasePathCache(derived, base, true, root.distance,
-			root.all_public, root.offset,
-			detect_ambiguity && root.path_count == 2, detect_ambiguity);
+			root.all_public,
+			shared_virtual ? shared_virtual_offset : root.offset,
+			!shared_virtual && detect_ambiguity && root.path_count == 2,
+			detect_ambiguity);
 		return true;
 	}
 	const std::uint32_t difference =

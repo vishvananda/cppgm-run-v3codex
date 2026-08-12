@@ -1,0 +1,77 @@
+#ifndef CPPGM_PA16_MEMBER_ADDRESS_LOWERING_H
+#define CPPGM_PA16_MEMBER_ADDRESS_LOWERING_H
+
+#include "pa15_lowering_support.h"
+#include "pa15_lowir_model.h"
+#include "pa12_semantic_model.h"
+
+#include <cstdint>
+#include <stdexcept>
+
+namespace cppgm
+{
+namespace pa16_lowering_detail
+{
+
+using namespace pa11;
+using namespace pa12_semantic_detail;
+using namespace pa15_lowir_detail;
+using namespace pa15_lowering_support;
+
+template <class Derived>
+class MemberAddressLowering
+{
+protected:
+	Operand MemberAddress(const DumpNode& record, const NodeChildren& children)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (children.size() != 1 || record.binding == kNoBinding ||
+			record.binding >= derived.program_.bindings.size())
+			throw std::runtime_error("invalid resolved member expression");
+		const BindingRecord& member = derived.program_.bindings[record.binding];
+		if (!member.non_static_data_member)
+		{
+			if (member.kind != BIND_VARIABLE)
+				throw std::runtime_error(
+					"member expression is not a data-member lvalue");
+			const Operand storage = derived.StorageFor(record.binding,
+				derived.LowerStorageType(member.type));
+			return derived.IsReferenceType(member.type) ?
+				derived.LoadStorage(storage, LowPtr()) : storage;
+		}
+		Operand base, virtual_base;
+		if (derived.CurrentVirtualBaseAddressForExpression(
+			children[0], member.member_owner, &virtual_base))
+			base = derived.ProjectBaseSubobjectOffset(virtual_base, 0);
+		else
+		{
+			const TypeId object_type = derived.ExpressionObjectType(
+				derived.arena_.nodes[children[0]].type);
+			const bool pointer_object =
+				derived.program_.types.Get(object_type).kind == TYPE_POINTER;
+			base = pointer_object ? derived.LowerValue(children[0], LowPtr()) :
+				derived.AddressOfStorage(derived.LowerStorage(children[0]));
+			base = derived.ProjectBaseSubobjects(base,
+				record.base_projection_count,
+				derived.arena_.nodes[children[0]].type,
+				record.base_projection_offset,
+				record.has_base_projection_offset);
+		}
+		const Operand result = derived.Temp(LowPtr());
+		Instruction index(Instruction::INDEX);
+		index.dest = result.id;
+		index.type = LowI8();
+		index.first = base;
+		index.second = Operand(
+			static_cast<std::int64_t>(member.member_offset), LowI64());
+		index.projection = INDEX_PROJECTION_FIELD;
+		derived.Emit(index);
+		return derived.IsReferenceType(member.type) ?
+			derived.LoadStorage(result, LowPtr()) : result;
+	}
+};
+
+}
+}
+
+#endif

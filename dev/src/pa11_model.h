@@ -349,6 +349,16 @@ struct DirectBaseEdge
 		  virtual_base(virtual_base_) {}
 };
 
+struct VirtualBaseLayout
+{
+	EntityId entity;
+	std::uint64_t offset;
+
+	VirtualBaseLayout(EntityId entity_ = kNoEntity,
+		std::uint64_t offset_ = 0)
+		: entity(entity_), offset(offset_) {}
+};
+
 struct EntityRecord
 {
 	NameId name, identity_name;
@@ -358,11 +368,13 @@ struct EntityRecord
 	TemplateArgumentListId template_argument_list;
 	std::uint32_t template_argument_begin, template_argument_count,
 		template_argument_pack_begin;
-	std::uint32_t direct_base_begin, direct_base_count;
+	std::uint32_t direct_base_begin, direct_base_count,
+		virtual_base_begin, virtual_base_count;
 	NamedFlavor flavor;
 	TypeId type, underlying;
 	BindingId declaration, union_default_member;
-	std::uint64_t object_size, object_alignment, natural_alignment,
+	std::uint64_t object_size, nonvirtual_size,
+		object_alignment, nonvirtual_alignment, natural_alignment,
 		requested_alignment, packing_alignment, direct_base_offset;
 	AccessKind base_access;
 	bool complete, layout_complete, has_user_declared_constructor,
@@ -544,6 +556,12 @@ public:
 		std::size_t ordinal) const;
 	DirectBaseEdge& MutableDirectBase(EntityId derived,
 		std::size_t ordinal);
+	void SetVirtualBaseLayouts(EntityId derived,
+		const std::vector<VirtualBaseLayout>& layouts);
+	const VirtualBaseLayout& VirtualBase(EntityId derived,
+		std::size_t ordinal) const;
+	bool FindVirtualBase(EntityId derived, EntityId base,
+		std::uint64_t* offset = 0) const;
 	bool IsBaseOf(EntityId base, EntityId derived) const;
 	bool HasVirtualBasePath(EntityId derived, EntityId base) const;
 	bool QueryBasePath(EntityId derived, EntityId base,
@@ -585,6 +603,7 @@ public:
 	TypeTable types;
 	std::vector<EntityRecord> entities;
 	std::vector<DirectBaseEdge> direct_bases;
+	std::vector<VirtualBaseLayout> virtual_bases;
 	std::vector<BindingRecord> bindings;
 	std::vector<TypeId> template_arguments;
 	std::vector<TemplateArgument> canonical_template_arguments;

@@ -16,6 +16,7 @@
 #include "pa16_destructor_action_lowering.h"
 #include "pa16_initialization_lowering.h"
 #include "pa16_lifetime_lowering.h"
+#include "pa16_member_address_lowering.h"
 #include "pa16_static_initializer_lowering.h"
 #include "pa16_slot_planning.h"
 #include "pa17_bit_field_value_lowering.h"
@@ -31,6 +32,7 @@
 #include "pa26_initializer_list_lowering.h"
 #include "pa26_rtti_lowering.h"
 #include "pa27_member_pointer_lowering.h"
+#include "pa28_virtual_base_lowering.h"
 #include <algorithm>
 #include <limits>
 #include <ostream>
@@ -45,6 +47,7 @@ using namespace pa15_lowering_support;
 const std::size_t kAggregateProjectionReplayLimit = 8;
 typedef SmallSequence<BindingId, kAggregateProjectionReplayLimit> AggregatePath;
 class GraphLowerer :
+	private pa28_lowering_detail::VirtualBaseLowering<GraphLowerer>,
 	private pa15_lowering_detail::ControlFlowLowering<GraphLowerer>,
 	private pa15_lowering_detail::ScalarUnaryLowering<GraphLowerer>,
 	private pa18_lowering_detail::PolymorphismActionLowering<GraphLowerer>,
@@ -60,6 +63,7 @@ class GraphLowerer :
 	private pa16_lowering_detail::CallArgumentLowering<GraphLowerer>,
 	private pa16_lowering_detail::InitializationLowering<GraphLowerer>,
 	private pa16_lowering_detail::LifetimeActionLowering<GraphLowerer>,
+	private pa16_lowering_detail::MemberAddressLowering<GraphLowerer>,
 	private pa16_lowering_detail::SlotPlanning<GraphLowerer>,
 	private pa17_lowering_detail::TemporaryLifetimeLowering<GraphLowerer>,
 	private pa21_lowering_detail::ConstantLowering<GraphLowerer>,
@@ -157,6 +161,8 @@ public:
 		EmitDynamicFinalizer();
 	}
 private:
+	friend class pa28_lowering_detail::VirtualBaseLowering<GraphLowerer>;
+	friend class pa28_lowering_detail::VirtualBaseBoundaryShape<GraphLowerer>;
 	friend class pa15_lowering_detail::ControlFlowLowering<GraphLowerer>;
 	friend class pa15_lowering_detail::ScalarUnaryLowering<GraphLowerer>;
 	friend class pa18_lowering_detail::PolymorphismActionLowering<GraphLowerer>;
@@ -172,6 +178,7 @@ private:
 	friend class pa16_lowering_detail::CallArgumentLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::InitializationLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::LifetimeActionLowering<GraphLowerer>;
+	friend class pa16_lowering_detail::MemberAddressLowering<GraphLowerer>;
 	friend class pa16_lowering_detail::SlotPlanning<GraphLowerer>;
 	friend class pa17_lowering_detail::TemporaryLifetimeLowering<GraphLowerer>;
 	friend class pa21_lowering_detail::ConstantLowering<GraphLowerer>;
@@ -706,6 +713,7 @@ private:
 		slot_name_counts_.Clear();
 		current_this_binding_ = kNoBinding;
 		current_member_owner_ = kNoEntity;
+		ResetVirtualBaseBoundary();
 		current_class_value_boundary_ = false;
 		SelectBlock(AddBlock("entry"));
 	}
@@ -814,6 +822,7 @@ private:
 		current_this_binding_ = kNoBinding;
 		current_member_owner_ = record.binding == kNoBinding ? kNoEntity : program_.bindings[record.binding].member_owner;
 		const NodeChildren children = Children(node);
+		PrepareVirtualBaseBoundary(node, result.parameters);
 		SetCurrentThisForSlotPlanning(record, children);
 		CollectSourceNames(node);
 		CollectSlots(node);
@@ -831,6 +840,7 @@ private:
 					!program_.bindings[record.binding].static_member_function)
 					current_this_binding_ = child.binding;
 				MaterializeBoundaryParameter(child, boundary_parameter);
+				MaterializeVirtualBaseBoundaryParameter(child);
 				++parameter_index;
 			}
 			else if (child.kind == DUMP_COMPOUND_STATEMENT) body = children[i];
@@ -875,6 +885,7 @@ private:
 		current_class_value_boundary_ = false;
 		current_this_binding_ = kNoBinding;
 		current_member_owner_ = kNoEntity;
+		ResetVirtualBaseBoundary();
 		return result;
 	}
 	Block& CurrentBlock() { return function_->blocks[current_block_]; }
@@ -990,45 +1001,6 @@ private:
 		return result;
 	}
 
-	Operand MemberAddress(const DumpNode& record,
-		const NodeChildren& children)
-	{
-		if (children.size() != 1 || record.binding == kNoBinding ||
-			record.binding >= program_.bindings.size())
-			throw std::runtime_error("invalid resolved member expression");
-		const BindingRecord& member = program_.bindings[record.binding];
-		if (!member.non_static_data_member)
-		{
-			if (member.kind != BIND_VARIABLE)
-				throw std::runtime_error(
-					"member expression is not a data-member lvalue");
-			const Operand storage = StorageFor(record.binding,
-				LowerStorageType(member.type));
-			return IsReferenceType(member.type) ?
-				LoadStorage(storage, LowPtr()) : storage;
-		}
-		const TypeId object_type = ExpressionObjectType(
-			arena_.nodes[children[0]].type);
-		const bool pointer_object =
-			program_.types.Get(object_type).kind == TYPE_POINTER;
-		Operand base = pointer_object ?
-			LowerValue(children[0], LowPtr()) :
-			AddressOfStorage(LowerStorage(children[0]));
-		base = ProjectBaseSubobjects(base, record.base_projection_count,
-			arena_.nodes[children[0]].type, record.base_projection_offset,
-			record.has_base_projection_offset);
-		const Operand result = Temp(LowPtr());
-		Instruction index(Instruction::INDEX);
-		index.dest = result.id;
-		index.type = LowI8();
-		index.first = base;
-		index.second = Operand(
-			static_cast<std::int64_t>(member.member_offset), LowI64());
-		index.projection = INDEX_PROJECTION_FIELD;
-		Emit(index);
-		return IsReferenceType(member.type) ?
-			LoadStorage(result, LowPtr()) : result;
-	}
 	Operand LowerArrayPointer(std::uint32_t node)
 	{
 		const DumpNode& record = arena_.nodes[node];
@@ -1132,11 +1104,14 @@ private:
 			(record.category == VALUE_LVALUE || record.category == VALUE_XVALUE ||
 			 arena_.nodes[children[0]].kind == DUMP_TEMPORARY_OBJECT))
 		{
+			if (record.base_projection_count != 0)
+				return LowerProjectedClassPointer(children[0],
+					record.base_projection_count, record.base_projection_offset,
+					record.has_base_projection_offset,
+					BaseEntityForType(record.type));
 			const Operand source = AddressOfStorage(LowerStorage(children[0]));
-			return ProjectBaseSubobjects(source,
-				record.base_projection_count, arena_.nodes[children[0]].type,
-				record.base_projection_offset,
-				record.has_base_projection_offset);
+			return ProjectBaseSubobjects(source, 0,
+				arena_.nodes[children[0]].type);
 		}
 		throw std::runtime_error("expression kind " +
 			std::to_string(static_cast<unsigned>(record.kind)) +
@@ -1379,7 +1354,8 @@ private:
 				result = LowerProjectedClassPointer(
 					children[0], record.base_projection_count,
 					record.base_projection_offset,
-					record.has_base_projection_offset);
+					record.has_base_projection_offset,
+					BaseEntityForType(record.type));
 			else
 			{
 				const DumpNode& source = arena_.nodes[children[0]];
@@ -1698,6 +1674,7 @@ private:
 				callee, application_children));
 			argument_references.Push(Instruction::CALL_PASS_VALUE);
 		}
+		const std::size_t lowered_argument_begin = arguments.size();
 		for (std::size_t i = 1; i < children.size(); ++i)
 		{
 			const bool reference = i - 1 < function_type.parameter_count && IsReferenceType(parameters[i - 1]);
@@ -1731,6 +1708,10 @@ private:
 			if (record.virtual_call && i == 1)
 				virtual_object = arguments[arguments.size() - 1];
 		}
+		CallArguments lowered_boundary_arguments;
+		for (std::size_t i = lowered_argument_begin;
+			i < arguments.size(); ++i)
+			lowered_boundary_arguments.Push(arguments[i]);
 		if (member_pointer_call)
 		{
 			const MemberPointerCallOperands lowered = LowerMemberPointerCall(
@@ -1739,6 +1720,8 @@ private:
 			arguments[member_pointer_argument] = lowered.object;
 			member_pointer_callee = lowered.callee;
 		}
+		AppendCallVirtualBaseArguments(callee, children,
+			lowered_boundary_arguments, &arguments, &argument_references);
 		if (full_expression_cleanup_active_ && full_expression_deferred_cleanup_) EnsureFullExpressionCleanupSegment();
 		if (record.virtual_call)
 		{

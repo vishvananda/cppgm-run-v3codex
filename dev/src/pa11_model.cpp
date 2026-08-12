@@ -639,10 +639,12 @@ EntityRecord::EntityRecord()
 	  template_argument_begin(kNoBinding), template_argument_count(0),
 	  template_argument_pack_begin(kNoTemplateParameter),
 	  direct_base_begin(0), direct_base_count(0),
+	  virtual_base_begin(0), virtual_base_count(0),
 	  flavor(NAMED_NONE), type(kNoType),
 	  underlying(kNoType), declaration(kNoBinding),
-	  union_default_member(kNoBinding), object_size(0),
-	  object_alignment(0), natural_alignment(0), requested_alignment(0),
+	  union_default_member(kNoBinding), object_size(0), nonvirtual_size(0),
+	  object_alignment(0), nonvirtual_alignment(0), natural_alignment(0),
+	  requested_alignment(0),
 	  packing_alignment(0), direct_base_offset(0),
 	  base_access(ACCESS_PUBLIC), complete(false),
 	  layout_complete(false),
@@ -1610,6 +1612,7 @@ void Program::SetDirectBases(EntityId derived,
 				base_depths_[bases[i].entity] + 1);
 		if (entities[bases[i].entity].nonlinear_base_graph)
 			record.nonlinear_base_graph = true;
+		if (bases[i].virtual_base) record.nonlinear_base_graph = true;
 	}
 	record.nonlinear_base_graph = record.nonlinear_base_graph || bases.size() != 1;
 	base_depths_[derived] = maximum_depth + 1;
@@ -1652,6 +1655,51 @@ DirectBaseEdge& Program::MutableDirectBase(EntityId derived,
 	if (++base_graph_versions_[derived] == 0)
 		base_graph_versions_[derived] = 1;
 	return direct_bases[entities[derived].direct_base_begin + ordinal];
+}
+
+void Program::SetVirtualBaseLayouts(EntityId derived,
+	const std::vector<VirtualBaseLayout>& layouts)
+{
+	if (derived >= entities.size())
+		throw std::logic_error("invalid virtual base layout owner");
+	EntityRecord& record = entities[derived];
+	if (record.virtual_base_count != 0)
+		throw std::logic_error("virtual base layouts are already fixed");
+	if (layouts.size() > std::numeric_limits<std::uint32_t>::max() ||
+		virtual_bases.size() > std::numeric_limits<std::uint32_t>::max() -
+			layouts.size())
+		throw std::runtime_error("too many virtual base layouts");
+	record.virtual_base_begin =
+		static_cast<std::uint32_t>(virtual_bases.size());
+	record.virtual_base_count =
+		static_cast<std::uint32_t>(layouts.size());
+	virtual_bases.insert(virtual_bases.end(), layouts.begin(), layouts.end());
+	if (++base_graph_versions_[derived] == 0)
+		base_graph_versions_[derived] = 1;
+}
+
+const VirtualBaseLayout& Program::VirtualBase(EntityId derived,
+	std::size_t ordinal) const
+{
+	if (derived >= entities.size() ||
+		ordinal >= entities[derived].virtual_base_count)
+		throw std::logic_error("invalid virtual base layout query");
+	return virtual_bases[entities[derived].virtual_base_begin + ordinal];
+}
+
+bool Program::FindVirtualBase(EntityId derived, EntityId base,
+	std::uint64_t* offset) const
+{
+	if (derived >= entities.size() || base >= entities.size()) return false;
+	const EntityRecord& record = entities[derived];
+	for (std::size_t i = 0; i < record.virtual_base_count; ++i)
+	{
+		const VirtualBaseLayout& layout = VirtualBase(derived, i);
+		if (layout.entity != base) continue;
+		if (offset) *offset = layout.offset;
+		return true;
+	}
+	return false;
 }
 
 Program::NameEntry* Program::EnsureEntry(ScopeId scope, NameId name)
@@ -2894,6 +2942,7 @@ std::size_t Program::StorageBytes() const
 		lookup_pending_next_.capacity() * sizeof(std::uint32_t) +
 		lookup_pending_target_marks_.capacity() * sizeof(std::uint32_t) +
 		direct_bases.capacity() * sizeof(DirectBaseEdge) +
+		virtual_bases.capacity() * sizeof(VirtualBaseLayout) +
 		base_jumps_.capacity() * sizeof(EntityId) +
 		base_jump_offsets_.capacity() * sizeof(std::size_t) +
 		base_jump_counts_.capacity() * sizeof(std::uint8_t) +

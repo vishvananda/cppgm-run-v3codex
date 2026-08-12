@@ -175,9 +175,14 @@ protected:
 
 	Operand LowerProjectedClassPointer(std::uint32_t child,
 		std::uint32_t projection_count, std::uint64_t projection_offset,
-		bool has_projection_offset)
+		bool has_projection_offset, EntityId target_entity = kNoEntity)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
+		Operand inherited;
+		if (target_entity != kNoEntity &&
+			derived.CurrentVirtualBaseAddressForExpression(
+				child, target_entity, &inherited))
+			return derived.ProjectBaseSubobjectOffset(inherited, 0);
 		const DumpNode& source = derived.arena_.nodes[child];
 		const Operand address = derived.IsClassObjectType(source.type) ?
 			derived.AddressOfStorage(derived.LowerStorage(child)) :

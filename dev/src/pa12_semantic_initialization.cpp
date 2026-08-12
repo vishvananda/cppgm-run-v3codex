@@ -1238,16 +1238,22 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 				initializer_expanded[initializer_index];
 		}
 	}
+	const bool base_entry =
+		program_->bindings[constructor.binding].constructor_base_entry;
+	if (!base_entry)
+		AddVirtualBaseInitializationActions(entity, function_scope,
+			base_initializers, base_initializer_scopes,
+			base_initializer_expanded, body);
 	for (std::size_t base_ordinal = 0;
 		base_ordinal < base_count; ++base_ordinal)
 	{
+		if (program_->DirectBase(entity, base_ordinal).virtual_base) continue;
 		if (base_ordinal == inherited_base_ordinal)
 			dump_.Add(body, inherited_base_action);
-		else
-			AddBaseInitializationAction(entity, base_ordinal,
-				base_initializers[base_ordinal],
-				base_initializer_scopes[base_ordinal], body,
-				base_initializer_expanded[base_ordinal] != 0);
+		else AddBaseInitializationAction(entity, base_ordinal,
+			base_initializers[base_ordinal],
+			base_initializer_scopes[base_ordinal], body,
+			base_initializer_expanded[base_ordinal] != 0);
 	}
 	if (program_->entities[entity].polymorphic_class)
 		dump_.Add(body, MakeDump(DUMP_VPTR_INITIALIZATION_ACTION,
@@ -1300,7 +1306,15 @@ void SemanticAnalyzer::AddBaseInitializationAction(EntityId entity,
 {
 	if (base_ordinal >= program_->entities[entity].direct_base_count)
 		throw std::logic_error("base initialization has no direct base");
-	const EntityId base = program_->DirectBase(entity, base_ordinal).entity;
+	const DirectBaseEdge& edge = program_->DirectBase(entity, base_ordinal);
+	AddBaseInitializationActionAt(entity, edge.entity, edge.offset,
+		initializer, scope, body, pack_expanded);
+}
+
+void SemanticAnalyzer::AddBaseInitializationActionAt(EntityId entity,
+	EntityId base, std::uint64_t offset, NodeId initializer, ScopeId scope,
+	std::uint32_t body, bool pack_expanded)
+{
 	std::vector<NodeId> arguments;
 	bool list_initialization = false;
 	if (initializer != kNoNode)
@@ -1319,8 +1333,7 @@ void SemanticAnalyzer::AddBaseInitializationAction(EntityId entity,
 	const std::uint32_t action = MakeDump(DUMP_BASE_INITIALIZER_ACTION,
 		base_type, VALUE_NONE, program_->entities[base].identity_name);
 	dump_.nodes[action].base_projection_count = 1;
-	dump_.nodes[action].direct_base_offset =
-		program_->DirectBase(entity, base_ordinal).offset;
+	dump_.nodes[action].direct_base_offset = offset;
 	dump_.nodes[action].has_direct_base_offset = true;
 	std::vector<ExpressionInfo> prepared_arguments;
 	const bool expanded_arguments = ExpandCallArgumentPacks(
@@ -1351,9 +1364,15 @@ void SemanticAnalyzer::AddBaseInitializationAction(EntityId entity,
 		const bool demanded_constexpr_vptr_base =
 			selected_owner != kNoEntity && selected.constexpr_function &&
 			program_->entities[selected_owner].polymorphic_class;
+		const bool demanded_virtual_layout_complete_entry =
+			program_->entities[entity].virtual_base_count != 0 &&
+			selected.complete_constructor != kNoBinding &&
+			!selected.implicit_constructor && !selected.defaulted_constructor;
 		if ((demanded_owned_base_entry || demanded_constexpr_vptr_base) &&
 			!selected.implicit_constructor && !selected.defaulted_constructor &&
 			selected.complete_constructor != kNoBinding)
+			DemandFunction(selected.complete_constructor);
+		else if (demanded_virtual_layout_complete_entry)
 			DemandFunction(selected.complete_constructor);
 	}
 	dump_.Add(action, constructor);

@@ -34,6 +34,10 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 			sizeof(std::vector<ClassLayoutMember>) +
 		zero_offset_subobject_marks_.capacity() * sizeof(std::uint32_t) +
 		zero_offset_subobject_scratch_.capacity() * sizeof(EntityId) +
+		virtual_base_layout_entity_marks_.capacity() * sizeof(std::uint32_t) +
+		virtual_base_layout_fact_marks_.capacity() * sizeof(std::uint32_t) +
+		virtual_base_layout_scratch_.capacity() *
+			sizeof(std::pair<EntityId, std::uint32_t>) +
 		entity_constructors_.capacity() * sizeof(std::vector<BindingId>) +
 		entity_conversion_functions_.capacity() *
 			sizeof(std::vector<BindingId>) +

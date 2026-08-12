@@ -80,6 +80,7 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 	: tokens(0), syntax_nodes(0), semantic_nodes(0), semantic_edges(0),
 	  interned_names(0), canonical_types(0), scopes(0), declarations(0),
 	  expressions(0), class_layouts(0), class_layout_member_visits(0),
+	  virtual_base_layout_edge_visits(0), virtual_base_layout_facts(0),
 	  class_zero_offset_subobject_visits(0),
 	  special_member_fact_lookups(0), special_member_subobject_visits(0),
 	  constructor_member_action_visits(0),

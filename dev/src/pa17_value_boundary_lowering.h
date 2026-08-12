@@ -200,6 +200,7 @@ protected:
 			parameters->push_back(parameter);
 			++parameter_index;
 		}
+		derived.AppendVirtualBaseBoundaryParameters(node, parameters);
 	}
 
 	void MaterializeBoundaryParameter(

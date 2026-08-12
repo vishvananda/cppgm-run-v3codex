@@ -45,7 +45,8 @@ protected:
 	void LowerConstructorAction(std::uint32_t node,
 		const Operand& destination, bool force_empty = false,
 		bool elide_direct_empty_source = false,
-		bool elide_empty_call_source = false)
+		bool elide_empty_call_source = false,
+		EntityId complete_entity = kNoEntity)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		const DumpNode& action = derived.arena_.nodes[node];
@@ -173,6 +174,61 @@ protected:
 						children[i], expected)));
 			}
 		}
+		const BindingRecord& constructor_binding =
+			derived.program_.bindings[action.binding];
+		std::size_t hidden_remaining =
+			derived.EmittedVirtualBaseParameterCount(action.binding);
+		if (constructor_binding.constructor_base_entry &&
+			constructor_binding.member_owner != kNoEntity)
+		{
+			const EntityRecord& base_owner = derived.program_.entities[
+				constructor_binding.member_owner];
+			for (std::size_t i = 0; i < base_owner.virtual_base_count &&
+				hidden_remaining != 0; ++i, --hidden_remaining)
+			{
+				const VirtualBaseLayout& needed = derived.program_.VirtualBase(
+					constructor_binding.member_owner, i);
+				Operand address;
+				if (complete_entity != kNoEntity)
+				{
+					std::uint64_t offset = 0;
+					if (!derived.program_.FindVirtualBase(
+						complete_entity, needed.entity, &offset))
+						throw std::logic_error(
+							"complete constructor has no virtual base address");
+					const Operand complete_object = derived.LoadStorage(
+						derived.StorageFor(
+							derived.current_this_binding_, LowPtr()), LowPtr());
+					address = derived.ProjectBaseSubobjectOffset(
+						complete_object, offset);
+				}
+				else
+				{
+					if (!derived.CurrentVirtualBaseAddress(
+						derived.current_this_binding_, needed.entity, &address))
+						throw std::logic_error(
+							"base constructor has no forwarded virtual base address");
+				}
+				arguments.Push(address);
+				references.Push(0);
+			}
+		}
+		for (std::size_t i = 0; i < children.size(); ++i)
+		{
+			const std::size_t parameter = i + 1;
+			if (parameter >= function_type.parameter_count) break;
+			const EntityId owner =
+				derived.VirtualBoundaryEntity(parameters[parameter]);
+			if (owner == kNoEntity) continue;
+			for (std::size_t base = 0;
+				base < derived.program_.entities[owner].virtual_base_count &&
+				hidden_remaining != 0; ++base, --hidden_remaining)
+			{
+				arguments.Push(derived.VirtualBaseCallAddress(
+					children[i], arguments[parameter], owner, base));
+				references.Push(Instruction::CALL_PASS_VALUE);
+			}
+		}
 		derived.output_.symbols[
 			derived.function_symbols_[action.binding]].referenced = true;
 		derived.AttachCallArguments(&call, arguments, references);
@@ -216,7 +272,9 @@ protected:
 			derived.EmitZeroInitialization(action.type, destination);
 		if (!trivial)
 			derived.LowerConstructorAction(
-				children[0], destination, false, true);
+				children[0], destination, false, true, false,
+				derived.HasCurrentImplicitVirtualBases() ?
+					kNoEntity : derived.current_member_owner_);
 		if (children.size() > 1)
 			derived.CompleteFullExpressionCleanup();
 	}

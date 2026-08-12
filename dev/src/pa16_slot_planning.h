@@ -146,7 +146,10 @@ protected:
 					derived.function_->slots.push_back(slot);
 				}
 				if (record.kind == DUMP_PARAMETER)
+				{
+					derived.PlanVirtualBaseBoundarySlots(record);
 					++derived.parameter_slot_index_;
+				}
 			}
 			const TypeId temporary_type = record.kind == DUMP_TEMPORARY_OBJECT ?
 				derived.program_.types.RemoveTopCv(record.type) : kNoType;

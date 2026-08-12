@@ -562,9 +562,13 @@ int run_emit_semantics_mode(const vector<string> & args)
            << " declarations=" << stats.declarations
            << " expressions=" << stats.expressions
            << " class_layouts=" << stats.class_layouts
-           << " class_layout_member_visits="
-           << stats.class_layout_member_visits
-           << " class_zero_offset_subobject_visits="
+		   << " class_layout_member_visits="
+		   << stats.class_layout_member_visits
+		   << " virtual_base_layout_edge_visits="
+		   << stats.virtual_base_layout_edge_visits
+		   << " virtual_base_layout_facts="
+		   << stats.virtual_base_layout_facts
+		   << " class_zero_offset_subobject_visits="
            << stats.class_zero_offset_subobject_visits
            << " special_member_fact_lookups="
            << stats.special_member_fact_lookups
@@ -780,6 +784,10 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << " class_layouts=" << semantic.class_layouts
 			 << " class_layout_member_visits="
 			 << semantic.class_layout_member_visits
+			 << " virtual_base_layout_edge_visits="
+			 << semantic.virtual_base_layout_edge_visits
+			 << " virtual_base_layout_facts="
+			 << semantic.virtual_base_layout_facts
 			 << " class_zero_offset_subobject_visits="
 			 << semantic.class_zero_offset_subobject_visits
 			 << " special_member_fact_lookups="

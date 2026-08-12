@@ -29,6 +29,8 @@ struct SemanticAnalysisStats
 	std::size_t expressions;
 	std::size_t class_layouts;
 	std::size_t class_layout_member_visits;
+	std::size_t virtual_base_layout_edge_visits;
+	std::size_t virtual_base_layout_facts;
 	std::size_t class_zero_offset_subobject_visits;
 	std::size_t special_member_fact_lookups;
 	std::size_t special_member_subobject_visits;

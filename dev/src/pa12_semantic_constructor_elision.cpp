@@ -84,7 +84,9 @@ bool SemanticAnalyzer::EmptyDefaultConstructorChain(BindingId constructor,
 		if (empty_constructor_chain_entity_marks_[entity] == marker) continue;
 		empty_constructor_chain_entity_marks_[entity] = marker;
 		++empty_constructor_chain_entity_visits_;
-		if (program_->entities[entity].polymorphic_class) return fail();
+		if (program_->entities[entity].polymorphic_class ||
+			program_->entities[entity].virtual_base_count != 0)
+			return fail();
 		const std::vector<BindingId>& members = entity_data_members_[entity];
 		for (std::size_t i = 0; i < members.size(); ++i)
 		{

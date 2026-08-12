@@ -121,6 +121,9 @@ public:
 		  demand_worklist_pushes_(0), demanded_function_emissions_(0),
 		  default_constructor_emissions_(0),
 		  class_layouts_(0), class_layout_member_visits_(0),
+		  virtual_base_layout_generation_(0),
+		  virtual_base_layout_edge_visits_(0),
+		  virtual_base_layout_facts_(0),
 		  class_zero_offset_subobject_visits_(0),
 		  special_member_fact_lookups_(0),
 		  special_member_subobject_visits_(0),
@@ -1205,6 +1208,12 @@ private:
 	const EntityRecord* InitializeClassBaseLayout(EntityId entity,
 		std::size_t packing_alignment, std::size_t* size,
 		std::size_t* alignment, std::size_t* natural_alignment);
+	void CollectVirtualBaseLayouts(EntityId entity,
+		std::vector<VirtualBaseLayout>* layouts);
+	void FinalizeClassVirtualBaseLayout(EntityId entity,
+		std::size_t packing_alignment, std::size_t* size,
+		std::size_t* alignment, std::size_t* natural_alignment,
+		bool* empty_class);
 	bool ClassBasesAreEmpty(EntityId entity) const;
 	void InitializeImplicitBaseConstructorFacts(EntityId entity);
 	void CompleteClassMemberDestructionFacts(EntityId entity,
@@ -1310,6 +1319,14 @@ private:
 	void AddBaseInitializationAction(EntityId entity, std::size_t base_ordinal,
 		NodeId initializer, ScopeId scope, std::uint32_t body,
 		bool pack_expanded = false);
+	void AddBaseInitializationActionAt(EntityId entity, EntityId base,
+		std::uint64_t offset, NodeId initializer, ScopeId scope,
+		std::uint32_t body, bool pack_expanded = false);
+	void AddVirtualBaseInitializationActions(EntityId entity,
+		ScopeId function_scope, const std::vector<NodeId>& initializers,
+		const std::vector<ScopeId>& initializer_scopes,
+		const std::vector<std::uint8_t>& initializer_expanded,
+		std::uint32_t body);
 	void AddMemberInitializationAction(BindingId member, NodeId initializer,
 		ScopeId scope, std::uint32_t body);
 	bool InitializationActionsAreNonthrowing(std::uint32_t body);
@@ -1860,6 +1877,13 @@ private:
 	std::size_t default_constructor_emissions_;
 	std::size_t class_layouts_;
 	std::size_t class_layout_member_visits_;
+	std::vector<std::uint32_t> virtual_base_layout_entity_marks_;
+	std::vector<std::uint32_t> virtual_base_layout_fact_marks_;
+	std::vector<std::pair<EntityId, std::uint32_t> >
+		virtual_base_layout_scratch_;
+	std::uint32_t virtual_base_layout_generation_;
+	std::size_t virtual_base_layout_edge_visits_;
+	std::size_t virtual_base_layout_facts_;
 	std::size_t class_zero_offset_subobject_visits_;
 	mutable std::size_t special_member_fact_lookups_;
 	mutable std::size_t special_member_subobject_visits_;
