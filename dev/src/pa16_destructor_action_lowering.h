@@ -79,9 +79,16 @@ protected:
 		arguments.Push(destination);
 		references.Push(0);
 		const BindingRecord& binding = derived.program_.bindings[destructor];
+		const EntityId owner = binding.member_owner;
+		if (derived.IncludesConstructionVtt(destructor))
+		{
+			arguments.Push(derived.ConstructionVttArgument(
+				derived.HasCurrentImplicitVirtualBases() ? kNoEntity :
+					derived.current_member_owner_, owner));
+			references.Push(Instruction::CALL_PASS_VALUE);
+		}
 		std::size_t hidden = derived.VirtualBaseParameterCount(
 			destructor, binding.type);
-		const EntityId owner = binding.member_owner;
 		for (std::size_t base = 0; owner != kNoEntity &&
 			base < derived.program_.entities[owner].virtual_base_count &&
 			hidden != 0; ++base)
@@ -90,13 +97,25 @@ protected:
 			const VirtualBaseLayout& needed =
 				derived.program_.VirtualBase(owner, base);
 			Operand address;
-			if (base_subobject)
+			if (base_subobject && derived.HasCurrentImplicitVirtualBases())
 			{
 				if (derived.current_this_binding_ == kNoBinding ||
 					!derived.CurrentVirtualBaseAddress(
 						derived.current_this_binding_, needed.entity, &address))
 					throw std::logic_error(
 						"base destructor has no forwarded virtual-base address");
+			}
+			else if (base_subobject && derived.current_this_binding_ != kNoBinding &&
+				derived.current_member_owner_ != kNoEntity)
+			{
+				std::uint64_t offset = 0;
+				if (!derived.program_.FindVirtualBase(
+					derived.current_member_owner_, needed.entity, &offset))
+					throw std::logic_error(
+						"complete destructor has no virtual-base address");
+				const Operand complete = derived.LoadStorage(derived.StorageFor(
+					derived.current_this_binding_, LowPtr()), LowPtr());
+				address = derived.ProjectBaseSubobjectOffset(complete, offset);
 			}
 			else address = derived.ProjectBaseSubobjectOffset(
 				destination, needed.offset);

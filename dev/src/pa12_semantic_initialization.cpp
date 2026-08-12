@@ -2860,7 +2860,7 @@ void SemanticAnalyzer::AppendScopeDestructionActions(ScopeId scope,
 }
 
 void SemanticAnalyzer::AddDestructorSubobjectActions(EntityId entity,
-	std::uint32_t body)
+	BindingId active_destructor, std::uint32_t body)
 {
 	if (entity >= entity_data_members_.size())
 		throw std::logic_error("destructor is missing its member index");
@@ -2934,6 +2934,7 @@ void SemanticAnalyzer::AddDestructorSubobjectActions(EntityId entity,
 	{
 		const DirectBaseEdge& edge = program_->DirectBase(
 			entity, base_ordinal - 1);
+		if (edge.virtual_base) continue;
 		const EntityId base = edge.entity;
 		if (program_->entities[base].trivial_destructor) continue;
 		BindingId destructor = DestructorForType(program_->entities[base].type);
@@ -2941,11 +2942,34 @@ void SemanticAnalyzer::AddDestructorSubobjectActions(EntityId entity,
 			throw std::logic_error("base has no destructor identity");
 		if (!CanAccessMember(destructor, base))
 			throw std::runtime_error("inaccessible base destructor");
-		if (program_->bindings[destructor].virtual_function)
-			destructor = EnsureDestructorBaseEntry(destructor);
+		destructor = EnsureDestructorBaseEntry(destructor);
 		const std::uint32_t action = MakeDestructorAction(
 			program_->entities[base].type, destructor, kNoBinding, 1);
 		dump_.nodes[action].base_projection_offset = edge.offset;
+		dump_.nodes[action].has_base_projection_offset = true;
+		dump_.Add(body, action);
+		++destructor_subobject_action_visits_;
+	}
+	const bool base_entry = active_destructor != kNoBinding &&
+		program_->bindings[active_destructor].destructor_base_entry;
+	if (base_entry) return;
+	for (std::size_t ordinal = owner.virtual_base_count;
+		ordinal != 0; --ordinal)
+	{
+		const VirtualBaseLayout& layout =
+			program_->VirtualBase(entity, ordinal - 1);
+		const EntityId base = layout.entity;
+		if (program_->entities[base].trivial_destructor) continue;
+		BindingId destructor = DestructorForType(program_->entities[base].type);
+		if (destructor == kNoBinding)
+			throw std::logic_error("virtual base has no destructor identity");
+		if (!CanAccessMember(destructor, base))
+			throw std::runtime_error("inaccessible virtual base destructor");
+		DemandFunction(destructor);
+		destructor = EnsureDestructorBaseEntry(destructor, true);
+		const std::uint32_t action = MakeDestructorAction(
+			program_->entities[base].type, destructor, kNoBinding, 1);
+		dump_.nodes[action].base_projection_offset = layout.offset;
 		dump_.nodes[action].has_base_projection_offset = true;
 		dump_.Add(body, action);
 		++destructor_subobject_action_visits_;

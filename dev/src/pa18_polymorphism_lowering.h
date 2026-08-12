@@ -185,6 +185,12 @@ protected:
 		const pa12_semantic_detail::ClassPolymorphismFacts& facts =
 			derived.graph_.class_polymorphism[entity];
 		std::size_t physical_view = 1;
+		if (derived.HasCurrentConstructionVtt() &&
+			entity < derived.polymorphism_.class_construction_vtable_symbols.size())
+			for (std::size_t base = 0; base < derived.polymorphism_.
+				class_construction_vtable_symbols[entity].size(); ++base)
+				physical_view += derived.polymorphism_.
+					class_construction_vtable_symbols[entity][base].size();
 		for (std::size_t view = 0; view < facts.views.size(); ++view)
 		{
 			if (!facts.views[view].stores_vptr ||

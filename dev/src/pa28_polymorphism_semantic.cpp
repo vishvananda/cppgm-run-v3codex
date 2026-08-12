@@ -167,12 +167,17 @@ void SemanticAnalyzer::CompleteClassPolymorphism(EntityId entity)
 		const ClassPolymorphismFacts& inherited =
 			class_polymorphism_[edge.entity];
 		if (inherited.slots.empty() && inherited.views.empty()) continue;
-		if (!inherited.slots.empty())
+		// A secondary polymorphic base owns a physical address point even
+		// when all of its virtual functions live in a shared virtual base.
+		// Keep that physical view distinct from the inherited virtual view.
 		{
 			PolymorphicViewFact view(edge.entity,
 				static_cast<std::uint32_t>(ordinal));
 			view.slots = inherited.slots;
 			facts.views.push_back(view);
+		}
+		if (!inherited.slots.empty())
+		{
 			for (std::size_t i = 0; i < inherited.primary_ancestors.size(); ++i)
 			{
 				PolymorphicViewFact alias(inherited.primary_ancestors[i],
@@ -183,12 +188,27 @@ void SemanticAnalyzer::CompleteClassPolymorphism(EntityId entity)
 		}
 		for (std::size_t i = 0; i < inherited.views.size(); ++i)
 		{
+			if (inherited.views[i].virtual_base)
+			{
+				bool shared = false;
+				for (std::size_t existing = 0;
+					existing < facts.views.size(); ++existing)
+					if (facts.views[existing].virtual_base &&
+						facts.views[existing].entity == inherited.views[i].entity)
+					{
+						shared = true;
+						break;
+					}
+				if (shared) continue;
+			}
 			PolymorphicViewFact view = inherited.views[i];
 			view.direct_base_ordinal = static_cast<std::uint32_t>(ordinal);
 			view.relative_offset = inherited.views[i].offset;
 			facts.views.push_back(view);
 		}
 	}
+	std::stable_partition(facts.views.begin(), facts.views.end(),
+		[](const PolymorphicViewFact& view) { return !view.virtual_base; });
 
 	bool inherits_virtual_destructor = false;
 	for (std::size_t view = 0; view <= facts.views.size(); ++view)

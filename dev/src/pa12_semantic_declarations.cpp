@@ -2488,7 +2488,8 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 		PublishUsingAccess(alias, ordinary.ordinary, access);
 	(void)local;
 }
-BindingId SemanticAnalyzer::EnsureDestructorBaseEntry(BindingId destructor)
+BindingId SemanticAnalyzer::EnsureDestructorBaseEntry(BindingId destructor,
+	bool force_identity)
 {
 	destructor = program_->bindings[destructor].canonical;
 	if (program_->bindings[destructor].destructor_base_entry)
@@ -2496,33 +2497,38 @@ BindingId SemanticAnalyzer::EnsureDestructorBaseEntry(BindingId destructor)
 	if (destructor_base_entry_by_binding_.size() <= destructor)
 		destructor_base_entry_by_binding_.resize(
 			static_cast<std::size_t>(destructor) + 1, kNoBinding);
-	if (destructor_base_entry_by_binding_[destructor] != kNoBinding)
+	if (destructor_base_entry_by_binding_[destructor] != kNoBinding &&
+		(!force_identity ||
+		 destructor_base_entry_by_binding_[destructor] != destructor))
 		return destructor_base_entry_by_binding_[destructor];
-	if (program_->bindings[destructor].inline_function &&
-		!program_->bindings[destructor].virtual_function)
+	const BindingRecord& source_binding = program_->bindings[destructor];
+	if (!force_identity && source_binding.inline_function &&
+		!source_binding.virtual_function &&
+		(source_binding.member_owner == kNoEntity ||
+		 program_->entities[source_binding.member_owner].virtual_base_count == 0))
 	{
 		destructor_base_entry_by_binding_[destructor] = destructor;
 		return destructor;
 	}
 
-	const BindingRecord source_binding = program_->bindings[destructor];
+	const BindingRecord source_binding_copy = source_binding;
 	const FunctionInfo source_info = GetFunction(destructor);
-	if (!source_binding.destructor || !source_info.destructor)
+	if (!source_binding_copy.destructor || !source_info.destructor)
 		throw std::logic_error(
 			"destructor base entry requested for non-destructor");
 	const NameId generated_name = program_->names.Intern(
-		program_->names.Get(source_binding.name) + "__base_entry");
-	const BindingId base_entry = program_->AddBinding(source_binding.owner,
-		BIND_FUNCTION, generated_name, source_binding.type, false, 0,
+		program_->names.Get(source_binding_copy.name) + "__base_entry");
+	const BindingId base_entry = program_->AddBinding(source_binding_copy.owner,
+		BIND_FUNCTION, generated_name, source_binding_copy.type, false, 0,
 		NAMED_NONE, 0, kNoBinding, false);
 	BindingRecord& binding = program_->bindings[base_entry];
-	binding.member_owner = source_binding.member_owner;
-	binding.access_owner = source_binding.access_owner;
-	binding.overload_ordinal = source_binding.overload_ordinal;
-	binding.language_linkage = source_binding.language_linkage;
-	binding.storage_class = source_binding.storage_class;
-	binding.access = source_binding.access;
-	binding.nonthrowing = source_binding.nonthrowing;
+	binding.member_owner = source_binding_copy.member_owner;
+	binding.access_owner = source_binding_copy.access_owner;
+	binding.overload_ordinal = source_binding_copy.overload_ordinal;
+	binding.language_linkage = source_binding_copy.language_linkage;
+	binding.storage_class = source_binding_copy.storage_class;
+	binding.access = source_binding_copy.access;
+	binding.nonthrowing = source_binding_copy.nonthrowing;
 	binding.destructor = true;
 	binding.destructor_base_entry = true;
 
@@ -2938,7 +2944,7 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 					destructor_body);
 			AddDestructorSubobjectActions(
 				program_->bindings[info.binding].member_owner,
-				destructor_body);
+				info.binding, destructor_body);
 		}
 		else if (info.definition_body != kNoNode)
 			AnalyzeCompound(info.definition_body, function_scope, function);

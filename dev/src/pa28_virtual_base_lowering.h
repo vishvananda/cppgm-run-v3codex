@@ -164,7 +164,8 @@ protected:
 		const BindingRecord& binding =
 			derived.program_.bindings[function.binding];
 		return !binding.virtual_function &&
-			(!binding.constructor || binding.constructor_base_entry);
+			(!binding.constructor || binding.constructor_base_entry) &&
+			(!binding.destructor || binding.destructor_base_entry);
 	}
 
 	bool IncludesImplicitVirtualBases(BindingId binding) const
@@ -175,7 +176,8 @@ protected:
 		const BindingRecord& function = derived.program_.bindings[binding];
 		return function.member_owner != kNoEntity &&
 			!function.static_member_function && !function.virtual_function &&
-			(!function.constructor || function.constructor_base_entry);
+			(!function.constructor || function.constructor_base_entry) &&
+			(!function.destructor || function.destructor_base_entry);
 	}
 
 	bool IncludesConstructionVtt(BindingId binding) const
@@ -184,7 +186,8 @@ protected:
 		if (binding == kNoBinding || binding >= derived.program_.bindings.size())
 			return false;
 		const BindingRecord& function = derived.program_.bindings[binding];
-		if (!function.constructor || !function.constructor_base_entry ||
+		if (!((function.constructor && function.constructor_base_entry) ||
+			  (function.destructor && function.destructor_base_entry)) ||
 			function.member_owner == kNoEntity ||
 			function.member_owner >= derived.graph_.class_polymorphism.size() ||
 			derived.program_.entities[function.member_owner].virtual_base_count == 0)
@@ -800,28 +803,37 @@ protected:
 	Operand ConstructionVttArgument(EntityId complete, EntityId base)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
+		const EntityId owner = complete == kNoEntity ?
+			derived.current_member_owner_ : complete;
+		if (owner == kNoEntity)
+			throw std::logic_error("construction VTT has no owning class");
 		if (complete == kNoEntity)
 		{
 			if (!HasCurrentConstructionVtt())
 				throw std::logic_error("nested base constructor has no VTT");
-			return CurrentConstructionVtt();
+			if (base == owner) return CurrentConstructionVtt();
 		}
-		if (complete >= derived.polymorphism_.class_vtt_symbols.size() ||
-			derived.polymorphism_.class_vtt_symbols[complete] == kNoLowId)
+		if (complete != kNoEntity &&
+			(complete >= derived.polymorphism_.class_vtt_symbols.size() ||
+			 derived.polymorphism_.class_vtt_symbols[complete] == kNoLowId))
 			throw std::logic_error("complete constructor has no VTT symbol");
 		std::uint64_t offset = std::numeric_limits<std::uint64_t>::max();
-		const EntityRecord& owner = derived.program_.entities[complete];
-		for (std::size_t ordinal = 0; ordinal < owner.direct_base_count; ++ordinal)
-			if (derived.program_.DirectBase(complete, ordinal).entity == base &&
+		const EntityRecord& owner_record = derived.program_.entities[owner];
+		for (std::size_t ordinal = 0;
+			ordinal < owner_record.direct_base_count; ++ordinal)
+			if (derived.program_.DirectBase(owner, ordinal).entity == base &&
 				ordinal < derived.polymorphism_.class_construction_vtt_offsets[
-					complete].size())
+					owner].size())
 			{
 				offset = derived.polymorphism_.class_construction_vtt_offsets[
-					complete][ordinal];
+					owner][ordinal];
 				break;
 			}
 		if (offset == std::numeric_limits<std::uint64_t>::max())
 			throw std::logic_error("base constructor has no construction VTT slice");
+		if (complete == kNoEntity)
+			return derived.IndexAddress(LowI8(), CurrentConstructionVtt(),
+				Operand(static_cast<std::int64_t>(offset), LowI64()), false);
 		const SymbolId symbol =
 			derived.polymorphism_.class_vtt_symbols[complete];
 		derived.output_.symbols[symbol].referenced = true;
@@ -1008,7 +1020,7 @@ protected:
 		{
 			const bool implicit = member && i == 0;
 			EntityId owner = implicit ?
-				((!binding->constructor || binding->constructor_base_entry) ?
+				(IncludesImplicitVirtualBases(callee.binding) ?
 				 binding->member_owner : kNoEntity) :
 				(i < function.parameter_count ?
 					 VirtualBoundaryEntity(parameters[i]) : kNoEntity);

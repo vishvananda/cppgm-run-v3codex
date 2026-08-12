@@ -12,24 +12,21 @@ PA27 single-view programs retain their existing path.
 
 ## Current Failure Map
 
-Current: **41/42 PA28 tests pass** (turn baseline 38/42); PA1-PA27 and audit pass.
+Current: **42/42 PA28 tests pass** (turn baseline 38/42); PA1-PA27 and audit pass.
 
 | Shared behavior | Owner | Remaining |
 |---|---|---:|
-| Multi-level virtual-base construction/destruction views | lifecycle + VTT lowering | 1 |
+| None | — | 0 |
 
 ## Active Checkpoint
 
-**Complete/base lifecycle split.** Per `spec.md` §2/§6, semantic function facts
-own distinct complete- and base-object destructor identities and ordered
-subobject actions; ABI facts own canonical physical views and VTT slices;
-lowering only materializes those demanded identities. Construction/destruction
-data flows from the complete object's canonical layout through nested VTT
-slices and hidden virtual-base addresses, while the most-derived destructor
-alone tears down each virtual base. View/action discovery is O(V + E) once per
-class and lowering is O(A) in emitted lifecycle actions, with indexed identity
-lookups per §9. Validate the multi-level diamond witness, PA28, PA1-PA27, audit,
-and view/action/emission counters.
+**Stage complete.** The complete/base lifecycle boundary now follows
+`spec.md` §2/§6: semantic facts own canonical physical views, distinct
+destructor identities, and ordered actions; lowering recursively emits demanded
+VTT subtrees and forwards their indexed slices. The most-derived destructor
+alone tears down virtual bases. Discovery remains O(V + E) per class and
+lowering O(A) in emitted actions per §9. The diamond witness, PA28, PA1-PA27,
+audit, and scaling counters all pass.
 
 ## Performance Evidence
 
@@ -44,11 +41,15 @@ and view/action/emission counters.
 | diamond deleting sequence | 234 | 33 | 0 | 0/0 | 18/288 | 403,623 / 457,160 | 0.00 s / 6,828 KiB |
 | sibling dynamic cast | 210 | 27 | 43 | 10 misses/12 hits | 6/55 | 478,992 / 316,179 | 0.00 s / 6,732 KiB |
 | inverse static cast | 323 | 41 | 66 | 4 misses/13 hits | 7/87 | 540,821 / 335,970 | 0.00 s / 6,880 KiB |
+| multi-level lifecycle | 288 | 54 | 30 | 4 layout/6 boundary | 14/243 | 637,895 / 507,742 | 0.00 s / 6,816 KiB |
 
 Only definitions with a virtual-base boundary are scanned once; the layout-union
 callee carries one of three available ordinals while its forwarding caller
 carries all three. Adjusted destructor thunks are interned by target/adjustment
 in expected O(1); reverse-base EH suffixes scale with emitted cleanup volume.
+The multi-level diamond visits 11 layout edges for 4 unique virtual-base facts
+and emits 4 constructor-base plus 4 destructor-subobject actions, 24 vptr
+stores, and 28 vtable offset rows.
 
 ## Completed Checkpoints
 
@@ -62,3 +63,4 @@ in expected O(1); reverse-base EH suffixes scale with emitted cleanup volume.
 | Demand-shaped value/copy ABI and minimal address frontiers | 35/42; four focused witnesses exact, 3814/3814 prior tests, audit pass |
 | Pure and multi-view deleting destructor ABI | 38/42; three focused witnesses exact, hidden lifecycle calls arity-correct, 3814/3814 prior tests, audit pass |
 | Canonical cast control and RTTI hint | 41/42; three focused witnesses exact, 3814/3814 prior tests, audit pass |
+| Complete/base lifecycle split and recursive VTTs | 42/42; diamond lifecycle exact, 3814/3814 prior tests, audit pass |

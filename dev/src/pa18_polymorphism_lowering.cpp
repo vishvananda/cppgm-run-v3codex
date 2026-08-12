@@ -717,6 +717,42 @@ private:
 		return !facts.slots.empty() || !facts.views.empty();
 	}
 
+	SymbolId RegisterConstructionVtable(EntityId complete, EntityId base,
+		std::uint64_t offset, std::size_t physical)
+	{
+		const std::string name = ClassStem(complete) +
+			"____construction__" + ClassStem(base) + "__" +
+			std::to_string(offset) + "__s" +
+			std::to_string(physical) + "__vtable";
+		return AddPolymorphicGlobal(name, "@" + name,
+			VtableHasWeakLinkage(complete));
+	}
+
+	void RegisterConstructionSubtree(EntityId complete, EntityId base,
+		std::uint64_t offset, std::vector<SymbolId>* symbols,
+		std::uint64_t* vtt_offset)
+	{
+		const ClassPolymorphismFacts& facts = graph_.class_polymorphism[base];
+		symbols->push_back(RegisterConstructionVtable(complete, base, offset, 0));
+		*vtt_offset += 8;
+		const EntityRecord& owner = program_.entities[base];
+		for (std::size_t ordinal = 0; ordinal < owner.direct_base_count; ++ordinal)
+		{
+			const DirectBaseEdge& edge = program_.DirectBase(base, ordinal);
+			if (!ConstructionBaseEligible(edge)) continue;
+			RegisterConstructionSubtree(complete, edge.entity,
+				offset + edge.offset, symbols, vtt_offset);
+		}
+		std::size_t physical = 1;
+		for (std::size_t view = 0; view < facts.views.size(); ++view)
+			if (facts.views[view].stores_vptr)
+			{
+				symbols->push_back(RegisterConstructionVtable(
+					complete, base, offset, physical++));
+				*vtt_offset += 8;
+			}
+	}
+
 	void RegisterConstructionVtables(EntityId entity)
 	{
 		std::uint64_t vtt_offset = 8;
@@ -726,25 +762,11 @@ private:
 		{
 			const DirectBaseEdge& edge = program_.DirectBase(entity, ordinal);
 			if (!ConstructionBaseEligible(edge)) continue;
-			const ClassPolymorphismFacts& base =
-				graph_.class_polymorphism[edge.entity];
 			std::vector<SymbolId>& symbols =
 				state_.class_construction_vtable_symbols[entity][ordinal];
-			std::size_t physical_views = 1;
-			for (std::size_t view = 0; view < base.views.size(); ++view)
-				if (base.views[view].stores_vptr) ++physical_views;
-			symbols.assign(physical_views, kNoLowId);
 			state_.class_construction_vtt_offsets[entity][ordinal] = vtt_offset;
-			for (std::size_t view = 0; view < physical_views; ++view)
-			{
-				const std::string name = ClassStem(entity) +
-					"____construction__" + ClassStem(edge.entity) + "__" +
-					std::to_string(edge.offset) + "__s" +
-					std::to_string(view) + "__vtable";
-				symbols[view] = AddPolymorphicGlobal(name, "@" + name,
-					VtableHasWeakLinkage(entity));
-				vtt_offset += 8;
-			}
+			RegisterConstructionSubtree(
+				entity, edge.entity, edge.offset, &symbols, &vtt_offset);
 			DemandRtti(program_.entities[edge.entity].type);
 		}
 	}
@@ -1097,6 +1119,77 @@ private:
 		if (stats_) ++stats_->globals;
 	}
 
+	void EmitConstructionSubtree(EntityId complete, EntityId base_entity,
+		std::uint64_t base_offset, const std::vector<SymbolId>& symbols,
+		std::size_t* cursor)
+	{
+		const EntityRecord& base_owner = program_.entities[base_entity];
+		const ClassPolymorphismFacts& base =
+			graph_.class_polymorphism[base_entity];
+		if (*cursor >= symbols.size())
+			throw std::logic_error("construction vtable subtree is truncated");
+		std::vector<std::int64_t> offsets;
+		for (std::size_t virtual_base = 0;
+			virtual_base < base_owner.virtual_base_count; ++virtual_base)
+		{
+			std::uint64_t complete_offset = 0;
+			if (!program_.FindVirtualBase(complete, program_.VirtualBase(
+				base_entity, virtual_base).entity, &complete_offset))
+				throw std::logic_error(
+					"construction vtable has no complete virtual base");
+			offsets.push_back(static_cast<std::int64_t>(complete_offset) -
+				static_cast<std::int64_t>(base_offset));
+		}
+		const std::vector<std::int64_t> no_virtual_call_offsets;
+		EmitVtableView(base_entity, base_entity, symbols[(*cursor)++],
+			base_offset, base.slots, offsets,
+			base_offset == 0 ? base.virtual_call_offsets : no_virtual_call_offsets,
+			state_.class_view_slot_symbols[base_entity][0],
+			state_.class_view_deleting_slot_symbols[base_entity][0]);
+		for (std::size_t ordinal = 0;
+			ordinal < base_owner.direct_base_count; ++ordinal)
+		{
+			const DirectBaseEdge& edge = program_.DirectBase(base_entity, ordinal);
+			if (!ConstructionBaseEligible(edge)) continue;
+			EmitConstructionSubtree(complete, edge.entity,
+				base_offset + edge.offset, symbols, cursor);
+		}
+		for (std::size_t view = 0; view < base.views.size(); ++view)
+		{
+			if (!base.views[view].stores_vptr) continue;
+			if (*cursor >= symbols.size())
+				throw std::logic_error("construction view subtree is truncated");
+			std::uint64_t complete_view_offset =
+				base_offset + base.views[view].offset;
+			if (base.views[view].virtual_base && !program_.FindVirtualBase(
+				complete, base.views[view].entity, &complete_view_offset))
+				throw std::logic_error(
+					"construction view has no complete virtual base");
+			std::vector<std::int64_t> view_offsets;
+			const EntityRecord& view_owner =
+				program_.entities[base.views[view].entity];
+			for (std::size_t virtual_base = 0;
+				virtual_base < view_owner.virtual_base_count; ++virtual_base)
+			{
+				std::uint64_t complete_offset = 0;
+				if (!program_.FindVirtualBase(complete, program_.VirtualBase(
+					base.views[view].entity, virtual_base).entity,
+					&complete_offset))
+					throw std::logic_error(
+						"construction view has no nested virtual base");
+				view_offsets.push_back(
+					static_cast<std::int64_t>(complete_offset) -
+					static_cast<std::int64_t>(complete_view_offset));
+			}
+			EmitVtableView(base_entity, base.views[view].entity,
+				symbols[(*cursor)++], complete_view_offset,
+				base.views[view].slots, view_offsets,
+				base.views[view].virtual_call_offsets,
+				state_.class_view_slot_symbols[base_entity][view + 1],
+				state_.class_view_deleting_slot_symbols[base_entity][view + 1]);
+		}
+	}
+
 	void EmitConstructionVtables(EntityId entity)
 	{
 		const EntityRecord& complete = program_.entities[entity];
@@ -1107,60 +1200,44 @@ private:
 				state_.class_construction_vtable_symbols[entity][ordinal];
 			if (symbols.empty()) continue;
 			const DirectBaseEdge& edge = program_.DirectBase(entity, ordinal);
-			const EntityId base_entity = edge.entity;
-			const EntityRecord& base_owner = program_.entities[base_entity];
-			const ClassPolymorphismFacts& base =
-				graph_.class_polymorphism[base_entity];
-			std::vector<std::int64_t> offsets;
-			for (std::size_t virtual_base = 0;
-				virtual_base < base_owner.virtual_base_count; ++virtual_base)
-			{
-				std::uint64_t complete_offset = 0;
-				if (!program_.FindVirtualBase(entity, program_.VirtualBase(
-					base_entity, virtual_base).entity, &complete_offset))
-					throw std::logic_error(
-						"construction vtable has no complete virtual base");
-				offsets.push_back(static_cast<std::int64_t>(complete_offset) -
-					static_cast<std::int64_t>(edge.offset));
-			}
-			EmitVtableView(base_entity, base_entity, symbols[0], 0,
-				base.slots, offsets, base.virtual_call_offsets,
-				state_.class_view_slot_symbols[base_entity][0],
-				state_.class_view_deleting_slot_symbols[base_entity][0]);
-			std::size_t physical = 1;
-			for (std::size_t view = 0; view < base.views.size(); ++view)
-			{
-				if (!base.views[view].stores_vptr) continue;
-				std::uint64_t complete_view_offset = edge.offset +
-					base.views[view].offset;
-				if (base.views[view].virtual_base && !program_.FindVirtualBase(
-					entity, base.views[view].entity, &complete_view_offset))
-					throw std::logic_error(
-						"construction view has no complete virtual base");
-				std::vector<std::int64_t> view_offsets;
-				const EntityRecord& view_owner =
-					program_.entities[base.views[view].entity];
-				for (std::size_t virtual_base = 0;
-					virtual_base < view_owner.virtual_base_count; ++virtual_base)
-				{
-					std::uint64_t complete_offset = 0;
-					if (!program_.FindVirtualBase(entity, program_.VirtualBase(
-						base.views[view].entity, virtual_base).entity,
-						&complete_offset))
-						throw std::logic_error(
-							"construction view has no nested virtual base");
-					view_offsets.push_back(
-						static_cast<std::int64_t>(complete_offset) -
-						static_cast<std::int64_t>(complete_view_offset));
-				}
-				EmitVtableView(base_entity, base.views[view].entity,
-					symbols[physical++], complete_view_offset - edge.offset,
-					base.views[view].slots, view_offsets,
-					base.views[view].virtual_call_offsets,
-					state_.class_view_slot_symbols[base_entity][view + 1],
-					state_.class_view_deleting_slot_symbols[base_entity][view + 1]);
-			}
+			std::size_t cursor = 0;
+			EmitConstructionSubtree(
+				entity, edge.entity, edge.offset, symbols, &cursor);
+			if (cursor != symbols.size())
+				throw std::logic_error("construction vtable subtree is oversized");
 		}
+	}
+
+	void AddConstructionVttSubtree(Global* vtt, EntityId base_entity,
+		std::uint64_t base_offset, const std::vector<SymbolId>& symbols,
+		std::size_t* cursor)
+	{
+		const ClassPolymorphismFacts& base =
+			graph_.class_polymorphism[base_entity];
+		if (*cursor >= symbols.size())
+			throw std::logic_error("construction VTT subtree is truncated");
+		const std::uint64_t address_point = base_offset == 0 ?
+			base.address_point : base.address_point -
+				base.virtual_call_offsets.size() * 8;
+		AddAddressItem(vtt, symbols[(*cursor)++],
+			static_cast<std::int64_t>(address_point));
+		const EntityRecord& owner = program_.entities[base_entity];
+		for (std::size_t ordinal = 0; ordinal < owner.direct_base_count; ++ordinal)
+		{
+			const DirectBaseEdge& edge = program_.DirectBase(base_entity, ordinal);
+			if (ConstructionBaseEligible(edge))
+				AddConstructionVttSubtree(vtt, edge.entity,
+					base_offset + edge.offset, symbols, cursor);
+		}
+		for (std::size_t view = 0; view < base.views.size(); ++view)
+			if (base.views[view].stores_vptr)
+			{
+				if (*cursor >= symbols.size())
+					throw std::logic_error(
+						"construction VTT view subtree is truncated");
+				AddAddressItem(vtt, symbols[(*cursor)++],
+					static_cast<std::int64_t>(base.views[view].address_point));
+			}
 	}
 
 	void EmitVtt(EntityId entity, const ClassPolymorphismFacts& facts)
@@ -1180,16 +1257,12 @@ private:
 				state_.class_construction_vtable_symbols[entity][ordinal];
 			if (construction.empty()) continue;
 			const EntityId base = program_.DirectBase(entity, ordinal).entity;
-			const ClassPolymorphismFacts& base_facts =
-				graph_.class_polymorphism[base];
-			std::size_t physical = 0;
-			AddAddressItem(&vtt, construction[physical++],
-				static_cast<std::int64_t>(base_facts.address_point));
-			for (std::size_t view = 0; view < base_facts.views.size(); ++view)
-				if (base_facts.views[view].stores_vptr)
-					AddAddressItem(&vtt, construction[physical++],
-						static_cast<std::int64_t>(
-							base_facts.views[view].address_point));
+			std::size_t cursor = 0;
+			AddConstructionVttSubtree(&vtt, base,
+				program_.DirectBase(entity, ordinal).offset,
+				construction, &cursor);
+			if (cursor != construction.size())
+				throw std::logic_error("construction VTT subtree is oversized");
 		}
 		for (std::size_t view = 0; view < facts.views.size(); ++view)
 		{

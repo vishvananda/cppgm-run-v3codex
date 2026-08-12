@@ -1235,7 +1235,8 @@ private:
 		const std::vector<BindingId>& constructors,
 		const std::vector<std::size_t>& template_patterns);
 	BindingId EnsureConstructorBaseEntry(BindingId constructor);
-	BindingId EnsureDestructorBaseEntry(BindingId destructor);
+	BindingId EnsureDestructorBaseEntry(BindingId destructor,
+		bool force_identity = false);
 	void EnsureStaticMemberStorage(BindingId member,
 		bool constant_storage = false);
 	void DemandStaticConstantInitializerDependencies(BindingId member);
@@ -1335,7 +1336,8 @@ private:
 	bool InitializationActionsAreNonthrowing(std::uint32_t body);
 	void AddDefaultConstructor(std::uint32_t variable, BindingId binding,
 		TypeId type);
-	void AddDestructorSubobjectActions(EntityId entity, std::uint32_t body);
+	void AddDestructorSubobjectActions(EntityId entity, BindingId destructor,
+		std::uint32_t body);
 	ScopeId CompoundCleanupStop(ScopeId scope) const;
 	void AddLifetimeObligation(ScopeId scope, BindingId object, TypeId type,
 		bool allow_elision = true);
