@@ -162,7 +162,7 @@ LowIRLoweringStats::LowIRLoweringStats()
 	: source_bytes(0), semantic(), lowered_nodes(0), functions(0), globals(0),
 	  blocks(0), instructions(0), binding_index_probes(0),
 	  slot_implicit_object_fact_reads(0),
-	  virtual_calls(0), vptr_stores(0), vtable_slots(0),
+	  virtual_calls(0), vptr_stores(0), vtable_offset_rows(0), vtable_slots(0),
 	  deleting_destructors(0), rtti_graph_nodes_visited(0),
 	  rtti_demand_requests(0), rtti_types_demanded(0),
 	  rtti_symbol_lookups(0), rtti_base_dependency_visits(0),

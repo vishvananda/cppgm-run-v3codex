@@ -1049,8 +1049,7 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	const std::vector<ExpressionInfo>& arguments,
 	const ExpressionInfo* object, TypeId target, EntityId naming_class,
 	const ObjectConversionFact* object_conversion,
-	const std::vector<CallConversionFact>* argument_conversions,
-	bool suppress_virtual_dispatch)
+	const std::vector<CallConversionFact>* argument_conversions, bool suppress_virtual_dispatch)
 {
 	if (GetFunction(selected).deleted_function ||
 		GetFunction(selected).deleted_special_member)
@@ -1099,10 +1098,11 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	{
 		dump_.nodes[call].virtual_call = true;
 		dump_.nodes[call].virtual_slot = virtual_slot;
+		if (object_class != kNoEntity &&
+			program_->entities[object_class].virtual_base_count != 0) MarkVtableDemand(object_class);
 	}
 	dump_.nodes[call].user_conversion_call = function.conversion_function;
-	dump_.nodes[call].explicit_user_conversion_call =
-		function.conversion_function && function.explicit_conversion;
+	dump_.nodes[call].explicit_user_conversion_call = function.conversion_function && function.explicit_conversion;
 	const std::uint32_t callee = MakeDump(DUMP_CALLEE, callable_type,
 		VALUE_NONE, function.display_name, emission_binding);
 	dump_.Add(call, callee);

@@ -989,6 +989,7 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << stats.slot_implicit_object_fact_reads
 			 << " virtual_calls=" << stats.virtual_calls
 			 << " vptr_stores=" << stats.vptr_stores
+			 << " vtable_offset_rows=" << stats.vtable_offset_rows
 			 << " vtable_slots=" << stats.vtable_slots
 			 << " deleting_destructors=" << stats.deleting_destructors
 			 << " rtti_graph_nodes_visited="

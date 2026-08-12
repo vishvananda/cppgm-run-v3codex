@@ -188,6 +188,9 @@ protected:
 		const Operand address = derived.IsClassObjectType(source.type) ?
 			derived.AddressOfStorage(derived.LowerStorage(child)) :
 			derived.LowerValue(child, LowPtr());
+		if (target_entity != kNoEntity &&
+			derived.RuntimeVirtualBaseAddressForExpression(
+				child, address, target_entity, &inherited)) return inherited;
 		TypeId source_shape = derived.program_.types.RemoveTopCv(source.type);
 		const bool pointer_source =
 			derived.program_.types.Get(source_shape).kind == TYPE_POINTER;

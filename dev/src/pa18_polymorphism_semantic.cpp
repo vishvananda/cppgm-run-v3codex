@@ -129,13 +129,17 @@ bool SemanticAnalyzer::VirtualSignatureMatches(BindingId derived,
 
 void SemanticAnalyzer::MarkVtableDemand(EntityId entity)
 {
-	DemandClassTemplateMemberDefinitions(entity);
-	for (std::size_t depth = 0; entity != kNoEntity &&
-		depth <= program_->entities.size(); ++depth)
+	std::vector<std::uint8_t> visited(program_->entities.size(), 0);
+	std::vector<EntityId> pending(1, entity);
+	while (!pending.empty())
 	{
-		if (entity >= class_polymorphism_.size()) return;
-		ClassPolymorphismFacts& facts = class_polymorphism_[entity];
-		if (!facts.complete) return;
+		const EntityId current = pending.back();
+		pending.pop_back();
+		if (current >= class_polymorphism_.size() || visited[current]) continue;
+		visited[current] = 1;
+		DemandClassTemplateMemberDefinitions(current);
+		ClassPolymorphismFacts& facts = class_polymorphism_[current];
+		if (!facts.complete) continue;
 		if (!facts.vtable_demanded)
 		{
 			facts.vtable_demanded = true;
@@ -148,7 +152,7 @@ void SemanticAnalyzer::MarkVtableDemand(EntityId entity)
 				for (std::size_t slot = 0; slot < slots.size(); ++slot)
 				{
 					if (!program_->bindings[slots[slot].function].pure_virtual)
-						DemandFunction(slots[slot].function);
+						DemandVtableFunction(slots[slot].function);
 					has_virtual_destructor = has_virtual_destructor ||
 						program_->bindings[slots[slot].function].destructor;
 				}
@@ -156,7 +160,7 @@ void SemanticAnalyzer::MarkVtableDemand(EntityId entity)
 			if (has_virtual_destructor)
 			{
 					BindingId deallocation = kNoBinding;
-					const LookupResult found = program_->LookupMember(entity,
+					const LookupResult found = program_->LookupMember(current,
 						program_->names.Intern("operatordelete"), LOOKUP_ORDINARY);
 					if (found.ordinary != kNoBinding)
 					{
@@ -182,7 +186,18 @@ void SemanticAnalyzer::MarkVtableDemand(EntityId entity)
 					DemandFunction(deallocation);
 			}
 		}
-		entity = program_->entities[entity].direct_base;
+		for (std::size_t view = 0; view <= facts.views.size(); ++view)
+		{
+			const std::vector<VirtualSlotFact>& slots = view == 0 ?
+				facts.slots : facts.views[view - 1].slots;
+			for (std::size_t slot = 0; slot < slots.size(); ++slot)
+			{
+				const EntityId owner =
+					program_->bindings[slots[slot].function].member_owner;
+				if (owner != kNoEntity && owner != current)
+					pending.push_back(owner);
+			}
+		}
 	}
 }
 

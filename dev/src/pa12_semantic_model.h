@@ -945,8 +945,13 @@ struct PolymorphicViewFact
 {
 	EntityId entity;
 	std::uint32_t direct_base_ordinal;
+	std::uint32_t virtual_base_ordinal;
 	std::uint64_t relative_offset, offset;
+	std::uint64_t address_point;
 	bool stores_vptr;
+	bool virtual_base;
+	std::vector<std::int64_t> virtual_base_offsets;
+	std::vector<std::int64_t> virtual_call_offsets;
 	std::vector<VirtualSlotFact> slots;
 
 	PolymorphicViewFact(EntityId entity_value = kNoEntity,
@@ -954,8 +959,9 @@ struct PolymorphicViewFact
 		std::uint64_t relative_offset_value = 0, bool stores_vptr_value = true)
 		: entity(entity_value),
 		  direct_base_ordinal(direct_base_ordinal_value),
-		  relative_offset(relative_offset_value), offset(0),
-		  stores_vptr(stores_vptr_value) {}
+		  virtual_base_ordinal(kNoDumpEdge),
+		  relative_offset(relative_offset_value), offset(0), address_point(16),
+		  stores_vptr(stores_vptr_value), virtual_base(false) {}
 };
 
 struct ClassPolymorphismFacts
@@ -963,10 +969,14 @@ struct ClassPolymorphismFacts
 	std::vector<VirtualSlotFact> slots;
 	std::vector<EntityId> primary_ancestors;
 	std::vector<PolymorphicViewFact> views;
+	std::vector<std::int64_t> virtual_base_offsets;
+	std::vector<std::int64_t> virtual_call_offsets;
+	std::uint64_t address_point;
 	bool complete;
 	bool vtable_demanded;
 
-	ClassPolymorphismFacts() : complete(false), vtable_demanded(false) {}
+	ClassPolymorphismFacts()
+		: address_point(16), complete(false), vtable_demanded(false) {}
 };
 
 struct TemplateParameter

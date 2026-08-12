@@ -301,6 +301,12 @@ void SemanticAnalyzer::FinalizeClassPolymorphismViews(EntityId entity)
 {
 	if (entity >= class_polymorphism_.size()) return;
 	ClassPolymorphismFacts& facts = class_polymorphism_[entity];
+	facts.virtual_base_offsets.clear();
+	facts.virtual_call_offsets.clear();
+	const EntityRecord& owner = program_->entities[entity];
+	for (std::size_t base = 0; base < owner.virtual_base_count; ++base)
+		facts.virtual_base_offsets.push_back(static_cast<std::int64_t>(
+			program_->VirtualBase(entity, base).offset));
 	for (std::size_t view = 0; view < facts.views.size(); ++view)
 	{
 		PolymorphicViewFact& current = facts.views[view];
@@ -310,7 +316,41 @@ void SemanticAnalyzer::FinalizeClassPolymorphismViews(EntityId entity)
 		const DirectBaseEdge& edge = program_->DirectBase(
 			entity, current.direct_base_ordinal);
 		current.offset = edge.offset + current.relative_offset;
+		current.virtual_base = false;
+		current.virtual_base_ordinal = kNoDumpEdge;
+		current.virtual_base_offsets.clear();
+		current.virtual_call_offsets.clear();
+		for (std::size_t base = 0; base < owner.virtual_base_count; ++base)
+		{
+			const VirtualBaseLayout& layout = program_->VirtualBase(entity, base);
+			if (layout.entity == current.entity && layout.offset == current.offset)
+			{
+				current.virtual_base = true;
+				current.virtual_base_ordinal = static_cast<std::uint32_t>(base);
+			}
+		}
+		const EntityRecord& view_owner = program_->entities[current.entity];
+		for (std::size_t base = 0; base < view_owner.virtual_base_count; ++base)
+		{
+			const EntityId target =
+				program_->VirtualBase(current.entity, base).entity;
+			std::uint64_t target_offset = 0;
+			if (!program_->FindVirtualBase(entity, target, &target_offset))
+				throw std::logic_error("view virtual base has no complete offset");
+			current.virtual_base_offsets.push_back(
+				static_cast<std::int64_t>(target_offset) -
+				static_cast<std::int64_t>(current.offset));
+		}
+		if (current.virtual_base)
+			current.virtual_call_offsets.assign(current.slots.size(), 0);
+		current.address_point = 8 * (current.virtual_base_offsets.size() +
+			current.virtual_call_offsets.size() + 2);
+		if (current.stores_vptr && current.virtual_base)
+			facts.virtual_call_offsets.insert(facts.virtual_call_offsets.end(),
+				current.slots.size(), 0);
 	}
+	facts.address_point = 8 * (facts.virtual_base_offsets.size() +
+		facts.virtual_call_offsets.size() + 2);
 	for (std::size_t view = 0; view <= facts.views.size(); ++view)
 	{
 		std::vector<VirtualSlotFact>& slots = SlotsForView(&facts, view);

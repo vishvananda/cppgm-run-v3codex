@@ -2769,6 +2769,20 @@ void SemanticAnalyzer::DemandRuntimeFunction(BindingId binding)
 	demanded_functions_.push_back(binding);
 	++demand_worklist_pushes_;
 }
+void SemanticAnalyzer::DemandVtableFunction(BindingId binding)
+{
+	if (binding == kNoBinding) return;
+	DemandRuntimeFunction(binding);
+	binding = program_->bindings[binding].canonical;
+	if (binding >= function_fact_by_binding_.size() ||
+		function_fact_by_binding_[binding] == kNoDumpEdge) return;
+	FunctionInfo& function = GetMutableFunction(binding);
+	if (function.deferred || function.demand_state != 0 ||
+		function.member_owner == kNoType) return;
+	function.demand_state = 1;
+	demanded_functions_.push_back(binding);
+	++demand_worklist_pushes_;
+}
 TypeId SemanticAnalyzer::AdaptMemberFunctionType(BindingId binding)
 {
 	const FunctionInfo& function = GetFunction(binding);

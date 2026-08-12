@@ -91,7 +91,8 @@ protected:
 		if (!HasImplicitObjectBoundary(function)) return false;
 		const BindingRecord& binding =
 			derived.program_.bindings[function.binding];
-		return !binding.constructor || binding.constructor_base_entry;
+		return !binding.virtual_function &&
+			(!binding.constructor || binding.constructor_base_entry);
 	}
 
 	std::size_t HiddenVirtualBaseParameterCount(std::uint32_t node) const
@@ -374,20 +375,50 @@ protected:
 		return false;
 	}
 
-	Operand RuntimeVirtualBaseAddress(const Operand& view,
+	Operand RuntimeVirtualBaseAddress(const Operand& view, EntityId owner,
 		std::size_t virtual_base_ordinal)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if ((view.kind == Operand::INTEGER && view.integer_value == 0) ||
 			view.kind == Operand::NULL_POINTER)
 			return Operand(0, LowPtr());
+		if (owner >= derived.graph_.class_polymorphism.size() ||
+			virtual_base_ordinal >=
+				derived.graph_.class_polymorphism[owner].virtual_base_offsets.size())
+			throw std::logic_error("runtime virtual-base row is unavailable");
 		const Operand vtable = derived.LoadStorage(view, LowPtr());
-		const std::int64_t row = -24 -
-			static_cast<std::int64_t>(virtual_base_ordinal) * 8;
+		const ClassPolymorphismFacts& facts =
+			derived.graph_.class_polymorphism[owner];
+		const std::int64_t row = -static_cast<std::int64_t>(
+			facts.address_point) + static_cast<std::int64_t>(
+			virtual_base_ordinal) * 8;
 		const Operand entry = derived.IndexAddress(
 			LowI8(), vtable, Operand(row, LowI64()), false);
 		const Operand offset = derived.LoadStorage(entry, LowI64());
 		return derived.IndexAddress(LowI8(), view, offset, false);
+	}
+
+	bool RuntimeVirtualBaseAddressForExpression(std::uint32_t expression,
+		const Operand& view, EntityId target, Operand* address)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const EntityId owner = derived.BaseEntityForType(
+			derived.arena_.nodes[expression].type);
+		if (owner == kNoEntity ||
+			owner >= derived.graph_.class_polymorphism.size() ||
+			(derived.graph_.class_polymorphism[owner].slots.empty() &&
+			 derived.graph_.class_polymorphism[owner].views.empty())) return false;
+		const EntityRecord& record = derived.program_.entities[owner];
+		for (std::size_t ordinal = 0;
+			ordinal < record.virtual_base_count; ++ordinal)
+		{
+			if (derived.program_.VirtualBase(owner, ordinal).entity != target)
+				continue;
+			*address = derived.ProjectBaseSubobjectOffset(
+				RuntimeVirtualBaseAddress(view, owner, ordinal), 0);
+			return true;
+		}
+		return false;
 	}
 
 	Operand VirtualBaseCallAddress(std::uint32_t expression,
@@ -406,7 +437,7 @@ protected:
 		if (source == owner &&
 			derived.arena_.nodes[expression].kind != DUMP_CAST_EXPRESSION)
 			return derived.ProjectBaseSubobjectOffset(view, layout.offset);
-		return RuntimeVirtualBaseAddress(view, ordinal);
+		return RuntimeVirtualBaseAddress(view, owner, ordinal);
 	}
 
 	void AppendCallVirtualBaseArguments(const DumpNode& callee,

@@ -80,8 +80,12 @@ private:
 		state_.source_function_first = output_.functions.size();
 		const std::size_t count = program_.entities.size();
 		state_.class_vtable_symbols.assign(count, kNoLowId);
+		state_.class_vtt_symbols.assign(count, kNoLowId);
+		state_.class_vtable_address_points.assign(count, 16);
 		state_.class_view_vtable_symbols.clear();
 		state_.class_view_vtable_symbols.resize(count);
+		state_.class_view_address_points.clear();
+		state_.class_view_address_points.resize(count);
 		state_.class_view_slot_symbols.clear();
 		state_.class_view_slot_symbols.resize(count);
 		state_.class_view_deleting_slot_symbols.clear();
@@ -94,6 +98,12 @@ private:
 				graph_.class_polymorphism[entity];
 			state_.class_view_vtable_symbols[entity].assign(
 				facts.views.size(), kNoLowId);
+			state_.class_vtable_address_points[entity] = facts.address_point;
+			state_.class_view_address_points[entity].assign(
+				facts.views.size(), 16);
+			for (std::size_t view = 0; view < facts.views.size(); ++view)
+				state_.class_view_address_points[entity][view] =
+					facts.views[view].address_point;
 			state_.class_view_slot_symbols[entity].resize(
 				facts.views.size() + 1);
 			state_.class_view_deleting_slot_symbols[entity].resize(
@@ -642,6 +652,13 @@ private:
 		state_.class_vtable_symbols[entity] = AddPolymorphicGlobal(
 			VtableName(entity), "_ZTV" + TypeInfoEncoding(entity),
 			VtableHasWeakLinkage(entity));
+		if (program_.entities[entity].virtual_base_count != 0)
+		{
+			state_.class_vtt_symbols[entity] = AddPolymorphicGlobal(
+				ClassStem(entity) + "____vtt",
+				"_ZTT" + TypeInfoEncoding(entity), true);
+			output_.symbols[state_.class_vtt_symbols[entity]].object_output_root = true;
+		}
 		for (std::size_t slot = 0; slot < facts.slots.size(); ++slot)
 		{
 			state_.class_view_slot_symbols[entity][0][slot] =
@@ -677,7 +694,8 @@ private:
 		{
 			const ClassPolymorphismFacts& facts =
 				graph_.class_polymorphism[entity];
-			if (!facts.vtable_demanded || facts.slots.empty()) continue;
+			if (!facts.vtable_demanded ||
+				(facts.slots.empty() && facts.views.empty())) continue;
 			DemandRtti(program_.entities[entity].type);
 			for (std::size_t slot = 0; slot < facts.slots.size(); ++slot)
 			{
@@ -915,6 +933,8 @@ private:
 
 	void EmitVtableView(EntityId entity, SymbolId symbol,
 		std::uint64_t offset, const std::vector<VirtualSlotFact>& slots,
+		const std::vector<std::int64_t>& virtual_base_offsets,
+		const std::vector<std::int64_t>& virtual_call_offsets,
 		const std::vector<SymbolId>& targets,
 		const std::vector<SymbolId>& deleting_targets)
 	{
@@ -924,6 +944,12 @@ private:
 		Global vtable;
 		vtable.symbol = symbol;
 		vtable.initializer_kind = Global::STRUCTURED_VALUE;
+		for (std::size_t row = 0; row < virtual_base_offsets.size(); ++row)
+			AddIntegerItem(&vtable, LowI64(), virtual_base_offsets[row]);
+		for (std::size_t row = 0; row < virtual_call_offsets.size(); ++row)
+			AddIntegerItem(&vtable, LowI64(), virtual_call_offsets[row]);
+		if (stats_) stats_->vtable_offset_rows +=
+			virtual_base_offsets.size() + virtual_call_offsets.size();
 		AddIntegerItem(&vtable, LowI64(),
 			-static_cast<std::int64_t>(offset));
 		AddAddressItem(&vtable, state_.class_rtti_symbols[entity]);
@@ -939,6 +965,39 @@ private:
 		}
 		output_.globals.push_back(vtable);
 		if (stats_) ++stats_->globals;
+	}
+
+	void EmitVtt(EntityId entity, const ClassPolymorphismFacts& facts)
+	{
+		const SymbolId symbol = state_.class_vtt_symbols[entity];
+		if (symbol == kNoLowId) return;
+		Global vtt;
+		vtt.symbol = symbol;
+		vtt.initializer_kind = Global::STRUCTURED_VALUE;
+		AddAddressItem(&vtt, state_.class_vtable_symbols[entity],
+			static_cast<std::int64_t>(facts.address_point));
+		for (std::size_t view = 0; view < facts.views.size(); ++view)
+		{
+			if (!facts.views[view].stores_vptr) continue;
+			AddAddressItem(&vtt,
+				state_.class_view_vtable_symbols[entity][view],
+				static_cast<std::int64_t>(facts.views[view].address_point));
+		}
+		output_.globals.push_back(vtt);
+		if (stats_) ++stats_->globals;
+	}
+
+	std::int64_t VirtualBaseRttiRow(EntityId entity, EntityId target) const
+	{
+		if (entity >= graph_.class_polymorphism.size()) return -24;
+		const EntityRecord& owner = program_.entities[entity];
+		for (std::size_t ordinal = 0;
+			ordinal < owner.virtual_base_count; ++ordinal)
+			if (program_.VirtualBase(entity, ordinal).entity == target)
+				return -static_cast<std::int64_t>(
+					graph_.class_polymorphism[entity].address_point) +
+					static_cast<std::int64_t>(ordinal) * 8;
+		return -24;
 	}
 
 	void EmitGlobals()
@@ -986,7 +1045,8 @@ private:
 					const std::int64_t public_flag =
 						edge.access == ACCESS_PUBLIC ? 2 : 0;
 					const std::int64_t flags = edge.virtual_base ?
-						static_cast<std::int64_t>(-32 * 256 + 1 + public_flag) :
+						VirtualBaseRttiRow(entity, edge.entity) * 256 +
+							1 + public_flag :
 						static_cast<std::int64_t>(edge.offset * 256 + public_flag);
 					AddIntegerItem(&rtti, LowI64(), flags);
 				}
@@ -1076,18 +1136,24 @@ private:
 		{
 			const ClassPolymorphismFacts& facts =
 				graph_.class_polymorphism[entity];
-			if (!facts.vtable_demanded || facts.slots.empty()) continue;
+			if (!facts.vtable_demanded ||
+				(facts.slots.empty() && facts.views.empty())) continue;
 			EmitVtableView(entity, state_.class_vtable_symbols[entity], 0,
-				facts.slots, state_.class_view_slot_symbols[entity][0],
+				facts.slots, facts.virtual_base_offsets,
+				facts.virtual_call_offsets,
+				state_.class_view_slot_symbols[entity][0],
 				state_.class_view_deleting_slot_symbols[entity][0]);
 			for (std::size_t view = 0; view < facts.views.size(); ++view)
 			{
 				EmitVtableView(entity,
 					state_.class_view_vtable_symbols[entity][view],
 					facts.views[view].offset, facts.views[view].slots,
+					facts.views[view].virtual_base_offsets,
+					facts.views[view].virtual_call_offsets,
 					state_.class_view_slot_symbols[entity][view + 1],
 					state_.class_view_deleting_slot_symbols[entity][view + 1]);
 			}
+			EmitVtt(entity, facts);
 		}
 		for (TypeId type = 0; type < state_.thrown_type_demanded.size(); ++type)
 		{
@@ -1277,7 +1343,10 @@ private:
 		index.dest = address_point.id;
 		index.type = LowI8();
 		index.first = table;
-		index.second = Operand(16, LowI64());
+		const std::uint64_t offset = entity <
+			state_.class_vtable_address_points.size() ?
+			state_.class_vtable_address_points[entity] : 16;
+		index.second = Operand(static_cast<std::int64_t>(offset), LowI64());
 		Emit(index);
 		Instruction store(Instruction::STORE);
 		store.type = LowPtr();

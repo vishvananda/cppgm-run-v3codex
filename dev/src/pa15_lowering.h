@@ -33,6 +33,7 @@ struct LowIRLoweringStats
 	std::size_t slot_implicit_object_fact_reads;
 	std::size_t virtual_calls;
 	std::size_t vptr_stores;
+	std::size_t vtable_offset_rows;
 	std::size_t vtable_slots;
 	std::size_t deleting_destructors;
 	std::size_t rtti_graph_nodes_visited;

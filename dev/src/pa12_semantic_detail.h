@@ -816,6 +816,7 @@ private:
 		NodeId syntax = kNoNode);
 	void DemandFunction(BindingId binding);
 	void DemandRuntimeFunction(BindingId binding);
+	void DemandVtableFunction(BindingId binding);
 	void EnsureFunctionExceptionSpecification(BindingId binding);
 	bool FunctionIsNonthrowing(BindingId binding);
 	void DemandDefaultConstructor(EntityId entity);
