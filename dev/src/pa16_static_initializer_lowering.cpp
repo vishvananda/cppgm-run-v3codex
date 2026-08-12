@@ -606,8 +606,13 @@ bool StaticInitializerLowering::Lower(const NamespaceObjectAction& action,
 	{
 		global->initializer_kind = Global::STRUCTURED_VALUE;
 		const std::size_t old_size = global->items.size();
+		const TypeRecord& object = program_.types.Get(
+			types_.ExpressionObject(action.type));
+		const bool require_vptr = object.kind != TYPE_NAMED ||
+			program_.entities[object.entity].flavor != NAMED_UNION ||
+			program_.entities[object.entity].polymorphic_class;
 		if (AppendConstructorValue(action.type, action.initializer,
-			&global->items, true)) return true;
+			&global->items, require_vptr)) return true;
 		global->items.resize(old_size);
 		return false;
 	}

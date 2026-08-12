@@ -12,6 +12,32 @@ namespace
 
 using namespace pa15_lowir_detail;
 
+const char* RuntimeRoleName(Symbol::RuntimeRole role)
+{
+	switch (role)
+	{
+	case Symbol::RUNTIME_ROLE_NONE: return "none";
+	case Symbol::RUNTIME_ROLE_EH_RESUME: return "eh_resume";
+	case Symbol::RUNTIME_ROLE_EH_ALLOCATE_EXCEPTION:
+		return "eh_allocate_exception";
+	case Symbol::RUNTIME_ROLE_EH_BEGIN_CATCH: return "eh_begin_catch";
+	case Symbol::RUNTIME_ROLE_EH_END_CATCH: return "eh_end_catch";
+	case Symbol::RUNTIME_ROLE_EH_RETHROW: return "eh_rethrow";
+	case Symbol::RUNTIME_ROLE_EH_THROW: return "eh_throw";
+	case Symbol::RUNTIME_ROLE_EH_PERSONALITY: return "eh_personality";
+	case Symbol::RUNTIME_ROLE_ALLOCATE_MEMORY:
+	case Symbol::RUNTIME_ROLE_FREE_MEMORY:
+	case Symbol::RUNTIME_ROLE_PURE_VIRTUAL:
+	case Symbol::RUNTIME_ROLE_DYNAMIC_CAST:
+	case Symbol::RUNTIME_ROLE_BAD_CAST:
+	case Symbol::RUNTIME_ROLE_BAD_TYPEID:
+	case Symbol::RUNTIME_ROLE_RTTI_CLASS:
+	case Symbol::RUNTIME_ROLE_RTTI_SI:
+	case Symbol::RUNTIME_ROLE_RTTI_VMI: return 0;
+	}
+	throw std::logic_error("missing PA15 runtime role");
+}
+
 void WriteType(std::ostream& output, const LowType& type)
 {
 	switch (type.kind)
@@ -443,21 +469,13 @@ void WriteSymbolMetadata(std::ostream& output, const Symbol& symbol,
 	}
 	if (function && symbol.runtime_role != Symbol::RUNTIME_ROLE_NONE)
 	{
-		if (separator) output << ", ";
-		const char* role = symbol.runtime_role == Symbol::RUNTIME_ROLE_EH_RESUME ?
-			"eh_resume" :
-			symbol.runtime_role == Symbol::RUNTIME_ROLE_EH_ALLOCATE_EXCEPTION ?
-			"eh_allocate_exception" :
-			symbol.runtime_role == Symbol::RUNTIME_ROLE_EH_BEGIN_CATCH ?
-			"eh_begin_catch" :
-			symbol.runtime_role == Symbol::RUNTIME_ROLE_EH_END_CATCH ?
-			"eh_end_catch" :
-			symbol.runtime_role == Symbol::RUNTIME_ROLE_EH_RETHROW ?
-			"eh_rethrow" :
-			symbol.runtime_role == Symbol::RUNTIME_ROLE_EH_THROW ?
-			"eh_throw" : "eh_personality";
-		output << "role=" << role;
-		separator = true;
+		const char* role = RuntimeRoleName(symbol.runtime_role);
+		if (role)
+		{
+			if (separator) output << ", ";
+			output << "role=" << role;
+			separator = true;
+		}
 	}
 	if (entry)
 	{

@@ -89,6 +89,9 @@ protected:
 		}
 		std::size_t hidden = derived.VirtualBaseParameterCount(
 			destructor, binding.type);
+		if (hidden == 0 && owner != kNoEntity &&
+			derived.IncludesImplicitVirtualBases(destructor))
+			hidden = derived.program_.entities[owner].virtual_base_count;
 		for (std::size_t base = 0; owner != kNoEntity &&
 			base < derived.program_.entities[owner].virtual_base_count &&
 			hidden != 0; ++base)

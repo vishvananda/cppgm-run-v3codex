@@ -364,12 +364,20 @@ void SemanticAnalyzer::CompleteClassPolymorphism(EntityId entity)
 		++virtual_signature_lookups_;
 		BindingId location = slot_index.Find(VirtualSignatureKey(member));
 		const bool matched = location != kNoBinding;
+		bool matched_primary = false;
+		BindingId inherited_root = kNoBinding;
 		while (location != kNoBinding)
 		{
 			VirtualSlotLocation& indexed = locations[location];
+			matched_primary = matched_primary || indexed.view == 0;
+			if (primary == owner.direct_base_count &&
+				inherits_virtual_destructor && !binding.destructor &&
+				indexed.view != 0)
+				facts.views[indexed.view - 1].contributes_primary_override = true;
 			std::vector<VirtualSlotFact>& slots =
 				SlotsForView(&facts, indexed.view);
 			VirtualSlotFact& slot = slots[indexed.slot];
+			if (inherited_root == kNoBinding) inherited_root = slot.root;
 			if (!VirtualSignatureMatches(member, slot.root))
 				throw std::runtime_error("invalid covariant virtual return type");
 			if (slot.function != kNoBinding &&
@@ -379,7 +387,13 @@ void SemanticAnalyzer::CompleteClassPolymorphism(EntityId entity)
 			location = indexed.next;
 			++virtual_overrides_;
 		}
-		if (matched) binding.virtual_function = true;
+		if (matched)
+		{
+			binding.virtual_function = true;
+			if (!matched_primary && primary == owner.direct_base_count &&
+				inherits_virtual_destructor)
+				facts.slots.push_back(VirtualSlotFact(inherited_root, member));
+		}
 		else
 		{
 			if (binding.override_specifier)
@@ -472,7 +486,14 @@ void SemanticAnalyzer::FinalizeClassPolymorphismViews(EntityId entity)
 				static_cast<std::int64_t>(current.offset));
 		}
 		if (current.virtual_base)
-			current.virtual_call_offsets.assign(current.slots.size(), 0);
+		{
+			std::size_t call_offset_count = current.slots.size();
+			if (current.contributes_primary_override &&
+				current.entity < class_polymorphism_.size())
+				call_offset_count = class_polymorphism_[current.entity].
+					virtual_call_offsets.size();
+			current.virtual_call_offsets.assign(call_offset_count, 0);
+		}
 		current.address_point = 8 * (current.virtual_base_offsets.size() +
 			current.virtual_call_offsets.size() + 2);
 		if (current.stores_vptr && current.virtual_base)

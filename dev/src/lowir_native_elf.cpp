@@ -1466,6 +1466,23 @@ void emit_compare_immediate(CodeBuffer & out, X64Register reg, unsigned value)
   out.byte(value);
 }
 
+void emit_immediate_alu(CodeBuffer & out, X64Register reg,
+                        unsigned extension, unsigned value)
+{
+  emit_rex(out, true, static_cast<X64Register>(extension), reg);
+  out.byte(0x83);
+  emit_modrm(out, 3, extension, reg);
+  out.byte(value);
+}
+
+void emit_test_immediate(CodeBuffer & out, X64Register reg, unsigned value)
+{
+  emit_rex(out, true, XR_RAX, reg);
+  out.byte(0xf7);
+  emit_modrm(out, 3, 0, reg);
+  out.little(value, 4);
+}
+
 void emit_indirect_transfer(CodeBuffer & out, X64Register reg, bool call)
 {
   emit_rex(out, true, call ? XR_RDX : XR_RSP, reg);
@@ -1999,6 +2016,134 @@ void emit_malloc_runtime(CodeBuffer & out)
   out.byte(0x0f); out.byte(0x05); out.byte(0xc3);
 }
 
+std::string runtime_data_name(
+    const std::vector<mir_model::MirRuntimeData> & data,
+    mir_model::RuntimeData::Kind kind)
+{
+  for(std::size_t i = 0; i < data.size(); ++i)
+    if(data[i].kind == kind) return data[i].name;
+  return std::string();
+}
+
+void emit_dynamic_cast_find(
+    CodeBuffer & out, const std::vector<mir_model::MirRuntimeData> & data)
+{
+  const std::string helper = ".__cppgm_dynamic_cast_find";
+  const std::string si = out.internal_label("dynamic_cast_si");
+  const std::string vmi = out.internal_label("dynamic_cast_vmi");
+  const std::string loop = out.internal_label("dynamic_cast_loop");
+  const std::string skip = out.internal_label("dynamic_cast_skip");
+  const std::string record = out.internal_label("dynamic_cast_record");
+  const std::string done = out.internal_label("dynamic_cast_done");
+  const std::string ambiguous = out.internal_label("dynamic_cast_ambiguous");
+  const std::string si_type = runtime_data_name(
+    data, mir_model::RuntimeData::RD_RTTI_SI);
+  const std::string vmi_type = runtime_data_name(
+    data, mir_model::RuntimeData::RD_RTTI_VMI);
+  out.label(helper);
+  emit_push(out, XR_RBP); emit_register_move(out, XR_RBP, XR_RSP);
+  emit_push(out, XR_RBX); emit_push(out, XR_R12); emit_push(out, XR_R13);
+  emit_push(out, XR_R14); emit_push(out, XR_R15); emit_stack_adjust(out, true, 8);
+  emit_register_move(out, XR_RBX, XR_RDI);
+  emit_register_move(out, XR_R12, XR_RSI);
+  emit_register_move(out, XR_R13, XR_RDX);
+  emit_immediate_move(out, XR_RAX, 0); emit_store(out, XR_RBP, -48, XR_RAX, 64);
+  emit_register_alu(out, 0x39, XR_R12, XR_R13);
+  emit_condition_jump(out, XC_E, record);
+  emit_load(out, XR_RCX, XR_R12, 0, 64);
+  if(!si_type.empty()) {
+    emit_symbol_move(out, XR_RAX, si_type); emit_lea(out, XR_RAX, XR_RAX, 16);
+    emit_register_alu(out, 0x39, XR_RCX, XR_RAX);
+    emit_condition_jump(out, XC_E, si);
+  }
+  if(!vmi_type.empty()) {
+    emit_symbol_move(out, XR_RAX, vmi_type); emit_lea(out, XR_RAX, XR_RAX, 16);
+    emit_register_alu(out, 0x39, XR_RCX, XR_RAX);
+    emit_condition_jump(out, XC_E, vmi);
+  }
+  out.byte(0xe9); out.relative32(done);
+  out.label(si);
+  emit_register_move(out, XR_RDI, XR_RBX);
+  emit_load(out, XR_RSI, XR_R12, 16, 64);
+  emit_register_move(out, XR_RDX, XR_R13);
+  out.byte(0xe8); out.relative32(helper);
+  emit_store(out, XR_RBP, -48, XR_RAX, 64);
+  out.byte(0xe9); out.relative32(done);
+  out.label(vmi);
+  emit_load(out, XR_R15, XR_R12, 20, 32);
+  emit_lea(out, XR_R14, XR_R12, 24);
+  out.label(loop);
+  emit_test_register(out, XR_R15); emit_condition_jump(out, XC_E, done);
+  emit_load(out, XR_RSI, XR_R14, 0, 64);
+  emit_load(out, XR_RCX, XR_R14, 8, 64);
+  emit_test_immediate(out, XR_RCX, 2); emit_condition_jump(out, XC_E, skip);
+  emit_register_move(out, XR_RAX, XR_RCX);
+  emit_rex(out, true, XR_RAX, XR_RAX); out.byte(0xc1);
+  emit_modrm(out, 3, 7, XR_RAX); out.byte(8);
+  emit_test_immediate(out, XR_RCX, 1);
+  const std::string direct = out.internal_label("dynamic_cast_direct");
+  emit_condition_jump(out, XC_E, direct);
+  emit_load(out, XR_R11, XR_RBX, 0, 64);
+  emit_register_alu(out, 0x01, XR_R11, XR_RAX);
+  emit_load(out, XR_RAX, XR_R11, 0, 64);
+  out.label(direct);
+  emit_register_move(out, XR_RDI, XR_RBX);
+  emit_register_alu(out, 0x01, XR_RDI, XR_RAX);
+  emit_register_move(out, XR_RDX, XR_R13);
+  out.byte(0xe8); out.relative32(helper);
+  emit_immediate_move(out, XR_RCX, UINT64_MAX);
+  emit_register_alu(out, 0x39, XR_RAX, XR_RCX);
+  emit_condition_jump(out, XC_E, ambiguous);
+  emit_test_register(out, XR_RAX); emit_condition_jump(out, XC_E, skip);
+  emit_load(out, XR_RCX, XR_RBP, -48, 64);
+  emit_test_register(out, XR_RCX); emit_condition_jump(out, XC_E, record);
+  emit_register_alu(out, 0x39, XR_RCX, XR_RAX);
+  emit_condition_jump(out, XC_NE, ambiguous);
+  out.label(skip);
+  emit_immediate_alu(out, XR_R14, 0, 16);
+  emit_immediate_alu(out, XR_R15, 5, 1);
+  out.byte(0xe9); out.relative32(loop);
+  out.label(record);
+  emit_store(out, XR_RBP, -48, XR_RBX, 64);
+  out.byte(0xe9); out.relative32(done);
+  out.label(ambiguous);
+  emit_immediate_move(out, XR_RAX, UINT64_MAX);
+  emit_store(out, XR_RBP, -48, XR_RAX, 64);
+  out.label(done);
+  emit_load(out, XR_RAX, XR_RBP, -48, 64);
+  emit_stack_adjust(out, false, 8); emit_pop(out, XR_R15); emit_pop(out, XR_R14);
+  emit_pop(out, XR_R13); emit_pop(out, XR_R12); emit_pop(out, XR_RBX);
+  emit_pop(out, XR_RBP); out.byte(0xc3);
+}
+
+void emit_dynamic_cast_runtime(
+    CodeBuffer & out, const std::vector<mir_model::MirRuntimeData> & data)
+{
+  const std::string null_result = out.internal_label("dynamic_cast_null");
+  const std::string done = out.internal_label("dynamic_cast_runtime_done");
+  emit_test_register(out, XR_RDI); emit_condition_jump(out, XC_E, null_result);
+  emit_load(out, XR_RAX, XR_RDI, 0, 64);
+  emit_load(out, XR_R11, XR_RAX, -16, 64);
+  emit_register_alu(out, 0x01, XR_RDI, XR_R11);
+  emit_load(out, XR_RSI, XR_RAX, -8, 64);
+  emit_stack_adjust(out, true, 8);
+  out.byte(0xe8); out.relative32(".__cppgm_dynamic_cast_find");
+  emit_stack_adjust(out, false, 8);
+  emit_immediate_move(out, XR_RCX, UINT64_MAX);
+  emit_register_alu(out, 0x39, XR_RAX, XR_RCX);
+  emit_condition_jump(out, XC_NE, done);
+  out.label(null_result); emit_immediate_move(out, XR_RAX, 0);
+  out.label(done); out.byte(0xc3);
+  emit_dynamic_cast_find(out, data);
+}
+
+void emit_abort_runtime(CodeBuffer & out)
+{
+  emit_immediate_move(out, XR_RDI, 134);
+  emit_immediate_move(out, XR_RAX, 60);
+  out.byte(0x0f); out.byte(0x05);
+}
+
 void emit_eh_begin_catch(CodeBuffer & out)
 {
   emit_symbol_move(out, XR_R11, kEhCaught);
@@ -2075,6 +2220,11 @@ void emit_eh_runtime(CodeBuffer & out, const mir_model::MirProgram & program)
     case mir_model::RuntimeFunction::RF_EH_RESUME: break;
     case mir_model::RuntimeFunction::RF_ALLOCATE_MEMORY: emit_malloc_runtime(out); break;
     case mir_model::RuntimeFunction::RF_FREE_MEMORY: out.byte(0xc3); break;
+    case mir_model::RuntimeFunction::RF_PURE_VIRTUAL: emit_abort_runtime(out); break;
+    case mir_model::RuntimeFunction::RF_DYNAMIC_CAST:
+      emit_dynamic_cast_runtime(out, program.runtime_data); break;
+    case mir_model::RuntimeFunction::RF_BAD_CAST:
+    case mir_model::RuntimeFunction::RF_BAD_TYPEID: emit_abort_runtime(out); break;
     }
   }
 }

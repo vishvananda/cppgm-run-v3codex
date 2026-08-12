@@ -951,6 +951,7 @@ struct PolymorphicViewFact
 	std::uint64_t address_point;
 	bool stores_vptr;
 	bool virtual_base;
+	bool contributes_primary_override;
 	std::vector<std::int64_t> virtual_base_offsets;
 	std::vector<std::int64_t> virtual_call_offsets;
 	std::vector<VirtualSlotFact> slots;
@@ -962,7 +963,8 @@ struct PolymorphicViewFact
 		  direct_base_ordinal(direct_base_ordinal_value),
 		  virtual_base_ordinal(kNoDumpEdge),
 		  relative_offset(relative_offset_value), offset(0), address_point(16),
-		  stores_vptr(stores_vptr_value), virtual_base(false) {}
+		  stores_vptr(stores_vptr_value), virtual_base(false),
+		  contributes_primary_override(false) {}
 };
 
 struct ClassPolymorphismFacts

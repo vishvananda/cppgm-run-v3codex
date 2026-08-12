@@ -742,8 +742,8 @@ private:
     const bool destructive_parameter = use != facts_.uses.end() && value != values_.end() &&
       incoming_parameter_registers_.count(operand.text) &&
       facts_.destructive_parameters.count(operand.text) && use->second == 1;
-    return use != facts_.uses.end() && use->second == 1 &&
-           value != values_.end() && (!value->second.parameter || destructive_parameter) &&
+    return use != facts_.uses.end() && use->second == 1 && value != values_.end() &&
+           (!value->second.parameter || destructive_parameter) && !value->second.fixed_register_home &&
            (!facts_.edge_live.count(operand.text) || destructive_parameter) &&
            value->second.location.kind == MirOperand::OP_REG;
   }

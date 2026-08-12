@@ -222,6 +222,24 @@ void AdaptSymbolFacts(const Symbol& source,
 		symbol->role = lowir_model::SR_EH_THROW; break;
 	case Symbol::RUNTIME_ROLE_EH_PERSONALITY:
 		symbol->role = lowir_model::SR_EH_PERSONALITY; break;
+	case Symbol::RUNTIME_ROLE_ALLOCATE_MEMORY:
+		symbol->role = lowir_model::SR_ALLOCATE_MEMORY; break;
+	case Symbol::RUNTIME_ROLE_FREE_MEMORY:
+		symbol->role = lowir_model::SR_FREE_MEMORY; break;
+	case Symbol::RUNTIME_ROLE_PURE_VIRTUAL:
+		symbol->role = lowir_model::SR_PURE_VIRTUAL; break;
+	case Symbol::RUNTIME_ROLE_DYNAMIC_CAST:
+		symbol->role = lowir_model::SR_DYNAMIC_CAST; break;
+	case Symbol::RUNTIME_ROLE_BAD_CAST:
+		symbol->role = lowir_model::SR_BAD_CAST; break;
+	case Symbol::RUNTIME_ROLE_BAD_TYPEID:
+		symbol->role = lowir_model::SR_BAD_TYPEID; break;
+	case Symbol::RUNTIME_ROLE_RTTI_CLASS:
+		symbol->role = lowir_model::SR_RTTI_CLASS; break;
+	case Symbol::RUNTIME_ROLE_RTTI_SI:
+		symbol->role = lowir_model::SR_RTTI_SI; break;
+	case Symbol::RUNTIME_ROLE_RTTI_VMI:
+		symbol->role = lowir_model::SR_RTTI_VMI; break;
 	}
 }
 

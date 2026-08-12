@@ -374,7 +374,11 @@ private:
       {"eh_current_exception_type", SR_EH_CURRENT_EXCEPTION_TYPE},
       {"eh_end_catch", SR_EH_END_CATCH}, {"eh_rethrow", SR_EH_RETHROW},
       {"eh_throw", SR_EH_THROW}, {"eh_personality", SR_EH_PERSONALITY},
-      {"eh_resume", SR_EH_RESUME}
+      {"eh_resume", SR_EH_RESUME}, {"allocate_memory", SR_ALLOCATE_MEMORY},
+      {"free_memory", SR_FREE_MEMORY}, {"pure_virtual", SR_PURE_VIRTUAL},
+      {"dynamic_cast", SR_DYNAMIC_CAST}, {"bad_cast", SR_BAD_CAST},
+      {"bad_typeid", SR_BAD_TYPEID}, {"rtti_class", SR_RTTI_CLASS},
+      {"rtti_si", SR_RTTI_SI}, {"rtti_vmi", SR_RTTI_VMI}
     };
     for(std::size_t i = 0; i < sizeof(roles) / sizeof(roles[0]); ++i)
       if(value == roles[i].first) return roles[i].second;

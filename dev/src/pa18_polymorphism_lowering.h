@@ -58,6 +58,7 @@ struct PolymorphismLoweringState
 	std::vector<pa15_lowir_detail::SymbolId> exception_rtti_symbols;
 	std::vector<pa15_lowir_detail::SymbolId> exception_object_symbols;
 	std::vector<pa15_lowir_detail::SymbolId> deleting_destructor_symbols;
+	std::vector<std::uint8_t> deleting_destructor_external;
 	std::vector<pa11::BindingId> deallocation_bindings;
 	std::vector<pa11::BindingId> complete_destructor_bindings;
 	std::vector<pa11::BindingId> base_destructor_bindings;

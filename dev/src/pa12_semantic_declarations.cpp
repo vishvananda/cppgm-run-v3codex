@@ -922,6 +922,7 @@ BindingId SemanticAnalyzer::EnsureImplicitDestructor(EntityId entity)
 	binding.member_owner = entity;
 	binding.destructor = true;
 	binding.inline_function = true;
+	binding.weak_odr = true;
 	FunctionInfo& info = GetMutableFunction(destructor);
 	info.member_owner = owner.type;
 	info.destructor = true;
@@ -1384,6 +1385,7 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 				edge != kNoEdge; edge = arena_->NextEdge(edge))
 				if (PayloadSource(arena_->EdgeChild(edge)) == "inline")
 					binding.inline_function = true;
+		PublishInlineFunctionFacts(destructor, binding.inline_function);
 		FunctionInfo& info = GetMutableFunction(destructor);
 		info.member_owner = owner_type;
 		info.destructor = true;
@@ -2533,6 +2535,8 @@ BindingId SemanticAnalyzer::EnsureDestructorBaseEntry(BindingId destructor,
 	binding.storage_class = source_binding_copy.storage_class;
 	binding.access = source_binding_copy.access;
 	binding.nonthrowing = source_binding_copy.nonthrowing;
+	binding.inline_function = source_binding_copy.inline_function;
+	binding.weak_odr = source_binding_copy.weak_odr;
 	binding.destructor = true;
 	binding.destructor_base_entry = true;
 

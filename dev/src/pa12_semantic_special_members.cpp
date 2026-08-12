@@ -170,6 +170,8 @@ BindingId SemanticAnalyzer::EnsureConstructorBaseEntry(BindingId constructor)
 	binding.storage_class = source_binding.storage_class;
 	binding.access = source_binding.access;
 	binding.nonthrowing = source_binding.nonthrowing;
+	binding.inline_function = source_binding.inline_function;
+	binding.weak_odr = source_binding.weak_odr;
 	binding.static_member_function = source_binding.static_member_function;
 	binding.constructor = true;
 	binding.constructor_base_entry = true;
@@ -1213,6 +1215,12 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 		parsed.type, parsed.parameters, true, false, STORAGE_CLASS_NONE,
 		current_language_linkage_, IsNonthrowing(declarator, semantic_scope));
 	FunctionInfo& info = GetMutableFunction(special);
+	if (parsed.parameters.size() != info.parameters.size())
+		throw std::logic_error(
+			"special member definition parameter fact mismatch");
+	for (std::size_t i = 0; i < parsed.parameters.size(); ++i)
+		if (parsed.parameters[i].name != 0)
+			info.parameters[i].name = parsed.parameters[i].name;
 	info.lexical_scope = semantic_scope;
 	if (defer_demand)
 		program_->bindings[special].inline_function = true;
@@ -1222,7 +1230,7 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 			edge != kNoEdge; edge = arena_->NextEdge(edge))
 			if (PayloadSource(arena_->EdgeChild(edge)) == "inline")
 				inline_specifier = true;
-	PublishInlineFunctionFacts(special, inline_specifier);
+	PublishInlineFunctionFacts(special, inline_specifier || defer_demand);
 	if (info.member_owner != program_->entities[entity].type)
 		throw std::runtime_error(
 			"qualified special member definition has no member declaration");

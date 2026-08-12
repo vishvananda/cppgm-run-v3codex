@@ -310,7 +310,11 @@ struct RuntimeFunction
     RF_EH_PERSONALITY,
     RF_EH_RESUME,
     RF_ALLOCATE_MEMORY,
-    RF_FREE_MEMORY
+    RF_FREE_MEMORY,
+    RF_PURE_VIRTUAL,
+    RF_DYNAMIC_CAST,
+    RF_BAD_CAST,
+    RF_BAD_TYPEID
   } kind = RF_EH_PERSONALITY;
 
   std::string name;
@@ -319,6 +323,8 @@ struct RuntimeFunction
 
 struct RuntimeData
 {
+  enum Kind { RD_OPAQUE, RD_RTTI_CLASS, RD_RTTI_SI, RD_RTTI_VMI }
+    kind = RD_OPAQUE;
   std::string name;
   std::string object_symbol;
 };

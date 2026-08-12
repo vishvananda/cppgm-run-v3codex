@@ -141,6 +141,7 @@ private:
 		state_.exception_rtti_symbols.assign(program_.types.Size(), kNoLowId);
 		state_.exception_object_symbols.assign(program_.types.Size(), kNoLowId);
 		state_.deleting_destructor_symbols.assign(count, kNoLowId);
+		state_.deleting_destructor_external.assign(count, 0);
 		state_.deallocation_bindings.assign(count, kNoBinding);
 		state_.complete_destructor_bindings.assign(count, kNoBinding);
 		state_.base_destructor_bindings.assign(count, kNoBinding);
@@ -450,23 +451,36 @@ private:
 			program_, program_.entities[entity].type);
 	}
 
-	bool VtableHasWeakLinkage(EntityId entity) const
+	BindingId VtableKeyFunction(EntityId entity) const
 	{
-		const EntityRecord& owner = program_.entities[entity];
-		if (owner.template_argument_count != 0 ||
-			IsFunctionLocalEntity(program_, entity)) return true;
 		const ClassPolymorphismFacts& facts =
 			graph_.class_polymorphism[entity];
 		for (std::size_t slot = 0; slot < facts.slots.size(); ++slot)
 		{
 			const BindingRecord& function = program_.bindings[
 				facts.slots[slot].function];
-			if (function.pure_virtual || function.inline_function) continue;
-			// A non-inline key function uniquely owns an ordinary class's
-			// vtable.  Template specializations remain vague-linkage entities.
-			return function.weak_odr;
+			if (!function.pure_virtual && !function.inline_function &&
+				function.member_owner == entity) return function.canonical;
 		}
-		return true;
+		for (std::size_t view = 0; view < facts.views.size(); ++view)
+			for (std::size_t slot = 0;
+				slot < facts.views[view].slots.size(); ++slot)
+			{
+				const BindingRecord& function = program_.bindings[
+					facts.views[view].slots[slot].function];
+				if (!function.pure_virtual && !function.inline_function &&
+					function.member_owner == entity) return function.canonical;
+			}
+		return kNoBinding;
+	}
+
+	bool VtableHasWeakLinkage(EntityId entity) const
+	{
+		const EntityRecord& owner = program_.entities[entity];
+		if (owner.template_argument_count != 0 ||
+			IsFunctionLocalEntity(program_, entity)) return true;
+		const BindingId key = VtableKeyFunction(entity);
+		return key == kNoBinding || program_.bindings[key].weak_odr;
 	}
 
 	bool VtableIsExternal(EntityId entity) const
@@ -474,18 +488,10 @@ private:
 		const EntityRecord& owner = program_.entities[entity];
 		if (owner.template_argument_count != 0 ||
 			IsFunctionLocalEntity(program_, entity)) return false;
-		const ClassPolymorphismFacts& facts =
-			graph_.class_polymorphism[entity];
-		for (std::size_t slot = 0; slot < facts.slots.size(); ++slot)
-		{
-			const BindingRecord& function = program_.bindings[
-				facts.slots[slot].function];
-			if (function.pure_virtual || function.inline_function) continue;
-			const BindingId canonical = function.canonical;
-			return canonical >= local_function_definitions_.size() ||
-				local_function_definitions_[canonical] == 0;
-		}
-		return false;
+		const BindingId key = VtableKeyFunction(entity);
+		return key != kNoBinding &&
+			(key >= local_function_definitions_.size() ||
+			 local_function_definitions_[key] == 0);
 	}
 
 	SymbolId AddPolymorphicGlobal(const std::string& name,
@@ -500,10 +506,12 @@ private:
 	}
 
 	SymbolId AddExternalRtti(const std::string& name,
-		const std::string& object_name)
+		const std::string& object_name,
+		Symbol::RuntimeRole role = Symbol::RUNTIME_ROLE_NONE)
 	{
 		const SymbolId symbol = AddSyntheticSymbol(
 			Symbol::GLOBAL_SYMBOL, name, object_name, false);
+		output_.symbols[symbol].runtime_role = role;
 		output_.symbols[symbol].declaration_emitted = true;
 		output_.symbols[symbol].referenced = true;
 		GlobalDeclaration declaration;
@@ -606,6 +614,7 @@ private:
 		state_.pure_virtual_symbol = AddSyntheticSymbol(Symbol::FUNCTION_SYMBOL,
 			"__cxa_pure_virtual", std::string(), false);
 		Symbol& symbol = output_.symbols[state_.pure_virtual_symbol];
+		symbol.runtime_role = Symbol::RUNTIME_ROLE_PURE_VIRTUAL;
 		symbol.declaration_emitted = true;
 		symbol.referenced = true;
 		symbol.nonthrowing = true;
@@ -753,10 +762,86 @@ private:
 			RegisterAdjustedSlot(source, deleting, function);
 	}
 
+	void RegisterDeletingDestructor(EntityId entity,
+		const VirtualSlotFact& slot, bool external)
+	{
+		if (state_.deleting_destructor_symbols[entity] != kNoLowId) return;
+		const BindingRecord& candidate = program_.bindings[slot.function];
+		if (!candidate.destructor || candidate.pure_virtual) return;
+		const BindingId destructor = candidate.canonical;
+		std::string object_name;
+		if (destructor < function_symbols_.size() &&
+			function_symbols_[destructor] != kNoLowId)
+		{
+			object_name = output_.symbols[
+				function_symbols_[destructor]].object_name;
+			const std::size_t marker = object_name.rfind("D1E");
+			if (marker != std::string::npos)
+				object_name.replace(marker, 3, "D0E");
+		}
+		const std::string leaf =
+			program_.names.Get(program_.entities[entity].identity_name);
+		const SymbolId symbol = AddSyntheticSymbol(Symbol::FUNCTION_SYMBOL,
+			ClassStem(entity) + "___" + leaf + "__deleting_entry",
+			object_name, false);
+		state_.deleting_destructor_symbols[entity] = symbol;
+		state_.deleting_destructor_external[entity] = external ? 1 : 0;
+		if (destructor < function_symbols_.size() &&
+			function_symbols_[destructor] != kNoLowId)
+			output_.symbols[symbol].weak_linkage = output_.symbols[
+				function_symbols_[destructor]].weak_linkage;
+		if (external)
+		{
+			output_.symbols[symbol].declaration_emitted = true;
+			output_.symbols[symbol].referenced = true;
+			FunctionDeclaration declaration;
+			declaration.symbol = symbol;
+			declaration.result = LowVoid();
+			Parameter object;
+			object.name = "this";
+			object.type = LowPtr();
+			declaration.parameters.push_back(object);
+			output_.declarations.push_back(declaration);
+		}
+	}
+
+	void RegisterEntitySlots(EntityId entity,
+		const ClassPolymorphismFacts& facts, bool external)
+	{
+		for (std::size_t view = 0; view <= facts.views.size(); ++view)
+		{
+			const std::vector<VirtualSlotFact>& slots = view == 0 ?
+				facts.slots : facts.views[view - 1].slots;
+			for (std::size_t slot = 0; slot < slots.size(); ++slot)
+			{
+				const VirtualSlotFact& candidate = slots[slot];
+				if (program_.bindings[candidate.function].pure_virtual)
+					RegisterPureVirtual(candidate.root);
+				RegisterDeletingDestructor(entity, candidate, external);
+				if (state_.class_view_slot_symbols[entity][view][slot] == kNoLowId)
+				{
+					const SymbolId target = RegisterViewSlot(candidate);
+					state_.class_view_slot_symbols[entity][view][slot] = target;
+					if (external && candidate.this_adjustment != 0)
+						output_.symbols[target].weak_linkage = true;
+				}
+				if (state_.class_view_deleting_slot_symbols[
+					entity][view][slot] == kNoLowId)
+				{
+					RegisterDeletingViewSlot(entity, view, slot, candidate);
+					const SymbolId deleting =
+						state_.class_view_deleting_slot_symbols[entity][view][slot];
+					if (external && candidate.this_adjustment != 0 &&
+						deleting != kNoLowId)
+						output_.symbols[deleting].weak_linkage = true;
+				}
+			}
+		}
+	}
+
 	bool ConstructionBaseEligible(const DirectBaseEdge& edge) const
 	{
-		if (edge.virtual_base ||
-			edge.entity >= graph_.class_polymorphism.size() ||
+		if (edge.entity >= graph_.class_polymorphism.size() ||
 			program_.entities[edge.entity].virtual_base_count == 0) return false;
 		const ClassPolymorphismFacts& facts =
 			graph_.class_polymorphism[edge.entity];
@@ -779,6 +864,7 @@ private:
 		std::uint64_t* vtt_offset)
 	{
 		const ClassPolymorphismFacts& facts = graph_.class_polymorphism[base];
+		RegisterEntitySlots(base, facts, VtableIsExternal(base));
 		symbols->push_back(RegisterConstructionVtable(complete, base, offset, 0));
 		*vtt_offset += 8;
 		const EntityRecord& owner = program_.entities[base];
@@ -853,11 +939,8 @@ private:
 			output_.symbols[state_.class_vtt_symbols[entity]].object_output_root = true;
 		}
 		for (std::size_t slot = 0; slot < facts.slots.size(); ++slot)
-		{
-			state_.class_view_slot_symbols[entity][0][slot] =
-				RegisterViewSlot(facts.slots[slot]);
-			RegisterDeletingViewSlot(entity, 0, slot, facts.slots[slot]);
-		}
+			if (state_.class_view_slot_symbols[entity][0][slot] == kNoLowId)
+				throw std::logic_error("primary vtable slots are not registered");
 		for (std::size_t view = 0; view < facts.views.size(); ++view)
 		{
 			const PolymorphicViewFact& source = facts.views[view];
@@ -868,12 +951,9 @@ private:
 				AddPolymorphicGlobal(name, "@" + name,
 					VtableHasWeakLinkage(entity));
 			for (std::size_t slot = 0; slot < source.slots.size(); ++slot)
-			{
-				state_.class_view_slot_symbols[entity][view + 1][slot] =
-					RegisterViewSlot(source.slots[slot]);
-				RegisterDeletingViewSlot(entity, view + 1, slot,
-					source.slots[slot]);
-			}
+				if (state_.class_view_slot_symbols[
+					entity][view + 1][slot] == kNoLowId)
+					throw std::logic_error("secondary vtable slots are not registered");
 		}
 		RegisterConstructionVtables(entity);
 	}
@@ -893,34 +973,7 @@ private:
 			const bool external = VtableIsExternal(entity);
 			if (!external)
 				DemandRtti(program_.entities[entity].type);
-			for (std::size_t slot = 0; slot < facts.slots.size(); ++slot)
-			{
-				if (external) continue;
-				if (program_.bindings[facts.slots[slot].function].pure_virtual)
-					RegisterPureVirtual(facts.slots[slot].root);
-				if (!program_.bindings[facts.slots[slot].function].destructor ||
-					program_.bindings[facts.slots[slot].function].pure_virtual ||
-					state_.deleting_destructor_symbols[entity] != kNoLowId)
-					continue;
-				const BindingId destructor = program_.bindings[
-					facts.slots[slot].function].canonical;
-				std::string object_name;
-				if (destructor < function_symbols_.size() &&
-					function_symbols_[destructor] != kNoLowId)
-				{
-					object_name = output_.symbols[
-						function_symbols_[destructor]].object_name;
-					const std::size_t marker = object_name.rfind("D1E");
-					if (marker != std::string::npos)
-						object_name.replace(marker, 3, "D0E");
-				}
-				const std::string leaf =
-					program_.names.Get(program_.entities[entity].identity_name);
-				state_.deleting_destructor_symbols[entity] = AddSyntheticSymbol(
-					Symbol::FUNCTION_SYMBOL,
-					ClassStem(entity) + "___" + leaf + "__deleting_entry",
-					object_name, false);
-			}
+			if (!external) RegisterEntitySlots(entity, facts, false);
 			RegisterViewSymbols(entity, facts);
 		}
 		for (EntityId entity = 0;
@@ -1005,15 +1058,18 @@ private:
 		if (need_root_rtti)
 			state_.rtti_class_symbol = AddExternalRtti(
 				"__external_rtti_vtable____class_type_info",
-				"_ZTVN10__cxxabiv117__class_type_infoE");
+				"_ZTVN10__cxxabiv117__class_type_infoE",
+				Symbol::RUNTIME_ROLE_RTTI_CLASS);
 		if (need_si_rtti)
 			state_.rtti_si_symbol = AddExternalRtti(
 				"__external_rtti_vtable____si_class_type_info",
-				"_ZTVN10__cxxabiv120__si_class_type_infoE");
+				"_ZTVN10__cxxabiv120__si_class_type_infoE",
+				Symbol::RUNTIME_ROLE_RTTI_SI);
 		if (need_vmi_rtti)
 			state_.rtti_vmi_symbol = AddExternalRtti(
 				"__external_rtti_vtable____vmi_class_type_info",
-				"_ZTVN10__cxxabiv121__vmi_class_type_infoE");
+				"_ZTVN10__cxxabiv121__vmi_class_type_infoE",
+				Symbol::RUNTIME_ROLE_RTTI_VMI);
 		if (need_fundamental_rtti)
 			state_.rtti_fundamental_symbol = AddExternalRtti(
 				"__external_rtti_vtable____fundamental_type_info",
@@ -1098,15 +1154,18 @@ private:
 			state_.dynamic_cast_symbol = AddExternalRuntime(
 				"__external_runtime____dynamic_cast", "__dynamic_cast",
 				LowPtr(), std::vector<LowType>{
-					LowPtr(), LowPtr(), LowPtr(), LowI64()}, false);
+					LowPtr(), LowPtr(), LowPtr(), LowI64()}, false,
+				Symbol::RUNTIME_ROLE_DYNAMIC_CAST);
 		if (state_.need_bad_cast)
 			state_.bad_cast_symbol = AddExternalRuntime(
 				"__external_runtime____cxa_bad_cast", "__cxa_bad_cast",
-				LowVoid(), std::vector<LowType>(), true);
+				LowVoid(), std::vector<LowType>(), true,
+				Symbol::RUNTIME_ROLE_BAD_CAST);
 		if (state_.need_bad_typeid)
 			state_.bad_typeid_symbol = AddExternalRuntime(
 				"__external_runtime____cxa_bad_typeid", "__cxa_bad_typeid",
-				LowVoid(), std::vector<LowType>(), true);
+				LowVoid(), std::vector<LowType>(), true,
+				Symbol::RUNTIME_ROLE_BAD_TYPEID);
 	}
 
 	void AddAddressItem(Global* global, SymbolId symbol, std::int64_t offset = 0)
@@ -1542,7 +1601,8 @@ public:
 			entity < state_.deleting_destructor_symbols.size(); ++entity)
 		{
 			const SymbolId symbol = state_.deleting_destructor_symbols[entity];
-			if (symbol == kNoLowId) continue;
+			if (symbol == kNoLowId ||
+				state_.deleting_destructor_external[entity] != 0) continue;
 			const BindingId deallocation_binding =
 				state_.deallocation_bindings[entity];
 			SymbolId deallocation = global_deallocation;

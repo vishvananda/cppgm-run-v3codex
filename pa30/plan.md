@@ -18,29 +18,26 @@ using hash indexes and geometric buffers.
 
 ## Current Failure Map
 
-The current result is 62/88, up from 0/88. The 26 failures group by owner:
+The current result is 72/88, up 10 from the checkpoint's 62/88 baseline. The
+16 remaining failures group by owner:
 
-- 9 are polymorphic identity/link ownership: vtable/VTT/key-function selection,
-  cross-TU initialization, and multiple-inheritance RTTI/return adjustment.
-- 8 are source semantic/region formation: GNU statement expressions, three
-  function-try forms, ordered multiple handlers, local-friend access, and
-  pure-virtual body classification.
-- 7 are numeric/helper lowering: four calculator/float80 byte mismatches,
-  builtin `nanl`, discarded float80 results, and one comprehensive i128 loop.
+- 7 are numeric/helper lowering: four calculator/float80 mismatches, builtin
+  `isnan`, a discarded float80 result, and comprehensive i128 value lowering.
+- 7 are semantic region formation: two GNU statement expressions, three
+  function-try forms, local-friend access, and ordered template handlers.
 - 2 are aggregate representations: trivial-union value initialization and a
   multiple-inheritance virtual member pointer.
 
 ## Active Checkpoint
 
-Next, reconcile polymorphic definition ownership at the semantic-to-link
-boundary. Per `spec.md` sections 2, 4-7, canonical class/function identities and
-demand own vtable, VTT, RTTI, thunk, and special-member emission; the object
-index must coalesce weak definitions while retaining the key-function TU and
-required construction tables. Data flows `canonical identity + demand -> object
-symbol provenance -> indexed link resolution -> native relocation`; expected
-work is O(polymorphic facts + symbols + relocations), without pairwise TU scans.
-Validate the nine grouped failures plus representative PA27-PA29 multibase and
-cross-TU cases, then PA30 and through-PA29 reports.
+Next, close the numeric/helper boundary. The spec's typed phase contracts and
+backend legality rules require float80 and i128 values, helper calls, and
+discarded results to retain explicit widths and ABI roles through lowering.
+Data flows `typed expression -> PA15 LowIR -> PA30 adapter -> MIR legalization
+and allocation -> x86/helper emission`. Ownership is split between numeric
+lowering and the native MIR/backend; expected work is O(instructions + live
+ranges), with indexed helper lookup and bounded-width legalization. Validate
+the seven numeric/helper failures, then the PA30, through-PA29, and audit gates.
 
 ## Performance Evidence
 
@@ -50,7 +47,10 @@ instructions, and 156/170/297-byte executables. Each measured under 0.01 s at
 7.4-7.7 MiB maximum RSS. This supports the expected linear indexed-link path;
 no repeated whole-program scan appeared. EH samples with nested copy/rethrow and
 incremental constructor cleanup each compiled under 0.01 s at 7.4-7.6 MiB RSS;
-the PA13 catch/cleanup/resume executables were 776-984 bytes.
+the PA13 catch/cleanup/resume executables were 776-984 bytes. The VTT and
+sibling-cast cases each compiled under 0.01 s at 7.1-7.9 MiB RSS. Repeating VTT
+LowIR emission 100/200 times took 0.53/1.07 s wall and 0.28/0.58 s user time at
+7.0-7.3 MiB RSS, evidence of proportional semantic/lowering work.
 
 ## Completed Checkpoints
 
@@ -58,3 +58,4 @@ the PA13 catch/cleanup/resume executables were 776-984 bytes.
 | --- | --- | --- |
 | Typed object/driver/link boundary | 0 -> 49/88; direct source/object/mixed links, options, lifecycle aggregation, strong/weak rejection, ELF64 helper import, and focused i128 operations implemented | 10/10 focused boundary tests; helper group 7/11; through PA29 4040/4040; file audit passes |
 | Native exception regions and constructor unwind | 49 -> 62/88; role-indexed EH runtime, typed/catch-all dispatch, by-value copy lifetime, nested rethrow, and prefix subobject cleanup implemented | PA13 catch/end/cleanup exits 7/3/14; focused PA30 EH/constructor cases pass; through PA29 4040/4040; file audit passes |
+| Polymorphic support closure and link ownership | 62 -> 72/88; typed ABI runtime roles, coalescible special entries, all-view key ownership, VTT retention, RTTI casts, and multibase return/vptr layout implemented | 9/9 focused cases; PA30 72/88; through PA29 4040/4040; file audit passes |

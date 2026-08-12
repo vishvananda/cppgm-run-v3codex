@@ -23,7 +23,32 @@ bool runtime_kind(lowir_model::SymbolRole role,
     target = mir_model::RuntimeFunction::RF_EH_PERSONALITY; return true;
   case lowir_model::SR_EH_RESUME:
     target = mir_model::RuntimeFunction::RF_EH_RESUME; return true;
+  case lowir_model::SR_ALLOCATE_MEMORY:
+    target = mir_model::RuntimeFunction::RF_ALLOCATE_MEMORY; return true;
+  case lowir_model::SR_FREE_MEMORY:
+    target = mir_model::RuntimeFunction::RF_FREE_MEMORY; return true;
+  case lowir_model::SR_PURE_VIRTUAL:
+    target = mir_model::RuntimeFunction::RF_PURE_VIRTUAL; return true;
+  case lowir_model::SR_DYNAMIC_CAST:
+    target = mir_model::RuntimeFunction::RF_DYNAMIC_CAST; return true;
+  case lowir_model::SR_BAD_CAST:
+    target = mir_model::RuntimeFunction::RF_BAD_CAST; return true;
+  case lowir_model::SR_BAD_TYPEID:
+    target = mir_model::RuntimeFunction::RF_BAD_TYPEID; return true;
   default: return false;
+  }
+}
+
+mir_model::RuntimeData::Kind data_kind(lowir_model::SymbolRole role)
+{
+  switch(role) {
+  case lowir_model::SR_RTTI_CLASS:
+    return mir_model::RuntimeData::RD_RTTI_CLASS;
+  case lowir_model::SR_RTTI_SI:
+    return mir_model::RuntimeData::RD_RTTI_SI;
+  case lowir_model::SR_RTTI_VMI:
+    return mir_model::RuntimeData::RD_RTTI_VMI;
+  default: return mir_model::RuntimeData::RD_OPAQUE;
   }
 }
 
@@ -43,6 +68,7 @@ void plan_program(const lowir_model::LowirProgram & source,
       source.global_declarations[i];
     if(declaration.name.find("@__external_rtti") != 0) continue;
     mir_model::MirRuntimeData data;
+    data.kind = data_kind(declaration.metadata.role);
     data.name = declaration.name;
     data.object_symbol = declaration.metadata.object_symbol;
     target.runtime_data.push_back(data);

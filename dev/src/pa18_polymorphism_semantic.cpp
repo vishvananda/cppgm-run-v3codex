@@ -157,8 +157,7 @@ void SemanticAnalyzer::MarkVtableDemand(EntityId entity)
 						program_->bindings[slots[slot].function];
 					has_owned_virtual_destructor =
 						has_owned_virtual_destructor ||
-						(entry.destructor && !entry.pure_virtual &&
-						 GetFunction(entry.canonical).defined);
+						(entry.destructor && !entry.pure_virtual);
 				}
 			}
 			if (has_owned_virtual_destructor)
