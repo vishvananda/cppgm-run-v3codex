@@ -1,6 +1,7 @@
 #include "lowir_native.h"
 #include "lowir_native_abi.h"
 #include "lowir_native_analysis.h"
+#include "lowir_native_eh.h"
 #include "lowir_native_mir.h"
 #include "lowir_native_program.h"
 #include "lowir_native_registers.h"
@@ -14,20 +15,12 @@
 #include <vector>
 namespace lowir_native {
 namespace {
-using lowir_model::Instruction;
-using lowir_model::LowType;
-using lowir_model::Operand;
-using mir_model::MirInstruction;
-using mir_model::MirOperand;
-using abi::FunctionSignature;
-using abi::FunctionSignatureIndex;
-using analysis::FunctionFacts;
-using analysis::StorageFacts;
-using analysis::analyze_function;
-using analysis::analyze_storage;
-using analysis::register_mask;
-using allocation::RegisterPool;
-using allocation::XmmPool;
+using lowir_model::Instruction; using lowir_model::LowType; using lowir_model::Operand;
+using mir_model::MirInstruction; using mir_model::MirOperand;
+using abi::FunctionSignature; using abi::FunctionSignatureIndex;
+using analysis::FunctionFacts; using analysis::StorageFacts;
+using analysis::analyze_function; using analysis::analyze_storage; using analysis::register_mask;
+using allocation::RegisterPool; using allocation::XmmPool;
 using allocation::is_callee_saved;
 using namespace build;
 using namespace selection;
@@ -35,12 +28,9 @@ struct ValueFact
 {
   MirOperand location;
   LowType type;
-  bool parameter = false;
-  bool fixed_register_home = false;
-  bool frame_address = false;
-  bool has_frame_provenance = false;
-  long long frame_provenance = 0;
-  std::string pointer_global_cell;
+  bool parameter = false, fixed_register_home = false;
+  bool frame_address = false, has_frame_provenance = false;
+  long long frame_provenance = 0; std::string pointer_global_cell;
   std::string forwarded_parameter;
 };
 class FunctionLowerer
@@ -111,9 +101,8 @@ private:
   std::unordered_map<std::string, long long> spill_offsets_;
   std::vector<MirInstruction> parameter_moves_;
   const Instruction * active_instruction_ = 0;
-  std::size_t position_;
+  std::size_t position_, frame_bytes_ = 0;
   std::size_t skipped_position_ = static_cast<std::size_t>(-1);
-  std::size_t frame_bytes_ = 0;
   bool uses_scalar_float_ = false;
   bool has_xmm_call_scratch_ = false;
   long long xmm_call_scratch_ = 0;
@@ -2710,8 +2699,7 @@ private:
                          std::vector<MirInstruction> & out)
   {
     const Instruction & instruction = block.instructions[instruction_index];
-    active_instruction_ = &instruction;
-    if(position_ == skipped_position_) return;
+    active_instruction_ = &instruction; if(position_ == skipped_position_) return;
     if(instruction.kind == Instruction::IK_CONST) {
       if(wide::is_integer(instruction.type)) {
         const MirOperand destination = allocate_temp_home(instruction.dest, instruction.type);
@@ -2799,7 +2787,9 @@ private:
             instruction.type.bit_width == 64))))
         destination = reg_operand(XR_RAX);
       else destination = reg_operand(allocate_result(instruction.dest, out));
-      MirInstruction load = machine_instruction(MirInstruction::MI_LOAD, instruction.type.text);
+      if(instruction.type.kind == lowir_model::LTK_OBJECT && instruction.type.storage_size > 8) throw std::runtime_error("multi-eightbyte object load is not implemented");
+      const std::string transfer_type = instruction.type.kind == lowir_model::LTK_OBJECT ? abi::object_chunk_type(instruction.type.storage_size).text : instruction.type.text;
+      MirInstruction load = machine_instruction(MirInstruction::MI_LOAD, transfer_type);
       append_operand(load, destination);
       append_operand(load, materialized_storage(instruction.first, out));
       out.push_back(load);
@@ -2852,7 +2842,10 @@ private:
         consume(instruction.second);
         return;
       }
-      MirInstruction store = machine_instruction(MirInstruction::MI_STORE, instruction.type.text);
+      if(instruction.type.kind == lowir_model::LTK_OBJECT && instruction.type.storage_size > 8) throw std::runtime_error("multi-eightbyte object store is not implemented");
+      const std::string transfer_type = instruction.type.kind == lowir_model::LTK_OBJECT ?
+        abi::object_chunk_type(instruction.type.storage_size).text : instruction.type.text;
+      MirInstruction store = machine_instruction(MirInstruction::MI_STORE, transfer_type);
       MirOperand value = resolve(instruction.first);
       if(value.kind != MirOperand::OP_REG) {
         move_value_to_register(out, XR_RAX, value, operand_type(instruction.first));
@@ -2876,13 +2869,11 @@ private:
     } else if(instruction.kind == Instruction::IK_ATOMIC_THREAD_FENCE ||
               instruction.kind == Instruction::IK_ATOMIC_SIGNAL_FENCE) {
       emit_atomic_fence(instruction, out);
-    } else if(instruction.kind == Instruction::IK_VA_START) {
+    } else if(instruction.kind == Instruction::IK_VA_START)
       emit_va_start(instruction, out);
-    } else if(instruction.kind == Instruction::IK_INDEX) {
-      emit_index(instruction, out);
-    } else if(instruction.kind == Instruction::IK_BINARY) {
-      emit_binary(instruction, out);
-    } else if(instruction.kind == Instruction::IK_CMP) {
+    else if(instruction.kind == Instruction::IK_INDEX) emit_index(instruction, out);
+    else if(instruction.kind == Instruction::IK_BINARY) emit_binary(instruction, out);
+    else if(instruction.kind == Instruction::IK_CMP) {
       if(facts_.deferred_branch_comparisons.count(instruction.dest)) return;
       if(wide::is_integer(instruction.type))
         emit_compare_value(instruction, out);
@@ -2898,11 +2889,10 @@ private:
       if(unary_not_feeds_branch(block, instruction_index, instruction))
         emit_direct_unary_not_branch(instruction, block.instructions[instruction_index + 1], out);
       else emit_unary_value(instruction, out);
-    } else if(instruction.kind == Instruction::IK_CONVERT) {
-      emit_convert(instruction, out);
-    } else if(instruction.kind == Instruction::IK_CALL) {
+    } else if(instruction.kind == Instruction::IK_CONVERT) emit_convert(instruction, out);
+    else if(instruction.kind == Instruction::IK_CALL)
       emit_call(instruction, block, instruction_index, out);
-    } else if(instruction.kind == Instruction::IK_COPYOBJ ||
+    else if(instruction.kind == Instruction::IK_COPYOBJ ||
               instruction.kind == Instruction::IK_ZEROINIT) {
       emit_bulk(instruction, out);
     } else if(instruction.kind == Instruction::IK_BRANCH) {
@@ -2912,14 +2902,33 @@ private:
       else if(is_floating(deferred->second->type))
         emit_float_direct_compare_branch(*deferred->second, instruction, out, false);
       else emit_direct_compare_branch(*deferred->second, instruction, out, false);
-    } else if(instruction.kind == Instruction::IK_SWITCH) {
-      emit_switch(instruction, out);
-    } else if(instruction.kind == Instruction::IK_JUMP) {
+    } else if(instruction.kind == Instruction::IK_SWITCH) emit_switch(instruction, out);
+    else if(instruction.kind == Instruction::IK_JUMP) {
       MirInstruction jump = machine_instruction(MirInstruction::MI_JMP);
       append_operand(jump, named_operand(MirOperand::OP_LABEL, instruction.first.text));
       out.push_back(jump);
-    } else if(instruction.kind == Instruction::IK_RETURN) {
-      emit_return(instruction, out);
+    } else if(instruction.kind == Instruction::IK_RETURN) emit_return(instruction, out);
+    else if(eh::lower_marker(instruction, out)) return;
+    else if(instruction.kind == Instruction::IK_EXCEPTION ||
+              instruction.kind == Instruction::IK_EXCEPTION_SELECTOR) {
+      const MirOperand destination = reg_operand(allocate_result(instruction.dest, out));
+      MirInstruction load = machine_instruction(instruction.kind ==
+        Instruction::IK_EXCEPTION ? MirInstruction::MI_LOAD_EXCEPTION :
+        MirInstruction::MI_LOAD_EXCEPTION_SELECTOR, instruction.type.text);
+      append_operand(load, destination);
+      out.push_back(load);
+      define(instruction.dest, instruction.type, destination);
+    } else if(instruction.kind == Instruction::IK_THROW) {
+      MirOperand value = resolve(instruction.first);
+      if(value.kind != MirOperand::OP_REG) {
+        move_value_to_register(out, XR_RAX, value, operand_type(instruction.first));
+        value = reg_operand(XR_RAX);
+      }
+      MirInstruction raise = machine_instruction(
+        MirInstruction::MI_THROW, instruction.type.text);
+      append_operand(raise, value);
+      out.push_back(raise);
+      consume(instruction.first);
     } else {
       throw std::runtime_error("foundation LowIR instruction is not implemented");
     }
@@ -2933,51 +2942,43 @@ mir_model::MirProgram lower_program(const lowir_model::LowirProgram & program,
 {
   if(target != "linux") throw std::runtime_error("unsupported native target: " + target);
   mir_model::MirProgram result;
-  result.target = target;
+  result.target = target; eh::plan_program(program, result);
   program_lowering::lower_startup(program, result);
   const std::unordered_map<std::string, std::string> tls_wrappers =
     program_lowering::tls_wrapper_index(program);
   std::unordered_set<std::string> pointer_globals;
   for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
-    if(program.global_declarations[i].has_type &&
-       program.global_declarations[i].type.kind == lowir_model::LTK_PTR)
+    if(program.global_declarations[i].has_type && program.global_declarations[i].type.kind == lowir_model::LTK_PTR)
       pointer_globals.insert(program.global_declarations[i].name);
   for(std::size_t i = 0; i < program.globals.size(); ++i)
-    if(!program.globals[i].structured &&
-       program.globals[i].type.kind == lowir_model::LTK_PTR)
+    if(!program.globals[i].structured && program.globals[i].type.kind == lowir_model::LTK_PTR)
       pointer_globals.insert(program.globals[i].name);
   for(std::size_t i = 0; i < program.globals.size(); ++i) {
-    mir_model::MirGlobalDefinition global =
-      program_lowering::lower_global(program.globals[i]);
-    const std::unordered_map<std::string, std::string>::const_iterator wrapper =
-      tls_wrappers.find(program.globals[i].name);
+    mir_model::MirGlobalDefinition global = program_lowering::lower_global(program.globals[i]);
+    const std::unordered_map<std::string, std::string>::const_iterator wrapper = tls_wrappers.find(program.globals[i].name);
     if(wrapper != tls_wrappers.end()) global.thread_local_wrapper_symbol = wrapper->second;
     result.globals.push_back(global);
   }
   FunctionSignatureIndex signatures;
   for(std::size_t i = 0; i < program.function_declarations.size(); ++i) {
     FunctionSignature signature;
-    signature.params = &program.function_declarations[i].params;
-    signature.return_type = &program.function_declarations[i].return_type;
+    signature.params = &program.function_declarations[i].params; signature.return_type = &program.function_declarations[i].return_type;
     signature.boundary = &program.function_declarations[i].boundary;
     signatures[program.function_declarations[i].name] = signature;
   }
   for(std::size_t i = 0; i < program.functions.size(); ++i) {
     FunctionSignature signature;
-    signature.params = &program.functions[i].params;
-    signature.return_type = &program.functions[i].return_type;
+    signature.params = &program.functions[i].params; signature.return_type = &program.functions[i].return_type;
     signature.boundary = &program.functions[i].boundary;
     signatures[program.functions[i].name] = signature;
   }
   for(std::size_t i = 0; i < program.functions.size(); ++i)
-    result.functions.push_back(
-      FunctionLowerer(program.functions[i], pointer_globals,
-                      tls_wrappers, signatures).lower());
+    result.functions.push_back(FunctionLowerer(program.functions[i],
+      pointer_globals, tls_wrappers, signatures).lower());
   result.object_aliases.reserve(program.object_aliases.size());
   for(std::size_t i = 0; i < program.object_aliases.size(); ++i) {
     mir_model::MirObjectAlias alias;
-    alias.object_symbol = program.object_aliases[i].object_symbol;
-    alias.target = program.object_aliases[i].target;
+    alias.object_symbol = program.object_aliases[i].object_symbol; alias.target = program.object_aliases[i].target;
     result.object_aliases.push_back(alias);
   }
   result.exported_symbols = program.exported_symbols;

@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <stdexcept>
+#include <vector>
 
 namespace cppgm
 {
@@ -25,6 +26,66 @@ template <class Derived>
 class ConstructorActionLowering
 {
 protected:
+	bool BuildConstructorCleanup(const DumpNode& action,
+		DumpNode* cleanup) const
+	{
+		if ((action.kind != DUMP_INITIALIZER_ACTION &&
+			action.kind != DUMP_BASE_INITIALIZER_ACTION) ||
+			action.selected_binding == kNoBinding)
+			return false;
+		*cleanup = DumpNode(DUMP_DESTRUCTOR_ACTION);
+		cleanup->binding = action.selected_binding;
+		cleanup->operand_type = action.type;
+		if (action.kind == DUMP_INITIALIZER_ACTION)
+			cleanup->object_binding = action.binding;
+		else
+		{
+			cleanup->base_projection_count = 1;
+			cleanup->base_projection_offset = action.direct_base_offset;
+			cleanup->has_base_projection_offset = true;
+		}
+		return true;
+	}
+
+	void InstallConstructorCleanup(
+		const std::vector<DumpNode>& actions, BlockId* active)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (*active != kNoLowId)
+			derived.Emit(Instruction(Instruction::EH_END));
+		const BlockId source = derived.current_block_;
+		const BlockId cleanup = derived.AddBlock(
+			derived.NewLabel("constructor_cleanup"));
+		derived.SelectBlock(cleanup);
+		for (std::size_t i = actions.size(); i != 0; --i)
+			derived.LowerDestructorAction(actions[i - 1]);
+		derived.Emit(Instruction(Instruction::EH_END));
+		derived.Emit(Instruction(Instruction::RESUME));
+		derived.SelectBlock(source);
+		derived.EmitEhTarget(Instruction::EH_CLEANUP, cleanup);
+		*active = cleanup;
+	}
+
+	void LowerConstructorBody(std::uint32_t body)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const NodeChildren children = derived.Children(body);
+		std::vector<DumpNode> cleanup_actions;
+		BlockId active = kNoLowId;
+		for (std::size_t i = 0; i < children.size(); ++i)
+		{
+			derived.LowerStatement(children[i]);
+			if (derived.CurrentBlock().terminated) continue;
+			DumpNode cleanup(DUMP_DESTRUCTOR_ACTION);
+			if (!BuildConstructorCleanup(
+				derived.arena_.nodes[children[i]], &cleanup)) continue;
+			cleanup_actions.push_back(cleanup);
+			InstallConstructorCleanup(cleanup_actions, &active);
+		}
+		if (active != kNoLowId && !derived.CurrentBlock().terminated)
+			derived.Emit(Instruction(Instruction::EH_END));
+	}
+
 	bool ElidesNestedTemporaryConstruction(
 		const DumpNode& action, const NodeChildren& children) const
 	{

@@ -40,10 +40,8 @@
 #include <string>
 #include <vector>
 namespace cppgm { namespace {
-using namespace pa11;
-using namespace pa12_semantic_detail;
-using namespace pa15_lowir_detail;
-using namespace pa15_lowering_support;
+using namespace pa11; using namespace pa12_semantic_detail;
+using namespace pa15_lowir_detail; using namespace pa15_lowering_support;
 const std::size_t kAggregateProjectionReplayLimit = 8;
 typedef SmallSequence<BindingId, kAggregateProjectionReplayLimit> AggregatePath;
 class GraphLowerer :
@@ -858,7 +856,10 @@ private:
 		}
 		if (body != kNoDumpEdge)
 		{
-			if (record.binding != kNoBinding &&
+			if (record.binding != kNoBinding && program_.bindings[record.binding].constructor &&
+				arena_.nodes[body].unwind_only)
+				LowerConstructorBody(body);
+			else if (record.binding != kNoBinding &&
 				program_.bindings[record.binding].destructor)
 				LowerDestructorBody(body);
 			else LowerStatement(body);
@@ -2996,5 +2997,4 @@ void LowerSemanticGraph(const SemanticGraphView& graph, TypedProgram& program,
 {
 	GraphLowerer(graph, program, stats, source_ordinal).Lower();
 }
-}
-}
+} }

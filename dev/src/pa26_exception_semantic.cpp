@@ -8,6 +8,51 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+void SemanticAnalyzer::DemandExplicitConstructorUnwindDestructors(
+	std::uint32_t body)
+{
+	bool throwing = false;
+	std::vector<std::uint32_t> pending(1, body);
+	while (!pending.empty() && !throwing)
+	{
+		const std::uint32_t node = pending.back();
+		pending.pop_back();
+		const DumpNode& record = dump_.nodes[node];
+		throwing = record.kind == DUMP_THROW_EXPRESSION;
+		if (!throwing && record.kind == DUMP_CONSTRUCTOR_ACTION &&
+			record.binding != kNoBinding)
+		{
+			std::vector<NodeId> syntax(
+				1, GetFunction(record.binding).definition_body);
+			while (!syntax.empty() && !throwing)
+			{
+				const NodeId current = syntax.back();
+				syntax.pop_back();
+				if (current == kNoNode) continue;
+				throwing = arena_->IsTag(current, "throw-expression") ||
+					arena_->IsTag(current, "throw-statement");
+				for (std::uint32_t edge = arena_->FirstEdge(current);
+					!throwing && edge != kNoEdge; edge = arena_->NextEdge(edge))
+					syntax.push_back(arena_->EdgeChild(edge));
+			}
+		}
+		for (std::uint32_t edge = record.first_edge;
+			!throwing && edge != kNoDumpEdge; edge = dump_.edges[edge].next)
+			pending.push_back(dump_.edges[edge].child);
+	}
+	dump_.nodes[body].unwind_only = throwing;
+	if (!throwing) return;
+	for (std::uint32_t edge = dump_.nodes[body].first_edge;
+		edge != kNoDumpEdge; edge = dump_.edges[edge].next)
+	{
+		const DumpNode& action = dump_.nodes[dump_.edges[edge].child];
+		if ((action.kind == DUMP_INITIALIZER_ACTION ||
+			action.kind == DUMP_BASE_INITIALIZER_ACTION) &&
+			action.selected_binding != kNoBinding)
+			DemandFunction(action.selected_binding);
+	}
+}
+
 std::uint32_t SemanticAnalyzer::MakeTemporaryDestructorAction(
 	std::uint32_t temporary, BindingId destructor,
 	bool preserve_nontrivial_action)
@@ -575,6 +620,34 @@ void SemanticAnalyzer::AnalyzeExceptionHandler(NodeId node, ScopeId scope,
 		dump_.nodes[handler].type = parsed.type;
 		dump_.nodes[handler].operand_type =
 			program_->types.RemoveTopCv(EffectiveType(parsed.type));
+		if (!program_->types.IsReference(parsed.type) &&
+			IsClassObjectType(parsed.type))
+		{
+			EnsureClassDefinition(parsed.type);
+			const EntityId entity = DestructedEntity(parsed.type);
+			const BindingId copy = ConstructorForSubobject(
+				parsed.type, SPECIAL_MEMBER_COPY_CONSTRUCTOR);
+			if (entity == kNoEntity || copy == kNoBinding ||
+				GetFunction(copy).deleted_special_member ||
+				!CanAccessMember(copy, entity))
+				throw std::runtime_error(
+					"exception handler object is not copy constructible");
+			dump_.nodes[handler].selected_binding = copy;
+			dump_.nodes[handler].trivial_special_member_action =
+				GetFunction(copy).trivial_special_member;
+			DemandFunction(copy);
+			const BindingId destructor = DestructorForType(parsed.type);
+			if (destructor != kNoBinding &&
+				!program_->entities[entity].trivial_destructor)
+			{
+				if (GetFunction(destructor).deleted_destructor ||
+					!CanAccessMember(destructor, entity))
+					throw std::runtime_error(
+						"exception handler object is not destructible");
+				dump_.nodes[handler].object_binding = destructor;
+				DemandFunction(destructor);
+			}
+		}
 		if (parsed.name != 0)
 		{
 			const BindingId binding = program_->AddBinding(handler_scope,

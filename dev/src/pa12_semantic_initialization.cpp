@@ -882,6 +882,14 @@ void SemanticAnalyzer::AddMemberInitializationAction(BindingId member_id,
 		member.type, VALUE_NONE, member.name, member_id);
 	if (class_member)
 	{
+		if (!program_->entities[member_entity].trivial_destructor)
+		{
+			const BindingId destructor = DestructorForType(member.type);
+			if (destructor == kNoBinding)
+				throw std::logic_error(
+					"constructed member has no destructor identity");
+			dump_.nodes[action].selected_binding = destructor;
+		}
 		std::uint32_t value = kNoDumpEdge;
 		if (initializer == kNoNode)
 			value = BuildDefaultConstructorAction(member.type, scope);
@@ -1335,6 +1343,15 @@ void SemanticAnalyzer::AddBaseInitializationActionAt(EntityId entity,
 	dump_.nodes[action].base_projection_count = 1;
 	dump_.nodes[action].direct_base_offset = offset;
 	dump_.nodes[action].has_direct_base_offset = true;
+	if (!program_->entities[base].trivial_destructor)
+	{
+		BindingId destructor = DestructorForType(base_type);
+		if (destructor == kNoBinding)
+			throw std::logic_error(
+				"constructed base has no destructor identity");
+		destructor = EnsureDestructorBaseEntry(destructor);
+		dump_.nodes[action].selected_binding = destructor;
+	}
 	std::vector<ExpressionInfo> prepared_arguments;
 	const bool expanded_arguments = ExpandCallArgumentPacks(
 		arguments, scope, &arguments, &prepared_arguments);

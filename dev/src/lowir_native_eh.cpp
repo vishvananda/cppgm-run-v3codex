@@ -1,0 +1,106 @@
+#include "lowir_native_eh.h"
+#include "lowir_native_mir.h"
+
+namespace lowir_native {
+namespace eh {
+namespace {
+
+bool runtime_kind(lowir_model::SymbolRole role,
+                  mir_model::RuntimeFunction::Kind & target)
+{
+  switch(role) {
+  case lowir_model::SR_EH_ALLOCATE_EXCEPTION:
+    target = mir_model::RuntimeFunction::RF_EH_ALLOCATE; return true;
+  case lowir_model::SR_EH_BEGIN_CATCH:
+    target = mir_model::RuntimeFunction::RF_EH_BEGIN_CATCH; return true;
+  case lowir_model::SR_EH_END_CATCH:
+    target = mir_model::RuntimeFunction::RF_EH_END_CATCH; return true;
+  case lowir_model::SR_EH_RETHROW:
+    target = mir_model::RuntimeFunction::RF_EH_RETHROW; return true;
+  case lowir_model::SR_EH_THROW:
+    target = mir_model::RuntimeFunction::RF_EH_THROW; return true;
+  case lowir_model::SR_EH_PERSONALITY:
+    target = mir_model::RuntimeFunction::RF_EH_PERSONALITY; return true;
+  case lowir_model::SR_EH_RESUME:
+    target = mir_model::RuntimeFunction::RF_EH_RESUME; return true;
+  default: return false;
+  }
+}
+
+bool is_eh_instruction(lowir_model::Instruction::Kind kind)
+{
+  return kind >= lowir_model::Instruction::IK_EH_TRY &&
+    kind <= lowir_model::Instruction::IK_RESUME;
+}
+
+}  // namespace
+
+void plan_program(const lowir_model::LowirProgram & source,
+                  mir_model::MirProgram & target)
+{
+  for(std::size_t i = 0; i < source.global_declarations.size(); ++i) {
+    const lowir_model::GlobalDeclaration & declaration =
+      source.global_declarations[i];
+    if(declaration.name.find("@__external_rtti") != 0) continue;
+    mir_model::MirRuntimeData data;
+    data.name = declaration.name;
+    data.object_symbol = declaration.metadata.object_symbol;
+    target.runtime_data.push_back(data);
+  }
+  for(std::size_t i = 0; i < source.function_declarations.size(); ++i) {
+    const lowir_model::FunctionDeclaration & declaration =
+      source.function_declarations[i];
+    mir_model::MirRuntimeFunction runtime;
+    if(!runtime_kind(declaration.metadata.role, runtime.kind)) {
+      if(declaration.metadata.object_symbol == "malloc")
+        runtime.kind = mir_model::RuntimeFunction::RF_ALLOCATE_MEMORY;
+      else if(declaration.metadata.object_symbol == "free")
+        runtime.kind = mir_model::RuntimeFunction::RF_FREE_MEMORY;
+      else continue;
+    }
+    runtime.name = declaration.name;
+    runtime.object_symbol = declaration.metadata.object_symbol;
+    target.runtime_functions.push_back(runtime);
+    if(runtime.kind <= mir_model::RuntimeFunction::RF_EH_RESUME)
+      target.uses_eh = true;
+  }
+  for(std::size_t i = 0; i < source.functions.size(); ++i)
+    for(std::size_t j = 0; j < source.functions[i].blocks.size(); ++j)
+      for(std::size_t k = 0;
+          k < source.functions[i].blocks[j].instructions.size(); ++k)
+        if(is_eh_instruction(
+             source.functions[i].blocks[j].instructions[k].kind))
+          target.uses_eh = true;
+}
+
+bool lower_marker(const lowir_model::Instruction & source,
+                  std::vector<mir_model::MirInstruction> & target)
+{
+  using namespace lowir_native::build;
+  typedef lowir_model::Instruction LowInstruction;
+  typedef mir_model::MirInstruction MirInstruction;
+  if(source.kind == LowInstruction::IK_EH_TRY ||
+     source.kind == LowInstruction::IK_EH_CLEANUP) {
+    MirInstruction push = machine_instruction(MirInstruction::MI_EH_PUSH);
+    append_operand(push, named_operand(mir_model::MirOperand::OP_LABEL,
+                                       source.first.text));
+    append_operand(push, immediate(source.kind == LowInstruction::IK_EH_CLEANUP));
+    target.push_back(push);
+  } else if(source.kind == LowInstruction::IK_EH_END)
+    target.push_back(machine_instruction(MirInstruction::MI_EH_POP));
+  else if(source.kind == LowInstruction::IK_EH_CATCH ||
+          source.kind == LowInstruction::IK_EH_CATCH_ALL) {
+    MirInstruction match = machine_instruction(MirInstruction::MI_EH_CATCH);
+    append_operand(match, immediate(source.eh_selector));
+    if(source.kind == LowInstruction::IK_EH_CATCH) append_operand(match,
+      named_operand(mir_model::MirOperand::OP_SYMBOL, source.first.text));
+    target.push_back(match);
+  } else if(source.kind == LowInstruction::IK_RESUME)
+    target.push_back(machine_instruction(MirInstruction::MI_RESUME));
+  else if(source.kind != LowInstruction::IK_EH_CLEANUP_CLAUSE &&
+          source.kind != LowInstruction::IK_EH_FILTER) return false;
+  return true;
+}
+
+}  // namespace eh
+}  // namespace lowir_native

@@ -2920,6 +2920,7 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 			if (info.definition_body != kNoNode)
 				AnalyzeCompound(info.definition_body, function_scope,
 					constructor_body);
+			DemandExplicitConstructorUnwindDestructors(constructor_body);
 		}
 		else if ((info.special_member == SPECIAL_MEMBER_COPY_ASSIGNMENT ||
 			info.special_member == SPECIAL_MEMBER_MOVE_ASSIGNMENT) &&

@@ -1443,6 +1443,145 @@ std::string block_target(const std::string & function_name,
   return function_name + "::" + operand.text;
 }
 
+const char * const kEhTop = ".__cppgm_eh_top";
+const char * const kEhValue = ".__cppgm_eh_value";
+const char * const kEhType = ".__cppgm_eh_type";
+const char * const kEhSelector = ".__cppgm_eh_selector";
+const char * const kEhCaught = ".__cppgm_eh_caught";
+const char * const kEhDispatch = ".__cppgm_eh_dispatch";
+const char * const kEhResume = ".__cppgm_eh_resume";
+
+void emit_test_register(CodeBuffer & out, X64Register reg)
+{
+  emit_rex(out, true, reg, reg);
+  out.byte(0x85);
+  emit_modrm(out, 3, reg, reg);
+}
+
+void emit_compare_immediate(CodeBuffer & out, X64Register reg, unsigned value)
+{
+  emit_rex(out, true, XR_RAX, reg);
+  out.byte(0x83);
+  emit_modrm(out, 3, 7, reg);
+  out.byte(value);
+}
+
+void emit_indirect_transfer(CodeBuffer & out, X64Register reg, bool call)
+{
+  emit_rex(out, true, call ? XR_RDX : XR_RSP, reg);
+  out.byte(0xff);
+  emit_modrm(out, 3, call ? 2 : 4, reg);
+}
+
+void emit_eh_push(CodeBuffer & out,
+                  const mir_model::MirInstruction & instruction,
+                  const mir_model::MirFunction & function)
+{
+  require_operands(instruction, 2);
+  emit_stack_adjust(out, true, 80);
+  emit_symbol_move(out, XR_R11, kEhTop);
+  emit_load(out, XR_RAX, XR_R11, 0, 64);
+  emit_store(out, XR_RSP, 0, XR_RAX, 64);
+  emit_symbol_move(out, XR_RAX, block_target(function.name,
+                                              instruction.operands[0]));
+  emit_store(out, XR_RSP, 8, XR_RAX, 64);
+  emit_store(out, XR_RSP, 16, XR_RBP, 64);
+  emit_lea(out, XR_RAX, XR_RSP, 80);
+  emit_store(out, XR_RSP, 24, XR_RAX, 64);
+  emit_store(out, XR_RSP, 32, XR_RBX, 64);
+  emit_store(out, XR_RSP, 40, XR_R12, 64);
+  emit_store(out, XR_RSP, 48, XR_R13, 64);
+  emit_store(out, XR_RSP, 56, XR_R14, 64);
+  emit_store(out, XR_RSP, 64, XR_R15, 64);
+  emit_immediate_move(out, XR_RAX, instruction.operands[1].imm);
+  emit_store(out, XR_RSP, 72, XR_RAX, 64);
+  emit_register_move(out, XR_RAX, XR_RSP);
+  emit_store(out, XR_R11, 0, XR_RAX, 64);
+}
+
+void emit_eh_pop(CodeBuffer & out)
+{
+  emit_symbol_move(out, XR_R11, kEhTop);
+  emit_load(out, XR_RAX, XR_R11, 0, 64);
+  emit_load(out, XR_RCX, XR_RAX, 0, 64);
+  emit_store(out, XR_R11, 0, XR_RCX, 64);
+  emit_load(out, XR_RSP, XR_RAX, 24, 64);
+}
+
+void emit_eh_enter_catch(CodeBuffer & out)
+{
+  const std::string done = out.internal_label("eh_enter_catch_done");
+  emit_symbol_move(out, XR_R11, kEhTop);
+  emit_load(out, XR_RAX, XR_R11, 0, 64);
+  emit_test_register(out, XR_RAX);
+  emit_condition_jump(out, XC_E, done);
+  emit_load(out, XR_RCX, XR_RAX, 72, 64);
+  emit_compare_immediate(out, XR_RCX, 3);
+  emit_condition_jump(out, XC_NE, done);
+  emit_load(out, XR_RCX, XR_RAX, 0, 64);
+  emit_store(out, XR_R11, 0, XR_RCX, 64);
+  emit_load(out, XR_RSP, XR_RAX, 24, 64);
+  out.label(done);
+}
+
+void emit_eh_catch(CodeBuffer & out,
+                   const mir_model::MirInstruction & instruction)
+{
+  if(instruction.operands.size() != 1 && instruction.operands.size() != 2)
+    throw std::logic_error("invalid MIR EH catch operands");
+  emit_eh_enter_catch(out);
+  std::string done;
+  if(instruction.operands.size() == 2) {
+    done = out.internal_label("eh_catch_done");
+    emit_symbol_move(out, XR_RAX, instruction.operands[1].text);
+    emit_symbol_move(out, XR_R11, kEhType);
+    emit_load(out, XR_RCX, XR_R11, 0, 64);
+    emit_register_alu(out, 0x39, XR_RCX, XR_RAX);
+    emit_condition_jump(out, XC_NE, done);
+  }
+  emit_symbol_move(out, XR_R11, kEhSelector);
+  emit_immediate_move(out, XR_RAX, instruction.operands[0].imm);
+  emit_store(out, XR_R11, 0, XR_RAX, 64);
+  if(!done.empty()) out.label(done);
+}
+
+bool emit_eh_instruction(CodeBuffer & out,
+                         const mir_model::MirInstruction & instruction,
+                         const mir_model::MirFunction * function)
+{
+  switch(instruction.opcode) {
+  case mir_model::MirInstruction::MI_EH_PUSH:
+    if(!function) throw std::logic_error("EH push outside function");
+    emit_eh_push(out, instruction, *function); return true;
+  case mir_model::MirInstruction::MI_EH_POP:
+    require_operands(instruction, 0); emit_eh_pop(out); return true;
+  case mir_model::MirInstruction::MI_EH_CATCH:
+    emit_eh_catch(out, instruction); return true;
+  case mir_model::MirInstruction::MI_LOAD_EXCEPTION:
+  case mir_model::MirInstruction::MI_LOAD_EXCEPTION_SELECTOR:
+    require_operands(instruction, 1);
+    emit_eh_enter_catch(out);
+    emit_symbol_move(out, XR_R11,
+      instruction.opcode == mir_model::MirInstruction::MI_LOAD_EXCEPTION ?
+      kEhValue : kEhSelector);
+    emit_load(out, require_register(instruction.operands[0]), XR_R11, 0,
+              type_width(instruction.type));
+    return true;
+  case mir_model::MirInstruction::MI_THROW:
+    require_operands(instruction, 1);
+    emit_symbol_move(out, XR_R11, kEhValue);
+    emit_store(out, XR_R11, 0, require_register(instruction.operands[0]), 64);
+    emit_symbol_move(out, XR_R11, kEhType);
+    emit_immediate_move(out, XR_RAX, 0);
+    emit_store(out, XR_R11, 0, XR_RAX, 64);
+    out.byte(0xe9); out.relative32(kEhDispatch); return true;
+  case mir_model::MirInstruction::MI_RESUME:
+    require_operands(instruction, 0);
+    out.byte(0xe9); out.relative32(kEhResume); return true;
+  default: return false;
+  }
+}
+
 bool emit_atomic_instruction(CodeBuffer & out,
                              const mir_model::MirInstruction & instruction,
                              const mir_model::MirFunction * function)
@@ -1506,10 +1645,10 @@ bool emit_i128_instruction(CodeBuffer & out,
   }
 }
 
-void emit_instruction(CodeBuffer & out,
-                      const mir_model::MirInstruction & instruction,
+void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instruction,
                       const mir_model::MirFunction * function) {
-  if(emit_atomic_instruction(out, instruction, function) || emit_i128_instruction(out, instruction)) return;
+  if(emit_eh_instruction(out, instruction, function) || emit_atomic_instruction(out, instruction, function) ||
+     emit_i128_instruction(out, instruction)) return;
   switch(instruction.opcode) {
   case mir_model::MirInstruction::MI_MOV:
     emit_move(out, instruction);
@@ -1740,10 +1879,7 @@ void emit_instruction(CodeBuffer & out,
     emit_function_return(out, *function);
     return;
   case mir_model::MirInstruction::MI_EXIT:
-    emit_immediate_move(out, XR_RAX, 60);
-    out.byte(0x0f);
-    out.byte(0x05);
-    return;
+    emit_immediate_move(out, XR_RAX, 60); out.byte(0x0f); out.byte(0x05); return;
   default:
     throw std::logic_error("MIR opcode is not implemented by foundation encoder");
   }
@@ -1757,6 +1893,210 @@ void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
     out.label(function.name + "::" + function.blocks[i].label);
     for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j)
       emit_instruction(out, function.blocks[i].instructions[j], &function);
+  }
+}
+
+void emit_runtime_labels(CodeBuffer & out,
+                         const mir_model::MirRuntimeFunction & runtime)
+{
+  out.label(runtime.name);
+  if(!runtime.object_symbol.empty() && runtime.object_symbol != runtime.name)
+    out.label(runtime.object_symbol);
+}
+
+void emit_eh_restore(CodeBuffer & out)
+{
+  emit_load(out, XR_RBX, XR_RAX, 32, 64);
+  emit_load(out, XR_R12, XR_RAX, 40, 64);
+  emit_load(out, XR_R13, XR_RAX, 48, 64);
+  emit_load(out, XR_R14, XR_RAX, 56, 64);
+  emit_load(out, XR_R15, XR_RAX, 64, 64);
+  emit_load(out, XR_RBP, XR_RAX, 16, 64);
+}
+
+void emit_eh_dispatch(CodeBuffer & out)
+{
+  const std::string cleanup = ".__cppgm_eh_dispatch_cleanup";
+  const std::string skip = ".__cppgm_eh_dispatch_skip";
+  const std::string unhandled = ".__cppgm_eh_unhandled";
+  out.label(kEhDispatch);
+  emit_symbol_move(out, XR_R11, kEhTop);
+  emit_load(out, XR_RAX, XR_R11, 0, 64);
+  emit_test_register(out, XR_RAX);
+  emit_condition_jump(out, XC_E, unhandled);
+  emit_load(out, XR_RCX, XR_RAX, 72, 64);
+  emit_compare_immediate(out, XR_RCX, 2);
+  emit_condition_jump(out, XC_E, skip);
+  emit_compare_immediate(out, XR_RCX, 3);
+  emit_condition_jump(out, XC_E, skip);
+  emit_compare_immediate(out, XR_RCX, 1);
+  emit_condition_jump(out, XC_E, cleanup);
+  emit_immediate_move(out, XR_RCX, 3);
+  emit_store(out, XR_RAX, 72, XR_RCX, 64);
+  emit_load(out, XR_R11, XR_RAX, 8, 64);
+  emit_eh_restore(out);
+  emit_register_move(out, XR_RSP, XR_RAX);
+  emit_indirect_transfer(out, XR_R11, false);
+  out.label(cleanup);
+  emit_immediate_move(out, XR_RCX, 2);
+  emit_store(out, XR_RAX, 72, XR_RCX, 64);
+  emit_load(out, XR_R11, XR_RAX, 8, 64);
+  emit_eh_restore(out);
+  emit_register_move(out, XR_RSP, XR_RAX);
+  emit_indirect_transfer(out, XR_R11, false);
+  out.label(skip);
+  emit_load(out, XR_RCX, XR_RAX, 0, 64);
+  emit_store(out, XR_R11, 0, XR_RCX, 64);
+  out.byte(0xe9); out.relative32(kEhDispatch);
+  out.label(unhandled);
+  emit_immediate_move(out, XR_RDI, 134);
+  emit_immediate_move(out, XR_RAX, 60);
+  out.byte(0x0f); out.byte(0x05);
+}
+
+void emit_eh_resume(CodeBuffer & out,
+                    const std::vector<mir_model::MirRuntimeFunction> & runtimes)
+{
+  for(std::size_t i = 0; i < runtimes.size(); ++i)
+    if(runtimes[i].kind == mir_model::RuntimeFunction::RF_EH_RESUME)
+      emit_runtime_labels(out, runtimes[i]);
+  out.label(kEhResume);
+  emit_symbol_move(out, XR_R11, kEhTop);
+  emit_load(out, XR_RAX, XR_R11, 0, 64);
+  emit_test_register(out, XR_RAX);
+  emit_condition_jump(out, XC_E, kEhDispatch);
+  emit_load(out, XR_RCX, XR_RAX, 72, 64);
+  emit_compare_immediate(out, XR_RCX, 2);
+  emit_condition_jump(out, XC_NE, kEhDispatch);
+  emit_load(out, XR_RCX, XR_RAX, 0, 64);
+  emit_store(out, XR_R11, 0, XR_RCX, 64);
+  out.byte(0xe9); out.relative32(kEhDispatch);
+}
+
+void emit_eh_allocate(CodeBuffer & out)
+{
+  emit_lea(out, XR_RSI, XR_RDI, 32);
+  emit_immediate_move(out, XR_RAX, 9);
+  emit_immediate_move(out, XR_RDI, 0);
+  emit_immediate_move(out, XR_RDX, 3);
+  emit_immediate_move(out, XR_R10, 0x22);
+  emit_immediate_move(out, XR_R8, UINT64_MAX);
+  emit_immediate_move(out, XR_R9, 0);
+  out.byte(0x0f); out.byte(0x05);
+  emit_lea(out, XR_RAX, XR_RAX, 32);
+  out.byte(0xc3);
+}
+
+void emit_malloc_runtime(CodeBuffer & out)
+{
+  emit_register_move(out, XR_RSI, XR_RDI);
+  emit_immediate_move(out, XR_RAX, 9);
+  emit_immediate_move(out, XR_RDI, 0);
+  emit_immediate_move(out, XR_RDX, 3);
+  emit_immediate_move(out, XR_R10, 0x22);
+  emit_immediate_move(out, XR_R8, UINT64_MAX);
+  emit_immediate_move(out, XR_R9, 0);
+  out.byte(0x0f); out.byte(0x05); out.byte(0xc3);
+}
+
+void emit_eh_begin_catch(CodeBuffer & out)
+{
+  emit_symbol_move(out, XR_R11, kEhCaught);
+  emit_load(out, XR_RAX, XR_R11, 0, 64);
+  emit_store(out, XR_RDI, -16, XR_RAX, 64);
+  emit_store(out, XR_R11, 0, XR_RDI, 64);
+  emit_register_move(out, XR_RAX, XR_RDI);
+  out.byte(0xc3);
+}
+
+void emit_eh_end_catch(CodeBuffer & out)
+{
+  const std::string done = ".__cppgm_eh_end_catch_done";
+  emit_symbol_move(out, XR_R11, kEhCaught);
+  emit_load(out, XR_RAX, XR_R11, 0, 64);
+  emit_test_register(out, XR_RAX);
+  emit_condition_jump(out, XC_E, done);
+  emit_load(out, XR_RCX, XR_RAX, -16, 64);
+  emit_store(out, XR_R11, 0, XR_RCX, 64);
+  emit_load(out, XR_RCX, XR_RAX, -32, 64);
+  emit_test_register(out, XR_RCX);
+  emit_condition_jump(out, XC_E, done);
+  emit_register_move(out, XR_RDI, XR_RAX);
+  emit_stack_adjust(out, true, 8);
+  emit_indirect_transfer(out, XR_RCX, true);
+  emit_stack_adjust(out, false, 8);
+  out.label(done);
+  out.byte(0xc3);
+}
+
+void emit_eh_throw_runtime(CodeBuffer & out)
+{
+  emit_store(out, XR_RDI, -32, XR_RDX, 64);
+  emit_store(out, XR_RDI, -24, XR_RSI, 64);
+  emit_symbol_move(out, XR_R11, kEhValue);
+  emit_store(out, XR_R11, 0, XR_RDI, 64);
+  emit_symbol_move(out, XR_R11, kEhType);
+  emit_store(out, XR_R11, 0, XR_RSI, 64);
+  emit_symbol_move(out, XR_R11, kEhSelector);
+  emit_immediate_move(out, XR_RAX, 0);
+  emit_store(out, XR_R11, 0, XR_RAX, 64);
+  out.byte(0xe9); out.relative32(kEhDispatch);
+}
+
+void emit_eh_rethrow(CodeBuffer & out)
+{
+  emit_symbol_move(out, XR_R11, kEhCaught);
+  emit_load(out, XR_RDI, XR_R11, 0, 64);
+  emit_symbol_move(out, XR_R11, kEhValue);
+  emit_store(out, XR_R11, 0, XR_RDI, 64);
+  emit_load(out, XR_RSI, XR_RDI, -24, 64);
+  emit_symbol_move(out, XR_R11, kEhType);
+  emit_store(out, XR_R11, 0, XR_RSI, 64);
+  out.byte(0xe9); out.relative32(kEhDispatch);
+}
+
+void emit_eh_runtime(CodeBuffer & out, const mir_model::MirProgram & program)
+{
+  if(program.uses_eh) {
+    emit_eh_dispatch(out);
+    emit_eh_resume(out, program.runtime_functions);
+  }
+  for(std::size_t i = 0; i < program.runtime_functions.size(); ++i) {
+    const mir_model::MirRuntimeFunction & runtime = program.runtime_functions[i];
+    if(runtime.kind == mir_model::RuntimeFunction::RF_EH_RESUME) continue;
+    emit_runtime_labels(out, runtime);
+    switch(runtime.kind) {
+    case mir_model::RuntimeFunction::RF_EH_ALLOCATE: emit_eh_allocate(out); break;
+    case mir_model::RuntimeFunction::RF_EH_BEGIN_CATCH: emit_eh_begin_catch(out); break;
+    case mir_model::RuntimeFunction::RF_EH_END_CATCH: emit_eh_end_catch(out); break;
+    case mir_model::RuntimeFunction::RF_EH_RETHROW: emit_eh_rethrow(out); break;
+    case mir_model::RuntimeFunction::RF_EH_THROW: emit_eh_throw_runtime(out); break;
+    case mir_model::RuntimeFunction::RF_EH_PERSONALITY: out.byte(0xc3); break;
+    case mir_model::RuntimeFunction::RF_EH_RESUME: break;
+    case mir_model::RuntimeFunction::RF_ALLOCATE_MEMORY: emit_malloc_runtime(out); break;
+    case mir_model::RuntimeFunction::RF_FREE_MEMORY: out.byte(0xc3); break;
+    }
+  }
+}
+
+void emit_eh_data(CodeBuffer & out, const mir_model::MirProgram & program)
+{
+  if(!program.uses_eh && program.runtime_data.empty()) return;
+  out.align(8);
+  if(program.uses_eh) {
+    out.label(kEhTop); out.zeros(8);
+    out.label(kEhValue); out.zeros(8);
+    out.label(kEhType); out.zeros(8);
+    out.label(kEhSelector); out.zeros(8);
+    out.label(kEhCaught); out.zeros(8);
+  }
+  for(std::size_t i = 0; i < program.runtime_data.size(); ++i) {
+    out.align(16);
+    out.label(program.runtime_data[i].name);
+    if(!program.runtime_data[i].object_symbol.empty() &&
+       program.runtime_data[i].object_symbol != program.runtime_data[i].name)
+      out.label(program.runtime_data[i].object_symbol);
+    out.zeros(32);
   }
 }
 
@@ -1928,8 +2268,10 @@ void write_linux_executable(const std::string & path,
     emit_instruction(content, program.startup[i], 0);
   for(std::size_t i = 0; i < program.functions.size(); ++i)
     emit_function(content, program.functions[i]);
+  emit_eh_runtime(content, program);
   for(std::size_t i = 0; i < program.globals.size(); ++i)
     emit_global(content, program.globals[i]);
+  emit_eh_data(content, program);
   emit_relocatable_objects(content, objects);
   content.resolve();
   const std::vector<unsigned char> image = make_elf_image(content);

@@ -148,6 +148,13 @@ const char * opcode_name(Instruction::Opcode opcode)
   case Instruction::MI_TLS_ADDR: return "tls_addr";
   case Instruction::MI_CALL: return "call";
   case Instruction::MI_CALL_INDIRECT: return "call";
+  case Instruction::MI_EH_PUSH: return "eh_push";
+  case Instruction::MI_EH_POP: return "eh_pop";
+  case Instruction::MI_EH_CATCH: return "eh_catch";
+  case Instruction::MI_LOAD_EXCEPTION: return "load_exception";
+  case Instruction::MI_LOAD_EXCEPTION_SELECTOR: return "load_exception_selector";
+  case Instruction::MI_THROW: return "throw";
+  case Instruction::MI_RESUME: return "resume";
   case Instruction::MI_JMP: return "jmp";
   case Instruction::MI_JMP_INDIRECT: return "jmp";
   case Instruction::MI_RET: return "ret";

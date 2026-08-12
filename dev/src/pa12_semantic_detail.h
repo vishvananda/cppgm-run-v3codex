@@ -1344,6 +1344,7 @@ private:
 	void AddMemberInitializationAction(BindingId member, NodeId initializer,
 		ScopeId scope, std::uint32_t body);
 	bool InitializationActionsAreNonthrowing(std::uint32_t body);
+	void DemandExplicitConstructorUnwindDestructors(std::uint32_t body);
 	void AddDefaultConstructor(std::uint32_t variable, BindingId binding,
 		TypeId type);
 	void AddDestructorSubobjectActions(EntityId entity, BindingId destructor,

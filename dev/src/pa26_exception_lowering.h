@@ -162,7 +162,8 @@ protected:
 			return true;
 		}
 		if (task.kind != Derived::STATEMENT_HANDLER_AFTER_BODY) return false;
-		FinishHandlerBody(task.node, task.first, task.second, task.third);
+		FinishHandlerBody(task.node, task.auxiliary,
+			task.first, task.second, task.third);
 		return true;
 	}
 
@@ -474,7 +475,7 @@ protected:
 		const BlockId cleanup = derived.AddBlock(
 			derived.NewLabel("catch_cleanup"));
 		derived.EmitEhTarget(Instruction::EH_CLEANUP, cleanup);
-		InitializeCatchVariable(handler, caught);
+		InitializeCatchVariable(handler_node, handler, caught);
 		active_exception_regions_.push_back(ExceptionRegionState(
 			EXCEPTION_HANDLER_REGION, handler_node));
 		typename Derived::StatementTask after(Derived::STATEMENT_HANDLER_AFTER_BODY);
@@ -494,21 +495,81 @@ protected:
 		throw std::logic_error("typed exception handler has no body");
 	}
 
-	void InitializeCatchVariable(const DumpNode& handler,
+	void InitializeCatchVariable(std::uint32_t handler_node,
+		const DumpNode& handler,
 		const Operand& caught)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		if (handler.binding == kNoBinding) return;
+		if (handler.binding == kNoBinding &&
+			handler.selected_binding == kNoBinding) return;
 		const LowType type = derived.LowerStorageType(handler.type);
+		const Operand destination = handler.binding != kNoBinding ?
+			derived.StorageFor(handler.binding, type) :
+			Operand(derived.EnsureGeneratedSlot(
+				handler_node, "catch_value", type), type);
+		if (handler.selected_binding != kNoBinding)
+		{
+			if (handler.trivial_special_member_action)
+			{
+				derived.EmitClassObjectCopy(
+					handler.operand_type, caught, destination);
+				return;
+			}
+			if (handler.selected_binding >= derived.function_symbols_.size() ||
+				derived.function_symbols_[handler.selected_binding] == kNoLowId)
+				throw std::logic_error(
+					"catch copy constructor has no emitted binding");
+			Instruction call(Instruction::CALL);
+			call.type = LowVoid();
+			call.first = Operand(Operand::FUNCTION,
+				derived.function_symbols_[handler.selected_binding], LowPtr());
+			CallArguments arguments;
+			arguments.Push(derived.AddressOfStorage(destination));
+			arguments.Push(caught);
+			CallArgumentFlags passing;
+			passing.Push(Instruction::CALL_PASS_VALUE);
+			passing.Push(Instruction::CALL_PASS_REFERENCE);
+			derived.AttachCallArguments(&call, arguments, passing);
+			derived.output_.symbols[call.first.id].referenced = true;
+			derived.Emit(call);
+			return;
+		}
 		Instruction store(Instruction::STORE);
 		store.type = type;
 		store.first = type.kind == LOW_PTR ? caught :
 			derived.LoadStorage(caught, type);
-		store.second = derived.StorageFor(handler.binding, type);
+		store.second = destination;
 		derived.Emit(store);
 	}
 
-	void FinishHandlerBody(std::uint32_t try_node, BlockId cleanup,
+	void DestroyUnnamedCatch(std::uint32_t handler_node)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const DumpNode& handler = derived.arena_.nodes[handler_node];
+		if (handler.binding != kNoBinding ||
+			handler.object_binding == kNoBinding) return;
+		if (handler.object_binding >= derived.function_symbols_.size() ||
+			derived.function_symbols_[handler.object_binding] == kNoLowId)
+			throw std::logic_error(
+				"catch destructor has no emitted binding");
+		const LowType type = derived.LowerStorageType(handler.type);
+		const Operand storage(derived.EnsureGeneratedSlot(
+			handler_node, "catch_value", type), type);
+		Instruction call(Instruction::CALL);
+		call.type = LowVoid();
+		call.first = Operand(Operand::FUNCTION,
+			derived.function_symbols_[handler.object_binding], LowPtr());
+		CallArguments arguments;
+		arguments.Push(derived.AddressOfStorage(storage));
+		CallArgumentFlags passing;
+		passing.Push(Instruction::CALL_PASS_VALUE);
+		derived.AttachCallArguments(&call, arguments, passing);
+		derived.output_.symbols[call.first.id].referenced = true;
+		derived.Emit(call);
+	}
+
+	void FinishHandlerBody(std::uint32_t try_node,
+		std::uint32_t handler_node, BlockId cleanup,
 		BlockId next, BlockId end)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
@@ -519,12 +580,14 @@ protected:
 		CallArguments none;
 		if (!derived.CurrentBlock().terminated)
 		{
+			DestroyUnnamedCatch(handler_node);
 			derived.Emit(Instruction(Instruction::EH_END));
 			(void)EmitExceptionRuntimeCall(
 				derived.polymorphism_.eh_end_catch_symbol, LowVoid(), none);
 			derived.EmitJump(end);
 		}
 		derived.SelectBlock(cleanup);
+		DestroyUnnamedCatch(handler_node);
 		const ExceptionRegionState* parent = EnclosingTryRegion();
 		if (parent) EmitHandlerClause(parent->handler);
 		(void)EmitExceptionRuntimeCall(

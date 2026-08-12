@@ -23,6 +23,13 @@ unsigned instruction_clobber_mask(const Instruction & instruction)
       register_mask(XR_RDI) | register_mask(XR_R8) |
       register_mask(XR_R9) | register_mask(XR_R10) |
       register_mask(XR_R11);
+  if(instruction.kind >= Instruction::IK_EH_TRY &&
+     instruction.kind <= Instruction::IK_RESUME)
+    return register_mask(XR_RAX) | register_mask(XR_RCX) |
+      register_mask(XR_RDX) | register_mask(XR_RSI) |
+      register_mask(XR_RDI) | register_mask(XR_R8) |
+      register_mask(XR_R9) | register_mask(XR_R10) |
+      register_mask(XR_R11);
   if(instruction.kind == Instruction::IK_COPYOBJ)
     return register_mask(XR_RAX) | register_mask(XR_RCX) |
       register_mask(XR_RSI) | register_mask(XR_RDI);

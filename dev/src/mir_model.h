@@ -203,6 +203,7 @@ struct Instruction
     MI_ZERO_BYTES,
     MI_EH_PUSH,
     MI_EH_POP,
+    MI_EH_CATCH,
     MI_LOAD_EXCEPTION,
     MI_LOAD_EXCEPTION_SELECTOR,
     MI_THROW,
@@ -297,14 +298,42 @@ struct ObjectAlias
   std::string target;
 };
 
+struct RuntimeFunction
+{
+  enum Kind
+  {
+    RF_EH_ALLOCATE,
+    RF_EH_BEGIN_CATCH,
+    RF_EH_END_CATCH,
+    RF_EH_RETHROW,
+    RF_EH_THROW,
+    RF_EH_PERSONALITY,
+    RF_EH_RESUME,
+    RF_ALLOCATE_MEMORY,
+    RF_FREE_MEMORY
+  } kind = RF_EH_PERSONALITY;
+
+  std::string name;
+  std::string object_symbol;
+};
+
+struct RuntimeData
+{
+  std::string name;
+  std::string object_symbol;
+};
+
 struct Program
 {
   std::string target;
+  bool uses_eh = false;
   std::vector<Instruction> startup;
   std::vector<GlobalDefinition> globals;
   std::vector<Function> functions;
   std::vector<ObjectAlias> object_aliases;
   std::vector<ir_model::ExportedSymbol> exported_symbols;
+  std::vector<RuntimeFunction> runtime_functions;
+  std::vector<RuntimeData> runtime_data;
 };
 
 using MirGlobalDefinition = GlobalDefinition;
@@ -318,6 +347,8 @@ using MirBlock = Block;
 using MirHostEhClause = HostEhClause;
 using MirFunction = Function;
 using MirObjectAlias = ObjectAlias;
+using MirRuntimeFunction = RuntimeFunction;
+using MirRuntimeData = RuntimeData;
 using MirProgram = Program;
 
 std::string serialize_mir_program(const MirProgram & program);
