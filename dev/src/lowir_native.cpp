@@ -35,11 +35,27 @@ MirOperand reg_operand(X64Register reg)
   return out;
 }
 
+MirOperand xmm_operand(XmmRegister xmm)
+{
+  MirOperand out;
+  out.kind = MirOperand::OP_XMM;
+  out.xmm = xmm;
+  return out;
+}
+
 MirOperand immediate(long long value)
 {
   MirOperand out;
   out.kind = MirOperand::OP_IMM;
   out.imm = value;
+  return out;
+}
+
+MirOperand float_immediate(const std::string & text)
+{
+  MirOperand out;
+  out.kind = MirOperand::OP_FLOAT_IMM;
+  out.text = text;
   return out;
 }
 
@@ -116,6 +132,20 @@ void append_store(std::vector<MirInstruction> & out,
   out.push_back(instruction);
 }
 
+void append_float_move(std::vector<MirInstruction> & out,
+                       const MirOperand & destination,
+                       const MirOperand & source,
+                       const std::string & type,
+                       bool omit_identity = false)
+{
+  if(omit_identity && destination.kind == MirOperand::OP_XMM &&
+     source.kind == MirOperand::OP_XMM && destination.xmm == source.xmm) return;
+  MirInstruction instruction = machine_instruction(MirInstruction::MI_FMOV, type);
+  append_operand(instruction, destination);
+  append_operand(instruction, source);
+  out.push_back(instruction);
+}
+
 bool is_callee_saved(X64Register reg)
 {
   return reg == XR_RBX || reg == XR_R12 || reg == XR_R13 ||
@@ -132,6 +162,20 @@ bool is_integer_or_pointer(const LowType & type)
 {
   return (type.kind >= lowir_model::LTK_I1 && type.kind <= lowir_model::LTK_I64) ||
          type.kind == lowir_model::LTK_PTR;
+}
+
+bool is_scalar_float(const LowType & type)
+{
+  return type.kind == lowir_model::LTK_F32 || type.kind == lowir_model::LTK_F64;
+}
+
+const LowType & floating_literal_type(const std::string & text)
+{
+  if(!text.empty() && (text.back() == 'f' || text.back() == 'F'))
+    return lowir_model::builtin_lowir_type(lowir_model::LTK_F32);
+  if(!text.empty() && (text.back() == 'l' || text.back() == 'L'))
+    return lowir_model::builtin_lowir_type(lowir_model::LTK_F80);
+  return lowir_model::builtin_lowir_type(lowir_model::LTK_F64);
 }
 
 X86Condition predicate_condition(const std::string & predicate)
@@ -275,6 +319,32 @@ private:
   }
 };
 
+class XmmPool
+{
+public:
+  XmmPool() { std::fill(used_, used_ + 8, false); }
+
+  XmmRegister allocate()
+  {
+    // xmm6/xmm7 remain available to the encoder for immediate and memory forms.
+    for(unsigned i = 0; i != 6; ++i) {
+      if(used_[i]) continue;
+      used_[i] = true;
+      return static_cast<XmmRegister>(i);
+    }
+    throw std::runtime_error("scalar XMM register pool exhausted");
+  }
+
+  void release(XmmRegister xmm)
+  {
+    const unsigned index = static_cast<unsigned>(xmm);
+    if(index < 6) used_[index] = false;
+  }
+
+private:
+  bool used_[8];
+};
+
 class FunctionLowerer
 {
 public:
@@ -301,9 +371,16 @@ public:
       target_.blocks.push_back(block);
     }
     target_.callee_saved_regs = registers_.preserves();
-    target_.stack_size = align_up(std::max(std::max(target_.callee_saved_regs.size() * 8,
-                                                    source_.params.size() * 8),
-                                           frame_bytes_), 16);
+    target_.scratch_bytes = uses_scalar_float_ ? 48 : 0;
+    if(uses_scalar_float_) {
+      const std::size_t float_frame_bytes = source_.params.empty() ? frame_bytes_ :
+        std::max<std::size_t>(frame_bytes_, 16);
+      target_.stack_size = align_up(float_frame_bytes + target_.callee_saved_regs.size() * 8 +
+                                    target_.scratch_bytes, 16);
+    } else
+      target_.stack_size = align_up(
+        std::max(std::max(target_.callee_saved_regs.size() * 8,
+                          source_.params.size() * 8), frame_bytes_), 16);
     return target_;
   }
 
@@ -313,12 +390,14 @@ private:
   FunctionFacts facts_;
   mir_model::MirFunction target_;
   RegisterPool registers_;
+  XmmPool xmms_;
   std::unordered_map<std::string, ValueFact> values_;
   std::unordered_map<std::string, long long> slot_offsets_;
   std::vector<MirInstruction> parameter_moves_;
   std::size_t position_;
   std::size_t skipped_position_ = static_cast<std::size_t>(-1);
   std::size_t frame_bytes_ = 0;
+  bool uses_scalar_float_ = false;
 
   long long allocate_frame_binding(mir_model::MirFrameBinding::Kind kind,
                                    const std::string & name,
@@ -364,8 +443,83 @@ private:
     return false;
   }
 
+  void bind_mixed_parameters()
+  {
+    uses_scalar_float_ = true;
+    std::size_t gpr_parameters = 0;
+    std::size_t float_parameters = 0;
+    for(std::size_t i = 0; i < source_.params.size(); ++i) {
+      if(is_scalar_float(source_.params[i].type)) ++float_parameters;
+      else ++gpr_parameters;
+    }
+    if(gpr_parameters >= 2 && float_parameters)
+      registers_.reserve(XR_R8); // fixed conversion/setup scratch at mixed boundaries
+    std::size_t gpr_index = 0;
+    std::size_t xmm_index = 0;
+    std::size_t stack_index = 0;
+    std::vector<MirInstruction> gpr_parameter_moves;
+    for(std::size_t i = 0; i < source_.params.size(); ++i) {
+      const lowir_model::LowirParameter & parameter = source_.params[i];
+      mir_model::MirParamBinding binding;
+      binding.name = parameter.name;
+      binding.type = parameter.type.text;
+      ValueFact value;
+      value.type = parameter.type;
+      value.parameter = true;
+      if(is_scalar_float(parameter.type) && xmm_index < 8) {
+        binding.location = mir_model::MirParamBinding::PL_XMM;
+        binding.xmm = static_cast<XmmRegister>(xmm_index++);
+        const long long home = allocate_frame_binding(
+          mir_model::MirFrameBinding::FB_PARAM_SLOT, parameter.name, parameter.type);
+        append_float_move(parameter_moves_, frame_operand(home),
+                          xmm_operand(binding.xmm), parameter.type.text);
+        value.location = frame_operand(home);
+      } else if(!is_scalar_float(parameter.type) && gpr_index < 6) {
+        binding.location = mir_model::MirParamBinding::PL_REG;
+        const std::size_t parameter_gpr_index = gpr_index++;
+        binding.reg = argument_register(parameter_gpr_index);
+        value.location = reg_operand(binding.reg);
+        const std::size_t uses = facts_.uses[parameter.name];
+        if((parameter_gpr_index != 0 && uses) ||
+           (parameter.type.kind == lowir_model::LTK_PTR && uses > 1)) {
+          const X64Register destination = registers_.allocate(true);
+          value.location = reg_operand(destination);
+          append_move(gpr_parameter_moves, value.location, reg_operand(binding.reg));
+        } else if(uses && crosses_call(parameter.name)) {
+          const X64Register destination = registers_.allocate(true);
+          value.location = reg_operand(destination);
+          append_move(gpr_parameter_moves, value.location, reg_operand(binding.reg));
+        }
+      } else {
+        binding.location = mir_model::MirParamBinding::PL_STACK;
+        binding.stack_offset = 16 + static_cast<long long>(stack_index++ * 8);
+        const long long home = allocate_frame_binding(
+          mir_model::MirFrameBinding::FB_PARAM_SLOT, parameter.name, parameter.type);
+        if(is_scalar_float(parameter.type))
+          append_float_move(parameter_moves_, frame_operand(home),
+                            frame_operand(binding.stack_offset), parameter.type.text);
+        else {
+          append_load(parameter_moves_, reg_operand(XR_RAX),
+                      frame_operand(binding.stack_offset), parameter.type.text);
+          append_store(parameter_moves_, frame_operand(home), reg_operand(XR_RAX),
+                       parameter.type.text);
+        }
+        value.location = frame_operand(home);
+      }
+      target_.params.push_back(binding);
+      values_[parameter.name] = value;
+    }
+    parameter_moves_.insert(parameter_moves_.end(),
+                            gpr_parameter_moves.begin(), gpr_parameter_moves.end());
+  }
+
   void bind_parameters()
   {
+    for(std::size_t i = 0; i < source_.params.size(); ++i) {
+      if(!is_scalar_float(source_.params[i].type)) continue;
+      bind_mixed_parameters();
+      return;
+    }
     const bool wide_gpr_boundary = source_.params.size() >= 6;
     bool home_unused_register_parameters = wide_gpr_boundary;
     for(std::size_t i = 0; i < source_.params.size() && i < 6; ++i)
@@ -406,6 +560,10 @@ private:
         value.location = frame_operand(home);
       } else if(!wide_gpr_boundary && parameter.type.kind == lowir_model::LTK_PTR && uses > 1) {
         const X64Register destination = registers_.allocate(true);
+        value.location = reg_operand(destination);
+        append_move(parameter_moves_, value.location, reg_operand(binding.reg));
+      } else if(!wide_gpr_boundary && uses > 1) {
+        const X64Register destination = registers_.allocate(crosses_call(parameter.name));
         value.location = reg_operand(destination);
         append_move(parameter_moves_, value.location, reg_operand(binding.reg));
       } else if(!wide_gpr_boundary && binding.reg == XR_RDX && uses &&
@@ -528,6 +686,7 @@ private:
       return found->second.location;
     }
     if(operand.kind == Operand::OP_INTEGER) return immediate(integer_literal(operand.text));
+    if(operand.kind == Operand::OP_FLOAT) return float_immediate(operand.text);
     if(operand.kind == Operand::OP_GLOBAL)
       return named_operand(MirOperand::OP_SYMBOL, operand.text);
     if(operand.kind == Operand::OP_LABEL)
@@ -545,6 +704,9 @@ private:
     }
     if(operand.kind == Operand::OP_GLOBAL || operand.kind == Operand::OP_SLOT)
       return lowir_model::builtin_lowir_type(lowir_model::LTK_PTR);
+    if(operand.kind == Operand::OP_FLOAT) {
+      return floating_literal_type(operand.text);
+    }
     return lowir_model::builtin_lowir_type(lowir_model::LTK_I64);
   }
 
@@ -611,6 +773,8 @@ private:
       if(!value.parameter && value.location.kind == MirOperand::OP_REG &&
          value.location.reg != retained && value.location.reg != XR_RAX)
         registers_.release(value.location.reg);
+      if(!value.parameter && value.location.kind == MirOperand::OP_XMM)
+        xmms_.release(value.location.xmm);
     }
   }
 
@@ -624,6 +788,13 @@ private:
   {
     return frame_operand(allocate_frame_binding(
       mir_model::MirFrameBinding::FB_TEMP, name, type));
+  }
+
+  MirOperand allocate_float_result(const std::string & name, const LowType & type)
+  {
+    uses_scalar_float_ = true;
+    if(result_crosses_call(name)) return allocate_temp_home(name, type);
+    return xmm_operand(xmms_.allocate());
   }
 
   void define(const std::string & name, const LowType & type, const MirOperand & location)
@@ -687,6 +858,204 @@ private:
     return destination;
   }
 
+  MirInstruction::Opcode float_binary_opcode(const std::string & operation) const
+  {
+    if(operation == "add") return MirInstruction::MI_FADD;
+    if(operation == "sub") return MirInstruction::MI_FSUB;
+    if(operation == "mul") return MirInstruction::MI_FMUL;
+    if(operation == "div") return MirInstruction::MI_FDIV;
+    throw std::runtime_error("floating binary operation is not implemented: " + operation);
+  }
+
+  MirInstruction::Opcode float_compare_opcode(const std::string & predicate) const
+  {
+    if(predicate == "eq") return MirInstruction::MI_FEQ;
+    if(predicate == "ne") return MirInstruction::MI_FNE;
+    if(predicate == "lt") return MirInstruction::MI_FLT;
+    if(predicate == "gt") return MirInstruction::MI_FGT;
+    if(predicate == "le") return MirInstruction::MI_FLE;
+    if(predicate == "ge") return MirInstruction::MI_FGE;
+    throw std::runtime_error("floating comparison predicate is not implemented: " + predicate);
+  }
+
+  X86Condition float_predicate_condition(const std::string & predicate) const
+  {
+    // FCMP models the right operand compared with the left operand so the
+    // unsigned x86 conditions directly describe ordered floating predicates.
+    if(predicate == "eq") return XC_E;
+    if(predicate == "ne") return XC_NE;
+    if(predicate == "lt") return XC_A;
+    if(predicate == "gt") return XC_B;
+    if(predicate == "le") return XC_AE;
+    if(predicate == "ge") return XC_BE;
+    throw std::runtime_error("floating branch predicate is not implemented: " + predicate);
+  }
+
+  void emit_float_const(const Instruction & instruction,
+                        std::vector<MirInstruction> & out)
+  {
+    const MirOperand destination = allocate_float_result(instruction.dest, instruction.type);
+    append_float_move(out, destination, float_immediate(instruction.first.text),
+                      instruction.type.text);
+    define(instruction.dest, instruction.type, destination);
+  }
+
+  void emit_float_copy(const Instruction & instruction,
+                       std::vector<MirInstruction> & out)
+  {
+    const MirOperand destination = allocate_float_result(instruction.dest, instruction.type);
+    append_float_move(out, destination, resolve(instruction.first), instruction.type.text);
+    consume(instruction.first);
+    define(instruction.dest, instruction.type, destination);
+  }
+
+  void emit_float_binary(const Instruction & instruction,
+                         std::vector<MirInstruction> & out)
+  {
+    const MirOperand destination = allocate_float_result(instruction.dest, instruction.type);
+    MirInstruction operation = machine_instruction(
+      float_binary_opcode(instruction.op), instruction.type.text);
+    append_operand(operation, destination);
+    append_operand(operation, resolve(instruction.first));
+    append_operand(operation, resolve(instruction.second));
+    out.push_back(operation);
+    consume(instruction.first);
+    consume(instruction.second);
+    define(instruction.dest, instruction.type, destination);
+  }
+
+  void emit_float_direct_compare_branch(const Instruction & comparison,
+                                        const Instruction & branch,
+                                        std::vector<MirInstruction> & out)
+  {
+    uses_scalar_float_ = true;
+    MirInstruction compare = machine_instruction(MirInstruction::MI_FCMP,
+                                                 comparison.type.text);
+    append_operand(compare, resolve(comparison.first));
+    append_operand(compare, resolve(comparison.second));
+    out.push_back(compare);
+
+    MirInstruction unordered = machine_instruction(MirInstruction::MI_JCC);
+    unordered.condition = XC_P;
+    append_operand(unordered, named_operand(MirOperand::OP_LABEL,
+      comparison.op == "ne" ? branch.second.text : branch.third.text));
+    out.push_back(unordered);
+
+    MirInstruction jump_true = machine_instruction(MirInstruction::MI_JCC);
+    jump_true.condition = float_predicate_condition(comparison.op);
+    append_operand(jump_true, named_operand(MirOperand::OP_LABEL, branch.second.text));
+    out.push_back(jump_true);
+
+    MirInstruction jump_false = machine_instruction(MirInstruction::MI_JMP);
+    append_operand(jump_false, named_operand(MirOperand::OP_LABEL, branch.third.text));
+    out.push_back(jump_false);
+    consume(comparison.first);
+    consume(comparison.second);
+    skipped_position_ = position_ + 1;
+  }
+
+  void emit_float_compare_value(const Instruction & instruction,
+                                const lowir_model::LowirBlock & block,
+                                std::size_t instruction_index,
+                                std::vector<MirInstruction> & out)
+  {
+    uses_scalar_float_ = true;
+    MirInstruction compare = machine_instruction(float_compare_opcode(instruction.op),
+                                                 instruction.type.text);
+    append_operand(compare, reg_operand(XR_RAX));
+    append_operand(compare, resolve(instruction.first));
+    append_operand(compare, resolve(instruction.second));
+    out.push_back(compare);
+    MirOperand destination = reg_operand(XR_RAX);
+    if(!result_is_immediate_return(block, instruction_index, instruction.dest)) {
+      destination = reg_operand(allocate_result(instruction.dest));
+      append_move(out, destination, reg_operand(XR_RAX));
+    }
+    consume(instruction.first);
+    consume(instruction.second);
+    define(instruction.dest, lowir_model::builtin_lowir_type(lowir_model::LTK_I64),
+           destination);
+  }
+
+  void emit_float_load(const Instruction & instruction,
+                       std::vector<MirInstruction> & out)
+  {
+    const MirOperand destination = allocate_float_result(instruction.dest, instruction.type);
+    append_float_move(out, destination, materialized_storage(instruction.first, out),
+                      instruction.type.text);
+    consume(instruction.first);
+    define(instruction.dest, instruction.type, destination);
+  }
+
+  void emit_float_store(const Instruction & instruction,
+                        std::vector<MirInstruction> & out)
+  {
+    uses_scalar_float_ = true;
+    const MirOperand destination = materialized_storage(instruction.second, out);
+    append_float_move(out, destination, resolve(instruction.first), instruction.type.text);
+    consume(instruction.first);
+    consume(instruction.second);
+  }
+
+  void emit_float_unary(const Instruction & instruction,
+                        std::vector<MirInstruction> & out)
+  {
+    if(instruction.op != "neg")
+      throw std::runtime_error("floating unary operation is not implemented: " + instruction.op);
+    const MirOperand destination = allocate_float_result(instruction.dest, instruction.type);
+    MirInstruction negate = machine_instruction(MirInstruction::MI_FNEG,
+                                                instruction.type.text);
+    append_operand(negate, destination);
+    append_operand(negate, resolve(instruction.first));
+    out.push_back(negate);
+    consume(instruction.first);
+    define(instruction.dest, instruction.type, destination);
+  }
+
+  void emit_convert(const Instruction & instruction,
+                    std::vector<MirInstruction> & out)
+  {
+    const bool source_float = is_scalar_float(instruction.source_type);
+    const bool destination_float = is_scalar_float(instruction.type);
+    if(source_float || destination_float) {
+      uses_scalar_float_ = true;
+      MirInstruction::Opcode opcode = MirInstruction::MI_SITOFP;
+      if(instruction.op == "uitofp") opcode = MirInstruction::MI_UITOFP;
+      else if(instruction.op == "fptosi") opcode = MirInstruction::MI_FPTOSI;
+      else if(instruction.op == "fptoui") opcode = MirInstruction::MI_FPTOUI;
+      else if(instruction.op == "fpext") opcode = MirInstruction::MI_FPEXT;
+      else if(instruction.op == "fptrunc") opcode = MirInstruction::MI_FPTRUNC;
+      else if(instruction.op != "sitofp")
+        throw std::runtime_error("floating conversion is not implemented: " + instruction.op);
+      const MirOperand destination = destination_float ?
+        allocate_float_result(instruction.dest, instruction.type) :
+        reg_operand(allocate_result(instruction.dest));
+      const std::string source_name = is_integer_or_pointer(instruction.source_type) ?
+        "i" + std::to_string(instruction.source_type.bit_width) : instruction.source_type.text;
+      const std::string destination_name = is_integer_or_pointer(instruction.type) ?
+        "i" + std::to_string(instruction.type.bit_width) : instruction.type.text;
+      MirInstruction conversion = machine_instruction(
+        opcode, source_name + "." + destination_name);
+      append_operand(conversion, destination);
+      append_operand(conversion, resolve(instruction.first));
+      out.push_back(conversion);
+      consume(instruction.first);
+      define(instruction.dest, instruction.type, destination);
+      return;
+    }
+    if(is_integer_or_pointer(instruction.source_type) &&
+       is_integer_or_pointer(instruction.type)) {
+      const MirOperand destination = reg_operand(allocate_result(instruction.dest));
+      move_value_to_register(out, destination.reg, resolve(instruction.first),
+                             instruction.source_type);
+      normalize_integer(instruction.type, destination, out);
+      consume(instruction.first, destination.reg);
+      define(instruction.dest, instruction.type, destination);
+      return;
+    }
+    throw std::runtime_error("conversion categories are not implemented");
+  }
+
   void emit_division(const Instruction & instruction, const MirOperand & destination,
                      const MirOperand & right, std::vector<MirInstruction> & out)
   {
@@ -720,6 +1089,10 @@ private:
   void emit_binary(const Instruction & instruction,
                    std::vector<MirInstruction> & out)
   {
+    if(is_scalar_float(instruction.type)) {
+      emit_float_binary(instruction, out);
+      return;
+    }
     if(!is_integer_or_pointer(instruction.type))
       throw std::runtime_error("integer selector received non-integer binary operation");
     const MirOperand left = resolve(instruction.first);
@@ -868,6 +1241,10 @@ private:
 
   void emit_copy(const Instruction & instruction, std::vector<MirInstruction> & out)
   {
+    if(is_scalar_float(instruction.type)) {
+      emit_float_copy(instruction, out);
+      return;
+    }
     const MirOperand source = resolve(instruction.first);
     MirOperand destination;
     if(can_reuse(instruction.first)) destination = source;
@@ -882,6 +1259,10 @@ private:
   void emit_unary_value(const Instruction & instruction,
                         std::vector<MirInstruction> & out)
   {
+    if(is_scalar_float(instruction.type)) {
+      emit_float_unary(instruction, out);
+      return;
+    }
     if(!is_integer_or_pointer(instruction.type))
       throw std::runtime_error("integer selector received non-integer unary operation");
     if(instruction.op == "decay") {
@@ -997,11 +1378,12 @@ private:
   void emit_parallel_gpr_moves(const Instruction & instruction,
                                std::vector<MirInstruction> & out)
   {
-    const std::size_t count = std::min<std::size_t>(6, instruction.args.size());
     std::vector<GprMove> moves;
-    for(std::size_t i = 0; i < count; ++i) {
+    std::size_t gpr_index = 0;
+    for(std::size_t i = 0; i < instruction.args.size() && gpr_index < 6; ++i) {
+      if(is_scalar_float(operand_type(instruction.args[i]))) continue;
       GprMove move;
-      move.destination = argument_register(i);
+      move.destination = argument_register(gpr_index++);
       move.source = resolve(instruction.args[i]);
       move.type = operand_type(instruction.args[i]);
       move.source_is_address = is_frame_address(instruction.args[i]);
@@ -1032,6 +1414,63 @@ private:
            moves[i].source.reg == saved)
           moves[i].source = reg_operand(XR_R11);
     }
+  }
+
+  bool call_has_scalar_float(const Instruction & instruction) const
+  {
+    for(std::size_t i = 0; i < instruction.args.size(); ++i)
+      if(is_scalar_float(operand_type(instruction.args[i]))) return true;
+    return false;
+  }
+
+  void emit_parallel_xmm_moves(const Instruction & instruction,
+                               std::vector<MirInstruction> & out)
+  {
+    std::size_t xmm_index = 0;
+    for(std::size_t i = 0; i < instruction.args.size() && xmm_index < 8; ++i) {
+      const LowType & type = operand_type(instruction.args[i]);
+      if(!is_scalar_float(type)) continue;
+      append_float_move(out, xmm_operand(static_cast<XmmRegister>(xmm_index++)),
+                        resolve(instruction.args[i]), type.text, true);
+    }
+  }
+
+  std::size_t emit_mixed_stack_arguments(const Instruction & instruction,
+                                         std::vector<MirInstruction> & out)
+  {
+    std::size_t gpr_index = 0;
+    std::size_t xmm_index = 0;
+    std::size_t stack_count = 0;
+    for(std::size_t i = 0; i < instruction.args.size(); ++i) {
+      const bool floating = is_scalar_float(operand_type(instruction.args[i]));
+      if(floating ? xmm_index++ >= 8 : gpr_index++ >= 6) ++stack_count;
+    }
+    if(!stack_count) return 0;
+    const std::size_t bytes = align_up(stack_count * 8, 16);
+    MirInstruction subtract = machine_instruction(MirInstruction::MI_SUB);
+    append_operand(subtract, reg_operand(XR_RSP));
+    append_operand(subtract, immediate(static_cast<long long>(bytes)));
+    out.push_back(subtract);
+    gpr_index = xmm_index = stack_count = 0;
+    for(std::size_t i = 0; i < instruction.args.size(); ++i) {
+      const LowType & type = operand_type(instruction.args[i]);
+      const bool floating = is_scalar_float(type);
+      const bool on_stack = floating ? xmm_index++ >= 8 : gpr_index++ >= 6;
+      if(!on_stack) continue;
+      const MirOperand destination = dereference(
+        XR_RSP, static_cast<long long>(stack_count++ * 8));
+      if(floating)
+        append_float_move(out, destination, resolve(instruction.args[i]), type.text);
+      else {
+        MirOperand value = resolve(instruction.args[i]);
+        if(value.kind != MirOperand::OP_REG) {
+          move_value_to_register(out, XR_R11, value, type);
+          value = reg_operand(XR_R11);
+        }
+        append_store(out, destination, value, type.text);
+      }
+    }
+    return bytes;
   }
 
   std::size_t emit_stack_arguments(const Instruction & instruction,
@@ -1091,9 +1530,13 @@ private:
                                operand_type(instruction.first));
       }
     }
-    const std::size_t stack_bytes = emit_stack_arguments(instruction, out);
+    const bool mixed_float = call_has_scalar_float(instruction);
+    if(mixed_float) uses_scalar_float_ = true;
+    const std::size_t stack_bytes = mixed_float ?
+      emit_mixed_stack_arguments(instruction, out) : emit_stack_arguments(instruction, out);
     emit_parallel_gpr_moves(instruction, out);
-    emit_deferred_stack_addresses(instruction, out);
+    if(mixed_float) emit_parallel_xmm_moves(instruction, out);
+    else emit_deferred_stack_addresses(instruction, out);
 
     if(direct) {
       MirInstruction call = machine_instruction(MirInstruction::MI_CALL);
@@ -1110,19 +1553,26 @@ private:
       append_operand(add, immediate(static_cast<long long>(stack_bytes)));
       out.push_back(add);
     }
+    if(!instruction.call_returns_void) {
+      if(is_scalar_float(instruction.type)) {
+        const MirOperand location = allocate_float_result(instruction.dest, instruction.type);
+        append_float_move(out, location, xmm_operand(XMM_0), instruction.type.text);
+        define(instruction.dest, instruction.type, location);
+      } else {
+        MirOperand location = reg_operand(XR_RAX);
+        if(!result_is_immediate_return(block, instruction_index, instruction.dest) &&
+           !result_is_immediate_unary_not_branch(block, instruction_index,
+                                                 instruction.dest)) {
+          location = reg_operand(allocate_result(instruction.dest));
+          append_move(out, location, reg_operand(XR_RAX));
+        }
+        if(is_integer_or_pointer(instruction.type))
+          normalize_integer(instruction.type, location, out);
+        define(instruction.dest, instruction.type, location);
+      }
+    }
     for(std::size_t i = 0; i < instruction.args.size(); ++i) consume(instruction.args[i]);
     consume(instruction.first);
-
-    if(!instruction.call_returns_void) {
-      MirOperand location = reg_operand(XR_RAX);
-      if(!result_is_immediate_return(block, instruction_index, instruction.dest) &&
-         !result_is_immediate_unary_not_branch(block, instruction_index,
-                                               instruction.dest)) {
-        location = reg_operand(allocate_result(instruction.dest));
-        append_move(out, location, reg_operand(XR_RAX));
-      }
-      define(instruction.dest, instruction.type, location);
-    }
   }
 
   void emit_branch(const Instruction & instruction, std::vector<MirInstruction> & out)
@@ -1169,10 +1619,15 @@ private:
 
   void emit_return(const Instruction & instruction, std::vector<MirInstruction> & out)
   {
-    if(instruction.type.kind != lowir_model::LTK_VOID)
+    if(is_scalar_float(instruction.type)) {
+      uses_scalar_float_ = true;
+      append_float_move(out, xmm_operand(XMM_0), resolve(instruction.first),
+                        instruction.type.text);
+    } else if(instruction.type.kind != lowir_model::LTK_VOID)
       move_value_to_register(out, XR_RAX, resolve(instruction.first), instruction.type);
     MirInstruction ret = machine_instruction(MirInstruction::MI_RET);
-    if(instruction.type.kind != lowir_model::LTK_VOID)
+    if(instruction.type.kind != lowir_model::LTK_VOID &&
+       !is_scalar_float(instruction.type))
       append_operand(ret, reg_operand(XR_RAX));
     out.push_back(ret);
     consume(instruction.first);
@@ -1185,6 +1640,10 @@ private:
     const Instruction & instruction = block.instructions[instruction_index];
     if(position_ == skipped_position_) return;
     if(instruction.kind == Instruction::IK_CONST) {
+      if(is_scalar_float(instruction.type)) {
+        emit_float_const(instruction, out);
+        return;
+      }
       MirOperand destination;
       X64Register reg = XR_RSP;
       if(registers_.try_allocate(result_crosses_call(instruction.dest), reg)) {
@@ -1227,6 +1686,10 @@ private:
          pointer_globals_.count(instruction.first.text))
         values_[instruction.dest].pointer_global_cell = instruction.first.text;
     } else if(instruction.kind == Instruction::IK_LOAD) {
+      if(is_scalar_float(instruction.type)) {
+        emit_float_load(instruction, out);
+        return;
+      }
       if(slot_load_feeds_direct_compare(block, instruction_index, instruction)) {
         define(instruction.dest, instruction.type, storage(instruction.first));
         return;
@@ -1245,6 +1708,10 @@ private:
       consume(instruction.first, destination.reg);
       define(instruction.dest, instruction.type, destination);
     } else if(instruction.kind == Instruction::IK_STORE) {
+      if(is_scalar_float(instruction.type)) {
+        emit_float_store(instruction, out);
+        return;
+      }
       MirInstruction store = machine_instruction(MirInstruction::MI_STORE, instruction.type.text);
       MirOperand value = resolve(instruction.first);
       if(value.kind != MirOperand::OP_REG) {
@@ -1261,7 +1728,13 @@ private:
     } else if(instruction.kind == Instruction::IK_BINARY) {
       emit_binary(instruction, out);
     } else if(instruction.kind == Instruction::IK_CMP) {
-      if(comparison_feeds_branch(block, instruction_index, instruction))
+      if(is_scalar_float(instruction.type) &&
+         comparison_feeds_branch(block, instruction_index, instruction))
+        emit_float_direct_compare_branch(
+          instruction, block.instructions[instruction_index + 1], out);
+      else if(is_scalar_float(instruction.type))
+        emit_float_compare_value(instruction, block, instruction_index, out);
+      else if(comparison_feeds_branch(block, instruction_index, instruction))
         emit_direct_compare_branch(instruction, block.instructions[instruction_index + 1], out);
       else emit_compare_value(instruction, out);
     } else if(instruction.kind == Instruction::IK_UNARY) {
@@ -1269,6 +1742,8 @@ private:
         emit_direct_unary_not_branch(instruction,
           block.instructions[instruction_index + 1], out);
       else emit_unary_value(instruction, out);
+    } else if(instruction.kind == Instruction::IK_CONVERT) {
+      emit_convert(instruction, out);
     } else if(instruction.kind == Instruction::IK_CALL) {
       emit_call(instruction, block, instruction_index, out);
     } else if(instruction.kind == Instruction::IK_COPYOBJ ||
@@ -1340,6 +1815,12 @@ mir_model::MirGlobalDefinition lower_global(const lowir_model::LowirGlobalDefini
       target.init_kind = mir_model::MirGlobalDefinition::GI_ADDR;
       target.symbol = source.init_operand.text;
       target.addr_addend = source.addr_addend;
+    } else if(source.type.kind == lowir_model::LTK_F32 ||
+              source.type.kind == lowir_model::LTK_F64) {
+      target.init_kind = mir_model::MirGlobalDefinition::GI_FLOAT;
+      target.literal_text = source.init_kind == lowir_model::LowirGlobalDefinition::INIT_ZERO ?
+        (source.type.kind == lowir_model::LTK_F32 ? "0.0f" : "0.0") :
+        source.init_operand.text;
     } else {
       target.init_kind = mir_model::MirGlobalDefinition::GI_INTEGER;
       target.int_value = source.init_kind == lowir_model::LowirGlobalDefinition::INIT_ZERO ?

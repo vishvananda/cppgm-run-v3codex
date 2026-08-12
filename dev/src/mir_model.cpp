@@ -98,6 +98,25 @@ const char * opcode_name(Instruction::Opcode opcode)
   case Instruction::MI_LOAD: return "load";
   case Instruction::MI_STORE: return "store";
   case Instruction::MI_LEA: return "lea";
+  case Instruction::MI_FMOV: return "fmov";
+  case Instruction::MI_FNEG: return "fneg";
+  case Instruction::MI_FADD: return "fadd";
+  case Instruction::MI_FSUB: return "fsub";
+  case Instruction::MI_FMUL: return "fmul";
+  case Instruction::MI_FDIV: return "fdiv";
+  case Instruction::MI_FEQ: return "feq";
+  case Instruction::MI_FNE: return "fne";
+  case Instruction::MI_FLT: return "flt";
+  case Instruction::MI_FGT: return "fgt";
+  case Instruction::MI_FLE: return "fle";
+  case Instruction::MI_FGE: return "fge";
+  case Instruction::MI_FCMP: return "fcmp";
+  case Instruction::MI_SITOFP: return "sitofp";
+  case Instruction::MI_UITOFP: return "uitofp";
+  case Instruction::MI_FPTOSI: return "fptosi";
+  case Instruction::MI_FPTOUI: return "fptoui";
+  case Instruction::MI_FPEXT: return "fpext";
+  case Instruction::MI_FPTRUNC: return "fptrunc";
   case Instruction::MI_ADD: return "add";
   case Instruction::MI_SUB: return "sub";
   case Instruction::MI_IMUL: return "imul";
@@ -124,6 +143,7 @@ const char * opcode_name(Instruction::Opcode opcode)
   case Instruction::MI_JMP: return "jmp";
   case Instruction::MI_JMP_INDIRECT: return "jmp";
   case Instruction::MI_RET: return "ret";
+  case Instruction::MI_FRET: return "fret";
   case Instruction::MI_EXIT: return "exit";
   default: break;
   }
@@ -176,7 +196,10 @@ std::string instruction_text(const Instruction & instruction)
     return out.str();
   }
   out << opcode_name(instruction.opcode);
-  if((instruction.opcode == Instruction::MI_LOAD ||
+  if(((instruction.opcode >= Instruction::MI_FMOV &&
+       instruction.opcode <= Instruction::MI_FPTRUNC) ||
+      instruction.opcode == Instruction::MI_FRET ||
+      instruction.opcode == Instruction::MI_LOAD ||
       instruction.opcode == Instruction::MI_STORE ||
       instruction.opcode == Instruction::MI_CMP ||
       instruction.opcode == Instruction::MI_SEXT ||

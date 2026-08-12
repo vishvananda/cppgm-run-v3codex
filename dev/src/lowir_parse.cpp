@@ -219,12 +219,15 @@ private:
   Operand operand()
   {
     Operand result;
-    if(accept("-")) {
-      result.kind = Operand::OP_INTEGER;
-      result.text = "-" + take();
-      return result;
+    const bool negative = accept("-");
+    result.text = (negative ? "-" : "") + take();
+    if(!result.text.empty() &&
+       (result.text.back() == 'e' || result.text.back() == 'E' ||
+        result.text.back() == 'p' || result.text.back() == 'P') &&
+       (peek() == "+" || peek() == "-")) {
+      result.text += take();
+      result.text += take();
     }
-    result.text = take();
     if(starts_with(result.text, '%')) result.kind = Operand::OP_TEMP;
     else if(starts_with(result.text, '$')) result.kind = Operand::OP_SLOT;
     else if(starts_with(result.text, '@')) result.kind = Operand::OP_GLOBAL;
