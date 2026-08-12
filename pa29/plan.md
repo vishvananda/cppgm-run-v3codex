@@ -3,36 +3,36 @@
 ## Stage Design and Spec Alignment
 
 PA29 owns `LowIR -> typed MIR -> x86-64 ELF`. `lowir_parse` validates the PA13
-text boundary; ABI, analysis, wide-value, varargs, and program modules own bounded
-facts; `lowir_native` selects per function; `mir_model` is the deterministic view;
-and `lowir_native_elf` encodes the same MIR. This follows `spec.md` sections 6-9:
-typed facts cross explicit phase boundaries, values are represented according to
-their ABI/storage class, allocation is demand-driven, and lowering plus fixups is
+text boundary; ABI, function/storage analysis, selection utilities, wide-value,
+varargs, and program modules own bounded facts; `lowir_native` selects per
+function; `mir_model` is the deterministic view; and `lowir_native_elf` encodes
+the same MIR. This follows `spec.md` sections 6-9: typed facts cross explicit
+phase boundaries, allocation is demand-driven, and lowering plus fixups is
 O(instructions + operands + output).
 
 ## Current Failure Map
 
 | Group | Tests | Shared behavior and owner |
 | --- | ---: | --- |
-| Global metadata and storage | 2 | Read-only extra sections and direct TLS; program/global lowering and ELF layout |
-| Exact entry/call/slot shape | 3 | Constructor entry, six-register indirect call, promoted slot; selector |
-| CFG/allocation conformance | 16 | Thirteen canonical liveness cases and three spill/home shapes; analysis and allocator |
+| ABI setup and result homes | 2 | Six-register indirect call and eight-argument stack call; ABI selector |
+| Direct branch demand | 7 | Integer/floating compare-fed branches and call results; demand and selector |
+| Cross-call parameter identity | 2 | Forwarded/indexed pointers through calls and switch edges; liveness |
+| Allocation placement/pressure | 5 | Adjacent slots, leaf placement, and three behavioral reactive-spill cases; allocator |
 
-One hundred sixty-two of 183 tests pass. Wide integers, scalar atomics, variadics,
-aggregate ABI, and floating runtime are complete.
+One hundred sixty-seven of 183 tests pass. Storage metadata/materialization, wide
+integers, scalar atomics, variadics, aggregate ABI, and floating runtime are complete.
 
 ## Active Checkpoint
 
-Reconcile the 19 selector/CFG failures at the stable per-function analysis and
-allocation boundary, bundling the three exact-shape cases with their shared
-liveness/home ownership. Required spec properties are monotone CFG liveness,
-explicit fixed-register clobbers, stable frame homes, demand-only materialization,
-and deterministic MIR without test-specific rewrites. Data flows from parsed blocks
-through `FunctionFacts` into register/frame selection and then typed MIR. Expected
-work is O(blocks + edges + instructions + live-fact insertions), with bounded GPR/XMM
-choice sets. Validate grouped diffs, behavioral anchors, full PA29, through-PA28,
-and file audit; measure a representative high-pressure CFG family. The two global
-metadata/storage cases remain a separate ELF-boundary checkpoint.
+Eliminate the seven direct-branch-demand failures at the analysis/selection
+boundary. Per `spec.md` sections 7 and 9, compare/branch fusion and call-result
+forwarding must consume cached per-function use, edge-liveness, and clobber facts;
+they must not preserve a temporary merely because it appears in a later block.
+`lowir_native_analysis` owns the facts, the selector owns local fusion and placement,
+and the allocator consumes the resulting live intervals. Analysis and selection
+remain O(instructions + CFG edges), with O(1)-average fact lookup. Validate all seven
+anchors, neighboring branch/call tests, full PA29, through-PA28, file audit, and
+100/1,000/5,000-block scaling.
 
 ## Performance Evidence
 
@@ -48,6 +48,7 @@ metadata/storage cases remain a separate ELF-boundary checkpoint.
 | Scalar atomics | 4.06 / 33.48 / 172.00 ms; 2,705 / 27,005 / 135,005 MIR | O(1) fixed-register work per operation |
 | Variadics | 2.99 / 31.77 / 157.66 ms; 3,005 / 30,005 / 150,005 MIR | Linear save-area/classification growth |
 | i128 values | 2.08 / 19.85 / 100.12 ms; 2,305 / 23,005 / 115,005 MIR; 5,412 / 16,268 / 64,296 KiB RSS | Linear two-limb lowering; O(1) work per value |
+| Storage facts | 1.00 / 9.42 / 52.77 ms lower; 305 / 3,005 / 15,005 MIR; 7,028 / 12,244 / 47,104 KiB RSS | Linear readonly/TLS plus parameter-shadow workload |
 
 The i128 family used 100/1,000/5,000 two-limb parameter, constant, equality, and
 return functions. Outputs were 14,356/142,156/710,156 bytes and wall times were
@@ -67,3 +68,4 @@ return functions. Outputs were 14,356/142,156/710,156 bytes and wall times were
 | Scalar atomics and fences | Complete | Full PA29 158/183; all 10 anchors and atomic scaling |
 | SysV variadic register-save state | Complete | Full PA29 160/183; both anchors and variadic scaling |
 | i128 scalar/atomic ABI | Complete | Exact MIR and runtime for both anchors; full PA29 162/183; i128 scaling above |
+| Storage identity and deferred materialization | Complete | Five anchors exact/runtime; full PA29 167/183; through-PA28 3,857/3,857; storage scaling above |

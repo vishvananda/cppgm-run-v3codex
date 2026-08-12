@@ -51,6 +51,8 @@ mir_model::MirGlobalDefinition lower_global(
   target.name = source.name;
   target.readonly = source.storage == lowir_model::GSM_READONLY;
   target.thread_local_storage = source.storage == lowir_model::GSM_THREAD_LOCAL;
+  target.section_segment = source.metadata.section_segment;
+  target.section_name = source.metadata.section_name;
   if(source.structured) {
     target.storage_kind = mir_model::MirGlobalDefinition::GS_DATA;
     for(std::size_t i = 0; i < source.data_items.size(); ++i) {
@@ -93,6 +95,32 @@ mir_model::MirGlobalDefinition lower_global(
     }
   }
   return target;
+}
+
+std::unordered_map<std::string, std::string> tls_wrapper_index(
+    const lowir_model::LowirProgram & source)
+{
+  std::unordered_map<std::string, std::string> result;
+  for(std::size_t i = 0; i < source.function_declarations.size(); ++i) {
+    const lowir_model::FunctionDeclaration & function =
+      source.function_declarations[i];
+    if(function.metadata.tls_for_symbol.empty()) continue;
+    const std::pair<std::unordered_map<std::string, std::string>::iterator, bool> inserted =
+      result.emplace(function.metadata.tls_for_symbol, function.name);
+    if(!inserted.second && inserted.first->second != function.name)
+      throw std::runtime_error("multiple TLS wrappers for " +
+                               function.metadata.tls_for_symbol);
+  }
+  for(std::size_t i = 0; i < source.functions.size(); ++i) {
+    const lowir_model::LowirFunction & function = source.functions[i];
+    if(function.metadata.tls_for_symbol.empty()) continue;
+    const std::pair<std::unordered_map<std::string, std::string>::iterator, bool> inserted =
+      result.emplace(function.metadata.tls_for_symbol, function.name);
+    if(!inserted.second && inserted.first->second != function.name)
+      throw std::runtime_error("multiple TLS wrappers for " +
+                               function.metadata.tls_for_symbol);
+  }
+  return result;
 }
 
 void lower_startup(const lowir_model::LowirProgram & source,

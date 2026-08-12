@@ -1469,6 +1469,13 @@ void emit_instruction(CodeBuffer & out,
   case mir_model::MirInstruction::MI_SAR_CL:
     emit_shift(out, instruction, 7);
     return;
+  case mir_model::MirInstruction::MI_TLS_ADDR:
+    require_operands(instruction, 2);
+    if(instruction.operands[1].kind != mir_model::MirOperand::OP_SYMBOL)
+      throw std::logic_error("TLS address source is not a wrapper symbol");
+    emit_symbol_move(out, require_register(instruction.operands[0]),
+                     instruction.operands[1].text);
+    return;
   case mir_model::MirInstruction::MI_JCC:
     if(!function) throw std::logic_error("conditional branch outside function");
     require_operands(instruction, 1);
@@ -1586,6 +1593,8 @@ void emit_global(CodeBuffer & out, const mir_model::MirGlobalDefinition & global
   }
   out.align(global_alignment);
   out.label(global.name);
+  if(global.thread_local_storage && !global.thread_local_wrapper_symbol.empty())
+    out.label(global.thread_local_wrapper_symbol);
   if(global.storage_kind == mir_model::MirGlobalDefinition::GS_SCALAR) {
     const std::size_t size = type_size(global.type);
     if(global.init_kind == mir_model::MirGlobalDefinition::GI_ADDR) {

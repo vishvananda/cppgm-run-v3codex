@@ -21,13 +21,28 @@ struct FunctionFacts
   std::vector<std::size_t> calls;
   std::unordered_set<std::string> live_across_call;
   std::unordered_set<std::string> edge_live;
+  std::unordered_set<std::string> only_call_arguments;
   std::unordered_map<std::string, unsigned> live_across_clobbers;
   bool has_va_start = false;
   bool has_i128_atomic = false;
 };
 
+struct StorageFacts
+{
+  std::unordered_map<std::string, std::string> parameter_slot_aliases;
+  std::unordered_map<std::string, std::string> promoted_parameter_slots;
+  std::unordered_map<std::string, std::string> forwarded_parameter_slots;
+  std::unordered_set<std::string> promoted_parameters;
+  std::unordered_set<std::string> dead_slot_only_parameters;
+  std::unordered_set<std::string> tls_store_inputs;
+};
+
 unsigned register_mask(X64Register reg);
 FunctionFacts analyze_function(const lowir_model::LowirFunction & function);
+StorageFacts analyze_storage(
+    const lowir_model::LowirFunction & function,
+    const FunctionFacts & function_facts,
+    const std::unordered_map<std::string, std::string> & tls_wrappers);
 
 }  // namespace analysis
 }  // namespace lowir_native

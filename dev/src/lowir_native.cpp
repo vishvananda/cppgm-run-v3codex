@@ -4,13 +4,11 @@
 #include "lowir_native_mir.h"
 #include "lowir_native_program.h"
 #include "lowir_native_registers.h"
+#include "lowir_native_selection.h"
 #include "lowir_native_varargs.h"
 #include "lowir_native_wide.h"
 
 #include <algorithm>
-#include <cerrno>
-#include <climits>
-#include <cstdlib>
 #include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
@@ -27,90 +25,22 @@ using mir_model::MirOperand;
 using abi::FunctionSignature;
 using abi::FunctionSignatureIndex;
 using analysis::FunctionFacts;
+using analysis::StorageFacts;
 using analysis::analyze_function;
+using analysis::analyze_storage;
 using analysis::register_mask;
 using allocation::RegisterPool;
 using allocation::XmmPool;
 using allocation::is_callee_saved;
 using namespace build;
-
-long long integer_literal(const std::string & text)
-{
-  errno = 0;
-  char * end = 0;
-  const long long value = std::strtoll(text.c_str(), &end, 0);
-  if(errno || !end || *end) throw std::runtime_error("invalid integer literal: " + text);
-  return value;
-}
-
-long long atomic_order(const Operand & operand)
-{
-  if(operand.kind != Operand::OP_INTEGER)
-    throw std::runtime_error("atomic memory order must be an integer literal");
-  return integer_literal(operand.text);
-}
-
-bool is_signed_integer(const LowType & type)
-{
-  return type.kind == lowir_model::LTK_I8 || type.kind == lowir_model::LTK_I16 ||
-         type.kind == lowir_model::LTK_I32 || type.kind == lowir_model::LTK_I64;
-}
-
-bool is_integer_or_pointer(const LowType & type)
-{
-  return (type.kind >= lowir_model::LTK_I1 && type.kind <= lowir_model::LTK_I64) ||
-         type.kind == lowir_model::LTK_PTR;
-}
-
-bool is_scalar_float(const LowType & type)
-{
-  return type.kind == lowir_model::LTK_F32 || type.kind == lowir_model::LTK_F64;
-}
-
-bool is_extended_float(const LowType & type)
-{
-  return type.kind == lowir_model::LTK_F80;
-}
-
-bool is_floating(const LowType & type)
-{
-  return is_scalar_float(type) || is_extended_float(type);
-}
-
-const LowType & floating_literal_type(const std::string & text)
-{
-  if(!text.empty() && (text.back() == 'f' || text.back() == 'F'))
-    return lowir_model::builtin_lowir_type(lowir_model::LTK_F32);
-  if(!text.empty() && (text.back() == 'l' || text.back() == 'L'))
-    return lowir_model::builtin_lowir_type(lowir_model::LTK_F80);
-  return lowir_model::builtin_lowir_type(lowir_model::LTK_F64);
-}
-
-X86Condition predicate_condition(const std::string & predicate)
-{
-  if(predicate == "eq") return XC_E;
-  if(predicate == "ne") return XC_NE;
-  if(predicate == "lt") return XC_L;
-  if(predicate == "le") return XC_LE;
-  if(predicate == "gt") return XC_G;
-  if(predicate == "ge") return XC_GE;
-  if(predicate == "ult") return XC_B;
-  if(predicate == "ule") return XC_BE;
-  if(predicate == "ugt") return XC_A;
-  if(predicate == "uge") return XC_AE;
-  throw std::runtime_error("unsupported integer comparison predicate: " + predicate);
-}
-
-std::size_t align_up(std::size_t value, std::size_t alignment)
-{
-  return (value + alignment - 1) / alignment * alignment;
-}
+using namespace selection;
 
 struct ValueFact
 {
   MirOperand location;
   LowType type;
   bool parameter = false;
+  bool fixed_register_home = false;
   bool frame_address = false;
   bool has_frame_provenance = false;
   long long frame_provenance = 0;
@@ -122,14 +52,16 @@ class FunctionLowerer
 public:
   FunctionLowerer(const lowir_model::LowirFunction & source,
                   const std::unordered_set<std::string> & pointer_globals,
+                  const std::unordered_map<std::string, std::string> & tls_wrappers,
                   const FunctionSignatureIndex & signatures)
-    : source_(source), pointer_globals_(pointer_globals), signatures_(signatures),
+    : source_(source), pointer_globals_(pointer_globals), tls_wrappers_(tls_wrappers),
+      signatures_(signatures),
       facts_(analyze_function(source)), position_(0)
   {
     target_.name = source.name;
     target_.return_type = source.return_type.text;
     if(facts_.has_i128_atomic) registers_.reserve(XR_RBX);
-    discover_parameter_slot_aliases();
+    storage_facts_ = analyze_storage(source_, facts_, tls_wrappers_);
     plan_variadic_register_save();
     bind_parameters();
     plan_slots();
@@ -148,8 +80,8 @@ public:
     }
     target_.callee_saved_regs = registers_.preserves();
     target_.scratch_bytes = uses_scalar_float_ ? 48 : 0;
-    const std::size_t direct_parameter_bytes =
-      abi::direct_parameter_bytes(source_.params);
+    const std::size_t direct_parameter_bytes = storage_facts_.promoted_parameter_slots.empty() ?
+      abi::direct_parameter_bytes(source_.params) : 0;
     if(uses_scalar_float_) {
       const std::size_t float_frame_bytes = source_.params.empty() ? frame_bytes_ :
         std::max<std::size_t>(frame_bytes_, 16);
@@ -165,15 +97,16 @@ public:
 private:
   const lowir_model::LowirFunction & source_;
   const std::unordered_set<std::string> & pointer_globals_;
+  const std::unordered_map<std::string, std::string> & tls_wrappers_;
   const FunctionSignatureIndex & signatures_;
   FunctionFacts facts_;
+  StorageFacts storage_facts_;
   mir_model::MirFunction target_;
   RegisterPool registers_;
   XmmPool xmms_;
   std::unordered_map<std::string, ValueFact> values_;
   std::unordered_map<std::string, long long> slot_offsets_;
   std::unordered_map<std::string, LowType> slot_types_;
-  std::unordered_map<std::string, std::string> parameter_slot_aliases_;
   std::unordered_set<std::string> discarded_slots_;
   std::unordered_map<std::string, long long> spill_offsets_;
   std::vector<MirInstruction> parameter_moves_;
@@ -214,50 +147,21 @@ private:
     uses_scalar_float_ = true;
   }
 
-  void discover_parameter_slot_aliases()
-  {
-    for(std::size_t p = 0; p < source_.params.size(); ++p) {
-      const lowir_model::LowirParameter & parameter = source_.params[p];
-      if(parameter.type.kind != lowir_model::LTK_OBJECT) continue;
-      for(std::size_t s = 0; s < source_.slots.size(); ++s) {
-        const std::string & slot_name = source_.slots[s].first;
-        if(!lowir_model::same_lowir_type(parameter.type, source_.slots[s].second) ||
-           parameter.name.size() < 2 || slot_name.size() < 2 ||
-           parameter.name.substr(1) != slot_name.substr(1)) continue;
-        bool found_copy = false;
-        bool slot_seen = false;
-        for(std::size_t b = 0; b < source_.blocks.size() && !found_copy; ++b) {
-          const std::vector<Instruction> & instructions = source_.blocks[b].instructions;
-          for(std::size_t i = 0; i < instructions.size(); ++i) {
-            const Instruction & current = instructions[i];
-            const bool mentions_slot =
-              (current.first.kind == Operand::OP_SLOT && current.first.text == slot_name) ||
-              (current.second.kind == Operand::OP_SLOT && current.second.text == slot_name) ||
-              (current.third.kind == Operand::OP_SLOT && current.third.text == slot_name);
-            if(!mentions_slot) continue;
-            if(slot_seen || current.kind != Instruction::IK_ADDR ||
-               i + 1 >= instructions.size()) break;
-            slot_seen = true;
-            const Instruction & copy = instructions[i + 1];
-            found_copy = copy.kind == Instruction::IK_COPYOBJ &&
-              copy.first.kind == Operand::OP_TEMP && copy.first.text == parameter.name &&
-              copy.second.kind == Operand::OP_TEMP && copy.second.text == current.dest &&
-              copy.byte_count == parameter.type.storage_size;
-            break;
-          }
-        }
-        if(found_copy) parameter_slot_aliases_[slot_name] = parameter.name;
-      }
-    }
-  }
-
   void plan_slots()
   {
     for(std::size_t i = 0; i < source_.slots.size(); ++i) {
       const std::string & name = source_.slots[i].first;
       const LowType & type = source_.slots[i].second;
       slot_types_[name] = type;
-      if(parameter_slot_aliases_.count(name)) continue;
+      if(storage_facts_.parameter_slot_aliases.count(name) ||
+         storage_facts_.promoted_parameter_slots.count(name))
+        continue;
+      if(storage_facts_.forwarded_parameter_slots.count(name)) {
+        discarded_slots_.insert(name);
+        frame_bytes_ = align_up(frame_bytes_, type.alignment);
+        frame_bytes_ += abi::frame_storage_size(type);
+        continue;
+      }
       bool written = false;
       bool observed = false;
       for(std::size_t b = 0; b < source_.blocks.size(); ++b)
@@ -397,7 +301,8 @@ private:
       }
       values_[parameter.name] = value;
       for(std::unordered_map<std::string, std::string>::const_iterator alias =
-            parameter_slot_aliases_.begin(); alias != parameter_slot_aliases_.end(); ++alias)
+          storage_facts_.parameter_slot_aliases.begin();
+          alias != storage_facts_.parameter_slot_aliases.end(); ++alias)
         if(alias->second == parameter.name) slot_offsets_[alias->first] = homes[i];
     }
     for(std::size_t i = 0; i < plan.pieces.size(); ++i) {
@@ -492,7 +397,14 @@ private:
       target_.params.push_back(binding);
       value.location = reg_operand(binding.reg);
       const std::size_t uses = facts_.uses[parameter.name];
-      if(home_unused_register_parameters) {
+      if(storage_facts_.promoted_parameters.count(parameter.name)) {
+        const X64Register destination = registers_.is_used(XR_R9) ?
+          registers_.allocate(false) : XR_R9;
+        if(destination == XR_R9) registers_.reserve(XR_R9);
+        value.location = reg_operand(destination);
+        value.fixed_register_home = true;
+        append_move(parameter_moves_, value.location, reg_operand(binding.reg));
+      } else if(home_unused_register_parameters) {
         const long long home = allocate_frame_binding(
           mir_model::MirFrameBinding::FB_PARAM_SLOT, parameter.name, parameter.type);
         append_store(parameter_moves_, frame_operand(home), reg_operand(binding.reg),
@@ -514,8 +426,10 @@ private:
         const X64Register destination = registers_.allocate(crosses_call(parameter.name));
         value.location = reg_operand(destination);
         append_move(parameter_moves_, value.location, reg_operand(binding.reg));
-      } else if(!wide_gpr_boundary && parameter.type.kind == lowir_model::LTK_PTR && uses > 1) {
-        const X64Register destination = registers_.allocate(true);
+      } else if(!wide_gpr_boundary && parameter.type.kind == lowir_model::LTK_PTR && uses &&
+                !storage_facts_.dead_slot_only_parameters.count(parameter.name)) {
+        const X64Register destination = registers_.allocate(
+          uses > 1 || crosses_call(parameter.name));
         value.location = reg_operand(destination);
         append_move(parameter_moves_, value.location, reg_operand(binding.reg));
       } else if(!wide_gpr_boundary && uses > 1) {
@@ -671,19 +585,11 @@ private:
       source_offset == destination_offset;
   }
 
-  bool address_is_next_call_argument(const lowir_model::LowirBlock & block,
-                                     std::size_t instruction_index,
-                                     const std::string & destination) const
+  bool address_is_call_argument(const std::string & destination) const
   {
-    if(instruction_index + 1 >= block.instructions.size() ||
-       facts_.uses.find(destination) == facts_.uses.end() ||
-       facts_.uses.find(destination)->second != 1) return false;
-    const Instruction & next = block.instructions[instruction_index + 1];
-    if(next.kind != Instruction::IK_CALL) return false;
-    for(std::size_t i = 0; i < next.args.size(); ++i)
-      if(next.args[i].kind == Operand::OP_TEMP && next.args[i].text == destination)
-        return true;
-    return false;
+    return facts_.uses.find(destination) != facts_.uses.end() &&
+      facts_.uses.find(destination)->second == 1 &&
+      facts_.only_call_arguments.count(destination);
   }
 
   bool address_is_next_atomic_expected(const lowir_model::LowirBlock & block,
@@ -833,7 +739,17 @@ private:
   MirOperand materialized_storage(const Operand & operand,
                                   std::vector<MirInstruction> & out)
   {
-    if(operand.kind == Operand::OP_GLOBAL || operand.kind == Operand::OP_SLOT)
+    if(operand.kind == Operand::OP_GLOBAL) {
+      const std::unordered_map<std::string, std::string>::const_iterator wrapper =
+        tls_wrappers_.find(operand.text);
+      if(wrapper == tls_wrappers_.end()) return storage(operand);
+      MirInstruction address = machine_instruction(MirInstruction::MI_TLS_ADDR);
+      append_operand(address, reg_operand(XR_R11));
+      append_operand(address, named_operand(MirOperand::OP_SYMBOL, wrapper->second));
+      out.push_back(address);
+      return dereference(XR_R11);
+    }
+    if(operand.kind == Operand::OP_SLOT)
       return storage(operand);
     if(is_frame_address(operand)) {
       append_address(out, XR_RCX, resolve(operand));
@@ -875,6 +791,8 @@ private:
     if(found->second == 0) {
       const ValueFact & value = values_.find(operand.text)->second;
       if(value.location.kind == MirOperand::OP_REG &&
+         !value.parameter &&
+         !value.fixed_register_home &&
          value.location.reg != retained && value.location.reg != XR_RAX)
         registers_.release(value.location.reg);
       if(!value.parameter && value.location.kind == MirOperand::OP_XMM)
@@ -945,8 +863,7 @@ private:
                               std::vector<MirInstruction> & out,
                               bool force_preserved = false)
   {
-    const bool across = force_preserved ||
-      (facts_.last_use.count(name) && crosses_call(name));
+    const bool across = force_preserved || result_crosses_call(name);
     X64Register result = XR_RSP;
     if(registers_.try_allocate(across, result)) return result;
     if(spill_one(across, out) && registers_.try_allocate(across, result)) return result;
@@ -1004,6 +921,15 @@ private:
       return;
     }
     if(operand.kind == Operand::OP_GLOBAL) {
+      const std::unordered_map<std::string, std::string>::const_iterator wrapper =
+        tls_wrappers_.find(operand.text);
+      if(wrapper != tls_wrappers_.end()) {
+        MirInstruction address = machine_instruction(MirInstruction::MI_TLS_ADDR);
+        append_operand(address, reg_operand(destination));
+        append_operand(address, named_operand(MirOperand::OP_SYMBOL, wrapper->second));
+        out.push_back(address);
+        return;
+      }
       append_move(out, reg_operand(destination),
                   named_operand(MirOperand::OP_SYMBOL, operand.text));
       return;
@@ -1084,7 +1010,8 @@ private:
 
   bool result_crosses_call(const std::string & name) const
   {
-    return facts_.last_use.count(name) && crosses_call(name);
+    return (facts_.last_use.count(name) && crosses_call(name)) ||
+      storage_facts_.tls_store_inputs.count(name);
   }
 
   void normalize_integer(const LowType & type, const MirOperand & destination,
@@ -1558,6 +1485,8 @@ private:
       destination = reg_operand(allocate_result(instruction.dest, out));
       move_value_to_register(out, destination.reg, source, instruction.type);
     }
+    if(is_integer_or_pointer(instruction.type))
+      normalize_integer(instruction.type, destination, out);
     consume(instruction.first, destination.reg);
     define(instruction.dest, instruction.type, destination);
   }
@@ -2771,7 +2700,7 @@ private:
     } else if(instruction.kind == Instruction::IK_ADDR) {
       MirOperand destination;
       if(instruction.first.kind == Operand::OP_SLOT) {
-        if(address_is_next_call_argument(block, instruction_index, instruction.dest) ||
+        if(address_is_call_argument(instruction.dest) ||
            address_is_next_atomic_expected(block, instruction_index,
                                            instruction.dest) ||
            address_is_next_va_start(block, instruction_index,
@@ -2816,6 +2745,19 @@ private:
          pointer_globals_.count(instruction.first.text))
         values_[instruction.dest].pointer_global_cell = instruction.first.text;
     } else if(instruction.kind == Instruction::IK_LOAD) {
+      if(instruction.first.kind == Operand::OP_SLOT &&
+         (storage_facts_.promoted_parameter_slots.count(instruction.first.text) ||
+          storage_facts_.forwarded_parameter_slots.count(instruction.first.text))) {
+        const std::string & parameter = storage_facts_.promoted_parameter_slots.count(
+          instruction.first.text) ?
+          storage_facts_.promoted_parameter_slots.find(instruction.first.text)->second :
+          storage_facts_.forwarded_parameter_slots.find(instruction.first.text)->second;
+        ValueFact value = values_.find(parameter)->second;
+        value.type = instruction.type;
+        value.parameter = false;
+        values_[instruction.dest] = value;
+        return;
+      }
       if(wide::is_integer(instruction.type)) {
         const MirOperand destination = allocate_temp_home(instruction.dest, instruction.type);
         wide::append_copy(destination,
@@ -2849,6 +2791,12 @@ private:
       define(instruction.dest, instruction.type, destination);
     } else if(instruction.kind == Instruction::IK_STORE) {
       if(instruction.second.kind == Operand::OP_SLOT &&
+         (storage_facts_.promoted_parameter_slots.count(instruction.second.text) ||
+          storage_facts_.forwarded_parameter_slots.count(instruction.second.text)) &&
+         instruction.first.kind == Operand::OP_TEMP &&
+         storage_facts_.promoted_parameters.count(instruction.first.text))
+        return;
+      if(instruction.second.kind == Operand::OP_SLOT &&
          discarded_slots_.count(instruction.second.text)) {
         consume(instruction.first);
         consume(instruction.second);
@@ -2856,6 +2804,24 @@ private:
       }
       if(is_floating(instruction.type)) {
         emit_float_store(instruction, out);
+        return;
+      }
+      if(instruction.second.kind == Operand::OP_GLOBAL &&
+         tls_wrappers_.count(instruction.second.text)) {
+        MirOperand value = resolve(instruction.first);
+        X64Register stable = XR_RSP;
+        if(registers_.try_allocate(true, stable)) {
+          move_value_to_register(out, stable, value, operand_type(instruction.first));
+          value = reg_operand(stable);
+        } else if(value.kind != MirOperand::OP_REG) {
+          move_value_to_register(out, XR_RAX, value, operand_type(instruction.first));
+          value = reg_operand(XR_RAX);
+        }
+        append_store(out, materialized_storage(instruction.second, out),
+                     value, instruction.type.text);
+        consume(instruction.first);
+        consume(instruction.second);
+        if(stable != XR_RSP) registers_.release(stable);
         return;
       }
       if(wide::is_integer(instruction.type)) {
@@ -2945,6 +2911,8 @@ mir_model::MirProgram lower_program(const lowir_model::LowirProgram & program,
   mir_model::MirProgram result;
   result.target = target;
   program_lowering::lower_startup(program, result);
+  const std::unordered_map<std::string, std::string> tls_wrappers =
+    program_lowering::tls_wrapper_index(program);
   std::unordered_set<std::string> pointer_globals;
   for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
     if(program.global_declarations[i].has_type &&
@@ -2954,8 +2922,14 @@ mir_model::MirProgram lower_program(const lowir_model::LowirProgram & program,
     if(!program.globals[i].structured &&
        program.globals[i].type.kind == lowir_model::LTK_PTR)
       pointer_globals.insert(program.globals[i].name);
-  for(std::size_t i = 0; i < program.globals.size(); ++i)
-    result.globals.push_back(program_lowering::lower_global(program.globals[i]));
+  for(std::size_t i = 0; i < program.globals.size(); ++i) {
+    mir_model::MirGlobalDefinition global =
+      program_lowering::lower_global(program.globals[i]);
+    const std::unordered_map<std::string, std::string>::const_iterator wrapper =
+      tls_wrappers.find(program.globals[i].name);
+    if(wrapper != tls_wrappers.end()) global.thread_local_wrapper_symbol = wrapper->second;
+    result.globals.push_back(global);
+  }
   FunctionSignatureIndex signatures;
   for(std::size_t i = 0; i < program.function_declarations.size(); ++i) {
     FunctionSignature signature;
@@ -2973,7 +2947,8 @@ mir_model::MirProgram lower_program(const lowir_model::LowirProgram & program,
   }
   for(std::size_t i = 0; i < program.functions.size(); ++i)
     result.functions.push_back(
-      FunctionLowerer(program.functions[i], pointer_globals, signatures).lower());
+      FunctionLowerer(program.functions[i], pointer_globals,
+                      tls_wrappers, signatures).lower());
   result.object_aliases.reserve(program.object_aliases.size());
   for(std::size_t i = 0; i < program.object_aliases.size(); ++i) {
     mir_model::MirObjectAlias alias;

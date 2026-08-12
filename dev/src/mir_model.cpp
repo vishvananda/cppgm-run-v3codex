@@ -145,6 +145,7 @@ const char * opcode_name(Instruction::Opcode opcode)
   case Instruction::MI_SHL_CL: return "shl";
   case Instruction::MI_SHR_CL: return "shr";
   case Instruction::MI_SAR_CL: return "sar";
+  case Instruction::MI_TLS_ADDR: return "tls_addr";
   case Instruction::MI_CALL: return "call";
   case Instruction::MI_CALL_INDIRECT: return "call";
   case Instruction::MI_JMP: return "jmp";
@@ -227,7 +228,10 @@ std::string instruction_text(const Instruction & instruction)
 
 void render_global(std::ostringstream & out, const GlobalDefinition & global)
 {
-  out << "global " << global.name << '\n';
+  out << "global " << global.name;
+  if(global.readonly) out << " readonly";
+  if(global.thread_local_storage) out << " thread_local";
+  out << '\n';
   if(global.storage_kind == GlobalDefinition::GS_DATA) {
     out << "  storage data\n";
     for(std::size_t i = 0; i < global.data_items.size(); ++i) {
