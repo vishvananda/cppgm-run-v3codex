@@ -2,50 +2,50 @@
 
 ## Current Checkpoint Review
 
-The class exception-object checkpoint (`336f0c80` plus this audit follow-up)
-passes its bounded architecture review. The reviewed increment is selected
-class copy/move construction into runtime exception storage, destructor
-transfer to `__cxa_throw`, canonical RTTI/typed-handler routing, polymorphic
-copy chains, and retirement of direct throw-statement temporaries. Remaining
-conditional/logical cleanup failures are the next checkpoint, not part of this
-landed increment.
+The guard-edge full-expression checkpoint (`e4d47678` plus this audit
+follow-up) passes its bounded review. The landed increment covers destructible
+temporaries on directly guarded `&&`, `||`, and conditional arms, retained
+result slots for nested logical values, and the runtime-lifetime fallback for
+deeper dependence. Aggregate, parameter, static-initializer, and unrelated
+template/lambda failures remain mapped to later checkpoints.
 
-The audit removed one checkpoint-owned semantic shortcut. Throw analysis was
-changing synthesized copy/move constructors of polymorphic classes from
-trivial to nontrivial and rebuilding their storage prefixes only when such a
-class was thrown. Constructor triviality now becomes false at its canonical
-class-special-member owner, after polymorphism is complete and before ABI and
-construction facts are published. Throw analysis only consumes the selected
-constructor and destructor bindings. This also exposed and fixed a PA16
-boundary bug: a projected derived-to-base reference is lowered as a projection
-before the call-result ABI path is considered, and only an actual typed call
-node may enter indirect-result lowering.
+The audit removed two checkpoint-owned identity shortcuts. Logical control
+kind was rediscovered from rendered operator text during semantic traversal,
+slot planning, and lowering; builtin logical nodes now publish a compact
+`LogicalOperation` once during semantic construction. Branch cleanup heads
+were indexed by child alone even though the semantic fact is the complete
+`(owner, child)` identity; a per-function flat pair map now owns that exact key.
+Overloaded logical operators remain typed call nodes and never acquire the
+builtin short-circuit fact.
 
-The correctness witness was `base copy(derived)` for a polymorphic base. Before
-the repair it emitted `copyobj`, incorrectly retaining the derived vptr in the
-new base object; afterward it calls the selected base copy constructor, whose
-typed body installs the base vptr. The complete durable path is class
-polymorphism -> PA12 class-special-member facts and construction action ->
-throw-owned `TypeId`/constructor/destructor identities and cleanup suffix ->
-PA18 demanded RTTI/runtime symbols -> per-function PA16/PA17/PA26 typed LowIR.
-No stage uses throw-triggered fact mutation, lookup recovery, rendered text as
-semantic identity, test/source-name branching, external compilation, or a
-reference-binary fallback.
+The durable ownership path is source operator -> PA12 typed logical node ->
+temporary-owned root/child fact -> immutable destructor action -> PA17
+per-function pair index or runtime lifetime slot -> direct typed LowIR. Root
+actions are destroyed on the evaluated edge and retired before final cleanup;
+deeper guards use explicit runtime marks. The index and linked action state are
+cleared at the function boundary, lookup is O(1) average, and each expression
+node and cleanup action is visited a bounded number of times. No checkpoint
+path performs lookup recovery, reparses rendered text, retries whole programs,
+uses test/source-name dispatch, invokes an external compiler, or consults a
+reference implementation.
 
-Representative current-binary runs with 16/32/64/128 typed class throws and
-one live guard per handler recorded 371/675/1,283/2,499 semantic nodes,
-148/276/532/1,044 blocks, 799/1,471/2,815/5,503 instructions, and
-169,362/297,474/553,698/1,066,220 typed bytes. Special-member subobject visits
-stayed at 10 and demand pushes/emissions at 10/9 for every size. Semantic and
-lowering time grew from 1.08/0.62 ms to 5.69/2.60 ms, supporting linear work in
-source throw sites and produced LowIR with constructor demand computed once.
+Current-binary sibling runs at N=8/32/128 record 146/482/1,826 semantic nodes,
+85/301/1,165 dependency visits, 8/32/128 branch actions, 73/265/1,033 blocks,
+and 240/888/3,480 instructions. Nested fallback runs record 87/255/927 nodes,
+75/243/915 visits, 8/32/128 slots and marks, 75/267/1,035 blocks, and
+280/1,024/4,000 instructions. Typed output grows from 52,207 to 690,847 bytes
+and 60,666 to 833,320 bytes respectively. A demanded `Probe<N>` witness uses
+15 specialization requests with 8 cache hits, 8 demand pushes/emissions, and 2
+branch actions; it and all four focused fixtures execute successfully through
+the LowIR-to-CY86 adapter and Linux ELF path.
 
-Final validation preserves both baselines: the six focused checkpoint fixtures
-pass, the PA18 projection regression passes, PA1-PA25 pass 3,607/3,607, and
-PA26 remains 86/110 with the same 24 failures. The required PA26 report was run
-and preserves that checkpoint baseline; the file audit passes with the same 19
-inherited division warnings. No relevant file-audit, timeout, shortcut,
-correctness, or performance issue remains in this checkpoint's ownership path.
+Final validation preserves both baselines: focused PA15-PA17 ownership tests
+pass, the four checkpoint fixtures pass, PA1-PA25 pass 3,607/3,607, and PA26
+remains 90/110 with the same 20 failures and no timeout. The required PA26
+report therefore preserves the turn-start baseline. The file audit passes with
+the same 19 inherited division warnings. No relevant correctness, performance,
+shortcut, timeout, ownership, or file-audit issue remains in this landed
+increment.
 
 ## Checkpoint Audit Ledger
 
@@ -54,3 +54,4 @@ correctness, or performance issue remains in this checkpoint's ownership path.
 | Canonical RTTI demand and query lowering (`9eb277da`, audit follow-up) | Pass: evaluated demand, reachable collection, complete canonical RTTI categories, cast legality, linear counters, baseline and earlier stages preserved. |
 | Lexical unwind snapshots and handler continuation (`e05062b1`, audit follow-up) | Pass: complete bounded owners, ordered handler exit, non-duplicated typed suffixes, linear counters, and both baselines preserved. |
 | Class exception objects and typed-handler routing (`336f0c80`, audit follow-up) | Pass: canonical special-member facts, direct typed construction/destructor transfer, projection-safe call ABI, linear evidence, and both baselines preserved. |
+| Guard-edge full-expression cleanup (`e4d47678`, audit follow-up) | Pass: typed logical identity, complete owner/child indexing, path-local retirement with bounded runtime fallback, linear evidence, and both baselines preserved. |

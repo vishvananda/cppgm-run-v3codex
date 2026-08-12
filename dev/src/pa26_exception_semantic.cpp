@@ -14,12 +14,9 @@ bool SemanticAnalyzer::CollectTemporaryObjects(std::uint32_t node,
 	if (node == kNoDumpEdge || node >= dump_.nodes.size()) return false;
 	const DumpNode& root = dump_.nodes[node];
 	bool direct_branch_root = root.kind == DUMP_CONDITIONAL_EXPRESSION;
-	if (root.kind == DUMP_BINARY_EXPRESSION && root.text != 0)
-	{
-		const std::string& operation = program_->names.Get(root.text);
-		direct_branch_root = operation.find("&&") != std::string::npos ||
-			operation.find("||") != std::string::npos;
-	}
+	if (root.kind == DUMP_BINARY_EXPRESSION)
+		direct_branch_root =
+			root.logical_operation != LOGICAL_OPERATION_NONE;
 	return CollectTemporaryObjectsImpl(node, temporaries, false,
 		direct_branch_root ? node : kNoDumpEdge, kNoDumpEdge, 0);
 }
@@ -33,13 +30,8 @@ bool SemanticAnalyzer::CollectTemporaryObjectsImpl(std::uint32_t node,
 	++temporary_dependency_visits_;
 	DumpNode& record = dump_.nodes[node];
 	if (record.kind == DUMP_CONDITIONAL_ARM) return false;
-	bool short_circuit = false;
-	if (record.kind == DUMP_BINARY_EXPRESSION && record.text != 0)
-	{
-		const std::string& operation = program_->names.Get(record.text);
-		short_circuit = operation.find("&&") != std::string::npos ||
-			operation.find("||") != std::string::npos;
-	}
+	const bool short_circuit = record.kind == DUMP_BINARY_EXPRESSION &&
+		record.logical_operation != LOGICAL_OPERATION_NONE;
 	bool control_dependent = record.kind == DUMP_CONDITIONAL_EXPRESSION ||
 		short_circuit;
 	std::size_t child_index = 0;

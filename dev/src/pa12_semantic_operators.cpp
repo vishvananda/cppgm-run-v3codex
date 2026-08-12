@@ -11,6 +11,13 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+static LogicalOperation ClassifyBuiltinLogicalOperation(
+	const std::string& operation)
+{
+	return operation == "&&" ? LOGICAL_OPERATION_AND :
+		operation == "||" ? LOGICAL_OPERATION_OR : LOGICAL_OPERATION_NONE;
+}
+
 bool SemanticAnalyzer::IsMeasurableObjectType(
 	TypeId type, bool alignment_query)
 {
@@ -639,10 +646,10 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 			PrepareBuiltinArithmetic(operation, left, right);
 		if (result_type == kNoType) return ExpressionInfo();
 	}
-	const std::uint32_t expression = MakeDump(DUMP_BINARY_EXPRESSION,
-		result_type, result_category,
-		program_->names.Intern(display_operation));
+	const std::uint32_t expression = MakeDump(DUMP_BINARY_EXPRESSION, result_type,
+		result_category, program_->names.Intern(display_operation));
 	dump_.nodes[expression].operand_type = operand_type;
+	dump_.nodes[expression].logical_operation = ClassifyBuiltinLogicalOperation(operation);
 	dump_.Add(expression, left.node);
 	dump_.Add(expression, right.node);
 	ExpressionInfo result;

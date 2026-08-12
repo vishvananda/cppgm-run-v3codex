@@ -369,17 +369,23 @@ protected:
 			if (!IsBranchCleanupAction(action)) continue;
 			const std::uint32_t child =
 				derived.arena_.nodes[action].lifetime_branch_child;
+			const std::uint32_t owner =
+				derived.arena_.nodes[action].lifetime_branch_owner;
 			std::uint32_t tail = kNoDumpEdge;
-			if (!derived.full_expression_branch_cleanup_heads_.Find(child, &tail))
-				derived.full_expression_branch_cleanup_heads_.Insert(child, action);
+			if (!derived.full_expression_branch_cleanup_heads_.Find(
+				owner, child, &tail))
+				derived.full_expression_branch_cleanup_heads_.Insert(
+					owner, child, action);
 			else
 			{
-				if (!derived.full_expression_branch_cleanup_tails_.Find(child, &tail))
+				if (!derived.full_expression_branch_cleanup_tails_.Find(
+					owner, child, &tail))
 					throw std::logic_error(
 						"branch cleanup head has no ordered tail");
 				derived.full_expression_branch_cleanup_next_[tail] = action;
 			}
-			derived.full_expression_branch_cleanup_tails_.Insert(child, action);
+			derived.full_expression_branch_cleanup_tails_.Insert(
+				owner, child, action);
 			derived.full_expression_branch_cleanup_next_[action] = kNoDumpEdge;
 		}
 	}
@@ -390,7 +396,8 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		if (!derived.full_expression_uses_branch_cleanup_) return;
 		std::uint32_t action = kNoDumpEdge;
-		if (!derived.full_expression_branch_cleanup_heads_.Find(child, &action))
+		if (!derived.full_expression_branch_cleanup_heads_.Find(
+			owner, child, &action))
 			return;
 		SmallSequence<std::uint32_t, kInlineCleanupActionBudget> retired;
 		while (action != kNoDumpEdge)

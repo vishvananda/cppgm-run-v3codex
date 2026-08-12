@@ -1404,9 +1404,10 @@ private:
 		const NodeChildren& children, bool discarded = false)
 	{
 		if (children.size() != 2) throw std::runtime_error("invalid semantic binary");
+		if (record.logical_operation != LOGICAL_OPERATION_NONE)
+			return LowerLogical(node, children,
+				record.logical_operation == LOGICAL_OPERATION_AND);
 		const std::string op = StripOperationPrefix(program_.names.Get(record.text));
-		if (op == "&&" || op == "||")
-			return LowerLogical(node, children, op == "&&");
 		if (op == ",")
 		{
 			LowerDiscardedValue(children[0]);
@@ -2842,9 +2843,7 @@ private:
 		{ EmitJump(record.constant_value ? true_block : false_block); return; }
 		if (record.kind == DUMP_BINARY_EXPRESSION && children.size() == 2)
 		{
-			const std::string operation =
-				StripOperationPrefix(program_.names.Get(record.text));
-			if (operation == "&&")
+			if (record.logical_operation == LOGICAL_OPERATION_AND)
 			{
 				const BlockId rhs = AddBlock(NewLabel("land_rhs"));
 				EmitConditionBranch(children[0], rhs, false_block);
@@ -2852,7 +2851,7 @@ private:
 				EmitConditionBranch(children[1], true_block, false_block);
 				return;
 			}
-			if (operation == "||")
+			if (record.logical_operation == LOGICAL_OPERATION_OR)
 			{
 				const BlockId rhs = AddBlock(NewLabel("lor_rhs"));
 				EmitConditionBranch(children[0], true_block, rhs);
@@ -2939,7 +2938,8 @@ private:
 	std::vector<std::uint32_t> full_expression_cleanup_actions_, full_expression_segment_actions_;
 	pa17_lowering_detail::CleanupDispatchCache full_expression_cleanup_dispatches_;
 	FlatIdMap conditional_cleanup_dispatches_, conditional_cleanup_tails_, runtime_lifetime_temporaries_;
-	FlatIdMap full_expression_branch_cleanup_heads_, full_expression_branch_cleanup_tails_;
+	FlatIdPairMap full_expression_branch_cleanup_heads_,
+		full_expression_branch_cleanup_tails_;
 	std::vector<std::uint32_t> full_expression_branch_cleanup_next_;
 	std::vector<IdentityTypeId> identity_type_cache_;
 	pa15_lowering_detail::SourceTypeLowering source_types_;

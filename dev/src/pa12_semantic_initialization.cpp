@@ -2576,13 +2576,8 @@ bool SemanticAnalyzer::HasControlDependentTemporary(std::uint32_t node)
 	++temporary_dependency_visits_;
 	const DumpNode& record = dump_.nodes[node];
 	if (record.kind == DUMP_CONDITIONAL_EXPRESSION) return true;
-	if (record.kind == DUMP_BINARY_EXPRESSION && record.text != 0)
-	{
-		const std::string& operation = program_->names.Get(record.text);
-		if (operation.find("&&") != std::string::npos ||
-			operation.find("||") != std::string::npos)
-			return true;
-	}
+	if (record.kind == DUMP_BINARY_EXPRESSION &&
+		record.logical_operation != LOGICAL_OPERATION_NONE) return true;
 	for (std::uint32_t edge = record.first_edge; edge != kNoDumpEdge;
 		edge = dump_.edges[edge].next)
 		if (HasControlDependentTemporary(dump_.edges[edge].child)) return true;

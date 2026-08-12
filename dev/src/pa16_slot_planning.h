@@ -141,20 +141,17 @@ protected:
 				record.full_expression_staging)
 				(void)derived.EnsureGeneratedSlot(
 					current, "throw_alloc", LowPtr());
-			if (record.kind == DUMP_BINARY_EXPRESSION && record.text != 0 &&
+			if (record.kind == DUMP_BINARY_EXPRESSION &&
+				record.logical_operation != LOGICAL_OPERATION_NONE &&
 				record.full_expression_staging)
 			{
-				const std::string operation = StripOperationPrefix(
-					derived.program_.names.Get(record.text));
-				if (operation == "&&" || operation == "||")
-				{
-					const NodeChildren logical_children = derived.Children(current);
-					if (logical_children.empty() ||
-						!derived.FoldNamedLogicalConstant(logical_children[0]))
-						(void)derived.EnsureGeneratedSlot(current,
-							operation == "&&" ? "land" : "lor",
-							pa15_lowir_detail::LowI64());
-				}
+				const NodeChildren logical_children = derived.Children(current);
+				if (logical_children.empty() ||
+					!derived.FoldNamedLogicalConstant(logical_children[0]))
+					(void)derived.EnsureGeneratedSlot(current,
+						record.logical_operation == LOGICAL_OPERATION_AND ?
+							"land" : "lor",
+						pa15_lowir_detail::LowI64());
 			}
 			if (record.kind == DUMP_CALL_EXPRESSION &&
 				record.full_expression_staging &&
