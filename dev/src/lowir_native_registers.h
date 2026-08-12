@@ -34,6 +34,7 @@ public:
   XmmPool();
 
   XmmRegister allocate();
+  bool is_used(XmmRegister xmm) const;
   bool try_allocate(XmmRegister & result);
   void release(XmmRegister xmm);
 

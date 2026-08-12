@@ -805,7 +805,8 @@ struct FunctionInfo
 class Validator
 {
 public:
-  explicit Validator(const Program & program) : program_(program) {}
+  Validator(const Program & program, LowirEntryPolicy entry_policy)
+    : program_(program), entry_policy_(entry_policy) {}
 
   void Validate()
   {
@@ -825,6 +826,7 @@ private:
   typedef std::unordered_map<std::string, const LowType *> TypeIndex;
 
   const Program & program_;
+  LowirEntryPolicy entry_policy_;
   std::unordered_set<std::string> top_symbols_;
   std::unordered_set<std::string> globals_;
   std::unordered_map<std::string, GlobalStorageMode> global_storage_;
@@ -901,7 +903,8 @@ private:
       explicit_entry = explicit_entry || function.metadata.role == SR_ENTRY;
       legacy_entry = legacy_entry || function.name == "@main";
     }
-    if(!explicit_entry && !legacy_entry) throw ParseError("LowIR program has no entry definition");
+    if(entry_policy_ == LEP_REQUIRE_ENTRY && !explicit_entry && !legacy_entry)
+      throw ParseError("LowIR program has no entry definition");
   }
 
   void validate_global_initializers()
@@ -1144,7 +1147,7 @@ std::string read_file(const std::string & path)
   return std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
 }
 
-Program parse_tokens(std::vector<Token> & tokens)
+Program parse_tokens(std::vector<Token> & tokens, LowirEntryPolicy entry_policy)
 {
   Program program;
   {
@@ -1153,7 +1156,7 @@ Program parse_tokens(std::vector<Token> & tokens)
   }
   const std::size_t token_count = tokens.size();
   std::vector<Token>().swap(tokens);
-  Validator(program).Validate();
+  Validator(program, entry_policy).Validate();
   program.token_count = token_count;
   return program;
 }
@@ -1209,12 +1212,13 @@ LowirProgram parse_lowir_program_text(const std::string & text,
   (void) source_name;
   std::vector<Token> tokens;
   lex_text(text, tokens);
-  Program program = parse_tokens(tokens);
+  Program program = parse_tokens(tokens, LEP_REQUIRE_ENTRY);
   program.source_bytes = text.size();
   return program;
 }
 
-LowirProgram parse_lowir_program_files(const std::vector<std::string> & paths)
+LowirProgram parse_lowir_program_files(const std::vector<std::string> & paths,
+                                       LowirEntryPolicy entry_policy)
 {
   if(paths.empty()) throw ParseError("no LowIR source files");
   std::vector<Token> tokens;
@@ -1224,7 +1228,7 @@ LowirProgram parse_lowir_program_files(const std::vector<std::string> & paths)
     source_bytes += text.size();
     lex_text(text, tokens);
   }
-  Program program = parse_tokens(tokens);
+  Program program = parse_tokens(tokens, entry_policy);
   program.source_bytes = source_bytes;
   return program;
 }

@@ -160,27 +160,7 @@ private:
         frame_bytes_ += abi::frame_storage_size(type);
         continue;
       }
-      bool written = false;
-      bool observed = false;
-      for(std::size_t b = 0; b < source_.blocks.size(); ++b)
-        for(std::size_t j = 0; j < source_.blocks[b].instructions.size(); ++j) {
-          const Instruction & instruction = source_.blocks[b].instructions[j];
-          const bool first = instruction.first.kind == Operand::OP_SLOT &&
-            instruction.first.text == name;
-          const bool second = instruction.second.kind == Operand::OP_SLOT &&
-            instruction.second.text == name;
-          const bool third = instruction.third.kind == Operand::OP_SLOT &&
-            instruction.third.text == name;
-          bool argument = false;
-          for(std::size_t a = 0; a < instruction.args.size(); ++a)
-            if(instruction.args[a].kind == Operand::OP_SLOT &&
-               instruction.args[a].text == name) argument = true;
-          if(instruction.kind == Instruction::IK_STORE && second && !first && !third)
-            written = true;
-          else if(first || second || third || argument)
-            observed = true;
-        }
-      if(written && !observed) {
+      if(storage_facts_.dead_store_slots.count(name)) {
         discarded_slots_.insert(name);
         frame_bytes_ = align_up(frame_bytes_, type.alignment);
         frame_bytes_ += abi::frame_storage_size(type);
@@ -280,8 +260,11 @@ private:
   {
     const abi::Plan plan = abi::classify(source_.params);
     std::vector<long long> homes(source_.params.size(), 0);
+    std::unordered_map<std::string, std::size_t> parameter_indices;
+    parameter_indices.reserve(source_.params.size());
     for(std::size_t i = 0; i < source_.params.size(); ++i) {
       const lowir_model::LowirParameter & parameter = source_.params[i];
+      parameter_indices[parameter.name] = i;
       homes[i] = allocate_frame_binding(
         mir_model::MirFrameBinding::FB_PARAM_SLOT, parameter.name, parameter.type);
       ValueFact value;
@@ -294,10 +277,15 @@ private:
         value.frame_provenance = homes[i];
       }
       values_[parameter.name] = value;
-      for(std::unordered_map<std::string, std::string>::const_iterator alias =
-          storage_facts_.parameter_slot_aliases.begin();
-          alias != storage_facts_.parameter_slot_aliases.end(); ++alias)
-        if(alias->second == parameter.name) slot_offsets_[alias->first] = homes[i];
+    }
+    for(std::unordered_map<std::string, std::string>::const_iterator alias =
+        storage_facts_.parameter_slot_aliases.begin();
+        alias != storage_facts_.parameter_slot_aliases.end(); ++alias) {
+      const std::unordered_map<std::string, std::size_t>::const_iterator parameter =
+        parameter_indices.find(alias->second);
+      if(parameter == parameter_indices.end())
+        throw std::logic_error("parameter slot alias has no parameter");
+      slot_offsets_[alias->first] = homes[parameter->second];
     }
     for(std::size_t i = 0; i < plan.pieces.size(); ++i) {
       const abi::Piece & piece = plan.pieces[i];
@@ -412,7 +400,8 @@ private:
         value.location = reg_operand(planned->second);
         value.fixed_register_home = storage_facts_.promoted_parameters.count(parameter.name);
         append_move(register_parameter_moves, value.location, reg_operand(binding.reg));
-      } else if(storage_facts_.promoted_parameters.count(parameter.name)) {
+      } else if(!wide_gpr_boundary &&
+                storage_facts_.promoted_parameters.count(parameter.name)) {
         const X64Register destination = registers_.is_used(XR_R9) ?
           registers_.allocate(false) : XR_R9;
         if(destination == XR_R9) registers_.reserve(XR_R9);
@@ -873,6 +862,11 @@ private:
     value.location = location;
     value.type = type;
     values_[name] = value;
+    if(facts_.uses.count(name)) return;
+    if(location.kind == MirOperand::OP_REG && registers_.is_used(location.reg))
+      registers_.release(location.reg);
+    else if(location.kind == MirOperand::OP_XMM && xmms_.is_used(location.xmm))
+      xmms_.release(location.xmm);
   }
   bool is_frame_address(const Operand & operand) const
   {

@@ -403,9 +403,17 @@ using LowirGlobalDefinition = GlobalDefinition;
 using LowirObjectAlias = ObjectAlias;
 using LowirProgram = Program;
 
+enum LowirEntryPolicy
+{
+  LEP_REQUIRE_ENTRY,
+  LEP_ALLOW_HELPERS_ONLY
+};
+
 LowirProgram parse_lowir_program_text(const std::string & text,
                                       const std::string & source_name = std::string("<memory>"));
-LowirProgram parse_lowir_program_files(const std::vector<std::string> & paths);
+LowirProgram parse_lowir_program_files(
+    const std::vector<std::string> & paths,
+    LowirEntryPolicy entry_policy = LEP_REQUIRE_ENTRY);
 std::string serialize_lowir_program(const LowirProgram & program);
 void write_lowir_program_file(const std::string & path,
                               const LowirProgram & program);

@@ -163,7 +163,10 @@ int run_lowir2native_mode(const vector<string> & args)
                                                      invocation.output_target;
   const chrono::steady_clock::time_point parse_start = chrono::steady_clock::now();
   const lowir_model::LowirProgram lowir =
-      lowir_model::parse_lowir_program_files(invocation.srcfiles);
+      lowir_model::parse_lowir_program_files(
+        invocation.srcfiles,
+        invocation.outfile.empty() ? lowir_model::LEP_ALLOW_HELPERS_ONLY :
+                                     lowir_model::LEP_REQUIRE_ENTRY);
   const chrono::steady_clock::time_point lower_start = chrono::steady_clock::now();
   lowir_native::Stats stats;
   const mir_model::MirProgram mir = lowir_native::lower_program(lowir, target, &stats);
@@ -190,6 +193,7 @@ int run_lowir2native_mode(const vector<string> & args)
          << " parse_ns=" << chrono::duration_cast<chrono::nanoseconds>(
               lower_start - parse_start).count()
          << " lower_ns=" << stats.lower_nanoseconds
+         << " encode_ns=" << stats.encode_nanoseconds
          << " write_ns=" << stats.write_nanoseconds << '\n';
   }
   return EXIT_SUCCESS;

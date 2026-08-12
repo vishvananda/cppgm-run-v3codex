@@ -1,7 +1,7 @@
 #include "lowir_native_analysis.h"
 
 #include <algorithm>
-#include <deque>
+#include <queue>
 
 namespace lowir_native {
 namespace analysis {
@@ -113,11 +113,16 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
   std::unordered_set<std::string> call_arguments;
   std::unordered_set<std::string> other_uses;
   std::unordered_set<std::string> parameter_names;
+  std::unordered_map<std::string, std::size_t> definition_blocks;
+  std::vector<std::pair<std::string, std::size_t> > block_uses;
+  std::vector<std::size_t> block_last_position(function.blocks.size(), 0);
+  std::vector<std::vector<std::size_t> > clobber_positions(16);
   std::size_t position = 0;
   for(std::size_t i = 0; i < function.params.size(); ++i) {
     facts.definition[function.params[i].name] = 0;
     facts.parameters.insert(function.params[i].name);
     parameter_names.insert(function.params[i].name);
+    definition_blocks[function.params[i].name] = 0;
   }
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j, ++position) {
@@ -127,14 +132,32 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
         &instruction.first, &instruction.second, &instruction.third
       };
       for(std::size_t k = 0; k < sizeof(fixed) / sizeof(fixed[0]); ++k)
-        if(fixed[k]->kind == Operand::OP_TEMP) other_uses.insert(fixed[k]->text);
+        if(fixed[k]->kind == Operand::OP_TEMP) {
+          other_uses.insert(fixed[k]->text);
+          block_uses.push_back(std::make_pair(fixed[k]->text, i));
+          const std::unordered_map<std::string, std::size_t>::const_iterator definition =
+            definition_blocks.find(fixed[k]->text);
+          if(definition != definition_blocks.end() && definition->second != i)
+            facts.edge_live.insert(fixed[k]->text);
+        }
       for(std::size_t k = 0; k < instruction.args.size(); ++k)
         if(instruction.args[k].kind == Operand::OP_TEMP) {
+          block_uses.push_back(std::make_pair(instruction.args[k].text, i));
+          const std::unordered_map<std::string, std::size_t>::const_iterator definition =
+            definition_blocks.find(instruction.args[k].text);
+          if(definition != definition_blocks.end() && definition->second != i)
+            facts.edge_live.insert(instruction.args[k].text);
           if(instruction.kind == Instruction::IK_CALL)
             call_arguments.insert(instruction.args[k].text);
           else other_uses.insert(instruction.args[k].text);
         }
-      if(!instruction.dest.empty()) facts.definition[instruction.dest] = position;
+      if(!instruction.dest.empty()) {
+        facts.definition[instruction.dest] = position;
+        definition_blocks[instruction.dest] = i;
+      }
+      const unsigned clobbers = instruction_clobber_mask(instruction);
+      for(std::size_t reg = 0; reg < clobber_positions.size(); ++reg)
+        if(clobbers & (1u << reg)) clobber_positions[reg].push_back(position);
       if(instruction.kind == Instruction::IK_INDEX &&
          instruction.first.kind == Operand::OP_TEMP &&
          parameter_names.count(instruction.first.text) &&
@@ -156,6 +179,7 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
          instruction.type.kind == lowir_model::LTK_I128)
         facts.has_i128_atomic = true;
     }
+    block_last_position[i] = position ? position - 1 : 0;
   }
   for(std::unordered_set<std::string>::const_iterator value = call_arguments.begin();
       value != call_arguments.end(); ++value)
@@ -228,34 +252,18 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
     }
   }
 
-  typedef std::unordered_set<std::string> ValueSet;
   const std::size_t block_count = function.blocks.size();
-  std::vector<ValueSet> block_use(block_count);
-  std::vector<ValueSet> block_def(block_count);
-  std::vector<ValueSet> live_in(block_count);
-  std::vector<ValueSet> live_out(block_count);
-  std::vector<std::vector<std::size_t> > successors(block_count);
-  std::vector<std::vector<std::size_t> > predecessors(block_count);
+  // LowIR validation gives every temporary one definition before its uses.
+  // Model those values as linearized live intervals, extending uses through
+  // source-order loop ranges.  Per-register clobber indexes then answer each
+  // interval query without materializing the values x blocks liveness
+  // relation.  The register set is fixed at 16, so this remains O(IR log IR)
+  // time and O(IR) storage for instructions, operands, blocks, and CFG edges.
   std::unordered_map<std::string, std::size_t> block_index;
   for(std::size_t i = 0; i < block_count; ++i)
     block_index[function.blocks[i].label] = i;
-
+  std::vector<std::vector<std::size_t> > loop_ends_at(block_count);
   for(std::size_t i = 0; i < block_count; ++i) {
-    for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
-      const Instruction & instruction = function.blocks[i].instructions[j];
-      const Operand * fixed[] = {
-        &instruction.first, &instruction.second, &instruction.third
-      };
-      for(std::size_t k = 0; k < sizeof(fixed) / sizeof(fixed[0]); ++k)
-        if(fixed[k]->kind == Operand::OP_TEMP &&
-           !block_def[i].count(fixed[k]->text))
-          block_use[i].insert(fixed[k]->text);
-      for(std::size_t k = 0; k < instruction.args.size(); ++k)
-        if(instruction.args[k].kind == Operand::OP_TEMP &&
-           !block_def[i].count(instruction.args[k].text))
-          block_use[i].insert(instruction.args[k].text);
-      if(!instruction.dest.empty()) block_def[i].insert(instruction.dest);
-    }
     if(function.blocks[i].instructions.empty()) continue;
     const Instruction & terminal = function.blocks[i].instructions.back();
     std::vector<std::string> targets;
@@ -271,59 +279,48 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
     for(std::size_t j = 0; j < targets.size(); ++j) {
       const std::unordered_map<std::string, std::size_t>::const_iterator found =
         block_index.find(targets[j]);
-      if(found == block_index.end()) continue;
-      successors[i].push_back(found->second);
-      predecessors[found->second].push_back(i);
+      if(found != block_index.end() && found->second <= i)
+        loop_ends_at[found->second].push_back(i);
     }
   }
-
-  std::deque<std::size_t> worklist;
-  std::vector<bool> queued(block_count, true);
-  for(std::size_t i = 0; i < block_count; ++i) worklist.push_back(i);
-  while(!worklist.empty()) {
-    const std::size_t block = worklist.front();
-    worklist.pop_front();
-    queued[block] = false;
-    ValueSet new_out;
-    for(std::size_t i = 0; i < successors[block].size(); ++i)
-      new_out.insert(live_in[successors[block][i]].begin(),
-                     live_in[successors[block][i]].end());
-    ValueSet new_in = block_use[block];
-    for(ValueSet::const_iterator value = new_out.begin(); value != new_out.end(); ++value)
-      if(!block_def[block].count(*value)) new_in.insert(*value);
-    if(new_out == live_out[block] && new_in == live_in[block]) continue;
-    live_out[block].swap(new_out);
-    live_in[block].swap(new_in);
-    for(std::size_t i = 0; i < predecessors[block].size(); ++i) {
-      const std::size_t predecessor = predecessors[block][i];
-      if(queued[predecessor]) continue;
-      queued[predecessor] = true;
-      worklist.push_back(predecessor);
-    }
+  std::vector<std::size_t> loop_end_for_block(block_count, 0);
+  std::priority_queue<std::size_t> active_loop_ends;
+  for(std::size_t block = 0; block < block_count; ++block) {
+    for(std::size_t i = 0; i < loop_ends_at[block].size(); ++i)
+      active_loop_ends.push(loop_ends_at[block][i]);
+    while(!active_loop_ends.empty() && active_loop_ends.top() < block)
+      active_loop_ends.pop();
+    loop_end_for_block[block] = active_loop_ends.empty() ? block :
+      active_loop_ends.top();
   }
-
-  for(std::size_t i = 0; i < block_count; ++i) {
-    facts.edge_live.insert(live_in[i].begin(), live_in[i].end());
-    facts.edge_live.insert(live_out[i].begin(), live_out[i].end());
-    ValueSet live = live_out[i];
-    for(std::size_t j = function.blocks[i].instructions.size(); j != 0; --j) {
-      const Instruction & instruction = function.blocks[i].instructions[j - 1];
-      if(!instruction.dest.empty()) live.erase(instruction.dest);
-      const unsigned clobbers = instruction_clobber_mask(instruction);
-      if(clobbers)
-        for(ValueSet::const_iterator value = live.begin(); value != live.end(); ++value)
-          facts.live_across_clobbers[*value] |= clobbers;
-      if(instruction.kind == Instruction::IK_CALL)
-        facts.live_across_call.insert(live.begin(), live.end());
-      const Operand * fixed[] = {
-        &instruction.first, &instruction.second, &instruction.third
-      };
-      for(std::size_t k = 0; k < sizeof(fixed) / sizeof(fixed[0]); ++k)
-        if(fixed[k]->kind == Operand::OP_TEMP) live.insert(fixed[k]->text);
-      for(std::size_t k = 0; k < instruction.args.size(); ++k)
-        if(instruction.args[k].kind == Operand::OP_TEMP)
-          live.insert(instruction.args[k].text);
+  for(std::size_t i = 0; i < block_uses.size(); ++i) {
+    const std::size_t use_block = block_uses[i].second;
+    const std::size_t loop_end = loop_end_for_block[use_block];
+    if(loop_end != use_block)
+      facts.last_use[block_uses[i].first] = std::max(
+        facts.last_use[block_uses[i].first], block_last_position[loop_end]);
+  }
+  for(std::unordered_map<std::string, std::size_t>::const_iterator value =
+      facts.last_use.begin(); value != facts.last_use.end(); ++value) {
+    const std::unordered_map<std::string, std::size_t>::const_iterator definition =
+      facts.definition.find(value->first);
+    if(definition == facts.definition.end()) continue;
+    const std::size_t start = facts.parameters.count(value->first) ? 0 :
+      definition->second + 1;
+    const std::size_t end = value->second;
+    if(start >= end) continue;
+    unsigned mask = 0;
+    for(std::size_t reg = 0; reg < clobber_positions.size(); ++reg) {
+      const std::vector<std::size_t>::const_iterator clobber = std::lower_bound(
+        clobber_positions[reg].begin(), clobber_positions[reg].end(), start);
+      if(clobber != clobber_positions[reg].end() && *clobber < end)
+        mask |= 1u << reg;
     }
+    if(mask) facts.live_across_clobbers[value->first] |= mask;
+    const std::vector<std::size_t>::const_iterator call = std::lower_bound(
+      facts.calls.begin(), facts.calls.end(), start);
+    if(call != facts.calls.end() && *call < end)
+      facts.live_across_call.insert(value->first);
   }
   for(std::size_t i = 0; i < block_count; ++i)
     for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
@@ -346,6 +343,8 @@ StorageFacts analyze_storage(
     const std::unordered_map<std::string, std::string> & tls_wrappers)
 {
   StorageFacts facts;
+  std::unordered_set<std::string> written_slots;
+  std::unordered_set<std::string> observed_slots;
   std::unordered_map<std::string, std::size_t> parameters_by_name;
   std::unordered_map<std::string, std::size_t> parameters_by_suffix;
   for(std::size_t p = 0; p < function.params.size(); ++p) {
@@ -393,6 +392,29 @@ StorageFacts analyze_storage(
     const std::vector<Instruction> & instructions = function.blocks[b].instructions;
     for(std::size_t i = 0; i < instructions.size(); ++i) {
       const Instruction & instruction = instructions[i];
+      const bool has_dead_store_candidate =
+        instruction.kind == Instruction::IK_STORE &&
+        instruction.second.kind == Operand::OP_SLOT &&
+        !(instruction.first.kind == Operand::OP_SLOT &&
+          instruction.first.text == instruction.second.text) &&
+        !(instruction.third.kind == Operand::OP_SLOT &&
+          instruction.third.text == instruction.second.text);
+      if(has_dead_store_candidate)
+        written_slots.insert(instruction.second.text);
+      const Operand * storage_operands[] = {
+        &instruction.first, &instruction.second, &instruction.third
+      };
+      for(std::size_t k = 0;
+          k < sizeof(storage_operands) / sizeof(storage_operands[0]); ++k)
+        if(storage_operands[k]->kind == Operand::OP_SLOT &&
+           (!has_dead_store_candidate ||
+            storage_operands[k]->text != instruction.second.text))
+          observed_slots.insert(storage_operands[k]->text);
+      for(std::size_t k = 0; k < instruction.args.size(); ++k)
+        if(instruction.args[k].kind == Operand::OP_SLOT &&
+           (!has_dead_store_candidate ||
+            instruction.args[k].text != instruction.second.text))
+          observed_slots.insert(instruction.args[k].text);
       if(instruction.kind == Instruction::IK_STORE &&
          instruction.first.kind == Operand::OP_TEMP &&
          instruction.second.kind == Operand::OP_GLOBAL &&
@@ -468,6 +490,10 @@ StorageFacts analyze_storage(
     }
   }
 
+  for(std::unordered_set<std::string>::const_iterator slot = written_slots.begin();
+      slot != written_slots.end(); ++slot)
+    if(!observed_slots.count(*slot)) facts.dead_store_slots.insert(*slot);
+
   std::unordered_map<std::string, std::string> loaded_slots;
   for(std::unordered_map<std::string, ScalarSlotState>::const_iterator state =
         scalar_states.begin(); state != scalar_states.end(); ++state)
@@ -501,10 +527,12 @@ StorageFacts analyze_storage(
     else
       facts.forwarded_parameter_slots[state->first] = parameter;
     facts.promoted_parameters.insert(parameter);
-    for(std::size_t call = 0; call < function_facts.calls.size(); ++call)
-      if(state->second.store_position < function_facts.calls[call] &&
-         function_facts.calls[call] < state->second.load_position)
-        facts.promoted_parameters_across_call.insert(parameter);
+    const std::vector<std::size_t>::const_iterator call = std::upper_bound(
+      function_facts.calls.begin(), function_facts.calls.end(),
+      state->second.store_position);
+    if(call != function_facts.calls.end() &&
+       *call < state->second.load_position)
+      facts.promoted_parameters_across_call.insert(parameter);
   }
   return facts;
 }

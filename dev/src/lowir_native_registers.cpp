@@ -90,6 +90,11 @@ XmmRegister XmmPool::allocate()
   throw std::runtime_error("scalar XMM register pool exhausted");
 }
 
+bool XmmPool::is_used(XmmRegister xmm) const
+{
+  return used_[static_cast<unsigned>(xmm)];
+}
+
 bool XmmPool::try_allocate(XmmRegister & result)
 {
   // xmm6/xmm7 remain available to the encoder for immediate and memory forms.

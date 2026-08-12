@@ -47,6 +47,7 @@ struct StorageFacts
   std::unordered_set<std::string> promoted_parameters;
   std::unordered_set<std::string> promoted_parameters_across_call;
   std::unordered_set<std::string> dead_slot_only_parameters;
+  std::unordered_set<std::string> dead_store_slots;
   std::unordered_set<std::string> tls_store_inputs;
 };
 

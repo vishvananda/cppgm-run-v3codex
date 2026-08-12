@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -24,6 +25,7 @@ struct Fixup
   enum Kind { RELATIVE32, ABSOLUTE64 } kind = RELATIVE32;
   std::size_t offset = 0;
   std::string target;
+  long long addend = 0;
 };
 
 class CodeBuffer
@@ -67,12 +69,13 @@ public:
     zeros(4);
   }
 
-  void absolute64(const std::string & target)
+  void absolute64(const std::string & target, long long addend = 0)
   {
     Fixup fixup;
     fixup.kind = Fixup::ABSOLUTE64;
     fixup.offset = bytes_.size();
     fixup.target = target;
+    fixup.addend = addend;
     fixups_.push_back(fixup);
     zeros(8);
   }
@@ -91,7 +94,20 @@ public:
           throw std::runtime_error("native branch displacement exceeds rel32");
         patch(fixup.offset, static_cast<std::uint32_t>(delta), 4);
       } else {
-        patch(fixup.offset, kLoadAddress + kContentOffset + target->second, 8);
+        std::uint64_t address = kLoadAddress + kContentOffset + target->second;
+        if(fixup.addend >= 0) {
+          const std::uint64_t addend = static_cast<std::uint64_t>(fixup.addend);
+          if(UINT64_MAX - address < addend)
+            throw std::runtime_error("native address fixup overflows");
+          address += addend;
+        } else {
+          const std::uint64_t magnitude =
+            static_cast<std::uint64_t>(-(fixup.addend + 1)) + 1;
+          if(address < magnitude)
+            throw std::runtime_error("native address fixup underflows");
+          address -= magnitude;
+        }
+        patch(fixup.offset, address, 8);
       }
     }
   }
@@ -99,10 +115,17 @@ public:
   const std::vector<unsigned char> & bytes() const { return bytes_; }
   std::size_t fixup_count() const { return fixups_.size(); }
 
+  std::string internal_label(const char * purpose)
+  {
+    return std::string(".__cppgm_x87_") + purpose + "_" +
+      std::to_string(next_internal_label_++);
+  }
+
 private:
   std::vector<unsigned char> bytes_;
   std::unordered_map<std::string, std::size_t> labels_;
   std::vector<Fixup> fixups_;
+  std::size_t next_internal_label_ = 0;
 };
 
 void emit_rex(CodeBuffer & out, bool wide, X64Register reg, X64Register rm,
@@ -831,14 +854,6 @@ X64Register materialize_integer_operand(CodeBuffer & out,
   return XR_R11;
 }
 
-std::size_t next_x87_internal_label = 0;
-
-std::string x87_internal_label(const char * purpose)
-{
-  return std::string(".__cppgm_x87_") + purpose + "_" +
-    std::to_string(next_x87_internal_label++);
-}
-
 void emit_near_jump(CodeBuffer & out, X86Condition condition,
                     const std::string & target)
 {
@@ -888,7 +903,7 @@ void emit_x87_load_unsigned_integer(CodeBuffer & out,
   emit_rex(out, true, value, value);
   out.byte(0x85);
   emit_modrm(out, 3, value, value);
-  const std::string nonnegative = x87_internal_label("uitofp_done");
+  const std::string nonnegative = out.internal_label("uitofp_done");
   emit_near_jump(out, XC_NS, nonnegative);
   mir_model::MirOperand two64;
   two64.kind = mir_model::MirOperand::OP_FLOAT_IMM;
@@ -943,8 +958,8 @@ void emit_x87_store_truncated_unsigned(CodeBuffer & out, X64Register destination
   emit_x87_load(out, threshold, "f80", function);
   out.byte(0xdf);
   out.byte(0xe9); // Compare 2^63 with the retained input and pop the threshold.
-  const std::string high = x87_internal_label("fptoui_high");
-  const std::string done = x87_internal_label("fptoui_done");
+  const std::string high = out.internal_label("fptoui_high");
+  const std::string done = out.internal_label("fptoui_done");
   emit_near_jump(out, XC_BE, high);
   emit_x87_memory(out, 0xdd, 1, scratch, function);
   emit_load(out, destination, XR_RSP, 0, 64);
@@ -1602,7 +1617,7 @@ void emit_global(CodeBuffer & out, const mir_model::MirGlobalDefinition & global
   if(global.storage_kind == mir_model::MirGlobalDefinition::GS_SCALAR) {
     const std::size_t size = type_size(global.type);
     if(global.init_kind == mir_model::MirGlobalDefinition::GI_ADDR) {
-      out.absolute64(global.symbol);
+      out.absolute64(global.symbol, global.addr_addend);
     } else if(global.init_kind == mir_model::MirGlobalDefinition::GI_FLOAT) {
       emit_float_data(out, global.literal_text, global.type);
     } else {
@@ -1619,7 +1634,7 @@ void emit_global(CodeBuffer & out, const mir_model::MirGlobalDefinition & global
     const std::size_t size = type_size(item.type);
     out.align(size);
     if(item.kind == mir_model::MirGlobalDefinition::DataItem::ITEM_ADDR)
-      out.absolute64(item.symbol);
+      out.absolute64(item.symbol, item.addr_addend);
     else if(item.kind == mir_model::MirGlobalDefinition::DataItem::ITEM_INTEGER)
       emit_integer_data(out, item.int_value, size);
     else if(item.kind == mir_model::MirGlobalDefinition::DataItem::ITEM_FLOAT)
@@ -1677,6 +1692,8 @@ void write_linux_executable(const std::string & path,
 {
   if(program.target != "linux") throw std::runtime_error("ELF writer requires linux target");
   if(program.startup.empty()) throw std::runtime_error("native executable has no startup entry");
+  const std::chrono::steady_clock::time_point encode_start =
+    std::chrono::steady_clock::now();
   CodeBuffer content;
   content.label("__startup");
   for(std::size_t i = 0; i < program.startup.size(); ++i)
@@ -1687,6 +1704,8 @@ void write_linux_executable(const std::string & path,
     emit_global(content, program.globals[i]);
   content.resolve();
   const std::vector<unsigned char> image = make_elf_image(content);
+  const std::chrono::steady_clock::time_point encode_end =
+    std::chrono::steady_clock::now();
 
   std::ofstream out(path.c_str(), std::ios::out | std::ios::binary | std::ios::trunc);
   if(!out) throw std::runtime_error("unable to open native output: " + path);
@@ -1700,6 +1719,9 @@ void write_linux_executable(const std::string & path,
   if(stats) {
     stats->fixups = content.fixup_count();
     stats->output_bytes = image.size();
+    stats->encode_nanoseconds =
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+        encode_end - encode_start).count();
   }
 }
 
