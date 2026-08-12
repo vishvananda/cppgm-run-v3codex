@@ -1020,7 +1020,16 @@ private:
 		const std::vector<NodeId>* argument_syntax = 0);
 	ExpressionInfo AnalyzeUnary(NodeId node, ScopeId scope,
 		TypeId target = kNoType);
+	TypeId UnaryAddressOperandTarget(const std::string& operation,
+		TypeId target) const;
+	bool FormMemberPointerAddress(const ExpressionInfo& operand, TypeId target,
+		TypeId* result_type, bool* constant, ConstexprScalarValue* scalar,
+		BindingId* member) const;
 	ExpressionInfo AnalyzeBinary(NodeId node, ScopeId scope);
+	bool TryAnalyzeMemberPointerApplication(const std::string& operation,
+		const std::string& display_operation, const ExpressionInfo& left,
+		const ExpressionInfo& right, ExpressionInfo* result);
+	bool IsBuiltinLogicalOperand(const ExpressionInfo& operand) const;
 	bool PrepareBuiltinComparison(const std::string& operation,
 		ExpressionInfo* left, ExpressionInfo* right, TypeId* operand_type);
 	TypeId PrepareBuiltinArithmetic(const std::string& operation,
@@ -1377,6 +1386,10 @@ private:
 	void RecordExpressionFacts(const ExpressionInfo& value);
 	ExpressionInfo ApplyTarget(ExpressionInfo value, TypeId target,
 		ConversionRank known_conversion = CONVERSION_INVALID);
+	ConversionRank MemberPointerConversion(TypeId source, bool integer_zero,
+		TypeId target) const;
+	bool ApplyMemberPointerTarget(ExpressionInfo* value, TypeId source,
+		TypeId target);
 	bool HasTargetTypedSpecializedMemberImmediate(
 		const ExpressionInfo& destination,
 		const ExpressionInfo& value) const;
@@ -1402,6 +1415,7 @@ private:
 	bool IsFloating(TypeId type) const;
 	bool IsArithmetic(TypeId type) const;
 	bool IsPointer(TypeId type) const;
+	bool IsMemberPointer(TypeId type) const;
 	bool IsMeasurableObjectType(TypeId type, bool alignment_query);
 	bool IsPointerToCompleteObject(TypeId type);
 	bool IsNullptr(TypeId type) const;

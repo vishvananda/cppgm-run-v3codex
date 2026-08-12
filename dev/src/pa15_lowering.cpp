@@ -3,6 +3,7 @@
 #include "pa15_control_flow_lowering.h"
 #include "pa15_lowering_abi.h"
 #include "pa15_lowering_support.h"
+#include "pa15_scalar_unary_lowering.h"
 #include "pa15_source_type_lowering.h"
 #include "pa11_model.h"
 #include "pa12_semantic.h"
@@ -29,6 +30,7 @@
 #include "pa26_exception_lowering.h"
 #include "pa26_initializer_list_lowering.h"
 #include "pa26_rtti_lowering.h"
+#include "pa27_member_pointer_lowering.h"
 #include <algorithm>
 #include <limits>
 #include <ostream>
@@ -47,6 +49,7 @@ const std::size_t kAggregateProjectionReplayLimit = 8;
 typedef SmallSequence<BindingId, kAggregateProjectionReplayLimit> AggregatePath;
 class GraphLowerer :
 	private pa15_lowering_detail::ControlFlowLowering<GraphLowerer>,
+	private pa15_lowering_detail::ScalarUnaryLowering<GraphLowerer>,
 	private pa18_lowering_detail::PolymorphismActionLowering<GraphLowerer>,
 	private pa17_lowering_detail::BitFieldValueLowering<GraphLowerer>,
 	private pa17_lowering_detail::ControlExpressionLowering<GraphLowerer>,
@@ -67,7 +70,8 @@ class GraphLowerer :
 	private pa25_lowering_detail::RangeForLowering<GraphLowerer>,
 	private pa26_lowering_detail::ExceptionLowering<GraphLowerer>,
 	private pa26_lowering_detail::InitializerListLowering<GraphLowerer>,
-	private pa26_lowering_detail::RttiLowering<GraphLowerer>
+	private pa26_lowering_detail::RttiLowering<GraphLowerer>,
+	private pa27_lowering_detail::MemberPointerLowering<GraphLowerer>
 {
 public:
 	GraphLowerer(const SemanticGraphView& graph, TypedProgram& output,
@@ -157,6 +161,7 @@ public:
 	}
 private:
 	friend class pa15_lowering_detail::ControlFlowLowering<GraphLowerer>;
+	friend class pa15_lowering_detail::ScalarUnaryLowering<GraphLowerer>;
 	friend class pa18_lowering_detail::PolymorphismActionLowering<GraphLowerer>;
 	friend class pa17_lowering_detail::BitFieldValueLowering<GraphLowerer>;
 	friend class pa17_lowering_detail::ControlExpressionLowering<GraphLowerer>;
@@ -178,6 +183,7 @@ private:
 	friend class pa26_lowering_detail::ExceptionLowering<GraphLowerer>;
 	friend class pa26_lowering_detail::InitializerListLowering<GraphLowerer>;
 	friend class pa26_lowering_detail::RttiLowering<GraphLowerer>;
+	friend class pa27_lowering_detail::MemberPointerLowering<GraphLowerer>;
 	enum StatementTaskKind : std::uint8_t
 	{
 		STATEMENT_NODE,
@@ -1115,6 +1121,8 @@ private:
 			LowerDiscardedValue(children[0]);
 			return LowerStorage(children[1]);
 		}
+		if (IsMemberPointerApplication(record))
+			return LowerMemberPointerStorage(record, children);
 		if (record.kind == DUMP_CONDITIONAL_EXPRESSION &&
 			(record.category == VALUE_LVALUE || record.category == VALUE_XVALUE))
 			return LowerConditionalAddress(node, children);
@@ -1257,8 +1265,9 @@ private:
 		else if (record.kind == DUMP_LITERAL)
 		{
 			const LowType type = LowerType(record.type);
-			if (type.kind == LOW_PTR && record.constant &&
-				record.constant_value == 0 && record.value_initialization)
+			if (record.null_member_pointer_constant ||
+				(type.kind == LOW_PTR && record.constant &&
+				 record.constant_value == 0 && record.value_initialization))
 				result = Operand::NullPointer(type);
 			else if (expected.kind == LOW_PTR &&
 				source_types_.IsNullptr(record.type))
@@ -1404,6 +1413,9 @@ private:
 		const NodeChildren& children, bool discarded = false)
 	{
 		if (children.size() != 2) throw std::runtime_error("invalid semantic binary");
+		if (IsMemberPointerApplication(record))
+			return LoadStorage(LowerMemberPointerStorage(record, children),
+				LowerExpressionType(record.type));
 		if (record.logical_operation != LOGICAL_OPERATION_NONE)
 			return LowerLogical(node, children,
 				record.logical_operation == LOGICAL_OPERATION_AND);
@@ -1565,47 +1577,6 @@ private:
 		return IndexAddress(LowI8(), base, displacement, false);
 	}
 
-	Operand LowerUnary(const DumpNode& record,
-		const NodeChildren& children)
-	{
-		if (children.size() != 1) throw std::runtime_error("invalid semantic unary");
-		const std::string op = StripOperationPrefix(program_.names.Get(record.text));
-		if (op == "&") return AddressOfStorage(LowerStorage(children[0]));
-		if (op == "*")
-			return LoadStorage(LowerValue(children[0], LowPtr()),
-				LowerExpressionType(record.type));
-		if (op == "++" || op == "--")
-			return LowerIncrement(record, children[0], false);
-		if (op == "!")
-		{
-			const Operand value = LowerValue(children[0]);
-			const Operand result = Temp(LowU8());
-			Instruction compare(Instruction::CMP);
-			compare.dest = result.id;
-			compare.op = LOW_OP_EQ;
-			compare.type = value.type;
-			compare.first = value;
-			compare.second = IsFloating(value.type) ? FloatingOperand("0.0", value.type) :
-				Operand(0, value.type);
-			Emit(compare);
-			return result;
-		}
-		const LowType type = LowerExpressionType(record.type);
-		Operand value = LowerValue(children[0], type);
-		if (op == "+") return value;
-		const Operand result = Temp(type);
-		Instruction instruction(Instruction::UNARY);
-		instruction.dest = result.id;
-		instruction.op = op == "-" ? LOW_OP_NEG :
-			op == "~" ? LOW_OP_BITNOT : LOW_OP_NONE;
-		if (instruction.op == LOW_OP_NONE)
-			throw std::runtime_error("increment/address unary lowering is outside the active checkpoint");
-		instruction.type = type;
-		instruction.first = value;
-		Emit(instruction);
-		return result;
-	}
-
 	Operand LowerIncrement(const DumpNode& record, std::uint32_t operand_node,
 		bool return_storage)
 	{
@@ -1707,6 +1678,13 @@ private:
 			arguments.Push(result_storage);
 			argument_references.Push(Instruction::CALL_PASS_INDIRECT_RESULT);
 		}
+		const bool member_pointer_call =
+			IsMemberPointerApplication(callee);
+		if (member_pointer_call)
+		{
+			arguments.Push(MemberPointerObject(callee, Children(children[0])));
+			argument_references.Push(Instruction::CALL_PASS_VALUE);
+		}
 		for (std::size_t i = 1; i < children.size(); ++i)
 		{
 			const bool reference = i - 1 < function_type.parameter_count && IsReferenceType(parameters[i - 1]);
@@ -1748,7 +1726,9 @@ private:
 				throw std::logic_error("virtual call has no object or slot");
 			call.first = LowerVirtualCallee(record, virtual_object);
 		}
-		else if (!direct) call.first = LowerValue(children[0], LowPtr());
+		else if (!direct) call.first = member_pointer_call ?
+			LowerMemberPointerCallee(callee, Children(children[0])) :
+			LowerValue(children[0], LowPtr());
 		AttachCallArguments(&call, arguments, argument_references);
 		if (call.type.kind == LOW_VOID)
 		{

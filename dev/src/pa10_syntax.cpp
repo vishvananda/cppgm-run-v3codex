@@ -621,7 +621,8 @@ private:
 		if (position_ < tokens_.size() &&
 			IsFundamentalKind(tokens_[position_].Kind()))
 			return !At(KW_BOOL) || !AtOffset(1, OP_LPAREN) ||
-				AtOffset(2, OP_RPAREN);
+				AtOffset(2, OP_RPAREN) ||
+				StartsParenthesizedMemberPointerDeclarator(1);
 		if (At(OP_COLON2) ||
 			(AtIdentifier() && AtOffset(1, OP_COLON2)))
 			return !StartsQualifiedCallExpression() && QualifiedStartsType();
@@ -1012,28 +1013,17 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 			continue;
 		}
 		// A qualified member pointer is one pointer operation in the AST view.
-		if (AtIdentifier())
+		const NodeId member_pointer = ParseMemberPointerOperator();
+		if (member_pointer != kNoNode)
 		{
-			const Mark member_mark = Checkpoint();
-			const std::size_t owner_first = position_;
-			++position_;
-			TryConsumeTemplateArguments();
-			while (At(OP_COLON2) && !AtOffset(1, OP_STAR))
+			arena_.Add(result, member_pointer);
+			while (At(KW_CONST) || At(KW_VOLATILE))
 			{
-				++position_;
-				if (!AtIdentifier()) break;
-				++position_;
-				TryConsumeTemplateArguments();
+				const std::size_t qualifier = position_++;
+				arena_.Add(result, MakeTokenNode("cv-qualifier", qualifier));
 			}
-			if (Match(OP_COLON2) && Match(OP_STAR))
-			{
-				const std::string owner = JoinSpellings(owner_first,
-					position_ - 2);
-				arena_.Add(result, arena_.Make("ptr-operator", owner + "::*"));
-				consumed = true;
-				continue;
-			}
-			Rollback(member_mark);
+			consumed = true;
+			continue;
 		}
 		break;
 	}
@@ -1043,6 +1033,7 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 		consumed = true;
 	}
 	const bool abstract_function_suffix = abstract && At(OP_LPAREN) &&
+		!StartsParenthesizedMemberPointerDeclarator() &&
 		(AtOffset(1, OP_RPAREN) || AtOffset(1, OP_DOTS) ||
 		 IsLikelyTypeIdentifier(position_ + 1) ||
 		 QualifiedStartsTypeAt(position_ + 1) ||

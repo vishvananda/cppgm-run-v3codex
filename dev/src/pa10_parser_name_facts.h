@@ -286,6 +286,65 @@ protected:
 		return kNoNode;
 	}
 
+	NodeId ParseMemberPointerOperator()
+	{
+		Derived& parser = static_cast<Derived&>(*this);
+		const typename Derived::Mark mark = parser.Checkpoint();
+		const std::size_t owner_first = parser.position_;
+		const bool global = parser.Match(OP_COLON2);
+		std::vector<TextId> names;
+		std::vector<NodeId> arguments;
+		while (true)
+		{
+			if (!parser.AtIdentifier())
+			{
+				parser.Rollback(mark);
+				return kNoNode;
+			}
+			names.push_back(parser.tokens_[parser.position_++].spelling);
+			arguments.push_back(TryConsumeTemplateArguments(true));
+			if (!parser.Match(OP_COLON2))
+			{
+				parser.Rollback(mark);
+				return kNoNode;
+			}
+			if (parser.Match(OP_STAR)) break;
+			parser.Match(KW_TEMPLATE);
+		}
+
+		const std::string owner = parser.JoinSpellings(
+			owner_first, parser.position_ - 2);
+		const NodeId pointer = parser.arena_.Make(
+			"ptr-operator", owner + "::*");
+		const NodeId structure = parser.arena_.Make("structured-type-name");
+		parser.arena_.AddFlags(structure, SYNTAX_FLAG_SEMANTIC_ONLY);
+		if (global)
+			parser.arena_.Add(structure,
+				parser.arena_.Make("global-qualifier"));
+		for (std::size_t i = 0; i < names.size(); ++i)
+		{
+			const NodeId component = parser.arena_.Make(
+				"name-component", parser.strings_.Get(names[i]));
+			parser.arena_.SetSemanticPayload(component, names[i]);
+			if (arguments[i] != kNoNode)
+				parser.arena_.Add(component, arguments[i]);
+			parser.arena_.Add(structure, component);
+		}
+		parser.arena_.Add(pointer, structure);
+		return pointer;
+	}
+
+	bool StartsParenthesizedMemberPointerDeclarator(std::size_t offset = 0)
+	{
+		Derived& parser = static_cast<Derived&>(*this);
+		if (!parser.AtOffset(offset, OP_LPAREN)) return false;
+		const typename Derived::Mark mark = parser.Checkpoint();
+		parser.position_ += offset + 1;
+		const bool result = ParseMemberPointerOperator() != kNoNode;
+		parser.Rollback(mark);
+		return result;
+	}
+
 	bool StartsKnownTemplateId(bool call_only = false)
 	{
 		Derived& parser = static_cast<Derived&>(*this);

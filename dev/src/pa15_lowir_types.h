@@ -27,6 +27,7 @@ enum LowKind : std::uint8_t
 	LOW_I32,
 	LOW_U32,
 	LOW_I64,
+	LOW_I128,
 	LOW_F32,
 	LOW_F64,
 	LOW_F80,
@@ -59,6 +60,7 @@ inline LowType LowI32() { return LowType(LOW_I32, 32, 4, true); }
 inline LowType LowU32() { return LowType(LOW_U32, 32, 4, false); }
 inline LowType LowI64() { return LowType(LOW_I64, 64, 8, true); }
 inline LowType LowU64() { return LowType(LOW_I64, 64, 8, false); }
+inline LowType LowI128() { return LowType(LOW_I128, 128, 8, true); }
 inline LowType LowF32() { return LowType(LOW_F32, 32, 4, true); }
 inline LowType LowF64() { return LowType(LOW_F64, 64, 8, true); }
 inline LowType LowF80() { return LowType(LOW_F80, 80, 16, true); }
@@ -82,7 +84,7 @@ inline bool IsInteger(const LowType& type)
 	return type.kind == LOW_I8 || type.kind == LOW_U8 ||
 		type.kind == LOW_I16 || type.kind == LOW_U16 ||
 		type.kind == LOW_I32 || type.kind == LOW_U32 ||
-		type.kind == LOW_I64;
+		type.kind == LOW_I64 || type.kind == LOW_I128;
 }
 
 inline bool IsFloating(const LowType& type)

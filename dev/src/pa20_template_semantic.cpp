@@ -982,7 +982,8 @@ bool SemanticAnalyzer::IsNonTypeTemplateParameterType(TypeId type) const
 	type = program_->types.RemoveTopCv(type);
 	const TypeRecord& record = program_->types.Get(type);
 	return record.kind == TYPE_POINTER ||
-		record.kind == TYPE_LVALUE_REFERENCE || IsIntegral(type, true);
+		record.kind == TYPE_LVALUE_REFERENCE ||
+		record.kind == TYPE_MEMBER_POINTER || IsIntegral(type, true);
 }
 
 bool SemanticAnalyzer::FormNonTypeTemplateArgumentValue(
@@ -992,13 +993,25 @@ bool SemanticAnalyzer::FormNonTypeTemplateArgumentValue(
 		throw std::logic_error("invalid non-type template argument destination");
 	const TypeId type = program_->types.RemoveTopCv(argument->type);
 	const TypeRecord& record = program_->types.Get(type);
-	if (record.kind != TYPE_POINTER && record.kind != TYPE_LVALUE_REFERENCE)
+	if (record.kind != TYPE_POINTER && record.kind != TYPE_LVALUE_REFERENCE &&
+		record.kind != TYPE_MEMBER_POINTER)
 	{
 		if (!expression.constant || !IsIntegral(expression.type, true))
 			return false;
 		argument->value = FunctionTemplateTypeIsDependent(type) ?
 			expression.value : NormalizeIntegralConstant(type, expression.value);
 		return true;
+	}
+	if (record.kind == TYPE_MEMBER_POINTER)
+	{
+		if (!expression.constant) return false;
+		if (expression.binding != kNoBinding &&
+			expression.binding >= program_->bindings.size()) return false;
+		argument->value = expression.value;
+		argument->value_binding = expression.binding == kNoBinding ?
+			kNoBinding : program_->bindings[expression.binding].canonical;
+		return expression.binding == kNoBinding ||
+			argument->value_binding < program_->bindings.size();
 	}
 	std::uint32_t address = record.kind == TYPE_LVALUE_REFERENCE ?
 		expression.constexpr_lvalue_address : ExpressionAddress(expression);

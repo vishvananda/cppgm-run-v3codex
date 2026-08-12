@@ -26,7 +26,6 @@ bool SyntaxUsesAnyIdentifier(const SyntaxArena& arena, NodeId node,
 	return false;
 }
 }
-
 NodeId SemanticAnalyzer::FindChild(NodeId node, const char* tag) const
 {
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
@@ -123,7 +122,6 @@ TypeId SemanticAnalyzer::EffectiveType(TypeId type) const
 	return record.kind == TYPE_LVALUE_REFERENCE ||
 		record.kind == TYPE_RVALUE_REFERENCE ? record.child : type;
 }
-
 bool SemanticAnalyzer::IsVoid(TypeId type) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
@@ -430,10 +428,12 @@ ConversionRank SemanticAnalyzer::Conversion(TypeId source,
 		}
 		return CONVERSION_INVALID;
 	}
-
 	TypeId from = Decay(source);
 	TypeId to = program_->types.RemoveTopCv(target);
 	if (from == to) return CONVERSION_EXACT;
+	const ConversionRank member_pointer = MemberPointerConversion(
+		from, integer_zero, to);
+	if (member_pointer != CONVERSION_INVALID) return member_pointer;
 	const EntityId derived_object = EntityOf(from);
 	const EntityId base_object = EntityOf(to);
 	if (derived_object != kNoEntity && base_object != kNoEntity &&
@@ -634,7 +634,9 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 		value.constexpr_complete_object = kNoConstexprObject;
 		++expression_count_;
 	}
-	if (value.integer_literal_zero &&
+	const bool member_pointer_target = ApplyMemberPointerTarget(&value,
+		conversion_source, conversion_target);
+	if (!member_pointer_target && value.integer_literal_zero &&
 		(IsPointer(nonreference) || IsNullptr(nonreference)))
 	{
 		value.type = program_->types.RemoveTopCv(nonreference);
@@ -770,7 +772,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 				target_shape = program_->types.Get(target_shape).child;
 			const TypeKind target_kind = target_shape == kNoType ? TYPE_FUNDAMENTAL :
 				program_->types.Get(target_shape).kind;
-			return target_kind == TYPE_POINTER || target_kind == TYPE_MEMBER_POINTER ?
+			return target_kind == TYPE_POINTER ?
 				ApplyTarget(function_id, target) : function_id;
 		}
 		return AnalyzeNamedValue(spelling, scope, target, node);
@@ -1498,8 +1500,6 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 	++expression_count_;
 	return ApplyTarget(result, target);
 }
-
-
 ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 {
 	const std::uint32_t first = arena_->FirstEdge(node);
@@ -2481,7 +2481,7 @@ void SemanticAnalyzer::AnalyzeCondition(NodeId node, ScopeId scope,
 				dump_.Add(condition, converted.node);
 			}
 		}
-		else if (!IsArithmetic(parsed.type) && !IsPointer(parsed.type))
+		else if (!IsArithmetic(parsed.type) && !IsPointer(parsed.type) && !IsMemberPointer(parsed.type))
 		{
 			ExpressionInfo declared;
 			declared.node = MakeDump(DUMP_ID_EXPRESSION, parsed.type,
@@ -2503,8 +2503,7 @@ void SemanticAnalyzer::AnalyzeCondition(NodeId node, ScopeId scope,
 		if (!IsIntegral(value.type, true))
 			throw std::runtime_error("invalid switch condition");
 	}
-	else if (!IsArithmetic(value.type) && !IsPointer(value.type) &&
-		!IsNullptr(value.type))
+	else if (!IsArithmetic(value.type) && !IsPointer(value.type) && !IsNullptr(value.type) && !IsMemberPointer(value.type))
 		value = ApplyExplicitConversion(value,
 			program_->types.Fundamental(FUND_BOOL));
 	dump_.Add(condition, value.node);

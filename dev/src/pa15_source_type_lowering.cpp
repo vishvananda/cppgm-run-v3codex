@@ -24,10 +24,11 @@ LowType SourceTypeLowering::Lower(TypeId type) const
 		type = record->child;
 		record = &program_.types.Get(type);
 	}
+	if (record->kind == TYPE_MEMBER_POINTER)
+		return program_.types.IsFunction(record->child) ? LowI128() : LowI64();
 	if (record->kind == TYPE_LVALUE_REFERENCE ||
 		record->kind == TYPE_RVALUE_REFERENCE || record->kind == TYPE_POINTER ||
-		record->kind == TYPE_ARRAY || record->kind == TYPE_FUNCTION ||
-		record->kind == TYPE_MEMBER_POINTER) return LowPtr();
+		record->kind == TYPE_ARRAY || record->kind == TYPE_FUNCTION) return LowPtr();
 	if (record->kind == TYPE_NAMED)
 	{
 		const EntityRecord& entity = program_.entities[record->entity];

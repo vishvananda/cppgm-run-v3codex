@@ -590,10 +590,14 @@ bool SemanticAnalyzer::BuiltinBinaryParameterTypes(
 	*right_target = right_type;
 	if (operation == "&&" || operation == "||")
 	{
+		const bool left_member_pointer =
+			program_->types.Get(left_type).kind == TYPE_MEMBER_POINTER;
+		const bool right_member_pointer =
+			program_->types.Get(right_type).kind == TYPE_MEMBER_POINTER;
 		if ((!IsArithmetic(left_type) && !IsPointer(left_type) &&
-			 !IsNullptr(left_type)) ||
+			 !IsNullptr(left_type) && !left_member_pointer) ||
 			(!IsArithmetic(right_type) && !IsPointer(right_type) &&
-			 !IsNullptr(right_type))) return false;
+			 !IsNullptr(right_type) && !right_member_pointer)) return false;
 		*left_target = *right_target =
 			program_->types.Fundamental(FUND_BOOL);
 		return true;
@@ -632,6 +636,23 @@ bool SemanticAnalyzer::BuiltinBinaryParameterTypes(
 			return true;
 		}
 		if (IsPointer(right_type) && equality &&
+			(IsNullptr(left_type) || left.integer_literal_zero))
+		{
+			*left_target = right_type;
+			return true;
+		}
+		if (equality &&
+			program_->types.Get(left_type).kind == TYPE_MEMBER_POINTER &&
+			left_type == right_type) return true;
+		if (equality &&
+			program_->types.Get(left_type).kind == TYPE_MEMBER_POINTER &&
+			(IsNullptr(right_type) || right.integer_literal_zero))
+		{
+			*right_target = left_type;
+			return true;
+		}
+		if (equality &&
+			program_->types.Get(right_type).kind == TYPE_MEMBER_POINTER &&
 			(IsNullptr(left_type) || left.integer_literal_zero))
 		{
 			*left_target = right_type;

@@ -2091,15 +2091,15 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 			else if (operation.size() > 3 &&
 				operation.compare(operation.size() - 3, 3, "::*") == 0)
 			{
-				const std::string owner_name =
-					operation.substr(0, operation.size() - 3);
-				const LookupResult owner = LookupSpelling(scope, owner_name,
-					LOOKUP_TYPE);
-				if (owner.type == kNoType)
+				const NodeId owner_syntax = FindChild(child, "structured-type-name");
+				const TypeId owner = owner_syntax == kNoNode ? LookupSpelling(
+					scope, operation.substr(0, operation.size() - 3),
+					LOOKUP_TYPE).type : ResolveStructuredTypeName(owner_syntax, scope);
+				if (owner == kNoType)
 					type = CandidateTypeFormation(
 						kNoType, "member pointer owner not found");
 				else type = CandidateTypeFormation(
-					program_->types.TryMemberPointer(owner.type, type),
+					program_->types.TryMemberPointer(owner, type),
 					"member pointer owner is not a class");
 			}
 			else throw std::runtime_error("invalid pointer operator");

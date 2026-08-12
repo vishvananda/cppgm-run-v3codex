@@ -778,8 +778,33 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 		return CandidateExpressionFailure("inaccessible member object");
 	MarkClassTemplateSpecializationUse(binding.member_owner);
 	if (binding.non_static_data_member)
+	{
+		const TypeId target_shape = target == kNoType ? kNoType :
+			program_->types.RemoveTopCv(target);
+		const bool member_pointer_target = target_shape != kNoType &&
+			program_->types.Get(target_shape).kind == TYPE_MEMBER_POINTER;
+		if (member_pointer_target)
+		{
+			const TypeRecord& pointer = program_->types.Get(target_shape);
+			const EntityId target_owner = EntityOf(
+				static_cast<TypeId>(pointer.bound));
+			if (!SimilarUnqualified(pointer.child, binding.type) ||
+				(binding.member_owner != target_owner &&
+				 !program_->IsBaseOf(binding.member_owner, target_owner)))
+				return CandidateExpressionFailure(
+					"member does not match member pointer target");
+			ExpressionInfo result;
+			result.type = binding.type;
+			result.category = VALUE_LVALUE;
+			result.binding = found.ordinary;
+			result.node = MakeDump(DUMP_ID_EXPRESSION, result.type,
+				result.category, binding.name, found.ordinary);
+			++expression_count_;
+			return result;
+		}
 		return AnalyzeImplicitDataMember(found.ordinary, scope, target,
 			found.naming_class);
+	}
 	if (binding.member_owner != kNoEntity && constexpr_evaluation_depth_ == 0)
 		EnsureStaticMemberStorage(found.ordinary,
 			(target != kNoType && program_->types.IsReference(target)) ||

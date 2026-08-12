@@ -131,6 +131,7 @@ struct DumpNode
 	std::uint32_t storage_alignment;
 	bool constant;
 	bool integer_literal_zero;
+	bool null_member_pointer_constant;
 	bool target_typed_scalar_immediate;
 	bool integer_narrowing_conversion;
 	bool enum_arithmetic_conversion;
@@ -199,6 +200,7 @@ struct DumpNode
 		  virtual_slot(kNoDumpEdge),
 		  storage_alignment(0),
 		  constant(false), integer_literal_zero(false),
+		  null_member_pointer_constant(false),
 		  target_typed_scalar_immediate(false),
 		  integer_narrowing_conversion(false),
 		  enum_arithmetic_conversion(false), template_layout_constant(false),

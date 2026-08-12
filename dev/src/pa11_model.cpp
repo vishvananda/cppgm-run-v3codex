@@ -2661,7 +2661,9 @@ std::size_t Program::SizeOf(TypeId type) const
 		case TYPE_FUNDAMENTAL: size = FundamentalSize(record.fundamental); break;
 		case TYPE_POINTER: case TYPE_LVALUE_REFERENCE:
 		case TYPE_RVALUE_REFERENCE: size = 8; break;
-		case TYPE_MEMBER_POINTER: size = 8; break;
+		case TYPE_MEMBER_POINTER:
+			size = types.IsFunction(record.child) ? 16 : 8;
+			break;
 		case TYPE_NAMED:
 		{
 			const EntityRecord& entity = entities[record.entity];

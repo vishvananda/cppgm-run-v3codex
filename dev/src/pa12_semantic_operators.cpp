@@ -212,16 +212,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 {
 	const bool postfix = arena_->IsTag(node, "postfix-expression");
 	const std::string operation = PayloadSource(node);
-	TypeId operand_target = kNoType;
-	if (operation == "&" && target != kNoType)
-	{
-		TypeId desired = program_->types.RemoveTopCv(target);
-		const TypeRecord target_record = program_->types.Get(desired);
-		if ((target_record.kind == TYPE_POINTER &&
-			 program_->types.IsFunction(target_record.child)) ||
-			target_record.kind == TYPE_MEMBER_POINTER)
-			operand_target = target_record.child;
-	}
+	const TypeId operand_target =
+		UnaryAddressOperandTarget(operation, target);
 	const NodeId operand_syntax = FirstSemanticChild(node);
 	ExpressionInfo operand = AnalyzeExpression(
 		operand_syntax, scope, operand_target);
@@ -253,7 +245,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 	const std::uint32_t operand_complete_object =
 		ExpressionCompleteObject(operand);
 	(void)ApplyBuiltinUnaryConversion(operation, &operand);
-	if (operation == "&" && operand.binding != kNoBinding)
+	const bool member_pointer_address = operation == "&" &&
+		target != kNoType && IsMemberPointer(target);
+	if (operation == "&" && operand.binding != kNoBinding &&
+		!member_pointer_address)
 		EnsureStaticMemberStorage(operand.binding, true);
 	if (operation == "&" && operand.binding != kNoBinding &&
 		program_->bindings[operand.binding].bit_field)
@@ -268,19 +263,22 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 		IsPointer(Decay(operand.type)))
 		address = LvalueAddress(&operand);
 	std::uint32_t lvalue_address = kNoConstexprAddress;
+	BindingId selected_member = kNoBinding;
 	if (constant && address == kNoConstexprAddress)
 		scalar = ExpressionScalar(operand);
 	if (operation == "&")
 	{
 		if (operand.category != VALUE_LVALUE)
 			throw std::runtime_error("address-of requires lvalue");
-		if (target != kNoType &&
-			program_->types.Get(program_->types.RemoveTopCv(target)).kind ==
-				TYPE_MEMBER_POINTER)
-			result_type = program_->types.RemoveTopCv(target);
-		else result_type = program_->types.Pointer(result_type);
-		address = LvalueAddress(&operand);
-		constant = address != kNoConstexprAddress;
+		if (member_pointer_address)
+			(void)FormMemberPointerAddress(operand, target, &result_type, &constant,
+				&scalar, &selected_member);
+		else
+		{
+			result_type = program_->types.Pointer(result_type);
+			address = LvalueAddress(&operand);
+			constant = address != kNoConstexprAddress;
+		}
 	}
 	else if (operation == "*")
 	{
@@ -346,8 +344,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 	}
 	else if (operation == "!")
 	{
+		const TypeRecord operand_shape = program_->types.Get(
+			program_->types.RemoveTopCv(EffectiveType(result_type)));
 		if (!IsArithmetic(result_type) && !IsPointer(Decay(result_type)) &&
-			!IsNullptr(result_type))
+			!IsNullptr(result_type) &&
+			operand_shape.kind != TYPE_MEMBER_POINTER)
 			throw std::runtime_error("invalid logical-not operand");
 		result_type = program_->types.Fundamental(FUND_BOOL);
 		if (constant) scalar = ConstexprScalarValue(
@@ -397,11 +398,14 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 	const std::uint32_t expression = MakeDump(postfix ?
 		DUMP_POSTFIX_EXPRESSION : DUMP_UNARY_EXPRESSION,
 		result_type, category, program_->names.Intern(arena_->Payload(node)));
+	if (member_pointer_address)
+		dump_.nodes[expression].binding = selected_member;
 	dump_.Add(expression, operand.node);
 	ExpressionInfo result;
 	result.node = expression;
 	result.type = result_type;
 	result.category = category;
+	if (member_pointer_address) result.binding = selected_member;
 	if (constant && address != kNoConstexprAddress)
 		SetExpressionAddress(&result, address);
 	else if (constant) SetExpressionScalar(&result, scalar);
@@ -493,6 +497,24 @@ bool SemanticAnalyzer::PrepareBuiltinComparison(const std::string& operation,
 		*operand_type = CommonArithmeticType(left->type, right->type);
 	else if (IsNullptr(left->type) && IsNullptr(right->type) && equality)
 		*operand_type = left_unqualified;
+	else if (equality &&
+		program_->types.Get(left_unqualified).kind == TYPE_MEMBER_POINTER &&
+		left_unqualified == right_unqualified)
+		*operand_type = left_unqualified;
+	else if (equality &&
+		program_->types.Get(left_unqualified).kind == TYPE_MEMBER_POINTER &&
+		(IsNullptr(right->type) || right->integer_literal_zero))
+	{
+		*operand_type = left_unqualified;
+		*right = ApplyTarget(*right, left_unqualified);
+	}
+	else if (equality &&
+		program_->types.Get(right_unqualified).kind == TYPE_MEMBER_POINTER &&
+		(IsNullptr(left->type) || left->integer_literal_zero))
+	{
+		*operand_type = right_unqualified;
+		*left = ApplyTarget(*left, right_unqualified);
+	}
 	else if (IsPointer(Decay(left->type)) && IsPointer(Decay(right->type)))
 	{
 		const TypeId left_pointer = Decay(left->type);
@@ -600,16 +622,16 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 	if (TryAnalyzeOverloadedOperator(operation, scope, overloaded_syntax,
 		overloaded_operands, false, kNoType, &overloaded,
 		builtin_competes ? &builtin_ranks : 0)) return overloaded;
+	ExpressionInfo member_pointer;
+	if (TryAnalyzeMemberPointerApplication(operation, display_operation,
+		left, right, &member_pointer)) return member_pointer;
 	(void)ApplyBuiltinBinaryConversions(operation, &left, &right);
 	TypeId result_type = kNoType;
 	TypeId operand_type = kNoType;
 	ValueCategory result_category = VALUE_PRVALUE;
 	if (operation == "&&" || operation == "||")
 	{
-		if ((!IsArithmetic(left.type) && !IsPointer(Decay(left.type)) &&
-			 !IsNullptr(left.type)) ||
-			(!IsArithmetic(right.type) && !IsPointer(Decay(right.type)) &&
-			 !IsNullptr(right.type)))
+		if (!IsBuiltinLogicalOperand(left) || !IsBuiltinLogicalOperand(right))
 			throw std::runtime_error("invalid logical operands");
 		result_type = program_->types.Fundamental(FUND_BOOL);
 	}

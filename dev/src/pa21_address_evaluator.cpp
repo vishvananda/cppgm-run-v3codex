@@ -222,6 +222,10 @@ std::uint32_t SemanticAnalyzer::OffsetConstexprAddress(
 bool SemanticAnalyzer::ExpressionTruth(
 	const ExpressionInfo& expression) const
 {
+	const TypeRecord type = program_->types.Get(program_->types.RemoveTopCv(
+		EffectiveType(expression.type)));
+	if (type.kind == TYPE_MEMBER_POINTER)
+		return expression.binding != kNoBinding || expression.value != 0;
 	const ConstexprAddressValue* address =
 		ConstexprAddressAt(ExpressionAddress(expression));
 	return address ? address->kind != CONSTEXPR_ADDRESS_NULL :

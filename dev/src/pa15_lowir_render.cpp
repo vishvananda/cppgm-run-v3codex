@@ -24,6 +24,7 @@ void WriteType(std::ostream& output, const LowType& type)
 	case LOW_I32: output << "i32"; return;
 	case LOW_U32: output << "u32"; return;
 	case LOW_I64: output << "i64"; return;
+	case LOW_I128: output << "i128"; return;
 	case LOW_F32: output << "f32"; return;
 	case LOW_F64: output << "f64"; return;
 	case LOW_F80: output << "f80"; return;
