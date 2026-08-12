@@ -15,21 +15,23 @@ layout is O(output + relocations).
 
 | Group | Tests | Shared behavior and owner |
 | --- | ---: | --- |
-| Unsupported lowering | 23 | x87/f80, atomics, wide integers, TLS, and varargs rejected before complete MIR/ELF; selector and encoder |
+| Unsupported lowering | 14 | Atomics, wide integers, and varargs rejected before complete MIR/ELF; selector and encoder |
 | MIR conformance | 21 | Five exact, thirteen canonical, and three behavioral allocation/frame/section shape mismatches; selector and allocator |
 
-One hundred thirty-nine of 183 tests now pass. The 44 failures are grouped by first
-stable owning boundary; no aggregate ABI runtime failures remain.
+One hundred forty-eight of 183 tests now pass. The 35 failures are grouped by first
+stable owning boundary; no aggregate ABI or floating runtime failures remain.
 
 ## Active Checkpoint
 
-Implement the x87/f80 scalar boundary. Typed f80 facts flow from LowIR through
-dedicated frame-backed MIR operations and call/return classification; the selector
-owns conversions, arithmetic, comparisons, literals, and x87 stack balance while
-the encoder consumes the same MIR. Work remains O(instructions + operands), with
-bounded x87 stack state and monotonic frame allocation. Validate all f80 anchors,
-mixed GPR/f80 calls, full PA29, through-PA28, and file audit. Atomics, TLS,
-variadics, wide integers, and residual MIR allocation shape remain later checkpoints.
+Implement the atomic scalar boundary. Typed LowIR ordering operands and value widths
+flow to explicit MIR load/store/exchange/add-fetch/compare-exchange/fence operations;
+`lowir_native` owns result and fixed-register setup, `mir_model` owns the deterministic
+atomic view, and `lowir_native_elf` owns direct lock/xchg/fence encoding. This applies
+`spec.md` sections 6-9 and PA29's typed-MIR/direct-ELF contract. Selection and encoding
+remain O(instructions + operands), each atomic operation has O(1) lowering, and
+allocator clobber facts remain function-local. Validate all scalar atomic anchors,
+loop-pressure exchange behavior, full PA29, through-PA28, and file audit. TLS,
+variadics, i128 ABI/atomics, and residual MIR allocation shape remain later checkpoints.
 
 ## Performance Evidence
 
@@ -71,6 +73,14 @@ instructions became 3,805/38,005/190,005 MIR instructions. Lowering took
 6,716/31,968/143,336 KiB, and output was 31,151/310,151/1,550,151 bytes,
 showing approximately linear classification, lowering, and encoding.
 
+The x87 path was measured with 100/1,000/5,000 f80-heavy functions performing
+constant, add, unsigned conversion, compare, and return: 604/6,004/30,004 LowIR
+instructions became 918/9,018/45,018 MIR instructions. Lowering took
+1.56/14.64/76.75 ms, wall time 0.00/0.04/0.23 s, RSS was
+5,440/15,072/58,044 KiB, and output was 34,449/342,249/1,710,249 bytes.
+All generated executables returned zero, and count/time/space scaled approximately
+linearly with bounded x87 depth.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result | Evidence |
@@ -81,3 +91,4 @@ showing approximately linear classification, lowering, and encoding.
 | Scalar f32/f64 and XMM ABI | Complete | SSE arithmetic, ordered/value comparisons, conversions, globals, direct/indirect mixed calls, returns, call-crossing homes, and exact decimal rounding; focused scalar anchors pass; full PA29 94/183 (+43); float-heavy scaling above |
 | CFG liveness and reactive spilling | Complete | Dirty predecessor worklist, call/fixed-clobber facts, incoming-register ownership, edge-safe reuse, stable GPR/XMM homes, variable indices, narrow reloads, and parallel XMM cycles; full PA29 118/183 (+24); 5,000-block scaling above |
 | SysV aggregate ABI and bulk storage | Complete | Typed one/two-eightbyte register classification, whole-object stack rollback, parameter/result homes and aliases, pass-mode address materialization, slot-safe bulk operations, and padded returns; all 19 focused object/pass-mode anchors pass; full PA29 139/183 (+21); aggregate scaling above |
+| x87/f80 scalar and ABI path | Complete | Frame-backed f80 SSA, aligned stack parameters, `st0` returns, exact literals/globals, balanced arithmetic/comparisons, signed/unsigned conversions, implicit width conversion, and shared ABI ownership; all eight f80 anchors plus adjacent u32 conversion pass; full PA29 148/183 (+9); x87 scaling above |

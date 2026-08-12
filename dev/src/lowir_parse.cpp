@@ -1062,7 +1062,8 @@ private:
   {
     if(ins.kind == Instruction::IK_UNARY) {
       if(ins.op == "decay" && ins.type.kind != LTK_PTR) throw ParseError("decay requires ptr");
-      if(ins.op == "bswap" && ins.type.kind != LTK_I16 && ins.type.kind != LTK_I32 &&
+      if(ins.op == "bswap" && ins.type.kind != LTK_I16 && ins.type.kind != LTK_U16 &&
+         ins.type.kind != LTK_I32 && ins.type.kind != LTK_U32 &&
          ins.type.kind != LTK_I64) throw ParseError("invalid bswap type");
     }
     if(ins.kind == Instruction::IK_CONVERT) validate_conversion(ins);

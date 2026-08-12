@@ -1,4 +1,5 @@
 #include "lowir_native.h"
+#include "lowir_native_abi.h"
 #include "lowir_native_analysis.h"
 
 #include <algorithm>
@@ -18,6 +19,8 @@ using lowir_model::LowType;
 using lowir_model::Operand;
 using mir_model::MirInstruction;
 using mir_model::MirOperand;
+using abi::FunctionSignature;
+using abi::FunctionSignatureIndex;
 using analysis::FunctionFacts;
 using analysis::analyze_function;
 using analysis::register_mask;
@@ -173,6 +176,16 @@ bool is_scalar_float(const LowType & type)
   return type.kind == lowir_model::LTK_F32 || type.kind == lowir_model::LTK_F64;
 }
 
+bool is_extended_float(const LowType & type)
+{
+  return type.kind == lowir_model::LTK_F80;
+}
+
+bool is_floating(const LowType & type)
+{
+  return is_scalar_float(type) || is_extended_float(type);
+}
+
 const LowType & floating_literal_type(const std::string & text)
 {
   if(!text.empty() && (text.back() == 'f' || text.back() == 'F'))
@@ -212,126 +225,6 @@ struct ValueFact
   long long frame_provenance = 0;
   std::string pointer_global_cell;
 };
-
-struct FunctionSignature
-{
-  const std::vector<lowir_model::LowirParameter> * params = 0;
-  const LowType * return_type = 0;
-};
-
-typedef std::unordered_map<std::string, FunctionSignature> FunctionSignatureIndex;
-
-enum AbiPieceLocation
-{
-  APL_GPR,
-  APL_XMM,
-  APL_STACK
-};
-
-struct AbiPiece
-{
-  std::size_t parameter_index = 0;
-  std::size_t chunk_offset = 0;
-  LowType type;
-  AbiPieceLocation location = APL_GPR;
-  X64Register reg = XR_RDI;
-  XmmRegister xmm = XMM_0;
-  std::size_t stack_offset = 0;
-};
-
-struct AbiPlan
-{
-  std::vector<AbiPiece> pieces;
-  std::size_t stack_bytes = 0;
-};
-
-const LowType & object_chunk_type(std::size_t remaining)
-{
-  if(remaining <= 1) return lowir_model::builtin_lowir_type(lowir_model::LTK_I8);
-  if(remaining <= 2) return lowir_model::builtin_lowir_type(lowir_model::LTK_I16);
-  if(remaining <= 4) return lowir_model::builtin_lowir_type(lowir_model::LTK_I32);
-  return lowir_model::builtin_lowir_type(lowir_model::LTK_I64);
-}
-
-std::size_t frame_storage_size(const LowType & type)
-{
-  if(type.kind != lowir_model::LTK_OBJECT) return type.storage_size;
-  if(type.storage_size <= 1) return 1;
-  if(type.storage_size <= 2) return 2;
-  if(type.storage_size <= 4) return 4;
-  if(type.storage_size <= 8) return 8;
-  return align_up(type.storage_size, 8);
-}
-
-X64Register abi_argument_register(std::size_t index)
-{
-  static const X64Register registers[] = {
-    XR_RDI, XR_RSI, XR_RDX, XR_RCX, XR_R8, XR_R9
-  };
-  if(index >= sizeof(registers) / sizeof(registers[0]))
-    throw std::runtime_error("SysV ABI has six INTEGER argument registers");
-  return registers[index];
-}
-
-AbiPlan classify_abi(const std::vector<lowir_model::LowirParameter> & parameters)
-{
-  AbiPlan plan;
-  std::size_t gpr_index = 0;
-  std::size_t xmm_index = 0;
-  std::size_t stack_offset = 0;
-  for(std::size_t i = 0; i < parameters.size(); ++i) {
-    const LowType & type = parameters[i].type;
-    if(type.kind == lowir_model::LTK_OBJECT) {
-      const std::size_t chunks = (type.storage_size + 7) / 8;
-      const std::size_t available_gprs = gpr_index < 6 ? 6 - gpr_index : 0;
-      const bool in_registers = type.storage_size <= 16 && chunks <= available_gprs;
-      if(in_registers) {
-        for(std::size_t chunk = 0; chunk < chunks; ++chunk) {
-          AbiPiece piece;
-          piece.parameter_index = i;
-          piece.chunk_offset = chunk * 8;
-          piece.type = object_chunk_type(type.storage_size - piece.chunk_offset);
-          piece.location = APL_GPR;
-          piece.reg = abi_argument_register(gpr_index++);
-          plan.pieces.push_back(piece);
-        }
-      } else {
-        const std::size_t stack_alignment = std::min<std::size_t>(
-          16, std::max<std::size_t>(8, type.alignment));
-        stack_offset = align_up(stack_offset, stack_alignment);
-        for(std::size_t chunk = 0; chunk < chunks; ++chunk) {
-          AbiPiece piece;
-          piece.parameter_index = i;
-          piece.chunk_offset = chunk * 8;
-          piece.type = object_chunk_type(type.storage_size - piece.chunk_offset);
-          piece.location = APL_STACK;
-          piece.stack_offset = stack_offset + piece.chunk_offset;
-          plan.pieces.push_back(piece);
-        }
-        stack_offset += align_up(type.storage_size, 8);
-      }
-      continue;
-    }
-    AbiPiece piece;
-    piece.parameter_index = i;
-    piece.type = type;
-    if(is_scalar_float(type) && xmm_index < 8) {
-      piece.location = APL_XMM;
-      piece.xmm = static_cast<XmmRegister>(xmm_index++);
-    } else if(!is_scalar_float(type) && gpr_index < 6) {
-      piece.location = APL_GPR;
-      piece.reg = abi_argument_register(gpr_index++);
-    } else {
-      piece.location = APL_STACK;
-      stack_offset = align_up(stack_offset, 8);
-      piece.stack_offset = stack_offset;
-      stack_offset += 8;
-    }
-    plan.pieces.push_back(piece);
-  }
-  plan.stack_bytes = align_up(stack_offset, 16);
-  return plan;
-}
 
 class RegisterPool
 {
@@ -451,8 +344,8 @@ public:
     target_.name = source.name;
     target_.return_type = source.return_type.text;
     discover_parameter_slot_aliases();
-    plan_slots();
     bind_parameters();
+    plan_slots();
   }
 
   mir_model::MirFunction lower()
@@ -513,7 +406,7 @@ private:
                                    const LowType & type)
   {
     frame_bytes_ = align_up(frame_bytes_, type.alignment);
-    frame_bytes_ += frame_storage_size(type);
+    frame_bytes_ += abi::frame_storage_size(type);
     mir_model::MirFrameBinding binding;
     binding.kind = kind;
     binding.name = name;
@@ -590,7 +483,7 @@ private:
       if(written && !observed) {
         discarded_slots_.insert(name);
         frame_bytes_ = align_up(frame_bytes_, type.alignment);
-        frame_bytes_ += frame_storage_size(type);
+        frame_bytes_ += abi::frame_storage_size(type);
         continue;
       }
       slot_offsets_[name] = allocate_frame_binding(
@@ -600,7 +493,7 @@ private:
 
   static X64Register argument_register(std::size_t index)
   {
-    return abi_argument_register(index);
+    return abi::argument_register(index);
   }
 
   bool crosses_call(const std::string & name) const
@@ -689,7 +582,7 @@ private:
 
   void bind_aggregate_parameters()
   {
-    const AbiPlan plan = classify_abi(source_.params);
+    const abi::Plan plan = abi::classify(source_.params);
     std::vector<long long> homes(source_.params.size(), 0);
     for(std::size_t i = 0; i < source_.params.size(); ++i) {
       const lowir_model::LowirParameter & parameter = source_.params[i];
@@ -710,7 +603,7 @@ private:
         if(alias->second == parameter.name) slot_offsets_[alias->first] = homes[i];
     }
     for(std::size_t i = 0; i < plan.pieces.size(); ++i) {
-      const AbiPiece & piece = plan.pieces[i];
+      const abi::Piece & piece = plan.pieces[i];
       const lowir_model::LowirParameter & parameter =
         source_.params[piece.parameter_index];
       mir_model::MirParamBinding binding;
@@ -720,11 +613,11 @@ private:
       binding.chunk_offset = static_cast<long long>(piece.chunk_offset);
       const MirOperand home = frame_operand(
         homes[piece.parameter_index] + static_cast<long long>(piece.chunk_offset));
-      if(piece.location == APL_GPR) {
+      if(piece.location == abi::PL_GPR) {
         binding.location = mir_model::MirParamBinding::PL_REG;
         binding.reg = piece.reg;
         append_store(parameter_moves_, home, reg_operand(piece.reg), piece.type.text);
-      } else if(piece.location == APL_XMM) {
+      } else if(piece.location == abi::PL_XMM) {
         binding.location = mir_model::MirParamBinding::PL_XMM;
         binding.xmm = piece.xmm;
         uses_scalar_float_ = true;
@@ -732,7 +625,7 @@ private:
       } else {
         binding.location = mir_model::MirParamBinding::PL_STACK;
         binding.stack_offset = 16 + static_cast<long long>(piece.stack_offset);
-        if(is_scalar_float(piece.type)) {
+        if(is_floating(piece.type)) {
           uses_scalar_float_ = true;
           append_float_move(parameter_moves_, home,
                             frame_operand(binding.stack_offset), piece.type.text);
@@ -749,7 +642,8 @@ private:
   void bind_parameters()
   {
     for(std::size_t i = 0; i < source_.params.size(); ++i) {
-      if(source_.params[i].type.kind != lowir_model::LTK_OBJECT) continue;
+      if(source_.params[i].type.kind != lowir_model::LTK_OBJECT &&
+         !is_extended_float(source_.params[i].type)) continue;
       bind_aggregate_parameters();
       return;
     }
@@ -1233,6 +1127,7 @@ private:
   MirOperand allocate_float_result(const std::string & name, const LowType & type)
   {
     uses_scalar_float_ = true;
+    if(is_extended_float(type)) return allocate_temp_home(name, type);
     if(result_crosses_call(name)) return allocate_temp_home(name, type);
     XmmRegister result = XMM_0;
     if(xmms_.try_allocate(result)) return xmm_operand(result);
@@ -1518,12 +1413,33 @@ private:
     define(instruction.dest, instruction.type, destination);
   }
 
+  void append_float_width_conversion(std::vector<MirInstruction> & out,
+                                     const MirOperand & destination,
+                                     const MirOperand & source,
+                                     const LowType & source_type,
+                                     const LowType & destination_type)
+  {
+    MirInstruction conversion = machine_instruction(
+      source_type.bit_width < destination_type.bit_width ?
+        MirInstruction::MI_FPEXT : MirInstruction::MI_FPTRUNC,
+      source_type.text + "." + destination_type.text);
+    append_operand(conversion, destination);
+    append_operand(conversion, source);
+    out.push_back(conversion);
+  }
+
   void emit_float_store(const Instruction & instruction,
                         std::vector<MirInstruction> & out)
   {
     uses_scalar_float_ = true;
     const MirOperand destination = materialized_storage(instruction.second, out);
-    append_float_move(out, destination, resolve(instruction.first), instruction.type.text);
+    const LowType & source_type = operand_type(instruction.first);
+    if(is_floating(source_type) &&
+       !lowir_model::same_lowir_type(source_type, instruction.type))
+      append_float_width_conversion(out, destination, resolve(instruction.first),
+                                    source_type, instruction.type);
+    else
+      append_float_move(out, destination, resolve(instruction.first), instruction.type.text);
     consume(instruction.first);
     consume(instruction.second);
   }
@@ -1546,8 +1462,8 @@ private:
   void emit_convert(const Instruction & instruction,
                     std::vector<MirInstruction> & out)
   {
-    const bool source_float = is_scalar_float(instruction.source_type);
-    const bool destination_float = is_scalar_float(instruction.type);
+    const bool source_float = is_floating(instruction.source_type);
+    const bool destination_float = is_floating(instruction.type);
     if(source_float || destination_float) {
       uses_scalar_float_ = true;
       MirInstruction::Opcode opcode = MirInstruction::MI_SITOFP;
@@ -1620,7 +1536,7 @@ private:
   void emit_binary(const Instruction & instruction,
                    std::vector<MirInstruction> & out)
   {
-    if(is_scalar_float(instruction.type)) {
+    if(is_floating(instruction.type)) {
       emit_float_binary(instruction, out);
       return;
     }
@@ -1775,7 +1691,7 @@ private:
 
   void emit_copy(const Instruction & instruction, std::vector<MirInstruction> & out)
   {
-    if(is_scalar_float(instruction.type)) {
+    if(is_floating(instruction.type)) {
       emit_float_copy(instruction, out);
       return;
     }
@@ -1793,7 +1709,7 @@ private:
   void emit_unary_value(const Instruction & instruction,
                         std::vector<MirInstruction> & out)
   {
-    if(is_scalar_float(instruction.type)) {
+    if(is_floating(instruction.type)) {
       emit_float_unary(instruction, out);
       return;
     }
@@ -2218,9 +2134,11 @@ private:
                               const std::vector<lowir_model::LowirParameter> & parameters) const
   {
     if(!instruction.call_returns_void &&
-       instruction.type.kind == lowir_model::LTK_OBJECT) return true;
+       (instruction.type.kind == lowir_model::LTK_OBJECT ||
+        is_extended_float(instruction.type))) return true;
     for(std::size_t i = 0; i < parameters.size(); ++i)
       if(parameters[i].type.kind == lowir_model::LTK_OBJECT ||
+         is_extended_float(parameters[i].type) ||
          parameters[i].metadata.passing != lowir_model::PPM_DIRECT)
         return true;
     for(std::size_t i = 0; i < instruction.args.size(); ++i)
@@ -2242,16 +2160,18 @@ private:
   void emit_extended_stack_arguments(
       const Instruction & instruction,
       const std::vector<lowir_model::LowirParameter> & parameters,
-      const AbiPlan & plan,
+      const abi::Plan & plan,
       const std::vector<MirOperand> & addressable,
       const std::vector<bool> & needs_address,
       std::vector<MirInstruction> & out)
   {
     emit_stack_adjust(out, MirInstruction::MI_SUB, plan.stack_bytes);
     for(std::size_t i = 0; i < plan.pieces.size(); ++i) {
-      const AbiPiece & piece = plan.pieces[i];
-      if(piece.location != APL_STACK) continue;
+      const abi::Piece & piece = plan.pieces[i];
+      if(piece.location != abi::PL_STACK) continue;
       const Operand & argument = instruction.args[piece.parameter_index];
+      const MirOperand destination = dereference(
+        XR_RSP, static_cast<long long>(piece.stack_offset));
       if(parameters[piece.parameter_index].type.kind == lowir_model::LTK_OBJECT) {
         if(piece.chunk_offset) continue;
         append_address(out, XR_RDI,
@@ -2265,8 +2185,11 @@ private:
         out.push_back(copy);
         continue;
       }
-      const MirOperand destination = dereference(
-        XR_RSP, static_cast<long long>(piece.stack_offset));
+      if(is_extended_float(piece.type)) {
+        uses_scalar_float_ = true;
+        append_float_move(out, destination, resolve(argument), piece.type.text);
+        continue;
+      }
       if(needs_address[piece.parameter_index] || is_frame_address(argument)) {
         GprMove move;
         move.destination = XR_R11;
@@ -2290,7 +2213,7 @@ private:
   void emit_extended_register_arguments(
       const Instruction & instruction,
       const std::vector<lowir_model::LowirParameter> & parameters,
-      const AbiPlan & plan,
+      const abi::Plan & plan,
       const std::vector<MirOperand> & addressable,
       const std::vector<bool> & needs_address,
       std::vector<MirInstruction> & out)
@@ -2298,9 +2221,9 @@ private:
     std::vector<GprMove> gpr_moves;
     std::vector<XmmMove> xmm_moves;
     for(std::size_t i = 0; i < plan.pieces.size(); ++i) {
-      const AbiPiece & piece = plan.pieces[i];
+      const abi::Piece & piece = plan.pieces[i];
       const Operand & argument = instruction.args[piece.parameter_index];
-      if(piece.location == APL_GPR) {
+      if(piece.location == abi::PL_GPR) {
         GprMove move;
         move.destination = piece.reg;
         move.type = piece.type;
@@ -2315,7 +2238,7 @@ private:
             is_frame_address(argument);
         }
         gpr_moves.push_back(move);
-      } else if(piece.location == APL_XMM) {
+      } else if(piece.location == abi::PL_XMM) {
         XmmMove move;
         move.destination = piece.xmm;
         move.source = resolve(argument);
@@ -2415,7 +2338,7 @@ private:
     else append_address(out, XR_R11, *home);
     const std::size_t chunks = (type.storage_size + 7) / 8;
     for(std::size_t chunk = 0; chunk < chunks; ++chunk) {
-      const LowType & chunk_type = object_chunk_type(type.storage_size - chunk * 8);
+      const LowType & chunk_type = abi::object_chunk_type(type.storage_size - chunk * 8);
       append_store(out, dereference(XR_R11, static_cast<long long>(chunk * 8)),
                    reg_operand(chunk ? XR_RDX : XR_RAX), chunk_type.text);
     }
@@ -2462,13 +2385,13 @@ private:
     if(!direct)
       move_value_to_register(out, XR_R10, resolve(instruction.first),
                              operand_type(instruction.first));
-    const AbiPlan plan = classify_abi(parameters);
+    const abi::Plan plan = abi::classify(parameters);
     std::vector<bool> needs_address(parameters.size(), false);
     std::vector<MirOperand> addressable(parameters.size());
     for(std::size_t i = 0; i < parameters.size(); ++i) {
       needs_address[i] = argument_needs_address(parameters[i], instruction.args[i]);
       if(needs_address[i]) addressable[i] = make_addressable(instruction.args[i], out);
-      if(is_scalar_float(parameters[i].type)) uses_scalar_float_ = true;
+      if(is_floating(parameters[i].type)) uses_scalar_float_ = true;
     }
     emit_extended_stack_arguments(instruction, parameters, plan,
                                   addressable, needs_address, out);
@@ -2499,6 +2422,13 @@ private:
                                     alias ? 0 : &home, out);
       define_object_result(instruction.dest, instruction.type,
                            alias ? &alias_destination : 0, home);
+    } else if(!instruction.call_returns_void && is_extended_float(instruction.type)) {
+      const MirOperand location = allocate_float_result(instruction.dest, instruction.type);
+      MirInstruction store = machine_instruction(MirInstruction::MI_FSTP,
+                                                 instruction.type.text);
+      append_operand(store, location);
+      out.push_back(store);
+      define(instruction.dest, instruction.type, location);
     } else if(!instruction.call_returns_void && is_scalar_float(instruction.type)) {
       const MirOperand location = allocate_float_result(instruction.dest, instruction.type);
       append_float_move(out, location, xmm_operand(XMM_0), instruction.type.text);
@@ -2655,27 +2585,50 @@ private:
 
   void emit_return(const Instruction & instruction, std::vector<MirInstruction> & out)
   {
+    const LowType & source_type = instruction.type.kind == lowir_model::LTK_VOID ?
+      instruction.type : operand_type(instruction.first);
     if(instruction.type.kind == lowir_model::LTK_OBJECT) {
       if(instruction.type.storage_size > 16)
         throw std::runtime_error("direct object return exceeds two SysV eightbytes");
       emit_operand_address(out, XR_R11, instruction.first);
       const std::size_t chunks = (instruction.type.storage_size + 7) / 8;
       for(std::size_t chunk = 0; chunk < chunks; ++chunk) {
-        const LowType & chunk_type = object_chunk_type(
+        const LowType & chunk_type = abi::object_chunk_type(
           instruction.type.storage_size - chunk * 8);
         append_load(out, reg_operand(chunk ? XR_RDX : XR_RAX),
                     dereference(XR_R11, static_cast<long long>(chunk * 8)),
                     chunk_type.text);
       }
+    } else if(is_extended_float(instruction.type)) {
+      uses_scalar_float_ = true;
+      MirOperand source = resolve(instruction.first);
+      if(is_floating(source_type) &&
+         !lowir_model::same_lowir_type(source_type, instruction.type)) {
+        const MirOperand converted = allocate_temp_home("%f80-return", instruction.type);
+        append_float_width_conversion(out, converted, source, source_type, instruction.type);
+        source = converted;
+      }
+      MirInstruction result = machine_instruction(MirInstruction::MI_FRET,
+                                                  instruction.type.text);
+      append_operand(result, source);
+      out.push_back(result);
+      consume(instruction.first);
+      return;
     } else if(is_scalar_float(instruction.type)) {
       uses_scalar_float_ = true;
-      append_float_move(out, xmm_operand(XMM_0), resolve(instruction.first),
-                        instruction.type.text);
+      if(is_extended_float(source_type))
+        append_float_width_conversion(out, xmm_operand(XMM_0),
+                                      resolve(instruction.first), source_type,
+                                      instruction.type);
+      else
+        append_float_move(out, xmm_operand(XMM_0), resolve(instruction.first),
+                          instruction.type.text);
     } else if(instruction.type.kind != lowir_model::LTK_VOID)
       move_value_to_register(out, XR_RAX, resolve(instruction.first), instruction.type);
     MirInstruction ret = machine_instruction(MirInstruction::MI_RET);
     if(instruction.type.kind != lowir_model::LTK_VOID &&
-       !is_scalar_float(instruction.type) &&
+      !is_scalar_float(instruction.type) &&
+       !is_extended_float(instruction.type) &&
        instruction.type.kind != lowir_model::LTK_OBJECT)
       append_operand(ret, reg_operand(XR_RAX));
     out.push_back(ret);
@@ -2690,7 +2643,7 @@ private:
     active_instruction_ = &instruction;
     if(position_ == skipped_position_) return;
     if(instruction.kind == Instruction::IK_CONST) {
-      if(is_scalar_float(instruction.type)) {
+      if(is_floating(instruction.type)) {
         emit_float_const(instruction, out);
         return;
       }
@@ -2752,7 +2705,7 @@ private:
          pointer_globals_.count(instruction.first.text))
         values_[instruction.dest].pointer_global_cell = instruction.first.text;
     } else if(instruction.kind == Instruction::IK_LOAD) {
-      if(is_scalar_float(instruction.type)) {
+      if(is_floating(instruction.type)) {
         emit_float_load(instruction, out);
         return;
       }
@@ -2782,7 +2735,7 @@ private:
         consume(instruction.second);
         return;
       }
-      if(is_scalar_float(instruction.type)) {
+      if(is_floating(instruction.type)) {
         emit_float_store(instruction, out);
         return;
       }
@@ -2802,11 +2755,11 @@ private:
     } else if(instruction.kind == Instruction::IK_BINARY) {
       emit_binary(instruction, out);
     } else if(instruction.kind == Instruction::IK_CMP) {
-      if(is_scalar_float(instruction.type) &&
+      if(is_floating(instruction.type) &&
          comparison_feeds_branch(block, instruction_index, instruction))
         emit_float_direct_compare_branch(
           instruction, block.instructions[instruction_index + 1], out);
-      else if(is_scalar_float(instruction.type))
+      else if(is_floating(instruction.type))
         emit_float_compare_value(instruction, block, instruction_index, out);
       else if(comparison_feeds_branch(block, instruction_index, instruction))
         emit_direct_compare_branch(instruction, block.instructions[instruction_index + 1], out);
@@ -2875,11 +2828,11 @@ mir_model::MirGlobalDefinition lower_global(const lowir_model::LowirGlobalDefini
       target.init_kind = mir_model::MirGlobalDefinition::GI_ADDR;
       target.symbol = source.init_operand.text;
       target.addr_addend = source.addr_addend;
-    } else if(source.type.kind == lowir_model::LTK_F32 ||
-              source.type.kind == lowir_model::LTK_F64) {
+    } else if(is_floating(source.type)) {
       target.init_kind = mir_model::MirGlobalDefinition::GI_FLOAT;
       target.literal_text = source.init_kind == lowir_model::LowirGlobalDefinition::INIT_ZERO ?
-        (source.type.kind == lowir_model::LTK_F32 ? "0.0f" : "0.0") :
+        (source.type.kind == lowir_model::LTK_F32 ? "0.0f" :
+         (source.type.kind == lowir_model::LTK_F80 ? "0.0L" : "0.0")) :
         source.init_operand.text;
     } else {
       target.init_kind = mir_model::MirGlobalDefinition::GI_INTEGER;

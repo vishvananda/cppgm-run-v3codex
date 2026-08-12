@@ -111,6 +111,8 @@ const char * opcode_name(Instruction::Opcode opcode)
   case Instruction::MI_FLE: return "fle";
   case Instruction::MI_FGE: return "fge";
   case Instruction::MI_FCMP: return "fcmp";
+  case Instruction::MI_FSTP: return "fstp";
+  case Instruction::MI_FPOP: return "fpop";
   case Instruction::MI_SITOFP: return "sitofp";
   case Instruction::MI_UITOFP: return "uitofp";
   case Instruction::MI_FPTOSI: return "fptosi";
@@ -263,6 +265,7 @@ void render_function(std::ostringstream & out, const Function & function)
   if(function.return_type == "void") out << "void\n";
   else if(function.return_type == "f32" || function.return_type == "f64")
     out << "xmm0\n";
+  else if(function.return_type == "f80") out << "st0\n";
   else out << "rax\n";
   out << "  frame\n    stack_size " << function.stack_size
       << "\n    scratch_bytes " << function.scratch_bytes << '\n';
