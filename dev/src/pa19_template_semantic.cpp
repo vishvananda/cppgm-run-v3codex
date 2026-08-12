@@ -2102,8 +2102,10 @@ std::size_t SemanticAnalyzer::TemplatePartialPackParameter(TypeId type,
 	case TYPE_LVALUE_REFERENCE:
 	case TYPE_RVALUE_REFERENCE:
 	case TYPE_ARRAY:
-	case TYPE_MEMBER_POINTER:
 		return TemplatePartialPackParameter(record.child, parameters, depth + 1);
+	case TYPE_MEMBER_POINTER:
+		return TemplatePartialMemberPointerPackParameter(
+			record, parameters, depth);
 	case TYPE_NAMED:
 	{
 		const EntityRecord& entity = program_->entities[record.entity];
@@ -2248,9 +2250,8 @@ bool SemanticAnalyzer::DeduceTemplatePartialType(TypeId pattern,
 		return true;
 	}
 	case TYPE_MEMBER_POINTER:
-		return pattern_record.entity == argument_record.entity &&
-			DeduceTemplatePartialType(pattern_record.child,
-				argument_record.child, parameters, deduced);
+		return DeduceTemplatePartialMemberPointerType(
+			pattern_record, argument_record, parameters, deduced);
 	case TYPE_NAMED:
 	{
 		const EntityId pattern_entity = pattern_record.entity;

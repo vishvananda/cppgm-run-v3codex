@@ -90,10 +90,14 @@ bool TypeContainsDependentResultShape(const TypeTable& types, TypeId type,
 	if (dependent_result == kNoType || type == kNoType) return false;
 	if (type == dependent_result) return true;
 	const TypeRecord& record = types.Get(type);
+	if (record.kind == TYPE_MEMBER_POINTER)
+		return TypeContainsDependentResultShape(types,
+			static_cast<TypeId>(record.bound), dependent_result) ||
+			TypeContainsDependentResultShape(types, record.child, dependent_result);
 	if (record.kind == TYPE_QUALIFIED || record.kind == TYPE_POINTER ||
 		record.kind == TYPE_LVALUE_REFERENCE ||
 		record.kind == TYPE_RVALUE_REFERENCE || record.kind == TYPE_ARRAY ||
-		record.kind == TYPE_MEMBER_POINTER || record.kind == TYPE_FUNCTION)
+		record.kind == TYPE_FUNCTION)
 		return TypeContainsDependentResultShape(
 			types, record.child, dependent_result);
 	return false;

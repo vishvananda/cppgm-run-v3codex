@@ -14,6 +14,27 @@ bool SemanticAnalyzer::IsMemberPointer(TypeId type) const
 		EffectiveType(type))).kind == TYPE_MEMBER_POINTER;
 }
 
+std::size_t SemanticAnalyzer::TemplatePartialMemberPointerPackParameter(
+	const TypeRecord& type, const std::vector<TemplateParameter>& parameters,
+	std::size_t depth) const
+{
+	const std::size_t owner = TemplatePartialPackParameter(
+		static_cast<TypeId>(type.bound), parameters, depth + 1);
+	return owner != parameters.size() ? owner :
+		TemplatePartialPackParameter(type.child, parameters, depth + 1);
+}
+
+bool SemanticAnalyzer::DeduceTemplatePartialMemberPointerType(
+	const TypeRecord& pattern, const TypeRecord& argument,
+	const std::vector<TemplateParameter>& parameters,
+	FunctionTemplateDeduction* deduced) const
+{
+	return DeduceTemplatePartialType(static_cast<TypeId>(pattern.bound),
+		static_cast<TypeId>(argument.bound), parameters, deduced) &&
+		DeduceTemplatePartialType(
+			pattern.child, argument.child, parameters, deduced);
+}
+
 TypeId SemanticAnalyzer::UnaryAddressOperandTarget(
 	const std::string& operation, TypeId target) const
 {
@@ -23,6 +44,22 @@ TypeId SemanticAnalyzer::UnaryAddressOperandTarget(
 	if (shape.kind == TYPE_MEMBER_POINTER) return desired;
 	return shape.kind == TYPE_POINTER && program_->types.IsFunction(shape.child) ?
 		shape.child : kNoType;
+}
+
+TypeId SemanticAnalyzer::MemberPointerAddressTarget(
+	const ExpressionInfo& operand, NodeId syntax, TypeId target) const
+{
+	if (target != kNoType) return target;
+	if (operand.binding == kNoBinding ||
+		operand.binding >= program_->bindings.size() || syntax == kNoNode ||
+		FindChild(syntax, "structured-type-name") == kNoNode)
+		return kNoType;
+	const BindingRecord& binding = program_->bindings[operand.binding];
+	if (binding.kind != BIND_FUNCTION || binding.static_member_function)
+		return kNoType;
+	const FunctionInfo& function = GetFunction(operand.binding);
+	return function.member_owner == kNoType ? kNoType :
+		program_->types.MemberPointer(function.member_owner, function.type);
 }
 
 bool SemanticAnalyzer::IsBuiltinLogicalOperand(

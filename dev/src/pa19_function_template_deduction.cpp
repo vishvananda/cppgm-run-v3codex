@@ -95,7 +95,9 @@ bool SemanticAnalyzer::FunctionTemplateTypeIsDependent(TypeId type) const
 		break;
 	}
 	case TYPE_MEMBER_POINTER:
-		dependent = FunctionTemplateTypeIsDependent(record.child);
+		dependent = FunctionTemplateTypeIsDependent(
+			static_cast<TypeId>(record.bound)) ||
+			FunctionTemplateTypeIsDependent(record.child);
 		break;
 	case TYPE_NAMED:
 	{
@@ -155,10 +157,14 @@ bool SemanticAnalyzer::FunctionTemplateTypeUsesUnspecifiedParameter(
 		type == function_template_nondeduced_type_shape_)
 		return false;
 	const TypeRecord& record = program_->types.Get(type);
+	if (record.kind == TYPE_MEMBER_POINTER)
+		return FunctionTemplateTypeUsesUnspecifiedParameter(
+			static_cast<TypeId>(record.bound), parameters, explicitly_specified) ||
+			FunctionTemplateTypeUsesUnspecifiedParameter(
+				record.child, parameters, explicitly_specified);
 	if (record.kind == TYPE_QUALIFIED || record.kind == TYPE_POINTER ||
 		record.kind == TYPE_LVALUE_REFERENCE ||
-		record.kind == TYPE_RVALUE_REFERENCE ||
-		record.kind == TYPE_MEMBER_POINTER)
+		record.kind == TYPE_RVALUE_REFERENCE)
 		return FunctionTemplateTypeUsesUnspecifiedParameter(
 			record.child, parameters, explicitly_specified);
 	if (record.kind == TYPE_ARRAY)
@@ -211,10 +217,16 @@ std::size_t SemanticAnalyzer::FunctionTemplateShapePackParameter(TypeId type,
 		if (parameters[i].pack &&
 			type == function_template_shape_parameters_[i]) return i;
 	const TypeRecord& record = program_->types.Get(type);
+	if (record.kind == TYPE_MEMBER_POINTER)
+	{
+		const std::size_t owner = FunctionTemplateShapePackParameter(
+			static_cast<TypeId>(record.bound), parameters);
+		return owner != parameters.size() ? owner :
+			FunctionTemplateShapePackParameter(record.child, parameters);
+	}
 	if (record.kind == TYPE_QUALIFIED || record.kind == TYPE_POINTER ||
 		record.kind == TYPE_LVALUE_REFERENCE ||
-		record.kind == TYPE_RVALUE_REFERENCE || record.kind == TYPE_ARRAY ||
-		record.kind == TYPE_MEMBER_POINTER)
+		record.kind == TYPE_RVALUE_REFERENCE || record.kind == TYPE_ARRAY)
 		return FunctionTemplateShapePackParameter(record.child, parameters);
 	if (record.kind == TYPE_FUNCTION)
 	{
@@ -500,7 +512,10 @@ bool SemanticAnalyzer::FunctionTemplatePatternAccepts(
 		return true;
 	}
 	case TYPE_MEMBER_POINTER:
-		return pattern_record.entity == exemplar_record.entity &&
+		return FunctionTemplatePatternAccepts(
+				static_cast<TypeId>(pattern_record.bound),
+				static_cast<TypeId>(exemplar_record.bound), pattern_parameters,
+				exemplar_parameters) &&
 			FunctionTemplatePatternAccepts(pattern_record.child,
 				exemplar_record.child, pattern_parameters, exemplar_parameters);
 	case TYPE_NAMED:
@@ -633,7 +648,9 @@ bool SemanticAnalyzer::DeduceFunctionTemplateType(TypeId pattern,
 		return true;
 	}
 	case TYPE_MEMBER_POINTER:
-		return pattern_record.entity == argument_record.entity &&
+		return DeduceFunctionTemplateType(
+				static_cast<TypeId>(pattern_record.bound),
+				static_cast<TypeId>(argument_record.bound), deduced) &&
 			DeduceFunctionTemplateType(pattern_record.child,
 				argument_record.child, deduced);
 	case TYPE_NAMED:
@@ -832,7 +849,9 @@ bool SemanticAnalyzer::DeduceFunctionTemplatePackType(TypeId pattern,
 		return true;
 	}
 	case TYPE_MEMBER_POINTER:
-		return pattern_record.entity == argument_record.entity &&
+		return DeduceFunctionTemplatePackType(
+				static_cast<TypeId>(pattern_record.bound),
+				static_cast<TypeId>(argument_record.bound), parameters, deduced) &&
 			DeduceFunctionTemplatePackType(pattern_record.child,
 				argument_record.child, parameters, deduced);
 	case TYPE_NAMED:
@@ -1633,8 +1652,11 @@ bool SemanticAnalyzer::HasUniqueFunctionAddressTarget(
 		desired = program_->types.RemoveTopCv(shape.child);
 		shape = program_->types.Get(desired);
 	}
-	if (shape.kind != TYPE_POINTER ||
-		!program_->types.IsFunction(shape.child)) return false;
+	const TypeId member_target = shape.kind == TYPE_MEMBER_POINTER &&
+		program_->types.IsFunction(shape.child) ? desired : kNoType;
+	const bool function_pointer_target = shape.kind == TYPE_POINTER &&
+		program_->types.IsFunction(shape.child);
+	if (member_target == kNoType && !function_pointer_target) return false;
 	desired = shape.child;
 
 	const std::string spelling = arena_->Payload(syntax);
@@ -1649,7 +1671,19 @@ bool SemanticAnalyzer::HasUniqueFunctionAddressTarget(
 	BindingId selected = kNoBinding;
 	for (std::size_t i = 0; i < candidates.size(); ++i)
 	{
-		if (GetFunction(candidates[i]).type != desired) continue;
+		const FunctionInfo& function = GetFunction(candidates[i]);
+		if (function.type != desired) continue;
+		if (member_target != kNoType)
+		{
+			const ConversionRank member_conversion =
+				function.member_owner == kNoType ? CONVERSION_INVALID :
+				Conversion(program_->types.MemberPointer(
+					function.member_owner, function.type), VALUE_PRVALUE,
+					false, member_target);
+			if (member_conversion == CONVERSION_INVALID)
+				continue;
+		}
+		else if (function.member_owner != kNoType) continue;
 		const BindingId canonical = program_->bindings[candidates[i]].canonical;
 		if (selected == kNoBinding || selected == canonical)
 		{
@@ -1689,17 +1723,29 @@ bool SemanticAnalyzer::AnalyzeFunctionId(NodeId node, ScopeId scope,
 	if (template_patterns.empty() && !structured_base.Empty())
 		template_patterns = FindFunctionTemplates(scope, structured_base);
 	TypeId desired = target;
+	TypeId member_target = kNoType;
+	bool function_pointer_target = false;
 	if (desired != kNoType)
 	{
 		desired = program_->types.RemoveTopCv(desired);
-		const TypeRecord target_record = program_->types.Get(desired);
+		TypeRecord target_record = program_->types.Get(desired);
 		if (target_record.kind == TYPE_LVALUE_REFERENCE ||
 			target_record.kind == TYPE_RVALUE_REFERENCE)
+		{
+			desired = program_->types.RemoveTopCv(target_record.child);
+			target_record = program_->types.Get(desired);
+		}
+		if (target_record.kind == TYPE_POINTER)
+		{
+			function_pointer_target = program_->types.IsFunction(
+				target_record.child);
 			desired = target_record.child;
-		if (program_->types.Get(desired).kind == TYPE_POINTER)
-			desired = program_->types.Get(desired).child;
-		else if (program_->types.Get(desired).kind == TYPE_MEMBER_POINTER)
-			desired = program_->types.Get(desired).child;
+		}
+		else if (target_record.kind == TYPE_MEMBER_POINTER)
+		{
+			member_target = desired;
+			desired = target_record.child;
+		}
 		const std::vector<BindingId> target_templates =
 			FunctionTemplateTargetCandidates(scope, spelling, desired, node);
 		for (std::size_t i = 0; i < target_templates.size(); ++i)
@@ -1716,7 +1762,18 @@ bool SemanticAnalyzer::AnalyzeFunctionId(NodeId node, ScopeId scope,
 	if (candidates.empty()) return false;
 	BindingId selected = kNoBinding;
 	for (std::size_t i = 0; i < candidates.size(); ++i)
-		if (desired == kNoType || GetFunction(candidates[i]).type == desired)
+	{
+		const FunctionInfo& candidate_function = GetFunction(candidates[i]);
+		bool target_matches = desired == kNoType ||
+			candidate_function.type == desired;
+		if (target_matches && member_target != kNoType)
+			target_matches = candidate_function.member_owner != kNoType &&
+				Conversion(program_->types.MemberPointer(
+					candidate_function.member_owner, candidate_function.type),
+					VALUE_PRVALUE, false, member_target) != CONVERSION_INVALID;
+		else if (target_matches && function_pointer_target)
+			target_matches = candidate_function.member_owner == kNoType;
+		if (target_matches)
 		{
 			if (selected != kNoBinding && desired != kNoType)
 			{
@@ -1744,6 +1801,7 @@ bool SemanticAnalyzer::AnalyzeFunctionId(NodeId node, ScopeId scope,
 				return true;
 			}
 		}
+	}
 	if (selected == kNoBinding)
 	{
 		*result = CandidateExpressionFailure(
@@ -1782,7 +1840,12 @@ bool SemanticAnalyzer::AnalyzeFunctionId(NodeId node, ScopeId scope,
 		result->category, program_->names.Intern(spelling), emission_binding);
 	if (constant_expression_required_depth_ == 0 &&
 		constexpr_evaluation_depth_ == 0)
+	{
+		if (retain_lowering_facts_ && !function.defined &&
+			program_->bindings[selected].member_owner != kNoEntity)
+			GetMutableFunction(selected).deferred = true;
 		DemandFunction(selected);
+	}
 	++expression_count_;
 	return true;
 }

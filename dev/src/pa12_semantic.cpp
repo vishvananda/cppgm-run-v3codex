@@ -1265,7 +1265,7 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 		GetMutableFunction(selected).deferred = true;
 	if (resolved_call_demand_suppressed_depth_ != 0)
 		dump_.nodes[call].pending_runtime_call_demand = demand_call;
-	else if (demand_call) DemandFunction(selected);
+	else if (demand_call) { DemandRetainedRuntimeCalls(call); DemandFunction(selected); }
 	++expression_count_;
 	return ApplyTarget(result, target);
 }

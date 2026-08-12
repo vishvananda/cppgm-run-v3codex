@@ -817,6 +817,23 @@ void SemanticAnalyzer::DemandRetainedRuntimeCalls(std::uint32_t node)
 				}
 			}
 		}
+		if (record.kind == DUMP_UNARY_EXPRESSION &&
+			record.binding != kNoBinding &&
+			record.binding < program_->bindings.size() &&
+			program_->bindings[record.binding].kind == BIND_FUNCTION &&
+			program_->types.Get(program_->types.RemoveTopCv(
+				record.type)).kind == TYPE_MEMBER_POINTER)
+		{
+			const BindingId binding =
+				program_->bindings[record.binding].canonical;
+			if (binding < function_fact_by_binding_.size() &&
+				function_fact_by_binding_[binding] != kNoDumpEdge)
+			{
+				if (retain_lowering_facts_ && !GetFunction(binding).defined)
+					GetMutableFunction(binding).deferred = true;
+				DemandRuntimeFunction(binding);
+			}
+		}
 		for (std::uint32_t edge = record.first_edge;
 			edge != kNoDumpEdge; edge = dump_.edges[edge].next)
 			pending.push_back(dump_.edges[edge].child);

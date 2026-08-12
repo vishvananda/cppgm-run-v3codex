@@ -1225,9 +1225,13 @@ private:
 
 	Operand LowerCondition(std::uint32_t node)
 	{
-		if (arena_.nodes[node].boolean_conversion) return LowerBooleanConversion(node, LowU8());
+		const DumpNode& record = arena_.nodes[node];
+		const TypeRecord& source = program_.types.Get(
+			program_.types.RemoveTopCv(record.type));
+		if (record.boolean_conversion && source.kind != TYPE_MEMBER_POINTER)
+			return LowerBooleanConversion(node, LowU8());
 		Operand value = LowerValue(node);
-		if (IsBooleanType(arena_.nodes[node].type) || !IsFloating(value.type))
+		if (IsBooleanType(record.type) || !IsFloating(value.type))
 			return value;
 		const Operand result = Temp(LowU8());
 		Instruction compare(Instruction::CMP);

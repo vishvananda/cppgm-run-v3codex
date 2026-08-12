@@ -690,6 +690,13 @@ private:
 	std::size_t TemplatePartialPackParameter(TypeId type,
 		const std::vector<TemplateParameter>& parameters,
 		std::size_t depth = 0) const;
+	std::size_t TemplatePartialMemberPointerPackParameter(
+		const TypeRecord& type, const std::vector<TemplateParameter>& parameters,
+		std::size_t depth) const;
+	bool DeduceTemplatePartialMemberPointerType(const TypeRecord& pattern,
+		const TypeRecord& argument,
+		const std::vector<TemplateParameter>& parameters,
+		FunctionTemplateDeduction* deduced) const;
 	int CompareTemplatePartialPatterns(
 		const std::vector<TemplateParameter>& left_parameters,
 		const std::vector<TemplateArgument>& left_arguments,
@@ -1022,6 +1029,8 @@ private:
 		TypeId target = kNoType);
 	TypeId UnaryAddressOperandTarget(const std::string& operation,
 		TypeId target) const;
+	TypeId MemberPointerAddressTarget(const ExpressionInfo& operand,
+		NodeId operand_syntax, TypeId target) const;
 	bool FormMemberPointerAddress(const ExpressionInfo& operand, TypeId target,
 		TypeId* result_type, bool* constant, ConstexprScalarValue* scalar,
 		BindingId* member) const;

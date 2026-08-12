@@ -245,8 +245,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 	const std::uint32_t operand_complete_object =
 		ExpressionCompleteObject(operand);
 	(void)ApplyBuiltinUnaryConversion(operation, &operand);
-	const bool member_pointer_address = operation == "&" &&
-		target != kNoType && IsMemberPointer(target);
+	const TypeId address_target = MemberPointerAddressTarget(
+		operand, operand_syntax, target);
+	const bool member_pointer_address =
+		address_target != kNoType && IsMemberPointer(address_target);
 	if (operation == "&" && operand.binding != kNoBinding &&
 		!member_pointer_address)
 		EnsureStaticMemberStorage(operand.binding, true);
@@ -271,7 +273,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope,
 		if (operand.category != VALUE_LVALUE)
 			throw std::runtime_error("address-of requires lvalue");
 		if (member_pointer_address)
-			(void)FormMemberPointerAddress(operand, target, &result_type, &constant,
+			(void)FormMemberPointerAddress(operand, address_target, &result_type, &constant,
 				&scalar, &selected_member);
 		else
 		{
