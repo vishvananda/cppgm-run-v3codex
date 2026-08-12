@@ -18,11 +18,12 @@ lookup-recovery, whole-program retry, or external fallback.
 
 ## Current Failure Map
 
-Current result is **94/110**, up four from the 90/110 turn-start baseline.
+Turn-start result was **94/110**; the current result is **101/110** and all
+earlier stages pass **3,607/3,607**.
 
 | Owner | Failing | Shared behavior |
 |---|---:|---|
-| PA12/PA17 lifetime and EH lowering | 8 | static, conditional/reference, nested default-argument, and shared-dispatch temporary cleanup |
+| PA12/PA17 conditional lifetime lowering | 1 | branch-owned conditional temporary cleanup |
 | lambda/template identity and RTTI presentation | 4 | stable closure specialization identity, EH fallback emission, ABI names |
 | object construction/access and cleanup | 2 | protected empty-base scope and polymorphic array-reference cleanup |
 | aggregate control flow | 1 | empty indirect result through `switch` |
@@ -30,14 +31,15 @@ Current result is **94/110**, up four from the 90/110 turn-start baseline.
 
 ## Active Checkpoint
 
-Unify nested call/default-argument temporary cleanup and dispatch closure. PA26
-goal 5 and `spec.md` sections 2, 6, 8, and 9 require PA12 to publish one ordered
-typed lifetime graph and handler stops, PA16 to evaluate argument-owned work
-before the outer call region, and PA17/PA26 to consume and close every source
-handler exactly once. Work must be O(expression nodes + arguments + emitted
-cleanup actions), using compact IDs without reconstruction or function rescans.
-Validate the eight remaining static, conditional/reference, nested-default, and
-shared-dispatch cleanup failures; measure nesting-depth and argument-count work.
+Unify branch-owned conditional cleanup with subobject construction scope. PA26
+goal 5 and `spec.md` sections 2, 5, 6, 8, and 9 require PA12 to publish the
+selected constructor/destructor and branch owner once, PA16 to retain projected
+destinations, and PA17 to retire only the taken branch's actions. Data flows as
+canonical initializer/conditional facts -> projected construction actions ->
+branch-local LowIR cleanup. Expected work is O(expression nodes + emitted
+subobject/actions), with no lookup recovery or function rescans. Validate the
+conditional temporary, protected-base default constructor, and polymorphic
+array-reference cleanup failures, then both stage reports and the file audit.
 
 ## Performance Evidence
 
@@ -53,6 +55,15 @@ bound-independent array-new LowIR. `Visits` is the published
 | class-value arguments | 128 | 265 / 258 / 1 | 387 | 107,395 B | 1.091 / 0.865 ms |
 | class-array bound | 8 / 128 / 2,048 | 14 / 5 / 2 each | 35 each | 10,881 B each | 0.195-0.202 / 0.160-0.173 ms |
 
+Final checkpoint witnesses retain bounded visits and one probe per emitted or
+reused cleanup frontier:
+
+| Witness | Nodes / visits / NT visits | Instructions | Dispatch probes / entries | Typed storage | Lowering |
+|---|---:|---:|---:|---:|---:|
+| nested default argument | 99 / 88 / 25 | 134 | 9 / 9 | 38,343 B | 0.320 ms |
+| shared non-LIFO dispatch | 42 / 25 / 6 | 50 | 4 / 3 | 18,985 B | 0.252 ms |
+| guarded local static | 127 / 75 / 87 | 132 | 3 / 3 | 39,864 B | 0.332 ms |
+
 ## Completed Checkpoints
 
 | Checkpoint | Result | Validation |
@@ -67,3 +78,4 @@ bound-independent array-new LowIR. `Visits` is the published
 | Class exception objects and typed-handler routing | Canonical polymorphic special-member facts, selected direct construction/destructor transfer, temporary retirement, projection-safe call ABI | +6; PA26 86/110; focused 6/6 plus PA18 projection witness; through PA25 3,607/3,607; file/audit pass; throws linear to 128 |
 | Guard-edge full-expression cleanup | Typed logical facts, complete root guard/child identity, branch-local destruction, retained nested values, runtime fallback | +4; PA26 90/110; focused 4/4 plus ELF/template witnesses; through PA25 3,607/3,607; file/audit pass; both paths linear to 128 |
 | Construction and call-ABI ownership | Runtime/default initializer staging, member/array source handlers, transferred class parameters | +4; PA26 94/110; focused 5/5; through PA25 3,607/3,607; audit pass; corrected counters show arguments linear to 128 and array IR fixed through 2,048 |
+| Nested call and full-expression lifetime frontier | Evaluated member/special-member demand, default-subtree identity, eager typed regions, retained destinations, guarded-static and aggregate cleanup | +7; PA26 101/110; focused 7/7; through PA25 3,607/3,607; audit pass; bounded checkpoint witnesses above |

@@ -969,7 +969,7 @@ BindingId SemanticAnalyzer::InstantiateVariableTemplate(
 				static_member_storage_by_binding_[binding] = variable;
 			}
 			RegisterVariableLifetimeAndStorage(selected.owner, false, false,
-				variable, binding, parsed.type, 0, 0, 0,
+				variable, binding, parsed.type, 0, 0, 0, 0, 0,
 				HasConstantInitializerFact(initializer));
 		}
 	}

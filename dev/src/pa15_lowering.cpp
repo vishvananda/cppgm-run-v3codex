@@ -1662,8 +1662,11 @@ private:
 			callee.binding != kNoBinding &&
 			callee.binding < function_symbols_.size() &&
 			function_symbols_[callee.binding] != kNoLowId;
-		if (full_expression_cleanup_active_ && (!direct || !program_.bindings[
-			callee.binding].nonthrowing)) EnsureFullExpressionCleanupSegment();
+		if (full_expression_cleanup_active_ &&
+			((!direct || !program_.bindings[callee.binding].nonthrowing) ||
+			 (full_expression_deferred_cleanup_ && full_expression_cleanup_ready_ &&
+			  record.eager_full_expression_cleanup)))
+			EnsureFullExpressionCleanupSegment();
 		TypeId function_type_id = callee.type;
 		if (!direct)
 		{
@@ -1788,7 +1791,9 @@ private:
 		const BlockId then_block = AddBlock(NewLabel("cond_then"));
 		const BlockId else_block = AddBlock(NewLabel("cond_else"));
 		const BlockId end_block = AddBlock(NewLabel("cond_end"));
-		EmitBranch(LowerCondition(children[0]), then_block, else_block);
+		const Operand condition = LowerCondition(children[0]);
+		if (full_expression_cleanup_active_) PauseFullExpressionCleanupSegment();
+		EmitBranch(condition, then_block, else_block);
 		SelectBlock(then_block);
 		Instruction yes_store(Instruction::STORE);
 		yes_store.type = type;
@@ -1796,6 +1801,7 @@ private:
 		yes_store.second = slot;
 		Emit(yes_store);
 		LowerBranchCleanupActions(node, children[1]);
+		if (full_expression_cleanup_active_) PauseFullExpressionCleanupSegment();
 		EmitJump(end_block);
 		SelectBlock(else_block);
 		Instruction no_store(Instruction::STORE);
@@ -1804,6 +1810,7 @@ private:
 		no_store.second = slot;
 		Emit(no_store);
 		LowerBranchCleanupActions(node, children[2]);
+		if (full_expression_cleanup_active_) PauseFullExpressionCleanupSegment();
 		EmitJump(end_block);
 		SelectBlock(end_block);
 		const Operand result = Temp(type);
@@ -1821,14 +1828,18 @@ private:
 		const BlockId then_block = AddBlock(NewLabel("discard_cond_then"));
 		const BlockId else_block = AddBlock(NewLabel("discard_cond_else"));
 		const BlockId end_block = AddBlock(NewLabel("discard_cond_end"));
-		EmitBranch(LowerCondition(children[0]), then_block, else_block);
+		const Operand condition = LowerCondition(children[0]);
+		if (full_expression_cleanup_active_) PauseFullExpressionCleanupSegment();
+		EmitBranch(condition, then_block, else_block);
 		SelectBlock(then_block);
 		(void)LowerValue(children[1]);
 		LowerBranchCleanupActions(node, children[1]);
+		if (full_expression_cleanup_active_) PauseFullExpressionCleanupSegment();
 		EmitJump(end_block);
 		SelectBlock(else_block);
 		(void)LowerValue(children[2]);
 		LowerBranchCleanupActions(node, children[2]);
+		if (full_expression_cleanup_active_) PauseFullExpressionCleanupSegment();
 		EmitJump(end_block);
 		SelectBlock(end_block);
 		return Operand(0, LowVoid());
@@ -1844,7 +1855,9 @@ private:
 		const BlockId then_block = AddBlock(NewLabel("condaddr_then"));
 		const BlockId else_block = AddBlock(NewLabel("condaddr_else"));
 		const BlockId end_block = AddBlock(NewLabel("condaddr_end"));
-		EmitBranch(LowerCondition(children[0]), then_block, else_block);
+		const Operand condition = LowerCondition(children[0]);
+		if (full_expression_cleanup_active_) PauseFullExpressionCleanupSegment();
+		EmitBranch(condition, then_block, else_block);
 		SelectBlock(then_block);
 		Instruction yes_store(Instruction::STORE);
 		yes_store.type = LowPtr();
@@ -1852,6 +1865,7 @@ private:
 		yes_store.second = slot;
 		Emit(yes_store);
 		LowerBranchCleanupActions(node, children[1]);
+		if (full_expression_cleanup_active_) PauseFullExpressionCleanupSegment();
 		EmitJump(end_block);
 		SelectBlock(else_block);
 		Instruction no_store(Instruction::STORE);
@@ -1860,6 +1874,7 @@ private:
 		no_store.second = slot;
 		Emit(no_store);
 		LowerBranchCleanupActions(node, children[2]);
+		if (full_expression_cleanup_active_) PauseFullExpressionCleanupSegment();
 		EmitJump(end_block);
 		SelectBlock(end_block);
 		return LoadStorage(slot, LowPtr());
@@ -2002,6 +2017,16 @@ private:
 		const NodeChildren& children,
 		const Operand& retained_destination = Operand())
 	{
+		if (retained_destination.kind != Operand::NONE &&
+			!IsReferenceType(record.type) &&
+			IsClassObjectType(record.type) && children.size() == 1 &&
+			arena_.nodes[children[0]].kind == DUMP_CALL_EXPRESSION)
+		{
+			const DumpNode& call = arena_.nodes[children[0]];
+			(void)LowerCall(children[0], call, Children(children[0]),
+				retained_destination);
+			return;
+		}
 		if (LowerScalarCallReferenceInitialization(record, children,
 			retained_destination)) return;
 		if (!IsReferenceType(record.type) &&
@@ -2009,16 +2034,20 @@ private:
 			arena_.nodes[children[0]].kind == DUMP_CONDITIONAL_EXPRESSION)
 		{
 			const LowType type = LowerStorageType(record.type);
-			LowerClassConditionalResult(children[0], AddressOfStorage(
-				StorageFor(record.binding, type)));
+			const Operand destination = retained_destination.kind == Operand::NONE ?
+				AddressOfStorage(StorageFor(record.binding, type)) :
+				retained_destination;
+			LowerClassConditionalResult(children[0], destination);
 			return;
 		}
 		if (IsClassObjectType(record.type) && children.size() == 1 &&
 			arena_.nodes[children[0]].kind == DUMP_CLASS_VALUE_TRANSFER)
 		{
 			const LowType type = LowerStorageType(record.type);
-			LowerClassValueTransfer(children[0], AddressOfStorage(
-				StorageFor(record.binding, type)), true);
+			const Operand destination = retained_destination.kind == Operand::NONE ?
+				AddressOfStorage(StorageFor(record.binding, type)) :
+				retained_destination;
+			LowerClassValueTransfer(children[0], destination, true);
 			return;
 		}
 		if (LowerInitializerListVariable(record, children)) return;
@@ -2074,6 +2103,20 @@ private:
 		}
 		if (record.kind == DUMP_SIMPLE_DECLARATION)
 		{
+			if (!children.empty() &&
+				arena_.nodes[children[0]].kind == DUMP_VARIABLE)
+			{
+				const DumpNode& variable = arena_.nodes[children[0]];
+				const std::uint32_t local_static = variable.binding <
+					local_static_action_.size() ?
+					local_static_action_[variable.binding] : kNoDumpEdge;
+				if (local_static != kNoDumpEdge)
+				{
+					LowerLocalStaticVariable(local_static, variable,
+						Children(children[0]), &children);
+					return;
+				}
+			}
 			if (!record.full_expression_staging ||
 				!TryLowerFullExpressionDeclaration(children))
 				PushStatementSequence(record.first_edge);

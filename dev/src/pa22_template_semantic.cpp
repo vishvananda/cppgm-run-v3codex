@@ -808,6 +808,15 @@ bool SemanticAnalyzer::StageNestedTemplateTemporaryCleanup(
 		if (entity == kNoEntity ||
 			program_->entities[entity].template_argument_count == 0 ||
 			program_->entities[entity].enclosing_class == kNoEntity) continue;
+		for (std::uint32_t clear = dump_.nodes[statement].first_edge;
+			clear != kNoDumpEdge; clear = dump_.edges[clear].next)
+		{
+			DumpNode& cleanup = dump_.nodes[dump_.edges[clear].child];
+			if (cleanup.kind == DUMP_DESTRUCTOR_ACTION &&
+				cleanup.lifetime_object != kNoDumpEdge &&
+				!dump_.nodes[cleanup.lifetime_object].default_argument)
+				cleanup.eager_full_expression_cleanup = false;
+		}
 		MarkFullExpressionCalls(expression);
 		return true;
 	}

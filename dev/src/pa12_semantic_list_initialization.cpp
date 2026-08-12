@@ -1153,7 +1153,7 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 			constructor.parameters[a].default_argument,
 			constructor.parameters[a].default_scope, parameters[a]);
 		argument = ApplyCallArgument(argument, parameters[a]);
-		dump_.nodes[argument.node].default_argument = true;
+		MarkDefaultArgumentSubtree(argument.node);
 		dump_.Add(action, argument.node);
 		constexpr_arguments.push_back(argument);
 	}
@@ -1191,13 +1191,20 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 		IsClassTemplateSpecializationEntity(constructor_owner);
 	const bool compile_time_only = constant_expression_required_depth_ != 0 &&
 		constant_initializer_required_depth_ == 0;
+	const bool retained_empty_special_member =
+		dump_.nodes[action].trivial_special_member_action &&
+		constructor_owner != kNoEntity &&
+		program_->entities[constructor_owner].empty_class &&
+		!program_->entities[constructor_owner].trivial_destructor;
 	if (demand && !compile_time_only &&
 		preserve_constant_initializer_recipe_depth_ == 0 &&
 		!dump_.nodes[action].elide_empty_constructor &&
 		(explicitly_defaulted ||
-		 !dump_.nodes[action].trivial_special_member_action) &&
+		 !dump_.nodes[action].trivial_special_member_action ||
+		 retained_empty_special_member) &&
 		!(constructor.implicit_constructor &&
-		program_->entities[entity].trivial_default_constructor))
+		program_->entities[entity].trivial_default_constructor &&
+		!retained_empty_special_member))
 		DemandFunction(promoted_deferred_base_entry ?
 			complete_constructor : selected);
 	if (demand && base_subobject &&

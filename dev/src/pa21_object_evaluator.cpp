@@ -133,8 +133,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAggregateInit(TypeId type,
 		const NameId member_name = program_->bindings[member_id].name;
 		const std::uint32_t action = MakeDump(DUMP_INITIALIZER_ACTION,
 			member_type, VALUE_NONE, member_name, member_id);
+		const bool omitted_initializer = *element_edge == kNoEdge;
 		const ExpressionInfo value = AnalyzeAggregateElement(
 			member_type, scope, element_edge);
+		dump_.nodes[action].value_initialization = omitted_initializer;
 		if (value.node != kNoDumpEdge) dump_.Add(action, value.node);
 		ConstexprObjectElement element(
 			member_id, ConstexprScalarValue(static_cast<std::int64_t>(0)));

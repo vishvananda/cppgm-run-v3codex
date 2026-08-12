@@ -8,6 +8,134 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+std::uint32_t SemanticAnalyzer::MakeTemporaryDestructorAction(
+	std::uint32_t temporary, BindingId destructor,
+	bool preserve_nontrivial_action)
+{
+	if (temporary == kNoDumpEdge || temporary >= dump_.nodes.size() ||
+		dump_.nodes[temporary].kind != DUMP_TEMPORARY_OBJECT)
+		throw std::logic_error("temporary destruction has no object identity");
+	const TypeId type = dump_.nodes[temporary].type;
+	if (IsInitializerListType(type)) return kNoDumpEdge;
+	const EntityId entity = DestructedEntity(type);
+	if (entity == kNoEntity) return kNoDumpEdge;
+	if (!program_->entities[entity].destructible)
+		throw std::runtime_error("temporary type is not destructible");
+	if (destructor == kNoBinding) destructor = DestructorForType(type);
+	if (destructor == kNoBinding)
+		throw std::logic_error("temporary class has no destructor identity");
+	if (!CanAccessMember(destructor, entity))
+		throw std::runtime_error("inaccessible temporary destructor");
+	if (program_->entities[entity].trivial_destructor) return kNoDumpEdge;
+	const bool dependent_template_object =
+		program_->entities[entity].template_argument_count != 0;
+	if (!preserve_nontrivial_action && !dependent_template_object &&
+		IsElidableAutomaticDestructor(destructor) &&
+		!dump_.nodes[temporary].control_dependent_temporary)
+		return kNoDumpEdge;
+	const std::uint32_t action = MakeDestructorAction(
+		type, destructor, kNoBinding);
+	dump_.nodes[action].lifetime_object = temporary;
+	dump_.nodes[action].lifetime_branch_owner =
+		dump_.nodes[temporary].lifetime_branch_owner;
+	dump_.nodes[action].lifetime_branch_child =
+		dump_.nodes[temporary].lifetime_branch_child;
+	return action;
+}
+
+void SemanticAnalyzer::MarkFullExpressionCalls(std::uint32_t node,
+	bool managed_cleanup, bool allocation_call)
+{
+	if (node == kNoDumpEdge || node >= dump_.nodes.size()) return;
+	DumpNode& record = dump_.nodes[node];
+	bool stage = true;
+	if (allocation_call && record.kind == DUMP_CALL_EXPRESSION &&
+		record.first_edge != kNoDumpEdge)
+	{
+		const DumpNode& callee =
+			dump_.nodes[dump_.edges[record.first_edge].child];
+		stage = callee.kind != DUMP_CALLEE || callee.binding == kNoBinding ||
+			!FunctionIsNonthrowing(callee.binding);
+	}
+	if (stage) record.full_expression_staging = true;
+	if (managed_cleanup && record.kind == DUMP_TEMPORARY_OBJECT)
+		record.managed_full_expression_cleanup = true;
+	bool first = true;
+	for (std::uint32_t edge = record.first_edge; edge != kNoDumpEdge;
+		edge = dump_.edges[edge].next)
+	{
+		MarkFullExpressionCalls(dump_.edges[edge].child, managed_cleanup,
+			record.kind == DUMP_NEW_EXPRESSION && first);
+		first = false;
+	}
+}
+
+void SemanticAnalyzer::MarkDefaultArgumentSubtree(std::uint32_t node)
+{
+	if (node == kNoDumpEdge || node >= dump_.nodes.size()) return;
+	std::vector<std::uint32_t> pending(1, node);
+	while (!pending.empty())
+	{
+		const std::uint32_t current = pending.back();
+		pending.pop_back();
+		dump_.nodes[current].default_argument = true;
+		for (std::uint32_t edge = dump_.nodes[current].first_edge;
+			edge != kNoDumpEdge; edge = dump_.edges[edge].next)
+			pending.push_back(dump_.edges[edge].child);
+	}
+}
+
+void SemanticAnalyzer::AppendFullExpressionDestructionActions(
+	std::uint32_t expression, std::uint32_t output_parent,
+	bool preserve_nontrivial_actions)
+{
+	std::vector<std::uint32_t> temporaries;
+	CollectTemporaryObjects(expression, &temporaries);
+	const bool potentially_throwing =
+		!InitializationActionsAreNonthrowing(expression);
+	const bool requested_explicit_cleanup =
+		dump_.nodes[expression].full_expression_staging ||
+		dump_.nodes[expression].eager_full_expression_cleanup;
+	bool contains_default_argument = false;
+	for (std::size_t i = 0; i < temporaries.size(); ++i)
+		contains_default_argument = contains_default_argument ||
+			dump_.nodes[temporaries[i]].default_argument;
+	preserve_nontrivial_actions = !temporaries.empty() &&
+		(preserve_nontrivial_actions || contains_default_argument) &&
+		potentially_throwing;
+	const bool managed_expression =
+		(preserve_nontrivial_actions || requested_explicit_cleanup) &&
+		dump_.nodes[expression].kind != DUMP_THROW_EXPRESSION;
+	bool appended_managed_action = false;
+	for (std::size_t i = temporaries.size(); i != 0; --i)
+	{
+		std::uint32_t action =
+			MakeTemporaryDestructorAction(temporaries[i - 1]);
+		if (action == kNoDumpEdge && preserve_nontrivial_actions)
+			action = MakeTemporaryDestructorAction(
+				temporaries[i - 1], kNoBinding, true);
+		if (action == kNoDumpEdge) continue;
+		const EntityId action_entity =
+			DestructedEntity(dump_.nodes[action].operand_type);
+		const bool specialization_action = action_entity != kNoEntity &&
+			program_->entities[action_entity].template_argument_count != 0;
+		const bool managed_action = managed_expression &&
+			!dump_.nodes[temporaries[i - 1]].initializer_list_backing;
+		dump_.nodes[action].full_expression_staging = true;
+		dump_.nodes[action].managed_full_expression_cleanup = managed_action;
+		dump_.nodes[action].eager_full_expression_cleanup =
+			(potentially_throwing && !specialization_action) ||
+			requested_explicit_cleanup;
+		dump_.Add(output_parent, action);
+		appended_managed_action = appended_managed_action || managed_action;
+	}
+	if (appended_managed_action)
+	{
+		dump_.nodes[output_parent].full_expression_staging = true;
+		MarkFullExpressionCalls(expression, true);
+	}
+}
+
 bool SemanticAnalyzer::CollectTemporaryObjects(std::uint32_t node,
 	std::vector<std::uint32_t>* temporaries)
 {
@@ -146,10 +274,12 @@ void SemanticAnalyzer::StageAutomaticInitializerException(
 	if (!eligible ||
 		program_->bindings[binding].storage_class != STORAGE_CLASS_NONE ||
 		program_->types.IsReference(type) || IsInitializerListType(type)) return;
-	if (InitializationActionsAreNonthrowing(expression)) return;
 	const ScopeId stop = exception_cleanup_stops_.empty() ? kNoScope :
 		exception_cleanup_stops_.back();
+	dump_.nodes[variable].enclosing_lifetime_cleanup =
+		HasEnclosingNontrivialObjectLifetime(scope, stop);
 	if (!HasUnwindDestructionActions(scope, stop)) return;
+	if (InitializationActionsAreNonthrowing(expression)) return;
 	AppendFullExpressionDestructionActions(expression, variable);
 	StageExceptionalFullExpression(expression, variable, scope, true);
 }
@@ -183,6 +313,19 @@ bool SemanticAnalyzer::HasUnwindDestructionActions(ScopeId scope,
 			parent < nearest_lifetime_scopes_.size() ?
 			nearest_lifetime_scopes_[parent] : kNoScope;
 	}
+	return false;
+}
+
+bool SemanticAnalyzer::HasEnclosingNontrivialObjectLifetime(
+	ScopeId scope, ScopeId stop_exclusive) const
+{
+	for (ScopeId current = scope;
+		current != kNoScope && current != stop_exclusive;
+		current = current < scope_parents_.size() ?
+			scope_parents_[current] : kNoScope)
+		if (current < scope_nontrivial_object_lifetimes_.size() &&
+			scope_nontrivial_object_lifetimes_[current] != 0)
+			return true;
 	return false;
 }
 

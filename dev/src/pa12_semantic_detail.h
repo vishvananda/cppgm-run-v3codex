@@ -1299,9 +1299,11 @@ private:
 		std::size_t branch_depth);
 	void MarkFullExpressionCalls(std::uint32_t node,
 		bool managed_cleanup = false, bool allocation_call = false);
+	void MarkDefaultArgumentSubtree(std::uint32_t node);
 	bool HasControlDependentTemporary(std::uint32_t node);
 	void AppendFullExpressionDestructionActions(std::uint32_t expression,
-		std::uint32_t output_parent);
+		std::uint32_t output_parent,
+		bool preserve_nontrivial_actions = false);
 	std::uint32_t PublishVariableInitializerActions(std::uint32_t variable,
 		BindingId binding, TypeId type, const ExpressionInfo& initializer,
 		bool has_initializer, bool declaration_only,
@@ -1321,16 +1323,20 @@ private:
 		std::uint32_t output_parent, ScopeId stop_exclusive = kNoScope);
 	bool HasUnwindDestructionActions(ScopeId scope,
 		ScopeId stop_exclusive = kNoScope) const;
+	bool HasEnclosingNontrivialObjectLifetime(ScopeId scope,
+		ScopeId stop_exclusive = kNoScope) const;
 	void AddNamespaceObjectAction(std::uint32_t variable, BindingId object,
 		TypeId type, std::uint32_t initializer);
 	void AddLocalStaticObjectAction(std::uint32_t variable, BindingId object,
 		TypeId type, std::uint32_t initializer, NameId source_file,
 		std::uint32_t source_line, std::uint32_t source_column,
+		std::uint32_t source_token_first, std::uint32_t source_token_last,
 		bool constant_initialized);
 	void RegisterVariableLifetimeAndStorage(ScopeId scope, bool local,
 		bool declaration_only, std::uint32_t variable, BindingId object,
 		TypeId type, NameId source_file, std::uint32_t source_line,
-		std::uint32_t source_column, bool constant_initialized);
+		std::uint32_t source_column, std::uint32_t source_token_first,
+		std::uint32_t source_token_last, bool constant_initialized);
 	bool DemandRuntimeInitializerFunctions(std::uint32_t initializer,
 		bool function_addresses_only = false);
 	void AppendScopeDestructionActions(ScopeId scope,
@@ -1338,7 +1344,8 @@ private:
 	std::uint32_t MakeDestructorAction(TypeId type, BindingId destructor,
 		BindingId object, std::uint32_t base_projections = 0);
 	std::uint32_t MakeTemporaryDestructorAction(std::uint32_t temporary,
-		BindingId destructor = kNoBinding);
+		BindingId destructor = kNoBinding,
+		bool preserve_nontrivial_action = false);
 	EntityId EntityOf(TypeId type) const;
 	ExpressionInfo MakeLiteral(TypeId type, NameId text,
 		ValueCategory category = VALUE_PRVALUE);
@@ -1663,6 +1670,7 @@ private:
 	std::vector<InjectedMemberInfo> injected_members_;
 	std::vector<std::vector<LifetimeObligation> > scope_lifetimes_;
 	std::vector<ScopeId> nearest_lifetime_scopes_;
+	std::vector<std::uint32_t> scope_nontrivial_object_lifetimes_;
 	std::vector<NamespaceObjectAction>& namespace_objects_;
 	std::vector<LocalStaticObjectAction>& local_static_objects_;
 	std::vector<std::uint32_t> local_static_count_by_function_;

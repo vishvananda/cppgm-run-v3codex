@@ -107,7 +107,8 @@ BindingId SemanticAnalyzer::AddRangeForLocal(ScopeId scope,
 	dump_.Add(declaration, variable);
 	dump_.Add(output_parent, declaration);
 	RegisterVariableLifetimeAndStorage(scope, true, false, variable,
-		binding, type, 0, 0, 0, HasConstantInitializerFact(initializer));
+		binding, type, 0, 0, 0, 0, 0,
+		HasConstantInitializerFact(initializer));
 	FinishRangeForLocalInitializer(scope, declaration, type, initializer);
 	return binding;
 }
@@ -330,7 +331,7 @@ void SemanticAnalyzer::AddRangeForLoopVariable(NodeId declaration,
 	dump_.Add(simple, variable);
 	dump_.Add(output_parent, simple);
 	RegisterVariableLifetimeAndStorage(scope, true, false, variable,
-		binding, parsed.type, 0, 0, 0,
+		binding, parsed.type, 0, 0, 0, 0, 0,
 		HasConstantInitializerFact(initializer));
 	FinishRangeForLocalInitializer(scope, simple, parsed.type, initializer);
 }

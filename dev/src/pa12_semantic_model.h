@@ -167,6 +167,8 @@ struct DumpNode
 	bool exception_cleanup_region_exit;
 	bool full_expression_staging;
 	bool managed_full_expression_cleanup;
+	bool eager_full_expression_cleanup;
+	bool enclosing_lifetime_cleanup;
 	bool conditionally_constructed;
 	bool default_argument;
 	bool control_dependent_temporary;
@@ -218,6 +220,8 @@ struct DumpNode
 		  unwind_only(false), exception_handler_exit(false),
 		  exception_cleanup_region_exit(false), full_expression_staging(false),
 		  managed_full_expression_cleanup(false),
+		  eager_full_expression_cleanup(false),
+		  enclosing_lifetime_cleanup(false),
 		  conditionally_constructed(false),
 		  default_argument(false),
 		  control_dependent_temporary(false), virtual_call(false),
@@ -258,6 +262,9 @@ public:
 			nodes[child].template_parameter_constant;
 		owner.contains_temporary_object = owner.contains_temporary_object ||
 			nodes[child].contains_temporary_object;
+		owner.eager_full_expression_cleanup =
+			owner.eager_full_expression_cleanup ||
+			nodes[child].eager_full_expression_cleanup;
 		if (owner.first_edge == kNoDumpEdge) owner.first_edge = edge;
 		else edges[owner.last_edge].next = edge;
 		owner.last_edge = edge;
@@ -1267,6 +1274,7 @@ struct LocalStaticObjectAction
 	std::uint32_t declaration_ordinal;
 	NameId source_file;
 	std::uint32_t source_line, source_column;
+	std::uint32_t source_token_first, source_token_last;
 	bool constant_initialized, specialization_owned_recipe;
 	bool source_identity_presentation;
 
@@ -1276,6 +1284,8 @@ struct LocalStaticObjectAction
 		std::uint32_t declaration_ordinal_value,
 		NameId source_file_value, std::uint32_t source_line_value,
 		std::uint32_t source_column_value,
+		std::uint32_t source_token_first_value,
+		std::uint32_t source_token_last_value,
 		bool constant_initialized_value,
 		bool specialization_owned_recipe_value,
 		bool source_identity_presentation_value)
@@ -1285,6 +1295,8 @@ struct LocalStaticObjectAction
 		  declaration_ordinal(declaration_ordinal_value),
 		  source_file(source_file_value), source_line(source_line_value),
 		  source_column(source_column_value),
+		  source_token_first(source_token_first_value),
+		  source_token_last(source_token_last_value),
 		  constant_initialized(constant_initialized_value),
 		  specialization_owned_recipe(specialization_owned_recipe_value),
 		  source_identity_presentation(source_identity_presentation_value) {}

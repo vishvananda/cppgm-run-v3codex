@@ -780,6 +780,7 @@ protected:
 			return;
 		}
 		bool tracked = false;
+		bool eager_transition = false;
 		if (derived.full_expression_uses_linked_dispatch_)
 		{
 			if (derived.full_expression_linked_action_cursor_ != 0)
@@ -788,6 +789,8 @@ protected:
 					derived.full_expression_cleanup_actions_[
 						derived.full_expression_linked_action_cursor_ - 1];
 				tracked = derived.arena_.nodes[action].lifetime_object == temporary;
+				eager_transition = tracked &&
+					derived.arena_.nodes[action].eager_full_expression_cleanup;
 			}
 		}
 		else
@@ -802,6 +805,9 @@ protected:
 						temporary)
 				{
 					tracked = true;
+					eager_transition = derived.arena_.nodes[
+						derived.full_expression_cleanup_actions_[i]].
+						eager_full_expression_cleanup;
 					break;
 				}
 		}
@@ -836,6 +842,7 @@ protected:
 			}
 		}
 		derived.full_expression_cleanup_dispatch_ = kNoLowId;
+		if (eager_transition) EnsureFullExpressionCleanupSegment();
 	}
 
 	void ResetFullExpressionCleanup()
@@ -882,7 +889,8 @@ protected:
 			ResetFullExpressionCleanup();
 			return;
 		}
-		EnsureFullExpressionCleanupSegment();
+		const bool segment_active =
+			derived.full_expression_cleanup_dispatch_ != kNoLowId;
 		for (std::size_t i = 0;
 			i < derived.full_expression_cleanup_actions_.size(); ++i)
 			if (!derived.arena_.nodes[
@@ -891,7 +899,7 @@ protected:
 					derived.full_expression_cleanup_actions_[i]))
 				LowerFullExpressionDestructorAction(
 					derived.full_expression_cleanup_actions_[i]);
-		CloseFullExpressionCleanupSegment();
+		if (segment_active) CloseFullExpressionCleanupSegment();
 		ResetFullExpressionCleanup();
 	}
 
@@ -1023,9 +1031,34 @@ protected:
 			if (derived.arena_.nodes[children[i]].kind != DUMP_DESTRUCTOR_ACTION ||
 				derived.arena_.nodes[children[i]].lifetime_object == kNoDumpEdge)
 				return false;
-		BeginFullExpressionCleanup(children, first_cleanup);
+		const DumpNode& last_action =
+			derived.arena_.nodes[children[children.size() - 1]];
+		const bool enclosing_lifetime_cleanup = !children.empty() &&
+			derived.arena_.nodes[children[0]].kind == DUMP_VARIABLE &&
+			derived.arena_.nodes[children[0]].enclosing_lifetime_cleanup;
+		const bool first_temporary_is_default_argument =
+			last_action.lifetime_object != kNoDumpEdge &&
+			derived.arena_.nodes[last_action.lifetime_object].default_argument;
+		Operand early_destination;
+		if (enclosing_lifetime_cleanup &&
+			first_temporary_is_default_argument &&
+			derived.IsClassObjectType(derived.arena_.nodes[children[0]].type))
+			early_destination = derived.AddressOfStorage(derived.StorageFor(
+				derived.arena_.nodes[children[0]].binding,
+				derived.LowerStorageType(
+					derived.arena_.nodes[children[0]].type)));
+		BeginFullExpressionCleanup(
+			children, first_cleanup,
+			first_temporary_is_default_argument &&
+				!enclosing_lifetime_cleanup);
 		for (std::size_t i = 0; i < first_cleanup; ++i)
-			derived.LowerStatementNode(children[i]);
+		{
+			if (i == 0 && early_destination.kind != Operand::NONE)
+				LowerFullExpressionVariableInitialization(
+					derived.arena_.nodes[children[i]],
+					derived.Children(children[i]), early_destination);
+			else derived.LowerStatementNode(children[i]);
+		}
 		CompleteFullExpressionCleanup();
 		return true;
 	}
@@ -1060,9 +1093,29 @@ protected:
 			lexical_unwind = lexical_unwind ||
 				derived.arena_.nodes[children[i]].unwind_only;
 		}
-		BeginFullExpressionCleanup(children, first_cleanup, lexical_unwind);
+		bool first_temporary_is_default_argument = false;
+		if (first_cleanup < children.size())
+		{
+			const DumpNode& last_action =
+				derived.arena_.nodes[children[children.size() - 1]];
+			first_temporary_is_default_argument =
+				last_action.lifetime_object != kNoDumpEdge &&
+				derived.arena_.nodes[last_action.lifetime_object].default_argument;
+		}
+		Operand early_destination = retained_destination;
+		if (early_destination.kind == Operand::NONE &&
+			first_temporary_is_default_argument &&
+			record.enclosing_lifetime_cleanup &&
+			derived.IsClassObjectType(record.type))
+			early_destination = derived.AddressOfStorage(derived.StorageFor(
+				record.binding, derived.LowerStorageType(record.type)));
+		BeginFullExpressionCleanup(children, first_cleanup,
+			(lexical_unwind && !(first_temporary_is_default_argument &&
+				record.enclosing_lifetime_cleanup)) ||
+			(first_temporary_is_default_argument &&
+				!record.enclosing_lifetime_cleanup));
 		derived.LowerVariableInitializationCore(
-			record, values, retained_destination);
+			record, values, early_destination);
 		CompleteFullExpressionCleanup();
 	}
 

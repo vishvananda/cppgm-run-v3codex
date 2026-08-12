@@ -109,7 +109,7 @@ std::uint32_t SemanticAnalyzer::BuildClassValueConstructorAction(TypeId type,
 			constructor.parameters[a].default_argument,
 			constructor.parameters[a].default_scope, parameters[a]);
 		argument = ApplyCallArgument(argument, parameters[a]);
-		dump_.nodes[argument.node].default_argument = true;
+		MarkDefaultArgumentSubtree(argument.node);
 		dump_.Add(action, argument.node);
 		constexpr_arguments.push_back(argument);
 	}
@@ -128,9 +128,15 @@ std::uint32_t SemanticAnalyzer::BuildClassValueConstructorAction(TypeId type,
 		!constructor.implicit_special_member &&
 		!constructor.synthesized_memberwise_copy &&
 		IsClassTemplateSpecializationEntity(constructor_owner);
+	const bool retained_empty_special_member =
+		dump_.nodes[action].trivial_special_member_action &&
+		constructor_owner != kNoEntity &&
+		program_->entities[constructor_owner].empty_class &&
+		!program_->entities[constructor_owner].trivial_destructor;
 	if (preserve_constant_initializer_recipe_depth_ == 0 &&
 		((demand && (explicitly_defaulted ||
-		!dump_.nodes[action].trivial_special_member_action)) ||
+		!dump_.nodes[action].trivial_special_member_action ||
+		retained_empty_special_member)) ||
 		(materialized_conversion_result &&
 		 !dump_.nodes[action].trivial_special_member_action)))
 		DemandFunction(selected);
@@ -571,6 +577,12 @@ void SemanticAnalyzer::AnalyzeReturnStatement(NodeId node, ScopeId scope,
 				}
 				value.node = BuildClassValueConstructorAction(
 					current_return_type_, source, true, false);
+				const BindingId return_destructor =
+					DestructorForType(current_return_type_);
+				if (dump_.nodes[value.node].kind == DUMP_CONSTRUCTOR_ACTION &&
+					return_destructor != kNoBinding &&
+					!IsElidableAutomaticDestructor(return_destructor))
+					DemandFunction(dump_.nodes[value.node].binding);
 			}
 			value.type = returned_object;
 			value.category = VALUE_PRVALUE;
@@ -581,6 +593,12 @@ void SemanticAnalyzer::AnalyzeReturnStatement(NodeId node, ScopeId scope,
 		{
 			value.node = BuildClassValueConstructorAction(
 				current_return_type_, value, true, false);
+			const BindingId return_destructor =
+				DestructorForType(current_return_type_);
+			if (dump_.nodes[value.node].kind == DUMP_CONSTRUCTOR_ACTION &&
+				return_destructor != kNoBinding &&
+				!IsElidableAutomaticDestructor(return_destructor))
+				DemandFunction(dump_.nodes[value.node].binding);
 			value.type = returned_object;
 			value.category = VALUE_PRVALUE;
 		}
@@ -1582,7 +1600,11 @@ std::uint32_t SemanticAnalyzer::BuildAggregateConstructionAction(TypeId type,
 		const DumpNode& action = dump_.nodes[actions[i]];
 		if (action.kind != DUMP_INITIALIZER_ACTION || action.binding == kNoBinding)
 			throw std::logic_error("aggregate helper has invalid member action");
-		if (action.first_edge != kNoDumpEdge)
+		const BindingId member_destructor = DestructorForType(action.type);
+		const bool direct_omitted_class = action.value_initialization &&
+			member_destructor != kNoBinding &&
+			!IsElidableAutomaticDestructor(member_destructor);
+		if (action.first_edge != kNoDumpEdge && !direct_omitted_class)
 		{
 			if (dump_.edges[action.first_edge].next != kNoDumpEdge)
 				throw std::runtime_error("aggregate helper member has multiple values");
@@ -1658,15 +1680,27 @@ std::uint32_t SemanticAnalyzer::BuildAggregateConstructionAction(TypeId type,
 		if (IsClassEntity(*program_, EntityOf(action.type)))
 		{
 			const EntityId member_entity = EntityOf(action.type);
-			constructor = ConstructorForSubobject(
-				action.type, SPECIAL_MEMBER_MOVE_CONSTRUCTOR);
+			const BindingId member_destructor =
+				DestructorForType(action.type);
+			const bool direct_omitted_class = action.value_initialization &&
+				member_destructor != kNoBinding &&
+				!IsElidableAutomaticDestructor(member_destructor);
+			constructor = direct_omitted_class &&
+				action.first_edge != kNoDumpEdge ?
+				dump_.nodes[dump_.edges[action.first_edge].child].binding :
+				ConstructorForSubobject(
+					action.type, SPECIAL_MEMBER_MOVE_CONSTRUCTOR);
 			if (constructor == kNoBinding ||
 				GetFunction(constructor).deleted_constructor ||
 				GetFunction(constructor).deleted_special_member)
 				throw std::runtime_error(
 					"aggregate member has no usable value constructor");
 			if (!GetFunction(constructor).trivial_special_member)
+			{
+				if (!GetFunction(constructor).defined)
+					GetMutableFunction(constructor).deferred = true;
 				DemandFunction(constructor);
+			}
 			if (!program_->entities[member_entity].trivial_destructor)
 			{
 				destructor = DestructorForType(action.type);
@@ -1674,6 +1708,8 @@ std::uint32_t SemanticAnalyzer::BuildAggregateConstructionAction(TypeId type,
 					!CanAccessMember(destructor, member_entity))
 					throw std::runtime_error(
 						"aggregate member is not destructible");
+				if (!GetFunction(destructor).defined)
+					GetMutableFunction(destructor).deferred = true;
 				DemandFunction(destructor);
 			}
 		}
@@ -2526,65 +2562,6 @@ std::uint32_t SemanticAnalyzer::MakeDestructorAction(TypeId type,
 	return action;
 }
 
-std::uint32_t SemanticAnalyzer::MakeTemporaryDestructorAction(
-	std::uint32_t temporary, BindingId destructor)
-{
-	if (temporary == kNoDumpEdge || temporary >= dump_.nodes.size() ||
-		dump_.nodes[temporary].kind != DUMP_TEMPORARY_OBJECT)
-		throw std::logic_error("temporary destruction has no object identity");
-	const TypeId type = dump_.nodes[temporary].type;
-	if (IsInitializerListType(type)) return kNoDumpEdge;
-	const EntityId entity = DestructedEntity(type);
-	if (entity == kNoEntity) return kNoDumpEdge;
-	if (!program_->entities[entity].destructible)
-		throw std::runtime_error("temporary type is not destructible");
-	if (destructor == kNoBinding) destructor = DestructorForType(type);
-	if (destructor == kNoBinding)
-		throw std::logic_error("temporary class has no destructor identity");
-	if (!CanAccessMember(destructor, entity))
-		throw std::runtime_error("inaccessible temporary destructor");
-	if (program_->entities[entity].trivial_destructor) return kNoDumpEdge;
-	const bool dependent_template_object =
-		program_->entities[entity].template_argument_count != 0;
-	if (!dependent_template_object && IsElidableAutomaticDestructor(destructor) &&
-		!dump_.nodes[temporary].control_dependent_temporary)
-		return kNoDumpEdge;
-	const std::uint32_t action = MakeDestructorAction(
-		type, destructor, kNoBinding);
-	dump_.nodes[action].lifetime_object = temporary;
-	dump_.nodes[action].lifetime_branch_owner =
-		dump_.nodes[temporary].lifetime_branch_owner;
-	dump_.nodes[action].lifetime_branch_child =
-		dump_.nodes[temporary].lifetime_branch_child;
-	return action;
-}
-
-void SemanticAnalyzer::MarkFullExpressionCalls(std::uint32_t node,
-	bool managed_cleanup, bool allocation_call)
-{
-	if (node == kNoDumpEdge || node >= dump_.nodes.size()) return;
-	DumpNode& record = dump_.nodes[node];
-	bool stage = true;
-	if (allocation_call && record.kind == DUMP_CALL_EXPRESSION &&
-		record.first_edge != kNoDumpEdge)
-	{
-		const DumpNode& callee =
-			dump_.nodes[dump_.edges[record.first_edge].child];
-		stage = callee.kind != DUMP_CALLEE || callee.binding == kNoBinding ||
-			!FunctionIsNonthrowing(callee.binding);
-	}
-	if (stage) record.full_expression_staging = true;
-	if (managed_cleanup && record.kind == DUMP_TEMPORARY_OBJECT) record.managed_full_expression_cleanup = true;
-	bool first = true;
-	for (std::uint32_t edge = record.first_edge; edge != kNoDumpEdge;
-		edge = dump_.edges[edge].next)
-	{
-		MarkFullExpressionCalls(dump_.edges[edge].child, managed_cleanup,
-			record.kind == DUMP_NEW_EXPRESSION && first);
-		first = false;
-	}
-}
-
 std::uint32_t SemanticAnalyzer::PublishVariableInitializerActions(
 	std::uint32_t variable, BindingId binding, TypeId type,
 	const ExpressionInfo& initializer, bool has_initializer,
@@ -2621,23 +2598,6 @@ bool SemanticAnalyzer::HasControlDependentTemporary(std::uint32_t node)
 		edge = dump_.edges[edge].next)
 		if (HasControlDependentTemporary(dump_.edges[edge].child)) return true;
 	return false;
-}
-
-void SemanticAnalyzer::AppendFullExpressionDestructionActions(
-	std::uint32_t expression, std::uint32_t output_parent)
-{
-	std::vector<std::uint32_t> temporaries;
-	CollectTemporaryObjects(expression, &temporaries);
-	for (std::size_t i = temporaries.size(); i != 0; --i)
-	{
-		const std::uint32_t action =
-			MakeTemporaryDestructorAction(temporaries[i - 1]);
-		if (action != kNoDumpEdge)
-		{
-			dump_.nodes[action].full_expression_staging = true;
-			dump_.Add(output_parent, action);
-		}
-	}
 }
 
 void SemanticAnalyzer::AppendUnwindDestructionActions(ScopeId scope,

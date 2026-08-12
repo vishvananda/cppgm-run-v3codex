@@ -54,7 +54,18 @@ protected:
 			action.binding == kNoBinding)
 			throw std::runtime_error("invalid constructor action");
 		const NodeChildren children = derived.Children(node);
-		if (action.trivial_special_member_action)
+		bool retained_empty_special_member = false;
+		if (action.trivial_special_member_action &&
+			derived.IsClassObjectType(action.operand_type))
+		{
+			const TypeRecord& object = derived.program_.types.Get(
+				derived.ExpressionObjectType(action.operand_type));
+			retained_empty_special_member =
+				derived.program_.entities[object.entity].empty_class &&
+				!derived.program_.entities[object.entity].trivial_destructor;
+		}
+		if (action.trivial_special_member_action &&
+			!retained_empty_special_member)
 		{
 			if (children.size() != 1 ||
 				!derived.IsClassObjectType(action.operand_type))
@@ -374,7 +385,9 @@ protected:
 			{
 				const TypeRecord& object = derived.program_.types.Get(
 					derived.ExpressionObjectType(action.type));
-				if (derived.program_.entities[object.entity].empty_class) return;
+				if (derived.program_.entities[object.entity].empty_class &&
+					derived.program_.entities[object.entity].trivial_destructor)
+					return;
 			}
 			LowerConstructorAction(value_node, destination);
 			return;

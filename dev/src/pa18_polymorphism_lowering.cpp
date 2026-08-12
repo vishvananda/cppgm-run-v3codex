@@ -32,7 +32,7 @@ PolymorphismLoweringState::PolymorphismLoweringState()
 	  eh_rethrow_symbol(kNoLowId), eh_throw_symbol(kNoLowId),
 	  eh_personality_symbol(kNoLowId),
 	  need_dynamic_cast(false), need_bad_cast(false), need_bad_typeid(false),
-	  need_exceptions(false), need_rethrow(false),
+	  need_exceptions(false), need_exception_handlers(false), need_rethrow(false),
 	  source_function_first(0)
 {
 }
@@ -98,6 +98,7 @@ private:
 		state_.need_bad_cast = false;
 		state_.need_bad_typeid = false;
 		state_.need_exceptions = false;
+		state_.need_exception_handlers = false;
 		state_.need_rethrow = false;
 		for (BindingId binding = 0; binding < program_.bindings.size(); ++binding)
 		{
@@ -252,6 +253,7 @@ private:
 			else if (record.kind == DUMP_HANDLER)
 			{
 				state_.need_exceptions = true;
+				state_.need_exception_handlers = true;
 				if (record.operand_type != kNoType)
 				{
 					const TypeId type = RttiType(record.operand_type);
@@ -674,6 +676,8 @@ private:
 				"__external_runtime___Unwind_Resume", "_Unwind_Resume",
 				LowVoid(), std::vector<LowType>(), true,
 				Symbol::RUNTIME_ROLE_EH_RESUME);
+			output_.symbols[state_.eh_resume_symbol].referenced =
+				state_.need_exception_handlers;
 			state_.eh_allocate_exception_symbol = AddExternalRuntime(
 				"__external_runtime____cxa_allocate_exception",
 				"__cxa_allocate_exception", LowPtr(),
@@ -683,10 +687,14 @@ private:
 				"__external_runtime____cxa_begin_catch", "__cxa_begin_catch",
 				LowPtr(), std::vector<LowType>{LowPtr()}, false,
 				Symbol::RUNTIME_ROLE_EH_BEGIN_CATCH);
+			output_.symbols[state_.eh_begin_catch_symbol].referenced =
+				state_.need_exception_handlers;
 			state_.eh_end_catch_symbol = AddExternalRuntime(
 				"__external_runtime____cxa_end_catch", "__cxa_end_catch",
 				LowVoid(), std::vector<LowType>(), false,
 				Symbol::RUNTIME_ROLE_EH_END_CATCH);
+			output_.symbols[state_.eh_end_catch_symbol].referenced =
+				state_.need_exception_handlers;
 			if (state_.need_rethrow)
 				state_.eh_rethrow_symbol = AddExternalRuntime(
 					"__external_runtime____cxa_rethrow", "__cxa_rethrow",

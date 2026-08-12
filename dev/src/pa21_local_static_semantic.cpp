@@ -242,7 +242,8 @@ void SemanticAnalyzer::ValidateConstexprClassDeclarations(
 void SemanticAnalyzer::AddLocalStaticObjectAction(std::uint32_t variable,
 	BindingId object, TypeId type, std::uint32_t initializer,
 	NameId source_file, std::uint32_t source_line,
-	std::uint32_t source_column, bool constant_initialized)
+	std::uint32_t source_column, std::uint32_t source_token_first,
+	std::uint32_t source_token_last, bool constant_initialized)
 {
 	if (current_function_context_ == kNoBinding)
 		throw std::logic_error("local static object has no function owner");
@@ -297,6 +298,7 @@ void SemanticAnalyzer::AddLocalStaticObjectAction(std::uint32_t variable,
 	local_static_objects_.push_back(LocalStaticObjectAction(object,
 		function, type, variable, initializer, destructor_action, ordinal,
 		source_file, source_line, source_column,
+		source_token_first, source_token_last,
 		constant_initialized, specialization_owned_recipe,
 		source_identity_presentation));
 }
@@ -305,6 +307,7 @@ void SemanticAnalyzer::RegisterVariableLifetimeAndStorage(ScopeId scope,
 	bool local, bool declaration_only, std::uint32_t variable,
 	BindingId object, TypeId type, NameId source_file,
 	std::uint32_t source_line, std::uint32_t source_column,
+	std::uint32_t source_token_first, std::uint32_t source_token_last,
 	bool constant_initialized)
 {
 	const StorageClass storage = program_->bindings[object].storage_class;
@@ -312,6 +315,15 @@ void SemanticAnalyzer::RegisterVariableLifetimeAndStorage(ScopeId scope,
 	{
 		if (dump_.nodes[variable].storage_size == 0)
 			AddLifetimeObligation(scope, object, type);
+		const EntityId entity = DestructedEntity(type);
+		if (entity != kNoEntity &&
+			!program_->entities[entity].trivial_destructor)
+		{
+			if (scope_nontrivial_object_lifetimes_.size() <= scope)
+				scope_nontrivial_object_lifetimes_.resize(
+					static_cast<std::size_t>(scope) + 1, 0);
+			++scope_nontrivial_object_lifetimes_[scope];
+		}
 		return;
 	}
 	if (local && storage == STORAGE_CLASS_STATIC)
@@ -320,7 +332,8 @@ void SemanticAnalyzer::RegisterVariableLifetimeAndStorage(ScopeId scope,
 		const std::uint32_t initializer = edge == kNoDumpEdge ?
 			kNoDumpEdge : dump_.edges[edge].child;
 		AddLocalStaticObjectAction(variable, object, type, initializer,
-			source_file, source_line, source_column, constant_initialized);
+			source_file, source_line, source_column,
+			source_token_first, source_token_last, constant_initialized);
 		return;
 	}
 	if (!local && !declaration_only)

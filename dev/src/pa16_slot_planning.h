@@ -167,6 +167,18 @@ protected:
 				!derived.UsesIndirectClassResult(record.type, record.binding))
 				(void)derived.EnsureGeneratedSlot(current, "tmpref",
 					derived.LowerStorageType(record.type));
+			if (record.kind == DUMP_CONDITIONAL_EXPRESSION &&
+				record.full_expression_staging &&
+				!derived.IsClassObjectType(record.type))
+			{
+				const LowType result = derived.LowerExpressionType(record.type);
+				if (result.kind != LOW_VOID)
+					(void)derived.EnsureGeneratedSlot(current,
+						(record.category == VALUE_LVALUE ||
+						 record.category == VALUE_XVALUE) ? "condaddr" : "cond",
+						(record.category == VALUE_LVALUE ||
+						 record.category == VALUE_XVALUE) ? LowPtr() : result);
+			}
 			const NodeChildren children = derived.Children(current);
 			if (variable_initializer)
 				PlanConstructorReferenceArgumentSlots(record, children);
@@ -203,7 +215,12 @@ protected:
 				!record.elided_temporary_storage &&
 				(record.argument_materialization ||
 				 preplan_standalone_discard ||
-				 (record.temporary_implicit_object && variable_initializer) ||
+					 (expression_arguments &&
+					  record.managed_full_expression_cleanup &&
+					  derived.IsClassObjectType(record.type)) ||
+					 (record.temporary_implicit_object &&
+					  (variable_initializer ||
+					   record.managed_full_expression_cleanup)) ||
 				 constructed_variable_temporary) &&
 				(variable_initializer || expression_arguments || union_argument ||
 				 record.discarded_materialization ||
@@ -216,7 +233,9 @@ protected:
 				const char* name = record.discarded_materialization ?
 					(temporary.kind == TYPE_ARRAY ? "discardarr" : "discard") :
 					record.argument_materialization ? "arg" :
-					constructed_variable_temporary ? "tmpobj" : "arg";
+					record.temporary_implicit_object ? "tmpobj" :
+					constructed_variable_temporary || expression_arguments ?
+						"tmpobj" : "arg";
 				(void)derived.EnsureGeneratedSlot(current, name,
 					derived.LowerStorageType(record.type));
 			}

@@ -704,7 +704,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 		if (spelling.compare(0, 11, "TT_LITERAL:") == 0)
 			spelling.erase(0, 11);
 		ExpressionInfo result;
-		if (spelling.find('"') != std::string::npos)
+		const std::size_t literal_prefix =
+			!spelling.empty() && spelling[0] == 'u' && spelling.size() > 1 &&
+			spelling[1] == '8' ? 2 :
+			!spelling.empty() && (spelling[0] == 'L' || spelling[0] == 'u' ||
+				spelling[0] == 'U') ? 1 : 0;
+		if (literal_prefix < spelling.size() &&
+			spelling[literal_prefix] == '"')
 		{
 			if (!spelling.empty() && spelling[0] == '"' &&
 				TryAnalyzeUserDefinedStringLiteral(
@@ -1142,6 +1148,15 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 			dump_.nodes[argument.node].variadic_class_argument = true;
 		}
 		dump_.Add(call, argument.node);
+		if (a < function_type.parameter_count &&
+			IsClassObjectType(parameters[a]) &&
+			argument.category == VALUE_PRVALUE)
+		{
+			const EntityId parameter_entity = EntityOf(parameters[a]);
+			if (parameter_entity != kNoEntity &&
+				!program_->entities[parameter_entity].trivial_destructor)
+				dump_.nodes[call].full_expression_staging = true;
+		}
 	}
 	for (std::size_t a = arguments.size();
 		a < function_type.parameter_count; ++a)
@@ -1153,11 +1168,16 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 			function.parameters[a].default_argument,
 			function.parameters[a].default_scope, parameters[a]);
 		argument = ApplyCallArgument(argument, parameters[a]);
-		dump_.nodes[argument.node].default_argument = true;
+		MarkDefaultArgumentSubtree(argument.node);
 		dump_.Add(call, argument.node);
 		constexpr_arguments.push_back(argument);
 	}
 	const EntityId result_entity = EntityOf(result_type);
+	const BindingId result_destructor = DestructorForType(result_type);
+	if (unevaluated_depth_ == 0 && result_destructor != kNoBinding &&
+		FunctionIsNonthrowing(selected) &&
+		!IsElidableAutomaticDestructor(result_destructor))
+		dump_.nodes[call].eager_full_expression_cleanup = true;
 	if (program_->bindings[emission_binding].closure_template_specialization &&
 		result_entity != kNoEntity &&
 		program_->entities[result_entity].indirect_class_value_abi)
@@ -1235,6 +1255,10 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 		   local_constant_initializer_depth_ != 0));
 	const bool demand_call = ShouldDemandResolvedCall(
 		selected, folded_call, compile_time_only_call);
+	if (demand_call && unevaluated_depth_ == 0 &&
+		GetFunction(selected).member_owner != kNoType &&
+		!GetFunction(selected).defined)
+		GetMutableFunction(selected).deferred = true;
 	if (resolved_call_demand_suppressed_depth_ != 0)
 		dump_.nodes[call].pending_runtime_call_demand = demand_call;
 	else if (demand_call) DemandFunction(selected);
@@ -2185,12 +2209,13 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		const NameId source_file = arena_->SourceLine(item) == 0 ? 0 : program_->names.Intern(arena_->SourceFile(item));
 		const bool control_dependent = local && has_initializer && HasControlDependentTemporary(initializer.node);
 		StageAutomaticInitializerException(runtime_initializer, variable, scope,
-			binding, parsed.type,
-			local && runtime_initializer != kNoDumpEdge);
+			binding, parsed.type, local && runtime_initializer != kNoDumpEdge);
 		RegisterVariableLifetimeAndStorage(scope, local, declaration_only,
 			variable, binding, parsed.type, source_file,
 			static_cast<std::uint32_t>(arena_->SourceLine(item)),
 			static_cast<std::uint32_t>(arena_->SourceColumn(item)),
+			static_cast<std::uint32_t>(arena_->TokenFirst(item)),
+			static_cast<std::uint32_t>(arena_->TokenLast(item)),
 			has_initializer && HasConstantInitializerFact(initializer));
 		if (local && has_initializer)
 		{
@@ -2217,13 +2242,17 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 				!dump_.nodes[variable].full_expression_staging)
 			{
 				const std::size_t edge_count = dump_.edges.size();
-				AppendFullExpressionDestructionActions(initializer.node, owner);
+				const bool static_storage = program_->bindings[binding].storage_class == STORAGE_CLASS_STATIC;
+				AppendFullExpressionDestructionActions(initializer.node, owner, static_storage);
 				if (control_dependent && dump_.edges.size() != edge_count &&
 					!InitializationActionsAreNonthrowing(initializer.node))
 				{
 					dump_.nodes[owner].full_expression_staging = true;
 					MarkFullExpressionCalls(initializer.node);
 				}
+				if (static_storage && !InitializationActionsAreNonthrowing(initializer.node))
+					StageExceptionalFullExpression(
+						initializer.node, owner, scope, true);
 			}
 		}
 	}

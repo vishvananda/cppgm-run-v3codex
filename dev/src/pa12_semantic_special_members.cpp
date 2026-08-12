@@ -888,6 +888,8 @@ void SemanticAnalyzer::AddSynthesizedConstructorBody(
 				{
 					selected = EnsureConstructorBaseEntry(selected);
 					dump_.nodes[step].selected_binding = selected;
+					if (!GetFunction(selected).defined)
+						GetMutableFunction(selected).deferred = true;
 					DemandFunction(selected);
 				}
 				dump_.Add(construction, step);
@@ -922,6 +924,8 @@ void SemanticAnalyzer::AddSynthesizedConstructorBody(
 					!GetFunction(selected).trivial_special_member)
 				{
 					dump_.nodes[step].selected_binding = selected;
+					if (!GetFunction(selected).defined)
+						GetMutableFunction(selected).deferred = true;
 					DemandFunction(selected);
 				}
 				dump_.Add(construction, step);
@@ -1026,6 +1030,8 @@ void SemanticAnalyzer::AddSynthesizedAssignmentBody(
 					DUMP_SPECIAL_MEMBER_SUBOBJECT_ACTION, base.type);
 				dump_.nodes[step].selected_binding = selected;
 				dump_.Add(assignment, step);
+				if (!GetFunction(selected).defined)
+					GetMutableFunction(selected).deferred = true;
 				DemandFunction(selected);
 			}
 		}
@@ -1071,7 +1077,11 @@ void SemanticAnalyzer::AddSynthesizedAssignmentBody(
 				dump_.Add(assignment, step);
 				if (selected != kNoBinding &&
 					!GetFunction(selected).trivial_special_member)
+				{
+					if (!GetFunction(selected).defined)
+						GetMutableFunction(selected).deferred = true;
 					DemandFunction(selected);
+				}
 			}
 	}
 	const std::uint32_t statement = MakeDump(DUMP_RETURN_STATEMENT);

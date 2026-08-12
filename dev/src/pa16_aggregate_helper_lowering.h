@@ -144,13 +144,29 @@ protected:
 				const BindingId constructor = helper.member_constructors[m];
 				if (m >= helper.parameter_member_count)
 				{
-					if (constructor != kNoBinding)
-						throw std::logic_error(
-							"omitted aggregate class member has no value plan");
 					const Operand object = derived.LoadStorage(
 						Operand(static_cast<SlotId>(0), LowPtr()), LowPtr());
 					const Operand destination =
 						derived.ProjectAggregateMember(object, member);
+					if (constructor != kNoBinding)
+					{
+						if (!helper.trivial_member_constructors[m])
+						{
+							Instruction call(Instruction::CALL);
+							call.type = LowVoid();
+							call.first = Operand(Operand::FUNCTION,
+								derived.function_symbols_[constructor], LowPtr());
+							CallArguments arguments;
+							CallArgumentFlags references;
+							arguments.Push(destination);
+							references.Push(0);
+							derived.output_.symbols[
+								derived.function_symbols_[constructor]].referenced = true;
+							derived.AttachCallArguments(&call, arguments, references);
+							derived.Emit(call);
+						}
+						continue;
+					}
 					if (derived.program_.bindings[member].bit_field)
 						derived.InitializeBitField(member,
 							Operand(0, derived.LowerExpressionType(

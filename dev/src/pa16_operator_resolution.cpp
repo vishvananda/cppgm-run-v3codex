@@ -1237,7 +1237,7 @@ ExpressionInfo SemanticAnalyzer::BuildConvertingArgument(
 			constructor.parameters[i].default_argument,
 			constructor.parameters[i].default_scope, parameters[i]);
 		value = ApplyCallArgument(value, parameters[i]);
-		dump_.nodes[value.node].default_argument = true;
+		MarkDefaultArgumentSubtree(value.node);
 		dump_.Add(action, value.node);
 		constexpr_arguments.push_back(value);
 	}

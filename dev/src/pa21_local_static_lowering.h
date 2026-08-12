@@ -69,6 +69,12 @@ protected:
 			name += object_name + "__source" +
 				HexLocalStaticSymbolComponent(source);
 		}
+		else if (presentation && !weak && action.initializer != kNoDumpEdge &&
+			derived.arena_.nodes[action.initializer].contains_temporary_object &&
+			action.source_token_last >= action.source_token_first)
+			name += object_name + "__tokens" +
+				std::to_string(action.source_token_first) + "_" +
+				std::to_string(action.source_token_last);
 		else name += "decl" + std::to_string(action.declaration_ordinal) +
 			"__" + object_name;
 		return name;
@@ -317,7 +323,8 @@ protected:
 	}
 
 	void LowerLocalStaticVariable(std::uint32_t action_index,
-		const DumpNode& record, const NodeChildren& children)
+		const DumpNode& record, const NodeChildren& children,
+		const NodeChildren* declaration_children = 0)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (action_index >= derived.graph_.local_static_objects.size() ||
@@ -332,6 +339,8 @@ protected:
 			derived.AddBlock(derived.NewLabel("local_static_ready"));
 		const BlockId initialize =
 			derived.AddBlock(derived.NewLabel("local_static_init"));
+		if (derived.full_expression_cleanup_active_)
+			derived.PauseFullExpressionCleanupSegment();
 		const Operand guard = derived.LoadStorage(
 			Operand(Operand::GLOBAL, guard_symbol, LowI64()), LowI64());
 		const Operand initialized = derived.Temp(LowI64());
@@ -353,8 +362,16 @@ protected:
 			 !derived.IsArrayType(record.type)))
 			retained_destination = derived.AddressOfStorage(derived.StorageFor(
 				record.binding, derived.LowerStorageType(record.type)));
-		derived.LowerVariableInitializationCore(
-			record, children, retained_destination);
+		if (declaration_children == 0 || declaration_children->size() <= 1)
+			derived.LowerVariableInitializationCore(
+				record, children, retained_destination);
+		else
+		{
+			derived.BeginFullExpressionCleanup(*declaration_children, 1, true);
+			derived.LowerVariableInitializationCore(
+				record, children, retained_destination);
+			derived.CompleteFullExpressionCleanup();
+		}
 		derived.lowering_namespace_object_ = previous_namespace_object;
 		Instruction mark(Instruction::STORE);
 		mark.type = LowI64();
