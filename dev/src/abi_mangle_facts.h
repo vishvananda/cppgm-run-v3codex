@@ -270,6 +270,9 @@ struct AbiFunctionTarget
   std::vector<AbiFunctionPathOperand> path_operands;
   std::vector<AbiType> signature_parameter_types;
   std::vector<std::string> namespace_qualifiers;
+  AbiType result_type;
+  bool has_result_type = false;
+  bool variadic = false;
 };
 
 struct AbiLocalContext

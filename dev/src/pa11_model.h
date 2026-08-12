@@ -354,7 +354,7 @@ struct EntityRecord
 	NameId name, identity_name;
 	ScopeId owner, member_scope;
 	EntityId direct_base, enclosing_class;
-	BindingId local_context;
+	BindingId local_context, lambda_call_operator;
 	TemplateArgumentListId template_argument_list;
 	std::uint32_t template_argument_begin, template_argument_count,
 		template_argument_pack_begin;

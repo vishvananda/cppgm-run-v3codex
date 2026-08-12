@@ -43,6 +43,11 @@ namespace
 
 using namespace pa11;
 
+std::string LambdaDiscriminator(std::uint32_t ordinal)
+{
+	return ordinal == 0 ? std::string() : std::to_string(ordinal - 1);
+}
+
 class AbiFactBuilder
 {
 	const pa11::Program& program_;
@@ -233,9 +238,98 @@ public:
 		target.qualified_name = program_.names.Get(
 			function.qualified_name != 0 ?
 				function.qualified_name : function.name);
+		const FunctionTemplateAbiRecipe* recipe = 0;
+		if (function.function_template_abi_recipe !=
+			kNoFunctionTemplateAbiRecipe)
+		{
+			if (function.function_template_abi_recipe >=
+				program_.function_template_abi_recipes.size())
+				throw std::logic_error(
+					"local ABI context template recipe is invalid");
+			recipe = &program_.function_template_abi_recipes[
+				function.function_template_abi_recipe];
+		}
+		if (function.template_argument_count != 0)
+		{
+			if (recipe == 0)
+				throw std::logic_error(
+					"function template specialization has no canonical recipe");
+			const std::size_t first = function.template_argument_begin;
+			const std::size_t count = function.template_argument_count;
+			if (first > program_.template_arguments.size() ||
+				count > program_.template_arguments.size() - first)
+				throw std::logic_error(
+					"local ABI context template arguments are invalid");
+			const std::size_t fixed = recipe &&
+				recipe->template_parameter_pack ?
+				recipe->template_parameter_count - 1 : count;
+			if (fixed > count)
+				throw std::logic_error(
+					"local ABI context template pack is invalid");
+			for (std::size_t i = 0; i < fixed; ++i)
+			{
+				AbiFunctionPathOperand argument;
+				argument.kind = ABI_FUNCTION_PATH_TEMPLATE_ARGUMENT;
+				argument.argument_ref = AddTemplateArgument(
+					first + i, &function, recipe);
+				target.path_operands.push_back(argument);
+			}
+			if (recipe && recipe->template_parameter_pack)
+			{
+				AbiFunctionPathOperand pack;
+				pack.kind = ABI_FUNCTION_PATH_TEMPLATE_ARGUMENT;
+				pack.argument_ref = AddTemplateArgumentPack(
+					first + fixed, count - fixed, &function, recipe);
+				target.path_operands.push_back(pack);
+			}
+			TypeId result = type.child;
+			const TypeRecord& recipe_type =
+				program_.types.Get(recipe->function_type);
+			if (UsesFunctionTemplateParameter(
+				recipe_type.child, function, *recipe))
+				result = recipe_type.child;
+			target.result_type = result == type.child ? MakeType(result) :
+				MakeType(result, &function, recipe);
+			target.has_result_type = true;
+		}
 		const TypeId* parameters = program_.types.Parameters(function.type);
+		const TypeRecord* recipe_type = recipe ?
+			&program_.types.Get(recipe->function_type) : 0;
+		const TypeId* recipe_parameters = recipe ?
+			program_.types.Parameters(recipe->function_type) : 0;
 		for (std::size_t i = 0; i < type.parameter_count; ++i)
-			target.signature_parameter_types.push_back(MakeType(parameters[i]));
+		{
+			TypeId parameter = parameters[i];
+			const FunctionTemplateAbiRecipe* parameter_recipe = 0;
+			bool pack_expansion = false;
+			if (recipe_type)
+			{
+				const std::size_t fixed = recipe->function_parameter_pack ?
+					recipe_type->parameter_count - 1 :
+					recipe_type->parameter_count;
+				const std::size_t source = i < fixed ? i : fixed;
+				if (source >= recipe_type->parameter_count)
+					throw std::logic_error(
+						"local ABI context parameter recipe is invalid");
+				pack_expansion = recipe->function_parameter_pack && i >= fixed;
+				if (pack_expansion || UsesFunctionTemplateParameter(
+					recipe_parameters[source], function, *recipe))
+				{
+					parameter = recipe_parameters[source];
+					parameter_recipe = recipe;
+				}
+			}
+			AbiType encoded = MakeFunctionTemplateType(
+				parameter, function, parameter_recipe);
+			if (pack_expansion)
+			{
+				AbiTypeModifier expansion;
+				expansion.kind = ABI_TYPE_PACK_EXPANSION;
+				encoded.modifiers.insert(encoded.modifiers.begin(), expansion);
+			}
+			target.signature_parameter_types.push_back(encoded);
+		}
+		target.variadic = type.variadic;
 		facts_.records.push_back(definition);
 		return id;
 	}
@@ -433,7 +527,21 @@ public:
 				{
 					result.kind = ABI_TYPE_LAMBDA_CLOSURE;
 					result.context_ref = AddLocalContext(entity.local_context);
-					result.discriminator = std::to_string(entity.lambda_ordinal);
+					result.discriminator =
+						LambdaDiscriminator(entity.lambda_ordinal);
+					if (entity.lambda_call_operator == kNoBinding ||
+						entity.lambda_call_operator >= program_.bindings.size())
+						throw std::logic_error(
+							"lambda ABI type has no call operator fact");
+					const BindingRecord& call =
+						program_.bindings[entity.lambda_call_operator];
+					const TypeRecord& call_type =
+						program_.types.Get(call.type);
+					const TypeId* parameters =
+						program_.types.Parameters(call.type);
+					for (std::size_t i = 0;
+						i < call_type.parameter_count; ++i)
+						result.types.push_back(MakeType(parameters[i]));
 				}
 				else
 				{
@@ -791,7 +899,7 @@ std::string MangleLambdaCallOperator(const pa11::Program& program,
 	{
 		function.kind = ABI_FUNCTION_TARGET_LAMBDA;
 		function.context_ref = facts.AddLocalContext(lambda.local_context);
-		function.discriminator = std::to_string(lambda.lambda_ordinal);
+		function.discriminator = LambdaDiscriminator(lambda.lambda_ordinal);
 	}
 	else
 	{

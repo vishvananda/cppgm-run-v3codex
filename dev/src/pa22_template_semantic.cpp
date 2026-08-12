@@ -1,6 +1,7 @@
 #include "pa12_semantic_detail.h"
 
 #include <algorithm>
+#include <cctype>
 #include <limits>
 #include <sstream>
 #include <stdexcept>
@@ -53,13 +54,67 @@ bool EquivalentAliasTemplateParameters(
 	return true;
 }
 
-std::string LambdaIdentityComponent(BindingId context,
+std::string SanitizeLambdaIdentity(const std::string& source)
+{
+	std::string result;
+	result.reserve(source.size());
+	for (std::size_t i = 0; i < source.size(); ++i)
+	{
+		const unsigned char value = static_cast<unsigned char>(source[i]);
+		result += std::isalnum(value) || value == '_' ?
+			static_cast<char>(value) : '_';
+	}
+	return result;
+}
+
+std::string LambdaTemplateArgumentIdentity(const Program& program,
+	const TemplateArgument& argument)
+{
+	if ((argument.kind == TEMPLATE_ARGUMENT_TYPE ||
+		 argument.kind == TEMPLATE_ARGUMENT_TEMPLATE) &&
+		argument.type != kNoType)
+		return SanitizeLambdaIdentity(program.RenderType(argument.type));
+	if (argument.value_binding != kNoBinding &&
+		argument.value_binding < program.bindings.size())
+	{
+		const BindingRecord& binding =
+			program.bindings[argument.value_binding];
+		return SanitizeLambdaIdentity(program.names.Get(
+			binding.qualified_name != 0 ? binding.qualified_name : binding.name));
+	}
+	return std::to_string(argument.value);
+}
+
+std::string LambdaContextIdentity(const Program& program, BindingId context)
+{
+	if (context == kNoBinding || context >= program.bindings.size())
+		throw std::logic_error("lambda context binding is invalid");
+	const BindingRecord& binding = program.bindings[context];
+	std::string result = SanitizeLambdaIdentity(program.names.Get(
+		binding.qualified_name != 0 ? binding.qualified_name : binding.name));
+	const std::size_t first = binding.template_argument_begin;
+	const std::size_t count = binding.template_argument_count;
+	if (count != 0 &&
+		(first > program.canonical_template_arguments.size() ||
+		 count > program.canonical_template_arguments.size() - first))
+		throw std::logic_error("lambda context template arguments are invalid");
+	for (std::size_t i = 0; i < count; ++i)
+	{
+		result += "__";
+		result += LambdaTemplateArgumentIdentity(
+			program, program.canonical_template_arguments[first + i]);
+	}
+	return result;
+}
+
+std::string LambdaIdentityComponent(const std::string& context,
 	std::size_t token_first, std::size_t token_last, std::uint32_t ordinal)
 {
-	std::ostringstream suffix;
-	suffix << "__lambda_f" << context << "_t" << token_first << '_'
-		<< token_last << "_n" << ordinal;
-	return suffix.str();
+	std::ostringstream result;
+	result << "__lambda_" << context << "_t" << token_first << '_'
+		<< token_last;
+	if (ordinal != 0) result << "_n" << ordinal;
+	return result.str();
 }
 
 }
@@ -271,7 +326,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 		NameId identity_leaf = 0;
 		if (enclosing != kNoBinding)
 		{
-			leaf_spelling = LambdaIdentityComponent(enclosing,
+			leaf_spelling = LambdaIdentityComponent(
+				LambdaContextIdentity(*program_, enclosing),
 				arena_->TokenFirst(node), arena_->TokenLast(node), ordinal);
 		}
 		else
@@ -281,7 +337,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 				"$_" + std::to_string(ordinal));
 		}
 		const NameId leaf = program_->names.Intern(leaf_spelling);
-		const NameId emission = EmissionName(namespace_owner, leaf);
+		const ScopeId identity_owner = enclosing == kNoBinding ?
+			namespace_owner : program_->bindings[enclosing].owner;
+		const NameId emission = EmissionName(identity_owner, leaf);
 		const EntityId entity = program_->NewEntity(emission, NAMED_CLASS, true,
 			kNoType, namespace_owner,
 			identity_leaf == 0 ? leaf : identity_leaf);
@@ -296,6 +354,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 			program_->names.Get(emission) + "::");
 		const ScopeId member_scope = NewScope(namespace_owner, SCOPE_CLASS,
 			leaf, member_prefix);
+		program_->SetScopeEmissionName(member_scope, emission);
 		program_->SetEntityScope(entity, member_scope);
 		program_->SetTypeName(member_scope, leaf, closure_type);
 		const BindingId injected = program_->AddBinding(member_scope,
@@ -395,6 +454,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 		BindingRecord& call_binding = program_->bindings[call_operator];
 		call_binding.member_owner = entity;
 		call_binding.access = ACCESS_PUBLIC;
+		closure.lambda_call_operator = call_operator;
 		FunctionInfo& call = GetMutableFunction(call_operator);
 		call.member_owner = closure_type;
 		call.lexical_access_function = enclosing;

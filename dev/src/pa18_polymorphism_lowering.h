@@ -57,6 +57,7 @@ struct PolymorphismLoweringState
 	bool need_bad_cast;
 	bool need_bad_typeid;
 	bool need_exceptions;
+	bool need_throw;
 	bool need_exception_handlers;
 	bool need_rethrow;
 	std::size_t source_function_first;

@@ -394,7 +394,9 @@ public:
       }
       if(!source.expression_ref.empty()) node.expression = resolve_expression_ref(source.expression_ref);
       if(!source.context_ref.empty()) node.context = strings.intern(source.context_ref);
-      if(!source.discriminator.empty()) node.discriminator = strings.intern(source.discriminator);
+      if(source.kind == ABI_TYPE_LAMBDA_CLOSURE ||
+         !source.discriminator.empty())
+        node.discriminator = strings.intern(source.discriminator);
       if(!source.substitution.empty()) node.substitution = strings.intern(source.substitution);
       node.index = source.index;
       node.bound_kind = source.array_bound.kind;
@@ -1432,11 +1434,13 @@ private:
     }
     parameters.insert(parameters.end(), facts.parameters.begin(), facts.parameters.end());
     encode_function_name_path(path, facts, template_arguments, parameters.size(), internal);
-    if(!template_arguments.empty() && !facts.result_types.empty()
+    if(!template_arguments.empty() &&
+       (target.has_result_type || !facts.result_types.empty())
        && !(facts.terminal && facts.terminal->kind == ABI_FUNCTION_RECORD_CONVERSION_TERMINAL)) {
-      encode_type(facts.result_types.front());
+      encode_type(target.has_result_type ?
+        graph_.resolve_type(target.result_type) : facts.result_types.front());
     }
-    encode_bare_parameters(parameters, facts.variadic);
+    encode_bare_parameters(parameters, target.variadic || facts.variadic);
   }
 
   void encode_function_name_path(size_t path, const FunctionFacts & facts,
@@ -1713,7 +1717,9 @@ private:
     const TypeNode stable = type;
     encode_local_prefix(graph_.strings.get(stable.context));
     if(stable.kind == ABI_TYPE_LAMBDA_CLOSURE) {
-      output_ += "UlvE" + graph_.strings.get(stable.discriminator) + '_';
+      output_ += "Ul";
+      encode_bare_parameters(stable.children, false);
+      output_ += 'E' + graph_.strings.get(stable.discriminator) + '_';
     } else {
       output_ += source_name(graph_.strings.get(stable.symbol))
                  + discriminator(graph_.strings.get(stable.discriminator));

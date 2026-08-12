@@ -20,49 +20,40 @@ whole-program retry, or external fallback.
 
 ## Current Failure Map
 
-The current result is **101/110**, and all earlier stages pass **3,607/3,607**.
+The current result is **109/110**, and the last earlier-stage report passes
+**3,607/3,607**.
 
 | Owner | Failing | Shared behavior |
 |---|---:|---|
-| PA12/PA17 conditional lifetime lowering | 1 | branch-owned conditional temporary cleanup |
-| lambda/template identity and RTTI presentation | 4 | stable closure specialization identity, EH fallback emission, ABI names |
-| object construction/access and cleanup | 2 | protected empty-base scope and polymorphic array-reference cleanup |
-| aggregate control flow | 1 | empty indirect result through `switch` |
-| typeid object conversion | 1 | cv/reference stripping without a spurious copy |
+| PA12/PA17 conditional lifetime lowering | 1 | a nonthrowing conditional initializer publishes branch identity but bypasses managed cleanup, so destruction occurs after the merge instead of only on the taken arm |
 
-## Next Substantial Checkpoint
+## Active Checkpoint
 
-Unify branch-owned conditional cleanup with subobject construction scope. PA26
-goal 5 and `spec.md` sections 2, 5, 6, 8, and 9 require PA12 to publish the
-selected constructor/destructor and branch owner once, PA16 to retain projected
-destinations, and PA17 to retire only the taken branch's actions. Data flows as
-canonical initializer/conditional facts -> projected construction actions ->
-branch-local LowIR cleanup. Expected work is O(expression nodes + emitted
-subobject/actions), with no lookup recovery or function rescans. Validate the
-conditional temporary, protected-base default constructor, and polymorphic
-array-reference cleanup failures, then both stage reports and the file audit.
+Finish conditional-initializer cleanup ownership. PA26 goal 5 and `spec.md`
+sections 4-6 and 9 require PA12 to mark a declaration managed whenever its
+initializer publishes a control-dependent destructor action; PA17 must consume
+the existing `(owner, child)` identity on the evaluated arm and retire it before
+the merge. Data flows as initializer temporary -> branch-owned destructor fact
+-> bounded branch index -> path-local typed cleanup. Expected work is O(nodes +
+temporary actions), with O(1) branch-key probes. Validate the remaining fixture,
+the conditional/short-circuit cleanup family, both stage reports, and the audit.
 
 ## Performance Evidence
 
-Current-binary five-run medians retain bounded cleanup work. `Queries` is the
-audited `enclosing_lifetime_queries` counter; `visits` and `NT` are temporary
-dependency and nonthrowing-action visits.
+Instrumented current-binary runs show identity and demand work bounded by the
+number of closures and specialization requests. Template-argument index probes
+equal list requests; RTTI lookup counts equal demand events rather than graph
+size. Times are representative single runs in milliseconds.
 
-| Witness | Nodes / queries / visits / NT | Instructions | Dispatch probes / entries | Typed storage | Semantic / lowering |
-|---|---:|---:|---:|---:|---:|
-| nested default argument | 99 / 3 / 88 / 25 | 134 | 9 / 9 | 38,343 B | 0.649 / 0.330 ms |
-| shared non-LIFO dispatch | 42 / 1 / 25 / 6 | 50 | 4 / 3 | 18,985 B | 0.438 / 0.252 ms |
-| guarded local static | 127 / 2 / 75 / 87 | 132 | 3 / 3 | 39,864 B | 0.723 / 0.346 ms |
+| Witness | Bytes / nodes | Lambda requests | Specializations (req/hit) / argument probes | RTTI demand/types | IR / storage | Semantic / lowering |
+|---|---:|---:|---:|---:|---:|---:|
+| one lambda RTTI | 262 / 45 | 1 | 0/0 / 0 | 1/1 | 17 / 9,482 B | 0.462 / 0.208 |
+| six member-template lambdas | 2,565 / 398 | 6 | 22/16 / 30 | 0/0 | 299 / 95,832 B | 2.912 / 1.395 |
+| captured template lambda RTTI | 233 / 33 | 1 | 2/1 / 3 | 2/1 | 17 / 9,038 B | 0.471 / 0.234 |
+| polymorphic array-reference specialization | 1,726 / 121 | 0 | 13/4 / 27 | 0/0 | 174 / 62,636 B | 1.763 / 0.680 |
 
-A nested-scope family holds one outer destructible object and adds `N` nested
-literal-initialized scalars. The pre-audit parent walk implies quadratic probes;
-the scope-prefix query and all checkpoint-owned counters remain proportional.
-
-| N | Old parent probes / queries | Nodes / visits | Instructions | Typed storage | Semantic / lowering |
-|---:|---:|---:|---:|---:|---:|
-| 32 | 562 / 33 | 140 / 65 | 37 | 14,112 B | 0.562 / 0.185 ms |
-| 128 | 8,386 / 129 | 524 / 257 | 133 | 47,808 B | 1.526 / 0.297 ms |
-| 512 | 131,842 / 513 | 2,060 / 1,025 | 517 | 182,592 B | 5.754 / 0.915 ms |
+Earlier nested-scope evidence remains linear through 512 scopes: 2,060 semantic
+nodes, 1,025 temporary visits, 517 instructions, and 513 O(1) lifetime queries.
 
 ## Completed Checkpoints
 
@@ -79,3 +70,5 @@ the scope-prefix query and all checkpoint-owned counters remain proportional.
 | Guard-edge full-expression cleanup | Typed logical facts, complete root guard/child identity, branch-local destruction, retained nested values, runtime fallback | +4; PA26 90/110; focused 4/4 plus ELF/template witnesses; through PA25 3,607/3,607; file/audit pass; both paths linear to 128 |
 | Construction and call-ABI ownership | Runtime/default initializer staging, member/array source handlers, transferred class parameters | +4; PA26 94/110; focused 5/5; through PA25 3,607/3,607; audit pass; corrected counters show arguments linear to 128 and array IR fixed through 2,048 |
 | Nested call and full-expression lifetime frontier | Evaluated member/special-member demand, default-subtree identity, eager typed regions, retained destinations, guarded-static and aggregate cleanup | +7; PA26 101/110; focused 7/7 and five ELF witnesses; through PA25 3,607/3,607; file/audit pass; O(1) scope-prefix queries through 512 |
+| Canonical lambda specialization identity | Source ranges, concrete context arguments, call signature, on-demand ABI/RTTI/EH facts | +4; PA26 105/110; focused 4/4 |
+| Construction, projected lifetime, and polymorphic template boundaries | Destination-side aggregate value-init, selected allocation copy, projected empty-chain destruction, ABI-shaped array/ref RTTI, managed polymorphic specialization cleanup | +4; PA26 109/110; focused 4/4; through PA25 3,607/3,607; audit pass |

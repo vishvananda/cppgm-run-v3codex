@@ -1286,7 +1286,6 @@ NodeId Parser::ParseExpression(int minimum_precedence)
 	}
 	return left;
 }
-
 NodeId Parser::ParseBracedInitList()
 {
 	if (!Match(OP_LBRACE)) return kNoNode;
@@ -1340,7 +1339,9 @@ NodeId Parser::ParsePrimaryExpression()
 	if (At(OP_LSQUARE))
 	{
 		const NodeId lambda = arena_.Make("lambda-expression");
-		arena_.Add(lambda, ParseLambdaIntroducer());
+		const NodeId introducer = ParseLambdaIntroducer();
+		arena_.Add(lambda, introducer);
+		std::size_t identity_last = arena_.TokenLast(introducer);
 		if (At(OP_LPAREN))
 		{
 			const NodeId declarator = arena_.Make("lambda-declarator");
@@ -1369,7 +1370,10 @@ NodeId Parser::ParsePrimaryExpression()
 				arena_.Add(declarator, trailing);
 			}
 			arena_.Add(lambda, declarator);
+			identity_last = position_;
 		}
+		arena_.SetTokenRange(
+			lambda, arena_.TokenLast(introducer), identity_last);
 		const NodeId body = ParseCompoundStatement();
 		if (body == kNoNode) throw Error("expected lambda body");
 		arena_.Add(lambda, body);
@@ -1437,7 +1441,6 @@ NodeId Parser::ParsePrimaryExpression()
 	}
 	return kNoNode;
 }
-
 NodeId Parser::ParsePostfixExpression() {
 	NodeId value = ParsePrimaryExpression();
 	if (value == kNoNode) return kNoNode;
@@ -1709,7 +1712,6 @@ NodeId Parser::ParseUnaryExpression()
 	if (global_scope) --position_;
 	return ParsePostfixExpression();
 }
-
 NodeId Parser::ParseInitializer()
 {
 	if (Match(OP_ASS))
@@ -1766,7 +1768,6 @@ NodeId Parser::ParseInitializer()
 	}
 	return kNoNode;
 }
-
 NodeId Parser::ParseCondition(SimpleTokenKind terminator)
 {
 	const NodeId condition = arena_.Make("condition");
@@ -1795,7 +1796,6 @@ NodeId Parser::ParseCondition(SimpleTokenKind terminator)
 	arena_.Add(condition, expression);
 	return condition;
 }
-
 NodeId Parser::ParseCompoundStatement()
 {
 	if (!Match(OP_LBRACE)) return kNoNode;

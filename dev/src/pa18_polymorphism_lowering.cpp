@@ -32,7 +32,8 @@ PolymorphismLoweringState::PolymorphismLoweringState()
 	  eh_rethrow_symbol(kNoLowId), eh_throw_symbol(kNoLowId),
 	  eh_personality_symbol(kNoLowId),
 	  need_dynamic_cast(false), need_bad_cast(false), need_bad_typeid(false),
-	  need_exceptions(false), need_exception_handlers(false), need_rethrow(false),
+	  need_exceptions(false), need_throw(false),
+	  need_exception_handlers(false), need_rethrow(false),
 	  source_function_first(0)
 {
 }
@@ -98,6 +99,7 @@ private:
 		state_.need_bad_cast = false;
 		state_.need_bad_typeid = false;
 		state_.need_exceptions = false;
+		state_.need_throw = false;
 		state_.need_exception_handlers = false;
 		state_.need_rethrow = false;
 		for (BindingId binding = 0; binding < program_.bindings.size(); ++binding)
@@ -240,6 +242,8 @@ private:
 			else if (record.kind == DUMP_THROW_EXPRESSION)
 			{
 				state_.need_exceptions = true;
+				state_.need_throw = state_.need_throw ||
+					record.operand_type != kNoType;
 				state_.need_rethrow = state_.need_rethrow ||
 					record.operand_type == kNoType;
 				if (record.operand_type != kNoType)
@@ -339,8 +343,42 @@ private:
 	std::string VtableName(EntityId entity) const
 	{
 		const std::string local = LocalTypeEncoding(entity);
-		return local.empty() ? ClassStem(entity) + "__vtable" :
-			"__vtable_type_" + local;
+		if (!local.empty()) return "__vtable_type_" + local;
+		if (UsesGenericTemplatePresentation(entity))
+			return "__vtable_type_" + TypeInfoEncoding(entity);
+		return ClassStem(entity) + "__vtable";
+	}
+
+	bool UsesGenericTemplatePresentation(EntityId entity) const
+	{
+		const EntityRecord& record = program_.entities[entity];
+		if (record.template_argument_count == 0) return false;
+		const std::size_t first = record.template_argument_begin;
+		if (first > program_.template_arguments.size() ||
+			record.template_argument_count >
+				program_.template_arguments.size() - first)
+			throw std::logic_error(
+				"RTTI template argument range is invalid");
+		for (std::size_t i = 0; i < record.template_argument_count; ++i)
+		{
+			const std::size_t argument = first + i;
+			if (argument < program_.canonical_template_arguments.size() &&
+				program_.canonical_template_arguments[argument].kind !=
+					TEMPLATE_ARGUMENT_TYPE)
+				continue;
+			TypeId type = program_.template_arguments[argument];
+			TypeRecord value = program_.types.Get(type);
+			while (value.kind == TYPE_QUALIFIED)
+			{
+				type = value.child;
+				value = program_.types.Get(type);
+			}
+			if (value.kind == TYPE_ARRAY ||
+				value.kind == TYPE_LVALUE_REFERENCE ||
+				value.kind == TYPE_RVALUE_REFERENCE)
+				return true;
+		}
+		return false;
 	}
 
 	std::string ClassFlavor(EntityId entity) const
@@ -455,7 +493,8 @@ private:
 		const EntityRecord& record = program_.entities[entity];
 		const std::string encoding = TypeInfoEncoding(entity);
 		const std::string local = LocalTypeEncoding(entity);
-		const bool generic_type = !local.empty() || !record.layout_complete;
+		const bool generic_type = !local.empty() || !record.layout_complete ||
+			UsesGenericTemplatePresentation(entity);
 		const std::string stem = !local.empty() ? local :
 			generic_type ? encoding : ClassStem(entity);
 		return (generic_type ? "type" : ClassFlavor(entity)) + "_" + stem;
@@ -562,7 +601,8 @@ private:
 				record.direct_base_offset != 0);
 			const std::string encoding = TypeInfoEncoding(entity);
 			const std::string local = LocalTypeEncoding(entity);
-			const bool generic_type = !local.empty() || !record.layout_complete;
+			const bool generic_type = !local.empty() || !record.layout_complete ||
+				UsesGenericTemplatePresentation(entity);
 			const std::string stem = !local.empty() ? local :
 				generic_type ? encoding : ClassStem(entity);
 			const std::string flavor = generic_type ?
@@ -678,11 +718,12 @@ private:
 				Symbol::RUNTIME_ROLE_EH_RESUME);
 			output_.symbols[state_.eh_resume_symbol].referenced =
 				state_.need_exception_handlers;
-			state_.eh_allocate_exception_symbol = AddExternalRuntime(
-				"__external_runtime____cxa_allocate_exception",
-				"__cxa_allocate_exception", LowPtr(),
-				std::vector<LowType>{LowI64()}, false,
-				Symbol::RUNTIME_ROLE_EH_ALLOCATE_EXCEPTION);
+			if (state_.need_throw)
+				state_.eh_allocate_exception_symbol = AddExternalRuntime(
+					"__external_runtime____cxa_allocate_exception",
+					"__cxa_allocate_exception", LowPtr(),
+					std::vector<LowType>{LowI64()}, false,
+					Symbol::RUNTIME_ROLE_EH_ALLOCATE_EXCEPTION);
 			state_.eh_begin_catch_symbol = AddExternalRuntime(
 				"__external_runtime____cxa_begin_catch", "__cxa_begin_catch",
 				LowPtr(), std::vector<LowType>{LowPtr()}, false,
@@ -700,10 +741,11 @@ private:
 					"__external_runtime____cxa_rethrow", "__cxa_rethrow",
 					LowVoid(), std::vector<LowType>(), true,
 					Symbol::RUNTIME_ROLE_EH_RETHROW);
-			state_.eh_throw_symbol = AddExternalRuntime(
-				"__external_runtime____cxa_throw", "__cxa_throw", LowVoid(),
-				std::vector<LowType>{LowPtr(), LowPtr(), LowPtr()}, true,
-				Symbol::RUNTIME_ROLE_EH_THROW);
+			if (state_.need_throw)
+				state_.eh_throw_symbol = AddExternalRuntime(
+					"__external_runtime____cxa_throw", "__cxa_throw", LowVoid(),
+					std::vector<LowType>{LowPtr(), LowPtr(), LowPtr()}, true,
+					Symbol::RUNTIME_ROLE_EH_THROW);
 			state_.eh_personality_symbol = AddExternalRuntime(
 				"__external_runtime____gxx_personality_v0",
 				"__gxx_personality_v0", LowVoid(), std::vector<LowType>(),

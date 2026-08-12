@@ -859,7 +859,9 @@ private:
 			{
 				Instruction instruction(Instruction::RETURN_VALUE);
 				instruction.type = result.result;
-				instruction.first = Operand(0, result.result);
+				instruction.first = result.result.kind == LOW_OBJECT ?
+					ZeroDirectReturnObject(node, result.result) :
+					Operand(0, result.result);
 				Emit(instruction);
 			}
 			else throw std::runtime_error("non-void function has no return");
@@ -877,9 +879,7 @@ private:
 		current_member_owner_ = kNoEntity;
 		return result;
 	}
-
 	Block& CurrentBlock() { return function_->blocks[current_block_]; }
-
 	std::string NewLabel(const std::string& prefix)
 	{
 		return prefix + "_" + std::to_string(++block_counter_);

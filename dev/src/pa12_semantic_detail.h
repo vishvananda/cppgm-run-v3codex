@@ -1297,7 +1297,7 @@ private:
 	bool CollectTemporaryObjectsImpl(std::uint32_t node,
 		std::vector<std::uint32_t>* temporaries, bool conditionally_evaluated,
 		std::uint32_t branch_owner, std::uint32_t branch_child,
-		std::size_t branch_depth);
+		std::size_t branch_depth, bool projected_subobject);
 	void MarkFullExpressionCalls(std::uint32_t node,
 		bool managed_cleanup = false, bool allocation_call = false);
 	void MarkDefaultArgumentSubtree(std::uint32_t node);

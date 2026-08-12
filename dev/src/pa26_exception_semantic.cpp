@@ -31,7 +31,8 @@ std::uint32_t SemanticAnalyzer::MakeTemporaryDestructorAction(
 		program_->entities[entity].template_argument_count != 0;
 	if (!preserve_nontrivial_action && !dependent_template_object &&
 		IsElidableAutomaticDestructor(destructor) &&
-		!dump_.nodes[temporary].control_dependent_temporary)
+		!dump_.nodes[temporary].control_dependent_temporary &&
+		!dump_.nodes[temporary].projected_subobject_temporary)
 		return kNoDumpEdge;
 	const std::uint32_t action = MakeDestructorAction(
 		type, destructor, kNoBinding);
@@ -119,12 +120,18 @@ void SemanticAnalyzer::AppendFullExpressionDestructionActions(
 			DestructedEntity(dump_.nodes[action].operand_type);
 		const bool specialization_action = action_entity != kNoEntity &&
 			program_->entities[action_entity].template_argument_count != 0;
-		const bool managed_action = managed_expression &&
+		const bool polymorphic_specialization_action =
+			specialization_action &&
+			program_->entities[action_entity].polymorphic_class;
+		const bool managed_action =
+			(managed_expression ||
+			 (polymorphic_specialization_action && potentially_throwing)) &&
 			!dump_.nodes[temporaries[i - 1]].initializer_list_backing;
 		dump_.nodes[action].full_expression_staging = true;
 		dump_.nodes[action].managed_full_expression_cleanup = managed_action;
 		dump_.nodes[action].eager_full_expression_cleanup =
-			(potentially_throwing && !specialization_action) ||
+			(potentially_throwing &&
+			 (!specialization_action || polymorphic_specialization_action)) ||
 			requested_explicit_cleanup;
 		dump_.Add(output_parent, action);
 		appended_managed_action = appended_managed_action || managed_action;
@@ -146,13 +153,13 @@ bool SemanticAnalyzer::CollectTemporaryObjects(std::uint32_t node,
 		direct_branch_root =
 			root.logical_operation != LOGICAL_OPERATION_NONE;
 	return CollectTemporaryObjectsImpl(node, temporaries, false,
-		direct_branch_root ? node : kNoDumpEdge, kNoDumpEdge, 0);
+		direct_branch_root ? node : kNoDumpEdge, kNoDumpEdge, 0, false);
 }
 
 bool SemanticAnalyzer::CollectTemporaryObjectsImpl(std::uint32_t node,
 	std::vector<std::uint32_t>* temporaries, bool conditionally_evaluated,
 	std::uint32_t branch_owner, std::uint32_t branch_child,
-	std::size_t branch_depth)
+	std::size_t branch_depth, bool projected_subobject)
 {
 	if (node == kNoDumpEdge || node >= dump_.nodes.size()) return false;
 	++temporary_dependency_visits_;
@@ -173,7 +180,10 @@ bool SemanticAnalyzer::CollectTemporaryObjectsImpl(std::uint32_t node,
 		control_dependent = CollectTemporaryObjectsImpl(child, temporaries,
 			conditionally_evaluated || branch_only, branch_owner,
 			branch_only && branch_depth == 0 ? child : branch_child,
-			branch_depth + (branch_only ? 1 : 0)) || control_dependent;
+			branch_depth + (branch_only ? 1 : 0),
+			projected_subobject ||
+				(record.kind == DUMP_CAST_EXPRESSION &&
+				 record.base_projection_count != 0)) || control_dependent;
 	}
 	if (record.kind == DUMP_TEMPORARY_OBJECT)
 	{
@@ -192,6 +202,7 @@ bool SemanticAnalyzer::CollectTemporaryObjectsImpl(std::uint32_t node,
 			}
 		}
 		if (control_dependent) record.control_dependent_temporary = true;
+		if (projected_subobject) record.projected_subobject_temporary = true;
 		temporaries->push_back(node);
 	}
 	return control_dependent;

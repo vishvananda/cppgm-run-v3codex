@@ -1594,6 +1594,26 @@ std::uint32_t SemanticAnalyzer::BuildAggregateConstructionAction(TypeId type,
 	std::vector<std::uint32_t> actions;
 	for (std::uint32_t edge = dump_.nodes[aggregate_list].first_edge; edge != kNoDumpEdge; edge = dump_.edges[edge].next)
 		actions.push_back(dump_.edges[edge].child);
+	bool complete_value_initialization = !actions.empty() &&
+		program_->entities[entity].trivial_default_constructor;
+	for (std::size_t i = 0; i < actions.size(); ++i)
+	{
+		const DumpNode& action = dump_.nodes[actions[i]];
+		const TypeKind member_kind = program_->types.Get(
+			program_->types.RemoveTopCv(action.type)).kind;
+		complete_value_initialization = complete_value_initialization &&
+			action.kind == DUMP_INITIALIZER_ACTION &&
+			action.value_initialization && member_kind != TYPE_ARRAY &&
+			!IsClassEntity(*program_, EntityOf(action.type));
+	}
+	if (complete_value_initialization)
+	{
+		const std::uint32_t constructor = BuildDefaultConstructorAction(
+			type, program_->entities[entity].owner);
+		dump_.nodes[constructor].value_initialization = true;
+		DemandDefaultConstructor(entity);
+		return constructor;
+	}
 	std::size_t parameter_member_count = 0;
 	for (std::size_t i = 0; i < actions.size(); ++i)
 	{
@@ -2175,7 +2195,21 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
 				list ? initializer : kNoNode,
 				expanded_constructor_arguments ?
 					&prepared_constructor_arguments : 0);
-			const DumpNode& action = dump_.nodes[construction];
+			DumpNode& action = dump_.nodes[construction];
+			if (action.binding != kNoBinding)
+			{
+				const FunctionInfo& selected_constructor =
+					GetFunction(action.binding);
+				if (action.trivial_special_member_action &&
+					(selected_constructor.special_member ==
+						SPECIAL_MEMBER_COPY_CONSTRUCTOR ||
+					 selected_constructor.special_member ==
+						SPECIAL_MEMBER_MOVE_CONSTRUCTOR))
+				{
+					action.trivial_special_member_action = false;
+					DemandFunction(action.binding);
+				}
+			}
 			if (action.binding != kNoBinding &&
 				GetFunction(action.binding).implicit_constructor &&
 				program_->entities[entity].trivial_default_constructor)
@@ -2879,6 +2913,11 @@ void SemanticAnalyzer::AddDestructorSubobjectActions(EntityId entity,
 	if (entity >= entity_data_members_.size())
 		throw std::logic_error("destructor is missing its member index");
 	if (program_->entities[entity].flavor == NAMED_UNION) return;
+	const BindingId complete_destructor = DestructorForType(
+		program_->entities[entity].type);
+	if (!program_->entities[entity].polymorphic_class &&
+		complete_destructor != kNoBinding &&
+		CanElideDestructorChain(complete_destructor)) return;
 	const std::vector<BindingId>& members = entity_data_members_[entity];
 	for (std::size_t i = members.size(); i != 0; --i)
 	{

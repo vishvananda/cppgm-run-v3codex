@@ -231,6 +231,7 @@ struct Instruction
 		LOAD,
 		STORE,
 		COPY_OBJECT,
+		ZERO_OBJECT,
 		INDEX,
 		UNARY,
 		BINARY,

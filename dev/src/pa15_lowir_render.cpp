@@ -236,6 +236,13 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 		output << ", ";
 		WriteOperand(output, instruction.second, program, function);
 		break;
+	case Instruction::ZERO_OBJECT:
+		if (instruction.type.kind != LOW_OBJECT)
+			throw std::logic_error("invalid PA26 zeroinit span");
+		output << "zeroinit " << instruction.type.width / 8 << 'x'
+			<< instruction.type.alignment << ' ';
+		WriteOperand(output, instruction.first, program, function);
+		break;
 	case Instruction::INDEX:
 		output << "%t" << instruction.dest << " = index ";
 		WriteType(output, instruction.type);

@@ -42,6 +42,40 @@ protected:
 		return direct_return_slot_;
 	}
 
+	Operand ZeroDirectReturnObject(std::uint32_t node, const LowType& type)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const Operand slot(EnsureDirectReturnSlot(node), type);
+		Instruction zero(Instruction::ZERO_OBJECT);
+		zero.type = type;
+		zero.first = slot;
+		derived.Emit(zero);
+		return slot;
+	}
+
+	void LowerConstructorReturn(std::uint32_t node, Operand* result_value)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const DumpNode& action = derived.arena_.nodes[node];
+		if (derived.current_indirect_result_)
+		{
+			const Operand destination(static_cast<ParameterId>(0), LowPtr());
+			if (action.value_initialization)
+				derived.EmitZeroInitialization(action.operand_type, destination);
+			derived.LowerConstructorAction(node, destination);
+			return;
+		}
+		if (derived.current_result_.kind != LOW_OBJECT)
+			throw std::logic_error(
+				"class construction return has a non-object boundary");
+		const Operand slot(EnsureDirectReturnSlot(node), derived.current_result_);
+		const Operand destination = derived.AddressOfStorage(slot);
+		if (action.value_initialization)
+			derived.EmitZeroInitialization(action.operand_type, destination);
+		derived.LowerConstructorAction(node, destination);
+		*result_value = slot;
+	}
+
 	void LowerReturn(const NodeChildren& children)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
@@ -189,25 +223,7 @@ protected:
 			}
 			else if (derived.arena_.nodes[children[0]].kind ==
 				DUMP_CONSTRUCTOR_ACTION)
-			{
-				if (derived.current_indirect_result_)
-				{
-					const Operand destination(
-						static_cast<ParameterId>(0), LowPtr());
-					derived.LowerConstructorAction(
-						children[0], destination);
-				}
-				else if (derived.current_result_.kind == LOW_OBJECT)
-				{
-					const Operand slot(EnsureDirectReturnSlot(children[0]),
-						derived.current_result_);
-					derived.LowerConstructorAction(children[0],
-						derived.AddressOfStorage(slot));
-					result_value = slot;
-				}
-				else throw std::logic_error(
-					"class construction return has a non-object boundary");
-			}
+				LowerConstructorReturn(children[0], &result_value);
 			else if (derived.current_result_.kind == LOW_VOID)
 				(void)derived.LowerValue(children[0]);
 			else if (derived.current_result_reference_)
