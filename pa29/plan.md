@@ -15,28 +15,21 @@ layout is O(output + relocations).
 
 | Group | Tests | Shared behavior and owner |
 | --- | ---: | --- |
-| Unsupported lowering | 35 | Object ABI, x87/f80, atomics, TLS, and varargs rejected before complete MIR/ELF; ABI classifier, selector, and encoder |
-| MIR conformance | 26 | Twelve exact and fourteen canonical allocation, frame, section, and ABI-shape mismatches; selector and allocator |
-| Runtime correctness | 4 | Aggregate register/stack chunks and by-value slot addresses; ABI classifier and call lowering |
+| Unsupported lowering | 23 | x87/f80, atomics, wide integers, TLS, and varargs rejected before complete MIR/ELF; selector and encoder |
+| MIR conformance | 21 | Five exact, thirteen canonical, and three behavioral allocation/frame/section shape mismatches; selector and allocator |
 
-One hundred eighteen of 183 tests now pass. The 65 failures are grouped by first stable
-owning boundary; unsupported forms fail normally rather than at the driver.
+One hundred thirty-nine of 183 tests now pass. The 44 failures are grouped by first
+stable owning boundary; no aggregate ABI runtime failures remain.
 
 ## Active Checkpoint
 
-Implement the SysV aggregate ABI and bulk-storage boundary. Typed LowIR object
-size/alignment and parameter pass metadata flow into a per-call chunk plan;
-`lowir_native` owns INTEGER/SSE/register/stack classification, indirect-result
-and by-address homes, object result aliases, and copy/zero address materialization.
-MIR frame facts then remain the sole input to serialization and native encoding.
-
-This applies `spec.md` sections 6-9 and PA29's typed-MIR, ABI, frame, and direct
-ELF requirements. Classification is O(parameters + bounded ABI chunks), frame
-growth is monotonic, and bulk operations are O(copied bytes) without whole-program
-retries or host-toolchain fallback. Validate strict object-call/result anchors,
-register/stack straddling, small and wide object results, pass-mode aliases,
-bulk-copy slot addresses, full PA29, through-PA28, and file audit. x87, atomics,
-TLS, and varargs remain separate later checkpoints.
+Implement the x87/f80 scalar boundary. Typed f80 facts flow from LowIR through
+dedicated frame-backed MIR operations and call/return classification; the selector
+owns conversions, arithmetic, comparisons, literals, and x87 stack balance while
+the encoder consumes the same MIR. Work remains O(instructions + operands), with
+bounded x87 stack state and monotonic frame allocation. Validate all f80 anchors,
+mixed GPR/f80 calls, full PA29, through-PA28, and file audit. Atomics, TLS,
+variadics, wide integers, and residual MIR allocation shape remain later checkpoints.
 
 ## Performance Evidence
 
@@ -71,6 +64,13 @@ RSS was 4,340/8,496/26,112 KiB, and executables were 1,659/15,159/75,159 bytes.
 Observed time, space, and output size scale approximately linearly; work is
 proportional to instructions, CFG edges, and newly propagated live facts.
 
+The aggregate ABI path was measured with 100/1,000/5,000 groups of a two-eightbyte
+return, straddling stack argument, and wrapper call: 1,002/10,002/50,002 LowIR
+instructions became 3,805/38,005/190,005 MIR instructions. Lowering took
+4.43/46.73/259.91 ms, wall time 0.01/0.10/0.62 s, RSS was
+6,716/31,968/143,336 KiB, and output was 31,151/310,151/1,550,151 bytes,
+showing approximately linear classification, lowering, and encoding.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result | Evidence |
@@ -80,3 +80,4 @@ proportional to instructions, CFG edges, and newly propagated live facts.
 | GPR ABI and stack calls | Complete | Parallel six-register moves, stack arguments/homes, call-safe values, stable temp homes, and slot-address rematerialization; strict stack-address anchor passes; full PA29 51/183 (+4); call-heavy scaling above |
 | Scalar f32/f64 and XMM ABI | Complete | SSE arithmetic, ordered/value comparisons, conversions, globals, direct/indirect mixed calls, returns, call-crossing homes, and exact decimal rounding; focused scalar anchors pass; full PA29 94/183 (+43); float-heavy scaling above |
 | CFG liveness and reactive spilling | Complete | Dirty predecessor worklist, call/fixed-clobber facts, incoming-register ownership, edge-safe reuse, stable GPR/XMM homes, variable indices, narrow reloads, and parallel XMM cycles; full PA29 118/183 (+24); 5,000-block scaling above |
+| SysV aggregate ABI and bulk storage | Complete | Typed one/two-eightbyte register classification, whole-object stack rollback, parameter/result homes and aliases, pass-mode address materialization, slot-safe bulk operations, and padded returns; all 19 focused object/pass-mode anchors pass; full PA29 139/183 (+21); aggregate scaling above |

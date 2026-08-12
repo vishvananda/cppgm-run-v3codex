@@ -1,10 +1,10 @@
 #include "lowir_native.h"
+#include "lowir_native_analysis.h"
 
 #include <algorithm>
 #include <cerrno>
 #include <climits>
 #include <cstdlib>
-#include <deque>
 #include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
@@ -18,6 +18,9 @@ using lowir_model::LowType;
 using lowir_model::Operand;
 using mir_model::MirInstruction;
 using mir_model::MirOperand;
+using analysis::FunctionFacts;
+using analysis::analyze_function;
+using analysis::register_mask;
 
 long long integer_literal(const std::string & text)
 {
@@ -205,197 +208,129 @@ struct ValueFact
   LowType type;
   bool parameter = false;
   bool frame_address = false;
+  bool has_frame_provenance = false;
+  long long frame_provenance = 0;
   std::string pointer_global_cell;
 };
 
-struct FunctionFacts
+struct FunctionSignature
 {
-  std::unordered_map<std::string, std::size_t> uses;
-  std::unordered_map<std::string, std::size_t> first_use;
-  std::unordered_map<std::string, std::size_t> last_use;
-  std::unordered_map<std::string, std::size_t> definition;
-  std::vector<std::size_t> calls;
-  std::unordered_set<std::string> live_across_call;
-  std::unordered_set<std::string> edge_live;
-  std::unordered_map<std::string, unsigned> live_across_clobbers;
+  const std::vector<lowir_model::LowirParameter> * params = 0;
+  const LowType * return_type = 0;
 };
 
-unsigned register_mask(X64Register reg)
+typedef std::unordered_map<std::string, FunctionSignature> FunctionSignatureIndex;
+
+enum AbiPieceLocation
 {
-  return 1u << static_cast<unsigned>(reg);
+  APL_GPR,
+  APL_XMM,
+  APL_STACK
+};
+
+struct AbiPiece
+{
+  std::size_t parameter_index = 0;
+  std::size_t chunk_offset = 0;
+  LowType type;
+  AbiPieceLocation location = APL_GPR;
+  X64Register reg = XR_RDI;
+  XmmRegister xmm = XMM_0;
+  std::size_t stack_offset = 0;
+};
+
+struct AbiPlan
+{
+  std::vector<AbiPiece> pieces;
+  std::size_t stack_bytes = 0;
+};
+
+const LowType & object_chunk_type(std::size_t remaining)
+{
+  if(remaining <= 1) return lowir_model::builtin_lowir_type(lowir_model::LTK_I8);
+  if(remaining <= 2) return lowir_model::builtin_lowir_type(lowir_model::LTK_I16);
+  if(remaining <= 4) return lowir_model::builtin_lowir_type(lowir_model::LTK_I32);
+  return lowir_model::builtin_lowir_type(lowir_model::LTK_I64);
 }
 
-unsigned instruction_clobber_mask(const Instruction & instruction)
+std::size_t frame_storage_size(const LowType & type)
 {
-  if(instruction.kind == Instruction::IK_CALL)
-    return register_mask(XR_RAX) | register_mask(XR_RCX) |
-      register_mask(XR_RDX) | register_mask(XR_RSI) |
-      register_mask(XR_RDI) | register_mask(XR_R8) |
-      register_mask(XR_R9) | register_mask(XR_R10) |
-      register_mask(XR_R11);
-  if(instruction.kind == Instruction::IK_COPYOBJ)
-    return register_mask(XR_RAX) | register_mask(XR_RCX) |
-      register_mask(XR_RSI) | register_mask(XR_RDI);
-  if(instruction.kind == Instruction::IK_ZEROINIT)
-    return register_mask(XR_RAX) | register_mask(XR_RCX) |
-      register_mask(XR_RDI);
-  if(instruction.kind == Instruction::IK_BINARY &&
-     (instruction.op == "div" || instruction.op == "mod" ||
-      instruction.op == "udiv" || instruction.op == "umod"))
-    return register_mask(XR_RAX) | register_mask(XR_RCX) |
-      register_mask(XR_RDX);
-  if(instruction.kind == Instruction::IK_BINARY &&
-     (instruction.op == "shl" || instruction.op == "shr" ||
-      instruction.op == "ushr"))
-    return register_mask(XR_RCX) | register_mask(XR_RDX);
-  if(instruction.kind == Instruction::IK_INDEX &&
-     instruction.second.kind != Operand::OP_INTEGER)
-    return register_mask(XR_RDX);
-  if(instruction.kind == Instruction::IK_CMP)
-    return register_mask(XR_RAX) | register_mask(XR_RDX);
-  if(instruction.kind == Instruction::IK_STORE)
-    return register_mask(XR_RAX) | register_mask(XR_RCX);
-  if(instruction.kind == Instruction::IK_LOAD)
-    return register_mask(XR_RCX);
-  if(instruction.kind == Instruction::IK_BRANCH)
-    return register_mask(XR_RAX);
-  if(instruction.kind == Instruction::IK_SWITCH)
-    return register_mask(XR_RAX) | register_mask(XR_RCX);
-  return 0;
+  if(type.kind != lowir_model::LTK_OBJECT) return type.storage_size;
+  if(type.storage_size <= 1) return 1;
+  if(type.storage_size <= 2) return 2;
+  if(type.storage_size <= 4) return 4;
+  if(type.storage_size <= 8) return 8;
+  return align_up(type.storage_size, 8);
 }
 
-void note_operand(FunctionFacts & facts, const Operand & operand, std::size_t position)
+X64Register abi_argument_register(std::size_t index)
 {
-  if(operand.kind != Operand::OP_TEMP) return;
-  ++facts.uses[operand.text];
-  if(!facts.first_use.count(operand.text)) facts.first_use[operand.text] = position;
-  facts.last_use[operand.text] = position;
+  static const X64Register registers[] = {
+    XR_RDI, XR_RSI, XR_RDX, XR_RCX, XR_R8, XR_R9
+  };
+  if(index >= sizeof(registers) / sizeof(registers[0]))
+    throw std::runtime_error("SysV ABI has six INTEGER argument registers");
+  return registers[index];
 }
 
-void note_instruction_operands(FunctionFacts & facts,
-                               const Instruction & instruction,
-                               std::size_t position)
+AbiPlan classify_abi(const std::vector<lowir_model::LowirParameter> & parameters)
 {
-  note_operand(facts, instruction.first, position);
-  note_operand(facts, instruction.second, position);
-  note_operand(facts, instruction.third, position);
-  for(std::size_t i = 0; i < instruction.args.size(); ++i)
-    note_operand(facts, instruction.args[i], position);
-}
-
-FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
-{
-  FunctionFacts facts;
-  std::size_t position = 0;
-  for(std::size_t i = 0; i < function.params.size(); ++i)
-    facts.definition[function.params[i].name] = 0;
-  for(std::size_t i = 0; i < function.blocks.size(); ++i) {
-    for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j, ++position) {
-      const Instruction & instruction = function.blocks[i].instructions[j];
-      note_instruction_operands(facts, instruction, position);
-      if(!instruction.dest.empty()) facts.definition[instruction.dest] = position;
-      if(instruction.kind == Instruction::IK_CALL) facts.calls.push_back(position);
+  AbiPlan plan;
+  std::size_t gpr_index = 0;
+  std::size_t xmm_index = 0;
+  std::size_t stack_offset = 0;
+  for(std::size_t i = 0; i < parameters.size(); ++i) {
+    const LowType & type = parameters[i].type;
+    if(type.kind == lowir_model::LTK_OBJECT) {
+      const std::size_t chunks = (type.storage_size + 7) / 8;
+      const std::size_t available_gprs = gpr_index < 6 ? 6 - gpr_index : 0;
+      const bool in_registers = type.storage_size <= 16 && chunks <= available_gprs;
+      if(in_registers) {
+        for(std::size_t chunk = 0; chunk < chunks; ++chunk) {
+          AbiPiece piece;
+          piece.parameter_index = i;
+          piece.chunk_offset = chunk * 8;
+          piece.type = object_chunk_type(type.storage_size - piece.chunk_offset);
+          piece.location = APL_GPR;
+          piece.reg = abi_argument_register(gpr_index++);
+          plan.pieces.push_back(piece);
+        }
+      } else {
+        const std::size_t stack_alignment = std::min<std::size_t>(
+          16, std::max<std::size_t>(8, type.alignment));
+        stack_offset = align_up(stack_offset, stack_alignment);
+        for(std::size_t chunk = 0; chunk < chunks; ++chunk) {
+          AbiPiece piece;
+          piece.parameter_index = i;
+          piece.chunk_offset = chunk * 8;
+          piece.type = object_chunk_type(type.storage_size - piece.chunk_offset);
+          piece.location = APL_STACK;
+          piece.stack_offset = stack_offset + piece.chunk_offset;
+          plan.pieces.push_back(piece);
+        }
+        stack_offset += align_up(type.storage_size, 8);
+      }
+      continue;
     }
+    AbiPiece piece;
+    piece.parameter_index = i;
+    piece.type = type;
+    if(is_scalar_float(type) && xmm_index < 8) {
+      piece.location = APL_XMM;
+      piece.xmm = static_cast<XmmRegister>(xmm_index++);
+    } else if(!is_scalar_float(type) && gpr_index < 6) {
+      piece.location = APL_GPR;
+      piece.reg = abi_argument_register(gpr_index++);
+    } else {
+      piece.location = APL_STACK;
+      stack_offset = align_up(stack_offset, 8);
+      piece.stack_offset = stack_offset;
+      stack_offset += 8;
+    }
+    plan.pieces.push_back(piece);
   }
-
-  typedef std::unordered_set<std::string> ValueSet;
-  const std::size_t block_count = function.blocks.size();
-  std::vector<ValueSet> block_use(block_count);
-  std::vector<ValueSet> block_def(block_count);
-  std::vector<ValueSet> live_in(block_count);
-  std::vector<ValueSet> live_out(block_count);
-  std::vector<std::vector<std::size_t> > successors(block_count);
-  std::vector<std::vector<std::size_t> > predecessors(block_count);
-  std::unordered_map<std::string, std::size_t> block_index;
-  for(std::size_t i = 0; i < block_count; ++i)
-    block_index[function.blocks[i].label] = i;
-
-  for(std::size_t i = 0; i < block_count; ++i) {
-    for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
-      const Instruction & instruction = function.blocks[i].instructions[j];
-      const Operand * fixed[] = {
-        &instruction.first, &instruction.second, &instruction.third
-      };
-      for(std::size_t k = 0; k < sizeof(fixed) / sizeof(fixed[0]); ++k)
-        if(fixed[k]->kind == Operand::OP_TEMP &&
-           !block_def[i].count(fixed[k]->text))
-          block_use[i].insert(fixed[k]->text);
-      for(std::size_t k = 0; k < instruction.args.size(); ++k)
-        if(instruction.args[k].kind == Operand::OP_TEMP &&
-           !block_def[i].count(instruction.args[k].text))
-          block_use[i].insert(instruction.args[k].text);
-      if(!instruction.dest.empty()) block_def[i].insert(instruction.dest);
-    }
-    if(function.blocks[i].instructions.empty()) continue;
-    const Instruction & terminal = function.blocks[i].instructions.back();
-    std::vector<std::string> targets;
-    if(terminal.kind == Instruction::IK_JUMP) targets.push_back(terminal.first.text);
-    else if(terminal.kind == Instruction::IK_BRANCH) {
-      targets.push_back(terminal.second.text);
-      targets.push_back(terminal.third.text);
-    } else if(terminal.kind == Instruction::IK_SWITCH) {
-      targets.push_back(terminal.second.text);
-      for(std::size_t k = 1; k < terminal.args.size(); k += 2)
-        targets.push_back(terminal.args[k].text);
-    }
-    for(std::size_t j = 0; j < targets.size(); ++j) {
-      const std::unordered_map<std::string, std::size_t>::const_iterator found =
-        block_index.find(targets[j]);
-      if(found == block_index.end()) continue;
-      successors[i].push_back(found->second);
-      predecessors[found->second].push_back(i);
-    }
-  }
-
-  std::deque<std::size_t> worklist;
-  std::vector<bool> queued(block_count, true);
-  for(std::size_t i = 0; i < block_count; ++i) worklist.push_back(i);
-  while(!worklist.empty()) {
-    const std::size_t block = worklist.front();
-    worklist.pop_front();
-    queued[block] = false;
-    ValueSet new_out;
-    for(std::size_t i = 0; i < successors[block].size(); ++i)
-      new_out.insert(live_in[successors[block][i]].begin(),
-                     live_in[successors[block][i]].end());
-    ValueSet new_in = block_use[block];
-    for(ValueSet::const_iterator value = new_out.begin(); value != new_out.end(); ++value)
-      if(!block_def[block].count(*value)) new_in.insert(*value);
-    if(new_out == live_out[block] && new_in == live_in[block]) continue;
-    live_out[block].swap(new_out);
-    live_in[block].swap(new_in);
-    for(std::size_t i = 0; i < predecessors[block].size(); ++i) {
-      const std::size_t predecessor = predecessors[block][i];
-      if(queued[predecessor]) continue;
-      queued[predecessor] = true;
-      worklist.push_back(predecessor);
-    }
-  }
-
-  for(std::size_t i = 0; i < block_count; ++i) {
-    facts.edge_live.insert(live_in[i].begin(), live_in[i].end());
-    facts.edge_live.insert(live_out[i].begin(), live_out[i].end());
-    ValueSet live = live_out[i];
-    for(std::size_t j = function.blocks[i].instructions.size(); j != 0; --j) {
-      const Instruction & instruction = function.blocks[i].instructions[j - 1];
-      if(!instruction.dest.empty()) live.erase(instruction.dest);
-      const unsigned clobbers = instruction_clobber_mask(instruction);
-      if(clobbers)
-        for(ValueSet::const_iterator value = live.begin(); value != live.end(); ++value)
-          facts.live_across_clobbers[*value] |= clobbers;
-      if(instruction.kind == Instruction::IK_CALL)
-        facts.live_across_call.insert(live.begin(), live.end());
-      const Operand * fixed[] = {
-        &instruction.first, &instruction.second, &instruction.third
-      };
-      for(std::size_t k = 0; k < sizeof(fixed) / sizeof(fixed[0]); ++k)
-        if(fixed[k]->kind == Operand::OP_TEMP) live.insert(fixed[k]->text);
-      for(std::size_t k = 0; k < instruction.args.size(); ++k)
-        if(instruction.args[k].kind == Operand::OP_TEMP)
-          live.insert(instruction.args[k].text);
-    }
-  }
-  return facts;
+  plan.stack_bytes = align_up(stack_offset, 16);
+  return plan;
 }
 
 class RegisterPool
@@ -508,12 +443,14 @@ class FunctionLowerer
 {
 public:
   FunctionLowerer(const lowir_model::LowirFunction & source,
-                  const std::unordered_set<std::string> & pointer_globals)
-    : source_(source), pointer_globals_(pointer_globals),
+                  const std::unordered_set<std::string> & pointer_globals,
+                  const FunctionSignatureIndex & signatures)
+    : source_(source), pointer_globals_(pointer_globals), signatures_(signatures),
       facts_(analyze_function(source)), position_(0)
   {
     target_.name = source.name;
     target_.return_type = source.return_type.text;
+    discover_parameter_slot_aliases();
     plan_slots();
     bind_parameters();
   }
@@ -531,6 +468,11 @@ public:
     }
     target_.callee_saved_regs = registers_.preserves();
     target_.scratch_bytes = uses_scalar_float_ ? 48 : 0;
+    std::size_t direct_parameter_bytes = 0;
+    for(std::size_t i = 0; i < source_.params.size(); ++i)
+      if(source_.params[i].metadata.passing == lowir_model::PPM_DIRECT)
+        direct_parameter_bytes += source_.params[i].type.kind == lowir_model::LTK_OBJECT ?
+          align_up(source_.params[i].type.storage_size, 8) : 8;
     if(uses_scalar_float_) {
       const std::size_t float_frame_bytes = source_.params.empty() ? frame_bytes_ :
         std::max<std::size_t>(frame_bytes_, 16);
@@ -539,19 +481,23 @@ public:
     } else
       target_.stack_size = align_up(
         std::max(std::max(target_.callee_saved_regs.size() * 8,
-                          source_.params.size() * 8), frame_bytes_), 16);
+                          direct_parameter_bytes), frame_bytes_), 16);
     return target_;
   }
 
 private:
   const lowir_model::LowirFunction & source_;
   const std::unordered_set<std::string> & pointer_globals_;
+  const FunctionSignatureIndex & signatures_;
   FunctionFacts facts_;
   mir_model::MirFunction target_;
   RegisterPool registers_;
   XmmPool xmms_;
   std::unordered_map<std::string, ValueFact> values_;
   std::unordered_map<std::string, long long> slot_offsets_;
+  std::unordered_map<std::string, LowType> slot_types_;
+  std::unordered_map<std::string, std::string> parameter_slot_aliases_;
+  std::unordered_set<std::string> discarded_slots_;
   std::unordered_map<std::string, long long> spill_offsets_;
   std::vector<MirInstruction> parameter_moves_;
   const Instruction * active_instruction_ = 0;
@@ -567,7 +513,7 @@ private:
                                    const LowType & type)
   {
     frame_bytes_ = align_up(frame_bytes_, type.alignment);
-    frame_bytes_ += type.storage_size;
+    frame_bytes_ += frame_storage_size(type);
     mir_model::MirFrameBinding binding;
     binding.kind = kind;
     binding.name = name;
@@ -577,11 +523,76 @@ private:
     return binding.offset;
   }
 
+  void discover_parameter_slot_aliases()
+  {
+    for(std::size_t p = 0; p < source_.params.size(); ++p) {
+      const lowir_model::LowirParameter & parameter = source_.params[p];
+      if(parameter.type.kind != lowir_model::LTK_OBJECT) continue;
+      for(std::size_t s = 0; s < source_.slots.size(); ++s) {
+        const std::string & slot_name = source_.slots[s].first;
+        if(!lowir_model::same_lowir_type(parameter.type, source_.slots[s].second) ||
+           parameter.name.size() < 2 || slot_name.size() < 2 ||
+           parameter.name.substr(1) != slot_name.substr(1)) continue;
+        bool found_copy = false;
+        bool slot_seen = false;
+        for(std::size_t b = 0; b < source_.blocks.size() && !found_copy; ++b) {
+          const std::vector<Instruction> & instructions = source_.blocks[b].instructions;
+          for(std::size_t i = 0; i < instructions.size(); ++i) {
+            const Instruction & current = instructions[i];
+            const bool mentions_slot =
+              (current.first.kind == Operand::OP_SLOT && current.first.text == slot_name) ||
+              (current.second.kind == Operand::OP_SLOT && current.second.text == slot_name) ||
+              (current.third.kind == Operand::OP_SLOT && current.third.text == slot_name);
+            if(!mentions_slot) continue;
+            if(slot_seen || current.kind != Instruction::IK_ADDR ||
+               i + 1 >= instructions.size()) break;
+            slot_seen = true;
+            const Instruction & copy = instructions[i + 1];
+            found_copy = copy.kind == Instruction::IK_COPYOBJ &&
+              copy.first.kind == Operand::OP_TEMP && copy.first.text == parameter.name &&
+              copy.second.kind == Operand::OP_TEMP && copy.second.text == current.dest &&
+              copy.byte_count == parameter.type.storage_size;
+            break;
+          }
+        }
+        if(found_copy) parameter_slot_aliases_[slot_name] = parameter.name;
+      }
+    }
+  }
+
   void plan_slots()
   {
     for(std::size_t i = 0; i < source_.slots.size(); ++i) {
       const std::string & name = source_.slots[i].first;
       const LowType & type = source_.slots[i].second;
+      slot_types_[name] = type;
+      if(parameter_slot_aliases_.count(name)) continue;
+      bool written = false;
+      bool observed = false;
+      for(std::size_t b = 0; b < source_.blocks.size(); ++b)
+        for(std::size_t j = 0; j < source_.blocks[b].instructions.size(); ++j) {
+          const Instruction & instruction = source_.blocks[b].instructions[j];
+          const bool first = instruction.first.kind == Operand::OP_SLOT &&
+            instruction.first.text == name;
+          const bool second = instruction.second.kind == Operand::OP_SLOT &&
+            instruction.second.text == name;
+          const bool third = instruction.third.kind == Operand::OP_SLOT &&
+            instruction.third.text == name;
+          bool argument = false;
+          for(std::size_t a = 0; a < instruction.args.size(); ++a)
+            if(instruction.args[a].kind == Operand::OP_SLOT &&
+               instruction.args[a].text == name) argument = true;
+          if(instruction.kind == Instruction::IK_STORE && second && !first && !third)
+            written = true;
+          else if(first || second || third || argument)
+            observed = true;
+        }
+      if(written && !observed) {
+        discarded_slots_.insert(name);
+        frame_bytes_ = align_up(frame_bytes_, type.alignment);
+        frame_bytes_ += frame_storage_size(type);
+        continue;
+      }
       slot_offsets_[name] = allocate_frame_binding(
         mir_model::MirFrameBinding::FB_SLOT, name, type);
     }
@@ -589,12 +600,7 @@ private:
 
   static X64Register argument_register(std::size_t index)
   {
-    static const X64Register registers[] = {
-      XR_RDI, XR_RSI, XR_RDX, XR_RCX, XR_R8, XR_R9
-    };
-    if(index >= sizeof(registers) / sizeof(registers[0]))
-      throw std::runtime_error("foundation ABI supports six register arguments");
-    return registers[index];
+    return abi_argument_register(index);
   }
 
   bool crosses_call(const std::string & name) const
@@ -681,8 +687,72 @@ private:
                             gpr_parameter_moves.begin(), gpr_parameter_moves.end());
   }
 
+  void bind_aggregate_parameters()
+  {
+    const AbiPlan plan = classify_abi(source_.params);
+    std::vector<long long> homes(source_.params.size(), 0);
+    for(std::size_t i = 0; i < source_.params.size(); ++i) {
+      const lowir_model::LowirParameter & parameter = source_.params[i];
+      homes[i] = allocate_frame_binding(
+        mir_model::MirFrameBinding::FB_PARAM_SLOT, parameter.name, parameter.type);
+      ValueFact value;
+      value.type = parameter.type;
+      value.parameter = true;
+      value.location = frame_operand(homes[i]);
+      if(parameter.type.kind == lowir_model::LTK_OBJECT) {
+        value.frame_address = true;
+        value.has_frame_provenance = true;
+        value.frame_provenance = homes[i];
+      }
+      values_[parameter.name] = value;
+      for(std::unordered_map<std::string, std::string>::const_iterator alias =
+            parameter_slot_aliases_.begin(); alias != parameter_slot_aliases_.end(); ++alias)
+        if(alias->second == parameter.name) slot_offsets_[alias->first] = homes[i];
+    }
+    for(std::size_t i = 0; i < plan.pieces.size(); ++i) {
+      const AbiPiece & piece = plan.pieces[i];
+      const lowir_model::LowirParameter & parameter =
+        source_.params[piece.parameter_index];
+      mir_model::MirParamBinding binding;
+      binding.name = parameter.name;
+      binding.type = parameter.type.kind == lowir_model::LTK_OBJECT ?
+        piece.type.text : parameter.type.text;
+      binding.chunk_offset = static_cast<long long>(piece.chunk_offset);
+      const MirOperand home = frame_operand(
+        homes[piece.parameter_index] + static_cast<long long>(piece.chunk_offset));
+      if(piece.location == APL_GPR) {
+        binding.location = mir_model::MirParamBinding::PL_REG;
+        binding.reg = piece.reg;
+        append_store(parameter_moves_, home, reg_operand(piece.reg), piece.type.text);
+      } else if(piece.location == APL_XMM) {
+        binding.location = mir_model::MirParamBinding::PL_XMM;
+        binding.xmm = piece.xmm;
+        uses_scalar_float_ = true;
+        append_float_move(parameter_moves_, home, xmm_operand(piece.xmm), piece.type.text);
+      } else {
+        binding.location = mir_model::MirParamBinding::PL_STACK;
+        binding.stack_offset = 16 + static_cast<long long>(piece.stack_offset);
+        if(is_scalar_float(piece.type)) {
+          uses_scalar_float_ = true;
+          append_float_move(parameter_moves_, home,
+                            frame_operand(binding.stack_offset), piece.type.text);
+        } else {
+          append_load(parameter_moves_, reg_operand(XR_RAX),
+                      frame_operand(binding.stack_offset), piece.type.text);
+          append_store(parameter_moves_, home, reg_operand(XR_RAX), piece.type.text);
+        }
+      }
+      target_.params.push_back(binding);
+    }
+  }
+
   void bind_parameters()
   {
+    for(std::size_t i = 0; i < source_.params.size(); ++i) {
+      if(source_.params[i].type.kind != lowir_model::LTK_OBJECT) continue;
+      bind_aggregate_parameters();
+      return;
+    }
     for(std::size_t i = 0; i < source_.params.size(); ++i) {
       if(!is_scalar_float(source_.params[i].type)) continue;
       bind_mixed_parameters();
@@ -740,6 +810,11 @@ private:
         append_store(parameter_moves_, frame_operand(home), reg_operand(binding.reg),
                      parameter.type.text);
         value.location = frame_operand(home);
+      } else if(!wide_gpr_boundary &&
+                parameter.metadata.passing != lowir_model::PPM_DIRECT && uses) {
+        const X64Register destination = registers_.allocate(crosses_call(parameter.name));
+        value.location = reg_operand(destination);
+        append_move(parameter_moves_, value.location, reg_operand(binding.reg));
       } else if(!wide_gpr_boundary &&
                 crosses_register_clobber(parameter.name, binding.reg)) {
         const X64Register destination = registers_.allocate(crosses_call(parameter.name));
@@ -815,6 +890,41 @@ private:
       branch.first.text == unary.dest;
   }
 
+  bool result_is_next_call_address_argument(const lowir_model::LowirBlock & block,
+                                            std::size_t instruction_index,
+                                            const Instruction & producer) const
+  {
+    if(instruction_index + 1 >= block.instructions.size() ||
+       producer.type.kind == lowir_model::LTK_PTR) return false;
+    const Instruction & call = block.instructions[instruction_index + 1];
+    if(call.kind != Instruction::IK_CALL) return false;
+    std::vector<lowir_model::LowirParameter> parameters;
+    if(call.has_call_signature) parameters = call.call_params;
+    else if(call.first.kind == Operand::OP_GLOBAL) {
+      const FunctionSignatureIndex::const_iterator found = signatures_.find(call.first.text);
+      if(found != signatures_.end() && found->second.params)
+        parameters = *found->second.params;
+    }
+    for(std::size_t i = 0; i < call.args.size() && i < parameters.size(); ++i)
+      if(call.args[i].kind == Operand::OP_TEMP &&
+         call.args[i].text == producer.dest &&
+         parameters[i].metadata.passing != lowir_model::PPM_DIRECT)
+        return true;
+    return false;
+  }
+
+  bool result_is_immediately_stored(const lowir_model::LowirBlock & block,
+                                    std::size_t instruction_index,
+                                    const std::string & destination) const
+  {
+    if(instruction_index + 1 >= block.instructions.size() ||
+       facts_.uses.find(destination) == facts_.uses.end() ||
+       facts_.uses.find(destination)->second != 1) return false;
+    const Instruction & store = block.instructions[instruction_index + 1];
+    return store.kind == Instruction::IK_STORE &&
+      store.first.kind == Operand::OP_TEMP && store.first.text == destination;
+  }
+
   bool address_is_immediately_loaded(const lowir_model::LowirBlock & block,
                                      std::size_t instruction_index,
                                      const std::string & destination) const
@@ -824,6 +934,47 @@ private:
     return next.kind == Instruction::IK_LOAD && next.first.text == destination &&
            facts_.uses.find(destination) != facts_.uses.end() &&
            facts_.uses.find(destination)->second == 1;
+  }
+
+  bool address_is_immediately_stored(const lowir_model::LowirBlock & block,
+                                     std::size_t instruction_index,
+                                     const std::string & destination) const
+  {
+    if(instruction_index + 1 >= block.instructions.size()) return false;
+    const Instruction & next = block.instructions[instruction_index + 1];
+    return next.kind == Instruction::IK_STORE && next.second.text == destination &&
+      facts_.uses.find(destination) != facts_.uses.end() &&
+      facts_.uses.find(destination)->second == 1;
+  }
+
+  bool address_is_next_bulk_operand(const lowir_model::LowirBlock & block,
+                                    std::size_t instruction_index,
+                                    const std::string & destination) const
+  {
+    if(instruction_index + 1 >= block.instructions.size()) return false;
+    const Instruction & next = block.instructions[instruction_index + 1];
+    if(next.kind == Instruction::IK_ZEROINIT)
+      return next.first.kind == Operand::OP_TEMP && next.first.text == destination;
+    if(next.kind != Instruction::IK_COPYOBJ) return false;
+    return (next.first.kind == Operand::OP_TEMP && next.first.text == destination) ||
+      (next.second.kind == Operand::OP_TEMP && next.second.text == destination);
+  }
+
+  bool address_precedes_elided_copy(const lowir_model::LowirBlock & block,
+                                    std::size_t instruction_index,
+                                    const std::string & destination) const
+  {
+    if(instruction_index + 1 >= block.instructions.size()) return false;
+    const Instruction & next = block.instructions[instruction_index + 1];
+    if(next.kind != Instruction::IK_COPYOBJ ||
+       next.second.kind != Operand::OP_TEMP || next.second.text != destination)
+      return false;
+    long long source_offset = 0;
+    long long destination_offset = 0;
+    return frame_provenance(next.first, source_offset) &&
+      frame_provenance(block.instructions[instruction_index].first,
+                       destination_offset) &&
+      source_offset == destination_offset;
   }
 
   bool address_is_next_call_argument(const lowir_model::LowirBlock & block,
@@ -839,6 +990,20 @@ private:
       if(next.args[i].kind == Operand::OP_TEMP && next.args[i].text == destination)
         return true;
     return false;
+  }
+
+  bool address_is_object_result_destination(const lowir_model::LowirBlock & block,
+                                            std::size_t instruction_index,
+                                            const std::string & destination) const
+  {
+    if(instruction_index + 2 >= block.instructions.size()) return false;
+    const Instruction & call = block.instructions[instruction_index + 1];
+    const Instruction & copy = block.instructions[instruction_index + 2];
+    return call.kind == Instruction::IK_CALL &&
+      !call.call_returns_void && call.type.kind == lowir_model::LTK_OBJECT &&
+      copy.kind == Instruction::IK_COPYOBJ &&
+      copy.first.kind == Operand::OP_TEMP && copy.first.text == call.dest &&
+      copy.second.kind == Operand::OP_TEMP && copy.second.text == destination;
   }
 
   X64Register direct_slot_address_register(const lowir_model::LowirBlock & block,
@@ -901,7 +1066,13 @@ private:
       if(found == values_.end()) throw std::runtime_error("missing operand type");
       return found->second.type;
     }
-    if(operand.kind == Operand::OP_GLOBAL || operand.kind == Operand::OP_SLOT)
+    if(operand.kind == Operand::OP_SLOT) {
+      const std::unordered_map<std::string, LowType>::const_iterator found =
+        slot_types_.find(operand.text);
+      if(found == slot_types_.end()) throw std::runtime_error("missing slot type");
+      return found->second;
+    }
+    if(operand.kind == Operand::OP_GLOBAL)
       return lowir_model::builtin_lowir_type(lowir_model::LTK_PTR);
     if(operand.kind == Operand::OP_FLOAT) {
       return floating_literal_type(operand.text);
@@ -942,6 +1113,10 @@ private:
   {
     if(operand.kind == Operand::OP_GLOBAL || operand.kind == Operand::OP_SLOT)
       return storage(operand);
+    if(is_frame_address(operand)) {
+      append_address(out, XR_RCX, resolve(operand));
+      return dereference(XR_RCX);
+    }
     const MirOperand address = resolve(operand);
     if(address.kind == MirOperand::OP_REG) return dereference(address.reg);
     move_value_to_register(out, XR_RCX, address, operand_type(operand));
@@ -1088,6 +1263,92 @@ private:
     append_operand(lea, reg_operand(destination));
     append_operand(lea, source);
     out.push_back(lea);
+  }
+
+  void emit_operand_address(std::vector<MirInstruction> & out,
+                            X64Register destination,
+                            const Operand & operand)
+  {
+    if(operand.kind == Operand::OP_SLOT) {
+      append_address(out, destination, storage(operand));
+      return;
+    }
+    if(operand.kind == Operand::OP_GLOBAL) {
+      append_move(out, reg_operand(destination),
+                  named_operand(MirOperand::OP_SYMBOL, operand.text));
+      return;
+    }
+    if(operand.kind != Operand::OP_TEMP)
+      throw std::runtime_error("bulk object operand is not addressable");
+    const std::unordered_map<std::string, ValueFact>::const_iterator found =
+      values_.find(operand.text);
+    if(found == values_.end()) throw std::runtime_error("missing address value");
+    const MirOperand & location = found->second.location;
+    if(found->second.frame_address || found->second.type.kind == lowir_model::LTK_OBJECT) {
+      if(location.kind == MirOperand::OP_FRAME || location.kind == MirOperand::OP_DEREF) {
+        append_address(out, destination, location);
+        return;
+      }
+      if(location.kind == MirOperand::OP_GLOBAL || location.kind == MirOperand::OP_SYMBOL) {
+        append_move(out, reg_operand(destination),
+                    named_operand(MirOperand::OP_SYMBOL, location.text));
+        return;
+      }
+    }
+    move_value_to_register(out, destination, location,
+                           lowir_model::builtin_lowir_type(lowir_model::LTK_PTR));
+  }
+
+  MirOperand make_addressable(const Operand & operand,
+                              std::vector<MirInstruction> & out)
+  {
+    if(operand.kind == Operand::OP_SLOT) return storage(operand);
+    if(operand.kind == Operand::OP_GLOBAL)
+      return named_operand(MirOperand::OP_SYMBOL, operand.text);
+    if(operand.kind != Operand::OP_TEMP)
+      throw std::runtime_error("call argument cannot be passed by address");
+    std::unordered_map<std::string, ValueFact>::iterator found = values_.find(operand.text);
+    if(found == values_.end()) throw std::runtime_error("missing addressable temporary");
+    if(found->second.frame_address || found->second.location.kind == MirOperand::OP_FRAME)
+      return found->second.location;
+    const MirOperand home = allocate_temp_home(operand.text, found->second.type);
+    if(found->second.location.kind == MirOperand::OP_XMM)
+      append_float_move(out, home, found->second.location, found->second.type.text);
+    else
+      append_store(out, home, found->second.location, found->second.type.text);
+    if(found->second.location.kind == MirOperand::OP_REG)
+      registers_.release(found->second.location.reg);
+    else if(found->second.location.kind == MirOperand::OP_XMM)
+      xmms_.release(found->second.location.xmm);
+    found->second.location = home;
+    spill_offsets_[operand.text] = home.offset;
+    return home;
+  }
+
+  bool frame_provenance(const Operand & operand, long long & offset) const
+  {
+    if(operand.kind == Operand::OP_SLOT) {
+      const std::unordered_map<std::string, long long>::const_iterator found =
+        slot_offsets_.find(operand.text);
+      if(found == slot_offsets_.end()) return false;
+      offset = found->second;
+      return true;
+    }
+    if(operand.kind != Operand::OP_TEMP) return false;
+    const std::unordered_map<std::string, ValueFact>::const_iterator found =
+      values_.find(operand.text);
+    if(found == values_.end() || !found->second.has_frame_provenance) return false;
+    offset = found->second.frame_provenance;
+    return true;
+  }
+
+  bool aliases_same_object(const Operand & source, const Operand & destination) const
+  {
+    long long source_offset = 0;
+    long long destination_offset = 0;
+    return frame_provenance(source, source_offset) &&
+      frame_provenance(destination, destination_offset) &&
+      source_offset == destination_offset;
   }
 
   bool result_crosses_call(const std::string & name) const
@@ -1621,8 +1882,12 @@ private:
       instruction.dest, out,
       instruction.first.kind == Operand::OP_TEMP &&
       values_.find(instruction.first.text)->second.parameter));
-    if(base.kind != MirOperand::OP_REG || destination.reg != base.reg)
-      move_value_to_register(out, destination.reg, base, operand_type(instruction.first));
+    if(base.kind != MirOperand::OP_REG || destination.reg != base.reg) {
+      if(is_frame_address(instruction.first))
+        append_address(out, destination.reg, base);
+      else
+        move_value_to_register(out, destination.reg, base, operand_type(instruction.first));
+    }
     if(constant_index) {
       MirInstruction lea = machine_instruction(MirInstruction::MI_LEA);
       append_operand(lea, destination);
@@ -1659,6 +1924,9 @@ private:
     MirOperand source;
     LowType type;
     bool source_is_address = false;
+    bool object_chunk = false;
+    Operand object_source;
+    std::size_t chunk_offset = 0;
     bool pending = true;
   };
 
@@ -1671,6 +1939,26 @@ private:
       if(moves[i].source.reg == moves[candidate].destination) return false;
     }
     return true;
+  }
+
+  void emit_gpr_move(const GprMove & move,
+                     std::vector<MirInstruction> & out)
+  {
+    if(move.object_chunk) {
+      emit_operand_address(out, XR_R11, move.object_source);
+      append_load(out, reg_operand(move.destination),
+                  dereference(XR_R11, static_cast<long long>(move.chunk_offset)),
+                  move.type.text);
+    } else if(move.source_is_address) {
+      if(move.source.kind == MirOperand::OP_FRAME ||
+         move.source.kind == MirOperand::OP_DEREF)
+        append_address(out, move.destination, move.source);
+      else
+        move_value_to_register(out, move.destination, move.source,
+          lowir_model::builtin_lowir_type(lowir_model::LTK_PTR));
+    } else {
+      move_value_to_register(out, move.destination, move.source, move.type);
+    }
   }
 
   void emit_parallel_gpr_moves(const Instruction & instruction,
@@ -1692,10 +1980,7 @@ private:
       bool progressed = false;
       for(std::size_t i = 0; i < moves.size(); ++i) {
         if(!moves[i].pending || !move_destination_is_safe(moves, i)) continue;
-        if(moves[i].source_is_address)
-          append_address(out, moves[i].destination, moves[i].source);
-        else move_value_to_register(out, moves[i].destination,
-                                    moves[i].source, moves[i].type);
+        emit_gpr_move(moves[i], out);
         moves[i].pending = false;
         --remaining;
         progressed = true;
@@ -1864,11 +2149,386 @@ private:
     }
   }
 
+  void emit_bulk(const Instruction & instruction,
+                 std::vector<MirInstruction> & out)
+  {
+    const bool copying = instruction.kind == Instruction::IK_COPYOBJ;
+    if(copying && aliases_same_object(instruction.first, instruction.second)) {
+      consume(instruction.first);
+      consume(instruction.second);
+      return;
+    }
+    X64Register saved_source = XR_RSP;
+    if(copying && instruction.first.kind == Operand::OP_TEMP) {
+      const MirOperand source = resolve(instruction.first);
+      if(source.kind == MirOperand::OP_REG && source.reg == XR_RDI) {
+        if(!registers_.try_allocate(false, saved_source)) saved_source = XR_R11;
+        append_move(out, reg_operand(saved_source), source);
+      }
+    }
+    const Operand & destination = copying ? instruction.second : instruction.first;
+    emit_operand_address(out, XR_RDI, destination);
+    if(copying) {
+      if(saved_source != XR_RSP)
+        append_move(out, reg_operand(XR_RSI), reg_operand(saved_source));
+      else
+        emit_operand_address(out, XR_RSI, instruction.first);
+    }
+    MirInstruction bulk = machine_instruction(copying ?
+      MirInstruction::MI_COPY_BYTES : MirInstruction::MI_ZERO_BYTES);
+    bulk.byte_count = instruction.byte_count;
+    bulk.byte_alignment = instruction.byte_alignment;
+    append_operand(bulk, reg_operand(XR_RDI));
+    if(copying) append_operand(bulk, reg_operand(XR_RSI));
+    out.push_back(bulk);
+    consume(instruction.first);
+    if(copying) consume(instruction.second);
+  }
+
+  std::vector<lowir_model::LowirParameter> call_parameters(
+      const Instruction & instruction) const
+  {
+    std::vector<lowir_model::LowirParameter> parameters;
+    if(instruction.has_call_signature) parameters = instruction.call_params;
+    else if(instruction.first.kind == Operand::OP_GLOBAL) {
+      const FunctionSignatureIndex::const_iterator found =
+        signatures_.find(instruction.first.text);
+      if(found != signatures_.end() && found->second.params)
+        parameters = *found->second.params;
+    }
+    if(parameters.size() > instruction.args.size())
+      parameters.resize(instruction.args.size());
+    while(parameters.size() < instruction.args.size()) {
+      lowir_model::LowirParameter parameter;
+      parameter.name = "%arg" + std::to_string(parameters.size());
+      parameter.type = operand_type(instruction.args[parameters.size()]);
+      parameters.push_back(parameter);
+    }
+    return parameters;
+  }
+
+  bool argument_needs_address(const lowir_model::LowirParameter & parameter,
+                              const Operand & argument) const
+  {
+    return parameter.metadata.passing != lowir_model::PPM_DIRECT &&
+      operand_type(argument).kind != lowir_model::LTK_PTR;
+  }
+
+  bool requires_extended_call(const Instruction & instruction,
+                              const std::vector<lowir_model::LowirParameter> & parameters) const
+  {
+    if(!instruction.call_returns_void &&
+       instruction.type.kind == lowir_model::LTK_OBJECT) return true;
+    for(std::size_t i = 0; i < parameters.size(); ++i)
+      if(parameters[i].type.kind == lowir_model::LTK_OBJECT ||
+         parameters[i].metadata.passing != lowir_model::PPM_DIRECT)
+        return true;
+    for(std::size_t i = 0; i < instruction.args.size(); ++i)
+      if(operand_type(instruction.args[i]).kind == lowir_model::LTK_OBJECT) return true;
+    return false;
+  }
+
+  void emit_stack_adjust(std::vector<MirInstruction> & out,
+                         MirInstruction::Opcode opcode,
+                         std::size_t bytes)
+  {
+    if(!bytes) return;
+    MirInstruction adjust = machine_instruction(opcode);
+    append_operand(adjust, reg_operand(XR_RSP));
+    append_operand(adjust, immediate(static_cast<long long>(bytes)));
+    out.push_back(adjust);
+  }
+
+  void emit_extended_stack_arguments(
+      const Instruction & instruction,
+      const std::vector<lowir_model::LowirParameter> & parameters,
+      const AbiPlan & plan,
+      const std::vector<MirOperand> & addressable,
+      const std::vector<bool> & needs_address,
+      std::vector<MirInstruction> & out)
+  {
+    emit_stack_adjust(out, MirInstruction::MI_SUB, plan.stack_bytes);
+    for(std::size_t i = 0; i < plan.pieces.size(); ++i) {
+      const AbiPiece & piece = plan.pieces[i];
+      if(piece.location != APL_STACK) continue;
+      const Operand & argument = instruction.args[piece.parameter_index];
+      if(parameters[piece.parameter_index].type.kind == lowir_model::LTK_OBJECT) {
+        if(piece.chunk_offset) continue;
+        append_address(out, XR_RDI,
+                       dereference(XR_RSP, static_cast<long long>(piece.stack_offset)));
+        emit_operand_address(out, XR_RSI, argument);
+        MirInstruction copy = machine_instruction(MirInstruction::MI_COPY_BYTES);
+        copy.byte_count = parameters[piece.parameter_index].type.storage_size;
+        copy.byte_alignment = parameters[piece.parameter_index].type.alignment;
+        append_operand(copy, reg_operand(XR_RDI));
+        append_operand(copy, reg_operand(XR_RSI));
+        out.push_back(copy);
+        continue;
+      }
+      const MirOperand destination = dereference(
+        XR_RSP, static_cast<long long>(piece.stack_offset));
+      if(needs_address[piece.parameter_index] || is_frame_address(argument)) {
+        GprMove move;
+        move.destination = XR_R11;
+        move.source = needs_address[piece.parameter_index] ?
+          addressable[piece.parameter_index] : resolve(argument);
+        move.type = lowir_model::builtin_lowir_type(lowir_model::LTK_PTR);
+        move.source_is_address = true;
+        emit_gpr_move(move, out);
+        append_store(out, destination, reg_operand(XR_R11), "ptr");
+      } else if(is_scalar_float(piece.type)) {
+        uses_scalar_float_ = true;
+        append_float_move(out, destination, resolve(argument), piece.type.text);
+      } else {
+        move_value_to_register(out, XR_R11, resolve(argument),
+                               operand_type(argument));
+        append_store(out, destination, reg_operand(XR_R11), piece.type.text);
+      }
+    }
+  }
+
+  void emit_extended_register_arguments(
+      const Instruction & instruction,
+      const std::vector<lowir_model::LowirParameter> & parameters,
+      const AbiPlan & plan,
+      const std::vector<MirOperand> & addressable,
+      const std::vector<bool> & needs_address,
+      std::vector<MirInstruction> & out)
+  {
+    std::vector<GprMove> gpr_moves;
+    std::vector<XmmMove> xmm_moves;
+    for(std::size_t i = 0; i < plan.pieces.size(); ++i) {
+      const AbiPiece & piece = plan.pieces[i];
+      const Operand & argument = instruction.args[piece.parameter_index];
+      if(piece.location == APL_GPR) {
+        GprMove move;
+        move.destination = piece.reg;
+        move.type = piece.type;
+        if(parameters[piece.parameter_index].type.kind == lowir_model::LTK_OBJECT) {
+          move.object_chunk = true;
+          move.object_source = argument;
+          move.chunk_offset = piece.chunk_offset;
+        } else {
+          move.source = needs_address[piece.parameter_index] ?
+            addressable[piece.parameter_index] : resolve(argument);
+          move.source_is_address = needs_address[piece.parameter_index] ||
+            is_frame_address(argument);
+        }
+        gpr_moves.push_back(move);
+      } else if(piece.location == APL_XMM) {
+        XmmMove move;
+        move.destination = piece.xmm;
+        move.source = resolve(argument);
+        move.type = piece.type;
+        xmm_moves.push_back(move);
+      }
+    }
+    std::size_t remaining = gpr_moves.size();
+    while(remaining) {
+      bool progressed = false;
+      for(std::size_t i = 0; i < gpr_moves.size(); ++i) {
+        if(!gpr_moves[i].pending || !move_destination_is_safe(gpr_moves, i)) continue;
+        emit_gpr_move(gpr_moves[i], out);
+        gpr_moves[i].pending = false;
+        --remaining;
+        progressed = true;
+      }
+      if(progressed) continue;
+      std::size_t cycle = 0;
+      while(cycle < gpr_moves.size() && !gpr_moves[cycle].pending) ++cycle;
+      if(cycle == gpr_moves.size() ||
+         gpr_moves[cycle].source.kind != MirOperand::OP_REG)
+        throw std::logic_error("invalid extended GPR move cycle");
+      const X64Register saved = gpr_moves[cycle].source.reg;
+      append_move(out, reg_operand(XR_R11), reg_operand(saved));
+      for(std::size_t i = 0; i < gpr_moves.size(); ++i)
+        if(gpr_moves[i].pending && gpr_moves[i].source.kind == MirOperand::OP_REG &&
+           gpr_moves[i].source.reg == saved)
+          gpr_moves[i].source = reg_operand(XR_R11);
+    }
+    remaining = xmm_moves.size();
+    while(remaining) {
+      bool progressed = false;
+      for(std::size_t i = 0; i < xmm_moves.size(); ++i) {
+        if(!xmm_moves[i].pending || !xmm_destination_is_safe(xmm_moves, i)) continue;
+        append_float_move(out, xmm_operand(xmm_moves[i].destination),
+                          xmm_moves[i].source, xmm_moves[i].type.text, true);
+        xmm_moves[i].pending = false;
+        --remaining;
+        progressed = true;
+      }
+      if(progressed) continue;
+      std::size_t cycle = 0;
+      while(cycle < xmm_moves.size() &&
+            (!xmm_moves[cycle].pending ||
+             xmm_moves[cycle].source.kind != MirOperand::OP_XMM)) ++cycle;
+      if(cycle == xmm_moves.size())
+        throw std::logic_error("invalid extended XMM move cycle");
+      const XmmRegister saved = xmm_moves[cycle].source.xmm;
+      const MirOperand scratch = frame_operand(xmm_call_scratch());
+      append_float_move(out, scratch, xmm_operand(saved), xmm_moves[cycle].type.text);
+      for(std::size_t i = 0; i < xmm_moves.size(); ++i)
+        if(xmm_moves[i].pending && xmm_moves[i].source.kind == MirOperand::OP_XMM &&
+           xmm_moves[i].source.xmm == saved)
+          xmm_moves[i].source = scratch;
+    }
+  }
+
+  bool object_result_alias(const Instruction & instruction,
+                           const lowir_model::LowirBlock & block,
+                           std::size_t instruction_index,
+                           Operand & destination,
+                           std::size_t & skip_delta) const
+  {
+    if(instruction_index + 1 < block.instructions.size()) {
+      const Instruction & copy = block.instructions[instruction_index + 1];
+      if(copy.kind == Instruction::IK_COPYOBJ &&
+         copy.first.kind == Operand::OP_TEMP && copy.first.text == instruction.dest) {
+        destination = copy.second;
+        skip_delta = 1;
+        return true;
+      }
+    }
+    if(instruction_index + 2 < block.instructions.size()) {
+      const Instruction & address = block.instructions[instruction_index + 1];
+      const Instruction & copy = block.instructions[instruction_index + 2];
+      if(address.kind == Instruction::IK_ADDR &&
+         copy.kind == Instruction::IK_COPYOBJ &&
+         copy.first.kind == Operand::OP_TEMP && copy.first.text == instruction.dest &&
+         copy.second.kind == Operand::OP_TEMP && copy.second.text == address.dest) {
+        destination = address.first;
+        skip_delta = 2;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void store_object_return_registers(const LowType & type,
+                                     const Operand * destination,
+                                     const MirOperand * home,
+                                     std::vector<MirInstruction> & out)
+  {
+    if(type.storage_size > 16)
+      throw std::runtime_error("direct object return exceeds two SysV eightbytes");
+    if(destination) emit_operand_address(out, XR_R11, *destination);
+    else append_address(out, XR_R11, *home);
+    const std::size_t chunks = (type.storage_size + 7) / 8;
+    for(std::size_t chunk = 0; chunk < chunks; ++chunk) {
+      const LowType & chunk_type = object_chunk_type(type.storage_size - chunk * 8);
+      append_store(out, dereference(XR_R11, static_cast<long long>(chunk * 8)),
+                   reg_operand(chunk ? XR_RDX : XR_RAX), chunk_type.text);
+    }
+  }
+
+  void define_object_result(const std::string & name,
+                            const LowType & type,
+                            const Operand * destination,
+                            const MirOperand & home)
+  {
+    ValueFact value;
+    value.type = type;
+    if(destination) {
+      long long frame = 0;
+      if(frame_provenance(*destination, frame)) {
+        value.location = frame_operand(frame);
+        value.frame_address = true;
+        value.has_frame_provenance = true;
+        value.frame_provenance = frame;
+      } else if(destination->kind == Operand::OP_TEMP) {
+        const ValueFact & address = values_.find(destination->text)->second;
+        value.location = address.location;
+        value.frame_address = address.frame_address;
+      } else {
+        value.location = named_operand(MirOperand::OP_SYMBOL, destination->text);
+      }
+    } else {
+      value.location = home;
+      value.frame_address = true;
+      value.has_frame_provenance = true;
+      value.frame_provenance = home.offset;
+    }
+    values_[name] = value;
+  }
+
+  void emit_extended_call(
+      const Instruction & instruction,
+      const lowir_model::LowirBlock & block,
+      std::size_t instruction_index,
+      const std::vector<lowir_model::LowirParameter> & parameters,
+      std::vector<MirInstruction> & out)
+  {
+    const bool direct = instruction.first.kind == Operand::OP_GLOBAL;
+    if(!direct)
+      move_value_to_register(out, XR_R10, resolve(instruction.first),
+                             operand_type(instruction.first));
+    const AbiPlan plan = classify_abi(parameters);
+    std::vector<bool> needs_address(parameters.size(), false);
+    std::vector<MirOperand> addressable(parameters.size());
+    for(std::size_t i = 0; i < parameters.size(); ++i) {
+      needs_address[i] = argument_needs_address(parameters[i], instruction.args[i]);
+      if(needs_address[i]) addressable[i] = make_addressable(instruction.args[i], out);
+      if(is_scalar_float(parameters[i].type)) uses_scalar_float_ = true;
+    }
+    emit_extended_stack_arguments(instruction, parameters, plan,
+                                  addressable, needs_address, out);
+    emit_extended_register_arguments(instruction, parameters, plan,
+                                     addressable, needs_address, out);
+    MirInstruction call = machine_instruction(direct ?
+      MirInstruction::MI_CALL : MirInstruction::MI_CALL_INDIRECT);
+    append_operand(call, direct ?
+      named_operand(MirOperand::OP_SYMBOL, instruction.first.text) :
+      reg_operand(XR_R10));
+    out.push_back(call);
+    emit_stack_adjust(out, MirInstruction::MI_ADD, plan.stack_bytes);
+
+    for(std::size_t i = 0; i < instruction.args.size(); ++i)
+      consume(instruction.args[i]);
+    active_instruction_ = 0;
+    if(!instruction.call_returns_void &&
+       instruction.type.kind == lowir_model::LTK_OBJECT) {
+      Operand alias_destination;
+      std::size_t skip_delta = 0;
+      const bool alias = object_result_alias(instruction, block, instruction_index,
+                                             alias_destination, skip_delta);
+      MirOperand home;
+      if(alias) skipped_position_ = position_ + skip_delta;
+      else home = allocate_temp_home(instruction.dest, instruction.type);
+      store_object_return_registers(instruction.type,
+                                    alias ? &alias_destination : 0,
+                                    alias ? 0 : &home, out);
+      define_object_result(instruction.dest, instruction.type,
+                           alias ? &alias_destination : 0, home);
+    } else if(!instruction.call_returns_void && is_scalar_float(instruction.type)) {
+      const MirOperand location = allocate_float_result(instruction.dest, instruction.type);
+      append_float_move(out, location, xmm_operand(XMM_0), instruction.type.text);
+      define(instruction.dest, instruction.type, location);
+    } else if(!instruction.call_returns_void) {
+      MirOperand location = reg_operand(XR_RAX);
+      if(!result_is_immediate_return(block, instruction_index, instruction.dest) &&
+         !result_is_immediate_unary_not_branch(block, instruction_index,
+                                               instruction.dest)) {
+        location = reg_operand(allocate_result(instruction.dest, out));
+        append_move(out, location, reg_operand(XR_RAX));
+      }
+      if(is_integer_or_pointer(instruction.type))
+        normalize_integer(instruction.type, location, out);
+      define(instruction.dest, instruction.type, location);
+    }
+    consume(instruction.first);
+  }
+
   void emit_call(const Instruction & instruction,
                  const lowir_model::LowirBlock & block,
                  std::size_t instruction_index,
                  std::vector<MirInstruction> & out)
   {
+    const std::vector<lowir_model::LowirParameter> parameters =
+      call_parameters(instruction);
+    if(requires_extended_call(instruction, parameters)) {
+      emit_extended_call(instruction, block, instruction_index, parameters, out);
+      return;
+    }
     const bool direct = instruction.first.kind == Operand::OP_GLOBAL;
     if(!direct) {
       std::string pointer_cell;
@@ -1923,6 +2583,16 @@ private:
         append_float_move(out, location, xmm_operand(XMM_0), instruction.type.text);
         define(instruction.dest, instruction.type, location);
       } else {
+        if(result_is_next_call_address_argument(block, instruction_index, instruction)) {
+          const MirOperand home = allocate_temp_home(instruction.dest, instruction.type);
+          append_store(out, home, reg_operand(XR_RAX), instruction.type.text);
+          define(instruction.dest, instruction.type, home);
+          if(!arguments_consumed)
+            for(std::size_t i = 0; i < instruction.args.size(); ++i)
+              consume(instruction.args[i]);
+          consume(instruction.first);
+          return;
+        }
         MirOperand location = reg_operand(XR_RAX);
         if(!result_is_immediate_return(block, instruction_index, instruction.dest) &&
            !result_is_immediate_unary_not_branch(block, instruction_index,
@@ -1985,7 +2655,19 @@ private:
 
   void emit_return(const Instruction & instruction, std::vector<MirInstruction> & out)
   {
-    if(is_scalar_float(instruction.type)) {
+    if(instruction.type.kind == lowir_model::LTK_OBJECT) {
+      if(instruction.type.storage_size > 16)
+        throw std::runtime_error("direct object return exceeds two SysV eightbytes");
+      emit_operand_address(out, XR_R11, instruction.first);
+      const std::size_t chunks = (instruction.type.storage_size + 7) / 8;
+      for(std::size_t chunk = 0; chunk < chunks; ++chunk) {
+        const LowType & chunk_type = object_chunk_type(
+          instruction.type.storage_size - chunk * 8);
+        append_load(out, reg_operand(chunk ? XR_RDX : XR_RAX),
+                    dereference(XR_R11, static_cast<long long>(chunk * 8)),
+                    chunk_type.text);
+      }
+    } else if(is_scalar_float(instruction.type)) {
       uses_scalar_float_ = true;
       append_float_move(out, xmm_operand(XMM_0), resolve(instruction.first),
                         instruction.type.text);
@@ -1993,7 +2675,8 @@ private:
       move_value_to_register(out, XR_RAX, resolve(instruction.first), instruction.type);
     MirInstruction ret = machine_instruction(MirInstruction::MI_RET);
     if(instruction.type.kind != lowir_model::LTK_VOID &&
-       !is_scalar_float(instruction.type))
+       !is_scalar_float(instruction.type) &&
+       instruction.type.kind != lowir_model::LTK_OBJECT)
       append_operand(ret, reg_operand(XR_RAX));
     out.push_back(ret);
     consume(instruction.first);
@@ -2028,17 +2711,29 @@ private:
     } else if(instruction.kind == Instruction::IK_ADDR) {
       MirOperand destination;
       if(instruction.first.kind == Operand::OP_SLOT) {
-        if(address_is_next_call_argument(block, instruction_index, instruction.dest)) {
+        if(address_is_next_call_argument(block, instruction_index, instruction.dest) ||
+           address_is_next_bulk_operand(block, instruction_index, instruction.dest) ||
+           address_is_immediately_stored(block, instruction_index,
+                                         instruction.dest) ||
+           address_is_object_result_destination(block, instruction_index,
+                                                instruction.dest)) {
           define(instruction.dest, lowir_model::builtin_lowir_type(lowir_model::LTK_PTR),
                  storage(instruction.first));
           values_[instruction.dest].frame_address = true;
+          values_[instruction.dest].has_frame_provenance = true;
+          values_[instruction.dest].frame_provenance = storage(instruction.first).offset;
           return;
         }
         const X64Register compare_register = direct_slot_address_register(
           block, instruction_index, instruction.dest);
         if(compare_register != XR_RSP) destination = reg_operand(compare_register);
-        else destination = address_is_immediately_loaded(block, instruction_index,
-                                                         instruction.dest) ?
+        else destination = (address_is_immediately_loaded(block, instruction_index,
+                                                          instruction.dest) ||
+                            address_is_immediately_stored(block, instruction_index,
+                                                          instruction.dest) ||
+                            address_precedes_elided_copy(block, instruction_index,
+                                                         instruction.dest) ||
+                            skipped_position_ == position_ + 1) ?
           reg_operand(XR_RCX) : reg_operand(allocate_result(instruction.dest, out));
         MirInstruction lea = machine_instruction(MirInstruction::MI_LEA);
         append_operand(lea, destination);
@@ -2049,6 +2744,10 @@ private:
         append_move(out, destination, resolve(instruction.first));
       }
       define(instruction.dest, lowir_model::builtin_lowir_type(lowir_model::LTK_PTR), destination);
+      if(instruction.first.kind == Operand::OP_SLOT) {
+        values_[instruction.dest].has_frame_provenance = true;
+        values_[instruction.dest].frame_provenance = storage(instruction.first).offset;
+      }
       if(instruction.first.kind == Operand::OP_GLOBAL &&
          pointer_globals_.count(instruction.first.text))
         values_[instruction.dest].pointer_global_cell = instruction.first.text;
@@ -2062,8 +2761,10 @@ private:
         return;
       }
       MirOperand destination;
-      if(result_is_immediate_return(block, instruction_index, instruction.dest) &&
-         (instruction.type.kind == lowir_model::LTK_PTR || instruction.type.bit_width == 64))
+      if((result_is_immediately_stored(block, instruction_index, instruction.dest) ||
+          (result_is_immediate_return(block, instruction_index, instruction.dest) &&
+           (instruction.type.kind == lowir_model::LTK_PTR ||
+            instruction.type.bit_width == 64))))
         destination = reg_operand(XR_RAX);
       else destination = reg_operand(allocate_result(instruction.dest, out));
       MirInstruction load = machine_instruction(MirInstruction::MI_LOAD, instruction.type.text);
@@ -2075,6 +2776,12 @@ private:
       consume(instruction.first, destination.reg);
       define(instruction.dest, instruction.type, destination);
     } else if(instruction.kind == Instruction::IK_STORE) {
+      if(instruction.second.kind == Operand::OP_SLOT &&
+         discarded_slots_.count(instruction.second.text)) {
+        consume(instruction.first);
+        consume(instruction.second);
+        return;
+      }
       if(is_scalar_float(instruction.type)) {
         emit_float_store(instruction, out);
         return;
@@ -2115,21 +2822,7 @@ private:
       emit_call(instruction, block, instruction_index, out);
     } else if(instruction.kind == Instruction::IK_COPYOBJ ||
               instruction.kind == Instruction::IK_ZEROINIT) {
-      const Operand & destination_source = instruction.kind == Instruction::IK_COPYOBJ ?
-        instruction.second : instruction.first;
-      append_move(out, reg_operand(XR_RDI), resolve(destination_source));
-      if(instruction.kind == Instruction::IK_COPYOBJ)
-        append_move(out, reg_operand(XR_RSI), resolve(instruction.first));
-      MirInstruction bulk = machine_instruction(instruction.kind == Instruction::IK_COPYOBJ ?
-        MirInstruction::MI_COPY_BYTES : MirInstruction::MI_ZERO_BYTES);
-      bulk.byte_count = instruction.byte_count;
-      bulk.byte_alignment = instruction.byte_alignment;
-      append_operand(bulk, reg_operand(XR_RDI));
-      if(instruction.kind == Instruction::IK_COPYOBJ)
-        append_operand(bulk, reg_operand(XR_RSI));
-      out.push_back(bulk);
-      consume(instruction.first);
-      if(instruction.kind == Instruction::IK_COPYOBJ) consume(instruction.second);
+      emit_bulk(instruction, out);
     } else if(instruction.kind == Instruction::IK_BRANCH) {
       emit_branch(instruction, out);
     } else if(instruction.kind == Instruction::IK_SWITCH) {
@@ -2258,8 +2951,22 @@ mir_model::MirProgram lower_program(const lowir_model::LowirProgram & program,
       pointer_globals.insert(program.globals[i].name);
   for(std::size_t i = 0; i < program.globals.size(); ++i)
     result.globals.push_back(lower_global(program.globals[i]));
+  FunctionSignatureIndex signatures;
+  for(std::size_t i = 0; i < program.function_declarations.size(); ++i) {
+    FunctionSignature signature;
+    signature.params = &program.function_declarations[i].params;
+    signature.return_type = &program.function_declarations[i].return_type;
+    signatures[program.function_declarations[i].name] = signature;
+  }
+  for(std::size_t i = 0; i < program.functions.size(); ++i) {
+    FunctionSignature signature;
+    signature.params = &program.functions[i].params;
+    signature.return_type = &program.functions[i].return_type;
+    signatures[program.functions[i].name] = signature;
+  }
   for(std::size_t i = 0; i < program.functions.size(); ++i)
-    result.functions.push_back(FunctionLowerer(program.functions[i], pointer_globals).lower());
+    result.functions.push_back(
+      FunctionLowerer(program.functions[i], pointer_globals, signatures).lower());
   result.object_aliases.reserve(program.object_aliases.size());
   for(std::size_t i = 0; i < program.object_aliases.size(); ++i) {
     mir_model::MirObjectAlias alias;

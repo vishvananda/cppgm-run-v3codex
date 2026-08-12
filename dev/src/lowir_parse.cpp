@@ -90,7 +90,12 @@ void parse_span_text(const std::string & text, std::size_t & bytes,
                      std::size_t & alignment)
 {
   const std::size_t split = text.find('x');
-  if(split == std::string::npos || split == 0 || split + 1 == text.size())
+  if(split == std::string::npos) {
+    bytes = parse_positive_size(text);
+    alignment = 1;
+    return;
+  }
+  if(split == 0 || split + 1 == text.size())
     throw ParseError("invalid object span: " + text);
   bytes = parse_positive_size(text.substr(0, split));
   alignment = parse_positive_size(text.substr(split + 1));
