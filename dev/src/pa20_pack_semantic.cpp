@@ -159,11 +159,19 @@ bool SemanticAnalyzer::ExpandPackElementScopes(NodeId pattern, ScopeId scope,
 	std::vector<NameId> names;
 	CollectPackExpansionNames(pattern, scope, &names);
 	if (names.empty()) return false;
-	std::vector<std::vector<TemplateArgument> > packs(names.size());
+	std::vector<std::vector<TemplateArgument> > template_packs(names.size());
+	std::vector<std::vector<BindingId> > function_packs(names.size());
+	std::vector<std::uint8_t> pack_kind(names.size(), 0);
 	std::size_t length = std::numeric_limits<std::size_t>::max();
 	for (std::size_t source = 0; source < names.size(); ++source)
 	{
-		if (!LookupTemplateArgumentPack(scope, names[source], &packs[source]))
+		if (LookupTemplateArgumentPack(
+			scope, names[source], &template_packs[source]))
+			pack_kind[source] = 1;
+		else if (LookupFunctionParameterPack(
+			scope, names[source], &function_packs[source]))
+			pack_kind[source] = 2;
+		else
 		{
 			if (CandidateSubstitutionActive())
 			{
@@ -173,9 +181,11 @@ bool SemanticAnalyzer::ExpandPackElementScopes(NodeId pattern, ScopeId scope,
 			throw std::runtime_error(
 				"declaration pack expansion requires a template parameter pack");
 		}
+		const std::size_t source_length = pack_kind[source] == 1 ?
+			template_packs[source].size() : function_packs[source].size();
 		if (length == std::numeric_limits<std::size_t>::max())
-			length = packs[source].size();
-		else if (length != packs[source].size())
+			length = source_length;
+		else if (length != source_length)
 		{
 			if (CandidateSubstitutionActive())
 			{
@@ -186,7 +196,7 @@ bool SemanticAnalyzer::ExpandPackElementScopes(NodeId pattern, ScopeId scope,
 				"pack expansion operands have different lengths at " +
 				program_->names.Get(names[source]) + ": " +
 				std::to_string(length) + " versus " +
-				std::to_string(packs[source].size()));
+				std::to_string(source_length));
 		}
 	}
 	element_scopes->reserve(element_scopes->size() + length);
@@ -196,11 +206,25 @@ bool SemanticAnalyzer::ExpandPackElementScopes(NodeId pattern, ScopeId scope,
 			SCOPE_TEMPLATE_PARAMETERS, 0, ScopePrefixId(scope));
 		for (std::size_t source = 0; source < names.size(); ++source)
 		{
-			TemplateParameter parameter;
-			parameter.name = names[source];
-			parameter.kind = packs[source][element].kind;
-			BindTemplateArgument(element_scope, parameter,
-				packs[source][element]);
+			if (pack_kind[source] == 1)
+			{
+				TemplateParameter parameter;
+				parameter.name = names[source];
+				parameter.kind = template_packs[source][element].kind;
+				BindTemplateArgument(element_scope, parameter,
+					template_packs[source][element]);
+			}
+			else
+			{
+				const BindingId binding = function_packs[source][element];
+				if (binding >= program_->bindings.size())
+					throw std::logic_error(
+						"function parameter pack binding is invalid");
+				const BindingRecord& record = program_->bindings[binding];
+				program_->AddBinding(element_scope, BIND_PARAMETER,
+					names[source], record.type, record.constant, record.value,
+					NAMED_NONE, 0, binding, false);
+			}
 		}
 		element_scopes->push_back(element_scope);
 	}

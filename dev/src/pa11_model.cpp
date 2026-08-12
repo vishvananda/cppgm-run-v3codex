@@ -1648,42 +1648,59 @@ bool Program::IsBaseOf(EntityId base, EntityId derived) const
 }
 
 bool Program::QueryBasePath(EntityId derived, EntityId base,
-	std::size_t* distance, bool* all_public) const
+	std::size_t* distance, bool* all_public, std::uint64_t* offset,
+	bool* ambiguous) const
 {
 	if (base == kNoEntity || derived == kNoEntity ||
 		base >= entities.size() || derived >= entities.size()) return false;
+	if (ambiguous) *ambiguous = false;
 	if (entities[derived].nonlinear_base_graph)
 	{
 		struct PendingBase
 		{
 			EntityId entity;
 			std::size_t distance;
+			std::uint64_t offset;
 			bool all_public;
-			PendingBase(EntityId entity_, std::size_t distance_, bool public_)
-				: entity(entity_), distance(distance_), all_public(public_) {}
+			PendingBase(EntityId entity_, std::size_t distance_,
+				std::uint64_t offset_, bool public_)
+				: entity(entity_), distance(distance_), offset(offset_),
+				  all_public(public_) {}
 		};
 		std::vector<PendingBase> pending;
-		pending.push_back(PendingBase(derived, 0, true));
+		pending.push_back(PendingBase(derived, 0, 0, true));
+		bool found = false;
 		while (!pending.empty())
 		{
 			const PendingBase current = pending.back();
 			pending.pop_back();
 			if (current.entity == base)
 			{
-				if (distance) *distance = current.distance;
-				if (all_public) *all_public = current.all_public;
-				return true;
+				if (!found)
+				{
+					if (distance) *distance = current.distance;
+					if (all_public) *all_public = current.all_public;
+					if (offset) *offset = current.offset;
+					found = true;
+					if (!ambiguous) return true;
+				}
+				else *ambiguous = true;
+				continue;
 			}
 			const EntityRecord& current_record = entities[current.entity];
 			for (std::size_t i = current_record.direct_base_count; i != 0; --i)
 			{
 				const DirectBaseEdge& edge = DirectBase(current.entity, i - 1);
+				if (current.offset >
+					std::numeric_limits<std::uint64_t>::max() - edge.offset)
+					throw std::logic_error("base-subobject offset overflow");
 				pending.push_back(PendingBase(edge.entity,
 					current.distance + 1,
+					current.offset + edge.offset,
 					current.all_public && edge.access == ACCESS_PUBLIC));
 			}
 		}
-		return false;
+		return found;
 	}
 	if (base_depths_[derived] < base_depths_[base]) return false;
 	const std::uint32_t difference =
@@ -1699,6 +1716,20 @@ bool Program::QueryBasePath(EntityId derived, EntityId base,
 	if (distance) *distance = difference;
 	if (all_public) *all_public =
 		deepest_nonpublic_base_depths_[derived] <= base_depths_[base];
+	if (offset)
+	{
+		std::uint64_t total = 0;
+		current = derived;
+		for (std::uint32_t step = 0; step < difference; ++step)
+		{
+			const DirectBaseEdge& edge = DirectBase(current, 0);
+			if (total > std::numeric_limits<std::uint64_t>::max() - edge.offset)
+				throw std::logic_error("base-subobject offset overflow");
+			total += edge.offset;
+			current = edge.entity;
+		}
+		*offset = total;
+	}
 	return true;
 }
 
@@ -2053,7 +2084,15 @@ LookupResult Program::LookupGraphCandidate(ScopeId scope, NameId name,
 
 LookupResult Program::LookupUnqualified(ScopeId scope, NameId name,
 	LookupKind kind)
+
 {
+	return LookupUnqualifiedCandidate(scope, name, kind, 0);
+}
+
+LookupResult Program::LookupUnqualifiedCandidate(ScopeId scope, NameId name,
+	LookupKind kind, bool* ambiguous)
+{
+	if (ambiguous) *ambiguous = false;
 	const ScopeId requested = scope;
 	BeginLookupDependencies();
 	LookupResult cached;
@@ -2122,7 +2161,17 @@ LookupResult Program::LookupUnqualified(ScopeId scope, NameId name,
 			(entities[scope_entity].flavor == NAMED_STRUCT ||
 			 entities[scope_entity].flavor == NAMED_CLASS ||
 			 entities[scope_entity].flavor == NAMED_UNION))
-			result = LookupGraph(current, name, kind);
+		{
+			bool graph_ambiguous = false;
+			result = LookupGraphCandidate(
+				current, name, kind, ambiguous ? &graph_ambiguous : 0);
+			if (graph_ambiguous)
+			{
+				*ambiguous = true;
+				collecting_lookup_dependencies_ = false;
+				return LookupResult();
+			}
+		}
 
 		for (std::uint32_t pending =
 				lookup_pending_head_marks_[current] ==
@@ -2130,8 +2179,19 @@ LookupResult Program::LookupUnqualified(ScopeId scope, NameId name,
 					std::numeric_limits<std::uint32_t>::max();
 			pending != std::numeric_limits<std::uint32_t>::max();
 			pending = lookup_pending_next_[pending])
-			MergeLookup(&result,
-				LookupGraph(lookup_pending_targets_[pending], name, kind));
+		{
+			bool graph_ambiguous = false;
+			const LookupResult candidate = LookupGraphCandidate(
+				lookup_pending_targets_[pending], name, kind,
+				ambiguous ? &graph_ambiguous : 0);
+			if (graph_ambiguous ||
+				!MergeLookup(&result, candidate, ambiguous != 0))
+			{
+				*ambiguous = true;
+				collecting_lookup_dependencies_ = false;
+				return LookupResult();
+			}
+		}
 		if (!result.Empty()) break;
 	}
 
@@ -2491,6 +2551,13 @@ LookupResult Program::LookupName(ScopeId current, NameId name,
 {
 	++lookup_queries;
 	return LookupUnqualified(current, name, kind);
+}
+
+LookupResult Program::LookupNameCandidate(ScopeId current, NameId name,
+	LookupKind kind, bool* ambiguous)
+{
+	++lookup_queries;
+	return LookupUnqualifiedCandidate(current, name, kind, ambiguous);
 }
 
 LookupResult Program::LookupDirect(ScopeId scope, NameId name,

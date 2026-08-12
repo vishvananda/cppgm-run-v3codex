@@ -163,6 +163,8 @@ private:
 		LookupKind kind);
 	LookupResult LookupStructuredName(NodeId syntax, ScopeId scope,
 		LookupKind kind, ScopeId* terminal_owner = 0);
+	LookupResult LookupExplicitUnqualifiedTemplateName(
+		ScopeId scope, NameId name, LookupKind kind);
 	NamePath StructuredNamePath(NodeId syntax);
 	LookupResult LookupSpelling(ScopeId scope, const std::string& spelling,
 		LookupKind kind);
@@ -1169,7 +1171,8 @@ private:
 		AccessKind access);
 	bool BaseConversionAllowed(EntityId derived, EntityId base) const;
 	std::size_t BaseConversionDistance(TypeId source, TypeId target) const;
-	std::size_t BaseProjectionCount(TypeId source, TypeId target) const;
+	std::size_t BaseProjectionCount(TypeId source, TypeId target,
+		std::uint64_t* offset = 0) const;
 	EntityId ZeroOffsetClassEntity(TypeId type) const;
 	bool VisitZeroOffsetSubobjects(EntityId root, std::uint32_t marker,
 		std::uint32_t conflict_marker);
@@ -1384,6 +1387,8 @@ private:
 		const ObjectConversionFact* conversion_fact = 0);
 	bool ApplyQualifiedMemberNamingTarget(ExpressionInfo* value,
 		EntityId naming_class, BindingId member);
+	void ApplyQualifiedCallNamingTarget(ExpressionInfo* value,
+		EntityId naming_class, const std::vector<BindingId>& candidates);
 	ConversionRank Conversion(TypeId source, ValueCategory category,
 		bool integer_zero, TypeId target) const;
 	ConversionRank Conversion(const ExpressionInfo& source, TypeId target) const;

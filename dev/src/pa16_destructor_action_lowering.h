@@ -51,6 +51,17 @@ protected:
 			derived.ProjectBaseSubobjectOffset(object, offset);
 	}
 
+	Operand ProjectBaseSubobjects(Operand object,
+		std::uint32_t projection_count, TypeId source_type,
+		std::uint64_t projection_offset, bool has_projection_offset)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (!has_projection_offset)
+			return ProjectBaseSubobjects(object, projection_count, source_type);
+		return projection_count == 0 ? object :
+			derived.ProjectBaseSubobjectOffset(object, projection_offset);
+	}
+
 	void EmitDestructorCall(BindingId destructor, const Operand& destination)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
@@ -262,7 +273,9 @@ protected:
 			destination = derived.LoadStorage(derived.StorageFor(
 				derived.current_this_binding_, LowPtr()), LowPtr());
 			destination = derived.ProjectBaseSubobjects(destination,
-				action.base_projection_count);
+				action.base_projection_count, kNoType,
+				action.base_projection_offset,
+				action.has_base_projection_offset);
 		}
 		LowerDestructorObject(action.operand_type, destination, action.binding);
 	}

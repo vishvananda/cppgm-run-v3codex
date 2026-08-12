@@ -1342,9 +1342,13 @@ void SemanticAnalyzer::AddBaseInitializationAction(EntityId entity,
 	dump_.nodes[action].direct_base_offset =
 		program_->DirectBase(entity, base_ordinal).offset;
 	dump_.nodes[action].has_direct_base_offset = true;
+	std::vector<ExpressionInfo> prepared_arguments;
+	const bool expanded_arguments = ExpandCallArgumentPacks(
+		arguments, scope, &arguments, &prepared_arguments);
 	const std::uint32_t constructor = BuildConstructorAction(base_type,
 		scope, arguments, false, list_initialization, true, true,
-		list_initialization ? initializer : kNoNode);
+		list_initialization ? initializer : kNoNode,
+		expanded_arguments ? &prepared_arguments : 0);
 	if (dump_.nodes[constructor].kind == DUMP_CONSTRUCTOR_ACTION &&
 		dump_.nodes[constructor].binding != kNoBinding)
 	{
@@ -1357,6 +1361,7 @@ void SemanticAnalyzer::AddBaseInitializationAction(EntityId entity,
 		const EntityId selected_owner =
 			program_->bindings[selected.binding].member_owner;
 		const bool demanded_owned_base_entry = !pack_expanded &&
+			!expanded_arguments &&
 			initializer != kNoNode &&
 			(!IsClassTemplateSpecializationEntity(entity) ||
 			 selected.special_member == SPECIAL_MEMBER_COPY_CONSTRUCTOR ||
@@ -2668,64 +2673,6 @@ void SemanticAnalyzer::AppendUnwindDestructionActions(ScopeId scope,
 	}
 }
 
-bool SemanticAnalyzer::CacheDestructorChainDecision(BindingId destructor,
-	bool proven_empty) const
-{
-	if (empty_destructor_chain_cache_.size() <= destructor)
-		empty_destructor_chain_cache_.resize(
-			static_cast<std::size_t>(destructor) + 1, 0);
-	// A conservative no-elide decision is monotonic: a later empty definition
-	// may enable an optional optimization, but retaining destruction is correct.
-	empty_destructor_chain_cache_[destructor] = proven_empty ? 2 : 1;
-	return proven_empty;
-}
-
-bool SemanticAnalyzer::CanElideDestructorChain(BindingId destructor) const
-{
-	++empty_destructor_chain_visits_;
-	if (destructor == kNoBinding || destructor >= program_->bindings.size())
-		return false;
-	if (destructor < empty_destructor_chain_cache_.size() &&
-		empty_destructor_chain_cache_[destructor] != 0)
-	{
-		++empty_destructor_chain_cache_hits_;
-		return empty_destructor_chain_cache_[destructor] == 2;
-	}
-	const BindingRecord& binding = program_->bindings[destructor];
-	if (binding.member_owner == kNoEntity)
-		return CacheDestructorChainDecision(destructor, false);
-	const FunctionInfo& info = GetFunction(destructor);
-	const bool empty_definition = info.definition_body != kNoNode &&
-		FirstSemanticChild(info.definition_body) == kNoNode;
-	if (!info.implicit_destructor && !info.defaulted_destructor &&
-		!empty_definition)
-		return CacheDestructorChainDecision(destructor, false);
-	const EntityId entity = binding.member_owner;
-	const EntityId base = program_->entities[entity].direct_base;
-	if (base != kNoEntity && !program_->entities[base].trivial_destructor)
-	{
-		const BindingId base_destructor = DestructorForType(
-			program_->entities[base].type);
-		if (!CanElideDestructorChain(base_destructor))
-			return CacheDestructorChainDecision(destructor, false);
-	}
-	if (entity >= entity_data_members_.size())
-		return CacheDestructorChainDecision(destructor, true);
-	const std::vector<BindingId>& members = entity_data_members_[entity];
-	for (std::size_t i = 0; i < members.size(); ++i)
-	{
-		const EntityId member = DestructedEntity(
-			program_->bindings[members[i]].type);
-		if (member == kNoEntity ||
-			program_->entities[member].trivial_destructor)
-			continue;
-		if (!CanElideDestructorChain(DestructorForType(
-			program_->bindings[members[i]].type)))
-			return CacheDestructorChainDecision(destructor, false);
-	}
-	return CacheDestructorChainDecision(destructor, true);
-}
-
 bool SemanticAnalyzer::IsElidableAutomaticDestructor(
 	BindingId destructor) const
 {
@@ -2979,19 +2926,26 @@ void SemanticAnalyzer::AddDestructorSubobjectActions(EntityId entity,
 			++destructor_subobject_action_visits_;
 		}
 	}
-	const EntityId base = program_->entities[entity].direct_base;
-	if (base != kNoEntity && !program_->entities[base].trivial_destructor)
+	const EntityRecord& owner = program_->entities[entity];
+	for (std::size_t base_ordinal = owner.direct_base_count;
+		base_ordinal != 0; --base_ordinal)
 	{
-		BindingId destructor = DestructorForType(
-			program_->entities[base].type);
+		const DirectBaseEdge& edge = program_->DirectBase(
+			entity, base_ordinal - 1);
+		const EntityId base = edge.entity;
+		if (program_->entities[base].trivial_destructor) continue;
+		BindingId destructor = DestructorForType(program_->entities[base].type);
 		if (destructor == kNoBinding)
 			throw std::logic_error("base has no destructor identity");
 		if (!CanAccessMember(destructor, base))
 			throw std::runtime_error("inaccessible base destructor");
 		if (program_->bindings[destructor].virtual_function)
 			destructor = EnsureDestructorBaseEntry(destructor);
-		dump_.Add(body, MakeDestructorAction(program_->entities[base].type,
-			destructor, kNoBinding, 1));
+		const std::uint32_t action = MakeDestructorAction(
+			program_->entities[base].type, destructor, kNoBinding, 1);
+		dump_.nodes[action].base_projection_offset = edge.offset;
+		dump_.nodes[action].has_base_projection_offset = true;
+		dump_.Add(body, action);
 		++destructor_subobject_action_visits_;
 	}
 }

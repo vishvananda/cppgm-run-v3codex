@@ -736,6 +736,20 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 		*result = CandidateSubstitutionFailure();
 		return true;
 	}
+	EntityId effective_naming_class = found.naming_class;
+	if (explicitly_qualified)
+	{
+		const NamePath source_path = ParseNamePath(member_spelling);
+		const ScopeId source_owner = ResolveOwner(scope, source_path);
+		const EntityId source_naming = source_owner == kNoScope ? kNoEntity :
+			program_->EntityForScope(source_owner);
+		if (source_naming != kNoEntity)
+			effective_naming_class = source_naming;
+	}
+	if (explicitly_qualified && effective_naming_class != kNoEntity &&
+		!program_->bindings[candidates[0]].static_member_function)
+		(void)ApplyQualifiedMemberNamingTarget(
+			&object_pointer, effective_naming_class, candidates[0]);
 	ObjectConversionFact object_conversion;
 	std::vector<CallConversionFact> argument_conversions;
 	const BindingId selected = SelectOverload(scope, argument_syntax,
@@ -749,7 +763,7 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 	if (!program_->bindings[selected].static_member_function)
 		DemandRetainedRuntimeCalls(object.node);
 	*result = BuildResolvedCall(selected, scope, argument_syntax,
-		arguments, &object_pointer, target, found.naming_class,
+		arguments, &object_pointer, target, effective_naming_class,
 		&object_conversion, &argument_conversions,
 		explicitly_qualified);
 	return true;
@@ -1058,13 +1072,16 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 		type, member_category, program_->names.Intern(operation), found.ordinary);
 	if (member_owner != kNoEntity)
 	{
+		std::uint64_t projection_offset = 0;
 		const std::size_t projections = BaseProjectionCount(owner_type,
-			program_->entities[member_owner].type);
+			program_->entities[member_owner].type, &projection_offset);
 		if (projections == std::numeric_limits<std::size_t>::max() ||
 			projections > std::numeric_limits<std::uint32_t>::max())
 			throw std::logic_error("member has no bounded base path");
 		dump_.nodes[expression].base_projection_count =
 			static_cast<std::uint32_t>(projections);
+		dump_.nodes[expression].base_projection_offset = projection_offset;
+		dump_.nodes[expression].has_base_projection_offset = true;
 	}
 	dump_.Add(expression, object.node);
 	ExpressionInfo result;

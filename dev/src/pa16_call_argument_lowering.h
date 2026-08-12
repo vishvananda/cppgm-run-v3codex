@@ -166,7 +166,8 @@ protected:
 	}
 
 	Operand LowerProjectedClassPointer(std::uint32_t child,
-		std::uint32_t projection_count)
+		std::uint32_t projection_count, std::uint64_t projection_offset,
+		bool has_projection_offset)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		const DumpNode& source = derived.arena_.nodes[child];
@@ -179,18 +180,21 @@ protected:
 		const bool nonnull_this = source.kind == DUMP_ID_EXPRESSION &&
 			source.binding != kNoBinding &&
 			source.binding == derived.current_this_binding_;
+		const bool known_nonnull_address =
+			source.kind == DUMP_UNARY_EXPRESSION &&
+			StripOperationPrefix(derived.program_.names.Get(source.text)) == "&";
 		EntityId entity = derived.BaseEntityForType(source.type);
-		bool adjusted = false;
-		for (std::uint32_t i = 0; i < projection_count &&
-			entity != kNoEntity; ++i)
+		bool adjusted = has_projection_offset && projection_offset != 0;
+		for (std::uint32_t i = 0; !has_projection_offset &&
+			i < projection_count && entity != kNoEntity; ++i)
 		{
 			adjusted = adjusted ||
 				derived.program_.entities[entity].direct_base_offset != 0;
 			entity = derived.program_.entities[entity].direct_base;
 		}
-		if (!pointer_source || !adjusted || nonnull_this)
+		if (!pointer_source || !adjusted || nonnull_this || known_nonnull_address)
 			return derived.ProjectBaseSubobjects(address, projection_count,
-				source.type);
+				source.type, projection_offset, has_projection_offset);
 
 		const Operand result(derived.EnsureGeneratedSlot(
 			child, "basecast", LowPtr()), LowPtr());
@@ -218,7 +222,8 @@ protected:
 		derived.EmitJump(end_block);
 		derived.SelectBlock(adjust_block);
 		const Operand projected = derived.ProjectBaseSubobjects(
-			address, projection_count, source.type);
+			address, projection_count, source.type,
+			projection_offset, has_projection_offset);
 		Instruction store_adjusted(Instruction::STORE);
 		store_adjusted.type = LowPtr();
 		store_adjusted.first = projected;

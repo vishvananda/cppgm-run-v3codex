@@ -77,12 +77,30 @@ protected:
 		}
 	}
 
+	void SetCurrentThisForSlotPlanning(const DumpNode& function,
+		const NodeChildren& children)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (function.binding == kNoBinding ||
+			derived.program_.bindings[function.binding].member_owner == kNoEntity ||
+			derived.program_.bindings[function.binding].static_member_function)
+			return;
+		for (std::size_t i = 0; i < children.size(); ++i)
+			if (derived.arena_.nodes[children[i]].kind == DUMP_PARAMETER)
+			{
+				derived.current_this_binding_ =
+					derived.arena_.nodes[children[i]].binding;
+				return;
+			}
+	}
+
 	void CollectSlots(std::uint32_t node)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		std::vector<std::uint32_t> pending(1, node);
 		std::vector<std::uint8_t> under_variable(1, 0);
 		std::vector<std::uint8_t> plan_expression_arguments(1, 0);
+		std::vector<std::uint8_t> under_conditional(1, 0);
 		while (!pending.empty())
 		{
 			const std::uint32_t current = pending.back();
@@ -92,6 +110,8 @@ protected:
 			const bool expression_arguments =
 				plan_expression_arguments.back() != 0;
 			plan_expression_arguments.pop_back();
+			const bool conditional_child = under_conditional.back() != 0;
+			under_conditional.pop_back();
 			const DumpNode& record = derived.arena_.nodes[current];
 			const bool persistent_variable = record.kind == DUMP_VARIABLE &&
 				record.binding != kNoBinding &&
@@ -180,6 +200,35 @@ protected:
 						 record.category == VALUE_XVALUE) ? LowPtr() : result);
 			}
 			const NodeChildren children = derived.Children(current);
+			if (!conditional_child && record.kind == DUMP_CAST_EXPRESSION &&
+				record.base_projection_count != 0 && children.size() == 1)
+			{
+				const DumpNode& source = derived.arena_.nodes[children[0]];
+				TypeId source_shape =
+					derived.program_.types.RemoveTopCv(source.type);
+				const bool pointer_source = derived.program_.types.Get(
+					source_shape).kind == TYPE_POINTER;
+				bool adjusted = record.has_base_projection_offset &&
+					record.base_projection_offset != 0;
+				EntityId entity = derived.BaseEntityForType(source.type);
+				for (std::uint32_t i = 0; !record.has_base_projection_offset &&
+					i < record.base_projection_count && entity != kNoEntity; ++i)
+				{
+					adjusted = adjusted || derived.program_.entities[
+						entity].direct_base_offset != 0;
+					entity = derived.program_.entities[entity].direct_base;
+				}
+				const bool nonnull_this = source.kind == DUMP_ID_EXPRESSION &&
+					source.binding != kNoBinding &&
+					source.binding == derived.current_this_binding_;
+				const bool known_nonnull_address =
+					source.kind == DUMP_UNARY_EXPRESSION &&
+					StripOperationPrefix(derived.program_.names.Get(source.text)) == "&";
+				if (pointer_source && adjusted && !nonnull_this &&
+					!known_nonnull_address)
+					(void)derived.EnsureGeneratedSlot(
+						children[0], "basecast", pa15_lowir_detail::LowPtr());
+			}
 			if (variable_initializer)
 				PlanConstructorReferenceArgumentSlots(record, children);
 			if (record.kind == DUMP_RETURN_STATEMENT && !children.empty() &&
@@ -307,6 +356,8 @@ protected:
 					(expression_call && !child.temporary_implicit_object);
 				plan_expression_arguments.push_back(
 					plan_child_arguments ? 1 : 0);
+				under_conditional.push_back(conditional_child ||
+					record.kind == DUMP_CONDITIONAL_EXPRESSION ? 1 : 0);
 			}
 		}
 	}

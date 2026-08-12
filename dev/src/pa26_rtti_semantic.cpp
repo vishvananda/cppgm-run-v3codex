@@ -212,24 +212,28 @@ bool SemanticAnalyzer::TryAnalyzeDynamicCast(TypeId target,
 	}
 	const TypeId source_object =
 		program_->types.RemoveTopCv(source_object_with_cv);
+	const TypeRecord& target_object_record = program_->types.Get(target_object);
+	const bool target_void = !reference &&
+		target_object_record.kind == TYPE_FUNDAMENTAL &&
+		target_object_record.fundamental == FUND_VOID;
 
 	const EntityId source_entity = EntityOf(source_object);
 	const EntityId target_entity = EntityOf(target_object);
-	if (source_entity == kNoEntity || target_entity == kNoEntity ||
+	if (source_entity == kNoEntity || (!target_void && target_entity == kNoEntity) ||
 		!IsClassFlavor(program_->entities[source_entity].flavor) ||
-		!IsClassFlavor(program_->entities[target_entity].flavor))
+		(!target_void && !IsClassFlavor(program_->entities[target_entity].flavor)))
 		throw std::runtime_error("dynamic_cast requires class operands");
 	if ((TopCv(*program_, source_object_with_cv) &
 		~TopCv(*program_, target_object_with_cv)) != 0)
 		throw std::runtime_error("dynamic_cast removes cv-qualification");
 	EnsureClassDefinition(source_object);
-	EnsureClassDefinition(target_object);
+	if (!target_void) EnsureClassDefinition(target_object);
 
 	// Identity and derived-to-base conversions need no runtime RTTI query and
 	// retain the existing cast path (including base projection facts).
-	if (source_entity == target_entity)
+	if (!target_void && source_entity == target_entity)
 		return false;
-	if (program_->IsBaseOf(target_entity, source_entity))
+	if (!target_void && program_->IsBaseOf(target_entity, source_entity))
 	{
 		if (!BaseConversionAllowed(source_entity, target_entity))
 			throw std::runtime_error(
@@ -240,11 +244,12 @@ bool SemanticAnalyzer::TryAnalyzeDynamicCast(TypeId target,
 	if (!program_->entities[source_entity].polymorphic_class)
 		throw std::runtime_error("dynamic_cast source is not polymorphic");
 	if (program_->entities[source_entity].nonlinear_base_graph ||
-		program_->entities[target_entity].nonlinear_base_graph)
+		(!target_void &&
+		 program_->entities[target_entity].nonlinear_base_graph))
 		throw std::runtime_error(
 			"dynamic_cast multiple inheritance is outside PA26");
 	MarkVtableDemand(source_entity);
-	MarkVtableDemand(target_entity);
+	if (!target_void) MarkVtableDemand(target_entity);
 
 	const ValueCategory category = reference ?
 		(target_record.kind == TYPE_LVALUE_REFERENCE ?

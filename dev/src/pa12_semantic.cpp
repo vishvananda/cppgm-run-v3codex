@@ -580,8 +580,9 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 		if (binds_temporary && EntityOf(value.type) != kNoEntity &&
 			dump_.nodes[value.node].kind != DUMP_TEMPORARY_OBJECT)
 			value = MaterializeTemporary(value);
+		std::uint64_t projection_offset = 0;
 		const std::size_t projections =
-			BaseProjectionCount(value.type, nonreference);
+			BaseProjectionCount(value.type, nonreference, &projection_offset);
 		if (projections == std::numeric_limits<std::size_t>::max() ||
 			projections > std::numeric_limits<std::uint32_t>::max())
 			throw std::logic_error(
@@ -594,6 +595,8 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 			nonreference, category);
 		dump_.nodes[cast].base_projection_count =
 			static_cast<std::uint32_t>(projections);
+		dump_.nodes[cast].base_projection_offset = projection_offset;
+		dump_.nodes[cast].has_base_projection_offset = true;
 		dump_.Add(cast, value.node);
 		value.node = cast;
 		value.type = nonreference;
@@ -602,7 +605,6 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 		value.constant = false;
 		value.constexpr_object = kNoConstexprObject;
 		value.constexpr_complete_object = kNoConstexprObject;
-		std::uint64_t projection_offset = 0;
 		const std::uint32_t projected = ProjectConstexprObject(
 			object, nonreference, &projection_offset);
 		if (projected != kNoConstexprObject)
@@ -1278,19 +1280,14 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 			throw std::runtime_error("empty parenthesized callee");
 	}
 	NodeId arguments_node = kNoNode;
-	std::vector<NodeId> argument_syntax =
-		CollectCallArgumentSyntax(node, &arguments_node);
-	if (NeedsBracedCallContext(argument_syntax))
-		return AnalyzeCallInBracedContext(node, scope, target);
+	std::vector<NodeId> argument_syntax = CollectCallArgumentSyntax(node, &arguments_node);
+	if (NeedsBracedCallContext(argument_syntax)) return AnalyzeCallInBracedContext(node, scope, target);
 	std::vector<ExpressionInfo> analyzed_arguments;
 	bool arguments_analyzed = false;
 	ExpressionInfo member_call;
-	if (AnalyzeExplicitDestructorCall(callee_syntax, scope, argument_syntax,
-		target, &member_call)) return member_call;
-	if (AnalyzeDirectMemberCall(callee_syntax, scope, argument_syntax,
-		target, &member_call)) return member_call;
-	if (ExpandCallArgumentPacks(argument_syntax, scope, &argument_syntax,
-		&analyzed_arguments)) arguments_analyzed = true;
+	if (AnalyzeExplicitDestructorCall(callee_syntax, scope, argument_syntax, target, &member_call)) return member_call;
+	if (AnalyzeDirectMemberCall(callee_syntax, scope, argument_syntax, target, &member_call)) return member_call;
+	if (ExpandCallArgumentPacks(argument_syntax, scope, &argument_syntax, &analyzed_arguments)) arguments_analyzed = true;
 	if (CandidateSubstitutionFailed()) return ExpressionInfo();
 	std::size_t constexpr_callee_local = 0;
 	const bool local_callable =
@@ -1364,6 +1361,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 					object = &implicit_object;
 				}
 			}
+			if (object && qualified_callee)
+				ApplyQualifiedCallNamingTarget(
+					&implicit_object, function_naming_class, candidates);
 			ObjectConversionFact object_conversion;
 			std::vector<CallConversionFact> argument_conversions;
 			const BindingId selected = SelectOverload(scope, argument_syntax,

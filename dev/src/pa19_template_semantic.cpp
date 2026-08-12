@@ -486,9 +486,15 @@ LookupResult SemanticAnalyzer::LookupStructuredName(NodeId syntax,
 		}
 		else if (carrier == kNoScope)
 		{
-			NamePath unqualified;
-			unqualified.Push(component);
-			found = LookupPath(scope, unqualified, component_kind);
+			if (argument_list != kNoNode)
+				found = LookupExplicitUnqualifiedTemplateName(
+					scope, component, component_kind);
+			else
+			{
+				NamePath unqualified;
+				unqualified.Push(component);
+				found = LookupPath(scope, unqualified, component_kind);
+			}
 		}
 		else
 		{
@@ -1436,14 +1442,6 @@ std::size_t SemanticAnalyzer::FindClassTemplate(ScopeId scope,
 {
 	const NamePath path = ParseNamePath(spelling);
 	return FindClassTemplate(scope, path);
-}
-
-std::size_t SemanticAnalyzer::FindClassTemplate(ScopeId scope,
-	const NamePath& path)
-{
-	if (path.Empty()) return NoTemplatePattern();
-	return FindClassTemplateIndex(
-		LookupPath(scope, path, LOOKUP_TYPE), path.Last());
 }
 
 TypeId SemanticAnalyzer::ResolveStructuredTypeName(NodeId name,

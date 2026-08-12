@@ -103,13 +103,22 @@ bool SemanticAnalyzer::TryInheritConstructors(EntityId entity, ScopeId scope,
 	const std::vector<BindingId>& constructors,
 	const std::vector<std::size_t>& template_patterns)
 {
-	if (entity == kNoEntity ||
-		program_->entities[entity].direct_base == kNoEntity) return false;
-	const EntityId base = program_->entities[entity].direct_base;
-	bool constructor_set =
-		target_owner == program_->entities[base].member_scope &&
-		(target_name == program_->entities[base].identity_name ||
-		 names_owner_alias);
+	if (entity == kNoEntity) return false;
+	bool constructor_set = false;
+	for (std::size_t base_ordinal = 0;
+		base_ordinal < program_->entities[entity].direct_base_count;
+		++base_ordinal)
+	{
+		const EntityId base = program_->DirectBase(
+			entity, base_ordinal).entity;
+		if (target_owner == program_->entities[base].member_scope &&
+			(target_name == program_->entities[base].identity_name ||
+			 names_owner_alias))
+		{
+			constructor_set = true;
+			break;
+		}
+	}
 	for (std::size_t i = 0; i < constructors.size(); ++i)
 		constructor_set = constructor_set &&
 			GetFunction(constructors[i]).constructor;
@@ -456,8 +465,9 @@ void SemanticAnalyzer::EvaluateSynthesizedConstructor(EntityId entity,
 		}
 		if (!program_->bindings[selected].nonthrowing) *nonthrowing = false;
 	};
-	if (owner.direct_base != kNoEntity)
-		visit(program_->entities[owner.direct_base].type);
+	for (std::size_t i = 0; i < owner.direct_base_count; ++i)
+		visit(program_->entities[
+			program_->DirectBase(entity, i).entity].type);
 	if (entity < entity_data_members_.size())
 		for (std::size_t i = 0; i < entity_data_members_[entity].size(); ++i)
 			visit(program_->bindings[entity_data_members_[entity][i]].type);
@@ -506,8 +516,9 @@ void SemanticAnalyzer::EvaluateSynthesizedAssignment(EntityId entity,
 		}
 		if (!program_->bindings[selected].nonthrowing) *nonthrowing = false;
 	};
-	if (owner.direct_base != kNoEntity)
-		visit(program_->entities[owner.direct_base].type);
+	for (std::size_t i = 0; i < owner.direct_base_count; ++i)
+		visit(program_->entities[
+			program_->DirectBase(entity, i).entity].type);
 	if (entity < entity_data_members_.size())
 		for (std::size_t i = 0; i < entity_data_members_[entity].size(); ++i)
 			visit(program_->bindings[entity_data_members_[entity][i]].type);
@@ -524,9 +535,10 @@ void SemanticAnalyzer::ConfigureSynthesizedStoragePrefix(EntityId entity,
 	const bool assignment = IsAssignmentSpecialMember(
 		function->special_member);
 	const EntityRecord& owner = program_->entities[entity];
-	if (owner.direct_base != kNoEntity)
+	for (std::size_t i = 0; i < owner.direct_base_count; ++i)
 	{
-		const TypeId base_type = program_->entities[owner.direct_base].type;
+		const TypeId base_type = program_->entities[
+			program_->DirectBase(entity, i).entity].type;
 		const BindingId selected = assignment ?
 			AssignmentForSubobject(base_type, function->special_member) :
 			ConstructorForSubobject(base_type, function->special_member);
@@ -867,12 +879,16 @@ void SemanticAnalyzer::AddSynthesizedConstructorBody(
 	}
 	else
 	{
-		if (owner.direct_base != kNoEntity &&
-			function.synthesized_prefix_size == 0)
+		if (function.synthesized_prefix_size == 0)
 		{
+			for (std::size_t base_ordinal = 0;
+				base_ordinal < owner.direct_base_count; ++base_ordinal)
+			{
 			++special_member_subobject_visits_;
+			const DirectBaseEdge& edge = program_->DirectBase(
+				entity, base_ordinal);
 			const EntityRecord& base =
-				program_->entities[owner.direct_base];
+				program_->entities[edge.entity];
 			BindingId selected = ConstructorForSubobject(
 				base.type, function.special_member);
 			if (selected == kNoBinding)
@@ -884,6 +900,8 @@ void SemanticAnalyzer::AddSynthesizedConstructorBody(
 				const std::uint32_t step = MakeDump(
 					DUMP_SPECIAL_MEMBER_SUBOBJECT_ACTION, base.type);
 				dump_.nodes[step].base_projection_count = 1;
+				dump_.nodes[step].base_projection_offset = edge.offset;
+				dump_.nodes[step].has_base_projection_offset = true;
 				if (!selected_function.trivial_special_member)
 				{
 					selected = EnsureConstructorBaseEntry(selected);
@@ -893,6 +911,7 @@ void SemanticAnalyzer::AddSynthesizedConstructorBody(
 					DemandFunction(selected);
 				}
 				dump_.Add(construction, step);
+			}
 			}
 		}
 		if (entity < entity_data_members_.size())
@@ -950,10 +969,12 @@ void SemanticAnalyzer::DemandSynthesizedConstructorDependencies(
 		return;
 	const EntityId entity = program_->bindings[constructor].member_owner;
 	const EntityRecord& owner = program_->entities[entity];
-	if (owner.direct_base != kNoEntity)
+	for (std::size_t base_ordinal = 0;
+		base_ordinal < owner.direct_base_count; ++base_ordinal)
 	{
 		BindingId selected = ConstructorForSubobject(
-			program_->entities[owner.direct_base].type,
+			program_->entities[program_->DirectBase(
+				entity, base_ordinal).entity].type,
 			function.special_member);
 		if (selected != kNoBinding &&
 			!GetFunction(selected).trivial_special_member)
@@ -1014,12 +1035,16 @@ void SemanticAnalyzer::AddSynthesizedAssignmentBody(
 	}
 	else
 	{
-		if (owner.direct_base != kNoEntity &&
-			function.synthesized_prefix_size == 0)
+		if (function.synthesized_prefix_size == 0)
 		{
+			for (std::size_t base_ordinal = 0;
+				base_ordinal < owner.direct_base_count; ++base_ordinal)
+			{
 			++special_member_subobject_visits_;
+			const DirectBaseEdge& edge = program_->DirectBase(
+				entity, base_ordinal);
 			const EntityRecord& base =
-				program_->entities[owner.direct_base];
+				program_->entities[edge.entity];
 			const BindingId selected = AssignmentForSubobject(
 				base.type, function.special_member);
 			if (selected == kNoBinding)
@@ -1028,11 +1053,15 @@ void SemanticAnalyzer::AddSynthesizedAssignmentBody(
 			{
 				const std::uint32_t step = MakeDump(
 					DUMP_SPECIAL_MEMBER_SUBOBJECT_ACTION, base.type);
+				dump_.nodes[step].base_projection_count = 1;
+				dump_.nodes[step].base_projection_offset = edge.offset;
+				dump_.nodes[step].has_base_projection_offset = true;
 				dump_.nodes[step].selected_binding = selected;
 				dump_.Add(assignment, step);
 				if (!GetFunction(selected).defined)
 					GetMutableFunction(selected).deferred = true;
 				DemandFunction(selected);
+			}
 			}
 		}
 		if (entity < entity_data_members_.size())

@@ -146,9 +146,11 @@ bool SemanticAnalyzer::BaseConversionAllowed(EntityId derived,
 	if (base == derived) return false;
 	std::size_t distance = 0;
 	bool all_public = false;
+	bool ambiguous = false;
 	++access_path_visits_;
 	if (!program_->QueryBasePath(
-		derived, base, &distance, &all_public) || distance == 0) return false;
+		derived, base, &distance, &all_public, 0, &ambiguous) ||
+		distance == 0 || ambiguous) return false;
 	if (all_public) return true;
 	EntityId privilege_anchor = kNoEntity;
 	for (EntityId context = current_class_context_; context != kNoEntity;
@@ -203,11 +205,35 @@ std::size_t SemanticAnalyzer::BaseConversionDistance(TypeId source,
 }
 
 std::size_t SemanticAnalyzer::BaseProjectionCount(TypeId source,
-	TypeId target) const
+	TypeId target, std::uint64_t* offset) const
 {
-	const std::size_t distance = BaseConversionDistance(source, target);
-	return distance == std::numeric_limits<std::size_t>::max() ? distance :
-		distance == 0 ? 0 : 1;
+	const TypeRecord source_top = program_->types.Get(source);
+	const TypeRecord target_top = program_->types.Get(target);
+	if (source_top.kind == TYPE_LVALUE_REFERENCE ||
+		source_top.kind == TYPE_RVALUE_REFERENCE) source = source_top.child;
+	if (target_top.kind == TYPE_LVALUE_REFERENCE ||
+		target_top.kind == TYPE_RVALUE_REFERENCE) target = target_top.child;
+	source = program_->types.RemoveTopCv(source);
+	target = program_->types.RemoveTopCv(target);
+	const TypeRecord source_core = program_->types.Get(source);
+	const TypeRecord target_core = program_->types.Get(target);
+	if (source_core.kind == TYPE_POINTER && target_core.kind == TYPE_POINTER)
+	{
+		source = program_->types.RemoveTopCv(source_core.child);
+		target = program_->types.RemoveTopCv(target_core.child);
+	}
+	const EntityId derived = EntityOf(source);
+	const EntityId base = EntityOf(target);
+	if (derived == kNoEntity || base == kNoEntity)
+		return std::numeric_limits<std::size_t>::max();
+	std::size_t distance = 0;
+	std::uint64_t selected_offset = 0;
+	++access_path_visits_;
+	if (!program_->QueryBasePath(
+		derived, base, &distance, 0, &selected_offset))
+		return std::numeric_limits<std::size_t>::max();
+	if (offset) *offset = selected_offset;
+	return distance == 0 ? 0 : 1;
 }
 
 ConversionRank SemanticAnalyzer::MemberObjectConversion(
@@ -265,9 +291,11 @@ ExpressionInfo SemanticAnalyzer::ApplyMemberObjectTarget(
 			SetExpressionSubobject(&value, object, complete_object);
 		return value;
 	}
+	std::uint64_t projection_offset = 0;
+	const std::size_t selected_projections = BaseProjectionCount(
+		value.type, target, &projection_offset);
 	const std::size_t projections = conversion_fact ?
-		conversion_fact->base_projection_count :
-		BaseProjectionCount(value.type, target);
+		conversion_fact->base_projection_count : selected_projections;
 	if (projections == std::numeric_limits<std::size_t>::max() ||
 		projections > std::numeric_limits<std::uint32_t>::max())
 		throw std::logic_error("using member has no bounded base path");
@@ -275,6 +303,8 @@ ExpressionInfo SemanticAnalyzer::ApplyMemberObjectTarget(
 		target, VALUE_PRVALUE);
 	dump_.nodes[cast].base_projection_count =
 		static_cast<std::uint32_t>(projections);
+	dump_.nodes[cast].base_projection_offset = projection_offset;
+	dump_.nodes[cast].has_base_projection_offset = true;
 	dump_.Add(cast, value.node);
 	value.node = cast;
 	value.type = target;
@@ -336,12 +366,15 @@ bool SemanticAnalyzer::ApplyQualifiedMemberNamingTarget(ExpressionInfo* value,
 	const TypeId target = program_->types.Pointer(naming_type);
 	ObjectConversionFact conversion;
 	conversion.rank = MemberObjectConversion(*value, target, member);
-	const std::size_t projections = BaseProjectionCount(value->type, target);
+	std::uint64_t projection_offset = 0;
+	const std::size_t projections = BaseProjectionCount(
+		value->type, target, &projection_offset);
 	if (conversion.rank != CONVERSION_DERIVED_TO_BASE ||
 		projections == std::numeric_limits<std::size_t>::max() ||
 		projections > std::numeric_limits<std::uint32_t>::max()) return false;
 	conversion.base_projection_count =
 		static_cast<std::uint32_t>(projections);
+	conversion.base_projection_offset = projection_offset;
 	*value = ApplyMemberObjectTarget(*value, target, member, &conversion);
 	return true;
 }
@@ -601,13 +634,16 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		if (derived != kNoEntity && base != kNoEntity && derived != base &&
 			program_->IsBaseOf(base, derived))
 		{
+			std::uint64_t projection_offset = 0;
 			const std::size_t projections =
-				BaseProjectionCount(operand.type, target);
+				BaseProjectionCount(operand.type, target, &projection_offset);
 			if (projections == std::numeric_limits<std::size_t>::max() ||
 				projections > std::numeric_limits<std::uint32_t>::max())
 				throw std::logic_error("cast has no bounded base path");
 			dump_.nodes[cast].base_projection_count =
 				static_cast<std::uint32_t>(projections);
+			dump_.nodes[cast].base_projection_offset = projection_offset;
+			dump_.nodes[cast].has_base_projection_offset = true;
 		}
 	}
 	dump_.Add(cast, operand.node);
@@ -804,9 +840,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeImplicitDataMember(
 		member_type, VALUE_LVALUE, binding.name, member_binding);
 	if (object_class == kNoEntity)
 		throw std::logic_error("implicit member has no class context");
+	std::uint64_t projection_offset = 0;
 	const std::size_t projections = BaseProjectionCount(
 		program_->entities[object_class].type,
-		program_->entities[binding.member_owner].type);
+		program_->entities[binding.member_owner].type, &projection_offset);
 	if (projections == std::numeric_limits<std::size_t>::max() ||
 		projections > std::numeric_limits<std::uint32_t>::max())
 		throw std::logic_error("implicit member has no bounded base path");
@@ -819,6 +856,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeImplicitDataMember(
 		throw std::logic_error("captured object projection count overflow");
 	dump_.nodes[member].base_projection_count = static_cast<std::uint32_t>(
 		projections + (captured_object ? 1 : 0));
+	dump_.nodes[member].base_projection_offset = projection_offset;
+	dump_.nodes[member].has_base_projection_offset = !captured_object;
 	dump_.Add(member, this_expression.node);
 	ExpressionInfo result;
 	result.node = member;

@@ -148,6 +148,15 @@ protected:
 			record.kind == TYPE_POINTER ? record.child : type);
 	}
 
+	bool DynamicCastTargetsVoid(TypeId type) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		const TypeId target = DynamicCastTargetType(type);
+		const TypeRecord& record = derived.program_.types.Get(target);
+		return record.kind == TYPE_FUNDAMENTAL &&
+			record.fundamental == FUND_VOID;
+	}
+
 	Operand LowerDynamicCast(std::uint32_t node, const DumpNode& record,
 		const NodeChildren& children)
 	{
@@ -171,11 +180,30 @@ protected:
 			derived.NewLabel("dyn_cast_end"));
 		derived.EmitBranch(PointerIsNull(source), end, scan);
 		derived.SelectBlock(scan);
+		const bool target_void = DynamicCastTargetsVoid(record.type);
+		if (target_void)
+		{
+			const Operand vtable = derived.LoadStorage(source, LowPtr());
+			const Operand offset_entry = derived.IndexAddress(
+				LowI8(), vtable, Operand(-16, LowI64()), false);
+			const Operand offset = derived.LoadStorage(offset_entry, LowI64());
+			const Operand complete = derived.IndexAddress(
+				LowI8(), source, offset, false);
+			Instruction save_complete(Instruction::STORE);
+			save_complete.type = LowPtr();
+			save_complete.first = complete;
+			save_complete.second = slot;
+			derived.Emit(save_complete);
+			derived.EmitJump(end);
+			const BlockId fallback = derived.AddBlock(
+				derived.NewLabel("block"));
+			derived.SelectBlock(fallback);
+		}
 		CallArguments arguments;
 		arguments.Push(source);
 		arguments.Push(RttiAddress(record.operand_type));
 		arguments.Push(RttiAddress(DynamicCastTargetType(record.type)));
-		arguments.Push(Operand(0, LowI64()));
+		arguments.Push(Operand(target_void ? -2 : 0, LowI64()));
 		const Operand casted = EmitRttiRuntimeCall(
 			derived.polymorphism_.dynamic_cast_symbol, LowPtr(), arguments);
 		Instruction save(Instruction::STORE);

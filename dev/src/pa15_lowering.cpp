@@ -791,10 +791,8 @@ private:
 		FillBoundary(node, &result.parameters, &result.result, &result.variadic);
 		function_ = &result;
 		current_result_ = result.result;
-		current_class_value_boundary_ =
-			FunctionHasClassValueBoundary(record.type);
-		const TypeRecord& source_function = program_.types.Get(record.type);
-		current_indirect_result_ = UsesIndirectClassResult(source_function.child, record.binding);
+		current_class_value_boundary_ = FunctionHasClassValueBoundary(record.type);
+		const TypeRecord& source_function = program_.types.Get(record.type); current_indirect_result_ = UsesIndirectClassResult(source_function.child, record.binding);
 		current_result_reference_ = IsReferenceType(source_function.child);
 		temp_counter_ = 0;
 		block_counter_ = 0;
@@ -807,18 +805,16 @@ private:
 		slot_name_counts_.Clear();
 		generated_slot_ordinal_ = 0;
 		ResetControlFlowReachability();
-		ResetLifetimeFunctionState();
-		ResetFullExpressionFunctionState();
+		ResetLifetimeFunctionState(); ResetFullExpressionFunctionState();
 		ResetExceptionFunctionState(); ResetInitializerListFunctionState();
 		parameter_slot_index_ = current_indirect_result_ ? 1 : 0;
 		current_this_binding_ = kNoBinding;
-		current_member_owner_ = record.binding == kNoBinding ? kNoEntity :
-			program_.bindings[record.binding].member_owner;
+		current_member_owner_ = record.binding == kNoBinding ? kNoEntity : program_.bindings[record.binding].member_owner;
+		const NodeChildren children = Children(node);
+		SetCurrentThisForSlotPlanning(record, children);
 		CollectSourceNames(node);
 		CollectSlots(node);
 		SelectBlock(AddBlock("entry"));
-
-		const NodeChildren children = Children(node);
 		std::size_t parameter_index = 0;
 		std::uint32_t body = kNoDumpEdge;
 		for (std::size_t i = 0; i < children.size(); ++i)
@@ -826,8 +822,7 @@ private:
 			const DumpNode& child = arena_.nodes[children[i]];
 			if (child.kind == DUMP_PARAMETER)
 			{
-				const std::size_t boundary_parameter = parameter_index +
-					(current_indirect_result_ ? 1 : 0);
+				const std::size_t boundary_parameter = parameter_index + (current_indirect_result_ ? 1 : 0);
 				if (parameter_index == 0 && record.binding != kNoBinding &&
 					program_.bindings[record.binding].member_owner != kNoEntity &&
 					!program_.bindings[record.binding].static_member_function)
@@ -1017,7 +1012,8 @@ private:
 			LowerValue(children[0], LowPtr()) :
 			AddressOfStorage(LowerStorage(children[0]));
 		base = ProjectBaseSubobjects(base, record.base_projection_count,
-			arena_.nodes[children[0]].type);
+			arena_.nodes[children[0]].type, record.base_projection_offset,
+			record.has_base_projection_offset);
 		const Operand result = Temp(LowPtr());
 		Instruction index(Instruction::INDEX);
 		index.dest = result.id;
@@ -1133,7 +1129,9 @@ private:
 		{
 			const Operand source = AddressOfStorage(LowerStorage(children[0]));
 			return ProjectBaseSubobjects(source,
-				record.base_projection_count, arena_.nodes[children[0]].type);
+				record.base_projection_count, arena_.nodes[children[0]].type,
+				record.base_projection_offset,
+				record.has_base_projection_offset);
 		}
 		throw std::runtime_error("expression kind " +
 			std::to_string(static_cast<unsigned>(record.kind)) +
@@ -1363,7 +1361,9 @@ private:
 					LowerExpressionType(record.type));
 			else if (record.base_projection_count != 0)
 				result = LowerProjectedClassPointer(
-					children[0], record.base_projection_count);
+					children[0], record.base_projection_count,
+					record.base_projection_offset,
+					record.has_base_projection_offset);
 			else
 			{
 				const DumpNode& source = arena_.nodes[children[0]];

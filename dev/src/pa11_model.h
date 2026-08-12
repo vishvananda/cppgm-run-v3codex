@@ -546,10 +546,13 @@ public:
 	bool IsBaseOf(EntityId base, EntityId derived) const;
 	bool HasVirtualBasePath(EntityId derived, EntityId base) const;
 	bool QueryBasePath(EntityId derived, EntityId base,
-		std::size_t* distance, bool* all_public) const;
+		std::size_t* distance, bool* all_public,
+		std::uint64_t* offset = 0, bool* ambiguous = 0) const;
 	LookupResult Lookup(ScopeId current, const NamePath& name,
 		LookupKind kind);
 	LookupResult LookupName(ScopeId current, NameId name, LookupKind kind);
+	LookupResult LookupNameCandidate(ScopeId current, NameId name,
+		LookupKind kind, bool* ambiguous);
 	LookupResult LookupDirect(ScopeId scope, NameId name,
 		LookupKind kind);
 	LookupResult LookupMember(EntityId entity, NameId name,
@@ -630,6 +633,8 @@ private:
 		LookupKind kind, bool* ambiguous);
 	LookupResult LookupUnqualified(ScopeId scope, NameId name,
 		LookupKind kind);
+	LookupResult LookupUnqualifiedCandidate(ScopeId scope, NameId name,
+		LookupKind kind, bool* ambiguous);
 	ScopeId CarrierScope(const LookupResult& result) const;
 	void AppendType(std::string& output, TypeId type,
 		std::size_t* rendered_type_nodes,

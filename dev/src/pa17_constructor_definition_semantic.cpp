@@ -106,11 +106,13 @@ void SemanticAnalyzer::CompleteDefaultedDefaultConstructor(EntityId entity,
 	bool deleted = false;
 	bool trivial = true;
 	const EntityRecord& owner = program_->entities[entity];
-	if (owner.direct_base != kNoEntity)
+	for (std::size_t base_ordinal = 0;
+		base_ordinal < owner.direct_base_count; ++base_ordinal)
 	{
-		const EntityRecord& base = program_->entities[owner.direct_base];
-		deleted = !base.default_constructible;
-		trivial = base.trivial_default_constructor;
+		const EntityRecord& base = program_->entities[
+			program_->DirectBase(entity, base_ordinal).entity];
+		deleted = deleted || !base.default_constructible;
+		trivial = trivial && base.trivial_default_constructor;
 	}
 	if (entity < entity_data_members_.size())
 		for (std::size_t i = 0; i < entity_data_members_[entity].size(); ++i)
@@ -188,8 +190,10 @@ void SemanticAnalyzer::CompleteDefaultedDestructor(EntityId entity,
 		if (variant && !program_->entities[subobject].trivial_destructor)
 			deleted = true;
 	};
-	if (owner.direct_base != kNoEntity)
-		visit(program_->entities[owner.direct_base].type, false);
+	for (std::size_t base_ordinal = 0;
+		base_ordinal < owner.direct_base_count; ++base_ordinal)
+		visit(program_->entities[program_->DirectBase(
+			entity, base_ordinal).entity].type, false);
 	if (entity < entity_data_members_.size())
 		for (std::size_t i = 0; i < entity_data_members_[entity].size(); ++i)
 			visit(program_->bindings[entity_data_members_[entity][i]].type,

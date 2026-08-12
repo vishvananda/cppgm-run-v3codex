@@ -320,7 +320,9 @@ protected:
 				destination, step.binding);
 		else if (step.base_projection_count != 0)
 			destination = derived.ProjectBaseSubobjects(
-				destination, step.base_projection_count);
+				destination, step.base_projection_count, kNoType,
+				step.base_projection_offset,
+				step.has_base_projection_offset);
 		const TypeRecord& step_type = derived.program_.types.Get(
 			derived.program_.types.RemoveTopCv(step.type));
 		if (step_type.kind == TYPE_ARRAY)
@@ -335,7 +337,9 @@ protected:
 			source = derived.ProjectAggregateMember(source, step.binding);
 		else if (step.base_projection_count != 0)
 			source = derived.ProjectBaseSubobjects(
-				source, step.base_projection_count);
+				source, step.base_projection_count, kNoType,
+				step.base_projection_offset,
+				step.has_base_projection_offset);
 		if (step.binding != kNoBinding &&
 			derived.program_.bindings[step.binding].bit_field)
 		{
@@ -431,7 +435,10 @@ protected:
 				destination = derived.ProjectAggregateMember(
 					destination, step.binding);
 			else
-				destination = derived.ProjectBaseSubobjects(destination, 1);
+				destination = derived.ProjectBaseSubobjects(
+					destination, step.base_projection_count, kNoType,
+					step.base_projection_offset,
+					step.has_base_projection_offset);
 			const TypeRecord& step_type = derived.program_.types.Get(
 				derived.program_.types.RemoveTopCv(step.type));
 			if (step_type.kind == TYPE_ARRAY)
@@ -445,7 +452,10 @@ protected:
 			if (step.binding != kNoBinding)
 				source = derived.ProjectAggregateMember(source, step.binding);
 			else
-				source = derived.ProjectBaseSubobjects(source, 1);
+				source = derived.ProjectBaseSubobjects(
+					source, step.base_projection_count, kNoType,
+					step.base_projection_offset,
+					step.has_base_projection_offset);
 			LowerAssignmentSubobject(step.type, step.selected_binding,
 				destination, source);
 			return;

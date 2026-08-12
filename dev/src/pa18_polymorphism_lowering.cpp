@@ -636,6 +636,13 @@ private:
 			if (!state_.type_rtti_demanded[type] ||
 				state_.type_rtti_symbols[type] != kNoLowId) continue;
 			const TypeRecord& record = program_.types.Get(type);
+			if (record.kind == TYPE_FUNDAMENTAL &&
+				record.fundamental == FUND_VOID)
+			{
+				state_.type_rtti_symbols[type] = AddExternalRtti(
+					"__external_rtti__void", "_ZTIv");
+				continue;
+			}
 			need_fundamental_rtti = need_fundamental_rtti ||
 				record.kind == TYPE_FUNDAMENTAL;
 			need_pointer_rtti = need_pointer_rtti ||
@@ -837,6 +844,9 @@ private:
 			if (!state_.type_rtti_demanded[type] || IsClassRttiType(type))
 				continue;
 			const TypeRecord& record = program_.types.Get(type);
+			if (record.kind == TYPE_FUNDAMENTAL &&
+				record.fundamental == FUND_VOID)
+				continue;
 			Global name;
 			name.symbol = state_.type_name_symbols[type];
 			name.initializer_kind = Global::STRUCTURED_VALUE;

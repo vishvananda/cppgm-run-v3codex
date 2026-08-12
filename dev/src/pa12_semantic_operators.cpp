@@ -513,9 +513,37 @@ bool SemanticAnalyzer::PrepareBuiltinComparison(const std::string& operation,
 		}
 		else
 		{
-			(void)CandidateExpressionFailure(
-				"invalid pointer comparison operands");
-			return false;
+			const TypeRecord& left_shape = program_->types.Get(left_pointer);
+			const TypeRecord& right_shape = program_->types.Get(right_pointer);
+			TypeId left_object = program_->types.RemoveTopCv(left_shape.child);
+			TypeId right_object = program_->types.RemoveTopCv(right_shape.child);
+			const EntityId left_entity = EntityOf(left_object);
+			const EntityId right_entity = EntityOf(right_object);
+			TypeId composite_object = kNoType;
+			if (left_object == right_object)
+				composite_object = left_object;
+			else if (left_entity != kNoEntity && right_entity != kNoEntity &&
+				BaseConversionAllowed(left_entity, right_entity))
+				composite_object = right_object;
+			else if (left_entity != kNoEntity && right_entity != kNoEntity &&
+				BaseConversionAllowed(right_entity, left_entity))
+				composite_object = left_object;
+			if (composite_object == kNoType)
+			{
+				(void)CandidateExpressionFailure(
+					"invalid pointer comparison operands");
+				return false;
+			}
+			const TypeRecord& left_cv = program_->types.Get(left_shape.child);
+			const TypeRecord& right_cv = program_->types.Get(right_shape.child);
+			const std::uint8_t cv =
+				(left_cv.kind == TYPE_QUALIFIED ? left_cv.cv : CV_NONE) |
+				(right_cv.kind == TYPE_QUALIFIED ? right_cv.cv : CV_NONE);
+			if (cv != CV_NONE)
+				composite_object = program_->types.Qualify(composite_object, cv);
+			*operand_type = program_->types.Pointer(composite_object);
+			*left = ApplyTarget(*left, *operand_type);
+			*right = ApplyTarget(*right, *operand_type);
 		}
 	}
 	else if (IsPointer(Decay(left->type)) &&
