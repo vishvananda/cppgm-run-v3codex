@@ -167,10 +167,15 @@ protected:
 					LowI8(), base, Operand(i * element_size, LowI64()), true);
 				if (dispatch != kNoLowId && !staged_full_expression)
 					derived.EmitEhTarget(Instruction::EH_TRY, dispatch);
+				const bool previous_suppression =
+					derived.SetFullExpressionCleanupStartSuppressed(
+						dispatch != kNoLowId && staged_full_expression);
 				if (i < values.size())
 					derived.LowerRuntimeObjectValue(
 						array.child, values[i], destination);
 				else derived.LowerRuntimeZeroValue(array.child, destination);
+				(void)derived.SetFullExpressionCleanupStartSuppressed(
+					previous_suppression);
 				RecordInitializerListElementAddress(backing, destination);
 				if (i == 0 && derived.full_expression_cleanup_active_ &&
 					derived.full_expression_segment_actions_.empty())
@@ -214,9 +219,14 @@ protected:
 				LowI8(), base, Operand(i * element_size, LowI64()), true);
 			if (destructor != kNoBinding && i != 0)
 				derived.EmitEhTarget(Instruction::EH_TRY, cleanup);
+			const bool previous_suppression =
+				derived.SetFullExpressionCleanupStartSuppressed(
+					destructor != kNoBinding && i != 0);
 			if (i < values.size())
 				derived.LowerRuntimeObjectValue(array.child, values[i], destination);
 			else derived.LowerRuntimeZeroValue(array.child, destination);
+			(void)derived.SetFullExpressionCleanupStartSuppressed(
+				previous_suppression);
 			if (i == 0 && derived.full_expression_cleanup_active_ &&
 				derived.full_expression_segment_actions_.empty())
 				derived.PauseFullExpressionCleanupSegment();

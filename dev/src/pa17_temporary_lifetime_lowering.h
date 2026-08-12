@@ -25,16 +25,17 @@ public:
 	CleanupDispatchCache() : slots_(16), size_(0) {}
 
 	bool Find(const DumpArena& arena,
-		const std::vector<std::uint32_t>& actions, BlockId* block) const
+		const std::vector<std::uint32_t>& actions, std::uint32_t context,
+		BlockId* block) const
 	{
-		const std::uint64_t fingerprint = Fingerprint(arena, actions);
+		const std::uint64_t fingerprint = Fingerprint(arena, actions, context);
 		std::size_t index = static_cast<std::size_t>(fingerprint) &
 			(slots_.size() - 1);
 		while (slots_[index].occupied)
 		{
 			const Entry& entry = slots_[index];
 			if (entry.fingerprint == fingerprint &&
-				Matches(entry, arena, actions))
+				Matches(entry, arena, actions, context))
 			{
 				*block = entry.block;
 				return true;
@@ -45,11 +46,13 @@ public:
 	}
 
 	void Insert(const DumpArena& arena,
-		const std::vector<std::uint32_t>& actions, BlockId block)
+		const std::vector<std::uint32_t>& actions, std::uint32_t context,
+		BlockId block)
 	{
 		if ((size_ + 1) * 2 >= slots_.size()) Rehash(slots_.size() * 2);
 		Entry entry;
-		entry.fingerprint = Fingerprint(arena, actions);
+		entry.fingerprint = Fingerprint(arena, actions, context);
+		entry.context = context;
 		entry.offset = words_.size();
 		entry.count = actions.size() * kWordsPerAction;
 		entry.block = block;
@@ -78,10 +81,11 @@ private:
 	struct Entry
 	{
 		std::uint64_t fingerprint;
+		std::uint32_t context;
 		std::size_t offset, count;
 		BlockId block;
 		bool occupied;
-		Entry() : fingerprint(0), offset(0), count(0), block(kNoLowId),
+		Entry() : fingerprint(0), context(0), offset(0), count(0), block(kNoLowId),
 			occupied(false) {}
 	};
 
@@ -99,9 +103,9 @@ private:
 	}
 
 	static std::uint64_t Fingerprint(const DumpArena& arena,
-		const std::vector<std::uint32_t>& actions)
+		const std::vector<std::uint32_t>& actions, std::uint32_t context)
 	{
-		std::uint64_t hash = 1469598103934665603ULL;
+		std::uint64_t hash = 1469598103934665603ULL ^ context;
 		for (std::size_t i = 0; i < actions.size(); ++i)
 			for (std::size_t word = 0; word < kWordsPerAction; ++word)
 			{
@@ -112,9 +116,11 @@ private:
 	}
 
 	bool Matches(const Entry& entry, const DumpArena& arena,
-		const std::vector<std::uint32_t>& actions) const
+		const std::vector<std::uint32_t>& actions,
+		std::uint32_t context) const
 	{
-		if (entry.count != actions.size() * kWordsPerAction) return false;
+		if (entry.context != context ||
+			entry.count != actions.size() * kWordsPerAction) return false;
 		std::size_t current = entry.offset;
 		for (std::size_t i = 0; i < actions.size(); ++i)
 			for (std::size_t word = 0; word < kWordsPerAction; ++word)
@@ -149,6 +155,15 @@ class TemporaryLifetimeLowering
 {
 protected:
 	static const std::size_t kInlineCleanupActionBudget = 8;
+	TemporaryLifetimeLowering()
+		: full_expression_cleanup_start_suppressed_(false) {}
+
+	bool SetFullExpressionCleanupStartSuppressed(bool value)
+	{
+		const bool previous = full_expression_cleanup_start_suppressed_;
+		full_expression_cleanup_start_suppressed_ = value;
+		return previous;
+	}
 
 	SlotId EnsureTemporaryLifetimeSlot(std::uint32_t node)
 	{
@@ -175,6 +190,7 @@ protected:
 		derived.conditional_cleanup_dispatches_.Clear();
 		derived.conditional_cleanup_tails_.Clear();
 		derived.runtime_lifetime_temporaries_.Clear();
+		full_expression_cleanup_start_suppressed_ = false;
 		derived.full_expression_cleanup_ready_ = false;
 		derived.full_expression_deferred_cleanup_ = false;
 		derived.conditional_cleanup_resume_ = kNoLowId;
@@ -262,10 +278,13 @@ protected:
 				derived.full_expression_segment_actions_.push_back(action);
 		}
 		BlockId cached;
+		const std::uint32_t exception_context =
+			derived.ExceptionCleanupContext();
 		if (derived.stats_) ++derived.stats_->cleanup_dispatch_probes;
 		derived.full_expression_cleanup_dispatch_reused_ =
 			derived.full_expression_cleanup_dispatches_.Find(derived.arena_,
-				derived.full_expression_segment_actions_, &cached);
+				derived.full_expression_segment_actions_, exception_context,
+				&cached);
 		if (derived.full_expression_cleanup_dispatch_reused_)
 		{
 			if (derived.stats_) ++derived.stats_->cleanup_dispatch_cache_hits;
@@ -278,6 +297,7 @@ protected:
 				derived.NewLabel("call_unwind_dispatch"));
 			derived.full_expression_cleanup_dispatches_.Insert(derived.arena_,
 				derived.full_expression_segment_actions_,
+				exception_context,
 				derived.full_expression_cleanup_dispatch_);
 		}
 		derived.full_expression_cleanup_end_ = kNoLowId;
@@ -288,6 +308,7 @@ protected:
 	void EnsureFullExpressionCleanupSegment()
 	{
 		Derived& derived = static_cast<Derived&>(*this);
+		if (full_expression_cleanup_start_suppressed_) return;
 		if (derived.full_expression_cleanup_active_ &&
 			derived.full_expression_cleanup_dispatch_ == kNoLowId &&
 			(!derived.full_expression_deferred_cleanup_ ||
@@ -440,6 +461,7 @@ protected:
 		derived.full_expression_cleanup_end_ = end;
 		derived.EmitJump(end);
 		derived.SelectBlock(dispatch);
+		derived.FinishExceptionUnwindCleanupPrefix();
 		for (std::size_t i = 0;
 			i < derived.full_expression_segment_actions_.size(); ++i)
 			LowerFullExpressionDestructorAction(
@@ -693,15 +715,20 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		bool managed_cleanup = !children.empty() &&
 			derived.arena_.nodes[children[0]].full_expression_staging;
+		bool lexical_unwind = false;
 		for (std::size_t i = 1; i < children.size(); ++i)
 			if (derived.arena_.nodes[children[i]].kind ==
 					DUMP_DESTRUCTOR_ACTION &&
 				(IsConditionalTemporaryAction(children[i]) ||
 				 derived.arena_.nodes[children[i]].unwind_only))
+			{
 				managed_cleanup = true;
+				lexical_unwind = lexical_unwind ||
+					derived.arena_.nodes[children[i]].unwind_only;
+			}
 		if (managed_cleanup)
 		{
-			BeginFullExpressionCleanup(children, 1);
+			BeginFullExpressionCleanup(children, 1, lexical_unwind);
 			if (!children.empty()) derived.LowerDiscardedValue(children[0]);
 			CompleteFullExpressionCleanup();
 			return;
@@ -945,6 +972,9 @@ protected:
 		derived.Emit(compare);
 		return truth;
 	}
+
+private:
+	bool full_expression_cleanup_start_suppressed_;
 };
 
 }

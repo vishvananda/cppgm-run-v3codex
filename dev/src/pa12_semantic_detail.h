@@ -1301,10 +1301,12 @@ private:
 		std::uint32_t output_parent);
 	void StageNestedTemplateTemporaryCleanup(std::uint32_t expression,
 		std::uint32_t statement, ScopeId scope);
+	void StageExceptionalFullExpression(std::uint32_t expression,
+		std::uint32_t statement, ScopeId scope);
 	void StageReturnTemporaryCleanup(std::uint32_t expression,
 		std::uint32_t statement, ScopeId scope);
 	void AppendUnwindDestructionActions(ScopeId scope,
-		std::uint32_t output_parent);
+		std::uint32_t output_parent, ScopeId stop_exclusive = kNoScope);
 	void AddNamespaceObjectAction(std::uint32_t variable, BindingId object,
 		TypeId type, std::uint32_t initializer);
 	void AddLocalStaticObjectAction(std::uint32_t variable, BindingId object,
@@ -1705,6 +1707,7 @@ private:
 	std::size_t loop_depth_;
 	std::size_t switch_depth_;
 	std::size_t exception_handler_depth_;
+	std::vector<ScopeId> exception_cleanup_stops_;
 	std::size_t unevaluated_depth_;
 	std::size_t decltype_operand_depth_;
 	std::size_t conditionally_evaluated_operand_depth_;

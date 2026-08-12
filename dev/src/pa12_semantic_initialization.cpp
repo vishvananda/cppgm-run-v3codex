@@ -2635,11 +2635,11 @@ void SemanticAnalyzer::AppendFullExpressionDestructionActions(
 }
 
 void SemanticAnalyzer::AppendUnwindDestructionActions(ScopeId scope,
-	std::uint32_t output_parent)
+	std::uint32_t output_parent, ScopeId stop_exclusive)
 {
 	ScopeId current = scope < nearest_lifetime_scopes_.size() ?
 		nearest_lifetime_scopes_[scope] : kNoScope;
-	while (current != kNoScope)
+	while (current != kNoScope && current != stop_exclusive)
 	{
 		++unwind_cleanup_scope_visits_;
 		if (current >= scope_lifetimes_.size())

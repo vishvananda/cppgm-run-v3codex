@@ -2520,7 +2520,7 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 				AnalyzeExpression(expression, scope));
 			dump_.Add(statement, value.node);
 			AppendFullExpressionDestructionActions(value.node, statement);
-			StageNestedTemplateTemporaryCleanup(value.node, statement, scope);
+			StageExceptionalFullExpression(value.node, statement, scope);
 		}
 		return;
 	}

@@ -1706,8 +1706,6 @@ private:
 		const NodeChildren& children, const Operand& supplied_result = Operand())
 	{
 		if (children.empty()) throw std::runtime_error("semantic call has no callee");
-		if (full_expression_cleanup_active_)
-			EnsureFullExpressionCleanupSegment();
 		const DumpNode& callee = arena_.nodes[children[0]];
 		if (stats_) ++stats_->binding_index_probes;
 		const bool direct = !record.virtual_call &&
@@ -1715,6 +1713,8 @@ private:
 			callee.binding != kNoBinding &&
 			callee.binding < function_symbols_.size() &&
 			function_symbols_[callee.binding] != kNoLowId;
+		if (full_expression_cleanup_active_ && (!direct || !program_.bindings[
+			callee.binding].nonthrowing)) EnsureFullExpressionCleanupSegment();
 		TypeId function_type_id = callee.type;
 		if (!direct)
 		{

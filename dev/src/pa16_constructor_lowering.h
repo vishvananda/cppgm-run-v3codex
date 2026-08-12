@@ -94,6 +94,9 @@ protected:
 			derived.function_symbols_[action.binding] == kNoLowId)
 			throw std::runtime_error("constructor action has no emitted binding: " +
 				derived.program_.names.Get(action.text));
+		if (derived.full_expression_cleanup_active_ &&
+			!derived.program_.bindings[action.binding].nonthrowing)
+			derived.EnsureFullExpressionCleanupSegment();
 		const TypeRecord& function_type =
 			derived.program_.types.Get(action.type);
 		if (function_type.kind != TYPE_FUNCTION ||

@@ -330,6 +330,11 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 		output << "eh_try ^" << function.blocks[instruction.target].label;
 		break;
 	case Instruction::EH_CLEANUP:
+		if (instruction.target == kNoLowId)
+		{
+			output << "eh_cleanup";
+			break;
+		}
 		if (instruction.target >= function.blocks.size())
 			throw std::logic_error("invalid PA16 eh_cleanup target");
 		output << "eh_cleanup ^" << function.blocks[instruction.target].label;

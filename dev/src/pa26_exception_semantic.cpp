@@ -21,6 +21,16 @@ bool SemanticAnalyzer::AnalyzeExceptionStatement(NodeId node, ScopeId scope,
 	return true;
 }
 
+void SemanticAnalyzer::StageExceptionalFullExpression(
+	std::uint32_t expression, std::uint32_t statement, ScopeId scope)
+{
+	StageNestedTemplateTemporaryCleanup(expression, statement, scope);
+	if (InitializationActionsAreNonthrowing(expression)) return;
+	AppendUnwindDestructionActions(scope, statement,
+		exception_cleanup_stops_.empty() ? kNoScope :
+			exception_cleanup_stops_.back());
+}
+
 ExpressionInfo SemanticAnalyzer::AnalyzeThrowExpression(
 	NodeId node, ScopeId scope)
 {
@@ -131,7 +141,9 @@ void SemanticAnalyzer::AnalyzeTryStatement(NodeId node, ScopeId scope,
 		const NodeId child = arena_->EdgeChild(edge);
 		if (arena_->IsTag(child, "compound-statement") && !saw_body)
 		{
+			exception_cleanup_stops_.push_back(scope);
 			AnalyzeCompound(child, scope, statement);
+			exception_cleanup_stops_.pop_back();
 			saw_body = true;
 		}
 		else if (arena_->IsTag(child, "handler"))
@@ -142,6 +154,7 @@ void SemanticAnalyzer::AnalyzeTryStatement(NodeId node, ScopeId scope,
 	}
 	if (!saw_body || handler_count == 0)
 		throw std::runtime_error("invalid try statement");
+	AppendUnwindDestructionActions(scope, statement);
 }
 
 }
