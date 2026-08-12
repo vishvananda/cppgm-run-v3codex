@@ -6,13 +6,15 @@ PA26 is a monotonic extension of the PA25 semantic graph and typed LowIR path.
 PA12 completes polymorphism before publishing canonical class-special-member,
 construction/destruction, lifetime, and ordered unwind facts. PA18 owns demanded
 ABI RTTI/runtime symbols; PA15 and its PA16/PA17/PA26 mixins consume those facts
-per function, with projected references kept distinct from indirect call-result
-boundaries. Builtin logical nodes publish compact control identity, and root
-branch cleanup uses the complete `(owner, child)` key in per-function flat
-storage; deeper dependence uses runtime lifetime slots. This follows `spec.md`
+per function. Runtime initializer roots are published before destination
+lifetime registration, selected class-value ownership crosses the typed call
+boundary once, and aggregate/array construction retains explicit projected
+destinations and partial-construction state. Builtin logical nodes publish
+compact control identity; root branch cleanup uses complete `(owner, child)`
+keys and deeper dependence uses runtime lifetime slots. This follows `spec.md`
 sections 2, 4-6, and 8-10: compact identity, monotonic fact ownership, direct
-typed lowering, bounded phase-local state, observable linear work, and no
-textual, lookup-recovery, or external fallback.
+typed lowering, bounded phase-local state, observable work, and no textual,
+lookup-recovery, whole-program retry, or external fallback.
 
 ## Current Failure Map
 
@@ -39,15 +41,17 @@ shared-dispatch cleanup failures; measure nesting-depth and argument-count work.
 
 ## Performance Evidence
 
-Construction ownership has proportional argument work and bound-independent
-fixed-array LowIR:
+Five-run current-binary medians show proportional class-value argument work and
+bound-independent array-new LowIR. `Visits` is the published
+`temporary_dependency_visits` counter; `NT visits` is
+`nonthrowing_action_visits`.
 
-| Shape | N | Nodes / dependency visits | Instructions | Typed storage | Semantic / lowering |
+| Shape | N | Nodes / visits / NT visits | Instructions | Typed storage | Semantic / lowering |
 |---|---:|---:|---:|---:|---:|
-| class-value arguments | 8 | 31 / 18 | 38 | 12,313 B | 0.34 / 0.23 ms |
-| class-value arguments | 32 | 79 / 66 | 110 | 31,801 B | 0.47 / 0.35 ms |
-| class-value arguments | 128 | 271 / 258 | 398 | 109,753 B | 1.10 / 0.87 ms |
-| class-array bound | 8 / 128 / 2,048 | 14 / 0 each | 35 each | 10,881 B each | 0.19-0.22 / 0.16-0.17 ms |
+| class-value arguments | 8 | 25 / 18 / 1 | 27 | 9,955 B | 0.317 / 0.211 ms |
+| class-value arguments | 32 | 73 / 66 / 1 | 99 | 29,443 B | 0.497 / 0.328 ms |
+| class-value arguments | 128 | 265 / 258 / 1 | 387 | 107,395 B | 1.091 / 0.865 ms |
+| class-array bound | 8 / 128 / 2,048 | 14 / 5 / 2 each | 35 each | 10,881 B each | 0.195-0.202 / 0.160-0.173 ms |
 
 ## Completed Checkpoints
 
@@ -62,4 +66,4 @@ fixed-array LowIR:
 | Lexical unwind snapshots and handler continuation | Live-action snapshots, segmented exits, dispatch interning | +5; PA26 80/110; focused 9/9; calls/handlers linear through 256/64 |
 | Class exception objects and typed-handler routing | Canonical polymorphic special-member facts, selected direct construction/destructor transfer, temporary retirement, projection-safe call ABI | +6; PA26 86/110; focused 6/6 plus PA18 projection witness; through PA25 3,607/3,607; file/audit pass; throws linear to 128 |
 | Guard-edge full-expression cleanup | Typed logical facts, complete root guard/child identity, branch-local destruction, retained nested values, runtime fallback | +4; PA26 90/110; focused 4/4 plus ELF/template witnesses; through PA25 3,607/3,607; file/audit pass; both paths linear to 128 |
-| Construction and call-ABI ownership | Runtime/default initializer staging, member/array source handlers, transferred class parameters | +4; PA26 94/110; focused 5/5; through PA25 3,607/3,607; audit pass; arguments linear to 128, array IR fixed through 2,048 |
+| Construction and call-ABI ownership | Runtime/default initializer staging, member/array source handlers, transferred class parameters | +4; PA26 94/110; focused 5/5; through PA25 3,607/3,607; audit pass; corrected counters show arguments linear to 128 and array IR fixed through 2,048 |
