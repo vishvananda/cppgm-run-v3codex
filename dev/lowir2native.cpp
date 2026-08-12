@@ -1,8 +1,13 @@
 // Student-facing scaffold for the PA29 `lowir2native` binary.
 
 #include "exceptions.h"
+#include "lowir_model.h"
+#include "lowir_native.h"
+#include "mir_model.h"
 #include "tool_help_text.h"
 
+#include <chrono>
+#include <cstdlib>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -154,9 +159,40 @@ int run_lowir2native_mode(const vector<string> & args)
 
   const LowIR2NativeInvocation invocation =
       parse_lowir2native_invocation(args);
-  (void)invocation;
-
-  throw NotImplementedException();
+  const string target = invocation.output_target.empty() ? "linux" :
+                                                     invocation.output_target;
+  const chrono::steady_clock::time_point parse_start = chrono::steady_clock::now();
+  const lowir_model::LowirProgram lowir =
+      lowir_model::parse_lowir_program_files(invocation.srcfiles);
+  const chrono::steady_clock::time_point lower_start = chrono::steady_clock::now();
+  lowir_native::Stats stats;
+  const mir_model::MirProgram mir = lowir_native::lower_program(lowir, target, &stats);
+  const chrono::steady_clock::time_point output_start = chrono::steady_clock::now();
+  if(!invocation.machine_ir_file.empty())
+    mir_model::write_mir_program_file(invocation.machine_ir_file, mir);
+  if(!invocation.outfile.empty())
+    lowir_native::write_linux_executable(invocation.outfile, mir, &stats);
+  const chrono::steady_clock::time_point end = chrono::steady_clock::now();
+  stats.lower_nanoseconds = chrono::duration_cast<chrono::nanoseconds>(
+      output_start - lower_start).count();
+  stats.write_nanoseconds = chrono::duration_cast<chrono::nanoseconds>(
+      end - output_start).count();
+  if(getenv("CPPGM_LOWIR_NATIVE_STATS")) {
+    cerr << "lowir2native_stats"
+         << " source_bytes=" << lowir.source_bytes
+         << " tokens=" << lowir.token_count
+         << " functions=" << stats.functions
+         << " blocks=" << stats.blocks
+         << " lowir_instructions=" << stats.lowir_instructions
+         << " mir_instructions=" << stats.mir_instructions
+         << " fixups=" << stats.fixups
+         << " output_bytes=" << stats.output_bytes
+         << " parse_ns=" << chrono::duration_cast<chrono::nanoseconds>(
+              lower_start - parse_start).count()
+         << " lower_ns=" << stats.lower_nanoseconds
+         << " write_ns=" << stats.write_nanoseconds << '\n';
+  }
+  return EXIT_SUCCESS;
 }
 
 }  // namespace

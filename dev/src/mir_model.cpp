@@ -1,0 +1,284 @@
+#include "mir_model.h"
+
+#include <fstream>
+#include <iomanip>
+#include <sstream>
+#include <stdexcept>
+
+namespace mir_model {
+namespace {
+
+const char * register_name(X64Register reg)
+{
+  static const char * const names[] = {
+    "rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi",
+    "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"
+  };
+  const std::size_t index = static_cast<std::size_t>(reg);
+  if(index >= sizeof(names) / sizeof(names[0]))
+    throw std::logic_error("invalid MIR register");
+  return names[index];
+}
+
+const char * xmm_name(XmmRegister reg)
+{
+  static const char * const names[] = {
+    "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7"
+  };
+  const std::size_t index = static_cast<std::size_t>(reg);
+  if(index >= sizeof(names) / sizeof(names[0]))
+    throw std::logic_error("invalid MIR XMM register");
+  return names[index];
+}
+
+std::string frame_address(long long offset)
+{
+  std::ostringstream out;
+  out << "[rbp";
+  if(offset > 0) out << '+' << offset;
+  else if(offset < 0) out << offset;
+  out << ']';
+  return out.str();
+}
+
+std::string dereference(const Operand & operand)
+{
+  std::ostringstream out;
+  out << '[' << register_name(operand.reg);
+  if(operand.offset > 0) out << '+' << operand.offset;
+  else if(operand.offset < 0) out << operand.offset;
+  out << ']';
+  return out.str();
+}
+
+std::string operand_text(const Operand & operand)
+{
+  std::ostringstream out;
+  switch(operand.kind) {
+  case Operand::OP_REG: return register_name(operand.reg);
+  case Operand::OP_XMM: return xmm_name(operand.xmm);
+  case Operand::OP_IMM: out << operand.imm; return out.str();
+  case Operand::OP_FLOAT_IMM: return operand.text;
+  case Operand::OP_SYMBOL:
+  case Operand::OP_GLOBAL:
+  case Operand::OP_LABEL: return operand.text;
+  case Operand::OP_FRAME: return frame_address(operand.offset);
+  case Operand::OP_DEREF: return dereference(operand);
+  }
+  throw std::logic_error("invalid MIR operand");
+}
+
+const char * condition_suffix(X86Condition condition)
+{
+  switch(condition) {
+  case XC_O: return "o";
+  case XC_NO: return "no";
+  case XC_B: return "b";
+  case XC_AE: return "ae";
+  case XC_E: return "e";
+  case XC_NE: return "ne";
+  case XC_BE: return "be";
+  case XC_A: return "a";
+  case XC_S: return "s";
+  case XC_NS: return "ns";
+  case XC_P: return "p";
+  case XC_NP: return "np";
+  case XC_L: return "l";
+  case XC_GE: return "ge";
+  case XC_LE: return "le";
+  case XC_G: return "g";
+  }
+  throw std::logic_error("invalid MIR condition");
+}
+
+const char * opcode_name(Instruction::Opcode opcode)
+{
+  switch(opcode) {
+  case Instruction::MI_MOV: return "mov";
+  case Instruction::MI_LOAD: return "load";
+  case Instruction::MI_STORE: return "store";
+  case Instruction::MI_LEA: return "lea";
+  case Instruction::MI_ADD: return "add";
+  case Instruction::MI_SUB: return "sub";
+  case Instruction::MI_IMUL: return "imul";
+  case Instruction::MI_AND: return "and";
+  case Instruction::MI_OR: return "or";
+  case Instruction::MI_XOR: return "xor";
+  case Instruction::MI_NEG: return "neg";
+  case Instruction::MI_NOT: return "not";
+  case Instruction::MI_BSWAP: return "bswap";
+  case Instruction::MI_CMP: return "cmp";
+  case Instruction::MI_TEST: return "test";
+  case Instruction::MI_MOVZX: return "movzx";
+  case Instruction::MI_SEXT: return "sext";
+  case Instruction::MI_ZEXT: return "zext";
+  case Instruction::MI_CQO: return "cqo";
+  case Instruction::MI_IDIV: return "idiv";
+  case Instruction::MI_DIV: return "div";
+  case Instruction::MI_SHL_CL: return "shl_cl";
+  case Instruction::MI_SHR_CL: return "shr_cl";
+  case Instruction::MI_SAR_CL: return "sar_cl";
+  case Instruction::MI_CALL: return "call";
+  case Instruction::MI_CALL_INDIRECT: return "call";
+  case Instruction::MI_JMP: return "jmp";
+  case Instruction::MI_JMP_INDIRECT: return "jmp";
+  case Instruction::MI_RET: return "ret";
+  case Instruction::MI_EXIT: return "exit";
+  default: break;
+  }
+  throw std::logic_error("MIR serializer does not support opcode");
+}
+
+void render_operands(std::ostringstream & out, const Instruction & instruction,
+                     bool leading_comma = false)
+{
+  for(std::size_t i = 0; i < instruction.operands.size(); ++i) {
+    if(i == 0) out << (leading_comma ? ", " : " ");
+    else out << ", ";
+    if(instruction.opcode == Instruction::MI_CALL_INDIRECT ||
+       instruction.opcode == Instruction::MI_JMP_INDIRECT) out << '*';
+    out << operand_text(instruction.operands[i]);
+  }
+}
+
+std::string instruction_text(const Instruction & instruction)
+{
+  std::ostringstream out;
+  if(instruction.opcode == Instruction::MI_COPY_BYTES) {
+    out << "copy_bytes " << instruction.byte_count << 'x'
+        << instruction.byte_alignment;
+    render_operands(out, instruction, true);
+    return out.str();
+  }
+  if(instruction.opcode == Instruction::MI_ZERO_BYTES) {
+    out << "zero_bytes " << instruction.byte_count << 'x'
+        << instruction.byte_alignment;
+    render_operands(out, instruction, true);
+    return out.str();
+  }
+  if(instruction.opcode == Instruction::MI_JCC) {
+    out << 'j' << condition_suffix(instruction.condition);
+    render_operands(out, instruction);
+    return out.str();
+  }
+  out << opcode_name(instruction.opcode);
+  if((instruction.opcode == Instruction::MI_LOAD ||
+      instruction.opcode == Instruction::MI_STORE ||
+      instruction.opcode == Instruction::MI_CMP) && !instruction.type.empty())
+    out << '.' << instruction.type;
+  render_operands(out, instruction);
+  return out.str();
+}
+
+void render_global(std::ostringstream & out, const GlobalDefinition & global)
+{
+  out << "global " << global.name << '\n';
+  if(global.storage_kind == GlobalDefinition::GS_DATA) {
+    out << "  storage data\n";
+    for(std::size_t i = 0; i < global.data_items.size(); ++i) {
+      const GlobalDefinition::DataItem & item = global.data_items[i];
+      out << "  item ";
+      if(item.kind == GlobalDefinition::DataItem::ITEM_ZERO) {
+        out << "zero " << item.zero_bytes << '\n';
+      } else if(item.kind == GlobalDefinition::DataItem::ITEM_ADDR) {
+        out << item.type << " addr " << item.symbol;
+        if(item.addr_addend > 0) out << '+' << item.addr_addend;
+        else if(item.addr_addend < 0) out << item.addr_addend;
+        out << '\n';
+      } else {
+        out << item.type << ' ';
+        if(item.kind == GlobalDefinition::DataItem::ITEM_FLOAT)
+          out << item.literal_text;
+        else out << item.int_value;
+        out << '\n';
+      }
+    }
+    return;
+  }
+  out << "  storage scalar " << global.type << '\n';
+  out << "  init " << global.type << ' ';
+  if(global.init_kind == GlobalDefinition::GI_ADDR) {
+    out << "addr " << global.symbol;
+    if(global.addr_addend > 0) out << '+' << global.addr_addend;
+    else if(global.addr_addend < 0) out << global.addr_addend;
+  } else if(global.init_kind == GlobalDefinition::GI_FLOAT) {
+    out << global.literal_text;
+  } else {
+    out << global.int_value;
+  }
+  out << '\n';
+}
+
+void render_function(std::ostringstream & out, const Function & function)
+{
+  out << "function " << function.name << "\n  abi\n";
+  for(std::size_t i = 0; i < function.params.size(); ++i) {
+    const ParamBinding & param = function.params[i];
+    out << "    param " << param.name << " -> ";
+    if(param.location == ParamBinding::PL_REG) out << register_name(param.reg);
+    else if(param.location == ParamBinding::PL_XMM) out << xmm_name(param.xmm);
+    else out << "stack+" << param.stack_offset;
+    out << " : " << param.type << '\n';
+  }
+  out << "    return " << function.return_type << " -> ";
+  if(function.return_type == "void") out << "void\n";
+  else if(function.return_type == "f32" || function.return_type == "f64")
+    out << "xmm0\n";
+  else out << "rax\n";
+  out << "  frame\n    stack_size " << function.stack_size
+      << "\n    scratch_bytes " << function.scratch_bytes << '\n';
+  if(!function.callee_saved_regs.empty()) {
+    out << "    preserve";
+    for(std::size_t i = 0; i < function.callee_saved_regs.size(); ++i)
+      out << ' ' << register_name(function.callee_saved_regs[i]);
+    out << '\n';
+  }
+  for(std::size_t i = 0; i < function.frame_bindings.size(); ++i) {
+    const FrameBinding & binding = function.frame_bindings[i];
+    out << "    ";
+    if(binding.kind == FrameBinding::FB_PARAM_SLOT) out << "param_slot ";
+    else if(binding.kind == FrameBinding::FB_SLOT) out << "slot ";
+    else out << "temp ";
+    out << binding.name << " -> " << frame_address(binding.offset)
+        << " : " << binding.type << '\n';
+  }
+  for(std::size_t i = 0; i < function.blocks.size(); ++i) {
+    out << "\n  block " << function.blocks[i].label << '\n';
+    for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j)
+      out << "    " << instruction_text(function.blocks[i].instructions[j]) << '\n';
+  }
+}
+
+}  // namespace
+
+std::string serialize_mir_program(const MirProgram & program)
+{
+  std::ostringstream out;
+  out << "machine_ir x86_64 " << program.target << '\n';
+  if(!program.startup.empty()) {
+    out << "\nstartup\n";
+    for(std::size_t i = 0; i < program.startup.size(); ++i)
+      out << "    " << instruction_text(program.startup[i]) << '\n';
+  }
+  for(std::size_t i = 0; i < program.globals.size(); ++i) {
+    out << '\n';
+    render_global(out, program.globals[i]);
+  }
+  for(std::size_t i = 0; i < program.functions.size(); ++i) {
+    out << '\n';
+    render_function(out, program.functions[i]);
+  }
+  return out.str();
+}
+
+void write_mir_program_file(const std::string & path,
+                            const MirProgram & program)
+{
+  const std::string text = serialize_mir_program(program);
+  std::ofstream out(path.c_str(), std::ios::out | std::ios::binary | std::ios::trunc);
+  if(!out) throw std::runtime_error("unable to open MIR output: " + path);
+  out.write(text.data(), static_cast<std::streamsize>(text.size()));
+  if(!out) throw std::runtime_error("unable to write MIR output: " + path);
+}
+
+}  // namespace mir_model

@@ -1,0 +1,693 @@
+#include "lowir_native.h"
+
+#include <algorithm>
+#include <cerrno>
+#include <climits>
+#include <cstdlib>
+#include <stdexcept>
+#include <unordered_map>
+#include <vector>
+
+namespace lowir_native {
+namespace {
+
+using lowir_model::Instruction;
+using lowir_model::LowType;
+using lowir_model::Operand;
+using mir_model::MirInstruction;
+using mir_model::MirOperand;
+
+long long integer_literal(const std::string & text)
+{
+  errno = 0;
+  char * end = 0;
+  const long long value = std::strtoll(text.c_str(), &end, 0);
+  if(errno || !end || *end) throw std::runtime_error("invalid integer literal: " + text);
+  return value;
+}
+
+MirOperand reg_operand(X64Register reg)
+{
+  MirOperand out;
+  out.kind = MirOperand::OP_REG;
+  out.reg = reg;
+  return out;
+}
+
+MirOperand immediate(long long value)
+{
+  MirOperand out;
+  out.kind = MirOperand::OP_IMM;
+  out.imm = value;
+  return out;
+}
+
+MirOperand named_operand(MirOperand::Kind kind, const std::string & text)
+{
+  MirOperand out;
+  out.kind = kind;
+  out.text = text;
+  return out;
+}
+
+MirOperand dereference(X64Register reg, long long offset = 0)
+{
+  MirOperand out;
+  out.kind = MirOperand::OP_DEREF;
+  out.reg = reg;
+  out.offset = offset;
+  return out;
+}
+
+MirInstruction machine_instruction(MirInstruction::Opcode opcode,
+                                   const std::string & type = std::string())
+{
+  MirInstruction out;
+  out.opcode = opcode;
+  out.type = type;
+  return out;
+}
+
+void append_operand(MirInstruction & instruction, const MirOperand & operand)
+{
+  instruction.operands.push_back(operand);
+}
+
+void append_move(std::vector<MirInstruction> & out,
+                 const MirOperand & destination,
+                 const MirOperand & source)
+{
+  if(destination.kind == MirOperand::OP_REG && source.kind == MirOperand::OP_REG &&
+     destination.reg == source.reg) return;
+  MirInstruction instruction = machine_instruction(MirInstruction::MI_MOV);
+  append_operand(instruction, destination);
+  append_operand(instruction, source);
+  out.push_back(instruction);
+}
+
+bool is_callee_saved(X64Register reg)
+{
+  return reg == XR_RBX || reg == XR_R12 || reg == XR_R13 ||
+         reg == XR_R14 || reg == XR_R15;
+}
+
+struct ValueFact
+{
+  MirOperand location;
+  LowType type;
+  bool parameter = false;
+};
+
+struct FunctionFacts
+{
+  std::unordered_map<std::string, std::size_t> uses;
+  std::unordered_map<std::string, std::size_t> first_use;
+  std::unordered_map<std::string, std::size_t> last_use;
+  std::unordered_map<std::string, std::size_t> definition;
+  std::vector<std::size_t> calls;
+};
+
+void note_operand(FunctionFacts & facts, const Operand & operand, std::size_t position)
+{
+  if(operand.kind != Operand::OP_TEMP) return;
+  ++facts.uses[operand.text];
+  if(!facts.first_use.count(operand.text)) facts.first_use[operand.text] = position;
+  facts.last_use[operand.text] = position;
+}
+
+void note_instruction_operands(FunctionFacts & facts,
+                               const Instruction & instruction,
+                               std::size_t position)
+{
+  note_operand(facts, instruction.first, position);
+  note_operand(facts, instruction.second, position);
+  note_operand(facts, instruction.third, position);
+  for(std::size_t i = 0; i < instruction.args.size(); ++i)
+    note_operand(facts, instruction.args[i], position);
+}
+
+FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
+{
+  FunctionFacts facts;
+  std::size_t position = 0;
+  for(std::size_t i = 0; i < function.params.size(); ++i)
+    facts.definition[function.params[i].name] = 0;
+  for(std::size_t i = 0; i < function.blocks.size(); ++i) {
+    for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j, ++position) {
+      const Instruction & instruction = function.blocks[i].instructions[j];
+      note_instruction_operands(facts, instruction, position);
+      if(!instruction.dest.empty()) facts.definition[instruction.dest] = position;
+      if(instruction.kind == Instruction::IK_CALL) facts.calls.push_back(position);
+    }
+  }
+  return facts;
+}
+
+class RegisterPool
+{
+public:
+  RegisterPool()
+  {
+    std::fill(used_, used_ + 16, false);
+  }
+
+  void reserve(X64Register reg)
+  {
+    if(used_[static_cast<unsigned>(reg)])
+      throw std::runtime_error("MIR register allocation conflict");
+    used_[static_cast<unsigned>(reg)] = true;
+    remember_preserve(reg);
+  }
+
+  X64Register allocate(bool across_call)
+  {
+    static const X64Register ordinary[] = {
+      XR_R8, XR_R9, XR_RBX, XR_R12, XR_R13, XR_R14, XR_R15
+    };
+    static const X64Register preserved[] = {
+      XR_RBX, XR_R12, XR_R13, XR_R14, XR_R15
+    };
+    const X64Register * choices = across_call ? preserved : ordinary;
+    const std::size_t count = across_call ?
+      sizeof(preserved) / sizeof(preserved[0]) :
+      sizeof(ordinary) / sizeof(ordinary[0]);
+    for(std::size_t i = 0; i < count; ++i) {
+      const unsigned index = static_cast<unsigned>(choices[i]);
+      if(!used_[index]) {
+        used_[index] = true;
+        remember_preserve(choices[i]);
+        return choices[i];
+      }
+    }
+    throw std::runtime_error("foundation register pool exhausted");
+  }
+
+  void release(X64Register reg)
+  {
+    const unsigned index = static_cast<unsigned>(reg);
+    if(reg == XR_R8 || reg == XR_R9 || is_callee_saved(reg)) used_[index] = false;
+  }
+
+  const std::vector<X64Register> & preserves() const { return preserves_; }
+
+private:
+  bool used_[16];
+  std::vector<X64Register> preserves_;
+
+  void remember_preserve(X64Register reg)
+  {
+    if(is_callee_saved(reg) &&
+       std::find(preserves_.begin(), preserves_.end(), reg) == preserves_.end())
+      preserves_.push_back(reg);
+  }
+};
+
+class FunctionLowerer
+{
+public:
+  explicit FunctionLowerer(const lowir_model::LowirFunction & source)
+    : source_(source), facts_(analyze_function(source)), position_(0)
+  {
+    target_.name = source.name;
+    target_.return_type = source.return_type.text;
+    bind_parameters();
+  }
+
+  mir_model::MirFunction lower()
+  {
+    for(std::size_t i = 0; i < source_.blocks.size(); ++i) {
+      mir_model::MirBlock block;
+      block.label = source_.blocks[i].label;
+      if(i == 0) block.instructions.insert(block.instructions.end(),
+                                           parameter_moves_.begin(), parameter_moves_.end());
+      for(std::size_t j = 0; j < source_.blocks[i].instructions.size(); ++j, ++position_)
+        lower_instruction(source_.blocks[i], j, block.instructions);
+      target_.blocks.push_back(block);
+    }
+    target_.callee_saved_regs = registers_.preserves();
+    target_.stack_size = std::max(target_.callee_saved_regs.size() * 16,
+                                  source_.params.empty() ? std::size_t(0) : std::size_t(16));
+    return target_;
+  }
+
+private:
+  const lowir_model::LowirFunction & source_;
+  FunctionFacts facts_;
+  mir_model::MirFunction target_;
+  RegisterPool registers_;
+  std::unordered_map<std::string, ValueFact> values_;
+  std::vector<MirInstruction> parameter_moves_;
+  std::size_t position_;
+
+  static X64Register argument_register(std::size_t index)
+  {
+    static const X64Register registers[] = {
+      XR_RDI, XR_RSI, XR_RDX, XR_RCX, XR_R8, XR_R9
+    };
+    if(index >= sizeof(registers) / sizeof(registers[0]))
+      throw std::runtime_error("foundation ABI supports six register arguments");
+    return registers[index];
+  }
+
+  bool crosses_call(const std::string & name) const
+  {
+    const std::size_t begin = facts_.definition.find(name)->second;
+    const std::size_t end = facts_.last_use.find(name)->second;
+    for(std::size_t i = 0; i < facts_.calls.size(); ++i)
+      if(facts_.calls[i] > begin && facts_.calls[i] < end) return true;
+    return false;
+  }
+
+  void bind_parameters()
+  {
+    for(std::size_t i = 0; i < source_.params.size(); ++i) {
+      const lowir_model::LowirParameter & parameter = source_.params[i];
+      mir_model::MirParamBinding binding;
+      binding.name = parameter.name;
+      binding.type = parameter.type.text;
+      binding.location = mir_model::MirParamBinding::PL_REG;
+      binding.reg = argument_register(i);
+      target_.params.push_back(binding);
+
+      ValueFact value;
+      value.location = reg_operand(binding.reg);
+      value.type = parameter.type;
+      value.parameter = true;
+      const std::size_t uses = facts_.uses[parameter.name];
+      if(parameter.type.kind == lowir_model::LTK_PTR && uses > 1) {
+        const X64Register destination = registers_.allocate(true);
+        value.location = reg_operand(destination);
+        append_move(parameter_moves_, value.location, reg_operand(binding.reg));
+      } else if(binding.reg == XR_RDX && uses && facts_.first_use[parameter.name] > 0) {
+        registers_.reserve(XR_R9);
+        value.location = reg_operand(XR_R9);
+        append_move(parameter_moves_, value.location, reg_operand(binding.reg));
+      } else if(uses && crosses_call(parameter.name)) {
+        const X64Register destination = registers_.allocate(true);
+        value.location = reg_operand(destination);
+        append_move(parameter_moves_, value.location, reg_operand(binding.reg));
+      }
+      values_[parameter.name] = value;
+    }
+  }
+
+  bool result_is_immediate_return(const lowir_model::LowirBlock & block,
+                                  std::size_t instruction_index,
+                                  const std::string & destination) const
+  {
+    if(facts_.uses.find(destination) == facts_.uses.end() ||
+       facts_.uses.find(destination)->second != 1 ||
+       instruction_index + 1 >= block.instructions.size()) return false;
+    const Instruction & next = block.instructions[instruction_index + 1];
+    return next.kind == Instruction::IK_RETURN && next.first.text == destination;
+  }
+
+  MirOperand resolve(const Operand & operand) const
+  {
+    if(operand.kind == Operand::OP_TEMP) {
+      const std::unordered_map<std::string, ValueFact>::const_iterator found =
+        values_.find(operand.text);
+      if(found == values_.end()) throw std::runtime_error("missing lowered temporary");
+      return found->second.location;
+    }
+    if(operand.kind == Operand::OP_INTEGER) return immediate(integer_literal(operand.text));
+    if(operand.kind == Operand::OP_GLOBAL)
+      return named_operand(MirOperand::OP_SYMBOL, operand.text);
+    if(operand.kind == Operand::OP_LABEL)
+      return named_operand(MirOperand::OP_LABEL, operand.text);
+    throw std::runtime_error("foundation operand is not implemented: " + operand.text);
+  }
+
+  MirOperand storage(const Operand & operand) const
+  {
+    if(operand.kind == Operand::OP_GLOBAL)
+      return named_operand(MirOperand::OP_GLOBAL, operand.text);
+    const MirOperand address = resolve(operand);
+    if(address.kind != MirOperand::OP_REG)
+      throw std::runtime_error("storage address is not register-resident");
+    return dereference(address.reg);
+  }
+
+  bool can_reuse(const Operand & operand) const
+  {
+    if(operand.kind != Operand::OP_TEMP) return false;
+    const std::unordered_map<std::string, std::size_t>::const_iterator use =
+      facts_.uses.find(operand.text);
+    const std::unordered_map<std::string, ValueFact>::const_iterator value =
+      values_.find(operand.text);
+    return use != facts_.uses.end() && use->second == 1 &&
+           value != values_.end() && !value->second.parameter &&
+           value->second.location.kind == MirOperand::OP_REG;
+  }
+
+  void consume(const Operand & operand, X64Register retained = XR_RSP)
+  {
+    if(operand.kind != Operand::OP_TEMP) return;
+    std::unordered_map<std::string, std::size_t>::iterator found = facts_.uses.find(operand.text);
+    if(found == facts_.uses.end() || found->second == 0)
+      throw std::runtime_error("invalid temporary use count");
+    --found->second;
+    if(found->second == 0) {
+      const ValueFact & value = values_.find(operand.text)->second;
+      if(!value.parameter && value.location.kind == MirOperand::OP_REG &&
+         value.location.reg != retained && value.location.reg != XR_RAX)
+        registers_.release(value.location.reg);
+    }
+  }
+
+  X64Register allocate_result(const std::string & name)
+  {
+    const bool across = facts_.last_use.count(name) && crosses_call(name);
+    return registers_.allocate(across);
+  }
+
+  void define(const std::string & name, const LowType & type, const MirOperand & location)
+  {
+    ValueFact value;
+    value.location = location;
+    value.type = type;
+    values_[name] = value;
+  }
+
+  void emit_binary(const Instruction & instruction,
+                   std::vector<MirInstruction> & out)
+  {
+    if(instruction.op != "add")
+      throw std::runtime_error("foundation binary operation is not implemented: " + instruction.op);
+    const MirOperand left = resolve(instruction.first);
+    const MirOperand right = resolve(instruction.second);
+    MirOperand destination;
+    if(can_reuse(instruction.first)) destination = left;
+    else {
+      destination = reg_operand(allocate_result(instruction.dest));
+      append_move(out, destination, left);
+    }
+    MirInstruction add = machine_instruction(MirInstruction::MI_ADD);
+    append_operand(add, destination);
+    append_operand(add, right);
+    out.push_back(add);
+    consume(instruction.first, destination.reg);
+    consume(instruction.second, destination.reg);
+    define(instruction.dest, instruction.type, destination);
+  }
+
+  void emit_index(const Instruction & instruction,
+                  std::vector<MirInstruction> & out)
+  {
+    const MirOperand base = resolve(instruction.first);
+    if(base.kind != MirOperand::OP_REG)
+      throw std::runtime_error("foundation index base is not a register");
+    const long long offset = integer_literal(instruction.second.text) *
+                             static_cast<long long>(instruction.type.storage_size);
+    MirOperand destination;
+    if(can_reuse(instruction.first)) destination = base;
+    else if(instruction.first.kind == Operand::OP_TEMP &&
+            values_.find(instruction.first.text)->second.parameter)
+      destination = reg_operand(registers_.allocate(true));
+    else destination = reg_operand(allocate_result(instruction.dest));
+    if(destination.reg != base.reg) append_move(out, destination, base);
+    MirInstruction lea = machine_instruction(MirInstruction::MI_LEA);
+    append_operand(lea, destination);
+    append_operand(lea, dereference(destination.reg, offset));
+    out.push_back(lea);
+    consume(instruction.first, destination.reg);
+    consume(instruction.second, destination.reg);
+    define(instruction.dest, lowir_model::builtin_lowir_type(lowir_model::LTK_PTR), destination);
+  }
+
+  void emit_call(const Instruction & instruction,
+                 const lowir_model::LowirBlock & block,
+                 std::size_t instruction_index,
+                 std::vector<MirInstruction> & out)
+  {
+    if(instruction.args.size() > 6)
+      throw std::runtime_error("foundation call has stack arguments");
+    for(std::size_t i = 0; i < instruction.args.size(); ++i)
+      append_move(out, reg_operand(argument_register(i)), resolve(instruction.args[i]));
+
+    if(instruction.first.kind == Operand::OP_GLOBAL) {
+      MirInstruction call = machine_instruction(MirInstruction::MI_CALL);
+      append_operand(call, named_operand(MirOperand::OP_SYMBOL, instruction.first.text));
+      out.push_back(call);
+    } else {
+      append_move(out, reg_operand(XR_R10), resolve(instruction.first));
+      MirInstruction call = machine_instruction(MirInstruction::MI_CALL_INDIRECT);
+      append_operand(call, reg_operand(XR_R10));
+      out.push_back(call);
+    }
+    for(std::size_t i = 0; i < instruction.args.size(); ++i) consume(instruction.args[i]);
+    consume(instruction.first);
+
+    if(!instruction.call_returns_void) {
+      MirOperand location = reg_operand(XR_RAX);
+      if(!result_is_immediate_return(block, instruction_index, instruction.dest)) {
+        location = reg_operand(allocate_result(instruction.dest));
+        append_move(out, location, reg_operand(XR_RAX));
+      }
+      define(instruction.dest, instruction.type, location);
+    }
+  }
+
+  void emit_branch(const Instruction & instruction, std::vector<MirInstruction> & out)
+  {
+    append_move(out, reg_operand(XR_RAX), resolve(instruction.first));
+    MirInstruction compare = machine_instruction(MirInstruction::MI_CMP, "i64");
+    append_operand(compare, reg_operand(XR_RAX));
+    append_operand(compare, immediate(0));
+    out.push_back(compare);
+    MirInstruction branch = machine_instruction(MirInstruction::MI_JCC);
+    branch.condition = XC_NE;
+    append_operand(branch, named_operand(MirOperand::OP_LABEL, instruction.second.text));
+    out.push_back(branch);
+    MirInstruction jump = machine_instruction(MirInstruction::MI_JMP);
+    append_operand(jump, named_operand(MirOperand::OP_LABEL, instruction.third.text));
+    out.push_back(jump);
+    consume(instruction.first);
+  }
+
+  void emit_switch(const Instruction & instruction, std::vector<MirInstruction> & out)
+  {
+    append_move(out, reg_operand(XR_RAX), resolve(instruction.first));
+    for(std::size_t i = 0; i < instruction.args.size(); i += 2) {
+      append_move(out, reg_operand(XR_RCX), resolve(instruction.args[i]));
+      MirInstruction compare = machine_instruction(MirInstruction::MI_CMP, "i64");
+      append_operand(compare, reg_operand(XR_RAX));
+      append_operand(compare, reg_operand(XR_RCX));
+      out.push_back(compare);
+      MirInstruction branch = machine_instruction(MirInstruction::MI_JCC);
+      branch.condition = XC_E;
+      append_operand(branch, named_operand(MirOperand::OP_LABEL,
+                                           instruction.args[i + 1].text));
+      out.push_back(branch);
+      consume(instruction.args[i]);
+    }
+    MirInstruction jump = machine_instruction(MirInstruction::MI_JMP);
+    append_operand(jump, named_operand(MirOperand::OP_LABEL, instruction.second.text));
+    out.push_back(jump);
+    consume(instruction.first);
+  }
+
+  void emit_return(const Instruction & instruction, std::vector<MirInstruction> & out)
+  {
+    if(instruction.type.kind != lowir_model::LTK_VOID)
+      append_move(out, reg_operand(XR_RAX), resolve(instruction.first));
+    MirInstruction ret = machine_instruction(MirInstruction::MI_RET);
+    if(instruction.type.kind != lowir_model::LTK_VOID)
+      append_operand(ret, reg_operand(XR_RAX));
+    out.push_back(ret);
+    consume(instruction.first);
+  }
+
+  void lower_instruction(const lowir_model::LowirBlock & block,
+                         std::size_t instruction_index,
+                         std::vector<MirInstruction> & out)
+  {
+    const Instruction & instruction = block.instructions[instruction_index];
+    if(instruction.kind == Instruction::IK_CONST) {
+      const MirOperand destination = reg_operand(allocate_result(instruction.dest));
+      append_move(out, destination, immediate(integer_literal(instruction.first.text)));
+      define(instruction.dest, instruction.type, destination);
+    } else if(instruction.kind == Instruction::IK_ADDR) {
+      const MirOperand destination = reg_operand(allocate_result(instruction.dest));
+      append_move(out, destination, resolve(instruction.first));
+      define(instruction.dest, lowir_model::builtin_lowir_type(lowir_model::LTK_PTR), destination);
+    } else if(instruction.kind == Instruction::IK_LOAD) {
+      MirOperand destination;
+      if(result_is_immediate_return(block, instruction_index, instruction.dest))
+        destination = reg_operand(XR_RAX);
+      else destination = reg_operand(allocate_result(instruction.dest));
+      MirInstruction load = machine_instruction(MirInstruction::MI_LOAD, instruction.type.text);
+      append_operand(load, destination);
+      append_operand(load, storage(instruction.first));
+      out.push_back(load);
+      consume(instruction.first, destination.reg);
+      define(instruction.dest, instruction.type, destination);
+    } else if(instruction.kind == Instruction::IK_STORE) {
+      MirInstruction store = machine_instruction(MirInstruction::MI_STORE, instruction.type.text);
+      append_operand(store, storage(instruction.second));
+      append_operand(store, resolve(instruction.first));
+      out.push_back(store);
+      consume(instruction.first);
+      consume(instruction.second);
+    } else if(instruction.kind == Instruction::IK_INDEX) {
+      emit_index(instruction, out);
+    } else if(instruction.kind == Instruction::IK_BINARY) {
+      emit_binary(instruction, out);
+    } else if(instruction.kind == Instruction::IK_CALL) {
+      emit_call(instruction, block, instruction_index, out);
+    } else if(instruction.kind == Instruction::IK_COPYOBJ ||
+              instruction.kind == Instruction::IK_ZEROINIT) {
+      const Operand & destination_source = instruction.kind == Instruction::IK_COPYOBJ ?
+        instruction.second : instruction.first;
+      append_move(out, reg_operand(XR_RDI), resolve(destination_source));
+      if(instruction.kind == Instruction::IK_COPYOBJ)
+        append_move(out, reg_operand(XR_RSI), resolve(instruction.first));
+      MirInstruction bulk = machine_instruction(instruction.kind == Instruction::IK_COPYOBJ ?
+        MirInstruction::MI_COPY_BYTES : MirInstruction::MI_ZERO_BYTES);
+      bulk.byte_count = instruction.byte_count;
+      bulk.byte_alignment = instruction.byte_alignment;
+      append_operand(bulk, reg_operand(XR_RDI));
+      if(instruction.kind == Instruction::IK_COPYOBJ)
+        append_operand(bulk, reg_operand(XR_RSI));
+      out.push_back(bulk);
+      consume(instruction.first);
+      if(instruction.kind == Instruction::IK_COPYOBJ) consume(instruction.second);
+    } else if(instruction.kind == Instruction::IK_BRANCH) {
+      emit_branch(instruction, out);
+    } else if(instruction.kind == Instruction::IK_SWITCH) {
+      emit_switch(instruction, out);
+    } else if(instruction.kind == Instruction::IK_JUMP) {
+      MirInstruction jump = machine_instruction(MirInstruction::MI_JMP);
+      append_operand(jump, named_operand(MirOperand::OP_LABEL, instruction.first.text));
+      out.push_back(jump);
+    } else if(instruction.kind == Instruction::IK_RETURN) {
+      emit_return(instruction, out);
+    } else {
+      throw std::runtime_error("foundation LowIR instruction is not implemented");
+    }
+  }
+};
+
+mir_model::MirGlobalDefinition lower_global(const lowir_model::LowirGlobalDefinition & source)
+{
+  mir_model::MirGlobalDefinition target;
+  target.name = source.name;
+  target.readonly = source.storage == lowir_model::GSM_READONLY;
+  target.thread_local_storage = source.storage == lowir_model::GSM_THREAD_LOCAL;
+  if(source.structured) {
+    target.storage_kind = mir_model::MirGlobalDefinition::GS_DATA;
+    for(std::size_t i = 0; i < source.data_items.size(); ++i) {
+      const lowir_model::LowirGlobalDefinition::DataItem & item = source.data_items[i];
+      mir_model::MirGlobalDefinition::DataItem lowered;
+      lowered.type = item.type.text;
+      if(item.kind == lowir_model::LowirGlobalDefinition::DataItem::ITEM_ZERO) {
+        lowered.kind = mir_model::MirGlobalDefinition::DataItem::ITEM_ZERO;
+        lowered.zero_bytes = item.zero_bytes;
+      } else if(item.kind == lowir_model::LowirGlobalDefinition::DataItem::ITEM_ADDR) {
+        lowered.kind = mir_model::MirGlobalDefinition::DataItem::ITEM_ADDR;
+        lowered.symbol = item.symbol;
+        lowered.addr_addend = item.addr_addend;
+      } else if(item.type.kind >= lowir_model::LTK_F32 &&
+                item.type.kind <= lowir_model::LTK_F80) {
+        lowered.kind = mir_model::MirGlobalDefinition::DataItem::ITEM_FLOAT;
+        lowered.literal_text = item.literal_operand.text;
+      } else {
+        lowered.kind = mir_model::MirGlobalDefinition::DataItem::ITEM_INTEGER;
+        lowered.int_value = integer_literal(item.literal_operand.text);
+      }
+      target.data_items.push_back(lowered);
+    }
+  } else {
+    target.storage_kind = mir_model::MirGlobalDefinition::GS_SCALAR;
+    target.type = source.type.text;
+    if(source.init_kind == lowir_model::LowirGlobalDefinition::INIT_ADDR) {
+      target.init_kind = mir_model::MirGlobalDefinition::GI_ADDR;
+      target.symbol = source.init_operand.text;
+      target.addr_addend = source.addr_addend;
+    } else {
+      target.init_kind = mir_model::MirGlobalDefinition::GI_INTEGER;
+      target.int_value = source.init_kind == lowir_model::LowirGlobalDefinition::INIT_ZERO ?
+        0 : integer_literal(source.init_operand.text);
+    }
+  }
+  return target;
+}
+
+void append_startup_call(std::vector<MirInstruction> & startup,
+                         const std::string & name)
+{
+  MirInstruction call = machine_instruction(MirInstruction::MI_CALL);
+  append_operand(call, named_operand(MirOperand::OP_SYMBOL, name));
+  startup.push_back(call);
+}
+
+void lower_startup(const lowir_model::LowirProgram & source,
+                   mir_model::MirProgram & target)
+{
+  std::string entry;
+  std::string init;
+  std::string fini;
+  for(std::size_t i = 0; i < source.functions.size(); ++i) {
+    const lowir_model::LowirFunction & function = source.functions[i];
+    if(function.metadata.role == lowir_model::SR_ENTRY) entry = function.name;
+    if(function.metadata.role == lowir_model::SR_INIT) init = function.name;
+    if(function.metadata.role == lowir_model::SR_FINI) fini = function.name;
+  }
+  if(entry.empty()) {
+    for(std::size_t i = 0; i < source.functions.size(); ++i) {
+      if(source.functions[i].name == "@main") entry = source.functions[i].name;
+      if(init.empty() && source.functions[i].name == "@__cppgm_init") init = source.functions[i].name;
+      if(fini.empty() && source.functions[i].name == "@__cppgm_fini") fini = source.functions[i].name;
+    }
+  }
+  if(entry.empty()) return;
+  if(!init.empty()) append_startup_call(target.startup, init);
+  append_startup_call(target.startup, entry);
+  if(!fini.empty()) {
+    append_move(target.startup, reg_operand(XR_R12), reg_operand(XR_RAX));
+    append_startup_call(target.startup, fini);
+    append_move(target.startup, reg_operand(XR_RDI), reg_operand(XR_R12));
+  } else {
+    append_move(target.startup, reg_operand(XR_RDI), reg_operand(XR_RAX));
+  }
+  target.startup.push_back(machine_instruction(MirInstruction::MI_EXIT));
+}
+
+}  // namespace
+
+mir_model::MirProgram lower_program(const lowir_model::LowirProgram & program,
+                                    const std::string & target,
+                                    Stats * stats)
+{
+  if(target != "linux") throw std::runtime_error("unsupported native target: " + target);
+  mir_model::MirProgram result;
+  result.target = target;
+  lower_startup(program, result);
+  for(std::size_t i = 0; i < program.globals.size(); ++i)
+    result.globals.push_back(lower_global(program.globals[i]));
+  for(std::size_t i = 0; i < program.functions.size(); ++i)
+    result.functions.push_back(FunctionLowerer(program.functions[i]).lower());
+  result.object_aliases.reserve(program.object_aliases.size());
+  for(std::size_t i = 0; i < program.object_aliases.size(); ++i) {
+    mir_model::MirObjectAlias alias;
+    alias.object_symbol = program.object_aliases[i].object_symbol;
+    alias.target = program.object_aliases[i].target;
+    result.object_aliases.push_back(alias);
+  }
+  result.exported_symbols = program.exported_symbols;
+  if(stats) {
+    stats->functions = result.functions.size();
+    for(std::size_t i = 0; i < program.functions.size(); ++i) {
+      stats->blocks += program.functions[i].blocks.size();
+      for(std::size_t j = 0; j < program.functions[i].blocks.size(); ++j)
+        stats->lowir_instructions += program.functions[i].blocks[j].instructions.size();
+    }
+    stats->mir_instructions = result.startup.size();
+    for(std::size_t i = 0; i < result.functions.size(); ++i)
+      for(std::size_t j = 0; j < result.functions[i].blocks.size(); ++j)
+        stats->mir_instructions += result.functions[i].blocks[j].instructions.size();
+  }
+  return result;
+}
+
+}  // namespace lowir_native
