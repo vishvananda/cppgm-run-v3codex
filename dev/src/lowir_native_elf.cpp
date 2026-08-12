@@ -225,6 +225,7 @@ std::size_t function_stack_adjustment(const mir_model::MirFunction & function)
 long long actual_frame_offset(const mir_model::MirFunction & function,
                               long long abstract_offset)
 {
+  if(abstract_offset >= 0) return abstract_offset;
   return abstract_offset - static_cast<long long>(function.callee_saved_regs.size() * 8);
 }
 

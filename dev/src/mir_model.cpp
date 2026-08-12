@@ -233,7 +233,7 @@ void render_function(std::ostringstream & out, const Function & function)
     out << "    param " << param.name << " -> ";
     if(param.location == ParamBinding::PL_REG) out << register_name(param.reg);
     else if(param.location == ParamBinding::PL_XMM) out << xmm_name(param.xmm);
-    else out << "stack+" << param.stack_offset;
+    else out << "[rbp+" << param.stack_offset << ']';
     out << " : " << param.type << '\n';
   }
   out << "    return " << function.return_type << " -> ";
@@ -252,7 +252,7 @@ void render_function(std::ostringstream & out, const Function & function)
   for(std::size_t i = 0; i < function.frame_bindings.size(); ++i) {
     const FrameBinding & binding = function.frame_bindings[i];
     out << "    ";
-    if(binding.kind == FrameBinding::FB_PARAM_SLOT) out << "param_slot ";
+    if(binding.kind == FrameBinding::FB_PARAM_SLOT) out << "param-slot ";
     else if(binding.kind == FrameBinding::FB_SLOT) out << "slot ";
     else out << "temp ";
     out << binding.name << " -> " << frame_address(binding.offset)
