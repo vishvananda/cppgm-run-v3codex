@@ -2,56 +2,57 @@
 
 ## Current Checkpoint Review
 
-The canonical RTTI checkpoint (`9eb277da`) now passes its bounded architecture
-review. Semantic analysis records canonical queried/source/target `TypeId`s,
-dynamic-query and cast facts, and demand decisions; lowering consumes those
-facts through indexed symbol tables and emits typed LowIR directly. Itanium
-mangled strings remain object-name and display data, never semantic keys.
+The lexical unwind snapshot checkpoint (`e05062b1` plus this audit follow-up)
+passes its bounded architecture review. The review covered only the landed
+increment: typed live-action snapshots, may-throw call boundaries, dispatch
+reuse, nested handler continuation, and catch-miss cleanup. Class exception
+construction and the remaining branch-temporary cases stay outside this
+checkpoint.
 
-The audit found and closed four checkpoint-owned defects:
+The audit closed four checkpoint-owned defects. Snapshot publication had been
+wired only through expression statements, leaving no-temporary conditions,
+loop expressions, scalar returns, and automatic scalar initializers without a
+lexical cleanup frontier. Those owners now stage the same typed action suffix;
+initializer staging occurs before destination lifetime registration so a
+failed initializer cannot destroy an unconstructed destination. Existing
+temporary-cleanup owners remain authoritative, and nested-template detection
+now requests staging without appending a duplicate action sequence.
 
-1. A polymorphic `typeid(expr)` operand was analyzed as unevaluated even after
-   it became potentially evaluated, so retained calls and constructor actions
-   could reach lowering without emitted bindings. Calls and constructors are
-   now deferred while the operand type is established and demanded only when
-   the query is dynamic. An enclosing unevaluated context keeps nested queries
-   inactive.
-2. RTTI collection scanned every allocated dump node, including unreachable
-   nodes left by unevaluated expressions. It now walks only nodes reachable
-   from the semantic root, with one visited mark per node, so inactive queries
-   cannot demand vtables, runtime helpers, or RTTI globals.
-3. Valid array, function, and member-pointer `typeid(type-id)` forms lacked ABI
-   RTTI owners. Canonical demand now covers their Itanium runtime categories;
-   member-pointer facts retain both member and class `TypeId` dependencies.
-4. Identity and upcast `dynamic_cast` paths bypassed completeness,
-   cv-preservation, and base-access checks. Those checks now precede the
-   no-runtime fast path while supported single-inheritance downcasts retain the
-   indexed `__dynamic_cast` path.
+An exception escaping a handler also closed the catch before destroying
+handler-local objects. PA12 now segments the action suffix with explicit typed
+handler-exit markers; PA15 lowers each marker after local destruction and
+before outer destruction. Marker bits participate in dispatch-cache identity,
+so distinct ordered suffixes cannot alias. Catch-all try regions no longer
+publish impossible catch-miss suffixes, eliminating quadratic action growth in
+nested catch-all input. Both exception scope vectors are included in semantic
+side-storage telemetry.
 
-The ownership path is source syntax -> PA12 canonical expression facts ->
-reachable RTTI demand over the borrowed semantic graph -> `TypeId`/`EntityId`
-indexed emission facts -> typed LowIR globals and query CFG. There is no text
-round trip, lowering-time semantic lookup, process-global cache, test-name
-branch, or external compiler/reference fallback in this path.
+The durable ownership path is source expression -> canonical PA12 expression
+and scope-lifetime facts -> statement-owned ordered destructor-action suffix ->
+per-function PA15 cleanup manager and compact dispatch cache -> typed LowIR EH
+regions. Lowering consumes `TypeId`, `BindingId`, object identity, action flags,
+and handler context directly; it performs no lookup recovery, string parsing,
+test-name branching, external compilation, or reference-binary fallback.
 
-Representative release runs over 128/256/512/1024 distinct class queries
-visited 905/1,801/3,593/7,177 reachable graph nodes and recorded exactly
-128/256/512/1024 RTTI demands, demanded types, and lowering symbol lookups.
-Median semantic time was 5.398/10.972/21.951/45.421 ms; median lowering time
-was 1.424/2.594/5.440/11.124 ms. Typed storage and output grew from
-357,969/80,463 bytes to 2,902,305/662,483 bytes. A nested unevaluated query
-with 16 allocated semantic nodes visited only 9 reachable nodes, demanded one
-type, and emitted no polymorphic operand RTTI or vtable.
+Representative release runs with one live guard and 32/64/128/256 repeated
+calls recorded 32/64/128/256 unwind actions, 32/64/128/256 cache probes,
+31/63/127/255 hits, and exactly one dispatch entry. Instructions grew
+104/200/392/776 and typed storage 20,069/35,429/66,149/127,589 bytes. A second
+run over 8/16/32/64 nested catch-all handlers recorded exactly 8/16/32/64
+unwind scope and action visits; instructions grew 254/502/998/1,990 and typed
+storage 60,815/114,685/222,431/437,919 bytes. The counters support linear work
+in both action sequences and produced LowIR.
 
-Validation preserves the checkpoint baseline: the original PA26 suite remains
-26/106, all four audit regressions pass (30/110 augmented), the focused RTTI
-set remains 14/17 with all three residuals stopping in lambda/object owners,
-and PA1-PA25 pass 3,607/3,607. The PA26 file audit passes with the same 15
-inherited warnings. The existing nested-lambda timeout is outside the RTTI
-ownership path and remains assigned to the next checkpoint.
+Validation preserves both baselines: PA1-PA25 pass 3,607/3,607 and PA26 remains
+80/110. Nine focused checked fixtures pass, synthesized condition, return,
+declaration, and handler-order traces contain the required cleanup ordering,
+and the PA26 file audit passes with 19 inherited division warnings. The two
+shared-dispatch callee failures reproduce unchanged at the parent checkpoint
+and remain outside this increment.
 
 ## Checkpoint Audit Ledger
 
 | Checkpoint | Audit result |
 |---|---|
 | Canonical RTTI demand and query lowering (`9eb277da`, audit follow-up) | Pass: evaluated demand, reachable collection, complete canonical RTTI categories, cast legality, linear counters, baseline and earlier stages preserved. |
+| Lexical unwind snapshots and handler continuation (`e05062b1`, audit follow-up) | Pass: complete bounded owners, ordered handler exit, non-duplicated typed suffixes, linear counters, and both baselines preserved. |

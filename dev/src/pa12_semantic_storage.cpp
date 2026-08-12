@@ -131,6 +131,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		widest_aggregate_helper_by_entity_.capacity() * sizeof(std::uint32_t) +
 		break_cleanup_stops_.capacity() * sizeof(ScopeId) +
 		continue_cleanup_stops_.capacity() * sizeof(ScopeId) +
+		exception_cleanup_stops_.capacity() * sizeof(ScopeId) +
+		exception_handler_cleanup_stops_.capacity() * sizeof(ScopeId) +
 		demanded_default_constructor_entities_.capacity() * sizeof(EntityId) +
 		default_constructor_demand_states_.capacity() * sizeof(std::uint8_t) +
 		demanded_functions_.capacity() * sizeof(BindingId) +

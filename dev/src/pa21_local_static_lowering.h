@@ -226,7 +226,7 @@ protected:
 			const LocalStaticObjectAction& action =
 				derived.graph_.local_static_objects[
 					derived.local_static_eager_initializers_[i]];
-			derived.LowerVariableInitialization(
+			derived.LowerVariableInitializationCore(
 				derived.arena_.nodes[action.variable],
 				derived.Children(action.variable));
 		}
@@ -353,7 +353,7 @@ protected:
 			 !derived.IsArrayType(record.type)))
 			retained_destination = derived.AddressOfStorage(derived.StorageFor(
 				record.binding, derived.LowerStorageType(record.type)));
-		derived.LowerVariableInitialization(
+		derived.LowerVariableInitializationCore(
 			record, children, retained_destination);
 		derived.lowering_namespace_object_ = previous_namespace_object;
 		Instruction mark(Instruction::STORE);

@@ -795,8 +795,8 @@ bool SemanticAnalyzer::TryBuildElidedClassValueTransfer(TypeId type,
 	return true;
 }
 
-void SemanticAnalyzer::StageNestedTemplateTemporaryCleanup(
-	std::uint32_t expression, std::uint32_t statement, ScopeId scope)
+bool SemanticAnalyzer::StageNestedTemplateTemporaryCleanup(
+	std::uint32_t expression, std::uint32_t statement)
 {
 	for (std::uint32_t edge = dump_.nodes[statement].first_edge;
 		edge != kNoDumpEdge; edge = dump_.edges[edge].next)
@@ -809,9 +809,9 @@ void SemanticAnalyzer::StageNestedTemplateTemporaryCleanup(
 			program_->entities[entity].template_argument_count == 0 ||
 			program_->entities[entity].enclosing_class == kNoEntity) continue;
 		MarkFullExpressionCalls(expression);
-		AppendUnwindDestructionActions(scope, statement);
-		return;
+		return true;
 	}
+	return false;
 }
 
 void SemanticAnalyzer::StageReturnTemporaryCleanup(

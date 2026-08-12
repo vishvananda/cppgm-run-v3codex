@@ -153,6 +153,8 @@ struct DumpNode
 	bool direct_return_slot;
 	bool declaration_only;
 	bool unwind_only;
+	bool exception_handler_exit;
+	bool exception_cleanup_region_exit;
 	bool full_expression_staging;
 	bool managed_full_expression_cleanup;
 	bool conditionally_constructed;
@@ -200,7 +202,8 @@ struct DumpNode
 		  class_argument_staging(false), elided_temporary_storage(false),
 		  variadic_class_argument(false),
 		  direct_return_slot(false), declaration_only(false),
-		  unwind_only(false), full_expression_staging(false),
+		  unwind_only(false), exception_handler_exit(false),
+		  exception_cleanup_region_exit(false), full_expression_staging(false),
 		  managed_full_expression_cleanup(false),
 		  conditionally_constructed(false),
 		  default_argument(false),

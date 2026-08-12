@@ -2190,8 +2190,9 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 				AddDefaultConstructor(variable, binding, parsed.type);
 		}
 		dump_.Add(owner, variable);
-		const NameId source_file = arena_->SourceLine(item) == 0 ? 0 :
-			program_->names.Intern(arena_->SourceFile(item));
+		const NameId source_file = arena_->SourceLine(item) == 0 ? 0 : program_->names.Intern(arena_->SourceFile(item));
+		const bool control_dependent = local && has_initializer && HasControlDependentTemporary(initializer.node);
+		StageAutomaticScalarInitializerException(initializer.node, variable, scope, binding, parsed.type, local && has_initializer && !control_dependent);
 		RegisterVariableLifetimeAndStorage(scope, local, declaration_only,
 			variable, binding, parsed.type, source_file,
 			static_cast<std::uint32_t>(arena_->SourceLine(item)),
@@ -2199,7 +2200,6 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			has_initializer && HasConstantInitializerFact(initializer));
 		if (local && has_initializer)
 		{
-			const bool control_dependent = HasControlDependentTemporary(initializer.node);
 			const bool extended_initializer_list =
 				ExtendInitializerListVariableLifetime(
 				parsed.type, scope, initializer.node, control_dependent);
@@ -2219,7 +2219,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 					}
 				}
 			}
-			else if (!extended_initializer_list)
+			else if (!extended_initializer_list && !dump_.nodes[variable].full_expression_staging)
 			{
 				const std::size_t edge_count = dump_.edges.size();
 				AppendFullExpressionDestructionActions(initializer.node, owner);
@@ -2480,6 +2480,7 @@ void SemanticAnalyzer::AnalyzeCondition(NodeId node, ScopeId scope,
 		value = ApplyExplicitConversion(value,
 			program_->types.Fundamental(FUND_BOOL));
 	dump_.Add(condition, value.node);
+	const std::size_t first_cleanup_edge = dump_.edges.size();
 	AppendFullExpressionDestructionActions(value.node, condition);
 	const std::uint32_t first = dump_.nodes[condition].first_edge;
 	if (first != kNoDumpEdge && dump_.edges[first].next != kNoDumpEdge)
@@ -2494,6 +2495,8 @@ void SemanticAnalyzer::AnalyzeCondition(NodeId node, ScopeId scope,
 		dump_.nodes[condition].initializer_list_lifetime_observation = true;
 		MarkInitializerListLifetimeCalls(value.node);
 	}
+	else if (dump_.edges.size() == first_cleanup_edge)
+		StageExceptionalFullExpression(value.node, condition, scope);
 }
 
 void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
@@ -2603,14 +2606,7 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 					{
 						const std::uint32_t expression =
 							dump_.edges[dump_.nodes[init].first_edge].child;
-						const std::size_t edge_count = dump_.edges.size();
-						AppendFullExpressionDestructionActions(
-							expression, init);
-						if (dump_.edges.size() != edge_count)
-						{
-							MarkFullExpressionCalls(expression);
-							AppendUnwindDestructionActions(control, init);
-						}
+						StageControlFullExpression(expression, init, control);
 					}
 				}
 			}
@@ -2623,13 +2619,7 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 				const ExpressionInfo value = MaterializeDiscardedClassResult(
 					AnalyzeExpression(FirstSemanticChild(child), control));
 				dump_.Add(iteration, value.node);
-				const std::size_t edge_count = dump_.edges.size();
-				AppendFullExpressionDestructionActions(value.node, iteration);
-				if (dump_.edges.size() != edge_count)
-				{
-					MarkFullExpressionCalls(value.node);
-					AppendUnwindDestructionActions(control, iteration);
-				}
+				StageControlFullExpression(value.node, iteration, control);
 			}
 			else AnalyzeSubstatement(child, control, statement);
 		}

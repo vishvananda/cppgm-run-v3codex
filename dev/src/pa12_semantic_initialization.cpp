@@ -585,8 +585,12 @@ void SemanticAnalyzer::AnalyzeReturnStatement(NodeId node, ScopeId scope,
 			value.category = VALUE_PRVALUE;
 		}
 		dump_.Add(statement, value.node);
+		const std::size_t first_cleanup_edge = dump_.edges.size();
 		AppendFullExpressionDestructionActions(value.node, statement);
 		StageReturnTemporaryCleanup(value.node, statement, scope);
+		if (dump_.edges.size() == first_cleanup_edge &&
+			!IsClassObjectType(value.type))
+			StageExceptionalFullExpression(value.node, statement, scope);
 	}
 	AppendScopeDestructionActions(scope, statement);
 }

@@ -57,7 +57,23 @@ protected:
 	{
 		if (ExceptionCleanupContext() == 0) return;
 		Derived& derived = static_cast<Derived&>(*this);
+		for (std::size_t i = 0;
+			i < derived.full_expression_segment_actions_.size(); ++i)
+			if (derived.arena_.nodes[
+				derived.full_expression_segment_actions_[i]].exception_handler_exit)
+				return;
 		derived.Emit(Instruction(Instruction::EH_END));
+		CallArguments none;
+		(void)EmitExceptionRuntimeCall(
+			derived.polymorphism_.eh_end_catch_symbol, LowVoid(), none);
+		derived.Emit(Instruction(Instruction::EH_END));
+	}
+
+	void FinishExceptionHandlerUnwindBoundary(bool closes_cleanup_region)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (closes_cleanup_region)
+			derived.Emit(Instruction(Instruction::EH_END));
 		CallArguments none;
 		(void)EmitExceptionRuntimeCall(
 			derived.polymorphism_.eh_end_catch_symbol, LowVoid(), none);

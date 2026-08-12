@@ -22,13 +22,92 @@ bool SemanticAnalyzer::AnalyzeExceptionStatement(NodeId node, ScopeId scope,
 }
 
 void SemanticAnalyzer::StageExceptionalFullExpression(
+	std::uint32_t expression, std::uint32_t statement, ScopeId scope, bool force)
+{
+	force = StageNestedTemplateTemporaryCleanup(expression, statement) || force;
+	if (!force && InitializationActionsAreNonthrowing(expression)) return;
+	const ScopeId stop = exception_cleanup_stops_.empty() ? kNoScope :
+		exception_cleanup_stops_.back();
+	if (!HasUnwindDestructionActions(scope, stop)) return;
+	const std::size_t first_edge = dump_.edges.size();
+	ScopeId segment = scope;
+	bool first_handler = true;
+	for (std::size_t i = exception_handler_cleanup_stops_.size(); i != 0; --i)
+	{
+		const ScopeId handler_stop = exception_handler_cleanup_stops_[i - 1];
+		bool crossed = false;
+		for (ScopeId current = segment;
+			current != kNoScope && current != stop;
+			current = current < scope_parents_.size() ?
+				scope_parents_[current] : kNoScope)
+			if (current == handler_stop)
+			{
+				crossed = true;
+				break;
+			}
+		if (!crossed) break;
+		AppendUnwindDestructionActions(segment, statement, handler_stop);
+		const std::uint32_t exit = MakeDump(DUMP_DESTRUCTOR_ACTION);
+		DumpNode& action = dump_.nodes[exit];
+		action.unwind_only = true;
+		action.exception_handler_exit = true;
+		action.exception_cleanup_region_exit = first_handler;
+		dump_.Add(statement, exit);
+		first_handler = false;
+		segment = handler_stop;
+	}
+	AppendUnwindDestructionActions(segment, statement, stop);
+	if (dump_.edges.size() == first_edge) return;
+	dump_.nodes[statement].full_expression_staging = true;
+	for (std::size_t edge = first_edge; edge < dump_.edges.size(); ++edge)
+	{
+		DumpNode& action = dump_.nodes[dump_.edges[edge].child];
+		if (action.kind == DUMP_DESTRUCTOR_ACTION && action.unwind_only)
+			action.full_expression_staging = true;
+	}
+}
+
+void SemanticAnalyzer::StageAutomaticScalarInitializerException(
+	std::uint32_t expression, std::uint32_t variable, ScopeId scope,
+	BindingId binding, TypeId type, bool eligible)
+{
+	if (!eligible ||
+		program_->bindings[binding].storage_class != STORAGE_CLASS_NONE ||
+		program_->types.IsReference(type) || IsInitializerListType(type) ||
+		IsClassObjectType(type)) return;
+	StageExceptionalFullExpression(expression, variable, scope);
+}
+
+void SemanticAnalyzer::StageControlFullExpression(
 	std::uint32_t expression, std::uint32_t statement, ScopeId scope)
 {
-	StageNestedTemplateTemporaryCleanup(expression, statement, scope);
-	if (InitializationActionsAreNonthrowing(expression)) return;
-	AppendUnwindDestructionActions(scope, statement,
-		exception_cleanup_stops_.empty() ? kNoScope :
-			exception_cleanup_stops_.back());
+	const std::size_t edge_count = dump_.edges.size();
+	AppendFullExpressionDestructionActions(expression, statement);
+	if (dump_.edges.size() == edge_count)
+	{
+		StageExceptionalFullExpression(expression, statement, scope);
+		return;
+	}
+	MarkFullExpressionCalls(expression);
+	AppendUnwindDestructionActions(scope, statement);
+}
+
+bool SemanticAnalyzer::HasUnwindDestructionActions(ScopeId scope,
+	ScopeId stop_exclusive) const
+{
+	ScopeId current = scope < nearest_lifetime_scopes_.size() ?
+		nearest_lifetime_scopes_[scope] : kNoScope;
+	while (current != kNoScope && current != stop_exclusive)
+	{
+		if (current >= scope_lifetimes_.size())
+			throw std::logic_error("indexed lifetime scope has no obligations");
+		if (!scope_lifetimes_[current].empty()) return true;
+		const ScopeId parent = scope_parents_[current];
+		current = parent != kNoScope &&
+			parent < nearest_lifetime_scopes_.size() ?
+			nearest_lifetime_scopes_[parent] : kNoScope;
+	}
+	return false;
 }
 
 ExpressionInfo SemanticAnalyzer::AnalyzeThrowExpression(
@@ -123,7 +202,9 @@ void SemanticAnalyzer::AnalyzeExceptionHandler(NodeId node, ScopeId scope,
 	if (body == kNoNode)
 		throw std::runtime_error("exception handler has no body");
 	++exception_handler_depth_;
+	exception_handler_cleanup_stops_.push_back(scope);
 	AnalyzeCompound(body, handler_scope, handler);
+	exception_handler_cleanup_stops_.pop_back();
 	--exception_handler_depth_;
 	AppendScopeDestructionActions(handler_scope, handler, scope);
 }
@@ -134,6 +215,7 @@ void SemanticAnalyzer::AnalyzeTryStatement(NodeId node, ScopeId scope,
 	const std::uint32_t statement = MakeDump(DUMP_TRY_STATEMENT);
 	dump_.Add(output_parent, statement);
 	bool saw_body = false;
+	bool catches_all = false;
 	std::size_t handler_count = 0;
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
@@ -148,13 +230,16 @@ void SemanticAnalyzer::AnalyzeTryStatement(NodeId node, ScopeId scope,
 		}
 		else if (arena_->IsTag(child, "handler"))
 		{
+			const NodeId declaration = FindChild(child, "exception-declaration");
+			catches_all = catches_all || (declaration != kNoNode &&
+				FindChild(declaration, "ellipsis") != kNoNode);
 			AnalyzeExceptionHandler(child, scope, statement);
 			++handler_count;
 		}
 	}
 	if (!saw_body || handler_count == 0)
 		throw std::runtime_error("invalid try statement");
-	AppendUnwindDestructionActions(scope, statement);
+	if (!catches_all) AppendUnwindDestructionActions(scope, statement);
 }
 
 }

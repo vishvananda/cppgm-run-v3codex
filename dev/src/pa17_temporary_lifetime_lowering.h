@@ -77,7 +77,7 @@ public:
 	}
 
 private:
-	static const std::size_t kWordsPerAction = 5;
+	static const std::size_t kWordsPerAction = 7;
 	struct Entry
 	{
 		std::uint64_t fingerprint;
@@ -98,7 +98,9 @@ private:
 		case 1: return action.lifetime_object;
 		case 2: return action.object_binding;
 		case 3: return action.binding;
-		default: return action.operand_type;
+		case 4: return action.operand_type;
+		case 5: return action.exception_handler_exit ? 1 : 0;
+		default: return action.exception_cleanup_region_exit ? 1 : 0;
 		}
 	}
 
@@ -409,9 +411,16 @@ protected:
 	void LowerFullExpressionDestructorAction(std::uint32_t action)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
+		const DumpNode& record = derived.arena_.nodes[action];
+		if (record.exception_handler_exit)
+		{
+			derived.FinishExceptionHandlerUnwindBoundary(
+				record.exception_cleanup_region_exit);
+			return;
+		}
 		if (!UsesRuntimeLifetimeState(action))
 		{
-			derived.LowerDestructorAction(derived.arena_.nodes[action]);
+			derived.LowerDestructorAction(record);
 			return;
 		}
 		const std::uint32_t temporary =
@@ -430,7 +439,7 @@ protected:
 		clear.second = Operand(
 			derived.EnsureTemporaryLifetimeSlot(temporary), LowU8());
 		derived.Emit(clear);
-		const DumpNode& cleanup = derived.arena_.nodes[action];
+		const DumpNode& cleanup = record;
 		const Operand destination = derived.AddressOfStorage(
 			derived.TemporaryObjectStorageSlot(temporary));
 		derived.LowerDestructorObject(
@@ -767,6 +776,42 @@ protected:
 			derived.LowerStatementNode(children[i]);
 		CompleteFullExpressionCleanup();
 		return true;
+	}
+
+	void LowerFullExpressionVariableInitialization(const DumpNode& record,
+		const NodeChildren& children,
+		const Operand& retained_destination = Operand())
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		std::size_t first_cleanup = children.size();
+		for (std::size_t i = 0; i < children.size(); ++i)
+			if (derived.arena_.nodes[children[i]].kind == DUMP_DESTRUCTOR_ACTION)
+			{
+				first_cleanup = i;
+				break;
+			}
+		if (first_cleanup == children.size())
+		{
+			derived.LowerVariableInitializationCore(
+				record, children, retained_destination);
+			return;
+		}
+		NodeChildren values;
+		bool lexical_unwind = false;
+		for (std::size_t i = 0; i < first_cleanup; ++i)
+			values.Push(children[i]);
+		for (std::size_t i = first_cleanup; i < children.size(); ++i)
+		{
+			if (derived.arena_.nodes[children[i]].kind != DUMP_DESTRUCTOR_ACTION)
+				throw std::logic_error(
+					"variable cleanup action is not a suffix");
+			lexical_unwind = lexical_unwind ||
+				derived.arena_.nodes[children[i]].unwind_only;
+		}
+		BeginFullExpressionCleanup(children, first_cleanup, lexical_unwind);
+		derived.LowerVariableInitializationCore(
+			record, values, retained_destination);
+		CompleteFullExpressionCleanup();
 	}
 
 	Operand LowerFullExpressionCondition(const NodeChildren& children)

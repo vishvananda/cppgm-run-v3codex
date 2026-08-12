@@ -2042,7 +2042,7 @@ private:
 		continue_targets_.pop_back();
 		break_targets_.pop_back();
 	}
-	void LowerVariableInitialization(const DumpNode& record,
+	void LowerVariableInitializationCore(const DumpNode& record,
 		const NodeChildren& children,
 		const Operand& retained_destination = Operand())
 	{
@@ -2130,7 +2130,7 @@ private:
 				local_static_action_[record.binding] : kNoDumpEdge;
 			if (local_static != kNoDumpEdge)
 				LowerLocalStaticVariable(local_static, record, children);
-			else LowerVariableInitialization(record, children);
+			else LowerFullExpressionVariableInitialization(record, children);
 			return;
 		}
 		if (record.kind == DUMP_INITIALIZER_ACTION)
@@ -2625,7 +2625,7 @@ private:
 			throw std::runtime_error("invalid PA15 switch condition");
 		const std::uint32_t child = condition_children[0];
 		if (arena_.nodes[child].kind != DUMP_CONDITION_DECLARATION)
-			return LowerValue(child);
+			return LowerFullExpressionCondition(condition_children);
 		return LowerDeclaredCondition(condition_children, false);
 	}
 
