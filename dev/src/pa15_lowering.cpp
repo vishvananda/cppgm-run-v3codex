@@ -34,6 +34,7 @@
 #include "pa27_member_pointer_lowering.h"
 #include "pa28_virtual_base_lowering.h"
 #include "pa30_region_lowering.h"
+#include "pa33_static_lifecycle_lowering.h"
 #include <algorithm>
 #include <limits>
 #include <ostream>
@@ -72,7 +73,8 @@ class GraphLowerer :
 	private pa26_lowering_detail::InitializerListLowering<GraphLowerer>,
 	private pa26_lowering_detail::RttiLowering<GraphLowerer>,
 	private pa27_lowering_detail::MemberPointerLowering<GraphLowerer>,
-	private pa30_lowering_detail::RegionLowering<GraphLowerer>
+	private pa30_lowering_detail::RegionLowering<GraphLowerer>,
+	private pa33_lowering_detail::StaticLifecycleLowering<GraphLowerer>
 {
 public:
 	GraphLowerer(const SemanticGraphView& graph, TypedProgram& output,
@@ -83,6 +85,7 @@ public:
 		  temp_counter_(0), block_counter_(0), generated_slot_ordinal_(0), initialized_bit_field_owner_(kNoEntity),
 		  initialized_bit_field_offset_(0), initialized_bit_field_unit_valid_(false),
 		  source_ordinal_(source_ordinal), needs_global_class_initializer_(false), lowering_namespace_object_(false),
+		  lowering_thread_local_initializer_object_(kNoLowId),
 		  current_class_value_boundary_(false), current_this_binding_(kNoBinding), current_member_owner_(kNoEntity),
 		  destructor_return_target_(kNoLowId),
 		  destructor_return_routes_to_epilogue_(false),
@@ -124,6 +127,8 @@ public:
 		local_static_action_.resize(program_.bindings.size(), kNoDumpEdge);
 		local_static_guard_symbols_.resize(
 			graph_.local_static_objects.size(), kNoLowId);
+		local_static_destructor_symbols_.resize(
+			graph_.local_static_objects.size(), kNoLowId);
 		local_static_dynamic_.resize(graph_.local_static_objects.size(), 0);
 		local_static_emitted_.resize(graph_.local_static_objects.size(), 0);
 		for (std::size_t i = 0; i < graph_.local_static_objects.size(); ++i)
@@ -144,6 +149,9 @@ public:
 		aggregate_helper_symbols_.resize(
 			graph_.aggregate_helpers.size(), kNoLowId);
 		IndexAggregateParameterEntities(&aggregate_parameter_entities_);
+		process_atexit_runtime_symbol_ = kNoLowId;
+		thread_atexit_runtime_symbol_ = kNoLowId;
+		dso_handle_symbol_ = kNoLowId;
 	}
 	void Lower()
 	{
@@ -157,13 +165,20 @@ public:
 			source_ordinal_, function_symbols_, &polymorphism_);
 		PrepareFunctionExceptionPolicyRuntime();
 		EmitLocalStaticGlobals();
-		EmitTop(graph_.root);
+		if (output_.host_object_emission)
+		{
+			EmitTop(graph_.root, true, false);
+			EmitThreadLocalInitializers();
+			EmitTop(graph_.root, false, true);
+		}
+		else EmitTop(graph_.root, true, true);
 		pa18_lowering_detail::EmitDeletingDestructors(graph_, output_, stats_,
 			function_symbols_, &polymorphism_);
 		pa18_lowering_detail::EmitVtableThunks(graph_, output_, stats_,
 			function_symbols_, &polymorphism_);
 		EmitAggregateHelpers();
-		EmitThreadLocalInitializers();
+		if (!output_.host_object_emission)
+			EmitThreadLocalInitializers();
 		EmitDynamicInitializer();
 		EmitDynamicFinalizer();
 	}
@@ -198,6 +213,7 @@ private:
 	friend class pa27_lowering_detail::MemberFunctionPointerLowering<GraphLowerer>;
 	friend class pa27_lowering_detail::MemberPointerLowering<GraphLowerer>;
 	friend class pa30_lowering_detail::RegionLowering<GraphLowerer>;
+	friend class pa33_lowering_detail::StaticLifecycleLowering<GraphLowerer>;
 	enum StatementTaskKind : std::uint8_t
 	{
 		STATEMENT_NODE,
@@ -443,7 +459,7 @@ private:
 				pending.push_back(children[i - 1]);
 		}
 	}
-	void EmitTop(std::uint32_t node)
+	void EmitTop(std::uint32_t node, bool emit_variables, bool emit_callables)
 	{
 		std::vector<std::uint32_t> pending(1, node);
 		while (!pending.empty())
@@ -453,6 +469,7 @@ private:
 			const DumpNode& record = arena_.nodes[current];
 			if (record.kind == DUMP_FUNCTION_DECLARATION)
 			{
+				if (!emit_callables) continue;
 				if (!pa15_lowering_abi::IsFunctionEmissionDemanded(
 					program_, record, output_.host_object_emission)) continue;
 				if (record.binding != kNoBinding &&
@@ -470,6 +487,7 @@ private:
 			}
 			if (record.kind == DUMP_FUNCTION_DEFINITION)
 			{
+				if (!emit_callables) continue;
 				if (!pa15_lowering_abi::IsFunctionEmissionDemanded(
 					program_, record, output_.host_object_emission)) continue;
 				if (record.binding != kNoBinding &&
@@ -486,6 +504,7 @@ private:
 			}
 			if (record.kind == DUMP_VARIABLE)
 			{
+				if (!emit_variables) continue;
 				if (record.binding != kNoBinding)
 				{
 					const BindingId canonical =
@@ -606,113 +625,6 @@ private:
 			false, internal, false));
 		return symbol;
 	}
-	void AddThreadLocalWrapper(const std::string& proposed,
-		const std::string& object_name, SymbolId target, bool internal)
-	{
-		const SymbolId symbol = AddSyntheticSymbol(Symbol::FUNCTION_SYMBOL,
-			proposed, object_name, internal);
-		Symbol& wrapper_symbol = output_.symbols[symbol];
-		wrapper_symbol.declaration_emitted = true;
-		wrapper_symbol.referenced = true;
-		wrapper_symbol.weak_linkage = !internal;
-		wrapper_symbol.tls_for_symbol = target;
-		FunctionDeclaration wrapper;
-		wrapper.symbol = symbol;
-		wrapper.result = LowPtr();
-		output_.declarations.push_back(wrapper);
-	}
-
-	void EmitThreadLocalInitializers()
-	{
-		for (std::size_t i = 0; i < thread_local_declarations_.size(); ++i)
-		{
-			const SymbolId object_symbol = thread_local_declarations_[i].first;
-			const std::string& wrapper_object =
-				thread_local_declarations_[i].second;
-			const std::string& object_internal =
-				output_.symbols[object_symbol].name;
-			AddThreadLocalWrapper("__cppgm_tls_wrapper__" + object_internal,
-				wrapper_object, object_symbol,
-				output_.symbols[object_symbol].internal_linkage);
-		}
-		for (std::size_t i = 0; i < thread_local_objects_.size(); ++i)
-		{
-			const std::uint32_t action_index = thread_local_objects_[i].first;
-			const std::string& wrapper_object = thread_local_objects_[i].second;
-			const NamespaceObjectAction& action =
-				graph_.namespace_objects[action_index];
-			const bool dynamic = action_index < thread_local_dynamic_.size() &&
-				thread_local_dynamic_[action_index] != 0;
-			const SymbolId object_symbol = global_symbols_[
-				program_.bindings[action.object].canonical];
-			const std::string& object_internal =
-				output_.symbols[object_symbol].name;
-			SymbolId guard_symbol = kNoLowId;
-			if (dynamic)
-			{
-				const std::string guard_name =
-					"__cppgm_tls_guard__" + object_internal;
-				guard_symbol = AddSyntheticSymbol(Symbol::GLOBAL_SYMBOL,
-					guard_name, std::string(), true);
-				Symbol& guard_symbol_record = output_.symbols[guard_symbol];
-				guard_symbol_record.definition_emitted = true;
-				guard_symbol_record.referenced = true;
-				guard_symbol_record.thread_local_storage = true;
-				Global guard;
-				guard.symbol = guard_symbol;
-				guard.type = LowI64();
-				guard.initializer_kind = Global::ZERO;
-				output_.globals.push_back(guard);
-				if (stats_) ++stats_->globals;
-				AddThreadLocalWrapper("__cppgm_tls_wrapper__" + guard_name,
-					std::string(), guard_symbol, true);
-			}
-			AddThreadLocalWrapper("__cppgm_tls_wrapper__" + object_internal,
-				wrapper_object, object_symbol,
-				output_.symbols[object_symbol].internal_linkage);
-			if (!dynamic) continue;
-
-			const SymbolId initializer_symbol = AddSyntheticSymbol(
-				Symbol::FUNCTION_SYMBOL,
-				"__cppgm_tls_init__" + object_internal,
-				std::string(), true);
-			output_.symbols[initializer_symbol].definition_emitted = true;
-			Function result;
-			result.symbol = initializer_symbol;
-			result.result = LowVoid();
-			BeginSyntheticFunction(&result);
-			const BlockId run = AddBlock(
-				NewLabel("local_static_ctor_run"));
-			const BlockId done = AddBlock(
-				NewLabel("local_static_ctor_done"));
-			const Operand guard_value = LoadStorage(Operand(Operand::GLOBAL,
-				guard_symbol, LowI64()), LowI64());
-			const Operand initialized = Temp(LowI64());
-			Instruction compare(Instruction::CMP);
-			compare.dest = initialized.id;
-			compare.op = LOW_OP_NE;
-			compare.type = LowI64();
-			compare.first = guard_value;
-			compare.second = Operand(0, LowI64());
-			Emit(compare);
-			EmitBranch(initialized, done, run);
-			SelectBlock(run);
-			lowering_namespace_object_ = true;
-			LowerStatementNode(action.variable);
-			lowering_namespace_object_ = false;
-			Instruction mark(Instruction::STORE);
-			mark.type = LowI64();
-			mark.first = Operand(1, LowI64());
-			mark.second = Operand(Operand::GLOBAL, guard_symbol, LowI64());
-			Emit(mark);
-			EmitJump(done);
-			SelectBlock(done);
-			Emit(Instruction(Instruction::RETURN_VOID));
-			EndSyntheticFunction(result);
-			output_.functions.push_back(result);
-		}
-	}
-
 	Operand FloatingOperand(const std::string& spelling, const LowType& type)
 	{
 		return Operand::Floating(output_.literals.Intern(spelling), type);
@@ -966,8 +878,27 @@ private:
 			binding = program_.bindings[binding].canonical;
 		if (binding < global_symbols_.size() && global_symbols_[binding] != kNoLowId)
 		{
-			output_.symbols[global_symbols_[binding]].referenced = true;
-			return Operand(Operand::GLOBAL, global_symbols_[binding], type);
+			const SymbolId global = global_symbols_[binding];
+			output_.symbols[global].referenced = true;
+			if (output_.host_object_emission &&
+				output_.symbols[global].thread_local_storage &&
+				global != lowering_thread_local_initializer_object_)
+			{
+				if (global >= tls_access_wrapper_symbols_.size() ||
+					tls_access_wrapper_symbols_[global] == kNoLowId)
+					throw std::logic_error(
+						"thread-local storage has no access wrapper");
+				const SymbolId wrapper = tls_access_wrapper_symbols_[global];
+				output_.symbols[wrapper].referenced = true;
+				const Operand address = Temp(LowPtr());
+				Instruction call(Instruction::CALL);
+				call.dest = address.id;
+				call.type = LowPtr();
+				call.first = Operand(Operand::FUNCTION, wrapper, LowPtr());
+				Emit(call);
+				return address;
+			}
+			return Operand(Operand::GLOBAL, global, type);
 		}
 		throw std::runtime_error("PA15 binding has no lowered storage: " +
 			std::to_string(binding));
@@ -2917,6 +2848,10 @@ private:
 	std::vector<std::pair<std::uint32_t, std::string> > thread_local_objects_;
 	std::vector<std::pair<SymbolId, std::string> > thread_local_declarations_;
 	std::vector<std::uint8_t> thread_local_dynamic_;
+	std::vector<SymbolId> tls_access_wrapper_symbols_;
+	SymbolId process_atexit_runtime_symbol_;
+	SymbolId thread_atexit_runtime_symbol_;
+	SymbolId dso_handle_symbol_;
 	std::vector<std::uint32_t> function_definition_;
 	std::vector<std::uint32_t> function_declaration_;
 	pa28_lowering_detail::VirtualBaseContractState virtual_base_contracts_;
@@ -2924,6 +2859,7 @@ private:
 	std::vector<std::uint32_t> namespace_action_;
 	std::vector<std::uint32_t> local_static_action_;
 	std::vector<SymbolId> local_static_guard_symbols_;
+	std::vector<SymbolId> local_static_destructor_symbols_;
 	std::vector<std::uint8_t> local_static_dynamic_;
 	std::vector<std::uint8_t> local_static_emitted_;
 	std::vector<std::uint32_t> local_static_eager_initializers_;
@@ -2964,6 +2900,7 @@ private:
 	std::size_t source_ordinal_;
 	bool needs_global_class_initializer_;
 	bool lowering_namespace_object_;
+	SymbolId lowering_thread_local_initializer_object_;
 	bool current_class_value_boundary_;
 	BindingId current_this_binding_;
 	EntityId current_member_owner_;

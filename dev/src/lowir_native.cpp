@@ -1,5 +1,6 @@
 #include "lowir_native.h"
 #include "lowir_native_abi.h"
+#include "lowir_native_address_lowering.h"
 #include "lowir_native_analysis.h"
 #include "lowir_native_eh.h"
 #include "lowir_native_host_eh.h"
@@ -29,9 +30,11 @@ using allocation::RegisterPool; using allocation::XmmPool;
 using allocation::is_callee_saved;
 using namespace build;
 using namespace selection;
-class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>
+class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
+                        private AddressLowering<FunctionLowerer>
 {
   friend class IntrinsicLowering<FunctionLowerer>;
+  friend class AddressLowering<FunctionLowerer>;
 public:
   FunctionLowerer(const lowir_model::LowirFunction & source,
                   const std::unordered_set<std::string> & pointer_globals,
@@ -2675,59 +2678,6 @@ private:
       append_operand(ret, reg_operand(XR_RAX));
     out.push_back(ret);
     consume(instruction.first);
-  }
-  void emit_address_value(const lowir_model::LowirBlock & block, std::size_t instruction_index, const Instruction & instruction, std::vector<MirInstruction> & out) {
-    if(!facts_.uses.count(instruction.dest)) return;
-    MirOperand destination;
-    if(instruction.first.kind == Operand::OP_SLOT) {
-      if(address_is_call_argument(instruction.dest) ||
-         address_is_next_atomic_expected(block, instruction_index, instruction.dest) ||
-         address_is_next_va_start(block, instruction_index, instruction.dest) ||
-         address_is_next_bulk_operand(block, instruction_index, instruction.dest) ||
-         address_is_immediately_stored(block, instruction_index, instruction.dest) ||
-         address_is_object_result_destination(block, instruction_index, instruction.dest)) {
-        define(instruction.dest, lowir_model::builtin_lowir_type(lowir_model::LTK_PTR),
-               storage(instruction.first));
-        values_[instruction.dest].frame_address = true;
-        values_[instruction.dest].has_frame_provenance = true;
-        values_[instruction.dest].frame_provenance = storage(instruction.first).offset;
-        return;
-      }
-      const X64Register compare_register = direct_slot_address_register(
-        block, instruction_index, instruction.dest);
-      if(compare_register != XR_RSP) destination = reg_operand(compare_register);
-      else destination = (address_is_immediately_loaded(block, instruction_index,
-                                                        instruction.dest) ||
-                          address_is_immediately_stored(block, instruction_index,
-                                                        instruction.dest) ||
-                          address_precedes_elided_copy(block, instruction_index,
-                                                       instruction.dest) ||
-                          skipped_position_ == position_ + 1) ?
-        reg_operand(XR_RCX) : reg_operand(allocate_result(instruction.dest, out));
-      MirInstruction lea = machine_instruction(MirInstruction::MI_LEA);
-      append_operand(lea, destination);
-      append_operand(lea, storage(instruction.first));
-      out.push_back(lea);
-    } else {
-      if(constrained_wide_pressure()) {
-        destination = allocate_temp_home(instruction.dest,
-          lowir_model::builtin_lowir_type(lowir_model::LTK_PTR));
-        append_move(out, reg_operand(XR_RAX), resolve(instruction.first));
-        append_store(out, destination, reg_operand(XR_RAX), "ptr");
-      } else {
-        destination = reg_operand(allocate_result(instruction.dest, out));
-        append_move(out, destination, resolve(instruction.first));
-      }
-    }
-    define(instruction.dest, lowir_model::builtin_lowir_type(lowir_model::LTK_PTR), destination);
-    if(instruction.first.kind == Operand::OP_SLOT) {
-      values_[instruction.dest].has_frame_provenance = true;
-      values_[instruction.dest].frame_provenance = storage(instruction.first).offset;
-    }
-    if(instruction.first.kind == Operand::OP_GLOBAL &&
-       pointer_globals_.count(instruction.first.text))
-      values_[instruction.dest].pointer_global_cell =
-        global_operand(MirOperand::OP_GLOBAL, instruction.first);
   }
   bool nonparameter_value_live_in_register(X64Register reg) const
   {

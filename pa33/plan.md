@@ -11,7 +11,7 @@ not recover semantic facts from strings.
 
 ## Current Failure Map
 
-Current result: **88/94 PA33 tests pass**, improved from the 85/94 turn
+Current result: **91/94 PA33 tests pass**, improved from the 88/94 turn
 baseline (and 59/94 stage-start baseline); PA1-PA32 pass (4291/4291).
 
 | Owner / shared behavior | Count | Failing cases |
@@ -19,39 +19,34 @@ baseline (and 59/94 stage-start baseline); PA1-PA32 pass (4291/4291).
 | Remaining ABI name publication | 1 | nested-lambda owner identity |
 | Remaining type/name frontend | 1 | unnamed local-class constructor |
 | Polymorphic ODR ownership | 1 | duplicate inline-header polymorphic class |
-| Static/TLS lifecycle | 3 | local static dtor, local thread-local dtor, TLS wrapper access |
 
 ## Active Checkpoint
 
-**Next — static/TLS lifecycle.** Unify local static and thread-local access,
-registration, and teardown at the storage-duration lowering boundary.
+**Next — remaining host identity/ODR publication.** Resolve the final three
+cases at the canonical semantic-entity to host-ABI publication boundary.
 
-- Spec alignment (§§2, 4, 6-10): the canonical variable owns one guard/storage
-  identity; lowering selects process or thread storage and one registration
-  action; publication exposes ABI wrappers without recovering ownership from
-  names.
-- Owner/data flow: declaration merge -> canonical static entity -> guard and
-  storage symbol -> per-thread/process initialization -> destructor
-  registration and reverse teardown. Indexed lookup remains O(1), with
-  O(static entities + emitted actions) total work.
-- Validation: the three lifecycle fixtures, adjacent namespace/local static and
-  cross-TU cases, full PA33/prior reports, file audit, and a widening static/TLS
-  declaration sample.
+- Spec alignment (§§2, 4, 6-10): local/lambda identities and polymorphic ODR
+  owners remain canonical semantic facts; ABI names and weak ownership are
+  published once without reconstructing owners from rendered strings.
+- Owner/data flow: declaration merge -> local/lambda or polymorphic entity ->
+  canonical owner/demand fact -> mangled symbol and weak definition. Indexed
+  lookup remains O(1), with O(declarations + demanded artifacts) total work.
+- Validation: the three remaining fixtures, adjacent local/lambda/template and
+  duplicate-header cases, full PA33/prior reports, file audit, and a widening
+  duplicate-declaration sample.
 
 ## Performance Evidence
 
-Independent covariant-template instantiations remained proportional:
+Host-object static TLS declarations and reads remained proportional:
 
-| Overrides | Vtable slots | Thunk requests | Hash probes | Semantic ms | Lowering ms |
-| ---: | ---: | ---: | ---: | ---: | ---: |
-| 8 | 48 | 8 | 0 | 3.61 | 1.97 |
-| 16 | 96 | 16 | 6 | 6.71 | 3.70 |
-| 32 | 192 | 32 | 28 | 15.96 | 8.10 |
-| 64 | 384 | 64 | 69 | 30.57 | 15.52 |
+| TLS entities | Wrappers | Access calls | LowIR instructions | Lowering ms |
+| ---: | ---: | ---: | ---: | ---: |
+| 16 | 16 | 16 | 48 | 0.221 |
+| 32 | 32 | 32 | 96 | 0.315 |
+| 64 | 64 | 64 | 192 | 0.484 |
 
-An 8x wider set produced exactly 8x slots and thunk requests; semantic and
-lowering time grew 8.46x and 7.87x, while total open-address probes stayed at
-69 for 64 distinct thunk keys.
+A 4x wider set produced exactly 4x wrappers, calls, and instructions; lowering
+time grew 2.19x with symbol-indexed access lookup.
 
 ## Completed Checkpoints
 
@@ -66,3 +61,4 @@ lowering time grew 8.46x and 7.87x, while total open-address probes stayed at
 | PA33 exception-specification escape-policy checkpoint | Pass — canonical dynamic-spec type slices lower to LSDA filters/`unexpected`, escaping `noexcept` definitions terminate after cleanup, and boundary demand stays definition-local; PA33 76→78, PA1-PA32 4291/4291, file audit pass. |
 | PA33 virtual-inheritance RTTI/cast checkpoint | Pass — host-object VMI prefix rows, nonlinear casts, polymorphic assignment, forwarded virtual-base arguments, and explicit-instantiation constructor ownership are canonical; PA33 78→85, PA1-PA32 4291/4291, file audit pass. |
 | PA33 finalized covariant/VTT checkpoint | Pass — finalized fixed/virtual result paths publish keyed Itanium covariant thunks with null-preserving adjustment, and synthesized C2 copies forward VTT/virtual-base arguments; PA33 85→88, PA1-PA32 4291/4291, file audit pass. |
+| PA33 static/TLS lifecycle checkpoint | Pass — nested callback declarators retain function-pointer types; host-object lowering emits explicit TLS access/initialization wrappers and registers process/thread teardown after successful construction; PA33 88→91, PA1-PA32 4291/4291, file audit pass. |

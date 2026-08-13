@@ -1979,9 +1979,10 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 						arena_->NextEdge(spelling_edge) == kNoEdge)
 					{
 						const std::string spelling = PayloadSource(spelling_node);
-						const bool identifier = !spelling.empty() &&
-							(std::isalpha(static_cast<unsigned char>(spelling[0])) ||
-							 spelling[0] == '_');
+						const std::string& syntax_spelling =
+							arena_->Payload(spelling_node);
+						const bool identifier = syntax_spelling.compare(
+							0, 14, "TT_IDENTIFIER:") == 0;
 						const LookupResult type_name = identifier ?
 							LookupSpelling(parameter_scope, spelling, LOOKUP_TYPE) :
 							LookupResult();

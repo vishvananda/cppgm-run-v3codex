@@ -128,6 +128,8 @@ protected:
 			Symbol& record = derived.output_.symbols[symbol];
 			record.weak_linkage = weak;
 			record.definition_emitted = true;
+			record.thread_local_storage = derived.output_.host_object_emission &&
+				derived.program_.bindings[action.object].thread_local_storage;
 			derived.global_symbols_[action.object] = symbol;
 			derived.local_static_emitted_[i] = 1;
 		}
@@ -172,6 +174,14 @@ protected:
 				!derived.local_static_eager_initializers_.empty() &&
 				derived.local_static_eager_initializers_.back() == i;
 			const bool dynamic = !static_initialized && !eager;
+			const bool thread_local_object =
+				derived.output_.host_object_emission &&
+				derived.program_.bindings[action.object].thread_local_storage;
+			if (thread_local_object)
+				derived.AddThreadLocalWrapper(
+					"__cppgm_tls_wrapper__" +
+						derived.output_.symbols[symbol].name,
+					std::string(), symbol, true);
 			if (dynamic)
 			{
 				derived.local_static_dynamic_[i] = 1;
@@ -193,10 +203,22 @@ protected:
 				guard_record.weak_linkage = weak;
 				guard_record.definition_emitted = true;
 				guard_record.referenced = true;
+				guard_record.thread_local_storage = thread_local_object;
 				derived.local_static_guard_symbols_[i] = guard_symbol;
+				if (thread_local_object)
+					derived.AddThreadLocalWrapper(
+						"__cppgm_tls_wrapper__" + guard_name,
+						std::string(), guard_symbol, true);
 			}
 			derived.output_.globals.push_back(global);
-			if (action.destructor != kNoDumpEdge)
+			if (derived.output_.host_object_emission && dynamic &&
+				action.destructor != kNoDumpEdge)
+				derived.local_static_destructor_symbols_[i] =
+					derived.EmitStaticDestructorWrapper(
+						"__cppgm_local_static_destructor__" +
+							derived.output_.symbols[symbol].name,
+						derived.arena_.nodes[action.destructor]);
+			else if (action.destructor != kNoDumpEdge)
 				derived.local_static_finalizers_.push_back(
 					static_cast<std::uint32_t>(i));
 			if (derived.stats_) ++derived.stats_->globals;
@@ -396,6 +418,19 @@ protected:
 			derived.CompleteFullExpressionCleanup();
 		}
 		derived.lowering_namespace_object_ = previous_namespace_object;
+		const SymbolId destructor =
+			derived.local_static_destructor_symbols_[action_index];
+		if (destructor != kNoLowId)
+		{
+			const LocalStaticObjectAction& action =
+				derived.graph_.local_static_objects[action_index];
+			const bool thread_local_object =
+				derived.program_.bindings[action.object].thread_local_storage;
+			derived.EmitStaticDestructorRegistration(thread_local_object,
+				destructor, thread_local_object ?
+					derived.AddressOfStorage(derived.StorageFor(action.object,
+						derived.LowerStorageType(action.type))) : Operand());
+		}
 		Instruction mark(Instruction::STORE);
 		mark.type = LowI64();
 		mark.first = Operand(1, LowI64());
