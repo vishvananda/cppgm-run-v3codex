@@ -112,13 +112,6 @@ FundamentalKind SignednessKind(FundamentalKind kind, bool make_unsigned)
 	}
 }
 
-ValueCategory HypotheticalCategory(const TypeTable& types, TypeId type)
-{
-	const TypeKind kind = types.Get(type).kind;
-	return kind == TYPE_LVALUE_REFERENCE ? VALUE_LVALUE :
-		kind == TYPE_RVALUE_REFERENCE ? VALUE_XVALUE : VALUE_PRVALUE;
-}
-
 bool IsEnumEntity(const EntityRecord& entity)
 {
 	return entity.flavor == NAMED_ENUM || entity.flavor == NAMED_ENUM_CLASS;
@@ -328,27 +321,38 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinTypeTrait(
 				shape.kind == TYPE_MEMBER_POINTER ||
 				(named && named->destructible &&
 				 (trait == TYPE_TRAIT_IS_DESTRUCTIBLE || named->trivial_destructor));
-		else if ((trait == TYPE_TRAIT_IS_TRIVIALLY_COPYABLE ||
-			trait == TYPE_TRAIT_IS_TRIVIAL || trait == TYPE_TRAIT_IS_POD ||
+		else if (trait == TYPE_TRAIT_IS_TRIVIALLY_COPYABLE &&
+			operands.size() == 1)
+			value = (named && IsClassEntity(*named)) ?
+				EvaluateBuiltinTriviallyCopyable(first) :
+				IsFundamentalIntegral(shape) || IsFundamentalFloating(shape) ||
+				shape.kind == TYPE_COMPLEX || shape.kind == TYPE_POINTER ||
+				shape.kind == TYPE_MEMBER_POINTER;
+		else if ((trait == TYPE_TRAIT_IS_TRIVIAL || trait == TYPE_TRAIT_IS_POD ||
 			trait == TYPE_TRAIT_IS_STANDARD_LAYOUT ||
 			trait == TYPE_TRAIT_IS_LITERAL_TYPE) && operands.size() == 1)
 			value = IsFundamentalIntegral(shape) || IsFundamentalFloating(shape) ||
 				shape.kind == TYPE_COMPLEX ||
 				shape.kind == TYPE_POINTER || shape.kind == TYPE_MEMBER_POINTER ||
-				(named && named->empty_class && named->trivial_destructor);
+				(named && IsClassEntity(*named) &&
+				 EvaluateBuiltinTriviallyCopyable(first) &&
+				 (trait == TYPE_TRAIT_IS_STANDARD_LAYOUT ||
+				  trait == TYPE_TRAIT_IS_LITERAL_TYPE ||
+				  named->trivial_default_constructor));
 		else if ((trait == TYPE_TRAIT_IS_CONSTRUCTIBLE ||
 			trait == TYPE_TRAIT_IS_NOTHROW_CONSTRUCTIBLE ||
-			trait == TYPE_TRAIT_IS_TRIVIALLY_CONSTRUCTIBLE) &&
-			(operands.size() == 1 || operands.size() == 2))
+			trait == TYPE_TRAIT_IS_TRIVIALLY_CONSTRUCTIBLE))
 		{
-			if (operands.size() == 1)
-				value = shape.kind == TYPE_POINTER || shape.kind == TYPE_MEMBER_POINTER ||
-					IsFundamentalIntegral(shape) || IsFundamentalFloating(shape) ||
-					shape.kind == TYPE_COMPLEX ||
-					(named && named->default_constructible);
-			else value = Conversion(operands[1],
-				HypotheticalCategory(program_->types, operands[1]), false,
-				operands[0]) != CONVERSION_INVALID;
+			BindingId selected = kNoBinding;
+			std::vector<CallConversionFact> conversions;
+			value = EvaluateBuiltinConstructibility(
+				operands, &selected, &conversions);
+			if (value && trait == TYPE_TRAIT_IS_NOTHROW_CONSTRUCTIBLE)
+				value = BuiltinConstructionIsNonthrowing(
+					operands[0], selected, conversions);
+			else if (value && trait == TYPE_TRAIT_IS_TRIVIALLY_CONSTRUCTIBLE)
+				value = BuiltinConstructionIsTrivial(
+					operands[0], selected, conversions);
 		}
 		else if ((trait == TYPE_TRAIT_IS_ASSIGNABLE ||
 			trait == TYPE_TRAIT_IS_NOTHROW_ASSIGNABLE ||
@@ -357,18 +361,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinTypeTrait(
 			const TypeRecord target = program_->types.Get(operands[0]);
 			value = target.kind == TYPE_LVALUE_REFERENCE &&
 				!IsConst(target.child) && Conversion(operands[1],
-					HypotheticalCategory(program_->types, operands[1]), false,
+					MakeBuiltinTraitOperand(operands[1]).category, false,
 					target.child) != CONVERSION_INVALID;
 		}
 		else if (trait == TYPE_TRAIT_IS_CONVERTIBLE && operands.size() == 2)
-		{
-			const bool source_void = IsVoid(operands[0]);
-			const bool target_void = IsVoid(operands[1]);
-			value = source_void || target_void ? source_void && target_void :
-				Conversion(operands[0],
-					HypotheticalCategory(program_->types, operands[0]), false,
-					operands[1]) != CONVERSION_INVALID;
-		}
+			value = EvaluateBuiltinConvertibility(operands[0], operands[1]);
 		else if (trait == TYPE_TRAIT_IS_BASE_OF && operands.size() == 2)
 		{
 			const EntityId base = EntityOf(operands[0]);
@@ -385,7 +382,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinTypeTrait(
 			operands.size() == 1)
 			value = !named || named->trivial_default_constructor;
 		else if (trait == TYPE_TRAIT_HAS_NOTHROW_COPY && operands.size() == 1)
-			value = !named || named->destructible;
+			value = EvaluateBuiltinNothrowCopy(first);
 		else if (trait == TYPE_TRAIT_HAS_VIRTUAL_DESTRUCTOR &&
 			operands.size() == 1)
 			value = named && named->polymorphic_class &&

@@ -13,26 +13,27 @@ and no host-compiler fallback.
 ## Current Failure Map
 
 - Preprocess is complete: 45/45.
-- Compile has 90/281 failures: 16 extension grammar/type cases, 38
+- Compile has 70/281 failures: 16 extension grammar/type cases, 18
   trait/layout/constant cases, and 36 template lookup/demand cases.
 - Run has 19/41 failures: 16 stop in the compile pipeline and 3 reach linked
   backend/lifetime or forced-inline behavior.
-- PA34 is 258/367 overall; PA1-PA33 remain 4387/4387.
+- PA34 is 278/367 overall; PA1-PA33 remain 4387/4387.
 
 ## Active Checkpoint
 
-Next, implement the hosted constructibility/conversion trait boundary, bundling the
-related assignable, trivial-special-member, and function/reference shape cases. Under
-`spec.md` §§2, 4-7, and 9, the sorted builtin registry identifies the query; retained
-canonical `TypeId` operands flow through class completion, overload/conversion, and
-special-member facts into one constexpr boolean node. Lookup and class completion stay
-semantic-owned; lowering consumes only the boolean fact, with no syntax replay.
+Next, implement trait operand-pack replay and assignment-expression queries, bundling
+the remaining pack-wrapped constructibility cases with deleted, ref-qualified,
+templated, trivial, and nothrow assignment cases. Under `spec.md` §§2, 4-7, and 9,
+template substitution owns expansion of each retained builtin operand pack into
+canonical `TypeId`s; PA34 trait semantics then creates hypothetical lhs/rhs expressions
+and delegates to member/builtin operator selection and completed special-member facts.
+The constexpr result remains the only lowering input, with no spelling recovery.
 
-Expected work is O(type operands + reachable conversion candidates), with O(1)-average
-canonical type/cache access and demand-once class completion. Validate the complete
-trait cluster, positive/negative constructor and conversion cases, deleted/inaccessible
-special members, function/array/reference shapes, SFINAE replay, 1/8/64 repeated cached
-queries, then the PA34, through-PA33, and file-audit gates.
+Expected work is O(expanded operands + reachable assignment candidates), with
+O(1)-average canonical/cache access and one expansion per specialization. Validate
+empty/single/many packs, SFINAE replay, deleted and object-category overloads,
+member-template assignment, trivial/nothrow facts, 1/8/64 repeated queries, then the
+PA34, through-PA33, and file-audit gates.
 
 ## Performance Evidence
 
@@ -45,6 +46,7 @@ queries, then the PA34, through-PA33, and file-audit gates.
 | Vector/block/lambda | Nodes/lookups were linear; lambda requests 1/8/64 had 0/7/63 cache hits and one emitted specialization |
 | Numeric scalars | 1/8/64 emitted 9/65/513 LowIR and 15/85/645 MIR; 64 cases took 0.02 s, 10,472 KiB RSS |
 | GNU complex | 1/8/64 repeated compiles took 0.00/0.05/0.40 s with 8,328/8,552/8,568 KiB RSS; pair construction is two fixed stores |
+| Construction/conversion traits | 1/8/64 unique template query sets compiled in 0.00/0.00/0.01 s with 8,088/8,212/9,644 KiB RSS |
 
 ## Completed Checkpoints
 
@@ -64,3 +66,4 @@ queries, then the PA34, through-PA33, and file-audit gates.
 | Generic lambdas | Retained templates, cached demand, local ABI identity; +7 | PA34 250/367; linked/scaling/prior/audit pass |
 | Hosted numeric scalars | Canonical `_BitInt`/extended floats, traits, ABI; +6 | PA34 256/367; linked/scaling/prior/audit pass |
 | GNU complex scalars | Canonical pair type, components/builtin, `C<element>` ABI, by-address object boundary; +2 | focused 2/2; linked/invalid/traits/mangling/scaling; PA34 258/367; PA1-33 4387/4387; audit pass |
+| Construction/conversion traits | `declval` categories, direct constructor/implicit conversion selection, nothrow/trivial special-member facts; +20 | focused 10/10; PA34 278/367; scaling; PA1-33 4387/4387; audit pass |

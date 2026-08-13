@@ -885,6 +885,21 @@ private:
 	ExpressionInfo AnalyzeExpression(NodeId node, ScopeId scope,
 		TypeId target = kNoType);
 	ExpressionInfo AnalyzeBuiltinTypeTrait(NodeId node, ScopeId scope);
+	ExpressionInfo MakeBuiltinTraitOperand(TypeId type) const;
+	bool EvaluateBuiltinConstructibility(const std::vector<TypeId>& operands,
+		BindingId* selected,
+		std::vector<CallConversionFact>* argument_conversions);
+	bool EvaluateBuiltinConvertibility(TypeId source, TypeId target);
+	bool BuiltinConversionIsUsable(const CallConversionFact& conversion) const;
+	bool BuiltinConversionIsNonthrowing(
+		const CallConversionFact& conversion);
+	bool BuiltinConstructionIsNonthrowing(TypeId target, BindingId selected,
+		const std::vector<CallConversionFact>& argument_conversions);
+	bool BuiltinDefaultConstructionIsNonthrowing(EntityId entity);
+	bool BuiltinConstructionIsTrivial(TypeId target, BindingId selected,
+		const std::vector<CallConversionFact>& argument_conversions) const;
+	bool EvaluateBuiltinTriviallyCopyable(TypeId type) const;
+	bool EvaluateBuiltinNothrowCopy(TypeId type);
 	ExpressionInfo AnalyzeStatementExpression(
 		NodeId node, ScopeId scope, TypeId target);
 	NodeId FunctionDefinitionPart(NodeId node, const char* tag) const;
