@@ -432,6 +432,15 @@ BindingId SemanticAnalyzer::EnsureBuiltinFunction(BuiltinFunctionKind kind)
 		parameter_types.push_back(pointer);
 		parameter_types.push_back(const_pointer);
 		parameter_types.push_back(size); break;
+	case BUILTIN_FUNCTION_NANL:
+		spelling = "__builtin_nanl";
+		result = program_->types.Fundamental(FUND_LONG_DOUBLE);
+		parameter_types.push_back(const_character_pointer); break;
+	case BUILTIN_FUNCTION_ISNAN:
+		spelling = "__builtin_isnan";
+		result = program_->types.Fundamental(FUND_INT);
+		parameter_types.push_back(
+			program_->types.Fundamental(FUND_LONG_DOUBLE)); break;
 	case BUILTIN_FUNCTION_OPERATOR_NEW:
 	case BUILTIN_FUNCTION_OPERATOR_NEW_ARRAY:
 		spelling = kind == BUILTIN_FUNCTION_OPERATOR_NEW ?
@@ -480,6 +489,8 @@ bool SemanticAnalyzer::AnalyzeBuiltinCall(const std::string& spelling,
 		kind = BUILTIN_FUNCTION_UNREACHABLE;
 	else if (spelling == "__builtin_memcpy") kind = BUILTIN_FUNCTION_MEMCPY;
 	else if (spelling == "__builtin_memmove") kind = BUILTIN_FUNCTION_MEMMOVE;
+	else if (spelling == "__builtin_nanl") kind = BUILTIN_FUNCTION_NANL;
+	else if (spelling == "__builtin_isnan") kind = BUILTIN_FUNCTION_ISNAN;
 	else if (spelling == "::operator new")
 		kind = BUILTIN_FUNCTION_OPERATOR_NEW;
 	else if (spelling == "::operator delete")

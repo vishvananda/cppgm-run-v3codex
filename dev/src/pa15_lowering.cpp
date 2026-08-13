@@ -1624,6 +1624,9 @@ private:
 	{
 		if (children.empty()) throw std::runtime_error("semantic call has no callee");
 		const DumpNode& callee = arena_.nodes[children[0]];
+		Operand builtin_result;
+		if (TryLowerNumericBuiltinCall(record, children, &builtin_result))
+			return builtin_result;
 		if (stats_) ++stats_->binding_index_probes;
 		const bool direct = !record.virtual_call &&
 			callee.kind == DUMP_CALLEE &&
@@ -1759,26 +1762,6 @@ private:
 		call.dest = result.id;
 		Emit(call);
 		return RetainFullExpressionCallResult(node, record, result);
-	}
-	void AttachCallArguments(Instruction* call, const CallArguments& arguments,
-		const CallArgumentFlags& references)
-	{
-		if (arguments.size() != references.size())
-			throw std::logic_error("PA15 call argument fact mismatch");
-		if (arguments.empty()) return;
-		if (arguments.size() >= kNoLowId ||
-			output_.call_arguments.size() > kNoLowId - arguments.size() ||
-			output_.call_arguments.size() !=
-				output_.call_argument_references.size())
-			throw std::runtime_error("too many PA15 call arguments");
-		call->extra_first = static_cast<std::uint32_t>(
-			output_.call_arguments.size());
-		call->extra_count = static_cast<std::uint32_t>(arguments.size());
-		for (std::size_t i = 0; i < arguments.size(); ++i)
-		{
-			output_.call_arguments.push_back(arguments[i]);
-			output_.call_argument_references.push_back(references[i]);
-		}
 	}
 	Operand LowerConditional(std::uint32_t node, const DumpNode& record,
 		const NodeChildren& children)

@@ -6,6 +6,7 @@
 #include "lowir_native_program.h"
 #include "lowir_native_registers.h"
 #include "lowir_native_selection.h"
+#include "lowir_native_value.h"
 #include "lowir_native_varargs.h"
 #include "lowir_native_wide.h"
 #include <algorithm>
@@ -24,15 +25,6 @@ using allocation::RegisterPool; using allocation::XmmPool;
 using allocation::is_callee_saved;
 using namespace build;
 using namespace selection;
-struct ValueFact
-{
-  MirOperand location;
-  LowType type;
-  bool parameter = false, fixed_register_home = false;
-  bool frame_address = false, has_frame_provenance = false;
-  long long frame_provenance = 0; std::string pointer_global_cell;
-  std::string forwarded_parameter;
-};
 class FunctionLowerer
 {
 public:
@@ -483,6 +475,8 @@ private:
                   reg_operand(argument_register(index)));
       values_[name].location = reg_operand(destination);
       values_[name].parameter = false;
+      values_[name].fixed_register_home =
+        storage_facts_.promoted_parameters.count(name);
     }
   }
   bool result_is_immediate_return(const lowir_model::LowirBlock & block,
@@ -2364,6 +2358,9 @@ private:
       (instruction.type.kind == lowir_model::LTK_OBJECT ||
        (facts_.uses.find(instruction.dest) != facts_.uses.end() &&
         facts_.uses.find(instruction.dest)->second != 0));
+    if(!materialize_result && !instruction.call_returns_void &&
+       is_extended_float(instruction.type))
+      out.push_back(machine_instruction(MirInstruction::MI_FPOP));
     if(materialize_result &&
        instruction.type.kind == lowir_model::LTK_OBJECT) {
       Operand alias_destination;

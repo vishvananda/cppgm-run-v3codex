@@ -537,8 +537,9 @@ StorageFacts analyze_storage(
     const std::vector<std::size_t>::const_iterator call = std::upper_bound(
       function_facts.calls.begin(), function_facts.calls.end(),
       state->second.store_position);
-    if(call != function_facts.calls.end() &&
-       *call < state->second.load_position)
+    if(function_facts.live_across_call.count(state->second.loaded_name) ||
+       (call != function_facts.calls.end() &&
+        *call < state->second.load_position))
       facts.promoted_parameters_across_call.insert(parameter);
   }
   return facts;

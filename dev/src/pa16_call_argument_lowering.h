@@ -23,6 +23,64 @@ template <class Derived>
 class CallArgumentLowering
 {
 protected:
+	bool TryLowerNumericBuiltinCall(const DumpNode& record,
+		const NodeChildren& children, Operand* result)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (children.empty()) return false;
+		const DumpNode& callee = derived.arena_.nodes[children[0]];
+		if (callee.kind != DUMP_CALLEE || callee.binding == kNoBinding ||
+			callee.binding >= derived.program_.bindings.size()) return false;
+		const BuiltinFunctionKind kind =
+			derived.program_.bindings[callee.binding].builtin_function;
+		if (kind == BUILTIN_FUNCTION_NANL)
+		{
+			if (children.size() != 2)
+				throw std::logic_error("invalid nanl builtin call");
+			(void)derived.LowerValue(children[1]);
+			*result = derived.FloatingOperand("nanL", LowF80());
+			return true;
+		}
+		if (kind != BUILTIN_FUNCTION_ISNAN) return false;
+		if (children.size() != 2)
+			throw std::logic_error("invalid isnan builtin call");
+		const Operand value = derived.LowerConvertedValue(
+			children[1], LowF80(), false);
+		const Operand compared = derived.Temp(LowI64());
+		Instruction compare(Instruction::CMP);
+		compare.dest = compared.id;
+		compare.op = LOW_OP_NE;
+		compare.type = LowF80();
+		compare.first = value;
+		compare.second = value;
+		derived.Emit(compare);
+		*result = derived.Convert(compared, derived.LowerType(record.type));
+		return true;
+	}
+
+	void AttachCallArguments(Instruction* call,
+		const CallArguments& arguments, const CallArgumentFlags& references)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (arguments.size() != references.size())
+			throw std::logic_error("PA15 call argument fact mismatch");
+		if (arguments.empty()) return;
+		if (arguments.size() >= kNoLowId ||
+			derived.output_.call_arguments.size() >
+				kNoLowId - arguments.size() ||
+			derived.output_.call_arguments.size() !=
+				derived.output_.call_argument_references.size())
+			throw std::runtime_error("too many PA15 call arguments");
+		call->extra_first = static_cast<std::uint32_t>(
+			derived.output_.call_arguments.size());
+		call->extra_count = static_cast<std::uint32_t>(arguments.size());
+		for (std::size_t i = 0; i < arguments.size(); ++i)
+		{
+			derived.output_.call_arguments.push_back(arguments[i]);
+			derived.output_.call_argument_references.push_back(references[i]);
+		}
+	}
+
 	Operand LowerBooleanConversion(std::uint32_t node, const LowType& target)
 	{
 		Derived& derived = static_cast<Derived&>(*this);

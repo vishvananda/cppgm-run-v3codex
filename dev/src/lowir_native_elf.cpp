@@ -808,7 +808,7 @@ void emit_xmm_source_instruction(CodeBuffer & out, unsigned opcode,
 void emit_float_binary(CodeBuffer & out, const mir_model::MirInstruction & instruction,
                        const mir_model::MirFunction & function, unsigned opcode)
 {
-  if(instruction.type == "f80") {
+  if(instruction.type == "f80" || instruction.type == "f64") {
     emit_x87_binary(out, instruction, function);
     return;
   }
