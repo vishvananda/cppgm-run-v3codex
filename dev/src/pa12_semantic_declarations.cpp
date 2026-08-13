@@ -1037,6 +1037,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		const BindingId function = DeclareFunction(scope, parsed.name,
 			parsed.type, parsed.parameters, true, false, STORAGE_CLASS_NONE,
 			current_language_linkage_, IsNonthrowing(declarator, scope));
+		ConfigureFunctionExceptionSpecification(function, declarator, scope);
 		ApplyFunctionAbiTagAttributes(node, function);
 		FunctionInfo& info = GetMutableFunction(function);
 		ConfigurePlaceholderFunctionReturn(function, parsed, spec.placeholder_cv);
@@ -1097,6 +1098,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 			const BindingId function = DeclareFunction(scope, parsed.name,
 				parsed.type, parsed.parameters, false, false, STORAGE_CLASS_NONE,
 				current_language_linkage_, IsNonthrowing(declarator, scope));
+			ConfigureFunctionExceptionSpecification(function, declarator, scope);
 			ApplyFunctionAbiTagAttributes(item, function);
 			BindingRecord& binding = program_->bindings[function];
 			ConfigurePlaceholderFunctionReturn(function, parsed, spec.placeholder_cv);
@@ -1384,6 +1386,7 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 			parsed.type, parsed.parameters, source_definition || defaulted,
 			false, STORAGE_CLASS_NONE, current_language_linkage_,
 			IsNonthrowing(declarator, scope));
+		ConfigureFunctionExceptionSpecification(destructor, declarator, scope);
 		ApplyFunctionAbiTagAttributes(node, destructor);
 		BindingRecord& binding = program_->bindings[destructor];
 		binding.member_owner = entity;
@@ -1459,6 +1462,7 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 	const BindingId constructor = DeclareFunction(scope, parsed.name,
 		parsed.type, parsed.parameters, definition, false, STORAGE_CLASS_NONE,
 		current_language_linkage_, IsNonthrowing(declarator, scope));
+	ConfigureFunctionExceptionSpecification(constructor, declarator, scope);
 	ApplyFunctionAbiTagAttributes(node, constructor);
 	BindingRecord& binding = program_->bindings[constructor];
 	binding.member_owner = entity;

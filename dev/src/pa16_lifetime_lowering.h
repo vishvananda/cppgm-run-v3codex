@@ -219,7 +219,7 @@ protected:
 					derived.Emit(Instruction(Instruction::EH_END));
 					derived.EmitJump(end);
 					derived.SelectBlock(dispatch);
-					derived.Emit(Instruction(Instruction::RESUME));
+					derived.EmitExceptionResume();
 					derived.SelectBlock(end);
 				}
 			}
@@ -299,6 +299,7 @@ protected:
 			derived.EmitJump(derived.destructor_return_target_);
 			return;
 		}
+		derived.FinishFunctionExceptionBoundaryNormalExit();
 		if (derived.current_result_.kind == LOW_VOID)
 			derived.Emit(Instruction(Instruction::RETURN_VOID));
 		else
@@ -337,7 +338,7 @@ protected:
 			for (std::size_t j = i + 1; j < children.size(); ++j)
 				derived.LowerDestructorAction(derived.arena_.nodes[children[j]]);
 			derived.Emit(Instruction(Instruction::EH_END));
-			derived.Emit(Instruction(Instruction::RESUME));
+			derived.EmitExceptionResume();
 			derived.SelectBlock(next);
 		}
 	}
@@ -394,7 +395,7 @@ protected:
 		for (std::size_t i = first_action; i < children.size(); ++i)
 			derived.LowerDestructorAction(derived.arena_.nodes[children[i]]);
 		derived.Emit(Instruction(Instruction::EH_END));
-		derived.Emit(Instruction(Instruction::RESUME));
+		derived.EmitExceptionResume();
 		derived.SelectBlock(end);
 	}
 
@@ -481,7 +482,7 @@ protected:
 			else
 			{
 				derived.Emit(Instruction(Instruction::EH_END));
-				derived.Emit(Instruction(Instruction::RESUME));
+				derived.EmitExceptionResume();
 			}
 		}
 		derived.SelectBlock(end);

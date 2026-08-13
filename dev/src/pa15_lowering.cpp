@@ -155,6 +155,7 @@ public:
 		RegisterLocalStaticObjects();
 		pa18_lowering_detail::PreparePolymorphism(graph_, output_, stats_,
 			source_ordinal_, function_symbols_, &polymorphism_);
+		PrepareFunctionExceptionPolicyRuntime();
 		EmitLocalStaticGlobals();
 		EmitTop(graph_.root);
 		pa18_lowering_detail::EmitDeletingDestructors(graph_, output_, stats_,
@@ -852,6 +853,7 @@ private:
 		CollectSourceNames(node);
 		CollectSlots(node);
 		SelectBlock(AddBlock("entry"));
+		BeginFunctionExceptionBoundary(node, record.binding);
 		std::size_t parameter_index = 0;
 		std::uint32_t body = kNoDumpEdge;
 		for (std::size_t i = 0; i < children.size(); ++i)
@@ -885,6 +887,7 @@ private:
 		}
 		if (!CurrentBlock().terminated)
 		{
+			FinishFunctionExceptionBoundaryNormalExit();
 			if (result.entry)
 			{
 				Instruction instruction(Instruction::RETURN_VALUE);
@@ -905,6 +908,7 @@ private:
 			}
 			else throw std::runtime_error("non-void function has no return");
 		}
+		FinishFunctionExceptionBoundary();
 		if (stats_)
 		{
 			++stats_->functions;

@@ -23,7 +23,13 @@ class ExceptionLowering
 {
 protected:
 	ExceptionLowering()
-		: handler_selector_epoch_(0), next_handler_selector_(1) {}
+		: handler_selector_epoch_(0), next_handler_selector_(1),
+		  function_exception_boundary_(FUNCTION_EXCEPTION_BOUNDARY_NONE),
+		  function_exception_landing_(kNoLowId),
+		  function_exception_action_(kNoLowId),
+		  function_exception_object_slot_(kNoLowId),
+		  function_exception_type_begin_(0), function_exception_type_count_(0),
+		  function_exception_filter_selector_(-1) {}
 
 	enum ExceptionRegion : std::uint8_t
 	{
@@ -55,6 +61,14 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		active_exception_regions_.clear();
+		function_exception_boundary_ = FUNCTION_EXCEPTION_BOUNDARY_NONE;
+		function_exception_landing_ = kNoLowId;
+		function_exception_action_ = kNoLowId;
+		function_exception_object_slot_ = kNoLowId;
+		function_exception_type_begin_ = 0;
+		function_exception_type_count_ = 0;
+		function_exception_clause_blocks_.clear();
+		function_exception_filter_selector_ = -1;
 		const std::size_t required = derived.arena_.nodes.size();
 		if (handler_selectors_.size() < required)
 		{
@@ -75,6 +89,306 @@ protected:
 		}
 		next_handler_selector_ = 1;
 		if (derived.stats_) ++derived.stats_->exception_selector_resets;
+	}
+
+	void PrepareFunctionExceptionPolicyRuntime()
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (!derived.output_.host_object_emission) return;
+		bool need_terminate = false;
+		bool need_unexpected = false;
+		function_exception_boundary_needed_.assign(
+			derived.program_.bindings.size(), 0);
+		for (BindingId binding = 0;
+			binding < derived.program_.bindings.size(); ++binding)
+		{
+			const BindingRecord& record = derived.program_.bindings[binding];
+			if (record.canonical != binding ||
+				binding >= derived.function_definition_.size() ||
+				derived.function_definition_[binding] == kNoDumpEdge ||
+				binding >= derived.function_symbols_.size() ||
+				derived.function_symbols_[binding] == kNoLowId) continue;
+			if (!FunctionDefinitionMayEscape(
+				derived.function_definition_[binding])) continue;
+			function_exception_boundary_needed_[binding] = 1;
+			need_terminate = need_terminate || record.exception_boundary ==
+				FUNCTION_EXCEPTION_BOUNDARY_TERMINATE;
+			need_unexpected = need_unexpected || record.exception_boundary ==
+				FUNCTION_EXCEPTION_BOUNDARY_UNEXPECTED;
+		}
+		if (need_terminate) EnsureTerminatePolicyRuntime();
+		if (need_unexpected) EnsureUnexpectedPolicyRuntime();
+	}
+
+	void BeginFunctionExceptionBoundary(std::uint32_t node, BindingId binding)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (!derived.output_.host_object_emission || binding == kNoBinding) return;
+		binding = derived.program_.bindings[binding].canonical;
+		if (binding >= derived.program_.bindings.size())
+			throw std::logic_error("function exception binding is out of range");
+		if (binding >= function_exception_boundary_needed_.size() ||
+			!function_exception_boundary_needed_[binding]) return;
+		const BindingRecord& record = derived.program_.bindings[binding];
+		if (record.exception_boundary == FUNCTION_EXCEPTION_BOUNDARY_NONE) return;
+		if (record.exception_type_begin >
+			derived.program_.function_exception_types.size() ||
+			record.exception_type_count >
+			derived.program_.function_exception_types.size() -
+				record.exception_type_begin)
+			throw std::logic_error("function exception type slice is invalid");
+		function_exception_boundary_ = record.exception_boundary;
+		function_exception_type_begin_ = record.exception_type_begin;
+		function_exception_type_count_ = record.exception_type_count;
+		function_exception_landing_ = derived.AddBlock(
+			derived.NewLabel("function_exception_landing"));
+		function_exception_action_ = derived.AddBlock(
+			derived.NewLabel("function_exception_action"));
+		function_exception_object_slot_ = static_cast<SlotId>(
+			derived.function_->slots.size());
+		Slot slot;
+		slot.name = derived.GeneratedSlotName("function_exception");
+		slot.type = LowPtr();
+		derived.function_->slots.push_back(slot);
+		if (function_exception_boundary_ == FUNCTION_EXCEPTION_BOUNDARY_TERMINATE)
+			function_exception_filter_selector_ = next_handler_selector_++;
+		derived.EmitEhTarget(Instruction::EH_TRY,
+			function_exception_landing_);
+		(void)node;
+	}
+
+	bool FunctionDefinitionMayEscape(std::uint32_t root) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		if (root == kNoDumpEdge || root >= derived.arena_.nodes.size())
+			return false;
+		std::vector<std::uint32_t> pending(1, root);
+		while (!pending.empty())
+		{
+			const std::uint32_t node = pending.back();
+			pending.pop_back();
+			const DumpNode& record = derived.arena_.nodes[node];
+			if (node != root && record.kind == DUMP_FUNCTION_DEFINITION) continue;
+			if (record.kind == DUMP_THROW_EXPRESSION ||
+				record.kind == DUMP_NEW_EXPRESSION ||
+				record.kind == DUMP_DELETE_EXPRESSION ||
+				(record.kind == DUMP_TYPEID_EXPRESSION &&
+				 record.dynamic_type_query) ||
+				(record.kind == DUMP_DYNAMIC_CAST_EXPRESSION &&
+				 record.dynamic_cast_reference)) return true;
+			if (record.kind == DUMP_CALL_EXPRESSION)
+			{
+				const NodeChildren children = derived.Children(node);
+				if (children.empty()) return true;
+				const DumpNode& callee = derived.arena_.nodes[children[0]];
+				if (callee.kind != DUMP_CALLEE ||
+					callee.binding == kNoBinding ||
+					callee.binding >= derived.program_.bindings.size() ||
+					!derived.program_.bindings[callee.binding].nonthrowing)
+					return true;
+			}
+			if (record.kind == DUMP_CONSTRUCTOR_ACTION ||
+				record.kind == DUMP_SPECIAL_MEMBER_CONSTRUCTION_ACTION ||
+				record.kind == DUMP_DESTRUCTOR_ACTION)
+			{
+				const BindingId action = record.binding != kNoBinding ?
+					record.binding : record.object_binding;
+				if (action != kNoBinding &&
+					(action >= derived.program_.bindings.size() ||
+					 !derived.program_.bindings[action].nonthrowing)) return true;
+			}
+			for (std::uint32_t edge = record.first_edge; edge != kNoDumpEdge;
+				edge = derived.arena_.edges[edge].next)
+				pending.push_back(derived.arena_.edges[edge].child);
+		}
+		return false;
+	}
+
+	void FinishFunctionExceptionBoundaryNormalExit()
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (function_exception_boundary_ != FUNCTION_EXCEPTION_BOUNDARY_NONE)
+			derived.Emit(Instruction(Instruction::EH_END));
+	}
+
+	void FinishFunctionExceptionBoundary()
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (function_exception_boundary_ == FUNCTION_EXCEPTION_BOUNDARY_NONE)
+			return;
+		derived.SelectBlock(function_exception_landing_);
+		EmitFunctionExceptionBoundaryClause();
+		RetainFunctionExceptionObject();
+		derived.EmitJump(function_exception_action_);
+		derived.SelectBlock(function_exception_action_);
+		EmitFunctionExceptionAction();
+	}
+
+	void EmitFunctionExceptionAction()
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const Operand object = derived.LoadStorage(
+			Operand(function_exception_object_slot_, LowPtr()), LowPtr());
+		CallArguments arguments;
+		arguments.Push(object);
+		if (function_exception_boundary_ ==
+			FUNCTION_EXCEPTION_BOUNDARY_TERMINATE)
+		{
+			(void)EmitExceptionRuntimeCall(
+				derived.polymorphism_.eh_begin_catch_symbol, LowPtr(), arguments);
+			CallArguments none;
+			(void)EmitExceptionRuntimeCall(
+				derived.output_.terminate_helper_symbol, LowVoid(), none);
+		}
+		else
+			(void)EmitExceptionRuntimeCall(
+				derived.output_.call_unexpected_symbol, LowVoid(), arguments);
+		derived.EmitNoreturnFallback();
+	}
+
+	void RetainFunctionExceptionObject()
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const Operand exception = derived.Temp(LowPtr());
+		Instruction read(Instruction::EXCEPTION);
+		read.dest = exception.id;
+		read.type = LowPtr();
+		derived.Emit(read);
+		Instruction retain(Instruction::STORE);
+		retain.type = LowPtr();
+		retain.first = exception;
+		retain.second = Operand(function_exception_object_slot_, LowPtr());
+		derived.Emit(retain);
+	}
+
+	void EmitExceptionResume()
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (function_exception_boundary_ == FUNCTION_EXCEPTION_BOUNDARY_NONE)
+		{
+			derived.Emit(Instruction(Instruction::RESUME));
+			return;
+		}
+		EmitFunctionExceptionBoundaryClause();
+		RetainFunctionExceptionObject();
+		if (function_exception_boundary_ == FUNCTION_EXCEPTION_BOUNDARY_TERMINATE)
+		{
+			EmitFunctionExceptionAction();
+			return;
+		}
+		const Operand selector = derived.Temp(LowI32());
+		Instruction read(Instruction::EXCEPTION_SELECTOR);
+		read.dest = selector.id;
+		read.type = LowI32();
+		derived.Emit(read);
+		const Operand disallowed = derived.Temp(LowU8());
+		Instruction compare(Instruction::CMP);
+		compare.dest = disallowed.id;
+		compare.op = LOW_OP_EQ;
+		compare.type = LowI32();
+		compare.first = selector;
+		compare.second = Operand(function_exception_filter_selector_, LowI32());
+		derived.Emit(compare);
+		const BlockId action = derived.AddBlock(
+			derived.NewLabel("function_exception_local_action"));
+		const BlockId resume = derived.AddBlock(
+			derived.NewLabel("function_exception_resume"));
+		derived.EmitBranch(disallowed, action, resume);
+		derived.SelectBlock(action);
+		EmitFunctionExceptionAction();
+		derived.SelectBlock(resume);
+		derived.Emit(Instruction(Instruction::RESUME));
+	}
+
+	void EmitFunctionExceptionBoundaryClause()
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (function_exception_boundary_ == FUNCTION_EXCEPTION_BOUNDARY_NONE)
+			return;
+		if (derived.current_block_ >= function_exception_clause_blocks_.size())
+			function_exception_clause_blocks_.resize(
+				derived.function_->blocks.size(), 0);
+		if (function_exception_clause_blocks_[derived.current_block_]) return;
+		function_exception_clause_blocks_[derived.current_block_] = 1;
+		if (function_exception_boundary_ ==
+			FUNCTION_EXCEPTION_BOUNDARY_TERMINATE)
+		{
+			Instruction clause(Instruction::EH_CATCH_ALL);
+			clause.first = Operand(function_exception_filter_selector_, LowI32());
+			derived.Emit(clause);
+			return;
+		}
+		Instruction clause(Instruction::EH_FILTER);
+		clause.first = Operand(function_exception_filter_selector_, LowI32());
+		clause.extra_first = static_cast<std::uint32_t>(
+			derived.output_.exception_filter_types.size());
+		clause.extra_count = function_exception_type_count_;
+		for (std::size_t i = 0; i < function_exception_type_count_; ++i)
+		{
+			const TypeId type = derived.program_.function_exception_types[
+				function_exception_type_begin_ + i];
+			const SymbolId symbol = ExceptionRttiSymbol(type);
+			derived.output_.symbols[symbol].referenced = true;
+			derived.output_.exception_filter_types.push_back(symbol);
+		}
+		derived.Emit(clause);
+	}
+
+	void EnsureTerminatePolicyRuntime()
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (derived.output_.terminate_runtime_symbol == kNoLowId)
+		{
+			const SymbolId symbol = derived.AddSyntheticSymbol(
+				Symbol::FUNCTION_SYMBOL, "std_terminate", "_ZSt9terminatev", false);
+			Symbol& record = derived.output_.symbols[symbol];
+			record.nonthrowing = true;
+			record.noreturn = true;
+			record.declaration_emitted = true;
+			FunctionDeclaration declaration;
+			declaration.symbol = symbol;
+			declaration.result = LowVoid();
+			derived.output_.declarations.push_back(declaration);
+			derived.output_.terminate_runtime_symbol = symbol;
+		}
+		if (derived.output_.terminate_helper_symbol != kNoLowId) return;
+		const SymbolId helper = derived.AddSyntheticSymbol(
+			Symbol::FUNCTION_SYMBOL, "cppgm_call_terminate", std::string(), true);
+		Symbol& helper_record = derived.output_.symbols[helper];
+		helper_record.nonthrowing = true;
+		helper_record.noreturn = true;
+		helper_record.definition_emitted = true;
+		derived.output_.terminate_helper_symbol = helper;
+		Function function;
+		function.symbol = helper;
+		function.result = LowVoid();
+		derived.BeginSyntheticFunction(&function);
+		CallArguments none;
+		(void)EmitExceptionRuntimeCall(
+			derived.output_.terminate_runtime_symbol, LowVoid(), none);
+		derived.EmitNoreturnFallback();
+		derived.EndSyntheticFunction(function);
+		derived.output_.functions.push_back(function);
+	}
+
+	void EnsureUnexpectedPolicyRuntime()
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (derived.output_.call_unexpected_symbol != kNoLowId) return;
+		const SymbolId symbol = derived.AddSyntheticSymbol(Symbol::FUNCTION_SYMBOL,
+			"__cxa_call_unexpected", "__cxa_call_unexpected", false);
+		Symbol& record = derived.output_.symbols[symbol];
+		record.noreturn = true;
+		record.declaration_emitted = true;
+		FunctionDeclaration declaration;
+		declaration.symbol = symbol;
+		declaration.result = LowVoid();
+		Parameter exception;
+		exception.name = "exception_object";
+		exception.type = LowPtr();
+		declaration.parameters.push_back(exception);
+		derived.output_.declarations.push_back(declaration);
+		derived.output_.call_unexpected_symbol = symbol;
 	}
 
 	std::uint32_t ExceptionCleanupContext() const
@@ -105,7 +419,7 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		if (!routes_to_try)
 		{
-			derived.Emit(Instruction(Instruction::RESUME));
+			EmitExceptionResume();
 			return;
 		}
 		if (active_exception_regions_.empty() ||
@@ -530,6 +844,7 @@ protected:
 			derived.Emit(Instruction(Instruction::EH_CLEANUP));
 			EmitTryHandlerClauses(dispatch_parent->node);
 		}
+		if (!dispatch_parent) EmitFunctionExceptionBoundaryClause();
 		derived.EmitJump(entry);
 		derived.SelectBlock(entry);
 		StartHandlerBody(try_node, handler_node, end);
@@ -722,7 +1037,7 @@ protected:
 		else
 		{
 			derived.Emit(Instruction(Instruction::EH_END));
-			derived.Emit(Instruction(Instruction::RESUME));
+			EmitExceptionResume();
 		}
 		derived.SelectBlock(next);
 		if (handler_next_[handler_node] != kNoDumpEdge)
@@ -737,7 +1052,7 @@ protected:
 				CloseInterveningHandlers(parent);
 			derived.EmitJump(parent->entry);
 		}
-		else derived.Emit(Instruction(Instruction::RESUME));
+		else EmitExceptionResume();
 		derived.SelectBlock(end);
 	}
 
@@ -792,6 +1107,13 @@ private:
 	std::vector<std::uint32_t> handler_selector_epochs_;
 	std::vector<std::uint32_t> handler_next_;
 	std::uint32_t handler_selector_epoch_, next_handler_selector_;
+	FunctionExceptionBoundaryKind function_exception_boundary_;
+	BlockId function_exception_landing_, function_exception_action_;
+	SlotId function_exception_object_slot_;
+	std::uint32_t function_exception_type_begin_, function_exception_type_count_;
+	std::vector<std::uint8_t> function_exception_clause_blocks_;
+	std::vector<std::uint8_t> function_exception_boundary_needed_;
+	std::int64_t function_exception_filter_selector_;
 };
 
 }

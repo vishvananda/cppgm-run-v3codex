@@ -117,12 +117,19 @@ bool lower_marker(const lowir_model::Instruction & source,
     if(source.kind == LowInstruction::IK_EH_CATCH) append_operand(match,
       named_operand(mir_model::MirOperand::OP_SYMBOL, source.first.text));
     target.push_back(match);
+  } else if(source.kind == LowInstruction::IK_EH_FILTER) {
+    MirInstruction filter = machine_instruction(MirInstruction::MI_EH_FILTER);
+    append_operand(filter, immediate(source.eh_selector));
+    for(std::size_t i = 0; i < source.args.size(); ++i)
+      append_operand(filter, named_operand(
+        mir_model::MirOperand::OP_SYMBOL, source.args[i].text));
+    target.push_back(filter);
   } else if(source.kind == LowInstruction::IK_RESUME)
     target.push_back(machine_instruction(MirInstruction::MI_RESUME));
   else if(source.kind == LowInstruction::IK_EH_CLEANUP_CLAUSE)
     target.push_back(machine_instruction(
       MirInstruction::MI_EH_CLEANUP_CLAUSE));
-  else if(source.kind != LowInstruction::IK_EH_FILTER) return false;
+  else return false;
   return true;
 }
 

@@ -52,6 +52,7 @@ void SemanticAnalyzer::AnalyzeConversionFunction(NodeId node, ScopeId scope,
 	const BindingId function = DeclareFunction(scope, conversion_name,
 		parsed.type, parsed.parameters, definition, false, STORAGE_CLASS_NONE,
 		current_language_linkage_, IsNonthrowing(declarator, scope));
+	ConfigureFunctionExceptionSpecification(function, declarator, scope);
 	BindingRecord& binding = program_->bindings[function];
 	binding.member_owner = entity;
 	binding.access = access;

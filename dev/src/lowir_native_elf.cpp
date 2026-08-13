@@ -1712,8 +1712,8 @@ bool emit_eh_instruction(CodeBuffer & out,
     emit_eh_push(out, instruction, *function); return true;
   case mir_model::MirInstruction::MI_EH_POP:
     require_operands(instruction, 0); emit_eh_pop(out); return true;
-  case mir_model::MirInstruction::MI_EH_CATCH:
-    emit_eh_catch(out, instruction); return true;
+  case mir_model::MirInstruction::MI_EH_CATCH: emit_eh_catch(out, instruction); return true;
+  case mir_model::MirInstruction::MI_EH_FILTER: return true;
   case mir_model::MirInstruction::MI_EH_CLEANUP_CLAUSE:
     require_operands(instruction, 0); return true;
   case mir_model::MirInstruction::MI_LOAD_EXCEPTION:
@@ -2662,7 +2662,7 @@ void emit_host_instruction(
     require_operands(instruction, 0);
     return;
   }
-  if(instruction.opcode == mir_model::MirInstruction::MI_EH_CATCH) return;
+  if(instruction.opcode == mir_model::MirInstruction::MI_EH_CATCH || instruction.opcode == mir_model::MirInstruction::MI_EH_FILTER) return;
   if(instruction.opcode ==
        mir_model::MirInstruction::MI_EH_CLEANUP_CLAUSE) return;
   if(instruction.opcode == mir_model::MirInstruction::MI_LOAD_EXCEPTION ||
@@ -2920,6 +2920,9 @@ void write_linux_relocatable(
   const std::unordered_map<std::string, std::string> host_declarations =
     declaration_object_symbols(source);
   std::unordered_set<std::string> catch_types;
+  const auto record_eh_type = [&](const std::string & symbol) {
+    const auto named = host_declarations.find(symbol); catch_types.insert(named == host_declarations.end() ? host_symbol_spelling(symbol) : named->second);
+  };
   for(std::size_t i = 0; i < functions.size(); ++i)
   {
     needs_personality = needs_personality || !functions[i].call_sites.empty();
@@ -2932,12 +2935,10 @@ void write_linux_relocatable(
              mir_model::MirHostEhClause::HC_CATCH &&
            !clauses->second[clause].catch_all)
         {
-          const std::unordered_map<std::string, std::string>::const_iterator named =
-            host_declarations.find(clauses->second[clause].type_symbol);
-          catch_types.insert(named == host_declarations.end() ?
-            host_symbol_spelling(clauses->second[clause].type_symbol) :
-            named->second);
+          record_eh_type(clauses->second[clause].type_symbol);
         }
+        else if(clauses->second[clause].kind == mir_model::MirHostEhClause::HC_FILTER)
+          for(std::size_t type = 0; type < clauses->second[clause].filter_type_symbols.size(); ++type) record_eh_type(clauses->second[clause].filter_type_symbols[type]);
   }
   std::vector<std::string> ordered_catch_types(
     catch_types.begin(), catch_types.end());

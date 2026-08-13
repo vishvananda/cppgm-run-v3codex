@@ -224,28 +224,73 @@ HostSection make_host_lsda(
     std::vector<unsigned char> actions;
     std::map<std::string, std::size_t> action_offsets;
     std::map<long long, std::string> type_symbols;
+    std::map<std::string, long long> selectors_by_type;
+    std::map<std::vector<std::string>, long long> filter_selectors;
+    std::vector<unsigned char> exception_specs;
     long long max_selector = 0;
     for(std::map<std::string,
           std::vector<mir_model::MirHostEhClause> >::const_iterator clauses =
           function.clauses.begin(); clauses != function.clauses.end();
         ++clauses) {
       const std::vector<mir_model::MirHostEhClause> & list = clauses->second;
-      bool catches = false;
       for(std::size_t clause = 0; clause < list.size(); ++clause) {
         if(list[clause].kind != mir_model::MirHostEhClause::HC_CATCH) continue;
-        catches = true;
         max_selector = std::max(max_selector, list[clause].selector);
         type_symbols[list[clause].selector] = list[clause].catch_all ?
           std::string() : list[clause].type_symbol;
+        if(!list[clause].catch_all)
+          selectors_by_type[list[clause].type_symbol] = list[clause].selector;
       }
+    }
+    for(std::map<std::string,
+          std::vector<mir_model::MirHostEhClause> >::const_iterator clauses =
+          function.clauses.begin(); clauses != function.clauses.end();
+        ++clauses) {
+      const std::vector<mir_model::MirHostEhClause> & list = clauses->second;
+      for(std::size_t clause = 0; clause < list.size(); ++clause) {
+        if(list[clause].kind != mir_model::MirHostEhClause::HC_FILTER)
+          continue;
+        if(filter_selectors.count(list[clause].filter_type_symbols)) continue;
+        const long long selector = -static_cast<long long>(
+          exception_specs.size() + 1);
+        filter_selectors[list[clause].filter_type_symbols] = selector;
+        for(std::size_t type = 0;
+            type < list[clause].filter_type_symbols.size(); ++type) {
+          const std::string & symbol =
+            list[clause].filter_type_symbols[type];
+          std::map<std::string, long long>::const_iterator selected =
+            selectors_by_type.find(symbol);
+          if(selected == selectors_by_type.end()) {
+            const long long index = ++max_selector;
+            type_symbols[index] = symbol;
+            selectors_by_type[symbol] = index;
+            append_uleb128(exception_specs, index);
+          } else append_uleb128(exception_specs, selected->second);
+        }
+        append_uleb128(exception_specs, 0);
+      }
+    }
+    for(std::map<std::string,
+          std::vector<mir_model::MirHostEhClause> >::const_iterator clauses =
+          function.clauses.begin(); clauses != function.clauses.end();
+        ++clauses) {
+      const std::vector<mir_model::MirHostEhClause> & list = clauses->second;
+      bool catches = false;
+      for(std::size_t clause = 0; clause < list.size(); ++clause)
+        catches = catches ||
+          list[clause].kind == mir_model::MirHostEhClause::HC_CATCH ||
+          list[clause].kind == mir_model::MirHostEhClause::HC_FILTER;
       if(!catches) continue;
       std::size_t next_action = static_cast<std::size_t>(-1);
       for(std::size_t clause = list.size(); clause != 0; --clause) {
         const mir_model::MirHostEhClause & item = list[clause - 1];
         const std::size_t action = actions.size();
-        append_sleb128(actions,
-          item.kind == mir_model::MirHostEhClause::HC_CATCH ?
-            (item.selector > 0 ? item.selector : 1) : 0);
+        long long selector = 0;
+        if(item.kind == mir_model::MirHostEhClause::HC_CATCH)
+          selector = item.selector > 0 ? item.selector : 1;
+        else if(item.kind == mir_model::MirHostEhClause::HC_FILTER)
+          selector = filter_selectors[item.filter_type_symbols];
+        append_sleb128(actions, selector);
         const std::size_t displacement = actions.size();
         append_sleb128(actions, next_action == static_cast<std::size_t>(-1) ?
           0 : static_cast<std::int64_t>(next_action) -
@@ -304,8 +349,9 @@ HostSection make_host_lsda(
     const std::size_t type_bytes = static_cast<std::size_t>(max_selector) * 4;
     const std::size_t type_offset = body.size() + type_bytes;
     section.bytes.push_back(0xff);
-    section.bytes.push_back(max_selector ? 0x9b : 0xff);
-    if(max_selector) append_uleb128(section.bytes, type_offset);
+    const bool has_type_table = max_selector || !exception_specs.empty();
+    section.bytes.push_back(has_type_table ? 0x9b : 0xff);
+    if(has_type_table) append_uleb128(section.bytes, type_offset);
     section.bytes.insert(section.bytes.end(), body.begin(), body.end());
     if(max_selector) {
       const std::size_t types_begin = section.bytes.size();
@@ -329,6 +375,8 @@ HostSection make_host_lsda(
       if(section.bytes.size() - types_begin != type_bytes)
         throw std::logic_error("invalid host EH type table size");
     }
+    section.bytes.insert(section.bytes.end(),
+      exception_specs.begin(), exception_specs.end());
   }
   return section;
 }

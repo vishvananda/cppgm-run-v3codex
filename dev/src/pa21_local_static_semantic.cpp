@@ -36,6 +36,63 @@ bool SemanticAnalyzer::IsNonthrowing(NodeId declarator, ScopeId scope)
 	return expression.value != 0;
 }
 
+void SemanticAnalyzer::ConfigureFunctionExceptionSpecification(
+	BindingId binding, NodeId declarator, ScopeId scope)
+{
+	if (binding == kNoBinding) return;
+	binding = program_->bindings[binding].canonical;
+	const NodeId qualifier = FindChild(declarator, "function-qualifier");
+	FunctionExceptionBoundaryKind boundary =
+		program_->bindings[binding].nonthrowing ?
+			FUNCTION_EXCEPTION_BOUNDARY_TERMINATE :
+			FUNCTION_EXCEPTION_BOUNDARY_NONE;
+	std::vector<TypeId> allowed;
+	if (qualifier != kNoNode &&
+		PayloadSource(qualifier).compare(0, 6, "throw(") == 0)
+	{
+		const NodeId list = FindChild(qualifier, "exception-type-list");
+		if (list == kNoNode)
+			throw std::logic_error("dynamic exception specification has no type list");
+		for (std::uint32_t edge = arena_->FirstEdge(list); edge != kNoEdge;
+			edge = arena_->NextEdge(edge))
+		{
+			TypeId type = Decay(BuildTypeId(arena_->EdgeChild(edge), scope));
+			type = program_->types.RemoveTopCv(type);
+			if (IsVoid(type))
+				throw std::runtime_error(
+					"void is not an allowed exception type");
+			allowed.push_back(type);
+		}
+		boundary = allowed.empty() ? FUNCTION_EXCEPTION_BOUNDARY_TERMINATE :
+			FUNCTION_EXCEPTION_BOUNDARY_UNEXPECTED;
+	}
+	FunctionInfo& function = GetMutableFunction(binding);
+	BindingRecord& record = program_->bindings[binding];
+	if (function.exception_specification_configured)
+	{
+		if (record.exception_boundary != boundary ||
+			record.exception_type_count != allowed.size())
+			throw std::runtime_error(
+				"conflicting function exception specification");
+		for (std::size_t i = 0; i < allowed.size(); ++i)
+			if (program_->function_exception_types[
+				record.exception_type_begin + i] != allowed[i])
+				throw std::runtime_error(
+					"conflicting function exception specification");
+		return;
+	}
+	if (program_->function_exception_types.size() >
+		std::numeric_limits<std::uint32_t>::max() - allowed.size())
+		throw std::runtime_error("too many function exception types");
+	record.exception_boundary = boundary;
+	record.exception_type_begin = static_cast<std::uint32_t>(
+		program_->function_exception_types.size());
+	record.exception_type_count = static_cast<std::uint32_t>(allowed.size());
+	program_->function_exception_types.insert(
+		program_->function_exception_types.end(), allowed.begin(), allowed.end());
+	function.exception_specification_configured = true;
+}
+
 bool SemanticAnalyzer::IsConstexprLiteralType(TypeId type) const
 {
 	const TypeRecord& top = program_->types.Get(type);

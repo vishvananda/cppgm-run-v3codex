@@ -846,6 +846,8 @@ private:
 	void DemandVtableFunction(BindingId binding);
 	void EnsureFunctionExceptionSpecification(BindingId binding);
 	bool FunctionIsNonthrowing(BindingId binding);
+	void ConfigureFunctionExceptionSpecification(BindingId binding,
+		NodeId declarator, ScopeId scope);
 	void DemandDefaultConstructor(EntityId entity);
 	void DemandConstructorDefinition(BindingId binding);
 	void DemandMaterializedConstructorActions(std::uint32_t node,

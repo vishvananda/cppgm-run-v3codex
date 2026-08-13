@@ -1238,6 +1238,7 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 	else special = DeclareFunction(owner, path.Last(),
 		parsed.type, parsed.parameters, true, false, STORAGE_CLASS_NONE,
 		current_language_linkage_, IsNonthrowing(declarator, semantic_scope));
+	ConfigureFunctionExceptionSpecification(special, declarator, semantic_scope);
 	FunctionInfo& info = GetMutableFunction(special);
 	if (parsed.parameters.size() != info.parameters.size())
 		throw std::logic_error(

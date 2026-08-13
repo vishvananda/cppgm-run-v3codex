@@ -464,6 +464,38 @@ private:
 				edge != kNoDumpEdge; edge = graph_.arena.edges[edge].next)
 				pending.push_back(graph_.arena.edges[edge].child);
 		}
+		if (!output_.host_object_emission) return;
+		for (BindingId binding = 0; binding < program_.bindings.size(); ++binding)
+		{
+			if (binding >= function_symbols_.size() ||
+				function_symbols_[binding] == kNoLowId ||
+				binding >= local_function_definitions_.size() ||
+				local_function_definitions_[binding] == 0 ||
+				program_.bindings[binding].canonical != binding) continue;
+			const BindingRecord& function = program_.bindings[binding];
+			const FunctionExceptionBoundaryKind boundary =
+				function.exception_boundary;
+			if (boundary == FUNCTION_EXCEPTION_BOUNDARY_NONE) continue;
+			state_.need_exceptions = true;
+			state_.need_exception_handlers =
+				state_.need_exception_handlers ||
+				boundary == FUNCTION_EXCEPTION_BOUNDARY_TERMINATE;
+			if (boundary != FUNCTION_EXCEPTION_BOUNDARY_UNEXPECTED) continue;
+			if (function.exception_type_begin >
+				program_.function_exception_types.size() ||
+				function.exception_type_count >
+				program_.function_exception_types.size() -
+					function.exception_type_begin)
+				throw std::logic_error(
+					"function exception type slice is invalid");
+			for (std::size_t i = 0; i < function.exception_type_count; ++i)
+			{
+				const TypeId type = RttiType(program_.function_exception_types[
+					function.exception_type_begin + i]);
+				DemandRtti(type);
+				state_.exception_type_demanded[type] = 1;
+			}
+		}
 	}
 
 	bool HasUninlinedDestructorWork(std::uint32_t root) const

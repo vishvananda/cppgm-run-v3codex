@@ -63,7 +63,7 @@ protected:
 		for (std::size_t i = actions.size(); i != 0; --i)
 			derived.LowerDestructorAction(actions[i - 1]);
 		derived.Emit(Instruction(Instruction::EH_END));
-		derived.Emit(Instruction(Instruction::RESUME));
+		derived.EmitExceptionResume();
 		derived.SelectBlock(source);
 		derived.EmitEhTarget(Instruction::EH_CLEANUP, cleanup);
 		*active = cleanup;

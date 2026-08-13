@@ -227,6 +227,7 @@ struct TypedProgram
 	std::vector<ObjectAlias> object_aliases;
 	std::vector<Operand> call_arguments;
 	std::vector<std::uint8_t> call_argument_references;
+	std::vector<SymbolId> exception_filter_types;
 	std::vector<std::int64_t> switch_case_values;
 	std::vector<BlockId> switch_case_targets;
 	InternedStringTable literals;
@@ -235,9 +236,14 @@ struct TypedProgram
 	SymbolIdentityTable symbol_index;
 	StringCounterTable symbol_name_counts;
 	std::size_t string_literal_count;
+	SymbolId terminate_runtime_symbol, terminate_helper_symbol;
+	SymbolId call_unexpected_symbol;
 	bool host_object_emission;
 
-	TypedProgram() : string_literal_count(0), host_object_emission(false) {}
+	TypedProgram()
+		: string_literal_count(0), terminate_runtime_symbol(kNoLowId),
+		  terminate_helper_symbol(kNoLowId), call_unexpected_symbol(kNoLowId),
+		  host_object_emission(false) {}
 };
 
 std::size_t TypedStorageBytes(const TypedProgram& program);

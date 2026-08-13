@@ -249,7 +249,7 @@ protected:
 			derived.conditional_cleanup_resume_ = derived.AddBlock(
 				derived.NewLabel("conditional_cleanup_resume"));
 			derived.SelectBlock(derived.conditional_cleanup_resume_);
-			derived.Emit(Instruction(Instruction::RESUME));
+			derived.EmitExceptionResume();
 			derived.SelectBlock(original);
 		}
 		BlockId tail = derived.conditional_cleanup_resume_;
@@ -1301,7 +1301,7 @@ protected:
 		derived.SelectBlock(dispatch);
 		for (std::size_t i = 0; i < actions.size(); ++i)
 			derived.LowerDestructorAction(derived.arena_.nodes[actions[i]]);
-		derived.Emit(Instruction(Instruction::RESUME));
+		derived.EmitExceptionResume();
 		derived.SelectBlock(end);
 		return retained;
 	}

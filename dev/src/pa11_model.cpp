@@ -679,7 +679,9 @@ BindingRecord::BindingRecord()
 	  template_argument_list(kNoTemplateArgumentList),
 	  template_argument_begin(0), template_argument_count(0),
 	  abi_tag_begin(0), abi_tag_count(0),
+	  exception_type_begin(0), exception_type_count(0),
 	  function_template_abi_recipe(kNoFunctionTemplateAbiRecipe),
+	  exception_boundary(FUNCTION_EXCEPTION_BOUNDARY_NONE),
 	  display_flavor(NAMED_NONE), display_type_name(0),
 		  canonical(kNoBinding), lifecycle_base_entry(kNoBinding), value(0),
 		  operator_kind(OPERATOR_NONE),
@@ -2941,6 +2943,7 @@ std::size_t Program::StorageBytes() const
 		lookup_cache_->StorageBytes() +
 		entities.capacity() * sizeof(EntityRecord) +
 		bindings.capacity() * sizeof(BindingRecord) +
+		function_exception_types.capacity() * sizeof(TypeId) +
 		template_arguments.capacity() * sizeof(TypeId) +
 		canonical_template_arguments.capacity() * sizeof(TemplateArgument) +
 		function_template_parameter_shapes.capacity() * sizeof(TypeId) +

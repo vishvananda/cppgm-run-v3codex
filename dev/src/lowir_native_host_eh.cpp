@@ -48,6 +48,16 @@ void collect_host_eh_clauses(mir_model::MirFunction * function)
         clause.catch_all = instruction.operands.size() == 1;
         if(!clause.catch_all)
           clause.type_symbol = instruction.operands[1].text;
+      } else if(instruction.opcode ==
+                  mir_model::MirInstruction::MI_EH_FILTER) {
+		if(instruction.operands.empty() ||
+		   instruction.operands[0].kind != mir_model::MirOperand::OP_IMM)
+		  throw std::logic_error("invalid MIR host EH filter clause");
+        clause.kind = mir_model::MirHostEhClause::HC_FILTER;
+        clause.selector = instruction.operands[0].imm;
+        for(std::size_t type = 1; type < instruction.operands.size(); ++type)
+          clause.filter_type_symbols.push_back(
+            instruction.operands[type].text);
       } else continue;
       clauses.push_back(clause);
     }
@@ -192,7 +202,9 @@ bool landing_pad_has_catches(const mir_model::MirBlock & block)
 {
   for(std::size_t i = 0; i < block.instructions.size(); ++i)
     if(block.instructions[i].opcode ==
-         mir_model::MirInstruction::MI_EH_CATCH)
+         mir_model::MirInstruction::MI_EH_CATCH ||
+       block.instructions[i].opcode ==
+         mir_model::MirInstruction::MI_EH_FILTER)
       return true;
   return false;
 }
@@ -212,7 +224,8 @@ bool is_catch_dispatch_block(const mir_model::MirBlock & block)
   for(std::size_t i = 0; i < block.instructions.size(); ++i) {
     const mir_model::MirInstruction::Opcode opcode =
       block.instructions[i].opcode;
-    if(opcode == mir_model::MirInstruction::MI_EH_CATCH) {
+    if(opcode == mir_model::MirInstruction::MI_EH_CATCH ||
+       opcode == mir_model::MirInstruction::MI_EH_FILTER) {
       has_catch = true;
       continue;
     }

@@ -438,6 +438,8 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 		const bool nonthrowing = IsNonthrowing(declarator, definition_scope);
 		program_->bindings[selected].explicit_instantiation_suppressed = false;
 		program_->bindings[selected].nonthrowing = nonthrowing;
+		ConfigureFunctionExceptionSpecification(
+			selected, declarator, definition_scope);
 		FunctionInfo& completed = GetMutableFunction(selected);
 		completed.exception_specification_scope = kNoScope;
 		completed.exception_specification_state =
@@ -731,6 +733,8 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 	const bool nonthrowing = IsNonthrowing(
 		declarator, specialization_semantic_scope);
 	program_->bindings[selected].nonthrowing = nonthrowing;
+	ConfigureFunctionExceptionSpecification(
+		selected, declarator, specialization_semantic_scope);
 	FunctionInfo& completed = GetMutableFunction(selected);
 	completed.exception_specification_scope = kNoScope;
 	completed.exception_specification_state =

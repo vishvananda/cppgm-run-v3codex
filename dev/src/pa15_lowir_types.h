@@ -247,6 +247,7 @@ struct Instruction
 		EH_TRY,
 		EH_CLEANUP,
 		EH_CATCH,
+		EH_FILTER,
 		EH_CATCH_ALL,
 		EH_END,
 		EXCEPTION,

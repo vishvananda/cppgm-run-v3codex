@@ -27,6 +27,7 @@ void SemanticAnalyzer::AnalyzeSimpleFunctionDeclaration(NodeId item,
 	const BindingId function = DeclareFunction(declaration_scope, parsed.name,
 		parsed.type, parsed.parameters, false, false, spec.storage_class,
 		current_language_linkage_, IsNonthrowing(declarator, syntax_scope));
+	ConfigureFunctionExceptionSpecification(function, declarator, syntax_scope);
 	ApplyFunctionAbiTagAttributes(item, function);
 	PublishInlineFunctionFacts(
 		function, spec.inline_specifier || spec.is_constexpr);

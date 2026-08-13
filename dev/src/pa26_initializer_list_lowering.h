@@ -189,7 +189,7 @@ protected:
 				for (std::size_t built = i; built != 0; --built)
 					derived.EmitDestructorCall(
 						destructor, (*addresses)[built - 1]);
-				derived.Emit(Instruction(Instruction::RESUME));
+				derived.EmitExceptionResume();
 				derived.SelectBlock(end);
 			}
 			return true;
@@ -287,7 +287,7 @@ protected:
 			derived.IndexAddress(LowI8(), base, displacement, true));
 		derived.EmitJump(cleanup);
 		derived.SelectBlock(resume);
-		derived.Emit(Instruction(Instruction::RESUME));
+		derived.EmitExceptionResume();
 		derived.SelectBlock(continuation);
 		return true;
 	}
@@ -407,7 +407,7 @@ protected:
 			derived.Emit(Instruction(Instruction::EH_END));
 			derived.EmitJump(end);
 			derived.SelectBlock(dispatch);
-			derived.Emit(Instruction(Instruction::RESUME));
+			derived.EmitExceptionResume();
 			derived.SelectBlock(end);
 		}
 	}

@@ -464,6 +464,7 @@ std::size_t TypedStorageBytes(const TypedProgram& program)
 		program.object_aliases.capacity() * sizeof(ObjectAlias) +
 		program.call_arguments.capacity() * sizeof(Operand) +
 		program.call_argument_references.capacity() * sizeof(std::uint8_t) +
+		program.exception_filter_types.capacity() * sizeof(SymbolId) +
 		program.switch_case_values.capacity() * sizeof(std::int64_t) +
 		program.switch_case_targets.capacity() * sizeof(BlockId) +
 		program.literals.StorageBytes() +

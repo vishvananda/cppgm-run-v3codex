@@ -249,7 +249,7 @@ protected:
 					element_type, previous));
 			derived.EmitJump(cleanup);
 			derived.SelectBlock(resume);
-			derived.Emit(Instruction(Instruction::RESUME));
+			derived.EmitExceptionResume();
 		}
 		derived.SelectBlock(end);
 	}
@@ -308,7 +308,7 @@ protected:
 					derived.EmitDestructorCall(action.binding,
 						BoundFlatArrayElementAddress(object_binding,
 							action.operand_type, element_type, built - 1));
-				derived.Emit(Instruction(Instruction::RESUME));
+				derived.EmitExceptionResume();
 				derived.SelectBlock(end);
 			}
 		}

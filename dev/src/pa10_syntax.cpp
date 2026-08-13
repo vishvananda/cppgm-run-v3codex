@@ -1146,11 +1146,11 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 				}
 				if (Match(KW_THROW))
 				{
-					const std::size_t first = position_ - 1;
-					if (!SkipBalanced(OP_LPAREN, OP_RPAREN))
-						throw Error("expected throw specification");
-					arena_.Add(result, arena_.Make("function-qualifier",
-						JoinSpellings(first, position_)));
+					const std::size_t first = position_ - 1; Expect(OP_LPAREN);
+					const NodeId types = arena_.Make("exception-type-list"); arena_.AddFlags(types, SYNTAX_FLAG_SEMANTIC_ONLY);
+					if (!Match(OP_RPAREN)) { do { if (!ParseTypeId(types)) throw Error("expected exception type-id"); } while (Match(OP_COMMA)); Expect(OP_RPAREN); }
+					const NodeId qualifier = arena_.Make("function-qualifier", JoinSpellings(first, position_));
+					arena_.Add(qualifier, types); arena_.Add(result, qualifier);
 					continue;
 				}
 				if (AtIdentifier() &&

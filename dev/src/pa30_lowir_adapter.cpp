@@ -324,6 +324,27 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 		target.has_eh_selector = true;
 		target.eh_selector = source.second.integer_value;
 		break;
+	case Instruction::EH_FILTER:
+		target.kind = lowir_model::Instruction::IK_EH_FILTER;
+		target.has_eh_selector = true;
+		target.eh_selector = source.first.integer_value;
+		if (source.extra_first == kNoLowId ||
+			source.extra_first > program.exception_filter_types.size() ||
+			source.extra_count > program.exception_filter_types.size() -
+				source.extra_first)
+			throw std::logic_error("invalid typed LowIR exception filter types");
+		for (std::size_t i = 0; i < source.extra_count; ++i)
+		{
+			const SymbolId symbol = program.exception_filter_types[
+				source.extra_first + i];
+			if (symbol >= program.symbols.size())
+				throw std::logic_error("invalid exception filter RTTI symbol");
+			lowir_model::Operand type;
+			type.kind = lowir_model::Operand::OP_GLOBAL;
+			type.text = At(program.symbols[symbol].name);
+			target.args.push_back(type);
+		}
+		break;
 	case Instruction::EH_CATCH_ALL:
 		target.kind = lowir_model::Instruction::IK_EH_CATCH_ALL;
 		target.has_eh_selector = true;

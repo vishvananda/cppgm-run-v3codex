@@ -11,14 +11,14 @@ not recover semantic facts from strings.
 
 ## Current Failure Map
 
-Current result: **76/94 PA33 tests pass**, improved from the 73/94 turn
+Current result: **78/94 PA33 tests pass**, improved from the 76/94 turn
 baseline (and 59/94 stage-start baseline); PA1-PA32 pass (4291/4291).
 
 | Owner / shared behavior | Count | Failing cases |
 | --- | ---: | --- |
 | Remaining ABI name publication | 2 | covariant layout-finalization symbols; nested-lambda owner identity |
 | Remaining type/name frontend | 1 | unnamed local-class constructor |
-| Host EH escape policy / RTTI | 3 | dynamic exception specification, noexcept termination, out-of-line virtual-base RTTI catch |
+| Remaining host EH RTTI | 1 | out-of-line virtual-base RTTI catch |
 | Polymorphic ODR ownership | 1 | duplicate inline-header polymorphic class |
 | Virtual-inheritance RTTI/casts | 3 | lazy-template cross-cast, virtual-inheritance cast-to-void, typed cross-cast |
 | Virtual-base/covariant runtime layout | 5 | external vbase reference, forwarded-reference condition, self-covariant result, virtual-base return, VTT base copy |
@@ -26,33 +26,35 @@ baseline (and 59/94 stage-start baseline); PA1-PA32 pass (4291/4291).
 
 ## Active Checkpoint
 
-**Queued — exception-specification escape policy.** Complete the paired
-`noexcept` termination and dynamic-exception-specification `unexpected` paths
-at the function-boundary EH policy owner.
+**Next — virtual-inheritance RTTI and casts.** Unify the three virtual-base
+`dynamic_cast` failures and the out-of-line virtual-base RTTI catch at the
+canonical class-layout/RTTI publication boundary.
 
-- Spec alignment (§§2, 4, 6-9): canonical function facts own the fixed policy
-  and allowed-type sequence; LowIR publishes an explicit escape boundary; the
-  native action table lowers terminate/unexpected edges without redoing lookup
-  or parsing names. Formation is O(throwing edges + allowed types), with one
-  indexed policy lookup per function/call boundary.
-- Validation: both PA33 policy fixtures, prior exception-specification and EH
-  suites, full reports, file audit, and an increasing protected-call series.
+- Spec alignment (§§2, 4, 6-9): canonical class entities and finalized virtual
+  base paths must own one RTTI graph; EH and cast lowering consume those IDs,
+  and ABI publication emits complete, coalescible host objects without
+  reconstructing relationships from names.
+- Owner/data flow: instantiated class/layout facts -> canonical RTTI demand and
+  base graph -> typed catch/cast operands -> Itanium RTTI objects and runtime
+  calls. Complexity should remain O(classes + base edges + demand sites), with
+  indexed identity lookup at each use.
+- Validation: all four virtual-inheritance RTTI/EH fixtures, nearby nonvirtual
+  and external RTTI cases, full PA33/prior reports, file audit, and a widening
+  virtual-base graph series.
 
 ## Performance Evidence
 
-The generated EH transfer series remained proportional:
+The constrained-function boundary series remained proportional:
 
-| Cases | Source bytes | Lexical/unwind visits | Dispatch entries | Selectors | Semantic ms | Lowering ms |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 16 | 3,496 | 16/16 | 16 | 32 | 2.02 | 0.84 |
-| 32 | 6,920 | 32/32 | 32 | 64 | 3.47 | 1.57 |
-| 64 | 13,768 | 64/64 | 64 | 128 | 6.84 | 2.97 |
-| 128 | 27,609 | 128/128 | 128 | 256 | 13.17 | 5.66 |
+| Functions | Tokens | LowIR instructions | EH states/edges/calls | Lowering ms | Native lower ms |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 16 | 182 | 194 | 16/32/16 | 0.30 | 0.38 |
+| 32 | 358 | 386 | 32/64/32 | 0.46 | 0.66 |
+| 64 | 710 | 770 | 64/128/64 | 0.64 | 1.16 |
+| 128 | 1,414 | 1,538 | 128/256/128 | 1.12 | 2.16 |
 
-Doubling cases exactly doubled cleanup work, dispatch entries, and selector
-assignments; 7.90x source growth produced 6.52x semantic and 6.74x lowering
-time. A runtime probe covered guarded rethrow, catch-to-break/continue, break
-from a try body, and all-returning switches.
+Doubling functions exactly doubled EH states, edges, and protected calls; 7.77x
+token growth produced 7.93x LowIR and 5.69x native-lowering time.
 
 ## Completed Checkpoints
 
@@ -64,3 +66,4 @@ from a try body, and all-returning switches.
 | PA33 stack/SysV vararg intrinsic checkpoint | Pass — typed alloca and scalar varargs cover register-save/overflow paths with dynamic-frame restoration; PA33 68→71, PA1-PA32 4291/4291, file audit pass. |
 | PA33 dependent transform/layout checkpoint | Pass — `__decay` is a semantic and retained ABI type node; ordinary alias parameters publish source recipes, and dependent class-layout constants replay after substitution; PA33 71→73, PA1-PA32 4291/4291, file audit pass. |
 | PA33 EH nonlocal-transfer checkpoint | Pass — guarded rethrow owns its cleanup suffix, structured targets close crossed EH regions, and unreachable source-order jumps do not create reachable fallthrough; PA33 73→76, PA1-PA32 4291/4291, file audit pass. |
+| PA33 exception-specification escape-policy checkpoint | Pass — canonical dynamic-spec type slices lower to LSDA filters/`unexpected`, escaping `noexcept` definitions terminate after cleanup, and boundary demand stays definition-local; PA33 76→78, PA1-PA32 4291/4291, file audit pass. |

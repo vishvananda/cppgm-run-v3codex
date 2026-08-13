@@ -284,6 +284,13 @@ enum StorageClass { STORAGE_CLASS_NONE, STORAGE_CLASS_EXTERN,
 
 enum AccessKind { ACCESS_PUBLIC, ACCESS_PROTECTED, ACCESS_PRIVATE };
 
+enum FunctionExceptionBoundaryKind : std::uint8_t
+{
+	FUNCTION_EXCEPTION_BOUNDARY_NONE,
+	FUNCTION_EXCEPTION_BOUNDARY_TERMINATE,
+	FUNCTION_EXCEPTION_BOUNDARY_UNEXPECTED
+};
+
 enum OperatorKind
 {
 	OPERATOR_NONE,
@@ -580,7 +587,9 @@ struct BindingRecord
 	TemplateArgumentListId template_argument_list;
 	std::uint32_t template_argument_begin, template_argument_count;
 	std::uint32_t abi_tag_begin, abi_tag_count;
+	std::uint32_t exception_type_begin, exception_type_count;
 	FunctionTemplateAbiRecipeId function_template_abi_recipe;
+	FunctionExceptionBoundaryKind exception_boundary;
 	NamedFlavor display_flavor;
 	NameId display_type_name;
 	BindingId canonical;
@@ -753,6 +762,7 @@ public:
 	std::vector<VirtualBaseLayout> virtual_bases;
 	std::vector<NameId> abi_tags;
 	std::vector<BindingRecord> bindings;
+	std::vector<TypeId> function_exception_types;
 	std::vector<TypeId> template_arguments;
 	std::vector<TemplateArgument> canonical_template_arguments;
 	std::vector<TypeId> function_template_parameter_shapes;

@@ -151,6 +151,7 @@ const char * opcode_name(Instruction::Opcode opcode)
   case Instruction::MI_EH_PUSH: return "eh_push";
   case Instruction::MI_EH_POP: return "eh_pop";
   case Instruction::MI_EH_CATCH: return "eh_catch";
+  case Instruction::MI_EH_FILTER: return "eh_filter";
   case Instruction::MI_EH_CLEANUP_CLAUSE: return "eh_cleanup_clause";
   case Instruction::MI_LOAD_EXCEPTION: return "load_exception";
   case Instruction::MI_LOAD_EXCEPTION_SELECTOR: return "load_exception_selector";

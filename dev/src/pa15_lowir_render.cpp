@@ -354,6 +354,20 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 		WriteOperand(output, instruction.first, program, function);
 		output << ", " << instruction.second.integer_value;
 		break;
+	case Instruction::EH_FILTER:
+		ValidateExtraRange(instruction, program.exception_filter_types.size(),
+			"exception filter type range");
+		output << "eh_filter";
+		for (std::size_t i = 0; i < instruction.extra_count; ++i)
+		{
+			const SymbolId symbol = program.exception_filter_types[
+				instruction.extra_first + i];
+			if (symbol >= program.symbols.size())
+				throw std::logic_error("invalid exception filter RTTI symbol");
+			output << (i == 0 ? " " : ", ") << "@" <<
+				program.symbols[symbol].name;
+		}
+		break;
 	case Instruction::EH_CATCH_ALL:
 		output << "eh_catch_all, " << instruction.first.integer_value;
 		break;

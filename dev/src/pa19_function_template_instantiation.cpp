@@ -1986,9 +1986,7 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 				request_key, TEMPLATE_REQUEST_FAILED);
 		return kNoBinding;
 	}
-	const ScopeId exception_specification_scope =
-		pattern.dependent_exception_specification ?
-		parsed.trailing_return_scope : kNoScope;
+	const ScopeId exception_specification_scope = pattern.dependent_exception_specification ? parsed.trailing_return_scope : kNoScope;
 	if (CandidateSubstitutionActive())
 	{
 		const TypeRecord& function_type = program_->types.Get(parsed.type);
@@ -2013,6 +2011,7 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 		member_owner == kNoEntity ? spec.storage_class : STORAGE_CLASS_NONE,
 		pattern.language_linkage, pattern.nonthrowing, pattern.ordinary_visible);
 	const BindingId canonical_binding = program_->bindings[binding].canonical;
+	if (pattern.nonthrowing) program_->bindings[canonical_binding].exception_boundary = FUNCTION_EXCEPTION_BOUNDARY_TERMINATE;
 	const FunctionSignatureKey declaration_key(pattern.owner, pattern.name, GetFunction(canonical_binding).signature);
 	++function_signature_lookups_;
 	if (function_template_specialization_declarations_.Find(
@@ -2176,6 +2175,8 @@ void SemanticAnalyzer::EnsureFunctionExceptionSpecification(BindingId binding)
 				function_templates_[function.template_pattern].declarator,
 				scope);
 			program_->bindings[binding].nonthrowing = nonthrowing;
+			ConfigureFunctionExceptionSpecification(binding,
+				function_templates_[function.template_pattern].declarator, scope);
 		}
 	}
 	catch (const std::runtime_error&)
