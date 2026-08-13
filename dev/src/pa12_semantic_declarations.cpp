@@ -97,7 +97,8 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	const std::string& hint, bool elaborated,
 	const std::string& specialization_name, ScopeId specialization_owner,
 	NameId specialization_identity, bool complete_definition,
-	NameId specialization_lookup_name, NameId specialization_emission_name)
+	NameId specialization_lookup_name, NameId specialization_emission_name,
+	NameId typedef_linkage_name)
 {
 	const NodeId key = FindChild(node, "class-key");
 	if (key == kNoNode) throw std::runtime_error("class without class-key");
@@ -153,9 +154,11 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 		const NameId entity_name = EmissionName(owner, name);
 		entity = program_->NewEntity(entity_name, flavor, false,
 			kNoType, owner, specialization_identity == 0 ?
-				name : specialization_identity);
+				(typedef_linkage_name == 0 ? name : typedef_linkage_name) :
+				specialization_identity);
 		program_->entities[entity].local_context = LocalTypeContext(
 			*program_, owner, current_function_context_);
+		RegisterLocalTypeAbiIdentity(entity);
 		program_->SetTypeName(owner, lookup_name,
 			program_->entities[entity].type);
 	}
@@ -424,7 +427,8 @@ bool SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 					program_->bindings[declaration].access = member_access;
 				}
 				if (arena_->Payload(member).empty() &&
-					program_->entities[nested].flavor == NAMED_UNION)
+					(program_->entities[nested].flavor == NAMED_UNION ||
+					 program_->entities[nested].flavor == NAMED_STRUCT))
 				{
 					std::ostringstream generated;
 					generated << "__anonymous_union_storage__"
@@ -468,6 +472,10 @@ bool SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 						alias_record.bit_offset = source.bit_offset;
 						alias_record.bit_width = source.bit_width;
 						alias_record.bit_storage_bits = source.bit_storage_bits;
+						alias_record.has_default_member_initializer =
+							source.has_default_member_initializer;
+						RegisterInjectedStorageMember(
+							alias, storage, variants[i]);
 						anonymous_alias_storage.push_back(
 							std::make_pair(alias, storage));
 					}
@@ -1548,6 +1556,7 @@ TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::stri
 		entity = program_->NewEntity(name, flavor, true, underlying, owner);
 		program_->entities[entity].local_context = LocalTypeContext(
 			*program_, owner, current_function_context_);
+		RegisterLocalTypeAbiIdentity(entity);
 		program_->SetTypeName(owner, name, program_->entities[entity].type);
 		if (arena_->Payload(node).size() != 0)
 			program_->AddBinding(owner, BIND_TYPE, name,
@@ -1650,7 +1659,11 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 			if (result.type == kNoType)
 				result.type = AnalyzeClass(child, scope, hint,
 					(has_declarators || type_id_context) &&
-						arena_->IsTag(child, "class-forward-declaration"));
+						arena_->IsTag(child, "class-forward-declaration"),
+					std::string(), kNoScope, 0, true, 0, 0,
+					HasDeclSpecifier(node, "typedef") &&
+						arena_->Payload(child).empty() && !hint.empty() ?
+						program_->names.Intern(hint) : 0);
 			continue;
 		}
 		if (arena_->IsTag(child, "enum-specifier"))
@@ -2258,6 +2271,13 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 	if (previous != kNoBinding)
 	{
 		const FunctionInfo& existing = GetFunction(previous);
+		const BindingRecord& existing_binding =
+			program_->bindings[existing.binding];
+		if (storage_class == STORAGE_CLASS_STATIC &&
+			existing_binding.storage_class != STORAGE_CLASS_STATIC &&
+			!existing_binding.unnamed_namespace_linkage)
+			throw std::runtime_error(
+				"static function declaration follows external declaration");
 		const TypeRecord old_type = program_->types.Get(existing.type);
 		if (old_type.child != declared_type.child)
 			throw std::runtime_error("conflicting function return type");

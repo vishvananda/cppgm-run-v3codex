@@ -16,6 +16,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		function_sets_.StorageBytes() +
 		ordinary_function_sets_.StorageBytes() +
 		ordinary_nontemplate_function_sets_.StorageBytes() +
+		local_type_occurrences_.StorageBytes() +
 		enum_operator_candidates_.StorageBytes() +
 		hidden_friend_sets_.StorageBytes() +
 		hidden_friend_template_sets_.StorageBytes() +
@@ -67,6 +68,11 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		member_initializer_by_binding_.capacity() * sizeof(NodeId) +
 		constructor_initializer_scratch_.capacity() * sizeof(NodeId) +
 		constructor_initializer_touched_.capacity() * sizeof(BindingId) +
+		injected_aliases_by_storage_.capacity() *
+			sizeof(std::vector<BindingId>) +
+		injected_constructor_initializer_scratch_.capacity() * sizeof(NodeId) +
+		injected_constructor_initializer_touched_.capacity() *
+			sizeof(std::uint32_t) +
 		function_templates_.size() * sizeof(FunctionTemplatePattern) +
 		function_template_shape_parameters_.capacity() * sizeof(TypeId) +
 		dependent_template_argument_shapes_.capacity() * sizeof(TypeId) +

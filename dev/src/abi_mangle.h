@@ -63,6 +63,7 @@ struct AbiFunctionRecord
   std::string complete_substitution;
   std::string standard_substitution;
   bool standard_substitution_includes_arguments = false;
+  bool discriminator_after_terminal = false;
   std::string context_ref;
   std::string source_name;
   std::string discriminator;

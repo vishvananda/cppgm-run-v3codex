@@ -429,7 +429,8 @@ private:
 		NameId specialization_identity = 0,
 		bool complete_definition = true,
 		NameId specialization_lookup_name = 0,
-		NameId specialization_emission_name = 0);
+		NameId specialization_emission_name = 0,
+		NameId typedef_linkage_name = 0);
 	bool CompleteClassDefinition(NodeId node, ScopeId scope, TypeId type,
 		EntityId entity, NamedFlavor flavor, ScopeId owner, NameId name,
 		NameId lookup_name, ScopeId specialization_owner,
@@ -1278,6 +1279,9 @@ private:
 	void RegisterClassStaticDataMember(EntityId entity, BindingId member);
 	void RegisterClassDataMember(
 		EntityId entity, BindingId member, TypeId member_type);
+	void RegisterLocalTypeAbiIdentity(EntityId entity);
+	void RegisterInjectedStorageMember(BindingId alias,
+		BindingId storage, BindingId member);
 	void SetClassExplicitInstantiationSuppression(
 		EntityId entity, bool suppressed);
 	void DemandStaticConstantInitializerDependencies(BindingId member);
@@ -1374,6 +1378,11 @@ private:
 		std::uint32_t body);
 	void AddMemberInitializationAction(BindingId member, NodeId initializer,
 		ScopeId scope, std::uint32_t body);
+	bool RecordInjectedMemberInitializer(BindingId member,
+		EntityId owner, NodeId initializer);
+	bool AddInjectedStorageInitializationActions(BindingId storage,
+		ScopeId scope, std::uint32_t body);
+	void ClearInjectedConstructorInitializers();
 	bool InitializationActionsAreNonthrowing(std::uint32_t body);
 	void DemandConstructorUnwindDestructors(std::uint32_t body);
 	void AddDefaultConstructor(std::uint32_t variable, BindingId binding,
@@ -1650,6 +1659,7 @@ private:
 	// Keep the direct non-specialization slice indexed so that it need not scan
 	// every prior instantiation of the same template name.
 	IndexedSequenceTable ordinary_nontemplate_function_sets_;
+	IndexedSequenceTable local_type_occurrences_;
 	EnumOperatorCandidateTable enum_operator_candidates_;
 	IndexedSequenceTable hidden_friend_sets_;
 	IndexedSequenceTable hidden_friend_template_sets_;
@@ -1713,6 +1723,9 @@ private:
 	std::vector<NodeId> member_initializer_by_binding_;
 	std::vector<NodeId> constructor_initializer_scratch_;
 	std::vector<BindingId> constructor_initializer_touched_;
+	std::vector<std::vector<BindingId> > injected_aliases_by_storage_;
+	std::vector<NodeId> injected_constructor_initializer_scratch_;
+	std::vector<std::uint32_t> injected_constructor_initializer_touched_;
 	// Replay can publish nested patterns, so published pattern owners must not
 	// move while semantic construction is re-entrant.
 	std::deque<FunctionTemplatePattern> function_templates_;

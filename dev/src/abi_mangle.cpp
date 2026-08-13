@@ -1822,7 +1822,9 @@ private:
       encode_bare_parameters(signature, false);
       output_ += 'E' + local.discriminator + '_';
     } else {
-      output_ += source_name(local.name) + discriminator(local.discriminator);
+      output_ += source_name(local.name);
+      if(!local.discriminator_after_terminal)
+        output_ += discriminator(local.discriminator);
     }
     if(facts.terminal) {
       emit_function_terminal(nullptr, facts, true, facts.parameters.size());
@@ -1833,6 +1835,8 @@ private:
       output_ += "cl";
     }
     output_ += 'E';
+    if(local.discriminator_after_terminal)
+      output_ += discriminator(local.discriminator);
     encode_bare_parameters(facts.parameters, facts.variadic);
   }
 

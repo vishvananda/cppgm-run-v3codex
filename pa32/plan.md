@@ -2,36 +2,35 @@
 
 ## Stage Design and Spec Alignment
 
-PA32 keeps the production path `semantic bindings/types/templates -> canonical ABI facts -> typed LowIR symbols/aliases -> MIR/fixups -> direct ELF`. Template specialization identity is now independent of argument count, named types retain their namespace path, template-template pack results retain `Dp`, and internal-linkage arguments flow to function/local-static publication. This follows `spec.md` §§2, 4, 6–9: typed canonical identity before mangling, demand separate from symbol ownership, one lowering per unit, and indexed work proportional to arguments and emitted symbols.
+PA32 keeps the production path `semantic bindings/types/templates -> canonical ABI facts -> typed LowIR symbols/aliases -> MIR/fixups -> direct ELF`. Language linkage is independent of symbol visibility, local and typedef-named anonymous types now own stable ABI identity, and anonymous storage members retain canonical projection paths. This follows `spec.md` §§2, 4, 6–9: typed identity before mangling, demand separate from ownership, one lowering per unit, and indexed work proportional to declarations and emitted symbols.
 
 ## Current Failure Map
 
-Current result: **126/138**, up from the **119/138** checkpoint baseline and **99/138** turn baseline. **12** tests remain; PA1–PA31 pass **4150/4150**.
+Current result: **131/138**, up from the **126/138** checkpoint baseline and **99/138** turn baseline. **7** tests remain; PA1–PA31 pass **4150/4150**.
 
 - EH/control-flow cleanup (4): goto out of try; call-argument temporary cleanup; member-constructor unwind; delegating-constructor unwind.
-- Host call/runtime ABI (3): external default constructor, member-function pointer runtime, and system-header move/reset.
-- Linkage and anonymous entities (5): anonymous storage initialization, anonymous-namespace `extern "C"` call, invalid C/static redeclaration, same-named local classes, and typedef-linked anonymous types.
+- Host callable/lifecycle ABI (3): external default-constructor ownership, member-function-pointer representation/call, and system-header move-constructor body demand.
 
 ## Active Checkpoint
 
-**Canonical linkage and anonymous-entity ownership.** The next five failures converge where declaration linkage and anonymous/local type ownership become canonical binding identity.
+**Canonical host callable construction and invocation.** The next three failures converge where declared lifecycle ownership and callable representations cross from semantics into host LowIR.
 
-- Spec alignment: §§2 and 6 require declaration merging and anonymous identity to be typed before lookup/emission; §4 requires demand to consume that identity without changing linkage; §§7 and 9 require one canonical merge key and linear indexed scans.
-- Owner/data flow: declaration parsing -> canonical binding/type owner -> redeclaration/linkage validation -> LowIR identity/internal owner -> ELF visibility and relocation.
-- Complexity: O(declarations + referenced anonymous entities), with direct binding/scope indexes and no rendered-name or pairwise scans.
-- Validation: the five grouped fixtures, adjacent C-linkage/local-type tests, generated 16/64/256 declaration-owner scaling, PA32, PA1–PA31, and file audit.
+- Spec alignment: §§2 and 6 require one canonical declaration/special-member owner; §4 requires body and external-reference demand to remain distinct; §§7–9 require typed member-pointer lowering, ABI-sized storage, direct fixups, and linear per-action work.
+- Owner/data flow: parsed declaration/include provenance -> canonical lifecycle or member-pointer fact -> demand/reference decision -> typed LowIR construction/call -> MIR pair registers or external relocation -> ELF.
+- Complexity: O(callables + construction actions + references), using binding/member indexes and one pass over each demanded body or member-pointer pair.
+- Validation: the three grouped fixtures, adjacent external lifecycle/member-pointer/include tests, generated 16/64/256 callable-demand scaling, PA32, PA1–PA31, and file audit.
 
 ## Performance Evidence
 
-A generated template-template function returns `Tuple<Ts...>` and constructs it from 16/64/256 expanded arguments. All object compilations succeed with `CPPGM_DRIVER_STATS=1`.
+A generated function contains 16/64/256 disjoint declarations of the same named local class, each with demanded constructor and member-call bodies. All object compilations succeed with `CPPGM_DRIVER_STATS=1`.
 
-| Pack args | Semantic nodes | LowIR instructions | Semantic + lowering | Object bytes | Peak RSS |
+| Local declarations | Semantic nodes | Lookup scope visits | LowIR instructions | Semantic + lowering | Object bytes |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 16 | 85 | 90 | 1.93 ms | 49,616 | 8,016 KiB |
-| 64 | 277 | 330 | 5.06 ms | 176,168 | 9,272 KiB |
-| 256 | 1,045 | 1,290 | 15.67 ms | 684,800 | 13,740 KiB |
+| 16 | 392 | 450 | 291 | 2.93 ms | 154,408 |
+| 64 | 1,544 | 1,794 | 1,155 | 9.94 ms | 611,096 |
+| 256 | 6,152 | 7,170 | 4,611 | 40.70 ms | 2,442,280 |
 
-Across 16x more pack elements, semantic nodes, instructions, and object bytes grow 12.3x, 14.3x, and 13.8x; combined semantic/lowering time grows 8.1x. Retained result publication and pack expansion remain linear in arguments plus emitted instructions.
+Across 16x more declarations, semantic nodes, lookup visits, instructions, and object bytes grow 15.7x, 15.9x, 15.8x, and 15.8x; combined semantic/lowering time grows 13.9x. Indexed local-name occurrence and injected-member ownership remain linear.
 
 ## Completed Checkpoints
 
@@ -49,3 +48,4 @@ Across 16x more pack elements, semantic nodes, instructions, and object bytes gr
 | Host virtual-inheritance ABI publication | Primary slots, complete-object calls, local support identities, COMDAT ownership; PA32 99→110. |
 | Canonical lifecycle entries and template preemption | Typed C1/C2 and D1/D2 peers plus canonical class-member suppression; PA32 110→119. |
 | Canonical dependent ABI owner and substitution spelling | Empty-pack owners, qualified enum types, internal-argument linkage, dependent-default substitution order, declaration-less static calls, and template-template pack result/constructor expansion; PA32 119→126, prior 4150/4150, audit pass, linear 16→256 evidence. |
+| Canonical linkage and anonymous-entity ownership | C linkage/visibility separation, redeclaration validation, typedef linkage names, exact local discriminators, and projected anonymous-storage initialization; PA32 126→131, prior 4150/4150, audit pass, linear 16→256 evidence. |

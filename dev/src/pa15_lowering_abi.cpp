@@ -1633,8 +1633,7 @@ std::string MangleFunction(const pa11::Program& program,
 			return "cppgm_builtin_operator_delete_array";
 		return "cppgm_builtin_" + program.names.Get(binding.name).substr(10);
 	}
-	if (binding.language_linkage == LANGUAGE_LINKAGE_C &&
-		binding.storage_class != STORAGE_CLASS_STATIC)
+	if (binding.language_linkage == LANGUAGE_LINKAGE_C)
 		return program.names.Get(binding.name);
 	const EntityRecord* lambda = binding.member_owner == kNoEntity ? 0 :
 		&program.entities[binding.member_owner];
@@ -1656,17 +1655,33 @@ std::string MangleFunction(const pa11::Program& program,
 	}
 	const bool structured_class_owner = binding.member_owner != kNoEntity &&
 		IsClassTemplateSpecialization(program.entities[binding.member_owner]);
+	const bool structured_local_owner = binding.member_owner != kNoEntity &&
+		program.entities[binding.member_owner].local_context != kNoBinding;
+	const bool structured_owner =
+		structured_class_owner || structured_local_owner;
 	AbiFactRecord target;
 	target.set_kind(ABI_FACT_RECORD_TARGET);
 	target.target.kind = ABI_TARGET_FACT_FUNCTION;
 	target.target.internal_linkage =
 		binding.storage_class == STORAGE_CLASS_STATIC &&
 		!binding.unnamed_namespace_linkage;
-	target.target.function.kind = structured_class_owner ?
+	target.target.function.kind = structured_owner ?
 		ABI_FUNCTION_TARGET_ENCODING : ABI_FUNCTION_TARGET_PATH;
-	if (!structured_class_owner)
+	if (!structured_owner)
 		target.target.function.qualified_name = qualified;
 	file.cases[0].records.push_back(target);
+	if (structured_local_owner)
+	{
+		const EntityRecord& owner = program.entities[binding.member_owner];
+		AbiFactRecord local;
+		local.set_kind(ABI_FACT_RECORD_FUNCTION);
+		local.function.kind = ABI_FUNCTION_RECORD_LOCAL_CONTEXT;
+		local.function.context_ref = facts.AddLocalContext(owner.local_context);
+		local.function.name = program.names.Get(owner.identity_name);
+		local.function.discriminator = std::to_string(owner.local_name_ordinal);
+		local.function.discriminator_after_terminal = true;
+		file.cases[0].records.push_back(local);
+	}
 	if (structured_class_owner &&
 		!AppendClassTemplateOwner(program, binding, &facts, &file.cases[0], true))
 		throw std::logic_error("class template ABI owner was lost");
@@ -1700,12 +1715,14 @@ std::string MangleFunction(const pa11::Program& program,
 	const std::string operator_terminal =
 		OperatorTerminal(binding.operator_kind, member,
 			program.types.Get(binding.type).parameter_count);
-	if (structured_class_owner && binding.operator_kind == OPERATOR_NONE &&
+	if (structured_owner && binding.operator_kind == OPERATOR_NONE &&
 		!binding.conversion_function && !binding.constructor && !binding.destructor)
 	{
 		AbiFactRecord terminal;
 		terminal.set_kind(ABI_FACT_RECORD_FUNCTION);
-		terminal.function.kind = ABI_FUNCTION_RECORD_NAME_SOURCE;
+		terminal.function.kind = structured_local_owner ?
+			ABI_FUNCTION_RECORD_TERMINAL_SOURCE :
+			ABI_FUNCTION_RECORD_NAME_SOURCE;
 		terminal.function.name = program.names.Get(binding.name);
 		file.cases[0].records.push_back(terminal);
 	}

@@ -33,7 +33,6 @@ std::vector<unsigned char> DecodeStringInitializer(
 }
 
 }
-
 bool SemanticAnalyzer::IsClassObjectType(TypeId type) const
 {
 	return IsClassEntity(*program_, EntityOf(type));
@@ -1080,7 +1079,6 @@ void SemanticAnalyzer::CollectConstructorInitializers(
 		}
 	}
 }
-
 void SemanticAnalyzer::AddConstructorMemberActions(
 	const FunctionInfo& constructor, ScopeId function_scope,
 	const std::vector<BindingId>& parameters,
@@ -1204,6 +1202,7 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 				program_->bindings[found.ordinary].member_owner == entity)
 			{
 				const BindingId member = found.ordinary;
+				if (RecordInjectedMemberInitializer(member, entity, value)) continue;
 				if (program_->entities[entity].flavor == NAMED_UNION &&
 					!constructor_initializer_touched_.empty())
 					throw std::runtime_error(
@@ -1297,8 +1296,8 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 			if (initializer == kNoNode &&
 				member < member_initializer_by_binding_.size())
 				initializer = member_initializer_by_binding_[member];
-			AddMemberInitializationAction(
-				member, initializer, function_scope, body);
+			if (!AddInjectedStorageInitializationActions(member, function_scope, body))
+				AddMemberInitializationAction(member, initializer, function_scope, body);
 		}
 	}
 	for (std::size_t i = 0; i < constructor_initializer_touched_.size(); ++i)
@@ -1307,8 +1306,8 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 		constructor_initializer_scratch_[
 			program_->bindings[member].member_ordinal] = kNoNode;
 	}
+	ClearInjectedConstructorInitializers();
 }
-
 void SemanticAnalyzer::AddBaseInitializationAction(EntityId entity,
 	std::size_t base_ordinal, NodeId initializer, ScopeId scope,
 	std::uint32_t body, bool pack_expanded)
