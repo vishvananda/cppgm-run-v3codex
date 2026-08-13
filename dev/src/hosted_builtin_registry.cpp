@@ -62,6 +62,85 @@ const MemoryIntrinsic kMemoryIntrinsics[] = {
 		MEMORY_EFFECT_READONLY, MEMORY_LOWER_EXTERNAL}
 };
 
+const AtomicIntrinsic kAtomicIntrinsics[] = {
+	{"__atomic_add_fetch", ATOMIC_INTRINSIC_ADD_FETCH,
+		ATOMIC_SHAPE_FETCH_UPDATE, ATOMIC_UPDATE_ADD, 3, true, false},
+	{"__atomic_always_lock_free", ATOMIC_INTRINSIC_ALWAYS_LOCK_FREE,
+		ATOMIC_SHAPE_LOCK_FREE, ATOMIC_UPDATE_NONE, 2, false, false},
+	{"__atomic_clear", ATOMIC_INTRINSIC_CLEAR,
+		ATOMIC_SHAPE_CLEAR, ATOMIC_UPDATE_NONE, 2, false, false},
+	{"__atomic_compare_exchange_n", ATOMIC_INTRINSIC_COMPARE_EXCHANGE_N,
+		ATOMIC_SHAPE_COMPARE_EXCHANGE, ATOMIC_UPDATE_NONE, 6, false, false},
+	{"__atomic_exchange_n", ATOMIC_INTRINSIC_EXCHANGE_N,
+		ATOMIC_SHAPE_EXCHANGE, ATOMIC_UPDATE_NONE, 3, false, false},
+	{"__atomic_fetch_add", ATOMIC_INTRINSIC_FETCH_ADD,
+		ATOMIC_SHAPE_FETCH_UPDATE, ATOMIC_UPDATE_ADD, 3, false, false},
+	{"__atomic_fetch_and", ATOMIC_INTRINSIC_FETCH_AND,
+		ATOMIC_SHAPE_FETCH_UPDATE, ATOMIC_UPDATE_AND, 3, false, false},
+	{"__atomic_fetch_or", ATOMIC_INTRINSIC_FETCH_OR,
+		ATOMIC_SHAPE_FETCH_UPDATE, ATOMIC_UPDATE_OR, 3, false, false},
+	{"__atomic_fetch_sub", ATOMIC_INTRINSIC_FETCH_SUB,
+		ATOMIC_SHAPE_FETCH_UPDATE, ATOMIC_UPDATE_SUB, 3, false, false},
+	{"__atomic_fetch_xor", ATOMIC_INTRINSIC_FETCH_XOR,
+		ATOMIC_SHAPE_FETCH_UPDATE, ATOMIC_UPDATE_XOR, 3, false, false},
+	{"__atomic_is_lock_free", ATOMIC_INTRINSIC_IS_LOCK_FREE,
+		ATOMIC_SHAPE_LOCK_FREE, ATOMIC_UPDATE_NONE, 2, false, false},
+	{"__atomic_load", ATOMIC_INTRINSIC_LOAD,
+		ATOMIC_SHAPE_LOAD_OUT, ATOMIC_UPDATE_NONE, 3, false, false},
+	{"__atomic_load_n", ATOMIC_INTRINSIC_LOAD_N,
+		ATOMIC_SHAPE_LOAD, ATOMIC_UPDATE_NONE, 2, false, false},
+	{"__atomic_signal_fence", ATOMIC_INTRINSIC_SIGNAL_FENCE,
+		ATOMIC_SHAPE_FENCE, ATOMIC_UPDATE_NONE, 1, false, false},
+	{"__atomic_store", ATOMIC_INTRINSIC_STORE,
+		ATOMIC_SHAPE_STORE_FROM, ATOMIC_UPDATE_NONE, 3, false, false},
+	{"__atomic_store_n", ATOMIC_INTRINSIC_STORE_N,
+		ATOMIC_SHAPE_STORE, ATOMIC_UPDATE_NONE, 3, false, false},
+	{"__atomic_test_and_set", ATOMIC_INTRINSIC_TEST_AND_SET,
+		ATOMIC_SHAPE_TEST_AND_SET, ATOMIC_UPDATE_NONE, 2, false, false},
+	{"__atomic_thread_fence", ATOMIC_INTRINSIC_THREAD_FENCE,
+		ATOMIC_SHAPE_FENCE, ATOMIC_UPDATE_NONE, 1, false, false},
+	{"__c11_atomic_compare_exchange_strong",
+		ATOMIC_INTRINSIC_C11_COMPARE_EXCHANGE_STRONG,
+		ATOMIC_SHAPE_COMPARE_EXCHANGE, ATOMIC_UPDATE_NONE, 5, false, true},
+	{"__c11_atomic_compare_exchange_weak",
+		ATOMIC_INTRINSIC_C11_COMPARE_EXCHANGE_WEAK,
+		ATOMIC_SHAPE_COMPARE_EXCHANGE, ATOMIC_UPDATE_NONE, 5, false, true},
+	{"__c11_atomic_exchange", ATOMIC_INTRINSIC_C11_EXCHANGE,
+		ATOMIC_SHAPE_EXCHANGE, ATOMIC_UPDATE_NONE, 3, false, true},
+	{"__c11_atomic_fetch_add", ATOMIC_INTRINSIC_C11_FETCH_ADD,
+		ATOMIC_SHAPE_FETCH_UPDATE, ATOMIC_UPDATE_ADD, 3, false, true},
+	{"__c11_atomic_fetch_and", ATOMIC_INTRINSIC_C11_FETCH_AND,
+		ATOMIC_SHAPE_FETCH_UPDATE, ATOMIC_UPDATE_AND, 3, false, true},
+	{"__c11_atomic_fetch_or", ATOMIC_INTRINSIC_C11_FETCH_OR,
+		ATOMIC_SHAPE_FETCH_UPDATE, ATOMIC_UPDATE_OR, 3, false, true},
+	{"__c11_atomic_fetch_sub", ATOMIC_INTRINSIC_C11_FETCH_SUB,
+		ATOMIC_SHAPE_FETCH_UPDATE, ATOMIC_UPDATE_SUB, 3, false, true},
+	{"__c11_atomic_fetch_xor", ATOMIC_INTRINSIC_C11_FETCH_XOR,
+		ATOMIC_SHAPE_FETCH_UPDATE, ATOMIC_UPDATE_XOR, 3, false, true},
+	{"__c11_atomic_init", ATOMIC_INTRINSIC_C11_INIT,
+		ATOMIC_SHAPE_STORE, ATOMIC_UPDATE_NONE, 2, false, true},
+	{"__c11_atomic_is_lock_free", ATOMIC_INTRINSIC_C11_IS_LOCK_FREE,
+		ATOMIC_SHAPE_LOCK_FREE, ATOMIC_UPDATE_NONE, 1, false, false},
+	{"__c11_atomic_load", ATOMIC_INTRINSIC_C11_LOAD,
+		ATOMIC_SHAPE_LOAD, ATOMIC_UPDATE_NONE, 2, false, true},
+	{"__c11_atomic_signal_fence", ATOMIC_INTRINSIC_C11_SIGNAL_FENCE,
+		ATOMIC_SHAPE_FENCE, ATOMIC_UPDATE_NONE, 1, false, false},
+	{"__c11_atomic_store", ATOMIC_INTRINSIC_C11_STORE,
+		ATOMIC_SHAPE_STORE, ATOMIC_UPDATE_NONE, 3, false, true},
+	{"__c11_atomic_thread_fence", ATOMIC_INTRINSIC_C11_THREAD_FENCE,
+		ATOMIC_SHAPE_FENCE, ATOMIC_UPDATE_NONE, 1, false, false},
+	{"__sync_fetch_and_add", ATOMIC_INTRINSIC_SYNC_FETCH_AND_ADD,
+		ATOMIC_SHAPE_FETCH_UPDATE, ATOMIC_UPDATE_ADD, 2, false, false},
+	{"__sync_lock_release", ATOMIC_INTRINSIC_SYNC_LOCK_RELEASE,
+		ATOMIC_SHAPE_CLEAR, ATOMIC_UPDATE_NONE, 1, false, false},
+	{"__sync_lock_test_and_set", ATOMIC_INTRINSIC_SYNC_LOCK_TEST_AND_SET,
+		ATOMIC_SHAPE_EXCHANGE, ATOMIC_UPDATE_NONE, 2, false, false},
+	{"__sync_synchronize", ATOMIC_INTRINSIC_SYNC_SYNCHRONIZE,
+		ATOMIC_SHAPE_FENCE, ATOMIC_UPDATE_NONE, 0, false, false},
+	{"__sync_val_compare_and_swap", ATOMIC_INTRINSIC_SYNC_VAL_COMPARE_AND_SWAP,
+		ATOMIC_SHAPE_SYNC_COMPARE_EXCHANGE, ATOMIC_UPDATE_NONE, 3, false, false}
+};
+
 template <class Kind>
 struct Entry
 {
@@ -200,6 +279,29 @@ const MemoryIntrinsic& GetMemoryIntrinsic(MemoryIntrinsicKind kind)
 	if (kind <= MEMORY_INTRINSIC_NONE || kind >= MEMORY_INTRINSIC_COUNT)
 		throw std::logic_error("invalid hosted memory intrinsic kind");
 	return kMemoryIntrinsics[static_cast<std::size_t>(kind) - 1];
+}
+
+const AtomicIntrinsic* FindAtomicIntrinsic(const std::string& spelling)
+{
+	std::size_t first = 0;
+	std::size_t count = sizeof(kAtomicIntrinsics) /
+		sizeof(kAtomicIntrinsics[0]);
+	while (first < count)
+	{
+		const std::size_t middle = first + (count - first) / 2;
+		const int order = spelling.compare(kAtomicIntrinsics[middle].spelling);
+		if (order < 0) count = middle;
+		else if (order > 0) first = middle + 1;
+		else return &kAtomicIntrinsics[middle];
+	}
+	return 0;
+}
+
+const AtomicIntrinsic& GetAtomicIntrinsic(AtomicIntrinsicKind kind)
+{
+	if (kind <= ATOMIC_INTRINSIC_NONE || kind >= ATOMIC_INTRINSIC_COUNT)
+		throw std::logic_error("invalid hosted atomic intrinsic kind");
+	return kAtomicIntrinsics[static_cast<std::size_t>(kind) - 1];
 }
 
 }

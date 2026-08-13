@@ -180,6 +180,8 @@ bool SemanticAnalyzer::TryAnalyzeImmediateBuiltinCall(
 		spelling, scope, argument_syntax, target, result)) return true;
 	if (TryAnalyzeMemoryIntrinsicCall(
 		spelling, scope, argument_syntax, target, result)) return true;
+	if (TryAnalyzeAtomicIntrinsicCall(
+		spelling, scope, argument_syntax, target, result)) return true;
 	if (spelling == "__builtin_expect")
 	{
 		if (argument_syntax.size() != 2)
@@ -616,6 +618,215 @@ bool SemanticAnalyzer::TryAnalyzeMemoryIntrinsicCall(
 	if (readonly_search_source) result_type = parameter_types[0];
 	*result = BuildMemoryIntrinsicCall(
 		intrinsic->kind, arguments, result_type, target);
+	return true;
+}
+
+ExpressionInfo SemanticAnalyzer::AnalyzeAtomicOrderArgument(
+	NodeId syntax, ScopeId scope)
+{
+	ExpressionInfo order = AnalyzeExpression(syntax, scope);
+	if (!order.constant || !IsIntegral(order.type, true))
+		throw std::runtime_error("atomic memory order is not constant");
+	order = ApplyCallArgument(order, program_->types.Fundamental(FUND_INT));
+	const std::int64_t value = ExpressionScalar(order).integral;
+	if (value < 0 || value > 5)
+		throw std::runtime_error("atomic memory order is out of range");
+	return order;
+}
+
+TypeId SemanticAnalyzer::AtomicPointerValueType(
+	const ExpressionInfo& pointer, bool require_atomic) const
+{
+	const TypeId decayed = program_->types.RemoveTopCv(Decay(pointer.type));
+	const TypeRecord& shape = program_->types.Get(decayed);
+	if (shape.kind != TYPE_POINTER)
+		throw std::runtime_error("atomic object argument is not a pointer");
+	if (require_atomic && !program_->types.IsAtomic(shape.child))
+		throw std::runtime_error("C11 atomic object has non-atomic type");
+	const TypeId value = program_->types.RemoveTopCv(shape.child);
+	const TypeRecord& value_shape = program_->types.Get(value);
+	if (value_shape.kind == TYPE_FUNCTION ||
+		(value_shape.kind == TYPE_FUNDAMENTAL &&
+		 value_shape.fundamental == FUND_VOID))
+		throw std::runtime_error("atomic object has invalid value type");
+	return value;
+}
+
+ExpressionInfo SemanticAnalyzer::BuildAtomicIntrinsicCall(
+	hosted_builtin::AtomicIntrinsicKind kind,
+	const std::vector<ExpressionInfo>& arguments, TypeId value_type,
+	TypeId result_type, TypeId target)
+{
+	std::vector<TypeId> parameter_types;
+	parameter_types.reserve(arguments.size());
+	for (std::size_t i = 0; i < arguments.size(); ++i)
+	{
+		if (arguments[i].type == kNoType)
+			throw std::logic_error("atomic intrinsic argument has no type");
+		parameter_types.push_back(arguments[i].type);
+	}
+	const TypeId function_type = program_->types.Function(
+		result_type, parameter_types, false);
+	const hosted_builtin::AtomicIntrinsic& intrinsic =
+		hosted_builtin::GetAtomicIntrinsic(kind);
+	const std::uint32_t call = MakeDump(
+		DUMP_CALL_EXPRESSION, result_type, VALUE_PRVALUE);
+	dump_.nodes[call].hosted_atomic_intrinsic = kind;
+	dump_.nodes[call].operand_type = value_type;
+	const std::uint32_t callee = MakeDump(DUMP_CALLEE, function_type,
+		VALUE_NONE, program_->names.Intern(intrinsic.spelling));
+	dump_.Add(call, callee);
+	for (std::size_t i = 0; i < arguments.size(); ++i)
+		dump_.Add(call, arguments[i].node);
+	ExpressionInfo result;
+	result.node = call;
+	result.type = result_type;
+	result.category = VALUE_PRVALUE;
+	++expression_count_;
+	return ApplyTarget(result, target);
+}
+
+bool SemanticAnalyzer::TryAnalyzeAtomicIntrinsicCall(
+	const std::string& spelling, ScopeId scope,
+	const std::vector<NodeId>& argument_syntax, TypeId target,
+	ExpressionInfo* result)
+{
+	using namespace hosted_builtin;
+	const AtomicIntrinsic* intrinsic = FindAtomicIntrinsic(spelling);
+	if (!intrinsic) return false;
+	if (argument_syntax.size() != intrinsic->arity)
+		throw std::runtime_error("invalid atomic intrinsic arity");
+	const TypeId void_type = program_->types.Fundamental(FUND_VOID);
+	const TypeId bool_type = program_->types.Fundamental(FUND_BOOL);
+	const TypeId int_type = program_->types.Fundamental(FUND_INT);
+	if (intrinsic->shape == ATOMIC_SHAPE_LOCK_FREE)
+	{
+		ExpressionInfo size = AnalyzeExpression(argument_syntax[0], scope);
+		if (!size.constant || !IsIntegral(size.type, true))
+			throw std::runtime_error("atomic lock-free size is not constant");
+		const std::uint64_t bytes = static_cast<std::uint64_t>(
+			ExpressionScalar(size).integral);
+		for (std::size_t i = 1; i < argument_syntax.size(); ++i)
+			(void)AnalyzeExpression(argument_syntax[i], scope);
+		const bool lock_free = bytes == 1 || bytes == 2 ||
+			bytes == 4 || bytes == 8;
+		*result = MakeLiteral(bool_type,
+			program_->names.Intern(lock_free ? "true" : "false"));
+		result->constant = true;
+		result->value = lock_free ? 1 : 0;
+		RecordExpressionFacts(*result);
+		*result = ApplyTarget(*result, target);
+		return true;
+	}
+	std::vector<ExpressionInfo> arguments;
+	if (intrinsic->shape == ATOMIC_SHAPE_FENCE)
+	{
+		if (!argument_syntax.empty())
+			arguments.push_back(AnalyzeAtomicOrderArgument(
+				argument_syntax[0], scope));
+		*result = BuildAtomicIntrinsicCall(
+			intrinsic->kind, arguments, void_type, void_type, target);
+		return true;
+	}
+	ExpressionInfo object = AnalyzeExpression(argument_syntax[0], scope);
+	const TypeId value_type = AtomicPointerValueType(
+		object, intrinsic->requires_atomic_pointee);
+	arguments.push_back(object);
+	const TypeId value_pointer = program_->types.Pointer(value_type);
+	const TypeId const_value_pointer = program_->types.Pointer(
+		program_->types.Qualify(value_type, CV_CONST));
+
+	auto analyze_value = [&](std::size_t index) {
+		ExpressionInfo value = AnalyzeUntypedCallArgument(
+			argument_syntax[index], scope);
+		return ApplyCallArgument(value, value_type);
+	};
+	auto analyze_value_pointer = [&](std::size_t index, bool readonly) {
+		ExpressionInfo pointer = AnalyzeExpression(argument_syntax[index], scope);
+		const TypeId pointee = AtomicPointerValueType(pointer, false);
+		if (pointee != value_type)
+			throw std::runtime_error("atomic pointer operand type mismatch");
+		return ApplyCallArgument(pointer,
+			readonly ? const_value_pointer : value_pointer);
+	};
+	auto append_order = [&](std::size_t index) {
+		arguments.push_back(AnalyzeAtomicOrderArgument(
+			argument_syntax[index], scope));
+	};
+
+	TypeId result_type = void_type;
+	switch (intrinsic->shape)
+	{
+	case ATOMIC_SHAPE_LOAD:
+		append_order(1);
+		result_type = value_type;
+		break;
+	case ATOMIC_SHAPE_LOAD_OUT:
+		arguments.push_back(analyze_value_pointer(1, false));
+		append_order(2);
+		break;
+	case ATOMIC_SHAPE_STORE:
+		arguments.push_back(analyze_value(1));
+		if (argument_syntax.size() == 3) append_order(2);
+		break;
+	case ATOMIC_SHAPE_STORE_FROM:
+		arguments.push_back(analyze_value_pointer(1, true));
+		append_order(2);
+		break;
+	case ATOMIC_SHAPE_EXCHANGE:
+		arguments.push_back(analyze_value(1));
+		if (argument_syntax.size() == 3) append_order(2);
+		result_type = value_type;
+		break;
+	case ATOMIC_SHAPE_COMPARE_EXCHANGE:
+		arguments.push_back(analyze_value_pointer(1, false));
+		arguments.push_back(analyze_value(2));
+		if (intrinsic->kind == ATOMIC_INTRINSIC_COMPARE_EXCHANGE_N)
+		{
+			ExpressionInfo weak = AnalyzeExpression(argument_syntax[3], scope);
+			arguments.push_back(ApplyCallArgument(weak, bool_type));
+			append_order(4);
+			append_order(5);
+		}
+		else
+		{
+			append_order(3);
+			append_order(4);
+		}
+		result_type = bool_type;
+		break;
+	case ATOMIC_SHAPE_SYNC_COMPARE_EXCHANGE:
+		arguments.push_back(analyze_value(1));
+		arguments.push_back(analyze_value(2));
+		result_type = value_type;
+		break;
+	case ATOMIC_SHAPE_FETCH_UPDATE:
+		if (!IsIntegral(value_type))
+			throw std::runtime_error("atomic fetch operation is not integral");
+		arguments.push_back(analyze_value(1));
+		if (argument_syntax.size() == 3) append_order(2);
+		result_type = value_type;
+		break;
+	case ATOMIC_SHAPE_TEST_AND_SET:
+		append_order(1);
+		result_type = bool_type;
+		break;
+	case ATOMIC_SHAPE_CLEAR:
+		if (argument_syntax.size() == 2) append_order(1);
+		break;
+	case ATOMIC_SHAPE_LOCK_FREE:
+	case ATOMIC_SHAPE_FENCE: break;
+	}
+	for (std::size_t i = 1; i < arguments.size(); ++i)
+		if (arguments[i].type == int_type && arguments[i].constant)
+		{
+			const std::int64_t order = ExpressionScalar(arguments[i]).integral;
+			if (intrinsic->shape == ATOMIC_SHAPE_LOAD &&
+				(order == 3 || order == 4))
+				throw std::runtime_error("invalid atomic load memory order");
+		}
+	*result = BuildAtomicIntrinsicCall(
+		intrinsic->kind, arguments, value_type, result_type, target);
 	return true;
 }
 

@@ -353,6 +353,13 @@ TypeId TypeTable::Qualify(TypeId type, std::uint8_t cv)
 	return result;
 }
 
+bool TypeTable::IsAtomic(TypeId type) const
+{
+	const TypeRecord& record = Get(type);
+	return record.kind == TYPE_QUALIFIED &&
+		(record.cv & CV_ATOMIC) != 0;
+}
+
 TypeId TypeTable::TryPointer(TypeId type)
 {
 	if (IsReference(type)) return kNoType;
@@ -2646,28 +2653,38 @@ std::size_t Program::SizeOf(TypeId type) const
 std::size_t Program::AlignOf(TypeId type) const
 {
 	const TypeRecord* record = &types.Get(type);
+	bool atomic = false;
 	while (record->kind == TYPE_QUALIFIED || record->kind == TYPE_ARRAY)
 	{
+		if (record->kind == TYPE_QUALIFIED &&
+			(record->cv & CV_ATOMIC) != 0) atomic = true;
 		type = record->child;
 		record = &types.Get(type);
 	}
+	std::size_t alignment = 0;
 	if (record->kind == TYPE_POINTER || record->kind == TYPE_LVALUE_REFERENCE ||
 		record->kind == TYPE_RVALUE_REFERENCE ||
-		record->kind == TYPE_MEMBER_POINTER) return 8;
+		record->kind == TYPE_MEMBER_POINTER) alignment = 8;
 	if (record->kind == TYPE_FUNDAMENTAL)
-		return FundamentalSize(record->fundamental);
-	if (record->kind == TYPE_NAMED)
+		alignment = FundamentalSize(record->fundamental);
+	else if (record->kind == TYPE_NAMED)
 	{
 		const EntityRecord& entity = entities[record->entity];
 		if (!entity.complete)
 			throw std::runtime_error("incomplete named type");
 		if (entity.flavor == NAMED_ENUM || entity.flavor == NAMED_ENUM_CLASS)
-			return AlignOf(entity.underlying);
-		if (!entity.layout_complete || entity.object_alignment == 0)
-			throw std::runtime_error("class layout is incomplete");
-		return static_cast<std::size_t>(entity.object_alignment);
+			alignment = AlignOf(entity.underlying);
+		else
+		{
+			if (!entity.layout_complete || entity.object_alignment == 0)
+				throw std::runtime_error("class layout is incomplete");
+			alignment = static_cast<std::size_t>(entity.object_alignment);
+		}
 	}
-	throw std::runtime_error("invalid alignof operand type");
+	if (alignment == 0)
+		throw std::runtime_error("invalid alignof operand type");
+	if (atomic && SizeOf(type) == 16) alignment = std::max<std::size_t>(16, alignment);
+	return alignment;
 }
 
 void Program::AppendType(std::string& output, TypeId type,
@@ -2712,6 +2729,7 @@ void Program::AppendType(std::string& output, TypeId type,
 			break;
 		}
 		case TYPE_QUALIFIED:
+			if ((record.cv & CV_ATOMIC) != 0) output += "_Atomic ";
 			if ((record.cv & CV_CONST) != 0) output += "const ";
 			if ((record.cv & CV_VOLATILE) != 0) output += "volatile ";
 			tasks.Push(Task(record.child, true));

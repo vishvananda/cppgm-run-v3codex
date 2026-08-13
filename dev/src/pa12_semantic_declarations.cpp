@@ -1652,13 +1652,17 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 	bool is_float = false;
 	bool is_double = false;
 	bool is_wchar = false;
-	bool is_char16 = false;
-	bool is_char32 = false;
-	bool saw_int = false;
+	bool is_char16 = false, is_char32 = false, saw_int = false;
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId child = arena_->EdgeChild(edge);
+		if (arena_->IsTag(child, "atomic-type-specifier")) {
+			const TypeId underlying = BuildTypeId(FirstSemanticChild(child), scope);
+			if (CandidateSubstitutionFailed()) return result;
+			if (program_->types.IsAtomic(underlying)) throw std::runtime_error("nested _Atomic type");
+			result.type = program_->types.Qualify(underlying, CV_ATOMIC);
+			continue; }
 		if (arena_->IsTag(child, "builtin-transform-type"))
 		{
 			result.type = BuildBuiltinTransformType(child, scope);

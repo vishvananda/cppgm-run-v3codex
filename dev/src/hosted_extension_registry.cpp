@@ -53,6 +53,7 @@ bool Contains(const std::string& spelling, const char* const (&entries)[Size])
 SpecifierKind FindSpecifier(const std::string& spelling)
 {
 	static const SpecifierEntry entries[] = {
+		{"_Atomic", SPECIFIER_ATOMIC},
 		{"__const", SPECIFIER_CONST},
 		{"__const__", SPECIFIER_CONST},
 		{"__extension__", SPECIFIER_EXTENSION},
@@ -74,6 +75,7 @@ const char* CanonicalSpecifier(SpecifierKind kind)
 {
 	switch (kind)
 	{
+	case SPECIFIER_ATOMIC: return "_Atomic";
 	case SPECIFIER_CONST: return "const";
 	case SPECIFIER_INLINE: return "inline";
 	case SPECIFIER_INT128: return "__int128_t";
@@ -94,7 +96,8 @@ bool IsDeclarationOnlySpecifier(SpecifierKind kind)
 
 bool IsTypeSpecifier(SpecifierKind kind)
 {
-	return kind == SPECIFIER_INT128 || kind == SPECIFIER_UINT128 ||
+	return kind == SPECIFIER_ATOMIC || kind == SPECIFIER_INT128 ||
+		kind == SPECIFIER_UINT128 ||
 		kind == SPECIFIER_SIGNED;
 }
 

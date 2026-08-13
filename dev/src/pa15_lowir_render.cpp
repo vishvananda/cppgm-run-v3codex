@@ -203,6 +203,13 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 		output << ' ';
 		WriteOperand(output, instruction.first, program, function);
 		break;
+	case Instruction::ATOMIC_LOAD:
+		output << "%t" << instruction.dest << " = atomic_load ";
+		WriteType(output, instruction.type);
+		output << ' ';
+		WriteOperand(output, instruction.first, program, function);
+		output << ", " << static_cast<unsigned>(instruction.atomic_order);
+		break;
 	case Instruction::STORE:
 		output << "store ";
 		WriteType(output, instruction.type);
@@ -210,6 +217,24 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 		WriteOperand(output, instruction.first, program, function);
 		output << ", ";
 		WriteOperand(output, instruction.second, program, function);
+		break;
+	case Instruction::ATOMIC_STORE:
+		output << "atomic_store ";
+		WriteType(output, instruction.type);
+		output << ' ';
+		WriteOperand(output, instruction.first, program, function);
+		output << ", ";
+		WriteOperand(output, instruction.second, program, function);
+		output << ", " << static_cast<unsigned>(instruction.atomic_order);
+		break;
+	case Instruction::ATOMIC_EXCHANGE:
+		output << "%t" << instruction.dest << " = atomic_exchange ";
+		WriteType(output, instruction.type);
+		output << ' ';
+		WriteOperand(output, instruction.first, program, function);
+		output << ", ";
+		WriteOperand(output, instruction.second, program, function);
+		output << ", " << static_cast<unsigned>(instruction.atomic_order);
 		break;
 	case Instruction::COPY_OBJECT:
 		if (instruction.type.kind != LOW_OBJECT)
@@ -274,6 +299,33 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 		WriteType(output, instruction.source_type);
 		output << ' ';
 		WriteOperand(output, instruction.first, program, function);
+		break;
+	case Instruction::ATOMIC_ADD_FETCH:
+		output << "%t" << instruction.dest << " = atomic_add_fetch ";
+		WriteType(output, instruction.type);
+		output << ' ';
+		WriteOperand(output, instruction.first, program, function);
+		output << ", ";
+		WriteOperand(output, instruction.second, program, function);
+		output << ", " << static_cast<unsigned>(instruction.atomic_order);
+		break;
+	case Instruction::ATOMIC_COMPARE_EXCHANGE:
+		output << "%t" << instruction.dest << " = atomic_compare_exchange ";
+		WriteType(output, instruction.type);
+		output << ' ';
+		WriteOperand(output, instruction.first, program, function);
+		output << ", ";
+		WriteOperand(output, instruction.second, program, function);
+		output << ", ";
+		WriteOperand(output, instruction.third, program, function);
+		output << ", " << static_cast<unsigned>(instruction.atomic_order)
+			<< ", " << static_cast<unsigned>(instruction.atomic_failure_order);
+		break;
+	case Instruction::ATOMIC_THREAD_FENCE:
+	case Instruction::ATOMIC_SIGNAL_FENCE:
+		output << (instruction.kind == Instruction::ATOMIC_THREAD_FENCE ?
+			"atomic_thread_fence " : "atomic_signal_fence ")
+			<< static_cast<unsigned>(instruction.atomic_order);
 		break;
 	case Instruction::STACK_ALLOC:
 		output << "%t" << instruction.dest << " = stack_alloc ";

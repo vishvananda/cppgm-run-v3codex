@@ -167,7 +167,8 @@ enum CvFlags
 {
 	CV_NONE = 0,
 	CV_CONST = 1,
-	CV_VOLATILE = 2
+	CV_VOLATILE = 2,
+	CV_ATOMIC = 4
 };
 
 enum FunctionRefQualifier
@@ -222,6 +223,7 @@ public:
 		bool variadic, std::uint8_t cv = CV_NONE,
 		std::uint8_t ref_qualifier = FUNCTION_REF_NONE);
 	TypeId RemoveTopCv(TypeId type) const;
+	bool IsAtomic(TypeId type) const;
 	bool IsFunction(TypeId type) const;
 	bool IsReference(TypeId type) const;
 	bool IsNamed(TypeId type) const;

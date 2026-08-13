@@ -985,6 +985,12 @@ private:
 	bool TryAnalyzeMemoryIntrinsicCall(const std::string& spelling,
 		ScopeId scope, const std::vector<NodeId>& argument_syntax,
 		TypeId target, ExpressionInfo* result);
+	bool TryAnalyzeAtomicIntrinsicCall(const std::string& spelling,
+		ScopeId scope, const std::vector<NodeId>& argument_syntax,
+		TypeId target, ExpressionInfo* result);
+	ExpressionInfo AnalyzeAtomicOrderArgument(NodeId syntax, ScopeId scope);
+	TypeId AtomicPointerValueType(const ExpressionInfo& pointer,
+		bool require_atomic) const;
 	ExpressionInfo BuildBuiltinIntrinsicCall(BuiltinFunctionKind kind,
 		const std::vector<ExpressionInfo>& arguments, TypeId result_type,
 		TypeId target);
@@ -996,6 +1002,10 @@ private:
 		hosted_builtin::MemoryIntrinsicKind kind,
 		const std::vector<ExpressionInfo>& arguments, TypeId result_type,
 		TypeId target);
+	ExpressionInfo BuildAtomicIntrinsicCall(
+		hosted_builtin::AtomicIntrinsicKind kind,
+		const std::vector<ExpressionInfo>& arguments, TypeId value_type,
+		TypeId result_type, TypeId target);
 	TypeId ResolveArrowOperand(ExpressionInfo* object, ScopeId scope,
 		NodeId object_syntax);
 	bool FunctionalCastPrecedesFunctions(const std::string& spelling,

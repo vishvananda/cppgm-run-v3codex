@@ -73,7 +73,8 @@ bool IsSupportedFeatureProbe(const std::string& value)
 bool IsSupportedBuiltinProbe(const std::string& value)
 {
 	if (hosted_builtin::FindIntegerIntrinsic(value) ||
-		hosted_builtin::FindMemoryIntrinsic(value)) return true;
+		hosted_builtin::FindMemoryIntrinsic(value) ||
+		hosted_builtin::FindAtomicIntrinsic(value)) return true;
 	static const char* const entries[] = {
 		"__integer_pack",
 		"__is_trivially_destructible",

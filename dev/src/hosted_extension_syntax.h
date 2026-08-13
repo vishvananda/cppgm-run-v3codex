@@ -126,6 +126,22 @@ protected:
 		const std::size_t source = parser.position_++;
 		*consumed = true;
 		if (kind == SPECIFIER_EXTENSION) return true;
+		if (kind == SPECIFIER_ATOMIC)
+		{
+			if (!parser.Match(OP_LPAREN))
+				throw parser.Error("expected _Atomic type operand");
+			const NodeId atomic = parser.arena_.Make(
+				"atomic-type-specifier", "_Atomic");
+			if (!parser.ParseTypeId(atomic))
+				throw parser.Error("expected _Atomic type operand");
+			parser.Expect(OP_RPAREN);
+			parser.arena_.Add(sequence, atomic);
+			if (first_type && first_type->empty())
+				*first_type = parser.Spelling(source);
+			*saw_type = true;
+			*saw_user_type = true;
+			return true;
+		}
 		const char* const canonical = CanonicalSpecifier(kind);
 		const char* const tag = for_type_id && IsCvSpecifier(kind) ?
 			"cv-qualifier" : for_type_id ? "type-specifier" : "decl-specifier";

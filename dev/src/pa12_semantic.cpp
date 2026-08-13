@@ -343,6 +343,8 @@ bool SemanticAnalyzer::QualificationConversion(TypeId source,
 		return false;
 	for (std::size_t i = 0; i < source_cv.size(); ++i)
 	{
+		if (((source_cv[i] ^ target_cv[i]) & CV_ATOMIC) != 0)
+			return false;
 		if ((source_cv[i] & ~target_cv[i]) != 0) return false;
 		if (i > 0 && source_cv[i] != target_cv[i])
 			for (std::size_t j = 0; j < i; ++j)
@@ -375,6 +377,8 @@ ConversionRank SemanticAnalyzer::Conversion(TypeId source,
 				source_top.cv : CV_NONE;
 			const std::uint8_t target_cv = target_top.kind == TYPE_QUALIFIED ?
 				target_top.cv : CV_NONE;
+			if (((source_cv ^ target_cv) & CV_ATOMIC) != 0)
+				return CONVERSION_INVALID;
 			if ((source_cv & ~target_cv) != 0) return CONVERSION_INVALID;
 			// Same-type temporary materialization changes representation, not
 			// the exact-match rank of a const lvalue-reference binding.
@@ -450,7 +454,8 @@ ConversionRank SemanticAnalyzer::Conversion(TypeId source,
 				source_cv.cv : CV_NONE;
 			const std::uint8_t tcv = target_cv.kind == TYPE_QUALIFIED ?
 				target_cv.cv : CV_NONE;
-			if ((scv & ~tcv) == 0) return CONVERSION_DERIVED_TO_BASE;
+			if (((scv ^ tcv) & CV_ATOMIC) == 0 &&
+				(scv & ~tcv) == 0) return CONVERSION_DERIVED_TO_BASE;
 		}
 		TypeId target_pointee = program_->types.RemoveTopCv(target_pointer.child);
 		const TypeRecord pointee = program_->types.Get(target_pointee);

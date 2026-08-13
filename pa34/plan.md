@@ -13,24 +13,18 @@ linear lowering/allocation, and no host compiler fallback.
 ## Current Failure Map
 
 - Preprocess: 0/45 failures; this boundary is complete.
-- Compile: 134/281 failures: 50 extension grammar/type cases (parser/type system), 7
-  hosted intrinsic/predefined-expression cases (semantic/lowering), 41
+- Compile: 122/281 failures: 45 extension grammar/type cases (parser/type system), 41
   trait/layout/constant cases (semantic facts), and 36 template lookup/demand cases.
-  Tier counts are 46/45/43 for tiers 500/600/700; all negative tests remain rejected.
 - Run: 29/41 failures; 27 stop in the compile pipeline and 2 expose linked
-  backend/lifetime or forced-inline behavior.
+  backend/lifetime or forced-inline behavior. PA34 is 216/367 overall.
 
 ## Active Checkpoint
 
-Implement the 12 failing C11/GNU atomic and sync compile cases. The parser/type system
-will own `_Atomic` syntax, canonical atomic qualification, size, and alignment; a sorted
-operation registry will own spellings, compact IDs, arity, order constraints, and
-read/write class. Semantics will convert typed operands, validate constant memory
-orders, and publish compact operation facts; typed LowIR/native lowering will consume
-those facts without reparsing names. This applies `spec.md` §§2, 3, and 6-10. Lookup is
-O(log A), checking O(arity), type interning amortized O(1), and each lowered operation
-O(1). Validate all 12 focused compile tests, representative generated atomic behavior,
-PA34 above 204/367, PA1-33, audit, and 1/8/64 operation scaling.
+No implementation is in flight. The next turn will refresh diagnostics and select a
+stable boundary from the remaining 45 extension grammar/type cases, bundling only
+features with one parser/type owner and data flow. The completed atomic boundary leaves
+compact qualifier and operation IDs for later library/header work without enabling
+unrelated PA35 behavior.
 
 ## Performance Evidence
 
@@ -45,6 +39,11 @@ it emitted 20/160/1,280 LowIR and 37/296/2,368 MIR instructions exactly proporti
 source bytes were 202/1,616/12,982 and semantic nodes 34/265/2,113. The 64-function
 object took 0.04 s and 12,220 KiB RSS, supporting O(calls) checking and lowering.
 
+The atomic bitwise probe used three CAS-lowered updates per function. At 1/8/64
+functions it emitted 38/304/2,432 LowIR and 89/712/5,696 MIR instructions exactly
+proportionally; the 64-function object took 0.04 s and 16,464 KiB RSS. This supports
+O(calls) checking/lowering; runtime retry work remains contention-dependent only.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result | Validation |
@@ -54,3 +53,4 @@ object took 0.04 s and 12,220 KiB RSS, supporting O(calls) checking and lowering
 | Hosted annotations | GNU aliases/int128 and declaration/type-id attributes; +20 | PA34 187/367; negatives and prior/audit pass |
 | Integer bit intrinsics | Compact registry IDs, constexpr semantics, typed bit-network lowering, and native swaps; +8 | focused 8/8; PA34 195/367; prior/audit pass |
 | Memory/string intrinsics | Shared probe/semantic registry, typed controls, identity/no-op lowering, effect metadata, staged ABI preservation, and libc object symbols; +9 | focused 8/8 plus GNU alignof; linked effects/symbols exact; PA34 204/367; PA1-33 4387/4387; audit pass |
+| C11/GNU atomic and sync | Canonical `_Atomic`, 16-byte alignment, compact registry/typed operands, first-class atomic LowIR, packed class bridge, and bounded bitwise CAS graphs; +12 | focused 12/12; scalar/class linked behavior; exact 1/8/64 scaling; PA34 216/367; PA1-33 4387/4387; audit pass |

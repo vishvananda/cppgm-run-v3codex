@@ -122,6 +122,7 @@ struct DumpNode
 	TypeId type, operand_type;
 	ValueCategory category;
 	LogicalOperation logical_operation;
+	hosted_builtin::AtomicIntrinsicKind hosted_atomic_intrinsic;
 	NameId text;
 	BindingId binding, object_binding, selected_binding;
 	std::int64_t constant_value;
@@ -203,6 +204,7 @@ struct DumpNode
 	explicit DumpNode(DumpKind value)
 		: kind(value), type(kNoType), operand_type(kNoType),
 		  category(VALUE_NONE), logical_operation(LOGICAL_OPERATION_NONE),
+		  hosted_atomic_intrinsic(hosted_builtin::ATOMIC_INTRINSIC_NONE),
 		  text(0), binding(kNoBinding),
 		  object_binding(kNoBinding), selected_binding(kNoBinding),
 		  constant_value(0), dynamic_cast_hint(-1), array_count(0), storage_size(0),

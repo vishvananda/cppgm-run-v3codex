@@ -665,6 +665,15 @@ SpecInfo TypeAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId child = arena_->EdgeChild(edge);
+		if (arena_->IsTag(child, "atomic-type-specifier"))
+		{
+			const TypeId underlying = BuildTypeId(
+				FirstSemanticChild(child), scope);
+			if (program_->types.IsAtomic(underlying))
+				throw std::runtime_error("nested _Atomic type");
+			result.type = program_->types.Qualify(underlying, CV_ATOMIC);
+			continue;
+		}
 		const bool class_specifier = arena_->IsTag(child, "class-specifier");
 		const bool class_forward =
 			arena_->IsTag(child, "class-forward-declaration");

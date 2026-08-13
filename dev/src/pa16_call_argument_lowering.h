@@ -219,13 +219,386 @@ protected:
 		return true;
 	}
 
+	LowType AtomicTransferType(const DumpNode& record) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		const LowType value = derived.LowerExpressionType(record.operand_type);
+		if (value.kind != LOW_OBJECT) return value;
+		switch (value.width)
+		{
+		case 8: return LowU8();
+		case 16: return LowU16();
+		case 32: return LowU32();
+		case 64: return LowU64();
+		case 128: return LowU128();
+		default:
+			throw std::runtime_error(
+				"atomic object width has no native LowIR representation");
+		}
+	}
+
+	std::uint8_t AtomicOrderAt(const NodeChildren& children,
+		std::size_t index, std::uint8_t fallback) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		if (index >= children.size()) return fallback;
+		const DumpNode& order = derived.arena_.nodes[children[index]];
+		if (!order.constant || order.constant_value < 0 ||
+			order.constant_value > 5)
+			throw std::logic_error("atomic order lost its semantic constant fact");
+		return static_cast<std::uint8_t>(order.constant_value);
+	}
+
+	std::uint8_t AtomicFailureOrder(std::uint8_t success) const
+	{
+		return success == 3 ? 0 : success == 4 ? 2 : success;
+	}
+
+	Operand LowerAtomicValue(std::uint32_t node, const LowType& transfer)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const DumpNode& source_node = derived.arena_.nodes[node];
+		const TypeId source_type = source_node.kind == DUMP_CONSTRUCTOR_ACTION ?
+			source_node.operand_type : source_node.type;
+		if (!derived.IsClassObjectType(source_type))
+			return derived.LowerConvertedValue(node, transfer, false);
+		if (source_node.kind == DUMP_CLASS_VALUE_TRANSFER ||
+			source_node.kind == DUMP_CONSTRUCTOR_ACTION ||
+			source_node.kind == DUMP_AGGREGATE_CONSTRUCTION_ACTION)
+		{
+			const LowType object = derived.LowerStorageType(source_type);
+			const Operand slot(derived.CreateGeneratedSlot("atomic_arg", object),
+				object);
+			const Operand address = derived.AddressOfStorage(slot);
+			if (source_node.kind == DUMP_CLASS_VALUE_TRANSFER)
+				derived.LowerClassValueTransfer(node, address);
+			else if (source_node.kind == DUMP_AGGREGATE_CONSTRUCTION_ACTION)
+				derived.LowerAggregateConstructionAction(node, address);
+			else
+			{
+				if (source_node.value_initialization)
+					derived.EmitZeroInitialization(source_type, address);
+				derived.LowerConstructorAction(node, address);
+			}
+			return derived.LoadStorage(address, transfer);
+		}
+		const Operand source = derived.LowerClassTransferSource(node);
+		if (source.type.kind == LOW_PTR)
+			return derived.LoadStorage(source, transfer);
+		if (source.type.kind != LOW_OBJECT)
+			throw std::logic_error("atomic class value has invalid storage form");
+		const Operand slot(derived.CreateGeneratedSlot(
+			"atomic_arg", source.type), source.type);
+		const Operand address = derived.AddressOfStorage(slot);
+		derived.EmitClassObjectCopy(source_type, source, address);
+		return derived.LoadStorage(address, transfer);
+	}
+
+	Operand RepackAtomicResult(std::uint32_t node, const DumpNode& record,
+		const Operand& value, const LowType& transfer)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const LowType result_type = derived.LowerExpressionType(record.type);
+		if (result_type.kind != LOW_OBJECT)
+			return derived.Convert(value, result_type);
+		const Operand slot(derived.CreateGeneratedSlot(
+			"atomic_result", result_type), result_type);
+		Instruction store(Instruction::STORE);
+		store.type = transfer;
+		store.first = value;
+		store.second = slot;
+		derived.Emit(store);
+		(void)node;
+		return derived.AddressOfStorage(slot);
+	}
+
+	Operand EmitAtomicLoad(const Operand& pointer, const LowType& type,
+		std::uint8_t order)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const Operand result = derived.Temp(type);
+		Instruction load(Instruction::ATOMIC_LOAD);
+		load.dest = result.id;
+		load.type = type;
+		load.first = pointer;
+		load.atomic_order = order;
+		derived.Emit(load);
+		return result;
+	}
+
+	void EmitAtomicStore(const Operand& pointer, const Operand& value,
+		const LowType& type, std::uint8_t order)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		Instruction store(Instruction::ATOMIC_STORE);
+		store.type = type;
+		store.first = value;
+		store.second = pointer;
+		store.atomic_order = order;
+		derived.Emit(store);
+	}
+
+	Operand EmitAtomicExchange(const Operand& pointer, const Operand& value,
+		const LowType& type, std::uint8_t order)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const Operand result = derived.Temp(type);
+		Instruction exchange(Instruction::ATOMIC_EXCHANGE);
+		exchange.dest = result.id;
+		exchange.type = type;
+		exchange.first = pointer;
+		exchange.second = value;
+		exchange.atomic_order = order;
+		derived.Emit(exchange);
+		return result;
+	}
+
+	Operand EmitAtomicAddFetch(const Operand& pointer, const Operand& delta,
+		const LowType& type, std::uint8_t order)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const Operand result = derived.Temp(type);
+		Instruction update(Instruction::ATOMIC_ADD_FETCH);
+		update.dest = result.id;
+		update.type = type;
+		update.first = pointer;
+		update.second = delta;
+		update.atomic_order = order;
+		derived.Emit(update);
+		return result;
+	}
+
+	Operand EmitAtomicCompareExchange(const Operand& pointer,
+		const Operand& expected, const Operand& desired, const LowType& type,
+		std::uint8_t success_order, std::uint8_t failure_order)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const Operand result = derived.Temp(LowI64());
+		Instruction compare(Instruction::ATOMIC_COMPARE_EXCHANGE);
+		compare.dest = result.id;
+		compare.type = type;
+		compare.first = pointer;
+		compare.second = expected;
+		compare.third = desired;
+		compare.atomic_order = success_order;
+		compare.atomic_failure_order = failure_order;
+		derived.Emit(compare);
+		return result;
+	}
+
+	Operand AtomicTruthValue(const Operand& value, const LowType& type)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const Operand result = derived.Temp(LowU8());
+		Instruction compare(Instruction::CMP);
+		compare.dest = result.id;
+		compare.op = LOW_OP_NE;
+		compare.type = type;
+		compare.first = value;
+		compare.second = Operand(0, type);
+		derived.Emit(compare);
+		return result;
+	}
+
+	Operand LowerAtomicCasFetch(std::uint32_t node, const Operand& pointer,
+		const Operand& argument, const LowType& type, LowOperation operation,
+		std::uint8_t order, bool result_is_new)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const Operand expected_slot(derived.CreateGeneratedSlot(
+			"atomic_expected", type), type);
+		const Operand initial = EmitAtomicLoad(pointer, type, 0);
+		Instruction initialize(Instruction::STORE);
+		initialize.type = type;
+		initialize.first = initial;
+		initialize.second = expected_slot;
+		derived.Emit(initialize);
+		const BlockId loop = derived.AddBlock(derived.NewLabel("atomic_retry"));
+		const BlockId done = derived.AddBlock(derived.NewLabel("atomic_done"));
+		derived.EmitJump(loop);
+		derived.SelectBlock(loop);
+		const Operand expected = derived.LoadStorage(expected_slot, type);
+		const Operand desired = EmitIntegerIntrinsicBinary(
+			operation, expected, argument, type);
+		const Operand exchanged = EmitAtomicCompareExchange(pointer,
+			derived.AddressOfStorage(expected_slot), desired, type,
+			order, AtomicFailureOrder(order));
+		derived.EmitBranch(exchanged, done, loop);
+		derived.SelectBlock(done);
+		const Operand old = derived.LoadStorage(expected_slot, type);
+		(void)node;
+		return result_is_new ? desired : old;
+	}
+
+	bool TryLowerAtomicIntrinsicCall(const DumpNode& record,
+		const NodeChildren& children, Operand* result)
+	{
+		using namespace hosted_builtin;
+		Derived& derived = static_cast<Derived&>(*this);
+		if (record.hosted_atomic_intrinsic == ATOMIC_INTRINSIC_NONE)
+			return false;
+		const AtomicIntrinsic& intrinsic =
+			GetAtomicIntrinsic(record.hosted_atomic_intrinsic);
+		if (children.size() != intrinsic.arity + 1)
+			throw std::logic_error("invalid lowered atomic intrinsic arity");
+		if (intrinsic.shape == ATOMIC_SHAPE_FENCE)
+		{
+			Instruction fence(
+				record.hosted_atomic_intrinsic == ATOMIC_INTRINSIC_SIGNAL_FENCE ||
+				record.hosted_atomic_intrinsic == ATOMIC_INTRINSIC_C11_SIGNAL_FENCE ?
+					Instruction::ATOMIC_SIGNAL_FENCE :
+					Instruction::ATOMIC_THREAD_FENCE);
+			fence.atomic_order = AtomicOrderAt(children, 1, 5);
+			derived.Emit(fence);
+			*result = Operand(0, LowVoid());
+			return true;
+		}
+		if (children.size() < 2)
+			throw std::logic_error("atomic intrinsic has no object argument");
+		const LowType type = AtomicTransferType(record);
+		const Operand pointer = derived.LowerValue(children[1], LowPtr());
+		const std::uint8_t default_order =
+			record.hosted_atomic_intrinsic == ATOMIC_INTRINSIC_SYNC_LOCK_RELEASE ?
+				3 : record.hosted_atomic_intrinsic ==
+					ATOMIC_INTRINSIC_SYNC_LOCK_TEST_AND_SET ? 2 : 5;
+		switch (intrinsic.shape)
+		{
+		case ATOMIC_SHAPE_LOAD:
+		{
+			const Operand loaded = EmitAtomicLoad(pointer, type,
+				AtomicOrderAt(children, 2, default_order));
+			*result = RepackAtomicResult(children[0], record, loaded, type);
+			return true;
+		}
+		case ATOMIC_SHAPE_LOAD_OUT:
+		{
+			const Operand output = derived.LowerValue(children[2], LowPtr());
+			const Operand loaded = EmitAtomicLoad(pointer, type,
+				AtomicOrderAt(children, 3, default_order));
+			Instruction store(Instruction::STORE);
+			store.type = type;
+			store.first = loaded;
+			store.second = output;
+			derived.Emit(store);
+			*result = Operand(0, LowVoid());
+			return true;
+		}
+		case ATOMIC_SHAPE_STORE:
+		{
+			const Operand value = LowerAtomicValue(children[2], type);
+			EmitAtomicStore(pointer, value, type,
+				AtomicOrderAt(children, 3, 0));
+			*result = Operand(0, LowVoid());
+			return true;
+		}
+		case ATOMIC_SHAPE_STORE_FROM:
+		{
+			const Operand input = derived.LowerValue(children[2], LowPtr());
+			const Operand value = derived.LoadStorage(input, type);
+			EmitAtomicStore(pointer, value, type,
+				AtomicOrderAt(children, 3, default_order));
+			*result = Operand(0, LowVoid());
+			return true;
+		}
+		case ATOMIC_SHAPE_EXCHANGE:
+		{
+			const Operand value = LowerAtomicValue(children[2], type);
+			const Operand old = EmitAtomicExchange(pointer, value, type,
+				AtomicOrderAt(children, 3, default_order));
+			*result = RepackAtomicResult(children[0], record, old, type);
+			return true;
+		}
+		case ATOMIC_SHAPE_COMPARE_EXCHANGE:
+		{
+			const Operand expected = derived.LowerValue(children[2], LowPtr());
+			const Operand desired = LowerAtomicValue(children[3], type);
+			std::size_t success_index = 4;
+			if (record.hosted_atomic_intrinsic ==
+				ATOMIC_INTRINSIC_COMPARE_EXCHANGE_N)
+			{
+				(void)derived.LowerValue(children[4], LowU8());
+				success_index = 5;
+			}
+			const Operand exchanged = EmitAtomicCompareExchange(pointer,
+				expected, desired, type,
+				AtomicOrderAt(children, success_index, default_order),
+				AtomicOrderAt(children, success_index + 1, 0));
+			*result = derived.Convert(exchanged,
+				derived.LowerExpressionType(record.type));
+			return true;
+		}
+		case ATOMIC_SHAPE_SYNC_COMPARE_EXCHANGE:
+		{
+			const Operand expected_value = LowerAtomicValue(children[2], type);
+			const Operand desired = LowerAtomicValue(children[3], type);
+			const Operand expected(derived.CreateGeneratedSlot(
+				"atomic_expected", type), type);
+			Instruction initialize(Instruction::STORE);
+			initialize.type = type;
+			initialize.first = expected_value;
+			initialize.second = expected;
+			derived.Emit(initialize);
+			(void)EmitAtomicCompareExchange(pointer,
+				derived.AddressOfStorage(expected), desired, type, 5, 5);
+			*result = RepackAtomicResult(children[0], record,
+				derived.LoadStorage(expected, type), type);
+			return true;
+		}
+		case ATOMIC_SHAPE_FETCH_UPDATE:
+		{
+			Operand argument = LowerAtomicValue(children[2], type);
+			const std::uint8_t order = AtomicOrderAt(children, 3, default_order);
+			Operand value;
+			if (intrinsic.update == ATOMIC_UPDATE_ADD ||
+				intrinsic.update == ATOMIC_UPDATE_SUB)
+			{
+				if (intrinsic.update == ATOMIC_UPDATE_SUB)
+					argument = EmitIntegerIntrinsicUnary(LOW_OP_NEG, argument, type);
+				const Operand updated = EmitAtomicAddFetch(
+					pointer, argument, type, order);
+				value = intrinsic.result_is_new ? updated :
+					EmitIntegerIntrinsicBinary(
+						LOW_OP_SUB, updated, argument, type);
+			}
+			else
+			{
+				const LowOperation operation =
+					intrinsic.update == ATOMIC_UPDATE_AND ? LOW_OP_AND :
+					intrinsic.update == ATOMIC_UPDATE_OR ? LOW_OP_OR : LOW_OP_XOR;
+				value = LowerAtomicCasFetch(children[0], pointer, argument, type,
+					operation, order, intrinsic.result_is_new);
+			}
+			*result = RepackAtomicResult(children[0], record, value, type);
+			return true;
+		}
+		case ATOMIC_SHAPE_TEST_AND_SET:
+		{
+			const Operand old = EmitAtomicExchange(pointer, Operand(1, type), type,
+				AtomicOrderAt(children, 2, default_order));
+			*result = derived.Convert(AtomicTruthValue(old, type),
+				derived.LowerExpressionType(record.type));
+			return true;
+		}
+		case ATOMIC_SHAPE_CLEAR:
+			EmitAtomicStore(pointer, Operand(0, type), type,
+				AtomicOrderAt(children, 2, default_order));
+			*result = Operand(0, LowVoid());
+			return true;
+		case ATOMIC_SHAPE_LOCK_FREE:
+		case ATOMIC_SHAPE_FENCE: break;
+		}
+		throw std::logic_error("unhandled atomic intrinsic lowering shape");
+	}
+
 	bool TryLowerCompilerBuiltinCall(const DumpNode& record,
 		const NodeChildren& children, Operand* result)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (children.empty()) return false;
 		const DumpNode& callee = derived.arena_.nodes[children[0]];
-		if (callee.kind != DUMP_CALLEE || callee.binding == kNoBinding ||
+		if (callee.kind != DUMP_CALLEE) return false;
+		if (TryLowerAtomicIntrinsicCall(record, children, result)) return true;
+		if (callee.binding == kNoBinding ||
 			callee.binding >= derived.program_.bindings.size()) return false;
 		const BuiltinFunctionKind kind =
 			derived.program_.bindings[callee.binding].builtin_function;

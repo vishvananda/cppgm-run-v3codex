@@ -707,12 +707,20 @@ private:
 	{
 		if (generated_slots_[node] != kNoLowId)
 			return generated_slots_[node];
-		generated_slots_[node] = static_cast<SlotId>(function_->slots.size());
+		generated_slots_[node] = CreateGeneratedSlot(prefix, type);
+		return generated_slots_[node];
+	}
+
+	SlotId CreateGeneratedSlot(const std::string& prefix, const LowType& type)
+	{
+		if (function_->slots.size() >= kNoLowId)
+			throw std::runtime_error("too many PA15 LowIR slots");
+		const SlotId result = static_cast<SlotId>(function_->slots.size());
 		Slot slot;
 		slot.name = GeneratedSlotName(prefix);
 		slot.type = type;
 		function_->slots.push_back(slot);
-		return generated_slots_[node];
+		return result;
 	}
 
 	void CollectSourceNames(std::uint32_t node)

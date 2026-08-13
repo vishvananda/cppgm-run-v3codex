@@ -10,6 +10,7 @@ namespace hosted_extension
 enum SpecifierKind
 {
 	SPECIFIER_NONE,
+	SPECIFIER_ATOMIC,
 	SPECIFIER_CONST,
 	SPECIFIER_EXTENSION,
 	SPECIFIER_INLINE,

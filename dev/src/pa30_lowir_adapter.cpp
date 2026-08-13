@@ -222,6 +222,7 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 	if (source.op != LOW_OP_NONE) target.op = LowOperationText(source.op);
 	target.first = AdaptOperand(source.first, program, function);
 	target.second = AdaptOperand(source.second, program, function);
+	target.third = AdaptOperand(source.third, program, function);
 	switch (source.projection)
 	{
 	case INDEX_PROJECTION_NONE: break;
@@ -238,7 +239,22 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 	case Instruction::COPY: target.kind = lowir_model::Instruction::IK_COPY; break;
 	case Instruction::ADDR: target.kind = lowir_model::Instruction::IK_ADDR; break;
 	case Instruction::LOAD: target.kind = lowir_model::Instruction::IK_LOAD; break;
+	case Instruction::ATOMIC_LOAD:
+		target.kind = lowir_model::Instruction::IK_ATOMIC_LOAD;
+		target.args.push_back(AdaptOperand(Operand(source.atomic_order, LowI32()),
+			program, function));
+		break;
 	case Instruction::STORE: target.kind = lowir_model::Instruction::IK_STORE; break;
+	case Instruction::ATOMIC_STORE:
+		target.kind = lowir_model::Instruction::IK_ATOMIC_STORE;
+		target.args.push_back(AdaptOperand(Operand(source.atomic_order, LowI32()),
+			program, function));
+		break;
+	case Instruction::ATOMIC_EXCHANGE:
+		target.kind = lowir_model::Instruction::IK_ATOMIC_EXCHANGE;
+		target.args.push_back(AdaptOperand(Operand(source.atomic_order, LowI32()),
+			program, function));
+		break;
 	case Instruction::COPY_OBJECT:
 		target.kind = lowir_model::Instruction::IK_COPYOBJ;
 		target.byte_count = static_cast<std::size_t>(source.type.width / 8);
@@ -254,6 +270,26 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 	case Instruction::BINARY: target.kind = lowir_model::Instruction::IK_BINARY; break;
 	case Instruction::CMP: target.kind = lowir_model::Instruction::IK_CMP; break;
 	case Instruction::CONVERT: target.kind = lowir_model::Instruction::IK_CONVERT; break;
+	case Instruction::ATOMIC_ADD_FETCH:
+		target.kind = lowir_model::Instruction::IK_ATOMIC_ADD_FETCH;
+		target.args.push_back(AdaptOperand(Operand(source.atomic_order, LowI32()),
+			program, function));
+		break;
+	case Instruction::ATOMIC_COMPARE_EXCHANGE:
+		target.kind = lowir_model::Instruction::IK_ATOMIC_COMPARE_EXCHANGE;
+		target.args.push_back(AdaptOperand(Operand(source.atomic_order, LowI32()),
+			program, function));
+		target.args.push_back(AdaptOperand(
+			Operand(source.atomic_failure_order, LowI32()), program, function));
+		break;
+	case Instruction::ATOMIC_THREAD_FENCE:
+	case Instruction::ATOMIC_SIGNAL_FENCE:
+		target.kind = source.kind == Instruction::ATOMIC_THREAD_FENCE ?
+			lowir_model::Instruction::IK_ATOMIC_THREAD_FENCE :
+			lowir_model::Instruction::IK_ATOMIC_SIGNAL_FENCE;
+		target.first = AdaptOperand(Operand(source.atomic_order, LowI32()),
+			program, function);
+		break;
 	case Instruction::STACK_ALLOC:
 		target.kind = lowir_model::Instruction::IK_STACK_ALLOC; break;
 	case Instruction::VA_START:

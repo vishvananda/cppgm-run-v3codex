@@ -233,7 +233,10 @@ struct Instruction
 		COPY,
 		ADDR,
 		LOAD,
+		ATOMIC_LOAD,
 		STORE,
+		ATOMIC_STORE,
+		ATOMIC_EXCHANGE,
 		COPY_OBJECT,
 		ZERO_OBJECT,
 		INDEX,
@@ -241,6 +244,10 @@ struct Instruction
 		BINARY,
 		CMP,
 		CONVERT,
+		ATOMIC_ADD_FETCH,
+		ATOMIC_COMPARE_EXCHANGE,
+		ATOMIC_THREAD_FENCE,
+		ATOMIC_SIGNAL_FENCE,
 		STACK_ALLOC,
 		VA_START,
 		VA_ARG,
@@ -264,6 +271,7 @@ struct Instruction
 	LowType source_type;
 	Operand first;
 	Operand second;
+	Operand third;
 	TempId dest;
 	std::uint32_t extra_first;
 	std::uint32_t extra_count;
@@ -273,13 +281,16 @@ struct Instruction
 	Kind kind;
 	LowOperation op;
 	IndexProjection projection;
+	std::uint8_t atomic_order;
+	std::uint8_t atomic_failure_order;
 	bool indirect;
 
 	explicit Instruction(Kind kind_value)
 		: dest(kNoLowId), extra_first(kNoLowId), extra_count(0),
 		  virtual_base_argument_count(0),
 		  target(kNoLowId), alternate(kNoLowId), kind(kind_value),
-		  op(LOW_OP_NONE), projection(INDEX_PROJECTION_NONE), indirect(false) {}
+		  op(LOW_OP_NONE), projection(INDEX_PROJECTION_NONE), atomic_order(0),
+		  atomic_failure_order(0), indirect(false) {}
 };
 
 inline bool IsTerminator(const Instruction& instruction)
