@@ -1042,7 +1042,8 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		ValidateFunctionRefQualifier(function);
 		ConfigureVirtualFunction(function, spec, declarator, kNoNode);
 		info.definition_body =
-			FindChild(node, "compound-statement");
+			FunctionDefinitionPart(node, "compound-statement");
+		info.function_try_block = FindChild(node, "function-try-block");
 		info.deferred = true;
 		info.definition_in_class = true;
 		ConfigureAssignmentSpecialMember(function, kNoNode);
@@ -1402,7 +1403,10 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 			info.defaulted_destructor || defaulted;
 		info.deleted_destructor = info.deleted_destructor || deleted;
 		if (source_definition)
-			info.definition_body = FindChild(node, "compound-statement");
+			info.definition_body =
+				FunctionDefinitionPart(node, "compound-statement");
+		if (source_definition)
+			info.function_try_block = FindChild(node, "function-try-block");
 		info.deferred = !info.deleted_destructor;
 		if (entity_destructor_by_entity_.size() <= entity)
 			entity_destructor_by_entity_.resize(
@@ -1476,8 +1480,10 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 		info.constexpr_function || binding.inline_function);
 	if (source_definition)
 	{
-		info.definition_body = FindChild(node, "compound-statement");
-		info.constructor_initializer = FindChild(node, "ctor-initializer");
+		info.definition_body = FunctionDefinitionPart(node, "compound-statement");
+		info.constructor_initializer =
+			FunctionDefinitionPart(node, "ctor-initializer");
+		info.function_try_block = FindChild(node, "function-try-block");
 	}
 	info.deferred = !info.deleted_constructor;
 
@@ -2907,9 +2913,17 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 			program_->bindings[info.binding].canonical;
 		if (info.constructor)
 		{
+			std::uint32_t constructor_parent = function;
+			std::uint32_t function_try = kNoDumpEdge;
+			if (info.function_try_block != kNoNode)
+			{
+				function_try = MakeDump(DUMP_TRY_STATEMENT);
+				dump_.Add(function, function_try);
+				constructor_parent = function_try;
+			}
 			const std::uint32_t constructor_body =
 				MakeDump(DUMP_COMPOUND_STATEMENT);
-			dump_.Add(function, constructor_body);
+			dump_.Add(constructor_parent, constructor_body);
 			if ((info.special_member == SPECIAL_MEMBER_COPY_CONSTRUCTOR ||
 				 info.special_member == SPECIAL_MEMBER_MOVE_CONSTRUCTOR) &&
 				(info.implicit_special_member || info.defaulted_special_member))
@@ -2925,6 +2939,12 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 				AnalyzeCompound(info.definition_body, function_scope,
 					constructor_body);
 			DemandExplicitConstructorUnwindDestructors(constructor_body);
+			if (function_try != kNoDumpEdge)
+			{
+				dump_.nodes[constructor_body].unwind_only = true;
+				AnalyzeFunctionTryHandlers(info.function_try_block,
+					function_scope, function_try, true);
+			}
 		}
 		else if ((info.special_member == SPECIAL_MEMBER_COPY_ASSIGNMENT ||
 			info.special_member == SPECIAL_MEMBER_MOVE_ASSIGNMENT) &&

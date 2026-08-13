@@ -1250,7 +1250,8 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 		arena_->Payload(special_initializer) == "default";
 	const bool deleted = special_initializer != kNoNode &&
 		arena_->Payload(special_initializer) == "delete";
-	info.definition_body = FindChild(node, "compound-statement");
+	info.definition_body = FunctionDefinitionPart(node, "compound-statement");
+	info.function_try_block = FindChild(node, "function-try-block");
 	if (conversion_definition)
 	{
 		if (defaulted)
@@ -1269,7 +1270,8 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 	{
 		if (info.complete_constructor == kNoBinding)
 			info.complete_constructor = info.binding;
-		info.constructor_initializer = FindChild(node, "ctor-initializer");
+		info.constructor_initializer =
+			FunctionDefinitionPart(node, "ctor-initializer");
 		info.defaulted_constructor = info.defaulted_constructor || defaulted;
 		info.deleted_constructor = info.deleted_constructor || deleted;
 		info.defaulted_special_member =

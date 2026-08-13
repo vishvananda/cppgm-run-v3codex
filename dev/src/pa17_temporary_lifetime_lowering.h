@@ -1162,6 +1162,11 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		const DumpNode& record = derived.arena_.nodes[node];
 		const NodeChildren children = derived.Children(node);
+		if (record.kind == DUMP_STATEMENT_EXPRESSION)
+		{
+			derived.LowerStatementExpressionDestination(node, destination);
+			return;
+		}
 		if (record.kind == DUMP_CONSTRUCTOR_ACTION)
 		{
 			derived.LowerConstructorAction(node, destination);

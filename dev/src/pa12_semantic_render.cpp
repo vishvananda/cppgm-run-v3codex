@@ -36,6 +36,10 @@ void SemanticAnalyzer::RenderLine(const DumpNode& node, std::size_t depth)
 	case DUMP_SIMPLE_DECLARATION: output_ << "simple-declaration"; break;
 	case DUMP_RETURN_STATEMENT: output_ << "return-statement"; break;
 	case DUMP_EXPRESSION_STATEMENT: output_ << "expression-statement"; break;
+	case DUMP_STATEMENT_EXPRESSION: output_ << "statement-expression "
+		<< category << ' ' << program_->RenderType(node.type); break;
+	case DUMP_STATEMENT_EXPRESSION_RESULT:
+		output_ << "statement-expression-result"; break;
 	case DUMP_IF_STATEMENT: output_ << "if-statement"; break;
 	case DUMP_SWITCH_STATEMENT: output_ << "switch-statement"; break;
 	case DUMP_WHILE_STATEMENT: output_ << "while-statement"; break;

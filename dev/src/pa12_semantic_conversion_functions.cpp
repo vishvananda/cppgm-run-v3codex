@@ -67,7 +67,10 @@ void SemanticAnalyzer::AnalyzeConversionFunction(NodeId node, ScopeId scope,
 	info.constexpr_function = info.constexpr_function || constexpr_specifier;
 	info.deleted_special_member = info.deleted_special_member || deleted;
 	info.deferred = !info.deleted_special_member;
-	if (definition) info.definition_body = FindChild(node, "compound-statement");
+	if (definition) {
+		info.definition_body = FunctionDefinitionPart(node, "compound-statement");
+		info.function_try_block = FindChild(node, "function-try-block");
+	}
 	if (info.constexpr_function)
 	{
 		if (IsClassTemplateSpecializationContext(entity) &&

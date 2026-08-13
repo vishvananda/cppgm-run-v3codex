@@ -323,6 +323,12 @@ private:
 					state_.exception_type_demanded[type] = 1;
 				}
 			}
+			else if (record.kind == DUMP_TRY_STATEMENT &&
+				record.function_try_rethrows)
+			{
+				state_.need_exceptions = true;
+				state_.need_rethrow = true;
+			}
 			for (std::uint32_t edge = record.first_edge;
 				edge != kNoDumpEdge; edge = graph_.arena.edges[edge].next)
 				pending.push_back(graph_.arena.edges[edge].child);

@@ -33,6 +33,7 @@
 #include "pa26_rtti_lowering.h"
 #include "pa27_member_pointer_lowering.h"
 #include "pa28_virtual_base_lowering.h"
+#include "pa30_region_lowering.h"
 #include <algorithm>
 #include <limits>
 #include <ostream>
@@ -70,7 +71,8 @@ class GraphLowerer :
 	private pa26_lowering_detail::ExceptionLowering<GraphLowerer>,
 	private pa26_lowering_detail::InitializerListLowering<GraphLowerer>,
 	private pa26_lowering_detail::RttiLowering<GraphLowerer>,
-	private pa27_lowering_detail::MemberPointerLowering<GraphLowerer>
+	private pa27_lowering_detail::MemberPointerLowering<GraphLowerer>,
+	private pa30_lowering_detail::RegionLowering<GraphLowerer>
 {
 public:
 	GraphLowerer(const SemanticGraphView& graph, TypedProgram& output,
@@ -190,6 +192,7 @@ private:
 	friend class pa26_lowering_detail::InitializerListLowering<GraphLowerer>;
 	friend class pa26_lowering_detail::RttiLowering<GraphLowerer>;
 	friend class pa27_lowering_detail::MemberPointerLowering<GraphLowerer>;
+	friend class pa30_lowering_detail::RegionLowering<GraphLowerer>;
 	enum StatementTaskKind : std::uint8_t
 	{
 		STATEMENT_NODE,
@@ -852,7 +855,8 @@ private:
 				MaterializeVirtualBaseBoundaryParameter(child);
 				++parameter_index;
 			}
-			else if (child.kind == DUMP_COMPOUND_STATEMENT) body = children[i];
+			else if (child.kind == DUMP_COMPOUND_STATEMENT ||
+				child.kind == DUMP_TRY_STATEMENT) body = children[i];
 		}
 		if (body != kNoDumpEdge)
 		{
@@ -1040,6 +1044,8 @@ private:
 			return LowerSpecialMemberConstruction(node);
 		if (record.kind == DUMP_SPECIAL_MEMBER_ASSIGNMENT_ACTION)
 			return LowerSpecialMemberAssignment(node);
+		if (record.kind == DUMP_STATEMENT_EXPRESSION)
+			return LowerStatementExpressionStorage(node, record);
 		if (record.kind == DUMP_ID_EXPRESSION && record.binding != kNoBinding)
 		{
 			if (record.binding < function_symbols_.size() &&
@@ -1247,6 +1253,10 @@ private:
 			result = LowerDynamicCast(node, record, children);
 		else if (record.kind == DUMP_THROW_EXPRESSION) result =
 			LowerThrowExpression(node, record, children);
+		else if (record.kind == DUMP_STATEMENT_EXPRESSION)
+			result = IsClassObjectType(record.type) ?
+				AddressOfStorage(LowerStatementExpressionStorage(node, record)) :
+				LowerStatementExpressionValue(node, record, children);
 		else if ((record.category == VALUE_LVALUE || record.category == VALUE_XVALUE) &&
 			IsArrayType(record.type))
 			result = record.kind == DUMP_LITERAL ?

@@ -5,6 +5,7 @@
 #include "pa10_parser_token_classification.h"
 #include "pa25_lambda_capture_syntax.h"
 #include "pa25_range_for_syntax.h"
+#include "pa30_region_syntax.h"
 #include <algorithm>
 #include <chrono>
 #include <cctype>
@@ -22,11 +23,13 @@ namespace
 using namespace pa10_syntax_detail;
 class Parser : private ParserNameFacts<Parser>,
 	private pa25_syntax_detail::LambdaCaptureSyntax<Parser>,
-	private pa25_syntax_detail::RangeForSyntax<Parser>
+	private pa25_syntax_detail::RangeForSyntax<Parser>,
+	private pa30_syntax_detail::RegionSyntax<Parser>
 {
 friend class ParserNameFacts<Parser>;
 friend class pa25_syntax_detail::LambdaCaptureSyntax<Parser>;
 friend class pa25_syntax_detail::RangeForSyntax<Parser>;
+friend class pa30_syntax_detail::RegionSyntax<Parser>;
 public:
 	Parser(const std::vector<SyntaxToken>& tokens, StringTable& strings,
 		SyntaxArena& arena, SyntaxStats* stats)
@@ -1372,6 +1375,8 @@ NodeId Parser::ParsePrimaryExpression()
 	}
 	if (At(OP_LPAREN))
 	{
+		const NodeId statement_expression = ParseStatementExpression();
+		if (statement_expression != kNoNode) return statement_expression;
 		const Mark cast_mark = Checkpoint();
 		++position_;
 		const NodeId cast = arena_.Make("cast-expression", "OP_LPAREN:");
@@ -1948,40 +1953,7 @@ NodeId Parser::ParseStatement()
 		RestoreNameFacts(for_fact_mark);
 		return statement;
 	}
-	if (Match(KW_TRY))
-	{
-		const NodeId statement = arena_.Make("try-block");
-		const NodeId body = ParseCompoundStatement();
-		if (body == kNoNode) throw Error("expected try body");
-		arena_.Add(statement, body);
-		if (!At(KW_CATCH)) throw Error("expected catch handler");
-		while (Match(KW_CATCH))
-		{
-			const NodeId handler = arena_.Make("handler");
-			Expect(OP_LPAREN);
-			const NodeId declaration = arena_.Make("exception-declaration");
-			if (Match(OP_DOTS)) arena_.Add(declaration,
-				arena_.Make("ellipsis", "..."));
-			else
-			{
-				const NodeId specifiers = ParseDeclSpecifierSeq(false);
-				if (specifiers == kNoNode)
-					throw Error("expected exception declaration");
-				arena_.Add(declaration, specifiers);
-				const Mark declarator_mark = Checkpoint();
-				const NodeId declarator = ParseDeclarator(false);
-				if (declarator != kNoNode) arena_.Add(declaration, declarator);
-				else Rollback(declarator_mark);
-			}
-			Expect(OP_RPAREN);
-			arena_.Add(handler, declaration);
-			const NodeId handler_body = ParseCompoundStatement();
-			if (handler_body == kNoNode) throw Error("expected handler body");
-			arena_.Add(handler, handler_body);
-			arena_.Add(statement, handler);
-		}
-		return statement;
-	}
+	if (At(KW_TRY)) return ParseTryStatement();
 	if (Match(KW_BREAK))
 	{
 		Expect(OP_SEMICOLON);
@@ -2409,8 +2381,9 @@ NodeId Parser::ParseSpecialMember(bool)
 		name = declarator_name;
 	}
 	NodeId ctor_initializer = kNoNode;
-	if (At(OP_COLON)) ctor_initializer = ParseCtorInitializer();
-	const bool has_body = At(OP_LBRACE);
+	const bool function_try = At(KW_TRY);
+	if (!function_try && At(OP_COLON)) ctor_initializer = ParseCtorInitializer();
+	const bool has_body = At(OP_LBRACE) || function_try;
 	const bool is_declaration = At(OP_SEMICOLON) || At(OP_ASS);
 	if (!has_body && !is_declaration)
 	{
@@ -2457,7 +2430,8 @@ NodeId Parser::ParseSpecialMember(bool)
 	if (Match(OP_SEMICOLON)) return member;
 	const std::size_t parameter_fact_mark = name_fact_changes_.size();
 	ApplyFunctionParameterFacts(declarator);
-	const NodeId body = ParseCompoundStatement();
+	const NodeId body = function_try ? ParseFunctionTryBlock(true) :
+		ParseCompoundStatement();
 	RestoreNameFacts(parameter_fact_mark);
 	if (body == kNoNode) throw Error("expected special member body");
 	arena_.Add(member, body);
@@ -2777,7 +2751,7 @@ NodeId Parser::FinishSimpleOrFunction(const Mark& mark,
 			Rollback(mark);
 			return kNoNode;
 		}
-		if (At(OP_LBRACE) && names.empty() &&
+		if ((At(OP_LBRACE) || At(KW_TRY)) && names.empty() &&
 			arena_.HasDescendantTag(declarator, "parameter-clause"))
 		{
 			const NodeId declaration = arena_.Make("function-definition");
@@ -2787,7 +2761,8 @@ NodeId Parser::FinishSimpleOrFunction(const Mark& mark,
 				SetNameFact(name, kKnownNonTemplate); }
 			const std::size_t parameter_fact_mark = name_fact_changes_.size();
 			ApplyFunctionParameterFacts(declarator);
-			arena_.Add(declaration, ParseCompoundStatement());
+			arena_.Add(declaration, At(KW_TRY) ?
+				ParseFunctionTryBlock(false) : ParseCompoundStatement());
 			RestoreNameFacts(parameter_fact_mark);
 			last_declared_names_.clear();
 			if (!name.empty())

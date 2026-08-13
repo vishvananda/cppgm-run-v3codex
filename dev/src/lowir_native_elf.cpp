@@ -1445,6 +1445,7 @@ std::string block_target(const std::string & function_name,
 
 const char * const kEhTop = ".__cppgm_eh_top";
 const char * const kEhValue = ".__cppgm_eh_value";
+const char * const kEhAdjusted = ".__cppgm_eh_adjusted";
 const char * const kEhType = ".__cppgm_eh_type";
 const char * const kEhSelector = ".__cppgm_eh_selector";
 const char * const kEhCaught = ".__cppgm_eh_caught";
@@ -1547,19 +1548,46 @@ void emit_eh_catch(CodeBuffer & out,
   if(instruction.operands.size() != 1 && instruction.operands.size() != 2)
     throw std::logic_error("invalid MIR EH catch operands");
   emit_eh_enter_catch(out);
-  std::string done;
+  const std::string done = out.internal_label("eh_catch_done");
+  emit_symbol_move(out, XR_R11, kEhSelector);
+  emit_load(out, XR_RAX, XR_R11, 0, 64);
+  emit_test_register(out, XR_RAX);
+  emit_condition_jump(out, XC_NE, done);
+  std::string exact;
+  const std::string selected = out.internal_label("eh_catch_selected");
   if(instruction.operands.size() == 2) {
-    done = out.internal_label("eh_catch_done");
+    exact = out.internal_label("eh_catch_exact");
     emit_symbol_move(out, XR_RAX, instruction.operands[1].text);
     emit_symbol_move(out, XR_R11, kEhType);
     emit_load(out, XR_RCX, XR_R11, 0, 64);
     emit_register_alu(out, 0x39, XR_RCX, XR_RAX);
-    emit_condition_jump(out, XC_NE, done);
+    emit_condition_jump(out, XC_E, exact);
+    emit_symbol_move(out, XR_R11, kEhValue);
+    emit_load(out, XR_RDI, XR_R11, 0, 64);
+    emit_register_move(out, XR_RSI, XR_RCX);
+    emit_register_move(out, XR_RDX, XR_RAX);
+    emit_stack_adjust(out, true, 8);
+    out.byte(0xe8); out.relative32(".__cppgm_dynamic_cast_find");
+    emit_stack_adjust(out, false, 8);
+    emit_test_register(out, XR_RAX);
+    emit_condition_jump(out, XC_E, done);
+  } else {
+    emit_symbol_move(out, XR_R11, kEhValue);
+    emit_load(out, XR_RAX, XR_R11, 0, 64);
   }
+  if(!exact.empty()) {
+    out.byte(0xe9); out.relative32(selected);
+    out.label(exact);
+    emit_symbol_move(out, XR_R11, kEhValue);
+    emit_load(out, XR_RAX, XR_R11, 0, 64);
+  }
+  out.label(selected);
+  emit_symbol_move(out, XR_R11, kEhAdjusted);
+  emit_store(out, XR_R11, 0, XR_RAX, 64);
   emit_symbol_move(out, XR_R11, kEhSelector);
   emit_immediate_move(out, XR_RAX, instruction.operands[0].imm);
   emit_store(out, XR_R11, 0, XR_RAX, 64);
-  if(!done.empty()) out.label(done);
+  out.label(done);
 }
 
 bool emit_eh_instruction(CodeBuffer & out,
@@ -2117,7 +2145,8 @@ void emit_dynamic_cast_find(
 }
 
 void emit_dynamic_cast_runtime(
-    CodeBuffer & out, const std::vector<mir_model::MirRuntimeData> & data)
+    CodeBuffer & out, const std::vector<mir_model::MirRuntimeData> & data,
+    bool emit_find)
 {
   const std::string null_result = out.internal_label("dynamic_cast_null");
   const std::string done = out.internal_label("dynamic_cast_runtime_done");
@@ -2134,7 +2163,7 @@ void emit_dynamic_cast_runtime(
   emit_condition_jump(out, XC_NE, done);
   out.label(null_result); emit_immediate_move(out, XR_RAX, 0);
   out.label(done); out.byte(0xc3);
-  emit_dynamic_cast_find(out, data);
+  if(emit_find) emit_dynamic_cast_find(out, data);
 }
 
 void emit_abort_runtime(CodeBuffer & out)
@@ -2150,7 +2179,8 @@ void emit_eh_begin_catch(CodeBuffer & out)
   emit_load(out, XR_RAX, XR_R11, 0, 64);
   emit_store(out, XR_RDI, -16, XR_RAX, 64);
   emit_store(out, XR_R11, 0, XR_RDI, 64);
-  emit_register_move(out, XR_RAX, XR_RDI);
+  emit_symbol_move(out, XR_R11, kEhAdjusted);
+  emit_load(out, XR_RAX, XR_R11, 0, 64);
   out.byte(0xc3);
 }
 
@@ -2180,6 +2210,8 @@ void emit_eh_throw_runtime(CodeBuffer & out)
   emit_store(out, XR_RDI, -24, XR_RSI, 64);
   emit_symbol_move(out, XR_R11, kEhValue);
   emit_store(out, XR_R11, 0, XR_RDI, 64);
+  emit_symbol_move(out, XR_R11, kEhAdjusted);
+  emit_store(out, XR_R11, 0, XR_RDI, 64);
   emit_symbol_move(out, XR_R11, kEhType);
   emit_store(out, XR_R11, 0, XR_RSI, 64);
   emit_symbol_move(out, XR_R11, kEhSelector);
@@ -2194,6 +2226,8 @@ void emit_eh_rethrow(CodeBuffer & out)
   emit_load(out, XR_RDI, XR_R11, 0, 64);
   emit_symbol_move(out, XR_R11, kEhValue);
   emit_store(out, XR_R11, 0, XR_RDI, 64);
+  emit_symbol_move(out, XR_R11, kEhAdjusted);
+  emit_store(out, XR_R11, 0, XR_RDI, 64);
   emit_load(out, XR_RSI, XR_RDI, -24, 64);
   emit_symbol_move(out, XR_R11, kEhType);
   emit_store(out, XR_R11, 0, XR_RSI, 64);
@@ -2205,6 +2239,7 @@ void emit_eh_runtime(CodeBuffer & out, const mir_model::MirProgram & program)
   if(program.uses_eh) {
     emit_eh_dispatch(out);
     emit_eh_resume(out, program.runtime_functions);
+    emit_dynamic_cast_find(out, program.runtime_data);
   }
   for(std::size_t i = 0; i < program.runtime_functions.size(); ++i) {
     const mir_model::MirRuntimeFunction & runtime = program.runtime_functions[i];
@@ -2222,7 +2257,8 @@ void emit_eh_runtime(CodeBuffer & out, const mir_model::MirProgram & program)
     case mir_model::RuntimeFunction::RF_FREE_MEMORY: out.byte(0xc3); break;
     case mir_model::RuntimeFunction::RF_PURE_VIRTUAL: emit_abort_runtime(out); break;
     case mir_model::RuntimeFunction::RF_DYNAMIC_CAST:
-      emit_dynamic_cast_runtime(out, program.runtime_data); break;
+      emit_dynamic_cast_runtime(
+        out, program.runtime_data, !program.uses_eh); break;
     case mir_model::RuntimeFunction::RF_BAD_CAST:
     case mir_model::RuntimeFunction::RF_BAD_TYPEID: emit_abort_runtime(out); break;
     }
@@ -2236,6 +2272,7 @@ void emit_eh_data(CodeBuffer & out, const mir_model::MirProgram & program)
   if(program.uses_eh) {
     out.label(kEhTop); out.zeros(8);
     out.label(kEhValue); out.zeros(8);
+    out.label(kEhAdjusted); out.zeros(8);
     out.label(kEhType); out.zeros(8);
     out.label(kEhSelector); out.zeros(8);
     out.label(kEhCaught); out.zeros(8);

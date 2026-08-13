@@ -347,6 +347,8 @@ void SemanticAnalyzer::RegisterClassMemberFunction(EntityId entity,
 	BindingId function)
 {
 	if (entity == kNoEntity || function == kNoBinding) return;
+	FunctionInfo& info = GetMutableFunction(function);
+	if (info.lexical_access_function == kNoBinding) info.lexical_access_function = program_->entities[entity].local_context;
 	if (entity_member_functions_.size() <= entity)
 		entity_member_functions_.resize(static_cast<std::size_t>(entity) + 1);
 	function = program_->bindings[function].canonical;
@@ -355,7 +357,6 @@ void SemanticAnalyzer::RegisterClassMemberFunction(EntityId entity,
 		functions.end())
 		functions.push_back(function);
 }
-
 LookupResult SemanticAnalyzer::LookupPath(ScopeId scope,
 	const NamePath& path, LookupKind kind)
 {

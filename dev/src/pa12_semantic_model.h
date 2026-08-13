@@ -46,6 +46,8 @@ enum DumpKind
 	DUMP_SIMPLE_DECLARATION,
 	DUMP_RETURN_STATEMENT,
 	DUMP_EXPRESSION_STATEMENT,
+	DUMP_STATEMENT_EXPRESSION,
+	DUMP_STATEMENT_EXPRESSION_RESULT,
 	DUMP_IF_STATEMENT,
 	DUMP_SWITCH_STATEMENT,
 	DUMP_WHILE_STATEMENT,
@@ -186,6 +188,8 @@ struct DumpNode
 	bool reverse_pointer_compound_assignment;
 	bool dynamic_type_query;
 	bool dynamic_cast_reference;
+	bool function_try_block;
+	bool function_try_rethrows;
 
 	explicit DumpNode(DumpKind value)
 		: kind(value), type(kNoType), operand_type(kNoType),
@@ -241,7 +245,8 @@ struct DumpNode
 		  inverse_base_projection(false),
 		  has_direct_base_offset(false), pseudo_destructor_call(false),
 		  reverse_pointer_compound_assignment(false),
-		  dynamic_type_query(false), dynamic_cast_reference(false) {}
+		  dynamic_type_query(false), dynamic_cast_reference(false),
+		  function_try_block(false), function_try_rethrows(false) {}
 };
 
 struct DumpEdge
@@ -827,7 +832,7 @@ struct FunctionInfo
 	// fact, separate from declaration formation and body/emission demand.
 	ScopeId lexical_scope, exception_specification_scope;
 	std::vector<ParameterInfo> parameters;
-	NodeId definition_body, constructor_initializer;
+	NodeId definition_body, constructor_initializer, function_try_block;
 	std::uint32_t retained_definition_semantics;
 	std::uint32_t template_pattern;
 	TypeId placeholder_return_type;
@@ -879,6 +884,7 @@ struct FunctionInfo
 		  lexical_scope(kNoScope),
 		  exception_specification_scope(kNoScope),
 		  definition_body(kNoNode), constructor_initializer(kNoNode),
+		  function_try_block(kNoNode),
 		  retained_definition_semantics(kNoDumpEdge),
 		  template_pattern(kNoDumpEdge), placeholder_return_type(kNoType),
 		  placeholder_return_kind(PLACEHOLDER_DECLARATOR_NONE),

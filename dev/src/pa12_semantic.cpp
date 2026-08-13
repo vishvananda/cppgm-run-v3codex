@@ -693,6 +693,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 	if (ReusePreparedBracedExpression(node, target, &prepared)) return prepared;
 	if (arena_->IsTag(node, "parenthesized-expression"))
 		return AnalyzeExpression(FirstSemanticChild(node), scope, target);
+	if (arena_->IsTag(node, "statement-expression"))
+		return AnalyzeStatementExpression(node, scope, target);
 	if (arena_->IsTag(node, "throw-expression"))
 		return AnalyzeThrowExpression(node, scope);
 	if (arena_->IsTag(node, "literal"))
@@ -2311,14 +2313,15 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	FunctionInfo& function = GetMutableFunction(binding);
 	function.constexpr_function =
 		function.constexpr_function || spec.is_constexpr;
-	function.definition_body = FindChild(node, "compound-statement");
+	function.definition_body = FunctionDefinitionPart(node, "compound-statement");
+	function.function_try_block = FindChild(node, "function-try-block");
 	if (deferred_member_definition)
 	{
 		if (declaration_class == kNoEntity ||
 			program_->bindings[binding].member_owner != declaration_class)
 			throw std::runtime_error(
 				"class template member definition has no declaration");
-		function.definition_body = FindChild(node, "compound-statement");
+		function.definition_body = FunctionDefinitionPart(node, "compound-statement");
 		function.lexical_scope = semantic_scope;
 		function.deferred = true;
 		current_class_context_ = previous_class;
@@ -2373,10 +2376,18 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	current_class_context_ = function.friend_of != kNoEntity ?
 		function.friend_of : program_->bindings[binding].member_owner;
 	current_function_context_ = program_->bindings[binding].canonical;
-	const NodeId body = FindChild(node, "compound-statement");
+	const NodeId body = function.definition_body;
 	if (body != kNoNode)
 	{
-		AnalyzeCompound(body, function_scope, output_node);
+		if (function.function_try_block != kNoNode)
+		{
+			const std::uint32_t region = MakeDump(DUMP_TRY_STATEMENT);
+			dump_.Add(output_node, region);
+			AnalyzeCompound(body, function_scope, region);
+			AnalyzeFunctionTryHandlers(function.function_try_block,
+				function_scope, region, function.constructor || function.destructor);
+		}
+		else AnalyzeCompound(body, function_scope, output_node);
 		CompletePlaceholderFunctionReturn(binding);
 		FinalizeNamedReturnSlot(output_node);
 	}
@@ -2386,23 +2397,6 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	current_class_context_ = previous_class;
 	current_function_context_ = previous_function;
 }
-void SemanticAnalyzer::AnalyzeCompound(NodeId node, ScopeId scope,
-	std::uint32_t output_parent)
-{
-	const ScopeId block = NewScope(scope, SCOPE_BLOCK, 0, ScopePrefixId(scope));
-	const std::uint32_t compound = MakeDump(DUMP_COMPOUND_STATEMENT);
-	dump_.Add(output_parent, compound);
-	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
-		edge = arena_->NextEdge(edge))
-	{
-		const NodeId child = arena_->EdgeChild(edge);
-		if (IsDeclaration(child))
-			AnalyzeDeclaration(child, block, compound, true);
-		else AnalyzeStatement(child, block, compound);
-	}
-	AppendScopeDestructionActions(block, compound, CompoundCleanupStop(scope));
-}
-
 void SemanticAnalyzer::AnalyzeSubstatement(NodeId node, ScopeId scope,
 	std::uint32_t output_parent)
 {
