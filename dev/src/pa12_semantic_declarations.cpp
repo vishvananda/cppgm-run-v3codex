@@ -1769,6 +1769,9 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 			result.type = program_->types.Fundamental(FUND_INT128);
 		else if (spelling == "__uint128_t")
 			result.type = program_->types.Fundamental(FUND_UINT128);
+		else if (spelling == "__builtin_va_list")
+			result.type = program_->types.Array(
+				program_->types.Fundamental(FUND_UNSIGNED_LONG_INT), 3);
 		else if (spelling != "explicit")
 		{
 			if (deferred_type != kNoType)

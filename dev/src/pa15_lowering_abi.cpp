@@ -1676,6 +1676,11 @@ void ApplyBuiltinSymbolMetadata(pa15_lowir_detail::Symbol* symbol,
 	case BUILTIN_FUNCTION_MEMMOVE: symbol->effects = Symbol::EFFECTS_READWRITE; break;
 	case BUILTIN_FUNCTION_NANL:
 	case BUILTIN_FUNCTION_ISNAN: symbol->effects = Symbol::EFFECTS_READNONE; break;
+	case BUILTIN_FUNCTION_ALLOCA:
+	case BUILTIN_FUNCTION_VA_START:
+	case BUILTIN_FUNCTION_VA_END:
+	case BUILTIN_FUNCTION_VA_ARG:
+		symbol->effects = Symbol::EFFECTS_READWRITE; break;
 	case BUILTIN_FUNCTION_OPERATOR_NEW:
 	case BUILTIN_FUNCTION_OPERATOR_NEW_ARRAY:
 		symbol->runtime_role = Symbol::RUNTIME_ROLE_ALLOCATE_MEMORY;

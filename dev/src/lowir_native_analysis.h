@@ -35,6 +35,7 @@ struct FunctionFacts
     deferred_branch_comparisons;
   std::unordered_map<std::string, unsigned> live_across_clobbers;
   bool has_va_start = false;
+  bool has_dynamic_stack = false;
   bool has_i128_atomic = false;
   bool has_direct_branch_parameter = false;
 };

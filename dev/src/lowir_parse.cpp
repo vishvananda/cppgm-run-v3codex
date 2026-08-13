@@ -637,8 +637,17 @@ private:
     else if(op == "unary") parse_unary(out);
     else if(op == "binary") parse_binary(out, Instruction::IK_BINARY);
     else if(op == "cmp") parse_binary(out, Instruction::IK_CMP);
-    else if(op == "convert") parse_convert(out);
-    else if(op == "atomic_add_fetch") parse_atomic_three(out, Instruction::IK_ATOMIC_ADD_FETCH, 1);
+	else if(op == "convert") parse_convert(out);
+	else if(op == "stack_alloc") {
+	  out.kind = Instruction::IK_STACK_ALLOC;
+	  out.type = builtin_lowir_type(LTK_PTR);
+	  out.first = operand();
+	} else if(op == "va_arg") {
+	  out.kind = Instruction::IK_VA_ARG;
+	  out.type = type();
+	  out.first = operand();
+	}
+	else if(op == "atomic_add_fetch") parse_atomic_three(out, Instruction::IK_ATOMIC_ADD_FETCH, 1);
     else if(op == "atomic_exchange") parse_atomic_three(out, Instruction::IK_ATOMIC_EXCHANGE, 1);
     else if(op == "atomic_compare_exchange") parse_atomic_compare_exchange(out);
     else if(op == "call") parse_call(out, false);
@@ -1066,14 +1075,39 @@ private:
     }
     if(kind == Instruction::IK_RETURN && !same_lowir_type(ins.type, function.return_type))
       throw ParseError("return type does not match function");
-    if(kind == Instruction::IK_VA_START) {
+	if(kind == Instruction::IK_VA_START) {
       if(function.boundary.arity != CAM_VARIADIC)
         throw ParseError("va_start requires a variadic function");
       const TypeIndex::const_iterator value = values.find(ins.first.text);
       if(ins.first.kind != Operand::OP_TEMP || value == values.end() ||
          value->second->kind != LTK_PTR)
         throw ParseError("va_start requires a pointer value");
-    }
+	}
+	if(kind == Instruction::IK_VA_ARG) {
+	  const TypeIndex::const_iterator value = values.find(ins.first.text);
+	  if(ins.first.kind != Operand::OP_TEMP || value == values.end() ||
+	     value->second->kind != LTK_PTR)
+	    throw ParseError("va_arg requires a pointer value");
+	  if(ins.type.kind != LTK_PTR && ins.type.kind != LTK_I8 &&
+	     ins.type.kind != LTK_U8 && ins.type.kind != LTK_I16 &&
+	     ins.type.kind != LTK_U16 && ins.type.kind != LTK_I32 &&
+	     ins.type.kind != LTK_U32 && ins.type.kind != LTK_I64 &&
+	     ins.type.kind != LTK_F64)
+	    throw ParseError("va_arg scalar type is not supported");
+	}
+	if(kind == Instruction::IK_STACK_ALLOC) {
+	  LowTypeKind size = ins.first.kind == Operand::OP_INTEGER ?
+	    LTK_I64 : ins.first.literal_type.kind;
+	  const TypeIndex::const_iterator value = values.find(ins.first.text);
+	  const TypeIndex::const_iterator slot = slots.find(ins.first.text);
+	  if(ins.first.kind == Operand::OP_TEMP && value != values.end())
+	    size = value->second->kind;
+	  else if(ins.first.kind == Operand::OP_SLOT && slot != slots.end())
+	    size = slot->second->kind;
+	  if(size < LTK_I1 || size > LTK_I64 || size == LTK_F32 ||
+	     size == LTK_F64 || size == LTK_F80 || size == LTK_PTR)
+	    throw ParseError("stack_alloc requires an integer size");
+	}
     if((kind == Instruction::IK_EH_TRY || kind == Instruction::IK_EH_CLEANUP))
       validate_target(ins.first, blocks);
   }

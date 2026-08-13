@@ -66,5 +66,90 @@ void append_va_start(const abi::VariadicState & state,
   append_store(out, dereference(XR_RCX, 16), reg_operand(XR_RDX), "ptr");
 }
 
+void append_va_arg_address(bool floating,
+                           std::vector<mir_model::MirInstruction> & out)
+{
+  using namespace build;
+  const long long offset_field = floating ? 4 : 0;
+  const long long limit = floating ? 176 : 48;
+  const long long register_step = floating ? 16 : 8;
+  append_load(out, reg_operand(XR_RAX),
+              dereference(XR_RCX, offset_field), "i32");
+  append_load(out, reg_operand(XR_RDX), dereference(XR_RCX, 16), "ptr");
+  mir_model::MirInstruction register_address =
+    machine_instruction(mir_model::MirInstruction::MI_ADD);
+  append_operand(register_address, reg_operand(XR_RDX));
+  append_operand(register_address, reg_operand(XR_RAX));
+  out.push_back(register_address);
+  append_load(out, reg_operand(XR_RSI), dereference(XR_RCX, 8), "ptr");
+  mir_model::MirInstruction compare =
+    machine_instruction(mir_model::MirInstruction::MI_CMP, "i64");
+  append_operand(compare, reg_operand(XR_RAX));
+  append_operand(compare, immediate(limit));
+  out.push_back(compare);
+  mir_model::MirInstruction below =
+    machine_instruction(mir_model::MirInstruction::MI_SETCC);
+  below.condition = XC_B;
+  append_operand(below, reg_operand(XR_RDI));
+  out.push_back(below);
+  mir_model::MirInstruction widen =
+    machine_instruction(mir_model::MirInstruction::MI_MOVZX);
+  append_operand(widen, reg_operand(XR_RDI));
+  append_operand(widen, reg_operand(XR_RDI));
+  out.push_back(widen);
+  mir_model::MirInstruction negate =
+    machine_instruction(mir_model::MirInstruction::MI_NEG);
+  append_operand(negate, reg_operand(XR_RDI));
+  out.push_back(negate);
+
+  append_move(out, reg_operand(XR_R8), reg_operand(XR_RDX));
+  mir_model::MirInstruction difference =
+    machine_instruction(mir_model::MirInstruction::MI_SUB);
+  append_operand(difference, reg_operand(XR_R8));
+  append_operand(difference, reg_operand(XR_RSI));
+  out.push_back(difference);
+  mir_model::MirInstruction select =
+    machine_instruction(mir_model::MirInstruction::MI_AND);
+  append_operand(select, reg_operand(XR_R8));
+  append_operand(select, reg_operand(XR_RDI));
+  out.push_back(select);
+  mir_model::MirInstruction select_base =
+    machine_instruction(mir_model::MirInstruction::MI_ADD);
+  append_operand(select_base, reg_operand(XR_R8));
+  append_operand(select_base, reg_operand(XR_RSI));
+  out.push_back(select_base);
+
+  append_move(out, reg_operand(XR_R9), reg_operand(XR_RDI));
+  mir_model::MirInstruction register_increment =
+    machine_instruction(mir_model::MirInstruction::MI_AND);
+  append_operand(register_increment, reg_operand(XR_R9));
+  append_operand(register_increment, immediate(register_step));
+  out.push_back(register_increment);
+  mir_model::MirInstruction advance_offset =
+    machine_instruction(mir_model::MirInstruction::MI_ADD);
+  append_operand(advance_offset, reg_operand(XR_RAX));
+  append_operand(advance_offset, reg_operand(XR_R9));
+  out.push_back(advance_offset);
+  append_store(out, dereference(XR_RCX, offset_field),
+               reg_operand(XR_RAX), "i32");
+
+  append_move(out, reg_operand(XR_R10), reg_operand(XR_RDI));
+  mir_model::MirInstruction invert =
+    machine_instruction(mir_model::MirInstruction::MI_NOT);
+  append_operand(invert, reg_operand(XR_R10));
+  out.push_back(invert);
+  mir_model::MirInstruction overflow_increment =
+    machine_instruction(mir_model::MirInstruction::MI_AND);
+  append_operand(overflow_increment, reg_operand(XR_R10));
+  append_operand(overflow_increment, immediate(8));
+  out.push_back(overflow_increment);
+  mir_model::MirInstruction advance_overflow =
+    machine_instruction(mir_model::MirInstruction::MI_ADD);
+  append_operand(advance_overflow, reg_operand(XR_RSI));
+  append_operand(advance_overflow, reg_operand(XR_R10));
+  out.push_back(advance_overflow);
+  append_store(out, dereference(XR_RCX, 8), reg_operand(XR_RSI), "ptr");
+}
+
 }  // namespace varargs
 }  // namespace lowir_native

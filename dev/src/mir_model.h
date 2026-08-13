@@ -290,6 +290,7 @@ struct Function
   std::size_t frame_bytes = 0;
   std::size_t stack_size = 0;
   std::size_t scratch_bytes = 0;
+  bool has_dynamic_stack = false;
   bool host_eh_enabled = false;
   long long host_eh_exception_offset = 0;
   long long host_eh_selector_offset = 0;

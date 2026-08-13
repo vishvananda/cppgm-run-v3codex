@@ -11,13 +11,13 @@ not recover semantic facts from strings.
 
 ## Current Failure Map
 
-Current result: **68/94 PA33 tests pass**, improved from the 66/94 checkpoint
+Current result: **71/94 PA33 tests pass**, improved from the 68/94 checkpoint
 baseline (and 59/94 stage-start baseline); PA1-PA32 pass (4291/4291).
 
 | Owner / shared behavior | Count | Failing cases |
 | --- | ---: | --- |
 | Remaining ABI name publication | 2 | covariant layout-finalization symbols; nested-lambda owner identity |
-| Builtin/type frontend and varargs lowering | 6 | `alloca`, transform alias, dependent NTTP expression, unnamed local-class constructor, `va_arg`, `va_start` |
+| Remaining type/name frontend | 3 | transform alias, dependent NTTP expression, unnamed local-class constructor |
 | Host EH semantic/lowering regions | 6 | dynamic exception specification, noexcept termination, rethrow outer cleanup, two switch/catch cases, out-of-line virtual-base RTTI catch |
 | Polymorphic ODR ownership | 1 | duplicate inline-header polymorphic class |
 | Virtual-inheritance RTTI/casts | 3 | lazy-template cross-cast, virtual-inheritance cast-to-void, typed cross-cast |
@@ -26,46 +26,50 @@ baseline (and 59/94 stage-start baseline); PA1-PA32 pass (4291/4291).
 
 ## Active Checkpoint
 
-**Complete — canonical dependent expression recipes.** The PA32 source-type DAG
-now decodes alias-expanded identity atoms into immutable template-parameter,
-unary, call, template-id, member, and `decltype` nodes. Dependent non-type
-arguments remain parameter expressions instead of specialization literals.
+**Complete — typed stack and SysV vararg intrinsics.** Canonical builtin and
+`__builtin_va_list` recognition now carries `stack_alloc`, `va_start`, and
+scalar `va_arg` through typed LowIR. Native lowering owns dynamic frame
+restoration and SysV register-save/overflow selection; `va_end` is a validated
+target no-op and no builtin becomes an external symbol.
 
-- Spec requirements: canonical semantic identity/facts (§2); lowering consumes
-  recorded facts without reparsing names (§6); compact shared child storage and
-  explicit ownership (§8); demand and work proportional to retained/emitted
-  nodes (§9); no test-name or rendered-source shortcuts (§10).
-- Ownership/data flow: result-identity alias expansion remains the sole syntax
-  owner; `AbiIdentityReader` validates its canonical atom stream and appends
-  program-owned `FunctionTemplateAbiExpression`/type/argument nodes; recipe IDs
-  flow through specialization bindings; `AbiFactBuilder` lowers those nodes to
-  existing typed ABI expression facts and the mangler encodes them once.
-- Complexity: O(identity atoms + published DAG nodes) once per template pattern
-  and O(reachable expression nodes) per demanded specialization. Child and
-  argument references are contiguous IDs; malformed streams roll publication
-  back without retries or semantic lookup during lowering.
-- Validation: both focused enable-if/`decltype` and nested ratio-expression
-  fixtures pass; PA33 is 68/94; PA1-PA32 are 4291/4291; file audit passes. The
-  generated dependent-expression series below confirms proportional work.
+- Spec requirements: semantic entities and types remain canonical (§2); typed
+  lowering preserves source operations instead of inventing symbol contracts
+  (§6); target ABI decisions have one native owner (§§7-8); demand and compile
+  work stay proportional to emitted operations (§9); no host compiler, source
+  string, or test-specific path supplies behavior (§10). This also implements
+  PA13's stable `stack_alloc` contract at the source-to-native boundary.
+- Ownership/data flow: syntax owns the unusual `va_arg(expression, type-id)`
+  shape; semantic analysis validates builtin arity, variadic context, canonical
+  `va_list` storage, and scalar result type; dump nodes retain builtin enum and
+  type IDs; typed LowIR owns `stack_alloc`, `va_start`, and `va_arg`; the native
+  SysV owner initializes and advances the four-field list state. `va_end` is a
+  validated no-op on this target and never creates an external symbol.
+- Complexity: O(source tokens + semantic nodes + emitted intrinsic operations).
+  Each alloca/vararg use lowers once; each variadic function allocates one fixed
+  176-byte register-save area only when `va_start` is demanded. Scalar `va_arg`
+  performs bounded register/overflow selection with no declaration scans,
+  string lookup, per-operation heap allocation, or whole-program retry.
+- Validation: all three focused fixtures pass; generated GP and SSE probes pass
+  across register-save and overflow paths; a text-LowIR intrinsic round trip
+  passes; PA33 is 71/94; PA1-PA32 are 4291/4291; file audit passes; the
+  generated scaling series is below.
 
 ## Performance Evidence
 
-The generated series declares N distinct function templates with the retained
-`enable_if_t<is_reference<decltype(*declval<Iter&>())>::value, int>` parameter
-and demands every specialization. `CPPGM_DRIVER_STATS=1` and GNU `time` show
-proportional publication, lowering, and direct-object work:
+One macro-generated variadic function applies N `va_arg`/`alloca` pairs.
+`CPPGM_DRIVER_STATS=1` and GNU `time` show proportional semantic, typed-LowIR,
+native-lowering, and object work:
 
-| Templates | Source bytes | Semantic nodes | Functions | LowIR / MIR insns | Semantic peak bytes | Typed bytes | Object bytes | Elapsed s | RSS KiB |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 32 | 5,440 | 515 | 34 | 373 / 444 | 1,314,261 | 92,389 | 191,056 | 0.01 | 9,404 |
-| 64 | 10,304 | 995 | 66 | 725 / 860 | 2,304,933 | 180,325 | 370,480 | 0.03 | 11,048 |
-| 128 | 20,088 | 1,955 | 130 | 1,429 / 1,692 | 4,098,711 | 356,225 | 729,608 | 0.05 | 14,096 |
-| 256 | 39,801 | 3,875 | 258 | 2,837 / 3,356 | 8,149,024 | 708,097 | 1,449,672 | 0.10 | 19,064 |
+| Pairs | Tokens | Semantic nodes | LowIR / MIR insns | Semantic peak bytes | Typed bytes | Object bytes | Wall s | RSS KiB |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 32 | 1,762 | 1,044 | 841 / 1,629 | 910,178 | 142,924 | 354,024 | 0.02 | 10,924 |
+| 64 | 3,490 | 2,068 | 1,673 / 3,229 | 1,592,674 | 281,100 | 703,136 | 0.03 | 14,548 |
+| 128 | 6,946 | 4,116 | 3,337 / 6,429 | 3,171,234 | 557,452 | 1,402,792 | 0.06 | 21,516 |
+| 256 | 13,858 | 8,212 | 6,665 / 12,829 | 6,328,354 | 1,110,156 | 2,802,728 | 0.12 | 32,968 |
 
-An 8x increase yields 7.5-7.7x nodes, functions, instructions, typed bytes, and
-object bytes; elapsed time remains 0.10 s at N=256. Recipe publication is one
-bounded identity walk per pattern, and lowering follows contiguous argument
-slices without emitted-name lookup or whole-program retry.
+An 8x increase gives 7.9-8.0x tokens, nodes, instructions, typed bytes, and
+object bytes; wall time rises 6x and RSS 3x. Each intrinsic is lowered once,
+with fixed-size register-save state and no declaration scan or retry.
 
 ## Completed Checkpoints
 
@@ -74,3 +78,4 @@ slices without emitted-name lookup or whole-program retry.
 | PA33 ABI-tag publication checkpoint | Pass — C1/C2, D1/D2, RTTI name/object, and vtable symbols carry canonical tags; PA33 59→62, PA1-PA32 4291/4291, file audit pass. |
 | PA33 dependent callable-type recipe checkpoint | Pass — owner-prefix, qualified-member-owner, template-template, and local-result RTTI names are canonical; PA33 62→66, PA1-PA32 4291/4291, file audit pass. |
 | PA33 dependent expression recipe checkpoint | Pass — alias-expanded `decltype`, template-id, unary, call, and non-type parameter expressions retain canonical ABI structure; PA33 66→68, PA1-PA32 4291/4291, file audit pass. |
+| PA33 stack/SysV vararg intrinsic checkpoint | Pass — typed alloca and scalar varargs cover register-save/overflow paths with dynamic-frame restoration; PA33 68→71, PA1-PA32 4291/4291, file audit pass. |

@@ -58,6 +58,48 @@ protected:
 		return true;
 	}
 
+	bool TryLowerCompilerBuiltinCall(const DumpNode& record,
+		const NodeChildren& children, Operand* result)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (children.empty()) return false;
+		const DumpNode& callee = derived.arena_.nodes[children[0]];
+		if (callee.kind != DUMP_CALLEE || callee.binding == kNoBinding ||
+			callee.binding >= derived.program_.bindings.size()) return false;
+		const BuiltinFunctionKind kind =
+			derived.program_.bindings[callee.binding].builtin_function;
+		if (kind != BUILTIN_FUNCTION_ALLOCA &&
+			kind != BUILTIN_FUNCTION_VA_START &&
+			kind != BUILTIN_FUNCTION_VA_END &&
+			kind != BUILTIN_FUNCTION_VA_ARG) return false;
+		if (children.size() != 2)
+			throw std::logic_error("invalid compiler intrinsic call");
+		if (kind == BUILTIN_FUNCTION_VA_END)
+		{
+			(void)derived.LowerValue(children[1], LowPtr());
+			*result = Operand(0, LowVoid());
+			return true;
+		}
+		Instruction instruction(kind == BUILTIN_FUNCTION_ALLOCA ?
+			Instruction::STACK_ALLOC : kind == BUILTIN_FUNCTION_VA_START ?
+				Instruction::VA_START : Instruction::VA_ARG);
+		instruction.first = derived.LowerValue(children[1],
+			kind == BUILTIN_FUNCTION_ALLOCA ? LowU64() : LowPtr());
+		instruction.type = kind == BUILTIN_FUNCTION_ALLOCA ? LowPtr() :
+			kind == BUILTIN_FUNCTION_VA_START ? LowVoid() :
+				derived.LowerType(record.type);
+		if (kind == BUILTIN_FUNCTION_VA_START)
+		{
+			derived.Emit(instruction);
+			*result = Operand(0, LowVoid());
+			return true;
+		}
+		*result = derived.Temp(instruction.type);
+		instruction.dest = result->id;
+		derived.Emit(instruction);
+		return true;
+	}
+
 	void AttachCallArguments(Instruction* call,
 		const CallArguments& arguments, const CallArgumentFlags& references)
 	{

@@ -275,6 +275,20 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 		output << ' ';
 		WriteOperand(output, instruction.first, program, function);
 		break;
+	case Instruction::STACK_ALLOC:
+		output << "%t" << instruction.dest << " = stack_alloc ";
+		WriteOperand(output, instruction.first, program, function);
+		break;
+	case Instruction::VA_START:
+		output << "va_start ";
+		WriteOperand(output, instruction.first, program, function);
+		break;
+	case Instruction::VA_ARG:
+		output << "%t" << instruction.dest << " = va_arg ";
+		WriteType(output, instruction.type);
+		output << ' ';
+		WriteOperand(output, instruction.first, program, function);
+		break;
 	case Instruction::CALL:
 		ValidateExtraRange(instruction, program.call_arguments.size(),
 			"call argument range");

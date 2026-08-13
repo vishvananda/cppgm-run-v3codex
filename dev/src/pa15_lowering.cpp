@@ -1650,6 +1650,7 @@ private:
 		if (children.empty()) throw std::runtime_error("semantic call has no callee");
 		const DumpNode& callee = arena_.nodes[children[0]];
 		Operand builtin_result;
+		if (TryLowerCompilerBuiltinCall(record, children, &builtin_result)) return builtin_result;
 		if (TryLowerNumericBuiltinCall(record, children, &builtin_result))
 			return builtin_result;
 		if (stats_) ++stats_->binding_index_probes;

@@ -399,7 +399,7 @@ private:
 	{ if (position >= tokens_.size() ||
 		tokens_[position].Kind() != kIdentifierToken) return false;
 		const std::string& name = Spelling(position);
-		if (HasNameFact(tokens_[position].spelling, kKnownType)) return true;
+		if (HasNameFact(tokens_[position].spelling, kKnownType) || name == "__builtin_va_list") return true;
 		return name.find('C') != std::string::npos ||
 			name.find('T') != std::string::npos ||
 			name.find('Y') != std::string::npos ||
@@ -1479,7 +1479,8 @@ NodeId Parser::ParsePostfixSuffixes(NodeId value) {
 			if (IsFundamentalTypeSpelling(callee)) function_style = true;
 			const NodeId arguments = arena_.Make(function_style ?
 				"paren-argument-list" : "argument-list");
-			if (!At(OP_RPAREN)) {
+			if (callee == "__builtin_va_arg") ParseBuiltinVaArgArguments(arguments);
+			else if (!At(OP_RPAREN)) {
 				while (true) {
 					NodeId argument = At(OP_LBRACE) ?
 						ParseBracedInitList() : ParseExpression(2);

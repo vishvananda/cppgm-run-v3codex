@@ -174,6 +174,8 @@ bool SemanticAnalyzer::TryAnalyzeImmediateBuiltinCall(
 	const std::vector<NodeId>& argument_syntax, TypeId target,
 	ExpressionInfo* result)
 {
+	if (TryAnalyzeVariadicBuiltinCall(
+		spelling, scope, argument_syntax, target, result)) return true;
 	if (spelling == "__builtin_expect")
 	{
 		if (argument_syntax.size() != 2)
@@ -216,6 +218,91 @@ bool SemanticAnalyzer::TryAnalyzeImmediateBuiltinCall(
 	result->type = program_->types.Fundamental(FUND_VOID);
 	++expression_count_;
 	*result = ApplyTarget(*result, target);
+	return true;
+}
+
+ExpressionInfo SemanticAnalyzer::BuildBuiltinIntrinsicCall(
+	BuiltinFunctionKind kind, const std::vector<ExpressionInfo>& arguments,
+	TypeId result_type, TypeId target)
+{
+	const BindingId binding = EnsureBuiltinFunction(kind);
+	const FunctionInfo& function = GetFunction(binding);
+	const std::uint32_t call = MakeDump(DUMP_CALL_EXPRESSION, result_type,
+		VALUE_PRVALUE, 0, binding);
+	const std::uint32_t callee = MakeDump(DUMP_CALLEE, function.type,
+		VALUE_NONE, function.display_name, binding);
+	dump_.Add(call, callee);
+	for (std::size_t i = 0; i < arguments.size(); ++i)
+		dump_.Add(call, arguments[i].node);
+	ExpressionInfo result;
+	result.node = call;
+	result.type = result_type;
+	result.category = VALUE_PRVALUE;
+	result.binding = binding;
+	++expression_count_;
+	return ApplyTarget(result, target);
+}
+
+bool SemanticAnalyzer::TryAnalyzeVariadicBuiltinCall(
+	const std::string& spelling, ScopeId scope,
+	const std::vector<NodeId>& argument_syntax, TypeId target,
+	ExpressionInfo* result)
+{
+	BuiltinFunctionKind kind = BUILTIN_FUNCTION_NONE;
+	if (spelling == "__builtin_va_start") kind = BUILTIN_FUNCTION_VA_START;
+	else if (spelling == "__builtin_va_end") kind = BUILTIN_FUNCTION_VA_END;
+	else if (spelling == "__builtin_va_arg") kind = BUILTIN_FUNCTION_VA_ARG;
+	else return false;
+	const std::size_t expected = kind == BUILTIN_FUNCTION_VA_START ||
+		kind == BUILTIN_FUNCTION_VA_ARG ? 2 : 1;
+	if (argument_syntax.size() != expected)
+		throw std::runtime_error("invalid variadic builtin arity");
+	if (kind == BUILTIN_FUNCTION_VA_START)
+	{
+		if (current_function_context_ == kNoBinding ||
+			!program_->types.Get(
+				GetFunction(current_function_context_).type).variadic)
+			throw std::runtime_error("va_start outside a variadic function");
+		const FunctionInfo& function = GetFunction(current_function_context_);
+		if (function.parameters.empty() ||
+			!arena_->IsTag(argument_syntax[1], "id-expression") ||
+			program_->names.Intern(arena_->Payload(argument_syntax[1])) !=
+				function.parameters.back().name)
+			throw std::runtime_error("va_start marker is not the last parameter");
+	}
+	ExpressionInfo list = AnalyzeExpression(argument_syntax[0], scope);
+	const TypeId va_list_pointer = program_->types.Pointer(
+		program_->types.Fundamental(FUND_UNSIGNED_LONG_INT));
+	list = ApplyCallArgument(list, va_list_pointer);
+	if (kind == BUILTIN_FUNCTION_VA_ARG)
+	{
+		if (!arena_->IsTag(argument_syntax[1], "type-id"))
+			throw std::runtime_error("va_arg has no result type");
+		const TypeId type = BuildTypeId(argument_syntax[1], scope);
+		if (type == kNoType)
+		{
+			*result = ExpressionInfo();
+			return true;
+		}
+		const TypeId scalar = program_->types.RemoveTopCv(type);
+		const TypeRecord& shape = program_->types.Get(scalar);
+		const bool fundamental_scalar = shape.kind == TYPE_FUNDAMENTAL &&
+			((shape.fundamental >= FUND_BOOL &&
+			  shape.fundamental <= FUND_UNSIGNED_LONG_LONG_INT) ||
+			 shape.fundamental == FUND_DOUBLE ||
+			 shape.fundamental == FUND_NULLPTR_T ||
+			 shape.fundamental == FUND_WCHAR_T ||
+			 shape.fundamental == FUND_CHAR16_T ||
+			 shape.fundamental == FUND_CHAR32_T);
+		if (shape.kind != TYPE_POINTER && !fundamental_scalar)
+			throw std::runtime_error("unsupported va_arg scalar type");
+		std::vector<ExpressionInfo> arguments(1, list);
+		*result = BuildBuiltinIntrinsicCall(kind, arguments, type, target);
+		return true;
+	}
+	std::vector<ExpressionInfo> arguments(1, list);
+	*result = BuildBuiltinIntrinsicCall(kind, arguments,
+		program_->types.Fundamental(FUND_VOID), target);
 	return true;
 }
 
@@ -441,6 +528,18 @@ BindingId SemanticAnalyzer::EnsureBuiltinFunction(BuiltinFunctionKind kind)
 		result = program_->types.Fundamental(FUND_INT);
 		parameter_types.push_back(
 			program_->types.Fundamental(FUND_LONG_DOUBLE)); break;
+	case BUILTIN_FUNCTION_ALLOCA:
+		spelling = "__builtin_alloca"; result = pointer;
+		parameter_types.push_back(size); break;
+	case BUILTIN_FUNCTION_VA_START:
+	case BUILTIN_FUNCTION_VA_END:
+	case BUILTIN_FUNCTION_VA_ARG:
+		spelling = kind == BUILTIN_FUNCTION_VA_START ? "__builtin_va_start" :
+			kind == BUILTIN_FUNCTION_VA_END ? "__builtin_va_end" :
+			"__builtin_va_arg";
+		parameter_types.push_back(
+			program_->types.Pointer(program_->types.Fundamental(
+				FUND_UNSIGNED_LONG_INT))); break;
 	case BUILTIN_FUNCTION_OPERATOR_NEW:
 	case BUILTIN_FUNCTION_OPERATOR_NEW_ARRAY:
 		spelling = kind == BUILTIN_FUNCTION_OPERATOR_NEW ?
@@ -491,6 +590,7 @@ bool SemanticAnalyzer::AnalyzeBuiltinCall(const std::string& spelling,
 	else if (spelling == "__builtin_memmove") kind = BUILTIN_FUNCTION_MEMMOVE;
 	else if (spelling == "__builtin_nanl") kind = BUILTIN_FUNCTION_NANL;
 	else if (spelling == "__builtin_isnan") kind = BUILTIN_FUNCTION_ISNAN;
+	else if (spelling == "__builtin_alloca") kind = BUILTIN_FUNCTION_ALLOCA;
 	else if (spelling == "::operator new")
 		kind = BUILTIN_FUNCTION_OPERATOR_NEW;
 	else if (spelling == "::operator delete")

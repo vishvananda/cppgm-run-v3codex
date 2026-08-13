@@ -85,6 +85,13 @@ unsigned instruction_clobber_mask(const Instruction & instruction)
   if(instruction.kind == Instruction::IK_VA_START)
     return register_mask(XR_RAX) | register_mask(XR_RCX) |
       register_mask(XR_RDX);
+  if(instruction.kind == Instruction::IK_VA_ARG)
+    return register_mask(XR_RAX) | register_mask(XR_RCX) |
+      register_mask(XR_RDX) | register_mask(XR_RSI) |
+      register_mask(XR_RDI) | register_mask(XR_R8) |
+      register_mask(XR_R9) | register_mask(XR_R10);
+  if(instruction.kind == Instruction::IK_STACK_ALLOC)
+    return register_mask(XR_RAX);
   return 0;
 }
 
@@ -181,6 +188,8 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
         facts.destructive_parameters.insert(instruction.first.text);
       if(instruction.kind == Instruction::IK_CALL) facts.calls.push_back(position);
       if(instruction.kind == Instruction::IK_VA_START) facts.has_va_start = true;
+      if(instruction.kind == Instruction::IK_STACK_ALLOC)
+        facts.has_dynamic_stack = true;
       if((instruction.kind == Instruction::IK_ATOMIC_LOAD ||
           instruction.kind == Instruction::IK_ATOMIC_COMPARE_EXCHANGE) &&
          instruction.type.kind == lowir_model::LTK_I128)

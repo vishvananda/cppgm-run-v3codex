@@ -19,6 +19,18 @@ template <class Derived>
 class ParserNameFacts
 {
 protected:
+	void ParseBuiltinVaArgArguments(NodeId arguments)
+	{
+		Derived& parser = static_cast<Derived&>(*this);
+		const NodeId argument = parser.ParseExpression(2);
+		if (argument == kNoNode)
+			throw parser.Error("expected va_arg list expression");
+		parser.arena_.Add(arguments, argument);
+		parser.Expect(OP_COMMA);
+		if (!parser.ParseTypeId(arguments))
+			throw parser.Error("expected va_arg result type");
+	}
+
 	NodeId ParseDecltypeValueName()
 	{
 		Derived& parser = static_cast<Derived&>(*this);

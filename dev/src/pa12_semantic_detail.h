@@ -972,6 +972,12 @@ private:
 	bool TryAnalyzeImmediateBuiltinCall(const std::string& spelling,
 		ScopeId scope, const std::vector<NodeId>& argument_syntax,
 		TypeId target, ExpressionInfo* result);
+	bool TryAnalyzeVariadicBuiltinCall(const std::string& spelling,
+		ScopeId scope, const std::vector<NodeId>& argument_syntax,
+		TypeId target, ExpressionInfo* result);
+	ExpressionInfo BuildBuiltinIntrinsicCall(BuiltinFunctionKind kind,
+		const std::vector<ExpressionInfo>& arguments, TypeId result_type,
+		TypeId target);
 	TypeId ResolveArrowOperand(ExpressionInfo* object, ScopeId scope,
 		NodeId object_syntax);
 	bool FunctionalCastPrecedesFunctions(const std::string& spelling,

@@ -254,6 +254,12 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 	case Instruction::BINARY: target.kind = lowir_model::Instruction::IK_BINARY; break;
 	case Instruction::CMP: target.kind = lowir_model::Instruction::IK_CMP; break;
 	case Instruction::CONVERT: target.kind = lowir_model::Instruction::IK_CONVERT; break;
+	case Instruction::STACK_ALLOC:
+		target.kind = lowir_model::Instruction::IK_STACK_ALLOC; break;
+	case Instruction::VA_START:
+		target.kind = lowir_model::Instruction::IK_VA_START; break;
+	case Instruction::VA_ARG:
+		target.kind = lowir_model::Instruction::IK_VA_ARG; break;
 	case Instruction::CALL:
 		target.kind = lowir_model::Instruction::IK_CALL;
 		target.call_returns_void = source.dest == kNoLowId;

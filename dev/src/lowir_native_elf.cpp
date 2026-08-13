@@ -530,8 +530,13 @@ void emit_function_prologue(CodeBuffer & out, const mir_model::MirFunction & fun
 
 void emit_function_return(CodeBuffer & out, const mir_model::MirFunction & function)
 {
-  emit_stack_adjust(out, false,
-                    static_cast<unsigned>(function_stack_adjustment(function)));
+  if(function.has_dynamic_stack) {
+    emit_register_move(out, XR_RSP, XR_RBP);
+    emit_stack_adjust(out, true,
+      static_cast<unsigned>(function.callee_saved_regs.size() * 8));
+  } else
+    emit_stack_adjust(out, false,
+                      static_cast<unsigned>(function_stack_adjustment(function)));
   for(std::size_t i = function.callee_saved_regs.size(); i != 0; --i)
     emit_pop(out, function.callee_saved_regs[i - 1]);
   emit_pop(out, XR_RBP);

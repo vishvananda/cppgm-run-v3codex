@@ -3,11 +3,13 @@
 #include "lowir_native_analysis.h"
 #include "lowir_native_eh.h"
 #include "lowir_native_host_eh.h"
+#include "lowir_native_intrinsic_lowering.h"
 #include "lowir_native_mir.h"
 #include "lowir_native_program.h"
 #include "lowir_native_registers.h"
 #include "lowir_native_selection.h"
 #include "lowir_native_session.h"
+#include "lowir_native_stack.h"
 #include "lowir_native_value.h"
 #include "lowir_native_varargs.h"
 #include "lowir_native_wide.h"
@@ -27,8 +29,9 @@ using allocation::RegisterPool; using allocation::XmmPool;
 using allocation::is_callee_saved;
 using namespace build;
 using namespace selection;
-class FunctionLowerer
+class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>
 {
+  friend class IntrinsicLowering<FunctionLowerer>;
 public:
   FunctionLowerer(const lowir_model::LowirFunction & source,
                   const std::unordered_set<std::string> & pointer_globals,
@@ -60,6 +63,7 @@ public:
       target_.blocks.push_back(block);
     }
     target_.callee_saved_regs = registers_.preserves();
+    target_.has_dynamic_stack = facts_.has_dynamic_stack;
     const bool needs_call_scratch = uses_scalar_float_ ||
       (source_.metadata.keep_internal_alias && !facts_.calls.empty());
     target_.scratch_bytes = needs_call_scratch ? 48 : 0;
@@ -2001,16 +2005,6 @@ private:
       out.push_back(machine_instruction(MirInstruction::MI_MFENCE));
     consume(instruction.first);
   }
-  void emit_va_start(const Instruction & instruction,
-                     std::vector<MirInstruction> & out)
-  {
-    if(!variadic_register_save_offset_)
-      throw std::runtime_error("va_start register-save area is unavailable");
-    emit_operand_address(out, XR_RCX, instruction.first);
-    varargs::append_va_start(
-      variadic_state_, variadic_register_save_offset_, out);
-    consume(instruction.first);
-  }
   void emit_bulk(const Instruction & instruction,
                  std::vector<MirInstruction> & out)
   {
@@ -2911,8 +2905,7 @@ private:
     } else if(instruction.kind == Instruction::IK_ATOMIC_THREAD_FENCE ||
               instruction.kind == Instruction::IK_ATOMIC_SIGNAL_FENCE) {
       emit_atomic_fence(instruction, out);
-    } else if(instruction.kind == Instruction::IK_VA_START)
-      emit_va_start(instruction, out);
+    } else if(TryEmitIntrinsic(instruction, out)) return;
     else if(instruction.kind == Instruction::IK_INDEX) emit_index(instruction, out);
     else if(instruction.kind == Instruction::IK_BINARY) emit_binary(instruction, out);
     else if(instruction.kind == Instruction::IK_CMP) {
