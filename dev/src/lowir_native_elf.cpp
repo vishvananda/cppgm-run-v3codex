@@ -1591,6 +1591,17 @@ void emit_eh_push(CodeBuffer & out,
                   const mir_model::MirFunction & function)
 {
   require_operands(instruction, 2);
+  long long region_kind = instruction.operands[1].imm;
+  const std::map<std::string,
+    std::vector<mir_model::MirHostEhClause> >::const_iterator clauses =
+      function.host_eh_clauses.find(instruction.operands[0].text);
+  if(clauses != function.host_eh_clauses.end())
+    for(std::size_t i = 0; i < clauses->second.size(); ++i)
+      if(clauses->second[i].kind ==
+           mir_model::MirHostEhClause::HC_CLEANUP) {
+        region_kind = 1;
+        break;
+      }
   emit_stack_adjust(out, true, 80);
   emit_symbol_move(out, XR_R11, kEhTop);
   emit_load(out, XR_RAX, XR_R11, 0, 64);
@@ -1606,7 +1617,7 @@ void emit_eh_push(CodeBuffer & out,
   emit_store(out, XR_RSP, 48, XR_R13, 64);
   emit_store(out, XR_RSP, 56, XR_R14, 64);
   emit_store(out, XR_RSP, 64, XR_R15, 64);
-  emit_immediate_move(out, XR_RAX, instruction.operands[1].imm);
+  emit_immediate_move(out, XR_RAX, region_kind);
   emit_store(out, XR_RSP, 72, XR_RAX, 64);
   emit_register_move(out, XR_RAX, XR_RSP);
   emit_store(out, XR_R11, 0, XR_RAX, 64);

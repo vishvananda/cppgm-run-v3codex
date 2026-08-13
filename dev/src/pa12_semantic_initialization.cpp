@@ -1179,18 +1179,17 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 					original_arguments, initializer_scope, &arguments,
 					&prepared_arguments);
 				const TypeId owner_type = program_->entities[entity].type;
-				const std::uint32_t action = MakeDump(
-					DUMP_DELEGATING_INITIALIZER_ACTION, owner_type,
-					VALUE_NONE, program_->entities[entity].identity_name);
-				const bool base_entry =
-					program_->bindings[constructor.binding].constructor_base_entry;
+				const std::uint32_t action = MakeDump(DUMP_DELEGATING_INITIALIZER_ACTION,
+					owner_type, VALUE_NONE, program_->entities[entity].identity_name);
+				const bool base_entry = program_->bindings[constructor.binding].constructor_base_entry;
+				dump_.nodes[action].selected_binding = DelegatingConstructorCleanupDestructor(
+					owner_type, entity, base_entry);
 				const std::uint32_t delegate = BuildConstructorAction(owner_type,
 					initializer_scope, arguments, false, list_initialization,
 					base_entry, true,
 					list_initialization ? value : kNoNode,
 					expanded_arguments ? &prepared_arguments : 0);
-				RecordDelegatingConstructor(
-					constructor.binding, dump_.nodes[delegate].binding);
+				RecordDelegatingConstructor(constructor.binding, dump_.nodes[delegate].binding);
 				dump_.Add(action, delegate);
 				AppendFullExpressionDestructionActions(delegate, action);
 				dump_.Add(body, action);
@@ -1411,6 +1410,7 @@ bool SemanticAnalyzer::InitializationActionsAreNonthrowing(
 		++nonthrowing_action_visits_;
 		const DumpNode record = dump_.nodes[node];
 		if (record.pseudo_destructor_call) continue;
+		if (record.kind == DUMP_THROW_EXPRESSION) return false;
 		if (record.kind == DUMP_CONSTRUCTOR_ACTION)
 		{
 			if (!FunctionIsNonthrowing(record.binding))

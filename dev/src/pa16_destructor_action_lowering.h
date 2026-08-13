@@ -320,6 +320,16 @@ protected:
 				action.object_binding,
 				derived.LowerStorageType(action.operand_type)));
 		}
+		else if (action.complete_object_destruction)
+		{
+			if (derived.current_this_binding_ == kNoBinding)
+				throw std::logic_error(
+					"complete-object destruction is outside a member function");
+			destination = derived.LoadStorage(derived.StorageFor(
+				derived.current_this_binding_, LowPtr()), LowPtr());
+			base_subobject = derived.program_.bindings[action.binding].
+				destructor_base_entry;
+		}
 		else
 		{
 			if (derived.current_this_binding_ == kNoBinding ||

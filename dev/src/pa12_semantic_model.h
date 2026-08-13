@@ -193,10 +193,12 @@ struct DumpNode
 	bool inverse_base_projection;
 	bool has_direct_base_offset;
 	bool pseudo_destructor_call;
+	bool complete_object_destruction;
 	bool reverse_pointer_compound_assignment;
 	bool dynamic_type_query;
 	bool dynamic_cast_reference;
 	FunctionTryBodyKind function_try_body;
+	std::uint32_t exception_control_exit_count;
 
 	explicit DumpNode(DumpKind value)
 		: kind(value), type(kNoType), operand_type(kNoType),
@@ -251,9 +253,11 @@ struct DumpNode
 		  has_base_projection_offset(false),
 		  inverse_base_projection(false),
 		  has_direct_base_offset(false), pseudo_destructor_call(false),
+		  complete_object_destruction(false),
 		  reverse_pointer_compound_assignment(false),
 		  dynamic_type_query(false), dynamic_cast_reference(false),
-		  function_try_body(FUNCTION_TRY_BODY_NONE) {}
+		  function_try_body(FUNCTION_TRY_BODY_NONE),
+		  exception_control_exit_count(0) {}
 };
 
 struct DumpEdge

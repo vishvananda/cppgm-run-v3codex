@@ -271,8 +271,10 @@ protected:
 		if (derived.CurrentBlock().terminated) return;
 		if (managed_full_expression)
 			derived.CompleteFullExpressionCleanup();
+		const std::size_t exception_regions =
+			derived.ActiveExceptionRegionCount();
 		const std::size_t closed_exception_handlers =
-			derived.BeginExceptionControlExit();
+			derived.BeginExceptionControlExit(exception_regions);
 		const std::size_t remaining_cleanup = managed_full_expression ?
 			full_expression_cleanup_end : first_cleanup;
 		for (std::size_t i = remaining_cleanup; i < children.size(); ++i)
@@ -286,7 +288,8 @@ protected:
 				continue;
 			derived.LowerDestructorAction(derived.arena_.nodes[children[i]]);
 		}
-		derived.FinishExceptionControlExit(closed_exception_handlers);
+		derived.FinishExceptionControlExit(
+			closed_exception_handlers, exception_regions);
 		if (derived.destructor_return_routes_to_epilogue_)
 		{
 			if (derived.destructor_return_target_ == kNoLowId)

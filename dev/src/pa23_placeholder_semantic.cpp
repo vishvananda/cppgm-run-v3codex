@@ -381,9 +381,11 @@ void SemanticAnalyzer::AnalyzeRetainedPlaceholderFunctionBody(
 	current_class_context_ = requested.friend_of != kNoEntity ?
 		requested.friend_of : program_->bindings[requested.binding].member_owner;
 	current_function_context_ = function;
+	BeginFunctionControlFlowFacts();
 	try
 	{
 		AnalyzeCompound(requested.definition_body, function_scope, detached);
+		FinishFunctionControlFlowFacts();
 		CompletePlaceholderFunctionReturn(function);
 		const FunctionInfo& completed = GetFunction(function);
 		const bool declared_constexpr = completed.constexpr_function ||

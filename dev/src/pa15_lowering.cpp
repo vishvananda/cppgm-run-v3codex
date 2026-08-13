@@ -2186,6 +2186,7 @@ private:
 		}
 		if (record.kind == DUMP_GOTO_STATEMENT)
 		{
+			LowerGotoControlExit(record, children);
 			EmitJump(LabelBlock(record.text));
 			return;
 		}

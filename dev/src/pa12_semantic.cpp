@@ -2379,6 +2379,7 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	current_class_context_ = function.friend_of != kNoEntity ?
 		function.friend_of : program_->bindings[binding].member_owner;
 	current_function_context_ = program_->bindings[binding].canonical;
+	BeginFunctionControlFlowFacts();
 	const NodeId body = function.definition_body;
 	if (body != kNoNode)
 	{
@@ -2396,6 +2397,7 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 		CompletePlaceholderFunctionReturn(binding);
 		FinalizeNamedReturnSlot(output_node);
 	}
+	FinishFunctionControlFlowFacts();
 	dump_.nodes[output_node].type = member ?
 		AdaptMemberFunctionType(binding) : GetFunction(binding).type;
 	current_return_type_ = previous_return;
@@ -2728,22 +2730,7 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 		}
 		return;
 	}
-	if (arena_->IsTag(node, "labeled-statement"))
-	{
-		const std::uint32_t statement = MakeDump(DUMP_LABELED_STATEMENT,
-			kNoType, VALUE_NONE, program_->names.Intern(arena_->Payload(node)));
-		dump_.Add(output_parent, statement);
-		const NodeId child = FirstSemanticChild(node);
-		if (child == kNoNode) throw std::runtime_error("label without statement");
-		AnalyzeStatement(child, scope, statement);
-		return;
-	}
-	if (arena_->IsTag(node, "goto-statement"))
-	{
-		dump_.Add(output_parent, MakeDump(DUMP_GOTO_STATEMENT,
-			kNoType, VALUE_NONE, program_->names.Intern(arena_->Payload(node))));
-		return;
-	}
+	if (AnalyzeControlFlowLabelOrGoto(node, scope, output_parent)) return;
 	if (IsDeclaration(node))
 	{
 		AnalyzeDeclaration(node, scope, output_parent, true);

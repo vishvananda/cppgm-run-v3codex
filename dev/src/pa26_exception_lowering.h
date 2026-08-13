@@ -140,12 +140,20 @@ protected:
 		derived.Emit(Instruction(Instruction::EH_END));
 	}
 
-	std::size_t BeginExceptionControlExit()
+	std::size_t ActiveExceptionRegionCount() const
+	{
+		return active_exception_regions_.size();
+	}
+
+	std::size_t BeginExceptionControlExit(std::size_t exit_count)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
+		if (exit_count > active_exception_regions_.size())
+			throw std::logic_error(
+				"control exit exceeds active exception regions");
 		CallArguments none;
 		std::size_t closed = 0;
-		if (!active_exception_regions_.empty() &&
+		if (exit_count != 0 && !active_exception_regions_.empty() &&
 			active_exception_regions_.back().kind == EXCEPTION_HANDLER_REGION)
 		{
 			derived.Emit(Instruction(Instruction::EH_END));
@@ -154,6 +162,21 @@ protected:
 			++closed;
 		}
 		return closed;
+	}
+
+	void LowerGotoControlExit(const DumpNode& record,
+		const NodeChildren& children)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const std::size_t exit_count = record.exception_control_exit_count;
+		const std::size_t closed = BeginExceptionControlExit(exit_count);
+		for (std::size_t i = 0; i < children.size(); ++i)
+		{
+			if (derived.arena_.nodes[children[i]].kind != DUMP_DESTRUCTOR_ACTION)
+				throw std::logic_error("invalid goto cleanup action");
+			derived.LowerDestructorAction(derived.arena_.nodes[children[i]]);
+		}
+		FinishExceptionControlExit(closed, exit_count);
 	}
 
 	template <class Task>
@@ -336,15 +359,20 @@ protected:
 		derived.LowerClassDestination(node, destination);
 	}
 
-	void FinishExceptionControlExit(std::size_t closed_handlers)
+	void FinishExceptionControlExit(std::size_t closed_regions,
+		std::size_t exit_count)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
+		if (exit_count > active_exception_regions_.size() ||
+			closed_regions > exit_count)
+			throw std::logic_error("invalid exception control exit count");
 		CallArguments none;
-		for (std::size_t i = active_exception_regions_.size() - closed_handlers;
-			i != 0; --i)
+		for (std::size_t offset = closed_regions;
+			offset < exit_count; ++offset)
 		{
+			const std::size_t i = active_exception_regions_.size() - offset - 1;
 			derived.Emit(Instruction(Instruction::EH_END));
-			if (active_exception_regions_[i - 1].kind == EXCEPTION_HANDLER_REGION)
+			if (active_exception_regions_[i].kind == EXCEPTION_HANDLER_REGION)
 				(void)EmitExceptionRuntimeCall(
 					derived.polymorphism_.eh_end_catch_symbol, LowVoid(), none);
 		}

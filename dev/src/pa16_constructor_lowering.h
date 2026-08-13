@@ -30,7 +30,8 @@ protected:
 		DumpNode* cleanup) const
 	{
 		if ((action.kind != DUMP_INITIALIZER_ACTION &&
-			action.kind != DUMP_BASE_INITIALIZER_ACTION) ||
+			action.kind != DUMP_BASE_INITIALIZER_ACTION &&
+			action.kind != DUMP_DELEGATING_INITIALIZER_ACTION) ||
 			action.selected_binding == kNoBinding)
 			return false;
 		*cleanup = DumpNode(DUMP_DESTRUCTOR_ACTION);
@@ -38,6 +39,8 @@ protected:
 		cleanup->operand_type = action.type;
 		if (action.kind == DUMP_INITIALIZER_ACTION)
 			cleanup->object_binding = action.binding;
+		else if (action.kind == DUMP_DELEGATING_INITIALIZER_ACTION)
+			cleanup->complete_object_destruction = true;
 		else
 		{
 			cleanup->base_projection_count = 1;

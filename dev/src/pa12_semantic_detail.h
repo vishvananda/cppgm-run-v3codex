@@ -80,6 +80,7 @@ public:
 		  braced_initialization_context_(0),
 		  current_pack_alignment_(0),
 		  loop_depth_(0), switch_depth_(0), exception_handler_depth_(0),
+		  current_exception_control_context_(0),
 		  unevaluated_depth_(0),
 		  decltype_operand_depth_(0),
 		  conditionally_evaluated_operand_depth_(0),
@@ -342,6 +343,8 @@ private:
 	void AnalyzeCompound(NodeId node, ScopeId scope,
 		std::uint32_t output_parent);
 	void AnalyzeStatement(NodeId node, ScopeId scope,
+		std::uint32_t output_parent);
+	bool AnalyzeControlFlowLabelOrGoto(NodeId node, ScopeId scope,
 		std::uint32_t output_parent);
 	void AnalyzeReturnStatement(NodeId node, ScopeId scope,
 		std::uint32_t output_parent);
@@ -1385,6 +1388,8 @@ private:
 	void ClearInjectedConstructorInitializers();
 	bool InitializationActionsAreNonthrowing(std::uint32_t body);
 	void DemandConstructorUnwindDestructors(std::uint32_t body);
+	BindingId DelegatingConstructorCleanupDestructor(
+		TypeId owner_type, EntityId entity, bool base_entry);
 	void AddDefaultConstructor(std::uint32_t variable, BindingId binding,
 		TypeId type);
 	void AddDestructorSubobjectActions(EntityId entity, BindingId destructor,
@@ -1456,6 +1461,13 @@ private:
 		bool function_addresses_only = false);
 	void AppendScopeDestructionActions(ScopeId scope,
 		std::uint32_t output_parent, ScopeId stop_exclusive = kNoScope);
+	void BeginFunctionControlFlowFacts();
+	void FinishFunctionControlFlowFacts();
+	void PushExceptionControlContext();
+	void PopExceptionControlContext();
+	void RegisterControlFlowLabel(NameId name, ScopeId scope);
+	void RegisterControlFlowGoto(std::uint32_t node, NameId name,
+		ScopeId scope);
 	std::uint32_t MakeDestructorAction(TypeId type, BindingId destructor,
 		BindingId object, std::uint32_t base_projections = 0,
 		bool demand = true);
@@ -1868,6 +1880,58 @@ private:
 	std::size_t exception_handler_depth_;
 	std::vector<ScopeId> exception_cleanup_stops_;
 	std::vector<ScopeId> exception_handler_cleanup_stops_;
+	struct ExceptionControlContextFact
+	{
+		std::uint32_t parent;
+		std::uint32_t depth;
+		ExceptionControlContextFact(std::uint32_t parent_value,
+			std::uint32_t depth_value)
+			: parent(parent_value), depth(depth_value) {}
+	};
+	struct GotoLifetimeSnapshot
+	{
+		ScopeId scope;
+		std::size_t count;
+		GotoLifetimeSnapshot(ScopeId scope_value, std::size_t count_value)
+			: scope(scope_value), count(count_value) {}
+	};
+	struct PendingGotoControlFact
+	{
+		std::uint32_t node;
+		ScopeId scope;
+		std::uint32_t exception_context;
+		std::vector<GotoLifetimeSnapshot> lifetimes;
+		PendingGotoControlFact(std::uint32_t node_value, ScopeId scope_value,
+			std::uint32_t context_value)
+			: node(node_value), scope(scope_value),
+			  exception_context(context_value) {}
+	};
+	struct LabelControlFact
+	{
+		ScopeId scope;
+		std::uint32_t exception_context;
+		std::vector<GotoLifetimeSnapshot> lifetimes;
+		LabelControlFact()
+			: scope(kNoScope), exception_context(0) {}
+		LabelControlFact(ScopeId scope_value, std::uint32_t context_value)
+			: scope(scope_value), exception_context(context_value) {}
+	};
+	struct FunctionControlFlowFactState
+	{
+		std::vector<ExceptionControlContextFact> contexts;
+		std::uint32_t current_context;
+		std::unordered_map<NameId, LabelControlFact> labels;
+		std::unordered_multimap<NameId, PendingGotoControlFact> pending_gotos;
+		FunctionControlFlowFactState() : current_context(0) {}
+	};
+	void ResolveControlFlowGoto(const PendingGotoControlFact& source,
+		const LabelControlFact& target);
+	std::vector<FunctionControlFlowFactState> function_control_flow_stack_;
+	std::vector<ExceptionControlContextFact> exception_control_contexts_;
+	std::uint32_t current_exception_control_context_;
+	std::unordered_map<NameId, LabelControlFact> control_flow_labels_;
+	std::unordered_multimap<NameId, PendingGotoControlFact>
+		pending_control_flow_gotos_;
 	std::size_t unevaluated_depth_;
 	std::size_t decltype_operand_depth_;
 	std::size_t conditionally_evaluated_operand_depth_;

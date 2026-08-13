@@ -2879,6 +2879,7 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 			program_->bindings[info.binding].member_owner;
 		current_function_context_ =
 			program_->bindings[info.binding].canonical;
+		BeginFunctionControlFlowFacts();
 		if (info.constructor)
 		{
 			std::uint32_t function_try;
@@ -2948,6 +2949,7 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 		else if (info.definition_body != kNoNode)
 			AnalyzeCompound(info.definition_body, function_scope, function);
 		else dump_.Add(function, MakeDump(DUMP_COMPOUND_STATEMENT));
+		FinishFunctionControlFlowFacts();
 		FinalizeNamedReturnSlot(function);
 		current_return_type_ = previous_return;
 		current_class_context_ = previous_class;

@@ -2,11 +2,265 @@
 
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 namespace cppgm
 {
 namespace pa12_semantic_detail
 {
+
+bool SemanticAnalyzer::AnalyzeControlFlowLabelOrGoto(NodeId node,
+	ScopeId scope, std::uint32_t output_parent)
+{
+	if (arena_->IsTag(node, "labeled-statement"))
+	{
+		const NameId name = program_->names.Intern(arena_->Payload(node));
+		const std::uint32_t statement = MakeDump(DUMP_LABELED_STATEMENT,
+			kNoType, VALUE_NONE, name);
+		dump_.Add(output_parent, statement);
+		RegisterControlFlowLabel(name, scope);
+		const NodeId child = FirstSemanticChild(node);
+		if (child == kNoNode) throw std::runtime_error("label without statement");
+		AnalyzeStatement(child, scope, statement);
+		return true;
+	}
+	if (!arena_->IsTag(node, "goto-statement")) return false;
+	const NameId name = program_->names.Intern(arena_->Payload(node));
+	const std::uint32_t statement = MakeDump(DUMP_GOTO_STATEMENT,
+		kNoType, VALUE_NONE, name);
+	dump_.Add(output_parent, statement);
+	RegisterControlFlowGoto(statement, name, scope);
+	return true;
+}
+
+BindingId SemanticAnalyzer::DelegatingConstructorCleanupDestructor(
+	TypeId owner_type, EntityId entity, bool base_entry)
+{
+	if (program_->entities[entity].trivial_destructor) return kNoBinding;
+	BindingId destructor = DestructorForType(owner_type);
+	if (destructor == kNoBinding)
+		throw std::logic_error(
+			"delegating constructor has no destructor identity");
+	return base_entry ? EnsureDestructorBaseEntry(destructor) : destructor;
+}
+
+void SemanticAnalyzer::BeginFunctionControlFlowFacts()
+{
+	FunctionControlFlowFactState saved;
+	saved.contexts.swap(exception_control_contexts_);
+	saved.current_context = current_exception_control_context_;
+	saved.labels.swap(control_flow_labels_);
+	saved.pending_gotos.swap(pending_control_flow_gotos_);
+	function_control_flow_stack_.push_back(std::move(saved));
+	exception_control_contexts_.clear();
+	exception_control_contexts_.push_back(
+		ExceptionControlContextFact(kNoDumpEdge, 0));
+	current_exception_control_context_ = 0;
+	control_flow_labels_.clear();
+	pending_control_flow_gotos_.clear();
+}
+
+void SemanticAnalyzer::FinishFunctionControlFlowFacts()
+{
+	if (current_exception_control_context_ != 0 ||
+		exception_control_contexts_.empty())
+		throw std::logic_error("unbalanced semantic exception context");
+	if (!pending_control_flow_gotos_.empty())
+		throw std::runtime_error("goto names an undefined label");
+	if (function_control_flow_stack_.empty())
+		throw std::logic_error("semantic control-flow stack underflow");
+	FunctionControlFlowFactState saved =
+		std::move(function_control_flow_stack_.back());
+	function_control_flow_stack_.pop_back();
+	exception_control_contexts_.swap(saved.contexts);
+	current_exception_control_context_ = saved.current_context;
+	control_flow_labels_.swap(saved.labels);
+	pending_control_flow_gotos_.swap(saved.pending_gotos);
+}
+
+void SemanticAnalyzer::PushExceptionControlContext()
+{
+	if (exception_control_contexts_.empty())
+		BeginFunctionControlFlowFacts();
+	const std::uint32_t parent = current_exception_control_context_;
+	if (parent >= exception_control_contexts_.size())
+		throw std::logic_error("invalid semantic exception context");
+	if (exception_control_contexts_.size() >= kNoDumpEdge)
+		throw std::runtime_error("too many nested exception contexts");
+	current_exception_control_context_ = static_cast<std::uint32_t>(
+		exception_control_contexts_.size());
+	exception_control_contexts_.push_back(ExceptionControlContextFact(parent,
+		exception_control_contexts_[parent].depth + 1));
+}
+
+void SemanticAnalyzer::PopExceptionControlContext()
+{
+	if (current_exception_control_context_ == 0 ||
+		current_exception_control_context_ >= exception_control_contexts_.size())
+		throw std::logic_error("semantic exception context underflow");
+	current_exception_control_context_ =
+		exception_control_contexts_[current_exception_control_context_].parent;
+}
+
+void SemanticAnalyzer::ResolveControlFlowGoto(
+	const PendingGotoControlFact& source, const LabelControlFact& target)
+{
+	ScopeId source_ancestor = source.scope;
+	ScopeId target_ancestor = target.scope;
+	while (source_ancestor != target_ancestor)
+	{
+		if (source_ancestor == kNoScope || target_ancestor == kNoScope)
+			throw std::logic_error("goto scopes have no common ancestor");
+		ScopeId* descendant = source_ancestor > target_ancestor ?
+			&source_ancestor : &target_ancestor;
+		if (*descendant >= scope_parents_.size())
+			throw std::logic_error("goto scope is invalid");
+		*descendant = scope_parents_[*descendant];
+	}
+	const ScopeId common_scope = source_ancestor;
+	std::size_t source_common_count = 0;
+	for (std::size_t i = 0; i < source.lifetimes.size(); ++i)
+		if (source.lifetimes[i].scope == common_scope)
+			source_common_count = source.lifetimes[i].count;
+	std::size_t target_common_count = 0;
+	for (std::size_t i = 0; i < target.lifetimes.size(); ++i)
+		if (target.lifetimes[i].scope == common_scope)
+			target_common_count = target.lifetimes[i].count;
+	if (target_common_count > source_common_count)
+		throw std::runtime_error("goto bypasses object initialization");
+	ScopeId entered_scope = target.scope;
+	std::size_t target_lifetime = 0;
+	while (entered_scope != common_scope)
+	{
+		if (target_lifetime < target.lifetimes.size() &&
+			target.lifetimes[target_lifetime].scope == entered_scope &&
+			target.lifetimes[target_lifetime++].count != 0)
+			throw std::runtime_error("goto bypasses object initialization");
+		entered_scope = scope_parents_[entered_scope];
+	}
+	ScopeId scope = source.scope;
+	std::size_t lifetime = 0;
+	while (scope != common_scope && scope != kNoScope)
+	{
+		if (lifetime < source.lifetimes.size() &&
+			source.lifetimes[lifetime].scope == scope)
+		{
+			const GotoLifetimeSnapshot& snapshot = source.lifetimes[lifetime++];
+			if (snapshot.scope >= scope_lifetimes_.size() ||
+				snapshot.count > scope_lifetimes_[snapshot.scope].size())
+				throw std::logic_error("goto lifetime snapshot is invalid");
+			const std::vector<LifetimeObligation>& obligations =
+				scope_lifetimes_[snapshot.scope];
+			for (std::size_t i = snapshot.count; i != 0; --i)
+			{
+				const LifetimeObligation& obligation = obligations[i - 1];
+				const std::uint32_t action = obligation.temporary == kNoDumpEdge ?
+					MakeDestructorAction(obligation.type, obligation.destructor,
+						obligation.object) :
+					MakeTemporaryDestructorAction(obligation.temporary,
+						obligation.destructor);
+				if (action != kNoDumpEdge) dump_.Add(source.node, action);
+				++lexical_cleanup_action_visits_;
+			}
+		}
+		if (scope >= scope_parents_.size())
+			throw std::logic_error("goto source scope is invalid");
+		scope = scope_parents_[scope];
+	}
+	if (scope != common_scope)
+		throw std::logic_error("goto cleanup lost its common scope");
+	if (source_common_count != target_common_count)
+	{
+		if (common_scope >= scope_lifetimes_.size() ||
+			source_common_count > scope_lifetimes_[common_scope].size())
+			throw std::logic_error("goto common lifetime snapshot is invalid");
+		const std::vector<LifetimeObligation>& obligations =
+			scope_lifetimes_[common_scope];
+		for (std::size_t i = source_common_count;
+			i != target_common_count; --i)
+		{
+			const LifetimeObligation& obligation = obligations[i - 1];
+			const std::uint32_t action = obligation.temporary == kNoDumpEdge ?
+				MakeDestructorAction(obligation.type, obligation.destructor,
+					obligation.object) :
+				MakeTemporaryDestructorAction(obligation.temporary,
+					obligation.destructor);
+			if (action != kNoDumpEdge) dump_.Add(source.node, action);
+			++lexical_cleanup_action_visits_;
+		}
+	}
+
+	if (source.exception_context >= exception_control_contexts_.size() ||
+		target.exception_context >= exception_control_contexts_.size())
+		throw std::logic_error("goto exception context is invalid");
+	std::uint32_t context = source.exception_context;
+	const std::uint32_t source_depth =
+		exception_control_contexts_[context].depth;
+	const std::uint32_t target_depth =
+		exception_control_contexts_[target.exception_context].depth;
+	if (source_depth < target_depth)
+		throw std::runtime_error("goto enters a protected region");
+	const std::uint32_t exits = source_depth - target_depth;
+	for (std::uint32_t i = 0; i < exits; ++i)
+		context = exception_control_contexts_[context].parent;
+	if (context != target.exception_context)
+		throw std::runtime_error("goto crosses protected regions");
+	dump_.nodes[source.node].exception_control_exit_count = exits;
+}
+
+void SemanticAnalyzer::RegisterControlFlowLabel(NameId name, ScopeId scope)
+{
+	if (exception_control_contexts_.empty()) BeginFunctionControlFlowFacts();
+	LabelControlFact target(scope, current_exception_control_context_);
+	ScopeId lifetime_scope = scope < nearest_lifetime_scopes_.size() ?
+		nearest_lifetime_scopes_[scope] : kNoScope;
+	while (lifetime_scope != kNoScope)
+	{
+		target.lifetimes.push_back(GotoLifetimeSnapshot(lifetime_scope,
+			scope_lifetimes_[lifetime_scope].size()));
+		const ScopeId parent = scope_parents_[lifetime_scope];
+		lifetime_scope = parent != kNoScope &&
+			parent < nearest_lifetime_scopes_.size() ?
+			nearest_lifetime_scopes_[parent] : kNoScope;
+	}
+	if (!control_flow_labels_.insert(std::make_pair(name, target)).second)
+		throw std::runtime_error("duplicate label");
+	const std::pair<std::unordered_multimap<NameId,
+		PendingGotoControlFact>::iterator,
+		std::unordered_multimap<NameId, PendingGotoControlFact>::iterator> range =
+		pending_control_flow_gotos_.equal_range(name);
+	for (std::unordered_multimap<NameId,
+		PendingGotoControlFact>::iterator i = range.first;
+		i != range.second; ++i)
+		ResolveControlFlowGoto(i->second, target);
+	pending_control_flow_gotos_.erase(range.first, range.second);
+}
+
+void SemanticAnalyzer::RegisterControlFlowGoto(std::uint32_t node,
+	NameId name, ScopeId scope)
+{
+	if (exception_control_contexts_.empty()) BeginFunctionControlFlowFacts();
+	PendingGotoControlFact source(
+		node, scope, current_exception_control_context_);
+	ScopeId lifetime_scope = scope < nearest_lifetime_scopes_.size() ?
+		nearest_lifetime_scopes_[scope] : kNoScope;
+	while (lifetime_scope != kNoScope)
+	{
+		if (lifetime_scope >= scope_lifetimes_.size())
+			throw std::logic_error("goto lifetime scope is invalid");
+		source.lifetimes.push_back(GotoLifetimeSnapshot(lifetime_scope,
+			scope_lifetimes_[lifetime_scope].size()));
+		const ScopeId parent = scope_parents_[lifetime_scope];
+		lifetime_scope = parent != kNoScope &&
+			parent < nearest_lifetime_scopes_.size() ?
+			nearest_lifetime_scopes_[parent] : kNoScope;
+	}
+	const std::unordered_map<NameId, LabelControlFact>::const_iterator target =
+		control_flow_labels_.find(name);
+	if (target != control_flow_labels_.end())
+		ResolveControlFlowGoto(source, target->second);
+	else pending_control_flow_gotos_.insert(std::make_pair(name, source));
+}
 
 void SemanticAnalyzer::DemandConstructorUnwindDestructors(
 	std::uint32_t body)
@@ -53,7 +307,8 @@ void SemanticAnalyzer::DemandConstructorUnwindDestructors(
 	{
 		const DumpNode& action = dump_.nodes[dump_.edges[edge].child];
 		if ((action.kind == DUMP_INITIALIZER_ACTION ||
-			action.kind == DUMP_BASE_INITIALIZER_ACTION) &&
+			action.kind == DUMP_BASE_INITIALIZER_ACTION ||
+			action.kind == DUMP_DELEGATING_INITIALIZER_ACTION) &&
 			action.selected_binding != kNoBinding)
 			DemandFunction(action.selected_binding);
 	}
@@ -159,7 +414,9 @@ void SemanticAnalyzer::AppendFullExpressionDestructionActions(
 		(preserve_nontrivial_actions || contains_default_argument) &&
 		potentially_throwing;
 	const bool managed_expression =
-		(preserve_nontrivial_actions || requested_explicit_cleanup) &&
+		(preserve_nontrivial_actions || requested_explicit_cleanup ||
+		 (complete_constructor_unwind_ && potentially_throwing &&
+		  !temporaries.empty())) &&
 		dump_.nodes[expression].kind != DUMP_THROW_EXPRESSION;
 	bool appended_managed_action = false;
 	for (std::size_t i = temporaries.size(); i != 0; --i)
@@ -670,7 +927,9 @@ void SemanticAnalyzer::AnalyzeExceptionHandler(NodeId node, ScopeId scope,
 		throw std::runtime_error("exception handler has no body");
 	++exception_handler_depth_;
 	exception_handler_cleanup_stops_.push_back(scope);
+	PushExceptionControlContext();
 	AnalyzeCompound(body, handler_scope, handler);
+	PopExceptionControlContext();
 	exception_handler_cleanup_stops_.pop_back();
 	--exception_handler_depth_;
 	AppendScopeDestructionActions(handler_scope, handler, scope);
@@ -691,7 +950,9 @@ void SemanticAnalyzer::AnalyzeTryStatement(NodeId node, ScopeId scope,
 		if (arena_->IsTag(child, "compound-statement") && !saw_body)
 		{
 			exception_cleanup_stops_.push_back(scope);
+			PushExceptionControlContext();
 			AnalyzeCompound(child, scope, statement);
+			PopExceptionControlContext();
 			exception_cleanup_stops_.pop_back();
 			saw_body = true;
 		}
