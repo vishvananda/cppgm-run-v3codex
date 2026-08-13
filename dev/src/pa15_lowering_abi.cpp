@@ -1855,8 +1855,11 @@ void ApplyBuiltinSymbolMetadata(pa15_lowir_detail::Symbol* symbol,
 	case BUILTIN_FUNCTION_NANL:
 	case BUILTIN_FUNCTION_ISNAN:
 	case BUILTIN_FUNCTION_HOSTED_INTEGER_INTRINSIC:
+	case BUILTIN_FUNCTION_HOSTED_FLOATING_INTRINSIC:
 		symbol->effects = Symbol::EFFECTS_READNONE; break;
 	case BUILTIN_FUNCTION_HOSTED_MEMORY_INTRINSIC: break;
+	case BUILTIN_FUNCTION_ABORT:
+		symbol->noreturn = true; break;
 	case BUILTIN_FUNCTION_ALLOCA:
 	case BUILTIN_FUNCTION_VA_START:
 	case BUILTIN_FUNCTION_VA_END:
@@ -2104,6 +2107,8 @@ std::string MangleFunction(const pa11::Program& program,
 			return "cppgm_builtin_operator_new_array";
 		if (binding.builtin_function == BUILTIN_FUNCTION_OPERATOR_DELETE_ARRAY)
 			return "cppgm_builtin_operator_delete_array";
+		if (binding.builtin_function == BUILTIN_FUNCTION_ABORT)
+			return "abort";
 		return "cppgm_builtin_" + program.names.Get(binding.name).substr(10);
 	}
 	if (binding.language_linkage == LANGUAGE_LINKAGE_C)

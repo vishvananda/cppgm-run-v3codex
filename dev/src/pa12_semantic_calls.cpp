@@ -178,6 +178,8 @@ bool SemanticAnalyzer::TryAnalyzeImmediateBuiltinCall(
 		spelling, scope, argument_syntax, target, result)) return true;
 	if (TryAnalyzeIntegerIntrinsicCall(
 		spelling, scope, argument_syntax, target, result)) return true;
+	if (TryAnalyzeFloatingIntrinsicCall(
+		spelling, scope, argument_syntax, target, result)) return true;
 	if (TryAnalyzeMemoryIntrinsicCall(
 		spelling, scope, argument_syntax, target, result)) return true;
 	if (TryAnalyzeAtomicIntrinsicCall(
@@ -213,15 +215,18 @@ bool SemanticAnalyzer::TryAnalyzeImmediateBuiltinCall(
 	if (spelling != "__builtin_abort") return false;
 	if (!argument_syntax.empty())
 		throw std::runtime_error("invalid __builtin_abort call");
-	const TypeId function_type = program_->types.Function(
-		program_->types.Fundamental(FUND_VOID), std::vector<TypeId>(), false);
-	const std::uint32_t call = MakeDump(DUMP_CALL_EXPRESSION,
-		program_->types.Fundamental(FUND_VOID), VALUE_PRVALUE);
-	const std::uint32_t callee = MakeDump(DUMP_CALLEE, function_type,
-		VALUE_NONE, program_->names.Intern("__builtin_abort"));
+	const BindingId binding = EnsureBuiltinFunction(BUILTIN_FUNCTION_ABORT);
+	const FunctionInfo& function = GetFunction(binding);
+	const TypeId result_type = program_->types.Fundamental(FUND_VOID);
+	const std::uint32_t call = MakeDump(
+		DUMP_CALL_EXPRESSION, result_type, VALUE_PRVALUE, 0, binding);
+	const std::uint32_t callee = MakeDump(DUMP_CALLEE, function.type,
+		VALUE_NONE, function.display_name, binding);
 	dump_.Add(call, callee);
 	result->node = call;
-	result->type = program_->types.Fundamental(FUND_VOID);
+	result->type = result_type;
+	result->category = VALUE_PRVALUE;
+	result->binding = binding;
 	++expression_count_;
 	*result = ApplyTarget(*result, target);
 	return true;
@@ -427,6 +432,135 @@ bool SemanticAnalyzer::TryAnalyzeIntegerIntrinsicCall(
 		argument_type : program_->types.Fundamental(FUND_INT);
 	*result = BuildIntegerIntrinsicCall(
 		intrinsic->kind, arguments, result_type, target);
+	return true;
+}
+
+BindingId SemanticAnalyzer::EnsureFloatingIntrinsicFunction(
+	hosted_builtin::FloatingIntrinsicKind kind)
+{
+	using namespace hosted_builtin;
+	if (kind <= FLOATING_INTRINSIC_NONE || kind >= FLOATING_INTRINSIC_COUNT)
+		throw std::logic_error("missing hosted floating intrinsic kind");
+	if (floating_intrinsic_functions_.size() < FLOATING_INTRINSIC_COUNT)
+		floating_intrinsic_functions_.resize(
+			FLOATING_INTRINSIC_COUNT, kNoBinding);
+	if (floating_intrinsic_functions_[kind] != kNoBinding)
+		return floating_intrinsic_functions_[kind];
+	const FloatingIntrinsic& intrinsic = GetFloatingIntrinsic(kind);
+	const TypeId integer = program_->types.Fundamental(FUND_INT);
+	const TypeId long_double =
+		program_->types.Fundamental(FUND_LONG_DOUBLE);
+	const TypeId character = program_->types.Fundamental(FUND_CHAR);
+	const TypeId const_character_pointer = program_->types.Pointer(
+		program_->types.Qualify(character, CV_CONST));
+	TypeId result = integer;
+	switch (intrinsic.result_format)
+	{
+	case FLOATING_FORMAT_NONE: break;
+	case FLOATING_FORMAT_FLOAT:
+		result = program_->types.Fundamental(FUND_FLOAT); break;
+	case FLOATING_FORMAT_DOUBLE:
+		result = program_->types.Fundamental(FUND_DOUBLE); break;
+	case FLOATING_FORMAT_LONG_DOUBLE:
+		result = long_double; break;
+	}
+	std::vector<TypeId> parameter_types;
+	if (intrinsic.operation == FLOATING_OPERATION_NAN ||
+		intrinsic.operation == FLOATING_OPERATION_SNAN)
+		parameter_types.push_back(const_character_pointer);
+	else if (intrinsic.operation == FLOATING_OPERATION_CLASSIFY)
+	{
+		parameter_types.assign(5, integer);
+		parameter_types.push_back(long_double);
+	}
+	else if (intrinsic.arity != 0)
+		parameter_types.push_back(long_double);
+	std::vector<ParameterInfo> parameters;
+	for (std::size_t i = 0; i < parameter_types.size(); ++i)
+		parameters.push_back(ParameterInfo(
+			0, parameter_types[i], parameter_types[i]));
+	const TypeId type = program_->types.Function(
+		result, parameter_types, false);
+	const BindingId binding = DeclareFunction(program_->GlobalScope(),
+		program_->names.Intern(intrinsic.spelling), type, parameters, false,
+		false, STORAGE_CLASS_NONE, LANGUAGE_LINKAGE_CPP, true, false);
+	program_->bindings[binding].builtin_function =
+		BUILTIN_FUNCTION_HOSTED_FLOATING_INTRINSIC;
+	program_->bindings[binding].hosted_floating_intrinsic = kind;
+	floating_intrinsic_functions_[kind] = binding;
+	return binding;
+}
+
+ExpressionInfo SemanticAnalyzer::BuildFloatingIntrinsicCall(
+	hosted_builtin::FloatingIntrinsicKind kind,
+	const std::vector<ExpressionInfo>& arguments, TypeId result_type,
+	TypeId target)
+{
+	const BindingId binding = EnsureFloatingIntrinsicFunction(kind);
+	const FunctionInfo& function = GetFunction(binding);
+	const std::uint32_t call = MakeDump(DUMP_CALL_EXPRESSION, result_type,
+		VALUE_PRVALUE, 0, binding);
+	const std::uint32_t callee = MakeDump(DUMP_CALLEE, function.type,
+		VALUE_NONE, function.display_name, binding);
+	dump_.Add(call, callee);
+	for (std::size_t i = 0; i < arguments.size(); ++i)
+		dump_.Add(call, arguments[i].node);
+	ExpressionInfo result;
+	result.node = call;
+	result.type = result_type;
+	result.category = VALUE_PRVALUE;
+	result.binding = binding;
+	++expression_count_;
+	return ApplyTarget(result, target);
+}
+
+bool SemanticAnalyzer::TryAnalyzeFloatingIntrinsicCall(
+	const std::string& spelling, ScopeId scope,
+	const std::vector<NodeId>& argument_syntax, TypeId target,
+	ExpressionInfo* result)
+{
+	using namespace hosted_builtin;
+	const FloatingIntrinsic* intrinsic = FindFloatingIntrinsic(spelling);
+	if (!intrinsic) return false;
+	if (argument_syntax.size() != intrinsic->arity)
+		throw std::runtime_error("invalid floating intrinsic arity");
+	const BindingId binding = EnsureFloatingIntrinsicFunction(intrinsic->kind);
+	const TypeRecord& function_type =
+		program_->types.Get(GetFunction(binding).type);
+	const TypeId* parameter_types =
+		program_->types.Parameters(GetFunction(binding).type);
+	std::vector<ExpressionInfo> arguments;
+	arguments.reserve(argument_syntax.size());
+	for (std::size_t i = 0; i < argument_syntax.size(); ++i)
+	{
+		ExpressionInfo argument =
+			AnalyzeUntypedCallArgument(argument_syntax[i], scope);
+		const bool floating_operand =
+			intrinsic->operation != FLOATING_OPERATION_NAN &&
+			intrinsic->operation != FLOATING_OPERATION_SNAN &&
+			(intrinsic->operation != FLOATING_OPERATION_CLASSIFY || i == 5);
+		if (floating_operand)
+		{
+			if (!IsFloating(argument.type))
+				throw std::runtime_error(
+					"floating intrinsic operand is not floating");
+			// Retain the source width: classification of a subnormal value must
+			// happen before any widening conversion makes it normal.
+			arguments.push_back(argument);
+			continue;
+		}
+		if (intrinsic->operation == FLOATING_OPERATION_CLASSIFY)
+		{
+			if (!IsIntegral(argument.type))
+				throw std::runtime_error(
+					"fpclassify control operand is not integral");
+			arguments.push_back(ApplyCallArgument(argument, parameter_types[i]));
+			continue;
+		}
+		arguments.push_back(ApplyCallArgument(argument, parameter_types[i]));
+	}
+	*result = BuildFloatingIntrinsicCall(intrinsic->kind, arguments,
+		function_type.child, target);
 	return true;
 }
 
@@ -1128,8 +1262,11 @@ BindingId SemanticAnalyzer::EnsureBuiltinFunction(BuiltinFunctionKind kind)
 			program_->types.Pointer(program_->types.Fundamental(
 				FUND_UNSIGNED_LONG_INT))); break;
 	case BUILTIN_FUNCTION_HOSTED_INTEGER_INTRINSIC:
+	case BUILTIN_FUNCTION_HOSTED_FLOATING_INTRINSIC:
 	case BUILTIN_FUNCTION_HOSTED_MEMORY_INTRINSIC:
 		break;
+	case BUILTIN_FUNCTION_ABORT:
+		spelling = "__builtin_abort"; break;
 	case BUILTIN_FUNCTION_OPERATOR_NEW:
 	case BUILTIN_FUNCTION_OPERATOR_NEW_ARRAY:
 		spelling = kind == BUILTIN_FUNCTION_OPERATOR_NEW ?

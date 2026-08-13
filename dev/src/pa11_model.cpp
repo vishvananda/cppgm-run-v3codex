@@ -695,6 +695,7 @@ BindingRecord::BindingRecord()
 		  operator_kind(OPERATOR_NONE),
 		  builtin_function(BUILTIN_FUNCTION_NONE),
 		  hosted_integer_intrinsic(hosted_builtin::INTEGER_INTRINSIC_NONE),
+		  hosted_floating_intrinsic(hosted_builtin::FLOATING_INTRINSIC_NONE),
 		  hosted_memory_intrinsic(hosted_builtin::MEMORY_INTRINSIC_NONE),
 		  operator_literal_suffix(0), language_linkage(LANGUAGE_LINKAGE_CPP),
 	  storage_class(STORAGE_CLASS_NONE), access(ACCESS_PUBLIC),

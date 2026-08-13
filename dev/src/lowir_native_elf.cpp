@@ -648,6 +648,8 @@ std::string unsuffixed_float_text(const std::string & text)
 std::uint64_t scalar_float_bits(const std::string & text, const std::string & type)
 {
   const std::string number = unsuffixed_float_text(text);
+  if(number == "snan" && type == "f32") return UINT64_C(0x7fa00000);
+  if(number == "snan" && type == "f64") return UINT64_C(0x7ff4000000000000);
   errno = 0;
   char * end = 0;
   if(type == "f32") {
@@ -667,22 +669,20 @@ std::uint64_t scalar_float_bits(const std::string & text, const std::string & ty
   throw std::logic_error("floating literal requires f32 or f64");
 }
 
-std::pair<std::uint64_t, std::uint64_t> extended_float_words(
-    const std::string & text)
+std::pair<std::uint64_t, std::uint64_t> extended_float_words(const std::string & text)
 {
   const std::string number = unsuffixed_float_text(text);
+  if(number == "snan") return std::make_pair(UINT64_C(0xa000000000000000), UINT64_C(0x7fff));
   errno = 0;
   char * end = 0;
   const long double value = std::strtold(number.c_str(), &end);
-  if(errno || !end || *end)
-    throw std::runtime_error("invalid f80 literal: " + text);
+  if(errno || !end || *end) throw std::runtime_error("invalid f80 literal: " + text);
   unsigned char bytes[16] = {};
   unsigned char native[sizeof(long double)] = {};
   std::memcpy(native, &value, sizeof(value));
   const std::size_t payload = std::min<std::size_t>(10, sizeof(value));
   std::copy(native, native + payload, bytes);
-  std::uint64_t low = 0;
-  std::uint64_t high = 0;
+  std::uint64_t low = 0, high = 0;
   std::memcpy(&low, bytes, 8);
   std::memcpy(&high, bytes + 8, 8);
   return std::make_pair(low, high);

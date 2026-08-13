@@ -355,7 +355,9 @@ enum BuiltinFunctionKind
 	BUILTIN_FUNCTION_VA_END,
 	BUILTIN_FUNCTION_VA_ARG,
 	BUILTIN_FUNCTION_HOSTED_INTEGER_INTRINSIC,
+	BUILTIN_FUNCTION_HOSTED_FLOATING_INTRINSIC,
 	BUILTIN_FUNCTION_HOSTED_MEMORY_INTRINSIC,
+	BUILTIN_FUNCTION_ABORT,
 	BUILTIN_FUNCTION_OPERATOR_NEW,
 	BUILTIN_FUNCTION_OPERATOR_DELETE,
 	BUILTIN_FUNCTION_OPERATOR_NEW_ARRAY,
@@ -603,6 +605,7 @@ struct BindingRecord
 	OperatorKind operator_kind;
 	BuiltinFunctionKind builtin_function;
 	hosted_builtin::IntegerIntrinsicKind hosted_integer_intrinsic;
+	hosted_builtin::FloatingIntrinsicKind hosted_floating_intrinsic;
 	hosted_builtin::MemoryIntrinsicKind hosted_memory_intrinsic;
 	NameId operator_literal_suffix;
 	LanguageLinkage language_linkage;

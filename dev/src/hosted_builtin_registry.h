@@ -117,6 +117,62 @@ struct IntegerIntrinsic
 	unsigned arity;
 };
 
+enum FloatingIntrinsicKind
+{
+	FLOATING_INTRINSIC_NONE,
+	FLOATING_INTRINSIC_FLT_ROUNDS,
+	FLOATING_INTRINSIC_FPCLASSIFY,
+	FLOATING_INTRINSIC_HUGE_VAL,
+	FLOATING_INTRINSIC_HUGE_VALF,
+	FLOATING_INTRINSIC_HUGE_VALL,
+	FLOATING_INTRINSIC_INF,
+	FLOATING_INTRINSIC_INFF,
+	FLOATING_INTRINSIC_INFL,
+	FLOATING_INTRINSIC_ISFINITE,
+	FLOATING_INTRINSIC_ISINF,
+	FLOATING_INTRINSIC_ISNAN,
+	FLOATING_INTRINSIC_ISNORMAL,
+	FLOATING_INTRINSIC_NAN,
+	FLOATING_INTRINSIC_NANF,
+	FLOATING_INTRINSIC_NANL,
+	FLOATING_INTRINSIC_NANS,
+	FLOATING_INTRINSIC_NANSF,
+	FLOATING_INTRINSIC_NANSL,
+	FLOATING_INTRINSIC_SIGNBIT,
+	FLOATING_INTRINSIC_COUNT
+};
+
+enum FloatingIntrinsicOperation
+{
+	FLOATING_OPERATION_ROUNDING_MODE,
+	FLOATING_OPERATION_CLASSIFY,
+	FLOATING_OPERATION_INFINITY,
+	FLOATING_OPERATION_ISFINITE,
+	FLOATING_OPERATION_ISINF,
+	FLOATING_OPERATION_ISNAN,
+	FLOATING_OPERATION_ISNORMAL,
+	FLOATING_OPERATION_NAN,
+	FLOATING_OPERATION_SNAN,
+	FLOATING_OPERATION_SIGNBIT
+};
+
+enum FloatingIntrinsicFormat
+{
+	FLOATING_FORMAT_NONE,
+	FLOATING_FORMAT_FLOAT,
+	FLOATING_FORMAT_DOUBLE,
+	FLOATING_FORMAT_LONG_DOUBLE
+};
+
+struct FloatingIntrinsic
+{
+	const char* spelling;
+	FloatingIntrinsicKind kind;
+	FloatingIntrinsicOperation operation;
+	FloatingIntrinsicFormat result_format;
+	unsigned arity;
+};
+
 enum MemoryIntrinsicKind
 {
 	MEMORY_INTRINSIC_NONE,
@@ -240,6 +296,8 @@ TypeTraitKind FindTypeTrait(const std::string& spelling);
 TypeTransformKind FindTypeTransform(const std::string& spelling);
 const IntegerIntrinsic* FindIntegerIntrinsic(const std::string& spelling);
 const IntegerIntrinsic& GetIntegerIntrinsic(IntegerIntrinsicKind kind);
+const FloatingIntrinsic* FindFloatingIntrinsic(const std::string& spelling);
+const FloatingIntrinsic& GetFloatingIntrinsic(FloatingIntrinsicKind kind);
 const MemoryIntrinsic* FindMemoryIntrinsic(const std::string& spelling);
 const MemoryIntrinsic& GetMemoryIntrinsic(MemoryIntrinsicKind kind);
 const AtomicIntrinsic* FindAtomicIntrinsic(const std::string& spelling);

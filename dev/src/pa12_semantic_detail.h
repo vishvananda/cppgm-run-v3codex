@@ -982,6 +982,9 @@ private:
 	bool TryAnalyzeIntegerIntrinsicCall(const std::string& spelling,
 		ScopeId scope, const std::vector<NodeId>& argument_syntax,
 		TypeId target, ExpressionInfo* result);
+	bool TryAnalyzeFloatingIntrinsicCall(const std::string& spelling,
+		ScopeId scope, const std::vector<NodeId>& argument_syntax,
+		TypeId target, ExpressionInfo* result);
 	bool TryAnalyzeMemoryIntrinsicCall(const std::string& spelling,
 		ScopeId scope, const std::vector<NodeId>& argument_syntax,
 		TypeId target, ExpressionInfo* result);
@@ -996,6 +999,10 @@ private:
 		TypeId target);
 	ExpressionInfo BuildIntegerIntrinsicCall(
 		hosted_builtin::IntegerIntrinsicKind kind,
+		const std::vector<ExpressionInfo>& arguments, TypeId result_type,
+		TypeId target);
+	ExpressionInfo BuildFloatingIntrinsicCall(
+		hosted_builtin::FloatingIntrinsicKind kind,
 		const std::vector<ExpressionInfo>& arguments, TypeId result_type,
 		TypeId target);
 	ExpressionInfo BuildMemoryIntrinsicCall(
@@ -1033,6 +1040,8 @@ private:
 	BindingId EnsureBuiltinFunction(BuiltinFunctionKind kind);
 	BindingId EnsureIntegerIntrinsicFunction(
 		hosted_builtin::IntegerIntrinsicKind kind);
+	BindingId EnsureFloatingIntrinsicFunction(
+		hosted_builtin::FloatingIntrinsicKind kind);
 	BindingId EnsureMemoryIntrinsicFunction(
 		hosted_builtin::MemoryIntrinsicKind kind);
 	bool AnalyzeBuiltinCall(const std::string& spelling, ScopeId scope,
@@ -1725,6 +1734,7 @@ private:
 	std::vector<FunctionInfo> functions_;
 	std::vector<BindingId> builtin_functions_;
 	std::vector<BindingId> integer_intrinsic_functions_;
+	std::vector<BindingId> floating_intrinsic_functions_;
 	std::vector<BindingId> memory_intrinsic_functions_;
 	std::vector<std::vector<BindingId> > entity_data_members_;
 	std::vector<std::vector<BindingId> > entity_static_data_members_;

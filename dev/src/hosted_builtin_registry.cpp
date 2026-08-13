@@ -41,6 +41,47 @@ const IntegerIntrinsic kIntegerIntrinsics[] = {
 		INTEGER_OPERATION_POPCOUNT, INTEGER_ARGUMENT_UNSIGNED_LONG_LONG, 1}
 };
 
+const FloatingIntrinsic kFloatingIntrinsics[] = {
+	{"__builtin_flt_rounds", FLOATING_INTRINSIC_FLT_ROUNDS,
+		FLOATING_OPERATION_ROUNDING_MODE, FLOATING_FORMAT_NONE, 0},
+	{"__builtin_fpclassify", FLOATING_INTRINSIC_FPCLASSIFY,
+		FLOATING_OPERATION_CLASSIFY, FLOATING_FORMAT_NONE, 6},
+	{"__builtin_huge_val", FLOATING_INTRINSIC_HUGE_VAL,
+		FLOATING_OPERATION_INFINITY, FLOATING_FORMAT_DOUBLE, 0},
+	{"__builtin_huge_valf", FLOATING_INTRINSIC_HUGE_VALF,
+		FLOATING_OPERATION_INFINITY, FLOATING_FORMAT_FLOAT, 0},
+	{"__builtin_huge_vall", FLOATING_INTRINSIC_HUGE_VALL,
+		FLOATING_OPERATION_INFINITY, FLOATING_FORMAT_LONG_DOUBLE, 0},
+	{"__builtin_inf", FLOATING_INTRINSIC_INF,
+		FLOATING_OPERATION_INFINITY, FLOATING_FORMAT_DOUBLE, 0},
+	{"__builtin_inff", FLOATING_INTRINSIC_INFF,
+		FLOATING_OPERATION_INFINITY, FLOATING_FORMAT_FLOAT, 0},
+	{"__builtin_infl", FLOATING_INTRINSIC_INFL,
+		FLOATING_OPERATION_INFINITY, FLOATING_FORMAT_LONG_DOUBLE, 0},
+	{"__builtin_isfinite", FLOATING_INTRINSIC_ISFINITE,
+		FLOATING_OPERATION_ISFINITE, FLOATING_FORMAT_NONE, 1},
+	{"__builtin_isinf", FLOATING_INTRINSIC_ISINF,
+		FLOATING_OPERATION_ISINF, FLOATING_FORMAT_NONE, 1},
+	{"__builtin_isnan", FLOATING_INTRINSIC_ISNAN,
+		FLOATING_OPERATION_ISNAN, FLOATING_FORMAT_NONE, 1},
+	{"__builtin_isnormal", FLOATING_INTRINSIC_ISNORMAL,
+		FLOATING_OPERATION_ISNORMAL, FLOATING_FORMAT_NONE, 1},
+	{"__builtin_nan", FLOATING_INTRINSIC_NAN,
+		FLOATING_OPERATION_NAN, FLOATING_FORMAT_DOUBLE, 1},
+	{"__builtin_nanf", FLOATING_INTRINSIC_NANF,
+		FLOATING_OPERATION_NAN, FLOATING_FORMAT_FLOAT, 1},
+	{"__builtin_nanl", FLOATING_INTRINSIC_NANL,
+		FLOATING_OPERATION_NAN, FLOATING_FORMAT_LONG_DOUBLE, 1},
+	{"__builtin_nans", FLOATING_INTRINSIC_NANS,
+		FLOATING_OPERATION_SNAN, FLOATING_FORMAT_DOUBLE, 1},
+	{"__builtin_nansf", FLOATING_INTRINSIC_NANSF,
+		FLOATING_OPERATION_SNAN, FLOATING_FORMAT_FLOAT, 1},
+	{"__builtin_nansl", FLOATING_INTRINSIC_NANSL,
+		FLOATING_OPERATION_SNAN, FLOATING_FORMAT_LONG_DOUBLE, 1},
+	{"__builtin_signbit", FLOATING_INTRINSIC_SIGNBIT,
+		FLOATING_OPERATION_SIGNBIT, FLOATING_FORMAT_NONE, 1}
+};
+
 const MemoryIntrinsic kMemoryIntrinsics[] = {
 	{"__builtin_assume_aligned", MEMORY_INTRINSIC_ASSUME_ALIGNED, 2, 3,
 		MEMORY_EFFECT_READNONE, MEMORY_LOWER_IDENTITY},
@@ -256,6 +297,29 @@ const IntegerIntrinsic& GetIntegerIntrinsic(IntegerIntrinsicKind kind)
 	if (kind <= INTEGER_INTRINSIC_NONE || kind >= INTEGER_INTRINSIC_COUNT)
 		throw std::logic_error("invalid hosted integer intrinsic kind");
 	return kIntegerIntrinsics[static_cast<std::size_t>(kind) - 1];
+}
+
+const FloatingIntrinsic* FindFloatingIntrinsic(const std::string& spelling)
+{
+	std::size_t first = 0;
+	std::size_t count = sizeof(kFloatingIntrinsics) /
+		sizeof(kFloatingIntrinsics[0]);
+	while (first < count)
+	{
+		const std::size_t middle = first + (count - first) / 2;
+		const int order = spelling.compare(kFloatingIntrinsics[middle].spelling);
+		if (order < 0) count = middle;
+		else if (order > 0) first = middle + 1;
+		else return &kFloatingIntrinsics[middle];
+	}
+	return 0;
+}
+
+const FloatingIntrinsic& GetFloatingIntrinsic(FloatingIntrinsicKind kind)
+{
+	if (kind <= FLOATING_INTRINSIC_NONE || kind >= FLOATING_INTRINSIC_COUNT)
+		throw std::logic_error("invalid hosted floating intrinsic kind");
+	return kFloatingIntrinsics[static_cast<std::size_t>(kind) - 1];
 }
 
 const MemoryIntrinsic* FindMemoryIntrinsic(const std::string& spelling)

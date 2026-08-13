@@ -182,6 +182,202 @@ protected:
 		return true;
 	}
 
+	Operand EmitFloatingIntrinsicCompare(LowOperation operation,
+		const Operand& left, const Operand& right)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const Operand compared = derived.Temp(LowU8());
+		Instruction compare(Instruction::CMP);
+		compare.dest = compared.id;
+		compare.op = operation;
+		compare.type = left.type;
+		compare.first = left;
+		compare.second = right;
+		derived.Emit(compare);
+		return derived.Convert(compared, LowI32());
+	}
+
+	Operand FloatingIntrinsicNot(const Operand& value)
+	{
+		return EmitIntegerIntrinsicBinary(
+			LOW_OP_SUB, Operand(1, LowI32()), value, LowI32());
+	}
+
+	Operand FloatingIntrinsicAnd(const Operand& left, const Operand& right)
+	{
+		return EmitIntegerIntrinsicBinary(
+			LOW_OP_AND, left, right, LowI32());
+	}
+
+	Operand FloatingIntrinsicOr(const Operand& left, const Operand& right)
+	{
+		return EmitIntegerIntrinsicBinary(
+			LOW_OP_OR, left, right, LowI32());
+	}
+
+	std::string FloatingIntrinsicLiteral(
+		const char* spelling, const LowType& type) const
+	{
+		return std::string(spelling) +
+			(type.width == 32 ? "f" : type.width == 80 ? "L" : "");
+	}
+
+	Operand FloatingIntrinsicIsNan(const Operand& value)
+	{
+		return EmitFloatingIntrinsicCompare(LOW_OP_NE, value, value);
+	}
+
+	Operand FloatingIntrinsicIsInf(const Operand& value)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const Operand infinity = derived.FloatingOperand(
+			FloatingIntrinsicLiteral("INFINITY", value.type), value.type);
+		const Operand negative_infinity = EmitIntegerIntrinsicUnary(
+			LOW_OP_NEG, infinity, value.type);
+		return FloatingIntrinsicOr(
+			EmitFloatingIntrinsicCompare(LOW_OP_EQ, value, infinity),
+			EmitFloatingIntrinsicCompare(
+				LOW_OP_EQ, value, negative_infinity));
+	}
+
+	Operand FloatingIntrinsicIsFinite(const Operand& value)
+	{
+		return FloatingIntrinsicAnd(
+			FloatingIntrinsicNot(FloatingIntrinsicIsNan(value)),
+			FloatingIntrinsicNot(FloatingIntrinsicIsInf(value)));
+	}
+
+	Operand FloatingIntrinsicIsNormal(const Operand& value)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const char* minimum = value.type.width == 32 ?
+			"1.17549435082228750796873653722224568e-38f" :
+			value.type.width == 64 ?
+			"2.22507385850720138309023271733240406e-308" :
+			"3.36210314311209350626267781732175260e-4932L";
+		const Operand positive = derived.FloatingOperand(minimum, value.type);
+		const Operand negative = EmitIntegerIntrinsicUnary(
+			LOW_OP_NEG, positive, value.type);
+		const Operand magnitude = FloatingIntrinsicOr(
+			EmitFloatingIntrinsicCompare(LOW_OP_GE, value, positive),
+			EmitFloatingIntrinsicCompare(LOW_OP_LE, value, negative));
+		return FloatingIntrinsicAnd(
+			FloatingIntrinsicIsFinite(value), magnitude);
+	}
+
+	Operand FloatingIntrinsicSignbit(const Operand& value)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const Operand zero = derived.FloatingOperand(
+			FloatingIntrinsicLiteral("0.0", value.type), value.type);
+		const Operand negative =
+			EmitFloatingIntrinsicCompare(LOW_OP_LT, value, zero);
+		const Operand is_zero =
+			EmitFloatingIntrinsicCompare(LOW_OP_EQ, value, zero);
+		const Operand reciprocal = EmitIntegerIntrinsicBinary(LOW_OP_DIV,
+			derived.FloatingOperand(
+				FloatingIntrinsicLiteral("1.0", value.type), value.type),
+			value, value.type);
+		const Operand reciprocal_negative =
+			EmitFloatingIntrinsicCompare(LOW_OP_LT, reciprocal, zero);
+		return FloatingIntrinsicOr(negative,
+			FloatingIntrinsicAnd(is_zero, reciprocal_negative));
+	}
+
+	bool TryLowerFloatingIntrinsicCall(const DumpNode& record,
+		const NodeChildren& children, const BindingRecord& binding,
+		Operand* result)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (binding.builtin_function !=
+			BUILTIN_FUNCTION_HOSTED_FLOATING_INTRINSIC) return false;
+		const hosted_builtin::FloatingIntrinsic& intrinsic =
+			hosted_builtin::GetFloatingIntrinsic(
+				binding.hosted_floating_intrinsic);
+		if (children.size() != intrinsic.arity + 1)
+			throw std::logic_error("invalid floating intrinsic call");
+		if (intrinsic.operation ==
+			hosted_builtin::FLOATING_OPERATION_ROUNDING_MODE)
+		{
+			*result = derived.Convert(
+				Operand(1, LowI32()), derived.LowerType(record.type));
+			return true;
+		}
+		if (intrinsic.operation ==
+			hosted_builtin::FLOATING_OPERATION_INFINITY)
+		{
+			const LowType type = derived.LowerType(record.type);
+			*result = derived.FloatingOperand(
+				FloatingIntrinsicLiteral("INFINITY", type), type);
+			return true;
+		}
+		if (intrinsic.operation == hosted_builtin::FLOATING_OPERATION_NAN ||
+			intrinsic.operation == hosted_builtin::FLOATING_OPERATION_SNAN)
+		{
+			(void)derived.LowerValue(children[1]);
+			const LowType type = derived.LowerType(record.type);
+			const bool signaling = intrinsic.operation ==
+				hosted_builtin::FLOATING_OPERATION_SNAN;
+			*result = derived.FloatingOperand(FloatingIntrinsicLiteral(
+				signaling ? "snan" : "nan", type), type);
+			return true;
+		}
+		const std::size_t value_index = intrinsic.operation ==
+			hosted_builtin::FLOATING_OPERATION_CLASSIFY ? 6 : 1;
+		const LowType value_type = derived.LowerExpressionType(
+			derived.arena_.nodes[children[value_index]].type);
+		if (!IsFloating(value_type))
+			throw std::logic_error("floating intrinsic lost operand type");
+		const Operand value =
+			derived.LowerValue(children[value_index], value_type);
+		Operand classified;
+		switch (intrinsic.operation)
+		{
+		case hosted_builtin::FLOATING_OPERATION_ISFINITE:
+			classified = FloatingIntrinsicIsFinite(value); break;
+		case hosted_builtin::FLOATING_OPERATION_ISINF:
+			classified = FloatingIntrinsicIsInf(value); break;
+		case hosted_builtin::FLOATING_OPERATION_ISNAN:
+			classified = FloatingIntrinsicIsNan(value); break;
+		case hosted_builtin::FLOATING_OPERATION_ISNORMAL:
+			classified = FloatingIntrinsicIsNormal(value); break;
+		case hosted_builtin::FLOATING_OPERATION_SIGNBIT:
+			classified = FloatingIntrinsicSignbit(value); break;
+		case hosted_builtin::FLOATING_OPERATION_CLASSIFY:
+		{
+			const Operand nan = FloatingIntrinsicIsNan(value);
+			const Operand inf = FloatingIntrinsicIsInf(value);
+			const Operand finite = FloatingIntrinsicAnd(
+				FloatingIntrinsicNot(nan), FloatingIntrinsicNot(inf));
+			const Operand zero = EmitFloatingIntrinsicCompare(LOW_OP_EQ,
+				value, derived.FloatingOperand(
+					FloatingIntrinsicLiteral("0.0", value.type), value.type));
+			const Operand normal = FloatingIntrinsicIsNormal(value);
+			const Operand subnormal = FloatingIntrinsicAnd(finite,
+				FloatingIntrinsicAnd(FloatingIntrinsicNot(zero),
+					FloatingIntrinsicNot(normal)));
+			const Operand predicates[] = {nan, inf, normal, subnormal, zero};
+			classified = Operand(0, LowI32());
+			for (std::size_t i = 0; i < 5; ++i)
+			{
+				const Operand control =
+					derived.LowerValue(children[i + 1], LowI32());
+				classified = EmitIntegerIntrinsicBinary(LOW_OP_ADD, classified,
+					EmitIntegerIntrinsicBinary(LOW_OP_MUL, control,
+						predicates[i], LowI32()), LowI32());
+			}
+			break;
+		}
+		case hosted_builtin::FLOATING_OPERATION_ROUNDING_MODE:
+		case hosted_builtin::FLOATING_OPERATION_INFINITY:
+		case hosted_builtin::FLOATING_OPERATION_NAN:
+		case hosted_builtin::FLOATING_OPERATION_SNAN:
+			throw std::logic_error("invalid floating intrinsic dispatch");
+		}
+		*result = derived.Convert(classified, derived.LowerType(record.type));
+		return true;
+	}
+
 	bool TryLowerNumericBuiltinCall(const DumpNode& record,
 		const NodeChildren& children, Operand* result)
 	{
@@ -193,6 +389,8 @@ protected:
 		const BuiltinFunctionKind kind =
 			derived.program_.bindings[callee.binding].builtin_function;
 		if (TryLowerIntegerIntrinsicCall(record, children,
+			derived.program_.bindings[callee.binding], result)) return true;
+		if (TryLowerFloatingIntrinsicCall(record, children,
 			derived.program_.bindings[callee.binding], result)) return true;
 		if (kind == BUILTIN_FUNCTION_NANL)
 		{

@@ -15,16 +15,15 @@ linear lowering/allocation, and no host compiler fallback.
 - Preprocess: 0/45 failures; this boundary is complete.
 - Compile: 122/281 failures: 45 extension grammar/type cases (parser/type system), 41
   trait/layout/constant cases (semantic facts), and 36 template lookup/demand cases.
-- Run: 29/41 failures; 27 stop in the compile pipeline and 2 expose linked
-  backend/lifetime or forced-inline behavior. PA34 is 216/367 overall.
+- Run: 23/41 failures; 20 stop in the compile pipeline and 3 expose linked
+  backend/lifetime or forced-inline behavior. PA34 is 222/367 overall.
 
 ## Active Checkpoint
 
-No implementation is in flight. The next turn will refresh diagnostics and select a
-stable boundary from the remaining 45 extension grammar/type cases, bundling only
-features with one parser/type owner and data flow. The completed atomic boundary leaves
-compact qualifier and operation IDs for later library/header work without enabling
-unrelated PA35 behavior.
+No implementation is in flight. The next checkpoint should return to the remaining 45
+extension grammar/type cases and select one parser/type owner (GNU asm, block pointers,
+or retained vector/layout attributes), preserving the completed builtin registry and
+typed lowering boundaries without enabling unrelated PA35 behavior.
 
 ## Performance Evidence
 
@@ -44,6 +43,11 @@ functions it emitted 38/304/2,432 LowIR and 89/712/5,696 MIR instructions exactl
 proportionally; the 64-function object took 0.04 s and 16,464 KiB RSS. This supports
 O(calls) checking/lowering; runtime retry work remains contention-dependent only.
 
+The scalar floating probe used classification, finite/normal, and sign-bit calls per
+function. At 1/8/64 functions it emitted exactly 411/3,288/26,304 native instructions;
+objects were 40,784/317,160/2,528,640 bytes and took 0.00/0.01/0.07 s with
+8,284/10,564/26,244 KiB RSS. This supports O(calls) semantic and fixed-graph lowering.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result | Validation |
@@ -54,3 +58,4 @@ O(calls) checking/lowering; runtime retry work remains contention-dependent only
 | Integer bit intrinsics | Compact registry IDs, constexpr semantics, typed bit-network lowering, and native swaps; +8 | focused 8/8; PA34 195/367; prior/audit pass |
 | Memory/string intrinsics | Shared probe/semantic registry, typed controls, identity/no-op lowering, effect metadata, staged ABI preservation, and libc object symbols; +9 | focused 8/8 plus GNU alignof; linked effects/symbols exact; PA34 204/367; PA1-33 4387/4387; audit pass |
 | C11/GNU atomic and sync | Canonical `_Atomic`, 16-byte alignment, compact registry/typed operands, first-class atomic LowIR, packed class bridge, and bounded bitwise CAS graphs; +12 | focused 12/12; scalar/class linked behavior; exact 1/8/64 scaling; PA34 216/367; PA1-33 4387/4387; audit pass |
+| Scalar floating builtins and abort | Sorted compact IDs, source-width classification, typed infinity/quiet/signaling NaNs, predicates, and nonreturning hosted `abort`; +6 | focused 6/6; exact abort ABI/effects; exact 1/8/64 instruction scaling; PA34 222/367; PA1-33 4387/4387; audit pass |
