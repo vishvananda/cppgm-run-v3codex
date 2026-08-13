@@ -1,4 +1,5 @@
 #include "lowir_native.h"
+#include "lowir_native_host_eh.h"
 #include "lowir_native_object_elf.h"
 
 #include <algorithm>
@@ -1635,6 +1636,8 @@ bool emit_eh_instruction(CodeBuffer & out,
     require_operands(instruction, 0); emit_eh_pop(out); return true;
   case mir_model::MirInstruction::MI_EH_CATCH:
     emit_eh_catch(out, instruction); return true;
+  case mir_model::MirInstruction::MI_EH_CLEANUP_CLAUSE:
+    require_operands(instruction, 0); return true;
   case mir_model::MirInstruction::MI_LOAD_EXCEPTION:
   case mir_model::MirInstruction::MI_LOAD_EXCEPTION_SELECTOR:
     require_operands(instruction, 1);
@@ -2529,20 +2532,20 @@ void emit_host_instruction(
     CodeBuffer & out,
     const mir_model::MirInstruction & instruction,
     const mir_model::MirFunction & function,
-    std::vector<std::string> & active_regions,
+    const std::string & landing_pad,
     HostFunctionLayout & layout)
 {
   if(instruction.opcode == mir_model::MirInstruction::MI_EH_PUSH) {
     require_operands(instruction, 2);
-    active_regions.push_back(instruction.operands[0].text);
     return;
   }
   if(instruction.opcode == mir_model::MirInstruction::MI_EH_POP) {
     require_operands(instruction, 0);
-    if(!active_regions.empty()) active_regions.pop_back();
     return;
   }
   if(instruction.opcode == mir_model::MirInstruction::MI_EH_CATCH) return;
+  if(instruction.opcode ==
+       mir_model::MirInstruction::MI_EH_CLEANUP_CLAUSE) return;
   if(instruction.opcode == mir_model::MirInstruction::MI_LOAD_EXCEPTION ||
      instruction.opcode ==
        mir_model::MirInstruction::MI_LOAD_EXCEPTION_SELECTOR) {
@@ -2566,18 +2569,26 @@ void emit_host_instruction(
     instruction.opcode == mir_model::MirInstruction::MI_CALL_INDIRECT;
   const std::size_t start = out.size();
   emit_instruction(out, instruction, &function);
-  if(call && !instruction.call_unwind_no && !active_regions.empty()) {
+  if(call && !instruction.call_unwind_no && !landing_pad.empty()) {
     HostFunctionLayout::CallSite site;
     site.start = start - layout.offset;
     site.length = out.size() - start;
-    site.landing_pad = active_regions.back();
+    site.landing_pad = landing_pad;
     layout.call_sites.push_back(site);
   }
 }
 
 HostFunctionLayout emit_host_function(
-    CodeBuffer & out, const mir_model::MirFunction & function)
+    CodeBuffer & out, const mir_model::MirFunction & function, Stats * stats)
 {
+  host_eh_detail::HostEhRegionPlan region_plan;
+  if(function.host_eh_enabled)
+    region_plan = host_eh_detail::analyze_host_eh_regions(function);
+  if(stats && function.host_eh_enabled) {
+    stats->eh_region_states += region_plan.state_count;
+    stats->eh_region_edges += region_plan.edge_count;
+    stats->eh_call_sites += region_plan.protected_call_count;
+  }
   out.align(2);
   HostFunctionLayout layout;
   layout.internal_symbol = function.name;
@@ -2590,6 +2601,7 @@ HostFunctionLayout emit_host_function(
   if(!object_symbol.empty() && object_symbol != function.name)
     out.label(object_symbol);
   emit_function_prologue(out, function);
+  const std::string no_landing_pad;
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     const mir_model::MirBlock & block = function.blocks[i];
     out.label(function.name + "::" + block.label);
@@ -2601,10 +2613,14 @@ HostFunctionLayout emit_host_function(
         actual_frame_offset(function, function.host_eh_selector_offset),
         XR_RDX, 64);
     }
-    std::vector<std::string> active_regions;
-    for(std::size_t j = 0; j < block.instructions.size(); ++j)
+    for(std::size_t j = 0; j < block.instructions.size(); ++j) {
+      const std::size_t landing_block = function.host_eh_enabled ?
+        region_plan.call_landing_blocks[i][j] : 0;
       emit_host_instruction(out, block.instructions[j], function,
-                            active_regions, layout);
+        landing_block ? function.blocks[landing_block - 1].label :
+                        no_landing_pad,
+        layout);
+    }
   }
   layout.size = out.size() - layout.offset;
   return layout;
@@ -2710,7 +2726,7 @@ void write_linux_relocatable(
     const std::chrono::steady_clock::time_point started =
       stats ? std::chrono::steady_clock::now() :
               std::chrono::steady_clock::time_point();
-    functions.push_back(emit_host_function(text, function));
+    functions.push_back(emit_host_function(text, function, stats));
     if(stats) encode_nanoseconds += static_cast<std::uint64_t>(
       std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now() - started).count());
@@ -2744,11 +2760,14 @@ void write_linux_relocatable(
             named->second);
         }
   }
-  for(std::unordered_set<std::string>::const_iterator type = catch_types.begin();
-      type != catch_types.end(); ++type) {
+  std::vector<std::string> ordered_catch_types(
+    catch_types.begin(), catch_types.end());
+  std::sort(ordered_catch_types.begin(), ordered_catch_types.end());
+  for(std::size_t i = 0; i < ordered_catch_types.size(); ++i) {
+    const std::string & type = ordered_catch_types[i];
     data.align(8);
-    data.label("DW.ref." + *type);
-    data.absolute64(*type);
+    data.label("DW.ref." + type);
+    data.absolute64(type);
   }
   if(needs_personality) {
     data.align(8);

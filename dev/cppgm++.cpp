@@ -498,6 +498,9 @@ int run_compile_driver(const DriverInvocation & invocation,
          << " functions=" << native_stats.functions
          << " lowir_instructions=" << native_stats.lowir_instructions
          << " mir_instructions=" << native_stats.mir_instructions
+         << " eh_region_states=" << native_stats.eh_region_states
+         << " eh_region_edges=" << native_stats.eh_region_edges
+         << " eh_call_sites=" << native_stats.eh_call_sites
          << " fixups=" << native_stats.fixups
          << " output_bytes=" << native_stats.output_bytes
          << " lower_ns=" << native_stats.lower_nanoseconds

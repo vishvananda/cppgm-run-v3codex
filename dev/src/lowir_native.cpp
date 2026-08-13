@@ -2367,6 +2367,10 @@ private:
     MirInstruction call = machine_instruction(direct ?
       MirInstruction::MI_CALL : MirInstruction::MI_CALL_INDIRECT);
     call.call_variadic = variadic;
+    call.call_unwind_no =
+      instruction.call_boundary.unwind == lowir_model::CUM_NO;
+    call.call_returns_noreturn =
+      instruction.call_boundary.returns == lowir_model::CRM_NORETURN;
     append_operand(call, direct ?
       named_operand(MirOperand::OP_SYMBOL, instruction.first.text) :
       reg_operand(XR_R10));
@@ -2489,11 +2493,19 @@ private:
     if(direct) {
       MirInstruction call = machine_instruction(MirInstruction::MI_CALL);
       call.call_variadic = variadic;
+      call.call_unwind_no =
+        instruction.call_boundary.unwind == lowir_model::CUM_NO;
+      call.call_returns_noreturn =
+        instruction.call_boundary.returns == lowir_model::CRM_NORETURN;
       append_operand(call, named_operand(MirOperand::OP_SYMBOL, instruction.first.text));
       out.push_back(call);
     } else {
       MirInstruction call = machine_instruction(MirInstruction::MI_CALL_INDIRECT);
       call.call_variadic = variadic;
+      call.call_unwind_no =
+        instruction.call_boundary.unwind == lowir_model::CUM_NO;
+      call.call_returns_noreturn =
+        instruction.call_boundary.returns == lowir_model::CRM_NORETURN;
       append_operand(call, reg_operand(XR_R10));
       out.push_back(call);
     }

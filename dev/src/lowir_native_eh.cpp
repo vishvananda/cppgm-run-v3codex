@@ -119,8 +119,10 @@ bool lower_marker(const lowir_model::Instruction & source,
     target.push_back(match);
   } else if(source.kind == LowInstruction::IK_RESUME)
     target.push_back(machine_instruction(MirInstruction::MI_RESUME));
-  else if(source.kind != LowInstruction::IK_EH_CLEANUP_CLAUSE &&
-          source.kind != LowInstruction::IK_EH_FILTER) return false;
+  else if(source.kind == LowInstruction::IK_EH_CLEANUP_CLAUSE)
+    target.push_back(machine_instruction(
+      MirInstruction::MI_EH_CLEANUP_CLAUSE));
+  else if(source.kind != LowInstruction::IK_EH_FILTER) return false;
   return true;
 }
 

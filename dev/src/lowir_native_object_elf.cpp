@@ -155,10 +155,20 @@ HostSection make_host_lsda(
           std::string() : list[clause].type_symbol;
       }
       if(!catches) continue;
-      action_offsets[clauses->first] = actions.size() + 1;
-      const mir_model::MirHostEhClause & first = list.front();
-      append_sleb128(actions, first.selector > 0 ? first.selector : 1);
-      append_sleb128(actions, 0);
+      std::size_t next_action = static_cast<std::size_t>(-1);
+      for(std::size_t clause = list.size(); clause != 0; --clause) {
+        const mir_model::MirHostEhClause & item = list[clause - 1];
+        const std::size_t action = actions.size();
+        append_sleb128(actions,
+          item.kind == mir_model::MirHostEhClause::HC_CATCH ?
+            (item.selector > 0 ? item.selector : 1) : 0);
+        const std::size_t displacement = actions.size();
+        append_sleb128(actions, next_action == static_cast<std::size_t>(-1) ?
+          0 : static_cast<std::int64_t>(next_action) -
+                static_cast<std::int64_t>(displacement));
+        next_action = action;
+      }
+      action_offsets[clauses->first] = next_action + 1;
     }
 
     std::vector<HostFunctionLayout::CallSite> sites = function.call_sites;
@@ -418,21 +428,19 @@ void add_unique_symbol(std::vector<HostSymbol> & symbols,
 }
 
 std::uint64_t function_size_at(
-    const std::vector<HostFunctionLayout> & functions,
+    const std::unordered_map<std::size_t, std::uint64_t> & function_sizes,
     std::size_t offset)
 {
-  for(std::size_t i = 0; i < functions.size(); ++i)
-    if(functions[i].offset == offset) return functions[i].size;
-  return 0;
+  const std::unordered_map<std::size_t, std::uint64_t>::const_iterator found =
+    function_sizes.find(offset);
+  return found == function_sizes.end() ? 0 : found->second;
 }
 
 unsigned exported_symbol_type(
-    const lowir_model::LowirProgram & program,
+    const std::unordered_set<std::string> & function_names,
     const std::string & internal)
 {
-  for(std::size_t i = 0; i < program.functions.size(); ++i)
-    if(program.functions[i].name == internal) return 2;
-  return 1;
+  return function_names.count(internal) ? 2 : 1;
 }
 
 void collect_host_symbols(
@@ -449,13 +457,21 @@ void collect_host_symbols(
 {
   std::unordered_map<std::string, std::size_t> local_index;
   std::unordered_map<std::string, std::size_t> global_index;
+  std::unordered_map<std::size_t, std::uint64_t> function_sizes;
+  function_sizes.reserve(functions.size());
+  for(std::size_t i = 0; i < functions.size(); ++i)
+    function_sizes[functions[i].offset] = functions[i].size;
+  std::unordered_set<std::string> function_names;
+  function_names.reserve(program.functions.size());
+  for(std::size_t i = 0; i < program.functions.size(); ++i)
+    function_names.insert(program.functions[i].name);
   for(std::unordered_map<std::string, std::size_t>::const_iterator it =
         text.labels.begin(); it != text.labels.end(); ++it) {
     HostSymbol symbol;
     symbol.name = it->first;
     symbol.section = 1;
     symbol.value = it->second;
-    symbol.size = function_size_at(functions, it->second);
+    symbol.size = function_size_at(function_sizes, it->second);
     symbol.type = symbol.size ? 2 : 0;
     add_unique_symbol(locals, local_index, symbol);
   }
@@ -490,8 +506,8 @@ void collect_host_symbols(
     symbol.name = exported.object_symbol;
     symbol.section = section;
     symbol.value = value;
-    symbol.type = exported_symbol_type(program, exported.internal_symbol);
-    symbol.size = symbol.type == 2 ? function_size_at(functions, value) : 0;
+    symbol.type = exported_symbol_type(function_names, exported.internal_symbol);
+    symbol.size = symbol.type == 2 ? function_size_at(function_sizes, value) : 0;
     symbol.binding = exported.linkage == ir_model::SL_WEAK ? 2 :
       exported.linkage == ir_model::SL_INTERNAL ||
       exported.prefer_local_object_binding ? 0 : 1;
@@ -512,7 +528,7 @@ void collect_host_symbols(
     symbol.type = 2;
     symbol.section = 1;
     symbol.value = at->second;
-    symbol.size = function_size_at(functions, at->second);
+    symbol.size = function_size_at(function_sizes, at->second);
     add_unique_symbol(globals, global_index, symbol);
   }
 
@@ -536,6 +552,14 @@ void collect_host_symbols(
       defined[symbol.name] = true;
     }
   }
+  const auto stable_symbol_order = [](const HostSymbol & left,
+                                      const HostSymbol & right) {
+    if(left.name != right.name) return left.name < right.name;
+    if(left.section != right.section) return left.section < right.section;
+    return left.value < right.value;
+  };
+  std::sort(locals.begin(), locals.end(), stable_symbol_order);
+  std::sort(globals.begin(), globals.end(), stable_symbol_order);
 }
 
 std::unordered_set<std::string> host_external_global_definitions(

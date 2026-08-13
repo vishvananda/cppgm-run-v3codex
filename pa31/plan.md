@@ -1,47 +1,128 @@
-# PA31 Implementation Plan
+# PA31 Final Audit Plan
 
 ## Stage Design and Spec Alignment
 
-PA31 now follows the completed-compiler path required by `spec.md` sections 2,
-6--10: source semantics produce typed LowIR; each function is lowered once to
-MIR and encoded immediately; final function layouts feed host-EH call sites,
-LSDA/CFI, symbols, relocations, and a directly serialized ELF64 relocatable.
-The backend consumes recorded ABI/runtime identities and never emits textual
-LowIR or assembly or invokes a host compiler. The PA30 compiler payload remains
-in a non-allocating ELF section so earlier internal linking stays compatible.
+PA31 owns the source-to-host-relocatable boundary over the shared front end and
+incremental native backend:
 
-Ownership is split at stable boundaries: `lowir_native_host_eh` derives MIR
-landing-pad clauses, the x86 encoder owns frame/code layout, and
-`lowir_native_object_elf` owns ELF sections, host runtime imports, RTTI cells,
-CFI, LSDA, symbols, and relocations. Work is O(IR + labels + relocations +
-output), with hash-indexed symbols and geometrically growing buffers.
+```text
+source/options -> canonical semantics -> typed PA15 LowIR
+               -> direct PA30 typed adapter
+               -> one-function-at-a-time MIR/encoding
+               -> indexed code/data labels and typed runtime roles
+               -> LSDA + CFI + RTTI/personality cells + relocations
+               -> direct deterministic ELF64 relocatable
+```
 
-## Current Failure Map
+The production driver never renders or reparses LowIR or assembly and never
+launches a host compiler/assembler. The PA30 binary compiler payload is retained
+in the non-allocating `.cppgm_object` section solely for the cumulative internal
+link contract. Semantic state is gone before native lowering; MIR analysis,
+allocation, and region planning are function-local and are released after each
+function is encoded. Final text/data, compact function layouts, symbols,
+relocations, LSDA/CFI, and the ELF image are the required TU-wide owners.
 
-No open PA31 failures. PA31 passes 17/17, PA1--PA30 pass 4132/4132, and the
-PA31 file audit passes. The turn-start groups (host object format, runtime/EH
-imports, protected regions, unwind frame facts, and local symbol binding) are
-all closed at their owning boundaries.
-
-## Active Checkpoint
-
-PA31 full-stage is complete. Validation is the required PA31 report, the full
-through-PA30 report, file audit, host link/run behavior, and exact normalized
-ELF/LSDA/CFI/symbol facts. No later-assignment behavior was pulled forward.
+Runtime helpers, RTTI, linkage, call unwind/return behavior, and object symbols
+cross typed identity/role fields. Protected EH state is a canonical parent-linked
+state ID, propagated once over explicit CFG and unwind edges. Merge equality is
+O(1); the encoder consumes the resulting per-call landing-block ID. ELF-local
+symbol and catch-reference order is a final stable sort. This aligns the PA31
+surface with `spec.md` sections 2 and 5-10 and the PA31 README requirements.
 
 ## Performance Evidence
 
-`CPPGM_DRIVER_STATS=1` plus `/usr/bin/time` measured representative PA31
-objects. The 56-byte unhandled-throw case had 2 functions, 6 LowIR / 16 MIR
-instructions, 5 fixups, 8,984 output bytes, 0.099 ms native lowering,
-0.070 ms encoding, and 7,664 KiB RSS. The 3,980-byte compact-unwind case had
-23 functions, 671 LowIR / 1,059 MIR instructions, 233 fixups, 326,648 output
-bytes, 2.798 ms lowering, 1.464 ms encoding, and 9,872 KiB RSS. Counters,
-time, and memory remain consistent with linear traversal; the direct writer
-retains final function layouts but not whole-program MIR function bodies.
+The audit's plain-function series exposed quadratic symbol sizing/type
+classification. Pre-audit encode times for 1,000/2,000/4,000/8,000 functions
+were 10.99/31.06/104.09/404.24 ms. Hash indexes keyed by function offset and
+internal identity reduce the final series to 8.31/20.69/37.18/78.53 ms, with
+834,104/1,676,104/3,360,104/6,728,104 output bytes and exactly
+1,001/2,001/4,001/8,001 fixups. The 8k case is 5.15x faster; output and work
+counters retain near-2x slopes.
 
-## Completed Checkpoints
+The EH-heavy 50/100/200/400-function series records 250/500/1,000/2,000
+canonical region states, 550/1,100/2,200/4,400 edges, 100/200/400/800 protected
+calls, and 1,205/2,405/4,805/9,605 fixups. Lowering is
+5.19/10.14/20.05/39.91 ms and encoding is 6.10/12.17/24.67/58.69 ms; output is
+1.09/2.18/4.35/8.70 MiB. Counts are exactly linear and timing is consistent
+with O(IR + edges + relocations + output), with final relocation sorting
+O(R log R).
 
-| Checkpoint | Status | Evidence |
+Representative PA31 objects remain small and bounded: unhandled throw is two
+functions, 6 LowIR/16 MIR instructions, 5 fixups, 8,984 bytes, and 7,784 KiB
+RSS; compact unwind is 23 functions, 671/1,059 instructions, 3 canonical EH
+states, 5 edges, 3 protected calls, 233 fixups, 326,648 bytes, and 9,640 KiB
+RSS. A cleanup-only object records 2 states, 2 edges, and 1 protected call.
+
+## Architecture Review
+
+- Representation and ownership: source/semantic/typed-LowIR ownership ends at
+  explicit boundaries; binary compatibility payload, code/data, per-function
+  MIR, compact layout facts, and final ELF each have one named owner. No text
+  round trip or whole-program MIR retention exists in compile mode.
+- Identity and lookup: frontend entities/types/templates remain canonical IDs;
+  runtime and call facts are typed. MIR label strings are converted once to
+  compact block IDs for EH-state interning. Function size/type and ELF symbol
+  lookups are average-O(1); final sorts provide deterministic bytes.
+- Templates and repeated work: a traced `raise_value<int>` specialization has
+  3 requests, 2 cache hits, 1 demand push, and 1 demanded emission. It is
+  lowered once as weak ODR code and participates in the same host-EH path.
+- Lowering and backend: direct-call unwind/noreturn facts survive the adapter
+  into MIR. Explicit cleanup clauses remain clauses rather than fake pushes.
+  CFG/unwind worklist analysis validates marker underflow, landing targets,
+  protected-state merges, generated catch-forward transfers, and normal exits
+  before encoding call-site facts.
+- Object generation: ordered LSDA action chains cover every handler; type-table
+  selectors point at typed RTTI cells; mixed chains retain zero-filter cleanup
+  actions; cleanup/resume uses `_Unwind_Resume`; FDEs carry CFI, indirect
+  personality, and LSDA relocations. Code and ELF are emitted directly without
+  private `cppgm_eh_*` imports.
+- Allocation and scaling: canonical EH states are parent-linked compact facts,
+  each block/edge is processed once, non-EH functions skip region analysis,
+  buffers grow geometrically, and only final layout state crosses functions.
+- Self-containment: process tracing observes only the requested `cppgm++`
+  process; source searches find no compiler/assembler/reference launch or
+  fixture dispatch. Host compilation exists only in the test harness after the
+  requested object has been produced.
+
+## Final Architecture Review
+
+The independent review closed all in-scope findings at their owning boundaries.
+The original writer emitted only the first handler action, reset EH state at
+every MIR block, rescanned all functions for every label/export, dropped direct
+call unwind/noreturn facts, conflated targetless cleanup clauses with pushes,
+omitted cleanup actions from mixed LSDA chains, and allowed unordered containers
+to define ELF order. The final path now has an ordered action chain, canonical
+edge-driven region state, typed call facts, correct clause identity, indexed
+symbol facts, and deterministic final ordering.
+
+A demanded-template throw is caught by the second of two typed handlers, links
+and runs with exit 0, and carries `_ZTIc`, `_ZTIi`, `__cxa_*`, personality,
+LSDA, CFI, and relocation facts end to end. Two identical compiles produce the
+same SHA-256 object. A no-child-process trace and private-symbol scan prove the
+required path is self-contained. The wider earlier-EH object probe accepts all
+45 cases, including the three state-analysis cases found during the audit. The
+README-declared richer nested same-frame catch search remains outside PA31's
+runtime contract and is not claimed as supported. No PA31 correctness,
+architecture, performance, timeout, self-containment, placement, or fatal
+file-audit blocker remains.
+
+## Checkpoint Ledger
+
+| Checkpoint | Final status | Evidence |
 | --- | --- | --- |
-| Host ELF64 object, SysV EH/unwind, RTTI/linkage, and compatibility boundary | Complete | PA31 17/17; through-PA30 4132/4132; file audit pass; scaling measurements above |
+| Host ELF64 and PA30 compatibility payload | Complete | Direct relocatable, embedded bounded payload, host link/run and internal-object reuse |
+| Runtime imports, RTTI, personality, LSDA, and CFI | Complete after audit | Multi-handler action regression; normalized object facts; no private EH symbols |
+| Protected regions and call facts | Complete after audit | Canonical CFG/unwind worklist, consumed cleanup states, O(1) merge checks, typed unwind/noreturn propagation |
+| Linkage and deterministic symbols | Complete after audit | Local lambda binding, indexed function facts, stable symbol/catch ordering, byte-identical repeated objects |
+| Performance and observability | Complete after audit | Plain and EH-heavy scaling series plus region/edge/call/fixup/time/RSS counters |
+| Self-containment and ownership | Complete | Direct typed path, incremental MIR release, process trace with no child process |
+| Final full-stage audit | Complete | Required gates, representative declaration/template traces, regression, and final ledger |
+
+## Validation
+
+- `make test-pa31`: 18/18 pass (17 assignment tests plus one audit regression).
+- `perl scripts/cppgm_file_audit.pl --stage pa31 --paths dev/src`: pass; the
+  21 warnings are inherited header-division warnings.
+- `make test-report-through-pa31`: 4,150/4,150 tests and 31/31 stages pass.
+- `git diff --check`: pass; final audit changes are committed and the worktree
+  is clean.

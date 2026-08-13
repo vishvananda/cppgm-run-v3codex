@@ -1,0 +1,15 @@
+int main()
+{
+  try
+  {
+    throw 7;
+  }
+  catch (char)
+  {
+    return 1;
+  }
+  catch (int value)
+  {
+    return value - 7;
+  }
+}

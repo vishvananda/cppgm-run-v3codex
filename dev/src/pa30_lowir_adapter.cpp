@@ -249,6 +249,16 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 	case Instruction::CALL:
 		target.kind = lowir_model::Instruction::IK_CALL;
 		target.call_returns_void = source.dest == kNoLowId;
+		if (!source.indirect &&
+			(source.first.kind == Operand::FUNCTION ||
+			 source.first.kind == Operand::GLOBAL))
+		{
+			if (source.first.id >= program.symbols.size())
+				throw std::logic_error("invalid typed LowIR call target");
+			lowir_model::SymbolMetadata ignored_symbol;
+			AdaptSymbolFacts(program.symbols[source.first.id], &ignored_symbol,
+				&target.call_boundary);
+		}
 		if (source.extra_count)
 		{
 			if (source.extra_first == kNoLowId ||
@@ -291,7 +301,10 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 	case Instruction::EH_TRY:
 		target.kind = lowir_model::Instruction::IK_EH_TRY; break;
 	case Instruction::EH_CLEANUP:
-		target.kind = lowir_model::Instruction::IK_EH_CLEANUP; break;
+		target.kind = source.target == kNoLowId ?
+			lowir_model::Instruction::IK_EH_CLEANUP_CLAUSE :
+			lowir_model::Instruction::IK_EH_CLEANUP;
+		break;
 	case Instruction::EH_CATCH:
 		target.kind = lowir_model::Instruction::IK_EH_CATCH;
 		target.has_eh_selector = true;
