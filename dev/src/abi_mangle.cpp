@@ -237,6 +237,13 @@ struct ArgumentNode
   bool member_lvalue_ref = false;
   bool member_rvalue_ref = false;
   bool member_variadic = false;
+  AbiMemberFunctionTerminalKind member_terminal_kind =
+    ABI_MEMBER_FUNCTION_TERMINAL_SOURCE;
+  size_t member_terminal = NO_ID;
+  size_t member_literal_suffix = NO_ID;
+  size_t member_conversion_type = NO_ID;
+  size_t member_result_type = NO_ID;
+  bool member_has_result_type = false;
   vector<size_t> parameters;
   vector<size_t> arguments;
 
@@ -253,6 +260,12 @@ struct ArgumentNode
            && member_lvalue_ref == other.member_lvalue_ref
            && member_rvalue_ref == other.member_rvalue_ref
            && member_variadic == other.member_variadic
+           && member_terminal_kind == other.member_terminal_kind
+           && member_terminal == other.member_terminal
+           && member_literal_suffix == other.member_literal_suffix
+           && member_conversion_type == other.member_conversion_type
+           && member_result_type == other.member_result_type
+           && member_has_result_type == other.member_has_result_type
            && parameters == other.parameters && arguments == other.arguments;
   }
 };
@@ -268,12 +281,18 @@ size_t argument_hash(const ArgumentNode & argument)
   hash = mix_hash(hash, argument.name);
   hash = mix_hash(hash, argument.substitution);
   hash = mix_hash(hash, argument.symbol);
+  hash = mix_hash(hash, static_cast<size_t>(argument.member_terminal_kind));
+  hash = mix_hash(hash, argument.member_terminal);
+  hash = mix_hash(hash, argument.member_literal_suffix);
+  hash = mix_hash(hash, argument.member_conversion_type);
+  hash = mix_hash(hash, argument.member_result_type);
   hash = mix_hash(hash, argument.index);
   hash = mix_hash(hash, std::hash<long long>()(argument.value));
   hash = mix_hash(hash, argument.has_value_type | (argument.address_of << 1)
                         | (argument.member_is_function << 2) | (argument.member_const << 3)
                         | (argument.member_volatile << 4) | (argument.member_lvalue_ref << 5)
-                        | (argument.member_rvalue_ref << 6) | (argument.member_variadic << 7));
+                        | (argument.member_rvalue_ref << 6) | (argument.member_variadic << 7)
+                        | (argument.member_has_result_type << 8));
   hash = vector_hash(hash, argument.parameters);
   return vector_hash(hash, argument.arguments);
 }
@@ -582,6 +601,20 @@ private:
     node.member_lvalue_ref = source.member_function_lvalue_ref;
     node.member_rvalue_ref = source.member_function_rvalue_ref;
     node.member_variadic = source.member_function_variadic;
+    node.member_terminal_kind = source.member_function_terminal_kind;
+    if(!source.member_function_terminal.empty()) {
+      node.member_terminal = strings.intern(source.member_function_terminal);
+    }
+    if(!source.member_function_literal_suffix.empty()) {
+      node.member_literal_suffix = strings.intern(source.member_function_literal_suffix);
+    }
+    if(source.member_function_terminal_kind == ABI_MEMBER_FUNCTION_TERMINAL_CONVERSION) {
+      node.member_conversion_type = resolve_type(source.member_function_conversion_type);
+    }
+    node.member_has_result_type = source.member_function_has_result_type;
+    if(source.member_function_has_result_type) {
+      node.member_result_type = resolve_type(source.member_function_result_type);
+    }
     for(const AbiType & type : source.parameter_types) node.parameters.push_back(resolve_type(type));
     for(const string & argument : source.argument_refs) node.arguments.push_back(resolve_argument_ref(argument));
     const size_t hash = argument_hash(node);
@@ -1285,7 +1318,7 @@ private:
           output_ += "XadL" + graph_.strings.get(argument.symbol) + "EE";
           return;
         }
-        require(argument.owner_type != NO_ID && argument.name != NO_ID,
+        require(argument.owner_type != NO_ID,
                 "structured member external entity is incomplete");
         require(!(argument.member_lvalue_ref && argument.member_rvalue_ref),
                 "structured member external entity has conflicting ref qualifiers");
@@ -1295,8 +1328,47 @@ private:
         if(argument.member_lvalue_ref) output_ += 'R';
         if(argument.member_rvalue_ref) output_ += 'O';
         encode_prefix_type(argument.owner_type);
-        output_ += source_name(graph_.strings.get(argument.name)) + 'E';
+        if(argument.member_terminal_kind == ABI_MEMBER_FUNCTION_TERMINAL_SOURCE) {
+          require(argument.name != NO_ID,
+                  "structured member external entity has no source terminal");
+          output_ += source_name(graph_.strings.get(argument.name));
+        } else if(argument.member_terminal_kind ==
+                  ABI_MEMBER_FUNCTION_TERMINAL_OPERATOR) {
+          require(argument.member_terminal != NO_ID,
+                  "structured member operator has no typed terminal");
+          const string & terminal = graph_.strings.get(argument.member_terminal);
+          if(terminal == "literal") {
+            require(argument.member_literal_suffix != NO_ID,
+                    "structured literal operator has no suffix");
+            output_ += "li" + source_name(
+              graph_.strings.get(argument.member_literal_suffix));
+          } else {
+            output_ += operator_code(terminal, true, argument.parameters.size());
+          }
+        } else {
+          require(argument.member_terminal_kind ==
+                    ABI_MEMBER_FUNCTION_TERMINAL_CONVERSION
+                  && argument.member_conversion_type != NO_ID,
+                  "structured member conversion has no target type");
+          output_ += "cv";
+          encode_type(argument.member_conversion_type);
+        }
+        if(!argument.arguments.empty()) {
+          require(argument.substitution != NO_ID,
+                  "structured member function template has no canonical prefix");
+          substitutions_.add(
+            SubstitutionKey{SUBSTITUTION_EXPLICIT, argument.substitution});
+          output_ += 'I';
+          encode_arguments(argument.arguments);
+          output_ += 'E';
+        }
+        output_ += 'E';
         if(argument.member_is_function) {
+          if(argument.member_has_result_type) {
+            require(!argument.arguments.empty(),
+                    "ordinary member function unexpectedly encodes a result");
+            encode_type(argument.member_result_type);
+          }
           for(size_t parameter : argument.parameters) encode_type(parameter);
           if(argument.parameters.empty()) output_ += 'v';
           if(argument.member_variadic) output_ += 'z';

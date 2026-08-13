@@ -441,7 +441,6 @@ cppgm::pa30::CompilerObject compile_source_object(
 			chrono::steady_clock::now() - adapt_started).count());
   object.lowir.source_bytes = source.size();
 	if(collect_stats) {
-		object.lowir.token_count = stats.semantic.tokens;
 		const cppgm::SemanticAnalysisStats & semantic = stats.semantic;
 		cerr << "pa30_compile_stats"
 			 << " file=" << path

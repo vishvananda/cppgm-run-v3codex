@@ -1,0 +1,17 @@
+struct Convert {
+  template<class... T> int sum(T... value) const
+  {
+    return sizeof...(value);
+  }
+};
+
+template<int (Convert::*Operation)(int, int) const>
+struct Invoke {
+  static int call(Convert& object) { return (object.*Operation)(1, 2); }
+};
+
+int main()
+{
+  Convert object;
+  return Invoke<&Convert::sum<int, int> >::call(object) == 2 ? 0 : 1;
+}

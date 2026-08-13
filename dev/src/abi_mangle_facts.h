@@ -74,6 +74,13 @@ enum AbiTemplateArgumentKind
   ABI_TEMPLATE_ARGUMENT_PACK
 };
 
+enum AbiMemberFunctionTerminalKind
+{
+  ABI_MEMBER_FUNCTION_TERMINAL_SOURCE,
+  ABI_MEMBER_FUNCTION_TERMINAL_OPERATOR,
+  ABI_MEMBER_FUNCTION_TERMINAL_CONVERSION
+};
+
 enum AbiExpressionKind
 {
   ABI_EXPRESSION_TEMPLATE_PARAMETER,
@@ -235,6 +242,17 @@ struct AbiTemplateArgument
   bool member_function_lvalue_ref = false;
   bool member_function_rvalue_ref = false;
   bool member_function_variadic = false;
+  // A member NTTP is one external-name production.  Keep its canonical
+  // terminal and source-template facts beside the owner and callable shape so
+  // the encoder can use the enclosing substitution sequence without parsing
+  // an already-rendered member symbol.
+  AbiMemberFunctionTerminalKind member_function_terminal_kind =
+    ABI_MEMBER_FUNCTION_TERMINAL_SOURCE;
+  std::string member_function_terminal;
+  std::string member_function_literal_suffix;
+  AbiType member_function_conversion_type;
+  AbiType member_function_result_type;
+  bool member_function_has_result_type = false;
   std::vector<AbiType> parameter_types;
   std::vector<std::string> argument_refs;
 };

@@ -2,11 +2,11 @@
 
 ## Stage Design and Spec Alignment
 
-PA32 keeps the production path `semantic BindingRecord/FunctionTemplateAbiRecipe -> typed LowIR Symbol -> LowIR/MIR symbol metadata -> direct ELF`. The semantic/lowering layer owns canonical Itanium names and emission demand; the ELF writer owns only binding, coalescing, sections, and relocations. Result-identity producers frame every template argument and store nondependent source types as canonical `TypeId`s; ABI recipe publication is transactional, so incomplete reads cannot leave reachable or orphaned type/expression nodes. This applies `spec.md` §§2 and 6 (stable typed ABI identity and no name reconstruction), §4 (separate definition/emission demand), §7 (direct ELF and linkage/COMDAT as the permitted whole-program decision), §8 (explicit ownership), and §9 (linear or `n log n` lowering/object work).
+PA32 keeps the production path `semantic BindingRecord/TypeRecord/FunctionTemplateAbiRecipe -> canonical ABI graph -> typed LowIR Symbol -> LowIR/MIR symbol metadata -> direct ELF`. Semantic/lowering records own entity terminals, callable qualifiers, source-template arguments/results, names, and emission demand; the ELF writer owns only binding, coalescing, sections, and relocations. ABI publication remains typed and transactional, and telemetry observes the path without changing serialized object metadata. This applies `spec.md` §§2 and 6 (stable typed identity and no name reconstruction), §4 (separate specialization/emission facts), §7 (direct ELF), §8 (explicit ownership), and §9 (linear work with behavior-neutral counters).
 
 ## Current Failure Map
 
-Current result: **87/134** (turn-start **85/134**, pre-audit **84/133**, implementation start **59/133**). The callable/member-entity checkpoint resolves two ABI failures without introducing a new failure family; **47** tests remain.
+Current result: **91/138** (audit turn-start **87/134**, checkpoint start **85/134**, implementation start **59/133**). The audit adds four passing host-symbol regressions; the same **47** existing tests remain failing and no failure family regressed.
 
 - ABI/template identity, demand, and coalescing (13): OOC constructor templates; empty owner pack; extern-template constructor/member/static-data; enum and variadic-template-template names; internal-template local static; ODR default, static-self, and synthetic template-argument substitutions.
 - ELF data, TLS, and sections (7): C variable import and inherited definition; defined/imported global relocation class; GNU section; TLS import/export.
@@ -14,26 +14,26 @@ Current result: **87/134** (turn-start **85/134**, pre-audit **84/133**, impleme
 - Semantic/linkage remainder (9): anonymous-namespace implicit/explicit special members, storage and call; invalid C/static redeclaration; explicit-specialization data; external default constructor; same-named local classes; typedef-linkage anonymous types.
 - Virtual inheritance/lifecycle (11): result vbase access; external construction thunk; host vbase call; heap dispatch; local/multilevel objects; primary/secondary polymorphic layout; construction vtable; two virtual-diamond cases.
 
-## Active Checkpoint
+## Next Substantial Checkpoint
 
-**Completed: canonical callable and member-entity ABI facts.** Preserve function-type cv/ref qualifiers in the canonical ABI type graph, and carry non-static member NTTPs as structured owner/member facts so their external-name encoding participates in the enclosing substitution sequence. This applies `spec.md` §§2 and 6: canonical `TypeRecord`/`BindingRecord` identities, rather than rendered names, own the facts consumed by mangling and object lowering.
+**Canonical object-data linkage and relocation classes.** Carry language linkage, definition/import state, storage duration, TLS model, section selection, and address-use kind from semantic `BindingRecord`s into typed object symbols and relocations. This targets C variable import/inherited definitions, defined PC-relative versus imported GOT references, GNU section placement, and TLS import/export as one ownership path.
 
-- Owner/data flow: semantic `TypeRecord` function qualifiers and member `BindingRecord` ownership flow through `AbiFactBuilder` into interned ABI type/argument nodes; the encoder emits those nodes using its existing substitution table. No lowering-time lookup or qualified-name reconstruction is added.
-- Complexity: one visit per callable/member type component, plus average O(1) canonicalization/substitution probes; no overload, specialization, or translation-unit scan.
-- Validation: both targeted spelling/runtime fixtures and focused PA14 mangler fixtures pass; a qualified member-function NTTP probe exactly matches the host `g++` raw symbol. Pa32 is 87/134, prior-through-pa31 is 4150/4150, and file audit passes. The scaling sample below covers both qualified callable and structured member-entity paths.
+- Owner/data flow: semantic declaration/linkage facts -> typed LowIR global/symbol/address-use records -> MIR relocation intent -> direct ELF symbol, section, and relocation records; no symbol-spelling classification in the backend.
+- Complexity: O(1) average symbol lookup and one pass over demanded globals/relocations, with final section layout O(n) or O(n log n); no per-reference scan of all globals.
+- Validation: focused C/C++ import/export, PIE/GOT/PC-relative, custom-section, and TLS fixtures; inspect exact ELF symbols/relocations before full gates.
 
 ## Performance Evidence
 
-Generated stress sources instantiated independent cv-overloaded function templates and member-pointer NTTPs at sizes 16, 32, 64, and 128. Representative counters scale with produced semantics and output:
+Generated stress sources instantiated independent cv/ref-qualified operator, conversion-function, and member-function-template NTTPs at sizes 16, 32, 64, and 128. Representative counters scale with produced semantics and output:
 
 | Cases | Tokens | Semantic nodes | Overload candidates | Template requests / hits | Functions | LowIR instructions | Object bytes |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 16 | 2,661 | 989 | 64 | 112 / 64 | 97 | 666 | 353,248 |
-| 32 | 5,301 | 1,965 | 128 | 224 / 128 | 193 | 1,322 | 701,112 |
-| 64 | 10,581 | 3,917 | 256 | 448 / 256 | 385 | 2,634 | 1,397,048 |
-| 128 | 21,141 | 7,821 | 512 | 896 / 512 | 769 | 5,258 | 2,791,056 |
+| 16 | 3,672 | 1,395 | 64 | 240 / 176 | 113 | 752 | 415,744 |
+| 32 | 7,336 | 2,787 | 128 | 480 / 352 | 225 | 1,504 | 830,816 |
+| 64 | 14,664 | 5,571 | 256 | 960 / 704 | 449 | 3,008 | 1,661,016 |
+| 128 | 29,320 | 11,139 | 512 | 1,920 / 1,408 | 897 | 6,016 | 3,324,072 |
 
-Across the same 8x range, semantic time was 10.36–73.92 ms, typed lowering 1.98–14.92 ms, and semantic peak storage 1,800,730–14,291,382 bytes. Structural work, storage, and output remain linear in case count; qualifier and member-entity encoding add constant work per visited type component and no specialization or whole-program scan.
+Across the same 8x range, semantic time was 13.87–111.04 ms, typed lowering 2.37–18.54 ms, and semantic peak storage 2,781,433–22,184,213 bytes. Structural work, storage, and output remain linear in case count; terminal selection is constant per entity and template argument/type visits are proportional to the retained recipe. Stats-on and stats-off object builds are byte-identical after the audit fix (`sha256 e05d38e27c8940716e3a8eea60ab2bde2b69f39aa4771c284118c298eb01a70b`).
 
 ## Completed Checkpoints
 
@@ -45,4 +45,4 @@ Across the same 8x range, semantic time was 10.36–73.92 ms, typed lowering 1.9
 | Canonical standard-template substitutions | Semantic std template identities select generic `Sa`/`Sb` or exact `Ss`/`Si`/`So`/`Sd` ABI facts for types and owners; allocator, operator, and ostream fixtures pass, pa32 79→82, prior 4150/4150, audit pass. |
 | Typed dependent NTTP defaults | Canonical arguments retain source literal type/value beside non-deduced target shape, so source `Li0E` and concrete `Lm0E` remain distinct; pa32 82→83, prior 4150/4150, audit pass. |
 | Structured dependent result/expression recipes | Alias expansion publishes framed class-template arguments, canonical source `TypeId`s, and typed trailing-`decltype` nodes; incomplete recipe reads roll back atomically. The landed suite moves pa32 83→84 and the audit regression passes for 85/134 total, with the original 49 failures unchanged; prior 4150/4150 and file audit pass. |
-| Canonical callable and member-entity ABI facts | Function types retain cv/ref qualifiers and non-static member NTTPs retain structured owners through canonical ABI lowering, sharing the active substitution table; pa32 85→87, prior 4150/4150, focused PA14 and file audit pass, with linear 16→128 stress evidence. |
+| Canonical callable and member-entity ABI facts | Function types retain cv/ref qualifiers; non-static member NTTPs retain typed owner, terminal, qualifier, parameter, and source-template facts in the enclosing substitution sequence. Audit regressions cover operator, conversion, member-template, and pack-template terminals; telemetry no longer mutates object metadata. PA32 85→87 plus four passing audit fixtures (91/138), prior 4150/4150, file audit pass, and linear 16→128 evidence. |

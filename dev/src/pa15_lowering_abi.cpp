@@ -73,6 +73,9 @@ namespace
 
 using namespace pa11;
 
+std::string OperatorTerminal(OperatorKind kind, bool member,
+	std::size_t parameter_count);
+
 std::string LambdaDiscriminator(std::uint32_t ordinal)
 {
 	return ordinal == 0 ? std::string() : std::to_string(ordinal - 1);
@@ -357,12 +360,109 @@ public:
 					target.member_function_rvalue_ref =
 						member_type.ref_qualifier == FUNCTION_REF_RVALUE;
 					target.member_function_variadic = member_type.variadic;
+				if (value.conversion_function)
+				{
+					target.member_function_terminal_kind =
+						ABI_MEMBER_FUNCTION_TERMINAL_CONVERSION;
+					target.member_function_conversion_type =
+						MakeType(value.conversion_target);
+				}
+				else if (value.operator_kind != OPERATOR_NONE)
+				{
+					target.member_function_terminal_kind =
+						ABI_MEMBER_FUNCTION_TERMINAL_OPERATOR;
+					target.member_function_terminal =
+						value.operator_kind == OPERATOR_LITERAL ? "literal" :
+						OperatorTerminal(value.operator_kind, true,
+							member_type.parameter_count);
+					if (value.operator_kind == OPERATOR_LITERAL)
+						target.member_function_literal_suffix =
+							program_.names.Get(value.operator_literal_suffix);
+				}
+				if (value.template_argument_count != 0)
+				{
+					if (value.function_template_abi_recipe ==
+						kNoFunctionTemplateAbiRecipe ||
+						value.function_template_abi_recipe >=
+							program_.function_template_abi_recipes.size())
+						throw std::logic_error(
+							"ABI member function template has no canonical recipe");
+					const FunctionTemplateAbiRecipe& member_recipe =
+						program_.function_template_abi_recipes[
+							value.function_template_abi_recipe];
+					const std::size_t first = value.template_argument_begin;
+					const std::size_t count = value.template_argument_count;
+					if (first > program_.template_arguments.size() ||
+						count > program_.template_arguments.size() - first)
+						throw std::logic_error(
+							"ABI member function template argument range is invalid");
+					if ((member_recipe.template_parameter_pack &&
+						 member_recipe.template_parameter_count == 0) ||
+						(!member_recipe.template_parameter_pack &&
+						 count != member_recipe.template_parameter_count))
+						throw std::logic_error(
+							"ABI member function template argument shape is invalid");
+					const std::size_t fixed = member_recipe.template_parameter_pack ?
+						member_recipe.template_parameter_count - 1 :
+						member_recipe.template_parameter_count;
+					if (fixed > count)
+						throw std::logic_error(
+							"ABI member function template pack range is invalid");
+					for (std::size_t i = 0; i < fixed; ++i)
+						target.argument_refs.push_back(AddTemplateArgument(
+							first + i, &value, &member_recipe, i));
+					if (member_recipe.template_parameter_pack)
+						target.argument_refs.push_back(AddTemplateArgumentPack(
+							first + fixed, count - fixed, &value, &member_recipe));
+					target.substitution = "__cppgm_abi_member_template_" +
+						std::to_string(value.canonical);
+					target.member_function_has_result_type =
+						!value.conversion_function;
+					if (target.member_function_has_result_type)
+					{
+						if (member_recipe.result_type !=
+							kNoFunctionTemplateAbiType)
+							target.member_function_result_type =
+								MakeFunctionTemplateAbiType(
+									member_recipe.result_type, member_recipe);
+						else
+						{
+							const TypeRecord& recipe_type =
+								program_.types.Get(member_recipe.function_type);
+							target.member_function_result_type =
+								MakeFunctionTemplateType(
+									recipe_type.child, value, &member_recipe);
+						}
+					}
+					const TypeRecord& recipe_type =
+						program_.types.Get(member_recipe.function_type);
+					const TypeId* recipe_parameters =
+						program_.types.Parameters(member_recipe.function_type);
+					for (std::size_t i = 0;
+						i < recipe_type.parameter_count; ++i)
+					{
+						AbiType encoded = MakeFunctionTemplateType(
+							recipe_parameters[i], value, &member_recipe);
+						if (member_recipe.function_parameter_pack &&
+							i + 1 == recipe_type.parameter_count)
+						{
+							AbiTypeModifier expansion;
+							expansion.kind = ABI_TYPE_PACK_EXPANSION;
+							encoded.modifiers.insert(
+								encoded.modifiers.begin(), expansion);
+						}
+						target.parameter_types.push_back(encoded);
+					}
+				}
+				else
+				{
 					const TypeId* member_parameters =
 						program_.types.Parameters(value.type);
 					for (std::size_t i = 0;
 						i < member_type.parameter_count; ++i)
 						target.parameter_types.push_back(
 							MakeType(member_parameters[i]));
+				}
 				}
 			}
 			else
@@ -1612,42 +1712,13 @@ std::string MangleFunction(const pa11::Program& program,
 	const TypeId* recipe_parameters = recipe_function &&
 		recipe_function->parameter_count != 0 ?
 		program.types.Parameters(recipe->function_type) : 0;
-	for (std::size_t i = first_parameter;
-		i < function_type.parameter_count; ++i)
+	const auto append_parameter = [&](TypeId parameter_type,
+		const FunctionTemplateAbiRecipe* parameter_recipe,
+		bool pack_expansion)
 	{
 		AbiFactRecord parameter;
 		parameter.set_kind(ABI_FACT_RECORD_FUNCTION);
 		parameter.function.kind = ABI_FUNCTION_RECORD_PARAMETER;
-		TypeId parameter_type = parameters[i];
-		const FunctionTemplateAbiRecipe* parameter_recipe = 0;
-		bool pack_expansion = false;
-		if (recipe_function)
-		{
-			const std::size_t explicit_parameter = i - first_parameter;
-			const std::size_t fixed = recipe->function_parameter_pack ?
-				recipe_function->parameter_count - 1 :
-				recipe_function->parameter_count;
-			if ((!recipe->function_parameter_pack &&
-					explicit_parameter >= fixed) ||
-				(recipe->function_parameter_pack && fixed ==
-					recipe_function->parameter_count))
-				throw std::logic_error(
-					"function template ABI parameter shape diverged");
-			const std::size_t source_parameter = explicit_parameter < fixed ?
-				explicit_parameter : fixed;
-			if (source_parameter >= recipe_function->parameter_count)
-				throw std::logic_error(
-					"function template ABI parameter source is invalid");
-			const TypeId source = recipe_parameters[source_parameter];
-			pack_expansion = recipe->function_parameter_pack &&
-				explicit_parameter >= fixed;
-			if (pack_expansion ||
-				facts.UsesFunctionTemplateParameter(source, binding, *recipe))
-			{
-				parameter_type = source;
-				parameter_recipe = recipe;
-			}
-		}
 		parameter.function.type = facts.MakeFunctionTemplateType(
 			parameter_type, binding, parameter_recipe);
 		if (pack_expansion)
@@ -1658,6 +1729,19 @@ std::string MangleFunction(const pa11::Program& program,
 				parameter.function.type.modifiers.begin(), expansion);
 		}
 		file.cases[0].records.push_back(parameter);
+	};
+	if (recipe_function)
+	{
+		for (std::size_t i = 0; i < recipe_function->parameter_count; ++i)
+			append_parameter(recipe_parameters[i], recipe,
+				recipe->function_parameter_pack &&
+				i + 1 == recipe_function->parameter_count);
+	}
+	else
+	{
+		for (std::size_t i = first_parameter;
+			i < function_type.parameter_count; ++i)
+			append_parameter(parameters[i], 0, false);
 	}
 	if (function_type.variadic)
 	{

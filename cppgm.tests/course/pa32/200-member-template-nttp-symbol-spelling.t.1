@@ -1,0 +1,20 @@
+struct Convert {
+  template<class T> T get(T value) const
+  {
+    return value;
+  }
+};
+
+template<int (Convert::*Operation)(int) const>
+struct InvokeMemberTemplate {
+  __attribute__((noinline)) static int call(Convert& object)
+  {
+    return (object.*Operation)(5);
+  }
+};
+
+int main()
+{
+  Convert object;
+  return InvokeMemberTemplate<&Convert::get<int> >::call(object) == 5 ? 0 : 1;
+}

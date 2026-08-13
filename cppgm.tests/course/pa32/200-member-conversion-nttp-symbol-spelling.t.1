@@ -1,0 +1,22 @@
+struct Value {
+  int value;
+
+  operator int() const
+  {
+    return value;
+  }
+};
+
+template<int (Value::*Operation)() const>
+struct InvokeConversion {
+  __attribute__((noinline)) static int call(Value& value)
+  {
+    return (value.*Operation)();
+  }
+};
+
+int main()
+{
+  Value value = { 9 };
+  return InvokeConversion<&Value::operator int>::call(value) == 9 ? 0 : 1;
+}

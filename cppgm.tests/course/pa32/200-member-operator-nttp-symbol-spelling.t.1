@@ -1,0 +1,22 @@
+struct Number {
+  int value;
+
+  int operator+(int amount) const &
+  {
+    return value + amount;
+  }
+};
+
+template<class Owner, int (Owner::*Operation)(int) const &>
+struct Invoke {
+  __attribute__((noinline)) static int call(Owner& owner)
+  {
+    return (owner.*Operation)(4);
+  }
+};
+
+int main()
+{
+  Number number = { 3 };
+  return Invoke<Number, &Number::operator+>::call(number) == 7 ? 0 : 1;
+}
