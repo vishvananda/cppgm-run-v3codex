@@ -214,6 +214,10 @@ private:
 		NodeId declarator, bool definition, bool special_member_template,
 		TypeId dependent_result_shape,
 		bool dependent_exception_specification);
+	void EnsureFunctionTemplateShapeParameters(std::size_t count);
+	void ApplyGenericLambdaSpecializationFacts(
+		const FunctionTemplatePattern& pattern, BindingId binding,
+		EntityId member_owner);
 	std::size_t FindPriorFunctionTemplatePattern(
 		const FunctionTemplatePattern& pattern, EntityId friend_owner,
 		bool qualified_friend, bool definition);

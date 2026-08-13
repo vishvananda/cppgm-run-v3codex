@@ -3,6 +3,7 @@
 #include "pa10_syntax_model.h"
 
 #include <cstddef>
+#include <vector>
 
 namespace cppgm
 {
@@ -15,6 +16,94 @@ template <class Derived>
 class LambdaCaptureSyntax
 {
 protected:
+	NodeId ParseLambdaExpression()
+	{
+		Derived& parser = static_cast<Derived&>(*this);
+		if (!parser.At(OP_LSQUARE)) return kNoNode;
+		const NodeId lambda = parser.arena_.Make("lambda-expression");
+		const NodeId introducer = ParseLambdaIntroducer();
+		parser.arena_.Add(lambda, introducer);
+		std::size_t identity_last = parser.arena_.TokenLast(introducer);
+		const std::size_t parameter_mark =
+			parser.active_non_type_parameter_names_.size();
+		const bool generic = parser.At(OP_LT);
+		if (generic || parser.At(OP_LPAREN))
+		{
+			const NodeId declarator = parser.arena_.Make("lambda-declarator");
+			if (generic)
+			{
+				parser.arena_.Add(declarator,
+					parser.ParseNestedTemplateParameterClause());
+				const NodeId name = parser.arena_.Make("identifier", "operator()");
+				parser.arena_.SetSemanticPayload(
+					name, parser.strings_.Intern("operator()"));
+				parser.arena_.AddFlags(name, SYNTAX_FLAG_SEMANTIC_ONLY);
+				parser.arena_.Add(declarator, name);
+				const NodeId specifiers =
+					parser.arena_.Make("decl-specifier-seq");
+				parser.arena_.Add(specifiers,
+					parser.arena_.Make("decl-specifier", "auto"));
+				parser.arena_.Add(declarator, specifiers);
+			}
+			if (parser.At(OP_LPAREN))
+				parser.arena_.Add(declarator, parser.ParseParameterClause());
+			else parser.arena_.Add(
+				declarator, parser.arena_.Make("parameter-clause"));
+			std::vector<NodeId> attributes;
+			while (parser.ParseLeadingAttribute(&attributes)) {}
+			for (std::size_t i = 0; i < attributes.size(); ++i)
+				parser.arena_.Add(declarator, attributes[i]);
+			const bool mutable_call = parser.Match(KW_MUTABLE);
+			if (mutable_call)
+				parser.arena_.Add(declarator,
+					parser.arena_.Make("lambda-specifier", "KW_MUTABLE:mutable"));
+			else if (generic)
+				parser.arena_.Add(declarator,
+					parser.arena_.Make("cv-qualifier", "const"));
+			attributes.clear();
+			while (parser.ParseLeadingAttribute(&attributes)) {}
+			for (std::size_t i = 0; i < attributes.size(); ++i)
+				parser.arena_.Add(declarator, attributes[i]);
+			if (parser.Match(KW_NOEXCEPT))
+			{
+				const NodeId specification = parser.arena_.Make(
+					"noexcept-specification");
+				if (parser.Match(OP_LPAREN))
+				{
+					const NodeId value = parser.ParseExpression();
+					if (value == kNoNode)
+						throw parser.Error("expected noexcept value");
+					parser.Expect(OP_RPAREN);
+					parser.arena_.Add(specification, value);
+				}
+				parser.arena_.Add(declarator, specification);
+			}
+			if (parser.Match(OP_ARROW))
+			{
+				const NodeId trailing =
+					parser.arena_.Make("trailing-return-type");
+				if (!parser.ParseTypeId(trailing))
+					throw parser.Error("expected lambda result type");
+				parser.arena_.Add(declarator, trailing);
+			}
+			parser.arena_.Add(lambda, declarator);
+			identity_last = parser.position_;
+		}
+		parser.arena_.SetTokenRange(lambda,
+			parser.arena_.TokenLast(introducer), identity_last);
+		const NodeId body = parser.ParseCompoundStatement();
+		if (body == kNoNode) throw parser.Error("expected lambda body");
+		parser.arena_.Add(lambda, body);
+		while (parser.active_non_type_parameter_names_.size() > parameter_mark)
+		{
+			parser.SetNameFact(
+				parser.active_non_type_parameter_names_.back(),
+				Derived::kActiveNonTypeParameter, false);
+			parser.active_non_type_parameter_names_.pop_back();
+		}
+		return lambda;
+	}
+
 	NodeId ParseLambdaIntroducer()
 	{
 		Derived& parser = static_cast<Derived&>(*this);

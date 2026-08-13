@@ -1126,6 +1126,9 @@ struct FunctionTemplatePattern
 	std::vector<std::uint32_t> specialization_argument_offsets;
 	std::vector<std::uint32_t> specialization_parameter_offsets;
 	std::vector<EntityId> friend_owners;
+	BindingId lambda_lexical_access_function;
+	std::uint32_t lambda_capture_begin, lambda_capture_count;
+	BindingId lambda_this_capture_member;
 	LanguageLinkage language_linkage;
 	AccessKind member_access;
 	bool defined;
@@ -1159,6 +1162,9 @@ struct FunctionTemplatePattern
 		  abi_result_type(kNoFunctionTemplateAbiType),
 		  abi_recipe(kNoFunctionTemplateAbiRecipe),
 		  result_root_global(false), expanded_result_has_alias(false),
+		  lambda_lexical_access_function(kNoBinding),
+		  lambda_capture_begin(0), lambda_capture_count(0),
+		  lambda_this_capture_member(kNoBinding),
 		  language_linkage(LANGUAGE_LINKAGE_CPP), member_access(ACCESS_PUBLIC),
 		  defined(false), ordinary_visible(true), definition_in_class(false),
 		  nonthrowing(false), dependent_exception_specification(false),

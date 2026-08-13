@@ -13,17 +13,17 @@ linear lowering/allocation, and no host compiler fallback.
 ## Current Failure Map
 
 - Preprocess: 0/45 failures; this boundary is complete.
-- Compile: 105/281 failures: 31 extension grammar/type cases (parser/type system), 38
+- Compile: 98/281 failures: 24 extension grammar/type cases (parser/type system), 38
   trait/layout/constant cases (semantic facts), and 36 template lookup/demand cases.
 - Run: 19/41 failures; 16 stop in the compile pipeline and 3 expose linked
-  backend/lifetime or forced-inline behavior. PA34 is 243/367 overall.
+  backend/lifetime or forced-inline behavior. PA34 is 250/367 overall.
 
 ## Active Checkpoint
 
-Next, map the remaining extension grammar/type group and choose its next stable
-parser-to-type boundary; the two direct `_BitInt` static-cast fixtures are the leading
-candidate. Record its canonical representation, semantic/lowering ownership, bounded
-complexity, and focused validation before editing.
+No implementation is in flight. Re-map the remaining extension grammar/type failures;
+the two deferred `_BitInt` casts and the hosted extended floating types are the leading
+scalar-type candidates. Define canonical width/rank and lowering ownership before
+editing rather than treating their spellings as aliases.
 
 ## Performance Evidence
 
@@ -71,6 +71,12 @@ each. Semantic nodes were 13/69/517 and lookup queries 15/85/645; semantic time 
 0.24/0.57/2.98 ms and lowering time 0.19/0.27/1.12 ms. This supports linear
 declarator/call work with fixed ABI lowering and O(1)-average canonical interning.
 
+The generic-lambda probe called one specialization 1/8/64 times. Requests were 1/8/64
+and cache hits 0/7/63, while demand pushes, demanded functions, and emitted
+specializations stayed exactly 1/1/1; semantic nodes were 27/83/531 and LowIR
+instructions 14/49/329. Semantic time was 0.43/0.56/1.77 ms, supporting linear call
+work, O(1)-average specialization caching, and demand-once lowering.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result | Validation |
@@ -86,3 +92,4 @@ declarator/call work with fixed ABI lowering and O(1)-average canonical internin
 | GNU asm and asm labels | Structured operands, semantic operation IDs, typed LowIR effects, exact binding-owned ABI labels, and reallocation-safe class layout; +10 | focused 10/10; linked atomic/labels exact; 1/8/64 linear; PA34 237/367; PA1-33 4387/4387; audit pass |
 | Scalar GNU vectors | Retained type attributes, canonical lane/byte-width identity, layout/ABI/lowering facts, and typed unused-wrapper literals; +2 | focused 2/2; invalid width/arity rejected; 1/8/64 linear; PA34 239/367; PA1-33 4387/4387; audit pass |
 | Canonical block pointers | Distinct interned callable identity, hosted declarators/annotations, Itanium vendor qualification, and Blocks ABI invoke lowering; +4 | focused 4/4; invalid target/arity rejected; types/symbol/LowIR exact; 1/8/64 linear; PA34 243/367; PA1-33 4387/4387; audit pass |
+| Generic lambdas | Parsed explicit template clauses, canonical member-template patterns, capture/access propagation, cached specialization demand, and template-aware local ABI identity; +7 | focused 7/7; linked default/capture/pack calls; ABI demangles with `<int>`; 1/8/64 cache/demand exact; PA34 250/367; PA1-33 4387/4387; audit pass |

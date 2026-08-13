@@ -1328,48 +1328,7 @@ NodeId Parser::ParsePrimaryExpression()
 		return result;
 	}
 	if (At(OP_LSQUARE))
-	{
-		const NodeId lambda = arena_.Make("lambda-expression");
-		const NodeId introducer = ParseLambdaIntroducer();
-		arena_.Add(lambda, introducer);
-		std::size_t identity_last = arena_.TokenLast(introducer);
-		if (At(OP_LPAREN))
-		{
-			const NodeId declarator = arena_.Make("lambda-declarator");
-			arena_.Add(declarator, ParseParameterClause());
-			if (Match(KW_MUTABLE))
-				arena_.Add(declarator,
-					arena_.Make("lambda-specifier", "KW_MUTABLE:mutable"));
-			if (Match(KW_NOEXCEPT))
-			{
-				const NodeId specification = arena_.Make(
-					"noexcept-specification");
-				if (Match(OP_LPAREN))
-				{
-					const NodeId value = ParseExpression();
-					if (value == kNoNode) throw Error("expected noexcept value");
-					Expect(OP_RPAREN);
-					arena_.Add(specification, value);
-				}
-				arena_.Add(declarator, specification);
-			}
-			if (Match(OP_ARROW))
-			{
-				const NodeId trailing = arena_.Make("trailing-return-type");
-				if (!ParseTypeId(trailing))
-					throw Error("expected lambda result type");
-				arena_.Add(declarator, trailing);
-			}
-			arena_.Add(lambda, declarator);
-			identity_last = position_;
-		}
-		arena_.SetTokenRange(
-			lambda, arena_.TokenLast(introducer), identity_last);
-		const NodeId body = ParseCompoundStatement();
-		if (body == kNoNode) throw Error("expected lambda body");
-		arena_.Add(lambda, body);
-		return lambda;
-	}
+		return ParseLambdaExpression();
 	if (At(OP_LPAREN))
 	{
 		const NodeId statement_expression = ParseStatementExpression();

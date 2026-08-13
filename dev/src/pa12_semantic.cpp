@@ -1799,18 +1799,7 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 			if (declarator != kNoNode) pattern_declarators.push_back(declarator);
 		}
 	}
-	while (function_template_shape_parameters_.size() < parameters.size())
-	{
-		std::ostringstream generated;
-		generated << "__function_template_parameter_shape_"
-			<< function_template_shape_parameters_.size();
-		const NameId name = program_->names.Intern(generated.str());
-		const EntityId entity = program_->NewEntity(name,
-			NAMED_TYPENAME_PARAMETER, false, kNoType,
-			program_->GlobalScope(), name);
-		function_template_shape_parameters_.push_back(
-			program_->types.Named(entity));
-	}
+	EnsureFunctionTemplateShapeParameters(parameters.size());
 	std::unordered_set<NameId> parameter_names;
 	for (std::size_t i = 0; i < parameters.size(); ++i)
 		if (parameters[i].name != 0)

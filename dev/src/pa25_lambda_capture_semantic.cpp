@@ -434,6 +434,18 @@ void LambdaCaptureUseTable::Build(std::uint32_t fact,
 					declaration_edge = arena.NextEdge(declaration_edge))
 				{
 					const NodeId clause = arena.EdgeChild(declaration_edge);
+					if (arena.IsTag(clause, "template-parameter-clause"))
+					{
+						const NodeId list = arena.FirstEdge(clause) == kNoEdge ?
+							kNoNode : arena.EdgeChild(arena.FirstEdge(clause));
+						for (std::uint32_t parameter_edge =
+							list == kNoNode ? kNoEdge : arena.FirstEdge(list);
+							parameter_edge != kNoEdge;
+							parameter_edge = arena.NextEdge(parameter_edge))
+							AddBound(DeclaratorName(
+								arena, arena.EdgeChild(parameter_edge)));
+						continue;
+					}
 					if (!arena.IsTag(clause, "parameter-clause")) continue;
 					for (std::uint32_t parameter_edge = arena.FirstEdge(clause);
 						parameter_edge != kNoEdge;

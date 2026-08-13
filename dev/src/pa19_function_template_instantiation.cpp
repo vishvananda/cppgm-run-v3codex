@@ -929,6 +929,38 @@ TypeId SemanticAnalyzer::DependentFunctionTemplateResultShape()
 	return function_template_dependent_result_shape_;
 }
 
+void SemanticAnalyzer::EnsureFunctionTemplateShapeParameters(std::size_t count)
+{
+	while (function_template_shape_parameters_.size() < count)
+	{
+		const NameId name = program_->names.Intern(
+			"__function_template_parameter_shape_" + std::to_string(
+				function_template_shape_parameters_.size()));
+		const EntityId entity = program_->NewEntity(name,
+			NAMED_TYPENAME_PARAMETER, false, kNoType,
+			program_->GlobalScope(), name);
+		function_template_shape_parameters_.push_back(
+			program_->types.Named(entity));
+	}
+}
+
+void SemanticAnalyzer::ApplyGenericLambdaSpecializationFacts(
+	const FunctionTemplatePattern& pattern, BindingId binding,
+	EntityId member_owner)
+{
+	if (member_owner == kNoEntity || member_owner >= program_->entities.size() ||
+		!program_->entities[member_owner].lambda_closure) return;
+	EntityRecord& owner = program_->entities[member_owner];
+	if (owner.lambda_call_operator == kNoBinding)
+		owner.lambda_call_operator = binding;
+	FunctionInfo& function = GetMutableFunction(binding);
+	function.lexical_access_function =
+		pattern.lambda_lexical_access_function;
+	function.lambda_capture_begin = pattern.lambda_capture_begin;
+	function.lambda_capture_count = pattern.lambda_capture_count;
+	function.lambda_this_capture_member = pattern.lambda_this_capture_member;
+}
+
 std::size_t SemanticAnalyzer::FindPriorFunctionTemplatePattern(
 	const FunctionTemplatePattern& pattern, EntityId friend_owner,
 	bool qualified_friend, bool definition)
@@ -2065,6 +2097,7 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 			&binding_record.template_argument_count);
 	ValidateFunctionRefQualifier(binding);
 	ValidateNonmemberOperator(binding);
+	ApplyGenericLambdaSpecializationFacts(pattern, binding, member_owner);
 	FunctionInfo& function = GetMutableFunction(binding);
 	ConfigurePlaceholderFunctionReturn(binding, parsed, spec.placeholder_cv);
 	function.deleted_function =

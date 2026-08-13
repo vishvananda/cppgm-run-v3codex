@@ -985,10 +985,33 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 	}
 	if (analyzer_.arena_->IsTag(node, "lambda-expression"))
 	{
-		const std::size_t lambda_scope = AddChildScope(
-			scope, SCOPE_FUNCTION, DefersUnknownMembers(scope));
+		std::size_t lambda_parent = scope;
+		std::vector<NameId> introduced;
 		const NodeId declarator = analyzer_.FindChild(
 			node, "lambda-declarator");
+		const NodeId clause = declarator == kNoNode ? kNoNode :
+			analyzer_.FindChild(declarator, "template-parameter-clause");
+		if (clause != kNoNode)
+		{
+			const NodeId list = analyzer_.FindChild(
+				clause, "template-parameter-list");
+			std::vector<TemplateParameter> parameters;
+			std::vector<NameId> names;
+			std::vector<NodeId> defaults;
+			analyzer_.ParseTemplateParameters(list,
+				scopes_[scope].semantic_scope, &parameters, &names, &defaults,
+				&parameter_names_);
+			lambda_parent = AddChildScope(scope, SCOPE_TEMPLATE_PARAMETERS,
+				DefersUnknownMembers(scope));
+			for (std::size_t i = 0; i < parameters.size(); ++i)
+			{
+				DeclareParameter(lambda_parent, parameters[i]);
+				if (parameters[i].name != 0)
+					introduced.push_back(parameters[i].name);
+			}
+		}
+		const std::size_t lambda_scope = AddChildScope(
+			lambda_parent, SCOPE_FUNCTION, DefersUnknownMembers(scope));
 		if (declarator != kNoNode)
 		{
 			BindFunctionParameters(declarator, lambda_scope);
@@ -996,6 +1019,8 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 		}
 		const NodeId body = analyzer_.FindChild(node, "compound-statement");
 		if (body != kNoNode) Visit(body, lambda_scope);
+		for (std::size_t i = 0; i < introduced.size(); ++i)
+			parameter_names_.erase(introduced[i]);
 		return;
 	}
 	if (analyzer_.arena_->IsTag(node, "range-for-statement"))

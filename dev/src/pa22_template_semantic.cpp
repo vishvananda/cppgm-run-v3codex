@@ -195,19 +195,37 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 		bool nonthrowing = false;
 		bool variadic_call = false;
 		std::vector<ParameterInfo> call_parameters;
+		std::vector<TemplateParameter> call_template_parameters;
+		bool generic_call = false;
 		NameId call_parameter_pack_name = 0;
 		NodeId parameter_clause = kNoNode;
 		NodeId trailing_return = kNoNode;
 		if (declarator != kNoNode)
 		{
+			const NodeId template_clause = FindChild(
+				declarator, "template-parameter-clause");
+			if (template_clause != kNoNode)
+			{
+				std::vector<NameId> template_names;
+				std::vector<NodeId> template_defaults;
+				ParseTemplateParameters(FindChild(template_clause,
+					"template-parameter-list"), scope, &call_template_parameters,
+					&template_names, &template_defaults);
+				EnsureFunctionTemplateShapeParameters(
+					call_template_parameters.size());
+				generic_call = true;
+			}
 			parameter_clause = FindChild(declarator, "parameter-clause");
 			if (parameter_clause == kNoNode)
 				throw std::logic_error(
 					"lambda declarator has no parameter clause");
-			call_parameters = BuildParameters(
-				parameter_clause, scope, &variadic_call);
-			call_parameter_pack_name =
-				FunctionParameterPackName(parameter_clause);
+			if (!generic_call)
+			{
+				call_parameters = BuildParameters(
+					parameter_clause, scope, &variadic_call);
+				call_parameter_pack_name =
+					FunctionParameterPackName(parameter_clause);
+			}
 			trailing_return = FindChild(declarator, "trailing-return-type");
 			mutable_call =
 				FindChild(declarator, "lambda-specifier") != kNoNode;
@@ -425,6 +443,27 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 		closure.lambda_capture_count = capture_count;
 		CompleteClassLayout(entity);
 		closure.is_aggregate = false;
+		BindingId call_operator = kNoBinding;
+		BindingId invocation_function = kNoBinding;
+		BindingId conversion_function = kNoBinding;
+		if (generic_call)
+		{
+			const std::size_t pattern = function_templates_.size();
+			RegisterFunctionTemplatePattern(node, member_scope, ACCESS_PUBLIC,
+				call_template_parameters,
+				FindChild(declarator, "decl-specifier-seq"), declarator,
+				true, false, kNoType, false);
+			if (function_templates_.size() != pattern + 1)
+				throw std::logic_error(
+					"generic lambda call template did not publish one pattern");
+			FunctionTemplatePattern& call = function_templates_[pattern];
+			call.lambda_lexical_access_function = enclosing;
+			call.lambda_capture_begin = capture_begin;
+			call.lambda_capture_count = capture_count;
+			call.lambda_this_capture_member = this_capture_member;
+		}
+		else
+		{
 		const NameId call_name = program_->names.Intern("operator()");
 		TypeId result_type = program_->types.Fundamental(FUND_VOID);
 		if (trailing_return != kNoNode)
@@ -455,7 +494,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 		const TypeId call_type = program_->types.Function(result_type,
 			parameter_types, variadic_call,
 			mutable_call ? CV_NONE : CV_CONST);
-		const BindingId call_operator = DeclareFunction(member_scope, call_name,
+		call_operator = DeclareFunction(member_scope, call_name,
 			call_type, call_parameters, true, false,
 			STORAGE_CLASS_NONE, LANGUAGE_LINKAGE_CPP, nonthrowing);
 		BindingRecord& call_binding = program_->bindings[call_operator];
@@ -478,14 +517,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 		RegisterClassMemberFunction(entity, call_operator);
 		if (enclosing != kNoBinding)
 			PublishInlineFunctionFacts(call_operator, true);
-		(void)EnsureImplicitDestructor(entity);
-		(void)DeclareImplicitCopyMoveConstructor(
-			entity, SPECIAL_MEMBER_COPY_CONSTRUCTOR);
 		if (trailing_return == kNoNode)
 			AnalyzeRetainedPlaceholderFunctionBody(call_operator);
 
-		BindingId invocation_function = kNoBinding;
-		BindingId conversion_function = kNoBinding;
 		if (capture_count == 0)
 		{
 			const FunctionInfo& completed_call = GetFunction(call_operator);
@@ -539,6 +573,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 					static_cast<std::size_t>(entity) + 1);
 			entity_conversion_functions_[entity].push_back(conversion_function);
 		}
+		}
+		(void)EnsureImplicitDestructor(entity);
+		(void)DeclareImplicitCopyMoveConstructor(
+			entity, SPECIAL_MEMBER_COPY_CONSTRUCTOR);
 
 		fact_index = lambda_closures_.size();
 		lambda_closures_.push_back(LambdaClosureFact(node, enclosing,

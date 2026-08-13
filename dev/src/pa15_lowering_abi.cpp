@@ -2039,6 +2039,15 @@ std::string MangleLambdaCallOperator(const pa11::Program& program,
 	AbiFactFile file;
 	file.cases.push_back(AbiFactCase());
 	AbiFactBuilder facts(program, file.cases[0]);
+	const FunctionTemplateAbiRecipe* recipe = 0;
+	if (binding.function_template_abi_recipe != kNoFunctionTemplateAbiRecipe)
+	{
+		if (binding.function_template_abi_recipe >=
+			program.function_template_abi_recipes.size())
+			throw std::logic_error("invalid generic lambda ABI recipe");
+		recipe = &program.function_template_abi_recipes[
+			binding.function_template_abi_recipe];
+	}
 	AbiFactRecord lambda_target;
 	lambda_target.set_kind(ABI_FACT_RECORD_TARGET);
 	lambda_target.target.kind = ABI_TARGET_FACT_FUNCTION;
@@ -2083,12 +2092,20 @@ std::string MangleLambdaCallOperator(const pa11::Program& program,
 			ABI_FUNCTION_QUALIFIER_VOLATILE);
 	if (!qualifier.function.qualifiers.empty())
 		file.cases[0].records.push_back(qualifier);
+	const TypeId signature_type = recipe ? recipe->function_type : binding.type;
+	const TypeRecord& signature = program.types.Get(signature_type);
+	const TypeId* signature_parameters = program.types.Parameters(signature_type);
+	if (function.kind == ABI_FUNCTION_TARGET_LAMBDA)
+		for (std::size_t i = 0; i < signature.parameter_count; ++i)
+			function.signature_parameter_types.push_back(recipe ?
+				facts.MakeFunctionTemplateType(
+					signature_parameters[i], binding, recipe) :
+				facts.MakeType(signature_parameters[i]));
+	AppendFunctionTemplateArgumentsAndResult(program, binding, lambda_type,
+		recipe, &facts, &file.cases[0]);
 	const TypeId* lambda_parameters = program.types.Parameters(binding.type);
 	for (std::size_t i = 0; i < lambda_type.parameter_count; ++i)
 	{
-		if (function.kind == ABI_FUNCTION_TARGET_LAMBDA)
-			function.signature_parameter_types.push_back(
-				facts.MakeType(lambda_parameters[i]));
 		AbiFactRecord parameter;
 		parameter.set_kind(ABI_FACT_RECORD_FUNCTION);
 		parameter.function.kind = ABI_FUNCTION_RECORD_PARAMETER;

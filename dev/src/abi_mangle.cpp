@@ -1929,7 +1929,13 @@ private:
     } else {
       output_ += source_name(target.qualified_name) + discriminator(target.discriminator);
     }
-    output_ += terminal_from_word(target.terminal, facts, true) + 'E';
+    output_ += terminal_from_word(target.terminal, facts, true);
+    if(!facts.template_arguments.empty()) {
+      output_ += 'I'; encode_arguments(facts.template_arguments); output_ += 'E';
+    }
+    output_ += 'E';
+    if(!facts.template_arguments.empty() && !facts.result_types.empty())
+      encode_type(facts.result_types.front());
     encode_bare_parameters(facts.parameters, facts.variadic);
   }
 
@@ -1965,9 +1971,14 @@ private:
               "missing ABI function terminal");
       output_ += "cl";
     }
+    if(!facts.template_arguments.empty()) {
+      output_ += 'I'; encode_arguments(facts.template_arguments); output_ += 'E';
+    }
     output_ += 'E';
     if(local.discriminator_after_terminal)
       output_ += discriminator(local.discriminator);
+    if(!facts.template_arguments.empty() && !facts.result_types.empty())
+      encode_type(facts.result_types.front());
     encode_bare_parameters(facts.parameters, facts.variadic);
   }
 
@@ -1984,7 +1995,12 @@ private:
       emit_function_terminal(nullptr, facts, true, facts.parameters.size());
     }
     else output_ += operator_code(target.terminal, true, facts.parameters.size());
+    if(!facts.template_arguments.empty()) {
+      output_ += 'I'; encode_arguments(facts.template_arguments); output_ += 'E';
+    }
     output_ += 'E';
+    if(!facts.template_arguments.empty() && !facts.result_types.empty())
+      encode_type(facts.result_types.front());
     encode_bare_parameters(facts.parameters, facts.variadic);
   }
 
