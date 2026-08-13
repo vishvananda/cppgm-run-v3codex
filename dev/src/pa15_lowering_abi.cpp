@@ -90,6 +90,56 @@ void AppendAbiTagStrings(const Program& program,
 		destination->push_back(program.names.Get(program.abi_tags[begin + i]));
 }
 
+bool MakeBuiltinAbiType(const TypeRecord& source,
+	abi_mangle::AbiType* result)
+{
+	using namespace abi_mangle;
+	if (source.kind == TYPE_BITINT)
+	{
+		if (source.dependent_bound_parameter != kNoTemplateParameter ||
+			source.bound == 0)
+			throw std::runtime_error("dependent _BitInt has no ABI encoding");
+		result->kind = ABI_TYPE_BUILTIN;
+		result->name = std::string(source.bitint_unsigned ?
+			"ubitint" : "bitint") + std::to_string(source.bound);
+		return true;
+	}
+	if (source.kind != TYPE_FUNDAMENTAL) return false;
+	result->kind = ABI_TYPE_BUILTIN;
+	switch (source.fundamental)
+	{
+	case FUND_VOID: result->name = "void"; break;
+	case FUND_BOOL: result->name = "bool"; break;
+	case FUND_CHAR: result->name = "char"; break;
+	case FUND_SIGNED_CHAR: result->name = "schar"; break;
+	case FUND_UNSIGNED_CHAR: result->name = "uchar"; break;
+	case FUND_SHORT_INT: result->name = "short"; break;
+	case FUND_UNSIGNED_SHORT_INT: result->name = "ushort"; break;
+	case FUND_INT: result->name = "int"; break;
+	case FUND_UNSIGNED_INT: result->name = "uint"; break;
+	case FUND_LONG_INT: result->name = "long"; break;
+	case FUND_UNSIGNED_LONG_INT: result->name = "ulong"; break;
+	case FUND_LONG_LONG_INT: result->name = "longlong"; break;
+	case FUND_UNSIGNED_LONG_LONG_INT: result->name = "ulonglong"; break;
+	case FUND_INT128: result->name = "int128"; break;
+	case FUND_UINT128: result->name = "uint128"; break;
+	case FUND_FLOAT: result->name = "float"; break;
+	case FUND_DOUBLE: result->name = "double"; break;
+	case FUND_LONG_DOUBLE: result->name = "longdouble"; break;
+	case FUND_FLOAT16: result->name = "float16"; break;
+	case FUND_FLOAT32: result->name = "float32"; break;
+	case FUND_FLOAT32X: result->name = "float32x"; break;
+	case FUND_FLOAT64: result->name = "float64"; break;
+	case FUND_FLOAT64X: result->name = "float64x"; break;
+	case FUND_FLOAT128: result->name = "float128"; break;
+	case FUND_WCHAR_T: result->name = "wchar"; break;
+	case FUND_CHAR16_T: result->name = "char16"; break;
+	case FUND_CHAR32_T: result->name = "char32"; break;
+	case FUND_NULLPTR_T: result->name = "nullptr"; break;
+	}
+	return true;
+}
+
 void AppendFunctionAbiTagFacts(const Program& program,
 	const BindingRecord& binding, abi_mangle::AbiFactCase* facts)
 {
@@ -1644,35 +1694,8 @@ public:
 				entity.abi_tag_count, &result.abi_tags);
 			return result;
 		}
-		if (record->kind != TYPE_FUNDAMENTAL)
-			throw std::runtime_error("unsupported ABI type in PA15");
-		result.kind = ABI_TYPE_BUILTIN;
-		switch (record->fundamental)
-		{
-		case FUND_VOID: result.name = "void"; break;
-		case FUND_BOOL: result.name = "bool"; break;
-		case FUND_CHAR: result.name = "char"; break;
-		case FUND_SIGNED_CHAR: result.name = "schar"; break;
-		case FUND_UNSIGNED_CHAR: result.name = "uchar"; break;
-		case FUND_SHORT_INT: result.name = "short"; break;
-		case FUND_UNSIGNED_SHORT_INT: result.name = "ushort"; break;
-		case FUND_INT: result.name = "int"; break;
-		case FUND_UNSIGNED_INT: result.name = "uint"; break;
-		case FUND_LONG_INT: result.name = "long"; break;
-		case FUND_UNSIGNED_LONG_INT: result.name = "ulong"; break;
-		case FUND_LONG_LONG_INT: result.name = "longlong"; break;
-		case FUND_UNSIGNED_LONG_LONG_INT: result.name = "ulonglong"; break;
-		case FUND_INT128: result.name = "int128"; break;
-		case FUND_UINT128: result.name = "uint128"; break;
-		case FUND_FLOAT: result.name = "float"; break;
-		case FUND_DOUBLE: result.name = "double"; break;
-		case FUND_LONG_DOUBLE: result.name = "longdouble"; break;
-		case FUND_WCHAR_T: result.name = "wchar"; break;
-		case FUND_CHAR16_T: result.name = "char16"; break;
-		case FUND_CHAR32_T: result.name = "char32"; break;
-		case FUND_NULLPTR_T: result.name = "nullptr"; break;
-		}
-		return result;
+		if (MakeBuiltinAbiType(*record, &result)) return result;
+		throw std::runtime_error("unsupported ABI type in PA15");
 	}
 };
 

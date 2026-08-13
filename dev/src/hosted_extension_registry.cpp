@@ -54,9 +54,17 @@ SpecifierKind FindSpecifier(const std::string& spelling)
 {
 	static const SpecifierEntry entries[] = {
 		{"_Atomic", SPECIFIER_ATOMIC},
+		{"_BitInt", SPECIFIER_BITINT},
+		{"_Float128", SPECIFIER_FLOAT128},
+		{"_Float16", SPECIFIER_FLOAT16},
+		{"_Float32", SPECIFIER_FLOAT32},
+		{"_Float32x", SPECIFIER_FLOAT32X},
+		{"_Float64", SPECIFIER_FLOAT64},
+		{"_Float64x", SPECIFIER_FLOAT64X},
 		{"__const", SPECIFIER_CONST},
 		{"__const__", SPECIFIER_CONST},
 		{"__extension__", SPECIFIER_EXTENSION},
+		{"__float128", SPECIFIER_FLOAT128},
 		{"__inline", SPECIFIER_INLINE},
 		{"__inline__", SPECIFIER_INLINE},
 		{"__int128", SPECIFIER_INT128},
@@ -76,7 +84,14 @@ const char* CanonicalSpecifier(SpecifierKind kind)
 	switch (kind)
 	{
 	case SPECIFIER_ATOMIC: return "_Atomic";
+	case SPECIFIER_BITINT: return "_BitInt";
 	case SPECIFIER_CONST: return "const";
+	case SPECIFIER_FLOAT16: return "_Float16";
+	case SPECIFIER_FLOAT32: return "_Float32";
+	case SPECIFIER_FLOAT32X: return "_Float32x";
+	case SPECIFIER_FLOAT64: return "_Float64";
+	case SPECIFIER_FLOAT64X: return "_Float64x";
+	case SPECIFIER_FLOAT128: return "__float128";
 	case SPECIFIER_INLINE: return "inline";
 	case SPECIFIER_INT128: return "__int128_t";
 	case SPECIFIER_SIGNED: return "signed";
@@ -96,8 +111,11 @@ bool IsDeclarationOnlySpecifier(SpecifierKind kind)
 
 bool IsTypeSpecifier(SpecifierKind kind)
 {
-	return kind == SPECIFIER_ATOMIC || kind == SPECIFIER_INT128 ||
-		kind == SPECIFIER_UINT128 ||
+	return kind == SPECIFIER_ATOMIC || kind == SPECIFIER_BITINT ||
+		kind == SPECIFIER_FLOAT16 || kind == SPECIFIER_FLOAT32 ||
+		kind == SPECIFIER_FLOAT32X || kind == SPECIFIER_FLOAT64 ||
+		kind == SPECIFIER_FLOAT64X || kind == SPECIFIER_FLOAT128 ||
+		kind == SPECIFIER_INT128 || kind == SPECIFIER_UINT128 ||
 		kind == SPECIFIER_SIGNED;
 }
 

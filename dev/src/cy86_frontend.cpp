@@ -338,14 +338,16 @@ std::size_t ScalarTypeSize(FundamentalType type)
 	case FT_SIGNED_CHAR: case FT_UNSIGNED_CHAR: case FT_CHAR: case FT_BOOL:
 		return 1;
 	case FT_SHORT_INT: case FT_UNSIGNED_SHORT_INT: case FT_CHAR16_T:
+	case FT_FLOAT16:
 		return 2;
 	case FT_INT: case FT_UNSIGNED_INT: case FT_WCHAR_T: case FT_CHAR32_T:
-	case FT_FLOAT:
+	case FT_FLOAT: case FT_FLOAT32:
 		return 4;
 	case FT_LONG_INT: case FT_LONG_LONG_INT: case FT_UNSIGNED_LONG_INT:
 	case FT_UNSIGNED_LONG_LONG_INT: case FT_DOUBLE: case FT_NULLPTR_T:
+	case FT_FLOAT32X: case FT_FLOAT64:
 		return 8;
-	case FT_LONG_DOUBLE:
+	case FT_LONG_DOUBLE: case FT_FLOAT64X: case FT_FLOAT128:
 		return 16;
 	case FT_VOID:
 		break;

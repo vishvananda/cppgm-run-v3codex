@@ -1598,6 +1598,7 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 	bool is_double = false;
 	bool is_wchar = false;
 	bool is_char16 = false, is_char32 = false, saw_int = false;
+	NodeId bitint_specifier = kNoNode;
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
 	{
@@ -1612,6 +1613,12 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 		{
 			result.type = BuildBuiltinTransformType(child, scope);
 			if (CandidateSubstitutionFailed()) return result;
+			continue;
+		}
+		if (arena_->IsTag(child, "bitint-type-specifier"))
+		{
+			if (bitint_specifier != kNoNode) throw std::runtime_error("duplicate _BitInt type specifier");
+			bitint_specifier = child;
 			continue;
 		}
 		if (arena_->IsTag(child, "class-specifier") ||
@@ -1702,6 +1709,7 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 			!arena_->IsTag(child, "type-specifier") &&
 			!arena_->IsTag(child, "type-name")) continue;
 		const std::string spelling = PayloadSource(child);
+		const TypeId hosted_type = HostedSpecifierType(spelling);
 		if (spelling == "typedef") result.is_typedef = true;
 		else if (spelling == "constexpr") result.is_constexpr = true;
 		else if (spelling == "friend") result.is_friend = true;
@@ -1728,13 +1736,7 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 		else if (spelling == "wchar_t") is_wchar = true;
 		else if (spelling == "char16_t") is_char16 = true;
 		else if (spelling == "char32_t") is_char32 = true;
-		else if (spelling == "__int128_t")
-			result.type = program_->types.Fundamental(FUND_INT128);
-		else if (spelling == "__uint128_t")
-			result.type = program_->types.Fundamental(FUND_UINT128);
-		else if (spelling == "__builtin_va_list")
-			result.type = program_->types.Array(
-				program_->types.Fundamental(FUND_UNSIGNED_LONG_INT), 3);
+		else if (hosted_type != kNoType) result.type = hosted_type;
 		else if (spelling != "explicit")
 		{
 			if (deferred_type != kNoType)
@@ -1756,7 +1758,17 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 			result.type = found.type;
 		}
 	}
-	result.type = hosted_extension::ApplyIntegerSignedness(
+	if (bitint_specifier != kNoNode)
+	{
+		if (result.type != kNoType || is_short || longs != 0 || is_char ||
+			is_void || is_bool || is_float || is_double || is_wchar ||
+			is_char16 || is_char32 || saw_int)
+			throw std::runtime_error("invalid _BitInt type specifier combination");
+		result.type = BuildBitIntSpecifierType(
+			bitint_specifier, scope, is_unsigned);
+		if (CandidateSubstitutionFailed()) return result;
+	}
+	else result.type = hosted_extension::ApplyIntegerSignedness(
 		program_->types, result.type, is_unsigned);
 	if (result.type == kNoType)
 	{

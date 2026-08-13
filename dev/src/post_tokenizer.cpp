@@ -351,18 +351,19 @@ std::size_t FundamentalWidth(FundamentalType type)
 	case FT_UNSIGNED_CHAR: return 1;
 	case FT_CHAR16_T:
 	case FT_SHORT_INT:
-	case FT_UNSIGNED_SHORT_INT: return 2;
+	case FT_UNSIGNED_SHORT_INT:
+	case FT_FLOAT16: return 2;
 	case FT_INT:
 	case FT_UNSIGNED_INT:
 	case FT_WCHAR_T:
-	case FT_CHAR32_T:
-	case FT_FLOAT: return 4;
+	case FT_CHAR32_T: case FT_FLOAT: case FT_FLOAT32: return 4;
 	case FT_LONG_INT:
 	case FT_LONG_LONG_INT:
 	case FT_UNSIGNED_LONG_INT:
 	case FT_UNSIGNED_LONG_LONG_INT:
-	case FT_DOUBLE: return 8;
-	case FT_LONG_DOUBLE: return sizeof(long double);
+	case FT_DOUBLE: case FT_FLOAT32X: case FT_FLOAT64: return 8;
+	case FT_LONG_DOUBLE: case FT_FLOAT64X: case FT_FLOAT128:
+		return sizeof(long double);
 	default: throw std::logic_error("type has no PA2 object width");
 	}
 }
@@ -424,6 +425,25 @@ bool SelectIntegerType(const IntegerSpelling& spelling,
 	return false;
 }
 
+bool ParseFloatingSuffix(const std::string& text, std::size_t position,
+	bool allow_suffix, FundamentalType* type)
+{
+	if (position == text.size()) return true;
+	if (!allow_suffix) return false;
+	const std::string suffix = text.substr(position);
+	if (suffix == "f" || suffix == "F") *type = FT_FLOAT;
+	else if (suffix == "l" || suffix == "L") *type = FT_LONG_DOUBLE;
+	else if (suffix == "q" || suffix == "Q") *type = FT_LONG_DOUBLE;
+	else if (suffix == "f16" || suffix == "F16") *type = FT_FLOAT16;
+	else if (suffix == "f32" || suffix == "F32") *type = FT_FLOAT32;
+	else if (suffix == "f32x" || suffix == "F32x") *type = FT_FLOAT32X;
+	else if (suffix == "f64" || suffix == "F64") *type = FT_FLOAT64;
+	else if (suffix == "f64x" || suffix == "F64x") *type = FT_FLOAT64X;
+	else if (suffix == "f128" || suffix == "F128") *type = FT_FLOAT128;
+	else return false;
+	return true;
+}
+
 bool ParseFloatingSpelling(const std::string& text, bool allow_suffix,
 	FundamentalType* type, std::size_t* numeric_end)
 {
@@ -461,20 +481,7 @@ bool ParseFloatingSpelling(const std::string& text, bool allow_suffix,
 			return false;
 		*numeric_end = position;
 		*type = FT_DOUBLE;
-		if (position == text.size())
-			return true;
-		if (!allow_suffix || position + 1 != text.size())
-			return false;
-		switch (text[position])
-		{
-		case 'f':
-		case 'F': *type = FT_FLOAT; return true;
-		case 'l':
-		case 'L':
-		case 'q':
-		case 'Q': *type = FT_LONG_DOUBLE; return true;
-		default: return false;
-		}
+		return ParseFloatingSuffix(text, position, allow_suffix, type);
 	}
 
 	std::size_t position = 0;
@@ -512,18 +519,7 @@ bool ParseFloatingSpelling(const std::string& text, bool allow_suffix,
 		return false;
 	*numeric_end = position;
 	*type = FT_DOUBLE;
-	if (position == text.size())
-		return true;
-	if (!allow_suffix || position + 1 != text.size())
-		return false;
-	switch (text[position])
-	{
-	case 'f':
-	case 'F': *type = FT_FLOAT; return true;
-	case 'l':
-	case 'L': *type = FT_LONG_DOUBLE; return true;
-	default: return false;
-	}
+	return ParseFloatingSuffix(text, position, allow_suffix, type);
 }
 
 template <typename T>
@@ -1127,10 +1123,16 @@ private:
 		switch (type)
 		{
 		case FT_FLOAT:
+		case FT_FLOAT16:
+		case FT_FLOAT32:
 			return DecodeFloatingValue<float>(spelling, bytes, size);
 		case FT_DOUBLE:
+		case FT_FLOAT32X:
+		case FT_FLOAT64:
 			return DecodeFloatingValue<double>(spelling, bytes, size);
 		case FT_LONG_DOUBLE:
+		case FT_FLOAT64X:
+		case FT_FLOAT128:
 			return DecodeFloatingValue<long double>(spelling, bytes, size);
 		default: return false;
 		}

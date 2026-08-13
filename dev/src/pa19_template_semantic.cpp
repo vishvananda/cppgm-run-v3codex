@@ -2083,6 +2083,7 @@ std::size_t SemanticAnalyzer::TemplatePartialPackParameter(TypeId type,
 	case TYPE_ARRAY:
 	case TYPE_VECTOR:
 		return TemplatePartialPackParameter(record.child, parameters, depth + 1);
+	case TYPE_BITINT: return TemplatePartialBitIntPackParameter(record, parameters);
 	case TYPE_MEMBER_POINTER:
 		return TemplatePartialMemberPointerPackParameter(
 			record, parameters, depth);
@@ -2192,6 +2193,9 @@ bool SemanticAnalyzer::DeduceTemplatePartialType(TypeId pattern,
 		return pattern_record.bound == argument_record.bound &&
 			DeduceTemplatePartialType(pattern_record.child,
 				argument_record.child, parameters, deduced);
+	case TYPE_BITINT:
+		return DeduceTemplatePartialBitIntType(
+			pattern_record, argument_record, parameters, deduced);
 	case TYPE_FUNCTION:
 	{
 		const TypeId* pattern_types = program_->types.Parameters(pattern);

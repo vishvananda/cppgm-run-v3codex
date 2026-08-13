@@ -151,12 +151,11 @@ bool SemanticAnalyzer::IsIntegral(TypeId type, bool allow_scoped_enum) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));
 	const TypeRecord record = program_->types.Get(type);
+	if (record.kind == TYPE_BITINT) return true;
 	if (record.kind == TYPE_FUNDAMENTAL)
 		return record.fundamental != FUND_VOID &&
 			record.fundamental != FUND_NULLPTR_T &&
-			record.fundamental != FUND_FLOAT &&
-			record.fundamental != FUND_DOUBLE &&
-			record.fundamental != FUND_LONG_DOUBLE;
+			!IsExtendedFloatingFundamental(record.fundamental);
 	if (record.kind != TYPE_NAMED) return false;
 	const NamedFlavor flavor = program_->entities[record.entity].flavor;
 	return flavor == NAMED_ENUM || (allow_scoped_enum &&
@@ -168,9 +167,7 @@ bool SemanticAnalyzer::IsFloating(TypeId type) const
 	type = program_->types.RemoveTopCv(EffectiveType(type));
 	const TypeRecord record = program_->types.Get(type);
 	return record.kind == TYPE_FUNDAMENTAL &&
-		(record.fundamental == FUND_FLOAT ||
-		 record.fundamental == FUND_DOUBLE ||
-		 record.fundamental == FUND_LONG_DOUBLE);
+		IsExtendedFloatingFundamental(record.fundamental);
 }
 
 bool SemanticAnalyzer::IsArithmetic(TypeId type) const
@@ -193,6 +190,9 @@ int SemanticAnalyzer::IntegralRank(TypeId type) const
 		const EntityRecord& entity = program_->entities[record.entity];
 		return entity.underlying == kNoType ? 3 : IntegralRank(entity.underlying);
 	}
+	if (record.kind == TYPE_BITINT)
+		return record.dependent_bound_parameter == kNoTemplateParameter ?
+			static_cast<int>(7 + record.bound) : 7;
 	switch (record.fundamental)
 	{
 	case FUND_BOOL: return 0;
@@ -228,13 +228,11 @@ TypeId SemanticAnalyzer::CommonArithmeticType(TypeId left, TypeId right) const
 	right = program_->types.RemoveTopCv(EffectiveType(right));
 	if (IsFloating(left) || IsFloating(right))
 	{
-		if ((IsFloating(left) && FundamentalOf(left) == FUND_LONG_DOUBLE) ||
-			(IsFloating(right) && FundamentalOf(right) == FUND_LONG_DOUBLE))
-			return program_->types.Fundamental(FUND_LONG_DOUBLE);
-		if ((IsFloating(left) && FundamentalOf(left) == FUND_DOUBLE) ||
-			(IsFloating(right) && FundamentalOf(right) == FUND_DOUBLE))
-			return program_->types.Fundamental(FUND_DOUBLE);
-		return program_->types.Fundamental(FUND_FLOAT);
+		const TypeId floating_left = IsFloating(left) ? left : right;
+		const TypeId floating_right = IsFloating(right) ? right : left;
+		return FloatingConversionRank(FundamentalOf(floating_left)) >=
+			FloatingConversionRank(FundamentalOf(floating_right)) ?
+			floating_left : floating_right;
 	}
 	left = IntegralPromotionType(left);
 	right = IntegralPromotionType(right);
@@ -252,6 +250,9 @@ TypeId SemanticAnalyzer::CommonArithmeticType(TypeId left, TypeId right) const
 	if (unsigned_rank >= signed_rank) return unsigned_type;
 	if (IntegralWidth(signed_type) > IntegralWidth(unsigned_type))
 		return signed_type;
+	const TypeRecord& signed_record = program_->types.Get(signed_type);
+	if (signed_record.kind == TYPE_BITINT)
+		return program_->types.BitInt(true, signed_record.bound);
 	switch (FundamentalOf(signed_type))
 	{
 	case FUND_INT:

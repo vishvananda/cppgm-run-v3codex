@@ -37,6 +37,12 @@ const char* FundamentalName(FundamentalKind kind)
 	case FUND_CHAR32_T: return "char32_t";
 	case FUND_INT128: return "__int128_t";
 	case FUND_UINT128: return "__uint128_t";
+	case FUND_FLOAT16: return "_Float16";
+	case FUND_FLOAT32: return "_Float32";
+	case FUND_FLOAT32X: return "_Float32x";
+	case FUND_FLOAT64: return "_Float64";
+	case FUND_FLOAT64X: return "_Float64x";
+	case FUND_FLOAT128: return "__float128";
 	}
 	throw std::logic_error("invalid fundamental type");
 }
@@ -48,13 +54,15 @@ std::size_t FundamentalObjectSize(FundamentalKind kind)
 	case FUND_BOOL: case FUND_CHAR: case FUND_SIGNED_CHAR:
 	case FUND_UNSIGNED_CHAR: return 1;
 	case FUND_SHORT_INT: case FUND_UNSIGNED_SHORT_INT:
-	case FUND_CHAR16_T: return 2;
+	case FUND_CHAR16_T: case FUND_FLOAT16: return 2;
 	case FUND_INT: case FUND_UNSIGNED_INT: case FUND_FLOAT:
-	case FUND_WCHAR_T: case FUND_CHAR32_T: return 4;
+	case FUND_WCHAR_T: case FUND_CHAR32_T:
+	case FUND_FLOAT32: return 4;
 	case FUND_LONG_INT: case FUND_UNSIGNED_LONG_INT:
 	case FUND_LONG_LONG_INT: case FUND_UNSIGNED_LONG_LONG_INT:
-	case FUND_DOUBLE: return 8;
-	case FUND_LONG_DOUBLE: case FUND_INT128: case FUND_UINT128: return 16;
+	case FUND_DOUBLE: case FUND_FLOAT32X: case FUND_FLOAT64: return 8;
+	case FUND_LONG_DOUBLE: case FUND_INT128: case FUND_UINT128:
+	case FUND_FLOAT64X: case FUND_FLOAT128: return 16;
 	case FUND_NULLPTR_T: return 8;
 	case FUND_VOID: break;
 	}
@@ -305,6 +313,7 @@ TypeRecord::TypeRecord()
 	  dependent_bound_parameter(kNoTemplateParameter),
 	  parameter_offset(0), parameter_count(0), cv(CV_NONE),
 	  ref_qualifier(FUNCTION_REF_NONE), variadic(false),
+	  bitint_unsigned(false),
 	  fundamental(FUND_INT)
 {
 }
@@ -627,6 +636,7 @@ std::size_t TypeTable::Hash(const TypeRecord& record,
 	hash = MixHash(hash, record.cv);
 	hash = MixHash(hash, record.ref_qualifier);
 	hash = MixHash(hash, record.variadic ? 1 : 0);
+	hash = MixHash(hash, record.bitint_unsigned ? 1 : 0);
 	hash = MixHash(hash, record.fundamental);
 	for (std::size_t i = 0; i < count; ++i)
 		hash = MixHash(hash, parameters[i]);
@@ -645,6 +655,7 @@ bool TypeTable::Equal(const TypeRecord& existing,
 		existing.cv != candidate.cv ||
 		existing.ref_qualifier != candidate.ref_qualifier ||
 		existing.variadic != candidate.variadic ||
+		existing.bitint_unsigned != candidate.bitint_unsigned ||
 		existing.fundamental != candidate.fundamental ||
 		existing.parameter_count != count) return false;
 	for (std::size_t i = 0; i < count; ++i)
@@ -2672,6 +2683,13 @@ void Program::AppendType(std::string& output, TypeId type,
 		{
 		case TYPE_FUNDAMENTAL:
 			output += FundamentalName(record.fundamental);
+			break;
+		case TYPE_BITINT:
+			output += record.bitint_unsigned ? "unsigned _BitInt(" : "_BitInt(";
+			if (record.dependent_bound_parameter == kNoTemplateParameter)
+				output += std::to_string(record.bound);
+			else output += "dependent";
+			output += ')';
 			break;
 		case TYPE_NAMED:
 		{

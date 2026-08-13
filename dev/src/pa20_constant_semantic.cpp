@@ -145,6 +145,7 @@ bool SemanticAnalyzer::IsUnsignedIntegral(TypeId type) const
 		return entity.underlying != kNoType &&
 			IsUnsignedIntegral(entity.underlying);
 	}
+	if (record.kind == TYPE_BITINT) return record.bitint_unsigned;
 	if (record.kind != TYPE_FUNDAMENTAL) return false;
 	switch (record.fundamental)
 	{
@@ -172,6 +173,13 @@ std::size_t SemanticAnalyzer::IntegralWidth(TypeId type) const
 		if (entity.underlying == kNoType)
 			throw std::logic_error("integral named type has no underlying type");
 		return IntegralWidth(entity.underlying);
+	}
+	if (record.kind == TYPE_BITINT)
+	{
+		if (record.dependent_bound_parameter != kNoTemplateParameter ||
+			record.bound == 0)
+			throw std::logic_error("dependent _BitInt has no fixed width");
+		return static_cast<std::size_t>(record.bound);
 	}
 	if (record.kind != TYPE_FUNDAMENTAL || !IsIntegral(type))
 		throw std::logic_error("integral width requested for non-integral type");

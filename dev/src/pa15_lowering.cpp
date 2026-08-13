@@ -631,7 +631,32 @@ private:
 	}
 	Operand FloatingOperand(const std::string& spelling, const LowType& type)
 	{
-		return Operand::Floating(output_.literals.Intern(spelling), type);
+		std::string numeric = spelling;
+		if (!numeric.empty() &&
+			((numeric[0] >= '0' && numeric[0] <= '9') || numeric[0] == '.'))
+		{
+			static const char* const suffixes[] = {
+				"F128", "f128", "F32x", "f32x", "F64x", "f64x",
+				"F16", "f16", "F32", "f32", "F64", "f64", "Q", "q"
+			};
+			bool normalized_suffix = false;
+			for (std::size_t i = 0;
+				i < sizeof(suffixes) / sizeof(suffixes[0]); ++i)
+			{
+				const std::size_t count =
+					std::char_traits<char>::length(suffixes[i]);
+				if (numeric.size() >= count && numeric.compare(
+					numeric.size() - count, count, suffixes[i]) == 0)
+				{
+					numeric.erase(numeric.size() - count);
+					normalized_suffix = true;
+					break;
+				}
+			}
+			if (normalized_suffix && type.kind == LOW_F32) numeric += "f";
+			else if (normalized_suffix && type.kind == LOW_F80) numeric += "L";
+		}
+		return Operand::Floating(output_.literals.Intern(numeric), type);
 	}
 
 	void BeginSyntheticFunction(Function* function)

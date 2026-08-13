@@ -146,7 +146,13 @@ enum FundamentalKind
 	FUND_CHAR16_T,
 	FUND_CHAR32_T,
 	FUND_INT128,
-	FUND_UINT128
+	FUND_UINT128,
+	FUND_FLOAT16,
+	FUND_FLOAT32,
+	FUND_FLOAT32X,
+	FUND_FLOAT64,
+	FUND_FLOAT64X,
+	FUND_FLOAT128
 };
 
 enum TypeKind
@@ -162,7 +168,8 @@ enum TypeKind
 	TYPE_FUNCTION,
 	TYPE_MEMBER_POINTER,
 	TYPE_VECTOR,
-	TYPE_BLOCK_POINTER
+	TYPE_BLOCK_POINTER,
+	TYPE_BITINT
 };
 
 enum CvFlags
@@ -193,6 +200,7 @@ struct TypeRecord
 	std::uint8_t cv;
 	std::uint8_t ref_qualifier;
 	bool variadic;
+	bool bitint_unsigned;
 	FundamentalKind fundamental;
 
 	TypeRecord();
@@ -218,6 +226,12 @@ public:
 	TypeId Array(TypeId type, std::uint64_t bound);
 	TypeId TryVector(TypeId element, std::uint64_t bytes);
 	TypeId Vector(TypeId element, std::uint64_t bytes);
+	TypeId TryBitInt(bool is_unsigned, std::uint64_t width);
+	TypeId BitInt(bool is_unsigned, std::uint64_t width);
+	TypeId TryDependentBitInt(bool is_unsigned, TypeId width_type,
+		std::uint32_t parameter);
+	TypeId DependentBitInt(bool is_unsigned, TypeId width_type,
+		std::uint32_t parameter);
 	TypeId TryDependentArray(TypeId type, TypeId bound_type,
 		std::uint32_t parameter);
 	TypeId DependentArray(TypeId type, TypeId bound_type,

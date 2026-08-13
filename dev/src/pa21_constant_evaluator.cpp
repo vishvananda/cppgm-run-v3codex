@@ -85,15 +85,21 @@ ConstexprScalarValue SemanticAnalyzer::ConvertScalarConstant(
 		else converted = static_cast<long double>(value.integral);
 		switch (FundamentalOf(target_type))
 		{
+		case FUND_FLOAT16:
 		case FUND_FLOAT:
+		case FUND_FLOAT32:
 			converted = static_cast<long double>(
 				static_cast<float>(converted));
 			break;
 		case FUND_DOUBLE:
+		case FUND_FLOAT32X:
+		case FUND_FLOAT64:
 			converted = static_cast<long double>(
 				static_cast<double>(converted));
 			break;
-		case FUND_LONG_DOUBLE: break;
+		case FUND_LONG_DOUBLE:
+		case FUND_FLOAT64X:
+		case FUND_FLOAT128: break;
 		default: throw std::logic_error("invalid floating constant target");
 		}
 		if (!std::isfinite(converted))

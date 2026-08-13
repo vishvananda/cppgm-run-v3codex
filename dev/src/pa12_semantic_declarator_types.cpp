@@ -103,6 +103,47 @@ TypeId SemanticAnalyzer::BuildArrayDeclaratorType(NodeId suffix,
 		"invalid dependent array element type");
 }
 
+TypeId SemanticAnalyzer::BuildBitIntSpecifierType(
+	NodeId specifier, ScopeId scope, bool is_unsigned)
+{
+	const NodeId width_node = FirstSemanticChild(specifier);
+	if (width_node == kNoNode)
+		return CandidateTypeFormation(kNoType, "_BitInt has no width");
+	++constant_expression_required_depth_;
+	ExpressionInfo width;
+	try
+	{
+		width = AnalyzeExpression(width_node, scope);
+		--constant_expression_required_depth_;
+	}
+	catch (...)
+	{
+		--constant_expression_required_depth_;
+		throw;
+	}
+	if (CandidateSubstitutionFailed()) return kNoType;
+	if (width.constant)
+	{
+		if (!IsIntegral(width.type) || width.value <= 0)
+			return CandidateTypeFormation(kNoType, "invalid _BitInt width");
+		return CandidateTypeFormation(program_->types.TryBitInt(is_unsigned,
+			static_cast<std::uint64_t>(width.value)), "unsupported _BitInt width");
+	}
+	if (width.binding == kNoBinding ||
+		width.binding >= program_->bindings.size())
+		return CandidateTypeFormation(kNoType, "invalid dependent _BitInt width");
+	const BindingRecord& binding = program_->bindings[width.binding];
+	if (binding.kind != BIND_PARAMETER || binding.constant ||
+		program_->KindOfScope(binding.owner) != SCOPE_TEMPLATE_PARAMETERS ||
+		binding.value < 0 || static_cast<std::uint64_t>(binding.value) >=
+			kNoTemplateParameter)
+		return CandidateTypeFormation(kNoType, "invalid dependent _BitInt width");
+	return CandidateTypeFormation(program_->types.TryDependentBitInt(is_unsigned,
+		program_->types.RemoveTopCv(width.type),
+		static_cast<std::uint32_t>(binding.value)),
+		"invalid dependent _BitInt width");
+}
+
 EntityId SemanticAnalyzer::EntityOf(TypeId type) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));

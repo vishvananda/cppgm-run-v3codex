@@ -31,6 +31,8 @@ bool TemplateArgumentsNeedInternalEmission(const Program& program,
 void PublishFunctionTemplateInternalEmission(Program* program,
 	BindingId binding, BindingId canonical,
 	const std::vector<TemplateArgument>& arguments);
+bool IsExtendedFloatingFundamental(FundamentalKind kind);
+int FloatingConversionRank(FundamentalKind kind);
 
 struct SemanticGraphStorage
 {
@@ -456,6 +458,7 @@ private:
 		const std::string& hint, bool has_declarators,
 		bool type_id_context = false,
 		TypeId deferred_type = kNoType);
+	TypeId HostedSpecifierType(const std::string& spelling) const;
 	SpecInfo BuildIdentityOnlySpecifiers(NodeId node, ScopeId scope,
 		const std::string& hint, bool has_declarators);
 	TypeId BuildTypeId(NodeId node, ScopeId scope);
@@ -486,6 +489,8 @@ private:
 	TypeId BuildArrayDeclaratorType(NodeId suffix, TypeId element,
 		ScopeId scope,
 		const std::unordered_set<NameId>* template_parameter_names);
+	TypeId BuildBitIntSpecifierType(
+		NodeId specifier, ScopeId scope, bool is_unsigned);
 	std::vector<ParameterInfo> BuildParameters(NodeId node, ScopeId scope,
 		bool* variadic,
 		const std::unordered_set<NameId>* template_parameter_names = 0);
@@ -723,9 +728,15 @@ private:
 	bool DeduceTemplatePartialType(TypeId pattern, TypeId argument,
 		const std::vector<TemplateParameter>& parameters,
 		FunctionTemplateDeduction* deduced) const;
+	bool DeduceTemplatePartialBitIntType(const TypeRecord& pattern,
+		const TypeRecord& argument,
+		const std::vector<TemplateParameter>& parameters,
+		FunctionTemplateDeduction* deduced) const;
 	std::size_t TemplatePartialPackParameter(TypeId type,
 		const std::vector<TemplateParameter>& parameters,
 		std::size_t depth = 0) const;
+	std::size_t TemplatePartialBitIntPackParameter(const TypeRecord& type,
+		const std::vector<TemplateParameter>& parameters) const;
 	std::size_t TemplatePartialMemberPointerPackParameter(
 		const TypeRecord& type, const std::vector<TemplateParameter>& parameters,
 		std::size_t depth) const;

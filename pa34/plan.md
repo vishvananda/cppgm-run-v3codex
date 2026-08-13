@@ -13,17 +13,18 @@ linear lowering/allocation, and no host compiler fallback.
 ## Current Failure Map
 
 - Preprocess: 0/45 failures; this boundary is complete.
-- Compile: 98/281 failures: 24 extension grammar/type cases (parser/type system), 38
-  trait/layout/constant cases (semantic facts), and 36 template lookup/demand cases.
+- Compile: 92/281 failures: 18 remaining extension grammar/type cases (including
+  2 complex cases), 38 trait/layout/constant cases, and 36 template lookup/demand
+  cases.
 - Run: 19/41 failures; 16 stop in the compile pipeline and 3 expose linked
-  backend/lifetime or forced-inline behavior. PA34 is 250/367 overall.
+  backend/lifetime or forced-inline behavior. PA34 is 256/367 overall.
 
 ## Active Checkpoint
 
-No implementation is in flight. Re-map the remaining extension grammar/type failures;
-the two deferred `_BitInt` casts and the hosted extended floating types are the leading
-scalar-type candidates. Define canonical width/rank and lowering ownership before
-editing rather than treating their spellings as aliases.
+No checkpoint is in flight. The next stable boundary is GNU complex scalar types:
+parse `_Complex` composition over canonical floating/integer elements, retain pair
+identity through traits and ABI, and lower values as an explicit two-lane aggregate
+without merging this with the remaining trait/template groups.
 
 ## Performance Evidence
 
@@ -77,6 +78,12 @@ specializations stayed exactly 1/1/1; semantic nodes were 27/83/531 and LowIR
 instructions 14/49/329. Semantic time was 0.43/0.56/1.77 ms, supporting linear call
 work, O(1)-average specialization caching, and demand-once lowering.
 
+The hosted numeric probe used one `_Float32` and one `unsigned _BitInt(17)` function
+per case. At 1/8/64 cases semantic nodes were 21/133/1,029 (`16n+5`), lookup-scope
+visits 8/64/512 (`8n`), LowIR instructions 9/65/513 (`8n+1`), and MIR instructions
+15/85/645 (`10n+5`). The 64-case object took 0.02 s and 10,472 KiB RSS, supporting
+linear parsing/lowering and O(1)-average canonical type reuse.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result | Validation |
@@ -93,3 +100,4 @@ work, O(1)-average specialization caching, and demand-once lowering.
 | Scalar GNU vectors | Retained type attributes, canonical lane/byte-width identity, layout/ABI/lowering facts, and typed unused-wrapper literals; +2 | focused 2/2; invalid width/arity rejected; 1/8/64 linear; PA34 239/367; PA1-33 4387/4387; audit pass |
 | Canonical block pointers | Distinct interned callable identity, hosted declarators/annotations, Itanium vendor qualification, and Blocks ABI invoke lowering; +4 | focused 4/4; invalid target/arity rejected; types/symbol/LowIR exact; 1/8/64 linear; PA34 243/367; PA1-33 4387/4387; audit pass |
 | Generic lambdas | Parsed explicit template clauses, canonical member-template patterns, capture/access propagation, cached specialization demand, and template-aware local ABI identity; +7 | focused 7/7; linked default/capture/pack calls; ABI demangles with `<int>`; 1/8/64 cache/demand exact; PA34 250/367; PA1-33 4387/4387; audit pass |
+| Hosted numeric scalars | Canonical dependent/concrete `_BitInt`, distinct extended-float identities and suffixes, traits/conversions, typed carrier lowering, and Itanium ABI encodings; +6 | focused 6/6; linked 2/2 and invalid 3/3; 1/8/64 linear; PA34 256/367; PA1-33 4387/4387; audit pass |

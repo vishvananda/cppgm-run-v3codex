@@ -31,6 +31,45 @@ bool IsFloatingLiteralSpelling(const std::string& spelling)
 		  spelling.find('E') != std::string::npos));
 }
 
+bool EndsWith(const std::string& spelling, const char* suffix)
+{
+	const std::size_t size = std::char_traits<char>::length(suffix);
+	return spelling.size() >= size &&
+		spelling.compare(spelling.size() - size, size, suffix) == 0;
+}
+
+FundamentalKind FloatingSpellingKind(const std::string& spelling,
+	FundamentalKind fallback)
+{
+	if (EndsWith(spelling, "F16") || EndsWith(spelling, "f16"))
+		return FUND_FLOAT16;
+	if (EndsWith(spelling, "F32x") || EndsWith(spelling, "f32x"))
+		return FUND_FLOAT32X;
+	if (EndsWith(spelling, "F32") || EndsWith(spelling, "f32"))
+		return FUND_FLOAT32;
+	if (EndsWith(spelling, "F64x") || EndsWith(spelling, "f64x"))
+		return FUND_FLOAT64X;
+	if (EndsWith(spelling, "F64") || EndsWith(spelling, "f64"))
+		return FUND_FLOAT64;
+	if (EndsWith(spelling, "F128") || EndsWith(spelling, "f128"))
+		return FUND_FLOAT128;
+	return fallback;
+}
+
+std::size_t FloatingNumericEnd(const std::string& spelling)
+{
+	static const char* const suffixes[] = {
+		"F128", "f128", "F32x", "f32x", "F64x", "f64x",
+		"F16", "f16", "F32", "f32", "F64", "f64",
+		"F", "f", "L", "l", "Q", "q"
+	};
+	for (std::size_t i = 0; i < sizeof(suffixes) / sizeof(suffixes[0]); ++i)
+		if (EndsWith(spelling, suffixes[i]))
+			return spelling.size() -
+				std::char_traits<char>::length(suffixes[i]);
+	return spelling.size();
+}
+
 FundamentalKind StringElementKind(FundamentalType type)
 {
 	switch (type)
@@ -66,6 +105,12 @@ FundamentalKind SemanticFundamentalKind(FundamentalType type)
 	case FT_FLOAT: return FUND_FLOAT;
 	case FT_DOUBLE: return FUND_DOUBLE;
 	case FT_LONG_DOUBLE: return FUND_LONG_DOUBLE;
+	case FT_FLOAT16: return FUND_FLOAT16;
+	case FT_FLOAT32: return FUND_FLOAT32;
+	case FT_FLOAT32X: return FUND_FLOAT32X;
+	case FT_FLOAT64: return FUND_FLOAT64;
+	case FT_FLOAT64X: return FUND_FLOAT64X;
+	case FT_FLOAT128: return FUND_FLOAT128;
 	case FT_VOID: return FUND_VOID;
 	case FT_NULLPTR_T: return FUND_NULLPTR_T;
 	}
@@ -374,23 +419,18 @@ ExpressionInfo SemanticAnalyzer::MakeBuiltinScalarLiteral(
 	if (IsFloatingLiteralSpelling(spelling))
 	{
 		const char suffix = spelling.empty() ? 0 : spelling[spelling.size() - 1];
-		const FundamentalKind kind = retained ?
+		const FundamentalKind fallback = retained ?
 			SemanticFundamentalKind(retained_type) :
 			suffix == 'f' || suffix == 'F' ?
 			FUND_FLOAT : suffix == 'l' || suffix == 'L' ?
 			FUND_LONG_DOUBLE : FUND_DOUBLE;
+		const FundamentalKind kind = FloatingSpellingKind(spelling, fallback);
 		const TypeId type = program_->types.Fundamental(kind);
-		std::string numeric = spelling;
-		if (!numeric.empty() && (numeric[numeric.size() - 1] == 'f' ||
-			numeric[numeric.size() - 1] == 'F' ||
-			numeric[numeric.size() - 1] == 'l' ||
-			numeric[numeric.size() - 1] == 'L'))
-			numeric.erase(numeric.size() - 1);
-		std::istringstream input(numeric);
-		input.imbue(std::locale::classic());
-		long double decoded = 0.0L;
-		input >> decoded;
-		if (!input || input.peek() != std::char_traits<char>::eof())
+		const std::string numeric = spelling.substr(0, FloatingNumericEnd(spelling));
+		char* end = 0;
+		errno = 0;
+		const long double decoded = std::strtold(numeric.c_str(), &end);
+		if (!end || end != numeric.c_str() + numeric.size() || errno == ERANGE)
 			throw std::runtime_error("invalid floating literal value");
 		ExpressionInfo result = MakeLiteral(
 			type, program_->names.Intern(spelling));

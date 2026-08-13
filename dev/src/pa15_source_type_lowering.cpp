@@ -28,6 +28,18 @@ LowType SourceTypeLowering::Lower(TypeId type) const
 		return program_.types.IsFunction(record->child) ? LowI128() : LowI64();
 	if (record->kind == TYPE_VECTOR)
 		return LowObject(program_.SizeOf(type), program_.AlignOf(type));
+	if (record->kind == TYPE_BITINT)
+	{
+		if (record->dependent_bound_parameter != kNoTemplateParameter)
+			throw std::runtime_error("cannot lower dependent _BitInt type");
+		const std::uint64_t width = record->bound;
+		if (width <= 8) return record->bitint_unsigned ? LowU8() : LowI8();
+		if (width <= 16) return record->bitint_unsigned ? LowU16() : LowI16();
+		if (width <= 32) return record->bitint_unsigned ? LowU32() : LowI32();
+		if (width <= 64) return record->bitint_unsigned ? LowU64() : LowI64();
+		if (width <= 128) return record->bitint_unsigned ? LowU128() : LowI128();
+		throw std::runtime_error("unsupported _BitInt lowering width");
+	}
 	if (record->kind == TYPE_LVALUE_REFERENCE ||
 		record->kind == TYPE_RVALUE_REFERENCE || record->kind == TYPE_POINTER ||
 		record->kind == TYPE_BLOCK_POINTER ||
@@ -59,8 +71,11 @@ LowType SourceTypeLowering::Lower(TypeId type) const
 	case FUND_INT128: return LowI128();
 	case FUND_UINT128: return LowU128();
 	case FUND_FLOAT: return LowF32();
+	case FUND_FLOAT16: case FUND_FLOAT32: return LowF32();
 	case FUND_DOUBLE: return LowF64();
+	case FUND_FLOAT32X: case FUND_FLOAT64: return LowF64();
 	case FUND_LONG_DOUBLE: return LowF80();
+	case FUND_FLOAT64X: case FUND_FLOAT128: return LowF80();
 	case FUND_VOID: return LowVoid();
 	case FUND_NULLPTR_T: return LowI64();
 	}

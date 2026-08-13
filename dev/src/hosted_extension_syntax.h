@@ -126,6 +126,23 @@ protected:
 		const std::size_t source = parser.position_++;
 		*consumed = true;
 		if (kind == SPECIFIER_EXTENSION) return true;
+		if (kind == SPECIFIER_BITINT)
+		{
+			if (!parser.Match(OP_LPAREN))
+				throw parser.Error("expected _BitInt width");
+			const NodeId bitint = parser.arena_.Make(
+				"bitint-type-specifier", "_BitInt");
+			const NodeId width = parser.ParseExpression();
+			if (width == kNoNode) throw parser.Error("expected _BitInt width");
+			parser.Expect(OP_RPAREN);
+			parser.arena_.Add(bitint, width);
+			parser.arena_.Add(sequence, bitint);
+			if (first_type && first_type->empty())
+				*first_type = parser.Spelling(source);
+			*saw_type = true;
+			*saw_user_type = true;
+			return true;
+		}
 		if (kind == SPECIFIER_ATOMIC)
 		{
 			if (!parser.Match(OP_LPAREN))
@@ -151,10 +168,11 @@ protected:
 			if (first_type && first_type->empty())
 				*first_type = parser.Spelling(source);
 			*saw_type = true;
-			if (kind == SPECIFIER_INT128 || kind == SPECIFIER_UINT128)
+			if (kind != SPECIFIER_SIGNED)
 			{
 				*saw_user_type = true;
-				*saw_int128 = true;
+				*saw_int128 = kind == SPECIFIER_INT128 ||
+					kind == SPECIFIER_UINT128;
 			}
 		}
 		return true;

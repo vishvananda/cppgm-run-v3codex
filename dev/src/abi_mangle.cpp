@@ -349,11 +349,19 @@ bool is_builtin_name(const string & name)
     "void", "bool", "char", "schar", "uchar", "wchar", "char16", "char32",
     "short", "ushort", "int", "uint", "long", "ulong", "longlong", "ulonglong",
     "int128", "uint128",
-    "float", "double", "longdouble", "float128", "complex-float",
+    "float", "double", "longdouble", "float16", "float32", "float32x",
+    "float64", "float64x", "float128", "complex-float",
     "complex-double", "complex-longdouble", "nullptr"
   };
   for(const char * candidate : names) {
     if(name == candidate) return true;
+  }
+  const size_t first = name.compare(0, 7, "ubitint") == 0 ? 7 :
+    name.compare(0, 6, "bitint") == 0 ? 6 : string::npos;
+  if(first != string::npos && first < name.size()) {
+    for(size_t i = first; i < name.size(); ++i)
+      if(name[i] < '0' || name[i] > '9') return false;
+    return true;
   }
   return false;
 }
@@ -807,11 +815,18 @@ string builtin_code(const string & name)
     {"short", "s"}, {"ushort", "t"}, {"int", "i"}, {"uint", "j"},
     {"long", "l"}, {"ulong", "m"}, {"longlong", "x"}, {"ulonglong", "y"},
     {"int128", "n"}, {"uint128", "o"},
-    {"float", "f"}, {"double", "d"}, {"longdouble", "e"}, {"float128", "g"},
+    {"float", "f"}, {"double", "d"}, {"longdouble", "e"},
+    {"float16", "DF16_"}, {"float32", "DF32_"},
+    {"float32x", "DF32x"}, {"float64", "DF64_"},
+    {"float64x", "DF64x"}, {"float128", "g"},
     {"complex-float", "Cf"}, {"complex-double", "Cd"},
     {"complex-longdouble", "Ce"}, {"nullptr", "Dn"}
   };
   for(const Entry & entry : entries) if(name == entry.name) return entry.code;
+  if(name.compare(0, 7, "ubitint") == 0)
+    return "DU" + name.substr(7) + '_';
+  if(name.compare(0, 6, "bitint") == 0)
+    return "DB" + name.substr(6) + '_';
   throw std::logic_error("unknown ABI builtin type '" + name + "'");
 }
 

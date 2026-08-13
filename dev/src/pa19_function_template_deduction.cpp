@@ -89,6 +89,9 @@ bool SemanticAnalyzer::FunctionTemplateTypeIsDependent(TypeId type) const
 		dependent = record.dependent_bound_parameter != kNoTemplateParameter ||
 			FunctionTemplateTypeIsDependent(record.child);
 		break;
+	case TYPE_BITINT:
+		dependent = record.dependent_bound_parameter != kNoTemplateParameter;
+		break;
 	case TYPE_FUNCTION:
 	{
 		dependent = FunctionTemplateTypeIsDependent(record.child);
@@ -474,6 +477,11 @@ bool SemanticAnalyzer::FunctionTemplatePatternAccepts(
 		return pattern_record.bound == exemplar_record.bound &&
 			FunctionTemplatePatternAccepts(pattern_record.child,
 				exemplar_record.child, pattern_parameters, exemplar_parameters);
+	case TYPE_BITINT:
+		return pattern_record.bitint_unsigned ==
+				exemplar_record.bitint_unsigned &&
+			(pattern_record.dependent_bound_parameter != kNoTemplateParameter ||
+			 pattern_record.bound == exemplar_record.bound);
 	case TYPE_FUNCTION:
 	{
 		if (pattern_record.cv != exemplar_record.cv ||
@@ -644,6 +652,11 @@ bool SemanticAnalyzer::DeduceFunctionTemplateType(TypeId pattern,
 		return pattern_record.bound == argument_record.bound &&
 			DeduceFunctionTemplateType(pattern_record.child,
 				argument_record.child, deduced);
+	case TYPE_BITINT:
+		return pattern_record.bitint_unsigned ==
+				argument_record.bitint_unsigned &&
+			(pattern_record.dependent_bound_parameter != kNoTemplateParameter ||
+			 pattern_record.bound == argument_record.bound);
 	case TYPE_FUNCTION:
 	{
 		if (pattern_record.parameter_count != argument_record.parameter_count ||
@@ -823,6 +836,30 @@ bool SemanticAnalyzer::DeduceFunctionTemplatePackType(TypeId pattern,
 		return pattern_record.bound == argument_record.bound &&
 			DeduceFunctionTemplatePackType(pattern_record.child,
 				argument_record.child, parameters, deduced);
+	case TYPE_BITINT:
+	{
+		if (pattern_record.bitint_unsigned != argument_record.bitint_unsigned)
+			return false;
+		if (pattern_record.dependent_bound_parameter == kNoTemplateParameter)
+			return argument_record.dependent_bound_parameter ==
+					kNoTemplateParameter &&
+				pattern_record.bound == argument_record.bound;
+		const std::size_t dependent =
+			pattern_record.dependent_bound_parameter;
+		if (dependent >= parameters.size() ||
+			parameters[dependent].kind != TEMPLATE_ARGUMENT_INTEGRAL ||
+			argument_record.dependent_bound_parameter != kNoTemplateParameter ||
+			argument_record.bound == 0) return false;
+		const TemplateArgument pattern_width(TEMPLATE_ARGUMENT_INTEGRAL,
+			pattern_record.dependent_bound_type, 0,
+			static_cast<std::uint32_t>(dependent));
+		const TemplateArgument argument_width(TEMPLATE_ARGUMENT_INTEGRAL,
+			pattern_record.dependent_bound_type,
+			NormalizeIntegralConstant(pattern_record.dependent_bound_type,
+				static_cast<std::int64_t>(argument_record.bound)));
+		return DeduceFunctionTemplatePackArgument(
+			pattern_width, argument_width, parameters, deduced);
+	}
 	case TYPE_FUNCTION:
 	{
 		if (pattern_record.cv != argument_record.cv ||

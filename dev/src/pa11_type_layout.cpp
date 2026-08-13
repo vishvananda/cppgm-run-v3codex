@@ -47,6 +47,13 @@ std::size_t Program::SizeOf(TypeId type) const
 				throw std::runtime_error("invalid GNU vector size");
 			size = static_cast<std::size_t>(record.bound);
 			break;
+		case TYPE_BITINT:
+			if (record.dependent_bound_parameter != kNoTemplateParameter ||
+				record.bound == 0 || record.bound > 128)
+				throw std::runtime_error("dependent or unsupported _BitInt size");
+			size = record.bound <= 8 ? 1 : record.bound <= 16 ? 2 :
+				record.bound <= 32 ? 4 : record.bound <= 64 ? 8 : 16;
+			break;
 		case TYPE_NAMED:
 		{
 			const EntityRecord& entity = entities[record.entity];
@@ -94,6 +101,14 @@ std::size_t Program::AlignOf(TypeId type) const
 			record->bound > std::numeric_limits<std::size_t>::max())
 			throw std::runtime_error("invalid GNU vector alignment");
 		alignment = static_cast<std::size_t>(record->bound);
+	}
+	else if (record->kind == TYPE_BITINT)
+	{
+		if (record->dependent_bound_parameter != kNoTemplateParameter ||
+			record->bound == 0 || record->bound > 128)
+			throw std::runtime_error("dependent or unsupported _BitInt alignment");
+		alignment = record->bound <= 8 ? 1 : record->bound <= 16 ? 2 :
+			record->bound <= 32 ? 4 : record->bound <= 64 ? 8 : 16;
 	}
 	else if (record->kind == TYPE_NAMED)
 	{

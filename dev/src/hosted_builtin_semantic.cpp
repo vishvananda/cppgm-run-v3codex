@@ -41,12 +41,19 @@ TypeId RemoveReference(TypeTable* types, TypeId type)
 
 bool IsFundamentalIntegral(const TypeRecord& record)
 {
+	if (record.kind == TYPE_BITINT) return true;
 	return record.kind == TYPE_FUNDAMENTAL &&
 		record.fundamental != FUND_VOID &&
 		record.fundamental != FUND_NULLPTR_T &&
 		record.fundamental != FUND_FLOAT &&
 		record.fundamental != FUND_DOUBLE &&
-		record.fundamental != FUND_LONG_DOUBLE;
+		record.fundamental != FUND_LONG_DOUBLE &&
+		record.fundamental != FUND_FLOAT16 &&
+		record.fundamental != FUND_FLOAT32 &&
+		record.fundamental != FUND_FLOAT32X &&
+		record.fundamental != FUND_FLOAT64 &&
+		record.fundamental != FUND_FLOAT64X &&
+		record.fundamental != FUND_FLOAT128;
 }
 
 bool IsFundamentalFloating(const TypeRecord& record)
@@ -54,7 +61,13 @@ bool IsFundamentalFloating(const TypeRecord& record)
 	return record.kind == TYPE_FUNDAMENTAL &&
 		(record.fundamental == FUND_FLOAT ||
 		 record.fundamental == FUND_DOUBLE ||
-		 record.fundamental == FUND_LONG_DOUBLE);
+		 record.fundamental == FUND_LONG_DOUBLE ||
+		 record.fundamental == FUND_FLOAT16 ||
+		 record.fundamental == FUND_FLOAT32 ||
+		 record.fundamental == FUND_FLOAT32X ||
+		 record.fundamental == FUND_FLOAT64 ||
+		 record.fundamental == FUND_FLOAT64X ||
+		 record.fundamental == FUND_FLOAT128);
 }
 
 bool IsSignedFundamental(FundamentalKind kind)
@@ -63,7 +76,10 @@ bool IsSignedFundamental(FundamentalKind kind)
 		kind == FUND_INT || kind == FUND_LONG_INT ||
 		kind == FUND_LONG_LONG_INT || kind == FUND_INT128 ||
 		kind == FUND_FLOAT || kind == FUND_DOUBLE ||
-		kind == FUND_LONG_DOUBLE;
+		kind == FUND_LONG_DOUBLE || kind == FUND_FLOAT16 ||
+		kind == FUND_FLOAT32 || kind == FUND_FLOAT32X ||
+		kind == FUND_FLOAT64 || kind == FUND_FLOAT64X ||
+		kind == FUND_FLOAT128;
 }
 
 FundamentalKind SignednessKind(FundamentalKind kind, bool make_unsigned)
