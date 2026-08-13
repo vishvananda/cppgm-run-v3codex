@@ -668,7 +668,8 @@ EntityRecord::EntityRecord()
 }
 
 BindingRecord::BindingRecord()
-	: owner(kNoScope), name(0), qualified_name(0), kind(BIND_VARIABLE), type(kNoType),
+	: owner(kNoScope), name(0), qualified_name(0), object_section_name(0),
+	  kind(BIND_VARIABLE), type(kNoType),
 	  conversion_target(kNoType),
 	  next(kNoBinding), member_owner(kNoEntity), access_owner(kNoEntity),
 	  member_offset(0), requested_alignment(0), bit_offset(0), bit_width(0),
@@ -692,7 +693,8 @@ BindingRecord::BindingRecord()
 	  constructor_base_entry(false),
 	  destructor(false), destructor_base_entry(false), inline_function(false),
 	  virtual_function(false), pure_virtual(false), final_virtual(false),
-	  override_specifier(false), weak_odr(false), object_output_root(false),
+	  override_specifier(false), weak_odr(false), weak_symbol(false),
+	  object_output_root(false),
 	  emission_demanded(false), explicit_instantiation_suppressed(false),
 	  template_parameter_constant(false),
 	  variable_template_specialization(false),

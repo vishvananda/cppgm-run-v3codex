@@ -38,7 +38,7 @@ std::string native_object_symbol(const std::string & symbol)
 
 struct Fixup
 {
-  enum Kind { RELATIVE32, ABSOLUTE64 } kind = RELATIVE32;
+  enum Kind { RELATIVE32, ABSOLUTE64, ADDRESS32 } kind = RELATIVE32;
   std::size_t offset = 0;
   std::string target;
   long long addend = 0;
@@ -47,8 +47,10 @@ struct Fixup
 class CodeBuffer
 {
 public:
-  explicit CodeBuffer(std::size_t base_offset = kContentOffset)
-    : base_offset_(base_offset) {}
+  explicit CodeBuffer(std::size_t base_offset = kContentOffset,
+                      bool relocatable_addresses = false)
+    : base_offset_(base_offset),
+      relocatable_addresses_(relocatable_addresses) {}
 
   void byte(unsigned value) { bytes_.push_back(static_cast<unsigned char>(value)); }
 
@@ -95,6 +97,7 @@ public:
   }
 
   std::size_t size() const { return bytes_.size(); }
+  bool relocatable_addresses() const { return relocatable_addresses_; }
 
   void append(const std::vector<unsigned char> & bytes)
   {
@@ -120,6 +123,16 @@ public:
     fixup.addend = addend;
     fixups_.push_back(fixup);
     zeros(8);
+  }
+
+  void address32(const std::string & target)
+  {
+    Fixup fixup;
+    fixup.kind = Fixup::ADDRESS32;
+    fixup.offset = bytes_.size();
+    fixup.target = target;
+    fixups_.push_back(fixup);
+    zeros(4);
   }
 
   void relative32_at(std::size_t offset, const std::string & target,
@@ -155,7 +168,8 @@ public:
       const std::unordered_map<std::string, std::size_t>::const_iterator target =
         labels_.find(fixup.target);
       if(target == labels_.end()) throw std::runtime_error("undefined native symbol: " + fixup.target);
-      if(fixup.kind == Fixup::RELATIVE32) {
+      if(fixup.kind == Fixup::RELATIVE32 ||
+         fixup.kind == Fixup::ADDRESS32) {
         const std::int64_t delta = static_cast<std::int64_t>(target->second) -
                                    static_cast<std::int64_t>(fixup.offset + 4) +
                                    fixup.addend;
@@ -197,6 +211,7 @@ public:
 
 private:
   std::size_t base_offset_;
+  bool relocatable_addresses_;
   std::vector<unsigned char> bytes_;
   std::unordered_map<std::string, std::size_t> labels_;
   std::vector<Fixup> fixups_;
@@ -236,9 +251,19 @@ void emit_immediate_move(CodeBuffer & out, X64Register destination,
 void emit_symbol_move(CodeBuffer & out, X64Register destination,
                       const std::string & symbol)
 {
-  emit_rex(out, true, XR_RAX, destination);
-  out.byte(0xb8 + (static_cast<unsigned>(destination) & 7));
-  out.absolute64(symbol);
+  // Keep symbol-address intent distinct from calls and stored pointers.  The
+  // relocatable writer leaves this RIP-relative LEA for a definition in this
+  // object and changes it to a GOT load for an import.
+  if(out.relocatable_addresses()) {
+    emit_rex(out, true, destination, XR_RBP);
+    out.byte(0x8d);
+    emit_modrm(out, 0, destination, 5);
+    out.address32(symbol);
+  } else {
+    emit_rex(out, true, XR_RAX, destination);
+    out.byte(0xb8 + (static_cast<unsigned>(destination) & 7));
+    out.absolute64(symbol);
+  }
 }
 
 void emit_memory_modrm(CodeBuffer & out, unsigned reg, X64Register base,
@@ -2635,7 +2660,9 @@ EncodedSection encoded_section(const CodeBuffer & source)
   for(std::size_t i = 0; i < source.fixups().size(); ++i) {
     EncodedFixup fixup;
     fixup.kind = source.fixups()[i].kind == Fixup::ABSOLUTE64 ?
-      EncodedFixup::EF_ABSOLUTE64 : EncodedFixup::EF_RELATIVE32;
+      EncodedFixup::EF_ABSOLUTE64 :
+      source.fixups()[i].kind == Fixup::ADDRESS32 ?
+      EncodedFixup::EF_ADDRESS32 : EncodedFixup::EF_RELATIVE32;
     fixup.offset = source.fixups()[i].offset;
     fixup.target = source.fixups()[i].target;
     fixup.addend = source.fixups()[i].addend;
@@ -2717,7 +2744,7 @@ void write_linux_relocatable(
     throw std::runtime_error("ELF object writer requires linux target");
   ProgramLoweringSession lowering(source, target, stats);
   mir_model::MirProgram program = lowering.take_program_shell();
-  CodeBuffer text(0);
+  CodeBuffer text(0, true);
   std::vector<HostFunctionLayout> functions;
   functions.reserve(lowering.function_count());
   std::uint64_t encode_nanoseconds = 0;

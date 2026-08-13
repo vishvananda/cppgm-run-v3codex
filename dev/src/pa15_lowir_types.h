@@ -423,6 +423,7 @@ struct Symbol
 	} runtime_role;
 	std::string name;
 	std::string object_name;
+	std::string section_name;
 	bool c_linkage;
 	bool internal_linkage;
 	bool weak_linkage;

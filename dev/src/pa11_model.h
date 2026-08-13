@@ -550,7 +550,7 @@ struct FunctionTemplateAbiRecipe
 struct BindingRecord
 {
 	ScopeId owner;
-	NameId name, qualified_name;
+	NameId name, qualified_name, object_section_name;
 	BindingKind kind;
 	TypeId type, conversion_target;
 	BindingId next;
@@ -578,7 +578,8 @@ struct BindingRecord
 		conversion_function, constructor,
 		constructor_base_entry, destructor, destructor_base_entry,
 		inline_function, virtual_function, pure_virtual, final_virtual,
-		override_specifier, weak_odr, object_output_root, emission_demanded;
+		override_specifier, weak_odr, weak_symbol, object_output_root,
+		emission_demanded;
 	bool explicit_instantiation_suppressed;
 	bool template_parameter_constant;
 	bool variable_template_specialization;

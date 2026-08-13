@@ -23,7 +23,8 @@ void put_little(std::vector<unsigned char> & out, std::size_t offset,
 
 struct HostRelocation
 {
-  enum Kind { HR_ABSOLUTE64, HR_PC32, HR_PLT32 } kind = HR_ABSOLUTE64;
+  enum Kind { HR_ABSOLUTE64, HR_PC32, HR_PLT32, HR_GOTPCRELX }
+    kind = HR_ABSOLUTE64;
   std::size_t offset = 0;
   std::string target;
   long long addend = 0;
@@ -407,22 +408,39 @@ std::string relocation_target(
 }
 
 std::vector<HostRelocation> host_relocations(
-    const EncodedSection & source,
+    EncodedSection & source,
     const EncodedSection & text,
     const EncodedSection & data,
-    const std::unordered_map<std::string, std::string> & declarations)
+    const std::unordered_map<std::string, std::string> & declarations,
+    const std::unordered_set<std::string> & weak_definitions)
 {
   std::vector<HostRelocation> result;
   result.reserve(source.fixups.size());
   for(std::size_t i = 0; i < source.fixups.size(); ++i) {
     const EncodedFixup & fixup = source.fixups[i];
     HostRelocation relocation;
-    relocation.kind = fixup.kind == EncodedFixup::EF_ABSOLUTE64 ?
-      HostRelocation::HR_ABSOLUTE64 : HostRelocation::HR_PLT32;
+    if(fixup.kind == EncodedFixup::EF_ADDRESS32) {
+      const bool defined_here = text.labels.count(fixup.target) != 0 ||
+        data.labels.count(fixup.target) != 0;
+      const bool local_address = defined_here &&
+        weak_definitions.count(fixup.target) == 0;
+      relocation.kind = local_address ? HostRelocation::HR_PC32 :
+        HostRelocation::HR_GOTPCRELX;
+      if(!local_address) {
+        if(fixup.offset < 2 || fixup.offset > source.bytes.size() ||
+           source.bytes[fixup.offset - 2] != 0x8d)
+          throw std::logic_error("symbol-address fixup is not RIP-relative LEA");
+        source.bytes[fixup.offset - 2] = 0x8b;
+      }
+    } else {
+      relocation.kind = fixup.kind == EncodedFixup::EF_ABSOLUTE64 ?
+        HostRelocation::HR_ABSOLUTE64 : HostRelocation::HR_PLT32;
+    }
     relocation.offset = fixup.offset;
     relocation.target = relocation_target(
       fixup.target, text, data, declarations);
-    relocation.addend = fixup.kind == EncodedFixup::EF_RELATIVE32 ?
+    relocation.addend = fixup.kind == EncodedFixup::EF_RELATIVE32 ||
+      fixup.kind == EncodedFixup::EF_ADDRESS32 ?
       fixup.addend - 4 : fixup.addend;
     result.push_back(relocation);
   }
@@ -671,7 +689,8 @@ std::vector<unsigned char> make_relocation_table(
       throw std::logic_error("ELF relocation has no symbol: " +
                              relocation.target);
     const unsigned type = relocation.kind == HostRelocation::HR_ABSOLUTE64 ? 1 :
-      relocation.kind == HostRelocation::HR_PC32 ? 2 : 4;
+      relocation.kind == HostRelocation::HR_PC32 ? 2 :
+      relocation.kind == HostRelocation::HR_GOTPCRELX ? 42 : 4;
     append_little(table, relocation.offset, 8);
     append_little(table, (static_cast<std::uint64_t>(symbol->second) << 32) |
                          type, 8);
@@ -688,21 +707,28 @@ std::vector<unsigned char> make_linux_relocatable_image(
     const std::vector<unsigned char> & compiler_payload,
     std::size_t & relocation_count)
 {
+  EncodedSection mutable_text = text;
+  EncodedSection mutable_data = data;
   const std::unordered_map<std::string, std::string> declarations =
     declaration_object_symbols(program);
+  std::unordered_set<std::string> weak_definitions;
+  for(std::size_t i = 0; i < program.exported_symbols.size(); ++i)
+    if(program.exported_symbols[i].linkage == ir_model::SL_WEAK)
+      weak_definitions.insert(program.exported_symbols[i].internal_symbol);
   const std::vector<HostRelocation> text_relocations = host_relocations(
-    text, text, data, declarations);
+    mutable_text, mutable_text, mutable_data, declarations, weak_definitions);
   const std::vector<HostRelocation> data_relocations = host_relocations(
-    data, text, data, declarations);
+    mutable_data, mutable_text, mutable_data, declarations, weak_definitions);
   std::vector<HostRelocation> lsda_relocations;
   HostSection lsda = make_host_lsda(
-    functions, text, declarations, lsda_relocations);
+    functions, mutable_text, declarations, lsda_relocations);
   std::vector<HostRelocation> eh_relocations;
   HostSection eh = make_host_eh_frame(functions, eh_relocations);
 
   std::vector<HostSymbol> locals;
   std::vector<HostSymbol> globals;
-  collect_host_symbols(program, text, data, functions, text_relocations,
+  collect_host_symbols(program, mutable_text, mutable_data, functions,
+                       text_relocations,
                        data_relocations, lsda_relocations, eh_relocations,
                        locals, globals);
 
@@ -715,7 +741,7 @@ std::vector<unsigned char> make_linux_relocatable_image(
   sections[1].name = ".text";
   sections[1].flags = 6;
   sections[1].alignment = 16;
-  sections[1].bytes = text.bytes;
+  sections[1].bytes = mutable_text.bytes;
   sections[2].name = ".rela.text";
   sections[2].type = 4;
   sections[2].alignment = 8;
@@ -726,7 +752,7 @@ std::vector<unsigned char> make_linux_relocatable_image(
   sections[3].name = ".data";
   sections[3].flags = 3;
   sections[3].alignment = 16;
-  sections[3].bytes = data.bytes;
+  sections[3].bytes = mutable_data.bytes;
   sections[4].name = ".rela.data";
   sections[4].type = 4;
   sections[4].alignment = 8;

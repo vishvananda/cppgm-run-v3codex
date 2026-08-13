@@ -68,6 +68,7 @@ public:
 		  local_static_objects_(graph.local_static_objects),
 		  aggregate_helpers_(graph.aggregate_helpers),
 		  current_language_linkage_(LANGUAGE_LINKAGE_CPP),
+		  direct_linkage_declaration_depth_(0),
 		  current_return_type_(kNoType), current_class_context_(kNoEntity),
 		  current_function_context_(kNoBinding),
 		  braced_initialization_context_(0),
@@ -320,6 +321,10 @@ private:
 	void PublishVariableDeclarationFacts(BindingId binding,
 		ScopeId declaration_scope, NameId name, TypeId type,
 		const SpecInfo& spec, bool local);
+	void ApplyVariableObjectAttributes(NodeId declaration, BindingId binding);
+	std::uint32_t MakeVariableDeclarationDump(TypeId type, NameId name,
+		BindingId binding, bool local, bool has_initializer,
+		bool* declaration_only);
 	TypeId CompleteQualifiedStaticArrayType(
 		BindingId prior, TypeId declared) const;
 	bool IsStaticConstantDefinition(
@@ -1826,6 +1831,7 @@ private:
 	std::vector<std::uint32_t> candidate_marks_;
 	mutable std::vector<std::uint8_t> empty_destructor_chain_cache_;
 	LanguageLinkage current_language_linkage_;
+	std::size_t direct_linkage_declaration_depth_;
 	TypeId current_return_type_;
 	EntityId current_class_context_;
 	BindingId current_function_context_;

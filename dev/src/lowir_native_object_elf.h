@@ -16,7 +16,8 @@ namespace object_elf_detail {
 
 struct EncodedFixup
 {
-  enum Kind { EF_RELATIVE32, EF_ABSOLUTE64 } kind = EF_RELATIVE32;
+  enum Kind { EF_RELATIVE32, EF_ABSOLUTE64, EF_ADDRESS32 }
+    kind = EF_RELATIVE32;
   std::size_t offset = 0;
   std::string target;
   long long addend = 0;

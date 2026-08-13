@@ -1297,6 +1297,9 @@ void SemanticAnalyzer::PublishVariableDeclarationFacts(BindingId binding,
 	BindingRecord& record = program_->bindings[binding];
 	record.language_linkage = current_language_linkage_;
 	record.storage_class = spec.storage_class;
+	if (!local && direct_linkage_declaration_depth_ != 0 &&
+		record.storage_class == STORAGE_CLASS_NONE)
+		record.storage_class = STORAGE_CLASS_EXTERN;
 	if (!local && HasInternalLinkageScope(declaration_scope))
 	{
 		record.storage_class = STORAGE_CLASS_STATIC;
@@ -1311,6 +1314,9 @@ void SemanticAnalyzer::PublishVariableDeclarationFacts(BindingId binding,
 	BindingRecord& canonical = program_->bindings[record.canonical];
 	canonical.unnamed_namespace_linkage =
 		canonical.unnamed_namespace_linkage || record.unnamed_namespace_linkage;
+	if (record.canonical != binding &&
+		canonical.language_linkage == LANGUAGE_LINKAGE_C)
+		record.language_linkage = LANGUAGE_LINKAGE_C;
 	canonical.language_linkage = record.language_linkage;
 	if (canonical.storage_class == STORAGE_CLASS_NONE ||
 		record.storage_class == STORAGE_CLASS_STATIC)

@@ -2005,8 +2005,10 @@ void SemanticAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 	if (arena_->IsTag(node, "linkage-specification"))
 	{
 		const LanguageLinkage previous_linkage = current_language_linkage_;
+		const bool direct_declaration = (arena_->Flags(node) & SYNTAX_FLAG_DIRECT_LINKAGE_DECLARATION) != 0;
 		current_language_linkage_ = arena_->Payload(node) == "C" ?
 			LANGUAGE_LINKAGE_C : LANGUAGE_LINKAGE_CPP;
+		if (direct_declaration) ++direct_linkage_declaration_depth_;
 		for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 			edge = arena_->NextEdge(edge))
 		{
@@ -2014,6 +2016,7 @@ void SemanticAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 			if (IsDeclaration(child))
 				AnalyzeDeclaration(child, scope, output_parent, local);
 		}
+		if (direct_declaration) --direct_linkage_declaration_depth_;
 		current_language_linkage_ = previous_linkage;
 		return;
 	}
@@ -2149,6 +2152,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			parsed.name, parsed.type);
 		PublishVariableDeclarationFacts(binding, declaration_scope,
 			parsed.name, parsed.type, spec, local);
+		ApplyVariableObjectAttributes(node, binding);
 		const bool static_constant_definition = IsStaticConstantDefinition(binding, initializer_node);
 		const bool constexpr_class_default =
 			spec.is_constexpr && IsClassObjectType(parsed.type) &&
@@ -2202,10 +2206,9 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			has_initializer = MaterializeConstantDefinitionInitializer(
 				binding, &parsed.type, &initializer);
 		if (deferred_template_constant_storage) continue;
-		const bool declaration_only = !local && !has_initializer &&
-			program_->bindings[binding].storage_class == STORAGE_CLASS_EXTERN;
-		const std::uint32_t variable = MakeDump(DUMP_VARIABLE, parsed.type,
-			VALUE_NONE, parsed.name, binding);
+		bool declaration_only = false;
+		const std::uint32_t variable = MakeVariableDeclarationDump(
+			parsed.type, parsed.name, binding, local, has_initializer, &declaration_only);
 		const std::uint32_t runtime_initializer =
 			PublishVariableInitializerActions(variable, binding, parsed.type,
 				initializer, has_initializer, declaration_only,

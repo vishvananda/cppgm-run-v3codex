@@ -3,6 +3,7 @@
 #include "pa10_syntax_model.h"
 #include "pa10_parser_name_facts.h"
 #include "pa10_parser_token_classification.h"
+#include "pa32_object_attribute_syntax.h"
 #include "pa25_lambda_capture_syntax.h"
 #include "pa25_range_for_syntax.h"
 #include "pa30_region_syntax.h"
@@ -698,6 +699,8 @@ private:
 		if (failed) ++stats_->failed_template_argument_scans;
 	}
 	NodeId ParseDeclaration(bool in_class);
+	NodeId ParseDeclarationCore(bool in_class);
+	bool ParseLeadingAttribute(std::vector<NodeId>* attributes);
 	NodeId ParseNamespace();
 	NodeId ParseUsing();
 	NodeId ParseTemplate(bool in_class);
@@ -2809,7 +2812,24 @@ NodeId Parser::FinishSimpleOrFunction(const Mark& mark,
 	return declaration;
 }
 
+bool Parser::ParseLeadingAttribute(std::vector<NodeId>* attributes)
+{
+	return pa32_syntax_detail::ConsumeLeadingGnuObjectAttribute(
+		tokens_, strings_, arena_, &position_, attributes) || SkipAttribute();
+}
+
 NodeId Parser::ParseDeclaration(bool in_class)
+{
+	std::vector<NodeId> attributes;
+	while (ParseLeadingAttribute(&attributes)) {}
+	const NodeId declaration = ParseDeclarationCore(in_class);
+	if (declaration != kNoNode)
+		for (std::size_t i = 0; i < attributes.size(); ++i)
+			arena_.Add(declaration, attributes[i]);
+	return declaration;
+}
+
+NodeId Parser::ParseDeclarationCore(bool in_class)
 {
 	if (position_ < tokens_.size() &&
 		tokens_[position_].Kind() == kPragmaPackPushToken)
@@ -2827,7 +2847,6 @@ NodeId Parser::ParseDeclaration(bool in_class)
 		arena_.AddFlags(directive, SYNTAX_FLAG_SEMANTIC_ONLY);
 		return directive;
 	}
-	SkipAttributes();
 	if (Match(OP_SEMICOLON)) return arena_.Make("empty-declaration");
 	if ((At(KW_INLINE) && AtOffset(1, KW_NAMESPACE)) || At(KW_NAMESPACE))
 		return ParseNamespace();
@@ -2872,6 +2891,8 @@ NodeId Parser::ParseDeclaration(bool in_class)
 		}
 		else
 		{
+			arena_.AddFlags(
+				declaration, SYNTAX_FLAG_DIRECT_LINKAGE_DECLARATION);
 			const NodeId child = ParseDeclaration(in_class);
 			if (child == kNoNode) throw Error("expected linkage declaration");
 			arena_.Add(declaration, child);

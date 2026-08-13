@@ -150,6 +150,7 @@ void AdaptSymbolFacts(const Symbol& source,
 	symbol->binding = source.internal_linkage ? lowir_model::SBM_INTERNAL :
 		source.weak_linkage ? lowir_model::SBM_WEAK : lowir_model::SBM_STRONG;
 	symbol->object_symbol = source.object_name;
+	symbol->section_name = source.section_name;
 	symbol->object_output_root = source.object_output_root;
 	symbol->object_trivial_lifecycle = source.trivial_lifecycle;
 	if (boundary)

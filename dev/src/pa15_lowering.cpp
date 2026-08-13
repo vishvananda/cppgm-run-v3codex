@@ -283,15 +283,16 @@ private:
 		const std::string& proposed_name, const std::string& object_name)
 	{
 		const BindingRecord& binding = program_.bindings[node.binding];
+		const BindingRecord& canonical_binding = program_.bindings[binding.canonical];
 		const bool class_template_member = binding.member_owner != kNoEntity &&
 			program_.entities[binding.member_owner].template_argument_count;
 		const bool primary_template_member = class_template_member &&
 			!program_.entities[binding.member_owner].explicit_template_specialization;
-		const bool weak_odr = !binding.explicit_instantiation_suppressed &&
+		const bool weak_linkage = canonical_binding.weak_symbol || (!binding.explicit_instantiation_suppressed &&
 			(binding.weak_odr ||
 			 primary_template_member ||
 			(kind == Symbol::FUNCTION_SYMBOL &&
-			 binding.template_argument_count != 0));
+			 binding.template_argument_count != 0)));
 		const bool local_member = pa18_lowering_detail::IsFunctionLocalEntity(
 			program_, binding.member_owner);
 		const bool prefer_local =
@@ -331,8 +332,11 @@ private:
 				symbol.object_name != object_name)
 				throw std::logic_error("conflicting PA15 ABI object identity");
 			symbol.nonthrowing = symbol.nonthrowing || binding.nonthrowing;
-			symbol.weak_linkage |= weak_odr && !prefer_local;
+			symbol.weak_linkage |= weak_linkage && !prefer_local;
 			symbol.prefer_local_object_binding |= prefer_local;
+			if (symbol.section_name.empty() &&
+				canonical_binding.object_section_name != 0)
+				symbol.section_name = program_.names.Get(canonical_binding.object_section_name);
 			symbol.object_output_root |= binding.object_output_root;
 			pa15_lowering_abi::ApplyBuiltinSymbolMetadata(
 				&symbol, binding.builtin_function);
@@ -353,8 +357,10 @@ private:
 		pa15_lowering_abi::ApplyNativeRuntimeSymbolMetadata(
 			&output_.symbols.back());
 		output_.symbols.back().source_type = source_type;
-		output_.symbols.back().weak_linkage = weak_odr && !prefer_local;
+		output_.symbols.back().weak_linkage = weak_linkage && !prefer_local;
 		output_.symbols.back().prefer_local_object_binding = prefer_local;
+		if (canonical_binding.object_section_name != 0)
+			output_.symbols.back().section_name = program_.names.Get(canonical_binding.object_section_name);
 		output_.symbols.back().object_output_root = binding.object_output_root;
 		output_.symbol_index.Insert(identity, symbol);
 		return symbol;
