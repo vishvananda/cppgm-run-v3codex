@@ -404,9 +404,46 @@ typedef std::uint32_t FunctionTemplateAbiRecipeId;
 const FunctionTemplateAbiRecipeId kNoFunctionTemplateAbiRecipe =
 	std::numeric_limits<FunctionTemplateAbiRecipeId>::max();
 
+typedef std::uint32_t FunctionTemplateAbiTypeId;
+const FunctionTemplateAbiTypeId kNoFunctionTemplateAbiType =
+	std::numeric_limits<FunctionTemplateAbiTypeId>::max();
+
+enum FunctionTemplateAbiTypeKind
+{
+	FUNCTION_TEMPLATE_ABI_TYPE_PARAMETER,
+	FUNCTION_TEMPLATE_ABI_TYPE_MEMBER,
+	FUNCTION_TEMPLATE_ABI_TYPE_QUALIFIED,
+	FUNCTION_TEMPLATE_ABI_TYPE_POINTER,
+	FUNCTION_TEMPLATE_ABI_TYPE_LVALUE_REFERENCE,
+	FUNCTION_TEMPLATE_ABI_TYPE_RVALUE_REFERENCE,
+	FUNCTION_TEMPLATE_ABI_TYPE_ARRAY
+};
+
+// Syntax-independent source-type structure retained for function-template ABI
+// encoding. Nodes are immutable after publication and refer only to canonical
+// parameter ordinals, interned names, and other nodes in this table.
+struct FunctionTemplateAbiType
+{
+	FunctionTemplateAbiTypeKind kind;
+	FunctionTemplateAbiTypeId child;
+	NameId name;
+	std::uint64_t bound;
+	std::uint32_t parameter;
+	std::uint8_t cv;
+
+	FunctionTemplateAbiType(FunctionTemplateAbiTypeKind kind_value,
+		FunctionTemplateAbiTypeId child_value = kNoFunctionTemplateAbiType,
+		NameId name_value = 0, std::uint64_t bound_value = 0,
+		std::uint32_t parameter_value = kNoTemplateParameter,
+		std::uint8_t cv_value = 0)
+		: kind(kind_value), child(child_value), name(name_value),
+		  bound(bound_value), parameter(parameter_value), cv(cv_value) {}
+};
+
 struct FunctionTemplateAbiRecipe
 {
 	TypeId function_type;
+	FunctionTemplateAbiTypeId result_type;
 	std::uint32_t parameter_shape_begin, template_parameter_count;
 	bool template_parameter_pack;
 	bool function_parameter_pack;
@@ -419,6 +456,7 @@ struct FunctionTemplateAbiRecipe
 		bool function_parameter_pack_value = false,
 		bool overloaded_pattern_value = false)
 		: function_type(function_type_value),
+		  result_type(kNoFunctionTemplateAbiType),
 		  parameter_shape_begin(parameter_shape_begin_value),
 		  template_parameter_count(template_parameter_count_value),
 		  template_parameter_pack(template_parameter_pack_value),
@@ -612,6 +650,7 @@ public:
 	std::vector<TypeId> template_arguments;
 	std::vector<TemplateArgument> canonical_template_arguments;
 	std::vector<TypeId> function_template_parameter_shapes;
+	std::vector<FunctionTemplateAbiType> function_template_abi_types;
 	std::vector<FunctionTemplateAbiRecipe> function_template_abi_recipes;
 	std::size_t lookup_queries, lookup_scope_visits, lookup_edge_visits;
 	std::size_t lookup_cache_hits, lookup_cache_misses;

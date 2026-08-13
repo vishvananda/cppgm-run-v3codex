@@ -220,12 +220,24 @@ private:
 // Canonical identity for alias-expanded dependent function results. The
 // sequence contains typed compact atoms (node kinds, interned names, canonical
 // declarations, and structural delimiters), never rendered source text.
+enum FunctionTemplateResultIdentityAtomKind
+{
+	FUNCTION_TEMPLATE_RESULT_QUALIFIED_BEGIN = 7,
+	FUNCTION_TEMPLATE_RESULT_QUALIFIED_END,
+	FUNCTION_TEMPLATE_RESULT_COMPONENT,
+	FUNCTION_TEMPLATE_RESULT_DECLARATION,
+	FUNCTION_TEMPLATE_RESULT_ENTITY,
+	FUNCTION_TEMPLATE_RESULT_ARGUMENTS_BEGIN
+};
+
 class FunctionTemplateResultIdentityTable
 {
 public:
 	FunctionTemplateResultIdentityTable();
 	FunctionTemplateResultIdentityId Intern(
 		const std::vector<std::uint64_t>& atoms);
+	void CopyAtoms(FunctionTemplateResultIdentityId identity,
+		std::vector<std::uint64_t>* atoms) const;
 	std::size_t Requests() const;
 	std::size_t CacheHits() const;
 	std::size_t IndexProbes() const;

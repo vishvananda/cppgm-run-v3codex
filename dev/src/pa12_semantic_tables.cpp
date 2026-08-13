@@ -519,6 +519,17 @@ FunctionTemplateResultIdentityId FunctionTemplateResultIdentityTable::Intern(
 	return id;
 }
 
+void FunctionTemplateResultIdentityTable::CopyAtoms(
+	FunctionTemplateResultIdentityId identity,
+	std::vector<std::uint64_t>* atoms) const
+{
+	if (!atoms || identity >= entries_.size())
+		throw std::logic_error("function template result identity is invalid");
+	const Entry& entry = entries_[identity];
+	atoms->assign(atoms_.begin() + entry.first,
+		atoms_.begin() + entry.first + entry.count);
+}
+
 std::size_t FunctionTemplateResultIdentityTable::Requests() const
 {
 	return requests_;

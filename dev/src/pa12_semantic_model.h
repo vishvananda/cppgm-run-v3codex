@@ -1085,6 +1085,7 @@ struct FunctionTemplatePattern
 	BindingId result_root_declaration;
 	ScopeId result_root_namespace;
 	FunctionTemplateResultIdentityId expanded_result_identity;
+	FunctionTemplateAbiTypeId abi_result_type;
 	FunctionTemplateAbiRecipeId abi_recipe;
 	bool result_root_global;
 	bool expanded_result_has_alias;
@@ -1123,6 +1124,7 @@ struct FunctionTemplatePattern
 		  result_root_declaration(kNoBinding),
 		  result_root_namespace(kNoScope),
 		  expanded_result_identity(kNoFunctionTemplateResultIdentity),
+		  abi_result_type(kNoFunctionTemplateAbiType),
 		  abi_recipe(kNoFunctionTemplateAbiRecipe),
 		  result_root_global(false), expanded_result_has_alias(false),
 		  language_linkage(LANGUAGE_LINKAGE_CPP), member_access(ACCESS_PUBLIC),

@@ -64,6 +64,8 @@ FunctionTemplateAbiRecipeId PublishFunctionTemplateAbiRecipe(Program* program,
 			HasTrailingTemplateParameterPack(parameters) &&
 				!FunctionTemplateNeedsPartitionIdentity(parameters),
 			pattern.function_parameter_pack));
+	program->function_template_abi_recipes.back().result_type =
+		pattern.abi_result_type;
 	return recipe;
 }
 

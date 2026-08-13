@@ -336,14 +336,20 @@ public:
 					first + fixed, count - fixed, &function, recipe);
 				target.path_operands.push_back(pack);
 			}
-			TypeId result = type.child;
-			const TypeRecord& recipe_type =
-				program_.types.Get(recipe->function_type);
-			if (UsesFunctionTemplateParameter(
-				recipe_type.child, function, *recipe))
-				result = recipe_type.child;
-			target.result_type = result == type.child ? MakeType(result) :
-				MakeType(result, &function, recipe);
+			if (recipe->result_type != kNoFunctionTemplateAbiType)
+				target.result_type = MakeFunctionTemplateAbiType(
+					recipe->result_type, *recipe);
+			else
+			{
+				TypeId result = type.child;
+				const TypeRecord& recipe_type =
+					program_.types.Get(recipe->function_type);
+				if (UsesFunctionTemplateParameter(
+					recipe_type.child, function, *recipe))
+					result = recipe_type.child;
+				target.result_type = result == type.child ? MakeType(result) :
+					MakeType(result, &function, recipe);
+			}
 			target.has_result_type = true;
 		}
 		const TypeId* parameters = program_.types.Parameters(function.type);
@@ -448,6 +454,73 @@ public:
 		// `template<class T> int f(T)`, f<int>'s non-dependent result happens to
 		// equal T's argument but must be encoded as `i`, not `T_`.
 		return recipe ? MakeType(type, &function, recipe) : MakeType(type);
+	}
+
+	abi_mangle::AbiType MakeFunctionTemplateAbiType(
+		pa11::FunctionTemplateAbiTypeId type,
+		const pa11::FunctionTemplateAbiRecipe& recipe)
+	{
+		using namespace abi_mangle;
+		using namespace pa11;
+		if (type == kNoFunctionTemplateAbiType ||
+			type >= program_.function_template_abi_types.size())
+			throw std::logic_error("function template ABI result recipe is invalid");
+		const FunctionTemplateAbiType& source =
+			program_.function_template_abi_types[type];
+		AbiType result;
+		if (source.kind == FUNCTION_TEMPLATE_ABI_TYPE_PARAMETER)
+		{
+			if (source.parameter >= recipe.template_parameter_count)
+				throw std::logic_error(
+					"function template ABI result parameter is invalid");
+			result.kind = ABI_TYPE_TEMPLATE_PARAMETER;
+			result.index = source.parameter;
+			result.substitutable = true;
+			return result;
+		}
+		if (source.kind == FUNCTION_TEMPLATE_ABI_TYPE_MEMBER)
+		{
+			if (source.child == kNoFunctionTemplateAbiType || source.name == 0)
+				throw std::logic_error(
+					"function template ABI result member is invalid");
+			result.kind = ABI_TYPE_MEMBER;
+			result.name = program_.names.Get(source.name);
+			result.types.push_back(
+				MakeFunctionTemplateAbiType(source.child, recipe));
+			return result;
+		}
+		if (source.child == kNoFunctionTemplateAbiType)
+			throw std::logic_error("function template ABI result modifier is invalid");
+		result = MakeFunctionTemplateAbiType(source.child, recipe);
+		AbiTypeModifier modifier;
+		if (source.kind == FUNCTION_TEMPLATE_ABI_TYPE_QUALIFIED)
+		{
+			modifier.kind = ABI_TYPE_CV;
+			modifier.is_const = (source.cv & CV_CONST) != 0;
+			modifier.is_volatile = (source.cv & CV_VOLATILE) != 0;
+		}
+		else if (source.kind == FUNCTION_TEMPLATE_ABI_TYPE_POINTER)
+			modifier.kind = ABI_TYPE_POINTER;
+		else if (source.kind == FUNCTION_TEMPLATE_ABI_TYPE_LVALUE_REFERENCE)
+			modifier.kind = ABI_TYPE_LVALUE_REFERENCE;
+		else if (source.kind == FUNCTION_TEMPLATE_ABI_TYPE_RVALUE_REFERENCE)
+			modifier.kind = ABI_TYPE_RVALUE_REFERENCE;
+		else if (source.kind == FUNCTION_TEMPLATE_ABI_TYPE_ARRAY)
+		{
+			modifier.kind = ABI_TYPE_ARRAY;
+			if (source.parameter != kNoTemplateParameter)
+			{
+				modifier.array_bound.kind = ABI_ARRAY_BOUND_EXPRESSION;
+				modifier.array_bound.value =
+					AddTemplateParameterExpression(source.parameter);
+			}
+			else if (source.bound != 0)
+				modifier.array_bound.value = std::to_string(source.bound);
+		}
+		else throw std::logic_error(
+			"function template ABI result node kind is invalid");
+		result.modifiers.insert(result.modifiers.begin(), modifier);
+		return result;
 	}
 
 	bool UsesFunctionTemplateParameter(pa11::TypeId type,
@@ -972,15 +1045,23 @@ void AppendFunctionTemplateArgumentsAndResult(const pa11::Program& program,
 	AbiFactRecord result;
 	result.set_kind(ABI_FACT_RECORD_FUNCTION);
 	result.function.kind = ABI_FUNCTION_RECORD_RESULT;
-	TypeId result_type = function_type.child;
-	if (recipe)
+	if (recipe && recipe->result_type != kNoFunctionTemplateAbiType)
 	{
-		const TypeId source = program.types.Get(recipe->function_type).child;
-		if (facts->UsesFunctionTemplateParameter(source, binding, *recipe))
-			result_type = source;
+		result.function.type = facts->MakeFunctionTemplateAbiType(
+			recipe->result_type, *recipe);
 	}
-	result.function.type = facts->MakeFunctionTemplateType(result_type,
-		binding, result_type == function_type.child ? 0 : recipe);
+	else
+	{
+		TypeId result_type = function_type.child;
+		if (recipe)
+		{
+			const TypeId source = program.types.Get(recipe->function_type).child;
+			if (facts->UsesFunctionTemplateParameter(source, binding, *recipe))
+				result_type = source;
+		}
+		result.function.type = facts->MakeFunctionTemplateType(result_type,
+			binding, result_type == function_type.child ? 0 : recipe);
+	}
 	output->records.push_back(result);
 }
 

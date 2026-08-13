@@ -418,6 +418,8 @@ void SemanticAnalyzer::ValidateFunctionTemplatePatternResults(
 			return left.syntax == right.syntax;
 		}), pattern->result_lookup_facts.end());
 	InternExpandedFunctionTemplateResult(pattern);
+	pattern->shape_type = declarator.type;
+	PublishFunctionTemplateResultAbiType(pattern);
 }
 
 bool SemanticAnalyzer::FindFunctionTemplateResultLookup(NodeId syntax,
