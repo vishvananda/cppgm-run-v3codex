@@ -120,6 +120,30 @@ void append_little(std::vector<unsigned char> & out, std::uint64_t value,
     out.push_back(static_cast<unsigned char>(value >> (i * 8)));
 }
 
+HostSection make_host_lifecycle_array(
+    const lowir_model::LowirProgram & program,
+    lowir_model::SymbolRole role, const std::string & name,
+    std::uint32_t type, std::vector<HostRelocation> & relocations)
+{
+  HostSection section;
+  section.name = name;
+  section.type = type;
+  section.flags = 3;
+  section.alignment = 8;
+  section.entry_size = 8;
+  for(std::size_t i = 0; i < program.functions.size(); ++i) {
+    const lowir_model::Function & function = program.functions[i];
+    if(function.metadata.role != role) continue;
+    HostRelocation relocation;
+    relocation.kind = HostRelocation::HR_ABSOLUTE64;
+    relocation.offset = section.bytes.size();
+    relocation.target = function.name;
+    relocations.push_back(relocation);
+    append_little(section.bytes, 0, 8);
+  }
+  return section;
+}
+
 void append_uleb128(std::vector<unsigned char> & out, std::uint64_t value)
 {
   do {
@@ -835,6 +859,27 @@ std::vector<unsigned char> make_linux_relocatable_image(
     append_relocations(section.name, index, data_relocations[i]);
   }
 
+  std::vector<HostRelocation> init_array_relocations;
+  HostSection init_array = make_host_lifecycle_array(
+    program, lowir_model::SR_INIT, ".init_array", 14,
+    init_array_relocations);
+  std::uint16_t init_array_index = 0;
+  if(!init_array.bytes.empty()) {
+    init_array_index = append_section(init_array);
+    append_relocations(init_array.name, init_array_index,
+                       init_array_relocations);
+  }
+  std::vector<HostRelocation> fini_array_relocations;
+  HostSection fini_array = make_host_lifecycle_array(
+    program, lowir_model::SR_FINI, ".fini_array", 15,
+    fini_array_relocations);
+  std::uint16_t fini_array_index = 0;
+  if(!fini_array.bytes.empty()) {
+    fini_array_index = append_section(fini_array);
+    append_relocations(fini_array.name, fini_array_index,
+                       fini_array_relocations);
+  }
+
   std::uint16_t lsda_index = 0;
   if(!lsda.bytes.empty()) {
     lsda_index = append_section(lsda);
@@ -856,6 +901,12 @@ std::vector<unsigned char> make_linux_relocatable_image(
   for(std::size_t i = 0; i < mutable_data.size(); ++i)
     section_symbols.push_back(std::make_pair(mutable_data[i].name,
                                              data_indexes[i]));
+  if(init_array_index != 0)
+    section_symbols.push_back(std::make_pair(init_array.name,
+                                             init_array_index));
+  if(fini_array_index != 0)
+    section_symbols.push_back(std::make_pair(fini_array.name,
+                                             fini_array_index));
   if(lsda_index != 0)
     section_symbols.push_back(std::make_pair(lsda.name, lsda_index));
   section_symbols.push_back(std::make_pair(eh.name, eh_index));

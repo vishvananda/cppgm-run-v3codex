@@ -601,6 +601,15 @@ bool StaticInitializerLowering::Lower(const NamespaceObjectAction& action,
 	}
 	const TypeRecord& source_type = program_.types.Get(
 		types_.ExpressionObject(action.type));
+	if (source_type.kind == TYPE_MEMBER_POINTER)
+	{
+		global->initializer_kind = Global::STRUCTURED_VALUE;
+		const std::size_t old_size = global->items.size();
+		if (AppendValue(action.type, action.initializer, &global->items))
+			return true;
+		global->items.resize(old_size);
+		return false;
+	}
 	if (types_.IsClassObject(action.type) &&
 		initializer.kind == DUMP_CONSTRUCTOR_ACTION)
 	{

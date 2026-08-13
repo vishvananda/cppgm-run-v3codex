@@ -52,6 +52,7 @@ struct DriverInvocation
   string target;
   vector<string> inputs;
   vector<string> include_paths;
+  vector<string> system_include_paths;
   vector<string> library_paths;
   vector<string> libraries;
   vector<string> predefined_macros;
@@ -318,6 +319,17 @@ DriverInvocation parse_driver_invocation(const vector<string> & args)
       else invocation.predefined_macros.push_back(args[i]);
       continue;
     }
+    if(args[i] == "-isystem") {
+      consume_required_option_argument(args, i, "-isystem", "path");
+      invocation.system_include_paths.push_back(args[i]);
+      continue;
+    }
+    if(starts_with(args[i], "-isystem") &&
+       args[i].size() > string("-isystem").size()) {
+      invocation.system_include_paths.push_back(
+          args[i].substr(string("-isystem").size()));
+      continue;
+    }
     if(starts_with(args[i], "-I") && args[i].size() > 2) {
       invocation.include_paths.push_back(args[i].substr(2));
       continue;
@@ -412,6 +424,7 @@ cppgm::PreprocessingOptions make_driver_preprocessing_options(
 {
   cppgm::PreprocessingOptions options = make_preprocessing_options();
   options.include_search_paths = invocation.include_paths;
+  options.system_include_search_paths = invocation.system_include_paths;
   options.predefined_macros = invocation.predefined_macros;
   return options;
 }

@@ -1044,6 +1044,8 @@ void emit_move(CodeBuffer & out, const mir_model::MirInstruction & instruction)
     emit_immediate_move(out, destination, static_cast<std::uint64_t>(source.imm));
   else if(source.kind == mir_model::MirOperand::OP_SYMBOL)
     emit_symbol_move(out, destination, source.text, source.address_binding);
+  else if(source.kind == mir_model::MirOperand::OP_GLOBAL)
+    emit_symbol_move(out, destination, source.text, source.address_binding);
   else throw std::logic_error("unsupported native move operand");
 }
 

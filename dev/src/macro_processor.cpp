@@ -1550,6 +1550,16 @@ private:
 			candidate += next;
 			if (GetFileIdentity(candidate, &identity)) selected = candidate;
 		}
+		for (std::size_t i = 0;
+			selected.empty() &&
+			i < options_.system_include_search_paths.size(); ++i)
+		{
+			std::string candidate = options_.system_include_search_paths[i];
+			if (!candidate.empty() && candidate[candidate.size() - 1] != '/')
+				candidate.push_back('/');
+			candidate += next;
+			if (GetFileIdentity(candidate, &identity)) selected = candidate;
+		}
 		if (selected.empty() && GetFileIdentity(next, &identity)) selected = next;
 		if (selected.empty())
 			throw std::runtime_error("included file not found: " + next);

@@ -47,6 +47,7 @@ struct PreprocessingOptions
 	std::string build_time;
 	std::string author;
 	std::vector<std::string> include_search_paths;
+	std::vector<std::string> system_include_search_paths;
 	std::vector<std::string> predefined_macros;
 };
 
