@@ -34,6 +34,16 @@ NodeId SemanticAnalyzer::FunctionDefinitionPart(
 	return function_try == kNoNode ? kNoNode : FindChild(function_try, tag);
 }
 
+std::uint32_t SemanticAnalyzer::BeginFunctionTryRegion(
+	std::uint32_t function, NodeId syntax, std::uint32_t* region)
+{
+	*region = kNoDumpEdge;
+	if (syntax == kNoNode) return function;
+	*region = MakeDump(DUMP_TRY_STATEMENT);
+	dump_.Add(function, *region);
+	return *region;
+}
+
 ExpressionInfo SemanticAnalyzer::AnalyzeStatementExpression(
 	NodeId node, ScopeId scope, TypeId target)
 {
@@ -77,10 +87,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeStatementExpression(
 }
 
 void SemanticAnalyzer::AnalyzeFunctionTryHandlers(NodeId node, ScopeId scope,
-	std::uint32_t output_parent, bool rethrows)
+	std::uint32_t output_parent, FunctionTryBodyKind body_kind)
 {
-	dump_.nodes[output_parent].function_try_block = true;
-	dump_.nodes[output_parent].function_try_rethrows = rethrows;
+	if (body_kind == FUNCTION_TRY_BODY_NONE)
+		throw std::logic_error("function try region has no body role");
+	dump_.nodes[output_parent].function_try_body = body_kind;
 	bool catches_all = false;
 	std::size_t handlers = 0;
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;

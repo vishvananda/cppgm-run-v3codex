@@ -192,6 +192,8 @@ LowIRLoweringStats::LowIRLoweringStats()
 	  cleanup_dispatch_probes(0), cleanup_dispatch_cache_hits(0),
 	  cleanup_dispatch_entries(0), conditional_lifetime_slots(0),
 	  conditional_lifetime_marks(0), branch_cleanup_actions(0),
+	  statement_scheduler_entries(0), statement_scheduler_nested_entries(0),
+	  statement_scheduler_tasks(0), statement_scheduler_peak_tasks(0),
 	  exception_selector_resets(0), exception_selector_table_growth(0),
 	  exception_selector_assignments(0),
 	  typed_storage_bytes(0), output_bytes(0), lowering_nanoseconds(0),

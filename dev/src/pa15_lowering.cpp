@@ -1889,19 +1889,6 @@ private:
 		statement_tasks_.push_back(task);
 	}
 
-	void LowerStatement(std::uint32_t node)
-	{
-		if (!statement_tasks_.empty())
-			throw std::logic_error("nested PA15 statement scheduler");
-		PushStatementNode(node);
-		while (!statement_tasks_.empty())
-		{
-			const StatementTask task = statement_tasks_.back();
-			statement_tasks_.pop_back();
-			RunStatementTask(task);
-		}
-	}
-
 	void RunStatementTask(const StatementTask& task)
 	{
 		if (task.kind == STATEMENT_NODE)
@@ -2067,9 +2054,11 @@ private:
 			const LowType type = LowerStorageType(record.type);
 			Instruction store(Instruction::STORE);
 			store.type = type;
-			store.first = IsReferenceType(record.type) ?
+			const Operand value = IsReferenceType(record.type) ?
 				AddressOfStorage(LowerStorage(children[0])) :
 				LowerInitializerConvertedValue(children[0], type);
+			if (CurrentBlock().terminated) return;
+			store.first = value;
 			store.second = retained_destination.kind == Operand::NONE ?
 				StorageFor(record.binding, type) : retained_destination;
 			Emit(store);

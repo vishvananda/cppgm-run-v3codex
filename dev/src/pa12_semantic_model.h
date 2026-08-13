@@ -105,6 +105,14 @@ enum DumpKind
 	DUMP_DESTRUCTOR_ACTION
 };
 
+enum FunctionTryBodyKind : std::uint8_t
+{
+	FUNCTION_TRY_BODY_NONE,
+	FUNCTION_TRY_BODY_ORDINARY,
+	FUNCTION_TRY_BODY_CONSTRUCTOR,
+	FUNCTION_TRY_BODY_DESTRUCTOR
+};
+
 const std::uint32_t kNoDumpEdge =
 	std::numeric_limits<std::uint32_t>::max();
 
@@ -188,8 +196,7 @@ struct DumpNode
 	bool reverse_pointer_compound_assignment;
 	bool dynamic_type_query;
 	bool dynamic_cast_reference;
-	bool function_try_block;
-	bool function_try_rethrows;
+	FunctionTryBodyKind function_try_body;
 
 	explicit DumpNode(DumpKind value)
 		: kind(value), type(kNoType), operand_type(kNoType),
@@ -246,7 +253,7 @@ struct DumpNode
 		  has_direct_base_offset(false), pseudo_destructor_call(false),
 		  reverse_pointer_compound_assignment(false),
 		  dynamic_type_query(false), dynamic_cast_reference(false),
-		  function_try_block(false), function_try_rethrows(false) {}
+		  function_try_body(FUNCTION_TRY_BODY_NONE) {}
 };
 
 struct DumpEdge

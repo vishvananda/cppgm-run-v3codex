@@ -4,8 +4,8 @@
 #include "pa15_lowir_model.h"
 #include "pa15_lowering_support.h"
 
+#include <algorithm>
 #include <stdexcept>
-#include <vector>
 
 namespace cppgm
 {
@@ -20,22 +20,58 @@ template <class Derived>
 class RegionLowering
 {
 protected:
+	void LowerStatement(std::uint32_t node)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const std::size_t boundary = derived.statement_tasks_.size();
+		if (derived.stats_)
+		{
+			++derived.stats_->statement_scheduler_entries;
+			derived.stats_->statement_scheduler_nested_entries += boundary != 0;
+		}
+		derived.PushStatementNode(node);
+		while (derived.statement_tasks_.size() > boundary)
+		{
+			if (derived.stats_)
+			{
+				++derived.stats_->statement_scheduler_tasks;
+				derived.stats_->statement_scheduler_peak_tasks = std::max(
+					derived.stats_->statement_scheduler_peak_tasks,
+					derived.statement_tasks_.size());
+			}
+			const typename Derived::StatementTask task =
+				derived.statement_tasks_.back();
+			derived.statement_tasks_.pop_back();
+			derived.RunStatementTask(task);
+		}
+		if (derived.statement_tasks_.size() != boundary)
+			throw std::logic_error(
+				"PA15 statement scheduler crossed its frame");
+	}
+
+	bool RegionStatementCanResume(const DumpNode& record) const
+	{
+		return record.kind == DUMP_CASE_STATEMENT ||
+			record.kind == DUMP_DEFAULT_STATEMENT ||
+			record.kind == DUMP_LABELED_STATEMENT;
+	}
+
 	void LowerRegionStatement(std::uint32_t node)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		std::vector<typename Derived::StatementTask> outer;
-		outer.swap(derived.statement_tasks_);
 		derived.LowerStatement(node);
-		outer.swap(derived.statement_tasks_);
 	}
 
 	void LowerRegionConstructorBody(std::uint32_t node)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		std::vector<typename Derived::StatementTask> outer;
-		outer.swap(derived.statement_tasks_);
 		derived.LowerConstructorBody(node);
-		outer.swap(derived.statement_tasks_);
+	}
+
+	void LowerRegionDestructorBody(std::uint32_t node)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		derived.LowerDestructorBody(node);
 	}
 
 	Operand LowerStatementExpressionValue(std::uint32_t,
@@ -49,14 +85,17 @@ protected:
 			const DumpNode& child = derived.arena_.nodes[children[i]];
 			if (child.kind == DUMP_STATEMENT_EXPRESSION_RESULT)
 			{
+				found = true;
+				if (derived.CurrentBlock().terminated) continue;
 				const NodeChildren result = derived.Children(children[i]);
 				if (result.size() != 1)
 					throw std::logic_error(
 						"statement expression has invalid result");
 				value = derived.LowerValue(result[0]);
-				found = true;
 			}
-			else LowerRegionStatement(children[i]);
+			else if (!derived.CurrentBlock().terminated ||
+				RegionStatementCanResume(child))
+				LowerRegionStatement(children[i]);
 		}
 		if (!found && value.type.kind != LOW_VOID)
 			throw std::logic_error("non-void statement expression has no result");
@@ -74,14 +113,17 @@ protected:
 			const DumpNode& child = derived.arena_.nodes[children[i]];
 			if (child.kind == DUMP_STATEMENT_EXPRESSION_RESULT)
 			{
+				found = true;
+				if (derived.CurrentBlock().terminated) continue;
 				const NodeChildren result = derived.Children(children[i]);
 				if (result.size() != 1)
 					throw std::logic_error(
 						"statement expression has invalid class result");
 				derived.LowerClassDestination(result[0], destination);
-				found = true;
 			}
-			else LowerRegionStatement(children[i]);
+			else if (!derived.CurrentBlock().terminated ||
+				RegionStatementCanResume(child))
+				LowerRegionStatement(children[i]);
 		}
 		if (!found)
 			throw std::logic_error("class statement expression has no result");

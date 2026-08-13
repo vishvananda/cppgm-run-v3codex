@@ -324,7 +324,8 @@ private:
 				}
 			}
 			else if (record.kind == DUMP_TRY_STATEMENT &&
-				record.function_try_rethrows)
+				(record.function_try_body == FUNCTION_TRY_BODY_CONSTRUCTOR ||
+				 record.function_try_body == FUNCTION_TRY_BODY_DESTRUCTOR))
 			{
 				state_.need_exceptions = true;
 				state_.need_rethrow = true;

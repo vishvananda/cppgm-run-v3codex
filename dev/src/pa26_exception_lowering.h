@@ -434,9 +434,12 @@ protected:
 		after.second = entry;
 		after.third = end;
 		derived.statement_tasks_.push_back(after);
-		if (derived.arena_.nodes[node].function_try_block &&
-			derived.arena_.nodes[children[0]].unwind_only)
+		if (derived.arena_.nodes[node].function_try_body ==
+			FUNCTION_TRY_BODY_CONSTRUCTOR)
 			derived.LowerRegionConstructorBody(children[0]);
+		else if (derived.arena_.nodes[node].function_try_body ==
+			FUNCTION_TRY_BODY_DESTRUCTOR)
+			derived.LowerRegionDestructorBody(children[0]);
 		else derived.PushStatementNode(children[0]);
 	}
 
@@ -618,7 +621,10 @@ protected:
 		if (!derived.CurrentBlock().terminated)
 		{
 			DestroyUnnamedCatch(handler_node);
-			if (derived.arena_.nodes[try_node].function_try_rethrows)
+			if (derived.arena_.nodes[try_node].function_try_body ==
+					FUNCTION_TRY_BODY_CONSTRUCTOR ||
+				derived.arena_.nodes[try_node].function_try_body ==
+					FUNCTION_TRY_BODY_DESTRUCTOR)
 			{
 				(void)EmitExceptionRuntimeCall(
 					derived.polymorphism_.eh_rethrow_symbol, LowVoid(), none);

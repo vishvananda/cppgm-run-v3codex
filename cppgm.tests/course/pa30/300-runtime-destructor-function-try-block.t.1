@@ -1,0 +1,30 @@
+int handler_value;
+int outer_value;
+
+struct guarded
+{
+  ~guarded() noexcept(false);
+};
+
+guarded::~guarded()
+try
+{
+  throw 7;
+}
+catch (int value)
+{
+  handler_value = value;
+}
+
+int main()
+{
+  try
+  {
+    guarded value;
+  }
+  catch (int value)
+  {
+    outer_value = value;
+  }
+  return handler_value == 7 && outer_value == 7 ? 0 : 1;
+}

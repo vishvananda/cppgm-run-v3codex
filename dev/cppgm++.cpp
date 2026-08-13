@@ -1154,9 +1154,17 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << stats.conditional_lifetime_slots
 			 << " conditional_lifetime_marks="
 			 << stats.conditional_lifetime_marks
-			 << " branch_cleanup_actions="
-			 << stats.branch_cleanup_actions
-			 << " exception_selector_resets="
+				<< " branch_cleanup_actions="
+				<< stats.branch_cleanup_actions
+				<< " statement_scheduler_entries="
+				<< stats.statement_scheduler_entries
+				<< " statement_scheduler_nested_entries="
+				<< stats.statement_scheduler_nested_entries
+				<< " statement_scheduler_tasks="
+				<< stats.statement_scheduler_tasks
+				<< " statement_scheduler_peak_tasks="
+				<< stats.statement_scheduler_peak_tasks
+				<< " exception_selector_resets="
 			 << stats.exception_selector_resets
 			 << " exception_selector_table_growth="
 			 << stats.exception_selector_table_growth

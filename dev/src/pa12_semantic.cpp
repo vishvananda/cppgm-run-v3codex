@@ -2385,7 +2385,9 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 			dump_.Add(output_node, region);
 			AnalyzeCompound(body, function_scope, region);
 			AnalyzeFunctionTryHandlers(function.function_try_block,
-				function_scope, region, function.constructor || function.destructor);
+				function_scope, region, function.constructor ?
+					FUNCTION_TRY_BODY_CONSTRUCTOR : function.destructor ?
+					FUNCTION_TRY_BODY_DESTRUCTOR : FUNCTION_TRY_BODY_ORDINARY);
 		}
 		else AnalyzeCompound(body, function_scope, output_node);
 		CompletePlaceholderFunctionReturn(binding);

@@ -268,6 +268,7 @@ protected:
 					!preserve_unsigned_conversion);
 			}
 		}
+		if (derived.CurrentBlock().terminated) return;
 		if (managed_full_expression)
 			derived.CompleteFullExpressionCleanup();
 		const std::size_t closed_exception_handlers =

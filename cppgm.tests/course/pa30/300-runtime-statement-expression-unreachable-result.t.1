@@ -1,0 +1,27 @@
+int after_expression;
+
+int finish()
+{
+  int unreachable = 9;
+  int value = ({
+    return 4;
+    unreachable;
+  });
+  after_expression = value;
+  return 1;
+}
+
+int finish_from_return()
+{
+  int unreachable = 11;
+  return ({
+    return 5;
+    unreachable;
+  });
+}
+
+int main()
+{
+  return finish() == 4 && finish_from_return() == 5 &&
+    after_expression == 0 ? 0 : 1;
+}

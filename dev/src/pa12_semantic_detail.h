@@ -842,6 +842,8 @@ private:
 	ExpressionInfo AnalyzeStatementExpression(
 		NodeId node, ScopeId scope, TypeId target);
 	NodeId FunctionDefinitionPart(NodeId node, const char* tag) const;
+	std::uint32_t BeginFunctionTryRegion(std::uint32_t function,
+		NodeId syntax, std::uint32_t* region);
 	ExpressionInfo AnalyzeLambdaExpression(NodeId node, ScopeId scope,
 		TypeId target);
 	void InstallLambdaCaptureBindings(ScopeId scope, BindingId this_binding,
@@ -1076,7 +1078,7 @@ private:
 	void AnalyzeExceptionHandler(NodeId node, ScopeId scope,
 		std::uint32_t output_parent);
 	void AnalyzeFunctionTryHandlers(NodeId node, ScopeId scope,
-		std::uint32_t output_parent, bool rethrows);
+		std::uint32_t output_parent, FunctionTryBodyKind body_kind);
 	bool TryAnalyzeTypeidComparison(const std::string& operation,
 		const std::string& display_operation, NodeId left_syntax,
 		NodeId right_syntax, const ExpressionInfo& left,

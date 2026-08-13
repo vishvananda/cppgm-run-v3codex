@@ -57,6 +57,10 @@ struct LowIRLoweringStats
 	std::size_t conditional_lifetime_slots;
 	std::size_t conditional_lifetime_marks;
 	std::size_t branch_cleanup_actions;
+	std::size_t statement_scheduler_entries;
+	std::size_t statement_scheduler_nested_entries;
+	std::size_t statement_scheduler_tasks;
+	std::size_t statement_scheduler_peak_tasks;
 	std::size_t exception_selector_resets;
 	std::size_t exception_selector_table_growth;
 	std::size_t exception_selector_assignments;

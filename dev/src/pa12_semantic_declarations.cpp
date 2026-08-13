@@ -2913,14 +2913,9 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 			program_->bindings[info.binding].canonical;
 		if (info.constructor)
 		{
-			std::uint32_t constructor_parent = function;
-			std::uint32_t function_try = kNoDumpEdge;
-			if (info.function_try_block != kNoNode)
-			{
-				function_try = MakeDump(DUMP_TRY_STATEMENT);
-				dump_.Add(function, function_try);
-				constructor_parent = function_try;
-			}
+			std::uint32_t function_try;
+			const std::uint32_t constructor_parent = BeginFunctionTryRegion(
+				function, info.function_try_block, &function_try);
 			const std::uint32_t constructor_body =
 				MakeDump(DUMP_COMPOUND_STATEMENT);
 			dump_.Add(constructor_parent, constructor_body);
@@ -2941,9 +2936,9 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 			DemandExplicitConstructorUnwindDestructors(constructor_body);
 			if (function_try != kNoDumpEdge)
 			{
-				dump_.nodes[constructor_body].unwind_only = true;
 				AnalyzeFunctionTryHandlers(info.function_try_block,
-					function_scope, function_try, true);
+					function_scope, function_try,
+					FUNCTION_TRY_BODY_CONSTRUCTOR);
 			}
 		}
 		else if ((info.special_member == SPECIAL_MEMBER_COPY_ASSIGNMENT ||
@@ -2958,9 +2953,12 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 		}
 		else if (info.destructor)
 		{
+			std::uint32_t function_try;
+			const std::uint32_t destructor_parent = BeginFunctionTryRegion(
+				function, info.function_try_block, &function_try);
 			const std::uint32_t destructor_body =
 				MakeDump(DUMP_COMPOUND_STATEMENT);
-			dump_.Add(function, destructor_body);
+			dump_.Add(destructor_parent, destructor_body);
 			const EntityId entity =
 				program_->bindings[info.binding].member_owner;
 			if (entity != kNoEntity &&
@@ -2974,6 +2972,10 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 			AddDestructorSubobjectActions(
 				program_->bindings[info.binding].member_owner,
 				info.binding, destructor_body);
+			if (function_try != kNoDumpEdge)
+				AnalyzeFunctionTryHandlers(info.function_try_block,
+					function_scope, function_try,
+					FUNCTION_TRY_BODY_DESTRUCTOR);
 		}
 		else if (info.definition_body != kNoNode)
 			AnalyzeCompound(info.definition_body, function_scope, function);
