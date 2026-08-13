@@ -287,9 +287,17 @@ void SemanticAnalyzer::ConfigureAssignmentSpecialMember(BindingId binding,
 	binding = program_->bindings[binding].canonical;
 	RegisterClassSpecialMember(binding);
 	FunctionInfo& function = GetMutableFunction(binding);
-	if (!IsAssignmentSpecialMember(function.special_member)) return;
 	const NodeId special = initializer == kNoNode ? kNoNode :
 		FindChild(initializer, "special-initializer");
+	if (!IsAssignmentSpecialMember(function.special_member))
+	{
+		if (special != kNoNode && arena_->Payload(special) == "delete")
+		{
+			function.deleted_function = true;
+			function.defined = true;
+		}
+		return;
+	}
 	if (special == kNoNode) return;
 	const std::string spelling = arena_->Payload(special);
 	const bool defaulted = spelling == "default";

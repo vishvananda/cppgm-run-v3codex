@@ -898,6 +898,13 @@ private:
 	bool BuiltinDefaultConstructionIsNonthrowing(EntityId entity);
 	bool BuiltinConstructionIsTrivial(TypeId target, BindingId selected,
 		const std::vector<CallConversionFact>& argument_conversions) const;
+	bool EvaluateBuiltinAssignability(TypeId target, TypeId source,
+		ScopeId scope, BindingId* selected,
+		std::vector<CallConversionFact>* argument_conversions);
+	bool BuiltinAssignmentIsNonthrowing(BindingId selected,
+		const std::vector<CallConversionFact>& argument_conversions);
+	bool BuiltinAssignmentIsTrivial(BindingId selected,
+		const std::vector<CallConversionFact>& argument_conversions) const;
 	bool EvaluateBuiltinTriviallyCopyable(TypeId type) const;
 	bool EvaluateBuiltinNothrowCopy(TypeId type);
 	ExpressionInfo AnalyzeStatementExpression(
@@ -1119,7 +1126,8 @@ private:
 		const std::vector<BindingId>& candidates,
 		const ExpressionInfo& object, bool* selected_member,
 		ObjectConversionFact* object_conversion,
-		std::vector<CallConversionFact>* argument_conversions);
+		std::vector<CallConversionFact>* argument_conversions,
+		bool quiet = false);
 	ExpressionInfo MakeImplicitObjectPointer(const ExpressionInfo& object);
 	void BeginAssociatedLookup();
 	void AddAssociatedType(TypeId type);

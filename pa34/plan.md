@@ -13,27 +13,26 @@ and no host-compiler fallback.
 ## Current Failure Map
 
 - Preprocess is complete: 45/45.
-- Compile has 70/281 failures: 16 extension grammar/type cases, 18
-  trait/layout/constant cases, and 36 template lookup/demand cases.
+- Compile has 56/281 failures: 16 extension grammar/type cases, 13
+  trait/layout/constant cases, and 27 template lookup/demand cases.
 - Run has 19/41 failures: 16 stop in the compile pipeline and 3 reach linked
   backend/lifetime or forced-inline behavior.
-- PA34 is 278/367 overall; PA1-PA33 remain 4387/4387.
+- PA34 is 292/367 overall; PA1-PA33 remain 4387/4387.
 
 ## Active Checkpoint
 
-Next, implement trait operand-pack replay and assignment-expression queries, bundling
-the remaining pack-wrapped constructibility cases with deleted, ref-qualified,
-templated, trivial, and nothrow assignment cases. Under `spec.md` §§2, 4-7, and 9,
-template substitution owns expansion of each retained builtin operand pack into
-canonical `TypeId`s; PA34 trait semantics then creates hypothetical lhs/rhs expressions
-and delegates to member/builtin operator selection and completed special-member facts.
-The constexpr result remains the only lowering input, with no spelling recovery.
+Next, implement retained variable-template constant replay and the remaining hosted
+unary/shorthand trait facts. Under `spec.md` §§2, 4-7, and 9, variable-template demand
+must replay retained constant syntax exactly once in its specialization scope; canonical
+trait operands then flow through class completion into abstract/polymorphic/destructor,
+literal/layout, rank, and nothrow facts before publishing the specialization-owned
+constant. Lookup and demand own specialization identity; lowering receives only the
+resolved constant.
 
-Expected work is O(expanded operands + reachable assignment candidates), with
-O(1)-average canonical/cache access and one expansion per specialization. Validate
-empty/single/many packs, SFINAE replay, deleted and object-category overloads,
-member-template assignment, trivial/nothrow facts, 1/8/64 repeated queries, then the
-PA34, through-PA33, and file-audit gates.
+Expected work is O(unique specialization + trait operands), with O(1)-average retained
+recipe/cache access and demand-once replay. Validate dependent variable templates,
+virtual-destructor/abstract/polymorphic/literal/rank traits, nothrow shorthands, SFINAE,
+1/8/64 specialization demand, then the PA34, through-PA33, and file-audit gates.
 
 ## Performance Evidence
 
@@ -47,6 +46,7 @@ PA34, through-PA33, and file-audit gates.
 | Numeric scalars | 1/8/64 emitted 9/65/513 LowIR and 15/85/645 MIR; 64 cases took 0.02 s, 10,472 KiB RSS |
 | GNU complex | 1/8/64 repeated compiles took 0.00/0.05/0.40 s with 8,328/8,552/8,568 KiB RSS; pair construction is two fixed stores |
 | Construction/conversion traits | 1/8/64 unique template query sets compiled in 0.00/0.00/0.01 s with 8,088/8,212/9,644 KiB RSS |
+| Trait packs and assignment | 1/8/64 unique expanded-pack/operator query sets compiled in 0.00/0.00/0.02 s with 8,180/8,540/10,680 KiB RSS |
 
 ## Completed Checkpoints
 
@@ -67,3 +67,4 @@ PA34, through-PA33, and file-audit gates.
 | Hosted numeric scalars | Canonical `_BitInt`/extended floats, traits, ABI; +6 | PA34 256/367; linked/scaling/prior/audit pass |
 | GNU complex scalars | Canonical pair type, components/builtin, `C<element>` ABI, by-address object boundary; +2 | focused 2/2; linked/invalid/traits/mangling/scaling; PA34 258/367; PA1-33 4387/4387; audit pass |
 | Construction/conversion traits | `declval` categories, direct constructor/implicit conversion selection, nothrow/trivial special-member facts; +20 | focused 10/10; PA34 278/367; scaling; PA1-33 4387/4387; audit pass |
+| Trait packs and assignment | Ordered operand expansion plus member-template/ref-qualified assignment selection and callable facts; +14 | focused 18/18; PA34 292/367; scaling; PA1-33 4387/4387; audit pass |

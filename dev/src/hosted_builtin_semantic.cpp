@@ -231,12 +231,38 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinTypeTrait(
 		const NodeId holder = arena_->EdgeChild(edge);
 		if (!arena_->IsTag(holder, "builtin-type-operand")) continue;
 		const NodeId type_id = FindChild(holder, "type-id");
+		NodeId declarator = FindChild(type_id, "abstract-declarator");
+		if (declarator == kNoNode)
+			declarator = FindChild(type_id, "declarator");
+		const bool expansion =
+			FindChild(holder, "type-pack-expansion") != kNoNode ||
+			(declarator != kNoNode &&
+			 FindChild(declarator, "parameter-pack") != kNoNode);
+		if (expansion)
+		{
+			std::vector<ScopeId> element_scopes;
+			if (ExpandPackElementScopes(type_id, scope, &element_scopes))
+			{
+				for (std::size_t i = 0; i < element_scopes.size(); ++i)
+				{
+					const TypeId element =
+						BuildTypeId(type_id, element_scopes[i]);
+					if (CandidateSubstitutionFailed() || element == kNoType)
+						return ExpressionInfo();
+					operands.push_back(element);
+					dependent = dependent ||
+						FunctionTemplateTypeIsDependent(element);
+				}
+				continue;
+			}
+			if (CandidateSubstitutionFailed()) return ExpressionInfo();
+		}
 		const TypeId type = BuildTypeId(type_id, scope);
 		if (CandidateSubstitutionFailed() || type == kNoType)
 			return ExpressionInfo();
 		operands.push_back(type);
 		dependent = dependent || FunctionTemplateTypeIsDependent(type) ||
-			FindChild(holder, "type-pack-expansion") != kNoNode;
+			expansion;
 	}
 	if (operands.empty())
 		throw std::runtime_error("builtin type trait has no operands");
@@ -358,11 +384,15 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinTypeTrait(
 			trait == TYPE_TRAIT_IS_NOTHROW_ASSIGNABLE ||
 			trait == TYPE_TRAIT_IS_TRIVIALLY_ASSIGNABLE) && operands.size() == 2)
 		{
-			const TypeRecord target = program_->types.Get(operands[0]);
-			value = target.kind == TYPE_LVALUE_REFERENCE &&
-				!IsConst(target.child) && Conversion(operands[1],
-					MakeBuiltinTraitOperand(operands[1]).category, false,
-					target.child) != CONVERSION_INVALID;
+			BindingId selected = kNoBinding;
+			std::vector<CallConversionFact> conversions;
+			value = EvaluateBuiltinAssignability(
+				operands[0], operands[1], scope, &selected, &conversions);
+			if (value && trait == TYPE_TRAIT_IS_NOTHROW_ASSIGNABLE)
+				value = BuiltinAssignmentIsNonthrowing(
+					selected, conversions);
+			else if (value && trait == TYPE_TRAIT_IS_TRIVIALLY_ASSIGNABLE)
+				value = BuiltinAssignmentIsTrivial(selected, conversions);
 		}
 		else if (trait == TYPE_TRAIT_IS_CONVERTIBLE && operands.size() == 2)
 			value = EvaluateBuiltinConvertibility(operands[0], operands[1]);

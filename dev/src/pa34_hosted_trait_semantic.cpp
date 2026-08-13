@@ -259,6 +259,119 @@ bool SemanticAnalyzer::BuiltinConstructionIsTrivial(TypeId target,
 		program_->entities[entity].trivial_default_constructor;
 }
 
+bool SemanticAnalyzer::EvaluateBuiltinAssignability(TypeId target,
+	TypeId source_type, ScopeId scope, BindingId* selected,
+	std::vector<CallConversionFact>* argument_conversions)
+{
+	*selected = kNoBinding;
+	argument_conversions->clear();
+	ExpressionInfo left = MakeBuiltinTraitOperand(target);
+	ExpressionInfo right = MakeBuiltinTraitOperand(source_type);
+	const EntityId entity = EntityOf(left.type);
+	if (entity != kNoEntity && IsClassEntity(program_->entities[entity]))
+	{
+		EnsureClassDefinition(left.type);
+		const NameId name = program_->names.Intern("operator=");
+		BeginCandidateCollection();
+		std::vector<BindingId> candidates;
+		EntityId naming_class = kNoEntity;
+		const LookupResult member = program_->LookupMember(
+			entity, name, LOOKUP_ORDINARY);
+		if (member.ordinary != kNoBinding &&
+			program_->bindings[member.ordinary].kind == BIND_FUNCTION)
+		{
+			naming_class = member.naming_class;
+			const std::vector<BindingId> functions =
+				FunctionSet(member.ordinary);
+			for (std::size_t i = 0; i < functions.size(); ++i)
+				if (GetFunction(functions[i]).member_owner != kNoType)
+					AddCandidate(functions[i], &candidates);
+		}
+		const LookupResult templates = program_->LookupMember(
+			entity, name, LOOKUP_FUNCTION_TEMPLATE);
+		std::vector<std::size_t> patterns;
+		for (std::size_t owner = 0;
+			owner < templates.FunctionTemplateOwnerCount(); ++owner)
+		{
+			const ScopeId template_owner =
+				templates.FunctionTemplateOwnerAt(owner);
+			const std::uint64_t key =
+				(static_cast<std::uint64_t>(template_owner) << 32) | name;
+			const CompactIndexSequence* indexed =
+				template_function_sets_.Find(key);
+			if (!indexed) continue;
+			for (std::size_t i = 0; i < indexed->Size(); ++i)
+				patterns.push_back((*indexed)[i]);
+		}
+		if (!patterns.empty())
+		{
+			associated_declaration_visits_ += patterns.size();
+			const std::vector<ExpressionInfo> arguments(1, right);
+			std::vector<BindingId> specializations;
+			DeduceFunctionTemplatePatterns(
+				patterns, arguments, &specializations);
+			for (std::size_t i = 0; i < specializations.size(); ++i)
+				if (GetFunction(specializations[i]).member_owner != kNoType)
+					AddCandidate(specializations[i], &candidates);
+			if (naming_class == kNoEntity)
+				naming_class = templates.naming_class;
+		}
+		if (candidates.empty()) return false;
+		ExpressionInfo object;
+		object.type = program_->types.Pointer(EffectiveType(left.type));
+		object.category = left.category;
+		std::vector<NodeId> syntax(2, kNoNode);
+		std::vector<ExpressionInfo> operands;
+		operands.push_back(left);
+		operands.push_back(right);
+		bool selected_member = false;
+		ObjectConversionFact object_conversion;
+		*selected = SelectOperatorOverload(scope, syntax, operands,
+			candidates, object, &selected_member, &object_conversion,
+			argument_conversions, true);
+		if (*selected == kNoBinding || !selected_member) return false;
+		const FunctionInfo& function = GetFunction(*selected);
+		if (function.deleted_function || function.deleted_special_member ||
+			!CanAccessMember(*selected, naming_class, entity)) return false;
+		for (std::size_t i = 0; i < argument_conversions->size(); ++i)
+			if (!BuiltinConversionIsUsable((*argument_conversions)[i]))
+				return false;
+		return true;
+	}
+
+	if (!IsModifiableLvalue(left)) return false;
+	const TypeRecord shape = program_->types.Get(
+		program_->types.RemoveTopCv(EffectiveType(left.type)));
+	if (shape.kind == TYPE_ARRAY) return false;
+	const CallConversionFact conversion = CallConversion(
+		right, EffectiveType(left.type), 0, 0);
+	if (!BuiltinConversionIsUsable(conversion)) return false;
+	argument_conversions->push_back(conversion);
+	return true;
+}
+
+bool SemanticAnalyzer::BuiltinAssignmentIsNonthrowing(BindingId selected,
+	const std::vector<CallConversionFact>& argument_conversions)
+{
+	if (selected != kNoBinding && !FunctionIsNonthrowing(selected)) return false;
+	for (std::size_t i = 0; i < argument_conversions.size(); ++i)
+		if (!BuiltinConversionIsNonthrowing(argument_conversions[i])) return false;
+	return true;
+}
+
+bool SemanticAnalyzer::BuiltinAssignmentIsTrivial(BindingId selected,
+	const std::vector<CallConversionFact>& argument_conversions) const
+{
+	for (std::size_t i = 0; i < argument_conversions.size(); ++i)
+		if (argument_conversions[i].rank == CONVERSION_USER_DEFINED)
+			return false;
+	if (selected == kNoBinding) return true;
+	const FunctionInfo& function = GetFunction(selected);
+	return (function.special_member == SPECIAL_MEMBER_COPY_ASSIGNMENT ||
+		function.special_member == SPECIAL_MEMBER_MOVE_ASSIGNMENT) &&
+		function.trivial_special_member;
+}
+
 bool SemanticAnalyzer::EvaluateBuiltinTriviallyCopyable(TypeId type) const
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));

@@ -1565,7 +1565,7 @@ BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
 	const std::vector<BindingId>& candidates,
 	const ExpressionInfo& object, bool* selected_member,
 	ObjectConversionFact* object_conversion,
-	std::vector<CallConversionFact>* argument_conversions)
+	std::vector<CallConversionFact>* argument_conversions, bool quiet)
 {
 	const std::size_t arity = operands.size();
 	if (arity != 0 && candidates.size() >
@@ -1745,7 +1745,10 @@ BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
 	if (viable_count == 0) return kNoBinding;
 	for (std::size_t other = 0; other < candidates.size(); ++other)
 		if (other != champion && viable[other] && !better(champion, other))
+		{
+			if (quiet) return kNoBinding;
 			throw std::runtime_error("ambiguous overloaded operator");
+		}
 	*selected_member = GetFunction(candidates[champion]).member_owner != kNoType;
 	if (*selected_member && object_conversion)
 	{
