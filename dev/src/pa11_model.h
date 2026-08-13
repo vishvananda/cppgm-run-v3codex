@@ -564,6 +564,7 @@ struct BindingRecord
 	NamedFlavor display_flavor;
 	NameId display_type_name;
 	BindingId canonical;
+	BindingId lifecycle_base_entry;
 	std::int64_t value;
 	OperatorKind operator_kind;
 	BuiltinFunctionKind builtin_function;

@@ -145,13 +145,21 @@ BindingId SemanticAnalyzer::EnsureConstructorBaseEntry(BindingId constructor)
 {
 	constructor = program_->bindings[constructor].canonical;
 	if (program_->bindings[constructor].constructor_base_entry)
+	{
+		program_->bindings[constructor].lifecycle_base_entry = constructor;
 		return constructor;
+	}
 	if (constructor_base_entry_by_binding_.size() <= constructor)
 		constructor_base_entry_by_binding_.resize(
 			static_cast<std::size_t>(constructor) + 1, kNoBinding);
 	if (constructor_base_entry_by_binding_[constructor] != kNoBinding &&
 		constructor_base_entry_by_binding_[constructor] != constructor)
-		return constructor_base_entry_by_binding_[constructor];
+	{
+		const BindingId base_entry =
+			constructor_base_entry_by_binding_[constructor];
+		program_->bindings[constructor].lifecycle_base_entry = base_entry;
+		return base_entry;
+	}
 	const BindingRecord source_binding = program_->bindings[constructor];
 	const FunctionInfo source_info = GetFunction(constructor);
 	if (!source_binding.constructor || !source_info.constructor)
@@ -165,16 +173,29 @@ BindingId SemanticAnalyzer::EnsureConstructorBaseEntry(BindingId constructor)
 	BindingRecord& binding = program_->bindings[base_entry];
 	binding.member_owner = source_binding.member_owner;
 	binding.access_owner = source_binding.access_owner;
+	binding.qualified_name = source_binding.qualified_name;
 	binding.overload_ordinal = source_binding.overload_ordinal;
+	binding.template_argument_list = source_binding.template_argument_list;
+	binding.template_argument_begin = source_binding.template_argument_begin;
+	binding.template_argument_count = source_binding.template_argument_count;
+	binding.function_template_abi_recipe =
+		source_binding.function_template_abi_recipe;
 	binding.language_linkage = source_binding.language_linkage;
 	binding.storage_class = source_binding.storage_class;
 	binding.access = source_binding.access;
 	binding.nonthrowing = source_binding.nonthrowing;
+	binding.unnamed_namespace_linkage =
+		source_binding.unnamed_namespace_linkage;
 	binding.inline_function = source_binding.inline_function;
 	binding.weak_odr = source_binding.weak_odr;
+	binding.weak_symbol = source_binding.weak_symbol;
+	binding.object_output_root = source_binding.object_output_root;
+	binding.explicit_instantiation_suppressed =
+		source_binding.explicit_instantiation_suppressed;
 	binding.static_member_function = source_binding.static_member_function;
 	binding.constructor = true;
 	binding.constructor_base_entry = true;
+	binding.lifecycle_base_entry = base_entry;
 
 	FunctionInfo info = source_info;
 	info.binding = base_entry;
@@ -189,6 +210,7 @@ BindingId SemanticAnalyzer::EnsureConstructorBaseEntry(BindingId constructor)
 		static_cast<std::uint32_t>(functions_.size());
 	functions_.push_back(info);
 	constructor_base_entry_by_binding_[constructor] = base_entry;
+	program_->bindings[constructor].lifecycle_base_entry = base_entry;
 	return base_entry;
 }
 
@@ -1313,6 +1335,7 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 				constructor_base_entry_by_binding_.resize(
 					static_cast<std::size_t>(special) + 1, kNoBinding);
 			constructor_base_entry_by_binding_[special] = special;
+			program_->bindings[special].lifecycle_base_entry = special;
 		}
 		else (void)EnsureConstructorBaseEntry(special);
 	}

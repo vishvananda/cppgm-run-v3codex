@@ -28,6 +28,12 @@ bool result_is_immediate_return(const lowir_model::LowirBlock & block,
 bool result_is_immediate_unary_not_branch(
     const lowir_model::LowirBlock & block, std::size_t instruction_index,
     const std::string & destination, const analysis::FunctionFacts & facts);
+bool result_is_immediately_stored(
+    const lowir_model::LowirBlock & block, std::size_t instruction_index,
+    const std::string & destination, const analysis::FunctionFacts & facts);
+bool result_is_immediate_store_address_with_later_use(
+    const lowir_model::LowirBlock & block, std::size_t instruction_index,
+    const std::string & destination, const analysis::FunctionFacts & facts);
 
 }  // namespace selection
 }  // namespace lowir_native

@@ -2949,19 +2949,18 @@ void SemanticAnalyzer::AnalyzeExplicitInstantiation(NodeId node,
 	if (entity == kNoEntity || !program_->entities[entity].complete)
 		throw std::runtime_error(
 			"explicit class instantiation target is incomplete");
-	const BindingId specialization =
-		program_->entities[entity].declaration;
+	const BindingId specialization = program_->entities[entity].declaration;
 	if (class_template_explicit_instantiation_states_.size() <= specialization)
 		class_template_explicit_instantiation_states_.resize(
 			static_cast<std::size_t>(specialization) + 1, 0);
-	std::uint8_t& state =
-		class_template_explicit_instantiation_states_[specialization];
+	std::uint8_t& state = class_template_explicit_instantiation_states_[specialization];
 	if (!definition)
 	{
 		if ((state & 2) != 0)
 			throw std::runtime_error(
 				"explicit instantiation declaration follows its definition");
 		state |= 1;
+		SetClassExplicitInstantiationSuppression(entity, true);
 		return;
 	}
 	if ((state & 2) != 0)
@@ -2969,6 +2968,7 @@ void SemanticAnalyzer::AnalyzeExplicitInstantiation(NodeId node,
 			"duplicate explicit class instantiation definition");
 	const bool object_output_root = (state & 1) == 0;
 	state |= 2;
+	SetClassExplicitInstantiationSuppression(entity, false);
 	const auto demand_member = [this, object_output_root](BindingId binding) {
 		if (binding == kNoBinding) return;
 		binding = program_->bindings[binding].canonical;

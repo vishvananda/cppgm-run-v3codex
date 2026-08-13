@@ -286,20 +286,17 @@ private:
 		const BindingRecord& canonical_binding = program_.bindings[binding.canonical];
 		const bool class_template_member = binding.member_owner != kNoEntity &&
 			program_.entities[binding.member_owner].template_argument_count;
-		const bool primary_template_member = class_template_member &&
-			!program_.entities[binding.member_owner].explicit_template_specialization;
-		const bool weak_linkage = canonical_binding.weak_symbol || (!binding.explicit_instantiation_suppressed &&
-			(binding.weak_odr ||
-			 primary_template_member ||
-			(kind == Symbol::FUNCTION_SYMBOL &&
-			 binding.template_argument_count != 0)));
+		const bool weak_linkage = pa15_lowering_abi::HasWeakLinkage(
+			program_, node.binding, kind == Symbol::FUNCTION_SYMBOL);
 		const bool local_member = pa18_lowering_detail::IsFunctionLocalEntity(
 			program_, binding.member_owner);
 		const bool prefer_local =
 			pa18_lowering_detail::PreferLocalObjectBinding(
 				program_, binding.member_owner);
-		const bool internal = binding.storage_class == STORAGE_CLASS_STATIC &&
-			 binding.member_owner == kNoEntity;
+		const bool internal = binding.unnamed_namespace_linkage ||
+			canonical_binding.unnamed_namespace_linkage ||
+			(binding.storage_class == STORAGE_CLASS_STATIC &&
+			 binding.member_owner == kNoEntity);
 		const bool c_linkage = binding.language_linkage == LANGUAGE_LINKAGE_C;
 		SymbolIdentity identity;
 		identity.kind = kind;
@@ -332,7 +329,8 @@ private:
 				symbol.object_name != object_name)
 				throw std::logic_error("conflicting PA15 ABI object identity");
 			symbol.nonthrowing = symbol.nonthrowing || binding.nonthrowing;
-			symbol.weak_linkage |= weak_linkage && !prefer_local;
+			symbol.weak_linkage |=
+				weak_linkage && !prefer_local && !symbol.internal_linkage;
 			symbol.prefer_local_object_binding |= prefer_local;
 			if (symbol.section_name.empty() &&
 				canonical_binding.object_section_name != 0)
@@ -357,7 +355,8 @@ private:
 		pa15_lowering_abi::ApplyNativeRuntimeSymbolMetadata(
 			&output_.symbols.back());
 		output_.symbols.back().source_type = source_type;
-		output_.symbols.back().weak_linkage = weak_linkage && !prefer_local;
+		output_.symbols.back().weak_linkage =
+			weak_linkage && !prefer_local && !internal;
 		output_.symbols.back().prefer_local_object_binding = prefer_local;
 		if (canonical_binding.object_section_name != 0)
 			output_.symbols.back().section_name = program_.names.Get(canonical_binding.object_section_name);
@@ -426,10 +425,8 @@ private:
 				global_symbols_[record.binding] = global_symbols_[canonical];
 				output_.symbols[global_symbols_[canonical]].thread_local_storage =
 					program_.bindings[record.binding].thread_local_storage;
-				const bool declaration_only = record.declaration_only ||
-					(Children(current).empty() &&
-					 program_.bindings[record.binding].storage_class ==
-						STORAGE_CLASS_EXTERN);
+				const bool declaration_only = pa15_lowering_abi::IsVariableDeclarationOnly(
+						program_, record, !Children(current).empty());
 				if (!declaration_only || global_node_[canonical] == kNoDumpEdge)
 					global_node_[canonical] = current;
 				continue;
@@ -491,10 +488,8 @@ private:
 						program_.bindings[record.binding].canonical;
 					if (global_node_[canonical] == current)
 					{
-						const bool declaration_only = record.declaration_only ||
-							(Children(current).empty() &&
-							 program_.bindings[record.binding].storage_class ==
-								STORAGE_CLASS_EXTERN);
+						const bool declaration_only = pa15_lowering_abi::IsVariableDeclarationOnly(
+								program_, record, !Children(current).empty());
 						if (declaration_only)
 						{
 								const SymbolId symbol = global_symbols_[canonical];

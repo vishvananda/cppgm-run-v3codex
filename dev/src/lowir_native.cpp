@@ -525,17 +525,6 @@ private:
         return true;
     return false;
   }
-  bool result_is_immediately_stored(const lowir_model::LowirBlock & block,
-                                    std::size_t instruction_index,
-                                    const std::string & destination) const
-  {
-    if(instruction_index + 1 >= block.instructions.size() ||
-       facts_.uses.find(destination) == facts_.uses.end() ||
-       facts_.uses.find(destination)->second != 1) return false;
-    const Instruction & store = block.instructions[instruction_index + 1];
-    return store.kind == Instruction::IK_STORE &&
-      store.first.kind == Operand::OP_TEMP && store.first.text == destination;
-  }
   bool address_is_immediately_loaded(const lowir_model::LowirBlock & block,
                                      std::size_t instruction_index,
                                      const std::string & destination) const
@@ -2540,6 +2529,12 @@ private:
       } else if(pressure_result) {
         append_store(out, pressure_home, reg_operand(XR_RAX), instruction.type.text);
         define(instruction.dest, instruction.type, pressure_home);
+      } else if(selection::result_is_immediate_store_address_with_later_use(
+                  block, instruction_index, instruction.dest, facts_)) {
+        const MirOperand home = allocate_temp_home(
+          instruction.dest, instruction.type);
+        append_store(out, home, reg_operand(XR_RAX), instruction.type.text);
+        define(instruction.dest, instruction.type, home);
       } else {
         if(result_is_next_call_address_argument(block, instruction_index, instruction)) {
           const MirOperand home = allocate_temp_home(instruction.dest, instruction.type);
@@ -2827,7 +2822,8 @@ private:
         pressure_home = allocate_temp_home(instruction.dest, instruction.type);
         destination = reg_operand(XR_RAX);
       } else if(facts_.direct_compare_rax_values.count(instruction.dest) ||
-         (result_is_immediately_stored(block, instruction_index, instruction.dest) ||
+         (selection::result_is_immediately_stored(
+            block, instruction_index, instruction.dest, facts_) ||
           (result_is_immediate_return(block, instruction_index, instruction.dest) &&
            (instruction.type.kind == lowir_model::LTK_PTR ||
             instruction.type.bit_width == 64))))

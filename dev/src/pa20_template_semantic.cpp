@@ -194,6 +194,8 @@ void SemanticAnalyzer::ResetClassTemplateSpecializationDefinition(
 	program_->ResetClassDefinition(entity);
 	if (entity < entity_data_members_.size())
 		entity_data_members_[entity].clear();
+	if (entity < entity_static_data_members_.size())
+		entity_static_data_members_[entity].clear();
 	if (entity < entity_layout_members_.size())
 		entity_layout_members_[entity].clear();
 	if (entity < entity_constructors_.size())
@@ -350,6 +352,11 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 				explicit_static_member_specialization_states_.resize(
 					static_cast<std::size_t>(canonical) + 1, 0);
 			explicit_static_member_specialization_states_[canonical] = 1;
+			const NodeId item = FirstSemanticChild(
+				FindChild(target, "init-declarator-list"));
+			if (item == kNoNode || FindChild(item, "initializer") == kNoNode)
+				program_->bindings[canonical].explicit_instantiation_suppressed =
+					true;
 			return true;
 		}
 

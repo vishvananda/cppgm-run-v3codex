@@ -1269,6 +1269,11 @@ private:
 		bool force_identity = false);
 	void EnsureStaticMemberStorage(BindingId member,
 		bool constant_storage = false);
+	void RegisterClassStaticDataMember(EntityId entity, BindingId member);
+	void RegisterClassDataMember(
+		EntityId entity, BindingId member, TypeId member_type);
+	void SetClassExplicitInstantiationSuppression(
+		EntityId entity, bool suppressed);
 	void DemandStaticConstantInitializerDependencies(BindingId member);
 	BindingId EnsureImplicitConstructor(EntityId entity);
 	BindingId EnsureImplicitDestructor(EntityId entity);
@@ -1652,6 +1657,7 @@ private:
 	std::vector<FunctionInfo> functions_;
 	std::vector<BindingId> builtin_functions_;
 	std::vector<std::vector<BindingId> > entity_data_members_;
+	std::vector<std::vector<BindingId> > entity_static_data_members_;
 	std::vector<std::vector<ClassLayoutMember> > entity_layout_members_;
 	std::vector<std::uint32_t> zero_offset_subobject_marks_;
 	std::vector<EntityId> zero_offset_subobject_scratch_;

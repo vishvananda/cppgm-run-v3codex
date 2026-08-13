@@ -116,5 +116,35 @@ bool result_is_immediate_unary_not_branch(
     branch.first.text == unary.dest;
 }
 
+bool result_is_immediately_stored(
+    const lowir_model::LowirBlock & block, std::size_t instruction_index,
+    const std::string & destination, const analysis::FunctionFacts & facts)
+{
+  const std::unordered_map<std::string, std::size_t>::const_iterator uses =
+    facts.uses.find(destination);
+  if(instruction_index + 1 >= block.instructions.size() ||
+     uses == facts.uses.end() || uses->second != 1) return false;
+  const lowir_model::Instruction & store =
+    block.instructions[instruction_index + 1];
+  return store.kind == lowir_model::Instruction::IK_STORE &&
+    store.first.kind == lowir_model::Operand::OP_TEMP &&
+    store.first.text == destination;
+}
+
+bool result_is_immediate_store_address_with_later_use(
+    const lowir_model::LowirBlock & block, std::size_t instruction_index,
+    const std::string & destination, const analysis::FunctionFacts & facts)
+{
+  if(instruction_index + 1 >= block.instructions.size()) return false;
+  const std::unordered_map<std::string, std::size_t>::const_iterator uses =
+    facts.uses.find(destination);
+  if(uses == facts.uses.end() || uses->second <= 1) return false;
+  const lowir_model::Instruction & store =
+    block.instructions[instruction_index + 1];
+  return store.kind == lowir_model::Instruction::IK_STORE &&
+    store.second.kind == lowir_model::Operand::OP_TEMP &&
+    store.second.text == destination;
+}
+
 }  // namespace selection
 }  // namespace lowir_native

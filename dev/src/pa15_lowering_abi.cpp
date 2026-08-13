@@ -56,13 +56,17 @@ void ApplyLifecycleSymbolMetadata(const pa11::Program& program,
 		program, node.binding) && binding.destructor;
 	Symbol& record = output->symbols[symbol];
 	record.trivial_lifecycle = trivial_constructor || trivial_destructor;
-	const bool shared_inline_destructor = binding.destructor &&
-		!binding.destructor_base_entry && binding.inline_function &&
+	const bool complete_entry =
+		(binding.constructor && !binding.constructor_base_entry) ||
+		(binding.destructor && !binding.destructor_base_entry);
+	const bool shared_base_entry = complete_entry &&
 		binding.member_owner != kNoEntity &&
 		program.entities[binding.member_owner].virtual_base_count == 0 &&
-		!binding.virtual_function;
-	if (!trivial_constructor &&
-		(!shared_inline_destructor || !output->host_object_emission)) return;
+		(binding.lifecycle_base_entry == kNoBinding ||
+		 binding.lifecycle_base_entry == binding.canonical);
+	if (!output->host_object_emission ||
+		node.kind != pa12_semantic_detail::DUMP_FUNCTION_DEFINITION ||
+		!shared_base_entry) return;
 	const std::string alias = MangleFunction(program, node, true);
 	if (!alias.empty() && alias != record.object_name)
 		output->object_aliases.push_back(ObjectAlias(alias, symbol));
@@ -1362,6 +1366,31 @@ bool IsFunctionEmissionDemanded(const pa11::Program& program,
 		program.bindings[binding].emission_demanded;
 }
 
+bool IsVariableDeclarationOnly(const pa11::Program& program,
+	const pa12_semantic_detail::DumpNode& node, bool has_initializer)
+{
+	const pa11::BindingRecord& binding = program.bindings[node.binding];
+	return node.declaration_only ||
+		program.bindings[binding.canonical].explicit_instantiation_suppressed ||
+		(!has_initializer && binding.storage_class == pa11::STORAGE_CLASS_EXTERN);
+}
+
+bool HasWeakLinkage(
+	const pa11::Program& program, pa11::BindingId binding, bool function)
+{
+	const pa11::BindingRecord& record = program.bindings[binding];
+	const pa11::BindingRecord& canonical = program.bindings[record.canonical];
+	const bool class_template_member = record.member_owner != pa11::kNoEntity &&
+		program.entities[record.member_owner].template_argument_count != 0;
+	const bool primary_template_member = class_template_member &&
+		!program.entities[record.member_owner].explicit_template_specialization;
+	const bool preempted = record.explicit_instantiation_suppressed ||
+		canonical.explicit_instantiation_suppressed;
+	return canonical.weak_symbol || (!preempted &&
+		(record.weak_odr || primary_template_member ||
+		 (function && record.template_argument_count != 0)));
+}
+
 void ApplyBuiltinSymbolMetadata(pa15_lowir_detail::Symbol* symbol,
 	pa11::BuiltinFunctionKind kind)
 {
@@ -1462,6 +1491,10 @@ void AppendFunctionTemplateArgumentsAndResult(const pa11::Program& program,
 			facts->AddTemplateArgumentPack(first + fixed, count - fixed));
 		output->records.push_back(argument);
 	}
+	// Itanium constructor, destructor, and conversion-function encodings do
+	// not carry a result type, including when the callable is a template.
+	if (binding.constructor || binding.destructor ||
+		binding.conversion_function) return;
 	AbiFactRecord result;
 	result.set_kind(ABI_FACT_RECORD_FUNCTION);
 	result.function.kind = ABI_FUNCTION_RECORD_RESULT;

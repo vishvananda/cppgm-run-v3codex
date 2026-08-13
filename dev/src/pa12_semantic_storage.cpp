@@ -30,6 +30,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		variable_node_by_binding_.capacity() * sizeof(std::uint32_t) +
 		builtin_functions_.capacity() * sizeof(BindingId) +
 		entity_data_members_.capacity() * sizeof(std::vector<BindingId>) +
+		entity_static_data_members_.capacity() *
+			sizeof(std::vector<BindingId>) +
 		entity_layout_members_.capacity() *
 			sizeof(std::vector<ClassLayoutMember>) +
 		zero_offset_subobject_marks_.capacity() * sizeof(std::uint32_t) +
@@ -213,6 +215,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		bytes += i->first.arguments.capacity() * sizeof(ConstexprCallArgument);
 	for (std::size_t i = 0; i < entity_data_members_.size(); ++i)
 		bytes += entity_data_members_[i].capacity() * sizeof(BindingId);
+	for (std::size_t i = 0; i < entity_static_data_members_.size(); ++i)
+		bytes += entity_static_data_members_[i].capacity() * sizeof(BindingId);
 	for (std::size_t i = 0;
 		i < static_constant_initializers_by_binding_.size(); ++i)
 		bytes += static_constant_initializers_by_binding_[i].

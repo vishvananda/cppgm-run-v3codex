@@ -162,6 +162,8 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	const TypeId type = program_->entities[entity].type;
 	if (entity_data_members_.size() <= entity)
 		entity_data_members_.resize(static_cast<std::size_t>(entity) + 1);
+	if (entity_static_data_members_.size() <= entity)
+		entity_static_data_members_.resize(static_cast<std::size_t>(entity) + 1);
 	if (entity_layout_members_.size() <= entity)
 		entity_layout_members_.resize(static_cast<std::size_t>(entity) + 1);
 	if (entity_constructors_.size() <= entity)
@@ -1192,19 +1194,9 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 				member_initializer_by_binding_[member] =
 					FindChild(item, "initializer");
 			const EntityId entity = EntityOf(owner_type);
-			if (non_static_data_member && entity_data_members_.size() <= entity)
-				entity_data_members_.resize(static_cast<std::size_t>(entity) + 1);
 			if (non_static_data_member)
-			{
-				program_->bindings[member].member_ordinal = static_cast<std::uint32_t>(
-					entity_data_members_[entity].size());
-				entity_data_members_[entity].push_back(member);
-				if (entity_layout_members_.size() <= entity)
-					entity_layout_members_.resize(
-						static_cast<std::size_t>(entity) + 1);
-				entity_layout_members_[entity].push_back(
-					ClassLayoutMember(member, member_type));
-			}
+				RegisterClassDataMember(entity, member, member_type);
+			else RegisterClassStaticDataMember(entity, member);
 		}
 	}
 }
@@ -1396,6 +1388,8 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 		FunctionInfo& info = GetMutableFunction(destructor);
 		info.member_owner = owner_type;
 		info.destructor = true;
+		info.definition_in_class =
+			info.definition_in_class || source_definition;
 		ValidateFunctionRefQualifier(destructor);
 		SpecInfo virtual_spec;
 		if (specifiers != kNoNode)
@@ -1460,6 +1454,7 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 	FunctionInfo& info = GetMutableFunction(constructor);
 	info.member_owner = owner_type;
 	info.constructor = true;
+	info.definition_in_class = info.definition_in_class || source_definition;
 	if (info.complete_constructor == kNoBinding)
 		info.complete_constructor = info.binding;
 	ValidateFunctionRefQualifier(constructor);
@@ -2511,14 +2506,22 @@ BindingId SemanticAnalyzer::EnsureDestructorBaseEntry(BindingId destructor,
 {
 	destructor = program_->bindings[destructor].canonical;
 	if (program_->bindings[destructor].destructor_base_entry)
+	{
+		program_->bindings[destructor].lifecycle_base_entry = destructor;
 		return destructor;
+	}
 	if (destructor_base_entry_by_binding_.size() <= destructor)
 		destructor_base_entry_by_binding_.resize(
 			static_cast<std::size_t>(destructor) + 1, kNoBinding);
 	if (destructor_base_entry_by_binding_[destructor] != kNoBinding &&
 		(!force_identity ||
 		 destructor_base_entry_by_binding_[destructor] != destructor))
-		return destructor_base_entry_by_binding_[destructor];
+	{
+		const BindingId base_entry =
+			destructor_base_entry_by_binding_[destructor];
+		program_->bindings[destructor].lifecycle_base_entry = base_entry;
+		return base_entry;
+	}
 	const BindingRecord& source_binding = program_->bindings[destructor];
 	if (!force_identity && source_binding.inline_function &&
 		!source_binding.virtual_function &&
@@ -2526,6 +2529,7 @@ BindingId SemanticAnalyzer::EnsureDestructorBaseEntry(BindingId destructor,
 		 program_->entities[source_binding.member_owner].virtual_base_count == 0))
 	{
 		destructor_base_entry_by_binding_[destructor] = destructor;
+		program_->bindings[destructor].lifecycle_base_entry = destructor;
 		return destructor;
 	}
 
@@ -2542,15 +2546,28 @@ BindingId SemanticAnalyzer::EnsureDestructorBaseEntry(BindingId destructor,
 	BindingRecord& binding = program_->bindings[base_entry];
 	binding.member_owner = source_binding_copy.member_owner;
 	binding.access_owner = source_binding_copy.access_owner;
+	binding.qualified_name = source_binding_copy.qualified_name;
 	binding.overload_ordinal = source_binding_copy.overload_ordinal;
+	binding.template_argument_list = source_binding_copy.template_argument_list;
+	binding.template_argument_begin = source_binding_copy.template_argument_begin;
+	binding.template_argument_count = source_binding_copy.template_argument_count;
+	binding.function_template_abi_recipe =
+		source_binding_copy.function_template_abi_recipe;
 	binding.language_linkage = source_binding_copy.language_linkage;
 	binding.storage_class = source_binding_copy.storage_class;
 	binding.access = source_binding_copy.access;
 	binding.nonthrowing = source_binding_copy.nonthrowing;
+	binding.unnamed_namespace_linkage =
+		source_binding_copy.unnamed_namespace_linkage;
 	binding.inline_function = source_binding_copy.inline_function;
 	binding.weak_odr = source_binding_copy.weak_odr;
+	binding.weak_symbol = source_binding_copy.weak_symbol;
+	binding.object_output_root = source_binding_copy.object_output_root;
+	binding.explicit_instantiation_suppressed =
+		source_binding_copy.explicit_instantiation_suppressed;
 	binding.destructor = true;
 	binding.destructor_base_entry = true;
+	binding.lifecycle_base_entry = base_entry;
 
 	FunctionInfo info = source_info;
 	info.binding = base_entry;
@@ -2563,84 +2580,9 @@ BindingId SemanticAnalyzer::EnsureDestructorBaseEntry(BindingId destructor,
 		static_cast<std::uint32_t>(functions_.size());
 	functions_.push_back(info);
 	destructor_base_entry_by_binding_[destructor] = base_entry;
+	program_->bindings[destructor].lifecycle_base_entry = base_entry;
 	return base_entry;
 }
-void SemanticAnalyzer::EnsureStaticMemberStorage(BindingId member, bool constant_storage)
-{
-	member = program_->bindings[member].canonical;
-	BindingRecord& binding = program_->bindings[member];
-	if (binding.kind != BIND_VARIABLE ||
-		binding.member_owner == kNoEntity || binding.non_static_data_member)
-		return;
-	// The retained definition owns the value-use storage policy as a compact
-	// semantic fact.  Address/reference formation bypasses that policy with an
-	// explicit storage demand from LvalueAddress.
-	if (binding.constant && !constant_storage)
-	{
-		if (constant_expression_required_depth_ != 0) return;
-		if (member < explicit_static_member_specialization_states_.size() &&
-			explicit_static_member_specialization_states_[member] != 0)
-			return;
-		bool retained_definition = false;
-		bool value_use_requires_storage = false;
-		for (EntityId entity = binding.member_owner;
-			entity != kNoEntity; entity = program_->entities[entity].enclosing_class)
-		{
-			if (entity >= class_template_pattern_by_entity_.size()) continue;
-			const std::size_t pattern = class_template_pattern_by_entity_[entity];
-			if (pattern == kNoDumpEdge) continue;
-			if (pattern >= class_templates_.size())
-				throw std::logic_error("static member definition owner is invalid");
-			const BindingId specialization =
-				program_->entities[entity].declaration;
-			if (specialization <
-				class_template_explicit_specialization_states_.size() &&
-				class_template_explicit_specialization_states_[specialization] != 0)
-				break;
-			if (pattern > std::numeric_limits<std::uint32_t>::max())
-				throw std::logic_error("static member definition index overflow");
-			const std::uint64_t key =
-				(static_cast<std::uint64_t>(pattern) << 32) | binding.name;
-			const CompactIndexSequence* definitions =
-				demanded_static_member_definitions_.Find(key);
-			retained_definition = definitions && definitions->Size() != 0;
-			for (std::size_t i = 0; definitions && i < definitions->Size(); ++i)
-			{
-				const std::size_t index = (*definitions)[i];
-				if (index >= class_templates_[pattern].
-					demanded_member_definitions.size())
-					throw std::logic_error(
-						"static member definition index is invalid");
-				if (class_templates_[pattern].demanded_member_definitions[index].
-					value_use_requires_storage)
-					value_use_requires_storage = true;
-			}
-			break;
-		}
-		if (!retained_definition || !value_use_requires_storage) return;
-	}
-	// Preserve the already-instantiated class spelling before replaying a
-	// dependent out-of-class definition, whose substituted expression spelling
-	// may be equivalent but less canonical (for example, `1` versus `true`).
-	if (binding.qualified_name == 0)
-		binding.qualified_name = EmissionName(binding.owner, binding.name);
-	const EntityId member_owner = binding.member_owner;
-	DemandClassTemplateMemberDefinitions(member_owner);
-	const BindingRecord& completed_binding = program_->bindings[member];
-	if (static_member_storage_by_binding_.size() <= member)
-		static_member_storage_by_binding_.resize(
-			static_cast<std::size_t>(member) + 1, kNoDumpEdge);
-	DemandStaticConstantInitializerDependencies(member);
-	if (static_member_storage_by_binding_[member] != kNoDumpEdge) return;
-	if (root_ == kNoDumpEdge)
-		throw std::logic_error("static member storage has no translation unit");
-	const std::uint32_t declaration = MakeDump(DUMP_VARIABLE,
-		completed_binding.type, VALUE_NONE, completed_binding.name, member);
-	dump_.nodes[declaration].declaration_only = true;
-	dump_.Add(root_, declaration);
-	static_member_storage_by_binding_[member] = declaration;
-}
-
 void SemanticAnalyzer::PublishUsingAccess(BindingId alias,
 	BindingId source, AccessKind access)
 {

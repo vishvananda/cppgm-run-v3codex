@@ -843,7 +843,9 @@ bool SemanticAnalyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 	const BindingId destructor = DestructorForType(destroyed_type);
 	LookupResult destructor_type = LookupSpelling(
 		scope, spelling.substr(1), LOOKUP_TYPE);
-	if (destructor_type.type == kNoType)
+	if (destructor_type.type == kNoType ||
+		program_->types.RemoveTopCv(EffectiveType(destructor_type.type)) !=
+			destroyed_type)
 		destructor_type = program_->LookupMember(entity,
 			ParseNamePath(spelling.substr(1)).Last(), LOOKUP_TYPE);
 	if (destructor == kNoBinding || destructor_type.type == kNoType ||
