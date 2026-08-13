@@ -121,6 +121,151 @@ public:
 
 	FunctionTemplateAbiTypeId ParseType()
 	{
+		FunctionTemplateAbiTypeId root = ParsePrimaryType();
+		if (root == kNoFunctionTemplateAbiType) return root;
+		while (IsNode("abstract-declarator"))
+			if (!ParseAbstractDeclarator(&root))
+				return kNoFunctionTemplateAbiType;
+		return root;
+	}
+
+	FunctionTemplateAbiExpressionId ParseExpression()
+	{
+		if (position_ >= atoms_.size())
+			return kNoFunctionTemplateAbiExpression;
+		const FunctionTemplateResultIdentityAtomKind kind =
+			ResultIdentityKind(atoms_[position_]);
+		if (kind == FUNCTION_TEMPLATE_RESULT_PARAMETER)
+		{
+			const std::uint64_t parameter = ResultIdentityValue(atoms_[position_++]);
+			if (parameter >= kNoTemplateParameter)
+				return kNoFunctionTemplateAbiExpression;
+			return AppendAbiExpression(program_, FunctionTemplateAbiExpression(
+				FUNCTION_TEMPLATE_ABI_EXPRESSION_TEMPLATE_PARAMETER,
+				kNoFunctionTemplateAbiExpression,
+				kNoFunctionTemplateAbiExpression, kNoFunctionTemplateAbiType,
+				0, static_cast<std::uint32_t>(parameter)));
+		}
+		if (kind == FUNCTION_TEMPLATE_RESULT_QUALIFIED_BEGIN)
+		{
+			FunctionTemplateAbiExpressionId expression =
+				kNoFunctionTemplateAbiExpression;
+			(void)ParseQualifiedType(true, &expression);
+			return expression;
+		}
+		if (!IsNode("parenthesized-expression") &&
+			!IsNode("id-expression") && !IsNode("unary-expression") &&
+			!IsNode("call-expression"))
+			return kNoFunctionTemplateAbiExpression;
+		NameId payload = 0;
+		const NameId tag = static_cast<NameId>(
+			ResultIdentityValue(atoms_[position_]));
+		if (!BeginNode(program_->names.Get(tag).c_str(), &payload))
+			return kNoFunctionTemplateAbiExpression;
+		const std::string& node = program_->names.Get(tag);
+		FunctionTemplateAbiExpressionId expression =
+			kNoFunctionTemplateAbiExpression;
+		if (node == "id-expression")
+			expression = position_ < atoms_.size() &&
+				ResultIdentityKind(atoms_[position_]) ==
+					FUNCTION_TEMPLATE_RESULT_QUALIFIED_BEGIN ?
+				ParseTemplateIdExpression() : ParseExpression();
+		else if (node == "parenthesized-expression")
+			expression = ParseExpression();
+		else if (node == "call-expression")
+		{
+			const FunctionTemplateAbiExpressionId callee = ParseExpression();
+			if (callee != kNoFunctionTemplateAbiExpression &&
+				ParseEmptyNode("argument-list"))
+				expression = AppendAbiExpression(program_,
+					FunctionTemplateAbiExpression(
+						FUNCTION_TEMPLATE_ABI_EXPRESSION_CALL, callee));
+		}
+		else if (program_->names.Get(payload) == "*")
+		{
+			const FunctionTemplateAbiExpressionId operand = ParseExpression();
+			if (operand != kNoFunctionTemplateAbiExpression)
+				expression = AppendAbiExpression(program_,
+					FunctionTemplateAbiExpression(
+						FUNCTION_TEMPLATE_ABI_EXPRESSION_UNARY, operand,
+						kNoFunctionTemplateAbiExpression,
+						kNoFunctionTemplateAbiType, 0,
+						kNoTemplateParameter, OPERATOR_STAR));
+		}
+		if (expression == kNoFunctionTemplateAbiExpression || !EndNode())
+			return kNoFunctionTemplateAbiExpression;
+		return expression;
+	}
+
+	bool Complete() const { return position_ == atoms_.size(); }
+
+private:
+	bool IsNode(const char* tag) const
+	{
+		return position_ < atoms_.size() &&
+			ResultIdentityKind(atoms_[position_]) ==
+				FUNCTION_TEMPLATE_RESULT_NODE_BEGIN &&
+			program_->names.Get(static_cast<NameId>(
+				ResultIdentityValue(atoms_[position_]))) == tag;
+	}
+
+	bool BeginNode(const char* tag, NameId* payload)
+	{
+		if (!IsNode(tag) || ++position_ >= atoms_.size() ||
+			ResultIdentityKind(atoms_[position_]) !=
+				FUNCTION_TEMPLATE_RESULT_NODE_PAYLOAD)
+			return false;
+		*payload = static_cast<NameId>(ResultIdentityValue(atoms_[position_++]));
+		return true;
+	}
+
+	bool EndNode()
+	{
+		if (position_ >= atoms_.size() ||
+			ResultIdentityKind(atoms_[position_]) !=
+				FUNCTION_TEMPLATE_RESULT_NODE_END) return false;
+		++position_;
+		return true;
+	}
+
+	bool ParseEmptyNode(const char* tag)
+	{
+		NameId payload = 0;
+		return BeginNode(tag, &payload) && EndNode();
+	}
+
+	FunctionTemplateAbiExpressionId ParseTemplateIdExpression()
+	{
+		if (position_ >= atoms_.size() ||
+			ResultIdentityKind(atoms_[position_++]) !=
+				FUNCTION_TEMPLATE_RESULT_QUALIFIED_BEGIN)
+			return kNoFunctionTemplateAbiExpression;
+		ParsedComponent component;
+		if (!ParseComponent(&component) || component.arguments.empty() ||
+			position_ >= atoms_.size() ||
+			ResultIdentityKind(atoms_[position_++]) !=
+				FUNCTION_TEMPLATE_RESULT_QUALIFIED_END ||
+			component.arguments.size() >
+				std::numeric_limits<std::uint32_t>::max() ||
+			program_->function_template_abi_arguments.size() >
+				std::numeric_limits<std::uint32_t>::max() -
+					component.arguments.size())
+			return kNoFunctionTemplateAbiExpression;
+		const std::uint32_t begin = static_cast<std::uint32_t>(
+			program_->function_template_abi_arguments.size());
+		program_->function_template_abi_arguments.insert(
+			program_->function_template_abi_arguments.end(),
+			component.arguments.begin(), component.arguments.end());
+		return AppendAbiExpression(program_, FunctionTemplateAbiExpression(
+			FUNCTION_TEMPLATE_ABI_EXPRESSION_TEMPLATE_ID,
+			kNoFunctionTemplateAbiExpression,
+			kNoFunctionTemplateAbiExpression, kNoFunctionTemplateAbiType,
+			component.name, kNoTemplateParameter, OPERATOR_NONE, false, begin,
+			static_cast<std::uint32_t>(component.arguments.size())));
+	}
+
+	FunctionTemplateAbiTypeId ParsePrimaryType()
+	{
 		if (position_ >= atoms_.size()) return kNoFunctionTemplateAbiType;
 		const FunctionTemplateResultIdentityAtomKind kind =
 			ResultIdentityKind(atoms_[position_]);
@@ -136,8 +281,7 @@ public:
 		if (kind == FUNCTION_TEMPLATE_RESULT_TYPE)
 		{
 			const std::uint64_t type = ResultIdentityValue(atoms_[position_++]);
-			if (type >= program_->types.Size())
-				return kNoFunctionTemplateAbiType;
+			if (type >= program_->types.Size()) return kNoFunctionTemplateAbiType;
 			return AppendAbiType(program_, FunctionTemplateAbiType(
 				FUNCTION_TEMPLATE_ABI_TYPE_CONCRETE,
 				kNoFunctionTemplateAbiType, 0, 0, kNoTemplateParameter, 0,
@@ -145,24 +289,40 @@ public:
 		}
 		if (kind == FUNCTION_TEMPLATE_RESULT_QUALIFIED_BEGIN)
 			return ParseQualifiedType(false, 0);
-		return kNoFunctionTemplateAbiType;
+		if (!IsNode("decltype-specifier"))
+			return kNoFunctionTemplateAbiType;
+		NameId payload = 0;
+		if (!BeginNode("decltype-specifier", &payload))
+			return kNoFunctionTemplateAbiType;
+		const FunctionTemplateAbiExpressionId expression = ParseExpression();
+		if (expression == kNoFunctionTemplateAbiExpression || !EndNode())
+			return kNoFunctionTemplateAbiType;
+		return AppendAbiType(program_, FunctionTemplateAbiType(
+			FUNCTION_TEMPLATE_ABI_TYPE_DECLTYPE, kNoFunctionTemplateAbiType,
+			0, 0, kNoTemplateParameter, 0, kNoType, kNoEntity, 0, 0,
+			expression));
 	}
 
-	FunctionTemplateAbiExpressionId ParseExpression()
+	bool ParseAbstractDeclarator(FunctionTemplateAbiTypeId* root)
 	{
-		if (position_ >= atoms_.size() ||
+		NameId payload = 0;
+		if (!BeginNode("abstract-declarator", &payload)) return false;
+		while (position_ < atoms_.size() &&
 			ResultIdentityKind(atoms_[position_]) !=
-				FUNCTION_TEMPLATE_RESULT_QUALIFIED_BEGIN)
-			return kNoFunctionTemplateAbiExpression;
-		FunctionTemplateAbiExpressionId expression =
-			kNoFunctionTemplateAbiExpression;
-		(void)ParseQualifiedType(true, &expression);
-		return expression;
+				FUNCTION_TEMPLATE_RESULT_NODE_END)
+		{
+			if (!BeginNode("ptr-operator", &payload)) return false;
+			FunctionTemplateAbiTypeKind kind = FUNCTION_TEMPLATE_ABI_TYPE_POINTER;
+			const std::string& op = program_->names.Get(payload);
+			if (op == "&") kind = FUNCTION_TEMPLATE_ABI_TYPE_LVALUE_REFERENCE;
+			else if (op == "&&") kind = FUNCTION_TEMPLATE_ABI_TYPE_RVALUE_REFERENCE;
+			else if (op != "*") return false;
+			if (!EndNode()) return false;
+			*root = AppendAbiType(program_, FunctionTemplateAbiType(kind, *root));
+		}
+		return EndNode();
 	}
 
-	bool Complete() const { return position_ == atoms_.size(); }
-
-private:
 	bool IsTypeParameterName(NameId name) const
 	{
 		for (std::size_t parameter = 0; parameter < parameters_.size(); ++parameter)

@@ -459,11 +459,14 @@ struct FunctionTemplateAbiArgument
 
 enum FunctionTemplateAbiExpressionKind
 {
+	FUNCTION_TEMPLATE_ABI_EXPRESSION_TEMPLATE_PARAMETER,
 	FUNCTION_TEMPLATE_ABI_EXPRESSION_FUNCTION_PARAMETER,
 	FUNCTION_TEMPLATE_ABI_EXPRESSION_TYPE_MEMBER,
 	FUNCTION_TEMPLATE_ABI_EXPRESSION_OBJECT_MEMBER,
+	FUNCTION_TEMPLATE_ABI_EXPRESSION_UNARY,
 	FUNCTION_TEMPLATE_ABI_EXPRESSION_CALL,
-	FUNCTION_TEMPLATE_ABI_EXPRESSION_BINARY
+	FUNCTION_TEMPLATE_ABI_EXPRESSION_BINARY,
+	FUNCTION_TEMPLATE_ABI_EXPRESSION_TEMPLATE_ID
 };
 
 struct FunctionTemplateAbiExpression
@@ -472,7 +475,7 @@ struct FunctionTemplateAbiExpression
 	FunctionTemplateAbiExpressionId left, right;
 	FunctionTemplateAbiTypeId type;
 	NameId name;
-	std::uint32_t parameter;
+	std::uint32_t parameter, argument_begin, argument_count;
 	OperatorKind operation;
 	bool indirect_member;
 
@@ -486,10 +489,13 @@ struct FunctionTemplateAbiExpression
 		NameId name_value = 0,
 		std::uint32_t parameter_value = kNoTemplateParameter,
 		OperatorKind operation_value = OPERATOR_NONE,
-		bool indirect_member_value = false)
+		bool indirect_member_value = false,
+		std::uint32_t argument_begin_value = 0,
+		std::uint32_t argument_count_value = 0)
 		: kind(kind_value), left(left_value), right(right_value),
 		  type(type_value), name(name_value), parameter(parameter_value),
-		  operation(operation_value),
+		  argument_begin(argument_begin_value),
+		  argument_count(argument_count_value), operation(operation_value),
 		  indirect_member(indirect_member_value) {}
 };
 

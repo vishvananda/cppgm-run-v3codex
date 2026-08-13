@@ -909,6 +909,12 @@ public:
 		definition.definition.set_kind(ABI_DEFINITION_EXPRESSION);
 		AbiDependentExpression& target = definition.definition.expression;
 		if (source.kind ==
+			FUNCTION_TEMPLATE_ABI_EXPRESSION_TEMPLATE_PARAMETER)
+		{
+			target.kind = ABI_EXPRESSION_TEMPLATE_PARAMETER;
+			target.index = source.parameter;
+		}
+		else if (source.kind ==
 			FUNCTION_TEMPLATE_ABI_EXPRESSION_FUNCTION_PARAMETER)
 		{
 			target.kind = ABI_EXPRESSION_FUNCTION_PARAMETER;
@@ -937,6 +943,16 @@ public:
 			target.expression_refs.push_back(
 				AddFunctionTemplateAbiExpression(source.left, recipe));
 		}
+		else if (source.kind == FUNCTION_TEMPLATE_ABI_EXPRESSION_UNARY)
+		{
+			target.kind = ABI_EXPRESSION_UNARY;
+			if (source.operation != OPERATOR_STAR)
+				throw std::logic_error(
+					"unsupported retained dependent unary operation");
+			target.op = "de";
+			target.expression_refs.push_back(
+				AddFunctionTemplateAbiExpression(source.left, recipe));
+		}
 		else if (source.kind == FUNCTION_TEMPLATE_ABI_EXPRESSION_BINARY)
 		{
 			target.kind = ABI_EXPRESSION_BINARY;
@@ -948,6 +964,22 @@ public:
 				AddFunctionTemplateAbiExpression(source.left, recipe));
 			target.expression_refs.push_back(
 				AddFunctionTemplateAbiExpression(source.right, recipe));
+		}
+		else if (source.kind == FUNCTION_TEMPLATE_ABI_EXPRESSION_TEMPLATE_ID)
+		{
+			if (source.argument_begin >
+					program_.function_template_abi_arguments.size() ||
+				source.argument_count >
+					program_.function_template_abi_arguments.size() -
+						source.argument_begin)
+				throw std::logic_error(
+					"retained dependent template-id is invalid");
+			target.kind = ABI_EXPRESSION_TEMPLATE_ID;
+			target.text = program_.names.Get(source.name);
+			for (std::size_t i = 0; i < source.argument_count; ++i)
+				target.argument_refs.push_back(AddFunctionTemplateAbiArgument(
+					program_.function_template_abi_arguments[
+						source.argument_begin + i], recipe));
 		}
 		else throw std::logic_error(
 			"function template ABI expression node kind is invalid");
