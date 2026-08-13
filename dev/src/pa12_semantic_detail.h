@@ -979,7 +979,14 @@ private:
 	bool TryAnalyzeVariadicBuiltinCall(const std::string& spelling,
 		ScopeId scope, const std::vector<NodeId>& argument_syntax,
 		TypeId target, ExpressionInfo* result);
+	bool TryAnalyzeIntegerIntrinsicCall(const std::string& spelling,
+		ScopeId scope, const std::vector<NodeId>& argument_syntax,
+		TypeId target, ExpressionInfo* result);
 	ExpressionInfo BuildBuiltinIntrinsicCall(BuiltinFunctionKind kind,
+		const std::vector<ExpressionInfo>& arguments, TypeId result_type,
+		TypeId target);
+	ExpressionInfo BuildIntegerIntrinsicCall(
+		hosted_builtin::IntegerIntrinsicKind kind,
 		const std::vector<ExpressionInfo>& arguments, TypeId result_type,
 		TypeId target);
 	TypeId ResolveArrowOperand(ExpressionInfo* object, ScopeId scope,
@@ -1007,6 +1014,8 @@ private:
 	void ValidateConstexprCallableType(TypeId type, bool constructor) const;
 	void ValidateConstexprClassDeclarations(EntityId entity);
 	BindingId EnsureBuiltinFunction(BuiltinFunctionKind kind);
+	BindingId EnsureIntegerIntrinsicFunction(
+		hosted_builtin::IntegerIntrinsicKind kind);
 	bool AnalyzeBuiltinCall(const std::string& spelling, ScopeId scope,
 		const std::vector<NodeId>& argument_syntax, TypeId target,
 		ExpressionInfo* result);
@@ -1696,6 +1705,7 @@ private:
 	std::vector<std::uint32_t> function_fact_by_binding_;
 	std::vector<FunctionInfo> functions_;
 	std::vector<BindingId> builtin_functions_;
+	std::vector<BindingId> integer_intrinsic_functions_;
 	std::vector<std::vector<BindingId> > entity_data_members_;
 	std::vector<std::vector<BindingId> > entity_static_data_members_;
 	std::vector<std::vector<ClassLayoutMember> > entity_layout_members_;

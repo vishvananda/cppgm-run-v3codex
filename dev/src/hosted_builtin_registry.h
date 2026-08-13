@@ -71,8 +71,56 @@ enum TypeTransformKind
 	TYPE_TRANSFORM_UNDERLYING_TYPE
 };
 
+enum IntegerIntrinsicKind
+{
+	INTEGER_INTRINSIC_NONE,
+	INTEGER_INTRINSIC_BSWAP16,
+	INTEGER_INTRINSIC_BSWAP32,
+	INTEGER_INTRINSIC_BSWAP64,
+	INTEGER_INTRINSIC_CLZ,
+	INTEGER_INTRINSIC_CLZG,
+	INTEGER_INTRINSIC_CLZL,
+	INTEGER_INTRINSIC_CLZLL,
+	INTEGER_INTRINSIC_CTZ,
+	INTEGER_INTRINSIC_CTZL,
+	INTEGER_INTRINSIC_CTZLL,
+	INTEGER_INTRINSIC_POPCOUNT,
+	INTEGER_INTRINSIC_POPCOUNTG,
+	INTEGER_INTRINSIC_POPCOUNTL,
+	INTEGER_INTRINSIC_POPCOUNTLL,
+	INTEGER_INTRINSIC_COUNT
+};
+
+enum IntegerIntrinsicOperation
+{
+	INTEGER_OPERATION_BSWAP,
+	INTEGER_OPERATION_CLZ,
+	INTEGER_OPERATION_CTZ,
+	INTEGER_OPERATION_POPCOUNT
+};
+
+enum IntegerIntrinsicArgumentRule
+{
+	INTEGER_ARGUMENT_UNSIGNED_SHORT,
+	INTEGER_ARGUMENT_UNSIGNED_INT,
+	INTEGER_ARGUMENT_UNSIGNED_LONG,
+	INTEGER_ARGUMENT_UNSIGNED_LONG_LONG,
+	INTEGER_ARGUMENT_GENERIC_UNSIGNED
+};
+
+struct IntegerIntrinsic
+{
+	const char* spelling;
+	IntegerIntrinsicKind kind;
+	IntegerIntrinsicOperation operation;
+	IntegerIntrinsicArgumentRule argument_rule;
+	unsigned arity;
+};
+
 TypeTraitKind FindTypeTrait(const std::string& spelling);
 TypeTransformKind FindTypeTransform(const std::string& spelling);
+const IntegerIntrinsic* FindIntegerIntrinsic(const std::string& spelling);
+const IntegerIntrinsic& GetIntegerIntrinsic(IntegerIntrinsicKind kind);
 
 }
 }

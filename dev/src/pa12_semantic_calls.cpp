@@ -176,6 +176,8 @@ bool SemanticAnalyzer::TryAnalyzeImmediateBuiltinCall(
 {
 	if (TryAnalyzeVariadicBuiltinCall(
 		spelling, scope, argument_syntax, target, result)) return true;
+	if (TryAnalyzeIntegerIntrinsicCall(
+		spelling, scope, argument_syntax, target, result)) return true;
 	if (spelling == "__builtin_expect")
 	{
 		if (argument_syntax.size() != 2)
@@ -241,6 +243,187 @@ ExpressionInfo SemanticAnalyzer::BuildBuiltinIntrinsicCall(
 	result.binding = binding;
 	++expression_count_;
 	return ApplyTarget(result, target);
+}
+
+BindingId SemanticAnalyzer::EnsureIntegerIntrinsicFunction(
+	hosted_builtin::IntegerIntrinsicKind kind)
+{
+	using namespace hosted_builtin;
+	if (kind <= INTEGER_INTRINSIC_NONE || kind >= INTEGER_INTRINSIC_COUNT)
+		throw std::logic_error("missing hosted integer intrinsic kind");
+	if (integer_intrinsic_functions_.size() < INTEGER_INTRINSIC_COUNT)
+		integer_intrinsic_functions_.resize(INTEGER_INTRINSIC_COUNT, kNoBinding);
+	if (integer_intrinsic_functions_[kind] != kNoBinding)
+		return integer_intrinsic_functions_[kind];
+	const IntegerIntrinsic& intrinsic = GetIntegerIntrinsic(kind);
+	TypeId argument = kNoType;
+	switch (intrinsic.argument_rule)
+	{
+	case INTEGER_ARGUMENT_UNSIGNED_SHORT:
+		argument = program_->types.Fundamental(FUND_UNSIGNED_SHORT_INT); break;
+	case INTEGER_ARGUMENT_UNSIGNED_INT:
+		argument = program_->types.Fundamental(FUND_UNSIGNED_INT); break;
+	case INTEGER_ARGUMENT_UNSIGNED_LONG:
+		argument = program_->types.Fundamental(FUND_UNSIGNED_LONG_INT); break;
+	case INTEGER_ARGUMENT_UNSIGNED_LONG_LONG:
+	case INTEGER_ARGUMENT_GENERIC_UNSIGNED:
+		argument = program_->types.Fundamental(
+			FUND_UNSIGNED_LONG_LONG_INT); break;
+	}
+	const TypeId integer = program_->types.Fundamental(FUND_INT);
+	const TypeId result = intrinsic.operation == INTEGER_OPERATION_BSWAP ?
+		argument : integer;
+	std::vector<TypeId> parameter_types(1, argument);
+	if (intrinsic.arity == 2) parameter_types.push_back(integer);
+	std::vector<ParameterInfo> parameters;
+	for (std::size_t i = 0; i < parameter_types.size(); ++i)
+		parameters.push_back(ParameterInfo(0, parameter_types[i],
+			parameter_types[i]));
+	const TypeId type = program_->types.Function(result, parameter_types, false);
+	const BindingId binding = DeclareFunction(program_->GlobalScope(),
+		program_->names.Intern(intrinsic.spelling), type, parameters, false,
+		false, STORAGE_CLASS_NONE, LANGUAGE_LINKAGE_CPP, true, false);
+	program_->bindings[binding].builtin_function =
+		BUILTIN_FUNCTION_HOSTED_INTEGER_INTRINSIC;
+	program_->bindings[binding].hosted_integer_intrinsic = kind;
+	integer_intrinsic_functions_[kind] = binding;
+	return binding;
+}
+
+ExpressionInfo SemanticAnalyzer::BuildIntegerIntrinsicCall(
+	hosted_builtin::IntegerIntrinsicKind kind,
+	const std::vector<ExpressionInfo>& arguments, TypeId result_type,
+	TypeId target)
+{
+	const BindingId binding = EnsureIntegerIntrinsicFunction(kind);
+	const FunctionInfo& function = GetFunction(binding);
+	const std::uint32_t call = MakeDump(DUMP_CALL_EXPRESSION, result_type,
+		VALUE_PRVALUE, 0, binding);
+	const std::uint32_t callee = MakeDump(DUMP_CALLEE, function.type,
+		VALUE_NONE, function.display_name, binding);
+	dump_.Add(call, callee);
+	for (std::size_t i = 0; i < arguments.size(); ++i)
+		dump_.Add(call, arguments[i].node);
+	ExpressionInfo result;
+	result.node = call;
+	result.type = result_type;
+	result.category = VALUE_PRVALUE;
+	result.binding = binding;
+	++expression_count_;
+	const hosted_builtin::IntegerIntrinsic& intrinsic =
+		hosted_builtin::GetIntegerIntrinsic(kind);
+	bool constant = arguments[0].constant &&
+		(intrinsic.arity != 2 || arguments[1].constant);
+	std::uint64_t value = constant ? static_cast<std::uint64_t>(
+		ExpressionScalar(arguments[0]).integral) : 0;
+	TypeId value_type = arguments[0].type;
+	switch (intrinsic.argument_rule)
+	{
+	case hosted_builtin::INTEGER_ARGUMENT_UNSIGNED_SHORT:
+		value_type = program_->types.Fundamental(FUND_UNSIGNED_SHORT_INT); break;
+	case hosted_builtin::INTEGER_ARGUMENT_UNSIGNED_INT:
+		value_type = program_->types.Fundamental(FUND_UNSIGNED_INT); break;
+	case hosted_builtin::INTEGER_ARGUMENT_UNSIGNED_LONG:
+		value_type = program_->types.Fundamental(FUND_UNSIGNED_LONG_INT); break;
+	case hosted_builtin::INTEGER_ARGUMENT_UNSIGNED_LONG_LONG:
+		value_type = program_->types.Fundamental(
+			FUND_UNSIGNED_LONG_LONG_INT); break;
+	case hosted_builtin::INTEGER_ARGUMENT_GENERIC_UNSIGNED: break;
+	}
+	const std::size_t width = IntegralWidth(value_type);
+	if (constant && width < 64)
+		value &= (std::uint64_t(1) << width) - 1;
+	std::uint64_t evaluated = 0;
+	if (constant && intrinsic.operation ==
+		hosted_builtin::INTEGER_OPERATION_BSWAP)
+	{
+		for (std::size_t byte = 0; byte < width / 8; ++byte)
+		{
+			evaluated = (evaluated << 8) | (value & 0xffu);
+			value >>= 8;
+		}
+	}
+	else if (constant && intrinsic.operation ==
+		hosted_builtin::INTEGER_OPERATION_POPCOUNT)
+	{
+		while (value != 0) { evaluated += value & 1u; value >>= 1; }
+	}
+	else if (constant && intrinsic.operation ==
+		hosted_builtin::INTEGER_OPERATION_CLZ)
+	{
+		if (value == 0)
+		{
+			if (intrinsic.arity == 2)
+				evaluated = static_cast<std::uint64_t>(
+					ExpressionScalar(arguments[1]).integral);
+			else constant = false;
+		}
+		else
+		{
+			std::uint64_t bit = std::uint64_t(1) << (width - 1);
+			while ((value & bit) == 0) { ++evaluated; bit >>= 1; }
+		}
+	}
+	else if (constant)
+	{
+		if (value == 0) constant = false;
+		else while ((value & 1u) == 0) { ++evaluated; value >>= 1; }
+	}
+	if (constant)
+		SetExpressionScalar(&result, NormalizeScalarConstant(result_type,
+			ConstexprScalarValue(static_cast<std::int64_t>(evaluated))));
+	return ApplyTarget(result, target);
+}
+
+bool SemanticAnalyzer::TryAnalyzeIntegerIntrinsicCall(
+	const std::string& spelling, ScopeId scope,
+	const std::vector<NodeId>& argument_syntax, TypeId target,
+	ExpressionInfo* result)
+{
+	using namespace hosted_builtin;
+	const IntegerIntrinsic* intrinsic = FindIntegerIntrinsic(spelling);
+	if (!intrinsic) return false;
+	if (argument_syntax.size() != intrinsic->arity)
+		throw std::runtime_error("invalid integer intrinsic arity");
+	std::vector<ExpressionInfo> arguments;
+	ExpressionInfo value = AnalyzeExpression(argument_syntax[0], scope);
+	if (!IsIntegral(value.type))
+		throw std::runtime_error("integer intrinsic operand is not integral");
+	TypeId argument_type = kNoType;
+	switch (intrinsic->argument_rule)
+	{
+	case INTEGER_ARGUMENT_UNSIGNED_SHORT:
+		argument_type = program_->types.Fundamental(FUND_UNSIGNED_SHORT_INT); break;
+	case INTEGER_ARGUMENT_UNSIGNED_INT:
+		argument_type = program_->types.Fundamental(FUND_UNSIGNED_INT); break;
+	case INTEGER_ARGUMENT_UNSIGNED_LONG:
+		argument_type = program_->types.Fundamental(FUND_UNSIGNED_LONG_INT); break;
+	case INTEGER_ARGUMENT_UNSIGNED_LONG_LONG:
+		argument_type = program_->types.Fundamental(
+			FUND_UNSIGNED_LONG_LONG_INT); break;
+	case INTEGER_ARGUMENT_GENERIC_UNSIGNED:
+		argument_type = program_->types.RemoveTopCv(EffectiveType(value.type));
+		if (program_->types.Get(argument_type).kind != TYPE_FUNDAMENTAL ||
+			!IsUnsignedIntegral(argument_type) ||
+			IntegralWidth(argument_type) > 64)
+			throw std::runtime_error(
+				"generic integer intrinsic requires an unsigned operand");
+		break;
+	}
+	arguments.push_back(ApplyCallArgument(value, argument_type));
+	if (intrinsic->arity == 2)
+	{
+		ExpressionInfo fallback = AnalyzeExpression(argument_syntax[1], scope);
+		if (!IsIntegral(fallback.type))
+			throw std::runtime_error("integer intrinsic fallback is not integral");
+		arguments.push_back(ApplyCallArgument(fallback,
+			program_->types.Fundamental(FUND_INT)));
+	}
+	const TypeId result_type = intrinsic->operation == INTEGER_OPERATION_BSWAP ?
+		argument_type : program_->types.Fundamental(FUND_INT);
+	*result = BuildIntegerIntrinsicCall(
+		intrinsic->kind, arguments, result_type, target);
+	return true;
 }
 
 bool SemanticAnalyzer::TryAnalyzeVariadicBuiltinCall(
@@ -540,6 +723,8 @@ BindingId SemanticAnalyzer::EnsureBuiltinFunction(BuiltinFunctionKind kind)
 		parameter_types.push_back(
 			program_->types.Pointer(program_->types.Fundamental(
 				FUND_UNSIGNED_LONG_INT))); break;
+	case BUILTIN_FUNCTION_HOSTED_INTEGER_INTRINSIC:
+		break;
 	case BUILTIN_FUNCTION_OPERATOR_NEW:
 	case BUILTIN_FUNCTION_OPERATOR_NEW_ARRAY:
 		spelling = kind == BUILTIN_FUNCTION_OPERATOR_NEW ?

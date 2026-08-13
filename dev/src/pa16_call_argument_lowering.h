@@ -23,6 +23,165 @@ template <class Derived>
 class CallArgumentLowering
 {
 protected:
+	Operand EmitIntegerIntrinsicUnary(LowOperation operation,
+		const Operand& value, const LowType& type)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const Operand result = derived.Temp(type);
+		Instruction instruction(Instruction::UNARY);
+		instruction.dest = result.id;
+		instruction.op = operation;
+		instruction.type = type;
+		instruction.first = value;
+		derived.Emit(instruction);
+		return result;
+	}
+
+	Operand EmitIntegerIntrinsicBinary(LowOperation operation,
+		const Operand& left, const Operand& right, const LowType& type)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const Operand result = derived.Temp(type);
+		Instruction instruction(Instruction::BINARY);
+		instruction.dest = result.id;
+		instruction.op = operation;
+		instruction.type = type;
+		instruction.first = left;
+		instruction.second = right;
+		derived.Emit(instruction);
+		return result;
+	}
+
+	Operand LowerIntegerIntrinsicPopcount(
+		Operand value, const LowType& type)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const Operand one(1, type);
+		Operand shifted = EmitIntegerIntrinsicBinary(
+			LOW_OP_USHR, value, one, type);
+		shifted = EmitIntegerIntrinsicBinary(LOW_OP_AND, shifted,
+			Operand(static_cast<std::int64_t>(UINT64_C(0x5555555555555555)),
+				type), type);
+		value = EmitIntegerIntrinsicBinary(LOW_OP_SUB, value, shifted, type);
+		Operand left = EmitIntegerIntrinsicBinary(LOW_OP_AND, value,
+			Operand(static_cast<std::int64_t>(UINT64_C(0x3333333333333333)),
+				type), type);
+		shifted = EmitIntegerIntrinsicBinary(
+			LOW_OP_USHR, value, Operand(2, type), type);
+		Operand right = EmitIntegerIntrinsicBinary(LOW_OP_AND, shifted,
+			Operand(static_cast<std::int64_t>(UINT64_C(0x3333333333333333)),
+				type), type);
+		value = EmitIntegerIntrinsicBinary(LOW_OP_ADD, left, right, type);
+		shifted = EmitIntegerIntrinsicBinary(
+			LOW_OP_USHR, value, Operand(4, type), type);
+		value = EmitIntegerIntrinsicBinary(LOW_OP_ADD, value, shifted, type);
+		value = EmitIntegerIntrinsicBinary(LOW_OP_AND, value,
+			Operand(static_cast<std::int64_t>(UINT64_C(0x0f0f0f0f0f0f0f0f)),
+				type), type);
+		for (std::uint16_t shift = 8; shift < type.width; shift *= 2)
+		{
+			shifted = EmitIntegerIntrinsicBinary(
+				LOW_OP_USHR, value, Operand(shift, type), type);
+			value = EmitIntegerIntrinsicBinary(
+				LOW_OP_ADD, value, shifted, type);
+		}
+		value = EmitIntegerIntrinsicBinary(LOW_OP_AND, value,
+			Operand(0x7f, type), type);
+		return derived.Convert(value, LowI32());
+	}
+
+	Operand LowerIntegerIntrinsicCount(
+		hosted_builtin::IntegerIntrinsicOperation operation,
+		Operand value, const LowType& type)
+	{
+		if (operation == hosted_builtin::INTEGER_OPERATION_POPCOUNT)
+			return LowerIntegerIntrinsicPopcount(value, type);
+		if (operation == hosted_builtin::INTEGER_OPERATION_CTZ)
+		{
+			const Operand negated = EmitIntegerIntrinsicUnary(
+				LOW_OP_NEG, value, type);
+			value = EmitIntegerIntrinsicBinary(
+				LOW_OP_AND, value, negated, type);
+			value = EmitIntegerIntrinsicBinary(
+				LOW_OP_SUB, value, Operand(1, type), type);
+			return LowerIntegerIntrinsicPopcount(value, type);
+		}
+		for (std::uint16_t shift = 1; shift < type.width; shift *= 2)
+		{
+			const Operand shifted = EmitIntegerIntrinsicBinary(
+				LOW_OP_USHR, value, Operand(shift, type), type);
+			value = EmitIntegerIntrinsicBinary(
+				LOW_OP_OR, value, shifted, type);
+		}
+		value = EmitIntegerIntrinsicUnary(LOW_OP_BITNOT, value, type);
+		return LowerIntegerIntrinsicPopcount(value, type);
+	}
+
+	bool TryLowerIntegerIntrinsicCall(const DumpNode& record,
+		const NodeChildren& children, const BindingRecord& binding,
+		Operand* result)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (binding.builtin_function !=
+			BUILTIN_FUNCTION_HOSTED_INTEGER_INTRINSIC) return false;
+		const hosted_builtin::IntegerIntrinsic& intrinsic =
+			hosted_builtin::GetIntegerIntrinsic(
+				binding.hosted_integer_intrinsic);
+		if (children.size() != intrinsic.arity + 1)
+			throw std::logic_error("invalid integer intrinsic call");
+		TypeId argument_type = derived.arena_.nodes[children[1]].type;
+		if (intrinsic.argument_rule !=
+			hosted_builtin::INTEGER_ARGUMENT_GENERIC_UNSIGNED)
+			argument_type = derived.program_.types.Parameters(binding.type)[0];
+		const LowType type = derived.LowerType(argument_type);
+		if (!IsInteger(type) || type.width > 64 || type.is_signed)
+			throw std::logic_error("invalid lowered integer intrinsic type");
+		Operand value = derived.LowerValue(children[1], type);
+		if (intrinsic.operation == hosted_builtin::INTEGER_OPERATION_BSWAP)
+		{
+			if (type.width == 16)
+			{
+				const Operand low = EmitIntegerIntrinsicBinary(LOW_OP_SHL,
+					EmitIntegerIntrinsicBinary(LOW_OP_AND, value,
+						Operand(0xff, type), type), Operand(8, type), type);
+				const Operand high = EmitIntegerIntrinsicBinary(LOW_OP_USHR,
+					value, Operand(8, type), type);
+				*result = EmitIntegerIntrinsicBinary(
+					LOW_OP_OR, low, high, type);
+			}
+			else if (type.width == 32 || type.width == 64)
+				*result = EmitIntegerIntrinsicUnary(LOW_OP_BSWAP, value, type);
+			else throw std::logic_error("invalid byte-swap width");
+			return true;
+		}
+		Operand count = LowerIntegerIntrinsicCount(
+			intrinsic.operation, value, type);
+		if (intrinsic.kind == hosted_builtin::INTEGER_INTRINSIC_CLZG)
+		{
+			const Operand nonzero = derived.Temp(LowU8());
+			Instruction compare(Instruction::CMP);
+			compare.dest = nonzero.id;
+			compare.op = LOW_OP_NE;
+			compare.type = type;
+			compare.first = value;
+			compare.second = Operand(0, type);
+			derived.Emit(compare);
+			const Operand selected = derived.Convert(nonzero, LowI32());
+			const Operand unselected = EmitIntegerIntrinsicBinary(LOW_OP_SUB,
+				Operand(1, LowI32()), selected, LowI32());
+			count = EmitIntegerIntrinsicBinary(LOW_OP_MUL,
+				count, selected, LowI32());
+			const Operand fallback = derived.LowerValue(
+				children[2], LowI32());
+			const Operand zero = EmitIntegerIntrinsicBinary(LOW_OP_MUL,
+				fallback, unselected, LowI32());
+			count = EmitIntegerIntrinsicBinary(
+				LOW_OP_ADD, count, zero, LowI32());
+		}
+		*result = derived.Convert(count, derived.LowerType(record.type));
+		return true;
+	}
+
 	bool TryLowerNumericBuiltinCall(const DumpNode& record,
 		const NodeChildren& children, Operand* result)
 	{
@@ -33,6 +192,8 @@ protected:
 			callee.binding >= derived.program_.bindings.size()) return false;
 		const BuiltinFunctionKind kind =
 			derived.program_.bindings[callee.binding].builtin_function;
+		if (TryLowerIntegerIntrinsicCall(record, children,
+			derived.program_.bindings[callee.binding], result)) return true;
 		if (kind == BUILTIN_FUNCTION_NANL)
 		{
 			if (children.size() != 2)

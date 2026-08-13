@@ -1839,7 +1839,9 @@ void ApplyBuiltinSymbolMetadata(pa15_lowir_detail::Symbol* symbol,
 	case BUILTIN_FUNCTION_MEMCPY:
 	case BUILTIN_FUNCTION_MEMMOVE: symbol->effects = Symbol::EFFECTS_READWRITE; break;
 	case BUILTIN_FUNCTION_NANL:
-	case BUILTIN_FUNCTION_ISNAN: symbol->effects = Symbol::EFFECTS_READNONE; break;
+	case BUILTIN_FUNCTION_ISNAN:
+	case BUILTIN_FUNCTION_HOSTED_INTEGER_INTRINSIC:
+		symbol->effects = Symbol::EFFECTS_READNONE; break;
 	case BUILTIN_FUNCTION_ALLOCA:
 	case BUILTIN_FUNCTION_VA_START:
 	case BUILTIN_FUNCTION_VA_END:

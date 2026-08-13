@@ -174,6 +174,7 @@ enum LowOperation : std::uint8_t
 	LOW_OP_NONE,
 	LOW_OP_NEG,
 	LOW_OP_BITNOT,
+	LOW_OP_BSWAP,
 	LOW_OP_ADD,
 	LOW_OP_SUB,
 	LOW_OP_MUL,

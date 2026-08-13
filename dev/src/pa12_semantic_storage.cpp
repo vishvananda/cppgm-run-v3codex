@@ -30,6 +30,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		functions_.capacity() * sizeof(FunctionInfo) +
 		variable_node_by_binding_.capacity() * sizeof(std::uint32_t) +
 		builtin_functions_.capacity() * sizeof(BindingId) +
+		integer_intrinsic_functions_.capacity() * sizeof(BindingId) +
 		entity_data_members_.capacity() * sizeof(std::vector<BindingId>) +
 		entity_static_data_members_.capacity() *
 			sizeof(std::vector<BindingId>) +

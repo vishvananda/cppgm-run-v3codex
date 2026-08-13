@@ -11,6 +11,7 @@ const char* LowOperationText(LowOperation operation)
 	{
 	case LOW_OP_NEG: return "neg";
 	case LOW_OP_BITNOT: return "bitnot";
+	case LOW_OP_BSWAP: return "bswap";
 	case LOW_OP_ADD: return "add";
 	case LOW_OP_SUB: return "sub";
 	case LOW_OP_MUL: return "mul";

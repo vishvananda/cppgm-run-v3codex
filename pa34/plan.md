@@ -12,25 +12,26 @@ source/configuration bytes plus expansion output, and no runtime host-tool invoc
 ## Current Failure Map
 
 - Preprocess: 0/45 failures; the hosted preprocessing boundary is complete.
-- Compile: 144/281 failures: 51 extension grammar/type-spelling cases owned by the
-  parser, 16 hosted intrinsic expression cases owned by semantic/lowering, 41
+- Compile: 136/281 failures: 51 extension grammar/type-spelling cases owned by the
+  parser, 8 remaining hosted intrinsic expression cases owned by semantic/lowering, 41
   trait/layout/constant cases owned by semantic facts, and 36 template lookup/demand
-  cases. By tier these are 48 tier-500, 51 tier-600, and 45 tier-700 failures; all four
+  cases. By tier these are 46 tier-500, 46 tier-600, and 44 tier-700 failures; all four
   negative tests are still correctly rejected.
 - Run: 36/41 failures; 34 stop in the compile pipeline, while 2 link and expose
   generated-code behavior (backend/lifetime and forced-inline handling).
 
 ## Active Checkpoint
 
-Next, implement the hosted intrinsic-call boundary. A bounded metadata registry owns
-intrinsic names, arity/type rules, effects, constant evaluators, and lowering IDs;
-semantic analysis produces typed call facts and lowering consumes IDs rather than source
-spellings. This applies `spec.md` §§2, 3, 6, 7, 8, 9, and 10: canonical identity,
-indexed lookup, typed lowering, per-function backend work, bounded allocation, counters,
-and no host fallback. Lookup is O(log I), checking is O(arity), and lowering is O(1) per
-call apart from operand width. Validate bit-count/byte-swap, memory/FP, and atomic groups,
-PA34 above 187/367, prior-through-pa33, audit, and repeated intrinsic-call scaling. This
-checkpoint is queued; implementation has not begun.
+Next, extend the same hosted call boundary with the memory/string intrinsic family:
+`memset`/`bzero`, byte and character searches, alignment assumptions, and prefetch, while
+canonicalizing existing copy/move/length support into registry metadata. The registry
+owns spelling, arity, effects, and lowering IDs; semantic analysis emits typed calls and
+typed LowIR selects explicit no-op, native memory operation, or external ABI boundary.
+This applies `spec.md` §§2, 3, 6, 7, 8, 9, and 10: indexed identity, typed phase facts,
+effect-aware demand, bounded allocation, and no host fallback. Lookup is O(log I),
+checking is O(arity), and lowering is O(1) per call apart from the operation's byte
+extent. Validate focused compile/run cases, PA34 above 195/367, prior-through-pa33,
+audit, and repeated-call scaling. This checkpoint is queued.
 
 ## Performance Evidence
 
@@ -50,6 +51,12 @@ hits), 106,020 peak semantic bytes, and 0.852 ms semantic time. Eight inputs too
 ms and 64 took 481.563 ms (8x work, 6.70x elapsed), consistent with linear parsing and
 bounded extension lookup.
 
+The integer-intrinsic scaling probe used four registry-dispatched calls per function.
+One, eight, and 64 functions emitted 81/648/5,184 typed LowIR instructions and
+175/1,400/11,200 MIR instructions exactly proportionally; the 64-function object build
+took 0.07 s wall time and 23,980 KiB peak RSS. Lowering work is linear in calls, with each
+count operation bounded by O(log W) for W <= 64.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result | Validation |
@@ -57,3 +64,4 @@ bounded extension lookup.
 | Hosted preprocessing boundary | `-E`, CLI/include controls, host metadata, probes, directives, and hosted literals; +51 PA34 passes | preprocess 45/45; PA34 121/367; PA1-33 4387/4387; audit pass |
 | Hosted builtin type-query boundary | Registered trait/transform syntax, retained type operands, interned transforms, structural constants, and native member-pointer null adaptation; +46 PA34 passes | PA34 167/367; PA1-33 4387/4387; focused diagnostics pass; audit pass |
 | Hosted declaration/type annotations | Canonical GNU aliases and int128 signedness; nullability, diagnostic, namespace, enum, using, pointer, and type-id attributes; +20 PA34 passes | PA34 187/367; compile 137/281 with no negative over-acceptance; PA1-33 4387/4387; audit pass |
+| Hosted integer bit intrinsics | Registry IDs, fixed/generic conversion rules, constexpr `clz`/`ctz`/`popcount`/swap, typed bit-network lowering, and native swaps; +8 PA34 passes | focused 8/8; emitted runtime values exact; PA34 195/367; PA1-33 4387/4387; audit pass |

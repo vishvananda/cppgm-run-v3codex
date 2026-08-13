@@ -1,6 +1,7 @@
 #include "hosted_builtin_registry.h"
 
 #include <cstddef>
+#include <stdexcept>
 
 namespace cppgm
 {
@@ -8,6 +9,37 @@ namespace hosted_builtin
 {
 namespace
 {
+
+const IntegerIntrinsic kIntegerIntrinsics[] = {
+	{"__builtin_bswap16", INTEGER_INTRINSIC_BSWAP16,
+		INTEGER_OPERATION_BSWAP, INTEGER_ARGUMENT_UNSIGNED_SHORT, 1},
+	{"__builtin_bswap32", INTEGER_INTRINSIC_BSWAP32,
+		INTEGER_OPERATION_BSWAP, INTEGER_ARGUMENT_UNSIGNED_INT, 1},
+	{"__builtin_bswap64", INTEGER_INTRINSIC_BSWAP64,
+		INTEGER_OPERATION_BSWAP, INTEGER_ARGUMENT_UNSIGNED_LONG_LONG, 1},
+	{"__builtin_clz", INTEGER_INTRINSIC_CLZ,
+		INTEGER_OPERATION_CLZ, INTEGER_ARGUMENT_UNSIGNED_INT, 1},
+	{"__builtin_clzg", INTEGER_INTRINSIC_CLZG,
+		INTEGER_OPERATION_CLZ, INTEGER_ARGUMENT_GENERIC_UNSIGNED, 2},
+	{"__builtin_clzl", INTEGER_INTRINSIC_CLZL,
+		INTEGER_OPERATION_CLZ, INTEGER_ARGUMENT_UNSIGNED_LONG, 1},
+	{"__builtin_clzll", INTEGER_INTRINSIC_CLZLL,
+		INTEGER_OPERATION_CLZ, INTEGER_ARGUMENT_UNSIGNED_LONG_LONG, 1},
+	{"__builtin_ctz", INTEGER_INTRINSIC_CTZ,
+		INTEGER_OPERATION_CTZ, INTEGER_ARGUMENT_UNSIGNED_INT, 1},
+	{"__builtin_ctzl", INTEGER_INTRINSIC_CTZL,
+		INTEGER_OPERATION_CTZ, INTEGER_ARGUMENT_UNSIGNED_LONG, 1},
+	{"__builtin_ctzll", INTEGER_INTRINSIC_CTZLL,
+		INTEGER_OPERATION_CTZ, INTEGER_ARGUMENT_UNSIGNED_LONG_LONG, 1},
+	{"__builtin_popcount", INTEGER_INTRINSIC_POPCOUNT,
+		INTEGER_OPERATION_POPCOUNT, INTEGER_ARGUMENT_UNSIGNED_INT, 1},
+	{"__builtin_popcountg", INTEGER_INTRINSIC_POPCOUNTG,
+		INTEGER_OPERATION_POPCOUNT, INTEGER_ARGUMENT_GENERIC_UNSIGNED, 1},
+	{"__builtin_popcountl", INTEGER_INTRINSIC_POPCOUNTL,
+		INTEGER_OPERATION_POPCOUNT, INTEGER_ARGUMENT_UNSIGNED_LONG, 1},
+	{"__builtin_popcountll", INTEGER_INTRINSIC_POPCOUNTLL,
+		INTEGER_OPERATION_POPCOUNT, INTEGER_ARGUMENT_UNSIGNED_LONG_LONG, 1}
+};
 
 template <class Kind>
 struct Entry
@@ -101,6 +133,29 @@ TypeTransformKind FindTypeTransform(const std::string& spelling)
 		{"__underlying_type", TYPE_TRANSFORM_UNDERLYING_TYPE}
 	};
 	return FindEntry(spelling, entries, TYPE_TRANSFORM_NONE);
+}
+
+const IntegerIntrinsic* FindIntegerIntrinsic(const std::string& spelling)
+{
+	std::size_t first = 0;
+	std::size_t count = sizeof(kIntegerIntrinsics) /
+		sizeof(kIntegerIntrinsics[0]);
+	while (first < count)
+	{
+		const std::size_t middle = first + (count - first) / 2;
+		const int order = spelling.compare(kIntegerIntrinsics[middle].spelling);
+		if (order < 0) count = middle;
+		else if (order > 0) first = middle + 1;
+		else return &kIntegerIntrinsics[middle];
+	}
+	return 0;
+}
+
+const IntegerIntrinsic& GetIntegerIntrinsic(IntegerIntrinsicKind kind)
+{
+	if (kind <= INTEGER_INTRINSIC_NONE || kind >= INTEGER_INTRINSIC_COUNT)
+		throw std::logic_error("invalid hosted integer intrinsic kind");
+	return kIntegerIntrinsics[static_cast<std::size_t>(kind) - 1];
 }
 
 }

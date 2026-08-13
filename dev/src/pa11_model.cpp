@@ -687,6 +687,7 @@ BindingRecord::BindingRecord()
 		  canonical(kNoBinding), lifecycle_base_entry(kNoBinding), value(0),
 		  operator_kind(OPERATOR_NONE),
 		  builtin_function(BUILTIN_FUNCTION_NONE),
+		  hosted_integer_intrinsic(hosted_builtin::INTEGER_INTRINSIC_NONE),
 		  operator_literal_suffix(0), language_linkage(LANGUAGE_LINKAGE_CPP),
 	  storage_class(STORAGE_CLASS_NONE), access(ACCESS_PUBLIC),
 	  constant(false), nonthrowing(false), unnamed_namespace_linkage(false),
