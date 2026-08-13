@@ -1772,10 +1772,11 @@ private:
 		if (full_expression_cleanup_active_ && full_expression_deferred_cleanup_) EnsureFullExpressionCleanupSegment();
 		if (record.virtual_call)
 		{
-			if (virtual_object.kind == Operand::NONE ||
-				record.virtual_slot == kNoDumpEdge)
+			if (virtual_object.kind == Operand::NONE || record.virtual_slot == kNoDumpEdge)
 				throw std::logic_error("virtual call has no object or slot");
-			call.first = LowerVirtualCallee(record, virtual_object);
+			call.first = LowerVirtualCallee(record, virtual_object,
+				ResolveHostVirtualSlot(program_, output_.host_object_emission,
+					polymorphism_, record, BaseEntityForType(arena_.nodes[children[1]].type)));
 		}
 		else if (!direct) call.first = member_pointer_call ?
 			member_pointer_callee : LowerValue(children[0], LowPtr());

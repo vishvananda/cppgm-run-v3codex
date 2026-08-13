@@ -905,13 +905,11 @@ std::vector<unsigned char> make_linux_relocatable_image(
   // weak ODR root.  Its tiny SHF_GROUP marker gives object inspectors and the
   // host linker a canonical group signature without incorrectly placing the
   // whole translation-unit .text/.data section in a discardable group.
+  const std::size_t first_global_symbol =
+    1 + section_symbols.size() + locals.size();
   for(std::size_t i = 0; i < globals.size(); ++i) {
     const HostSymbol & symbol = globals[i];
     if(symbol.binding != 2 || symbol.section == 0) continue;
-    const std::unordered_map<std::string, std::size_t>::const_iterator index =
-      symbol_indexes.find(symbol.name);
-    if(index == symbol_indexes.end())
-      throw std::logic_error("weak ODR root has no ELF symbol index");
     HostSection marker;
     marker.name = ".cppgm.odr." + std::to_string(i);
     marker.flags = 0x200;
@@ -923,7 +921,7 @@ std::vector<unsigned char> make_linux_relocatable_image(
     group.alignment = 4;
     group.entry_size = 4;
     group.link = symtab_index;
-    group.info = static_cast<std::uint32_t>(index->second);
+    group.info = static_cast<std::uint32_t>(first_global_symbol + i);
     append_little(group.bytes, 1, 4);
     append_little(group.bytes, marker_index, 4);
     sections.push_back(group);

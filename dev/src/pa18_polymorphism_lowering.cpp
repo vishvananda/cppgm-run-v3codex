@@ -71,6 +71,21 @@ bool PreferLocalObjectBinding(const Program& program, EntityId entity)
 	return false;
 }
 
+std::uint32_t ResolveHostVirtualSlot(const Program& program,
+	bool host_object_emission, const PolymorphismLoweringState& state,
+	const DumpNode& record, EntityId object_entity)
+{
+	if (!host_object_emission || record.binding == kNoBinding ||
+		record.binding >= program.bindings.size())
+		return record.virtual_slot;
+	const BindingId function = program.bindings[record.binding].canonical;
+	if (function >= state.host_primary_slot_by_binding.size() ||
+		program.bindings[function].member_owner != object_entity)
+		return record.virtual_slot;
+	const std::uint32_t slot = state.host_primary_slot_by_binding[function];
+	return slot == kNoDumpEdge ? record.virtual_slot : slot;
+}
+
 namespace
 {
 
@@ -96,6 +111,83 @@ public:
 	}
 
 private:
+	void BuildHostPrimarySlots()
+	{
+		std::vector<std::uint8_t> represented(program_.bindings.size(), 0);
+		for (EntityId entity = 0;
+			entity < graph_.class_polymorphism.size(); ++entity)
+		{
+			const std::vector<VirtualSlotFact>& slots =
+				graph_.class_polymorphism[entity].slots;
+			state_.class_host_primary_slots[entity] = slots;
+			for (std::size_t slot = 0; slot < slots.size(); ++slot)
+			{
+				const BindingId function =
+					program_.bindings[slots[slot].function].canonical;
+				if (program_.bindings[function].member_owner == entity)
+					represented[function] = 1;
+			}
+		}
+		if (output_.host_object_emission)
+		{
+			std::vector<BindingId> candidate_roots(
+				program_.bindings.size(), kNoBinding);
+			for (EntityId entity = 0;
+				entity < graph_.class_polymorphism.size(); ++entity)
+			{
+				const ClassPolymorphismFacts& facts =
+					graph_.class_polymorphism[entity];
+				for (std::size_t view = 0; view < facts.views.size(); ++view)
+					for (std::size_t slot = 0;
+						slot < facts.views[view].slots.size(); ++slot)
+					{
+						const VirtualSlotFact& source = facts.views[view].slots[slot];
+						const BindingId function =
+							program_.bindings[source.function].canonical;
+						if (program_.bindings[function].member_owner == entity &&
+							!represented[function] &&
+							candidate_roots[function] == kNoBinding)
+							candidate_roots[function] = source.root;
+					}
+			}
+			for (BindingId function = 0;
+				function < candidate_roots.size(); ++function)
+				if (candidate_roots[function] != kNoBinding)
+				{
+					const EntityId entity =
+						program_.bindings[function].member_owner;
+					state_.class_host_primary_slots[entity].push_back(
+						VirtualSlotFact(candidate_roots[function], function));
+				}
+		}
+
+		for (EntityId entity = 0;
+			entity < graph_.class_polymorphism.size(); ++entity)
+		{
+			const std::vector<VirtualSlotFact>& primary =
+				state_.class_host_primary_slots[entity];
+			std::uint64_t physical = 0;
+			for (std::size_t slot = 0; slot < primary.size(); ++slot)
+			{
+				const BindingId function =
+					program_.bindings[primary[slot].function].canonical;
+				if (program_.bindings[function].member_owner == entity)
+				{
+					if (physical >= std::numeric_limits<std::uint32_t>::max())
+						throw std::runtime_error("host primary vtable is too large");
+					state_.host_primary_slot_by_binding[function] =
+						static_cast<std::uint32_t>(physical);
+				}
+				physical += program_.bindings[function].destructor ? 2 : 1;
+			}
+		}
+	}
+
+	const std::vector<VirtualSlotFact>& PrimarySlots(EntityId entity) const
+	{
+		return state_.class_host_primary_slots[entity];
+	}
+
 	void InitializeState()
 	{
 		state_.source_function_first = output_.functions.size();
@@ -116,6 +208,11 @@ private:
 		state_.class_view_slot_symbols.resize(count);
 		state_.class_view_deleting_slot_symbols.clear();
 		state_.class_view_deleting_slot_symbols.resize(count);
+		state_.class_host_primary_slots.clear();
+		state_.class_host_primary_slots.resize(count);
+		state_.host_primary_slot_by_binding.assign(
+			program_.bindings.size(), kNoDumpEdge);
+		BuildHostPrimarySlots();
 		state_.vtable_thunks.clear();
 		for (EntityId entity = 0;
 			entity < graph_.class_polymorphism.size(); ++entity)
@@ -140,9 +237,9 @@ private:
 			state_.class_view_deleting_slot_symbols[entity].resize(
 				facts.views.size() + 1);
 			state_.class_view_slot_symbols[entity][0].assign(
-				facts.slots.size(), kNoLowId);
+				PrimarySlots(entity).size(), kNoLowId);
 			state_.class_view_deleting_slot_symbols[entity][0].assign(
-				facts.slots.size(), kNoLowId);
+				PrimarySlots(entity).size(), kNoLowId);
 			for (std::size_t view = 0; view < facts.views.size(); ++view)
 			{
 				state_.class_view_slot_symbols[entity][view + 1].assign(
@@ -537,9 +634,11 @@ private:
 	SymbolId AddPolymorphicGlobal(const std::string& name,
 		const std::string& object_name, bool weak)
 	{
+		const bool compiler_internal =
+			!object_name.empty() && object_name[0] == '@';
 		const SymbolId symbol = AddSyntheticSymbol(
-			Symbol::GLOBAL_SYMBOL, name, object_name, false);
-		output_.symbols[symbol].weak_linkage = weak;
+			Symbol::GLOBAL_SYMBOL, name, object_name, compiler_internal);
+		output_.symbols[symbol].weak_linkage = weak && !compiler_internal;
 		output_.symbols[symbol].definition_emitted = true;
 		output_.symbols[symbol].referenced = true;
 		return symbol;
@@ -851,7 +950,7 @@ private:
 		for (std::size_t view = 0; view <= facts.views.size(); ++view)
 		{
 			const std::vector<VirtualSlotFact>& slots = view == 0 ?
-				facts.slots : facts.views[view - 1].slots;
+				PrimarySlots(entity) : facts.views[view - 1].slots;
 			for (std::size_t slot = 0; slot < slots.size(); ++slot)
 			{
 				const VirtualSlotFact& candidate = slots[slot];
@@ -952,8 +1051,9 @@ private:
 			const SymbolId symbol = AddExternalVtable(entity);
 			state_.class_vtable_symbols[entity] = symbol;
 			std::uint64_t offset = facts.address_point;
-			for (std::size_t slot = 0; slot < facts.slots.size(); ++slot)
-				offset += program_.bindings[facts.slots[slot].function].destructor ?
+			const std::vector<VirtualSlotFact>& primary = PrimarySlots(entity);
+			for (std::size_t slot = 0; slot < primary.size(); ++slot)
+				offset += program_.bindings[primary[slot].function].destructor ?
 					16 : 8;
 			for (std::size_t view = 0; view < facts.views.size(); ++view)
 			{
@@ -978,7 +1078,7 @@ private:
 				"_ZTT" + TypeInfoEncoding(entity), true);
 			output_.symbols[state_.class_vtt_symbols[entity]].object_output_root = true;
 		}
-		for (std::size_t slot = 0; slot < facts.slots.size(); ++slot)
+		for (std::size_t slot = 0; slot < PrimarySlots(entity).size(); ++slot)
 			if (state_.class_view_slot_symbols[entity][0][slot] == kNoLowId)
 				throw std::logic_error("primary vtable slots are not registered");
 		for (std::size_t view = 0; view < facts.views.size(); ++view)
@@ -1287,7 +1387,7 @@ private:
 		}
 		const std::vector<std::int64_t> no_virtual_call_offsets;
 		EmitVtableView(base_entity, base_entity, symbols[(*cursor)++],
-			base_offset, base.slots, offsets,
+			base_offset, PrimarySlots(base_entity), offsets,
 			base_offset == 0 ? base.virtual_call_offsets : no_virtual_call_offsets,
 			state_.class_view_slot_symbols[base_entity][0],
 			state_.class_view_deleting_slot_symbols[base_entity][0]);
@@ -1575,7 +1675,7 @@ private:
 				state_.class_vtable_external[entity]) continue;
 			EmitVtableView(entity, entity,
 				state_.class_vtable_symbols[entity], 0,
-				facts.slots, facts.virtual_base_offsets,
+				PrimarySlots(entity), facts.virtual_base_offsets,
 				facts.virtual_call_offsets,
 				state_.class_view_slot_symbols[entity][0],
 				state_.class_view_deleting_slot_symbols[entity][0]);

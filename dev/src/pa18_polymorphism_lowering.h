@@ -46,6 +46,9 @@ struct PolymorphismLoweringState
 		class_view_slot_symbols;
 	std::vector<std::vector<std::vector<pa15_lowir_detail::SymbolId> > >
 		class_view_deleting_slot_symbols;
+	std::vector<std::vector<pa12_semantic_detail::VirtualSlotFact> >
+		class_host_primary_slots;
+	std::vector<std::uint32_t> host_primary_slot_by_binding;
 	std::vector<VtableThunkLoweringFact> vtable_thunks;
 	std::vector<pa15_lowir_detail::SymbolId> class_rtti_symbols;
 	std::vector<pa15_lowir_detail::SymbolId> class_type_name_symbols;
@@ -119,22 +122,27 @@ void EmitVtableThunks(
 	const std::vector<pa15_lowir_detail::SymbolId>& function_symbols,
 	PolymorphismLoweringState* state);
 
+std::uint32_t ResolveHostVirtualSlot(const pa11::Program& program,
+	bool host_object_emission, const PolymorphismLoweringState& state,
+	const pa12_semantic_detail::DumpNode& record,
+	pa11::EntityId object_entity);
+
 template <class Derived>
 class PolymorphismActionLowering
 {
 protected:
 	pa15_lowir_detail::Operand LowerVirtualCallee(
 		const pa12_semantic_detail::DumpNode& record,
-		const pa15_lowir_detail::Operand& object)
+		const pa15_lowir_detail::Operand& object, std::uint32_t virtual_slot)
 	{
 		using namespace pa15_lowir_detail;
 		Derived& derived = static_cast<Derived&>(*this);
 		if (derived.stats_) ++derived.stats_->virtual_calls;
 		const Operand table = derived.LoadStorage(object, LowPtr());
 		Operand slot = table;
-		if (record.virtual_slot != 0)
+		if (virtual_slot != 0)
 			slot = derived.IndexAddress(LowI8(), table, Operand(
-				static_cast<std::int64_t>(record.virtual_slot) * 8,
+				static_cast<std::int64_t>(virtual_slot) * 8,
 				LowI64()), false);
 		return derived.LoadStorage(slot, LowPtr());
 	}
