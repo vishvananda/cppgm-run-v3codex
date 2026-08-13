@@ -165,6 +165,8 @@ struct TypeNode
   bool is_const = false;
   bool is_volatile = false;
   bool variadic = false;
+  bool lvalue_ref = false;
+  bool rvalue_ref = false;
   bool substitutable = false;
   bool suppress_template_prefix_substitution = false;
   bool standard_includes_arguments = false;
@@ -181,7 +183,9 @@ struct TypeNode
            && substitution == other.substitution
            && index == other.index && bound_kind == other.bound_kind
            && is_const == other.is_const && is_volatile == other.is_volatile
-           && variadic == other.variadic && substitutable == other.substitutable
+           && variadic == other.variadic && lvalue_ref == other.lvalue_ref
+           && rvalue_ref == other.rvalue_ref
+           && substitutable == other.substitutable
            && suppress_template_prefix_substitution ==
                 other.suppress_template_prefix_substitution
            && standard_includes_arguments == other.standard_includes_arguments
@@ -204,7 +208,8 @@ size_t type_hash(const TypeNode & type)
   hash = mix_hash(hash, type.is_const | (type.is_volatile << 1) | (type.variadic << 2)
                         | (type.standard_includes_arguments << 3)
                         | (type.substitutable << 4)
-                        | (type.suppress_template_prefix_substitution << 5));
+                        | (type.suppress_template_prefix_substitution << 5)
+                        | (type.lvalue_ref << 6) | (type.rvalue_ref << 7));
   hash = vector_hash(hash, type.children);
   hash = vector_hash(hash, type.arguments);
   hash = vector_hash(hash, type.namespaces);
@@ -417,6 +422,8 @@ public:
       node.is_const = source.is_const;
       node.is_volatile = source.is_volatile;
       node.variadic = source.variadic;
+      node.lvalue_ref = source.lvalue_ref;
+      node.rvalue_ref = source.rvalue_ref;
       node.substitutable = source.substitutable;
       node.suppress_template_prefix_substitution =
         source.suppress_template_prefix_substitution;
@@ -1056,10 +1063,14 @@ private:
         output_ += 'E';
         return;
       case ABI_TYPE_FUNCTION:
+        if(type.is_volatile) output_ += 'V';
+        if(type.is_const) output_ += 'K';
         output_ += 'F';
         for(size_t child : type.children) encode_type(child);
         if(type.children.size() == 1) output_ += 'v';
         if(type.variadic) output_ += 'z';
+        if(type.lvalue_ref) output_ += 'R';
+        if(type.rvalue_ref) output_ += 'O';
         output_ += 'E';
         return;
       case ABI_TYPE_MEMBER_POINTER:
@@ -1270,7 +1281,27 @@ private:
         } else encode_entity_reference(graph_.strings.get(argument.entity));
         return;
       case ABI_TEMPLATE_ARGUMENT_MEMBER_EXTERNAL_ENTITY:
-        output_ += "XadL" + graph_.strings.get(argument.symbol) + "EE";
+        if(argument.symbol != NO_ID) {
+          output_ += "XadL" + graph_.strings.get(argument.symbol) + "EE";
+          return;
+        }
+        require(argument.owner_type != NO_ID && argument.name != NO_ID,
+                "structured member external entity is incomplete");
+        require(!(argument.member_lvalue_ref && argument.member_rvalue_ref),
+                "structured member external entity has conflicting ref qualifiers");
+        output_ += "XadL_ZN";
+        if(argument.member_volatile) output_ += 'V';
+        if(argument.member_const) output_ += 'K';
+        if(argument.member_lvalue_ref) output_ += 'R';
+        if(argument.member_rvalue_ref) output_ += 'O';
+        encode_prefix_type(argument.owner_type);
+        output_ += source_name(graph_.strings.get(argument.name)) + 'E';
+        if(argument.member_is_function) {
+          for(size_t parameter : argument.parameters) encode_type(parameter);
+          if(argument.parameters.empty()) output_ += 'v';
+          if(argument.member_variadic) output_ += 'z';
+        }
+        output_ += "EE";
         return;
       case ABI_TEMPLATE_ARGUMENT_PACK:
         output_ += 'J'; encode_arguments(argument.arguments); output_ += 'E'; return;

@@ -324,11 +324,55 @@ public:
 		}
 		else if (source.value_binding != kNoBinding)
 		{
-			target.kind = ABI_TEMPLATE_ARGUMENT_ENTITY;
-			target.entity_ref = AddEntity(source.value_binding);
-			const TypeRecord& type = program_.types.Get(
-				program_.types.RemoveTopCv(source.type));
-			target.address_of = type.kind == TYPE_POINTER;
+			const BindingRecord& value = program_.bindings[
+				program_.bindings[source.value_binding].canonical];
+			const bool nonstatic_member = value.member_owner != kNoEntity &&
+				((value.kind == BIND_FUNCTION &&
+				  !value.static_member_function) ||
+				 (value.kind != BIND_FUNCTION &&
+				  value.storage_class != STORAGE_CLASS_STATIC));
+			if (nonstatic_member)
+			{
+				if (value.member_owner >= program_.entities.size())
+					throw std::logic_error(
+						"ABI member entity owner is invalid");
+				target.kind = ABI_TEMPLATE_ARGUMENT_MEMBER_EXTERNAL_ENTITY;
+				target.type = MakeType(
+					program_.entities[value.member_owner].type);
+				target.name = program_.names.Get(value.name);
+				target.address_of = true;
+				target.member_is_function = value.kind == BIND_FUNCTION;
+				if (target.member_is_function)
+				{
+					const TypeRecord& member_type = program_.types.Get(value.type);
+					if (member_type.kind != TYPE_FUNCTION)
+						throw std::logic_error(
+							"ABI member function entity is not callable");
+					target.member_function_const =
+						(member_type.cv & CV_CONST) != 0;
+					target.member_function_volatile =
+						(member_type.cv & CV_VOLATILE) != 0;
+					target.member_function_lvalue_ref =
+						member_type.ref_qualifier == FUNCTION_REF_LVALUE;
+					target.member_function_rvalue_ref =
+						member_type.ref_qualifier == FUNCTION_REF_RVALUE;
+					target.member_function_variadic = member_type.variadic;
+					const TypeId* member_parameters =
+						program_.types.Parameters(value.type);
+					for (std::size_t i = 0;
+						i < member_type.parameter_count; ++i)
+						target.parameter_types.push_back(
+							MakeType(member_parameters[i]));
+				}
+			}
+			else
+			{
+				target.kind = ABI_TEMPLATE_ARGUMENT_ENTITY;
+				target.entity_ref = AddEntity(source.value_binding);
+				const TypeRecord& type = program_.types.Get(
+					program_.types.RemoveTopCv(source.type));
+				target.address_of = type.kind == TYPE_POINTER;
+			}
 		}
 		else
 		{
@@ -907,6 +951,12 @@ public:
 			for (std::size_t i = 0; i < record->parameter_count; ++i)
 				result.types.push_back(
 					MakeType(parameters[i], function, recipe));
+			result.is_const = (record->cv & CV_CONST) != 0;
+			result.is_volatile = (record->cv & CV_VOLATILE) != 0;
+			result.lvalue_ref =
+				record->ref_qualifier == FUNCTION_REF_LVALUE;
+			result.rvalue_ref =
+				record->ref_qualifier == FUNCTION_REF_RVALUE;
 			result.variadic = record->variadic;
 			return result;
 		}
