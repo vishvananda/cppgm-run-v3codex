@@ -26,6 +26,12 @@ using namespace pa11;
 struct BracedInitializationContext;
 class RetainedTemplateValidator;
 
+bool TemplateArgumentsNeedInternalEmission(const Program& program,
+	const std::vector<TemplateArgument>& arguments);
+void PublishFunctionTemplateInternalEmission(Program* program,
+	BindingId binding, BindingId canonical,
+	const std::vector<TemplateArgument>& arguments);
+
 struct SemanticGraphStorage
 {
 	InternedStringTable strings;

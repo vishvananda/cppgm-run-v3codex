@@ -92,7 +92,8 @@ enum ResultIdentityAtomKind
 	RESULT_IDENTITY_ARGUMENTS_BEGIN,
 	RESULT_IDENTITY_ARGUMENT_BEGIN,
 	RESULT_IDENTITY_ARGUMENT_END,
-	RESULT_IDENTITY_ARGUMENTS_END
+	RESULT_IDENTITY_ARGUMENTS_END,
+	RESULT_IDENTITY_PACK_EXPANSION
 };
 
 std::uint64_t ResultIdentityAtom(ResultIdentityAtomKind kind,
@@ -201,6 +202,12 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 		std::vector<std::uint64_t>* atoms, std::size_t* visits,
 		std::size_t* expansions) -> bool {
 		if (++*visits > visit_limit || reference.node == kNoNode) return false;
+		if (arena_->IsTag(reference.node, "parameter-pack"))
+		{
+			atoms->push_back(ResultIdentityAtom(
+				RESULT_IDENTITY_PACK_EXPANSION));
+			return true;
+		}
 		const NameId semantic_name =
 			arena_->SemanticPayloadId(reference.node);
 		const std::vector<ResultSyntaxReference>* substitution =
@@ -223,6 +230,10 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 		const std::size_t parameter = root_parameter(semantic_name);
 		if (parameter < pattern->parameters.size())
 		{
+			if (arena_->IsTag(reference.node, "pack-expansion-expression") ||
+				arena_->HasDescendantTag(reference.node, "parameter-pack"))
+				atoms->push_back(ResultIdentityAtom(
+					RESULT_IDENTITY_PACK_EXPANSION));
 			atoms->push_back(ResultIdentityAtom(
 				RESULT_IDENTITY_PARAMETER, parameter));
 			return true;
@@ -400,7 +411,15 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 				{
 					atoms->push_back(ResultIdentityAtom(
 						RESULT_IDENTITY_ARGUMENT_BEGIN));
-					if (!build(arguments[a], atoms, visits, expansions))
+					const bool pack_expansion = arena_->IsTag(
+						arguments[a].node, "pack-expansion-expression");
+					if (pack_expansion) atoms->push_back(ResultIdentityAtom(
+						RESULT_IDENTITY_PACK_EXPANSION));
+					const NodeId argument_node = pack_expansion ?
+						FirstSemanticChild(arguments[a].node) : arguments[a].node;
+					if (!build(ResultSyntaxReference(argument_node,
+						arguments[a].scope, arguments[a].environment),
+						atoms, visits, expansions))
 						return false;
 					atoms->push_back(ResultIdentityAtom(
 						RESULT_IDENTITY_ARGUMENT_END));
@@ -417,6 +436,8 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 			arena_->IsTag(reference.node, "type-id") ||
 			arena_->IsTag(reference.node, "type-specifier-seq") ||
 			arena_->IsTag(reference.node, "default-template-argument") ||
+			(arena_->IsTag(reference.node, "abstract-declarator") &&
+			 arena_->HasDirectChildTag(reference.node, "parameter-pack")) ||
 			(arena_->IsTag(reference.node, "type-name") &&
 			 arena_->HasDirectChildTag(
 				reference.node, "structured-type-name")) ||

@@ -149,6 +149,9 @@ public:
 	{
 		RegisterAggregateHelpers();
 		ScanTop(graph_.root);
+		for (std::size_t node = 0; node < arena_.nodes.size(); ++node)
+			if (arena_.nodes[node].kind == DUMP_CALLEE && arena_.nodes[node].binding != kNoBinding &&
+				function_symbols_[arena_.nodes[node].binding] == kNoLowId) RegisterFunction(node);
 		RegisterLocalStaticObjects();
 		pa18_lowering_detail::PreparePolymorphism(graph_, output_, stats_,
 			source_ordinal_, function_symbols_, &polymorphism_);
@@ -285,7 +288,7 @@ private:
 		const BindingRecord& binding = program_.bindings[node.binding];
 		const BindingRecord& canonical_binding = program_.bindings[binding.canonical];
 		const bool class_template_member = binding.member_owner != kNoEntity &&
-			program_.entities[binding.member_owner].template_argument_count;
+			program_.entities[binding.member_owner].template_argument_begin != kNoBinding;
 		const bool weak_linkage = pa15_lowering_abi::HasWeakLinkage(
 			program_, node.binding, kind == Symbol::FUNCTION_SYMBOL);
 		const bool local_member = pa18_lowering_detail::IsFunctionLocalEntity(
@@ -389,7 +392,7 @@ private:
 			function_definition_[record.binding] = node;
 			IndexBitFieldStorageTransferOwner(node);
 		}
-		else if (function_declaration_[record.binding] == kNoDumpEdge) function_declaration_[record.binding] = node;
+		else if (record.kind == DUMP_FUNCTION_DECLARATION && function_declaration_[record.binding] == kNoDumpEdge) function_declaration_[record.binding] = node;
 		CacheVirtualBaseBoundary(node);
 		if (record.declaration_only) output_.symbols[function_symbols_[record.binding]].referenced = true;
 	}

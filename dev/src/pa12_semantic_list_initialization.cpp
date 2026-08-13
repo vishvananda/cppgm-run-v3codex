@@ -146,6 +146,15 @@ const ExpressionInfo* FindPreparedExpression(
 		&context.prepared_expressions[index] : 0;
 }
 
+bool HasDirectPackExpansion(const SyntaxArena& arena, NodeId list)
+{
+	for (std::uint32_t edge = arena.FirstEdge(list); edge != kNoEdge;
+		edge = arena.NextEdge(edge))
+		if (arena.IsTag(arena.EdgeChild(edge), "pack-expansion-expression"))
+			return true;
+	return false;
+}
+
 }
 
 bool SemanticAnalyzer::NeedsBracedCallContext(
@@ -1048,7 +1057,8 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 	}
 	if (braced_initialization_context_)
 	{
-		if (list_initialization && source_list != kNoNode)
+		if (list_initialization && source_list != kNoNode &&
+			(!prepared_arguments || !HasDirectPackExpansion(*arena_, source_list)))
 			PrepareBracedInitialization(source_list, scope);
 		for (std::size_t i = 0; i < argument_syntax.size(); ++i)
 			if (argument_syntax[i] != kNoNode &&

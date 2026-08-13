@@ -231,6 +231,7 @@ struct ArgumentNode
   long long value = 0;
   bool has_value_type = false;
   bool address_of = false;
+  bool pack_expansion = false;
   bool member_is_function = false;
   bool member_const = false;
   bool member_volatile = false;
@@ -255,6 +256,7 @@ struct ArgumentNode
            && substitution == other.substitution && symbol == other.symbol
            && index == other.index && value == other.value
            && has_value_type == other.has_value_type && address_of == other.address_of
+           && pack_expansion == other.pack_expansion
            && member_is_function == other.member_is_function
            && member_const == other.member_const && member_volatile == other.member_volatile
            && member_lvalue_ref == other.member_lvalue_ref
@@ -292,7 +294,8 @@ size_t argument_hash(const ArgumentNode & argument)
                         | (argument.member_is_function << 2) | (argument.member_const << 3)
                         | (argument.member_volatile << 4) | (argument.member_lvalue_ref << 5)
                         | (argument.member_rvalue_ref << 6) | (argument.member_variadic << 7)
-                        | (argument.member_has_result_type << 8));
+                        | (argument.member_has_result_type << 8)
+						| (argument.pack_expansion << 9));
   hash = vector_hash(hash, argument.parameters);
   return vector_hash(hash, argument.arguments);
 }
@@ -595,6 +598,7 @@ private:
     node.value = source.value;
     node.has_value_type = source.has_value_type;
     node.address_of = source.address_of;
+    node.pack_expansion = source.pack_expansion;
     node.member_is_function = source.member_is_function;
     node.member_const = source.member_function_const;
     node.member_volatile = source.member_function_volatile;
@@ -999,7 +1003,7 @@ private:
     output_ += 'h' + number(offset) + '_';
   }
 
-  void encode_type(size_t id)
+  void encode_type(size_t id, bool retain_complete_substitution = true)
   {
     vector<SubstitutionKey> pending;
     for(;;) {
@@ -1051,15 +1055,15 @@ private:
       }
 
       encode_new_type(id, type);
-      if(!(type.kind == ABI_TYPE_STD_TEMPLATE_SPECIALIZATION
+      if((retain_complete_substitution || !pending.empty()) &&
+		 !(type.kind == ABI_TYPE_STD_TEMPLATE_SPECIALIZATION
            && type.standard_includes_arguments)) {
         substitutions_.add(key);
       }
       break;
     }
-    for(auto key = pending.rbegin(); key != pending.rend(); ++key) {
-      substitutions_.add(*key);
-    }
+    for(size_t i = pending.size(); i != 0; --i)
+      if(retain_complete_substitution || i != 1) substitutions_.add(pending[i - 1]);
   }
 
   void encode_new_type(size_t id, const TypeNode & type)
@@ -1282,6 +1286,7 @@ private:
   void encode_argument(size_t id)
   {
     const ArgumentNode & argument = graph_.argument(id);
+	if(argument.pack_expansion) output_ += "Dp";
     switch(argument.kind) {
       case ABI_TEMPLATE_ARGUMENT_TYPE: encode_type(argument.type); return;
       case ABI_TEMPLATE_ARGUMENT_VALUE:
@@ -1291,7 +1296,7 @@ private:
         return;
       case ABI_TEMPLATE_ARGUMENT_DEPENDENT_VALUE:
         output_ += "Tn";
-        encode_type(argument.type);
+        encode_type(argument.type, false);
         output_ += 'L'; encode_type(argument.value_type);
         output_ += integral_value(argument.value_type, argument.value) + 'E';
         return;

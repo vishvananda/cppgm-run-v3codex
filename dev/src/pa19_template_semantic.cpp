@@ -144,61 +144,6 @@ bool ClassTemplateArgumentsAllowPartialSelection(const Program& program,
 	return true;
 }
 
-bool TypeContainsLocalContext(const Program& program, TypeId type,
-	std::size_t depth)
-{
-	if (depth > program.types.Size()) return true;
-	const TypeRecord& record = program.types.Get(type);
-	if (record.kind == TYPE_NAMED)
-	{
-		const EntityRecord& entity = program.entities[record.entity];
-		if (entity.local_context != kNoBinding) return true;
-		const std::size_t first = entity.template_argument_begin;
-		if (first == kNoBinding || first > program.template_arguments.size() ||
-			entity.template_argument_count >
-				program.template_arguments.size() - first) return false;
-		for (std::size_t argument = 0;
-			argument < entity.template_argument_count; ++argument)
-			if ((first + argument >=
-				 program.canonical_template_arguments.size() ||
-				 program.canonical_template_arguments[first + argument].kind ==
-					TEMPLATE_ARGUMENT_TYPE) &&
-				TypeContainsLocalContext(program,
-					program.template_arguments[first + argument], depth + 1))
-				return true;
-		return false;
-	}
-	if (record.kind == TYPE_FUNCTION)
-	{
-		if (TypeContainsLocalContext(program, record.child, depth + 1))
-			return true;
-		const TypeId* parameters = program.types.Parameters(type);
-		for (std::size_t parameter = 0;
-			parameter < record.parameter_count; ++parameter)
-			if (TypeContainsLocalContext(
-				program, parameters[parameter], depth + 1)) return true;
-		return false;
-	}
-	if (record.kind == TYPE_MEMBER_POINTER && TypeContainsLocalContext(
-		program, static_cast<TypeId>(record.bound), depth + 1)) return true;
-	return record.kind == TYPE_QUALIFIED || record.kind == TYPE_POINTER ||
-		record.kind == TYPE_LVALUE_REFERENCE ||
-		record.kind == TYPE_RVALUE_REFERENCE || record.kind == TYPE_ARRAY ||
-		record.kind == TYPE_MEMBER_POINTER ?
-		TypeContainsLocalContext(program, record.child, depth + 1) : false;
-}
-
-bool TemplateArgumentsNeedInternalEmission(const Program& program,
-	const std::vector<TemplateArgument>& arguments)
-{
-	for (std::size_t argument = 0; argument < arguments.size(); ++argument)
-		if ((arguments[argument].kind == TEMPLATE_ARGUMENT_TYPE ||
-			 arguments[argument].kind == TEMPLATE_ARGUMENT_TEMPLATE) &&
-			TypeContainsLocalContext(program, arguments[argument].type, 0))
-			return true;
-	return false;
-}
-
 std::string TemplateArgumentTypeName(const std::string& source)
 {
 	std::string spelling = source;

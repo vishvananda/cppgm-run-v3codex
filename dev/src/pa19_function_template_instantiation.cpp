@@ -1939,7 +1939,6 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 				request_key, TEMPLATE_REQUEST_SUCCEEDED, old);
 		return old;
 	}
-
 	ScopeId template_scope = kNoScope;
 	SpecInfo spec;
 	EntityId member_owner = kNoEntity;
@@ -1999,6 +1998,7 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 		function_template_specialization_declarations_.Insert(
 			declaration_key, canonical_binding);
 	BindingRecord& binding_record = program_->bindings[binding];
+	PublishFunctionTemplateInternalEmission(program_, binding, canonical_binding, completed);
 	if (pattern.abi_recipe == kNoFunctionTemplateAbiRecipe ||
 		pattern.abi_recipe >= program_->function_template_abi_recipes.size())
 		throw std::logic_error(

@@ -224,6 +224,10 @@ private:
 			if (ResultIdentityKind(atoms_[position_]) !=
 				FUNCTION_TEMPLATE_RESULT_ARGUMENT_BEGIN) return false;
 			++position_;
+			bool pack_expansion = position_ < atoms_.size() &&
+				ResultIdentityKind(atoms_[position_]) ==
+					FUNCTION_TEMPLATE_RESULT_PACK_EXPANSION;
+			if (pack_expansion) ++position_;
 			if (ArgumentKind(component->entity, argument) ==
 				TEMPLATE_ARGUMENT_INTEGRAL)
 			{
@@ -231,14 +235,22 @@ private:
 				if (expression == kNoFunctionTemplateAbiExpression) return false;
 				component->arguments.push_back(FunctionTemplateAbiArgument(
 					FUNCTION_TEMPLATE_ABI_ARGUMENT_EXPRESSION,
-					kNoFunctionTemplateAbiType, expression));
+					kNoFunctionTemplateAbiType, expression,
+					pack_expansion));
 			}
 			else
 			{
 				const FunctionTemplateAbiTypeId type = ParseType();
 				if (type == kNoFunctionTemplateAbiType) return false;
 				component->arguments.push_back(FunctionTemplateAbiArgument(
-					FUNCTION_TEMPLATE_ABI_ARGUMENT_TYPE, type));
+					FUNCTION_TEMPLATE_ABI_ARGUMENT_TYPE, type,
+					kNoFunctionTemplateAbiExpression, pack_expansion));
+			}
+			if (position_ < atoms_.size() && ResultIdentityKind(atoms_[position_]) ==
+				FUNCTION_TEMPLATE_RESULT_PACK_EXPANSION)
+			{
+				component->arguments.back().pack_expansion = true;
+				++position_;
 			}
 			if (position_ >= atoms_.size() ||
 				ResultIdentityKind(atoms_[position_]) !=
@@ -470,20 +482,43 @@ FunctionTemplateAbiExpressionId PublishSyntaxExpression(Program* program,
 	return kNoFunctionTemplateAbiExpression;
 }
 
-bool HasParameterRoot(const FunctionTemplatePattern& pattern,
+bool HasRetainedParameterRoot(const Program& program,
+	const FunctionTemplatePattern& pattern,
 	const std::vector<std::uint64_t>& atoms)
 {
-	if (atoms.size() < 2 ||
-		ResultIdentityKind(atoms[0]) !=
-			FUNCTION_TEMPLATE_RESULT_QUALIFIED_BEGIN ||
+	if (!atoms.empty() && ResultIdentityKind(atoms[0]) ==
+		FUNCTION_TEMPLATE_RESULT_PARAMETER) return true;
+	if (atoms.size() < 3 || ResultIdentityKind(atoms[0]) !=
+		FUNCTION_TEMPLATE_RESULT_QUALIFIED_BEGIN ||
 		ResultIdentityKind(atoms[1]) != FUNCTION_TEMPLATE_RESULT_COMPONENT)
 		return false;
-	const NameId root = static_cast<NameId>(ResultIdentityValue(atoms[1]));
+	const NameId source_root = static_cast<NameId>(
+		ResultIdentityValue(atoms[1]));
 	for (std::size_t parameter = 0;
 		parameter < pattern.parameters.size(); ++parameter)
 		if (pattern.parameters[parameter].kind == TEMPLATE_ARGUMENT_TYPE &&
-			pattern.parameters[parameter].name == root) return true;
-	return false;
+			pattern.parameters[parameter].name == source_root) return true;
+	EntityId entity = kNoEntity;
+	const FunctionTemplateResultIdentityAtomKind marker =
+		ResultIdentityKind(atoms[2]);
+	const std::uint64_t value = ResultIdentityValue(atoms[2]);
+	if (marker == FUNCTION_TEMPLATE_RESULT_ENTITY)
+		entity = value < program.entities.size() ?
+			static_cast<EntityId>(value) : kNoEntity;
+	else if (marker == FUNCTION_TEMPLATE_RESULT_DECLARATION &&
+		value < program.bindings.size())
+	{
+		const BindingRecord& binding = program.bindings[
+			program.bindings[static_cast<BindingId>(value)].canonical];
+		if (binding.type != kNoType)
+		{
+			const TypeRecord& type = program.types.Get(
+				program.types.RemoveTopCv(binding.type));
+			if (type.kind == TYPE_NAMED) entity = type.entity;
+		}
+	}
+	if (entity == kNoEntity || entity >= program.entities.size()) return false;
+	return program.entities[entity].identity_name != source_root;
 }
 
 }
@@ -530,7 +565,7 @@ void SemanticAnalyzer::PublishFunctionTemplateResultAbiType(
 		function_template_result_identities_.CopyAtoms(
 			pattern->expanded_result_identity, &atoms);
 		if (pattern->expanded_result_has_alias ||
-			HasParameterRoot(*pattern, atoms))
+			HasRetainedParameterRoot(*program_, *pattern, atoms))
 		{
 			AbiPublication publication(program_);
 			AbiIdentityReader reader(program_, class_templates_,

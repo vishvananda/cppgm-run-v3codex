@@ -104,6 +104,11 @@ NameId StandardTemplateTerminal(const Program& program,
 		path[1] : 0;
 }
 
+bool IsClassTemplateSpecialization(const EntityRecord& entity)
+{
+	return entity.template_argument_begin != kNoBinding;
+}
+
 bool IsFundamentalType(const Program& program, TypeId type,
 	FundamentalKind fundamental)
 {
@@ -804,6 +809,7 @@ public:
 		{
 			target.kind = ABI_TEMPLATE_ARGUMENT_TYPE;
 			target.type = MakeFunctionTemplateAbiType(source.type, recipe);
+			target.pack_expansion = source.pack_expansion;
 		}
 		else
 		{
@@ -1140,10 +1146,17 @@ public:
 					program_.entities[entity.enclosing_class].type,
 					function, recipe));
 			}
-			else if (entity.template_argument_count == 0)
+			else if (!IsClassTemplateSpecialization(entity))
 			{
 				result.kind = ABI_TYPE_NAMED;
-				result.name = program_.names.Get(entity.name);
+				std::vector<NameId> path;
+				program_.BuildEmissionPath(
+					entity.owner, entity.identity_name, &path);
+				for (std::size_t i = 0; i < path.size(); ++i)
+				{
+					if (i != 0) result.name += "::";
+					result.name += program_.names.Get(path[i]);
+				}
 			}
 			else
 			{
@@ -1228,7 +1241,7 @@ bool AppendClassTemplateOwner(const pa11::Program& program,
 	using namespace pa11;
 	if (binding.member_owner == kNoEntity) return false;
 	const EntityRecord& entity = program.entities[binding.member_owner];
-	if (entity.template_argument_count == 0) return false;
+	if (!IsClassTemplateSpecialization(entity)) return false;
 	const std::size_t first = entity.template_argument_begin;
 	if (first > program.template_arguments.size() ||
 		entity.template_argument_count > program.template_arguments.size() - first)
@@ -1381,7 +1394,7 @@ bool HasWeakLinkage(
 	const pa11::BindingRecord& record = program.bindings[binding];
 	const pa11::BindingRecord& canonical = program.bindings[record.canonical];
 	const bool class_template_member = record.member_owner != pa11::kNoEntity &&
-		program.entities[record.member_owner].template_argument_count != 0;
+		IsClassTemplateSpecialization(program.entities[record.member_owner]);
 	const bool primary_template_member = class_template_member &&
 		!program.entities[record.member_owner].explicit_template_specialization;
 	const bool preempted = record.explicit_instantiation_suppressed ||
@@ -1642,7 +1655,7 @@ std::string MangleFunction(const pa11::Program& program,
 			throw std::logic_error("function template ABI recipe is not callable");
 	}
 	const bool structured_class_owner = binding.member_owner != kNoEntity &&
-		program.entities[binding.member_owner].template_argument_count != 0;
+		IsClassTemplateSpecialization(program.entities[binding.member_owner]);
 	AbiFactRecord target;
 	target.set_kind(ABI_FACT_RECORD_TARGET);
 	target.target.kind = ABI_TARGET_FACT_FUNCTION;
@@ -1812,7 +1825,7 @@ std::string MangleVariable(const pa11::Program& program,
 	file.cases.push_back(AbiFactCase());
 	AbiFactBuilder facts(program, file.cases[0]);
 	const bool structured_class_owner = binding.member_owner != kNoEntity &&
-		program.entities[binding.member_owner].template_argument_count != 0;
+		IsClassTemplateSpecialization(program.entities[binding.member_owner]);
 	const bool member_variable_template = structured_class_owner &&
 		binding.variable_template_specialization;
 	AbiFactRecord target;

@@ -443,13 +443,16 @@ struct FunctionTemplateAbiArgument
 	FunctionTemplateAbiArgumentKind kind;
 	FunctionTemplateAbiTypeId type;
 	FunctionTemplateAbiExpressionId expression;
+	bool pack_expansion;
 
 	FunctionTemplateAbiArgument(
 		FunctionTemplateAbiArgumentKind kind_value,
 		FunctionTemplateAbiTypeId type_value = kNoFunctionTemplateAbiType,
 		FunctionTemplateAbiExpressionId expression_value =
-			kNoFunctionTemplateAbiExpression)
-		: kind(kind_value), type(type_value), expression(expression_value) {}
+			kNoFunctionTemplateAbiExpression,
+		bool pack_expansion_value = false)
+		: kind(kind_value), type(type_value), expression(expression_value),
+		  pack_expansion(pack_expansion_value) {}
 };
 
 enum FunctionTemplateAbiExpressionKind

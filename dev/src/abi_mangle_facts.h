@@ -236,6 +236,7 @@ struct AbiTemplateArgument
   std::size_t index = 0;
   bool has_value_type = false;
   bool address_of = false;
+  bool pack_expansion = false;
   bool member_is_function = false;
   bool member_function_const = false;
   bool member_function_volatile = false;
