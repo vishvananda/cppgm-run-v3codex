@@ -772,6 +772,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 		}
 		return AnalyzeNamedValue(spelling, scope, target, node);
 	}
+	if (arena_->IsTag(node, "builtin-type-trait-expression"))
+		return ApplyTarget(AnalyzeBuiltinTypeTrait(node, scope), target);
 	if (arena_->IsTag(node, "call-expression"))
 		return AnalyzeCall(node, scope, target);
 	if (arena_->IsTag(node, "lambda-expression"))

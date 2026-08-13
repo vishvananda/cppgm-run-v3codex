@@ -865,6 +865,7 @@ private:
 
 	ExpressionInfo AnalyzeExpression(NodeId node, ScopeId scope,
 		TypeId target = kNoType);
+	ExpressionInfo AnalyzeBuiltinTypeTrait(NodeId node, ScopeId scope);
 	ExpressionInfo AnalyzeStatementExpression(
 		NodeId node, ScopeId scope, TypeId target);
 	NodeId FunctionDefinitionPart(NodeId node, const char* tag) const;

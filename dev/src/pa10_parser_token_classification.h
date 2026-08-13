@@ -2,6 +2,8 @@
 
 #include "pa10_syntax_model.h"
 
+#include <string>
+
 namespace cppgm
 {
 namespace pa10_syntax_detail
@@ -17,6 +19,16 @@ inline bool IsFundamentalKind(std::uint16_t kind)
 		return true;
 	default: return false;
 	}
+}
+
+inline bool IsFundamentalTypeSpelling(const std::string& spelling)
+{
+	static const char* const names[] = {"bool", "char", "char16_t", "char32_t",
+		"double", "float", "int", "long", "short", "signed", "unsigned",
+		"void", "wchar_t"};
+	for (std::size_t i = 0; i < sizeof(names) / sizeof(names[0]); ++i)
+		if (spelling == names[i]) return true;
+	return false;
 }
 
 inline bool IsDeclSpecifierKeyword(std::uint16_t kind)

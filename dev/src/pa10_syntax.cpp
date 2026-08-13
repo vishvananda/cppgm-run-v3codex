@@ -3,6 +3,7 @@
 #include "pa10_syntax_model.h"
 #include "pa10_parser_name_facts.h"
 #include "pa10_parser_token_classification.h"
+#include "hosted_builtin_syntax.h"
 #include "pa32_object_attribute_syntax.h"
 #include "pa25_lambda_capture_syntax.h"
 #include "pa25_range_for_syntax.h"
@@ -23,11 +24,12 @@ namespace
 {
 using namespace pa10_syntax_detail;
 class Parser : private ParserNameFacts<Parser>,
+	private hosted_builtin::Syntax<Parser>,
 	private pa25_syntax_detail::LambdaCaptureSyntax<Parser>,
 	private pa25_syntax_detail::RangeForSyntax<Parser>,
 	private pa30_syntax_detail::RegionSyntax<Parser>
 {
-friend class ParserNameFacts<Parser>;
+friend class ParserNameFacts<Parser>; friend class hosted_builtin::Syntax<Parser>;
 friend class pa25_syntax_detail::LambdaCaptureSyntax<Parser>;
 friend class pa25_syntax_detail::RangeForSyntax<Parser>;
 friend class pa30_syntax_detail::RegionSyntax<Parser>;
@@ -189,12 +191,6 @@ private:
 	{
 		return position_ < tokens_.size() &&
 			tokens_[position_].Kind() == kLiteralToken;
-	}
-	static bool IsFundamentalTypeSpelling(const std::string& spelling)
-	{
-		static const char* const names[] = {"bool", "char", "char16_t", "char32_t", "double", "float", "int", "long", "short", "signed", "unsigned", "void", "wchar_t"};
-		for (std::size_t i = 0; i < sizeof(names) / sizeof(names[0]); ++i) if (spelling == names[i]) return true;
-		return false;
 	}
 	bool AtEof() const
 	{
@@ -395,15 +391,6 @@ private:
 			if (!ParseLeadingAttribute(alignments)) break;
 		}
 	}
-	bool IsLikelyTypeIdentifier(std::size_t position) const
-	{ if (position >= tokens_.size() ||
-		tokens_[position].Kind() != kIdentifierToken) return false;
-		const std::string& name = Spelling(position);
-		if (HasNameFact(tokens_[position].spelling, kKnownType) || name == "__builtin_va_list") return true;
-		return name.find('C') != std::string::npos ||
-			name.find('T') != std::string::npos ||
-			name.find('Y') != std::string::npos ||
-			name.find('E') != std::string::npos; }
 	bool ParseConversionTypeName(NodeId* retained = 0)
 	{
 		NodeId conversion = kNoNode, specifiers = kNoNode,
@@ -744,8 +731,7 @@ private:
 	std::vector<NameFactChange> name_fact_changes_;
 	std::vector<AngleMatch> angle_matches_;
 	std::vector<TextId> last_declared_names_, parameter_names_,
-		active_non_type_parameter_names_;
-	std::vector<TextId> current_classes_;
+		active_non_type_parameter_names_, current_classes_;
 };
 NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id, std::string* first_type)
 {
@@ -760,6 +746,15 @@ NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id, std::string* first_type)
 		if (position_ >= tokens_.size()) break;
 		const std::size_t token_position = position_;
 		const std::uint16_t kind = tokens_[position_].Kind();
+		if (!saw_type && TryParseBuiltinTransformSpecifier(sequence))
+		{
+			if (first_type && first_type->empty())
+				*first_type = Spelling(token_position);
+			consumed = true;
+			saw_type = true;
+			saw_user_type = true;
+			continue;
+		}
 		if (kind < kSimpleTokenCount && IsFundamentalKind(kind))
 		{
 			if (saw_user_type) break;
@@ -1419,6 +1414,11 @@ NodeId Parser::ParsePrimaryExpression()
 	}
 	if (At(KW_DECLTYPE))
 		return ParseDecltypeValueName();
+	if (AtIdentifier() && AtOffset(1, OP_LPAREN))
+	{
+		const NodeId trait = ParseBuiltinTypeTraitExpression();
+		if (trait != kNoNode) return trait;
+	}
 	if (AtIdentifier() || At(OP_COLON2) || At(KW_OPERATOR) ||
 		(position_ < tokens_.size() &&
 		 IsFundamentalKind(tokens_[position_].Kind())))

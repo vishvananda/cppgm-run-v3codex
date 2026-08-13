@@ -52,6 +52,7 @@ unsigned digit_value(char c)
 
 Words parse_words(const std::string & text)
 {
+  if(text == "nullptr") return Words();
   if(text.empty()) throw std::runtime_error("empty i128 literal");
   std::size_t at = 0;
   bool negative = false;

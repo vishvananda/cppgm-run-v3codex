@@ -3,6 +3,7 @@
 
 #include "pa10_syntax_model.h"
 #include "pa10_parser_token_classification.h"
+#include "hosted_builtin_registry.h"
 
 #include <cstddef>
 #include <limits>
@@ -19,20 +20,53 @@ template <class Derived>
 class ParserNameFacts
 {
 protected:
-	bool TryParseBuiltinTransformTypeId(NodeId parent, bool attach)
+	bool IsLikelyTypeIdentifier(std::size_t position) const
+	{
+		const Derived& parser = static_cast<const Derived&>(*this);
+		if (position >= parser.tokens_.size() ||
+			parser.tokens_[position].Kind() != kIdentifierToken) return false;
+		const std::string& name = parser.Spelling(position);
+		if (parser.HasNameFact(parser.tokens_[position].spelling,
+			parser.kKnownType) || name == "__builtin_va_list") return true;
+		return name.find('C') != std::string::npos ||
+			name.find('T') != std::string::npos ||
+			name.find('Y') != std::string::npos ||
+			name.find('E') != std::string::npos;
+	}
+
+	NodeId ParseBuiltinTransform()
 	{
 		Derived& parser = static_cast<Derived&>(*this);
-		if (!parser.AtIdentifier() ||
-			parser.Spelling(parser.position_) != "__decay" ||
-			!parser.AtOffset(1, OP_LPAREN)) return false;
+		if (!parser.AtIdentifier() || !parser.AtOffset(1, OP_LPAREN))
+			return kNoNode;
+		const std::string spelling = parser.Spelling(parser.position_);
+		if (hosted_builtin::FindTypeTransform(spelling) ==
+			hosted_builtin::TYPE_TRANSFORM_NONE) return kNoNode;
 		parser.position_ += 2;
-		const NodeId type_id = parser.arena_.Make("type-id");
-		const NodeId specifiers = parser.arena_.Make("type-specifier-seq");
 		const NodeId transform =
-			parser.arena_.Make("builtin-transform-type", "__decay");
+			parser.arena_.Make("builtin-transform-type", spelling);
 		if (!parser.ParseTypeId(transform))
 			throw parser.Error("expected builtin transform operand type");
 		parser.Expect(OP_RPAREN);
+		return transform;
+	}
+
+	bool TryParseBuiltinTransformSpecifier(NodeId parent)
+	{
+		Derived& parser = static_cast<Derived&>(*this);
+		const NodeId transform = ParseBuiltinTransform();
+		if (transform == kNoNode) return false;
+		parser.arena_.Add(parent, transform);
+		return true;
+	}
+
+	bool TryParseBuiltinTransformTypeId(NodeId parent, bool attach)
+	{
+		Derived& parser = static_cast<Derived&>(*this);
+		const NodeId transform = ParseBuiltinTransform();
+		if (transform == kNoNode) return false;
+		const NodeId type_id = parser.arena_.Make("type-id");
+		const NodeId specifiers = parser.arena_.Make("type-specifier-seq");
 		parser.arena_.Add(specifiers, transform);
 		parser.arena_.Add(type_id, specifiers);
 		const typename Derived::Mark declarator_mark = parser.Checkpoint();
