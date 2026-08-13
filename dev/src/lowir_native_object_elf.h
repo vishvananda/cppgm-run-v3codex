@@ -5,6 +5,7 @@
 #include "lowir_native_registers.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <map>
 #include <string>
 #include <unordered_map>
@@ -16,7 +17,7 @@ namespace object_elf_detail {
 
 struct EncodedFixup
 {
-  enum Kind { EF_RELATIVE32, EF_ABSOLUTE64, EF_ADDRESS32 }
+  enum Kind { EF_RELATIVE32, EF_ABSOLUTE64, EF_ADDRESS32, EF_TLS_OFFSET32 }
     kind = EF_RELATIVE32;
   mir_model::MirOperand::AddressBinding address_binding =
     mir_model::MirOperand::ADDRESS_LOCAL;
@@ -27,6 +28,9 @@ struct EncodedFixup
 
 struct EncodedSection
 {
+  std::string name;
+  std::uint64_t flags = 0;
+  std::size_t alignment = 1;
   std::vector<unsigned char> bytes;
   std::unordered_map<std::string, std::size_t> labels;
   std::vector<EncodedFixup> fixups;
@@ -61,7 +65,7 @@ std::unordered_set<std::string> host_external_global_definitions(
 std::vector<unsigned char> make_linux_relocatable_image(
   const lowir_model::LowirProgram & program,
   const EncodedSection & text,
-  const EncodedSection & data,
+  const std::vector<EncodedSection> & data_sections,
   std::vector<HostFunctionLayout> & functions,
   const std::vector<unsigned char> & compiler_payload,
   std::size_t & relocation_count);

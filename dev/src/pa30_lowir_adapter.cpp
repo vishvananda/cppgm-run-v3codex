@@ -441,6 +441,9 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		result.boundary.arity = item.variadic ? lowir_model::CAM_VARIADIC :
 			lowir_model::CAM_FIXED;
 		AdaptSymbolFacts(symbol, &result.metadata, &result.boundary);
+		if (symbol.tls_for_symbol != kNoLowId)
+			result.metadata.tls_for_symbol =
+				At(source.symbols[symbol.tls_for_symbol].name);
 		target.function_declarations.push_back(result);
 	}
 	target.globals.reserve(source.globals.size());

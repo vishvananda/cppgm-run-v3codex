@@ -227,6 +227,7 @@ struct Instruction
   X86Condition condition = XC_E;
   std::size_t byte_count = 0;
   std::size_t byte_alignment = 1;
+  std::string tls_storage_symbol;
   bool call_unwind_no = false;
   bool call_returns_noreturn = false;
   bool call_variadic = false;

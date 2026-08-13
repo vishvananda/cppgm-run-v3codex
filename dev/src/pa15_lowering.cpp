@@ -503,10 +503,14 @@ private:
 									output_.global_declarations.push_back(
 										LowerGlobalDeclaration(current));
 									output_.symbols[symbol].declaration_emitted = true;
-									if (record.declaration_only &&
+									if ((record.declaration_only ||
+										 output_.host_object_emission) &&
 										program_.bindings[record.binding].
-											thread_local_storage)
-										thread_local_declarations_.push_back(symbol);
+										thread_local_storage)
+										thread_local_declarations_.push_back(
+											std::make_pair(symbol,
+												pa15_lowering_abi::MangleThreadLocalWrapper(
+													program_, record.binding, record.text)));
 								}
 						}
 						else
@@ -570,7 +574,10 @@ private:
 			program_.bindings[action.object].thread_local_storage;
 		output_.symbols[global.symbol].thread_local_storage = thread_local_object;
 		if (thread_local_object)
-			thread_local_objects_.push_back(action_index);
+			thread_local_objects_.push_back(
+				std::make_pair(action_index,
+					pa15_lowering_abi::MangleThreadLocalWrapper(
+						program_, record.binding, record.text)));
 		bool keep_global_class_address = false;
 		if (!SetExplicitVariableZero(record, &global) &&
 			!static_initializers_.Lower(action, thread_local_object, &global,
@@ -608,6 +615,7 @@ private:
 		Symbol& wrapper_symbol = output_.symbols[symbol];
 		wrapper_symbol.declaration_emitted = true;
 		wrapper_symbol.referenced = true;
+		wrapper_symbol.weak_linkage = !internal;
 		wrapper_symbol.tls_for_symbol = target;
 		FunctionDeclaration wrapper;
 		wrapper.symbol = symbol;
@@ -619,22 +627,19 @@ private:
 	{
 		for (std::size_t i = 0; i < thread_local_declarations_.size(); ++i)
 		{
-			const SymbolId object_symbol = thread_local_declarations_[i];
+			const SymbolId object_symbol = thread_local_declarations_[i].first;
+			const std::string& wrapper_object =
+				thread_local_declarations_[i].second;
 			const std::string& object_internal =
 				output_.symbols[object_symbol].name;
-			std::string wrapper_object;
-			const std::string& object_name =
-				output_.symbols[object_symbol].object_name;
-			if (object_name.size() >= 2 && object_name[0] == '_' &&
-				object_name[1] == 'Z')
-				wrapper_object = "_ZTW" + object_name.substr(2);
 			AddThreadLocalWrapper("__cppgm_tls_wrapper__" + object_internal,
 				wrapper_object, object_symbol,
 				output_.symbols[object_symbol].internal_linkage);
 		}
 		for (std::size_t i = 0; i < thread_local_objects_.size(); ++i)
 		{
-			const std::uint32_t action_index = thread_local_objects_[i];
+			const std::uint32_t action_index = thread_local_objects_[i].first;
+			const std::string& wrapper_object = thread_local_objects_[i].second;
 			const NamespaceObjectAction& action =
 				graph_.namespace_objects[action_index];
 			const bool dynamic = action_index < thread_local_dynamic_.size() &&
@@ -663,12 +668,6 @@ private:
 				AddThreadLocalWrapper("__cppgm_tls_wrapper__" + guard_name,
 					std::string(), guard_symbol, true);
 			}
-			std::string wrapper_object;
-			const std::string& object_name =
-				output_.symbols[object_symbol].object_name;
-			if (object_name.size() >= 2 && object_name[0] == '_' &&
-				object_name[1] == 'Z')
-				wrapper_object = "_ZTW" + object_name.substr(2);
 			AddThreadLocalWrapper("__cppgm_tls_wrapper__" + object_internal,
 				wrapper_object, object_symbol,
 				output_.symbols[object_symbol].internal_linkage);
@@ -2920,8 +2919,8 @@ private:
 	pa26_lowering_detail::InitializerListLoweringState initializer_lists_;
 	std::vector<std::pair<std::uint32_t, bool> > namespace_initializers_;
 	std::vector<std::uint32_t> dynamic_finalizers_;
-	std::vector<std::uint32_t> thread_local_objects_;
-	std::vector<SymbolId> thread_local_declarations_;
+	std::vector<std::pair<std::uint32_t, std::string> > thread_local_objects_;
+	std::vector<std::pair<SymbolId, std::string> > thread_local_declarations_;
 	std::vector<std::uint8_t> thread_local_dynamic_;
 	std::vector<std::uint32_t> function_definition_;
 	std::vector<std::uint32_t> function_declaration_;

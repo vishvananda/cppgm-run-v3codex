@@ -1765,6 +1765,16 @@ std::string MangleVariable(const pa11::Program& program,
 	if (binding.language_linkage == LANGUAGE_LINKAGE_C &&
 		binding.storage_class != STORAGE_CLASS_STATIC)
 		return program.names.Get(binding.name);
+	// Linux global-namespace TLS objects retain their source spelling; wrapper
+	// functions still use the corresponding Itanium TLS special name.
+	if (binding.owner == program.GlobalScope() &&
+		binding.member_owner == kNoEntity &&
+		binding.thread_local_storage &&
+		binding.storage_class != STORAGE_CLASS_STATIC &&
+		!binding.unnamed_namespace_linkage &&
+		!binding.variable_template_specialization &&
+		binding.template_argument_count == 0)
+		return program.names.Get(binding.name);
 	AbiFactFile file;
 	file.cases.push_back(AbiFactCase());
 	AbiFactBuilder facts(program, file.cases[0]);
@@ -1815,6 +1825,35 @@ std::string MangleVariable(const pa11::Program& program,
 			file.cases[0].records.push_back(argument);
 		}
 	}
+	std::string result = mangle_fact_file(file);
+	if (!result.empty() && result[result.size() - 1] == '\n')
+		result.resize(result.size() - 1);
+	return result;
+}
+
+std::string MangleThreadLocalWrapper(const pa11::Program& program,
+	pa11::BindingId binding_id, pa11::NameId fallback_name)
+{
+	using namespace abi_mangle;
+	using namespace pa11;
+	if (binding_id == kNoBinding || binding_id >= program.bindings.size())
+		throw std::logic_error("invalid thread-local wrapper binding");
+	const BindingRecord& binding = program.bindings[binding_id];
+	AbiFactFile file;
+	file.cases.push_back(AbiFactCase());
+	AbiFactRecord target;
+	target.set_kind(ABI_FACT_RECORD_TARGET);
+	target.target.kind = ABI_TARGET_FACT_THREAD_LOCAL_WRAPPER;
+	const NameId path_name = binding.qualified_name != 0 ?
+		binding.qualified_name : binding.name != 0 ? binding.name : fallback_name;
+	target.target.qualified_name = program.names.Get(path_name);
+	if (target.target.qualified_name.empty())
+		throw std::logic_error("thread-local wrapper has no semantic name (binding " +
+			std::to_string(binding_id) + ", qualified " +
+			std::to_string(binding.qualified_name) + ", terminal " +
+			std::to_string(binding.name) + ", fallback " +
+			std::to_string(fallback_name) + ")");
+	file.cases[0].records.push_back(target);
 	std::string result = mangle_fact_file(file);
 	if (!result.empty() && result[result.size() - 1] == '\n')
 		result.resize(result.size() - 1);

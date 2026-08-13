@@ -38,7 +38,8 @@ std::string native_object_symbol(const std::string & symbol)
 
 struct Fixup
 {
-  enum Kind { RELATIVE32, ABSOLUTE64, ADDRESS32 } kind = RELATIVE32;
+  enum Kind { RELATIVE32, ABSOLUTE64, ADDRESS32, TLS_OFFSET32 }
+    kind = RELATIVE32;
   mir_model::MirOperand::AddressBinding address_binding =
     mir_model::MirOperand::ADDRESS_LOCAL;
   std::size_t offset = 0;
@@ -139,6 +140,16 @@ public:
     zeros(4);
   }
 
+  void tls_offset32(const std::string & target)
+  {
+    Fixup fixup;
+    fixup.kind = Fixup::TLS_OFFSET32;
+    fixup.offset = bytes_.size();
+    fixup.target = target;
+    fixups_.push_back(fixup);
+    zeros(4);
+  }
+
   void relative32_at(std::size_t offset, const std::string & target,
                      long long elf_addend)
   {
@@ -173,7 +184,7 @@ public:
         labels_.find(fixup.target);
       if(target == labels_.end()) throw std::runtime_error("undefined native symbol: " + fixup.target);
       if(fixup.kind == Fixup::RELATIVE32 ||
-         fixup.kind == Fixup::ADDRESS32) {
+         fixup.kind == Fixup::ADDRESS32 || fixup.kind == Fixup::TLS_OFFSET32) {
         const std::int64_t delta = static_cast<std::int64_t>(target->second) -
                                    static_cast<std::int64_t>(fixup.offset + 4) +
                                    fixup.addend;
@@ -270,6 +281,22 @@ void emit_symbol_move(CodeBuffer & out, X64Register destination,
     out.byte(0xb8 + (static_cast<unsigned>(destination) & 7));
     out.absolute64(symbol);
   }
+}
+
+void emit_tls_address(CodeBuffer & out, X64Register destination,
+                      const std::string & symbol)
+{
+  // PA32's non-PIE host link permits one local-exec TPOFF32 displacement.
+  out.byte(0x64);
+  emit_rex(out, true, destination, XR_RSP);
+  out.byte(0x8b);
+  emit_modrm(out, 0, destination, 4);
+  out.byte(0x25);
+  out.zeros(4);
+  emit_rex(out, true, XR_RAX, destination);
+  out.byte(0x81);
+  emit_modrm(out, 3, 0, destination);
+  out.tls_offset32(symbol);
 }
 
 void emit_memory_modrm(CodeBuffer & out, unsigned reg, X64Register base,
@@ -1758,6 +1785,22 @@ bool emit_i128_instruction(CodeBuffer & out,
   }
 }
 
+void emit_tls_address_instruction(
+    CodeBuffer & out, const mir_model::MirInstruction & instruction)
+{
+  require_operands(instruction, 2);
+  if(instruction.operands[1].kind != mir_model::MirOperand::OP_SYMBOL ||
+     instruction.tls_storage_symbol.empty())
+    throw std::logic_error("TLS address source has invalid symbol facts");
+  if(out.relocatable_addresses())
+    emit_tls_address(out, require_register(instruction.operands[0]),
+                     instruction.tls_storage_symbol);
+  else
+    emit_symbol_move(out, require_register(instruction.operands[0]),
+                     instruction.operands[1].text,
+                     instruction.operands[1].address_binding);
+}
+
 void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instruction,
                       const mir_model::MirFunction * function) {
   if(emit_eh_instruction(out, instruction, function) || emit_atomic_instruction(out, instruction, function) ||
@@ -1937,12 +1980,7 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
     emit_shift(out, instruction, 7);
     return;
   case mir_model::MirInstruction::MI_TLS_ADDR:
-    require_operands(instruction, 2);
-    if(instruction.operands[1].kind != mir_model::MirOperand::OP_SYMBOL)
-      throw std::logic_error("TLS address source is not a wrapper symbol");
-    emit_symbol_move(out, require_register(instruction.operands[0]),
-                     instruction.operands[1].text,
-                     instruction.operands[1].address_binding);
+    emit_tls_address_instruction(out, instruction);
     return;
   case mir_model::MirInstruction::MI_JCC:
     if(!function) throw std::logic_error("conditional branch outside function");
@@ -2405,7 +2443,7 @@ void emit_float_data(CodeBuffer & out, const std::string & text,
              static_cast<unsigned>(type_size(type)));
 }
 
-void emit_global(CodeBuffer & out, const mir_model::MirGlobalDefinition & global)
+std::size_t global_alignment(const mir_model::MirGlobalDefinition & global)
 {
   std::size_t global_alignment = 1;
   if(global.storage_kind == mir_model::MirGlobalDefinition::GS_SCALAR)
@@ -2415,7 +2453,12 @@ void emit_global(CodeBuffer & out, const mir_model::MirGlobalDefinition & global
       if(global.data_items[i].kind != mir_model::MirGlobalDefinition::DataItem::ITEM_ZERO)
         global_alignment = std::max(global_alignment, type_size(global.data_items[i].type));
   }
-  out.align(global_alignment);
+  return global_alignment;
+}
+
+void emit_global(CodeBuffer & out, const mir_model::MirGlobalDefinition & global)
+{
+  out.align(global_alignment(global));
   out.label(global.name);
   const std::string object_symbol = native_object_symbol(global.object_symbol);
   if(!object_symbol.empty() && object_symbol != global.name)
@@ -2449,6 +2492,27 @@ void emit_global(CodeBuffer & out, const mir_model::MirGlobalDefinition & global
       emit_float_data(out, item.literal_text, item.type);
     else throw std::logic_error("unsupported native global data item");
   }
+}
+
+HostFunctionLayout emit_host_tls_wrapper(
+    CodeBuffer & out, const std::string & internal_symbol,
+    const lowir_model::SymbolMetadata & metadata)
+{
+  if(metadata.tls_for_symbol.empty())
+    throw std::logic_error("TLS wrapper has no storage target");
+  out.align(2);
+  HostFunctionLayout layout;
+  layout.internal_symbol = internal_symbol;
+  layout.object_symbol = metadata.object_symbol;
+  layout.offset = out.size();
+  out.label(internal_symbol);
+  const std::string object_symbol = native_object_symbol(metadata.object_symbol);
+  if(!object_symbol.empty() && object_symbol != internal_symbol)
+    out.label(object_symbol);
+  emit_tls_address(out, XR_RAX, metadata.tls_for_symbol);
+  out.byte(0xc3);
+  layout.size = out.size() - layout.offset;
+  return layout;
 }
 
 void emit_relocatable_objects(
@@ -2564,7 +2628,6 @@ void finish_native_executable(
   }
 }
 
-
 void emit_host_instruction(
     CodeBuffer & out,
     const mir_model::MirInstruction & instruction,
@@ -2663,9 +2726,15 @@ HostFunctionLayout emit_host_function(
   return layout;
 }
 
-EncodedSection encoded_section(const CodeBuffer & source)
+EncodedSection encoded_section(const CodeBuffer & source,
+                               const std::string & name,
+                               std::uint64_t flags,
+                               std::size_t alignment)
 {
   EncodedSection result;
+  result.name = name;
+  result.flags = flags;
+  result.alignment = alignment;
   result.bytes = source.bytes();
   result.labels = source.labels();
   result.fixups.reserve(source.fixups().size());
@@ -2674,7 +2743,9 @@ EncodedSection encoded_section(const CodeBuffer & source)
     fixup.kind = source.fixups()[i].kind == Fixup::ABSOLUTE64 ?
       EncodedFixup::EF_ABSOLUTE64 :
       source.fixups()[i].kind == Fixup::ADDRESS32 ?
-      EncodedFixup::EF_ADDRESS32 : EncodedFixup::EF_RELATIVE32;
+      EncodedFixup::EF_ADDRESS32 :
+      source.fixups()[i].kind == Fixup::TLS_OFFSET32 ?
+      EncodedFixup::EF_TLS_OFFSET32 : EncodedFixup::EF_RELATIVE32;
     fixup.address_binding = source.fixups()[i].address_binding;
     fixup.offset = source.fixups()[i].offset;
     fixup.target = source.fixups()[i].target;
@@ -2682,6 +2753,34 @@ EncodedSection encoded_section(const CodeBuffer & source)
     result.fixups.push_back(fixup);
   }
   return result;
+}
+
+struct DataSectionBuffer
+{
+  std::string name;
+  std::uint64_t flags;
+  std::size_t alignment;
+  CodeBuffer content;
+
+  DataSectionBuffer(const std::string & section_name, std::uint64_t section_flags)
+    : name(section_name), flags(section_flags), alignment(1), content(0) {}
+};
+
+std::size_t intern_data_section(
+    const std::string & name, std::uint64_t flags,
+    std::vector<DataSectionBuffer> & sections,
+    std::unordered_map<std::string, std::size_t> & indexes)
+{
+  const std::unordered_map<std::string, std::size_t>::const_iterator found =
+    indexes.find(name);
+  if(found != indexes.end()) {
+    sections[found->second].flags |= flags;
+    return found->second;
+  }
+  const std::size_t index = sections.size();
+  indexes[name] = index;
+  sections.push_back(DataSectionBuffer(name, flags));
+  return index;
 }
 
 }  // namespace
@@ -2759,8 +2858,17 @@ void write_linux_relocatable(
   mir_model::MirProgram program = lowering.take_program_shell();
   CodeBuffer text(0, true);
   std::vector<HostFunctionLayout> functions;
-  functions.reserve(lowering.function_count());
+  functions.reserve(lowering.function_count() + source.function_declarations.size());
   std::uint64_t encode_nanoseconds = 0;
+  std::unordered_set<std::string> emitted_tls_wrappers;
+  for(std::size_t i = 0; i < source.function_declarations.size(); ++i) {
+    const lowir_model::FunctionDeclaration & wrapper =
+      source.function_declarations[i];
+    if(wrapper.metadata.tls_for_symbol.empty() ||
+       !emitted_tls_wrappers.insert(wrapper.name).second) continue;
+    functions.push_back(emit_host_tls_wrapper(
+      text, wrapper.name, wrapper.metadata));
+  }
   for(std::size_t i = 0; i < lowering.function_count(); ++i) {
     const mir_model::MirFunction function = lowering.lower_function(i);
     const std::chrono::steady_clock::time_point started =
@@ -2771,12 +2879,24 @@ void write_linux_relocatable(
       std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now() - started).count());
   }
-  CodeBuffer data(0);
+  std::vector<DataSectionBuffer> data_sections;
+  std::unordered_map<std::string, std::size_t> data_section_indexes;
+  intern_data_section(".data", 3, data_sections, data_section_indexes);
   const std::unordered_set<std::string> suppressed_globals =
     host_external_global_definitions(source, program);
-  for(std::size_t i = 0; i < program.globals.size(); ++i)
-    if(!suppressed_globals.count(program.globals[i].name))
-      emit_global(data, program.globals[i]);
+  for(std::size_t i = 0; i < program.globals.size(); ++i) {
+    const mir_model::MirGlobalDefinition & global = program.globals[i];
+    if(suppressed_globals.count(global.name)) continue;
+    const std::string section_name = !global.section_name.empty() ?
+      global.section_name : global.thread_local_storage ? ".tdata" : ".data";
+    const std::uint64_t flags = 2 | (global.readonly ? 0 : 1) |
+      (global.thread_local_storage ? 0x400 : 0);
+    const std::size_t section_index = intern_data_section(
+      section_name, flags, data_sections, data_section_indexes);
+    DataSectionBuffer & section = data_sections[section_index];
+    section.alignment = std::max(section.alignment, global_alignment(global));
+    emit_global(section.content, global);
+  }
   bool needs_personality = false;
   const std::unordered_map<std::string, std::string> host_declarations =
     declaration_object_symbols(source);
@@ -2803,16 +2923,21 @@ void write_linux_relocatable(
   std::vector<std::string> ordered_catch_types(
     catch_types.begin(), catch_types.end());
   std::sort(ordered_catch_types.begin(), ordered_catch_types.end());
+  CodeBuffer & ordinary_data = data_sections[0].content;
   for(std::size_t i = 0; i < ordered_catch_types.size(); ++i) {
     const std::string & type = ordered_catch_types[i];
-    data.align(8);
-    data.label("DW.ref." + type);
-    data.absolute64(type);
+    ordinary_data.align(8);
+    ordinary_data.label("DW.ref." + type);
+    ordinary_data.absolute64(type);
+    data_sections[0].alignment = std::max<std::size_t>(
+      data_sections[0].alignment, 8);
   }
   if(needs_personality) {
-    data.align(8);
-    data.label("DW.ref.__gxx_personality_v0");
-    data.absolute64("__gxx_personality_v0");
+    ordinary_data.align(8);
+    ordinary_data.label("DW.ref.__gxx_personality_v0");
+    ordinary_data.absolute64("__gxx_personality_v0");
+    data_sections[0].alignment = std::max<std::size_t>(
+      data_sections[0].alignment, 8);
   }
   for(std::size_t i = 0; i < program.object_aliases.size(); ++i) {
     const std::string alias = native_object_symbol(
@@ -2820,19 +2945,34 @@ void write_linux_relocatable(
     const std::string & target_symbol = program.object_aliases[i].target;
     const std::unordered_map<std::string, std::size_t>::const_iterator in_text =
       text.labels().find(target_symbol);
-    const std::unordered_map<std::string, std::size_t>::const_iterator in_data =
-      data.labels().find(target_symbol);
     if(in_text != text.labels().end()) text.label_at(alias, in_text->second);
-    else if(in_data != data.labels().end()) data.label_at(alias, in_data->second);
-    else throw std::runtime_error("native alias has undefined target: " +
-                                  target_symbol);
+    else {
+      bool found = false;
+      for(std::size_t section = 0; section < data_sections.size(); ++section) {
+        const std::unordered_map<std::string, std::size_t>::const_iterator in_data =
+          data_sections[section].content.labels().find(target_symbol);
+        if(in_data == data_sections[section].content.labels().end()) continue;
+        data_sections[section].content.label_at(alias, in_data->second);
+        found = true;
+        break;
+      }
+      if(!found) throw std::runtime_error(
+        "native alias has undefined target: " + target_symbol);
+    }
   }
   const std::chrono::steady_clock::time_point image_started =
     stats ? std::chrono::steady_clock::now() :
             std::chrono::steady_clock::time_point();
   std::size_t relocations = 0;
+  std::vector<EncodedSection> encoded_data_sections;
+  encoded_data_sections.reserve(data_sections.size());
+  for(std::size_t i = 0; i < data_sections.size(); ++i)
+    encoded_data_sections.push_back(encoded_section(
+      data_sections[i].content, data_sections[i].name,
+      data_sections[i].flags, data_sections[i].alignment));
   const std::vector<unsigned char> image = make_linux_relocatable_image(
-    source, encoded_section(text), encoded_section(data), functions,
+    source, encoded_section(text, ".text", 6, 16), encoded_data_sections,
+    functions,
     compiler_payload, relocations);
   if(stats) encode_nanoseconds += static_cast<std::uint64_t>(
     std::chrono::duration_cast<std::chrono::nanoseconds>(

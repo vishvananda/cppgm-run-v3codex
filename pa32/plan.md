@@ -6,34 +6,33 @@ PA32 keeps the production path `semantic BindingRecord/TypeRecord/FunctionTempla
 
 ## Current Failure Map
 
-Current result: **96/138**, up from the **91/138** checkpoint baseline. **42** tests remain failing; PA1–PA31 pass **4150/4150**.
+Current result: **99/138**, up from the **96/138** turn baseline and **91/138** stage baseline. **39** tests remain failing; PA1–PA31 pass **4150/4150**.
 
 - ABI/template identity, demand, and coalescing (13): OOC constructor templates; empty owner pack; extern-template constructor/member/static-data; enum and variadic-template-template names; internal-template local static; ODR default, static-self, and synthetic template-argument substitutions.
-- ELF sections and TLS (3): GNU section placement and TLS import/export surfaces.
 - Host call ABI and EH (6): goto-out-of-try; three cleanup/unwind cases; member-function-pointer runtime; system-include move/reset.
 - Semantic/linkage remainder (9): anonymous-namespace implicit/explicit special members, storage and call; invalid C/static redeclaration; explicit-specialization data; external default constructor; same-named local classes; typedef-linkage anonymous types.
 - Virtual inheritance/lifecycle (11): result vbase access; external construction thunk; host vbase call; heap dispatch; local/multilevel objects; primary/secondary polymorphic layout; construction vtable; two virtual-diamond cases.
 
-## Next Substantial Checkpoint
+## Active Checkpoint
 
-**ELF section and TLS object ownership.** Consume the now-canonical section and thread-storage facts by placing each demanded object in its selected ELF section, publishing TLS symbol/type/wrapper facts, and selecting the supported host TLS relocation model. This targets GNU section placement and TLS import/export as one object-layout boundary.
+**Canonical virtual-base layout and access.** Unify the remaining virtual-inheritance failures at the semantic-layout/lowering boundary: complete-object and base-entry construction, vbase offset lookup, construction-vtable selection, and direct/virtual dispatch must consume one canonical layout contract.
 
-- Spec alignment: `spec.md` §§6 and 8 require minimal typed lowering facts and explicit ownership; §7 assigns final sections, relocations, and cross-function linkage to the direct ELF writer; §9 requires O(n) or O(n log n) object writing.
-- Owner/data flow: canonical semantic storage/attribute facts -> typed LowIR global storage and section metadata -> MIR global placement/TLS intent -> direct ELF section, STT_TLS symbol, and relocation records. The backend consumes facts and must not classify source names.
-- Complexity: group globals by interned section identity in O(g) average, emit each global and relocation once, and perform only the existing stable O(s log s) symbol ordering; no per-global scan of all sections or symbols.
-- Validation: focused custom-section and TLS import/export fixtures with `readelf` symbol/section/relocation checks, linked execution, the full PA32/prior/audit gates, and generated multi-section/TLS scaling evidence.
+- Spec alignment: `spec.md` §§2 and 6 require stable layout/ABI facts consumed by identity, §4 separates class layout/vtable/emission demand, and §9 requires work proportional to demanded layouts and inheritance edges.
+- Owner/data flow: semantic `EntityRecord`/direct-base/virtual-base layout facts -> typed base-path and ABI-entry records -> constructor/member/vcall lowering -> LowIR address projections and demanded thunks/vtables. Lowering must not rediscover offsets from names or rescan unrelated classes.
+- Complexity: class layout and virtual views should visit each relevant base edge/slot once per canonical class fact; each lowered access or call performs O(1) cached layout lookup plus path-length work, with no translation-unit retry loop.
+- Validation: group all 11 virtual-inheritance failures by construction, access, and dispatch; use focused runtime/link/object checks, PA28/PA32 regressions, full prior/current/audit gates, and generated widening/deepening inheritance counters.
 
 ## Performance Evidence
 
-Generated sources paired one defined and one imported object address per case at sizes 32, 64, and 128. Representative counters scale with produced semantics and output:
+Generated sources placed one ordinary global in a distinct custom section and one TLS global plus accessor per case. Representative counters scale with produced semantics and output:
 
-| Cases | Tokens | Semantic nodes | Functions | LowIR insns | Fixups | PC32 / GOT | Object bytes |
+| Cases | Tokens | Semantic nodes | Functions | Globals | Fixups | Custom sections / TPOFF32 | Object bytes |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 32 | 993 | 417 | 64 | 128 | 128 | 96 / 32 | 108,424 |
-| 64 | 1,985 | 833 | 128 | 256 | 256 | 192 / 64 | 215,880 |
-| 128 | 3,969 | 1,665 | 256 | 512 | 512 | 384 / 128 | 431,664 |
+| 32 | 1,006 | 328 | 33 | 64 | 162 | 32 / 64 | 114,560 |
+| 64 | 1,998 | 648 | 65 | 128 | 322 | 64 / 128 | 226,176 |
+| 128 | 3,982 | 1,288 | 129 | 256 | 642 | 128 / 256 | 450,360 |
 
-Across the 4x range, semantic time was 1.69–6.59 ms, typed lowering 0.64–2.15 ms, native encoding 1.09–4.32 ms, and semantic peak storage 470,270–1,860,434 bytes. Every structural counter and output size remains linear. The audit now derives local/preemptible address binding once by typed `SymbolId`; each fixup selects its relocation with one enum branch and no name-keyed definition/weakness probe. Stats-on/off objects are byte-identical (`sha256 6ca023bff96c62d6677f8cd9b3fb407d2681d4ba7ee8c0a9945a7b04cefb72ff`).
+Across the 4x range, semantic time was 1.45–5.35 ms, typed lowering 0.57–1.70 ms, native encoding 1.17–4.70 ms, and semantic peak storage 429,972–1,699,797 bytes. Structural counters, sections, relocations, and output size remain linear. Section interning is O(1) average per global; each global/fixup is emitted once, followed by stable symbol ordering. Stats-on/off objects are byte-identical (`sha256 573a107a8ad6948903ae89a9eb1c5eb012d34594ab7c4e77e9718b50200aacdb`).
 
 ## Completed Checkpoints
 
@@ -47,3 +46,4 @@ Across the 4x range, semantic time was 1.69–6.59 ms, typed lowering 0.64–2.1
 | Structured dependent result/expression recipes | Alias expansion publishes framed class-template arguments, canonical source `TypeId`s, and typed trailing-`decltype` nodes; incomplete recipe reads roll back atomically. The landed suite moves pa32 83→84 and the audit regression passes for 85/134 total, with the original 49 failures unchanged; prior 4150/4150 and file audit pass. |
 | Canonical callable and member-entity ABI facts | Function types retain cv/ref qualifiers; non-static member NTTPs retain typed owner, terminal, qualifier, parameter, and source-template facts in the enclosing substitution sequence. Audit regressions cover operator, conversion, member-template, and pack-template terminals; telemetry no longer mutates object metadata. PA32 85→87 plus four passing audit fixtures (91/138), prior 4150/4150, file audit pass, and linear 16→128 evidence. |
 | Canonical external object-data identity and addressing | Direct linkage declarations, inherited C linkage, GNU weak/section facts, and relocatable-only symbol-address intent flow through typed owners; the audit replaced ELF name/label reconstruction with a retained local/preemptible address fact. PA32 91→96 (four selected fixtures plus adjacent `f64` shuffle), prior 4150/4150, file audit pass, and linear 32→128 evidence. |
+| Typed ELF sections and host TLS ownership | Canonical section/TLS facts now select real ELF sections, STT_TLS symbols, weak ABI wrappers, and TPOFF32 relocations; host imports/exports and custom-section objects link and inspect cleanly. PA32 96→99, prior 4150/4150, file audit pass, and linear 32→128 section/TLS evidence. |

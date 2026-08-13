@@ -732,6 +732,7 @@ private:
       MirInstruction address = machine_instruction(MirInstruction::MI_TLS_ADDR);
       append_operand(address, reg_operand(XR_R11));
       append_operand(address, named_operand(MirOperand::OP_SYMBOL, wrapper->second));
+      address.tls_storage_symbol = operand.text;
       out.push_back(address);
       return dereference(XR_R11);
     }
@@ -908,6 +909,7 @@ private:
         MirInstruction address = machine_instruction(MirInstruction::MI_TLS_ADDR);
         append_operand(address, reg_operand(destination));
         append_operand(address, named_operand(MirOperand::OP_SYMBOL, wrapper->second));
+        address.tls_storage_symbol = operand.text;
         out.push_back(address);
         return;
       }

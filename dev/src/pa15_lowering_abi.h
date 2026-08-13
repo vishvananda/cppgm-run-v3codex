@@ -24,6 +24,8 @@ std::string MangleFunction(const pa11::Program& program,
 	bool force_lifecycle_base_entry = false);
 std::string MangleVariable(const pa11::Program& program,
 	const pa12_semantic_detail::DumpNode& node);
+std::string MangleThreadLocalWrapper(const pa11::Program& program,
+	pa11::BindingId binding, pa11::NameId fallback_name);
 void ApplyBuiltinSymbolMetadata(pa15_lowir_detail::Symbol* symbol,
 	pa11::BuiltinFunctionKind kind);
 void ApplyNativeRuntimeSymbolMetadata(pa15_lowir_detail::Symbol* symbol);

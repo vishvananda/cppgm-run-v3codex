@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <stdexcept>
+#include <utility>
 
 namespace lowir_native {
 namespace object_elf_detail {
@@ -23,7 +24,7 @@ void put_little(std::vector<unsigned char> & out, std::size_t offset,
 
 struct HostRelocation
 {
-  enum Kind { HR_ABSOLUTE64, HR_PC32, HR_PLT32, HR_GOTPCRELX }
+  enum Kind { HR_ABSOLUTE64, HR_PC32, HR_PLT32, HR_GOTPCRELX, HR_TPOFF32 }
     kind = HR_ABSOLUTE64;
   std::size_t offset = 0;
   std::string target;
@@ -397,20 +398,22 @@ std::unordered_map<std::string, std::string> declaration_object_symbols(
 std::string relocation_target(
     const std::string & raw,
     const EncodedSection & text,
-    const EncodedSection & data,
+    const std::vector<EncodedSection> & data_sections,
     const std::unordered_map<std::string, std::string> & declarations)
 {
   const std::unordered_map<std::string, std::string>::const_iterator found =
     declarations.find(raw);
   if(found != declarations.end()) return found->second;
-  if(text.labels.count(raw) || data.labels.count(raw)) return raw;
+  if(text.labels.count(raw)) return raw;
+  for(std::size_t i = 0; i < data_sections.size(); ++i)
+    if(data_sections[i].labels.count(raw)) return raw;
   return host_symbol_spelling(raw);
 }
 
 std::vector<HostRelocation> host_relocations(
     EncodedSection & source,
     const EncodedSection & text,
-    const EncodedSection & data,
+    const std::vector<EncodedSection> & data_sections,
     const std::unordered_map<std::string, std::string> & declarations)
 {
   std::vector<HostRelocation> result;
@@ -418,7 +421,9 @@ std::vector<HostRelocation> host_relocations(
   for(std::size_t i = 0; i < source.fixups.size(); ++i) {
     const EncodedFixup & fixup = source.fixups[i];
     HostRelocation relocation;
-    if(fixup.kind == EncodedFixup::EF_ADDRESS32) {
+    if(fixup.kind == EncodedFixup::EF_TLS_OFFSET32) {
+      relocation.kind = HostRelocation::HR_TPOFF32;
+    } else if(fixup.kind == EncodedFixup::EF_ADDRESS32) {
       const bool local_address = fixup.address_binding ==
         mir_model::MirOperand::ADDRESS_LOCAL;
       relocation.kind = local_address ? HostRelocation::HR_PC32 :
@@ -435,7 +440,7 @@ std::vector<HostRelocation> host_relocations(
     }
     relocation.offset = fixup.offset;
     relocation.target = relocation_target(
-      fixup.target, text, data, declarations);
+      fixup.target, text, data_sections, declarations);
     relocation.addend = fixup.kind == EncodedFixup::EF_RELATIVE32 ||
       fixup.kind == EncodedFixup::EF_ADDRESS32 ?
       fixup.addend - 4 : fixup.addend;
@@ -469,20 +474,15 @@ std::uint64_t function_size_at(
   return found == function_sizes.end() ? 0 : found->second;
 }
 
-unsigned exported_symbol_type(
-    const std::unordered_set<std::string> & function_names,
-    const std::string & internal)
-{
-  return function_names.count(internal) ? 2 : 1;
-}
-
 void collect_host_symbols(
     const lowir_model::LowirProgram & program,
     const EncodedSection & text,
-    const EncodedSection & data,
+    std::uint16_t text_section_index,
+    const std::vector<EncodedSection> & data_sections,
+    const std::vector<std::uint16_t> & data_section_indexes,
     const std::vector<HostFunctionLayout> & functions,
     const std::vector<HostRelocation> & text_relocations,
-    const std::vector<HostRelocation> & data_relocations,
+    const std::vector<std::vector<HostRelocation> > & data_relocations,
     const std::vector<HostRelocation> & lsda_relocations,
     const std::vector<HostRelocation> & eh_relocations,
     std::vector<HostSymbol> & locals,
@@ -494,28 +494,27 @@ void collect_host_symbols(
   function_sizes.reserve(functions.size());
   for(std::size_t i = 0; i < functions.size(); ++i)
     function_sizes[functions[i].offset] = functions[i].size;
-  std::unordered_set<std::string> function_names;
-  function_names.reserve(program.functions.size());
-  for(std::size_t i = 0; i < program.functions.size(); ++i)
-    function_names.insert(program.functions[i].name);
   for(std::unordered_map<std::string, std::size_t>::const_iterator it =
         text.labels.begin(); it != text.labels.end(); ++it) {
     HostSymbol symbol;
     symbol.name = it->first;
-    symbol.section = 1;
+    symbol.section = text_section_index;
     symbol.value = it->second;
     symbol.size = function_size_at(function_sizes, it->second);
     symbol.type = symbol.size ? 2 : 0;
     add_unique_symbol(locals, local_index, symbol);
   }
-  for(std::unordered_map<std::string, std::size_t>::const_iterator it =
-        data.labels.begin(); it != data.labels.end(); ++it) {
-    HostSymbol symbol;
-    symbol.name = it->first;
-    symbol.section = 3;
-    symbol.value = it->second;
-    symbol.type = 1;
-    add_unique_symbol(locals, local_index, symbol);
+  for(std::size_t section = 0; section < data_sections.size(); ++section) {
+    for(std::unordered_map<std::string, std::size_t>::const_iterator it =
+          data_sections[section].labels.begin();
+        it != data_sections[section].labels.end(); ++it) {
+      HostSymbol symbol;
+      symbol.name = it->first;
+      symbol.section = data_section_indexes[section];
+      symbol.value = it->second;
+      symbol.type = (data_sections[section].flags & 0x400) ? 6 : 1;
+      add_unique_symbol(locals, local_index, symbol);
+    }
   }
 
   for(std::size_t i = 0; i < program.exported_symbols.size(); ++i) {
@@ -524,22 +523,30 @@ void collect_host_symbols(
     const std::string object_label = native_object_symbol(exported.object_symbol);
     std::uint16_t section = 0;
     std::size_t value = 0;
+    unsigned type = 0;
     const std::unordered_map<std::string, std::size_t>::const_iterator text_at =
       text.labels.find(object_label);
-    const std::unordered_map<std::string, std::size_t>::const_iterator data_at =
-      data.labels.find(object_label);
     if(text_at != text.labels.end()) {
-      section = 1;
+      section = text_section_index;
       value = text_at->second;
-    } else if(data_at != data.labels.end()) {
-      section = 3;
-      value = data_at->second;
-    } else continue;
+      type = 2;
+    } else {
+      for(std::size_t data = 0; data < data_sections.size(); ++data) {
+        const std::unordered_map<std::string, std::size_t>::const_iterator at =
+          data_sections[data].labels.find(object_label);
+        if(at == data_sections[data].labels.end()) continue;
+        section = data_section_indexes[data];
+        value = at->second;
+        type = (data_sections[data].flags & 0x400) ? 6 : 1;
+        break;
+      }
+      if(section == 0) continue;
+    }
     HostSymbol symbol;
     symbol.name = exported.object_symbol;
     symbol.section = section;
     symbol.value = value;
-    symbol.type = exported_symbol_type(function_names, exported.internal_symbol);
+    symbol.type = type;
     symbol.size = symbol.type == 2 ? function_size_at(function_sizes, value) : 0;
     symbol.binding = exported.linkage == ir_model::SL_WEAK ? 2 :
       exported.linkage == ir_model::SL_INTERNAL ||
@@ -559,7 +566,7 @@ void collect_host_symbols(
     symbol.name = "main";
     symbol.binding = 1;
     symbol.type = 2;
-    symbol.section = 1;
+    symbol.section = text_section_index;
     symbol.value = at->second;
     symbol.size = function_size_at(function_sizes, at->second);
     add_unique_symbol(globals, global_index, symbol);
@@ -568,19 +575,33 @@ void collect_host_symbols(
   std::unordered_map<std::string, bool> defined;
   for(std::size_t i = 0; i < locals.size(); ++i) defined[locals[i].name] = true;
   for(std::size_t i = 0; i < globals.size(); ++i) defined[globals[i].name] = true;
-  for(unsigned group = 0; group < 4; ++group) {
-    const std::vector<HostRelocation> & relocations = group == 0 ?
-      text_relocations : group == 1 ? data_relocations :
-      group == 2 ? lsda_relocations : eh_relocations;
+  std::unordered_set<std::string> declared_tls_symbols;
+  for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
+    if(program.global_declarations[i].storage == lowir_model::GSM_THREAD_LOCAL &&
+       !program.global_declarations[i].metadata.object_symbol.empty())
+      declared_tls_symbols.insert(
+        program.global_declarations[i].metadata.object_symbol);
+  std::unordered_set<std::string> section_symbols;
+  section_symbols.insert(text.name);
+  section_symbols.insert(".gcc_except_table");
+  section_symbols.insert(".eh_frame");
+  for(std::size_t i = 0; i < data_sections.size(); ++i)
+    section_symbols.insert(data_sections[i].name);
+  std::vector<const std::vector<HostRelocation> *> relocation_groups;
+  relocation_groups.push_back(&text_relocations);
+  for(std::size_t i = 0; i < data_relocations.size(); ++i)
+    relocation_groups.push_back(&data_relocations[i]);
+  relocation_groups.push_back(&lsda_relocations);
+  relocation_groups.push_back(&eh_relocations);
+  for(std::size_t group = 0; group < relocation_groups.size(); ++group) {
+    const std::vector<HostRelocation> & relocations = *relocation_groups[group];
     for(std::size_t i = 0; i < relocations.size(); ++i) {
-      if(relocations[i].target == ".text" ||
-         relocations[i].target == ".data" ||
-         relocations[i].target == ".gcc_except_table" ||
-         relocations[i].target == ".eh_frame" ||
+      if(section_symbols.count(relocations[i].target) ||
          defined.count(relocations[i].target)) continue;
       HostSymbol symbol;
       symbol.name = relocations[i].target;
       symbol.binding = 1;
+      if(declared_tls_symbols.count(symbol.name)) symbol.type = 6;
       add_unique_symbol(globals, global_index, symbol);
       defined[symbol.name] = true;
     }
@@ -631,21 +652,18 @@ std::size_t add_string(std::vector<unsigned char> & strings,
 std::vector<unsigned char> make_symbol_table(
     const std::vector<HostSymbol> & locals,
     const std::vector<HostSymbol> & globals,
+    const std::vector<std::pair<std::string, std::uint16_t> > & section_symbols,
     std::vector<unsigned char> & strings,
     std::unordered_map<std::string, std::size_t> & indexes)
 {
   std::vector<unsigned char> table(24, 0);
-  const char * section_names[] = {
-    ".text", ".data", ".gcc_except_table", ".eh_frame"
-  };
-  const std::uint16_t section_indexes[] = { 1, 3, 5, 7 };
-  for(unsigned i = 0; i < 4; ++i) {
+  for(std::size_t i = 0; i < section_symbols.size(); ++i) {
     const std::size_t index = table.size() / 24;
-    indexes[section_names[i]] = index;
+    indexes[section_symbols[i].first] = index;
     append_little(table, 0, 4);
     table.push_back(3);
     table.push_back(0);
-    append_little(table, section_indexes[i], 2);
+    append_little(table, section_symbols[i].second, 2);
     append_little(table, 0, 8);
     append_little(table, 0, 8);
   }
@@ -687,7 +705,8 @@ std::vector<unsigned char> make_relocation_table(
                              relocation.target);
     const unsigned type = relocation.kind == HostRelocation::HR_ABSOLUTE64 ? 1 :
       relocation.kind == HostRelocation::HR_PC32 ? 2 :
-      relocation.kind == HostRelocation::HR_GOTPCRELX ? 42 : 4;
+      relocation.kind == HostRelocation::HR_GOTPCRELX ? 42 :
+      relocation.kind == HostRelocation::HR_TPOFF32 ? 23 : 4;
     append_little(table, relocation.offset, 8);
     append_little(table, (static_cast<std::uint64_t>(symbol->second) << 32) |
                          type, 8);
@@ -699,94 +718,142 @@ std::vector<unsigned char> make_relocation_table(
 std::vector<unsigned char> make_linux_relocatable_image(
     const lowir_model::LowirProgram & program,
     const EncodedSection & text,
-    const EncodedSection & data,
+    const std::vector<EncodedSection> & data_sections,
     std::vector<HostFunctionLayout> & functions,
     const std::vector<unsigned char> & compiler_payload,
     std::size_t & relocation_count)
 {
   EncodedSection mutable_text = text;
-  EncodedSection mutable_data = data;
+  std::vector<EncodedSection> mutable_data = data_sections;
   const std::unordered_map<std::string, std::string> declarations =
     declaration_object_symbols(program);
   const std::vector<HostRelocation> text_relocations = host_relocations(
     mutable_text, mutable_text, mutable_data, declarations);
-  const std::vector<HostRelocation> data_relocations = host_relocations(
-    mutable_data, mutable_text, mutable_data, declarations);
+  std::vector<std::vector<HostRelocation> > data_relocations(
+    mutable_data.size());
+  for(std::size_t i = 0; i < mutable_data.size(); ++i)
+    data_relocations[i] = host_relocations(
+      mutable_data[i], mutable_text, mutable_data, declarations);
   std::vector<HostRelocation> lsda_relocations;
   HostSection lsda = make_host_lsda(
     functions, mutable_text, declarations, lsda_relocations);
   std::vector<HostRelocation> eh_relocations;
   HostSection eh = make_host_eh_frame(functions, eh_relocations);
 
+  struct PendingRelocations
+  {
+    std::uint16_t section;
+    const std::vector<HostRelocation> * relocations;
+  };
+  std::vector<HostSection> sections(1);
+  std::vector<PendingRelocations> pending_relocations;
+  const auto append_section = [&sections](const HostSection & section)
+    -> std::uint16_t {
+      if(sections.size() >= 0xffff)
+        throw std::runtime_error("too many ELF sections");
+      sections.push_back(section);
+      return static_cast<std::uint16_t>(sections.size() - 1);
+    };
+  const auto append_relocations =
+    [&append_section, &pending_relocations](
+      const std::string & name, std::uint16_t target,
+      const std::vector<HostRelocation> & relocations) {
+      HostSection section;
+      section.name = ".rela" + name;
+      section.type = 4;
+      section.alignment = 8;
+      section.entry_size = 24;
+      section.info = target;
+      PendingRelocations pending;
+      pending.section = append_section(section);
+      pending.relocations = &relocations;
+      pending_relocations.push_back(pending);
+    };
+
+  HostSection text_section;
+  text_section.name = mutable_text.name;
+  text_section.flags = mutable_text.flags;
+  text_section.alignment = mutable_text.alignment;
+  text_section.bytes = mutable_text.bytes;
+  const std::uint16_t text_index = append_section(text_section);
+  append_relocations(text_section.name, text_index, text_relocations);
+
+  std::vector<std::uint16_t> data_indexes;
+  data_indexes.reserve(mutable_data.size());
+  for(std::size_t i = 0; i < mutable_data.size(); ++i) {
+    HostSection section;
+    section.name = mutable_data[i].name;
+    section.flags = mutable_data[i].flags;
+    section.alignment = mutable_data[i].alignment;
+    section.bytes = mutable_data[i].bytes;
+    const std::uint16_t index = append_section(section);
+    data_indexes.push_back(index);
+    append_relocations(section.name, index, data_relocations[i]);
+  }
+
+  std::uint16_t lsda_index = 0;
+  if(!lsda.bytes.empty()) {
+    lsda_index = append_section(lsda);
+    append_relocations(lsda.name, lsda_index, lsda_relocations);
+  }
+  const std::uint16_t eh_index = append_section(eh);
+  append_relocations(eh.name, eh_index, eh_relocations);
+
   std::vector<HostSymbol> locals;
   std::vector<HostSymbol> globals;
-  collect_host_symbols(program, mutable_text, mutable_data, functions,
-                       text_relocations,
+  collect_host_symbols(program, mutable_text, text_index,
+                       mutable_data, data_indexes, functions, text_relocations,
                        data_relocations, lsda_relocations, eh_relocations,
                        locals, globals);
+
+  std::vector<std::pair<std::string, std::uint16_t> > section_symbols;
+  section_symbols.push_back(std::make_pair(text_section.name, text_index));
+  for(std::size_t i = 0; i < mutable_data.size(); ++i)
+    section_symbols.push_back(std::make_pair(mutable_data[i].name,
+                                             data_indexes[i]));
+  if(lsda_index != 0)
+    section_symbols.push_back(std::make_pair(lsda.name, lsda_index));
+  section_symbols.push_back(std::make_pair(eh.name, eh_index));
 
   std::vector<unsigned char> strings(1, 0);
   std::unordered_map<std::string, std::size_t> symbol_indexes;
   std::vector<unsigned char> symbol_table = make_symbol_table(
-    locals, globals, strings, symbol_indexes);
+    locals, globals, section_symbols, strings, symbol_indexes);
 
-  std::vector<HostSection> sections(14);
-  sections[1].name = ".text";
-  sections[1].flags = 6;
-  sections[1].alignment = 16;
-  sections[1].bytes = mutable_text.bytes;
-  sections[2].name = ".rela.text";
-  sections[2].type = 4;
-  sections[2].alignment = 8;
-  sections[2].entry_size = 24;
-  sections[2].link = 11;
-  sections[2].info = 1;
-  sections[2].bytes = make_relocation_table(text_relocations, symbol_indexes);
-  sections[3].name = ".data";
-  sections[3].flags = 3;
-  sections[3].alignment = 16;
-  sections[3].bytes = mutable_data.bytes;
-  sections[4].name = ".rela.data";
-  sections[4].type = 4;
-  sections[4].alignment = 8;
-  sections[4].entry_size = 24;
-  sections[4].link = 11;
-  sections[4].info = 3;
-  sections[4].bytes = make_relocation_table(data_relocations, symbol_indexes);
-  sections[5] = lsda;
-  if(lsda.bytes.empty()) sections[5].name.clear();
-  sections[6].name = ".rela.gcc_except_table";
-  sections[6].type = 4;
-  sections[6].alignment = 8;
-  sections[6].entry_size = 24;
-  sections[6].link = 11;
-  sections[6].info = 5;
-  sections[6].bytes = make_relocation_table(lsda_relocations, symbol_indexes);
-  if(lsda.bytes.empty()) sections[6].name.clear();
-  sections[7] = eh;
-  sections[8].name = ".rela.eh_frame";
-  sections[8].type = 4;
-  sections[8].alignment = 8;
-  sections[8].entry_size = 24;
-  sections[8].link = 11;
-  sections[8].info = 7;
-  sections[8].bytes = make_relocation_table(eh_relocations, symbol_indexes);
-  sections[9].name = ".note.GNU-stack";
-  sections[10].name = ".cppgm_object";
-  sections[10].bytes = compiler_payload;
-  sections[11].name = ".symtab";
-  sections[11].type = 2;
-  sections[11].alignment = 8;
-  sections[11].entry_size = 24;
-  sections[11].link = 12;
-  sections[11].info = static_cast<std::uint32_t>(5 + locals.size());
-  sections[11].bytes.swap(symbol_table);
-  sections[12].name = ".strtab";
-  sections[12].type = 3;
-  sections[12].bytes.swap(strings);
-  sections[13].name = ".shstrtab";
-  sections[13].type = 3;
-  sections[13].bytes.push_back(0);
+  HostSection note;
+  note.name = ".note.GNU-stack";
+  append_section(note);
+  HostSection payload;
+  payload.name = ".cppgm_object";
+  payload.bytes = compiler_payload;
+  append_section(payload);
+  HostSection symtab;
+  symtab.name = ".symtab";
+  symtab.type = 2;
+  symtab.alignment = 8;
+  symtab.entry_size = 24;
+  symtab.info = static_cast<std::uint32_t>(
+    1 + section_symbols.size() + locals.size());
+  symtab.bytes.swap(symbol_table);
+  const std::uint16_t symtab_index = append_section(symtab);
+  HostSection strtab;
+  strtab.name = ".strtab";
+  strtab.type = 3;
+  strtab.bytes.swap(strings);
+  const std::uint16_t strtab_index = append_section(strtab);
+  sections[symtab_index].link = strtab_index;
+  HostSection shstrtab;
+  shstrtab.name = ".shstrtab";
+  shstrtab.type = 3;
+  shstrtab.bytes.push_back(0);
+  const std::uint16_t shstrtab_index = append_section(shstrtab);
+
+  for(std::size_t i = 0; i < pending_relocations.size(); ++i) {
+    HostSection & section = sections[pending_relocations[i].section];
+    section.link = symtab_index;
+    section.bytes = make_relocation_table(
+      *pending_relocations[i].relocations, symbol_indexes);
+  }
 
   // STB_WEAK is the executable coalescing rule for the current monolithic
   // text/data sections.  Also publish one standards-shaped COMDAT group per
@@ -810,14 +877,15 @@ std::vector<unsigned char> make_linux_relocatable_image(
     group.type = 17;
     group.alignment = 4;
     group.entry_size = 4;
-    group.link = 11;
+    group.link = symtab_index;
     group.info = static_cast<std::uint32_t>(index->second);
     append_little(group.bytes, 1, 4);
     append_little(group.bytes, marker_index, 4);
     sections.push_back(group);
   }
   for(std::size_t i = 1; i < sections.size(); ++i)
-    sections[i].name_offset = add_string(sections[13].bytes, sections[i].name);
+    sections[i].name_offset = add_string(
+      sections[shstrtab_index].bytes, sections[i].name);
 
   std::vector<unsigned char> image(64, 0);
   image[0] = 0x7f;
@@ -829,7 +897,7 @@ std::vector<unsigned char> make_linux_relocatable_image(
   put_little(image, 52, 64, 2);
   put_little(image, 58, 64, 2);
   put_little(image, 60, sections.size(), 2);
-  put_little(image, 62, 13, 2);
+  put_little(image, 62, shstrtab_index, 2);
   for(std::size_t i = 1; i < sections.size(); ++i) {
     align_bytes(image, sections[i].alignment);
     sections[i].file_offset = image.size();
@@ -851,8 +919,10 @@ std::vector<unsigned char> make_linux_relocatable_image(
     put_little(image, at + 48, sections[i].alignment, 8);
     put_little(image, at + 56, sections[i].entry_size, 8);
   }
-  relocation_count = text_relocations.size() + data_relocations.size() +
-    lsda_relocations.size() + eh_relocations.size();
+  relocation_count = text_relocations.size() + lsda_relocations.size() +
+    eh_relocations.size();
+  for(std::size_t i = 0; i < data_relocations.size(); ++i)
+    relocation_count += data_relocations[i].size();
   return image;
 }
 
