@@ -68,6 +68,9 @@ struct Operand
     OP_FLOAT
   } kind = OP_INTEGER;
 
+  enum AddressBinding { ADDRESS_LOCAL, ADDRESS_PREEMPTIBLE }
+    address_binding = ADDRESS_LOCAL;
+
   bool has_int_value = false;
   std::string text;
   long long int_value = 0;

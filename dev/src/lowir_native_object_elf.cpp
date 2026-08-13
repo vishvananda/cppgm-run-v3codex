@@ -411,8 +411,7 @@ std::vector<HostRelocation> host_relocations(
     EncodedSection & source,
     const EncodedSection & text,
     const EncodedSection & data,
-    const std::unordered_map<std::string, std::string> & declarations,
-    const std::unordered_set<std::string> & weak_definitions)
+    const std::unordered_map<std::string, std::string> & declarations)
 {
   std::vector<HostRelocation> result;
   result.reserve(source.fixups.size());
@@ -420,10 +419,8 @@ std::vector<HostRelocation> host_relocations(
     const EncodedFixup & fixup = source.fixups[i];
     HostRelocation relocation;
     if(fixup.kind == EncodedFixup::EF_ADDRESS32) {
-      const bool defined_here = text.labels.count(fixup.target) != 0 ||
-        data.labels.count(fixup.target) != 0;
-      const bool local_address = defined_here &&
-        weak_definitions.count(fixup.target) == 0;
+      const bool local_address = fixup.address_binding ==
+        mir_model::MirOperand::ADDRESS_LOCAL;
       relocation.kind = local_address ? HostRelocation::HR_PC32 :
         HostRelocation::HR_GOTPCRELX;
       if(!local_address) {
@@ -711,14 +708,10 @@ std::vector<unsigned char> make_linux_relocatable_image(
   EncodedSection mutable_data = data;
   const std::unordered_map<std::string, std::string> declarations =
     declaration_object_symbols(program);
-  std::unordered_set<std::string> weak_definitions;
-  for(std::size_t i = 0; i < program.exported_symbols.size(); ++i)
-    if(program.exported_symbols[i].linkage == ir_model::SL_WEAK)
-      weak_definitions.insert(program.exported_symbols[i].internal_symbol);
   const std::vector<HostRelocation> text_relocations = host_relocations(
-    mutable_text, mutable_text, mutable_data, declarations, weak_definitions);
+    mutable_text, mutable_text, mutable_data, declarations);
   const std::vector<HostRelocation> data_relocations = host_relocations(
-    mutable_data, mutable_text, mutable_data, declarations, weak_definitions);
+    mutable_data, mutable_text, mutable_data, declarations);
   std::vector<HostRelocation> lsda_relocations;
   HostSection lsda = make_host_lsda(
     functions, mutable_text, declarations, lsda_relocations);

@@ -18,6 +18,8 @@ struct EncodedFixup
 {
   enum Kind { EF_RELATIVE32, EF_ABSOLUTE64, EF_ADDRESS32 }
     kind = EF_RELATIVE32;
+  mir_model::MirOperand::AddressBinding address_binding =
+    mir_model::MirOperand::ADDRESS_LOCAL;
   std::size_t offset = 0;
   std::string target;
   long long addend = 0;

@@ -643,6 +643,15 @@ private:
     }
     return XR_RSP;
   }
+  MirOperand global_operand(MirOperand::Kind kind,
+                            const Operand & operand) const
+  {
+    MirOperand result = named_operand(kind, operand.text);
+    result.address_binding = operand.address_binding ==
+      Operand::ADDRESS_PREEMPTIBLE ? MirOperand::ADDRESS_PREEMPTIBLE :
+                                     MirOperand::ADDRESS_LOCAL;
+    return result;
+  }
   MirOperand resolve(const Operand & operand) const
   {
     if(operand.kind == Operand::OP_TEMP) {
@@ -661,7 +670,7 @@ private:
       return immediate(integer_value(operand));
     if(operand.kind == Operand::OP_FLOAT) return float_immediate(operand.text);
     if(operand.kind == Operand::OP_GLOBAL)
-      return named_operand(MirOperand::OP_SYMBOL, operand.text);
+      return global_operand(MirOperand::OP_SYMBOL, operand);
     if(operand.kind == Operand::OP_LABEL)
       return named_operand(MirOperand::OP_LABEL, operand.text);
     throw std::runtime_error("foundation operand is not implemented: " + operand.text);
@@ -701,7 +710,7 @@ private:
   MirOperand storage(const Operand & operand) const
   {
     if(operand.kind == Operand::OP_GLOBAL)
-      return named_operand(MirOperand::OP_GLOBAL, operand.text);
+      return global_operand(MirOperand::OP_GLOBAL, operand);
     if(operand.kind == Operand::OP_SLOT) {
       const std::unordered_map<std::string, long long>::const_iterator found =
         slot_offsets_.find(operand.text);
@@ -903,7 +912,7 @@ private:
         return;
       }
       append_move(out, reg_operand(destination),
-                  named_operand(MirOperand::OP_SYMBOL, operand.text));
+                  global_operand(MirOperand::OP_SYMBOL, operand));
       return;
     }
     if(operand.kind != Operand::OP_TEMP)
@@ -920,8 +929,9 @@ private:
         return;
       }
       if(location.kind == MirOperand::OP_GLOBAL || location.kind == MirOperand::OP_SYMBOL) {
-        append_move(out, reg_operand(destination),
-                    named_operand(MirOperand::OP_SYMBOL, location.text));
+        MirOperand address = location;
+        address.kind = MirOperand::OP_SYMBOL;
+        append_move(out, reg_operand(destination), address);
         return;
       }
     }
@@ -933,7 +943,7 @@ private:
   {
     if(operand.kind == Operand::OP_SLOT) return storage(operand);
     if(operand.kind == Operand::OP_GLOBAL)
-      return named_operand(MirOperand::OP_SYMBOL, operand.text);
+      return global_operand(MirOperand::OP_SYMBOL, operand);
     if(operand.kind != Operand::OP_TEMP)
       throw std::runtime_error("call argument cannot be passed by address");
     std::unordered_map<std::string, ValueFact>::iterator found = values_.find(operand.text);
@@ -2327,7 +2337,7 @@ private:
         value.location = address.location;
         value.frame_address = address.frame_address;
       } else {
-        value.location = named_operand(MirOperand::OP_SYMBOL, destination->text);
+        value.location = global_operand(MirOperand::OP_SYMBOL, *destination);
       }
     } else {
       value.location = home;
@@ -2456,16 +2466,16 @@ private:
     }
     const bool direct = instruction.first.kind == Operand::OP_GLOBAL;
     if(!direct) {
-      std::string pointer_cell;
+      MirOperand pointer_cell;
       if(instruction.first.kind == Operand::OP_TEMP) {
         const std::unordered_map<std::string, ValueFact>::const_iterator value =
           values_.find(instruction.first.text);
         if(value != values_.end()) pointer_cell = value->second.pointer_global_cell;
       }
-      if(!pointer_cell.empty()) {
+      if(!pointer_cell.text.empty()) {
         MirInstruction load = machine_instruction(MirInstruction::MI_LOAD, "ptr");
         append_operand(load, reg_operand(XR_R10));
-        append_operand(load, named_operand(MirOperand::OP_GLOBAL, pointer_cell));
+        append_operand(load, pointer_cell);
         out.push_back(load);
       } else {
         move_value_to_register(out, XR_R10, resolve(instruction.first),
@@ -2725,7 +2735,8 @@ private:
     }
     if(instruction.first.kind == Operand::OP_GLOBAL &&
        pointer_globals_.count(instruction.first.text))
-      values_[instruction.dest].pointer_global_cell = instruction.first.text;
+      values_[instruction.dest].pointer_global_cell =
+        global_operand(MirOperand::OP_GLOBAL, instruction.first);
   }
   void lower_instruction(const lowir_model::LowirBlock & block,
                          std::size_t instruction_index,

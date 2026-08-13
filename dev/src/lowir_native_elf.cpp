@@ -39,6 +39,8 @@ std::string native_object_symbol(const std::string & symbol)
 struct Fixup
 {
   enum Kind { RELATIVE32, ABSOLUTE64, ADDRESS32 } kind = RELATIVE32;
+  mir_model::MirOperand::AddressBinding address_binding =
+    mir_model::MirOperand::ADDRESS_LOCAL;
   std::size_t offset = 0;
   std::string target;
   long long addend = 0;
@@ -125,10 +127,12 @@ public:
     zeros(8);
   }
 
-  void address32(const std::string & target)
+  void address32(const std::string & target,
+                 mir_model::MirOperand::AddressBinding address_binding)
   {
     Fixup fixup;
     fixup.kind = Fixup::ADDRESS32;
+    fixup.address_binding = address_binding;
     fixup.offset = bytes_.size();
     fixup.target = target;
     fixups_.push_back(fixup);
@@ -249,7 +253,9 @@ void emit_immediate_move(CodeBuffer & out, X64Register destination,
 }
 
 void emit_symbol_move(CodeBuffer & out, X64Register destination,
-                      const std::string & symbol)
+                      const std::string & symbol,
+                      mir_model::MirOperand::AddressBinding address_binding =
+                        mir_model::MirOperand::ADDRESS_LOCAL)
 {
   // Keep symbol-address intent distinct from calls and stored pointers.  The
   // relocatable writer leaves this RIP-relative LEA for a definition in this
@@ -258,7 +264,7 @@ void emit_symbol_move(CodeBuffer & out, X64Register destination,
     emit_rex(out, true, destination, XR_RBP);
     out.byte(0x8d);
     emit_modrm(out, 0, destination, 5);
-    out.address32(symbol);
+    out.address32(symbol, address_binding);
   } else {
     emit_rex(out, true, XR_RAX, destination);
     out.byte(0xb8 + (static_cast<unsigned>(destination) & 7));
@@ -534,7 +540,7 @@ void float_address(CodeBuffer & out, const mir_model::MirOperand & address,
     base = XR_RBP;
     displacement = actual_frame_offset(function, address.offset);
   } else if(address.kind == mir_model::MirOperand::OP_GLOBAL) {
-    emit_symbol_move(out, XR_R11, address.text);
+    emit_symbol_move(out, XR_R11, address.text, address.address_binding);
     base = XR_R11;
     displacement = 0;
   } else throw std::logic_error("unsupported SSE memory operand");
@@ -1009,7 +1015,7 @@ void emit_move(CodeBuffer & out, const mir_model::MirInstruction & instruction)
   else if(source.kind == mir_model::MirOperand::OP_IMM)
     emit_immediate_move(out, destination, static_cast<std::uint64_t>(source.imm));
   else if(source.kind == mir_model::MirOperand::OP_SYMBOL)
-    emit_symbol_move(out, destination, source.text);
+    emit_symbol_move(out, destination, source.text, source.address_binding);
   else throw std::logic_error("unsupported native move operand");
 }
 
@@ -1020,7 +1026,7 @@ void emit_address_load(CodeBuffer & out, X64Register destination,
   if(address.kind == mir_model::MirOperand::OP_DEREF) {
     emit_load(out, destination, address.reg, address.offset, width);
   } else if(address.kind == mir_model::MirOperand::OP_GLOBAL) {
-    emit_symbol_move(out, XR_R11, address.text);
+    emit_symbol_move(out, XR_R11, address.text, address.address_binding);
     emit_load(out, destination, XR_R11, 0, width);
   } else if(address.kind == mir_model::MirOperand::OP_FRAME) {
     emit_load(out, destination, XR_RBP,
@@ -1035,7 +1041,7 @@ void emit_address_store(CodeBuffer & out, const mir_model::MirOperand & address,
   if(address.kind == mir_model::MirOperand::OP_DEREF) {
     emit_store(out, address.reg, address.offset, source, width);
   } else if(address.kind == mir_model::MirOperand::OP_GLOBAL) {
-    emit_symbol_move(out, XR_R11, address.text);
+    emit_symbol_move(out, XR_R11, address.text, address.address_binding);
     emit_store(out, XR_R11, 0, source, width);
   } else if(address.kind == mir_model::MirOperand::OP_FRAME) {
     emit_store(out, XR_RBP, actual_frame_offset(function, address.offset),
@@ -1335,7 +1341,7 @@ void emit_memory_compare(CodeBuffer & out,
     base = address.reg;
     displacement = address.offset;
   } else if(address.kind == mir_model::MirOperand::OP_GLOBAL) {
-    emit_symbol_move(out, XR_R11, address.text);
+    emit_symbol_move(out, XR_R11, address.text, address.address_binding);
     base = XR_R11;
   } else {
     throw std::logic_error("unsupported memory compare address");
@@ -1373,7 +1379,7 @@ void emit_register_memory_compare(CodeBuffer & out,
     base = address.reg;
     displacement = address.offset;
   } else if(address.kind == mir_model::MirOperand::OP_GLOBAL) {
-    emit_symbol_move(out, XR_R11, address.text);
+    emit_symbol_move(out, XR_R11, address.text, address.address_binding);
     base = XR_R11;
   } else {
     throw std::logic_error("unsupported register-memory compare address");
@@ -1616,7 +1622,8 @@ void emit_eh_catch(CodeBuffer & out,
   const std::string selected = out.internal_label("eh_catch_selected");
   if(instruction.operands.size() == 2) {
     exact = out.internal_label("eh_catch_exact");
-    emit_symbol_move(out, XR_RAX, instruction.operands[1].text);
+    emit_symbol_move(out, XR_RAX, instruction.operands[1].text,
+                     instruction.operands[1].address_binding);
     emit_symbol_move(out, XR_R11, kEhType);
     emit_load(out, XR_RCX, XR_R11, 0, 64);
     emit_register_alu(out, 0x39, XR_RCX, XR_RAX);
@@ -1934,7 +1941,8 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
     if(instruction.operands[1].kind != mir_model::MirOperand::OP_SYMBOL)
       throw std::logic_error("TLS address source is not a wrapper symbol");
     emit_symbol_move(out, require_register(instruction.operands[0]),
-                     instruction.operands[1].text);
+                     instruction.operands[1].text,
+                     instruction.operands[1].address_binding);
     return;
   case mir_model::MirInstruction::MI_JCC:
     if(!function) throw std::logic_error("conditional branch outside function");
@@ -2149,12 +2157,16 @@ void emit_dynamic_cast_find(
   emit_condition_jump(out, XC_E, record);
   emit_load(out, XR_RCX, XR_R12, 0, 64);
   if(!si_type.empty()) {
-    emit_symbol_move(out, XR_RAX, si_type); emit_lea(out, XR_RAX, XR_RAX, 16);
+    emit_symbol_move(out, XR_RAX, si_type,
+                     mir_model::MirOperand::ADDRESS_PREEMPTIBLE);
+    emit_lea(out, XR_RAX, XR_RAX, 16);
     emit_register_alu(out, 0x39, XR_RCX, XR_RAX);
     emit_condition_jump(out, XC_E, si);
   }
   if(!vmi_type.empty()) {
-    emit_symbol_move(out, XR_RAX, vmi_type); emit_lea(out, XR_RAX, XR_RAX, 16);
+    emit_symbol_move(out, XR_RAX, vmi_type,
+                     mir_model::MirOperand::ADDRESS_PREEMPTIBLE);
+    emit_lea(out, XR_RAX, XR_RAX, 16);
     emit_register_alu(out, 0x39, XR_RCX, XR_RAX);
     emit_condition_jump(out, XC_E, vmi);
   }
@@ -2663,6 +2675,7 @@ EncodedSection encoded_section(const CodeBuffer & source)
       EncodedFixup::EF_ABSOLUTE64 :
       source.fixups()[i].kind == Fixup::ADDRESS32 ?
       EncodedFixup::EF_ADDRESS32 : EncodedFixup::EF_RELATIVE32;
+    fixup.address_binding = source.fixups()[i].address_binding;
     fixup.offset = source.fixups()[i].offset;
     fixup.target = source.fixups()[i].target;
     fixup.addend = source.fixups()[i].addend;

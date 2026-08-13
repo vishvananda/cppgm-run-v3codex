@@ -112,6 +112,12 @@ struct Operand
     OP_LABEL
   } kind = OP_IMM;
 
+  enum AddressBinding
+  {
+    ADDRESS_LOCAL,
+    ADDRESS_PREEMPTIBLE
+  } address_binding = ADDRESS_LOCAL;
+
   X64Register reg = XR_RAX;
   XmmRegister xmm = XMM_0;
   long long imm = 0;

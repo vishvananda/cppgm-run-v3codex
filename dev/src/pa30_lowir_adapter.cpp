@@ -81,7 +81,14 @@ lowir_model::Operand AdaptOperand(const Operand& operand,
 		if (operand.id >= program.symbols.size())
 			throw std::logic_error("invalid typed LowIR symbol operand");
 		result.kind = lowir_model::Operand::OP_GLOBAL;
-		result.text = At(program.symbols[operand.id].name);
+		{
+			const Symbol& symbol = program.symbols[operand.id];
+			result.text = At(symbol.name);
+			result.address_binding = symbol.definition_emitted &&
+				!symbol.weak_linkage ?
+				lowir_model::Operand::ADDRESS_LOCAL :
+				lowir_model::Operand::ADDRESS_PREEMPTIBLE;
+		}
 		break;
 	case Operand::INTEGER:
 		result.kind = lowir_model::Operand::OP_INTEGER;
