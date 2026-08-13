@@ -1651,6 +1651,12 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId child = arena_->EdgeChild(edge);
+		if (arena_->IsTag(child, "builtin-transform-type"))
+		{
+			result.type = BuildBuiltinTransformType(child, scope);
+			if (CandidateSubstitutionFailed()) return result;
+			continue;
+		}
 		if (arena_->IsTag(child, "class-specifier") ||
 			arena_->IsTag(child, "class-forward-declaration"))
 		{
@@ -1926,6 +1932,7 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 							std::to_string(i + 1));
 					ParameterInfo parameter(element_name, parsed.type,
 						AdjustParameterType(parsed.type));
+					parameter.type_syntax = specifiers;
 					parameter.pack_name = parameter_pack_name;
 					parameter.nondeduced = nondeduced_type;
 					parameter.nondeduced_type_syntax = nondeduced_type ?
@@ -1999,6 +2006,7 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 		}
 		result.push_back(ParameterInfo(name, declared,
 			AdjustParameterType(declared)));
+		result.back().type_syntax = specifiers;
 		result.back().nondeduced = nondeduced_type;
 		result.back().nondeduced_type_syntax = nondeduced_type ?
 			specifiers : kNoNode;

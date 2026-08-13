@@ -452,6 +452,7 @@ private:
 	SpecInfo BuildIdentityOnlySpecifiers(NodeId node, ScopeId scope,
 		const std::string& hint, bool has_declarators);
 	TypeId BuildTypeId(NodeId node, ScopeId scope);
+	TypeId BuildBuiltinTransformType(NodeId node, ScopeId scope);
 	TypeId BuildIdentityOnlyTypeId(NodeId node, ScopeId scope);
 	DeclaratorInfo BuildDeclarator(NodeId node, TypeId base, ScopeId scope,
 		bool placeholder_auto = false,

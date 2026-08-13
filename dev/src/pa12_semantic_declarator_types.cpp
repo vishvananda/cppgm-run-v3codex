@@ -52,6 +52,24 @@ TypeId SemanticAnalyzer::BuildIdentityOnlyTypeId(NodeId node, ScopeId scope)
 	}
 }
 
+TypeId SemanticAnalyzer::BuildBuiltinTransformType(NodeId node, ScopeId scope)
+{
+	if (PayloadSource(node) != "__decay")
+		throw std::runtime_error("unsupported builtin type transform");
+	const NodeId operand = FindChild(node, "type-id");
+	TypeId type = BuildTypeId(operand, scope);
+	if (CandidateSubstitutionFailed() || type == kNoType) return kNoType;
+	TypeRecord shape = program_->types.Get(type);
+	if (shape.kind == TYPE_LVALUE_REFERENCE ||
+		shape.kind == TYPE_RVALUE_REFERENCE)
+		type = shape.child;
+	type = program_->types.RemoveTopCv(type);
+	shape = program_->types.Get(type);
+	if (shape.kind == TYPE_ARRAY) return program_->types.Pointer(shape.child);
+	if (shape.kind == TYPE_FUNCTION) return program_->types.Pointer(type);
+	return type;
+}
+
 TypeId SemanticAnalyzer::BuildArrayDeclaratorType(NodeId suffix,
 	TypeId element, ScopeId scope,
 	const std::unordered_set<NameId>* template_parameter_names)

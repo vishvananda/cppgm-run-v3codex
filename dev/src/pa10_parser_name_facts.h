@@ -19,6 +19,30 @@ template <class Derived>
 class ParserNameFacts
 {
 protected:
+	bool TryParseBuiltinTransformTypeId(NodeId parent, bool attach)
+	{
+		Derived& parser = static_cast<Derived&>(*this);
+		if (!parser.AtIdentifier() ||
+			parser.Spelling(parser.position_) != "__decay" ||
+			!parser.AtOffset(1, OP_LPAREN)) return false;
+		parser.position_ += 2;
+		const NodeId type_id = parser.arena_.Make("type-id");
+		const NodeId specifiers = parser.arena_.Make("type-specifier-seq");
+		const NodeId transform =
+			parser.arena_.Make("builtin-transform-type", "__decay");
+		if (!parser.ParseTypeId(transform))
+			throw parser.Error("expected builtin transform operand type");
+		parser.Expect(OP_RPAREN);
+		parser.arena_.Add(specifiers, transform);
+		parser.arena_.Add(type_id, specifiers);
+		const typename Derived::Mark declarator_mark = parser.Checkpoint();
+		const NodeId declarator = parser.ParseDeclarator(true);
+		if (declarator != kNoNode) parser.arena_.Add(type_id, declarator);
+		else parser.Rollback(declarator_mark);
+		if (attach) parser.arena_.Add(parent, type_id);
+		return true;
+	}
+
 	void ParseBuiltinVaArgArguments(NodeId arguments)
 	{
 		Derived& parser = static_cast<Derived&>(*this);

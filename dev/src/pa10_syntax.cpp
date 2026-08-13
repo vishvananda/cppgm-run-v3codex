@@ -893,7 +893,7 @@ NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id, std::string* first_type)
 	return sequence;
 }
 bool Parser::ParseTypeId(NodeId parent, bool attach)
-{
+{ if (TryParseBuiltinTransformTypeId(parent, attach)) return true;
 	const Mark mark = Checkpoint();
 	const NodeId type_id = arena_.Make("type-id");
 	std::string type_name;

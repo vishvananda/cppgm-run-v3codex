@@ -267,6 +267,17 @@ private:
 	FunctionTemplateAbiTypeId ParsePrimaryType()
 	{
 		if (position_ >= atoms_.size()) return kNoFunctionTemplateAbiType;
+		if (IsNode("builtin-transform-type"))
+		{
+			NameId name = 0;
+			if (!BeginNode("builtin-transform-type", &name))
+				return kNoFunctionTemplateAbiType;
+			const FunctionTemplateAbiTypeId operand = ParseType();
+			if (name == 0 || operand == kNoFunctionTemplateAbiType || !EndNode())
+				return kNoFunctionTemplateAbiType;
+			return AppendAbiType(program_, FunctionTemplateAbiType(
+				FUNCTION_TEMPLATE_ABI_TYPE_BUILTIN_TRANSFORM, operand, name));
+		}
 		const FunctionTemplateResultIdentityAtomKind kind =
 			ResultIdentityKind(atoms_[position_]);
 		if (kind == FUNCTION_TEMPLATE_RESULT_PARAMETER)
@@ -781,11 +792,17 @@ void SemanticAnalyzer::PublishFunctionTemplateResultAbiType(
 	}
 	for (std::size_t p = 0; p < declarator.parameters.size(); ++p)
 	{
-		if (!declarator.parameters[p].nondeduced) continue;
 		const NodeId root = FindDescendant(*arena_,
-			declarator.parameters[p].nondeduced_type_syntax,
+			declarator.parameters[p].type_syntax,
 			"structured-type-name");
 		if (root == kNoNode) continue;
+		const NamePath path = StructuredNamePath(root);
+		if (path.Empty()) continue;
+		const LookupResult marker = LookupPath(
+			pattern->lexical_scope, path, LOOKUP_TYPE);
+		if (!declarator.parameters[p].nondeduced &&
+			FindAliasTemplateIndex(marker, path.Last()) >=
+				alias_templates_.size()) continue;
 		FunctionTemplatePattern probe;
 		probe.parameters = pattern->parameters;
 		probe.lexical_scope = pattern->lexical_scope;
@@ -798,6 +815,8 @@ void SemanticAnalyzer::PublishFunctionTemplateResultAbiType(
 		InternExpandedFunctionTemplateResult(&probe);
 		if (probe.expanded_result_identity ==
 			kNoFunctionTemplateResultIdentity) continue;
+		if (!declarator.parameters[p].nondeduced &&
+			!probe.expanded_result_has_alias) continue;
 		std::vector<std::uint64_t> atoms;
 		function_template_result_identities_.CopyAtoms(
 			probe.expanded_result_identity, &atoms);

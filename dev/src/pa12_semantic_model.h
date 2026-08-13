@@ -354,6 +354,7 @@ struct ParameterInfo
 	NameId pack_name;
 	TypeId declared_type;
 	TypeId function_type;
+	NodeId type_syntax;
 	NodeId default_argument;
 	NodeId nondeduced_type_syntax;
 	ScopeId default_scope;
@@ -361,7 +362,8 @@ struct ParameterInfo
 	ParameterInfo(NameId name_value, TypeId declared_value,
 		TypeId function_value)
 		: name(name_value), pack_name(0), declared_type(declared_value),
-		  function_type(function_value), default_argument(kNoNode),
+		  function_type(function_value), type_syntax(kNoNode),
+		  default_argument(kNoNode),
 		  nondeduced_type_syntax(kNoNode), default_scope(kNoScope),
 		  nondeduced(false) {}
 };

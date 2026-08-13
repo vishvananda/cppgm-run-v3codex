@@ -11,13 +11,13 @@ not recover semantic facts from strings.
 
 ## Current Failure Map
 
-Current result: **71/94 PA33 tests pass**, improved from the 68/94 checkpoint
+Current result: **73/94 PA33 tests pass**, improved from the 71/94 turn
 baseline (and 59/94 stage-start baseline); PA1-PA32 pass (4291/4291).
 
 | Owner / shared behavior | Count | Failing cases |
 | --- | ---: | --- |
 | Remaining ABI name publication | 2 | covariant layout-finalization symbols; nested-lambda owner identity |
-| Remaining type/name frontend | 3 | transform alias, dependent NTTP expression, unnamed local-class constructor |
+| Remaining type/name frontend | 1 | unnamed local-class constructor |
 | Host EH semantic/lowering regions | 6 | dynamic exception specification, noexcept termination, rethrow outer cleanup, two switch/catch cases, out-of-line virtual-base RTTI catch |
 | Polymorphic ODR ownership | 1 | duplicate inline-header polymorphic class |
 | Virtual-inheritance RTTI/casts | 3 | lazy-template cross-cast, virtual-inheritance cast-to-void, typed cross-cast |
@@ -26,50 +26,32 @@ baseline (and 59/94 stage-start baseline); PA1-PA32 pass (4291/4291).
 
 ## Active Checkpoint
 
-**Complete — typed stack and SysV vararg intrinsics.** Canonical builtin and
-`__builtin_va_list` recognition now carries `stack_alloc`, `va_start`, and
-scalar `va_arg` through typed LowIR. Native lowering owns dynamic frame
-restoration and SysV register-save/overflow selection; `va_end` is a validated
-target no-op and no builtin becomes an external symbol.
+**Queued — host EH dispatch and cleanup regions.** Group the six remaining EH
+failures at the semantic-action/LowIR-region boundary: typed and repeated-base
+catch selection, switch exits, rethrow cleanup, termination policy, and
+out-of-line virtual-base RTTI ownership.
 
-- Spec requirements: semantic entities and types remain canonical (§2); typed
-  lowering preserves source operations instead of inventing symbol contracts
-  (§6); target ABI decisions have one native owner (§§7-8); demand and compile
-  work stay proportional to emitted operations (§9); no host compiler, source
-  string, or test-specific path supplies behavior (§10). This also implements
-  PA13's stable `stack_alloc` contract at the source-to-native boundary.
-- Ownership/data flow: syntax owns the unusual `va_arg(expression, type-id)`
-  shape; semantic analysis validates builtin arity, variadic context, canonical
-  `va_list` storage, and scalar result type; dump nodes retain builtin enum and
-  type IDs; typed LowIR owns `stack_alloc`, `va_start`, and `va_arg`; the native
-  SysV owner initializes and advances the four-field list state. `va_end` is a
-  validated no-op on this target and never creates an external symbol.
-- Complexity: O(source tokens + semantic nodes + emitted intrinsic operations).
-  Each alloca/vararg use lowers once; each variadic function allocates one fixed
-  176-byte register-save area only when `va_start` is demanded. Scalar `va_arg`
-  performs bounded register/overflow selection with no declaration scans,
-  string lookup, per-operation heap allocation, or whole-program retry.
-- Validation: all three focused fixtures pass; generated GP and SSE probes pass
-  across register-save and overflow paths; a text-LowIR intrinsic round trip
-  passes; PA33 is 71/94; PA1-PA32 are 4291/4291; file audit passes; the
-  generated scaling series is below.
+- Spec alignment (§§4, 6-9): semantic EH actions own cleanup and handler facts;
+  lowering publishes one typed region graph; MIR consumes explicit landing-pad
+  edges without symbol-text recovery. Formation should be O(actions + region
+  edges), with indexed RTTI/base lookup rather than rescanning declarations.
+- Validation: the six grouped fixtures, prior PA26-P32 EH coverage, full PA33
+  and PA1-P32 reports, file audit, and an increasing nested-region probe.
 
 ## Performance Evidence
 
-One macro-generated variadic function applies N `va_arg`/`alloca` pairs.
-`CPPGM_DRIVER_STATS=1` and GNU `time` show proportional semantic, typed-LowIR,
-native-lowering, and object work:
+The generated transform/layout series remained proportional:
 
-| Pairs | Tokens | Semantic nodes | LowIR / MIR insns | Semantic peak bytes | Typed bytes | Object bytes | Wall s | RSS KiB |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 32 | 1,762 | 1,044 | 841 / 1,629 | 910,178 | 142,924 | 354,024 | 0.02 | 10,924 |
-| 64 | 3,490 | 2,068 | 1,673 / 3,229 | 1,592,674 | 281,100 | 703,136 | 0.03 | 14,548 |
-| 128 | 6,946 | 4,116 | 3,337 / 6,429 | 3,171,234 | 557,452 | 1,402,792 | 0.06 | 21,516 |
-| 256 | 13,858 | 8,212 | 6,665 / 12,829 | 6,328,354 | 1,110,156 | 2,802,728 | 0.12 | 32,968 |
+| Cases | Source bytes | Identity requests | Syntax visits | Alias expansions | Semantic ms |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 32 | 6,360 | 64 | 992 | 64 | 9.38 |
+| 64 | 12,409 | 128 | 1,984 | 128 | 17.79 |
+| 128 | 24,621 | 256 | 3,968 | 256 | 35.52 |
+| 256 | 49,325 | 512 | 7,936 | 512 | 69.23 |
 
-An 8x increase gives 7.9-8.0x tokens, nodes, instructions, typed bytes, and
-object bytes; wall time rises 6x and RSS 3x. Each intrinsic is lowered once,
-with fixed-size register-save state and no declaration scan or retry.
+Doubling cases exactly doubled identity work and alias expansion; 7.76x source
+growth produced 7.38x semantic time. A runtime probe also covered cv/reference,
+array, and function decay plus `sizeof(char)`/`sizeof(long)` specializations.
 
 ## Completed Checkpoints
 
@@ -79,3 +61,4 @@ with fixed-size register-save state and no declaration scan or retry.
 | PA33 dependent callable-type recipe checkpoint | Pass — owner-prefix, qualified-member-owner, template-template, and local-result RTTI names are canonical; PA33 62→66, PA1-PA32 4291/4291, file audit pass. |
 | PA33 dependent expression recipe checkpoint | Pass — alias-expanded `decltype`, template-id, unary, call, and non-type parameter expressions retain canonical ABI structure; PA33 66→68, PA1-PA32 4291/4291, file audit pass. |
 | PA33 stack/SysV vararg intrinsic checkpoint | Pass — typed alloca and scalar varargs cover register-save/overflow paths with dynamic-frame restoration; PA33 68→71, PA1-PA32 4291/4291, file audit pass. |
+| PA33 dependent transform/layout checkpoint | Pass — `__decay` is a semantic and retained ABI type node; ordinary alias parameters publish source recipes, and dependent class-layout constants replay after substitution; PA33 71→73, PA1-PA32 4291/4291, file audit pass. |

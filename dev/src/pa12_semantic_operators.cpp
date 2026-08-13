@@ -189,6 +189,22 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 	if (CandidateSubstitutionFailed() || measured == kNoType)
 		return ExpressionInfo();
 	measured = EffectiveType(measured);
+	if (!IsMeasurableObjectType(measured, alignment_query) &&
+		FunctionTemplateTypeIsDependent(measured) &&
+		!CandidateSubstitutionActive())
+	{
+		ExpressionInfo result;
+		result.type = program_->types.Fundamental(FUND_UNSIGNED_LONG_INT);
+		result.node = MakeDump(DUMP_SIZEOF_EXPRESSION,
+			result.type, VALUE_PRVALUE);
+		result.constant = true;
+		result.value = 0;
+		dump_.nodes[result.node].template_parameter_constant = true;
+		dump_.nodes[result.node].template_layout_constant = true;
+		RecordExpressionFacts(result);
+		++expression_count_;
+		return result;
+	}
 	if (!IsMeasurableObjectType(measured, alignment_query))
 		return CandidateExpressionFailure(
 			alignment_query ? "invalid alignof operand type" :

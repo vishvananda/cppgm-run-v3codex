@@ -1098,6 +1098,17 @@ public:
 				source.expression, recipe);
 			return result;
 		}
+		if (source.kind == FUNCTION_TEMPLATE_ABI_TYPE_BUILTIN_TRANSFORM)
+		{
+			if (source.child == kNoFunctionTemplateAbiType || source.name == 0)
+				throw std::logic_error(
+					"function template ABI builtin transform is invalid");
+			result.kind = ABI_TYPE_BUILTIN_TRANSFORM;
+			result.name = program_.names.Get(source.name);
+			result.types.push_back(
+				MakeFunctionTemplateAbiType(source.child, recipe));
+			return result;
+		}
 		if (source.kind == FUNCTION_TEMPLATE_ABI_TYPE_MEMBER)
 		{
 			if (source.child == kNoFunctionTemplateAbiType || source.name == 0)
