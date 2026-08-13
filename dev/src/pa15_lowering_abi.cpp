@@ -1827,10 +1827,24 @@ bool HasWeakLinkage(
 }
 
 void ApplyBuiltinSymbolMetadata(pa15_lowir_detail::Symbol* symbol,
-	pa11::BuiltinFunctionKind kind)
+	pa11::BuiltinFunctionKind kind,
+	hosted_builtin::MemoryIntrinsicKind memory_kind)
 {
 	using namespace pa11;
 	using pa15_lowir_detail::Symbol;
+	if (kind == BUILTIN_FUNCTION_HOSTED_MEMORY_INTRINSIC)
+	{
+		switch (hosted_builtin::GetMemoryIntrinsic(memory_kind).effect)
+		{
+		case hosted_builtin::MEMORY_EFFECT_READNONE:
+			symbol->effects = Symbol::EFFECTS_READNONE; break;
+		case hosted_builtin::MEMORY_EFFECT_READONLY:
+			symbol->effects = Symbol::EFFECTS_READONLY; break;
+		case hosted_builtin::MEMORY_EFFECT_READWRITE:
+			symbol->effects = Symbol::EFFECTS_READWRITE; break;
+		}
+		return;
+	}
 	switch (kind)
 	{
 	case BUILTIN_FUNCTION_STRLEN: symbol->effects = Symbol::EFFECTS_READONLY; break;
@@ -1842,6 +1856,7 @@ void ApplyBuiltinSymbolMetadata(pa15_lowir_detail::Symbol* symbol,
 	case BUILTIN_FUNCTION_ISNAN:
 	case BUILTIN_FUNCTION_HOSTED_INTEGER_INTRINSIC:
 		symbol->effects = Symbol::EFFECTS_READNONE; break;
+	case BUILTIN_FUNCTION_HOSTED_MEMORY_INTRINSIC: break;
 	case BUILTIN_FUNCTION_ALLOCA:
 	case BUILTIN_FUNCTION_VA_START:
 	case BUILTIN_FUNCTION_VA_END:
@@ -1870,10 +1885,39 @@ void ApplyNativeRuntimeSymbolMetadata(pa15_lowir_detail::Symbol* symbol)
 }
 
 void ApplyBuiltinParameterMetadata(pa15_lowir_detail::Parameter* parameter,
-	pa11::BuiltinFunctionKind kind, std::size_t index)
+	pa11::BuiltinFunctionKind kind,
+	hosted_builtin::MemoryIntrinsicKind memory_kind, std::size_t index)
 {
 	using namespace pa11;
 	using pa15_lowir_detail::Parameter;
+	if (kind == BUILTIN_FUNCTION_HOSTED_MEMORY_INTRINSIC)
+	{
+		const bool pointer_parameter = index == 0 ||
+			((memory_kind == hosted_builtin::MEMORY_INTRINSIC_MEMCPY ||
+			  memory_kind == hosted_builtin::MEMORY_INTRINSIC_MEMMOVE) &&
+			 index == 1);
+		if (pointer_parameter)
+			parameter->capture = Parameter::CAPTURE_NOCAPTURE;
+		if ((memory_kind == hosted_builtin::MEMORY_INTRINSIC_STRLEN ||
+			 memory_kind == hosted_builtin::MEMORY_INTRINSIC_STRCHR ||
+			 memory_kind == hosted_builtin::MEMORY_INTRINSIC_MEMCHR) && index == 0)
+			parameter->access = Parameter::ACCESS_READ;
+		else if ((memory_kind == hosted_builtin::MEMORY_INTRINSIC_BZERO ||
+			memory_kind == hosted_builtin::MEMORY_INTRINSIC_MEMSET) && index == 0)
+			parameter->access = Parameter::ACCESS_WRITE;
+		else if (memory_kind == hosted_builtin::MEMORY_INTRINSIC_MEMCPY &&
+			index < 2)
+		{
+			parameter->access = index == 0 ?
+				Parameter::ACCESS_WRITE : Parameter::ACCESS_READ;
+			parameter->alias = Parameter::ALIAS_NOALIAS;
+		}
+		else if (memory_kind == hosted_builtin::MEMORY_INTRINSIC_MEMMOVE &&
+			index < 2)
+			parameter->access = index == 0 ?
+				Parameter::ACCESS_READWRITE : Parameter::ACCESS_READ;
+		return;
+	}
 	if (kind == BUILTIN_FUNCTION_STRLEN && index == 0)
 	{
 		parameter->capture = Parameter::CAPTURE_NOCAPTURE;

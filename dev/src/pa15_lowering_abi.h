@@ -31,10 +31,12 @@ std::string MangleVariable(const pa11::Program& program,
 std::string MangleThreadLocalWrapper(const pa11::Program& program,
 	pa11::BindingId binding, pa11::NameId fallback_name);
 void ApplyBuiltinSymbolMetadata(pa15_lowir_detail::Symbol* symbol,
-	pa11::BuiltinFunctionKind kind);
+	pa11::BuiltinFunctionKind kind,
+	hosted_builtin::MemoryIntrinsicKind memory_kind);
 void ApplyNativeRuntimeSymbolMetadata(pa15_lowir_detail::Symbol* symbol);
 void ApplyBuiltinParameterMetadata(pa15_lowir_detail::Parameter* parameter,
-	pa11::BuiltinFunctionKind kind, std::size_t index);
+	pa11::BuiltinFunctionKind kind,
+	hosted_builtin::MemoryIntrinsicKind memory_kind, std::size_t index);
 void ApplyLifecycleSymbolMetadata(const pa11::Program& program,
 	const pa12_semantic_detail::DumpNode& node,
 	pa15_lowir_detail::TypedProgram* output,

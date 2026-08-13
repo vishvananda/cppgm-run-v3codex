@@ -41,6 +41,27 @@ const IntegerIntrinsic kIntegerIntrinsics[] = {
 		INTEGER_OPERATION_POPCOUNT, INTEGER_ARGUMENT_UNSIGNED_LONG_LONG, 1}
 };
 
+const MemoryIntrinsic kMemoryIntrinsics[] = {
+	{"__builtin_assume_aligned", MEMORY_INTRINSIC_ASSUME_ALIGNED, 2, 3,
+		MEMORY_EFFECT_READNONE, MEMORY_LOWER_IDENTITY},
+	{"__builtin_bzero", MEMORY_INTRINSIC_BZERO, 2, 2,
+		MEMORY_EFFECT_READWRITE, MEMORY_LOWER_EXTERNAL},
+	{"__builtin_memchr", MEMORY_INTRINSIC_MEMCHR, 3, 3,
+		MEMORY_EFFECT_READONLY, MEMORY_LOWER_EXTERNAL},
+	{"__builtin_memcpy", MEMORY_INTRINSIC_MEMCPY, 3, 3,
+		MEMORY_EFFECT_READWRITE, MEMORY_LOWER_EXTERNAL},
+	{"__builtin_memmove", MEMORY_INTRINSIC_MEMMOVE, 3, 3,
+		MEMORY_EFFECT_READWRITE, MEMORY_LOWER_EXTERNAL},
+	{"__builtin_memset", MEMORY_INTRINSIC_MEMSET, 3, 3,
+		MEMORY_EFFECT_READWRITE, MEMORY_LOWER_EXTERNAL},
+	{"__builtin_prefetch", MEMORY_INTRINSIC_PREFETCH, 1, 3,
+		MEMORY_EFFECT_READNONE, MEMORY_LOWER_NOOP},
+	{"__builtin_strchr", MEMORY_INTRINSIC_STRCHR, 2, 2,
+		MEMORY_EFFECT_READONLY, MEMORY_LOWER_EXTERNAL},
+	{"__builtin_strlen", MEMORY_INTRINSIC_STRLEN, 1, 1,
+		MEMORY_EFFECT_READONLY, MEMORY_LOWER_EXTERNAL}
+};
+
 template <class Kind>
 struct Entry
 {
@@ -156,6 +177,29 @@ const IntegerIntrinsic& GetIntegerIntrinsic(IntegerIntrinsicKind kind)
 	if (kind <= INTEGER_INTRINSIC_NONE || kind >= INTEGER_INTRINSIC_COUNT)
 		throw std::logic_error("invalid hosted integer intrinsic kind");
 	return kIntegerIntrinsics[static_cast<std::size_t>(kind) - 1];
+}
+
+const MemoryIntrinsic* FindMemoryIntrinsic(const std::string& spelling)
+{
+	std::size_t first = 0;
+	std::size_t count = sizeof(kMemoryIntrinsics) /
+		sizeof(kMemoryIntrinsics[0]);
+	while (first < count)
+	{
+		const std::size_t middle = first + (count - first) / 2;
+		const int order = spelling.compare(kMemoryIntrinsics[middle].spelling);
+		if (order < 0) count = middle;
+		else if (order > 0) first = middle + 1;
+		else return &kMemoryIntrinsics[middle];
+	}
+	return 0;
+}
+
+const MemoryIntrinsic& GetMemoryIntrinsic(MemoryIntrinsicKind kind)
+{
+	if (kind <= MEMORY_INTRINSIC_NONE || kind >= MEMORY_INTRINSIC_COUNT)
+		throw std::logic_error("invalid hosted memory intrinsic kind");
+	return kMemoryIntrinsics[static_cast<std::size_t>(kind) - 1];
 }
 
 }

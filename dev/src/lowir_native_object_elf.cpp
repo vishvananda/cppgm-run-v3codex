@@ -491,6 +491,16 @@ std::string host_symbol_spelling(const std::string & raw)
 std::string host_runtime_object_symbol(
     const lowir_model::SymbolMetadata & metadata)
 {
+  static const char * const memory_symbols[] = {
+    "bzero", "memchr", "memcpy", "memmove", "memset", "strchr", "strlen"
+  };
+  const std::string prefix = "cppgm_builtin_";
+  if(metadata.object_symbol.compare(0, prefix.size(), prefix) == 0) {
+    const std::string suffix = metadata.object_symbol.substr(prefix.size());
+    for(std::size_t i = 0;
+        i < sizeof(memory_symbols) / sizeof(memory_symbols[0]); ++i)
+      if(suffix == memory_symbols[i]) return suffix;
+  }
   if(metadata.role == lowir_model::SR_ALLOCATE_MEMORY) {
     if(metadata.object_symbol == "cppgm_builtin_operator_new") return "_Znwm";
     if(metadata.object_symbol == "cppgm_builtin_operator_new_array")

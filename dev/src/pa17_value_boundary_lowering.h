@@ -150,7 +150,12 @@ protected:
 		const pa11::BuiltinFunctionKind builtin =
 			record.binding == pa12_semantic_detail::kNoBinding ?
 			pa11::BUILTIN_FUNCTION_NONE :
-			derived.program_.bindings[record.binding].builtin_function;
+				derived.program_.bindings[record.binding].builtin_function;
+		const hosted_builtin::MemoryIntrinsicKind memory_builtin =
+			record.binding == pa12_semantic_detail::kNoBinding ?
+				hosted_builtin::MEMORY_INTRINSIC_NONE :
+				derived.program_.bindings[record.binding].
+					hosted_memory_intrinsic;
 		const pa15_lowering_support::NodeChildren children =
 			derived.Children(node);
 		std::size_t parameter_index = 0;
@@ -176,7 +181,7 @@ protected:
 				derived.IsReferenceType(source_parameters[parameter_index]);
 			parameter.by_address = by_address;
 			pa15_lowering_abi::ApplyBuiltinParameterMetadata(
-				&parameter, builtin, parameter_index);
+				&parameter, builtin, memory_builtin, parameter_index);
 			parameters->push_back(parameter);
 			++parameter_index;
 		}
@@ -196,7 +201,7 @@ protected:
 				derived.IsReferenceType(source_parameters[parameter_index]);
 			parameter.by_address = by_address;
 			pa15_lowering_abi::ApplyBuiltinParameterMetadata(
-				&parameter, builtin, parameter_index);
+				&parameter, builtin, memory_builtin, parameter_index);
 			parameters->push_back(parameter);
 			++parameter_index;
 		}

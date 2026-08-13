@@ -795,7 +795,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 		return ApplyTarget(AnalyzeSizeof(node, scope), target);
 	if (arena_->IsTag(node, "sizeof-pack-expression")) return ApplyTarget(AnalyzeSizeofPackExpression(node, scope), target);
 	if (arena_->IsTag(node, "type-trait-expression") &&
-		(PayloadSource(node) == "alignof" || PayloadSource(node) == "__alignof"))
+		(PayloadSource(node) == "alignof" || PayloadSource(node) == "__alignof" ||
+		 PayloadSource(node) == "__alignof__"))
 		return ApplyTarget(AnalyzeSizeof(node, scope), target);
 	if (arena_->IsTag(node, "type-trait-expression") &&
 		PayloadSource(node) == "noexcept")

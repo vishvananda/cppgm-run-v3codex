@@ -178,6 +178,8 @@ bool SemanticAnalyzer::TryAnalyzeImmediateBuiltinCall(
 		spelling, scope, argument_syntax, target, result)) return true;
 	if (TryAnalyzeIntegerIntrinsicCall(
 		spelling, scope, argument_syntax, target, result)) return true;
+	if (TryAnalyzeMemoryIntrinsicCall(
+		spelling, scope, argument_syntax, target, result)) return true;
 	if (spelling == "__builtin_expect")
 	{
 		if (argument_syntax.size() != 2)
@@ -422,6 +424,197 @@ bool SemanticAnalyzer::TryAnalyzeIntegerIntrinsicCall(
 	const TypeId result_type = intrinsic->operation == INTEGER_OPERATION_BSWAP ?
 		argument_type : program_->types.Fundamental(FUND_INT);
 	*result = BuildIntegerIntrinsicCall(
+		intrinsic->kind, arguments, result_type, target);
+	return true;
+}
+
+BindingId SemanticAnalyzer::EnsureMemoryIntrinsicFunction(
+	hosted_builtin::MemoryIntrinsicKind kind)
+{
+	using namespace hosted_builtin;
+	if (kind <= MEMORY_INTRINSIC_NONE || kind >= MEMORY_INTRINSIC_COUNT)
+		throw std::logic_error("missing hosted memory intrinsic kind");
+	if (memory_intrinsic_functions_.size() < MEMORY_INTRINSIC_COUNT)
+		memory_intrinsic_functions_.resize(MEMORY_INTRINSIC_COUNT, kNoBinding);
+	if (memory_intrinsic_functions_[kind] != kNoBinding)
+		return memory_intrinsic_functions_[kind];
+	const MemoryIntrinsic& intrinsic = GetMemoryIntrinsic(kind);
+	const TypeId character = program_->types.Fundamental(FUND_CHAR);
+	const TypeId character_pointer = program_->types.Pointer(character);
+	const TypeId const_character_pointer = program_->types.Pointer(
+		program_->types.Qualify(character, CV_CONST));
+	const TypeId void_type = program_->types.Fundamental(FUND_VOID);
+	const TypeId pointer = program_->types.Pointer(void_type);
+	const TypeId const_pointer = program_->types.Pointer(
+		program_->types.Qualify(void_type, CV_CONST));
+	const TypeId size = program_->types.Fundamental(FUND_UNSIGNED_LONG_INT);
+	const TypeId integer = program_->types.Fundamental(FUND_INT);
+	TypeId result = void_type;
+	bool variadic = false;
+	std::vector<TypeId> parameter_types;
+	switch (kind)
+	{
+	case MEMORY_INTRINSIC_ASSUME_ALIGNED:
+		result = pointer; variadic = true;
+		parameter_types.push_back(const_pointer);
+		parameter_types.push_back(size); break;
+	case MEMORY_INTRINSIC_BZERO:
+		parameter_types.push_back(pointer);
+		parameter_types.push_back(size); break;
+	case MEMORY_INTRINSIC_MEMCHR:
+		result = pointer;
+		parameter_types.push_back(const_pointer);
+		parameter_types.push_back(integer);
+		parameter_types.push_back(size); break;
+	case MEMORY_INTRINSIC_MEMCPY:
+	case MEMORY_INTRINSIC_MEMMOVE:
+		result = pointer;
+		parameter_types.push_back(pointer);
+		parameter_types.push_back(const_pointer);
+		parameter_types.push_back(size); break;
+	case MEMORY_INTRINSIC_MEMSET:
+		result = pointer;
+		parameter_types.push_back(pointer);
+		parameter_types.push_back(integer);
+		parameter_types.push_back(size); break;
+	case MEMORY_INTRINSIC_PREFETCH:
+		variadic = true;
+		parameter_types.push_back(const_pointer); break;
+	case MEMORY_INTRINSIC_STRCHR:
+		result = character_pointer;
+		parameter_types.push_back(const_character_pointer);
+		parameter_types.push_back(integer); break;
+	case MEMORY_INTRINSIC_STRLEN:
+		result = size;
+		parameter_types.push_back(const_character_pointer); break;
+	case MEMORY_INTRINSIC_NONE:
+	case MEMORY_INTRINSIC_COUNT: break;
+	}
+	std::vector<ParameterInfo> parameters;
+	for (std::size_t i = 0; i < parameter_types.size(); ++i)
+		parameters.push_back(ParameterInfo(0, parameter_types[i],
+			parameter_types[i]));
+	const TypeId type = program_->types.Function(
+		result, parameter_types, variadic);
+	const NameId name = program_->names.Intern(intrinsic.spelling);
+	const LookupResult existing = program_->LookupDirect(
+		program_->GlobalScope(), name, LOOKUP_ORDINARY);
+	const bool nonthrowing = existing.ordinary == kNoBinding ? true :
+		program_->bindings[existing.ordinary].nonthrowing;
+	const BindingId binding = DeclareFunction(program_->GlobalScope(),
+		name, type, parameters, false,
+		false, STORAGE_CLASS_NONE, LANGUAGE_LINKAGE_CPP, nonthrowing, false);
+	BuiltinFunctionKind builtin_kind =
+		BUILTIN_FUNCTION_HOSTED_MEMORY_INTRINSIC;
+	if (kind == MEMORY_INTRINSIC_STRLEN)
+		builtin_kind = BUILTIN_FUNCTION_STRLEN;
+	else if (kind == MEMORY_INTRINSIC_MEMCPY)
+		builtin_kind = BUILTIN_FUNCTION_MEMCPY;
+	else if (kind == MEMORY_INTRINSIC_MEMMOVE)
+		builtin_kind = BUILTIN_FUNCTION_MEMMOVE;
+	program_->bindings[binding].builtin_function = builtin_kind;
+	program_->bindings[binding].hosted_memory_intrinsic = kind;
+	GetMutableFunction(binding).deferred = !GetFunction(binding).defined;
+	memory_intrinsic_functions_[kind] = binding;
+	return binding;
+}
+
+ExpressionInfo SemanticAnalyzer::BuildMemoryIntrinsicCall(
+	hosted_builtin::MemoryIntrinsicKind kind,
+	const std::vector<ExpressionInfo>& arguments, TypeId result_type,
+	TypeId target)
+{
+	const BindingId binding = EnsureMemoryIntrinsicFunction(kind);
+	const FunctionInfo& function = GetFunction(binding);
+	const std::uint32_t call = MakeDump(DUMP_CALL_EXPRESSION, result_type,
+		VALUE_PRVALUE, 0, binding);
+	const std::uint32_t callee = MakeDump(DUMP_CALLEE, function.type,
+		VALUE_NONE, function.display_name, binding);
+	dump_.Add(call, callee);
+	for (std::size_t i = 0; i < arguments.size(); ++i)
+		dump_.Add(call, arguments[i].node);
+	if (hosted_builtin::GetMemoryIntrinsic(kind).lowering ==
+		hosted_builtin::MEMORY_LOWER_EXTERNAL)
+		DemandFunction(binding);
+	ExpressionInfo result;
+	result.node = call;
+	result.type = result_type;
+	result.category = VALUE_PRVALUE;
+	result.binding = binding;
+	++expression_count_;
+	return ApplyTarget(result, target);
+}
+
+bool SemanticAnalyzer::TryAnalyzeMemoryIntrinsicCall(
+	const std::string& spelling, ScopeId scope,
+	const std::vector<NodeId>& argument_syntax, TypeId target,
+	ExpressionInfo* result)
+{
+	using namespace hosted_builtin;
+	const MemoryIntrinsic* intrinsic = FindMemoryIntrinsic(spelling);
+	if (!intrinsic) return false;
+	if (argument_syntax.size() < intrinsic->minimum_arity ||
+		argument_syntax.size() > intrinsic->maximum_arity)
+		throw std::runtime_error("invalid memory intrinsic arity");
+	const BindingId binding = EnsureMemoryIntrinsicFunction(intrinsic->kind);
+	const FunctionInfo& function = GetFunction(binding);
+	const TypeRecord& function_type = program_->types.Get(function.type);
+	const TypeId* parameter_types = program_->types.Parameters(function.type);
+	std::vector<ExpressionInfo> arguments;
+	bool readonly_search_source = false;
+	arguments.reserve(argument_syntax.size());
+	for (std::size_t i = 0; i < argument_syntax.size(); ++i)
+	{
+		ExpressionInfo argument =
+			AnalyzeUntypedCallArgument(argument_syntax[i], scope);
+		if (i == 0 && (intrinsic->kind == MEMORY_INTRINSIC_MEMCHR ||
+			intrinsic->kind == MEMORY_INTRINSIC_STRCHR))
+		{
+			const TypeId pointer_type =
+				program_->types.RemoveTopCv(Decay(argument.type));
+			const TypeRecord& pointer_record =
+				program_->types.Get(pointer_type);
+			readonly_search_source = pointer_record.kind == TYPE_POINTER &&
+				IsConst(pointer_record.child);
+		}
+		TypeId parameter = kNoType;
+		if (i < function_type.parameter_count)
+			parameter = parameter_types[i];
+		else if (intrinsic->kind == MEMORY_INTRINSIC_ASSUME_ALIGNED)
+			parameter = program_->types.Fundamental(FUND_UNSIGNED_LONG_INT);
+		else parameter = program_->types.Fundamental(FUND_INT);
+		arguments.push_back(ApplyCallArgument(argument, parameter));
+	}
+	if (intrinsic->kind == MEMORY_INTRINSIC_ASSUME_ALIGNED)
+	{
+		if (!arguments[1].constant ||
+			!IsIntegral(arguments[1].type, true))
+			throw std::runtime_error(
+				"assume_aligned alignment is not constant");
+		const std::uint64_t alignment = static_cast<std::uint64_t>(
+			ExpressionScalar(arguments[1]).integral);
+		if (alignment == 0 || (alignment & (alignment - 1)) != 0)
+			throw std::runtime_error(
+				"assume_aligned alignment is not a power of two");
+		if (arguments.size() == 3 && !arguments[2].constant)
+			throw std::runtime_error("assume_aligned offset is not constant");
+	}
+	else if (intrinsic->kind == MEMORY_INTRINSIC_PREFETCH)
+	{
+		for (std::size_t i = 1; i < arguments.size(); ++i)
+			if (!arguments[i].constant ||
+				!IsIntegral(arguments[i].type, true))
+				throw std::runtime_error("prefetch control is not constant");
+		if (arguments.size() >= 2 &&
+			(arguments[1].value < 0 || arguments[1].value > 1))
+			throw std::runtime_error("prefetch access mode is invalid");
+		if (arguments.size() >= 3 &&
+			(arguments[2].value < 0 || arguments[2].value > 3))
+			throw std::runtime_error("prefetch locality is invalid");
+	}
+	TypeId result_type = function_type.child;
+	if (readonly_search_source) result_type = parameter_types[0];
+	*result = BuildMemoryIntrinsicCall(
 		intrinsic->kind, arguments, result_type, target);
 	return true;
 }
@@ -724,6 +917,7 @@ BindingId SemanticAnalyzer::EnsureBuiltinFunction(BuiltinFunctionKind kind)
 			program_->types.Pointer(program_->types.Fundamental(
 				FUND_UNSIGNED_LONG_INT))); break;
 	case BUILTIN_FUNCTION_HOSTED_INTEGER_INTRINSIC:
+	case BUILTIN_FUNCTION_HOSTED_MEMORY_INTRINSIC:
 		break;
 	case BUILTIN_FUNCTION_OPERATOR_NEW:
 	case BUILTIN_FUNCTION_OPERATOR_NEW_ARRAY:

@@ -117,10 +117,51 @@ struct IntegerIntrinsic
 	unsigned arity;
 };
 
+enum MemoryIntrinsicKind
+{
+	MEMORY_INTRINSIC_NONE,
+	MEMORY_INTRINSIC_ASSUME_ALIGNED,
+	MEMORY_INTRINSIC_BZERO,
+	MEMORY_INTRINSIC_MEMCHR,
+	MEMORY_INTRINSIC_MEMCPY,
+	MEMORY_INTRINSIC_MEMMOVE,
+	MEMORY_INTRINSIC_MEMSET,
+	MEMORY_INTRINSIC_PREFETCH,
+	MEMORY_INTRINSIC_STRCHR,
+	MEMORY_INTRINSIC_STRLEN,
+	MEMORY_INTRINSIC_COUNT
+};
+
+enum MemoryIntrinsicEffect
+{
+	MEMORY_EFFECT_READNONE,
+	MEMORY_EFFECT_READONLY,
+	MEMORY_EFFECT_READWRITE
+};
+
+enum MemoryIntrinsicLowering
+{
+	MEMORY_LOWER_IDENTITY,
+	MEMORY_LOWER_NOOP,
+	MEMORY_LOWER_EXTERNAL
+};
+
+struct MemoryIntrinsic
+{
+	const char* spelling;
+	MemoryIntrinsicKind kind;
+	unsigned minimum_arity;
+	unsigned maximum_arity;
+	MemoryIntrinsicEffect effect;
+	MemoryIntrinsicLowering lowering;
+};
+
 TypeTraitKind FindTypeTrait(const std::string& spelling);
 TypeTransformKind FindTypeTransform(const std::string& spelling);
 const IntegerIntrinsic* FindIntegerIntrinsic(const std::string& spelling);
 const IntegerIntrinsic& GetIntegerIntrinsic(IntegerIntrinsicKind kind);
+const MemoryIntrinsic* FindMemoryIntrinsic(const std::string& spelling);
+const MemoryIntrinsic& GetMemoryIntrinsic(MemoryIntrinsicKind kind);
 
 }
 }

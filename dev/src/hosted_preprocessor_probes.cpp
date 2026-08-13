@@ -1,5 +1,7 @@
 #include "hosted_preprocessor_probes.h"
 
+#include "hosted_builtin_registry.h"
+
 #include <cstddef>
 
 namespace cppgm
@@ -70,11 +72,9 @@ bool IsSupportedFeatureProbe(const std::string& value)
 
 bool IsSupportedBuiltinProbe(const std::string& value)
 {
+	if (hosted_builtin::FindIntegerIntrinsic(value) ||
+		hosted_builtin::FindMemoryIntrinsic(value)) return true;
 	static const char* const entries[] = {
-		"__builtin_bswap16",
-		"__builtin_bswap32",
-		"__builtin_bswap64",
-		"__builtin_popcountg",
 		"__integer_pack",
 		"__is_trivially_destructible",
 		"__reference_binds_to_temporary",

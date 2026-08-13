@@ -229,6 +229,33 @@ protected:
 			callee.binding >= derived.program_.bindings.size()) return false;
 		const BuiltinFunctionKind kind =
 			derived.program_.bindings[callee.binding].builtin_function;
+		if (kind == BUILTIN_FUNCTION_HOSTED_MEMORY_INTRINSIC)
+		{
+			const hosted_builtin::MemoryIntrinsic& intrinsic =
+				hosted_builtin::GetMemoryIntrinsic(
+					derived.program_.bindings[callee.binding].
+						hosted_memory_intrinsic);
+			if (children.size() < intrinsic.minimum_arity + 1 ||
+				children.size() > intrinsic.maximum_arity + 1)
+				throw std::logic_error("invalid memory intrinsic call");
+			if (intrinsic.lowering == hosted_builtin::MEMORY_LOWER_EXTERNAL)
+				return false;
+			Operand first;
+			for (std::size_t i = 1; i < children.size(); ++i)
+			{
+				const Operand value = derived.LowerValue(children[i],
+					i == 1 ? LowPtr() : LowType());
+				if (i == 1) first = value;
+			}
+			if (intrinsic.lowering == hosted_builtin::MEMORY_LOWER_IDENTITY)
+			{
+				*result = derived.Convert(
+					first, derived.LowerType(record.type));
+				return true;
+			}
+			*result = Operand(0, LowVoid());
+			return true;
+		}
 		if (kind != BUILTIN_FUNCTION_ALLOCA &&
 			kind != BUILTIN_FUNCTION_VA_START &&
 			kind != BUILTIN_FUNCTION_VA_END &&

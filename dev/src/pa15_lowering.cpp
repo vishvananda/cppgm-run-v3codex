@@ -357,7 +357,8 @@ private:
 				symbol.section_name = program_.names.Get(canonical_binding.object_section_name);
 			symbol.object_output_root |= binding.object_output_root;
 			pa15_lowering_abi::ApplyBuiltinSymbolMetadata(
-				&symbol, binding.builtin_function);
+				&symbol, binding.builtin_function,
+				binding.hosted_memory_intrinsic);
 			pa15_lowering_abi::ApplyNativeRuntimeSymbolMetadata(&symbol);
 			return found;
 		}
@@ -371,7 +372,7 @@ private:
 			object_name, c_linkage,
 			internal, binding.nonthrowing));
 		pa15_lowering_abi::ApplyBuiltinSymbolMetadata(&output_.symbols.back(),
-			binding.builtin_function);
+			binding.builtin_function, binding.hosted_memory_intrinsic);
 		pa15_lowering_abi::ApplyNativeRuntimeSymbolMetadata(
 			&output_.symbols.back());
 		output_.symbols.back().source_type = source_type;
