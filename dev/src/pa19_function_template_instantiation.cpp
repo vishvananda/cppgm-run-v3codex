@@ -36,11 +36,15 @@ FunctionTemplateAbiRecipeId PublishFunctionTemplateAbiRecipe(Program* program,
 	if (parameters.size() > std::numeric_limits<std::uint32_t>::max() ||
 		program->function_template_parameter_shapes.size() >
 			std::numeric_limits<std::uint32_t>::max() - parameters.size() ||
+		program->function_template_abi_template_parameter_types.size() >
+			std::numeric_limits<std::uint32_t>::max() - parameters.size() ||
 		program->function_template_abi_recipes.size() >=
 			kNoFunctionTemplateAbiRecipe)
 		throw std::runtime_error("too many function template ABI recipes");
 	const std::uint32_t shape_begin = static_cast<std::uint32_t>(
 		program->function_template_parameter_shapes.size());
+	const std::uint32_t source_type_begin = static_cast<std::uint32_t>(
+		program->function_template_abi_template_parameter_types.size());
 	for (std::size_t parameter = 0; parameter < parameters.size(); ++parameter)
 	{
 		const TypeId shape = parameter_shapes[parameter];
@@ -55,6 +59,13 @@ FunctionTemplateAbiRecipeId PublishFunctionTemplateAbiRecipe(Program* program,
 		entity.template_parameter_ordinal =
 			static_cast<std::uint32_t>(parameter);
 	}
+	if (pattern.abi_template_parameter_types.size() != parameters.size())
+		throw std::logic_error(
+			"function template ABI source-type recipe is incomplete");
+	program->function_template_abi_template_parameter_types.insert(
+		program->function_template_abi_template_parameter_types.end(),
+		pattern.abi_template_parameter_types.begin(),
+		pattern.abi_template_parameter_types.end());
 	const FunctionTemplateAbiRecipeId recipe =
 		static_cast<FunctionTemplateAbiRecipeId>(
 			program->function_template_abi_recipes.size());
@@ -66,6 +77,8 @@ FunctionTemplateAbiRecipeId PublishFunctionTemplateAbiRecipe(Program* program,
 			pattern.function_parameter_pack));
 	program->function_template_abi_recipes.back().result_type =
 		pattern.abi_result_type;
+	program->function_template_abi_recipes.back().template_parameter_type_begin =
+		source_type_begin;
 	return recipe;
 }
 

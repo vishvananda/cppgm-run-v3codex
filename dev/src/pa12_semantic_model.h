@@ -1086,6 +1086,7 @@ struct FunctionTemplatePattern
 	ScopeId result_root_namespace;
 	FunctionTemplateResultIdentityId expanded_result_identity;
 	FunctionTemplateAbiTypeId abi_result_type;
+	std::vector<FunctionTemplateAbiTypeId> abi_template_parameter_types;
 	FunctionTemplateAbiRecipeId abi_recipe;
 	bool result_root_global;
 	bool expanded_result_has_alias;

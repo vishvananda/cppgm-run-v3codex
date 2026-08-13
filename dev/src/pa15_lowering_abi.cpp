@@ -239,7 +239,8 @@ public:
 
 	std::string AddTemplateArgument(std::size_t argument,
 		const pa11::BindingRecord* function = 0,
-		const pa11::FunctionTemplateAbiRecipe* recipe = 0)
+		const pa11::FunctionTemplateAbiRecipe* recipe = 0,
+		std::size_t source_parameter = pa11::kNoTemplateParameter)
 	{
 		using namespace abi_mangle;
 		using namespace pa11;
@@ -248,8 +249,10 @@ public:
 		if (argument >= program_.canonical_template_arguments.size() ||
 			program_.canonical_template_arguments[argument].kind ==
 				TEMPLATE_ARGUMENT_TYPE)
-			return AddTypeArgument(
-				program_.template_arguments[argument], function, recipe);
+			return source_parameter != kNoTemplateParameter ?
+				AddTypeArgument(program_.template_arguments[argument]) :
+				AddTypeArgument(
+					program_.template_arguments[argument], function, recipe);
 		const TemplateArgument& source =
 			program_.canonical_template_arguments[argument];
 		if (source.kind == TEMPLATE_ARGUMENT_TEMPLATE)
@@ -291,7 +294,28 @@ public:
 		definition.definition.set_kind(ABI_DEFINITION_TEMPLATE_ARGUMENT);
 		AbiTemplateArgument& target =
 			definition.definition.template_argument;
-		if (source.source_value_type != kNoType)
+		if (recipe && source_parameter < recipe->template_parameter_count &&
+			recipe->template_parameter_type_begin <=
+				program_.function_template_abi_template_parameter_types.size() &&
+			source_parameter <
+				program_.function_template_abi_template_parameter_types.size() -
+					recipe->template_parameter_type_begin &&
+			program_.function_template_abi_template_parameter_types[
+				recipe->template_parameter_type_begin + source_parameter] !=
+					kNoFunctionTemplateAbiType)
+		{
+			target.kind = ABI_TEMPLATE_ARGUMENT_DEPENDENT_VALUE;
+			target.type = MakeFunctionTemplateAbiType(
+				program_.function_template_abi_template_parameter_types[
+					recipe->template_parameter_type_begin + source_parameter],
+				*recipe);
+			const TypeId value_type = source.source_value_type != kNoType ?
+				source.source_value_type : source.type;
+			target.value_type = MakeType(value_type);
+			target.has_value_type = true;
+			target.value = source.value;
+		}
+		else if (source.source_value_type != kNoType)
 		{
 			target.kind = ABI_TEMPLATE_ARGUMENT_VALUE;
 			target.value_type = MakeType(source.source_value_type);
@@ -418,7 +442,7 @@ public:
 				AbiFunctionPathOperand argument;
 				argument.kind = ABI_FUNCTION_PATH_TEMPLATE_ARGUMENT;
 				argument.argument_ref = AddTemplateArgument(
-					first + i, &function, recipe);
+					first + i, &function, recipe, i);
 				target.path_operands.push_back(argument);
 			}
 			if (recipe && recipe->template_parameter_pack)
@@ -549,6 +573,100 @@ public:
 		return recipe ? MakeType(type, &function, recipe) : MakeType(type);
 	}
 
+	std::string AddFunctionTemplateAbiExpression(
+		pa11::FunctionTemplateAbiExpressionId expression,
+		const pa11::FunctionTemplateAbiRecipe& recipe)
+	{
+		using namespace abi_mangle;
+		using namespace pa11;
+		if (expression == kNoFunctionTemplateAbiExpression ||
+			expression >= program_.function_template_abi_expressions.size())
+			throw std::logic_error(
+				"function template ABI expression recipe is invalid");
+		const FunctionTemplateAbiExpression& source =
+			program_.function_template_abi_expressions[expression];
+		const std::string id = "__cppgm_abi_dependent_expression_" +
+			std::to_string(next_argument_++);
+		AbiFactRecord definition;
+		definition.set_kind(ABI_FACT_RECORD_DEFINITION);
+		definition.definition.id = id;
+		definition.definition.set_kind(ABI_DEFINITION_EXPRESSION);
+		AbiDependentExpression& target = definition.definition.expression;
+		if (source.kind ==
+			FUNCTION_TEMPLATE_ABI_EXPRESSION_FUNCTION_PARAMETER)
+		{
+			target.kind = ABI_EXPRESSION_FUNCTION_PARAMETER;
+			target.index = source.parameter;
+		}
+		else if (source.kind == FUNCTION_TEMPLATE_ABI_EXPRESSION_TYPE_MEMBER)
+		{
+			target.kind = ABI_EXPRESSION_MEMBER;
+			target.type = MakeFunctionTemplateAbiType(source.type, recipe);
+			target.type.suppress_template_prefix_substitution = true;
+			target.text = program_.names.Get(source.name);
+			target.close_member_owner = true;
+		}
+		else if (source.kind ==
+			FUNCTION_TEMPLATE_ABI_EXPRESSION_OBJECT_MEMBER)
+		{
+			target.kind = ABI_EXPRESSION_OBJECT_MEMBER;
+			target.op = source.indirect_member ? "pt" : "dt";
+			target.text = program_.names.Get(source.name);
+			target.expression_refs.push_back(
+				AddFunctionTemplateAbiExpression(source.left, recipe));
+		}
+		else if (source.kind == FUNCTION_TEMPLATE_ABI_EXPRESSION_CALL)
+		{
+			target.kind = ABI_EXPRESSION_CALL;
+			target.expression_refs.push_back(
+				AddFunctionTemplateAbiExpression(source.left, recipe));
+		}
+		else if (source.kind == FUNCTION_TEMPLATE_ABI_EXPRESSION_BINARY)
+		{
+			target.kind = ABI_EXPRESSION_BINARY;
+			if (source.operation != OPERATOR_MINUS)
+				throw std::logic_error(
+					"unsupported retained dependent binary operation");
+			target.op = "mi";
+			target.expression_refs.push_back(
+				AddFunctionTemplateAbiExpression(source.left, recipe));
+			target.expression_refs.push_back(
+				AddFunctionTemplateAbiExpression(source.right, recipe));
+		}
+		else throw std::logic_error(
+			"function template ABI expression node kind is invalid");
+		facts_.records.push_back(definition);
+		return id;
+	}
+
+	std::string AddFunctionTemplateAbiArgument(
+		const pa11::FunctionTemplateAbiArgument& source,
+		const pa11::FunctionTemplateAbiRecipe& recipe)
+	{
+		using namespace abi_mangle;
+		using namespace pa11;
+		const std::string id = "__cppgm_abi_dependent_argument_" +
+			std::to_string(next_argument_++);
+		AbiFactRecord definition;
+		definition.set_kind(ABI_FACT_RECORD_DEFINITION);
+		definition.definition.id = id;
+		definition.definition.set_kind(ABI_DEFINITION_TEMPLATE_ARGUMENT);
+		AbiTemplateArgument& target = definition.definition.template_argument;
+		if (source.kind == FUNCTION_TEMPLATE_ABI_ARGUMENT_TYPE)
+		{
+			target.kind = ABI_TEMPLATE_ARGUMENT_TYPE;
+			target.type = MakeFunctionTemplateAbiType(source.type, recipe);
+		}
+		else
+		{
+			target.kind = ABI_TEMPLATE_ARGUMENT_EXPRESSION;
+			target.entity_ref = AddFunctionTemplateAbiExpression(
+				source.expression, recipe);
+		}
+		facts_.records.push_back(definition);
+		return id;
+	}
+
 	abi_mangle::AbiType MakeFunctionTemplateAbiType(
 		pa11::FunctionTemplateAbiTypeId type,
 		const pa11::FunctionTemplateAbiRecipe& recipe)
@@ -561,6 +679,8 @@ public:
 		const FunctionTemplateAbiType& source =
 			program_.function_template_abi_types[type];
 		AbiType result;
+		if (source.kind == FUNCTION_TEMPLATE_ABI_TYPE_CONCRETE)
+			return MakeType(source.concrete_type);
 		if (source.kind == FUNCTION_TEMPLATE_ABI_TYPE_PARAMETER)
 		{
 			if (source.parameter >= recipe.template_parameter_count)
@@ -569,6 +689,45 @@ public:
 			result.kind = ABI_TYPE_TEMPLATE_PARAMETER;
 			result.index = source.parameter;
 			result.substitutable = true;
+			return result;
+		}
+		if (source.kind == FUNCTION_TEMPLATE_ABI_TYPE_TEMPLATE_SPECIALIZATION)
+		{
+			if (source.entity == kNoEntity ||
+				source.entity >= program_.entities.size() ||
+				source.argument_begin >
+					program_.function_template_abi_arguments.size() ||
+				source.argument_count >
+					program_.function_template_abi_arguments.size() -
+						source.argument_begin)
+				throw std::logic_error(
+					"function template ABI specialization is invalid");
+			result.kind = source.child == kNoFunctionTemplateAbiType ?
+				ABI_TYPE_TEMPLATE_SPECIALIZATION :
+				ABI_TYPE_MEMBER_TEMPLATE_SPECIALIZATION;
+			std::vector<NameId> path;
+			const EntityRecord& entity = program_.entities[source.entity];
+			program_.BuildEmissionPath(
+				entity.owner, entity.identity_name, &path);
+			for (std::size_t i = 0; i < path.size(); ++i)
+			{
+				if (i != 0) result.name += "::";
+				result.name += program_.names.Get(path[i]);
+			}
+			if (source.child != kNoFunctionTemplateAbiType)
+				result.types.push_back(
+					MakeFunctionTemplateAbiType(source.child, recipe));
+			for (std::size_t i = 0; i < source.argument_count; ++i)
+				result.argument_refs.push_back(AddFunctionTemplateAbiArgument(
+					program_.function_template_abi_arguments[
+						source.argument_begin + i], recipe));
+			return result;
+		}
+		if (source.kind == FUNCTION_TEMPLATE_ABI_TYPE_DECLTYPE)
+		{
+			result.kind = ABI_TYPE_DECLTYPE_EXPRESSION;
+			result.expression_ref = AddFunctionTemplateAbiExpression(
+				source.expression, recipe);
 			return result;
 		}
 		if (source.kind == FUNCTION_TEMPLATE_ABI_TYPE_MEMBER)
@@ -1140,7 +1299,7 @@ void AppendFunctionTemplateArgumentsAndResult(const pa11::Program& program,
 		argument.function.kind =
 			ABI_FUNCTION_RECORD_FUNCTION_TEMPLATE_ARGUMENT;
 		argument.function.argument_refs.push_back(
-			facts->AddTemplateArgument(first + i));
+			facts->AddTemplateArgument(first + i, &binding, recipe, i));
 		output->records.push_back(argument);
 	}
 	if (recipe && recipe->template_parameter_pack)

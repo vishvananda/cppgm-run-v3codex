@@ -414,15 +414,78 @@ typedef std::uint32_t FunctionTemplateAbiTypeId;
 const FunctionTemplateAbiTypeId kNoFunctionTemplateAbiType =
 	std::numeric_limits<FunctionTemplateAbiTypeId>::max();
 
+typedef std::uint32_t FunctionTemplateAbiExpressionId;
+const FunctionTemplateAbiExpressionId kNoFunctionTemplateAbiExpression =
+	std::numeric_limits<FunctionTemplateAbiExpressionId>::max();
+
 enum FunctionTemplateAbiTypeKind
 {
+	FUNCTION_TEMPLATE_ABI_TYPE_CONCRETE,
 	FUNCTION_TEMPLATE_ABI_TYPE_PARAMETER,
 	FUNCTION_TEMPLATE_ABI_TYPE_MEMBER,
+	FUNCTION_TEMPLATE_ABI_TYPE_TEMPLATE_SPECIALIZATION,
+	FUNCTION_TEMPLATE_ABI_TYPE_DECLTYPE,
 	FUNCTION_TEMPLATE_ABI_TYPE_QUALIFIED,
 	FUNCTION_TEMPLATE_ABI_TYPE_POINTER,
 	FUNCTION_TEMPLATE_ABI_TYPE_LVALUE_REFERENCE,
 	FUNCTION_TEMPLATE_ABI_TYPE_RVALUE_REFERENCE,
 	FUNCTION_TEMPLATE_ABI_TYPE_ARRAY
+};
+
+enum FunctionTemplateAbiArgumentKind
+{
+	FUNCTION_TEMPLATE_ABI_ARGUMENT_TYPE,
+	FUNCTION_TEMPLATE_ABI_ARGUMENT_EXPRESSION
+};
+
+struct FunctionTemplateAbiArgument
+{
+	FunctionTemplateAbiArgumentKind kind;
+	FunctionTemplateAbiTypeId type;
+	FunctionTemplateAbiExpressionId expression;
+
+	FunctionTemplateAbiArgument(
+		FunctionTemplateAbiArgumentKind kind_value,
+		FunctionTemplateAbiTypeId type_value = kNoFunctionTemplateAbiType,
+		FunctionTemplateAbiExpressionId expression_value =
+			kNoFunctionTemplateAbiExpression)
+		: kind(kind_value), type(type_value), expression(expression_value) {}
+};
+
+enum FunctionTemplateAbiExpressionKind
+{
+	FUNCTION_TEMPLATE_ABI_EXPRESSION_FUNCTION_PARAMETER,
+	FUNCTION_TEMPLATE_ABI_EXPRESSION_TYPE_MEMBER,
+	FUNCTION_TEMPLATE_ABI_EXPRESSION_OBJECT_MEMBER,
+	FUNCTION_TEMPLATE_ABI_EXPRESSION_CALL,
+	FUNCTION_TEMPLATE_ABI_EXPRESSION_BINARY
+};
+
+struct FunctionTemplateAbiExpression
+{
+	FunctionTemplateAbiExpressionKind kind;
+	FunctionTemplateAbiExpressionId left, right;
+	FunctionTemplateAbiTypeId type;
+	NameId name;
+	std::uint32_t parameter;
+	OperatorKind operation;
+	bool indirect_member;
+
+	FunctionTemplateAbiExpression(
+		FunctionTemplateAbiExpressionKind kind_value,
+		FunctionTemplateAbiExpressionId left_value =
+			kNoFunctionTemplateAbiExpression,
+		FunctionTemplateAbiExpressionId right_value =
+			kNoFunctionTemplateAbiExpression,
+		FunctionTemplateAbiTypeId type_value = kNoFunctionTemplateAbiType,
+		NameId name_value = 0,
+		std::uint32_t parameter_value = kNoTemplateParameter,
+		OperatorKind operation_value = OPERATOR_NONE,
+		bool indirect_member_value = false)
+		: kind(kind_value), left(left_value), right(right_value),
+		  type(type_value), name(name_value), parameter(parameter_value),
+		  operation(operation_value),
+		  indirect_member(indirect_member_value) {}
 };
 
 // Syntax-independent source-type structure retained for function-template ABI
@@ -432,25 +495,38 @@ struct FunctionTemplateAbiType
 {
 	FunctionTemplateAbiTypeKind kind;
 	FunctionTemplateAbiTypeId child;
+	FunctionTemplateAbiExpressionId expression;
+	TypeId concrete_type;
+	EntityId entity;
 	NameId name;
 	std::uint64_t bound;
-	std::uint32_t parameter;
+	std::uint32_t parameter, argument_begin, argument_count;
 	std::uint8_t cv;
 
 	FunctionTemplateAbiType(FunctionTemplateAbiTypeKind kind_value,
 		FunctionTemplateAbiTypeId child_value = kNoFunctionTemplateAbiType,
 		NameId name_value = 0, std::uint64_t bound_value = 0,
 		std::uint32_t parameter_value = kNoTemplateParameter,
-		std::uint8_t cv_value = 0)
-		: kind(kind_value), child(child_value), name(name_value),
-		  bound(bound_value), parameter(parameter_value), cv(cv_value) {}
+		std::uint8_t cv_value = 0,
+		TypeId concrete_type_value = kNoType,
+		EntityId entity_value = kNoEntity,
+		std::uint32_t argument_begin_value = 0,
+		std::uint32_t argument_count_value = 0,
+		FunctionTemplateAbiExpressionId expression_value =
+			kNoFunctionTemplateAbiExpression)
+		: kind(kind_value), child(child_value), expression(expression_value),
+		  concrete_type(concrete_type_value), entity(entity_value),
+		  name(name_value), bound(bound_value), parameter(parameter_value),
+		  argument_begin(argument_begin_value),
+		  argument_count(argument_count_value), cv(cv_value) {}
 };
 
 struct FunctionTemplateAbiRecipe
 {
 	TypeId function_type;
 	FunctionTemplateAbiTypeId result_type;
-	std::uint32_t parameter_shape_begin, template_parameter_count;
+	std::uint32_t parameter_shape_begin, template_parameter_type_begin,
+		template_parameter_count;
 	bool template_parameter_pack;
 	bool function_parameter_pack;
 	bool overloaded_pattern;
@@ -464,6 +540,7 @@ struct FunctionTemplateAbiRecipe
 		: function_type(function_type_value),
 		  result_type(kNoFunctionTemplateAbiType),
 		  parameter_shape_begin(parameter_shape_begin_value),
+		  template_parameter_type_begin(0),
 		  template_parameter_count(template_parameter_count_value),
 		  template_parameter_pack(template_parameter_pack_value),
 		  function_parameter_pack(function_parameter_pack_value),
@@ -657,6 +734,11 @@ public:
 	std::vector<TemplateArgument> canonical_template_arguments;
 	std::vector<TypeId> function_template_parameter_shapes;
 	std::vector<FunctionTemplateAbiType> function_template_abi_types;
+	std::vector<FunctionTemplateAbiArgument> function_template_abi_arguments;
+	std::vector<FunctionTemplateAbiExpression>
+		function_template_abi_expressions;
+	std::vector<FunctionTemplateAbiTypeId>
+		function_template_abi_template_parameter_types;
 	std::vector<FunctionTemplateAbiRecipe> function_template_abi_recipes;
 	std::size_t lookup_queries, lookup_scope_visits, lookup_edge_visits;
 	std::size_t lookup_cache_hits, lookup_cache_misses;

@@ -204,6 +204,10 @@ struct AbiType
   bool lvalue_ref = false;
   bool rvalue_ref = false;
   bool substitutable = false;
+  // A dependent member expression spells its template-name in-place; the
+  // enclosing template-id remains a candidate, but that prefix is not entered
+  // independently into the surrounding function's substitution sequence.
+  bool suppress_template_prefix_substitution = false;
   bool standard_substitution_includes_arguments = false;
   std::vector<AbiTypeModifier> modifiers;
   std::vector<AbiType> types;

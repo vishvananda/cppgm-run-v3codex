@@ -757,7 +757,7 @@ private:
 	void InternExpandedFunctionTemplateResult(
 		FunctionTemplatePattern* pattern);
 	void PublishFunctionTemplateResultAbiType(
-		FunctionTemplatePattern* pattern);
+		FunctionTemplatePattern* pattern, const DeclaratorInfo& declarator);
 	void PublishFunctionTemplateSpecialMemberRole(
 		const FunctionTemplatePattern& pattern, BindingId binding,
 		EntityId member_owner, TypeId function_type);

@@ -166,6 +166,7 @@ struct TypeNode
   bool is_volatile = false;
   bool variadic = false;
   bool substitutable = false;
+  bool suppress_template_prefix_substitution = false;
   bool standard_includes_arguments = false;
   vector<size_t> children;
   vector<size_t> arguments;
@@ -181,6 +182,8 @@ struct TypeNode
            && index == other.index && bound_kind == other.bound_kind
            && is_const == other.is_const && is_volatile == other.is_volatile
            && variadic == other.variadic && substitutable == other.substitutable
+           && suppress_template_prefix_substitution ==
+                other.suppress_template_prefix_substitution
            && standard_includes_arguments == other.standard_includes_arguments
            && children == other.children && arguments == other.arguments
            && namespaces == other.namespaces && tags == other.tags;
@@ -200,7 +203,8 @@ size_t type_hash(const TypeNode & type)
   hash = mix_hash(hash, static_cast<size_t>(type.bound_kind));
   hash = mix_hash(hash, type.is_const | (type.is_volatile << 1) | (type.variadic << 2)
                         | (type.standard_includes_arguments << 3)
-                        | (type.substitutable << 4));
+                        | (type.substitutable << 4)
+                        | (type.suppress_template_prefix_substitution << 5));
   hash = vector_hash(hash, type.children);
   hash = vector_hash(hash, type.arguments);
   hash = vector_hash(hash, type.namespaces);
@@ -414,6 +418,8 @@ public:
       node.is_volatile = source.is_volatile;
       node.variadic = source.variadic;
       node.substitutable = source.substitutable;
+      node.suppress_template_prefix_substitution =
+        source.suppress_template_prefix_substitution;
       node.standard_includes_arguments = source.standard_substitution_includes_arguments;
       for(const AbiType & child : source.types) node.children.push_back(resolve_type(child));
       for(const string & argument : source.argument_refs) node.arguments.push_back(resolve_argument_ref(argument));
@@ -1116,13 +1122,23 @@ private:
     const vector<size_t> prefixes = graph_.paths.prefixes(type.path);
     const bool std_unscoped = components.size() == 2 && graph_.strings.get(components[0]) == "std";
     if(components.size() == 1 || std_unscoped) {
-      encode_template_prefix(type.path, components, prefixes);
+	  if(type.suppress_template_prefix_substitution) {
+	    if(std_unscoped) output_ += "St";
+	    output_ += source_name(graph_.strings.get(components.back()));
+	  } else {
+	    encode_template_prefix(type.path, components, prefixes);
+	  }
       emit_tags(type.tags);
       output_ += 'I'; encode_arguments(type.arguments); output_ += 'E';
       return;
     }
     output_ += 'N';
-    encode_template_prefix(type.path, components, prefixes);
+	if(type.suppress_template_prefix_substitution) {
+	  encode_path_prefix(components, prefixes, components.size() - 1);
+	  output_ += source_name(graph_.strings.get(components.back()));
+	} else {
+	  encode_template_prefix(type.path, components, prefixes);
+	}
     emit_tags(type.tags);
     output_ += 'I'; encode_arguments(type.arguments); output_ += "EE";
   }

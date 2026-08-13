@@ -1,6 +1,8 @@
 #include "pa12_semantic_detail.h"
 
+#include <limits>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace cppgm
@@ -20,7 +22,7 @@ std::uint64_t ResultIdentityValue(std::uint64_t atom)
 	return atom & 0x00ffffffffffffffULL;
 }
 
-FunctionTemplateAbiTypeId AppendResultType(Program* program,
+FunctionTemplateAbiTypeId AppendAbiType(Program* program,
 	const FunctionTemplateAbiType& type)
 {
 	if (program->function_template_abi_types.size() >=
@@ -33,81 +35,318 @@ FunctionTemplateAbiTypeId AppendResultType(Program* program,
 	return result;
 }
 
-void RollBackResultTypes(Program* program, std::size_t size)
+FunctionTemplateAbiExpressionId AppendAbiExpression(Program* program,
+	const FunctionTemplateAbiExpression& expression)
 {
-	program->function_template_abi_types.erase(
-		program->function_template_abi_types.begin() + size,
-		program->function_template_abi_types.end());
+	if (program->function_template_abi_expressions.size() >=
+		kNoFunctionTemplateAbiExpression)
+		throw std::runtime_error("too many function template ABI expressions");
+	const FunctionTemplateAbiExpressionId result =
+		static_cast<FunctionTemplateAbiExpressionId>(
+			program->function_template_abi_expressions.size());
+	program->function_template_abi_expressions.push_back(expression);
+	return result;
 }
 
-FunctionTemplateAbiTypeId PublishParameterQualifiedResult(
-	Program* program, const FunctionTemplatePattern& pattern,
-	const std::vector<std::uint64_t>& atoms)
+NodeId FindDescendant(const SyntaxArena& arena, NodeId root, const char* tag)
 {
-	if (pattern.shape_type == kNoType ||
-		!program->types.IsFunction(pattern.shape_type) || atoms.size() < 3 ||
-		ResultIdentityKind(atoms[0]) !=
-			FUNCTION_TEMPLATE_RESULT_QUALIFIED_BEGIN ||
-		ResultIdentityValue(atoms[0]) != 0 ||
-		ResultIdentityKind(atoms[1]) != FUNCTION_TEMPLATE_RESULT_COMPONENT)
-		return kNoFunctionTemplateAbiType;
-	const NameId root_name = static_cast<NameId>(ResultIdentityValue(atoms[1]));
-	std::size_t parameter = 0;
-	while (parameter < pattern.parameters.size() &&
-		pattern.parameters[parameter].name != root_name) ++parameter;
-	if (parameter == pattern.parameters.size() ||
-		parameter >= kNoTemplateParameter)
-		return kNoFunctionTemplateAbiType;
+	if (root == kNoNode) return kNoNode;
+	std::vector<NodeId> pending(1, root);
+	while (!pending.empty())
+	{
+		const NodeId node = pending.back();
+		pending.pop_back();
+		if (arena.IsTag(node, tag)) return node;
+		for (std::uint32_t edge = arena.FirstEdge(node); edge != kNoEdge;
+			edge = arena.NextEdge(edge))
+			pending.push_back(arena.EdgeChild(edge));
+	}
+	return kNoNode;
+}
 
-	const std::size_t original_size = program->function_template_abi_types.size();
-	FunctionTemplateAbiTypeId root = AppendResultType(program,
-		FunctionTemplateAbiType(FUNCTION_TEMPLATE_ABI_TYPE_PARAMETER,
-			kNoFunctionTemplateAbiType, 0, 0,
-			static_cast<std::uint32_t>(parameter)));
-	std::size_t atom = 2;
-	if (atom < atoms.size() &&
-		(ResultIdentityKind(atoms[atom]) ==
-			FUNCTION_TEMPLATE_RESULT_DECLARATION ||
-		 ResultIdentityKind(atoms[atom]) == FUNCTION_TEMPLATE_RESULT_ENTITY))
+TypeId FundamentalTypeForSpelling(Program* program, const std::string& spelling)
+{
+	if (spelling == "void") return program->types.Fundamental(FUND_VOID);
+	if (spelling == "bool") return program->types.Fundamental(FUND_BOOL);
+	if (spelling == "char") return program->types.Fundamental(FUND_CHAR);
+	if (spelling == "short") return program->types.Fundamental(FUND_SHORT_INT);
+	if (spelling == "int" || spelling == "signed")
+		return program->types.Fundamental(FUND_INT);
+	if (spelling == "unsigned")
+		return program->types.Fundamental(FUND_UNSIGNED_INT);
+	if (spelling == "long") return program->types.Fundamental(FUND_LONG_INT);
+	if (spelling == "float") return program->types.Fundamental(FUND_FLOAT);
+	if (spelling == "double") return program->types.Fundamental(FUND_DOUBLE);
+	if (spelling == "wchar_t") return program->types.Fundamental(FUND_WCHAR_T);
+	if (spelling == "char16_t") return program->types.Fundamental(FUND_CHAR16_T);
+	if (spelling == "char32_t") return program->types.Fundamental(FUND_CHAR32_T);
+	return kNoType;
+}
+
+struct ParsedComponent
+{
+	NameId name;
+	EntityId entity;
+	std::vector<FunctionTemplateAbiArgument> arguments;
+
+	ParsedComponent() : name(0), entity(kNoEntity) {}
+};
+
+class AbiIdentityReader
+{
+public:
+	AbiIdentityReader(Program* program,
+		const std::deque<ClassTemplatePattern>& class_templates,
+		const std::vector<std::uint32_t>& class_template_by_entity,
+		const std::vector<TemplateParameter>& parameters,
+		const std::vector<std::uint64_t>& atoms)
+		: program_(program), class_templates_(class_templates),
+		  class_template_by_entity_(class_template_by_entity),
+		  parameters_(parameters), atoms_(atoms),
+		  position_(0) {}
+
+	FunctionTemplateAbiTypeId ParseType()
 	{
-		RollBackResultTypes(program, original_size);
-		return kNoFunctionTemplateAbiType;
-	}
-	while (atom < atoms.size() &&
-		ResultIdentityKind(atoms[atom]) !=
-			FUNCTION_TEMPLATE_RESULT_QUALIFIED_END)
-	{
-		if (ResultIdentityKind(atoms[atom]) !=
-				FUNCTION_TEMPLATE_RESULT_COMPONENT ||
-			ResultIdentityValue(atoms[atom]) == 0)
+		if (position_ >= atoms_.size()) return kNoFunctionTemplateAbiType;
+		const FunctionTemplateResultIdentityAtomKind kind =
+			ResultIdentityKind(atoms_[position_]);
+		if (kind == FUNCTION_TEMPLATE_RESULT_PARAMETER)
 		{
-			RollBackResultTypes(program, original_size);
-			return kNoFunctionTemplateAbiType;
+			const std::uint64_t parameter = ResultIdentityValue(atoms_[position_++]);
+			if (parameter >= kNoTemplateParameter)
+				return kNoFunctionTemplateAbiType;
+			return AppendAbiType(program_, FunctionTemplateAbiType(
+				FUNCTION_TEMPLATE_ABI_TYPE_PARAMETER, kNoFunctionTemplateAbiType,
+				0, 0, static_cast<std::uint32_t>(parameter)));
 		}
-		const NameId name = static_cast<NameId>(ResultIdentityValue(atoms[atom++]));
-		if (atom < atoms.size() &&
-			(ResultIdentityKind(atoms[atom]) ==
-				FUNCTION_TEMPLATE_RESULT_DECLARATION ||
-			 ResultIdentityKind(atoms[atom]) ==
-				FUNCTION_TEMPLATE_RESULT_ENTITY)) ++atom;
-		if (atom < atoms.size() &&
-			ResultIdentityKind(atoms[atom]) ==
-				FUNCTION_TEMPLATE_RESULT_ARGUMENTS_BEGIN)
-		{
-			RollBackResultTypes(program, original_size);
-			return kNoFunctionTemplateAbiType;
-		}
-		root = AppendResultType(program,
-			FunctionTemplateAbiType(FUNCTION_TEMPLATE_ABI_TYPE_MEMBER, root, name));
-	}
-	if (atom + 1 != atoms.size() ||
-		ResultIdentityKind(atoms[atom]) !=
-			FUNCTION_TEMPLATE_RESULT_QUALIFIED_END)
-	{
-		RollBackResultTypes(program, original_size);
+		if (kind == FUNCTION_TEMPLATE_RESULT_QUALIFIED_BEGIN)
+			return ParseQualifiedType(false, 0);
+		if (kind == FUNCTION_TEMPLATE_RESULT_NODE_BEGIN)
+			return ParseConcreteType();
 		return kNoFunctionTemplateAbiType;
 	}
 
+	FunctionTemplateAbiExpressionId ParseExpression()
+	{
+		if (position_ >= atoms_.size() ||
+			ResultIdentityKind(atoms_[position_]) !=
+				FUNCTION_TEMPLATE_RESULT_QUALIFIED_BEGIN)
+			return kNoFunctionTemplateAbiExpression;
+		FunctionTemplateAbiExpressionId expression =
+			kNoFunctionTemplateAbiExpression;
+		(void)ParseQualifiedType(true, &expression);
+		return expression;
+	}
+
+	bool Complete() const { return position_ == atoms_.size(); }
+
+private:
+	TemplateArgumentKind ArgumentKind(EntityId entity, std::size_t ordinal) const
+	{
+		if (entity >= class_template_by_entity_.size())
+			return TEMPLATE_ARGUMENT_TYPE;
+		const std::uint32_t index = class_template_by_entity_[entity];
+		if (index == kNoDumpEdge || index >= class_templates_.size() ||
+			class_templates_[index].parameters.empty())
+			return TEMPLATE_ARGUMENT_TYPE;
+		const std::vector<TemplateParameter>& parameters =
+			class_templates_[index].parameters;
+		const std::size_t parameter = ordinal < parameters.size() ? ordinal :
+			parameters.size() - 1;
+		return parameters[parameter].kind;
+	}
+
+	EntityId EntityFromMarker(FunctionTemplateResultIdentityAtomKind kind,
+		std::uint64_t value) const
+	{
+		if (kind == FUNCTION_TEMPLATE_RESULT_ENTITY)
+			return value < program_->entities.size() ?
+				static_cast<EntityId>(value) : kNoEntity;
+		if (kind != FUNCTION_TEMPLATE_RESULT_DECLARATION ||
+			value >= program_->bindings.size()) return kNoEntity;
+		const BindingRecord& binding = program_->bindings[
+			program_->bindings[static_cast<BindingId>(value)].canonical];
+		if (binding.type == kNoType) return kNoEntity;
+		const TypeRecord& type = program_->types.Get(
+			program_->types.RemoveTopCv(binding.type));
+		return type.kind == TYPE_NAMED ? type.entity : kNoEntity;
+	}
+
+	bool ParseComponent(ParsedComponent* component)
+	{
+		if (position_ >= atoms_.size() ||
+			ResultIdentityKind(atoms_[position_]) !=
+				FUNCTION_TEMPLATE_RESULT_COMPONENT)
+			return false;
+		component->name = static_cast<NameId>(
+			ResultIdentityValue(atoms_[position_++]));
+		if (position_ < atoms_.size())
+		{
+			const FunctionTemplateResultIdentityAtomKind marker =
+				ResultIdentityKind(atoms_[position_]);
+			if (marker == FUNCTION_TEMPLATE_RESULT_DECLARATION ||
+				marker == FUNCTION_TEMPLATE_RESULT_ENTITY)
+			{
+				component->entity = EntityFromMarker(
+					marker, ResultIdentityValue(atoms_[position_++]));
+			}
+		}
+		if (position_ >= atoms_.size() ||
+			ResultIdentityKind(atoms_[position_]) !=
+				FUNCTION_TEMPLATE_RESULT_ARGUMENTS_BEGIN) return true;
+		++position_;
+		for (std::size_t argument = 0; position_ < atoms_.size() &&
+			ResultIdentityKind(atoms_[position_]) !=
+				FUNCTION_TEMPLATE_RESULT_ARGUMENTS_END; ++argument)
+		{
+			if (ArgumentKind(component->entity, argument) ==
+				TEMPLATE_ARGUMENT_INTEGRAL)
+			{
+				const FunctionTemplateAbiExpressionId expression = ParseExpression();
+				if (expression == kNoFunctionTemplateAbiExpression) return false;
+				component->arguments.push_back(FunctionTemplateAbiArgument(
+					FUNCTION_TEMPLATE_ABI_ARGUMENT_EXPRESSION,
+					kNoFunctionTemplateAbiType, expression));
+			}
+			else
+			{
+				const FunctionTemplateAbiTypeId type = ParseType();
+				if (type == kNoFunctionTemplateAbiType) return false;
+				component->arguments.push_back(FunctionTemplateAbiArgument(
+					FUNCTION_TEMPLATE_ABI_ARGUMENT_TYPE, type));
+			}
+		}
+		if (position_ >= atoms_.size() ||
+			ResultIdentityKind(atoms_[position_]) !=
+				FUNCTION_TEMPLATE_RESULT_ARGUMENTS_END) return false;
+		++position_;
+		return true;
+	}
+
+	FunctionTemplateAbiTypeId ComponentType(
+		const ParsedComponent& component, FunctionTemplateAbiTypeId owner)
+	{
+		if (component.arguments.empty())
+		{
+			if (owner != kNoFunctionTemplateAbiType)
+				return AppendAbiType(program_, FunctionTemplateAbiType(
+					FUNCTION_TEMPLATE_ABI_TYPE_MEMBER, owner, component.name));
+			if (component.entity == kNoEntity ||
+				component.entity >= program_->entities.size())
+			{
+				for (std::size_t parameter = 0;
+					parameter < parameters_.size(); ++parameter)
+					if (parameters_[parameter].kind == TEMPLATE_ARGUMENT_TYPE &&
+						parameters_[parameter].name == component.name)
+						return AppendAbiType(program_, FunctionTemplateAbiType(
+							FUNCTION_TEMPLATE_ABI_TYPE_PARAMETER,
+							kNoFunctionTemplateAbiType, 0, 0,
+							static_cast<std::uint32_t>(parameter)));
+				return kNoFunctionTemplateAbiType;
+			}
+			return AppendAbiType(program_, FunctionTemplateAbiType(
+				FUNCTION_TEMPLATE_ABI_TYPE_CONCRETE, kNoFunctionTemplateAbiType,
+				0, 0, kNoTemplateParameter, 0,
+				program_->entities[component.entity].type));
+		}
+		if (component.entity == kNoEntity ||
+			component.arguments.size() >
+				std::numeric_limits<std::uint32_t>::max() ||
+			program_->function_template_abi_arguments.size() >
+				std::numeric_limits<std::uint32_t>::max() -
+				component.arguments.size())
+			return kNoFunctionTemplateAbiType;
+		const std::uint32_t begin = static_cast<std::uint32_t>(
+			program_->function_template_abi_arguments.size());
+		program_->function_template_abi_arguments.insert(
+			program_->function_template_abi_arguments.end(),
+			component.arguments.begin(), component.arguments.end());
+		return AppendAbiType(program_, FunctionTemplateAbiType(
+			FUNCTION_TEMPLATE_ABI_TYPE_TEMPLATE_SPECIALIZATION, owner,
+			component.name, 0, kNoTemplateParameter, 0, kNoType,
+			component.entity, begin,
+			static_cast<std::uint32_t>(component.arguments.size())));
+	}
+
+	FunctionTemplateAbiTypeId ParseQualifiedType(bool value_terminal,
+		FunctionTemplateAbiExpressionId* expression)
+	{
+		if (ResultIdentityKind(atoms_[position_++]) !=
+			FUNCTION_TEMPLATE_RESULT_QUALIFIED_BEGIN)
+			return kNoFunctionTemplateAbiType;
+		FunctionTemplateAbiTypeId root = kNoFunctionTemplateAbiType;
+		while (position_ < atoms_.size() &&
+			ResultIdentityKind(atoms_[position_]) !=
+				FUNCTION_TEMPLATE_RESULT_QUALIFIED_END)
+		{
+			ParsedComponent component;
+			if (!ParseComponent(&component)) return kNoFunctionTemplateAbiType;
+			const bool terminal = position_ < atoms_.size() &&
+				ResultIdentityKind(atoms_[position_]) ==
+					FUNCTION_TEMPLATE_RESULT_QUALIFIED_END;
+			if (value_terminal && terminal)
+			{
+				if (root == kNoFunctionTemplateAbiType ||
+					!component.arguments.empty())
+					return kNoFunctionTemplateAbiType;
+				*expression = AppendAbiExpression(program_,
+					FunctionTemplateAbiExpression(
+						FUNCTION_TEMPLATE_ABI_EXPRESSION_TYPE_MEMBER,
+						kNoFunctionTemplateAbiExpression,
+						kNoFunctionTemplateAbiExpression, root,
+						component.name));
+			}
+			else
+			{
+				root = ComponentType(component, root);
+				if (root == kNoFunctionTemplateAbiType)
+					return kNoFunctionTemplateAbiType;
+			}
+		}
+		if (position_ >= atoms_.size() ||
+			ResultIdentityKind(atoms_[position_++]) !=
+				FUNCTION_TEMPLATE_RESULT_QUALIFIED_END)
+			return kNoFunctionTemplateAbiType;
+		return root;
+	}
+
+	FunctionTemplateAbiTypeId ParseConcreteType()
+	{
+		std::size_t depth = 0;
+		TypeId concrete = kNoType;
+		do
+		{
+			const FunctionTemplateResultIdentityAtomKind kind =
+				ResultIdentityKind(atoms_[position_]);
+			if (kind == FUNCTION_TEMPLATE_RESULT_NODE_BEGIN) ++depth;
+			else if (kind == FUNCTION_TEMPLATE_RESULT_NODE_END) --depth;
+			else if (kind == FUNCTION_TEMPLATE_RESULT_NODE_PAYLOAD &&
+				ResultIdentityValue(atoms_[position_]) != 0)
+			{
+				concrete = FundamentalTypeForSpelling(program_, program_->names.Get(
+					static_cast<NameId>(ResultIdentityValue(atoms_[position_]))));
+			}
+			++position_;
+		} while (position_ < atoms_.size() && depth != 0);
+		return concrete == kNoType ? kNoFunctionTemplateAbiType :
+			AppendAbiType(program_, FunctionTemplateAbiType(
+				FUNCTION_TEMPLATE_ABI_TYPE_CONCRETE, kNoFunctionTemplateAbiType,
+				0, 0, kNoTemplateParameter, 0, concrete));
+	}
+
+	Program* program_;
+	const std::deque<ClassTemplatePattern>& class_templates_;
+	const std::vector<std::uint32_t>& class_template_by_entity_;
+	const std::vector<TemplateParameter>& parameters_;
+	const std::vector<std::uint64_t>& atoms_;
+	std::size_t position_;
+};
+
+FunctionTemplateAbiTypeId ApplyResultModifiers(Program* program,
+	TypeId function_shape, FunctionTemplateAbiTypeId root)
+{
+	if (root == kNoFunctionTemplateAbiType || function_shape == kNoType ||
+		!program->types.IsFunction(function_shape)) return root;
 	struct Modifier
 	{
 		FunctionTemplateAbiTypeKind kind;
@@ -116,7 +355,7 @@ FunctionTemplateAbiTypeId PublishParameterQualifiedResult(
 		std::uint8_t cv;
 	};
 	std::vector<Modifier> modifiers;
-	TypeId source = program->types.Get(pattern.shape_type).child;
+	TypeId source = program->types.Get(function_shape).child;
 	for (;;)
 	{
 		const TypeRecord& record = program->types.Get(source);
@@ -145,23 +384,166 @@ FunctionTemplateAbiTypeId PublishParameterQualifiedResult(
 	}
 	for (std::vector<Modifier>::const_reverse_iterator modifier =
 		modifiers.rbegin(); modifier != modifiers.rend(); ++modifier)
-		root = AppendResultType(program, FunctionTemplateAbiType(modifier->kind,
+		root = AppendAbiType(program, FunctionTemplateAbiType(modifier->kind,
 			root, 0, modifier->bound, modifier->parameter, modifier->cv));
 	return root;
+}
+
+FunctionTemplateAbiExpressionId PublishSyntaxExpression(Program* program,
+	const SyntaxArena& arena, NodeId syntax,
+	const std::vector<ParameterInfo>& parameters)
+{
+	if (syntax == kNoNode) return kNoFunctionTemplateAbiExpression;
+	if (arena.IsTag(syntax, "parenthesized-expression"))
+	{
+		const std::uint32_t edge = arena.FirstEdge(syntax);
+		return edge == kNoEdge ? kNoFunctionTemplateAbiExpression :
+			PublishSyntaxExpression(
+				program, arena, arena.EdgeChild(edge), parameters);
+	}
+	if (arena.IsTag(syntax, "id-expression"))
+	{
+		const NameId name = arena.SemanticPayloadId(syntax);
+		for (std::size_t i = 0; i < parameters.size(); ++i)
+			if (parameters[i].name == name)
+				return AppendAbiExpression(program,
+					FunctionTemplateAbiExpression(
+						FUNCTION_TEMPLATE_ABI_EXPRESSION_FUNCTION_PARAMETER,
+						kNoFunctionTemplateAbiExpression,
+						kNoFunctionTemplateAbiExpression,
+						kNoFunctionTemplateAbiType, 0,
+						static_cast<std::uint32_t>(i)));
+		return kNoFunctionTemplateAbiExpression;
+	}
+	const std::uint32_t first = arena.FirstEdge(syntax);
+	if (first == kNoEdge) return kNoFunctionTemplateAbiExpression;
+	if (arena.IsTag(syntax, "member-expression"))
+	{
+		const std::uint32_t second = arena.NextEdge(first);
+		if (second == kNoEdge) return kNoFunctionTemplateAbiExpression;
+		const FunctionTemplateAbiExpressionId object = PublishSyntaxExpression(
+			program, arena, arena.EdgeChild(first), parameters);
+		if (object == kNoFunctionTemplateAbiExpression)
+			return kNoFunctionTemplateAbiExpression;
+		return AppendAbiExpression(program, FunctionTemplateAbiExpression(
+			FUNCTION_TEMPLATE_ABI_EXPRESSION_OBJECT_MEMBER, object,
+			kNoFunctionTemplateAbiExpression, kNoFunctionTemplateAbiType,
+			arena.SemanticPayloadId(arena.EdgeChild(second)),
+			kNoTemplateParameter, OPERATOR_NONE,
+			arena.SemanticPayload(syntax) == "->"));
+	}
+	if (arena.IsTag(syntax, "call-expression"))
+	{
+		const FunctionTemplateAbiExpressionId callee = PublishSyntaxExpression(
+			program, arena, arena.EdgeChild(first), parameters);
+		if (callee == kNoFunctionTemplateAbiExpression)
+			return kNoFunctionTemplateAbiExpression;
+		const std::uint32_t argument_edge = arena.NextEdge(first);
+		if (argument_edge != kNoEdge &&
+			arena.FirstEdge(arena.EdgeChild(argument_edge)) != kNoEdge)
+			return kNoFunctionTemplateAbiExpression;
+		return AppendAbiExpression(program, FunctionTemplateAbiExpression(
+			FUNCTION_TEMPLATE_ABI_EXPRESSION_CALL, callee));
+	}
+	if (arena.IsTag(syntax, "binary-expression") &&
+		arena.SemanticPayload(syntax) == "-")
+	{
+		const std::uint32_t second = arena.NextEdge(first);
+		if (second == kNoEdge) return kNoFunctionTemplateAbiExpression;
+		const FunctionTemplateAbiExpressionId left = PublishSyntaxExpression(
+			program, arena, arena.EdgeChild(first), parameters);
+		const FunctionTemplateAbiExpressionId right = PublishSyntaxExpression(
+			program, arena, arena.EdgeChild(second), parameters);
+		if (left == kNoFunctionTemplateAbiExpression ||
+			right == kNoFunctionTemplateAbiExpression)
+			return kNoFunctionTemplateAbiExpression;
+		return AppendAbiExpression(program, FunctionTemplateAbiExpression(
+			FUNCTION_TEMPLATE_ABI_EXPRESSION_BINARY, left, right,
+			kNoFunctionTemplateAbiType, 0, kNoTemplateParameter,
+			OPERATOR_MINUS));
+	}
+	return kNoFunctionTemplateAbiExpression;
+}
+
+bool HasParameterRoot(const FunctionTemplatePattern& pattern,
+	const std::vector<std::uint64_t>& atoms)
+{
+	if (atoms.size() < 2 ||
+		ResultIdentityKind(atoms[0]) !=
+			FUNCTION_TEMPLATE_RESULT_QUALIFIED_BEGIN ||
+		ResultIdentityKind(atoms[1]) != FUNCTION_TEMPLATE_RESULT_COMPONENT)
+		return false;
+	const NameId root = static_cast<NameId>(ResultIdentityValue(atoms[1]));
+	for (std::size_t parameter = 0;
+		parameter < pattern.parameters.size(); ++parameter)
+		if (pattern.parameters[parameter].kind == TEMPLATE_ARGUMENT_TYPE &&
+			pattern.parameters[parameter].name == root) return true;
+	return false;
 }
 
 }
 
 void SemanticAnalyzer::PublishFunctionTemplateResultAbiType(
-	FunctionTemplatePattern* pattern)
+	FunctionTemplatePattern* pattern, const DeclaratorInfo& declarator)
 {
-	if (!pattern || pattern->expanded_result_identity ==
-		kNoFunctionTemplateResultIdentity) return;
-	std::vector<std::uint64_t> atoms;
-	function_template_result_identities_.CopyAtoms(
-		pattern->expanded_result_identity, &atoms);
-	pattern->abi_result_type = PublishParameterQualifiedResult(
-		program_, *pattern, atoms);
+	if (!pattern) return;
+	pattern->abi_result_type = kNoFunctionTemplateAbiType;
+	pattern->abi_template_parameter_types.assign(
+		pattern->parameters.size(), kNoFunctionTemplateAbiType);
+	for (std::size_t p = 0; p < pattern->parameters.size(); ++p)
+	{
+		if (pattern->parameters[p].kind != TEMPLATE_ARGUMENT_INTEGRAL)
+			continue;
+		const NodeId root = FindDescendant(
+			*arena_, pattern->parameters[p].specifiers, "structured-type-name");
+		if (root == kNoNode) continue;
+		FunctionTemplatePattern probe;
+		probe.parameters = pattern->parameters;
+		probe.lexical_scope = pattern->lexical_scope;
+		probe.result_root_structure = root;
+		InternExpandedFunctionTemplateResult(&probe);
+		if (probe.expanded_result_identity ==
+			kNoFunctionTemplateResultIdentity) continue;
+		std::vector<std::uint64_t> atoms;
+		function_template_result_identities_.CopyAtoms(
+			probe.expanded_result_identity, &atoms);
+		AbiIdentityReader reader(program_, class_templates_,
+			class_template_pattern_by_entity_, pattern->parameters, atoms);
+		const FunctionTemplateAbiTypeId type = reader.ParseType();
+		if (reader.Complete()) pattern->abi_template_parameter_types[p] = type;
+	}
+
+	if (pattern->expanded_result_identity !=
+		kNoFunctionTemplateResultIdentity)
+	{
+		std::vector<std::uint64_t> atoms;
+		function_template_result_identities_.CopyAtoms(
+			pattern->expanded_result_identity, &atoms);
+		if (pattern->expanded_result_has_alias ||
+			HasParameterRoot(*pattern, atoms))
+		{
+			AbiIdentityReader reader(program_, class_templates_,
+				class_template_pattern_by_entity_, pattern->parameters, atoms);
+			const FunctionTemplateAbiTypeId root = reader.ParseType();
+			if (reader.Complete()) pattern->abi_result_type =
+				ApplyResultModifiers(program_, pattern->shape_type, root);
+		}
+	}
+	if (pattern->abi_result_type != kNoFunctionTemplateAbiType) return;
+	const NodeId decltype_specifier = FindDescendant(
+		*arena_, pattern->trailing_return_syntax, "decltype-specifier");
+	if (decltype_specifier == kNoNode) return;
+	const std::uint32_t edge = arena_->FirstEdge(decltype_specifier);
+	if (edge == kNoEdge) return;
+	const FunctionTemplateAbiExpressionId expression = PublishSyntaxExpression(
+		program_, *arena_, arena_->EdgeChild(edge), declarator.parameters);
+	if (expression == kNoFunctionTemplateAbiExpression) return;
+	const FunctionTemplateAbiTypeId root = AppendAbiType(program_,
+		FunctionTemplateAbiType(FUNCTION_TEMPLATE_ABI_TYPE_DECLTYPE,
+			kNoFunctionTemplateAbiType, 0, 0, kNoTemplateParameter, 0,
+			kNoType, kNoEntity, 0, 0, expression));
+	pattern->abi_result_type = ApplyResultModifiers(
+		program_, pattern->shape_type, root);
 }
 
 }
