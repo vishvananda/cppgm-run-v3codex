@@ -642,6 +642,7 @@ EntityRecord::EntityRecord()
 	  template_argument_pack_begin(kNoTemplateParameter),
 	  direct_base_begin(0), direct_base_count(0),
 	  virtual_base_begin(0), virtual_base_count(0),
+	  abi_tag_begin(0), abi_tag_count(0),
 	  flavor(NAMED_NONE), type(kNoType),
 	  underlying(kNoType), declaration(kNoBinding),
 	  union_default_member(kNoBinding), object_size(0), nonvirtual_size(0),
@@ -677,6 +678,7 @@ BindingRecord::BindingRecord()
 	  overload_ordinal(0), member_ordinal(kNoBinding),
 	  template_argument_list(kNoTemplateArgumentList),
 	  template_argument_begin(0), template_argument_count(0),
+	  abi_tag_begin(0), abi_tag_count(0),
 	  function_template_abi_recipe(kNoFunctionTemplateAbiRecipe),
 	  display_flavor(NAMED_NONE), display_type_name(0),
 		  canonical(kNoBinding), lifecycle_base_entry(kNoBinding), value(0),
@@ -1526,6 +1528,8 @@ void Program::ResetClassDefinition(EntityId entity)
 	reset.template_argument_begin = old.template_argument_begin;
 	reset.template_argument_count = old.template_argument_count;
 	reset.template_argument_pack_begin = old.template_argument_pack_begin;
+	reset.abi_tag_begin = old.abi_tag_begin;
+	reset.abi_tag_count = old.abi_tag_count;
 	reset.flavor = old.flavor;
 	reset.type = old.type;
 	reset.declaration = old.declaration;
@@ -2920,6 +2924,7 @@ std::size_t Program::StorageBytes() const
 		lookup_pending_target_marks_.capacity() * sizeof(std::uint32_t) +
 		direct_bases.capacity() * sizeof(DirectBaseEdge) +
 		virtual_bases.capacity() * sizeof(VirtualBaseLayout) +
+		abi_tags.capacity() * sizeof(NameId) +
 		base_jumps_.capacity() * sizeof(EntityId) +
 		base_jump_offsets_.capacity() * sizeof(std::size_t) +
 		base_jump_counts_.capacity() * sizeof(std::uint8_t) +

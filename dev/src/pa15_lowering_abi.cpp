@@ -79,6 +79,36 @@ namespace
 
 using namespace pa11;
 
+void AppendAbiTagStrings(const Program& program,
+	std::uint32_t begin, std::uint32_t count,
+	std::vector<std::string>* destination)
+{
+	if (begin > program.abi_tags.size() ||
+		count > program.abi_tags.size() - begin)
+		throw std::logic_error("invalid ABI tag fact range");
+	for (std::size_t i = 0; i < count; ++i)
+		destination->push_back(program.names.Get(program.abi_tags[begin + i]));
+}
+
+void AppendFunctionAbiTagFacts(const Program& program,
+	const BindingRecord& binding, abi_mangle::AbiFactCase* facts)
+{
+	using namespace abi_mangle;
+	if (binding.abi_tag_count == 0) return;
+	if (binding.abi_tag_begin > program.abi_tags.size() ||
+		binding.abi_tag_count > program.abi_tags.size() - binding.abi_tag_begin)
+		throw std::logic_error("invalid function ABI tag fact range");
+	for (std::size_t i = 0; i < binding.abi_tag_count; ++i)
+	{
+		AbiFactRecord tag;
+		tag.set_kind(ABI_FACT_RECORD_FUNCTION);
+		tag.function.kind = ABI_FUNCTION_RECORD_ABI_TAG;
+		tag.function.name = program.names.Get(
+			program.abi_tags[binding.abi_tag_begin + i]);
+		facts->records.push_back(tag);
+	}
+}
+
 std::string OperatorTerminal(OperatorKind kind, bool member,
 	std::size_t parameter_count);
 
@@ -1317,6 +1347,8 @@ public:
 						first + fixed, entity.template_argument_count - fixed,
 						function, recipe));
 			}
+			AppendAbiTagStrings(program_, entity.abi_tag_begin,
+				entity.abi_tag_count, &result.abi_tags);
 			return result;
 		}
 		if (record->kind != TYPE_FUNDAMENTAL)
@@ -1788,6 +1820,7 @@ std::string MangleFunction(const pa11::Program& program,
 	if (!structured_owner)
 		target.target.function.qualified_name = qualified;
 	file.cases[0].records.push_back(target);
+	AppendFunctionAbiTagFacts(program, binding, &file.cases[0]);
 	if (structured_local_owner)
 	{
 		const EntityRecord& owner = program.entities[binding.member_owner];

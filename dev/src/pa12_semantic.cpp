@@ -2307,6 +2307,7 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	const BindingId binding = DeclareFunction(owner, parsed.name,
 		parsed.type, parsed.parameters, true, false, spec.storage_class,
 		current_language_linkage_, IsNonthrowing(declarator, semantic_scope));
+	ApplyFunctionAbiTagAttributes(node, binding);
 	PublishInlineFunctionFacts(
 		binding, spec.inline_specifier || spec.is_constexpr);
 	ConfigurePlaceholderFunctionReturn(

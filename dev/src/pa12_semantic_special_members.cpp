@@ -180,6 +180,8 @@ BindingId SemanticAnalyzer::EnsureConstructorBaseEntry(BindingId constructor)
 	binding.template_argument_count = source_binding.template_argument_count;
 	binding.function_template_abi_recipe =
 		source_binding.function_template_abi_recipe;
+	binding.abi_tag_begin = source_binding.abi_tag_begin;
+	binding.abi_tag_count = source_binding.abi_tag_count;
 	binding.language_linkage = source_binding.language_linkage;
 	binding.storage_class = source_binding.storage_class;
 	binding.access = source_binding.access;

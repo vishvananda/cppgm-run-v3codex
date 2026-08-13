@@ -163,6 +163,7 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 			program_->entities[entity].type);
 	}
 	const TypeId type = program_->entities[entity].type;
+	ApplyClassAbiTagAttributes(node, entity);
 	if (entity_data_members_.size() <= entity)
 		entity_data_members_.resize(static_cast<std::size_t>(entity) + 1);
 	if (entity_static_data_members_.size() <= entity)
@@ -1036,6 +1037,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		const BindingId function = DeclareFunction(scope, parsed.name,
 			parsed.type, parsed.parameters, true, false, STORAGE_CLASS_NONE,
 			current_language_linkage_, IsNonthrowing(declarator, scope));
+		ApplyFunctionAbiTagAttributes(node, function);
 		FunctionInfo& info = GetMutableFunction(function);
 		ConfigurePlaceholderFunctionReturn(function, parsed, spec.placeholder_cv);
 		info.constexpr_function = info.constexpr_function || constexpr_function;
@@ -1095,6 +1097,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 			const BindingId function = DeclareFunction(scope, parsed.name,
 				parsed.type, parsed.parameters, false, false, STORAGE_CLASS_NONE,
 				current_language_linkage_, IsNonthrowing(declarator, scope));
+			ApplyFunctionAbiTagAttributes(item, function);
 			BindingRecord& binding = program_->bindings[function];
 			ConfigurePlaceholderFunctionReturn(function, parsed, spec.placeholder_cv);
 			binding.member_owner = EntityOf(owner_type);
@@ -1381,6 +1384,7 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 			parsed.type, parsed.parameters, source_definition || defaulted,
 			false, STORAGE_CLASS_NONE, current_language_linkage_,
 			IsNonthrowing(declarator, scope));
+		ApplyFunctionAbiTagAttributes(node, destructor);
 		BindingRecord& binding = program_->bindings[destructor];
 		binding.member_owner = entity;
 		binding.access = access;
@@ -1455,6 +1459,7 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 	const BindingId constructor = DeclareFunction(scope, parsed.name,
 		parsed.type, parsed.parameters, definition, false, STORAGE_CLASS_NONE,
 		current_language_linkage_, IsNonthrowing(declarator, scope));
+	ApplyFunctionAbiTagAttributes(node, constructor);
 	BindingRecord& binding = program_->bindings[constructor];
 	binding.member_owner = entity;
 	binding.access = access;
@@ -2573,6 +2578,8 @@ BindingId SemanticAnalyzer::EnsureDestructorBaseEntry(BindingId destructor,
 	binding.template_argument_count = source_binding_copy.template_argument_count;
 	binding.function_template_abi_recipe =
 		source_binding_copy.function_template_abi_recipe;
+	binding.abi_tag_begin = source_binding_copy.abi_tag_begin;
+	binding.abi_tag_count = source_binding_copy.abi_tag_count;
 	binding.language_linkage = source_binding_copy.language_linkage;
 	binding.storage_class = source_binding_copy.storage_class;
 	binding.access = source_binding_copy.access;

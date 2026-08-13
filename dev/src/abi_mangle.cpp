@@ -453,12 +453,12 @@ public:
       for(const AbiType & child : source.types) node.children.push_back(resolve_type(child));
       for(const string & argument : source.argument_refs) node.arguments.push_back(resolve_argument_ref(argument));
       for(const string & name : source.namespace_qualifiers) node.namespaces.push_back(strings.intern(name));
-      for(const string & tag : source.abi_tags) node.tags.push_back(strings.intern(tag));
-      std::sort(node.tags.begin(), node.tags.end(), [this](size_t a, size_t b) {
-        return strings.get(a) < strings.get(b);
-      });
-      node.tags.erase(std::unique(node.tags.begin(), node.tags.end()), node.tags.end());
     }
+    for(const string & tag : source.abi_tags) node.tags.push_back(strings.intern(tag));
+    std::sort(node.tags.begin(), node.tags.end(), [this](size_t a, size_t b) {
+      return strings.get(a) < strings.get(b);
+    });
+    node.tags.erase(std::unique(node.tags.begin(), node.tags.end()), node.tags.end());
     return canonicalize_type(node);
   }
 

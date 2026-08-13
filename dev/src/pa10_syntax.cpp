@@ -392,7 +392,7 @@ private:
 				alignments->push_back(ParseAlignmentSpecifier());
 				continue;
 			}
-			if (!SkipAttribute()) break;
+			if (!ParseLeadingAttribute(alignments)) break;
 		}
 	}
 	bool IsLikelyTypeIdentifier(std::size_t position) const
@@ -1088,7 +1088,10 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 		if ((At(OP_LSQUARE) && AtOffset(1, OP_LSQUARE)) ||
 			(AtIdentifier() && Spelling(position_) == "__attribute__"))
 		{
-			SkipAttributes();
+			std::vector<NodeId> attributes;
+			while (ParseLeadingAttribute(&attributes)) {}
+			for (std::size_t i = 0; i < attributes.size(); ++i)
+				arena_.Add(result, attributes[i]);
 			continue;
 		}
 		if (At(OP_LPAREN))
@@ -1108,7 +1111,10 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 			consumed = true;
 			while (true)
 			{
-				SkipAttributes();
+				std::vector<NodeId> attributes;
+				while (ParseLeadingAttribute(&attributes)) {}
+				for (std::size_t i = 0; i < attributes.size(); ++i)
+					arena_.Add(result, attributes[i]);
 				if (At(KW_CONST) || At(KW_VOLATILE))
 				{
 					const std::size_t qualifier = position_++;

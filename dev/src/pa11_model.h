@@ -380,6 +380,7 @@ struct EntityRecord
 		template_argument_pack_begin;
 	std::uint32_t direct_base_begin, direct_base_count,
 		virtual_base_begin, virtual_base_count;
+	std::uint32_t abi_tag_begin, abi_tag_count;
 	NamedFlavor flavor;
 	TypeId type, underlying;
 	BindingId declaration, union_default_member;
@@ -563,6 +564,7 @@ struct BindingRecord
 	std::uint32_t overload_ordinal, member_ordinal;
 	TemplateArgumentListId template_argument_list;
 	std::uint32_t template_argument_begin, template_argument_count;
+	std::uint32_t abi_tag_begin, abi_tag_count;
 	FunctionTemplateAbiRecipeId function_template_abi_recipe;
 	NamedFlavor display_flavor;
 	NameId display_type_name;
@@ -734,6 +736,7 @@ public:
 	std::vector<EntityRecord> entities;
 	std::vector<DirectBaseEdge> direct_bases;
 	std::vector<VirtualBaseLayout> virtual_bases;
+	std::vector<NameId> abi_tags;
 	std::vector<BindingRecord> bindings;
 	std::vector<TypeId> template_arguments;
 	std::vector<TemplateArgument> canonical_template_arguments;
