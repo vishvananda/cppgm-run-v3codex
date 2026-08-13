@@ -314,6 +314,9 @@ bool SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 		if (program_->entities[entity].complete)
 			throw std::runtime_error("duplicate class definition");
 		program_->entities[entity].packing_alignment = current_pack_alignment_;
+		if (hosted_extension::HasGnuAttribute(*arena_, node, "packed") ||
+			hosted_extension::HasGnuAttribute(*arena_, node, "__packed__"))
+			program_->entities[entity].packing_alignment = 1;
 		const NodeId base_clause = FindChild(node, "base-clause");
 		if (base_clause != kNoNode)
 		{
@@ -527,78 +530,6 @@ bool SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 		current_class_context_ = previous_class_context;
 		return true;
 }
-EntityId SemanticAnalyzer::ZeroOffsetClassEntity(TypeId type) const
-{
-	const TypeRecord* record = &program_->types.Get(type);
-	while (record->kind == TYPE_ARRAY || record->kind == TYPE_QUALIFIED)
-	{
-		type = record->child;
-		record = &program_->types.Get(type);
-	}
-	if (record->kind != TYPE_NAMED) return kNoEntity;
-	const NamedFlavor flavor = program_->entities[record->entity].flavor;
-	return flavor == NAMED_STRUCT || flavor == NAMED_CLASS ||
-		flavor == NAMED_UNION ? record->entity : kNoEntity;
-}
-
-bool SemanticAnalyzer::VisitZeroOffsetSubobjects(EntityId root,
-	std::uint32_t marker, std::uint32_t conflict_marker)
-{
-	zero_offset_subobject_scratch_.clear();
-	zero_offset_subobject_scratch_.push_back(root);
-	while (!zero_offset_subobject_scratch_.empty())
-	{
-		const EntityId entity = zero_offset_subobject_scratch_.back();
-		zero_offset_subobject_scratch_.pop_back();
-		++class_zero_offset_subobject_visits_;
-		if (zero_offset_subobject_marks_[entity] == marker) continue;
-		if (zero_offset_subobject_marks_[entity] == conflict_marker) return true;
-		zero_offset_subobject_marks_[entity] = marker;
-		const EntityRecord& record = program_->entities[entity];
-		for (std::size_t base_index = 0;
-			base_index < record.direct_base_count; ++base_index)
-		{
-			const DirectBaseEdge& base = program_->DirectBase(entity, base_index);
-			if (base.offset == 0)
-				zero_offset_subobject_scratch_.push_back(base.entity);
-		}
-		if (entity >= entity_layout_members_.size()) continue;
-		const std::vector<ClassLayoutMember>& members =
-			entity_layout_members_[entity];
-		for (std::size_t i = 0; i < members.size(); ++i)
-		{
-			const ClassLayoutMember& member = members[i];
-			if (member.bit_field || member.binding == kNoBinding ||
-				program_->bindings[member.binding].member_offset != 0)
-				continue;
-			const EntityId child = ZeroOffsetClassEntity(member.type);
-			if (child != kNoEntity)
-				zero_offset_subobject_scratch_.push_back(child);
-		}
-	}
-	return false;
-}
-
-bool SemanticAnalyzer::ZeroOffsetSubobjectConflict(EntityId base,
-	TypeId member_type)
-{
-	const EntityId member = ZeroOffsetClassEntity(member_type);
-	if (base == kNoEntity || member == kNoEntity) return false;
-	if (zero_offset_subobject_marks_.size() < program_->entities.size())
-		zero_offset_subobject_marks_.resize(program_->entities.size(), 0);
-	if (zero_offset_subobject_generation_ >
-		std::numeric_limits<std::uint32_t>::max() - 2)
-	{
-		std::fill(zero_offset_subobject_marks_.begin(),
-			zero_offset_subobject_marks_.end(), 0);
-		zero_offset_subobject_generation_ = 0;
-	}
-	const std::uint32_t base_marker = ++zero_offset_subobject_generation_;
-	const std::uint32_t member_marker = ++zero_offset_subobject_generation_;
-	(void)VisitZeroOffsetSubobjects(base, base_marker, base_marker);
-	return VisitZeroOffsetSubobjects(member, member_marker, base_marker);
-}
-
 void SemanticAnalyzer::CompleteClassMemberDestructionFacts(EntityId entity,
 	bool is_union, bool defaulted_destructor)
 {
@@ -670,6 +601,8 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 	EntityRecord& owner = program_->entities[entity];
 	if (owner.layout_complete) return;
 	++class_layouts_;
+	for (std::size_t i = 0; i < entity_layout_members_[entity].size(); ++i)
+		EnsureClassDefinition(entity_layout_members_[entity][i].type);
 	std::size_t size = 0;
 	std::size_t alignment = 1;
 	std::size_t natural_alignment = 1;
@@ -677,6 +610,8 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 		static_cast<std::size_t>(owner.packing_alignment);
 	const EntityRecord* base = InitializeClassBaseLayout(entity,
 		packing_alignment, &size, &alignment, &natural_alignment);
+	const std::uint32_t zero_offset_marker =
+		BeginClassZeroOffsetSubobjects(entity);
 	const bool is_union = owner.flavor == NAMED_UNION;
 	bool empty_class = ClassBasesAreEmpty(entity);
 	if (owner.polymorphic_class)
@@ -711,7 +646,6 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 	{
 		++class_layout_member_visits_;
 		const ClassLayoutMember layout = entity_layout_members_[entity][i];
-		EnsureClassDefinition(layout.type);
 		EntityRecord& current_owner = program_->entities[entity];
 		BindingRecord* member = layout.binding == kNoBinding ? 0 :
 			&program_->bindings[layout.binding];
@@ -811,30 +745,36 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 		active_bit_unit = false;
 		if (!member)
 			throw std::logic_error("ordinary layout member has no binding");
-		empty_class = false;
-		if (is_union)
+		const EntityId overlap_entity = ZeroOffsetClassEntity(layout.type);
+		const bool overlap_candidate = !is_union &&
+			member->potentially_overlapping_member &&
+			overlap_entity != kNoEntity &&
+			program_->entities[overlap_entity].empty_class;
+		const bool overlap_conflict = overlap_candidate &&
+			ClassZeroOffsetSubobjectConflict(layout.type, zero_offset_marker);
+		const bool overlaps = overlap_candidate && !overlap_conflict;
+		if (overlaps)
+			member->member_offset = 0;
+		else if (is_union)
 		{
+			empty_class = false;
 			member->member_offset = 0;
 			size = std::max(size, member_size);
 		}
 		else
 		{
-			if (size == 0)
-				for (std::size_t base_index = 0;
-					base_index < current_owner.direct_base_count; ++base_index)
-					if (program_->DirectBase(entity, base_index).offset == 0 &&
-						ZeroOffsetSubobjectConflict(program_->DirectBase(
-							entity, base_index).entity, layout.type))
-					{
-						size = 1;
-						break;
-					}
+			empty_class = false;
+			if (size == 0 && (overlap_conflict || (!overlap_candidate &&
+				ClassZeroOffsetSubobjectConflict(
+					layout.type, zero_offset_marker)))) size = 1;
 			size = AlignUp(size, member_alignment);
 			member->member_offset = size;
 			if (size > std::numeric_limits<std::size_t>::max() - member_size)
 				throw std::runtime_error("class layout is too large");
 			size += member_size;
 		}
+		if (member->member_offset == 0)
+			MarkClassZeroOffsetSubobject(layout.type, zero_offset_marker);
 		if (!implicit_default_constructor) continue;
 		if (member->has_default_member_initializer)
 		{
@@ -1165,6 +1105,9 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 				binding.storage_class = spec.storage_class;
 				binding.thread_local_storage = spec.thread_local_storage;
 				binding.mutable_member = spec.mutable_member;
+				binding.potentially_overlapping_member = non_static_data_member &&
+					hosted_extension::HasStandardAttribute(
+						*arena_, node, "no_unique_address");
 				binding.member_owner = EntityOf(owner_type);
 				binding.access = access;
 				binding.requested_alignment = requested_alignment;

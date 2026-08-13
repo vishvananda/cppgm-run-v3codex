@@ -613,7 +613,8 @@ struct BindingRecord
 	AccessKind access;
 	bool constant, nonthrowing, unnamed_namespace_linkage,
 		thread_local_storage, non_static_data_member,
-		mutable_member, bit_field, anonymous_union_storage,
+		mutable_member, bit_field, potentially_overlapping_member,
+		anonymous_union_storage,
 		static_member_function, has_default_member_initializer,
 		conversion_function, constructor,
 		constructor_base_entry, destructor, destructor_base_entry,

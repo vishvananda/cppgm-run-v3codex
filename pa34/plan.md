@@ -13,17 +13,16 @@ linear lowering/allocation, and no host compiler fallback.
 ## Current Failure Map
 
 - Preprocess: 0/45 failures; this boundary is complete.
-- Compile: 122/281 failures: 45 extension grammar/type cases (parser/type system), 41
+- Compile: 117/281 failures: 43 extension grammar/type cases (parser/type system), 38
   trait/layout/constant cases (semantic facts), and 36 template lookup/demand cases.
 - Run: 23/41 failures; 20 stop in the compile pipeline and 3 expose linked
-  backend/lifetime or forced-inline behavior. PA34 is 222/367 overall.
+  backend/lifetime or forced-inline behavior. PA34 is 227/367 overall.
 
 ## Active Checkpoint
 
-No implementation is in flight. The next checkpoint should return to the remaining 45
-extension grammar/type cases and select one parser/type owner (GNU asm, block pointers,
-or retained vector/layout attributes), preserving the completed builtin registry and
-typed lowering boundaries without enabling unrelated PA35 behavior.
+No implementation is in flight. The next checkpoint should select one owner from the
+remaining 43 extension grammar/type cases—block pointers, GNU asm, or retained scalar
+vector layout—without conflating parser acceptance with backend behavior.
 
 ## Performance Evidence
 
@@ -48,6 +47,11 @@ function. At 1/8/64 functions it emitted exactly 411/3,288/26,304 native instruc
 objects were 40,784/317,160/2,528,640 bytes and took 0.00/0.01/0.07 s with
 8,284/10,564/26,244 KiB RSS. This supports O(calls) semantic and fixed-graph lowering.
 
+The repeated-empty-member layout probe used 1/8/64 potentially overlapping members.
+It recorded exactly 1/8/64 layout-member visits and 2/9/65 zero-offset-subobject visits;
+semantic elapsed time was 0.49/0.58/1.43 ms. This supports O(members + visited
+zero-offset subobjects) placement with bounded reusable marker scratch.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result | Validation |
@@ -59,3 +63,4 @@ objects were 40,784/317,160/2,528,640 bytes and took 0.00/0.01/0.07 s with
 | Memory/string intrinsics | Shared probe/semantic registry, typed controls, identity/no-op lowering, effect metadata, staged ABI preservation, and libc object symbols; +9 | focused 8/8 plus GNU alignof; linked effects/symbols exact; PA34 204/367; PA1-33 4387/4387; audit pass |
 | C11/GNU atomic and sync | Canonical `_Atomic`, 16-byte alignment, compact registry/typed operands, first-class atomic LowIR, packed class bridge, and bounded bitwise CAS graphs; +12 | focused 12/12; scalar/class linked behavior; exact 1/8/64 scaling; PA34 216/367; PA1-33 4387/4387; audit pass |
 | Scalar floating builtins and abort | Sorted compact IDs, source-width classification, typed infinity/quiet/signaling NaNs, predicates, and nonreturning hosted `abort`; +6 | focused 6/6; exact abort ABI/effects; exact 1/8/64 instruction scaling; PA34 222/367; PA1-33 4387/4387; audit pass |
+| Class layout attributes | Canonical GNU aligned/packed and standard no-unique facts, entity/binding ownership, conflict-safe empty overlap, and template replay; +5 | focused compile 5/5 and linked copy assignment; 1/8/64 linear markers; PA34 227/367; PA1-33 4387/4387; audit pass |

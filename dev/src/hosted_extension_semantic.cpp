@@ -14,7 +14,21 @@ bool HasGnuAttribute(const pa10_syntax_detail::SyntaxArena& arena,
 	{
 		const NodeId child = arena.EdgeChild(edge);
 		if (arena.IsTag(child, "gnu-attribute") &&
-			arena.Payload(child) == name) return true;
+			arena.SemanticPayload(child) == name) return true;
+	}
+	return false;
+}
+
+bool HasStandardAttribute(const pa10_syntax_detail::SyntaxArena& arena,
+	pa10_syntax_detail::NodeId node, const std::string& name)
+{
+	using namespace pa10_syntax_detail;
+	for (std::uint32_t edge = arena.FirstEdge(node); edge != kNoEdge;
+		edge = arena.NextEdge(edge))
+	{
+		const NodeId child = arena.EdgeChild(edge);
+		if (arena.IsTag(child, "standard-attribute") &&
+			arena.SemanticPayload(child) == name) return true;
 	}
 	return false;
 }

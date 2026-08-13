@@ -165,5 +165,40 @@ bool ConsumeLeadingGnuObjectAttribute(
 	return true;
 }
 
+bool ConsumeLeadingStandardObjectAttribute(
+	const std::vector<SyntaxToken>& tokens, const StringTable& strings,
+	SyntaxArena& arena, std::size_t* position,
+	std::vector<NodeId>* attributes)
+{
+	if (!position || !attributes)
+		throw std::logic_error("missing standard attribute parser destination");
+	if (!At(tokens, *position, OP_LSQUARE) ||
+		!At(tokens, *position + 1, OP_LSQUARE)) return false;
+	*position += 2;
+	bool no_unique_address = false;
+	while (!At(tokens, *position, OP_RSQUARE) ||
+		!At(tokens, *position + 1, OP_RSQUARE))
+	{
+		if (*position >= tokens.size() || tokens[*position].Kind() == kEofToken)
+			throw std::runtime_error("unterminated standard attribute");
+		if (tokens[*position].Kind() == kIdentifierToken)
+		{
+			const std::string& name = strings.Get(tokens[*position].spelling);
+			no_unique_address = no_unique_address ||
+				name == "no_unique_address" || name == "__no_unique_address__";
+		}
+		++*position;
+	}
+	*position += 2;
+	if (no_unique_address)
+	{
+		const NodeId attribute =
+			arena.Make("standard-attribute", "no_unique_address");
+		arena.AddFlags(attribute, SYNTAX_FLAG_SEMANTIC_ONLY);
+		attributes->push_back(attribute);
+	}
+	return true;
+}
+
 }
 }

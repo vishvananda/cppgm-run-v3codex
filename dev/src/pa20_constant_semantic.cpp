@@ -36,6 +36,34 @@ std::size_t SemanticAnalyzer::RequestedAlignment(NodeId node, ScopeId scope)
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId alignment = arena_->EdgeChild(edge);
+		if (arena_->IsTag(alignment, "gnu-attribute"))
+		{
+			const std::string name = arena_->SemanticPayload(alignment);
+			if (name != "aligned" && name != "__aligned__") continue;
+			NodeId argument = kNoNode;
+			for (std::uint32_t argument_edge = arena_->FirstEdge(alignment);
+				argument_edge != kNoEdge;
+				argument_edge = arena_->NextEdge(argument_edge))
+			{
+				const NodeId child = arena_->EdgeChild(argument_edge);
+				if (arena_->IsTag(child, "gnu-attribute-nonliteral-argument"))
+					throw std::runtime_error("invalid aligned attribute argument");
+				if (!arena_->IsTag(child, "gnu-attribute-argument")) continue;
+				if (argument != kNoNode)
+					throw std::runtime_error("aligned attribute has multiple arguments");
+				argument = child;
+			}
+			const std::int64_t parsed = argument == kNoNode ? 16 :
+				ParseInteger(arena_->SemanticPayload(argument));
+			if (parsed < 0)
+				throw std::runtime_error("invalid requested alignment");
+			const std::uint64_t value = static_cast<std::uint64_t>(parsed);
+			if (value != 0 && ((value & (value - 1)) != 0 ||
+				value > std::numeric_limits<std::size_t>::max()))
+				throw std::runtime_error("invalid requested alignment");
+			result = std::max(result, static_cast<std::size_t>(value));
+			continue;
+		}
 		if (!arena_->IsTag(alignment, "alignment-specifier")) continue;
 		const NodeId operand = FirstSemanticChild(alignment);
 		if (operand == kNoNode)

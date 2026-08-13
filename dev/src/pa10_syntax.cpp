@@ -2818,13 +2818,13 @@ NodeId Parser::FinishSimpleOrFunction(const Mark& mark,
 	}
 	return declaration;
 }
-
 bool Parser::ParseLeadingAttribute(std::vector<NodeId>* attributes)
 {
 	return pa32_syntax_detail::ConsumeLeadingGnuObjectAttribute(
-		tokens_, strings_, arena_, &position_, attributes) || SkipAttribute();
+		tokens_, strings_, arena_, &position_, attributes) ||
+		pa32_syntax_detail::ConsumeLeadingStandardObjectAttribute(
+			tokens_, strings_, arena_, &position_, attributes) || SkipAttribute();
 }
-
 NodeId Parser::ParseDeclaration(bool in_class)
 {
 	std::vector<NodeId> attributes;
