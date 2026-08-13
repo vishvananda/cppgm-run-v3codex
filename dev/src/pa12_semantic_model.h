@@ -892,6 +892,7 @@ struct FunctionInfo
 	SpecialMemberKind special_member;
 	bool implicit_special_member;
 	bool defaulted_special_member;
+	bool user_provided_special_member;
 	bool deleted_special_member;
 	bool trivial_special_member;
 	bool synthesized_storage_copy;
@@ -932,6 +933,7 @@ struct FunctionInfo
 		  implicit_destructor(false), defaulted_destructor(false),
 		  deleted_destructor(false), special_member(SPECIAL_MEMBER_NONE),
 		  implicit_special_member(false), defaulted_special_member(false),
+		  user_provided_special_member(false),
 		  deleted_special_member(false), trivial_special_member(false),
 		  synthesized_storage_copy(false), synthesized_memberwise_copy(false),
 		  synthesized_prefix_size(0),

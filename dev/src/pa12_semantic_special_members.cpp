@@ -291,12 +291,18 @@ void SemanticAnalyzer::ConfigureAssignmentSpecialMember(BindingId binding,
 		FindChild(initializer, "special-initializer");
 	if (!IsAssignmentSpecialMember(function.special_member))
 	{
-		if (special != kNoNode && arena_->Payload(special) == "delete")
+		if (special == kNoNode) return;
+		const std::string spelling = arena_->Payload(special);
+		if (spelling == "default")
+			throw std::runtime_error(
+				"only a special member function may be defaulted");
+		if (spelling == "delete")
 		{
 			function.deleted_function = true;
 			function.defined = true;
+			return;
 		}
-		return;
+		throw std::runtime_error("invalid assignment function initializer");
 	}
 	if (special == kNoNode) return;
 	const std::string spelling = arena_->Payload(special);
@@ -306,6 +312,9 @@ void SemanticAnalyzer::ConfigureAssignmentSpecialMember(BindingId binding,
 		throw std::runtime_error("invalid assignment special initializer");
 	function.defaulted_special_member =
 		function.defaulted_special_member || defaulted;
+	function.user_provided_special_member =
+		function.user_provided_special_member ||
+		(defaulted && !defaulted_inline);
 	function.deleted_special_member =
 		function.deleted_special_member || deleted;
 	function.defined = true;
@@ -336,8 +345,11 @@ void SemanticAnalyzer::ConfigureAssignmentSpecialMember(BindingId binding,
 		EvaluateSynthesizedAssignment(entity, function.special_member,
 			&implicitly_deleted, &trivial, &nonthrowing);
 		function.deleted_special_member = implicitly_deleted;
-		function.trivial_special_member = trivial;
-		declaration.nonthrowing = nonthrowing;
+		function.trivial_special_member = trivial &&
+			!function.user_provided_special_member;
+		function.synthesized_storage_copy = trivial;
+		if (!function.user_provided_special_member)
+			declaration.nonthrowing = nonthrowing;
 		function.deferred = !implicitly_deleted;
 		if (!defaulted_inline && implicitly_deleted)
 			throw std::runtime_error(
@@ -807,8 +819,11 @@ void SemanticAnalyzer::CompleteClassSpecialMembers(EntityId entity)
 				SPECIAL_MEMBER_COPY_ASSIGNMENT,
 				&deleted, &trivial, &nonthrowing);
 			function.deleted_special_member = deleted;
-			function.trivial_special_member = trivial;
-			program_->bindings[facts.copy_assignment].nonthrowing = nonthrowing;
+			function.trivial_special_member = trivial &&
+				!function.user_provided_special_member;
+			function.synthesized_storage_copy = trivial;
+			if (!function.user_provided_special_member)
+				program_->bindings[facts.copy_assignment].nonthrowing = nonthrowing;
 			function.deferred = !deleted;
 		}
 	}
@@ -832,8 +847,11 @@ void SemanticAnalyzer::CompleteClassSpecialMembers(EntityId entity)
 				SPECIAL_MEMBER_MOVE_ASSIGNMENT,
 				&deleted, &trivial, &nonthrowing);
 			function.deleted_special_member = deleted;
-			function.trivial_special_member = trivial;
-			program_->bindings[facts.move_assignment].nonthrowing = nonthrowing;
+			function.trivial_special_member = trivial &&
+				!function.user_provided_special_member;
+			function.synthesized_storage_copy = trivial;
+			if (!function.user_provided_special_member)
+				program_->bindings[facts.move_assignment].nonthrowing = nonthrowing;
 			function.deferred = !deleted;
 		}
 	}
@@ -1071,7 +1089,8 @@ void SemanticAnalyzer::AddSynthesizedAssignmentBody(
 				break;
 			}
 
-	if (function.trivial_special_member &&
+	if ((function.trivial_special_member ||
+		 function.synthesized_storage_copy) &&
 		owner.direct_base == kNoEntity && !owner.empty_class &&
 		!function.synthesized_memberwise_copy && !has_bit_fields)
 	{

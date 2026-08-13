@@ -1,6 +1,6 @@
 # PA34 Plan
 
-## Stage Design and Spec Alignment
+## Spec Alignment
 
 PA34 extends the shared source-to-object pipeline at existing boundaries. Hosted
 configuration feeds the streaming preprocessor; parser extensions publish canonical
@@ -13,13 +13,14 @@ and no host-compiler fallback.
 ## Current Failure Map
 
 - Preprocess is complete: 45/45.
-- Compile has 56/281 failures: 16 extension grammar/type cases, 13
+- Handout compile has 56/281 failures: 16 extension grammar/type cases, 13
   trait/layout/constant cases, and 27 template lookup/demand cases.
 - Run has 19/41 failures: 16 stop in the compile pipeline and 3 reach linked
   backend/lifetime or forced-inline behavior.
-- PA34 is 292/367 overall; PA1-PA33 remain 4387/4387.
+- Audit course compile is 2/2. PA34 is 294/369 overall while the handout
+  baseline remains 292/367; PA1-PA33 remain 4387/4387.
 
-## Active Checkpoint
+## Active Checkpoint — Next Substantial Checkpoint
 
 Next, implement retained variable-template constant replay and the remaining hosted
 unary/shorthand trait facts. Under `spec.md` §§2, 4-7, and 9, variable-template demand
@@ -46,7 +47,7 @@ virtual-destructor/abstract/polymorphic/literal/rank traits, nothrow shorthands,
 | Numeric scalars | 1/8/64 emitted 9/65/513 LowIR and 15/85/645 MIR; 64 cases took 0.02 s, 10,472 KiB RSS |
 | GNU complex | 1/8/64 repeated compiles took 0.00/0.05/0.40 s with 8,328/8,552/8,568 KiB RSS; pair construction is two fixed stores |
 | Construction/conversion traits | 1/8/64 unique template query sets compiled in 0.00/0.00/0.01 s with 8,088/8,212/9,644 KiB RSS |
-| Trait packs and assignment | 1/8/64 unique expanded-pack/operator query sets compiled in 0.00/0.00/0.02 s with 8,180/8,540/10,680 KiB RSS |
+| Trait packs and assignment | 1/8/64 unique pack/operator sets recorded 5/40/320 candidates, 8/64/512 template requests, 13/69/517 nodes, and 90,239/467,809/3,661,927 peak semantic bytes; 0.690/2.400/16.499 ms semantic time, 8,264/8,680/10,060 KiB RSS, constant backend output |
 
 ## Completed Checkpoints
 
@@ -67,4 +68,4 @@ virtual-destructor/abstract/polymorphic/literal/rank traits, nothrow shorthands,
 | Hosted numeric scalars | Canonical `_BitInt`/extended floats, traits, ABI; +6 | PA34 256/367; linked/scaling/prior/audit pass |
 | GNU complex scalars | Canonical pair type, components/builtin, `C<element>` ABI, by-address object boundary; +2 | focused 2/2; linked/invalid/traits/mangling/scaling; PA34 258/367; PA1-33 4387/4387; audit pass |
 | Construction/conversion traits | `declval` categories, direct constructor/implicit conversion selection, nothrow/trivial special-member facts; +20 | focused 10/10; PA34 278/367; scaling; PA1-33 4387/4387; audit pass |
-| Trait packs and assignment | Ordered operand expansion plus member-template/ref-qualified assignment selection and callable facts; +14 | focused 18/18; PA34 292/367; scaling; PA1-33 4387/4387; audit pass |
+| Trait packs and assignment | Ordered operand expansion, indexed member-template/ref-qualified selection, and distinct user-provided/trivial/body-copy facts; +14 handout, +2 audit regressions | focused 24/24; PA34 handout 292/367 and total 294/369; PA1-33 4387/4387; proportional scaling; audit/file gates pass |
