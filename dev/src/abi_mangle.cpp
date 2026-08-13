@@ -846,6 +846,7 @@ private:
     vector<size_t> result_types;
     vector<AbiFunctionQualifier> qualifiers;
     vector<size_t> tags;
+    std::unordered_map<const AbiFunctionRecord *, vector<size_t> > component_tags;
     const AbiFunctionRecord * local = nullptr;
     const AbiFunctionRecord * lambda = nullptr;
     const AbiFunctionRecord * namespace_lambda = nullptr;
@@ -865,12 +866,14 @@ private:
   FunctionFacts collect_function_facts(const vector<const AbiFunctionRecord *> & records)
   {
     FunctionFacts facts;
+    const AbiFunctionRecord * component_tag_target = nullptr;
     for(const AbiFunctionRecord * record : records) {
       switch(record->kind) {
         case ABI_FUNCTION_RECORD_NAME_SOURCE:
         case ABI_FUNCTION_RECORD_NAME_STD:
         case ABI_FUNCTION_RECORD_NAME_TEMPLATE:
           facts.components.push_back(record);
+          component_tag_target = record;
           break;
         case ABI_FUNCTION_RECORD_FUNCTION_TEMPLATE_ARGUMENT:
           facts.template_arguments.push_back(graph_.resolve_argument_ref(record->argument_refs.at(0)));
@@ -882,6 +885,7 @@ private:
         case ABI_FUNCTION_RECORD_LOCAL_CONTEXT:
           require(facts.local == nullptr, "multiple ABI local contexts");
           facts.local = record;
+          component_tag_target = record;
           break;
         case ABI_FUNCTION_RECORD_LAMBDA_CONTEXT:
           require(facts.lambda == nullptr, "multiple ABI lambda contexts");
@@ -903,6 +907,12 @@ private:
           facts.variadic = true;
           break;
         case ABI_FUNCTION_RECORD_ABI_TAG: facts.tags.push_back(graph_.strings.intern(record->name)); break;
+        case ABI_FUNCTION_RECORD_COMPONENT_ABI_TAG:
+          require(component_tag_target != nullptr,
+                  "component ABI tag has no preceding name component");
+          facts.component_tags[component_tag_target].push_back(
+            graph_.strings.intern(record->name));
+          break;
         case ABI_FUNCTION_RECORD_QUALIFIER:
           facts.qualifiers.insert(facts.qualifiers.end(), record->qualifiers.begin(), record->qualifiers.end());
           break;
@@ -914,6 +924,13 @@ private:
       return graph_.strings.get(a) < graph_.strings.get(b);
     });
     facts.tags.erase(std::unique(facts.tags.begin(), facts.tags.end()), facts.tags.end());
+    for(auto & entry : facts.component_tags) {
+      std::sort(entry.second.begin(), entry.second.end(), [this](size_t a, size_t b) {
+        return graph_.strings.get(a) < graph_.strings.get(b);
+      });
+      entry.second.erase(std::unique(entry.second.begin(), entry.second.end()),
+                         entry.second.end());
+    }
     const size_t local_contexts = (facts.local != nullptr) + (facts.lambda != nullptr)
                                   + (facts.namespace_lambda != nullptr);
     require(local_contexts <= 1, "multiple ABI function context kinds");
@@ -932,7 +949,8 @@ private:
                        const vector<const AbiFunctionRecord *> & records)
   {
     const bool structured_variable = target.kind == ABI_TARGET_FACT_VARIABLE
-                                     && target.function.kind == ABI_FUNCTION_TARGET_ENCODING;
+                                     && (target.function.kind == ABI_FUNCTION_TARGET_ENCODING
+                                         || target.function.kind == ABI_FUNCTION_TARGET_MEMBER);
     const bool accepts_function_records = target.kind == ABI_TARGET_FACT_FUNCTION
                                           || structured_variable
                                           || target.kind == ABI_TARGET_FACT_THUNK
@@ -957,8 +975,10 @@ private:
     }
     if(target.kind == ABI_TARGET_FACT_VARIABLE) {
       output_ += "_Z";
-      if(structured_variable) {
+      if(target.function.kind == ABI_FUNCTION_TARGET_ENCODING) {
         encode_structured_object(collect_function_facts(records));
+      } else if(target.function.kind == ABI_FUNCTION_TARGET_MEMBER) {
+        encode_member_object(target.function, collect_function_facts(records));
       } else {
         encode_object_name(target.qualified_name, target.internal_linkage);
       }
@@ -1138,6 +1158,7 @@ private:
         return;
       case ABI_TYPE_STD_TEMPLATE_SPECIALIZATION:
         output_ += graph_.strings.get(type.symbol);
+        emit_tags(type.tags);
         if(!type.standard_includes_arguments) {
           output_ += 'I'; encode_arguments(type.arguments); output_ += 'E';
         }
@@ -1147,7 +1168,9 @@ private:
         output_ += 'N';
         encode_prefix_type(type.children.at(0));
         output_ += source_name(graph_.strings.get(type.symbol));
+        emit_tags(type.tags);
         if(type.kind == ABI_TYPE_MEMBER_TEMPLATE_SPECIALIZATION) {
+          substitutions_.add(member_template_prefix_key(type));
           output_ += 'I'; encode_arguments(type.arguments); output_ += 'E';
         }
         output_ += 'E';
@@ -1186,10 +1209,10 @@ private:
 	  if(type.suppress_template_prefix_substitution) {
 	    if(std_unscoped) output_ += "St";
 	    output_ += source_name(graph_.strings.get(components.back()));
+	    emit_tags(type.tags);
 	  } else {
-	    encode_template_prefix(type.path, components, prefixes);
+	    encode_template_prefix(type.path, components, prefixes, type.tags);
 	  }
-      emit_tags(type.tags);
       output_ += 'I'; encode_arguments(type.arguments); output_ += 'E';
       return;
     }
@@ -1197,10 +1220,10 @@ private:
 	if(type.suppress_template_prefix_substitution) {
 	  encode_path_prefix(components, prefixes, components.size() - 1);
 	  output_ += source_name(graph_.strings.get(components.back()));
+	  emit_tags(type.tags);
 	} else {
-	  encode_template_prefix(type.path, components, prefixes);
+	  encode_template_prefix(type.path, components, prefixes, type.tags);
 	}
-    emit_tags(type.tags);
     output_ += 'I'; encode_arguments(type.arguments); output_ += "EE";
   }
 
@@ -1216,18 +1239,25 @@ private:
     if(type.kind == ABI_TYPE_NAMED) {
       const vector<size_t> components = graph_.paths.components(type.path);
       const vector<size_t> prefixes = graph_.paths.prefixes(type.path);
-      encode_path_prefix(components, prefixes, components.size());
-      emit_tags(type.tags);
+      if(type.tags.empty()) {
+        encode_path_prefix(components, prefixes, components.size());
+      } else {
+        encode_path_prefix(components, prefixes, components.size() - 1);
+        output_ += source_name(graph_.strings.get(components.back()));
+        emit_tags(type.tags);
+      }
     } else if(type.kind == ABI_TYPE_TEMPLATE_SPECIALIZATION) {
       const vector<size_t> components = graph_.paths.components(type.path);
       const vector<size_t> prefixes = graph_.paths.prefixes(type.path);
-      encode_template_prefix(type.path, components, prefixes);
+      encode_template_prefix(type.path, components, prefixes, type.tags);
       output_ += 'I'; encode_arguments(type.arguments); output_ += 'E';
     } else if(type.kind == ABI_TYPE_MEMBER
               || type.kind == ABI_TYPE_MEMBER_TEMPLATE_SPECIALIZATION) {
       encode_prefix_type(type.children.at(0));
       output_ += source_name(graph_.strings.get(type.symbol));
+      emit_tags(type.tags);
       if(type.kind == ABI_TYPE_MEMBER_TEMPLATE_SPECIALIZATION) {
+        substitutions_.add(member_template_prefix_key(type));
         output_ += 'I'; encode_arguments(type.arguments); output_ += 'E';
       }
     } else {
@@ -1237,12 +1267,15 @@ private:
   }
 
   void encode_template_prefix(size_t path, const vector<size_t> & components,
-                              const vector<size_t> & prefixes)
+                              const vector<size_t> & prefixes,
+                              const vector<size_t> & tags)
   {
-    const SubstitutionKey key{SUBSTITUTION_PATH, path};
+    const SubstitutionKey key = tags.empty() ?
+      SubstitutionKey{SUBSTITUTION_PATH, path} : tagged_path_key(path, tags);
     if(substitutions_.emit_if_known(key, output_)) return;
     encode_path_prefix(components, prefixes, components.size() - 1);
     output_ += source_name(graph_.strings.get(components.back()));
+    emit_tags(tags);
     substitutions_.add(key);
   }
 
@@ -1265,7 +1298,8 @@ private:
       emit_tags(tags);
       output_ += 'E';
     }
-    if(add_full) substitutions_.add(SubstitutionKey{SUBSTITUTION_PATH, path});
+    if(add_full && tags.empty())
+      substitutions_.add(SubstitutionKey{SUBSTITUTION_PATH, path});
   }
 
   void encode_path_prefix(const vector<size_t> & components,
@@ -1407,7 +1441,7 @@ private:
     if(owner.kind == ABI_TYPE_TEMPLATE_SPECIALIZATION) {
       const vector<size_t> components = graph_.paths.components(owner.path);
       const vector<size_t> prefixes = graph_.paths.prefixes(owner.path);
-      encode_template_prefix(owner.path, components, prefixes);
+      encode_template_prefix(owner.path, components, prefixes, owner.tags);
       output_ += 'I'; encode_arguments(owner.arguments); output_ += 'E';
     } else {
       encode_prefix_type(argument.owner_type);
@@ -1562,10 +1596,7 @@ private:
       return;
     }
     if(target.kind == ABI_FUNCTION_TARGET_MEMBER) {
-      output_ += 'N'; emit_qualifiers(facts.qualifiers);
-      encode_prefix_type(graph_.resolve_type(target.owner_type));
-      output_ += source_name(target.source_name) + 'E';
-      encode_bare_parameters(facts.parameters, facts.variadic);
+      encode_member_function(target, facts);
       return;
     }
     encode_path_function(target, facts, internal);
@@ -1605,6 +1636,51 @@ private:
         graph_.resolve_type(target.result_type) : facts.result_types.front());
     }
     encode_bare_parameters(parameters, target.variadic || facts.variadic);
+  }
+
+  void encode_member_function(const AbiFunctionTarget & target,
+                              const FunctionFacts & facts)
+  {
+    output_ += 'N';
+    emit_qualifiers(facts.qualifiers);
+    encode_prefix_type(graph_.resolve_type(target.owner_type));
+    if(facts.terminal) {
+      emit_function_terminal(nullptr, facts, true, facts.parameters.size());
+    } else {
+      output_ += source_name(target.source_name);
+      emit_tags(facts.tags);
+    }
+    if(!facts.template_arguments.empty()) {
+      const size_t path = graph_.paths.intern(target.qualified_name);
+      encode_function_template_arguments(path, facts, facts.template_arguments);
+    }
+    output_ += 'E';
+    if(!facts.template_arguments.empty()
+       && (target.has_result_type || !facts.result_types.empty())
+       && !(facts.terminal
+            && facts.terminal->kind == ABI_FUNCTION_RECORD_CONVERSION_TERMINAL)) {
+      encode_type(target.has_result_type ?
+        graph_.resolve_type(target.result_type) : facts.result_types.front());
+    }
+    encode_bare_parameters(facts.parameters, facts.variadic);
+  }
+
+  void encode_member_object(const AbiFunctionTarget & target,
+                            const FunctionFacts & facts)
+  {
+    require(facts.local == nullptr && facts.lambda == nullptr
+            && facts.namespace_lambda == nullptr && facts.terminal == nullptr
+            && facts.qualifiers.empty() && facts.parameters.empty()
+            && facts.result_types.empty() && !facts.variadic,
+            "member ABI variable has function-only name facts");
+    output_ += 'N';
+    encode_prefix_type(graph_.resolve_type(target.owner_type));
+    output_ += source_name(target.source_name);
+    if(!facts.template_arguments.empty()) {
+      const size_t path = graph_.paths.intern(target.qualified_name);
+      encode_function_template_arguments(path, facts, facts.template_arguments);
+    }
+    output_ += 'E';
   }
 
   void encode_function_name_path(size_t path, const FunctionFacts & facts,
@@ -1719,7 +1795,9 @@ private:
     if(nested) {
       output_ += 'N'; emit_qualifiers(facts.qualifiers);
       if(std_prefix) output_ += "St";
-      for(size_t i = 0; i < prefix_count; ++i) encode_structured_prefix(*components[i]);
+      for(size_t i = 0; i < prefix_count; ++i) {
+        encode_structured_prefix(*components[i], component_tags(facts, components[i]));
+      }
       const AbiFunctionRecord * final = separate_terminal ? nullptr : components.back();
       emit_structured_terminal(final, facts, nested);
       encode_structured_template_arguments(final, facts);
@@ -1768,12 +1846,22 @@ private:
     output_ += 'I'; encode_arguments(arguments); output_ += 'E';
   }
 
-  void encode_structured_prefix(const AbiFunctionRecord & component)
+  const vector<size_t> & component_tags(const FunctionFacts & facts,
+                                        const AbiFunctionRecord * component) const
+  {
+    static const vector<size_t> empty;
+    const auto found = facts.component_tags.find(component);
+    return found == facts.component_tags.end() ? empty : found->second;
+  }
+
+  void encode_structured_prefix(const AbiFunctionRecord & component,
+                                const vector<size_t> & tags)
   {
     if(component.kind == ABI_FUNCTION_RECORD_NAME_SOURCE) {
-      const SubstitutionKey key = explicit_or_path_key(component.substitution, component.name);
+      const SubstitutionKey key = structured_component_key(component, tags);
       if(substitutions_.emit_if_known(key, output_)) return;
       output_ += source_name(component.name);
+      emit_tags(tags);
       substitutions_.add(key);
       return;
     }
@@ -1784,10 +1872,11 @@ private:
       output_ += component.standard_substitution;
       return;
     }
-    const SubstitutionKey prefix = explicit_or_path_key(component.substitution, component.name);
+    const SubstitutionKey prefix = structured_component_key(component, tags);
     if(substitutions_.emit_if_known(prefix, output_)) return;
     if(component.standard_substitution != "-") output_ += component.standard_substitution;
     else output_ += source_name(component.name);
+    emit_tags(tags);
     substitutions_.add(prefix);
     output_ += 'I';
     for(const string & argument : component.argument_refs) encode_argument(graph_.resolve_argument_ref(argument));
@@ -1806,6 +1895,7 @@ private:
       else if(final->kind == ABI_FUNCTION_RECORD_NAME_TEMPLATE) {
         output_ += source_name(final->name);
       } else throw std::logic_error("invalid final structured ABI name component");
+      emit_tags(component_tags(facts, final));
       emit_tags(facts.tags);
     } else {
       emit_function_terminal(nullptr, facts, member, facts.parameters.size());
@@ -1852,6 +1942,7 @@ private:
       output_ += '_';
     } else {
       output_ += source_name(local.name);
+      emit_tags(component_tags(facts, &local));
       if(!local.discriminator_after_terminal)
         output_ += discriminator(local.discriminator);
     }
@@ -1910,6 +2001,7 @@ private:
       output_ += source_name(graph_.strings.get(stable.symbol))
                  + discriminator(graph_.strings.get(stable.discriminator));
     }
+    emit_tags(stable.tags);
   }
 
   void encode_local_prefix(const string & context_id)
@@ -2041,6 +2133,38 @@ private:
       return SubstitutionKey{SUBSTITUTION_PATH, graph_.paths.intern(spelling)};
     }
     return SubstitutionKey{SUBSTITUTION_EXPLICIT, graph_.strings.intern(spelling)};
+  }
+
+  SubstitutionKey structured_component_key(const AbiFunctionRecord & component,
+                                           const vector<size_t> & tags)
+  {
+    const SubstitutionKey base =
+      explicit_or_path_key(component.substitution, component.name);
+    if(tags.empty()) return base;
+    string identity = "__cppgm_abi_tagged_component_";
+    identity += std::to_string(static_cast<unsigned>(base.kind));
+    identity += '_' + std::to_string(base.id);
+    for(size_t tag : tags) identity += '\x1f' + graph_.strings.get(tag);
+    return SubstitutionKey{
+      SUBSTITUTION_EXPLICIT, graph_.strings.intern(identity)};
+  }
+
+  SubstitutionKey tagged_path_key(size_t path, const vector<size_t> & tags)
+  {
+    string identity = "__cppgm_abi_tagged_path_" + std::to_string(path);
+    for(size_t tag : tags) identity += '\x1f' + graph_.strings.get(tag);
+    return SubstitutionKey{
+      SUBSTITUTION_EXPLICIT, graph_.strings.intern(identity)};
+  }
+
+  SubstitutionKey member_template_prefix_key(const TypeNode & type)
+  {
+    string identity = "__cppgm_abi_member_template_prefix_";
+    identity += std::to_string(type.children.at(0));
+    identity += '_' + std::to_string(type.symbol);
+    for(size_t tag : type.tags) identity += '\x1f' + graph_.strings.get(tag);
+    return SubstitutionKey{
+      SUBSTITUTION_EXPLICIT, graph_.strings.intern(identity)};
   }
 
   const AbiFactCase & fact_case_;

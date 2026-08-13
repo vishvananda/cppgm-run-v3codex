@@ -2,6 +2,7 @@
 
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace cppgm
 {
@@ -15,11 +16,11 @@ using namespace pa10_syntax_detail;
 struct GnuObjectAttributeSyntaxFact
 {
 	TextId name;
-	TextId argument;
-	bool has_argument;
+	std::vector<std::vector<TextId> > arguments;
+	bool literal_argument_list;
 
 	GnuObjectAttributeSyntaxFact()
-		: name(0), argument(0), has_argument(false) {}
+		: name(0), literal_argument_list(true) {}
 };
 
 bool At(const std::vector<SyntaxToken>& tokens, std::size_t position,
@@ -65,18 +66,48 @@ bool ConsumeGnuObjectAttributeFacts(
 		{
 			++*position;
 			std::size_t depth = 1;
+			std::vector<TextId> argument;
+			bool saw_argument_token = false;
 			while (depth != 0)
 			{
 				if (*position >= tokens.size() ||
 					tokens[*position].Kind() == kEofToken)
 					throw std::runtime_error("unterminated GNU attribute argument");
-				if (At(tokens, *position, OP_LPAREN)) ++depth;
-				else if (At(tokens, *position, OP_RPAREN)) --depth;
-				else if (depth == 1 && !fact.has_argument &&
+				if (At(tokens, *position, OP_LPAREN))
+				{
+					if (depth == 1) fact.literal_argument_list = false;
+					++depth;
+				}
+				else if (At(tokens, *position, OP_RPAREN))
+				{
+					if (depth == 1)
+					{
+						if (!argument.empty()) fact.arguments.push_back(argument);
+						else if (saw_argument_token)
+							fact.literal_argument_list = false;
+					}
+					--depth;
+				}
+				else if (depth == 1 && At(tokens, *position, OP_COMMA))
+				{
+					saw_argument_token = true;
+					if (argument.empty()) fact.literal_argument_list = false;
+					else
+					{
+						fact.arguments.push_back(argument);
+						argument.clear();
+					}
+				}
+				else if (depth == 1 &&
 					tokens[*position].Kind() == kLiteralToken)
 				{
-					fact.argument = tokens[*position].spelling;
-					fact.has_argument = true;
+					saw_argument_token = true;
+					argument.push_back(tokens[*position].spelling);
+				}
+				else if (depth == 1)
+				{
+					saw_argument_token = true;
+					fact.literal_argument_list = false;
 				}
 				++*position;
 			}
@@ -104,10 +135,25 @@ bool ConsumeLeadingGnuObjectAttribute(
 		const NodeId attribute = arena.Make(
 			"gnu-attribute", strings.Get(facts[i].name));
 		arena.AddFlags(attribute, SYNTAX_FLAG_SEMANTIC_ONLY);
-		if (facts[i].has_argument)
+		if (!facts[i].literal_argument_list)
 		{
+			const NodeId invalid = arena.Make(
+				"gnu-attribute-nonliteral-argument", std::string());
+			arena.AddFlags(invalid, SYNTAX_FLAG_SEMANTIC_ONLY);
+			arena.Add(attribute, invalid);
+		}
+		for (std::size_t argument_index = 0;
+			argument_index < facts[i].arguments.size(); ++argument_index)
+		{
+			std::string spelling;
+			for (std::size_t part = 0;
+				part < facts[i].arguments[argument_index].size(); ++part)
+			{
+				if (!spelling.empty()) spelling += ' ';
+				spelling += strings.Get(facts[i].arguments[argument_index][part]);
+			}
 			const NodeId argument = arena.Make(
-				"gnu-attribute-argument", strings.Get(facts[i].argument));
+				"gnu-attribute-argument", spelling);
 			arena.AddFlags(argument, SYNTAX_FLAG_SEMANTIC_ONLY);
 			arena.Add(attribute, argument);
 		}

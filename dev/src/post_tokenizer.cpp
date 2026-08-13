@@ -1382,6 +1382,26 @@ bool DecodeNarrowStringLiteral(const std::string& source,
 	return true;
 }
 
+bool DecodeNarrowStringLiteralSequence(const std::string& source,
+	std::string* value)
+{
+	if (!value)
+		throw std::logic_error("missing decoded string destination");
+	FundamentalType type = FT_VOID;
+	std::vector<std::uint32_t> units;
+	if (!DecodeStringLiteralCodeUnits(source, &type, &units) ||
+		type != FT_CHAR || units.empty() || units.back() != 0)
+		return false;
+	value->clear();
+	value->reserve(units.size() - 1);
+	for (std::size_t i = 0; i + 1 < units.size(); ++i)
+	{
+		if (units[i] > 0xff) return false;
+		value->push_back(static_cast<char>(units[i]));
+	}
+	return true;
+}
+
 bool DecodeStringLiteralCodeUnits(const std::string& source,
 	FundamentalType* type, std::vector<std::uint32_t>* units)
 {

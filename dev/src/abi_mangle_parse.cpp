@@ -785,6 +785,10 @@ AbiFunctionRecord parse_function_record(const vector<string> & words)
     require(words.size() == 2, "abi-tag takes one tag");
     record.kind = ABI_FUNCTION_RECORD_ABI_TAG;
     record.name = words[1];
+  } else if(form == "component-abi-tag") {
+    require(words.size() == 2, "component-abi-tag takes one tag");
+    record.kind = ABI_FUNCTION_RECORD_COMPONENT_ABI_TAG;
+    record.name = words[1];
   } else if(form == "function-qualifier" || form == "qualifier") {
     require(words.size() >= 2, "function qualifier needs at least one qualifier");
     record.kind = ABI_FUNCTION_RECORD_QUALIFIER;
@@ -1188,6 +1192,9 @@ string function_record_text(const AbiFunctionRecord & function)
   if(function.kind == ABI_FUNCTION_RECORD_TERMINAL) return "terminal " + function.terminal;
   if(function.kind == ABI_FUNCTION_RECORD_VARIADIC) return "variadic";
   if(function.kind == ABI_FUNCTION_RECORD_ABI_TAG) return "abi-tag " + function.name;
+  if(function.kind == ABI_FUNCTION_RECORD_COMPONENT_ABI_TAG) {
+    return "component-abi-tag " + function.name;
+  }
   if(function.kind == ABI_FUNCTION_RECORD_QUALIFIER) {
     string result = "function-qualifier";
     for(AbiFunctionQualifier qualifier : function.qualifiers) result += " " + qualifier_text(qualifier);

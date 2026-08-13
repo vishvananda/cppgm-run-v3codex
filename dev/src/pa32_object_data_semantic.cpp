@@ -27,11 +27,23 @@ void SemanticAnalyzer::ApplyVariableObjectAttributes(
 			continue;
 		}
 		if (name != "section" && name != "__section__") continue;
-		const NodeId argument = FindChild(attribute, "gnu-attribute-argument");
+		NodeId argument = kNoNode;
+		for (std::uint32_t argument_edge = arena_->FirstEdge(attribute);
+			argument_edge != kNoEdge;
+			argument_edge = arena_->NextEdge(argument_edge))
+		{
+			const NodeId child = arena_->EdgeChild(argument_edge);
+			if (arena_->IsTag(child, "gnu-attribute-nonliteral-argument"))
+				throw std::runtime_error("invalid section attribute argument");
+			if (!arena_->IsTag(child, "gnu-attribute-argument")) continue;
+			if (argument != kNoNode)
+				throw std::runtime_error("section attribute has multiple arguments");
+			argument = child;
+		}
 		if (argument == kNoNode)
 			throw std::runtime_error("section attribute requires a string");
 		std::string section;
-		if (!DecodeNarrowStringLiteral(arena_->SemanticPayload(argument),
+		if (!DecodeNarrowStringLiteralSequence(arena_->SemanticPayload(argument),
 			&section) || section.empty())
 			throw std::runtime_error("invalid section attribute name");
 		record.object_section_name = program_->names.Intern(section);

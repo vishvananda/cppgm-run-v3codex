@@ -28,24 +28,24 @@ void CollectDirectAbiTags(const SyntaxArena& arena, Program* program,
 		if (!arena.IsTag(attribute, "gnu-attribute")) continue;
 		const std::string name = arena.SemanticPayload(attribute);
 		if (name != "abi_tag" && name != "__abi_tag__") continue;
-		NodeId argument = kNoNode;
+		bool has_argument = false;
 		for (std::uint32_t child_edge = arena.FirstEdge(attribute);
 			child_edge != kNoEdge; child_edge = arena.NextEdge(child_edge))
 		{
 			const NodeId child = arena.EdgeChild(child_edge);
-			if (arena.IsTag(child, "gnu-attribute-argument"))
-			{
-				argument = child;
-				break;
-			}
+			if (arena.IsTag(child, "gnu-attribute-nonliteral-argument"))
+				throw std::runtime_error("invalid abi_tag attribute argument");
+			if (!arena.IsTag(child, "gnu-attribute-argument")) continue;
+			has_argument = true;
+			std::string tag;
+			if (!DecodeNarrowStringLiteralSequence(
+				arena.SemanticPayload(child), &tag) ||
+				tag.empty())
+				throw std::runtime_error("invalid abi_tag attribute");
+			tags->push_back(program->names.Intern(tag));
 		}
-		if (argument == kNoNode)
+		if (!has_argument)
 			throw std::runtime_error("abi_tag attribute requires a string");
-		std::string tag;
-		if (!DecodeNarrowStringLiteral(arena.SemanticPayload(argument), &tag) ||
-			tag.empty())
-			throw std::runtime_error("invalid abi_tag attribute");
-		tags->push_back(program->names.Intern(tag));
 	}
 }
 

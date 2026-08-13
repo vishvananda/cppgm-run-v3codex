@@ -270,6 +270,11 @@ bool DecodeOrdinaryStringLiteral(const std::string& source,
 bool DecodeNarrowStringLiteral(const std::string& source,
 	std::string* value);
 
+// Decode one or more adjacent narrow string literals. The source uses spaces
+// between phase-7 literal spellings and the value excludes the final null.
+bool DecodeNarrowStringLiteralSequence(const std::string& source,
+	std::string* value);
+
 // Decode one ordinary string-literal into typed code units, including its
 // terminating null unit.  This retains the phase-6 encoding decision for
 // semantic consumers that need array element constants.

@@ -1,0 +1,89 @@
+struct __attribute__((abi_tag("al" "pha", "beta"))) Tagged {
+  static int value;
+
+  Tagged();
+  virtual ~Tagged();
+  int same(const Tagged *) const;
+};
+
+int Tagged::value = 7;
+
+Tagged::Tagged()
+{
+}
+
+Tagged::~Tagged()
+{
+}
+
+int Tagged::same(const Tagged *other) const
+{
+  return other == this;
+}
+
+template<class T>
+struct __attribute__((abi_tag("alpha", "beta"))) TaggedTemplate {
+  static int value;
+
+  TaggedTemplate();
+  virtual ~TaggedTemplate();
+  int same(const TaggedTemplate *other) const { return other == this; }
+};
+
+template<class T>
+int TaggedTemplate<T>::value = 9;
+
+template<class T>
+TaggedTemplate<T>::TaggedTemplate()
+{
+}
+
+template<class T>
+TaggedTemplate<T>::~TaggedTemplate()
+{
+}
+
+struct __attribute__((abi_tag("alpha", "beta"))) TaggedOuter {
+  template<class T>
+  struct __attribute__((abi_tag("gamma"))) Nested {
+    static int value;
+
+    Nested();
+    virtual ~Nested();
+    int same(const Nested *other) const { return other == this; }
+  };
+};
+
+template<class T>
+int TaggedOuter::Nested<T>::value = 13;
+
+template<class T>
+TaggedOuter::Nested<T>::Nested()
+{
+}
+
+template<class T>
+TaggedOuter::Nested<T>::~Nested()
+{
+}
+
+int local_value()
+{
+  struct __attribute__((abi_tag("alpha", "beta"))) Local {
+    virtual ~Local() {}
+  };
+
+  Local object;
+  return 11;
+}
+
+int main()
+{
+  Tagged object;
+  TaggedTemplate<int> template_object;
+  TaggedOuter::Nested<int> nested_object;
+  return object.value == 7 && object.same(&object) &&
+    template_object.value == 9 && template_object.same(&template_object) &&
+    nested_object.value == 13 && nested_object.same(&nested_object) &&
+    local_value() == 11 ? 0 : 1;
+}

@@ -109,6 +109,24 @@ void AppendFunctionAbiTagFacts(const Program& program,
 	}
 }
 
+void AppendComponentAbiTagFacts(const Program& program,
+	const EntityRecord& entity, abi_mangle::AbiFactCase* facts)
+{
+	using namespace abi_mangle;
+	if (entity.abi_tag_begin > program.abi_tags.size() ||
+		entity.abi_tag_count > program.abi_tags.size() - entity.abi_tag_begin)
+		throw std::logic_error("invalid component ABI tag fact range");
+	for (std::size_t i = 0; i < entity.abi_tag_count; ++i)
+	{
+		AbiFactRecord tag;
+		tag.set_kind(ABI_FACT_RECORD_FUNCTION);
+		tag.function.kind = ABI_FUNCTION_RECORD_COMPONENT_ABI_TAG;
+		tag.function.name = program.names.Get(
+			program.abi_tags[entity.abi_tag_begin + i]);
+		facts->records.push_back(tag);
+	}
+}
+
 std::string OperatorTerminal(OperatorKind kind, bool member,
 	std::size_t parameter_count);
 
@@ -139,6 +157,19 @@ NameId StandardTemplateTerminal(const Program& program,
 bool IsClassTemplateSpecialization(const EntityRecord& entity)
 {
 	return entity.template_argument_begin != kNoBinding;
+}
+
+bool ClassOwnerHasAbiTags(const Program& program, EntityId entity)
+{
+	for (std::size_t depth = 0;
+		entity != kNoEntity && entity < program.entities.size() &&
+			depth < program.entities.size(); ++depth)
+	{
+		const EntityRecord& record = program.entities[entity];
+		if (record.abi_tag_count != 0) return true;
+		entity = record.enclosing_class;
+	}
+	return false;
 }
 
 bool IsFundamentalType(const Program& program, TypeId type,
@@ -1364,6 +1395,32 @@ public:
 		return true;
 	}
 
+	void AppendClassTemplateArguments(const pa11::EntityRecord& entity,
+		const pa11::BindingRecord* function,
+		const pa11::FunctionTemplateAbiRecipe* recipe,
+		abi_mangle::AbiType* result)
+	{
+		using namespace pa11;
+		const std::size_t first = entity.template_argument_begin;
+		if (first > program_.template_arguments.size() ||
+			entity.template_argument_count >
+				program_.template_arguments.size() - first)
+			throw std::logic_error(
+				"class template ABI argument range is invalid");
+		const std::size_t pack = entity.template_argument_pack_begin;
+		const std::size_t fixed = pack == kNoTemplateParameter ?
+			entity.template_argument_count : pack;
+		if (fixed > entity.template_argument_count)
+			throw std::logic_error("class template ABI pack offset is invalid");
+		for (std::size_t i = 0; i < fixed; ++i)
+			result->argument_refs.push_back(AddTemplateArgument(
+				first + i, function, recipe));
+		if (pack != kNoTemplateParameter)
+			result->argument_refs.push_back(AddTemplateArgumentPack(
+				first + fixed, entity.template_argument_count - fixed,
+				function, recipe));
+	}
+
 	abi_mangle::AbiType MakeType(pa11::TypeId type,
 		const pa11::BindingRecord* function,
 		const pa11::FunctionTemplateAbiRecipe* recipe)
@@ -1514,11 +1571,17 @@ public:
 				if (entity.enclosing_class >= program_.entities.size())
 					throw std::logic_error(
 						"nested ABI type has no enclosing class");
-				result.kind = ABI_TYPE_MEMBER;
+				const bool specialization =
+					IsClassTemplateSpecialization(entity);
+				result.kind = specialization ?
+					ABI_TYPE_MEMBER_TEMPLATE_SPECIALIZATION : ABI_TYPE_MEMBER;
 				result.name = program_.names.Get(entity.identity_name);
 				result.types.push_back(MakeType(
 					program_.entities[entity.enclosing_class].type,
 					function, recipe));
+				if (specialization)
+					AppendClassTemplateArguments(
+						entity, function, recipe, &result);
 			}
 			else if (!IsClassTemplateSpecialization(entity))
 			{
@@ -1554,24 +1617,7 @@ public:
 					if (i != 0) result.name += "::";
 					result.name += program_.names.Get(path[i]);
 				}
-				const std::size_t first = entity.template_argument_begin;
-				if (first > program_.template_arguments.size() ||
-					entity.template_argument_count >
-						program_.template_arguments.size() - first)
-					throw std::logic_error(
-						"class template ABI argument range is invalid");
-				const std::size_t pack = entity.template_argument_pack_begin;
-				const std::size_t fixed = pack == kNoTemplateParameter ?
-					entity.template_argument_count : pack;
-				if (fixed > entity.template_argument_count)
-					throw std::logic_error("class template ABI pack offset is invalid");
-				for (std::size_t i = 0; i < fixed; ++i)
-					result.argument_refs.push_back(AddTemplateArgument(
-						first + i, function, recipe));
-				if (pack != kNoTemplateParameter)
-					result.argument_refs.push_back(AddTemplateArgumentPack(
-						first + fixed, entity.template_argument_count - fixed,
-						function, recipe));
+				AppendClassTemplateArguments(entity, function, recipe, &result);
 			}
 			AppendAbiTagStrings(program_, entity.abi_tag_begin,
 				entity.abi_tag_count, &result.abi_tags);
@@ -2034,12 +2080,17 @@ std::string MangleFunction(const pa11::Program& program,
 		if (!program.types.IsFunction(recipe->function_type))
 			throw std::logic_error("function template ABI recipe is not callable");
 	}
-	const bool structured_class_owner = binding.member_owner != kNoEntity &&
-		IsClassTemplateSpecialization(program.entities[binding.member_owner]);
 	const bool structured_local_owner = binding.member_owner != kNoEntity &&
 		program.entities[binding.member_owner].local_context != kNoBinding;
+	const bool tagged_class_owner = binding.member_owner != kNoEntity &&
+		ClassOwnerHasAbiTags(program, binding.member_owner);
+	const bool structured_class_owner = binding.member_owner != kNoEntity &&
+		!structured_local_owner && !tagged_class_owner &&
+		IsClassTemplateSpecialization(program.entities[binding.member_owner]);
 	const bool structured_owner =
-		structured_class_owner || structured_local_owner;
+		structured_local_owner || structured_class_owner;
+	const bool typed_class_owner = binding.member_owner != kNoEntity &&
+		!structured_local_owner && tagged_class_owner;
 	AbiFactRecord target;
 	target.set_kind(ABI_FACT_RECORD_TARGET);
 	target.target.kind = ABI_TARGET_FACT_FUNCTION;
@@ -2047,9 +2098,16 @@ std::string MangleFunction(const pa11::Program& program,
 		binding.storage_class == STORAGE_CLASS_STATIC &&
 		!binding.unnamed_namespace_linkage;
 	target.target.function.kind = structured_owner ?
-		ABI_FUNCTION_TARGET_ENCODING : ABI_FUNCTION_TARGET_PATH;
+		ABI_FUNCTION_TARGET_ENCODING : typed_class_owner ?
+			ABI_FUNCTION_TARGET_MEMBER : ABI_FUNCTION_TARGET_PATH;
 	if (!structured_owner)
 		target.target.function.qualified_name = qualified;
+	if (typed_class_owner)
+	{
+		const EntityRecord& owner = program.entities[binding.member_owner];
+		target.target.function.owner_type = facts.MakeType(owner.type);
+		target.target.function.source_name = program.names.Get(binding.name);
+	}
 	file.cases[0].records.push_back(target);
 	AppendFunctionAbiTagFacts(program, binding, &file.cases[0]);
 	if (structured_local_owner)
@@ -2064,6 +2122,7 @@ std::string MangleFunction(const pa11::Program& program,
 		local.function.discriminator = std::to_string(owner.local_name_ordinal);
 		local.function.discriminator_after_terminal = !owner.unnamed_class;
 		file.cases[0].records.push_back(local);
+		AppendComponentAbiTagFacts(program, owner, &file.cases[0]);
 	}
 	if (structured_class_owner &&
 		!AppendClassTemplateOwner(program, binding, &facts, &file.cases[0], true))
@@ -2229,22 +2288,35 @@ std::string MangleVariable(const pa11::Program& program,
 	AbiFactFile file;
 	file.cases.push_back(AbiFactCase());
 	AbiFactBuilder facts(program, file.cases[0]);
+	const bool tagged_class_owner = binding.member_owner != kNoEntity &&
+		ClassOwnerHasAbiTags(program, binding.member_owner);
 	const bool structured_class_owner = binding.member_owner != kNoEntity &&
+		!tagged_class_owner &&
 		IsClassTemplateSpecialization(program.entities[binding.member_owner]);
-	const bool member_variable_template = structured_class_owner &&
+	const bool typed_class_owner = binding.member_owner != kNoEntity &&
+		tagged_class_owner;
+	const bool member_variable_template =
+		(structured_class_owner || typed_class_owner) &&
 		binding.variable_template_specialization;
 	AbiFactRecord target;
 	target.set_kind(ABI_FACT_RECORD_TARGET);
 	target.target.kind = ABI_TARGET_FACT_VARIABLE;
 	target.target.function.kind = structured_class_owner ?
-		ABI_FUNCTION_TARGET_ENCODING : ABI_FUNCTION_TARGET_PATH;
+		ABI_FUNCTION_TARGET_ENCODING : typed_class_owner ?
+		ABI_FUNCTION_TARGET_MEMBER : ABI_FUNCTION_TARGET_PATH;
 	target.target.internal_linkage =
 		binding.storage_class == STORAGE_CLASS_STATIC &&
 		binding.member_owner == kNoEntity &&
 		!binding.unnamed_namespace_linkage;
-	if (!structured_class_owner)
-		target.target.qualified_name = program.names.Get(
-			binding.qualified_name != 0 ? binding.qualified_name : node.text);
+	target.target.qualified_name = program.names.Get(
+		binding.qualified_name != 0 ? binding.qualified_name : node.text);
+	if (typed_class_owner)
+	{
+		const EntityRecord& owner = program.entities[binding.member_owner];
+		target.target.function.qualified_name = target.target.qualified_name;
+		target.target.function.owner_type = facts.MakeType(owner.type);
+		target.target.function.source_name = program.names.Get(binding.name);
+	}
 	file.cases[0].records.push_back(target);
 	if (structured_class_owner)
 	{
