@@ -137,7 +137,8 @@ enum AbiFunctionTargetKind
   ABI_FUNCTION_TARGET_ENCODING,
   ABI_FUNCTION_TARGET_LAMBDA,
   ABI_FUNCTION_TARGET_LOCAL,
-  ABI_FUNCTION_TARGET_NAMESPACE_LAMBDA
+  ABI_FUNCTION_TARGET_NAMESPACE_LAMBDA,
+  ABI_FUNCTION_TARGET_MEMBER
 };
 
 enum AbiFunctionPathOperandKind
@@ -293,6 +294,7 @@ struct AbiFunctionTarget
   std::vector<AbiFunctionPathOperand> path_operands;
   std::vector<AbiType> signature_parameter_types;
   std::vector<std::string> namespace_qualifiers;
+  AbiType owner_type;
   AbiType result_type;
   bool has_result_type = false;
   bool variadic = false;
@@ -303,6 +305,8 @@ struct AbiLocalContext
   AbiContextFactKind kind = ABI_CONTEXT_RAW;
   std::string fragment;
   AbiFunctionTarget function;
+  std::vector<AbiFunctionQualifier> qualifiers;
+  bool target_signature_is_parameter_list = false;
 };
 
 struct AbiEntityFact

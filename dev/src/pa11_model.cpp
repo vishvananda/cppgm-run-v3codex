@@ -662,7 +662,8 @@ EntityRecord::EntityRecord()
 	  nonlinear_base_graph(false),
 	  has_nonzero_base_subobject_offset(false),
 	  deferred_template_completion(false),
-	  explicit_template_specialization(false), lambda_closure(false),
+	  explicit_template_specialization(false), unnamed_class(false),
+	  lambda_closure(false),
 	  local_name_ordinal(0), lambda_ordinal(0), lambda_capture_count(0),
 	  template_parameter_ordinal(kNoTemplateParameter)
 {
@@ -1525,6 +1526,7 @@ void Program::ResetClassDefinition(EntityId entity)
 	reset.enclosing_class = old.enclosing_class;
 	reset.local_context = old.local_context;
 	reset.local_name_ordinal = old.local_name_ordinal;
+	reset.unnamed_class = old.unnamed_class;
 	reset.lambda_call_operator = old.lambda_call_operator;
 	reset.template_argument_list = old.template_argument_list;
 	reset.template_argument_begin = old.template_argument_begin;

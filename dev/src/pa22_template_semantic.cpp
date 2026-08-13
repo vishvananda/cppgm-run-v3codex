@@ -90,6 +90,13 @@ std::string LambdaContextIdentity(const Program& program, BindingId context)
 	if (context == kNoBinding || context >= program.bindings.size())
 		throw std::logic_error("lambda context binding is invalid");
 	const BindingRecord& binding = program.bindings[context];
+	// The enclosing closure scope already owns a nested lambda's identity.
+	// Repeating the parent's fully rendered synthetic name in the child leaf
+	// doubles internal-name size at every nesting level.
+	if (binding.member_owner != kNoEntity &&
+		binding.member_owner < program.entities.size() &&
+		program.entities[binding.member_owner].lambda_closure)
+		return "nested";
 	std::string result = SanitizeLambdaIdentity(program.names.Get(
 		binding.qualified_name != 0 ? binding.qualified_name : binding.name));
 	const std::size_t first = binding.template_argument_begin;

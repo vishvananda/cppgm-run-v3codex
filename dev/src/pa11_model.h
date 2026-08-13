@@ -411,7 +411,7 @@ struct EntityRecord
 	bool has_nonzero_base_subobject_offset;
 	bool deferred_template_completion;
 	bool explicit_template_specialization;
-	bool lambda_closure;
+	bool unnamed_class, lambda_closure;
 	std::uint32_t local_name_ordinal, lambda_ordinal, lambda_capture_count;
 	std::uint32_t template_parameter_ordinal;
 

@@ -109,6 +109,7 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	if (flavor == NAMED_NONE) throw std::runtime_error("invalid class-key");
 	std::string spelling = specialization_name.empty() ?
 		arena_->Payload(node) : specialization_name;
+	const bool unnamed_class = spelling.empty() && !hint.empty();
 	if (spelling.empty() && !hint.empty())
 	{
 		++local_type_count_;
@@ -158,6 +159,7 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 				specialization_identity);
 		program_->entities[entity].local_context = LocalTypeContext(
 			*program_, owner, current_function_context_);
+		program_->entities[entity].unnamed_class = unnamed_class;
 		RegisterLocalTypeAbiIdentity(entity);
 		program_->SetTypeName(owner, lookup_name,
 			program_->entities[entity].type);
@@ -901,6 +903,7 @@ BindingId SemanticAnalyzer::EnsureImplicitConstructor(EntityId entity)
 	binding.member_owner = entity;
 	binding.constructor = true;
 	binding.overload_ordinal = 1;
+	PublishInlineFunctionFacts(constructor, true);
 	FunctionInfo& info = GetMutableFunction(constructor);
 	info.member_owner = owner.type;
 	info.constructor = true;

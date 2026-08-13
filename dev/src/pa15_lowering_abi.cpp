@@ -673,6 +673,23 @@ public:
 		return id;
 	}
 
+	abi_mangle::AbiType AddContextType(pa11::TypeId type)
+	{
+		using namespace abi_mangle;
+		const std::string id = "__cppgm_abi_context_type_" +
+			std::to_string(next_argument_++);
+		AbiFactRecord definition;
+		definition.set_kind(ABI_FACT_RECORD_DEFINITION);
+		definition.definition.id = id;
+		definition.definition.set_kind(ABI_DEFINITION_TYPE);
+		definition.definition.type = MakeType(type);
+		facts_.records.push_back(definition);
+		AbiType reference;
+		reference.kind = ABI_TYPE_NAME_OR_REFERENCE;
+		reference.name = id;
+		return reference;
+	}
+
 	std::string AddLocalContext(pa11::BindingId binding)
 	{
 		using namespace abi_mangle;
@@ -689,6 +706,96 @@ public:
 		definition.set_kind(ABI_FACT_RECORD_DEFINITION);
 		definition.definition.id = id;
 		definition.definition.set_kind(ABI_DEFINITION_CONTEXT);
+		if (function.member_owner != kNoEntity &&
+			function.member_owner < program_.entities.size())
+		{
+			const EntityRecord& owner = program_.entities[function.member_owner];
+			const BindingId call = owner.lambda_call_operator;
+			if (owner.lambda_closure && call != kNoBinding &&
+				call < program_.bindings.size() &&
+				program_.bindings[call].canonical == function.canonical)
+			{
+				AbiLocalContext& context = definition.definition.context;
+				context.kind = ABI_CONTEXT_FUNCTION;
+				context.target_signature_is_parameter_list = true;
+				AbiFunctionTarget& target = context.function;
+				if (owner.local_context != kNoBinding &&
+					pa18_lowering_detail::PreferLocalObjectBinding(
+						program_, function.member_owner))
+				{
+					target.kind = ABI_FUNCTION_TARGET_LOCAL;
+					target.context_ref = AddLocalContext(owner.local_context);
+					target.qualified_name = "$_" +
+						std::to_string(owner.lambda_ordinal);
+				}
+				else if (owner.local_context != kNoBinding)
+				{
+					target.kind = ABI_FUNCTION_TARGET_LAMBDA;
+					target.context_ref = AddLocalContext(owner.local_context);
+					target.discriminator =
+						LambdaDiscriminator(owner.lambda_ordinal);
+				}
+				else
+				{
+					std::vector<NameId> path;
+					program_.BuildEmissionPath(
+						owner.owner, owner.identity_name, &path);
+					if (path.empty())
+						throw std::logic_error(
+							"namespace lambda ABI context has no identity path");
+					target.kind = ABI_FUNCTION_TARGET_NAMESPACE_LAMBDA;
+					target.source_name = program_.names.Get(path.back());
+					for (std::size_t i = 0; i + 1 < path.size(); ++i)
+						target.namespace_qualifiers.push_back(
+							program_.names.Get(path[i]));
+				}
+				target.terminal = "operator-call";
+				if ((type.cv & CV_CONST) != 0)
+					context.qualifiers.push_back(
+						ABI_FUNCTION_QUALIFIER_CONST);
+				if ((type.cv & CV_VOLATILE) != 0)
+					context.qualifiers.push_back(
+						ABI_FUNCTION_QUALIFIER_VOLATILE);
+				const TypeId* parameters =
+					program_.types.Parameters(function.type);
+				for (std::size_t i = 0; i < type.parameter_count; ++i)
+					target.signature_parameter_types.push_back(
+						MakeType(parameters[i]));
+				target.variadic = type.variadic;
+				facts_.records.push_back(definition);
+				return id;
+			}
+		}
+		if (function.member_owner != kNoEntity &&
+			function.member_owner < program_.entities.size() &&
+			IsClassTemplateSpecialization(
+				program_.entities[function.member_owner]))
+		{
+			const EntityRecord& owner = program_.entities[function.member_owner];
+			AbiLocalContext& context = definition.definition.context;
+			context.kind = ABI_CONTEXT_FUNCTION;
+			context.target_signature_is_parameter_list = true;
+			AbiFunctionTarget& target = context.function;
+			target.kind = ABI_FUNCTION_TARGET_MEMBER;
+			target.owner_type = AddContextType(owner.type);
+			target.source_name = program_.names.Get(function.name);
+			if (!function.static_member_function)
+			{
+				if ((type.cv & CV_CONST) != 0)
+					context.qualifiers.push_back(
+						ABI_FUNCTION_QUALIFIER_CONST);
+				if ((type.cv & CV_VOLATILE) != 0)
+					context.qualifiers.push_back(
+						ABI_FUNCTION_QUALIFIER_VOLATILE);
+			}
+			const TypeId* parameters = program_.types.Parameters(function.type);
+			for (std::size_t i = 0; i < type.parameter_count; ++i)
+				target.signature_parameter_types.push_back(
+					AddContextType(parameters[i]));
+			target.variadic = type.variadic;
+			facts_.records.push_back(definition);
+			return id;
+		}
 		const std::string qualified_name = program_.names.Get(
 			function.qualified_name != 0 ?
 				function.qualified_name : function.name);
@@ -1398,7 +1505,7 @@ public:
 			{
 				result.kind = ABI_TYPE_LOCAL_TYPE;
 				result.context_ref = AddLocalContext(entity.local_context);
-				result.name = program_.names.Get(entity.identity_name);
+				if (!entity.unnamed_class) result.name = program_.names.Get(entity.identity_name);
 				result.discriminator =
 					std::to_string(entity.local_name_ordinal);
 			}
@@ -1952,9 +2059,10 @@ std::string MangleFunction(const pa11::Program& program,
 		local.set_kind(ABI_FACT_RECORD_FUNCTION);
 		local.function.kind = ABI_FUNCTION_RECORD_LOCAL_CONTEXT;
 		local.function.context_ref = facts.AddLocalContext(owner.local_context);
-		local.function.name = program.names.Get(owner.identity_name);
+		if (!owner.unnamed_class)
+			local.function.name = program.names.Get(owner.identity_name);
 		local.function.discriminator = std::to_string(owner.local_name_ordinal);
-		local.function.discriminator_after_terminal = true;
+		local.function.discriminator_after_terminal = !owner.unnamed_class;
 		file.cases[0].records.push_back(local);
 	}
 	if (structured_class_owner &&

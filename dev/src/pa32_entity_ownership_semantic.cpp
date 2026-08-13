@@ -15,7 +15,7 @@ void SemanticAnalyzer::RegisterLocalTypeAbiIdentity(EntityId entity)
 	if (record.local_context == kNoBinding) return;
 	const std::uint64_t key =
 		(static_cast<std::uint64_t>(record.local_context) << 32) |
-		record.identity_name;
+		(record.unnamed_class ? 0 : record.identity_name);
 	CompactIndexSequence& occurrences = local_type_occurrences_.Ensure(key);
 	if (occurrences.Size() >= kNoEntity)
 		throw std::runtime_error("too many local ABI type occurrences");

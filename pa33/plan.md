@@ -11,29 +11,31 @@ not recover semantic facts from strings.
 
 ## Current Failure Map
 
-Current result: **91/94 PA33 tests pass**, improved from the 88/94 turn
+Current result: **94/94 PA33 tests pass**, improved from the 91/94 checkpoint
 baseline (and 59/94 stage-start baseline); PA1-PA32 pass (4291/4291).
 
 | Owner / shared behavior | Count | Failing cases |
 | --- | ---: | --- |
-| Remaining ABI name publication | 1 | nested-lambda owner identity |
-| Remaining type/name frontend | 1 | unnamed local-class constructor |
-| Polymorphic ODR ownership | 1 | duplicate inline-header polymorphic class |
+| None | 0 | PA33 stage complete |
 
 ## Active Checkpoint
 
-**Next — remaining host identity/ODR publication.** Resolve the final three
-cases at the canonical semantic-entity to host-ABI publication boundary.
+**Complete — remaining host identity/ODR publication.** Three related
+canonical-publication paths now share stable semantic owners.
 
-- Spec alignment (§§2, 4, 6-10): local/lambda identities and polymorphic ODR
-  owners remain canonical semantic facts; ABI names and weak ownership are
-  published once without reconstructing owners from rendered strings.
-- Owner/data flow: declaration merge -> local/lambda or polymorphic entity ->
-  canonical owner/demand fact -> mangled symbol and weak definition. Indexed
-  lookup remains O(1), with O(declarations + demanded artifacts) total work.
-- Validation: the three remaining fixtures, adjacent local/lambda/template and
-  duplicate-header cases, full PA33/prior reports, file audit, and a widening
-  duplicate-declaration sample.
+- Spec alignment (§§2, 4, 6-10): unnamed declarations do not enter retained
+  name indexes; nested lambda contexts retain their callable identity through
+  mangling; implicit in-class constructors publish the same inline/weak ODR
+  fact as other in-class special members.
+- Owner/data flow: parser payload -> retained-template scope index (skip empty
+  names); lambda entity/call binding -> recursive local ABI context -> symbol;
+  class entity -> canonical implicit constructor -> C1/C2 linkage. Owners are
+  semantic IDs, never recovered from rendered names.
+- Complexity: retained declarations and constructor publication are O(1) per
+  entity; lambda context construction is O(nesting depth), so total work is
+  O(declarations + demanded ABI artifacts + emitted name length).
+- Validation: all three focused fixtures pass; PA33 is 94/94, PA1-PA32 are
+  4291/4291, file audit passes, and widening probes remain proportional.
 
 ## Performance Evidence
 
@@ -47,6 +49,24 @@ Host-object static TLS declarations and reads remained proportional:
 
 A 4x wider set produced exactly 4x wrappers, calls, and instructions; lowering
 time grew 2.19x with symbol-indexed access lookup.
+
+Unnamed local classes retained linear declaration and C1/C2 publication work
+(30-run mean wall time):
+
+| Classes | `Ut` C1/C2 symbols | Mean ms |
+| ---: | ---: | ---: |
+| 16 | 32 | 8.7 |
+| 32 | 64 | 12.7 |
+| 64 | 128 | 20.0 |
+
+Nested lambda identities remained linear in depth after removing recursively
+rendered parent spellings:
+
+| Depth | Operators | Max ABI chars | Max internal chars | Mean ms |
+| ---: | ---: | ---: | ---: | ---: |
+| 4 | 4 | 55 | 112 | 6.3 |
+| 8 | 8 | 103 | 210 | 7.0 |
+| 16 | 16 | 205 | 418 | 9.0 |
 
 ## Completed Checkpoints
 
@@ -62,3 +82,4 @@ time grew 2.19x with symbol-indexed access lookup.
 | PA33 virtual-inheritance RTTI/cast checkpoint | Pass — host-object VMI prefix rows, nonlinear casts, polymorphic assignment, forwarded virtual-base arguments, and explicit-instantiation constructor ownership are canonical; PA33 78→85, PA1-PA32 4291/4291, file audit pass. |
 | PA33 finalized covariant/VTT checkpoint | Pass — finalized fixed/virtual result paths publish keyed Itanium covariant thunks with null-preserving adjustment, and synthesized C2 copies forward VTT/virtual-base arguments; PA33 85→88, PA1-PA32 4291/4291, file audit pass. |
 | PA33 static/TLS lifecycle checkpoint | Pass — nested callback declarators retain function-pointer types; host-object lowering emits explicit TLS access/initialization wrappers and registers process/thread teardown after successful construction; PA33 88→91, PA1-PA32 4291/4291, file audit pass. |
+| PA33 remaining identity/ODR checkpoint | Pass — unnamed retained classes publish `Ut` identities, nested lambda contexts preserve substitutions without recursive names, and implicit constructors are weak ODR; PA33 91→94, PA1-PA32 4291/4291, file audit pass. |

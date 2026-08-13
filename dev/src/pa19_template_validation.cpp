@@ -503,9 +503,12 @@ void RetainedTemplateValidator::PredeclareClassSimple(NodeId node,
 				!analyzer_.arena_->IsTag(specifier,
 					"class-forward-declaration"))
 				continue;
-			embedded_type = analyzer_.program_->names.Intern(
-				analyzer_.arena_->Payload(specifier));
-			Declare(scope, embedded_type, RETAINED_TYPE_NAME);
+			const std::string spelling = analyzer_.arena_->Payload(specifier);
+			if (!spelling.empty())
+			{
+				embedded_type = analyzer_.program_->names.Intern(spelling);
+				Declare(scope, embedded_type, RETAINED_TYPE_NAME);
+			}
 		}
 	const bool type_declaration = IsTypedef(specifiers);
 	const NodeId list = analyzer_.FindChild(node, "init-declarator-list");
@@ -665,8 +668,13 @@ void RetainedTemplateValidator::VisitSimple(NodeId node, std::size_t scope,
 				if (analyzer_.arena_->IsTag(specifier, "class-specifier") ||
 					analyzer_.arena_->IsTag(specifier,
 						"class-forward-declaration"))
-					Declare(scope, analyzer_.program_->names.Intern(
-						analyzer_.arena_->Payload(specifier)), RETAINED_TYPE_NAME);
+				{
+					const std::string spelling =
+						analyzer_.arena_->Payload(specifier);
+					if (!spelling.empty())
+						Declare(scope, analyzer_.program_->names.Intern(spelling),
+							RETAINED_TYPE_NAME);
+				}
 			}
 		const bool type_declaration = IsTypedef(specifiers);
 		const NodeId list = analyzer_.FindChild(node, "init-declarator-list");

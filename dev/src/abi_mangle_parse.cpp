@@ -348,6 +348,14 @@ AbiType parse_type(const vector<string> & words, size_t begin)
     type.discriminator = words[begin + 3];
     return type;
   }
+  if(form == "unnamed-local-type") {
+    require(begin + 3 == words.size(), "unnamed-local-type has invalid operands");
+    AbiType type;
+    type.kind = ABI_TYPE_LOCAL_TYPE;
+    type.context_ref = words[begin + 1];
+    type.discriminator = words[begin + 2];
+    return type;
+  }
   if(form == "namespace-lambda") {
     require(begin + 1 < words.size(), "namespace lambda needs a source name");
     AbiType type;
@@ -410,6 +418,16 @@ AbiFunctionTarget parse_function_target(const vector<string> & words, size_t beg
     target.namespace_qualifiers.assign(words.begin() + begin + 3, words.end());
     return target;
   }
+  if(words[begin] == "member-function") {
+    require(begin + 2 < words.size(), "member function target has invalid operands");
+    target.kind = ABI_FUNCTION_TARGET_MEMBER;
+    target.source_name = words[begin + 1];
+    target.owner_type = compact_type(words[begin + 2]);
+    for(size_t i = begin + 3; i < words.size(); ++i) {
+      target.signature_parameter_types.push_back(compact_type(words[i]));
+    }
+    return target;
+  }
   target.kind = ABI_FUNCTION_TARGET_PATH;
   target.qualified_name = words[begin];
   for(size_t i = begin + 1; i < words.size(); ++i) {
@@ -436,9 +454,25 @@ AbiDefinitionRecord parse_definition(const vector<string> & words)
       definition.context.kind = ABI_CONTEXT_RAW;
       definition.context.fragment = words[3];
     } else {
-      require(words[2] == "function", "unknown context form '" + words[2] + "'");
+      require(words[2] == "function" || words[2] == "callable",
+              "unknown context form '" + words[2] + "'");
       definition.context.kind = ABI_CONTEXT_FUNCTION;
-      definition.context.function = parse_function_target(words, 3);
+      size_t target_begin = 3;
+      if(words[2] == "callable") {
+        require(words.size() >= 5, "callable context has invalid operands");
+        if(words[3] == "const") {
+          definition.context.qualifiers.push_back(ABI_FUNCTION_QUALIFIER_CONST);
+        } else if(words[3] == "volatile") {
+          definition.context.qualifiers.push_back(ABI_FUNCTION_QUALIFIER_VOLATILE);
+        } else if(words[3] == "const-volatile") {
+          definition.context.qualifiers.push_back(ABI_FUNCTION_QUALIFIER_CONST);
+          definition.context.qualifiers.push_back(ABI_FUNCTION_QUALIFIER_VOLATILE);
+        } else require(words[3] == "unqualified",
+                       "unknown callable context qualifier '" + words[3] + "'");
+        definition.context.target_signature_is_parameter_list = true;
+        target_begin = 4;
+      }
+      definition.context.function = parse_function_target(words, target_begin);
     }
     return definition;
   }
@@ -720,6 +754,11 @@ AbiFunctionRecord parse_function_record(const vector<string> & words)
     record.context_ref = words[1];
     record.name = words[2];
     record.discriminator = words[3];
+  } else if(form == "unnamed-type-context") {
+    require(words.size() == 3, "unnamed-type-context has invalid operands");
+    record.kind = ABI_FUNCTION_RECORD_LOCAL_CONTEXT;
+    record.context_ref = words[1];
+    record.discriminator = words[2];
   } else if(form == "lambda-context") {
     require(words.size() >= 3, "lambda-context has invalid operands");
     record.kind = ABI_FUNCTION_RECORD_LAMBDA_CONTEXT;
@@ -846,6 +885,10 @@ string unmodified_type_text(const AbiType & type)
     case ABI_TYPE_LAMBDA_CLOSURE:
       return "lambda-closure " + type.context_ref + " " + type.discriminator;
     case ABI_TYPE_LOCAL_TYPE:
+      if(type.name.empty()) {
+        return "unnamed-local-type " + type.context_ref + " "
+               + type.discriminator;
+      }
       return "local-type " + type.context_ref + " " + type.name + " " + type.discriminator;
     case ABI_TYPE_NAMESPACE_LAMBDA: {
       string result = "namespace-lambda " + type.name;
@@ -916,6 +959,14 @@ string function_target_text(const AbiFunctionTarget & target)
   if(target.kind == ABI_FUNCTION_TARGET_NAMESPACE_LAMBDA) {
     string result = "namespace-lambda " + target.source_name + " " + target.terminal;
     for(const string & qualifier : target.namespace_qualifiers) result += " " + qualifier;
+    return result;
+  }
+  if(target.kind == ABI_FUNCTION_TARGET_MEMBER) {
+    string result = "member-function " + target.source_name + " "
+                    + type_text(target.owner_type);
+    for(const AbiType & type : target.signature_parameter_types) {
+      result += " " + type_text(type);
+    }
     return result;
   }
   throw std::logic_error("unknown function target form in canonical serializer");
@@ -1015,7 +1066,22 @@ string definition_text(const AbiDefinitionRecord & definition)
     if(definition.context.kind == ABI_CONTEXT_RAW) {
       return "let-context " + definition.id + " raw " + definition.context.fragment;
     }
-    return "let-context " + definition.id + " function "
+    string form = "function";
+    if(definition.context.target_signature_is_parameter_list
+       || !definition.context.qualifiers.empty()) {
+      const bool is_const = std::find(definition.context.qualifiers.begin(),
+                                      definition.context.qualifiers.end(),
+                                      ABI_FUNCTION_QUALIFIER_CONST)
+                            != definition.context.qualifiers.end();
+      const bool is_volatile = std::find(definition.context.qualifiers.begin(),
+                                         definition.context.qualifiers.end(),
+                                         ABI_FUNCTION_QUALIFIER_VOLATILE)
+                               != definition.context.qualifiers.end();
+      form = "callable ";
+      form += is_const && is_volatile ? "const-volatile"
+              : is_const ? "const" : is_volatile ? "volatile" : "unqualified";
+    }
+    return "let-context " + definition.id + " " + form + " "
            + function_target_text(definition.context.function);
   }
   if(definition.kind == ABI_DEFINITION_ENTITY) {
@@ -1102,6 +1168,10 @@ string function_record_text(const AbiFunctionRecord & function)
     return "function-template-prefix " + function.substitution;
   }
   if(function.kind == ABI_FUNCTION_RECORD_LOCAL_CONTEXT) {
+    if(function.name.empty()) {
+      return "unnamed-type-context " + function.context_ref + " "
+             + function.discriminator;
+    }
     return "local-context " + function.context_ref + " " + function.name + " " + function.discriminator;
   }
   if(function.kind == ABI_FUNCTION_RECORD_LAMBDA_CONTEXT) {

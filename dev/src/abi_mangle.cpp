@@ -694,7 +694,8 @@ enum SubstitutionKind
   SUBSTITUTION_PATH,
   SUBSTITUTION_TYPE,
   SUBSTITUTION_FUNCTION_TEMPLATE_PREFIX,
-  SUBSTITUTION_EXPLICIT
+  SUBSTITUTION_EXPLICIT,
+  SUBSTITUTION_LOCAL_LAMBDA
 };
 
 struct SubstitutionKey
@@ -852,6 +853,14 @@ private:
     size_t template_prefix = NO_ID;
     bool variadic = false;
   };
+
+  SubstitutionKey local_lambda_key(const string & context,
+                                   const string & discriminator)
+  {
+    return SubstitutionKey{
+      SUBSTITUTION_LOCAL_LAMBDA,
+      graph_.strings.intern(context + "\x1f" + discriminator)};
+  }
 
   FunctionFacts collect_function_facts(const vector<const AbiFunctionRecord *> & records)
   {
@@ -1016,7 +1025,11 @@ private:
         output_ += template_parameter(type.index);
         break;
       }
-      const SubstitutionKey key = type.substitution != NO_ID
+      const SubstitutionKey key = type.kind == ABI_TYPE_LAMBDA_CLOSURE
+                                    ? local_lambda_key(
+                                        graph_.strings.get(type.context),
+                                        graph_.strings.get(type.discriminator))
+                                    : type.substitution != NO_ID
                                     ? SubstitutionKey{SUBSTITUTION_EXPLICIT, type.substitution}
                                     : type.kind == ABI_TYPE_NAMED && type.tags.empty()
                                     ? SubstitutionKey{SUBSTITUTION_PATH, type.path}
@@ -1548,6 +1561,13 @@ private:
       encode_namespace_lambda_function(target, facts);
       return;
     }
+    if(target.kind == ABI_FUNCTION_TARGET_MEMBER) {
+      output_ += 'N'; emit_qualifiers(facts.qualifiers);
+      encode_prefix_type(graph_.resolve_type(target.owner_type));
+      output_ += source_name(target.source_name) + 'E';
+      encode_bare_parameters(facts.parameters, facts.variadic);
+      return;
+    }
     encode_path_function(target, facts, internal);
   }
 
@@ -1803,6 +1823,8 @@ private:
       for(const AbiType & type : target.signature_parameter_types) signature.push_back(graph_.resolve_type(type));
       encode_bare_parameters(signature, false);
       output_ += 'E' + target.discriminator + '_';
+      substitutions_.add(local_lambda_key(
+        target.context_ref, target.discriminator));
     } else {
       output_ += source_name(target.qualified_name) + discriminator(target.discriminator);
     }
@@ -1821,6 +1843,13 @@ private:
       for(const AbiType & type : local.types) signature.push_back(graph_.resolve_type(type));
       encode_bare_parameters(signature, false);
       output_ += 'E' + local.discriminator + '_';
+      substitutions_.add(local_lambda_key(
+        local.context_ref, local.discriminator));
+    } else if(local.name.empty()) {
+      output_ += "Ut";
+      const size_t ordinal = static_cast<size_t>(std::stoul(local.discriminator));
+      if(ordinal != 0) output_ += base36(ordinal - 1);
+      output_ += '_';
     } else {
       output_ += source_name(local.name);
       if(!local.discriminator_after_terminal)
@@ -1868,6 +1897,15 @@ private:
       output_ += "Ul";
       encode_bare_parameters(stable.children, false);
       output_ += 'E' + graph_.strings.get(stable.discriminator) + '_';
+      substitutions_.add(local_lambda_key(
+        graph_.strings.get(stable.context),
+        graph_.strings.get(stable.discriminator)));
+    } else if(stable.symbol == NO_ID) {
+      output_ += "Ut";
+      const size_t ordinal = static_cast<size_t>(
+        std::stoul(graph_.strings.get(stable.discriminator)));
+      if(ordinal != 0) output_ += base36(ordinal - 1);
+      output_ += '_';
     } else {
       output_ += source_name(graph_.strings.get(stable.symbol))
                  + discriminator(graph_.strings.get(stable.discriminator));
@@ -1880,8 +1918,17 @@ private:
     if(definition.context.kind == ABI_CONTEXT_RAW) {
       output_ += definition.context.fragment;
     } else {
+      FunctionFacts facts;
+      facts.qualifiers = definition.context.qualifiers;
+      if(definition.context.target_signature_is_parameter_list) {
+        for(const AbiType & type :
+            definition.context.function.signature_parameter_types) {
+          facts.parameters.push_back(graph_.resolve_type(type));
+        }
+        facts.variadic = definition.context.function.variadic;
+      }
       output_ += 'Z';
-      encode_function(definition.context.function, FunctionFacts());
+      encode_function(definition.context.function, facts);
       output_ += 'E';
     }
   }
