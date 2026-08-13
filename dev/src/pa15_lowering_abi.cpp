@@ -1316,6 +1316,7 @@ public:
 				record.dependent_bound_parameter != kNoTemplateParameter)
 				return true;
 			if (record.kind == TYPE_QUALIFIED || record.kind == TYPE_POINTER ||
+				record.kind == TYPE_BLOCK_POINTER ||
 				record.kind == TYPE_LVALUE_REFERENCE ||
 				record.kind == TYPE_RVALUE_REFERENCE || record.kind == TYPE_ARRAY)
 			{
@@ -1420,6 +1421,16 @@ public:
 				first + fixed, entity.template_argument_count - fixed,
 				function, recipe));
 	}
+	abi_mangle::AbiType MakeBlockPointerType(pa11::TypeId function_type,
+		const pa11::BindingRecord* function,
+		const pa11::FunctionTemplateAbiRecipe* recipe,
+		abi_mangle::AbiType result)
+	{
+		result.kind = abi_mangle::ABI_TYPE_VENDOR_QUALIFIED;
+		result.name = "block_pointer";
+		result.types.push_back(MakeType(function_type, function, recipe));
+		return result;
+	}
 
 	abi_mangle::AbiType MakeType(pa11::TypeId type,
 		const pa11::BindingRecord* function,
@@ -1482,6 +1493,8 @@ public:
 			result.substitutable = true;
 			return result;
 		}
+		if (record->kind == TYPE_BLOCK_POINTER) return MakeBlockPointerType(
+			record->child, function, recipe, result);
 		if (record->kind == TYPE_FUNCTION)
 		{
 			result.kind = ABI_TYPE_FUNCTION;

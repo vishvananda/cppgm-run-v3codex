@@ -13,17 +13,17 @@ linear lowering/allocation, and no host compiler fallback.
 ## Current Failure Map
 
 - Preprocess: 0/45 failures; this boundary is complete.
-- Compile: 109/281 failures: 35 extension grammar/type cases (parser/type system), 38
+- Compile: 105/281 failures: 31 extension grammar/type cases (parser/type system), 38
   trait/layout/constant cases (semantic facts), and 36 template lookup/demand cases.
 - Run: 19/41 failures; 16 stop in the compile pipeline and 3 expose linked
-  backend/lifetime or forced-inline behavior. PA34 is 239/367 overall.
+  backend/lifetime or forced-inline behavior. PA34 is 243/367 overall.
 
 ## Active Checkpoint
 
-No implementation is in flight. The next checkpoint should take block-pointer syntax,
-canonical callable representation, invocation, and ABI ownership as one boundary for
-the four direct fixtures; it must not encode blocks as text or silently treat them as
-ordinary function pointers.
+Next, map the remaining extension grammar/type group and choose its next stable
+parser-to-type boundary; the two direct `_BitInt` static-cast fixtures are the leading
+candidate. Record its canonical representation, semantic/lowering ownership, bounded
+complexity, and focused validation before editing.
 
 ## Performance Evidence
 
@@ -66,6 +66,11 @@ typed lowering storage stayed at 1,839 bytes. Semantic time was 0.22/0.48/3.01 m
 the 64-case object took 0.01 s with 8,512 KiB RSS, supporting O(attributes + lanes)
 validation with canonical vector reuse and deferred emission.
 
+The block-pointer probe used 1/8/64 functions with one declarator and indirect call
+each. Semantic nodes were 13/69/517 and lookup queries 15/85/645; semantic time was
+0.24/0.57/2.98 ms and lowering time 0.19/0.27/1.12 ms. This supports linear
+declarator/call work with fixed ABI lowering and O(1)-average canonical interning.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result | Validation |
@@ -80,3 +85,4 @@ validation with canonical vector reuse and deferred emission.
 | Class layout attributes | Canonical GNU aligned/packed and standard no-unique facts, entity/binding ownership, conflict-safe empty overlap, and template replay; +5 | focused compile 5/5 and linked copy assignment; 1/8/64 linear markers; PA34 227/367; PA1-33 4387/4387; audit pass |
 | GNU asm and asm labels | Structured operands, semantic operation IDs, typed LowIR effects, exact binding-owned ABI labels, and reallocation-safe class layout; +10 | focused 10/10; linked atomic/labels exact; 1/8/64 linear; PA34 237/367; PA1-33 4387/4387; audit pass |
 | Scalar GNU vectors | Retained type attributes, canonical lane/byte-width identity, layout/ABI/lowering facts, and typed unused-wrapper literals; +2 | focused 2/2; invalid width/arity rejected; 1/8/64 linear; PA34 239/367; PA1-33 4387/4387; audit pass |
+| Canonical block pointers | Distinct interned callable identity, hosted declarators/annotations, Itanium vendor qualification, and Blocks ABI invoke lowering; +4 | focused 4/4; invalid target/arity rejected; types/symbol/LowIR exact; 1/8/64 linear; PA34 243/367; PA1-33 4387/4387; audit pass |

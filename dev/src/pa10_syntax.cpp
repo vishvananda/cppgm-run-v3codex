@@ -989,7 +989,7 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 	while (true)
 	{
 		const std::size_t operator_position = position_;
-		if (Match(OP_STAR) || Match(OP_AMP) || Match(OP_LAND))
+		if (Match(OP_STAR) || Match(OP_AMP) || Match(OP_LAND) || Match(OP_XOR))
 		{
 			const NodeId pointer = MakeTokenNode("ptr-operator",
 				operator_position);

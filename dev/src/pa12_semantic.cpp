@@ -294,6 +294,7 @@ bool SemanticAnalyzer::SimilarUnqualified(TypeId source, TypeId target) const
 	switch (a.kind)
 	{
 	case TYPE_POINTER:
+	case TYPE_BLOCK_POINTER:
 	case TYPE_LVALUE_REFERENCE:
 	case TYPE_RVALUE_REFERENCE:
 		return SimilarUnqualified(a.child, b.child);
@@ -1465,7 +1466,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 		target, &call_operator)) return call_operator;
 	TypeId function_type = program_->types.RemoveTopCv(EffectiveType(callee.type));
 	TypeRecord callable = program_->types.Get(function_type);
-	if (callable.kind == TYPE_POINTER)
+	const bool block_pointer_call = callable.kind == TYPE_BLOCK_POINTER;
+	if (callable.kind == TYPE_POINTER || block_pointer_call)
 	{
 		function_type = callable.child;
 		callable = program_->types.Get(function_type);
@@ -1475,7 +1477,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 	if (argument_syntax.size() < callable.parameter_count || (!callable.variadic && argument_syntax.size() != callable.parameter_count))
 		return CandidateExpressionFailure("indirect call arity mismatch");
 	ExpressionInfo constexpr_call;
-	if (TryAnalyzeConstexprIndirectCall(&callee, scope, argument_syntax,
+	if (!block_pointer_call && TryAnalyzeConstexprIndirectCall(&callee, scope, argument_syntax,
 		analyzed_arguments, target,
 		&constexpr_call)) return constexpr_call;
 	const TypeId* parameter_data = program_->types.Parameters(function_type);

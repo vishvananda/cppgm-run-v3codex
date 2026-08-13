@@ -132,6 +132,7 @@ bool TypeContainsDependentResultShape(const TypeTable& types, TypeId type,
 			static_cast<TypeId>(record.bound), dependent_result) ||
 			TypeContainsDependentResultShape(types, record.child, dependent_result);
 	if (record.kind == TYPE_QUALIFIED || record.kind == TYPE_POINTER ||
+		record.kind == TYPE_BLOCK_POINTER ||
 		record.kind == TYPE_LVALUE_REFERENCE ||
 		record.kind == TYPE_RVALUE_REFERENCE || record.kind == TYPE_ARRAY ||
 		record.kind == TYPE_FUNCTION)
@@ -146,6 +147,7 @@ bool TypeContainsAbstractArrayElement(const Program& program, TypeId type,
 	if (type == kNoType || depth > program.types.Size()) return false;
 	const TypeRecord& record = program.types.Get(type);
 	if (record.kind == TYPE_QUALIFIED || record.kind == TYPE_POINTER ||
+		record.kind == TYPE_BLOCK_POINTER ||
 		record.kind == TYPE_LVALUE_REFERENCE ||
 		record.kind == TYPE_RVALUE_REFERENCE || record.kind == TYPE_ARRAY ||
 		record.kind == TYPE_MEMBER_POINTER)

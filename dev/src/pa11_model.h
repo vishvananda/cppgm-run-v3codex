@@ -161,7 +161,8 @@ enum TypeKind
 	TYPE_ARRAY,
 	TYPE_FUNCTION,
 	TYPE_MEMBER_POINTER,
-	TYPE_VECTOR
+	TYPE_VECTOR,
+	TYPE_BLOCK_POINTER
 };
 
 enum CvFlags
@@ -207,6 +208,8 @@ public:
 	TypeId Qualify(TypeId type, std::uint8_t cv);
 	TypeId TryPointer(TypeId type);
 	TypeId Pointer(TypeId type);
+	TypeId TryBlockPointer(TypeId function);
+	TypeId BlockPointer(TypeId function);
 	TypeId TryMemberPointer(TypeId owner, TypeId member);
 	TypeId MemberPointer(TypeId owner, TypeId member);
 	TypeId TryReference(TypeKind kind, TypeId type);

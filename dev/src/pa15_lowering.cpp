@@ -978,6 +978,11 @@ private:
 		Emit(index);
 		return result;
 	}
+	Operand LoadBlockInvoke(const Operand& block)
+	{
+		return LoadStorage(IndexAddress(LowI8(), block,
+			Operand(16, LowI64()), false), LowPtr());
+	}
 
 	Operand LowerArrayPointer(std::uint32_t node)
 	{
@@ -1612,11 +1617,13 @@ private:
 			  record.eager_full_expression_cleanup)))
 			EnsureFullExpressionCleanupSegment();
 		TypeId function_type_id = callee.type;
+		bool block_pointer_call = false;
 		if (!direct)
 		{
 			function_type_id = ExpressionObjectType(function_type_id);
 			const TypeRecord& callable = program_.types.Get(function_type_id);
-			if (callable.kind == TYPE_POINTER)
+			block_pointer_call = callable.kind == TYPE_BLOCK_POINTER;
+			if (callable.kind == TYPE_POINTER || block_pointer_call)
 				function_type_id = callable.child;
 		}
 		const TypeRecord& function_type = program_.types.Get(function_type_id);
@@ -1650,6 +1657,13 @@ private:
 			}
 			arguments.Push(result_storage);
 			argument_references.Push(Instruction::CALL_PASS_INDIRECT_RESULT);
+		}
+		Operand block_object;
+		if (block_pointer_call)
+		{
+			block_object = LowerValue(children[0], LowPtr());
+			arguments.Push(block_object);
+			argument_references.Push(Instruction::CALL_PASS_VALUE);
 		}
 		const bool member_pointer_call =
 			IsMemberPointerApplication(callee);
@@ -1725,7 +1739,8 @@ private:
 					polymorphism_, record, BaseEntityForType(arena_.nodes[children[1]].type)));
 		}
 		else if (!direct) call.first = member_pointer_call ?
-			member_pointer_callee : LowerValue(children[0], LowPtr());
+			member_pointer_callee : block_pointer_call ?
+			LoadBlockInvoke(block_object) : LowerValue(children[0], LowPtr());
 		AttachCallArguments(&call, arguments, argument_references);
 		if (call.type.kind == LOW_VOID)
 		{

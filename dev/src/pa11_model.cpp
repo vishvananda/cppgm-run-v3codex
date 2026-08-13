@@ -394,6 +394,20 @@ TypeId TypeTable::Pointer(TypeId type)
 	return result;
 }
 
+TypeId TypeTable::TryBlockPointer(TypeId function)
+{
+	return Get(function).kind == TYPE_FUNCTION ?
+		Unary(TYPE_BLOCK_POINTER, function) : kNoType;
+}
+
+TypeId TypeTable::BlockPointer(TypeId function)
+{
+	const TypeId result = TryBlockPointer(function);
+	if (result == kNoType)
+		throw std::runtime_error("block pointer target is not a function type");
+	return result;
+}
+
 TypeId TypeTable::TryMemberPointer(TypeId owner, TypeId member)
 {
 	owner = RemoveTopCv(owner);
@@ -2675,6 +2689,10 @@ void Program::AppendType(std::string& output, TypeId type,
 			break;
 		case TYPE_POINTER:
 			output += "pointer to ";
+			tasks.Push(Task(record.child, true));
+			break;
+		case TYPE_BLOCK_POINTER:
+			output += "block-pointer to ";
 			tasks.Push(Task(record.child, true));
 			break;
 		case TYPE_LVALUE_REFERENCE:

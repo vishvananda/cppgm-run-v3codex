@@ -2077,6 +2077,7 @@ std::size_t SemanticAnalyzer::TemplatePartialPackParameter(TypeId type,
 	{
 	case TYPE_QUALIFIED:
 	case TYPE_POINTER:
+	case TYPE_BLOCK_POINTER:
 	case TYPE_LVALUE_REFERENCE:
 	case TYPE_RVALUE_REFERENCE:
 	case TYPE_ARRAY:
@@ -2152,6 +2153,7 @@ bool SemanticAnalyzer::DeduceTemplatePartialType(TypeId pattern,
 	switch (pattern_record.kind)
 	{
 	case TYPE_POINTER:
+	case TYPE_BLOCK_POINTER:
 	case TYPE_LVALUE_REFERENCE:
 	case TYPE_RVALUE_REFERENCE:
 		return DeduceTemplatePartialType(pattern_record.child,

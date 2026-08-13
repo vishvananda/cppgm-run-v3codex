@@ -36,7 +36,7 @@ std::size_t Program::SizeOf(TypeId type) const
 		switch (record.kind)
 		{
 		case TYPE_FUNDAMENTAL: size = FundamentalSize(record.fundamental); break;
-		case TYPE_POINTER: case TYPE_LVALUE_REFERENCE:
+		case TYPE_POINTER: case TYPE_BLOCK_POINTER: case TYPE_LVALUE_REFERENCE:
 		case TYPE_RVALUE_REFERENCE: size = 8; break;
 		case TYPE_MEMBER_POINTER:
 			size = types.IsFunction(record.child) ? 16 : 8;
@@ -84,7 +84,8 @@ std::size_t Program::AlignOf(TypeId type) const
 	std::size_t alignment = 0;
 	if (record->kind == TYPE_POINTER || record->kind == TYPE_LVALUE_REFERENCE ||
 		record->kind == TYPE_RVALUE_REFERENCE ||
-		record->kind == TYPE_MEMBER_POINTER) alignment = 8;
+		record->kind == TYPE_MEMBER_POINTER ||
+		record->kind == TYPE_BLOCK_POINTER) alignment = 8;
 	if (record->kind == TYPE_FUNDAMENTAL)
 		alignment = FundamentalSize(record->fundamental);
 	else if (record->kind == TYPE_VECTOR)

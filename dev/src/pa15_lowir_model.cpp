@@ -203,6 +203,7 @@ IdentityNameId EmissionIdentityTable::InternName(const std::string& name)
 bool EmissionIdentityTable::HasChild(TypeKind kind)
 {
 	return kind == TYPE_QUALIFIED || kind == TYPE_POINTER ||
+		kind == TYPE_BLOCK_POINTER ||
 		kind == TYPE_LVALUE_REFERENCE || kind == TYPE_RVALUE_REFERENCE ||
 		kind == TYPE_ARRAY || kind == TYPE_FUNCTION ||
 		kind == TYPE_MEMBER_POINTER || kind == TYPE_VECTOR;

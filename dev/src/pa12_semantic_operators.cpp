@@ -42,7 +42,7 @@ bool SemanticAnalyzer::IsMeasurableObjectType(
 		}
 		if (record.kind == TYPE_FUNDAMENTAL)
 			return record.fundamental != FUND_VOID;
-		if (record.kind == TYPE_POINTER ||
+		if (record.kind == TYPE_POINTER || record.kind == TYPE_BLOCK_POINTER ||
 			record.kind == TYPE_LVALUE_REFERENCE ||
 			record.kind == TYPE_RVALUE_REFERENCE ||
 			record.kind == TYPE_MEMBER_POINTER || record.kind == TYPE_VECTOR)

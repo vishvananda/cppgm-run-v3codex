@@ -133,7 +133,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinInvoke(ScopeId scope,
 	TypeId function_type = program_->types.RemoveTopCv(
 		EffectiveType(callable_expression.type));
 	TypeRecord callable = program_->types.Get(function_type);
-	if (callable.kind == TYPE_POINTER)
+	if (callable.kind == TYPE_POINTER || callable.kind == TYPE_BLOCK_POINTER)
 	{
 		function_type = callable.child;
 		callable = program_->types.Get(function_type);

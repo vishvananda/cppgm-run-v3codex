@@ -854,6 +854,7 @@ DeclaratorInfo TypeAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 		{
 			const std::string operation = PayloadSource(child);
 			if (operation == "*") type = program_->types.Pointer(type);
+			else if (operation == "^") type = program_->types.BlockPointer(type);
 			else if (operation == "&")
 				type = program_->types.Reference(TYPE_LVALUE_REFERENCE, type);
 			else if (operation == "&&")

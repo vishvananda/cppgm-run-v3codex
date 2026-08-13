@@ -30,6 +30,7 @@ LowType SourceTypeLowering::Lower(TypeId type) const
 		return LowObject(program_.SizeOf(type), program_.AlignOf(type));
 	if (record->kind == TYPE_LVALUE_REFERENCE ||
 		record->kind == TYPE_RVALUE_REFERENCE || record->kind == TYPE_POINTER ||
+		record->kind == TYPE_BLOCK_POINTER ||
 		record->kind == TYPE_ARRAY || record->kind == TYPE_FUNCTION) return LowPtr();
 	if (record->kind == TYPE_NAMED)
 	{
