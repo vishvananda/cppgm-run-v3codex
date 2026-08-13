@@ -68,8 +68,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		member_initializer_by_binding_.capacity() * sizeof(NodeId) +
 		constructor_initializer_scratch_.capacity() * sizeof(NodeId) +
 		constructor_initializer_touched_.capacity() * sizeof(BindingId) +
-		injected_aliases_by_storage_.capacity() *
-			sizeof(std::vector<BindingId>) +
+		injected_aliases_by_storage_.StorageBytes() +
 		injected_constructor_initializer_scratch_.capacity() * sizeof(NodeId) +
 		injected_constructor_initializer_touched_.capacity() *
 			sizeof(std::uint32_t) +

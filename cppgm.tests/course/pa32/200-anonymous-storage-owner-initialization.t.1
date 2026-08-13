@@ -1,0 +1,42 @@
+struct StructDefaults
+{
+  struct
+  {
+    int first = 4;
+    int second = 5;
+  };
+
+  StructDefaults() {}
+};
+
+union ProjectedUnion
+{
+  struct
+  {
+    int first;
+    int second;
+  };
+
+  ProjectedUnion(int value) : first(value), second(value + 1) {}
+};
+
+union UnionDefaults
+{
+  struct
+  {
+    int first = 8;
+    int second = 9;
+  };
+
+  UnionDefaults() {}
+};
+
+int main()
+{
+  StructDefaults first;
+  ProjectedUnion second(6);
+  UnionDefaults third;
+  return first.first == 4 && first.second == 5 &&
+    second.first == 6 && second.second == 7 &&
+    third.first == 8 && third.second == 9 ? 0 : 1;
+}

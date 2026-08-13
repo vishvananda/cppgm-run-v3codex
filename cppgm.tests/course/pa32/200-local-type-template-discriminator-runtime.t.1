@@ -1,0 +1,22 @@
+template<class T>
+__attribute__((noinline)) int width(T*)
+{
+  return sizeof(T);
+}
+
+int select_width(bool first)
+{
+  if(first)
+  {
+    struct Local { char value; };
+    return width((Local*)0);
+  }
+
+  struct Local { char value[2]; };
+  return width((Local*)0);
+}
+
+int main()
+{
+  return select_width(true) + select_width(false) == 3 ? 0 : 1;
+}

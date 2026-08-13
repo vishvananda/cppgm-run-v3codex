@@ -1723,7 +1723,7 @@ private:
 	std::vector<NodeId> member_initializer_by_binding_;
 	std::vector<NodeId> constructor_initializer_scratch_;
 	std::vector<BindingId> constructor_initializer_touched_;
-	std::vector<std::vector<BindingId> > injected_aliases_by_storage_;
+	IndexedSequenceTable injected_aliases_by_storage_;
 	std::vector<NodeId> injected_constructor_initializer_scratch_;
 	std::vector<std::uint32_t> injected_constructor_initializer_touched_;
 	// Replay can publish nested patterns, so published pattern owners must not

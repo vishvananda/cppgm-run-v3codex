@@ -42,6 +42,7 @@ struct IdentityTypeKey
 	IdentityPathId named;
 	IdentityPathId local_context;
 	IdentityTypeId local_context_signature;
+	std::uint32_t local_ordinal;
 	std::uint64_t bound;
 	std::uint8_t cv;
 	std::uint8_t ref_qualifier;
@@ -51,7 +52,7 @@ struct IdentityTypeKey
 	IdentityTypeKey()
 		: kind(TYPE_FUNDAMENTAL), fundamental(FUND_VOID), child(kNoLowId),
 		  named(kNoLowId), local_context(kNoLowId),
-		  local_context_signature(kNoLowId), bound(0), cv(0),
+		  local_context_signature(kNoLowId), local_ordinal(0), bound(0), cv(0),
 		  ref_qualifier(FUNCTION_REF_NONE), variadic(false) {}
 
 	bool operator==(const IdentityTypeKey& other) const
@@ -60,6 +61,7 @@ struct IdentityTypeKey
 			child == other.child && named == other.named &&
 			local_context == other.local_context &&
 			local_context_signature == other.local_context_signature &&
+			local_ordinal == other.local_ordinal &&
 			bound == other.bound &&
 			cv == other.cv && ref_qualifier == other.ref_qualifier &&
 			variadic == other.variadic &&
@@ -77,6 +79,7 @@ struct IdentityTypeHash
 		hash = hash * 16777619U ^ key.named;
 		hash = hash * 16777619U ^ key.local_context;
 		hash = hash * 16777619U ^ key.local_context_signature;
+		hash = hash * 16777619U ^ key.local_ordinal;
 		hash = hash * 16777619U ^ static_cast<std::size_t>(key.bound);
 		hash = hash * 16777619U ^ key.cv;
 		hash = hash * 16777619U ^ key.ref_qualifier;

@@ -275,6 +275,7 @@ IdentityTypeKey EmissionIdentityTable::MakeTypeKey(const Program& program,
 			key.local_context = InternPath(program, context.owner, context.name);
 			key.local_context_signature =
 				InternFunctionSignature(program, context.type, cache);
+			key.local_ordinal = entity.local_name_ordinal;
 		}
 		const std::size_t first = entity.template_argument_begin;
 		for (std::size_t i = 0; i < entity.template_argument_count; ++i)

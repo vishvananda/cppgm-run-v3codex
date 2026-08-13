@@ -39,10 +39,9 @@ void SemanticAnalyzer::RegisterInjectedStorageMember(BindingId alias,
 	injected_fact_by_binding_[alias] =
 		static_cast<std::uint32_t>(injected_members_.size());
 	injected_members_.push_back(InjectedMemberInfo(storage, member));
-	if (injected_aliases_by_storage_.size() <= storage)
-		injected_aliases_by_storage_.resize(
-			static_cast<std::size_t>(storage) + 1);
-	injected_aliases_by_storage_[storage].push_back(alias);
+	injected_aliases_by_storage_.Ensure(storage).Push(alias);
+	if (program_->bindings[member].has_default_member_initializer)
+		program_->bindings[storage].has_default_member_initializer = true;
 	if (member < member_initializer_by_binding_.size() &&
 		member_initializer_by_binding_[member] != kNoNode)
 	{
@@ -71,20 +70,34 @@ bool SemanticAnalyzer::RecordInjectedMemberInitializer(BindingId member,
 			"duplicate constructor member initializer");
 	injected_constructor_initializer_scratch_[fact] = initializer;
 	injected_constructor_initializer_touched_.push_back(fact);
+	if (program_->entities[owner].flavor == NAMED_UNION)
+	{
+		const std::vector<BindingId>& members = entity_data_members_[owner];
+		const std::uint32_t ordinal =
+			program_->bindings[storage].member_ordinal;
+		if (ordinal >= members.size() || members[ordinal] != storage)
+			throw std::logic_error(
+				"projected union storage has no canonical ordinal");
+		if (!constructor_initializer_touched_.empty() &&
+			constructor_initializer_touched_[0] != storage)
+			throw std::runtime_error(
+				"union constructor initializes multiple variants");
+		if (constructor_initializer_touched_.empty())
+			constructor_initializer_touched_.push_back(storage);
+	}
 	return true;
 }
 
 bool SemanticAnalyzer::AddInjectedStorageInitializationActions(
 	BindingId storage, ScopeId scope, std::uint32_t body)
 {
-	if (storage >= injected_aliases_by_storage_.size() ||
-		injected_aliases_by_storage_[storage].empty()) return false;
-	const std::vector<BindingId>& aliases =
-		injected_aliases_by_storage_[storage];
+	const CompactIndexSequence* aliases =
+		injected_aliases_by_storage_.Find(storage);
+	if (aliases == 0 || aliases->Size() == 0) return false;
 	std::size_t explicit_count = 0;
-	for (std::size_t i = 0; i < aliases.size(); ++i)
+	for (std::size_t i = 0; i < aliases->Size(); ++i)
 	{
-		const BindingId alias = aliases[i];
+		const BindingId alias = static_cast<BindingId>((*aliases)[i]);
 		const std::uint32_t fact = alias < injected_fact_by_binding_.size() ?
 			injected_fact_by_binding_[alias] : kNoDumpEdge;
 		if (fact != kNoDumpEdge &&
@@ -102,9 +115,9 @@ bool SemanticAnalyzer::AddInjectedStorageInitializationActions(
 	if (union_storage && explicit_count != 1)
 		throw std::runtime_error(
 			"union constructor initializes multiple variants");
-	for (std::size_t i = 0; i < aliases.size(); ++i)
+	for (std::size_t i = 0; i < aliases->Size(); ++i)
 	{
-		const BindingId alias = aliases[i];
+		const BindingId alias = static_cast<BindingId>((*aliases)[i]);
 		const std::uint32_t fact = injected_fact_by_binding_[alias];
 		NodeId initializer = fact <
 			injected_constructor_initializer_scratch_.size() ?

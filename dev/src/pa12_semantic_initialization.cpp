@@ -860,6 +860,7 @@ void SemanticAnalyzer::AddMemberInitializationAction(BindingId member_id,
 	const bool class_member = member_kind != TYPE_LVALUE_REFERENCE &&
 		member_kind != TYPE_RVALUE_REFERENCE && IsClassEntity(*program_, member_entity);
 	if (initializer == kNoNode && member.anonymous_union_storage &&
+		program_->entities[member_entity].flavor == NAMED_UNION &&
 		program_->entities[member_entity].union_default_member == kNoBinding) return;
 	if (initializer == kNoNode && (member_kind == TYPE_LVALUE_REFERENCE ||
 		member_kind == TYPE_RVALUE_REFERENCE))
@@ -1281,8 +1282,8 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 			if (initializer == kNoNode &&
 				active < member_initializer_by_binding_.size())
 				initializer = member_initializer_by_binding_[active];
-			AddMemberInitializationAction(
-				active, initializer, function_scope, body);
+			if (!AddInjectedStorageInitializationActions(active, function_scope, body))
+				AddMemberInitializationAction(active, initializer, function_scope, body);
 			++constructor_member_action_visits_;
 		}
 	}

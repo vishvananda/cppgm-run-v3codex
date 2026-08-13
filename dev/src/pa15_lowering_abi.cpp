@@ -1133,7 +1133,8 @@ public:
 				result.kind = ABI_TYPE_LOCAL_TYPE;
 				result.context_ref = AddLocalContext(entity.local_context);
 				result.name = program_.names.Get(entity.identity_name);
-				result.discriminator = "0";
+				result.discriminator =
+					std::to_string(entity.local_name_ordinal);
 			}
 			else if (entity.enclosing_class != kNoEntity)
 			{
