@@ -72,6 +72,16 @@ protected:
 		RecordBlockIncoming(target);
 	}
 
+	void EmitContinuationJump(BlockId target)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const bool reachable = HasBlockIncoming(derived.current_block_);
+		Instruction jump(Instruction::JUMP);
+		jump.target = target;
+		derived.Emit(jump);
+		if (reachable) RecordBlockIncoming(target);
+	}
+
 	void EmitBranch(const Operand& condition, BlockId yes, BlockId no)
 	{
 		Derived& derived = static_cast<Derived&>(*this);

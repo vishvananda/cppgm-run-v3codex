@@ -1996,7 +1996,7 @@ private:
 			if (break_targets_.empty())
 				throw std::logic_error("missing PA15 switch target");
 			break_targets_.pop_back();
-			if (!CurrentBlock().terminated) EmitJump(task.first);
+			if (!CurrentBlock().terminated) EmitContinuationJump(task.first);
 			SelectBlock(task.first);
 			return;
 		}
@@ -2169,7 +2169,7 @@ private:
 				switch_case_blocks_[node] == kNoLowId)
 				throw std::runtime_error("PA15 case has no switch target");
 			const BlockId target = switch_case_blocks_[node];
-			if (!CurrentBlock().terminated) EmitJump(target);
+			if (!CurrentBlock().terminated) EmitContinuationJump(target);
 			SelectBlock(target);
 			std::uint32_t edge = record.first_edge;
 			if (record.kind == DUMP_CASE_STATEMENT && edge != kNoDumpEdge)
@@ -2201,26 +2201,16 @@ private:
 		{
 			if (break_targets_.empty())
 				throw std::runtime_error("PA15 break has no target");
-			for (std::size_t i = 0; i < children.size(); ++i)
-			{
-				if (arena_.nodes[children[i]].kind != DUMP_DESTRUCTOR_ACTION)
-					throw std::logic_error("invalid break cleanup action");
-				LowerDestructorAction(arena_.nodes[children[i]]);
-			}
-			EmitJump(break_targets_.back());
+			LowerStructuredControlExit(children, break_targets_.back().region_depth);
+			EmitJump(break_targets_.back().block);
 			return;
 		}
 		if (record.kind == DUMP_CONTINUE_STATEMENT)
 		{
 			if (continue_targets_.empty())
 				throw std::runtime_error("PA15 continue has no target");
-			for (std::size_t i = 0; i < children.size(); ++i)
-			{
-				if (arena_.nodes[children[i]].kind != DUMP_DESTRUCTOR_ACTION)
-					throw std::logic_error("invalid continue cleanup action");
-				LowerDestructorAction(arena_.nodes[children[i]]);
-			}
-			EmitJump(continue_targets_.back());
+			LowerStructuredControlExit(children, continue_targets_.back().region_depth);
+			EmitJump(continue_targets_.back().block);
 			return;
 		}
 		throw std::runtime_error("statement is outside the active PA15 checkpoint");
@@ -2722,7 +2712,7 @@ private:
 		RecordBlockIncoming(default_target);
 		for (std::size_t i = 0; i < case_targets.size(); ++i)
 			RecordBlockIncoming(case_targets[i]);
-		break_targets_.push_back(end);
+		break_targets_.push_back(ExceptionControlTarget(end, ActiveExceptionRegionCount()));
 		StatementTask after(STATEMENT_SWITCH_AFTER_BODY);
 		after.first = end;
 		statement_tasks_.push_back(after);
@@ -2764,8 +2754,8 @@ private:
 		SelectBlock(cond_block);
 		EmitBranch(LowerControlCondition(condition), body_block, end_block);
 		SelectBlock(body_block);
-		break_targets_.push_back(end_block);
-		continue_targets_.push_back(cond_block);
+		break_targets_.push_back(ExceptionControlTarget(end_block, ActiveExceptionRegionCount()));
+		continue_targets_.push_back(ExceptionControlTarget(cond_block, ActiveExceptionRegionCount()));
 		StatementTask after(STATEMENT_LOOP_AFTER_BODY);
 		after.first = cond_block;
 		after.second = end_block;
@@ -2784,8 +2774,8 @@ private:
 		const BlockId end_block = AddBlock(NewLabel("do_end"));
 		EmitJump(body_block);
 		SelectBlock(body_block);
-		break_targets_.push_back(end_block);
-		continue_targets_.push_back(cond_block);
+		break_targets_.push_back(ExceptionControlTarget(end_block, ActiveExceptionRegionCount()));
+		continue_targets_.push_back(ExceptionControlTarget(cond_block, ActiveExceptionRegionCount()));
 		StatementTask after(STATEMENT_DO_AFTER_BODY);
 		after.node = condition;
 		after.first = body_block;
@@ -2828,8 +2818,8 @@ private:
 		if (condition == kNoDumpEdge) EmitJump(body_block);
 		else EmitBranch(LowerControlCondition(condition), body_block, end_block);
 		SelectBlock(body_block);
-		break_targets_.push_back(end_block);
-		continue_targets_.push_back(iter_block);
+		break_targets_.push_back(ExceptionControlTarget(end_block, ActiveExceptionRegionCount()));
+		continue_targets_.push_back(ExceptionControlTarget(iter_block, ActiveExceptionRegionCount()));
 		StatementTask after(STATEMENT_FOR_AFTER_BODY);
 		after.node = iteration;
 		after.first = iter_block;
@@ -2952,8 +2942,8 @@ private:
 	FlatIdMap class_value_boundary_types_;
 	std::vector<SymbolId> aggregate_helper_symbols_;
 	std::vector<std::uint8_t> aggregate_parameter_entities_;
-	std::vector<BlockId> break_targets_;
-	std::vector<BlockId> continue_targets_;
+	std::vector<ExceptionControlTarget> break_targets_;
+	std::vector<ExceptionControlTarget> continue_targets_;
 	std::vector<StatementTask> statement_tasks_;
 	FlatIdMap label_blocks_;
 	void ResetInitializedBitFieldUnit() {

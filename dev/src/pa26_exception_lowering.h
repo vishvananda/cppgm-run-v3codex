@@ -43,6 +43,13 @@ protected:
 			: kind(kind_value), node(node_value), handler(handler_value),
 			  entry(entry_value) {}
 	};
+	struct ExceptionControlTarget
+	{
+		BlockId block;
+		std::size_t region_depth;
+		ExceptionControlTarget(BlockId block_value, std::size_t depth_value)
+			: block(block_value), region_depth(depth_value) {}
+	};
 
 	void ResetExceptionFunctionState()
 	{
@@ -179,6 +186,27 @@ protected:
 		FinishExceptionControlExit(closed, exit_count);
 	}
 
+	void LowerStructuredControlExit(const NodeChildren& children,
+		std::size_t target_depth)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const std::size_t active = ActiveExceptionRegionCount();
+		if (target_depth > active)
+			throw std::logic_error(
+				"structured control transfer enters an exception region");
+		const std::size_t exits = active - target_depth;
+		for (std::size_t i = 0; i < children.size(); ++i)
+		{
+			if (derived.arena_.nodes[children[i]].kind !=
+				DUMP_DESTRUCTOR_ACTION)
+				throw std::logic_error(
+					"invalid structured control cleanup action");
+			derived.LowerDestructorAction(derived.arena_.nodes[children[i]]);
+		}
+		const std::size_t closed = BeginExceptionControlExit(exits);
+		FinishExceptionControlExit(closed, exits);
+	}
+
 	template <class Task>
 	bool RunExceptionStatementTask(const Task& task)
 	{
@@ -266,14 +294,23 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		CallArguments arguments;
-		if (children.empty())
+		if (record.operand_type == kNoType)
 		{
+			const bool owns_cleanup = !children.empty() &&
+				!derived.full_expression_cleanup_active_;
+			if (owns_cleanup)
+			{
+				derived.BeginFullExpressionCleanup(children, 0, true);
+				derived.EnsureFullExpressionCleanupSegment();
+			}
 			(void)EmitExceptionRuntimeCall(
 				derived.polymorphism_.eh_rethrow_symbol, LowVoid(), arguments);
+			if (owns_cleanup)
+				derived.FinishNoreturnFullExpressionCleanup();
 			derived.EmitNoreturnFallback();
 			return Operand(0, LowVoid());
 		}
-		if (children.empty() || record.operand_type == kNoType)
+		if (children.empty())
 			throw std::logic_error("invalid typed throw expression");
 		const bool owns_cleanup = children.size() != 1 &&
 			!derived.full_expression_cleanup_active_;
