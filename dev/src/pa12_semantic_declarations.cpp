@@ -598,11 +598,11 @@ void SemanticAnalyzer::InitializeImplicitBaseConstructorFacts(EntityId entity)
 
 void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 {
-	EntityRecord& owner = program_->entities[entity];
-	if (owner.layout_complete) return;
+	if (program_->entities[entity].layout_complete) return;
 	++class_layouts_;
 	for (std::size_t i = 0; i < entity_layout_members_[entity].size(); ++i)
 		EnsureClassDefinition(entity_layout_members_[entity][i].type);
+	EntityRecord& owner = program_->entities[entity];
 	std::size_t size = 0;
 	std::size_t alignment = 1;
 	std::size_t natural_alignment = 1;
@@ -982,6 +982,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 			parsed.type, parsed.parameters, true, false, STORAGE_CLASS_NONE,
 			current_language_linkage_, IsNonthrowing(declarator, scope));
 		ConfigureFunctionExceptionSpecification(function, declarator, scope);
+		ApplyFunctionAsmLabel(declarator, function);
 		ApplyFunctionAbiTagAttributes(node, function);
 		FunctionInfo& info = GetMutableFunction(function);
 		ConfigurePlaceholderFunctionReturn(function, parsed, spec.placeholder_cv);
@@ -1043,6 +1044,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 				parsed.type, parsed.parameters, false, false, STORAGE_CLASS_NONE,
 				current_language_linkage_, IsNonthrowing(declarator, scope));
 			ConfigureFunctionExceptionSpecification(function, declarator, scope);
+			ApplyFunctionAsmLabel(declarator, function);
 			ApplyFunctionAbiTagAttributes(item, function);
 			BindingRecord& binding = program_->bindings[function];
 			ConfigurePlaceholderFunctionReturn(function, parsed, spec.placeholder_cv);

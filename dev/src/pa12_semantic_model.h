@@ -33,6 +33,17 @@ enum LogicalOperation : std::uint8_t
 	LOGICAL_OPERATION_OR
 };
 
+enum GnuAsmOperation : std::uint8_t
+{
+	GNU_ASM_NONE,
+	GNU_ASM_NOP,
+	GNU_ASM_PAUSE,
+	GNU_ASM_BSWAP,
+	GNU_ASM_LOCK_NOT,
+	GNU_ASM_LOCK_INCREMENT,
+	GNU_ASM_COMPILER_FENCE
+};
+
 enum DumpKind
 {
 	DUMP_TRANSLATION_UNIT,
@@ -65,6 +76,7 @@ enum DumpKind
 	DUMP_DEFAULT_STATEMENT,
 	DUMP_LABELED_STATEMENT,
 	DUMP_GOTO_STATEMENT,
+	DUMP_GNU_ASM_STATEMENT,
 	DUMP_CALL_EXPRESSION,
 	DUMP_CALLEE,
 	DUMP_ID_EXPRESSION,
@@ -122,6 +134,7 @@ struct DumpNode
 	TypeId type, operand_type;
 	ValueCategory category;
 	LogicalOperation logical_operation;
+	GnuAsmOperation gnu_asm_operation;
 	hosted_builtin::AtomicIntrinsicKind hosted_atomic_intrinsic;
 	NameId text;
 	BindingId binding, object_binding, selected_binding;
@@ -204,6 +217,7 @@ struct DumpNode
 	explicit DumpNode(DumpKind value)
 		: kind(value), type(kNoType), operand_type(kNoType),
 		  category(VALUE_NONE), logical_operation(LOGICAL_OPERATION_NONE),
+		  gnu_asm_operation(GNU_ASM_NONE),
 		  hosted_atomic_intrinsic(hosted_builtin::ATOMIC_INTRINSIC_NONE),
 		  text(0), binding(kNoBinding),
 		  object_binding(kNoBinding), selected_binding(kNoBinding),

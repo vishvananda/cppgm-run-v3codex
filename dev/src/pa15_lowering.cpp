@@ -35,6 +35,7 @@
 #include "pa28_virtual_base_lowering.h"
 #include "pa30_region_lowering.h"
 #include "pa33_static_lifecycle_lowering.h"
+#include "pa34_gnu_asm_lowering.h"
 #include <algorithm>
 #include <limits>
 #include <ostream>
@@ -74,7 +75,8 @@ class GraphLowerer :
 	private pa26_lowering_detail::RttiLowering<GraphLowerer>,
 	private pa27_lowering_detail::MemberPointerLowering<GraphLowerer>,
 	private pa30_lowering_detail::RegionLowering<GraphLowerer>,
-	private pa33_lowering_detail::StaticLifecycleLowering<GraphLowerer>
+	private pa33_lowering_detail::StaticLifecycleLowering<GraphLowerer>,
+	private pa34_lowering_detail::GnuAsmLowering<GraphLowerer>
 {
 public:
 	GraphLowerer(const SemanticGraphView& graph, TypedProgram& output,
@@ -214,6 +216,7 @@ private:
 	friend class pa27_lowering_detail::MemberPointerLowering<GraphLowerer>;
 	friend class pa30_lowering_detail::RegionLowering<GraphLowerer>;
 	friend class pa33_lowering_detail::StaticLifecycleLowering<GraphLowerer>;
+	friend class pa34_lowering_detail::GnuAsmLowering<GraphLowerer>;
 	enum StatementTaskKind : std::uint8_t
 	{
 		STATEMENT_NODE,
@@ -2036,6 +2039,7 @@ private:
 		if (stats_) ++stats_->lowered_nodes;
 		const DumpNode& record = arena_.nodes[node];
 		const NodeChildren children = Children(node);
+		if (TryLowerGnuAsmStatement(record, children)) return;
 		if (record.kind == DUMP_TYPE_ALIAS) return;
 		if (record.kind == DUMP_COMPOUND_STATEMENT ||
 			record.kind == DUMP_CONDITION_DECLARATION ||

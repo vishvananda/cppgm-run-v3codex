@@ -678,6 +678,7 @@ EntityRecord::EntityRecord()
 
 BindingRecord::BindingRecord()
 	: owner(kNoScope), name(0), qualified_name(0), object_section_name(0),
+	  assembly_name(0),
 	  kind(BIND_VARIABLE), type(kNoType),
 	  conversion_target(kNoType),
 	  next(kNoBinding), member_owner(kNoEntity), access_owner(kNoEntity),

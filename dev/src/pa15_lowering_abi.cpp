@@ -2088,6 +2088,8 @@ std::string MangleFunction(const pa11::Program& program,
 	using namespace abi_mangle;
 	using namespace pa11;
 	const BindingRecord& binding = program.bindings[node.binding];
+	if (binding.assembly_name != 0)
+		return program.names.Get(binding.assembly_name);
 	std::string qualified = program.names.Get(
 		binding.qualified_name != 0 ? binding.qualified_name : node.text);
 	if (binding.conversion_function)

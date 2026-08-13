@@ -2316,6 +2316,7 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 		parsed.type, parsed.parameters, true, false, spec.storage_class,
 		current_language_linkage_, IsNonthrowing(declarator, semantic_scope));
 	ConfigureFunctionExceptionSpecification(binding, declarator, semantic_scope);
+	ApplyFunctionAsmLabel(declarator, binding);
 	ApplyFunctionAbiTagAttributes(node, binding);
 	PublishInlineFunctionFacts(
 		binding, spec.inline_specifier || spec.is_constexpr);
@@ -2537,6 +2538,7 @@ void SemanticAnalyzer::AnalyzeCondition(NodeId node, ScopeId scope,
 void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 	std::uint32_t output_parent)
 {
+	if (AnalyzeGnuAsmStatement(node, scope, output_parent)) return;
 	if (arena_->IsTag(node, "compound-statement"))
 	{
 		AnalyzeCompound(node, scope, output_parent);

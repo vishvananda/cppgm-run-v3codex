@@ -331,6 +331,7 @@ private:
 	void ApplyVariableObjectAttributes(NodeId declaration, BindingId binding);
 	void ApplyClassAbiTagAttributes(NodeId declaration, EntityId entity);
 	void ApplyFunctionAbiTagAttributes(NodeId declaration, BindingId binding);
+	void ApplyFunctionAsmLabel(NodeId declarator, BindingId binding);
 	std::uint32_t MakeVariableDeclarationDump(TypeId type, NameId name,
 		BindingId binding, bool local, bool has_initializer,
 		bool* declaration_only);
@@ -345,6 +346,8 @@ private:
 	void AnalyzeCompound(NodeId node, ScopeId scope,
 		std::uint32_t output_parent);
 	void AnalyzeStatement(NodeId node, ScopeId scope,
+		std::uint32_t output_parent);
+	bool AnalyzeGnuAsmStatement(NodeId node, ScopeId scope,
 		std::uint32_t output_parent);
 	bool AnalyzeControlFlowLabelOrGoto(NodeId node, ScopeId scope,
 		std::uint32_t output_parent);

@@ -13,16 +13,17 @@ linear lowering/allocation, and no host compiler fallback.
 ## Current Failure Map
 
 - Preprocess: 0/45 failures; this boundary is complete.
-- Compile: 117/281 failures: 43 extension grammar/type cases (parser/type system), 38
+- Compile: 111/281 failures: 37 extension grammar/type cases (parser/type system), 38
   trait/layout/constant cases (semantic facts), and 36 template lookup/demand cases.
-- Run: 23/41 failures; 20 stop in the compile pipeline and 3 expose linked
-  backend/lifetime or forced-inline behavior. PA34 is 227/367 overall.
+- Run: 19/41 failures; 16 stop in the compile pipeline and 3 expose linked
+  backend/lifetime or forced-inline behavior. PA34 is 237/367 overall.
 
 ## Active Checkpoint
 
-No implementation is in flight. The next checkpoint should select one owner from the
-remaining 43 extension grammar/type cases—block pointers, GNU asm, or retained scalar
-vector layout—without conflating parser acceptance with backend behavior.
+No implementation is in flight. The next checkpoint should take retained scalar GNU
+vectors (two direct compile fixtures and shared type/layout ownership) or block pointers
+(four fixtures but a broader callable ABI) without conflating parser acceptance with
+typed representation and lowering.
 
 ## Performance Evidence
 
@@ -52,6 +53,12 @@ It recorded exactly 1/8/64 layout-member visits and 2/9/65 zero-offset-subobject
 semantic elapsed time was 0.49/0.58/1.43 ms. This supports O(members + visited
 zero-offset subobjects) placement with bounded reusable marker scratch.
 
+The GNU compiler-fence probe used 1/8/64 asm statements. It produced exactly 6/13/69
+semantic nodes and 2/9/65 LowIR instructions; native MIR stayed at two instructions
+because compiler fences intentionally emit no machine operation. RSS was
+8,164/8,124/8,248 KiB, supporting O(tokens + operands) parsing/checking and fixed-size
+per-statement lowering.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result | Validation |
@@ -64,3 +71,4 @@ zero-offset subobjects) placement with bounded reusable marker scratch.
 | C11/GNU atomic and sync | Canonical `_Atomic`, 16-byte alignment, compact registry/typed operands, first-class atomic LowIR, packed class bridge, and bounded bitwise CAS graphs; +12 | focused 12/12; scalar/class linked behavior; exact 1/8/64 scaling; PA34 216/367; PA1-33 4387/4387; audit pass |
 | Scalar floating builtins and abort | Sorted compact IDs, source-width classification, typed infinity/quiet/signaling NaNs, predicates, and nonreturning hosted `abort`; +6 | focused 6/6; exact abort ABI/effects; exact 1/8/64 instruction scaling; PA34 222/367; PA1-33 4387/4387; audit pass |
 | Class layout attributes | Canonical GNU aligned/packed and standard no-unique facts, entity/binding ownership, conflict-safe empty overlap, and template replay; +5 | focused compile 5/5 and linked copy assignment; 1/8/64 linear markers; PA34 227/367; PA1-33 4387/4387; audit pass |
+| GNU asm and asm labels | Structured operands, semantic operation IDs, typed LowIR effects, exact binding-owned ABI labels, and reallocation-safe class layout; +10 | focused 10/10; linked atomic/labels exact; 1/8/64 linear; PA34 237/367; PA1-33 4387/4387; audit pass |

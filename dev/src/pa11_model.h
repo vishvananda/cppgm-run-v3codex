@@ -583,7 +583,7 @@ struct FunctionTemplateAbiRecipe
 struct BindingRecord
 {
 	ScopeId owner;
-	NameId name, qualified_name, object_section_name;
+	NameId name, qualified_name, object_section_name, assembly_name;
 	BindingKind kind;
 	TypeId type, conversion_target;
 	BindingId next;

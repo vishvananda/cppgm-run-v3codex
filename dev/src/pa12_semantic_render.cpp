@@ -59,6 +59,9 @@ void SemanticAnalyzer::RenderLine(const DumpNode& node, std::size_t depth)
 		output_ << "labeled-statement " << program_->names.Get(node.text); break;
 	case DUMP_GOTO_STATEMENT:
 		output_ << "goto-statement " << program_->names.Get(node.text); break;
+	case DUMP_GNU_ASM_STATEMENT:
+		output_ << "gnu-asm-statement " << static_cast<unsigned>(
+			node.gnu_asm_operation); break;
 	case DUMP_CALL_EXPRESSION:
 		output_ << "call-expression " << category << ' '
 			<< program_->RenderType(node.type); break;

@@ -9,6 +9,7 @@
 #include "pa25_lambda_capture_syntax.h"
 #include "pa25_range_for_syntax.h"
 #include "pa30_region_syntax.h"
+#include "pa34_gnu_asm_syntax.h"
 #include <algorithm>
 #include <chrono>
 #include <cctype>
@@ -29,13 +30,15 @@ class Parser : private ParserNameFacts<Parser>,
 	private hosted_extension::Syntax<Parser>,
 	private pa25_syntax_detail::LambdaCaptureSyntax<Parser>,
 	private pa25_syntax_detail::RangeForSyntax<Parser>,
-	private pa30_syntax_detail::RegionSyntax<Parser>
+	private pa30_syntax_detail::RegionSyntax<Parser>,
+	private pa34_syntax_detail::GnuAsmSyntax<Parser>
 {
 friend class ParserNameFacts<Parser>; friend class hosted_builtin::Syntax<Parser>;
 friend class hosted_extension::Syntax<Parser>;
 friend class pa25_syntax_detail::LambdaCaptureSyntax<Parser>;
 friend class pa25_syntax_detail::RangeForSyntax<Parser>;
 friend class pa30_syntax_detail::RegionSyntax<Parser>;
+friend class pa34_syntax_detail::GnuAsmSyntax<Parser>;
 public:
 	Parser(const std::vector<SyntaxToken>& tokens, StringTable& strings,
 		SyntaxArena& arena, SyntaxStats* stats)
@@ -1063,6 +1066,7 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 	}
 	while (true)
 	{
+		if (TryParseGnuAsmLabel(result)) { consumed = true; continue; }
 		if (AtHostedAttribute())
 		{
 			std::vector<NodeId> attributes;
@@ -1435,7 +1439,6 @@ NodeId Parser::ParsePostfixExpression() {
 	if (value == kNoNode) return kNoNode;
 	return ParsePostfixSuffixes(value);
 }
-
 NodeId Parser::ParsePostfixSuffixes(NodeId value) {
 	while (true) {
 		if (At(OP_LBRACE) && arena_.IsTag(value, "id-expression") &&
@@ -1825,6 +1828,8 @@ NodeId Parser::ParseCompoundStatement()
 NodeId Parser::ParseStatement()
 {
 	SkipAttributes();
+	const NodeId gnu_asm = TryParseGnuAsmStatement();
+	if (gnu_asm != kNoNode) return gnu_asm;
 	if (At(OP_LBRACE)) return ParseCompoundStatement();
 	if (AtIdentifier() && AtOffset(1, OP_COLON))
 	{
@@ -2129,7 +2134,6 @@ NodeId Parser::ParseNestedTemplateParameterClause()
 	ExpectCloseAngle();
 	return clause;
 }
-
 NodeId Parser::ParseTypeTemplateParameter()
 {
 	const NodeId parameter = arena_.Make("type-parameter");
@@ -2161,7 +2165,6 @@ NodeId Parser::ParseTypeTemplateParameter()
 	}
 	return parameter;
 }
-
 NodeId Parser::ParseNonTypeTemplateParameter()
 {
 	const NodeId parameter = arena_.Make("non-type-template-parameter");
@@ -2200,7 +2203,6 @@ NodeId Parser::ParseNonTypeTemplateParameter()
 	}
 	return parameter;
 }
-
 NodeId Parser::ParseTemplateParameter()
 {
 	if (!StartsDependentNonTypeTemplateParameter() &&
@@ -2208,7 +2210,6 @@ NodeId Parser::ParseTemplateParameter()
 		return ParseTypeTemplateParameter();
 	return ParseNonTypeTemplateParameter();
 }
-
 NodeId Parser::ParseTemplate(bool in_class)
 {
 	if (!Match(KW_TEMPLATE)) return kNoNode;
@@ -2248,7 +2249,6 @@ NodeId Parser::ParseTemplate(bool in_class)
 	}
 	return declaration;
 }
-
 NodeId Parser::ParseCtorInitializer()
 {
 	if (!Match(OP_COLON)) return kNoNode;

@@ -28,6 +28,7 @@ void SemanticAnalyzer::AnalyzeSimpleFunctionDeclaration(NodeId item,
 		parsed.type, parsed.parameters, false, false, spec.storage_class,
 		current_language_linkage_, IsNonthrowing(declarator, syntax_scope));
 	ConfigureFunctionExceptionSpecification(function, declarator, syntax_scope);
+	ApplyFunctionAsmLabel(declarator, function);
 	ApplyFunctionAbiTagAttributes(item, function);
 	PublishInlineFunctionFacts(
 		function, spec.inline_specifier || spec.is_constexpr);
