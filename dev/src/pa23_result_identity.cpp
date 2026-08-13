@@ -343,13 +343,26 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 			atoms->push_back(ResultIdentityAtom(
 				RESULT_IDENTITY_QUALIFIED_BEGIN,
 				FindChild(reference.node, "global-qualifier") != kNoNode));
+			NamePath component_path;
+			component_path.global =
+				FindChild(reference.node, "global-qualifier") != kNoNode;
+			bool resolved_type_prefix = false;
 			for (std::size_t c = 0; c < components.size(); ++c)
 			{
 				const NameId name = arena_->SemanticPayloadId(components[c]);
-				NamePath component_path;
 				component_path.Push(name);
-				const LookupResult marker = LookupPath(
-					reference.scope, component_path, LOOKUP_TYPE);
+				NamePath direct_component;
+				direct_component.Push(name);
+				LookupResult marker = LookupPath(
+					reference.scope, direct_component, LOOKUP_TYPE);
+				if (!resolved_type_prefix && marker.type == kNoType &&
+					marker.type_declaration == kNoBinding &&
+					component_path.Size() > 1)
+					marker = LookupPath(
+						reference.scope, component_path, LOOKUP_TYPE);
+				if (marker.type != kNoType ||
+					marker.type_declaration != kNoBinding)
+					resolved_type_prefix = true;
 				atoms->push_back(ResultIdentityAtom(
 					RESULT_IDENTITY_COMPONENT, name));
 				if (marker.type_declaration != kNoBinding)

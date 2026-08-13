@@ -163,6 +163,14 @@ public:
 	bool Complete() const { return position_ == atoms_.size(); }
 
 private:
+	bool IsTypeParameterName(NameId name) const
+	{
+		for (std::size_t parameter = 0; parameter < parameters_.size(); ++parameter)
+			if (parameters_[parameter].kind == TEMPLATE_ARGUMENT_TYPE &&
+				parameters_[parameter].name == name) return true;
+		return false;
+	}
+
 	TemplateArgumentKind ArgumentKind(EntityId entity, std::size_t ordinal) const
 	{
 		if (entity >= class_template_by_entity_.size())
@@ -272,19 +280,17 @@ private:
 			if (owner != kNoFunctionTemplateAbiType)
 				return AppendAbiType(program_, FunctionTemplateAbiType(
 					FUNCTION_TEMPLATE_ABI_TYPE_MEMBER, owner, component.name));
+			for (std::size_t parameter = 0;
+				parameter < parameters_.size(); ++parameter)
+				if (parameters_[parameter].kind == TEMPLATE_ARGUMENT_TYPE &&
+					parameters_[parameter].name == component.name)
+					return AppendAbiType(program_, FunctionTemplateAbiType(
+						FUNCTION_TEMPLATE_ABI_TYPE_PARAMETER,
+						kNoFunctionTemplateAbiType, 0, 0,
+						static_cast<std::uint32_t>(parameter)));
 			if (component.entity == kNoEntity ||
 				component.entity >= program_->entities.size())
-			{
-				for (std::size_t parameter = 0;
-					parameter < parameters_.size(); ++parameter)
-					if (parameters_[parameter].kind == TEMPLATE_ARGUMENT_TYPE &&
-						parameters_[parameter].name == component.name)
-						return AppendAbiType(program_, FunctionTemplateAbiType(
-							FUNCTION_TEMPLATE_ABI_TYPE_PARAMETER,
-							kNoFunctionTemplateAbiType, 0, 0,
-							static_cast<std::uint32_t>(parameter)));
 				return kNoFunctionTemplateAbiType;
-			}
 			return AppendAbiType(program_, FunctionTemplateAbiType(
 				FUNCTION_TEMPLATE_ABI_TYPE_CONCRETE, kNoFunctionTemplateAbiType,
 				0, 0, kNoTemplateParameter, 0,
@@ -302,6 +308,20 @@ private:
 		program_->function_template_abi_arguments.insert(
 			program_->function_template_abi_arguments.end(),
 			component.arguments.begin(), component.arguments.end());
+		if (owner == kNoFunctionTemplateAbiType &&
+			component.entity < class_template_by_entity_.size())
+		{
+			const std::uint32_t index =
+				class_template_by_entity_[component.entity];
+			if (index != kNoDumpEdge && index < class_templates_.size() &&
+				class_templates_[index].template_parameter_proxy)
+				return AppendAbiType(program_, FunctionTemplateAbiType(
+					FUNCTION_TEMPLATE_ABI_TYPE_TEMPLATE_PARAMETER_SPECIALIZATION,
+					kNoFunctionTemplateAbiType, component.name, 0,
+					class_templates_[index].template_parameter_ordinal, 0,
+					kNoType, component.entity, begin,
+					static_cast<std::uint32_t>(component.arguments.size())));
+		}
 		return AppendAbiType(program_, FunctionTemplateAbiType(
 			FUNCTION_TEMPLATE_ABI_TYPE_TEMPLATE_SPECIALIZATION, owner,
 			component.name, 0, kNoTemplateParameter, 0, kNoType,
@@ -339,6 +359,14 @@ private:
 			}
 			else
 			{
+				// Namespace qualifiers have no type entity.  Their full path is
+				// carried by the first following type entity and reconstructed
+				// from that entity's canonical owner during ABI lowering.
+				if (root == kNoFunctionTemplateAbiType &&
+					component.entity == kNoEntity &&
+					component.arguments.empty() && !terminal &&
+					!IsTypeParameterName(component.name))
+					continue;
 				root = ComponentType(component, root);
 				if (root == kNoFunctionTemplateAbiType)
 					return kNoFunctionTemplateAbiType;
@@ -359,11 +387,10 @@ private:
 	std::size_t position_;
 };
 
-FunctionTemplateAbiTypeId ApplyResultModifiers(Program* program,
-	TypeId function_shape, FunctionTemplateAbiTypeId root)
+FunctionTemplateAbiTypeId ApplyTypeModifiers(Program* program,
+	TypeId shape, FunctionTemplateAbiTypeId root)
 {
-	if (root == kNoFunctionTemplateAbiType || function_shape == kNoType ||
-		!program->types.IsFunction(function_shape)) return root;
+	if (root == kNoFunctionTemplateAbiType || shape == kNoType) return root;
 	struct Modifier
 	{
 		FunctionTemplateAbiTypeKind kind;
@@ -372,7 +399,7 @@ FunctionTemplateAbiTypeId ApplyResultModifiers(Program* program,
 		std::uint8_t cv;
 	};
 	std::vector<Modifier> modifiers;
-	TypeId source = program->types.Get(function_shape).child;
+	TypeId source = shape;
 	for (;;)
 	{
 		const TypeRecord& record = program->types.Get(source);
@@ -492,6 +519,34 @@ bool HasRetainedParameterRoot(const Program& program,
 		FUNCTION_TEMPLATE_RESULT_QUALIFIED_BEGIN ||
 		ResultIdentityKind(atoms[1]) != FUNCTION_TEMPLATE_RESULT_COMPONENT)
 		return false;
+	std::size_t terminal = atoms.size();
+	bool dependent = false;
+	for (std::size_t atom = 1; atom < atoms.size(); ++atom)
+	{
+		const FunctionTemplateResultIdentityAtomKind kind =
+			ResultIdentityKind(atoms[atom]);
+		if (kind == FUNCTION_TEMPLATE_RESULT_COMPONENT) terminal = atom;
+		else if (kind == FUNCTION_TEMPLATE_RESULT_PARAMETER) dependent = true;
+	}
+	if (dependent && terminal < atoms.size())
+	{
+		bool terminal_resolved = false;
+		for (std::size_t atom = terminal + 1; atom < atoms.size(); ++atom)
+		{
+			const FunctionTemplateResultIdentityAtomKind kind =
+				ResultIdentityKind(atoms[atom]);
+			if (kind == FUNCTION_TEMPLATE_RESULT_DECLARATION ||
+				kind == FUNCTION_TEMPLATE_RESULT_ENTITY ||
+				kind == FUNCTION_TEMPLATE_RESULT_ARGUMENTS_BEGIN)
+				terminal_resolved = true;
+			if (kind == FUNCTION_TEMPLATE_RESULT_QUALIFIED_END) break;
+		}
+		// A terminal dependent member has no canonical semantic type of its
+		// own.  Retain its owner/member source DAG; an ordinary class-template
+		// specialization remains on the established semantic TypeId path so
+		// standard substitutions and cross-parameter slots stay shared.
+		if (!terminal_resolved) return true;
+	}
 	const NameId source_root = static_cast<NameId>(
 		ResultIdentityValue(atoms[1]));
 	for (std::size_t parameter = 0;
@@ -530,6 +585,8 @@ void SemanticAnalyzer::PublishFunctionTemplateResultAbiType(
 	pattern->abi_result_type = kNoFunctionTemplateAbiType;
 	pattern->abi_template_parameter_types.assign(
 		pattern->parameters.size(), kNoFunctionTemplateAbiType);
+	pattern->abi_function_parameter_types.assign(
+		declarator.parameters.size(), kNoFunctionTemplateAbiType);
 	for (std::size_t p = 0; p < pattern->parameters.size(); ++p)
 	{
 		if (pattern->parameters[p].kind != TEMPLATE_ARGUMENT_INTEGRAL)
@@ -541,6 +598,11 @@ void SemanticAnalyzer::PublishFunctionTemplateResultAbiType(
 		probe.parameters = pattern->parameters;
 		probe.lexical_scope = pattern->lexical_scope;
 		probe.result_root_structure = root;
+		probe.function_parameter_names.reserve(declarator.parameters.size());
+		for (std::size_t parameter = 0;
+			parameter < declarator.parameters.size(); ++parameter)
+			probe.function_parameter_names.push_back(
+				declarator.parameters[parameter].name);
 		InternExpandedFunctionTemplateResult(&probe);
 		if (probe.expanded_result_identity ==
 			kNoFunctionTemplateResultIdentity) continue;
@@ -554,6 +616,39 @@ void SemanticAnalyzer::PublishFunctionTemplateResultAbiType(
 		if (type != kNoFunctionTemplateAbiType && reader.Complete())
 		{
 			pattern->abi_template_parameter_types[p] = type;
+			publication.Commit();
+		}
+	}
+	for (std::size_t p = 0; p < declarator.parameters.size(); ++p)
+	{
+		if (!declarator.parameters[p].nondeduced) continue;
+		const NodeId root = FindDescendant(*arena_,
+			declarator.parameters[p].nondeduced_type_syntax,
+			"structured-type-name");
+		if (root == kNoNode) continue;
+		FunctionTemplatePattern probe;
+		probe.parameters = pattern->parameters;
+		probe.lexical_scope = pattern->lexical_scope;
+		probe.result_root_structure = root;
+		probe.function_parameter_names.reserve(declarator.parameters.size());
+		for (std::size_t parameter = 0;
+			parameter < declarator.parameters.size(); ++parameter)
+			probe.function_parameter_names.push_back(
+				declarator.parameters[parameter].name);
+		InternExpandedFunctionTemplateResult(&probe);
+		if (probe.expanded_result_identity ==
+			kNoFunctionTemplateResultIdentity) continue;
+		std::vector<std::uint64_t> atoms;
+		function_template_result_identities_.CopyAtoms(
+			probe.expanded_result_identity, &atoms);
+		AbiPublication publication(program_);
+		AbiIdentityReader reader(program_, class_templates_,
+			class_template_pattern_by_entity_, pattern->parameters, atoms);
+		const FunctionTemplateAbiTypeId type = reader.ParseType();
+		if (type != kNoFunctionTemplateAbiType && reader.Complete())
+		{
+			pattern->abi_function_parameter_types[p] = ApplyTypeModifiers(
+				program_, declarator.parameters[p].function_type, type);
 			publication.Commit();
 		}
 	}
@@ -573,8 +668,8 @@ void SemanticAnalyzer::PublishFunctionTemplateResultAbiType(
 			const FunctionTemplateAbiTypeId root = reader.ParseType();
 			if (root != kNoFunctionTemplateAbiType && reader.Complete())
 			{
-				pattern->abi_result_type = ApplyResultModifiers(
-					program_, pattern->shape_type, root);
+				pattern->abi_result_type = ApplyTypeModifiers(program_,
+					program_->types.Get(pattern->shape_type).child, root);
 				publication.Commit();
 			}
 		}
@@ -593,8 +688,8 @@ void SemanticAnalyzer::PublishFunctionTemplateResultAbiType(
 		FunctionTemplateAbiType(FUNCTION_TEMPLATE_ABI_TYPE_DECLTYPE,
 			kNoFunctionTemplateAbiType, 0, 0, kNoTemplateParameter, 0,
 			kNoType, kNoEntity, 0, 0, expression));
-	pattern->abi_result_type = ApplyResultModifiers(
-		program_, pattern->shape_type, root);
+	pattern->abi_result_type = ApplyTypeModifiers(program_,
+		program_->types.Get(pattern->shape_type).child, root);
 	publication.Commit();
 }
 

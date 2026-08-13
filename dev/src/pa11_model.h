@@ -425,6 +425,7 @@ enum FunctionTemplateAbiTypeKind
 	FUNCTION_TEMPLATE_ABI_TYPE_PARAMETER,
 	FUNCTION_TEMPLATE_ABI_TYPE_MEMBER,
 	FUNCTION_TEMPLATE_ABI_TYPE_TEMPLATE_SPECIALIZATION,
+	FUNCTION_TEMPLATE_ABI_TYPE_TEMPLATE_PARAMETER_SPECIALIZATION,
 	FUNCTION_TEMPLATE_ABI_TYPE_DECLTYPE,
 	FUNCTION_TEMPLATE_ABI_TYPE_QUALIFIED,
 	FUNCTION_TEMPLATE_ABI_TYPE_POINTER,
@@ -530,7 +531,8 @@ struct FunctionTemplateAbiRecipe
 	TypeId function_type;
 	FunctionTemplateAbiTypeId result_type;
 	std::uint32_t parameter_shape_begin, template_parameter_type_begin,
-		template_parameter_count;
+		function_parameter_type_begin, template_parameter_count,
+		function_parameter_count;
 	bool template_parameter_pack;
 	bool function_parameter_pack;
 	bool overloaded_pattern;
@@ -545,7 +547,9 @@ struct FunctionTemplateAbiRecipe
 		  result_type(kNoFunctionTemplateAbiType),
 		  parameter_shape_begin(parameter_shape_begin_value),
 		  template_parameter_type_begin(0),
+		  function_parameter_type_begin(0),
 		  template_parameter_count(template_parameter_count_value),
+		  function_parameter_count(0),
 		  template_parameter_pack(template_parameter_pack_value),
 		  function_parameter_pack(function_parameter_pack_value),
 		  overloaded_pattern(overloaded_pattern_value) {}
@@ -747,6 +751,8 @@ public:
 		function_template_abi_expressions;
 	std::vector<FunctionTemplateAbiTypeId>
 		function_template_abi_template_parameter_types;
+	std::vector<FunctionTemplateAbiTypeId>
+		function_template_abi_function_parameter_types;
 	std::vector<FunctionTemplateAbiRecipe> function_template_abi_recipes;
 	std::size_t lookup_queries, lookup_scope_visits, lookup_edge_visits;
 	std::size_t lookup_cache_hits, lookup_cache_misses;

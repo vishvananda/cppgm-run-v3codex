@@ -1091,6 +1091,7 @@ struct FunctionTemplatePattern
 	FunctionTemplateResultIdentityId expanded_result_identity;
 	FunctionTemplateAbiTypeId abi_result_type;
 	std::vector<FunctionTemplateAbiTypeId> abi_template_parameter_types;
+	std::vector<FunctionTemplateAbiTypeId> abi_function_parameter_types;
 	FunctionTemplateAbiRecipeId abi_recipe;
 	bool result_root_global;
 	bool expanded_result_has_alias;

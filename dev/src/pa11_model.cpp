@@ -2952,6 +2952,8 @@ std::size_t Program::StorageBytes() const
 			sizeof(FunctionTemplateAbiExpression) +
 		function_template_abi_template_parameter_types.capacity() *
 			sizeof(FunctionTemplateAbiTypeId) +
+		function_template_abi_function_parameter_types.capacity() *
+			sizeof(FunctionTemplateAbiTypeId) +
 		function_template_abi_recipes.capacity() *
 			sizeof(FunctionTemplateAbiRecipe);
 	return bytes;

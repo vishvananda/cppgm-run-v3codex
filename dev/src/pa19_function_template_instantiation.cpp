@@ -38,6 +38,11 @@ FunctionTemplateAbiRecipeId PublishFunctionTemplateAbiRecipe(Program* program,
 			std::numeric_limits<std::uint32_t>::max() - parameters.size() ||
 		program->function_template_abi_template_parameter_types.size() >
 			std::numeric_limits<std::uint32_t>::max() - parameters.size() ||
+		pattern.abi_function_parameter_types.size() >
+			std::numeric_limits<std::uint32_t>::max() ||
+		program->function_template_abi_function_parameter_types.size() >
+			std::numeric_limits<std::uint32_t>::max() -
+				pattern.abi_function_parameter_types.size() ||
 		program->function_template_abi_recipes.size() >=
 			kNoFunctionTemplateAbiRecipe)
 		throw std::runtime_error("too many function template ABI recipes");
@@ -45,6 +50,9 @@ FunctionTemplateAbiRecipeId PublishFunctionTemplateAbiRecipe(Program* program,
 		program->function_template_parameter_shapes.size());
 	const std::uint32_t source_type_begin = static_cast<std::uint32_t>(
 		program->function_template_abi_template_parameter_types.size());
+	const std::uint32_t function_source_type_begin =
+		static_cast<std::uint32_t>(
+			program->function_template_abi_function_parameter_types.size());
 	for (std::size_t parameter = 0; parameter < parameters.size(); ++parameter)
 	{
 		const TypeId shape = parameter_shapes[parameter];
@@ -66,6 +74,15 @@ FunctionTemplateAbiRecipeId PublishFunctionTemplateAbiRecipe(Program* program,
 		program->function_template_abi_template_parameter_types.end(),
 		pattern.abi_template_parameter_types.begin(),
 		pattern.abi_template_parameter_types.end());
+	if (!program->types.IsFunction(pattern.shape_type) ||
+		program->types.Get(pattern.shape_type).parameter_count !=
+			pattern.abi_function_parameter_types.size())
+		throw std::logic_error(
+			"function template ABI parameter source-type recipe is incomplete");
+	program->function_template_abi_function_parameter_types.insert(
+		program->function_template_abi_function_parameter_types.end(),
+		pattern.abi_function_parameter_types.begin(),
+		pattern.abi_function_parameter_types.end());
 	const FunctionTemplateAbiRecipeId recipe =
 		static_cast<FunctionTemplateAbiRecipeId>(
 			program->function_template_abi_recipes.size());
@@ -79,6 +96,11 @@ FunctionTemplateAbiRecipeId PublishFunctionTemplateAbiRecipe(Program* program,
 		pattern.abi_result_type;
 	program->function_template_abi_recipes.back().template_parameter_type_begin =
 		source_type_begin;
+	program->function_template_abi_recipes.back().function_parameter_type_begin =
+		function_source_type_begin;
+	program->function_template_abi_recipes.back().function_parameter_count =
+		static_cast<std::uint32_t>(
+			pattern.abi_function_parameter_types.size());
 	return recipe;
 }
 

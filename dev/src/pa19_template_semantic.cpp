@@ -2697,6 +2697,7 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 		const EntityId entity = program_->NewEntity(name,
 			NAMED_TYPENAME_PARAMETER, false, kNoType, pattern.owner,
 			pattern.name);
+		program_->entities[entity].template_parameter_ordinal = pattern.template_parameter_ordinal;
 		const TypeId type = program_->entities[entity].type;
 		const BindingId binding = program_->AddBinding(pattern.owner,
 			BIND_TYPE, name, type, false, 0, NAMED_TYPENAME_PARAMETER);

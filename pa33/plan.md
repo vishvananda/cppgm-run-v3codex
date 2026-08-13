@@ -11,12 +11,12 @@ not recover semantic facts from strings.
 
 ## Current Failure Map
 
-Current result: **62/94 PA33 tests pass**, improved from the 59/94 turn-start
-baseline; PA1-PA32 pass (4291/4291).
+Current result: **66/94 PA33 tests pass**, improved from the 62/94 checkpoint
+baseline (and 59/94 stage-start baseline); PA1-PA32 pass (4291/4291).
 
 | Owner / shared behavior | Count | Failing cases |
 | --- | ---: | --- |
-| Remaining ABI name publication | 8 | covariant layout-finalization symbols; dependent enable-if, owner-prefix, qualified-member, ratio/function, local-result RTTI, nested-lambda, and template-template names |
+| Remaining ABI name publication | 4 | covariant layout-finalization symbols; dependent enable-if and ratio/function expressions; nested-lambda owner identity |
 | Builtin/type frontend and varargs lowering | 6 | `alloca`, transform alias, dependent NTTP expression, unnamed local-class constructor, `va_arg`, `va_start` |
 | Host EH semantic/lowering regions | 6 | dynamic exception specification, noexcept termination, rethrow outer cleanup, two switch/catch cases, out-of-line virtual-base RTTI catch |
 | Polymorphic ODR ownership | 1 | duplicate inline-header polymorphic class |
@@ -26,52 +26,57 @@ baseline; PA1-PA32 pass (4291/4291).
 
 ## Active Checkpoint
 
-**Complete — canonical ABI-tag publication for host artifacts.** Preserve GNU `abi_tag`
-attributes from both class-key and function-declarator positions, publish each
-tag set on the canonical semantic entity or function binding, and consume that
-typed fact when mangling functions and class types. The existing lifecycle
-alias owner must thereby emit identically tagged C1/C2 and D1/D2 names, while
-the polymorphism owner derives tagged `_ZTI`, `_ZTS`, and `_ZTV` names from the
-same class `TypeId`.
+**Complete — canonical dependent callable-type recipes.** Extend the PA32
+source-type DAG from template results and non-type parameter declarations to
+nondeduced function parameter types. Preserve qualified dependent owners before
+semantic analysis substitutes the placeholder, represent a template-template
+parameter application by ordinal, and retain unresolved dependent result
+members without replacing the established semantic path for ordinary template
+specializations. Consume the typed recipes for ordinary symbols and local-type
+contexts.
 
 - Spec requirements: canonical semantic identity/facts (§2); lowering consumes
-  recorded facts without name lookup (§6); every ABI entry point has stable
-  identity and is lowered once (§6); direct ELF symbol publication (§7); compact
-  shared child storage and explicit ownership (§8); work proportional to source
-  declarations/tags (§9); no filename or spelling shortcuts (§10).
-- Ownership/data flow: parser retains compact semantic-only attribute nodes;
-  semantic analysis validates/decodes literals and stores interned `NameId`
-  ranges on canonical `EntityRecord`/`BindingRecord`; `AbiFactBuilder` translates
-  those ranges into existing typed ABI tag facts; lifecycle and polymorphism
-  lowering continue to consume mangled output through their existing owners.
-- Complexity: one scan of the directly owned attribute edges per affected
-  declaration, O(attributes + tag bytes); ABI publication appends O(tags) per
-  demanded symbol. Tags use interned names and contiguous program-owned ranges,
-  with no global search or per-tag owning heap node.
-- Validation: the three ABI-tag PA33 cases, representative untagged lifecycle
-  and RTTI cases, PA33 report, PA1-PA32 report, file audit, and a generated
-  increasing tagged-class series measuring time/RSS and semantic counters.
+  recorded facts without reparsing names (§6); local entities use their retained
+  callable context (§6); compact shared child storage and explicit ownership
+  (§8); work proportional to syntax and emitted ABI nodes (§9); no test-name or
+  spelling shortcuts (§10).
+- Ownership/data flow: `BuildParameters` retains each nondeduced source root;
+  function-template publication expands aliases once into immutable
+  `FunctionTemplateAbiType` nodes and stores a contiguous per-recipe parameter
+  slice; template-template proxy specializations retain their parameter ordinal;
+  specialization bindings retain the recipe ID; `AbiFactBuilder` consumes the
+  typed result/parameter nodes for ordinary symbols and local RTTI contexts.
+- Complexity: O(source type syntax + published DAG nodes) once per template
+  pattern and O(encoded nodes) per demanded specialization. Recipe slices are
+  contiguous IDs; publication uses bounded iterative syntax walks and performs
+  no emitted-name search.
+- Validation: focused owner-prefix, qualified-member-owner, template-template,
+  and local-result RTTI PA33 cases; the complete PA33 report; PA1-PA32 report;
+  file audit; and an increasing generated series of dependent function-template
+  declarations measuring time, RSS, retained nodes, and object size.
 
 ## Performance Evidence
 
-The generated series declares N tagged polymorphic classes and one demanded
-object per class, keeping tags/entity constant. `CPPGM_DRIVER_STATS=1` and GNU
-`time` show proportional source, semantic, lowering, and direct-object work:
+The generated series declares N distinct dependent owner templates and N
+function templates with nondeduced `typename IdN<T>::type *` parameters, then
+demands each specialization. `CPPGM_DRIVER_STATS=1` and GNU `time` show
+proportional publication, lowering, and direct-object work:
 
-| Classes | Source bytes | Semantic nodes | Functions | LowIR / MIR insns | Semantic peak bytes | Object bytes | Elapsed s | RSS KiB |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 32 | 2,382 | 390 | 98 | 930 / 968 | 487,900 | 620,368 | 0.02 | 12,556 |
-| 64 | 4,782 | 774 | 194 | 1,858 / 1,928 | 971,004 | 1,239,400 | 0.03 | 17,320 |
-| 128 | 9,694 | 1,542 | 386 | 3,714 / 3,848 | 1,937,324 | 2,483,888 | 0.07 | 26,860 |
-| 256 | 19,806 | 3,078 | 770 | 7,426 / 7,688 | 3,870,252 | 4,989,664 | 0.14 | 46,152 |
+| Templates | Source bytes | Semantic nodes | Functions | LowIR / MIR insns | Semantic peak bytes | Typed bytes | Object bytes | Elapsed s | RSS KiB |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 32 | 4,382 | 426 | 33 | 261 / 303 | 1,237,329 | 85,610 | 133,560 | 0.01 | 9,120 |
+| 64 | 8,766 | 842 | 65 | 517 / 591 | 2,464,321 | 170,154 | 263,704 | 0.03 | 10,084 |
+| 128 | 17,674 | 1,674 | 129 | 1,029 / 1,167 | 4,919,101 | 339,298 | 524,480 | 0.05 | 12,512 |
+| 256 | 35,850 | 3,338 | 257 | 2,053 / 2,319 | 9,825,201 | 677,730 | 1,047,232 | 0.10 | 17,264 |
 
-An 8x increase yields approximately 8x nodes, functions, instructions, bytes,
-and elapsed time. Attribute collection visits only direct owned edges; tag sets
-are interned-name slices, and special-symbol publication performs no semantic
-lookup or whole-program retry.
+An 8x increase yields approximately 8x nodes, functions, instructions, semantic
+and typed bytes, object bytes, and elapsed time. Recipe publication is a single
+bounded syntax walk per pattern; lowering follows contiguous node/argument
+slices without emitted-name lookup or whole-program retry.
 
 ## Completed Checkpoints
 
 | Checkpoint | Result |
 | --- | --- |
 | PA33 ABI-tag publication checkpoint | Pass — C1/C2, D1/D2, RTTI name/object, and vtable symbols carry canonical tags; PA33 59→62, PA1-PA32 4291/4291, file audit pass. |
+| PA33 dependent callable-type recipe checkpoint | Pass — owner-prefix, qualified-member-owner, template-template, and local-result RTTI names are canonical; PA33 62→66, PA1-PA32 4291/4291, file audit pass. |
