@@ -88,34 +88,48 @@ bool HasClassTemplateSpecializationArgument(const Program& program,
 }
 
 bool TypeContainsDependentTemplateShape(const Program& program, TypeId type,
-	std::size_t depth)
+	std::size_t)
 {
-	if (type == kNoType || depth > program.types.Size()) return true;
-	type = program.types.RemoveTopCv(type);
-	const TypeRecord& record = program.types.Get(type);
-	if (record.kind == TYPE_POINTER || record.kind == TYPE_LVALUE_REFERENCE ||
-		record.kind == TYPE_RVALUE_REFERENCE || record.kind == TYPE_ARRAY ||
-		record.kind == TYPE_MEMBER_POINTER)
-		return TypeContainsDependentTemplateShape(
-			program, record.child, depth + 1);
-	if (record.kind != TYPE_NAMED) return false;
-	const EntityRecord& entity = program.entities[record.entity];
-	if (entity.flavor == NAMED_TYPENAME_PARAMETER ||
-		entity.flavor == NAMED_TEMPLATE_PARAMETER) return true;
-	const std::size_t first = entity.template_argument_begin;
-	const std::size_t count = entity.template_argument_count;
-	if (first == kNoBinding) return false;
-	if (first > program.canonical_template_arguments.size() ||
-		count > program.canonical_template_arguments.size() - first)
-		return true;
-	for (std::size_t i = 0; i < count; ++i)
+	if (type == kNoType) return true;
+	std::vector<TypeId> pending(1, type);
+	std::vector<unsigned char> visited(program.types.Size() + 1, 0);
+	while (!pending.empty())
 	{
-		const TemplateArgument& argument =
-			program.canonical_template_arguments[first + i];
-		if (argument.IsDependent()) return true;
-		if (argument.kind == TEMPLATE_ARGUMENT_TYPE &&
-			TypeContainsDependentTemplateShape(
-				program, argument.type, depth + 1)) return true;
+		type = pending.back();
+		pending.pop_back();
+		if (type == kNoType || type >= visited.size()) return true;
+		type = program.types.RemoveTopCv(type);
+		if (type >= visited.size()) return true;
+		if (visited[type]) continue;
+		visited[type] = 1;
+		const TypeRecord& record = program.types.Get(type);
+		if (record.kind == TYPE_POINTER ||
+			record.kind == TYPE_LVALUE_REFERENCE ||
+			record.kind == TYPE_RVALUE_REFERENCE || record.kind == TYPE_ARRAY ||
+			record.kind == TYPE_MEMBER_POINTER)
+		{
+			pending.push_back(record.child);
+			continue;
+		}
+		if (record.kind != TYPE_NAMED) continue;
+		if (record.entity >= program.entities.size()) return true;
+		const EntityRecord& entity = program.entities[record.entity];
+		if (entity.flavor == NAMED_TYPENAME_PARAMETER ||
+			entity.flavor == NAMED_TEMPLATE_PARAMETER) return true;
+		const std::size_t first = entity.template_argument_begin;
+		const std::size_t count = entity.template_argument_count;
+		if (first == kNoBinding) continue;
+		if (first > program.canonical_template_arguments.size() ||
+			count > program.canonical_template_arguments.size() - first)
+			return true;
+		for (std::size_t i = 0; i < count; ++i)
+		{
+			const TemplateArgument& argument =
+				program.canonical_template_arguments[first + i];
+			if (argument.IsDependent()) return true;
+			if (argument.kind == TEMPLATE_ARGUMENT_TYPE)
+				pending.push_back(argument.type);
+		}
 	}
 	return false;
 }
@@ -259,6 +273,15 @@ std::string ClassTemplateSpecializationScopeName(std::size_t pattern,
 {
 	std::ostringstream result;
 	result << "__cppgm_class_template_" << pattern << '_' << ordinal;
+	return result.str();
+}
+
+std::string ClassTemplateSpecializationStorageName(std::size_t pattern,
+	TemplateArgumentListId arguments, TemplateArgumentPartitionId partition)
+{
+	std::ostringstream result;
+	result << "__cppgm_class_template_identity_" << pattern << '_'
+		<< arguments << '_' << partition;
 	return result.str();
 }
 
@@ -1730,7 +1753,16 @@ void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
 		template_scope = BindClassTemplateArguments(pattern, arguments);
 	}
 	class_template_specialization_states_[binding] = 1;
-	const std::string specialization_name =
+	const EntityId specialization_entity =
+		EntityOf(program_->bindings[binding].type);
+	if (specialization_entity == kNoEntity || specialization_entity >=
+		program_->entities.size())
+		throw std::logic_error("class specialization has no canonical entity");
+	const TemplateArgumentListId specialization_arguments =
+		program_->entities[specialization_entity].template_argument_list;
+	const std::string specialization_name = host_object_emission_ ?
+		ClassTemplateSpecializationStorageName(
+			index, specialization_arguments, kEmptyTemplateArgumentPartition) :
 		ClassTemplateSpecializationName(*program_, pattern.name, arguments);
 	const NameId specialization_emission_name =
 		TemplateArgumentsNeedInternalEmission(*program_, arguments) ?
@@ -2656,7 +2688,9 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 	}
 	if (pattern.template_parameter_proxy)
 	{
-		const std::string specialization_name =
+		const std::string specialization_name = host_object_emission_ ?
+			ClassTemplateSpecializationStorageName(
+				index, key.arguments, key.partition) :
 			ClassTemplateSpecializationName(
 				*program_, pattern.name, arguments);
 		const NameId name = program_->names.Intern(specialization_name);
@@ -2694,7 +2728,9 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 	const std::size_t selected_partial = SelectClassTemplatePartial(
 		pattern, arguments, &partial_bindings);
 
-	const std::string specialization_name =
+	const std::string specialization_name = host_object_emission_ ?
+		ClassTemplateSpecializationStorageName(
+			index, key.arguments, key.partition) :
 		ClassTemplateSpecializationName(*program_, pattern.name, arguments);
 	ScopeId template_scope = BindClassTemplateArguments(pattern, arguments);
 	NodeId selected_declaration = pattern.declaration;

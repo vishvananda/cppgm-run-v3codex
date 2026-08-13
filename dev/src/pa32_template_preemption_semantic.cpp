@@ -10,53 +10,76 @@ namespace pa12_semantic_detail
 namespace
 {
 
-bool TypeContainsLocalContext(const Program& program, TypeId type,
-	std::size_t depth)
+bool TypesContainLocalContext(const Program& program,
+	const std::vector<TemplateArgument>& arguments)
 {
-	if (depth > program.types.Size()) return true;
-	const TypeRecord& record = program.types.Get(type);
-	if (record.kind == TYPE_NAMED)
+	std::vector<TypeId> pending;
+	const auto push_type = [&pending](TypeId type) {
+		// Dependent template argument placeholders can deliberately have no
+		// concrete type yet.  They cannot contribute a local concrete owner.
+		if (type != kNoType) pending.push_back(type);
+	};
+	for (std::size_t argument = arguments.size(); argument != 0; --argument)
+		if (arguments[argument - 1].kind == TEMPLATE_ARGUMENT_TYPE ||
+			arguments[argument - 1].kind == TEMPLATE_ARGUMENT_TEMPLATE)
+			push_type(arguments[argument - 1].type);
+	std::vector<unsigned char> visited(program.types.Size() + 1, 0);
+	while (!pending.empty())
 	{
-		const EntityRecord& entity = program.entities[record.entity];
-		if (entity.local_context != kNoBinding) return true;
-		for (ScopeId scope = entity.owner; scope != kNoScope;
-			scope = program.ParentScope(scope))
-			if (program.KindOfScope(scope) == SCOPE_NAMESPACE &&
-				program.names.Get(program.NameOfScope(scope)) == "<unnamed>")
-				return true;
-		const std::size_t first = entity.template_argument_begin;
-		if (first == kNoBinding || first > program.template_arguments.size() ||
-			entity.template_argument_count >
-				program.template_arguments.size() - first) return false;
-		for (std::size_t argument = 0;
-			argument < entity.template_argument_count; ++argument)
-			if ((first + argument >=
-				 program.canonical_template_arguments.size() ||
-				 program.canonical_template_arguments[first + argument].kind ==
-					TEMPLATE_ARGUMENT_TYPE) &&
-				TypeContainsLocalContext(program,
-					program.template_arguments[first + argument], depth + 1))
-				return true;
-		return false;
+		const TypeId type = pending.back();
+		pending.pop_back();
+		if (type >= visited.size())
+			throw std::logic_error("template emission type identity is invalid: " +
+				std::to_string(type) + " >= " + std::to_string(visited.size()));
+		if (visited[type]) continue;
+		visited[type] = 1;
+		const TypeRecord& record = program.types.Get(type);
+		if (record.kind == TYPE_NAMED)
+		{
+			if (record.entity >= program.entities.size())
+				throw std::logic_error(
+					"template emission entity identity is invalid");
+			const EntityRecord& entity = program.entities[record.entity];
+			if (entity.local_context != kNoBinding) return true;
+			for (ScopeId scope = entity.owner; scope != kNoScope;
+				scope = program.ParentScope(scope))
+				if (program.KindOfScope(scope) == SCOPE_NAMESPACE &&
+					program.names.Get(program.NameOfScope(scope)) == "<unnamed>")
+					return true;
+			const std::size_t first = entity.template_argument_begin;
+			if (first == kNoBinding) continue;
+			if (first > program.template_arguments.size() ||
+				entity.template_argument_count >
+					program.template_arguments.size() - first)
+				throw std::logic_error(
+					"template emission argument range is invalid");
+			for (std::size_t argument = 0;
+				argument < entity.template_argument_count; ++argument)
+				if (first + argument >=
+						program.canonical_template_arguments.size() ||
+					program.canonical_template_arguments[first + argument].kind ==
+						TEMPLATE_ARGUMENT_TYPE)
+					push_type(program.template_arguments[first + argument]);
+			continue;
+		}
+		if (record.kind == TYPE_FUNCTION)
+		{
+			push_type(record.child);
+			const TypeId* parameters = program.types.Parameters(type);
+			for (std::size_t parameter = 0;
+				parameter < record.parameter_count; ++parameter)
+				push_type(parameters[parameter]);
+			continue;
+		}
+		if (record.kind == TYPE_MEMBER_POINTER)
+			push_type(static_cast<TypeId>(record.bound));
+		if (record.kind == TYPE_QUALIFIED || record.kind == TYPE_POINTER ||
+			record.kind == TYPE_LVALUE_REFERENCE ||
+			record.kind == TYPE_RVALUE_REFERENCE || record.kind == TYPE_ARRAY ||
+			record.kind == TYPE_MEMBER_POINTER)
+			push_type(record.child);
 	}
-	if (record.kind == TYPE_FUNCTION)
-	{
-		if (TypeContainsLocalContext(program, record.child, depth + 1))
-			return true;
-		const TypeId* parameters = program.types.Parameters(type);
-		for (std::size_t parameter = 0;
-			parameter < record.parameter_count; ++parameter)
-			if (TypeContainsLocalContext(
-				program, parameters[parameter], depth + 1)) return true;
-		return false;
-	}
-	if (record.kind == TYPE_MEMBER_POINTER && TypeContainsLocalContext(
-		program, static_cast<TypeId>(record.bound), depth + 1)) return true;
-	return record.kind == TYPE_QUALIFIED || record.kind == TYPE_POINTER ||
-		record.kind == TYPE_LVALUE_REFERENCE ||
-		record.kind == TYPE_RVALUE_REFERENCE || record.kind == TYPE_ARRAY ||
-		record.kind == TYPE_MEMBER_POINTER ?
-		TypeContainsLocalContext(program, record.child, depth + 1) : false;
+	return false;
 }
 
 }
@@ -64,12 +87,7 @@ bool TypeContainsLocalContext(const Program& program, TypeId type,
 bool TemplateArgumentsNeedInternalEmission(const Program& program,
 	const std::vector<TemplateArgument>& arguments)
 {
-	for (std::size_t argument = 0; argument < arguments.size(); ++argument)
-		if ((arguments[argument].kind == TEMPLATE_ARGUMENT_TYPE ||
-			 arguments[argument].kind == TEMPLATE_ARGUMENT_TEMPLATE) &&
-			TypeContainsLocalContext(program, arguments[argument].type, 0))
-			return true;
-	return false;
+	return TypesContainLocalContext(program, arguments);
 }
 
 void PublishFunctionTemplateInternalEmission(Program* program,

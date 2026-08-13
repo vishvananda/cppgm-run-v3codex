@@ -4,8 +4,10 @@
 #include "pa15_lowir_model.h"
 #include "pa18_polymorphism_lowering.h"
 
+#include <limits>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace cppgm
@@ -178,20 +180,128 @@ StandardTemplateSubstitution StandardSubstitutionFor(
 
 class AbiFactBuilder
 {
+	struct TypeArgumentCacheKey
+	{
+		TypeId type;
+		BindingId function;
+		FunctionTemplateAbiRecipeId recipe;
+
+		TypeArgumentCacheKey(TypeId type_value, BindingId function_value,
+			FunctionTemplateAbiRecipeId recipe_value)
+			: type(type_value), function(function_value), recipe(recipe_value) {}
+
+		bool operator==(const TypeArgumentCacheKey& other) const
+		{
+			return type == other.type && function == other.function &&
+				recipe == other.recipe;
+		}
+	};
+
+	struct TypeArgumentCacheEntry
+	{
+		TypeArgumentCacheKey key;
+		std::string id;
+
+		TypeArgumentCacheEntry(const TypeArgumentCacheKey& key_value,
+			const std::string& id_value) : key(key_value), id(id_value) {}
+	};
+
 	const pa11::Program& program_;
 	abi_mangle::AbiFactCase& facts_;
 	std::size_t next_argument_;
+	std::vector<TypeArgumentCacheEntry> type_argument_cache_;
+	std::vector<std::uint32_t> type_argument_cache_slots_;
+
+	TypeArgumentCacheKey TypeArgumentKey(pa11::TypeId type,
+		const pa11::BindingRecord* function,
+		const pa11::FunctionTemplateAbiRecipe* recipe) const
+	{
+		const BindingId function_id = function ?
+			function->canonical : kNoBinding;
+		FunctionTemplateAbiRecipeId recipe_id = kNoFunctionTemplateAbiRecipe;
+		if (recipe)
+		{
+			if (program_.function_template_abi_recipes.empty())
+				throw std::logic_error("ABI type argument recipe has no owner");
+			const FunctionTemplateAbiRecipe* begin =
+				&program_.function_template_abi_recipes[0];
+			const std::ptrdiff_t offset = recipe - begin;
+			if (offset < 0 || static_cast<std::size_t>(offset) >=
+				program_.function_template_abi_recipes.size())
+				throw std::logic_error("ABI type argument recipe is invalid");
+			recipe_id = static_cast<FunctionTemplateAbiRecipeId>(offset);
+		}
+		return TypeArgumentCacheKey(type, function_id, recipe_id);
+	}
+
+	static std::size_t TypeArgumentCacheHash(
+		const TypeArgumentCacheKey& key)
+	{
+		return MixHash(MixHash(key.type, key.function), key.recipe);
+	}
+
+	const std::string* FindTypeArgument(
+		const TypeArgumentCacheKey& key) const
+	{
+		const std::size_t mask = type_argument_cache_slots_.size() - 1;
+		std::size_t slot = TypeArgumentCacheHash(key) & mask;
+		while (type_argument_cache_slots_[slot] != 0)
+		{
+			const TypeArgumentCacheEntry& entry = type_argument_cache_[
+				type_argument_cache_slots_[slot] - 1];
+			if (entry.key == key) return &entry.id;
+			slot = (slot + 1) & mask;
+		}
+		return 0;
+	}
+
+	void RehashTypeArguments(std::size_t capacity)
+	{
+		std::vector<std::uint32_t> replacement(capacity, 0);
+		const std::size_t mask = capacity - 1;
+		for (std::size_t entry = 0; entry < type_argument_cache_.size(); ++entry)
+		{
+			std::size_t slot =
+				TypeArgumentCacheHash(type_argument_cache_[entry].key) & mask;
+			while (replacement[slot] != 0) slot = (slot + 1) & mask;
+			replacement[slot] = static_cast<std::uint32_t>(entry + 1);
+		}
+		type_argument_cache_slots_.swap(replacement);
+	}
+
+	void CacheTypeArgument(const TypeArgumentCacheKey& key,
+		const std::string& id)
+	{
+		if ((type_argument_cache_.size() + 1) * 10 >
+			type_argument_cache_slots_.size() * 7)
+			RehashTypeArguments(type_argument_cache_slots_.size() * 2);
+		if (type_argument_cache_.size() >=
+			std::numeric_limits<std::uint32_t>::max())
+			throw std::runtime_error("too many ABI type argument facts");
+		const std::size_t mask = type_argument_cache_slots_.size() - 1;
+		std::size_t slot = TypeArgumentCacheHash(key) & mask;
+		while (type_argument_cache_slots_[slot] != 0)
+			slot = (slot + 1) & mask;
+		type_argument_cache_.push_back(TypeArgumentCacheEntry(key, id));
+		type_argument_cache_slots_[slot] =
+			static_cast<std::uint32_t>(type_argument_cache_.size());
+	}
 
 public:
 	AbiFactBuilder(const pa11::Program& program,
 		abi_mangle::AbiFactCase& facts)
-		: program_(program), facts_(facts), next_argument_(0) {}
+		: program_(program), facts_(facts), next_argument_(0),
+		  type_argument_cache_slots_(32, 0) {}
 
 	std::string AddTypeArgument(pa11::TypeId type,
 		const pa11::BindingRecord* function = 0,
 		const pa11::FunctionTemplateAbiRecipe* recipe = 0)
 	{
 		using namespace abi_mangle;
+		const TypeArgumentCacheKey key =
+			TypeArgumentKey(type, function, recipe);
+		const std::string* cached = FindTypeArgument(key);
+		if (cached) return *cached;
 		const std::string id = "__cppgm_abi_type_argument_" +
 			std::to_string(next_argument_++);
 		AbiFactRecord definition;
@@ -201,7 +311,8 @@ public:
 		definition.definition.template_argument.kind = ABI_TEMPLATE_ARGUMENT_TYPE;
 		definition.definition.template_argument.type =
 			MakeType(type, function, recipe);
-		facts_.records.push_back(definition);
+		facts_.records.push_back(std::move(definition));
+		CacheTypeArgument(key, id);
 		return id;
 	}
 
@@ -935,10 +1046,16 @@ public:
 	{
 		using namespace pa11;
 		std::vector<TypeId> pending(1, type);
+		std::vector<unsigned char> visited(program_.types.Size() + 1, 0);
 		while (!pending.empty())
 		{
 			const TypeId current = pending.back();
 			pending.pop_back();
+			if (current >= visited.size())
+				throw std::logic_error(
+					"function template ABI source type is invalid");
+			if (visited[current]) continue;
+			visited[current] = 1;
 			std::size_t parameter = 0;
 			if (FunctionTemplateParameter(
 				current, &function, &recipe, &parameter)) return true;
