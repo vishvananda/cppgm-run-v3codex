@@ -31,6 +31,64 @@ struct HostRelocation
   long long addend = 0;
 };
 
+struct EncodedLabelLocation
+{
+  bool text = false;
+  std::size_t section = 0;
+  std::size_t offset = 0;
+};
+
+typedef std::unordered_map<std::string, EncodedLabelLocation>
+  EncodedLabelIndex;
+
+EncodedLabelIndex index_encoded_labels(
+    const EncodedSection & text,
+    const std::vector<EncodedSection> & data_sections)
+{
+  std::size_t label_count = text.labels.size();
+  for(std::size_t i = 0; i < data_sections.size(); ++i)
+    label_count += data_sections[i].labels.size();
+  EncodedLabelIndex result;
+  result.reserve(label_count);
+  for(std::unordered_map<std::string, std::size_t>::const_iterator label =
+        text.labels.begin(); label != text.labels.end(); ++label) {
+    EncodedLabelLocation location;
+    location.text = true;
+    location.offset = label->second;
+    result.insert(std::make_pair(label->first, location));
+  }
+  for(std::size_t i = 0; i < data_sections.size(); ++i)
+    for(std::unordered_map<std::string, std::size_t>::const_iterator label =
+          data_sections[i].labels.begin();
+        label != data_sections[i].labels.end(); ++label) {
+      EncodedLabelLocation location;
+      location.section = i;
+      location.offset = label->second;
+      result.insert(std::make_pair(label->first, location));
+    }
+  return result;
+}
+
+void publish_object_aliases(
+    const lowir_model::LowirProgram & program,
+    EncodedSection & text,
+    std::vector<EncodedSection> & data_sections,
+    EncodedLabelIndex & labels)
+{
+  for(std::size_t i = 0; i < program.object_aliases.size(); ++i) {
+    const std::string alias = native_object_symbol(
+      program.object_aliases[i].object_symbol);
+    const EncodedLabelIndex::const_iterator target =
+      labels.find(program.object_aliases[i].target);
+    if(target == labels.end()) throw std::runtime_error(
+      "native alias has undefined target: " + program.object_aliases[i].target);
+    const EncodedLabelLocation location = target->second;
+    if(location.text) text.labels[alias] = location.offset;
+    else data_sections[location.section].labels[alias] = location.offset;
+    labels[alias] = location;
+  }
+}
+
 struct HostSection
 {
   std::string name;
@@ -397,23 +455,19 @@ std::unordered_map<std::string, std::string> declaration_object_symbols(
 
 std::string relocation_target(
     const std::string & raw,
-    const EncodedSection & text,
-    const std::vector<EncodedSection> & data_sections,
+    const EncodedLabelIndex & labels,
     const std::unordered_map<std::string, std::string> & declarations)
 {
   const std::unordered_map<std::string, std::string>::const_iterator found =
     declarations.find(raw);
   if(found != declarations.end()) return found->second;
-  if(text.labels.count(raw)) return raw;
-  for(std::size_t i = 0; i < data_sections.size(); ++i)
-    if(data_sections[i].labels.count(raw)) return raw;
+  if(labels.count(raw)) return raw;
   return host_symbol_spelling(raw);
 }
 
 std::vector<HostRelocation> host_relocations(
     EncodedSection & source,
-    const EncodedSection & text,
-    const std::vector<EncodedSection> & data_sections,
+    const EncodedLabelIndex & labels,
     const std::unordered_map<std::string, std::string> & declarations)
 {
   std::vector<HostRelocation> result;
@@ -440,7 +494,7 @@ std::vector<HostRelocation> host_relocations(
     }
     relocation.offset = fixup.offset;
     relocation.target = relocation_target(
-      fixup.target, text, data_sections, declarations);
+      fixup.target, labels, declarations);
     relocation.addend = fixup.kind == EncodedFixup::EF_RELATIVE32 ||
       fixup.kind == EncodedFixup::EF_ADDRESS32 ?
       fixup.addend - 4 : fixup.addend;
@@ -480,6 +534,7 @@ void collect_host_symbols(
     std::uint16_t text_section_index,
     const std::vector<EncodedSection> & data_sections,
     const std::vector<std::uint16_t> & data_section_indexes,
+    const EncodedLabelIndex & encoded_labels,
     const std::vector<HostFunctionLayout> & functions,
     const std::vector<HostRelocation> & text_relocations,
     const std::vector<std::vector<HostRelocation> > & data_relocations,
@@ -521,27 +576,14 @@ void collect_host_symbols(
     const ir_model::ExportedSymbol & exported = program.exported_symbols[i];
     if(exported.object_symbol.empty()) continue;
     const std::string object_label = native_object_symbol(exported.object_symbol);
-    std::uint16_t section = 0;
-    std::size_t value = 0;
-    unsigned type = 0;
-    const std::unordered_map<std::string, std::size_t>::const_iterator text_at =
-      text.labels.find(object_label);
-    if(text_at != text.labels.end()) {
-      section = text_section_index;
-      value = text_at->second;
-      type = 2;
-    } else {
-      for(std::size_t data = 0; data < data_sections.size(); ++data) {
-        const std::unordered_map<std::string, std::size_t>::const_iterator at =
-          data_sections[data].labels.find(object_label);
-        if(at == data_sections[data].labels.end()) continue;
-        section = data_section_indexes[data];
-        value = at->second;
-        type = (data_sections[data].flags & 0x400) ? 6 : 1;
-        break;
-      }
-      if(section == 0) continue;
-    }
+    const EncodedLabelIndex::const_iterator location =
+      encoded_labels.find(object_label);
+    if(location == encoded_labels.end()) continue;
+    const std::uint16_t section = location->second.text ? text_section_index :
+      data_section_indexes[location->second.section];
+    const std::size_t value = location->second.offset;
+    const unsigned type = location->second.text ? 2 :
+      (data_sections[location->second.section].flags & 0x400) ? 6 : 1;
     HostSymbol symbol;
     symbol.name = exported.object_symbol;
     symbol.section = section;
@@ -717,23 +759,24 @@ std::vector<unsigned char> make_relocation_table(
 
 std::vector<unsigned char> make_linux_relocatable_image(
     const lowir_model::LowirProgram & program,
-    const EncodedSection & text,
-    const std::vector<EncodedSection> & data_sections,
+    EncodedSection mutable_text,
+    std::vector<EncodedSection> mutable_data,
     std::vector<HostFunctionLayout> & functions,
     const std::vector<unsigned char> & compiler_payload,
     std::size_t & relocation_count)
 {
-  EncodedSection mutable_text = text;
-  std::vector<EncodedSection> mutable_data = data_sections;
+  EncodedLabelIndex encoded_labels =
+    index_encoded_labels(mutable_text, mutable_data);
+  publish_object_aliases(program, mutable_text, mutable_data, encoded_labels);
   const std::unordered_map<std::string, std::string> declarations =
     declaration_object_symbols(program);
   const std::vector<HostRelocation> text_relocations = host_relocations(
-    mutable_text, mutable_text, mutable_data, declarations);
+    mutable_text, encoded_labels, declarations);
   std::vector<std::vector<HostRelocation> > data_relocations(
     mutable_data.size());
   for(std::size_t i = 0; i < mutable_data.size(); ++i)
     data_relocations[i] = host_relocations(
-      mutable_data[i], mutable_text, mutable_data, declarations);
+      mutable_data[i], encoded_labels, declarations);
   std::vector<HostRelocation> lsda_relocations;
   HostSection lsda = make_host_lsda(
     functions, mutable_text, declarations, lsda_relocations);
@@ -758,6 +801,7 @@ std::vector<unsigned char> make_linux_relocatable_image(
     [&append_section, &pending_relocations](
       const std::string & name, std::uint16_t target,
       const std::vector<HostRelocation> & relocations) {
+      if(relocations.empty()) return;
       HostSection section;
       section.name = ".rela" + name;
       section.type = 4;
@@ -802,7 +846,8 @@ std::vector<unsigned char> make_linux_relocatable_image(
   std::vector<HostSymbol> locals;
   std::vector<HostSymbol> globals;
   collect_host_symbols(program, mutable_text, text_index,
-                       mutable_data, data_indexes, functions, text_relocations,
+                       mutable_data, data_indexes, encoded_labels,
+                       functions, text_relocations,
                        data_relocations, lsda_relocations, eh_relocations,
                        locals, globals);
 

@@ -2,11 +2,11 @@
 
 ## Stage Design and Spec Alignment
 
-PA32 keeps the production path `semantic BindingRecord/TypeRecord/FunctionTemplateAbiRecipe -> canonical ABI graph -> typed LowIR Symbol/AddressBinding -> MIR/fixup metadata -> direct ELF`. Semantic/lowering records own entity terminals, callable qualifiers, source-template arguments/results, definition/preemption state, names, and emission demand; the ELF writer owns only coalescing, sections, and encoding already-selected relocation intent. ABI publication remains typed and transactional, and telemetry observes the path without changing serialized object metadata. This applies `spec.md` §§2 and 6 (stable typed identity and no name reconstruction), §4 (separate specialization/emission facts), §7 (direct ELF), §8 (explicit ownership), and §9 (linear work with behavior-neutral counters).
+PA32 keeps the production path `semantic BindingRecord/TypeRecord/FunctionTemplateAbiRecipe -> canonical ABI graph -> typed LowIR Symbol/AddressBinding -> MIR/fixup metadata -> direct ELF`. Semantic/lowering records own entity terminals, callable qualifiers, source-template arguments/results, definition/preemption state, names, and emission demand; the encoded ELF owner holds one label-to-section/offset index shared by alias, relocation, and symbol publication, while final stable ordering is separate. ABI publication remains typed and transactional, section buffers move across the writer boundary, and telemetry observes the path without changing serialized object metadata. This applies `spec.md` §§2 and 6 (stable typed identity and no name reconstruction), §4 (separate specialization/emission facts), §7 (direct ELF), §8 (explicit ownership), and §9 (linear work with behavior-neutral counters).
 
 ## Current Failure Map
 
-Current result: **99/138**, up from the **96/138** turn baseline and **91/138** stage baseline. **39** tests remain failing; PA1–PA31 pass **4150/4150**.
+Current result: **99/138**, preserving the **99/138** audit-entry baseline and up from the **96/138** checkpoint implementation baseline and **91/138** stage baseline. **39** tests remain failing; PA1–PA31 pass **4150/4150**.
 
 - ABI/template identity, demand, and coalescing (13): OOC constructor templates; empty owner pack; extern-template constructor/member/static-data; enum and variadic-template-template names; internal-template local static; ODR default, static-self, and synthetic template-argument substitutions.
 - Host call ABI and EH (6): goto-out-of-try; three cleanup/unwind cases; member-function-pointer runtime; system-include move/reset.
@@ -28,11 +28,11 @@ Generated sources placed one ordinary global in a distinct custom section and on
 
 | Cases | Tokens | Semantic nodes | Functions | Globals | Fixups | Custom sections / TPOFF32 | Object bytes |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 32 | 1,006 | 328 | 33 | 64 | 162 | 32 / 64 | 114,560 |
-| 64 | 1,998 | 648 | 65 | 128 | 322 | 64 / 128 | 226,176 |
-| 128 | 3,982 | 1,288 | 129 | 256 | 642 | 128 / 256 | 450,360 |
+| 32 | 1,130 | 421 | 33 | 64 | 193 | 32 / 64 | 139,544 |
+| 128 | 4,490 | 1,669 | 129 | 256 | 769 | 128 / 256 | 553,608 |
+| 512 | 17,930 | 6,661 | 513 | 1,024 | 3,073 | 512 / 1,024 | 2,220,352 |
 
-Across the 4x range, semantic time was 1.45–5.35 ms, typed lowering 0.57–1.70 ms, native encoding 1.17–4.70 ms, and semantic peak storage 429,972–1,699,797 bytes. Structural counters, sections, relocations, and output size remain linear. Section interning is O(1) average per global; each global/fixup is emitted once, followed by stable symbol ordering. Stats-on/off objects are byte-identical (`sha256 573a107a8ad6948903ae89a9eb1c5eb012d34594ab7c4e77e9718b50200aacdb`).
+Across the 16x range, semantic time was 1.87–27.87 ms, typed lowering 0.63–7.30 ms, native encoding 1.27–20.28 ms, and semantic peak storage 479,280–7,574,988 bytes. Structural counters, sections, relocations, output size, and measured phase work remain linear. Section names and encoded labels are indexed once; alias, relocation, and export consumers perform average-O(1) lookup, empty relocation sections are omitted, and stable symbol ordering is the sole O(n log n) step. The 512-case object links and runs; stats-on/off objects are byte-identical (`sha256 d370ba1a87c07d3856076f39cfd6953b9abd0c4d65e9c9c708eeb7a81dae0fa5`).
 
 ## Completed Checkpoints
 
@@ -46,4 +46,4 @@ Across the 4x range, semantic time was 1.45–5.35 ms, typed lowering 0.57–1.7
 | Structured dependent result/expression recipes | Alias expansion publishes framed class-template arguments, canonical source `TypeId`s, and typed trailing-`decltype` nodes; incomplete recipe reads roll back atomically. The landed suite moves pa32 83→84 and the audit regression passes for 85/134 total, with the original 49 failures unchanged; prior 4150/4150 and file audit pass. |
 | Canonical callable and member-entity ABI facts | Function types retain cv/ref qualifiers; non-static member NTTPs retain typed owner, terminal, qualifier, parameter, and source-template facts in the enclosing substitution sequence. Audit regressions cover operator, conversion, member-template, and pack-template terminals; telemetry no longer mutates object metadata. PA32 85→87 plus four passing audit fixtures (91/138), prior 4150/4150, file audit pass, and linear 16→128 evidence. |
 | Canonical external object-data identity and addressing | Direct linkage declarations, inherited C linkage, GNU weak/section facts, and relocatable-only symbol-address intent flow through typed owners; the audit replaced ELF name/label reconstruction with a retained local/preemptible address fact. PA32 91→96 (four selected fixtures plus adjacent `f64` shuffle), prior 4150/4150, file audit pass, and linear 32→128 evidence. |
-| Typed ELF sections and host TLS ownership | Canonical section/TLS facts now select real ELF sections, STT_TLS symbols, weak ABI wrappers, and TPOFF32 relocations; host imports/exports and custom-section objects link and inspect cleanly. PA32 96→99, prior 4150/4150, file audit pass, and linear 32→128 section/TLS evidence. |
+| Typed ELF sections and host TLS ownership | Canonical section/TLS facts select real ELF sections, STT_TLS symbols, weak ABI wrappers, and TPOFF32 relocations; the audit centralizes encoded label ownership and removes section-product lookup and empty relocation records. PA32 96→99, prior 4150/4150, file audit pass, and linear 32→512 evidence. |

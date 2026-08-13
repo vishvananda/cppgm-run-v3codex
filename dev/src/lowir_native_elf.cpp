@@ -13,6 +13,7 @@
 #include <sys/stat.h>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace lowir_native {
@@ -2939,27 +2940,6 @@ void write_linux_relocatable(
     data_sections[0].alignment = std::max<std::size_t>(
       data_sections[0].alignment, 8);
   }
-  for(std::size_t i = 0; i < program.object_aliases.size(); ++i) {
-    const std::string alias = native_object_symbol(
-      program.object_aliases[i].object_symbol);
-    const std::string & target_symbol = program.object_aliases[i].target;
-    const std::unordered_map<std::string, std::size_t>::const_iterator in_text =
-      text.labels().find(target_symbol);
-    if(in_text != text.labels().end()) text.label_at(alias, in_text->second);
-    else {
-      bool found = false;
-      for(std::size_t section = 0; section < data_sections.size(); ++section) {
-        const std::unordered_map<std::string, std::size_t>::const_iterator in_data =
-          data_sections[section].content.labels().find(target_symbol);
-        if(in_data == data_sections[section].content.labels().end()) continue;
-        data_sections[section].content.label_at(alias, in_data->second);
-        found = true;
-        break;
-      }
-      if(!found) throw std::runtime_error(
-        "native alias has undefined target: " + target_symbol);
-    }
-  }
   const std::chrono::steady_clock::time_point image_started =
     stats ? std::chrono::steady_clock::now() :
             std::chrono::steady_clock::time_point();
@@ -2971,7 +2951,8 @@ void write_linux_relocatable(
       data_sections[i].content, data_sections[i].name,
       data_sections[i].flags, data_sections[i].alignment));
   const std::vector<unsigned char> image = make_linux_relocatable_image(
-    source, encoded_section(text, ".text", 6, 16), encoded_data_sections,
+    source, encoded_section(text, ".text", 6, 16),
+    std::move(encoded_data_sections),
     functions,
     compiler_payload, relocations);
   if(stats) encode_nanoseconds += static_cast<std::uint64_t>(

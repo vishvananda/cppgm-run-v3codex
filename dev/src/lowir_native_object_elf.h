@@ -64,8 +64,8 @@ std::unordered_set<std::string> host_external_global_definitions(
 
 std::vector<unsigned char> make_linux_relocatable_image(
   const lowir_model::LowirProgram & program,
-  const EncodedSection & text,
-  const std::vector<EncodedSection> & data_sections,
+  EncodedSection text,
+  std::vector<EncodedSection> data_sections,
   std::vector<HostFunctionLayout> & functions,
   const std::vector<unsigned char> & compiler_payload,
   std::size_t & relocation_count);
