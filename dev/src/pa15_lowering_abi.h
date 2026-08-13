@@ -17,10 +17,11 @@ namespace pa15_lowering_abi
 
 std::string MangleType(const pa11::Program& program, pa11::TypeId type);
 bool IsFunctionEmissionDemanded(const pa11::Program& program,
-	const pa12_semantic_detail::DumpNode& node);
+	const pa12_semantic_detail::DumpNode& node,
+	bool host_object_emission = false);
 std::string MangleFunction(const pa11::Program& program,
 	const pa12_semantic_detail::DumpNode& node,
-	bool force_constructor_base_entry = false);
+	bool force_lifecycle_base_entry = false);
 std::string MangleVariable(const pa11::Program& program,
 	const pa12_semantic_detail::DumpNode& node);
 void ApplyBuiltinSymbolMetadata(pa15_lowir_detail::Symbol* symbol,

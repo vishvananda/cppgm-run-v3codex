@@ -399,7 +399,9 @@ private:
 			if (record.kind == DUMP_FUNCTION_DEFINITION ||
 				record.kind == DUMP_FUNCTION_DECLARATION)
 			{
-				if (pa15_lowering_abi::IsFunctionEmissionDemanded(program_, record)) RegisterFunction(current);
+				if (pa15_lowering_abi::IsFunctionEmissionDemanded(
+					program_, record, output_.host_object_emission))
+					RegisterFunction(current);
 				continue;
 			}
 			if (record.kind == DUMP_VARIABLE && record.binding != kNoBinding)
@@ -444,7 +446,8 @@ private:
 			const DumpNode& record = arena_.nodes[current];
 			if (record.kind == DUMP_FUNCTION_DECLARATION)
 			{
-				if (!pa15_lowering_abi::IsFunctionEmissionDemanded(program_, record)) continue;
+				if (!pa15_lowering_abi::IsFunctionEmissionDemanded(
+					program_, record, output_.host_object_emission)) continue;
 				if (record.binding != kNoBinding &&
 					function_definition_[record.binding] == kNoDumpEdge &&
 					function_declaration_[record.binding] == current)
@@ -460,7 +463,8 @@ private:
 			}
 			if (record.kind == DUMP_FUNCTION_DEFINITION)
 			{
-				if (!pa15_lowering_abi::IsFunctionEmissionDemanded(program_, record)) continue;
+				if (!pa15_lowering_abi::IsFunctionEmissionDemanded(
+					program_, record, output_.host_object_emission)) continue;
 				if (record.binding != kNoBinding &&
 					function_definition_[record.binding] == current)
 				{

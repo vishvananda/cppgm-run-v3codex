@@ -429,7 +429,7 @@ cppgm::pa30::CompilerObject compile_source_object(
   const cppgm::pa15_lowir_detail::TypedProgram typed =
       cppgm::BuildTypedLowIRProgram(sources,
           make_driver_preprocessing_options(invocation),
-          collect_stats ? &stats : 0, true);
+          collect_stats ? &stats : 0, true, true);
 	chrono::steady_clock::time_point adapt_started;
 	if(collect_stats) adapt_started = chrono::steady_clock::now();
   cppgm::pa30::CompilerObject object;

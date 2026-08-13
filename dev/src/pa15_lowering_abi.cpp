@@ -13,6 +13,30 @@ namespace cppgm
 namespace pa15_lowering_abi
 {
 
+namespace
+{
+
+bool IsTrivialLifecycleBinding(const pa11::Program& program,
+	pa11::BindingId binding)
+{
+	using namespace pa11;
+	if (binding == kNoBinding || binding >= program.bindings.size())
+		return false;
+	const BindingRecord& record = program.bindings[binding];
+	if (record.member_owner == kNoEntity ||
+		record.member_owner >= program.entities.size() ||
+		record.type == kNoType || !program.types.IsFunction(record.type))
+		return false;
+	const TypeRecord& function = program.types.Get(record.type);
+	if (function.parameter_count != 0) return false;
+	return (record.constructor && !record.constructor_base_entry &&
+			program.entities[record.member_owner].trivial_default_constructor) ||
+		(record.destructor &&
+		 program.entities[record.member_owner].trivial_destructor);
+}
+
+}
+
 void ApplyLifecycleSymbolMetadata(const pa11::Program& program,
 	const pa12_semantic_detail::DumpNode& node,
 	pa15_lowir_detail::TypedProgram* output,
@@ -24,16 +48,21 @@ void ApplyLifecycleSymbolMetadata(const pa11::Program& program,
 	const TypeRecord& function = program.types.Get(node.type);
 	if (function.kind != TYPE_FUNCTION)
 		throw std::logic_error("lifecycle ABI metadata has non-function type");
-	const bool trivial_constructor = binding.constructor &&
+	const bool trivial_constructor = IsTrivialLifecycleBinding(
+		program, node.binding) && binding.constructor &&
 		!binding.constructor_base_entry && binding.member_owner != kNoEntity &&
-		function.parameter_count == 1 &&
-		program.entities[binding.member_owner].trivial_default_constructor;
-	const bool trivial_destructor = binding.destructor &&
-		binding.member_owner != kNoEntity && function.parameter_count == 1 &&
-		program.entities[binding.member_owner].trivial_destructor;
+		function.parameter_count == 1;
+	const bool trivial_destructor = IsTrivialLifecycleBinding(
+		program, node.binding) && binding.destructor;
 	Symbol& record = output->symbols[symbol];
 	record.trivial_lifecycle = trivial_constructor || trivial_destructor;
-	if (!trivial_constructor) return;
+	const bool shared_inline_destructor = binding.destructor &&
+		!binding.destructor_base_entry && binding.inline_function &&
+		binding.member_owner != kNoEntity &&
+		program.entities[binding.member_owner].virtual_base_count == 0 &&
+		!binding.virtual_function;
+	if (!trivial_constructor &&
+		(!shared_inline_destructor || !output->host_object_emission)) return;
 	const std::string alias = MangleFunction(program, node, true);
 	if (!alias.empty() && alias != record.object_name)
 		output->object_aliases.push_back(ObjectAlias(alias, symbol));
@@ -828,12 +857,14 @@ std::string MangleType(const pa11::Program& program, pa11::TypeId type)
 }
 
 bool IsFunctionEmissionDemanded(const pa11::Program& program,
-	const pa12_semantic_detail::DumpNode& node)
+	const pa12_semantic_detail::DumpNode& node, bool host_object_emission)
 {
 	using namespace pa11;
 	if (node.binding == kNoBinding) return false;
 	if (node.declaration_only) return true;
 	const BindingId binding = program.bindings[node.binding].canonical;
+	if (host_object_emission &&
+		IsTrivialLifecycleBinding(program, binding)) return false;
 	return !program.bindings[binding].inline_function ||
 		program.bindings[binding].emission_demanded;
 }
@@ -1029,7 +1060,7 @@ std::string MangleLambdaCallOperator(const pa11::Program& program,
 
 std::string MangleFunction(const pa11::Program& program,
 	const pa12_semantic_detail::DumpNode& node,
-	bool force_constructor_base_entry)
+	bool force_lifecycle_base_entry)
 {
 	using namespace abi_mangle;
 	using namespace pa11;
@@ -1160,7 +1191,7 @@ std::string MangleFunction(const pa11::Program& program,
 		terminal.set_kind(ABI_FACT_RECORD_FUNCTION);
 		terminal.function.kind = ABI_FUNCTION_RECORD_TERMINAL;
 		terminal.function.terminal =
-			binding.constructor_base_entry || force_constructor_base_entry ?
+			binding.constructor_base_entry || force_lifecycle_base_entry ?
 			"constructor-base" : "constructor-complete";
 		file.cases[0].records.push_back(terminal);
 	}
@@ -1169,7 +1200,8 @@ std::string MangleFunction(const pa11::Program& program,
 		AbiFactRecord terminal;
 		terminal.set_kind(ABI_FACT_RECORD_FUNCTION);
 		terminal.function.kind = ABI_FUNCTION_RECORD_TERMINAL;
-		terminal.function.terminal = binding.destructor_base_entry ?
+		terminal.function.terminal = binding.destructor_base_entry ||
+			force_lifecycle_base_entry ?
 			"destructor-base" : "destructor-complete";
 		file.cases[0].records.push_back(terminal);
 	}

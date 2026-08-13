@@ -48,5 +48,21 @@ void SemanticAnalyzer::AnalyzeSimpleFunctionDeclaration(NodeId item,
 	dump_.Add(output_parent, declaration);
 }
 
+void SemanticAnalyzer::QueueFunctionDefinitionValidation(BindingId binding)
+{
+	if (binding == kNoBinding) return;
+	binding = program_->bindings[binding].canonical;
+	EnsureFunctionExceptionSpecification(binding);
+	DemandClassTemplateMemberDefinitions(
+		program_->bindings[binding].member_owner);
+	if (binding >= function_fact_by_binding_.size() ||
+		function_fact_by_binding_[binding] == kNoDumpEdge) return;
+	FunctionInfo& function = GetMutableFunction(binding);
+	if (!function.deferred || function.demand_state != 0) return;
+	function.demand_state = 1;
+	demanded_functions_.push_back(binding);
+	++demand_worklist_pushes_;
+}
+
 }
 }

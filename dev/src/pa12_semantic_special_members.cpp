@@ -1262,7 +1262,12 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 		info.deleted_special_member =
 			info.deleted_special_member || deleted;
 		info.deferred = !info.deleted_special_member;
-		if (!defer_demand) DemandFunction(special);
+		if (!defer_demand)
+		{
+			if (host_object_emission_ && inline_specifier)
+				QueueFunctionDefinitionValidation(special);
+			else DemandFunction(special);
+		}
 		current_class_context_ = previous_class;
 		return;
 	}
@@ -1317,7 +1322,12 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 		program_->entities[entity].trivial_destructor = false;
 		(void)EnsureDestructorBaseEntry(special);
 	}
-	if (!defer_demand) DemandFunction(special);
+	if (!defer_demand)
+	{
+		if (host_object_emission_ && inline_specifier)
+			QueueFunctionDefinitionValidation(special);
+		else DemandFunction(special);
+	}
 	current_class_context_ = previous_class;
 }
 

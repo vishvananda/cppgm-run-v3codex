@@ -232,8 +232,9 @@ struct TypedProgram
 	SymbolIdentityTable symbol_index;
 	StringCounterTable symbol_name_counts;
 	std::size_t string_literal_count;
+	bool host_object_emission;
 
-	TypedProgram() : string_literal_count(0) {}
+	TypedProgram() : string_literal_count(0), host_object_emission(false) {}
 };
 
 std::size_t TypedStorageBytes(const TypedProgram& program);

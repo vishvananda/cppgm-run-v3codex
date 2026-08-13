@@ -2737,9 +2737,11 @@ void SemanticAnalyzer::AddLifetimeObligation(ScopeId scope,
 		throw std::runtime_error("inaccessible destructor");
 	const TypeKind object_kind = program_->types.Get(
 		program_->types.RemoveTopCv(type)).kind;
-	if (program_->entities[entity].trivial_destructor ||
-		(allow_elision && object_kind != TYPE_ARRAY &&
-		 IsElidableAutomaticDestructor(destructor))) return;
+	if (program_->entities[entity].trivial_destructor) return;
+	// Odr-use owns host emission even when an empty call can be elided.
+	if (host_object_emission_) DemandFunction(destructor);
+	if (allow_elision && object_kind != TYPE_ARRAY &&
+		IsElidableAutomaticDestructor(destructor)) return;
 	if (scope_lifetimes_.size() <= scope)
 		scope_lifetimes_.resize(static_cast<std::size_t>(scope) + 1);
 	if (nearest_lifetime_scopes_.size() <= scope)

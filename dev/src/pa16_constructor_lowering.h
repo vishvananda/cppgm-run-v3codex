@@ -115,6 +115,15 @@ protected:
 		if (action.kind != DUMP_CONSTRUCTOR_ACTION ||
 			action.binding == kNoBinding)
 			throw std::runtime_error("invalid constructor action");
+		const BindingRecord& selected =
+			derived.program_.bindings[action.binding];
+		if (derived.output_.host_object_emission && selected.constructor &&
+			!selected.constructor_base_entry &&
+			selected.member_owner != kNoEntity &&
+			derived.program_.types.Get(selected.type).parameter_count == 0 &&
+			derived.program_.entities[selected.member_owner].
+				trivial_default_constructor)
+			return;
 		const NodeChildren children = derived.Children(node);
 		bool retained_empty_special_member = false;
 		if (action.trivial_special_member_action &&

@@ -47,12 +47,14 @@ class SemanticAnalyzer : public SyntaxTreeConsumer
 public:
 	SemanticAnalyzer(SemanticGraphStorage& graph, std::ostream& output,
 		SemanticAnalysisStats* stats, bool retain_lowering_facts = false,
-		bool render_output = true, bool complete_constructor_unwind = false)
+		bool render_output = true, bool complete_constructor_unwind = false,
+		bool host_object_emission = false)
 		: arena_(0), output_(output), stats_(stats), strings_(graph.strings),
 		  program_(&graph.program),
 		  retain_lowering_facts_(retain_lowering_facts),
 		  render_output_(render_output),
 		  complete_constructor_unwind_(complete_constructor_unwind),
+		  host_object_emission_(host_object_emission),
 		  dump_(graph.dump), root_(graph.root),
 		  class_polymorphism_(graph.class_polymorphism),
 		  function_template_dependent_result_shape_(kNoType),
@@ -820,6 +822,7 @@ private:
 		NodeId syntax = kNoNode);
 	void DemandFunction(BindingId binding);
 	void DemandRuntimeFunction(BindingId binding);
+	void QueueFunctionDefinitionValidation(BindingId binding);
 	void DemandVtableFunction(BindingId binding);
 	void EnsureFunctionExceptionSpecification(BindingId binding);
 	bool FunctionIsNonthrowing(BindingId binding);
@@ -1615,6 +1618,7 @@ private:
 	bool retain_lowering_facts_;
 	bool render_output_;
 	bool complete_constructor_unwind_;
+	bool host_object_emission_;
 	DumpArena& dump_;
 	std::vector<std::uint32_t> string_literal_units_;
 	std::uint32_t& root_;

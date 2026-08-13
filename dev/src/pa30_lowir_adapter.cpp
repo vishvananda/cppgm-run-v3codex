@@ -560,8 +560,19 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 	{
 		lowir_model::ObjectAlias alias;
 		alias.object_symbol = source.object_aliases[i].object_name;
-		alias.target = At(source.symbols[source.object_aliases[i].target].name);
+		const Symbol& alias_target =
+			source.symbols[source.object_aliases[i].target];
+		alias.target = At(alias_target.name);
 		target.object_aliases.push_back(alias);
+		// An ABI alias is an additional exported spelling of the same root, so
+		// carry the target's linkage with it across the typed-LowIR boundary.
+		if (source.host_object_emission)
+		{
+			ir_model::ExportedSymbol exported_alias;
+			AppendExport(alias_target, &exported_alias);
+			exported_alias.object_symbol = alias.object_symbol;
+			target.exported_symbols.push_back(exported_alias);
+		}
 	}
 	for (std::size_t i = 0; i < source.symbols.size(); ++i)
 	{
