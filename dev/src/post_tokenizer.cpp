@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <locale>
@@ -287,6 +288,18 @@ bool ParseIntegerSpelling(const std::string& text, bool allow_suffix,
 		if (position == result->digits_begin)
 			return false;
 	}
+	else if (text.size() >= 2 && text[0] == '0' &&
+		(text[1] == 'b' || text[1] == 'B'))
+	{
+		result->base = 2;
+		position = 2;
+		result->digits_begin = position;
+		while (position < text.size() &&
+			(text[position] == '0' || text[position] == '1'))
+			++position;
+		if (position == result->digits_begin)
+			return false;
+	}
 	else
 	{
 		result->base = text[0] == '0' ? 8 : 10;
@@ -413,6 +426,56 @@ bool SelectIntegerType(const IntegerSpelling& spelling,
 bool ParseFloatingSpelling(const std::string& text, bool allow_suffix,
 	FundamentalType* type, std::size_t* numeric_end)
 {
+	if (text.size() >= 2 && text[0] == '0' &&
+		(text[1] == 'x' || text[1] == 'X'))
+	{
+		std::size_t position = 2;
+		bool had_digits = false;
+		while (position < text.size() && HexDigitValue(text[position]) >= 0)
+		{
+			had_digits = true;
+			++position;
+		}
+		if (position < text.size() && text[position] == '.')
+		{
+			++position;
+			while (position < text.size() &&
+				HexDigitValue(text[position]) >= 0)
+			{
+				had_digits = true;
+				++position;
+			}
+		}
+		if (!had_digits || position >= text.size() ||
+			(text[position] != 'p' && text[position] != 'P'))
+			return false;
+		++position;
+		if (position < text.size() &&
+			(text[position] == '+' || text[position] == '-'))
+			++position;
+		const std::size_t exponent_begin = position;
+		while (position < text.size() && IsDigit(text[position]))
+			++position;
+		if (position == exponent_begin)
+			return false;
+		*numeric_end = position;
+		*type = FT_DOUBLE;
+		if (position == text.size())
+			return true;
+		if (!allow_suffix || position + 1 != text.size())
+			return false;
+		switch (text[position])
+		{
+		case 'f':
+		case 'F': *type = FT_FLOAT; return true;
+		case 'l':
+		case 'L':
+		case 'q':
+		case 'Q': *type = FT_LONG_DOUBLE; return true;
+		default: return false;
+		}
+	}
+
 	std::size_t position = 0;
 	while (position < text.size() && IsDigit(text[position]))
 		++position;
@@ -468,6 +531,18 @@ bool DecodeFloatingValue(const std::string& spelling,
 {
 	T value;
 	std::memset(&value, 0, sizeof(value));
+	if (spelling.size() >= 2 && spelling[0] == '0' &&
+		(spelling[1] == 'x' || spelling[1] == 'X'))
+	{
+		char* end = 0;
+		const long double parsed = std::strtold(spelling.c_str(), &end);
+		if (!end || *end != '\0')
+			return false;
+		value = static_cast<T>(parsed);
+		std::memcpy(bytes, &value, sizeof(value));
+		*size = sizeof(value);
+		return true;
+	}
 	std::istringstream input(spelling);
 	input.imbue(std::locale::classic());
 	input >> value;

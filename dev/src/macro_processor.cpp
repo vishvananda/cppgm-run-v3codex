@@ -19,6 +19,8 @@
 #include <vector>
 
 #include "control_expression.h"
+#include "flat_hash_map.h"
+#include "hosted_preprocessor_probes.h"
 #include "IPPTokenStream.h"
 #include "pp_tokenizer.h"
 
@@ -29,6 +31,9 @@ namespace
 
 typedef std::uint32_t SpellingId;
 typedef std::uint32_t PaintId;
+
+using detail::FlatHashMap;
+using detail::MixedHash;
 
 const std::size_t kNoParameter = std::numeric_limits<std::size_t>::max();
 const PaintId kSingletonPaint = UINT32_C(0x80000000);
@@ -91,145 +96,6 @@ struct Token
 		  leading_space(has_leading_space), from_variadic(false),
 		  parameter_origin(false), matching_comma(false)
 	{}
-};
-
-std::size_t MixedHash(std::size_t hash)
-{
-	std::uint64_t value = static_cast<std::uint64_t>(hash);
-	value ^= value >> 30;
-	value *= UINT64_C(0xBF58476D1CE4E5B9);
-	value ^= value >> 27;
-	value *= UINT64_C(0x94D049BB133111EB);
-	value ^= value >> 31;
-	return static_cast<std::size_t>(value);
-}
-
-template <typename Key, typename Value, typename Hash = std::hash<Key> >
-class FlatHashMap
-{
-public:
-	FlatHashMap() : size_(0), tombstones_(0), slots_(16) {}
-
-	Value* Find(const Key& key)
-	{
-		return const_cast<Value*>(
-			static_cast<const FlatHashMap&>(*this).Find(key));
-	}
-
-	const Value* Find(const Key& key) const
-	{
-		std::size_t position = Bucket(key);
-		while (slots_[position].state != EMPTY)
-		{
-			if (slots_[position].state == OCCUPIED &&
-				slots_[position].key == key)
-				return &slots_[position].value;
-			position = (position + 1) & (slots_.size() - 1);
-		}
-		return 0;
-	}
-
-	Value* Insert(const Key& key, Value value)
-	{
-		PrepareInsert();
-		std::size_t position = Bucket(key);
-		std::size_t available = slots_.size();
-		while (slots_[position].state != EMPTY)
-		{
-			if (slots_[position].state == OCCUPIED &&
-				slots_[position].key == key)
-				return &slots_[position].value;
-			if (available == slots_.size() &&
-				slots_[position].state == TOMBSTONE)
-				available = position;
-			position = (position + 1) & (slots_.size() - 1);
-		}
-		if (available != slots_.size())
-			position = available;
-		Slot& slot = slots_[position];
-		if (slot.state == TOMBSTONE)
-			--tombstones_;
-		slot.key = key;
-		slot.value = std::move(value);
-		slot.state = OCCUPIED;
-		++size_;
-		return &slot.value;
-	}
-
-	bool Erase(const Key& key)
-	{
-		std::size_t position = Bucket(key);
-		while (slots_[position].state != EMPTY)
-		{
-			Slot& slot = slots_[position];
-			if (slot.state == OCCUPIED && slot.key == key)
-			{
-				slot.value = Value();
-				slot.state = TOMBSTONE;
-				--size_;
-				++tombstones_;
-				return true;
-			}
-			position = (position + 1) & (slots_.size() - 1);
-		}
-		return false;
-	}
-
-private:
-	enum SlotState
-	{
-		EMPTY,
-		OCCUPIED,
-		TOMBSTONE
-	};
-
-	struct Slot
-	{
-		Key key;
-		Value value;
-		SlotState state;
-
-		Slot() : key(), value(), state(EMPTY) {}
-	};
-
-	std::size_t Bucket(const Key& key) const
-	{
-		return MixedHash(Hash()(key)) & (slots_.size() - 1);
-	}
-
-	void PrepareInsert()
-	{
-		if ((size_ + tombstones_ + 1) * 10 < slots_.size() * 7)
-			return;
-		const std::size_t capacity = size_ * 10 < slots_.size() * 3 ?
-			slots_.size() : slots_.size() * 2;
-		Rehash(capacity);
-	}
-
-	void Rehash(std::size_t capacity)
-	{
-		std::vector<Slot> old;
-		old.swap(slots_);
-		slots_.resize(capacity);
-		size_ = 0;
-		tombstones_ = 0;
-		for (std::size_t i = 0; i < old.size(); ++i)
-		{
-			if (old[i].state != OCCUPIED)
-				continue;
-			std::size_t position = Bucket(old[i].key);
-			while (slots_[position].state == OCCUPIED)
-				position = (position + 1) & (slots_.size() - 1);
-			slots_[position].key = old[i].key;
-			slots_[position].value = std::move(old[i].value);
-			slots_[position].state = OCCUPIED;
-			++size_;
-		}
-	}
-
-	std::size_t size_;
-	std::size_t tombstones_;
-	std::vector<Slot> slots_;
 };
 
 class SpellingTable
@@ -588,12 +454,15 @@ struct SourceFrame
 	bool line_override;
 	std::size_t override_line;
 	SpellingId override_file;
+	std::size_t include_search_index;
+	bool has_include_search_index;
 
 	SourceFrame()
 		: physical_file(0), presumed_file(0), physical_base(1),
 		  presumed_base(1), current_physical_line(1), current_physical_column(1),
 		  conditional_base(0),
-		  line_override(false), override_line(1), override_file(0)
+		  line_override(false), override_line(1), override_file(0),
+		  include_search_index(0), has_include_search_index(false)
 	{}
 };
 
@@ -811,7 +680,7 @@ public:
 		  pending_space_(false), boundary_space_(false),
 		  line_spelling_bytes_(0), retained_replacement_tokens_(0),
 		  next_origin_(1), full_preprocessing_(false), preprocessing_stats_(0),
-		  live_source_bytes_(0), capture_(0), counter_(0)
+		  options_(0), live_source_bytes_(0), capture_(0), counter_(0)
 	{
 		InitializeNames();
 	}
@@ -828,7 +697,7 @@ public:
 		  pending_space_(false), boundary_space_(false),
 		  line_spelling_bytes_(0), retained_replacement_tokens_(0), next_origin_(1),
 		  full_preprocessing_(true), preprocessing_stats_(stats),
-		  options_(options), live_source_bytes_(0), capture_(0), counter_(0)
+		  options_(&options), live_source_bytes_(0), capture_(0), counter_(0)
 	{
 		InitializeNames();
 		InstallPredefinedMacros();
@@ -924,7 +793,14 @@ public:
 	{
 		if (!full_preprocessing_ || !sources_.empty())
 			throw std::logic_error("invalid primary preprocessing session");
-		ProcessSource(path, source);
+		if (options_->hosted_predefined_source &&
+			*options_->hosted_predefined_source)
+			ProcessSource("<built-in>", options_->hosted_predefined_source,
+				false, 0);
+		ApplyCommandLineActions();
+		for (std::size_t i = 0; i < options_->forced_includes.size(); ++i)
+			ProcessForcedInclude(options_->forced_includes[i]);
+		ProcessSource(path, source, false, 0);
 		Drain(rescan_, true, &pending_invocation_);
 		RequireCompletePragmaOperator();
 		post_tokens_.emit_eof();
@@ -949,8 +825,10 @@ private:
 		id_else_ = spellings_.Intern("else");
 		id_endif_ = spellings_.Intern("endif");
 		id_include_ = spellings_.Intern("include");
+		id_include_next_ = spellings_.Intern("include_next");
 		id_line_ = spellings_.Intern("line");
 		id_error_ = spellings_.Intern("error");
+		id_warning_ = spellings_.Intern("warning");
 		id_pragma_ = spellings_.Intern("pragma");
 		id_once_ = spellings_.Intern("once");
 		id_defined_ = spellings_.Intern("defined");
@@ -1006,47 +884,80 @@ private:
 		AddBuiltinObject("__x86_64__", TK_PP_NUMBER, "1");
 		AddBuiltinObject("__linux__", TK_PP_NUMBER, "1");
 		AddBuiltinObject("__CPPGM_AUTHOR__", TK_STRING,
-			QuoteString(options_.author));
+			QuoteString(options_->author));
 		AddBuiltinObject("__DATE__", TK_STRING,
-			QuoteString(options_.build_date));
+			QuoteString(options_->build_date));
 		AddBuiltinObject("__TIME__", TK_STRING,
-			QuoteString(options_.build_time));
-		for (std::size_t i = 0; i < options_.predefined_macros.size(); ++i)
-			InstallCommandLineMacro(options_.predefined_macros[i]);
+			QuoteString(options_->build_time));
+		AddBuiltinMarker("__has_attribute");
+		AddBuiltinMarker("__has_builtin");
+		AddBuiltinMarker("__has_cpp_attribute");
+		AddBuiltinMarker("__has_extension");
+		AddBuiltinMarker("__has_feature");
+		AddBuiltinMarker("__has_include");
+		AddBuiltinMarker("__has_include_next");
+		AddBuiltinMarker("__building_module");
 		if (stats_)
 			stats_->peak_retained_replacement_tokens = std::max(
 				stats_->peak_retained_replacement_tokens,
 				retained_replacement_tokens_);
 	}
 
-	void InstallCommandLineMacro(const std::string& definition)
+	void AddBuiltinMarker(const char* name)
 	{
-		const std::size_t equal = definition.find('=');
-		const std::string name = definition.substr(0, equal);
-		const std::string replacement = equal == std::string::npos ?
-			std::string() : definition.substr(equal + 1);
+		Macro macro;
+		macro.name = spellings_.Intern(name);
+		macros_.Insert(macro.name, std::move(macro));
+	}
+
+	static bool IsCommandLineMacroName(const std::string& name)
+	{
 		if (name.empty() || !(std::isalpha(static_cast<unsigned char>(name[0])) ||
 			name[0] == '_'))
-			throw std::runtime_error("invalid command-line macro name");
+			return false;
 		for (std::size_t i = 1; i < name.size(); ++i)
 			if (!(std::isalnum(static_cast<unsigned char>(name[i])) ||
 				name[i] == '_'))
-				throw std::runtime_error("invalid command-line macro name");
-		Macro macro;
-		macro.name = spellings_.Intern(name);
-		if (!replacement.empty())
+				return false;
+		return true;
+	}
+
+	void RemoveMacro(const std::string& name)
+	{
+		if (!IsCommandLineMacroName(name))
+			throw std::runtime_error("invalid command-line macro name");
+		const SpellingId id = spellings_.Intern(name);
+		Macro* old = macros_.Find(id);
+		if (old)
 		{
-			ReplacementToken token;
-			const bool identifier =
-				std::isalpha(static_cast<unsigned char>(replacement[0])) ||
-				replacement[0] == '_';
-			token.token = identifier ?
-				Token(TK_IDENTIFIER, spellings_.Intern(replacement), false) :
-				Token(TK_PP_NUMBER, replacement, false);
-			macro.replacement.push_back(token);
+			retained_replacement_tokens_ -= old->replacement.size();
+			macros_.Erase(id);
 		}
-		retained_replacement_tokens_ += macro.replacement.size();
-		macros_.Insert(macro.name, std::move(macro));
+		replaceable_command_line_macros_.Erase(id);
+	}
+
+	void ApplyCommandLineActions()
+	{
+		for (std::size_t i = 0; i < options_->macro_actions.size(); ++i)
+		{
+			const PreprocessingOptions::MacroAction& action =
+				options_->macro_actions[i];
+			if (!action.define)
+			{
+				RemoveMacro(action.argument);
+				continue;
+			}
+			const std::size_t equal = action.argument.find('=');
+			const std::string name = action.argument.substr(0, equal);
+			if (!IsCommandLineMacroName(name))
+				throw std::runtime_error("invalid command-line macro name");
+			RemoveMacro(name);
+			const std::string replacement = equal == std::string::npos ?
+				"1" : action.argument.substr(equal + 1);
+			ProcessSource("<command-line>",
+				"#define " + name + " " + replacement + "\n", false, 0);
+			replaceable_command_line_macros_.Insert(spellings_.Intern(name), 1);
+		}
 	}
 
 	static bool GetFileIdentity(const std::string& path, FileIdentity* result)
@@ -1083,7 +994,8 @@ private:
 		total.elapsed_nanoseconds += value.elapsed_nanoseconds;
 	}
 
-	void ProcessSource(const std::string& path, const std::string& source)
+	void ProcessSource(const std::string& path, const std::string& source,
+		bool has_include_search_index, std::size_t include_search_index)
 	{
 		if (sources_.size() >= 256)
 			throw std::runtime_error("source inclusion depth exceeded");
@@ -1091,6 +1003,8 @@ private:
 		frame.physical_file = spellings_.Intern(path);
 		frame.presumed_file = frame.physical_file;
 		frame.conditional_base = conditionals_.size();
+		frame.has_include_search_index = has_include_search_index;
+		frame.include_search_index = include_search_index;
 		sources_.push_back(frame);
 		live_source_bytes_ += source.size();
 		if (preprocessing_stats_)
@@ -1311,12 +1225,14 @@ private:
 			ParseDefine(directive);
 		else if (name == id_undef_)
 			ParseUndef(directive);
-		else if (name == id_include_)
-			ParseInclude(directive);
+		else if (name == id_include_ || name == id_include_next_)
+			ParseInclude(directive, name == id_include_next_);
 		else if (name == id_line_)
 			ParseLineDirective(directive);
 		else if (name == id_error_)
 			throw std::runtime_error("#error directive");
+		else if (name == id_warning_)
+			ParseWarningDirective(directive);
 		else if (name == id_pragma_)
 			ParsePragmaDirective(directive);
 		else
@@ -1341,12 +1257,108 @@ private:
 			spellings_.Intern(Spell(token));
 	}
 
-	void RewriteDefinedOperators(const std::vector<Token>& directive,
+	Token ProbeValueToken(const Token& source, bool value) const
+	{
+		Token result(TK_PP_NUMBER, value ? "1" : "0", source.leading_space);
+		result.source_file = source.source_file;
+		result.physical_file = source.physical_file;
+		result.source_line = source.source_line;
+		result.source_column = source.source_column;
+		return result;
+	}
+
+	bool ParseHeaderOperand(const std::vector<Token>& tokens,
+		std::size_t begin, std::size_t end, std::string* name,
+		bool* quoted) const
+	{
+		if (begin + 1 == end && tokens[begin].kind == TK_HEADER)
+		{
+			const std::string& spelling = Spell(tokens[begin]);
+			if (spelling.size() < 3)
+				return false;
+			*quoted = spelling[0] == '"';
+			*name = spelling.substr(1, spelling.size() - 2);
+			return true;
+		}
+		if (begin + 1 == end && tokens[begin].kind == TK_STRING)
+		{
+			*quoted = true;
+			*name = DecodeDirectiveString(Spell(tokens[begin]));
+			return name->find('\0') == std::string::npos;
+		}
+		if (begin >= end || !IsOperator(tokens[begin], "<") ||
+			!IsOperator(tokens[end - 1], ">"))
+			return false;
+		*quoted = false;
+		name->clear();
+		for (std::size_t i = begin + 1; i + 1 < end; ++i)
+			*name += Spell(tokens[i]);
+		return !name->empty() && name->find('\0') == std::string::npos;
+	}
+
+	bool EvaluateBuiltinProbe(const Token& probe,
+		const std::vector<Token>& directive, std::size_t begin,
+		std::size_t end)
+	{
+		const std::string& name = Spell(probe);
+		if (name == "__has_include" || name == "__has_include_next")
+		{
+			std::string header;
+			bool quoted = false;
+			if (!ParseHeaderOperand(directive, begin, end, &header, &quoted))
+				throw std::runtime_error("invalid include probe operand");
+			if (preprocessing_stats_) ++preprocessing_stats_->include_probes;
+			return FindInclude(header, quoted, name == "__has_include_next", 0);
+		}
+		if (begin + 1 != end || !IsIdentifierLike(directive[begin]))
+			throw std::runtime_error("invalid builtin probe operand");
+		const std::string& operand = Spell(directive[begin]);
+		if (preprocessing_stats_) ++preprocessing_stats_->builtin_probes;
+		if (name == "__has_builtin")
+			return IsSupportedBuiltinProbe(operand);
+		if (name == "__has_feature" || name == "__has_extension")
+			return IsSupportedFeatureProbe(operand);
+		if (name == "__has_attribute")
+			return IsSupportedAttributeProbe(operand);
+		if (name == "__has_cpp_attribute" || name == "__building_module")
+			return false;
+		throw std::logic_error("unknown builtin probe");
+	}
+
+	bool IsBuiltinProbe(const Token& token) const
+	{
+		if (token.kind != TK_IDENTIFIER || !IsMacroDefined(token.spelling))
+			return false;
+		const std::string& name = Spell(token);
+		return name == "__has_attribute" || name == "__has_builtin" ||
+			name == "__has_cpp_attribute" || name == "__has_extension" ||
+			name == "__has_feature" || name == "__has_include" ||
+			name == "__has_include_next" || name == "__building_module";
+	}
+
+	void RewriteConditionOperators(const std::vector<Token>& directive,
 		std::size_t begin, std::vector<Token>* expression)
 	{
 		for (std::size_t i = begin; i < directive.size(); ++i)
 		{
 			const Token& token = directive[i];
+			if (IsBuiltinProbe(token))
+			{
+				const std::size_t open = i + 1;
+				if (open >= directive.size() ||
+					!IsOperator(directive[open], "(") ||
+					directive[open].matching_distance == 0)
+					throw std::runtime_error("invalid builtin probe invocation");
+				const std::size_t close = open +
+					directive[open].matching_distance;
+				if (close >= directive.size() ||
+					!IsOperator(directive[close], ")"))
+					throw std::runtime_error("invalid builtin probe invocation");
+				expression->push_back(ProbeValueToken(token,
+					EvaluateBuiltinProbe(token, directive, open + 1, close)));
+				i = close;
+				continue;
+			}
 			if (token.kind != TK_IDENTIFIER || token.spelling != id_defined_)
 			{
 				expression->push_back(token);
@@ -1412,7 +1424,7 @@ private:
 			preprocessing_stats_ ? std::chrono::steady_clock::now() :
 			std::chrono::steady_clock::time_point();
 		std::vector<Token> input;
-		RewriteDefinedOperators(directive, begin, &input);
+		RewriteConditionOperators(directive, begin, &input);
 		std::vector<Token> expanded;
 		ExpandTokens(&input, &expanded);
 		for (std::size_t i = 0; i < expanded.size(); ++i)
@@ -1517,62 +1529,135 @@ private:
 		return result;
 	}
 
-	void ParseInclude(const std::vector<Token>& directive)
+	struct ResolvedInclude
 	{
-		std::vector<Token> expanded;
-		ExpandDirectiveTail(directive, 2, &expanded);
-		if (expanded.size() != 1 ||
-			(expanded[0].kind != TK_HEADER && expanded[0].kind != TK_STRING))
-			throw std::runtime_error("invalid #include operand");
-		const std::string& spelling = Spell(expanded[0]);
-		const std::string next = expanded[0].kind == TK_HEADER ?
-			spelling.substr(1, spelling.size() - 2) :
-			DecodeDirectiveString(spelling);
-		if (next.find('\0') != std::string::npos)
-			throw std::runtime_error("null character in include path");
-		const std::string presumed =
-			spellings_.Get(sources_.back().presumed_file);
-		std::string selected;
-		const std::size_t slash = presumed.find_last_of('/');
-		FileIdentity identity = FileIdentity();
-		if (slash != std::string::npos)
+		std::string path;
+		FileIdentity identity;
+		std::size_t search_index;
+		bool has_search_index;
+
+		ResolvedInclude() : search_index(0), has_search_index(false) {}
+	};
+
+	std::size_t IncludeSearchPathCount() const
+	{
+		return options_->include_search_paths.size() +
+			options_->system_include_search_paths.size();
+	}
+
+	const std::string& IncludeSearchPath(std::size_t index) const
+	{
+		if (index < options_->include_search_paths.size())
+			return options_->include_search_paths[index];
+		return options_->system_include_search_paths[
+			index - options_->include_search_paths.size()];
+	}
+
+	bool ResolveCandidate(const std::string& path, std::size_t search_index,
+		bool has_search_index, ResolvedInclude* result) const
+	{
+		FileIdentity identity;
+		if (!GetFileIdentity(path, &identity))
+			return false;
+		if (result)
 		{
-			const std::string relative = presumed.substr(0, slash + 1) + next;
-			if (GetFileIdentity(relative, &identity))
-				selected = relative;
+			result->path = path;
+			result->identity = identity;
+			result->search_index = search_index;
+			result->has_search_index = has_search_index;
 		}
-		for (std::size_t i = 0;
-			selected.empty() && i < options_.include_search_paths.size(); ++i)
+		return true;
+	}
+
+	bool FindInclude(const std::string& name, bool quoted, bool include_next,
+		ResolvedInclude* result) const
+	{
+		if (sources_.empty())
+			throw std::logic_error("include lookup outside source");
+		if (!include_next && quoted)
 		{
-			std::string candidate = options_.include_search_paths[i];
+			const std::string current =
+				spellings_.Get(sources_.back().physical_file);
+			const std::size_t slash = current.find_last_of('/');
+			if (slash != std::string::npos && ResolveCandidate(
+				current.substr(0, slash + 1) + name, 0, false, result))
+				return true;
+		}
+
+		std::size_t first = 0;
+		if (include_next && sources_.back().has_include_search_index)
+			first = sources_.back().include_search_index + 1;
+		for (std::size_t i = first; i < IncludeSearchPathCount(); ++i)
+		{
+			std::string candidate = IncludeSearchPath(i);
 			if (!candidate.empty() && candidate[candidate.size() - 1] != '/')
 				candidate.push_back('/');
-			candidate += next;
-			if (GetFileIdentity(candidate, &identity)) selected = candidate;
+			candidate += name;
+			if (ResolveCandidate(candidate, i, true, result))
+				return true;
 		}
-		for (std::size_t i = 0;
-			selected.empty() &&
-			i < options_.system_include_search_paths.size(); ++i)
-		{
-			std::string candidate = options_.system_include_search_paths[i];
-			if (!candidate.empty() && candidate[candidate.size() - 1] != '/')
-				candidate.push_back('/');
-			candidate += next;
-			if (GetFileIdentity(candidate, &identity)) selected = candidate;
-		}
-		if (selected.empty() && GetFileIdentity(next, &identity)) selected = next;
-		if (selected.empty())
-			throw std::runtime_error("included file not found: " + next);
-		if (once_files_.Find(identity))
+		return !include_next && ResolveCandidate(name, 0, false, result);
+	}
+
+	void ProcessResolvedInclude(const ResolvedInclude& resolved)
+	{
+		if (once_files_.Find(resolved.identity))
 		{
 			if (preprocessing_stats_)
 				++preprocessing_stats_->skipped_once_includes;
 			return;
 		}
-		if (preprocessing_stats_)
-			++preprocessing_stats_->includes;
-		const std::string source = ReadSource(selected);
-		ProcessSource(selected, source);
+		if (preprocessing_stats_) ++preprocessing_stats_->includes;
+		const std::string source = ReadSource(resolved.path);
+		ProcessSource(resolved.path, source, resolved.has_search_index,
+			resolved.search_index);
+	}
+
+	void ProcessForcedInclude(const std::string& name)
+	{
+		// Give command-line includes a primary-like source frame for relative
+		// lookup while preserving the same macro and output stream session.
+		SourceFrame frame;
+		frame.physical_file = spellings_.Intern("<command-line>");
+		frame.presumed_file = frame.physical_file;
+		sources_.push_back(frame);
+		ResolvedInclude resolved;
+		const bool found = FindInclude(name, true, false, &resolved);
+		sources_.pop_back();
+		if (!found)
+			throw std::runtime_error("included file not found: " + name);
+		ProcessResolvedInclude(resolved);
+	}
+
+	void ParseInclude(const std::vector<Token>& directive, bool include_next)
+	{
+		std::vector<Token> expanded;
+		ExpandDirectiveTail(directive, 2, &expanded);
+		std::string name;
+		bool quoted = false;
+		if (!ParseHeaderOperand(expanded, 0, expanded.size(), &name, &quoted))
+			throw std::runtime_error("invalid #include operand");
+		ResolvedInclude resolved;
+		if (!FindInclude(name, quoted, include_next, &resolved))
+			throw std::runtime_error("included file not found: " + name);
+		ProcessResolvedInclude(resolved);
+	}
+
+	void ParseWarningDirective(const std::vector<Token>& directive)
+	{
+		if (!options_->diagnostics)
+			return;
+		const SourceFrame& source = sources_.back();
+		*options_->diagnostics << spellings_.Get(source.presumed_file) << ':'
+			<< (directive.empty() ? source.current_physical_line :
+				directive[0].source_line)
+			<< ": warning: #warning";
+		for (std::size_t i = 2; i < directive.size(); ++i)
+		{
+			if (directive[i].leading_space) *options_->diagnostics << ' ';
+			*options_->diagnostics << Spell(directive[i]);
+		}
+		*options_->diagnostics << '\n';
 	}
 
 	void ParseLineDirective(const std::vector<Token>& directive)
@@ -1651,6 +1736,7 @@ private:
 			retained_replacement_tokens_ -= found->replacement.size();
 			macros_.Erase(directive[2].spelling);
 		}
+		replaceable_command_line_macros_.Erase(directive[2].spelling);
 		if (stats_)
 			++stats_->macro_undefinitions;
 	}
@@ -1678,7 +1764,16 @@ private:
 		if (old)
 		{
 			if (!Equivalent(*old, macro))
-				throw std::runtime_error("incompatible macro redefinition");
+			{
+				if (!replaceable_command_line_macros_.Find(macro.name))
+					throw std::runtime_error("incompatible macro redefinition");
+				retained_replacement_tokens_ -= old->replacement.size();
+				macros_.Erase(macro.name);
+				retained_replacement_tokens_ += macro.replacement.size();
+				const SpellingId name = macro.name;
+				macros_.Insert(name, std::move(macro));
+			}
+			replaceable_command_line_macros_.Erase(macro.name);
 		}
 		else
 		{
@@ -2758,6 +2853,7 @@ private:
 	ControllingExpressionEvaluator condition_evaluator_;
 	PostTokenizationSession condition_post_tokens_;
 	FlatHashMap<SpellingId, Macro> macros_;
+	FlatHashMap<SpellingId, unsigned char> replaceable_command_line_macros_;
 	std::vector<Token> line_;
 	std::deque<Token> rescan_;
 	InvocationScan pending_invocation_;
@@ -2768,7 +2864,7 @@ private:
 	std::uint64_t next_origin_;
 	bool full_preprocessing_;
 	PreprocessingStats* preprocessing_stats_;
-	PreprocessingOptions options_;
+	const PreprocessingOptions* options_;
 	std::vector<SourceFrame> sources_;
 	std::vector<ConditionalFrame> conditionals_;
 	FlatHashMap<FileIdentity, unsigned char, FileIdentityHash> once_files_;
@@ -2785,8 +2881,10 @@ private:
 	SpellingId id_else_;
 	SpellingId id_endif_;
 	SpellingId id_include_;
+	SpellingId id_include_next_;
 	SpellingId id_line_;
 	SpellingId id_error_;
+	SpellingId id_warning_;
 	SpellingId id_pragma_;
 	SpellingId id_once_;
 	SpellingId id_defined_;
@@ -2812,11 +2910,16 @@ MacroProcessingStats::MacroProcessingStats()
 	  elapsed_nanoseconds(0)
 {}
 
+PreprocessingOptions::PreprocessingOptions()
+	: hosted_predefined_source(0), diagnostics(0)
+{}
+
 PreprocessingStats::PreprocessingStats()
 	: source_files(0), source_bytes(0), peak_live_source_bytes(0),
 	  conditional_directives(0),
 	  controlling_expressions(0), includes(0), skipped_once_includes(0),
-	  pragma_once_files(0), pragma_operators(0), peak_include_depth(0),
+	  pragma_once_files(0), pragma_operators(0), builtin_probes(0),
+	  include_probes(0), peak_include_depth(0),
 	  peak_conditional_depth(0), elapsed_nanoseconds(0)
 {}
 

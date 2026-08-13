@@ -9,6 +9,7 @@
 #include "pa30_object.h"
 #include "pa30_elf_object.h"
 #include "lowir_native.h"
+#include "preprocessor.h"
 #include "tool_help_text.h"
 
 #include <chrono>
@@ -47,15 +48,27 @@ enum class DriverMode
 
 struct DriverInvocation
 {
+	struct MacroAction
+	{
+		bool define;
+		string argument;
+
+		MacroAction(bool is_definition, const string & value)
+			: define(is_definition), argument(value)
+		{}
+	};
+
   DriverMode mode;
   string output;
   string target;
+	string query;
   vector<string> inputs;
   vector<string> include_paths;
   vector<string> system_include_paths;
   vector<string> library_paths;
   vector<string> libraries;
-  vector<string> predefined_macros;
+	vector<MacroAction> macro_actions;
+	vector<string> forced_includes;
 
   DriverInvocation()
       : mode(DriverMode::Link)
@@ -279,6 +292,7 @@ DriverInvocation parse_driver_invocation(const vector<string> & args)
       throw logic_error("query flag must be used as a direct invocation");
     }
     invocation.mode = DriverMode::Query;
+		invocation.query = args[0];
     return invocation;
   }
 
@@ -307,16 +321,28 @@ DriverInvocation parse_driver_invocation(const vector<string> & args)
       invocation.output = args[i];
       continue;
     }
-    if(args[i] == "-I" || args[i] == "-L" || args[i] == "-l" ||
-       args[i] == "-D") {
+    if(args[i] == "-I" || args[i] == "-L" || args[i] == "-l") {
       const string option = args[i];
       consume_required_option_argument(args, i, option,
           option == "-I" || option == "-L" ? "path" :
-          option == "-l" ? "library name" : "macro definition");
+          "library name");
       if(option == "-I") invocation.include_paths.push_back(args[i]);
       else if(option == "-L") invocation.library_paths.push_back(args[i]);
-      else if(option == "-l") invocation.libraries.push_back(args[i]);
-      else invocation.predefined_macros.push_back(args[i]);
+			else invocation.libraries.push_back(args[i]);
+			continue;
+		}
+		if(args[i] == "-D" || args[i] == "-U") {
+			const bool define = args[i] == "-D";
+			const string option = args[i];
+			consume_required_option_argument(args, i, option,
+				define ? "macro definition" : "macro name");
+			invocation.macro_actions.push_back(
+				DriverInvocation::MacroAction(define, args[i]));
+			continue;
+		}
+		if(args[i] == "-include") {
+			consume_required_option_argument(args, i, "-include", "file");
+			invocation.forced_includes.push_back(args[i]);
       continue;
     }
     if(args[i] == "-isystem") {
@@ -343,7 +369,29 @@ DriverInvocation parse_driver_invocation(const vector<string> & args)
       continue;
     }
     if(starts_with(args[i], "-D") && args[i].size() > 2) {
-      invocation.predefined_macros.push_back(args[i].substr(2));
+			invocation.macro_actions.push_back(
+				DriverInvocation::MacroAction(true, args[i].substr(2)));
+			continue;
+		}
+		if(starts_with(args[i], "-U") && args[i].size() > 2) {
+			invocation.macro_actions.push_back(
+				DriverInvocation::MacroAction(false, args[i].substr(2)));
+			continue;
+		}
+		if(starts_with(args[i], "-std=")) {
+			const string standard = args[i].substr(5);
+			string value;
+			if(standard == "c++11" || standard == "gnu++11") value = "201103L";
+			else if(standard == "c++14" || standard == "gnu++14") value = "201402L";
+			else if(standard == "c++17" || standard == "gnu++17") value = "201703L";
+			else throw logic_error("unsupported language standard: " + standard);
+			invocation.macro_actions.push_back(
+				DriverInvocation::MacroAction(true, "__cplusplus=" + value));
+			continue;
+		}
+		if(args[i] == "-fno-exceptions") {
+			invocation.macro_actions.push_back(
+				DriverInvocation::MacroAction(false, "__EXCEPTIONS"));
       continue;
     }
     if(args[i] == "--target") {
@@ -386,14 +434,6 @@ DriverInvocation parse_driver_invocation(const vector<string> & args)
   return invocation;
 }
 
-int run_unimplemented_mode(const char * feature,
-                           const char * owner)
-{
-  (void)feature;
-  (void)owner;
-  throw NotImplementedException();
-}
-
 cppgm::PreprocessingOptions make_preprocessing_options();
 
 string normalize_native_target(const string & target)
@@ -419,14 +459,196 @@ string read_source_file(const string & path)
   return string(istreambuf_iterator<char>(input), istreambuf_iterator<char>());
 }
 
+char hex_digit(unsigned int value)
+{
+	return value < 10 ? static_cast<char>('0' + value) :
+		static_cast<char>('A' + value - 10);
+}
+
+string hex_dump(const void * data, size_t size)
+{
+	const unsigned char * bytes = static_cast<const unsigned char *>(data);
+	string result(size * 2, '0');
+	for(size_t i = 0; i < size; ++i) {
+		result[i * 2] = hex_digit(bytes[i] >> 4);
+		result[i * 2 + 1] = hex_digit(bytes[i] & 0xF);
+	}
+	return result;
+}
+
+class DriverPreprocessorOutput : public cppgm::IPostTokenStream
+{
+public:
+	explicit DriverPreprocessorOutput(ostream & output) : output_(output) {}
+
+	void EmitInvalid(const string & source)
+	{
+		throw runtime_error("invalid phase-7 token: " + source);
+	}
+
+	void EmitSimple(const string & source, cppgm::SimpleTokenKind kind)
+	{
+		output_ << "simple " << source << ' ' <<
+			cppgm::SimpleTokenKindName(kind) << '\n';
+	}
+
+	void EmitIdentifier(const string & source)
+	{
+		output_ << "identifier " << source << '\n';
+	}
+
+	void EmitLiteral(const string & source, cppgm::FundamentalType type,
+		const void * data, size_t size)
+	{
+		output_ << "literal " << source << ' ' <<
+			cppgm::FundamentalTypeName(type) << ' ' << hex_dump(data, size) << '\n';
+	}
+
+	void EmitLiteralArray(const string & source, size_t elements,
+		cppgm::FundamentalType type, const void * data, size_t size)
+	{
+		output_ << "literal " << source << " array of " << elements << ' ' <<
+			cppgm::FundamentalTypeName(type) << ' ' << hex_dump(data, size) << '\n';
+	}
+
+	void EmitUserDefinedCharacter(const string & source, const string & suffix,
+		cppgm::FundamentalType type, const void * data, size_t size)
+	{
+		output_ << "user-defined-literal " << source << ' ' << suffix <<
+			" character " << cppgm::FundamentalTypeName(type) << ' ' <<
+			hex_dump(data, size) << '\n';
+	}
+
+	void EmitUserDefinedString(const string & source, const string & suffix,
+		size_t elements, cppgm::FundamentalType type, const void * data,
+		size_t size)
+	{
+		output_ << "user-defined-literal " << source << ' ' << suffix <<
+			" string array of " << elements << ' ' <<
+			cppgm::FundamentalTypeName(type) << ' ' << hex_dump(data, size) << '\n';
+	}
+
+	void EmitUserDefinedInteger(const string & source, const string & suffix,
+		const string & prefix)
+	{
+		output_ << "user-defined-literal " << source << ' ' << suffix <<
+			" integer " << prefix << '\n';
+	}
+
+	void EmitUserDefinedFloating(const string & source, const string & suffix,
+		const string & prefix)
+	{
+		output_ << "user-defined-literal " << source << ' ' << suffix <<
+			" floating " << prefix << '\n';
+	}
+
+	void EmitEof() { output_ << "eof\n"; }
+
+private:
+	ostream & output_;
+};
+
+void report_preprocessor_stats(const string & path,
+	const cppgm::PreprocessingStats & stats)
+{
+	cerr << "pa34_preproc_stats"
+		<< " file=" << path
+		<< " source_files=" << stats.source_files
+		<< " source_bytes=" << stats.source_bytes
+		<< " pp_tokens=" << stats.macros.tokenization.emitted_tokens
+		<< " post_tokens=" << stats.macros.postprocessing.emitted_tokens
+		<< " directives=" << stats.macros.directive_lines
+		<< " macro_lookups=" << stats.macros.macro_lookups
+		<< " expansions=" << stats.macros.expanded_tokens
+		<< " builtin_probes=" << stats.builtin_probes
+		<< " include_probes=" << stats.include_probes
+		<< " includes=" << stats.includes
+		<< " peak_include_depth=" << stats.peak_include_depth
+		<< " peak_line_tokens=" << stats.macros.peak_line_tokens
+		<< " peak_rescan_tokens=" << stats.macros.peak_rescan_tokens
+		<< " elapsed_ns=" << stats.elapsed_nanoseconds << '\n';
+}
+
 cppgm::PreprocessingOptions make_driver_preprocessing_options(
     const DriverInvocation & invocation)
 {
   cppgm::PreprocessingOptions options = make_preprocessing_options();
   options.include_search_paths = invocation.include_paths;
   options.system_include_search_paths = invocation.system_include_paths;
-  options.predefined_macros = invocation.predefined_macros;
+	const char * override_paths = getenv("CPPGM_STDINC_PATHS");
+	cppgm::ConfigureHostedPreprocessing(&options, override_paths == 0);
+	if(override_paths) {
+		const string paths(override_paths);
+		size_t begin = 0;
+		while(begin <= paths.size()) {
+			const size_t end = paths.find(':', begin);
+			const string path = paths.substr(begin,
+				end == string::npos ? string::npos : end - begin);
+			if(!path.empty()) options.system_include_search_paths.push_back(path);
+			if(end == string::npos) break;
+			begin = end + 1;
+		}
+	}
+	for(size_t i = 0; i < invocation.macro_actions.size(); ++i) {
+		options.macro_actions.push_back(cppgm::PreprocessingOptions::MacroAction(
+			invocation.macro_actions[i].define,
+			invocation.macro_actions[i].argument));
+	}
+	options.forced_includes = invocation.forced_includes;
+	options.diagnostics = &cerr;
   return options;
+}
+
+int run_preprocess_driver(const DriverInvocation & invocation)
+{
+	ofstream file_output;
+	ostream * output = &cout;
+	if(!invocation.output.empty()) {
+		file_output.open(invocation.output.c_str(), ios::out | ios::trunc);
+		if(!file_output) {
+			throw runtime_error("unable to open output file: " + invocation.output);
+		}
+		output = &file_output;
+	}
+
+	const cppgm::PreprocessingOptions options =
+		make_driver_preprocessing_options(invocation);
+	DriverPreprocessorOutput tokens(*output);
+	*output << "preproc " << invocation.inputs.size() << '\n';
+	const bool collect_stats = getenv("CPPGM_DRIVER_STATS") != 0;
+	for(size_t i = 0; i < invocation.inputs.size(); ++i) {
+		const string & path = invocation.inputs[i];
+		const string source = read_source_file(path);
+		*output << "sof " << path << '\n';
+		cppgm::PreprocessingStats stats;
+		cppgm::PreprocessFile(path, source, tokens, options,
+			collect_stats ? &stats : 0);
+		if(collect_stats) report_preprocessor_stats(path, stats);
+	}
+	if(!*output) throw runtime_error("unable to write preprocessor output");
+	return EXIT_SUCCESS;
+}
+
+int run_query_driver(const string & query)
+{
+	if(query == "--version" || query == "-v") {
+		cout << "cppgm++ 0.34 (host configuration: " <<
+			cppgm::HostedCompilerCommand() << ")\n";
+		return EXIT_SUCCESS;
+	}
+	if(query == "-dumpmachine") {
+		cout << cppgm::HostedCompilerTarget();
+		return EXIT_SUCCESS;
+	}
+	if(query == "-dumpversion") {
+		cout << cppgm::HostedCompilerVersion();
+		return EXIT_SUCCESS;
+	}
+	if(query == "-print-search-dirs") {
+		cout << cppgm::HostedCompilerSearchDirs();
+		return EXIT_SUCCESS;
+	}
+	throw logic_error("unknown driver query");
 }
 
 cppgm::pa30::CompilerObject compile_source_object(
@@ -1264,9 +1486,9 @@ int run_driver_mode(const vector<string> & args)
   const string target = normalize_native_target(invocation.target);
   switch(invocation.mode) {
   case DriverMode::Query:
-    return run_unimplemented_mode("driver query mode", "PA34");
+		return run_query_driver(invocation.query);
   case DriverMode::Preprocess:
-    return run_unimplemented_mode("hosted preprocess driver mode (-E)", "PA34");
+		return run_preprocess_driver(invocation);
   case DriverMode::Compile:
     return run_compile_driver(invocation, target);
   case DriverMode::Link:

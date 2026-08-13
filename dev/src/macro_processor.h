@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <iosfwd>
 #include <string>
 #include <vector>
 
@@ -43,12 +44,27 @@ struct MacroProcessingStats
 
 struct PreprocessingOptions
 {
+	struct MacroAction
+	{
+		bool define;
+		std::string argument;
+
+		MacroAction(bool is_definition, const std::string& value)
+			: define(is_definition), argument(value)
+		{}
+	};
+
 	std::string build_date;
 	std::string build_time;
 	std::string author;
 	std::vector<std::string> include_search_paths;
 	std::vector<std::string> system_include_search_paths;
-	std::vector<std::string> predefined_macros;
+	std::vector<MacroAction> macro_actions;
+	std::vector<std::string> forced_includes;
+	const char* hosted_predefined_source;
+	std::ostream* diagnostics;
+
+	PreprocessingOptions();
 };
 
 struct PreprocessingStats
@@ -64,6 +80,8 @@ struct PreprocessingStats
 	std::size_t skipped_once_includes;
 	std::size_t pragma_once_files;
 	std::size_t pragma_operators;
+	std::size_t builtin_probes;
+	std::size_t include_probes;
 	std::size_t peak_include_depth;
 	std::size_t peak_conditional_depth;
 	std::uint64_t elapsed_nanoseconds;

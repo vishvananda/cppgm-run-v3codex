@@ -32,6 +32,7 @@ TARGETS = \
 	cy86
 
 CXX ?= g++
+CPPGM_HOST_CXX ?= $(CXX)
 V ?= 0
 Q = $(if $(filter 1,$(V)),,@)
 quiet = @if [ "$(V)" != "1" ]; then printf '  %-7s %s\n' '$(1)' '$(2)'; fi
@@ -43,9 +44,11 @@ TEST_RUNNER_ENTRY_FLAGS = $(if $(filter 1,$(CPPGM_TEST_RUNNER)),-Dmain=test_runn
 ENTRY_CC_FLAGS = $(CC_FLAGS) $(TEST_RUNNER_ENTRY_FLAGS)
 SRC = src
 OBJ ?= ../obj
+GENERATED ?= $(OBJ)/generated
+BUILTIN_HOST_CONFIG = $(GENERATED)/cppgm_builtin_host_config.h
 OBJDIR = $(OBJ)/dev
 DEPDIR = $(OBJDIR)/.d
-INC = -I$(SRC)
+INC = -I$(SRC) -I$(GENERATED)
 
 include frontend_source_sets.mk
 $(foreach target,$(TARGETS),$(if $(filter undefined,$(origin FRONTEND_OBJ_BASENAMES_$(target))),$(error missing FRONTEND_OBJ_BASENAMES_$(target) in frontend_source_sets.mk),))
@@ -80,6 +83,15 @@ $(OBJDIR):
 	@mkdir -p $@
 
 FORCE:
+
+$(BUILTIN_HOST_CONFIG): FORCE
+	@mkdir -p $(dir $@)
+	@CPPGM_BUILD_HOST_CXX='$(CPPGM_HOST_CXX)' \
+		CPPGM_STDLIB_FLAGS='$(CPPGM_STDLIB_FLAGS)' \
+		perl gen_builtin_host_config.pl > $@.tmp
+	@if ! cmp -s $@.tmp $@ 2>/dev/null; then mv -f $@.tmp $@; else rm -f $@.tmp; fi
+
+$(OBJDIR)/preprocessor.o: $(BUILTIN_HOST_CONFIG)
 
 $(COMPILE_CONFIG_STAMP): FORCE | $(OBJDIR)
 	@printf '%s\n%s\n' "$(CC_FLAGS)" "$(ENTRY_CC_FLAGS)" > $@.tmp

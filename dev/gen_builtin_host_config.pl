@@ -124,10 +124,24 @@ sub main {
             parse_include_paths($include_probe->{stdout} . $include_probe->{stderr});
     }
 
+    my $target_probe = run_probe([@base_args, "-dumpmachine"], "");
+    my $version_probe = run_probe([@base_args, "-dumpversion"], "");
+    my $search_probe = run_probe([@base_args, "-print-search-dirs"], "");
+    my $target = defined($target_probe) && $target_probe->{status} == 0 ?
+        $target_probe->{stdout} : "x86_64-unknown-linux-gnu\n";
+    my $version = defined($version_probe) && $version_probe->{status} == 0 ?
+        $version_probe->{stdout} : "11\n";
+    my $search_dirs = defined($search_probe) && $search_probe->{status} == 0 ?
+        $search_probe->{stdout} : "";
+
     print "#pragma once\n\n";
     print "namespace cppgm_builtin_host_config {\n\n";
     print "static const char kHostCxx[] = ", string_literal($host_cxx), ";\n";
     print "static const char kStdlibFlags[] = ", string_literal($stdlib_flags), ";\n";
+    print "static const char kTarget[] = ", string_literal($target), ";\n";
+    print "static const char kVersion[] = ", string_literal($version), ";\n";
+    print "static const char kSearchDirs[] = ",
+          raw_string_literal($search_dirs), ";\n";
     print "static const char kHostPredefinedMacros[] = ",
           raw_string_literal($predefined), ";\n";
     print "static const char * const kStandardIncludePaths[] = {\n";
