@@ -244,11 +244,6 @@ bool SemanticAnalyzer::TryAnalyzeDynamicCast(TypeId target,
 
 	if (!program_->entities[source_entity].polymorphic_class)
 		throw std::runtime_error("dynamic_cast source is not polymorphic");
-	if (program_->entities[source_entity].nonlinear_base_graph ||
-		(!target_void &&
-		 program_->entities[target_entity].nonlinear_base_graph))
-		throw std::runtime_error(
-			"dynamic_cast multiple inheritance is outside PA26");
 	MarkVtableDemand(source_entity);
 	if (!target_void) MarkVtableDemand(target_entity);
 

@@ -507,7 +507,8 @@ void SemanticAnalyzer::EvaluateSynthesizedAssignment(EntityId entity,
 	if (!IsAssignmentSpecialMember(kind))
 		throw std::logic_error("assignment status requested for another member");
 	*deleted = false;
-	*trivial = program_->entities[entity].virtual_base_count == 0;
+	*trivial = !program_->entities[entity].polymorphic_class &&
+		program_->entities[entity].virtual_base_count == 0;
 	*nonthrowing = true;
 	const EntityRecord& owner = program_->entities[entity];
 	const bool union_object = owner.flavor == NAMED_UNION;

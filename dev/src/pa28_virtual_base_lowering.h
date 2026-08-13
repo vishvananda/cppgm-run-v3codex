@@ -918,7 +918,9 @@ protected:
 		const std::int64_t row = has_polymorphic_row ?
 			-static_cast<std::int64_t>(
 				derived.graph_.class_polymorphism[owner].address_point) +
-				static_cast<std::int64_t>(virtual_base_ordinal) * 8 :
+			(derived.output_.host_object_emission ? static_cast<std::int64_t>(
+				derived.graph_.class_polymorphism[owner].virtual_call_offsets.size()) * 8 : 0) +
+			static_cast<std::int64_t>(virtual_base_ordinal) * 8 :
 			-static_cast<std::int64_t>(24 + virtual_base_ordinal * 8);
 		const Operand entry = derived.IndexAddress(
 			LowI8(), vtable, Operand(row, LowI64()), false);

@@ -1373,10 +1373,20 @@ private:
 		Global vtable;
 		vtable.symbol = symbol;
 		vtable.initializer_kind = Global::STRUCTURED_VALUE;
-		for (std::size_t row = 0; row < virtual_base_offsets.size(); ++row)
-			AddIntegerItem(&vtable, LowI64(), virtual_base_offsets[row]);
-		for (std::size_t row = 0; row < virtual_call_offsets.size(); ++row)
-			AddIntegerItem(&vtable, LowI64(), virtual_call_offsets[row]);
+		if (output_.host_object_emission)
+		{
+			for (std::size_t row = 0; row < virtual_call_offsets.size(); ++row)
+				AddIntegerItem(&vtable, LowI64(), virtual_call_offsets[row]);
+			for (std::size_t row = 0; row < virtual_base_offsets.size(); ++row)
+				AddIntegerItem(&vtable, LowI64(), virtual_base_offsets[row]);
+		}
+		else
+		{
+			for (std::size_t row = 0; row < virtual_base_offsets.size(); ++row)
+				AddIntegerItem(&vtable, LowI64(), virtual_base_offsets[row]);
+			for (std::size_t row = 0; row < virtual_call_offsets.size(); ++row)
+				AddIntegerItem(&vtable, LowI64(), virtual_call_offsets[row]);
+		}
 		if (stats_) stats_->vtable_offset_rows +=
 			virtual_base_offsets.size() + virtual_call_offsets.size();
 		AddIntegerItem(&vtable, LowI64(),
@@ -1561,6 +1571,8 @@ private:
 			if (program_.VirtualBase(entity, ordinal).entity == target)
 				return -static_cast<std::int64_t>(
 					graph_.class_polymorphism[entity].address_point) +
+					(output_.host_object_emission ? static_cast<std::int64_t>(
+						graph_.class_polymorphism[entity].virtual_call_offsets.size()) * 8 : 0) +
 					static_cast<std::int64_t>(ordinal) * 8;
 		return -24;
 	}

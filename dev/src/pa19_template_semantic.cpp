@@ -2955,7 +2955,14 @@ void SemanticAnalyzer::AnalyzeExplicitInstantiation(NodeId node,
 		if (binding == kNoBinding) return;
 		binding = program_->bindings[binding].canonical;
 		const FunctionInfo& function = GetFunction(binding);
-		if (!function.defined || function.implicit_constructor ||
+		const EntityId owner = program_->bindings[binding].member_owner;
+		const bool implicit_default_constructor =
+			function.implicit_constructor &&
+			function.special_member == SPECIAL_MEMBER_NONE &&
+			owner != kNoEntity &&
+			program_->entities[owner].polymorphic_class;
+		if ((!function.defined && !implicit_default_constructor) ||
+			(function.implicit_constructor && !implicit_default_constructor) ||
 			function.implicit_destructor || function.implicit_special_member ||
 			function.deleted_constructor || function.deleted_destructor ||
 			function.deleted_special_member)

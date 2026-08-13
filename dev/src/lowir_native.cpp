@@ -2729,6 +2729,18 @@ private:
       values_[instruction.dest].pointer_global_cell =
         global_operand(MirOperand::OP_GLOBAL, instruction.first);
   }
+  bool nonparameter_value_live_in_register(X64Register reg) const
+  {
+    for(std::unordered_map<std::string, ValueFact>::const_iterator value =
+          values_.begin(); value != values_.end(); ++value) {
+      const auto uses = facts_.uses.find(value->first);
+      if(uses != facts_.uses.end() && uses->second != 0 &&
+         !value->second.parameter && value->second.location.kind == MirOperand::OP_REG &&
+         value->second.location.reg == reg)
+        return true;
+    }
+    return false;
+  }
   void lower_instruction(const lowir_model::LowirBlock & block,
                          std::size_t instruction_index,
                          std::vector<MirInstruction> & out)
@@ -2782,8 +2794,12 @@ private:
             value.location = reg_operand(
               incoming_parameter_registers_.find(parameter)->second);
           else if(load_position > facts_.calls.front()) {
-            append_move(out, reg_operand(XR_R9), value.location);
-            value.location = reg_operand(XR_R9);
+            X64Register forwarded = XR_R9;
+            if(nonparameter_value_live_in_register(forwarded))
+              forwarded = registers_.allocate(false);
+            else if(!registers_.is_used(forwarded)) registers_.reserve(forwarded);
+            append_move(out, reg_operand(forwarded), value.location);
+            value.location = reg_operand(forwarded);
             value.forwarded_parameter = parameter;
           }
         }

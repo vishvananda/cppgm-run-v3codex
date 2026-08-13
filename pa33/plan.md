@@ -11,50 +11,48 @@ not recover semantic facts from strings.
 
 ## Current Failure Map
 
-Current result: **78/94 PA33 tests pass**, improved from the 76/94 turn
+Current result: **85/94 PA33 tests pass**, improved from the 78/94 turn
 baseline (and 59/94 stage-start baseline); PA1-PA32 pass (4291/4291).
 
 | Owner / shared behavior | Count | Failing cases |
 | --- | ---: | --- |
-| Remaining ABI name publication | 2 | covariant layout-finalization symbols; nested-lambda owner identity |
+| Finalized covariant/VTT layout | 3 | covariant layout-finalization symbols, self-covariant adjustment, VTT base copy |
+| Remaining ABI name publication | 1 | nested-lambda owner identity |
 | Remaining type/name frontend | 1 | unnamed local-class constructor |
-| Remaining host EH RTTI | 1 | out-of-line virtual-base RTTI catch |
 | Polymorphic ODR ownership | 1 | duplicate inline-header polymorphic class |
-| Virtual-inheritance RTTI/casts | 3 | lazy-template cross-cast, virtual-inheritance cast-to-void, typed cross-cast |
-| Virtual-base/covariant runtime layout | 5 | external vbase reference, forwarded-reference condition, self-covariant result, virtual-base return, VTT base copy |
 | Static/TLS lifecycle | 3 | local static dtor, local thread-local dtor, TLS wrapper access |
 
 ## Active Checkpoint
 
-**Next — virtual-inheritance RTTI and casts.** Unify the three virtual-base
-`dynamic_cast` failures and the out-of-line virtual-base RTTI catch at the
-canonical class-layout/RTTI publication boundary.
+**Next — finalized covariant/VTT layout.** Unify the remaining covariant symbol,
+return-adjustment, and VTT copy failures at the finalized class-layout boundary.
 
-- Spec alignment (§§2, 4, 6-9): canonical class entities and finalized virtual
-  base paths must own one RTTI graph; EH and cast lowering consume those IDs,
-  and ABI publication emits complete, coalescible host objects without
-  reconstructing relationships from names.
-- Owner/data flow: instantiated class/layout facts -> canonical RTTI demand and
-  base graph -> typed catch/cast operands -> Itanium RTTI objects and runtime
-  calls. Complexity should remain O(classes + base edges + demand sites), with
-  indexed identity lookup at each use.
-- Validation: all four virtual-inheritance RTTI/EH fixtures, nearby nonvirtual
-  and external RTTI cases, full PA33/prior reports, file audit, and a widening
-  virtual-base graph series.
+- Spec alignment (§§2, 4, 6-9): canonical entities and final overriders own
+  covariant paths, layout owns concrete offsets, and publication consumes those
+  facts for one thunk/vtable/VTT entry without reparsing ABI names.
+- Owner/data flow: class completion + base paths -> final overrider/covariant
+  result path -> finalized this/result adjustments -> thunk and vtable
+  publication; constructor mode + base edge -> VTT slice -> canonical C1/C2
+  copy actions. Indexed lookups remain O(1), and total work is O(classes + base
+  edges + virtual slots + VTT entries), with one emitted thunk per adjustment
+  key.
+- Validation: the three grouped fixtures, nearby covariance and virtual-base
+  lifecycle tests, full PA33/prior reports, file audit, and a widening/deep
+  inheritance sample.
 
 ## Performance Evidence
 
-The constrained-function boundary series remained proportional:
+The virtual-base widening series remained proportional:
 
-| Functions | Tokens | LowIR instructions | EH states/edges/calls | Lowering ms | Native lower ms |
-| ---: | ---: | ---: | ---: | ---: | ---: |
-| 16 | 182 | 194 | 16/32/16 | 0.30 | 0.38 |
-| 32 | 358 | 386 | 32/64/32 | 0.46 | 0.66 |
-| 64 | 710 | 770 | 64/128/64 | 0.64 | 1.16 |
-| 128 | 1,414 | 1,538 | 128/256/128 | 1.12 | 2.16 |
+| Virtual bases | Tokens | Layout visits/facts | RTTI edges | Vtable rows | Semantic ms | Lowering ms |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 4 | 103 | 4/4 | 4 | 12 | 0.62 | 0.61 |
+| 8 | 163 | 8/8 | 8 | 24 | 0.81 | 0.92 |
+| 16 | 283 | 16/16 | 16 | 48 | 1.15 | 1.44 |
+| 32 | 523 | 32/32 | 32 | 96 | 2.03 | 2.74 |
 
-Doubling functions exactly doubled EH states, edges, and protected calls; 7.77x
-token growth produced 7.93x LowIR and 5.69x native-lowering time.
+An 8x wider graph produced exactly 8x layout visits, RTTI dependency edges,
+and vtable rows; semantic and lowering time grew 3.27x and 4.49x.
 
 ## Completed Checkpoints
 
@@ -67,3 +65,4 @@ token growth produced 7.93x LowIR and 5.69x native-lowering time.
 | PA33 dependent transform/layout checkpoint | Pass — `__decay` is a semantic and retained ABI type node; ordinary alias parameters publish source recipes, and dependent class-layout constants replay after substitution; PA33 71→73, PA1-PA32 4291/4291, file audit pass. |
 | PA33 EH nonlocal-transfer checkpoint | Pass — guarded rethrow owns its cleanup suffix, structured targets close crossed EH regions, and unreachable source-order jumps do not create reachable fallthrough; PA33 73→76, PA1-PA32 4291/4291, file audit pass. |
 | PA33 exception-specification escape-policy checkpoint | Pass — canonical dynamic-spec type slices lower to LSDA filters/`unexpected`, escaping `noexcept` definitions terminate after cleanup, and boundary demand stays definition-local; PA33 76→78, PA1-PA32 4291/4291, file audit pass. |
+| PA33 virtual-inheritance RTTI/cast checkpoint | Pass — host-object VMI prefix rows, nonlinear casts, polymorphic assignment, forwarded virtual-base arguments, and explicit-instantiation constructor ownership are canonical; PA33 78→85, PA1-PA32 4291/4291, file audit pass. |
