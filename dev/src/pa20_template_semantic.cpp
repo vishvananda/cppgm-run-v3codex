@@ -17,6 +17,38 @@ namespace pa12_semantic_detail
 namespace
 {
 
+TypeId RetainedIntegralLiteralType(const SyntaxArena& arena, NodeId syntax,
+	Program* program, std::int64_t* value)
+{
+	FundamentalType type = FT_VOID;
+	std::uint64_t retained_value = 0;
+	if (!program || !value ||
+		!arena.ScalarLiteralFact(syntax, &type, &retained_value))
+		return kNoType;
+	FundamentalKind kind = FUND_VOID;
+	switch (type)
+	{
+	case FT_SIGNED_CHAR: kind = FUND_SIGNED_CHAR; break;
+	case FT_SHORT_INT: kind = FUND_SHORT_INT; break;
+	case FT_INT: kind = FUND_INT; break;
+	case FT_LONG_INT: kind = FUND_LONG_INT; break;
+	case FT_LONG_LONG_INT: kind = FUND_LONG_LONG_INT; break;
+	case FT_UNSIGNED_CHAR: kind = FUND_UNSIGNED_CHAR; break;
+	case FT_UNSIGNED_SHORT_INT: kind = FUND_UNSIGNED_SHORT_INT; break;
+	case FT_UNSIGNED_INT: kind = FUND_UNSIGNED_INT; break;
+	case FT_UNSIGNED_LONG_INT: kind = FUND_UNSIGNED_LONG_INT; break;
+	case FT_UNSIGNED_LONG_LONG_INT: kind = FUND_UNSIGNED_LONG_LONG_INT; break;
+	case FT_WCHAR_T: kind = FUND_WCHAR_T; break;
+	case FT_CHAR: kind = FUND_CHAR; break;
+	case FT_CHAR16_T: kind = FUND_CHAR16_T; break;
+	case FT_CHAR32_T: kind = FUND_CHAR32_T; break;
+	case FT_BOOL: kind = FUND_BOOL; break;
+	default: return kNoType;
+	}
+	*value = static_cast<std::int64_t>(retained_value);
+	return program->types.Fundamental(kind);
+}
+
 bool SyntaxUsesTemplateParameter(const SyntaxArena& arena, NodeId node,
 	const std::unordered_set<NameId>& names)
 {
@@ -1369,6 +1401,8 @@ bool SemanticAnalyzer::AppendTemplateArgument(
 		{
 			argument.type = FunctionTemplateNondeducedTypeShape();
 			argument.dependent_parameter = kNondeducedTemplateParameter;
+			argument.source_value_type = RetainedIntegralLiteralType(
+				*arena_, source, program_, &argument.value);
 			arguments->push_back(argument);
 			if (arguments->size() <= fixed)
 				BindTemplateArgument(parameter_scope, parameter, argument);

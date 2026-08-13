@@ -291,7 +291,14 @@ public:
 		definition.definition.set_kind(ABI_DEFINITION_TEMPLATE_ARGUMENT);
 		AbiTemplateArgument& target =
 			definition.definition.template_argument;
-		if (source.value_binding != kNoBinding)
+		if (source.source_value_type != kNoType)
+		{
+			target.kind = ABI_TEMPLATE_ARGUMENT_VALUE;
+			target.value_type = MakeType(source.source_value_type);
+			target.has_value_type = true;
+			target.value = source.value;
+		}
+		else if (source.value_binding != kNoBinding)
 		{
 			target.kind = ABI_TEMPLATE_ARGUMENT_ENTITY;
 			target.entity_ref = AddEntity(source.value_binding);
