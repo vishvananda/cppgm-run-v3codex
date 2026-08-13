@@ -56,7 +56,8 @@ protected:
 	}
 
 	void LowerSpecialMemberCall(BindingId selected,
-		const Operand& destination, const Operand& source)
+		const Operand& destination, const Operand& source,
+		bool construction = false)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (selected == kNoBinding ||
@@ -74,8 +75,67 @@ protected:
 		CallArgumentFlags references;
 		arguments.Push(destination);
 		references.Push(0);
+		const BindingRecord& selected_binding =
+			derived.program_.bindings[selected];
+		if (construction && derived.IncludesConstructionVtt(selected))
+		{
+			const EntityId complete = derived.HasCurrentImplicitVirtualBases() ?
+				kNoEntity : derived.current_member_owner_;
+			arguments.Push(derived.ConstructionVttArgument(
+				complete, selected_binding.member_owner));
+			references.Push(Instruction::CALL_PASS_VALUE);
+		}
 		arguments.Push(source);
 		references.Push(1);
+		if (construction && selected_binding.constructor_base_entry &&
+			selected_binding.member_owner != kNoEntity)
+		{
+			std::size_t hidden_remaining =
+				derived.VirtualBaseParameterCount(selected, selected_binding.type);
+			const EntityId owner = selected_binding.member_owner;
+			for (std::size_t base = 0;
+				base < derived.program_.entities[owner].virtual_base_count &&
+				hidden_remaining != 0; ++base)
+			{
+				if (!derived.CarriesVirtualBase(selected, 0, base)) continue;
+				const VirtualBaseLayout& needed =
+					derived.program_.VirtualBase(owner, base);
+				Operand address;
+				if (!derived.HasCurrentImplicitVirtualBases())
+				{
+					std::uint64_t offset = 0;
+					if (!derived.program_.FindVirtualBase(
+						derived.current_member_owner_, needed.entity, &offset))
+						throw std::logic_error(
+							"complete synthesized constructor has no virtual base");
+					const Operand complete_object = derived.LoadStorage(
+						derived.StorageFor(
+							derived.current_this_binding_, LowPtr()), LowPtr());
+					address = derived.ProjectBaseSubobjectOffset(
+						complete_object, offset);
+				}
+				else if (!derived.CurrentVirtualBaseAddress(
+					derived.current_this_binding_, needed.entity, &address))
+					throw std::logic_error(
+						"base synthesized constructor has no virtual base");
+				arguments.Push(address);
+				references.Push(Instruction::CALL_PASS_VALUE);
+				--hidden_remaining;
+			}
+			for (std::size_t base = 0;
+				base < derived.program_.entities[owner].virtual_base_count &&
+				hidden_remaining != 0; ++base)
+			{
+				if (!derived.CarriesVirtualBase(selected, 1, base)) continue;
+				arguments.Push(derived.RuntimeVirtualBaseAddress(
+					source, owner, base));
+				references.Push(Instruction::CALL_PASS_VALUE);
+				--hidden_remaining;
+			}
+			if (hidden_remaining != 0)
+				throw std::logic_error(
+					"synthesized constructor virtual-base ABI is incomplete");
+		}
 		derived.output_.symbols[
 			derived.function_symbols_[selected]].referenced = true;
 		derived.AttachCallArguments(&call, arguments, references);
@@ -107,7 +167,7 @@ protected:
 				"array construction bypassed its retained loop recipe");
 		if (selected != kNoBinding)
 		{
-			LowerSpecialMemberCall(selected, destination, source);
+			LowerSpecialMemberCall(selected, destination, source, true);
 			return;
 		}
 		if (derived.IsClassObjectType(type))

@@ -21,12 +21,24 @@ struct VtableThunkLoweringFact
 	pa15_lowir_detail::SymbolId target;
 	pa11::BindingId function;
 	std::int64_t this_adjustment;
+	std::int64_t return_adjustment;
+	std::int64_t return_vtable_offset;
+	std::int64_t return_runtime_vtable_offset;
+	bool return_adjustment_virtual;
 
 	VtableThunkLoweringFact(pa15_lowir_detail::SymbolId symbol_value,
 		pa15_lowir_detail::SymbolId target_value, pa11::BindingId function_value,
-		std::int64_t this_adjustment_value)
+		std::int64_t this_adjustment_value,
+		std::int64_t return_adjustment_value,
+		std::int64_t return_vtable_offset_value,
+		std::int64_t return_runtime_vtable_offset_value,
+		bool return_adjustment_virtual_value)
 		: symbol(symbol_value), target(target_value), function(function_value),
-		  this_adjustment(this_adjustment_value) {}
+		  this_adjustment(this_adjustment_value),
+		  return_adjustment(return_adjustment_value),
+		  return_vtable_offset(return_vtable_offset_value),
+		  return_runtime_vtable_offset(return_runtime_vtable_offset_value),
+		  return_adjustment_virtual(return_adjustment_virtual_value) {}
 };
 
 struct PolymorphismLoweringState

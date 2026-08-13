@@ -955,11 +955,18 @@ struct VirtualSlotFact
 	BindingId root;
 	BindingId function;
 	std::int64_t this_adjustment;
+	std::int64_t return_adjustment;
+	std::int64_t return_vtable_offset;
+	bool return_adjustment_virtual;
 
 	VirtualSlotFact()
-		: root(kNoBinding), function(kNoBinding), this_adjustment(0) {}
+		: root(kNoBinding), function(kNoBinding), this_adjustment(0),
+		  return_adjustment(0), return_vtable_offset(0),
+		  return_adjustment_virtual(false) {}
 	VirtualSlotFact(BindingId root_value, BindingId function_value)
-		: root(root_value), function(function_value), this_adjustment(0) {}
+		: root(root_value), function(function_value), this_adjustment(0),
+		  return_adjustment(0), return_vtable_offset(0),
+		  return_adjustment_virtual(false) {}
 };
 
 struct PolymorphicViewFact

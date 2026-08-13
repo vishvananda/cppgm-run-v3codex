@@ -11,12 +11,11 @@ not recover semantic facts from strings.
 
 ## Current Failure Map
 
-Current result: **85/94 PA33 tests pass**, improved from the 78/94 turn
+Current result: **88/94 PA33 tests pass**, improved from the 85/94 turn
 baseline (and 59/94 stage-start baseline); PA1-PA32 pass (4291/4291).
 
 | Owner / shared behavior | Count | Failing cases |
 | --- | ---: | --- |
-| Finalized covariant/VTT layout | 3 | covariant layout-finalization symbols, self-covariant adjustment, VTT base copy |
 | Remaining ABI name publication | 1 | nested-lambda owner identity |
 | Remaining type/name frontend | 1 | unnamed local-class constructor |
 | Polymorphic ODR ownership | 1 | duplicate inline-header polymorphic class |
@@ -24,35 +23,35 @@ baseline (and 59/94 stage-start baseline); PA1-PA32 pass (4291/4291).
 
 ## Active Checkpoint
 
-**Next — finalized covariant/VTT layout.** Unify the remaining covariant symbol,
-return-adjustment, and VTT copy failures at the finalized class-layout boundary.
+**Next — static/TLS lifecycle.** Unify local static and thread-local access,
+registration, and teardown at the storage-duration lowering boundary.
 
-- Spec alignment (§§2, 4, 6-9): canonical entities and final overriders own
-  covariant paths, layout owns concrete offsets, and publication consumes those
-  facts for one thunk/vtable/VTT entry without reparsing ABI names.
-- Owner/data flow: class completion + base paths -> final overrider/covariant
-  result path -> finalized this/result adjustments -> thunk and vtable
-  publication; constructor mode + base edge -> VTT slice -> canonical C1/C2
-  copy actions. Indexed lookups remain O(1), and total work is O(classes + base
-  edges + virtual slots + VTT entries), with one emitted thunk per adjustment
-  key.
-- Validation: the three grouped fixtures, nearby covariance and virtual-base
-  lifecycle tests, full PA33/prior reports, file audit, and a widening/deep
-  inheritance sample.
+- Spec alignment (§§2, 4, 6-10): the canonical variable owns one guard/storage
+  identity; lowering selects process or thread storage and one registration
+  action; publication exposes ABI wrappers without recovering ownership from
+  names.
+- Owner/data flow: declaration merge -> canonical static entity -> guard and
+  storage symbol -> per-thread/process initialization -> destructor
+  registration and reverse teardown. Indexed lookup remains O(1), with
+  O(static entities + emitted actions) total work.
+- Validation: the three lifecycle fixtures, adjacent namespace/local static and
+  cross-TU cases, full PA33/prior reports, file audit, and a widening static/TLS
+  declaration sample.
 
 ## Performance Evidence
 
-The virtual-base widening series remained proportional:
+Independent covariant-template instantiations remained proportional:
 
-| Virtual bases | Tokens | Layout visits/facts | RTTI edges | Vtable rows | Semantic ms | Lowering ms |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 4 | 103 | 4/4 | 4 | 12 | 0.62 | 0.61 |
-| 8 | 163 | 8/8 | 8 | 24 | 0.81 | 0.92 |
-| 16 | 283 | 16/16 | 16 | 48 | 1.15 | 1.44 |
-| 32 | 523 | 32/32 | 32 | 96 | 2.03 | 2.74 |
+| Overrides | Vtable slots | Thunk requests | Hash probes | Semantic ms | Lowering ms |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 8 | 48 | 8 | 0 | 3.61 | 1.97 |
+| 16 | 96 | 16 | 6 | 6.71 | 3.70 |
+| 32 | 192 | 32 | 28 | 15.96 | 8.10 |
+| 64 | 384 | 64 | 69 | 30.57 | 15.52 |
 
-An 8x wider graph produced exactly 8x layout visits, RTTI dependency edges,
-and vtable rows; semantic and lowering time grew 3.27x and 4.49x.
+An 8x wider set produced exactly 8x slots and thunk requests; semantic and
+lowering time grew 8.46x and 7.87x, while total open-address probes stayed at
+69 for 64 distinct thunk keys.
 
 ## Completed Checkpoints
 
@@ -66,3 +65,4 @@ and vtable rows; semantic and lowering time grew 3.27x and 4.49x.
 | PA33 EH nonlocal-transfer checkpoint | Pass — guarded rethrow owns its cleanup suffix, structured targets close crossed EH regions, and unreachable source-order jumps do not create reachable fallthrough; PA33 73→76, PA1-PA32 4291/4291, file audit pass. |
 | PA33 exception-specification escape-policy checkpoint | Pass — canonical dynamic-spec type slices lower to LSDA filters/`unexpected`, escaping `noexcept` definitions terminate after cleanup, and boundary demand stays definition-local; PA33 76→78, PA1-PA32 4291/4291, file audit pass. |
 | PA33 virtual-inheritance RTTI/cast checkpoint | Pass — host-object VMI prefix rows, nonlinear casts, polymorphic assignment, forwarded virtual-base arguments, and explicit-instantiation constructor ownership are canonical; PA33 78→85, PA1-PA32 4291/4291, file audit pass. |
+| PA33 finalized covariant/VTT checkpoint | Pass — finalized fixed/virtual result paths publish keyed Itanium covariant thunks with null-preserving adjustment, and synthesized C2 copies forward VTT/virtual-base arguments; PA33 85→88, PA1-PA32 4291/4291, file audit pass. |

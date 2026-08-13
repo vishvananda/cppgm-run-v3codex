@@ -130,8 +130,7 @@ private:
 		}
 		if (output_.host_object_emission)
 		{
-			std::vector<BindingId> candidate_roots(
-				program_.bindings.size(), kNoBinding);
+			std::vector<VirtualSlotFact> candidates(program_.bindings.size());
 			for (EntityId entity = 0;
 				entity < graph_.class_polymorphism.size(); ++entity)
 			{
@@ -146,18 +145,21 @@ private:
 							program_.bindings[source.function].canonical;
 						if (program_.bindings[function].member_owner == entity &&
 							!represented[function] &&
-							candidate_roots[function] == kNoBinding)
-							candidate_roots[function] = source.root;
+							candidates[function].root == kNoBinding)
+						{
+							candidates[function] = source;
+							candidates[function].this_adjustment = 0;
+						}
 					}
 			}
 			for (BindingId function = 0;
-				function < candidate_roots.size(); ++function)
-				if (candidate_roots[function] != kNoBinding)
+				function < candidates.size(); ++function)
+				if (candidates[function].root != kNoBinding)
 				{
 					const EntityId entity =
 						program_.bindings[function].member_owner;
 					state_.class_host_primary_slots[entity].push_back(
-						VirtualSlotFact(candidate_roots[function], function));
+						candidates[function]);
 				}
 		}
 
@@ -823,16 +825,88 @@ private:
 			target_name.substr(2);
 	}
 
+	static bool HasReturnAdjustment(const VirtualSlotFact& slot)
+	{
+		return slot.return_adjustment_virtual || slot.return_adjustment != 0;
+	}
+
+	static std::string SignedOffset(std::int64_t value)
+	{
+		if (value >= 0) return std::to_string(value);
+		const std::uint64_t magnitude =
+			static_cast<std::uint64_t>(-(value + 1)) + 1;
+		return "n" + std::to_string(magnitude);
+	}
+
+	static std::string NonvirtualCallOffset(std::int64_t value)
+	{
+		return "h" + SignedOffset(value) + "_";
+	}
+
+	std::string CovariantThunkObjectName(SymbolId target,
+		const VirtualSlotFact& slot) const
+	{
+		const std::string& target_name = output_.symbols[target].object_name;
+		if (target_name.size() < 2 || target_name[0] != '_' ||
+			target_name[1] != 'Z') return std::string();
+		const std::string result = slot.return_adjustment_virtual ?
+			"v" + SignedOffset(slot.return_adjustment) + "_" +
+				SignedOffset(slot.return_vtable_offset) + "_" :
+			NonvirtualCallOffset(slot.return_adjustment);
+		return "_ZTc" + NonvirtualCallOffset(slot.this_adjustment) +
+			result + target_name.substr(2);
+	}
+
+	std::int64_t ReturnRuntimeVtableOffset(
+		const VirtualSlotFact& slot) const
+	{
+		if (!slot.return_adjustment_virtual || !output_.host_object_emission)
+			return slot.return_vtable_offset;
+		const BindingRecord& binding = program_.bindings[slot.function];
+		const TypeRecord& function = program_.types.Get(binding.type);
+		if (function.kind != TYPE_FUNCTION)
+			throw std::logic_error("covariant thunk has no function type");
+		const TypeRecord& result = program_.types.Get(function.child);
+		if (result.kind != TYPE_POINTER &&
+			result.kind != TYPE_LVALUE_REFERENCE &&
+			result.kind != TYPE_RVALUE_REFERENCE)
+			throw std::logic_error("covariant thunk has no class result");
+		const TypeId target = program_.types.RemoveTopCv(result.child);
+		const TypeRecord& named = program_.types.Get(target);
+		if (named.kind != TYPE_NAMED ||
+			named.entity >= graph_.class_polymorphism.size())
+			throw std::logic_error("covariant thunk result has no vtable facts");
+		return slot.return_vtable_offset + static_cast<std::int64_t>(
+			graph_.class_polymorphism[named.entity].virtual_call_offsets.size()) * 8;
+	}
+
 	struct AdjustedSlotEntry
 	{
 		SymbolId target, symbol;
-		std::int64_t adjustment;
+		std::int64_t this_adjustment, return_adjustment,
+			return_vtable_offset;
+		bool return_adjustment_virtual;
 
-		AdjustedSlotEntry(SymbolId target_value, std::int64_t adjustment_value,
+		AdjustedSlotEntry(SymbolId target_value, const VirtualSlotFact& slot,
 			SymbolId symbol_value)
 			: target(target_value), symbol(symbol_value),
-			  adjustment(adjustment_value) {}
+			  this_adjustment(slot.this_adjustment),
+			  return_adjustment(slot.return_adjustment),
+			  return_vtable_offset(slot.return_vtable_offset),
+			  return_adjustment_virtual(slot.return_adjustment_virtual) {}
 	};
+
+	static std::size_t AdjustedSlotHash(SymbolId target,
+		std::int64_t this_adjustment, std::int64_t return_adjustment,
+		std::int64_t return_vtable_offset, bool return_adjustment_virtual)
+	{
+		std::size_t hash = MixHash(target,
+			static_cast<std::uint64_t>(this_adjustment));
+		hash = MixHash(hash, static_cast<std::uint64_t>(return_adjustment));
+		hash = MixHash(hash,
+			static_cast<std::uint64_t>(return_vtable_offset));
+		return MixHash(hash, return_adjustment_virtual ? 1 : 0);
+	}
 
 	void RehashAdjustedSlots(std::size_t capacity)
 	{
@@ -841,8 +915,10 @@ private:
 		for (std::size_t i = 0; i < adjusted_slot_entries_.size(); ++i)
 		{
 			const AdjustedSlotEntry& entry = adjusted_slot_entries_[i];
-			std::size_t slot = MixHash(entry.target,
-				static_cast<std::uint64_t>(entry.adjustment)) & mask;
+			std::size_t slot = AdjustedSlotHash(entry.target,
+				entry.this_adjustment, entry.return_adjustment,
+				entry.return_vtable_offset,
+				entry.return_adjustment_virtual) & mask;
 			while (replacement[slot] != 0) slot = (slot + 1) & mask;
 			replacement[slot] = static_cast<std::uint32_t>(i + 1);
 		}
@@ -852,21 +928,26 @@ private:
 	SymbolId RegisterAdjustedSlot(const VirtualSlotFact& slot,
 		SymbolId target, BindingId function)
 	{
-		if (slot.this_adjustment == 0) return target;
+		if (slot.this_adjustment == 0 && !HasReturnAdjustment(slot)) return target;
 		if (stats_) ++stats_->vtable_thunk_requests;
 		if ((adjusted_slot_entries_.size() + 1) * 10 >
 			adjusted_slot_slots_.size() * 7)
 			RehashAdjustedSlots(adjusted_slot_slots_.size() * 2);
 		const std::size_t mask = adjusted_slot_slots_.size() - 1;
-		std::size_t index = MixHash(target,
-			static_cast<std::uint64_t>(slot.this_adjustment)) & mask;
+		std::size_t index = AdjustedSlotHash(target, slot.this_adjustment,
+			slot.return_adjustment, slot.return_vtable_offset,
+			slot.return_adjustment_virtual) & mask;
 		while (adjusted_slot_slots_[index] != 0)
 		{
 			if (stats_) ++stats_->vtable_thunk_index_probes;
 			const AdjustedSlotEntry& entry = adjusted_slot_entries_[
 				adjusted_slot_slots_[index] - 1];
 			if (entry.target == target &&
-				entry.adjustment == slot.this_adjustment)
+				entry.this_adjustment == slot.this_adjustment &&
+				entry.return_adjustment == slot.return_adjustment &&
+				entry.return_vtable_offset == slot.return_vtable_offset &&
+				entry.return_adjustment_virtual ==
+					slot.return_adjustment_virtual)
 			{
 				if (stats_) ++stats_->vtable_thunk_cache_hits;
 				return entry.symbol;
@@ -880,11 +961,20 @@ private:
 		const std::uint64_t magnitude = slot.this_adjustment < 0 ?
 			static_cast<std::uint64_t>(-(slot.this_adjustment + 1)) + 1 :
 			static_cast<std::uint64_t>(slot.this_adjustment);
+		const std::string return_direction =
+			slot.return_adjustment < 0 ? "neg" : "pos";
+		const std::uint64_t return_magnitude = slot.return_adjustment < 0 ?
+			static_cast<std::uint64_t>(-(slot.return_adjustment + 1)) + 1 :
+			static_cast<std::uint64_t>(slot.return_adjustment);
 		const std::string name = "_" + output_.symbols[target].name +
 			"__vtable_return_adjust__this_" + direction +
-			std::to_string(magnitude) + "__return_pos0";
+			std::to_string(magnitude) + "__return_" + return_direction +
+			std::to_string(return_magnitude) +
+			(slot.return_adjustment_virtual ? "__virtual_" +
+				SignedOffset(slot.return_vtable_offset) : std::string());
 		const SymbolId thunk = AddSyntheticSymbol(Symbol::FUNCTION_SYMBOL, name,
-			ThunkObjectName(target, slot.this_adjustment),
+			HasReturnAdjustment(slot) ? CovariantThunkObjectName(target, slot) :
+				ThunkObjectName(target, slot.this_adjustment),
 			output_.symbols[target].internal_linkage);
 		Symbol& record = output_.symbols[thunk];
 		record.weak_linkage = output_.symbols[target].weak_linkage;
@@ -892,9 +982,12 @@ private:
 		record.definition_emitted = true;
 		record.referenced = true;
 		state_.vtable_thunks.push_back(VtableThunkLoweringFact(
-			thunk, target, function, slot.this_adjustment));
+			thunk, target, function, slot.this_adjustment,
+			slot.return_adjustment, slot.return_vtable_offset,
+			ReturnRuntimeVtableOffset(slot),
+			slot.return_adjustment_virtual));
 		adjusted_slot_entries_.push_back(AdjustedSlotEntry(
-			target, slot.this_adjustment, thunk));
+			target, slot, thunk));
 		adjusted_slot_slots_[index] =
 			static_cast<std::uint32_t>(adjusted_slot_entries_.size());
 		return thunk;
@@ -993,7 +1086,8 @@ private:
 				{
 					const SymbolId target = RegisterViewSlot(candidate);
 					state_.class_view_slot_symbols[entity][view][slot] = target;
-					if (external && candidate.this_adjustment != 0)
+					if (external && (candidate.this_adjustment != 0 ||
+						HasReturnAdjustment(candidate)))
 						output_.symbols[target].weak_linkage = true;
 				}
 				if (state_.class_view_deleting_slot_symbols[
@@ -1002,7 +1096,8 @@ private:
 					RegisterDeletingViewSlot(entity, view, slot, candidate);
 					const SymbolId deleting =
 						state_.class_view_deleting_slot_symbols[entity][view][slot];
-					if (external && candidate.this_adjustment != 0 &&
+					if (external && (candidate.this_adjustment != 0 ||
+						HasReturnAdjustment(candidate)) &&
 						deleting != kNoLowId)
 						output_.symbols[deleting].weak_linkage = true;
 				}

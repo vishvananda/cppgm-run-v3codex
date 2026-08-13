@@ -41,6 +41,22 @@ const std::vector<VirtualSlotFact>& SlotsForView(
 	return view == 0 ? facts.slots : facts.views[view - 1].slots;
 }
 
+EntityId VirtualResultEntity(const Program& program, BindingId binding)
+{
+	if (binding == kNoBinding || binding >= program.bindings.size())
+		return kNoEntity;
+	const TypeRecord& function = program.types.Get(
+		program.bindings[binding].type);
+	if (function.kind != TYPE_FUNCTION) return kNoEntity;
+	const TypeRecord& result = program.types.Get(function.child);
+	if (result.kind != TYPE_POINTER &&
+		result.kind != TYPE_LVALUE_REFERENCE &&
+		result.kind != TYPE_RVALUE_REFERENCE) return kNoEntity;
+	TypeId target = program.types.RemoveTopCv(result.child);
+	const TypeRecord& named = program.types.Get(target);
+	return named.kind == TYPE_NAMED ? named.entity : kNoEntity;
+}
+
 }
 
 void SemanticAnalyzer::BeginPolymorphicVirtualViewIndex(
@@ -508,6 +524,9 @@ void SemanticAnalyzer::FinalizeClassPolymorphismViews(EntityId entity)
 		const std::uint64_t view_offset = view == 0 ? 0 : facts.views[view - 1].offset;
 		for (std::size_t slot = 0; slot < slots.size(); ++slot)
 		{
+			slots[slot].return_adjustment = 0;
+			slots[slot].return_vtable_offset = 0;
+			slots[slot].return_adjustment_virtual = false;
 			const EntityId target =
 				program_->bindings[slots[slot].function].member_owner;
 			std::uint64_t target_offset = 0;
@@ -518,6 +537,43 @@ void SemanticAnalyzer::FinalizeClassPolymorphismViews(EntityId entity)
 			slots[slot].this_adjustment =
 				static_cast<std::int64_t>(target_offset) -
 				static_cast<std::int64_t>(view_offset);
+
+			const EntityId result = VirtualResultEntity(
+				*program_, slots[slot].function);
+			const EntityId root_result = VirtualResultEntity(
+				*program_, slots[slot].root);
+			if (result == kNoEntity || root_result == kNoEntity ||
+				result == root_result) continue;
+			std::uint64_t result_offset = 0;
+			std::uint32_t virtual_ordinal = 0;
+			if (program_->FindVirtualBase(result, root_result,
+				&result_offset, &virtual_ordinal))
+			{
+				if (result >= class_polymorphism_.size() ||
+					virtual_ordinal >= program_->entities[result].virtual_base_count)
+					throw std::logic_error(
+						"covariant result has no finalized virtual-base slot");
+				const ClassPolymorphismFacts& result_facts =
+					class_polymorphism_[result];
+				const std::uint64_t row = 8 *
+					static_cast<std::uint64_t>(virtual_ordinal);
+				if (row >= result_facts.address_point)
+					throw std::logic_error(
+						"covariant virtual-base row is outside the vtable prefix");
+				slots[slot].return_adjustment_virtual = true;
+				slots[slot].return_vtable_offset =
+					static_cast<std::int64_t>(row) -
+					static_cast<std::int64_t>(result_facts.address_point);
+			}
+			else
+			{
+				if (!program_->QueryBasePath(
+					result, root_result, 0, 0, &result_offset))
+					throw std::logic_error(
+						"covariant result has no finalized base path");
+				slots[slot].return_adjustment =
+					static_cast<std::int64_t>(result_offset);
+			}
 		}
 	}
 }
