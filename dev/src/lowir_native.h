@@ -50,6 +50,25 @@ struct RelocatableObject
   std::vector<RelocatableSection> sections;
 };
 
+class ProgramLoweringSession
+{
+public:
+  ProgramLoweringSession(const lowir_model::LowirProgram & program,
+                         const std::string & target, Stats * stats = 0);
+  ~ProgramLoweringSession();
+
+  std::size_t function_count() const;
+  mir_model::MirFunction lower_function(std::size_t index);
+  mir_model::MirProgram take_program_shell();
+
+private:
+  struct Impl;
+  Impl * impl_;
+
+  ProgramLoweringSession(const ProgramLoweringSession &);
+  ProgramLoweringSession & operator=(const ProgramLoweringSession &);
+};
+
 mir_model::MirProgram lower_program(const lowir_model::LowirProgram & program,
                                     const std::string & target,
                                     Stats * stats = 0);
@@ -59,6 +78,11 @@ void write_linux_executable(const std::string & path,
                             Stats * stats = 0);
 void write_linux_executable(const std::string & path,
                             const mir_model::MirProgram & program,
+                            const std::vector<RelocatableObject> & objects,
+                            Stats * stats = 0);
+void write_linux_executable(const std::string & path,
+                            const lowir_model::LowirProgram & program,
+                            const std::string & target,
                             const std::vector<RelocatableObject> & objects,
                             Stats * stats = 0);
 

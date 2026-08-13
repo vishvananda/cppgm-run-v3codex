@@ -5,6 +5,50 @@ namespace cppgm
 namespace pa15_lowir_detail
 {
 
+const char* LowOperationText(LowOperation operation)
+{
+	switch (operation)
+	{
+	case LOW_OP_NEG: return "neg";
+	case LOW_OP_BITNOT: return "bitnot";
+	case LOW_OP_ADD: return "add";
+	case LOW_OP_SUB: return "sub";
+	case LOW_OP_MUL: return "mul";
+	case LOW_OP_DIV: return "div";
+	case LOW_OP_UDIV: return "udiv";
+	case LOW_OP_MOD: return "mod";
+	case LOW_OP_UMOD: return "umod";
+	case LOW_OP_AND: return "and";
+	case LOW_OP_OR: return "or";
+	case LOW_OP_XOR: return "xor";
+	case LOW_OP_SHL: return "shl";
+	case LOW_OP_SHR: return "shr";
+	case LOW_OP_USHR: return "ushr";
+	case LOW_OP_EQ: return "eq";
+	case LOW_OP_NE: return "ne";
+	case LOW_OP_LT: return "lt";
+	case LOW_OP_ULT: return "ult";
+	case LOW_OP_LE: return "le";
+	case LOW_OP_ULE: return "ule";
+	case LOW_OP_GT: return "gt";
+	case LOW_OP_UGT: return "ugt";
+	case LOW_OP_GE: return "ge";
+	case LOW_OP_UGE: return "uge";
+	case LOW_OP_TRUNC: return "trunc";
+	case LOW_OP_SEXT: return "sext";
+	case LOW_OP_ZEXT: return "zext";
+	case LOW_OP_SITOFP: return "sitofp";
+	case LOW_OP_UITOFP: return "uitofp";
+	case LOW_OP_FPTOSI: return "fptosi";
+	case LOW_OP_FPTOUI: return "fptoui";
+	case LOW_OP_FPTRUNC: return "fptrunc";
+	case LOW_OP_FPEXT: return "fpext";
+	case LOW_OP_DECAY: return "decay";
+	case LOW_OP_NONE: break;
+	}
+	throw std::logic_error("missing PA15 LowIR operation");
+}
+
 EmissionIdentityTable::EmissionIdentityTable()
 	: path_slots_(32, kNoLowId), type_slots_(32, kNoLowId)
 {}

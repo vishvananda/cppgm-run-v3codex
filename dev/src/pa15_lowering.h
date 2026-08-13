@@ -77,7 +77,8 @@ struct LowIRLoweringStats
 pa15_lowir_detail::TypedProgram BuildTypedLowIRProgram(
 	const std::vector<LowIRSource>& sources,
 	const PreprocessingOptions& options,
-	LowIRLoweringStats* stats = 0);
+	LowIRLoweringStats* stats = 0,
+	bool complete_constructor_unwind = false);
 
 // Analyze all inputs through PA12, lower directly from the borrowed canonical
 // graph into one typed LowIR program, and serialize the PA15 assignment view.

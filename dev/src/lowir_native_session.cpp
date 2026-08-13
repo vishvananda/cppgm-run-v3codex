@@ -1,0 +1,151 @@
+#include "lowir_native.h"
+
+#include "lowir_native_eh.h"
+#include "lowir_native_program.h"
+#include "lowir_native_session.h"
+
+#include <chrono>
+#include <stdexcept>
+#include <utility>
+
+namespace lowir_native {
+
+struct ProgramLoweringSession::Impl
+{
+  const lowir_model::LowirProgram & source;
+  Stats * stats;
+  mir_model::MirProgram shell;
+  std::unordered_map<std::string, std::string> tls_wrappers;
+  std::unordered_set<std::string> pointer_globals;
+  abi::FunctionSignatureIndex signatures;
+
+  Impl(const lowir_model::LowirProgram & program, const std::string & target,
+       Stats * output_stats)
+    : source(program), stats(output_stats)
+  {
+    std::chrono::steady_clock::time_point started;
+    if(stats) started = std::chrono::steady_clock::now();
+    if(target != "linux")
+      throw std::runtime_error("unsupported native target: " + target);
+    shell.target = target;
+    eh::plan_program(source, shell);
+    program_lowering::lower_startup(source, shell);
+    tls_wrappers = program_lowering::tls_wrapper_index(source);
+    for(std::size_t i = 0; i < source.global_declarations.size(); ++i)
+      if(source.global_declarations[i].has_type &&
+         source.global_declarations[i].type.kind == lowir_model::LTK_PTR)
+        pointer_globals.insert(source.global_declarations[i].name);
+    for(std::size_t i = 0; i < source.globals.size(); ++i)
+      if(!source.globals[i].structured &&
+         source.globals[i].type.kind == lowir_model::LTK_PTR)
+        pointer_globals.insert(source.globals[i].name);
+    for(std::size_t i = 0; i < source.globals.size(); ++i) {
+      mir_model::MirGlobalDefinition global =
+        program_lowering::lower_global(source.globals[i]);
+      const std::unordered_map<std::string, std::string>::const_iterator wrapper =
+        tls_wrappers.find(source.globals[i].name);
+      if(wrapper != tls_wrappers.end())
+        global.thread_local_wrapper_symbol = wrapper->second;
+      shell.globals.push_back(std::move(global));
+    }
+    IndexSignatures();
+    shell.object_aliases.reserve(source.object_aliases.size());
+    for(std::size_t i = 0; i < source.object_aliases.size(); ++i) {
+      mir_model::MirObjectAlias alias;
+      alias.object_symbol = source.object_aliases[i].object_symbol;
+      alias.target = source.object_aliases[i].target;
+      shell.object_aliases.push_back(alias);
+    }
+    if(stats) RecordProgramStats(started);
+  }
+
+  void IndexSignatures()
+  {
+    for(std::size_t i = 0; i < source.function_declarations.size(); ++i) {
+      abi::FunctionSignature signature;
+      signature.params = &source.function_declarations[i].params;
+      signature.return_type = &source.function_declarations[i].return_type;
+      signature.boundary = &source.function_declarations[i].boundary;
+      signatures[source.function_declarations[i].name] = signature;
+    }
+    for(std::size_t i = 0; i < source.functions.size(); ++i) {
+      abi::FunctionSignature signature;
+      signature.params = &source.functions[i].params;
+      signature.return_type = &source.functions[i].return_type;
+      signature.boundary = &source.functions[i].boundary;
+      signatures[source.functions[i].name] = signature;
+    }
+  }
+
+  void RecordProgramStats(const std::chrono::steady_clock::time_point & started)
+  {
+    stats->functions = source.functions.size();
+    stats->mir_instructions += shell.startup.size();
+    for(std::size_t i = 0; i < source.functions.size(); ++i) {
+      stats->blocks += source.functions[i].blocks.size();
+      for(std::size_t j = 0; j < source.functions[i].blocks.size(); ++j)
+        stats->lowir_instructions +=
+          source.functions[i].blocks[j].instructions.size();
+    }
+    stats->lower_nanoseconds += static_cast<std::uint64_t>(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - started).count());
+  }
+
+  mir_model::MirFunction LowerFunction(std::size_t index)
+  {
+    if(index >= source.functions.size())
+      throw std::logic_error("native function index is out of bounds");
+    std::chrono::steady_clock::time_point started;
+    if(stats) started = std::chrono::steady_clock::now();
+    mir_model::MirFunction result = session_detail::lower_native_function(
+      source.functions[index], pointer_globals, tls_wrappers, signatures);
+    if(stats) {
+      for(std::size_t i = 0; i < result.blocks.size(); ++i)
+        stats->mir_instructions += result.blocks[i].instructions.size();
+      stats->lower_nanoseconds += static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::steady_clock::now() - started).count());
+    }
+    return result;
+  }
+};
+
+ProgramLoweringSession::ProgramLoweringSession(
+    const lowir_model::LowirProgram & program, const std::string & target,
+    Stats * stats)
+  : impl_(new Impl(program, target, stats)) {}
+
+ProgramLoweringSession::~ProgramLoweringSession()
+{
+  delete impl_;
+}
+
+std::size_t ProgramLoweringSession::function_count() const
+{
+  return impl_->source.functions.size();
+}
+
+mir_model::MirFunction ProgramLoweringSession::lower_function(std::size_t index)
+{
+  return impl_->LowerFunction(index);
+}
+
+mir_model::MirProgram ProgramLoweringSession::take_program_shell()
+{
+  return std::move(impl_->shell);
+}
+
+mir_model::MirProgram lower_program(const lowir_model::LowirProgram & program,
+                                    const std::string & target,
+                                    Stats * stats)
+{
+  ProgramLoweringSession lowering(program, target, stats);
+  mir_model::MirProgram result = lowering.take_program_shell();
+  result.functions.reserve(lowering.function_count());
+  for(std::size_t i = 0; i < lowering.function_count(); ++i)
+    result.functions.push_back(lowering.lower_function(i));
+  return result;
+}
+
+}  // namespace lowir_native

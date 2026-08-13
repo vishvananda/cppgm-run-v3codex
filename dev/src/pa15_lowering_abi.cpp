@@ -808,6 +808,16 @@ void ApplyBuiltinSymbolMetadata(pa15_lowir_detail::Symbol* symbol,
 	}
 }
 
+void ApplyNativeRuntimeSymbolMetadata(pa15_lowir_detail::Symbol* symbol)
+{
+	using pa15_lowir_detail::Symbol;
+	if (!symbol->c_linkage) return;
+	if (symbol->object_name == "malloc")
+		symbol->runtime_role = Symbol::RUNTIME_ROLE_ALLOCATE_MEMORY;
+	else if (symbol->object_name == "free")
+		symbol->runtime_role = Symbol::RUNTIME_ROLE_FREE_MEMORY;
+}
+
 void ApplyBuiltinParameterMetadata(pa15_lowir_detail::Parameter* parameter,
 	pa11::BuiltinFunctionKind kind, std::size_t index)
 {

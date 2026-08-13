@@ -202,7 +202,8 @@ LowIRLoweringStats::LowIRLoweringStats()
 }
 
 TypedProgram BuildTypedLowIRProgram(const std::vector<LowIRSource>& sources,
-	const PreprocessingOptions& options, LowIRLoweringStats* stats)
+	const PreprocessingOptions& options, LowIRLoweringStats* stats,
+	bool complete_constructor_unwind)
 {
 	if (sources.empty()) throw std::runtime_error("no PA15 source inputs");
 	if (stats) *stats = LowIRLoweringStats();
@@ -212,7 +213,7 @@ TypedProgram BuildTypedLowIRProgram(const std::vector<LowIRSource>& sources,
 		GraphConsumer consumer(program, stats, i);
 		SemanticAnalysisStats semantic_stats;
 		ConsumeSemanticTranslationUnit(sources[i].path, sources[i].source, options,
-			consumer, stats ? &semantic_stats : 0);
+			consumer, stats ? &semantic_stats : 0, complete_constructor_unwind);
 		if (stats)
 		{
 			SemanticAnalysisStats& semantic = stats->semantic;

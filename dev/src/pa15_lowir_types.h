@@ -418,7 +418,8 @@ struct Symbol
 		RUNTIME_ROLE_BAD_TYPEID,
 		RUNTIME_ROLE_RTTI_CLASS,
 		RUNTIME_ROLE_RTTI_SI,
-		RUNTIME_ROLE_RTTI_VMI
+		RUNTIME_ROLE_RTTI_VMI,
+		RUNTIME_ROLE_RTTI_DATA
 	} runtime_role;
 	std::string name;
 	std::string object_name;

@@ -241,7 +241,18 @@ private:
     else if(result.text.find_first_of(".eEpP") != std::string::npos ||
             (!result.text.empty() && (result.text.back() == 'f' || result.text.back() == 'L')))
       result.kind = Operand::OP_FLOAT;
-    else result.kind = Operand::OP_INTEGER;
+    else {
+      result.kind = Operand::OP_INTEGER;
+      if(result.text == "nullptr") {
+        result.int_value = 0;
+        result.has_int_value = true;
+      } else {
+        errno = 0;
+        char * end = 0;
+        result.int_value = std::strtoll(result.text.c_str(), &end, 0);
+        result.has_int_value = !errno && end && !*end;
+      }
+    }
     return result;
   }
 
@@ -378,7 +389,8 @@ private:
       {"free_memory", SR_FREE_MEMORY}, {"pure_virtual", SR_PURE_VIRTUAL},
       {"dynamic_cast", SR_DYNAMIC_CAST}, {"bad_cast", SR_BAD_CAST},
       {"bad_typeid", SR_BAD_TYPEID}, {"rtti_class", SR_RTTI_CLASS},
-      {"rtti_si", SR_RTTI_SI}, {"rtti_vmi", SR_RTTI_VMI}
+      {"rtti_si", SR_RTTI_SI}, {"rtti_vmi", SR_RTTI_VMI},
+      {"rtti_data", SR_RTTI_DATA}
     };
     for(std::size_t i = 0; i < sizeof(roles) / sizeof(roles[0]); ++i)
       if(value == roles[i].first) return roles[i].second;
@@ -870,7 +882,9 @@ private:
 
   void validate_global_role(SymbolRole role)
   {
-    if(role != SR_NONE && role != SR_EH_TOP && role != SR_EH_VALUE && role != SR_EH_TYPE)
+    if(role != SR_NONE && role != SR_EH_TOP && role != SR_EH_VALUE &&
+       role != SR_EH_TYPE && role != SR_RTTI_CLASS && role != SR_RTTI_SI &&
+       role != SR_RTTI_VMI && role != SR_RTTI_DATA)
       throw ParseError("function role on global");
   }
 
@@ -901,13 +915,11 @@ private:
         throw ParseError("entry role requires a function definition");
     }
     bool explicit_entry = false;
-    bool legacy_entry = false;
     for(std::size_t i = 0; i < program_.functions.size(); ++i) {
       const Function & function = program_.functions[i];
       explicit_entry = explicit_entry || function.metadata.role == SR_ENTRY;
-      legacy_entry = legacy_entry || function.name == "@main";
     }
-    if(entry_policy_ == LEP_REQUIRE_ENTRY && !explicit_entry && !legacy_entry)
+    if(entry_policy_ == LEP_REQUIRE_ENTRY && !explicit_entry)
       throw ParseError("LowIR program has no entry definition");
   }
 
@@ -933,7 +945,8 @@ private:
                              std::unordered_set<int> & roles,
                              std::unordered_set<std::string> & tls_targets)
   {
-    if(metadata.role != SR_NONE && !roles.insert(static_cast<int>(metadata.role)).second)
+    if(metadata.role != SR_NONE && metadata.role != SR_RTTI_DATA &&
+       !roles.insert(static_cast<int>(metadata.role)).second)
       throw ParseError("duplicate singleton role");
     if(!metadata.tls_for_symbol.empty()) {
       const std::string & target = metadata.tls_for_symbol;
@@ -1158,6 +1171,30 @@ Program parse_tokens(std::vector<Token> & tokens, LowirEntryPolicy entry_policy)
     Parser parser(tokens);
     program = parser.Parse();
   }
+  bool has_entry = false;
+  bool has_init = false;
+  bool has_fini = false;
+  for(std::size_t i = 0; i < program.functions.size(); ++i) {
+    has_entry = has_entry || program.functions[i].metadata.role == SR_ENTRY;
+    has_init = has_init || program.functions[i].metadata.role == SR_INIT;
+    has_fini = has_fini || program.functions[i].metadata.role == SR_FINI;
+  }
+  if(!has_entry) {
+    for(std::size_t i = 0; i < program.functions.size(); ++i) {
+      Function & function = program.functions[i];
+      if(function.metadata.role != SR_NONE) continue;
+      if(function.name == "@main") {
+        function.metadata.role = SR_ENTRY;
+        has_entry = true;
+      } else if(!has_init && function.name == "@__cppgm_init") {
+        function.metadata.role = SR_INIT;
+        has_init = true;
+      } else if(!has_fini && function.name == "@__cppgm_fini") {
+        function.metadata.role = SR_FINI;
+        has_fini = true;
+      }
+    }
+  }
   const std::size_t token_count = tokens.size();
   std::vector<Token>().swap(tokens);
   Validator(program, entry_policy).Validate();
@@ -1201,6 +1238,11 @@ const LowType & builtin_lowir_type(LowTypeKind kind)
   case LTK_PTR: return ptr_type;
   default: throw ParseError("invalid built-in LowIR type identity");
   }
+}
+
+bool InstructionDebugLocation::present() const
+{
+  return !file.empty() && line != 0 && column != 0;
 }
 
 bool same_lowir_type(const LowType & left, const LowType & right)

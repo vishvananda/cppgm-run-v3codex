@@ -6,6 +6,7 @@
 #include "lowir_native_program.h"
 #include "lowir_native_registers.h"
 #include "lowir_native_selection.h"
+#include "lowir_native_session.h"
 #include "lowir_native_value.h"
 #include "lowir_native_varargs.h"
 #include "lowir_native_wide.h"
@@ -37,6 +38,7 @@ public:
       facts_(analyze_function(source)), position_(0)
   {
     target_.name = source.name;
+    target_.object_symbol = source.metadata.object_symbol;
     target_.return_type = source.return_type.text;
     if(facts_.has_i128_atomic) registers_.reserve(XR_RBX);
     storage_facts_ = analyze_storage(source_, facts_, tls_wrappers_);
@@ -641,7 +643,8 @@ private:
       if(found == slot_offsets_.end()) throw std::runtime_error("missing frame slot");
       return frame_operand(found->second);
     }
-    if(operand.kind == Operand::OP_INTEGER) return immediate(integer_literal(operand.text));
+    if(operand.kind == Operand::OP_INTEGER)
+      return immediate(integer_value(operand));
     if(operand.kind == Operand::OP_FLOAT) return float_immediate(operand.text);
     if(operand.kind == Operand::OP_GLOBAL)
       return named_operand(MirOperand::OP_SYMBOL, operand.text);
@@ -1519,7 +1522,7 @@ private:
   {
     const bool constant_index = instruction.second.kind == Operand::OP_INTEGER;
     const long long offset = constant_index ?
-      integer_literal(instruction.second.text) *
+      integer_value(instruction.second) *
         static_cast<long long>(instruction.type.storage_size) : 0;
     MirOperand base = resolve(instruction.first);
     if(constant_index && offset == 0 && instruction.first.kind == Operand::OP_TEMP &&
@@ -2712,12 +2715,12 @@ private:
       X64Register reg = XR_RSP;
       if(registers_.try_allocate(result_crosses_call(instruction.dest), reg)) {
         destination = reg_operand(reg);
-        append_move(out, destination, immediate(integer_literal(instruction.first.text)));
+        append_move(out, destination, immediate(integer_value(instruction.first)));
         normalize_integer(instruction.type, destination, out);
       } else {
         destination = allocate_temp_home(instruction.dest, instruction.type);
         append_move(out, reg_operand(XR_RAX),
-                    immediate(integer_literal(instruction.first.text)));
+                    immediate(integer_value(instruction.first)));
         append_store(out, destination, reg_operand(XR_RAX), instruction.type.text);
       }
       define(instruction.dest, instruction.type, destination);
@@ -2933,65 +2936,14 @@ private:
 };
 }  // namespace
 
-mir_model::MirProgram lower_program(const lowir_model::LowirProgram & program,
-                                    const std::string & target,
-                                    Stats * stats)
+mir_model::MirFunction session_detail::lower_native_function(
+    const lowir_model::LowirFunction & function,
+    const std::unordered_set<std::string> & pointer_globals,
+    const std::unordered_map<std::string, std::string> & tls_wrappers,
+    const abi::FunctionSignatureIndex & signatures)
 {
-  if(target != "linux") throw std::runtime_error("unsupported native target: " + target);
-  mir_model::MirProgram result;
-  result.target = target; eh::plan_program(program, result);
-  program_lowering::lower_startup(program, result);
-  const std::unordered_map<std::string, std::string> tls_wrappers =
-    program_lowering::tls_wrapper_index(program);
-  std::unordered_set<std::string> pointer_globals;
-  for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
-    if(program.global_declarations[i].has_type && program.global_declarations[i].type.kind == lowir_model::LTK_PTR)
-      pointer_globals.insert(program.global_declarations[i].name);
-  for(std::size_t i = 0; i < program.globals.size(); ++i)
-    if(!program.globals[i].structured && program.globals[i].type.kind == lowir_model::LTK_PTR)
-      pointer_globals.insert(program.globals[i].name);
-  for(std::size_t i = 0; i < program.globals.size(); ++i) {
-    mir_model::MirGlobalDefinition global = program_lowering::lower_global(program.globals[i]);
-    const std::unordered_map<std::string, std::string>::const_iterator wrapper = tls_wrappers.find(program.globals[i].name);
-    if(wrapper != tls_wrappers.end()) global.thread_local_wrapper_symbol = wrapper->second;
-    result.globals.push_back(global);
-  }
-  FunctionSignatureIndex signatures;
-  for(std::size_t i = 0; i < program.function_declarations.size(); ++i) {
-    FunctionSignature signature;
-    signature.params = &program.function_declarations[i].params; signature.return_type = &program.function_declarations[i].return_type;
-    signature.boundary = &program.function_declarations[i].boundary;
-    signatures[program.function_declarations[i].name] = signature;
-  }
-  for(std::size_t i = 0; i < program.functions.size(); ++i) {
-    FunctionSignature signature;
-    signature.params = &program.functions[i].params; signature.return_type = &program.functions[i].return_type;
-    signature.boundary = &program.functions[i].boundary;
-    signatures[program.functions[i].name] = signature;
-  }
-  for(std::size_t i = 0; i < program.functions.size(); ++i)
-    result.functions.push_back(FunctionLowerer(program.functions[i],
-      pointer_globals, tls_wrappers, signatures).lower());
-  result.object_aliases.reserve(program.object_aliases.size());
-  for(std::size_t i = 0; i < program.object_aliases.size(); ++i) {
-    mir_model::MirObjectAlias alias;
-    alias.object_symbol = program.object_aliases[i].object_symbol; alias.target = program.object_aliases[i].target;
-    result.object_aliases.push_back(alias);
-  }
-  result.exported_symbols = program.exported_symbols;
-  if(stats) {
-    stats->functions = result.functions.size();
-    for(std::size_t i = 0; i < program.functions.size(); ++i) {
-      stats->blocks += program.functions[i].blocks.size();
-      for(std::size_t j = 0; j < program.functions[i].blocks.size(); ++j)
-        stats->lowir_instructions += program.functions[i].blocks[j].instructions.size();
-    }
-    stats->mir_instructions = result.startup.size();
-    for(std::size_t i = 0; i < result.functions.size(); ++i)
-      for(std::size_t j = 0; j < result.functions[i].blocks.size(); ++j)
-        stats->mir_instructions += result.functions[i].blocks[j].instructions.size();
-  }
-  return result;
+  return FunctionLowerer(function, pointer_globals, tls_wrappers,
+                         signatures).lower();
 }
 
 }  // namespace lowir_native

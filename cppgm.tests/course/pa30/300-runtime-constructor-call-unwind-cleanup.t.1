@@ -1,0 +1,38 @@
+int live;
+
+struct first
+{
+  first() { live = 1; }
+  ~first() { live = 0; }
+};
+
+void throw_indirectly()
+{
+  throw 7;
+}
+
+struct second
+{
+  second() { throw_indirectly(); }
+};
+
+struct owner
+{
+  first a;
+  second b;
+
+  owner() : a(), b() {}
+};
+
+int main()
+{
+  try
+  {
+    owner value;
+  }
+  catch (int value)
+  {
+    return value == 7 && live == 0 ? 0 : 1;
+  }
+  return 2;
+}

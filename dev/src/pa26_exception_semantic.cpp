@@ -8,40 +8,46 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
-void SemanticAnalyzer::DemandExplicitConstructorUnwindDestructors(
+void SemanticAnalyzer::DemandConstructorUnwindDestructors(
 	std::uint32_t body)
 {
-	bool throwing = false;
-	std::vector<std::uint32_t> pending(1, body);
-	while (!pending.empty() && !throwing)
+	if (!complete_constructor_unwind_)
 	{
-		const std::uint32_t node = pending.back();
-		pending.pop_back();
-		const DumpNode& record = dump_.nodes[node];
-		throwing = record.kind == DUMP_THROW_EXPRESSION;
-		if (!throwing && record.kind == DUMP_CONSTRUCTOR_ACTION &&
-			record.binding != kNoBinding)
+		bool throwing = false;
+		std::vector<std::uint32_t> pending(1, body);
+		while (!pending.empty() && !throwing)
 		{
-			std::vector<NodeId> syntax(
-				1, GetFunction(record.binding).definition_body);
-			while (!syntax.empty() && !throwing)
+			const std::uint32_t node = pending.back();
+			pending.pop_back();
+			const DumpNode& record = dump_.nodes[node];
+			throwing = record.kind == DUMP_THROW_EXPRESSION;
+			if (!throwing && record.kind == DUMP_CONSTRUCTOR_ACTION &&
+				record.binding != kNoBinding)
 			{
-				const NodeId current = syntax.back();
-				syntax.pop_back();
-				if (current == kNoNode) continue;
-				throwing = arena_->IsTag(current, "throw-expression") ||
-					arena_->IsTag(current, "throw-statement");
-				for (std::uint32_t edge = arena_->FirstEdge(current);
-					!throwing && edge != kNoEdge; edge = arena_->NextEdge(edge))
-					syntax.push_back(arena_->EdgeChild(edge));
+				std::vector<NodeId> syntax(
+					1, GetFunction(record.binding).definition_body);
+				while (!syntax.empty() && !throwing)
+				{
+					const NodeId current = syntax.back();
+					syntax.pop_back();
+					if (current == kNoNode) continue;
+					throwing = arena_->IsTag(current, "throw-expression") ||
+						arena_->IsTag(current, "throw-statement");
+					for (std::uint32_t edge = arena_->FirstEdge(current);
+						!throwing && edge != kNoEdge;
+						edge = arena_->NextEdge(edge))
+						syntax.push_back(arena_->EdgeChild(edge));
+				}
 			}
+			for (std::uint32_t edge = record.first_edge;
+				!throwing && edge != kNoDumpEdge; edge = dump_.edges[edge].next)
+				pending.push_back(dump_.edges[edge].child);
 		}
-		for (std::uint32_t edge = record.first_edge;
-			!throwing && edge != kNoDumpEdge; edge = dump_.edges[edge].next)
-			pending.push_back(dump_.edges[edge].child);
+		dump_.nodes[body].unwind_only = throwing;
 	}
-	dump_.nodes[body].unwind_only = throwing;
-	if (!throwing) return;
+	else dump_.nodes[body].unwind_only =
+		!InitializationActionsAreNonthrowing(body);
+	if (!dump_.nodes[body].unwind_only) return;
 	for (std::uint32_t edge = dump_.nodes[body].first_edge;
 		edge != kNoDumpEdge; edge = dump_.edges[edge].next)
 	{

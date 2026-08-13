@@ -9,6 +9,8 @@ namespace pa15_lowir_detail
 
 using namespace pa11;
 
+const char* LowOperationText(LowOperation operation);
+
 typedef std::uint32_t IdentityNameId;
 typedef std::uint32_t IdentityPathId;
 typedef std::uint32_t IdentityTypeId;

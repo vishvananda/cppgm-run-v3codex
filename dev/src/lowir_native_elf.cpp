@@ -20,6 +20,11 @@ const std::size_t kElfHeaderSize = 64;
 const std::size_t kProgramHeaderSize = 56;
 const std::size_t kContentOffset = kElfHeaderSize + kProgramHeaderSize;
 
+std::string native_object_symbol(const std::string & symbol)
+{
+  return symbol.empty() || symbol[0] == '@' ? symbol : "@" + symbol;
+}
+
 struct Fixup
 {
   enum Kind { RELATIVE32, ABSOLUTE64 } kind = RELATIVE32;
@@ -64,6 +69,15 @@ public:
     if(offset > bytes_.size()) throw std::logic_error("native label is out of bounds");
     if(!labels_.emplace(name, offset).second)
       throw std::runtime_error("duplicate native symbol: " + name);
+  }
+
+  void alias(const std::string & name, const std::string & target)
+  {
+    const std::unordered_map<std::string, std::size_t>::const_iterator found =
+      labels_.find(target);
+    if(found == labels_.end())
+      throw std::runtime_error("native alias has undefined target: " + target);
+    label_at(name, found->second);
   }
 
   std::size_t size() const { return bytes_.size(); }
@@ -1937,6 +1951,9 @@ void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
   // entry at least two-byte aligned so a direct target cannot carry that tag.
   out.align(2);
   out.label(function.name);
+  const std::string object_symbol = native_object_symbol(function.object_symbol);
+  if(!object_symbol.empty() && object_symbol != function.name)
+    out.label(object_symbol);
   emit_function_prologue(out, function);
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     out.label(function.name + "::" + function.blocks[i].label);
@@ -1949,8 +1966,9 @@ void emit_runtime_labels(CodeBuffer & out,
                          const mir_model::MirRuntimeFunction & runtime)
 {
   out.label(runtime.name);
-  if(!runtime.object_symbol.empty() && runtime.object_symbol != runtime.name)
-    out.label(runtime.object_symbol);
+  const std::string object_symbol = native_object_symbol(runtime.object_symbol);
+  if(!object_symbol.empty() && object_symbol != runtime.name)
+    out.label(object_symbol);
 }
 
 void emit_eh_restore(CodeBuffer & out)
@@ -2284,9 +2302,10 @@ void emit_eh_data(CodeBuffer & out, const mir_model::MirProgram & program)
   for(std::size_t i = 0; i < program.runtime_data.size(); ++i) {
     out.align(16);
     out.label(program.runtime_data[i].name);
-    if(!program.runtime_data[i].object_symbol.empty() &&
-       program.runtime_data[i].object_symbol != program.runtime_data[i].name)
-      out.label(program.runtime_data[i].object_symbol);
+    const std::string object_symbol =
+      native_object_symbol(program.runtime_data[i].object_symbol);
+    if(!object_symbol.empty() && object_symbol != program.runtime_data[i].name)
+      out.label(object_symbol);
     out.zeros(32);
   }
 }
@@ -2339,6 +2358,9 @@ void emit_global(CodeBuffer & out, const mir_model::MirGlobalDefinition & global
   }
   out.align(global_alignment);
   out.label(global.name);
+  const std::string object_symbol = native_object_symbol(global.object_symbol);
+  if(!object_symbol.empty() && object_symbol != global.name)
+    out.label(object_symbol);
   if(global.thread_local_storage && !global.thread_local_wrapper_symbol.empty())
     out.label(global.thread_local_wrapper_symbol);
   if(global.storage_kind == mir_model::MirGlobalDefinition::GS_SCALAR) {
@@ -2402,10 +2424,10 @@ void put_little(std::vector<unsigned char> & out, std::size_t offset,
     out[offset + i] = static_cast<unsigned char>(value >> (i * 8));
 }
 
-std::vector<unsigned char> make_elf_image(const CodeBuffer & content)
+std::vector<unsigned char> make_elf_header(std::size_t content_size)
 {
-  const std::size_t file_size = kContentOffset + content.bytes().size();
-  std::vector<unsigned char> image(file_size, 0);
+  const std::size_t file_size = kContentOffset + content_size;
+  std::vector<unsigned char> image(kContentOffset, 0);
   image[0] = 0x7f;
   image[1] = 'E'; image[2] = 'L'; image[3] = 'F';
   image[4] = 2;
@@ -2431,8 +2453,56 @@ std::vector<unsigned char> make_elf_image(const CodeBuffer & content)
   put_little(image, ph + 32, file_size, 8);
   put_little(image, ph + 40, file_size, 8);
   put_little(image, ph + 48, 0x1000, 8);
-  std::copy(content.bytes().begin(), content.bytes().end(), image.begin() + kContentOffset);
   return image;
+}
+
+void emit_program_tail(CodeBuffer & content,
+                       const mir_model::MirProgram & program,
+                       const std::vector<RelocatableObject> & objects)
+{
+  emit_eh_runtime(content, program);
+  for(std::size_t i = 0; i < program.globals.size(); ++i)
+    emit_global(content, program.globals[i]);
+  emit_eh_data(content, program);
+  emit_relocatable_objects(content, objects);
+  for(std::size_t i = 0; i < program.object_aliases.size(); ++i)
+    content.alias(native_object_symbol(program.object_aliases[i].object_symbol),
+                  program.object_aliases[i].target);
+}
+
+void finish_native_executable(
+    const std::string & path, CodeBuffer & content, Stats * stats,
+    std::uint64_t encode_nanoseconds,
+    const std::chrono::steady_clock::time_point & encode_started)
+{
+  content.resolve();
+  const std::vector<unsigned char> header = make_elf_header(content.size());
+  if(stats) encode_nanoseconds += static_cast<std::uint64_t>(
+    std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::steady_clock::now() - encode_started).count());
+
+  std::chrono::steady_clock::time_point write_started;
+  if(stats) write_started = std::chrono::steady_clock::now();
+  std::ofstream out(path.c_str(), std::ios::out | std::ios::binary | std::ios::trunc);
+  if(!out) throw std::runtime_error("unable to open native output: " + path);
+  out.write(reinterpret_cast<const char *>(&header[0]),
+            static_cast<std::streamsize>(header.size()));
+  if(!content.bytes().empty())
+    out.write(reinterpret_cast<const char *>(&content.bytes()[0]),
+              static_cast<std::streamsize>(content.bytes().size()));
+  if(!out) throw std::runtime_error("unable to write native output: " + path);
+  out.close();
+  if(::chmod(path.c_str(), 0755) != 0)
+    throw std::runtime_error("unable to mark native output executable: " + path +
+                             ": " + std::strerror(errno));
+  if(stats) {
+    stats->fixups = content.fixup_count();
+    stats->output_bytes = header.size() + content.size();
+    stats->encode_nanoseconds = encode_nanoseconds;
+    stats->write_nanoseconds = static_cast<std::uint64_t>(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - write_started).count());
+  }
 }
 
 }  // namespace
@@ -2451,40 +2521,50 @@ void write_linux_executable(const std::string & path,
 {
   if(program.target != "linux") throw std::runtime_error("ELF writer requires linux target");
   if(program.startup.empty()) throw std::runtime_error("native executable has no startup entry");
-  const std::chrono::steady_clock::time_point encode_start =
-    std::chrono::steady_clock::now();
+  std::chrono::steady_clock::time_point encode_start;
+  if(stats) encode_start = std::chrono::steady_clock::now();
   CodeBuffer content;
   content.label("__startup");
   for(std::size_t i = 0; i < program.startup.size(); ++i)
     emit_instruction(content, program.startup[i], 0);
   for(std::size_t i = 0; i < program.functions.size(); ++i)
     emit_function(content, program.functions[i]);
-  emit_eh_runtime(content, program);
-  for(std::size_t i = 0; i < program.globals.size(); ++i)
-    emit_global(content, program.globals[i]);
-  emit_eh_data(content, program);
-  emit_relocatable_objects(content, objects);
-  content.resolve();
-  const std::vector<unsigned char> image = make_elf_image(content);
-  const std::chrono::steady_clock::time_point encode_end =
-    std::chrono::steady_clock::now();
+  emit_program_tail(content, program, objects);
+  finish_native_executable(path, content, stats, 0, encode_start);
+}
 
-  std::ofstream out(path.c_str(), std::ios::out | std::ios::binary | std::ios::trunc);
-  if(!out) throw std::runtime_error("unable to open native output: " + path);
-  out.write(reinterpret_cast<const char *>(&image[0]),
-            static_cast<std::streamsize>(image.size()));
-  if(!out) throw std::runtime_error("unable to write native output: " + path);
-  out.close();
-  if(::chmod(path.c_str(), 0755) != 0)
-    throw std::runtime_error("unable to mark native output executable: " + path +
-                             ": " + std::strerror(errno));
-  if(stats) {
-    stats->fixups = content.fixup_count();
-    stats->output_bytes = image.size();
-    stats->encode_nanoseconds =
+void write_linux_executable(const std::string & path,
+                            const lowir_model::LowirProgram & source,
+                            const std::string & target,
+                            const std::vector<RelocatableObject> & objects,
+                            Stats * stats)
+{
+  ProgramLoweringSession lowering(source, target, stats);
+  mir_model::MirProgram program = lowering.take_program_shell();
+  if(program.startup.empty())
+    throw std::runtime_error("native executable has no startup entry");
+  CodeBuffer content;
+  std::uint64_t encode_nanoseconds = 0;
+  std::chrono::steady_clock::time_point encode_started;
+  if(stats) encode_started = std::chrono::steady_clock::now();
+  content.label("__startup");
+  for(std::size_t i = 0; i < program.startup.size(); ++i)
+    emit_instruction(content, program.startup[i], 0);
+  if(stats) encode_nanoseconds += static_cast<std::uint64_t>(
+    std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::steady_clock::now() - encode_started).count());
+  for(std::size_t i = 0; i < lowering.function_count(); ++i) {
+    const mir_model::MirFunction function = lowering.lower_function(i);
+    if(stats) encode_started = std::chrono::steady_clock::now();
+    emit_function(content, function);
+    if(stats) encode_nanoseconds += static_cast<std::uint64_t>(
       std::chrono::duration_cast<std::chrono::nanoseconds>(
-        encode_end - encode_start).count();
+        std::chrono::steady_clock::now() - encode_started).count());
   }
+  if(stats) encode_started = std::chrono::steady_clock::now();
+  emit_program_tail(content, program, objects);
+  finish_native_executable(path, content, stats, encode_nanoseconds,
+                           encode_started);
 }
 
 }  // namespace lowir_native

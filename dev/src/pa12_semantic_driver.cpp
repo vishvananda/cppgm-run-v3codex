@@ -55,7 +55,7 @@ void WriteSemanticTranslationUnit(const std::string& path,
 void ConsumeSemanticTranslationUnit(const std::string& path,
 	const std::string& source, const PreprocessingOptions& options,
 	pa12_semantic_detail::SemanticGraphConsumer& consumer,
-	SemanticAnalysisStats* stats)
+	SemanticAnalysisStats* stats, bool complete_constructor_unwind)
 {
 	const std::chrono::steady_clock::time_point started =
 		std::chrono::steady_clock::now();
@@ -66,7 +66,7 @@ void ConsumeSemanticTranslationUnit(const std::string& path,
 	pa12_semantic_detail::SemanticGraphStorage graph;
 	{
 		pa12_semantic_detail::SemanticAnalyzer analyzer(graph, sink, stats,
-			true, false);
+			true, false, complete_constructor_unwind);
 		pa10_syntax_detail::RunSyntaxTranslationUnit(path, source, options,
 			0, &analyzer, stats ? &syntax : 0, &analyzer.SharedStrings());
 	}

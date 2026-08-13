@@ -11,6 +11,8 @@
 #include "lowir_native.h"
 #include "tool_help_text.h"
 
+#include <chrono>
+#include <cstdint>
 #include <cstdlib>
 #include <ctime>
 #include <fstream>
@@ -19,6 +21,7 @@
 #include <stdexcept>
 #include <string>
 #include <sys/stat.h>
+#include <utility>
 #include <vector>
 
 using namespace std;
@@ -418,6 +421,7 @@ cppgm::pa30::CompilerObject compile_source_object(
     const DriverInvocation & invocation,
     const string & target)
 {
+	const bool collect_stats = getenv("CPPGM_DRIVER_STATS") != 0;
   vector<cppgm::LowIRSource> sources;
   const string source = read_source_file(path);
   sources.push_back(cppgm::LowIRSource(path, source));
@@ -425,12 +429,42 @@ cppgm::pa30::CompilerObject compile_source_object(
   const cppgm::pa15_lowir_detail::TypedProgram typed =
       cppgm::BuildTypedLowIRProgram(sources,
           make_driver_preprocessing_options(invocation),
-          getenv("CPPGM_DRIVER_STATS") ? &stats : 0);
+          collect_stats ? &stats : 0, true);
+	chrono::steady_clock::time_point adapt_started;
+	if(collect_stats) adapt_started = chrono::steady_clock::now();
   cppgm::pa30::CompilerObject object;
   object.target = target;
   object.lowir = cppgm::AdaptTypedLowIRForNative(typed);
+	uint64_t adapt_nanoseconds = 0;
+	if(collect_stats) adapt_nanoseconds = static_cast<uint64_t>(
+		chrono::duration_cast<chrono::nanoseconds>(
+			chrono::steady_clock::now() - adapt_started).count());
   object.lowir.source_bytes = source.size();
-  if(getenv("CPPGM_DRIVER_STATS")) object.lowir.token_count = stats.semantic.tokens;
+	if(collect_stats) {
+		object.lowir.token_count = stats.semantic.tokens;
+		const cppgm::SemanticAnalysisStats & semantic = stats.semantic;
+		cerr << "pa30_compile_stats"
+			 << " file=" << path
+			 << " source_bytes=" << stats.source_bytes
+			 << " tokens=" << semantic.tokens
+			 << " semantic_nodes=" << semantic.semantic_nodes
+			 << " declarations=" << semantic.declarations
+			 << " lookup_queries=" << semantic.lookup_queries
+			 << " lookup_scope_visits=" << semantic.lookup_scope_visits
+			 << " overload_candidates=" << semantic.overload_candidates
+			 << " template_requests=" << semantic.template_specialization_requests
+			 << " template_cache_hits=" << semantic.template_specialization_cache_hits
+			 << " demand_pushes=" << semantic.demand_worklist_pushes
+			 << " demanded_functions=" << semantic.demanded_function_emissions
+			 << " functions=" << stats.functions
+			 << " globals=" << stats.globals
+			 << " instructions=" << stats.instructions
+			 << " semantic_peak_bytes=" << semantic.peak_stage_storage_bytes
+			 << " typed_bytes=" << stats.typed_storage_bytes
+			 << " semantic_ns=" << semantic.analysis_nanoseconds
+			 << " lowering_ns=" << stats.lowering_nanoseconds
+			 << " adapt_ns=" << adapt_nanoseconds << '\n';
+	}
   return object;
 }
 
@@ -461,8 +495,11 @@ int run_link_driver(const DriverInvocation & invocation,
                     const string & target)
 {
   if(invocation.output.empty()) throw logic_error("link mode requires -o");
+  const bool collect_stats = getenv("CPPGM_DRIVER_STATS") != 0;
   vector<cppgm::pa30::CompilerObject> objects;
   vector<lowir_native::RelocatableObject> foreign_objects;
+	chrono::steady_clock::time_point input_started;
+	if(collect_stats) input_started = chrono::steady_clock::now();
   for(size_t i = 0; i < invocation.inputs.size(); ++i) {
     if(cppgm::pa30::IsCompilerObject(invocation.inputs[i]))
       objects.push_back(cppgm::pa30::ReadCompilerObject(invocation.inputs[i]));
@@ -478,25 +515,34 @@ int run_link_driver(const DriverInvocation & invocation,
       foreign_objects.push_back(cppgm::pa30::ReadElfRelocatableObject(
           path, foreign_objects.size()));
   }
+	uint64_t input_nanoseconds = 0;
+	if(collect_stats) input_nanoseconds = static_cast<uint64_t>(
+		chrono::duration_cast<chrono::nanoseconds>(
+			chrono::steady_clock::now() - input_started).count());
   cppgm::pa30::LinkStats link_stats;
   const lowir_model::LowirProgram lowir = cppgm::pa30::LinkCompilerObjects(
-      objects, target, getenv("CPPGM_DRIVER_STATS") ? &link_stats : 0);
+      std::move(objects), target,
+      collect_stats ? &link_stats : 0);
   lowir_native::Stats native_stats;
-  const mir_model::MirProgram mir = lowir_native::lower_program(
-      lowir, target, getenv("CPPGM_DRIVER_STATS") ? &native_stats : 0);
-  lowir_native::write_linux_executable(invocation.output, mir, foreign_objects,
-      getenv("CPPGM_DRIVER_STATS") ? &native_stats : 0);
-  if(getenv("CPPGM_DRIVER_STATS")) {
+  lowir_native::write_linux_executable(invocation.output, lowir, target,
+      foreign_objects, collect_stats ? &native_stats : 0);
+  if(collect_stats) {
     cerr << "pa30_driver_stats"
          << " objects=" << link_stats.objects
          << " symbols=" << link_stats.symbols
          << " symbol_probes=" << link_stats.symbol_probes
+		 << " rename_probes=" << link_stats.rename_probes
          << " definitions=" << link_stats.definitions
          << " weak_coalesces=" << link_stats.coalesced_weak_definitions
          << " functions=" << native_stats.functions
          << " lowir_instructions=" << native_stats.lowir_instructions
          << " mir_instructions=" << native_stats.mir_instructions
-         << " output_bytes=" << native_stats.output_bytes << '\n';
+		 << " output_bytes=" << native_stats.output_bytes
+		 << " input_ns=" << input_nanoseconds
+		 << " link_ns=" << link_stats.link_nanoseconds
+		 << " lower_ns=" << native_stats.lower_nanoseconds
+		 << " encode_ns=" << native_stats.encode_nanoseconds
+		 << " write_ns=" << native_stats.write_nanoseconds << '\n';
   }
   return EXIT_SUCCESS;
 }

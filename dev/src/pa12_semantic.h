@@ -164,6 +164,7 @@ void WriteSemanticTranslationUnit(const std::string& path,
 void ConsumeSemanticTranslationUnit(const std::string& path,
 	const std::string& source, const PreprocessingOptions& options,
 	pa12_semantic_detail::SemanticGraphConsumer& consumer,
-	SemanticAnalysisStats* stats = 0);
+	SemanticAnalysisStats* stats = 0,
+	bool complete_constructor_unwind = false);
 
 }

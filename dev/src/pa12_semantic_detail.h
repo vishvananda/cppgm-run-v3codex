@@ -47,11 +47,12 @@ class SemanticAnalyzer : public SyntaxTreeConsumer
 public:
 	SemanticAnalyzer(SemanticGraphStorage& graph, std::ostream& output,
 		SemanticAnalysisStats* stats, bool retain_lowering_facts = false,
-		bool render_output = true)
+		bool render_output = true, bool complete_constructor_unwind = false)
 		: arena_(0), output_(output), stats_(stats), strings_(graph.strings),
 		  program_(&graph.program),
 		  retain_lowering_facts_(retain_lowering_facts),
 		  render_output_(render_output),
+		  complete_constructor_unwind_(complete_constructor_unwind),
 		  dump_(graph.dump), root_(graph.root),
 		  class_polymorphism_(graph.class_polymorphism),
 		  function_template_dependent_result_shape_(kNoType),
@@ -1353,7 +1354,7 @@ private:
 	void AddMemberInitializationAction(BindingId member, NodeId initializer,
 		ScopeId scope, std::uint32_t body);
 	bool InitializationActionsAreNonthrowing(std::uint32_t body);
-	void DemandExplicitConstructorUnwindDestructors(std::uint32_t body);
+	void DemandConstructorUnwindDestructors(std::uint32_t body);
 	void AddDefaultConstructor(std::uint32_t variable, BindingId binding,
 		TypeId type);
 	void AddDestructorSubobjectActions(EntityId entity, BindingId destructor,
@@ -1613,6 +1614,7 @@ private:
 	Program* program_;
 	bool retain_lowering_facts_;
 	bool render_output_;
+	bool complete_constructor_unwind_;
 	DumpArena& dump_;
 	std::vector<std::uint32_t> string_literal_units_;
 	std::uint32_t& root_;

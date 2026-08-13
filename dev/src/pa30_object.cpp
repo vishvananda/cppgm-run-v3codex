@@ -1,6 +1,7 @@
 #include "pa30_object.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <fstream>
 #include <iterator>
@@ -25,16 +26,27 @@ const std::uint64_t kMaxObjectElements = UINT64_C(1) << 28;
 class Writer
 {
 public:
-	void Byte(std::uint8_t value) { bytes_.push_back(value); }
+	explicit Writer(std::ostream& output) : output_(output) {}
+
+	void Byte(std::uint8_t value)
+	{
+		output_.put(static_cast<char>(value));
+	}
 
 	void U32(std::uint32_t value)
 	{
-		for (unsigned i = 0; i < 4; ++i) Byte(value >> (i * 8));
+		char bytes[4];
+		for (unsigned i = 0; i < 4; ++i)
+			bytes[i] = static_cast<char>(value >> (i * 8));
+		output_.write(bytes, sizeof(bytes));
 	}
 
 	void U64(std::uint64_t value)
 	{
-		for (unsigned i = 0; i < 8; ++i) Byte(value >> (i * 8));
+		char bytes[8];
+		for (unsigned i = 0; i < 8; ++i)
+			bytes[i] = static_cast<char>(value >> (i * 8));
+		output_.write(bytes, sizeof(bytes));
 	}
 
 	void I64(std::int64_t value) { U64(static_cast<std::uint64_t>(value)); }
@@ -43,41 +55,37 @@ public:
 	void String(const std::string& value)
 	{
 		U64(value.size());
-		bytes_.insert(bytes_.end(), value.begin(), value.end());
+		if (!value.empty()) output_.write(value.data(),
+			static_cast<std::streamsize>(value.size()));
 	}
 
-	const std::vector<unsigned char>& Bytes() const { return bytes_; }
-
 private:
-	std::vector<unsigned char> bytes_;
+	std::ostream& output_;
 };
 
 class Reader
 {
 public:
-	explicit Reader(const std::vector<unsigned char>& bytes)
-		: bytes_(bytes), at_(0) {}
+	Reader(std::istream& input, std::uint64_t remaining)
+		: input_(input), remaining_(remaining) {}
 
 	std::uint8_t Byte()
 	{
-		Require(1);
-		return bytes_[at_++];
+		Take(1);
+		const int value = input_.get();
+		if (value == std::char_traits<char>::eof())
+			throw std::runtime_error("truncated compiler object");
+		return static_cast<std::uint8_t>(value);
 	}
 
 	std::uint32_t U32()
 	{
-		std::uint32_t value = 0;
-		for (unsigned i = 0; i < 4; ++i)
-			value |= static_cast<std::uint32_t>(Byte()) << (i * 8);
-		return value;
+		return static_cast<std::uint32_t>(ReadLittle(4));
 	}
 
 	std::uint64_t U64()
 	{
-		std::uint64_t value = 0;
-		for (unsigned i = 0; i < 8; ++i)
-			value |= static_cast<std::uint64_t>(Byte()) << (i * 8);
-		return value;
+		return ReadLittle(8);
 	}
 
 	std::int64_t I64() { return static_cast<std::int64_t>(U64()); }
@@ -91,7 +99,20 @@ public:
 
 	std::size_t Size()
 	{
-		const std::uint64_t value = U64();
+		return CheckedSize(U64());
+	}
+
+	std::size_t Count(std::size_t minimum_element_bytes)
+	{
+		const std::size_t value = Size();
+		if (minimum_element_bytes &&
+			value > remaining_ / minimum_element_bytes)
+			throw std::runtime_error("invalid compiler object collection size");
+		return value;
+	}
+
+	std::size_t CheckedSize(std::uint64_t value)
+	{
 		if (value > kMaxObjectElements ||
 			value > std::numeric_limits<std::size_t>::max())
 			throw std::runtime_error("compiler object collection is too large");
@@ -100,28 +121,46 @@ public:
 
 	std::string String()
 	{
-		const std::size_t size = Size();
-		Require(size);
-		const std::string result(bytes_.begin() + at_, bytes_.begin() + at_ + size);
-		at_ += size;
+		const std::size_t size = CheckedSize(U64());
+		if (size > remaining_)
+			throw std::runtime_error("truncated compiler object");
+		std::string result(size, '\0');
+		if (size) Take(size);
+		if (size && !input_.read(&result[0], static_cast<std::streamsize>(size)))
+			throw std::runtime_error("truncated compiler object");
 		return result;
 	}
 
-	void RequireEnd() const
+	void RequireEnd()
 	{
-		if (at_ != bytes_.size())
+		if (remaining_ != 0)
 			throw std::runtime_error("trailing bytes in compiler object");
+		if (input_.bad()) throw std::runtime_error("unable to read compiler object");
 	}
 
 private:
-	void Require(std::size_t count) const
+	void Take(std::uint64_t size)
 	{
-		if (count > bytes_.size() - at_)
+		if (size > remaining_)
 			throw std::runtime_error("truncated compiler object");
+		remaining_ -= size;
 	}
 
-	const std::vector<unsigned char>& bytes_;
-	std::size_t at_;
+	std::uint64_t ReadLittle(unsigned width)
+	{
+		Take(width);
+		char bytes[8];
+		if (!input_.read(bytes, width))
+			throw std::runtime_error("truncated compiler object");
+		std::uint64_t value = 0;
+		for (unsigned i = 0; i < width; ++i)
+			value |= static_cast<std::uint64_t>(
+				static_cast<unsigned char>(bytes[i])) << (i * 8);
+		return value;
+	}
+
+	std::istream& input_;
+	std::uint64_t remaining_;
 };
 
 template <typename Enum>
@@ -160,7 +199,7 @@ void WriteOperand(Writer& out, const lowir_model::Operand& value)
 {
 	WriteEnum(out, value.kind);
 	out.String(value.text);
-	out.I64(value.int_value);
+	out.I64(value.has_int_value ? value.int_value : 0);
 	WriteType(out, value.literal_type);
 }
 
@@ -170,6 +209,7 @@ lowir_model::Operand ReadOperand(Reader& in)
 	value.kind = ReadEnum<lowir_model::Operand::Kind>(in);
 	value.text = in.String();
 	value.int_value = in.I64();
+	value.has_int_value = value.kind == lowir_model::Operand::OP_INTEGER;
 	value.literal_type = ReadType(in);
 	return value;
 }
@@ -260,7 +300,7 @@ void WriteParameters(Writer& out,
 
 std::vector<lowir_model::Parameter> ReadParameters(Reader& in)
 {
-	std::vector<lowir_model::Parameter> values(in.Size());
+	std::vector<lowir_model::Parameter> values(in.Count(8));
 	for (std::size_t i = 0; i < values.size(); ++i)
 		values[i] = ReadParameter(in);
 	return values;
@@ -325,7 +365,7 @@ lowir_model::Instruction ReadInstruction(Reader& in)
 	value.first = ReadOperand(in);
 	value.second = ReadOperand(in);
 	value.third = ReadOperand(in);
-	value.args.resize(in.Size());
+	value.args.resize(in.Count(4));
 	for (std::size_t i = 0; i < value.args.size(); ++i)
 		value.args[i] = ReadOperand(in);
 	value.call_returns_void = in.Bool();
@@ -391,7 +431,7 @@ lowir_model::GlobalDefinition ReadGlobal(Reader& in)
 	value.init_kind = ReadEnum<lowir_model::GlobalDefinition::InitKind>(in);
 	value.init_operand = ReadOperand(in);
 	value.addr_addend = in.I64();
-	value.data_items.resize(in.Size());
+	value.data_items.resize(in.Count(4));
 	for (std::size_t i = 0; i < value.data_items.size(); ++i)
 	{
 		lowir_model::GlobalDefinition::DataItem& item = value.data_items[i];
@@ -457,17 +497,17 @@ lowir_model::Function ReadFunction(Reader& in)
 	value.name = in.String();
 	value.params = ReadParameters(in);
 	value.return_type = ReadType(in);
-	value.slots.resize(in.Size());
+	value.slots.resize(in.Count(8));
 	for (std::size_t i = 0; i < value.slots.size(); ++i)
 	{
 		value.slots[i].first = in.String();
 		value.slots[i].second = ReadType(in);
 	}
-	value.blocks.resize(in.Size());
+	value.blocks.resize(in.Count(8));
 	for (std::size_t i = 0; i < value.blocks.size(); ++i)
 	{
 		value.blocks[i].label = in.String();
-		value.blocks[i].instructions.resize(in.Size());
+		value.blocks[i].instructions.resize(in.Count(4));
 		for (std::size_t j = 0; j < value.blocks[i].instructions.size(); ++j)
 			value.blocks[i].instructions[j] = ReadInstruction(in);
 	}
@@ -529,25 +569,25 @@ void WriteProgram(Writer& out, const lowir_model::LowirProgram& value)
 lowir_model::LowirProgram ReadProgram(Reader& in)
 {
 	lowir_model::LowirProgram value;
-	value.global_declarations.resize(in.Size());
+	value.global_declarations.resize(in.Count(8));
 	for (std::size_t i = 0; i < value.global_declarations.size(); ++i)
 		value.global_declarations[i] = ReadGlobalDeclaration(in);
-	value.globals.resize(in.Size());
+	value.globals.resize(in.Count(8));
 	for (std::size_t i = 0; i < value.globals.size(); ++i)
 		value.globals[i] = ReadGlobal(in);
-	value.function_declarations.resize(in.Size());
+	value.function_declarations.resize(in.Count(8));
 	for (std::size_t i = 0; i < value.function_declarations.size(); ++i)
 		value.function_declarations[i] = ReadFunctionDeclaration(in);
-	value.functions.resize(in.Size());
+	value.functions.resize(in.Count(8));
 	for (std::size_t i = 0; i < value.functions.size(); ++i)
 		value.functions[i] = ReadFunction(in);
-	value.object_aliases.resize(in.Size());
+	value.object_aliases.resize(in.Count(16));
 	for (std::size_t i = 0; i < value.object_aliases.size(); ++i)
 	{
 		value.object_aliases[i].object_symbol = in.String();
 		value.object_aliases[i].target = in.String();
 	}
-	value.exported_symbols.resize(in.Size());
+	value.exported_symbols.resize(in.Count(8));
 	for (std::size_t i = 0; i < value.exported_symbols.size(); ++i)
 		value.exported_symbols[i] = ReadExport(in);
 	value.source_bytes = in.Size();
@@ -555,84 +595,77 @@ lowir_model::LowirProgram ReadProgram(Reader& in)
 	return value;
 }
 
-std::vector<unsigned char> ReadFileBytes(const std::string& path)
-{
-	std::ifstream input(path.c_str(), std::ios::in | std::ios::binary);
-	if (!input) throw std::runtime_error("unable to open object file: " + path);
-	return std::vector<unsigned char>(std::istreambuf_iterator<char>(input),
-		std::istreambuf_iterator<char>());
-}
-
 typedef std::unordered_map<std::string, std::string> RenameMap;
 
-void RenameOperand(lowir_model::Operand* value, const RenameMap& names)
+void RenameString(std::string* value, const RenameMap& names,
+	LinkStats* stats)
+{
+	if (value->empty()) return;
+	if (stats) ++stats->rename_probes;
+	const RenameMap::const_iterator found = names.find(*value);
+	if (found != names.end()) *value = found->second;
+}
+
+void RenameOperand(lowir_model::Operand* value, const RenameMap& names,
+	LinkStats* stats)
 {
 	if (value->kind != lowir_model::Operand::OP_GLOBAL) return;
-	const RenameMap::const_iterator found = names.find(value->text);
-	if (found != names.end()) value->text = found->second;
+	RenameString(&value->text, names, stats);
 }
 
 void RenameMetadata(lowir_model::SymbolMetadata* value,
-	const RenameMap& names)
+	const RenameMap& names, LinkStats* stats)
 {
-	const RenameMap::const_iterator tls = names.find(value->tls_for_symbol);
-	if (tls != names.end()) value->tls_for_symbol = tls->second;
+	RenameString(&value->tls_for_symbol, names, stats);
 }
 
 void RenameProgram(lowir_model::LowirProgram* program,
-	const RenameMap& names)
+	const RenameMap& names, LinkStats* stats)
 {
 	for (std::size_t i = 0; i < program->global_declarations.size(); ++i)
 	{
 		lowir_model::GlobalDeclaration& item = program->global_declarations[i];
-		if (names.count(item.name)) item.name = names.find(item.name)->second;
-		RenameMetadata(&item.metadata, names);
+		RenameString(&item.name, names, stats);
+		RenameMetadata(&item.metadata, names, stats);
 	}
 	for (std::size_t i = 0; i < program->globals.size(); ++i)
 	{
 		lowir_model::GlobalDefinition& item = program->globals[i];
-		if (names.count(item.name)) item.name = names.find(item.name)->second;
-		RenameOperand(&item.init_operand, names);
+		RenameString(&item.name, names, stats);
+		RenameOperand(&item.init_operand, names, stats);
 		for (std::size_t j = 0; j < item.data_items.size(); ++j)
 		{
-			RenameOperand(&item.data_items[j].literal_operand, names);
-			if (names.count(item.data_items[j].symbol))
-				item.data_items[j].symbol = names.find(item.data_items[j].symbol)->second;
+			RenameOperand(&item.data_items[j].literal_operand, names, stats);
+			RenameString(&item.data_items[j].symbol, names, stats);
 		}
-		RenameMetadata(&item.metadata, names);
+		RenameMetadata(&item.metadata, names, stats);
 	}
 	for (std::size_t i = 0; i < program->function_declarations.size(); ++i)
 	{
 		lowir_model::FunctionDeclaration& item =
 			program->function_declarations[i];
-		if (names.count(item.name)) item.name = names.find(item.name)->second;
-		RenameMetadata(&item.metadata, names);
+		RenameString(&item.name, names, stats);
+		RenameMetadata(&item.metadata, names, stats);
 	}
 	for (std::size_t i = 0; i < program->functions.size(); ++i)
 	{
 		lowir_model::Function& item = program->functions[i];
-		if (names.count(item.name)) item.name = names.find(item.name)->second;
-		RenameMetadata(&item.metadata, names);
+		RenameString(&item.name, names, stats);
+		RenameMetadata(&item.metadata, names, stats);
 		for (std::size_t j = 0; j < item.blocks.size(); ++j)
 			for (std::size_t k = 0; k < item.blocks[j].instructions.size(); ++k)
 			{
 				lowir_model::Instruction& instruction =
 					item.blocks[j].instructions[k];
-				RenameOperand(&instruction.first, names);
-				RenameOperand(&instruction.second, names);
-				RenameOperand(&instruction.third, names);
+				RenameOperand(&instruction.first, names, stats);
+				RenameOperand(&instruction.second, names, stats);
+				RenameOperand(&instruction.third, names, stats);
 				for (std::size_t a = 0; a < instruction.args.size(); ++a)
-					RenameOperand(&instruction.args[a], names);
+					RenameOperand(&instruction.args[a], names, stats);
 			}
 	}
 	for (std::size_t i = 0; i < program->object_aliases.size(); ++i)
-		if (names.count(program->object_aliases[i].target))
-			program->object_aliases[i].target =
-				names.find(program->object_aliases[i].target)->second;
-	for (std::size_t i = 0; i < program->exported_symbols.size(); ++i)
-		if (names.count(program->exported_symbols[i].internal_symbol))
-			program->exported_symbols[i].internal_symbol =
-				names.find(program->exported_symbols[i].internal_symbol)->second;
+		RenameString(&program->object_aliases[i].target, names, stats);
 }
 
 lowir_model::Function MakeLifecycleAggregate(const std::string& name,
@@ -673,24 +706,20 @@ bool IsWeak(lowir_model::SymbolBindingMode binding)
 }
 
 LinkStats::LinkStats()
-	: objects(0), symbols(0), symbol_probes(0), definitions(0),
-	  coalesced_weak_definitions(0) {}
+	: objects(0), symbols(0), symbol_probes(0), rename_probes(0),
+	  definitions(0), coalesced_weak_definitions(0), link_nanoseconds(0) {}
 
 void WriteCompilerObject(const std::string& path,
 	const CompilerObject& object)
 {
-	Writer payload;
-	payload.String(object.target);
-	WriteProgram(payload, object.lowir);
 	std::ofstream output(path.c_str(),
 		std::ios::out | std::ios::binary | std::ios::trunc);
 	if (!output) throw std::runtime_error("unable to open object output: " + path);
 	output.write(kMagic, sizeof(kMagic) - 1);
-	const std::uint32_t version = kVersion;
-	for (unsigned i = 0; i < 4; ++i) output.put(version >> (i * 8));
-	const std::vector<unsigned char>& bytes = payload.Bytes();
-	if (!bytes.empty()) output.write(reinterpret_cast<const char*>(&bytes[0]),
-		static_cast<std::streamsize>(bytes.size()));
+	Writer payload(output);
+	payload.U32(kVersion);
+	payload.String(object.target);
+	WriteProgram(payload, object.lowir);
 	if (!output) throw std::runtime_error("unable to write object output: " + path);
 }
 
@@ -706,19 +735,22 @@ bool IsCompilerObject(const std::string& path)
 
 CompilerObject ReadCompilerObject(const std::string& path)
 {
-	const std::vector<unsigned char> file = ReadFileBytes(path);
-	const std::size_t header = sizeof(kMagic) - 1 + 4;
-	if (file.size() < header ||
-		!std::equal(kMagic, kMagic + sizeof(kMagic) - 1, file.begin()))
+	std::ifstream file(path.c_str(), std::ios::in | std::ios::binary);
+	if (!file) throw std::runtime_error("unable to open object file: " + path);
+	char magic[sizeof(kMagic) - 1];
+	file.read(magic, sizeof(magic));
+	if (file.gcount() != static_cast<std::streamsize>(sizeof(magic)) ||
+		!std::equal(magic, magic + sizeof(magic), kMagic))
 		throw std::runtime_error("not a cppgm compiler object: " + path);
-	std::uint32_t version = 0;
-	for (unsigned i = 0; i < 4; ++i)
-		version |= static_cast<std::uint32_t>(file[sizeof(kMagic) - 1 + i]) <<
-			(i * 8);
-	if (version != kVersion)
+	const std::streampos payload_begin = file.tellg();
+	file.seekg(0, std::ios::end);
+	const std::streampos payload_end = file.tellg();
+	if (payload_begin < 0 || payload_end < payload_begin)
+		throw std::runtime_error("unable to size compiler object: " + path);
+	file.seekg(payload_begin);
+	Reader input(file, static_cast<std::uint64_t>(payload_end - payload_begin));
+	if (input.U32() != kVersion)
 		throw std::runtime_error("unsupported cppgm object version");
-	const std::vector<unsigned char> payload(file.begin() + header, file.end());
-	Reader input(payload);
 	CompilerObject result;
 	result.target = input.String();
 	result.lowir = ReadProgram(input);
@@ -732,6 +764,8 @@ lowir_model::LowirProgram LinkCompilerObjects(
 {
 	if (objects.empty()) throw std::runtime_error("no linker inputs");
 	if (stats) *stats = LinkStats();
+	std::chrono::steady_clock::time_point started;
+	if (stats) started = std::chrono::steady_clock::now();
 	std::unordered_map<std::string, std::string> external_names;
 	for (std::size_t i = 0; i < objects.size(); ++i)
 	{
@@ -756,14 +790,14 @@ lowir_model::LowirProgram LinkCompilerObjects(
 				names[symbol.internal_symbol] = inserted.first->second;
 			}
 		}
-		RenameProgram(&objects[i].lowir, names);
+		RenameProgram(&objects[i].lowir, names, stats);
+		std::vector<ir_model::ExportedSymbol>().swap(
+			objects[i].lowir.exported_symbols);
 	}
 
 	lowir_model::LowirProgram result;
 	std::unordered_map<std::string, std::size_t> globals;
 	std::unordered_map<std::string, std::size_t> functions;
-	std::vector<bool> keep_globals;
-	std::vector<bool> keep_functions;
 	std::vector<std::string> initializers;
 	std::vector<std::string> finalizers;
 	for (std::size_t unit = 0; unit < objects.size(); ++unit)
@@ -780,8 +814,7 @@ lowir_model::LowirProgram LinkCompilerObjects(
 			if (found == globals.end())
 			{
 				globals[item.name] = result.globals.size();
-				result.globals.push_back(item);
-				keep_globals.push_back(true);
+				result.globals.push_back(std::move(item));
 			}
 			else if (IsWeak(item.metadata.binding))
 			{
@@ -789,7 +822,7 @@ lowir_model::LowirProgram LinkCompilerObjects(
 			}
 			else if (IsWeak(result.globals[found->second].metadata.binding))
 			{
-				result.globals[found->second] = item;
+				result.globals[found->second] = std::move(item);
 				if (stats) ++stats->coalesced_weak_definitions;
 			}
 			else throw std::runtime_error("duplicate global definition: " + item.name);
@@ -813,8 +846,7 @@ lowir_model::LowirProgram LinkCompilerObjects(
 			if (found == functions.end())
 			{
 				functions[item.name] = result.functions.size();
-				result.functions.push_back(item);
-				keep_functions.push_back(true);
+				result.functions.push_back(std::move(item));
 			}
 			else if (IsWeak(item.metadata.binding))
 			{
@@ -822,32 +854,31 @@ lowir_model::LowirProgram LinkCompilerObjects(
 			}
 			else if (IsWeak(result.functions[found->second].metadata.binding))
 			{
-				result.functions[found->second] = item;
+				result.functions[found->second] = std::move(item);
 				if (stats) ++stats->coalesced_weak_definitions;
 			}
 			else throw std::runtime_error("duplicate function definition: " + item.name);
 		}
 		result.object_aliases.insert(result.object_aliases.end(),
-			program.object_aliases.begin(), program.object_aliases.end());
-		result.exported_symbols.insert(result.exported_symbols.end(),
-			program.exported_symbols.begin(), program.exported_symbols.end());
+			std::make_move_iterator(program.object_aliases.begin()),
+			std::make_move_iterator(program.object_aliases.end()));
 	}
 
 	std::unordered_set<std::string> declared_globals;
 	std::unordered_set<std::string> declared_functions;
 	for (std::size_t unit = 0; unit < objects.size(); ++unit)
 	{
-		const lowir_model::LowirProgram& program = objects[unit].lowir;
+		lowir_model::LowirProgram& program = objects[unit].lowir;
 		for (std::size_t i = 0; i < program.global_declarations.size(); ++i)
 			if (!globals.count(program.global_declarations[i].name) &&
 				declared_globals.insert(program.global_declarations[i].name).second)
 				result.global_declarations.push_back(
-					program.global_declarations[i]);
+					std::move(program.global_declarations[i]));
 		for (std::size_t i = 0; i < program.function_declarations.size(); ++i)
 			if (!functions.count(program.function_declarations[i].name) &&
 				declared_functions.insert(program.function_declarations[i].name).second)
 				result.function_declarations.push_back(
-					program.function_declarations[i]);
+					std::move(program.function_declarations[i]));
 	}
 	if (!initializers.empty())
 		result.functions.push_back(MakeLifecycleAggregate(
@@ -869,7 +900,13 @@ lowir_model::LowirProgram LinkCompilerObjects(
 				alias.object_symbol);
 	}
 	result.object_aliases.swap(unique_aliases);
-	if (stats) stats->objects = objects.size();
+	if (stats)
+	{
+		stats->objects = objects.size();
+		stats->link_nanoseconds = static_cast<std::uint64_t>(
+			std::chrono::duration_cast<std::chrono::nanoseconds>(
+				std::chrono::steady_clock::now() - started).count());
+	}
 	return result;
 }
 

@@ -11,7 +11,6 @@
 #include <string>
 #include <vector>
 
-#include "ir_symbol_model.h"
 #include "x86_register_model.h"
 
 namespace mir_model {
@@ -52,6 +51,7 @@ struct GlobalDefinition
   } init_kind = GI_ZERO;
 
   std::string name;
+  std::string object_symbol;
   bool readonly = false;
   bool thread_local_storage = false;
   std::string thread_local_wrapper_symbol;
@@ -276,6 +276,7 @@ struct HostEhClause
 struct Function
 {
   std::string name;
+  std::string object_symbol;
   std::vector<ParamBinding> params;
   std::string return_type;
   std::size_t frame_bytes = 0;
@@ -337,7 +338,6 @@ struct Program
   std::vector<GlobalDefinition> globals;
   std::vector<Function> functions;
   std::vector<ObjectAlias> object_aliases;
-  std::vector<ir_model::ExportedSymbol> exported_symbols;
   std::vector<RuntimeFunction> runtime_functions;
   std::vector<RuntimeData> runtime_data;
 };

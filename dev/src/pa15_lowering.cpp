@@ -191,6 +191,7 @@ private:
 	friend class pa26_lowering_detail::ExceptionLowering<GraphLowerer>;
 	friend class pa26_lowering_detail::InitializerListLowering<GraphLowerer>;
 	friend class pa26_lowering_detail::RttiLowering<GraphLowerer>;
+	friend class pa27_lowering_detail::MemberFunctionPointerLowering<GraphLowerer>;
 	friend class pa27_lowering_detail::MemberPointerLowering<GraphLowerer>;
 	friend class pa30_lowering_detail::RegionLowering<GraphLowerer>;
 	enum StatementTaskKind : std::uint8_t
@@ -332,6 +333,7 @@ private:
 			symbol.object_output_root |= binding.object_output_root;
 			pa15_lowering_abi::ApplyBuiltinSymbolMetadata(
 				&symbol, binding.builtin_function);
+			pa15_lowering_abi::ApplyNativeRuntimeSymbolMetadata(&symbol);
 			return found;
 		}
 		if (output_.symbols.size() >= kNoLowId)
@@ -345,6 +347,8 @@ private:
 			internal, binding.nonthrowing));
 		pa15_lowering_abi::ApplyBuiltinSymbolMetadata(&output_.symbols.back(),
 			binding.builtin_function);
+		pa15_lowering_abi::ApplyNativeRuntimeSymbolMetadata(
+			&output_.symbols.back());
 		output_.symbols.back().source_type = source_type;
 		output_.symbols.back().weak_linkage = weak_odr;
 		output_.symbols.back().object_output_root = binding.object_output_root;

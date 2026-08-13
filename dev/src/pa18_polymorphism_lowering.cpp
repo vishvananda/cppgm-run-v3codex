@@ -514,7 +514,7 @@ private:
 
 	SymbolId AddExternalRtti(const std::string& name,
 		const std::string& object_name,
-		Symbol::RuntimeRole role = Symbol::RUNTIME_ROLE_NONE)
+		Symbol::RuntimeRole role = Symbol::RUNTIME_ROLE_RTTI_DATA)
 	{
 		const SymbolId symbol = AddSyntheticSymbol(
 			Symbol::GLOBAL_SYMBOL, name, object_name, false);

@@ -68,6 +68,7 @@ struct Operand
     OP_FLOAT
   } kind = OP_INTEGER;
 
+  bool has_int_value = false;
   std::string text;
   long long int_value = 0;
   long double float_value = 0.0L;
@@ -101,7 +102,8 @@ enum SymbolRole
   SR_BAD_TYPEID,
   SR_RTTI_CLASS,
   SR_RTTI_SI,
-  SR_RTTI_VMI
+  SR_RTTI_VMI,
+  SR_RTTI_DATA
 };
 
 enum LanguageLinkageMode
@@ -241,10 +243,7 @@ struct InstructionDebugLocation
   std::size_t line = 0;
   std::size_t column = 0;
 
-  bool present() const
-  {
-    return !file.empty() && line != 0 && column != 0;
-  }
+  bool present() const;
 };
 
 struct GlobalDeclaration

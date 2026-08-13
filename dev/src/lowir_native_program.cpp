@@ -1,9 +1,8 @@
 #include "lowir_native_program.h"
 
 #include "lowir_native_mir.h"
+#include "lowir_native_selection.h"
 
-#include <cerrno>
-#include <cstdlib>
 #include <stdexcept>
 
 namespace lowir_native {
@@ -17,16 +16,6 @@ using lowir_native::build::named_operand;
 using lowir_native::build::reg_operand;
 using mir_model::MirInstruction;
 using mir_model::MirOperand;
-
-long long integer_literal(const std::string & text)
-{
-  errno = 0;
-  char * end = 0;
-  const long long value = std::strtoll(text.c_str(), &end, 0);
-  if(errno || !end || *end)
-    throw std::runtime_error("invalid integer literal: " + text);
-  return value;
-}
 
 bool is_floating(const lowir_model::LowType & type)
 {
@@ -49,6 +38,7 @@ mir_model::MirGlobalDefinition lower_global(
 {
   mir_model::MirGlobalDefinition target;
   target.name = source.name;
+  target.object_symbol = source.metadata.object_symbol;
   target.readonly = source.storage == lowir_model::GSM_READONLY;
   target.thread_local_storage = source.storage == lowir_model::GSM_THREAD_LOCAL;
   target.section_segment = source.metadata.section_segment;
@@ -71,7 +61,7 @@ mir_model::MirGlobalDefinition lower_global(
         lowered.literal_text = item.literal_operand.text;
       } else {
         lowered.kind = mir_model::MirGlobalDefinition::DataItem::ITEM_INTEGER;
-        lowered.int_value = integer_literal(item.literal_operand.text);
+        lowered.int_value = selection::integer_value(item.literal_operand);
       }
       target.data_items.push_back(lowered);
     }
@@ -91,7 +81,7 @@ mir_model::MirGlobalDefinition lower_global(
     } else {
       target.init_kind = mir_model::MirGlobalDefinition::GI_INTEGER;
       target.int_value = source.init_kind == lowir_model::LowirGlobalDefinition::INIT_ZERO ?
-        0 : integer_literal(source.init_operand.text);
+        0 : selection::integer_value(source.init_operand);
     }
   }
   return target;
@@ -134,15 +124,6 @@ void lower_startup(const lowir_model::LowirProgram & source,
     if(function.metadata.role == lowir_model::SR_ENTRY) entry = function.name;
     if(function.metadata.role == lowir_model::SR_INIT) init = function.name;
     if(function.metadata.role == lowir_model::SR_FINI) fini = function.name;
-  }
-  if(entry.empty()) {
-    for(std::size_t i = 0; i < source.functions.size(); ++i) {
-      if(source.functions[i].name == "@main") entry = source.functions[i].name;
-      if(init.empty() && source.functions[i].name == "@__cppgm_init")
-        init = source.functions[i].name;
-      if(fini.empty() && source.functions[i].name == "@__cppgm_fini")
-        fini = source.functions[i].name;
-    }
   }
   if(entry.empty()) return;
   if(!init.empty()) append_startup_call(target.startup, init);

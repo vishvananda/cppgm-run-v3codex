@@ -17,11 +17,19 @@ long long integer_literal(const std::string & text)
   return value;
 }
 
+long long integer_value(const lowir_model::Operand & operand)
+{
+  if(operand.kind != lowir_model::Operand::OP_INTEGER)
+    throw std::runtime_error("integer value requires an integer operand");
+  return operand.has_int_value ? operand.int_value :
+    integer_literal(operand.text);
+}
+
 long long atomic_order(const lowir_model::Operand & operand)
 {
   if(operand.kind != lowir_model::Operand::OP_INTEGER)
     throw std::runtime_error("atomic memory order must be an integer literal");
-  return integer_literal(operand.text);
+  return integer_value(operand);
 }
 
 bool is_signed_integer(const lowir_model::LowType & type)

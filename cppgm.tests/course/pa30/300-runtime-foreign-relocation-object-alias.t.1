@@ -1,0 +1,30 @@
+struct X
+{
+  int value;
+  X();
+};
+
+X::X() : value(42) {}
+
+struct Y
+{
+  int value = 43;
+};
+
+struct Z : Y {};
+
+namespace n
+{
+int exported_value = 44;
+}
+
+extern "C" int invoke_abi_symbols(void*, void*);
+
+int main()
+{
+  Z demanded;
+  long long x_storage = 0;
+  long long y_storage = 0;
+  return demanded.value == 43 ?
+    invoke_abi_symbols(&x_storage, &y_storage) : 1;
+}

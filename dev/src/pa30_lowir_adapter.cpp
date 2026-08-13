@@ -86,6 +86,7 @@ lowir_model::Operand AdaptOperand(const Operand& operand,
 	case Operand::INTEGER:
 		result.kind = lowir_model::Operand::OP_INTEGER;
 		result.int_value = operand.integer_value;
+		result.has_int_value = true;
 		result.text = std::to_string(operand.integer_value);
 		break;
 	case Operand::FLOATING:
@@ -98,55 +99,12 @@ lowir_model::Operand AdaptOperand(const Operand& operand,
 		result.kind = lowir_model::Operand::OP_INTEGER;
 		result.text = "nullptr";
 		result.int_value = 0;
+		result.has_int_value = true;
 		break;
 	case Operand::NONE:
 		break;
 	}
 	return result;
-}
-
-const char* OperationText(LowOperation operation)
-{
-	switch (operation)
-	{
-	case LOW_OP_NEG: return "neg";
-	case LOW_OP_BITNOT: return "bitnot";
-	case LOW_OP_ADD: return "add";
-	case LOW_OP_SUB: return "sub";
-	case LOW_OP_MUL: return "mul";
-	case LOW_OP_DIV: return "div";
-	case LOW_OP_UDIV: return "udiv";
-	case LOW_OP_MOD: return "mod";
-	case LOW_OP_UMOD: return "umod";
-	case LOW_OP_AND: return "and";
-	case LOW_OP_OR: return "or";
-	case LOW_OP_XOR: return "xor";
-	case LOW_OP_SHL: return "shl";
-	case LOW_OP_SHR: return "shr";
-	case LOW_OP_USHR: return "ushr";
-	case LOW_OP_EQ: return "eq";
-	case LOW_OP_NE: return "ne";
-	case LOW_OP_LT: return "lt";
-	case LOW_OP_ULT: return "ult";
-	case LOW_OP_LE: return "le";
-	case LOW_OP_ULE: return "ule";
-	case LOW_OP_GT: return "gt";
-	case LOW_OP_UGT: return "ugt";
-	case LOW_OP_GE: return "ge";
-	case LOW_OP_UGE: return "uge";
-	case LOW_OP_TRUNC: return "trunc";
-	case LOW_OP_SEXT: return "sext";
-	case LOW_OP_ZEXT: return "zext";
-	case LOW_OP_SITOFP: return "sitofp";
-	case LOW_OP_UITOFP: return "uitofp";
-	case LOW_OP_FPTOSI: return "fptosi";
-	case LOW_OP_FPTOUI: return "fptoui";
-	case LOW_OP_FPTRUNC: return "fptrunc";
-	case LOW_OP_FPEXT: return "fpext";
-	case LOW_OP_DECAY: return "decay";
-	case LOW_OP_NONE: break;
-	}
-	throw std::logic_error("invalid typed LowIR operation");
 }
 
 void AdaptParameterFacts(const Parameter& source,
@@ -240,6 +198,8 @@ void AdaptSymbolFacts(const Symbol& source,
 		symbol->role = lowir_model::SR_RTTI_SI; break;
 	case Symbol::RUNTIME_ROLE_RTTI_VMI:
 		symbol->role = lowir_model::SR_RTTI_VMI; break;
+	case Symbol::RUNTIME_ROLE_RTTI_DATA:
+		symbol->role = lowir_model::SR_RTTI_DATA; break;
 	}
 }
 
@@ -251,7 +211,7 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 	if (source.type.kind != LOW_INVALID) target.type = AdaptType(source.type);
 	if (source.source_type.kind != LOW_INVALID)
 		target.source_type = AdaptType(source.source_type);
-	if (source.op != LOW_OP_NONE) target.op = OperationText(source.op);
+	if (source.op != LOW_OP_NONE) target.op = LowOperationText(source.op);
 	target.first = AdaptOperand(source.first, program, function);
 	target.second = AdaptOperand(source.second, program, function);
 	switch (source.projection)
@@ -384,6 +344,7 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 			lowir_model::Operand value;
 			value.kind = lowir_model::Operand::OP_INTEGER;
 			value.int_value = program.switch_case_values[source.extra_first + i];
+			value.has_int_value = true;
 			value.text = std::to_string(value.int_value);
 			target.args.push_back(value);
 			const BlockId block =
@@ -505,6 +466,7 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 					{
 						data.literal_operand.kind = lowir_model::Operand::OP_INTEGER;
 						data.literal_operand.int_value = value.integer_value;
+						data.literal_operand.has_int_value = true;
 						data.literal_operand.text = std::to_string(value.integer_value);
 					}
 				}
@@ -532,6 +494,7 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 			{
 				result.init_operand.kind = lowir_model::Operand::OP_INTEGER;
 				result.init_operand.int_value = item.initializer;
+				result.init_operand.has_int_value = true;
 				result.init_operand.text = std::to_string(item.initializer);
 			}
 		}

@@ -2933,7 +2933,7 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 			if (info.definition_body != kNoNode)
 				AnalyzeCompound(info.definition_body, function_scope,
 					constructor_body);
-			DemandExplicitConstructorUnwindDestructors(constructor_body);
+			DemandConstructorUnwindDestructors(constructor_body);
 			if (function_try != kNoDumpEdge)
 			{
 				AnalyzeFunctionTryHandlers(info.function_try_block,

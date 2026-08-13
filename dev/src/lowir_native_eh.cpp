@@ -39,16 +39,19 @@ bool runtime_kind(lowir_model::SymbolRole role,
   }
 }
 
-mir_model::RuntimeData::Kind data_kind(lowir_model::SymbolRole role)
+bool data_kind(lowir_model::SymbolRole role,
+               mir_model::RuntimeData::Kind & target)
 {
   switch(role) {
   case lowir_model::SR_RTTI_CLASS:
-    return mir_model::RuntimeData::RD_RTTI_CLASS;
+    target = mir_model::RuntimeData::RD_RTTI_CLASS; return true;
   case lowir_model::SR_RTTI_SI:
-    return mir_model::RuntimeData::RD_RTTI_SI;
+    target = mir_model::RuntimeData::RD_RTTI_SI; return true;
   case lowir_model::SR_RTTI_VMI:
-    return mir_model::RuntimeData::RD_RTTI_VMI;
-  default: return mir_model::RuntimeData::RD_OPAQUE;
+    target = mir_model::RuntimeData::RD_RTTI_VMI; return true;
+  case lowir_model::SR_RTTI_DATA:
+    target = mir_model::RuntimeData::RD_OPAQUE; return true;
+  default: return false;
   }
 }
 
@@ -66,9 +69,8 @@ void plan_program(const lowir_model::LowirProgram & source,
   for(std::size_t i = 0; i < source.global_declarations.size(); ++i) {
     const lowir_model::GlobalDeclaration & declaration =
       source.global_declarations[i];
-    if(declaration.name.find("@__external_rtti") != 0) continue;
     mir_model::MirRuntimeData data;
-    data.kind = data_kind(declaration.metadata.role);
+    if(!data_kind(declaration.metadata.role, data.kind)) continue;
     data.name = declaration.name;
     data.object_symbol = declaration.metadata.object_symbol;
     target.runtime_data.push_back(data);
@@ -77,13 +79,7 @@ void plan_program(const lowir_model::LowirProgram & source,
     const lowir_model::FunctionDeclaration & declaration =
       source.function_declarations[i];
     mir_model::MirRuntimeFunction runtime;
-    if(!runtime_kind(declaration.metadata.role, runtime.kind)) {
-      if(declaration.metadata.object_symbol == "malloc")
-        runtime.kind = mir_model::RuntimeFunction::RF_ALLOCATE_MEMORY;
-      else if(declaration.metadata.object_symbol == "free")
-        runtime.kind = mir_model::RuntimeFunction::RF_FREE_MEMORY;
-      else continue;
-    }
+    if(!runtime_kind(declaration.metadata.role, runtime.kind)) continue;
     runtime.name = declaration.name;
     runtime.object_symbol = declaration.metadata.object_symbol;
     target.runtime_functions.push_back(runtime);

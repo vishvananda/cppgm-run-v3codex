@@ -25,6 +25,7 @@ std::string MangleVariable(const pa11::Program& program,
 	const pa12_semantic_detail::DumpNode& node);
 void ApplyBuiltinSymbolMetadata(pa15_lowir_detail::Symbol* symbol,
 	pa11::BuiltinFunctionKind kind);
+void ApplyNativeRuntimeSymbolMetadata(pa15_lowir_detail::Symbol* symbol);
 void ApplyBuiltinParameterMetadata(pa15_lowir_detail::Parameter* parameter,
 	pa11::BuiltinFunctionKind kind, std::size_t index);
 void ApplyLifecycleSymbolMetadata(const pa11::Program& program,

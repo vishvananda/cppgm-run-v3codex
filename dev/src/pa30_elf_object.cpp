@@ -209,7 +209,20 @@ lowir_native::RelocatableObject ReadElfRelocatableObject(
 			relocation.offset = Size(in.U64(at));
 			relocation.target = symbols[symbol];
 			relocation.addend = in.I64(at + 16);
-			if (type == 2 || type == 4)
+			if (type == 41 || type == 42)
+			{
+				if (relocation.offset < 2 ||
+					relocation.offset > target.bytes.size() ||
+					target.bytes[relocation.offset - 2] != 0x8b ||
+					(target.bytes[relocation.offset - 1] & 0xc7) != 0x05)
+					throw std::runtime_error(
+						"unsupported x86_64 GOTPCRELX instruction");
+				// Relax a local GOT load to a direct RIP-relative address.
+				target.bytes[relocation.offset - 2] = 0x8d;
+				relocation.kind =
+					lowir_native::RelocatableRelocation::RELATIVE32;
+			}
+			else if (type == 2 || type == 4)
 				relocation.kind = lowir_native::RelocatableRelocation::RELATIVE32;
 			else if (type == 1)
 				relocation.kind = lowir_native::RelocatableRelocation::ABSOLUTE64;
