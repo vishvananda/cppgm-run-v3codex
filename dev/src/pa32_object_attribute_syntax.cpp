@@ -1,5 +1,7 @@
 #include "pa32_object_attribute_syntax.h"
 
+#include "hosted_extension_registry.h"
+
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -46,7 +48,8 @@ bool ConsumeGnuObjectAttributeFacts(
 		throw std::logic_error("missing GNU attribute parser destination");
 	if (*position >= tokens.size() ||
 		tokens[*position].Kind() != kIdentifierToken ||
-		strings.Get(tokens[*position].spelling) != "__attribute__")
+		!hosted_extension::IsGnuAttributeIntroducer(
+			strings.Get(tokens[*position].spelling)))
 		return false;
 	++*position;
 	Expect(tokens, position, OP_LPAREN);

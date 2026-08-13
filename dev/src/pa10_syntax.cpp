@@ -4,6 +4,7 @@
 #include "pa10_parser_name_facts.h"
 #include "pa10_parser_token_classification.h"
 #include "hosted_builtin_syntax.h"
+#include "hosted_extension_syntax.h"
 #include "pa32_object_attribute_syntax.h"
 #include "pa25_lambda_capture_syntax.h"
 #include "pa25_range_for_syntax.h"
@@ -25,11 +26,13 @@ namespace
 using namespace pa10_syntax_detail;
 class Parser : private ParserNameFacts<Parser>,
 	private hosted_builtin::Syntax<Parser>,
+	private hosted_extension::Syntax<Parser>,
 	private pa25_syntax_detail::LambdaCaptureSyntax<Parser>,
 	private pa25_syntax_detail::RangeForSyntax<Parser>,
 	private pa30_syntax_detail::RegionSyntax<Parser>
 {
 friend class ParserNameFacts<Parser>; friend class hosted_builtin::Syntax<Parser>;
+friend class hosted_extension::Syntax<Parser>;
 friend class pa25_syntax_detail::LambdaCaptureSyntax<Parser>;
 friend class pa25_syntax_detail::RangeForSyntax<Parser>;
 friend class pa30_syntax_detail::RegionSyntax<Parser>;
@@ -324,36 +327,7 @@ private:
 	}
 	bool SkipAttribute()
 	{
-		const Mark mark = Checkpoint();
-		if (AtIdentifier() && Spelling(position_) == "__attribute__")
-		{
-			++position_;
-			if (SkipBalanced(OP_LPAREN, OP_RPAREN)) return true;
-			Rollback(mark);
-			return false;
-		}
-		if (At(KW_ALIGNAS))
-		{
-			++position_;
-			if (SkipBalanced(OP_LPAREN, OP_RPAREN)) return true;
-			Rollback(mark);
-			return false;
-		}
-		if (At(OP_LSQUARE) && AtOffset(1, OP_LSQUARE))
-		{
-			position_ += 2;
-			while (!AtEof())
-			{
-				if (At(OP_RSQUARE) && AtOffset(1, OP_RSQUARE))
-				{
-					position_ += 2;
-					return true;
-				}
-				++position_;
-			}
-		}
-		Rollback(mark);
-		return false;
+		return SkipHostedAttributeSyntax();
 	}
 	void SkipAttributes()
 	{
@@ -606,6 +580,7 @@ private:
 	}
 	bool TemplateArgumentStartsType()
 	{
+		if (StartsHostedType(position_)) return true;
 		if (At(KW_TYPENAME) || At(KW_DECLTYPE) || At(KW_CLASS) ||
 			At(KW_STRUCT) || At(KW_UNION) || At(KW_ENUM) || At(KW_CONST) ||
 			At(KW_VOLATILE)) return true;
@@ -740,12 +715,15 @@ NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id, std::string* first_type)
 	bool consumed = false;
 	bool saw_type = false;
 	bool saw_user_type = false;
+	bool saw_int128 = false;
 	while (true)
 	{
 		SkipAttributes();
 		if (position_ >= tokens_.size()) break;
 		const std::size_t token_position = position_;
 		const std::uint16_t kind = tokens_[position_].Kind();
+		if (TryParseHostedDeclSpecifier(sequence, for_type_id, &consumed,
+			&saw_type, &saw_user_type, &saw_int128, first_type)) continue;
 		if (!saw_type && TryParseBuiltinTransformSpecifier(sequence))
 		{
 			if (first_type && first_type->empty())
@@ -757,7 +735,9 @@ NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id, std::string* first_type)
 		}
 		if (kind < kSimpleTokenCount && IsFundamentalKind(kind))
 		{
-			if (saw_user_type) break;
+			if (saw_user_type && !(saw_int128 &&
+				(kind == static_cast<std::uint16_t>(KW_SIGNED) ||
+				 kind == static_cast<std::uint16_t>(KW_UNSIGNED)))) break;
 			++position_;
 			arena_.Add(sequence, MakeTokenNode(for_type_id ?
 				"type-specifier" : "decl-specifier",
@@ -1010,6 +990,7 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 				const std::size_t qualifier = position_++;
 				arena_.Add(result, MakeTokenNode("cv-qualifier", qualifier));
 			}
+			while (SkipHostedTypeAnnotations() || SkipAttribute()) {}
 			consumed = true;
 			continue;
 		}
@@ -1023,6 +1004,7 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 				const std::size_t qualifier = position_++;
 				arena_.Add(result, MakeTokenNode("cv-qualifier", qualifier));
 			}
+			while (SkipHostedTypeAnnotations() || SkipAttribute()) {}
 			consumed = true;
 			continue;
 		}
@@ -1039,7 +1021,8 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 		 IsLikelyTypeIdentifier(position_ + 1) ||
 		 QualifiedStartsTypeAt(position_ + 1) ||
 		 (position_ + 1 < tokens_.size() &&
-		  IsTypeSpecifierStartKind(tokens_[position_ + 1].Kind())));
+		  (IsTypeSpecifierStartKind(tokens_[position_ + 1].Kind()) ||
+		   StartsHostedType(position_ + 1))));
 	if (!abstract_function_suffix && Match(OP_LPAREN))
 	{
 		const NodeId nested_declarator = arena_.Make("nested-declarator");
@@ -1080,8 +1063,7 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 	}
 	while (true)
 	{
-		if ((At(OP_LSQUARE) && AtOffset(1, OP_LSQUARE)) ||
-			(AtIdentifier() && Spelling(position_) == "__attribute__"))
+		if (AtHostedAttribute())
 		{
 			std::vector<NodeId> attributes;
 			while (ParseLeadingAttribute(&attributes)) {}
@@ -1096,6 +1078,7 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 				(position_ + 1 < tokens_.size() &&
 					 (IsTypeSpecifierStartKind(
 						tokens_[position_ + 1].Kind()) ||
+					  StartsHostedType(position_ + 1) ||
 					  (!StartsQualifiedCallArgument() && (IsLikelyTypeIdentifier(position_ + 1) ||
 					   QualifiedStartsTypeAt(position_ + 1)))));
 			if (!parameter_like) break;
@@ -1388,7 +1371,8 @@ NodeId Parser::ParsePrimaryExpression()
 			At(KW_STRUCT) || At(KW_CLASS) || At(KW_UNION) ||
 			(position_ < tokens_.size() &&
 			 IsFundamentalKind(tokens_[position_].Kind())) ||
-			IsLikelyTypeIdentifier(position_) || QualifiedStartsType();
+			StartsHostedType(position_) || IsLikelyTypeIdentifier(position_) ||
+			QualifiedStartsType();
 		if (type_like && ParseTypeId(cast) && Match(OP_RPAREN) &&
 			!At(OP_SEMICOLON) && !At(OP_COMMA) && !At(OP_RPAREN) &&
 			!At(OP_RSQUARE) && !At(OP_COLON))
@@ -1541,6 +1525,7 @@ NodeId Parser::ParsePostfixSuffixes(NodeId value) {
 }
 NodeId Parser::ParseUnaryExpression()
 {
+	if (MatchHostedExtensionMarker()) return ParseUnaryExpression();
 	if (At(OP_INC) || At(OP_DEC) || At(OP_STAR) || At(OP_AMP) ||
 		At(OP_PLUS) || At(OP_MINUS) || At(OP_LNOT) || At(OP_COMPL))
 	{
@@ -1572,6 +1557,7 @@ NodeId Parser::ParseUnaryExpression()
 		}
 		Expect(OP_LPAREN);
 		bool prefer_type = kind == KW_ALIGNOF;
+		if (StartsHostedType(position_)) prefer_type = true;
 		if (At(KW_CONST) || At(KW_VOLATILE) || At(KW_DECLTYPE)) prefer_type = true;
 		if (At(KW_STRUCT) || At(KW_CLASS) || At(KW_UNION) ||
 			(position_ < tokens_.size() && IsFundamentalKind(
@@ -1815,6 +1801,7 @@ NodeId Parser::ParseCompoundStatement()
 			At(KW_NAMESPACE) ||
 			At(KW_TYPEDEF) || At(KW_TYPENAME) || At(KW_CLASS) || At(KW_STRUCT) || At(KW_UNION) ||
 			At(KW_ENUM) || At(KW_DECLTYPE) || At(KW_STATIC_ASSERT) || At(KW_EXTERN) ||
+			StartsHostedDeclaration(position_) ||
 			(position_ < tokens_.size() &&
 			 IsDeclSpecifierKeyword(tokens_[position_].Kind())) ||
 			(IsLikelyTypeIdentifier(position_) && !AtOffset(1, OP_COLON2) &&
@@ -2010,6 +1997,7 @@ NodeId Parser::ParseStatement()
 		At(KW_TYPEDEF) || At(KW_TYPENAME) ||
 		At(KW_CLASS) || At(KW_STRUCT) || At(KW_UNION) || At(KW_ENUM) ||
 		At(KW_DECLTYPE) || At(KW_STATIC_ASSERT) || At(KW_EXTERN) ||
+		StartsHostedDeclaration(position_) ||
 		(position_ < tokens_.size() &&
 		 IsDeclSpecifierKeyword(tokens_[position_].Kind())) ||
 		(IsLikelyTypeIdentifier(position_) && !AtOffset(1, OP_COLON2) &&
@@ -2035,6 +2023,7 @@ NodeId Parser::ParseNamespace()
 {
 	bool is_inline = Match(KW_INLINE);
 	if (!Match(KW_NAMESPACE)) return kNoNode;
+	SkipAttributes();
 	if (!is_inline && AtIdentifier() && AtOffset(1, OP_ASS))
 	{
 		const std::string alias = Spelling(position_++);
@@ -2052,6 +2041,7 @@ NodeId Parser::ParseNamespace()
 	}
 	std::string name = "<unnamed>";
 	if (AtIdentifier()) name = Spelling(position_++);
+	SkipAttributes();
 	const NodeId declaration = arena_.Make("namespace-definition", name);
 	if (is_inline) arena_.Add(declaration, arena_.Make("inline"));
 	Expect(OP_LBRACE);
@@ -2085,11 +2075,15 @@ NodeId Parser::ParseUsing()
 	const Mark alias_mark = Checkpoint();
 	std::string first;
 	if (!ParseName(&first)) throw Error("expected using name");
+	std::vector<NodeId> attributes;
+	while (ParseLeadingAttribute(&attributes)) {}
 	if (Match(OP_ASS))
 	{
 		const NodeId declaration = arena_.Make("alias-declaration", first);
 		if (!ParseTypeId(declaration)) throw Error("expected alias type-id");
 		Expect(OP_SEMICOLON);
+		for (std::size_t i = 0; i < attributes.size(); ++i)
+			arena_.Add(declaration, attributes[i]);
 		SetNameFact(first, kKnownType);
 		last_declared_names_.clear();
 		last_declared_names_.push_back(strings_.Intern(first));
@@ -2102,6 +2096,8 @@ NodeId Parser::ParseUsing()
 	if (!ParseName(&target, true, true, true, &structure, 0,
 		&conversion_type))
 		throw Error("expected using target");
+	attributes.clear();
+	while (ParseLeadingAttribute(&attributes)) {}
 	Expect(OP_SEMICOLON);
 	const NodeId declaration = arena_.Make("using-declaration");
 	const NodeId target_node =
@@ -2109,6 +2105,8 @@ NodeId Parser::ParseUsing()
 	if (conversion_type != kNoNode)
 		arena_.Add(target_node, conversion_type);
 	arena_.Add(declaration, target_node);
+	for (std::size_t i = 0; i < attributes.size(); ++i)
+		arena_.Add(declaration, attributes[i]);
 	return declaration;
 }
 NodeId Parser::ParseNestedTemplateParameterClause()
@@ -2634,6 +2632,7 @@ NodeId Parser::ParseEnum(bool require_semicolon)
 	{
 		if (!ParseName(&name, true, false)) throw Error("expected enum name");
 	}
+	SkipAttributes();
 	NodeId underlying = kNoNode;
 	if (Match(OP_COLON))
 	{
@@ -2657,6 +2656,7 @@ NodeId Parser::ParseEnum(bool require_semicolon)
 				const std::string enumerator_name = Spelling(position_++);
 				const NodeId enumerator = arena_.Make("enumerator",
 					enumerator_name);
+				SkipAttributes();
 				if (Match(OP_ASS))
 				{
 					const NodeId value = ParseExpression(2);

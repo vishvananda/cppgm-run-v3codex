@@ -1,4 +1,5 @@
 #include "pa12_semantic_detail.h"
+#include "hosted_extension_semantic.h"
 #include <algorithm>
 #include <cctype>
 #include <limits>
@@ -1806,6 +1807,8 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 			result.type = found.type;
 		}
 	}
+	result.type = hosted_extension::ApplyIntegerSignedness(
+		program_->types, result.type, is_unsigned);
 	if (result.type == kNoType)
 	{
 		if (result.placeholder_auto)
@@ -2534,7 +2537,11 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 		return;
 	}
 	if (ordinary.ordinary == kNoBinding)
+	{
+		if (hosted_extension::HasGnuAttribute(
+			*arena_, node, "__using_if_exists__")) return;
 		throw std::runtime_error("using-declaration target not found");
+	}
 	if (!CanAccessMember(ordinary.ordinary, ordinary.naming_class))
 		throw std::runtime_error("inaccessible using declaration");
 	const BindingRecord source = program_->bindings[ordinary.ordinary];

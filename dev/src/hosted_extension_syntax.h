@@ -1,0 +1,149 @@
+#pragma once
+
+#include "hosted_extension_registry.h"
+#include "pa10_syntax_model.h"
+
+#include <cstddef>
+#include <string>
+
+namespace cppgm
+{
+namespace hosted_extension
+{
+
+template <class Derived>
+class Syntax
+{
+protected:
+	bool SkipHostedAttributeSyntax()
+	{
+		using namespace pa10_syntax_detail;
+		Derived& parser = static_cast<Derived&>(*this);
+		const std::size_t start = parser.position_;
+		if (parser.AtIdentifier() &&
+			IsGnuAttributeIntroducer(parser.Spelling(parser.position_)))
+		{
+			++parser.position_;
+			if (parser.SkipBalanced(OP_LPAREN, OP_RPAREN)) return true;
+			parser.position_ = start;
+			return false;
+		}
+		if (parser.At(KW_ALIGNAS))
+		{
+			++parser.position_;
+			if (parser.SkipBalanced(OP_LPAREN, OP_RPAREN)) return true;
+			parser.position_ = start;
+			return false;
+		}
+		if (parser.At(OP_LSQUARE) && parser.AtOffset(1, OP_LSQUARE))
+		{
+			parser.position_ += 2;
+			while (!parser.AtEof())
+			{
+				if (parser.At(OP_RSQUARE) && parser.AtOffset(1, OP_RSQUARE))
+				{
+					parser.position_ += 2;
+					return true;
+				}
+				++parser.position_;
+			}
+		}
+		parser.position_ = start;
+		return false;
+	}
+
+	bool SkipHostedTypeAnnotations()
+	{
+		Derived& parser = static_cast<Derived&>(*this);
+		bool consumed = false;
+		while (parser.AtIdentifier() &&
+			IsTypeAnnotation(parser.Spelling(parser.position_)))
+		{
+			++parser.position_;
+			consumed = true;
+		}
+		return consumed;
+	}
+
+	bool AtHostedAttribute() const
+	{
+		using namespace pa10_syntax_detail;
+		const Derived& parser = static_cast<const Derived&>(*this);
+		return (parser.At(OP_LSQUARE) && parser.AtOffset(1, OP_LSQUARE)) ||
+			(parser.AtIdentifier() && IsGnuAttributeIntroducer(
+				parser.Spelling(parser.position_)));
+	}
+
+	bool MatchHostedExtensionMarker()
+	{
+		Derived& parser = static_cast<Derived&>(*this);
+		if (!parser.AtIdentifier() || FindSpecifier(
+			parser.Spelling(parser.position_)) != SPECIFIER_EXTENSION) return false;
+		++parser.position_;
+		return true;
+	}
+
+	bool StartsHostedDeclaration(std::size_t position) const
+	{
+		using namespace pa10_syntax_detail;
+		const Derived& parser = static_cast<const Derived&>(*this);
+		return position < parser.tokens_.size() &&
+			parser.tokens_[position].Kind() == kIdentifierToken &&
+			FindSpecifier(parser.Spelling(position)) != SPECIFIER_NONE;
+	}
+
+	bool StartsHostedType(std::size_t position) const
+	{
+		using namespace pa10_syntax_detail;
+		const Derived& parser = static_cast<const Derived&>(*this);
+		if (position >= parser.tokens_.size()) return false;
+		if (parser.tokens_[position].Kind() ==
+			static_cast<std::uint16_t>(OP_LSQUARE) &&
+			position + 1 < parser.tokens_.size() &&
+			parser.tokens_[position + 1].Kind() ==
+				static_cast<std::uint16_t>(OP_LSQUARE)) return true;
+		if (parser.tokens_[position].Kind() != kIdentifierToken) return false;
+		const std::string& spelling = parser.Spelling(position);
+		if (IsGnuAttributeIntroducer(spelling)) return true;
+		const SpecifierKind kind = FindSpecifier(spelling);
+		return kind != SPECIFIER_NONE &&
+			!IsDeclarationOnlySpecifier(kind) && kind != SPECIFIER_EXTENSION;
+	}
+
+	bool TryParseHostedDeclSpecifier(
+		pa10_syntax_detail::NodeId sequence, bool for_type_id,
+		bool* consumed, bool* saw_type, bool* saw_user_type,
+		bool* saw_int128, std::string* first_type)
+	{
+		using namespace pa10_syntax_detail;
+		Derived& parser = static_cast<Derived&>(*this);
+		if (!parser.AtIdentifier()) return false;
+		const SpecifierKind kind =
+			FindSpecifier(parser.Spelling(parser.position_));
+		if (kind == SPECIFIER_NONE ||
+			(for_type_id && IsDeclarationOnlySpecifier(kind))) return false;
+		if (IsTypeSpecifier(kind) && *saw_user_type) return false;
+		const std::size_t source = parser.position_++;
+		*consumed = true;
+		if (kind == SPECIFIER_EXTENSION) return true;
+		const char* const canonical = CanonicalSpecifier(kind);
+		const char* const tag = for_type_id && IsCvSpecifier(kind) ?
+			"cv-qualifier" : for_type_id ? "type-specifier" : "decl-specifier";
+		parser.arena_.Add(sequence, parser.arena_.Make(tag, canonical));
+		if (IsTypeSpecifier(kind))
+		{
+			if (first_type && first_type->empty())
+				*first_type = parser.Spelling(source);
+			*saw_type = true;
+			if (kind == SPECIFIER_INT128 || kind == SPECIFIER_UINT128)
+			{
+				*saw_user_type = true;
+				*saw_int128 = true;
+			}
+		}
+		return true;
+	}
+};
+
+}
+}

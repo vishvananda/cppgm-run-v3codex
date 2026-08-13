@@ -3,6 +3,7 @@
 #include "pa10_syntax.h"
 #include "pa10_syntax_model.h"
 #include "pa11_model.h"
+#include "hosted_extension_semantic.h"
 
 #include <cerrno>
 #include <chrono>
@@ -379,7 +380,11 @@ void TypeAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope)
 	const LookupResult value =
 		program_->Lookup(scope, target_name, LOOKUP_ORDINARY);
 	if (value.ordinary == kNoBinding)
+	{
+		if (hosted_extension::HasGnuAttribute(
+			*arena_, node, "__using_if_exists__")) return;
 		throw std::runtime_error("using-declaration target was not found");
+	}
 	const BindingRecord& source = program_->bindings[value.ordinary];
 	program_->AddBinding(scope, source.kind, name, source.type,
 		source.constant, source.value, source.display_flavor,
@@ -723,6 +728,8 @@ SpecInfo TypeAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 			}
 		}
 	}
+	result.type = hosted_extension::ApplyIntegerSignedness(
+		program_->types, result.type, is_unsigned);
 	if (result.type == kNoType)
 	{
 		FundamentalKind fundamental = FUND_INT;
