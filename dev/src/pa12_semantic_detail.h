@@ -1052,6 +1052,8 @@ private:
 	bool FormMemberPointerAddress(const ExpressionInfo& operand, TypeId target,
 		TypeId* result_type, bool* constant, ConstexprScalarValue* scalar,
 		BindingId* member) const;
+	void RecordMemberPointerAddressFacts(NodeId expression,
+		BindingId selected);
 	ExpressionInfo AnalyzeBinary(NodeId node, ScopeId scope);
 	bool TryAnalyzeMemberPointerApplication(const std::string& operation,
 		const std::string& display_operation, const ExpressionInfo& left,

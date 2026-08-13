@@ -1747,7 +1747,7 @@ private:
 		if (member_pointer_call)
 		{
 			const MemberPointerCallOperands lowered = LowerMemberPointerCall(
-				callee, Children(children[0]),
+				children[0], callee, Children(children[0]),
 				arguments[member_pointer_argument]);
 			arguments[member_pointer_argument] = lowered.object;
 			member_pointer_callee = lowered.callee;

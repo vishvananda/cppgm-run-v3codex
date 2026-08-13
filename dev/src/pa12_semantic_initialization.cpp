@@ -964,7 +964,8 @@ void SemanticAnalyzer::AddMemberInitializationAction(BindingId member_id,
 			if (initializer != kNoNode &&
 				arena_->IsTag(initializer, "paren-argument-list") &&
 				arguments.empty() && dump_.nodes[value].binding != kNoBinding &&
-				GetFunction(dump_.nodes[value].binding).implicit_constructor)
+				(GetFunction(dump_.nodes[value].binding).implicit_constructor ||
+				 GetFunction(dump_.nodes[value].binding).defaulted_constructor))
 				dump_.nodes[value].value_initialization = true;
 		}
 		dump_.Add(action, value);

@@ -1932,6 +1932,10 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
 
 void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
 {
+  // The x86-64 member-function-pointer representation reserves bit zero of
+  // the target word as the virtual-slot tag.  Keep every native function
+  // entry at least two-byte aligned so a direct target cannot carry that tag.
+  out.align(2);
   out.label(function.name);
   emit_function_prologue(out, function);
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {

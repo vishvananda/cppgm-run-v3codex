@@ -53,10 +53,23 @@ protected:
 					derived.Emit(constant);
 					return result;
 				}
-				const Operand address = derived.AddressOfStorage(
-					derived.LowerStorage(children[0]));
-				Operand encoded = derived.Convert(
-					derived.Convert(address, LowU64()), LowI128(), false);
+				Operand low_word;
+				if (member.virtual_function)
+				{
+					if (record.virtual_slot == kNoDumpEdge)
+						throw std::logic_error(
+							"virtual member pointer has no slot fact");
+					low_word = Operand(static_cast<std::int64_t>(
+						static_cast<std::uint64_t>(record.virtual_slot) * 8 + 1),
+						LowU64());
+				}
+				else
+				{
+					const Operand address = derived.AddressOfStorage(
+						derived.LowerStorage(children[0]));
+					low_word = derived.Convert(address, LowU64());
+				}
+				Operand encoded = derived.Convert(low_word, LowI128(), false);
 				if (record.constant_value != 0)
 				{
 					const Operand shifted = derived.Temp(LowI128());

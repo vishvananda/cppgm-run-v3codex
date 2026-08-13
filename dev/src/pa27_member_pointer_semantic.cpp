@@ -244,6 +244,20 @@ bool SemanticAnalyzer::FormMemberPointerAddress(
 	return true;
 }
 
+void SemanticAnalyzer::RecordMemberPointerAddressFacts(
+	NodeId expression, BindingId selected)
+{
+	if (expression == kNoNode || expression >= dump_.nodes.size() ||
+		selected == kNoBinding || selected >= program_->bindings.size())
+		throw std::logic_error("invalid member pointer address fact");
+	dump_.nodes[expression].binding = selected;
+	if (!program_->bindings[selected].virtual_function) return;
+	const std::uint32_t slot = VirtualSlotFor(selected);
+	if (slot == kNoDumpEdge)
+		throw std::logic_error("virtual member pointer has no canonical slot");
+	dump_.nodes[expression].virtual_slot = slot;
+}
+
 bool SemanticAnalyzer::TryAnalyzeMemberPointerApplication(
 	const std::string& operation, const std::string& display_operation,
 	const ExpressionInfo& left, const ExpressionInfo& right,

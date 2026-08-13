@@ -169,6 +169,7 @@ protected:
 	}
 
 	MemberPointerCallOperands LowerMemberPointerCall(
+		std::uint32_t application_node,
 		const DumpNode& application,
 		const NodeChildren& children, const Operand& object_value)
 	{
@@ -187,9 +188,12 @@ protected:
 		const bool owner_may_adjust = pointer_owner != kNoEntity &&
 			derived.program_.entities[pointer_owner].
 				has_nonzero_base_subobject_offset;
+		const bool owner_may_dispatch_virtual = pointer_owner != kNoEntity &&
+			derived.program_.entities[pointer_owner].polymorphic_class;
 		if (designator.binding != kNoBinding &&
 			designator.binding < derived.program_.bindings.size() &&
-			derived.program_.bindings[designator.binding].kind == BIND_FUNCTION)
+			derived.program_.bindings[designator.binding].kind == BIND_FUNCTION &&
+			!derived.program_.bindings[designator.binding].virtual_function)
 		{
 			callee = derived.AddressOfStorage(
 				derived.LowerStorage(children[1]));
@@ -200,8 +204,74 @@ protected:
 			const Operand encoded = derived.LowerValue(children[1], LowI128());
 			if (owner_may_adjust)
 				adjustment = MemberFunctionPointerAdjustment(encoded);
-			callee = derived.Convert(
-				derived.Convert(encoded, LowU64(), false), LowPtr(), false);
+			const Operand low_word = derived.Convert(encoded, LowU64(), false);
+			if (!owner_may_dispatch_virtual)
+				callee = derived.Convert(low_word, LowPtr(), false);
+			else
+			{
+				const Operand virtual_bit = derived.Temp(LowU64());
+				Instruction mask(Instruction::BINARY);
+				mask.dest = virtual_bit.id;
+				mask.op = LOW_OP_AND;
+				mask.type = LowU64();
+				mask.first = low_word;
+				mask.second = Operand(1, LowU64());
+				derived.Emit(mask);
+				const Operand is_virtual = derived.Temp(LowU8());
+				Instruction compare(Instruction::CMP);
+				compare.dest = is_virtual.id;
+				compare.op = LOW_OP_NE;
+				compare.type = LowU64();
+				compare.first = virtual_bit;
+				compare.second = Operand(0, LowU64());
+				derived.Emit(compare);
+
+				const Operand adjusted = adjustment.kind == Operand::INTEGER &&
+					adjustment.integer_value == 0 ? object :
+					derived.IndexAddress(LowI8(), object, adjustment, false);
+				const SlotId callee_slot = derived.EnsureGeneratedSlot(
+					application_node, "member_pointer_callee", LowPtr());
+				const Operand callee_storage(callee_slot, LowPtr());
+				const BlockId virtual_block = derived.AddBlock(
+					derived.NewLabel("member_pointer_virtual"));
+				const BlockId direct_block = derived.AddBlock(
+					derived.NewLabel("member_pointer_direct"));
+				const BlockId end_block = derived.AddBlock(
+					derived.NewLabel("member_pointer_end"));
+				derived.EmitBranch(is_virtual, virtual_block, direct_block);
+
+				derived.SelectBlock(virtual_block);
+				const Operand table = derived.LoadStorage(adjusted, LowPtr());
+				const Operand slot_offset = derived.Temp(LowU64());
+				Instruction subtract(Instruction::BINARY);
+				subtract.dest = slot_offset.id;
+				subtract.op = LOW_OP_SUB;
+				subtract.type = LowU64();
+				subtract.first = low_word;
+				subtract.second = Operand(1, LowU64());
+				derived.Emit(subtract);
+				const Operand slot = derived.IndexAddress(
+					LowI8(), table, slot_offset, false);
+				Instruction virtual_store(Instruction::STORE);
+				virtual_store.type = LowPtr();
+				virtual_store.first = derived.LoadStorage(slot, LowPtr());
+				virtual_store.second = callee_storage;
+				derived.Emit(virtual_store);
+				derived.EmitJump(end_block);
+
+				derived.SelectBlock(direct_block);
+				Instruction direct_store(Instruction::STORE);
+				direct_store.type = LowPtr();
+				direct_store.first = derived.Convert(low_word, LowPtr(), false);
+				direct_store.second = callee_storage;
+				derived.Emit(direct_store);
+				derived.EmitJump(end_block);
+
+				derived.SelectBlock(end_block);
+				callee = derived.LoadStorage(callee_storage, LowPtr());
+				object = adjusted;
+				adjustment = Operand(0, LowI64());
+			}
 		}
 		if (adjustment.kind == Operand::INTEGER &&
 			adjustment.integer_value == 0)

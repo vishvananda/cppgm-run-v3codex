@@ -399,7 +399,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId
 		DUMP_POSTFIX_EXPRESSION : DUMP_UNARY_EXPRESSION,
 		result_type, category, program_->names.Intern(arena_->Payload(node)));
 	if (member_pointer_address)
-		dump_.nodes[expression].binding = selected_member;
+		RecordMemberPointerAddressFacts(expression, selected_member);
 	dump_.Add(expression, operand.node);
 	ExpressionInfo result;
 	result.node = expression;
