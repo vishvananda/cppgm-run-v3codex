@@ -2080,6 +2080,7 @@ std::size_t SemanticAnalyzer::TemplatePartialPackParameter(TypeId type,
 	case TYPE_LVALUE_REFERENCE:
 	case TYPE_RVALUE_REFERENCE:
 	case TYPE_ARRAY:
+	case TYPE_VECTOR:
 		return TemplatePartialPackParameter(record.child, parameters, depth + 1);
 	case TYPE_MEMBER_POINTER:
 		return TemplatePartialMemberPointerPackParameter(
@@ -2185,6 +2186,10 @@ bool SemanticAnalyzer::DeduceTemplatePartialType(TypeId pattern,
 		return DeduceTemplatePartialType(pattern_record.child,
 			argument_record.child, parameters, deduced);
 	}
+	case TYPE_VECTOR:
+		return pattern_record.bound == argument_record.bound &&
+			DeduceTemplatePartialType(pattern_record.child,
+				argument_record.child, parameters, deduced);
 	case TYPE_FUNCTION:
 	{
 		const TypeId* pattern_types = program_->types.Parameters(pattern);

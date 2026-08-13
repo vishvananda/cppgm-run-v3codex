@@ -851,6 +851,8 @@ string unmodified_type_text(const AbiType & type)
       return "vendor " + type.name + " " + type_text(type.types.at(0));
     case ABI_TYPE_ARRAY:
       return "array:" + type.array_bound.value + ":" + type_text(type.types.at(0));
+    case ABI_TYPE_VECTOR:
+      return "vector:" + type.array_bound.value + ":" + type_text(type.types.at(0));
     case ABI_TYPE_BUILTIN_TRANSFORM:
       return "builtin-transform " + type.name + " " + type_text(type.types.at(0));
     case ABI_TYPE_FUNCTION: {

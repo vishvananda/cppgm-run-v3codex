@@ -457,6 +457,7 @@ private:
 	TypeId BuildTypeId(NodeId node, ScopeId scope);
 	TypeId BuildBuiltinTransformType(NodeId node, ScopeId scope);
 	TypeId BuildIdentityOnlyTypeId(NodeId node, ScopeId scope);
+	TypeId ApplyGnuVectorAttributes(NodeId node, TypeId type);
 	DeclaratorInfo BuildDeclarator(NodeId node, TypeId base, ScopeId scope,
 		bool placeholder_auto = false,
 		bool member_implicit_object = false,

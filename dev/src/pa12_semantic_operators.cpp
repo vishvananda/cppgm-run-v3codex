@@ -45,7 +45,7 @@ bool SemanticAnalyzer::IsMeasurableObjectType(
 		if (record.kind == TYPE_POINTER ||
 			record.kind == TYPE_LVALUE_REFERENCE ||
 			record.kind == TYPE_RVALUE_REFERENCE ||
-			record.kind == TYPE_MEMBER_POINTER)
+			record.kind == TYPE_MEMBER_POINTER || record.kind == TYPE_VECTOR)
 			return true;
 		if (record.kind != TYPE_NAMED) return false;
 		EnsureClassDefinition(type);

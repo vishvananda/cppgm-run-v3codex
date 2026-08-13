@@ -1062,7 +1062,8 @@ private:
                          || type.kind == ABI_TYPE_PACK_EXPANSION
                          || type.kind == ABI_TYPE_CV
                          || type.kind == ABI_TYPE_VENDOR_QUALIFIED
-                         || type.kind == ABI_TYPE_ARRAY;
+                         || type.kind == ABI_TYPE_ARRAY
+                         || type.kind == ABI_TYPE_VECTOR;
       if(unary) {
         if(type.kind == ABI_TYPE_POINTER) output_ += 'P';
         else if(type.kind == ABI_TYPE_LVALUE_REFERENCE) output_ += 'R';
@@ -1073,6 +1074,10 @@ private:
           if(type.is_const) output_ += 'K';
         } else if(type.kind == ABI_TYPE_VENDOR_QUALIFIED) {
           output_ += 'U' + source_name(graph_.strings.get(type.symbol));
+		} else if(type.kind == ABI_TYPE_VECTOR) {
+		  output_ += "Dv";
+		  if(type.symbol != NO_ID) output_ += graph_.strings.get(type.symbol);
+		  output_ += '_';
 		} else {
 		  output_ += 'A';
 		  if(type.bound_kind == ABI_ARRAY_BOUND_EXPRESSION) {
@@ -1127,6 +1132,12 @@ private:
 		output_ += '_';
         encode_type(type.children.at(0));
         return;
+	  case ABI_TYPE_VECTOR:
+		output_ += "Dv";
+		if(type.symbol != NO_ID) output_ += graph_.strings.get(type.symbol);
+		output_ += '_';
+		encode_type(type.children.at(0));
+		return;
       case ABI_TYPE_BUILTIN_TRANSFORM:
         output_ += 'u' + source_name(graph_.strings.get(type.symbol)) + 'I';
         for(size_t child : type.children) encode_type(child);

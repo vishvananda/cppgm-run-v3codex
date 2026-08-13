@@ -160,7 +160,8 @@ enum TypeKind
 	TYPE_RVALUE_REFERENCE,
 	TYPE_ARRAY,
 	TYPE_FUNCTION,
-	TYPE_MEMBER_POINTER
+	TYPE_MEMBER_POINTER,
+	TYPE_VECTOR
 };
 
 enum CvFlags
@@ -212,6 +213,8 @@ public:
 	TypeId Reference(TypeKind kind, TypeId type);
 	TypeId TryArray(TypeId type, std::uint64_t bound);
 	TypeId Array(TypeId type, std::uint64_t bound);
+	TypeId TryVector(TypeId element, std::uint64_t bytes);
+	TypeId Vector(TypeId element, std::uint64_t bytes);
 	TypeId TryDependentArray(TypeId type, TypeId bound_type,
 		std::uint32_t parameter);
 	TypeId DependentArray(TypeId type, TypeId bound_type,

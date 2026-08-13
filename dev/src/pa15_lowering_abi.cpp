@@ -1507,6 +1507,14 @@ public:
 			result.types.push_back(MakeType(record->child, function, recipe));
 			return result;
 		}
+		if (record->kind == TYPE_VECTOR)
+		{
+			result.kind = ABI_TYPE_VECTOR;
+			result.array_bound.value = std::to_string(
+				record->bound / program_.SizeOf(record->child));
+			result.types.push_back(MakeType(record->child, function, recipe));
+			return result;
+		}
 		if (record->kind == TYPE_NAMED)
 		{
 			const EntityRecord& entity = program_.entities[record->entity];

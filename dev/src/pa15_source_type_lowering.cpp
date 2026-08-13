@@ -26,6 +26,8 @@ LowType SourceTypeLowering::Lower(TypeId type) const
 	}
 	if (record->kind == TYPE_MEMBER_POINTER)
 		return program_.types.IsFunction(record->child) ? LowI128() : LowI64();
+	if (record->kind == TYPE_VECTOR)
+		return LowObject(program_.SizeOf(type), program_.AlignOf(type));
 	if (record->kind == TYPE_LVALUE_REFERENCE ||
 		record->kind == TYPE_RVALUE_REFERENCE || record->kind == TYPE_POINTER ||
 		record->kind == TYPE_ARRAY || record->kind == TYPE_FUNCTION) return LowPtr();

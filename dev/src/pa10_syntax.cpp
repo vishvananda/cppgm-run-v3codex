@@ -721,7 +721,13 @@ NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id, std::string* first_type)
 	bool saw_int128 = false;
 	while (true)
 	{
-		SkipAttributes();
+		if (AtHostedAttribute())
+		{
+			std::vector<NodeId> attributes;
+			while (ParseLeadingAttribute(&attributes)) {}
+			for (std::size_t i = 0; i < attributes.size(); ++i)
+				arena_.Add(sequence, attributes[i]);
+		}
 		if (position_ >= tokens_.size()) break;
 		const std::size_t token_position = position_;
 		const std::uint16_t kind = tokens_[position_].Kind();
@@ -2299,7 +2305,6 @@ NodeId Parser::ParseCtorInitializer()
 	}
 	return initializer;
 }
-
 NodeId Parser::ParseSpecialMember(bool)
 {
 	const Mark mark = Checkpoint();
@@ -2445,7 +2450,6 @@ NodeId Parser::ParseSpecialMember(bool)
 	arena_.Add(member, body);
 	return member;
 }
-
 NodeId Parser::ParseClass(bool require_semicolon)
 {
 	if (!At(KW_CLASS) && !At(KW_STRUCT) && !At(KW_UNION)) return kNoNode;
@@ -2620,7 +2624,6 @@ NodeId Parser::ParseClass(bool require_semicolon)
 	if (!name.empty()) last_declared_names_.push_back(strings_.Intern(name));
 	return declaration;
 }
-
 NodeId Parser::ParseEnum(bool require_semicolon)
 {
 	if (!At(KW_ENUM)) return kNoNode;
@@ -2677,7 +2680,6 @@ NodeId Parser::ParseEnum(bool require_semicolon)
 	arena_.SetTokenRange(declaration, first, position_);
 	return declaration;
 }
-
 bool Parser::StartsStandaloneEnumDeclaration() const
 {
 	std::size_t scan = position_ + 1;
@@ -2699,7 +2701,6 @@ bool Parser::StartsStandaloneEnumDeclaration() const
 		kind == static_cast<std::uint16_t>(OP_COLON) ||
 		kind == static_cast<std::uint16_t>(OP_SEMICOLON);
 }
-
 NodeId Parser::ParseStaticAssert()
 {
 	if (!Match(KW_STATIC_ASSERT)) return kNoNode;
@@ -2718,7 +2719,6 @@ NodeId Parser::ParseStaticAssert()
 	Expect(OP_SEMICOLON);
 	return declaration;
 }
-
 NodeId Parser::ParseSimpleOrFunction(bool, bool)
 {
 	const Mark mark = Checkpoint();

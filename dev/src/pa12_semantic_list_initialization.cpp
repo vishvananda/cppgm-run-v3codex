@@ -325,7 +325,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 			throw std::runtime_error("excess array initializer elements");
 		return result;
 	}
-	TypeId element = type;
+	TypeId element = array.kind == TYPE_VECTOR ? array.child : type;
 	std::vector<ExpressionInfo> values;
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
@@ -337,6 +337,14 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 			return CandidateExpressionFailure(
 				"narrowing list-initialization conversion");
 		values.push_back(value);
+	}
+	if (array.kind == TYPE_VECTOR)
+	{
+		const std::size_t lanes = static_cast<std::size_t>(array.bound) /
+			program_->SizeOf(array.child);
+		if (values.size() != 1 && values.size() != lanes)
+			throw std::runtime_error(
+				"GNU vector initializer requires one or all lane values");
 	}
 	const std::uint32_t list = MakeDump(DUMP_BRACED_INIT_LIST, type,
 		VALUE_LVALUE);

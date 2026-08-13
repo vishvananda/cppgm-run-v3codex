@@ -81,6 +81,7 @@ bool SemanticAnalyzer::FunctionTemplateTypeIsDependent(TypeId type) const
 	case TYPE_POINTER:
 	case TYPE_LVALUE_REFERENCE:
 	case TYPE_RVALUE_REFERENCE:
+	case TYPE_VECTOR:
 		dependent = FunctionTemplateTypeIsDependent(record.child);
 		break;
 	case TYPE_ARRAY:
@@ -467,6 +468,10 @@ bool SemanticAnalyzer::FunctionTemplatePatternAccepts(
 		return pattern_record.bound == exemplar_record.bound &&
 			FunctionTemplatePatternAccepts(pattern_record.child,
 				exemplar_record.child, pattern_parameters, exemplar_parameters);
+	case TYPE_VECTOR:
+		return pattern_record.bound == exemplar_record.bound &&
+			FunctionTemplatePatternAccepts(pattern_record.child,
+				exemplar_record.child, pattern_parameters, exemplar_parameters);
 	case TYPE_FUNCTION:
 	{
 		if (pattern_record.cv != exemplar_record.cv ||
@@ -630,6 +635,10 @@ bool SemanticAnalyzer::DeduceFunctionTemplateType(TypeId pattern,
 	case TYPE_ARRAY:
 		return (pattern_record.bound == 0 ||
 			pattern_record.bound == argument_record.bound) &&
+			DeduceFunctionTemplateType(pattern_record.child,
+				argument_record.child, deduced);
+	case TYPE_VECTOR:
+		return pattern_record.bound == argument_record.bound &&
 			DeduceFunctionTemplateType(pattern_record.child,
 				argument_record.child, deduced);
 	case TYPE_FUNCTION:
@@ -806,6 +815,10 @@ bool SemanticAnalyzer::DeduceFunctionTemplatePackType(TypeId pattern,
 		return DeduceFunctionTemplatePackType(pattern_record.child,
 			argument_record.child, parameters, deduced);
 	}
+	case TYPE_VECTOR:
+		return pattern_record.bound == argument_record.bound &&
+			DeduceFunctionTemplatePackType(pattern_record.child,
+				argument_record.child, parameters, deduced);
 	case TYPE_FUNCTION:
 	{
 		if (pattern_record.cv != argument_record.cv ||

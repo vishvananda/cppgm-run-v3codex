@@ -476,12 +476,15 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 	const bool function_pointer_target =
 		unqualified_target_record.kind == TYPE_POINTER &&
 		program_->types.IsFunction(unqualified_target_record.child);
+	const bool compound_literal =
+		arena_->IsTag(operand_node, "braced-init-list");
 	ExpressionInfo operand = AnalyzeExpression(operand_node, scope,
 		program_->types.IsFunction(EffectiveType(target)) ||
 		function_pointer_target ||
-		unqualified_target_record.kind == TYPE_MEMBER_POINTER ?
+		unqualified_target_record.kind == TYPE_MEMBER_POINTER || compound_literal ?
 		target : kNoType);
 	if (CandidateSubstitutionFailed()) return ExpressionInfo();
+	if (compound_literal) return operand;
 	const std::string cast_kind = arena_->Payload(node);
 	ExpressionInfo dynamic_result;
 	if (cast_kind.find("DYNAMIC") != std::string::npos &&

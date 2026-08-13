@@ -41,6 +41,26 @@ const char* FundamentalName(FundamentalKind kind)
 	throw std::logic_error("invalid fundamental type");
 }
 
+std::size_t FundamentalObjectSize(FundamentalKind kind)
+{
+	switch (kind)
+	{
+	case FUND_BOOL: case FUND_CHAR: case FUND_SIGNED_CHAR:
+	case FUND_UNSIGNED_CHAR: return 1;
+	case FUND_SHORT_INT: case FUND_UNSIGNED_SHORT_INT:
+	case FUND_CHAR16_T: return 2;
+	case FUND_INT: case FUND_UNSIGNED_INT: case FUND_FLOAT:
+	case FUND_WCHAR_T: case FUND_CHAR32_T: return 4;
+	case FUND_LONG_INT: case FUND_UNSIGNED_LONG_INT:
+	case FUND_LONG_LONG_INT: case FUND_UNSIGNED_LONG_LONG_INT:
+	case FUND_DOUBLE: return 8;
+	case FUND_LONG_DOUBLE: case FUND_INT128: case FUND_UINT128: return 16;
+	case FUND_NULLPTR_T: return 8;
+	case FUND_VOID: break;
+	}
+	throw std::runtime_error("incomplete fundamental type");
+}
+
 const char* FlavorName(NamedFlavor flavor)
 {
 	switch (flavor)
@@ -438,6 +458,31 @@ TypeId TypeTable::Array(TypeId type, std::uint64_t bound)
 	const TypeId result = TryArray(type, bound);
 	if (result == kNoType)
 		throw std::runtime_error("invalid array element type");
+	return result;
+}
+
+TypeId TypeTable::TryVector(TypeId element, std::uint64_t bytes)
+{
+	element = RemoveTopCv(element);
+	const TypeRecord& lane = Get(element);
+	if (lane.kind != TYPE_FUNDAMENTAL || lane.fundamental == FUND_BOOL ||
+		lane.fundamental == FUND_VOID || lane.fundamental == FUND_NULLPTR_T ||
+		lane.fundamental == FUND_LONG_DOUBLE || bytes == 0 ||
+		(bytes & (bytes - 1)) != 0) return kNoType;
+	const std::size_t lane_bytes = FundamentalObjectSize(lane.fundamental);
+	if (lane_bytes == 0 || bytes % lane_bytes != 0) return kNoType;
+	TypeRecord candidate;
+	candidate.kind = TYPE_VECTOR;
+	candidate.child = element;
+	candidate.bound = bytes;
+	return Intern(candidate, 0, 0);
+}
+
+TypeId TypeTable::Vector(TypeId element, std::uint64_t bytes)
+{
+	const TypeId result = TryVector(element, bytes);
+	if (result == kNoType)
+		throw std::runtime_error("invalid GNU vector element type or byte width");
 	return result;
 }
 
@@ -2578,115 +2623,7 @@ ScopeId Program::ScopeForType(TypeId type) const
 
 std::size_t Program::FundamentalSize(FundamentalKind kind) const
 {
-	switch (kind)
-	{
-	case FUND_BOOL: case FUND_CHAR: case FUND_SIGNED_CHAR:
-	case FUND_UNSIGNED_CHAR: return 1;
-	case FUND_SHORT_INT: case FUND_UNSIGNED_SHORT_INT:
-	case FUND_CHAR16_T: return 2;
-	case FUND_INT: case FUND_UNSIGNED_INT: case FUND_FLOAT:
-	case FUND_WCHAR_T: case FUND_CHAR32_T: return 4;
-	case FUND_LONG_INT: case FUND_UNSIGNED_LONG_INT:
-	case FUND_LONG_LONG_INT: case FUND_UNSIGNED_LONG_LONG_INT:
-	case FUND_DOUBLE: return 8;
-	case FUND_LONG_DOUBLE: return 16;
-	case FUND_INT128: case FUND_UINT128: return 16;
-	case FUND_NULLPTR_T: return 8;
-	case FUND_VOID: break;
-	}
-	throw std::runtime_error("incomplete fundamental type");
-}
-
-std::size_t Program::SizeOf(TypeId type) const
-{
-	std::size_t multiplier = 1;
-	while (true)
-	{
-		const TypeRecord& record = types.Get(type);
-		if (record.kind == TYPE_QUALIFIED)
-		{
-			type = record.child;
-			continue;
-		}
-		if (record.kind == TYPE_ARRAY)
-		{
-			if (record.dependent_bound_parameter != kNoTemplateParameter ||
-				record.bound == 0 ||
-				record.bound > std::numeric_limits<std::size_t>::max() ||
-				multiplier > std::numeric_limits<std::size_t>::max() /
-					static_cast<std::size_t>(record.bound))
-				throw std::runtime_error("invalid array size");
-			multiplier *= static_cast<std::size_t>(record.bound);
-			type = record.child;
-			continue;
-		}
-		std::size_t size = 0;
-		switch (record.kind)
-		{
-		case TYPE_FUNDAMENTAL: size = FundamentalSize(record.fundamental); break;
-		case TYPE_POINTER: case TYPE_LVALUE_REFERENCE:
-		case TYPE_RVALUE_REFERENCE: size = 8; break;
-		case TYPE_MEMBER_POINTER:
-			size = types.IsFunction(record.child) ? 16 : 8;
-			break;
-		case TYPE_NAMED:
-		{
-			const EntityRecord& entity = entities[record.entity];
-			if (!entity.complete)
-				throw std::runtime_error("incomplete named type");
-			if (entity.flavor == NAMED_ENUM || entity.flavor == NAMED_ENUM_CLASS)
-				size = SizeOf(entity.underlying);
-			else
-			{
-				if (!entity.layout_complete || entity.object_size == 0)
-					throw std::runtime_error("class layout is incomplete");
-				size = static_cast<std::size_t>(entity.object_size);
-			}
-			break;
-		}
-		default: throw std::runtime_error("invalid sizeof operand type");
-		}
-		if (multiplier > std::numeric_limits<std::size_t>::max() / size)
-			throw std::runtime_error("object type is too large");
-		return multiplier * size;
-	}
-}
-
-std::size_t Program::AlignOf(TypeId type) const
-{
-	const TypeRecord* record = &types.Get(type);
-	bool atomic = false;
-	while (record->kind == TYPE_QUALIFIED || record->kind == TYPE_ARRAY)
-	{
-		if (record->kind == TYPE_QUALIFIED &&
-			(record->cv & CV_ATOMIC) != 0) atomic = true;
-		type = record->child;
-		record = &types.Get(type);
-	}
-	std::size_t alignment = 0;
-	if (record->kind == TYPE_POINTER || record->kind == TYPE_LVALUE_REFERENCE ||
-		record->kind == TYPE_RVALUE_REFERENCE ||
-		record->kind == TYPE_MEMBER_POINTER) alignment = 8;
-	if (record->kind == TYPE_FUNDAMENTAL)
-		alignment = FundamentalSize(record->fundamental);
-	else if (record->kind == TYPE_NAMED)
-	{
-		const EntityRecord& entity = entities[record->entity];
-		if (!entity.complete)
-			throw std::runtime_error("incomplete named type");
-		if (entity.flavor == NAMED_ENUM || entity.flavor == NAMED_ENUM_CLASS)
-			alignment = AlignOf(entity.underlying);
-		else
-		{
-			if (!entity.layout_complete || entity.object_alignment == 0)
-				throw std::runtime_error("class layout is incomplete");
-			alignment = static_cast<std::size_t>(entity.object_alignment);
-		}
-	}
-	if (alignment == 0)
-		throw std::runtime_error("invalid alignof operand type");
-	if (atomic && SizeOf(type) == 16) alignment = std::max<std::size_t>(16, alignment);
-	return alignment;
+	return FundamentalObjectSize(kind);
 }
 
 void Program::AppendType(std::string& output, TypeId type,
@@ -2776,6 +2713,12 @@ void Program::AppendType(std::string& output, TypeId type,
 			tasks.Push(Task(record.child, true));
 			tasks.Push(Task(" to "));
 			tasks.Push(Task(static_cast<TypeId>(record.bound), true));
+			break;
+		case TYPE_VECTOR:
+			output += "vector of ";
+			output += std::to_string(record.bound);
+			output += " bytes of ";
+			tasks.Push(Task(record.child, true));
 			break;
 		case TYPE_INVALID:
 			throw std::logic_error("cannot render invalid type");

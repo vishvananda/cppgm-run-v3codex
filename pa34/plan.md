@@ -13,17 +13,17 @@ linear lowering/allocation, and no host compiler fallback.
 ## Current Failure Map
 
 - Preprocess: 0/45 failures; this boundary is complete.
-- Compile: 111/281 failures: 37 extension grammar/type cases (parser/type system), 38
+- Compile: 109/281 failures: 35 extension grammar/type cases (parser/type system), 38
   trait/layout/constant cases (semantic facts), and 36 template lookup/demand cases.
 - Run: 19/41 failures; 16 stop in the compile pipeline and 3 expose linked
-  backend/lifetime or forced-inline behavior. PA34 is 237/367 overall.
+  backend/lifetime or forced-inline behavior. PA34 is 239/367 overall.
 
 ## Active Checkpoint
 
-No implementation is in flight. The next checkpoint should take retained scalar GNU
-vectors (two direct compile fixtures and shared type/layout ownership) or block pointers
-(four fixtures but a broader callable ABI) without conflating parser acceptance with
-typed representation and lowering.
+No implementation is in flight. The next checkpoint should take block-pointer syntax,
+canonical callable representation, invocation, and ABI ownership as one boundary for
+the four direct fixtures; it must not encode blocks as text or silently treat them as
+ordinary function pointers.
 
 ## Performance Evidence
 
@@ -59,6 +59,13 @@ because compiler fences intentionally emit no machine operation. RSS was
 8,164/8,124/8,248 KiB, supporting O(tokens + operands) parsing/checking and fixed-size
 per-statement lowering.
 
+The scalar-vector probe used 1/8/64 retained typedefs, layout queries, and unused inline
+literals. Semantic nodes were exactly 17/101/773 (`12n+5`) and lookup-scope visits were
+5/40/320 (`5n`); demand stayed at zero, emitted LowIR stayed at one instruction, and
+typed lowering storage stayed at 1,839 bytes. Semantic time was 0.22/0.48/3.01 ms and
+the 64-case object took 0.01 s with 8,512 KiB RSS, supporting O(attributes + lanes)
+validation with canonical vector reuse and deferred emission.
+
 ## Completed Checkpoints
 
 | Checkpoint | Result | Validation |
@@ -72,3 +79,4 @@ per-statement lowering.
 | Scalar floating builtins and abort | Sorted compact IDs, source-width classification, typed infinity/quiet/signaling NaNs, predicates, and nonreturning hosted `abort`; +6 | focused 6/6; exact abort ABI/effects; exact 1/8/64 instruction scaling; PA34 222/367; PA1-33 4387/4387; audit pass |
 | Class layout attributes | Canonical GNU aligned/packed and standard no-unique facts, entity/binding ownership, conflict-safe empty overlap, and template replay; +5 | focused compile 5/5 and linked copy assignment; 1/8/64 linear markers; PA34 227/367; PA1-33 4387/4387; audit pass |
 | GNU asm and asm labels | Structured operands, semantic operation IDs, typed LowIR effects, exact binding-owned ABI labels, and reallocation-safe class layout; +10 | focused 10/10; linked atomic/labels exact; 1/8/64 linear; PA34 237/367; PA1-33 4387/4387; audit pass |
+| Scalar GNU vectors | Retained type attributes, canonical lane/byte-width identity, layout/ABI/lowering facts, and typed unused-wrapper literals; +2 | focused 2/2; invalid width/arity rejected; 1/8/64 linear; PA34 239/367; PA1-33 4387/4387; audit pass |
