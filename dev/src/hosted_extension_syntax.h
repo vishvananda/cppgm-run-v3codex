@@ -122,10 +122,17 @@ protected:
 			FindSpecifier(parser.Spelling(parser.position_));
 		if (kind == SPECIFIER_NONE ||
 			(for_type_id && IsDeclarationOnlySpecifier(kind))) return false;
-		if (IsTypeSpecifier(kind) && *saw_user_type) return false;
+		if (IsTypeSpecifier(kind) && kind != SPECIFIER_COMPLEX &&
+			*saw_user_type) return false;
 		const std::size_t source = parser.position_++;
 		*consumed = true;
 		if (kind == SPECIFIER_EXTENSION) return true;
+		if (kind == SPECIFIER_COMPLEX)
+		{
+			parser.arena_.Add(sequence, parser.arena_.Make(
+				for_type_id ? "type-specifier" : "decl-specifier", "_Complex"));
+			return true;
+		}
 		if (kind == SPECIFIER_BITINT)
 		{
 			if (!parser.Match(OP_LPAREN))

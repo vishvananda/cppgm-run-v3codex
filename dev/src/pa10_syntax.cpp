@@ -1494,6 +1494,16 @@ NodeId Parser::ParsePostfixSuffixes(NodeId value) {
 NodeId Parser::ParseUnaryExpression()
 {
 	if (MatchHostedExtensionMarker()) return ParseUnaryExpression();
+	if (AtIdentifier() && (Spelling(position_) == "__real__" ||
+		Spelling(position_) == "__imag__"))
+	{
+		const std::size_t operation = position_++;
+		const NodeId operand = ParseUnaryExpression();
+		if (operand == kNoNode) throw Error("expected complex component operand");
+		const NodeId unary = MakeTokenNode("unary-expression", operation);
+		arena_.Add(unary, operand);
+		return unary;
+	}
 	if (At(OP_INC) || At(OP_DEC) || At(OP_STAR) || At(OP_AMP) ||
 		At(OP_PLUS) || At(OP_MINUS) || At(OP_LNOT) || At(OP_COMPL))
 	{

@@ -226,6 +226,9 @@ protected:
 			else if (derived.arena_.nodes[children[0]].kind ==
 				DUMP_CONSTRUCTOR_ACTION)
 				LowerConstructorReturn(children[0], &result_value);
+			else if (derived.current_indirect_result_ &&
+				derived.LowerIndirectComplexResult(children[0],
+					Operand(static_cast<ParameterId>(0), LowPtr()))) {}
 			else if (derived.current_result_.kind == LOW_VOID)
 				(void)derived.LowerValue(children[0]);
 			else if (derived.current_result_reference_)

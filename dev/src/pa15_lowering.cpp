@@ -36,6 +36,7 @@
 #include "pa30_region_lowering.h"
 #include "pa33_static_lifecycle_lowering.h"
 #include "pa34_gnu_asm_lowering.h"
+#include "pa34_complex_lowering.h"
 #include <algorithm>
 #include <limits>
 #include <ostream>
@@ -76,7 +77,8 @@ class GraphLowerer :
 	private pa27_lowering_detail::MemberPointerLowering<GraphLowerer>,
 	private pa30_lowering_detail::RegionLowering<GraphLowerer>,
 	private pa33_lowering_detail::StaticLifecycleLowering<GraphLowerer>,
-	private pa34_lowering_detail::GnuAsmLowering<GraphLowerer>
+	private pa34_lowering_detail::GnuAsmLowering<GraphLowerer>,
+	private pa34_lowering_detail::ComplexLowering<GraphLowerer>
 {
 public:
 	GraphLowerer(const SemanticGraphView& graph, TypedProgram& output,
@@ -217,6 +219,7 @@ private:
 	friend class pa30_lowering_detail::RegionLowering<GraphLowerer>;
 	friend class pa33_lowering_detail::StaticLifecycleLowering<GraphLowerer>;
 	friend class pa34_lowering_detail::GnuAsmLowering<GraphLowerer>;
+	friend class pa34_lowering_detail::ComplexLowering<GraphLowerer>;
 	enum StatementTaskKind : std::uint8_t
 	{
 		STATEMENT_NODE,
@@ -261,6 +264,7 @@ private:
 	bool IsArrayType(TypeId type) const { return source_types_.IsArray(type); }
 	bool IsFunctionType(TypeId type) const { return source_types_.IsFunction(type); }
 	bool IsClassObjectType(TypeId type) const { return source_types_.IsClassObject(type); }
+	bool IsComplexObjectType(TypeId type) const { return source_types_.IsComplexObject(type); }
 	EntityId ClassEntity(TypeId type) const
 	{
 		type = program_.types.RemoveTopCv(ExpressionObjectType(type));
@@ -1028,6 +1032,9 @@ private:
 	{
 		const DumpNode& record = arena_.nodes[node];
 		const NodeChildren children = Children(node);
+		Operand complex_storage;
+		if (TryLowerComplexStorage(node, record, children, &complex_storage))
+			return complex_storage;
 		if (record.kind == DUMP_TYPEID_EXPRESSION)
 			return LowerTypeid(record, children);
 		if (record.kind == DUMP_DYNAMIC_CAST_EXPRESSION)
@@ -1239,7 +1246,8 @@ private:
 		const DumpNode& record = arena_.nodes[node];
 		const NodeChildren children = Children(node);
 		Operand result;
-		if (record.kind == DUMP_TYPEID_EXPRESSION)
+		if (TryLowerComplexValue(node, record, children, &result)) {}
+		else if (record.kind == DUMP_TYPEID_EXPRESSION)
 			result = LowerTypeid(record, children);
 		else if (record.kind == DUMP_DYNAMIC_CAST_EXPRESSION)
 			result = LowerDynamicCast(node, record, children);
@@ -1711,6 +1719,10 @@ private:
 				BoundaryCallPassing(parameters[i - 1]) : Instruction::CALL_PASS_VALUE);
 			if (arena_.nodes[children[i]].variadic_class_argument)
 				arguments.Push(LowerStorage(children[i]));
+			else if (!reference && i - 1 < function_type.parameter_count &&
+				IsComplexObjectType(parameters[i - 1]) &&
+				UsesIndirectClassParameter(parameters[i - 1]))
+				arguments.Push(AddressOfStorage(LowerStorage(children[i])));
 			else if (!reference &&
 				arena_.nodes[children[i]].class_argument_staging)
 				arguments.Push(LowerClassArgumentStaging(
@@ -2013,6 +2025,8 @@ private:
 		}
 		if (LowerScalarCallReferenceInitialization(record, children,
 			retained_destination)) return;
+		if (TryLowerComplexVariableInitialization(
+			record, children, retained_destination)) return;
 		if (!IsReferenceType(record.type) &&
 			IsClassObjectType(record.type) && children.size() == 1 &&
 			arena_.nodes[children[0]].kind == DUMP_CONDITIONAL_EXPRESSION)

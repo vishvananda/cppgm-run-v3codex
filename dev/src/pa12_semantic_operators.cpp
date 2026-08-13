@@ -45,7 +45,8 @@ bool SemanticAnalyzer::IsMeasurableObjectType(
 		if (record.kind == TYPE_POINTER || record.kind == TYPE_BLOCK_POINTER ||
 			record.kind == TYPE_LVALUE_REFERENCE ||
 			record.kind == TYPE_RVALUE_REFERENCE ||
-			record.kind == TYPE_MEMBER_POINTER || record.kind == TYPE_VECTOR)
+			record.kind == TYPE_MEMBER_POINTER || record.kind == TYPE_VECTOR ||
+			record.kind == TYPE_COMPLEX)
 			return true;
 		if (record.kind != TYPE_NAMED) return false;
 		EnsureClassDefinition(type);
@@ -225,8 +226,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 
 ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId target) {
 	const bool postfix = arena_->IsTag(node, "postfix-expression"); const std::string operation = PayloadSource(node);
-	const NodeId operand_syntax = FirstSemanticChild(node);
-	const TypeId address_context_target = UnaryAddressContextTarget(operation, target, operand_syntax, scope);
+	const NodeId operand_syntax = FirstSemanticChild(node); const TypeId address_context_target = UnaryAddressContextTarget(operation, target, operand_syntax, scope);
 	const TypeId operand_target =
 		UnaryAddressOperandTarget(operation, address_context_target);
 	ExpressionInfo operand = AnalyzeExpression(operand_syntax, scope, operand_target);
@@ -236,6 +236,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId
 		if (operation == "&" && target == kNoType) return operand;
 		throw std::runtime_error("unresolved unary operand");
 	}
+	if (operation == "__real__" || operation == "__imag__") return AnalyzeComplexComponent(operation, operand, target);
 	std::vector<NodeId> overloaded_syntax(1, operand_syntax);
 	std::vector<ExpressionInfo> overloaded_operands(1, operand);
 	if (postfix && (operation == "++" || operation == "--"))

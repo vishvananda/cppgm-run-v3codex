@@ -192,6 +192,13 @@ void SemanticAnalyzer::RenderLine(const DumpNode& node, std::size_t depth)
 	case DUMP_DESTRUCTOR_ACTION:
 		output_ << "destructor-action " << program_->names.Get(node.text)
 			<< ' ' << program_->RenderType(node.operand_type); break;
+	case DUMP_COMPLEX_CONSTRUCTION:
+		output_ << "complex-construction " << category << ' '
+			<< program_->RenderType(node.type); break;
+	case DUMP_COMPLEX_COMPONENT:
+		output_ << "complex-component " << category << ' '
+			<< program_->RenderType(node.type) << ' '
+			<< program_->names.Get(node.text); break;
 	}
 	output_ << '\n';
 }

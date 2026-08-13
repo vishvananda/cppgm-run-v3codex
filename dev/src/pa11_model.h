@@ -169,7 +169,8 @@ enum TypeKind
 	TYPE_MEMBER_POINTER,
 	TYPE_VECTOR,
 	TYPE_BLOCK_POINTER,
-	TYPE_BITINT
+	TYPE_BITINT,
+	TYPE_COMPLEX
 };
 
 enum CvFlags
@@ -228,6 +229,8 @@ public:
 	TypeId Vector(TypeId element, std::uint64_t bytes);
 	TypeId TryBitInt(bool is_unsigned, std::uint64_t width);
 	TypeId BitInt(bool is_unsigned, std::uint64_t width);
+	TypeId TryComplex(TypeId element);
+	TypeId Complex(TypeId element);
 	TypeId TryDependentBitInt(bool is_unsigned, TypeId width_type,
 		std::uint32_t parameter);
 	TypeId DependentBitInt(bool is_unsigned, TypeId width_type,

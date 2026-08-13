@@ -174,6 +174,11 @@ bool SemanticAnalyzer::TryAnalyzeImmediateBuiltinCall(
 	const std::vector<NodeId>& argument_syntax, TypeId target,
 	ExpressionInfo* result)
 {
+	if (spelling == "__builtin_complex")
+	{
+		*result = AnalyzeComplexConstruction(scope, argument_syntax, target);
+		return true;
+	}
 	if (TryAnalyzeVariadicBuiltinCall(
 		spelling, scope, argument_syntax, target, result)) return true;
 	if (TryAnalyzeIntegerIntrinsicCall(

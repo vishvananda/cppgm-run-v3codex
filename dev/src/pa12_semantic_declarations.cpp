@@ -1593,9 +1593,7 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 	int longs = 0;
 	bool is_char = false;
 	bool is_void = false;
-	bool is_bool = false;
-	bool is_float = false;
-	bool is_double = false;
+	bool is_bool = false, is_float = false, is_double = false, is_complex = false;
 	bool is_wchar = false;
 	bool is_char16 = false, is_char32 = false, saw_int = false;
 	NodeId bitint_specifier = kNoNode;
@@ -1723,6 +1721,7 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 		else if (spelling == "virtual") result.virtual_specifier = true;
 		else if (spelling == "const") cv |= CV_CONST;
 		else if (spelling == "volatile") cv |= CV_VOLATILE;
+		else if (spelling == "_Complex") is_complex = true;
 		else if (spelling == "unsigned") is_unsigned = true;
 		else if (spelling == "signed") is_signed = true;
 		else if (spelling == "short") is_short = true;
@@ -1801,6 +1800,7 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 			throw std::runtime_error("declaration has no type specifier");
 		result.type = program_->types.Fundamental(kind);
 	}
+	if (is_complex) result.type = BuildComplexSpecifierType(result.type);
 	result.type = ApplyGnuVectorAttributes(node, result.type);
 	// Cv-qualifiers applied through a typedef-name (including a bound template
 	// type parameter) do not create a cv-qualified function type.

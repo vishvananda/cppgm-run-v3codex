@@ -54,6 +54,12 @@ std::size_t Program::SizeOf(TypeId type) const
 			size = record.bound <= 8 ? 1 : record.bound <= 16 ? 2 :
 				record.bound <= 32 ? 4 : record.bound <= 64 ? 8 : 16;
 			break;
+		case TYPE_COMPLEX:
+			if (SizeOf(record.child) >
+				std::numeric_limits<std::size_t>::max() / 2)
+				throw std::runtime_error("complex object type is too large");
+			size = 2 * SizeOf(record.child);
+			break;
 		case TYPE_NAMED:
 		{
 			const EntityRecord& entity = entities[record.entity];
@@ -110,6 +116,8 @@ std::size_t Program::AlignOf(TypeId type) const
 		alignment = record->bound <= 8 ? 1 : record->bound <= 16 ? 2 :
 			record->bound <= 32 ? 4 : record->bound <= 64 ? 8 : 16;
 	}
+	else if (record->kind == TYPE_COMPLEX)
+		alignment = AlignOf(record->child);
 	else if (record->kind == TYPE_NAMED)
 	{
 		const EntityRecord& entity = entities[record->entity];

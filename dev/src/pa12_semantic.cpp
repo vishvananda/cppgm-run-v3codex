@@ -298,6 +298,7 @@ bool SemanticAnalyzer::SimilarUnqualified(TypeId source, TypeId target) const
 	case TYPE_BLOCK_POINTER:
 	case TYPE_LVALUE_REFERENCE:
 	case TYPE_RVALUE_REFERENCE:
+	case TYPE_COMPLEX:
 		return SimilarUnqualified(a.child, b.child);
 	case TYPE_ARRAY:
 		return a.bound == b.bound && SimilarUnqualified(a.child, b.child);

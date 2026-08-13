@@ -55,12 +55,15 @@ SpecifierKind FindSpecifier(const std::string& spelling)
 	static const SpecifierEntry entries[] = {
 		{"_Atomic", SPECIFIER_ATOMIC},
 		{"_BitInt", SPECIFIER_BITINT},
+		{"_Complex", SPECIFIER_COMPLEX},
 		{"_Float128", SPECIFIER_FLOAT128},
 		{"_Float16", SPECIFIER_FLOAT16},
 		{"_Float32", SPECIFIER_FLOAT32},
 		{"_Float32x", SPECIFIER_FLOAT32X},
 		{"_Float64", SPECIFIER_FLOAT64},
 		{"_Float64x", SPECIFIER_FLOAT64X},
+		{"__complex", SPECIFIER_COMPLEX},
+		{"__complex__", SPECIFIER_COMPLEX},
 		{"__const", SPECIFIER_CONST},
 		{"__const__", SPECIFIER_CONST},
 		{"__extension__", SPECIFIER_EXTENSION},
@@ -86,6 +89,7 @@ const char* CanonicalSpecifier(SpecifierKind kind)
 	case SPECIFIER_ATOMIC: return "_Atomic";
 	case SPECIFIER_BITINT: return "_BitInt";
 	case SPECIFIER_CONST: return "const";
+	case SPECIFIER_COMPLEX: return "_Complex";
 	case SPECIFIER_FLOAT16: return "_Float16";
 	case SPECIFIER_FLOAT32: return "_Float32";
 	case SPECIFIER_FLOAT32X: return "_Float32x";
@@ -112,6 +116,7 @@ bool IsDeclarationOnlySpecifier(SpecifierKind kind)
 bool IsTypeSpecifier(SpecifierKind kind)
 {
 	return kind == SPECIFIER_ATOMIC || kind == SPECIFIER_BITINT ||
+		kind == SPECIFIER_COMPLEX ||
 		kind == SPECIFIER_FLOAT16 || kind == SPECIFIER_FLOAT32 ||
 		kind == SPECIFIER_FLOAT32X || kind == SPECIFIER_FLOAT64 ||
 		kind == SPECIFIER_FLOAT64X || kind == SPECIFIER_FLOAT128 ||

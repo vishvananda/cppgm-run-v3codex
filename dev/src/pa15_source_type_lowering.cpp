@@ -28,6 +28,8 @@ LowType SourceTypeLowering::Lower(TypeId type) const
 		return program_.types.IsFunction(record->child) ? LowI128() : LowI64();
 	if (record->kind == TYPE_VECTOR)
 		return LowObject(program_.SizeOf(type), program_.AlignOf(type));
+	if (record->kind == TYPE_COMPLEX)
+		return LowObject(program_.SizeOf(type), program_.AlignOf(type));
 	if (record->kind == TYPE_BITINT)
 	{
 		if (record->dependent_bound_parameter != kNoTemplateParameter)
@@ -125,6 +127,11 @@ bool SourceTypeLowering::IsClassObject(TypeId type) const
 	const NamedFlavor flavor = program_.entities[record.entity].flavor;
 	return flavor == NAMED_STRUCT || flavor == NAMED_CLASS ||
 		flavor == NAMED_UNION;
+}
+
+bool SourceTypeLowering::IsComplexObject(TypeId type) const
+{
+	return program_.types.Get(ExpressionObject(type)).kind == TYPE_COMPLEX;
 }
 
 LowType SourceTypeLowering::LowerExpression(TypeId type) const

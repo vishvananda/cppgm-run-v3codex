@@ -70,9 +70,10 @@ protected:
 		const Derived& derived = static_cast<const Derived&>(*this);
 		const pa11::TypeRecord& top = derived.program_.types.Get(type);
 		if (top.kind == pa11::TYPE_LVALUE_REFERENCE ||
-			top.kind == pa11::TYPE_RVALUE_REFERENCE ||
-			!derived.IsClassObjectType(type))
+			top.kind == pa11::TYPE_RVALUE_REFERENCE)
 			return false;
+		if (derived.IsComplexObjectType(type)) return true;
+		if (!derived.IsClassObjectType(type)) return false;
 		const pa11::TypeId object_type = derived.ExpressionObjectType(type);
 		const pa11::TypeRecord& object = derived.program_.types.Get(object_type);
 		if (object.kind != pa11::TYPE_NAMED ||
@@ -97,9 +98,10 @@ protected:
 		const Derived& derived = static_cast<const Derived&>(*this);
 		const pa11::TypeRecord& top = derived.program_.types.Get(type);
 		if (top.kind == pa11::TYPE_LVALUE_REFERENCE ||
-			top.kind == pa11::TYPE_RVALUE_REFERENCE ||
-			!derived.IsClassObjectType(type))
+			top.kind == pa11::TYPE_RVALUE_REFERENCE)
 			return false;
+		if (derived.IsComplexObjectType(type)) return true;
+		if (!derived.IsClassObjectType(type)) return false;
 		const pa11::TypeId object_type = derived.ExpressionObjectType(type);
 		const pa11::TypeRecord& object =
 			derived.program_.types.Get(object_type);

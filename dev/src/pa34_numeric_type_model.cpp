@@ -47,5 +47,26 @@ TypeId TypeTable::DependentBitInt(bool is_unsigned, TypeId width_type,
 	return result;
 }
 
+TypeId TypeTable::TryComplex(TypeId element)
+{
+	if (element == kNoType) return kNoType;
+	const TypeRecord& source = Get(element);
+	if (source.kind != TYPE_FUNDAMENTAL || source.fundamental == FUND_VOID ||
+		source.fundamental == FUND_NULLPTR_T || source.fundamental == FUND_BOOL)
+		return kNoType;
+	TypeRecord candidate;
+	candidate.kind = TYPE_COMPLEX;
+	candidate.child = element;
+	return Intern(candidate, 0, 0);
+}
+
+TypeId TypeTable::Complex(TypeId element)
+{
+	const TypeId result = TryComplex(element);
+	if (result == kNoType)
+		throw std::runtime_error("invalid _Complex element type");
+	return result;
+}
+
 }
 }

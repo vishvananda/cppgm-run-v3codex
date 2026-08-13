@@ -2691,6 +2691,10 @@ void Program::AppendType(std::string& output, TypeId type,
 			else output += "dependent";
 			output += ')';
 			break;
+		case TYPE_COMPLEX:
+			output += "_Complex ";
+			tasks.Push(Task(record.child, true));
+			break;
 		case TYPE_NAMED:
 		{
 			const EntityRecord& entity = entities[record.entity];

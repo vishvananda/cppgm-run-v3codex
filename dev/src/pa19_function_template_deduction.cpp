@@ -83,6 +83,7 @@ bool SemanticAnalyzer::FunctionTemplateTypeIsDependent(TypeId type) const
 	case TYPE_LVALUE_REFERENCE:
 	case TYPE_RVALUE_REFERENCE:
 	case TYPE_VECTOR:
+	case TYPE_COMPLEX:
 		dependent = FunctionTemplateTypeIsDependent(record.child);
 		break;
 	case TYPE_ARRAY:
@@ -467,6 +468,7 @@ bool SemanticAnalyzer::FunctionTemplatePatternAccepts(
 	case TYPE_BLOCK_POINTER:
 	case TYPE_LVALUE_REFERENCE:
 	case TYPE_RVALUE_REFERENCE:
+	case TYPE_COMPLEX:
 		return FunctionTemplatePatternAccepts(pattern_record.child,
 			exemplar_record.child, pattern_parameters, exemplar_parameters);
 	case TYPE_ARRAY:
@@ -641,6 +643,7 @@ bool SemanticAnalyzer::DeduceFunctionTemplateType(TypeId pattern,
 	case TYPE_BLOCK_POINTER:
 	case TYPE_LVALUE_REFERENCE:
 	case TYPE_RVALUE_REFERENCE:
+	case TYPE_COMPLEX:
 		return DeduceFunctionTemplateType(pattern_record.child,
 			argument_record.child, deduced);
 	case TYPE_ARRAY:
@@ -801,6 +804,7 @@ bool SemanticAnalyzer::DeduceFunctionTemplatePackType(TypeId pattern,
 	case TYPE_BLOCK_POINTER:
 	case TYPE_LVALUE_REFERENCE:
 	case TYPE_RVALUE_REFERENCE:
+	case TYPE_COMPLEX:
 		return DeduceFunctionTemplatePackType(pattern_record.child,
 			argument_record.child, parameters, deduced);
 	case TYPE_ARRAY:

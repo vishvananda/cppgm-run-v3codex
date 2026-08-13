@@ -90,7 +90,7 @@ void AppendAbiTagStrings(const Program& program,
 		destination->push_back(program.names.Get(program.abi_tags[begin + i]));
 }
 
-bool MakeBuiltinAbiType(const TypeRecord& source,
+bool MakeBuiltinAbiType(const Program& program, const TypeRecord& source,
 	abi_mangle::AbiType* result)
 {
 	using namespace abi_mangle;
@@ -103,6 +103,21 @@ bool MakeBuiltinAbiType(const TypeRecord& source,
 		result->name = std::string(source.bitint_unsigned ?
 			"ubitint" : "bitint") + std::to_string(source.bound);
 		return true;
+	}
+	if (source.kind == TYPE_COMPLEX)
+	{
+		const TypeRecord& element = program.types.Get(source.child);
+		if (element.kind != TYPE_FUNDAMENTAL)
+			throw std::runtime_error("complex ABI element is not fundamental");
+		result->kind = ABI_TYPE_BUILTIN;
+		switch (element.fundamental)
+		{
+		case FUND_FLOAT: result->name = "complex-float"; return true;
+		case FUND_DOUBLE: result->name = "complex-double"; return true;
+		case FUND_LONG_DOUBLE: result->name = "complex-longdouble"; return true;
+		default:
+			throw std::runtime_error("unsupported complex ABI element type");
+		}
 	}
 	if (source.kind != TYPE_FUNDAMENTAL) return false;
 	result->kind = ABI_TYPE_BUILTIN;
@@ -1694,7 +1709,7 @@ public:
 				entity.abi_tag_count, &result.abi_tags);
 			return result;
 		}
-		if (MakeBuiltinAbiType(*record, &result)) return result;
+		if (MakeBuiltinAbiType(program_, *record, &result)) return result;
 		throw std::runtime_error("unsupported ABI type in PA15");
 	}
 };

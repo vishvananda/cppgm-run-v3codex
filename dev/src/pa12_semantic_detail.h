@@ -995,6 +995,9 @@ private:
 	bool TryAnalyzeImmediateBuiltinCall(const std::string& spelling,
 		ScopeId scope, const std::vector<NodeId>& argument_syntax,
 		TypeId target, ExpressionInfo* result);
+	ExpressionInfo AnalyzeComplexConstruction(ScopeId scope,
+		const std::vector<NodeId>& arguments, TypeId target);
+	TypeId BuildComplexSpecifierType(TypeId element);
 	bool TryAnalyzeVariadicBuiltinCall(const std::string& spelling,
 		ScopeId scope, const std::vector<NodeId>& argument_syntax,
 		TypeId target, ExpressionInfo* result);
@@ -1131,6 +1134,8 @@ private:
 		const std::vector<NodeId>* argument_syntax = 0);
 	ExpressionInfo AnalyzeUnary(NodeId node, ScopeId scope,
 		TypeId target = kNoType);
+	ExpressionInfo AnalyzeComplexComponent(const std::string& operation,
+		const ExpressionInfo& operand, TypeId target);
 	TypeId UnaryAddressOperandTarget(const std::string& operation,
 		TypeId target) const;
 	TypeId UnaryAddressContextTarget(const std::string& operation,

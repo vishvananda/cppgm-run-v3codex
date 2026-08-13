@@ -309,6 +309,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinTypeTrait(
 				(shape.kind == TYPE_FUNDAMENTAL &&
 				 shape.fundamental == FUND_NULLPTR_T) ||
 				shape.kind == TYPE_POINTER || shape.kind == TYPE_MEMBER_POINTER ||
+				shape.kind == TYPE_COMPLEX ||
 				(named && IsEnumEntity(*named));
 		else if (trait == TYPE_TRAIT_IS_EMPTY && operands.size() == 1)
 			value = named && IsClassEntity(*named) && named->empty_class;
@@ -322,7 +323,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinTypeTrait(
 			trait == TYPE_TRAIT_IS_TRIVIALLY_DESTRUCTIBLE) && operands.size() == 1)
 			value = shape.kind == TYPE_LVALUE_REFERENCE ||
 				shape.kind == TYPE_RVALUE_REFERENCE || IsFundamentalIntegral(shape) ||
-				IsFundamentalFloating(shape) || shape.kind == TYPE_POINTER ||
+				IsFundamentalFloating(shape) || shape.kind == TYPE_COMPLEX ||
+				shape.kind == TYPE_POINTER ||
 				shape.kind == TYPE_MEMBER_POINTER ||
 				(named && named->destructible &&
 				 (trait == TYPE_TRAIT_IS_DESTRUCTIBLE || named->trivial_destructor));
@@ -331,6 +333,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinTypeTrait(
 			trait == TYPE_TRAIT_IS_STANDARD_LAYOUT ||
 			trait == TYPE_TRAIT_IS_LITERAL_TYPE) && operands.size() == 1)
 			value = IsFundamentalIntegral(shape) || IsFundamentalFloating(shape) ||
+				shape.kind == TYPE_COMPLEX ||
 				shape.kind == TYPE_POINTER || shape.kind == TYPE_MEMBER_POINTER ||
 				(named && named->empty_class && named->trivial_destructor);
 		else if ((trait == TYPE_TRAIT_IS_CONSTRUCTIBLE ||
@@ -341,6 +344,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinTypeTrait(
 			if (operands.size() == 1)
 				value = shape.kind == TYPE_POINTER || shape.kind == TYPE_MEMBER_POINTER ||
 					IsFundamentalIntegral(shape) || IsFundamentalFloating(shape) ||
+					shape.kind == TYPE_COMPLEX ||
 					(named && named->default_constructible);
 			else value = Conversion(operands[1],
 				HypotheticalCategory(program_->types, operands[1]), false,
