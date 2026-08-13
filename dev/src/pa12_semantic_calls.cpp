@@ -503,7 +503,18 @@ bool SemanticAnalyzer::AnalyzeBuiltinCall(const std::string& spelling,
 	const BindingId binding = EnsureBuiltinFunction(kind);
 	const TypeRecord& type = program_->types.Get(GetFunction(binding).type);
 	if (argument_syntax.size() != type.parameter_count)
+	{
+		// Global allocation/deallocation calls may name user-declared placement
+		// overloads.  The one-argument compiler-provided candidate is only a
+		// fallback; a different arity must continue through ordinary lookup and
+		// overload resolution.
+		if (kind == BUILTIN_FUNCTION_OPERATOR_NEW ||
+			kind == BUILTIN_FUNCTION_OPERATOR_NEW_ARRAY ||
+			kind == BUILTIN_FUNCTION_OPERATOR_DELETE ||
+			kind == BUILTIN_FUNCTION_OPERATOR_DELETE_ARRAY)
+			return false;
 		throw std::runtime_error("invalid builtin function call arity");
+	}
 	std::vector<ExpressionInfo> arguments;
 	for (std::size_t i = 0; i < argument_syntax.size(); ++i)
 		arguments.push_back(

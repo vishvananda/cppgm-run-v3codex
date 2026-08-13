@@ -217,6 +217,22 @@ public:
 		return id;
 	}
 
+	std::string AddTemplateParameterExpression(std::size_t parameter)
+	{
+		using namespace abi_mangle;
+		const std::string id = "__cppgm_abi_template_expression_" +
+			std::to_string(next_argument_++);
+		AbiFactRecord definition;
+		definition.set_kind(ABI_FACT_RECORD_DEFINITION);
+		definition.definition.id = id;
+		definition.definition.set_kind(ABI_DEFINITION_EXPRESSION);
+		definition.definition.expression.kind =
+			ABI_EXPRESSION_TEMPLATE_PARAMETER;
+		definition.definition.expression.index = parameter;
+		facts_.records.push_back(definition);
+		return id;
+	}
+
 	std::string AddLocalContext(pa11::BindingId binding)
 	{
 		using namespace abi_mangle;
@@ -397,7 +413,12 @@ public:
 		const pa11::BindingRecord& function,
 		const pa11::FunctionTemplateAbiRecipe* recipe = 0)
 	{
-		return MakeType(type, &function, recipe);
+		// Only the retained pattern recipe can prove that a type occurrence is
+		// dependent.  Inferring dependence by comparing an instantiated type
+		// with the specialization's template arguments is ambiguous: for
+		// `template<class T> int f(T)`, f<int>'s non-dependent result happens to
+		// equal T's argument but must be encoded as `i`, not `T_`.
+		return recipe ? MakeType(type, &function, recipe) : MakeType(type);
 	}
 
 	bool UsesFunctionTemplateParameter(pa11::TypeId type,
@@ -414,6 +435,9 @@ public:
 			if (FunctionTemplateParameter(
 				current, &function, &recipe, &parameter)) return true;
 			const TypeRecord& record = program_.types.Get(current);
+			if (record.kind == TYPE_ARRAY &&
+				record.dependent_bound_parameter != kNoTemplateParameter)
+				return true;
 			if (record.kind == TYPE_QUALIFIED || record.kind == TYPE_POINTER ||
 				record.kind == TYPE_LVALUE_REFERENCE ||
 				record.kind == TYPE_RVALUE_REFERENCE || record.kind == TYPE_ARRAY)
@@ -437,6 +461,9 @@ public:
 			}
 			if (record.kind != TYPE_NAMED) continue;
 			const EntityRecord& entity = program_.entities[record.entity];
+			if (entity.enclosing_class != kNoEntity)
+				pending.push_back(
+					program_.entities[entity.enclosing_class].type);
 			if (entity.template_argument_count == 0) continue;
 			const std::size_t first = entity.template_argument_begin;
 			if (first > program_.template_arguments.size() ||
@@ -475,6 +502,7 @@ public:
 				AbiType result;
 				result.kind = ABI_TYPE_TEMPLATE_PARAMETER;
 				result.index = template_parameter;
+				result.substitutable = true;
 				result.modifiers.swap(modifiers);
 				return result;
 			}
@@ -488,8 +516,16 @@ public:
 			else if (record->kind == TYPE_ARRAY)
 			{
 				modifier.kind = ABI_TYPE_ARRAY;
-				modifier.array_bound.kind = ABI_ARRAY_BOUND_VALUE;
-				if (record->bound != 0)
+				if (record->dependent_bound_parameter !=
+					kNoTemplateParameter)
+				{
+					modifier.array_bound.kind =
+						ABI_ARRAY_BOUND_EXPRESSION;
+					modifier.array_bound.value =
+						AddTemplateParameterExpression(
+							record->dependent_bound_parameter);
+				}
+				else if (record->bound != 0)
 					modifier.array_bound.value = std::to_string(record->bound);
 			}
 			else modifier.kind = record->kind == TYPE_POINTER ? ABI_TYPE_POINTER :
@@ -506,6 +542,7 @@ public:
 		{
 			result.kind = ABI_TYPE_TEMPLATE_PARAMETER;
 			result.index = template_parameter;
+			result.substitutable = true;
 			return result;
 		}
 		if (record->kind == TYPE_FUNCTION)

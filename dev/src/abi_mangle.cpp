@@ -356,7 +356,10 @@ public:
       node.children.push_back(result);
       node.bound_kind = modifier->array_bound.kind;
       if(!modifier->array_bound.value.empty()) {
-        node.symbol = strings.intern(modifier->array_bound.value);
+        if(node.bound_kind == ABI_ARRAY_BOUND_EXPRESSION)
+          node.expression = resolve_expression_ref(modifier->array_bound.value);
+        else
+          node.symbol = strings.intern(modifier->array_bound.value);
       }
       node.is_const = modifier->is_const;
       node.is_volatile = modifier->is_volatile;
@@ -401,7 +404,12 @@ public:
       if(!source.substitution.empty()) node.substitution = strings.intern(source.substitution);
       node.index = source.index;
       node.bound_kind = source.array_bound.kind;
-      if(!source.array_bound.value.empty()) node.symbol = strings.intern(source.array_bound.value);
+      if(!source.array_bound.value.empty()) {
+        if(node.bound_kind == ABI_ARRAY_BOUND_EXPRESSION)
+          node.expression = resolve_expression_ref(source.array_bound.value);
+        else
+          node.symbol = strings.intern(source.array_bound.value);
+      }
       node.is_const = source.is_const;
       node.is_volatile = source.is_volatile;
       node.variadic = source.variadic;
@@ -983,8 +991,13 @@ private:
         } else if(type.kind == ABI_TYPE_VENDOR_QUALIFIED) {
           output_ += 'U' + source_name(graph_.strings.get(type.symbol));
 		} else {
-		  output_ += type.symbol == NO_ID ? "A_" :
-			  'A' + graph_.strings.get(type.symbol) + '_';
+		  output_ += 'A';
+		  if(type.bound_kind == ABI_ARRAY_BOUND_EXPRESSION) {
+			encode_expression(type.expression);
+		  } else if(type.symbol != NO_ID) {
+			output_ += graph_.strings.get(type.symbol);
+		  }
+		  output_ += '_';
         }
         pending.push_back(key);
         id = type.children.at(0);
@@ -1022,8 +1035,13 @@ private:
         encode_type(type.children.at(0));
         return;
 	  case ABI_TYPE_ARRAY:
-		output_ += type.symbol == NO_ID ? "A_" :
-			'A' + graph_.strings.get(type.symbol) + '_';
+		output_ += 'A';
+		if(type.bound_kind == ABI_ARRAY_BOUND_EXPRESSION) {
+		  encode_expression(type.expression);
+		} else if(type.symbol != NO_ID) {
+		  output_ += graph_.strings.get(type.symbol);
+		}
+		output_ += '_';
         encode_type(type.children.at(0));
         return;
       case ABI_TYPE_BUILTIN_TRANSFORM:

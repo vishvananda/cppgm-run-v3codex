@@ -356,6 +356,23 @@ std::string host_symbol_spelling(const std::string & raw)
   return !raw.empty() && raw[0] == '@' ? raw.substr(1) : raw;
 }
 
+std::string host_runtime_object_symbol(
+    const lowir_model::SymbolMetadata & metadata)
+{
+  if(metadata.role == lowir_model::SR_ALLOCATE_MEMORY) {
+    if(metadata.object_symbol == "cppgm_builtin_operator_new") return "_Znwm";
+    if(metadata.object_symbol == "cppgm_builtin_operator_new_array")
+      return "_Znam";
+  }
+  if(metadata.role == lowir_model::SR_FREE_MEMORY) {
+    if(metadata.object_symbol == "cppgm_builtin_operator_delete")
+      return "_ZdlPv";
+    if(metadata.object_symbol == "cppgm_builtin_operator_delete_array")
+      return "_ZdaPv";
+  }
+  return metadata.object_symbol;
+}
+
 std::unordered_map<std::string, std::string> declaration_object_symbols(
     const lowir_model::LowirProgram & program)
 {
@@ -367,7 +384,8 @@ std::unordered_map<std::string, std::string> declaration_object_symbols(
   for(std::size_t i = 0; i < program.function_declarations.size(); ++i)
     if(!program.function_declarations[i].metadata.object_symbol.empty())
       result[program.function_declarations[i].name] =
-        program.function_declarations[i].metadata.object_symbol;
+        host_runtime_object_symbol(
+          program.function_declarations[i].metadata);
   for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
     if(!program.global_declarations[i].metadata.object_symbol.empty())
       result[program.global_declarations[i].name] =
@@ -750,6 +768,35 @@ std::vector<unsigned char> make_linux_relocatable_image(
   sections[13].name = ".shstrtab";
   sections[13].type = 3;
   sections[13].bytes.push_back(0);
+
+  // STB_WEAK is the executable coalescing rule for the current monolithic
+  // text/data sections.  Also publish one standards-shaped COMDAT group per
+  // weak ODR root.  Its tiny SHF_GROUP marker gives object inspectors and the
+  // host linker a canonical group signature without incorrectly placing the
+  // whole translation-unit .text/.data section in a discardable group.
+  for(std::size_t i = 0; i < globals.size(); ++i) {
+    const HostSymbol & symbol = globals[i];
+    if(symbol.binding != 2 || symbol.section == 0) continue;
+    const std::unordered_map<std::string, std::size_t>::const_iterator index =
+      symbol_indexes.find(symbol.name);
+    if(index == symbol_indexes.end())
+      throw std::logic_error("weak ODR root has no ELF symbol index");
+    HostSection marker;
+    marker.name = ".cppgm.odr." + std::to_string(i);
+    marker.flags = 0x200;
+    const std::size_t marker_index = sections.size();
+    sections.push_back(marker);
+    HostSection group;
+    group.name = ".group";
+    group.type = 17;
+    group.alignment = 4;
+    group.entry_size = 4;
+    group.link = 11;
+    group.info = static_cast<std::uint32_t>(index->second);
+    append_little(group.bytes, 1, 4);
+    append_little(group.bytes, marker_index, 4);
+    sections.push_back(group);
+  }
   for(std::size_t i = 1; i < sections.size(); ++i)
     sections[i].name_offset = add_string(sections[13].bytes, sections[i].name);
 
