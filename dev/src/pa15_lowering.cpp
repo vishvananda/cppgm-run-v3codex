@@ -294,9 +294,11 @@ private:
 			 binding.template_argument_count != 0));
 		const bool local_member = pa18_lowering_detail::IsFunctionLocalEntity(
 			program_, binding.member_owner);
-		const bool internal = local_member ||
-			(binding.storage_class == STORAGE_CLASS_STATIC &&
-			 binding.member_owner == kNoEntity);
+		const bool prefer_local =
+			pa18_lowering_detail::PreferLocalObjectBinding(
+				program_, binding.member_owner);
+		const bool internal = binding.storage_class == STORAGE_CLASS_STATIC &&
+			 binding.member_owner == kNoEntity;
 		const bool c_linkage = binding.language_linkage == LANGUAGE_LINKAGE_C;
 		SymbolIdentity identity;
 		identity.kind = kind;
@@ -329,7 +331,8 @@ private:
 				symbol.object_name != object_name)
 				throw std::logic_error("conflicting PA15 ABI object identity");
 			symbol.nonthrowing = symbol.nonthrowing || binding.nonthrowing;
-			symbol.weak_linkage |= weak_odr;
+			symbol.weak_linkage |= weak_odr && !prefer_local;
+			symbol.prefer_local_object_binding |= prefer_local;
 			symbol.object_output_root |= binding.object_output_root;
 			pa15_lowering_abi::ApplyBuiltinSymbolMetadata(
 				&symbol, binding.builtin_function);
@@ -343,14 +346,15 @@ private:
 			proposed_name + "__sym" + std::to_string(count);
 		const SymbolId symbol = static_cast<SymbolId>(output_.symbols.size());
 		output_.symbols.push_back(Symbol(kind, name,
-			local_member ? std::string() : object_name, c_linkage,
+			object_name, c_linkage,
 			internal, binding.nonthrowing));
 		pa15_lowering_abi::ApplyBuiltinSymbolMetadata(&output_.symbols.back(),
 			binding.builtin_function);
 		pa15_lowering_abi::ApplyNativeRuntimeSymbolMetadata(
 			&output_.symbols.back());
 		output_.symbols.back().source_type = source_type;
-		output_.symbols.back().weak_linkage = weak_odr;
+		output_.symbols.back().weak_linkage = weak_odr && !prefer_local;
+		output_.symbols.back().prefer_local_object_binding = prefer_local;
 		output_.symbols.back().object_output_root = binding.object_output_root;
 		output_.symbol_index.Insert(identity, symbol);
 		return symbol;

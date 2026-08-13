@@ -426,6 +426,7 @@ struct Symbol
 	bool c_linkage;
 	bool internal_linkage;
 	bool weak_linkage;
+	bool prefer_local_object_binding;
 	bool nonthrowing;
 	bool noreturn;
 	bool thread_local_storage;
@@ -444,7 +445,7 @@ struct Symbol
 		  runtime_role(RUNTIME_ROLE_NONE), name(name_value),
 		  object_name(object_name_value),
 		  c_linkage(c_linkage_value), internal_linkage(internal_linkage_value),
-		  weak_linkage(false),
+		  weak_linkage(false), prefer_local_object_binding(false),
 		  nonthrowing(nonthrowing_value), noreturn(false),
 		  thread_local_storage(false),
 		  tls_for_symbol(kNoLowId), source_type(kNoLowId),

@@ -476,6 +476,7 @@ void WriteSymbolMetadata(std::ostream& output, const Symbol& symbol,
 	output << "binding=" << (symbol.internal_linkage ? "internal" :
 		symbol.weak_linkage ? "weak" : "strong");
 	if (!symbol.object_name.empty()) output << ", object=" << symbol.object_name;
+	if (symbol.prefer_local_object_binding) output << ", prefer_local=yes";
 	if (entry) output << ", keep_alias=yes";
 	if (symbol.object_output_root) output << ", object_root=yes";
 	if (function && symbol.trivial_lifecycle)

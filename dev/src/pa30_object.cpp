@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iterator>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -703,6 +704,103 @@ bool IsWeak(lowir_model::SymbolBindingMode binding)
 	return binding == lowir_model::SBM_WEAK;
 }
 
+std::uint64_t ReadHeaderLittle(const unsigned char* bytes, unsigned width)
+{
+	std::uint64_t value = 0;
+	for (unsigned i = 0; i < width; ++i)
+		value |= static_cast<std::uint64_t>(bytes[i]) << (i * 8);
+	return value;
+}
+
+struct CompilerPayloadLocation
+{
+	std::uint64_t offset;
+	std::uint64_t size;
+	bool found;
+
+	CompilerPayloadLocation() : offset(0), size(0), found(false) {}
+};
+
+bool ReadAt(std::ifstream& input, std::uint64_t offset,
+	unsigned char* bytes, std::size_t size)
+{
+	input.clear();
+	input.seekg(static_cast<std::streamoff>(offset), std::ios::beg);
+	return static_cast<bool>(input.read(reinterpret_cast<char*>(bytes),
+		static_cast<std::streamsize>(size)));
+}
+
+CompilerPayloadLocation FindCompilerPayload(std::ifstream& input)
+{
+	CompilerPayloadLocation result;
+	input.seekg(0, std::ios::end);
+	const std::streampos end = input.tellg();
+	if (end < 0) return result;
+	const std::uint64_t file_size = static_cast<std::uint64_t>(end);
+	unsigned char header[64];
+	if (file_size < sizeof(kMagic) - 1 ||
+		!ReadAt(input, 0, header,
+			static_cast<std::size_t>(std::min<std::uint64_t>(file_size, 64))))
+		return result;
+	if (std::equal(header, header + sizeof(kMagic) - 1,
+		reinterpret_cast<const unsigned char*>(kMagic)))
+	{
+		result.offset = 0;
+		result.size = file_size;
+		result.found = true;
+		return result;
+	}
+	if (file_size < 64 || header[0] != 0x7f || header[1] != 'E' ||
+		header[2] != 'L' || header[3] != 'F' || header[4] != 2 ||
+		header[5] != 1)
+		return result;
+	const std::uint64_t section_offset = ReadHeaderLittle(header + 40, 8);
+	const std::uint64_t section_entry_size = ReadHeaderLittle(header + 58, 2);
+	const std::uint64_t section_count = ReadHeaderLittle(header + 60, 2);
+	const std::uint64_t name_index = ReadHeaderLittle(header + 62, 2);
+	if (section_entry_size != 64 || !section_count ||
+		name_index >= section_count || section_count > kMaxObjectElements ||
+		section_offset > file_size ||
+		section_count > (file_size - section_offset) / section_entry_size)
+		return result;
+	unsigned char section[64];
+	if (!ReadAt(input, section_offset + name_index * section_entry_size,
+		section, sizeof(section))) return result;
+	const std::uint64_t names_offset = ReadHeaderLittle(section + 24, 8);
+	const std::uint64_t names_size = ReadHeaderLittle(section + 32, 8);
+	if (names_offset > file_size || names_size > file_size - names_offset ||
+		names_size > kMaxObjectElements) return result;
+	std::string names(static_cast<std::size_t>(names_size), '\0');
+	if (names_size && !ReadAt(input, names_offset,
+		reinterpret_cast<unsigned char*>(&names[0]), names.size())) return result;
+	for (std::uint64_t i = 1; i < section_count; ++i)
+	{
+		if (!ReadAt(input, section_offset + i * section_entry_size,
+			section, sizeof(section))) return CompilerPayloadLocation();
+		const std::uint64_t name_offset = ReadHeaderLittle(section, 4);
+		if (name_offset >= names.size()) continue;
+		const std::size_t name_end = names.find('\0',
+			static_cast<std::size_t>(name_offset));
+		if (name_end == std::string::npos ||
+			names.substr(static_cast<std::size_t>(name_offset),
+				name_end - static_cast<std::size_t>(name_offset)) !=
+				".cppgm_object") continue;
+		result.offset = ReadHeaderLittle(section + 24, 8);
+		result.size = ReadHeaderLittle(section + 32, 8);
+		if (result.offset > file_size || result.size > file_size - result.offset ||
+			result.size < sizeof(kMagic) - 1)
+			return CompilerPayloadLocation();
+		unsigned char magic[sizeof(kMagic) - 1];
+		if (!ReadAt(input, result.offset, magic, sizeof(magic)) ||
+			!std::equal(magic, magic + sizeof(magic),
+				reinterpret_cast<const unsigned char*>(kMagic)))
+			return CompilerPayloadLocation();
+		result.found = true;
+		return result;
+	}
+	return result;
+}
+
 }
 
 LinkStats::LinkStats()
@@ -712,43 +810,51 @@ LinkStats::LinkStats()
 void WriteCompilerObject(const std::string& path,
 	const CompilerObject& object)
 {
+	const std::vector<unsigned char> bytes = SerializeCompilerObject(object);
 	std::ofstream output(path.c_str(),
 		std::ios::out | std::ios::binary | std::ios::trunc);
 	if (!output) throw std::runtime_error("unable to open object output: " + path);
+	if (!bytes.empty()) output.write(reinterpret_cast<const char*>(&bytes[0]),
+		static_cast<std::streamsize>(bytes.size()));
+	if (!output) throw std::runtime_error("unable to write object output: " + path);
+}
+
+std::vector<unsigned char> SerializeCompilerObject(
+	const CompilerObject& object)
+{
+	std::ostringstream output(std::ios::out | std::ios::binary);
 	output.write(kMagic, sizeof(kMagic) - 1);
 	Writer payload(output);
 	payload.U32(kVersion);
 	payload.String(object.target);
 	WriteProgram(payload, object.lowir);
-	if (!output) throw std::runtime_error("unable to write object output: " + path);
+	if (!output) throw std::runtime_error("unable to serialize compiler object");
+	const std::string bytes = output.str();
+	return std::vector<unsigned char>(bytes.begin(), bytes.end());
 }
 
 bool IsCompilerObject(const std::string& path)
 {
 	std::ifstream input(path.c_str(), std::ios::in | std::ios::binary);
 	if (!input) return false;
-	char magic[sizeof(kMagic) - 1];
-	input.read(magic, sizeof(magic));
-	return input.gcount() == static_cast<std::streamsize>(sizeof(magic)) &&
-		std::equal(magic, magic + sizeof(magic), kMagic);
+	return FindCompilerPayload(input).found;
 }
 
 CompilerObject ReadCompilerObject(const std::string& path)
 {
 	std::ifstream file(path.c_str(), std::ios::in | std::ios::binary);
 	if (!file) throw std::runtime_error("unable to open object file: " + path);
+	const CompilerPayloadLocation location = FindCompilerPayload(file);
+	if (!location.found)
+		throw std::runtime_error("not a cppgm compiler object: " + path);
+	file.clear();
+	file.seekg(static_cast<std::streamoff>(location.offset), std::ios::beg);
 	char magic[sizeof(kMagic) - 1];
 	file.read(magic, sizeof(magic));
 	if (file.gcount() != static_cast<std::streamsize>(sizeof(magic)) ||
 		!std::equal(magic, magic + sizeof(magic), kMagic))
 		throw std::runtime_error("not a cppgm compiler object: " + path);
-	const std::streampos payload_begin = file.tellg();
-	file.seekg(0, std::ios::end);
-	const std::streampos payload_end = file.tellg();
-	if (payload_begin < 0 || payload_end < payload_begin)
-		throw std::runtime_error("unable to size compiler object: " + path);
-	file.seekg(payload_begin);
-	Reader input(file, static_cast<std::uint64_t>(payload_end - payload_begin));
+	Reader input(file, location.size - (sizeof(kMagic) - 1));
 	if (input.U32() != kVersion)
 		throw std::runtime_error("unsupported cppgm object version");
 	CompilerObject result;
@@ -777,7 +883,8 @@ lowir_model::LowirProgram LinkCompilerObjects(
 			const ir_model::ExportedSymbol& symbol =
 				objects[i].lowir.exported_symbols[j];
 			if (stats) { ++stats->symbols; ++stats->symbol_probes; }
-			if (symbol.linkage == ir_model::SL_INTERNAL)
+			if (symbol.linkage == ir_model::SL_INTERNAL ||
+				symbol.prefer_local_object_binding)
 				names[symbol.internal_symbol] = symbol.internal_symbol +
 					".__u" + std::to_string(i);
 			else

@@ -383,6 +383,7 @@ void AppendExport(const Symbol& source, ir_model::ExportedSymbol* target)
 	target->internal_symbol = At(source.name);
 	target->object_symbol = source.object_name;
 	target->keep_internal_alias = false;
+	target->prefer_local_object_binding = source.prefer_local_object_binding;
 	target->linkage = source.internal_linkage ? ir_model::SL_INTERNAL :
 		source.weak_linkage ? ir_model::SL_WEAK : ir_model::SL_EXTERNAL;
 }

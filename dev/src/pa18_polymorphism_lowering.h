@@ -97,6 +97,8 @@ struct PolymorphismLoweringState
 
 bool IsFunctionLocalEntity(const pa11::Program& program,
 	pa11::EntityId entity);
+bool PreferLocalObjectBinding(const pa11::Program& program,
+	pa11::EntityId entity);
 
 void PreparePolymorphism(
 	const pa12_semantic_detail::SemanticGraphView& graph,

@@ -33,6 +33,8 @@ struct LinkStats
 
 void WriteCompilerObject(const std::string& path,
 	const CompilerObject& object);
+std::vector<unsigned char> SerializeCompilerObject(
+	const CompilerObject& object);
 CompilerObject ReadCompilerObject(const std::string& path);
 bool IsCompilerObject(const std::string& path);
 

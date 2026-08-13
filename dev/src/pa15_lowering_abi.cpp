@@ -2,6 +2,7 @@
 
 #include "abi_mangle.h"
 #include "pa15_lowir_model.h"
+#include "pa18_polymorphism_lowering.h"
 
 #include <stdexcept>
 #include <string>
@@ -232,12 +233,20 @@ public:
 		definition.set_kind(ABI_FACT_RECORD_DEFINITION);
 		definition.definition.id = id;
 		definition.definition.set_kind(ABI_DEFINITION_CONTEXT);
+		const std::string qualified_name = program_.names.Get(
+			function.qualified_name != 0 ?
+				function.qualified_name : function.name);
+		if (qualified_name == "main")
+		{
+			definition.definition.context.kind = ABI_CONTEXT_RAW;
+			definition.definition.context.fragment = "Z4mainE";
+			facts_.records.push_back(definition);
+			return id;
+		}
 		definition.definition.context.kind = ABI_CONTEXT_FUNCTION;
 		AbiFunctionTarget& target = definition.definition.context.function;
 		target.kind = ABI_FUNCTION_TARGET_PATH;
-		target.qualified_name = program_.names.Get(
-			function.qualified_name != 0 ?
-				function.qualified_name : function.name);
+		target.qualified_name = qualified_name;
 		const FunctionTemplateAbiRecipe* recipe = 0;
 		if (function.function_template_abi_recipe !=
 			kNoFunctionTemplateAbiRecipe)
@@ -523,7 +532,17 @@ public:
 			const EntityRecord& entity = program_.entities[record->entity];
 			if (entity.lambda_closure)
 			{
-				if (entity.local_context != kNoBinding)
+				if (entity.local_context != kNoBinding &&
+					pa18_lowering_detail::PreferLocalObjectBinding(
+						program_, record->entity))
+				{
+					result.kind = ABI_TYPE_LOCAL_TYPE;
+					result.context_ref = AddLocalContext(entity.local_context);
+					result.name = "$_" +
+						std::to_string(entity.lambda_ordinal);
+					result.discriminator = "0";
+				}
+				else if (entity.local_context != kNoBinding)
 				{
 					result.kind = ABI_TYPE_LAMBDA_CLOSURE;
 					result.context_ref = AddLocalContext(entity.local_context);
@@ -912,7 +931,16 @@ std::string MangleLambdaCallOperator(const pa11::Program& program,
 	lambda_target.set_kind(ABI_FACT_RECORD_TARGET);
 	lambda_target.target.kind = ABI_TARGET_FACT_FUNCTION;
 	AbiFunctionTarget& function = lambda_target.target.function;
-	if (lambda.local_context != kNoBinding)
+	if (lambda.local_context != kNoBinding &&
+		pa18_lowering_detail::PreferLocalObjectBinding(
+			program, binding.member_owner))
+	{
+		function.kind = ABI_FUNCTION_TARGET_LOCAL;
+		function.context_ref = facts.AddLocalContext(lambda.local_context);
+		function.qualified_name = "$_" +
+			std::to_string(lambda.lambda_ordinal);
+	}
+	else if (lambda.local_context != kNoBinding)
 	{
 		function.kind = ABI_FUNCTION_TARGET_LAMBDA;
 		function.context_ref = facts.AddLocalContext(lambda.local_context);
@@ -929,25 +957,32 @@ std::string MangleLambdaCallOperator(const pa11::Program& program,
 		function.source_name = program.names.Get(path.back());
 		for (std::size_t i = 0; i + 1 < path.size(); ++i)
 			function.namespace_qualifiers.push_back(program.names.Get(path[i]));
-		const TypeRecord& declared = program.types.Get(binding.type);
-		AbiFactRecord qualifier;
-		qualifier.set_kind(ABI_FACT_RECORD_FUNCTION);
-		qualifier.function.kind = ABI_FUNCTION_RECORD_QUALIFIER;
-		if ((declared.cv & CV_CONST) != 0)
-			qualifier.function.qualifiers.push_back(
-				ABI_FUNCTION_QUALIFIER_CONST);
-		if ((declared.cv & CV_VOLATILE) != 0)
-			qualifier.function.qualifiers.push_back(
-				ABI_FUNCTION_QUALIFIER_VOLATILE);
-		if (!qualifier.function.qualifiers.empty())
-			file.cases[0].records.push_back(qualifier);
 	}
 	function.terminal = "operator-call";
 	const TypeRecord& lambda_type = program.types.Get(binding.type);
+	AbiFactRecord qualifier;
+	qualifier.set_kind(ABI_FACT_RECORD_FUNCTION);
+	qualifier.function.kind = ABI_FUNCTION_RECORD_QUALIFIER;
+	if ((lambda_type.cv & CV_CONST) != 0)
+		qualifier.function.qualifiers.push_back(
+			ABI_FUNCTION_QUALIFIER_CONST);
+	if ((lambda_type.cv & CV_VOLATILE) != 0)
+		qualifier.function.qualifiers.push_back(
+			ABI_FUNCTION_QUALIFIER_VOLATILE);
+	if (!qualifier.function.qualifiers.empty())
+		file.cases[0].records.push_back(qualifier);
 	const TypeId* lambda_parameters = program.types.Parameters(binding.type);
 	for (std::size_t i = 0; i < lambda_type.parameter_count; ++i)
-		function.signature_parameter_types.push_back(
-			facts.MakeType(lambda_parameters[i]));
+	{
+		if (function.kind == ABI_FUNCTION_TARGET_LAMBDA)
+			function.signature_parameter_types.push_back(
+				facts.MakeType(lambda_parameters[i]));
+		AbiFactRecord parameter;
+		parameter.set_kind(ABI_FACT_RECORD_FUNCTION);
+		parameter.function.kind = ABI_FUNCTION_RECORD_PARAMETER;
+		parameter.function.type = facts.MakeType(lambda_parameters[i]);
+		file.cases[0].records.push_back(parameter);
+	}
 	file.cases[0].records.push_back(lambda_target);
 	std::string result = mangle_fact_file(file);
 	if (!result.empty() && result[result.size() - 1] == '\n')

@@ -86,4 +86,10 @@ void write_linux_executable(const std::string & path,
                             const std::vector<RelocatableObject> & objects,
                             Stats * stats = 0);
 
+void write_linux_relocatable(const std::string & path,
+                             const lowir_model::LowirProgram & program,
+                             const std::string & target,
+                             const std::vector<unsigned char> & compiler_payload,
+                             Stats * stats = 0);
+
 }  // namespace lowir_native

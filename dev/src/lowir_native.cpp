@@ -2,6 +2,7 @@
 #include "lowir_native_abi.h"
 #include "lowir_native_analysis.h"
 #include "lowir_native_eh.h"
+#include "lowir_native_host_eh.h"
 #include "lowir_native_mir.h"
 #include "lowir_native_program.h"
 #include "lowir_native_registers.h"
@@ -45,6 +46,7 @@ public:
     plan_variadic_register_save();
     bind_parameters();
     plan_slots();
+    plan_host_eh();
   }
   mir_model::MirFunction lower()
   {
@@ -75,6 +77,7 @@ public:
         std::max(direct_parameter_bytes,
                  frame_bytes_ + target_.callee_saved_regs.size() * 8), 16);
     if(constrained_wide_pressure()) target_.stack_size += 16;
+    host_eh_detail::collect_host_eh_clauses(&target_);
     return target_;
   }
 private:
@@ -152,6 +155,17 @@ private:
       slot_offsets_[name] = allocate_frame_binding(
         mir_model::MirFrameBinding::FB_SLOT, name, type);
     }
+  }
+  void plan_host_eh()
+  {
+    if(!host_eh_detail::requires_host_eh_storage(source_)) return;
+    target_.host_eh_enabled = true;
+    target_.host_eh_exception_offset = allocate_frame_binding(
+      mir_model::MirFrameBinding::FB_TEMP, "%host-eh-exception",
+      lowir_model::builtin_lowir_type(lowir_model::LTK_PTR));
+    target_.host_eh_selector_offset = allocate_frame_binding(
+      mir_model::MirFrameBinding::FB_TEMP, "%host-eh-selector",
+      lowir_model::builtin_lowir_type(lowir_model::LTK_I64));
   }
   static X64Register argument_register(std::size_t index)
   {
@@ -893,7 +907,8 @@ private:
       return;
     }
     if(operand.kind != Operand::OP_TEMP)
-      throw std::runtime_error("bulk object operand is not addressable");
+      throw std::runtime_error("bulk object operand is not addressable: " +
+        operand.text + " (kind " + std::to_string(operand.kind) + ")");
     const std::unordered_map<std::string, ValueFact>::const_iterator found =
       values_.find(operand.text);
     if(found == values_.end()) throw std::runtime_error("missing address value");
@@ -2598,14 +2613,20 @@ private:
     } else if(instruction.type.kind == lowir_model::LTK_OBJECT) {
       if(instruction.type.storage_size > 16)
         throw std::runtime_error("direct object return exceeds two SysV eightbytes");
-      emit_operand_address(out, XR_R11, instruction.first);
       const std::size_t chunks = (instruction.type.storage_size + 7) / 8;
-      for(std::size_t chunk = 0; chunk < chunks; ++chunk) {
-        const LowType & chunk_type = abi::object_chunk_type(
-          instruction.type.storage_size - chunk * 8);
-        append_load(out, reg_operand(chunk ? XR_RDX : XR_RAX),
-                    dereference(XR_R11, static_cast<long long>(chunk * 8)),
-                    chunk_type.text);
+      if(instruction.first.kind == Operand::OP_INTEGER &&
+         integer_value(instruction.first) == 0) {
+        for(std::size_t chunk = 0; chunk < chunks; ++chunk)
+          append_move(out, reg_operand(chunk ? XR_RDX : XR_RAX), immediate(0));
+      } else {
+        emit_operand_address(out, XR_R11, instruction.first);
+        for(std::size_t chunk = 0; chunk < chunks; ++chunk) {
+          const LowType & chunk_type = abi::object_chunk_type(
+            instruction.type.storage_size - chunk * 8);
+          append_load(out, reg_operand(chunk ? XR_RDX : XR_RAX),
+                      dereference(XR_R11, static_cast<long long>(chunk * 8)),
+                      chunk_type.text);
+        }
       }
     } else if(is_extended_float(instruction.type)) {
       uses_scalar_float_ = true;

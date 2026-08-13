@@ -1,4 +1,5 @@
 #include "lowir_native.h"
+#include "lowir_native_object_elf.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -10,10 +11,19 @@
 #include <stdexcept>
 #include <sys/stat.h>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace lowir_native {
 namespace {
+
+using object_elf_detail::EncodedFixup;
+using object_elf_detail::EncodedSection;
+using object_elf_detail::HostFunctionLayout;
+using object_elf_detail::declaration_object_symbols;
+using object_elf_detail::host_external_global_definitions;
+using object_elf_detail::host_symbol_spelling;
+using object_elf_detail::make_linux_relocatable_image;
 
 const std::uint64_t kLoadAddress = 0x400000;
 const std::size_t kElfHeaderSize = 64;
@@ -36,6 +46,9 @@ struct Fixup
 class CodeBuffer
 {
 public:
+  explicit CodeBuffer(std::size_t base_offset = kContentOffset)
+    : base_offset_(base_offset) {}
+
   void byte(unsigned value) { bytes_.push_back(static_cast<unsigned char>(value)); }
 
   void zeros(std::size_t count) { bytes_.insert(bytes_.end(), count, 0); }
@@ -55,7 +68,7 @@ public:
   void align(std::size_t alignment)
   {
     if(!alignment) throw std::logic_error("zero data alignment");
-    while((kContentOffset + bytes_.size()) % alignment) byte(0);
+    while((base_offset_ + bytes_.size()) % alignment) byte(0);
   }
 
   void label(const std::string & name)
@@ -168,6 +181,11 @@ public:
   }
 
   const std::vector<unsigned char> & bytes() const { return bytes_; }
+  const std::unordered_map<std::string, std::size_t> & labels() const
+  {
+    return labels_;
+  }
+  const std::vector<Fixup> & fixups() const { return fixups_; }
   std::size_t fixup_count() const { return fixups_.size(); }
 
   std::string internal_label(const char * purpose)
@@ -177,6 +195,7 @@ public:
   }
 
 private:
+  std::size_t base_offset_;
   std::vector<unsigned char> bytes_;
   std::unordered_map<std::string, std::size_t> labels_;
   std::vector<Fixup> fixups_;
@@ -2505,6 +2524,110 @@ void finish_native_executable(
   }
 }
 
+
+void emit_host_instruction(
+    CodeBuffer & out,
+    const mir_model::MirInstruction & instruction,
+    const mir_model::MirFunction & function,
+    std::vector<std::string> & active_regions,
+    HostFunctionLayout & layout)
+{
+  if(instruction.opcode == mir_model::MirInstruction::MI_EH_PUSH) {
+    require_operands(instruction, 2);
+    active_regions.push_back(instruction.operands[0].text);
+    return;
+  }
+  if(instruction.opcode == mir_model::MirInstruction::MI_EH_POP) {
+    require_operands(instruction, 0);
+    if(!active_regions.empty()) active_regions.pop_back();
+    return;
+  }
+  if(instruction.opcode == mir_model::MirInstruction::MI_EH_CATCH) return;
+  if(instruction.opcode == mir_model::MirInstruction::MI_LOAD_EXCEPTION ||
+     instruction.opcode ==
+       mir_model::MirInstruction::MI_LOAD_EXCEPTION_SELECTOR) {
+    require_operands(instruction, 1);
+    emit_load(out, require_register(instruction.operands[0]), XR_RBP,
+      actual_frame_offset(function,
+        instruction.opcode == mir_model::MirInstruction::MI_LOAD_EXCEPTION ?
+        function.host_eh_exception_offset : function.host_eh_selector_offset),
+      type_width(instruction.type));
+    return;
+  }
+  if(instruction.opcode == mir_model::MirInstruction::MI_RESUME) {
+    require_operands(instruction, 0);
+    emit_load(out, XR_RDI, XR_RBP,
+      actual_frame_offset(function, function.host_eh_exception_offset), 64);
+    out.byte(0xe8);
+    out.relative32("_Unwind_Resume");
+    return;
+  }
+  const bool call = instruction.opcode == mir_model::MirInstruction::MI_CALL ||
+    instruction.opcode == mir_model::MirInstruction::MI_CALL_INDIRECT;
+  const std::size_t start = out.size();
+  emit_instruction(out, instruction, &function);
+  if(call && !instruction.call_unwind_no && !active_regions.empty()) {
+    HostFunctionLayout::CallSite site;
+    site.start = start - layout.offset;
+    site.length = out.size() - start;
+    site.landing_pad = active_regions.back();
+    layout.call_sites.push_back(site);
+  }
+}
+
+HostFunctionLayout emit_host_function(
+    CodeBuffer & out, const mir_model::MirFunction & function)
+{
+  out.align(2);
+  HostFunctionLayout layout;
+  layout.internal_symbol = function.name;
+  layout.object_symbol = function.object_symbol;
+  layout.offset = out.size();
+  layout.callee_saved_regs = function.callee_saved_regs;
+  layout.clauses = function.host_eh_clauses;
+  out.label(function.name);
+  const std::string object_symbol = native_object_symbol(function.object_symbol);
+  if(!object_symbol.empty() && object_symbol != function.name)
+    out.label(object_symbol);
+  emit_function_prologue(out, function);
+  for(std::size_t i = 0; i < function.blocks.size(); ++i) {
+    const mir_model::MirBlock & block = function.blocks[i];
+    out.label(function.name + "::" + block.label);
+    if(function.host_eh_clauses.count(block.label)) {
+      emit_store(out, XR_RBP,
+        actual_frame_offset(function, function.host_eh_exception_offset),
+        XR_RAX, 64);
+      emit_store(out, XR_RBP,
+        actual_frame_offset(function, function.host_eh_selector_offset),
+        XR_RDX, 64);
+    }
+    std::vector<std::string> active_regions;
+    for(std::size_t j = 0; j < block.instructions.size(); ++j)
+      emit_host_instruction(out, block.instructions[j], function,
+                            active_regions, layout);
+  }
+  layout.size = out.size() - layout.offset;
+  return layout;
+}
+
+EncodedSection encoded_section(const CodeBuffer & source)
+{
+  EncodedSection result;
+  result.bytes = source.bytes();
+  result.labels = source.labels();
+  result.fixups.reserve(source.fixups().size());
+  for(std::size_t i = 0; i < source.fixups().size(); ++i) {
+    EncodedFixup fixup;
+    fixup.kind = source.fixups()[i].kind == Fixup::ABSOLUTE64 ?
+      EncodedFixup::EF_ABSOLUTE64 : EncodedFixup::EF_RELATIVE32;
+    fixup.offset = source.fixups()[i].offset;
+    fixup.target = source.fixups()[i].target;
+    fixup.addend = source.fixups()[i].addend;
+    result.fixups.push_back(fixup);
+  }
+  return result;
+}
+
 }  // namespace
 
 void write_linux_executable(const std::string & path,
@@ -2565,6 +2688,114 @@ void write_linux_executable(const std::string & path,
   emit_program_tail(content, program, objects);
   finish_native_executable(path, content, stats, encode_nanoseconds,
                            encode_started);
+}
+
+void write_linux_relocatable(
+    const std::string & path,
+    const lowir_model::LowirProgram & source,
+    const std::string & target,
+    const std::vector<unsigned char> & compiler_payload,
+    Stats * stats)
+{
+  if(target != "linux")
+    throw std::runtime_error("ELF object writer requires linux target");
+  ProgramLoweringSession lowering(source, target, stats);
+  mir_model::MirProgram program = lowering.take_program_shell();
+  CodeBuffer text(0);
+  std::vector<HostFunctionLayout> functions;
+  functions.reserve(lowering.function_count());
+  std::uint64_t encode_nanoseconds = 0;
+  for(std::size_t i = 0; i < lowering.function_count(); ++i) {
+    const mir_model::MirFunction function = lowering.lower_function(i);
+    const std::chrono::steady_clock::time_point started =
+      stats ? std::chrono::steady_clock::now() :
+              std::chrono::steady_clock::time_point();
+    functions.push_back(emit_host_function(text, function));
+    if(stats) encode_nanoseconds += static_cast<std::uint64_t>(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - started).count());
+  }
+  CodeBuffer data(0);
+  const std::unordered_set<std::string> suppressed_globals =
+    host_external_global_definitions(source, program);
+  for(std::size_t i = 0; i < program.globals.size(); ++i)
+    if(!suppressed_globals.count(program.globals[i].name))
+      emit_global(data, program.globals[i]);
+  bool needs_personality = false;
+  const std::unordered_map<std::string, std::string> host_declarations =
+    declaration_object_symbols(source);
+  std::unordered_set<std::string> catch_types;
+  for(std::size_t i = 0; i < functions.size(); ++i)
+  {
+    needs_personality = needs_personality || !functions[i].call_sites.empty();
+    for(std::map<std::string,
+          std::vector<mir_model::MirHostEhClause> >::const_iterator clauses =
+          functions[i].clauses.begin(); clauses != functions[i].clauses.end();
+        ++clauses)
+      for(std::size_t clause = 0; clause < clauses->second.size(); ++clause)
+        if(clauses->second[clause].kind ==
+             mir_model::MirHostEhClause::HC_CATCH &&
+           !clauses->second[clause].catch_all)
+        {
+          const std::unordered_map<std::string, std::string>::const_iterator named =
+            host_declarations.find(clauses->second[clause].type_symbol);
+          catch_types.insert(named == host_declarations.end() ?
+            host_symbol_spelling(clauses->second[clause].type_symbol) :
+            named->second);
+        }
+  }
+  for(std::unordered_set<std::string>::const_iterator type = catch_types.begin();
+      type != catch_types.end(); ++type) {
+    data.align(8);
+    data.label("DW.ref." + *type);
+    data.absolute64(*type);
+  }
+  if(needs_personality) {
+    data.align(8);
+    data.label("DW.ref.__gxx_personality_v0");
+    data.absolute64("__gxx_personality_v0");
+  }
+  for(std::size_t i = 0; i < program.object_aliases.size(); ++i) {
+    const std::string alias = native_object_symbol(
+      program.object_aliases[i].object_symbol);
+    const std::string & target_symbol = program.object_aliases[i].target;
+    const std::unordered_map<std::string, std::size_t>::const_iterator in_text =
+      text.labels().find(target_symbol);
+    const std::unordered_map<std::string, std::size_t>::const_iterator in_data =
+      data.labels().find(target_symbol);
+    if(in_text != text.labels().end()) text.label_at(alias, in_text->second);
+    else if(in_data != data.labels().end()) data.label_at(alias, in_data->second);
+    else throw std::runtime_error("native alias has undefined target: " +
+                                  target_symbol);
+  }
+  const std::chrono::steady_clock::time_point image_started =
+    stats ? std::chrono::steady_clock::now() :
+            std::chrono::steady_clock::time_point();
+  std::size_t relocations = 0;
+  const std::vector<unsigned char> image = make_linux_relocatable_image(
+    source, encoded_section(text), encoded_section(data), functions,
+    compiler_payload, relocations);
+  if(stats) encode_nanoseconds += static_cast<std::uint64_t>(
+    std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::steady_clock::now() - image_started).count());
+  const std::chrono::steady_clock::time_point write_started =
+    stats ? std::chrono::steady_clock::now() :
+            std::chrono::steady_clock::time_point();
+  std::ofstream output(path.c_str(),
+    std::ios::out | std::ios::binary | std::ios::trunc);
+  if(!output) throw std::runtime_error("unable to open object output: " + path);
+  if(!image.empty()) output.write(
+    reinterpret_cast<const char *>(&image[0]),
+    static_cast<std::streamsize>(image.size()));
+  if(!output) throw std::runtime_error("unable to write object output: " + path);
+  if(stats) {
+    stats->fixups = relocations;
+    stats->output_bytes = image.size();
+    stats->encode_nanoseconds = encode_nanoseconds;
+    stats->write_nanoseconds = static_cast<std::uint64_t>(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - write_started).count());
+  }
 }
 
 }  // namespace lowir_native

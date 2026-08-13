@@ -50,6 +50,27 @@ bool IsFunctionLocalEntity(const Program& program, EntityId entity)
 	return false;
 }
 
+bool PreferLocalObjectBinding(const Program& program, EntityId entity)
+{
+	if (entity == kNoEntity || entity >= program.entities.size()) return false;
+	EntityId owner = entity;
+	for (std::size_t depth = 0; depth < program.entities.size(); ++depth)
+	{
+		const BindingId context = program.entities[owner].local_context;
+		if (context == kNoBinding || context >= program.bindings.size())
+			return false;
+		const BindingRecord& function = program.bindings[context];
+		if (function.member_owner == kNoEntity)
+			return !function.weak_odr &&
+				function.template_argument_count == 0;
+		if (function.member_owner >= program.entities.size() ||
+			!program.entities[function.member_owner].lambda_closure)
+			return false;
+		owner = function.member_owner;
+	}
+	return false;
+}
+
 namespace
 {
 
@@ -133,13 +154,14 @@ private:
 		state_.class_rtti_symbols.assign(count, kNoLowId);
 		state_.class_type_name_symbols.assign(count, kNoLowId);
 		state_.class_rtti_demanded.assign(count, 0);
-		state_.type_rtti_symbols.assign(program_.types.Size(), kNoLowId);
-		state_.type_name_symbols.assign(program_.types.Size(), kNoLowId);
-		state_.type_rtti_demanded.assign(program_.types.Size(), 0);
-		state_.exception_type_demanded.assign(program_.types.Size(), 0);
-		state_.thrown_type_demanded.assign(program_.types.Size(), 0);
-		state_.exception_rtti_symbols.assign(program_.types.Size(), kNoLowId);
-		state_.exception_object_symbols.assign(program_.types.Size(), kNoLowId);
+		const std::size_t type_count = program_.types.Size() + 1;
+		state_.type_rtti_symbols.assign(type_count, kNoLowId);
+		state_.type_name_symbols.assign(type_count, kNoLowId);
+		state_.type_rtti_demanded.assign(type_count, 0);
+		state_.exception_type_demanded.assign(type_count, 0);
+		state_.thrown_type_demanded.assign(type_count, 0);
+		state_.exception_rtti_symbols.assign(type_count, kNoLowId);
+		state_.exception_object_symbols.assign(type_count, kNoLowId);
 		state_.deleting_destructor_symbols.assign(count, kNoLowId);
 		state_.deleting_destructor_external.assign(count, 0);
 		state_.deallocation_bindings.assign(count, kNoBinding);
@@ -228,7 +250,18 @@ private:
 			const TypeId type = pending.back();
 			pending.pop_back();
 			if (type >= state_.type_rtti_demanded.size())
-				throw std::logic_error("RTTI demand type is out of range");
+			{
+				const std::size_t count = program_.types.Size() + 1;
+				if (type >= count)
+					throw std::logic_error("RTTI demand type is out of range");
+				state_.type_rtti_symbols.resize(count, kNoLowId);
+				state_.type_name_symbols.resize(count, kNoLowId);
+				state_.type_rtti_demanded.resize(count, 0);
+				state_.exception_type_demanded.resize(count, 0);
+				state_.thrown_type_demanded.resize(count, 0);
+				state_.exception_rtti_symbols.resize(count, kNoLowId);
+				state_.exception_object_symbols.resize(count, kNoLowId);
+			}
 			if (state_.type_rtti_demanded[type]) continue;
 			state_.type_rtti_demanded[type] = 1;
 			if (stats_) ++stats_->rtti_types_demanded;

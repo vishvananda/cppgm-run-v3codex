@@ -487,7 +487,23 @@ int run_compile_driver(const DriverInvocation & invocation,
     throw logic_error("compile mode requires one input and -o");
   const cppgm::pa30::CompilerObject object =
       compile_source_object(invocation.inputs[0], invocation, target);
-  cppgm::pa30::WriteCompilerObject(invocation.output, object);
+  const vector<unsigned char> compiler_payload =
+      cppgm::pa30::SerializeCompilerObject(object);
+  lowir_native::Stats native_stats;
+  lowir_native::write_linux_relocatable(
+      invocation.output, object.lowir, target, compiler_payload,
+      getenv("CPPGM_DRIVER_STATS") ? &native_stats : 0);
+  if(getenv("CPPGM_DRIVER_STATS")) {
+    cerr << "pa31_object_stats"
+         << " functions=" << native_stats.functions
+         << " lowir_instructions=" << native_stats.lowir_instructions
+         << " mir_instructions=" << native_stats.mir_instructions
+         << " fixups=" << native_stats.fixups
+         << " output_bytes=" << native_stats.output_bytes
+         << " lower_ns=" << native_stats.lower_nanoseconds
+         << " encode_ns=" << native_stats.encode_nanoseconds
+         << " write_ns=" << native_stats.write_nanoseconds << '\n';
+  }
   return EXIT_SUCCESS;
 }
 
