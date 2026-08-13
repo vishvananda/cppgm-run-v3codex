@@ -78,6 +78,92 @@ std::string LambdaDiscriminator(std::uint32_t ordinal)
 	return ordinal == 0 ? std::string() : std::to_string(ordinal - 1);
 }
 
+struct StandardTemplateSubstitution
+{
+	const char* code;
+	bool includes_arguments;
+
+	StandardTemplateSubstitution(const char* code_value = 0,
+		bool includes_arguments_value = false)
+		: code(code_value), includes_arguments(includes_arguments_value) {}
+};
+
+NameId StandardTemplateTerminal(const Program& program,
+	const EntityRecord& entity)
+{
+	std::vector<NameId> path;
+	program.BuildEmissionPath(entity.owner, entity.identity_name, &path);
+	return path.size() == 2 && program.names.Get(path[0]) == "std" ?
+		path[1] : 0;
+}
+
+bool IsFundamentalType(const Program& program, TypeId type,
+	FundamentalKind fundamental)
+{
+	type = program.types.RemoveTopCv(type);
+	const TypeRecord& record = program.types.Get(type);
+	return record.kind == TYPE_FUNDAMENTAL &&
+		record.fundamental == fundamental;
+}
+
+bool IsStandardUnaryCharTemplate(const Program& program, TypeId type,
+	const char* terminal)
+{
+	type = program.types.RemoveTopCv(type);
+	const TypeRecord& record = program.types.Get(type);
+	if (record.kind != TYPE_NAMED || record.entity >= program.entities.size())
+		return false;
+	const EntityRecord& entity = program.entities[record.entity];
+	const NameId name = StandardTemplateTerminal(program, entity);
+	if (name == 0 || program.names.Get(name) != terminal ||
+		entity.template_argument_count != 1 ||
+		entity.template_argument_begin >= program.template_arguments.size())
+		return false;
+	return IsFundamentalType(program,
+		program.template_arguments[entity.template_argument_begin], FUND_CHAR);
+}
+
+bool HasExactStandardCharacterArguments(const Program& program,
+	const EntityRecord& entity, bool allocator)
+{
+	const std::size_t expected = allocator ? 3 : 2;
+	const std::size_t first = entity.template_argument_begin;
+	if (entity.template_argument_count != expected ||
+		first > program.template_arguments.size() ||
+		expected > program.template_arguments.size() - first)
+		return false;
+	return IsFundamentalType(program, program.template_arguments[first],
+			FUND_CHAR) &&
+		IsStandardUnaryCharTemplate(program,
+			program.template_arguments[first + 1], "char_traits") &&
+		(!allocator || IsStandardUnaryCharTemplate(program,
+			program.template_arguments[first + 2], "allocator"));
+}
+
+StandardTemplateSubstitution StandardSubstitutionFor(
+	const Program& program, const EntityRecord& entity)
+{
+	const NameId terminal_id = StandardTemplateTerminal(program, entity);
+	if (terminal_id == 0) return StandardTemplateSubstitution();
+	const std::string& terminal = program.names.Get(terminal_id);
+	if (terminal == "allocator")
+		return StandardTemplateSubstitution("Sa", false);
+	if (terminal == "basic_string")
+		return HasExactStandardCharacterArguments(program, entity, true) ?
+			StandardTemplateSubstitution("Ss", true) :
+			StandardTemplateSubstitution("Sb", false);
+	if (terminal == "basic_istream" &&
+		HasExactStandardCharacterArguments(program, entity, false))
+		return StandardTemplateSubstitution("Si", true);
+	if (terminal == "basic_ostream" &&
+		HasExactStandardCharacterArguments(program, entity, false))
+		return StandardTemplateSubstitution("So", true);
+	if (terminal == "basic_iostream" &&
+		HasExactStandardCharacterArguments(program, entity, false))
+		return StandardTemplateSubstitution("Sd", true);
+	return StandardTemplateSubstitution();
+}
+
 class AbiFactBuilder
 {
 	const pa11::Program& program_;
@@ -741,8 +827,18 @@ public:
 			}
 			else
 			{
-				result.kind = ABI_TYPE_TEMPLATE_SPECIALIZATION;
-				result.substitution = "__cppgm_abi_class_" +
+				const StandardTemplateSubstitution standard =
+					StandardSubstitutionFor(program_, entity);
+				result.kind = standard.code ?
+					ABI_TYPE_STD_TEMPLATE_SPECIALIZATION :
+					ABI_TYPE_TEMPLATE_SPECIALIZATION;
+				if (standard.code)
+				{
+					result.standard_substitution = standard.code;
+					result.standard_substitution_includes_arguments =
+						standard.includes_arguments;
+				}
+				else result.substitution = "__cppgm_abi_class_" +
 					std::to_string(record->entity);
 				std::vector<NameId> path;
 				program_.BuildEmissionPath(entity.owner, entity.identity_name, &path);
@@ -819,8 +915,13 @@ bool AppendClassTemplateOwner(const pa11::Program& program,
 		throw std::logic_error("class template ABI owner arguments are invalid");
 	std::vector<NameId> path;
 	program.BuildEmissionPath(entity.owner, entity.identity_name, &path);
+	const StandardTemplateSubstitution standard =
+		StandardSubstitutionFor(program, entity);
 	std::string prefix;
-	for (std::size_t i = 0; i < path.size(); ++i)
+	// Standard template substitutions include their `std::` owner. Do not emit
+	// that namespace again when the substitution is a nested-name prefix.
+	const std::size_t path_begin = standard.code && path.size() == 2 ? 1 : 0;
+	for (std::size_t i = path_begin; i < path.size(); ++i)
 	{
 		AbiFactRecord component;
 		component.set_kind(ABI_FACT_RECORD_FUNCTION);
@@ -834,7 +935,10 @@ bool AppendClassTemplateOwner(const pa11::Program& program,
 			component.function.complete_substitution =
 				retain_complete_substitution ? "__cppgm_abi_class_" +
 					std::to_string(binding.member_owner) : "-";
-			component.function.standard_substitution = "-";
+			component.function.standard_substitution =
+				standard.code ? standard.code : "-";
+			component.function.standard_substitution_includes_arguments =
+				standard.includes_arguments;
 			const std::size_t pack = entity.template_argument_pack_begin;
 			const std::size_t fixed = pack == kNoTemplateParameter ?
 				entity.template_argument_count : pack;

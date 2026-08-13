@@ -6,9 +6,9 @@ PA32 keeps the production path `semantic BindingRecord/FunctionTemplateAbiRecipe
 
 ## Current Failure Map
 
-Current result: **79/133** (checkpoint baseline **78/133**, implementation start **59/133**); all **54** remaining failures are grouped below.
+Current result: **82/133** (checkpoint baseline **79/133**, implementation start **59/133**); all **51** remaining failures are grouped below.
 
-- ABI/template identity, demand, and coalescing (20): OOC constructor templates; dependent alias/NTTP/member-cv names; empty owner pack; data-member-pointer owner; extern-template constructor/member/static-data; enum and variadic-template-template names; internal-template local static; namespace operator, ODR default, static-self, ostream, and synthetic std/template substitutions.
+- ABI/template identity, demand, and coalescing (17): OOC constructor templates; dependent alias/NTTP/member-cv names; empty owner pack; data-member-pointer owner; extern-template constructor/member/static-data; enum and variadic-template-template names; internal-template local static; ODR default, static-self, and synthetic template-argument substitutions.
 - ELF data, TLS, and sections (7): C variable import and inherited definition; defined/imported global relocation class; GNU section; TLS import/export.
 - Host call ABI and EH (7): goto-out-of-try; three cleanup/unwind cases; `f64` shuffle; member-function-pointer runtime; system-include move/reset.
 - Semantic/linkage remainder (9): anonymous-namespace implicit/explicit special members, storage and call; invalid C/static redeclaration; explicit-specialization data; external default constructor; same-named local classes; typedef-linkage anonymous types.
@@ -16,15 +16,15 @@ Current result: **79/133** (checkpoint baseline **78/133**, implementation start
 
 ## Active Checkpoint
 
-**Template-rooted ABI recipes.** Extend the typed source-identity graph from parameter-rooted members to class-template roots, type/value template arguments and defaults, then use the same nodes for dependent function parameters. This should cover alias-expanded iterator results, dependent NTTP defaults, and standard-library member result substitutions without syntax replay in lowering.
+**Canonical template-argument source recipes.** Extend the retained ABI type graph with class-template roots and typed type/value arguments, including semantic expansion of source defaults. Reuse those nodes for dependent results and function parameters so alias-expanded iterator and dependent NTTP-default spellings no longer collapse to concrete types or sentinels.
 
-- Owner/data flow: semantic template registration resolves template entities/defaults and publishes immutable type/argument/expression nodes in `Program`; function ABI recipes reference roots for result and parameter occurrences; lowering walks only those nodes into ABI facts.
-- Complexity: linear in expanded components/arguments with canonical argument-list reuse; no specialization-wide or global scan.
-- Validation: dependent alias result, NTTP-default result, ostream member result, synthetic substitution fixtures, then full gates and representative identity/argument scaling statistics.
+- Owner/data flow: semantic result/default formation resolves template entities and publishes immutable argument/type nodes in `Program`; function ABI recipes reference result and parameter roots; lowering performs one typed walk into ABI facts with no syntax access.
+- Complexity: linear in expanded components/arguments, with canonical argument-list reuse and no specialization-set/global scans.
+- Validation: dependent alias result, dependent NTTP default result/parameter, synthetic template-argument substitution, focused default-expansion scaling evidence, then full gates.
 
 ## Performance Evidence
 
-The parameter-rooted result fixture measured 170 tokens, 125 semantic nodes, two result-identity requests/one cache hit, 12 identity-atom visits, two syntax visits, three emitted functions, and 267 LowIR instructions (0.952 ms semantic, 0.374 ms lowering, 0.478 ms object encoding). Its two overload patterns each publish a two-node parameter/member recipe; publication and encoding are linear in recipe length. Earlier lifecycle evidence: 114 tokens/29 nodes/3 demanded functions for the complex owner and 75 tokens/29 nodes/2 demanded functions for the trivial owner.
+The mixed std/non-std substitution fixture measured 327 tokens, 83 semantic nodes, 30 template requests/14 cache hits, four emitted functions, and 26 LowIR instructions (0.502 ms lowering, 0.082 ms object encoding). Classification performs one path walk per specialization plus bounded 2–3 argument checks. The parameter-rooted result fixture measured 170 tokens, 125 nodes, two identity requests/one hit, 12 atom visits, and 0.374 ms lowering; lifecycle probes remain 114/75 tokens with 3/2 demanded functions.
 
 ## Completed Checkpoints
 
@@ -33,3 +33,4 @@ The parameter-rooted result fixture measured 170 tokens, 125 semantic nodes, two
 | Canonical host ABI symbols and ODR roots | Correct dependent substitutions/array-bound expressions, placement overload fallback, host new/delete names, and linear weak-root COMDAT records; pa32 59→75, prior 4150/4150, audit pass. |
 | Demand-owned host lifecycle emission | Host-only demand separates body validation from emission, emits used empty destructors, prunes unused inline/trivial lifecycle roots and calls, and exports lifecycle aliases with target linkage; pa32 75→78, prior 4150/4150, audit pass. |
 | Parameter-rooted dependent-result recipes | Semantic registration publishes immutable ordinal/member/modifier nodes and ABI lowering consumes them for global/local names; array-result spelling passes, pa32 78→79, prior 4150/4150, audit pass. |
+| Canonical standard-template substitutions | Semantic std template identities select generic `Sa`/`Sb` or exact `Ss`/`Si`/`So`/`Sd` ABI facts for types and owners; allocator, operator, and ostream fixtures pass, pa32 79→82, prior 4150/4150, audit pass. |
