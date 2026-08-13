@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <functional>
 #include <limits>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -82,12 +83,15 @@ enum ResultIdentityAtomKind
 	RESULT_IDENTITY_PARAMETER,
 	RESULT_IDENTITY_SUBSTITUTION_BEGIN,
 	RESULT_IDENTITY_SUBSTITUTION_END,
+	RESULT_IDENTITY_TYPE,
 	RESULT_IDENTITY_QUALIFIED_BEGIN,
 	RESULT_IDENTITY_QUALIFIED_END,
 	RESULT_IDENTITY_COMPONENT,
 	RESULT_IDENTITY_DECLARATION,
 	RESULT_IDENTITY_ENTITY,
 	RESULT_IDENTITY_ARGUMENTS_BEGIN,
+	RESULT_IDENTITY_ARGUMENT_BEGIN,
+	RESULT_IDENTITY_ARGUMENT_END,
 	RESULT_IDENTITY_ARGUMENTS_END
 };
 
@@ -110,12 +114,20 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 		std::numeric_limits<std::size_t>::max() : nodes * 4 + 64;
 	std::size_t environment_probes = 0;
 	std::vector<NameId> environment_names;
+	std::unordered_set<NameId> dependent_names;
 	std::vector<std::pair<NameId, std::size_t> > root_parameters;
 	for (std::size_t parameter = 0;
 		parameter < pattern->parameters.size(); ++parameter)
 		if (pattern->parameters[parameter].name != 0)
+		{
 			root_parameters.push_back(std::make_pair(
 				pattern->parameters[parameter].name, parameter));
+			dependent_names.insert(pattern->parameters[parameter].name);
+		}
+	for (std::size_t parameter = 0;
+		parameter < pattern->function_parameter_names.size(); ++parameter)
+		if (pattern->function_parameter_names[parameter] != 0)
+			dependent_names.insert(pattern->function_parameter_names[parameter]);
 	std::sort(root_parameters.begin(), root_parameters.end());
 
 	typedef std::function<bool(const ResultSyntaxReference&,
@@ -183,7 +195,8 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 	};
 
 	build = [this, pattern, &root_parameter, &collect_arguments,
-		&environment_names, &environment_probes, &build, visit_limit](
+		&environment_names, &dependent_names, &environment_probes, &build,
+		visit_limit](
 		const ResultSyntaxReference& reference,
 		std::vector<std::uint64_t>* atoms, std::size_t* visits,
 		std::size_t* expansions) -> bool {
@@ -213,6 +226,23 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 			atoms->push_back(ResultIdentityAtom(
 				RESULT_IDENTITY_PARAMETER, parameter));
 			return true;
+		}
+		if (!reference.environment &&
+			arena_->IsTag(reference.node, "type-id") &&
+			!arena_->HasDescendantTag(reference.node, "parameter-pack") &&
+			!arena_->HasDescendantTag(
+				reference.node, "pack-expansion-expression") &&
+			!arena_->HasDescendantTag(reference.node, "sizeof-pack-expression") &&
+			!SyntaxUsesAnyTemplateParameter(reference.node, dependent_names))
+		{
+			const TypeId type = BuildCanonicalTemplateTypeArgument(
+				reference.node, reference.scope, 0);
+			if (type != kNoType && !FunctionTemplateTypeIsDependent(type))
+			{
+				atoms->push_back(ResultIdentityAtom(
+					RESULT_IDENTITY_TYPE, type));
+				return true;
+			}
 		}
 
 		if (arena_->IsTag(reference.node, "structured-type-name"))
@@ -367,8 +397,14 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 				atoms->push_back(ResultIdentityAtom(
 					RESULT_IDENTITY_ARGUMENTS_BEGIN));
 				for (std::size_t a = 0; a < arguments.size(); ++a)
+				{
+					atoms->push_back(ResultIdentityAtom(
+						RESULT_IDENTITY_ARGUMENT_BEGIN));
 					if (!build(arguments[a], atoms, visits, expansions))
 						return false;
+					atoms->push_back(ResultIdentityAtom(
+						RESULT_IDENTITY_ARGUMENT_END));
+				}
 				atoms->push_back(ResultIdentityAtom(
 					RESULT_IDENTITY_ARGUMENTS_END));
 			}

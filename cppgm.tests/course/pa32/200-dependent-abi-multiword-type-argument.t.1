@@ -1,0 +1,46 @@
+template<bool B, class T = void> struct enable_if {};
+template<class T> struct enable_if<true, T> { typedef T type; };
+template<bool B, class T = void>
+using enable_if_t = typename enable_if<B, T>::type;
+
+template<class I>
+struct move_iterator {
+  I current;
+  move_iterator(I current) : current(current) {}
+  I base() const { return current; }
+};
+
+template<class I1, class I2>
+auto operator-(const move_iterator<I1> & x,
+               const move_iterator<I2> & y) -> decltype(x.base() - y.base())
+{
+  return x.base() - y.base();
+}
+
+template<class T> struct iterator_traits;
+template<class T>
+struct iterator_traits<move_iterator<T> > {
+  typedef long difference_type;
+};
+
+template<class T>
+using iter_distance_t = typename iterator_traits<T>::difference_type;
+
+template<class T>
+struct cat {
+  static const bool value = true;
+};
+
+template<class RandIter,
+         enable_if_t<cat<RandIter>::value, unsigned long> = 0>
+iter_distance_t<RandIter> distance_like(RandIter first, RandIter last)
+{
+  return last - first;
+}
+
+int main()
+{
+  int value = 0;
+  move_iterator<int *> it(&value);
+  return distance_like(it, it);
+}
