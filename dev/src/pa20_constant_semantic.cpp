@@ -27,6 +27,14 @@ bool SyntaxContainsTag(const SyntaxArena& arena, NodeId node,
 	return false;
 }
 
+std::string StaticAssertLocation(const SyntaxArena& arena, NodeId node)
+{
+	const std::string& file = arena.SourceFile(node);
+	return file.empty() ? std::string() :
+		" at " + file + ":" + std::to_string(arena.SourceLine(node)) +
+		":" + std::to_string(arena.SourceColumn(node));
+}
+
 }
 
 std::size_t SemanticAnalyzer::RequestedAlignment(NodeId node, ScopeId scope)
@@ -653,13 +661,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 
 void SemanticAnalyzer::AnalyzeStaticAssert(NodeId node, ScopeId scope)
 {
-	const std::string location = arena_->SourceFile(node).empty() ?
-		std::string() : " at " + arena_->SourceFile(node) + ":" +
-			std::to_string(arena_->SourceLine(node)) + ":" +
-			std::to_string(arena_->SourceColumn(node));
 	const NodeId condition_syntax = FirstSemanticChild(node);
 	if (condition_syntax == kNoNode)
-		throw std::runtime_error("static_assert has no condition" + location);
+		throw std::runtime_error("static_assert has no condition" +
+			StaticAssertLocation(*arena_, node));
 	// A static assertion demanded while forming an unevaluated or discarded
 	// expression is still an independent constant-evaluation root.  Preserve
 	// the caller's suppression state, but do not let it disable the assertion's
@@ -684,9 +689,11 @@ void SemanticAnalyzer::AnalyzeStaticAssert(NodeId node, ScopeId scope)
 	constant_evaluation_suppressed_depth_ = outer_suppression;
 	if (!IsIntegral(condition.type, true) || !condition.constant)
 		throw std::runtime_error(
-			"static_assert requires an integral constant expression" + location);
+			"static_assert requires an integral constant expression" +
+			StaticAssertLocation(*arena_, node));
 	if (condition.value == 0)
-		throw HardSemanticError("static assertion failed" + location);
+		throw HardSemanticError("static assertion failed" +
+			StaticAssertLocation(*arena_, node));
 }
 
 }

@@ -10,10 +10,10 @@ The shared front end owns all changes; no hosted-only route is introduced.
 
 Static assertions are independent required-evaluation roots: they preserve but
 do not inherit a caller's discarded/unevaluated suppression state. Their syntax
-nodes own compact source ranges, and the compile-driver telemetry exposes the
-existing constexpr request/cache/step counters. Work remains proportional to
-the demanded assertion expression and specialization facts; completed calls
-continue to use the specialization-owned constexpr cache.
+nodes own compact source ranges; locations are rendered only on errors, and the
+compile-driver telemetry exposes existing constexpr request/cache/step
+counters. Work is proportional to the demanded assertion and specialization
+facts, with completed calls reused from the TU-owned canonical constexpr cache.
 
 ## Current Failure Map
 
@@ -24,7 +24,7 @@ facts 13; explicit specialization/instantiation identity 7; inherited alias
 identity 10; expression/call/body demand 11; stream/heap stability 5; native
 object/register lowering 3; and retained special-member exception identity 1.
 
-## Active Checkpoint
+## Next Substantial Checkpoint
 
 **Canonical completed-type trait demand.** Per `spec.md` §§2-5, class completion
 and retained alias lookup must consume one canonical specialization identity
@@ -40,9 +40,10 @@ PA1-34, audit, and doubled independent completed-type families.
 
 For 16/32 independent `std::pair` trait families, constexpr calls were 160/320,
 cache hits 64/128, and evaluator steps 305/609. Template requests were
-4,676/9,028; semantic time 201/393 ms, peak semantic storage 30.8/58.5 MB,
-wall time 0.32/0.53 s, and peak RSS 32.1/57.0 MB. The newly unsuppressed work
-therefore scales linearly with demanded families and reuses the existing cache.
+4,676/9,028; semantic time 212/431 ms, peak semantic storage 30.8/58.5 MB,
+wall time 0.34/0.59 s, and peak RSS 32,092/56,772 KiB. Successful assertions
+now perform no diagnostic rendering; demanded evaluation scales linearly and
+reuses the canonical call cache.
 
 ## Completed Checkpoints
 
@@ -62,4 +63,4 @@ therefore scales linearly with demanded families and reuses the existing cache.
 | Demand-safe declarations and function-local lowering | incomplete parameter ABI deferred; nested cleanup bounded; shared node/binding slots reset per function; direct class calls retained as objects | PA35 21 -> 36/103; PA1-34 4756/4756; focused/scaling/audit pass |
 | Target-typed casts and bounded hosted shapes | braced casts, specialization-local constexpr, symbolic packs, runtime atomic order, and cv-overloaded special members | PA35 36 -> 41/103; PA1-34 4756/4756; behavior/scaling/audit pass |
 | Retained current-class ownership | canonical owner/member view, enclosing packs, and member-template result calls; audited pack facts use one direct/per-scope index | PA35 41 -> 48/103 compile (48/104 tracked); PA1-34 4756/4756; retained-pack probes linear; file audit pass |
-| Mandatory static-assert evaluation roots | assertion-local suppression scope, source ranges, and compile-path constexpr counters | PA35 48 -> 53/103; five pass and 16 advance; PA1-34 4756/4756; focused/scaling/audit pass |
+| Mandatory static-assert evaluation roots | assertion-local suppression, compact provenance with error-only rendering, and compile-path constexpr counters | PA35 48 -> 53/103; five pass and 16 advance; PA1-34 4756/4756; focused/scaling/audit pass |

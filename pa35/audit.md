@@ -2,42 +2,46 @@
 
 ## Current Checkpoint Review
 
-The audit covered checkpoint commit `ab8d37e6`, its four changed semantic
-modules, `spec.md`, the PA35 contract, the active plan, relevant tests, and the
-primary failure log. The landed increment correctly restores retained
-current-class context, predeclares the canonical owner's members and enclosing
-parameters for qualified definitions, defers unresolved function-template
-names through dependent type formation, and carries enclosing pack arguments
-into canonical result identity. It advances PA35 compile coverage from 41 to
-48/103 without changing the 4,756-test PA1-34 baseline.
+The audit covered checkpoint commit `e3f0f029`, its parser, semantic, driver,
+and plan changes, `spec.md`, the PA35 contract, focused assertion/constexpr
+tests, and the primary failure log. The increment correctly treats a demanded
+static assertion as an independent required-evaluation root while restoring
+the caller's discarded or unevaluated suppression state. It advances the PA35
+compile report from 48 to 53/103: five cases pass and 16 reach distinct later
+owners, with no earlier-assignment regression.
 
-One checkpoint-level §4/§9 violation was found and repaired. Each enclosing
-pack had been copied into a parent-linked result environment, while discovery
-performed a lexical-scope walk for each distinct result name. A result using
-`d` independent enclosing packs therefore performed quadratic environment
-probing. The complete ownership path is now retained template validation ->
-canonical pack publication -> direct/per-scope pack index -> one lexical-owner
-walk -> flat request-local result bindings -> canonical result identity -> ABI
-publication/comparison. `TemplateArgumentPackBindingTable` stores each
-`(scope, name)` fact once, links it into its dense scope index, and rejects
-duplicate empty as well as nonempty bindings. Alias/default substitutions keep
-their immutable parent overlays; enclosing packs no longer do.
+The complete ownership path is source-token provenance -> one retained
+static-assert syntax node and compact token range -> declaration or template
+specialization demand -> assertion-local suppression scope -> typed expression
+and contextual-bool analysis -> canonical selected function binding ->
+TU-owned constexpr call fact -> assertion result. The call key contains the
+canonical function specialization, receiver object/address identities, and
+typed scalar/object/address arguments; its states distinguish in-progress,
+success, and expected failure. Successful assertions produce no runtime LowIR;
+the compile path merely reports the existing request/cache/step counters.
 
-On nested retained-owner depths 32/64, environment probes fell from 695/2,472
-to 162/322. The corrected syntax counter is 202/394 because it now includes the
-discovery walk; median semantic time is 18.85/67.93 ms, wall time 0.02/0.08 s,
-peak RSS 8.7/10.6 MiB, and semantic peak storage 1.17/3.80 MB. The affected work
-is linear in pack depth and remains proportional to the created semantic graph.
+One checkpoint-level `spec.md` §2/§9 defect was found and repaired: source
+filename/line/column text was eagerly assembled for every successful assertion.
+The retained node still owns only compact token provenance, and presentation
+text is now rendered solely on an assertion-owned error path. A failing probe
+still reports its exact line and column; focused PA10/20 syntax and deferral
+checks, three PA21 constexpr positive/negative checks, and the five new PA35
+passes are clean.
 
-Validation is clean at the checkpoint boundary: the required PA35 report
-preserves 48/103 compile passes and the same 55 known failures (48/104 when the
-one out-of-target run test is included); PA1-34 passes 4,756/4,756; and the PA35
-file audit passes with 22 inherited nonfatal header-division warnings. No other
-landed correctness, ownership, bounded-work, self-containment, or file-audit
-blocker remains.
+For 16/32 independent `std::pair` trait families, calls are 160/320, cache hits
+64/128, evaluator steps 305/609, and template requests 4,676/9,028. Semantic
+time was 212/431 ms, semantic peak storage 30.8/58.5 MB, wall time 0.34/0.59 s,
+and peak RSS 32,092/56,772 KiB. The stable counters show linear
+assertion/evaluator work and reuse of completed call facts; successful
+assertions perform no diagnostic rendering. The PA35 compile report preserves
+53/103 passes (53/104 tracked); PA1-34 passes 4,756/4,756, and the file audit
+passes with 22 inherited nonfatal header-division warnings. No relevant
+checkpoint-owned correctness, performance, shortcut, timeout, ownership, or
+file-audit issue remains.
 
 ## Checkpoint Audit Ledger
 
 | Checkpoint commits | Audit disposition |
 | --- | --- |
 | `ab8d37e6` | Pass after consolidating retained-pack publication and lookup into one canonical direct/per-scope index; correctness baseline preserved. |
+| `e3f0f029` + audit fix | Pass after making source-location rendering error-only; mandatory evaluation, canonical cache ownership, and the 53/103 baseline are preserved. |
