@@ -514,6 +514,22 @@ CallConversionFact SemanticAnalyzer::ConvertingConstructor(
 		else if (rank == best)
 		{
 			const FunctionInfo& prior = GetFunction(selected);
+			const TypeRecord prior_type = program_->types.Get(prior.type);
+			if (function.parameter_count != 0 &&
+				prior_type.parameter_count != 0)
+			{
+				const int reference_preference = CompareReferenceBindings(source,
+					program_->types.Parameters(constructor.type)[0],
+					program_->types.Parameters(prior.type)[0]);
+				if (reference_preference > 0)
+				{
+					selected = candidates[i];
+					best_argument_conversion = argument_conversion;
+					ambiguous = false;
+					continue;
+				}
+				if (reference_preference < 0) continue;
+			}
 			if (constructor.template_specialization !=
 				prior.template_specialization)
 			{

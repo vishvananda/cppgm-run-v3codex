@@ -469,12 +469,10 @@ bool SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 					entity_data_members_[entity].push_back(storage);
 					entity_layout_members_[entity].push_back(
 						ClassLayoutMember(storage, nested_type));
-					const std::vector<BindingId>& variants =
-						entity_data_members_[nested];
-					for (std::size_t i = 0; i < variants.size(); ++i)
+					const std::vector<BindingId>& variants = entity_data_members_[nested];
+					const auto inject_member = [&](BindingId source_binding)
 					{
-						const BindingRecord source =
-							program_->bindings[variants[i]];
+						const BindingRecord source = program_->bindings[source_binding];
 						if (program_->LookupDirect(member_scope, source.name,
 							LOOKUP_ORDINARY).ordinary != kNoBinding)
 							throw std::runtime_error(
@@ -495,10 +493,17 @@ bool SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 						alias_record.bit_storage_bits = source.bit_storage_bits;
 						alias_record.has_default_member_initializer =
 							source.has_default_member_initializer;
-						RegisterInjectedStorageMember(
-							alias, storage, variants[i]);
-						anonymous_alias_storage.push_back(
-							std::make_pair(alias, storage));
+						RegisterInjectedStorageMember(alias, storage, source_binding);
+						anonymous_alias_storage.push_back(std::make_pair(alias, storage));
+					};
+					for (std::size_t i = 0; i < variants.size(); ++i)
+					{
+						inject_member(variants[i]);
+						const CompactIndexSequence* nested_aliases =
+							injected_aliases_by_storage_.Find(variants[i]);
+						for (std::size_t j = 0; nested_aliases &&
+							j < nested_aliases->Size(); ++j)
+							inject_member(static_cast<BindingId>((*nested_aliases)[j]));
 					}
 				}
 			}

@@ -546,6 +546,59 @@ protected:
 		}
 	}
 
+	template <class MemberPath>
+	void LowerConstructorArrayActions(TypeId type,
+		std::uint32_t list_node, const MemberPath& path)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const TypeRecord& array = derived.program_.types.Get(
+			derived.ExpressionObjectType(type));
+		const NodeChildren values = derived.Children(list_node);
+		if (array.kind != TYPE_ARRAY || array.IsIncompleteArray() ||
+			values.size() > array.bound)
+			throw std::runtime_error("invalid constructor array initializer");
+		if (derived.IsClassObjectType(array.child) ||
+			derived.IsArrayType(array.child))
+		{
+			const Operand base = derived.DecayAddress(
+				derived.ProjectConstructorMemberPath(path));
+			const std::size_t element_size =
+				derived.program_.SizeOf(array.child);
+			for (std::size_t i = 0;
+				i < static_cast<std::size_t>(array.bound); ++i)
+			{
+				const Operand destination = derived.IndexAddress(LowI8(), base,
+					Operand(static_cast<std::int64_t>(i * element_size),
+						LowI64()), true);
+				if (i < values.size()) derived.LowerRuntimeObjectValue(
+					array.child, values[i], destination);
+				else derived.LowerRuntimeZeroValue(array.child, destination);
+			}
+			return;
+		}
+		const LowType element = derived.LowerExpressionType(array.child);
+		for (std::size_t i = 0; i < static_cast<std::size_t>(array.bound); ++i)
+		{
+			Operand value;
+			if (i < values.size())
+				value = derived.LowerConvertedValue(values[i], element);
+			else if (element.kind == LOW_PTR)
+				value = Operand::NullPointer(element);
+			else if (IsFloating(element))
+				value = derived.FloatingOperand("0.0", element);
+			else value = Operand(0, element);
+			const Operand base = derived.DecayAddress(
+				derived.ProjectConstructorMemberPath(path));
+			const Operand destination = derived.IndexAddress(element, base,
+				Operand(static_cast<std::int64_t>(i), LowI64()), true);
+			Instruction store(Instruction::STORE);
+			store.type = element;
+			store.first = value;
+			store.second = destination;
+			derived.Emit(store);
+		}
+	}
+
 	void LowerNamespaceClassArrayConstructor(const DumpNode& record,
 		TypeId element_type, std::size_t element_index, std::uint32_t value)
 	{

@@ -39,6 +39,12 @@ TypeId RemoveReference(TypeTable* types, TypeId type)
 		record.kind == TYPE_RVALUE_REFERENCE ? record.child : type;
 }
 
+EntityId DirectNamedEntity(const TypeTable& types, TypeId type)
+{
+	const TypeRecord shape = types.Get(types.RemoveTopCv(type));
+	return shape.kind == TYPE_NAMED ? shape.entity : kNoEntity;
+}
+
 bool IsFundamentalIntegral(const TypeRecord& record)
 {
 	if (record.kind == TYPE_BITINT) return true;
@@ -275,14 +281,14 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinTypeTrait(
 	{
 		for (std::size_t i = 0; i < operands.size(); ++i)
 		{
-			const EntityId entity = EntityOf(operands[i]);
+			const EntityId entity = DirectNamedEntity(program_->types, operands[i]);
 			if (entity != kNoEntity && IsClassEntity(program_->entities[entity]))
 				EnsureClassDefinition(operands[i]);
 		}
 		const TypeId first = operands[0];
 		const TypeId unqualified = program_->types.RemoveTopCv(first);
 		const TypeRecord shape = program_->types.Get(unqualified);
-		const EntityId entity = EntityOf(first);
+		const EntityId entity = DirectNamedEntity(program_->types, first);
 		const EntityRecord* named = entity == kNoEntity ? 0 :
 			&program_->entities[entity];
 		if (trait == TYPE_TRAIT_IS_POLYMORPHIC && named &&

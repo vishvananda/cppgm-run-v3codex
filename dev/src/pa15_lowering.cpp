@@ -2498,37 +2498,6 @@ private:
 			destination = ProjectAggregateMember(destination, path[i]);
 		return destination;
 	}
-	void LowerConstructorArrayActions(TypeId type, std::uint32_t list_node,
-		const pa16_lowering_detail::ConstructorMemberPath& path)
-	{
-		const TypeRecord& array = program_.types.Get(ExpressionObjectType(type));
-		const NodeChildren values = Children(list_node);
-		if (array.kind != TYPE_ARRAY || array.IsIncompleteArray() ||
-			values.size() > array.bound)
-			throw std::runtime_error("invalid constructor array initializer");
-		const LowType element = LowerExpressionType(array.child);
-		for (std::size_t i = 0; i < static_cast<std::size_t>(array.bound); ++i)
-		{
-			Operand value;
-			if (i < values.size())
-				value = LowerConvertedValue(values[i], element);
-			else if (element.kind == LOW_PTR)
-				value = Operand::NullPointer(element);
-			else if (IsFloating(element))
-				value = FloatingOperand("0.0", element);
-			else value = Operand(0, element);
-			const Operand base = DecayAddress(
-				ProjectConstructorMemberPath(path));
-			const Operand destination = IndexAddress(element, base,
-				Operand(static_cast<std::int64_t>(i), LowI64()), true);
-			Instruction store(Instruction::STORE);
-			store.type = element;
-			store.first = value;
-			store.second = destination;
-			Emit(store);
-		}
-	}
-
 	Operand ProjectAggregatePath(const Operand& root,
 		const AggregatePath& path)
 	{

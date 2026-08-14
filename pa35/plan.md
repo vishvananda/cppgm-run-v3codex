@@ -11,31 +11,31 @@ owner in the shared front end.
 
 ## Current Failure Map
 
-PA35 is 105/124 with 19 failures. The complete set groups by shared owner:
-trait readiness/specialization selection 3; retained overload/construction 5;
-hosted vector-builtin lookup 2; reference and derived conversion 5;
-parser/local/class lookup 2; and lowering/allocation 2.
+PA35 is 111/126 with 15 failures. The complete set groups by shared owner and
+diagnostic: unevaluated `declval` body demand 3; retained-call viability 4;
+hosted vector builtin lookup 2; list/constructor selection 2; local/class lookup
+and lowering 2; bound storage lowering 1; and reactive register allocation 1.
 
 ## Active Checkpoint
 
-**Reference-preserving specialization conversions.** Per `spec.md` §§2, 4-6,
-alias-expanded specialization and call results must retain canonical reference
-category, cv state, and base identity through implicit conversion. Data flows
-specialization declarator -> canonical result type -> typed call/reference cast
--> conversion sequence. PA12 call/conversion analysis and PA19 specialization
-typing own the boundary. Expected work is O(type depth + cached base-path probes)
-per candidate, without rebuilding a specialization. Validate the two stream,
-two shared-pointer, and regex conversion failures; positive/negative lvalue,
-rvalue, and base-reference probes; 8/16 conversion shapes; PA35, PA1-34, and
-audit.
+**Unevaluated call-demand isolation.** Per `spec.md` §§2, 4-6, `decltype` and
+other unevaluated operands resolve lookup, substitution, overload, result type,
+and value category without demanding the selected function body. Data flows
+retained call syntax -> evaluatedness context -> specialization/signature lookup
+-> overload result -> typed unevaluated expression; PA12 expression analysis
+owns evaluatedness and the canonical demand scheduler consumes it. Expected work
+is O(indexed candidates + deduction/type depth), with one cacheable signature
+request per specialization and zero body-emission roots. Validate the three
+`declval` static-assert failures, direct positive/negative evaluatedness probes,
+8/16 repeated unevaluated calls, PA35, PA1-34, and audit.
 
 ## Performance Evidence
 
-Eight/sixteen isolated alias-mediated recursive operator chains completed with a
-2 MiB stack. Specialization requests were 88/176, cache hits 48/96, overload
-candidates 56/112, deduction visits 48/96, and peak stage storage
-575,702/1,144,384 bytes. Five-run median analysis was 2.89/5.45 ms and elapsed
-time 4.17/7.66 ms, showing finite demand and near-linear scaling.
+Eight/sixteen reference-constrained calls used 8/16 overload candidates, 41/81
+conversion checks, 40/80 specialization requests, 23/47 cache hits, 8/16 failed
+default cache hits, and 16/32 deduction visits. Peak stage storage was
+223,491/314,629 bytes; five-run median analysis was 1.09/1.64 ms and elapsed time
+1.60/2.34 ms, showing bounded, near-linear classification and SFINAE demand.
 
 ## Completed Checkpoints
 
@@ -70,3 +70,4 @@ time 4.17/7.66 ms, showing finite demand and near-linear scaling.
 | Empty variadic-tail ownership | fixed-only variadic invocations bind a zero-length slice at the raw-token end instead of indexing an absent parsed range | PA35 98/120 -> 99/121; two regex crashes advance under ASan to retained `_CharT`; direct regression and 8/16 scaling pass; PA1-34/audit pass |
 | Template-argument function-type disambiguation | `bool(T)` retains a function type for an unadorned active type parameter while non-type and qualified-value forms remain expressions | PA35 99/121 -> 102/123; regex iterator passes and member-call advances; positive/negative plus PA24 guards, 8/16 scaling, PA1-34 4756/4756, and audit pass |
 | Canonical function-specialization request ownership | result-type re-entry is retryable substitution failure; successful specialization publishes once | PA35 102/123 -> 105/124; four crashes removed, two handouts plus one regression pass and two advance; 8/16 scaling, PA1-34 4756/4756, and audit pass |
+| Reference-preserving traits and conversions | direct traits retain reference wrappers; reference casts/ties, transitive anonymous aliases, and class-array member actions use canonical destinations | PA35 105/124 -> 111/126; four handouts plus two regressions pass, regex advances; 8/16 scaling, PA1-34 4756/4756, and audit pass |

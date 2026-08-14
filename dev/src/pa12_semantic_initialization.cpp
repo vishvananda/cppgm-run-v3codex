@@ -854,7 +854,8 @@ void SemanticAnalyzer::AddMemberInitializationAction(BindingId member_id,
 		if (initializer == kNoNode)
 			value = BuildDefaultConstructorAction(member.type, scope);
 		else if (arena_->IsTag(initializer, "braced-init-list") &&
-			program_->entities[member_entity].is_aggregate)
+			(member_kind == TYPE_ARRAY ||
+			 program_->entities[member_entity].is_aggregate))
 			value = AnalyzeBracedInit(initializer, scope, member.type).node;
 		else
 		{

@@ -537,6 +537,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 	const bool direct_rvalue_reclassification =
 		target_record.kind == TYPE_RVALUE_REFERENCE &&
 		SimilarUnqualified(EffectiveType(operand.type), target_record.child);
+	const bool reinterpret_reference_cast =
+		(target_record.kind == TYPE_LVALUE_REFERENCE ||
+		 target_record.kind == TYPE_RVALUE_REFERENCE) &&
+		cast_kind.find("REINTER") != std::string::npos &&
+		operand.category != VALUE_PRVALUE && operand.category != VALUE_NONE;
 	const bool constructor_cast = constructed_entity != kNoEntity &&
 		(program_->entities[constructed_entity].flavor == NAMED_STRUCT ||
 		 program_->entities[constructed_entity].flavor == NAMED_CLASS ||
@@ -569,6 +574,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		return initialized;
 	}
 	if (!direct_reference_cast && !direct_rvalue_reclassification &&
+		!reinterpret_reference_cast &&
 		!static_reference_downcast && !static_reference_base_cast &&
 		EntityOf(operand.type) != kNoEntity &&
 		ConvertingFunction(operand, target, true).rank != CONVERSION_INVALID)
@@ -601,6 +607,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 			(cast_kind.find("CONST") != std::string::npos ||
 			 cast_kind.compare(0, 10, "OP_LPAREN:") == 0);
 		if (!explicit_rvalue && !explicit_cv_lvalue &&
+			!reinterpret_reference_cast &&
 			!static_reference_downcast &&
 			reference_conversion == CONVERSION_INVALID)
 			throw std::runtime_error("invalid reference cast");
