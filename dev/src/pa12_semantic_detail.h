@@ -720,6 +720,9 @@ private:
 	std::size_t FindClassTemplate(ScopeId scope, const NamePath& path);
 	std::size_t FindClassTemplateIndex(const LookupResult& found,
 		NameId requested) const;
+	BindingId MatchingInjectedClassTemplateSpecialization(
+		const LookupResult& found, std::size_t pattern,
+		const std::vector<TemplateArgument>& arguments) const;
 	BindingId InstantiateClassTemplate(std::size_t pattern,
 		const std::vector<TypeId>& arguments);
 	BindingId InstantiateClassTemplate(std::size_t pattern,
@@ -1034,6 +1037,8 @@ private:
 		BindingId selected_constructor = kNoBinding);
 	ExpressionInfo AnalyzeVariableInitializer(NodeId initializer,
 		ScopeId scope, TypeId type, bool local);
+	ExpressionInfo AnalyzeStringArrayInitializer(
+		const ExpressionInfo& source, TypeId type, bool local);
 	bool TryAnalyzeInitializerListVariable(NodeId expression, ScopeId scope,
 		TypeId type, EntityId class_entity, bool local,
 		ExpressionInfo* initializer);

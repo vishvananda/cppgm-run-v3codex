@@ -517,13 +517,14 @@ LookupResult SemanticAnalyzer::LookupStructuredName(NodeId syntax,
 					FindClassTemplateIndex(found, component);
 				if (pattern == NoTemplatePattern()) return LookupResult();
 				std::vector<TemplateArgument> arguments;
-				const ClassTemplatePattern& class_pattern =
-					class_templates_[pattern];
+				const ClassTemplatePattern& class_pattern = class_templates_[pattern];
 				if (!BuildTemplateArguments(class_pattern.parameters,
 					argument_syntax, scope, class_pattern.lexical_scope,
 					&arguments)) return LookupResult();
-				const BindingId specialization =
-					InstantiateClassTemplate(pattern, arguments);
+				BindingId specialization = MatchingInjectedClassTemplateSpecialization(
+					found, pattern, arguments);
+				if (specialization == kNoBinding)
+					specialization = InstantiateClassTemplate(pattern, arguments);
 				if (specialization == kNoBinding) return LookupResult();
 				found = LookupResult();
 				found.type = program_->bindings[specialization].type;

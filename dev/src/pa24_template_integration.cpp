@@ -109,12 +109,7 @@ void SemanticAnalyzer::MergeFunctionRedeclarationParameters(
 {
 	if (!function)
 		throw std::logic_error("missing function redeclaration fact");
-	const EntityId member =
-		program_->bindings[function->binding].member_owner;
-	const bool definition_owns_parameters = definition &&
-		member != kNoEntity &&
-		program_->entities[member].explicit_template_specialization;
-	if (!definition_owns_parameters || parameters.empty())
+	if (!definition || parameters.empty())
 	{
 		if (function->parameters.empty() && !parameters.empty())
 			function->parameters = parameters;
@@ -123,6 +118,11 @@ void SemanticAnalyzer::MergeFunctionRedeclarationParameters(
 	std::vector<ParameterInfo> replacement = parameters;
 	if (replacement.size() == function->parameters.size())
 		for (std::size_t i = 0; i < replacement.size(); ++i)
+		{
+			if (replacement[i].name == 0)
+				replacement[i].name = function->parameters[i].name;
+			if (replacement[i].pack_name == 0)
+				replacement[i].pack_name = function->parameters[i].pack_name;
 			if (replacement[i].default_argument == kNoNode)
 			{
 				replacement[i].default_argument =
@@ -130,7 +130,29 @@ void SemanticAnalyzer::MergeFunctionRedeclarationParameters(
 				replacement[i].default_scope =
 					function->parameters[i].default_scope;
 			}
+		}
 	function->parameters.swap(replacement);
+}
+
+BindingId SemanticAnalyzer::MatchingInjectedClassTemplateSpecialization(
+	const LookupResult& found, std::size_t pattern,
+	const std::vector<TemplateArgument>& arguments) const
+{
+	if (found.type == kNoType || pattern >= class_templates_.size())
+		return kNoBinding;
+	const TypeRecord& type = program_->types.Get(
+		program_->types.RemoveTopCv(found.type));
+	if (type.kind != TYPE_NAMED ||
+		type.entity == class_templates_[pattern].marker_entity ||
+		type.entity >= class_template_pattern_by_entity_.size() ||
+		class_template_pattern_by_entity_[type.entity] != pattern)
+		return kNoBinding;
+	const EntityRecord& entity = program_->entities[type.entity];
+	if (entity.template_argument_begin == kNoBinding ||
+		entity.template_argument_count != arguments.size()) return kNoBinding;
+	return StoredTemplateArguments(entity.template_argument_begin,
+		entity.template_argument_count) == arguments ?
+		entity.declaration : kNoBinding;
 }
 
 }

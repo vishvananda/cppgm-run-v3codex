@@ -621,7 +621,6 @@ ExpressionInfo SemanticAnalyzer::AnalyzeVariableInitializer(
 	NodeId expression = FirstSemanticChild(initializer_node);
 	const EntityId class_entity = EntityOf(type);
 	const TypeKind declared_kind = program_->types.Get(type).kind;
-	const TypeRecord declared = program_->types.Get(type);
 	ExpressionInfo initializer;
 	if (TryAnalyzeInitializerListVariable(expression, scope, type,
 		class_entity, local, &initializer)) return initializer;
@@ -630,46 +629,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeVariableInitializer(
 		arena_->Payload(expression).find('"') != std::string::npos)
 	{
 		const ExpressionInfo source = AnalyzeExpression(expression, scope);
-		const TypeRecord source_array = program_->types.Get(source.type);
-		if (source_array.kind != TYPE_ARRAY ||
-			program_->types.RemoveTopCv(source_array.child) !=
-				program_->types.RemoveTopCv(declared.child) ||
-			source.string_unit_begin == kNoDumpEdge ||
-			source.string_unit_count == 0)
-			throw std::runtime_error(
-				"string literal initializes an incompatible array");
-		if (declared.bound != 0 &&
-			source.string_unit_count > declared.bound)
-			throw std::runtime_error("string literal is too long for array");
-		const std::size_t count = declared.bound == 0 ?
-			source.string_unit_count : declared.bound;
-		const TypeId initialized_type = declared.bound == 0 ?
-			program_->types.Array(declared.child, count) : type;
-		const std::uint32_t list = MakeDump(DUMP_BRACED_INIT_LIST,
-			initialized_type, VALUE_LVALUE);
-		for (std::size_t i = 0; i < count; ++i)
-		{
-			const std::size_t unit = source.string_unit_begin + i;
-			if (i < source.string_unit_count &&
-				unit >= string_literal_units_.size())
-				throw std::logic_error(
-					"string literal initializer range is invalid");
-			const std::int64_t code_unit = i < source.string_unit_count ?
-				NormalizeIntegralConstant(
-					declared.child, string_literal_units_[unit]) : 0;
-			ExpressionInfo value = MakeLiteral(
-				declared.child, InternNumber(code_unit));
-			value.constant = true;
-			value.value = code_unit;
-			RecordExpressionFacts(value);
-			dump_.Add(list, value.node);
-		}
-		initializer.node = list;
-		initializer.type = initialized_type;
-		initializer.category = VALUE_LVALUE;
-		++expression_count_;
-		return local ?
-			BuildLocalAggregateArrayActions(initializer) : initializer;
+		return AnalyzeStringArrayInitializer(source, type, local);
 	}
 	if (declared_kind != TYPE_LVALUE_REFERENCE &&
 		declared_kind != TYPE_RVALUE_REFERENCE &&

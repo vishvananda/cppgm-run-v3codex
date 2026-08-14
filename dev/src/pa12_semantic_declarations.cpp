@@ -157,6 +157,15 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 			kNoType, owner, specialization_identity == 0 ?
 				(typedef_linkage_name == 0 ? name : typedef_linkage_name) :
 				specialization_identity);
+		if (program_->entities[entity].enclosing_class == kNoEntity &&
+			current_function_context_ != kNoBinding)
+		{
+			const BindingId function =
+				program_->bindings[current_function_context_].canonical;
+			if (function < program_->bindings.size())
+				program_->entities[entity].enclosing_class =
+					program_->bindings[function].member_owner;
+		}
 		program_->entities[entity].local_context = LocalTypeContext(
 			*program_, owner, current_function_context_);
 		program_->entities[entity].unnamed_class = unnamed_class;

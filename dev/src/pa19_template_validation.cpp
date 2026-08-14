@@ -99,6 +99,7 @@ private:
 	NodeId FindParameterClause(NodeId declarator) const;
 	void BindFunctionParameters(NodeId declarator, std::size_t scope);
 	bool DeclareStructuredBindings(NodeId declarator, std::size_t scope);
+	NodeId RetainedOperatorCallArgument(NodeId node) const;
 	void VisitSimple(NodeId node, std::size_t scope, bool predeclared);
 	void VisitUsing(NodeId node, std::size_t scope);
 	void VisitSizeof(NodeId node, std::size_t scope);
@@ -701,9 +702,65 @@ void RetainedTemplateValidator::VisitClass(NodeId node, std::size_t scope)
 	}
 }
 
+NodeId RetainedTemplateValidator::RetainedOperatorCallArgument(
+	NodeId node) const
+{
+	const NodeId specifiers = analyzer_.FindChild(node, "decl-specifier-seq");
+	const NodeId list = analyzer_.FindChild(node, "init-declarator-list");
+	const std::uint32_t specifier_edge = specifiers == kNoNode ? kNoEdge :
+		analyzer_.arena_->FirstEdge(specifiers);
+	const std::uint32_t item_edge = list == kNoNode ? kNoEdge :
+		analyzer_.arena_->FirstEdge(list);
+	if (specifier_edge == kNoEdge || item_edge == kNoEdge ||
+		analyzer_.arena_->NextEdge(specifier_edge) != kNoEdge ||
+		analyzer_.arena_->NextEdge(item_edge) != kNoEdge)
+		return kNoNode;
+	const NodeId specifier = analyzer_.arena_->EdgeChild(specifier_edge);
+	const NodeId structure = analyzer_.FirstSemanticChild(specifier);
+	if (structure == kNoNode ||
+		!analyzer_.arena_->IsTag(structure, "structured-type-name"))
+		return kNoNode;
+	const NamePath callee = analyzer_.StructuredNamePath(specifier);
+	if (callee.Empty() || analyzer_.program_->names.Get(callee.Last()).compare(
+			0, 8, "operator") != 0)
+		return kNoNode;
+	const NodeId item = analyzer_.arena_->EdgeChild(item_edge);
+	if (analyzer_.FindChild(item, "initializer") != kNoNode) return kNoNode;
+	const NodeId declarator = analyzer_.FindChild(item, "declarator");
+	const NodeId nested = declarator == kNoNode ? kNoNode :
+		analyzer_.FindChild(declarator, "nested-declarator");
+	const NodeId argument_declarator = nested == kNoNode ? kNoNode :
+		analyzer_.FirstSemanticChild(nested);
+	const NodeId argument = argument_declarator == kNoNode ? kNoNode :
+		analyzer_.FindChild(argument_declarator, "identifier");
+	if (argument == kNoNode ||
+		analyzer_.FindChild(argument_declarator, "parameter-clause") != kNoNode ||
+		analyzer_.FindChild(argument_declarator, "array-suffix") != kNoNode)
+		return kNoNode;
+	return argument;
+}
+
 void RetainedTemplateValidator::VisitSimple(NodeId node, std::size_t scope,
 	bool predeclared)
 {
+	const NodeId call_argument = RetainedOperatorCallArgument(node);
+	if (call_argument != kNoNode)
+	{
+		// PA10 retains `qualified::operator=(argument);` in the declaration
+		// branch.  It is resolved as a call during concrete replay and must not
+		// publish the parenthesized argument as a fresh local declaration.
+		const NameId name = analyzer_.program_->names.Intern(
+			analyzer_.PayloadSource(call_argument));
+		if ((LookupLocal(scope, name) & RETAINED_VALUE_NAME) == 0 &&
+			analyzer_.program_->LookupName(scopes_[scope].semantic_scope,
+				name, LOOKUP_ORDINARY).ordinary == kNoBinding &&
+			!DefersUnknownMembers(scope) && !HasUnmodeledFixedBase(scope) &&
+			!HasUnmodeledCurrentClass(scope))
+			throw std::runtime_error(
+				"unknown nondependent name in template definition: " +
+				analyzer_.PayloadSource(call_argument));
+		return;
+	}
 	const NodeId specifiers = analyzer_.FindChild(node, "decl-specifier-seq");
 	if (!predeclared)
 	{

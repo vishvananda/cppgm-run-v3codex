@@ -41,6 +41,56 @@ bool SemanticAnalyzer::IsStaticConstantDefinition(
 	return definition;
 }
 
+ExpressionInfo SemanticAnalyzer::AnalyzeStringArrayInitializer(
+	const ExpressionInfo& source, TypeId type, bool local)
+{
+	const TypeRecord declared = program_->types.Get(type);
+	const TypeRecord source_array = program_->types.Get(source.type);
+	if (source_array.kind != TYPE_ARRAY ||
+		program_->types.RemoveTopCv(source_array.child) !=
+			program_->types.RemoveTopCv(declared.child) ||
+		source.string_unit_begin == kNoDumpEdge ||
+		source.string_unit_count == 0)
+		throw std::runtime_error(
+			"string literal initializes an incompatible array");
+	if (declared.bound != 0 && source.string_unit_count > declared.bound)
+		throw std::runtime_error("string literal is too long for array");
+	const std::size_t count = declared.bound == 0 ?
+		source.string_unit_count : declared.bound;
+	const TypeId initialized_type = declared.bound == 0 ?
+		program_->types.Array(declared.child, count) : type;
+	const std::uint32_t list = MakeDump(
+		DUMP_BRACED_INIT_LIST, initialized_type, VALUE_LVALUE);
+	std::vector<ConstexprObjectElement> constant_elements;
+	constant_elements.reserve(count);
+	for (std::size_t i = 0; i < count; ++i)
+	{
+		const std::size_t unit = source.string_unit_begin + i;
+		if (i < source.string_unit_count && unit >= string_literal_units_.size())
+			throw std::logic_error(
+				"string literal initializer range is invalid");
+		const std::int64_t code_unit = i < source.string_unit_count ?
+			NormalizeIntegralConstant(
+				declared.child, string_literal_units_[unit]) : 0;
+		ExpressionInfo value = MakeLiteral(
+			declared.child, InternNumber(code_unit));
+		SetExpressionScalar(&value, NormalizeScalarConstant(
+			declared.child, ConstexprScalarValue(code_unit)));
+		RecordExpressionFacts(value);
+		dump_.Add(list, value.node);
+		constant_elements.push_back(ConstexprObjectElement(
+			kNoBinding, ExpressionScalar(value)));
+	}
+	ExpressionInfo result;
+	result.node = list;
+	result.type = initialized_type;
+	result.category = VALUE_LVALUE;
+	SetExpressionObject(&result,
+		InternConstexprObject(initialized_type, constant_elements));
+	++expression_count_;
+	return local ? BuildLocalAggregateArrayActions(result) : result;
+}
+
 ExpressionInfo SemanticAnalyzer::AnalyzeArrayAggregateInit(TypeId type,
 	ScopeId scope, std::uint32_t* element_edge)
 {
