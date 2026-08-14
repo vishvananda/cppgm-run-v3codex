@@ -1802,8 +1802,23 @@ bool SemanticAnalyzer::AnalyzeExplicitFunctionInstantiation(
 			program_->bindings[candidate].template_argument_count == 0 &&
 			!templated_owner) continue;
 		if (selected != kNoBinding && selected != candidate)
-			throw std::runtime_error(
-				"ambiguous explicit function instantiation target");
+		{
+			const FunctionInfo& prior = GetFunction(selected);
+			if (prior.template_specialization !=
+				function.template_specialization)
+			{
+				if (prior.template_specialization) selected = candidate;
+				continue;
+			}
+			const int preference =
+				CompareFunctionTemplateConstraints(function, prior);
+			if (preference > 0) selected = candidate;
+			else if (preference == 0)
+				throw std::runtime_error(
+					"ambiguous explicit function instantiation target: " +
+					function_name);
+			continue;
+		}
 		selected = candidate;
 	}
 	if (selected == kNoBinding) return false;

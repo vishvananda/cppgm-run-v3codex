@@ -12,28 +12,25 @@ its existing translation-unit/per-phase storage.
 
 ## Current Failure Map
 
-Turn-start baseline: 6/104 overall (the PA-local compile report is 6/103).
-The first checkpoint raised the PA-local report to 15/103 and dependent lookup
-plus call/type disambiguation raised it to 18/103.  Explicit-instantiation
-routing then removed 36 barriers without changing the pass count because those
-tests reached later checks.  The final report is 18/103, leaving 85 failures:
-retained declaration/specialization identity 19; retained type identity 14;
-constexpr/static evaluation 16; dependent lookup and access 21; unresolved
-expression/call/parser cases 9; allocator corruption 2; exception rules 1; and
-lowering/type-completion singletons 3.
+Turn-start baseline: 6/104 overall (6/103 in the PA-local report); current PA35
+is 19/103.  The 84 remaining failures group by shared owner and first stop:
+dependent type/owner identity 42; constexpr/static evaluation 16; qualified
+nested-class member replay 11; unresolved expression/call/parser behavior 9;
+explicit class-specialization identity 3; allocator corruption 2; and lowering
+type completion 1.
 
 ## Active Checkpoint
 
-**Retained declaration canonical identity.**  Per `spec.md` §§2 and 4, repeated
-template declarations merge into one canonical pattern while incompatible
-parameter, result, owner, or definition facts remain conflicts.  Data flow is
-parsed declaration -> canonical owner/name and normalized template/function
-shape -> indexed retained pattern -> merged defaults/definition -> existing
-specialization cache.  The function-template registry owns the merge; expected
-work is average O(1) indexed lookup plus O(parameter/signature size) comparison.
-Validate legal repeated declarations and definitions, incompatible negatives,
-the 16 affected hosted cases, full PA35, PA1-34, audit, and doubled declaration
-set work/time/storage.
+**Qualified nested-class member replay.**  Per `spec.md` §§2 and 4, an
+out-of-class member definition under dependent outer-template arguments must
+resolve to the canonical member declared by the retained nested class, without
+manufacturing a namespace function.  Data flow is parsed qualified owner path
+-> outer specialization -> nested class entity/member scope -> normalized
+function signature -> canonical member binding -> definition demand.  The
+class-specialization and function-declaration registries own the boundary;
+expected work is average O(1) indexed identity lookup plus O(path + signature)
+normalization.  Validate focused owner/signature positives and mismatches, the
+11 stream cases, full PA35, PA1-34, audit, and doubled nested-member families.
 
 ## Performance Evidence
 
@@ -52,6 +49,10 @@ semantic storage.
 Private member-template defaults at 256/512 cases used 768/1,536 template
 requests, 5,636/11,268 lookups, 33.1/68.5 ms semantic time, and 7.30/14.59 MB
 peak semantic storage; declaration access context adds constant work per replay.
+Retained tag/control-scope replay at 256/512 template families used
+14,337/28,673 tokens, 2,305/4,609 scopes, 260/516 lookups, 25.1/49.6 ms semantic
+time, and 1.42/2.84 MB semantic storage (2.69/5.38 MB stage peak); all measured
+work and storage remained linear under doubling.
 
 ## Completed Checkpoints
 
@@ -66,3 +67,4 @@ peak semantic storage; declaration access context adds constant work per replay.
 | Explicit-instantiation operator identity | 36 routing barriers removed; PA35 remains 18/103 | `operator<<`, `operator<`, and genuine template-id targets route distinctly |
 | Constexpr declaration/completion boundary | 16 owner-literal barriers removed; PA35 remains 18/103 | `error_category` advances; PA21 member/base/object negatives remain rejected |
 | Retained template-default access context | 19 access barriers removed; PA35 remains 18/103 | member/friend defaults pass; external private alias rejected; scaling linear |
+| Canonical retained declaration replay | tag/control/function/exception facts merge canonically; PA35 18 -> 19/103 | 16 barriers advance; allocation-spec ± pass; PA1-34 4756/4756; audit/scaling pass |

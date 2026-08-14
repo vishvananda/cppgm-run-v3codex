@@ -47,7 +47,20 @@ void SemanticAnalyzer::ConfigureFunctionExceptionSpecification(
 			FUNCTION_EXCEPTION_BOUNDARY_TERMINATE :
 			FUNCTION_EXCEPTION_BOUNDARY_NONE;
 	std::vector<TypeId> allowed;
-	if (qualifier != kNoNode &&
+	const BuiltinFunctionKind builtin = program_->bindings[binding].builtin_function;
+	if (qualifier == kNoNode &&
+		(builtin == BUILTIN_FUNCTION_OPERATOR_NEW ||
+		 builtin == BUILTIN_FUNCTION_OPERATOR_NEW_ARRAY))
+	{
+		const LookupResult bad_alloc = LookupPath(program_->GlobalScope(),
+			ParseNamePath("std::bad_alloc"), LOOKUP_TYPE);
+		if (bad_alloc.type != kNoType)
+		{
+			allowed.push_back(bad_alloc.type);
+			boundary = FUNCTION_EXCEPTION_BOUNDARY_UNEXPECTED;
+		}
+	}
+	else if (qualifier != kNoNode &&
 		PayloadSource(qualifier).compare(0, 6, "throw(") == 0)
 	{
 		const NodeId list = FindChild(qualifier, "exception-type-list");

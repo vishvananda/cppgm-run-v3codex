@@ -38,6 +38,8 @@ struct RetainedScope
 	std::unordered_map<NameId, std::vector<std::size_t> > call_templates;
 	std::unordered_map<NameId, EntityId> call_naming_classes;
 	std::unordered_set<NameId> dependent_values;
+	std::unordered_set<NameId> class_type_names;
+	std::unordered_set<NameId> class_type_definitions;
 	bool defer_unknown_members;
 	bool unmodeled_fixed_base;
 	bool unmodeled_current_class;
@@ -71,6 +73,7 @@ private:
 		const TemplateParameter& parameter);
 	void Declare(std::size_t scope, NameId name, RetainedNameKind kind,
 		bool allow_existing = false);
+	void DeclareClassType(std::size_t scope, NameId name, bool definition);
 	std::uint8_t LookupLocal(std::size_t scope, NameId name) const;
 	bool LookupLocalCallSets(std::size_t scope, NameId name,
 		std::vector<BindingId>* functions,
@@ -87,6 +90,7 @@ private:
 	bool SyntaxUsesRetainedValue(NodeId node, std::size_t scope) const;
 	void Visit(NodeId node, std::size_t scope, bool unknown_callee = false);
 	void VisitChildren(NodeId node, std::size_t scope);
+	bool VisitControlStatement(NodeId node, std::size_t scope);
 	void VisitClass(NodeId node, std::size_t scope);
 	void PredeclareClassMembers(NodeId node, std::size_t scope);
 	void PredeclareClassSimple(NodeId node, std::size_t scope);
@@ -154,7 +158,9 @@ void RetainedTemplateValidator::Declare(std::size_t scope, NameId name,
 		throw std::runtime_error("template parameter redeclared in its scope");
 	std::uint8_t& present = scopes_[scope].names[name];
 	if ((present & kind) != 0 && !allow_existing)
-		throw std::runtime_error("duplicate retained template declaration");
+		throw std::runtime_error("duplicate retained template declaration: " +
+			analyzer_.program_->names.Get(name) +
+			(kind == RETAINED_TYPE_NAME ? " (type)" : " (value)"));
 	const bool newly_declared = (present & kind) == 0;
 	present |= static_cast<std::uint8_t>(kind);
 	if (kind == RETAINED_TYPE_NAME && newly_declared)
@@ -167,6 +173,17 @@ void RetainedTemplateValidator::Declare(std::size_t scope, NameId name,
 			BIND_TYPE_ALIAS, name,
 			analyzer_.program_->types.Fundamental(FUND_INT));
 	}
+}
+
+void RetainedTemplateValidator::DeclareClassType(std::size_t scope,
+	NameId name, bool definition)
+{
+	const bool existing_tag = !scopes_[scope].class_type_names.insert(name).second;
+	Declare(scope, name, RETAINED_TYPE_NAME, existing_tag);
+	if (definition &&
+		!scopes_[scope].class_type_definitions.insert(name).second)
+		throw std::runtime_error("duplicate retained class definition: " +
+			analyzer_.program_->names.Get(name));
 }
 
 std::uint8_t RetainedTemplateValidator::LookupLocal(std::size_t scope,
@@ -428,6 +445,20 @@ void RetainedTemplateValidator::VisitChildren(NodeId node, std::size_t scope)
 		Visit(analyzer_.arena_->EdgeChild(edge), scope);
 }
 
+bool RetainedTemplateValidator::VisitControlStatement(
+	NodeId node, std::size_t scope)
+{
+	if (!analyzer_.arena_->IsTag(node, "if-statement") &&
+		!analyzer_.arena_->IsTag(node, "switch-statement") &&
+		!analyzer_.arena_->IsTag(node, "while-statement") &&
+		!analyzer_.arena_->IsTag(node, "do-statement") &&
+		!analyzer_.arena_->IsTag(node, "for-statement") &&
+		!analyzer_.arena_->IsTag(node, "then") &&
+		!analyzer_.arena_->IsTag(node, "else")) return false;
+	VisitChildren(node, AddChildScope(scope, SCOPE_BLOCK));
+	return true;
+}
+
 NodeId RetainedTemplateValidator::FindParameterClause(NodeId declarator) const
 {
 	std::vector<NodeId> pending(1, declarator);
@@ -526,7 +557,8 @@ void RetainedTemplateValidator::PredeclareClassSimple(NodeId node,
 			if (!spelling.empty())
 			{
 				embedded_type = analyzer_.program_->names.Intern(spelling);
-				Declare(scope, embedded_type, RETAINED_TYPE_NAME);
+				DeclareClassType(scope, embedded_type,
+					analyzer_.arena_->IsTag(specifier, "class-specifier"));
 			}
 		}
 	const bool type_declaration = IsTypedef(specifiers);
@@ -575,8 +607,9 @@ void RetainedTemplateValidator::PredeclareClassMembers(NodeId node,
 		{
 			if (analyzer_.arena_->Payload(member).empty())
 				PredeclareClassMembers(member, scope);
-			else Declare(scope, analyzer_.program_->names.Intern(
-				analyzer_.arena_->Payload(member)), RETAINED_TYPE_NAME);
+			else DeclareClassType(scope, analyzer_.program_->names.Intern(
+				analyzer_.arena_->Payload(member)),
+				analyzer_.arena_->IsTag(member, "class-specifier"));
 		}
 		else if (analyzer_.arena_->IsTag(member, "bit-field-declaration"))
 		{
@@ -691,8 +724,9 @@ void RetainedTemplateValidator::VisitSimple(NodeId node, std::size_t scope,
 					const std::string spelling =
 						analyzer_.arena_->Payload(specifier);
 					if (!spelling.empty())
-						Declare(scope, analyzer_.program_->names.Intern(spelling),
-							RETAINED_TYPE_NAME);
+						DeclareClassType(scope,
+							analyzer_.program_->names.Intern(spelling),
+							analyzer_.arena_->IsTag(specifier, "class-specifier"));
 				}
 			}
 		const bool type_declaration = IsTypedef(specifiers);
@@ -1113,6 +1147,7 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 		if (body != kNoNode) Visit(body, handler_scope);
 		return;
 	}
+	if (VisitControlStatement(node, scope)) return;
 	if (analyzer_.arena_->IsTag(node, "compound-statement"))
 	{
 		const std::size_t block = AddChildScope(scope, SCOPE_BLOCK);
